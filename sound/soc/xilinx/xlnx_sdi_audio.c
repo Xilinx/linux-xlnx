@@ -110,13 +110,13 @@ static irqreturn_t xtract_irq_handler(int irq, void *dev_id)
 	u32 irq_sts, irq_en, active_grps;
 	struct dev_ctx *ctx = dev_id;
 
-	irq_sts = readl(ctx->base + XSDIAUD_INT_STS_REG_OFFSET);
-	active_grps = readl(ctx->base + XSDIAUD_ACTIVE_GRP_REG_OFFSET);
+	irq_sts = ioread32(ctx->base + XSDIAUD_INT_STS_REG_OFFSET);
+	active_grps = ioread32(ctx->base + XSDIAUD_ACTIVE_GRP_REG_OFFSET);
 	if ((irq_sts & XSDIAUD_EXT_AUDSTS_UPDATE_MASK) &&
 	    (active_grps & XSDIAUD_EXT_GROUP_1_STS_MASK)) {
 		writel(XSDIAUD_EXT_AUDSTS_UPDATE_MASK,
 		       ctx->base + XSDIAUD_INT_STS_REG_OFFSET);
-		irq_en = readl(ctx->base + XSDIAUD_INT_EN_REG_OFFSET);
+		irq_en = ioread32(ctx->base + XSDIAUD_INT_EN_REG_OFFSET);
 		/* Disable further interrupts. sample rate status got updated*/
 		writel(irq_en & ~XSDIAUD_EXT_AUDSTS_UPDATE_MASK,
 		       ctx->base + XSDIAUD_INT_EN_REG_OFFSET);
@@ -133,7 +133,7 @@ static void audio_enable(void __iomem *aud_base)
 {
 	u32 val;
 
-	val = readl(aud_base + XSDIAUD_CNTRL_REG_OFFSET);
+	val = ioread32(aud_base + XSDIAUD_CNTRL_REG_OFFSET);
 	val |= XSDIAUD_CNTRL_EN_MASK;
 	writel(val, aud_base + XSDIAUD_CNTRL_REG_OFFSET);
 }
@@ -142,7 +142,7 @@ static void audio_disable(void __iomem *aud_base)
 {
 	u32 val;
 
-	val = readl(aud_base + XSDIAUD_CNTRL_REG_OFFSET);
+	val = ioread32(aud_base + XSDIAUD_CNTRL_REG_OFFSET);
 	val &= ~XSDIAUD_CNTRL_EN_MASK;
 	writel(val, aud_base + XSDIAUD_CNTRL_REG_OFFSET);
 }
@@ -153,12 +153,12 @@ static void audio_reset_core(void __iomem *aud_base, bool reset)
 
 	if (reset) {
 		/* reset the core */
-		val = readl(aud_base + XSDIAUD_SOFT_RST_REG_OFFSET);
+		val = ioread32(aud_base + XSDIAUD_SOFT_RST_REG_OFFSET);
 		val |= XSDIAUD_SOFT_RST_CORE_MASK;
 		writel(val, aud_base + XSDIAUD_SOFT_RST_REG_OFFSET);
 	} else {
 		/* bring the core out of reset */
-		val = readl(aud_base + XSDIAUD_SOFT_RST_REG_OFFSET);
+		val = ioread32(aud_base + XSDIAUD_SOFT_RST_REG_OFFSET);
 		val &= ~XSDIAUD_SOFT_RST_CORE_MASK;
 		writel(val, aud_base + XSDIAUD_SOFT_RST_REG_OFFSET);
 	}
@@ -187,7 +187,7 @@ static int xlnx_sdi_rx_pcm_startup(struct snd_pcm_substream *substream,
 	}
 	ctx->rx_srate_updated = false;
 
-	val = readl(base + XSDIAUD_EXT_SRATE_STS_REG_OFFSET);
+	val = ioread32(base + XSDIAUD_EXT_SRATE_STS_REG_OFFSET);
 	/* As both channels contain same sample rate, read either of them */
 	switch (val & CHAN_ID_0) {
 	case 0:
@@ -450,7 +450,7 @@ static int xlnx_sdi_audio_probe(struct platform_device *pdev)
 
 	ctx->dev = &pdev->dev;
 
-	val = readl(ctx->base + XSDIAUD_GUI_PARAM_REG_OFFSET);
+	val = ioread32(ctx->base + XSDIAUD_GUI_PARAM_REG_OFFSET);
 	if (val & BIT(6)) {
 		ctx->mode = EXTRACT;
 
