@@ -106,7 +106,7 @@ static int xlnx_i2s_probe(struct platform_device *pdev)
 	struct snd_soc_dai_driver *dai_drv;
 	struct xlnx_i2s_dev_data *dev_data;
 	int ret;
-	u32 ch, format, data_width;
+	u32 ch = 0, format, data_width = 0;
 	struct device *dev = &pdev->dev;
 	struct device_node *node = dev->of_node;
 
