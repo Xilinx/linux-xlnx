@@ -167,7 +167,7 @@ static void xlnx_pl_disp_plane_enable(struct drm_plane *plane)
 {
 	struct xlnx_pl_disp *xlnx_pl_disp = plane_to_dma(plane);
 	struct dma_async_tx_descriptor *desc;
-	enum dma_ctrl_flags flags;
+	unsigned long flags;
 	struct xlnx_dma_chan *xlnx_dma_chan = xlnx_pl_disp->chan;
 	struct dma_chan *dma_chan = xlnx_dma_chan->dma_chan;
 	struct dma_interleaved_template *xt = &xlnx_dma_chan->xt;
