@@ -2926,7 +2926,12 @@ zynqmp_disp_crtc_atomic_enable(struct drm_crtc *crtc,
 	zynqmp_disp_crtc_mode_set(crtc, &crtc->state->mode,
 				  adjusted_mode, crtc->x, crtc->y, NULL);
 
-	pm_runtime_get_sync(disp->dev);
+	ret = pm_runtime_get_sync(disp->dev);
+	if (ret < 0) {
+		dev_err(disp->dev, "IRQ sync failed to resume: %d\n", ret);
+		return;
+	}
+
 	ret = zynqmp_disp_clk_enable(disp->pclk, &disp->pclk_en);
 	if (ret) {
 		dev_err(disp->dev, "failed to enable a pixel clock\n");
@@ -3067,13 +3072,21 @@ static struct drm_crtc_funcs zynqmp_disp_crtc_funcs = {
 	.disable_vblank		= zynqmp_disp_crtc_disable_vblank,
 };
 
-static void zynqmp_disp_create_crtc(struct zynqmp_disp *disp)
+static int zynqmp_disp_create_crtc(struct zynqmp_disp *disp)
 {
 	struct drm_plane *plane = &disp->layers[ZYNQMP_DISP_LAYER_GFX].plane;
 	struct drm_mode_object *obj = &disp->xlnx_crtc.crtc.base;
+	int ret;
 
-	drm_crtc_init_with_planes(disp->drm, &disp->xlnx_crtc.crtc, plane,
-				  NULL, &zynqmp_disp_crtc_funcs, NULL);
+	ret = drm_crtc_init_with_planes(disp->drm, &disp->xlnx_crtc.crtc,
+					plane, NULL, &zynqmp_disp_crtc_funcs,
+					NULL);
+	if (ret < 0) {
+		dev_err(disp->dev, "failed to initialize disp CRTC: %d\n",
+			ret);
+		return ret;
+	}
+
 	drm_crtc_helper_add(&disp->xlnx_crtc.crtc,
 			    &zynqmp_disp_crtc_helper_funcs);
 	drm_object_attach_property(obj, disp->color_prop, 0);
@@ -3088,6 +3101,8 @@ static void zynqmp_disp_create_crtc(struct zynqmp_disp *disp)
 	disp->xlnx_crtc.get_align = &zynqmp_disp_get_align;
 	disp->xlnx_crtc.get_dma_mask = &zynqmp_disp_get_dma_mask;
 	xlnx_crtc_register(disp->drm, &disp->xlnx_crtc);
+
+	return 0;
 }
 
 static void zynqmp_disp_destroy_crtc(struct zynqmp_disp *disp)
@@ -3138,7 +3153,9 @@ int zynqmp_disp_bind(struct device *dev, struct device *master, void *data)
 	ret = zynqmp_disp_create_plane(disp);
 	if (ret)
 		return ret;
-	zynqmp_disp_create_crtc(disp);
+	ret = zynqmp_disp_create_crtc(disp);
+	if (ret)
+		return ret;
 	zynqmp_disp_map_crtc_to_plane(disp);
 
 	return 0;
