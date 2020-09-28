@@ -1750,45 +1750,47 @@ static int axienet_open(struct net_device *ndev)
 				     (unsigned long)lp->dq[i]);
 #endif
 
-		/* Enable NAPI scheduling before enabling Axi DMA Rx IRQ, or you
-		 * might run into a race condition; the RX ISR disables IRQ processing
-		 * before scheduling the NAPI function to complete the processing.
-		 * If NAPI scheduling is (still) disabled at that time, no more RX IRQs
-		 * will be processed as only the NAPI function re-enables them!
-		 */
-		napi_enable(&lp->napi[i]);
-	}
-	for_each_tx_dma_queue(lp, i) {
-		struct axienet_dma_q *q = lp->dq[i];
+			/* Enable NAPI scheduling before enabling Axi DMA Rx
+			 * IRQ, or you might run into a race condition; the RX
+			 * ISR disables IRQ processing before scheduling the
+			 * NAPI function to complete the processing. If NAPI
+			 * scheduling is (still) disabled at that time, no more
+			 * RX IRQs will be processed as only the NAPI function
+			 * re-enables them!
+			 */
+			napi_enable(&lp->napi[i]);
+		}
+		for_each_tx_dma_queue(lp, i) {
+			struct axienet_dma_q *q = lp->dq[i];
 #ifdef CONFIG_AXIENET_HAS_MCDMA
-		/* Enable interrupts for Axi MCDMA Tx */
-		ret = request_irq(q->tx_irq, axienet_mcdma_tx_irq,
-				  IRQF_SHARED, ndev->name, ndev);
-		if (ret)
-			goto err_tx_irq;
+			/* Enable interrupts for Axi MCDMA Tx */
+			ret = request_irq(q->tx_irq, axienet_mcdma_tx_irq,
+					  IRQF_SHARED, ndev->name, ndev);
+			if (ret)
+				goto err_tx_irq;
 #else
-		/* Enable interrupts for Axi DMA Tx */
-		ret = request_irq(q->tx_irq, axienet_tx_irq,
-				  0, ndev->name, ndev);
-		if (ret)
-			goto err_tx_irq;
+			/* Enable interrupts for Axi DMA Tx */
+			ret = request_irq(q->tx_irq, axienet_tx_irq,
+					  0, ndev->name, ndev);
+			if (ret)
+				goto err_tx_irq;
 #endif
 		}
 
-	for_each_rx_dma_queue(lp, i) {
-		struct axienet_dma_q *q = lp->dq[i];
+		for_each_rx_dma_queue(lp, i) {
+			struct axienet_dma_q *q = lp->dq[i];
 #ifdef CONFIG_AXIENET_HAS_MCDMA
-		/* Enable interrupts for Axi MCDMA Rx */
-		ret = request_irq(q->rx_irq, axienet_mcdma_rx_irq,
-				  IRQF_SHARED, ndev->name, ndev);
-		if (ret)
-			goto err_rx_irq;
+			/* Enable interrupts for Axi MCDMA Rx */
+			ret = request_irq(q->rx_irq, axienet_mcdma_rx_irq,
+					  IRQF_SHARED, ndev->name, ndev);
+			if (ret)
+				goto err_rx_irq;
 #else
-		/* Enable interrupts for Axi DMA Rx */
-		ret = request_irq(q->rx_irq, axienet_rx_irq,
-				  0, ndev->name, ndev);
-		if (ret)
-			goto err_rx_irq;
+			/* Enable interrupts for Axi DMA Rx */
+			ret = request_irq(q->rx_irq, axienet_rx_irq,
+					  0, ndev->name, ndev);
+			if (ret)
+				goto err_rx_irq;
 #endif
 		}
 	}
@@ -2006,35 +2008,35 @@ static int axienet_stop(struct net_device *ndev)
 
 			__axienet_device_reset(q);
 
-		if (lp->axienet_config->mactype != XAXIENET_10G_25G &&
-		    lp->axienet_config->mactype != XAXIENET_MRMAC) {
-			axienet_mdio_enable(lp);
-			mutex_unlock(&lp->mii_bus->mdio_lock);
+			if (lp->axienet_config->mactype != XAXIENET_10G_25G &&
+			    lp->axienet_config->mactype != XAXIENET_MRMAC) {
+				axienet_mdio_enable(lp);
+				mutex_unlock(&lp->mii_bus->mdio_lock);
+			}
+			free_irq(q->tx_irq, ndev);
 		}
-		free_irq(q->tx_irq, ndev);
-	}
 
-	for_each_rx_dma_queue(lp, i) {
-		q = lp->dq[i];
-		netif_stop_queue(ndev);
-		napi_disable(&lp->napi[i]);
-		tasklet_kill(&lp->dma_err_tasklet[i]);
-		free_irq(q->rx_irq, ndev);
-	}
+		for_each_rx_dma_queue(lp, i) {
+			q = lp->dq[i];
+			netif_stop_queue(ndev);
+			napi_disable(&lp->napi[i]);
+			tasklet_kill(&lp->dma_err_tasklet[i]);
+			free_irq(q->rx_irq, ndev);
+		}
 #ifdef CONFIG_XILINX_TSN_PTP
-	if (lp->is_tsn) {
-		free_irq(lp->ptp_tx_irq, ndev);
-		free_irq(lp->ptp_rx_irq, ndev);
-	}
+		if (lp->is_tsn) {
+			free_irq(lp->ptp_tx_irq, ndev);
+			free_irq(lp->ptp_rx_irq, ndev);
+		}
 #endif
-	if ((lp->axienet_config->mactype == XAXIENET_1G) && !lp->eth_hasnobuf)
-		free_irq(lp->eth_irq, ndev);
+		if ((lp->axienet_config->mactype == XAXIENET_1G) && !lp->eth_hasnobuf)
+			free_irq(lp->eth_irq, ndev);
 
-	if (ndev->phydev)
-		phy_disconnect(ndev->phydev);
+		if (ndev->phydev)
+			phy_disconnect(ndev->phydev);
 
-	if (lp->temac_no != XAE_TEMAC2)
-		axienet_dma_bd_release(ndev);
+		if (lp->temac_no != XAE_TEMAC2)
+			axienet_dma_bd_release(ndev);
 	}
 	return 0;
 }
