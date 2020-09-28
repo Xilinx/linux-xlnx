@@ -1658,6 +1658,10 @@ static int axienet_mii_init(struct net_device *ndev)
 	axienet_mdio_disable(lp);
 	axienet_device_reset(ndev);
 	ret = axienet_mdio_enable(lp);
+	if (ret < 0) {
+		mutex_unlock(&lp->mii_bus->mdio_lock);
+		return ret;
+	}
 	ret = axienet_mdio_wait_until_ready(lp);
 	mutex_unlock(&lp->mii_bus->mdio_lock);
 	if (ret < 0)
