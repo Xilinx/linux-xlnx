@@ -280,7 +280,8 @@ static int zynqmp_fpga_read_cfgreg(struct fpga_manager *mgr,
 				   struct seq_file *s)
 {
 	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
-	int ret = 0, val;
+	int ret = 0;
+	u32 val;
 	unsigned int *buf;
 	dma_addr_t dma_addr = 0;
 	struct zynqmp_configreg *p = cfgreg;
@@ -313,7 +314,8 @@ static int zynqmp_fpga_read_cfgdata(struct fpga_manager *mgr,
 {
 	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 	struct zynqmp_fpga_priv *priv;
-	int ret, data_offset;
+	int ret;
+	u32 data_offset;
 	unsigned int *buf;
 	dma_addr_t dma_addr = 0;
 	size_t size;
