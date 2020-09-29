@@ -198,45 +198,43 @@ _invalidate:
 	or r9, r0, r0 /* TLB0 = 0 */
 	or r10, r0, r0 /* TLB1 = 0 */
 
-	/*
-	 * Linux is 4MB aligned that's why we can just check certain sizes.
-	 * Add 12MB, 16MB and 8MB on the top of list because that's normal
-	 * sizes which are often used.
-	 */
-	addik	r11, r12, -0xc00000 /* 12 MB */
-	beqi	r11, GT12
-	addik	r11, r12, -0x1000000 /* 16 MB */
-	beqi	r11, GT16
-	addik	r11, r12, -0x800000 /* 8 MB */
-	beqi	r11, GT8
-	addik	r11, r12, -0x2000000 /* 32 MB */
-	beqi	r11, GT32
-	addik	r11, r12, -0x1800000 /* 24 MB */
-	beqi	r11, GT24
-	addik	r11, r12, -0x1400000 /* 20 MB */
-	beqi	r11, GT20
-	addik	r11, r12, -0x400000 /* 4 MB */
-	beqi	r11, GT4
-	/* if this page doesn't detect it use 32MB mapping */
-GT32:
+	addik	r11, r12, -0x1000000
+	bgei	r11, GT16 /* size is greater than 16MB */
+	addik	r11, r12, -0x0800000
+	bgei	r11, GT8 /* size is greater than 8MB */
+	addik	r11, r12, -0x0400000
+	bgei	r11, GT4 /* size is greater than 4MB */
+	/* size is less than 4MB */
+	addik	r11, r12, -0x0200000
+	bgei	r11, GT2 /* size is greater than 2MB */
+	addik	r9, r0, 0x0100000 /* TLB0 must be 1MB */
+	addik	r11, r12, -0x0100000
+	bgei	r11, GT1 /* size is greater than 1MB */
+	/* TLB1 is 0 which is setup above */
+	bri tlb_end
+GT4: /* r11 contains the rest - will be either 1 or 4 */
+	ori r9, r0, 0x400000 /* TLB0 is 4MB */
+	bri TLB1
+GT16: /* TLB0 is 16MB */
 	addik	r9, r0, 0x1000000 /* means TLB0 is 16MB */
-GT16:
+TLB1:
+	/* must be used r2 because of subtract if failed */
+	addik	r2, r11, -0x0400000
+	bgei	r2, GT20 /* size is greater than 16MB */
+	/* size is >16MB and <20MB */
+	addik	r11, r11, -0x0100000
+	bgei	r11, GT17 /* size is greater than 17MB */
+	/* kernel is >16MB and < 17MB */
+GT1:
+	addik	r10, r0, 0x0100000 /* means TLB1 is 1MB */
+	bri tlb_end
+GT2: /* TLB0 is 0 and TLB1 will be 4MB */
+GT17: /* TLB1 is 4MB - kernel size <20MB */
+	addik	r10, r0, 0x0400000 /* means TLB1 is 4MB */
+	bri tlb_end
+GT8: /* TLB0 is still zero that's why I can use only TLB1 */
+GT20: /* TLB1 is 16MB - kernel size >20MB */
 	addik	r10, r0, 0x1000000 /* means TLB1 is 16MB */
-	bri	tlb_end
-GT24:
-	addik	r9, r0, 0x1000000 /* means TLB0 is 16MB */
-GT8:
-	addik	r10, r0, 0x800000 /* means TLB1 is 8MB */
-	bri	tlb_end
-GT20:
-	addik	r9, r0, 0x1000000 /* means TLB0 is 16MB */
-GT4:
-	addik	r10, r0, 0x400000 /* means TLB1 is 4MB */
-	bri	tlb_end
-GT12:
-	addik	r9, r0, 0x800000 /* means TLB0 is 8MB */
-	addik	r10, r0, 0x400000 /* means TLB1 is 4MB */
-	/* NOTE: No need to just to tlb_end here */
 tlb_end:
 
 	/*

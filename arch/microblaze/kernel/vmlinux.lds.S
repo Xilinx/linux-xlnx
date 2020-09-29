@@ -135,8 +135,6 @@ SECTIONS {
 	/* Add space in TLB mapping for early free pages mapping */
 	. = . + 0x100000; /* CONFIG_LOWMEM_SIZE >> PTE_SHIFT + space */
 
-	/* And alignment to make sure that we map only kernel by TLBs */
-	. = ALIGN(0x400000);
 	_end_tlb_mapping = . ;
 
 	.init.ramfs : AT(ADDR(.init.ramfs) - LOAD_OFFSET) {
