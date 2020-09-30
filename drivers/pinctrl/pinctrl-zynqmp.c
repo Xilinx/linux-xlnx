@@ -418,11 +418,12 @@ static int zynqmp_pinconf_cfg_get(struct pinctrl_dev *pctldev,
 		}
 		break;
 	default:
-		return -ENOTSUPP;
+		ret = -ENOTSUPP;
+		break;
 	}
 
 	*config = pinconf_to_config_packed(param, arg);
-	return 0;
+	return ret;
 }
 
 /**
