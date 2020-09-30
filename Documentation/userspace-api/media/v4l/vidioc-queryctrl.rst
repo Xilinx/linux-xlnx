@@ -471,6 +471,12 @@ See also the examples in :ref:`control`.
       - n/a
       - A struct :c:type:`v4l2_ctrl_h264_decode_params`, containing H264
 	decode parameters for stateless video decoders.
+    * - ``V4L2_CTRL_TYPE_HDR``
+      - n/a
+      - n/a
+      - n/a
+      - A struct :c:type:`v4l2_metadata_hdr`, containing HDR
+	metadata.
     * - ``V4L2_CTRL_TYPE_FWHT_PARAMS``
       - n/a
       - n/a
