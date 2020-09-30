@@ -1840,6 +1840,8 @@ enum v4l2_ctrl_type {
 	V4L2_CTRL_TYPE_MPEG2_QUANTISATION   = 0x0250,
 	V4L2_CTRL_TYPE_MPEG2_SEQUENCE       = 0x0251,
 	V4L2_CTRL_TYPE_MPEG2_PICTURE        = 0x0252,
+
+	V4L2_CTRL_TYPE_HDR	     = 0x0400,
 };
 
 /*  Used in the VIDIOC_QUERYCTRL ioctl for querying controls */
