@@ -108,7 +108,6 @@ pin_config_item zynqmp_conf_items[ARRAY_SIZE(zynqmp_dt_params)] = {
 #endif
 
 static const struct zynqmp_eemi_ops *eemi_ops;
-static const struct pinctrl_pin_desc zynqmp_pins;
 static struct pinctrl_desc zynqmp_desc;
 
 /**
