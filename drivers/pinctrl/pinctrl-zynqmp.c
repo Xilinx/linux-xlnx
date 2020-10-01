@@ -857,9 +857,9 @@ static int zynqmp_pinctrl_prepare_group_pins(struct device *dev,
 	for (pin = 0; pin < zynqmp_desc.npins; pin++) {
 		ret = zynqmp_pinctrl_create_pin_groups(dev, groups, pin);
 		if (ret)
-			goto done;
+			break;
 	}
-done:
+
 	return ret;
 }
 
