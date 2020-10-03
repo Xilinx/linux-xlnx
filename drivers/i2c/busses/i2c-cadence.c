@@ -1341,8 +1341,8 @@ static int cdns_i2c_init_recovery_info(struct cdns_i2c *pid,
 	pid->pinctrl_pins_gpio = pinctrl_lookup_state(pid->pinctrl, "gpio");
 
 	/* Fetches GPIO pins */
-	rinfo->sda_gpiod = devm_gpiod_get(&pdev->dev, "sda-gpios", 0);
-	rinfo->scl_gpiod = devm_gpiod_get(&pdev->dev, "scl-gpios", 0);
+	rinfo->sda_gpiod = devm_gpiod_get(&pdev->dev, "sda-gpios", GPIOD_ASIS);
+	rinfo->scl_gpiod = devm_gpiod_get(&pdev->dev, "scl-gpios", GPIOD_ASIS);
 
 	/* if GPIO driver isn't ready yet, deffer probe */
 	if (PTR_ERR(rinfo->sda_gpiod) == -EPROBE_DEFER ||
