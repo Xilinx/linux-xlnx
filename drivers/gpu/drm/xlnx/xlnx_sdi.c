@@ -271,10 +271,14 @@ static void xlnx_sdi_en_bridge(struct xlnx_sdi *sdi)
  */
 static void xlnx_sdi_gt_picxo_reset(struct xlnx_sdi *sdi)
 {
-	gpiod_set_value(sdi->gt_rst_gpio, 0);
 	gpiod_set_value(sdi->gt_rst_gpio, 1);
+	udelay(1);
+	gpiod_set_value(sdi->gt_rst_gpio, 0);
 	gpiod_set_value(sdi->picxo_rst_gpio, 0);
+	udelay(1);
 	gpiod_set_value(sdi->picxo_rst_gpio, 1);
+	/* delay added to get vtc_en signal */
+	mdelay(5);
 }
 
 /**
@@ -875,6 +879,26 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	unsigned long clkrate;
 	int ret;
 
+	/*
+	 * For the transceiver TX, for integer and fractional frame rate, the
+	 * PLL ref clock must be a different frequency. Other than SD mode
+	 * its 148.5MHz for an integer & 148.5/1.001 for fractional framerate.
+	 */
+	if (sdi->is_frac_prop_val && sdi->sdi_mod_prop_val != XSDI_MODE_SD)
+		clkrate = (CLK_RATE * 1000) / 1001;
+	else
+		clkrate = CLK_RATE;
+	ret = clk_set_rate(sdi->sditx_clk, clkrate);
+	if (ret)
+		dev_err(sdi->dev, "failed to set clk rate = %lu\n", clkrate);
+
+	clkrate = clk_get_rate(sdi->sditx_clk);
+	dev_dbg(sdi->dev, "clkrate = %lu is_frac = %d\n", clkrate,
+		sdi->is_frac_prop_val);
+	/* Delay required to get QPLL1 lock as per the si5328 datasheet */
+	mdelay(50);
+	xlnx_sdi_gt_picxo_reset(sdi);
+
 	/* Set timing parameters as per bridge output parameters */
 	xlnx_bridge_set_input(sdi->bridge, adjusted_mode->hdisplay,
 			      adjusted_mode->vdisplay, sdi->in_fmt_prop_val);
@@ -900,25 +924,6 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 		}
 	}
 
-	/*
-	 * For the transceiver TX, for integer and fractional frame rate, the
-	 * PLL ref clock must be a different frequency. Other than SD mode
-	 * its 148.5MHz for an integer & 148.5/1.001 for fractional framerate.
-	 */
-	if (sdi->is_frac_prop_val && sdi->sdi_mod_prop_val != XSDI_MODE_SD)
-		clkrate = (CLK_RATE * 1000) / 1001;
-	else
-		clkrate = CLK_RATE;
-
-	ret = clk_set_rate(sdi->sditx_clk, clkrate);
-	if (ret)
-		dev_err(sdi->dev, "failed to set clk rate = %lu\n", clkrate);
-
-	clkrate = clk_get_rate(sdi->sditx_clk);
-	dev_dbg(sdi->dev, "clkrate = %lu is_frac = %d\n", clkrate,
-		sdi->is_frac_prop_val);
-
-	xlnx_sdi_gt_picxo_reset(sdi);
 	xlnx_sdi_setup(sdi);
 	xlnx_sdi_set_config_parameters(sdi);
 
@@ -1078,6 +1083,7 @@ static int xlnx_sdi_probe(struct platform_device *pdev)
 	int ret, irq;
 	struct device_node *ports, *port;
 	u32 nports = 0, portmask = 0;
+	unsigned long clkrate;
 
 	sdi = devm_kzalloc(dev, sizeof(*sdi), GFP_KERNEL);
 	if (!sdi)
@@ -1149,7 +1155,12 @@ static int xlnx_sdi_probe(struct platform_device *pdev)
 		goto err_disable_vidin_clk;
 	}
 
-	xlnx_sdi_gt_picxo_reset(sdi);
+	ret = clk_set_rate(sdi->sditx_clk, CLK_RATE);
+	if (ret)
+		dev_err(sdi->dev, "failed to set clk rate = %lu\n", CLK_RATE);
+
+	clkrate = clk_get_rate(sdi->sditx_clk);
+	dev_dbg(sdi->dev, "clkrate = %lu\n", clkrate);
 
 	/* in case all "port" nodes are grouped under a "ports" node */
 	ports = of_get_child_by_name(sdi->dev->of_node, "ports");
