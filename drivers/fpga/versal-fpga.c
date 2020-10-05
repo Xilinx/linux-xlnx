@@ -58,7 +58,7 @@ static int versal_fpga_ops_write(struct fpga_manager *mgr,
 {
 	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 	struct versal_fpga_priv *priv;
-	dma_addr_t dma_addr;
+	dma_addr_t dma_addr = 0;
 	char *kbuf;
 	int ret;
 
