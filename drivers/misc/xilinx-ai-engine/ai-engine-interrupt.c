@@ -565,9 +565,10 @@ static bool aie_l1_backtrack(struct aie_partition *apart,
 static void aie_l2_backtrack(struct aie_partition *apart)
 {
 	struct aie_location loc;
-	unsigned long status;
-	u32 n, ttype, l2_mask;
+	unsigned long l2_mask = 0;
+	u32 n, ttype, l2_bitmap_offset = 0;
 	int ret;
+	bool notify = false, sched_work = false;
 
 	ret = mutex_lock_interruptible(&apart->mlock);
 	if (ret) {
@@ -580,17 +581,20 @@ static void aie_l2_backtrack(struct aie_partition *apart)
 	     loc.col < apart->range.start.col + apart->range.size.col;
 	     loc.col++) {
 		ttype = apart->adev->ops->get_tile_type(&loc);
-		if (ttype == AIE_TILE_TYPE_SHIMNOC) {
-			l2_mask = aie_get_l2_mask(apart, &loc);
-			aie_disable_l2_ctrl(apart, &loc, l2_mask);
+		if (ttype != AIE_TILE_TYPE_SHIMNOC)
+			continue;
 
-			status = aie_get_l2_status(apart, &loc);
-			aie_clear_l2_intr(apart, &loc, status);
-			for_each_set_bit(n, &status,
-					 apart->adev->l2_ctrl->num_broadcasts)
-				ret = aie_l1_backtrack(apart, loc, n);
-			aie_enable_l2_ctrl(apart, &loc, l2_mask);
+		aie_resource_cpy_to_arr32(&apart->l2_mask, l2_bitmap_offset *
+					  32, (u32 *)&l2_mask, 32);
+		l2_bitmap_offset++;
+
+		for_each_set_bit(n, &l2_mask,
+				 apart->adev->l2_ctrl->num_broadcasts) {
+			if (aie_l1_backtrack(apart, loc, n))
+				notify = true;
 		}
+
+		aie_enable_l2_ctrl(apart, &loc, l2_mask);
 	}
 
 	/*
@@ -603,14 +607,18 @@ static void aie_l2_backtrack(struct aie_partition *apart)
 	     loc.col++) {
 		if (aie_get_l1_status(apart, &loc, AIE_SHIM_SWITCH_A) ||
 		    aie_get_l1_status(apart, &loc, AIE_SHIM_SWITCH_B)) {
+			mutex_unlock(&apart->mlock);
+			sched_work = true;
 			schedule_work(&apart->adev->backtrack);
 			break;
 		}
 	}
-	mutex_unlock(&apart->mlock);
+
+	if (!sched_work)
+		mutex_unlock(&apart->mlock);
 
 	/* If error was assert, then notify the application */
-	if (ret && apart->error_cb.cb)
+	if (notify && apart->error_cb.cb)
 		apart->error_cb.cb(apart->error_cb.priv);
 }
 
@@ -649,18 +657,7 @@ void aie_array_backtrack(struct work_struct *work)
 	list_for_each_entry(apart, &adev->partitions, node)
 		aie_part_backtrack(apart);
 
-	/* For ES1 silicon, interrupts are latched in NPI */
-	if (adev->version == VERSAL_ES1_REV_ID) {
-		ret = adev->eemi_ops->ioctl(adev->pm_node_id,
-					    IOCTL_AIE_ISR_CLEAR,
-					    AIE_NPI_ERROR_ID, 0, NULL);
-		if (ret < 0) {
-			dev_err_ratelimited(&adev->dev,
-					    "Failed to clear NPI ISR\n");
-		}
-	}
 	mutex_unlock(&adev->mlock);
-	enable_irq(adev->irq);
 }
 
 /**
@@ -669,16 +666,76 @@ void aie_array_backtrack(struct work_struct *work)
  * @data: AI engine device structure.
  * @return: IRQ_HANDLED.
  *
- * This function disables IRQ and schedules a task in workqueue to backtrack
- * the source of error interrupt. Disabled interrupts are re-enabled after
- * successful completion of bottom half.
+ * This thread function disables level 2 interrupt controllers and schedules a
+ * task in workqueue to backtrack the source of error interrupt. Disabled
+ * interrupts are re-enabled after successful completion of bottom half.
  */
 irqreturn_t aie_interrupt(int irq, void *data)
 {
 	struct aie_device *adev = data;
+	struct aie_partition *apart;
+	int ret;
+	bool sched_work = false;
 
-	disable_irq_nosync(irq);
-	schedule_work(&adev->backtrack);
+	ret = mutex_lock_interruptible(&adev->mlock);
+	if (ret) {
+		dev_err(&adev->dev,
+			"Failed to acquire lock. Process was interrupted by fatal signals\n");
+		return IRQ_NONE;
+	}
+
+	list_for_each_entry(apart, &adev->partitions, node) {
+		struct aie_location loc;
+		u32 ttype, l2_mask, l2_status, l2_bitmap_offset  = 0;
+
+		ret = mutex_lock_interruptible(&apart->mlock);
+		if (ret) {
+			dev_err(&apart->dev,
+				"Failed to acquire lock. Process was interrupted by fatal signals\n");
+			return IRQ_NONE;
+		}
+
+		for (loc.col = apart->range.start.col, loc.row = 0;
+		     loc.col < apart->range.start.col + apart->range.size.col;
+		     loc.col++) {
+			ttype = apart->adev->ops->get_tile_type(&loc);
+			if (ttype != AIE_TILE_TYPE_SHIMNOC)
+				continue;
+
+			l2_mask = aie_get_l2_mask(apart, &loc);
+			if (l2_mask) {
+				aie_resource_cpy_from_arr32(&apart->l2_mask,
+							    l2_bitmap_offset  *
+							    32, &l2_mask, 32);
+				aie_disable_l2_ctrl(apart, &loc, l2_mask);
+			}
+			l2_bitmap_offset++;
+
+			l2_status = aie_get_l2_status(apart, &loc);
+			if (l2_status) {
+				aie_clear_l2_intr(apart, &loc, l2_status);
+				sched_work = true;
+			} else {
+				aie_enable_l2_ctrl(apart, &loc, l2_mask);
+			}
+		}
+		mutex_unlock(&apart->mlock);
+	}
+
+	/* For ES1 silicon, interrupts are latched in NPI */
+	if (adev->version == VERSAL_ES1_REV_ID) {
+		ret = adev->eemi_ops->ioctl(adev->pm_node_id,
+					    IOCTL_AIE_ISR_CLEAR,
+					    AIE_NPI_ERROR_ID, 0, NULL);
+		if (ret < 0)
+			dev_err(&adev->dev, "Failed to clear NPI ISR\n");
+	}
+
+	mutex_unlock(&adev->mlock);
+
+	if (sched_work)
+		schedule_work(&adev->backtrack);
+
 	return IRQ_HANDLED;
 }
 

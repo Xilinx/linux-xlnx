@@ -454,8 +454,8 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 	if (adev->irq < 0)
 		goto free_ida;
 
-	ret = devm_request_irq(dev, adev->irq, aie_interrupt, 0, dev_name(dev),
-			       adev);
+	ret = devm_request_threaded_irq(dev, adev->irq, NULL, aie_interrupt,
+					IRQF_ONESHOT, dev_name(dev), adev);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to request AIE IRQ.\n");
 		goto free_ida;
