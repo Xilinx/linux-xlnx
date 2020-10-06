@@ -1068,13 +1068,18 @@ struct aie_errors *aie_get_errors(struct device *dev)
 		return ERR_PTR(ret);
 	}
 
+	num_errs = aie_get_error_count(apart);
+	if (!num_errs) {
+		mutex_unlock(&apart->mlock);
+		return NULL;
+	}
+
 	aie_errs = kzalloc(sizeof(*aie_errs), GFP_KERNEL);
 	if (!aie_errs) {
 		mutex_unlock(&apart->mlock);
 		return ERR_PTR(-ENOMEM);
 	}
 
-	num_errs = aie_get_error_count(apart);
 	error = kcalloc(num_errs, sizeof(*error), GFP_KERNEL);
 	if (!error) {
 		kfree(aie_errs);
