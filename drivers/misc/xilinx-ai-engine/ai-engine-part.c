@@ -308,6 +308,39 @@ static int aie_part_create_event_bitmap(struct aie_partition *apart)
 }
 
 /**
+ * aie_part_create_l2_bitmap() - create bitmaps to record mask and status
+ *				 values for level 2 interrupt controllers.
+ * @apart: AI engine partition
+ * @return: 0 for success, and negative value for failure.
+ */
+static int aie_part_create_l2_bitmap(struct aie_partition *apart)
+{
+	struct aie_location loc;
+	u8 num_l2_ctrls = 0;
+	int ret;
+
+	loc.row = 0;
+	for (loc.col = apart->range.start.col;
+	     loc.col < apart->range.start.col + apart->range.size.col;
+	     loc.col++) {
+		u32 ttype = apart->adev->ops->get_tile_type(&loc);
+
+		if (ttype == AIE_TILE_TYPE_SHIMNOC)
+			num_l2_ctrls++;
+	}
+
+	ret = aie_resource_initialize(&apart->l2_mask, num_l2_ctrls *
+				      AIE_INTR_L2_CTRL_MASK_WIDTH);
+	if (ret) {
+		dev_err(&apart->dev,
+			"failed to initialize l2 mask resource.\n");
+		return ret;
+	}
+
+	return 0;
+}
+
+/**
  * aie_part_release_event_bitmap() - Deallocates event bitmap for all modules
  *				     in a given partition.
  * @apart: AI engine partition
@@ -337,6 +370,7 @@ static int aie_part_release(struct inode *inode, struct file *filp)
 	apart->status = 0;
 
 	aie_part_clear_cached_events(apart);
+	aie_resource_clear_all(&apart->l2_mask);
 
 	mutex_unlock(&apart->mlock);
 
@@ -524,6 +558,7 @@ static void aie_part_release_device(struct device *dev)
 	aie_resource_put_region(&adev->cols_res, apart->range.start.col,
 				apart->range.size.col);
 	aie_part_release_event_bitmap(apart);
+	aie_resource_uninitialize(&apart->l2_mask);
 	list_del(&apart->node);
 	mutex_unlock(&adev->mlock);
 	aie_fpga_free_bridge(apart);
@@ -664,6 +699,13 @@ static struct aie_partition *aie_create_partition(struct aie_device *adev,
 	ret = aie_part_create_event_bitmap(apart);
 	if (ret < 0) {
 		dev_err(&apart->dev, "Failed to allocate event bitmap.\n");
+		put_device(dev);
+		return ERR_PTR(ret);
+	}
+
+	ret = aie_part_create_l2_bitmap(apart);
+	if (ret < 0) {
+		dev_err(&apart->dev, "Failed to allocate l2 bitmap.\n");
 		put_device(dev);
 		return ERR_PTR(ret);
 	}
