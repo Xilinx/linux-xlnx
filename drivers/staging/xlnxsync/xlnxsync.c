@@ -758,6 +758,57 @@ static int xlnxsync_chan_clr_fbdone_status(struct xlnxsync_channel *channel,
 	return 0;
 }
 
+static int xlnxsync_chan_set_int_mask(struct xlnxsync_channel *channel,
+				      void __user *arg)
+{
+	struct xlnxsync_device *dev = channel->dev;
+	struct xlnxsync_intr intr_mask;
+	u32 intr_mask_val = 0;
+	int ret;
+
+	ret = copy_from_user(&intr_mask, arg, sizeof(intr_mask));
+	if (ret) {
+		dev_err(dev->dev, "%s : Failed to copy from user\n", __func__);
+		return ret;
+	}
+
+	/* check driver header version */
+	if (intr_mask.hdr_ver != XLNXSYNC_IOCTL_HDR_VER) {
+		dev_err(dev->dev, "%s : ioctl version mismatch\n", __func__);
+		dev_err(dev->dev,
+			"ioctl ver = 0x%llx expected ver = 0x%llx\n",
+			intr_mask.hdr_ver, (u64)XLNXSYNC_IOCTL_HDR_VER);
+		return -EINVAL;
+	}
+
+	if (intr_mask.err.prod_sync)
+		intr_mask_val |= XLNXSYNC_IER_PROD_SYNC_FAIL_MASK;
+	if (intr_mask.err.prod_wdg)
+		intr_mask_val |= XLNXSYNC_IER_PROD_WDG_ERR_MASK;
+	if (intr_mask.err.cons_sync)
+		intr_mask_val |= XLNXSYNC_IER_CONS_SYNC_FAIL_MASK;
+	if (intr_mask.err.cons_wdg)
+		intr_mask_val |= XLNXSYNC_IER_CONS_WDG_ERR_MASK;
+	if (intr_mask.err.ldiff)
+		intr_mask_val |= XLNXSYNC_IER_LDIFF;
+	if (intr_mask.err.cdiff)
+		intr_mask_val |= XLNXSYNC_IER_CDIFF;
+	if (intr_mask.prod_lfbdone)
+		intr_mask_val |= XLNXSYNC_IER_PLVALID_MASK;
+	if (intr_mask.prod_cfbdone)
+		intr_mask_val |= XLNXSYNC_IER_PCVALID_MASK;
+	if (intr_mask.cons_lfbdone)
+		intr_mask_val |= XLNXSYNC_IER_CLVALID_MASK;
+	if (intr_mask.cons_cfbdone)
+		intr_mask_val |= XLNXSYNC_IER_CCVALID_MASK;
+
+	dev_dbg(dev->dev, "Set interrupt mask: 0x%x for channel: %d\n",
+		intr_mask_val, channel->id);
+
+	xlnxsync_write(dev, channel->id, XLNXSYNC_IER_REG, intr_mask_val);
+
+	return ret;
+}
 
 static long xlnxsync_ioctl(struct file *fptr, unsigned int cmd,
 			   unsigned long data)
@@ -822,6 +873,12 @@ static long xlnxsync_ioctl(struct file *fptr, unsigned int cmd,
 		if (mutex_lock_interruptible(&channel->mutex))
 			return -ERESTARTSYS;
 		ret = xlnxsync_chan_clr_fbdone_status(channel, arg);
+		mutex_unlock(&channel->mutex);
+		break;
+	case XLNXSYNC_CHAN_SET_INTR_MASK:
+		if (mutex_lock_interruptible(&channel->mutex))
+			return -ERESTARTSYS;
+		ret = xlnxsync_chan_set_int_mask(channel, arg);
 		mutex_unlock(&channel->mutex);
 		break;
 	}
