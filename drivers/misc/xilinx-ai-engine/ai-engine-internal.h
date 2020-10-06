@@ -51,6 +51,9 @@
 
 #define AIE_NPI_ERROR_ID		BIT(1)
 
+/* Macros relevant to interrupts */
+#define AIE_INTR_L2_CTRL_MASK_WIDTH	32
+
 /*
  * enum aie_shim_switch_type - identifies different switches in shim tile.
  */
@@ -376,6 +379,7 @@ struct aie_part_bridge {
  * @core_event_status: core module event bitmap
  * @mem_event_status: memory module event bitmap
  * @pl_event_status: pl module event bitmap
+ * @l2_mask: level 2 interrupt controller mask bitmap
  * @partition_id: partition id. Partition ID is the identifier
  *		  of the AI engine partition in the system.
  * @status: indicate if the partition is in use
@@ -398,6 +402,7 @@ struct aie_partition {
 	struct aie_resource core_event_status;
 	struct aie_resource mem_event_status;
 	struct aie_resource pl_event_status;
+	struct aie_resource l2_mask;
 	u32 partition_id;
 	u32 status;
 	u32 cntrflag;
