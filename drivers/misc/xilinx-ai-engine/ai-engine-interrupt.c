@@ -824,27 +824,33 @@ static u32 aie_get_module_error_count(struct aie_partition *apart,
  */
 static u32 aie_get_error_count(struct aie_partition *apart)
 {
-	const struct aie_error_attr *core_errors = apart->adev->core_errors;
-	const struct aie_error_attr *mem_errors = apart->adev->mem_errors;
-	const struct aie_error_attr *shim_errors = apart->adev->shim_errors;
+	const struct aie_error_attr *core_errs = apart->adev->core_errors;
+	const struct aie_error_attr *mem_errs = apart->adev->mem_errors;
+	const struct aie_error_attr *shim_errs = apart->adev->shim_errors;
 	struct aie_location loc;
-	u32 count = 0;
+	u32 ttype, num = 0;
 
-	for (loc.col = 0; loc.col < apart->range.size.col; loc.col++) {
-		loc.row = 0;
-		count += aie_get_module_error_count(apart, loc, AIE_PL_MOD,
-						    shim_errors);
-
-		for (; loc.row < apart->range.size.row - 1; loc.row++) {
-			count += aie_get_module_error_count(apart, loc,
-							    AIE_CORE_MOD,
-							    core_errors);
-			count += aie_get_module_error_count(apart, loc,
-							    AIE_MEM_MOD,
-							    mem_errors);
+	for (loc.col = apart->range.start.col;
+	     loc.col < apart->range.size.col; loc.col++) {
+		for (loc.row = apart->range.start.row;
+		     loc.row < apart->range.size.row; loc.row++) {
+			ttype = apart->adev->ops->get_tile_type(&loc);
+			if (ttype == AIE_TILE_TYPE_TILE) {
+				num += aie_get_module_error_count(apart, loc,
+								  AIE_CORE_MOD,
+								  core_errs);
+				num += aie_get_module_error_count(apart, loc,
+								  AIE_MEM_MOD,
+								  mem_errs);
+			} else {
+				num += aie_get_module_error_count(apart, loc,
+								  AIE_PL_MOD,
+								  shim_errs);
+			}
 		}
 	}
-	return count;
+
+	return num;
 }
 
 /**
