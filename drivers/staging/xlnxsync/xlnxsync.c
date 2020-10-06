@@ -559,9 +559,18 @@ static int xlnxsync_chan_get_status(struct xlnxsync_channel *channel,
 	status.hdr_ver = XLNXSYNC_IOCTL_HDR_VER;
 
 	ret = copy_to_user(arg, &status, sizeof(status));
-	if (ret)
+	if (ret) {
 		dev_err(dev->dev, "%s: failed to copy result data to user\n",
 			__func__);
+	} else {
+		channel->prod_sync_err = 0;
+		channel->prod_wdg_err = 0;
+		channel->cons_sync_err = 0;
+		channel->cons_wdg_err = 0;
+		channel->ldiff_err = 0;
+		channel->cdiff_err = 0;
+	}
+
 	return ret;
 }
 
