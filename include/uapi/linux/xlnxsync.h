@@ -95,21 +95,11 @@ struct xlnxsync_chan_config {
 /**
  * struct xlnxsync_clr_err - Clear channel error
  * @hdr_ver: IOCTL header version
- * @prod_sync_err: Set this to clear producer sync error
- * @prod_wdg_err: Set this to clear producer watchdog error
- * @cons_sync_err: Set this to clear consumer sync error
- * @cons_wdg_err: Set this to clear consumer watchdog error
- * @ldiff_err: Set this to clear luma difference error
- * @cdiff_err: Set this to clear chroma difference error
+ * @err: Structure for error interrupts
  */
 struct xlnxsync_clr_err {
 	u64 hdr_ver;
-	u8 prod_sync_err;
-	u8 prod_wdg_err;
-	u8 cons_sync_err;
-	u8 cons_wdg_err;
-	u8 ldiff_err;
-	u8 cdiff_err;
+	struct xlnxsync_err_intr err;
 };
 
 /**
@@ -144,23 +134,13 @@ struct xlnxsync_config {
  * @hdr_ver: IOCTL header version
  * @fbdone: for every pair of luma/chroma buffer for every producer/consumer
  * @enable: channel enable
- * @prod_sync_err: Producer synchronization error
- * @prod_wdg_err: Producer watchdog error
- * @cons_sync_err: Consumer synchronization error
- * @cons_wdg_err: Consumer watchdog error
- * @ldiff_err: Luma difference > 1 for channel
- * @cdiff_err: Chroma difference > 1 for channel
+ * @err: Structure for error interrupts
  */
 struct xlnxsync_stat {
 	u64 hdr_ver;
 	u8 fbdone[XLNXSYNC_BUF_PER_CHAN][XLNXSYNC_IO];
 	u8 enable;
-	u8 prod_sync_err;
-	u8 prod_wdg_err;
-	u8 cons_sync_err;
-	u8 cons_wdg_err;
-	u8 ldiff_err;
-	u8 cdiff_err;
+	struct xlnxsync_err_intr err;
 };
 
 #define XLNXSYNC_MAGIC			'X'
