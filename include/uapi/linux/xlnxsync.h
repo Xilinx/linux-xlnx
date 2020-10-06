@@ -3,7 +3,7 @@
 #ifndef __XLNXSYNC_H__
 #define __XLNXSYNC_H__
 
-#define XLNXSYNC_IOCTL_HDR_VER		0x10003
+#define XLNXSYNC_IOCTL_HDR_VER		0x10004
 
 /*
  * This is set in the fb_id of struct xlnxsync_chan_config when
@@ -21,6 +21,43 @@
 #define XLNXSYNC_IO			2
 
 #define XLNXSYNC_MAX_CORES		4
+
+/**
+ * struct xlnxsync_err_intr - Channel error interrupt types
+ * @prod_sync: Producer synchronization error interrupt
+ * @prod_wdg: Producer watchdog interrupt
+ * @cons_sync: Consumer synchronization error interrupt
+ * @cons_wdg: Consumer watchdog interrupt
+ * @ldiff: Luma buffer difference interrupt
+ * @cdiff: Chroma buffer difference interrupt
+ */
+struct xlnxsync_err_intr {
+	u8 prod_sync : 1;
+	u8 prod_wdg : 1;
+	u8 cons_sync : 1;
+	u8 cons_wdg : 1;
+	u8 ldiff : 1;
+	u8 cdiff : 1;
+};
+
+/**
+ * struct xlnxsync_intr - Channel Interrupt types
+ * @hdr_ver: IOCTL header version
+ * @err: Structure for error interrupts
+ * @prod_lfbdone: Producer luma frame buffer done interrupt
+ * @prod_cfbdone: Producer chroma frame buffer done interrupt
+ * @cons_lfbdone: Consumer luma frame buffer done interrupt
+ * @cons_cfbdone: Consumer chroma frame buffer done interrupt
+ */
+struct xlnxsync_intr {
+	u64 hdr_ver;
+	struct xlnxsync_err_intr err;
+	u8 prod_lfbdone : 1;
+	u8 prod_cfbdone : 1;
+	u8 cons_lfbdone : 1;
+	u8 cons_cfbdone : 1;
+};
+
 /**
  * struct xlnxsync_chan_config - Synchronizer channel configuration struct
  * @hdr_ver: IOCTL header version
@@ -152,4 +189,7 @@ struct xlnxsync_stat {
 /* This is used to clear the framebuffer done status for a channel */
 #define XLNXSYNC_CHAN_CLR_FBDONE_STAT	_IOW(XLNXSYNC_MAGIC, 8,\
 					     struct xlnxsync_fbdone *)
+/* This is used to set interrupt mask */
+#define XLNXSYNC_CHAN_SET_INTR_MASK	_IOW(XLNXSYNC_MAGIC, 9,\
+					     struct xlnxsync_intr *)
 #endif
