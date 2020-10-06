@@ -75,6 +75,35 @@ static void aie_read_event_status(struct aie_partition *apart,
 }
 
 /**
+ * aie_clear_event_status() - clears the status of event.
+ * @apart: AIE partition pointer.
+ * @loc: pointer to tile location.
+ * @module: module type.
+ * @event: event ID.
+ */
+static void aie_clear_event_status(struct aie_partition *apart,
+				   struct aie_location *loc,
+				   enum aie_module_type module, u8 event)
+{
+	const struct aie_event_attr *event_mod;
+	u32 status_off, regoff;
+
+	if (module == AIE_CORE_MOD)
+		event_mod = apart->adev->core_events;
+	else if (module == AIE_MEM_MOD)
+		event_mod = apart->adev->mem_events;
+	else
+		event_mod = apart->adev->pl_events;
+
+	if (event >= event_mod->num_events)
+		return;
+
+	status_off = event_mod->status_regoff + (event / 32) * 4U;
+	regoff = aie_cal_regoff(apart->adev, *loc, status_off);
+	iowrite32(BIT(event % 32), apart->adev->base + regoff);
+}
+
+/**
  * aie_check_group_errors_enabled() - get error events enabled in group error.
  * @apart: AIE partition pointer.
  * @loc: pointer to tile location.
@@ -543,6 +572,8 @@ static bool aie_l1_backtrack(struct aie_partition *apart,
 			aie_read_event_status(apart, &temp, module, reg);
 			if (!(reg[bc_event / 32] & BIT(bc_event % 32)))
 				break;
+
+			aie_clear_event_status(apart, &temp, module, bc_event);
 		}
 	}
 
