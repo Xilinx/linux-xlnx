@@ -548,12 +548,12 @@ static int xlnxsync_chan_get_status(struct xlnxsync_channel *channel,
 
 	/* Update channel error status */
 	spin_lock_irqsave(&dev->irq_lock, flags);
-	status.prod_sync_err = channel->prod_sync_err;
-	status.prod_wdg_err = channel->prod_wdg_err;
-	status.cons_sync_err = channel->cons_sync_err;
-	status.cons_wdg_err = channel->cons_wdg_err;
-	status.ldiff_err = channel->ldiff_err;
-	status.cdiff_err = channel->cdiff_err;
+	status.err.prod_sync = channel->prod_sync_err;
+	status.err.prod_wdg = channel->prod_wdg_err;
+	status.err.cons_sync = channel->cons_sync_err;
+	status.err.cons_wdg = channel->cons_wdg_err;
+	status.err.ldiff = channel->ldiff_err;
+	status.err.cdiff = channel->cdiff_err;
 	spin_unlock_irqrestore(&dev->irq_lock, flags);
 
 	status.hdr_ver = XLNXSYNC_IOCTL_HDR_VER;
@@ -674,32 +674,32 @@ static int xlnxsync_chan_clr_err(struct xlnxsync_channel *channel,
 		__func__, channel->id);
 	/* Clear channel error status */
 	spin_lock_irqsave(&dev->irq_lock, flags);
-	if (errcfg.prod_sync_err) {
+	if (errcfg.err.prod_sync) {
 		dev_dbg(dev->dev, "Unmasking producer sync err\n");
 		intr_unmask_val |= XLNXSYNC_IMR_PROD_SYNC_FAIL_MASK;
 	}
 
-	if (errcfg.prod_wdg_err) {
+	if (errcfg.err.prod_wdg) {
 		dev_dbg(dev->dev, "Unmasking producer wdg err\n");
 		intr_unmask_val |= XLNXSYNC_IMR_PROD_WDG_ERR_MASK;
 	}
 
-	if (errcfg.cons_sync_err) {
+	if (errcfg.err.cons_sync) {
 		dev_dbg(dev->dev, "Unmasking consumer sync err\n");
 		intr_unmask_val |= XLNXSYNC_IMR_CONS_SYNC_FAIL_MASK;
 	}
 
-	if (errcfg.cons_wdg_err) {
+	if (errcfg.err.cons_wdg) {
 		dev_dbg(dev->dev, "Unmasking consumer wdg err\n");
 		intr_unmask_val |= XLNXSYNC_IMR_CONS_WDG_ERR_MASK;
 	}
 
-	if (errcfg.ldiff_err) {
+	if (errcfg.err.ldiff) {
 		dev_dbg(dev->dev, "Unmasking ldiff_err err\n");
 		intr_unmask_val |= XLNXSYNC_IMR_LDIFF;
 	}
 
-	if (errcfg.cdiff_err) {
+	if (errcfg.err.cdiff) {
 		dev_dbg(dev->dev, "Unmasking cdiff_err err\n");
 		intr_unmask_val |= XLNXSYNC_IMR_CDIFF;
 	}
