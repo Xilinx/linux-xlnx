@@ -41,7 +41,7 @@
 #define XLNXSYNC_PC_END_HI_REG		0x54
 #define XLNXSYNC_L_MARGIN_REG		0x68
 #define XLNXSYNC_C_MARGIN_REG		0x74
-#define XLNXSYNC_IER_REG		0x80
+#define XLNXSYNC_IMR_REG		0x80
 #define XLNXSYNC_DBG_REG		0x84
 /* Consumer Luma/Chroma Start/End Address */
 #define XLNXSYNC_CL_START_LO_REG	0x88
@@ -93,30 +93,30 @@
 #define XLNXSYNC_FB_VALID_MASK		BIT(12)
 #define XLNXSYNC_FB_HI_ADDR_MASK	GENMASK(11, 0)
 
-#define XLNXSYNC_IER_PROD_SYNC_FAIL_MASK BIT(0)
-#define XLNXSYNC_IER_PROD_WDG_ERR_MASK	BIT(1)
+#define XLNXSYNC_IMR_PROD_SYNC_FAIL_MASK BIT(0)
+#define XLNXSYNC_IMR_PROD_WDG_ERR_MASK	BIT(1)
 /* Producer */
-#define XLNXSYNC_IER_PLVALID_MASK	BIT(5)
-#define XLNXSYNC_IER_PCVALID_MASK	BIT(9)
+#define XLNXSYNC_IMR_PLVALID_MASK	BIT(5)
+#define XLNXSYNC_IMR_PCVALID_MASK	BIT(9)
 /* Consumer */
-#define XLNXSYNC_IER_CLVALID_MASK	BIT(13)
-#define XLNXSYNC_IER_CCVALID_MASK	BIT(17)
+#define XLNXSYNC_IMR_CLVALID_MASK	BIT(13)
+#define XLNXSYNC_IMR_CCVALID_MASK	BIT(17)
 /* Diff */
-#define XLNXSYNC_IER_LDIFF		BIT(18)
-#define XLNXSYNC_IER_CDIFF		BIT(19)
-#define XLNXSYNC_IER_CONS_SYNC_FAIL_MASK BIT(20)
-#define XLNXSYNC_IER_CONS_WDG_ERR_MASK	BIT(21)
+#define XLNXSYNC_IMR_LDIFF		BIT(18)
+#define XLNXSYNC_IMR_CDIFF		BIT(19)
+#define XLNXSYNC_IMR_CONS_SYNC_FAIL_MASK BIT(20)
+#define XLNXSYNC_IMR_CONS_WDG_ERR_MASK	BIT(21)
 
-#define XLNXSYNC_IER_ALL_MASK		(XLNXSYNC_IER_PROD_SYNC_FAIL_MASK |\
-					 XLNXSYNC_IER_PROD_WDG_ERR_MASK |\
-					 XLNXSYNC_IER_PLVALID_MASK |\
-					 XLNXSYNC_IER_PCVALID_MASK |\
-					 XLNXSYNC_IER_CLVALID_MASK |\
-					 XLNXSYNC_IER_CCVALID_MASK |\
-					 XLNXSYNC_IER_LDIFF |\
-					 XLNXSYNC_IER_CDIFF |\
-					 XLNXSYNC_IER_CONS_SYNC_FAIL_MASK |\
-					 XLNXSYNC_IER_CONS_WDG_ERR_MASK)
+#define XLNXSYNC_IMR_ALL_MASK		(XLNXSYNC_IMR_PROD_SYNC_FAIL_MASK |\
+					 XLNXSYNC_IMR_PROD_WDG_ERR_MASK |\
+					 XLNXSYNC_IMR_PLVALID_MASK |\
+					 XLNXSYNC_IMR_PCVALID_MASK |\
+					 XLNXSYNC_IMR_CLVALID_MASK |\
+					 XLNXSYNC_IMR_CCVALID_MASK |\
+					 XLNXSYNC_IMR_LDIFF |\
+					 XLNXSYNC_IMR_CDIFF |\
+					 XLNXSYNC_IMR_CONS_SYNC_FAIL_MASK |\
+					 XLNXSYNC_IMR_CONS_WDG_ERR_MASK)
 
 /* Other macros */
 #define XLNXSYNC_CHAN_OFFSET		0x100
@@ -782,30 +782,30 @@ static int xlnxsync_chan_set_int_mask(struct xlnxsync_channel *channel,
 	}
 
 	if (intr_mask.err.prod_sync)
-		intr_mask_val |= XLNXSYNC_IER_PROD_SYNC_FAIL_MASK;
+		intr_mask_val |= XLNXSYNC_IMR_PROD_SYNC_FAIL_MASK;
 	if (intr_mask.err.prod_wdg)
-		intr_mask_val |= XLNXSYNC_IER_PROD_WDG_ERR_MASK;
+		intr_mask_val |= XLNXSYNC_IMR_PROD_WDG_ERR_MASK;
 	if (intr_mask.err.cons_sync)
-		intr_mask_val |= XLNXSYNC_IER_CONS_SYNC_FAIL_MASK;
+		intr_mask_val |= XLNXSYNC_IMR_CONS_SYNC_FAIL_MASK;
 	if (intr_mask.err.cons_wdg)
-		intr_mask_val |= XLNXSYNC_IER_CONS_WDG_ERR_MASK;
+		intr_mask_val |= XLNXSYNC_IMR_CONS_WDG_ERR_MASK;
 	if (intr_mask.err.ldiff)
-		intr_mask_val |= XLNXSYNC_IER_LDIFF;
+		intr_mask_val |= XLNXSYNC_IMR_LDIFF;
 	if (intr_mask.err.cdiff)
-		intr_mask_val |= XLNXSYNC_IER_CDIFF;
+		intr_mask_val |= XLNXSYNC_IMR_CDIFF;
 	if (intr_mask.prod_lfbdone)
-		intr_mask_val |= XLNXSYNC_IER_PLVALID_MASK;
+		intr_mask_val |= XLNXSYNC_IMR_PLVALID_MASK;
 	if (intr_mask.prod_cfbdone)
-		intr_mask_val |= XLNXSYNC_IER_PCVALID_MASK;
+		intr_mask_val |= XLNXSYNC_IMR_PCVALID_MASK;
 	if (intr_mask.cons_lfbdone)
-		intr_mask_val |= XLNXSYNC_IER_CLVALID_MASK;
+		intr_mask_val |= XLNXSYNC_IMR_CLVALID_MASK;
 	if (intr_mask.cons_cfbdone)
-		intr_mask_val |= XLNXSYNC_IER_CCVALID_MASK;
+		intr_mask_val |= XLNXSYNC_IMR_CCVALID_MASK;
 
 	dev_dbg(dev->dev, "Set interrupt mask: 0x%x for channel: %d\n",
 		intr_mask_val, channel->id);
 
-	xlnxsync_write(dev, channel->id, XLNXSYNC_IER_REG, intr_mask_val);
+	xlnxsync_write(dev, channel->id, XLNXSYNC_IMR_REG, intr_mask_val);
 
 	return ret;
 }
