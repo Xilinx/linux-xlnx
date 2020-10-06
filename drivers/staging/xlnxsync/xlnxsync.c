@@ -1263,7 +1263,8 @@ static int xlnxsync_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 	ret = devm_request_threaded_irq(xlnxsync->dev, xlnxsync->irq, NULL,
-					xlnxsync_irq_handler, IRQF_ONESHOT,
+					xlnxsync_irq_handler,
+					IRQF_ONESHOT | IRQF_TRIGGER_RISING,
 					dev_name(xlnxsync->dev), xlnxsync);
 
 	if (ret) {
