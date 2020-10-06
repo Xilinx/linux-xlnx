@@ -584,8 +584,6 @@ static int xlnxsync_chan_enable(struct xlnxsync_channel *channel, bool enable)
 
 	if (enable) {
 		dev_dbg(dev->dev, "Enabling %d channel\n", channel->id);
-		xlnxsync_set(dev, channel->id, XLNXSYNC_IER_REG,
-			     XLNXSYNC_IER_ALL_MASK);
 		xlnxsync_set(dev, channel->id, XLNXSYNC_CTRL_REG,
 			     XLNXSYNC_CTRL_ENABLE_MASK |
 			     XLNXSYNC_CTRL_INTR_EN_MASK);
@@ -595,8 +593,6 @@ static int xlnxsync_chan_enable(struct xlnxsync_channel *channel, bool enable)
 		xlnxsync_clr(dev, channel->id, XLNXSYNC_CTRL_REG,
 			     XLNXSYNC_CTRL_ENABLE_MASK |
 			     XLNXSYNC_CTRL_INTR_EN_MASK);
-		xlnxsync_clr(dev, channel->id, XLNXSYNC_IER_REG,
-			     XLNXSYNC_IER_ALL_MASK);
 		channel->prod_sync_err = false;
 		channel->prod_wdg_err = false;
 		channel->cons_sync_err = false;
@@ -945,9 +941,6 @@ static int xlnxsync_release(struct inode *iptr, struct file *fptr)
 		xlnxsync_clr(dev, channel->id, XLNXSYNC_CTRL_REG,
 			     XLNXSYNC_CTRL_ENABLE_MASK |
 			     XLNXSYNC_CTRL_INTR_EN_MASK);
-		xlnxsync_clr(dev, channel->id, XLNXSYNC_IER_REG,
-			     XLNXSYNC_IER_ALL_MASK);
-
 	}
 
 	if (mutex_lock_interruptible(&dev->sync_mutex))
