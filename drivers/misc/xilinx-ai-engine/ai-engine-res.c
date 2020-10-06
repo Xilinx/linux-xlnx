@@ -132,6 +132,44 @@ int aie_resource_set(struct aie_resource *res, u32 start, u32 count)
 }
 
 /**
+ * aie_resource_cpy_from_arr32() - copies nbits from u32[] to bitmap.
+ * @res: pointer to AI engine resource
+ * @start: start bit in bitmap
+ * @src: source buffer
+ * @nbits: number of bits to copy from u32[]
+ * @return: 0 for success and negative value for failure
+ */
+int aie_resource_cpy_from_arr32(struct aie_resource *res, u32 start,
+				const u32 *src, u32 nbits)
+{
+	if (!res || !res->bitmap || !nbits || start + nbits  > res->total ||
+	    !src)
+		return -EINVAL;
+
+	bitmap_from_arr32(res->bitmap + BIT_WORD(start), src, nbits);
+	return 0;
+}
+
+/**
+ * aie_resource_cpy_to_arr32() - copies nbits to u32[] from bitmap.
+ * @res: pointer to AI engine resource
+ * @start: start bit in bitmap
+ * @dst: destination buffer
+ * @nbits: number of bits to copy to u32[]
+ * @return: 0 for success and negative value for failure
+ */
+int aie_resource_cpy_to_arr32(struct aie_resource *res, u32 start, u32 *dst,
+			      u32 nbits)
+{
+	if (!res || !res->bitmap || !nbits || start + nbits  > res->total ||
+	    !dst)
+		return -EINVAL;
+
+	bitmap_to_arr32(dst, res->bitmap + BIT_WORD(start), nbits);
+	return 0;
+}
+
+/**
  * aie_resource_clear() - clear the AI engine resource bits
  * @res: pointer to AI engine resource
  * @start: start bit to set
