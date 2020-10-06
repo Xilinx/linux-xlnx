@@ -568,7 +568,7 @@ static void aie_l2_backtrack(struct aie_partition *apart)
 	unsigned long l2_mask = 0;
 	u32 n, ttype, l2_bitmap_offset = 0;
 	int ret;
-	bool notify = false, sched_work = false;
+	bool sched_work = false;
 
 	ret = mutex_lock_interruptible(&apart->mlock);
 	if (ret) {
@@ -591,7 +591,7 @@ static void aie_l2_backtrack(struct aie_partition *apart)
 		for_each_set_bit(n, &l2_mask,
 				 apart->adev->l2_ctrl->num_broadcasts) {
 			if (aie_l1_backtrack(apart, loc, n))
-				notify = true;
+				apart->error_to_report = 1;
 		}
 
 		aie_enable_l2_ctrl(apart, &loc, l2_mask);
@@ -617,9 +617,14 @@ static void aie_l2_backtrack(struct aie_partition *apart)
 	if (!sched_work)
 		mutex_unlock(&apart->mlock);
 
-	/* If error was assert, then notify the application */
-	if (notify && apart->error_cb.cb)
+	/*
+	 * If error was asserted or there are errors pending to be reported to
+	 * the application, then invoke callback.
+	 */
+	if (apart->error_cb.cb && apart->error_to_report) {
+		apart->error_to_report = 0;
 		apart->error_cb.cb(apart->error_cb.priv);
+	}
 }
 
 /**
@@ -654,8 +659,21 @@ void aie_array_backtrack(struct work_struct *work)
 		return;
 	}
 
-	list_for_each_entry(apart, &adev->partitions, node)
+	list_for_each_entry(apart, &adev->partitions, node) {
+		/*
+		 * If partition isn't requested yet, then only record the
+		 * occurrence of error interrupt. Such errors can only be
+		 * backtracked when the tiles in-use are known. Based on the
+		 * error_to_report value a task is scheduled in the workqueue
+		 * to backtrack this error interrupt when partition is
+		 * requested.
+		 */
+		if (!apart->status) {
+			apart->error_to_report = 1;
+			continue;
+		}
 		aie_part_backtrack(apart);
+	}
 
 	mutex_unlock(&adev->mlock);
 }
@@ -941,8 +959,11 @@ int aie_register_error_notification(struct device *dev,
 	 * which are not requested. Such errors must be reported back to the
 	 * application when a valid callback is registered.
 	 */
-	if (aie_get_error_count(apart))
+	if (apart->error_to_report) {
+		mutex_unlock(&apart->mlock);
 		schedule_work(&apart->adev->backtrack);
+		return ret;
+	}
 
 exit:
 	mutex_unlock(&apart->mlock);

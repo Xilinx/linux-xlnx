@@ -622,6 +622,9 @@ struct device *aie_partition_request(struct aie_partition_req *req)
 	if (ret)
 		return ERR_PTR(ret);
 
+	if (apart->error_to_report)
+		schedule_work(&apart->adev->backtrack);
+
 	return &apart->dev;
 }
 EXPORT_SYMBOL_GPL(aie_partition_request);
