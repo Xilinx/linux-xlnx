@@ -385,6 +385,10 @@ struct aie_part_bridge {
  * @status: indicate if the partition is in use
  * @cntrflag: partition control flag. e.g. whether to reset columns when
  *	      the partition is released
+ * @error_to_report: indicates if there are errors pending to be reported to
+ *		     the application. This value is set to true if errors are
+ *		     found during backtracking, and error interrupt was
+ *		     received when partition was not requested yet.
  */
 struct aie_partition {
 	struct list_head node;
@@ -406,6 +410,7 @@ struct aie_partition {
 	u32 partition_id;
 	u32 status;
 	u32 cntrflag;
+	u8 error_to_report;
 };
 
 extern struct class *aie_class;
