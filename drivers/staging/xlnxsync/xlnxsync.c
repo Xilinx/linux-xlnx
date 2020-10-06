@@ -651,6 +651,7 @@ static int xlnxsync_chan_clr_err(struct xlnxsync_channel *channel,
 				 void __user *arg)
 {
 	struct xlnxsync_clr_err errcfg;
+	u32 intr_unmask_val = 0;
 	int ret;
 	unsigned long flags;
 	struct xlnxsync_device *dev = channel->dev;
@@ -673,35 +674,40 @@ static int xlnxsync_chan_clr_err(struct xlnxsync_channel *channel,
 		__func__, channel->id);
 	/* Clear channel error status */
 	spin_lock_irqsave(&dev->irq_lock, flags);
-	if (channel->prod_sync_err) {
-		dev_dbg(dev->dev, "Clearing producer sync err\n");
-		channel->prod_sync_err = false;
+	if (errcfg.prod_sync_err) {
+		dev_dbg(dev->dev, "Unmasking producer sync err\n");
+		intr_unmask_val |= XLNXSYNC_IMR_PROD_SYNC_FAIL_MASK;
 	}
 
-	if (channel->prod_wdg_err) {
-		dev_dbg(dev->dev, "Clearing producer wdg err\n");
-		channel->prod_wdg_err = false;
+	if (errcfg.prod_wdg_err) {
+		dev_dbg(dev->dev, "Unmasking producer wdg err\n");
+		intr_unmask_val |= XLNXSYNC_IMR_PROD_WDG_ERR_MASK;
 	}
 
-	if (channel->cons_sync_err) {
-		dev_dbg(dev->dev, "Clearing consumer sync err\n");
-		channel->cons_sync_err = false;
+	if (errcfg.cons_sync_err) {
+		dev_dbg(dev->dev, "Unmasking consumer sync err\n");
+		intr_unmask_val |= XLNXSYNC_IMR_CONS_SYNC_FAIL_MASK;
 	}
 
-	if (channel->cons_wdg_err) {
-		dev_dbg(dev->dev, "Clearing consumer wdg err\n");
-		channel->cons_wdg_err = false;
+	if (errcfg.cons_wdg_err) {
+		dev_dbg(dev->dev, "Unmasking consumer wdg err\n");
+		intr_unmask_val |= XLNXSYNC_IMR_CONS_WDG_ERR_MASK;
 	}
 
-	if (channel->ldiff_err) {
-		dev_dbg(dev->dev, "Clearing ldiff_err err\n");
-		channel->ldiff_err = false;
+	if (errcfg.ldiff_err) {
+		dev_dbg(dev->dev, "Unmasking ldiff_err err\n");
+		intr_unmask_val |= XLNXSYNC_IMR_LDIFF;
 	}
 
-	if (channel->cdiff_err) {
-		dev_dbg(dev->dev, "Clearing cdiff_err err\n");
-		channel->cdiff_err = false;
+	if (errcfg.cdiff_err) {
+		dev_dbg(dev->dev, "Unmasking cdiff_err err\n");
+		intr_unmask_val |= XLNXSYNC_IMR_CDIFF;
 	}
+
+	xlnxsync_clr(dev, channel->id, XLNXSYNC_IMR_REG, intr_unmask_val);
+
+	dev_dbg(dev->dev, "Channel num:%d IMR: %x\n", channel->id,
+		xlnxsync_read(dev, channel->id, XLNXSYNC_IMR_REG));
 
 	spin_unlock_irqrestore(&dev->irq_lock, flags);
 
