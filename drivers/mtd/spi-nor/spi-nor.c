@@ -2151,14 +2151,6 @@ static int spansion_read_cr_quad_enable(struct spi_nor *nor)
 	u8 *sr_cr = nor->bouncebuf;
 	int ret;
 
-	/* Keep the current value of the Status Register. */
-	ret = read_sr(nor);
-	if (ret < 0) {
-		dev_err(dev, "error while reading status register\n");
-		return -EINVAL;
-	}
-	sr_cr[0] = ret;
-
 	/* Check current Quad Enable bit value. */
 	ret = read_cr(nor);
 	if (ret < 0) {
@@ -2170,6 +2162,15 @@ static int spansion_read_cr_quad_enable(struct spi_nor *nor)
 		return 0;
 
 	sr_cr[1] = ret | CR_QUAD_EN_SPAN;
+
+	/* Keep the current value of the Status Register. */
+	ret = read_sr(nor);
+	if (ret < 0) {
+		dev_err(dev, "error while reading status register\n");
+		return -EINVAL;
+	}
+	sr_cr[0] = ret;
+
 	ret = write_sr_cr(nor, sr_cr);
 	if (ret)
 		return ret;
