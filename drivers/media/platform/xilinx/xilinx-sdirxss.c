@@ -102,11 +102,13 @@
 
 #define XSDIRX_INTR_VIDLOCK_MASK	BIT(0)
 #define XSDIRX_INTR_VIDUNLOCK_MASK	BIT(1)
+#define XSDIRX_INTR_VSYNC_MASK		BIT(2)
 #define XSDIRX_INTR_OVERFLOW_MASK	BIT(9)
 #define XSDIRX_INTR_UNDERFLOW_MASK	BIT(10)
 
 #define XSDIRX_INTR_ALL_MASK	(XSDIRX_INTR_VIDLOCK_MASK |\
 				XSDIRX_INTR_VIDUNLOCK_MASK |\
+				XSDIRX_INTR_VSYNC_MASK |\
 				XSDIRX_INTR_OVERFLOW_MASK |\
 				XSDIRX_INTR_UNDERFLOW_MASK)
 
@@ -338,6 +340,7 @@ struct xsdirxss_core {
  * @vip_format: format information corresponding to the active format
  * @pad: source media pad
  * @static_hdr: static hdr payload
+ * @prev_payload: Previous ST352 payload
  * @vidlockwin: Video lock window value set by control
  * @edhmask: EDH mask set by control
  * @searchmask: Search mask set by control
@@ -359,6 +362,7 @@ struct xsdirxss_state {
 	const struct xvip_video_format *vip_format;
 	struct media_pad pad;
 	struct v4l2_hdr10_payload static_hdr;
+	u32 prev_payload;
 	u32 vidlockwin;
 	u32 edhmask;
 	u16 searchmask;
@@ -1060,6 +1064,7 @@ static void xsdirxss_set_gtclk(struct xsdirxss_state *state)
 	xsdirx_globalintr(core, true);
 	xsdirx_core_enable(core);
 }
+
 /**
  * xsdirx_get_stream_properties - Get SDI Rx stream properties
  * @state: pointer to driver state
@@ -1442,6 +1447,13 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 	    format->colorspace != V4L2_COLORSPACE_BT2020)
 		format->quantization = V4L2_QUANTIZATION_FULL_RANGE;
 
+	/*
+	 * Save the payload to be used in vsync interrupt to check for
+	 * change in payload without video lock/unlock sequence
+	 */
+	if (valid & XSDIRX_ST352_VALID_DS1_MASK)
+		state->prev_payload = payload;
+
 	dev_dbg(core->dev, "Stream width = %d height = %d Field = %d payload = 0x%08x ts = 0x%08x\n",
 		format->width, format->height, format->field, payload, val);
 	dev_dbg(core->dev, "frame rate numerator = %d denominator = %d\n",
@@ -1536,6 +1548,44 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 		state->event.type = V4L2_EVENT_XLNXSDIRX_OVERFLOW;
 		v4l2_subdev_notify_event(&state->subdev, &state->event);
 	}
+
+	if (status & XSDIRX_INTR_VSYNC_MASK) {
+		u32 valid, payload;
+		/*
+		 * If ST352 payload changed without generating video unlock/
+		 * lock sequence, then use vsync interrupt to update the
+		 * frame rate, video format and static hdr structures and
+		 * notify the userspace.
+		 */
+
+		/*
+		 * Do this while driver has state as video locked though
+		 * it is implicit from the interrupt type i.e. vsync interrupt
+		 * can occur only when video is locked.
+		 * Avoid generating source change event twice.
+		 */
+		if (status & XSDIRX_INTR_VIDLOCK_MASK)
+			return IRQ_HANDLED;
+
+		valid = xsdirxss_read(core, XSDIRX_ST352_VALID_REG);
+		if (!(valid & XSDIRX_ST352_VALID_DS1_MASK))
+			return IRQ_HANDLED;
+
+		payload = xsdirxss_read(core, XSDIRX_ST352_DS1_REG);
+		/* Return if previous and current payload are same */
+		if (payload == state->prev_payload)
+			return IRQ_HANDLED;
+
+		if (xsdirx_get_stream_properties(state))
+			return IRQ_HANDLED;
+
+		memset(&state->event, 0, sizeof(state->event));
+		state->event.type = V4L2_EVENT_SOURCE_CHANGE;
+		state->event.u.src_change.changes =
+			V4L2_EVENT_SRC_CH_RESOLUTION;
+		v4l2_subdev_notify_event(&state->subdev, &state->event);
+	}
+
 	return IRQ_HANDLED;
 }
 
