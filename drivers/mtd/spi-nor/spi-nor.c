@@ -2150,6 +2150,7 @@ static int spansion_read_cr_quad_enable(struct spi_nor *nor)
 	struct device *dev = nor->dev;
 	u8 *sr_cr = nor->bouncebuf;
 	int ret;
+	u8 cr_new;
 
 	/* Check current Quad Enable bit value. */
 	ret = read_cr(nor);
@@ -2161,7 +2162,11 @@ static int spansion_read_cr_quad_enable(struct spi_nor *nor)
 	if (ret & CR_QUAD_EN_SPAN)
 		return 0;
 
-	sr_cr[1] = ret | CR_QUAD_EN_SPAN;
+	/*
+	 * Cannot write to sr_cr[1] directly, will be overwritten in read_sr()
+	 * in case nor->isparallel is set.
+	 */
+	cr_new = ret | CR_QUAD_EN_SPAN;
 
 	/* Keep the current value of the Status Register. */
 	ret = read_sr(nor);
@@ -2170,6 +2175,7 @@ static int spansion_read_cr_quad_enable(struct spi_nor *nor)
 		return -EINVAL;
 	}
 	sr_cr[0] = ret;
+	sr_cr[1] = cr_new;
 
 	ret = write_sr_cr(nor, sr_cr);
 	if (ret)
