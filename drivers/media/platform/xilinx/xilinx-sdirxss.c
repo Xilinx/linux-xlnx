@@ -16,6 +16,7 @@
  */
 
 #include <dt-bindings/media/xilinx-vip.h>
+#include <linux/bitfield.h>
 #include <linux/bitops.h>
 #include <linux/compiler.h>
 #include <linux/clk.h>
@@ -1367,6 +1368,21 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 
 		u8 colorimetry = (payload & XST352_BYTE2_COLORIMETRY_MASK) >>
 			XST352_BYTE2_COLORIMETRY_OFFSET;
+
+		/*
+		 * Bit 7 and 4 of byte 3 form the colorimetry field for HD.
+		 * Checkout SMPTE 292-1:2018 Sec 9.5 for details
+		 */
+		if (mode == XSDIRX_MODE_HD_MASK ||
+		    byte1 == XST352_BYTE1_ST372_DL_3GB) {
+			/* For case when there might be no payload */
+			colorimetry = XST352_BYTE2_COLORIMETRY_BT709;
+
+			if (valid & XSDIRX_ST352_VALID_DS1_MASK) {
+				colorimetry = (FIELD_GET(BIT(23), payload) << 1) |
+					FIELD_GET(BIT(20), payload);
+			}
+		}
 
 		/* Get the EOTF function */
 		switch (eotf) {
