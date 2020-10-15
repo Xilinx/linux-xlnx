@@ -11,6 +11,7 @@
 #include <drm/drm_crtc_helper.h>
 #include <drm/drmP.h>
 #include <drm/drm_probe_helper.h>
+#include <linux/bitfield.h>
 #include <linux/clk.h>
 #include <linux/component.h>
 #include <linux/device.h>
@@ -18,6 +19,7 @@
 #include <linux/of_device.h>
 #include <linux/of_graph.h>
 #include <linux/phy/phy.h>
+#include <media/hdr-ctrls.h>
 #include <video/videomode.h>
 #include "xlnx_sdi_modes.h"
 #include "xlnx_sdi_timing.h"
@@ -65,13 +67,15 @@
 /* ISR STAT register masks */
 #define XSDI_GTTX_RSTDONE_INTR		BIT(0)
 #define XSDI_TX_CE_ALIGN_ERR_INTR	BIT(1)
+#define XSDI_TX_VSYNC_INTR		BIT(2)
 #define XSDI_AXI4S_VID_LOCK_INTR	BIT(8)
 #define XSDI_OVERFLOW_INTR		BIT(9)
 #define XSDI_UNDERFLOW_INTR		BIT(10)
 #define XSDI_IER_EN_MASK		(XSDI_GTTX_RSTDONE_INTR | \
-					XSDI_TX_CE_ALIGN_ERR_INTR | \
-					XSDI_OVERFLOW_INTR | \
-					XSDI_UNDERFLOW_INTR)
+					 XSDI_TX_CE_ALIGN_ERR_INTR | \
+					 XSDI_TX_VSYNC_INTR | \
+					 XSDI_OVERFLOW_INTR | \
+					 XSDI_UNDERFLOW_INTR)
 
 /* RST_CTRL_OFFSET masks */
 #define XSDI_TX_CTRL_EN			BIT(0)
@@ -94,6 +98,16 @@
 #define XST352_2048_SHIFT		BIT(6)
 #define XST352_YUV420_MASK		0x03
 #define ST352_BYTE3			0x00
+
+/* Electro Optical Transfer Function */
+#define XST352_BYTE2_EOTF_MASK		GENMASK(13, 12)
+#define XST352_BYTE2_EOTF_SDRTV		0x0
+#define XST352_BYTE2_EOTF_HLG		0x1
+#define XST352_BYTE2_EOTF_SMPTE2084	0x2
+#define XST352_BYTE2_EOTF_UNKNOWN	0x3
+#define XST352_BYTE3_COLORIMETRY_HD	BIT(23)
+#define XST352_BYTE3_COLORIMETRY	BIT(21)
+
 #define ST352_BYTE4			0x01
 #define GT_TIMEOUT			50
 /* SDI modes */
@@ -174,10 +188,13 @@ enum payload_line_2 {
  * @en_st352_c_val: configurable ST352 payload on Chroma parameter value
  * @use_ds2_3ga_prop: Use DS2 instead of DS3 in 3GA mode parameter
  * @use_ds2_3ga_val: Use DS2 instead of DS3 in 3GA mode parameter value
+ * @c_encoding: configurable color encoding
+ * @c_encoding_prop_val: 1 for UHDTV and 0 for Rec709
  * @video_mode: current display mode
  * @axi_clk: AXI Lite interface clock
  * @sditx_clk: SDI Tx Clock
  * @vidin_clk: Video Clock
+ * @prev_eotf: previous end of transfer function
  */
 struct xlnx_sdi {
 	struct drm_encoder encoder;
@@ -214,10 +231,13 @@ struct xlnx_sdi {
 	bool en_st352_c_val;
 	struct drm_property *use_ds2_3ga_prop;
 	bool use_ds2_3ga_val;
+	struct drm_property *c_encoding;
+	u32 c_encoding_prop_val;
 	struct drm_display_mode video_mode;
 	struct clk *axi_clk;
 	struct clk *sditx_clk;
 	struct clk *vidin_clk;
+	u8 prev_eotf;
 };
 
 #define connector_to_sdi(c) container_of(c, struct xlnx_sdi, connector)
@@ -282,6 +302,70 @@ static void xlnx_sdi_gt_picxo_reset(struct xlnx_sdi *sdi)
 }
 
 /**
+ * xlnx_sdi_set_eotf - Set eotf field in payload
+ * @sdi: Pointer to SDI Tx structure
+ *
+ * This function parse the hdr metadata and sets
+ * eotf and colorimetry fields of payload.
+ */
+static void xlnx_sdi_set_eotf(struct xlnx_sdi *sdi)
+{
+	struct hdmi_drm_infoframe frame;
+	struct drm_connector_state *state = sdi->connector.state;
+	u32 payload, i;
+	int ret;
+	u8 eotf, colori;
+
+	ret = drm_hdmi_infoframe_set_gen_hdr_metadata(&frame, state);
+	if (ret)
+		return;
+
+	eotf = (__u8)frame.eotf;
+
+	if (sdi->prev_eotf == eotf || eotf >= XST352_BYTE2_EOTF_UNKNOWN)
+		return;
+
+	switch (eotf) {
+	case V4L2_EOTF_BT_2100_HLG:
+		eotf = XST352_BYTE2_EOTF_HLG;
+		break;
+	case V4L2_EOTF_TRADITIONAL_GAMMA_SDR:
+		eotf = XST352_BYTE2_EOTF_SDRTV;
+		break;
+	case V4L2_EOTF_SMPTE_ST2084:
+		eotf = XST352_BYTE2_EOTF_SMPTE2084;
+		break;
+	}
+
+	colori = sdi->c_encoding_prop_val;
+	payload = xlnx_sdi_readl(sdi->base, XSDI_TX_ST352_DATA_CH0);
+
+	/*
+	 * For HD mode, bit 23 and 20 of payload represents
+	 * colorimetry as per SMPTE 292-1:2018 Sec 9.5.
+	 * For other modes, its bit 21 and 20.
+	 * For BT709 & BT2020 - bit 20 is always zero
+	 */
+	if (sdi->sdi_mod_prop_val == XSDI_MODE_HD) {
+		payload &= ~(XST352_BYTE2_EOTF_MASK |
+			     XST352_BYTE3_COLORIMETRY_HD);
+		payload |= FIELD_PREP(XST352_BYTE2_EOTF_MASK, eotf) |
+			FIELD_PREP(XST352_BYTE3_COLORIMETRY_HD, colori);
+	} else {
+		payload &= ~(XST352_BYTE2_EOTF_MASK |
+			     XST352_BYTE3_COLORIMETRY);
+		payload |= FIELD_PREP(XST352_BYTE2_EOTF_MASK, eotf) |
+			FIELD_PREP(XST352_BYTE3_COLORIMETRY, colori);
+	}
+
+	dev_dbg(sdi->dev, "payload = 0x%x, eotf = %d\n", payload, eotf);
+	for (i = 0; i < sdi->sdi_data_strm_prop_val / 2; i++)
+		xlnx_sdi_writel(sdi->base,
+				(XSDI_TX_ST352_DATA_CH0 + (i * 4)), payload);
+	sdi->prev_eotf = eotf;
+}
+
+/**
  * xlnx_sdi_irq_handler - SDI Tx interrupt
  * @irq:	irq number
  * @data:	irq data
@@ -297,6 +381,8 @@ static irqreturn_t xlnx_sdi_irq_handler(int irq, void *data)
 
 	reg = xlnx_sdi_readl(sdi->base, XSDI_TX_ISR_STAT);
 
+	if (reg & XSDI_TX_VSYNC_INTR)
+		xlnx_sdi_set_eotf(sdi);
 	if (reg & XSDI_GTTX_RSTDONE_INTR)
 		dev_dbg(sdi->dev, "GT reset interrupt received\n");
 	if (reg & XSDI_TX_CE_ALIGN_ERR_INTR)
@@ -532,6 +618,8 @@ xlnx_sdi_atomic_set_property(struct drm_connector *connector,
 		sdi->en_st352_c_val = !!val;
 	else if (property == sdi->use_ds2_3ga_prop)
 		sdi->use_ds2_3ga_val = !!val;
+	else if (property == sdi->c_encoding)
+		sdi->c_encoding_prop_val = val;
 	else
 		return -EINVAL;
 	return 0;
@@ -566,6 +654,8 @@ xlnx_sdi_atomic_get_property(struct drm_connector *connector,
 		*val =  sdi->en_st352_c_val;
 	else if (property == sdi->use_ds2_3ga_prop)
 		*val =  sdi->use_ds2_3ga_val;
+	else if (property == sdi->c_encoding)
+		*val = sdi->c_encoding_prop_val;
 	else
 		return -EINVAL;
 
@@ -691,6 +781,7 @@ xlnx_sdi_drm_connector_create_property(struct drm_connector *base_connector)
 		sdi->use_ds2_3ga_prop = drm_property_create_bool(dev, 0,
 								 "use_ds2_3ga");
 	}
+	sdi->c_encoding = drm_property_create_bool(dev, 0, "c_encoding");
 }
 
 /**
@@ -737,6 +828,12 @@ xlnx_sdi_drm_connector_attach_property(struct drm_connector *base_connector)
 
 	if (sdi->use_ds2_3ga_prop)
 		drm_object_attach_property(obj, sdi->use_ds2_3ga_prop, 0);
+
+	if (sdi->c_encoding)
+		drm_object_attach_property(obj, sdi->c_encoding, 0);
+
+	drm_object_attach_property(obj,
+				   base_connector->dev->mode_config.gen_hdr_output_metadata_property, 0);
 }
 
 static int xlnx_sdi_create_connector(struct drm_encoder *encoder)
@@ -1255,6 +1352,8 @@ static int xlnx_sdi_probe(struct platform_device *pdev)
 	 * probable error scenarios
 	 */
 	pdev->dev.platform_data = &sdi->video_mode;
+	/* Initialize to IP default value */
+	sdi->prev_eotf = XST352_BYTE2_EOTF_SDRTV;
 
 	ret = component_add(dev, &xlnx_sdi_component_ops);
 	if (ret < 0)
