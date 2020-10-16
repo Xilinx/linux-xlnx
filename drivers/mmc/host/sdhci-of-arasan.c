@@ -31,7 +31,10 @@
 #define SDHCI_ARASAN_VENDOR_REGISTER	0x78
 
 #define SDHCI_ARASAN_ITAPDLY_REGISTER	0xF0F8
+#define SDHCI_ARASAN_ITAPDLY_SEL_MASK	0xFF
+
 #define SDHCI_ARASAN_OTAPDLY_REGISTER	0xF0FC
+#define SDHCI_ARASAN_OTAPDLY_SEL_MASK	0x3F
 
 #define SDHCI_ARASAN_CQE_BASE_ADDR	0x200
 #define VENDOR_ENHANCED_STROBE		BIT(0)
@@ -851,6 +854,7 @@ static int sdhci_versal_sdcardclk_set_phase(struct clk_hw *hw, int degrees)
 		regval = sdhci_readl(host, SDHCI_ARASAN_OTAPDLY_REGISTER);
 		regval |= SDHCI_OTAPDLY_ENABLE;
 		sdhci_writel(host, regval, SDHCI_ARASAN_OTAPDLY_REGISTER);
+		regval &= ~SDHCI_ARASAN_OTAPDLY_SEL_MASK;
 		regval |= tap_delay;
 		sdhci_writel(host, regval, SDHCI_ARASAN_OTAPDLY_REGISTER);
 	}
@@ -921,6 +925,7 @@ static int sdhci_versal_sampleclk_set_phase(struct clk_hw *hw, int degrees)
 		sdhci_writel(host, regval, SDHCI_ARASAN_ITAPDLY_REGISTER);
 		regval |= SDHCI_ITAPDLY_ENABLE;
 		sdhci_writel(host, regval, SDHCI_ARASAN_ITAPDLY_REGISTER);
+		regval &= ~SDHCI_ARASAN_ITAPDLY_SEL_MASK;
 		regval |= tap_delay;
 		sdhci_writel(host, regval, SDHCI_ARASAN_ITAPDLY_REGISTER);
 		regval &= ~SDHCI_ITAPDLY_CHGWIN;
