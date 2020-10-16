@@ -44,18 +44,6 @@
 #define WZRD_DR_DIV_TO_PHASE_OFFSET	4
 #define WZRD_DR_BEGIN_DYNA_RECONF	0x03
 
-/* From DS925 MMCM_FINMIN */
-#define MIN_IN_FREQ              10000000U
-/* From DS925 MMCB_FVCOMIN */
-#define MIN_VCO_FREQ            800000000ULL /* VCO calculation needs u64 */
-/* From DS925 MMCM_FVCOMAX */
-#define MAX_VCO_FREQ           1600000000ULL /* VCO calculation needs u64 */
-
-/* For both the multiplier and divide x1000 is used */
-/* Divider limits, from UG572 Table 3-4 for Ultrascale+ */
-#define CLKOUT_DIVIDE_F_MIN          2000U
-#define CLKOUT_DIVIDE_F_MAX        128000U
-
 /* Multiplier limits, from UG572 Table 3-4 for Ultrascale+ */
 #define CLKFBOUT_MULT_F_MIN		2000U
 #define CLKFBOUT_MULT_F_MAX		128000U
@@ -69,18 +57,6 @@
 
 /* Extract divider instance from clock hardware instance */
 #define to_clk_wzrd_divider(_hw) container_of(_hw, struct clk_wzrd_divider, hw)
-
-/* structure to store the hints as they are calculated and then used */
-struct clk_wzrd_vco_hints {
-	unsigned int req_rate;		/* requested rate */
-	unsigned int best_rate;		/* best rate we can get */
-	u64 vco_rate;			/* VCO rate after the multiplier*/
-	unsigned int div_rate;		/* rate after the divider */
-	unsigned int divclk_divide;	/* input divider */
-	unsigned int clkfbout_mult_f;	/* multilyer x1000 */
-	unsigned int clkout_divide;	/* divider x1000 */
-	bool valid_rate;		/* indicates the hints calc is done */
-};
 
 /*
  *         MMCM Block Diagram
@@ -117,12 +93,10 @@ struct clk_wzrd_vco_hints {
  * @clk_in1:		Handle to input clock 'clk_in1'
  * @axi_clk:		Handle to input clock 's_axi_aclk'
  * @clkout:		Output clocks
- * @hints		hints used for arbitrary frequency generation
  * @speed_grade:	Speed grade of the device
  * @suspended:		Flag indicating power state of the device
  * @lock		lock pointer
- * @vco_clk_div_hw:	divides the input feeding the multilyer
- * @vco_clk_mul_hw:	after the divider multiply to get the VCO rate
+ * @vco_clk:		hw Voltage Controlled Oscilator clock
  */
 struct clk_wzrd {
 	struct clk_onecell_data clk_data;
@@ -131,7 +105,6 @@ struct clk_wzrd {
 	struct clk *clk_in1;
 	struct clk *axi_clk;
 	struct clk *clkout[WZRD_NUM_OUTPUTS];
-	struct clk_wzrd_vco_hints hints;
 	unsigned int speed_grade;
 	bool suspended;
 	spinlock_t *lock;
@@ -173,90 +146,6 @@ static const unsigned long clk_wzrd_max_freq[] = {
 
 /* spin lock variable for clk_wzrd */
 static DEFINE_SPINLOCK(clkwzrd_lock);
-
-/*
- * This is where all the magic happens. For arbitrary frequency generation
- * applications all of the knobs for adjusting the frequency must be
- * considered together. Nothing is set in this function we just provide
- * hints for use by the actual set_rate functions. If things don't match
- * up the hints can always be ignored
- */
-static void clk_wzrd_calc_hints(struct clk_wzrd *clk_wzrd, unsigned long rate,
-				unsigned long in_rate)
-{
-	int i, j;
-
-	unsigned int divclk_divide_max, divclk_divide_max_calc;
-	unsigned int clkbout_min, clkbout_max;
-	unsigned int clkout_divide = 1;
-	unsigned int best_divclk = 1;
-	unsigned int best_clkfbout_mult_f = 1;
-	unsigned int best_clkout_divide = 1;
-	unsigned int best_out_freq = 1;
-	u64 vco_freq, best_vco_freq = 1;
-	u64 out_freq = 1;
-	u64 error;
-	u64 min_error = 100000000000;
-
-	clk_wzrd->hints.valid_rate = false;
-
-	divclk_divide_max_calc = in_rate / MIN_IN_FREQ;
-	divclk_divide_max = min(DIVCLK_DIVIDE_MAX,
-				divclk_divide_max_calc);
-
-	/* First go through all possible DIVCLK_DIVIDE values */
-	for (i = 1; i <= divclk_divide_max; i++) {
-		/* 8*125 is x1000 */
-		clkbout_min = DIV_ROUND_UP(MIN_VCO_FREQ * i * 8, in_rate) *
-			      125;
-		clkbout_max = (MAX_VCO_FREQ * i * 8 / in_rate) * 125;
-		clkbout_min = max(CLKFBOUT_MULT_F_MIN, clkbout_min);
-		clkbout_max = min(CLKFBOUT_MULT_F_MAX, clkbout_max);
-		/* Second go through all CLKFBOUT_MULT values */
-		for (j = clkbout_min; j <= clkbout_max; j += 125) {
-			vco_freq = in_rate * j / i;
-			/*
-			 * Finally calculate out the CLKOUT_DIVIDE
-			 * there is no need to iterate here
-			 * just calculate the closest
-			 */
-			clkout_divide =
-				DIV_ROUND_CLOSEST(vco_freq,
-						  (u64)rate * 125) * 125;
-			clkout_divide = clamp(clkout_divide,
-					      CLKOUT_DIVIDE_F_MIN,
-					      CLKOUT_DIVIDE_F_MAX);
-			out_freq = in_rate * j / i / clkout_divide;
-			error = abs(rate - out_freq);
-			if (error < min_error) {
-				min_error = error;
-				best_vco_freq = vco_freq / 1000;
-				best_out_freq = out_freq;
-				best_divclk = i;
-				best_clkfbout_mult_f = j;
-				best_clkout_divide = clkout_divide;
-			}
-		}
-	}
-
-	clk_wzrd->hints.req_rate = rate;
-	clk_wzrd->hints.vco_rate = best_vco_freq;
-	clk_wzrd->hints.div_rate = in_rate / best_divclk;
-	clk_wzrd->hints.best_rate = best_out_freq;
-	clk_wzrd->hints.divclk_divide = best_divclk;
-	clk_wzrd->hints.clkfbout_mult_f = best_clkfbout_mult_f;
-	clk_wzrd->hints.clkout_divide = best_clkout_divide;
-	clk_wzrd->hints.valid_rate = true;
-
-#ifdef DEBUG
-	pr_info("clk_wzrd: calc results best match:\n");
-	pr_info("clk_wzrd: divclk: %u, clkfbout_mult: %u clkout_divide: %u\n",
-		best_divclk, best_clkfbout_mult_f, best_clkout_divide);
-	pr_info("clk_wzrd: out_freq: %u\n", best_out_freq);
-	pr_info("clk_wzrd: vco_freq: %llu\n", best_vco_freq);
-	pr_info("clk_wzrd: div_freq: %u\n", clk_wzrd->hints.div_rate);
-#endif
-}
 
 static unsigned long clk_wzrd_recalc_rate(struct clk_hw *hw,
 					  unsigned long parent_rate)
@@ -381,37 +270,23 @@ static int clk_wzrd_dynamic_reconfig_f(struct clk_hw *hw, unsigned long rate,
 	unsigned long flags = 0;
 	unsigned long rate_div, f, clockout0_div;
 	struct clk_wzrd_divider *divider = to_clk_wzrd_divider(hw);
-	struct clk_hw *vco_clk = clk_hw_get_parent(hw);
-	struct clk_wzrd *clk_wzrd = container_of(vco_clk,
-						 struct clk_wzrd,
-						 vco_clk_mul_hw);
-
 	void __iomem *div_addr =
 			(void __iomem *)((u64)divider->base + divider->offset);
-
-	/* check to see if we can use hints */
-	if (clk_wzrd->hints.valid_rate &&
-	    clk_wzrd->hints.best_rate == rate) {
-		clockout0_div = clk_wzrd->hints.clkout_divide / 1000;
-		f = clk_wzrd->hints.clkout_divide % 1000;
-	} else { /* can't use hints, set the rate directly */
-		rate_div = ((parent_rate * 1000) / rate);
-		clockout0_div = rate_div / 1000;
-
-		pre = DIV_ROUND_CLOSEST((parent_rate * 1000), rate);
-		f = (u32)(pre - (clockout0_div * 1000));
-		f = f & WZRD_CLKOUT_FRAC_MASK;
-	}
-
-	value = (f << WZRD_CLKOUT_DIVIDE_WIDTH) |
-		((clockout0_div >> WZRD_CLKOUT_DIVIDE_SHIFT) &
-		WZRD_CLKOUT_DIVIDE_MASK);
-
 
 	if (divider->lock)
 		spin_lock_irqsave(divider->lock, flags);
 	else
 		__acquire(divider->lock);
+
+	rate_div = ((parent_rate * 1000) / rate);
+	clockout0_div = rate_div / 1000;
+
+	pre = DIV_ROUND_CLOSEST((parent_rate * 1000), rate);
+	f = (u32)(pre - (clockout0_div * 1000));
+	f = f & WZRD_CLKOUT_FRAC_MASK;
+
+	value = ((f << WZRD_CLKOUT_DIVIDE_WIDTH) | (clockout0_div &
+			WZRD_CLKOUT_DIVIDE_MASK));
 
 	/* Set divisor and clear phase offset */
 	writel(value, div_addr);
@@ -457,32 +332,6 @@ err_reconfig:
 static long clk_wzrd_round_rate_f(struct clk_hw *hw, unsigned long rate,
 				  unsigned long *prate)
 {
-	if (clk_hw_get_flags(hw) & CLK_SET_RATE_PARENT) {
-		/* We need a reference to the clk_wzrd
-		 * to set the hints and get vco rate
-		 */
-		struct clk_hw *vco_clk = clk_hw_get_parent(hw);
-		struct clk_wzrd *clk_wzrd = container_of(vco_clk,
-							 struct clk_wzrd,
-							 vco_clk_mul_hw);
-
-		/* during clock setup this could get called multiple times
-		 * but we only want to go through the calculation once
-		 */
-		if (!clk_wzrd->hints.valid_rate ||
-		    clk_wzrd->hints.req_rate != rate) {
-			unsigned long in_rate;
-
-			/* Actual input to the whole clocking wizard */
-			in_rate = clk_hw_get_rate(
-				  clk_hw_get_parent(
-				  &clk_wzrd->vco_clk_div_hw));
-			clk_wzrd_calc_hints(clk_wzrd, rate, in_rate);
-		}
-		*prate = clk_wzrd->hints.vco_rate;
-		return clk_wzrd->hints.best_rate;
-	}
-
 	return rate;
 }
 
@@ -531,15 +380,8 @@ static int clk_wzrd_vco_mul_dynamic_reconfig_f(struct clk_hw *hw,
 						 struct clk_wzrd,
 						 vco_clk_mul_hw);
 
-	/* check to see if we can use hints */
-	if (clk_wzrd->hints.valid_rate &&
-	    clk_wzrd->hints.vco_rate == rate) {
-		new_mult = clk_wzrd->hints.clkfbout_mult_f;
-	} else { /* can't use hints, just calculate */
-		/* The 8*125 give the x1000 that is needed */
-		new_mult = (rate * 8 / parent_rate) * 125;
-	}
-
+	/* The 8*125 give the x1000 that is needed */
+	new_mult = (rate * 8 / parent_rate) * 125;
 	new_mult = clamp(new_mult, CLKFBOUT_MULT_F_MIN, CLKFBOUT_MULT_F_MAX);
 
 	clkfbout_mult = new_mult / 1000;
@@ -602,21 +444,6 @@ err_reconfig:
 static long clk_wzrd_vco_mul_round_rate_f(struct clk_hw *hw, unsigned long rate,
 				      unsigned long *prate)
 {
-	if (clk_hw_get_flags(hw) & CLK_SET_RATE_PARENT) {
-		/*
-		 * We need a reference to the clk_wzrd
-		 * to set the hints and get vco rate
-		 */
-		struct clk_wzrd *clk_wzrd = container_of(hw,
-							 struct clk_wzrd,
-							 vco_clk_mul_hw);
-
-		/* If hints is valid set the parent rete*/
-		if (clk_wzrd->hints.valid_rate &&
-		    clk_wzrd->hints.vco_rate == rate)
-			*prate = clk_wzrd->hints.div_rate;
-	}
-
 	return rate;
 }
 
@@ -929,9 +756,6 @@ static int clk_wzrd_probe(struct platform_device *pdev)
 	if (!clk_wzrd)
 		return -ENOMEM;
 	platform_set_drvdata(pdev, clk_wzrd);
-
-	/* hints start off as invalid */
-	clk_wzrd->hints.valid_rate = false;
 
 	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	clk_wzrd->base = devm_ioremap_resource(&pdev->dev, mem);
