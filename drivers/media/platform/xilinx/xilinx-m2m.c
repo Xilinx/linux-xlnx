@@ -1442,6 +1442,109 @@ static const struct v4l2_m2m_ops xvip_m2m_ops = {
 	.job_abort	= xvip_m2m_job_abort,
 };
 
+/*
+ * This function is taken from the framework
+ * video_register_media_controller() function
+ */
+static int xvideo_register_media_controller(struct video_device *vdev)
+{
+#if defined(CONFIG_MEDIA_CONTROLLER)
+	u32 intf_type;
+	int ret;
+
+	/*
+	 * Modified this by removing the condition for VFL_DIR_M2M
+	 * to ensure that the video entity is created.
+	 */
+	if (!vdev->v4l2_dev->mdev)
+		return 0;
+
+	vdev->entity.obj_type = MEDIA_ENTITY_TYPE_VIDEO_DEVICE;
+	vdev->entity.function = MEDIA_ENT_F_UNKNOWN;
+
+	switch (vdev->vfl_type) {
+	case VFL_TYPE_VIDEO:
+		intf_type = MEDIA_INTF_T_V4L_VIDEO;
+		vdev->entity.function = MEDIA_ENT_F_IO_V4L;
+		break;
+	case VFL_TYPE_VBI:
+		intf_type = MEDIA_INTF_T_V4L_VBI;
+		vdev->entity.function = MEDIA_ENT_F_IO_VBI;
+		break;
+	case VFL_TYPE_SDR:
+		intf_type = MEDIA_INTF_T_V4L_SWRADIO;
+		vdev->entity.function = MEDIA_ENT_F_IO_SWRADIO;
+		break;
+	case VFL_TYPE_TOUCH:
+		intf_type = MEDIA_INTF_T_V4L_TOUCH;
+		vdev->entity.function = MEDIA_ENT_F_IO_V4L;
+		break;
+	case VFL_TYPE_RADIO:
+		intf_type = MEDIA_INTF_T_V4L_RADIO;
+		/*
+		 * Radio doesn't have an entity at the V4L2 side to represent
+		 * radio input or output. Instead, the audio input/output goes
+		 * via either physical wires or ALSA.
+		 */
+		break;
+	case VFL_TYPE_SUBDEV:
+		intf_type = MEDIA_INTF_T_V4L_SUBDEV;
+		/* Entity will be created via v4l2_device_register_subdev() */
+		break;
+	default:
+		return 0;
+	}
+
+	if (vdev->entity.function != MEDIA_ENT_F_UNKNOWN) {
+		vdev->entity.name = vdev->name;
+
+		/* Needed just for backward compatibility with legacy MC API */
+		vdev->entity.info.dev.major = VIDEO_MAJOR;
+		vdev->entity.info.dev.minor = vdev->minor;
+
+		ret = media_device_register_entity(vdev->v4l2_dev->mdev,
+						   &vdev->entity);
+		if (ret < 0) {
+			pr_warn("%s: media_device_register_entity failed\n",
+				__func__);
+			return ret;
+		}
+	}
+
+	vdev->intf_devnode = media_devnode_create(vdev->v4l2_dev->mdev,
+						  intf_type,
+						  0, VIDEO_MAJOR,
+						  vdev->minor);
+	if (!vdev->intf_devnode) {
+		media_device_unregister_entity(&vdev->entity);
+		return -ENOMEM;
+	}
+
+	if (vdev->entity.function != MEDIA_ENT_F_UNKNOWN) {
+		struct media_link *link;
+
+		link = media_create_intf_link(&vdev->entity,
+					      &vdev->intf_devnode->intf,
+					      MEDIA_LNK_FL_ENABLED |
+					      MEDIA_LNK_FL_IMMUTABLE);
+		if (!link) {
+			media_devnode_remove(vdev->intf_devnode);
+			media_device_unregister_entity(&vdev->entity);
+			return -ENOMEM;
+		}
+	}
+
+	/* FIXME: how to create the other interface links? */
+
+#endif
+	/* This is added from __video_register_device() */
+
+	/* Part 6: Activate this minor. The char device can now be used. */
+	set_bit(V4L2_FL_REGISTERED, &vdev->flags);
+
+	return 0;
+}
+
 static int xvip_m2m_dma_init(struct xvip_m2m_dma *dma)
 {
 	struct xvip_m2m_dev *xdev;
@@ -1519,9 +1622,17 @@ static int xvip_m2m_dma_init(struct xvip_m2m_dma *dma)
 		goto tx_rx;
 	}
 
+	ret = xvideo_register_media_controller(&dma->video);
+	if (ret < 0) {
+		dev_err(xdev->dev, "Failed to register media controller\n");
+		goto unreg_video;
+	}
+
 	video_set_drvdata(&dma->video, dma->xdev);
 	return 0;
 
+unreg_video:
+	video_unregister_device(&dma->video);
 tx_rx:
 	dma_release_channel(dma->chan_rx);
 tx:
