@@ -151,7 +151,6 @@ enum payload_line_2 {
  * @connector: DRM connector structure
  * @dev: device structure
  * @gt_rst_gpio: GPIO handle to reset GT phy
- * @picxo_rst_gpio: GPIO handle to reset picxo core
  * @base: Base address of SDI subsystem
  * @mode_flags: SDI operation mode related flags
  * @wait_event: wait event
@@ -194,6 +193,8 @@ enum payload_line_2 {
  * @axi_clk: AXI Lite interface clock
  * @sditx_clk: SDI Tx Clock
  * @vidin_clk: Video Clock
+ * @qpll1_enabled: indicates qpll1 presence
+ * @picxo_enabled: indicates picxo core presence
  * @prev_eotf: previous end of transfer function
  */
 struct xlnx_sdi {
@@ -201,7 +202,6 @@ struct xlnx_sdi {
 	struct drm_connector connector;
 	struct device *dev;
 	struct gpio_desc *gt_rst_gpio;
-	struct gpio_desc *picxo_rst_gpio;
 	void __iomem *base;
 	u32 mode_flags;
 	wait_queue_head_t wait_event;
@@ -237,6 +237,8 @@ struct xlnx_sdi {
 	struct clk *axi_clk;
 	struct clk *sditx_clk;
 	struct clk *vidin_clk;
+	bool qpll1_enabled;
+	bool picxo_enabled;
 	u8 prev_eotf;
 };
 
@@ -284,19 +286,15 @@ static void xlnx_sdi_en_bridge(struct xlnx_sdi *sdi)
 }
 
 /**
- * xlnx_sdi_gt_picxo_reset - Reset cores through gpio
+ * xlnx_sdi_gt_reset - Reset cores through gpio
  * @sdi: Pointer to SDI Tx structure
  *
- * This function resets the GT phy and picxo cores.
+ * This function resets the GT phy core.
  */
-static void xlnx_sdi_gt_picxo_reset(struct xlnx_sdi *sdi)
+static void xlnx_sdi_gt_reset(struct xlnx_sdi *sdi)
 {
 	gpiod_set_value(sdi->gt_rst_gpio, 1);
-	udelay(1);
 	gpiod_set_value(sdi->gt_rst_gpio, 0);
-	gpiod_set_value(sdi->picxo_rst_gpio, 0);
-	udelay(1);
-	gpiod_set_value(sdi->picxo_rst_gpio, 1);
 	/* delay added to get vtc_en signal */
 	mdelay(5);
 }
@@ -980,21 +978,28 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	 * For the transceiver TX, for integer and fractional frame rate, the
 	 * PLL ref clock must be a different frequency. Other than SD mode
 	 * its 148.5MHz for an integer & 148.5/1.001 for fractional framerate.
+	 * Program clocks followed by reset, if picxo is not enabled.
 	 */
-	if (sdi->is_frac_prop_val && sdi->sdi_mod_prop_val != XSDI_MODE_SD)
-		clkrate = (CLK_RATE * 1000) / 1001;
-	else
-		clkrate = CLK_RATE;
-	ret = clk_set_rate(sdi->sditx_clk, clkrate);
-	if (ret)
-		dev_err(sdi->dev, "failed to set clk rate = %lu\n", clkrate);
-
-	clkrate = clk_get_rate(sdi->sditx_clk);
-	dev_dbg(sdi->dev, "clkrate = %lu is_frac = %d\n", clkrate,
-		sdi->is_frac_prop_val);
-	/* Delay required to get QPLL1 lock as per the si5328 datasheet */
-	mdelay(50);
-	xlnx_sdi_gt_picxo_reset(sdi);
+	if (!sdi->picxo_enabled) {
+		if (sdi->is_frac_prop_val &&
+		    sdi->sdi_mod_prop_val != XSDI_MODE_SD)
+			clkrate = (CLK_RATE * 1000) / 1001;
+		else
+			clkrate = CLK_RATE;
+		ret = clk_set_rate(sdi->sditx_clk, clkrate);
+		if (ret)
+			dev_err(sdi->dev, "failed to set clk rate = %lu\n",
+				clkrate);
+		clkrate = clk_get_rate(sdi->sditx_clk);
+		dev_info(sdi->dev, "clkrate = %lu is_frac = %d\n", clkrate,
+			 sdi->is_frac_prop_val);
+		/*
+		 * Delay required to get QPLL1 lock as per the si5328
+		 * datasheet
+		 */
+		mdelay(50);
+		xlnx_sdi_gt_reset(sdi);
+	}
 
 	/* Set timing parameters as per bridge output parameters */
 	xlnx_bridge_set_input(sdi->bridge, adjusted_mode->hdisplay,
@@ -1180,7 +1185,8 @@ static int xlnx_sdi_probe(struct platform_device *pdev)
 	int ret, irq;
 	struct device_node *ports, *port;
 	u32 nports = 0, portmask = 0;
-	unsigned long clkrate;
+	unsigned long clkrate = 0;
+	enum gpiod_flags flags;
 
 	sdi = devm_kzalloc(dev, sizeof(*sdi), GFP_KERNEL);
 	if (!sdi)
@@ -1234,21 +1240,26 @@ static int xlnx_sdi_probe(struct platform_device *pdev)
 		goto err_disable_sditx_clk;
 	}
 
-	sdi->gt_rst_gpio = devm_gpiod_get(&pdev->dev, "phy-reset",
-					  GPIOD_OUT_HIGH);
+	sdi->qpll1_enabled = of_property_read_bool(sdi->dev->of_node,
+						   "xlnx,qpll1_enabled");
+
+	sdi->picxo_enabled = of_property_read_bool(sdi->dev->of_node,
+						   "xlnx,picxo_enabled");
+	dev_dbg(dev, "sdi-tx: value of qpll1_en = %d picxo_en = %d\n",
+		sdi->qpll1_enabled, sdi->picxo_enabled);
+
+	if (sdi->qpll1_enabled)
+		flags = GPIOD_OUT_LOW;
+	else
+		flags = GPIOD_OUT_HIGH;
+
+	sdi->gt_rst_gpio = devm_gpiod_get_optional(&pdev->dev, "phy-reset",
+						   flags);
+
 	if (IS_ERR(sdi->gt_rst_gpio)) {
 		ret = PTR_ERR(sdi->gt_rst_gpio);
 		if (ret != -EPROBE_DEFER)
 			dev_err(&pdev->dev, "Unable to get phy gpio\n");
-		goto err_disable_vidin_clk;
-	}
-
-	sdi->picxo_rst_gpio = devm_gpiod_get_optional(&pdev->dev, "picxo-reset",
-						      GPIOD_OUT_HIGH);
-	if (IS_ERR(sdi->picxo_rst_gpio)) {
-		ret = PTR_ERR(sdi->picxo_rst_gpio);
-		if (ret != -EPROBE_DEFER)
-			dev_err(&pdev->dev, "Unable to get picxo gpio\n");
 		goto err_disable_vidin_clk;
 	}
 
