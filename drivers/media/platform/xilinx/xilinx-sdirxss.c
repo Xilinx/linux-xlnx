@@ -314,6 +314,7 @@ enum sdi_family_enc {
  * @clks: array of clocks
  * @num_clks: number of clocks
  * @rst_gt_gpio: reset gt gpio (fmc init done)
+ * @rst_picxo_gpio: reset picxo core
  * @bpc: Bits per component, can be 10 or 12
  */
 struct xsdirxss_core {
@@ -325,6 +326,7 @@ struct xsdirxss_core {
 	struct clk_bulk_data *clks;
 	int num_clks;
 	struct gpio_desc *rst_gt_gpio;
+	struct gpio_desc *rst_picxo_gpio;
 	u32 bpc;
 };
 
@@ -758,9 +760,12 @@ static inline void xsdirx_core_enable(struct xsdirxss_core *core)
 
 static void xsdirxss_gt_reset(struct xsdirxss_core *core)
 {
+	/* reset qpll0 */
 	gpiod_set_value(core->rst_gt_gpio, 0x1);
-	udelay(1);
 	gpiod_set_value(core->rst_gt_gpio, 0x0);
+	/* reset picxo core */
+	gpiod_set_value(core->rst_picxo_gpio, 0x1);
+	gpiod_set_value(core->rst_picxo_gpio, 0x0);
 }
 
 static int xsdirx_set_modedetect(struct xsdirxss_core *core, u16 mask)
@@ -1025,14 +1030,6 @@ static void xsdirxss_set_gtclk(struct xsdirxss_state *state)
 	mode = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
 	mode &= XSDIRX_MODE_DET_STAT_RX_MODE_MASK;
 
-	/*
-	 * TODO: For now, don't change the clock rate for any mode except 12G.
-	 * In future, configure gt clock for all modes and enable clock only
-	 * when needed (stream on/off).
-	 */
-	if (mode != XSDIRX_MODE_12GI_MASK && mode != XSDIRX_MODE_12GF_MASK)
-		return;
-
 	xsdirx_core_disable(core);
 	xsdirx_globalintr(core, false);
 	xsdirx_disableintr(core, XSDIRX_INTR_ALL_MASK);
@@ -1050,6 +1047,9 @@ static void xsdirxss_set_gtclk(struct xsdirxss_state *state)
 	ret = clk_set_rate(gtclk, clkrate);
 	if (ret)
 		dev_err(core->dev, "failed to set clk rate = %d\n", ret);
+
+	/* reset qpll0 and picxo core */
+	xsdirxss_gt_reset(core);
 
 	clkrate = clk_get_rate(gtclk);
 
@@ -1489,6 +1489,7 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 	if (status & XSDIRX_INTR_VIDLOCK_MASK ||
 	    status & XSDIRX_INTR_VIDUNLOCK_MASK) {
 		u32 val1, val2;
+		bool gen_event = true;
 
 		dev_dbg(core->dev, "video lock/unlock interrupt\n");
 
@@ -1514,23 +1515,27 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 			dev_dbg(core->dev, "valid st352 mask = 0x%08x\n", val1);
 			dev_dbg(core->dev, "st352 payload = 0x%08x\n", val2);
 
-			if (!xsdirx_get_stream_properties(state)) {
+			if (state->vidlocked) {
+				gen_event = false;
+			} else if (!xsdirx_get_stream_properties(state)) {
 				state->vidlocked = true;
 				xsdirxss_set_gtclk(state);
 			} else {
 				dev_err(core->dev, "Unable to get stream properties!\n");
 				state->vidlocked = false;
 			}
+
 		} else {
 			dev_dbg(core->dev, "video unlock interrupt\n");
 			state->vidlocked = false;
 		}
-
-		memset(&state->event, 0, sizeof(state->event));
-		state->event.type = V4L2_EVENT_SOURCE_CHANGE;
-		state->event.u.src_change.changes =
-			V4L2_EVENT_SRC_CH_RESOLUTION;
-		v4l2_subdev_notify_event(&state->subdev, &state->event);
+		if (gen_event) {
+			memset(&state->event, 0, sizeof(state->event));
+			state->event.type = V4L2_EVENT_SOURCE_CHANGE;
+			state->event.u.src_change.changes =
+				V4L2_EVENT_SRC_CH_RESOLUTION;
+			v4l2_subdev_notify_event(&state->subdev, &state->event);
+		}
 	}
 
 	if (status & XSDIRX_INTR_UNDERFLOW_MASK) {
@@ -2466,6 +2471,16 @@ static int xsdirxss_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	core->rst_picxo_gpio = devm_gpiod_get_optional(&pdev->dev,
+						       "picxo_reset",
+						       GPIOD_OUT_LOW);
+	if (IS_ERR(core->rst_picxo_gpio)) {
+		ret = PTR_ERR(core->rst_picxo_gpio);
+		if (ret != -EPROBE_DEFER)
+			dev_err(&pdev->dev, "PICXO Reset GPIO not setup in DT\n");
+		return ret;
+	}
+
 	core->num_clks = ARRAY_SIZE(xsdirxss_clks);
 	core->clks = devm_kcalloc(&pdev->dev, core->num_clks,
 				  sizeof(*core->clks), GFP_KERNEL);
@@ -2601,7 +2616,6 @@ static int xsdirxss_probe(struct platform_device *pdev)
 	xsdirxss->streaming = false;
 
 	xsdirx_core_enable(core);
-	xsdirxss_gt_reset(core);
 
 	dev_info(xsdirxss->core.dev, "Xilinx SDI Rx Subsystem device found!\n");
 
