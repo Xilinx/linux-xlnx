@@ -68,7 +68,9 @@
 
 #define DWC3_OF_ADDRESS(ADDR)		((ADDR) - DWC3_GLOBALS_REGS_START)
 
+#ifdef CONFIG_PM
 static const struct zynqmp_eemi_ops *eemi_ops;
+#endif
 
 struct dwc3_of_simple {
 	struct device		*dev;
@@ -290,11 +292,13 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
 	if (!simple)
 		return -ENOMEM;
 
+#ifdef CONFIG_PM
 	eemi_ops = zynqmp_pm_get_eemi_ops();
 	if (IS_ERR(eemi_ops)) {
 		dev_err(dev, "Failed to get eemi_ops\n");
 		return PTR_ERR(eemi_ops);
 	}
+#endif
 
 	platform_set_drvdata(pdev, simple);
 	simple->dev = dev;
@@ -667,8 +671,10 @@ static int __maybe_unused dwc3_of_simple_suspend(struct device *dev)
 	struct dwc3_of_simple *simple = dev_get_drvdata(dev);
 
 	if (!simple->wakeup_capable && !simple->dwc->is_d3) {
+#ifdef CONFIG_PM
 		/* Ask ULPI to turn OFF Vbus */
 		dwc3_simple_vbus(simple->dwc, true);
+#endif
 
 		/* Disable the clocks */
 		clk_bulk_disable(simple->num_clocks, simple->clks);
@@ -695,8 +701,10 @@ static int __maybe_unused dwc3_of_simple_resume(struct device *dev)
 	if (simple->need_reset)
 		reset_control_deassert(simple->resets);
 
+#ifdef CONFIG_PM
 	/* Ask ULPI to turn ON Vbus */
 	dwc3_simple_vbus(simple->dwc, false);
+#endif
 
 	return 0;
 }

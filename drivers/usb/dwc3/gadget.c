@@ -1489,9 +1489,11 @@ static int __dwc3_gadget_ep_queue(struct dwc3_ep *dep, struct dwc3_request *req)
 
 	/* If core is hibernated, need to wakeup (remote wakeup) */
 	if (dwc->is_hibernated) {
+#ifdef CONFIG_PM
 		dwc->force_hiber_wake = true;
 		gadget_wakeup_interrupt(dwc);
 		dwc->force_hiber_wake = false;
+#endif
 	}
 
 	/*
@@ -3135,12 +3137,14 @@ static void dwc3_gadget_wakeup_interrupt(struct dwc3 *dwc)
 
 static irqreturn_t wakeup_interrupt(int irq, void *_dwc)
 {
+#ifdef CONFIG_PM
 	struct dwc3 *dwc = (struct dwc3 *)_dwc;
 
 	spin_lock(&dwc->lock);
 	gadget_wakeup_interrupt(dwc);
 	spin_unlock(&dwc->lock);
 
+#endif
 	return IRQ_HANDLED;
 }
 
@@ -3275,8 +3279,10 @@ static void dwc3_gadget_hibernation_interrupt(struct dwc3 *dwc,
 	    (!(dwc->has_hibernation)))
 		return;
 
+#ifdef CONFIG_PM
 	/* enter hibernation here */
 	gadget_hibernation_interrupt(dwc);
+#endif
 }
 
 static void dwc3_gadget_interrupt(struct dwc3 *dwc,
@@ -3662,9 +3668,11 @@ int dwc3_gadget_suspend(struct dwc3 *dwc)
 		 * As we are about to suspend, wake the controller from
 		 * D3 & hibernation states
 		 */
+#ifdef CONFIG_PM
 		dwc->force_hiber_wake = true;
 		gadget_wakeup_interrupt(dwc);
 		dwc->force_hiber_wake = false;
+#endif
 	}
 
 	dwc3_gadget_run_stop(dwc, false, false);
