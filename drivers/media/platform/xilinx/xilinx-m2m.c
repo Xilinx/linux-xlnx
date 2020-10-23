@@ -1578,7 +1578,7 @@ static int xvip_composite_v4l2_init(struct xvip_m2m_dev *xdev)
 	int ret;
 
 	xdev->media_dev.dev = xdev->dev;
-	strlcpy(xdev->media_dev.model, "Xilinx Videoi M2M Composite Device",
+	strlcpy(xdev->media_dev.model, "Xilinx Video M2M Composite Device",
 		sizeof(xdev->media_dev.model));
 	xdev->media_dev.hw_revision = 0;
 
