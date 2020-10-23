@@ -16,7 +16,10 @@ ifneq ($(filter y,$(CONFIG_USB_DWC3_HOST) $(CONFIG_USB_DWC3_DUAL_ROLE)\
 endif
 
 ifneq ($(filter y,$(CONFIG_USB_DWC3_GADGET) $(CONFIG_USB_DWC3_DUAL_ROLE) $(CONFIG_USB_DWC3_OTG)),)
-	dwc3-y				+= gadget.o ep0.o gadget_hibernation.o
+	dwc3-y				+= gadget.o ep0.o
+ifeq ($(CONFIG_PM), y)
+	dwc3-y				+= gadget_hibernation.o
+endif
 endif
 
 ifneq ($(CONFIG_USB_DWC3_OTG),)
