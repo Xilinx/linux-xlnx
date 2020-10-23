@@ -2041,6 +2041,7 @@ static int xvip_m2m_probe(struct platform_device *pdev)
 
 	xdev->dev = &pdev->dev;
 	INIT_LIST_HEAD(&xdev->entities);
+	v4l2_async_notifier_init(&xdev->notifier);
 
 	ret = xvip_composite_v4l2_init(xdev);
 	if (ret)
