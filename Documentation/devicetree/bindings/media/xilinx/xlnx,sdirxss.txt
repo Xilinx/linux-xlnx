@@ -39,6 +39,8 @@ Optional properties:
 
 - reset_gt-gpios: contains GPIO reset phandle for FMC init done pin in GT.
   This pin is active low.
+- picxo_reset-gpios: contains GPIO reset phandle for PICXO done pin for PICXO module.
+  This pin is active high.
 - xlnx,bpp: This denotes the bit depth as 10 or 12 based on IP configuration.
   The default value is 10 for backward compatibility.
 
@@ -55,6 +57,7 @@ Example:
 			clocks = <&clk_1>, <&si570_1>, <&clk_2>;
 			clock-names = "s_axi_aclk", "sdi_rx_clk", "video_out_clk";
 			reset_gt-gpios = <&axi_gpio_0 0 0 GPIO_ACTIVE_LOW>;
+			picxo_reset-gpios = <&axi_gpio_0 2 0 GPIO_ACTIVE_HIGH>;
 
 			ports {
 				#address-cells = <1>;
