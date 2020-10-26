@@ -1169,7 +1169,7 @@ static void xilinx_frmbuf_reset(struct xilinx_frmbuf_chan *chan)
 static void xilinx_frmbuf_chan_reset(struct xilinx_frmbuf_chan *chan)
 {
 	xilinx_frmbuf_reset(chan);
-	frmbuf_write(chan, XILINX_FRMBUF_IE_OFFSET, XILINX_FRMBUF_IE_AP_READY);
+	frmbuf_write(chan, XILINX_FRMBUF_IE_OFFSET, XILINX_FRMBUF_IE_AP_DONE);
 	frmbuf_write(chan, XILINX_FRMBUF_GIE_OFFSET, XILINX_FRMBUF_GIE_EN);
 }
 
@@ -1206,7 +1206,7 @@ static irqreturn_t xilinx_frmbuf_irq_handler(int irq, void *data)
 		}
 	}
 
-	if (status & XILINX_FRMBUF_ISR_AP_READY_IRQ) {
+	if (status & XILINX_FRMBUF_ISR_AP_DONE_IRQ) {
 		spin_lock(&chan->lock);
 		chan->idle = true;
 		if (chan->active_desc) {
