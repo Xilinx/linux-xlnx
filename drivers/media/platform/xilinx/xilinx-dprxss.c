@@ -481,6 +481,7 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state)
 	read_val = xdprxss_read(state, XDPRX_DTG_REG);
 	xdprxss_write(state, XDPRX_DTG_REG, (read_val | 0x1));
 	fmt = FIELD_GET(XDPRX_MSA_FMT_MASK, rxmsa_misc);
+	state->bpc = FIELD_GET(XDPRX_MSA_BPC_MASK, rxmsa_misc);
 
 	switch (fmt) {
 	case XDPRX_COLOR_FORMAT_422:
