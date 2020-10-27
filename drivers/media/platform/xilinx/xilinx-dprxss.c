@@ -1296,7 +1296,7 @@ static int xdprxss_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id xdprxss_of_id_table[] = {
-	{ .compatible = "xlnx,v-dp-rxss-2.1", },
+	{ .compatible = "xlnx,v-dp-rxss-3.0", },
 	{ /* end of table */ }
 };
 MODULE_DEVICE_TABLE(of, xdprxss_of_id_table);
