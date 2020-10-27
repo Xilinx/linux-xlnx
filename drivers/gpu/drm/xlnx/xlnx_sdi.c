@@ -672,7 +672,10 @@ static int xlnx_sdi_get_mode_id(struct drm_display_mode *mode)
 	unsigned int i;
 
 	for (i = 0; i < ARRAY_SIZE(xlnx_sdi_modes); i++)
-		if (drm_mode_equal(&xlnx_sdi_modes[i].mode, mode))
+		if (xlnx_sdi_modes[i].mode.htotal == mode->htotal &&
+		    xlnx_sdi_modes[i].mode.vtotal == mode->vtotal &&
+		    xlnx_sdi_modes[i].mode.clock == mode->clock &&
+		    xlnx_sdi_modes[i].mode.flags == mode->flags)
 			return i;
 	return -EINVAL;
 }
@@ -739,9 +742,19 @@ static int xlnx_sdi_get_modes(struct drm_connector *connector)
 	return xlnx_sdi_drm_add_modes(connector);
 }
 
+static int xlnx_sdi_mode_valid(struct drm_connector *connector,
+			       struct drm_display_mode *mode)
+{
+	if (mode->flags & DRM_MODE_FLAG_INTERLACE)
+		mode->vdisplay /= 2;
+
+	return MODE_OK;
+}
+
 static struct drm_connector_helper_funcs xlnx_sdi_connector_helper_funcs = {
 	.get_modes = xlnx_sdi_get_modes,
 	.best_encoder = xlnx_sdi_best_encoder,
+	.mode_valid = xlnx_sdi_mode_valid,
 };
 
 /**
@@ -1055,12 +1068,22 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 		       adjusted_mode->hsync_start) / PIXELS_PER_CLK;
 
 	vm.vactive = adjusted_mode->vdisplay;
-	vm.vfront_porch = adjusted_mode->vsync_start -
-			  adjusted_mode->vdisplay;
-	vm.vback_porch = adjusted_mode->vtotal -
-			 adjusted_mode->vsync_end;
-	vm.vsync_len = adjusted_mode->vsync_end -
-		       adjusted_mode->vsync_start;
+	if (adjusted_mode->flags & DRM_MODE_FLAG_INTERLACE) {
+		vm.vfront_porch = adjusted_mode->vsync_start / 2 -
+				  adjusted_mode->vdisplay;
+		vm.vback_porch = (adjusted_mode->vtotal -
+				  adjusted_mode->vsync_end) / 2;
+		vm.vsync_len = (adjusted_mode->vsync_end -
+				adjusted_mode->vsync_start) / 2;
+	} else {
+		vm.vfront_porch = adjusted_mode->vsync_start -
+				  adjusted_mode->vdisplay;
+		vm.vback_porch = adjusted_mode->vtotal -
+				 adjusted_mode->vsync_end;
+		vm.vsync_len = adjusted_mode->vsync_end -
+			       adjusted_mode->vsync_start;
+	}
+
 	vm.flags = 0;
 	if (adjusted_mode->flags & DRM_MODE_FLAG_INTERLACE)
 		vm.flags |= DISPLAY_FLAGS_INTERLACED;
