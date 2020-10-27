@@ -320,7 +320,7 @@ static void xlnx_sdi_set_eotf(struct xlnx_sdi *sdi)
 
 	eotf = (__u8)frame.eotf;
 
-	if (sdi->prev_eotf == eotf || eotf >= XST352_BYTE2_EOTF_UNKNOWN)
+	if (sdi->prev_eotf == eotf || eotf > XST352_BYTE2_EOTF_UNKNOWN)
 		return;
 
 	switch (eotf) {
@@ -856,6 +856,12 @@ static int xlnx_sdi_create_connector(struct drm_encoder *encoder)
 	drm_connector_attach_encoder(connector, encoder);
 	xlnx_sdi_drm_connector_create_property(connector);
 	xlnx_sdi_drm_connector_attach_property(connector);
+
+	/* Fill out the supported EOTFs */
+	connector->hdr_sink_metadata.hdmi_type1.eotf |=
+		BIT(V4L2_EOTF_BT_2100_HLG) |
+		BIT(V4L2_EOTF_TRADITIONAL_GAMMA_SDR) |
+		BIT(V4L2_EOTF_SMPTE_ST2084);
 
 	return 0;
 }
