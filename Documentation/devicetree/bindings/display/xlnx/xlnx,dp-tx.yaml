@@ -18,18 +18,15 @@ properties:
   compatible:
     items:
       - enum:
-          - xlnx,v-dp-txss-2.1
+          - xlnx,v-dp-txss-3.0
 
   reg:
-    maxItems: 2
-    items:
-      - description: DisplayPort Transmitter Subsystem registers
-      - description: AXI remapper IP registers
+    maxItems: 1
+    description: DisplayPort Transmitter Subsystem registers
 
   reg-names:
     items:
       - const: dp_base
-      - const: remap_base
 
   interrupts:
     maxItems: 1
@@ -91,10 +88,6 @@ properties:
       - $ref: /schemas/types.yaml#/definitions/uint32
       - enum: [2, 3, 4, 5, 6, 7, 8]
 
-  reset-gpios:
-    description: Specifier for a GPIO that asserts remapper IP.
-    maxItems: 1
-
   ports:
     type: object
 
@@ -137,6 +130,8 @@ required:
   - phys
   - ports
 
+additionalProperties: false
+
 examples:
  - |
    bus {
@@ -144,9 +139,9 @@ examples:
        #size-cells = <2>;
 
        v_dp_txss1@a0100000 {
-           compatible = "xlnx,v-dp-txss-2.1";
-           reg = <0x0 0xa0100000 0x0 0x40000>, <0x0 0xa00c0000 0x0 0x1000>;
-           reg-names = "dp_base", "remap_base";
+           compatible = "xlnx,v-dp-txss-3.0";
+           reg = <0x0 0xa0100000 0x0 0x40000>;
+           reg-names = "dp_base";
            clock-names = "s_axi_aclk", "tx_vid_clk";
            clocks = <&zynqmp_clk 71>, <&si570_1>;
            interrupts = <0 92 4>;
@@ -154,7 +149,6 @@ examples:
            xlnx,max-link-rate = <810000>;
            xlnx,bpc = <8>;
            xlnx,audio-chan = <2>;
-           reset-gpio = <&dp_tx_hier_0_axi_gpio_remap_tx 0 0 1>;
            phy-names = "dp-phy0", "dp-phy1", "dp-phy2", "dp-phy3";
            phys = <&vphy_lane0 0 1 1 0>, <&vphy_lane1 0 1 1 0>,
                   <&vphy_lane2 0 1 1 0>, <&vphy_lane3 0 1 1 0>;
