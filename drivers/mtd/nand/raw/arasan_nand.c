@@ -370,7 +370,8 @@ static void anfc_rw_dma_op(struct mtd_info *mtd, u8 *buf, int len,
 	struct nand_chip *chip = mtd_to_nand(mtd);
 	struct anfc_nand_controller *nfc = to_anfc(chip->controller);
 	struct anfc_nand_chip *achip = to_anfc_nand(chip);
-	u32 eccintr = 0, dir;
+	u32 eccintr = 0;
+	enum dma_data_direction dir;
 
 	if (pktsize == 0)
 		pktsize = len;
