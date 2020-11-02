@@ -622,6 +622,9 @@ static int xlnx_dp_mode_configure(struct xlnx_dp *dp, int pclock,
 
 	/* Downshift from current bandwidth */
 	switch (current_bw) {
+	case DP_LINK_BW_8_1:
+		bw_code = DP_LINK_BW_5_4;
+		break;
 	case DP_LINK_BW_5_4:
 		bw_code = DP_LINK_BW_2_7;
 		break;
@@ -637,7 +640,7 @@ static int xlnx_dp_mode_configure(struct xlnx_dp *dp, int pclock,
 		break;
 	}
 
-	for (lane_cnt = max_lanes; lane_cnt > 1; lane_cnt >>= 1) {
+	for (lane_cnt = max_lanes; lane_cnt >= 1; lane_cnt >>= 1) {
 		int bw;
 		u32 rate;
 
@@ -732,25 +735,19 @@ static int xlnx_dp_tx_adj_vswing_preemp(struct xlnx_dp *dp, u8 link_status[6])
 	vs_level_adj_req[0] = FIELD_GET(DP_ADJUST_VOLTAGE_SWING_LANE0_MASK,
 					link_status[4]);
 	vs_level_adj_req[1] = FIELD_GET(DP_ADJUST_VOLTAGE_SWING_LANE1_MASK,
-					link_status[4]) >>
-					DP_ADJUST_VOLTAGE_SWING_LANE1_SHIFT;
+					link_status[4]);
 	vs_level_adj_req[2] = FIELD_GET(DP_ADJUST_VOLTAGE_SWING_LANE0_MASK,
 					link_status[5]);
 	vs_level_adj_req[3] = FIELD_GET(DP_ADJUST_VOLTAGE_SWING_LANE1_MASK,
-					link_status[5]) >>
-					DP_ADJUST_VOLTAGE_SWING_LANE1_SHIFT;
+					link_status[5]);
 	pe_level_adj_req[0] = FIELD_GET(DP_ADJUST_PRE_EMPHASIS_LANE0_MASK,
-					link_status[4]) >>
-					DP_ADJUST_PRE_EMPHASIS_LANE0_SHIFT;
+					link_status[4]);
 	pe_level_adj_req[1] = FIELD_GET(DP_ADJUST_PRE_EMPHASIS_LANE1_MASK,
-					link_status[4]) >>
-					DP_ADJUST_PRE_EMPHASIS_LANE1_SHIFT;
+					link_status[4]);
 	pe_level_adj_req[2] = FIELD_GET(DP_ADJUST_PRE_EMPHASIS_LANE0_MASK,
-					link_status[5]) >>
-					DP_ADJUST_PRE_EMPHASIS_LANE0_SHIFT;
+					link_status[5]);
 	pe_level_adj_req[3] = FIELD_GET(DP_ADJUST_PRE_EMPHASIS_LANE1_MASK,
-					link_status[5]) >>
-					DP_ADJUST_PRE_EMPHASIS_LANE1_SHIFT;
+					link_status[5]);
 
 	/*
 	 * change the drive settings to match the adjustment requests. Use the
@@ -899,27 +896,31 @@ static int xlnx_dp_link_train_ce(struct xlnx_dp *dp)
 	u32 i;
 	u8 link_status[DP_LINK_STATUS_SIZE];
 	u8 lane_cnt = dp->mode.lane_cnt;
-	u8 aux_data;
+	u8 aux_data[5];
 	bool ce_done;
 
 	if (dp->dpcd[DP_DPCD_REV] == XDPTX_V1_4 &&
 	    dp->dpcd[DP_MAX_DOWNSPREAD] & DP_TPS4_SUPPORTED) {
 		pat = DP_TRAINING_PATTERN_4;
-		xlnx_dp_write(dp->dp_base, XDPTX_SCRAMBLING_DIS_REG, 0);
-		aux_data = pat | DP_TRAINING_PATTERN_4;
 	} else if (dp->dpcd[DP_DPCD_REV] >= XDPTX_V1_2 &&
 		dp->dpcd[DP_MAX_LANE_COUNT] & DP_TPS3_SUPPORTED) {
 		pat = DP_TRAINING_PATTERN_3;
-		xlnx_dp_write(dp->dp_base, XDPTX_SCRAMBLING_DIS_REG, 1);
-		aux_data = pat | DP_LINK_SCRAMBLING_DISABLE;
 	} else {
 		pat = DP_TRAINING_PATTERN_2;
-		xlnx_dp_write(dp->dp_base, XDPTX_SCRAMBLING_DIS_REG, 1);
-		aux_data = pat | DP_LINK_SCRAMBLING_DISABLE;
 	}
 
 	xlnx_dp_write(dp->dp_base, XDPTX_TRNGPAT_SET_REG, pat);
-	ret = drm_dp_dpcd_writeb(&dp->aux, DP_TRAINING_PATTERN_SET, aux_data);
+
+	if (dp->dpcd[DP_DPCD_REV] == XDPTX_V1_4) {
+		xlnx_dp_write(dp->dp_base, XDPTX_SCRAMBLING_DIS_REG, 0);
+		aux_data[0] = DP_TRAINING_PATTERN_4;
+	} else {
+		xlnx_dp_write(dp->dp_base, XDPTX_SCRAMBLING_DIS_REG, 1);
+		aux_data[0] = pat | DP_LINK_SCRAMBLING_DISABLE;
+	}
+	xlnx_dp_tx_set_vswing_preemp(dp, &aux_data[1]);
+	ret = drm_dp_dpcd_write(&dp->aux, DP_TRAINING_PATTERN_SET,
+				&aux_data[0], 5);
 	if (ret < 0)
 		return ret;
 
