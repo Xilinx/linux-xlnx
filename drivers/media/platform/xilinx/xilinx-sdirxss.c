@@ -1096,7 +1096,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 	valid = xsdirxss_read(core, XSDIRX_ST352_VALID_REG);
 
 	if (mode >= XSDIRX_MODE_3G_MASK && !valid) {
-		dev_err(core->dev, "No valid ST352 payload present even for 3G mode and above\n");
+		dev_err_ratelimited(core->dev, "No valid ST352 payload present even for 3G mode and above\n");
 		return -EINVAL;
 	}
 
@@ -1527,7 +1527,7 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 				state->vidlocked = true;
 				xsdirxss_set_gtclk(state);
 			} else {
-				dev_err(core->dev, "Unable to get stream properties!\n");
+				dev_err_ratelimited(core->dev, "Unable to get stream properties!\n");
 				state->vidlocked = false;
 			}
 
