@@ -557,8 +557,11 @@ static int anfc_read_page_hwecc(struct nand_chip *chip, u8 *buf,
 		if (!oob_required)
 			chip->ecc.read_oob(chip, page);
 
-		mtd_ooblayout_get_eccbytes(mtd, ecc_code, chip->oob_poi, 0,
-					   chip->ecc.total);
+		ret = mtd_ooblayout_get_eccbytes(mtd, ecc_code, chip->oob_poi,
+						 0, chip->ecc.total);
+		if (ret)
+			return ret;
+
 		eccsteps = chip->ecc.steps;
 		p = buf;
 		for (i = 0; eccsteps; eccsteps--, i += eccbytes,
