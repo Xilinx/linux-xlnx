@@ -1038,8 +1038,14 @@ static void xsdirxss_set_gtclk(struct xsdirxss_state *state)
 	gtclk = core->clks[1].clk;
 	is_frac = state->frame_interval.numerator == 1001 ? 1 : 0;
 
-	/* calcualte clkrate */
-	if (!is_frac)
+	/*
+	 * PLL ref clock is 148.5MHz for integer frame rates
+	 * and 148.35MHz for fractional frame rates.
+	 * For SD mode its always 148.5MHz for integer & fractional.
+	 * Please refer to Table 5-2 in PG290
+	 * https://www.xilinx.com/support/documentation/ip_documentation/v_smpte_uhdsdi_rx_ss/v2_0/pg290-v-smpte-uhdsdi-rx-ss.pdf
+	 */
+	if (!is_frac || mode == XSDIRX_MODE_SD_MASK)
 		clkrate = CLK_INT;
 	else
 		clkrate = (CLK_INT * 1000) / 1001;
