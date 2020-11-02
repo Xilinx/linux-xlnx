@@ -457,10 +457,10 @@ static void anfc_write_data_op(struct nand_chip *chip, const u8 *buf,
 	struct mtd_info *mtd = nand_to_mtd(chip);
 
 	if (virt_addr_valid(buf))
-		anfc_rw_dma_op(mtd, (char *)buf, len, 0, PROG_PGPROG, pktcount,
+		anfc_rw_dma_op(mtd, (u8 *)buf, len, 0, PROG_PGPROG, pktcount,
 			       pktsize);
 	else
-		anfc_rw_pio_op(mtd, (char *)buf, len, 0, PROG_PGPROG, pktcount,
+		anfc_rw_pio_op(mtd, (u8 *)buf, len, 0, PROG_PGPROG, pktcount,
 			       pktsize);
 }
 
@@ -946,7 +946,7 @@ static int anfc_setfeature_type_exec(struct nand_chip *chip,
 		return 0;
 
 	len = nand_subop_get_data_len(subop, op_id);
-	anfc_write_data_op(chip, (char *)instr->ctx.data.buf.out, len, 1, 0);
+	anfc_write_data_op(chip, (u8 *)instr->ctx.data.buf.out, len, 1, 0);
 
 	return 0;
 }
@@ -1056,7 +1056,7 @@ static int anfc_page_write_type_exec(struct nand_chip *chip,
 		return 0;
 
 	len = nand_subop_get_data_len(subop, op_id);
-	anfc_write_data_op(chip, (char *)instr->ctx.data.buf.out, len, 1, 0);
+	anfc_write_data_op(chip, (u8 *)instr->ctx.data.buf.out, len, 1, 0);
 
 	return 0;
 }
@@ -1083,7 +1083,7 @@ static int anfc_page_write_nowait_type_exec(struct nand_chip *chip,
 	if (!nfc_op.data_instr)
 		return 0;
 
-	anfc_write_data_op(chip, (char *)instr->ctx.data.buf.out,
+	anfc_write_data_op(chip, (u8 *)instr->ctx.data.buf.out,
 			   mtd->writesize, DIV_ROUND_UP(mtd->writesize,
 			   achip->pktsize), achip->pktsize);
 
@@ -1309,7 +1309,7 @@ static int anfc_nand_chip_init(struct anfc_nand_controller *nfc,
 	struct mtd_info *mtd = nand_to_mtd(chip);
 	int ret;
 
-	ret = of_property_read_u32(np, "reg", &anand_chip->csnum);
+	ret = of_property_read_u32(np, "reg", (u32 *)&anand_chip->csnum);
 	if (ret) {
 		dev_err(nfc->dev, "can't get chip-select\n");
 		return -ENXIO;
