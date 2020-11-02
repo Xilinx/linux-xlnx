@@ -220,17 +220,6 @@
 #define XDPTX_VTC_GVSHOFF_F1				0x090
 #define XDPTX_VTC_GASIZE_F1				0x094
 
-/* remapper register map */
-#define XDPTX_REMAP_AP_REG				0x00
-#define XDPTX_REMAP_STOP_CORE				0x80
-#define XDPTX_REMAP_START_CORE				0x81
-
-#define XDPTX_REMAP_WIDTH_REG				0x18
-#define XDPTX_REMAP_HEIGHT_REG				0x10
-#define XDPTX_REMAP_COLORFORMAT_REG			0x20
-#define XDPTX_REMAP_INPIXCLK_REG			0x28
-#define XDPTX_REMAP_OUTPIXCLK_REG			0x30
-
 /*
  * struct xlnx_dp_link_config - Common link config between source and sink
  * @max_rate: Miaximum link rate
@@ -307,7 +296,6 @@ struct xlnx_dp_config {
  * @phy_opts: Opaque generic phy configuration
  * @status: connection status
  * @dp_base: Base address of DisplayPort Tx subsystem
- * @remap_base: Base address of remapper IP
  * @dpms: current dpms state
  * @dpcd: DP configuration data from currently connected sink device
  * @train_set: set of training data
@@ -335,7 +323,6 @@ struct xlnx_dp {
 	union phy_configure_opts phy_opts;
 	enum drm_connector_status status;
 	void __iomem *dp_base;
-	void __iomem *remap_base;
 	int dpms;
 	u8 dpcd[DP_RECEIVER_CAP_SIZE];
 	u8 train_set[XDPTX_MAX_LANES];
@@ -371,13 +358,6 @@ static void xlnx_dp_set(void __iomem *base, int offset, u32 set)
 static void xlnx_dp_clr(void __iomem *base, int offset, u32 clr)
 {
 	xlnx_dp_write(base, offset, xlnx_dp_read(base, offset) & ~clr);
-}
-
-static void xlnx_dp_remap_reset(struct xlnx_dp *dp)
-{
-	gpiod_set_raw_value(dp->reset_gpio, 0);
-	udelay(1);
-	gpiod_set_raw_value(dp->reset_gpio, 1);
 }
 
 static void xlnx_dp_vtc_set_timing(struct xlnx_dp *dp,
@@ -1768,21 +1748,6 @@ xlnx_dp_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	clk_set_rate(dp->tx_vid_clk, clock / dp->config.ppc);
 
 	xlnx_dp_vtc_set_timing(dp, adjusted_mode);
-	/* reset and configure the remapper IP */
-	xlnx_dp_remap_reset(dp);
-	xlnx_dp_write(dp->remap_base,
-		      XDPTX_REMAP_WIDTH_REG, adjusted_mode->hdisplay);
-	xlnx_dp_write(dp->remap_base,
-		      XDPTX_REMAP_HEIGHT_REG, adjusted_mode->vdisplay);
-	xlnx_dp_write(dp->remap_base,
-		      XDPTX_REMAP_COLORFORMAT_REG, dp->config.fmt);
-	xlnx_dp_write(dp->remap_base, XDPTX_REMAP_INPIXCLK_REG, 4);
-	xlnx_dp_write(dp->remap_base,
-		      XDPTX_REMAP_OUTPIXCLK_REG, dp->config.ppc);
-	xlnx_dp_write(dp->remap_base,
-		      XDPTX_REMAP_AP_REG, XDPTX_REMAP_STOP_CORE);
-	xlnx_dp_write(dp->remap_base,
-		      XDPTX_REMAP_AP_REG, XDPTX_REMAP_START_CORE);
 }
 
 static const struct drm_encoder_funcs xlnx_dp_encoder_funcs = {
@@ -2029,13 +1994,6 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "remap_base");
-	dp->remap_base = devm_ioremap_resource(dp->dev, res);
-	if (IS_ERR(dp->remap_base)) {
-		dev_err(&pdev->dev, "Couldn't map remapper IP\n");
-		return -ENOENT;
-	}
-
 	ret = xlnx_dp_parse_of(dp);
 	if (ret < 0)
 		return ret;
@@ -2055,17 +2013,6 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 	dp->tx_link_config.vs_level = 0;
 	dp->tx_link_config.pe_level = 0;
 
-	dp->reset_gpio = devm_gpiod_get(&pdev->dev, "reset", GPIOD_OUT_HIGH);
-	if (IS_ERR(dp->reset_gpio)) {
-		ret = PTR_ERR(dp->reset_gpio);
-		if (ret == -EPROBE_DEFER)
-			dev_dbg(&pdev->dev,
-				"No gpio probed for remapper-tx. Deferring\n");
-		else
-			dev_err(&pdev->dev,
-				"No reset gpio from dts for remapper-tx\n");
-		return ret;
-	}
 	/* acquire vphy lanes */
 	for (i = 0; i < dp->config.max_lanes; i++) {
 		char phy_name[16];
@@ -2103,7 +2050,6 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 		goto tx_vid_clk_err;
 	}
 
-	xlnx_dp_remap_reset(dp);
 	dp->aux.name = "Xlnx DP AUX";
 	dp->aux.dev = dp->dev;
 	dp->aux.transfer = xlnx_dp_aux_transfer;
@@ -2150,7 +2096,7 @@ static int xlnx_dp_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id xlnx_dp_of_match[] = {
-	{ .compatible = "xlnx,v-dp-txss-2.1", },
+	{ .compatible = "xlnx,v-dp-txss-3.0", },
 	{ /* end of table */ }
 };
 MODULE_DEVICE_TABLE(of, xlnx_dp_of_match);
