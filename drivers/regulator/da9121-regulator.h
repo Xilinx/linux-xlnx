@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0+
+/* SPDX-License-Identifier: GPL-2.0+ */
 /*
  * DA9121 Single-channel dual-phase 10A buck converter
  * DA9130 Single-channel dual-phase 10A buck converter (Automotive)
@@ -7,7 +7,7 @@
  * DA9131 Dual-channel single-phase  5A buck converter (Automotive)
  * DA9220 Dual-channel single-phase  3A buck converter
  * DA9132 Dual-channel single-phase  3A buck converter (Automotive)
- * 
+ *
  * Copyright (C) 2020  Dialog Semiconductor
  *
  * Authors: Steve Twiss, Dialog Semiconductor
@@ -17,8 +17,10 @@
 #ifndef __DA9121_REGISTERS_H__
 #define __DA9121_REGISTERS_H__
 
-/* Values for: DA9121_REG_BUCK_BUCKx_4 registers, fields CHx_y_MODE
- *             DA9121_REG_BUCK_BUCKx_7 registers, fields CHx_RIPPLE_CANCEL */
+/*
+ * Values for: DA9121_REG_BUCK_BUCKx_4 registers, fields CHx_y_MODE
+ *             DA9121_REG_BUCK_BUCKx_7 registers, fields CHx_RIPPLE_CANCEL
+ */
 #include <dt-bindings/regulator/dlg,da9121-regulator.h>
 
 /* Registers */
@@ -26,8 +28,8 @@
 #define DA9121_REG_SYS_STATUS_0		0x01
 #define DA9121_REG_SYS_STATUS_1		0x02
 #define DA9121_REG_SYS_STATUS_2		0x03
-#define DA9121_REG_SYS_EVENT_0 		0x04
-#define DA9121_REG_SYS_EVENT_1 		0x05
+#define DA9121_REG_SYS_EVENT_0		0x04
+#define DA9121_REG_SYS_EVENT_1		0x05
 #define DA9121_REG_SYS_EVENT_2		0x06
 #define DA9121_REG_SYS_MASK_0		0x07
 #define DA9121_REG_SYS_MASK_1		0x08
@@ -197,42 +199,41 @@
 
 /* DA9121_REG_BUCK_BUCK1_0 / DA9xxx_REG_BUCK_BUCK2_0 */
 
-#define DA9121_MASK_BUCK_BUCKx_0_CHx_SR_DVC_DWN		0x70
-#define DA9121_MASK_BUCK_BUCKx_0_CHx_SR_DVC_UP		0x0E
-#define DA9121_MASK_BUCK_BUCKx_0_CHx_EN			BIT(0)
+#define DA9121_MASK_BUCK_BUCKX_0_CHX_SR_DVC_DWN		0x70
+#define DA9121_MASK_BUCK_BUCKX_0_CHX_SR_DVC_UP		0x0E
+#define DA9121_MASK_BUCK_BUCKX_0_CHX_EN			BIT(0)
 
 /* DA9121_REG_BUCK_BUCK1_1 / DA9xxx_REG_BUCK_BUCK2_1 */
 
-#define DA9121_MASK_BUCK_BUCKx_1_CHx_SR_SHDN		0x70
-#define DA9121_MASK_BUCK_BUCKx_1_CHx_SR_STARTUP		0x0E
-#define DA9121_MASK_BUCK_BUCKx_1_CHx_PD_DIS		BIT(0)
+#define DA9121_MASK_BUCK_BUCKX_1_CHX_SR_SHDN		0x70
+#define DA9121_MASK_BUCK_BUCKX_1_CHX_SR_STARTUP		0x0E
+#define DA9121_MASK_BUCK_BUCKX_1_CHX_PD_DIS		BIT(0)
 
 /* DA9121_REG_BUCK_BUCK1_2 / DA9xxx_REG_BUCK_BUCK2_2 */
 
-#define DA9121_MASK_BUCK_BUCKx_2_CHx_ILIM		0x0F
+#define DA9121_MASK_BUCK_BUCKX_2_CHX_ILIM		0x0F
 
 /* DA9121_REG_BUCK_BUCK1_3 / DA9xxx_REG_BUCK_BUCK2_3 */
 
-#define DA9121_MASK_BUCK_BUCKx_3_CHx_VMAX		0xFF
+#define DA9121_MASK_BUCK_BUCKX_3_CHX_VMAX		0xFF
 
 /* DA9121_REG_BUCK_BUCK1_4 / DA9xxx_REG_BUCK_BUCK2_4 */
 
-#define DA9121_MASK_BUCK_BUCKx_4_CHx_VSEL		BIT(4)
-#define DA9121_MASK_BUCK_BUCKx_4_CHx_B_MODE		0x0C
-#define DA9121_MASK_BUCK_BUCKx_4_CHx_A_MODE		0x03
+#define DA9121_MASK_BUCK_BUCKX_4_CHX_VSEL		BIT(4)
+#define DA9121_MASK_BUCK_BUCKX_4_CHX_B_MODE		0x0C
+#define DA9121_MASK_BUCK_BUCKX_4_CHX_A_MODE		0x03
 
 /* DA9121_REG_BUCK_BUCK1_5 / DA9xxx_REG_BUCK_BUCK2_5 */
 
-#define DA9121_MASK_BUCK_BUCKx_5_CHx_A_VOUT		0xFF
+#define DA9121_MASK_BUCK_BUCKX_5_CHX_A_VOUT		0xFF
 
 /* DA9121_REG_BUCK_BUCK1_6 / DA9xxx_REG_BUCK_BUCK2_6 */
 
-#define DA9121_MASK_BUCK_BUCKx_6_CHx_B_VOUT		0xFF
+#define DA9121_MASK_BUCK_BUCKX_6_CHX_B_VOUT		0xFF
 
 /* DA9121_REG_BUCK_BUCK1_7 / DA9xxx_REG_BUCK_BUCK2_7 */
 
-#define DA9xxx_MASK_BUCK_BUCKx_7_CHx_RIPPLE_CANCEL	0x03
-
+#define DA9xxx_MASK_BUCK_BUCKX_7_CHX_RIPPLE_CANCEL	0x03
 
 /* DA9121_REG_OTP_DEVICE_ID */
 
