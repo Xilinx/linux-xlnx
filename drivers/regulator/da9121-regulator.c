@@ -745,9 +745,9 @@ static inline int da9121_handle_notifier(
 			break;
 		}
 
-		mutex_lock(&rdev->mutex);
+		regulator_lock(rdev);
 		regulator_notifier_call_chain(rdev, notification, NULL);
-		mutex_unlock(&rdev->mutex);
+		regulator_unlock(rdev);
 	}
 
 error:
