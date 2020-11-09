@@ -21,7 +21,7 @@
 #include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/of_device.h>
-#include <linux/of_gpio.h>
+#include <linux/gpio/consumer.h>
 #include <linux/regulator/driver.h>
 #include <linux/regmap.h>
 #include <linux/regulator/of_regulator.h>
@@ -74,7 +74,7 @@ enum {
 /* Device tree data */
 struct da9121_dt_data {
 	unsigned int num_matches;
-	int gpio_ren[DA9121_MAX_REGULATORS];
+	struct gpio_desc *gpiod_ren[DA9121_MAX_REGULATORS];
 	struct device_node *reg_node[DA9121_MAX_REGULATORS];
 	struct regulator_init_data *init_data[DA9121_MAX_REGULATORS];
 };
@@ -640,8 +640,14 @@ static int da9121_parse_regulators_dt(struct da9121 *chip)
 
 		data->init_data[n] = da9121_matches[i].init_data;
 		data->reg_node[n] = da9121_matches[i].of_node;
-		data->gpio_ren[n] = of_get_named_gpio(da9121_matches[i].of_node,
-						      "dlg,enable-gpio", 0);
+		data->gpiod_ren[n] = devm_gpiod_get_from_of_node(chip->dev,
+								 da9121_matches[i].of_node,
+								 "enable-gpio",
+								 0,
+								 GPIOD_OUT_HIGH,
+								 "da9121-enable");
+		if (IS_ERR(data->gpiod_ren[n]))
+			 data->gpiod_ren[n] = NULL;
 
 		if(variant_parameters[chip->variant_id].num_bucks == 2)
 		{
@@ -997,7 +1003,6 @@ static int da9121_set_regulator_config(struct da9121 *chip)
 	{
 		struct regulator_desc *regl_desc = &local_da9121_regulators[chip->variant_id][i];
 		int id = regl_desc->id;
-		int gpio_ren = chip->dt_data->gpio_ren[id];
 
 		config.init_data = chip->dt_data->init_data[i];
 		config.dev = chip->dev;
@@ -1012,7 +1017,7 @@ static int da9121_set_regulator_config(struct da9121 *chip)
 		case DA9217_ID_BUCK1:
 		case DA9220_DA9132_ID_BUCK2:
 		case DA9122_DA9131_ID_BUCK2:
-			config.ena_gpio = gpio_ren;
+			config.ena_gpiod = chip->dt_data->gpiod_ren[i];
 			break;
 		default:
 			dev_err(chip->dev, "Invalid regulator ID\n");
