@@ -1639,39 +1639,6 @@ static irqreturn_t axienet_eth_irq(int irq, void *_ndev)
 	return IRQ_HANDLED;
 }
 
-static int axienet_mii_init(struct net_device *ndev)
-{
-	struct axienet_local *lp = netdev_priv(ndev);
-	int ret;
-
-	/* Disable the MDIO interface till Axi Ethernet Reset is completed.
-	 * When we do an Axi Ethernet reset, it resets the complete core
-	 * including the MDIO. MDIO must be disabled before resetting
-	 * and re-enabled afterwards.
-	 * Hold MDIO bus lock to avoid MDIO accesses during the reset.
-	 */
-
-	mutex_lock(&lp->mii_bus->mdio_lock);
-	ret = axienet_mdio_wait_until_ready(lp);
-	if (ret < 0) {
-		mutex_unlock(&lp->mii_bus->mdio_lock);
-		return ret;
-	}
-	axienet_mdio_disable(lp);
-	axienet_device_reset(ndev);
-	ret = axienet_mdio_enable(lp);
-	if (ret < 0) {
-		mutex_unlock(&lp->mii_bus->mdio_lock);
-		return ret;
-	}
-	ret = axienet_mdio_wait_until_ready(lp);
-	mutex_unlock(&lp->mii_bus->mdio_lock);
-	if (ret < 0)
-		return ret;
-
-	return 0;
-}
-
 /**
  * axienet_open - Driver open routine.
  * @ndev:	Pointer to net_device structure
@@ -1694,14 +1661,7 @@ static int axienet_open(struct net_device *ndev)
 
 	dev_dbg(&ndev->dev, "axienet_open()\n");
 
-	if (lp->axienet_config->mactype == XAXIENET_10G_25G ||
-	    lp->axienet_config->mactype == XAXIENET_MRMAC)
-		axienet_device_reset(ndev);
-	else
-		ret = axienet_mii_init(ndev);
-
-	if (ret < 0)
-		return ret;
+	axienet_device_reset(ndev);
 
 	if (lp->phy_node) {
 		phydev = of_phy_connect(lp->ndev, lp->phy_node,
@@ -1951,23 +1911,7 @@ static int axienet_stop(struct net_device *ndev)
 				sr = axienet_dma_in32(q, XAXIDMA_TX_SR_OFFSET);
 			}
 
-			/* Do a reset to ensure DMA is really stopped */
-			if (lp->axienet_config->mactype != XAXIENET_10G_25G &&
-			    lp->axienet_config->mactype != XAXIENET_MRMAC) {
-				int ret;
-				mutex_lock(&lp->mii_bus->mdio_lock);
-				axienet_mdio_disable(lp);
-				__axienet_device_reset(q);
-				ret = axienet_mdio_enable(lp);
-				mutex_unlock(&lp->mii_bus->mdio_lock);
-				if (ret < 0) {
-					free_irq(q->tx_irq, ndev);
-					return ret;
-				}
-			} else {
-				__axienet_device_reset(q);
-			}
-
+			__axienet_device_reset(q);
 			free_irq(q->tx_irq, ndev);
 		}
 
