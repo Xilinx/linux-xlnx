@@ -40,8 +40,8 @@
 /* Device ID list */
 #define DA9121_DEVICE_ID	0x05
 #define DA9121_VARIANT_MRC_BASE	0x2
-#define DA9121_VARIANT_VRC	0x1
-#define DA9220_VARIANT_VRC	0x0
+#define DA9130_VARIANT_VRC	0X0
+#define DA9131_VARIANT_VRC	0X1
 #define DA9122_VARIANT_VRC	0x2
 #define DA9217_VARIANT_VRC	0x7
 
@@ -1201,15 +1201,11 @@ static int da9121_get_device_type(struct i2c_client *i2c, struct da9121 *chip)
 	variant_vrc = variant_id & DA9121_MASK_OTP_VARIANT_ID_VRC;
 
 	switch (variant_vrc) {
-	case DA9121_VARIANT_VRC:
+	case DA9130_VARIANT_VRC:
 		type = "DA9121/DA9130";
 		device_config_match = ( chip->variant_id == DA9121_TYPE_DA9121_DA9130);
 		break;
-	case DA9220_VARIANT_VRC:
-		type = "DA9220/DA9132";
-		device_config_match = ( chip->variant_id == DA9121_TYPE_DA9220_DA9132);
-		break;
-	case DA9122_VARIANT_VRC:
+	case DA9131_VARIANT_VRC:
 		type = "DA9122/DA9131";
 		device_config_match = ( chip->variant_id == DA9121_TYPE_DA9122_DA9131);
 		break;
