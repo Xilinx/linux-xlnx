@@ -21,6 +21,7 @@
 #include <crypto/hash.h>
 #include <crypto/internal/hash.h>
 #include <linux/firmware/xlnx-zynqmp.h>
+#include <linux/mutex.h>
 
 #define ZYNQMP_SHA3_INIT	1
 #define ZYNQMP_SHA3_UPDATE	2
@@ -61,6 +62,8 @@ struct zynqmp_sha_drv {
 	struct list_head	dev_list;
 	/* the lock protects queue and dev list*/
 	spinlock_t		lock;
+	/* the hw_engine_mutex makes the driver thread-safe */
+	struct mutex		hw_engine_mutex;
 };
 
 static struct zynqmp_sha_drv zynqmp_sha = {
@@ -96,8 +99,13 @@ static int zynqmp_sha_init(struct ahash_request *req)
 	dev_dbg(dd->dev, "init: digest size: %d\n",
 		crypto_ahash_digestsize(tfm));
 
+	ret = mutex_lock_interruptible(&zynqmp_sha.hw_engine_mutex);
+	if (ret)
+		goto end;
+
 	ret = eemi_ops->sha_hash(0, 0, ZYNQMP_SHA3_INIT);
 
+end:
 	return ret;
 }
 
@@ -124,8 +132,14 @@ static int zynqmp_sha_update(struct ahash_request *req)
 	 __flush_cache_user_range((unsigned long)kbuf,
 				  (unsigned long)kbuf + dma_size);
 	ret = eemi_ops->sha_hash(dma_addr, req->nbytes, ZYNQMP_SHA3_UPDATE);
+	if (ret) {
+		mutex_unlock(&zynqmp_sha.hw_engine_mutex);
+		goto end;
+	}
+
 	dma_free_coherent(dd->dev, dma_size, kbuf, dma_addr);
 
+end:
 	return ret;
 }
 
@@ -149,6 +163,7 @@ static int zynqmp_sha_final(struct ahash_request *req)
 	memcpy(req->result, kbuf, 48);
 	dma_free_coherent(dd->dev, dma_size, kbuf, dma_addr);
 
+	mutex_unlock(&zynqmp_sha.hw_engine_mutex);
 	return ret;
 }
 
@@ -243,6 +258,7 @@ static int zynqmp_sha_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, sha_dd);
 	INIT_LIST_HEAD(&sha_dd->list);
 	spin_lock_init(&sha_dd->lock);
+	mutex_init(&zynqmp_sha.hw_engine_mutex);
 	crypto_init_queue(&sha_dd->queue, ZYNQMP_SHA_QUEUE_LENGTH);
 	spin_lock(&zynqmp_sha.lock);
 	list_add_tail(&sha_dd->list, &zynqmp_sha.dev_list);
