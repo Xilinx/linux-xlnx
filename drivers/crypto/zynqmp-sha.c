@@ -129,8 +129,8 @@ static int zynqmp_sha_update(struct ahash_request *req)
 		return -ENOMEM;
 
 	scatterwalk_map_and_copy(kbuf, req->src, 0, req->nbytes, 0);
-	 __flush_cache_user_range((unsigned long)kbuf,
-				  (unsigned long)kbuf + dma_size);
+	__flush_cache_user_range((unsigned long)kbuf,
+				 (unsigned long)kbuf + dma_size);
 	ret = eemi_ops->sha_hash(dma_addr, req->nbytes, ZYNQMP_SHA3_UPDATE);
 	if (ret) {
 		mutex_unlock(&zynqmp_sha.hw_engine_mutex);
