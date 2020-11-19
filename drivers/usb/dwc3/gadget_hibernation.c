@@ -25,24 +25,15 @@
 #include "debug.h"
 #include "io.h"
 
+/* delay - wakeup signal is real or not */
+#define DWC3_WAKEUP_SIGNAL_DELAY	100
+
 /* array of registers to save on hibernation and restore them on wakeup */
 static u32 save_reg_addr[] = {
 	DWC3_DCTL,
 	DWC3_DCFG,
 	DWC3_DEVTEN
 };
-
-/*
- * wait_timeout - Waits until timeout
- * @wait_time: time to wait in jiffies
- */
-static void wait_timeout(unsigned long wait_time)
-{
-	unsigned long timeout = jiffies + wait_time;
-
-	while (!time_after_eq(jiffies, timeout))
-		cpu_relax();
-}
 
 /**
  * save_regs - Saves registers on hibernation
@@ -149,7 +140,7 @@ static int restore_eps(struct dwc3 *dwc)
 		if (!(dep->flags & DWC3_EP_ENABLED))
 			continue;
 
-		ret = __dwc3_gadget_ep_enable(dep, true);
+		ret = __dwc3_gadget_ep_enable(dep, DWC3_DEPCFG_ACTION_RESTORE);
 		if (ret) {
 			dev_err(dwc->dev, "failed to enable %s\n", dep->name);
 			return ret;
@@ -251,7 +242,7 @@ static int restore_ep0(struct dwc3 *dwc)
 		if (!(dep->flags & DWC3_EP_ENABLED))
 			continue;
 
-		ret = __dwc3_gadget_ep_enable(dep, true);
+		ret = __dwc3_gadget_ep_enable(dep, DWC3_DEPCFG_ACTION_RESTORE);
 		if (ret) {
 			dev_err(dwc->dev, "failed to enable %s\n", dep->name);
 			return ret;
@@ -342,7 +333,9 @@ void gadget_hibernation_interrupt(struct dwc3 *dwc)
 			continue;
 
 		if (dep->flags & DWC3_EP_TRANSFER_STARTED)
-			dwc3_stop_active_transfer(dep, false, false);
+			dwc3_stop_active_transfer(dep, false, true);
+
+		dep->flags &= ~DWC3_EP_TRANSFER_STARTED;
 
 		save_endpoint_state(dep);
 	}
@@ -497,7 +490,7 @@ void gadget_wakeup_interrupt(struct dwc3 *dwc)
 	 * As some suprious signals also cause wakeup event, wait for some time
 	 * and check the link state to confirm if the wakeup signal is real
 	 */
-	wait_timeout(msecs_to_jiffies(10));
+	udelay(DWC3_WAKEUP_SIGNAL_DELAY);
 
 	link_state = dwc3_gadget_get_link_state(dwc);
 
