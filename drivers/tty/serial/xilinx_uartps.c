@@ -34,12 +34,12 @@
 #define TX_TIMEOUT		500000
 
 /* Rx Trigger level */
-static int rx_trigger_level = 56;
+static uint rx_trigger_level = 56;
 module_param(rx_trigger_level, uint, 0444);
 MODULE_PARM_DESC(rx_trigger_level, "Rx trigger level, 1-63 bytes");
 
 /* Rx Timeout */
-static int rx_timeout = 10;
+static uint rx_timeout = 10;
 module_param(rx_timeout, uint, 0444);
 MODULE_PARM_DESC(rx_timeout, "Rx timeout, 1-255");
 
