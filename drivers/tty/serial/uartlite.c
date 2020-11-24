@@ -722,8 +722,13 @@ static int __maybe_unused ulite_runtime_resume(struct device *dev)
 {
 	struct uart_port *port = dev_get_drvdata(dev);
 	struct uartlite_data *pdata = port->private_data;
+	int ret;
 
-	clk_enable(pdata->clk);
+	ret = clk_enable(pdata->clk);
+	if (ret) {
+		dev_err(dev, "Cannot enable clock.\n");
+		return ret;
+	}
 	return 0;
 }
 /* ---------------------------------------------------------------------
