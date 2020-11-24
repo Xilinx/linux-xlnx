@@ -1358,12 +1358,18 @@ static int cdns_uart_resume(struct device *device)
 	unsigned long flags = 0;
 	u32 ctrl_reg;
 	int may_wake;
+	int ret;
 
 	may_wake = device_may_wakeup(device);
 
 	if (console_suspend_enabled && uart_console(port) && !may_wake) {
-		clk_enable(cdns_uart->pclk);
-		clk_enable(cdns_uart->uartclk);
+		ret = clk_enable(cdns_uart->pclk);
+		if (ret)
+			return ret;
+
+		ret = clk_enable(cdns_uart->uartclk);
+		if (ret)
+			return ret;
 
 		spin_lock_irqsave(&port->lock, flags);
 
