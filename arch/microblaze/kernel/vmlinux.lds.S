@@ -120,12 +120,6 @@ SECTIONS {
 		CON_INITCALL
 	}
 
-	__init_end_before_initramfs = .;
-
-	.init.ramfs : AT(ADDR(.init.ramfs) - LOAD_OFFSET) {
-		INIT_RAM_FS
-	}
-
 	__init_end = .;
 
 	.bss ALIGN (PAGE_SIZE) : AT(ADDR(.bss) - LOAD_OFFSET) {
@@ -138,6 +132,11 @@ SECTIONS {
 	}
 	. = ALIGN(PAGE_SIZE);
 	_end = .;
+
+	.init.ramfs : AT(ADDR(.init.ramfs) - LOAD_OFFSET) {
+		INIT_RAM_FS
+	}
+	__initramfs_end = . ;
 
 	DISCARDS
 }
