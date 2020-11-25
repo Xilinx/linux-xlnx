@@ -173,9 +173,8 @@ _invalidate:
 	tophys(r4,r3)			/* Load the kernel physical address */
 
 	/* start to do TLB calculation */
-	addik	r12, r0, _end
+	addik	r12, r0, _end_tlb_mapping
 	rsub	r12, r3, r12
-	addik	r12, r12, CONFIG_LOWMEM_SIZE >> PTE_SHIFT /* that's the pad */
 
 	or r9, r0, r0 /* TLB0 = 0 */
 	or r10, r0, r0 /* TLB1 = 0 */
