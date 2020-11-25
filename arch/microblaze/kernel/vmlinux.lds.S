@@ -132,6 +132,10 @@ SECTIONS {
 	}
 	. = ALIGN(PAGE_SIZE);
 	_end = .;
+	/* Add space in TLB mapping for early free pages mapping */
+	. = . + 0x100000; /* CONFIG_LOWMEM_SIZE >> PTE_SHIFT + space */
+
+	_end_tlb_mapping = . ;
 
 	.init.ramfs : AT(ADDR(.init.ramfs) - LOAD_OFFSET) {
 		INIT_RAM_FS
