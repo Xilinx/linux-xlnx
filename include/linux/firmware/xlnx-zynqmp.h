@@ -121,6 +121,8 @@ enum pm_ioctl_id {
 	IOCTL_READ_PGGS = 15,
 	/* Set healthy bit value */
 	IOCTL_SET_BOOT_HEALTH_STATUS = 17,
+	/* AI engine NPI ISR clear */
+	IOCTL_AIE_ISR_CLEAR = 24,
 };
 
 enum pm_query_id {
@@ -389,6 +391,7 @@ int zynqmp_pm_request_wake(const u32 node,
 int zynqmp_pm_get_rpu_mode(u32 node_id, enum rpu_oper_mode *rpu_mode);
 int zynqmp_pm_set_rpu_mode(u32 node_id, u32 arg1);
 int zynqmp_pm_set_tcm_config(u32 node_id, u32 arg1);
+int zynqmp_pm_clear_aie_npi_isr(u32 node, u32 irq_mask);
 #else
 static inline struct zynqmp_eemi_ops *zynqmp_pm_get_eemi_ops(void)
 {
@@ -602,6 +605,12 @@ static inline int zynqmp_pm_set_tcm_config(u32 node_id, u32 arg1)
 {
 	return -ENODEV;
 }
+
+static inline int zynqmp_pm_clear_aie_npi_isr(u32 node, u32 irq_mask)
+{
+	return -ENODEV;
+}
+
 #endif
 
 #endif /* __FIRMWARE_ZYNQMP_H__ */
