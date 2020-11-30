@@ -733,6 +733,20 @@ int zynqmp_pm_set_boot_health_status(u32 value)
 }
 
 /**
+ * zynqmp_pm_clear_aie_npi_isr - Clear AI engine NPI interrupt status register
+ * @node:	AI engine node id
+ * @irq_mask:	Mask of AI engine NPI interrupt bit to clear
+ *
+ * Return: Returns status, either success or error+reason
+ */
+int zynqmp_pm_clear_aie_npi_isr(u32 node, u32 irq_mask)
+{
+	return zynqmp_pm_invoke_fn(PM_IOCTL, node, IOCTL_AIE_ISR_CLEAR,
+				   irq_mask, 0, NULL);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_clear_aie_npi_isr);
+
+/**
  * zynqmp_pm_reset_assert - Request setting of reset (1 - assert, 0 - release)
  * @reset:		Reset to be configured
  * @assert_flag:	Flag stating should reset be asserted (1) or
