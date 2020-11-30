@@ -1,0 +1,224 @@
+# SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: "http://devicetree.org/schemas/remoteproc/xilinx,zynqmp-r5-remoteproc.yaml#"
+$schema: "http://devicetree.org/meta-schemas/core.yaml#"
+
+title: Xilinx R5 remote processor controller bindings
+
+description:
+  This document defines the binding for the remoteproc component that loads and
+  boots firmwares on the Xilinx Zynqmp and Versal family chipsets.
+
+  Note that the Linux has global addressing view of the R5-related memory (TCM)
+  so the absolute address ranges are provided in TCM reg's.
+
+maintainers:
+  - Ed Mooring <ed.mooring@xilinx.com>
+  - Ben Levinsky <ben.levinsky@xilinx.com>
+
+properties:
+  $nodename:
+    pattern: "^r5fss(@.*)?"
+
+  compatible:
+    enum:
+      - xlnx,zynqmp-r5-remoteproc
+      - xlnx,versal-r5-remoteproc
+
+  reg:
+    items:
+      - description: Address and Size of Xilinx RPU Configuration register
+
+  "#address-cells":
+    const: 2
+
+  "#size-cells":
+    const: 2
+
+  ranges: true
+
+# Optional properties:
+# --------------------
+  xlnx,cluster-mode:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [0, 1]
+    description: |
+      Configuration Mode for the Dual R5F cores within the R5F cluster.
+      Should be either a value of 1 (LockStep mode) or 0 (Split mode),
+      default is LockStep mode if omitted.
+
+
+#R5F Processor Child Nodes:
+# ==========================
+
+patternProperties:
+  "^r5f_[a-f0-9]+$":
+    type: object
+    description: |
+      The R5F Sub-System device node should define one or two R5F child nodes,
+      each node representing a Xilinx instantiation of the Arm Cortex R5F core.
+      There should be one or two child nodes if the R5F is in Split mode and
+      one child node if the R5F is in Lockstep mode.
+
+      In Split mode each R5F core has two associated TCM Banks. R5_0 has
+      TCM Banks 0A and 0B and R5_1 has TCM Banks 1A and 1B.
+
+      In Lockstep mode only one R5F child node should be defined. This one
+      child has access to TCM Banks 0A, 0B, 1A and 1B and any of the four can
+      be included in the child R5F's sram property.
+
+      The example below shows Split mode with two child nodes.
+
+    properties:
+      compatible:
+        enum:
+          - xilinx,r5f
+
+# The following properties are mandatory for R5F Core0 in both LockStep and Split
+# modes, and are mandatory for R5F Core1 _only_ in Split mode.
+
+      memory-region:
+        description: |
+          Phandles to the memory nodes to be associated with the
+          The reserved memory nodes should be carveout nodes, and
+          should be defined with a "no-map" property as per the bindings in
+          Documentation/devicetree/bindings/reserved-memory/reserved-memory.txt
+        minItems: 1
+        maxItems: 6
+        items:
+          - description: Region used for dynamic DMA allocations like vrings and
+                         vring buffers
+          - description: region reserved for firmware image sections
+        additionalItems: true
+
+      power-domain:
+        description: |
+          Power node ID that is used to uniquely identify the RPU for Xilinx
+          Power Management.
+        maxItems: 1
+
+# Optional properties:
+# --------------------
+# The following properties are optional properties for each of the R5F cores:
+
+      mboxes:
+        description: |
+          Standard property to specify a mailbox
+          This property is required only if the rpmsg/virtio functionality
+          is used
+
+           Refer to the zynqmp-ipi-mailbox documentation for client usage of this
+           property
+        maxItems: 1
+
+      mbox-names:
+        description: |
+          Refer to the zynqmp-ipi-mailbox documentation for client usage of this
+          property
+        items:
+          - const: tx
+          - const: rx
+
+      sram:
+        $ref: /schemas/types.yaml#/definitions/phandle-array
+        minItems: 1
+        maxItems: 4
+        description: |
+          Phandles to one or more reserved on-chip SRAM regions. The regions
+          should be defined as child nodes of the respective SRAM node, and
+          should be defined as per the generic bindings in,
+          Documentation/devicetree/bindings/sram/sram.yaml
+
+    required:
+      - compatible
+      - power-domain
+
+    unevaluatedProperties: false
+
+required:
+  - reg
+  - compatible
+  - "#address-cells"
+  - "#size-cells"
+  - ranges
+
+additionalProperties: false
+
+examples:
+  - |
+    / {
+        compatible = "xlnx,zynqmp-zcu102-rev1.0", "xlnx,zynqmp-zcu102", "xlnx,zynqmp";
+        #address-cells = <2>;
+        #size-cells = <2>;
+        model = "ZynqMP ZCU102 ";
+
+        zynqmp_ipi1 {
+          compatible = "xlnx,zynqmp-ipi-mailbox";
+          interrupt-parent = <&gic>;
+          interrupts = <0 33 4>;
+          xlnx,ipi-id = <5>;
+          #address-cells = <1>;
+          #size-cells = <0>;
+
+          ipi_mailbox_rpu0: mailbox@ff990600 {
+            reg = <0xff990600 0x20>,
+                  <0xff990620 0x20>,
+                  <0xff9900c0 0x20>,
+                  <0xff9900e0 0x20>;
+            reg-names = "local_request_region",
+            "local_response_region",
+            "remote_request_region",
+            "remote_response_region";
+            #mbox-cells = <1>;
+            xlnx,ipi-id = <3>;
+          };
+          ipi_mailbox_rpu1: mailbox@ff990780 {
+            reg = <0xff990780 0x20>,
+                  <0xff9907a0 0x20>,
+                  <0xff9907c0 0x20>,
+                  <0xff9905a0 0x20>;
+            reg-names = "local_request_region",
+            "local_response_region",
+            "remote_request_region",
+            "remote_response_region";
+            #mbox-cells = <1>;
+            xlnx,ipi-id = <3>;
+          };
+        };
+
+        r5fss@ff9a0000 {
+          compatible = "xlnx,zynqmp-r5-remoteproc";
+          #address-cells = <2>;
+          #size-cells = <2>;
+          ranges;
+          reg = <0x0 0xff9a0000 0x0 0x10000>;
+          xlnx,cluster-mode = <0>;
+
+          r5f_0 {
+               compatible = "xilinx,r5f";
+               memory-region = <&elf_load0>,
+                               <&rpu0vdev0vring0>,
+                               <&rpu0vdev0vring1>,
+                               <&rpu0vdev0buffer>;
+               sram = <&tcm_0a>, <&tcm_0b>;
+               mboxes = <&ipi_mailbox_rpu0 0x0 &ipi_mailbox_rpu0 0x1>;
+               mbox-names = "tx", "rx";
+               power-domain = <0x7>;
+          };
+          r5f_1 {
+               compatible = "xilinx,r5f";
+               memory-region = <&elf_load1>,
+                               <&rpu1vdev0vring0>,
+                               <&rpu1vdev0vring1>,
+                               <&rpu1vdev0buffer>;
+               sram = <&tcm_1a>, <&tcm_1b>;
+               mboxes = <&ipi_mailbox_rpu1 0x0 &ipi_mailbox_rpu1 0x1>;
+               mbox-names = "tx", "rx";
+               power-domain = <0x8>;
+          };
+
+        };
+    };
+
+...
