@@ -2,7 +2,7 @@
 /*
  * dts file for Xilinx ZynqMP zc1751-xm017-dc3
  *
- * (C) Copyright 2016 - 2019, Xilinx, Inc.
+ * (C) Copyright 2016 - 2020, Xilinx, Inc.
  *
  * Michal Simek <michal.simek@xilinx.com>
  */
@@ -18,12 +18,15 @@
 
 	aliases {
 		ethernet0 = &gem0;
+		gpio0 = &gpio;
 		i2c0 = &i2c0;
 		i2c1 = &i2c1;
 		mmc0 = &sdhci1;
 		rtc0 = &rtc;
 		serial0 = &uart0;
 		serial1 = &uart1;
+		usb0 = &usb0;
+		usb1 = &usb1;
 	};
 
 	chosen {
@@ -105,6 +108,63 @@
 &i2c1 {
 	status = "okay";
 	clock-frequency = <400000>;
+};
+
+/* MT29F64G08AECDBJ4-6 */
+&nand0 {
+	status = "okay";
+	arasan,has-mdma;
+	num-cs = <2>;
+
+	partition@0 {	/* for testing purpose */
+		label = "nand-fsbl-uboot";
+		reg = <0x0 0x0 0x400000>;
+	};
+	partition@1 {	/* for testing purpose */
+		label = "nand-linux";
+		reg = <0x0 0x400000 0x1400000>;
+	};
+	partition@2 {	/* for testing purpose */
+		label = "nand-device-tree";
+		reg = <0x0 0x1800000 0x400000>;
+	};
+	partition@3 {	/* for testing purpose */
+		label = "nand-rootfs";
+		reg = <0x0 0x1C00000 0x1400000>;
+	};
+	partition@4 {	/* for testing purpose */
+		label = "nand-bitstream";
+		reg = <0x0 0x3000000 0x400000>;
+	};
+	partition@5 {	/* for testing purpose */
+		label = "nand-misc";
+		reg = <0x0 0x3400000 0xFCC00000>;
+	};
+
+	partition@6 {	/* for testing purpose */
+		label = "nand1-fsbl-uboot";
+		reg = <0x1 0x0 0x400000>;
+	};
+	partition@7 {	/* for testing purpose */
+		label = "nand1-linux";
+		reg = <0x1 0x400000 0x1400000>;
+	};
+	partition@8 {	/* for testing purpose */
+		label = "nand1-device-tree";
+		reg = <0x1 0x1800000 0x400000>;
+	};
+	partition@9 {	/* for testing purpose */
+		label = "nand1-rootfs";
+		reg = <0x1 0x1C00000 0x1400000>;
+	};
+	partition@10 {	/* for testing purpose */
+		label = "nand1-bitstream";
+		reg = <0x1 0x3000000 0x400000>;
+	};
+	partition@11 {	/* for testing purpose */
+		label = "nand1-misc";
+		reg = <0x1 0x3400000 0xFCC00000>;
+	};
 };
 
 &rtc {
