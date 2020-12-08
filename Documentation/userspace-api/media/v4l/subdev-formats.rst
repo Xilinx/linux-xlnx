@@ -1602,7 +1602,7 @@ The following tables list existing packed RGB formats.
     * .. _MEDIA-BUS-FMT-RBG101010-1X30:
 
       - MEDIA_BUS_FMT_RBG101010_1X30
-      - 0x101b
+      - 0x1100
       -
       - 0
       - 0
@@ -1746,7 +1746,7 @@ The following table list existing packed 36bit wide RGB formats.
     * .. _MEDIA-BUS-FMT-RBG121212-1X36:
 
       - MEDIA_BUS_FMT_RBG121212_1X36
-      - 0x101c
+      - 0x1101
       -
       - r\ :sub:`11`
       - r\ :sub:`10`
@@ -1956,7 +1956,7 @@ The following table list existing packed 48bit wide RGB formats.
     * .. _MEDIA-BUS-FMT-RBG161616-1X48:
 
       - MEDIA_BUS_FMT_RBG161616_1X48
-      - 0x101d
+      - 0x1102
       -
       -
       -
@@ -5408,7 +5408,7 @@ the following codes.
     * .. _MEDIA-BUS-FMT-VYYUYY10_4X20:
 
       - MEDIA_BUS_FMT_VYYUYY10_4X20
-      - 0x2031
+      - 0x2101
       -
       -
       -
@@ -7344,7 +7344,7 @@ the following codes.
     * .. _MEDIA-BUS-FMT-UYYVYY12-4X24:
 
       - MEDIA_BUS_FMT_UYYVYY12_4X24
-      - 0x202d
+      - 0x2103
       -
       -
       -
@@ -7486,7 +7486,7 @@ the following codes.
     * .. _MEDIA-BUS-FMT-VYYUYY8-1X24:
 
       - MEDIA_BUS_FMT_VYYUYY8_1X24
-      - 0x202c
+      - 0x2100
       -
       -
       -
@@ -7560,7 +7560,7 @@ the following codes.
     * .. _MEDIA-BUS-FMT-VUY10-1X30:
 
       - MEDIA_BUS_FMT_VUY10_1X30
-      - 0x2032
+      - 0x2102
       -
       -
       -
@@ -7669,7 +7669,7 @@ the following codes.
     * .. _MEDIA-BUS-FMT-Y16-1X16:
 
       - MEDIA_BUS_FMT_Y16_1X16
-      - 0x202d
+      - 0x2105
       -
       -
       -
@@ -7743,7 +7743,7 @@ the following codes.
     * .. _MEDIA-BUS-FMT-UYYVYY16-4X32:
 
       - MEDIA_BUS_FMT_UYYVYY16_4X32
-      - 0x202f
+      - 0x2106
       -
       - u\ :sub:`15`
       - u\ :sub:`14`
@@ -7885,7 +7885,7 @@ the following codes.
     * .. _MEDIA-BUS-FMT-UYVY16-2X32:
 
       - MEDIA_BUS_FMT_UYVY16_2X32
-      - 0x2030
+      - 0x2108
       -
       - u\ :sub:`15`
       - u\ :sub:`14`
@@ -8145,7 +8145,7 @@ The following table list existing packed 36bit wide YUV formats.
     * .. _MEDIA-BUS-FMT-VUY12-1X36:
 
       - MEDIA_BUS_FMT_VUY12_1X36
-      - 0x2033
+      - 0x2104
       -
       - v\ :sub:`11`
       - v\ :sub:`10`
@@ -8356,7 +8356,7 @@ The following table list existing packed 48bit wide YUV formats.
     * .. _MEDIA-BUS-FMT-VUY16-1X48:
 
       - MEDIA_BUS_FMT_VUY16_1X48
-      - 0x2034
+      - 0x2107
       -
       -
       -
