@@ -561,4 +561,15 @@ config EDAC_DMC520
 	  Support for error detection and correction on the
 	  SoCs with ARM DMC-520 DRAM controller.
 
+config EDAC_XILINX_DDR
+	tristate "Xilinx Versal DDR Memory Controller"
+	depends on ARCH_ZYNQMP
+	help
+	  Support for error detection and correction on the Xilinx Versal DDR
+	  memory controller.
+
+	  Report both Single Bit Errors (CE) and Double Bit Errors (UE).
+	  Support injecting both Correctable and UnCorrectable errors for debug
+	  purpose using sysfs entries.
+
 endif # EDAC
