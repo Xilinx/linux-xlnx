@@ -22686,6 +22686,14 @@ M:	Harsha <harsha.harsha@xilinx.com>
 S:	Maintained
 F:	drivers/crypto/xilinx/zynqmp-sha.c
 
+XILINX VERSAL DDRMC EDAC DRIVER
+M:	Sai Krishna Potthuri <lakshmi.sai.krishna.potthuri@xilinx.com>
+R:	Michal Simek <michal.simek@xilinx.com>
+R:	Srinivas Goud <srinivas.goud@xilinx.com>
+S:	Maintained
+F:	drivers/edac/xilinx_ddrmc_edac.c
+F:	Documentation/devicetree/bindings/edac/xlnx,versal-ddrmc-edac.yaml
+
 XILINX EVENT MANAGEMENT DRIVER
 M:	Abhyuday Godhasara <abhyuday.godhasara@xilinx.com>
 S:	Maintained
