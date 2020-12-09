@@ -741,6 +741,7 @@ irqreturn_t aie_interrupt(int irq, void *data)
 		if (ret) {
 			dev_err(&apart->dev,
 				"Failed to acquire lock. Process was interrupted by fatal signals\n");
+			mutex_unlock(&adev->mlock);
 			return IRQ_NONE;
 		}
 
