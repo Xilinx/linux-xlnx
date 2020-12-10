@@ -1956,8 +1956,44 @@ static ssize_t config_reg_show(struct kobject *kobj,
 static struct kobj_attribute zynqmp_attr_config_reg =
 					__ATTR_RW(config_reg);
 
+static ssize_t last_reset_reason_show(struct kobject *kobj,
+				      struct kobj_attribute *attr,
+				      char *buf)
+{
+	int ret;
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+
+	ret = zynqmp_pm_get_last_reset_reason(ret_payload);
+	if (ret)
+		return ret;
+	switch (ret_payload[1]) {
+	case PM_RESET_REASON_EXT_POR:
+		return sprintf(buf, "ext_por\n");
+	case PM_RESET_REASON_SW_POR:
+		return sprintf(buf, "sw_por\n");
+	case PM_RESET_REASON_SLR_POR:
+		return sprintf(buf, "sl_por\n");
+	case PM_RESET_REASON_ERR_POR:
+		return sprintf(buf, "err_por\n");
+	case PM_RESET_REASON_DAP_SRST:
+		return sprintf(buf, "dap_srst\n");
+	case PM_RESET_REASON_ERR_SRST:
+		return sprintf(buf, "err_srst\n");
+	case PM_RESET_REASON_SW_SRST:
+		return sprintf(buf, "sw_srst\n");
+	case PM_RESET_REASON_SLR_SRST:
+		return sprintf(buf, "slr_srst\n");
+	default:
+		return sprintf(buf, "unknown reset\n");
+	}
+}
+
+static struct kobj_attribute zynqmp_attr_last_reset_reason =
+					__ATTR_RO(last_reset_reason);
+
 static struct attribute *attrs[] = {
 	&zynqmp_attr_config_reg.attr,
+	&zynqmp_attr_last_reset_reason.attr,
 	NULL,
 };
 
