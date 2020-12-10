@@ -540,6 +540,17 @@ enum ospi_mux_select_type {
 	PM_OSPI_MUX_GET_MODE = 2,
 };
 
+enum pm_reset_reason {
+	PM_RESET_REASON_EXT_POR = 0,
+	PM_RESET_REASON_SW_POR = 1,
+	PM_RESET_REASON_SLR_POR = 2,
+	PM_RESET_REASON_ERR_POR = 3,
+	PM_RESET_REASON_DAP_SRST = 7,
+	PM_RESET_REASON_ERR_SRST = 8,
+	PM_RESET_REASON_SW_SRST = 9,
+	PM_RESET_REASON_SLR_SRST = 10,
+};
+
 /**
  * struct zynqmp_pm_query_data - PM query data
  * @qid:	query ID
