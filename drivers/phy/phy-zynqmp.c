@@ -613,12 +613,20 @@ static int xpsgtr_controller_reset(struct xpsgtr_phy *gtr_phy)
 	switch (gtr_phy->type) {
 	case XPSGTR_TYPE_USB0:
 		ret = xpsgtr_reset_assert(gtr_dev->usb0_crst);
+		if (ret)
+			return ret;
 		ret = xpsgtr_reset_assert(gtr_dev->usb0_hibrst);
+		if (ret)
+			return ret;
 		ret = xpsgtr_reset_assert(gtr_dev->usb0_apbrst);
 		break;
 	case XPSGTR_TYPE_USB1:
 		ret = xpsgtr_reset_assert(gtr_dev->usb1_crst);
+		if (ret)
+			return ret;
 		ret = xpsgtr_reset_assert(gtr_dev->usb1_hibrst);
+		if (ret)
+			return ret;
 		ret = xpsgtr_reset_assert(gtr_dev->usb1_apbrst);
 		break;
 	case XPSGTR_TYPE_SATA_0:
@@ -668,6 +676,8 @@ static int xpsgtr_controller_release_reset(struct xpsgtr_phy *gtr_phy)
 		xpsgtr_config_usbpipe(gtr_phy);
 
 		ret = xpsgtr_reset_release(gtr_dev->usb0_crst);
+		if (ret)
+			return ret;
 		ret = xpsgtr_reset_release(gtr_dev->usb0_hibrst);
 		break;
 	case XPSGTR_TYPE_USB1:
@@ -677,6 +687,8 @@ static int xpsgtr_controller_release_reset(struct xpsgtr_phy *gtr_phy)
 		xpsgtr_config_usbpipe(gtr_phy);
 
 		ret = xpsgtr_reset_release(gtr_dev->usb1_crst);
+		if (ret)
+			return ret;
 		ret = xpsgtr_reset_release(gtr_dev->usb1_hibrst);
 		break;
 	case XPSGTR_TYPE_SATA_0:
