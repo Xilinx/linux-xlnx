@@ -588,7 +588,6 @@ static void xemaclite_rx_handler(struct net_device *dev)
 {
 	struct net_local *lp = netdev_priv(dev);
 	struct sk_buff *skb;
-	unsigned int align;
 	u32 len;
 
 	len = ETH_FRAME_LEN + ETH_FCS_LEN;
