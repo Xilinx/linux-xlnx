@@ -473,7 +473,7 @@ static int xpsgtr_get_ssc(struct xpsgtr_phy *gtr_phy)
 	 */
 	for (i = 0 ; i < ARRAY_SIZE(ssc_lookup); i++) {
 		if (gtr_phy->refclk_rate == ssc_lookup[i].refclk_rate) {
-			gtr_phy->ref_clk = i;
+			gtr_phy->ref_clk = (enum pll_frequencies)i;
 			return 0;
 		}
 	}
