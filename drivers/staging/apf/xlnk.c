@@ -233,15 +233,12 @@ static int xlnk_allocbuf(struct file *filp, unsigned int len,
 	int id;
 	void *kaddr;
 	dma_addr_t phys_addr_anchor;
-	unsigned long attrs;
-
-	attrs = cacheable ? DMA_ATTR_NON_CONSISTENT : 0;
 
 	kaddr = dma_alloc_attrs(xlnk_dev,
 				len,
 				&phys_addr_anchor,
 				GFP_KERNEL | GFP_DMA,
-				attrs);
+				0);
 	if (!kaddr)
 		return -ENOMEM;
 
@@ -470,8 +467,6 @@ static int xlnk_freebuf(int id)
 	void *alloc_point;
 	dma_addr_t p_addr;
 	size_t buf_len;
-	int cacheable;
-	unsigned long attrs;
 
 	if (id <= 0 || id >= XLNK_BUF_POOL_SIZE)
 		return -ENOMEM;
@@ -487,17 +482,14 @@ static int xlnk_freebuf(int id)
 	xlnk_phyaddr[id] = (dma_addr_t)NULL;
 	xlnk_buflen[id] = 0;
 	xlnk_buf_filp[id] = NULL;
-	cacheable = xlnk_bufcacheable[id];
 	xlnk_bufcacheable[id] = 0;
 	spin_unlock(&xlnk_buf_lock);
-
-	attrs = cacheable ? DMA_ATTR_NON_CONSISTENT : 0;
 
 	dma_free_attrs(xlnk_dev,
 		       buf_len,
 		       alloc_point,
 		       p_addr,
-		       attrs);
+		       0);
 
 	return 0;
 }
