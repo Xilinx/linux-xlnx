@@ -54,7 +54,6 @@ static LIST_HEAD(dma_device_list);
 #define GET_LOW(x) ((u32)((x) & 0xFFFFFFFF))
 #define GET_HI(x) ((u32)((x) / 0x100000000))
 
-static int unpin_user_pages(struct scatterlist *sglist, unsigned int cnt);
 /* Driver functions */
 static void xdma_clean_bd(struct xdma_desc_hw *bd)
 {
@@ -623,12 +622,9 @@ static unsigned int sgl_merge(struct scatterlist *sgl,
 	return sg_merged_num;
 }
 
-static int pin_user_pages(xlnk_intptr_type uaddr,
-			  unsigned int ulen,
-			  int write,
-			  struct scatterlist **scatterpp,
-			  unsigned int *cntp,
-			  unsigned int user_flags)
+static int xdma_pin_user_pages(xlnk_intptr_type uaddr, unsigned int ulen,
+			       int write, struct scatterlist **scatterpp,
+			       unsigned int *cntp, unsigned int user_flags)
 {
 	int status;
 	struct mm_struct *mm = current->mm;
@@ -705,7 +701,7 @@ static int pin_user_pages(xlnk_intptr_type uaddr,
 	return -ENOMEM;
 }
 
-static int unpin_user_pages(struct scatterlist *sglist, unsigned int cnt)
+static int xdma_unpin_user_pages(struct scatterlist *sglist, unsigned int cnt)
 {
 	struct page *pg;
 	unsigned int i;
@@ -868,14 +864,11 @@ int xdma_submit(struct xdma_chan *chan,
 		pagelist = NULL;
 		pagecnt = 0;
 	} else {
-		status = pin_user_pages(userbuf,
-					size,
-					dmadir != DMA_TO_DEVICE,
-					&pagelist,
-					&pagecnt,
-					user_flags);
+		status = xdma_pin_user_pages(userbuf, size,
+					     dmadir != DMA_TO_DEVICE, &pagelist,
+					     &pagecnt, user_flags);
 		if (status < 0) {
-			pr_err("pin_user_pages failed\n");
+			pr_err("xdma_pin_user_pages failed\n");
 			return status;
 		}
 
@@ -886,7 +879,7 @@ int xdma_submit(struct xdma_chan *chan,
 							attrs);
 		if (!status) {
 			pr_err("dma_map_sg failed\n");
-			unpin_user_pages(pagelist, pagecnt);
+			xdma_unpin_user_pages(pagelist, pagecnt);
 			return -ENOMEM;
 		}
 
@@ -899,7 +892,7 @@ int xdma_submit(struct xdma_chan *chan,
 							 pagecnt,
 							 dmadir,
 							 attrs);
-			unpin_user_pages(pagelist, pagecnt);
+			xdma_unpin_user_pages(pagelist, pagecnt);
 			kfree(sglist);
 			return -ENOMEM;
 		}
@@ -930,7 +923,7 @@ int xdma_submit(struct xdma_chan *chan,
 							 pagecnt,
 							 dmadir,
 							 attrs);
-			unpin_user_pages(pagelist, pagecnt);
+			xdma_unpin_user_pages(pagelist, pagecnt);
 		} else if (!dp) {
 			get_dma_ops(chan->dev)->unmap_sg(chan->dev,
 							 sglist,
@@ -984,7 +977,8 @@ int xdma_wait(struct xdma_head *dmahead,
 							 dmahead->pagecnt,
 							 dmahead->dmadir,
 							 attrs);
-			unpin_user_pages(dmahead->pagelist, dmahead->pagecnt);
+			xdma_unpin_user_pages(dmahead->pagelist,
+					      dmahead->pagecnt);
 		}
 	}
 	kfree(dmahead->sglist);
