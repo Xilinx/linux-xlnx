@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/iio/adc/ti,ina260.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Texas Instruments INA260 power monitor
+
+maintainers:
+  - Shubhrajyoti Datta <shubhrajyoti.datta@xilinx.com>
+
+description: |
+  The INA260 is a digital-output, current, power and voltage monitor
+  with an I2C and SMBUS compatible interface with an integrated shunt
+  resistor. It features up to 16 programmable addresses on I2C compatible
+  interface. Datasheet - https://www.ti.com/lit/ds/symlink/ina260.pdf?ts=1608607288391
+
+properties:
+  compatible:
+    enum:
+      - ti,ina260
+
+  reg:
+    description: |
+      The 7-bits long I2c address of the device
+
+  "#io-channel-cells":
+    const: 1
+
+  interrupts:
+    description: |
+      IRQ line for the device
+
+  label:
+    description: |
+      A symbolic name for the device
+
+required:
+  - compatible
+  - reg
+  - "#io-channel-cells"
+
+additionalProperties: false
+
+examples:
+  - |
+    i2c {
+      #address-cells = <1>;
+      #size-cells = <0>;
+
+      ina260@40 {
+        compatible = "ti,ina260";
+        reg = <0x40>;
+        #io-channel-cells = <1>;
+      };
+    };
+...
