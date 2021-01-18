@@ -131,7 +131,6 @@ enum pm_api_id {
 	PM_REGISTER_ACCESS = 52,
 	PM_EFUSE_ACCESS = 53,
 	PM_FEATURE_CHECK = 63,
-	PM_API_MAX,
 };
 
 /* PMU-FW return status codes */
