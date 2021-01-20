@@ -40,6 +40,8 @@ Optional properties:
   - ceva,broken-gen2: limit to gen1 speed instead of gen2.
   - dma-coherent:     Enable this flag if CCI is enabled in design.
 		      Adding this flag configures AXI cache control register.
+  - phys: phandle for the PHY device
+  - resets: phandle to the reset controller for the SATA IP
 
 Examples:
 	ahci@fd0c0000 {
@@ -59,4 +61,6 @@ Examples:
 		ceva,p1-retry-params = /bits/ 16 <0x0216 0x7F06>;
 		ceva,broken-gen2;
 		dma-coherent;
+		phys = <&psgtr 1 PHY_TYPE_SATA 1 1>;
+		resets = <&zynqmp_reset ZYNQMP_RESET_SATA>;
 	};
