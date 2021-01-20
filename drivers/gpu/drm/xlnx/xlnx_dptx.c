@@ -1664,7 +1664,6 @@ static struct drm_connector_helper_funcs xlnx_dp_connector_helper_funcs = {
 static void xlnx_dp_encoder_enable(struct drm_encoder *encoder)
 {
 	struct xlnx_dp *dp = encoder_to_dp(encoder);
-	struct drm_dp_link link;
 	void __iomem *dp_base = dp->dp_base;
 	unsigned int i;
 	int ret = 0;
@@ -1675,10 +1674,26 @@ static void xlnx_dp_encoder_enable(struct drm_encoder *encoder)
 	xlnx_dp_init_aux(dp);
 	if (dp->status == connector_status_connected) {
 		for (i = 0; i < 3; i++) {
-			ret = drm_dp_link_power_down(&dp->aux, &link);
-			ret = drm_dp_link_power_up(&dp->aux, &link);
-			if (ret == 0)
+			u8 value;
+
+			ret = drm_dp_dpcd_readb(&dp->aux, DP_SET_POWER, &value);
+			if (ret < 0)
 				break;
+
+			value &= ~DP_SET_POWER_MASK;
+			value |= DP_SET_POWER_D3;
+			ret = drm_dp_dpcd_writeb(&dp->aux, DP_SET_POWER, value);
+			if (ret < 0)
+				break;
+
+			value &= ~DP_SET_POWER_MASK;
+			value |= DP_SET_POWER_D0;
+			ret = drm_dp_dpcd_writeb(&dp->aux, DP_SET_POWER, value);
+			if (ret == 0) {
+				/* Per DP spec, the sink exits within 1 msec */
+				usleep_range(1000, 2000);
+				break;
+			}
 			usleep_range(300, 500);
 		}
 		/* Some monitors take time to wake up properly */
