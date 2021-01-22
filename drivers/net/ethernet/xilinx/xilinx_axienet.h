@@ -719,8 +719,8 @@ enum axienet_tsn_ioctl {
  * @options:	AxiEthernet option word
  * @last_link:	Phy link state in which the PHY was negotiated earlier
  * @features:	Stores the extended features supported by the axienet hw
- * @tx_bd_num:	Size of TX buffer descriptor ring
- * @rx_bd_num:	Size of RX buffer descriptor ring
+ * @tx_bd_num:	Number of TX buffer descriptors.
+ * @rx_bd_num:	Number of RX buffer descriptors.
  * @max_frm_size: Stores the maximum size of the frame that can be that
  *		  Txed/Rxed in the existing hardware. If jumbo option is
  *		  supported, the maximum frame size would be 9k. Else it is
