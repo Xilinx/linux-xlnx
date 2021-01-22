@@ -250,6 +250,7 @@ int __maybe_unused axienet_mcdma_rx_q_init(struct net_device *ndev,
 	int i;
 	struct sk_buff *skb;
 	struct axienet_local *lp = netdev_priv(ndev);
+	dma_addr_t mapping;
 
 	q->rx_bd_ci = 0;
 	q->rx_offset = XMCDMA_CHAN_RX_OFFSET;
@@ -275,10 +276,16 @@ int __maybe_unused axienet_mcdma_rx_q_init(struct net_device *ndev,
 		wmb();
 
 		q->rxq_bd_v[i].sw_id_offset = (phys_addr_t)skb;
-		q->rxq_bd_v[i].phys = dma_map_single(ndev->dev.parent,
-						     skb->data,
-						     lp->max_frm_size,
-						     DMA_FROM_DEVICE);
+		mapping = dma_map_single(ndev->dev.parent,
+					 skb->data,
+					 lp->max_frm_size,
+					 DMA_FROM_DEVICE);
+		if (unlikely(dma_mapping_error(ndev->dev.parent, mapping))) {
+			dev_err(&ndev->dev, "mcdma map error\n");
+			goto out;
+		}
+
+		q->rxq_bd_v[i].phys = mapping;
 		q->rxq_bd_v[i].cntrl = lp->max_frm_size;
 	}
 
