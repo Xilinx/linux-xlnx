@@ -1973,7 +1973,6 @@ err_tx_irq:
 		napi_disable(&lp->napi[i]);
 	if (phydev)
 		phy_disconnect(phydev);
-	phydev = NULL;
 	for_each_rx_dma_queue(lp, i)
 		tasklet_kill(&lp->dma_err_tasklet[i]);
 	dev_err(lp->dev, "request_irq() failed\n");
