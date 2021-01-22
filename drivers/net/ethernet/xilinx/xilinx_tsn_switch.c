@@ -443,7 +443,7 @@ static void add_delete_cam_entry(struct cam_struct data, u8 add)
 
 	port_action = port_action | (data.fwd_port << SDL_CAM_PORT_LIST_SHIFT);
 
-#if IS_ENABLED(CONFIG_XILINX_TSN_QCI)
+#if IS_ENABLED(CONFIG_XILINX_TSN_QCI) || IS_ENABLED(CONFIG_XILINX_TSN_CB)
 	port_action = port_action | (data.gate_id << SDL_GATEID_SHIFT);
 #endif
 
@@ -475,9 +475,11 @@ static long switch_ioctl(struct file *file, unsigned int cmd,
 {
 	long retval = 0;
 	struct switch_data data;
-
 #if IS_ENABLED(CONFIG_XILINX_TSN_QCI)
 	struct qci qci_data;
+#endif
+#if IS_ENABLED(CONFIG_XILINX_TSN_CB)
+	struct cb cb_data;
 #endif
 	switch (cmd) {
 	case GET_STATUS_SWITCH:
@@ -615,6 +617,73 @@ static long switch_ioctl(struct file *file, unsigned int cmd,
 		get_stream_filter_config(&qci_data.stream_config_data);
 		if (copy_to_user((char __user *)arg, &qci_data,
 				 sizeof(qci_data))) {
+			pr_err("Copy to user failed\n");
+			retval = -EINVAL;
+			goto end;
+		}
+		break;
+#endif
+#if IS_ENABLED(CONFIG_XILINX_TSN_CB)
+	case CONFIG_MEMBER_MEM:
+		if (copy_from_user(&cb_data, (char __user *)arg,
+				   sizeof(cb_data))) {
+			pr_err("Copy from user failed\n");
+			retval = -EINVAL;
+			goto end;
+		}
+		program_member_reg(cb_data.frer_memb_config_data);
+		break;
+
+	case CONFIG_INGRESS_FLTR:
+		if (copy_from_user(&cb_data, (char __user *)arg,
+				   sizeof(cb_data))) {
+			pr_err("Copy from user failed\n");
+			retval = -EINVAL;
+			goto end;
+		}
+		config_ingress_filter(cb_data.in_fltr_data);
+		break;
+
+	case FRER_CONTROL:
+		if (copy_from_user(&cb_data, (char __user *)arg,
+				   sizeof(cb_data))) {
+			pr_err("Copy from user failed\n");
+			retval = -EINVAL;
+			goto end;
+		}
+		frer_control(cb_data.frer_ctrl_data);
+		break;
+
+	case GET_STATIC_FRER_COUNTER:
+		if (copy_from_user(&cb_data, (char __user *)arg,
+				   sizeof(cb_data))) {
+			pr_err("Copy from user failed\n");
+			retval = -EINVAL;
+			goto end;
+		}
+		get_frer_static_counter(&cb_data.frer_counter_data);
+		if (copy_to_user((char __user *)arg, &cb_data,
+				 sizeof(cb_data))) {
+			pr_err("Copy to user failed\n");
+			retval = -EINVAL;
+			goto end;
+		}
+		break;
+
+	case GET_MEMBER_REG:
+		get_member_reg(&cb_data.frer_memb_config_data);
+		if (copy_to_user((char __user *)arg, &cb_data,
+				 sizeof(cb_data))) {
+			pr_err("Copy to user failed\n");
+			retval = -EINVAL;
+			goto end;
+		}
+		break;
+
+	case GET_INGRESS_FLTR:
+		get_ingress_filter_config(&cb_data.in_fltr_data);
+		if (copy_to_user((char __user *)arg, &cb_data,
+				 sizeof(cb_data))) {
 			pr_err("Copy to user failed\n");
 			retval = -EINVAL;
 			goto end;
