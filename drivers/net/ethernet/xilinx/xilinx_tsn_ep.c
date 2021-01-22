@@ -161,17 +161,36 @@ static int tsn_ep_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 /**
  * tsn_ep_xmit - TSN endpoint xmit routine.
  * @skb: Packet data
- * @dev: Pointer to the net_device structure
+ * @ndev: Pointer to the net_device structure
  *
  * Return: Always returns NETDEV_TX_OK.
  *
  * This is dummy xmit function for endpoint as all the data path is assumed to
  * be connected by TEMAC1 as per linux view
  */
-static int tsn_ep_xmit(struct sk_buff *skb, struct net_device *dev)
+static int tsn_ep_xmit(struct sk_buff *skb, struct net_device *ndev)
 {
-	kfree_skb(skb);
-	return NETDEV_TX_OK;
+	struct axienet_local *lp = netdev_priv(ndev);
+	struct ethhdr *hdr = (struct ethhdr *)skb->data;
+	u16 ether_type = ntohs(hdr->h_proto);
+	u16 vlan_tci;
+	u8 pcp = 0;
+	u16 queue = 0; /*BE*/
+
+	if (unlikely(ether_type == ETH_P_8021Q)) {
+		struct vlan_ethhdr *vhdr = (struct vlan_ethhdr *)skb->data;
+
+		/* ether_type = ntohs(vhdr->h_vlan_encapsulated_proto); */
+
+		vlan_tci = ntohs(vhdr->h_vlan_TCI);
+
+		pcp = (vlan_tci & VLAN_PRIO_MASK) >> VLAN_PRIO_SHIFT;
+	}
+	/* for non-ST mcdma select tx queue */
+	if (lp->num_tc == 3 && (pcp == 2 || pcp == 3))
+		queue = 1; /* RES */
+
+	return axienet_queue_xmit(skb, ndev, queue);
 }
 
 static const struct net_device_ops ep_netdev_ops = {

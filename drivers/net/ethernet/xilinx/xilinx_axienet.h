@@ -1140,6 +1140,7 @@ int axienet_tsn_open(struct net_device *ndev);
 int axienet_tsn_probe(struct platform_device *pdev,
 		      struct axienet_local *lp,
 		      struct net_device *ndev);
+int axienet_tsn_xmit(struct sk_buff *skb, struct net_device *ndev);
 #endif
 #ifdef CONFIG_XILINX_TSN_PTP
 void *axienet_ptp_timer_probe(void __iomem *base, struct platform_device *pdev);
@@ -1179,6 +1180,8 @@ void axienet_set_mac_address(struct net_device *ndev, const void *address);
 void axienet_set_multicast_list(struct net_device *ndev);
 int xaxienet_rx_poll(struct napi_struct *napi, int quota);
 void axienet_setoptions(struct net_device *ndev, u32 options);
+int axienet_queue_xmit(struct sk_buff *skb, struct net_device *ndev,
+		       u16 map);
 
 #if defined(CONFIG_AXIENET_HAS_MCDMA)
 int __maybe_unused axienet_mcdma_rx_q_init(struct net_device *ndev,
