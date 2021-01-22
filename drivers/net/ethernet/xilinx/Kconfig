@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-only
 #
-# Xilink device configuration
+# Xilinx device configuration
 #
 
 config NET_VENDOR_XILINX
@@ -37,6 +37,12 @@ config XILINX_AXI_EMAC_HWTSTAMP
 	select PTP_1588_CLOCK
 	help
 	  Generate hardware packet timestamps. This is to facilitate IEEE 1588.
+
+config AXIENET_HAS_MCDMA
+	bool "AXI Ethernet is configured with MCDMA"
+	depends on XILINX_AXI_EMAC
+	help
+	  When hardware is generated with AXI Ethernet with MCDMA select this option.
 
 config XILINX_LL_TEMAC
 	tristate "Xilinx LL TEMAC (LocalLink Tri-mode Ethernet MAC) driver"
