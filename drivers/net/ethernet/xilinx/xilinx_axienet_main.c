@@ -213,7 +213,7 @@ void axienet_dma_bd_release(struct net_device *ndev)
  * axienet_dma_bd_init - Setup buffer descriptor rings for Axi DMA
  * @ndev:	Pointer to the net_device structure
  *
- * Return: 0, on success -ENOMEM, on failure
+ * Return: 0, on success -ENOMEM, on failure -EINVAL, on default return
  *
  * This function is called to initialize the Rx and Tx DMA descriptor
  * rings. This initializes the descriptors with required default values
@@ -221,7 +221,7 @@ void axienet_dma_bd_release(struct net_device *ndev)
  */
 static int axienet_dma_bd_init(struct net_device *ndev)
 {
-	int i, ret;
+	int i, ret = -EINVAL;
 	struct axienet_local *lp = netdev_priv(ndev);
 
 #ifdef CONFIG_AXIENET_HAS_MCDMA
