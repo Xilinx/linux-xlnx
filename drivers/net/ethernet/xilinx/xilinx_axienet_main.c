@@ -48,10 +48,6 @@
 
 #include "xilinx_axienet.h"
 
-#ifdef CONFIG_XILINX_TSN_PTP
-#include "xilinx_tsn_ptp.h"
-#include "xilinx_tsn_timer.h"
-#endif
 /* Descriptors defines for Tx and Rx DMA */
 #define TX_BD_NUM_DEFAULT		64
 #define RX_BD_NUM_DEFAULT		128
@@ -1153,53 +1149,6 @@ static int axienet_create_tsheader(u8 *buf, u8 msg_type,
 }
 #endif
 
-#ifdef CONFIG_XILINX_TSN
-static inline u16 get_tsn_queue(u8 pcp, u16 num_tc)
-{
-	u16 queue = 0;
-
-	/* For 3 queue system, RE queue is 1 and ST queue is 2
-	 * For 2 queue system, ST queue is 1. BE queue is always 0
-	 */
-	if (pcp == 4) {
-		if (num_tc == 2)
-			queue = 1;
-		else
-			queue = 2;
-	} else if ((num_tc == 3) && (pcp == 2 || pcp == 3)) {
-		queue = 1;
-	}
-
-	return queue;
-}
-
-static inline u16 tsn_queue_mapping(const struct sk_buff *skb, u16 num_tc)
-{
-	int queue = 0;
-	u16 vlan_tci;
-	u8 pcp;
-
-	struct ethhdr *hdr = (struct ethhdr *)skb->data;
-	u16 ether_type = ntohs(hdr->h_proto);
-
-	if (unlikely(ether_type == ETH_P_8021Q)) {
-		struct vlan_ethhdr *vhdr = (struct vlan_ethhdr *)skb->data;
-
-		/* ether_type = ntohs(vhdr->h_vlan_encapsulated_proto); */
-
-		vlan_tci = ntohs(vhdr->h_vlan_TCI);
-
-		pcp = (vlan_tci & VLAN_PRIO_MASK) >> VLAN_PRIO_SHIFT;
-		pr_debug("vlan_tci: %x\n", vlan_tci);
-		pr_debug("pcp: %d\n", pcp);
-
-		queue = get_tsn_queue(pcp, num_tc);
-	}
-	pr_debug("selected queue: %d\n", queue);
-	return queue;
-}
-#endif
-
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
 static int axienet_skb_tstsmp(struct sk_buff **__skb, struct axienet_dma_q *q,
 			      struct net_device *ndev)
@@ -1298,8 +1247,8 @@ static int axienet_skb_tstsmp(struct sk_buff **__skb, struct axienet_dma_q *q,
 }
 #endif
 
-static int axienet_queue_xmit(struct sk_buff *skb,
-			      struct net_device *ndev, u16 map)
+int axienet_queue_xmit(struct sk_buff *skb,
+		       struct net_device *ndev, u16 map)
 {
 	u32 ii;
 	u32 num_frag;
@@ -1329,23 +1278,6 @@ static int axienet_queue_xmit(struct sk_buff *skb,
 		}
 	}
 
-#ifdef CONFIG_XILINX_TSN
-	if (unlikely(lp->is_tsn)) {
-		map = tsn_queue_mapping(skb, lp->num_tc);
-#ifdef CONFIG_XILINX_TSN_PTP
-		const struct ethhdr *eth;
-
-		eth = (struct ethhdr *)skb->data;
-		/* check if skb is a PTP frame ? */
-		if (eth->h_proto == htons(ETH_P_1588))
-			return axienet_ptp_xmit(skb, ndev);
-#endif
-		if (lp->is_tsn) {
-			dev_kfree_skb_any(skb);
-			return NETDEV_TX_OK;
-		}
-	}
-#endif
 	num_frag = skb_shinfo(skb)->nr_frags;
 
 	q = lp->dq[map];
@@ -2372,7 +2304,11 @@ static const struct net_device_ops axienet_netdev_ops = {
 	.ndo_open = axienet_open,
 #endif
 	.ndo_stop = axienet_stop,
+#ifdef CONFIG_XILINX_TSN
+	.ndo_start_xmit = axienet_tsn_xmit,
+#else
 	.ndo_start_xmit = axienet_start_xmit,
+#endif
 	.ndo_change_mtu	= axienet_change_mtu,
 	.ndo_set_mac_address = netdev_set_mac_address,
 	.ndo_validate_addr = eth_validate_addr,
