@@ -582,11 +582,27 @@ struct aximcdma_bd {
 #define DESC_DMA_MAP_SINGLE 0
 #define DESC_DMA_MAP_PAGE 1
 
-#if defined(CONFIG_AXIENET_HAS_MCDMA)
+#if defined(CONFIG_XILINX_TSN)
+#define XAE_MAX_QUEUES		5
+#elif defined(CONFIG_AXIENET_HAS_MCDMA)
 #define XAE_MAX_QUEUES		16
 #else
 #define XAE_MAX_QUEUES		1
 #endif
+
+#ifdef CONFIG_XILINX_TSN
+/* TSN queues range is 2 to 5. For eg: for num_tc = 2 minimum queues = 2;
+ * for num_tc = 3 with sideband signalling maximum queues = 5
+ */
+#define XAE_MAX_TSN_TC		3
+#define XAE_TSN_MIN_QUEUES	2
+#endif
+
+enum axienet_tsn_ioctl {
+	SIOCCHIOCTL = SIOCDEVPRIVATE,
+	SIOC_GET_SCHED,
+};
+
 /**
  * struct axienet_local - axienet private per device data
  * @ndev:	Pointer for net_device to which it will be attached.
@@ -604,6 +620,20 @@ struct aximcdma_bd {
  * @num_rx_queues: Total number of Rx DMA queues
  * @dq:		DMA queues data
  * @phy_mode:	Phy type to identify between MII/GMII/RGMII/SGMII/1000 Base-X
+ * @is_tsn:	Denotes a tsn port
+ * @temac_no:	Denotes the port number in TSN IP
+ * @num_tc:	Total number of TSN Traffic classes
+ * @timer_priv: PTP timer private data pointer
+ * @ptp_tx_irq: PTP tx irq
+ * @ptp_rx_irq: PTP rx irq
+ * @rtc_irq:	PTP RTC irq
+ * @qbv_irq:	QBV shed irq
+ * @ptp_ts_type: ptp time stamp type - 1 or 2 step mode
+ * @ptp_rx_hw_pointer: ptp rx hw pointer
+ * @ptp_rx_sw_pointer: ptp rx sw pointer
+ * @ptp_txq:	PTP tx queue header
+ * @tx_tstamp_work: PTP timestamping work queue
+ * @ptp_tx_lock: PTP tx lock
  * @dma_err_tasklet: Tasklet structure to process Axi DMA errors
  * @eth_irq:	Axi Ethernet IRQ number
  * @options:	AxiEthernet option word
@@ -662,11 +692,32 @@ struct axienet_local {
 	struct tasklet_struct dma_err_tasklet[XAE_MAX_QUEUES];
 	struct napi_struct napi[XAE_MAX_QUEUES];	/* NAPI Structure */
 
+	#define XAE_TEMAC1 0
+	#define XAE_TEMAC2 1
+	u8     temac_no;
 	u16    num_tx_queues;	/* Number of TX DMA queues */
 	u16    num_rx_queues;	/* Number of RX DMA queues */
 	struct axienet_dma_q *dq[XAE_MAX_QUEUES];	/* DMA queue data*/
 
 	phy_interface_t phy_mode;
+
+	bool is_tsn;
+#ifdef CONFIG_XILINX_TSN
+	u16    num_tc;
+#ifdef CONFIG_XILINX_TSN_PTP
+	void *timer_priv;
+	int ptp_tx_irq;
+	int ptp_rx_irq;
+	int rtc_irq;
+	int qbv_irq;
+	int ptp_ts_type;
+	u8  ptp_rx_hw_pointer;
+	u8  ptp_rx_sw_pointer;
+	struct sk_buff_head ptp_txq;
+	struct work_struct tx_tstamp_work;
+	spinlock_t ptp_tx_lock;		/* TSN PTP tx lock*/
+#endif
+#endif
 	int eth_irq;
 
 	u32 options;			/* Current options word */
@@ -690,7 +741,7 @@ struct axienet_local {
 	bool eth_hasptp;
 	const struct axienet_config *axienet_config;
 
-#ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
+#if defined(CONFIG_XILINX_AXI_EMAC_HWTSTAMP) || defined(CONFIG_XILINX_TSN_PTP)
 	void __iomem *tx_ts_regs;
 	void __iomem *rx_ts_regs;
 	struct hwtstamp_config tstamp_config;
@@ -986,6 +1037,15 @@ int axienet_mdio_enable(struct axienet_local *lp);
 void axienet_mdio_disable(struct axienet_local *lp);
 int axienet_mdio_setup(struct axienet_local *lp);
 void axienet_mdio_teardown(struct axienet_local *lp);
+#ifdef CONFIG_XILINX_TSN_PTP
+void axienet_tx_tstamp(struct work_struct *work);
+#endif
+#ifdef CONFIG_XILINX_TSN_QBV
+int axienet_qbv_init(struct net_device *ndev);
+void axienet_qbv_remove(struct net_device *ndev);
+int axienet_set_schedule(struct net_device *ndev, void __user *useraddr);
+int axienet_get_schedule(struct net_device *ndev, void __user *useraddr);
+#endif
 int axienet_mdio_wait_until_ready(struct axienet_local *lp);
 void __maybe_unused axienet_bd_free(struct net_device *ndev,
 				    struct axienet_dma_q *q);
