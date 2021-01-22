@@ -188,6 +188,73 @@ static const struct of_device_id tsn_ep_of_match[] = {
 
 MODULE_DEVICE_TABLE(of, tsn_ep_of_match);
 
+/* separate function is needed to probe tsn mcdma
+ * as there is asymmetry between rx channels and tx channels
+ * having unique probe for both tsn and axienet with mcdma is not possible
+ */
+static int __maybe_unused tsn_mcdma_probe(struct platform_device *pdev,
+					  struct axienet_local *lp,
+					  struct net_device *ndev)
+{
+	int i, ret = 0;
+	struct axienet_dma_q *q;
+	struct device_node *np;
+	struct resource dmares;
+	const char *str;
+	u32 num;
+
+	ret = of_property_count_strings(pdev->dev.of_node, "xlnx,channel-ids");
+	if (ret < 0)
+		return -EINVAL;
+
+	np = of_parse_phandle(pdev->dev.of_node, "axistream-connected-rx",
+			      0);
+	/* get number of associated queues */
+	ret = of_property_read_u32(np, "xlnx,num-s2mm-channels", &num);
+	if (ret < 0)
+		return -EINVAL;
+
+	lp->num_rx_queues = num;
+	pr_info("%s: num_rx_queues: %d\n", __func__, lp->num_rx_queues);
+
+	for_each_rx_dma_queue(lp, i) {
+		q = kzalloc(sizeof(*q), GFP_KERNEL);
+
+		/* parent */
+		q->lp = lp;
+		lp->dq[i] = q;
+		ret = of_property_read_string_index(pdev->dev.of_node,
+						    "xlnx,channel-ids", i,
+						    &str);
+		ret = kstrtou16(str, 16, &q->chan_id);
+		lp->qnum[i] = i;
+		lp->chan_num[i] = q->chan_id;
+	}
+
+	if (IS_ERR(np)) {
+		dev_err(&pdev->dev, "could not find DMA node\n");
+		return ret;
+	}
+
+	ret = of_address_to_resource(np, 0, &dmares);
+	if (ret) {
+		dev_err(&pdev->dev, "unable to get DMA resource\n");
+		return ret;
+	}
+
+	lp->mcdma_regs = devm_ioremap_resource(&pdev->dev, &dmares);
+	if (IS_ERR(lp->mcdma_regs)) {
+		dev_err(&pdev->dev, "iormeap failed for the dma\n");
+		ret = PTR_ERR(lp->mcdma_regs);
+		return ret;
+	}
+
+	axienet_mcdma_rx_probe(pdev, lp, ndev);
+	axienet_mcdma_tx_probe(pdev, np, lp);
+
+	return 0;
+}
+
 static const struct axienet_config tsn_endpoint_cfg = {
 	.mactype = XAXIENET_1G,
 	.setoptions = NULL,
@@ -258,6 +325,12 @@ static int tsn_ep_probe(struct platform_device *pdev)
 	}
 	if (!is_valid_ether_addr(ndev->dev_addr))
 		eth_hw_addr_random(ndev);
+
+	ret = tsn_mcdma_probe(pdev, lp, ndev);
+	if (ret) {
+		dev_err(&pdev->dev, "Getting MCDMA resource failed\n");
+		goto free_netdev;
+	}
 
 	ret = of_property_read_u16(pdev->dev.of_node, "xlnx,num-tc", &num_tc);
 	if (ret || (num_tc != 2 && num_tc != 3))

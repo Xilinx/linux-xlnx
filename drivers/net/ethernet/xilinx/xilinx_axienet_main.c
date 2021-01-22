@@ -3421,9 +3421,6 @@ static int axienet_probe(struct platform_device *pdev)
 #ifdef CONFIG_XILINX_TSN
 	if (lp->is_tsn)
 		ret = axienet_tsn_probe(pdev, lp, ndev);
-#ifdef CONFIG_AXIENET_HAS_MCDMA
-		ret = axienet_mcdma_probe(pdev, lp, ndev);
-#endif
 #endif
 	if (!lp->is_tsn) {
 #ifdef CONFIG_AXIENET_HAS_MCDMA
