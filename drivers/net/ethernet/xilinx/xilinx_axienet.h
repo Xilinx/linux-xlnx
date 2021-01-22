@@ -377,13 +377,17 @@
 #define TX_PTP_TS_OFFSET        0x4C
 
 /* XXV MAC Register Definitions */
+#define XXV_GT_RESET_OFFSET		0x00000000
 #define XXV_TC_OFFSET			0x0000000C
 #define XXV_RCW1_OFFSET			0x00000014
 #define XXV_JUM_OFFSET			0x00000018
 #define XXV_TICKREG_OFFSET		0x00000020
 #define XXV_STATRX_BLKLCK_OFFSET	0x0000040C
+#define XXV_USXGMII_AN_OFFSET		0x000000C8
+#define XXV_USXGMII_AN_STS_OFFSET	0x00000458
 
 /* XXV MAC Register Mask Definitions */
+#define XXV_GT_RESET_MASK	BIT(0)
 #define XXV_TC_TX_MASK		BIT(0)
 #define XXV_RCW1_RX_MASK	BIT(0)
 #define XXV_RCW1_FCS_MASK	BIT(1)
@@ -393,6 +397,25 @@
 #define XXV_RX_BLKLCK_MASK	BIT(0)
 #define XXV_TICKREG_STATEN_MASK BIT(0)
 #define XXV_MAC_MIN_PKT_LEN	64
+
+/* USXGMII Register Mask Definitions  */
+#define USXGMII_AN_EN		BIT(5)
+#define USXGMII_AN_RESET	BIT(6)
+#define USXGMII_AN_RESTART	BIT(7)
+#define USXGMII_EN		BIT(16)
+#define USXGMII_RATE_MASK	0x0E000700
+#define USXGMII_RATE_1G		0x04000200
+#define USXGMII_RATE_2G5	0x08000400
+#define USXGMII_RATE_10M	0x0
+#define USXGMII_RATE_100M	0x02000100
+#define USXGMII_RATE_5G		0x0A000500
+#define USXGMII_RATE_10G	0x06000300
+#define USXGMII_FD		BIT(28)
+#define USXGMII_LINK_STS	BIT(31)
+
+/* USXGMII AN STS register mask definitions */
+#define USXGMII_AN_STS_COMP_MASK	BIT(16)
+
 /* MCDMA Register Definitions */
 #define XMCDMA_CR_OFFSET	0x00
 #define XMCDMA_SR_OFFSET	0x04
@@ -633,6 +656,7 @@ struct aximcdma_bd {
  * @chan_id:  MCMDA Channel id used in conjunction with weight parameter.
  * @weight:   MCDMA Channel weight value to be configured for.
  * @dma_mask: Specify the width of the DMA address space.
+ * @usxgmii_rate: USXGMII PHY speed.
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -707,6 +731,7 @@ struct axienet_local {
 	u16 weight;
 
 	u8 dma_mask;
+	u32 usxgmii_rate;
 };
 
 /**
