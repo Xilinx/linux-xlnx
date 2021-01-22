@@ -52,6 +52,10 @@ static const struct sram_addr_data zynqmp_banks[NUM_SRAMS] = {
 	{0xffeb0000UL, NODE_TCM_1_B},
 };
 
+#define VERSAL_TCM(ID)  (ID + 0x18317FFCU)
+#define VERSAL_RPU_0	(NODE_RPU_0 + 0x1810FFFEU)
+#define VERSAL_RPU_1	(VERSAL_RPU_0 + 1U)
+
 /**
  * struct zynqmp_r5_rproc - ZynqMP R5 core structure
  *
@@ -66,6 +70,7 @@ static const struct sram_addr_data zynqmp_banks[NUM_SRAMS] = {
  * @rx_chan: rx mailbox channel
  * @pnode_id: RPU CPU power domain id
  * @elem: linked list item
+ * @versal: flag that if on, denotes this driver is for Versal SoC.
  */
 struct zynqmp_r5_rproc {
 	unsigned char rx_mc_buf[RX_MBOX_CLIENT_BUF_MAX];
@@ -79,6 +84,7 @@ struct zynqmp_r5_rproc {
 	struct mbox_chan *rx_chan;
 	u32 pnode_id;
 	struct list_head elem;
+	bool versal;
 };
 
 /*
@@ -310,16 +316,21 @@ static int parse_mem_regions(struct rproc *rproc)
  *
  * return 0 on success, otherwise non-zero value on failure
  */
-static int zynqmp_r5_pm_request_sram(phys_addr_t addr)
+static int zynqmp_r5_pm_request_sram(phys_addr_t addr, bool versal)
 {
 	unsigned int i;
+	u32 pnode_id;
 
 	for (i = 0; i < NUM_SRAMS; i++) {
-		if (zynqmp_banks[i].addr == addr)
-			return zynqmp_pm_request_node(zynqmp_banks[i].id,
+		if (zynqmp_banks[i].addr == addr) {
+			pnode_id = versal ? VERSAL_TCM(zynqmp_banks[i].id) :
+				   zynqmp_banks[i].id;
+
+			return zynqmp_pm_request_node(pnode_id,
 						      ZYNQMP_PM_CAPABILITY_ACCESS,
 						      0,
 						      ZYNQMP_PM_REQUEST_ACK_BLOCKING);
+		}
 	}
 
 	return -EINVAL;
@@ -415,7 +426,8 @@ static int parse_tcm_banks(struct rproc *rproc)
 			ret = of_address_to_resource(dt_node, 0, &rsc);
 			if (ret < 0)
 				return ret;
-			ret = zynqmp_r5_pm_request_sram(rsc.start);
+			ret = zynqmp_r5_pm_request_sram(rsc.start,
+							z_rproc->versal);
 			if (ret < 0)
 				return ret;
 
@@ -708,6 +720,10 @@ static int zynqmp_r5_probe(struct platform_device *pdev,
 	ret = of_property_read_u32(node, "power-domain", &(*z_rproc)->pnode_id);
 	if (ret)
 		goto error;
+
+	if ((VERSAL_RPU_0 == (*z_rproc)->pnode_id) ||
+	    (VERSAL_RPU_1 == (*z_rproc)->pnode_id))
+		(*z_rproc)->versal = true;
 
 	ret = r5_set_mode(*z_rproc, rpu_mode);
 	if (ret)
