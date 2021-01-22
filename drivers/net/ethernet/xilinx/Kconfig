@@ -79,4 +79,12 @@ config XILINX_TSN_SWITCH
 	default y
 	help
 	  Enable Xilinx's TSN Switch support.
+
+config XILINX_TSN_QCI
+	bool "Support Qci protocol in TSN"
+	depends on XILINX_TSN_SWITCH
+	default y
+	help
+	  Enable TSN QCI protocol.
+
 endif # NET_VENDOR_XILINX

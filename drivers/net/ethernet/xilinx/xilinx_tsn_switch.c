@@ -431,6 +431,10 @@ static void add_delete_cam_entry(struct cam_struct data, u8 add)
 	tv2 = ((data.src_addr[4] << 8) | data.src_addr[5]) |
 	       ((data.tv_vlanid & SDL_CAM_VLAN_MASK) << SDL_CAM_VLAN_SHIFT);
 
+#if IS_ENABLED(CONFIG_XILINX_TSN_QCI)
+	tv2 = tv2 | ((data.ipv & SDL_CAM_IPV_MASK) << SDL_CAM_IPV_SHIFT)
+				| (data.en_ipv << SDL_EN_CAM_IPV_SHIFT);
+#endif
 	axienet_iow(&lp, XAS_SDL_CAM_TV2_OFFSET, tv2);
 
 	if (data.tv_en)
@@ -438,6 +442,10 @@ static void add_delete_cam_entry(struct cam_struct data, u8 add)
 		SDL_CAM_VLAN_ID_XLATION) << SDL_CAM_MAC_ACTION_LIST_SHIFT);
 
 	port_action = port_action | (data.fwd_port << SDL_CAM_PORT_LIST_SHIFT);
+
+#if IS_ENABLED(CONFIG_XILINX_TSN_QCI)
+	port_action = port_action | (data.gate_id << SDL_GATEID_SHIFT);
+#endif
 
 	/* port action */
 	axienet_iow(&lp, XAS_SDL_CAM_PORT_ACT_OFFSET, port_action);
@@ -468,6 +476,9 @@ static long switch_ioctl(struct file *file, unsigned int cmd,
 	long retval = 0;
 	struct switch_data data;
 
+#if IS_ENABLED(CONFIG_XILINX_TSN_QCI)
+	struct qci qci_data;
+#endif
 	switch (cmd) {
 	case GET_STATUS_SWITCH:
 		/* Switch configurations */
@@ -545,6 +556,71 @@ static long switch_ioctl(struct file *file, unsigned int cmd,
 		}
 		set_mac2_mngmntq(data.mac2_config);
 		break;
+#if IS_ENABLED(CONFIG_XILINX_TSN_QCI)
+	case CONFIG_METER_MEM:
+		if (copy_from_user(&qci_data, (char __user *)arg,
+				   sizeof(qci_data))) {
+			pr_err("Copy from user failed\n");
+			retval = -EINVAL;
+			goto end;
+		}
+		program_meter_reg(qci_data.meter_config_data);
+		break;
+
+	case CONFIG_GATE_MEM:
+		if (copy_from_user(&qci_data, (char __user *)arg,
+				   sizeof(qci_data))) {
+			pr_err("Copy from user failed\n");
+			retval = -EINVAL;
+			goto end;
+		}
+		config_stream_filter(qci_data.stream_config_data);
+		break;
+
+	case PSFP_CONTROL:
+		if (copy_from_user(&qci_data, (char __user *)arg,
+				   sizeof(qci_data))) {
+			retval = -EINVAL;
+			pr_err("Copy from user failed\n");
+			goto end;
+		}
+		psfp_control(qci_data.psfp_config_data);
+		break;
+
+	case GET_STATIC_PSFP_COUNTER:
+		if (copy_from_user(&qci_data, (char __user *)arg,
+				   sizeof(qci_data))) {
+			pr_err("Copy from user failed\n");
+			retval = -EINVAL;
+			goto end;
+		}
+		get_psfp_static_counter(&qci_data.psfp_counter_data);
+		if (copy_to_user((char __user *)arg, &qci_data,
+				 sizeof(qci_data))) {
+			pr_err("Copy to user failed\n");
+			retval = -EINVAL;
+			goto end;
+		}
+		break;
+	case GET_METER_REG:
+		get_meter_reg(&qci_data.meter_config_data);
+		if (copy_to_user((char __user *)arg, &qci_data,
+				 sizeof(qci_data))) {
+			pr_err("Copy to user failed\n");
+			retval = -EINVAL;
+			goto end;
+		}
+		break;
+	case GET_STREAM_FLTR_CONFIG:
+		get_stream_filter_config(&qci_data.stream_config_data);
+		if (copy_to_user((char __user *)arg, &qci_data,
+				 sizeof(qci_data))) {
+			pr_err("Copy to user failed\n");
+			retval = -EINVAL;
+			goto end;
+		}
+		break;
+#endif
 	}
 end:
 	return retval;
