@@ -813,7 +813,7 @@ struct axienet_local {
 	u32 last_link;
 	u32 features;
 
-	u32 tx_bd_num;
+	u16 tx_bd_num;
 	u32 rx_bd_num;
 
 	u32 max_frm_size;
