@@ -118,6 +118,13 @@
 #define XAS_VLAN_MEMB_CTRL_REG			0x1100
 #define XAS_VLAN_MEMB_DATA_REG			0x1104
 
+/* QCI */
+#define PSFP_CONTROL_OFFSET			0x1200
+#define STREAM_FILTER_CONFIG_OFFSET		0x1204
+#define	STREAM_METER_CIR_OFFSET			0x1208
+#define	STREAM_METER_EIR_OFFSET			0x120C
+#define	STREAM_METER_CBR_OFFSET			0x1210
+#define	STREAM_METER_EBR_OFFSET			0x1214
 
 /* PSFP Statistics Counters */
 #define TOTAL_PSFP_FRAMES_OFFSET		0x2000
@@ -132,6 +139,48 @@ struct static_cntr {
 	u32 lsb;
 };
 
+/*********** QCI Structures **************/
+struct psfp_config {
+	u8 gate_id;
+	u8 meter_id;
+	bool en_meter;
+	bool allow_stream;
+	bool en_psfp;
+	u8 wr_op_type;
+	bool op_type;
+};
+
+struct meter_config {
+	u32 cir;
+	u32 eir;
+	u32 cbr;
+	u32 ebr;
+	u8 mode;
+};
+
+struct stream_filter {
+	u8 in_pid; /* ingress port id*/
+	u16 max_fr_size; /* max frame size*/
+};
+
+/* PSFP Static counter*/
+struct psfp_static_counter {
+	struct static_cntr psfp_fr_count;
+	struct static_cntr err_filter_ins_port;
+	struct static_cntr err_filtr_sdu;
+	struct static_cntr err_meter;
+	unsigned char num;
+};
+
+/* QCI Core stuctures */
+struct qci {
+	struct meter_config meter_config_data;
+	struct stream_filter stream_config_data;
+	struct psfp_config psfp_config_data;
+	struct psfp_static_counter psfp_counter_data;
+};
+
+/************* QCI Structures end *************/
 
 /********* Switch Structures Starts ***********/
 struct thershold {
@@ -235,4 +284,11 @@ struct switch_data {
 
 extern struct axienet_local lp;
 
+/********* qci function declararions ********/
+void psfp_control(struct psfp_config data);
+void config_stream_filter(struct stream_filter data);
+void program_meter_reg(struct meter_config data);
+void get_psfp_static_counter(struct psfp_static_counter *data);
+void get_meter_reg(struct meter_config *data);
+void get_stream_filter_config(struct stream_filter *data);
 #endif /* XILINX_TSN_SWITCH_H */
