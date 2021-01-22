@@ -3545,8 +3545,8 @@ static int axienet_remove(struct platform_device *pdev)
 		axienet_qbv_remove(ndev);
 #endif
 #endif
-		unregister_netdev(ndev);
-		axienet_clk_disable(pdev);
+	unregister_netdev(ndev);
+	axienet_clk_disable(pdev);
 
 	if (lp->mii_bus)
 		axienet_mdio_teardown(lp);
