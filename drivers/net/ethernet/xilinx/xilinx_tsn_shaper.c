@@ -213,13 +213,11 @@ static irqreturn_t axienet_qbv_irq(int irq, void *_ndev)
 int axienet_qbv_init(struct net_device *ndev)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
-	int rc;
+	int rc = 0;
 
-	rc = request_irq(lp->qbv_irq, axienet_qbv_irq, 0, ndev->name, ndev);
-	if (rc)
-		goto err_qbv_irq;
-
-err_qbv_irq:
+	if (lp->qbv_irq > 0)
+		rc = request_irq(lp->qbv_irq, axienet_qbv_irq, 0, ndev->name,
+				 ndev);
 	return rc;
 }
 
