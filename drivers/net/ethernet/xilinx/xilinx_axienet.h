@@ -483,6 +483,79 @@
 #define XAE_TX_BUFFERS		64
 #define XAE_MAX_PKT_LEN		8192
 
+/* MRMAC Register Definitions */
+/* Configuration Registers */
+#define MRMAC_REV_OFFSET		0x00000000
+#define MRMAC_RESET_OFFSET		0x00000004
+#define MRMAC_MODE_OFFSET		0x00000008
+#define MRMAC_CONFIG_TX_OFFSET		0x0000000C
+#define MRMAC_CONFIG_RX_OFFSET		0x00000010
+#define MRMAC_TICK_OFFSET		0x0000002C
+
+/* Status Registers */
+#define MRMAC_TX_STS_OFFSET		0x00000740
+#define MRMAC_RX_STS_OFFSET		0x00000744
+#define MRMAC_TX_RT_STS_OFFSET		0x00000748
+#define MRMAC_RX_RT_STS_OFFSET		0x0000074C
+#define MRMAC_STATRX_BLKLCK_OFFSET	0x00000754
+
+/* Register bit masks */
+#define MRMAC_RX_SERDES_RST_MASK	(BIT(3) | BIT(2) | BIT(1) | BIT(0))
+#define MRMAC_TX_SERDES_RST_MASK	BIT(4)
+#define MRMAC_RX_RST_MASK		BIT(5)
+#define MRMAC_TX_RST_MASK		BIT(6)
+#define MRMAC_RX_AXI_RST_MASK		BIT(8)
+#define MRMAC_TX_AXI_RST_MASK		BIT(9)
+#define MRMAC_STS_ALL_MASK		0xFFFFFFFF
+
+#define MRMAC_RX_EN_MASK		BIT(0)
+#define MRMAC_RX_DEL_FCS_MASK		BIT(1)
+
+#define MRMAC_TX_EN_MASK		BIT(0)
+#define MRMAC_TX_INS_FCS_MASK		BIT(1)
+
+#define MRMAC_RX_BLKLCK_MASK		BIT(0)
+
+#define MRMAC_CTL_DATA_RATE_MASK	GENMASK(2, 0)
+#define MRMAC_CTL_DATA_RATE_10G		0
+#define MRMAC_CTL_DATA_RATE_25G		1
+#define MRMAC_CTL_DATA_RATE_40G		2
+#define MRMAC_CTL_DATA_RATE_50G		3
+#define MRMAC_CTL_DATA_RATE_100G	4
+
+#define MRMAC_CTL_AXIS_CFG_MASK		GENMASK(11, 9)
+#define MRMAC_CTL_AXIS_CFG_SHIFT	9
+#define MRMAC_CTL_AXIS_CFG_10G_IND	1
+#define MRMAC_CTL_AXIS_CFG_25G_IND	1
+
+#define MRMAC_CTL_SERDES_WIDTH_MASK	GENMASK(6, 4)
+#define MRMAC_CTL_SERDES_WIDTH_SHIFT	4
+#define MRMAC_CTL_SERDES_WIDTH_10G	4
+#define MRMAC_CTL_SERDES_WIDTH_25G	6
+
+#define MRMAC_CTL_RATE_CFG_MASK		(MRMAC_CTL_DATA_RATE_MASK |	\
+					 MRMAC_CTL_AXIS_CFG_MASK |	\
+					 MRMAC_CTL_SERDES_WIDTH_MASK)
+
+#define MRMAC_CTL_PM_TICK_MASK		BIT(30)
+#define MRMAC_TICK_TRIGGER		BIT(0)
+
+/* MRMAC GT wrapper registers */
+#define MRMAC_GT_PLL_OFFSET		0x0
+#define MRMAC_GT_PLL_STS_OFFSET		0x8
+#define MRMAC_GT_RATE_OFFSET		0x0
+#define MRMAC_GT_CTRL_OFFSET		0x8
+
+#define MRMAC_GT_PLL_RST_MASK		0x00030003
+#define MRMAC_GT_PLL_DONE_MASK		0xFF
+#define MRMAC_GT_RST_ALL_MASK		BIT(0)
+#define MRMAC_GT_RST_RX_MASK		BIT(1)
+#define MRMAC_GT_RST_TX_MASK		BIT(2)
+#define MRMAC_GT_10G_MASK		0x01010101
+#define MRMAC_GT_25G_MASK		0x02020202
+
+#define MRMAC_GT_LANE_OFFSET		0x10000
+#define MRMAC_MAX_GT_LANES		4
 /**
  * struct axidma_bd - Axi Dma buffer descriptor layout
  * @next:         MM2S/S2MM Next Descriptor Pointer
@@ -679,6 +752,11 @@ enum axienet_tsn_ioctl {
  * @weight:   MCDMA Channel weight value to be configured for.
  * @dma_mask: Specify the width of the DMA address space.
  * @usxgmii_rate: USXGMII PHY speed.
+ * @mrmac_rate: MRMAC speed.
+ * @gt_pll: Common GT PLL mask control register space.
+ * @gt_ctrl: GT speed and reset control register space.
+ * @phc_index: Index to corresponding PTP clock used.
+ * @gt_lane: MRMAC GT lane index used.
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -771,6 +849,12 @@ struct axienet_local {
 
 	u8 dma_mask;
 	u32 usxgmii_rate;
+
+	u32 mrmac_rate;		/* MRMAC speed */
+	void __iomem *gt_pll;	/* Common GT PLL mask control register space */
+	void __iomem *gt_ctrl;	/* GT speed and reset control register space */
+	u32 phc_index;		/* Index to corresponding PTP clock used  */
+	u32 gt_lane;		/* MRMAC GT lane index used */
 };
 
 /**
@@ -854,6 +938,7 @@ struct axienet_dma_q {
  * @XAXIENET_2_5G:	 IP type is 2.5G MAC.
  * @XAXIENET_LEGACY_10G: IP type is legacy 10G MAC.
  * @XAXIENET_10G_25G:	 IP type is 10G/25G MAC(XXV MAC).
+ * @XAXIENET_MRMAC:	 IP type is hardened Multi Rate MAC (MRMAC).
  *
  */
 enum axienet_ip_type {
@@ -861,6 +946,7 @@ enum axienet_ip_type {
 	XAXIENET_2_5G,
 	XAXIENET_LEGACY_10G,
 	XAXIENET_10G_25G,
+	XAXIENET_MRMAC,
 };
 
 struct axienet_config {
@@ -889,6 +975,11 @@ struct xxvenet_option {
 	u32 reg;
 	u32 m_or;
 };
+
+extern void __iomem *mrmac_gt_pll;
+extern void __iomem *mrmac_gt_ctrl;
+extern int mrmac_pll_reg;
+extern int mrmac_pll_rst;
 
 /**
  * axienet_ior - Memory mapped Axi Ethernet register read
