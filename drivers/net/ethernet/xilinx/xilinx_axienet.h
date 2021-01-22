@@ -15,6 +15,7 @@
 #include <linux/if_vlan.h>
 #include <linux/phylink.h>
 #include <linux/net_tstamp.h>
+#include <linux/of_platform.h>
 
 /* Packet size info */
 #define XAE_HDR_SIZE			14 /* Size of Ethernet header */
@@ -507,6 +508,13 @@ struct axidma_bd {
  * @rx_ts_regs:	  Base address for the rx axififo device address space.
  * @tstamp_config: Hardware timestamp config structure.
  * @tx_ptpheader: Stores the tx ptp header.
+ * @aclk: AXI4-Lite clock for ethernet and dma.
+ * @eth_sclk: AXI4-Stream interface clock.
+ * @eth_refclk: Stable clock used by signal delay primitives and transceivers.
+ * @eth_dclk: Dynamic Reconfiguration Port(DRP) clock.
+ * @dma_sg_clk: DMA Scatter Gather Clock.
+ * @dma_rx_clk: DMA S2MM Primary Clock.
+ * @dma_tx_clk: DMA MM2S Primary Clock.
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -577,6 +585,13 @@ struct axienet_local {
 	struct hwtstamp_config tstamp_config;
 	u8 *tx_ptpheader;
 #endif
+	struct clk *aclk;
+	struct clk *eth_sclk;
+	struct clk *eth_refclk;
+	struct clk *eth_dclk;
+	struct clk *dma_sg_clk;
+	struct clk *dma_rx_clk;
+	struct clk *dma_tx_clk;
 };
 
 /**
@@ -598,6 +613,9 @@ enum axienet_ip_type {
 struct axienet_config {
 	enum axienet_ip_type mactype;
 	void (*setoptions)(struct net_device *ndev, u32 options);
+	int (*clk_init)(struct platform_device *pdev, struct clk **axi_aclk,
+			struct clk **axis_clk, struct clk **ref_clk,
+			struct clk **dclk);
 	u32 tx_ptplen;
 };
 
