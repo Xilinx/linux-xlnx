@@ -42,6 +42,7 @@
 #include <linux/net_tstamp.h>
 #include <linux/random.h>
 #include <net/sock.h>
+#include <linux/xilinx_phy.h>
 
 #include "xilinx_axienet.h"
 
