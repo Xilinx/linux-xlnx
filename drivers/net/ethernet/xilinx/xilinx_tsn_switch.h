@@ -132,6 +132,21 @@
 #define FLTR_STDU_ERR_OFFSET			0x3000
 #define METER_ERR_OFFSET			0x3800
 
+/* CB */
+#define FRER_CONTROL_OFFSET			0x1300
+#define INGRESS_FILTER_OFFSET			0x1304
+#define FRER_CONFIG_REG1			0x1308
+#define FRER_CONFIG_REG2			0x130C
+
+/* FRER Statistics Counters */
+#define TOTAL_FRER_FRAMES_OFFSET		0x4000
+#define FRER_DISCARD_INGS_FLTR_OFFSET		0x4800
+#define FRER_PASS_FRAMES_INDV_OFFSET		0x5000
+#define FRER_DISCARD_FRAMES_INDV_OFFSET		0x5800
+#define FRER_PASS_FRAMES_SEQ_OFFSET		0x6000
+#define FRER_DISCARD_FRAMES_SEQ_OFFSET		0x6800
+#define FRER_ROGUE_FRAMES_SEQ_OFFSET		0x7000
+#define SEQ_RECV_RESETS_OFFSET			0x7800
 
 /* 64 bit counter*/
 struct static_cntr {
@@ -181,6 +196,53 @@ struct qci {
 };
 
 /************* QCI Structures end *************/
+
+/*********** CB Structures **************/
+struct frer_ctrl {
+	u8 gate_id;
+	u8 memb_id;
+	bool seq_reset;
+	bool gate_state;
+	bool rcvry_tmout;
+	bool frer_valid;
+	u8 wr_op_type;
+	bool op_type;
+};
+
+struct in_fltr {
+	u8 in_port_id;
+	u16 max_seq_id;
+};
+
+struct frer_memb_config {
+	u8 seq_rec_hist_len;
+	u8 split_strm_egport_id;
+	u16 split_strm_vlan_id;
+	u32 rem_ticks;
+};
+
+/* FRER Static counter*/
+struct frer_static_counter {
+	struct static_cntr frer_fr_count;
+	struct static_cntr disc_frames_in_portid;
+	struct static_cntr pass_frames_seq_recv;
+	struct static_cntr disc_frames_seq_recv;
+	struct static_cntr rogue_frames_seq_recv;
+	struct static_cntr pass_frames_ind_recv;
+	struct static_cntr disc_frames_ind_recv;
+	struct static_cntr seq_recv_rst;
+	unsigned char num;
+};
+
+/* CB Core stuctures */
+struct cb {
+	struct frer_ctrl frer_ctrl_data;
+	struct in_fltr in_fltr_data;
+	struct frer_memb_config frer_memb_config_data;
+	struct frer_static_counter frer_counter_data;
+};
+
+/************* CB Structures end *************/
 
 /********* Switch Structures Starts ***********/
 struct thershold {
@@ -291,4 +353,12 @@ void program_meter_reg(struct meter_config data);
 void get_psfp_static_counter(struct psfp_static_counter *data);
 void get_meter_reg(struct meter_config *data);
 void get_stream_filter_config(struct stream_filter *data);
+
+/********* cb function declararions ********/
+void frer_control(struct frer_ctrl data);
+void get_ingress_filter_config(struct in_fltr *data);
+void config_ingress_filter(struct in_fltr data);
+void get_member_reg(struct frer_memb_config *data);
+void program_member_reg(struct frer_memb_config data);
+void get_frer_static_counter(struct frer_static_counter *data);
 #endif /* XILINX_TSN_SWITCH_H */
