@@ -169,6 +169,7 @@
 #define XAXIFIFO_TXTS_RESET_MASK	0x000000A5
 #define XAXIFIFO_TXTS_TAG_MASK		0xFFFF0000
 #define XAXIFIFO_TXTS_TAG_SHIFT		16
+#define XAXIFIFO_TXTS_TAG_MAX		0xFFFE
 
 /* Axi Ethernet registers definition */
 #define XAE_RAF_OFFSET		0x00000000 /* Reset and Address filter */
