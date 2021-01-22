@@ -296,6 +296,7 @@ static int tsn_ep_probe(struct platform_device *pdev)
 	struct net_device *ndev;
 	struct resource *ethres;
 	u16 num_tc = 0;
+	char irq_name[32];
 
 	ndev = alloc_netdev(sizeof(*lp), "ep", NET_NAME_UNKNOWN, ether_setup);
 	if (!ndev)
@@ -363,6 +364,11 @@ static int tsn_ep_probe(struct platform_device *pdev)
 		ret = PTR_ERR(lp->regs);
 		goto free_netdev;
 	}
+	lp->qbv_regs = lp->regs;
+
+	sprintf(irq_name, "tsn_ep_scheduler_irq");
+	lp->qbv_irq = platform_get_irq_byname(pdev, irq_name);
+	axienet_qbv_init(ndev);
 
 	ret = register_netdev(lp->ndev);
 	if (ret)
@@ -380,6 +386,7 @@ static int tsn_ep_remove(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
 
+	axienet_qbv_remove(ndev);
 	unregister_netdev(ndev);
 
 	free_netdev(ndev);

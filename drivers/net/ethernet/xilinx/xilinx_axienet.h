@@ -193,6 +193,7 @@
 #define XAE_ID_OFFSET		0x000004F8 /* Identification register */
 #define XAE_EMMC_OFFSET		0x00000410 /* MAC speed configuration */
 #define XAE_RMFC_OFFSET		0x00000414 /* RX Max Frame Configuration */
+#define XAE_TSN_ABL_OFFSET	0x000004FC /* Ability Register */
 #define XAE_MDIO_MC_OFFSET	0x00000500 /* MDIO Setup */
 #define XAE_MDIO_MCR_OFFSET	0x00000504 /* MDIO Control */
 #define XAE_MDIO_MWD_OFFSET	0x00000508 /* MDIO Write Data */
@@ -671,6 +672,7 @@ struct aximcdma_bd {
  */
 #define XAE_MAX_TSN_TC		3
 #define XAE_TSN_MIN_QUEUES	2
+#define TSN_BRIDGEEP_EPONLY	BIT(29)
 #endif
 
 enum axienet_tsn_ioctl {
@@ -799,6 +801,9 @@ struct axienet_local {
 	u8  ptp_rx_sw_pointer;
 	struct sk_buff_head ptp_txq;
 	struct work_struct tx_tstamp_work;
+#endif
+#ifdef CONFIG_XILINX_TSN_QBV
+	void __iomem *qbv_regs;
 #endif
 #endif
 	spinlock_t ptp_tx_lock;		/* PTP tx lock*/
@@ -1135,6 +1140,38 @@ static inline void axienet_dma_bdout(struct axienet_dma_q *q,
 	writel(value, (q->dma_regs + reg));
 #endif
 }
+
+#ifdef CONFIG_XILINX_TSN_QBV
+/**
+ * axienet_qbv_ior - Memory mapped TSN QBV register read
+ * @lp:         Pointer to axienet local structure
+ * @offset:     Address offset from the base address of Axi Ethernet core
+ *
+ * Return: The contents of the Axi Ethernet register
+ *
+ * This function returns the contents of the corresponding register.
+ */
+static inline u32 axienet_qbv_ior(struct axienet_local *lp, off_t offset)
+{
+	return ioread32(lp->qbv_regs + offset);
+}
+
+/**
+ * axienet_qbv_iow - Memory mapped TSN QBV register write
+ * @lp:         Pointer to axienet local structure
+ * @offset:     Address offset from the base address of Axi Ethernet core
+ * @value:      Value to be written into the Axi Ethernet register
+ *
+ * This function writes the desired value into the corresponding Axi Ethernet
+ * register.
+ */
+static inline void axienet_qbv_iow(struct axienet_local *lp, off_t offset,
+				   u32 value)
+{
+	iowrite32(value, (lp->qbv_regs + offset));
+}
+#endif
+
 /* Function prototypes visible in xilinx_axienet_mdio.c for other files */
 int axienet_mdio_enable(struct axienet_local *lp);
 void axienet_mdio_disable(struct axienet_local *lp);

@@ -45,7 +45,6 @@ static int __axienet_set_schedule(struct net_device *ndev, struct qbv_info *qbv)
 	u16 i;
 	unsigned int acl_bit_map = 0;
 	u32 u_config_change = 0;
-	u8 port = qbv->port;
 
 	if (qbv->cycle_time == 0) {
 		/* clear the gate enable bit */
@@ -53,31 +52,31 @@ static int __axienet_set_schedule(struct net_device *ndev, struct qbv_info *qbv)
 		/* open all the gates */
 		u_config_change |= CC_ADMIN_GATE_STATE_SHIFT;
 
-		axienet_iow(lp, CONFIG_CHANGE(port), u_config_change);
+		axienet_qbv_iow(lp, CONFIG_CHANGE, u_config_change);
 
 		return 0;
 	}
 
-	if (axienet_ior(lp, PORT_STATUS(port)) & 1) {
+	if (axienet_qbv_ior(lp, PORT_STATUS) & 1) {
 		if (qbv->force) {
 			u_config_change &= ~CC_ADMIN_GATE_ENABLE_BIT;
-			axienet_iow(lp, CONFIG_CHANGE(port), u_config_change);
+			axienet_qbv_iow(lp, CONFIG_CHANGE, u_config_change);
 		} else {
 			return -EALREADY;
 		}
 	}
 	/* write admin time */
-	axienet_iow(lp, ADMIN_CYCLE_TIME_DENOMINATOR(port),
-		    qbv->cycle_time & CYCLE_TIME_DENOMINATOR_MASK);
+	axienet_qbv_iow(lp, ADMIN_CYCLE_TIME_DENOMINATOR,
+			qbv->cycle_time & CYCLE_TIME_DENOMINATOR_MASK);
 
-	axienet_iow(lp, ADMIN_BASE_TIME_NS(port), qbv->ptp_time_ns);
+	axienet_qbv_iow(lp, ADMIN_BASE_TIME_NS, qbv->ptp_time_ns);
 
-	axienet_iow(lp, ADMIN_BASE_TIME_SEC(port),
-		    qbv->ptp_time_sec & 0xFFFFFFFF);
-	axienet_iow(lp, ADMIN_BASE_TIME_SECS(port),
-		    (qbv->ptp_time_sec >> 32) & BASE_TIME_SECS_MASK);
+	axienet_qbv_iow(lp, ADMIN_BASE_TIME_SEC,
+			qbv->ptp_time_sec & 0xFFFFFFFF);
+	axienet_qbv_iow(lp, ADMIN_BASE_TIME_SECS,
+			(qbv->ptp_time_sec >> 32) & BASE_TIME_SECS_MASK);
 
-	u_config_change = axienet_ior(lp, CONFIG_CHANGE(port));
+	u_config_change = axienet_qbv_ior(lp, CONFIG_CHANGE);
 
 	u_config_change &= ~(CC_ADMIN_CTRL_LIST_LENGTH_MASK <<
 				CC_ADMIN_CTRL_LIST_LENGTH_SHIFT);
@@ -87,17 +86,18 @@ static int __axienet_set_schedule(struct net_device *ndev, struct qbv_info *qbv)
 	/* program each list */
 	for (i = 0; i < qbv->list_length; i++) {
 		acl_bit_map = axienet_map_gs_to_hw(lp, qbv->acl_gate_state[i]);
-		axienet_iow(lp,  ADMIN_CTRL_LIST(port, i),
-			    (acl_bit_map & (ACL_GATE_STATE_MASK)) <<
-			    ACL_GATE_STATE_SHIFT);
+		axienet_qbv_iow(lp,  ADMIN_CTRL_LIST(i),
+				(acl_bit_map & (ACL_GATE_STATE_MASK)) <<
+				ACL_GATE_STATE_SHIFT);
 
 	    /* set the time for each entry */
-	    axienet_iow(lp, ADMIN_CTRL_LIST_TIME(port, i),
-			qbv->acl_gate_time[i] & CTRL_LIST_TIME_INTERVAL_MASK);
+	    axienet_qbv_iow(lp, ADMIN_CTRL_LIST_TIME(i),
+			    qbv->acl_gate_time[i] &
+			    CTRL_LIST_TIME_INTERVAL_MASK);
 	}
 
 	/* clear interrupt status */
-	axienet_iow(lp, INT_STATUS(port), 0);
+	axienet_qbv_iow(lp, INT_STATUS, 0);
 
 	/* kick in new config change */
 	u_config_change |= CC_ADMIN_CONFIG_CHANGE_BIT;
@@ -106,7 +106,7 @@ static int __axienet_set_schedule(struct net_device *ndev, struct qbv_info *qbv)
 	u_config_change |= CC_ADMIN_GATE_ENABLE_BIT;
 
 	/* start */
-	axienet_iow(lp, CONFIG_CHANGE(port), u_config_change);
+	axienet_qbv_iow(lp, CONFIG_CHANGE, u_config_change);
 
 	return 0;
 }
@@ -138,30 +138,29 @@ static int __axienet_get_schedule(struct net_device *ndev, struct qbv_info *qbv)
 	struct axienet_local *lp = netdev_priv(ndev);
 	u16 i = 0;
 	u32 u_value = 0;
-	u8 port = qbv->port;
 
-	if (!(axienet_ior(lp, CONFIG_CHANGE(port)) &
+	if (!(axienet_qbv_ior(lp, CONFIG_CHANGE) &
 			CC_ADMIN_GATE_ENABLE_BIT)) {
 		qbv->cycle_time = 0;
 		return 0;
 	}
 
-	u_value = axienet_ior(lp, GATE_STATE(port));
+	u_value = axienet_qbv_ior(lp, GATE_STATE);
 	qbv->list_length = (u_value >> CC_ADMIN_CTRL_LIST_LENGTH_SHIFT) &
 				CC_ADMIN_CTRL_LIST_LENGTH_MASK;
 
-	u_value = axienet_ior(lp, OPER_CYCLE_TIME_DENOMINATOR(port));
+	u_value = axienet_qbv_ior(lp, OPER_CYCLE_TIME_DENOMINATOR);
 	qbv->cycle_time = u_value & CYCLE_TIME_DENOMINATOR_MASK;
 
-	u_value = axienet_ior(lp, OPER_BASE_TIME_NS(port));
+	u_value = axienet_qbv_ior(lp, OPER_BASE_TIME_NS);
 	qbv->ptp_time_ns = u_value & OPER_BASE_TIME_NS_MASK;
 
-	qbv->ptp_time_sec = axienet_ior(lp, OPER_BASE_TIME_SEC(port));
-	u_value = axienet_ior(lp, OPER_BASE_TIME_SECS(port));
+	qbv->ptp_time_sec = axienet_qbv_ior(lp, OPER_BASE_TIME_SEC);
+	u_value = axienet_qbv_ior(lp, OPER_BASE_TIME_SECS);
 	qbv->ptp_time_sec |= (u64)(u_value & BASE_TIME_SECS_MASK) << 32;
 
 	for (i = 0; i < qbv->list_length; i++) {
-		u_value = axienet_ior(lp, OPER_CTRL_LIST(port, i));
+		u_value = axienet_qbv_ior(lp, OPER_CTRL_LIST(i));
 		qbv->acl_gate_state[i] = (u_value >> ACL_GATE_STATE_SHIFT) &
 					ACL_GATE_STATE_MASK;
 		/**
@@ -171,7 +170,7 @@ static int __axienet_get_schedule(struct net_device *ndev, struct qbv_info *qbv)
 		if (lp->num_tc == 2 && qbv->acl_gate_state[i] == 2)
 			qbv->acl_gate_state[i] = 4;
 
-		u_value = axienet_ior(lp, OPER_CTRL_LIST_TIME(port, i));
+		u_value = axienet_qbv_ior(lp, OPER_CTRL_LIST_TIME(i));
 		qbv->acl_gate_time[i] = u_value & CTRL_LIST_TIME_INTERVAL_MASK;
 	}
 	return 0;
@@ -204,10 +203,9 @@ static irqreturn_t axienet_qbv_irq(int irq, void *_ndev)
 {
 	struct net_device *ndev = _ndev;
 	struct axienet_local *lp = netdev_priv(ndev);
-	u8  port = 0; /* TODO */
 
 	/* clear status */
-	axienet_iow(lp, INT_CLEAR(port), 0);
+	axienet_qbv_iow(lp, INT_CLEAR, 0);
 
 	return IRQ_HANDLED;
 }
