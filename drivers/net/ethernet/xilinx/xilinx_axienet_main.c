@@ -1547,8 +1547,30 @@ static int axienet_recv(struct net_device *ndev, int budget,
 			skb->csum = be32_to_cpu(cur_p->app3 & 0xFFFF);
 			skb->ip_summed = CHECKSUM_COMPLETE;
 		}
+#ifdef CONFIG_XILINX_TSN
+		if (unlikely(q->flags & MCDMA_MGMT_CHAN)) {
+			struct net_device *ndev = NULL;
+
+			/* received packet on mgmt channel */
+			if (q->flags & MCDMA_MGMT_CHAN_PORT0)
+				ndev = lp->slaves[0];
+			else if (q->flags & MCDMA_MGMT_CHAN_PORT1)
+				ndev = lp->slaves[1];
+
+			/* send to one of the front panel port */
+			if (ndev && netif_running(ndev)) {
+				skb->dev = ndev;
+				netif_receive_skb(skb);
+			} else {
+				kfree(skb); /* dont send up the stack */
+			}
+		} else {
+			netif_receive_skb(skb); /* send on normal data path */
+		}
+#else
 
 		netif_receive_skb(skb);
+#endif
 
 		size += length;
 		packets++;
