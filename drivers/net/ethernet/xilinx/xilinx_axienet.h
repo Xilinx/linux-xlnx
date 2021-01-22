@@ -386,6 +386,10 @@
 #define XAE_TX_PTP_LEN		16
 #define XXV_TX_PTP_LEN		12
 
+/* Macros used when AXI DMA h/w is configured without DRE */
+#define XAE_TX_BUFFERS		64
+#define XAE_MAX_PKT_LEN		8192
+
 /**
  * struct axidma_bd - Axi Dma buffer descriptor layout
  * @next:         MM2S/S2MM Next Descriptor Pointer
@@ -474,6 +478,12 @@ struct axidma_bd {
  * @rx_bd_v:	Virtual address of the RX buffer descriptor ring
  * @rx_bd_p:	Physical address(start address) of the RX buffer descr. ring
  * @rx_bd_num:	Size of RX buffer descriptor ring
+ * @tx_buf:	Virtual address of the Tx buffer pool used by the driver when
+ *		DMA h/w is configured without DRE.
+ * @tx_bufs:	Virutal address of the Tx buffer address.
+ * @tx_bufs_dma: Physical address of the Tx buffer address used by the driver
+ *		 when DMA h/w is configured without DRE.
+ * @eth_hasdre: Tells whether DMA h/w is configured with dre or not.
  * @tx_bd_ci:	Stores the index of the Tx buffer descriptor in the ring being
  *		accessed currently. Used while alloc. BDs before a TX starts
  * @tx_bd_tail:	Stores the index of the Tx buffer descriptor in the ring being
@@ -541,6 +551,10 @@ struct axienet_local {
 	struct axidma_bd *rx_bd_v;
 	dma_addr_t rx_bd_p;
 	u32 rx_bd_num;
+	unsigned char *tx_buf[XAE_TX_BUFFERS];
+	unsigned char *tx_bufs;
+	dma_addr_t tx_bufs_dma;
+	bool eth_hasdre;
 	u32 tx_bd_ci;
 	u32 tx_bd_tail;
 	u32 rx_bd_ci;
