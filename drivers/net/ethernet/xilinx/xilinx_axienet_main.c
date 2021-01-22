@@ -3126,7 +3126,6 @@ static int axienet_probe(struct platform_device *pdev)
 	struct resource *ethres;
 	u32 value;
 	u16 num_queues = XAE_MAX_QUEUES;
-	bool slave = false;
 	bool is_tsn = false;
 
 	is_tsn = of_property_read_bool(pdev->dev.of_node, "xlnx,tsn");
@@ -3151,6 +3150,7 @@ static int axienet_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, ndev);
 #ifdef CONFIG_XILINX_TSN
+	bool slave = false;
 	if (is_tsn) {
 		slave = of_property_read_bool(pdev->dev.of_node,
 					      "xlnx,tsn-slave");
