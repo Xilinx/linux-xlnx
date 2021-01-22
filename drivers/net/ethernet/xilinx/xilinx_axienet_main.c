@@ -1015,10 +1015,11 @@ static inline int axienet_check_tx_bd_space(struct axienet_dma_q *q,
  * @buf:	Pointer to the buf to copy timestamp header
  * @msg_type:	PTP message type
  *
- * Return:	None.
+ * Return: 0, on success
+ *	    NETDEV_TX_BUSY, if timestamp FIFO has no vacancy
  */
-static void axienet_create_tsheader(u8 *buf, u8 msg_type,
-				    struct axienet_dma_q *q)
+static int axienet_create_tsheader(u8 *buf, u8 msg_type,
+				   struct axienet_dma_q *q)
 {
 	struct axienet_local *lp = q->lp;
 #ifdef CONFIG_AXIENET_HAS_MCDMA
@@ -1028,6 +1029,7 @@ static void axienet_create_tsheader(u8 *buf, u8 msg_type,
 #endif
 	u64 val;
 	u32 tmp;
+	u32 flags;
 
 #ifdef CONFIG_AXIENET_HAS_MCDMA
 	cur_p = &q->txq_bd_v[q->tx_bd_tail];
@@ -1056,9 +1058,19 @@ static void axienet_create_tsheader(u8 *buf, u8 msg_type,
 	} else if (lp->axienet_config->mactype == XAXIENET_10G_25G ||
 		   lp->axienet_config->mactype == XAXIENET_MRMAC) {
 		memcpy(&tmp, buf, XXVENET_TS_HEADER_LEN);
+		/* Check for Transmit Data FIFO Vacancy */
+		spin_lock_irqsave(&lp->ptp_tx_lock, flags);
+		if (!axienet_txts_ior(lp, XAXIFIFO_TXTS_TDFV)) {
+			spin_unlock_irqrestore(&lp->ptp_tx_lock, flags);
+			return NETDEV_TX_BUSY;
+		}
 		axienet_txts_iow(lp, XAXIFIFO_TXTS_TXFD, tmp);
-		axienet_txts_iow(lp, XAXIFIFO_TXTS_TLR, XXVENET_TS_HEADER_LEN);
+		axienet_txts_iow(lp, XAXIFIFO_TXTS_TLR,
+				 XXVENET_TS_HEADER_LEN);
+		spin_unlock_irqrestore(&lp->ptp_tx_lock, flags);
 	}
+
+	return 0;
 }
 #endif
 
@@ -1183,19 +1195,24 @@ static int axienet_skb_tstsmp(struct sk_buff **__skb, struct axienet_dma_q *q,
 			dev_dbg(lp->dev, "tx_tag:[%04x]\n",
 				cur_p->ptp_tx_ts_tag);
 			if (lp->tstamp_config.tx_type == HWTSTAMP_TX_ONESTEP_SYNC) {
-				axienet_create_tsheader(lp->tx_ptpheader,
-							TX_TS_OP_ONESTEP, q);
+				if (axienet_create_tsheader(lp->tx_ptpheader,
+							    TX_TS_OP_ONESTEP,
+							    q))
+					return NETDEV_TX_BUSY;
 			} else {
-				axienet_create_tsheader(lp->tx_ptpheader,
-							TX_TS_OP_TWOSTEP, q);
+				if (axienet_create_tsheader(lp->tx_ptpheader,
+							    TX_TS_OP_TWOSTEP,
+							    q))
+					return NETDEV_TX_BUSY;
 				skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
 				cur_p->ptp_tx_skb = (phys_addr_t)skb_get(skb);
 			}
 	} else if (lp->axienet_config->mactype == XAXIENET_10G_25G ||
 		   lp->axienet_config->mactype == XAXIENET_MRMAC) {
 		dev_dbg(lp->dev, "tx_tag:NOOP\n");
-			axienet_create_tsheader(lp->tx_ptpheader,
-						TX_TS_OP_NOOP, q);
+			if (axienet_create_tsheader(lp->tx_ptpheader,
+						    TX_TS_OP_NOOP, q))
+				return NETDEV_TX_BUSY;
 	}
 
 	return NETDEV_TX_OK;
@@ -3435,6 +3452,7 @@ static int axienet_probe(struct platform_device *pdev)
 			lp->tx_ptpheader = devm_kzalloc(&pdev->dev,
 							XXVENET_TS_HEADER_LEN,
 							GFP_KERNEL);
+			spin_lock_init(&lp->ptp_tx_lock);
 		}
 
 		of_node_put(np);

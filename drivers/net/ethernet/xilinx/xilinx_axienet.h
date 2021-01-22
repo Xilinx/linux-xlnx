@@ -156,6 +156,7 @@
 
 /* AXI Tx Timestamp Stream FIFO Register Definitions */
 #define XAXIFIFO_TXTS_ISR	0x00000000 /* Interrupt Status Register */
+#define XAXIFIFO_TXTS_TDFV	0x0000000C /* Transmit Data FIFO Vacancy */
 #define XAXIFIFO_TXTS_TXFD	0x00000010 /* Tx Data Write Port */
 #define XAXIFIFO_TXTS_TLR	0x00000014 /* Transmit Length Register */
 #define XAXIFIFO_TXTS_RFO	0x0000001C /* Rx Fifo Occupancy */
@@ -800,9 +801,9 @@ struct axienet_local {
 	u8  ptp_rx_sw_pointer;
 	struct sk_buff_head ptp_txq;
 	struct work_struct tx_tstamp_work;
-	spinlock_t ptp_tx_lock;		/* TSN PTP tx lock*/
 #endif
 #endif
+	spinlock_t ptp_tx_lock;		/* PTP tx lock*/
 	int eth_irq;
 
 	u32 options;			/* Current options word */
