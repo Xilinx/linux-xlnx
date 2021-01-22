@@ -1963,7 +1963,8 @@ static int axienet_set_timestamp_mode(struct axienet_local *lp,
 		return -EINVAL;
 
 	/* Read the current value in the MAC TX CTRL register */
-	regval = axienet_ior(lp, XAE_TC_OFFSET);
+	if (lp->axienet_config->mactype != XAXIENET_10G_25G)
+		regval = axienet_ior(lp, XAE_TC_OFFSET);
 
 	switch (config->tx_type) {
 	case HWTSTAMP_TX_OFF:
@@ -1985,7 +1986,8 @@ static int axienet_set_timestamp_mode(struct axienet_local *lp,
 		axienet_iow(lp, XAE_TC_OFFSET, regval);
 
 	/* Read the current value in the MAC RX RCW1 register */
-	regval = axienet_ior(lp, XAE_RCW1_OFFSET);
+	if (lp->axienet_config->mactype != XAXIENET_10G_25G)
+		regval = axienet_ior(lp, XAE_RCW1_OFFSET);
 
 	/* On RX always timestamp everything */
 	switch (config->rx_filter) {
