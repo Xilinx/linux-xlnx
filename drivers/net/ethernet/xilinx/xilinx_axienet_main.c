@@ -2033,17 +2033,20 @@ static int axienet_stop(struct net_device *ndev)
 			/* Do a reset to ensure DMA is really stopped */
 			if (lp->axienet_config->mactype != XAXIENET_10G_25G &&
 			    lp->axienet_config->mactype != XAXIENET_MRMAC) {
+				int ret;
 				mutex_lock(&lp->mii_bus->mdio_lock);
 				axienet_mdio_disable(lp);
-			}
-
-			__axienet_device_reset(q);
-
-			if (lp->axienet_config->mactype != XAXIENET_10G_25G &&
-			    lp->axienet_config->mactype != XAXIENET_MRMAC) {
-				axienet_mdio_enable(lp);
+				__axienet_device_reset(q);
+				ret = axienet_mdio_enable(lp);
 				mutex_unlock(&lp->mii_bus->mdio_lock);
+				if (ret < 0) {
+					free_irq(q->tx_irq, ndev);
+					return ret;
+				}
+			} else {
+				__axienet_device_reset(q);
 			}
+
 			free_irq(q->tx_irq, ndev);
 		}
 
