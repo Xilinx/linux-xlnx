@@ -187,16 +187,20 @@
 #define XAE_RCW1_OFFSET		0x00000404 /* Rx Configuration Word 1 */
 #define XAE_TC_OFFSET		0x00000408 /* Tx Configuration */
 #define XAE_FCC_OFFSET		0x0000040C /* Flow Control Configuration */
-#define XAE_EMMC_OFFSET		0x00000410 /* EMAC mode configuration */
-#define XAE_PHYC_OFFSET		0x00000414 /* RGMII/SGMII configuration */
 #define XAE_ID_OFFSET		0x000004F8 /* Identification register */
-#define XAE_MDIO_MC_OFFSET	0x00000500 /* MII Management Config */
-#define XAE_MDIO_MCR_OFFSET	0x00000504 /* MII Management Control */
-#define XAE_MDIO_MWD_OFFSET	0x00000508 /* MII Management Write Data */
-#define XAE_MDIO_MRD_OFFSET	0x0000050C /* MII Management Read Data */
+#define XAE_EMMC_OFFSET		0x00000410 /* MAC speed configuration */
+#define XAE_RMFC_OFFSET		0x00000414 /* RX Max Frame Configuration */
+#define XAE_MDIO_MC_OFFSET	0x00000500 /* MDIO Setup */
+#define XAE_MDIO_MCR_OFFSET	0x00000504 /* MDIO Control */
+#define XAE_MDIO_MWD_OFFSET	0x00000508 /* MDIO Write Data */
+#define XAE_MDIO_MRD_OFFSET	0x0000050C /* MDIO Read Data */
+#define XAE_TEMAC_IS_OFFSET	0x00000600 /* TEMAC Interrupt Status */
+#define XAE_TEMAC_IP_OFFSET	0x00000610 /* TEMAC Interrupt Pending Status */
+#define XAE_TEMAC_IE_OFFSET	0x00000620 /* TEMAC Interrupt Enable Status */
+#define XAE_TEMAC_IC_OFFSET	0x00000630 /* TEMAC Interrupt Clear Status */
 #define XAE_UAW0_OFFSET		0x00000700 /* Unicast address word 0 */
 #define XAE_UAW1_OFFSET		0x00000704 /* Unicast address word 1 */
-#define XAE_FMI_OFFSET		0x00000708 /* Filter Mask Index */
+#define XAE_FMC_OFFSET		0x00000708 /* Frame Filter Control */
 #define XAE_AF0_OFFSET		0x00000710 /* Address Filter 0 */
 #define XAE_AF1_OFFSET		0x00000714 /* Address Filter 1 */
 
@@ -301,18 +305,6 @@
 #define XAE_EMMC_LINKSPD_1000	0x80000000 /* Link Speed mask for 1000 Mbit */
 #define XAE_EMMC_LINKSPD_2500	0x80000000 /* Link Speed mask for 2500 Mbit */
 
-/* Bit masks for Axi Ethernet PHYC register */
-#define XAE_PHYC_SGMIILINKSPEED_MASK	0xC0000000 /* SGMII link speed mask*/
-#define XAE_PHYC_RGMIILINKSPEED_MASK	0x0000000C /* RGMII link speed */
-#define XAE_PHYC_RGMIIHD_MASK		0x00000002 /* RGMII Half-duplex */
-#define XAE_PHYC_RGMIILINK_MASK		0x00000001 /* RGMII link status */
-#define XAE_PHYC_RGLINKSPD_10		0x00000000 /* RGMII link 10 Mbit */
-#define XAE_PHYC_RGLINKSPD_100		0x00000004 /* RGMII link 100 Mbit */
-#define XAE_PHYC_RGLINKSPD_1000		0x00000008 /* RGMII link 1000 Mbit */
-#define XAE_PHYC_SGLINKSPD_10		0x00000000 /* SGMII link 10 Mbit */
-#define XAE_PHYC_SGLINKSPD_100		0x40000000 /* SGMII link 100 Mbit */
-#define XAE_PHYC_SGLINKSPD_1000		0x80000000 /* SGMII link 1000 Mbit */
-
 /* Bit masks for Axi Ethernet MDIO interface MC register */
 #define XAE_MDIO_MC_MDIOEN_MASK		0x00000040 /* MII management enable */
 #define XAE_MDIO_MC_CLOCK_DIVIDE_MAX	0x3F	   /* Maximum MDIO divisor */
@@ -329,18 +321,15 @@
 #define XAE_MDIO_MCR_INITIATE_MASK	0x00000800 /* Ready Mask */
 #define XAE_MDIO_MCR_READY_MASK		0x00000080 /* Ready Mask */
 
-/* Bit masks for Axi Ethernet MDIO interface MIS, MIP, MIE, MIC registers */
-#define XAE_MDIO_INT_MIIM_RDY_MASK	0x00000001 /* MIIM Interrupt */
-
 /* Bit masks for Axi Ethernet UAW1 register */
 /* Station address bits [47:32]; Station address
  * bits [31:0] are stored in register UAW0
  */
 #define XAE_UAW1_UNICASTADDR_MASK	0x0000FFFF
 
-/* Bit masks for Axi Ethernet FMI register */
-#define XAE_FMI_PM_MASK			0x80000000 /* Promis. mode enable */
-#define XAE_FMI_IND_MASK		0x00000003 /* Index Mask */
+/* Bit masks for Axi Ethernet FMC register */
+#define XAE_FMC_PM_MASK			0x80000000 /* Promis. mode enable */
+#define XAE_FMC_IND_MASK		0x00000003 /* Index Mask */
 
 #define XAE_MDIO_DIV_DFT		29 /* Default MDIO clock divisor */
 
