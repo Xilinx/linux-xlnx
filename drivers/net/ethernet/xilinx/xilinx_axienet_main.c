@@ -3259,7 +3259,7 @@ static int axienet_probe(struct platform_device *pdev)
 	 *  be a value that alters the driver behavior so set it to an invalid
 	 *  value as the default.
 	 */
-	lp->phy_mode = ~0;
+	lp->phy_mode = PHY_INTERFACE_MODE_NA;
 	of_property_read_u32(pdev->dev.of_node, "xlnx,phy-type", &lp->phy_mode);
 	/* Set default USXGMII rate */
 	lp->usxgmii_rate = SPEED_1000;
