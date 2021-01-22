@@ -113,6 +113,22 @@ static int zynqmp_pm_register_notifier(const u32 node, const u32 event,
 }
 
 /**
+ * zynqmp_pm_ioctl - PM IOCTL for device control and configs
+ * @node:	Node ID of the device
+ * @ioctl:	ID of the requested IOCTL
+ * @arg1:	Argument 1 of requested IOCTL call
+ * @arg2:	Argument 2 of requested IOCTL call
+ * @out:	Returned output value
+ *
+ * Return:	Returns status, either success or error+reason
+ */
+static int zynqmp_pm_ioctl(const u32 node, const u32 ioctl, const u32 arg1,
+			   const u32 arg2, u32 *out)
+{
+	return zynqmp_pm_invoke_fn(PM_IOCTL, node, ioctl, arg1, arg2, out);
+}
+
+/**
  * zynqmp_pm_argument_value() - Extract argument value from a PM-API request
  * @arg:	Entered PM-API argument in string format
  *
