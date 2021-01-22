@@ -762,6 +762,16 @@ int __maybe_unused axienet_mcdma_tx_probe(struct platform_device *pdev,
 	int i;
 	char dma_name[24];
 
+#ifdef CONFIG_XILINX_TSN
+	u32 num = XAE_TSN_MIN_QUEUES;
+	int ret = 0;
+	/* get number of associated queues */
+	ret = of_property_read_u32(np, "xlnx,num-mm2s-channels", &num);
+	if (ret)
+		num = XAE_TSN_MIN_QUEUES;
+	lp->num_tx_queues = num;
+#endif
+
 	for_each_tx_dma_queue(lp, i) {
 		struct axienet_dma_q *q;
 
@@ -771,8 +781,13 @@ int __maybe_unused axienet_mcdma_tx_probe(struct platform_device *pdev,
 		snprintf(dma_name, sizeof(dma_name), "mm2s_ch%d_introut",
 			 q->chan_id);
 		q->tx_irq = platform_get_irq_byname(pdev, dma_name);
+#ifdef CONFIG_XILINX_TSN
+		q->eth_hasdre = of_property_read_bool(np,
+						      "xlnx,include-mm2s-dre");
+#else
 		q->eth_hasdre = of_property_read_bool(np,
 						      "xlnx,include-dre");
+#endif
 		spin_lock_init(&q->tx_lock);
 	}
 	of_node_put(np);

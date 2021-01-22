@@ -389,7 +389,7 @@ void axienet_set_multicast_list(struct net_device *ndev)
  * these options in the Axi Ethernet hardware. This is done through
  * axienet_option structure .
  */
-static void axienet_setoptions(struct net_device *ndev, u32 options)
+void axienet_setoptions(struct net_device *ndev, u32 options)
 {
 	int reg;
 	struct axienet_local *lp = netdev_priv(ndev);
@@ -580,7 +580,7 @@ static int axienet_device_reset(struct net_device *ndev)
 			return err;
 	}
 
-	if (!lp->is_tsn || lp->temac_no == XAE_TEMAC1) {
+	if (!lp->is_tsn) {
 		for_each_rx_dma_queue(lp, i) {
 			q = lp->dq[i];
 			__axienet_device_reset(q);
@@ -606,7 +606,7 @@ static int axienet_device_reset(struct net_device *ndev)
 			lp->options |= XAE_OPTION_JUMBO;
 	}
 
-	if (!lp->is_tsn || lp->temac_no == XAE_TEMAC1) {
+	if (!lp->is_tsn) {
 		if (axienet_dma_bd_init(ndev)) {
 			netdev_err(ndev, "%s: descriptor allocation failed\n",
 				   __func__);
@@ -695,7 +695,7 @@ static int axienet_device_reset(struct net_device *ndev)
  * auto negotiation is done by the PHY. This is the function that gets
  * registered with the PHY interface through the "of_phy_connect" call.
  */
-static void axienet_adjust_link(struct net_device *ndev)
+void axienet_adjust_link(struct net_device *ndev)
 {
 	u32 emmc_reg;
 	u32 link_state;
@@ -1263,7 +1263,7 @@ static int axienet_queue_xmit(struct sk_buff *skb,
 		if (eth->h_proto == htons(ETH_P_1588))
 			return axienet_ptp_xmit(skb, ndev);
 #endif
-		if (lp->temac_no == XAE_TEMAC2) {
+		if (lp->is_tsn) {
 			dev_kfree_skb_any(skb);
 			return NETDEV_TX_OK;
 		}
@@ -1728,7 +1728,7 @@ static irqreturn_t axienet_eth_irq(int irq, void *_ndev)
  * and ISR handling. Axi Ethernet core is reset through Axi DMA core. Buffer
  * descriptors are initialized.
  */
-static int axienet_open(struct net_device *ndev)
+static int __maybe_unused axienet_open(struct net_device *ndev)
 {
 	int ret = 0, i = 0;
 	struct axienet_local *lp = netdev_priv(ndev);
@@ -1762,7 +1762,7 @@ static int axienet_open(struct net_device *ndev)
 			phy_start(phydev);
 	}
 
-	if (!lp->is_tsn || lp->temac_no == XAE_TEMAC1) {
+	if (!lp->is_tsn) {
 		/* Enable tasklets for Axi DMA error handling */
 		for_each_rx_dma_queue(lp, i) {
 #ifdef CONFIG_AXIENET_HAS_MCDMA
@@ -1819,27 +1819,6 @@ static int axienet_open(struct net_device *ndev)
 #endif
 		}
 	}
-#ifdef CONFIG_XILINX_TSN_PTP
-	if (lp->is_tsn) {
-		INIT_WORK(&lp->tx_tstamp_work, axienet_tx_tstamp);
-		skb_queue_head_init(&lp->ptp_txq);
-
-		lp->ptp_rx_hw_pointer = 0;
-		lp->ptp_rx_sw_pointer = 0xff;
-
-		axienet_iow(lp, PTP_RX_CONTROL_OFFSET, PTP_RX_PACKET_CLEAR);
-
-		ret = request_irq(lp->ptp_rx_irq, axienet_ptp_rx_irq,
-				  0, "ptp_rx", ndev);
-		if (ret)
-			goto err_ptp_rx_irq;
-
-		ret = request_irq(lp->ptp_tx_irq, axienet_ptp_tx_irq,
-				  0, "ptp_tx", ndev);
-		if (ret)
-			goto err_ptp_rx_irq;
-	}
-#endif
 
 	if (lp->phy_mode == XXE_PHY_TYPE_USXGMII) {
 		netdev_dbg(ndev, "RX reg: 0x%x\n",
@@ -1966,9 +1945,6 @@ err_tx_irq:
 	if (phydev)
 		phy_disconnect(phydev);
 	phydev = NULL;
-#ifdef CONFIG_XILINX_TSN_PTP
-err_ptp_rx_irq:
-#endif
 	for_each_rx_dma_queue(lp, i)
 		tasklet_kill(&lp->dma_err_tasklet[i]);
 	dev_err(lp->dev, "request_irq() failed\n");
@@ -1998,7 +1974,7 @@ static int axienet_stop(struct net_device *ndev)
 	lp->axienet_config->setoptions(ndev, lp->options &
 			   ~(XAE_OPTION_TXEN | XAE_OPTION_RXEN));
 
-	if (!lp->is_tsn || lp->temac_no == XAE_TEMAC1) {
+	if (!lp->is_tsn) {
 		for_each_tx_dma_queue(lp, i) {
 			q = lp->dq[i];
 			cr = axienet_dma_in32(q, XAXIDMA_RX_CR_OFFSET);
@@ -2060,7 +2036,7 @@ static int axienet_stop(struct net_device *ndev)
 		if (ndev->phydev)
 			phy_disconnect(ndev->phydev);
 
-		if (lp->temac_no != XAE_TEMAC2)
+		if (!lp->is_tsn)
 			axienet_dma_bd_release(ndev);
 	}
 	return 0;
@@ -2315,7 +2291,11 @@ static int axienet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 }
 
 static const struct net_device_ops axienet_netdev_ops = {
+#ifdef CONFIG_XILINX_TSN
+	.ndo_open = axienet_tsn_open,
+#else
 	.ndo_open = axienet_open,
+#endif
 	.ndo_stop = axienet_stop,
 	.ndo_start_xmit = axienet_start_xmit,
 	.ndo_change_mtu	= axienet_change_mtu,
@@ -2717,9 +2697,6 @@ static int __maybe_unused axienet_dma_probe(struct platform_device *pdev,
 	struct axienet_dma_q *q;
 	struct device_node *np = NULL;
 	struct resource dmares;
-#ifdef CONFIG_XILINX_TSN
-	char dma_name[10];
-#endif
 
 	for_each_rx_dma_queue(lp, i) {
 		q = kzalloc(sizeof(*q), GFP_KERNEL);
@@ -2761,31 +2738,9 @@ static int __maybe_unused axienet_dma_probe(struct platform_device *pdev,
 			dev_err(&pdev->dev, "missing axistream-connected property\n");
 			return -EINVAL;
 		}
+		lp->dq[i]->tx_irq = irq_of_parse_and_map(np, 0);
+		lp->dq[i]->rx_irq = irq_of_parse_and_map(np, 1);
 	}
-
-#ifdef CONFIG_XILINX_TSN
-	if (lp->is_tsn) {
-		for_each_rx_dma_queue(lp, i) {
-			sprintf(dma_name, "dma%d_tx", i);
-			lp->dq[i]->tx_irq = platform_get_irq_byname(pdev,
-								    dma_name);
-			sprintf(dma_name, "dma%d_rx", i);
-			lp->dq[i]->rx_irq = platform_get_irq_byname(pdev,
-								    dma_name);
-			pr_info("lp->dq[%d]->tx_irq  %d\n", i,
-				lp->dq[i]->tx_irq);
-			pr_info("lp->dq[%d]->rx_irq  %d\n", i,
-				lp->dq[i]->rx_irq);
-		}
-	} else {
-#endif /* This should remove when axienet device tree irq comply to dma name */
-		for_each_rx_dma_queue(lp, i) {
-			lp->dq[i]->tx_irq = irq_of_parse_and_map(np, 0);
-			lp->dq[i]->rx_irq = irq_of_parse_and_map(np, 1);
-		}
-#ifdef CONFIG_XILINX_TSN
-	}
-#endif
 
 	of_node_put(np);
 
@@ -3137,8 +3092,10 @@ static int axienet_probe(struct platform_device *pdev)
 	struct resource *ethres;
 	u32 value;
 	u16 num_queues = XAE_MAX_QUEUES;
-	bool slave = false;
 	bool is_tsn = false;
+#ifdef CONFIG_XILINX_TSN
+	bool slave = false;
+#endif
 
 	is_tsn = of_property_read_bool(pdev->dev.of_node, "xlnx,tsn");
 	ret = of_property_read_u16(pdev->dev.of_node, "xlnx,num-queues",
@@ -3161,6 +3118,16 @@ static int axienet_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	platform_set_drvdata(pdev, ndev);
+#ifdef CONFIG_XILINX_TSN
+	if (is_tsn) {
+		slave = of_property_read_bool(pdev->dev.of_node,
+					      "xlnx,tsn-slave");
+		if (slave)
+			snprintf(ndev->name, sizeof(ndev->name), "eth2");
+		else
+			snprintf(ndev->name, sizeof(ndev->name), "eth1");
+	}
+#endif
 
 	SET_NETDEV_DEV(ndev, &pdev->dev);
 	ndev->flags &= ~IFF_MULTICAST;  /* clear multicast */
@@ -3223,14 +3190,6 @@ static int axienet_probe(struct platform_device *pdev)
 		ret = PTR_ERR(lp->regs);
 		goto cleanup_clk;
 	}
-#ifdef CONFIG_XILINX_TSN
-	slave = of_property_read_bool(pdev->dev.of_node,
-				      "xlnx,tsn-slave");
-	if (slave)
-		lp->temac_no = XAE_TEMAC2;
-	else
-		lp->temac_no = XAE_TEMAC1;
-#endif
 	lp->regs_start = ethres->start;
 
 	/* Setup checksum offload, but default to off if not specified */
@@ -3458,7 +3417,15 @@ static int axienet_probe(struct platform_device *pdev)
 		of_node_put(np);
 	}
 #endif
-	if (!slave) {
+
+#ifdef CONFIG_XILINX_TSN
+	if (lp->is_tsn)
+		ret = axienet_tsn_probe(pdev, lp, ndev);
+#ifdef CONFIG_AXIENET_HAS_MCDMA
+		ret = axienet_mcdma_probe(pdev, lp, ndev);
+#endif
+#endif
+	if (!lp->is_tsn) {
 #ifdef CONFIG_AXIENET_HAS_MCDMA
 		ret = axienet_mcdma_probe(pdev, lp, ndev);
 #else
@@ -3543,33 +3510,6 @@ static int axienet_probe(struct platform_device *pdev)
 		goto cleanup_clk;
 	}
 
-#ifdef CONFIG_XILINX_TSN_PTP
-	if (lp->is_tsn) {
-		lp->ptp_rx_irq = platform_get_irq_byname(pdev, "ptp_rx");
-
-		lp->ptp_tx_irq = platform_get_irq_byname(pdev, "ptp_tx");
-
-		lp->qbv_irq = platform_get_irq_byname(pdev, "qbv_irq");
-
-		pr_debug("ptp RX irq: %d\n", lp->ptp_rx_irq);
-		pr_debug("ptp TX irq: %d\n", lp->ptp_tx_irq);
-		pr_debug("qbv_irq: %d\n", lp->qbv_irq);
-
-		spin_lock_init(&lp->ptp_tx_lock);
-
-		if (lp->temac_no == XAE_TEMAC1) {
-			axienet_ptp_timer_probe((lp->regs + XAE_RTC_OFFSET),
-						pdev);
-
-		/* enable VLAN */
-		lp->options |= XAE_OPTION_VLAN;
-		axienet_setoptions(lp->ndev, lp->options);
-#ifdef CONFIG_XILINX_TSN_QBV
-			axienet_qbv_init(ndev);
-#endif
-		}
-	}
-#endif
 	return 0;
 
 cleanup_clk:
@@ -3591,7 +3531,7 @@ static int axienet_remove(struct platform_device *pdev)
 	struct axienet_local *lp = netdev_priv(ndev);
 	int i;
 
-	if (!lp->is_tsn || lp->temac_no == XAE_TEMAC1) {
+	if (!lp->is_tsn) {
 		for_each_rx_dma_queue(lp, i)
 			netif_napi_del(&lp->napi[i]);
 	}

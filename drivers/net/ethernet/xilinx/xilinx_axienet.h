@@ -702,7 +702,6 @@ enum axienet_tsn_ioctl {
  * @dq:		DMA queues data
  * @phy_mode:	Phy type to identify between MII/GMII/RGMII/SGMII/1000 Base-X
  * @is_tsn:	Denotes a tsn port
- * @temac_no:	Denotes the port number in TSN IP
  * @num_tc:	Total number of TSN Traffic classes
  * @timer_priv: PTP timer private data pointer
  * @ptp_tx_irq: PTP tx irq
@@ -778,9 +777,6 @@ struct axienet_local {
 	struct tasklet_struct dma_err_tasklet[XAE_MAX_QUEUES];
 	struct napi_struct napi[XAE_MAX_QUEUES];	/* NAPI Structure */
 
-	#define XAE_TEMAC1 0
-	#define XAE_TEMAC2 1
-	u8     temac_no;
 	u16    num_tx_queues;	/* Number of TX DMA queues */
 	u16    num_rx_queues;	/* Number of RX DMA queues */
 	struct axienet_dma_q *dq[XAE_MAX_QUEUES];	/* DMA queue data*/
@@ -790,6 +786,8 @@ struct axienet_local {
 	bool is_tsn;
 #ifdef CONFIG_XILINX_TSN
 	u16    num_tc;
+	struct net_device *master; /* master endpoint */
+	struct net_device *slaves[2]; /* two front panel ports */
 #ifdef CONFIG_XILINX_TSN_PTP
 	void *timer_priv;
 	int ptp_tx_irq;
@@ -1136,8 +1134,17 @@ int axienet_mdio_enable(struct axienet_local *lp);
 void axienet_mdio_disable(struct axienet_local *lp);
 int axienet_mdio_setup(struct axienet_local *lp);
 void axienet_mdio_teardown(struct axienet_local *lp);
+void axienet_adjust_link(struct net_device *ndev);
+#ifdef CONFIG_XILINX_TSN
+int axienet_tsn_open(struct net_device *ndev);
+int axienet_tsn_probe(struct platform_device *pdev,
+		      struct axienet_local *lp,
+		      struct net_device *ndev);
+#endif
 #ifdef CONFIG_XILINX_TSN_PTP
+void *axienet_ptp_timer_probe(void __iomem *base, struct platform_device *pdev);
 void axienet_tx_tstamp(struct work_struct *work);
+int axienet_ptp_timer_remove(void *priv);
 #endif
 #ifdef CONFIG_XILINX_TSN_QBV
 int axienet_qbv_init(struct net_device *ndev);
@@ -1171,6 +1178,7 @@ void __axienet_device_reset(struct axienet_dma_q *q);
 void axienet_set_mac_address(struct net_device *ndev, const void *address);
 void axienet_set_multicast_list(struct net_device *ndev);
 int xaxienet_rx_poll(struct napi_struct *napi, int quota);
+void axienet_setoptions(struct net_device *ndev, u32 options);
 
 #if defined(CONFIG_AXIENET_HAS_MCDMA)
 int __maybe_unused axienet_mcdma_rx_q_init(struct net_device *ndev,
