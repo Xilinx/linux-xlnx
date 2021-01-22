@@ -814,7 +814,7 @@ static int xemaclite_mdio_write(struct mii_bus *bus, int phy_id, int reg,
 static int xemaclite_mdio_setup(struct net_local *lp, struct device *dev)
 {
 	struct mii_bus *bus;
-	int rc;
+	int rc, ret;
 	struct resource res;
 	struct device_node *np = of_get_parent(lp->phy_node);
 	struct device_node *npp;
@@ -828,7 +828,13 @@ static int xemaclite_mdio_setup(struct net_local *lp, struct device *dev)
 	}
 	npp = of_get_parent(np);
 
-	of_address_to_resource(npp, 0, &res);
+	ret = of_address_to_resource(npp, 0, &res);
+	if (ret) {
+		dev_err(dev, "%s resource error!\n",
+			dev->of_node->full_name);
+		of_node_put(lp->phy_node);
+		return ret;
+	}
 	if (lp->ndev->mem_start != res.start) {
 		struct phy_device *phydev;
 
@@ -918,7 +924,7 @@ static int xemaclite_open(struct net_device *dev)
 	xemaclite_disable_interrupts(lp);
 
 	if (lp->phy_node) {
-		u32 bmcr;
+		int bmcr;
 
 		lp->phy_dev = of_phy_connect(lp->ndev, lp->phy_node,
 					     xemaclite_adjust_link, 0,
@@ -940,6 +946,13 @@ static int xemaclite_open(struct net_device *dev)
 
 		/* Restart auto negotiation */
 		bmcr = phy_read(lp->phy_dev, MII_BMCR);
+		if (bmcr < 0) {
+			dev_err(&lp->ndev->dev, "phy_read failed\n");
+			phy_disconnect(lp->phy_dev);
+			lp->phy_dev = NULL;
+
+			return bmcr;
+		}
 		bmcr |= (BMCR_ANENABLE | BMCR_ANRESTART);
 		phy_write(lp->phy_dev, MII_BMCR, bmcr);
 
