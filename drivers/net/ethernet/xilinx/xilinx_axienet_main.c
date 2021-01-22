@@ -2293,9 +2293,13 @@ static int axienet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 #endif
 #ifdef CONFIG_XILINX_TSN_QBV
 	case SIOCCHIOCTL:
-		return axienet_set_schedule(dev, rq->ifr_data);
+		if (lp->qbv_regs)
+			return axienet_set_schedule(dev, rq->ifr_data);
+		return -EINVAL;
 	case SIOC_GET_SCHED:
-		return axienet_get_schedule(dev, rq->ifr_data);
+		if (lp->qbv_regs)
+			return axienet_get_schedule(dev, rq->ifr_data);
+		return -EINVAL;
 #endif
 #ifdef CONFIG_XILINX_TSN_QBR
 	case SIOC_PREEMPTION_CFG:
