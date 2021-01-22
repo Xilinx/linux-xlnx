@@ -416,6 +416,7 @@
  * @ptp_tx_ts_tag: Tag value of 2 step timestamping if timestamping is enabled
  *		   Otherwise reserved.
  * @tx_skb:	  Transmit skb address
+ * @tx_desc_mapping: Tx Descriptor DMA mapping type.
  */
 struct axidma_bd {
 	u32 next_msb;	/* high 32 bits for IP >= v7.1, reserved on older IP */
@@ -441,9 +442,12 @@ struct axidma_bd {
 	phys_addr_t ptp_tx_skb;
 	u32 ptp_tx_ts_tag;
 	phys_addr_t tx_skb;
+	u32 tx_desc_mapping;
 } __aligned(XAXIDMA_BD_MINIMUM_ALIGNMENT);
 
 #define XAE_NUM_MISC_CLOCKS 3
+#define DESC_DMA_MAP_SINGLE 0
+#define DESC_DMA_MAP_PAGE 1
 
 /**
  * struct axienet_local - axienet private per device data
