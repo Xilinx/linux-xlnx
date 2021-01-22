@@ -916,6 +916,12 @@ struct axienet_dma_q {
 	u32 tx_bd_tail;
 
 	/* MCDMA fields */
+#ifdef CONFIG_XILINX_TSN
+#define MCDMA_MGMT_CHAN		BIT(0)
+#define MCDMA_MGMT_CHAN_PORT0	BIT(1)
+#define MCDMA_MGMT_CHAN_PORT1	BIT(2)
+	u32 flags;
+#endif
 	u16 chan_id;
 	u32 rx_offset;
 	struct aximcdma_bd *txq_bd_v;
