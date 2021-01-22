@@ -333,15 +333,7 @@
 
 #define XAE_MDIO_DIV_DFT		29 /* Default MDIO clock divisor */
 
-/* Defines for different options for C_PHY_TYPE parameter in Axi Ethernet IP */
-#define XAE_PHY_TYPE_MII		0
-#define XAE_PHY_TYPE_GMII		1
-#define XAE_PHY_TYPE_RGMII_1_3		2
-#define XAE_PHY_TYPE_RGMII_2_0		3
-#define XAE_PHY_TYPE_SGMII		4
-#define XAE_PHY_TYPE_1000BASE_X		5
-
- /* Total number of entries in the hardware multicast table. */
+/* Total number of entries in the hardware multicast table. */
 #define XAE_MULTICAST_CAM_TABLE_NUM	4
 
 /* Axi Ethernet Synthesis features */
