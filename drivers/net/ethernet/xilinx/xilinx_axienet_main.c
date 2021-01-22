@@ -513,7 +513,6 @@ static inline int axienet_mrmac_gt_reset(struct net_device *ndev)
 void __axienet_device_reset(struct axienet_dma_q *q)
 {
 	u32 timeout;
-
 	/* Reset Axi DMA. This would reset Axi Ethernet core as well. The reset
 	 * process of Axi DMA takes a while to complete as all pending
 	 * commands/transfers will be flushed or completed during this
@@ -532,7 +531,6 @@ void __axienet_device_reset(struct axienet_dma_q *q)
 			break;
 		}
 	}
-
 }
 
 /**
@@ -545,14 +543,12 @@ void __axienet_device_reset(struct axienet_dma_q *q)
  * areconnected to Axi Ethernet reset lines, this in turn resets the Axi
  * Ethernet core. No separate hardware reset is done for the Axi Ethernet
  * core.
- * Returns 0 on success or a negative error number otherwise.
  */
-static int axienet_device_reset(struct net_device *ndev)
+static void axienet_device_reset(struct net_device *ndev)
 {
 	u32 axienet_status;
 	struct axienet_local *lp = netdev_priv(ndev);
 	u32 err, val;
-
 	struct axienet_dma_q *q;
 	u32 i;
 
@@ -571,9 +567,9 @@ static int axienet_device_reset(struct net_device *ndev)
 	if (lp->axienet_config->mactype == XAXIENET_MRMAC) {
 		/* Reset MRMAC */
 		axienet_mrmac_reset(lp);
-		err = axienet_mrmac_gt_reset(ndev);
-		if (err)
-			return err;
+
+		if (axienet_mrmac_gt_reset(ndev))
+			return;
 	}
 
 	if (!lp->is_tsn) {
@@ -679,8 +675,6 @@ static int axienet_device_reset(struct net_device *ndev)
 	lp->axienet_config->setoptions(ndev, lp->options);
 
 	netif_trans_update(ndev);
-
-	return 0;
 }
 
 /**
@@ -953,6 +947,8 @@ void axienet_start_xmit_done(struct net_device *ndev,
 
 	ndev->stats.tx_packets += packets;
 	ndev->stats.tx_bytes += size;
+	q->tx_packets += packets;
+	q->tx_bytes += size;
 
 	/* Matches barrier in axienet_start_xmit */
 	smp_mb();
@@ -1285,6 +1281,7 @@ int axienet_queue_xmit(struct sk_buff *skb,
 
 		if (++q->tx_bd_tail >= lp->tx_bd_num)
 			q->tx_bd_tail = 0;
+
 #ifdef CONFIG_AXIENET_HAS_MCDMA
 		cur_p = &q->txq_bd_v[q->tx_bd_tail];
 #else
@@ -1612,35 +1609,6 @@ int xaxienet_rx_poll(struct napi_struct *napi, int quota)
 	return work_done;
 }
 
-static int axienet_mii_init(struct net_device *ndev)
-{
-	struct axienet_local *lp = netdev_priv(ndev);
-	int ret;
-
-	/* Disable the MDIO interface till Axi Ethernet Reset is completed.
-	 * When we do an Axi Ethernet reset, it resets the complete core
-	 * including the MDIO. MDIO must be disabled before resetting
-	 * and re-enabled afterwards.
-	 * Hold MDIO bus lock to avoid MDIO accesses during the reset.
-	 */
-
-	mutex_lock(&lp->mii_bus->mdio_lock);
-	ret = axienet_mdio_wait_until_ready(lp);
-	if (ret < 0) {
-		mutex_unlock(&lp->mii_bus->mdio_lock);
-		return ret;
-	}
-	axienet_mdio_disable(lp);
-	axienet_device_reset(ndev);
-	ret = axienet_mdio_enable(lp);
-	ret = axienet_mdio_wait_until_ready(lp);
-	mutex_unlock(&lp->mii_bus->mdio_lock);
-	if (ret < 0)
-		return ret;
-
-	return 0;
-}
-
 /**
  * axienet_eth_irq - Ethernet core Isr.
  * @irq:	irq number
@@ -1692,17 +1660,7 @@ static int __maybe_unused axienet_open(struct net_device *ndev)
 
 	dev_dbg(&ndev->dev, "axienet_open()\n");
 
-	/* When we do an Axi Ethernet reset, it resets the complete core
-	 * including the MDIO. MDIO must be disabled before resetting.
-	 * Hold MDIO bus lock to avoid MDIO accesses during the reset.
-	 */
-	axienet_lock_mii(lp);
-	if (lp->axienet_config->mactype == XAXIENET_10G_25G ||
-	    lp->axienet_config->mactype == XAXIENET_MRMAC)
-		axienet_device_reset(ndev);
-	else
-		ret = axienet_mii_init(ndev);
-	axienet_unlock_mii(lp);
+	axienet_device_reset(ndev);
 
 	if (lp->phy_node) {
 		phydev = of_phy_connect(lp->ndev, lp->phy_node,
@@ -1715,7 +1673,6 @@ static int __maybe_unused axienet_open(struct net_device *ndev)
 		else
 			phy_start(phydev);
 	}
-
 	if (!lp->is_tsn) {
 		/* Enable tasklets for Axi DMA error handling */
 		for_each_rx_dma_queue(lp, i) {
@@ -1954,22 +1911,7 @@ static int axienet_stop(struct net_device *ndev)
 			}
 
 			/* Do a reset to ensure DMA is really stopped */
-			if (lp->axienet_config->mactype != XAXIENET_10G_25G &&
-			    lp->axienet_config->mactype != XAXIENET_MRMAC) {
-				int ret;
-				axienet_lock_mii(q->lp);
-				axienet_mdio_disable(lp);
-				__axienet_device_reset(q);
-				ret = axienet_mdio_enable(lp);
-				axienet_unlock_mii(q->lp);
-				if (ret < 0) {
-					free_irq(q->tx_irq, ndev);
-					return ret;
-				}
-			} else {
-				__axienet_device_reset(q);
-			}
-
+			__axienet_device_reset(q);
 			free_irq(q->tx_irq, ndev);
 		}
 
@@ -2530,6 +2472,27 @@ axienet_ethtools_set_coalesce(struct net_device *ndev,
 		return -EFAULT;
 	}
 
+	if (ecoalesce->rx_coalesce_usecs ||
+	    ecoalesce->rx_coalesce_usecs_irq ||
+	    ecoalesce->rx_max_coalesced_frames_irq ||
+	    ecoalesce->tx_coalesce_usecs ||
+	    ecoalesce->tx_coalesce_usecs_irq ||
+	    ecoalesce->tx_max_coalesced_frames_irq ||
+	    ecoalesce->stats_block_coalesce_usecs ||
+	    ecoalesce->use_adaptive_rx_coalesce ||
+	    ecoalesce->use_adaptive_tx_coalesce ||
+	    ecoalesce->pkt_rate_low ||
+	    ecoalesce->rx_coalesce_usecs_low ||
+	    ecoalesce->rx_max_coalesced_frames_low ||
+	    ecoalesce->tx_coalesce_usecs_low ||
+	    ecoalesce->tx_max_coalesced_frames_low ||
+	    ecoalesce->pkt_rate_high ||
+	    ecoalesce->rx_coalesce_usecs_high ||
+	    ecoalesce->rx_max_coalesced_frames_high ||
+	    ecoalesce->tx_coalesce_usecs_high ||
+	    ecoalesce->tx_max_coalesced_frames_high ||
+	    ecoalesce->rate_sample_interval)
+		return -EOPNOTSUPP;
 	if (ecoalesce->rx_max_coalesced_frames)
 		lp->coalesce_count_rx = ecoalesce->rx_max_coalesced_frames;
 	if (ecoalesce->tx_max_coalesced_frames)
@@ -2567,7 +2530,6 @@ static int axienet_ethtools_get_ts_info(struct net_device *ndev,
 #endif
 
 static const struct ethtool_ops axienet_ethtool_ops = {
-	.supported_coalesce_params = ETHTOOL_COALESCE_MAX_FRAMES,
 	.get_drvinfo    = axienet_ethtools_get_drvinfo,
 	.get_regs_len   = axienet_ethtools_get_regs_len,
 	.get_regs       = axienet_ethtools_get_regs,
@@ -3227,6 +3189,7 @@ static int axienet_probe(struct platform_device *pdev)
 	 */
 	lp->phy_mode = PHY_INTERFACE_MODE_NA;
 	of_property_read_u32(pdev->dev.of_node, "xlnx,phy-type", &lp->phy_mode);
+
 	/* Set default USXGMII rate */
 	lp->usxgmii_rate = SPEED_1000;
 	of_property_read_u32(pdev->dev.of_node, "xlnx,usxgmii-rate",
