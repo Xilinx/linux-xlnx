@@ -519,6 +519,67 @@ static int axienet_device_reset(struct net_device *ndev)
 	return 0;
 }
 
+/**
+ * axienet_adjust_link - Adjust the PHY link speed/duplex.
+ * @ndev:	Pointer to the net_device structure
+ *
+ * This function is called to change the speed and duplex setting after
+ * auto negotiation is done by the PHY. This is the function that gets
+ * registered with the PHY interface through the "of_phy_connect" call.
+ */
+static void axienet_adjust_link(struct net_device *ndev)
+{
+	u32 emmc_reg;
+	u32 link_state;
+	u32 setspeed = 1;
+	struct axienet_local *lp = netdev_priv(ndev);
+	struct phy_device *phy = ndev->phydev;
+
+	link_state = phy->speed | (phy->duplex << 1) | phy->link;
+	if (lp->last_link != link_state) {
+		if (phy->speed == SPEED_10 || phy->speed == SPEED_100) {
+			if (lp->phy_mode == PHY_INTERFACE_MODE_1000BASEX)
+				setspeed = 0;
+		} else {
+			if (phy->speed == SPEED_1000 &&
+			    lp->phy_mode == PHY_INTERFACE_MODE_MII)
+				setspeed = 0;
+		}
+
+		if (setspeed == 1) {
+			emmc_reg = axienet_ior(lp, XAE_EMMC_OFFSET);
+			emmc_reg &= ~XAE_EMMC_LINKSPEED_MASK;
+
+			switch (phy->speed) {
+			case SPEED_2500:
+				emmc_reg |= XAE_EMMC_LINKSPD_2500;
+				break;
+			case SPEED_1000:
+				emmc_reg |= XAE_EMMC_LINKSPD_1000;
+				break;
+			case SPEED_100:
+				emmc_reg |= XAE_EMMC_LINKSPD_100;
+				break;
+			case SPEED_10:
+				emmc_reg |= XAE_EMMC_LINKSPD_10;
+				break;
+			default:
+				dev_err(&ndev->dev, "Speed other than 10, 100 ");
+				dev_err(&ndev->dev, "or 1Gbps is not supported\n");
+				break;
+			}
+
+			axienet_iow(lp, XAE_EMMC_OFFSET, emmc_reg);
+			phy_print_status(phy);
+		} else {
+			netdev_err(ndev,
+				   "Error setting Axi Ethernet mac speed\n");
+		}
+
+		lp->last_link = link_state;
+	}
+}
+
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
 /**
  * axienet_tx_hwtstamp - Read tx timestamp from hw and update it to the skbuff
@@ -1401,8 +1462,7 @@ static int axienet_mii_init(struct net_device *ndev)
  * Return: 0, on success.
  *	    non-zero error value on failure
  *
- * This is the driver open routine. It calls phylink_start to start the
- * PHY device.
+ * This is the driver open routine. It calls phy_start to start the PHY device.
  * It also allocates interrupt service routines, enables the interrupt lines
  * and ISR handling. Axi Ethernet core is reset through Axi DMA core. Buffer
  * descriptors are initialized.
@@ -1413,6 +1473,7 @@ static int axienet_open(struct net_device *ndev)
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct axienet_dma_q *q;
 	u32 reg, err;
+	struct phy_device *phydev = NULL;
 
 	dev_dbg(&ndev->dev, "axienet_open()\n");
 
@@ -1427,14 +1488,27 @@ static int axienet_open(struct net_device *ndev)
 		ret = axienet_mii_init(ndev);
 	axienet_unlock_mii(lp);
 
-	if (lp->phylink) {
-		ret = phylink_of_phy_connect(lp->phylink, lp->dev->of_node, 0);
-		if (ret) {
-			dev_err(lp->dev, "phylink_of_phy_connect() failed: %d\n", ret);
-			return ret;
+	if (lp->phy_node) {
+		if (lp->phy_mode == XAE_PHY_TYPE_GMII) {
+			phydev = of_phy_connect(lp->ndev, lp->phy_node,
+						axienet_adjust_link, 0,
+						PHY_INTERFACE_MODE_GMII);
+		} else if (lp->phy_mode == XAE_PHY_TYPE_RGMII_2_0) {
+			phydev = of_phy_connect(lp->ndev, lp->phy_node,
+						axienet_adjust_link, 0,
+						PHY_INTERFACE_MODE_RGMII_ID);
+		} else if ((lp->axienet_config->mactype == XAXIENET_1G) ||
+			     (lp->axienet_config->mactype == XAXIENET_2_5G)) {
+			phydev = of_phy_connect(lp->ndev, lp->phy_node,
+						axienet_adjust_link,
+						lp->phy_flags,
+						lp->phy_interface);
 		}
 
-		phylink_start(lp->phylink);
+		if (!phydev)
+			dev_err(lp->dev, "of_phy_connect() failed\n");
+		else
+			phy_start(phydev);
 	}
 
 	/* Enable tasklets for Axi DMA error handling */
@@ -1491,7 +1565,7 @@ static int axienet_open(struct net_device *ndev)
 #endif
 	}
 
-	if (lp->phy_mode == PHY_INTERFACE_MODE_USXGMII) {
+	if (lp->phy_mode == XXE_PHY_TYPE_USXGMII) {
 		netdev_dbg(ndev, "RX reg: 0x%x\n",
 			   axienet_ior(lp, XXV_RCW1_OFFSET));
 		/* USXGMII setup at selected speed */
@@ -1588,10 +1662,9 @@ err_rx_irq:
 err_tx_irq:
 	for_each_rx_dma_queue(lp, i)
 		napi_disable(&lp->napi[i]);
-	if (lp->phylink) {
-		phylink_stop(lp->phylink);
-		phylink_disconnect_phy(lp->phylink);
-	}
+	if (phydev)
+		phy_disconnect(phydev);
+	phydev = NULL;
 	for_each_rx_dma_queue(lp, i)
 		tasklet_kill(&lp->dma_err_tasklet[i]);
 	dev_err(lp->dev, "request_irq() failed\n");
@@ -1604,7 +1677,7 @@ err_tx_irq:
  *
  * Return: 0, on success.
  *
- * This is the driver stop routine. It calls phylink_disconnect to stop the PHY
+ * This is the driver stop routine. It calls phy_disconnect to stop the PHY
  * device. It also removes the interrupt handlers and disables the interrupts.
  * The Axi DMA Tx/Rx BDs are released.
  */
@@ -1617,11 +1690,6 @@ static int axienet_stop(struct net_device *ndev)
 	struct axienet_dma_q *q;
 
 	dev_dbg(&ndev->dev, "axienet_close()\n");
-
-	if (lp->phylink) {
-		phylink_stop(lp->phylink);
-		phylink_disconnect_phy(lp->phylink);
-	}
 
 	lp->axienet_config->setoptions(ndev, lp->options &
 			   ~(XAE_OPTION_TXEN | XAE_OPTION_RXEN));
@@ -1676,6 +1744,9 @@ static int axienet_stop(struct net_device *ndev)
 
 	if (lp->axienet_config->mactype == XAXIENET_1G && !lp->eth_hasnobuf)
 		free_irq(lp->eth_irq, ndev);
+
+	if (ndev->phydev)
+		phy_disconnect(ndev->phydev);
 
 	axienet_dma_bd_release(ndev);
 	return 0;
@@ -1852,7 +1923,9 @@ static int axienet_get_ts_config(struct axienet_local *lp, struct ifreq *ifr)
 /* Ioctl MII Interface */
 static int axienet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 {
+#if defined(CONFIG_XILINX_AXI_EMAC_HWTSTAMP)
 	struct axienet_local *lp = netdev_priv(dev);
+#endif
 
 	if (!netif_running(dev))
 		return -EINVAL;
@@ -1861,9 +1934,9 @@ static int axienet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 	case SIOCGMIIPHY:
 	case SIOCGMIIREG:
 	case SIOCSMIIREG:
-		if (!lp->phylink)
+		if (!dev->phydev)
 			return -EOPNOTSUPP;
-		return phylink_mii_ioctl(lp->phylink, rq, cmd);
+		return phy_mii_ioctl(dev->phydev, rq, cmd);
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
 	case SIOCSHWTSTAMP:
 		return axienet_set_ts_config(lp, rq);
@@ -2030,10 +2103,13 @@ static void
 axienet_ethtools_get_pauseparam(struct net_device *ndev,
 				struct ethtool_pauseparam *epauseparm)
 {
+	u32 regval;
 	struct axienet_local *lp = netdev_priv(ndev);
 
-	if (lp->phylink)
-		phylink_ethtool_get_pauseparam(lp->phylink, epauseparm);
+	epauseparm->autoneg  = 0;
+	regval = axienet_ior(lp, XAE_FCC_OFFSET);
+	epauseparm->tx_pause = regval & XAE_FCC_FCTX_MASK;
+	epauseparm->rx_pause = regval & XAE_FCC_FCRX_MASK;
 }
 
 /**
@@ -2052,12 +2128,27 @@ static int
 axienet_ethtools_set_pauseparam(struct net_device *ndev,
 				struct ethtool_pauseparam *epauseparm)
 {
+	u32 regval = 0;
 	struct axienet_local *lp = netdev_priv(ndev);
 
-	if (!lp->phylink)
-		return -EOPNOTSUPP;
+	if (netif_running(ndev)) {
+		netdev_err(ndev,
+			   "Please stop netif before applying configuration\n");
+		return -EFAULT;
+	}
 
-	return phylink_ethtool_set_pauseparam(lp->phylink, epauseparm);
+	regval = axienet_ior(lp, XAE_FCC_OFFSET);
+	if (epauseparm->tx_pause)
+		regval |= XAE_FCC_FCTX_MASK;
+	else
+		regval &= ~XAE_FCC_FCTX_MASK;
+	if (epauseparm->rx_pause)
+		regval |= XAE_FCC_FCRX_MASK;
+	else
+		regval &= ~XAE_FCC_FCRX_MASK;
+	axienet_iow(lp, XAE_FCC_OFFSET, regval);
+
+	return 0;
 }
 
 /**
@@ -2137,37 +2228,6 @@ axienet_ethtools_set_coalesce(struct net_device *ndev,
 	return 0;
 }
 
-static int
-axienet_ethtools_get_link_ksettings(struct net_device *ndev,
-				    struct ethtool_link_ksettings *cmd)
-{
-	struct axienet_local *lp = netdev_priv(ndev);
-
-	if (!lp->phylink)
-		return -EOPNOTSUPP;
-
-	return phylink_ethtool_ksettings_get(lp->phylink, cmd);
-}
-
-static int
-axienet_ethtools_set_link_ksettings(struct net_device *ndev,
-				    const struct ethtool_link_ksettings *cmd)
-{
-	struct axienet_local *lp = netdev_priv(ndev);
-
-	if (!lp->phylink)
-		return -EOPNOTSUPP;
-
-	return phylink_ethtool_ksettings_set(lp->phylink, cmd);
-}
-
-static int axienet_ethtools_nway_reset(struct net_device *dev)
-{
-	struct axienet_local *lp = netdev_priv(dev);
-
-	return phylink_ethtool_nway_reset(lp->phylink);
-}
-
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
 /**
  * axienet_ethtools_get_ts_info - Get h/w timestamping capabilities.
@@ -2198,7 +2258,7 @@ static const struct ethtool_ops axienet_ethtool_ops = {
 	.get_regs       = axienet_ethtools_get_regs,
 	.get_link       = ethtool_op_get_link,
 	.get_ringparam	= axienet_ethtools_get_ringparam,
-	.set_ringparam	= axienet_ethtools_set_ringparam,
+	.set_ringparam  = axienet_ethtools_set_ringparam,
 	.get_pauseparam = axienet_ethtools_get_pauseparam,
 	.set_pauseparam = axienet_ethtools_set_pauseparam,
 	.get_coalesce   = axienet_ethtools_get_coalesce,
@@ -2206,9 +2266,8 @@ static const struct ethtool_ops axienet_ethtool_ops = {
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
 	.get_ts_info    = axienet_ethtools_get_ts_info,
 #endif
-	.get_link_ksettings = axienet_ethtools_get_link_ksettings,
-	.set_link_ksettings = axienet_ethtools_set_link_ksettings,
-	.nway_reset	= axienet_ethtools_nway_reset,
+	.get_link_ksettings = phy_ethtool_get_link_ksettings,
+	.set_link_ksettings = phy_ethtool_set_link_ksettings,
 #ifdef CONFIG_AXIENET_HAS_MCDMA
 	.get_sset_count	 = axienet_sset_count,
 	.get_ethtool_stats = axienet_get_stats,
@@ -2373,204 +2432,6 @@ static int __maybe_unused axienet_dma_probe(struct platform_device *pdev,
 
 	return 0;
 }
-
-static void axienet_validate(struct phylink_config *config,
-			     unsigned long *supported,
-			     struct phylink_link_state *state)
-{
-	struct net_device *ndev = to_net_dev(config->dev);
-	struct axienet_local *lp = netdev_priv(ndev);
-	__ETHTOOL_DECLARE_LINK_MODE_MASK(mask) = { 0, };
-
-	/* Only support the mode we are configured for */
-	switch (state->interface) {
-	case PHY_INTERFACE_MODE_NA:
-		break;
-	case PHY_INTERFACE_MODE_1000BASEX:
-	case PHY_INTERFACE_MODE_SGMII:
-		if (lp->switch_x_sgmii)
-			break;
-		fallthrough;
-	default:
-		if (state->interface != lp->phy_mode) {
-			netdev_warn(ndev, "Cannot use PHY mode %s, supported: %s\n",
-				    phy_modes(state->interface),
-				    phy_modes(lp->phy_mode));
-			bitmap_zero(supported, __ETHTOOL_LINK_MODE_MASK_NBITS);
-			return;
-		}
-	}
-
-	phylink_set(mask, Autoneg);
-	phylink_set_port_modes(mask);
-
-	phylink_set(mask, Asym_Pause);
-	phylink_set(mask, Pause);
-
-	switch (state->interface) {
-	case PHY_INTERFACE_MODE_NA:
-	case PHY_INTERFACE_MODE_1000BASEX:
-	case PHY_INTERFACE_MODE_SGMII:
-	case PHY_INTERFACE_MODE_GMII:
-	case PHY_INTERFACE_MODE_RGMII:
-	case PHY_INTERFACE_MODE_RGMII_ID:
-	case PHY_INTERFACE_MODE_RGMII_RXID:
-	case PHY_INTERFACE_MODE_RGMII_TXID:
-		phylink_set(mask, 1000baseX_Full);
-		phylink_set(mask, 1000baseT_Full);
-		if (state->interface == PHY_INTERFACE_MODE_1000BASEX)
-			break;
-		fallthrough;
-	case PHY_INTERFACE_MODE_MII:
-		phylink_set(mask, 100baseT_Full);
-		phylink_set(mask, 10baseT_Full);
-		fallthrough;
-	default:
-		break;
-	}
-
-	bitmap_and(supported, supported, mask,
-		   __ETHTOOL_LINK_MODE_MASK_NBITS);
-	bitmap_and(state->advertising, state->advertising, mask,
-		   __ETHTOOL_LINK_MODE_MASK_NBITS);
-}
-
-static void axienet_mac_pcs_get_state(struct phylink_config *config,
-				      struct phylink_link_state *state)
-{
-	struct net_device *ndev = to_net_dev(config->dev);
-	struct axienet_local *lp = netdev_priv(ndev);
-
-	switch (state->interface) {
-	case PHY_INTERFACE_MODE_SGMII:
-	case PHY_INTERFACE_MODE_1000BASEX:
-		phylink_mii_c22_pcs_get_state(lp->pcs_phy, state);
-		break;
-	default:
-		break;
-	}
-}
-
-static void axienet_mac_an_restart(struct phylink_config *config)
-{
-	struct net_device *ndev = to_net_dev(config->dev);
-	struct axienet_local *lp = netdev_priv(ndev);
-
-	phylink_mii_c22_pcs_an_restart(lp->pcs_phy);
-}
-
-static int axienet_mac_prepare(struct phylink_config *config, unsigned int mode,
-			       phy_interface_t iface)
-{
-	struct net_device *ndev = to_net_dev(config->dev);
-	struct axienet_local *lp = netdev_priv(ndev);
-	int ret;
-
-	switch (iface) {
-	case PHY_INTERFACE_MODE_SGMII:
-	case PHY_INTERFACE_MODE_1000BASEX:
-		if (!lp->switch_x_sgmii)
-			return 0;
-
-		ret = mdiobus_write(lp->pcs_phy->bus,
-				    lp->pcs_phy->addr,
-				    XLNX_MII_STD_SELECT_REG,
-				    iface == PHY_INTERFACE_MODE_SGMII ?
-					XLNX_MII_STD_SELECT_SGMII : 0);
-		if (ret < 0)
-			netdev_warn(ndev, "Failed to switch PHY interface: %d\n",
-				    ret);
-		return ret;
-	default:
-		return 0;
-	}
-}
-
-static void axienet_mac_config(struct phylink_config *config, unsigned int mode,
-			       const struct phylink_link_state *state)
-{
-	struct net_device *ndev = to_net_dev(config->dev);
-	struct axienet_local *lp = netdev_priv(ndev);
-	int ret;
-
-	switch (state->interface) {
-	case PHY_INTERFACE_MODE_SGMII:
-	case PHY_INTERFACE_MODE_1000BASEX:
-		ret = phylink_mii_c22_pcs_config(lp->pcs_phy, mode,
-						 state->interface,
-						 state->advertising);
-		if (ret < 0)
-			netdev_warn(ndev, "Failed to configure PCS: %d\n",
-				    ret);
-		break;
-
-	default:
-		break;
-	}
-}
-
-static void axienet_mac_link_down(struct phylink_config *config,
-				  unsigned int mode,
-				  phy_interface_t interface)
-{
-	/* nothing meaningful to do */
-}
-
-static void axienet_mac_link_up(struct phylink_config *config,
-				struct phy_device *phy,
-				unsigned int mode, phy_interface_t interface,
-				int speed, int duplex,
-				bool tx_pause, bool rx_pause)
-{
-	struct net_device *ndev = to_net_dev(config->dev);
-	struct axienet_local *lp = netdev_priv(ndev);
-	u32 emmc_reg, fcc_reg;
-
-	emmc_reg = axienet_ior(lp, XAE_EMMC_OFFSET);
-	emmc_reg &= ~XAE_EMMC_LINKSPEED_MASK;
-
-	switch (speed) {
-	case SPEED_2500:
-		emmc_reg |= XAE_EMMC_LINKSPD_2500;
-		break;
-	case SPEED_1000:
-		emmc_reg |= XAE_EMMC_LINKSPD_1000;
-		break;
-	case SPEED_100:
-		emmc_reg |= XAE_EMMC_LINKSPD_100;
-		break;
-	case SPEED_10:
-		emmc_reg |= XAE_EMMC_LINKSPD_10;
-		break;
-	default:
-		dev_err(&ndev->dev,
-			"Speed other than 10, 100 or 1Gbps is not supported\n");
-		break;
-	}
-
-	axienet_iow(lp, XAE_EMMC_OFFSET, emmc_reg);
-
-	fcc_reg = axienet_ior(lp, XAE_FCC_OFFSET);
-	if (tx_pause)
-		fcc_reg |= XAE_FCC_FCTX_MASK;
-	else
-		fcc_reg &= ~XAE_FCC_FCTX_MASK;
-	if (rx_pause)
-		fcc_reg |= XAE_FCC_FCRX_MASK;
-	else
-		fcc_reg &= ~XAE_FCC_FCRX_MASK;
-	axienet_iow(lp, XAE_FCC_OFFSET, fcc_reg);
-}
-
-static const struct phylink_mac_ops axienet_phylink_ops = {
-	.validate = axienet_validate,
-	.mac_pcs_get_state = axienet_mac_pcs_get_state,
-	.mac_an_restart = axienet_mac_an_restart,
-	.mac_prepare = axienet_mac_prepare,
-	.mac_config = axienet_mac_config,
-	.mac_link_down = axienet_mac_link_down,
-	.mac_link_up = axienet_mac_link_up,
-};
 
 static int axienet_clk_init(struct platform_device *pdev,
 			    struct clk **axi_aclk, struct clk **axis_clk,
@@ -3032,46 +2893,12 @@ static int axienet_probe(struct platform_device *pdev)
 	 */
 	of_property_read_u32(pdev->dev.of_node, "xlnx,rxmem", &lp->rxmem);
 
-	lp->switch_x_sgmii = of_property_read_bool(pdev->dev.of_node,
-						   "xlnx,switch-x-sgmii");
-
-	/* Start with the proprietary, and broken phy_type */
-	ret = of_property_read_u32(pdev->dev.of_node, "xlnx,phy-type", &value);
-	if (!ret) {
-		switch (value) {
-		case XAE_PHY_TYPE_MII:
-			lp->phy_mode = PHY_INTERFACE_MODE_MII;
-			break;
-		case XAE_PHY_TYPE_GMII:
-			lp->phy_mode = PHY_INTERFACE_MODE_GMII;
-			break;
-		case XAE_PHY_TYPE_RGMII_2_0:
-			lp->phy_mode = PHY_INTERFACE_MODE_RGMII_ID;
-			break;
-		case XAE_PHY_TYPE_SGMII:
-			lp->phy_mode = PHY_INTERFACE_MODE_SGMII;
-			break;
-		case XAE_PHY_TYPE_1000BASE_X:
-			lp->phy_mode = PHY_INTERFACE_MODE_1000BASEX;
-			break;
-		case XXE_PHY_TYPE_USXGMII:
-			lp->phy_mode = PHY_INTERFACE_MODE_USXGMII;
-			break;
-		default:
-			/* Don't error out as phy-type is an optional property */
-			break;
-		}
-	} else {
-		ret = of_get_phy_mode(pdev->dev.of_node, &lp->phy_mode);
-		if (ret)
-			goto cleanup_clk;
-	}
-	if (lp->switch_x_sgmii && lp->phy_mode != PHY_INTERFACE_MODE_SGMII &&
-	    lp->phy_mode != PHY_INTERFACE_MODE_1000BASEX) {
-		dev_err(&pdev->dev, "xlnx,switch-x-sgmii only supported with SGMII or 1000BaseX\n");
-		ret = -EINVAL;
-		goto cleanup_clk;
-	}
+	/* The phy_mode is optional but when it is not specified it should not
+	 *  be a value that alters the driver behavior so set it to an invalid
+	 *  value as the default.
+	 */
+	lp->phy_mode = ~0;
+	of_property_read_u32(pdev->dev.of_node, "xlnx,phy-type", &lp->phy_mode);
 
 	/* Set default USXGMII rate */
 	lp->usxgmii_rate = SPEED_1000;
@@ -3194,38 +3021,19 @@ static int axienet_probe(struct platform_device *pdev)
 	lp->coalesce_count_rx = XAXIDMA_DFT_RX_THRESHOLD;
 	lp->coalesce_count_tx = XAXIDMA_DFT_TX_THRESHOLD;
 
+	ret = of_get_phy_mode(pdev->dev.of_node, &lp->phy_mode);
+	if (ret < 0)
+		dev_warn(&pdev->dev, "couldn't find phy i/f\n");
+	lp->phy_interface = ret;
+	if (lp->phy_mode == XAE_PHY_TYPE_1000BASE_X)
+		lp->phy_flags = XAE_PHY_TYPE_1000BASE_X;
+
 	lp->phy_node = of_parse_phandle(pdev->dev.of_node, "phy-handle", 0);
 	if (lp->phy_node) {
 		ret = axienet_mdio_setup(lp);
 		if (ret)
 			dev_warn(&pdev->dev,
 				 "error registering MDIO bus: %d\n", ret);
-	}
-	if (lp->phy_mode == PHY_INTERFACE_MODE_SGMII ||
-	    lp->phy_mode == PHY_INTERFACE_MODE_1000BASEX) {
-		if (!lp->phy_node) {
-			dev_err(&pdev->dev, "phy-handle required for 1000BaseX/SGMII\n");
-			ret = -EINVAL;
-			goto cleanup_mdio;
-		}
-		lp->pcs_phy = of_mdio_find_device(lp->phy_node);
-		if (!lp->pcs_phy) {
-			ret = -EPROBE_DEFER;
-			goto cleanup_mdio;
-		}
-		lp->phylink_config.pcs_poll = true;
-	}
-
-		lp->phylink_config.dev = &ndev->dev;
-		lp->phylink_config.type = PHYLINK_NETDEV;
-
-	lp->phylink = phylink_create(&lp->phylink_config, pdev->dev.fwnode,
-				     lp->phy_mode,
-				     &axienet_phylink_ops);
-	if (IS_ERR(lp->phylink)) {
-		ret = PTR_ERR(lp->phylink);
-		dev_err(&pdev->dev, "phylink_create error (%i)\n", ret);
-		goto cleanup_mdio;
 	}
 
 #ifdef CONFIG_AXIENET_HAS_MCDMA
@@ -3241,20 +3049,10 @@ static int axienet_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(lp->dev, "register_netdev() error (%i)\n", ret);
 		axienet_mdio_teardown(lp);
-		goto cleanup_phylink;
+		goto cleanup_clk;
 	}
 
 	return 0;
-
-cleanup_phylink:
-	phylink_destroy(lp->phylink);
-
-cleanup_mdio:
-	if (lp->pcs_phy)
-		put_device(&lp->pcs_phy->dev);
-	if (lp->mii_bus)
-		axienet_mdio_teardown(lp);
-	of_node_put(lp->phy_node);
 
 cleanup_clk:
 	clk_bulk_disable_unprepare(XAE_NUM_MISC_CLOCKS, lp->misc_clks);
@@ -3279,12 +3077,6 @@ static int axienet_remove(struct platform_device *pdev)
 		netif_napi_del(&lp->napi[i]);
 	unregister_netdev(ndev);
 	axienet_clk_disable(pdev);
-
-	if (lp->phylink)
-		phylink_destroy(lp->phylink);
-
-	if (lp->pcs_phy)
-		put_device(&lp->pcs_phy->dev);
 
 	if (lp->mii_bus)
 		axienet_mdio_teardown(lp);

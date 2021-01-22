@@ -13,8 +13,8 @@
 #include <linux/spinlock.h>
 #include <linux/interrupt.h>
 #include <linux/if_vlan.h>
-#include <linux/phylink.h>
 #include <linux/net_tstamp.h>
+#include <linux/phy.h>
 #include <linux/of_platform.h>
 #include <linux/clk.h>
 
@@ -352,9 +352,6 @@
 
 #define DELAY_OF_ONE_MILLISEC		1000
 
-/* Xilinx PCS/PMA PHY register for switching 1000BaseX or SGMII */
-#define XLNX_MII_STD_SELECT_REG		0x11
-#define XLNX_MII_STD_SELECT_SGMII	BIT(0)
 #define XAXIENET_NAPI_WEIGHT		64
 
 /* Definition of 1588 PTP in Axi Ethernet IP */
@@ -595,10 +592,6 @@ struct aximcdma_bd {
  * @ndev:	Pointer for net_device to which it will be attached.
  * @dev:	Pointer to device structure
  * @phy_node:	Pointer to device node structure
- * @phylink:	Pointer to phylink instance
- * @phylink_config: phylink configuration settings
- * @pcs_phy:	Reference to PCS/PMA PHY if used
- * @switch_x_sgmii: Whether switchable 1000BaseX/SGMII mode is enabled in the core
  * @axi_clk:	AXI4-Lite bus clock
  * @misc_clks:	Misc ethernet clocks (AXI4-Stream, Ref, MGT clocks)
  * @mii_bus:	Pointer to MII bus structure
@@ -614,6 +607,7 @@ struct aximcdma_bd {
  * @dma_err_tasklet: Tasklet structure to process Axi DMA errors
  * @eth_irq:	Axi Ethernet IRQ number
  * @options:	AxiEthernet option word
+ * @last_link:	Phy link state in which the PHY was negotiated earlier
  * @features:	Stores the extended features supported by the axienet hw
  * @tx_bd_num:	Size of TX buffer descriptor ring
  * @rx_bd_num:	Size of RX buffer descriptor ring
@@ -626,6 +620,8 @@ struct aximcdma_bd {
  * @csum_offload_on_rx_path:	Stores the checksum selection on RX side.
  * @coalesce_count_rx:	Store the irq coalesce on RX side.
  * @coalesce_count_tx:	Store the irq coalesce on TX side.
+ * @phy_interface: Phy interface type.
+ * @phy_flags:	Phy interface flags.
  * @eth_hasnobuf: Ethernet is configured in Non buf mode.
  * @eth_hasptp: Ethernet is configured for ptp.
  * @axienet_config: Ethernet config structure
@@ -653,13 +649,6 @@ struct axienet_local {
 
 	struct device_node *phy_node;
 
-	struct phylink *phylink;
-	struct phylink_config phylink_config;
-
-	struct mdio_device *pcs_phy;
-
-	bool switch_x_sgmii;
-
 	struct clk *axi_clk;
 	struct clk_bulk_data misc_clks[XAE_NUM_MISC_CLOCKS];
 
@@ -680,7 +669,8 @@ struct axienet_local {
 	phy_interface_t phy_mode;
 	int eth_irq;
 
-	u32 options;
+	u32 options;			/* Current options word */
+	u32 last_link;
 	u32 features;
 
 	u32 tx_bd_num;
@@ -694,6 +684,8 @@ struct axienet_local {
 
 	u32 coalesce_count_rx;
 	u32 coalesce_count_tx;
+	u32 phy_interface;
+	u32 phy_flags;
 	bool eth_hasnobuf;
 	bool eth_hasptp;
 	const struct axienet_config *axienet_config;
