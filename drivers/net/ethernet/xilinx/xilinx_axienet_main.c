@@ -467,7 +467,6 @@ static inline int axienet_mrmac_gt_reset(struct net_device *ndev)
 
 	if (mrmac_pll_rst == 0) {
 		/* PLL reset for all lanes */
-		iowrite32(MRMAC_GT_PLL_RST_MASK, lp->gt_pll);
 
 		for (i = 0; i < MRMAC_MAX_GT_LANES; i++) {
 			iowrite32(MRMAC_GT_RST_ALL_MASK, (lp->gt_ctrl +
@@ -486,7 +485,6 @@ static inline int axienet_mrmac_gt_reset(struct net_device *ndev)
 			netdev_err(ndev, "MRMAC PLL lock not complete! Cross-check the MAC ref clock configuration\n");
 			return -ENODEV;
 		}
-		iowrite32(0, lp->gt_pll);
 		mrmac_pll_rst = 1;
 	}
 
