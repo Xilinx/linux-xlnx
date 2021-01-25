@@ -491,7 +491,7 @@ static inline u32 aie_cal_regoff(struct aie_device *adev,
  *			     partition
  * @apart: AI engine partition
  * @loc: AI engine tile location
- * @return: return 0 if it it is valid, negative value for errors.
+ * @return: return 0 if it is valid, negative value for errors.
  *
  * This function checks if the AI engine location is within the AI engine
  * partition.

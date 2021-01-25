@@ -519,7 +519,7 @@ static int aie_partition_dev_match(struct device *dev, const void *data)
  *	    NULL.
  *
  * This function looks up all the devices of the AI engine class to check if
- * the device is AI engine partition device if if the partition ID matches.
+ * the device is AI engine partition device if the partition ID matches.
  */
 static struct aie_partition *aie_class_find_partition_from_id(u32 partition_id)
 {
