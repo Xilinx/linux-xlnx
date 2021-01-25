@@ -2025,7 +2025,13 @@ static int spi_nor_lock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 		}
 	}
 	ret = nor->params->locking_ops->lock(nor, ofs, len);
+	/* Wait until finished previous command */
+	ret = spi_nor_wait_till_ready(nor);
+	if (ret)
+		goto err;
 
+	ret = spi_nor_read_sr(nor, nor->bouncebuf);
+err:
 	spi_nor_unlock_and_unprep(nor);
 	return ret;
 }
@@ -2039,8 +2045,25 @@ static int spi_nor_unlock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 	if (ret)
 		return ret;
 
-	ret = nor->params->locking_ops->unlock(nor, ofs, len);
+	if (nor->isparallel == 1)
+		ofs = ofs >> nor->shift;
 
+	if (nor->isstacked == 1) {
+		if (ofs >= (mtd->size / 2)) {
+			ofs = ofs - (mtd->size / 2);
+			nor->spi->master->flags |= SPI_MASTER_U_PAGE;
+		} else {
+			nor->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+		}
+	}
+	ret = nor->params->locking_ops->unlock(nor, ofs, len);
+	/* Wait until finished previous command */
+	ret = spi_nor_wait_till_ready(nor);
+	if (ret)
+		goto err;
+
+	ret = spi_nor_read_sr(nor, nor->bouncebuf);
+err:
 	spi_nor_unlock_and_unprep(nor);
 	return ret;
 }
