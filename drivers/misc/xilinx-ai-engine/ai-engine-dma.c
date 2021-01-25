@@ -82,7 +82,7 @@ aie_part_find_dmabuf_from_file(struct aie_partition *apart,
  * @apart: AI engine partition
  * @va: virtual address
  * @len: memory length
- * @return: dma address of of the specified va, or 0 if va is not valid
+ * @return: dma address of the specified va, or 0 if va is not valid
  *
  * This function returns DMA address if the has been mapped to a dmabuf which
  * has been attached to the AI engine partition.

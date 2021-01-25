@@ -15,9 +15,8 @@ static int aie_fpga_bridge_enable_set(struct fpga_bridge *bridge, bool enable)
 	/*
 	 * TBD:
 	 * "Enable" should enable the SHIM tile configuration.
-	 * "Disable" should should disable SHIM DMAs, and wait
-	 * until SHIM DMA stops, and disable SHIM
-	 * to PL streams within partition.
+	 * "Disable" should disable SHIM DMAs, and wait until SHIM DMA stops,
+	 * and disable SHIM to PL streams within partition.
 	 */
 	ret = mutex_lock_interruptible(&apart->mlock);
 	if (ret)
