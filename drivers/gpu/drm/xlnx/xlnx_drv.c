@@ -206,6 +206,7 @@ static struct drm_driver xlnx_drm_driver = {
 	.gem_prime_vunmap		= drm_gem_cma_prime_vunmap,
 	.gem_prime_mmap			= drm_gem_cma_prime_mmap,
 	.gem_vm_ops			= &drm_gem_cma_vm_ops,
+	.gem_free_object_unlocked	= drm_gem_cma_free_object,
 	.dumb_create			= xlnx_gem_cma_dumb_create,
 	.dumb_destroy			= drm_gem_dumb_destroy,
 
