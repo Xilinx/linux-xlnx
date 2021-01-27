@@ -22,8 +22,6 @@ static u8 *keyptr;
 static size_t dma_size;
 static char *kbuf;
 
-static const struct zynqmp_eemi_ops *eemi_ops;
-
 static ssize_t secure_load_store(struct device *dev,
 				 struct device_attribute *attr,
 				 const char *buf, size_t count)
@@ -32,9 +30,6 @@ static ssize_t secure_load_store(struct device *dev,
 	char image_name[NAME_MAX];
 	u64 dst, ret;
 	int len;
-
-	if (IS_ERR(eemi_ops) || !eemi_ops->secure_image)
-		return -EFAULT;
 
 	strncpy(image_name, buf, NAME_MAX);
 	len = strlen(image_name);
@@ -67,10 +62,10 @@ static ssize_t secure_load_store(struct device *dev,
 	release_firmware(fw);
 
 	if (keyptr)
-		ret = eemi_ops->secure_image(dma_addr, dma_addr + fw->size,
-					     &dst);
+		ret = zynqmp_pm_secure_load(dma_addr, dma_addr + fw->size,
+					    &dst);
 	else
-		ret = eemi_ops->secure_image(dma_addr, 0, &dst);
+		ret = zynqmp_pm_secure_load(dma_addr, 0, &dst);
 
 	if (ret) {
 		dev_info(dev, "Failed to load secure image \r\n");
@@ -130,10 +125,6 @@ static int securefw_probe(struct platform_device *pdev)
 {
 	int ret;
 	struct platform_device *securefw_pdev;
-
-	eemi_ops = zynqmp_pm_get_eemi_ops();
-	if (IS_ERR(eemi_ops))
-		return PTR_ERR(eemi_ops);
 
 	securefw_pdev = pdev;
 
