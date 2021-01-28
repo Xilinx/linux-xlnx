@@ -1246,7 +1246,7 @@ error:
 static int da9121_assign_chip_model(struct i2c_client *i2c,
 				    struct da9121 *chip)
 {
-	struct regmap_config *regmap;
+	struct regmap_config *regmap = NULL;
 	int ret = 0;
 
 	chip->dev = &i2c->dev;
