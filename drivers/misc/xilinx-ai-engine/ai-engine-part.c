@@ -160,6 +160,7 @@ static int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
 static int aie_part_write_register(struct aie_partition *apart, size_t offset,
 				   size_t len, void *data, u32 mask)
 {
+	u32 i;
 	int ret;
 	void __iomem *va;
 
@@ -181,10 +182,14 @@ static int aie_part_write_register(struct aie_partition *apart, size_t offset,
 
 	va = apart->adev->base + offset;
 	if (!mask) {
-		if (len == sizeof(u32))
-			iowrite32(*((u32 *)data),  va);
-		else
-			memcpy_toio(va, data, len);
+		/*
+		 * TODO: use the burst mode to improve performance when len
+		 * is more than 4. Additional checks have to be made to ensure
+		 * the destination address is 128 bit aligned when burst mode
+		 * is used.
+		 */
+		for (i = 0; i < len; i = i + 4)
+			iowrite32(*((u32 *)(data + i)), va + i);
 	} else {
 		u32 val = ioread32(va);
 
@@ -231,6 +236,31 @@ static int aie_part_read_register(struct aie_partition *apart, size_t offset,
 }
 
 /**
+ * aie_part_block_set() - AI Engine partition block set registers
+ * @apart: AI engine partition
+ * @args: regestier access arguments
+ * @return: 0 for success, and negative value for failure
+ */
+static int aie_part_block_set(struct aie_partition *apart,
+			      struct aie_reg_args *args)
+{
+	u32 i;
+	int ret;
+
+	for (i = 0; i < args->len; i++) {
+		size_t offset = (size_t)args->offset;
+
+		ret = aie_part_write_register(apart, offset + i * 4,
+					      sizeof(args->val), &args->val,
+					      args->mask);
+		if (ret < 0)
+			return ret;
+	}
+
+	return 0;
+}
+
+/**
  * aie_part_access_regs() - AI engine partition registers access
  * @apart: AI engine partition
  * @num_reqs: number of access requests
@@ -248,16 +278,52 @@ static int aie_part_access_regs(struct aie_partition *apart, u32 num_reqs,
 		struct aie_reg_args *args = &reqs[i];
 		int ret;
 
-		if (args->op != AIE_REG_WRITE) {
+		switch (args->op) {
+		case AIE_REG_WRITE:
+		{
+			ret = aie_part_write_register(apart,
+						      (size_t)args->offset,
+						      sizeof(args->val),
+						      &args->val, args->mask);
+			break;
+		}
+		case AIE_REG_BLOCKWRITE:
+		{
+			u32 *tmp;
+
+			/*
+			 * TODO: replace copy_from_user by pinning the user
+			 * page for performance improvement.
+			 */
+			tmp = kcalloc(args->len, sizeof(u32), GFP_KERNEL);
+			if (!tmp)
+				return -ENOMEM;
+
+			if (copy_from_user(tmp, (void __user *)args->dataptr, sizeof(u32) *
+						args->len)) {
+				kfree(tmp);
+				return -EFAULT;
+			}
+
+			ret = aie_part_write_register(apart,
+						      (size_t)args->offset,
+						      sizeof(u32) * args->len,
+						      tmp, args->mask);
+			kfree(tmp);
+			break;
+		}
+		case AIE_REG_BLOCKSET:
+		{
+			ret = aie_part_block_set(apart, args);
+			break;
+		}
+		default:
 			dev_err(&apart->dev,
 				"Invalid register command type: %u.\n",
 				args->op);
 			return -EINVAL;
 		}
-		ret = aie_part_write_register(apart,
-					      (size_t)args->offset,
-					      sizeof(args->val),
-					      &args->val, args->mask);
+
 		if (ret < 0) {
 			dev_err(&apart->dev, "reg op %u failed: 0x%llx.\n",
 				args->op, args->offset);
@@ -266,6 +332,54 @@ static int aie_part_access_regs(struct aie_partition *apart, u32 num_reqs,
 	}
 
 	return 0;
+}
+
+/**
+ * aie_part_execute_transaction_from_user() - AI engine configure registers
+ * @apart: AI engine partition
+ * @user_args: arguments passed by user.
+ * @return: 0 for success, and negative value for failure.
+ *
+ * This function executes AI engine register access requests that are part of a
+ * buffer that is populated and passed by user.
+ */
+static int aie_part_execute_transaction_from_user(struct aie_partition *apart,
+						  void __user *user_args)
+{
+	long ret;
+	struct aie_txn_inst txn_inst;
+	struct aie_reg_args *cmds;
+
+	if (copy_from_user(&txn_inst, user_args, sizeof(txn_inst)))
+		return -EFAULT;
+
+	/*
+	 * TODO: replace copy_from_user by pinning the user
+	 * page for performance improvement.
+	 */
+	cmds = kcalloc(txn_inst.num_cmds, sizeof(struct aie_reg_args),
+		       GFP_KERNEL);
+	if (!cmds)
+		return -ENOMEM;
+
+	if (copy_from_user(cmds, (void __user *)txn_inst.cmdsptr,
+			   txn_inst.num_cmds * sizeof(*cmds))) {
+		kfree(cmds);
+		return -EFAULT;
+	}
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret) {
+		kfree(cmds);
+		return ret;
+	}
+
+	ret = aie_part_access_regs(apart, txn_inst.num_cmds, cmds);
+
+	mutex_unlock(&apart->mlock);
+
+	kfree(cmds);
+	return ret;
 }
 
 /**
@@ -519,6 +633,8 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 		return aie_part_request_tiles_from_user(apart, argp);
 	case AIE_RELEASE_TILES_IOCTL:
 		return aie_part_release_tiles_from_user(apart, argp);
+	case AIE_TRANSACTION_IOCTL:
+		return aie_part_execute_transaction_from_user(apart, argp);
 	case AIE_SET_FREQUENCY_IOCTL:
 	{
 		u64 freq;

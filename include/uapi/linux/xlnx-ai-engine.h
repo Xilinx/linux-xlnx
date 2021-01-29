@@ -15,6 +15,8 @@
 
 enum aie_reg_op {
 	AIE_REG_WRITE,
+	AIE_REG_BLOCKWRITE,
+	AIE_REG_BLOCKSET,
 };
 
 /* AI engine partition is in use */
@@ -80,12 +82,16 @@ struct aie_mem_args {
  * @mask: mask for mask write, 0 for not mask write
  * @offset: offset of register to the start of an AI engine partition
  * @val: value to write or get
+ * @dataptr: pointer to data buffer for block write
+ * @len: length of the buffer pointed by data
  */
 struct aie_reg_args {
 	enum aie_reg_op op;
 	__u32 mask;
 	__u64 offset;
 	__u32 val;
+	__u64 dataptr;
+	__u32 len;
 };
 
 /**
@@ -168,6 +174,16 @@ struct aie_dmabuf_bd_args {
 struct aie_tiles_array {
 	struct aie_location *locs;
 	__u32 num_tiles;
+};
+
+/**
+ * struct aie_txn_inst - AIE transaction instance
+ * @num_cmds: number commands containing register ops
+ * @cmdsptr: pointer to the buffer containing register ops
+ */
+struct aie_txn_inst {
+	__u32 num_cmds;
+	__u64 cmdsptr;
 };
 
 #define AIE_IOCTL_BASE 'A'
@@ -259,6 +275,18 @@ struct aie_tiles_array {
 					     struct aie_dmabuf_bd_args)
 
 /**
+ * DOC: AIE_TRANSACTION_IOCTL - execute the register operations to
+ *					configure AIE partition
+ *
+ * This ioctl is used to perform multiple register operations like write,
+ * mask write, block set and block write on AIE partition. The aie_txn_inst
+ * contains the buffer with all the register operations required by the
+ * application.
+ */
+#define AIE_TRANSACTION_IOCTL		_IOWR(AIE_IOCTL_BASE, 0x11, \
+					     struct aie_txn_inst)
+
+/**
  * DOC: AIE_SET_FREQUENCY_IOCTL - set AI engine partition clock frequency
  *
  * This ioctl is used to set AI engine partition clock frequency.
@@ -281,4 +309,5 @@ struct aie_tiles_array {
  * and the divider, and returns the running clock frequency.
  */
 #define AIE_GET_FREQUENCY_IOCTL	_IOR(AIE_IOCTL_BASE, 0x13, __u64)
+
 #endif
