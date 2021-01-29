@@ -66,24 +66,6 @@
 #define FRAC				100
 #define LIMIT				(10 * MHZ)
 
-/**
- * struct xvcu_device - Xilinx VCU init device structure
- * @dev: Platform device
- * @pll_ref: pll ref clock source
- * @aclk: axi clock source
- * @logicore_reg_ba: logicore reg base address
- * @vcu_slcr_ba: vcu_slcr Register base address
- * @coreclk: core clock frequency
- */
-struct xvcu_device {
-	struct device *dev;
-	struct clk *pll_ref;
-	struct clk *aclk;
-	struct regmap *logicore_reg_ba;
-	void __iomem *vcu_slcr_ba;
-	u32 coreclk;
-};
-
 static struct regmap_config vcu_settings_regmap_config = {
 	.name = "regmap",
 	.reg_bits = 32,
@@ -257,6 +239,78 @@ static void xvcu_write_field_reg(void __iomem *iomem, int offset,
 
 	xvcu_write(iomem, offset, val);
 }
+
+/**
+ * xvcu_get_color_depth - read the color depth register
+ * @xvcu:	Pointer to the xvcu_device structure
+ *
+ * Return:	Returns 32bit value
+ *
+ */
+u32 xvcu_get_color_depth(struct xvcu_device *xvcu)
+{
+	u32 value;
+
+	if (!regmap_read(xvcu->logicore_reg_ba, VCU_ENC_COLOR_DEPTH, &value))
+		return value;
+	else
+		return 0;
+}
+EXPORT_SYMBOL_GPL(xvcu_get_color_depth);
+
+/**
+ * xvcu_get_memory_depth - read the memory depth register
+ * @xvcu:	Pointer to the xvcu_device structure
+ *
+ * Return:	Returns 32bit value
+ *
+ */
+u32 xvcu_get_memory_depth(struct xvcu_device *xvcu)
+{
+	u32 value;
+
+	if (!regmap_read(xvcu->logicore_reg_ba, VCU_MEMORY_DEPTH, &value))
+		return value;
+	else
+		return 0;
+}
+EXPORT_SYMBOL_GPL(xvcu_get_memory_depth);
+
+/**
+ * xvcu_get_clock_frequency - provide the core clock frequency
+ * @xvcu:	Pointer to the xvcu_device structure
+ *
+ * Return:	Returns 32bit value
+ *
+ */
+u32 xvcu_get_clock_frequency(struct xvcu_device *xvcu)
+{
+	u32 value;
+
+	if (!regmap_read(xvcu->logicore_reg_ba, VCU_CORE_CLK, &value))
+		return value * MHZ;
+	else
+		return 0;
+}
+EXPORT_SYMBOL_GPL(xvcu_get_clock_frequency);
+
+/**
+ * xvcu_get_num_cores - read the number of core register
+ * @xvcu:	Pointer to the xvcu_device structure
+ *
+ * Return:	Returns 32bit value
+ *
+ */
+u32 xvcu_get_num_cores(struct xvcu_device *xvcu)
+{
+	u32 value;
+
+	if (!regmap_read(xvcu->logicore_reg_ba, VCU_NUM_CORE, &value))
+		return value;
+	else
+		return 0;
+}
+EXPORT_SYMBOL_GPL(xvcu_get_num_cores);
 
 /**
  * xvcu_set_vcu_pll_info - Set the VCU PLL info
