@@ -2,7 +2,7 @@
 /*
  * Xilinx ZC770 XM012 board DTS
  *
- * Copyright (C) 2013-2018 Xilinx, Inc.
+ * Copyright (C) 2013-2021 Xilinx, Inc.
  */
 /dts-v1/;
 #include "zynq-7000.dtsi"
