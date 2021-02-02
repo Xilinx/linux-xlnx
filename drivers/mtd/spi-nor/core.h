@@ -311,6 +311,7 @@ struct flash_info {
 					 * BP3 is bit 6 of status register.
 					 * Must be used with SPI_NOR_4BIT_BP.
 					 */
+#define SPI_NOR_OCTAL_WRITE     BIT(19)
 #define	SST_GLOBAL_PROT_UNLK	BIT(16)	/* Unlock the Global protection for
 					 * sst flashes
 					 */
