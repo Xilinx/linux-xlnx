@@ -96,6 +96,7 @@ struct cqspi_st {
 	u8			access_mode;
 	bool			unalined_byte_cnt;
 	u8			dll_mode;
+	u32			pm_dev_id;
 	struct completion	tuning_complete;
 	struct completion	request_complete;
 	int (*indirect_read_dma)(struct cqspi_flash_pdata *f_pdata,
@@ -315,7 +316,6 @@ struct cqspi_driver_platdata {
 #define CQSPI_READ_ID			0x9F
 #define CQSPI_READ_ID_LEN		6
 #define TERA_MACRO			1000000000000l
-#define PM_DEV_OSPI		0x1822402a
 #define SILICON_VER_MASK		0xFF
 #define SILICON_VER_1			0x10
 #define CQSPI_DLL_MODE_MASTER		0
@@ -1699,7 +1699,8 @@ static int cqspi_versal_mode_switch(struct cqspi_flash_pdata *f_pdata)
 
 	if (cqspi->access_mode == CQSPI_DMA_MODE) {
 		cqspi_wait_idle(cqspi);
-		zynqmp_pm_ospi_mux_select(PM_DEV_OSPI, PM_OSPI_MUX_SEL_LINEAR);
+		zynqmp_pm_ospi_mux_select(cqspi->pm_dev_id,
+					  PM_OSPI_MUX_SEL_LINEAR);
 		cqspi->access_mode = CQSPI_LINEAR_MODE;
 	} else if (cqspi->access_mode == CQSPI_LINEAR_MODE) {
 		cqspi_wait_idle(cqspi);
@@ -1712,7 +1713,8 @@ static int cqspi_versal_mode_switch(struct cqspi_flash_pdata *f_pdata)
 			zynqmp_pm_reset_assert(RESET_OSPI, PM_RESET_ACTION_ASSERT);
 		}
 
-		zynqmp_pm_ospi_mux_select(PM_DEV_OSPI, PM_OSPI_MUX_SEL_DMA);
+		zynqmp_pm_ospi_mux_select(cqspi->pm_dev_id,
+					  PM_OSPI_MUX_SEL_DMA);
 		cqspi->access_mode = CQSPI_DMA_MODE;
 		if (cqspi->dll_mode != CQSPI_DLL_MODE_MASTER) {
 			zynqmp_pm_reset_assert(RESET_OSPI, PM_RESET_ACTION_RELEASE);
@@ -1968,6 +1970,7 @@ static int cqspi_probe(struct platform_device *pdev)
 	int irq;
 	u32 idcode;
 	u32 version;
+	u32 id[2];
 
 	master = spi_alloc_master(&pdev->dev, sizeof(*cqspi));
 	if (!master) {
@@ -2064,6 +2067,7 @@ static int cqspi_probe(struct platform_device *pdev)
 	reset_control_deassert(rstc_ocp);
 
 	cqspi->master_ref_clk_hz = clk_get_rate(cqspi->clk);
+	cqspi->pm_dev_id = 0;
 	ddata  = of_device_get_match_data(dev);
 	if (ddata) {
 		if (ddata->quirks & CQSPI_NEEDS_WR_DELAY)
@@ -2099,6 +2103,16 @@ static int cqspi_probe(struct platform_device *pdev)
 				if (cqspi->master_ref_clk_hz >= TAP_GRAN_SEL_MIN_FREQ)
 					writel(0x1, cqspi->iobase + CQSPI_REG_ECO);
 			}
+
+			ret = of_property_read_u32_array(pdev->dev.of_node,
+							 "power-domains", id,
+							 ARRAY_SIZE(id));
+			if (ret < 0) {
+				dev_err(&pdev->dev,
+					"Failed to read pm device id information\n");
+				goto probe_clk_failed;
+			}
+			cqspi->pm_dev_id = id[1];
 		}
 	}
 
