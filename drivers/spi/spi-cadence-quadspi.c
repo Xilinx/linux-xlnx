@@ -30,6 +30,7 @@
 #include <linux/spi/spi.h>
 #include <linux/spi/spi-mem.h>
 #include <linux/timer.h>
+#include <linux/workqueue.h>
 
 #define CQSPI_NAME			"cadence-qspi"
 #define CQSPI_MAX_CHIPSELECT		16
@@ -95,6 +96,8 @@ struct cqspi_st {
 	u8			access_mode;
 	bool			unalined_byte_cnt;
 	u8			dll_mode;
+	struct completion	tuning_complete;
+	struct completion	request_complete;
 	int (*indirect_read_dma)(struct cqspi_flash_pdata *f_pdata,
 				 u_char *rxbuf, loff_t from_addr, size_t n_rx);
 	int (*flash_reset)(struct cqspi_st *cqspi, u8 reset_type);
@@ -109,6 +112,8 @@ struct cqspi_driver_platdata {
 /* Operation timeout value */
 #define CQSPI_TIMEOUT_MS			500
 #define CQSPI_READ_TIMEOUT_MS			10
+#define CQSPI_TUNING_TIMEOUT_MS			5000
+#define CQSPI_TUNING_PERIODICITY_MS		300000
 
 /* Instruction type */
 #define CQSPI_INST_TYPE_SINGLE			0
@@ -569,6 +574,12 @@ static int cqspi_command_read(struct cqspi_flash_pdata *f_pdata,
 		memcpy(rxbuf, &reg, read_len);
 	}
 
+	if (((opcode == 0x70 && ((BIT(7) & rxbuf[0]) != 0)) ||
+	     (opcode != 0x5 && opcode != 0x70)) &&
+	    !cqspi->request_complete.done) {
+		complete(&cqspi->request_complete);
+	}
+
 	return 0;
 }
 
@@ -583,6 +594,7 @@ static int cqspi_command_write(struct cqspi_flash_pdata *f_pdata,
 	unsigned int reg;
 	unsigned int data;
 	size_t write_len;
+	int ret;
 
 	if (n_tx > CQSPI_STIG_DATA_LEN_MAX || (n_tx && !txbuf)) {
 		dev_err(&cqspi->pdev->dev,
@@ -634,7 +646,11 @@ static int cqspi_command_write(struct cqspi_flash_pdata *f_pdata,
 		}
 	}
 
-	return cqspi_exec_flash_cmd(cqspi, reg);
+	ret = cqspi_exec_flash_cmd(cqspi, reg);
+	if (!ret && opcode != 0x6)
+		complete(&cqspi->request_complete);
+
+	return ret;
 }
 
 static int cqspi_read_setup(struct cqspi_flash_pdata *f_pdata,
@@ -784,6 +800,7 @@ static int cqspi_indirect_read_execute(struct cqspi_flash_pdata *f_pdata,
 
 	/* Clear indirect completion status */
 	writel(CQSPI_REG_INDIRECTRD_DONE_MASK, reg_base + CQSPI_REG_INDIRECTRD);
+	complete(&cqspi->request_complete);
 
 	return 0;
 
@@ -1202,6 +1219,7 @@ static int cqspi_direct_read_execute(struct cqspi_flash_pdata *f_pdata,
 
 	if (!cqspi->rx_chan || !virt_addr_valid(buf)) {
 		memcpy_fromio(buf, cqspi->ahb_base + from, len);
+		complete(&cqspi->request_complete);
 		return 0;
 	}
 
@@ -1239,6 +1257,7 @@ static int cqspi_direct_read_execute(struct cqspi_flash_pdata *f_pdata,
 		ret = -ETIMEDOUT;
 		goto err_unmap;
 	}
+	complete(&cqspi->request_complete);
 
 err_unmap:
 	dma_unmap_single(ddev, dma_dst, len, DMA_FROM_DEVICE);
@@ -1470,13 +1489,46 @@ static void cqspi_setup_ddrmode(struct cqspi_st *cqspi)
 	cqspi_controller_enable(cqspi, 1);
 }
 
+static void cqspi_periodictuning(struct work_struct *work)
+{
+	struct delayed_work *d = to_delayed_work(work);
+	struct spi_mem *mem = container_of(d, struct spi_mem, complete_work);
+	struct cqspi_st *cqspi = spi_master_get_devdata(mem->spi->master);
+	int ret;
+
+	if (!cqspi->request_complete.done)
+		wait_for_completion(&cqspi->request_complete);
+
+	reinit_completion(&cqspi->tuning_complete);
+	ret = cqspi_setdlldelay(mem);
+	complete_all(&cqspi->tuning_complete);
+	if (ret) {
+		dev_err(&cqspi->pdev->dev,
+			"Setting dll delay error (%i)\n", ret);
+	} else {
+		schedule_delayed_work(&mem->complete_work,
+			msecs_to_jiffies(CQSPI_TUNING_PERIODICITY_MS));
+	}
+}
+
 static int cqspi_setup_edgemode(struct spi_mem *mem)
 {
 	struct cqspi_st *cqspi = spi_master_get_devdata(mem->spi->master);
+	int ret;
 
 	cqspi_setup_ddrmode(cqspi);
 
-	return cqspi_setdlldelay(mem);
+	ret = cqspi_setdlldelay(mem);
+	if (ret)
+		return ret;
+
+	complete_all(&cqspi->tuning_complete);
+	complete_all(&cqspi->request_complete);
+	INIT_DELAYED_WORK(&mem->complete_work, cqspi_periodictuning);
+	schedule_delayed_work(&mem->complete_work,
+			      msecs_to_jiffies(CQSPI_TUNING_PERIODICITY_MS));
+
+	return ret;
 }
 
 static int cqspi_mem_process(struct spi_mem *mem, const struct spi_mem_op *op)
@@ -1486,6 +1538,16 @@ static int cqspi_mem_process(struct spi_mem *mem, const struct spi_mem_op *op)
 
 	f_pdata = &cqspi->f_pdata[mem->spi->chip_select];
 	cqspi_configure(f_pdata, mem->spi->max_speed_hz);
+
+	reinit_completion(&cqspi->request_complete);
+
+	if (cqspi->edge_mode == CQSPI_EDGE_MODE_DDR &&
+	    !cqspi->tuning_complete.done) {
+		if (!wait_for_completion_timeout(&cqspi->tuning_complete,
+			msecs_to_jiffies(CQSPI_TUNING_TIMEOUT_MS))) {
+			return -ETIMEDOUT;
+		}
+	}
 
 	if (op->data.dir == SPI_MEM_DATA_IN && op->data.buf.in) {
 		if (!op->addr.nbytes)
@@ -1502,11 +1564,14 @@ static int cqspi_mem_process(struct spi_mem *mem, const struct spi_mem_op *op)
 
 static int cqspi_exec_mem_op(struct spi_mem *mem, const struct spi_mem_op *op)
 {
+	struct cqspi_st *cqspi = spi_master_get_devdata(mem->spi->master);
 	int ret;
 
 	ret = cqspi_mem_process(mem, op);
-	if (ret)
+	if (ret) {
+		complete(&cqspi->request_complete);
 		dev_err(&mem->spi->dev, "operation failed with %d\n", ret);
+	}
 
 	if (!ret && op->cmd.tune_clk)
 		ret = cqspi_setup_edgemode(mem);
@@ -1806,6 +1871,7 @@ static int cqspi_versal_indirect_read_dma(struct cqspi_flash_pdata *f_pdata,
 	}
 
 	process_dma_irq(cqspi);
+	complete(&cqspi->request_complete);
 
 	return 0;
 
@@ -1953,6 +2019,8 @@ static int cqspi_probe(struct platform_device *pdev)
 	cqspi->ahb_size = resource_size(res_ahb);
 
 	init_completion(&cqspi->transfer_complete);
+	init_completion(&cqspi->tuning_complete);
+	init_completion(&cqspi->request_complete);
 
 	/* Obtain IRQ line. */
 	irq = platform_get_irq(pdev, 0);
