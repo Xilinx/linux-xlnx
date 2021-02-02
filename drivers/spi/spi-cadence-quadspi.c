@@ -1390,6 +1390,10 @@ static const struct cqspi_driver_platdata am654_ospi = {
 	.quirks = CQSPI_NEEDS_WR_DELAY,
 };
 
+static const struct cqspi_driver_platdata versal_ospi = {
+	.hwcaps_mask = CQSPI_SUPPORTS_OCTAL,
+};
+
 static const struct of_device_id cqspi_dt_ids[] = {
 	{
 		.compatible = "cdns,qspi-nor",
@@ -1402,6 +1406,10 @@ static const struct of_device_id cqspi_dt_ids[] = {
 	{
 		.compatible = "ti,am654-ospi",
 		.data = &am654_ospi,
+	},
+	{
+		.compatible = "xlnx,versal-ospi-1.0",
+		.data = (void *)&versal_ospi,
 	},
 	{ /* end of table */ }
 };
