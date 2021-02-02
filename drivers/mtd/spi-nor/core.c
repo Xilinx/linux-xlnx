@@ -2242,6 +2242,9 @@ static const struct flash_info *spi_nor_read_id(struct spi_nor *nor)
 		return ERR_PTR(ret);
 	}
 
+	for (i = 0; i < SPI_NOR_MAX_ID_LEN; i++)
+		nor->spimem->device_id[i] = id[i];
+
 	for (i = 0; i < ARRAY_SIZE(manufacturers); i++) {
 		info = spi_nor_search_part_by_id(manufacturers[i]->parts,
 						 manufacturers[i]->nparts,
@@ -2720,9 +2723,6 @@ spi_nor_spimem_adjust_hwcaps(struct spi_nor *nor, u32 *hwcaps)
 	/* DTR modes are not supported yet, mask them all. */
 	*hwcaps &= ~SNOR_HWCAPS_DTR;
 
-	/* X-X-X modes are not supported yet, mask them all. */
-	*hwcaps &= ~SNOR_HWCAPS_X_X_X;
-
 	for (cap = 0; cap < sizeof(*hwcaps) * BITS_PER_BYTE; cap++) {
 		int rdidx, ppidx;
 
@@ -3027,6 +3027,34 @@ static int spi_nor_setup(struct spi_nor *nor,
 	return nor->params->setup(nor, hwcaps);
 }
 
+static int spi_nor_switch_micron_octal_ddr(struct spi_nor *nor)
+{
+	int ret;
+
+	ret = spi_nor_write_enable(nor);
+	if (ret)
+		return ret;
+
+	if (nor->spimem) {
+		struct spi_mem_op op =
+			SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_WRCR, 1),
+				   SPI_MEM_OP_ADDR(4, 0, 1),
+				   SPI_MEM_OP_NO_DUMMY,
+				   SPI_MEM_OP_DATA_OUT(1, nor->bouncebuf, 1));
+		nor->bouncebuf[0] = SPINOR_VCR_OCTAL_DDR;
+		op.cmd.tune_clk = 1;
+		ret = spi_mem_exec_op(nor->spimem, &op);
+	}
+
+	if (ret < 0) {
+		dev_err(nor->dev,
+			"error while writing configuration register\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 /**
  * spi_nor_manufacturer_init_params() - Initialize the flash's parameters and
  * settings based on MFR register and ->default_init() hook.
@@ -3126,6 +3154,10 @@ static void spi_nor_info_init_params(struct spi_nor *nor)
 		spi_nor_set_read_settings(&params->reads[SNOR_CMD_READ_1_1_8],
 					  0, 8, SPINOR_OP_READ_1_1_8,
 					  SNOR_PROTO_1_1_8);
+		params->hwcaps.mask |= SNOR_HWCAPS_READ_8_8_8;
+		spi_nor_set_read_settings(&params->reads[SNOR_CMD_READ_8_8_8],
+					  0, 16, SPINOR_OP_READ_1_1_8,
+					  SNOR_PROTO_8_8_8);
 	}
 
 	/* Page Program settings. */
@@ -3137,6 +3169,10 @@ static void spi_nor_info_init_params(struct spi_nor *nor)
 		params->hwcaps.mask |= SNOR_HWCAPS_PP_1_1_8;
 		spi_nor_set_pp_settings(&params->page_programs[SNOR_CMD_PP_1_1_8],
 					SPINOR_OP_PP_1_1_8, SNOR_PROTO_1_1_8);
+		params->hwcaps.mask |= SNOR_HWCAPS_PP_8_8_8;
+		spi_nor_set_pp_settings(&params->page_programs[SNOR_CMD_PP_8_8_8],
+					SPINOR_OP_PP_1_1_8,
+					SNOR_PROTO_8_8_8);
 	}
 
 	/*
@@ -3711,6 +3747,12 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 		".erasesize = 0x%.8x (%uKiB) .numeraseregions = %d\n",
 		mtd->name, (long long)mtd->size, (long long)(mtd->size >> 20),
 		mtd->erasesize, mtd->erasesize / 1024, mtd->numeraseregions);
+
+	if (hwcaps->mask & (SNOR_HWCAPS_READ_8_8_8 | SNOR_HWCAPS_PP_8_8_8)) {
+		ret = spi_nor_switch_micron_octal_ddr(nor);
+		if (ret)
+			return ret;
+	}
 
 	if (mtd->numeraseregions)
 		for (i = 0; i < mtd->numeraseregions; i++)
