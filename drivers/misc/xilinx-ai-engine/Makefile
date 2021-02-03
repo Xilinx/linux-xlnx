@@ -14,4 +14,5 @@ xilinx-aie-$(CONFIG_XILINX_AIE) := ai-engine-aie.o \
 				   ai-engine-mem.o \
 				   ai-engine-part.o \
 				   ai-engine-res.o \
-				   ai-engine-reset.o
+				   ai-engine-reset.o \
+				   ai-engine-sysfs.o \
