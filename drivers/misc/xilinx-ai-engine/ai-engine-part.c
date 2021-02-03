@@ -746,6 +746,13 @@ static struct aie_partition *aie_create_partition(struct aie_device *adev,
 		put_device(dev);
 		return ERR_PTR(ret);
 	}
+
+	ret = aie_part_sysfs_init(apart);
+	if (ret) {
+		put_device(dev);
+		return ERR_PTR(ret);
+	}
+
 	list_add_tail(&apart->node, &adev->partitions);
 	mutex_unlock(&adev->mlock);
 	get_device(&adev->dev);

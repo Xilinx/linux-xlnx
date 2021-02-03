@@ -575,4 +575,7 @@ bool aie_part_has_regs_mmapped(struct aie_partition *apart);
 
 int aie_part_reset(struct aie_partition *apart);
 int aie_part_post_reinit(struct aie_partition *apart);
+
+int aie_part_sysfs_init(struct aie_partition *apart);
+void aie_part_sysfs_finish(struct aie_partition *apart);
 #endif /* AIE_INTERNAL_H */
