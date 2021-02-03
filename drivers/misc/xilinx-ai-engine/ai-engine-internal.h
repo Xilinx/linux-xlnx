@@ -11,6 +11,7 @@
 #include <linux/bitfield.h>
 #include <linux/bits.h>
 #include <linux/cdev.h>
+#include <linux/clk.h>
 #include <linux/device.h>
 #include <linux/dma-buf.h>
 #include <linux/file.h>
@@ -292,6 +293,7 @@ struct aie_error_attr {
  * @dev: device for the AI engine device
  * @mlock: protection for AI engine device operations
  * @base: AI engine device base virtual address
+ * @clk: AI enigne device clock
  * @res: memory resource of AI engine device
  * @kernel_regs: array of kernel only registers
  * @ops: tile operations
@@ -317,6 +319,7 @@ struct aie_error_attr {
  * @backtrack: workqueue to backtrack interrupt
  * @version: AI engine device version
  * @pm_node_id: AI Engine platform management node ID
+ * @clock_id: AI Engine clock ID
  */
 struct aie_device {
 	struct list_head partitions;
@@ -324,6 +327,7 @@ struct aie_device {
 	struct device dev;
 	struct mutex mlock; /* protection for AI engine partitions */
 	void __iomem *base;
+	struct clk *clk;
 	struct resource *res;
 	const struct aie_tile_regs *kernel_regs;
 	const struct aie_tile_operations *ops;
@@ -348,6 +352,7 @@ struct aie_device {
 	struct work_struct backtrack;
 	int version;
 	u32 pm_node_id;
+	u32 clock_id;
 };
 
 /**
@@ -367,6 +372,7 @@ struct aie_part_bridge {
  * @adev: pointer to AI device instance
  * @filep: pointer to file for refcount on the users of the partition
  * @pmems: pointer to partition memories types
+ * @freq_req: required frequency
  * @br: AI engine FPGA bridge
  * @range: range of partition
  * @mlock: protection for AI engine partition operations
@@ -395,6 +401,7 @@ struct aie_partition {
 	struct aie_device *adev;
 	struct file *filep;
 	struct aie_part_mem *pmems;
+	u64 freq_req;
 	struct aie_range range;
 	struct mutex mlock; /* protection for AI engine partition operations */
 	struct device dev;
@@ -550,6 +557,9 @@ void aie_part_release_dmabufs(struct aie_partition *apart);
 int aie_part_scan_clk_state(struct aie_partition *apart);
 bool aie_part_check_clk_enable_loc(struct aie_partition *apart,
 				   struct aie_location *loc);
+int aie_part_set_freq(struct aie_partition *apart, u64 freq);
+int aie_part_get_running_freq(struct aie_partition *apart, u64 *freq);
+
 int aie_part_request_tiles_from_user(struct aie_partition *apart,
 				     void __user *user_args);
 int aie_part_release_tiles_from_user(struct aie_partition *apart,

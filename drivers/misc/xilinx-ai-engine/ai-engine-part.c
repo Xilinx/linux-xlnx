@@ -519,6 +519,36 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 		return aie_part_request_tiles_from_user(apart, argp);
 	case AIE_RELEASE_TILES_IOCTL:
 		return aie_part_release_tiles_from_user(apart, argp);
+	case AIE_SET_FREQUENCY_IOCTL:
+	{
+		u64 freq;
+
+		if (copy_from_user(&freq, argp, sizeof(freq)))
+			return -EFAULT;
+
+		ret = mutex_lock_interruptible(&apart->mlock);
+		if (ret)
+			return ret;
+		ret = aie_part_set_freq(apart, freq);
+		mutex_unlock(&apart->mlock);
+		return ret;
+	}
+	case AIE_GET_FREQUENCY_IOCTL:
+	{
+		u64 freq;
+
+		ret = mutex_lock_interruptible(&apart->mlock);
+		if (ret)
+			return ret;
+		ret = aie_part_get_running_freq(apart, &freq);
+		mutex_unlock(&apart->mlock);
+
+		if (!ret) {
+			if (copy_to_user(argp, &freq, sizeof(freq)))
+				return -EFAULT;
+		}
+		return ret;
+	}
 	default:
 		dev_err(&apart->dev, "Invalid ioctl command %u.\n", cmd);
 		ret = -EINVAL;

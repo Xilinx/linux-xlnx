@@ -449,6 +449,13 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Failed to request AIE IRQ.\n");
 		goto free_ida;
 	}
+
+	adev->clk = devm_clk_get(&pdev->dev, NULL);
+	if (!adev->clk) {
+		dev_err(&pdev->dev, "Failed to get device clock.\n");
+		goto free_ida;
+	}
+
 	return 0;
 
 free_ida:
