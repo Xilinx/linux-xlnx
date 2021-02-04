@@ -103,6 +103,14 @@ static int dwc3_xlnx_init_zynqmp(struct dwc3_xlnx *priv_data)
 	int			ret;
 	u32			reg;
 
+	usb3_phy = devm_phy_get(dev, "usb3-phy");
+	if (PTR_ERR(usb3_phy) == -EPROBE_DEFER) {
+		ret = -EPROBE_DEFER;
+		goto err;
+	} else if (IS_ERR(usb3_phy)) {
+		usb3_phy = NULL;
+	}
+
 	crst = devm_reset_control_get_exclusive(dev, "usb_crst");
 	if (IS_ERR(crst)) {
 		ret = PTR_ERR(crst);
@@ -144,8 +152,6 @@ static int dwc3_xlnx_init_zynqmp(struct dwc3_xlnx *priv_data)
 		dev_err(dev, "Failed to assert APB reset\n");
 		goto err;
 	}
-
-	usb3_phy = devm_phy_get(dev, "usb3-phy");
 
 	ret = phy_init(usb3_phy);
 	if (ret < 0) {
