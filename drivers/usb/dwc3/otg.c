@@ -438,7 +438,8 @@ int dwc3_otg_host_release(struct usb_hcd *hcd)
 
 		if (__usb_get_extra_descriptor(udev->rawdescriptors[0],
 				le16_to_cpu(udev->config[0].desc.wTotalLength),
-				USB_DT_OTG, (void **) &desc) == 0) {
+				USB_DT_OTG, (void **)&desc, sizeof(*desc)) ==
+				0) {
 			int err;
 
 			dev_info(&udev->dev, "found OTG descriptor\n");
@@ -1670,7 +1671,7 @@ static int dwc3_otg_notify_connect(struct usb_phy *phy,
 		/* descriptor may appear anywhere in config */
 		err = __usb_get_extra_descriptor(udev->rawdescriptors[0],
 				le16_to_cpu(udev->config[0].desc.wTotalLength),
-				USB_DT_OTG, (void **) &desc);
+				USB_DT_OTG, (void **)&desc, sizeof(*desc));
 		if (err || !(desc->bmAttributes & USB_OTG_HNP))
 			return 0;
 
