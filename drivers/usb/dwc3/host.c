@@ -98,7 +98,7 @@ int dwc3_host_init(struct dwc3 *dwc)
 
 	if (device_property_read_bool(&dwc3_pdev->dev,
 					"snps,xhci-stream-quirk"))
-		props[prop_idx++].name = "xhci-stream-quirk";
+		props[prop_idx++] = PROPERTY_ENTRY_BOOL("xhci-stream-quirk");
 
 	/**
 	 * WORKAROUND: dwc3 revisions <=3.00a have a limitation
