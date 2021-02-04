@@ -628,7 +628,7 @@ int zynqmp_pm_write_ggs(u32 index, u32 value);
 int zynqmp_pm_read_ggs(u32 index, u32 *value);
 int zynqmp_pm_write_pggs(u32 index, u32 value);
 int zynqmp_pm_read_pggs(u32 index, u32 *value);
-int zynqmp_pm_usb_set_state(u32 state, u32 value);
+int zynqmp_pm_usb_set_state(u32 node, u32 state, u32 value);
 int zynqmp_pm_afi(u32 index, u32 value);
 int zynqmp_pm_set_tapdelay_bypass(u32 index, u32 value);
 int zynqmp_pm_set_sgmii_mode(u32 enable);
