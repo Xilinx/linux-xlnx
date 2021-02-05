@@ -274,9 +274,9 @@ int aie_part_set_freq(struct aie_partition *apart, u64 freq)
 	apart->freq_req = freq;
 	/* TODO: qos calculation is not defined by PLM yet */
 	qos = clk_rate / (unsigned long)freq;
-	ret = adev->eemi_ops->set_requirement(apart->partition_id,
-					      ZYNQMP_PM_CAPABILITY_ACCESS, qos,
-					      ZYNQMP_PM_REQUEST_ACK_BLOCKING);
+	ret = zynqmp_pm_set_requirement(apart->partition_id,
+					ZYNQMP_PM_CAPABILITY_ACCESS, qos,
+					ZYNQMP_PM_REQUEST_ACK_BLOCKING);
 	if (ret < 0)
 		dev_err(&apart->dev, "failed to set frequency requirement.\n");
 	return ret;
@@ -305,7 +305,7 @@ int aie_part_get_running_freq(struct aie_partition *apart, u64 *freq)
 
 	clk_rate = clk_get_rate(adev->clk);
 	/* TODO: AIE clock id is not defined yet */
-	ret = adev->eemi_ops->clock_getdivider(adev->clock_id, &divider);
+	ret = zynqmp_pm_clock_getdivider(adev->clock_id, &divider);
 	if (ret < 0) {
 		dev_err(&apart->dev, "failed to get clock divider.\n");
 		return ret;
