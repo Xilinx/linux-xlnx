@@ -7,6 +7,7 @@
  */
 #include <linux/dmaengine.h>
 #include <linux/pm_runtime.h>
+#include <linux/mtd/spi-nor.h>
 #include <linux/spi/spi.h>
 #include <linux/spi/spi-mem.h>
 
