@@ -324,6 +324,9 @@ struct cqspi_driver_platdata {
 #define CQSPI_TX_TAP_MASTER		0x19
 #define CQSPI_MAX_DLL_TAPS		128
 
+#define CQSPI_CS_LOWER			0
+#define CQSPI_CS_UPPER			1
+
 static int cqspi_wait_for_bit(void __iomem *reg, const u32 mask, bool clr)
 {
 	u32 val;
@@ -1537,6 +1540,11 @@ static int cqspi_mem_process(struct spi_mem *mem, const struct spi_mem_op *op)
 	struct cqspi_flash_pdata *f_pdata;
 
 	f_pdata = &cqspi->f_pdata[mem->spi->chip_select];
+	if (mem->spi->master->flags & SPI_MASTER_U_PAGE)
+		f_pdata->cs = CQSPI_CS_UPPER;
+	else
+		f_pdata->cs = CQSPI_CS_LOWER;
+
 	cqspi_configure(f_pdata, mem->spi->max_speed_hz);
 
 	reinit_completion(&cqspi->request_complete);
