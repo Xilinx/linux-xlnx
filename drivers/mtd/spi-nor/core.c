@@ -1082,7 +1082,7 @@ static int spi_nor_erase_chip(struct spi_nor *nor)
 				   SPI_MEM_OP_NO_DUMMY,
 				   SPI_MEM_OP_NO_DATA);
 		if (nor->isstacked)
-			nor->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+			nor->spimem->spi->master->flags &= ~SPI_MASTER_U_PAGE;
 		ret = spi_mem_exec_op(nor->spimem, &op);
 		if (ret)
 			return ret;
@@ -1092,7 +1092,7 @@ static int spi_nor_erase_chip(struct spi_nor *nor)
 			ret = spi_nor_wait_till_ready(nor);
 			if (ret)
 				return ret;
-			nor->spi->master->flags |= SPI_MASTER_U_PAGE;
+			nor->spimem->spi->master->flags |= SPI_MASTER_U_PAGE;
 			ret = spi_mem_exec_op(nor->spimem, &op);
 		}
 		return ret;
@@ -1617,10 +1617,10 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
 			if (nor->isstacked == 1) {
 				if (offset >= (mtd->size / 2)) {
 					offset = offset - (mtd->size / 2);
-					nor->spi->master->flags |=
+					nor->spimem->spi->master->flags |=
 						SPI_MASTER_U_PAGE;
 				} else {
-					nor->spi->master->flags &=
+					nor->spimem->spi->master->flags &=
 						~SPI_MASTER_U_PAGE;
 				}
 			}
@@ -2004,9 +2004,9 @@ static int spi_nor_lock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 	if (nor->isstacked == 1) {
 		if (ofs >= (mtd->size / 2)) {
 			ofs = ofs - (mtd->size / 2);
-			nor->spi->master->flags |= SPI_MASTER_U_PAGE;
+			nor->spimem->spi->master->flags |= SPI_MASTER_U_PAGE;
 		} else {
-			nor->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+			nor->spimem->spi->master->flags &= ~SPI_MASTER_U_PAGE;
 		}
 	}
 	ret = nor->params->locking_ops->lock(nor, ofs, len);
@@ -2036,9 +2036,9 @@ static int spi_nor_unlock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 	if (nor->isstacked == 1) {
 		if (ofs >= (mtd->size / 2)) {
 			ofs = ofs - (mtd->size / 2);
-			nor->spi->master->flags |= SPI_MASTER_U_PAGE;
+			nor->spimem->spi->master->flags |= SPI_MASTER_U_PAGE;
 		} else {
-			nor->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+			nor->spimem->spi->master->flags &= ~SPI_MASTER_U_PAGE;
 		}
 	}
 	ret = nor->params->locking_ops->unlock(nor, ofs, len);
@@ -2296,9 +2296,11 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 			stack_shift = 1;
 			if (offset >= (mtd->size / 2)) {
 				offset = offset - (mtd->size / 2);
-				nor->spi->master->flags |= SPI_MASTER_U_PAGE;
+				nor->spimem->spi->master->flags |=
+					SPI_MASTER_U_PAGE;
 			} else {
-				nor->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+				nor->spimem->spi->master->flags &=
+					~SPI_MASTER_U_PAGE;
 			}
 		}
 		if (nor->addr_width == 4) {
@@ -2453,9 +2455,11 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 			stack_shift = 1;
 			if (offset >= (mtd->size / 2)) {
 				offset = offset - (mtd->size / 2);
-				nor->spi->master->flags |= SPI_MASTER_U_PAGE;
+				nor->spimem->spi->master->flags |=
+					SPI_MASTER_U_PAGE;
 			} else {
-				nor->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+				nor->spimem->spi->master->flags &=
+					~SPI_MASTER_U_PAGE;
 			}
 		}
 
@@ -2470,7 +2474,7 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 			}
 		}
 		if (nor->isstacked == 1) {
-			if (len <= rem_bank_len) {
+			if ((len - i) <= rem_bank_len) {
 				page_remain = min_t(size_t,
 						    nor->page_size -
 						    page_offset, len - i);
@@ -2479,7 +2483,9 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 				 * the size of data remaining
 				 * on the first page
 				 */
-				page_remain = rem_bank_len;
+				page_remain = min_t(size_t,
+						    nor->page_size -
+						    page_offset, rem_bank_len);
 			}
 		} else {
 			page_remain = min_t(size_t,
@@ -3016,6 +3022,9 @@ static int spi_nor_switch_micron_octal_ddr(struct spi_nor *nor)
 {
 	int ret;
 
+	if (nor->isstacked && nor->spimem)
+		nor->spimem->spi->master->flags |= SPI_MASTER_U_PAGE;
+
 	ret = spi_nor_write_enable(nor);
 	if (ret)
 		return ret;
@@ -3027,8 +3036,20 @@ static int spi_nor_switch_micron_octal_ddr(struct spi_nor *nor)
 				   SPI_MEM_OP_NO_DUMMY,
 				   SPI_MEM_OP_DATA_OUT(1, nor->bouncebuf, 1));
 		nor->bouncebuf[0] = SPINOR_VCR_OCTAL_DDR;
-		op.cmd.tune_clk = 1;
+		if (!nor->isstacked)
+			op.cmd.tune_clk = 1;
+
 		ret = spi_mem_exec_op(nor->spimem, &op);
+		if (nor->isstacked) {
+			nor->spimem->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+
+			ret = spi_nor_write_enable(nor);
+			if (ret)
+				return ret;
+
+			op.cmd.tune_clk = 1;
+			ret = spi_mem_exec_op(nor->spimem, &op);
+		}
 	}
 
 	if (ret < 0) {
@@ -3356,6 +3377,11 @@ static int spi_nor_init(struct spi_nor *nor)
 		WARN_ONCE(nor->flags & SNOR_F_BROKEN_RESET,
 			  "enabling reset hack; may not recover from unexpected reboots\n");
 		nor->params->set_4byte_addr_mode(nor, true);
+		if (nor->isstacked) {
+			nor->spimem->spi->master->flags |= SPI_MASTER_U_PAGE;
+			nor->params->set_4byte_addr_mode(nor, true);
+			nor->spimem->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+		}
 	}
 
 	return 0;
@@ -3448,10 +3474,10 @@ static int spi_nor_set_addr_width(struct spi_nor *nor)
 				} else {
 					nor->params->set_4byte_addr_mode(nor, true);
 					if (nor->isstacked) {
-						nor->spi->master->flags |=
+						nor->spimem->spi->master->flags |=
 							SPI_MASTER_U_PAGE;
 						nor->params->set_4byte_addr_mode(nor, true);
-						nor->spi->master->flags &=
+						nor->spimem->spi->master->flags &=
 							~SPI_MASTER_U_PAGE;
 					}
 				}
@@ -3605,7 +3631,9 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 		(of_property_match_string(np_spi, "compatible",
 				"xlnx,zynqmp-qspi-1.0") >= 0)) ||
 		(of_property_match_string(np_spi, "compatible",
-				"xlnx,versal-qspi-1.0") >= 0)) {
+				"xlnx,versal-qspi-1.0") >= 0) ||
+		(of_property_match_string(np_spi, "compatible",
+				"xlnx,versal-ospi-1.0") >= 0)) {
 		if (of_property_read_u32(np_spi, "is-dual",
 					 &is_dual) < 0) {
 			/* Default to single if prop not defined */
