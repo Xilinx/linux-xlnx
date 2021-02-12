@@ -830,42 +830,13 @@
 			calibration = <0x7FFF>;
 		};
 
-		serdes: zynqmp_phy@fd400000 {
+		psgtr: phy@fd400000 {
 			compatible = "xlnx,zynqmp-psgtr-v1.1";
 			status = "disabled";
 			reg = <0x0 0xfd400000 0x0 0x40000>,
 			      <0x0 0xfd3d0000 0x0 0x1000>;
 			reg-names = "serdes", "siou";
-			nvmem-cells = <&soc_revision>;
-			nvmem-cell-names = "soc_revision";
-			resets = <&zynqmp_reset ZYNQMP_RESET_SATA>,
-				 <&zynqmp_reset ZYNQMP_RESET_USB0_CORERESET>,
-				 <&zynqmp_reset ZYNQMP_RESET_USB1_CORERESET>,
-				 <&zynqmp_reset ZYNQMP_RESET_USB0_HIBERRESET>,
-				 <&zynqmp_reset ZYNQMP_RESET_USB1_HIBERRESET>,
-				 <&zynqmp_reset ZYNQMP_RESET_USB0_APB>,
-				 <&zynqmp_reset ZYNQMP_RESET_USB1_APB>,
-				 <&zynqmp_reset ZYNQMP_RESET_DP>,
-				 <&zynqmp_reset ZYNQMP_RESET_GEM0>,
-				 <&zynqmp_reset ZYNQMP_RESET_GEM1>,
-				 <&zynqmp_reset ZYNQMP_RESET_GEM2>,
-				 <&zynqmp_reset ZYNQMP_RESET_GEM3>;
-			reset-names = "sata_rst", "usb0_crst", "usb1_crst",
-				      "usb0_hibrst", "usb1_hibrst", "usb0_apbrst",
-				      "usb1_apbrst", "dp_rst", "gem0_rst",
-				      "gem1_rst", "gem2_rst", "gem3_rst";
-			lane0: lane0 {
-				#phy-cells = <4>;
-			};
-			lane1: lane1 {
-				#phy-cells = <4>;
-			};
-			lane2: lane2 {
-				#phy-cells = <4>;
-			};
-			lane3: lane3 {
-				#phy-cells = <4>;
-			};
+			#phy-cells = <4>;
 		};
 
 		sata: ahci@fd0c0000 {
