@@ -953,6 +953,13 @@
 	status = "okay";
 };
 
+&psgtr {
+	status = "okay";
+	/* pcie, sata, usb3, dp */
+	clocks = <&si5341 0 5>, <&si5341 0 3>, <&si5341 0 2>, <&si5341 0 0>;
+	clock-names = "ref0", "ref1", "ref2", "ref3";
+};
+
 &qspi {
 	status = "okay";
 	is-dual = <1>;
@@ -983,13 +990,6 @@
 	};
 };
 
-&psgtr {
-	status = "okay";
-	/* pcie, sata, usb3, dp */
-	clocks = <&si5341 0 5>, <&si5341 0 3>, <&si5341 0 2>, <&si5341 0 0>;
-	clock-names = "ref0", "ref1", "ref2", "ref3";
-};
-
 &rtc {
 	status = "okay";
 };
@@ -1005,6 +1005,7 @@
 	ceva,p1-comwake-params = /bits/ 8 <0x06 0x14 0x08 0x0E>;
 	ceva,p1-burst-params = /bits/ 8 <0x13 0x08 0x4A 0x06>;
 	ceva,p1-retry-params = /bits/ 16 <0x96A4 0x3FFC>;
+	phy-names = "sata-phy";
 	phys = <&psgtr 3 PHY_TYPE_SATA 1 1>;
 };
 
@@ -1045,7 +1046,7 @@
 	dr_mode = "host";
 	snps,usb3_lpm_capable;
 	phy-names = "usb3-phy";
-	phys = <&lane2 PHY_TYPE_USB3 0 2 26000000>;
+	phys = <&psgtr 2 PHY_TYPE_USB3 0 2>;
 	maximum-speed = "super-speed";
 };
 
@@ -1065,10 +1066,14 @@
 	status = "okay";
 };
 
+&zynqmp_dpdma {
+	status = "okay";
+};
+
 &zynqmp_dpsub {
 	status = "okay";
 	phy-names = "dp-phy0";
-	phys = <&lane1 PHY_TYPE_DP 0 3 27000000>;
+	phys = <&psgtr 1 PHY_TYPE_DP 0 3>;
 };
 
 &zynqmp_dp_snd_codec0 {
@@ -1084,9 +1089,5 @@
 };
 
 &zynqmp_dp_snd_card0 {
-	status = "okay";
-};
-
-&zynqmp_dpdma {
 	status = "okay";
 };
