@@ -23,6 +23,44 @@ static struct spi_nor_fixups gd25q256_fixups = {
 	.default_init = gd25q256_default_init,
 };
 
+/**
+ * gd25lx256e_set_4byte_addr_mode() - Set 4-byte address mode for Octal SPI
+ * Gigadevice flashes.
+ * @nor:        pointer to 'struct spi_nor'.
+ * @enable:     true to enter the 4-byte address mode, false to exit the 4-byte
+ *              address mode.
+ *
+ * Return: 0 on success, -errno otherwise.
+ */
+static int gd25lx256e_set_4byte_addr_mode(struct spi_nor *nor, bool enable)
+{
+	int ret;
+
+	ret = spi_nor_write_enable(nor);
+	if (ret)
+		return ret;
+
+	ret = spi_nor_set_4byte_addr_mode(nor, enable);
+	if (ret)
+		return ret;
+
+	return spi_nor_write_disable(nor);
+}
+
+static void gd25lx256e_default_init(struct spi_nor *nor)
+{
+	/*
+	 * Some manufacturer like gd25lx256e(Octal SPI) may use
+	 * Enter/Exit 4-Byte Address Mode, we need
+	 * to set it in the default_init fixup hook.
+	 */
+	nor->params->set_4byte_addr_mode = gd25lx256e_set_4byte_addr_mode;
+}
+
+static struct spi_nor_fixups gd25lx256e_fixups = {
+	.default_init = gd25lx256e_default_init,
+};
+
 static const struct flash_info gigadevice_parts[] = {
 	{ "gd25q16", INFO(0xc84015, 0, 64 * 1024,  32,
 			  SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ |
@@ -52,7 +90,8 @@ static const struct flash_info gigadevice_parts[] = {
 		.fixups = &gd25q256_fixups },
 	{ "gd25lx256e",  INFO(0xc86819, 0, 64 * 1024, 512,
 			      SECT_4K | USE_FSR | SPI_NOR_OCTAL_READ |
-			      SPI_NOR_OCTAL_WRITE | SPI_NOR_4B_OPCODES) },
+			      SPI_NOR_OCTAL_WRITE | SPI_NOR_4B_OPCODES)
+		.fixups = &gd25lx256e_fixups },
 };
 
 const struct spi_nor_manufacturer spi_nor_gigadevice = {
