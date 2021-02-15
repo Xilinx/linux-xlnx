@@ -30,6 +30,44 @@ static struct spi_nor_fixups is25lp256_fixups = {
 	.post_bfpt = is25lp256_post_bfpt_fixups,
 };
 
+/**
+ * is25wx256_set_4byte_addr_mode() - Set 4-byte address mode for Octal SPI
+ * ISSI flashes.
+ * @nor:        pointer to 'struct spi_nor'.
+ * @enable:     true to enter the 4-byte address mode, false to exit the 4-byte
+ *              address mode.
+ *
+ * Return: 0 on success, -errno otherwise.
+ */
+static int is25wx256_set_4byte_addr_mode(struct spi_nor *nor, bool enable)
+{
+	int ret;
+
+	ret = spi_nor_write_enable(nor);
+	if (ret)
+		return ret;
+
+	ret = spi_nor_set_4byte_addr_mode(nor, enable);
+	if (ret)
+		return ret;
+
+	return spi_nor_write_disable(nor);
+}
+
+static void is25wx256_default_init(struct spi_nor *nor)
+{
+	/*
+	 * Some manufacturer like is25wx256(Octal SPI) may use
+	 * Enter/Exit 4-Byte Address Mode, we need
+	 * to set it in the default_init fixup hook.
+	 */
+	nor->params->set_4byte_addr_mode = is25wx256_set_4byte_addr_mode;
+}
+
+static struct spi_nor_fixups is25wx256_fixups = {
+	.default_init = is25wx256_default_init,
+};
+
 static const struct flash_info issi_parts[] = {
 	/* ISSI */
 	{ "is25wp080d", INFO(0x9d7014, 0, 64 * 1024, 32, SECT_4K |
@@ -87,7 +125,8 @@ static const struct flash_info issi_parts[] = {
                         SPI_NOR_4B_OPCODES) },
 	{ "is25wx256",  INFO(0x9d5b19, 0, 128 * 1024, 256,
 			     SECT_4K | USE_FSR | SPI_NOR_OCTAL_READ |
-			     SPI_NOR_OCTAL_WRITE | SPI_NOR_4B_OPCODES) },
+			     SPI_NOR_OCTAL_WRITE | SPI_NOR_4B_OPCODES)
+		.fixups = &is25wx256_fixups },
 
 	/* PMC */
 	{ "pm25lv512",   INFO(0,        0, 32 * 1024,    2, SECT_4K_PMC) },
