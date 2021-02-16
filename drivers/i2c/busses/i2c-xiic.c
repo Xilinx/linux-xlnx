@@ -760,7 +760,6 @@ static void xiic_start_recv(struct xiic_i2c *i2c)
 	u16 rx_watermark;
 	u8 cr = 0, rfd_set = 0;
 	struct i2c_msg *msg = i2c->rx_msg = i2c->tx_msg;
-	unsigned long flags;
 
 	dev_dbg(i2c->adap.dev.parent, "%s entry, ISR: 0x%x, CR: 0x%x\n",
 		__func__, xiic_getreg32(i2c, XIIC_IISR_OFFSET),
@@ -791,7 +790,6 @@ static void xiic_start_recv(struct xiic_i2c *i2c)
 
 		xiic_setreg8(i2c, XIIC_RFD_REG_OFFSET, bytes);
 
-		local_irq_save(flags);
 		if (!(msg->flags & I2C_M_NOSTART))
 			/* write the address */
 			xiic_setreg16(i2c, XIIC_DTR_REG_OFFSET,
@@ -805,7 +803,6 @@ static void xiic_start_recv(struct xiic_i2c *i2c)
 		val |= msg->len;
 
 		xiic_setreg16(i2c, XIIC_DTR_REG_OFFSET, val);
-		local_irq_restore(flags);
 	} else {
 		/*
 		 * If previous message is Tx, make sure that Tx FIFO is empty
