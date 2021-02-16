@@ -33,6 +33,8 @@
 
 #define DRIVER_NAME "xiic-i2c"
 
+#define DYNAMIC_MODE_READ_BROKEN_BIT	BIT(0)
+
 enum xilinx_i2c_state {
 	STATE_DONE,
 	STATE_ERROR,
@@ -63,6 +65,7 @@ enum xiic_endian {
  * @dynamic: Mode of controller
  * @prev_msg_tx: Previous message is Tx
  * @smbus_block_read: Flag to handle block read
+ * @quirks: To hold platform specific bug info
  */
 struct xiic_i2c {
 	struct device *dev;
@@ -82,6 +85,11 @@ struct xiic_i2c {
 	bool dynamic;
 	bool prev_msg_tx;
 	bool smbus_block_read;
+	u32 quirks;
+};
+
+struct xiic_version_data {
+	u32 quirks;
 };
 
 #define XIIC_MSB_OFFSET 0
@@ -1037,6 +1045,7 @@ static int xiic_start_xfer(struct xiic_i2c *i2c)
 
 static int xiic_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs, int num)
 {
+	bool broken_read, max_read_len, smbus_blk_read;
 	struct xiic_i2c *i2c = i2c_get_adapdata(adap);
 	int err, count;
 
@@ -1061,13 +1070,22 @@ static int xiic_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs, int num)
 	i2c->prev_msg_tx = false;
 
 	/*
-	 * Enter standard mode only when read length is > 255 bytes or
-	 * for smbus_block_read transaction
+	 * Scan through nmsgs, use dynamic mode when none of the below three
+	 * conditions occur. We need standard mode even if one condition holds
+	 * true in the entire array of messages in a single transfer.
+	 * If read transaction as dynamic mode is broken for delayed reads
+	 * in xlnx,axi-iic-2.0 / xlnx,xps-iic-2.00.a IP versions.
+	 * If read length is > 255 bytes.
+	 * If smbus_block_read transaction.
 	 */
 	for (count = 0; count < i2c->nmsgs; count++) {
-		if (((i2c->tx_msg[count].flags & I2C_M_RD) &&
-		     i2c->tx_msg[count].len > MAX_READ_LENGTH_DYNAMIC) ||
-		    (i2c->tx_msg[count].flags & I2C_M_RECV_LEN)) {
+		broken_read = (i2c->quirks & DYNAMIC_MODE_READ_BROKEN_BIT) &&
+			       (i2c->tx_msg[count].flags & I2C_M_RD);
+		max_read_len = (i2c->tx_msg[count].flags & I2C_M_RD) &&
+				(i2c->tx_msg[count].len > MAX_READ_LENGTH_DYNAMIC);
+		smbus_blk_read = (i2c->tx_msg[count].flags & I2C_M_RECV_LEN);
+
+		if (broken_read || max_read_len || smbus_blk_read) {
 			i2c->dynamic = false;
 			break;
 		}
@@ -1113,10 +1131,23 @@ static const struct i2c_adapter xiic_adapter = {
 	.algo = &xiic_algorithm,
 };
 
+static const struct xiic_version_data xiic_2_00 = {
+	.quirks = DYNAMIC_MODE_READ_BROKEN_BIT,
+};
+
+#if defined(CONFIG_OF)
+static const struct of_device_id xiic_of_match[] = {
+	{ .compatible = "xlnx,xps-iic-2.00.a", .data = &xiic_2_00 },
+	{},
+};
+MODULE_DEVICE_TABLE(of, xiic_of_match);
+#endif
+
 static int xiic_i2c_probe(struct platform_device *pdev)
 {
 	struct xiic_i2c *i2c;
 	struct xiic_i2c_platform_data *pdata;
+	const struct of_device_id *match;
 	struct resource *res;
 	int ret, irq;
 	u8 i;
@@ -1125,6 +1156,13 @@ static int xiic_i2c_probe(struct platform_device *pdev)
 	i2c = devm_kzalloc(&pdev->dev, sizeof(*i2c), GFP_KERNEL);
 	if (!i2c)
 		return -ENOMEM;
+
+	match = of_match_node(xiic_of_match, pdev->dev.of_node);
+	if (match && match->data) {
+		const struct xiic_version_data *data = match->data;
+
+		i2c->quirks = data->quirks;
+	}
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	i2c->base = devm_ioremap_resource(&pdev->dev, res);
@@ -1235,14 +1273,6 @@ static int xiic_i2c_remove(struct platform_device *pdev)
 
 	return 0;
 }
-
-#if defined(CONFIG_OF)
-static const struct of_device_id xiic_of_match[] = {
-	{ .compatible = "xlnx,xps-iic-2.00.a", },
-	{},
-};
-MODULE_DEVICE_TABLE(of, xiic_of_match);
-#endif
 
 static int __maybe_unused xiic_i2c_runtime_suspend(struct device *dev)
 {
