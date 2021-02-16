@@ -2834,6 +2834,13 @@ static int macb_open(struct net_device *dev)
 
 	macb_init_hw(bp);
 
+	/* Since this driver uses runtime handling of clocks, initiate a phy
+	 * reset if the attached phy requires it. Check return to see if phy
+	 * was reset and then do a phy initialization.
+	 */
+	if (phy_reset_after_clk_enable(dev->phydev) == 1)
+		phy_init_hw(dev->phydev);
+
 	err = macb_phylink_connect(bp);
 	if (err)
 		goto reset_hw;
