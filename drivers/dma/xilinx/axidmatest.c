@@ -320,7 +320,6 @@ static int dmatest_slave_func(void *data)
 		len = (len >> align) << align;
 		if (!len)
 			len = 1 << align;
-		total_len += len;
 		src_off = dmatest_random() % (test_buf_size - len + 1);
 		dst_off = dmatest_random() % (test_buf_size - len + 1);
 
@@ -356,6 +355,7 @@ static int dmatest_slave_func(void *data)
 
 			sg_dma_len(&tx_sg[i]) = len;
 			sg_dma_len(&rx_sg[i]) = len;
+			total_len += len;
 		}
 
 		rxd = rx_dev->device_prep_slave_sg(rx_chan, rx_sg, bd_cnt,
