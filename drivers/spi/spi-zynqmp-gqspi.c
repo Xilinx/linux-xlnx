@@ -1035,7 +1035,8 @@ static int __maybe_unused zynqmp_qspi_resume(struct device *dev)
  */
 static int __maybe_unused zynqmp_runtime_suspend(struct device *dev)
 {
-	struct zynqmp_qspi *xqspi = (struct zynqmp_qspi *)dev_get_drvdata(dev);
+	struct spi_controller *ctlr = dev_get_drvdata(dev);
+	struct zynqmp_qspi *xqspi = spi_controller_get_devdata(ctlr);
 
 	clk_disable(xqspi->refclk);
 	clk_disable(xqspi->pclk);
@@ -1291,7 +1292,7 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 
 	xqspi = spi_controller_get_devdata(ctlr);
 	xqspi->dev = dev;
-	platform_set_drvdata(pdev, xqspi);
+	platform_set_drvdata(pdev, ctlr);
 
 	match = of_match_node(zynqmp_qspi_of_match, pdev->dev.of_node);
 	if (match) {
