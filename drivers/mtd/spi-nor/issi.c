@@ -68,7 +68,7 @@ static struct spi_nor_fixups is25wx256_fixups = {
 	.default_init = is25wx256_default_init,
 };
 
-static const struct flash_info issi_parts[] = {
+static struct flash_info issi_parts[] = {
 	/* ISSI */
 	{ "is25wp080d", INFO(0x9d7014, 0, 64 * 1024, 32, SECT_4K |
 		SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK) },
