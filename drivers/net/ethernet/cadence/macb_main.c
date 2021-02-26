@@ -796,11 +796,11 @@ static int macb_mii_init(struct macb *bp)
 		err = of_mdiobus_register(bp->mii_bus, mdio_np);
 		if (err)
 			goto err_out_free_mdiobus;
+	} else {
+		err = macb_mdiobus_register(bp);
+		if (err)
+			goto err_out_free_mdiobus;
 	}
-
-	err = macb_mdiobus_register(bp);
-	if (err)
-		goto err_out_free_mdiobus;
 
 	err = macb_mii_probe(bp->dev);
 	if (err)
