@@ -261,6 +261,62 @@ static int aie_part_block_set(struct aie_partition *apart,
 }
 
 /**
+ * aie_part_pin_user_region() - pin user pages for access
+ * @apart: AI engine partition
+ * @region: user space region to pin. Includes virtual address and size of the
+ *	    user space buffer.
+ * @return: 0 for success, and negative value for failure.
+ *
+ * This function pins all the pages of a user space buffer.
+ */
+static int aie_part_pin_user_region(struct aie_partition *apart,
+				    struct aie_part_pinned_region *region)
+{
+	int ret, npages;
+	unsigned long first, last;
+	struct page **pages;
+
+	first = (region->user_addr & PAGE_MASK) >> PAGE_SHIFT;
+	last = ((region->user_addr + region->len - 1) & PAGE_MASK) >>
+		PAGE_SHIFT;
+	npages = last - first + 1;
+
+	pages = kcalloc(npages, sizeof(struct page *), GFP_KERNEL);
+	if (!pages)
+		return -ENOMEM;
+
+	ret = pin_user_pages_fast(region->user_addr, npages, 0, pages);
+	if (ret < 0) {
+		kfree(pages);
+		dev_err(&apart->dev, "Unable to pin user pages\n");
+		return ret;
+	} else if (ret != npages) {
+		unpin_user_pages(pages, ret);
+		kfree(pages);
+		dev_err(&apart->dev, "Unable to pin all user pages\n");
+		return -EFAULT;
+	}
+
+	region->pages = pages;
+	region->npages = npages;
+
+	return 0;
+}
+
+/**
+ * aie_part_pin_user_region() - unpin user pages
+ * @region: user space region to unpin.
+ *
+ * This function unpins all the pages of a user space buffer. User region passed
+ * to this api must be pinned using aie_part_pin_user_region()
+ */
+static void aie_part_unpin_user_region(struct aie_part_pinned_region *region)
+{
+	unpin_user_pages(region->pages, region->npages);
+	kfree(region->pages);
+}
+
+/**
  * aie_part_access_regs() - AI engine partition registers access
  * @apart: AI engine partition
  * @num_reqs: number of access requests
@@ -289,27 +345,20 @@ static int aie_part_access_regs(struct aie_partition *apart, u32 num_reqs,
 		}
 		case AIE_REG_BLOCKWRITE:
 		{
-			u32 *tmp;
+			struct aie_part_pinned_region region;
 
-			/*
-			 * TODO: replace copy_from_user by pinning the user
-			 * page for performance improvement.
-			 */
-			tmp = kcalloc(args->len, sizeof(u32), GFP_KERNEL);
-			if (!tmp)
-				return -ENOMEM;
-
-			if (copy_from_user(tmp, (void __user *)args->dataptr, sizeof(u32) *
-						args->len)) {
-				kfree(tmp);
-				return -EFAULT;
-			}
+			region.user_addr = args->dataptr;
+			region.len = args->len * sizeof(u32);
+			ret = aie_part_pin_user_region(apart, &region);
+			if (ret)
+				break;
 
 			ret = aie_part_write_register(apart,
 						      (size_t)args->offset,
 						      sizeof(u32) * args->len,
-						      tmp, args->mask);
-			kfree(tmp);
+						      (void *)args->dataptr,
+						      args->mask);
+			aie_part_unpin_user_region(&region);
 			break;
 		}
 		case AIE_REG_BLOCKSET:
@@ -348,37 +397,29 @@ static int aie_part_execute_transaction_from_user(struct aie_partition *apart,
 {
 	long ret;
 	struct aie_txn_inst txn_inst;
-	struct aie_reg_args *cmds;
+	struct aie_part_pinned_region region;
 
 	if (copy_from_user(&txn_inst, user_args, sizeof(txn_inst)))
 		return -EFAULT;
 
-	/*
-	 * TODO: replace copy_from_user by pinning the user
-	 * page for performance improvement.
-	 */
-	cmds = kcalloc(txn_inst.num_cmds, sizeof(struct aie_reg_args),
-		       GFP_KERNEL);
-	if (!cmds)
-		return -ENOMEM;
-
-	if (copy_from_user(cmds, (void __user *)txn_inst.cmdsptr,
-			   txn_inst.num_cmds * sizeof(*cmds))) {
-		kfree(cmds);
-		return -EFAULT;
-	}
+	region.user_addr = txn_inst.cmdsptr;
+	region.len = txn_inst.num_cmds * sizeof(struct aie_reg_args);
+	ret = aie_part_pin_user_region(apart, &region);
+	if (ret)
+		return ret;
 
 	ret = mutex_lock_interruptible(&apart->mlock);
 	if (ret) {
-		kfree(cmds);
+		aie_part_unpin_user_region(&region);
 		return ret;
 	}
 
-	ret = aie_part_access_regs(apart, txn_inst.num_cmds, cmds);
+	ret = aie_part_access_regs(apart, txn_inst.num_cmds,
+				   (struct aie_reg_args *)region.user_addr);
 
 	mutex_unlock(&apart->mlock);
 
-	kfree(cmds);
+	aie_part_unpin_user_region(&region);
 	return ret;
 }
 

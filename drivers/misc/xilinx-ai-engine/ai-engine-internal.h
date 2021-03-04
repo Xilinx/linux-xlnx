@@ -418,6 +418,21 @@ struct aie_partition {
 	u8 error_to_report;
 };
 
+/**
+ * struct aie_part_pinned_region - AI engine user space pinned region
+ * @user_addr: user space address
+ * @len: length of the user space buffer in bytes
+ * @npages: number of pages of the user space buffer
+ * @pages: array to receive pointers to the pages pinned.
+ *	   should be at least npages long
+ */
+struct aie_part_pinned_region {
+	u64 user_addr;
+	u64 len;
+	struct page **pages;
+	int npages;
+};
+
 extern struct class *aie_class;
 extern const struct file_operations aie_part_fops;
 
