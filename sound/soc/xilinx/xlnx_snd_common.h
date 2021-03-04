@@ -9,9 +9,9 @@
 #define _XLNX_SND_COMMON_H
 
 enum {
-	XLNX_PLAYBACK,
-	XLNX_CAPTURE,
-	XLNX_MAX_PATHS
+	XLNX_PLAYBACK = 0,
+	XLNX_CAPTURE = 1,
+	XLNX_MAX_PATHS = 2
 };
 
 struct pl_card_data {
