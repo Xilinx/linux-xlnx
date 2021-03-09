@@ -276,10 +276,10 @@ static const u32 zynqmp_disp_gfx_init_fmts[] = {
 #define ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_BPC_10		0x2
 #define ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_BPC_12		0x3
 #define ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_BPC_MASK		GENMASK(2, 0)
-#define ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_FMT_RGB		0x0
-#define ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_FMT_YUV444	0x1
-#define ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_FMT_YUV422	0x2
-#define ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_FMT_YONLY	0x3
+#define ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_FMT_RGB		0x00
+#define ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_FMT_YUV444	0x10
+#define ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_FMT_YUV422	0x20
+#define ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_FMT_YONLY	0x30
 #define ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_FMT_MASK		GENMASK(5, 4)
 #define ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_CB_FIRST		BIT(8)
 #define ZYNQMP_DISP_AV_BUF_PALETTE_MEMORY		0x400
@@ -1192,7 +1192,7 @@ static const struct zynqmp_disp_fmt av_buf_gfx_fmts[] = {
 static const struct zynqmp_disp_fmt av_buf_live_fmts[] = {
 	{
 		.bus_fmt	= MEDIA_BUS_FMT_RGB666_1X18,
-		.disp_fmt	= ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_BPC_6 ||
+		.disp_fmt	= ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_BPC_6 |
 				  ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_FMT_RGB,
 		.rgb		= true,
 		.swap		= false,
@@ -1202,7 +1202,7 @@ static const struct zynqmp_disp_fmt av_buf_live_fmts[] = {
 		.sf[2]		= ZYNQMP_DISP_AV_BUF_6BIT_SF,
 	}, {
 		.bus_fmt	= MEDIA_BUS_FMT_RBG888_1X24,
-		.disp_fmt	= ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_BPC_8 ||
+		.disp_fmt	= ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_BPC_8 |
 				  ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_FMT_RGB,
 		.rgb		= true,
 		.swap		= false,
@@ -1212,7 +1212,7 @@ static const struct zynqmp_disp_fmt av_buf_live_fmts[] = {
 		.sf[2]		= ZYNQMP_DISP_AV_BUF_8BIT_SF,
 	}, {
 		.bus_fmt	= MEDIA_BUS_FMT_UYVY8_1X16,
-		.disp_fmt	= ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_BPC_8 ||
+		.disp_fmt	= ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_BPC_8 |
 				  ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_FMT_YUV422,
 		.rgb		= false,
 		.swap		= false,
@@ -1222,7 +1222,7 @@ static const struct zynqmp_disp_fmt av_buf_live_fmts[] = {
 		.sf[2]		= ZYNQMP_DISP_AV_BUF_8BIT_SF,
 	}, {
 		.bus_fmt	= MEDIA_BUS_FMT_VUY8_1X24,
-		.disp_fmt	= ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_BPC_8 ||
+		.disp_fmt	= ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_BPC_8 |
 				  ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_FMT_YUV444,
 		.rgb		= false,
 		.swap		= false,
@@ -1232,7 +1232,7 @@ static const struct zynqmp_disp_fmt av_buf_live_fmts[] = {
 		.sf[2]		= ZYNQMP_DISP_AV_BUF_8BIT_SF,
 	}, {
 		.bus_fmt	= MEDIA_BUS_FMT_UYVY10_1X20,
-		.disp_fmt	= ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_BPC_10 ||
+		.disp_fmt	= ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_BPC_10 |
 				  ZYNQMP_DISP_AV_BUF_LIVE_CONFIG_FMT_YUV422,
 		.rgb		= false,
 		.swap		= false,
