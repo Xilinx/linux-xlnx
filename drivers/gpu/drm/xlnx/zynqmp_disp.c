@@ -3125,6 +3125,19 @@ static int zynqmp_disp_bridge_get_input_fmts(struct xlnx_bridge *bridge,
 	return 0;
 }
 
+static int zynqmp_disp_bridge_set_timing(struct xlnx_bridge *bridge,
+					     struct videomode *vm)
+{
+	struct zynqmp_disp_layer *layer = bridge_to_layer(bridge);
+	struct zynqmp_disp *disp = layer->disp;
+	struct drm_crtc *crtc = &disp->xlnx_crtc.crtc;
+	struct drm_display_mode *adjusted_mode = &crtc->state->adjusted_mode;
+
+	drm_display_mode_from_videomode(vm, adjusted_mode);
+
+	return 0;
+}
+
 /*
  * Component functions
  */
@@ -3352,6 +3365,7 @@ int zynqmp_disp_probe(struct platform_device *pdev)
 		layer->bridge.set_input = &zynqmp_disp_bridge_set_input;
 		layer->bridge.get_input_fmts =
 			&zynqmp_disp_bridge_get_input_fmts;
+		layer->bridge.set_timing = &zynqmp_disp_bridge_set_timing;
 		layer->bridge.of_node = layer->of_node;
 		xlnx_bridge_register(&layer->bridge);
 	}
