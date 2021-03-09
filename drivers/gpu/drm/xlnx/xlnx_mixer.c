@@ -2236,7 +2236,7 @@ static int xlnx_mix_dt_parse(struct device *dev, struct xlnx_mix *mixer)
 {
 	struct xlnx_mix_plane *planes;
 	struct xlnx_mix_hw *mixer_hw;
-	struct device_node *node, *vtc_node;
+	struct device_node *node, *vtc_node, *port;
 	struct xlnx_mix_layer_data *l_data;
 	struct resource	res;
 	int ret, l_cnt, i;
@@ -2346,6 +2346,14 @@ static int xlnx_mix_dt_parse(struct device *dev, struct xlnx_mix *mixer)
 		/* read logo data from dts */
 		ret = xlnx_mix_parse_dt_logo_data(node, mixer_hw);
 		return ret;
+	}
+
+	/* Fill out crtc port OF node */
+	for_each_child_of_node(node, port) {
+		if (!port->name || of_node_cmp(port->name, "port"))
+			continue;
+		mixer->crtc.crtc.port = port;
+		break;
 	}
 	return 0;
 }
