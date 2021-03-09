@@ -3101,14 +3101,17 @@ static int zynqmp_disp_create_crtc(struct zynqmp_disp *disp)
 	disp->xlnx_crtc.get_format = &zynqmp_disp_get_format;
 	disp->xlnx_crtc.get_align = &zynqmp_disp_get_align;
 	disp->xlnx_crtc.get_dma_mask = &zynqmp_disp_get_dma_mask;
-	xlnx_crtc_register(disp->drm, &disp->xlnx_crtc);
+	/* Only register the PS DP CRTC if there is no external port/CRTC */
+	if (!disp->dpsub->external_crtc_attached)
+		xlnx_crtc_register(disp->drm, &disp->xlnx_crtc);
 
 	return 0;
 }
 
 static void zynqmp_disp_destroy_crtc(struct zynqmp_disp *disp)
 {
-	xlnx_crtc_unregister(disp->drm, &disp->xlnx_crtc);
+	if (!disp->dpsub->external_crtc_attached)
+		xlnx_crtc_unregister(disp->drm, &disp->xlnx_crtc);
 	zynqmp_disp_crtc_destroy(&disp->xlnx_crtc.crtc);
 }
 

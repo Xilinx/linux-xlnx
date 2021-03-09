@@ -22,6 +22,7 @@
 struct zynqmp_dpsub {
 	struct zynqmp_dp *dp;
 	struct zynqmp_disp *disp;
+	bool external_crtc_attached;
 	struct platform_device *master;
 };
 
