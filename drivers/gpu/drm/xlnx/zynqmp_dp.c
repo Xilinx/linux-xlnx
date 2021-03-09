@@ -1691,8 +1691,9 @@ int zynqmp_dp_bind(struct device *dev, struct device *master, void *data)
 	for_each_child_of_node(dev->of_node, port) {
 		if (!port->name || of_node_cmp(port->name, "port"))
 			continue;
-		encoder->possible_crtcs |= drm_of_find_possible_crtcs(drm,
-								      port);
+		encoder->possible_crtcs |=
+			drm_of_find_possible_crtcs(drm, dev->of_node);
+		break;
 	}
 	drm_encoder_init(drm, encoder, &zynqmp_dp_encoder_funcs,
 			 DRM_MODE_ENCODER_TMDS, NULL);
