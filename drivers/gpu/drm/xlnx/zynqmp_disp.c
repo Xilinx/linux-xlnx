@@ -3039,6 +3039,10 @@ static int zynqmp_disp_bridge_enable(struct xlnx_bridge *bridge)
 	if (ret)
 		return ret;
 
+	/* Enable DP encoder if external CRTC attached */
+	if (disp->dpsub->external_crtc_attached)
+		zynqmp_disp_crtc_atomic_enable(crtc, NULL);
+
 	zynqmp_disp_set_g_alpha(disp, disp->alpha_en);
 	zynqmp_disp_set_alpha(disp, disp->alpha);
 	ret = zynqmp_disp_layer_enable(layer->disp, layer,
