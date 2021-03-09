@@ -40,6 +40,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/spinlock.h>
 #include <linux/uaccess.h>
+#include <video/videomode.h>
 
 #include "xlnx_bridge.h"
 #include "xlnx_crtc.h"
@@ -496,6 +497,7 @@ struct zynqmp_disp {
 	bool audclk_en;
 	struct clk *aclk;
 	bool aclk_en;
+	struct xlnx_bridge *vtc_bridge;
 };
 
 /**
@@ -3029,6 +3031,7 @@ static int zynqmp_disp_bridge_enable(struct xlnx_bridge *bridge)
 	struct zynqmp_disp *disp = layer->disp;
 	struct drm_crtc *crtc = &disp->xlnx_crtc.crtc;
 	struct drm_display_mode *adjusted_mode = &crtc->state->adjusted_mode;
+	struct videomode vm;
 	int ret, vrefresh;
 
 	if (!disp->_pl_pclk) {
@@ -3043,6 +3046,12 @@ static int zynqmp_disp_bridge_enable(struct xlnx_bridge *bridge)
 	/* Enable DP encoder if external CRTC attached */
 	if (disp->dpsub->external_crtc_attached)
 		zynqmp_disp_crtc_atomic_enable(crtc, NULL);
+
+	if (disp->vtc_bridge) {
+		drm_display_mode_to_videomode(adjusted_mode, &vm);
+		xlnx_bridge_set_timing(disp->vtc_bridge, &vm);
+		xlnx_bridge_enable(disp->vtc_bridge);
+	}
 
 	/* If external CRTC is connected through video layer, set alpha to 0 */
 	if (disp->dpsub->external_crtc_attached &&
@@ -3255,6 +3264,7 @@ int zynqmp_disp_probe(struct platform_device *pdev)
 	int ret;
 	struct zynqmp_disp_layer *layer;
 	unsigned int i;
+	struct device_node *vtc_node;
 
 	disp = devm_kzalloc(&pdev->dev, sizeof(*disp), GFP_KERNEL);
 	if (!disp)
@@ -3348,6 +3358,18 @@ int zynqmp_disp_probe(struct platform_device *pdev)
 		}
 	}
 
+	/* VTC Bridge support */
+	vtc_node = of_parse_phandle(disp->dev->of_node, "xlnx,bridge", 0);
+	if (vtc_node) {
+		disp->vtc_bridge = of_xlnx_bridge_get(vtc_node);
+		if (!disp->vtc_bridge) {
+			dev_info(disp->dev, "Didn't get vtc bridge instance\n");
+			return -EPROBE_DEFER;
+		}
+	} else {
+		dev_info(disp->dev, "vtc bridge property not present\n");
+	}
+
 	ret = zynqmp_disp_layer_create(disp);
 	if (ret)
 		goto error_aclk;
@@ -3385,6 +3407,8 @@ int zynqmp_disp_remove(struct platform_device *pdev)
 	zynqmp_disp_layer_destroy(disp);
 	if (disp->audclk)
 		zynqmp_disp_clk_disable(disp->audclk, &disp->audclk_en);
+	if (disp->vtc_bridge)
+		of_xlnx_bridge_put(disp->vtc_bridge);
 	zynqmp_disp_clk_disable(disp->aclk, &disp->aclk_en);
 	zynqmp_disp_clk_disable(disp->pclk, &disp->pclk_en);
 	dpsub->disp = NULL;
