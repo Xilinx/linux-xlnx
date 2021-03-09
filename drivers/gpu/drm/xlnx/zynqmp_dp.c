@@ -1782,7 +1782,8 @@ static irqreturn_t zynqmp_dp_irq_handler(int irq, void *data)
 	zynqmp_dp_write(dp->iomem, ZYNQMP_DP_SUB_TX_INTR_STATUS, status);
 
 	/* The DP vblank will not be enabled with remote crtc device */
-	if (status & ZYNQMP_DP_TX_INTR_VBLANK_START)
+	if (status & ZYNQMP_DP_TX_INTR_VBLANK_START &&
+		!dp->dpsub->external_crtc_attached)
 		zynqmp_disp_handle_vblank(dp->dpsub->disp);
 
 	if (status & ZYNQMP_DP_TX_INTR_HPD_EVENT)

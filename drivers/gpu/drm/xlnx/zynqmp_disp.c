@@ -2844,7 +2844,8 @@ zynqmp_disp_crtc_atomic_disable(struct drm_crtc *crtc,
 	zynqmp_disp_clk_disable(disp->pclk, &disp->pclk_en);
 	zynqmp_disp_plane_disable(crtc->primary);
 	zynqmp_disp_disable(disp, true);
-	drm_crtc_vblank_off(crtc);
+	if (!disp->dpsub->external_crtc_attached)
+		drm_crtc_vblank_off(crtc);
 	pm_runtime_put_sync(disp->dev);
 }
 
