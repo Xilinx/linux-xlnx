@@ -3043,6 +3043,11 @@ static int zynqmp_disp_bridge_enable(struct xlnx_bridge *bridge)
 	if (disp->dpsub->external_crtc_attached)
 		zynqmp_disp_crtc_atomic_enable(crtc, NULL);
 
+	/* If external CRTC is connected through video layer, set alpha to 0 */
+	if (disp->dpsub->external_crtc_attached &&
+		layer->id == ZYNQMP_DISP_LAYER_VID)
+		disp->alpha = 0;
+
 	zynqmp_disp_set_g_alpha(disp, disp->alpha_en);
 	zynqmp_disp_set_alpha(disp, disp->alpha);
 	ret = zynqmp_disp_layer_enable(layer->disp, layer,
