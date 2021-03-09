@@ -2358,107 +2358,6 @@ uint32_t zynqmp_disp_get_crtc_mask(struct zynqmp_disp *disp)
 }
 
 /*
- * Xlnx bridge functions
- */
-
-static inline struct zynqmp_disp_layer
-*bridge_to_layer(struct xlnx_bridge *bridge)
-{
-	return container_of(bridge, struct zynqmp_disp_layer, bridge);
-}
-
-static int zynqmp_disp_bridge_enable(struct xlnx_bridge *bridge)
-{
-	struct zynqmp_disp_layer *layer = bridge_to_layer(bridge);
-	struct zynqmp_disp *disp = layer->disp;
-	int ret;
-
-	if (!disp->_pl_pclk) {
-		dev_err(disp->dev, "PL clock is required for live\n");
-		return -ENODEV;
-	}
-
-	ret = zynqmp_disp_layer_check_size(disp, layer, layer->w, layer->h);
-	if (ret)
-		return ret;
-
-	zynqmp_disp_set_g_alpha(disp, disp->alpha_en);
-	zynqmp_disp_set_alpha(disp, disp->alpha);
-	ret = zynqmp_disp_layer_enable(layer->disp, layer,
-				       ZYNQMP_DISP_LAYER_LIVE);
-	if (ret)
-		return ret;
-
-	if (layer->id == ZYNQMP_DISP_LAYER_GFX && disp->tpg_on) {
-		layer = &disp->layers[ZYNQMP_DISP_LAYER_VID];
-		zynqmp_disp_layer_set_tpg(disp, layer, disp->tpg_on);
-	}
-
-	if (zynqmp_disp_av_buf_vid_timing_src_is_int(&disp->av_buf) ||
-	    zynqmp_disp_av_buf_vid_clock_src_is_ps(&disp->av_buf)) {
-		dev_info(disp->dev,
-			 "Disabling the pipeline to change the clk/timing src");
-		zynqmp_disp_disable(disp, true);
-		zynqmp_disp_av_buf_set_vid_clock_src(&disp->av_buf, false);
-		zynqmp_disp_av_buf_set_vid_timing_src(&disp->av_buf, false);
-	}
-
-	zynqmp_disp_enable(disp);
-
-	return 0;
-}
-
-static void zynqmp_disp_bridge_disable(struct xlnx_bridge *bridge)
-{
-	struct zynqmp_disp_layer *layer = bridge_to_layer(bridge);
-	struct zynqmp_disp *disp = layer->disp;
-
-	zynqmp_disp_disable(disp, false);
-
-	zynqmp_disp_layer_disable(disp, layer, ZYNQMP_DISP_LAYER_LIVE);
-	if (layer->id == ZYNQMP_DISP_LAYER_VID && disp->tpg_on)
-		zynqmp_disp_layer_set_tpg(disp, layer, disp->tpg_on);
-
-	if (!zynqmp_disp_layer_is_live(disp)) {
-		dev_info(disp->dev,
-			 "Disabling the pipeline to change the clk/timing src");
-		zynqmp_disp_disable(disp, true);
-		zynqmp_disp_av_buf_set_vid_clock_src(&disp->av_buf, true);
-		zynqmp_disp_av_buf_set_vid_timing_src(&disp->av_buf, true);
-		if (zynqmp_disp_layer_is_enabled(disp))
-			zynqmp_disp_enable(disp);
-	}
-}
-
-static int zynqmp_disp_bridge_set_input(struct xlnx_bridge *bridge,
-					u32 width, u32 height, u32 bus_fmt)
-{
-	struct zynqmp_disp_layer *layer = bridge_to_layer(bridge);
-	int ret;
-
-	ret = zynqmp_disp_layer_check_size(layer->disp, layer, width, height);
-	if (ret)
-		return ret;
-
-	ret = zynqmp_disp_layer_set_live_fmt(layer->disp,  layer, bus_fmt);
-	if (ret)
-		dev_err(layer->disp->dev, "failed to set live fmt\n");
-
-	return ret;
-}
-
-static int zynqmp_disp_bridge_get_input_fmts(struct xlnx_bridge *bridge,
-					     const u32 **fmts, u32 *count)
-{
-	struct zynqmp_disp_layer *layer = bridge_to_layer(bridge);
-
-	*fmts = layer->bus_fmts;
-	*count = layer->num_bus_fmts;
-
-	return 0;
-}
-
-/*
  * DRM plane functions
  */
 
@@ -3111,6 +3010,109 @@ static void zynqmp_disp_map_crtc_to_plane(struct zynqmp_disp *disp)
 
 	for (i = 0; i < ZYNQMP_DISP_NUM_LAYERS; i++)
 		disp->layers[i].plane.possible_crtcs = possible_crtcs;
+}
+
+/*
+ * Xlnx bridge functions
+ */
+
+static inline struct zynqmp_disp_layer
+*bridge_to_layer(struct xlnx_bridge *bridge)
+{
+	return container_of(bridge, struct zynqmp_disp_layer, bridge);
+}
+
+static int zynqmp_disp_bridge_enable(struct xlnx_bridge *bridge)
+{
+	struct zynqmp_disp_layer *layer = bridge_to_layer(bridge);
+	struct zynqmp_disp *disp = layer->disp;
+	struct drm_crtc *crtc = &disp->xlnx_crtc.crtc;
+	struct drm_display_mode *adjusted_mode = &crtc->state->adjusted_mode;
+	int ret, vrefresh;
+
+	if (!disp->_pl_pclk) {
+		dev_err(disp->dev, "PL clock is required for live\n");
+		return -ENODEV;
+	}
+
+	ret = zynqmp_disp_layer_check_size(disp, layer, layer->w, layer->h);
+	if (ret)
+		return ret;
+
+	zynqmp_disp_set_g_alpha(disp, disp->alpha_en);
+	zynqmp_disp_set_alpha(disp, disp->alpha);
+	ret = zynqmp_disp_layer_enable(layer->disp, layer,
+				       ZYNQMP_DISP_LAYER_LIVE);
+	if (ret)
+		return ret;
+
+	if (layer->id == ZYNQMP_DISP_LAYER_GFX && disp->tpg_on) {
+		layer = &disp->layers[ZYNQMP_DISP_LAYER_VID];
+		zynqmp_disp_layer_set_tpg(disp, layer, disp->tpg_on);
+	}
+
+	if (zynqmp_disp_av_buf_vid_timing_src_is_int(&disp->av_buf) ||
+	    zynqmp_disp_av_buf_vid_clock_src_is_ps(&disp->av_buf)) {
+		dev_info(disp->dev,
+			 "Disabling the pipeline to change the clk/timing src");
+		zynqmp_disp_disable(disp, true);
+		zynqmp_disp_av_buf_set_vid_clock_src(&disp->av_buf, false);
+		zynqmp_disp_av_buf_set_vid_timing_src(&disp->av_buf, false);
+	}
+
+	zynqmp_disp_enable(disp);
+
+	return 0;
+}
+
+static void zynqmp_disp_bridge_disable(struct xlnx_bridge *bridge)
+{
+	struct zynqmp_disp_layer *layer = bridge_to_layer(bridge);
+	struct zynqmp_disp *disp = layer->disp;
+
+	zynqmp_disp_disable(disp, false);
+
+	zynqmp_disp_layer_disable(disp, layer, ZYNQMP_DISP_LAYER_LIVE);
+	if (layer->id == ZYNQMP_DISP_LAYER_VID && disp->tpg_on)
+		zynqmp_disp_layer_set_tpg(disp, layer, disp->tpg_on);
+
+	if (!zynqmp_disp_layer_is_live(disp)) {
+		dev_info(disp->dev,
+			 "Disabling the pipeline to change the clk/timing src");
+		zynqmp_disp_disable(disp, true);
+		zynqmp_disp_av_buf_set_vid_clock_src(&disp->av_buf, true);
+		zynqmp_disp_av_buf_set_vid_timing_src(&disp->av_buf, true);
+		if (zynqmp_disp_layer_is_enabled(disp))
+			zynqmp_disp_enable(disp);
+	}
+}
+
+static int zynqmp_disp_bridge_set_input(struct xlnx_bridge *bridge,
+					u32 width, u32 height, u32 bus_fmt)
+{
+	struct zynqmp_disp_layer *layer = bridge_to_layer(bridge);
+	int ret;
+
+	ret = zynqmp_disp_layer_check_size(layer->disp, layer, width, height);
+	if (ret)
+		return ret;
+
+	ret = zynqmp_disp_layer_set_live_fmt(layer->disp,  layer, bus_fmt);
+	if (ret)
+		dev_err(layer->disp->dev, "failed to set live fmt\n");
+
+	return ret;
+}
+
+static int zynqmp_disp_bridge_get_input_fmts(struct xlnx_bridge *bridge,
+					     const u32 **fmts, u32 *count)
+{
+	struct zynqmp_disp_layer *layer = bridge_to_layer(bridge);
+
+	*fmts = layer->bus_fmts;
+	*count = layer->num_bus_fmts;
+
+	return 0;
 }
 
 /*
