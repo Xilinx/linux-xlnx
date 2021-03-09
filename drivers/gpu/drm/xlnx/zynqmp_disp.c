@@ -2792,17 +2792,6 @@ static int zynqmp_disp_create_plane(struct zynqmp_disp *disp)
 		type = DRM_PLANE_TYPE_PRIMARY;
 	}
 
-	for (i = 0; i < ZYNQMP_DISP_NUM_LAYERS; i++) {
-		layer = &disp->layers[i];
-		layer->bridge.enable = &zynqmp_disp_bridge_enable;
-		layer->bridge.disable = &zynqmp_disp_bridge_disable;
-		layer->bridge.set_input = &zynqmp_disp_bridge_set_input;
-		layer->bridge.get_input_fmts =
-			&zynqmp_disp_bridge_get_input_fmts;
-		layer->bridge.of_node = layer->of_node;
-		xlnx_bridge_register(&layer->bridge);
-	}
-
 	/* Attach properties to each layers */
 	drm_object_attach_property(&layer->plane.base, disp->g_alpha_prop,
 				   ZYNQMP_DISP_V_BLEND_SET_GLOBAL_ALPHA_MAX);
@@ -3239,6 +3228,8 @@ int zynqmp_disp_probe(struct platform_device *pdev)
 	struct zynqmp_disp *disp;
 	struct resource *res;
 	int ret;
+	struct zynqmp_disp_layer *layer;
+	unsigned int i;
 
 	disp = devm_kzalloc(&pdev->dev, sizeof(*disp), GFP_KERNEL);
 	if (!disp)
@@ -3337,6 +3328,21 @@ int zynqmp_disp_probe(struct platform_device *pdev)
 		goto error_aclk;
 
 	zynqmp_disp_init(disp);
+
+	/*
+	 * Register live bridges so external CRTCs will be able probe
+	 * successfully
+	 */
+	for (i = 0; i < ZYNQMP_DISP_NUM_LAYERS; i++) {
+		layer = &disp->layers[i];
+		layer->bridge.enable = &zynqmp_disp_bridge_enable;
+		layer->bridge.disable = &zynqmp_disp_bridge_disable;
+		layer->bridge.set_input = &zynqmp_disp_bridge_set_input;
+		layer->bridge.get_input_fmts =
+			&zynqmp_disp_bridge_get_input_fmts;
+		layer->bridge.of_node = layer->of_node;
+		xlnx_bridge_register(&layer->bridge);
+	}
 
 	return 0;
 
