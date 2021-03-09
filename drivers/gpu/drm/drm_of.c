@@ -49,23 +49,23 @@ uint32_t drm_of_crtc_port_mask(struct drm_device *dev,
 EXPORT_SYMBOL(drm_of_crtc_port_mask);
 
 /**
- * drm_of_find_possible_crtcs - find the possible CRTCs for an encoder port
+ * drm_of_find_possible_crtcs - find the possible CRTCs for an encoder
  * @dev: DRM device
- * @port: encoder port to scan for endpoints
+ * @encoder: encoder OF node to scan for endpoints
  *
- * Scan all endpoints attached to a port, locate their attached CRTCs,
+ * Scan all endpoints attached to a encoder, locate their attached CRTCs,
  * and generate the DRM mask of CRTCs which may be attached to this
  * encoder.
  *
  * See Documentation/devicetree/bindings/graph.txt for the bindings.
  */
 uint32_t drm_of_find_possible_crtcs(struct drm_device *dev,
-				    struct device_node *port)
+				    struct device_node *encoder)
 {
 	struct device_node *remote_port, *ep;
 	uint32_t possible_crtcs = 0;
 
-	for_each_endpoint_of_node(port, ep) {
+	for_each_endpoint_of_node(encoder, ep) {
 		remote_port = of_graph_get_remote_port(ep);
 		if (!remote_port) {
 			of_node_put(ep);
