@@ -97,10 +97,12 @@ static int zynqmp_dpsub_probe(struct platform_device *pdev)
 		goto err_rmem;
 	}
 
-	dpsub->master = xlnx_drm_pipeline_init(pdev);
-	if (IS_ERR(dpsub->master)) {
-		dev_err(&pdev->dev, "failed to initialize the drm pipeline\n");
-		goto err_populate;
+	if (!dpsub->external_crtc_attached) {
+		dpsub->master = xlnx_drm_pipeline_init(pdev);
+		if (IS_ERR(dpsub->master)) {
+			dev_err(&pdev->dev, "failed to initialize the drm pipeline\n");
+			goto err_populate;
+		}
 	}
 
 	dev_info(&pdev->dev, "ZynqMP DisplayPort Subsystem driver probed");
@@ -126,7 +128,8 @@ static int zynqmp_dpsub_remove(struct platform_device *pdev)
 	struct zynqmp_dpsub *dpsub = platform_get_drvdata(pdev);
 	int err, ret = 0;
 
-	xlnx_drm_pipeline_exit(dpsub->master);
+	if (!dpsub->external_crtc_attached)
+		xlnx_drm_pipeline_exit(dpsub->master);
 	of_platform_depopulate(&pdev->dev);
 	of_reserved_mem_device_release(&pdev->dev);
 	component_del(&pdev->dev, &zynqmp_dpsub_component_ops);
