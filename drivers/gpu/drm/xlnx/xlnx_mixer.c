@@ -2879,6 +2879,8 @@ static int xlnx_mix_crtc_create(struct xlnx_mix *mixer)
 	crtc->get_cursor_height = &xlnx_mix_crtc_get_max_cursor_height;
 	crtc->get_cursor_width = &xlnx_mix_crtc_get_max_cursor_width;
 	xlnx_crtc_register(mixer->drm, crtc);
+	dev_info(mixer->drm->dev,
+		 "Registered mixer CRTC with id: %d\n", crtc->crtc.base.id);
 
 	return 0;
 
