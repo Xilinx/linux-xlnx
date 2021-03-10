@@ -1171,6 +1171,10 @@ zynqmp_disp_plane_atomic_disable(struct drm_plane *plane,
 		return;
 
 	zynqmp_disp_layer_disable(layer);
+
+	if (layer->id == ZYNQMP_DISP_LAYER_GFX)
+		zynqmp_disp_blend_set_global_alpha(&layer->disp->blend, false,
+						   0);
 }
 
 static void
@@ -1197,6 +1201,10 @@ zynqmp_disp_plane_atomic_update(struct drm_plane *plane,
 	}
 
 	zynqmp_disp_layer_update(layer, plane->state);
+
+	if (layer->id == ZYNQMP_DISP_LAYER_GFX)
+		zynqmp_disp_blend_set_global_alpha(&layer->disp->blend, true,
+						   255);
 
 	/* Enable or re-enable the plane is the format has changed. */
 	if (format_changed)
@@ -1465,7 +1473,6 @@ zynqmp_disp_crtc_atomic_enable(struct drm_crtc *crtc,
 	zynqmp_disp_blend_set_output_format(&disp->blend,
 					    ZYNQMP_DPSUB_FORMAT_RGB);
 	zynqmp_disp_blend_set_bg_color(&disp->blend, 0, 0, 0);
-	zynqmp_disp_blend_set_global_alpha(&disp->blend, false, 0);
 
 	zynqmp_disp_enable(disp);
 
