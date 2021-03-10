@@ -1237,8 +1237,11 @@ static int zynqmp_disp_create_planes(struct zynqmp_disp *disp)
 		for (j = 0; j < layer->info->num_formats; ++j)
 			drm_formats[j] = layer->info->formats[j].drm_fmt;
 
-		/* Graphics layer is primary, and video layer is overlay. */
-		type = i == ZYNQMP_DISP_LAYER_GFX
+		/*
+		 * The video layer is at the bottom of the stack and the
+		 * graphics layer at the top.
+		 */
+		type = i == ZYNQMP_DISP_LAYER_VID
 		     ? DRM_PLANE_TYPE_PRIMARY : DRM_PLANE_TYPE_OVERLAY;
 		ret = drm_universal_plane_init(disp->drm, &layer->plane, 0,
 					       &zynqmp_disp_plane_funcs,
@@ -1250,6 +1253,8 @@ static int zynqmp_disp_create_planes(struct zynqmp_disp *disp)
 
 		drm_plane_helper_add(&layer->plane,
 				     &zynqmp_disp_plane_helper_funcs);
+
+		drm_plane_create_zpos_immutable_property(&layer->plane, i);
 	}
 
 	return 0;
@@ -1573,7 +1578,7 @@ static const struct drm_crtc_funcs zynqmp_disp_crtc_funcs = {
 
 static int zynqmp_disp_create_crtc(struct zynqmp_disp *disp)
 {
-	struct drm_plane *plane = &disp->layers[ZYNQMP_DISP_LAYER_GFX].plane;
+	struct drm_plane *plane = &disp->layers[ZYNQMP_DISP_LAYER_VID].plane;
 	int ret;
 
 	ret = drm_crtc_init_with_planes(disp->drm, &disp->crtc, plane,
