@@ -297,7 +297,7 @@ static int zynqmp_aes_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_algs;
 
-	dev_info(dev, "AES Successfully Registered\n\r");
+	dev_info(dev, "AES Successfully Registered\n");
 	return 0;
 
 err_algs:
