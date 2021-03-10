@@ -22,6 +22,7 @@ Optional properties for snps,dwc3:
   "dwc_usb3"	USB gadget mode interrupts
   "otg"		USB OTG mode interrupts
   "hiber"	USB hibernation interrupts
+- reset-gpios: Should specify mode-pin GPIO for reset.
 
 Example device node:
 
@@ -32,6 +33,7 @@ Example device node:
 			reg = <0x0 0xff9d0000 0x0 0x100>;
 			clock-names = "bus_clk" "ref_clk";
 			clocks = <&clk125>, <&clk125>;
+			reset-gpio = <&modepin_gpio 1 0>;
 			ranges;
 
 			dwc3@fe200000 {
