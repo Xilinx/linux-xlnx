@@ -769,9 +769,11 @@ void axienet_tx_hwtstamp(struct axienet_local *lp,
 	err = readl_poll_timeout_atomic(lp->tx_ts_regs + XAXIFIFO_TXTS_RLR, val,
 					((val & XAXIFIFO_TXTS_RXFD_MASK) >=
 					len), 0, 1000000);
-	if (err)
+	if (err) {
 		netdev_err(lp->ndev, "%s: Didn't get the full timestamp packet",
 			   __func__);
+		goto skb_exit;
+	}
 
 	nsec = axienet_txts_ior(lp, XAXIFIFO_TXTS_RXFD);
 	sec  = axienet_txts_ior(lp, XAXIFIFO_TXTS_RXFD);
@@ -807,6 +809,7 @@ void axienet_tx_hwtstamp(struct axienet_local *lp,
 	    lp->axienet_config->mactype != XAXIENET_MRMAC)
 		val = axienet_txts_ior(lp, XAXIFIFO_TXTS_RXFD);
 
+skb_exit:
 	time64 = sec * NS_PER_SEC + nsec;
 	memset(shhwtstamps, 0, sizeof(struct skb_shared_hwtstamps));
 	shhwtstamps->hwtstamp = ns_to_ktime(time64);
