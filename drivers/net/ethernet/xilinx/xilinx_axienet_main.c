@@ -70,10 +70,14 @@
 
 /* IEEE1588 Message Type field values  */
 #define PTP_TYPE_SYNC		0
+#define PTP_TYPE_PDELAY_REQ	2
+#define PTP_TYPE_PDELAY_RESP	3
 #define PTP_TYPE_OFFSET		42
 /* SW flags used to convey message type for command FIFO handling */
 #define MSG_TYPE_SHIFT			4
 #define MSG_TYPE_SYNC_FLAG		((PTP_TYPE_SYNC + 1) << MSG_TYPE_SHIFT)
+#define MSG_TYPE_PDELAY_RESP_FLAG	((PTP_TYPE_PDELAY_RESP + 1) << \
+									 MSG_TYPE_SHIFT)
 
 #ifdef CONFIG_XILINX_TSN_PTP
 int axienet_phc_index = -1;
@@ -832,6 +836,16 @@ skb_exit:
 	cur_p->ptp_tx_skb = 0;
 }
 
+static inline bool is_ptp_os_pdelay_req(struct sk_buff *skb,
+					struct axienet_local *lp)
+{
+	u8 *msg_type;
+
+	msg_type = (u8 *)skb->data + PTP_TYPE_OFFSET;
+	return (((*msg_type & 0xF) == PTP_TYPE_PDELAY_REQ) &&
+		(lp->tstamp_config.tx_type == HWTSTAMP_TX_ONESTEP_P2P));
+}
+
 /**
  * axienet_rx_hwtstamp - Read rx timestamp from hw and update it to the skbuff
  * @lp:		Pointer to axienet local structure
@@ -872,6 +886,15 @@ static void axienet_rx_hwtstamp(struct axienet_local *lp,
 	nsec = axienet_rxts_ior(lp, XAXIFIFO_TXTS_RXFD);
 	sec  = axienet_rxts_ior(lp, XAXIFIFO_TXTS_RXFD);
 	val = axienet_rxts_ior(lp, XAXIFIFO_TXTS_RXFD);
+
+	if (is_ptp_os_pdelay_req(skb, lp)) {
+		/* Need to save PDelay resp RX time for HW 1 step
+		 * timestamping on PDelay Response.
+		 */
+		lp->ptp_os_cf = mul_u32_u32(sec, NSEC_PER_SEC);
+		lp->ptp_os_cf += nsec;
+		lp->ptp_os_cf = (lp->ptp_os_cf << 16);
+	}
 
 	if (lp->tstamp_config.rx_filter == HWTSTAMP_FILTER_ALL) {
 		time64 = sec * NS_PER_SEC + nsec;
@@ -1052,6 +1075,17 @@ static int axienet_create_tsheader(u8 *buf, u8 msg_type,
 				buf[4] = TX_PTP_CF_OFFSET;
 				buf[6] = TX_PTP_CSUM_OFFSET;
 			}
+			/* For PDelay Response packet */
+			if ((msg_type & 0xF0) == MSG_TYPE_PDELAY_RESP_FLAG) {
+				buf[0] = TX_TS_OP_ONESTEP | TX_TS_CSUM_UPDATE_MRMAC |
+					TX_TS_PDELAY_UPDATE_MRMAC;
+				buf[2] = cur_p->ptp_tx_ts_tag & 0xFF;
+				buf[3] = (cur_p->ptp_tx_ts_tag >> 8) & 0xFF;
+				buf[4] = TX_PTP_CF_OFFSET;
+				buf[6] = TX_PTP_CSUM_OFFSET;
+				/* Prev saved TS */
+				memcpy(&buf[8], &lp->ptp_os_cf, 8);
+			}
 		} else {
 			/* Legacy */
 			buf[0] = TX_TS_OP_ONESTEP;
@@ -1101,6 +1135,9 @@ static inline u8 ptp_os(struct sk_buff *skb, struct axienet_local *lp)
 	msg_type = (u8 *)skb->data + PTP_TYPE_OFFSET;
 	if ((*msg_type & 0xF) == PTP_TYPE_SYNC)
 		packet_flags = MSG_TYPE_SYNC_FLAG;
+	else if (((*msg_type & 0xF) == PTP_TYPE_PDELAY_RESP) &&
+		 (lp->tstamp_config.tx_type == HWTSTAMP_TX_ONESTEP_P2P))
+		packet_flags = MSG_TYPE_PDELAY_RESP_FLAG;
 
 	return packet_flags;
 }
@@ -1177,7 +1214,8 @@ static int axienet_skb_tstsmp(struct sk_buff **__skb, struct axienet_dma_q *q,
 		cur_p->ptp_tx_ts_tag = prandom_u32_max(XAXIFIFO_TXTS_TAG_MAX) + 1;
 			dev_dbg(lp->dev, "tx_tag:[%04x]\n",
 				cur_p->ptp_tx_ts_tag);
-			if (lp->tstamp_config.tx_type == HWTSTAMP_TX_ONESTEP_SYNC) {
+			if (lp->tstamp_config.tx_type == HWTSTAMP_TX_ONESTEP_SYNC ||
+			    lp->tstamp_config.tx_type == HWTSTAMP_TX_ONESTEP_P2P) {
 				u8 packet_flags = ptp_os(skb, lp);
 
 				/* Pass one step flag with packet type (sync/pdelay resp)
@@ -2120,6 +2158,14 @@ static int axienet_set_timestamp_mode(struct axienet_local *lp,
 		if (lp->axienet_config->mactype == XAXIENET_MRMAC)
 			axienet_iow(lp, MRMAC_CFG1588_OFFSET, MRMAC_ONE_STEP_EN);
 		break;
+	case HWTSTAMP_TX_ONESTEP_P2P:
+		if (lp->axienet_config->mactype == XAXIENET_MRMAC) {
+			config->tx_type = HWTSTAMP_TX_ONESTEP_P2P;
+			axienet_iow(lp, MRMAC_CFG1588_OFFSET, MRMAC_ONE_STEP_EN);
+		} else {
+			return -ERANGE;
+		}
+		break;
 	default:
 		return -ERANGE;
 	}
@@ -2577,7 +2623,8 @@ static int axienet_ethtools_get_ts_info(struct net_device *ndev,
 				SOF_TIMESTAMPING_RX_HARDWARE |
 				SOF_TIMESTAMPING_RAW_HARDWARE;
 	info->tx_types = (1 << HWTSTAMP_TX_OFF) | (1 << HWTSTAMP_TX_ON) |
-			(1 << HWTSTAMP_TX_ONESTEP_SYNC);
+			(1 << HWTSTAMP_TX_ONESTEP_SYNC) |
+			(1 << HWTSTAMP_TX_ONESTEP_P2P);
 	info->rx_filters = (1 << HWTSTAMP_FILTER_NONE) |
 			   (1 << HWTSTAMP_FILTER_ALL);
 	info->phc_index = lp->phc_index;
