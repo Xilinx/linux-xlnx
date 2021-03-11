@@ -1909,10 +1909,8 @@ static int axienet_open(struct net_device *ndev)
 		 */
 		axienet_iow(lp, MRMAC_TX_STS_OFFSET, MRMAC_STS_ALL_MASK);
 		axienet_iow(lp, MRMAC_RX_STS_OFFSET, MRMAC_STS_ALL_MASK);
-		axienet_iow(lp, MRMAC_STATRX_BLKLCK_OFFSET, MRMAC_STS_ALL_MASK);
-		err = readl_poll_timeout(lp->regs + MRMAC_STATRX_BLKLCK_OFFSET,
-					 val, (val & MRMAC_RX_BLKLCK_MASK),
-					 10, DELAY_OF_ONE_MILLISEC);
+		err = readx_poll_timeout(axienet_get_mrmac_blocklock, lp, val,
+					 (val & MRMAC_RX_BLKLCK_MASK), 10, DELAY_OF_ONE_MILLISEC);
 		if (err) {
 			netdev_err(ndev, "MRMAC block lock not complete! Cross-check the MAC ref clock configuration\n");
 			ret = -ENODEV;
