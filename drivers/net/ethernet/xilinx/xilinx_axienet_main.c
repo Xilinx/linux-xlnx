@@ -2970,7 +2970,7 @@ static const struct axienet_config axienet_mrmac_config = {
 	.mactype = XAXIENET_MRMAC,
 	.setoptions = xxvenet_setoptions,
 	.clk_init = xxvenet_clk_init,
-	.tx_ptplen = 0,
+	.tx_ptplen = XXV_TX_PTP_LEN,
 };
 
 /* Match table for of_platform binding */
