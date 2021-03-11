@@ -62,6 +62,8 @@
 #define AXIENET_REGS_N		40
 #define AXIENET_TS_HEADER_LEN	8
 #define XXVENET_TS_HEADER_LEN	4
+#define MRMAC_TS_HEADER_LEN		16
+#define MRMAC_TS_HEADER_WORDS   (MRMAC_TS_HEADER_LEN / 4)
 #define NS_PER_SEC              1000000000ULL /* Nanoseconds per second */
 
 #define MRMAC_RESET_DELAY	1 /* Delay in msecs*/
@@ -1021,8 +1023,9 @@ static int axienet_create_tsheader(u8 *buf, u8 msg_type,
 	struct axidma_bd *cur_p;
 #endif
 	u64 val;
-	u32 tmp;
+	u32 tmp[MRMAC_TS_HEADER_WORDS];
 	u32 flags;
+	int i;
 
 #ifdef CONFIG_AXIENET_HAS_MCDMA
 	cur_p = &q->txq_bd_v[q->tx_bd_tail];
@@ -1050,16 +1053,18 @@ static int axienet_create_tsheader(u8 *buf, u8 msg_type,
 		memcpy(buf, &val, AXIENET_TS_HEADER_LEN);
 	} else if (lp->axienet_config->mactype == XAXIENET_10G_25G ||
 		   lp->axienet_config->mactype == XAXIENET_MRMAC) {
-		memcpy(&tmp, buf, XXVENET_TS_HEADER_LEN);
+		memcpy(&tmp[0], buf, lp->axienet_config->ts_header_len);
 		/* Check for Transmit Data FIFO Vacancy */
 		spin_lock_irqsave(&lp->ptp_tx_lock, flags);
 		if (!axienet_txts_ior(lp, XAXIFIFO_TXTS_TDFV)) {
 			spin_unlock_irqrestore(&lp->ptp_tx_lock, flags);
 			return NETDEV_TX_BUSY;
 		}
-		axienet_txts_iow(lp, XAXIFIFO_TXTS_TXFD, tmp);
-		axienet_txts_iow(lp, XAXIFIFO_TXTS_TLR,
-				 XXVENET_TS_HEADER_LEN);
+
+		for (i = 0; i < lp->axienet_config->ts_header_len / 4; i++)
+			axienet_txts_iow(lp, XAXIFIFO_TXTS_TXFD, tmp[i]);
+
+		axienet_txts_iow(lp, XAXIFIFO_TXTS_TLR, lp->axienet_config->ts_header_len);
 		spin_unlock_irqrestore(&lp->ptp_tx_lock, flags);
 	}
 
@@ -2960,6 +2965,7 @@ static const struct axienet_config axienet_10g25g_config = {
 	.setoptions = xxvenet_setoptions,
 	.clk_init = xxvenet_clk_init,
 	.tx_ptplen = XXV_TX_PTP_LEN,
+	.ts_header_len = XXVENET_TS_HEADER_LEN,
 };
 
 static const struct axienet_config axienet_usxgmii_config = {
@@ -2974,6 +2980,7 @@ static const struct axienet_config axienet_mrmac_config = {
 	.setoptions = xxvenet_setoptions,
 	.clk_init = xxvenet_clk_init,
 	.tx_ptplen = XXV_TX_PTP_LEN,
+	.ts_header_len = MRMAC_TS_HEADER_LEN,
 };
 
 /* Match table for of_platform binding */
@@ -3339,8 +3346,9 @@ static int axienet_probe(struct platform_device *pdev)
 				ret = PTR_ERR(lp->rx_ts_regs);
 				goto free_netdev;
 			}
+
 			lp->tx_ptpheader = devm_kzalloc(&pdev->dev,
-							XXVENET_TS_HEADER_LEN,
+							lp->axienet_config->ts_header_len,
 							GFP_KERNEL);
 			spin_lock_init(&lp->ptp_tx_lock);
 		}

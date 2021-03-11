@@ -966,6 +966,7 @@ struct axienet_config {
 			struct clk **axis_clk, struct clk **ref_clk,
 			struct clk **dclk);
 	u32 tx_ptplen;
+	u8 ts_header_len;
 };
 
 /**
