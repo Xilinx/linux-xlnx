@@ -362,8 +362,10 @@
 #define TX_TS_OP_ONESTEP        0x1
 #define TX_TS_OP_TWOSTEP        0x2
 #define TX_TS_CSUM_UPDATE       0x1
+#define TX_TS_CSUM_UPDATE_MRMAC		0x4
 #define TX_PTP_CSUM_OFFSET      0x28
 #define TX_PTP_TS_OFFSET        0x4C
+#define TX_PTP_CF_OFFSET        0x32
 
 /* XXV MAC Register Definitions */
 #define XXV_GT_RESET_OFFSET		0x00000000
@@ -493,6 +495,7 @@
 #define MRMAC_CONFIG_TX_OFFSET		0x0000000C
 #define MRMAC_CONFIG_RX_OFFSET		0x00000010
 #define MRMAC_TICK_OFFSET		0x0000002C
+#define MRMAC_CFG1588_OFFSET	0x00000040
 
 /* Status Registers */
 #define MRMAC_TX_STS_OFFSET		0x00000740
@@ -541,6 +544,7 @@
 
 #define MRMAC_CTL_PM_TICK_MASK		BIT(30)
 #define MRMAC_TICK_TRIGGER		BIT(0)
+#define MRMAC_ONE_STEP_EN		BIT(0)
 
 /* MRMAC GT wrapper registers */
 #define MRMAC_GT_PLL_OFFSET		0x0
