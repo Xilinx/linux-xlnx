@@ -437,6 +437,10 @@ static const struct ap1302_format_info supported_video_formats[] = {
 		.code = MEDIA_BUS_FMT_UYYVYY8_0_5X24,
 		.out_fmt = AP1302_PREVIEW_OUT_FMT_FT_YUV_JFIF
 			 | AP1302_PREVIEW_OUT_FMT_FST_YUV_420,
+	}, {
+		.code = MEDIA_BUS_FMT_UYYVYY8_0_5X24,
+		.out_fmt = AP1302_PREVIEW_OUT_FMT_FT_YUV_JFIF
+			 | AP1302_PREVIEW_OUT_FMT_FST_YUV_420,
 	},
 };
 
