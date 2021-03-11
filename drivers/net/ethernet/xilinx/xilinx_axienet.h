@@ -558,10 +558,10 @@
 #define MRMAC_GT_RST_ALL_MASK		BIT(0)
 #define MRMAC_GT_RST_RX_MASK		BIT(1)
 #define MRMAC_GT_RST_TX_MASK		BIT(2)
-#define MRMAC_GT_10G_MASK		0x01010101
-#define MRMAC_GT_25G_MASK		0x02020202
+#define MRMAC_GT_10G_MASK		0x00000001
+#define MRMAC_GT_25G_MASK		0x00000002
 
-#define MRMAC_GT_LANE_OFFSET		0x10000
+#define MRMAC_GT_LANE_OFFSET		BIT(16)
 #define MRMAC_MAX_GT_LANES		4
 /**
  * struct axidma_bd - Axi Dma buffer descriptor layout
@@ -1030,6 +1030,20 @@ static inline void axienet_iow(struct axienet_local *lp, off_t offset,
 			       u32 value)
 {
 	iowrite32(value, lp->regs + offset);
+}
+
+/**
+ * axienet_get_mrmac_blocklock - Write to Clear MRMAC RX block lock status register
+ * and read the latest status
+ * @lp:         Pointer to axienet local structure
+ *
+ * Return: The contents of the Contents of MRMAC RX block lock status register
+ */
+
+static inline u32 axienet_get_mrmac_blocklock(struct axienet_local *lp)
+{
+	axienet_iow(lp, MRMAC_STATRX_BLKLCK_OFFSET, MRMAC_STS_ALL_MASK);
+	return axienet_ior(lp, MRMAC_STATRX_BLKLCK_OFFSET);
 }
 
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
