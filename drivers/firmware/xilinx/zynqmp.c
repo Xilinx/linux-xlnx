@@ -919,7 +919,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_load_pdi);
  * Return:	Returns status, either success or error+reason
  */
 int zynqmp_pm_fpga_read(const u32 reg_numframes, const u64 phys_address,
-			       u32 readback_type, u32 *value)
+			u32 readback_type, u32 *value)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
 	int ret;
@@ -953,8 +953,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_read);
  *
  * Return:	Returns status, either success or error code.
  */
-int zynqmp_pm_sha_hash(const u64 address, const u32 size,
-			      const u32 flags)
+int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags)
 {
 	u32 lower_32_bits = (u32)address;
 	u32 upper_32_bits = (u32)(address >> 32);
@@ -996,9 +995,8 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_rsa);
  * Return:	Returns status, either success or error+reason
  */
 int zynqmp_pm_request_suspend(const u32 node,
-				     const enum zynqmp_pm_request_ack ack,
-				     const u32 latency,
-				     const u32 state)
+			      const enum zynqmp_pm_request_ack ack,
+			      const u32 latency, const u32 state)
 {
 	return zynqmp_pm_invoke_fn(PM_REQUEST_SUSPEND, node, ack,
 				   latency, state, NULL);
@@ -1014,7 +1012,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_request_suspend);
  * Return:	Returns status, either success or error+reason
  */
 int zynqmp_pm_force_powerdown(const u32 target,
-				     const enum zynqmp_pm_request_ack ack)
+			      const enum zynqmp_pm_request_ack ack)
 {
 	return zynqmp_pm_invoke_fn(PM_FORCE_POWERDOWN, target, ack, 0, 0, NULL);
 }
@@ -1029,10 +1027,9 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_force_powerdown);
  *
  * Return:	Returns status, either success or error+reason
  */
-int zynqmp_pm_request_wakeup(const u32 node,
-				    const bool set_addr,
-				    const u64 address,
-				    const enum zynqmp_pm_request_ack ack)
+int zynqmp_pm_request_wakeup(const u32 node, const bool set_addr,
+			     const u64 address,
+			     const enum zynqmp_pm_request_ack ack)
 {
 	/* set_addr flag is encoded into 1st bit of address */
 	return zynqmp_pm_invoke_fn(PM_REQUEST_WAKEUP, node, address | set_addr,
@@ -1049,9 +1046,8 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_request_wakeup);
  *
  * Return:	Returns status, either success or error+reason
  */
-int zynqmp_pm_set_wakeup_source(const u32 target,
-				       const u32 wakeup_node,
-				       const u32 enable)
+int zynqmp_pm_set_wakeup_source(const u32 target, const u32 wakeup_node,
+				const u32 enable)
 {
 	return zynqmp_pm_invoke_fn(PM_SET_WAKEUP_SOURCE, target,
 				   wakeup_node, enable, 0, NULL);
@@ -1105,7 +1101,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_configuration);
  * Return:		Returns status, either success or error+reason
  */
 int zynqmp_pm_get_node_status(const u32 node, u32 *const status,
-				     u32 *const requirements, u32 *const usage)
+			      u32 *const requirements, u32 *const usage)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
 	int ret;
@@ -1265,7 +1261,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_get_config);
  */
 
 int zynqmp_pm_config_reg_access(u32 register_access_id, u32 address,
-				       u32 mask, u32 value, u32 *out)
+				u32 mask, u32 value, u32 *out)
 {
 	return zynqmp_pm_invoke_fn(PM_REGISTER_ACCESS, register_access_id,
 				   address, mask, value, out);
