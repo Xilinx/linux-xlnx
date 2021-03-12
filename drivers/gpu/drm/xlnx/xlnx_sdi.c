@@ -1113,6 +1113,9 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	sdi->video_mode.vdisplay = adjusted_mode->vdisplay;
 	sdi->video_mode.hdisplay = adjusted_mode->hdisplay;
 	sdi->video_mode.flags = adjusted_mode->flags;
+	sdi->video_mode.htotal = adjusted_mode->htotal;
+	sdi->video_mode.vtotal = adjusted_mode->vtotal;
+	sdi->video_mode.clock = adjusted_mode->clock;
 
 	xlnx_stc_sig(sdi->base, &vm);
 }
