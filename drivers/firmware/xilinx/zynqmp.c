@@ -1128,7 +1128,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_get_node_status);
  *						characteristic information
  * @node:	Node ID of the slave
  * @type:	Type of the operating characteristic requested
- * @result:	Used to return the requsted operating characteristic
+ * @result:	Used to return the reqeusted operating characteristic
  *
  * Return:	Returns status, either success or error+reason
  */
@@ -1397,6 +1397,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_rpu_mode);
 
 /**
  * zynqmp_pm_set_tcm_config - configure TCM
+ * @node_id:	Node ID of the device
  * @tcm_mode:	Argument 1 to requested IOCTL call
  *              either PM_RPU_TCM_COMB or PM_RPU_TCM_SPLIT
  *
