@@ -247,7 +247,7 @@
 	clocks = <&dp_aclk>, <&dp_aud_clk>, <&drm_clock>;
 };
 
-&xlnx_dpdma {
+&zynqmp_dpdma {
 	clocks = <&dpdma_clk>;
 };
 

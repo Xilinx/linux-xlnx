@@ -1067,6 +1067,6 @@
 	status = "okay";
 };
 
-&xlnx_dpdma {
+&zynqmp_dpdma {
 	status = "okay";
 };
