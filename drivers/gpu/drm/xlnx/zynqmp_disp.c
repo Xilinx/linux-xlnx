@@ -1684,6 +1684,17 @@ int zynqmp_disp_probe(struct zynqmp_dpsub *dpsub, struct drm_device *drm)
 		disp->pclk_from_ps = true;
 	}
 
+	/* This is to ensure the clock is disabled. The initial hardware state is
+	 * unknown, and this makes sure that the clock is disabled.
+	 */
+	ret = clk_prepare_enable(disp->pclk);
+	if (!ret) {
+		clk_disable_unprepare(disp->pclk);
+	} else {
+		dev_err(disp->dev, "failed to init dp video clock\n");
+		return ret;
+	}
+
 	zynqmp_disp_audio_init(disp->dev, &disp->audio);
 
 	ret = zynqmp_disp_create_layers(disp);
