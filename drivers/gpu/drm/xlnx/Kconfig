@@ -8,6 +8,8 @@ config DRM_ZYNQMP_DPSUB
 	select DRM_KMS_CMA_HELPER
 	select DRM_KMS_HELPER
 	select GENERIC_PHY
+	select PHY_XILINX_ZYNQMP
+	select XILINX_ZYNQMP_DPDMA
 	help
 	  This is a DRM/KMS driver for ZynqMP DisplayPort controller. Choose
 	  this option if you have a Xilinx ZynqMP SoC with DisplayPort
