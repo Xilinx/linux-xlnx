@@ -40,8 +40,8 @@ static const struct flash_info sst_parts[] = {
 			      SPI_NOR_QUAD_READ) },
 };
 
-static int sst_write(struct mtd_info *mtd, loff_t to, size_t len,
-		     size_t *retlen, const u_char *buf)
+int sst_write(struct mtd_info *mtd, loff_t to, size_t len,
+	      size_t *retlen, const u_char *buf)
 {
 	struct spi_nor *nor = mtd_to_spi_nor(mtd);
 	size_t actual = 0;
