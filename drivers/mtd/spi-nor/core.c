@@ -179,7 +179,7 @@ static ssize_t spi_nor_spimem_write_data(struct spi_nor *nor, loff_t to,
 	if (spi_nor_spimem_bounce(nor, &op))
 		memcpy(nor->bouncebuf, buf, op.data.nbytes);
 
-	if (nor->dirmap.wdesc) {
+	if (nor->dirmap.wdesc && !(nor->info->flags & SST_WRITE)) {
 		nbytes = spi_mem_dirmap_write(nor->dirmap.wdesc, op.addr.val,
 					      op.data.nbytes, op.data.buf.out);
 	} else {
@@ -3321,8 +3321,18 @@ static void spi_nor_prot_unlock(struct spi_nor *nor)
 {
 	if (nor->info->flags & SST_GLOBAL_PROT_UNLK) {
 		spi_nor_write_enable(nor);
-		/* Unlock global write protection bits */
-		nor->controller_ops->write_reg(nor, GLOBAL_BLKPROT_UNLK, NULL, 0);
+		if (nor->spimem) {
+			struct spi_mem_op op =
+				SPI_MEM_OP(SPI_MEM_OP_CMD(GLOBAL_BLKPROT_UNLK, 1),
+					   SPI_MEM_OP_NO_ADDR,
+					   SPI_MEM_OP_NO_DUMMY,
+					   SPI_MEM_OP_NO_DATA);
+
+			spi_mem_exec_op(nor->spimem, &op);
+		} else {
+			/* Unlock global write protection bits */
+			nor->controller_ops->write_reg(nor, GLOBAL_BLKPROT_UNLK, NULL, 0);
+		}
 	}
 	spi_nor_wait_till_ready(nor);
 }
@@ -3340,7 +3350,10 @@ static int spi_nor_unlock_all(struct spi_nor *nor)
 {
 	const struct flash_info *info = nor->info;
 
-	if (nor->flags & SNOR_F_HAS_LOCK) {
+	if (nor->jedec_id == CFI_MFR_ATMEL ||
+	    nor->jedec_id == CFI_MFR_INTEL ||
+	    nor->jedec_id == CFI_MFR_SST ||
+	    nor->flags & SNOR_F_HAS_LOCK) {
 		if (info->flags & SST_GLOBAL_PROT_UNLK) {
 			spi_nor_prot_unlock(nor);
 		}
@@ -3353,6 +3366,14 @@ static int spi_nor_init(struct spi_nor *nor)
 {
 	int err;
 
+	if (nor->jedec_id == CFI_MFR_ATMEL ||
+	    nor->jedec_id == CFI_MFR_INTEL ||
+	    nor->jedec_id == CFI_MFR_SST ||
+	    nor->flags & SNOR_F_HAS_LOCK) {
+		spi_nor_write_enable(nor);
+		nor->bouncebuf[0] = 0;
+		spi_nor_write_sr(nor, nor->bouncebuf, 1);
+	}
 	err = spi_nor_quad_enable(nor);
 	if (err) {
 		dev_dbg(nor->dev, "quad mode not supported\n");
@@ -3607,7 +3628,11 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 	if (info->flags & SPI_NOR_HAS_LOCK)
 		nor->flags |= SNOR_F_HAS_LOCK;
 
-	mtd->_write = spi_nor_write;
+	/* sst nor chips use AAI word program */
+	if (info->flags & SST_WRITE)
+		mtd->_write = sst_write;
+	else
+		mtd->_write = spi_nor_write;
 
 	/* Init flash parameters based on flash_info struct and SFDP */
 	ret = spi_nor_init_params(nor);
