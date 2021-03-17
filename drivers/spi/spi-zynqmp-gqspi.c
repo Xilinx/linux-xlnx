@@ -196,6 +196,7 @@ struct qspi_platform_data {
  * @speed_hz:		Current SPI bus clock speed in hz
  * @io_mode:		Defines the operating mode, either IO or dma
  * @has_tapdelay:	Used for tapdelay register available in qspi
+ * @set_tapdelay:	Used to avoid setting tapdelay multiple times
  */
 struct zynqmp_qspi {
 	void __iomem *regs;
@@ -219,6 +220,7 @@ struct zynqmp_qspi {
 	u32 speed_hz;
 	bool io_mode;
 	bool has_tapdelay;
+	bool set_tapdelay;
 };
 
 /**
@@ -348,6 +350,7 @@ static void zynqmp_qspi_set_tapdelay(struct zynqmp_qspi *xqspi, u32 baudrateval)
 
 	zynqmp_gqspi_write(xqspi, GQSPI_LPBK_DLY_ADJ_OFST, lpbkdlyadj);
 	zynqmp_gqspi_write(xqspi, GQSPI_DATA_DLY_ADJ_OFST, datadlyadj);
+	xqspi->set_tapdelay = true;
 }
 
 static u32 zynqmp_disable_intr(struct zynqmp_qspi *xqspi)
@@ -592,7 +595,7 @@ static int zynqmp_qspi_setup_transfer(struct spi_device *qspi,
 	else
 		req_hz = qspi->max_speed_hz;
 
-	if (xqspi->speed_hz != req_hz) {
+	if (xqspi->speed_hz != req_hz && xqspi->set_tapdelay != true) {
 		/* Set the clock frequency */
 		/* If req_hz == 0, default to lowest speed */
 		clk_rate = clk_get_rate(xqspi->refclk);
