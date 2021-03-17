@@ -58,13 +58,11 @@ static int zynqmp_efuse_access(void *context, unsigned int offset,
 		return -ENXIO;
 
 	if (bytes % WORD_INBYTES != 0) {
-		dev_err(dev,
-			"ERROR: Bytes requested should be word aligned\n\r");
+		dev_err(dev, "Bytes requested should be word aligned\n");
 		return -ENOTSUPP;
 	}
 	if (offset % WORD_INBYTES != 0) {
-		dev_err(dev,
-			"ERROR: offset requested should be word aligned\n\r");
+		dev_err(dev, "Offset requested should be word aligned\n");
 		return -ENOTSUPP;
 	}
 
@@ -95,11 +93,11 @@ static int zynqmp_efuse_access(void *context, unsigned int offset,
 	eemi_ops->efuse_access(dma_addr, &ret);
 	if (ret != 0) {
 		if (ret == EFUSE_NOT_ENABLED) {
-			dev_err(dev, "ERROR: efuse access is not enabled\n\r");
+			dev_err(dev, "efuse access is not enabled\n");
 			ret = -ENOTSUPP;
 			goto END;
 		}
-		dev_err(dev, "ERROR: in efuse read %x\n\r", ret);
+		dev_err(dev, "Error in efuse read %x\n", ret);
 		ret = -EPERM;
 		goto END;
 	}
