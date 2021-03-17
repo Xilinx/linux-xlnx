@@ -67,12 +67,12 @@ static int zynqmp_efuse_access(void *context, unsigned int offset,
 
 	if (bytes % WORD_INBYTES != 0) {
 		dev_err(dev, "Bytes requested should be word aligned\n");
-		return -ENOTSUPP;
+		return -EOPNOTSUPP;
 	}
 
 	if (pufflag == 0 && offset % WORD_INBYTES) {
 		dev_err(dev, "Offset requested should be word aligned\n");
-		return -ENOTSUPP;
+		return -EOPNOTSUPP;
 	}
 
 	if (pufflag == 1 && flag == EFUSE_WRITE) {
@@ -81,13 +81,13 @@ static int zynqmp_efuse_access(void *context, unsigned int offset,
 		     offset == EFUSE_PUF_MID_OFFSET) &&
 		    value & P_USER_0_64_UPPER_MASK) {
 			dev_err(dev, "Only lower 4 bytes are allowed to be programmed in P_USER_0 & P_USER_64\n");
-			return -ENOTSUPP;
+			return -EOPNOTSUPP;
 		}
 
 		if (offset == EFUSE_PUF_END_OFFSET &&
 		    (value & P_USER_127_LOWER_4_BIT_MASK)) {
 			dev_err(dev, "Only MSB 28 bits are allowed to be programmed for P_USER_127\n");
-			return -ENOTSUPP;
+			return -EOPNOTSUPP;
 		}
 	}
 
@@ -120,7 +120,7 @@ static int zynqmp_efuse_access(void *context, unsigned int offset,
 	if (ret != 0) {
 		if (ret == EFUSE_NOT_ENABLED) {
 			dev_err(dev, "efuse access is not enabled\n");
-			ret = -ENOTSUPP;
+			ret = -EOPNOTSUPP;
 			goto END;
 		}
 		dev_err(dev, "Error in efuse read %x\n", ret);
@@ -156,7 +156,7 @@ static int zynqmp_nvmem_read(void *context, unsigned int offset,
 	/* Soc version offset is zero */
 	case SOC_VERSION_OFFSET:
 		if (bytes != SOC_VER_SIZE)
-			return -ENOTSUPP;
+			return -EOPNOTSUPP;
 
 		ret = eemi_ops->get_chipid(&idcode, &version);
 		if (ret < 0)
@@ -186,7 +186,7 @@ static int zynqmp_nvmem_write(void *context,
 	int pufflag = 0;
 
 	if (offset < EFUSE_START_OFFSET || offset > EFUSE_PUF_END_OFFSET)
-		return -ENOTSUPP;
+		return -EOPNOTSUPP;
 
 	if (offset >= EFUSE_PUF_START_OFFSET && offset <= EFUSE_PUF_END_OFFSET)
 		pufflag = 1;
