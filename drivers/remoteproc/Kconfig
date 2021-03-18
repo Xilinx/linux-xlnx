@@ -246,9 +246,8 @@ config ST_REMOTEPROC
 
 config ZYNQ_REMOTEPROC
 	tristate "Support ZYNQ remoteproc"
-	depends on ARCH_ZYNQ && SMP && !DEBUG_SG
+	depends on ARCH_ZYNQ && SMP && !DEBUG_SG && BL_SWITCHER
 	select RPMSG_VIRTIO
-	select HOTPLUG_CPU
 	select SRAM
 	help
 	  Say y here to support Xilinx ZynQ remote processors (the second
