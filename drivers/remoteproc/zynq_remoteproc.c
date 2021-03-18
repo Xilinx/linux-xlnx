@@ -18,6 +18,9 @@
 #include <linux/dma-mapping.h>
 #include <linux/remoteproc.h>
 #include <linux/interrupt.h>
+#include <linux/irqdomain.h>
+#include <linux/irq.h>
+#include <linux/irqchip.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
 #include <linux/of_reserved_mem.h>
@@ -34,7 +37,13 @@
 #define MAX_NUM_VRINGS 2
 #define NOTIFYID_ANY (-1)
 /* Maximum on chip memories used by the driver*/
-#define MAX_ON_CHIP_MEMS        32
+#define MAX_ON_CHIP_MEMS	32
+#define REMOTE_SGI		0
+#define HOST_SGI		1
+
+static int vring_sgis[MAX_NUM_VRINGS] = { 14, 15 };
+/* count number of SGIs passed via command line if applicable. */
+static int n_vring_sgis = MAX_NUM_VRINGS;
 
 /* Structure for storing IRQs */
 struct irq_list {
@@ -62,12 +71,14 @@ struct zynq_mem_res {
 /**
  * struct zynq_rproc_data - zynq rproc private data
  * @irqs: inter processor soft IRQs
+ * @ipi_desc: list of IRQ descriptors for each vring's IRQ.
  * @rproc: pointer to remoteproc instance
  * @ipis: interrupt processor interrupts statistics
  * @fw_mems: list of firmware memories
  */
 struct zynq_rproc_pdata {
-	struct irq_list irqs;
+	int irqs[MAX_NUM_VRINGS];
+	struct irq_desc *ipi_desc[MAX_NUM_VRINGS];
 	struct rproc *rproc;
 	struct ipi_info ipis[MAX_NUM_VRINGS];
 	struct list_head fw_mems;
@@ -79,19 +90,25 @@ static bool autoboot __read_mostly;
 static struct rproc *rproc;
 static struct work_struct workqueue;
 
+static irqreturn_t zynq_remoteproc_interrupt(int irq, void *dev_id)
+{
+	struct zynq_rproc_pdata *local = dev_id;
+
+	dev_dbg(local->rproc->dev.parent, "KICK Linux because of pending message\n");
+	schedule_work(&workqueue);
+
+	return IRQ_HANDLED;
+}
+
+struct irqaction action = {
+	.handler = zynq_remoteproc_interrupt,
+};
+
 static void handle_event(struct work_struct *work)
 {
 	struct zynq_rproc_pdata *local = rproc->priv;
 
-	if (rproc_vq_interrupt(local->rproc, local->ipis[0].notifyid) ==
-				IRQ_NONE)
-		dev_dbg(rproc->dev.parent, "no message found in vqid 0\n");
-}
-
-static void ipi_kick(void)
-{
-	dev_dbg(rproc->dev.parent, "KICK Linux because of pending message\n");
-	schedule_work(&workqueue);
+	rproc_vq_interrupt(local->rproc, local->ipis[0].notifyid);
 }
 
 static void kick_pending_ipi(struct rproc *rproc)
@@ -102,8 +119,7 @@ static void kick_pending_ipi(struct rproc *rproc)
 	for (i = 0; i < MAX_NUM_VRINGS; i++) {
 		/* Send swirq to firmware */
 		if (local->ipis[i].pending) {
-			gic_raise_softirq(cpumask_of(1),
-					  local->ipis[i].irq);
+			gic_send_sgi(1, local->irqs[HOST_SGI]);
 			local->ipis[i].pending = false;
 		}
 	}
@@ -117,7 +133,7 @@ static int zynq_rproc_start(struct rproc *rproc)
 	dev_dbg(dev, "%s\n", __func__);
 	INIT_WORK(&workqueue, handle_event);
 
-	ret = cpu_down(1);
+	ret = remove_cpu(1);
 	/* EBUSY means CPU is already released */
 	if (ret && (ret != -EBUSY)) {
 		dev_err(dev, "Can't release cpu1\n");
@@ -152,8 +168,8 @@ static void zynq_rproc_kick(struct rproc *rproc, int vqid)
 				 * we delay firmware kick
 				 */
 				if (rproc->state == RPROC_RUNNING)
-					gic_raise_softirq(cpumask_of(1),
-							  local->ipis[i].irq);
+					gic_send_sgi(1,
+						     local->irqs[REMOTE_SGI]);
 				else
 					local->ipis[i].pending = true;
 			}
@@ -170,7 +186,7 @@ static int zynq_rproc_stop(struct rproc *rproc)
 	dev_dbg(rproc->dev.parent, "%s\n", __func__);
 
 	/* Cpu can't be power on - for example in nosmp mode */
-	ret = cpu_up(1);
+	ret = add_cpu(1);
 	if (ret)
 		dev_err(dev, "Can't power on cpu1 %d\n", ret);
 
@@ -265,52 +281,22 @@ static struct rproc_ops zynq_rproc_ops = {
 	.kick		= zynq_rproc_kick,
 };
 
-/* Just to detect bug if interrupt forwarding is broken */
-static irqreturn_t zynq_remoteproc_interrupt(int irq, void *dev_id)
-{
-	struct device *dev = dev_id;
-
-	dev_err(dev, "GIC IRQ %d is not forwarded correctly\n", irq);
-
-	/*
-	 *  MS: Calling this function doesn't need to be BUG
-	 * especially for cases where firmware doesn't disable
-	 * interrupts. In next probing can be som interrupts pending.
-	 * The next scenario is for cases when you want to monitor
-	 * non frequent interrupt through Linux kernel. Interrupt happen
-	 * and it is forwarded to Linux which update own statistic
-	 * in (/proc/interrupt) and forward it to firmware.
-	 *
-	 * gic_set_cpu(1, irq);	- setup cpu1 as destination cpu
-	 * gic_raise_softirq(cpumask_of(1), irq); - forward irq to firmware
-	 */
-
-	gic_set_cpu(1, irq);
-	return IRQ_HANDLED;
-}
-
-static void clear_irq(struct rproc *rproc)
-{
-	struct list_head *pos, *q;
-	struct irq_list *tmp;
-	struct zynq_rproc_pdata *local = rproc->priv;
-
-	dev_info(rproc->dev.parent, "Deleting the irq_list\n");
-	list_for_each_safe(pos, q, &local->irqs.list) {
-		tmp = list_entry(pos, struct irq_list, list);
-		free_irq(tmp->irq, rproc->dev.parent);
-		gic_set_cpu(0, tmp->irq);
-		list_del(pos);
-		kfree(tmp);
-	}
-}
-
 static int zynq_remoteproc_probe(struct platform_device *pdev)
 {
 	int ret = 0;
-	struct irq_list *tmp;
-	int count = 0;
+	int i, virq;
 	struct zynq_rproc_pdata *local;
+	/*
+	 * IRQ related structures are used for the following:
+	 * for each SGI interrupt ensure its mapped by GIC IRQ domain
+	 * and that each corresponding linux IRQ for the HW IRQ has
+	 * a handler for when receiving an interrupt from the remote
+	 * processor.
+	 */
+	struct irq_domain *domain;
+	struct irq_desc *ipi_desc;
+	struct irq_fwspec sgi_fwspec;
+	struct device_node *interrupt_parent, *node = (&pdev->dev)->of_node;
 
 	rproc = rproc_alloc(&pdev->dev, dev_name(&pdev->dev),
 			    &zynq_rproc_ops, NULL,
@@ -331,70 +317,61 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 		goto dma_mask_fault;
 	}
 
-	/* Init list for IRQs - it can be long list */
-	INIT_LIST_HEAD(&local->irqs.list);
+	/* validate SGIs */
+	if (n_vring_sgis != MAX_NUM_VRINGS) {
+		dev_err(&pdev->dev, "invalid number of SGIs provided.\n");
+		return -EINVAL;
+	}
 
-	/* Alloc IRQ based on DTS to be sure that no other driver will use it */
-	while (1) {
-		int irq;
+	/* Find GIC controller to map SGIs. */
+	interrupt_parent = of_irq_find_parent(node);
+	if (!interrupt_parent) {
+		dev_err(&pdev->dev, "invalid phandle for interrupt parent.\n");
+		return -EINVAL;
+	}
 
-		irq = platform_get_irq(pdev, count++);
-		if (irq == -ENXIO || irq == -EINVAL)
-			break;
+	/* Each SGI needs to be associated with GIC's IRQ domain. */
+	domain = irq_find_host(interrupt_parent);
 
-		tmp = kzalloc(sizeof(*tmp), GFP_KERNEL);
-		if (!tmp) {
-			ret = -ENOMEM;
-			goto irq_fault;
-		}
+	/* Each mapping needs GIC domain when finding IRQ mapping. */
+	sgi_fwspec.fwnode = domain->fwnode;
 
-		tmp->irq = irq;
-
-		dev_dbg(&pdev->dev, "%d: Alloc irq: %d\n", count, tmp->irq);
-
-		/* Allocating shared IRQs will ensure that any module will
-		 * use these IRQs
-		 */
-		ret = request_irq(tmp->irq, zynq_remoteproc_interrupt, 0,
-				  dev_name(&pdev->dev), &pdev->dev);
-		if (ret) {
-			dev_err(&pdev->dev, "IRQ %d already allocated\n",
-				tmp->irq);
-			goto irq_fault;
-		}
-
+	/*
+	 * When irq domain looks at mapping each arg is as follows:
+	 * 3 args for: interrupt type (SGI), interrupt # (set later), type
+	 */
+	sgi_fwspec.param_count = 3;
+	sgi_fwspec.param[0] = 2;
+	sgi_fwspec.param[2] = IRQ_TYPE_EDGE_RISING;
+	/*
+	 * For each SGI:
+	 * Set HW IRQ.
+	 * Get corresponding Linux IRQ.
+	 * Associate a handler for remotproc driver.
+	 * For the IRQ descriptor for each wire in handler for IRQ action.
+	 *   (this comes into play when receiving HW IRQ)
+	 * Save HW IRQ for later remoteproc handling.
+	 */
+	for (i = 0; i < MAX_NUM_VRINGS; i++) {
+		/* Set SGI's hwirq */
+		sgi_fwspec.param[1] = vring_sgis[i];
+		virq = irq_create_fwspec_mapping(&sgi_fwspec);
 		/*
-		 * MS: Here is place for detecting problem with firmware
-		 * which doesn't work correctly with interrupts
-		 *
-		 * MS: Comment if you want to count IRQs on Linux
+		 * Request_percpu_irq is not used because Linux only runs on
+		 * one CPU.
 		 */
-		gic_set_cpu(1, tmp->irq);
-		list_add(&tmp->list, &local->irqs.list);
-	}
-
-	/* Allocate free IPI number */
-	/* Read vring0 ipi number */
-	ret = of_property_read_u32(pdev->dev.of_node, "vring0",
-				   &local->ipis[0].irq);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "unable to read property");
-		goto irq_fault;
-	}
-
-	ret = set_ipi_handler(local->ipis[0].irq, ipi_kick,
-			      "Firmware kick");
-	if (ret) {
-		dev_err(&pdev->dev, "IPI handler already registered\n");
-		goto irq_fault;
-	}
-
-	/* Read vring1 ipi number */
-	ret = of_property_read_u32(pdev->dev.of_node, "vring1",
-				   &local->ipis[1].irq);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "unable to read property");
-		goto ipi_fault;
+		ret = devm_request_irq(&pdev->dev, virq,
+				       zynq_remoteproc_interrupt,
+				       0, "vring0", local);
+		/*
+		 * The IPI descriptor relates Linux IRQ to HW IRQ and
+		 * irqaction. The irqaction will point to the zynq_remoteproc_interrupt.
+		 */
+		ipi_desc = irq_to_desc(virq);
+		ipi_desc->action = &action;
+		irq_set_status_flags(virq, IRQ_HIDDEN);
+		enable_percpu_irq(virq, 0);
+		local->irqs[i] = vring_sgis[i];
 	}
 
 	rproc->auto_boot = autoboot;
@@ -402,16 +379,10 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 	ret = rproc_add(local->rproc);
 	if (ret) {
 		dev_err(&pdev->dev, "rproc registration failed\n");
-		goto ipi_fault;
+		goto dma_mask_fault;
 	}
 
 	return 0;
-
-ipi_fault:
-	clear_ipi_handler(local->ipis[0].irq);
-
-irq_fault:
-	clear_irq(rproc);
 
 dma_mask_fault:
 	rproc_free(rproc);
@@ -422,14 +393,10 @@ dma_mask_fault:
 static int zynq_remoteproc_remove(struct platform_device *pdev)
 {
 	struct rproc *rproc = platform_get_drvdata(pdev);
-	struct zynq_rproc_pdata *local = rproc->priv;
 
 	dev_info(&pdev->dev, "%s\n", __func__);
 
 	rproc_del(rproc);
-
-	clear_ipi_handler(local->ipis[0].irq);
-	clear_irq(rproc);
 
 	of_reserved_mem_device_release(&pdev->dev);
 	rproc_free(rproc);
@@ -457,6 +424,7 @@ module_platform_driver(zynq_remoteproc_driver);
 module_param_named(autoboot,  autoboot, bool, 0444);
 MODULE_PARM_DESC(autoboot,
 		 "enable | disable autoboot. (default: false)");
+module_param_array(vring_sgis, int, &n_vring_sgis, 0);
 
 MODULE_AUTHOR("Michal Simek <monstr@monstr.eu");
 MODULE_LICENSE("GPL v2");
