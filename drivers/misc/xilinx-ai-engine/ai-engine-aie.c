@@ -21,6 +21,36 @@
 
 #define NUM_MEMS_PER_TILE	2U
 
+#define NUM_MODS_CORE_TILE	2U
+#define NUM_MODS_SHIMPL_TILE	1U
+
+/*
+ * Number of resources per module
+ */
+#define AIE_NUM_PERF_CORE_MOD		4U
+#define AIE_NUM_USEREVENT_CORE_MOD	4U
+#define AIE_NUM_TRACECONTROL_CORE_MOD	1U
+#define AIE_NUM_PCEVENT_CORE_MOD	4U
+#define AIE_NUM_SSSELECT_CORE_MOD	8U
+#define AIE_NUM_BROADCAST_CORE_MOD	16U
+#define AIE_NUM_COMBOEVENT_CORE_MOD	4U
+
+#define AIE_NUM_PERF_MEM_MOD		2U
+#define AIE_NUM_USEREVENT_MEM_MOD	4U
+#define AIE_NUM_TRACECONTROL_MEM_MOD	1U
+#define AIE_NUM_PCEVENT_MEM_MOD		0U
+#define AIE_NUM_SSSELECT_MEM_MOD	0U
+#define AIE_NUM_BROADCAST_MEM_MOD	16U
+#define AIE_NUM_COMBOEVENT_MEM_MOD	4U
+
+#define AIE_NUM_PERF_PL_MOD		2U
+#define AIE_NUM_USEREVENT_PL_MOD	4U
+#define AIE_NUM_TRACECONTROL_PL_MOD	1U
+#define AIE_NUM_PCEVENT_PL_MOD		0U
+#define AIE_NUM_SSSELECT_PL_MOD		8U
+#define AIE_NUM_BROADCAST_PL_MOD	16U
+#define AIE_NUM_COMBOEVENT_PL_MOD	4U
+
 /*
  * Registers offsets
  */
@@ -517,6 +547,107 @@ static const struct aie_error_attr aie_shim_error = {
 	.err_category = aie_shim_err_category,
 };
 
+/* resource attributes for core tile type */
+static const
+struct aie_tile_rsc_attr aie_core_tile_rscs_attr[AIE_RSCTYPE_MAX] =  {
+	{
+		/* perf counter */
+		.mod_attr = {
+			{.num_rscs = AIE_NUM_PERF_MEM_MOD,},
+			{.num_rscs = AIE_NUM_PERF_CORE_MOD,},
+		},
+	},
+	{
+		/* user event */
+		.mod_attr = {
+			{.num_rscs = AIE_NUM_USEREVENT_MEM_MOD,},
+			{.num_rscs = AIE_NUM_USEREVENT_CORE_MOD,},
+		},
+	},
+	{
+		/* trace control */
+		.mod_attr = {
+			{.num_rscs = AIE_NUM_TRACECONTROL_MEM_MOD,},
+			{.num_rscs = AIE_NUM_TRACECONTROL_CORE_MOD,},
+		},
+	},
+	{
+		/* pc event */
+		.mod_attr = {
+			{.num_rscs = AIE_NUM_PCEVENT_MEM_MOD,},
+			{.num_rscs = AIE_NUM_PCEVENT_CORE_MOD,},
+		},
+	},
+	{
+		/* stream switch port select */
+		.mod_attr = {
+			{.num_rscs = AIE_NUM_SSSELECT_MEM_MOD,},
+			{.num_rscs = AIE_NUM_SSSELECT_CORE_MOD,},
+		},
+	},
+	{
+		/* broadcast */
+		.mod_attr = {
+			{.num_rscs = AIE_NUM_BROADCAST_MEM_MOD,},
+			{.num_rscs = AIE_NUM_BROADCAST_CORE_MOD,},
+		},
+	},
+	{
+		/* combo events */
+		.mod_attr = {
+			{.num_rscs = AIE_NUM_COMBOEVENT_MEM_MOD,},
+			{.num_rscs = AIE_NUM_COMBOEVENT_CORE_MOD,},
+		},
+	},
+};
+
+/* resource attributes for SHIM PL tile type */
+static const
+struct aie_tile_rsc_attr aie_shimpl_tile_rscs_attr[AIE_RSCTYPE_MAX] =  {
+	{
+		/* perf counter */
+		.mod_attr = {
+			{.num_rscs = AIE_NUM_PERF_PL_MOD,},
+		},
+	},
+	{
+		/* user event */
+		.mod_attr = {
+			{.num_rscs = AIE_NUM_USEREVENT_PL_MOD,},
+		},
+	},
+	{
+		/* trace control */
+		.mod_attr = {
+			{.num_rscs = AIE_NUM_TRACECONTROL_PL_MOD},
+		},
+	},
+	{
+		/* pc event */
+		.mod_attr = {
+			{.num_rscs = AIE_NUM_PCEVENT_PL_MOD},
+		},
+	},
+	{
+		/* stream switch port select */
+		.mod_attr = {
+			{.num_rscs = AIE_NUM_SSSELECT_PL_MOD},
+		},
+	},
+	{
+		/* broadcast */
+		.mod_attr = {
+			{.num_rscs = AIE_NUM_BROADCAST_PL_MOD},
+		},
+	},
+	{
+		/* combo events */
+		.mod_attr = {
+			{.num_rscs = AIE_NUM_COMBOEVENT_PL_MOD},
+		},
+	},
+};
+
 static u32 aie_get_tile_type(struct aie_location *loc)
 {
 	if (loc->row)
@@ -842,6 +973,43 @@ static const struct aie_tile_operations aie_ops = {
 };
 
 /**
+ * aie_device_init_rscs_attr() - initialize AI engine device resources
+ *				 attributes
+ * @adev: AI engine device
+ */
+static void aie_device_init_rscs_attr(struct aie_device *adev)
+{
+	struct aie_tile_attr *tattr;
+
+	tattr = &adev->ttype_attr[AIE_TILE_TYPE_TILE];
+	tattr->start_row = 1;
+	/*
+	 * TODO: number of rows information of the AI engine device should get
+	 * from device tree.
+	 */
+	tattr->num_rows = 0xFF;
+	tattr->num_mods = 2;
+	tattr->rscs_attr = aie_core_tile_rscs_attr;
+
+	tattr = &adev->ttype_attr[AIE_TILE_TYPE_SHIMPL];
+	tattr->start_row = 0;
+	tattr->num_rows = 1;
+	tattr->num_mods = 1;
+	tattr->rscs_attr = aie_shimpl_tile_rscs_attr;
+
+	/*
+	 * For now, SHIMNOC is the same as SHIMPL as there is
+	 * no SHIMNOC specific resources managed by kernel
+	 * driver yet.
+	 */
+	tattr = &adev->ttype_attr[AIE_TILE_TYPE_SHIMNOC];
+	tattr->start_row = 0;
+	tattr->num_rows = 1;
+	tattr->num_mods = 1;
+	tattr->rscs_attr = aie_shimpl_tile_rscs_attr;
+}
+
+/**
  * aie_device_init() - Initialize AI engine device struct AIE specific
  * @adev: AI engine device
  * @return: 0 for success, negative value for failure.
@@ -872,6 +1040,7 @@ int aie_device_init(struct aie_device *adev)
 	adev->core_errors = &aie_core_error;
 	adev->mem_errors = &aie_mem_error;
 	adev->shim_errors = &aie_shim_error;
+	aie_device_init_rscs_attr(adev);
 
 	/* Get the columns resource */
 	/* Get number of columns from AI engine memory resource */
