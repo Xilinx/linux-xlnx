@@ -27,10 +27,17 @@
 /*
  * Macros for AI engine tile type bitmasks
  */
-#define AIE_TILE_TYPE_TILE	BIT(0)
-#define AIE_TILE_TYPE_SHIMPL	BIT(1)
+enum aie_tile_type {
+	AIE_TILE_TYPE_TILE,
+	AIE_TILE_TYPE_SHIMPL,
+	AIE_TILE_TYPE_SHIMNOC,
+	AIE_TILE_TYPE_MAX
+};
+
+#define AIE_TILE_TYPE_MASK_TILE		BIT(AIE_TILE_TYPE_TILE)
+#define AIE_TILE_TYPE_MASK_SHIMPL	BIT(AIE_TILE_TYPE_SHIMPL)
 /* SHIM NOC tile includes SHIM PL and SHIM NOC modules */
-#define AIE_TILE_TYPE_SHIMNOC	BIT(2)
+#define AIE_TILE_TYPE_MASK_SHIMNOC	BIT(AIE_TILE_TYPE_SHIMNOC)
 
 /*
  * Macros for attribute property of AI engine registers accessed by kernel
