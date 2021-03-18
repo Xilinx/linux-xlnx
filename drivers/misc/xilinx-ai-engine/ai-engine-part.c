@@ -708,6 +708,16 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 		}
 		return ret;
 	}
+	case AIE_RSC_REQ_IOCTL:
+		return aie_part_rscmgr_rsc_req(apart, argp);
+	case AIE_RSC_REQ_SPECIFIC_IOCTL:
+		return aie_part_rscmgr_rsc_req_specific(apart, argp);
+	case AIE_RSC_RELEASE_IOCTL:
+		return aie_part_rscmgr_rsc_release(apart, argp);
+	case AIE_RSC_FREE_IOCTL:
+		return aie_part_rscmgr_rsc_free(apart, argp);
+	case AIE_RSC_CHECK_AVAIL_IOCTL:
+		return aie_part_rscmgr_rsc_check_avail(apart, argp);
 	default:
 		dev_err(&apart->dev, "Invalid ioctl command %u.\n", cmd);
 		ret = -EINVAL;

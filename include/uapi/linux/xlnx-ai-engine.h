@@ -88,6 +88,16 @@ enum aie_rsc_type {
 /* Not reset when release AI engine partition */
 #define XAIE_PART_NOT_RST_ON_RELEASE	0x00000001U
 
+/*
+ * AI engine resource property flags
+ */
+/*
+ * For resources which needs to be allocated contiguous
+ * such as combo events, it needs to be 0, 1; 2, 3;
+ * or 0, 1, 2, 3
+ */
+#define XAIE_RSC_PATTERN_BLOCK		(1U << 0)
+
 /**
  * struct aie_location - AIE location information
  * @col: column id
@@ -96,6 +106,17 @@ enum aie_rsc_type {
 struct aie_location {
 	__u32 col;
 	__u32 row;
+};
+
+/**
+ * struct aie_location_byte - AIE location information with single byte for
+ *			      column and row
+ * @col: column id
+ * @row: row id
+ */
+struct aie_location_byte {
+	__u8 col;
+	__u8 row;
 };
 
 /**
@@ -244,6 +265,47 @@ struct aie_txn_inst {
 	__u64 cmdsptr;
 };
 
+/**
+ * struct aie_rsc_req - AIE resource request
+ * @loc: tile location
+ * @mod: module type
+ * @type: resource type
+ * @num_rscs: number of resource per request
+ * @flag: resource property, such as it needs to be in pattern block such as
+ *	  if @num_rscs is 2, it needs to be 0,1; 2,3, or 4,5
+ */
+struct aie_rsc_req {
+	struct aie_location loc;
+	__u32 mod;
+	__u32 type;
+	__u32 num_rscs;
+	__u8 flag;
+};
+
+/**
+ * struct aie_rsc - AIE resource properties
+ * @loc: tile location, single byte for column and row each
+ * @mod: module type
+ * @type: resource type
+ * @id: resource id
+ */
+struct aie_rsc {
+	struct aie_location_byte loc;
+	__u32 mod;
+	__u32 type;
+	__u32 id;
+};
+
+/**
+ * struct aie_rsc_req_rsp - AIE resource request and response structure
+ * @req: resource request per tile module
+ * @rscs: allocated resources array of `struct aie_rsc`
+ */
+struct aie_rsc_req_rsp {
+	struct aie_rsc_req req;
+	__u64 rscs;
+};
+
 #define AIE_IOCTL_BASE 'A'
 
 /* AI engine device IOCTL operations */
@@ -367,5 +429,57 @@ struct aie_txn_inst {
  * and the divider, and returns the running clock frequency.
  */
 #define AIE_GET_FREQUENCY_IOCTL	_IOR(AIE_IOCTL_BASE, 0x13, __u64)
+
+/**
+ * DOC: AIE_RSC_REQ_IOCTL - request a type of resources of a tile
+ *
+ * This ioctl is used to request a type of resources of a tile of an AI engine
+ * partition.
+ * AI engine partitition driver will check if there are the requested number
+ * of resources available. If yes, fill in the allcoated resource IDs in the
+ * resources array provided by user.
+ */
+#define AIE_RSC_REQ_IOCTL		_IOW(AIE_IOCTL_BASE, 0x14, \
+					     struct aie_rsc_req_rsp)
+
+/**
+ * DOC: AIE_RSC_REQ_SPECIFIC_IOCTL - request statically allocated resource
+ *
+ * This ioctl is used to request to use a specified allcoated resource
+ * AI engine partitition driver will check if the resource has been allocated
+ * at compilation time. If yes, and no one else has requested it, it returns
+ * success.
+ */
+#define AIE_RSC_REQ_SPECIFIC_IOCTL	_IOW(AIE_IOCTL_BASE, 0x15, \
+					     struct aie_rsc)
+
+/**
+ * DOC: AIE_RSC_RELEASE_IOCTL - release allocated resource
+ *
+ * This ioctl is used to release a resource and returns it to the resource
+ * pool, so that next time if user want to request for a resource, it is
+ * available
+ */
+#define AIE_RSC_RELEASE_IOCTL		_IOW(AIE_IOCTL_BASE, 0x16, \
+					     struct aie_rsc)
+
+/**
+ * DOC: AIE_RSC_FREE_IOCTL - free allocated resource
+ *
+ * This ioctl is used to free an allocated resource. It will unmark the
+ * resource from runtime used. If the resource is allocated at compilation
+ * time, it will not be returned back to the resource pool.
+ */
+#define AIE_RSC_FREE_IOCTL		_IOW(AIE_IOCTL_BASE, 0x17, \
+					     struct aie_rsc)
+
+/**
+ * DOC: AIE_RSC_CHECK_AVAIL_IOCTL - check if resource is available
+ *
+ * This ioctl is used to check how many resources are available for a specified
+ * type of resource.
+ */
+#define AIE_RSC_CHECK_AVAIL_IOCTL	_IOW(AIE_IOCTL_BASE, 0x18, \
+					     struct aie_rsc_req)
 
 #endif
