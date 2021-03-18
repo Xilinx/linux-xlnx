@@ -262,6 +262,28 @@ static int xgpio_dir_out(struct gpio_chip *gc, unsigned int gpio, int val)
 }
 
 /**
+ * xgpio_xlate - Translate gpio_spec to the GPIO number and flags
+ * @gc: Pointer to gpio_chip device structure.
+ * @gpiospec:  gpio specifier as found in the device tree
+ * @flags: A flags pointer based on binding
+ *
+ * Return:
+ * irq number
+ */
+static int xgpio_xlate(struct gpio_chip *gc,
+		       const struct of_phandle_args *gpiospec, u32 *flags)
+{
+	if (gc->of_gpio_n_cells == 3 && flags) {
+		*flags = gpiospec->args[2];
+		dev_warn(gc->parent, "Please convert #gpio-cells=3 to 2\n");
+	}
+	if (gc->of_gpio_n_cells == 2 && flags)
+		*flags = gpiospec->args[1];
+
+	return gpiospec->args[0];
+}
+
+/**
  * xgpio_save_regs - Set initial values of GPIO pins
  * @chip: Pointer to GPIO instance
  */
@@ -577,7 +599,7 @@ static int xgpio_probe(struct platform_device *pdev)
 	if (of_property_read_u32(np, "#gpio-cells", &cells))
 		dev_dbg(&pdev->dev, "Missing gpio-cells property\n");
 
-	if (cells != 2) {
+	if (cells != 2 && cells != 3) {
 		dev_err(&pdev->dev, "#gpio-cells mismatch\n");
 		return -EINVAL;
 	}
@@ -623,6 +645,7 @@ static int xgpio_probe(struct platform_device *pdev)
 	chip->gc.base = -1;
 	chip->gc.ngpio = chip->gpio_width[0] + chip->gpio_width[1];
 	chip->gc.parent = &pdev->dev;
+	chip->gc.of_xlate = xgpio_xlate;
 	chip->gc.direction_input = xgpio_dir_in;
 	chip->gc.direction_output = xgpio_dir_out;
 	chip->gc.of_gpio_n_cells = cells;
