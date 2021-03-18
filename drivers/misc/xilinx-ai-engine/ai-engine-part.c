@@ -129,7 +129,7 @@ static int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
 			 AIE_REGS_ATTR_TILE_TYPE_SHIFT;
 		writable = (regs->attribute & AIE_REGS_ATTR_PERM_MASK) >>
 			   AIE_REGS_ATTR_PERM_SHIFT;
-		if (!(ttype & rttype))
+		if (!(BIT(ttype) & rttype))
 			continue;
 		if ((regoff >= regs->soff && regoff <= regs->eoff) ||
 		    (regend32 >= regs->soff && regend32 <= regs->eoff)) {
