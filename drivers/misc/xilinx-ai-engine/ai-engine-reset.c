@@ -211,6 +211,8 @@ int aie_part_reset(struct aie_partition *apart)
 	aie_part_clear_cached_events(apart);
 	aie_resource_clear_all(&apart->l2_mask);
 
+	aie_part_rscmgr_reset(apart);
+
 	mutex_unlock(&apart->mlock);
 	return 0;
 }

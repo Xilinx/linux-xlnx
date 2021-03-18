@@ -55,6 +55,28 @@ enum aie_module_type {
 	AIE_NOC_MOD,
 };
 
+/**
+ * enum aie_rsc_type - defines AI engine hardware resource types
+ * @AIE_RSCTYPE_PERF: perfcounter resource
+ * @AIE_RSCTYPE_USEREVENT: user events resource
+ * @AIE_RSCTYPE_TRACECONTROL: trace controller resource
+ * @AIE_RSCTYPE_PCEVENT: PC events resource
+ * @AIE_RSCTYPE_SSSELECT: stream switch port select resource
+ * @AIE_RSCTYPE_BROADCAST: broadcast events resource
+ * @AIE_RSCTYPE_COMBOEVENT: combo events resource
+ * @AIE_RSCTYPE_MAX: total number of resources
+ */
+enum aie_rsc_type {
+	AIE_RSCTYPE_PERF,
+	AIE_RSCTYPE_USEREVENT,
+	AIE_RSCTYPE_TRACECONTROL,
+	AIE_RSCTYPE_PCEVENT,
+	AIE_RSCTYPE_SSSELECT,
+	AIE_RSCTYPE_BROADCAST,
+	AIE_RSCTYPE_COMBOEVENT,
+	AIE_RSCTYPE_MAX
+};
+
 /* AI engine partition is in use */
 #define XAIE_PART_STATUS_INUSE		(1U << 0)
 /* AI engine partition bridge is enabled */

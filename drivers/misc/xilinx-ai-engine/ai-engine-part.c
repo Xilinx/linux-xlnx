@@ -528,6 +528,8 @@ static int aie_part_release(struct inode *inode, struct file *filp)
 	aie_part_clear_cached_events(apart);
 	aie_resource_clear_all(&apart->l2_mask);
 
+	aie_part_rscmgr_reset(apart);
+
 	mutex_unlock(&apart->mlock);
 
 	return 0;
@@ -751,6 +753,7 @@ static void aie_part_release_device(struct device *dev)
 	mutex_unlock(&adev->mlock);
 	aie_fpga_free_bridge(apart);
 	aie_resource_uninitialize(&apart->cores_clk_state);
+	aie_part_rscmgr_finish(apart);
 	put_device(apart->dev.parent);
 }
 
@@ -898,6 +901,14 @@ static struct aie_partition *aie_create_partition(struct aie_device *adev,
 		return ERR_PTR(ret);
 	}
 
+	ret = aie_part_rscmgr_init(apart);
+	if (ret < 0) {
+		dev_err(&apart->dev,
+			"Failed to initialize resources bitmaps.\n");
+		put_device(dev);
+		return ERR_PTR(ret);
+	}
+
 	ret = mutex_lock_interruptible(&adev->mlock);
 	if (ret) {
 		put_device(dev);
@@ -1019,4 +1030,27 @@ bool aie_part_has_regs_mmapped(struct aie_partition *apart)
 
 	mapping = apart->filep->f_inode->i_mapping;
 	return mapping_mapped(mapping);
+}
+
+/**
+ * aie_part_get_tile_rows - helper function to get the number of rows of a
+ *			    tile type.
+ *
+ * @apart: AI engine partition
+ * @ttype: tile type
+ * @return: number of rows of a tile type
+ */
+int aie_part_get_tile_rows(struct aie_partition *apart,
+			   enum aie_tile_type ttype)
+{
+	struct aie_tile_attr *tattr = &apart->adev->ttype_attr[ttype];
+
+	/*
+	 * TODO: number of rows information of the AI engine device
+	 * should get from device tree.
+	 */
+	if (tattr->num_rows != 0xFF)
+		return tattr->num_rows;
+	else
+		return (apart->range.size.row - tattr->start_row);
 }

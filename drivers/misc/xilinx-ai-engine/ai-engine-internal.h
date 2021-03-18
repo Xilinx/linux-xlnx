@@ -2,7 +2,7 @@
 /*
  * Xilinx AI Engine driver internal header
  *
- * Copyright (C) 2020 Xilinx, Inc.
+ * Copyright (C) 2020 - 2021 Xilinx, Inc.
  */
 
 #ifndef AIE_INTERNAL_H
@@ -61,6 +61,24 @@ enum aie_tile_type {
 
 /* Macros relevant to interrupts */
 #define AIE_INTR_L2_CTRL_MASK_WIDTH	32
+
+/* Max number of modules per tile */
+#define AIE_MAX_MODS_PER_TILE		2U
+
+/*
+ * Macros of AI engine module type index of a tile type
+ * e.g.
+ * id 0 of CORE tile is memory module, and 1 is core module
+ * id 0 of SHIM tile is pl module, and 1 is noc module
+ */
+#define AIE_TILE_MOD_START		AIE_MEM_MOD
+#define AIE_MOD_ID(T, M)		((M) - AIE_##T ## _MOD_START)
+#define AIE_TILE_MEM_MOD_ID		AIE_MOD_ID(TILE, AIE_MEM_MOD)
+#define AIE_TILE_CORE_MOD_ID		AIE_MOD_ID(TILE, AIE_CORE_MOD)
+#define AIE_SHIMPL_MOD_START		AIE_PL_MOD
+#define AIE_SHIMNOC_MOD_START		AIE_PL_MOD
+#define AIE_SHIM_PL_MOD_ID		AIE_MOD_ID(SHIMPL, AIE_PL_MOD)
+#define AIE_SHIM_NOC_MOD_ID		AIE_MOD_ID(SHIMNOC, AIE_NOC_MOD)
 
 /*
  * enum aie_shim_switch_type - identifies different switches in shim tile.
@@ -294,6 +312,77 @@ struct aie_error_attr {
 };
 
 /**
+ * struct aie_rsc_stat - AI engine hardware resource status bitmap of a
+ *			 resource of a module type of a tile type of an AI
+ *			 engine partition
+ * @rbits: runtime allocated resource bitmap
+ * @sbits: static resource bitmap for resources allocated at compilation
+ *	   time
+ */
+struct aie_rsc_stat {
+	struct aie_resource rbits;
+	struct aie_resource sbits;
+};
+
+/**
+ * struct aie_mod_rscs - AI engine hardware resource status bitmaps of
+ *			 a module type of a tile type of an AI engine
+ *			 partition.
+ * @rscs_stat: resource status bitmaps
+ */
+struct aie_mod_rscs {
+	struct aie_rsc_stat *rscs_stat;
+};
+
+/**
+ * struct aie_tile_rscs - AI engine hardware resource status bitmaps of all
+ *			  resources of a tile type of a partition.
+ * @mod_rscs: array of pointers of AI engine resources. Each element is an
+ *	      array of hardware resources of different modules of a particular
+ *	      resource type of a tile type.
+ *	      e.g. if the tile type is TILE. The rscs are an arrary of
+ *	      resources bitmap of all the defined AI engine resources types of
+ *	      TILE type. e.g. the element of AIE_RSCTYPE_PERF. It is an array
+ *	      of perfcounter resources bitmaps for both core module and memory
+ *	      module of TILE type of an AI engine partition.
+ */
+struct aie_tile_rscs {
+	struct aie_mod_rscs *mod_rscs[AIE_RSCTYPE_MAX];
+};
+
+/**
+ * struct aie_rsc_mod_attr - AI engine resource attribute of a module
+ * @num_rscs: number of resource
+ */
+struct aie_mod_rsc_attr {
+	u8 num_rscs;
+};
+
+/**
+ * struct aie_rsc_attr - AI engine resource attributes
+ * @mod_attr: array of resource attribute different modules of a tile type of
+ *	      a particular resource type.
+ */
+struct aie_tile_rsc_attr {
+	struct aie_mod_rsc_attr mod_attr[AIE_MAX_MODS_PER_TILE];
+};
+
+/**
+ * struct aie_tile_attr - AI engine device tile type attributes
+ * @start_row: start row
+ * @num_rows: number of rows
+ * @num_mods: number of modules of this tile type
+ * @rscs_attr: resources attributes array. Each element is an array of
+ *	       attributes of a resource type of a tile type.
+ */
+struct aie_tile_attr {
+	u8 start_row;
+	u8 num_rows;
+	u8 num_mods;
+	const struct aie_tile_rsc_attr *rscs_attr;
+};
+
+/**
  * struct aie_device - AI engine device structure
  * @partitions: list of partitions requested
  * @cdev: cdev for the AI engine
@@ -327,6 +416,7 @@ struct aie_error_attr {
  * @version: AI engine device version
  * @pm_node_id: AI Engine platform management node ID
  * @clock_id: AI Engine clock ID
+ * @ttype_attr: tile type attributes
  */
 struct aie_device {
 	struct list_head partitions;
@@ -360,6 +450,7 @@ struct aie_device {
 	int version;
 	u32 pm_node_id;
 	u32 clock_id;
+	struct aie_tile_attr ttype_attr[AIE_TILE_TYPE_MAX];
 };
 
 /**
@@ -379,6 +470,7 @@ struct aie_part_bridge {
  * @adev: pointer to AI device instance
  * @filep: pointer to file for refcount on the users of the partition
  * @pmems: pointer to partition memories types
+ * @trscs: resources bitmaps for each tile
  * @freq_req: required frequency
  * @br: AI engine FPGA bridge
  * @range: range of partition
@@ -408,6 +500,7 @@ struct aie_partition {
 	struct aie_device *adev;
 	struct file *filep;
 	struct aie_part_mem *pmems;
+	struct aie_tile_rscs trscs[AIE_TILE_TYPE_MAX];
 	u64 freq_req;
 	struct aie_range range;
 	struct mutex mlock; /* protection for AI engine partition operations */
@@ -595,9 +688,16 @@ void aie_part_clear_cached_events(struct aie_partition *apart);
 bool aie_part_has_mem_mmapped(struct aie_partition *apart);
 bool aie_part_has_regs_mmapped(struct aie_partition *apart);
 
+int aie_part_get_tile_rows(struct aie_partition *apart,
+			   enum aie_tile_type ttype);
+
 int aie_part_reset(struct aie_partition *apart);
 int aie_part_post_reinit(struct aie_partition *apart);
 
 int aie_part_sysfs_init(struct aie_partition *apart);
 void aie_part_sysfs_finish(struct aie_partition *apart);
+
+int aie_part_rscmgr_init(struct aie_partition *apart);
+void aie_part_rscmgr_finish(struct aie_partition *apart);
+void aie_part_rscmgr_reset(struct aie_partition *apart);
 #endif /* AIE_INTERNAL_H */
