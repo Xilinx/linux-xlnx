@@ -217,3 +217,250 @@ bool aie_resource_testbit(struct aie_resource *res, u32 bit)
 	/* Locate the unsigned long the required bit belongs to */
 	return test_bit(bit, res->bitmap);
 }
+
+/**
+ * aie_resource_check_common_avail() - check common available bits
+ *				       of two resources table
+ * @res0: pointer to AI engine resource0
+ * @res1: pointer to AI engine resource1
+ * @sbit: start bit to check
+ * @nbits: number of bits to check
+ * @return: number of common bits, or negative value for failure
+ */
+int aie_resource_check_common_avail(struct aie_resource *res0,
+				    struct aie_resource *res1,
+				    u32 sbit, u32 nbits)
+{
+	u32 ebit, avails;
+
+	if (!nbits || !res0 || !res1 || !res0->bitmap || !res1->bitmap ||
+	    (sbit + nbits) > res0->total || (sbit + nbits) > res1->total)
+		return -EINVAL;
+
+	ebit = sbit + nbits - 1;
+	avails = 0;
+	while (sbit <= ebit) {
+		unsigned long  *bitmap0, *bitmap1, tbits;
+		u32 tlbit, lbit = sbit % BITS_PER_LONG;
+		u32 lnbits = ebit - sbit + 1;
+
+		if (lnbits + lbit > BITS_PER_LONG)
+			lnbits = BITS_PER_LONG - lbit;
+
+		bitmap0 = &res0->bitmap[sbit / BITS_PER_LONG];
+		bitmap1 = &res1->bitmap[sbit / BITS_PER_LONG];
+		bitmap_or(&tbits, bitmap0, bitmap1, BITS_PER_LONG);
+		tlbit = lbit;
+		while (tlbit < lbit + lnbits) {
+			u32 b = bitmap_find_next_zero_area(&tbits,
+							   BITS_PER_LONG, tlbit,
+							   1, 0);
+			if (b >= lbit + lnbits)
+				break;
+			avails++;
+			tlbit = b + 1;
+		}
+		sbit += lnbits;
+	};
+
+	return avails;
+}
+
+/**
+ * aie_resource_get_common_avail() - get common available bits
+ *				     of two resources table
+ * @res0: pointer to AI engine resource0
+ * @res1: pointer to AI engine resource1
+ * @sbit: start bit to check
+ * @nbits: number of bits to get
+ * @total: total number of bits to check
+ * @rscs: resources array to return for resources ids
+ * @return: number of allocated bits for success, negative value for failure
+ */
+int aie_resource_get_common_avail(struct aie_resource *res0,
+				  struct aie_resource *res1,
+				  u32 sbit, u32 nbits, u32 total,
+				  struct aie_rsc *rscs)
+{
+	u32 ebit, tsbit, tnbits;
+
+	if (!nbits || !res0 || !res1 || !res0->bitmap || !res1->bitmap ||
+	    nbits > total || (sbit + total) > res0->total ||
+	    (sbit + total) > res1->total)
+		return -EINVAL;
+
+	ebit = sbit + total - 1;
+	tsbit = sbit;
+	tnbits = 0;
+	while (tsbit <= ebit && tnbits != nbits) {
+		unsigned long *bitmap0, *bitmap1, tbits;
+		u32 tlbit, lbit = tsbit % BITS_PER_LONG;
+		u32 lnbits = ebit - tsbit + 1;
+
+		if (lnbits + lbit > BITS_PER_LONG)
+			lnbits = BITS_PER_LONG - lbit;
+
+		bitmap0 = &res0->bitmap[sbit / BITS_PER_LONG];
+		bitmap1 = &res1->bitmap[sbit / BITS_PER_LONG];
+		bitmap_or(&tbits, bitmap0, bitmap1, BITS_PER_LONG);
+		tlbit = lbit;
+		while (tlbit < lbit + lnbits && tnbits != nbits) {
+			u32 b = bitmap_find_next_zero_area(&tbits,
+							   BITS_PER_LONG, tlbit,
+							   1, 0);
+			if (b >= lbit + lnbits)
+				break;
+			rscs[tnbits].id = tsbit - sbit + b - lbit;
+			tnbits++;
+			tlbit = b + 1;
+		}
+		tsbit += lnbits;
+	};
+
+	if (tnbits != nbits)
+		return -EINVAL;
+
+	while (tnbits--) {
+		aie_resource_set(res0, sbit + rscs[tnbits].id, 1);
+		aie_resource_set(res1, sbit + rscs[tnbits].id, 1);
+	}
+
+	return nbits;
+}
+
+/**
+ * aie_resource_check_pattern_region() - check availability of requested
+ *					 contiguous resources of a pattern
+ * @res: pointer to AI engine resource to check
+ * @start: start index of the required resource
+ *	   It will check a continuous block of available resource starting from
+ *	   @start.
+ * @end: end index to check
+ * @count: number of requested element
+ * @return: start resource id if the requested number of resources are available
+ *	    It will return negative value of errors.
+ *
+ * This function will check the availability. It will return start resource id
+ * if the requested number of resources are available.
+ * The contiguous resources of a pattern is e.g.
+ * @count is 0, the resources starting from @start needs to be 0,1; or 2,3 and
+ * beyond
+ */
+int aie_resource_check_pattern_region(struct aie_resource *res,
+				      u32 start, u32 end, u32 count)
+{
+	unsigned long id;
+	u32 lstart;
+
+	if (!res || !res->bitmap || !count)
+		return -EINVAL;
+	lstart = start;
+	while (lstart < end) {
+		id = bitmap_find_next_zero_area(res->bitmap, res->total, lstart,
+						count, 0);
+		if (id + count > end + 1)
+			return -ERANGE;
+		else if (!((id - lstart) % count))
+			return (int)id;
+
+		lstart += count;
+	}
+
+	return -ERANGE;
+}
+
+/**
+ * aie_resource_check_common_pattern_region() - check common available region
+ *						of two resources table
+ * @res0: pointer to AI engine resource0
+ * @res1: pointer to AI engine resource1
+ * @sbit: start bit to check
+ * @nbits: number of bits to check
+ * @total: total number of bits to check
+ * @return: start bit of common region if it is found, negative value for
+ *	    failure
+ */
+int aie_resource_check_common_pattern_region(struct aie_resource *res0,
+					     struct aie_resource *res1,
+					     u32 sbit, u32 nbits, u32 total)
+{
+	int sbit0, sbit1;
+
+	if (!nbits || !res0 || !res1 || !res0->bitmap || !res1->bitmap ||
+	    nbits > total || (sbit + total) > res0->total ||
+	    (sbit + total) > res1->total)
+		return -EINVAL;
+
+	sbit0 = aie_resource_check_pattern_region(res0, sbit,
+						  sbit + total - 1, nbits);
+	if (sbit0 < 0)
+		return sbit0;
+
+	if ((u32)sbit0 + nbits > sbit + total)
+		return -EINVAL;
+
+	sbit1 = aie_resource_check_pattern_region(res1, sbit0,
+						  sbit0 + nbits - 1, nbits);
+	if (sbit1 != sbit0)
+		return -EINVAL;
+
+	return sbit1;
+}
+
+/**
+ * aie_resource_get_common_pattern_region() - get common available region
+ *					      of two resources table
+ * @res0: pointer to AI engine resource0
+ * @res1: pointer to AI engine resource1
+ * @sbit: start bit to check
+ * @nbits: number of bits to get
+ * @total: total number of bits to check
+ * @rscs: resources array to return for resources ids
+ * @return: start bit of the common region if it is found, negative value for
+ *	    failure
+ *
+ * The common pattern region is a contiguous block of resources which needs
+ * to be very number of @nbits.
+ * e.g. if nbits is 2, the offset to the start bit @sbit of returned resources
+ * needs to be: 0,1; 2,3 ...
+ */
+int aie_resource_get_common_pattern_region(struct aie_resource *res0,
+					   struct aie_resource *res1,
+					   u32 sbit, u32 nbits, u32 total,
+					   struct aie_rsc *rscs)
+{
+	int rsbit, ret;
+
+	rsbit = aie_resource_check_common_pattern_region(res0, res1, sbit,
+							 nbits, total);
+	if (rsbit < 0)
+		return rsbit;
+
+	ret = aie_resource_get_region(res0, rsbit, nbits);
+	if (ret < 0)
+		return ret;
+
+	if (ret != rsbit) {
+		aie_resource_put_region(res0, ret, nbits);
+		return -EINVAL;
+	}
+
+	ret = aie_resource_get_region(res1, rsbit, nbits);
+	if (ret < 0)
+		return ret;
+
+	if (ret != rsbit) {
+		aie_resource_put_region(res0, rsbit, nbits);
+		aie_resource_put_region(res1, ret, nbits);
+		return -EINVAL;
+	}
+
+	if (rscs) {
+		u32 i;
+
+		for (i = 0; i < nbits; i++, rscs++)
+			rscs->id = rsbit + i;
+	}
+
+	return rsbit;
+}

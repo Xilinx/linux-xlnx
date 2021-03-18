@@ -645,6 +645,22 @@ int aie_resource_cpy_to_arr32(struct aie_resource *res, u32 start, u32 *dst,
 int aie_resource_clear(struct aie_resource *res, u32 start, u32 count);
 int aie_resource_clear_all(struct aie_resource *res);
 bool aie_resource_testbit(struct aie_resource *res, u32 bit);
+int aie_resource_check_common_avail(struct aie_resource *res0,
+				    struct aie_resource *res1,
+				    u32 sbit, u32 nbits);
+int aie_resource_get_common_avail(struct aie_resource *res0,
+				  struct aie_resource *res1,
+				  u32 sbit, u32 nbits, u32 total,
+				  struct aie_rsc *rscs);
+int aie_resource_check_pattern_region(struct aie_resource *res,
+				      u32 start, u32 end, u32 count);
+int aie_resource_check_common_pattern_region(struct aie_resource *res0,
+					     struct aie_resource *res1,
+					     u32 sbit, u32 nbits, u32 total);
+int aie_resource_get_common_pattern_region(struct aie_resource *res0,
+					   struct aie_resource *res1,
+					   u32 sbit, u32 nbits, u32 total,
+					   struct aie_rsc *rscs);
 
 const struct file_operations *aie_part_get_fops(void);
 u8 aie_part_in_use(struct aie_partition *apart);
@@ -700,4 +716,14 @@ void aie_part_sysfs_finish(struct aie_partition *apart);
 int aie_part_rscmgr_init(struct aie_partition *apart);
 void aie_part_rscmgr_finish(struct aie_partition *apart);
 void aie_part_rscmgr_reset(struct aie_partition *apart);
+long aie_part_rscmgr_rsc_req(struct aie_partition *apart,
+			     void __user *user_args);
+long aie_part_rscmgr_rsc_release(struct aie_partition *apart,
+				 void __user *user_args);
+long aie_part_rscmgr_rsc_free(struct aie_partition *apart,
+			      void __user *user_args);
+long aie_part_rscmgr_rsc_req_specific(struct aie_partition *apart,
+				      void __user *user_args);
+long aie_part_rscmgr_rsc_check_avail(struct aie_partition *apart,
+				     void __user *user_args);
 #endif /* AIE_INTERNAL_H */
