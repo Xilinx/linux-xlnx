@@ -35,5 +35,6 @@
 #define		PD_CAN_1	48
 #define		PD_GPU		58
 #define		PD_PCIE		59
+#define		PD_PL		69
 
 #endif
