@@ -3193,6 +3193,9 @@ void zynqmp_disp_unbind(struct device *dev, struct device *master, void *data)
 	struct zynqmp_dpsub *dpsub = dev_get_drvdata(dev);
 	struct zynqmp_disp *disp = dpsub->disp;
 
+	if (disp->vtc_bridge)
+		of_xlnx_bridge_put(disp->vtc_bridge);
+
 	zynqmp_disp_destroy_crtc(disp);
 	zynqmp_disp_destroy_plane(disp);
 	drm_property_destroy(disp->drm, disp->bg_c2_prop);
@@ -3407,8 +3410,6 @@ int zynqmp_disp_remove(struct platform_device *pdev)
 	zynqmp_disp_layer_destroy(disp);
 	if (disp->audclk)
 		zynqmp_disp_clk_disable(disp->audclk, &disp->audclk_en);
-	if (disp->vtc_bridge)
-		of_xlnx_bridge_put(disp->vtc_bridge);
 	zynqmp_disp_clk_disable(disp->aclk, &disp->aclk_en);
 	zynqmp_disp_clk_disable(disp->pclk, &disp->pclk_en);
 	dpsub->disp = NULL;
