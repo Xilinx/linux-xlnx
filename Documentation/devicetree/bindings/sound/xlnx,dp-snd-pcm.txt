@@ -4,7 +4,7 @@ The DPDMA driver of ZynqMP DisplayPort subsystem is based on DMA engine,
 and the DP PCM driver is based on snd dmaengine helpers.
 
 Required properties:
- - compatible: Should be "xlnx,dp-snd-pcm".
+ - compatible: Should be "xlnx,dp-snd-pcm" or "xlnx,dp-snd-pcm0" or "xlnx,dp-snd-pcm1".
  - dmas: the phandle list of DMA specifiers. The dma channel ID should be one
    of 4 for audio0 channel or 5 for audio1 channel.
  - dma-names: the indentifier strings for DMAs. The value should be "tx".
@@ -12,7 +12,7 @@ Required properties:
 Example:
 
 	xlnx_dp_snd_pcm0: dp_snd_pcm0 {
-		compatible = "xlnx,dp-snd-pcm";
+		compatible = "xlnx,dp-snd-pcm0";
 		dmas = <&xlnx_dpdma 4>;
 		dma-names = "tx";
 	};
