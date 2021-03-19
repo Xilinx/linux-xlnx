@@ -240,6 +240,10 @@ static const u32 color_table[] = {
 	DRM_FORMAT_XV20,
 };
 
+static bool xlnx_mixer_primary_enable = true;
+module_param_named(mixer_primary_enable, xlnx_mixer_primary_enable, bool, 0600);
+MODULE_PARM_DESC(mixer_primary_enable, "Enable mixer primary plane (default: 1)");
+
 /*********************** Inline Functions/Macros *****************************/
 #define to_mixer_hw(p) (&((p)->mixer->mixer_hw))
 #define to_xlnx_crtc(x)	container_of(x, struct xlnx_crtc, crtc)
@@ -743,6 +747,13 @@ static void xlnx_mix_layer_enable(struct xlnx_mix_hw *mixer,
 {
 	struct xlnx_mix_layer_data *layer_data;
 	u32 curr_state;
+	struct xlnx_mix *mix;
+
+	mix = container_of(mixer, struct xlnx_mix, mixer_hw);
+	if (mix->drm_primary_layer->mixer_layer->id == id) {
+		if (!xlnx_mixer_primary_enable)
+			return;
+	}
 
 	/* Ensure layer is marked as 'active' by application before
 	 * turning on in hardware.  In some cases, layer register data
