@@ -5013,7 +5013,12 @@ static int __maybe_unused macb_resume(struct device *dev)
 			macb_writel(bp, ISR, -1);
 		disable_irq_wake(bp->queues[0].irq);
 		spin_unlock_irqrestore(&bp->lock, flags);
-
+		/* Now make sure we disable phy before moving
+		 * to common restore path
+		 */
+		rtnl_lock();
+		phylink_stop(bp->phylink);
+		rtnl_unlock();
 	}
 
 	for (q = 0, queue = bp->queues; q < bp->num_queues;
