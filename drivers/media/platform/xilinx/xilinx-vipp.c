@@ -15,6 +15,7 @@
 #include <linux/of_graph.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/of_reserved_mem.h>
 
 #include <media/v4l2-async.h>
 #include <media/v4l2-common.h>
@@ -823,6 +824,16 @@ static int xvip_composite_probe(struct platform_device *pdev)
 	ret = xvip_graph_init(xdev);
 	if (ret < 0)
 		goto error;
+
+	ret = of_reserved_mem_device_init(&pdev->dev);
+	if (ret)
+		dev_dbg(&pdev->dev, "of_reserved_mem_device_init: %d\n", ret);
+
+	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64));
+	if (ret) {
+		dev_err(&pdev->dev, "dma_set_mask_and_coherent: %d\n", ret);
+		goto error;
+	}
 
 	platform_set_drvdata(pdev, xdev);
 
