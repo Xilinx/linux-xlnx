@@ -21,6 +21,7 @@
 #include <linux/delay.h>
 #include <linux/component.h>
 #include <linux/dma/xilinx_frmbuf.h>
+#include <linux/of_reserved_mem.h>
 #include <linux/gpio/consumer.h>
 #include <linux/of.h>
 #include <linux/of_dma.h>
@@ -28,6 +29,7 @@
 #include <linux/of_irq.h>
 #include <linux/platform_device.h>
 #include <linux/dmaengine.h>
+#include <linux/dma-mapping.h>
 #include <video/videomode.h>
 #include "xlnx_bridge.h"
 #include "xlnx_crtc.h"
@@ -2981,6 +2983,16 @@ static int xlnx_mix_probe(struct platform_device *pdev)
 	mixer = devm_kzalloc(&pdev->dev, sizeof(*mixer), GFP_KERNEL);
 	if (!mixer)
 		return -ENOMEM;
+
+	ret = of_reserved_mem_device_init(&pdev->dev);
+	if (ret)
+		dev_dbg(&pdev->dev, "of_reserved_mem_device_init: %d\n", ret);
+
+	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64));
+	if (ret) {
+		dev_err(&pdev->dev, "dma_set_coherent_mask: %d\n", ret);
+		return ret;
+	}
 
 	/* Sub-driver will access mixer from drvdata */
 	platform_set_drvdata(pdev, mixer);
