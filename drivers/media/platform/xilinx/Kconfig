@@ -119,3 +119,12 @@ config VIDEO_XILINX_SCD
 	  The driver allows applications to pass video buffers and
 	  provides if scene change detection is present between
 	  adjacent frames.
+
+config VIDEO_XILINX_AXI4S_BROADCASTER
+	tristate "Xilinx AXI4-Stream Video Broadcaster"
+	depends on VIDEO_XILINX
+	help
+	  Driver for the Xilinx AXI4-Stream Video Broadcaster. This is a
+	  V4L sub device based driver. It replicates a single input AXI4-Stream
+	  into multiple output AXI4-Stream.
+	  Say M to modularize. Say N if unsure.

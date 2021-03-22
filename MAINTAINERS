@@ -25486,6 +25486,13 @@ L:	netdev@vger.kernel.org
 S:	Orphan
 F:	drivers/net/ethernet/xilinx/ll_temac*
 
+XILINX AXI4S BROADCASTER DRIVER
+M:	Kunal Rane <kunal.rane@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/media/xilinx/xlnx,axis-broadcaster.yaml
+F:	drivers/media/platform/xilinx/xilinx-axis-broadcaster.c
+
 XILINX MEDIA VTC DRIVER
 M:	Rajesh Gugulothu <rajesh.gugulothu@amd.com>
 L:	git@amd.com
