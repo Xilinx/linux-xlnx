@@ -630,8 +630,8 @@ static int aie_part_mmap(struct file *fp, struct vm_area_struct *vma)
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 	/* Calculate the partition address */
 	addr = adev->res->start;
-	addr += apart->range.start.col << adev->col_shift;
-	addr += apart->range.start.row << adev->row_shift;
+	addr += (phys_addr_t)apart->range.start.col << adev->col_shift;
+	addr += (phys_addr_t)apart->range.start.row << adev->row_shift;
 	addr += offset;
 	return remap_pfn_range(vma,
 			       vma->vm_start,
