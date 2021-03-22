@@ -21,6 +21,11 @@ Required properties:
 
 - ports: Video port, using the DT bindings defined in ../video-interfaces.txt.
 
+Optional properties:
+- memory-region : phandle to /reserved-memory node.
+  If memory is reserved for special use by DMAs then this node
+  can be used to refer and use from this reserved memory region.
+
 Required port properties:
 
 - direction: should be either "input" or "output" depending on the direction
@@ -53,3 +58,46 @@ Example:
 			};
 		};
 	};
+
+Example using reserved memory:
+Reserving from 32bit Shared CMA pool of 512MiB using System RAM:
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+/ {
+	reserved-memory {
+		#address-cells = <0x2>;
+		#size-cells = <0x2>;
+		ranges;
+		psmem_multimedia: multimedia_cma_mem_region {
+			compatible = "shared-dma-pool";
+			reg = <0x00 0x40000000 0x00 0x20000000>;
+			reusable;
+		};
+	};
+};
+...
+	video_cap {
+		/* ... */
+		memory-region = <&psmem_multimedia>;
+	};
+
+
+Reserving from 64bit Shared DMA pool of 1792 MiB using external PL based
+DDR memory:
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+/ {
+	reserved-memory {
+		#address-cells = <0x2>;
+		#size-cells = <0x2>;
+		ranges;
+		plmem_multimedia: multimedia_dma_mem_region {
+			compatible = "shared-dma-pool";
+			no-map;
+			reg = <0x48 0x0 0x0 0x70000000>;
+		};
+	};
+};
+...
+	video_cap {
+		/* ... */
+		memory-region = <&plmem_multimedia>;
+	}
