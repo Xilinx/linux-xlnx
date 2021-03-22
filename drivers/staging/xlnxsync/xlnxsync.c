@@ -1321,6 +1321,12 @@ static int xlnxsync_probe(struct platform_device *pdev)
 		goto cdev_err;
 	}
 
+	ret = dma_set_mask(&pdev->dev, DMA_BIT_MASK(44));
+	if (ret) {
+		dev_err(&pdev->dev, "dma_set_mask: %d\n", ret);
+		return ret;
+	}
+
 	platform_set_drvdata(pdev, xlnxsync);
 	dev_info(xlnxsync->dev, "Xilinx Synchronizer probe successful!\n");
 
