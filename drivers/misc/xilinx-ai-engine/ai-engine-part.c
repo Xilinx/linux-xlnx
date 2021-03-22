@@ -919,13 +919,13 @@ static struct aie_partition *aie_create_partition(struct aie_device *adev,
 		return ERR_PTR(ret);
 	}
 
-	ret = mutex_lock_interruptible(&adev->mlock);
+	ret = aie_part_sysfs_init(apart);
 	if (ret) {
 		put_device(dev);
 		return ERR_PTR(ret);
 	}
 
-	ret = aie_part_sysfs_init(apart);
+	ret = mutex_lock_interruptible(&adev->mlock);
 	if (ret) {
 		put_device(dev);
 		return ERR_PTR(ret);
