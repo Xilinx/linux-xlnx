@@ -16,7 +16,7 @@
  * GNU General Public License for more details.
  */
 
-#include <drm/drmP.h>
+#include <drm/drm_drv.h>
 #include <drm/drm_gem_cma_helper.h>
 
 #include "xlnx_drv.h"

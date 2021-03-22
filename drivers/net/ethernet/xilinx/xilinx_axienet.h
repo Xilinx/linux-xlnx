@@ -189,6 +189,7 @@
 #define XAE_RCW1_OFFSET		0x00000404 /* Rx Configuration Word 1 */
 #define XAE_TC_OFFSET		0x00000408 /* Tx Configuration */
 #define XAE_FCC_OFFSET		0x0000040C /* Flow Control Configuration */
+#define XAE_ID_OFFSET		0x000004F8 /* Identification register */
 #define XAE_EMMC_OFFSET		0x00000410 /* MAC speed configuration */
 #define XAE_RMFC_OFFSET		0x00000414 /* RX Max Frame Configuration */
 #define XAE_TSN_ABL_OFFSET	0x000004FC /* Ability Register */
@@ -220,7 +221,7 @@
 #define XAE_RAF_TXVSTRPMODE_MASK	0x00000180 /* Tx VLAN STRIP mode */
 #define XAE_RAF_RXVSTRPMODE_MASK	0x00000600 /* Rx VLAN STRIP mode */
 #define XAE_RAF_NEWFNCENBL_MASK		0x00000800 /* New function mode */
-/* Exteneded Multicast Filtering mode */
+/* Extended Multicast Filtering mode */
 #define XAE_RAF_EMULTIFLTRENBL_MASK	0x00001000
 #define XAE_RAF_STATSRST_MASK		0x00002000 /* Stats. Counter Reset */
 #define XAE_RAF_RXBADFRMEN_MASK		0x00004000 /* Recv Bad Frame Enable */
@@ -343,6 +344,7 @@
 #define XAE_FEATURE_PARTIAL_TX_CSUM	BIT(1)
 #define XAE_FEATURE_FULL_RX_CSUM	BIT(2)
 #define XAE_FEATURE_FULL_TX_CSUM	BIT(3)
+#define XAE_FEATURE_DMA_64BIT		BIT(4)
 
 #define XAE_NO_CSUM_OFFLOAD		0
 
@@ -359,8 +361,11 @@
 #define TX_TS_OP_ONESTEP        0x1
 #define TX_TS_OP_TWOSTEP        0x2
 #define TX_TS_CSUM_UPDATE       0x1
+#define TX_TS_CSUM_UPDATE_MRMAC		0x4
+#define TX_TS_PDELAY_UPDATE_MRMAC	0x8
 #define TX_PTP_CSUM_OFFSET      0x28
 #define TX_PTP_TS_OFFSET        0x4C
+#define TX_PTP_CF_OFFSET        0x32
 
 /* XXV MAC Register Definitions */
 #define XXV_GT_RESET_OFFSET		0x00000000
@@ -490,6 +495,7 @@
 #define MRMAC_CONFIG_TX_OFFSET		0x0000000C
 #define MRMAC_CONFIG_RX_OFFSET		0x00000010
 #define MRMAC_TICK_OFFSET		0x0000002C
+#define MRMAC_CFG1588_OFFSET	0x00000040
 
 /* Status Registers */
 #define MRMAC_TX_STS_OFFSET		0x00000740
@@ -538,6 +544,7 @@
 
 #define MRMAC_CTL_PM_TICK_MASK		BIT(30)
 #define MRMAC_TICK_TRIGGER		BIT(0)
+#define MRMAC_ONE_STEP_EN		BIT(0)
 
 /* MRMAC GT wrapper registers */
 #define MRMAC_GT_PLL_OFFSET		0x0
@@ -550,10 +557,10 @@
 #define MRMAC_GT_RST_ALL_MASK		BIT(0)
 #define MRMAC_GT_RST_RX_MASK		BIT(1)
 #define MRMAC_GT_RST_TX_MASK		BIT(2)
-#define MRMAC_GT_10G_MASK		0x01010101
-#define MRMAC_GT_25G_MASK		0x02020202
+#define MRMAC_GT_10G_MASK		0x00000001
+#define MRMAC_GT_25G_MASK		0x00000002
 
-#define MRMAC_GT_LANE_OFFSET		0x10000
+#define MRMAC_GT_LANE_OFFSET		BIT(16)
 #define MRMAC_MAX_GT_LANES		4
 /**
  * struct axidma_bd - Axi Dma buffer descriptor layout
@@ -754,6 +761,7 @@ enum axienet_tsn_ioctl {
  * @gt_ctrl: GT speed and reset control register space.
  * @phc_index: Index to corresponding PTP clock used.
  * @gt_lane: MRMAC GT lane index used.
+ * @ptp_os_cf: CF TS of PTP PDelay req for one step usage.
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -964,6 +972,7 @@ struct axienet_config {
 			struct clk **axis_clk, struct clk **ref_clk,
 			struct clk **dclk);
 	u32 tx_ptplen;
+	u8 ts_header_len;
 };
 
 /**
@@ -1021,6 +1030,20 @@ static inline void axienet_iow(struct axienet_local *lp, off_t offset,
 			       u32 value)
 {
 	iowrite32(value, lp->regs + offset);
+}
+
+/**
+ * axienet_get_mrmac_blocklock - Write to Clear MRMAC RX block lock status register
+ * and read the latest status
+ * @lp:         Pointer to axienet local structure
+ *
+ * Return: The contents of the Contents of MRMAC RX block lock status register
+ */
+
+static inline u32 axienet_get_mrmac_blocklock(struct axienet_local *lp)
+{
+	axienet_iow(lp, MRMAC_STATRX_BLKLCK_OFFSET, MRMAC_STS_ALL_MASK);
+	return axienet_ior(lp, MRMAC_STATRX_BLKLCK_OFFSET);
 }
 
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP

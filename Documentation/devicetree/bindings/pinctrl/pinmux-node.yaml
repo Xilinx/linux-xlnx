@@ -114,7 +114,7 @@ properties:
       specific binding for the hardware defines whether the entries are integers
       or strings, and their meaning.
 
-  group:
+  groups:
     $ref: /schemas/types.yaml#/definitions/string-array
     description:
       the group to apply the properties to, if the driver supports
@@ -122,11 +122,12 @@ properties:
       this, "pins" or "pinmux" has to be specified)
 
   pinmux:
-    allOf:
-      - $ref: /schemas/types.yaml#/definitions/uint32-array
     description:
       The list of numeric pin ids and their mux settings that properties in the
       node apply to (either this, "pins" or "groups" have to be specified)
+    $ref: /schemas/types.yaml#/definitions/uint32-array
 
   pinctrl-pin-array:
     $ref: /schemas/types.yaml#/definitions/uint32-array
+
+additionalProperties: true

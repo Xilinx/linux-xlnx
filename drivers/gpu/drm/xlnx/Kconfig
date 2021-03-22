@@ -1,3 +1,20 @@
+config DRM_ZYNQMP_DPSUB
+	tristate "ZynqMP DisplayPort Controller Driver"
+	depends on ARCH_ZYNQMP || COMPILE_TEST
+	depends on COMMON_CLK && DRM && OF
+	depends on DMADEVICES
+	select DMA_ENGINE
+	select DRM_GEM_CMA_HELPER
+	select DRM_KMS_CMA_HELPER
+	select DRM_KMS_HELPER
+	select GENERIC_PHY
+	select PHY_XILINX_ZYNQMP
+	select XILINX_ZYNQMP_DPDMA
+	help
+	  This is a DRM/KMS driver for ZynqMP DisplayPort controller. Choose
+	  this option if you have a Xilinx ZynqMP SoC with DisplayPort
+	  subsystem.
+
 config DRM_XLNX
 	tristate "Xilinx DRM KMS Driver"
 	depends on DRM && OF
@@ -29,19 +46,6 @@ config DRM_XLNX_BRIDGE_DEBUG_FS
 	  low level controls to the user space to help testing automation,
 	  as well as can enable additional diagnostic or statistical
 	  information.
-
-config DRM_ZYNQMP_DPSUB
-	tristate "ZynqMP DP Subsystem Driver"
-	depends on ARCH_ZYNQMP && OF && DRM_XLNX && COMMON_CLK
-	select DMADEVICES
-	select XILINX_DMA_ENGINES
-	select XILINX_DPDMA
-	select PHY_XILINX_ZYNQMP
-	help
-	  DRM KMS driver for ZynqMP DP Subsystem controller. Choose
-	  this option if you have a Xilinx ZynqMP SoC with DisplayPort
-	  subsystem. The driver provides the kernel mode setting
-	  functionalities for ZynqMP DP subsystem.
 
 config DRM_XLNX_DPTX
 	tristate "Xilinx DRM DisplayPort Subsystem Driver"

@@ -165,65 +165,33 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 	struct xflex_dev_info *flexpm = to_xflex_dev_info(dev);
 	u32 domain, src, offset, reg, val, counter;
 	int ret;
-	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
-	u32 rdval = 0;
 	u32 pm_api_ret[4] = {0, 0, 0, 0};
-
-	if (IS_ERR_OR_NULL(eemi_ops))
-		return PTR_ERR(eemi_ops);
-
-	if (!eemi_ops->ioctl)
-		return -ENOTSUPP;
 
 	mutex_lock(&flexpm->mutex);
 
 	switch (cmd) {
 	case XFLEX_GET_COUNTER_LPD_WRRSP:
 		reg = flexpm->counterid_lpd | FPM_WRRSP_L | FPM_VAL;
-		ret = eemi_ops->ioctl(FPM_LPD, IOCTL_PROBE_COUNTER_READ,
-				      reg, 0, &pm_api_ret[0]);
-		if (ret < 0) {
-			dev_err(dev, "Counter read error %d\n", ret);
-			goto exit_unlock;
-		}
+		domain = FPM_LPD;
 
-		rdval = pm_api_ret[1];
 		break;
 
 	case XFLEX_GET_COUNTER_LPD_WRREQ:
-		reg = flexpm->counterid_lpd | FPM_WRREQ_L | FPM_VAL;
-		ret = eemi_ops->ioctl(FPM_LPD, IOCTL_PROBE_COUNTER_READ,
-				      reg, 0, &pm_api_ret[0]);
-		if (ret < 0) {
-			dev_err(dev, "Counter read error %d\n", ret);
-			goto exit_unlock;
-		}
+		reg = flexpm->counterid_lpd | FPM_WRRSP_L | FPM_VAL;
+		domain = FPM_LPD;
 
-		rdval = pm_api_ret[1];
 		break;
 
 	case XFLEX_GET_COUNTER_LPD_RDRSP:
 		reg = flexpm->counterid_lpd | FPM_RDRSP_L | FPM_VAL;
-		ret = eemi_ops->ioctl(FPM_LPD, IOCTL_PROBE_COUNTER_READ,
-				      reg, 0, &pm_api_ret[0]);
-		if (ret < 0) {
-			dev_err(dev, "Counter read error %d\n", ret);
-			goto exit_unlock;
-		}
+		domain = FPM_LPD;
 
-		rdval = pm_api_ret[1];
 		break;
 
 	case XFLEX_GET_COUNTER_LPD_RDREQ:
 		reg = flexpm->counterid_lpd | FPM_RDREQ_L | FPM_VAL;
-		ret = eemi_ops->ioctl(FPM_LPD, IOCTL_PROBE_COUNTER_READ,
-				      reg, 0, &pm_api_ret[0]);
-		if (ret < 0) {
-			dev_err(dev, "Counter read error %d\n", ret);
-			goto exit_unlock;
-		}
+		domain = FPM_LPD;
 
-		rdval = pm_api_ret[1];
 		break;
 
 	case XFLEX_SET_COUNTER_LPD:
@@ -264,8 +232,7 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 
 		for (src = 0; src < FPM_NUM_COUNTERS; src++) {
 			reg = reg | FPM_SRC | (src << FPM_PROBE_SHIFT);
-			ret = eemi_ops->ioctl(domain, IOCTL_PROBE_COUNTER_WRITE,
-					      reg, val, NULL);
+			ret = zynqmp_pm_probe_counter_write(domain, reg, val);
 			if (ret < 0) {
 				dev_err(dev, "Counter write error %d\n", ret);
 				goto exit_unlock;
@@ -282,8 +249,7 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 
 		for (src = 0; src < FPM_NUM_COUNTERS; src++) {
 			reg = reg | FPM_SRC | (src << FPM_PROBE_SHIFT);
-			ret = eemi_ops->ioctl(domain, IOCTL_PROBE_COUNTER_WRITE,
-					      reg, val, NULL);
+			ret = zynqmp_pm_probe_counter_write(domain, reg, val);
 			if (ret < 0) {
 				dev_err(dev, "Counter write error %d\n", ret);
 				goto exit_unlock;
@@ -302,50 +268,26 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 
 	case XFLEX_GET_COUNTER_FPD_WRRSP:
 		reg = flexpm->counterid_fpd | FPM_WRRSP_L | FPM_VAL;
-		ret = eemi_ops->ioctl(FPM_FPD, IOCTL_PROBE_COUNTER_READ,
-				      reg, 0, &pm_api_ret[0]);
-		if (ret < 0) {
-			dev_err(dev, "Counter read error %d\n", ret);
-			goto exit_unlock;
-		}
+		domain = FPM_FPD;
 
-		rdval = pm_api_ret[1];
 		break;
 
 	case XFLEX_GET_COUNTER_FPD_WRREQ:
 		reg = flexpm->counterid_fpd | FPM_WRREQ_L | FPM_VAL;
-		ret = eemi_ops->ioctl(FPM_FPD, IOCTL_PROBE_COUNTER_READ,
-				      reg, 0, &pm_api_ret[0]);
-		if (ret < 0) {
-			dev_err(dev, "Counter read error %d\n", ret);
-			goto exit_unlock;
-		}
+		domain = FPM_FPD;
 
-		rdval = pm_api_ret[1];
 		break;
 
 	case XFLEX_GET_COUNTER_FPD_RDRSP:
 		reg = flexpm->counterid_fpd | FPM_RDRSP_L | FPM_VAL;
-		ret = eemi_ops->ioctl(FPM_FPD, IOCTL_PROBE_COUNTER_READ,
-				      reg, 0, &pm_api_ret[0]);
-		if (ret < 0) {
-			dev_err(dev, "Counter read error %d\n", ret);
-			goto exit_unlock;
-		}
+		domain = FPM_FPD;
 
-		rdval = pm_api_ret[1];
 		break;
 
 	case XFLEX_GET_COUNTER_FPD_RDREQ:
 		reg = flexpm->counterid_fpd | FPM_RDREQ_L | FPM_VAL;
-		ret = eemi_ops->ioctl(FPM_FPD, IOCTL_PROBE_COUNTER_READ,
-				      reg, 0, &pm_api_ret[0]);
-		if (ret < 0) {
-			dev_err(dev, "Counter read error %d\n", ret);
-			goto exit_unlock;
-		}
+		domain = FPM_FPD;
 
-		rdval = pm_api_ret[1];
 		break;
 
 	default:
@@ -353,8 +295,14 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 		break;
 	}
 
+	ret = zynqmp_pm_probe_counter_read(domain, reg, &pm_api_ret[0]);
+
+	if (ret < 0) {
+		dev_err(dev, "Counter read error %d\n", ret);
+		return ret;
+	}
 	mutex_unlock(&flexpm->mutex);
-	return rdval;
+	return pm_api_ret[1];
 
 exit_unlock:
 	mutex_unlock(&flexpm->mutex);

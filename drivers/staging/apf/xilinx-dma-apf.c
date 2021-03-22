@@ -17,31 +17,30 @@
  *
  */
 
-#include <linux/init.h>
-#include <linux/module.h>
-#include <linux/platform_device.h>
-#include <linux/interrupt.h>
-#include <linux/dmapool.h>
-#include <linux/slab.h>
-#include <linux/dma-mapping.h>
-#include <linux/pagemap.h>
+#include <asm/cacheflush.h>
 #include <linux/device.h>
-#include <linux/types.h>
-#include <linux/pm.h>
+#include <linux/dma-buf.h>
+#include <linux/dma-map-ops.h>
+#include <linux/dma-mapping.h>
+#include <linux/dmapool.h>
 #include <linux/fs.h>
 #include <linux/gfp.h>
-#include <linux/string.h>
-#include <linux/uaccess.h>
-#include <asm/cacheflush.h>
-#include <linux/sched.h>
-#include <linux/dma-buf.h>
-
-#include <linux/of.h>
+#include <linux/init.h>
+#include <linux/interrupt.h>
 #include <linux/irq.h>
+#include <linux/module.h>
+#include <linux/of.h>
 #include <linux/of_irq.h>
+#include <linux/pagemap.h>
+#include <linux/platform_device.h>
+#include <linux/pm.h>
+#include <linux/sched.h>
+#include <linux/slab.h>
+#include <linux/string.h>
+#include <linux/types.h>
+#include <linux/uaccess.h>
 
 #include "xilinx-dma-apf.h"
-
 #include "xlnk.h"
 
 static DEFINE_MUTEX(dma_list_mutex);
@@ -646,11 +645,11 @@ static int xdma_pin_user_pages(xlnk_intptr_type uaddr, unsigned int ulen,
 	if (!mapped_pages)
 		return -ENOMEM;
 
-	down_read(&mm->mmap_sem);
+	down_read(&mm->mmap_lock);
 	status = get_user_pages(uaddr, num_pages,
 				(write ? FOLL_WRITE : 0) | FOLL_FORCE,
 				mapped_pages, NULL);
-	up_read(&mm->mmap_sem);
+	up_read(&mm->mmap_lock);
 
 	if (status == num_pages) {
 		sglist = kcalloc(num_pages,

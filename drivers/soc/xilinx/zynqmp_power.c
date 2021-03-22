@@ -27,9 +27,9 @@ struct zynqmp_pm_work_struct {
 	struct work_struct callback_work;
 	u32 args[CB_ARG_CNT];
 };
+
 static struct zynqmp_pm_work_struct *zynqmp_pm_init_suspend_work;
 static struct mbox_chan *rx_chan;
-static const struct zynqmp_eemi_ops *eemi_ops;
 
 enum pm_suspend_mode {
 	PM_SUSPEND_MODE_FIRST = 0,
@@ -154,9 +154,6 @@ static ssize_t suspend_mode_store(struct device *dev,
 {
 	int md, ret = -EINVAL;
 
-	if (!eemi_ops->set_suspend_mode)
-		return ret;
-
 	for (md = PM_SUSPEND_MODE_FIRST; md < ARRAY_SIZE(suspend_modes); md++)
 		if (suspend_modes[md] &&
 		    sysfs_streq(suspend_modes[md], buf)) {
@@ -165,7 +162,7 @@ static ssize_t suspend_mode_store(struct device *dev,
 		}
 
 	if (!ret && md != suspend_mode) {
-		ret = eemi_ops->set_suspend_mode(md);
+		ret = zynqmp_pm_set_suspend_mode(md);
 		if (likely(!ret))
 			suspend_mode = md;
 	}
@@ -181,14 +178,7 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 	u32 pm_api_version;
 	struct mbox_client *client;
 
-	eemi_ops = zynqmp_pm_get_eemi_ops();
-	if (IS_ERR(eemi_ops))
-		return PTR_ERR(eemi_ops);
-
-	if (!eemi_ops->get_api_version)
-		return -ENXIO;
-
-	eemi_ops->get_api_version(&pm_api_version);
+	zynqmp_pm_get_api_version(&pm_api_version);
 
 	/* Check PM API version number */
 	if (pm_api_version < ZYNQMP_PM_VERSION)
@@ -257,10 +247,17 @@ static int zynqmp_pm_remove(struct platform_device *pdev)
 
 static int __init do_init_finalize(void)
 {
-	if (!eemi_ops || IS_ERR(eemi_ops) || !eemi_ops->init_finalize)
-		return -ENXIO;
+       struct device_node *np;
 
-	return eemi_ops->init_finalize();
+       np = of_find_compatible_node(NULL, NULL, "xlnx,zynqmp");
+       if (!np) {
+               np = of_find_compatible_node(NULL, NULL, "xlnx,versal");
+               if (!np)
+                       return 0;
+       }
+       of_node_put(np);
+
+       return zynqmp_pm_init_finalize();
 }
 
 late_initcall_sync(do_init_finalize);

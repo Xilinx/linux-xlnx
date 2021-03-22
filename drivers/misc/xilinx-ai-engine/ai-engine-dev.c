@@ -395,18 +395,7 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 	}
 	adev->pm_node_id = pm_reg[1];
 
-	adev->eemi_ops = zynqmp_pm_get_eemi_ops();
-	if (IS_ERR(adev->eemi_ops)) {
-		dev_err(&adev->dev, "failed to get eemi ops.\n");
-		return PTR_ERR(adev->eemi_ops);
-	}
-	if (!adev->eemi_ops->reset_assert || !adev->eemi_ops->get_chipid ||
-	    !adev->eemi_ops->ioctl) {
-		dev_err(&adev->dev, "required eemi ops not found.\n");
-		return -EINVAL;
-	}
-
-	ret = adev->eemi_ops->get_chipid(&idcode, &version);
+	ret = zynqmp_pm_get_chipid(&idcode, &version);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Failed to get chip ID\n");
 		return ret;
@@ -460,6 +449,13 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Failed to request AIE IRQ.\n");
 		goto free_ida;
 	}
+
+	adev->clk = devm_clk_get(&pdev->dev, NULL);
+	if (!adev->clk) {
+		dev_err(&pdev->dev, "Failed to get device clock.\n");
+		goto free_ida;
+	}
+
 	return 0;
 
 free_ida:

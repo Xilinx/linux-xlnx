@@ -15,11 +15,8 @@ ifneq ($(filter y,$(CONFIG_USB_DWC3_HOST) $(CONFIG_USB_DWC3_DUAL_ROLE)\
 	dwc3-y				+= host.o
 endif
 
-ifneq ($(filter y,$(CONFIG_USB_DWC3_GADGET) $(CONFIG_USB_DWC3_DUAL_ROLE) $(CONFIG_USB_DWC3_OTG)),)
-	dwc3-y				+= gadget.o ep0.o
-ifeq ($(CONFIG_PM), y)
-	dwc3-y				+= gadget_hibernation.o
-endif
+ifneq ($(filter y,$(CONFIG_USB_DWC3_GADGET) $(CONFIG_USB_DWC3_DUAL_ROLE)),)
+	dwc3-y				+= gadget.o ep0.o gadget_hibernation.o
 endif
 
 ifneq ($(CONFIG_USB_DWC3_OTG),)
@@ -59,3 +56,4 @@ obj-$(CONFIG_USB_DWC3_MESON_G12A)	+= dwc3-meson-g12a.o
 obj-$(CONFIG_USB_DWC3_OF_SIMPLE)	+= dwc3-of-simple.o
 obj-$(CONFIG_USB_DWC3_ST)		+= dwc3-st.o
 obj-$(CONFIG_USB_DWC3_QCOM)		+= dwc3-qcom.o
+obj-$(CONFIG_USB_DWC3_XILINX)		+= dwc3-xilinx.o

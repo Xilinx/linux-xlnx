@@ -16,8 +16,8 @@
  * GNU General Public License for more details.
  */
 
-#include <drm/drmP.h>
-
+#include <linux/slab.h>
+#include <linux/of.h>
 #include <linux/list.h>
 
 #include "xlnx_bridge.h"

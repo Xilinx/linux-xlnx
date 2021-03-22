@@ -29,8 +29,6 @@
 #define EFUSE_READ		(0)
 #define EFUSE_WRITE		(1)
 
-static const struct zynqmp_eemi_ops *eemi_ops;
-
 /**
  * struct xilinx_efuse - the basic structure
  * @src:	address of the buffer to store the data to be write/read
@@ -61,9 +59,6 @@ static int zynqmp_efuse_access(void *context, unsigned int offset,
 	struct xilinx_efuse *efuse;
 	char *data;
 	int ret, value;
-
-	if (!eemi_ops->efuse_access)
-		return -ENXIO;
 
 	if (bytes % WORD_INBYTES != 0) {
 		dev_err(dev, "Bytes requested should be word aligned\n");
@@ -116,7 +111,7 @@ static int zynqmp_efuse_access(void *context, unsigned int offset,
 	efuse->offset = offset;
 	efuse->pufuserfuse = pufflag;
 
-	eemi_ops->efuse_access(dma_addr, &ret);
+	zynqmp_pm_efuse_access(dma_addr, &ret);
 	if (ret != 0) {
 		if (ret == EFUSE_NOT_ENABLED) {
 			dev_err(dev, "efuse access is not enabled\n");
@@ -146,9 +141,6 @@ static int zynqmp_nvmem_read(void *context, unsigned int offset,
 	int ret, pufflag = 0;
 	int idcode, version;
 
-	if (!eemi_ops->get_chipid)
-		return -ENXIO;
-
 	if (offset >= EFUSE_PUF_START_OFFSET && offset <= EFUSE_PUF_END_OFFSET)
 		pufflag = 1;
 
@@ -158,7 +150,7 @@ static int zynqmp_nvmem_read(void *context, unsigned int offset,
 		if (bytes != SOC_VER_SIZE)
 			return -EOPNOTSUPP;
 
-		ret = eemi_ops->get_chipid(&idcode, &version);
+		ret = zynqmp_pm_get_chipid(&idcode, &version);
 		if (ret < 0)
 			return ret;
 
@@ -211,10 +203,6 @@ MODULE_DEVICE_TABLE(of, zynqmp_nvmem_match);
 static int zynqmp_nvmem_probe(struct platform_device *pdev)
 {
 	struct nvmem_device *nvmem;
-
-	eemi_ops = zynqmp_pm_get_eemi_ops();
-	if (IS_ERR(eemi_ops))
-		return PTR_ERR(eemi_ops);
 
 	econfig.dev = &pdev->dev;
 	econfig.priv = &pdev->dev;

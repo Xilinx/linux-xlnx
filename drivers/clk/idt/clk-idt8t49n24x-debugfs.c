@@ -351,15 +351,8 @@ int idt24x_expose_via_debugfs(struct i2c_client *client,
 		char name[5];
 
 		sprintf(name, "q%d", output_num);
-		chip->debugfs_fileqfreq[output_num] = debugfs_create_u64(
-			name, 0644, chip->debugfs_dirroot,
-			&chip->clk[output_num].debug_freq);
-		if (!chip->debugfs_fileqfreq[output_num]) {
-			dev_err(&client->dev,
-				"%s: error creating %s debugfs file",
-				__func__, name);
-			return (-ENODEV);
-		}
+		debugfs_create_u64(name, 0644, chip->debugfs_dirroot,
+				   &chip->clk[output_num].debug_freq);
 	}
 
 	chip->debugfs_filei2c = debugfs_create_file(

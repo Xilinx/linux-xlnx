@@ -266,6 +266,7 @@ struct ams {
 
 	struct delayed_work ams_unmask_work;
 	const struct ams_pl_bus_ops *pl_bus;
+	struct iio_dev *indio_dev;
 };
 
 struct ams_pl_bus_ops {

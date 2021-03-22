@@ -1257,8 +1257,8 @@ static int xlnxsync_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	xlnxsync->iomem = devm_ioremap_nocache(xlnxsync->dev, res->start,
-					       resource_size(res));
+	xlnxsync->iomem = devm_ioremap(xlnxsync->dev, res->start,
+				       resource_size(res));
 	if (!xlnxsync->iomem) {
 		dev_err(&pdev->dev, "ip register mapping failed.\n");
 		return -ENOMEM;

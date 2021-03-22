@@ -9,6 +9,7 @@
  * Copyright (C) 2013 Xilinx, Inc.
  */
 #include <linux/dma-buf.h>
+#include <linux/dma-map-ops.h>
 #include <linux/kernel.h>
 #include <linux/firmware.h>
 #include <linux/fpga/fpga-mgr.h>
@@ -809,10 +810,8 @@ struct fpga_manager *fpga_mgr_create(struct device *dev, const char *name,
 		return NULL;
 
 	id = ida_simple_get(&fpga_mgr_ida, 0, 0, GFP_KERNEL);
-	if (id < 0) {
-		ret = id;
+	if (id < 0)
 		goto error_kfree;
-	}
 
 	mutex_init(&mgr->ref_mutex);
 

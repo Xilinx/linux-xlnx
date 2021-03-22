@@ -1358,7 +1358,7 @@ int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 					? "output" : "input",
 		 port);
 
-	dma->video.vfl_type = VFL_TYPE_GRABBER;
+	dma->video.vfl_type = VFL_TYPE_VIDEO;
 	if (type == V4L2_BUF_TYPE_VIDEO_CAPTURE ||
 	    type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
 		dma->video.vfl_dir = VFL_DIR_RX;
@@ -1416,14 +1416,13 @@ int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 	if (IS_ERR(dma->dma)) {
 		ret = PTR_ERR(dma->dma);
 		if (ret != -EPROBE_DEFER)
-			dev_err(dma->xdev->dev,
-				"No Video DMA channel found");
+			dev_err(dma->xdev->dev, "no VDMA channel found\n");
 		goto error;
 	}
 
 	dma->align = 1 << dma->dma->device->copy_align;
 
-	ret = video_register_device(&dma->video, VFL_TYPE_GRABBER, -1);
+	ret = video_register_device(&dma->video, VFL_TYPE_VIDEO, -1);
 	if (ret < 0) {
 		dev_err(dma->xdev->dev, "failed to register video device\n");
 		goto error;
@@ -1441,7 +1440,7 @@ void xvip_dma_cleanup(struct xvip_dma *dma)
 	if (video_is_registered(&dma->video))
 		video_unregister_device(&dma->video);
 
-	if (!IS_ERR(dma->dma))
+	if (!IS_ERR_OR_NULL(dma->dma))
 		dma_release_channel(dma->dma);
 
 	v4l2_ctrl_handler_free(&dma->ctrl_handler);

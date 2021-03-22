@@ -5,5 +5,5 @@
 config XILINX_FCLK
 	tristate "Xilinx PL clock enabler"
 	depends on COMMON_CLK && OF
-	---help---
+	help
 	  Support for the Xilinx fclk clock enabler.

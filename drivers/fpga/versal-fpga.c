@@ -40,15 +40,11 @@ static int versal_fpga_ops_write_init(struct fpga_manager *mgr,
 static int versal_fpga_ops_write_sg(struct fpga_manager *mgr,
 				    struct sg_table *sgt)
 {
-	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 	dma_addr_t dma_addr;
 	int ret;
 
-	if (IS_ERR_OR_NULL(eemi_ops) || !eemi_ops->fpga_load)
-		return -ENXIO;
-
 	dma_addr = sg_dma_address(sgt->sgl);
-	ret = eemi_ops->pdi_load(PDI_SOURCE_TYPE, dma_addr);
+	ret = zynqmp_pm_load_pdi(PDI_SOURCE_TYPE, dma_addr);
 
 	return ret;
 }
@@ -56,14 +52,10 @@ static int versal_fpga_ops_write_sg(struct fpga_manager *mgr,
 static int versal_fpga_ops_write(struct fpga_manager *mgr,
 				 const char *buf, size_t size)
 {
-	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 	struct versal_fpga_priv *priv;
 	dma_addr_t dma_addr = 0;
 	char *kbuf;
 	int ret;
-
-	if (IS_ERR(eemi_ops) || !eemi_ops->pdi_load)
-		return -ENXIO;
 
 	priv = mgr->priv;
 
@@ -75,7 +67,7 @@ static int versal_fpga_ops_write(struct fpga_manager *mgr,
 
 	wmb(); /* ensure all writes are done before initiate FW call */
 
-	ret = eemi_ops->pdi_load(PDI_SOURCE_TYPE, dma_addr);
+	ret = zynqmp_pm_load_pdi(PDI_SOURCE_TYPE, dma_addr);
 
 	dma_free_coherent(priv->dev, size, kbuf, dma_addr);
 

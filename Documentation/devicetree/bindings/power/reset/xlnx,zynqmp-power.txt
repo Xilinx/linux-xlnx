@@ -10,8 +10,8 @@ Required properties:
 
 Optional properties:
  - mbox-names	: Name given to channels seen in the 'mboxes' property.
-		  "rx" - Mailbox corresponding to receive path
 		  "tx" - Mailbox corresponding to transmit path
+		  "rx" - Mailbox corresponding to receive path
  - mboxes	: Standard property to specify a Mailbox. Each value of
 		  the mboxes property should contain a phandle to the
 		  mailbox controller device node and an args specifier
@@ -45,13 +45,14 @@ firmware {
 Example with IPI mailbox method:
 
 firmware {
-
 	zynqmp_firmware: zynqmp-firmware {
 		compatible = "xlnx,zynqmp-firmware";
 		method = "smc";
 
 		zynqmp_power: zynqmp-power {
 			compatible = "xlnx,zynqmp-power";
+			interrupt-parent = <&gic>;
+			interrupts = <0 35 4>;
 			mboxes = <&ipi_mailbox_pmu0 0>,
 				 <&ipi_mailbox_pmu0 1>;
 			mbox-names = "tx", "rx";

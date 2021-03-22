@@ -6,6 +6,7 @@
  */
 
 #include "ai-engine-internal.h"
+#include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 
@@ -241,4 +242,75 @@ int aie_part_release_tiles_from_user(struct aie_partition *apart,
 
 	kfree(locs);
 	return ret;
+}
+
+/**
+ * aie_part_set_freq() - set frequency requirement of an AI engine partition
+ *
+ * @apart: AI engine partition
+ * @freq: required frequency
+ * @return: 0 for success, negative value for failure
+ *
+ * This function sets frequency requirement for the partition.
+ * It will call aie_dev_set_freq() to check the frequency requirements
+ * of all partitions. it will send QoS EEMI request to request the max
+ * frequency of all the partitions.
+ */
+int aie_part_set_freq(struct aie_partition *apart, u64 freq)
+{
+	struct aie_device *adev = apart->adev;
+	unsigned long clk_rate;
+	u32 qos;
+	int ret;
+
+	clk_rate = clk_get_rate(adev->clk);
+	if (freq > (u64)clk_rate) {
+		dev_err(&apart->dev,
+			"Invalid frequency to set, larger than full frequency(%lu).\n",
+			clk_rate);
+		return -EINVAL;
+	}
+
+	apart->freq_req = freq;
+	/* TODO: qos calculation is not defined by PLM yet */
+	qos = clk_rate / (unsigned long)freq;
+	ret = zynqmp_pm_set_requirement(apart->partition_id,
+					ZYNQMP_PM_CAPABILITY_ACCESS, qos,
+					ZYNQMP_PM_REQUEST_ACK_BLOCKING);
+	if (ret < 0)
+		dev_err(&apart->dev, "failed to set frequency requirement.\n");
+	return ret;
+}
+
+/**
+ * aie_part_get_running_freq() - get running frequency of AI engine device.
+ *
+ * @apart: AI engine partition
+ * @freq: return running frequency
+ * @return: 0 for success, negative value for failure
+ *
+ * This function gets clock divider value with EEMI requests, and it gets the
+ * full clock frequency from common clock framework. And then it divides the
+ * full clock frequency by the divider value and returns the result.
+ */
+int aie_part_get_running_freq(struct aie_partition *apart, u64 *freq)
+{
+	unsigned long clk_rate;
+	struct aie_device *adev = apart->adev;
+	u32 divider;
+	int ret;
+
+	if (!freq)
+		return -EINVAL;
+
+	clk_rate = clk_get_rate(adev->clk);
+	/* TODO: AIE clock id is not defined yet */
+	ret = zynqmp_pm_clock_getdivider(adev->clock_id, &divider);
+	if (ret < 0) {
+		dev_err(&apart->dev, "failed to get clock divider.\n");
+		return ret;
+	}
+
+	*freq = (u64)clk_rate / (u64)(divider & 0xFFFFFFFF);
+	return 0;
 }

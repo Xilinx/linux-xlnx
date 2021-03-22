@@ -32,14 +32,14 @@ config SND_SOC_XILINX_I2S
 	  I2S playback and capture using xilinx soft IP
 
 config SND_SOC_XILINX_AUDIO_FORMATTER
-        tristate "Audio support for the the Xilinx audio formatter"
-        help
-          Select this option to enable Xilinx audio formatter
-          support. This provides DMA platform device support for
-          audio functionality.
+	tristate "Audio support for the Xilinx audio formatter"
+	help
+	  Select this option to enable Xilinx audio formatter
+	  support. This provides DMA platform device support for
+	  audio functionality.
 
 config SND_SOC_XILINX_SPDIF
-	tristate "Audio support for the the Xilinx SPDIF"
+	tristate "Audio support for the Xilinx SPDIF"
 	help
 	  Select this option to enable Xilinx SPDIF Audio.
 	  Enabling this provides one of the component required in ASoC

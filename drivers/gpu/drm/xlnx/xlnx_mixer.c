@@ -8,7 +8,7 @@
  *       : Jeffrey Mouroux <jmouroux@xilinx.com>
  */
 
-#include <drm/drmP.h>
+#include <drm/drm_vblank.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_atomic_uapi.h>
@@ -18,6 +18,7 @@
 #include <drm/drm_gem_cma_helper.h>
 #include <drm/drm_modeset_helper_vtables.h>
 #include <linux/clk.h>
+#include <linux/delay.h>
 #include <linux/component.h>
 #include <linux/dma/xilinx_frmbuf.h>
 #include <linux/gpio/consumer.h>
@@ -25,6 +26,7 @@
 #include <linux/of_dma.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
+#include <linux/platform_device.h>
 #include <linux/dmaengine.h>
 #include <video/videomode.h>
 #include "xlnx_bridge.h"

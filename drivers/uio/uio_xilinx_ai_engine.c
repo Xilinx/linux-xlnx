@@ -35,9 +35,13 @@ static ssize_t xilinx_ai_engine_debugfs_write(struct file *f,
 					      const char __user *buf,
 					      size_t size, loff_t *pos)
 {
-	struct irq_sim *irq_sim = file_inode(f)->i_private;
+	struct irq_domain *irq_sim_domain = file_inode(f)->i_private;
+	int irq, ret;
 
-	irq_sim_fire(irq_sim, 1);
+	irq = irq_find_mapping(irq_sim_domain, 1);
+	ret = irq_set_irqchip_state(1, IRQCHIP_STATE_PENDING, true);
+	if (ret)
+		return ret;
 
 	return size;
 }
@@ -50,7 +54,7 @@ static const struct file_operations debugfs_ops = {
 /**
  * xilinx_ai_engine_debugfs_init - Initialize the debugfs for irq sim
  * @pdev: platform device to simulate irq for
- * @irq_sim: simualated irq
+ * @irq_sim_domain: simualated irq
  *
  * Initialize the debugfs for irq simulation. This allows to generate
  * the simulated interrupt from user.
@@ -58,7 +62,7 @@ static const struct file_operations debugfs_ops = {
  * Return: 0 for success, error code otherwise.
  */
 static int xilinx_ai_engine_debugfs_init(struct platform_device *pdev,
-					 struct irq_sim *irq_sim)
+					 struct irq_domain *irq_sim_domain)
 {
 	int ret;
 	struct dentry *debugfs_dir, *debugfs_file;
@@ -68,7 +72,8 @@ static int xilinx_ai_engine_debugfs_init(struct platform_device *pdev,
 		return -ENODEV;
 
 	debugfs_file = debugfs_create_file(dev_name(&pdev->dev), 0644,
-					   debugfs_dir, irq_sim, &debugfs_ops);
+					   debugfs_dir, irq_sim_domain,
+					   &debugfs_ops);
 	if (!debugfs_file) {
 		ret = -ENODEV;
 		goto err_out;
@@ -92,28 +97,25 @@ err_out:
  */
 static int xilinx_ai_engine_simulate_irq(struct platform_device *pdev)
 {
-	struct irq_sim *irq_sim;
-	int irq, ret;
-
-	irq_sim = devm_kzalloc(&pdev->dev, sizeof(*irq_sim), GFP_KERNEL);
-	if (!irq_sim)
-		return -ENOMEM;
+	struct irq_domain *irq_sim_domain;
+	int ret;
 
 	/*
 	 * Sometimes, the returned base value is 0, so allocate 2 irqs, and
 	 * always use the 2nd one.
 	 */
-	irq = devm_irq_sim_init(&pdev->dev, irq_sim, 2);
-	if (irq < 0)
-		return irq;
-
-	ret = xilinx_ai_engine_debugfs_init(pdev, irq_sim);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "failed create debugfs for sim irq");
+	irq_sim_domain = irq_domain_create_sim(NULL, 2);
+	if (IS_ERR(irq_sim_domain)) {
+		ret = PTR_ERR(irq_sim_domain);
+		dev_err(&pdev->dev, "failed to create irq simulation domain");
 		return ret;
 	}
 
-	return irq_sim_irqnum(irq_sim, 1);
+	ret = xilinx_ai_engine_debugfs_init(pdev, irq_sim_domain);
+	if (ret < 0)
+		dev_err(&pdev->dev, "failed create debugfs for sim irq");
+
+	return ret;
 }
 
 #else

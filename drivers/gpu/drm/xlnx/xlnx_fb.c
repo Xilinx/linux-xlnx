@@ -20,7 +20,8 @@
  * GNU General Public License for more details.
  */
 
-#include <drm/drmP.h>
+#include <drm/drm_vblank.h>
+#include <drm/drm_fourcc.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_fb_helper.h>
@@ -291,16 +292,10 @@ xlnx_fb_init(struct drm_device *drm, int preferred_bpp,
 	fb_helper = &fbdev->fb_helper;
 	drm_fb_helper_prepare(drm, fb_helper, &xlnx_fb_helper_funcs);
 
-	ret = drm_fb_helper_init(drm, fb_helper, max_conn_count);
+	ret = drm_fb_helper_init(drm, fb_helper);
 	if (ret < 0) {
 		dev_err(drm->dev, "Failed to initialize drm fb helper.\n");
 		goto err_free;
-	}
-
-	ret = drm_fb_helper_single_add_all_connectors(fb_helper);
-	if (ret < 0) {
-		dev_err(drm->dev, "Failed to add connectors.\n");
-		goto err_drm_fb_helper_fini;
 	}
 
 	ret = drm_fb_helper_initial_config(fb_helper, preferred_bpp);

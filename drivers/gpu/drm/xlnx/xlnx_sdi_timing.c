@@ -7,9 +7,10 @@
  * Contacts: Saurabh Sengar <saurabhs@xilinx.com>
  */
 
-#include <drm/drmP.h>
+#include <drm/drm_print.h>
 #include <linux/device.h>
 #include <video/videomode.h>
+#include <asm/io.h>
 #include "xlnx_sdi_timing.h"
 
 /* timing controller register offsets */

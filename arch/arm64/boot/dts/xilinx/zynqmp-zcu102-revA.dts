@@ -238,25 +238,25 @@
 		gpio-line-names = "PS_GTR_LAN_SEL0", "PS_GTR_LAN_SEL1", "PS_GTR_LAN_SEL2", "PS_GTR_LAN_SEL3",
 				"PCI_CLK_DIR_SEL", "IIC_MUX_RESET_B", "GEM3_EXP_RESET_B",
 				"", "", "", "", "", "", "", "", "";
-		gtr-sel0 {
+		gtr-sel0-hog {
 			gpio-hog;
 			gpios = <0 0>;
 			output-low; /* PCIE = 0, DP = 1 */
 			line-name = "sel0";
 		};
-		gtr-sel1 {
+		gtr-sel1-hog {
 			gpio-hog;
 			gpios = <1 0>;
 			output-high; /* PCIE = 0, DP = 1 */
 			line-name = "sel1";
 		};
-		gtr-sel2 {
+		gtr-sel2-hog {
 			gpio-hog;
 			gpios = <2 0>;
 			output-high; /* PCIE = 0, USB0 = 1 */
 			line-name = "sel2";
 		};
-		gtr-sel3 {
+		gtr-sel3-hog {
 			gpio-hog;
 			gpios = <3 0>;
 			output-high; /* PCIE = 0, SATA = 1 */
@@ -534,42 +534,42 @@
 				si5341_0: out@0 {
 					/* refclk0 for PS-GT, used for DP */
 					reg = <0>;
-					always-on; /* assigned-clocks does not enable, so do it here */
+					always-on;
 				};
 				si5341_2: out@2 {
 					/* refclk2 for PS-GT, used for USB3 */
 					reg = <2>;
-					always-on; /* assigned-clocks does not enable, so do it here */
+					always-on;
 				};
 				si5341_3: out@3 {
 					/* refclk3 for PS-GT, used for SATA */
 					reg = <3>;
-					always-on; /* assigned-clocks does not enable, so do it here */
+					always-on;
 				};
 				si5341_4: out@4 {
 					/* refclk4 for PS-GT, used for PCIE slot */
 					reg = <4>;
-					always-on; /* assigned-clocks does not enable, so do it here */
+					always-on;
 				};
 				si5341_5: out@5 {
 					/* refclk5 for PS-GT, used for PCIE */
 					reg = <5>;
-					always-on; /* assigned-clocks does not enable, so do it here */
+					always-on;
 				};
 				si5341_6: out@6 {
 					/* refclk6 PL CLK125 */
 					reg = <6>;
-					always-on; /* assigned-clocks does not enable, so do it here */
+					always-on;
 				};
 				si5341_7: out@7 {
 					/* refclk7 PL CLK74 */
 					reg = <7>;
-					always-on; /* assigned-clocks does not enable, so do it here */
+					always-on;
 				};
 				si5341_9: out@9 {
 					/* refclk9 used for PS_REF_CLK 33.3 MHz */
 					reg = <9>;
-					always-on; /* assigned-clocks does not enable, so do it here */
+					always-on;
 				};
 			};
 		};
@@ -953,6 +953,13 @@
 	status = "okay";
 };
 
+&psgtr {
+	status = "okay";
+	/* pcie, sata, usb3, dp */
+	clocks = <&si5341 0 5>, <&si5341 0 3>, <&si5341 0 2>, <&si5341 0 0>;
+	clock-names = "ref0", "ref1", "ref2", "ref3";
+};
+
 &qspi {
 	status = "okay";
 	is-dual = <1>;
@@ -999,7 +1006,7 @@
 	ceva,p1-burst-params = /bits/ 8 <0x13 0x08 0x4A 0x06>;
 	ceva,p1-retry-params = /bits/ 16 <0x96A4 0x3FFC>;
 	phy-names = "sata-phy";
-	phys = <&lane3 PHY_TYPE_SATA 1 1 125000000>;
+	phys = <&psgtr 3 PHY_TYPE_SATA 1 1>;
 };
 
 /* SD1 with level shifter */
@@ -1013,10 +1020,6 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sdhci1_default>;
 	xlnx,mio-bank = <1>;
-};
-
-&serdes {
-	status = "okay";
 };
 
 &uart0 {
@@ -1043,7 +1046,7 @@
 	dr_mode = "host";
 	snps,usb3_lpm_capable;
 	phy-names = "usb3-phy";
-	phys = <&lane2 PHY_TYPE_USB3 0 2 26000000>;
+	phys = <&psgtr 2 PHY_TYPE_USB3 0 2>;
 	maximum-speed = "super-speed";
 };
 
@@ -1063,10 +1066,14 @@
 	status = "okay";
 };
 
+&zynqmp_dpdma {
+	status = "okay";
+};
+
 &zynqmp_dpsub {
 	status = "okay";
 	phy-names = "dp-phy0";
-	phys = <&lane1 PHY_TYPE_DP 0 3 27000000>;
+	phys = <&psgtr 1 PHY_TYPE_DP 0 3>;
 };
 
 &zynqmp_dp_snd_codec0 {
@@ -1082,9 +1089,5 @@
 };
 
 &zynqmp_dp_snd_card0 {
-	status = "okay";
-};
-
-&xlnx_dpdma {
 	status = "okay";
 };

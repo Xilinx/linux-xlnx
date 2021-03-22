@@ -2,9 +2,11 @@
 
 config VIDEO_XILINX
 	tristate "Xilinx Video IP (EXPERIMENTAL)"
-	depends on VIDEO_V4L2 && VIDEO_V4L2_SUBDEV_API && OF && HAS_DMA
+	depends on VIDEO_V4L2  && OF && HAS_DMA
+	depends on DMADEVICES
+	select MEDIA_CONTROLLER
+	select VIDEO_V4L2_SUBDEV_API
 	select VIDEOBUF2_DMA_CONTIG
-	select DMADEVICES
 	select XILINX_FRMBUF
 	select V4L2_FWNODE
 	help
@@ -12,10 +14,17 @@ config VIDEO_XILINX
 
 if VIDEO_XILINX
 
+config VIDEO_XILINX_CSI2RXSS
+	tristate "Xilinx CSI-2 Rx Subsystem"
+	help
+	  Driver for Xilinx MIPI CSI-2 Rx Subsystem. This is a V4L sub-device
+	  based driver that takes input from CSI-2 Tx source and converts
+	  it into an AXI4-Stream.
+
 config VIDEO_XILINX_AXI4S_SWITCH
 	tristate "Xilinx AXI4-Stream Video Switch"
 	depends on VIDEO_XILINX
-	---help---
+	help
 	  Driver for the Xilinx AXI4-Stream Video Switch. This is a
 	  V4L sub device based driver. It supports fixed (TDEST based)
 	  as well as dynamic (control register based) routing.
@@ -24,19 +33,19 @@ config VIDEO_XILINX_AXI4S_SWITCH
 config VIDEO_XILINX_CFA
 	tristate "Xilinx Video Color Filter Array"
 	depends on VIDEO_XILINX
-	---help---
+	help
 	  Driver for the Xilinx Color Filter Array
 
 config VIDEO_XILINX_CRESAMPLE
 	tristate "Xilinx Video Chroma Resampler"
 	depends on VIDEO_XILINX
-	---help---
+	help
 	  Driver for the Xilinx Chroma Resampler
 
 config VIDEO_XILINX_DEMOSAIC
 	tristate "Xilinx Video Demosaic IP"
 	depends on VIDEO_XILINX
-	---help---
+	help
 	  Driver for Xilinx Video Demosaic IP. This is a V4L sub-device
 	  based driver for the Demosaic IP that takes input a Bayer video
 	  stream format as input and generates an RGB video output.
@@ -45,7 +54,7 @@ config VIDEO_XILINX_DEMOSAIC
 config VIDEO_XILINX_GAMMA
 	tristate "Xilinx Gamma Correction LUT"
 	depends on VIDEO_XILINX
-	---help---
+	help
 	  Driver for Xilinx Gamma Correction LUT IP. This is a V4L sub-device
 	  based driver that exposes V4L controls to adjust Red, Blue and Green
 	  Gamma Correction.
@@ -55,25 +64,25 @@ config VIDEO_XILINX_GAMMA
 config VIDEO_XILINX_HLS
 	tristate "Xilinx Video HLS Core"
 	depends on VIDEO_XILINX
-	---help---
+	help
 	  Driver for the Xilinx Video HLS Cores
 
 config VIDEO_XILINX_REMAPPER
 	tristate "Xilinx Video Remapper"
 	depends on VIDEO_XILINX
-	---help---
+	help
 	  Driver for the Xilinx Video Remapper
 
 config VIDEO_XILINX_RGB2YUV
 	tristate "Xilinx Video RGB to YUV Convertor"
 	depends on VIDEO_XILINX
-	---help---
+	help
 	  Driver for the Xilinx Video RGB to YUV Convertor
 
 config VIDEO_XILINX_SCALER
 	tristate "Xilinx Video Scaler"
 	depends on VIDEO_XILINX
-	---help---
+	help
 	  Driver for the Xilinx Video Scaler
 
 config VIDEO_XILINX_MULTISCALER
@@ -82,7 +91,7 @@ config VIDEO_XILINX_MULTISCALER
 	depends on VIDEO_DEV && VIDEO_V4L2
 	select V4L2_MEM2MEM_DEV
 	select VIDEOBUF2_DMA_CONTIG
-	---help---
+	help
 	  Driver for the Xilinx Video Multi Scaler. This is a V4L2 memory to
 	  memory based driver. Multi-Scaler has max 8 channels which can be
 	  programed for different scaling ratio.
@@ -90,13 +99,13 @@ config VIDEO_XILINX_MULTISCALER
 config VIDEO_XILINX_SDIRXSS
 	tristate "Xilinx SDI Rx Subsystem"
 	depends on VIDEO_XILINX
-	---help---
+	help
 	  Driver for Xilinx SDI Rx Subsystem
 
 config VIDEO_XILINX_SWITCH
 	tristate "Xilinx Video Switch"
 	depends on VIDEO_XILINX
-	---help---
+	help
 	  Driver for the Xilinx Video Switch
 
 config VIDEO_XILINX_TPG
@@ -109,7 +118,7 @@ config VIDEO_XILINX_TPG
 config VIDEO_XILINX_VPSS_CSC
 	tristate "Xilinx VPSS CSC"
 	depends on VIDEO_XILINX
-	---help---
+	help
 	  Driver for the Xilinx Video Processing Sub-System (VPSS)
 	  Color Space Conversion. The driver provides RGB to YUV444
 	  conversion and provides video controls like Brightness,
@@ -119,7 +128,7 @@ config VIDEO_XILINX_VPSS_CSC
 config VIDEO_XILINX_VPSS_SCALER
 	tristate "Xilinx Video VPSS Scaler"
 	depends on VIDEO_XILINX
-	---help---
+	help
 	  Driver for Xilinx Video Processing Sub-System(VPSS) Scaler.
 	  It allows upscaling and downscaling of video. It also supports
 	  limited Color Space Conversion.
@@ -130,12 +139,6 @@ config VIDEO_XILINX_VTC
 	depends on VIDEO_XILINX
 	help
 	  Driver for the Xilinx Video Timing Controller
-
-config VIDEO_XILINX_CSI2RXSS
-	tristate "Xilinx CSI2 Rx Subsystem"
-	depends on VIDEO_XILINX
-	---help---
-	  Driver for Xilinx MIPI CSI2 Rx Subsystem
 
 config VIDEO_XILINX_DPRXSS
 	tristate "Xilinx DP Rx Subsystem"
@@ -149,7 +152,7 @@ config VIDEO_XILINX_DPRXSS
 config VIDEO_XILINX_SCD
 	tristate "Xilinx Scene Change Detect"
 	depends on VIDEO_XILINX
-	---help---
+	help
 	  Driver for Xilinx Scene Change Detection Controller.
 	  The driver allows applications to pass video buffers and
 	  provides if scene change detection is present between
@@ -159,7 +162,7 @@ config VIDEO_XILINX_M2M
 	tristate "Xilinx Video mem2mem"
 	depends on VIDEO_XILINX
 	select V4L2_MEM2MEM_DEV
-	---help---
+	help
 	  Driver for Xilinx V4L2 mem2mem pipeline operation to achieve memory
 	  copy between two different physical memories using DMA transfers.
 

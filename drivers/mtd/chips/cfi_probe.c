@@ -272,8 +272,8 @@ static int __xipram cfi_chip_setup(struct map_info *map,
 		 (extendedId2 == 0x22 || extendedId2 == 0x23 || extendedId2 == 0x28) &&
 		 (extendedId3 == 0x01)) {
 		cfi->cfiq->MaxBufWriteSize = 0x8;
-		pr_warning("Adjusted buffer size on Numonyx flash M29EW family");
-		pr_warning("in 8 bit mode\n");
+		pr_warn("Adjusted buffer size on Numonyx flash M29EW family");
+		pr_warn("in 8 bit mode\n");
     }
 
 #ifdef DEBUG_CFI

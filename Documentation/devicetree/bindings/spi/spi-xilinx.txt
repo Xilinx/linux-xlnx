@@ -9,6 +9,8 @@ Required properties:
 - fifo-size		: Depth of TX/RX Fifos
 
 Optional properties:
+- xlnx,num-ss-bits	 : Number of chip selects used.
+- xlnx,num-transfer-bits : Number of bits per transfer. This will be 8 if not specified
 - num-cs		: Number of chip selects used.
 - bits-per-word		: Number of bits per word.
 - clock-names		: Can be one or more strings from "axi_clk", "axi4_clk"
@@ -24,6 +26,8 @@ Example:
 			interrupt-parent = <&intc>;
 			interrupts = <0 31 1>;
 			reg = <0x41e00000 0x10000>;
+			xlnx,num-ss-bits = <0x1>;
+			xlnx,num-transfer-bits = <32>;
 			num-cs = <0x1>;
 			fifo-size = <256>;
 			bits-per-word = <8>;

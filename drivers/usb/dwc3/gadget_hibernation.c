@@ -4,29 +4,13 @@
  *
  * This file has routines to handle hibernation and wakeup events in gadget mode
  *
- * Author: Mayank Adesara <madesara@xilinx.com>
- * Author: Anurag Kumar Vulisha <anuragku@xilinx.com>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2  of
- * the License as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * Author: Manish Narani <manish.narani@xilinx.com>
  */
 
 #include "core.h"
 #include "gadget.h"
 #include "debug.h"
 #include "io.h"
-
-/* delay - wakeup signal is real or not */
-#define DWC3_WAKEUP_SIGNAL_DELAY	100
 
 /* array of registers to save on hibernation and restore them on wakeup */
 static u32 save_reg_addr[] = {
@@ -202,12 +186,7 @@ static int restore_eps(struct dwc3 *dwc)
 				cmd = DWC3_DEPCMD_STARTTRANSFER |
 					DWC3_DEPCMD_PARAM(0);
 
-				ret = dwc3_send_gadget_ep_cmd(dep, cmd,
-								&params);
-				if (ret < 0)
-					return ret;
-
-				dwc3_gadget_ep_get_transfer_index(dep);
+				dwc3_send_gadget_ep_cmd(dep, cmd, &params);
 			} else {
 				ret = __dwc3_gadget_kick_transfer(dep);
 				if (ret) {
@@ -303,10 +282,10 @@ static int save_endpoint_state(struct dwc3_ep *dep)
 }
 
 /**
- * gadget_hibernation_interrupt - Interrupt handler of hibernation
+ * dwc3_gadget_enter_hibernation - Interrupt handler of hibernation
  * @dwc: pointer to our controller context structure
  */
-void gadget_hibernation_interrupt(struct dwc3 *dwc)
+void dwc3_gadget_enter_hibernation(struct dwc3 *dwc)
 {
 	u32 epnum, reg;
 	int retries, ret;
@@ -342,6 +321,8 @@ void gadget_hibernation_interrupt(struct dwc3 *dwc)
 
 	/* stop the controller */
 	dwc3_gadget_run_stop(dwc, false, true);
+
+	/* set the flag */
 	dwc->is_hibernated = true;
 
 	/*
@@ -361,7 +342,7 @@ void gadget_hibernation_interrupt(struct dwc3 *dwc)
 		dwc3_writel(dwc->regs, DWC3_DCTL, reg);
 	} else {
 		reg |= DWC3_DCTL_KEEP_CONNECT;
-		 dwc3_writel(dwc->regs, DWC3_DCTL, reg);
+		dwc3_writel(dwc->regs, DWC3_DCTL, reg);
 	}
 
 	/* save generic registers */
@@ -386,56 +367,56 @@ void gadget_hibernation_interrupt(struct dwc3 *dwc)
 		goto err;
 	}
 
-	/* Set the controller as wakeup capable */
-	dwc3_simple_wakeup_capable(dwc->dev, true);
-
-	/* set USB core power state to D3 - power down */
-	ret = dwc3_set_usb_core_power(dwc, false);
-	if (ret < 0) {
-		dev_err(dwc->dev, "%s: Failed to hibernate\n", __func__);
-		/* call wakeup handler */
-		gadget_wakeup_interrupt(dwc);
-		return;
+	if (dwc->dwc3_pmu) {
+		ret = regulator_disable(dwc->dwc3_pmu);
+		if (ret) {
+			dev_err(dwc->dev,
+					"%s: %d Failed to enable dwc3_pmu supply\n",
+					__func__, __LINE__);
+			goto err;
+		}
 	}
 
-	dev_info(dwc->dev, "Hibernated!\n");
+	dev_dbg(dwc->dev, "Hibernated!\n");
 	return;
 
 err:
 	dev_err(dwc->dev, "Fail in handling Hibernation Interrupt\n");
+	return;
 }
 
 /**
- * gadget_wakeup_interrupt - Interrupt handler of wakeup
+ * dwc3_gadget_exit_hibernation - Interrupt handler of wakeup
  * @dwc: pointer to our controller context structure
  */
-void gadget_wakeup_interrupt(struct dwc3 *dwc)
+void dwc3_gadget_exit_hibernation(void *_dwc)
 {
+	struct dwc3 *dwc = (struct dwc3 *)(_dwc);
+
 	u32 reg, link_state;
 	int ret, retries;
 	bool enter_hiber = false;
 
 	/* On USB 2.0 we observed back to back wakeup interrupts */
 	if (!dwc->is_hibernated) {
-		dev_err(dwc->dev, "Not in hibernated state\n");
+		dev_dbg(dwc->dev, "Not in hibernated state\n");
 		goto err;
 	}
 
-	/* Restore power to USB core */
-	if (dwc3_set_usb_core_power(dwc, true)) {
-		dev_err(dwc->dev, "Failed to restore USB core power\n");
-		goto err;
+	if (dwc->dwc3_pmu) {
+		ret = regulator_enable(dwc->dwc3_pmu);
+		if (ret) {
+			dev_err(dwc->dev,
+					"%s:%d: Failed to enable dwc3_pmu supply\n",
+					__func__, __LINE__);
+			goto err;
+		}
 	}
-
-	/* Clear the controller wakeup capable flag */
-	dwc3_simple_wakeup_capable(dwc->dev, false);
-
-	/* Initialize the core and restore the saved registers */
-	ret = dwc3_core_init(dwc);
-	if (ret)
-		goto err;
 
 	restore_regs(dwc);
+
+	/* Initialize the core and restore the saved registers */
+	dwc3_core_init(dwc);
 
 	/* ask controller to save the non-sticky registers */
 	reg = dwc3_readl(dwc->regs, DWC3_DCTL);
@@ -490,7 +471,7 @@ void gadget_wakeup_interrupt(struct dwc3 *dwc)
 	 * As some suprious signals also cause wakeup event, wait for some time
 	 * and check the link state to confirm if the wakeup signal is real
 	 */
-	udelay(DWC3_WAKEUP_SIGNAL_DELAY);
+	udelay(10);
 
 	link_state = dwc3_gadget_get_link_state(dwc);
 
@@ -555,13 +536,15 @@ void gadget_wakeup_interrupt(struct dwc3 *dwc)
 		 * as the wakeup was because of the spurious signals,
 		 * enter hibernation again
 		 */
-		gadget_hibernation_interrupt(dwc);
+		dwc3_gadget_enter_hibernation(dwc);
 		return;
 	}
 
-	dev_info(dwc->dev, "We are back from hibernation!\n");
+	dev_dbg(dwc->dev, "We are back from hibernation!\n");
 	return;
 
 err:
 	dev_err(dwc->dev, "Fail in handling Wakeup Interrupt\n");
+	return;
 }
+

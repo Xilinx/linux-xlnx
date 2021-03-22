@@ -16,9 +16,11 @@
  * GNU General Public License for more details.
  */
 
-#include <drm/drmP.h>
+#include <drm/drm_drv.h>
+#include <drm/drm_crtc.h>
 
 #include <linux/list.h>
+#include <linux/dma-mapping.h>
 
 #include "xlnx_crtc.h"
 #include "xlnx_drv.h"

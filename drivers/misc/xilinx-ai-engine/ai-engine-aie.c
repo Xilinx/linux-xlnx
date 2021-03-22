@@ -592,16 +592,16 @@ static int aie_reset_shim(struct aie_device *adev, struct aie_range *range)
 	aie_set_shim_reset(adev, range, true);
 
 	/* Assert shim reset of AI engine array */
-	ret = adev->eemi_ops->reset_assert(VERSAL_PM_RST_AIE_SHIM_ID,
-					   PM_RESET_ACTION_ASSERT);
+	ret = zynqmp_pm_reset_assert(VERSAL_PM_RST_AIE_SHIM_ID,
+				     PM_RESET_ACTION_ASSERT);
 	if (ret < 0) {
 		dev_err(&adev->dev, "failed to assert SHIM reset.\n");
 		return ret;
 	}
 
 	/* Release shim reset of AI engine array */
-	ret = adev->eemi_ops->reset_assert(VERSAL_PM_RST_AIE_SHIM_ID,
-					   PM_RESET_ACTION_RELEASE);
+	ret = zynqmp_pm_reset_assert(VERSAL_PM_RST_AIE_SHIM_ID,
+				     PM_RESET_ACTION_RELEASE);
 	if (ret < 0) {
 		dev_err(&adev->dev, "failed to release SHIM reset.\n");
 		return ret;

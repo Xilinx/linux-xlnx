@@ -2384,7 +2384,7 @@ static int xm2m_msc_probe(struct platform_device *pdev)
 		vfd->device_caps = V4L2_CAP_VIDEO_M2M_MPLANE |
 				   V4L2_CAP_STREAMING;
 
-		ret = video_register_device(vfd, VFL_TYPE_GRABBER, chan);
+		ret = video_register_device(vfd, VFL_TYPE_VIDEO, chan);
 		if (ret) {
 			v4l2_err(&xm2msc->v4l2_dev,
 				 "Failed to register video dev for chan %d\n",

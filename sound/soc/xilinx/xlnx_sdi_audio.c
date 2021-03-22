@@ -244,7 +244,7 @@ static int xlnx_sdi_tx_hw_params(struct snd_pcm_substream *substream,
 	 * probable error scenarios
 	 */
 	if (!ctx->video_mode || !ctx->video_mode->vdisplay ||
-	    !ctx->video_mode->vrefresh) {
+	    !drm_mode_vrefresh(ctx->video_mode)) {
 		dev_err(ctx->dev, "couldn't find video display properties\n");
 		return -EINVAL;
 	}
@@ -278,7 +278,7 @@ static int xlnx_sdi_tx_hw_params(struct snd_pcm_substream *substream,
 		return -EINVAL;
 	}
 
-	switch (ctx->video_mode->vrefresh) {
+	switch (drm_mode_vrefresh(ctx->video_mode)) {
 	case 24:
 		val |= (3 << XSDIAUD_EMB_VID_CNT_TRATE_SHIFT);
 		break;

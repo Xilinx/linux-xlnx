@@ -6,7 +6,6 @@
 
 #include <linux/export.h>
 #include <linux/string.h>
-#include <linux/cryptohash.h>
 #include <linux/delay.h>
 #include <linux/in6.h>
 #include <linux/syscalls.h>
@@ -34,9 +33,7 @@ EXPORT_SYMBOL(memcpy);
 EXPORT_SYMBOL(memmove);
 #endif
 
-#ifdef CONFIG_MMU
 EXPORT_SYMBOL(empty_zero_page);
-#endif
 
 EXPORT_SYMBOL(mbc);
 

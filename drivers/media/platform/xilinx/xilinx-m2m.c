@@ -1433,7 +1433,7 @@ static struct video_device xvip_m2m_videodev = {
 	.release	= video_device_release_empty,
 	.vfl_dir	= VFL_DIR_M2M,
 	.device_caps	= V4L2_CAP_VIDEO_M2M_MPLANE | V4L2_CAP_STREAMING,
-	.vfl_type	= VFL_TYPE_GRABBER,
+	.vfl_type	= VFL_TYPE_VIDEO,
 };
 
 static const struct v4l2_m2m_ops xvip_m2m_ops = {
@@ -1463,7 +1463,7 @@ static int xvideo_register_media_controller(struct video_device *vdev)
 	vdev->entity.function = MEDIA_ENT_F_UNKNOWN;
 
 	switch (vdev->vfl_type) {
-	case VFL_TYPE_GRABBER:
+	case VFL_TYPE_VIDEO:
 		intf_type = MEDIA_INTF_T_V4L_VIDEO;
 		vdev->entity.function = MEDIA_ENT_F_IO_V4L;
 		break;
@@ -1616,7 +1616,7 @@ static int xvip_m2m_dma_init(struct xvip_m2m_dma *dma)
 	if (ret < 0)
 		goto error;
 
-	ret = video_register_device(&dma->video, VFL_TYPE_GRABBER, -1);
+	ret = video_register_device(&dma->video, VFL_TYPE_VIDEO, -1);
 	if (ret < 0) {
 		dev_err(xdev->dev, "Failed to register mem2mem video device\n");
 		goto tx_rx;

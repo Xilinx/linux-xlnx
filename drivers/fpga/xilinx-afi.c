@@ -29,13 +29,6 @@ static int afi_fpga_probe(struct platform_device *pdev)
 	int ret;
 	int i, entries, pairs;
 	u32 reg, val;
-	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
-
-	if (IS_ERR(eemi_ops))
-		return PTR_ERR(eemi_ops);
-
-	if (!eemi_ops->ioctl)
-		return -ENOTSUPP;
 
 	afi_fpga = devm_kzalloc(&pdev->dev, sizeof(*afi_fpga), GFP_KERNEL);
 	if (!afi_fpga)
@@ -62,7 +55,7 @@ static int afi_fpga_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev, "failed to read value\n");
 			return -EINVAL;
 		}
-		ret = eemi_ops->ioctl(0, IOCTL_AFI, reg, val, NULL);
+		ret = zynqmp_pm_afi(reg, val);
 		if (ret < 0) {
 			dev_err(&pdev->dev, "AFI register write error %d\n",
 				ret);

@@ -108,7 +108,7 @@ static int xlnx_i2s_card_hw_params(struct snd_pcm_substream *substream,
 	struct pl_card_data *prv;
 
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
 
 	ch = params_channels(params);
 	data_width = params_width(params);
@@ -284,7 +284,7 @@ static int find_link(struct device_node *node, int direction)
 
 static int xlnx_snd_probe(struct platform_device *pdev)
 {
-	u32 i;
+	u32 i, max_links = 0, start_count = 0;
 	size_t sz;
 	char *buf;
 	int ret, audio_interface;
@@ -298,6 +298,17 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 	if (!node)
 		return -ENODEV;
 
+	if (node[XLNX_PLAYBACK] && node[XLNX_CAPTURE]) {
+		max_links = 2;
+		start_count = XLNX_PLAYBACK;
+	} else if (node[XLNX_PLAYBACK]) {
+		max_links = 1;
+		start_count = XLNX_PLAYBACK;
+	} else if (node[XLNX_CAPTURE]) {
+		max_links = 1;
+		start_count = XLNX_CAPTURE;
+	}
+
 	card = devm_kzalloc(&pdev->dev, sizeof(struct snd_soc_card),
 			    GFP_KERNEL);
 	if (!card)
@@ -306,7 +317,7 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 	card->dev = &pdev->dev;
 
 	card->dai_link = devm_kzalloc(card->dev,
-				      sizeof(*dai) * XLNX_MAX_PATHS,
+				      sizeof(*dai) * max_links,
 				      GFP_KERNEL);
 	if (!card->dai_link)
 		return -ENOMEM;
@@ -318,7 +329,7 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	card->num_links = 0;
-	for (i = XLNX_PLAYBACK; i < XLNX_MAX_PATHS; i++) {
+	for (i = start_count; i < (start_count + max_links); i++) {
 		struct device_node *pnode = of_parse_phandle(node[i],
 							     "xlnx,snd-pcm", 0);
 		if (!pnode) {
@@ -345,7 +356,11 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 		}
 		of_node_put(pnode);
 
-		dai = &card->dai_link[i];
+		if (max_links == 2)
+			dai = &card->dai_link[i];
+		else
+			dai = &card->dai_link[0];
+
 		audio_interface = find_link(node[i], i);
 		switch (audio_interface) {
 		case I2S_AUDIO:

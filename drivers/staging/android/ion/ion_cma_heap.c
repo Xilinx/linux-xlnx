@@ -6,7 +6,7 @@
  * Author: <benjamin.gaignard@linaro.org> for ST-Ericsson.
  */
 
-#include <linux/dma-mapping.h>
+#include <linux/dma-map-ops.h>
 #include <linux/device.h>
 #include <linux/slab.h>
 #include <linux/errno.h>

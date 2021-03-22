@@ -16,7 +16,9 @@
  * GNU General Public License for more details.
  */
 
-#include <drm/drmP.h>
+#include <drm/drm_drv.h>
+#include <drm/drm_vblank.h>
+#include <drm/drm_fourcc.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc_helper.h>
@@ -203,8 +205,8 @@ static struct drm_driver xlnx_drm_driver = {
 	.gem_prime_vmap			= drm_gem_cma_prime_vmap,
 	.gem_prime_vunmap		= drm_gem_cma_prime_vunmap,
 	.gem_prime_mmap			= drm_gem_cma_prime_mmap,
-	.gem_free_object		= drm_gem_cma_free_object,
 	.gem_vm_ops			= &drm_gem_cma_vm_ops,
+	.gem_free_object_unlocked	= drm_gem_cma_free_object,
 	.dumb_create			= xlnx_gem_cma_dumb_create,
 	.dumb_destroy			= drm_gem_dumb_destroy,
 

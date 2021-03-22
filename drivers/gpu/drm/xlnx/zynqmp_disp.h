@@ -1,36 +1,42 @@
-// SPDX-License-Identifier: GPL-2.0
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * ZynqMP Display Driver
  *
- *  Copyright (C) 2017 - 2018 Xilinx, Inc.
+ * Copyright (C) 2017 - 2020 Xilinx, Inc.
  *
- *  Author: Hyun Woo Kwon <hyun.kwon@xilinx.com>
- *
- * This software is licensed under the terms of the GNU General Public
- * License version 2, as published by the Free Software Foundation, and
- * may be copied, distributed, and modified under those terms.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * Authors:
+ * - Hyun Woo Kwon <hyun.kwon@xilinx.com>
+ * - Laurent Pinchart <laurent.pinchart@ideasonboard.com>
  */
 
 #ifndef _ZYNQMP_DISP_H_
 #define _ZYNQMP_DISP_H_
 
+#include <linux/types.h>
+
+/*
+ * 3840x2160 is advertised as the maximum resolution, but almost any
+ * resolutions under a 300Mhz pixel rate would work. Pick 4096x4096.
+ */
+#define ZYNQMP_DISP_MAX_WIDTH				4096
+#define ZYNQMP_DISP_MAX_HEIGHT				4096
+
+/* The DPDMA is limited to 44 bit addressing. */
+#define ZYNQMP_DISP_MAX_DMA_BIT				44
+
+struct device;
+struct drm_device;
+struct platform_device;
 struct zynqmp_disp;
+struct zynqmp_dpsub;
 
 void zynqmp_disp_handle_vblank(struct zynqmp_disp *disp);
-unsigned int zynqmp_disp_get_apb_clk_rate(struct zynqmp_disp *disp);
-bool zynqmp_disp_aud_enabled(struct zynqmp_disp *disp);
-unsigned int zynqmp_disp_get_aud_clk_rate(struct zynqmp_disp *disp);
+bool zynqmp_disp_audio_enabled(struct zynqmp_disp *disp);
+unsigned int zynqmp_disp_get_audio_clk_rate(struct zynqmp_disp *disp);
 uint32_t zynqmp_disp_get_crtc_mask(struct zynqmp_disp *disp);
 
-int zynqmp_disp_bind(struct device *dev, struct device *master, void *data);
-void zynqmp_disp_unbind(struct device *dev, struct device *master, void *data);
-
-int zynqmp_disp_probe(struct platform_device *pdev);
-int zynqmp_disp_remove(struct platform_device *pdev);
+int zynqmp_disp_drm_init(struct zynqmp_dpsub *dpsub);
+int zynqmp_disp_probe(struct zynqmp_dpsub *dpsub, struct drm_device *drm);
+void zynqmp_disp_remove(struct zynqmp_dpsub *dpsub);
 
 #endif /* _ZYNQMP_DISP_H_ */

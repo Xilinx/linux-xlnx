@@ -169,7 +169,7 @@ static void ams_enable_channel_sequence(struct ams *ams)
 {
 	int i;
 	unsigned long long scan_mask;
-	struct iio_dev *indio_dev = iio_priv_to_dev(ams);
+	struct iio_dev *indio_dev = ams->indio_dev;
 
 	/* Enable channel sequence. First 22 bit of scan_mask represent
 	 * PS channels, and  next remaining bit represents PL channels.
@@ -1006,6 +1006,7 @@ static int ams_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	ams = iio_priv(indio_dev);
+	ams->indio_dev = indio_dev;
 	ams->pl_bus = id->data;
 	mutex_init(&ams->mutex);
 	spin_lock_init(&ams->lock);

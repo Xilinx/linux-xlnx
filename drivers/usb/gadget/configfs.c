@@ -13,8 +13,6 @@
 int check_user_usb_string(const char *name,
 		struct usb_gadget_strings *stringtab_dev)
 {
-	unsigned primary_lang;
-	unsigned sub_lang;
 	u16 num;
 	int ret;
 
@@ -22,17 +20,7 @@ int check_user_usb_string(const char *name,
 	if (ret)
 		return ret;
 
-	primary_lang = num & 0x3ff;
-	sub_lang = num >> 10;
-
-	/* simple sanity check for valid langid */
-	switch (primary_lang) {
-	case 0:
-	case 0x62 ... 0xfe:
-	case 0x100 ... 0x3ff:
-		return -EINVAL;
-	}
-	if (!sub_lang)
+	if (!usb_validate_langid(num))
 		return -EINVAL;
 
 	stringtab_dev->language = num;
@@ -115,7 +103,7 @@ static int usb_string_copy(const char *s, char **s_copy)
 	char *str;
 	char *copy = *s_copy;
 	ret = strlen(s);
-	if (ret > 126)
+	if (ret > USB_MAX_STRING_LEN)
 		return -EOVERFLOW;
 
 	str = kstrdup(s, GFP_KERNEL);
@@ -231,47 +219,6 @@ static ssize_t gadget_dev_desc_bcdUSB_store(struct config_item *item,
 	return len;
 }
 
-static ssize_t gadget_dev_desc_max_speed_show(struct config_item *item,
-					      char *page)
-{
-	struct gadget_info *gi = to_gadget_info(item);
-	enum usb_device_speed max_speed = gi->composite.gadget_driver.max_speed;
-
-	return sprintf(page, "%s\n", usb_speed_string(max_speed));
-}
-
-static ssize_t gadget_dev_desc_max_speed_store(struct config_item *item,
-					       const char *page, size_t len)
-{
-	struct gadget_info *gi = to_gadget_info(item);
-	char *name;
-	int ret;
-	const char * const speed_names[] = {
-		[USB_SPEED_UNKNOWN] = "UNKNOWN",
-		[USB_SPEED_LOW] = "low-speed",
-		[USB_SPEED_FULL] = "full-speed",
-		[USB_SPEED_HIGH] = "high-speed",
-		[USB_SPEED_WIRELESS] = "wireless",
-		[USB_SPEED_SUPER] = "super-speed",
-		[USB_SPEED_SUPER_PLUS] = "super-speed-plus",
-	};
-
-	name = kstrdup(page, GFP_KERNEL);
-	if (!name)
-		return -ENOMEM;
-	if (name[len - 1] == '\n')
-		name[len - 1] = '\0';
-
-	ret = match_string(speed_names, ARRAY_SIZE(speed_names), name);
-
-	if (ret != -EINVAL) {
-		gi->composite.gadget_driver.max_speed = ret;
-		return len;
-	}
-
-	return ret;
-}
-
 static ssize_t gadget_dev_desc_UDC_show(struct config_item *item, char *page)
 {
 	char *udc_name = to_gadget_info(item)->composite.gadget_driver.udc_name;
@@ -300,6 +247,9 @@ static ssize_t gadget_dev_desc_UDC_store(struct config_item *item,
 	struct gadget_info *gi = to_gadget_info(item);
 	char *name;
 	int ret;
+
+	if (strlen(page) < len)
+		return -EOVERFLOW;
 
 	name = kstrdup(page, GFP_KERNEL);
 	if (!name)
@@ -334,6 +284,47 @@ err:
 	return ret;
 }
 
+static ssize_t gadget_dev_desc_max_speed_show(struct config_item *item,
+					      char *page)
+{
+	enum usb_device_speed speed = to_gadget_info(item)->composite.max_speed;
+
+	return sprintf(page, "%s\n", usb_speed_string(speed));
+}
+
+static ssize_t gadget_dev_desc_max_speed_store(struct config_item *item,
+					       const char *page, size_t len)
+{
+	struct gadget_info *gi = to_gadget_info(item);
+
+	mutex_lock(&gi->lock);
+
+	/* Prevent changing of max_speed after the driver is binded */
+	if (gi->composite.gadget_driver.udc_name)
+		goto err;
+
+	if (strncmp(page, "super-speed-plus", 16) == 0)
+		gi->composite.max_speed = USB_SPEED_SUPER_PLUS;
+	else if (strncmp(page, "super-speed", 11) == 0)
+		gi->composite.max_speed = USB_SPEED_SUPER;
+	else if (strncmp(page, "high-speed", 10) == 0)
+		gi->composite.max_speed = USB_SPEED_HIGH;
+	else if (strncmp(page, "full-speed", 10) == 0)
+		gi->composite.max_speed = USB_SPEED_FULL;
+	else if (strncmp(page, "low-speed", 9) == 0)
+		gi->composite.max_speed = USB_SPEED_LOW;
+	else
+		goto err;
+
+	gi->composite.gadget_driver.max_speed = gi->composite.max_speed;
+
+	mutex_unlock(&gi->lock);
+	return len;
+err:
+	mutex_unlock(&gi->lock);
+	return -EINVAL;
+}
+
 CONFIGFS_ATTR(gadget_dev_desc_, bDeviceClass);
 CONFIGFS_ATTR(gadget_dev_desc_, bDeviceSubClass);
 CONFIGFS_ATTR(gadget_dev_desc_, bDeviceProtocol);
@@ -342,8 +333,8 @@ CONFIGFS_ATTR(gadget_dev_desc_, idVendor);
 CONFIGFS_ATTR(gadget_dev_desc_, idProduct);
 CONFIGFS_ATTR(gadget_dev_desc_, bcdDevice);
 CONFIGFS_ATTR(gadget_dev_desc_, bcdUSB);
-CONFIGFS_ATTR(gadget_dev_desc_, max_speed);
 CONFIGFS_ATTR(gadget_dev_desc_, UDC);
+CONFIGFS_ATTR(gadget_dev_desc_, max_speed);
 
 static struct configfs_attribute *gadget_root_attrs[] = {
 	&gadget_dev_desc_attr_bDeviceClass,
@@ -354,8 +345,8 @@ static struct configfs_attribute *gadget_root_attrs[] = {
 	&gadget_dev_desc_attr_idProduct,
 	&gadget_dev_desc_attr_bcdDevice,
 	&gadget_dev_desc_attr_bcdUSB,
-	&gadget_dev_desc_attr_max_speed,
 	&gadget_dev_desc_attr_UDC,
+	&gadget_dev_desc_attr_max_speed,
 	NULL,
 };
 
@@ -1585,8 +1576,9 @@ static struct config_group *gadgets_make(
 	gi->composite.unbind = configfs_do_nothing;
 	gi->composite.suspend = NULL;
 	gi->composite.resume = NULL;
-	gi->composite.max_speed = gi->composite.gadget_driver.max_speed;
+	gi->composite.max_speed = USB_SPEED_SUPER;
 
+	spin_lock_init(&gi->spinlock);
 	mutex_init(&gi->lock);
 	INIT_LIST_HEAD(&gi->string_list);
 	INIT_LIST_HEAD(&gi->available_func);

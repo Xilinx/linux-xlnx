@@ -936,7 +936,7 @@ static int pl353_nfc_exec_op(struct nand_chip *chip,
  * Return:	0 on success or negative errno.
  */
 static int pl353_nand_ecc_init(struct mtd_info *mtd, struct nand_ecc_ctrl *ecc,
-			       int ecc_mode)
+			       int ecc_engine_type)
 {
 	struct nand_chip *chip = mtd_to_nand(mtd);
 	struct pl353_nand_controller *xnfc = to_pl353_nand(chip);
@@ -947,7 +947,7 @@ static int pl353_nand_ecc_init(struct mtd_info *mtd, struct nand_ecc_ctrl *ecc,
 	ecc->write_page_raw = pl353_nand_write_page_raw;
 	ecc->read_page_raw = pl353_nand_read_page_raw;
 
-	if (ecc_mode == NAND_ECC_ON_DIE) {
+	if (ecc_engine_type == NAND_ECC_ENGINE_TYPE_ON_DIE) {
 		ecc->write_page = pl353_nand_write_page_raw;
 		ecc->read_page = pl353_nand_read_page_raw;
 
@@ -962,7 +962,7 @@ static int pl353_nand_ecc_init(struct mtd_info *mtd, struct nand_ecc_ctrl *ecc,
 			return ret;
 
 	} else {
-		ecc->mode = NAND_ECC_HW;
+		ecc->engine_type = NAND_ECC_ENGINE_TYPE_ON_HOST;
 
 		/* Hardware ECC generates 3 bytes ECC code for each 512 bytes */
 		ecc->bytes = 3;
@@ -1000,8 +1000,8 @@ static int pl353_nand_ecc_init(struct mtd_info *mtd, struct nand_ecc_ctrl *ecc,
 	return ret;
 }
 
-static int pl353_nfc_setup_data_interface(struct nand_chip *chip, int csline,
-					  const struct nand_data_interface
+static int pl353_nfc_setup_interface(struct nand_chip *chip, int csline,
+					  const struct nand_interface_config
 					  *conf)
 {
 	struct pl353_nand_controller *xnfc = to_pl353_nand(chip);
@@ -1072,7 +1072,7 @@ static int pl353_nand_attach_chip(struct nand_chip *chip)
 	else
 		xnfc->addr_cycles += 2;
 
-	ret = pl353_nand_ecc_init(mtd, &chip->ecc, chip->ecc.mode);
+	ret = pl353_nand_ecc_init(mtd, &chip->ecc, chip->ecc.engine_type);
 	if (ret) {
 		dev_err(xnfc->dev, "ECC init failed\n");
 		return ret;
@@ -1103,7 +1103,7 @@ static int pl353_nand_attach_chip(struct nand_chip *chip)
 static const struct nand_controller_ops pl353_nand_controller_ops = {
 	.attach_chip = pl353_nand_attach_chip,
 	.exec_op = pl353_nfc_exec_op,
-	.setup_data_interface = pl353_nfc_setup_data_interface,
+	.setup_interface = pl353_nfc_setup_interface,
 };
 
 /**
@@ -1200,7 +1200,7 @@ static int pl353_nand_remove(struct platform_device *pdev)
 	struct nand_chip *chip = mtd_to_nand(mtd);
 
 	/* Release resources, unregister device */
-	nand_release(chip);
+	nand_cleanup(chip);
 
 	return 0;
 }

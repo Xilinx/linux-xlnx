@@ -49,6 +49,17 @@ config PHY_XGENE
 	help
 	  This option enables support for APM X-Gene SoC multi-purpose PHY.
 
+config USB_LGM_PHY
+	tristate "INTEL Lightning Mountain USB PHY Driver"
+	depends on USB_SUPPORT
+	select USB_PHY
+	select REGULATOR
+	select REGULATOR_FIXED_VOLTAGE
+	help
+	  Enable this to support Intel DWC3 PHY USB phy. This driver provides
+	  interface to interact with USB GEN-II and USB 3.x PHY that is part
+	  of the Intel network SOC.
+
 source "drivers/phy/allwinner/Kconfig"
 source "drivers/phy/amlogic/Kconfig"
 source "drivers/phy/broadcom/Kconfig"
@@ -67,16 +78,9 @@ source "drivers/phy/rockchip/Kconfig"
 source "drivers/phy/samsung/Kconfig"
 source "drivers/phy/socionext/Kconfig"
 source "drivers/phy/st/Kconfig"
-
-config PHY_XILINX_ZYNQMP
-	tristate "Xilinx ZynqMP PHY driver"
-	depends on ARCH_ZYNQMP
-	select GENERIC_PHY
-	help
-	  Enable this to support ZynqMP High Speed Gigabit Transceiver
-	  that is part of ZynqMP SoC.
-
 source "drivers/phy/tegra/Kconfig"
 source "drivers/phy/ti/Kconfig"
+source "drivers/phy/intel/Kconfig"
+source "drivers/phy/xilinx/Kconfig"
 
 endmenu

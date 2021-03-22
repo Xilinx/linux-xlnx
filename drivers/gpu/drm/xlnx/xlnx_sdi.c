@@ -9,10 +9,10 @@
 
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc_helper.h>
-#include <drm/drmP.h>
 #include <drm/drm_probe_helper.h>
 #include <linux/bitfield.h>
 #include <linux/clk.h>
+#include <linux/delay.h>
 #include <linux/component.h>
 #include <linux/device.h>
 #include <linux/gpio/consumer.h>
@@ -1033,8 +1033,8 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 			    sdi->width_out_prop_val &&
 			    xlnx_sdi_modes[i].mode.vdisplay ==
 			    sdi->height_out_prop_val &&
-			    xlnx_sdi_modes[i].mode.vrefresh ==
-			    adjusted_mode->vrefresh) {
+			    drm_mode_vrefresh(&xlnx_sdi_modes[i].mode) ==
+			    drm_mode_vrefresh(adjusted_mode)) {
 				memcpy((char *)adjusted_mode +
 				       offsetof(struct drm_display_mode,
 						clock),
@@ -1112,8 +1112,10 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	/* parameters for sdi audio */
 	sdi->video_mode.vdisplay = adjusted_mode->vdisplay;
 	sdi->video_mode.hdisplay = adjusted_mode->hdisplay;
-	sdi->video_mode.vrefresh = adjusted_mode->vrefresh;
 	sdi->video_mode.flags = adjusted_mode->flags;
+	sdi->video_mode.htotal = adjusted_mode->htotal;
+	sdi->video_mode.vtotal = adjusted_mode->vtotal;
+	sdi->video_mode.clock = adjusted_mode->clock;
 
 	xlnx_stc_sig(sdi->base, &vm);
 }

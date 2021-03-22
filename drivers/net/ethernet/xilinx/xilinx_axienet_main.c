@@ -62,9 +62,22 @@
 #define AXIENET_REGS_N		40
 #define AXIENET_TS_HEADER_LEN	8
 #define XXVENET_TS_HEADER_LEN	4
+#define MRMAC_TS_HEADER_LEN		16
+#define MRMAC_TS_HEADER_WORDS   (MRMAC_TS_HEADER_LEN / 4)
 #define NS_PER_SEC              1000000000ULL /* Nanoseconds per second */
 
 #define MRMAC_RESET_DELAY	1 /* Delay in msecs*/
+
+/* IEEE1588 Message Type field values  */
+#define PTP_TYPE_SYNC		0
+#define PTP_TYPE_PDELAY_REQ	2
+#define PTP_TYPE_PDELAY_RESP	3
+#define PTP_TYPE_OFFSET		42
+/* SW flags used to convey message type for command FIFO handling */
+#define MSG_TYPE_SHIFT			4
+#define MSG_TYPE_SYNC_FLAG		((PTP_TYPE_SYNC + 1) << MSG_TYPE_SHIFT)
+#define MSG_TYPE_PDELAY_RESP_FLAG	((PTP_TYPE_PDELAY_RESP + 1) << \
+									 MSG_TYPE_SHIFT)
 
 #ifdef CONFIG_XILINX_TSN_PTP
 int axienet_phc_index = -1;
@@ -769,9 +782,11 @@ void axienet_tx_hwtstamp(struct axienet_local *lp,
 	err = readl_poll_timeout_atomic(lp->tx_ts_regs + XAXIFIFO_TXTS_RLR, val,
 					((val & XAXIFIFO_TXTS_RXFD_MASK) >=
 					len), 0, 1000000);
-	if (err)
+	if (err) {
 		netdev_err(lp->ndev, "%s: Didn't get the full timestamp packet",
 			   __func__);
+		goto skb_exit;
+	}
 
 	nsec = axienet_txts_ior(lp, XAXIFIFO_TXTS_RXFD);
 	sec  = axienet_txts_ior(lp, XAXIFIFO_TXTS_RXFD);
@@ -807,6 +822,7 @@ void axienet_tx_hwtstamp(struct axienet_local *lp,
 	    lp->axienet_config->mactype != XAXIENET_MRMAC)
 		val = axienet_txts_ior(lp, XAXIFIFO_TXTS_RXFD);
 
+skb_exit:
 	time64 = sec * NS_PER_SEC + nsec;
 	memset(shhwtstamps, 0, sizeof(struct skb_shared_hwtstamps));
 	shhwtstamps->hwtstamp = ns_to_ktime(time64);
@@ -818,6 +834,16 @@ void axienet_tx_hwtstamp(struct axienet_local *lp,
 	skb_tstamp_tx((struct sk_buff *)cur_p->ptp_tx_skb, shhwtstamps);
 	dev_kfree_skb_any((struct sk_buff *)cur_p->ptp_tx_skb);
 	cur_p->ptp_tx_skb = 0;
+}
+
+static inline bool is_ptp_os_pdelay_req(struct sk_buff *skb,
+					struct axienet_local *lp)
+{
+	u8 *msg_type;
+
+	msg_type = (u8 *)skb->data + PTP_TYPE_OFFSET;
+	return (((*msg_type & 0xF) == PTP_TYPE_PDELAY_REQ) &&
+		(lp->tstamp_config.tx_type == HWTSTAMP_TX_ONESTEP_P2P));
 }
 
 /**
@@ -860,6 +886,15 @@ static void axienet_rx_hwtstamp(struct axienet_local *lp,
 	nsec = axienet_rxts_ior(lp, XAXIFIFO_TXTS_RXFD);
 	sec  = axienet_rxts_ior(lp, XAXIFIFO_TXTS_RXFD);
 	val = axienet_rxts_ior(lp, XAXIFIFO_TXTS_RXFD);
+
+	if (is_ptp_os_pdelay_req(skb, lp)) {
+		/* Need to save PDelay resp RX time for HW 1 step
+		 * timestamping on PDelay Response.
+		 */
+		lp->ptp_os_cf = mul_u32_u32(sec, NSEC_PER_SEC);
+		lp->ptp_os_cf += nsec;
+		lp->ptp_os_cf = (lp->ptp_os_cf << 16);
+	}
 
 	if (lp->tstamp_config.rx_filter == HWTSTAMP_FILTER_ALL) {
 		time64 = sec * NS_PER_SEC + nsec;
@@ -1018,8 +1053,9 @@ static int axienet_create_tsheader(u8 *buf, u8 msg_type,
 	struct axidma_bd *cur_p;
 #endif
 	u64 val;
-	u32 tmp;
+	u32 tmp[MRMAC_TS_HEADER_WORDS];
 	u32 flags;
+	int i;
 
 #ifdef CONFIG_AXIENET_HAS_MCDMA
 	cur_p = &q->txq_bd_v[q->tx_bd_tail];
@@ -1027,13 +1063,36 @@ static int axienet_create_tsheader(u8 *buf, u8 msg_type,
 	cur_p = &q->tx_bd_v[q->tx_bd_tail];
 #endif
 
-	if (msg_type == TX_TS_OP_NOOP) {
+	if ((msg_type & 0xF) == TX_TS_OP_NOOP) {
 		buf[0] = TX_TS_OP_NOOP;
-	} else if (msg_type == TX_TS_OP_ONESTEP) {
-		buf[0] = TX_TS_OP_ONESTEP;
-		buf[1] = TX_TS_CSUM_UPDATE;
-		buf[4] = TX_PTP_TS_OFFSET;
-		buf[6] = TX_PTP_CSUM_OFFSET;
+	} else if ((msg_type & 0xF) == TX_TS_OP_ONESTEP) {
+		if (lp->axienet_config->mactype == XAXIENET_MRMAC) {
+			/* For Sync Packet */
+			if ((msg_type & 0xF0) == MSG_TYPE_SYNC_FLAG) {
+				buf[0] = TX_TS_OP_ONESTEP | TX_TS_CSUM_UPDATE_MRMAC;
+				buf[2] = cur_p->ptp_tx_ts_tag & 0xFF;
+				buf[3] = (cur_p->ptp_tx_ts_tag >> 8) & 0xFF;
+				buf[4] = TX_PTP_CF_OFFSET;
+				buf[6] = TX_PTP_CSUM_OFFSET;
+			}
+			/* For PDelay Response packet */
+			if ((msg_type & 0xF0) == MSG_TYPE_PDELAY_RESP_FLAG) {
+				buf[0] = TX_TS_OP_ONESTEP | TX_TS_CSUM_UPDATE_MRMAC |
+					TX_TS_PDELAY_UPDATE_MRMAC;
+				buf[2] = cur_p->ptp_tx_ts_tag & 0xFF;
+				buf[3] = (cur_p->ptp_tx_ts_tag >> 8) & 0xFF;
+				buf[4] = TX_PTP_CF_OFFSET;
+				buf[6] = TX_PTP_CSUM_OFFSET;
+				/* Prev saved TS */
+				memcpy(&buf[8], &lp->ptp_os_cf, 8);
+			}
+		} else {
+			/* Legacy */
+			buf[0] = TX_TS_OP_ONESTEP;
+			buf[1] = TX_TS_CSUM_UPDATE;
+			buf[4] = TX_PTP_TS_OFFSET;
+			buf[6] = TX_PTP_CSUM_OFFSET;
+		}
 	} else {
 		buf[0] = TX_TS_OP_TWOSTEP;
 		buf[2] = cur_p->ptp_tx_ts_tag & 0xFF;
@@ -1047,16 +1106,18 @@ static int axienet_create_tsheader(u8 *buf, u8 msg_type,
 		memcpy(buf, &val, AXIENET_TS_HEADER_LEN);
 	} else if (lp->axienet_config->mactype == XAXIENET_10G_25G ||
 		   lp->axienet_config->mactype == XAXIENET_MRMAC) {
-		memcpy(&tmp, buf, XXVENET_TS_HEADER_LEN);
+		memcpy(&tmp[0], buf, lp->axienet_config->ts_header_len);
 		/* Check for Transmit Data FIFO Vacancy */
 		spin_lock_irqsave(&lp->ptp_tx_lock, flags);
 		if (!axienet_txts_ior(lp, XAXIFIFO_TXTS_TDFV)) {
 			spin_unlock_irqrestore(&lp->ptp_tx_lock, flags);
 			return NETDEV_TX_BUSY;
 		}
-		axienet_txts_iow(lp, XAXIFIFO_TXTS_TXFD, tmp);
-		axienet_txts_iow(lp, XAXIFIFO_TXTS_TLR,
-				 XXVENET_TS_HEADER_LEN);
+
+		for (i = 0; i < lp->axienet_config->ts_header_len / 4; i++)
+			axienet_txts_iow(lp, XAXIFIFO_TXTS_TXFD, tmp[i]);
+
+		axienet_txts_iow(lp, XAXIFIFO_TXTS_TLR, lp->axienet_config->ts_header_len);
 		spin_unlock_irqrestore(&lp->ptp_tx_lock, flags);
 	}
 
@@ -1065,6 +1126,22 @@ static int axienet_create_tsheader(u8 *buf, u8 msg_type,
 #endif
 
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
+static inline u8 ptp_os(struct sk_buff *skb, struct axienet_local *lp)
+{
+	u8 *msg_type;
+	int packet_flags = 0;
+
+	/* Identify and return packets requiring PTP one step TS */
+	msg_type = (u8 *)skb->data + PTP_TYPE_OFFSET;
+	if ((*msg_type & 0xF) == PTP_TYPE_SYNC)
+		packet_flags = MSG_TYPE_SYNC_FLAG;
+	else if (((*msg_type & 0xF) == PTP_TYPE_PDELAY_RESP) &&
+		 (lp->tstamp_config.tx_type == HWTSTAMP_TX_ONESTEP_P2P))
+		packet_flags = MSG_TYPE_PDELAY_RESP_FLAG;
+
+	return packet_flags;
+}
+
 static int axienet_skb_tstsmp(struct sk_buff **__skb, struct axienet_dma_q *q,
 			      struct net_device *ndev)
 {
@@ -1132,16 +1209,34 @@ static int axienet_skb_tstsmp(struct sk_buff **__skb, struct axienet_dma_q *q,
 			}
 		}
 	} else if ((skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) &&
-			  (lp->axienet_config->mactype == XAXIENET_10G_25G ||
-			   lp->axienet_config->mactype == XAXIENET_MRMAC)) {
+		   (lp->axienet_config->mactype == XAXIENET_10G_25G ||
+		   lp->axienet_config->mactype == XAXIENET_MRMAC)) {
 			cur_p->ptp_tx_ts_tag = prandom_u32_max(XAXIFIFO_TXTS_TAG_MAX) + 1;
 			dev_dbg(lp->dev, "tx_tag:[%04x]\n",
 				cur_p->ptp_tx_ts_tag);
-			if (lp->tstamp_config.tx_type == HWTSTAMP_TX_ONESTEP_SYNC) {
+			if (lp->tstamp_config.tx_type == HWTSTAMP_TX_ONESTEP_SYNC ||
+			    lp->tstamp_config.tx_type == HWTSTAMP_TX_ONESTEP_P2P) {
+				u8 packet_flags = ptp_os(skb, lp);
+
+				/* Pass one step flag with packet type (sync/pdelay resp)
+				 * to command FIFO helper only when one step TS is required.
+				 * Pass the default two step flag for other PTP events.
+				 */
+				if (!packet_flags)
+					packet_flags = TX_TS_OP_TWOSTEP;
+				else
+					packet_flags |= TX_TS_OP_ONESTEP;
+
 				if (axienet_create_tsheader(lp->tx_ptpheader,
-							    TX_TS_OP_ONESTEP,
+							    packet_flags,
 							    q))
 					return NETDEV_TX_BUSY;
+
+				/* skb TS passing is required for non one step TS packets */
+				if (packet_flags == TX_TS_OP_TWOSTEP) {
+					skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
+					cur_p->ptp_tx_skb = (phys_addr_t)skb_get(skb);
+				}
 			} else {
 				if (axienet_create_tsheader(lp->tx_ptpheader,
 							    TX_TS_OP_TWOSTEP,
@@ -1497,8 +1592,8 @@ static int axienet_recv(struct net_device *ndev, int budget,
 		wmb();
 
 		cur_p->phys = dma_map_single(ndev->dev.parent, new_skb->data,
-					     lp->max_frm_size,
-					     DMA_FROM_DEVICE);
+					   lp->max_frm_size,
+					   DMA_FROM_DEVICE);
 		cur_p->cntrl = lp->max_frm_size;
 		cur_p->status = 0;
 		cur_p->sw_id_offset = (phys_addr_t)new_skb;
@@ -1814,10 +1909,8 @@ static int axienet_open(struct net_device *ndev)
 		 */
 		axienet_iow(lp, MRMAC_TX_STS_OFFSET, MRMAC_STS_ALL_MASK);
 		axienet_iow(lp, MRMAC_RX_STS_OFFSET, MRMAC_STS_ALL_MASK);
-		axienet_iow(lp, MRMAC_STATRX_BLKLCK_OFFSET, MRMAC_STS_ALL_MASK);
-		err = readl_poll_timeout(lp->regs + MRMAC_STATRX_BLKLCK_OFFSET,
-					 val, (val & MRMAC_RX_BLKLCK_MASK),
-					 10, DELAY_OF_ONE_MILLISEC);
+		err = readx_poll_timeout(axienet_get_mrmac_blocklock, lp, val,
+					 (val & MRMAC_RX_BLKLCK_MASK), 10, DELAY_OF_ONE_MILLISEC);
 		if (err) {
 			netdev_err(ndev, "MRMAC block lock not complete! Cross-check the MAC ref clock configuration\n");
 			ret = -ENODEV;
@@ -2054,10 +2147,22 @@ static int axienet_set_timestamp_mode(struct axienet_local *lp,
 	case HWTSTAMP_TX_ON:
 		config->tx_type = HWTSTAMP_TX_ON;
 		regval |= XAE_TC_INBAND1588_MASK;
+		if (lp->axienet_config->mactype == XAXIENET_MRMAC)
+			axienet_iow(lp, MRMAC_CFG1588_OFFSET, 0x0);
 		break;
 	case HWTSTAMP_TX_ONESTEP_SYNC:
 		config->tx_type = HWTSTAMP_TX_ONESTEP_SYNC;
 		regval |= XAE_TC_INBAND1588_MASK;
+		if (lp->axienet_config->mactype == XAXIENET_MRMAC)
+			axienet_iow(lp, MRMAC_CFG1588_OFFSET, MRMAC_ONE_STEP_EN);
+		break;
+	case HWTSTAMP_TX_ONESTEP_P2P:
+		if (lp->axienet_config->mactype == XAXIENET_MRMAC) {
+			config->tx_type = HWTSTAMP_TX_ONESTEP_P2P;
+			axienet_iow(lp, MRMAC_CFG1588_OFFSET, MRMAC_ONE_STEP_EN);
+		} else {
+			return -ERANGE;
+		}
 		break;
 	default:
 		return -ERANGE;
@@ -2505,7 +2610,9 @@ static int axienet_ethtools_get_ts_info(struct net_device *ndev,
 	info->so_timestamping = SOF_TIMESTAMPING_TX_HARDWARE |
 				SOF_TIMESTAMPING_RX_HARDWARE |
 				SOF_TIMESTAMPING_RAW_HARDWARE;
-	info->tx_types = (1 << HWTSTAMP_TX_OFF) | (1 << HWTSTAMP_TX_ON);
+	info->tx_types = (1 << HWTSTAMP_TX_OFF) | (1 << HWTSTAMP_TX_ON) |
+			(1 << HWTSTAMP_TX_ONESTEP_SYNC) |
+			(1 << HWTSTAMP_TX_ONESTEP_P2P);
 	info->rx_filters = (1 << HWTSTAMP_FILTER_NONE) |
 			   (1 << HWTSTAMP_FILTER_ALL);
 	info->phc_index = lp->phc_index;
@@ -2518,6 +2625,7 @@ static int axienet_ethtools_get_ts_info(struct net_device *ndev,
 #endif
 
 static const struct ethtool_ops axienet_ethtool_ops = {
+	.supported_coalesce_params = ETHTOOL_COALESCE_MAX_FRAMES,
 	.get_drvinfo    = axienet_ethtools_get_drvinfo,
 	.get_regs_len   = axienet_ethtools_get_regs_len,
 	.get_regs       = axienet_ethtools_get_regs,
@@ -2947,6 +3055,7 @@ static const struct axienet_config axienet_10g25g_config = {
 	.setoptions = xxvenet_setoptions,
 	.clk_init = xxvenet_clk_init,
 	.tx_ptplen = XXV_TX_PTP_LEN,
+	.ts_header_len = XXVENET_TS_HEADER_LEN,
 };
 
 static const struct axienet_config axienet_usxgmii_config = {
@@ -2960,7 +3069,8 @@ static const struct axienet_config axienet_mrmac_config = {
 	.mactype = XAXIENET_MRMAC,
 	.setoptions = xxvenet_setoptions,
 	.clk_init = xxvenet_clk_init,
-	.tx_ptplen = 0,
+	.tx_ptplen = XXV_TX_PTP_LEN,
+	.ts_header_len = MRMAC_TS_HEADER_LEN,
 };
 
 /* Match table for of_platform binding */
@@ -3297,9 +3407,10 @@ static int axienet_probe(struct platform_device *pdev)
 				ret = PTR_ERR(lp->rx_ts_regs);
 				goto free_netdev;
 			}
+
 			lp->tx_ptpheader = devm_kzalloc(&pdev->dev,
-						XXVENET_TS_HEADER_LEN,
-						GFP_KERNEL);
+							lp->axienet_config->ts_header_len,
+							GFP_KERNEL);
 			spin_lock_init(&lp->ptp_tx_lock);
 		}
 
@@ -3363,7 +3474,7 @@ static int axienet_probe(struct platform_device *pdev)
 	lp->coalesce_count_rx = XAXIDMA_DFT_RX_THRESHOLD;
 	lp->coalesce_count_tx = XAXIDMA_DFT_TX_THRESHOLD;
 
-	ret = of_get_phy_mode(pdev->dev.of_node);
+	ret = of_get_phy_mode(pdev->dev.of_node, &lp->phy_mode);
 	if (ret < 0)
 		dev_warn(&pdev->dev, "couldn't find phy i/f\n");
 	lp->phy_interface = ret;

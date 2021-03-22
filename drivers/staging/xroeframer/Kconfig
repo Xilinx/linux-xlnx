@@ -4,7 +4,7 @@
 
 config XROE_FRAMER
 	tristate "Xilinx Radio over Ethernet Framer driver"
-	---help---
+	help
 	  The "Radio Over Ethernet Framer" IP (roe_framer) ingests/generates
 	  Ethernet packet data, (de-)multiplexes packets based on protocol
 	  into/from various Radio Antenna data streams.

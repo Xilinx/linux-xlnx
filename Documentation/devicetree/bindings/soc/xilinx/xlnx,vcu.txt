@@ -12,64 +12,15 @@ Required properties:
 - compatible: shall be one of:
 	"xlnx,vcu"
 	"xlnx,vcu-logicoreip-1.0"
-- reg, reg-names: There are two sets of registers need to provide.
-	1. vcu slcr
-	2. Logicore
-	reg-names should contain name for the each register sequence.
-- #clock-cells : Must be 1
-- clocks: phandle for aclk, pll_ref and encoder/decoder clocksources
-- clock-names: The identification string,
-	* "aclk", is always required for the axi clock.
-	* "pll_ref" is required for pll.
-	* "vcu_core_enc" is required for VCU core encoder.
-	* "vcu_core_dec" is required for VCU core decoder.
-	* "vcu_mcu_enc" is required for MCU core encoder.
-	* "vcu_mcu_dec" is required for MCU core decoder.
-- ranges
-- VCU Init driver node define the following child nodes:
-	* Allegro encoder driver node
-		- compatible: Must be "al,al5e"
-		- reg: There is a one set of register.
-		- interrupts: interrupt number to the cpu.
-		- interrupt-parent: the phandle for the interrupt controller
-		  that services interrupts for this device.
-	* Allegro decoder driver node
-		- compatible: Must be "al,al5d"
-		- reg: There is a one set of register.
-		- interrupts: interrupt number to the cpu.
-		- interrupt-parent: the phandle for the interrupt controller
-		  that services interrupts for this device.
-
-Optional properties:
-- reset-gpios : The GPIO used to reset the VCU, if available. Need use this
-		reset gpio when in design 'vcu_resetn' is driven by gpio. See
-		Documentation/devicetree/bindings/gpio/gpio.txt for details.
-
+- reg : The base offset and size of the VCU_PL_SLCR register space.
+- clocks: phandle for aclk and pll_ref clocksource
+- clock-names: The identification string, "aclk", is always required for
+   the axi clock. "pll_ref" is required for pll.
 Example:
 
 	xlnx_vcu: vcu@a0040000 {
 		compatible = "xlnx,vcu-logicoreip-1.0";
-		#address-cells = <2>;
-		#size-cells = <2>;
-		reg = <0x0 0xa0040000 0x0 0x1000>,
-			 <0x0 0xa0041000 0x0 0x1000>;
-		reg-names = "vcu_slcr", "logicore";
-		reset-gpios = <&gpio 0x4e GPIO_ACTIVE_HIGH>;
-		#clock-cells = <0x1>;
-		clock-names = "pll_ref", "aclk", "vcu_core_enc", "vcu_core_dec", "vcu_mcu_enc", "vcu_mcu_dec";
-		clocks = <&si570_1>, <&clkc 71>, <&xlnx_vcu 1>, <&xlnx_vcu 2>, <&xlnx_vcu 3>, <&xlnx_vcu 4>;
-		ranges;
-		encoder: al5e@a0000000 {
-			compatible = "al,al5e";
-			reg = <0x0 0xa0000000 0x0 0x10000>;
-			interrupts = <0 89 4>;
-			interrupt-parent = <&gic>;
-		};
-
-		decoder: al5d@a0020000 {
-			compatible = "al,al5d";
-			reg = <0x0 0xa0020000 0x0 0x10000>;
-			interrupts = <0 89 4>;
-			interrupt-parent = <&gic>;
-		};
+		reg = <0x0 0xa0040000 0x0 0x1000>;
+		clocks = <&si570_1>, <&clkc 71>;
+		clock-names = "pll_ref", "aclk";
 	};

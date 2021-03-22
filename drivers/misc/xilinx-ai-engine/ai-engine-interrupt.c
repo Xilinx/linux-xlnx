@@ -774,9 +774,8 @@ irqreturn_t aie_interrupt(int irq, void *data)
 
 	/* For ES1 silicon, interrupts are latched in NPI */
 	if (adev->version == VERSAL_ES1_REV_ID) {
-		ret = adev->eemi_ops->ioctl(adev->pm_node_id,
-					    IOCTL_AIE_ISR_CLEAR,
-					    AIE_NPI_ERROR_ID, 0, NULL);
+		ret = zynqmp_pm_clear_aie_npi_isr(adev->pm_node_id,
+						  AIE_NPI_ERROR_ID);
 		if (ret < 0)
 			dev_err(&adev->dev, "Failed to clear NPI ISR\n");
 	}

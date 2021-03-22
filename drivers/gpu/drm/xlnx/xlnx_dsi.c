@@ -8,7 +8,6 @@
  *        : Siva Rajesh J <siva.rajesh.jarugula@xilinx.com>
  */
 
-#include <drm/drmP.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
@@ -585,7 +584,6 @@ xlnx_dsi_detect(struct drm_connector *connector, bool force)
 	if (!dsi->panel) {
 		dsi->panel = of_drm_find_panel(dsi->panel_node);
 		if (dsi->panel) {
-			drm_panel_attach(dsi->panel, &dsi->connector);
 			if (dsi->cmdmode) {
 				xlnx_dsi_writel(dsi->iomem, XDSI_CCR,
 						XDSI_CCR_CMDMODE |
@@ -596,7 +594,6 @@ xlnx_dsi_detect(struct drm_connector *connector, bool force)
 		}
 	} else if (!dsi->panel_node) {
 		xlnx_dsi_connector_dpms(connector, DRM_MODE_DPMS_OFF);
-		drm_panel_detach(dsi->panel);
 		dsi->panel = NULL;
 	}
 
@@ -630,7 +627,7 @@ static int xlnx_dsi_get_modes(struct drm_connector *connector)
 	struct xlnx_dsi *dsi = connector_to_dsi(connector);
 
 	if (dsi->panel)
-		return dsi->panel->funcs->get_modes(dsi->panel);
+		return dsi->panel->funcs->get_modes(dsi->panel, connector);
 
 	return 0;
 }

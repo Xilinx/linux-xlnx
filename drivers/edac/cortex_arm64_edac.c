@@ -224,6 +224,7 @@ static void a53_parse_l2merrsr_way(u8 ramid, u8 val)
 	switch (ramid) {
 	case L2_TAG_RAM:
 		pr_cont("(way %d)", val);
+		fallthrough;
 	case L2_DATA_RAM:
 		pr_cont("(bank %d)", val);
 		break;
