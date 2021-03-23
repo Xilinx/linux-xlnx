@@ -338,11 +338,10 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 
 	/*
 	 * When irq domain looks at mapping each arg is as follows:
-	 * 3 args for: interrupt type (SGI), interrupt # (set later), type
+	 * 1 args for: interrupt # (set later)
 	 */
-	sgi_fwspec.param_count = 3;
-	sgi_fwspec.param[0] = 2;
-	sgi_fwspec.param[2] = IRQ_TYPE_EDGE_RISING;
+	sgi_fwspec.param_count = 1;
+
 	/*
 	 * For each SGI:
 	 * Set HW IRQ.
@@ -354,7 +353,7 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 	 */
 	for (i = 0; i < MAX_NUM_VRINGS; i++) {
 		/* Set SGI's hwirq */
-		sgi_fwspec.param[1] = vring_sgis[i];
+		sgi_fwspec.param[0] = vring_sgis[i];
 		virq = irq_create_fwspec_mapping(&sgi_fwspec);
 		/*
 		 * Request_percpu_irq is not used because Linux only runs on

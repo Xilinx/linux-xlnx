@@ -1063,9 +1063,6 @@ static int gic_irq_domain_translate(struct irq_domain *d,
 		case 1:			/* PPI */
 			*hwirq = fwspec->param[1] + 16;
 			break;
-		case 2:			/* SGI */
-			*hwirq = fwspec->param[1];
-			break;
 		default:
 			return -EINVAL;
 		}
