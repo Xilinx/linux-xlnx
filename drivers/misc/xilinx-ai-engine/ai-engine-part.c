@@ -978,7 +978,7 @@ of_aie_part_probe(struct aie_device *adev, struct device_node *nc)
 		dev_err(&adev->dev,
 			"probe failed: partition %u exists.\n",
 			partition_id);
-		return ERR_PTR(ret);
+		return ERR_PTR(-EINVAL);
 	}
 
 	apart = aie_create_partition(adev, &range);
