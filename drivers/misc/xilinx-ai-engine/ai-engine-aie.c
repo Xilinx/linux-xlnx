@@ -648,6 +648,19 @@ struct aie_tile_rsc_attr aie_shimpl_tile_rscs_attr[AIE_RSCTYPE_MAX] =  {
 	},
 };
 
+/* modules types array of CORE tile */
+static const
+enum aie_module_type aie_core_tile_module_types[NUM_MODS_CORE_TILE] = {
+	AIE_MEM_MOD,
+	AIE_CORE_MOD,
+};
+
+/* modules types array of SHIM PL tile */
+static const
+enum aie_module_type aie_shimpl_tile_module_types[NUM_MODS_SHIMPL_TILE] = {
+	AIE_PL_MOD,
+};
+
 static u32 aie_get_tile_type(struct aie_location *loc)
 {
 	if (loc->row)
@@ -990,12 +1003,14 @@ static void aie_device_init_rscs_attr(struct aie_device *adev)
 	tattr->num_rows = 0xFF;
 	tattr->num_mods = 2;
 	tattr->rscs_attr = aie_core_tile_rscs_attr;
+	tattr->mods = aie_core_tile_module_types;
 
 	tattr = &adev->ttype_attr[AIE_TILE_TYPE_SHIMPL];
 	tattr->start_row = 0;
 	tattr->num_rows = 1;
 	tattr->num_mods = 1;
 	tattr->rscs_attr = aie_shimpl_tile_rscs_attr;
+	tattr->mods = aie_shimpl_tile_module_types;
 
 	/*
 	 * For now, SHIMNOC is the same as SHIMPL as there is
@@ -1007,6 +1022,7 @@ static void aie_device_init_rscs_attr(struct aie_device *adev)
 	tattr->num_rows = 1;
 	tattr->num_mods = 1;
 	tattr->rscs_attr = aie_shimpl_tile_rscs_attr;
+	tattr->mods = aie_shimpl_tile_module_types;
 }
 
 /**

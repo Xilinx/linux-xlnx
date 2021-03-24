@@ -98,6 +98,12 @@ enum aie_rsc_type {
  */
 #define XAIE_RSC_PATTERN_BLOCK		(1U << 0)
 
+/* Any broadcast channel id */
+#define XAIE_BROADCAST_ID_ANY		0xFFFFFFFFU
+
+/* request a channel to broadcast to the whole partition */
+#define XAIE_BROADCAST_ALL		(1U << 0)
+
 /**
  * struct aie_location - AIE location information
  * @col: column id
@@ -306,6 +312,24 @@ struct aie_rsc_req_rsp {
 	__u64 rscs;
 };
 
+/**
+ * struct aie_rsc_bc_req - AIE broadcast channel request
+ * @rscs: broadcast channel resource array for every module and every tile
+ *	  of the channel
+ * @num_rscs: number of expected broadcast channel resources on the path,
+ *	      it also indicates the number of expected modules on the path.
+ * @flag: user flag to indicate if it is to get a broadcast channel for the
+ *	  whole partition.
+ * @id: broadcast channel ID. XAIE_BROADCAST_ID_ANY, it means not particular
+ *	id is specified, driver will allocate a free one.
+ */
+struct aie_rsc_bc_req {
+	__u64 rscs;
+	__u32 num_rscs;
+	__u32 flag;
+	__u32 id;
+};
+
 #define AIE_IOCTL_BASE 'A'
 
 /* AI engine device IOCTL operations */
@@ -481,5 +505,25 @@ struct aie_rsc_req_rsp {
  */
 #define AIE_RSC_CHECK_AVAIL_IOCTL	_IOW(AIE_IOCTL_BASE, 0x18, \
 					     struct aie_rsc_req)
+
+/**
+ * DOC: AIE_RSC_GET_COMMON_BROADCAST_IOCTL - get a common broadcast channel for
+ *					     the specified set of AI engine
+ *					     modules.
+ *
+ * This ioctl is used to get a common broadcast channel for the specified set
+ * of AI engine modules in the resources array. If the any of the input set of
+ * tiles is gated, it will return failure. This ioctl will not check the
+ * connection of the input modules set.
+ * The driver will fill in the resource ID with the assigned broadcast channel
+ * ID of the resources array.
+ * If the XAIE_BROADCAST_ALL is set in the request flag, it will get the
+ * broadcast channel for all the ungated tiles of the partition.
+ * If a particular broadcast channel id is specified in the request, if will
+ * check if the channel is available for the specified modules, or the whole
+ * partition depends on if XAIE_BROADCAST_ALL is set.
+ */
+#define AIE_RSC_GET_COMMON_BROADCAST_IOCTL	_IOW(AIE_IOCTL_BASE, 0x19, \
+						struct aie_rsc_bc_req)
 
 #endif
