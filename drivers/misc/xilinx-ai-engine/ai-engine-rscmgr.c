@@ -164,7 +164,7 @@ int aie_part_get_mod_num_rscs(struct aie_partition *apart,
  *			       resource of a module of a tile.
  *
  * @apart: AI engine partition
- * @rloc: relative tile location of a partition
+ * @loc: tile location
  * @mod: module type
  * @rtype: resource type
  * @return: pointer to AI engine resource status bitmaps if resource is found,
@@ -173,19 +173,15 @@ int aie_part_get_mod_num_rscs(struct aie_partition *apart,
  */
 static
 int aie_part_get_rsc_startbit(struct aie_partition *apart,
-			      struct aie_location rloc,
+			      struct aie_location loc,
 			      enum aie_module_type mod,
 			      enum aie_rsc_type rtype)
 {
 	struct aie_device *adev = apart->adev;
-	struct aie_location loc;
 	u32 ttype;
 	const struct aie_mod_rsc_attr *mattr;
 	int num_rows;
 	struct aie_tile_attr *tattr;
-
-	loc.col = rloc.col + apart->range.start.col;
-	loc.row = rloc.row + apart->range.start.row;
 
 	ttype = adev->ops->get_tile_type(&loc);
 
@@ -195,8 +191,9 @@ int aie_part_get_rsc_startbit(struct aie_partition *apart,
 
 	num_rows = aie_part_get_tile_rows(apart, ttype);
 	tattr = &adev->ttype_attr[ttype];
-	return mattr->num_rscs * (rloc.col * num_rows + rloc.row -
-				  tattr->start_row);
+	return mattr->num_rscs *
+	       ((loc.col - apart->range.start.col) * num_rows +
+		loc.row - tattr->start_row);
 }
 
 /**
@@ -458,7 +455,7 @@ long aie_part_rscmgr_rsc_req(struct aie_partition *apart,
 
 	rstat = aie_part_get_rsc_bitmaps(apart, loc, args.req.mod,
 					 args.req.type);
-	start_bit = aie_part_get_rsc_startbit(apart, args.req.loc, args.req.mod,
+	start_bit = aie_part_get_rsc_startbit(apart, loc, args.req.mod,
 					      args.req.type);
 	if (!rstat || start_bit < 0) {
 		dev_err(&apart->dev,
@@ -568,7 +565,7 @@ static long aie_part_rscmgr_rsc_clearbit(struct aie_partition *apart,
 	}
 
 	rstat = aie_part_get_rsc_bitmaps(apart, loc, args.mod, args.type);
-	start_bit = aie_part_get_rsc_startbit(apart, rloc, args.mod,
+	start_bit = aie_part_get_rsc_startbit(apart, loc, args.mod,
 					      args.type);
 	if (!rstat || start_bit < 0) {
 		dev_err(&apart->dev,
@@ -681,7 +678,7 @@ long aie_part_rscmgr_rsc_req_specific(struct aie_partition *apart,
 	}
 
 	rstat = aie_part_get_rsc_bitmaps(apart, loc, args.mod, args.type);
-	start_bit = aie_part_get_rsc_startbit(apart, rloc, args.mod,
+	start_bit = aie_part_get_rsc_startbit(apart, loc, args.mod,
 					      args.type);
 	if (!rstat || start_bit < 0) {
 		dev_err(&apart->dev,
@@ -735,7 +732,7 @@ long aie_part_rscmgr_rsc_check_avail(struct aie_partition *apart,
 				     void __user *user_args)
 {
 	struct aie_rsc_stat *rstat;
-	struct aie_location loc, rloc;
+	struct aie_location loc;
 	long ret;
 	int mod_num_rscs, start_bit;
 	struct aie_rsc_req args;
@@ -755,12 +752,12 @@ long aie_part_rscmgr_rsc_check_avail(struct aie_partition *apart,
 	}
 
 	rstat = aie_part_get_rsc_bitmaps(apart, loc, args.mod, args.type);
-	start_bit = aie_part_get_rsc_startbit(apart, args.loc, args.mod,
+	start_bit = aie_part_get_rsc_startbit(apart, loc, args.mod,
 					      args.type);
 	if (!rstat || start_bit < 0) {
 		dev_err(&apart->dev,
 			"invalid resource to request(%u,%u),mod:%u,rsc:%u.\n",
-			rloc.col, rloc.row, args.mod, args.type);
+			args.loc.col, args.loc.row, args.mod, args.type);
 		return -EINVAL;
 	}
 
