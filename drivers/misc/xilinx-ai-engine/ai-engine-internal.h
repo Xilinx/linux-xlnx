@@ -9,6 +9,7 @@
 #define AIE_INTERNAL_H
 
 #include <linux/bitfield.h>
+#include <linux/bitmap.h>
 #include <linux/bits.h>
 #include <linux/cdev.h>
 #include <linux/clk.h>
@@ -372,6 +373,7 @@ struct aie_tile_rsc_attr {
  * @start_row: start row
  * @num_rows: number of rows
  * @num_mods: number of modules of this tile type
+ * @mods: array of module types of this tile type
  * @rscs_attr: resources attributes array. Each element is an array of
  *	       attributes of a resource type of a tile type.
  */
@@ -379,6 +381,7 @@ struct aie_tile_attr {
 	u8 start_row;
 	u8 num_rows;
 	u8 num_mods;
+	const enum aie_module_type *mods;
 	const struct aie_tile_rsc_attr *rscs_attr;
 };
 
@@ -630,6 +633,32 @@ static inline int aie_validate_location(struct aie_partition *apart,
 	return 0;
 }
 
+/**
+ * aie_resource_or_get_valueul() - get unsigned long value of specified
+ *				   number of bits starting from specified
+ *				   start bit of a resource bitmap
+ *
+ * @res: pointer to AI engine resource
+ * @sbit: start bit for OR operation
+ * @nbits: number of bits to OR
+ * @return: or result of @nbits of two bitmaps starting from @sbit
+ *
+ * OR @nbits of two resource bitmaps starting from @sbit
+ */
+static inline
+unsigned long aie_resource_or_get_valueul(struct aie_resource *res,
+					  u32 sbit, u32 nbits)
+{
+	const size_t i = BIT_WORD(sbit);
+	unsigned long bits;
+
+	bits = res->bitmap[i];
+	bits >>= (sbit % BITS_PER_LONG);
+	bits |= BITMAP_FIRST_WORD_MASK(nbits);
+
+	return bits;
+}
+
 int aie_resource_initialize(struct aie_resource *res, int count);
 void aie_resource_uninitialize(struct aie_resource *res);
 int aie_resource_check_region(struct aie_resource *res, u32 start,
@@ -726,4 +755,6 @@ long aie_part_rscmgr_rsc_req_specific(struct aie_partition *apart,
 				      void __user *user_args);
 long aie_part_rscmgr_rsc_check_avail(struct aie_partition *apart,
 				     void __user *user_args);
+long aie_part_rscmgr_get_broadcast(struct aie_partition *apart,
+				   void __user *user_args);
 #endif /* AIE_INTERNAL_H */

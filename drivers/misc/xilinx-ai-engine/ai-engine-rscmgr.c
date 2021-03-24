@@ -778,3 +778,396 @@ long aie_part_rscmgr_rsc_check_avail(struct aie_partition *apart,
 
 	return 0;
 }
+
+/**
+ * aie_part_rscmgr_get_ungated_bc_mods() - find the ungated modules of the full
+ *					   partition and fill in the locations
+ *					   information to the resources array.
+ * @apart: AI engine partition
+ * @num_rscs: number of broadcast resources, each module of a tile has a
+ *	      broadcast resource in this array.
+ * @onum_rscs: returns the number of actual ungated broadcast resources of the
+ *	       whole partition.
+ *
+ * @rscs: broadcast resources array
+ * @return: 0 for success, negative value for failure
+ */
+static int aie_part_rscmgr_get_ungated_bc_mods(struct aie_partition *apart,
+					       u32 num_rscs, u32 *onum_rscs,
+					       struct aie_rsc *rscs)
+{
+	struct aie_device *adev = apart->adev;
+	u32 c, r, i = 0;
+
+	for (c = 0; c < apart->range.size.col; c++) {
+		for (r = 0; r < apart->range.size.row; r++) {
+			struct aie_location l;
+			u32 ttype, m;
+			const struct aie_tile_attr *tattr;
+			const struct aie_tile_rsc_attr *rattr;
+			enum aie_rsc_type rtype = AIE_RSCTYPE_BROADCAST;
+
+			l.col = apart->range.start.col + c;
+			l.row = r;
+			ttype = adev->ops->get_tile_type(&l);
+			tattr = &adev->ttype_attr[ttype];
+			rattr = &tattr->rscs_attr[rtype];
+			for (m = 0; m < tattr->num_mods; m++) {
+				/*
+				 * if module doesn't have broadcast channel,
+				 * skipped. This is not the case today.
+				 */
+				if (!rattr->mod_attr[m].num_rscs)
+					continue;
+				/* Check if the broadcast resource is gated */
+				if (aie_part_check_clk_enable_loc(apart, &l)) {
+					if (i >= num_rscs) {
+						dev_err(&apart->dev,
+							"failed to returns all ungated tiles, not enough resource elements.\n");
+						return -EINVAL;
+					}
+					rscs[i].loc.col = (u8)(c & 0xFF);
+					rscs[i].loc.row = (u8)(r & 0xFF);
+					rscs[i].mod = tattr->mods[m];
+					i++;
+				}
+			}
+		}
+	}
+
+	*onum_rscs = i;
+	return 0;
+}
+
+/**
+ * aie_part_rscmgr_get_or_bc_stat() - get OR the broadcast resources stat of
+ *				      specified modules in the specified
+ *				      resources array.
+ *
+ * @apart: AI engine partition
+ * @num_rscs: number of broadcast resources, every module has one broadcast
+ *	      resource
+ * @rscs: array of broadcast resources, each element contains the tile
+ *	  location and module information of the broadcast channel
+ * @runtime_only: true to only check the runtime allocated resources bitmap,
+ *		  false to check both runtime and statically allocated resource
+ *		  bitmaps.
+ * @or_stat: returns result of OR all the modules broadcast resources status
+ * @return: 0 for success, negative value for failure
+ */
+static int aie_part_rscmgr_get_or_bc_stat(struct aie_partition *apart,
+					  u32 num_rscs, struct aie_rsc *rscs,
+					  bool runtime_only,
+					  unsigned long *or_stat)
+{
+	u32 i;
+
+	*or_stat = 0;
+	for (i = 0; i < num_rscs; i++) {
+		struct aie_location l;
+		struct aie_rsc_stat *rstat;
+		int mod_num_rscs, start_bit;
+
+		l.col = apart->range.start.col + rscs[i].loc.col;
+		l.row = rscs[i].loc.row;
+		rstat = aie_part_get_rsc_bitmaps(apart, l, rscs[i].mod,
+						 AIE_RSCTYPE_BROADCAST);
+		start_bit = aie_part_get_rsc_startbit(apart, l, rscs[i].mod,
+						      AIE_RSCTYPE_BROADCAST);
+		if (!rstat || start_bit < 0) {
+			dev_err(&apart->dev,
+				"failed to get broadcast bitmap for[%u]:tile(%u,%u), mod=%u.\n",
+				i, rscs[i].loc.col, rscs[i].loc.row,
+				rscs[i].mod);
+			return -EINVAL;
+		}
+		mod_num_rscs = aie_part_get_mod_num_rscs(apart, l, rscs[i].mod,
+							 AIE_RSCTYPE_BROADCAST);
+		*or_stat |= aie_resource_or_get_valueul(&rstat->rbits,
+							start_bit,
+							mod_num_rscs);
+		if (!runtime_only)
+			*or_stat |= aie_resource_or_get_valueul(&rstat->sbits,
+								start_bit,
+								mod_num_rscs);
+	}
+
+	return 0;
+}
+
+/**
+ * aie_part_rscmgr_get_common_bc() - get common broadcast id of specified
+ *				     modules in the specified resources array.
+ *
+ * @apart: AI engine partition
+ * @num_rscs: number of broadcast resources, every module has one broadcast
+ *	      resource
+ * @rscs: array of broadcast resources, each element contains the tile
+ *	  location and module information of the broadcast channel
+ * @return: common broadcast channel id for success, negative value for failure
+ *
+ * This function checks both runtime and static allocated resources bitmap.
+ */
+static int aie_part_rscmgr_get_common_bc(struct aie_partition *apart,
+					 u32 num_rscs, struct aie_rsc *rscs)
+{
+	unsigned long or_stat, b;
+	int ret;
+	struct aie_location l;
+	int mod_num_rscs;
+
+	l.col = apart->range.start.col + (u32)rscs[0].loc.row;
+	l.row = (u32)rscs[0].loc.row;
+
+	ret = aie_part_rscmgr_get_or_bc_stat(apart, num_rscs, rscs, false,
+					     &or_stat);
+	if (ret)
+		return ret;
+
+	mod_num_rscs = aie_part_get_mod_num_rscs(apart, l, rscs[0].mod,
+						 AIE_RSCTYPE_BROADCAST);
+	b = bitmap_find_next_zero_area(&or_stat, mod_num_rscs, 0, 1, 0);
+	if (b >= mod_num_rscs)
+		return -EINVAL;
+
+	return (int)b;
+}
+
+/**
+ * aie_part_rscmgr_check_common_bc() - validate the specified common broadcast
+ *				       id in the specified modules in the
+ *				       specified resources array.
+ *
+ * @apart: AI engine partition
+ * @bc: broadcast channel id to check
+ * @num_rscs: number of broadcast resources, every module has one broadcast
+ *	      resource
+ * @rscs: array of broadcast resources, each element contains the tile
+ *	  location and module information of the broadcast channel
+ * @return: 0 if the specified broadcast channel id is available for all the
+ *	    specified modules, negative value for failure
+ *
+ * This function only checks runtime allocated resources bitmap.
+ */
+static int aie_part_rscmgr_check_common_bc(struct aie_partition *apart,
+					   u32 bc, u32 num_rscs,
+					   struct aie_rsc *rscs)
+{
+	unsigned long or_stat;
+	int ret;
+	struct aie_location l;
+	int mod_num_rscs;
+
+	l.col = apart->range.start.col + (u32)rscs[0].loc.row;
+	l.row = (u32)rscs[0].loc.row;
+
+	mod_num_rscs = aie_part_get_mod_num_rscs(apart, l, rscs[0].mod,
+						 AIE_RSCTYPE_BROADCAST);
+	if (bc > mod_num_rscs) {
+		dev_err(&apart->dev,
+			"invalid specified broadcast id %u, max is %u.\n",
+			bc, mod_num_rscs);
+		return -EINVAL;
+	}
+
+	ret = aie_part_rscmgr_get_or_bc_stat(apart, num_rscs, rscs, true,
+					     &or_stat);
+	if (ret)
+		return ret;
+
+	if (test_bit(bc, &or_stat)) {
+		dev_err(&apart->dev,
+			"specified broadcast id %u is occupied.\n", bc);
+		return -EBUSY;
+	}
+
+	return 0;
+}
+
+/**
+ * aie_part_rscmgr_check_rscs_modules() - validate the modules of the array of
+ *					input resources
+ *
+ * @apart: AI engine partition
+ * @num_rscs: number of resources
+ * @rscs: array of resources, each element contains the tile
+ *	  location and module information of the resource
+ * @return: 0 if the modules of all the resources are valid, negative value
+ *	    for failure
+ *
+ * This function validate the modules and the tiles of the resources, and
+ * check if resource module is gated.
+ */
+static int aie_part_rscmgr_check_rscs_modules(struct aie_partition *apart,
+					      u32 num_rscs,
+					      struct aie_rsc *rscs)
+{
+	struct aie_device *adev = apart->adev;
+	u32 i;
+
+	for (i = 0; i < num_rscs; i++) {
+		struct aie_location l;
+
+		l.col = apart->range.start.col + rscs[i].loc.col;
+		l.row = rscs[i].loc.row;
+		/* validate tile location */
+		if (aie_validate_location(apart, l)) {
+			dev_err(&apart->dev,
+				"failed resource check tile(%u,%u) invalid.\n",
+					rscs[i].loc.col, rscs[i].loc.row);
+			return -EINVAL;
+		}
+
+		/* validate module */
+		if (aie_dev_get_mod_id(adev, adev->ops->get_tile_type(&l),
+				       rscs[i].mod) < 0) {
+			dev_err(&apart->dev,
+				"failed resource check, tile(%u,%u) mod %u invalid.\n",
+					rscs[i].loc.col, rscs[i].loc.row,
+					rscs[i].mod);
+			return -EINVAL;
+		}
+
+		/* check if the resource module is gated */
+		if (!aie_part_check_clk_enable_loc(apart, &l)) {
+			dev_err(&apart->dev,
+				"failed resource check, tile(%u,%u) mod=%u is gated.\n",
+				rscs[i].loc.col, rscs[i].loc.row,
+				rscs[i].mod);
+			return -EINVAL;
+		}
+	}
+
+	return 0;
+}
+
+/**
+ * aie_part_rscmgr_get_broadcast() - get common broadcast channel of
+ *				     the specified modules or the whole
+ *				     partition.
+ *
+ * @apart: AI engine partition
+ * @user_args: user resource free arguments
+ *
+ * @return: 0 for success, negative value for failure
+ *
+ * This function get a common broadcast channel for the specified set
+ * of AI engine modules in the resources array. If the any of the input set of
+ * tiles is gated, it will return failure. This ioctl will not check the
+ * connection of the input modules set.
+ * The driver will fill in the resource ID with the assigned broadcast channel
+ * ID of the resources array.
+ * If the XAIE_BROADCAST_ALL is set in the request flag, it will get the
+ * broadcast channel for all the ungated tiles of the partition.
+ * If a particular broadcast channel id is specified in the request, if will
+ * check if the channel is available for the specified modules, or the whole
+ * partition depends on if XAIE_BROADCAST_ALL is set.
+ */
+long aie_part_rscmgr_get_broadcast(struct aie_partition *apart,
+				   void __user *user_args)
+{
+	struct aie_rsc_bc_req args;
+	struct aie_rsc *rscs;
+	u32 i;
+	long ret;
+
+	if (copy_from_user(&args, user_args, sizeof(args)))
+		return -EFAULT;
+
+	rscs = kmalloc_array(args.num_rscs, sizeof(*rscs), GFP_KERNEL);
+	if (!rscs)
+		return -ENOMEM;
+
+	if (!(args.flag & XAIE_BROADCAST_ALL)) {
+		if (copy_from_user(rscs, (void __user *)args.rscs,
+				   sizeof(*rscs) * args.num_rscs)) {
+			kfree(rscs);
+			return -EFAULT;
+		}
+	}
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret) {
+		kfree(rscs);
+		return ret;
+	}
+
+	if (args.flag & XAIE_BROADCAST_ALL)
+		/*
+		 * It is to broadcast to the whole partition.
+		 * Get all the ungated modules.
+		 */
+		ret = aie_part_rscmgr_get_ungated_bc_mods(apart, args.num_rscs,
+							  &args.num_rscs,
+							  rscs);
+	else
+		/*
+		 * validate tiles and modules, and check if there are modules
+		 * gated
+		 */
+		ret = aie_part_rscmgr_check_rscs_modules(apart, args.num_rscs,
+							 rscs);
+	if (ret)
+		goto error;
+
+	/* find the common broadcast signal among the specified modules */
+	if (args.id == XAIE_BROADCAST_ID_ANY) {
+		ret = aie_part_rscmgr_get_common_bc(apart, args.num_rscs, rscs);
+		if (ret >= 0) {
+			args.id = (u32)ret;
+			ret = 0;
+		}
+	} else {
+		ret = aie_part_rscmgr_check_common_bc(apart, args.id,
+						      args.num_rscs,
+						      rscs);
+	}
+	if (ret)
+		goto error;
+
+	/* set the broadcast channel resource runtime status bit */
+	for (i = 0; i < args.num_rscs; i++) {
+		struct aie_location l;
+		struct aie_rsc_stat *rstat;
+		int start_bit;
+
+		l.col = apart->range.start.col + rscs[i].loc.col;
+		l.row = rscs[i].loc.row;
+		rstat = aie_part_get_rsc_bitmaps(apart, l, rscs[i].mod,
+						 AIE_RSCTYPE_BROADCAST);
+		start_bit = aie_part_get_rsc_startbit(apart, l, rscs[i].mod,
+						      AIE_RSCTYPE_BROADCAST);
+		aie_resource_set(&rstat->rbits, start_bit + args.id, 1);
+		rscs[i].id = args.id;
+	}
+
+	mutex_unlock(&apart->mlock);
+
+	if (copy_to_user((void __user *)args.rscs, rscs,
+			 sizeof(*rscs) * args.num_rscs)) {
+		kfree(rscs);
+		return -EFAULT;
+	}
+
+	/*
+	 * If it is required to broadcast to whole partition, it needs to
+	 * return the actual number of broadcast resources as some tiles
+	 * can be gated
+	 */
+	if (args.flag & XAIE_BROADCAST_ALL) {
+		struct aie_rsc_bc_req __user *uargs = user_args;
+
+		if (copy_to_user((void __user *)&uargs->num_rscs,
+				 &args.num_rscs, sizeof(args.num_rscs))) {
+			kfree(rscs);
+			return -EFAULT;
+		}
+	}
+
+	kfree(rscs);
+	return 0;
+error:
+	mutex_unlock(&apart->mlock);
+	kfree(rscs);
+	return ret;
+}
