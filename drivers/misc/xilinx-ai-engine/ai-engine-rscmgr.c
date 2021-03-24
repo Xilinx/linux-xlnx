@@ -258,8 +258,10 @@ int aie_part_rscmgr_init(struct aie_partition *apart)
 		 * have DMA resources bitmap which will be the unique to
 		 * SHIMNOC tiles.
 		 */
-		if (t == AIE_TILE_TYPE_SHIMNOC)
+		if (t == AIE_TILE_TYPE_SHIMNOC) {
 			*trscs = apart->trscs[AIE_TILE_TYPE_SHIMPL];
+			continue;
+		}
 
 		/*
 		 * Get the number of rows of a tile type and the number
