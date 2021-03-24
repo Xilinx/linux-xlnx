@@ -119,7 +119,7 @@
 #define SR_BP2			BIT(4)	/* Block protect 2 */
 #define	SR_BP_BIT_OFFSET	2	/* Offset to Block protect 0 */
 #define	SR_BP_BIT_MASK		(SR_BP2 | SR_BP1 | SR_BP0)
-#define SR_BP3			BIT(5)	/* Block protect 3 */
+#define SR_BP3                 BIT(6)  /* Block protect 3 */
 #define SR_TB_BIT5		BIT(5)	/* Top/Bottom protect */
 #define SR_BP3_BIT6		BIT(6)	/* Block protect 3 */
 #define SR_TB_BIT6		BIT(6)	/* Top/Bottom protect */
