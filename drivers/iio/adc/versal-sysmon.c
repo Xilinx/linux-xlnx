@@ -183,6 +183,10 @@ static const struct iio_chan_spec temp_channels[] = {
 	SYSMON_CHAN_TEMP(TEMP_MIN, "min"),
 	SYSMON_CHAN_TEMP(TEMP_MAX_MAX, "max_max"),
 	SYSMON_CHAN_TEMP(TEMP_MIN_MIN, "min_min"),
+};
+
+/* Temperature event attributes */
+static const struct iio_chan_spec temp_events[] = {
 	SYSMON_CHAN_TEMP_EVENT(TEMP_EVENT, "temp", sysmon_temp_events),
 	SYSMON_CHAN_TEMP_EVENT(OT_EVENT, "ot", sysmon_temp_events),
 };
@@ -675,6 +679,7 @@ static irqreturn_t sysmon_iio_irq(int irq, void *data)
 static int sysmon_parse_dt(struct iio_dev *indio_dev,
 			   struct platform_device *pdev)
 {
+	struct sysmon *sysmon;
 	struct iio_chan_spec *sysmon_channels;
 	struct device_node *child_node = NULL, *np = pdev->dev.of_node;
 	int ret, i = 0;
@@ -682,16 +687,22 @@ static int sysmon_parse_dt(struct iio_dev *indio_dev,
 	u32 reg = 0;
 	const char *name;
 	u32 chan_size = sizeof(struct iio_chan_spec);
+	u32 temp_chan_size;
+
+	sysmon = iio_priv(indio_dev);
 
 	ret = of_property_read_u8(np, "xlnx,numchannels", &num_supply_chan);
 	if (ret < 0)
 		return ret;
 
 	/* Initialize buffer for channel specification */
+	temp_chan_size = (sysmon->irq > 0) ? (sizeof(temp_channels) +
+					      sizeof(temp_events)) :
+		sizeof(temp_channels);
+
 	sysmon_channels = devm_kzalloc(&pdev->dev,
 				       (chan_size * num_supply_chan) +
-				       sizeof(temp_channels),
-				       GFP_KERNEL);
+				       temp_chan_size, GFP_KERNEL);
 
 	for_each_child_of_node(np, child_node) {
 		ret = of_property_read_u32(child_node, "reg", &reg);
@@ -708,9 +719,13 @@ static int sysmon_parse_dt(struct iio_dev *indio_dev,
 		sysmon_channels[i].channel = reg;
 		sysmon_channels[i].info_mask_separate =
 			BIT(IIO_CHAN_INFO_RAW) | BIT(IIO_CHAN_INFO_PROCESSED);
-		sysmon_channels[i].event_spec = sysmon_supply_events;
-		sysmon_channels[i].num_event_specs =
-			ARRAY_SIZE(sysmon_supply_events);
+
+		if (sysmon->irq > 0) {
+			sysmon_channels[i].event_spec = sysmon_supply_events;
+			sysmon_channels[i].num_event_specs =
+				ARRAY_SIZE(sysmon_supply_events);
+		}
+
 		sysmon_channels[i].scan_index = i;
 		sysmon_channels[i].scan_type.realbits = 19;
 		sysmon_channels[i].scan_type.storagebits = 32;
@@ -729,9 +744,16 @@ static int sysmon_parse_dt(struct iio_dev *indio_dev,
 	/* Append static temperature channels to the channel list */
 	memcpy(sysmon_channels + num_supply_chan, temp_channels,
 	       sizeof(temp_channels));
+	indio_dev->num_channels = num_supply_chan + ARRAY_SIZE(temp_channels);
+
+	if (sysmon->irq > 0) {
+		memcpy(sysmon_channels + num_supply_chan +
+		       sizeof(temp_channels), temp_events,
+		       sizeof(temp_events));
+		indio_dev->num_channels += ARRAY_SIZE(temp_events);
+	}
 
 	indio_dev->channels = sysmon_channels;
-	indio_dev->num_channels = num_supply_chan + ARRAY_SIZE(temp_channels);
 
 	return 0;
 }
@@ -749,9 +771,15 @@ static int sysmon_probe(struct platform_device *pdev)
 
 	sysmon = iio_priv(indio_dev);
 
-	sysmon->irq = platform_get_irq(pdev, 0);
-	if (sysmon->irq <= 0)
-		return -ENXIO;
+	sysmon->irq = platform_get_irq_optional(pdev, 0);
+	if (sysmon->irq > 0) {
+		ret = devm_request_irq(&pdev->dev, sysmon->irq, &sysmon_iio_irq,
+				       0, "sysmon-irq", indio_dev);
+		if (ret < 0)
+			return ret;
+	} else if (sysmon->irq == -EPROBE_DEFER) {
+		return -EPROBE_DEFER;
+	}
 
 	mutex_init(&sysmon->mutex);
 	spin_lock_init(&sysmon->lock);
@@ -773,8 +801,6 @@ static int sysmon_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	ret = devm_request_irq(&pdev->dev, sysmon->irq, &sysmon_iio_irq, 0,
-			       "sysmon-irq", indio_dev);
 	if (ret < 0)
 		return ret;
 
