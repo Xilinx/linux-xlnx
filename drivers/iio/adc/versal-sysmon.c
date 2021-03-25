@@ -801,14 +801,15 @@ static int sysmon_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
+	platform_set_drvdata(pdev, indio_dev);
+
+	ret = iio_device_register(indio_dev);
 	if (ret < 0)
 		return ret;
 
-	platform_set_drvdata(pdev, indio_dev);
-
 	dev_info(&pdev->dev, "Successfully registered Versal Sysmon");
 
-	return iio_device_register(indio_dev);
+	return 0;
 }
 
 static int sysmon_remove(struct platform_device *pdev)
