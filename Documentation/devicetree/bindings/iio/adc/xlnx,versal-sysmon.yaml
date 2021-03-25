@@ -81,7 +81,6 @@ patternProperties:
 required:
   - compatible
   - reg
-  - interrupts
   - xlnx,numchannels
 
 additionalProperties: false
