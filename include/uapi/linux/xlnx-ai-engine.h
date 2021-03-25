@@ -64,6 +64,7 @@ enum aie_module_type {
  * @AIE_RSCTYPE_SSSELECT: stream switch port select resource
  * @AIE_RSCTYPE_BROADCAST: broadcast events resource
  * @AIE_RSCTYPE_COMBOEVENT: combo events resource
+ * @AIE_RSCTYPE_GROUPEVENTS: group events resource
  * @AIE_RSCTYPE_MAX: total number of resources
  */
 enum aie_rsc_type {
@@ -74,6 +75,7 @@ enum aie_rsc_type {
 	AIE_RSCTYPE_SSSELECT,
 	AIE_RSCTYPE_BROADCAST,
 	AIE_RSCTYPE_COMBOEVENT,
+	AIE_RSCTYPE_GROUPEVENTS,
 	AIE_RSCTYPE_MAX
 };
 
