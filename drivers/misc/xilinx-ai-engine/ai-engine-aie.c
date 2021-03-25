@@ -34,6 +34,7 @@
 #define AIE_NUM_SSSELECT_CORE_MOD	8U
 #define AIE_NUM_BROADCAST_CORE_MOD	16U
 #define AIE_NUM_COMBOEVENT_CORE_MOD	4U
+#define AIE_NUM_GROUPEVENTS_CORE_MOD	9U
 
 #define AIE_NUM_PERF_MEM_MOD		2U
 #define AIE_NUM_USEREVENT_MEM_MOD	4U
@@ -42,6 +43,7 @@
 #define AIE_NUM_SSSELECT_MEM_MOD	0U
 #define AIE_NUM_BROADCAST_MEM_MOD	16U
 #define AIE_NUM_COMBOEVENT_MEM_MOD	4U
+#define AIE_NUM_GROUPEVENTS_MEM_MOD	8U
 
 #define AIE_NUM_PERF_PL_MOD		2U
 #define AIE_NUM_USEREVENT_PL_MOD	4U
@@ -50,6 +52,7 @@
 #define AIE_NUM_SSSELECT_PL_MOD		8U
 #define AIE_NUM_BROADCAST_PL_MOD	16U
 #define AIE_NUM_COMBOEVENT_PL_MOD	4U
+#define AIE_NUM_GROUPEVENTS_PL_MOD	7U
 
 /*
  * Registers offsets
@@ -599,6 +602,13 @@ struct aie_tile_rsc_attr aie_core_tile_rscs_attr[AIE_RSCTYPE_MAX] =  {
 			{.num_rscs = AIE_NUM_COMBOEVENT_CORE_MOD,},
 		},
 	},
+	{
+		/* group events */
+		.mod_attr = {
+			{.num_rscs = AIE_NUM_GROUPEVENTS_MEM_MOD,},
+			{.num_rscs = AIE_NUM_GROUPEVENTS_CORE_MOD,},
+		},
+	},
 };
 
 /* resource attributes for SHIM PL tile type */
@@ -644,6 +654,12 @@ struct aie_tile_rsc_attr aie_shimpl_tile_rscs_attr[AIE_RSCTYPE_MAX] =  {
 		/* combo events */
 		.mod_attr = {
 			{.num_rscs = AIE_NUM_COMBOEVENT_PL_MOD},
+		},
+	},
+	{
+		/* group events */
+		.mod_attr = {
+			{.num_rscs = AIE_NUM_GROUPEVENTS_PL_MOD},
 		},
 	},
 };
