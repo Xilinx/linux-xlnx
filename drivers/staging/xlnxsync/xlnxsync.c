@@ -120,7 +120,7 @@
 
 /* Other macros */
 #define XLNXSYNC_CHAN_OFFSET		0x100
-
+#define XLNXSYNC_BUF_ADDR_SHIFT	0x3
 #define XLNXSYNC_DEVNAME_LEN		(32)
 
 #define XLNXSYNC_DRIVER_NAME		"xlnxsync"
@@ -179,6 +179,7 @@ struct xlnxsync_device {
  * @dev: Xilinx synchronizer device struct
  * @mutex: Serialize channel specific ioctl calls
  * @id: Channel id
+ * @last_buf_used: Save last buffer id used
  * @channel: list entry into syncip channel lists
  * @wq_fbdone: Wait queue for frame buffer done events
  * @wq_error: Wait queue for error events
@@ -200,6 +201,7 @@ struct xlnxsync_channel {
 	/* Serialize channel specific ioctl calls */
 	struct mutex mutex;
 	u32 id;
+	int last_buf_used;
 	struct list_head channel;
 	wait_queue_head_t wq_fbdone;
 	wait_queue_head_t wq_error;
@@ -239,10 +241,10 @@ static inline void xlnxsync_set(struct xlnxsync_device *dev, u32 chan, u32 reg,
 }
 
 static bool xlnxsync_is_buf_done(struct xlnxsync_device *dev,
-				 u32 channel, u32 buf, u32 io)
+				 u32 channel, u32 buf, u32 io,
+				 u8 force_clr_valid)
 {
-	u32 luma_valid, chroma_valid;
-	u32 reg_laddr, reg_caddr;
+	u32 luma_valid, chroma_valid, reg_laddr, reg_caddr, buf_offset;
 
 	switch (io) {
 	case XLNXSYNC_PROD:
@@ -257,9 +259,17 @@ static bool xlnxsync_is_buf_done(struct xlnxsync_device *dev,
 		return false;
 	}
 
-	luma_valid = xlnxsync_read(dev, channel, reg_laddr + (buf << 3)) &
+	buf_offset = buf << XLNXSYNC_BUF_ADDR_SHIFT;
+	if (force_clr_valid) {
+		xlnxsync_clr(dev, channel, reg_laddr + buf_offset,
+			     XLNXSYNC_FB_VALID_MASK);
+		xlnxsync_clr(dev, channel, reg_caddr + buf_offset,
+			     XLNXSYNC_FB_VALID_MASK);
+	}
+
+	luma_valid = xlnxsync_read(dev, channel, reg_laddr + buf_offset) &
 				   XLNXSYNC_FB_VALID_MASK;
-	chroma_valid = xlnxsync_read(dev, channel, reg_caddr + (buf << 3)) &
+	chroma_valid = xlnxsync_read(dev, channel, reg_caddr + buf_offset) &
 				     XLNXSYNC_FB_VALID_MASK;
 	if (!luma_valid && !chroma_valid)
 		return true;
@@ -407,22 +417,47 @@ static int xlnxsync_chan_config(struct xlnxsync_channel *channel,
 			 */
 			dev_dbg(dev->dev, "%s : auto search free fb\n",
 				__func__);
-			for (i = 0; i < XLNXSYNC_BUF_PER_CHAN; i++) {
-				if (xlnxsync_is_buf_done(dev, channel->id, i,
-							 j))
-					break;
-				dev_dbg(dev->dev, "Channel %d %s FB %d is busy\n",
-					channel->id, j ? "prod" : "cons", i);
+			switch (channel->last_buf_used) {
+			case 0:
+				i = 1;
+				break;
+			case 1:
+				i = 2;
+				break;
+			case 2:
+			case -1:
+			default:
+				i = 0;
+				break;
 			}
 
-			if (i == XLNXSYNC_BUF_PER_CHAN)
+			if (xlnxsync_is_buf_done(dev, channel->id, i, j, false)) {
+				dev_dbg(dev->dev,
+					"Channel %d %s FB %d is assigned\n",
+					channel->id, j ? "cons" : "prod", i);
+				if (j)
+					channel->last_buf_used = i;
+			} else {
+				dev_dbg(dev->dev,
+					"Channel %d %s FB %d is busy\n",
+					channel->id, j ? "cons" : "prod", i);
+				if (j) {
+					/* Force clear producer buf valid */
+					if (!xlnxsync_is_buf_done(dev,
+								  channel->id,
+								  i, 0, true)) {
+						dev_err(dev->dev,
+							"prod:buffer valid:\t"
+							"resetting failed\n");
+					}
+				}
 				return -EBUSY;
-
+			}
 		} else if (cfg.fb_id[j] >= 0 &&
 			   cfg.fb_id[j] < XLNXSYNC_BUF_PER_CHAN) {
 			/* If fb_id is specified, check its availability */
 			if (!(xlnxsync_is_buf_done(dev, channel->id,
-						   cfg.fb_id[j], j))) {
+						   cfg.fb_id[j], j, false))) {
 				dev_dbg(dev->dev,
 					"%s : %s FB %d in channel %d is busy!\n",
 					__func__, j ? "prod" : "cons",
@@ -534,7 +569,7 @@ static int xlnxsync_chan_get_status(struct xlnxsync_channel *channel,
 	/* Update Buffers status */
 	for (i = 0; i < XLNXSYNC_BUF_PER_CHAN; i++) {
 		for (j = 0; j < XLNXSYNC_IO; j++) {
-			if (xlnxsync_is_buf_done(dev, channel->id, i, j))
+			if (xlnxsync_is_buf_done(dev, channel->id, i, j, false))
 				status.fbdone[i][j] = true;
 			else
 				status.fbdone[i][j] = false;
@@ -976,6 +1011,7 @@ static int xlnxsync_open(struct inode *iptr, struct file *fptr)
 	dev_dbg(dev->dev, "Reserving channel %d\n", i);
 	set_bit(i, &dev->reserved);
 	chan->id = i;
+	chan->last_buf_used = -1;
 	list_add_tail(&chan->channel, &dev->channels);
 	chan->dev = dev;
 	fptr->private_data = chan;
