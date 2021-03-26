@@ -2,7 +2,7 @@
 /*
  * Xilinx Zynq MPSoC Firmware layer
  *
- *  Copyright (C) 2014-2019 Xilinx
+ *  Copyright (C) 2014-2021 Xilinx
  *
  *  Michal Simek <michal.simek@xilinx.com>
  *  Davorin Mista <davorin.mista@aggios.com>
@@ -665,6 +665,8 @@ int zynqmp_pm_pinctrl_get_config(const u32 pin, const u32 param,
 				 u32 *value);
 int zynqmp_pm_pinctrl_set_config(const u32 pin, const u32 param,
 				 u32 value);
+int zynqmp_pm_register_notifier(const u32 node, const u32 event,
+				const u32 wake, const u32 enable);
 #else
 static inline struct zynqmp_eemi_ops *zynqmp_pm_get_eemi_ops(void)
 {
@@ -1063,6 +1065,11 @@ static inline int zynqmp_pm_get_last_reset_reason(u32 *reset_reason)
 	return -ENODEV;
 }
 
+static inline int zynqmp_pm_register_notifier(const u32 node, const u32 event,
+					      const u32 wake, const u32 enable)
+{
+	return -ENODEV;
+}
 #endif
 
 #endif /* __FIRMWARE_ZYNQMP_H__ */

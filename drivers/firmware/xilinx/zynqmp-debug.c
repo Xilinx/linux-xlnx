@@ -2,7 +2,7 @@
 /*
  * Xilinx Zynq MPSoC Firmware layer for debugfs APIs
  *
- *  Copyright (C) 2014-2018 Xilinx, Inc.
+ *  Copyright (C) 2014-2021 Xilinx, Inc.
  *
  *  Michal Simek <michal.simek@xilinx.com>
  *  Davorin Mista <davorin.mista@aggios.com>
@@ -94,22 +94,6 @@ static int zynqmp_pm_self_suspend(const u32 node, const u32 latency,
 static int zynqmp_pm_abort_suspend(const enum zynqmp_pm_abort_reason reason)
 {
 	return zynqmp_pm_invoke_fn(PM_ABORT_SUSPEND, reason, 0, 0, 0, NULL);
-}
-
-/**
- * zynqmp_pm_register_notifier - Register the PU to be notified of PM events
- * @node:	Node ID of the slave
- * @event:	The event to be notified about
- * @wake:	Wake up on event
- * @enable:	Enable or disable the notifier
- *
- * Return:	Returns status, either success or error+reason
- */
-static int zynqmp_pm_register_notifier(const u32 node, const u32 event,
-				       const u32 wake, const u32 enable)
-{
-	return zynqmp_pm_invoke_fn(PM_REGISTER_NOTIFIER, node, event,
-				   wake, enable, NULL);
 }
 
 /**
