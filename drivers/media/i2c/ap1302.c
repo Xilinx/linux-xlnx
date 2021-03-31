@@ -325,6 +325,11 @@
 #define AP1302_LANE_STATE_ERROR_S		0xc
 
 #define AP1302_ADV_CAPTURE_A_FV_CNT		AP1302_REG_32BIT(0x00490040)
+#define AP1302_ADV_HINF_MIPI_T3		AP1302_REG_32BIT(0x840014)
+#define AP1302_TCLK_POST_MASK			0xFF
+#define AP1302_TCLK_POST_SHIFT			0x0
+#define AP1302_TCLK_PRE_MASK			0xFF00
+#define AP1302_TCLK_PRE_SHIFT			0x8
 
 struct ap1302_device;
 
@@ -1126,6 +1131,32 @@ static int ap1302_stall(struct ap1302_device *ap1302, bool stall)
 				    AP1302_SYS_START_STALL_EN |
 				    AP1302_SYS_START_STALL_MODE_DISABLED, NULL);
 	}
+}
+
+static int ap1302_set_mipi_t3_clk(struct ap1302_device *ap1302)
+{
+	unsigned int mipi_t3, t_clk_post, t_clk_pre;
+	int ret;
+
+	/* Set the Tclk_post and Tclk_pre values */
+	ret = ap1302_read(ap1302, AP1302_ADV_HINF_MIPI_T3, &mipi_t3);
+	if (ret)
+		return ret;
+
+	/* Read Tclk post default setting and increment by 2 */
+	t_clk_post = ((mipi_t3 & AP1302_TCLK_POST_MASK)
+					>> AP1302_TCLK_POST_SHIFT) + 0x2;
+	/* Read Tclk pre default setting and increment by 1 */
+	t_clk_pre = ((mipi_t3 & AP1302_TCLK_PRE_MASK)
+					>> AP1302_TCLK_PRE_SHIFT) + 0x1;
+
+	mipi_t3 = ((mipi_t3 & ~(AP1302_TCLK_POST_MASK))
+					& ~(AP1302_TCLK_PRE_MASK));
+	mipi_t3 = (mipi_t3 | (t_clk_pre << AP1302_TCLK_PRE_SHIFT)
+					| t_clk_post);
+
+	/* Write MIPI_T3 register with updated Tclk_post and Tclk_pre values */
+	return ap1302_write(ap1302, AP1302_ADV_HINF_MIPI_T3, mipi_t3, NULL);
 }
 
 /* -----------------------------------------------------------------------------
@@ -2247,7 +2278,12 @@ static int ap1302_load_firmware(struct ap1302_device *ap1302)
 		return ret;
 
 	/* The AP1302 starts outputting frames right after boot, stop it. */
-	return ap1302_stall(ap1302, true);
+	ret = ap1302_stall(ap1302, true);
+	if (ret)
+		return ret;
+
+	/* Adjust MIPI TCLK timings */
+	return ap1302_set_mipi_t3_clk(ap1302);
 }
 
 static int ap1302_detect_chip(struct ap1302_device *ap1302)
