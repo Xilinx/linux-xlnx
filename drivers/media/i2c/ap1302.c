@@ -858,6 +858,82 @@ unlock:
 	return ret;
 }
 
+static int ap1302_mipi_tclk_post_get(void *arg, u64 *val)
+{
+	struct ap1302_device *ap1302 = arg;
+	u32 value;
+	int ret;
+
+	mutex_lock(&ap1302->debugfs.lock);
+
+	ret = ap1302_read(ap1302, AP1302_ADV_HINF_MIPI_T3, &value);
+	if (!ret)
+		*val = value & AP1302_TCLK_POST_MASK;
+
+	mutex_unlock(&ap1302->debugfs.lock);
+
+	return ret;
+}
+
+static int ap1302_mipi_tclk_post_set(void *arg, u64 val)
+{
+	struct ap1302_device *ap1302 = arg;
+	u32 reg, reg_val;
+	int ret;
+
+	mutex_lock(&ap1302->debugfs.lock);
+	ret = ap1302_read(ap1302, AP1302_ADV_HINF_MIPI_T3, &reg);
+	if (ret < 0)
+		goto unlock;
+
+	reg_val = reg & ~(AP1302_TCLK_POST_MASK);
+	reg_val = reg_val | val;
+	ret = ap1302_write(ap1302, AP1302_ADV_HINF_MIPI_T3, reg_val, NULL);
+
+unlock:
+	mutex_unlock(&ap1302->debugfs.lock);
+
+	return ret;
+}
+
+static int ap1302_mipi_tclk_pre_get(void *arg, u64 *val)
+{
+	struct ap1302_device *ap1302 = arg;
+	u32 value;
+	int ret;
+
+	mutex_lock(&ap1302->debugfs.lock);
+
+	ret = ap1302_read(ap1302, AP1302_ADV_HINF_MIPI_T3, &value);
+	if (!ret)
+		*val = (value & AP1302_TCLK_PRE_MASK) >> AP1302_TCLK_PRE_SHIFT;
+
+	mutex_unlock(&ap1302->debugfs.lock);
+
+	return ret;
+}
+
+static int ap1302_mipi_tclk_pre_set(void *arg, u64 val)
+{
+	struct ap1302_device *ap1302 = arg;
+	u32 reg, reg_val;
+	int ret;
+
+	mutex_lock(&ap1302->debugfs.lock);
+	ret = ap1302_read(ap1302, AP1302_ADV_HINF_MIPI_T3, &reg);
+	if (ret < 0)
+		goto unlock;
+
+	reg_val = reg & ~(AP1302_TCLK_PRE_MASK);
+	reg_val = reg_val | val << AP1302_TCLK_PRE_SHIFT;
+	ret = ap1302_write(ap1302, AP1302_ADV_HINF_MIPI_T3, reg_val, NULL);
+
+unlock:
+	mutex_unlock(&ap1302->debugfs.lock);
+
+	return ret;
+}
+
 /*
  * The sipm_addr and sipm_data attributes expose access to the sensor I2C bus.
  *
@@ -879,6 +955,14 @@ DEFINE_DEBUGFS_ATTRIBUTE(ap1302_sipm_addr_fops, ap1302_sipm_addr_get,
 DEFINE_DEBUGFS_ATTRIBUTE(ap1302_sipm_data_fops, ap1302_sipm_data_get,
 			 ap1302_sipm_data_set, "0x%08llx\n");
 
+/* The debugfs is to read and write mipi clk parameters tclk_post values */
+DEFINE_DEBUGFS_ATTRIBUTE(ap1302_mipi_tclk_post_fops, ap1302_mipi_tclk_post_get,
+			 ap1302_mipi_tclk_post_set, "0x%08llx\n");
+
+/* The debugfs is to read and write mipi clk parameters and tclk_pre values */
+DEFINE_DEBUGFS_ATTRIBUTE(ap1302_mipi_tclk_pre_fops, ap1302_mipi_tclk_pre_get,
+			 ap1302_mipi_tclk_pre_set, "0x%08llx\n");
+
 static void ap1302_debugfs_init(struct ap1302_device *ap1302)
 {
 	struct dentry *dir;
@@ -898,6 +982,10 @@ static void ap1302_debugfs_init(struct ap1302_device *ap1302)
 				   ap1302, &ap1302_sipm_addr_fops);
 	debugfs_create_file_unsafe("sipm_data", 0600, ap1302->debugfs.dir,
 				   ap1302, &ap1302_sipm_data_fops);
+	debugfs_create_file_unsafe("mipi_tclk_post", 0600, ap1302->debugfs.dir,
+				   ap1302, &ap1302_mipi_tclk_post_fops);
+	debugfs_create_file_unsafe("mipi_tclk_pre", 0600, ap1302->debugfs.dir,
+				   ap1302, &ap1302_mipi_tclk_pre_fops);
 }
 
 static void ap1302_debugfs_cleanup(struct ap1302_device *ap1302)
