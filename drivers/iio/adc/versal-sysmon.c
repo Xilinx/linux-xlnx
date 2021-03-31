@@ -24,8 +24,18 @@
 #include <linux/of_address.h>
 
 /* Channel IDs for Temp Channels */
+/* TEMP_MAX gives the current temperature for Production
+ * silicon.
+ * TEMP_MAX gives the current maximum temperature for ES1
+ * silicon.
+ */
 #define TEMP_MAX	160
+
+/* TEMP_MIN is not applicable for Production silicon.
+ * TEMP_MIN gives the current minimum temperature for ES1 silicon.
+ */
 #define TEMP_MIN	161
+
 #define TEMP_MAX_MAX	162
 #define TEMP_MIN_MIN	163
 #define TEMP_EVENT	164
@@ -179,7 +189,7 @@ static const struct iio_event_spec sysmon_supply_events[] = {
 
 /* Temperature channel attributes */
 static const struct iio_chan_spec temp_channels[] = {
-	SYSMON_CHAN_TEMP(TEMP_MAX, "max"),
+	SYSMON_CHAN_TEMP(TEMP_MAX, "temp"),
 	SYSMON_CHAN_TEMP(TEMP_MIN, "min"),
 	SYSMON_CHAN_TEMP(TEMP_MAX_MAX, "max_max"),
 	SYSMON_CHAN_TEMP(TEMP_MIN_MIN, "min_min"),
