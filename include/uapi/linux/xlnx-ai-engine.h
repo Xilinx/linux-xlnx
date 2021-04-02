@@ -225,7 +225,7 @@ struct aie_partition_req {
 };
 
 /**
- * struct aie_dma_bd - AIE DMA buffer descriptor information
+ * struct aie_dma_bd_args - AIE DMA buffer descriptor information
  * @bd: DMA buffer descriptor
  * @data_va: virtual address of the data
  * @loc: Tile location relative to the start of a partition
