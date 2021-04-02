@@ -267,6 +267,9 @@ struct cqspi_driver_platdata {
 #define CQSPI_REG_DLL_LOWER_LPBK_LOCK_MASK	0x8000
 #define CQSPI_REG_DLL_LOWER_DLL_LOCK_MASK	0x1
 
+#define CQSPI_REG_DLL_OBSVBLE_UPPER		0xC0
+#define CQSPI_REG_DLL_UPPER_RX_FLD_MASK		0x7F
+
 #define CQSPI_REG_EXT_OP_LOWER			0xE0
 #define CQSPI_REG_EXT_STIG_OP_MASK		0xFF
 #define CQSPI_REG_EXT_READ_OP_MASK		0xFF000000
@@ -329,7 +332,7 @@ struct cqspi_driver_platdata {
 #define CQSPI_DLL_MODE_MASTER		0
 #define CQSPI_DLL_MODE_BYPASS		1
 #define TAP_GRAN_SEL_MIN_FREQ		120000000
-#define CQSPI_TX_TAP_MASTER		0x19
+#define CQSPI_TX_TAP_MASTER		0x1E
 #define CQSPI_MAX_DLL_TAPS		128
 
 #define CQSPI_CS_LOWER			0
@@ -1360,6 +1363,7 @@ static int cqspi_setdlldelay(struct spi_mem *mem)
 	u8 dummy_flag = 0;
 	u32 reg;
 	u8 count;
+	u8 max_index = 0, min_index = 0;
 	struct spi_mem_op op =
 			SPI_MEM_OP(SPI_MEM_OP_CMD(CQSPI_READ_ID, 8),
 				   SPI_MEM_OP_NO_ADDR,
@@ -1457,30 +1461,50 @@ static int cqspi_setdlldelay(struct spi_mem *mem)
 				}
 			} while (id_matched && (count <= 10));
 
-			if (id_matched) {
-				if (!rxtapfound) {
+			if (id_matched && !rxtapfound) {
+				if (cqspi->dll_mode == CQSPI_DLL_MODE_MASTER) {
+					min_rxtap = readl(cqspi->iobase +
+							  CQSPI_REG_DLL_OBSVBLE_UPPER) &
+							  CQSPI_REG_DLL_UPPER_RX_FLD_MASK;
+					max_rxtap = min_rxtap;
+					max_index = i;
+					min_index = i;
+				} else {
 					min_rxtap = i;
 					max_rxtap = i;
-					rxtapfound = true;
+				}
+				rxtapfound = true;
+			}
+
+			if (id_matched && rxtapfound) {
+				if (cqspi->dll_mode == CQSPI_DLL_MODE_MASTER) {
+					max_rxtap = readl(cqspi->iobase +
+							  CQSPI_REG_DLL_OBSVBLE_UPPER) &
+							  CQSPI_REG_DLL_UPPER_RX_FLD_MASK;
+					max_index = i;
 				} else {
 					max_rxtap = i;
 				}
 			}
-			if (!id_matched || i == max_tap) {
-				if (rxtapfound) {
-					windowsize = max_rxtap - min_rxtap + 1;
-					if (windowsize > max_windowsize) {
-						dummy_flag = dummy_incr;
-						max_windowsize = windowsize;
+			if ((!id_matched || i == max_tap) && rxtapfound) {
+				windowsize = max_rxtap - min_rxtap + 1;
+				if (windowsize > max_windowsize) {
+					dummy_flag = dummy_incr;
+					max_windowsize = windowsize;
+					if (cqspi->dll_mode ==
+					    CQSPI_DLL_MODE_MASTER)
+						avg_rxtap = (max_index +
+							     min_index);
+					else
 						avg_rxtap = (max_rxtap +
-								min_rxtap) / 2;
-					}
-
-					if (windowsize >= 3)
-						i = max_tap;
-
-					rxtapfound = false;
+							     min_rxtap);
+					avg_rxtap /= 2;
 				}
+
+				if (windowsize >= 3)
+					i = max_tap;
+
+				rxtapfound = false;
 			}
 		}
 		if (!dummy_incr) {
