@@ -44,7 +44,7 @@ void aie_resource_uninitialize(struct aie_resource *res)
 }
 
 /**
- * aie_resource_check() - check availability of requested resource
+ * aie_resource_check_region() - check availability of requested resource
  * @res: pointer to AI engine resource to check
  * @start: start index of the required resource, it will only be used if
  *	   @continuous is 1. It will check the available resource starting from

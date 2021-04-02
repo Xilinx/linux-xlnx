@@ -304,7 +304,7 @@ static int aie_part_pin_user_region(struct aie_partition *apart,
 }
 
 /**
- * aie_part_pin_user_region() - unpin user pages
+ * aie_part_unpin_user_region() - unpin user pages
  * @region: user space region to unpin.
  *
  * This function unpins all the pages of a user space buffer. User region passed
@@ -1017,7 +1017,7 @@ of_aie_part_probe(struct aie_device *adev, struct device_node *nc)
 }
 
 /**
- * aie_destroy_part() - destroy AI engine partition
+ * aie_part_remove() - destroy AI engine partition
  * @apart: AI engine partition
  *
  * This function will remove AI engine partition.

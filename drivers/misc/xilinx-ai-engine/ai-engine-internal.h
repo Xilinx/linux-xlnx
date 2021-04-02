@@ -352,7 +352,7 @@ struct aie_tile_rscs {
 };
 
 /**
- * struct aie_rsc_mod_attr - AI engine resource attribute of a module
+ * struct aie_mod_rsc_attr - AI engine resource attribute of a module
  * @num_rscs: number of resource
  */
 struct aie_mod_rsc_attr {
@@ -360,7 +360,7 @@ struct aie_mod_rsc_attr {
 };
 
 /**
- * struct aie_rsc_attr - AI engine resource attributes
+ * struct aie_tile_rsc_attr - AI engine resource attributes
  * @mod_attr: array of resource attribute different modules of a tile type of
  *	      a particular resource type.
  */
