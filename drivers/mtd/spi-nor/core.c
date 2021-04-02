@@ -3149,6 +3149,49 @@ static int spi_nor_setup(struct spi_nor *nor,
 	return nor->params->setup(nor, hwcaps);
 }
 
+static int spi_nor_switch_macronix_octal_ddr(struct spi_nor *nor)
+{
+	int ret;
+
+	if (nor->isstacked && nor->spimem)
+		nor->spimem->spi->master->flags |= SPI_MASTER_U_PAGE;
+
+	ret = spi_nor_write_enable(nor);
+	if (ret)
+		return ret;
+
+	if (nor->spimem) {
+		struct spi_mem_op op =
+			SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_WR_CFG_REG2, 1),
+				   SPI_MEM_OP_ADDR(4, 0, 1),
+				   SPI_MEM_OP_NO_DUMMY,
+				   SPI_MEM_OP_DATA_OUT(1, nor->bouncebuf, 1));
+		nor->bouncebuf[0] = SPINOR_MACRONIX_CFG2_OCTAL_DDR;
+		if (!nor->isstacked)
+			op.cmd.tune_clk = 1;
+
+		ret = spi_mem_exec_op(nor->spimem, &op);
+		if (nor->isstacked) {
+			nor->spimem->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+
+			ret = spi_nor_write_enable(nor);
+			if (ret)
+				return ret;
+
+			op.cmd.tune_clk = 1;
+			ret = spi_mem_exec_op(nor->spimem, &op);
+		}
+	}
+
+	if (ret < 0) {
+		dev_err(nor->dev,
+			"error while writing configuration register\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int spi_nor_switch_micron_octal_ddr(struct spi_nor *nor)
 {
 	int ret;
@@ -3919,7 +3962,10 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 		mtd->erasesize, mtd->erasesize / 1024, mtd->numeraseregions);
 
 	if (hwcaps->mask & (SNOR_HWCAPS_READ_8_8_8 | SNOR_HWCAPS_PP_8_8_8)) {
-		ret = spi_nor_switch_micron_octal_ddr(nor);
+		if (nor->jedec_id == CFI_MFR_MACRONIX)
+			ret = spi_nor_switch_macronix_octal_ddr(nor);
+		else
+			ret = spi_nor_switch_micron_octal_ddr(nor);
 		if (ret)
 			return ret;
 	}

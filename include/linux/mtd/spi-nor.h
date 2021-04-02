@@ -107,6 +107,12 @@
 #define SPINOR_OP_RD_EVCR      0x65    /* Read EVCR register */
 #define SPINOR_OP_WD_EVCR      0x61    /* Write EVCR register */
 
+/* For Octal SPI Macronix flashes only */
+#define SPINOR_OP_WR_CFG_REG2	0x72	 /* Write Config register2 */
+
+/* For Octal SPI Macronix flashes only */
+#define SPINOR_MACRONIX_CFG2_OCTAL_DDR		0x2
+
 /* For Micron flashes only */
 #define SPINOR_VCR_OCTAL_DDR	0xE7	/* VCR BYTE0 value for Octal DDR mode */
 
