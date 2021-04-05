@@ -8,6 +8,52 @@
 #include "ai-engine-internal.h"
 #include <linux/slab.h>
 
+/*
+ * Macros for the AI engine resource bitmap element header
+ */
+#define AIE_RSC_BITMAP_TILETYPE_BITSHIFT	0U
+#define AIE_RSC_BITMAP_TILETYPE_BITWIDTH	4U
+#define AIE_RSC_BITMAP_MODTYPE_BITSHIFT		4U
+#define AIE_RSC_BITMAP_MODTYPE_BITWIDTH		4U
+#define AIE_RSC_BITMAP_RSCTYPE_BITSHIFT		8U
+#define AIE_RSC_BITMAP_RSCTYPE_BITWIDTH		8U
+#define AIE_RSC_BITMAP_LENU64_BITSHIFT		16U
+#define AIE_RSC_BITMAP_LENU64_BITWIDTH		32U
+
+#define AIE_RSC_BITMAP_GEN_MASK(N) \
+	GENMASK_ULL((AIE_RSC_BITMAP_##N ##_BITSHIFT + \
+		     AIE_RSC_BITMAP_##N ##_BITWIDTH - 1), \
+		    AIE_RSC_BITMAP_##N ##_BITSHIFT)
+#define AIE_RSC_BITMAP_TILETYPE_MASK	AIE_RSC_BITMAP_GEN_MASK(TILETYPE)
+#define AIE_RSC_BITMAP_MODTYPE_MASK	AIE_RSC_BITMAP_GEN_MASK(MODTYPE)
+#define AIE_RSC_BITMAP_RSCTYPE_MASK	AIE_RSC_BITMAP_GEN_MASK(RSCTYPE)
+#define AIE_RSC_BITMAP_LENU64_MASK	AIE_RSC_BITMAP_GEN_MASK(LENU64)
+
+#define AIE_RSC_BITMAP_HEAD_VAL(N, v) \
+	(((v) & AIE_RSC_BITMAP_##N ##_MASK) >> AIE_RSC_BITMAP_##N ##_BITSHIFT)
+
+/**
+ * struct aie_rsc_meta_header - struct of a resource bitmaps meta data header
+ * @stat: statistics information of the bitmaps, such as number of bitmaps
+ * @bitmap_off: offset to the start of the binary of the first bitmap element
+ */
+struct aie_rsc_meta_header {
+	u64 stat;
+	u64 bitmap_off;
+};
+
+/**
+ * struct aie_rsc_bitmap - struct of a resource bitmap element
+ * @header: bitmap header, it contains the following information:
+ *	    tile type, module type, resource type, and the bitmap
+ *	    length.
+ * @bitmap: the pointer of bitmap
+ */
+struct aie_rsc_bitmap {
+	u64 header;
+	u64 bitmap[0];
+};
+
 /**
  * aie_dev_get_tile_attr - helper function to get tile attributes
  * @adev: AI engine device
@@ -101,6 +147,44 @@ struct aie_mod_rsc_attr *aie_dev_get_mod_rsc_attr(struct aie_device *adev,
 }
 
 /**
+ * aie_part_get_ttype_rsc_bitmaps - helper function to get bitmap of a resource
+ *				    with tile type, module type, and resource
+ *				    type
+ *
+ * @apart: AI engine partition
+ * @ttype: tile type
+ * @mod: module type
+ * @rtype: resource type
+ * @return: pointer to AI engine resource status bitmaps if resource is found,
+ *	    otherwise NULL
+ */
+static
+struct aie_rsc_stat *aie_part_get_ttype_rsc_bitmaps(struct aie_partition *apart,
+						    enum aie_tile_type ttype,
+						    enum aie_module_type mod,
+						    enum aie_rsc_type rtype)
+{
+	int mod_id;
+	struct aie_mod_rscs *mrscs;
+
+	if (ttype >= AIE_TILE_TYPE_MAX)
+		return NULL;
+
+	mod_id = aie_dev_get_mod_id(apart->adev, ttype, mod);
+	if (mod_id < 0)
+		return NULL;
+
+	if (rtype >= AIE_RSCTYPE_MAX)
+		return NULL;
+
+	mrscs = apart->trscs[ttype].mod_rscs[rtype];
+	if (!mrscs)
+		return NULL;
+
+	return mrscs[mod_id].rscs_stat;
+}
+
+/**
  * aie_part_get_rsc_bitmaps - helper function to get bitmap of a resource
  *
  * @apart: AI engine partition
@@ -117,20 +201,8 @@ struct aie_rsc_stat *aie_part_get_rsc_bitmaps(struct aie_partition *apart,
 					      enum aie_rsc_type rtype)
 {
 	u32 ttype = apart->adev->ops->get_tile_type(&loc);
-	int mod_id = aie_dev_get_mod_id(apart->adev, ttype, mod);
-	struct aie_mod_rscs *mrscs;
 
-	if (mod_id < 0)
-		return NULL;
-
-	if (rtype >= AIE_RSCTYPE_MAX)
-		return NULL;
-
-	mrscs = apart->trscs[ttype].mod_rscs[rtype];
-	if (!mrscs)
-		return NULL;
-
-	return mrscs[mod_id].rscs_stat;
+	return aie_part_get_ttype_rsc_bitmaps(apart, ttype, mod, rtype);
 }
 
 /**
@@ -1170,4 +1242,95 @@ error:
 	mutex_unlock(&apart->mlock);
 	kfree(rscs);
 	return ret;
+}
+
+/**
+ * aie_part_rscmgr_set_static() - sets statically allocated resources bitmaps
+ *
+ * @apart: AI engine partition
+ * @meta: meta data which contains the statically allocated resources bitmaps
+ *
+ * @return: 0 for success, negative value for failure
+ *
+ * This function takes the static bitmap information from meta data and fill
+ * in the static bitmap.
+ */
+int aie_part_rscmgr_set_static(struct aie_partition *apart, void *meta)
+{
+	struct aie_rsc_meta_header *header = meta;
+	struct aie_rsc_bitmap *bitmap;
+	u64 i, num_bitmaps, offset;
+
+	if (!header) {
+		dev_err(&apart->dev,
+			"failed to get static resources, meta data is NULL.\n");
+		return -EINVAL;
+	}
+
+	/*
+	 * For now, the stat field of the header only contains the number of
+	 * bitmaps.
+	 */
+	num_bitmaps = header->stat;
+	offset = header->bitmap_off;
+	if (!num_bitmaps || offset < sizeof(*header)) {
+		dev_err(&apart->dev,
+			"failed to get static resources, invalid header.\n");
+		return -EINVAL;
+	}
+
+	bitmap = (struct aie_rsc_bitmap *)(meta + offset);
+	for (i = 0; i < num_bitmaps; i++) {
+		struct aie_rsc_stat *rstat;
+		const struct aie_mod_rsc_attr *mrattr;
+		u64 header = bitmap->header;
+		u32 lrlen, rlen, ttype, mtype, rtype, total;
+
+		ttype = AIE_RSC_BITMAP_HEAD_VAL(TILETYPE, header);
+		mtype = AIE_RSC_BITMAP_HEAD_VAL(MODTYPE, header);
+		rtype = AIE_RSC_BITMAP_HEAD_VAL(RSCTYPE, header);
+		rlen = AIE_RSC_BITMAP_HEAD_VAL(LENU64, header);
+
+		if (!rlen) {
+			dev_err(&apart->dev,
+				"invalid static bitmap[%llu], length is 0.\n",
+				i);
+			return -EINVAL;
+		}
+
+		mrattr = aie_dev_get_mod_rsc_attr(apart->adev, ttype, mtype,
+						  rtype);
+		if (!mrattr) {
+			dev_err(&apart->dev,
+				"invalid static bitmap[%llu], invalid tile(%u)/module(%u)/rsce(%u) types combination.\n",
+				i, ttype, mtype, rtype);
+			return -EINVAL;
+		}
+
+		total = mrattr->num_rscs * apart->range.size.col *
+			aie_part_get_tile_rows(apart, ttype);
+		lrlen = BITS_TO_LONGS(total);
+		if (rlen != lrlen) {
+			dev_err(&apart->dev,
+				"invalid static bitmap[%llu], tile(%u)/module(%u)/rscs(%u), expect len(%u), actual(%u).\n",
+				i, ttype, mtype, rtype, lrlen, rlen);
+			return -EINVAL;
+		}
+
+		rstat = aie_part_get_ttype_rsc_bitmaps(apart, ttype, mtype,
+						       rtype);
+		/* if bitmap length is not 0, bitmap pointer cannot be NULL. */
+		if (WARN_ON(!rstat || !rstat->sbits.bitmap))
+			return -EFAULT;
+
+		/* copy the bitmap from meta data */
+		bitmap_copy(rstat->sbits.bitmap,
+			    (unsigned long *)bitmap->bitmap, total);
+
+		bitmap = (struct aie_rsc_bitmap *)((void *)bitmap +
+						   sizeof(header) +
+						   rlen * sizeof(u64));
+	}
+
+	return 0;
 }
