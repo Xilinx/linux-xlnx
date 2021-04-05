@@ -757,4 +757,5 @@ long aie_part_rscmgr_rsc_check_avail(struct aie_partition *apart,
 				     void __user *user_args);
 long aie_part_rscmgr_get_broadcast(struct aie_partition *apart,
 				   void __user *user_args);
+int aie_part_rscmgr_set_static(struct aie_partition *apart, void *meta);
 #endif /* AIE_INTERNAL_H */

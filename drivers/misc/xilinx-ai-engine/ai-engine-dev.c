@@ -614,6 +614,19 @@ struct device *aie_partition_request(struct aie_partition_req *req)
 		return ERR_PTR(ret);
 
 	ret = aie_partition_get(apart, req);
+
+	/* Sets bitmaps of statically allocated resources */
+	if (!ret && req->meta_data) {
+		ret = aie_part_rscmgr_set_static(apart,
+						 (void *)req->meta_data);
+		if (ret) {
+			/* release partition if failed to set static resources */
+			mutex_unlock(&apart->mlock);
+			fput(apart->filep);
+			return ERR_PTR(ret);
+		}
+	}
+
 	mutex_unlock(&apart->mlock);
 	if (ret)
 		return ERR_PTR(ret);
