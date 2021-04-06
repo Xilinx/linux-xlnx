@@ -492,10 +492,10 @@ static int zynqmp_r5_parse_fw(struct rproc *rproc, const struct firmware *fw)
  */
 static void zynqmp_r5_rproc_kick(struct rproc *rproc, int vqid)
 {
-	struct sk_buff *skb;
-	unsigned int skb_len;
-	struct zynqmp_ipi_message *mb_msg;
-	int ret;
+	struct sk_buff *skb = NULL;
+	unsigned int skb_len = 0;
+	struct zynqmp_ipi_message *mb_msg = NULL;
+	int ret = 0;
 
 	struct device *dev = rproc->dev.parent;
 	struct zynqmp_r5_rproc *z_rproc = rproc->priv;
@@ -764,7 +764,7 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	struct device_node *nc;
 	enum rpu_oper_mode rpu_mode = PM_RPU_MODE_LOCKSTEP;
 	struct list_head *cluster; /* list to track each core's rproc */
-	struct zynqmp_r5_rproc *z_rproc;
+	struct zynqmp_r5_rproc *z_rproc = NULL;
 	struct platform_device *child_pdev;
 	struct list_head *pos;
 
