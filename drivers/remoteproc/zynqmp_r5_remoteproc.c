@@ -316,17 +316,17 @@ static int parse_mem_regions(struct rproc *rproc)
  *
  * return 0 on success, otherwise non-zero value on failure
  */
-static int zynqmp_r5_pm_request_sram(phys_addr_t addr, bool versal)
+static int zynqmp_r5_pm_request_sram(phys_addr_t addr, bool versal,
+				     u32 *pnode_id)
 {
 	unsigned int i;
-	u32 pnode_id;
 
 	for (i = 0; i < NUM_SRAMS; i++) {
 		if (zynqmp_banks[i].addr == addr) {
-			pnode_id = versal ? VERSAL_TCM(zynqmp_banks[i].id) :
+			*pnode_id = versal ? VERSAL_TCM(zynqmp_banks[i].id) :
 				   zynqmp_banks[i].id;
 
-			return zynqmp_pm_request_node(pnode_id,
+			return zynqmp_pm_request_node(*pnode_id,
 						      ZYNQMP_PM_CAPABILITY_ACCESS,
 						      0,
 						      ZYNQMP_PM_REQUEST_ACK_BLOCKING);
@@ -427,7 +427,8 @@ static int parse_tcm_banks(struct rproc *rproc)
 			if (ret < 0)
 				return ret;
 			ret = zynqmp_r5_pm_request_sram(rsc.start,
-							z_rproc->versal);
+							z_rproc->versal,
+							&pnode_id);
 			if (ret < 0)
 				return ret;
 
