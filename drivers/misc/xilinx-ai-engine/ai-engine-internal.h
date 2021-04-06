@@ -729,6 +729,7 @@ int aie_device_init(struct aie_device *adev);
 void aie_array_backtrack(struct work_struct *work);
 irqreturn_t aie_interrupt(int irq, void *data);
 void aie_part_clear_cached_events(struct aie_partition *apart);
+int aie_part_set_intr_rscs(struct aie_partition *apart);
 
 bool aie_part_has_mem_mmapped(struct aie_partition *apart);
 bool aie_part_has_regs_mmapped(struct aie_partition *apart);
@@ -758,4 +759,7 @@ long aie_part_rscmgr_rsc_check_avail(struct aie_partition *apart,
 long aie_part_rscmgr_get_broadcast(struct aie_partition *apart,
 				   void __user *user_args);
 int aie_part_rscmgr_set_static(struct aie_partition *apart, void *meta);
+int aie_part_rscmgr_set_tile_broadcast(struct aie_partition *apart,
+				       struct aie_location loc,
+				       enum aie_module_type mod, uint32_t id);
 #endif /* AIE_INTERNAL_H */

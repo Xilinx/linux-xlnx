@@ -16,6 +16,7 @@
 
 #define AIE_ARRAY_TILE_ERROR_BC_ID		0U
 #define AIE_SHIM_TILE_ERROR_IRQ_ID		16U
+#define AIE_SHIM_INTR_BC_MAX			5U
 
 /**
  * aie_get_broadcast_event() - get event ID being broadcast on given
@@ -952,6 +953,62 @@ void aie_part_clear_cached_events(struct aie_partition *apart)
 	aie_resource_clear_all(&apart->core_event_status);
 	aie_resource_clear_all(&apart->mem_event_status);
 	aie_resource_clear_all(&apart->pl_event_status);
+}
+
+/**
+ * aie_part_set_intr_rscs() - set broadcast resources used by interrupt
+ * @apart: AIE partition pointer
+ * @return: 0 for sueccess, and negative value for failure
+ *
+ * This function reserves interrupt broadcast channels resources.
+ */
+int aie_part_set_intr_rscs(struct aie_partition *apart)
+{
+	u32 c, r;
+	int ret;
+
+	for (c = 0; c < apart->range.size.col; c++) {
+		u32 b;
+		struct aie_location l = {
+			.col = apart->range.start.col + c,
+			.row = 0,
+		};
+
+		/* reserved broadcast channels 0 - 5 for SHIM */
+		for (b = 0; b <= AIE_SHIM_INTR_BC_MAX; b++) {
+			ret = aie_part_rscmgr_set_tile_broadcast(apart, l,
+								 AIE_PL_MOD,
+								 b);
+			if (ret)
+				return ret;
+		}
+
+		for (r = 1; r < apart->range.size.row; r++) {
+			struct aie_device *adev = apart->adev;
+			struct aie_tile_attr *tattr;
+			u32 m, ttype;
+
+			b = AIE_ARRAY_TILE_ERROR_BC_ID;
+			l.row = apart->range.start.row + r;
+			ttype = adev->ops->get_tile_type(&l);
+
+			if (WARN_ON(ttype >= AIE_TILE_TYPE_MAX))
+				return -EINVAL;
+
+			tattr = &adev->ttype_attr[ttype];
+			for (m = 0; m < tattr->num_mods; m++) {
+				enum aie_module_type mod = tattr->mods[m];
+
+				ret = aie_part_rscmgr_set_tile_broadcast(apart,
+									 l, mod,
+									 b);
+				if (ret)
+					return ret;
+			}
+		}
+	}
+
+	return 0;
 }
 
 /**

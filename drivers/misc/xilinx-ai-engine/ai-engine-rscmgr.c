@@ -393,7 +393,8 @@ int aie_part_rscmgr_init(struct aie_partition *apart)
 		}
 	}
 
-	return 0;
+	/* Reserve resources for interrupts */
+	return aie_part_set_intr_rscs(apart);
 }
 
 /**
@@ -481,6 +482,9 @@ void aie_part_rscmgr_reset(struct aie_partition *apart)
 			}
 		}
 	}
+
+	/* Always reserve resources for interrupt */
+	(void)aie_part_set_intr_rscs(apart);
 }
 
 /**
@@ -1114,6 +1118,39 @@ static int aie_part_rscmgr_check_rscs_modules(struct aie_partition *apart,
 }
 
 /**
+ * aie_part_rscmgr_set_tile_broadcast() - set broadcast channel in use
+ *					  of a module of a tile
+ *
+ * @apart: AI engine partition
+ * @loc: tile location
+ * @mod: module
+ * @id: broadcast channel id
+ * @return: 0 for success, negative value for failure
+ *
+ * This function will set the bit of the specified broadcast channel in the
+ * runtime broadcast bitmap of the specified module of the specified tile.
+ */
+int aie_part_rscmgr_set_tile_broadcast(struct aie_partition *apart,
+				       struct aie_location loc,
+				       enum aie_module_type mod, uint32_t id)
+{
+	struct aie_rsc_stat *rstat;
+	int start_bit;
+
+	rstat = aie_part_get_rsc_bitmaps(apart, loc, mod,
+					 AIE_RSCTYPE_BROADCAST);
+	/* bitmap pointer cannot be NULL. */
+	if (WARN_ON(!rstat || !rstat->rbits.bitmap))
+		return -EFAULT;
+
+	start_bit = aie_part_get_rsc_startbit(apart, loc, mod,
+					      AIE_RSCTYPE_BROADCAST);
+	aie_resource_set(&rstat->rbits, start_bit + id, 1);
+
+	return 0;
+}
+
+/**
  * aie_part_rscmgr_get_broadcast() - get common broadcast channel of
  *				     the specified modules or the whole
  *				     partition.
@@ -1200,16 +1237,14 @@ long aie_part_rscmgr_get_broadcast(struct aie_partition *apart,
 	/* set the broadcast channel resource runtime status bit */
 	for (i = 0; i < args.num_rscs; i++) {
 		struct aie_location l;
-		struct aie_rsc_stat *rstat;
-		int start_bit;
 
 		l.col = apart->range.start.col + rscs[i].loc.col;
 		l.row = rscs[i].loc.row;
-		rstat = aie_part_get_rsc_bitmaps(apart, l, rscs[i].mod,
-						 AIE_RSCTYPE_BROADCAST);
-		start_bit = aie_part_get_rsc_startbit(apart, l, rscs[i].mod,
-						      AIE_RSCTYPE_BROADCAST);
-		aie_resource_set(&rstat->rbits, start_bit + args.id, 1);
+		ret = aie_part_rscmgr_set_tile_broadcast(apart, l, rscs[i].mod,
+							 args.id);
+		if (ret)
+			goto error;
+
 		rscs[i].id = args.id;
 	}
 
