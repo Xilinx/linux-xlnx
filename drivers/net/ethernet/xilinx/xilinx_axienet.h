@@ -865,6 +865,7 @@ struct axienet_local {
 	void __iomem *gt_ctrl;	/* GT speed and reset control register space */
 	u32 phc_index;		/* Index to corresponding PTP clock used  */
 	u32 gt_lane;		/* MRMAC GT lane index used */
+	u64 ptp_os_cf;		/* CF TS of PTP PDelay req for one step usage */
 };
 
 /**
