@@ -24,8 +24,6 @@
 #include "remoteproc_internal.h"
 
 #define MAX_RPROCS	2 /* Support up to 2 RPU */
-#define MAX_MEM_PNODES	4 /* Max power nodes for one RPU memory instance */
-
 #define BANK_LIST_PROP	"sram"
 #define DDR_LIST_PROP	"memory-region"
 
@@ -44,15 +42,20 @@ struct sram_addr_data {
 	enum pm_node_id id;
 };
 
-#define NUM_SRAMS 4U
+#define NUM_SRAMS 8U
 static const struct sram_addr_data zynqmp_banks[NUM_SRAMS] = {
+	{0xfffc0000UL, NODE_OCM_BANK_0},
+	{0xfffd0000UL, NODE_OCM_BANK_1},
+	{0xfffe0000UL, NODE_OCM_BANK_2},
+	{0xffff0000UL, NODE_OCM_BANK_3},
 	{0xffe00000UL, NODE_TCM_0_A},
 	{0xffe20000UL, NODE_TCM_0_B},
 	{0xffe90000UL, NODE_TCM_1_A},
 	{0xffeb0000UL, NODE_TCM_1_B},
 };
 
-#define VERSAL_TCM(ID)  (ID + 0x18317FFCU)
+#define VERSAL_TCM(ID)	((ID) + 0x18317FFCU)
+#define VERSAL_OCM(ID)	((ID) + 0x18313FFCU)
 #define VERSAL_RPU_0	(NODE_RPU_0 + 0x1810FFFEU)
 #define VERSAL_RPU_1	(VERSAL_RPU_0 + 1U)
 
@@ -124,11 +127,11 @@ static int r5_set_mode(struct zynqmp_r5_rproc *z_rproc,
  * @rproc: single R5 core's corresponding rproc instance
  * @mem: mem entry to unmap
  *
- * Unmap TCM banks when powering down R5 core.
+ * Unmap SRAM banks when powering down R5 core.
  *
  * return 0 on success, otherwise non-zero value on failure
  */
-static int tcm_mem_release(struct rproc *rproc, struct rproc_mem_entry *mem)
+static int sram_mem_release(struct rproc *rproc, struct rproc_mem_entry *mem)
 {
 	u32 pnode_id = (u64)mem->priv;
 
@@ -309,6 +312,8 @@ static int parse_mem_regions(struct rproc *rproc)
 /*
  * zynqmp_r5_pm_request_tcm
  * @addr: base address of mem provided in R5 core's sram property.
+ * @versal: denote whether to use Versal or ZU+ platform IDs
+ * @pnode_id: store platform ID here for later use
  *
  * Given sram base address, determine its corresponding Xilinx
  * Platform Management ID and then request access to this node
@@ -323,8 +328,26 @@ static int zynqmp_r5_pm_request_sram(phys_addr_t addr, bool versal,
 
 	for (i = 0; i < NUM_SRAMS; i++) {
 		if (zynqmp_banks[i].addr == addr) {
-			*pnode_id = versal ? VERSAL_TCM(zynqmp_banks[i].id) :
-				   zynqmp_banks[i].id;
+			*pnode_id = zynqmp_banks[i].id;
+
+			if (versal) {
+				switch (addr) {
+				case 0xffe00000UL:
+				case 0xffe20000UL:
+				case 0xffe90000UL:
+				case 0xffeb0000UL:
+					*pnode_id = VERSAL_TCM(zynqmp_banks[i].id);
+					break;
+				case 0xfffc0000UL:
+				case 0xfffd0000UL:
+				case 0xfffe0000UL:
+				case 0xffff0000UL:
+					*pnode_id = VERSAL_OCM(zynqmp_banks[i].id);
+					break;
+				default:
+					return -EINVAL;
+				}
+			}
 
 			return zynqmp_pm_request_node(*pnode_id,
 						      ZYNQMP_PM_CAPABILITY_ACCESS,
@@ -337,18 +360,17 @@ static int zynqmp_r5_pm_request_sram(phys_addr_t addr, bool versal,
 }
 
 /*
- * tcm_mem_alloc
+ * sram_mem_alloc
  * @rproc: single R5 core's corresponding rproc instance
  * @mem: mem entry to initialize the va and da fields of
  *
- * Given TCM bank entry,
+ * Given SRAM bank entry,
  * this callback will set device address for R5 running on TCM
  * and also setup virtual address for TCM bank remoteproc carveout
  *
  * return 0 on success, otherwise non-zero value on failure
  */
-static int tcm_mem_alloc(struct rproc *rproc,
-			 struct rproc_mem_entry *mem)
+static int sram_mem_alloc(struct rproc *rproc, struct rproc_mem_entry *mem)
 {
 	void *va;
 	struct device *dev = rproc->dev.parent;
@@ -363,25 +385,28 @@ static int tcm_mem_alloc(struct rproc *rproc,
 	va = devm_ioremap_wc(dev, mem->da, mem->len);
 	if (!va)
 		return -ENOMEM;
-	/* As R5 is 32 bit, wipe out extra high bits */
-	mem->da &= 0x000fffff;
-	/*
-	 * The R5s expect their TCM banks to be at address 0x0 and 0x2000,
-	 * while on the Linux side they are at 0xffexxxxx. Zero out the high
-	 * 12 bits of the address.
-	 */
+	/* Handle TCM translation for R5-relative addresses */
+	if (mem->da >= 0xffe00000UL && mem->da <= 0xffeb0000UL) {
+		/* As R5 is 32 bit, wipe out extra high bits */
+		mem->da &= 0x000fffff;
+		/*
+		 * The R5s expect their TCM banks to be at address 0x0 and 0x2000,
+		 * while on the Linux side they are at 0xffexxxxx. Zero out the high
+		 * 12 bits of the address.
+		 */
 
-	/*
-	 * TCM Banks 1A and 1B (0xffe90000 and 0xffeb0000) still
-	 * need to be translated to 0x0 and 0x20000
-	 */
-	if (mem->da == 0x90000 || mem->da == 0xB0000)
-		mem->da -= 0x90000;
+		/*
+		 * TCM Banks 1A and 1B (0xffe90000 and 0xffeb0000) still
+		 * need to be translated to 0x0 and 0x20000
+		 */
+		if (mem->da == 0x90000 || mem->da == 0xB0000)
+			mem->da -= 0x90000;
 
-	/* if translated TCM bank address is not valid report error */
-	if (mem->da != 0x0 && mem->da != 0x20000) {
-		dev_err(dev, "invalid TCM bank address: %x\n", mem->da);
-		return -EINVAL;
+		/* if translated TCM bank address is not valid report error */
+		if (mem->da != 0x0 && mem->da != 0x20000) {
+			dev_err(dev, "invalid TCM bank address: %x\n", mem->da);
+			return -EINVAL;
+		}
 	}
 
 	return 0;
@@ -436,8 +461,8 @@ static int parse_tcm_banks(struct rproc *rproc)
 			size = resource_size(&rsc);
 			mem = rproc_mem_entry_init(dev, NULL, rsc.start,
 						   (int)size, rsc.start,
-						   tcm_mem_alloc,
-						   tcm_mem_release,
+						   sram_mem_alloc,
+						   sram_mem_release,
 						   rsc.name);
 			if (!mem)
 				return -ENOMEM;
