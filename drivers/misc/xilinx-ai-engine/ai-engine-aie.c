@@ -71,6 +71,10 @@
 #define AIE_TILE_CORE_CLKCNTR_REGOFF		0x00036040U
 #define AIE_TILE_CORE_GROUP_ERROR_REGOFF	0x00034510U
 #define AIE_TILE_MEM_GROUP_ERROR_REGOFF		0x00014514U
+#define AIE_TILE_CORE_R0_REGOFF			0x00030000U
+#define AIE_TILE_CORE_LC_REGOFF			0x00030520U
+#define AIE_TILE_CORE_VRL0_REGOFF		0x00030530U
+#define AIE_TILE_CORE_AMH3_PART3_REGOFF		0x000307a0U
 
 /*
  * Register masks
@@ -150,6 +154,27 @@ static const struct aie_tile_regs aie_kernel_regs[] = {
 	{.attribute = AIE_TILE_TYPE_MASK_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
 	 .soff = AIE_TILE_MEM_GROUP_ERROR_REGOFF,
 	 .eoff = AIE_TILE_MEM_GROUP_ERROR_REGOFF,
+	},
+};
+
+static const struct aie_tile_regs aie_core_32bit_regs = {
+	.attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	.soff = AIE_TILE_CORE_R0_REGOFF,
+	.eoff = AIE_TILE_CORE_LC_REGOFF,
+};
+
+static const struct aie_tile_regs aie_core_128bit_regs = {
+	.attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	.soff = AIE_TILE_CORE_VRL0_REGOFF,
+	.eoff = AIE_TILE_CORE_AMH3_PART3_REGOFF,
+};
+
+static const struct aie_core_regs_attr aie_core_regs[] = {
+	{.core_regs = &aie_core_32bit_regs,
+	 .width = 1,
+	},
+	{.core_regs = &aie_core_128bit_regs,
+	 .width = 4,
 	},
 };
 
@@ -1061,6 +1086,8 @@ int aie_device_init(struct aie_device *adev)
 	adev->ops = &aie_ops;
 	adev->num_kernel_regs = ARRAY_SIZE(aie_kernel_regs);
 	adev->kernel_regs = aie_kernel_regs;
+	adev->num_core_regs = ARRAY_SIZE(aie_core_regs);
+	adev->core_regs = aie_core_regs;
 	adev->col_rst = &aie_col_rst;
 	adev->col_clkbuf = &aie_col_clkbuf;
 	adev->shim_dma = &aie_shimdma;

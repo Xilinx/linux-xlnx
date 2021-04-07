@@ -66,6 +66,9 @@ enum aie_tile_type {
 /* Max number of modules per tile */
 #define AIE_MAX_MODS_PER_TILE		2U
 
+/* AIE core registers step size */
+#define AIE_CORE_REGS_STEP		0x10
+
 /*
  * Macros of AI engine module type index of a tile type
  * e.g.
@@ -153,6 +156,16 @@ struct aie_dma_attr {
 	u32 bd_regoff;
 	u32 num_bds;
 	u32 bd_len;
+};
+
+/**
+ * struct aie_core_regs_attr - AI engine core register attributes structure
+ * @core_regs: core registers
+ * @width: number of 32 bit words
+ */
+struct aie_core_regs_attr {
+	const struct aie_tile_regs *core_regs;
+	u32 width;
 };
 
 /**
@@ -395,6 +408,7 @@ struct aie_tile_attr {
  * @clk: AI enigne device clock
  * @res: memory resource of AI engine device
  * @kernel_regs: array of kernel only registers
+ * @core_regs: array of core registers
  * @ops: tile operations
  * @col_rst: column reset attribute
  * @col_clkbuf: column clock buffer attribute
@@ -414,6 +428,7 @@ struct aie_tile_attr {
  * @cols_res: AI engine columns resources to indicate
  *	      while columns are occupied by partitions.
  * @num_kernel_regs: number of kernel only registers range
+ * @num_core_regs: number of core registers range
  * @irq: Linux IRQ number
  * @backtrack: workqueue to backtrack interrupt
  * @version: AI engine device version
@@ -430,6 +445,7 @@ struct aie_device {
 	struct clk *clk;
 	struct resource *res;
 	const struct aie_tile_regs *kernel_regs;
+	const struct aie_core_regs_attr *core_regs;
 	const struct aie_tile_operations *ops;
 	const struct aie_single_reg_field *col_rst;
 	const struct aie_single_reg_field *col_clkbuf;
@@ -448,6 +464,7 @@ struct aie_device {
 	u32 col_shift;
 	u32 row_shift;
 	u32 num_kernel_regs;
+	u32 num_core_regs;
 	int irq;
 	struct work_struct backtrack;
 	int version;
