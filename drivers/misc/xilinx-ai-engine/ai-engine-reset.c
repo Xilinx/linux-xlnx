@@ -123,6 +123,58 @@ static void aie_part_clear_mems(struct aie_partition *apart)
 }
 
 /**
+ * aie_part_clear_core_regs_of_tile() - clear registers of aie core
+ * @apart: AI engine partition
+ * @loc: location of aie tile to clear
+ */
+static void aie_part_clear_core_regs_of_tile(struct aie_partition *apart,
+					     struct aie_location loc)
+{
+	struct aie_device *adev = apart->adev;
+	const struct aie_core_regs_attr *regs = adev->core_regs;
+	u32 i;
+
+	for (i = 0; i < adev->num_core_regs; i++) {
+		u32 j, soff, eoff, reg;
+
+		soff = aie_cal_regoff(adev, loc, regs[i].core_regs->soff);
+		eoff = aie_cal_regoff(adev, loc, regs[i].core_regs->eoff);
+
+		for (reg = soff; reg <= eoff; reg += AIE_CORE_REGS_STEP) {
+			for (j = 0; j < regs[i].width; j++)
+				iowrite32(0, adev->base + reg + j * 4);
+		}
+	}
+}
+
+/**
+ * aie_part_clear_core_regs - clear registers of aie core of a partition
+ * @apart: AI engine partition
+ */
+static void aie_part_clear_core_regs(struct aie_partition *apart)
+{
+	struct aie_range *range = &apart->range;
+	u32 c, r;
+
+	/* clear core registers for each tile in the partition */
+	for (c = range->start.col; c < range->start.col + range->size.col;
+			c++) {
+		for (r = range->start.row;
+				r < range->start.row + range->size.row; r++) {
+			struct aie_location loc;
+			u32 ttype;
+
+			loc.row = r;
+			loc.col = c;
+			ttype = apart->adev->ops->get_tile_type(&loc);
+			if (ttype == AIE_TILE_TYPE_TILE &&
+			    aie_part_check_clk_enable_loc(apart, &loc))
+				aie_part_clear_core_regs_of_tile(apart, loc);
+		}
+	}
+}
+
+/**
  * aie_part_clean() - reset and clear AI engine partition
  * @apart: AI engine partition
  * @return: 0 for success and negative value for failure
@@ -132,6 +184,7 @@ static void aie_part_clear_mems(struct aie_partition *apart)
  *  * reset AI engine partition columns
  *  * reset AI engine shims
  *  * clear the memories
+ *  * clear core registers
  *  * gate all the tiles in a partition.
  *
  * This function will not validate the partition, the caller will need to
@@ -153,6 +206,7 @@ int aie_part_clean(struct aie_partition *apart)
 		return ret;
 
 	aie_part_clear_mems(apart);
+	aie_part_clear_core_regs(apart);
 	aie_part_set_cols_clkbuf(apart, false);
 
 	return 0;
