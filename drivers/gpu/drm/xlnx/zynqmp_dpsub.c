@@ -12,6 +12,7 @@
 #include <linux/clk.h>
 #include <linux/dma-mapping.h>
 #include <linux/module.h>
+#include <linux/of_platform.h>
 #include <linux/of_reserved_mem.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
@@ -241,10 +242,19 @@ static int zynqmp_dpsub_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_disp;
 
+	/* Populate the sound child nodes */
+	ret = of_platform_populate(pdev->dev.of_node, NULL, NULL, &pdev->dev);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to populate child nodes\n");
+		goto err_populate;
+	}
+
 	dev_info(&pdev->dev, "ZynqMP DisplayPort Subsystem driver probed");
 
 	return 0;
 
+err_populate:
+	of_platform_depopulate(&pdev->dev);
 err_disp:
 	zynqmp_disp_remove(dpsub);
 err_dp:
@@ -265,6 +275,8 @@ static int zynqmp_dpsub_remove(struct platform_device *pdev)
 	drm_dev_unregister(drm);
 	drm_atomic_helper_shutdown(drm);
 	drm_kms_helper_poll_fini(drm);
+
+	of_platform_depopulate(&pdev->dev);
 
 	zynqmp_disp_remove(dpsub);
 	zynqmp_dp_remove(dpsub);
