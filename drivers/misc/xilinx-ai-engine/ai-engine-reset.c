@@ -202,8 +202,8 @@ int aie_part_reset(struct aie_partition *apart)
 
 	ret = apart->adev->ops->reset_shim(adev, &apart->range);
 	if (ret < 0) {
-		return ret;
 		mutex_unlock(&apart->mlock);
+		return ret;
 	}
 
 	aie_part_set_cols_clkbuf(apart, false);
