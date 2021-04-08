@@ -1233,7 +1233,7 @@ static int ap1302_set_mipi_t3_clk(struct ap1302_device *ap1302)
 
 	/* Read Tclk post default setting and increment by 2 */
 	t_clk_post = ((mipi_t3 & AP1302_TCLK_POST_MASK)
-					>> AP1302_TCLK_POST_SHIFT) + 0x2;
+					>> AP1302_TCLK_POST_SHIFT) + 0x5;
 	/* Read Tclk pre default setting and increment by 1 */
 	t_clk_pre = ((mipi_t3 & AP1302_TCLK_PRE_MASK)
 					>> AP1302_TCLK_PRE_SHIFT) + 0x1;
