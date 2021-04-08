@@ -47,6 +47,7 @@
 /* Register Offsets */
 #define SYSMON_NPI_LOCK		0x000C
 #define SYSMON_ISR		0x0044
+#define SYSMON_TEMP_MASK	0x300
 #define SYSMON_IMR		0x0048
 #define SYSMON_IER		0x004C
 #define SYSMON_IDR		0x0050
@@ -135,6 +136,9 @@ enum sysmon_alarm_bit {
  * @mutex: to handle multiple user interaction
  * @lock: to help manage interrupt registers correctly
  * @irq: interrupt number of the sysmon
+ * @masked_temp: currently masked due to alarm
+ * @temp_mask: temperature based interrupt configuration
+ * @sysmon_unmask_work: re-enables event once the event condition disappears
  *
  * This structure contains necessary state for Sysmon driver to operate
  */
@@ -146,6 +150,9 @@ struct sysmon {
 	/* kernel doc above*/
 	spinlock_t lock;
 	int irq;
+	unsigned int masked_temp;
+	unsigned int temp_mask;
+	struct delayed_work sysmon_unmask_work;
 };
 
 /* This structure describes temperature events */
@@ -492,12 +499,14 @@ static int sysmon_write_event_config(struct iio_dev *indio_dev,
 			sysmon_write_reg(sysmon, SYSMON_IER, ier);
 		else
 			sysmon_write_reg(sysmon, SYSMON_IDR, ier);
-
 	} else {
-		if (state)
+		if (state) {
 			sysmon_write_reg(sysmon, SYSMON_IER, ier);
-		else
+			sysmon->temp_mask &= ~ier;
+		} else {
 			sysmon_write_reg(sysmon, SYSMON_IDR, ier);
+			sysmon->temp_mask |= ier;
+		}
 	}
 
 	spin_unlock_irqrestore(&sysmon->lock, flags);
@@ -617,12 +626,14 @@ static void sysmon_handle_event(struct iio_dev *indio_dev, u32 event)
 		address = TEMP_EVENT;
 		sysmon_push_event(indio_dev, address);
 		sysmon_write_reg(sysmon, SYSMON_IDR, BIT(SYSMON_BIT_TEMP));
+		sysmon->masked_temp |= BIT(SYSMON_BIT_TEMP);
 		break;
 
 	case SYSMON_BIT_OT:
 		address = OT_EVENT;
 		sysmon_push_event(indio_dev, address);
-		sysmon_write_reg(sysmon, SYSMON_IDR, BIT(SYSMON_BIT_TEMP));
+		sysmon_write_reg(sysmon, SYSMON_IDR, BIT(SYSMON_BIT_OT));
+		sysmon->masked_temp |= BIT(SYSMON_BIT_OT);
 		break;
 
 	case SYSMON_BIT_ALARM4:
@@ -659,6 +670,54 @@ static void sysmon_handle_events(struct iio_dev *indio_dev,
 		sysmon_handle_event(indio_dev, bit);
 }
 
+static void sysmon_unmask_temp(struct sysmon *sysmon, unsigned int isr)
+{
+	unsigned int unmask, status;
+
+	status = isr & SYSMON_TEMP_MASK;
+
+	/* clear bits that are not active any more */
+	unmask = (sysmon->masked_temp ^ status) & sysmon->masked_temp;
+	sysmon->masked_temp &= status;
+
+	/* clear status of disabled alarm */
+	unmask &= ~sysmon->temp_mask;
+
+	sysmon_write_reg(sysmon, SYSMON_IER, unmask);
+}
+
+/*
+ * The Versal threshold interrupts are level sensitive. Since we can't make the
+ * threshold condition go way from within the interrupt handler, this means as
+ * soon as a threshold condition is present we would enter the interrupt handler
+ * again and again. To work around this we mask all active thresholds interrupts
+ * in the interrupt handler and start a timer. In this timer we poll the
+ * interrupt status and only if the interrupt is inactive we unmask it again.
+ */
+static void sysmon_unmask_worker(struct work_struct *work)
+{
+	struct sysmon *sysmon = container_of(work, struct sysmon,
+					     sysmon_unmask_work.work);
+	unsigned int isr;
+
+	spin_lock_irq(&sysmon->lock);
+
+	/* Read the current interrupt status */
+	sysmon_read_reg(sysmon, SYSMON_ISR, &isr);
+
+	/* Clear interrupts */
+	sysmon_write_reg(sysmon, SYSMON_ISR, isr);
+
+	sysmon_unmask_temp(sysmon, isr);
+
+	spin_unlock_irq(&sysmon->lock);
+
+	/* if still pending some alarm re-trigger the timer */
+	if (sysmon->masked_temp)
+		schedule_delayed_work(&sysmon->sysmon_unmask_work,
+				      msecs_to_jiffies(500));
+}
+
 static irqreturn_t sysmon_iio_irq(int irq, void *data)
 {
 	u32 isr, imr;
@@ -677,8 +736,10 @@ static irqreturn_t sysmon_iio_irq(int irq, void *data)
 	sysmon_write_reg(sysmon, SYSMON_ISR, isr);
 
 	if (isr) {
-		/* Clear the interrupts*/
 		sysmon_handle_events(indio_dev, isr);
+
+		schedule_delayed_work(&sysmon->sysmon_unmask_work,
+				      msecs_to_jiffies(500));
 	}
 
 	spin_unlock(&sysmon->lock);
@@ -694,7 +755,7 @@ static int sysmon_parse_dt(struct iio_dev *indio_dev,
 	struct device_node *child_node = NULL, *np = pdev->dev.of_node;
 	int ret, i = 0;
 	u8 num_supply_chan = 0;
-	u32 reg = 0;
+	u32 reg = 0, num_temp_chan = 0;
 	const char *name;
 	u32 chan_size = sizeof(struct iio_chan_spec);
 	u32 temp_chan_size;
@@ -709,6 +770,8 @@ static int sysmon_parse_dt(struct iio_dev *indio_dev,
 	temp_chan_size = (sysmon->irq > 0) ? (sizeof(temp_channels) +
 					      sizeof(temp_events)) :
 		sizeof(temp_channels);
+
+	num_temp_chan = ARRAY_SIZE(temp_channels);
 
 	sysmon_channels = devm_kzalloc(&pdev->dev,
 				       (chan_size * num_supply_chan) +
@@ -757,15 +820,23 @@ static int sysmon_parse_dt(struct iio_dev *indio_dev,
 	indio_dev->num_channels = num_supply_chan + ARRAY_SIZE(temp_channels);
 
 	if (sysmon->irq > 0) {
-		memcpy(sysmon_channels + num_supply_chan +
-		       sizeof(temp_channels), temp_events,
-		       sizeof(temp_events));
+		memcpy(sysmon_channels + num_supply_chan + num_temp_chan,
+		       temp_events, sizeof(temp_events));
 		indio_dev->num_channels += ARRAY_SIZE(temp_events);
 	}
 
 	indio_dev->channels = sysmon_channels;
 
 	return 0;
+}
+
+static void sysmon_init_interrupt(struct sysmon *sysmon)
+{
+	u32 imr;
+
+	/* Read default Interrupt Mask */
+	sysmon_read_reg(sysmon, SYSMON_IMR, &imr);
+	sysmon->temp_mask = imr & SYSMON_TEMP_MASK;
 }
 
 static int sysmon_probe(struct platform_device *pdev)
@@ -781,15 +852,7 @@ static int sysmon_probe(struct platform_device *pdev)
 
 	sysmon = iio_priv(indio_dev);
 
-	sysmon->irq = platform_get_irq_optional(pdev, 0);
-	if (sysmon->irq > 0) {
-		ret = devm_request_irq(&pdev->dev, sysmon->irq, &sysmon_iio_irq,
-				       0, "sysmon-irq", indio_dev);
-		if (ret < 0)
-			return ret;
-	} else if (sysmon->irq == -EPROBE_DEFER) {
-		return -EPROBE_DEFER;
-	}
+	sysmon->dev = &pdev->dev;
 
 	mutex_init(&sysmon->mutex);
 	spin_lock_init(&sysmon->lock);
@@ -807,9 +870,23 @@ static int sysmon_probe(struct platform_device *pdev)
 
 	sysmon_write_reg(sysmon, SYSMON_NPI_LOCK, NPI_UNLOCK);
 
+	sysmon->irq = platform_get_irq_optional(pdev, 0);
+
 	ret = sysmon_parse_dt(indio_dev, pdev);
 	if (ret)
 		return ret;
+
+	if (sysmon->irq > 0) {
+		sysmon_init_interrupt(sysmon);
+		INIT_DELAYED_WORK(&sysmon->sysmon_unmask_work,
+				  sysmon_unmask_worker);
+		ret = devm_request_irq(&pdev->dev, sysmon->irq, &sysmon_iio_irq,
+				       0, "sysmon-irq", indio_dev);
+		if (ret < 0)
+			return ret;
+	} else if (sysmon->irq == -EPROBE_DEFER) {
+		return -EPROBE_DEFER;
+	}
 
 	platform_set_drvdata(pdev, indio_dev);
 
