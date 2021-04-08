@@ -15,6 +15,7 @@
 #include <linux/iio/buffer.h>
 #include <linux/iio/events.h>
 #include <linux/iio/sysfs.h>
+#include <linux/iio/adc/versal-sysmon-events.h>
 #include <linux/iopoll.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
@@ -65,6 +66,7 @@
 #define SYSMON_TEMP_MAX_MAX	0x1F90
 #define SYSMON_TEMP_MIN_MIN	0x1F8C
 #define SYSMON_TEMP_EV_CFG	0x1F84
+#define SYSMON_NODE_OFFSET	0x1FAC
 
 #define SYSMON_NO_OF_EVENTS	32
 
@@ -139,6 +141,7 @@ enum sysmon_alarm_bit {
  * @mutex: to handle multiple user interaction
  * @lock: to help manage interrupt registers correctly
  * @irq: interrupt number of the sysmon
+ * @region_list: list of the regions of sysmon
  * @masked_temp: currently masked due to alarm
  * @temp_mask: temperature based interrupt configuration
  * @sysmon_unmask_work: re-enables event once the event condition disappears
@@ -153,7 +156,14 @@ struct sysmon {
 	/* kernel doc above*/
 	spinlock_t lock;
 	int irq;
+	struct list_head region_list;
 	unsigned int masked_temp;
 	unsigned int temp_mask;
 	struct delayed_work sysmon_unmask_work;
 };
+
+int sysmon_register_temp_ops(void (*cb)(void *data, struct regional_node *node),
+			     void *data, enum sysmon_region region_id);
+int sysmon_unregister_temp_ops(enum sysmon_region region_id);
+struct list_head *sysmon_nodes_by_region(enum sysmon_region region_id);
+int sysmon_get_node_value(int sat_id);

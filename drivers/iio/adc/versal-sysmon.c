@@ -452,6 +452,154 @@ static const struct iio_info iio_dev_info = {
 	.write_event_value = sysmon_write_event_value,
 };
 
+/* sysmon instance for in kernel exported functions */
+static struct sysmon *g_sysmon;
+
+/**
+ * sysmon_register_temp_ops - register temperature based event handler for a
+ *			      given region.
+ * @cb: callback function pointer.
+ * @data: private data to be passed to the callback.
+ * @region_id: id of the region for which the callback is to be set.
+ * @return: 0 for success and negative number in case of failure.
+ */
+int sysmon_register_temp_ops(void (*cb)(void *data, struct regional_node *node),
+			     void *data, enum sysmon_region region_id)
+{
+	struct sysmon *sysmon = g_sysmon;
+	struct region_info *region;
+	int ret = 0, found = 0;
+
+	if (!cb || !sysmon)
+		return -EINVAL;
+
+	ret = mutex_lock_interruptible(&sysmon->mutex);
+	if (ret) {
+		dev_err(sysmon->dev, "Failed to acquire a lock. Process was interrupted by fatal signals");
+		return ret;
+	}
+
+	if (list_empty(&sysmon->region_list)) {
+		dev_err(sysmon->dev, "Failed to set a callback. HW node info missing in the device tree/ Not supported for this device");
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	list_for_each_entry(region, &sysmon->region_list, list) {
+		if (region->id == region_id) {
+			found = 1;
+			if (region->cb) {
+				dev_err(sysmon->dev, "Error callback already set. Unregister the existing callback to set a new one.");
+				ret = -EINVAL;
+				goto exit;
+			}
+			region->cb = cb;
+			region->data = data;
+			break;
+		}
+	}
+
+	if (!found) {
+		dev_err(sysmon->dev, "Error invalid region. Please select the correct region");
+		ret = -EINVAL;
+	}
+
+exit:
+	mutex_unlock(&sysmon->mutex);
+	return ret;
+}
+EXPORT_SYMBOL(sysmon_register_temp_ops);
+
+/**
+ * sysmon_unregister_temp_ops - Unregister the callback for temperature
+ *				notification.
+ * @region_id: id of the region for which the callback is to be set.
+ * @return: 0 for success and negative number in case of failure.
+ */
+int sysmon_unregister_temp_ops(enum sysmon_region region_id)
+{
+	struct sysmon *sysmon = g_sysmon;
+	struct region_info *region;
+	int ret = 0, found = 0;
+
+	if (!sysmon)
+		return -EINVAL;
+
+	ret = mutex_lock_interruptible(&sysmon->mutex);
+	if (ret) {
+		dev_err(sysmon->dev, "Failed to acquire a lock. Process was interrupted by fatal signals");
+		return ret;
+	}
+
+	if (list_empty(&sysmon->region_list)) {
+		dev_err(sysmon->dev, "Failed to set a callback. HW node info missing in the device tree/ Not supported for this device");
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	list_for_each_entry(region, &sysmon->region_list, list) {
+		if (region->id == region_id) {
+			found = 1;
+			region->cb = NULL;
+			region->data = NULL;
+			break;
+		}
+	}
+
+	if (!found) {
+		dev_err(sysmon->dev, "Error no such region. Please select the correct region");
+		ret = -EINVAL;
+	}
+
+exit:
+	mutex_unlock(&sysmon->mutex);
+	return ret;
+}
+EXPORT_SYMBOL(sysmon_unregister_temp_ops);
+
+/**
+ * sysmon_nodes_by_region - returns the nodes list for a particular region.
+ * @region_id: id for the region for which nodes are requested.
+ * @return: Pointer to the linked list or NULL if region is not present.
+ */
+struct list_head *sysmon_nodes_by_region(enum sysmon_region region_id)
+{
+	struct sysmon *sysmon = g_sysmon;
+	struct region_info *region;
+
+	if (!sysmon)
+		return NULL;
+
+	list_for_each_entry(region, &sysmon->region_list, list) {
+		if (region->id == region_id)
+			return &region->node_list;
+	}
+
+	dev_err(sysmon->dev, "Error invalid region. Please select the correct region");
+
+	return NULL;
+}
+EXPORT_SYMBOL(sysmon_nodes_by_region);
+
+/**
+ * sysmon_get_node_value - returns value of the sensor at a node.
+ * @sat_id: id of the node.
+ * @return: -EINVAL if not initialized or returns raw value of the sensor.
+ */
+int sysmon_get_node_value(int sat_id)
+{
+	struct sysmon *sysmon = g_sysmon;
+	u32 raw;
+
+	if (!sysmon)
+		return -EINVAL;
+
+	sysmon_read_reg(sysmon, SYSMON_NODE_OFFSET, &raw);
+
+	return raw;
+}
+EXPORT_SYMBOL(sysmon_get_node_value);
+
 static void sysmon_push_event(struct iio_dev *indio_dev, u32 address)
 {
 	u32 i;
@@ -470,6 +618,34 @@ static void sysmon_push_event(struct iio_dev *indio_dev, u32 address)
 	}
 }
 
+static void sysmon_region_event_handler(struct sysmon *sysmon)
+{
+	struct region_info *region;
+	struct regional_node *node, *eventnode;
+	u32 regval, event = 0;
+	u16 thresh_up, val;
+
+	sysmon_read_reg(sysmon, SYSMON_TEMP_TH_UP, &regval);
+	thresh_up = (u16)regval;
+
+	list_for_each_entry(region, &sysmon->region_list, list) {
+		list_for_each_entry(node, &region->node_list,
+				    regional_node_list) {
+			val = sysmon_get_node_value(node->sat_id);
+
+			/* Find the highest value */
+			if (compare(val, thresh_up)) {
+				eventnode = node;
+				eventnode->temp = val;
+				thresh_up = val;
+				event = 1;
+			}
+		}
+		if (event && region->cb)
+			region->cb(region->data, eventnode);
+	}
+}
+
 static void sysmon_handle_event(struct iio_dev *indio_dev, u32 event)
 {
 	struct sysmon *sysmon = iio_priv(indio_dev);
@@ -484,6 +660,7 @@ static void sysmon_handle_event(struct iio_dev *indio_dev, u32 event)
 		sysmon_push_event(indio_dev, address);
 		sysmon_write_reg(sysmon, SYSMON_IDR, BIT(SYSMON_BIT_TEMP));
 		sysmon->masked_temp |= BIT(SYSMON_BIT_TEMP);
+		sysmon_region_event_handler(sysmon);
 		break;
 
 	case SYSMON_BIT_OT:
@@ -491,6 +668,7 @@ static void sysmon_handle_event(struct iio_dev *indio_dev, u32 event)
 		sysmon_push_event(indio_dev, address);
 		sysmon_write_reg(sysmon, SYSMON_IDR, BIT(SYSMON_BIT_OT));
 		sysmon->masked_temp |= BIT(SYSMON_BIT_OT);
+		sysmon_region_event_handler(sysmon);
 		break;
 
 	case SYSMON_BIT_ALARM4:
@@ -604,6 +782,55 @@ static irqreturn_t sysmon_iio_irq(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+static int get_hw_node_properties(struct platform_device *pdev,
+				  struct list_head *region_list)
+{
+	struct region_info *region = NULL;
+	struct regional_node *nodes;
+	struct device_node *np = pdev->dev.of_node;
+	int size;
+	u32 id, satid, x, y, i, offset, prev = 0;
+
+	/* get hw-node-info */
+	if (!of_get_property(np, "hw-node", &size))
+		return 0;
+
+	if (size % 16) {
+		dev_info(&pdev->dev, "HW-Node properties not correct");
+		return -EINVAL;
+	}
+
+	for (i = 0; i < (size / 16); i++) {
+		offset = i * 4;
+		of_property_read_u32_index(np, "hw-node", offset, &id);
+		of_property_read_u32_index(np, "hw-node", offset + 1, &satid);
+		of_property_read_u32_index(np, "hw-node", offset + 2, &x);
+		of_property_read_u32_index(np, "hw-node", offset + 3, &y);
+
+		if (list_empty(region_list) || prev != id) {
+			region = devm_kzalloc(&pdev->dev, sizeof(*region),
+					      GFP_KERNEL);
+			if (!region)
+				return -ENOMEM;
+
+			region->id = id;
+			INIT_LIST_HEAD(&region->node_list);
+			list_add(&region->list, region_list);
+		}
+
+		prev = id;
+		nodes = devm_kzalloc(&pdev->dev, sizeof(*nodes), GFP_KERNEL);
+		if (!nodes)
+			return -ENOMEM;
+		nodes->sat_id = satid;
+		nodes->x = x;
+		nodes->y = y;
+		list_add(&nodes->regional_node_list, &region->node_list);
+	}
+
+	return 0;
+}
+
 static int sysmon_parse_dt(struct iio_dev *indio_dev,
 			   struct platform_device *pdev)
 {
@@ -618,10 +845,14 @@ static int sysmon_parse_dt(struct iio_dev *indio_dev,
 	u32 temp_chan_size;
 
 	sysmon = iio_priv(indio_dev);
-
 	ret = of_property_read_u8(np, "xlnx,numchannels", &num_supply_chan);
 	if (ret < 0)
 		return ret;
+
+	INIT_LIST_HEAD(&sysmon->region_list);
+
+	if (sysmon->irq > 0)
+		get_hw_node_properties(pdev, &sysmon->region_list);
 
 	/* Initialize buffer for channel specification */
 	temp_chan_size = (sysmon->irq > 0) ? (sizeof(temp_channels) +
@@ -734,9 +965,10 @@ static int sysmon_probe(struct platform_device *pdev)
 		return ret;
 
 	if (sysmon->irq > 0) {
-		sysmon_init_interrupt(sysmon);
+		g_sysmon = sysmon;
 		INIT_DELAYED_WORK(&sysmon->sysmon_unmask_work,
 				  sysmon_unmask_worker);
+		sysmon_init_interrupt(sysmon);
 		ret = devm_request_irq(&pdev->dev, sysmon->irq, &sysmon_iio_irq,
 				       0, "sysmon-irq", indio_dev);
 		if (ret < 0)
