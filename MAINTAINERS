@@ -19517,6 +19517,7 @@ L:	git@xilinx.com
 S:	Maintained
 F:	Documentation/devicetree/bindings/iio/adc/xlnx,versal-sysmon.yaml
 F:	drivers/iio/adc/versal-sysmon.c
+F:	drivers/iio/adc/versal-sysmon.h
 
 XILINX UARTLITE SERIAL DRIVER
 M:	Peter Korsgaard <jacmet@sunsite.dk>
