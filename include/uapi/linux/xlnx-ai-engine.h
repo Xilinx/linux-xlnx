@@ -119,12 +119,14 @@ struct aie_location {
 /**
  * struct aie_location_byte - AIE location information with single byte for
  *			      column and row
- * @col: column id
  * @row: row id
+ * @col: column id
+ *
+ * This structure follows the SSW AIE row and col sequence.
  */
 struct aie_location_byte {
-	__u8 col;
 	__u8 row;
+	__u8 col;
 };
 
 /**
