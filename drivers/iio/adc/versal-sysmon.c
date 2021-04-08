@@ -751,6 +751,14 @@ static void sysmon_unmask_worker(struct work_struct *work)
 	if (sysmon->masked_temp)
 		schedule_delayed_work(&sysmon->sysmon_unmask_work,
 				      msecs_to_jiffies(500));
+	else
+		/*
+		 * Reset the temp_max_max and temp_min_min values to reset the
+		 * previously reached high/low values during an alarm.
+		 * This will enable the user to see the high/low values attained
+		 * during an event
+		 */
+		sysmon_write_reg(sysmon, SYSMON_STATUS_RESET, 1);
 }
 
 static irqreturn_t sysmon_iio_irq(int irq, void *data)
