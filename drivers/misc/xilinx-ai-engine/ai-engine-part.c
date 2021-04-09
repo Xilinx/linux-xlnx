@@ -77,7 +77,7 @@ static int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
 	}
 
 	regoff = aie_cal_tile_reg(adev, offset);
-	regend64 = regoff + len;
+	regend64 = regoff + len - 1;
 	if (regend64 >= BIT_ULL(adev->row_shift)) {
 		dev_err(&apart->dev,
 			"Invalid reg operation len %zu.\n", len);
