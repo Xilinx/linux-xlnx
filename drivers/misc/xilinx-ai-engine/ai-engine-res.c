@@ -459,7 +459,7 @@ int aie_resource_get_common_pattern_region(struct aie_resource *res0,
 		u32 i;
 
 		for (i = 0; i < nbits; i++, rscs++)
-			rscs->id = rsbit + i;
+			rscs->id = rsbit - sbit + i;
 	}
 
 	return rsbit;
