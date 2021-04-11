@@ -945,6 +945,7 @@ struct axienet_dma_q {
 	unsigned long rx_bytes;
 };
 
+#define AXIENET_ETHTOOLS_SSTATS_LEN 6
 #define AXIENET_TX_SSTATS_LEN(lp) ((lp)->num_tx_queues * 2)
 #define AXIENET_RX_SSTATS_LEN(lp) ((lp)->num_rx_queues * 2)
 
