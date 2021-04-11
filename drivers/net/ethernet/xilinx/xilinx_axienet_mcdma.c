@@ -521,9 +521,9 @@ void axienet_strings(struct net_device *ndev, u32 sset, u8 *data)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct axienet_dma_q *q;
-	int i, j, k = 0;
+	int i = AXIENET_ETHTOOLS_SSTATS_LEN, j, k = 0;
 
-	for (i = 0, j = 0; i < AXIENET_TX_SSTATS_LEN(lp);) {
+	for (j = 0; i < AXIENET_TX_SSTATS_LEN(lp) + AXIENET_ETHTOOLS_SSTATS_LEN;) {
 		if (j >= lp->num_tx_queues)
 			break;
 		q = lp->dq[j];
@@ -539,8 +539,8 @@ void axienet_strings(struct net_device *ndev, u32 sset, u8 *data)
 			++j;
 	}
 	k = 0;
-	for (j = 0; i < AXIENET_TX_SSTATS_LEN(lp) +
-			AXIENET_RX_SSTATS_LEN(lp);) {
+	for (j = 0; i < AXIENET_TX_SSTATS_LEN(lp) + AXIENET_RX_SSTATS_LEN(lp) +
+			AXIENET_ETHTOOLS_SSTATS_LEN;) {
 		if (j >= lp->num_rx_queues)
 			break;
 		q = lp->dq[j];
@@ -563,7 +563,8 @@ int axienet_sset_count(struct net_device *ndev, int sset)
 
 	switch (sset) {
 	case ETH_SS_STATS:
-		return (AXIENET_TX_SSTATS_LEN(lp) + AXIENET_RX_SSTATS_LEN(lp));
+		return (AXIENET_TX_SSTATS_LEN(lp) + AXIENET_RX_SSTATS_LEN(lp) +
+			AXIENET_ETHTOOLS_SSTATS_LEN);
 	default:
 		return -EOPNOTSUPP;
 	}
@@ -575,9 +576,9 @@ void axienet_get_stats(struct net_device *ndev,
 {
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct axienet_dma_q *q;
-	unsigned int i = 0, j;
+	unsigned int i = AXIENET_ETHTOOLS_SSTATS_LEN, j;
 
-	for (i = 0, j = 0; i < AXIENET_TX_SSTATS_LEN(lp);) {
+	for (j = 0; i < AXIENET_TX_SSTATS_LEN(lp) + AXIENET_ETHTOOLS_SSTATS_LEN;) {
 		if (j >= lp->num_tx_queues)
 			break;
 
@@ -586,8 +587,8 @@ void axienet_get_stats(struct net_device *ndev,
 		data[i++] = q->tx_bytes;
 		++j;
 	}
-	for (j = 0; i < AXIENET_TX_SSTATS_LEN(lp) +
-			AXIENET_RX_SSTATS_LEN(lp);) {
+	for (j = 0; i < AXIENET_TX_SSTATS_LEN(lp) + AXIENET_RX_SSTATS_LEN(lp) +
+			AXIENET_ETHTOOLS_SSTATS_LEN;) {
 		if (j >= lp->num_rx_queues)
 			break;
 
