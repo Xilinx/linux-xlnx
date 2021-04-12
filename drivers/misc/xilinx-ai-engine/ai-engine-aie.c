@@ -96,6 +96,7 @@
 
 /* Macros to define size of a sysfs binary attribute */
 #define AIE_PART_SYSFS_CORE_BINA_SIZE		0x4000		/* 16KB */
+#define AIE_PART_SYSFS_DMA_BINA_SIZE		0xC800		/* 50KB */
 
 static const struct aie_tile_regs aie_kernel_regs[] = {
 	/* SHIM AXI MM Config */
@@ -865,6 +866,7 @@ static const struct aie_dev_attr aie_part_dev_attr[] = {
 
 static const struct aie_bin_attr aie_part_bin_attr[] = {
 	AIE_PART_BIN_ATTR_RO(core, AIE_PART_SYSFS_CORE_BINA_SIZE),
+	AIE_PART_BIN_ATTR_RO(dma, AIE_PART_SYSFS_DMA_BINA_SIZE),
 };
 
 static const struct aie_sysfs_attr aie_part_sysfs_attr = {

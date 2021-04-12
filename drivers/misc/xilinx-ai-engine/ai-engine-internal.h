@@ -1053,6 +1053,7 @@ ssize_t aie_sysfs_get_dma_status(struct aie_partition *apart,
 				 ssize_t size);
 ssize_t aie_tile_show_dma(struct device *dev, struct device_attribute *attr,
 			  char *buffer);
+ssize_t aie_part_read_cb_dma(struct kobject *kobj, char *buffer, ssize_t size);
 ssize_t aie_tile_show_lock(struct device *dev, struct device_attribute *attr,
 			   char *buffer);
 u32 aie_get_module_error_count(struct aie_partition *apart,
