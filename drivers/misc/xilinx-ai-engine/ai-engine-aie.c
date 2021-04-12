@@ -820,9 +820,36 @@ static char *aie_core_status_str[] = {
 	"core_done",
 };
 
+static const struct aie_lock_attr aie_pl_lock = {
+	.sts = {
+		.mask = GENMASK(1, 0),
+		.regoff = 2U,
+	},
+	.sts_regoff = 0x14F00,
+	.num_locks = 16U,
+};
+
+static const struct aie_lock_attr aie_mem_lock = {
+	.sts = {
+		.mask = GENMASK(1, 0),
+		.regoff = 2U,
+	},
+	.sts_regoff = 0x1EF00,
+	.num_locks = 16U,
+};
+
+static char *aie_lock_status_str[] = {
+	"released_for_write",
+	"acquired_for_write",
+	"released_for_read",
+	"acquired_for_read",
+};
+
 static const struct aie_dev_attr aie_tile_dev_attr[] = {
 	AIE_TILE_DEV_ATTR_RO(core, AIE_TILE_TYPE_MASK_TILE),
 	AIE_TILE_DEV_ATTR_RO(dma, AIE_TILE_TYPE_MASK_TILE |
+			     AIE_TILE_TYPE_MASK_SHIMNOC),
+	AIE_TILE_DEV_ATTR_RO(lock, AIE_TILE_TYPE_MASK_TILE |
 			     AIE_TILE_TYPE_MASK_SHIMNOC),
 };
 
@@ -1269,6 +1296,9 @@ int aie_device_init(struct aie_device *adev)
 	adev->core_sp = &aie_core_sp;
 	adev->dma_status_str = aie_dma_status_str;
 	adev->queue_status_str = aie_queue_status_str;
+	adev->pl_lock = &aie_pl_lock;
+	adev->mem_lock = &aie_mem_lock;
+	adev->lock_status_str = aie_lock_status_str;
 
 	aie_device_init_rscs_attr(adev);
 
