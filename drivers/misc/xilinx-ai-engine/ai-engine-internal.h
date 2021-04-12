@@ -84,6 +84,12 @@ enum aie_tile_type {
 #define AIE_SHIM_PL_MOD_ID		AIE_MOD_ID(SHIMPL, AIE_PL_MOD)
 #define AIE_SHIM_NOC_MOD_ID		AIE_MOD_ID(SHIMNOC, AIE_NOC_MOD)
 
+/* String delimiter to format sysfs data */
+#define DELIMITER_LEVEL0 "|"
+
+/* Macros to define size of temporary string buffers */
+#define AIE_SYSFS_CORE_STS_SIZE		100U
+
 /* Helper macros to dynamically create sysfs device attribute */
 #define AIE_PART_DEV_ATTR_RO(_name) {				\
 	.name		= __stringify(_name),			\
@@ -214,6 +220,7 @@ struct aie_core_regs_attr {
  * struct aie_tile_operations - AI engine device operations
  * @get_tile_type: get type of tile based on tile operation
  * @get_mem_info: get different types of memories information
+ * @get_core_status: get the status of AIE core.
  * @reset_shim: reset shim, it will assert and then release SHIM reset
  * @init_part_clk_state: initialize clock states software structure which is a
  *			 bitmap for the AI engine partition. The clock states
@@ -239,6 +246,8 @@ struct aie_tile_operations {
 	u32 (*get_tile_type)(struct aie_location *loc);
 	unsigned int (*get_mem_info)(struct aie_range *range,
 				     struct aie_part_mem *pmem);
+	u32 (*get_core_status)(struct aie_partition *apart,
+			       struct aie_location *loc);
 	int (*reset_shim)(struct aie_device *adev, struct aie_range *range);
 	int (*init_part_clk_state)(struct aie_partition *apart);
 	int (*scan_part_clocks)(struct aie_partition *apart);
@@ -520,6 +529,10 @@ struct aie_tile {
  * @ttype_attr: tile type attributes
  * @part_sysfs_attr: partition level sysfs attributes
  * @tile_sysfs_attr: tile level sysfs attributes
+ * @core_status_str: core status in string format
+ * @core_pc: program counter attribute
+ * @core_lr: link register attribute
+ * @core_sp: stack pointer attribute
  */
 struct aie_device {
 	struct list_head partitions;
@@ -558,6 +571,10 @@ struct aie_device {
 	struct aie_tile_attr ttype_attr[AIE_TILE_TYPE_MAX];
 	const struct aie_sysfs_attr *part_sysfs_attr;
 	const struct aie_sysfs_attr *tile_sysfs_attr;
+	char **core_status_str;
+	const struct aie_single_reg_field *core_pc;
+	const struct aie_single_reg_field *core_lr;
+	const struct aie_single_reg_field *core_sp;
 };
 
 /**
@@ -868,5 +885,11 @@ int aie_part_rscmgr_set_tile_broadcast(struct aie_partition *apart,
 				       enum aie_module_type mod, uint32_t id);
 
 int aie_part_sysfs_init(struct aie_partition *apart);
+
+ssize_t aie_sysfs_get_core_status(struct aie_partition *apart,
+				  struct aie_location *loc, char *buffer,
+				  ssize_t size);
+ssize_t aie_tile_show_core(struct device *dev, struct device_attribute *attr,
+			   char *buffer);
 
 #endif /* AIE_INTERNAL_H */

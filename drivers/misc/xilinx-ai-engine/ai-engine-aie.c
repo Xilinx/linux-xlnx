@@ -702,6 +702,74 @@ enum aie_module_type aie_shimpl_tile_module_types[NUM_MODS_SHIMPL_TILE] = {
 	AIE_PL_MOD,
 };
 
+static const struct aie_single_reg_field aie_core_sts = {
+	.mask = GENMASK(20, 0),
+	.regoff = 0x32004U,
+};
+
+static const struct aie_single_reg_field aie_core_done = {
+	.mask = BIT(20),
+	.regoff = 0x32004U,
+};
+
+static const struct aie_single_reg_field aie_core_disable_event_sts = {
+	.mask = BIT(15),
+	.regoff = 0x32008U,
+};
+
+static const struct aie_single_reg_field aie_core_pc = {
+	.mask = GENMASK(19, 0),
+	.regoff = 0x30280U,
+};
+
+static const struct aie_single_reg_field aie_core_lr = {
+	.mask = GENMASK(19, 0),
+	.regoff = 0x302B0U,
+};
+
+static const struct aie_single_reg_field aie_core_sp = {
+	.mask = GENMASK(19, 0),
+	.regoff = 0x302A0U,
+};
+
+static char *aie_core_status_str[] = {
+	"enabled",
+	"reset",
+	"south_memory_stall",
+	"west_memory_stall",
+	"north_memory_stall",
+	"east_memory_stall",
+	"south_lock_stall",
+	"west_lock_stall",
+	"north_lock_stall",
+	"east_lock_stall",
+	"stream_stall_ss0",
+	"stream_stall_ss1",
+	"stream_stall_ms0",
+	"stream_stall_ms1",
+	"cascade_stall_scd",
+	"cascade_stall_mcd",
+	"debug_halt",
+	"ecc_error_stall",
+	"ecc_scrubbing_stall",
+	"error_halt",
+	"core_done",
+};
+
+static const struct aie_dev_attr aie_tile_dev_attr[] = {
+	AIE_TILE_DEV_ATTR_RO(core, AIE_TILE_TYPE_MASK_TILE),
+};
+
+static const struct aie_sysfs_attr aie_part_sysfs_attr = {
+	.dev_attr = NULL,
+	.num_dev_attrs = 0U,
+};
+
+static const struct aie_sysfs_attr aie_tile_sysfs_attr = {
+	.dev_attr = aie_tile_dev_attr,
+	.num_dev_attrs = ARRAY_SIZE(aie_tile_dev_attr),
+};
+
 static u32 aie_get_tile_type(struct aie_location *loc)
 {
 	if (loc->row)
@@ -1017,9 +1085,36 @@ static int aie_set_part_clocks(struct aie_partition *apart)
 	return 0;
 }
 
+/**
+ * aie_get_core_status() - read the AI engine core status register.
+ * @apart: AI engine partition.
+ * @loc: location of AI engine core.
+ * @return: 32-bit register value.
+ */
+static u32 aie_get_core_status(struct aie_partition *apart,
+			       struct aie_location *loc)
+{
+	u32 regoff, regvalue, eventval;
+
+	regoff = aie_cal_regoff(apart->adev, *loc, aie_core_sts.regoff);
+	regvalue = ioread32(apart->adev->base + regoff);
+
+	/* Apply core done workaround */
+	if (!FIELD_GET(aie_core_done.mask, regvalue)) {
+		regoff = aie_cal_regoff(apart->adev, *loc,
+					aie_core_disable_event_sts.regoff);
+		eventval = ioread32(apart->adev->base + regoff);
+
+		if (FIELD_GET(aie_core_disable_event_sts.mask, eventval))
+			regvalue |= aie_core_done.mask;
+	}
+	return regvalue;
+}
+
 static const struct aie_tile_operations aie_ops = {
 	.get_tile_type = aie_get_tile_type,
 	.get_mem_info = aie_get_mem_info,
+	.get_core_status = aie_get_core_status,
 	.reset_shim = aie_reset_shim,
 	.init_part_clk_state = aie_init_part_clk_state,
 	.scan_part_clocks = aie_scan_part_clocks,
@@ -1099,6 +1194,13 @@ int aie_device_init(struct aie_device *adev)
 	adev->core_errors = &aie_core_error;
 	adev->mem_errors = &aie_mem_error;
 	adev->shim_errors = &aie_shim_error;
+	adev->part_sysfs_attr = &aie_part_sysfs_attr;
+	adev->tile_sysfs_attr = &aie_tile_sysfs_attr;
+	adev->core_status_str = aie_core_status_str;
+	adev->core_pc = &aie_core_pc;
+	adev->core_lr = &aie_core_lr;
+	adev->core_sp = &aie_core_sp;
+
 	aie_device_init_rscs_attr(adev);
 
 	/* Get the columns resource */
