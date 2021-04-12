@@ -408,9 +408,9 @@ static void aie_part_set_event_bitmap(struct aie_partition *apart,
  * @event: event ID to check.
  * @return: true if event has happened, else false.
  */
-static bool aie_check_error_bitmap(struct aie_partition *apart,
-				   struct aie_location loc,
-				   enum aie_module_type module, u8 event)
+bool aie_check_error_bitmap(struct aie_partition *apart,
+			    struct aie_location loc,
+			    enum aie_module_type module, u8 event)
 {
 	struct aie_resource *event_sts;
 	u32 offset;
@@ -798,10 +798,10 @@ irqreturn_t aie_interrupt(int irq, void *data)
  * @err_attr: error attribute for given module type.
  * @return: total number of errors found.
  */
-static u32 aie_get_module_error_count(struct aie_partition *apart,
-				      struct aie_location loc,
-				      enum aie_module_type module,
-				      const struct aie_error_attr *err_attr)
+u32 aie_get_module_error_count(struct aie_partition *apart,
+			       struct aie_location loc,
+			       enum aie_module_type module,
+			       const struct aie_error_attr *err_attr)
 {
 	u32 count = 0;
 	u8 i, j;

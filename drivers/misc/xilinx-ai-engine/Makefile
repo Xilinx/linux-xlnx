@@ -19,4 +19,5 @@ xilinx-aie-$(CONFIG_XILINX_AIE) := ai-engine-aie.o		\
 				   ai-engine-sysfs.o		\
 				   ai-engine-sysfs-core.o	\
 				   ai-engine-sysfs-dma.o	\
+				   ai-engine-sysfs-error.o	\
 				   ai-engine-sysfs-lock.o
