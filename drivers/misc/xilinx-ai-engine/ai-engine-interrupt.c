@@ -823,7 +823,7 @@ u32 aie_get_module_error_count(struct aie_partition *apart,
  * @apart: AIE partition pointer.
  * @return: total number of errors found.
  */
-static u32 aie_get_error_count(struct aie_partition *apart)
+u32 aie_get_error_count(struct aie_partition *apart)
 {
 	const struct aie_error_attr *core_errs = apart->adev->core_errors;
 	const struct aie_error_attr *mem_errs = apart->adev->mem_errors;
