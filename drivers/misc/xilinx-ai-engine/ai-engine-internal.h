@@ -1047,6 +1047,7 @@ ssize_t aie_sysfs_get_core_status(struct aie_partition *apart,
 				  ssize_t size);
 ssize_t aie_tile_show_core(struct device *dev, struct device_attribute *attr,
 			   char *buffer);
+ssize_t aie_part_read_cb_core(struct kobject *kobj, char *buffer, ssize_t size);
 ssize_t aie_sysfs_get_dma_status(struct aie_partition *apart,
 				 struct aie_location *loc, char *buffer,
 				 ssize_t size);
