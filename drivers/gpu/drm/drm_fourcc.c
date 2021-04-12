@@ -205,8 +205,8 @@ const struct drm_format_info *__drm_format_info(u32 format)
 		{ .format = DRM_FORMAT_NV61,		.depth = 0,  .num_planes = 2, .cpp = { 1, 2, 0 }, .hsub = 2, .vsub = 1, .is_yuv = true },
 		{ .format = DRM_FORMAT_NV24,		.depth = 0,  .num_planes = 2, .cpp = { 1, 2, 0 }, .hsub = 1, .vsub = 1, .is_yuv = true },
 		{ .format = DRM_FORMAT_NV42,		.depth = 0,  .num_planes = 2, .cpp = { 1, 2, 0 }, .hsub = 1, .vsub = 1, .is_yuv = true },
-		{ .format = DRM_FORMAT_XV15,		.depth = 0,  .num_planes = 2, .pixels_per_macropixel = { 3, 3, 0 }, .bytes_per_macropixel = { 4, 8, 0 }, .hsub = 2, .vsub = 2, }, /* FIXME consider is_yuv = true */
-		{ .format = DRM_FORMAT_XV20,		.depth = 0,  .num_planes = 2, .pixels_per_macropixel = { 3, 3, 0 }, .bytes_per_macropixel = { 4, 8, 0 }, .hsub = 2, .vsub = 1, },
+		{ .format = DRM_FORMAT_XV15,		.depth = 0,  .num_planes = 2, .pixels_per_macropixel = { 3, 3, 0 }, .bytes_per_macropixel = { 4, 8, 0 }, .hsub = 2, .vsub = 2, .is_yuv = true},
+		{ .format = DRM_FORMAT_XV20,		.depth = 0,  .num_planes = 2, .pixels_per_macropixel = { 3, 3, 0 }, .bytes_per_macropixel = { 4, 8, 0 }, .hsub = 2, .vsub = 1, .is_yuv = true},
 		{ .format = DRM_FORMAT_YUYV,		.depth = 0,  .num_planes = 1, .cpp = { 2, 0, 0 }, .hsub = 2, .vsub = 1, .is_yuv = true },
 		{ .format = DRM_FORMAT_YVYU,		.depth = 0,  .num_planes = 1, .cpp = { 2, 0, 0 }, .hsub = 2, .vsub = 1, .is_yuv = true },
 		{ .format = DRM_FORMAT_UYVY,		.depth = 0,  .num_planes = 1, .cpp = { 2, 0, 0 }, .hsub = 2, .vsub = 1, .is_yuv = true },
