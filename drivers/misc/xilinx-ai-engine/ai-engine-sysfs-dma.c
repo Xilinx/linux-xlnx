@@ -371,3 +371,43 @@ print:
 			 DELIMITER_LEVEL1, bd_s2mm_buf);
 	return len;
 }
+
+/**
+ * aie_part_read_cb_dma() - exports status of all DMAs within a given
+ *			    partition to partition level node.
+ * @kobj: kobject used to create sysfs node.
+ * @buffer: export buffer.
+ * @size: length of export buffer available.
+ * @return: length of string copied to buffer.
+ */
+ssize_t aie_part_read_cb_dma(struct kobject *kobj, char *buffer, ssize_t size)
+{
+	struct device *dev = container_of(kobj, struct device, kobj);
+	struct aie_partition *apart = dev_to_aiepart(dev);
+	struct aie_tile *atile = apart->atiles;
+	ssize_t len = 0;
+	u32 index;
+
+	if (mutex_lock_interruptible(&apart->mlock)) {
+		dev_err(&apart->dev,
+			"Failed to acquire lock. Process was interrupted by fatal signals\n");
+		return len;
+	}
+
+	for (index = 0; index < apart->range.size.col * apart->range.size.row;
+	     index++, atile++) {
+		u32 ttype = apart->adev->ops->get_tile_type(&atile->loc);
+
+		if (ttype == AIE_TILE_TYPE_SHIMPL)
+			continue;
+
+		len += scnprintf(&buffer[len], max(0L, size - len), "%d_%d: ",
+				 atile->loc.col, atile->loc.row);
+		len += aie_sysfs_get_dma_status(apart, &atile->loc,
+						&buffer[len], size - len);
+		len += scnprintf(&buffer[len], max(0L, size - len), "\n");
+	}
+
+	mutex_unlock(&apart->mlock);
+	return len;
+}
