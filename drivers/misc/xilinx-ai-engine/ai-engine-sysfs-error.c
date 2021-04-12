@@ -148,3 +148,55 @@ ssize_t aie_tile_show_error(struct device *dev, struct device_attribute *attr,
 	mutex_unlock(&apart->mlock);
 	return len;
 }
+
+/**
+ * aie_part_show_error_stat() - exports error count in a partition to a
+ *				partition level sysfs node.
+ * @dev: AI engine tile device.
+ * @attr: sysfs device attribute.
+ * @buffer: export buffer.
+ * @return: length of string copied to buffer.
+ */
+ssize_t aie_part_show_error_stat(struct device *dev,
+				 struct device_attribute *attr, char *buffer)
+{
+	struct aie_partition *apart = dev_to_aiepart(dev);
+	struct aie_tile *atile = apart->atiles;
+	const struct aie_error_attr *core_attr, *mem_attr, *pl_attr;
+	ssize_t len = 0, size = PAGE_SIZE;
+	u32 index, core = 0, mem = 0, pl = 0;
+
+	if (mutex_lock_interruptible(&apart->mlock)) {
+		dev_err(&apart->dev,
+			"Failed to acquire lock. Process was interrupted by fatal signals\n");
+		return len;
+	}
+
+	for (index = 0; index < apart->range.size.col * apart->range.size.row;
+	     index++, atile++) {
+		u32 ttype = apart->adev->ops->get_tile_type(&atile->loc);
+
+		if (ttype == AIE_TILE_TYPE_TILE) {
+			core_attr = apart->adev->core_errors;
+			mem_attr = apart->adev->mem_errors;
+			core += aie_get_module_error_count(apart, atile->loc,
+							   AIE_CORE_MOD,
+							   core_attr);
+			mem += aie_get_module_error_count(apart, atile->loc,
+							  AIE_MEM_MOD,
+							  mem_attr);
+		} else {
+			pl_attr = apart->adev->shim_errors;
+			pl += aie_get_module_error_count(apart, atile->loc,
+							 AIE_PL_MOD, pl_attr);
+		}
+	}
+
+	mutex_unlock(&apart->mlock);
+
+	len += scnprintf(&buffer[len], max(0L, size - len), "core: %d\n", core);
+	len += scnprintf(&buffer[len], max(0L, size - len), "memory: %d\n",
+			 mem);
+	len += scnprintf(&buffer[len], max(0L, size - len), "pl: %d\n", pl);
+	return len;
+}

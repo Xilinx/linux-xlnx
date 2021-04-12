@@ -856,9 +856,13 @@ static const struct aie_dev_attr aie_tile_dev_attr[] = {
 			     AIE_TILE_TYPE_MASK_SHIMNOC),
 };
 
+static const struct aie_dev_attr aie_part_dev_attr[] = {
+	AIE_PART_DEV_ATTR_RO(error_stat),
+};
+
 static const struct aie_sysfs_attr aie_part_sysfs_attr = {
-	.dev_attr = NULL,
-	.num_dev_attrs = 0U,
+	.dev_attr = aie_part_dev_attr,
+	.num_dev_attrs = ARRAY_SIZE(aie_part_dev_attr),
 };
 
 static const struct aie_sysfs_attr aie_tile_sysfs_attr = {
