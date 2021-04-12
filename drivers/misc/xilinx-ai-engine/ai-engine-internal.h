@@ -84,6 +84,48 @@ enum aie_tile_type {
 #define AIE_SHIM_PL_MOD_ID		AIE_MOD_ID(SHIMPL, AIE_PL_MOD)
 #define AIE_SHIM_NOC_MOD_ID		AIE_MOD_ID(SHIMNOC, AIE_NOC_MOD)
 
+/* Helper macros to dynamically create sysfs device attribute */
+#define AIE_PART_DEV_ATTR_RO(_name) {				\
+	.name		= __stringify(_name),			\
+	.mode		= 0444,					\
+	.show		= aie_part_show_##_name,		\
+}
+
+#define AIE_PART_DEV_ATTR_WO(_name) {				\
+	.name		= __stringify(_name),			\
+	.mode		= 0200,					\
+	.store		= aie_part_store_##_name,		\
+}
+
+#define AIE_PART_DEV_ATTR_RW(_name) {				\
+	.name		= __stringify(_name),			\
+	.mode		= 0644,					\
+	.show		= aie_part_show_##_name,		\
+	.store		= aie_part_store_##_name,		\
+}
+
+#define AIE_TILE_DEV_ATTR_RO(_name, _ttype) {			\
+	.name		= __stringify(_name),			\
+	.mode		= 0444,					\
+	.tile_type	= _ttype,				\
+	.show		= aie_tile_show_##_name,		\
+}
+
+#define AIE_TILE_DEV_ATTR_WO(_name, _ttype) {			\
+	.name		= __stringify(_name),			\
+	.mode		= 0200,					\
+	.tile_type	= _ttype,				\
+	.store		= aie_tile_store_##_name,		\
+}
+
+#define AIE_TILE_DEV_ATTR_RW(_name, _ttype) {			\
+	.name		= __stringify(_name),			\
+	.mode		= 0644,					\
+	.tile_type	= _ttype,				\
+	.show		= aie_tile_show_##_name,		\
+	.store		= aie_tile_store_##_name,		\
+}
+
 /*
  * enum aie_shim_switch_type - identifies different switches in shim tile.
  */
@@ -399,6 +441,35 @@ struct aie_tile_attr {
 };
 
 /**
+ * struct aie_dev_attr - device attribute properties for AI Engine sysfs nodes.
+ * @name: name of the device attribute
+ * @mode: permissions associated
+ * @tile_type: tile type(s) attribute is valid for. use AIE_TILE_TYPE_MASK_*.
+ * @show: read function handler
+ * @store: write function handler
+ */
+struct aie_dev_attr {
+	const char *name;
+	umode_t mode;
+	u32 tile_type;
+	ssize_t (*show)(struct device *dev, struct device_attribute *attr,
+			char *buf);
+	ssize_t (*store)(struct device *dev, struct device_attribute *attr,
+			 const char *buf, size_t count);
+};
+
+/**
+ * struct aie_sysfs_attr - captures all sysfs attributes defined at
+ *			   partition or tile level.
+ * @dev_attr: pointer to array of device attributes
+ * @num_dev_attrs: number of device attributes
+ */
+struct aie_sysfs_attr {
+	const struct aie_dev_attr *dev_attr;
+	u32 num_dev_attrs;
+};
+
+/**
  * struct aie_tile - AI engine tile structure
  * @loc: tile co-ordinates
  * @apart: parent partition the tile belongs to
@@ -447,6 +518,8 @@ struct aie_tile {
  * @pm_node_id: AI Engine platform management node ID
  * @clock_id: AI Engine clock ID
  * @ttype_attr: tile type attributes
+ * @part_sysfs_attr: partition level sysfs attributes
+ * @tile_sysfs_attr: tile level sysfs attributes
  */
 struct aie_device {
 	struct list_head partitions;
@@ -483,6 +556,8 @@ struct aie_device {
 	u32 pm_node_id;
 	u32 clock_id;
 	struct aie_tile_attr ttype_attr[AIE_TILE_TYPE_MAX];
+	const struct aie_sysfs_attr *part_sysfs_attr;
+	const struct aie_sysfs_attr *tile_sysfs_attr;
 };
 
 /**
@@ -791,4 +866,7 @@ int aie_part_rscmgr_set_static(struct aie_partition *apart, void *meta);
 int aie_part_rscmgr_set_tile_broadcast(struct aie_partition *apart,
 				       struct aie_location loc,
 				       enum aie_module_type mod, uint32_t id);
+
+int aie_part_sysfs_init(struct aie_partition *apart);
+
 #endif /* AIE_INTERNAL_H */
