@@ -997,6 +997,14 @@ static struct aie_partition *aie_create_partition(struct aie_device *adev,
 		return ERR_PTR(ret);
 	}
 
+	/* Create sysfs interface */
+	ret = aie_part_sysfs_init(apart);
+	if (ret) {
+		dev_err(&apart->dev, "Failed to create sysfs interface.\n");
+		put_device(dev);
+		return ERR_PTR(ret);
+	}
+
 	ret = mutex_lock_interruptible(&adev->mlock);
 	if (ret) {
 		put_device(dev);
