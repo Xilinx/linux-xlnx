@@ -106,3 +106,78 @@ ssize_t aie_tile_show_lock(struct device *dev, struct device_attribute *attr,
 	mutex_unlock(&apart->mlock);
 	return len;
 }
+
+ssize_t aie_sysfs_get_lock_status(struct aie_partition *apart,
+				  struct aie_location *loc, char *buffer,
+				  ssize_t size)
+{
+	u32 i, ttype, num_locks;
+	unsigned long status;
+	ssize_t len = 0;
+
+	ttype = apart->adev->ops->get_tile_type(loc);
+	if (ttype == AIE_TILE_TYPE_SHIMPL)
+		return len;
+
+	if (!aie_part_check_clk_enable_loc(apart, loc)) {
+		len += scnprintf(&buffer[len], max(0L, size - len),
+				 "clock_gated");
+		return len;
+	}
+
+	if (ttype != AIE_TILE_TYPE_TILE)
+		num_locks = apart->adev->pl_lock->num_locks;
+	else
+		num_locks = apart->adev->mem_lock->num_locks;
+
+	status = aie_get_lock_status(apart, loc);
+	for (i = 0; i < num_locks; i++) {
+		len += aie_get_lock_status_str(apart, loc, status, i,
+					       &buffer[len], size - len);
+		if (i < num_locks - 1) {
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					 DELIMITER_LEVEL0);
+		}
+	}
+	return len;
+}
+
+/**
+ * aie_part_read_cb_lock() - exports status of all lock modules within a given
+ *			     partition to partition level node.
+ * @kobj: kobject used to create sysfs node.
+ * @buffer: export buffer.
+ * @size: length of export buffer available.
+ * @return: length of string copied to buffer.
+ */
+ssize_t aie_part_read_cb_lock(struct kobject *kobj, char *buffer, ssize_t size)
+{
+	struct device *dev = container_of(kobj, struct device, kobj);
+	struct aie_partition *apart = dev_to_aiepart(dev);
+	struct aie_tile *atile = apart->atiles;
+	ssize_t len = 0;
+	u32 index;
+
+	if (mutex_lock_interruptible(&apart->mlock)) {
+		dev_err(&apart->dev,
+			"Failed to acquire lock. Process was interrupted by fatal signals\n");
+		return len;
+	}
+
+	for (index = 0; index < apart->range.size.col * apart->range.size.row;
+	     index++, atile++) {
+		u32 ttype = apart->adev->ops->get_tile_type(&atile->loc);
+
+		if (ttype == AIE_TILE_TYPE_SHIMPL)
+			continue;
+
+		len += scnprintf(&buffer[len], max(0L, size - len), "%d_%d: ",
+				 atile->loc.col, atile->loc.row);
+		len += aie_sysfs_get_lock_status(apart, &atile->loc,
+						 &buffer[len], size - len);
+		len += scnprintf(&buffer[len], max(0L, size - len), "\n");
+	}
+
+	mutex_unlock(&apart->mlock);
+	return len;
+}
