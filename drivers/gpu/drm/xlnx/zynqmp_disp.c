@@ -356,7 +356,18 @@ static const struct zynqmp_disp_format avbuf_vid_fmts[] = {
 		.buf_fmt	= ZYNQMP_DISP_AV_BUF_FMT_NL_VID_YV16CI_420,
 		.swap		= true,
 		.sf		= scaling_factors_888,
+	}, {
+		.drm_fmt	= DRM_FORMAT_XV15,
+		.buf_fmt	= ZYNQMP_DISP_AV_BUF_FMT_NL_VID_YV16CI_420_10,
+		.swap		= false,
+		.sf		= scaling_factors_101010,
+	}, {
+		.drm_fmt	= DRM_FORMAT_XV20,
+		.buf_fmt	= ZYNQMP_DISP_AV_BUF_FMT_NL_VID_YV16CI_10,
+		.swap		= false,
+		.sf		= scaling_factors_101010,
 	},
+
 };
 
 /* List of graphics layer formats */
@@ -1100,7 +1111,7 @@ static int zynqmp_disp_layer_update(struct zynqmp_disp_layer *layer,
 				    struct drm_plane_state *state)
 {
 	const struct drm_format_info *info = layer->drm_fmt;
-	unsigned int i;
+	unsigned int i, width_bytes;
 
 	for (i = 0; i < layer->drm_fmt->num_planes; i++) {
 		unsigned int width = state->crtc_w / (i ? info->hsub : 1);
@@ -1112,7 +1123,8 @@ static int zynqmp_disp_layer_update(struct zynqmp_disp_layer *layer,
 		paddr = drm_fb_cma_get_gem_addr(state->fb, state, i);
 
 		dma->xt.numf = height;
-		dma->sgl.size = width * info->cpp[i];
+		width_bytes = drm_format_plane_width_bytes(info, i, width);
+		dma->sgl.size = width_bytes;
 		dma->sgl.icg = state->fb->pitches[i] - dma->sgl.size;
 		dma->xt.src_start = paddr;
 		dma->xt.frame_size = 1;
