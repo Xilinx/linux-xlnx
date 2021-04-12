@@ -87,6 +87,7 @@ enum aie_tile_type {
 /* String delimiter to format sysfs data */
 #define DELIMITER_LEVEL0 "|"
 #define DELIMITER_LEVEL1 ", "
+#define DELIMITER_LEVEL2 "; "
 
 /* Macros to define size of temporary string buffers */
 #define AIE_SYSFS_CORE_STS_SIZE		100U
@@ -1085,5 +1086,7 @@ ssize_t aie_tile_show_event(struct device *dev, struct device_attribute *attr,
 void aie_read_event_status(struct aie_partition *apart,
 			   struct aie_location *loc,
 			   enum aie_module_type module, u32 *reg);
+ssize_t aie_part_read_cb_status(struct kobject *kobj, char *buffer,
+				ssize_t size);
 
 #endif /* AIE_INTERNAL_H */
