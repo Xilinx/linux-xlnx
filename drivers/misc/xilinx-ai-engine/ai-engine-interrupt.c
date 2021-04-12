@@ -53,9 +53,9 @@ static u8 aie_get_broadcast_event(struct aie_partition *apart,
  * @module: module type.
  * @reg: array to store event status register values.
  */
-static void aie_read_event_status(struct aie_partition *apart,
-				  struct aie_location *loc,
-				  enum aie_module_type module, u32 *reg)
+void aie_read_event_status(struct aie_partition *apart,
+			   struct aie_location *loc,
+			   enum aie_module_type module, u32 *reg)
 {
 	const struct aie_event_attr *event_mod;
 	u8 offset;

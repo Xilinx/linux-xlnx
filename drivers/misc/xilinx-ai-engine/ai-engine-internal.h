@@ -97,6 +97,7 @@ enum aie_tile_type {
 #define AIE_SYSFS_ERROR_SIZE		300U
 #define AIE_SYSFS_ERROR_CATEGORY_SIZE	500U
 #define AIE_SYSFS_LOCK_STS_SIZE		400U
+#define AIE_SYSFS_EVENT_STS_SIZE	550U
 
 /* Helper macros to dynamically create sysfs device attribute */
 #define AIE_PART_DEV_ATTR_RO(_name) {				\
@@ -1079,5 +1080,10 @@ ssize_t aie_part_show_error_stat(struct device *dev,
 				 struct device_attribute *attr, char *buffer);
 ssize_t aie_part_read_cb_error(struct kobject *kobj, char *buffer,
 			       ssize_t size);
+ssize_t aie_tile_show_event(struct device *dev, struct device_attribute *attr,
+			    char *buffer);
+void aie_read_event_status(struct aie_partition *apart,
+			   struct aie_location *loc,
+			   enum aie_module_type module, u32 *reg);
 
 #endif /* AIE_INTERNAL_H */
