@@ -739,6 +739,18 @@ const struct file_operations aie_part_fops = {
 };
 
 /**
+ * aie_tile_release_device() - release an AI engine tile instance
+ * @dev: AI engine tile device
+ *
+ * It will be called by device driver core when no one holds a valid
+ * pointer to @dev anymore.
+ */
+static void aie_tile_release_device(struct device *dev)
+{
+	put_device(dev);
+}
+
+/**
  * aie_part_release_device() - release an AI engine partition instance
  * @dev: AI engine partition device
  *
@@ -749,7 +761,9 @@ static void aie_part_release_device(struct device *dev)
 {
 	struct aie_partition *apart = dev_to_aiepart(dev);
 	struct aie_device *adev = apart->adev;
+	struct aie_tile *atile = apart->atiles;
 	int ret;
+	u32 index;
 
 	ret = mutex_lock_interruptible(&adev->mlock);
 	if (ret) {
@@ -761,6 +775,11 @@ static void aie_part_release_device(struct device *dev)
 				apart->range.size.col);
 	aie_part_release_event_bitmap(apart);
 	aie_resource_uninitialize(&apart->l2_mask);
+
+	for (index = 0; index < apart->range.size.col * apart->range.size.row;
+	     index++, atile++)
+		put_device(&atile->dev);
+
 	list_del(&apart->node);
 	mutex_unlock(&adev->mlock);
 	aie_fpga_free_bridge(apart);
@@ -802,6 +821,55 @@ static int aie_part_create_mems_info(struct aie_partition *apart)
 				       mem->range.size.row;
 	}
 	return 0;
+}
+
+/**
+ * aie_create_tiles() - create AI engine tile devices
+ * @apart: AI engine partition
+ * @return: 0 for success, error code on failure
+ *
+ * This function creates AI engine child tile devices for a given partition.
+ */
+static int aie_create_tiles(struct aie_partition *apart)
+{
+	struct aie_tile *atile;
+	u32 row, col, numtiles;
+	int ret = 0;
+
+	numtiles = apart->range.size.col * apart->range.size.row;
+	atile = devm_kzalloc(&apart->dev, numtiles * sizeof(struct aie_tile),
+			     GFP_KERNEL);
+	if (!atile)
+		return -ENOMEM;
+
+	apart->atiles = atile;
+	for (col = 0; col < apart->range.size.col; col++) {
+		for (row = 0; row < apart->range.size.row; row++) {
+			struct device *tdev = &atile->dev;
+			char tdevname[10];
+
+			atile->apart = apart;
+			atile->loc.col = apart->range.start.col + col;
+			atile->loc.row = apart->range.start.row + row;
+			device_initialize(tdev);
+			tdev->parent = &apart->dev;
+			dev_set_drvdata(tdev, atile);
+			snprintf(tdevname, sizeof(tdevname) - 1, "%d_%d",
+				 apart->range.start.col + col,
+				 apart->range.start.row + row);
+			dev_set_name(tdev, tdevname);
+			tdev->release = aie_tile_release_device;
+			ret = device_add(tdev);
+			if (ret) {
+				dev_err(tdev, "tile device_add failed: %d\n",
+					ret);
+				put_device(tdev);
+				return ret;
+			}
+			atile++;
+		}
+	}
+	return ret;
 }
 
 /**
@@ -878,6 +946,14 @@ static struct aie_partition *aie_create_partition(struct aie_device *adev,
 	/* Set up the DMA mask */
 	dev->coherent_dma_mask = DMA_BIT_MASK(48);
 	dev->dma_mask = &dev->coherent_dma_mask;
+
+	/* Create AI Engine tile devices */
+	ret = aie_create_tiles(apart);
+	if (ret) {
+		dev_err(dev, "Failed to create tile devices.\n");
+		put_device(dev);
+		return ERR_PTR(ret);
+	}
 
 	/*
 	 * Create array to keep the information of the different types of tile
@@ -1010,6 +1086,18 @@ of_aie_part_probe(struct aie_device *adev, struct device_node *nc)
 }
 
 /**
+ * aie_tile_remove() - remove AI engine tile device.
+ * @atile: AI engine tile.
+ *
+ * This function will remove AI engine tile device.
+ */
+static void aie_tile_remove(struct aie_tile *atile)
+{
+	device_del(&atile->dev);
+	put_device(&atile->dev);
+}
+
+/**
  * aie_part_remove() - destroy AI engine partition
  * @apart: AI engine partition
  *
@@ -1017,6 +1105,13 @@ of_aie_part_probe(struct aie_device *adev, struct device_node *nc)
  */
 void aie_part_remove(struct aie_partition *apart)
 {
+	struct aie_tile *atile = apart->atiles;
+	u32 index;
+
+	for (index = 0; index < apart->range.size.col * apart->range.size.row;
+	     index++, atile++)
+		aie_tile_remove(atile);
+
 	device_del(&apart->dev);
 	put_device(&apart->dev);
 }

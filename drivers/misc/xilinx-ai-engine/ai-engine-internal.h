@@ -399,6 +399,18 @@ struct aie_tile_attr {
 };
 
 /**
+ * struct aie_tile - AI engine tile structure
+ * @loc: tile co-ordinates
+ * @apart: parent partition the tile belongs to
+ * @dev: device for the AI engine tile device
+ */
+struct aie_tile {
+	struct aie_location loc;
+	struct aie_partition *apart;
+	struct device dev;
+};
+
+/**
  * struct aie_device - AI engine device structure
  * @partitions: list of partitions requested
  * @cdev: cdev for the AI engine
@@ -496,6 +508,7 @@ struct aie_part_bridge {
  * @range: range of partition
  * @mlock: protection for AI engine partition operations
  * @dev: device for the AI engine partition
+ * @atiles: pointer to an array of AIE tile structure.
  * @cores_clk_state: bitmap to indicate the power state of core modules
  * @tiles_inuse: bitmap to indicate if a tile is in use
  * @error_cb: error callback
@@ -525,6 +538,7 @@ struct aie_partition {
 	struct aie_range range;
 	struct mutex mlock; /* protection for AI engine partition operations */
 	struct device dev;
+	struct aie_tile *atiles;
 	struct aie_resource cores_clk_state;
 	struct aie_resource tiles_inuse;
 	struct aie_error_cb error_cb;
@@ -559,6 +573,7 @@ extern const struct file_operations aie_part_fops;
 #define cdev_to_aiedev(i_cdev) container_of((i_cdev), struct aie_device, cdev)
 #define dev_to_aiedev(_dev) container_of((_dev), struct aie_device, dev)
 #define dev_to_aiepart(_dev) container_of((_dev), struct aie_partition, dev)
+#define dev_to_aietile(_dev) container_of((_dev), struct aie_tile, dev)
 
 #define aie_col_mask(adev) ({ \
 	struct aie_device *_adev = (adev); \
