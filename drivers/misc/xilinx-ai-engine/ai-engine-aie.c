@@ -370,176 +370,176 @@ static const struct aie_l2_intr_ctrl_attr aie_l2_intr_ctrl = {
 static const struct aie_event_prop aie_core_stream_error_prop[] = {
 	{
 		.event = 54U,
-		.event_str = "CORE: TLAST in WSS words 0-2",
+		.event_str = "tlast_in_wss_words_0-2",
 	},
 	{
 		.event = 57U,
-		.event_str = "CORE: Control packet error",
+		.event_str = "control_packet_error",
 	},
 	{
 		.event = 56U,
-		.event_str = "CORE: Stream packet parity error",
+		.event_str = "stream_packet_parity_error",
 	},
 };
 
 static const struct aie_event_prop aie_core_inst_error_prop[] = {
 	{
 		.event = 59U,
-		.event_str = "CORE: Instruction decompression error",
+		.event_str = "instruction_decompression_error",
 	},
 };
 
 static const struct aie_event_prop aie_core_ecc_error_prop[] = {
 	{
 		.event = 64U,
-		.event_str = "CORE: PM ECC error 2-bit",
+		.event_str = "pm_ecc_error_2-bit",
 	},
 	{
 		.event = 62U,
-		.event_str = "CORE: PM ECC error scrub 2-bit",
+		.event_str = "pm_ecc_error_scrub_2-bit",
 	},
 };
 
 static const struct aie_event_prop aie_core_access_error_prop[] = {
 	{
 		.event = 55U,
-		.event_str = "CORE: PM reg access failure",
+		.event_str = "pm_reg_access_failure",
 	},
 	{
 		.event = 66U,
-		.event_str = "CORE: DM access to unavailable",
+		.event_str = "dm_access_to_unavailable",
 	},
 	{
 		.event = 65U,
-		.event_str = "CORE: PM address out of range",
+		.event_str = "pm_address_out_of_range",
 	},
 	{
 		.event = 60U,
-		.event_str = "CORE: DM address out of range",
+		.event_str = "dm_address_out_of_range",
 	},
 };
 
 static const struct aie_event_prop aie_core_lock_error_prop[] = {
 	{
 		.event = 67U,
-		.event_str = "CORE: Lock access to unavailable",
+		.event_str = "lock_access_to_unavailable",
 	},
 };
 
 static const struct aie_event_prop aie_core_bus_error_prop[] = {
 	{
 		.event = 58U,
-		.event_str = "CORE: AXI-MM slave error",
+		.event_str = "axi-mm_slave_error",
 	},
 };
 
 static const struct aie_event_prop aie_mem_ecc_error_prop[] = {
 	{
 		.event = 88U,
-		.event_str = "MEM: DM ECC error scrub 2-bit",
+		.event_str = "dm_ecc_error_scrub_2-bit",
 	},
 	{
 		.event = 90U,
-		.event_str = "MEM: DM ECC error 2-bit",
+		.event_str = "dm_ecc_error_2-bit",
 	},
 };
 
 static const struct aie_event_prop aie_mem_parity_error_prop[] = {
 	{
 		.event = 91U,
-		.event_str = " MEM: DM parity error bank 2",
+		.event_str = "dm_parity_error_bank_2",
 	},
 	{
 		.event = 92U,
-		.event_str = " MEM: DM parity error bank 3",
+		.event_str = "dm_parity_error_bank_3",
 	},
 	{
 		.event = 93U,
-		.event_str = " MEM: DM parity error bank 4",
+		.event_str = "dm_parity_error_bank_4",
 	},
 	{
 		.event = 94U,
-		.event_str = " MEM: DM parity error bank 5",
+		.event_str = "dm_parity_error_bank_5",
 	},
 	{
 		.event = 95U,
-		.event_str = " MEM: DM parity error bank 6",
+		.event_str = "dm_parity_error_bank_6",
 	},
 	{
 		.event = 96U,
-		.event_str = " MEM: DM parity error bank 7",
+		.event_str = "dm_parity_error_bank_7",
 	},
 };
 
 static const struct aie_event_prop aie_mem_dma_error_prop[] = {
 	{
 		.event = 97U,
-		.event_str = " MEM: DMA S2MM 0 error",
+		.event_str = "dma_s2mm_0_error",
 	},
 	{
 		.event = 98U,
-		.event_str = " MEM: DMA S2MM 1 error",
+		.event_str = "dma_s2mm_1_error",
 	},
 	{
 		.event = 99U,
-		.event_str = " MEM: DMA MM2S 0 error",
+		.event_str = "dma_mm2s_0_error",
 	},
 	{
 		.event = 100U,
-		.event_str = " MEM: DMA MM2S 1 error",
+		.event_str = "dma_mm2s_1_error",
 	},
 };
 
 static const struct aie_event_prop aie_shim_bus_error_prop[] = {
 	{
 		.event = 62U,
-		.event_str = "SHIM: AXI-MM slave tile error",
+		.event_str = "axi-mm_slave_tile_error",
 	},
 };
 
 static const struct aie_event_prop aie_shim_stream_error_prop[] = {
 	{
 		.event = 63U,
-		.event_str = "SHIM: Control packet error",
+		.event_str = "control_packet_error",
 	},
 	{
 		.event = 64U,
-		.event_str = "SHIM: AXI-MM decode NSU error",
+		.event_str = "axi-mm_decode_nsu_error",
 	},
 	{
 		.event = 65U,
-		.event_str = "SHIM: AXI-MM slave NSU error",
+		.event_str = "axi-mm_slave_nsu_error",
 	},
 	{
 		.event = 66U,
-		.event_str = "SHIM: AXI-MM unsupported traffic",
+		.event_str = "axi-mm_unsupported_traffic",
 	},
 	{
 		.event = 67U,
-		.event_str = "SHIM: AXI-MM unsecure access in secure mode",
+		.event_str = "axi-mm_unsecure_access_in_secure_mode",
 	},
 	{
 		.event = 68U,
-		.event_str = "SHIM: AXI-MM byte strobe error",
+		.event_str = "axi-mm_byte_strobe_error",
 	},
 };
 
 static const struct aie_event_prop aie_shim_dma_error_prop[] = {
 	{
 		.event = 69U,
-		.event_str = "SHIM: DMA S2MM 0 error",
+		.event_str = "dma_s2mm_0_error",
 	},
 	{
 		.event = 70U,
-		.event_str = "SHIM: DMA S2MM 1 error",
+		.event_str = "dma_s2mm_1_error",
 	},
 	{
 		.event = 71U,
-		.event_str = "SHIM: DMA MM2S 0 error",
+		.event_str = "dma_mm2s_0_error",
 	},
 	{
 		.event = 72U,
-		.event_str = "SHIM: DMA MM2S 1 error",
+		.event_str = "dma_mm2s_1_error",
 	},
 };
 
@@ -849,6 +849,9 @@ static const struct aie_dev_attr aie_tile_dev_attr[] = {
 	AIE_TILE_DEV_ATTR_RO(core, AIE_TILE_TYPE_MASK_TILE),
 	AIE_TILE_DEV_ATTR_RO(dma, AIE_TILE_TYPE_MASK_TILE |
 			     AIE_TILE_TYPE_MASK_SHIMNOC),
+	AIE_TILE_DEV_ATTR_RO(error, AIE_TILE_TYPE_MASK_TILE |
+			     AIE_TILE_TYPE_MASK_SHIMNOC |
+			     AIE_TILE_TYPE_MASK_SHIMPL),
 	AIE_TILE_DEV_ATTR_RO(lock, AIE_TILE_TYPE_MASK_TILE |
 			     AIE_TILE_TYPE_MASK_SHIMNOC),
 };
