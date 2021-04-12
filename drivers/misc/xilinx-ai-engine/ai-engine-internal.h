@@ -757,9 +757,6 @@ int aie_part_get_tile_rows(struct aie_partition *apart,
 int aie_part_reset(struct aie_partition *apart);
 int aie_part_post_reinit(struct aie_partition *apart);
 
-int aie_part_sysfs_init(struct aie_partition *apart);
-void aie_part_sysfs_finish(struct aie_partition *apart);
-
 int aie_part_rscmgr_init(struct aie_partition *apart);
 void aie_part_rscmgr_finish(struct aie_partition *apart);
 void aie_part_rscmgr_reset(struct aie_partition *apart);
