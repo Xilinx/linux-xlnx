@@ -955,5 +955,7 @@ bool aie_check_error_bitmap(struct aie_partition *apart,
 			    enum aie_module_type module, u8 event);
 ssize_t aie_tile_show_error(struct device *dev, struct device_attribute *attr,
 			    char *buffer);
+ssize_t aie_part_show_error_stat(struct device *dev,
+				 struct device_attribute *attr, char *buffer);
 
 #endif /* AIE_INTERNAL_H */
