@@ -138,6 +138,61 @@ enum aie_tile_type {
 	.store		= aie_tile_store_##_name,		\
 }
 
+#define AIE_PART_BIN_ATTR_RO(_name, _size) {			\
+	.name		= __stringify(_name),			\
+	.mode		= 0444,					\
+	.size		= _size,				\
+	.read		= aie_sysfs_read_handler,		\
+	.read_callback	= aie_part_read_cb_##_name,		\
+}
+
+#define AIE_PART_BIN_ATTR_WO(_name, _size) {			\
+	.name		= __stringify(_name),			\
+	.mode		= 0200,					\
+	.size		= _size,				\
+	.write		= aie_part_write_handler,		\
+	.write_callback	= aie_part_write_cb_##_name,		\
+}
+
+#define AIE_PART_BIN_ATTR_RW(_name, _size) {			\
+	.name		= __stringify(_name),			\
+	.mode		= 0644					\
+	.size		= _size,				\
+	.read		= aie_sysfs_read_handler,		\
+	.write		= aie_part_write_handler,		\
+	.read_callback	= aie_part_read_cb_##_name,		\
+	.write_callback	= aie_part_write_cb_##_name,		\
+}
+
+#define AIE_TILE_BIN_ATTR_RO(_name, _size, _ttype) {		\
+	.name		= __stringify(_name),			\
+	.mode		= 0444,					\
+	.size		= _size,				\
+	.tile_type	= _ttype,				\
+	.read		= aie_sysfs_read_handler,		\
+	.read_callback	= aie_tile_read_cb_##_name,		\
+}
+
+#define AIE_TILE_BIN_ATTR_WO(_name, _size, _ttype) {		\
+	.name		= __stringify(_name),			\
+	.mode		= 0200,					\
+	.size		= _size,				\
+	.tile_type	= _ttype,				\
+	.write		= aie_tile_write_handler,		\
+	.write_callback	= aie_tile_write_cb_##_name,		\
+}
+
+#define AIE_TILE_BIN_ATTR_RW(_name, _size, _ttype) {		\
+	.name		= __stringify(_name),			\
+	.mode		= 0644,					\
+	.size		= _size,				\
+	.tile_type	= _ttype,				\
+	.read		= aie_sysfs_read_handler,		\
+	.write		= aie_tile_write_handler,		\
+	.read_callback	= aie_tile_read_cb_##_name,		\
+	.write_callback	= aie_tile_write_cb_##_name,		\
+}
+
 /*
  * enum aie_shim_switch_type - identifies different switches in shim tile.
  */
@@ -504,14 +559,64 @@ struct aie_dev_attr {
 };
 
 /**
+ * struct aie_sysfs_prop - private data passed to the sysfs read/write handler.
+ * @data: buffer to export sysfs data
+ * @size: size of data exported
+ * @max_size: max size of data that could be exported
+ * @read_callback: callback to fetch data from on read
+ * @write_callback: callback to send data to on write
+ */
+struct aie_sysfs_prop {
+	char *data;
+	ssize_t size;
+	ssize_t max_size;
+	ssize_t (*read_callback)(struct kobject *kobj, char *buffer,
+				 ssize_t size);
+	ssize_t (*write_callback)(struct kobject *kobj, char *buffer,
+				  ssize_t size);
+};
+
+/**
+ * struct aie_bin_attr - binary attribute properties for AI Engine sysfs nodes
+ * @name: name of the binary attribute
+ * @mode: permissions associated
+ * @size: size of the buffer to be allocated
+ * @tile_type: tile type(s) attribute is valid for. use AIE_TILE_TYPE_MASK_*.
+ * @read: read handler
+ * @write: write handler
+ * @read_callback: callback to fetch data from on read
+ * @write_callback:  callback to send data to on write
+ */
+struct aie_bin_attr {
+	const char *name;
+	umode_t mode;
+	ssize_t size;
+	u32 tile_type;
+	ssize_t (*read)(struct file *filp, struct kobject *kobj,
+			struct bin_attribute *attr, char *buf, loff_t offset,
+			size_t max_size);
+	ssize_t (*write)(struct file *filp, struct kobject *kobj,
+			 struct bin_attribute *attr, char *buf, loff_t offset,
+			 size_t max_size);
+	ssize_t (*read_callback)(struct kobject *kobj, char *buffer,
+				 ssize_t size);
+	ssize_t (*write_callback)(struct kobject *kobj, char *buffer,
+				  ssize_t size);
+};
+
+/**
  * struct aie_sysfs_attr - captures all sysfs attributes defined at
  *			   partition or tile level.
  * @dev_attr: pointer to array of device attributes
+ * @bin_attr: pointer to array of binary attributes
  * @num_dev_attrs: number of device attributes
+ * @num_bin_attrs: number of binary attributes
  */
 struct aie_sysfs_attr {
 	const struct aie_dev_attr *dev_attr;
+	const struct aie_bin_attr *bin_attr;
 	u32 num_dev_attrs;
+	u32 num_bin_attrs;
 };
 
 /**
@@ -933,6 +1038,9 @@ int aie_part_rscmgr_set_tile_broadcast(struct aie_partition *apart,
 				       enum aie_module_type mod, uint32_t id);
 
 int aie_part_sysfs_init(struct aie_partition *apart);
+ssize_t aie_sysfs_read_handler(struct file *filp, struct kobject *kobj,
+			       struct bin_attribute *attr, char *buf,
+			       loff_t offset, size_t max_size);
 
 ssize_t aie_sysfs_get_core_status(struct aie_partition *apart,
 				  struct aie_location *loc, char *buffer,

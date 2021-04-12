@@ -7,6 +7,41 @@
 #include "ai-engine-internal.h"
 
 /**
+ * aie_sysfs_read_handler() - sysfs binary attribute read handler.
+ * @filp: file pointer.
+ * @kobj: pointer to the kobject.
+ * @attr: sysfs binary attribute.
+ * @buf: buffer to copy the data to.
+ * @offset: offset into the sysfs file.
+ * @max_size: maximum length of data that could be copied to buf.
+ * @return: length of data actually copied to buf.
+ */
+ssize_t aie_sysfs_read_handler(struct file *filp, struct kobject *kobj,
+			       struct bin_attribute *attr, char *buf,
+			       loff_t offset, size_t max_size)
+{
+	ssize_t len = max_size;
+	struct aie_sysfs_prop *prop;
+
+	prop = attr->private;
+	if (!prop->data)
+		return 0;
+
+	if (!offset)
+		prop->size = prop->read_callback(kobj, prop->data,
+						 prop->max_size);
+
+	if (offset >= prop->size)
+		return 0;
+
+	if (offset + max_size > prop->size)
+		len = prop->size - offset;
+
+	memcpy(buf,  prop->data + offset, len);
+	return len;
+}
+
+/**
  * aie_sysfs_create_dev_attr() - dynamically allocates and initialize a device
  *				 attribute
  * @dev: device to allocate attribute for.
@@ -31,6 +66,44 @@ aie_sysfs_create_dev_attr(struct device *dev, const struct aie_dev_attr *attr)
 }
 
 /**
+ * aie_sysfs_create_bin_attr() - dynamically allocates and initialize a binary
+ *				 attribute
+ * @dev: device to allocate attribute for.
+ * @attr: AI engine binary attribute.
+ * @return: pointer to the allocated binary attribute.
+ */
+static struct bin_attribute *
+aie_sysfs_create_bin_attr(struct device *dev, const struct aie_bin_attr *attr)
+{
+	struct bin_attribute *node;
+	struct aie_sysfs_prop *prop;
+
+	node = devm_kzalloc(dev, sizeof(struct bin_attribute), GFP_KERNEL);
+	if (!node)
+		return ERR_PTR(-ENOMEM);
+
+	sysfs_bin_attr_init(node);
+
+	node->attr.name = attr->name;
+	node->attr.mode = attr->mode;
+	node->size = attr->size;
+	node->read = attr->read;
+
+	prop = devm_kzalloc(dev, sizeof(struct aie_sysfs_prop), GFP_KERNEL);
+	if (!prop)
+		return ERR_PTR(-ENOMEM);
+
+	prop->data = devm_kzalloc(dev, node->size, GFP_KERNEL);
+	if (!prop->data)
+		return ERR_PTR(-ENOMEM);
+
+	prop->max_size = node->size;
+	prop->read_callback = attr->read_callback;
+	node->private = prop;
+	return node;
+}
+
+/**
  * aie_tile_sysfs_create() - creates sysfs nodes at the tile level.
  * @atile: AI engine tile.
  * @return: 0 for success, error code for failure.
@@ -38,12 +111,15 @@ aie_sysfs_create_dev_attr(struct device *dev, const struct aie_dev_attr *attr)
 static int aie_tile_sysfs_create(struct aie_tile *atile)
 {
 	struct attribute_group *attr_grp;
+	struct bin_attribute **bin_attrs;
 	struct attribute **dev_attrs;
 	const struct aie_sysfs_attr *attr;
 	int ret = 0;
-	u32 index, i = 0;
+	u32 ttype;
+	u32 index, i = 0, j = 0;
 
 	attr = atile->apart->adev->tile_sysfs_attr;
+	ttype = atile->apart->adev->ops->get_tile_type(&atile->loc);
 
 	if (attr->num_dev_attrs) {
 		dev_attrs = devm_kzalloc(&atile->dev, attr->num_dev_attrs + 1,
@@ -53,12 +129,8 @@ static int aie_tile_sysfs_create(struct aie_tile *atile)
 
 		for (index = 0; index < attr->num_dev_attrs; index++) {
 			struct device_attribute *node;
-			const struct aie_tile_operations *ops;
 			const struct aie_dev_attr *dev_attr;
-			u32 ttype;
 
-			ops = atile->apart->adev->ops;
-			ttype = ops->get_tile_type(&atile->loc);
 			dev_attr = &attr->dev_attr[index];
 
 			if (!(BIT(ttype) & attr->dev_attr[index].tile_type))
@@ -72,14 +144,41 @@ static int aie_tile_sysfs_create(struct aie_tile *atile)
 		}
 	}
 
-	if (attr->num_dev_attrs) {
+	if (attr->num_bin_attrs) {
+		bin_attrs = devm_kzalloc(&atile->dev, attr->num_bin_attrs + 1,
+					 GFP_KERNEL);
+		if (!bin_attrs)
+			return -ENOMEM;
+
+		for (index = 0; index < attr->num_bin_attrs; index++) {
+			struct bin_attribute *node;
+			const struct aie_bin_attr *bin_attr;
+
+			bin_attr = &attr->bin_attr[index];
+
+			if (!(BIT(ttype) & attr->bin_attr[index].tile_type))
+				continue;
+
+			node = aie_sysfs_create_bin_attr(&atile->dev, bin_attr);
+			if (IS_ERR_VALUE(node))
+				return PTR_ERR(node);
+
+			bin_attrs[j++] = node;
+		}
+	}
+
+	if (attr->num_dev_attrs || attr->num_bin_attrs) {
 		attr_grp = devm_kzalloc(&atile->dev,
 					sizeof(struct attribute_group),
 					GFP_KERNEL);
 		if (!attr_grp)
 			return -ENOMEM;
 
-		attr_grp->attrs = dev_attrs;
+		if (attr->num_dev_attrs)
+			attr_grp->attrs = dev_attrs;
+
+		if (attr->num_bin_attrs)
+			attr_grp->bin_attrs = bin_attrs;
 
 		ret = devm_device_add_group(&atile->dev, attr_grp);
 		if (ret) {
@@ -99,6 +198,7 @@ static int aie_part_sysfs_create(struct aie_partition *apart)
 {
 	const struct aie_sysfs_attr *attr;
 	struct attribute_group *attr_grp;
+	struct bin_attribute **bin_attrs;
 	struct attribute **dev_attrs;
 	int ret = 0;
 	u32 index;
@@ -125,13 +225,38 @@ static int aie_part_sysfs_create(struct aie_partition *apart)
 		}
 	}
 
-	if (attr->num_dev_attrs) {
+	if (attr->num_bin_attrs) {
+		bin_attrs = devm_kzalloc(&apart->dev, attr->num_bin_attrs + 1,
+					 GFP_KERNEL);
+		if (!bin_attrs)
+			return -ENOMEM;
+
+		for (index = 0; index < attr->num_bin_attrs; index++) {
+			struct bin_attribute *node;
+			const struct aie_bin_attr *bin_attr;
+
+			bin_attr = &attr->bin_attr[index];
+
+			node = aie_sysfs_create_bin_attr(&apart->dev, bin_attr);
+			if (IS_ERR_VALUE(node))
+				return PTR_ERR(node);
+
+			bin_attrs[index] = node;
+		}
+	}
+
+	if (attr->num_dev_attrs || attr->num_bin_attrs) {
 		attr_grp = devm_kzalloc(&apart->dev,
 					sizeof(struct attribute_group),
 					GFP_KERNEL);
 		if (!attr_grp)
 			return -ENOMEM;
-		attr_grp->attrs = dev_attrs;
+
+		if (attr->num_dev_attrs)
+			attr_grp->attrs = dev_attrs;
+
+		if (attr->num_bin_attrs)
+			attr_grp->bin_attrs = bin_attrs;
 
 		ret = devm_device_add_group(&apart->dev, attr_grp);
 		if (ret) {

@@ -862,12 +862,16 @@ static const struct aie_dev_attr aie_part_dev_attr[] = {
 
 static const struct aie_sysfs_attr aie_part_sysfs_attr = {
 	.dev_attr = aie_part_dev_attr,
+	.bin_attr = NULL,
 	.num_dev_attrs = ARRAY_SIZE(aie_part_dev_attr),
+	.num_bin_attrs = 0U,
 };
 
 static const struct aie_sysfs_attr aie_tile_sysfs_attr = {
 	.dev_attr = aie_tile_dev_attr,
+	.bin_attr = NULL,
 	.num_dev_attrs = ARRAY_SIZE(aie_tile_dev_attr),
+	.num_bin_attrs = 0U,
 };
 
 static u32 aie_get_tile_type(struct aie_location *loc)
