@@ -86,9 +86,14 @@ enum aie_tile_type {
 
 /* String delimiter to format sysfs data */
 #define DELIMITER_LEVEL0 "|"
+#define DELIMITER_LEVEL1 ", "
 
 /* Macros to define size of temporary string buffers */
 #define AIE_SYSFS_CORE_STS_SIZE		100U
+#define AIE_SYSFS_CHAN_STS_SIZE		150U
+#define AIE_SYSFS_QUEUE_SIZE_SIZE	40U
+#define AIE_SYSFS_QUEUE_STS_SIZE	60U
+#define AIE_SYSFS_BD_SIZE		40U
 
 /* Helper macros to dynamically create sysfs device attribute */
 #define AIE_PART_DEV_ATTR_RO(_name) {				\
@@ -193,7 +198,16 @@ struct aie_part_mem {
  * @laddr: low address field attributes
  * @haddr: high address field attributes
  * @buflen: buffer length field attributes
+ * @sts: channel status field attributes
+ * @stall: queue stall status field attributes
+ * @qsize: queue size field attributes
+ * @curbd: current buffer descriptor field attributes
+ * @qsts: queue status field attributes
  * @bd_regoff: SHIM DMA buffer descriptors register offset
+ * @mm2s_sts_regoff: MM2S status register offset
+ * @s2mm_sts_regoff: S2MM status register offset
+ * @num_mm2s_chan: number of MM2S channels
+ * @num_s2mm_chan: number of S2MM channels
  * @num_bds: number of buffer descriptors
  * @bd_len: length of a buffer descriptor in bytes
  */
@@ -201,7 +215,16 @@ struct aie_dma_attr {
 	struct aie_single_reg_field laddr;
 	struct aie_single_reg_field haddr;
 	struct aie_single_reg_field buflen;
+	struct aie_single_reg_field sts;
+	struct aie_single_reg_field stall;
+	struct aie_single_reg_field qsize;
+	struct aie_single_reg_field curbd;
+	struct aie_single_reg_field qsts;
 	u32 bd_regoff;
+	u32 mm2s_sts_regoff;
+	u32 s2mm_sts_regoff;
+	u32 num_mm2s_chan;
+	u32 num_s2mm_chan;
 	u32 num_bds;
 	u32 bd_len;
 };
@@ -505,6 +528,7 @@ struct aie_tile {
  * @col_rst: column reset attribute
  * @col_clkbuf: column clock buffer attribute
  * @shim_dma: SHIM DMA attribute
+ * @tile_dma: tile DMA attribute
  * @pl_events: pl module event attribute
  * @mem_events: memory module event attribute
  * @core_events: core module event attribute
@@ -533,6 +557,8 @@ struct aie_tile {
  * @core_pc: program counter attribute
  * @core_lr: link register attribute
  * @core_sp: stack pointer attribute
+ * @dma_status_str: DMA channel status in string format
+ * @queue_status_str: DMA queue status in string format
  */
 struct aie_device {
 	struct list_head partitions;
@@ -548,6 +574,7 @@ struct aie_device {
 	const struct aie_single_reg_field *col_rst;
 	const struct aie_single_reg_field *col_clkbuf;
 	const struct aie_dma_attr *shim_dma;
+	const struct aie_dma_attr *tile_dma;
 	const struct aie_event_attr *pl_events;
 	const struct aie_event_attr *mem_events;
 	const struct aie_event_attr *core_events;
@@ -575,6 +602,8 @@ struct aie_device {
 	const struct aie_single_reg_field *core_pc;
 	const struct aie_single_reg_field *core_lr;
 	const struct aie_single_reg_field *core_sp;
+	char **dma_status_str;
+	char **queue_status_str;
 };
 
 /**
@@ -891,5 +920,10 @@ ssize_t aie_sysfs_get_core_status(struct aie_partition *apart,
 				  ssize_t size);
 ssize_t aie_tile_show_core(struct device *dev, struct device_attribute *attr,
 			   char *buffer);
+ssize_t aie_sysfs_get_dma_status(struct aie_partition *apart,
+				 struct aie_location *loc, char *buffer,
+				 ssize_t size);
+ssize_t aie_tile_show_dma(struct device *dev, struct device_attribute *attr,
+			  char *buffer);
 
 #endif /* AIE_INTERNAL_H */

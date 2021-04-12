@@ -201,9 +201,73 @@ static const struct aie_dma_attr aie_shimdma = {
 		.mask = 0xffffffffU,
 		.regoff = 0x4U,
 	},
+	.sts = {
+		.mask = GENMASK(1, 0),
+		.regoff = 2U,
+	},
+	.stall = {
+		.mask = BIT(4),
+		.regoff = 1U,
+	},
+	.qsize = {
+		.mask = GENMASK(8, 6),
+		.regoff = 3U,
+	},
+	.curbd = {
+		.mask = GENMASK(19, 16),
+		.regoff = 4U,
+	},
+	.qsts = {
+		.mask = BIT(28),
+		.regoff = 1U,
+	},
 	.bd_regoff = 0x0001d000U,
+	.mm2s_sts_regoff = 0x1d164U,
+	.s2mm_sts_regoff = 0x1d160U,
 	.num_bds = 16,
+	.num_mm2s_chan = 2U,
+	.num_s2mm_chan = 2U,
 	.bd_len = 0x14U,
+};
+
+static const struct aie_dma_attr aie_tiledma = {
+	.sts = {
+		.mask = GENMASK(1, 0),
+		.regoff = 2U,
+	},
+	.stall = {
+		.mask = BIT(4),
+		.regoff = 1U,
+	},
+	.qsize = {
+		.mask = GENMASK(8, 6),
+		.regoff = 3U,
+	},
+	.curbd = {
+		.mask = GENMASK(19, 16),
+		.regoff = 4U,
+	},
+	.qsts = {
+		.mask = BIT(28),
+		.regoff = 1U,
+	},
+	.mm2s_sts_regoff = 0x1df10U,
+	.s2mm_sts_regoff = 0x1df00U,
+	.num_bds = 16,
+	.num_mm2s_chan = 2U,
+	.num_s2mm_chan = 2U,
+};
+
+static char *aie_dma_status_str[] = {
+	"idle",
+	"starting",
+	"running",
+	"stalled_on_requesting_lock",
+};
+
+static char *aie_queue_status_str[] = {
+	"okay",
+	"overflow",
 };
 
 static const struct aie_event_attr aie_pl_event = {
@@ -758,6 +822,8 @@ static char *aie_core_status_str[] = {
 
 static const struct aie_dev_attr aie_tile_dev_attr[] = {
 	AIE_TILE_DEV_ATTR_RO(core, AIE_TILE_TYPE_MASK_TILE),
+	AIE_TILE_DEV_ATTR_RO(dma, AIE_TILE_TYPE_MASK_TILE |
+			     AIE_TILE_TYPE_MASK_SHIMNOC),
 };
 
 static const struct aie_sysfs_attr aie_part_sysfs_attr = {
@@ -1186,6 +1252,7 @@ int aie_device_init(struct aie_device *adev)
 	adev->col_rst = &aie_col_rst;
 	adev->col_clkbuf = &aie_col_clkbuf;
 	adev->shim_dma = &aie_shimdma;
+	adev->tile_dma = &aie_tiledma;
 	adev->pl_events = &aie_pl_event;
 	adev->mem_events = &aie_mem_event;
 	adev->core_events = &aie_core_event;
@@ -1200,6 +1267,8 @@ int aie_device_init(struct aie_device *adev)
 	adev->core_pc = &aie_core_pc;
 	adev->core_lr = &aie_core_lr;
 	adev->core_sp = &aie_core_sp;
+	adev->dma_status_str = aie_dma_status_str;
+	adev->queue_status_str = aie_queue_status_str;
 
 	aie_device_init_rscs_attr(adev);
 
