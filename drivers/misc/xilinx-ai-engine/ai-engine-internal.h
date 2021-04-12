@@ -456,6 +456,18 @@ struct aie_tile_rsc_attr {
 };
 
 /**
+ * struct aie_lock_attr - AI engine lock attributes
+ * @sts: lock status field attributes
+ * @sts_regoff: lock status register offset
+ * @num_locks: number of locks
+ */
+struct aie_lock_attr {
+	struct aie_single_reg_field sts;
+	u32 sts_regoff;
+	u32 num_locks;
+};
+
+/**
  * struct aie_tile_attr - AI engine device tile type attributes
  * @start_row: start row
  * @num_rows: number of rows
@@ -559,6 +571,9 @@ struct aie_tile {
  * @core_sp: stack pointer attribute
  * @dma_status_str: DMA channel status in string format
  * @queue_status_str: DMA queue status in string format
+ * @pl_lock: PL module lock attribute
+ * @mem_lock: memory module lock attribute
+ * @lock_status_str: lock status in string format
  */
 struct aie_device {
 	struct list_head partitions;
@@ -604,6 +619,9 @@ struct aie_device {
 	const struct aie_single_reg_field *core_sp;
 	char **dma_status_str;
 	char **queue_status_str;
+	const struct aie_lock_attr *pl_lock;
+	const struct aie_lock_attr *mem_lock;
+	char **lock_status_str;
 };
 
 /**
@@ -925,5 +943,7 @@ ssize_t aie_sysfs_get_dma_status(struct aie_partition *apart,
 				 ssize_t size);
 ssize_t aie_tile_show_dma(struct device *dev, struct device_attribute *attr,
 			  char *buffer);
+ssize_t aie_tile_show_lock(struct device *dev, struct device_attribute *attr,
+			   char *buffer);
 
 #endif /* AIE_INTERNAL_H */
