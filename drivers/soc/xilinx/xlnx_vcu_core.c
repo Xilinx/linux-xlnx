@@ -98,7 +98,13 @@ static int xvcu_core_probe(struct platform_device *pdev)
 		dev_warn(&pdev->dev, "No reset gpio info from dts for vcu. This may lead to incorrect functionality if VCU isolation is removed post initialization.\n");
 	}
 
-	iowrite32(VCU_GASKET_VALUE, xvcu->logicore_reg_ba + VCU_GASKET_INIT);
+	/*
+	 * skip sw isolation step if vcu ip has removed gasket isolation
+	 * already
+	 */
+	if (!of_property_read_bool(pdev->dev.of_node, "xlnx,skip-isolation"))
+		iowrite32(VCU_GASKET_VALUE,
+			  xvcu->logicore_reg_ba + VCU_GASKET_INIT);
 
 	ret = mfd_add_devices(&pdev->dev, PLATFORM_DEVID_NONE, xvcu_devs,
 			      ARRAY_SIZE(xvcu_devs), NULL, 0, NULL);
