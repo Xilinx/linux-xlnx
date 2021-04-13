@@ -44,6 +44,9 @@ Optional properties:
 - reset-gpios : The GPIO used to reset the VCU, if available. Need use this
 		reset gpio when in design 'vcu_resetn' is driven by gpio. See
 		Documentation/devicetree/bindings/gpio/gpio.txt for details.
+- xlnx,skip-isolation : This property indicates the driver that vcu gasket
+			isolation is removed by hw by default, the driver can
+			skip isolation removal.
 
 Example:
 
@@ -59,6 +62,7 @@ Example:
 		clock-names = "pll_ref", "aclk", "vcu_core_enc", "vcu_core_dec", "vcu_mcu_enc", "vcu_mcu_dec";
 		clocks = <&si570_1>, <&clkc 71>, <&xlnx_vcu 1>, <&xlnx_vcu 2>, <&xlnx_vcu 3>, <&xlnx_vcu 4>;
 		ranges;
+		xlnx,skip-isolation;
 		encoder: al5e@a0000000 {
 			compatible = "al,al5e";
 			reg = <0x0 0xa0000000 0x0 0x10000>;
