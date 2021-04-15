@@ -191,7 +191,8 @@ static int xlnx_remove_cb_for_notify_event(const u32 node_id, const u32 event,
 int xlnx_register_event(const enum pm_api_cb_id cb_type, const u32 node_id, const u32 event,
 			const bool wake, event_cb_func_t cb_fun, void *data)
 {
-	int ret = 0;
+	int ret;
+	u32 eve, pos;
 
 	if (event_manager_availability)
 		return event_manager_availability;
@@ -207,18 +208,58 @@ int xlnx_register_event(const enum pm_api_cb_id cb_type, const u32 node_id, cons
 	if (cb_type == PM_INIT_SUSPEND_CB) {
 		ret = xlnx_add_cb_for_suspend(cb_fun, data);
 	} else {
-		/* Add entry for Node-Id/Event in hash table */
-		ret = xlnx_add_cb_for_notify_event(node_id, event, wake, cb_fun, data);
-		if (ret)
-			return ret;
+		if (!xlnx_is_error_event(node_id)) {
+			/* Add entry for Node-Id/Event in hash table */
+			ret = xlnx_add_cb_for_notify_event(node_id, event, wake, cb_fun, data);
+		} else {
+			/* Add into Hash table */
+			for (pos = 0; pos < MAX_BITS; pos++) {
+				eve = event & (1 << pos);
+				if (!eve)
+					continue;
 
-		/* Register for Node-Id/Event combination */
+				/* Add entry for Node-Id/Eve in hash table */
+				ret = xlnx_add_cb_for_notify_event(node_id, eve, wake, cb_fun,
+								   data);
+				/* Break the loop if got error */
+				if (ret)
+					break;
+			}
+			if (ret) {
+				/* Skip the Event for which got the error */
+				pos--;
+				/* Remove registered(during this call) event from hash table */
+				for ( ; pos >= 0; pos--) {
+					eve = event & (1 << pos);
+					if (!eve)
+						continue;
+					xlnx_remove_cb_for_notify_event(node_id, eve, cb_fun);
+				}
+			}
+		}
+
+		if (ret) {
+			pr_err("%s() failed for 0x%x and 0x%x: %d\r\n", __func__, node_id,
+			       event, ret);
+			return ret;
+		}
+
+		/* Register for Node-Id/Event combination in firmware */
 		ret = zynqmp_pm_register_notifier(node_id, event, wake, true);
 		if (ret) {
-			/* Remove entry for Node-Id/Event from hash table */
-			xlnx_remove_cb_for_notify_event(node_id, event, cb_fun);
-			pr_err("%s() failed for 0x%x and 0x%x: %d\n",
-			       __func__, node_id, event, ret);
+			pr_err("%s() failed for 0x%x and 0x%x: %d\r\n", __func__, node_id,
+			       event, ret);
+			/* Remove already registered event from hash table */
+			if (xlnx_is_error_event(node_id)) {
+				for (pos = 0; pos < MAX_BITS; pos++) {
+					eve = event & (1 << pos);
+					if (!eve)
+						continue;
+					xlnx_remove_cb_for_notify_event(node_id, eve, cb_fun);
+				}
+			} else {
+				xlnx_remove_cb_for_notify_event(node_id, event, cb_fun);
+			}
 			return ret;
 		}
 	}
@@ -241,7 +282,8 @@ EXPORT_SYMBOL_GPL(xlnx_register_event);
 int xlnx_unregister_event(const enum pm_api_cb_id cb_type, const u32 node_id, const u32 event,
 			  event_cb_func_t cb_fun)
 {
-	int ret = 0;
+	int ret;
+	u32 eve, pos;
 
 	if (event_manager_availability)
 		return event_manager_availability;
@@ -258,9 +300,17 @@ int xlnx_unregister_event(const enum pm_api_cb_id cb_type, const u32 node_id, co
 		ret = xlnx_remove_cb_for_suspend(cb_fun);
 	} else {
 		/* Remove Node-Id/Event from hash table */
-		ret = xlnx_remove_cb_for_notify_event(node_id, event, cb_fun);
-		if (ret)
-			return ret;
+		if (!xlnx_is_error_event(node_id)) {
+			xlnx_remove_cb_for_notify_event(node_id, event, cb_fun);
+		} else {
+			for (pos = 0; pos < MAX_BITS; pos++) {
+				eve = event & (1 << pos);
+				if (!eve)
+					continue;
+
+				xlnx_remove_cb_for_notify_event(node_id, eve, cb_fun);
+			}
+		}
 
 		/* Un-register for Node-Id/Event combination */
 		ret = zynqmp_pm_register_notifier(node_id, event, false, false);
@@ -333,8 +383,9 @@ static void xlnx_get_event_callback_data(u32 *buf)
 
 static irqreturn_t xlnx_event_handler(int irq, void *dev_id)
 {
-	u32 cb_type, node_id, event;
+	u32 cb_type, node_id, event, pos;
 	u32 payload[CB_MAX_PAYLOAD_SIZE] = {0};
+	u32 event_data[CB_MAX_PAYLOAD_SIZE] = {0};
 
 	/* Get event data */
 	xlnx_get_event_callback_data(payload);
@@ -345,11 +396,31 @@ static irqreturn_t xlnx_event_handler(int irq, void *dev_id)
 	if (cb_type == PM_NOTIFY_CB) {
 		node_id = payload[1];
 		event = payload[2];
-		xlnx_call_notify_cb_handler(payload);
-
-		/* As per Firmware requirement */
-		if (xlnx_is_error_event(node_id))
-			xlnx_remove_error_event(node_id, event);
+		if (!xlnx_is_error_event(node_id)) {
+			xlnx_call_notify_cb_handler(payload);
+		} else {
+			/*
+			 * Each call back function expecting payload as an input arguments.
+			 * We can get multiple error events as in one call back through error
+			 * mask. So payload[2] may can contain multiple error events.
+			 * In reg_driver_map database we store data in the combination of single
+			 * node_id-error combination.
+			 * So coping the payload message into event_data and update the
+			 * event_data[2] with Error Mask for single error event and use
+			 * event_data as input argument for registered call back function.
+			 *
+			 */
+			memcpy(event_data, payload, (4 * CB_MAX_PAYLOAD_SIZE));
+			/* Support Multiple Error Event */
+			for (pos = 0; pos < MAX_BITS; pos++) {
+				if ((0 == (event & (1 << pos))))
+					continue;
+				event_data[2] = (event & (1 << pos));
+				xlnx_call_notify_cb_handler(event_data);
+				/* As per Firmware requirement */
+				xlnx_remove_error_event(node_id, event_data[2]);
+			}
+		}
 	} else if (cb_type == PM_INIT_SUSPEND_CB) {
 		xlnx_call_suspend_cb_handler(payload);
 	} else {
