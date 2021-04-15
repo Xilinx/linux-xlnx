@@ -22,7 +22,7 @@ Optional properties:
 		  and client driver bindings. Also see
 		  Documentation/devicetree/bindings/mailbox/ \
 		  xlnx,zynqmp-ipi-mailbox.txt for typical controller that
-		  is used to communicate with this System controllers.
+		  is used to communicate with these system controllers.
 
 --------
 Examples
