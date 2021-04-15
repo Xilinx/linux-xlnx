@@ -3961,7 +3961,8 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 		mtd->name, (long long)mtd->size, (long long)(mtd->size >> 20),
 		mtd->erasesize, mtd->erasesize / 1024, mtd->numeraseregions);
 
-	if (hwcaps->mask & (SNOR_HWCAPS_READ_8_8_8 | SNOR_HWCAPS_PP_8_8_8)) {
+	if (hwcaps->mask & nor->params->hwcaps.mask &
+	    (SNOR_HWCAPS_READ_8_8_8 | SNOR_HWCAPS_PP_8_8_8)) {
 		if (nor->jedec_id == CFI_MFR_MACRONIX)
 			ret = spi_nor_switch_macronix_octal_ddr(nor);
 		else
