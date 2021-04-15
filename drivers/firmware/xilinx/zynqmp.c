@@ -1588,7 +1588,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_secure_load);
  *                                to be notified about specific
  *                                event/error.
  * @node:	Node ID to which the event is related.
- * @event:	Event ID for which subsystem wants to get notified.
+ * @event:	Event Mask for Error Event.
  * @wake:	Wake subsystem upon capturing the event if value 1
  * @enable:	Enable the registration for value 1, disable for value 0
  *
