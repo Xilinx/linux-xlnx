@@ -19644,6 +19644,12 @@ F:	drivers/misc/Kconfig
 F:	drivers/misc/Makefile
 F:	include/uapi/misc/xilinx_sdfec.h
 
+XILINX EVENT MANAGEMENT DRIVER
+M:	Abhyuday Godhasara <abhyuday.godhasara@xilinx.com>
+S:	Maintained
+F:	drivers/soc/xilinx/xlnx_event_manager.c
+F:	include/linux/firmware/xlnx-event-manager.h
+
 XILLYBUS DRIVER
 M:	Eli Billauer <eli.billauer@gmail.com>
 L:	linux-kernel@vger.kernel.org
