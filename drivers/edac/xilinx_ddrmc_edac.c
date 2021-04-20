@@ -1140,7 +1140,7 @@ static int xddr_mc_probe(struct platform_device *pdev)
 	if (edac_create_sysfs_attributes(mci)) {
 		edac_printk(KERN_ERR, EDAC_MC,
 			    "Failed to create sysfs entries\n");
-		goto free_edac_mc;
+		goto del_edac_mc;
 	}
 
 	xddr_setup_address_map(priv);
@@ -1148,6 +1148,8 @@ static int xddr_mc_probe(struct platform_device *pdev)
 
 	return rc;
 
+del_edac_mc:
+	edac_mc_del_mc(&pdev->dev);
 free_edac_mc:
 	edac_mc_free(mci);
 
