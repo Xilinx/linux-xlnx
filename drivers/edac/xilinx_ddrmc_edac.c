@@ -23,6 +23,7 @@
 #define XDDR_PCSR_OFFSET			0xC
 #define XDDR_ISR_OFFSET				0x14
 #define XDDR_IRQ_EN_OFFSET			0x20
+#define XDDR_IRQ1_EN_OFFSET			0x2C
 #define XDDR_IRQ_DIS_OFFSET			0x24
 #define XDDR_IRQ_CE_MASK			GENMASK(18, 15)
 #define XDDR_IRQ_UE_MASK			GENMASK(14, 11)
@@ -785,10 +786,12 @@ static void xddr_enable_intr(struct xddr_edac_priv *priv)
 	/* Unlock the PCSR registers */
 	writel(PCSR_UNLOCK_VAL, priv->ddrmc_baseaddr + XDDR_PCSR_OFFSET);
 
-	/* Enable UE/CE Interrupts */
+	/* Enable UE and CE Interrupts to support the interrupt case */
 	writel(XDDR_IRQ_CE_MASK | XDDR_IRQ_UE_MASK,
 	       priv->ddrmc_baseaddr + XDDR_IRQ_EN_OFFSET);
 
+	writel(XDDR_IRQ_UE_MASK,
+	       priv->ddrmc_baseaddr + XDDR_IRQ1_EN_OFFSET);
 	/* Lock the PCSR registers */
 	writel(1, priv->ddrmc_baseaddr + XDDR_PCSR_OFFSET);
 }
