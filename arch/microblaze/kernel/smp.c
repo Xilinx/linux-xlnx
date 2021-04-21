@@ -18,6 +18,7 @@
 #include <linux/smp.h>
 
 #include <asm/barrier.h>
+#include <asm/cacheflush.h>
 #include <asm/cpuinfo.h>
 #include <asm/tlbflush.h>
 
