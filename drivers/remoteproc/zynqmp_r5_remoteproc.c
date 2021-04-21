@@ -766,6 +766,16 @@ static int zynqmp_r5_probe(struct platform_device *pdev,
 	if (ret)
 		goto error;
 
+	/*
+	 * This notifies Xilinx platform management firmware that the R5 core
+	 * will be used and should be powered on.
+	 */
+	ret = zynqmp_pm_request_node((*z_rproc)->pnode_id,
+				     ZYNQMP_PM_CAPABILITY_ACCESS, 0,
+				     ZYNQMP_PM_REQUEST_ACK_BLOCKING);
+	if (ret < 0)
+		goto error;
+
 	return 0;
 error:
 	*z_rproc = NULL;
@@ -884,6 +894,13 @@ static int zynqmp_r5_remoteproc_remove(struct platform_device *pdev)
 
 	list_for_each_safe(pos, temp, cluster) {
 		z_rproc = list_entry(pos, struct zynqmp_r5_rproc, elem);
+
+		/*
+		 * Inform Xilinx platform management firmware to power down R5
+		 * core
+		 */
+		zynqmp_pm_release_node(z_rproc->pnode_id);
+
 		if (of_property_read_bool(z_rproc->dev->of_node, "mboxes")) {
 			mbox_free_channel(z_rproc->tx_chan);
 			mbox_free_channel(z_rproc->rx_chan);
