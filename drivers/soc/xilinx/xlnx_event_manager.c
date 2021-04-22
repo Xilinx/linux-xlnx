@@ -195,7 +195,7 @@ static int xlnx_remove_cb_for_notify_event(const u32 node_id, const u32 event,
 int xlnx_register_event(const enum pm_api_cb_id cb_type, const u32 node_id, const u32 event,
 			const bool wake, event_cb_func_t cb_fun, void *data)
 {
-	int ret;
+	int ret = 0;
 	u32 eve, pos;
 
 	if (event_manager_availability)
