@@ -397,7 +397,7 @@ static int fpga_mgr_firmware_load(struct fpga_manager *mgr,
  */
 int fpga_mgr_load(struct fpga_manager *mgr, struct fpga_image_info *info)
 {
-	if (info->flags & FPGA_MGR_CONFIG_DMA_BUF)
+	if (mgr->flags & FPGA_MGR_CONFIG_DMA_BUF)
 		return fpga_dmabuf_load(mgr, info);
 	if (info->sgt)
 		return fpga_mgr_buf_load_sg(mgr, info, info->sgt);
@@ -697,6 +697,8 @@ static int fpga_dmabuf_fd_get(struct file *file, char __user *argp)
 	mgr->dmabuf = dma_buf_get(buffd);
 	if (IS_ERR_OR_NULL(mgr->dmabuf))
 		return -EINVAL;
+
+	mgr->flags = FPGA_MGR_CONFIG_DMA_BUF;
 
 	return 0;
 }

@@ -239,9 +239,6 @@ static struct fpga_image_info *of_fpga_region_parse_ov(
 				  "securemem-authenticated-fpga-config"))
 		info->flags |= FPGA_MGR_SECURE_MEM_AUTH_BITSTREAM;
 
-	if (of_property_read_bool(overlay, "fpga-config-from-dmabuf"))
-		info->flags |= FPGA_MGR_CONFIG_DMA_BUF;
-
 	if (!of_property_read_string(overlay, "firmware-name",
 				     &firmware_name)) {
 		info->firmware_name = devm_kstrdup(dev, firmware_name,
