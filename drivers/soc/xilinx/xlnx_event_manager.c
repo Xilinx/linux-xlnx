@@ -46,6 +46,8 @@ static int sgi_num = XLNX_EVENT_SGI_NUM;
  * @agent_data:		Data passed back to handler function.
  * @cb_type:		Type of Api callback, like PM_NOTIFY_CB, etc.
  * @eve_cb:		Function pointer to store the callback function.
+ * @wake:		If this flag set, firmware will wakeup processor if is
+ *			in sleep or power down state.
  * @hentry:		hlist_node that hooks this entry into hashtable.
  */
 struct registered_event_data {
@@ -54,6 +56,7 @@ struct registered_event_data {
 	void *agent_data;
 
 	event_cb_func_t eve_cb;
+	bool wake;
 	struct hlist_node hentry;
 };
 
@@ -91,6 +94,7 @@ static int xlnx_add_cb_for_notify_event(const u32 node_id, const u32 event, cons
 	eve_data->key = key;
 	eve_data->cb_type = PM_NOTIFY_CB;
 	eve_data->eve_cb = cb_fun;
+	eve_data->wake = wake;
 	eve_data->agent_data = data;
 
 	hash_add(reg_driver_map, &eve_data->hentry, key);
@@ -325,22 +329,6 @@ int xlnx_unregister_event(const enum pm_api_cb_id cb_type, const u32 node_id, co
 }
 EXPORT_SYMBOL_GPL(xlnx_unregister_event);
 
-static int xlnx_remove_error_event(const u32 node_id, const u32 event)
-{
-	int ret = -EINVAL;
-	struct registered_event_data *eve_data;
-	u64 key = ((u64)node_id << 32U) | (u64)event;
-
-	/* Unregister for given key id if node class is Error Event */
-	hash_for_each_possible(reg_driver_map, eve_data, hentry, key) {
-		if (eve_data->key == key)
-			ret = xlnx_unregister_event(PM_NOTIFY_CB, node_id, event,
-						    eve_data->eve_cb);
-	}
-
-	return ret;
-}
-
 static void xlnx_call_suspend_cb_handler(const u32 *payload)
 {
 	bool is_callback_found = false;
@@ -363,12 +351,24 @@ static void xlnx_call_notify_cb_handler(const u32 *payload)
 	bool is_callback_found = false;
 	struct registered_event_data *eve_data;
 	u64 key = ((u64)payload[1] << 32U) | (u64)payload[2];
+	int ret;
 
 	/* Check for existing entry in hash table for given key id */
 	hash_for_each_possible(reg_driver_map, eve_data, hentry, key) {
 		if (eve_data->key == key) {
 			eve_data->eve_cb(&payload[0], eve_data->agent_data);
 			is_callback_found = true;
+
+			/* re regisfer with firmware to get future events */
+			ret = zynqmp_pm_register_notifier(payload[1], payload[2],
+							  eve_data->wake, true);
+			if (ret) {
+				pr_err("%s() failed for 0x%x and 0x%x: %d\r\n", __func__,
+				       payload[1], payload[2], ret);
+				/* Remove already registered event from hash table */
+				xlnx_remove_cb_for_notify_event(payload[1], payload[2],
+								eve_data->eve_cb);
+			}
 		}
 	}
 	if (!is_callback_found)
@@ -417,8 +417,6 @@ static irqreturn_t xlnx_event_handler(int irq, void *dev_id)
 					continue;
 				event_data[2] = (event & (1 << pos));
 				xlnx_call_notify_cb_handler(event_data);
-				/* As per Firmware requirement */
-				xlnx_remove_error_event(node_id, event_data[2]);
 			}
 		}
 	} else if (cb_type == PM_INIT_SUSPEND_CB) {
