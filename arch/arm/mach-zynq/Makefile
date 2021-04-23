@@ -10,3 +10,5 @@ obj-$(CONFIG_SMP)		+= headsmp.o platsmp.o
 ORIG_AFLAGS := $(KBUILD_AFLAGS)
 KBUILD_AFLAGS = $(subst -march=armv6k,,$(ORIG_AFLAGS))
 obj-$(CONFIG_SUSPEND)		+= suspend.o
+AFLAGS_suspend.o       +=-Wa,-march=armv7-a
+AFLAGS_headsmp.o       +=-Wa,-march=armv7-a
