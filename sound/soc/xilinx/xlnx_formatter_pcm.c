@@ -7,6 +7,7 @@
  */
 
 #include <linux/clk.h>
+#include <linux/dma-mapping.h>
 #include <linux/io.h>
 #include <linux/module.h>
 #include <linux/of_address.h>
@@ -736,6 +737,12 @@ static int xlnx_formatter_pcm_probe(struct platform_device *pdev)
 	aud_drv_data = devm_kzalloc(dev, sizeof(*aud_drv_data), GFP_KERNEL);
 	if (!aud_drv_data)
 		return -ENOMEM;
+
+	ret = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(64));
+	if (ret) {
+		dev_err(dev, "higher dma address mapping failed %d\n", ret);
+		return ret;
+	}
 
 	aud_drv_data->axi_clk = devm_clk_get(dev, "s_axi_lite_aclk");
 	if (IS_ERR(aud_drv_data->axi_clk)) {
