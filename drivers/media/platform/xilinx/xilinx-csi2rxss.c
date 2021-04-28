@@ -49,6 +49,7 @@
 
 #define XCSI_ISR_FR		BIT(31)
 #define XCSI_ISR_VCXFE		BIT(30)
+#define XCSI_ISR_YUV420		BIT(28)
 #define XCSI_ISR_WCC		BIT(22)
 #define XCSI_ISR_ILC		BIT(21)
 #define XCSI_ISR_SPFIFOF	BIT(20)
@@ -70,7 +71,7 @@
 #define XCSI_ISR_VC0FSYNCERR	BIT(1)
 #define XCSI_ISR_VC0FLVLERR	BIT(0)
 
-#define XCSI_ISR_ALLINTR_MASK	(0xc07e3fff)
+#define XCSI_ISR_ALLINTR_MASK	(0xd07e3fff)
 
 /*
  * Removed VCXFE mask as it doesn't exist in IER
@@ -138,6 +139,7 @@ struct xcsi2rxss_event {
 static const struct xcsi2rxss_event xcsi2rxss_events[] = {
 	{ XCSI_ISR_FR, "Frame Received" },
 	{ XCSI_ISR_VCXFE, "VCX Frame Errors" },
+	{ XCSI_ISR_YUV420, "YUV 420 Word Count Errors" },
 	{ XCSI_ISR_WCC, "Word Count Errors" },
 	{ XCSI_ISR_ILC, "Invalid Lane Count Error" },
 	{ XCSI_ISR_SPFIFOF, "Short Packet FIFO OverFlow Error" },
@@ -580,8 +582,11 @@ static irqreturn_t xcsi2rxss_irq_handler(int irq, void *data)
 	 * Stream line buffer full
 	 * This means there is a backpressure from downstream IP
 	 */
-	if (status & XCSI_ISR_SLBF) {
-		dev_alert_ratelimited(dev, "Stream Line Buffer Full!\n");
+	if (status & (XCSI_ISR_SLBF | XCSI_ISR_YUV420)) {
+		if (status & XCSI_ISR_SLBF)
+			dev_alert_ratelimited(dev, "Stream Line Buffer Full!\n");
+		if (status & XCSI_ISR_YUV420)
+			dev_alert_ratelimited(dev, "YUV 420 Word count error!\n");
 
 		/* disable interrupts */
 		xcsi2rxss_clr(state, XCSI_IER_OFFSET, XCSI_IER_INTR_MASK);
