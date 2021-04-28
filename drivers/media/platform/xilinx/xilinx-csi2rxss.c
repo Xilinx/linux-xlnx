@@ -48,6 +48,7 @@
 
 #define XCSI_ISR_FR		BIT(31)
 #define XCSI_ISR_VCXFE		BIT(30)
+#define XCSI_ISR_YUV420		BIT(28)
 #define XCSI_ISR_WCC		BIT(22)
 #define XCSI_ISR_ILC		BIT(21)
 #define XCSI_ISR_SPFIFOF	BIT(20)
@@ -69,7 +70,7 @@
 #define XCSI_ISR_VC0FSYNCERR	BIT(1)
 #define XCSI_ISR_VC0FLVLERR	BIT(0)
 
-#define XCSI_ISR_ALLINTR_MASK	(0xc07e3fff)
+#define XCSI_ISR_ALLINTR_MASK	(0xd07e3fff)
 
 /*
  * Removed VCXFE mask as it doesn't exist in IER
@@ -116,6 +117,7 @@
 #define XCSI_DEFAULT_HEIGHT	1080
 
 /* MIPI CSI-2 Data Types from spec */
+#define XCSI_DT_YUV4208B	0x18
 #define XCSI_DT_YUV4228B	0x1e
 #define XCSI_DT_YUV42210B	0x1f
 #define XCSI_DT_RGB444		0x20
@@ -154,6 +156,7 @@ struct xcsi2rxss_event {
 static const struct xcsi2rxss_event xcsi2rxss_events[] = {
 	{ XCSI_ISR_FR, "Frame Received" },
 	{ XCSI_ISR_VCXFE, "VCX Frame Errors" },
+	{ XCSI_ISR_YUV420, "YUV 420 Word Count Errors" },
 	{ XCSI_ISR_WCC, "Word Count Errors" },
 	{ XCSI_ISR_ILC, "Invalid Lane Count Error" },
 	{ XCSI_ISR_SPFIFOF, "Short Packet FIFO OverFlow Error" },
@@ -183,6 +186,7 @@ static const struct xcsi2rxss_event xcsi2rxss_events[] = {
  * and media bus formats
  */
 static const u32 xcsi2dt_mbus_lut[][2] = {
+	{ XCSI_DT_YUV4208B, MEDIA_BUS_FMT_VYYUYY8_1X24 },
 	{ XCSI_DT_YUV4228B, MEDIA_BUS_FMT_UYVY8_1X16 },
 	{ XCSI_DT_YUV42210B, MEDIA_BUS_FMT_UYVY10_1X20 },
 	{ XCSI_DT_RGB444, 0 },
@@ -595,8 +599,11 @@ static irqreturn_t xcsi2rxss_irq_handler(int irq, void *data)
 	 * Stream line buffer full
 	 * This means there is a backpressure from downstream IP
 	 */
-	if (status & XCSI_ISR_SLBF) {
-		dev_alert_ratelimited(dev, "Stream Line Buffer Full!\n");
+	if (status & (XCSI_ISR_SLBF | XCSI_ISR_YUV420)) {
+		if (status & XCSI_ISR_SLBF)
+			dev_alert_ratelimited(dev, "Stream Line Buffer Full!\n");
+		if (status & XCSI_ISR_YUV420)
+			dev_alert_ratelimited(dev, "YUV 420 Word count error!\n");
 
 		/* disable interrupts */
 		xcsi2rxss_clr(state, XCSI_IER_OFFSET, XCSI_IER_INTR_MASK);
@@ -895,6 +902,7 @@ static int xcsi2rxss_parse_of(struct xcsi2rxss_state *xcsi2rxss)
 	}
 
 	switch (xcsi2rxss->datatype) {
+	case XCSI_DT_YUV4208B:
 	case XCSI_DT_YUV4228B:
 	case XCSI_DT_RGB444:
 	case XCSI_DT_RGB555:
