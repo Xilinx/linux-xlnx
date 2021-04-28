@@ -50,6 +50,7 @@ properties:
       Packets other than this data type (except for RAW8 and
       User defined data types) will be filtered out.
       Possible values are as below -
+      0x18 - YUV4208B
       0x1e - YUV4228B
       0x1f - YUV42210B
       0x20 - RGB444
@@ -67,6 +68,7 @@ properties:
       0x2f - RAW20
     $ref: /schemas/types.yaml#/definitions/uint32
     oneOf:
+      - 0x18
       - minimum: 0x1e
         maximum: 0x24
       - minimum: 0x28
