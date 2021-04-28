@@ -787,7 +787,7 @@ static int xlnx_dp_tx_adj_vswing_preemp(struct xlnx_dp *dp, u8 link_status[6])
 	 * RX device.
 	 */
 	ret = drm_dp_dpcd_write(&dp->aux, DP_TRAINING_LANE0_SET,
-				&aux_data[0], 1);
+				&aux_data[0], 4);
 	if (ret < 0)
 		return ret;
 
