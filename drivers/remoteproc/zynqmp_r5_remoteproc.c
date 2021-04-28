@@ -767,14 +767,21 @@ static int zynqmp_r5_probe(struct platform_device *pdev,
 		goto error;
 
 	/*
-	 * This notifies Xilinx platform management firmware that the R5 core
-	 * will be used and should be powered on.
+	 * In Versal SoC, the Xilinx platform management firmware will power
+	 * off the R5 cores if they are not requested. In this case, this call
+	 * notifies Xilinx platform management firmware that the R5 core will
+	 * be used and should be powered on.
+	 *
+	 * On ZynqMP platform this is not needed as the R5 cores are not
+	 * powered off by default.
 	 */
-	ret = zynqmp_pm_request_node((*z_rproc)->pnode_id,
-				     ZYNQMP_PM_CAPABILITY_ACCESS, 0,
-				     ZYNQMP_PM_REQUEST_ACK_BLOCKING);
-	if (ret < 0)
-		goto error;
+	if ((*z_rproc)->versal) {
+		ret = zynqmp_pm_request_node((*z_rproc)->pnode_id,
+					     ZYNQMP_PM_CAPABILITY_ACCESS, 0,
+					     ZYNQMP_PM_REQUEST_ACK_BLOCKING);
+		if (ret < 0)
+			goto error;
+	}
 
 	return 0;
 error:
@@ -896,10 +903,12 @@ static int zynqmp_r5_remoteproc_remove(struct platform_device *pdev)
 		z_rproc = list_entry(pos, struct zynqmp_r5_rproc, elem);
 
 		/*
-		 * Inform Xilinx platform management firmware to power down R5
-		 * core
+		 * For Versal platform, the Xilinx platform management
+		 * firmware needs to have a release call to match the
+		 * corresponding reque in order to power down the core.
 		 */
-		zynqmp_pm_release_node(z_rproc->pnode_id);
+		if (z_rproc->versal)
+			zynqmp_pm_release_node(z_rproc->pnode_id);
 
 		if (of_property_read_bool(z_rproc->dev->of_node, "mboxes")) {
 			mbox_free_channel(z_rproc->tx_chan);
