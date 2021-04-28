@@ -65,6 +65,8 @@ static struct pm_api_info pm_api_list[] = {
 	PM_API(PM_CLOCK_SETPARENT),
 	PM_API(PM_CLOCK_GETPARENT),
 	PM_API(PM_QUERY_DATA),
+	PM_API(PM_MMIO_WRITE),
+	PM_API(PM_MMIO_READ),
 };
 
 static struct dentry *firmware_debugfs_root;
@@ -381,6 +383,14 @@ static int process_api_request(u32 pm_id, u64 *pm_api_arg, u32 *pm_api_ret)
 				pm_api_ret[0], pm_api_ret[1],
 				pm_api_ret[2], pm_api_ret[3]);
 		}
+		break;
+	case PM_MMIO_WRITE:
+		ret = zynqmp_pm_mmio_write(pm_api_arg[0], pm_api_arg[1],
+					   pm_api_arg[2]);
+		break;
+	case PM_MMIO_READ:
+		ret = zynqmp_pm_mmio_read(pm_api_arg[0], &pm_api_ret[0]);
+		sprintf(debugfs_buf, "REG value: 0x%x\n", pm_api_ret[0]);
 		break;
 	default:
 		sprintf(debugfs_buf, "Unsupported PM-API request\n");
