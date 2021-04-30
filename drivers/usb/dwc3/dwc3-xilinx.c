@@ -514,13 +514,13 @@ static int dwc3_xlnx_probe(struct platform_device *pdev)
 	priv_data->regs = regs;
 	priv_data->dev = dev;
 
+	platform_set_drvdata(pdev, priv_data);
+
 #ifdef CONFIG_PM
 	ret = dwc3_xlnx_register_regulator(dev, priv_data);
 	if (ret)
 		return ret;
 #endif
-
-	platform_set_drvdata(pdev, priv_data);
 
 	ret = devm_clk_bulk_get_all(priv_data->dev, &priv_data->clks);
 	if (ret < 0)
