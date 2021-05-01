@@ -439,6 +439,7 @@ struct xlnx_mix_hw {
  * @dpms: mixer drm state
  * @event: vblank pending event
  * @vtc_bridge: vtc_bridge structure
+ * @disp_bridge: disp_bridge structure
  *
  * Contains pointers to logical constructions such as the DRM plane manager as
  * well as pointers to distinquish the mixer layer serving as the DRM "primary"
@@ -468,6 +469,7 @@ struct xlnx_mix {
 	int dpms;
 	struct drm_pending_vblank_event *event;
 	struct xlnx_bridge *vtc_bridge;
+	struct xlnx_bridge *disp_bridge;
 };
 
 /**
@@ -520,6 +522,50 @@ static inline void reg_writeq(void __iomem *base, int offset, u64 val)
 static inline u32 reg_readl(void __iomem *base, int offset)
 {
 	return readl(base + offset);
+}
+
+static u32 xlnx_mix_get_bus_fmt(struct xlnx_mix *mixer)
+{
+	struct xlnx_mix_layer_data *master;
+
+	master = &mixer->mixer_hw.layer_data[XVMIX_MASTER_LAYER_IDX];
+
+	switch (master->hw_config.vid_fmt) {
+	case DRM_FORMAT_BGR888:
+	case DRM_FORMAT_RGB888:
+	case DRM_FORMAT_XRGB8888:
+	case DRM_FORMAT_RGBA8888:
+	case DRM_FORMAT_ABGR8888:
+	case DRM_FORMAT_ARGB8888:
+	case DRM_FORMAT_XBGR8888:
+		return MEDIA_BUS_FMT_RBG888_1X24;
+	case DRM_FORMAT_XBGR2101010:
+		return MEDIA_BUS_FMT_RBG101010_1X30;
+	case DRM_FORMAT_YUYV:
+	case DRM_FORMAT_UYVY:
+	case DRM_FORMAT_NV16:
+		return MEDIA_BUS_FMT_UYVY8_1X16;
+	case DRM_FORMAT_AYUV:
+	case DRM_FORMAT_VUY888:
+	case DRM_FORMAT_XVUY8888:
+		return MEDIA_BUS_FMT_VUY8_1X24;
+	case DRM_FORMAT_NV12:
+		return MEDIA_BUS_FMT_VYYUYY8_1X24;
+	case DRM_FORMAT_Y8:
+		return MEDIA_BUS_FMT_Y8_1X8;
+	case DRM_FORMAT_Y10:
+		return MEDIA_BUS_FMT_Y10_1X10;
+	case DRM_FORMAT_XVUY2101010:
+		return MEDIA_BUS_FMT_VUY10_1X30;
+	case DRM_FORMAT_XV15:
+		return MEDIA_BUS_FMT_VYYUYY10_4X20;
+	case DRM_FORMAT_XV20:
+		return MEDIA_BUS_FMT_UYVY10_1X20;
+	default:
+		DRM_DEBUG_KMS("invalid layer format: %d\n",
+			      master->hw_config.vid_fmt);
+		return 0;
+	}
 }
 
 /**
@@ -2247,11 +2293,31 @@ static int xlnx_mix_parse_dt_logo_data(struct device_node *node,
 	return 0;
 }
 
+static int xlnx_mix_dt_dp_bridge(struct device *dev, struct xlnx_mix *mixer)
+{
+	struct device_node *node, *disp_node;
+
+	node = dev->of_node;
+	/* Disp Bridge support */
+	disp_node = of_parse_phandle(node, "xlnx,disp-bridge", 0);
+	if (disp_node) {
+		mixer->disp_bridge = of_xlnx_bridge_get(disp_node);
+		if (!mixer->disp_bridge) {
+			dev_info(dev, "Didn't get disp bridge instance\n");
+			return -1;
+		}
+	} else {
+		dev_info(dev, "disp bridge property not present\n");
+		return -1;
+	}
+	return 0;
+}
+
 static int xlnx_mix_dt_parse(struct device *dev, struct xlnx_mix *mixer)
 {
 	struct xlnx_mix_plane *planes;
 	struct xlnx_mix_hw *mixer_hw;
-	struct device_node *node, *vtc_node;
+	struct device_node *node, *vtc_node, *port;
 	struct xlnx_mix_layer_data *l_data;
 	struct resource	res;
 	int ret, l_cnt, i;
@@ -2361,6 +2427,14 @@ static int xlnx_mix_dt_parse(struct device *dev, struct xlnx_mix *mixer)
 		/* read logo data from dts */
 		ret = xlnx_mix_parse_dt_logo_data(node, mixer_hw);
 		return ret;
+	}
+
+	/* Fill out crtc port OF node */
+	for_each_child_of_node(node, port) {
+		if (!port->name || of_node_cmp(port->name, "port"))
+			continue;
+		mixer->crtc.crtc.port = port;
+		break;
 	}
 	return 0;
 }
@@ -2632,6 +2706,8 @@ static void xlnx_mix_crtc_dpms(struct drm_crtc *base_crtc, int dpms)
 	int ret;
 	struct videomode vm;
 	struct drm_display_mode *mode = &base_crtc->mode;
+	struct drm_display_mode *adjusted_mode =
+					&base_crtc->state->adjusted_mode;
 
 	DRM_DEBUG_KMS("dpms: %d\n", dpms);
 	if (mixer->dpms == dpms)
@@ -2653,6 +2729,16 @@ static void xlnx_mix_crtc_dpms(struct drm_crtc *base_crtc, int dpms)
 			drm_display_mode_to_videomode(mode, &vm);
 			xlnx_bridge_set_timing(mixer->vtc_bridge, &vm);
 			xlnx_bridge_enable(mixer->vtc_bridge);
+		}
+
+		if (mixer->disp_bridge) {
+			drm_display_mode_to_videomode(adjusted_mode, &vm);
+			xlnx_bridge_set_input(mixer->disp_bridge,
+					      adjusted_mode->hdisplay,
+					      adjusted_mode->vdisplay,
+					      xlnx_mix_get_bus_fmt(mixer));
+			xlnx_bridge_set_timing(mixer->disp_bridge, &vm);
+			xlnx_bridge_enable(mixer->disp_bridge);
 		}
 
 		xlnx_mix_dpms(mixer, dpms);
@@ -2886,6 +2972,8 @@ static int xlnx_mix_crtc_create(struct xlnx_mix *mixer)
 	crtc->get_cursor_height = &xlnx_mix_crtc_get_max_cursor_height;
 	crtc->get_cursor_width = &xlnx_mix_crtc_get_max_cursor_width;
 	xlnx_crtc_register(mixer->drm, crtc);
+	dev_info(mixer->drm->dev,
+		 "Registered mixer CRTC with id: %d\n", crtc->crtc.base.id);
 
 	return 0;
 
@@ -2947,6 +3035,8 @@ static int xlnx_mix_bind(struct device *dev, struct device *master,
 	struct xlnx_mix *mixer = dev_get_drvdata(dev);
 	struct drm_device *drm = data;
 	u32 ret;
+
+	xlnx_mix_dt_dp_bridge(dev, mixer);
 
 	mixer->drm = drm;
 	ret = xlnx_mix_plane_create(dev, mixer);
@@ -3028,8 +3118,14 @@ static int xlnx_mix_remove(struct platform_device *pdev)
 
 	if (mixer->vtc_bridge)
 		of_xlnx_bridge_put(mixer->vtc_bridge);
-	xlnx_drm_pipeline_exit(mixer->master);
-	component_del(&pdev->dev, &xlnx_mix_component_ops);
+	if (mixer->disp_bridge) {
+		of_xlnx_bridge_put(mixer->disp_bridge);
+		xlnx_mix_crtc_atomic_disable(&mixer->crtc.crtc, NULL);
+		xlnx_drm_pipeline_exit(mixer->master);
+	} else {
+		xlnx_drm_pipeline_exit(mixer->master);
+		component_del(&pdev->dev, &xlnx_mix_component_ops);
+	}
 	return 0;
 }
 
