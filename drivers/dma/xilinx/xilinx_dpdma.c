@@ -1154,22 +1154,12 @@ static void xilinx_dpdma_chan_done_irq(struct xilinx_dpdma_chan *chan)
 static void xilinx_dpdma_chan_vsync_irq(struct  xilinx_dpdma_chan *chan)
 {
 	struct xilinx_dpdma_tx_desc *pending;
-	struct xilinx_dpdma_sw_desc *sw_desc;
 	unsigned long flags;
-	u32 desc_id;
 
 	spin_lock_irqsave(&chan->lock, flags);
 
 	pending = chan->desc.pending;
 	if (!chan->running || !pending)
-		goto out;
-
-	desc_id = dpdma_read(chan->reg, XILINX_DPDMA_CH_DESC_ID);
-
-	/* If the retrigger raced with vsync, retry at the next frame. */
-	sw_desc = list_first_entry(&pending->descriptors,
-				   struct xilinx_dpdma_sw_desc, node);
-	if (sw_desc->hw.desc_id != desc_id)
 		goto out;
 
 	/*
