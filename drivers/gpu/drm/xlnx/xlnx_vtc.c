@@ -12,7 +12,6 @@
  * Controller connected to the CRTC.
  */
 
-#include <drm/drmP.h>
 #include <linux/clk.h>
 #include <linux/device.h>
 #include <linux/err.h>
