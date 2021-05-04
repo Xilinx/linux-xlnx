@@ -131,6 +131,8 @@
  * @rx_bytes:		Number of bytes left to receive
  * @data_completion:	completion structure
  * @is_dual:		Flag to indicate whether dual flash memories are used
+ * @is_stripe:		Flag to indicate if data needs to be split between flashes
+ *			(Used in dual parallel configuration)
  */
 struct zynq_qspi {
 	struct device *dev;
@@ -144,6 +146,7 @@ struct zynq_qspi {
 	int rx_bytes;
 	struct completion data_completion;
 	u32 is_dual;
+	bool is_stripe;
 };
 
 /*
@@ -248,11 +251,15 @@ static bool zynq_qspi_supports_op(struct spi_mem *mem,
 static void zynq_qspi_rxfifo_op(struct zynq_qspi *xqspi, unsigned int size)
 {
 	u32 data;
+	unsigned int xsize;
 
 	data = zynq_qspi_read(xqspi, ZYNQ_QSPI_RXD_OFFSET);
 
 	if (xqspi->rxbuf) {
-		memcpy(xqspi->rxbuf, ((u8 *)&data) + 4 - size, size);
+		xsize = size;
+		if (xqspi->is_dual && xqspi->is_stripe && (size % 2))
+			xsize++;
+		memcpy(xqspi->rxbuf, ((u8 *)&data) + 4 - xsize, size);
 		xqspi->rxbuf += size;
 	}
 
@@ -272,6 +279,7 @@ static void zynq_qspi_txfifo_op(struct zynq_qspi *xqspi, unsigned int size)
 		ZYNQ_QSPI_TXD_00_01_OFFSET, ZYNQ_QSPI_TXD_00_10_OFFSET,
 		ZYNQ_QSPI_TXD_00_11_OFFSET, ZYNQ_QSPI_TXD_00_00_OFFSET };
 	u32 data;
+	unsigned int xsize;
 
 	if (xqspi->txbuf) {
 		data = 0xffffffff;
@@ -282,7 +290,11 @@ static void zynq_qspi_txfifo_op(struct zynq_qspi *xqspi, unsigned int size)
 	}
 
 	xqspi->tx_bytes -= size;
-	zynq_qspi_write(xqspi, offset[size - 1], data);
+	xsize = size;
+	if (xqspi->is_dual && xqspi->is_stripe && (size % 2))
+		xsize++;
+
+	zynq_qspi_write(xqspi, offset[xsize - 1], data);
 }
 
 /**
@@ -595,6 +607,8 @@ static int zynq_qspi_exec_mem_op(struct spi_mem *mem,
 	}
 
 	if (op->data.nbytes) {
+		if (xqspi->is_dual)
+			xqspi->is_stripe = update_stripe(op);
 		reinit_completion(&xqspi->data_completion);
 		if (op->data.dir == SPI_MEM_DATA_OUT) {
 			xqspi->txbuf = (u8 *)op->data.buf.out;
@@ -615,6 +629,9 @@ static int zynq_qspi_exec_mem_op(struct spi_mem *mem,
 							       msecs_to_jiffies(1000)))
 			err = -ETIMEDOUT;
 	}
+	if (xqspi->is_stripe)
+		xqspi->is_stripe = false;
+
 	zynq_qspi_chipselect(mem->spi, false);
 
 	return err;
