@@ -111,7 +111,7 @@ static int zynqmp_efuse_access(void *context, unsigned int offset,
 	efuse->offset = offset;
 	efuse->pufuserfuse = pufflag;
 
-	zynqmp_pm_efuse_access(dma_addr, &ret);
+	zynqmp_pm_efuse_access(dma_addr, (u32 *)&ret);
 	if (ret != 0) {
 		if (ret == EFUSE_NOT_ENABLED) {
 			dev_err(dev, "efuse access is not enabled\n");
@@ -150,7 +150,7 @@ static int zynqmp_nvmem_read(void *context, unsigned int offset,
 		if (bytes != SOC_VER_SIZE)
 			return -EOPNOTSUPP;
 
-		ret = zynqmp_pm_get_chipid(&idcode, &version);
+		ret = zynqmp_pm_get_chipid((u32 *)&idcode, (u32 *)&version);
 		if (ret < 0)
 			return ret;
 
