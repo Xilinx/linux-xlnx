@@ -73,6 +73,7 @@ static inline struct xvip_pipeline *to_xvip_pipeline(struct media_entity *e)
  * @queued_lock: protects the buf_queued list
  * @dma: DMA engine channel
  * @align: transfer alignment required by the DMA channel (in bytes)
+ * @width_align: width alignment required by the DMA channel (in bytes)
  * @xt: dma interleaved template for dma configuration
  * @sgl: data chunk structure for dma_interleaved_template
  * @prev_fid: Previous Field ID
@@ -105,6 +106,7 @@ struct xvip_dma {
 
 	struct dma_chan *dma;
 	unsigned int align;
+	unsigned int width_align;
 	struct dma_interleaved_template xt;
 	struct data_chunk sgl[1];
 
