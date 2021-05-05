@@ -314,8 +314,7 @@ static void zynq_qspi_chipselect(struct spi_device *spi, bool assert)
 	config_reg = zynq_qspi_read(xqspi, ZYNQ_QSPI_CONFIG_OFFSET);
 
 #ifdef CONFIG_SPI_ZYNQ_QSPI_DUAL_STACKED
-	lqspi_cfg_reg = zynq_qspi_read(xqspi,
-					       ZYNQ_QSPI_LINEAR_CFG_OFFSET);
+	lqspi_cfg_reg = zynq_qspi_read(xqspi, ZYNQ_QSPI_LINEAR_CFG_OFFSET);
 		if (spi->master->flags & SPI_MASTER_U_PAGE)
 			lqspi_cfg_reg |= ZYNQ_QSPI_LCFG_U_PAGE;
 		else
