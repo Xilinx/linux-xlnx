@@ -153,6 +153,17 @@ int xilinx_xdma_get_earlycb(struct dma_chan *chan,
 int xilinx_xdma_set_earlycb(struct dma_chan *chan,
 			    struct dma_async_tx_descriptor *async_tx,
 			    u32 earlycb);
+/**
+ * xilinx_xdma_get_width_align - Get width alignment value
+ *
+ * @chan: dma channel instance
+ * @width_align: width alignment value
+ *
+ * Return: 0 on success, -ENODEV in case no framebuffer device found
+ */
+int xilinx_xdma_get_width_align(struct dma_chan *chan, u32 *width_align);
+
+
 #else
 static inline void xilinx_xdma_set_mode(struct dma_chan *chan,
 					enum operation_mode mode)
@@ -201,6 +212,11 @@ static inline int xilinx_xdma_get_earlycb(struct dma_chan *chan,
 static inline int xilinx_xdma_set_earlycb(struct dma_chan *chan,
 					  struct dma_async_tx_descriptor *atx,
 					  u32 earlycb)
+{
+	return -ENODEV;
+}
+
+static inline int xilinx_xdma_get_width_align(struct dma_chan *chan, u32 *width_align)
 {
 	return -ENODEV;
 }
