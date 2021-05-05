@@ -494,6 +494,7 @@ struct xilinx_frmbuf_feature {
  * @cfg: Pointer to Framebuffer Feature config struct
  * @max_width: Maximum pixel width supported in IP.
  * @max_height: Maximum number of lines supported in IP.
+ * @ppc: Pixels per clock supported in IP.
  * @ap_clk: Video core clock
  */
 struct xilinx_frmbuf_device {
@@ -510,6 +511,7 @@ struct xilinx_frmbuf_device {
 	const struct xilinx_frmbuf_feature *cfg;
 	u32 max_width;
 	u32 max_height;
+	u32 ppc;
 	struct clk *ap_clk;
 };
 
@@ -819,6 +821,19 @@ int xilinx_xdma_set_fid(struct dma_chan *chan,
 	return 0;
 }
 EXPORT_SYMBOL(xilinx_xdma_set_fid);
+
+int xilinx_xdma_get_width_align(struct dma_chan *chan, u32 *width_align)
+{
+	struct xilinx_frmbuf_device *xdev;
+
+	xdev = frmbuf_find_dev(chan);
+	if (IS_ERR(xdev))
+		return PTR_ERR(xdev);
+	*width_align = xdev->ppc;
+
+	return 0;
+}
+EXPORT_SYMBOL(xilinx_xdma_get_width_align);
 
 int xilinx_xdma_get_earlycb(struct dma_chan *chan,
 			    struct dma_async_tx_descriptor *async_tx,
@@ -1487,7 +1502,7 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 	enum dma_transfer_direction dma_dir;
 	const struct of_device_id *match;
 	int err;
-	u32 i, j, align, ppc;
+	u32 i, j, align;
 	int hw_vid_fmt_cnt;
 	const char *vid_fmts[ARRAY_SIZE(xilinx_frmbuf_formats)];
 
@@ -1558,17 +1573,17 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 
 	/* Initialize the DMA engine */
 	if (xdev->cfg->flags & XILINX_PPC_PROP) {
-		err = of_property_read_u32(node, "xlnx,pixels-per-clock", &ppc);
-		if (err || (ppc != 1 && ppc != 2 && ppc != 4 && ppc != 8)) {
+		err = of_property_read_u32(node, "xlnx,pixels-per-clock", &xdev->ppc);
+		if (err || (xdev->ppc != 1 && xdev->ppc != 2 &&
+			    xdev->ppc != 4 && xdev->ppc != 8)) {
 			dev_err(&pdev->dev, "missing or invalid pixels per clock dts prop\n");
 			return err;
 		}
-
 		err = of_property_read_u32(node, "xlnx,dma-align", &align);
 		if (err)
-			align = ppc * XILINX_FRMBUF_ALIGN_MUL;
+			align = xdev->ppc * XILINX_FRMBUF_ALIGN_MUL;
 
-		if (align < (ppc * XILINX_FRMBUF_ALIGN_MUL) ||
+		if (align < (xdev->ppc * XILINX_FRMBUF_ALIGN_MUL) ||
 		    ffs(align) != fls(align)) {
 			dev_err(&pdev->dev, "invalid dma align dts prop\n");
 			return -EINVAL;
