@@ -450,7 +450,7 @@ static int spansion_set_4byte_addr_mode(struct spi_nor *nor, bool enable)
  */
 int spi_nor_write_ear(struct spi_nor *nor, u32 addr)
 {
-	u8 code = SPINOR_OP_WREAR;;
+	u8 code = SPINOR_OP_WREAR;
 	u32 ear;
 	int ret;
 	struct mtd_info *mtd = &nor->mtd;
