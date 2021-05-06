@@ -580,14 +580,14 @@ long aie_part_rscmgr_rsc_req(struct aie_partition *apart,
 
 	if (ret < 0) {
 		if (!(args.req.flag & XAIE_RSC_PATTERN_BLOCK)) {
-			dev_err(&apart->dev,
-				"invalid resource req(%u,%u),mod:%u,rsc:%u,expect=%u not avail.\n",
+			dev_warn(&apart->dev,
+				 "invalid resource req(%u,%u),mod:%u,rsc:%u,expect=%u not avail.\n",
 				args.req.loc.col, args.req.loc.row,
 				args.req.mod, args.req.type,
 				args.req.num_rscs);
 		} else {
-			dev_err(&apart->dev,
-				"invalid contiguous resource req(%u,%u),mod:%u,rsc:%u,expect=%u not avail.\n",
+			dev_warn(&apart->dev,
+				 "invalid contiguous resource req(%u,%u),mod:%u,rsc:%u,expect=%u not avail.\n",
 				args.req.loc.col, args.req.loc.row,
 				args.req.mod, args.req.type, args.req.num_rscs);
 		}
@@ -782,7 +782,7 @@ long aie_part_rscmgr_rsc_req_specific(struct aie_partition *apart,
 			"invalid resource to request(%u,%u),mod:%u,rsc:%u,id=%u, resource in use.\n",
 			rloc.col, rloc.row, args.mod, args.type, args.id);
 		mutex_unlock(&apart->mlock);
-		return -EINVAL;
+		return -EBUSY;
 	}
 
 	aie_resource_set(&rstat->rbits, start_bit + args.id, 1);
@@ -1225,6 +1225,8 @@ long aie_part_rscmgr_get_broadcast(struct aie_partition *apart,
 		if (ret >= 0) {
 			args.id = (u32)ret;
 			ret = 0;
+		} else {
+			dev_warn(&apart->dev, "no available broadcast channel.\n");
 		}
 	} else {
 		ret = aie_part_rscmgr_check_common_bc(apart, args.id,
