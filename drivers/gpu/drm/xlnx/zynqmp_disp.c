@@ -2803,7 +2803,7 @@ static int zynqmp_disp_bridge_enable(struct xlnx_bridge *bridge)
 	struct drm_crtc *crtc = &disp->xlnx_crtc.crtc;
 	struct drm_display_mode *adjusted_mode = &crtc->state->adjusted_mode;
 	struct videomode vm;
-	int ret, vrefresh;
+	int ret;
 
 	if (!disp->_pl_pclk) {
 		dev_err(disp->dev, "PL clock is required for live\n");
