@@ -28,7 +28,7 @@
 
 #define ZYNQMP_SHA_QUEUE_LENGTH	1
 
-struct zynqmp_sha_dev;
+static struct zynqmp_sha_dev *sha_dd;
 
 /*
  * .statesize = sizeof(struct zynqmp_sha_reqctx) must be <= PAGE_SIZE / 8 as
@@ -74,20 +74,15 @@ static int zynqmp_sha_init(struct ahash_request *req)
 	struct crypto_ahash *tfm = crypto_ahash_reqtfm(req);
 	struct zynqmp_sha_ctx *tctx = crypto_ahash_ctx(tfm);
 	struct zynqmp_sha_reqctx *ctx = ahash_request_ctx(req);
-	struct zynqmp_sha_dev *dd = NULL;
-	struct zynqmp_sha_dev *tmp;
+	struct zynqmp_sha_dev *dd = sha_dd;
 	int ret;
 
 	spin_lock_bh(&zynqmp_sha.lock);
-	if (!tctx->dd) {
-		list_for_each_entry(tmp, &zynqmp_sha.dev_list, list) {
-			dd = tmp;
-			break;
-		}
+	if (!tctx->dd)
 		tctx->dd = dd;
-	} else {
+	else
 		dd = tctx->dd;
-	}
+
 	spin_unlock_bh(&zynqmp_sha.lock);
 
 	ctx->dd = dd;
@@ -231,7 +226,6 @@ MODULE_DEVICE_TABLE(of, zynqmp_sha_dt_ids);
 
 static int zynqmp_sha_probe(struct platform_device *pdev)
 {
-	struct zynqmp_sha_dev *sha_dd;
 	struct device *dev = &pdev->dev;
 	int err;
 
@@ -270,8 +264,6 @@ err_algs:
 
 static int zynqmp_sha_remove(struct platform_device *pdev)
 {
-	static struct zynqmp_sha_dev *sha_dd;
-
 	sha_dd = platform_get_drvdata(pdev);
 
 	if (!sha_dd)
