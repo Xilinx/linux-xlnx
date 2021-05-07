@@ -185,7 +185,8 @@ static void aie_part_clear_core_regs(struct aie_partition *apart)
  *  * reset AI engine shims
  *  * clear the memories
  *  * clear core registers
- *  * gate all the tiles in a partition.
+ *  * gate all the tiles in a partition
+ *  * update clock state bitmap
  *
  * This function will not validate the partition, the caller will need to
  * provide a valid AI engine partition.
@@ -208,6 +209,7 @@ int aie_part_clean(struct aie_partition *apart)
 	aie_part_clear_mems(apart);
 	aie_part_clear_core_regs(apart);
 	aie_part_set_cols_clkbuf(apart, false);
+	aie_resource_clear_all(&apart->cores_clk_state);
 
 	return 0;
 }
