@@ -135,8 +135,7 @@ END:
 	return ret;
 }
 
-static int zynqmp_nvmem_read(void *context, unsigned int offset,
-					void *val, size_t bytes)
+static int zynqmp_nvmem_read(void *context, unsigned int offset, void *val, size_t bytes)
 {
 	int ret, pufflag = 0;
 	int idcode, version;
