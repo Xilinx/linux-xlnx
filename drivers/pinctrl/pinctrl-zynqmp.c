@@ -2,19 +2,23 @@
 /*
  * ZynqMP pin controller
  *
- *  Copyright (C) 2020 Xilinx, Inc.
+ * Copyright (C) 2020 Xilinx, Inc.
  *
- *  Sai Krishna Potthuri <lakshmi.sai.krishna.potthuri@xilinx.com>
- *  Rajan Vaja <rajanv@xilinx.com>
+ * Sai Krishna Potthuri <lakshmi.sai.krishna.potthuri@xilinx.com>
+ * Rajan Vaja <rajan.vaja@xilinx.com>
  */
 
-#include <linux/init.h>
-#include <linux/of_address.h>
-#include <linux/pinctrl/pinmux.h>
-#include <linux/pinctrl/pinconf-generic.h>
 #include <dt-bindings/pinctrl/pinctrl-zynqmp.h>
+
+#include <linux/init.h>
+#include <linux/module.h>
+#include <linux/of_address.h>
 #include <linux/platform_device.h>
 #include <linux/firmware/xlnx-zynqmp.h>
+
+#include <linux/pinctrl/pinmux.h>
+#include <linux/pinctrl/pinconf-generic.h>
+
 #include "core.h"
 #include "pinctrl-utils.h"
 
@@ -22,20 +26,26 @@
 #define PINCTRL_GET_FUNC_NAME_RESP_LEN		16
 #define MAX_FUNC_NAME_LEN			16
 #define MAX_GROUP_PIN				50
+#define MAX_PIN_GROUPS				50
 #define END_OF_FUNCTIONS			"END_OF_FUNCTIONS"
 #define NUM_GROUPS_PER_RESP			6
 
 #define PINCTRL_GET_FUNC_GROUPS_RESP_LEN	12
 #define PINCTRL_GET_PIN_GROUPS_RESP_LEN		12
-#define NA_GROUP				-1
-#define RESERVED_GROUP				-2
+#define NA_GROUP				0xFFFF
+#define RESERVED_GROUP				0xFFFE
+
+#define DRIVE_STRENGTH_2MA	2
+#define DRIVE_STRENGTH_4MA	4
+#define DRIVE_STRENGTH_8MA	8
+#define DRIVE_STRENGTH_12MA	12
 
 /**
  * struct zynqmp_pmux_function - a pinmux function
- * @name:	Name of the pinmux function
- * @groups:	List of pingroups for this function
+ * @name:	Name of the pin mux function
+ * @groups:	List of pin groups for this function
  * @ngroups:	Number of entries in @groups
- * @node:`	Firmware node matching with for function
+ * @node:	Firmware node matching with the function
  *
  * This structure holds information about pin control function
  * and function group names supporting that function.
@@ -48,10 +58,10 @@ struct zynqmp_pmux_function {
 
 /**
  * struct zynqmp_pinctrl - driver data
- * @pctrl:	Pinctrl device
- * @groups:	Pingroups
+ * @pctrl:	Pin control device
+ * @groups:	Pin groups
  * @ngroups:	Number of @groups
- * @funcs:	Pinmux functions
+ * @funcs:	Pin mux functions
  * @nfuncs:	Number of @funcs
  *
  * This struct is stored as driver data and used to retrieve
@@ -70,7 +80,7 @@ struct zynqmp_pinctrl {
  * struct zynqmp_pctrl_group - Pin control group info
  * @name:	Group name
  * @pins:	Group pin numbers
- * @npins:	Number of pins in group
+ * @npins:	Number of pins in the group
  */
 struct zynqmp_pctrl_group {
 	const char *name;
@@ -107,14 +117,6 @@ pin_config_item zynqmp_conf_items[ARRAY_SIZE(zynqmp_dt_params)] = {
 
 static struct pinctrl_desc zynqmp_desc;
 
-/**
- * zynqmp_pctrl_get_groups_count() - get group count
- * @pctldev:	Pincontrol device pointer.
- *
- * Get total groups count.
- *
- * Return: group count.
- */
 static int zynqmp_pctrl_get_groups_count(struct pinctrl_dev *pctldev)
 {
 	struct zynqmp_pinctrl *pctrl = pinctrl_dev_get_drvdata(pctldev);
@@ -122,15 +124,6 @@ static int zynqmp_pctrl_get_groups_count(struct pinctrl_dev *pctldev)
 	return pctrl->ngroups;
 }
 
-/**
- * zynqmp_pctrl_get_group_name() - get group name
- * @pctldev:	Pincontrol device pointer.
- * @selector:	Group ID.
- *
- * Get gorup's name.
- *
- * Return: group name.
- */
 static const char *zynqmp_pctrl_get_group_name(struct pinctrl_dev *pctldev,
 					       unsigned int selector)
 {
@@ -139,17 +132,6 @@ static const char *zynqmp_pctrl_get_group_name(struct pinctrl_dev *pctldev,
 	return pctrl->groups[selector].name;
 }
 
-/**
- * zynqmp_pctrl_get_group_pins() - get group pins
- * @pctldev:	Pincontrol device pointer.
- * @selector:	Group ID.
- * @pins:	Pin numbers.
- * @npins:	Number of pins in group.
- *
- * Get gorup's pin count and pin number.
- *
- * Return: Success.
- */
 static int zynqmp_pctrl_get_group_pins(struct pinctrl_dev *pctldev,
 				       unsigned int selector,
 				       const unsigned int **pins,
@@ -171,15 +153,6 @@ static const struct pinctrl_ops zynqmp_pctrl_ops = {
 	.dt_free_map = pinctrl_utils_free_map,
 };
 
-/**
- * zynqmp_pinmux_request_pin() - Request a pin for muxing
- * @pctldev:	Pincontrol device pointer.
- * @pin:	Pin number.
- *
- * Request a pin from firmware for muxing.
- *
- * Return: 0 on success else error code.
- */
 static int zynqmp_pinmux_request_pin(struct pinctrl_dev *pctldev,
 				     unsigned int pin)
 {
@@ -188,20 +161,12 @@ static int zynqmp_pinmux_request_pin(struct pinctrl_dev *pctldev,
 	ret = zynqmp_pm_pinctrl_request(pin);
 	if (ret) {
 		dev_err(pctldev->dev, "request failed for pin %u\n", pin);
-		return -EIO;
+		return ret;
 	}
 
 	return 0;
 }
 
-/**
- * zynqmp_pmux_get_functions_count() - get number of functions
- * @pctldev:	Pincontrol device pointer.
- *
- * Get total function count.
- *
- * Return: function count.
- */
 static int zynqmp_pmux_get_functions_count(struct pinctrl_dev *pctldev)
 {
 	struct zynqmp_pinctrl *pctrl = pinctrl_dev_get_drvdata(pctldev);
@@ -209,15 +174,6 @@ static int zynqmp_pmux_get_functions_count(struct pinctrl_dev *pctldev)
 	return pctrl->nfuncs;
 }
 
-/**
- * zynqmp_pmux_get_function_name() - get function name
- * @pctldev:	Pincontrol device pointer.
- * @selector:	Function ID.
- *
- * Get function's name.
- *
- * Return: function name.
- */
 static const char *zynqmp_pmux_get_function_name(struct pinctrl_dev *pctldev,
 						 unsigned int selector)
 {
@@ -234,8 +190,6 @@ static const char *zynqmp_pmux_get_function_name(struct pinctrl_dev *pctldev,
  * @num_groups:	Number of function groups.
  *
  * Get function's group count and group names.
- *
- * Return: Success.
  */
 static int zynqmp_pmux_get_function_groups(struct pinctrl_dev *pctldev,
 					   unsigned int selector,
@@ -256,8 +210,8 @@ static int zynqmp_pmux_get_function_groups(struct pinctrl_dev *pctldev,
  * @function:	Function ID.
  * @group:	Group ID.
  *
- * Loop though all pins of group and call firmware API
- * to set requested function for all pins in group.
+ * Loop through all pins of the group and call firmware API
+ * to set requested function for all pins in the group.
  *
  * Return: 0 on success else error code.
  */
@@ -276,22 +230,13 @@ static int zynqmp_pinmux_set_mux(struct pinctrl_dev *pctldev,
 		if (ret) {
 			dev_err(pctldev->dev, "set mux failed for pin %u\n",
 				pin);
-			return -EIO;
+			return ret;
 		}
 	}
 
 	return 0;
 }
 
-/**
- * zynqmp_pinmux_release_pin() - Release a pin
- * @pctldev:	Pincontrol device pointer.
- * @pin:	Pin number.
- *
- * Release a pin from firmware.
- *
- * Return: 0 on success else error code.
- */
 static int zynqmp_pinmux_release_pin(struct pinctrl_dev *pctldev,
 				     unsigned int pin)
 {
@@ -301,7 +246,7 @@ static int zynqmp_pinmux_release_pin(struct pinctrl_dev *pctldev,
 	if (ret) {
 		dev_err(pctldev->dev, "free pin failed for pin %u\n",
 			pin);
-		return -EIO;
+		return ret;
 	}
 
 	return 0;
@@ -331,8 +276,8 @@ static int zynqmp_pinconf_cfg_get(struct pinctrl_dev *pctldev,
 				  unsigned int pin,
 				  unsigned long *config)
 {
+	unsigned int arg, param = pinconf_to_config_param(*config);
 	int ret;
-	unsigned int arg = 0, param = pinconf_to_config_param(*config);
 
 	if (pin >= zynqmp_desc.npins)
 		return -EOPNOTSUPP;
@@ -367,10 +312,22 @@ static int zynqmp_pinconf_cfg_get(struct pinctrl_dev *pctldev,
 		arg = 1;
 		break;
 	case PIN_CONFIG_IOSTANDARD:
+		dev_warn(pctldev->dev,
+			 "'io-standard' will be deprecated post 2021.2 release, instead use 'power-source'.\n");
+		param = PM_PINCTRL_CONFIG_VOLTAGE_STATUS;
+		ret = zynqmp_pm_pinctrl_get_config(pin, param, &arg);
+		break;
+	case PIN_CONFIG_POWER_SOURCE:
 		param = PM_PINCTRL_CONFIG_VOLTAGE_STATUS;
 		ret = zynqmp_pm_pinctrl_get_config(pin, param, &arg);
 		break;
 	case PIN_CONFIG_SCHMITTCMOS:
+		dev_warn(pctldev->dev,
+			 "'schmitt-cmos' will be deprecated post 2021.2 release, instead use 'input-schmitt-enable/disable'.\n");
+		param = PM_PINCTRL_CONFIG_SCHMITT_CMOS;
+		ret = zynqmp_pm_pinctrl_get_config(pin, param, &arg);
+		break;
+	case PIN_CONFIG_INPUT_SCHMITT_ENABLE:
 		param = PM_PINCTRL_CONFIG_SCHMITT_CMOS;
 		ret = zynqmp_pm_pinctrl_get_config(pin, param, &arg);
 		break;
@@ -403,10 +360,13 @@ static int zynqmp_pinconf_cfg_get(struct pinctrl_dev *pctldev,
 		break;
 	}
 
+	if (ret)
+		return ret;
+
 	param = pinconf_to_config_param(*config);
 	*config = pinconf_to_config_packed(param, arg);
 
-	return ret;
+	return 0;
 }
 
 /**
@@ -416,7 +376,7 @@ static int zynqmp_pinconf_cfg_get(struct pinctrl_dev *pctldev,
  * @configs:		Configuration to set.
  * @num_configs:	Number of configurations.
  *
- * Loop though all configurations and call firmware API
+ * Loop through all configurations and call firmware API
  * to set requested configurations for the pin.
  *
  * Return: 0 on success else error code.
@@ -456,6 +416,12 @@ static int zynqmp_pinconf_cfg_set(struct pinctrl_dev *pctldev,
 			ret = zynqmp_pm_pinctrl_set_config(pin, param, arg);
 			break;
 		case PIN_CONFIG_SCHMITTCMOS:
+			dev_warn(pctldev->dev,
+				 "'schmitt-cmos' will be deprecated post 2021.2 release, instead use 'input-schmitt-enable/disable'.\n");
+			param = PM_PINCTRL_CONFIG_SCHMITT_CMOS;
+			ret = zynqmp_pm_pinctrl_set_config(pin, param, arg);
+			break;
+		case PIN_CONFIG_INPUT_SCHMITT_ENABLE:
 			param = PM_PINCTRL_CONFIG_SCHMITT_CMOS;
 			ret = zynqmp_pm_pinctrl_set_config(pin, param, arg);
 			break;
@@ -485,6 +451,16 @@ static int zynqmp_pinconf_cfg_set(struct pinctrl_dev *pctldev,
 			ret = zynqmp_pm_pinctrl_set_config(pin, param, value);
 			break;
 		case PIN_CONFIG_IOSTANDARD:
+			dev_warn(pctldev->dev,
+				 "'io-standard' will be deprecated post 2021.2 release, instead use 'power-source'.\n");
+			param = PM_PINCTRL_CONFIG_VOLTAGE_STATUS;
+			ret = zynqmp_pm_pinctrl_get_config(pin, param, &value);
+			if (arg != value)
+				dev_warn(pctldev->dev,
+					 "Invalid IO Standard requested for pin %d\n",
+					 pin);
+			break;
+		case PIN_CONFIG_POWER_SOURCE:
 			param = PM_PINCTRL_CONFIG_VOLTAGE_STATUS;
 			ret = zynqmp_pm_pinctrl_get_config(pin, param, &value);
 
@@ -515,8 +491,8 @@ static int zynqmp_pinconf_cfg_set(struct pinctrl_dev *pctldev,
 		arg = pinconf_to_config_argument(configs[i]);
 		if (ret)
 			dev_warn(pctldev->dev,
-				 "%s failed: pin %u param %u value %u\n",
-				 __func__, pin, param, arg);
+				 "failed to set: pin %u param %u value %u\n",
+				 pin, param, arg);
 	}
 
 	return 0;
@@ -529,7 +505,7 @@ static int zynqmp_pinconf_cfg_set(struct pinctrl_dev *pctldev,
  * @configs:		Configuration to set.
  * @num_configs:	Number of configurations.
  *
- * Call function to set configs for each pin in group.
+ * Call function to set configs for each pin in the group.
  *
  * Return: 0 on success else error code.
  */
@@ -570,58 +546,39 @@ static struct pinctrl_desc zynqmp_desc = {
 #endif
 };
 
-/**
- * zynqmp_pinctrl_get_function_groups() - get groups for the function
- * @fid:	Function ID.
- * @index:	Group index.
- * @groups:	Groups data.
- *
- * Call firmware API to get groups for the given function.
- *
- * Return: 0 on success else error code.
- */
 static int zynqmp_pinctrl_get_function_groups(u32 fid, u32 index, u16 *groups)
 {
 	struct zynqmp_pm_query_data qdata = {0};
-	u32 ret_payload[PAYLOAD_ARG_CNT];
+	u32 payload[PAYLOAD_ARG_CNT];
 	int ret;
 
 	qdata.qid = PM_QID_PINCTRL_GET_FUNCTION_GROUPS;
 	qdata.arg1 = fid;
 	qdata.arg2 = index;
 
-	ret = zynqmp_pm_query_data(qdata, ret_payload);
+	ret = zynqmp_pm_query_data(qdata, payload);
 	if (ret)
 		return ret;
 
-	memcpy(groups, &ret_payload[1], PINCTRL_GET_FUNC_GROUPS_RESP_LEN);
+	memcpy(groups, &payload[1], PINCTRL_GET_FUNC_GROUPS_RESP_LEN);
 
 	return ret;
 }
 
-/**
- * zynqmp_pinctrl_get_func_num_groups() - get number of groups in function
- * @fid:	Function ID.
- * @ngroups:	Number of groups in function.
- *
- * Call firmware API to get number of group in function.
- *
- * Return: 0 on success else error code.
- */
 static int zynqmp_pinctrl_get_func_num_groups(u32 fid, unsigned int *ngroups)
 {
 	struct zynqmp_pm_query_data qdata = {0};
-	u32 ret_payload[PAYLOAD_ARG_CNT];
+	u32 payload[PAYLOAD_ARG_CNT];
 	int ret;
 
 	qdata.qid = PM_QID_PINCTRL_GET_NUM_FUNCTION_GROUPS;
 	qdata.arg1 = fid;
 
-	ret = zynqmp_pm_query_data(qdata, ret_payload);
+	ret = zynqmp_pm_query_data(qdata, payload);
 	if (ret)
 		return ret;
 
-	*ngroups = ret_payload[1];
+	*ngroups = payload[1];
 
 	return ret;
 }
@@ -634,15 +591,15 @@ static int zynqmp_pinctrl_get_func_num_groups(u32 fid, unsigned int *ngroups)
  * @groups:	Groups data.
  *
  * Query firmware to get group IDs for each function. Firmware returns
- * group IDs. Based on gorup index for the function, group names in
- * function are stored. For example, first gorup in "eth0" function
- * is named as "eth0_0", second as "eth0_1" and so on.
+ * group IDs. Based on group index for the function, group names in
+ * the function are stored. For example, the first group in "eth0" function
+ * is named as "eth0_0" and second group as "eth0_1" and so on.
  *
- * Based on group ID received from firmware, function stores name of
- * group for that group ID. For an example, if "eth0" first group ID
+ * Based on the group ID received from the firmware, function stores name of
+ * the group for that group ID. For example, if "eth0" first group ID
  * is x, groups[x] name will be stored as "eth0_0".
  *
- * Once done for each function, each function would have its group names,
+ * Once done for each function, each function would have its group names
  * and each groups would also have their names.
  *
  * Return: 0 on success else error code.
@@ -655,8 +612,7 @@ static int zynqmp_pinctrl_prepare_func_groups(struct device *dev, u32 fid,
 	const char **fgroups;
 	int ret = 0, index, i;
 
-	fgroups = devm_kzalloc(dev, sizeof(*fgroups) * func->ngroups,
-			       GFP_KERNEL);
+	fgroups = devm_kzalloc(dev, sizeof(*fgroups) * func->ngroups, GFP_KERNEL);
 	if (!fgroups)
 		return -ENOMEM;
 
@@ -666,20 +622,25 @@ static int zynqmp_pinctrl_prepare_func_groups(struct device *dev, u32 fid,
 			return ret;
 
 		for (i = 0; i < NUM_GROUPS_PER_RESP; i++) {
-			if (resp[i] == (u16)NA_GROUP)
+			if (resp[i] == NA_GROUP)
 				goto done;
 
-			if (resp[i] == (u16)RESERVED_GROUP)
+			if (resp[i] == RESERVED_GROUP)
 				continue;
 
 			fgroups[index + i] = devm_kasprintf(dev, GFP_KERNEL,
 							    "%s_%d_grp",
 							    func->name,
 							    index + i);
+			if (!fgroups[index + i])
+				return -ENOMEM;
+
 			groups[resp[i]].name = devm_kasprintf(dev, GFP_KERNEL,
 							      "%s_%d_grp",
 							      func->name,
 							      index + i);
+			if (!groups[resp[i]].name)
+				return -ENOMEM;
 		}
 	}
 done:
@@ -688,93 +649,59 @@ done:
 	return ret;
 }
 
-/**
- * zynqmp_pinctrl_get_function_name() - get function name
- * @fid:	Function ID.
- * @name:	Function name
- *
- * Call firmware API to get name of given function.
- *
- * Return: 0 on success else error code.
- */
-static int zynqmp_pinctrl_get_function_name(u32 fid, char *name)
+static void zynqmp_pinctrl_get_function_name(u32 fid, char *name)
 {
 	struct zynqmp_pm_query_data qdata = {0};
-	u32 ret_payload[PAYLOAD_ARG_CNT];
+	u32 payload[PAYLOAD_ARG_CNT];
 
 	qdata.qid = PM_QID_PINCTRL_GET_FUNCTION_NAME;
 	qdata.arg1 = fid;
 
-	zynqmp_pm_query_data(qdata, ret_payload);
-	memcpy(name, ret_payload, PINCTRL_GET_FUNC_NAME_RESP_LEN);
-
-	return 0;
+	/*
+	 * Name of the function is maximum 16 bytes and cannot
+	 * accommodate the return value in SMC buffers, hence ignoring
+	 * the return value for this specific qid.
+	 */
+	zynqmp_pm_query_data(qdata, payload);
+	memcpy(name, payload, PINCTRL_GET_FUNC_NAME_RESP_LEN);
 }
 
-/**
- * zynqmp_pinctrl_get_num_functions() - get number of supported functions
- * @nfuncs:	Number of functions.
- *
- * Call firmware API to get number of functions supported by system/board.
- *
- * Return: 0 on success else error code.
- */
 static int zynqmp_pinctrl_get_num_functions(unsigned int *nfuncs)
 {
 	struct zynqmp_pm_query_data qdata = {0};
-	u32 ret_payload[PAYLOAD_ARG_CNT];
+	u32 payload[PAYLOAD_ARG_CNT];
 	int ret;
 
 	qdata.qid = PM_QID_PINCTRL_GET_NUM_FUNCTIONS;
 
-	ret = zynqmp_pm_query_data(qdata, ret_payload);
+	ret = zynqmp_pm_query_data(qdata, payload);
 	if (ret)
 		return ret;
 
-	*nfuncs = ret_payload[1];
+	*nfuncs = payload[1];
 
 	return ret;
 }
 
-/**
- * zynqmp_pinctrl_get_pin_groups() - get groups for the pin
- * @pin:	Pin number.
- * @index:	Group index.
- * @groups:	Groups data.
- *
- * Call firmware API to get groups for the given pin.
- *
- * Return: 0 on success else error code.
- */
 static int zynqmp_pinctrl_get_pin_groups(u32 pin, u32 index, u16 *groups)
 {
 	struct zynqmp_pm_query_data qdata = {0};
-	u32 ret_payload[PAYLOAD_ARG_CNT];
+	u32 payload[PAYLOAD_ARG_CNT];
 	int ret;
 
 	qdata.qid = PM_QID_PINCTRL_GET_PIN_GROUPS;
 	qdata.arg1 = pin;
 	qdata.arg2 = index;
 
-	ret = zynqmp_pm_query_data(qdata, ret_payload);
+	ret = zynqmp_pm_query_data(qdata, payload);
 	if (ret)
 		return ret;
 
-	memcpy(groups, &ret_payload[1], PINCTRL_GET_PIN_GROUPS_RESP_LEN);
+	memcpy(groups, &payload[1], PINCTRL_GET_PIN_GROUPS_RESP_LEN);
 
 	return ret;
 }
 
-/**
- * zynqmp_pinctrl_group_add_pin() - add pin to given group
- * @group:	Group data.
- * @pin:	Pin number.
- *
- * Add pin number to respective group's pin array at end and
- * increment pin count for the group.
- *
- * Return: 0 on success else error code.
- */
 static void zynqmp_pinctrl_group_add_pin(struct zynqmp_pctrl_group *group,
 					 unsigned int pin)
 {
@@ -788,8 +715,8 @@ static void zynqmp_pinctrl_group_add_pin(struct zynqmp_pctrl_group *group,
  * @pin:	Pin number.
  *
  * Query firmware to get groups available for the given pin.
- * Based on firmware response(group IDs for the pin), add
- * pin number to respective group's pin array.
+ * Based on the firmware response(group IDs for the pin), add
+ * pin number to the respective group's pin array.
  *
  * Once all pins are queries, each groups would have its number
  * of pins and pin numbers data.
@@ -800,8 +727,8 @@ static int zynqmp_pinctrl_create_pin_groups(struct device *dev,
 					    struct zynqmp_pctrl_group *groups,
 					    unsigned int pin)
 {
-	int ret, i, index = 0;
 	u16 resp[NUM_GROUPS_PER_RESP] = {0};
+	int ret, i, index = 0;
 
 	do {
 		ret = zynqmp_pinctrl_get_pin_groups(pin, index, resp);
@@ -809,16 +736,16 @@ static int zynqmp_pinctrl_create_pin_groups(struct device *dev,
 			return ret;
 
 		for (i = 0; i < NUM_GROUPS_PER_RESP; i++) {
-			if (resp[i] == (u16)NA_GROUP)
+			if (resp[i] == NA_GROUP)
 				return ret;
 
-			if (resp[i] == (u16)RESERVED_GROUP)
+			if (resp[i] == RESERVED_GROUP)
 				continue;
 
 			zynqmp_pinctrl_group_add_pin(&groups[resp[i]], pin);
 		}
 		index += NUM_GROUPS_PER_RESP;
-	} while (1);
+	} while (index <= MAX_PIN_GROUPS);
 
 	return ret;
 }
@@ -838,7 +765,7 @@ static int zynqmp_pinctrl_prepare_group_pins(struct device *dev,
 					     unsigned int ngroups)
 {
 	unsigned int pin;
-	int ret = 0;
+	int ret;
 
 	for (pin = 0; pin < zynqmp_desc.npins; pin++) {
 		ret = zynqmp_pinctrl_create_pin_groups(dev, groups, pin);
@@ -846,7 +773,7 @@ static int zynqmp_pinctrl_prepare_group_pins(struct device *dev,
 			return ret;
 	}
 
-	return ret;
+	return 0;
 }
 
 /**
@@ -861,7 +788,7 @@ static int zynqmp_pinctrl_prepare_group_pins(struct device *dev,
  * of groups in given function) to allocate required memory buffers
  * for functions and groups. Once buffers are allocated to store
  * functions and groups data, query and store required information
- * (numbe of groups and group names for each function, number of
+ * (number of groups and group names for each function, number of
  * pins and pin numbers for each group).
  *
  * Return: 0 on success else error code.
@@ -891,8 +818,7 @@ static int zynqmp_pinctrl_prepare_function_info(struct device *dev,
 		pctrl->ngroups += funcs[i].ngroups;
 	}
 
-	groups = devm_kzalloc(dev, sizeof(*groups) * pctrl->ngroups,
-			      GFP_KERNEL);
+	groups = devm_kzalloc(dev, sizeof(*groups) * pctrl->ngroups, GFP_KERNEL);
 	if (!groups)
 		return -ENOMEM;
 
@@ -913,27 +839,19 @@ static int zynqmp_pinctrl_prepare_function_info(struct device *dev,
 	return ret;
 }
 
-/**
- * zynqmp_pinctrl_get_num_pins() - get number of pins in system
- * @npins:	Number of pins in system/board.
- *
- * Call firmware API to get number of pins.
- *
- * Return: 0 on success else error code.
- */
 static int zynqmp_pinctrl_get_num_pins(unsigned int *npins)
 {
 	struct zynqmp_pm_query_data qdata = {0};
-	u32 ret_payload[PAYLOAD_ARG_CNT];
+	u32 payload[PAYLOAD_ARG_CNT];
 	int ret;
 
 	qdata.qid = PM_QID_PINCTRL_GET_NUM_PINS;
 
-	ret = zynqmp_pm_query_data(qdata, ret_payload);
+	ret = zynqmp_pm_query_data(qdata, payload);
 	if (ret)
 		return ret;
 
-	*npins = ret_payload[1];
+	*npins = payload[1];
 
 	return ret;
 }
@@ -971,6 +889,8 @@ static int zynqmp_pinctrl_prepare_pin_desc(struct device *dev,
 		pin->number = i;
 		pin->name = devm_kasprintf(dev, GFP_KERNEL, "%s%d",
 					   ZYNQMP_PIN_PREFIX, i);
+		if (!pin->name)
+			return -ENOMEM;
 	}
 
 	*zynqmp_pins = pins;
@@ -991,29 +911,37 @@ static int zynqmp_pinctrl_probe(struct platform_device *pdev)
 					      &zynqmp_desc.pins,
 					      &zynqmp_desc.npins);
 	if (ret) {
-		dev_err(&pdev->dev, "%s() pin desc prepare fail with %d\n",
-			__func__, ret);
+		dev_err(&pdev->dev, "pin desc prepare fail with %d\n",
+			ret);
 		return ret;
 	}
 
 	ret = zynqmp_pinctrl_prepare_function_info(&pdev->dev, pctrl);
 	if (ret) {
-		dev_err(&pdev->dev, "%s() function info prepare fail with %d\n",
-			__func__, ret);
+		dev_err(&pdev->dev, "function info prepare fail with %d\n",
+			ret);
 		return ret;
 	}
 
 	pctrl->pctrl = pinctrl_register(&zynqmp_desc, &pdev->dev, pctrl);
-	if (IS_ERR(pctrl->pctrl)) {
-		ret = PTR_ERR(pctrl->pctrl);
-		return ret;
-	}
+	if (IS_ERR(pctrl->pctrl))
+		return PTR_ERR(pctrl->pctrl);
+
 
 	platform_set_drvdata(pdev, pctrl);
 
 	dev_info(&pdev->dev, "zynqmp pinctrl initialized\n");
 
-	return ret;
+	return 0;
+}
+
+static int zynqmp_pinctrl_remove(struct platform_device *pdev)
+{
+	struct zynqmp_pinctrl *pctrl = platform_get_drvdata(pdev);
+
+	pinctrl_unregister(pctrl->pctrl);
+
+	return 0;
 }
 
 static const struct of_device_id zynqmp_pinctrl_of_match[] = {
@@ -1021,11 +949,19 @@ static const struct of_device_id zynqmp_pinctrl_of_match[] = {
 	{ }
 };
 
+MODULE_DEVICE_TABLE(of, zynqmp_pinctrl_of_match);
+
 static struct platform_driver zynqmp_pinctrl_driver = {
 	.driver = {
 		.name = "zynqmp-pinctrl",
 		.of_match_table = zynqmp_pinctrl_of_match,
 	},
 	.probe = zynqmp_pinctrl_probe,
+	.remove = zynqmp_pinctrl_remove,
 };
-builtin_platform_driver(zynqmp_pinctrl_driver);
+
+module_platform_driver(zynqmp_pinctrl_driver);
+
+MODULE_AUTHOR("Sai Krishna Potthuri <lakshmi.sai.krishna.potthuri@xilinx.com>");
+MODULE_DESCRIPTION("ZynqMP Pin Controller Driver");
+MODULE_LICENSE("GPL v2");

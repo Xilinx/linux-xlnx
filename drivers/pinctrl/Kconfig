@@ -342,10 +342,11 @@ config PINCTRL_ZYNQ
 	  This selects the pinctrl driver for Xilinx Zynq.
 
 config PINCTRL_ZYNQMP
-	bool "Pinctrl driver for Xilinx ZynqMP"
-	depends on ARCH_ZYNQMP
+	tristate "Pinctrl driver for Xilinx ZynqMP"
+	depends on ZYNQMP_FIRMWARE
 	select PINMUX
 	select GENERIC_PINCONF
+	default ZYNQMP_FIRMWARE
 	help
 	  This selects the pinctrl driver for Xilinx ZynqMP platform.
 	  This driver will query the pin information from the firmware
