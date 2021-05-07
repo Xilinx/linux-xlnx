@@ -88,6 +88,33 @@ struct zynqmp_pctrl_group {
 	unsigned int npins;
 };
 
+/**
+ * enum zynqmp_pin_config_param - possible pin configuration parameters
+ * @PIN_CONFIG_IOSTANDARD:	if the pin can select an IO standard,
+ *				the argument to this parameter (on a
+ *				custom format) tells the driver which
+ *				alternative IO standard to use
+ * @PIN_CONFIG_SCHMITTCMOS:	this parameter (on a custom format) allows
+ *				to select schmitt or cmos input for MIO pins
+ */
+enum zynqmp_pin_config_param {
+	PIN_CONFIG_IOSTANDARD = PIN_CONFIG_END + 1,
+	PIN_CONFIG_SCHMITTCMOS,
+};
+
+static const struct pinconf_generic_params zynqmp_dt_params[] = {
+	{"io-standard", PIN_CONFIG_IOSTANDARD, IO_STANDARD_LVCMOS18},
+	{"schmitt-cmos", PIN_CONFIG_SCHMITTCMOS, PIN_INPUT_TYPE_SCHMITT},
+};
+
+#ifdef CONFIG_DEBUG_FS
+static const struct
+pin_config_item zynqmp_conf_items[ARRAY_SIZE(zynqmp_dt_params)] = {
+	PCONFDUMP(PIN_CONFIG_IOSTANDARD, "IO-standard", NULL, true),
+	PCONFDUMP(PIN_CONFIG_SCHMITTCMOS, "schmitt-cmos", NULL, true),
+};
+#endif
+
 static struct pinctrl_desc zynqmp_desc;
 
 static int zynqmp_pctrl_get_groups_count(struct pinctrl_dev *pctldev)
@@ -284,8 +311,20 @@ static int zynqmp_pinconf_cfg_get(struct pinctrl_dev *pctldev,
 
 		arg = 1;
 		break;
+	case PIN_CONFIG_IOSTANDARD:
+		dev_warn(pctldev->dev,
+			 "'io-standard' will be deprecated post 2021.2 release, instead use 'power-source'.\n");
+		param = PM_PINCTRL_CONFIG_VOLTAGE_STATUS;
+		ret = zynqmp_pm_pinctrl_get_config(pin, param, &arg);
+		break;
 	case PIN_CONFIG_POWER_SOURCE:
 		param = PM_PINCTRL_CONFIG_VOLTAGE_STATUS;
+		ret = zynqmp_pm_pinctrl_get_config(pin, param, &arg);
+		break;
+	case PIN_CONFIG_SCHMITTCMOS:
+		dev_warn(pctldev->dev,
+			 "'schmitt-cmos' will be deprecated post 2021.2 release, instead use 'input-schmitt-enable/disable'.\n");
+		param = PM_PINCTRL_CONFIG_SCHMITT_CMOS;
 		ret = zynqmp_pm_pinctrl_get_config(pin, param, &arg);
 		break;
 	case PIN_CONFIG_INPUT_SCHMITT_ENABLE:
@@ -376,6 +415,12 @@ static int zynqmp_pinconf_cfg_set(struct pinctrl_dev *pctldev,
 			arg = PM_PINCTRL_BIAS_DISABLE;
 			ret = zynqmp_pm_pinctrl_set_config(pin, param, arg);
 			break;
+		case PIN_CONFIG_SCHMITTCMOS:
+			dev_warn(pctldev->dev,
+				 "'schmitt-cmos' will be deprecated post 2021.2 release, instead use 'input-schmitt-enable/disable'.\n");
+			param = PM_PINCTRL_CONFIG_SCHMITT_CMOS;
+			ret = zynqmp_pm_pinctrl_set_config(pin, param, arg);
+			break;
 		case PIN_CONFIG_INPUT_SCHMITT_ENABLE:
 			param = PM_PINCTRL_CONFIG_SCHMITT_CMOS;
 			ret = zynqmp_pm_pinctrl_set_config(pin, param, arg);
@@ -405,6 +450,16 @@ static int zynqmp_pinconf_cfg_set(struct pinctrl_dev *pctldev,
 			param = PM_PINCTRL_CONFIG_DRIVE_STRENGTH;
 			ret = zynqmp_pm_pinctrl_set_config(pin, param, value);
 			break;
+		case PIN_CONFIG_IOSTANDARD:
+			dev_warn(pctldev->dev,
+				 "'io-standard' will be deprecated post 2021.2 release, instead use 'power-source'.\n");
+			param = PM_PINCTRL_CONFIG_VOLTAGE_STATUS;
+			ret = zynqmp_pm_pinctrl_get_config(pin, param, &value);
+			if (arg != value)
+				dev_warn(pctldev->dev,
+					 "Invalid IO Standard requested for pin %d\n",
+					 pin);
+			break;
 		case PIN_CONFIG_POWER_SOURCE:
 			param = PM_PINCTRL_CONFIG_VOLTAGE_STATUS;
 			ret = zynqmp_pm_pinctrl_get_config(pin, param, &value);
@@ -416,9 +471,9 @@ static int zynqmp_pinconf_cfg_set(struct pinctrl_dev *pctldev,
 
 			break;
 		case PIN_CONFIG_BIAS_HIGH_IMPEDANCE:
-		case PIN_CONFIG_MODE_LOW_POWER:
+		case PIN_CONFIG_LOW_POWER_MODE:
 			/*
-			 * These cases are mentioned in dts but configurable
+			 * This cases are mentioned in dts but configurable
 			 * registers are unknown. So falling through to ignore
 			 * boot time warnings as of now.
 			 */
@@ -486,6 +541,9 @@ static struct pinctrl_desc zynqmp_desc = {
 	.pctlops = &zynqmp_pctrl_ops,
 	.pmxops = &zynqmp_pinmux_ops,
 	.confops = &zynqmp_pinconf_ops,
+#ifdef CONFIG_DEBUG_FS
+	.custom_conf_items = zynqmp_conf_items,
+#endif
 };
 
 static int zynqmp_pinctrl_get_function_groups(u32 fid, u32 index, u16 *groups)
@@ -869,9 +927,12 @@ static int zynqmp_pinctrl_probe(struct platform_device *pdev)
 	if (IS_ERR(pctrl->pctrl))
 		return PTR_ERR(pctrl->pctrl);
 
+
 	platform_set_drvdata(pdev, pctrl);
 
-	return ret;
+	dev_info(&pdev->dev, "zynqmp pinctrl initialized\n");
+
+	return 0;
 }
 
 static int zynqmp_pinctrl_remove(struct platform_device *pdev)
