@@ -2158,6 +2158,12 @@ static int xvip_m2m_probe(struct platform_device *pdev)
 	if (ret)
 		return -EINVAL;
 
+	xdev->m2m_dev = v4l2_m2m_init(&xvip_m2m_ops);
+	if (IS_ERR(xdev->m2m_dev)) {
+		dev_err(xdev->dev, "Failed to init mem2mem device\n");
+		return PTR_ERR(xdev->m2m_dev);
+	}
+
 	ret = xvip_graph_init(xdev);
 	if (ret < 0)
 		goto error;
@@ -2169,13 +2175,6 @@ static int xvip_m2m_probe(struct platform_device *pdev)
 	}
 
 	platform_set_drvdata(pdev, xdev);
-
-	xdev->m2m_dev = v4l2_m2m_init(&xvip_m2m_ops);
-	if (IS_ERR(xdev->m2m_dev)) {
-		dev_err(xdev->dev, "Failed to init mem2mem device\n");
-		ret = PTR_ERR(xdev->m2m_dev);
-		goto dma_cleanup;
-	}
 
 	dev_info(xdev->dev, "mem2mem device registered\n");
 	return 0;
