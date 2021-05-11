@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-License-Identifier: GPL-2.0+ */
 
 #ifndef _DT_BINDINGS_REGULATOR_DLG_DA9121_H
 #define _DT_BINDINGS_REGULATOR_DLG_DA9121_H
