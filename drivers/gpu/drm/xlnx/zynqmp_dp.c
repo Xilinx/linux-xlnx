@@ -1619,24 +1619,21 @@ zynqmp_dp_encoder_atomic_check(struct drm_encoder *encoder,
 			       struct drm_crtc_state *crtc_state,
 			       struct drm_connector_state *conn_state)
 {
-	struct drm_display_mode *mode = &crtc_state->mode;
 	struct drm_display_mode *adjusted_mode = &crtc_state->adjusted_mode;
-	int diff = mode->htotal - mode->hsync_end;
+	int diff = adjusted_mode->htotal - adjusted_mode->hsync_end;
 
 	/*
 	 * ZynqMP DP requires horizontal backporch to be greater than 12.
 	 * This limitation may not be compatible with the sink device.
 	 */
 	if (diff < ZYNQMP_DP_MIN_H_BACKPORCH) {
-		int vrefresh = (adjusted_mode->clock * 1000) /
-			       (adjusted_mode->vtotal * adjusted_mode->htotal);
-
 		dev_dbg(encoder->dev->dev, "hbackporch adjusted: %d to %d",
 			diff, ZYNQMP_DP_MIN_H_BACKPORCH - diff);
 		diff = ZYNQMP_DP_MIN_H_BACKPORCH - diff;
 		adjusted_mode->htotal += diff;
-		adjusted_mode->clock = adjusted_mode->vtotal *
-				       adjusted_mode->htotal * vrefresh / 1000;
+		adjusted_mode->clock = (adjusted_mode->clock *
+					adjusted_mode->htotal) /
+				       (adjusted_mode->htotal - diff);
 	}
 
 	return 0;
