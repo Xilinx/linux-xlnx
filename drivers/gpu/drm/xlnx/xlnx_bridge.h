@@ -36,6 +36,7 @@ struct xlnx_bridge_debugfs_file;
  * @get_output_fmts: callback to get supported output formats.
  * @set_timing: callback to set timing in connected video timing controller.
  * @debugfs_file: for debugfs support
+ * @extra_name: name to distinguish the bridges which share the same of_node
  */
 struct xlnx_bridge {
 	struct list_head list;
@@ -53,6 +54,7 @@ struct xlnx_bridge {
 			       const u32 **fmts, u32 *count);
 	int (*set_timing)(struct xlnx_bridge *bridge, struct videomode *vm);
 	struct xlnx_bridge_debugfs_file *debugfs_file;
+	char *extra_name;
 };
 
 #if IS_ENABLED(CONFIG_DRM_XLNX_BRIDGE)

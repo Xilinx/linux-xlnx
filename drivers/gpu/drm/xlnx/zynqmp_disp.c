@@ -3035,7 +3035,7 @@ int zynqmp_disp_probe(struct platform_device *pdev)
 	struct resource *res;
 	int ret;
 	struct zynqmp_disp_layer *layer;
-	unsigned int i;
+	unsigned int i, j;
 	struct device_node *vtc_node;
 
 	disp = devm_kzalloc(&pdev->dev, sizeof(*disp), GFP_KERNEL);
@@ -3161,7 +3161,14 @@ int zynqmp_disp_probe(struct platform_device *pdev)
 			&zynqmp_disp_bridge_get_input_fmts;
 		layer->bridge.set_timing = &zynqmp_disp_bridge_set_timing;
 		layer->bridge.of_node = layer->of_node;
-		xlnx_bridge_register(&layer->bridge);
+		layer->bridge.extra_name = ((i == 0) ? ".vid" : ".gfx");
+		ret = xlnx_bridge_register(&layer->bridge);
+		if (ret) {
+			dev_info(disp->dev, "Bridge registration failed\n");
+			for (j = 0; j < i; j++)
+				xlnx_bridge_unregister(&disp->layers[j].bridge);
+			goto error_aclk;
+		}
 	}
 
 	return 0;

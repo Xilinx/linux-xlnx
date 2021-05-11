@@ -396,8 +396,8 @@ static int xlnx_bridge_debugfs_register(struct xlnx_bridge *bridge)
 	if (!file)
 		return -ENOMEM;
 
-	snprintf(file_name, sizeof(file_name), "xlnx_bridge-%s",
-		 bridge->of_node->name);
+	snprintf(file_name, sizeof(file_name), "xlnx_bridge-%s%s",
+		 bridge->of_node->name, bridge->extra_name);
 	file->file = debugfs_create_file(file_name, 0444, dir->dir, bridge,
 					 &xlnx_bridge_debugfs_fops);
 	bridge->debugfs_file = file;
