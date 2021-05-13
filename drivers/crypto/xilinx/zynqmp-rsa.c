@@ -103,23 +103,31 @@ static int zynqmp_rsa_xcrypt(struct skcipher_request *req, unsigned int flags)
 		return -ENOMEM;
 
 	err = skcipher_walk_virt(&walk, req, false);
+	if (err)
+		goto out;
 
 	while ((datasize = walk.nbytes)) {
 		op->src = walk.src.virt.addr;
 		memcpy(kbuf + src_data, op->src, datasize);
 		src_data = src_data + datasize;
 		err = skcipher_walk_done(&walk, 0);
+		if (err)
+			goto out;
 	}
 	memcpy(kbuf + nbytes, op->key, op->keylen);
 	zynqmp_pm_rsa(dma_addr, nbytes, flags);
 
 	err = skcipher_walk_virt(&walk, req, false);
+	if (err)
+		goto out;
 
 	while ((datasize = walk.nbytes)) {
 		memcpy(walk.dst.virt.addr, kbuf + dst_data, datasize);
 		dst_data = dst_data + datasize;
 		err = skcipher_walk_done(&walk, 0);
 	}
+
+out:
 	dma_free_coherent(dd->dev, dma_size, kbuf, dma_addr);
 	return err;
 }
