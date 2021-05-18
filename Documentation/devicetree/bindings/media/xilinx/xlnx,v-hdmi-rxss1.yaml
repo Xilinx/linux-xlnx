@@ -1,0 +1,201 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/media/xilinx/xlnx,v-hdmi-rxss1.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx HDMI 2.1 Receiver Subsystem
+
+maintainers:
+  - Vishal Sagar <vishal.sagar@xilinx.com>
+
+description: |
+  The Xilinx HDMI 2.1 Receiver Subsystem is a feature rich soft IP incorporating
+  all the necesssary logic to properly interface with PHY layer and provides HDMI
+  decoding functionality. The subsystem is a hierarchical IP that bundles a
+  collection of HDMI 2.1 Rx-related IP sub-cores and outputs them as a  single IP.
+  The subsystem receives the captured TMDS data from the PHY layer. It then
+  extracts the video and audio streams from the HDMI stream and converts it to
+  video and audio streams.
+  For more details refer to PG 351 Xilinx HDMI 2.1 Rx Subsystem.
+
+properties:
+  compatible:
+    items:
+      - enum:
+          - xlnx,v-hdmi-rxss1-1.1
+
+  reg:
+    maxItems: 1
+
+  interrupts:
+    maxItems: 1
+
+  clocks:
+    items:
+      - description: Clock for AXI4-Lite control interface
+      - description: Fixed FRL Link clock
+      - description: AXI4-Stream clock
+
+  clock-names:
+    items:
+      - const: s_axi_cpu_aclk
+      - const: frl_clk
+      - const: s_axis_video_aclk
+
+  xlnx,edid-ram-size:
+    description: |
+      This is size of EDID in BRAM.
+      The possible values are 256, 512, 1024 or 4096.
+      This property has to be specified as '/bits/ 16' value.
+    $ref: /schemas/types.yaml#/definitions/uint16
+    enum: [ 256, 512, 1024, 4096 ]
+
+  xlnx,input-pixels-per-clock:
+    description: |
+      Number of pixels per clock on Video Interface.
+      This property has to be specified as '/bits/ 8' value.
+    $ref: /schemas/types.yaml#/definitions/uint8
+    enum: [ 4, 8 ]
+
+  xlnx,max-bits-per-component:
+    description: |
+      Maximum bits per component.
+      This property has to be specified as '/bits/ 8' value.
+    $ref: /schemas/types.yaml#/definitions/uint8
+    enum: [ 8, 10, 12, 16 ]
+
+  xlnx,max-frl-rate:
+    description: |
+      Maximum FRL rate.
+      This property has to be specified as '/bits/ 8' value.
+    $ref: /schemas/types.yaml#/definitions/uint8
+    enum: [ 4, 5, 6 ]
+
+  xlnx,frl-clk-freq-khz:
+    description: |
+      FRL clock frequency in KHz
+    $ref: /schemas/types.yaml#/definitions/uint32
+
+  xlnx,vid-clk-freq-khz:
+    description: |
+      Video clock frequency in KHz
+    $ref: /schemas/types.yaml#/definitions/uint32
+
+  phys:
+    description: |
+      This denotes phandles for phy lanes registered for HDMI protocol.
+
+  phy-names:
+    items:
+      - const: hdmi-phy0
+      - const: hdmi-phy1
+      - const: hdmi-phy2
+      - const: hdmi-phy3
+
+  ports:
+    type: object
+
+    properties:
+      "#address-cells":
+        const: 1
+
+      "#size-cells":
+        const: 0
+
+      port@0:
+        type: object
+        description: |
+          Sink port node with one endpoint connected to a hdmi-connector node.
+        properties:
+          reg:
+            const: 0
+          endpoint:
+            type: object
+            properties:
+              remote-endpoint: true
+            required:
+              - remote-endpoint
+            additionalProperties: false
+        additionalProperties: false
+
+      port@1:
+        type: object
+        description: |
+          Source port node with one endpoint.
+        properties:
+          reg:
+            const: 1
+          endpoint:
+            type: object
+            properties:
+              remote-endpoint: true
+            required:
+              - remote-endpoint
+            additionalProperties: false
+        additionalProperties: false
+
+    required:
+      - "#address-cells"
+      - "#size-cells"
+      - port@0
+      - port@1
+
+    additionalProperties: false
+
+required:
+  - compatible
+  - reg
+  - interrupts
+  - clocks
+  - clock-names
+  - xlnx,edid-ram-size
+  - xlnx,max-bits-per-component
+  - xlnx,max-frl-rate
+  - xlnx,frl-clk-freq-khz
+  - xlnx,vid-clk-freq-khz
+  - xlnx,input-pixels-per-clock
+  - phys
+  - phy-names
+  - ports
+
+additionalProperties: false
+
+examples:
+  - |
+    v_hdmi_rxss1: v_hdmi_rxss1@80000000 {
+      compatible = "xlnx,v-hdmi-rxss1-1.1";
+      reg = <0x80000000 0x10000>;
+      clock-names = "s_axi_cpu_aclk", "frl_clk", "s_axis_video_aclk";
+      clocks = <&zynqmp_clk 71>, <&misc_clk_4>, <&misc_clk_5>;
+      interrupt-parent = <&gic>;
+      interrupts = <0 90 4>;
+      xlnx,edid-ram-size = /bits/ 16 <0x100>;
+      xlnx,input-pixels-per-clock = /bits/ 8 <0x8>;
+      xlnx,max-bits-per-component = /bits/ 8 <0xa>;
+      xlnx,max-frl-rate = /bits/ 8 <0x6>;
+      xlnx,frl-clk-freq-khz = <449955>;
+      xlnx,vid-clk-freq-khz = <400000>;
+      phy-names = "hdmi-phy0", "hdmi-phy1", "hdmi-phy2", "hdmi-phy3";
+      phys = <&hdmiphy1_lane0 0 1 1 0>,
+             <&hdmiphy1_lane1 0 1 1 0>,
+             <&hdmiphy1_lane2 0 1 1 0>,
+             <&hdmiphy1_lane3 0 1 1 0>;
+      ports {
+        #address-cells = <1>;
+        #size-cells = <0>;
+        port@0 {
+           reg = <0>;
+           hdmi_rx_in: endpoint {
+             remote-endpoint = <&hdmi_connector_out>;
+           };
+        };
+        port@1 {
+           reg = <1>;
+           hdmi_rx_out: endpoint {
+             remote-endpoint = <&vpss_in>;
+           };
+        };
+      };
+    };
+...
