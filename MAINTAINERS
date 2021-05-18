@@ -25543,6 +25543,14 @@ L:	netdev@vger.kernel.org
 S:	Orphan
 F:	drivers/net/ethernet/xilinx/ll_temac*
 
+XILINX HDMI21RXSS DRIVER
+M:	Rajesh Gugulothu <rajesh.gugulothu@amd.com>
+R:	Vishal Sagar <vishal.sagar@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-hdmi-rxss1.yaml
+F:	drivers/media/platform/xilinx/xilinx-hdmirxss.c
+
 XILINX AXI4S BROADCASTER DRIVER
 M:	Kunal Rane <kunal.rane@amd.com>
 L:	git@amd.com
