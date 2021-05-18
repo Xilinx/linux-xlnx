@@ -84,7 +84,7 @@ static int zynqmp_rsa_xcrypt(struct skcipher_request *req, unsigned int flags)
 	struct zynqmp_rsa_op *op = crypto_skcipher_ctx(tfm);
 	struct zynqmp_rsa_dev *dd = zynqmp_rsa_find_dev(op);
 	int err, datasize, src_data = 0, dst_data = 0;
-	struct skcipher_walk walk;
+	struct skcipher_walk walk = {0};
 	unsigned int nbytes;
 	char *kbuf;
 	size_t dma_size;
