@@ -162,6 +162,7 @@ struct onfi_ext_param_page {
  * @tBERS: Block erase time
  * @tR: Page read time
  * @tCCS: Change column setup time
+ * @fast_tCAD: Command/Address/Data slow or fast delay (NV-DDR only)
  * @sdr_timing_modes: Supported asynchronous/SDR timing modes
  * @nvddr_timing_modes: Supported source synchronous/NV-DDR timing modes
  * @vendor_revision: Vendor specific revision number
@@ -174,6 +175,7 @@ struct onfi_params {
 	u16 tBERS;
 	u16 tR;
 	u16 tCCS;
+	bool fast_tCAD;
 	u16 sdr_timing_modes;
 	u16 nvddr_timing_modes;
 	u16 src_sync_timing_mode;
