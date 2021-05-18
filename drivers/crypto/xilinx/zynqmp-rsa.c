@@ -23,7 +23,7 @@
 #define ZYNQMP_RSA_MAX_KEY_SIZE	1024
 #define ZYNQMP_RSA_BLOCKSIZE	64
 
-struct zynqmp_rsa_dev;
+static struct zynqmp_rsa_dev *rsa_dd;
 
 struct zynqmp_rsa_op {
 	struct zynqmp_rsa_dev    *dd;
@@ -56,22 +56,16 @@ static struct zynqmp_rsa_drv zynqmp_rsa = {
 
 static struct zynqmp_rsa_dev *zynqmp_rsa_find_dev(struct zynqmp_rsa_op *ctx)
 {
-	struct zynqmp_rsa_dev *rsa_dd = NULL;
-	struct zynqmp_rsa_dev *tmp;
+	struct zynqmp_rsa_dev *dd = rsa_dd;
 
 	spin_lock_bh(&zynqmp_rsa.lock);
-	if (!ctx->dd) {
-		list_for_each_entry(tmp, &zynqmp_rsa.dev_list, list) {
-			rsa_dd = tmp;
-			break;
-		}
-		ctx->dd = rsa_dd;
-	} else {
-		rsa_dd = ctx->dd;
-	}
+	if (!ctx->dd)
+		ctx->dd = dd;
+	else
+		dd = ctx->dd;
 	spin_unlock_bh(&zynqmp_rsa.lock);
 
-	return rsa_dd;
+	return dd;
 }
 
 static int zynqmp_setkey_blk(struct crypto_skcipher *tfm, const u8 *key,
@@ -169,7 +163,6 @@ MODULE_DEVICE_TABLE(of, zynqmp_rsa_dt_ids);
 
 static int zynqmp_rsa_probe(struct platform_device *pdev)
 {
-	struct zynqmp_rsa_dev *rsa_dd;
 	struct device *dev = &pdev->dev;
 	int ret;
 
