@@ -61,6 +61,16 @@ config VIDEO_XILINX_GAMMA
 
 	  Say M to modularize. Say N if unsure.
 
+config VIDEO_XILINX_HDMI21RXSS
+	tristate "Xilinx HDMI 2.1 Rx Subsystem"
+	depends on VIDEO_XILINX
+	help
+	  Driver for the Xilinx HDMI 2.1 Rx subsystem to capture HDMI streams.
+	  This is a V4L2 subdev driver which used to get the stream properties
+	  like timing, color format and depth, frame rate.
+
+	  Say M to modularize. Say N if unsure.
+
 config VIDEO_XILINX_HLS
 	tristate "Xilinx Video HLS Core"
 	depends on VIDEO_XILINX
