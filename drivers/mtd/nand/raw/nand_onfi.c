@@ -315,9 +315,8 @@ int nand_onfi_detect(struct nand_chip *chip)
 	onfi->tBERS = le16_to_cpu(p->t_bers);
 	onfi->tR = le16_to_cpu(p->t_r);
 	onfi->tCCS = le16_to_cpu(p->t_ccs);
-	onfi->async_timing_mode = le16_to_cpu(p->async_timing_mode);
+	onfi->sdr_timing_modes = le16_to_cpu(p->sdr_timing_modes);
 	onfi->jedec_id = le16_to_cpu(p->jedec_id);
-	onfi->src_sync_timing_mode = le16_to_cpu(p->src_sync_timing_mode);
 	onfi->vendor_revision = le16_to_cpu(p->vendor_revision);
 	memcpy(onfi->vendor, p->vendor, sizeof(p->vendor));
 	chip->parameters.onfi = onfi;
