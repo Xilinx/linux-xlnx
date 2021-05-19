@@ -199,7 +199,8 @@ int xlnx_register_event(const enum pm_api_cb_id cb_type, const u32 node_id, cons
 			const bool wake, event_cb_func_t cb_fun, void *data)
 {
 	int ret = 0;
-	u32 eve, pos;
+	u32 eve;
+	int pos;
 
 	if (event_manager_availability)
 		return event_manager_availability;
