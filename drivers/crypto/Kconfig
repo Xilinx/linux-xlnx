@@ -817,6 +817,18 @@ config CRYPTO_DEV_ZYNQMP_AES
 	  accelerator. Select this if you want to use the ZynqMP module
 	  for AES algorithms.
 
+config CRYPTO_DEV_ZYNQMP_AES_SKCIPHER
+	tristate "Support for Xilinx ZynqMP AES hw accelerator (skcipher)"
+	depends on ZYNQMP_FIRMWARE || COMPILE_TEST
+	depends on !CRYPTO_DEV_ZYNQMP_AES
+	select CRYPTO_AES
+	select CRYPTO_SKCIPHER
+	help
+	  Xilinx ZynqMP has AES-GCM engine used for symmetric key
+	  encryption and decryption. This driver interfaces with AES hw
+	  accelerator. Select this if you want to use the ZynqMP module
+	  for AES algorithms.
+
 source "drivers/crypto/chelsio/Kconfig"
 
 source "drivers/crypto/virtio/Kconfig"
