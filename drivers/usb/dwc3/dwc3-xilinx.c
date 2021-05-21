@@ -539,9 +539,10 @@ static int dwc3_xlnx_probe(struct platform_device *pdev)
 
 	/* get the dr_mode from child node */
 	ret = of_property_read_string(dwc3_child_node, "dr_mode", &dr_modes);
-	priv_data->dr_mode = usb_get_dr_mode_from_string(dr_modes);
 	if (ret < 0)
 		priv_data->dr_mode = USB_DR_MODE_UNKNOWN;
+	else
+		priv_data->dr_mode = usb_get_dr_mode_from_string(dr_modes);
 
 	of_node_put(dwc3_child_node);
 
