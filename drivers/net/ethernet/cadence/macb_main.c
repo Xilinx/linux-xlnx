@@ -4714,6 +4714,10 @@ static int __maybe_unused macb_suspend(struct device *dev)
 		return 0;
 
 	if (device_may_wakeup(&bp->dev->dev)) {
+		if (!bp->dev->ip_ptr->ifa_list) {
+			netdev_err(netdev, "IP address not assigned\n");
+			return -EOPNOTSUPP;
+		}
 		spin_lock_irqsave(&bp->lock, flags);
 		ctrl = macb_readl(bp, NCR);
 		ctrl &= ~(MACB_BIT(TE) | MACB_BIT(RE));
