@@ -870,8 +870,11 @@ static irqreturn_t zynqmp_qspi_irq(int irq, void *dev_id)
 
 	if (xqspi->bytes_to_receive == 0 && xqspi->bytes_to_transfer == 0 &&
 	    ((status & GQSPI_IRQ_MASK) == GQSPI_IRQ_MASK)) {
-		zynqmp_disable_intr(xqspi);
-		complete(&xqspi->data_completion);
+		if ((status & GQSPI_ISR_TXEMPTY_MASK) &&
+		    (status & GQSPI_ISR_GENFIFOEMPTY_MASK)) {
+			zynqmp_disable_intr(xqspi);
+			complete(&xqspi->data_completion);
+		}
 		ret = IRQ_HANDLED;
 	}
 	return ret;
@@ -1119,7 +1122,8 @@ static int zynqmp_qspi_exec_op(struct spi_mem *mem,
 				   GQSPI_CFG_START_GEN_FIFO_MASK);
 		zynqmp_gqspi_write(xqspi, GQSPI_IER_OFST,
 				   GQSPI_IER_GENFIFOEMPTY_MASK |
-				   GQSPI_IER_TXNOT_FULL_MASK);
+				   GQSPI_IER_TXNOT_FULL_MASK |
+				   GQSPI_IER_TXEMPTY_MASK);
 		if (!wait_for_completion_timeout
 		    (&xqspi->data_completion, msecs_to_jiffies(1000))) {
 			err = -ETIMEDOUT;
