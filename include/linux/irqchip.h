@@ -29,12 +29,16 @@
 #define IRQCHIP_DECLARE(name, compat, fn) OF_DECLARE_2(irqchip, name, compat, fn)
 
 extern int platform_irqchip_probe(struct platform_device *pdev);
+#ifdef CONFIG_IRQCHIP_XILINX_INTC_MODULE_SUPPORT_EXPERIMENTAL
+extern int platform_irqchip_remove(struct platform_device *pdev);
+#endif
 
 #define IRQCHIP_PLATFORM_DRIVER_BEGIN(drv_name) \
 static const struct of_device_id drv_name##_irqchip_match_table[] = {
 
 #define IRQCHIP_MATCH(compat, fn) { .compatible = compat, .data = fn },
 
+#ifndef CONFIG_IRQCHIP_XILINX_INTC_MODULE_SUPPORT_EXPERIMENTAL
 #define IRQCHIP_PLATFORM_DRIVER_END(drv_name)				\
 	{},								\
 };									\
@@ -49,6 +53,23 @@ static struct platform_driver drv_name##_driver = {		\
 	},								\
 };									\
 builtin_platform_driver(drv_name##_driver)
+#else
+#define IRQCHIP_PLATFORM_DRIVER_END(drv_name)				\
+	{},								\
+};									\
+MODULE_DEVICE_TABLE(of, drv_name##_irqchip_match_table);		\
+static struct platform_driver drv_name##_driver = {		\
+	.probe  = platform_irqchip_probe,				\
+	.remove = platform_irqchip_remove,              \
+	.driver = {							\
+		.name = #drv_name,					\
+		.owner = THIS_MODULE,					\
+		.of_match_table = drv_name##_irqchip_match_table,	\
+		.suppress_bind_attrs = true,				\
+	},								\
+};									\
+builtin_platform_driver(drv_name##_driver)
+#endif
 
 /*
  * This macro must be used by the different irqchip drivers to declare

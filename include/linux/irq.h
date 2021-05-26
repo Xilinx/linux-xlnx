@@ -1102,6 +1102,21 @@ struct irq_domain_chip_generic {
 	struct irq_chip_generic	*gc[];
 };
 
+#ifdef CONFIG_IRQCHIP_XILINX_INTC_MODULE_SUPPORT_EXPERIMENTAL
+/**
+ * struct irqc_init_remove_funps - Stores function pointers for irqc init
+ * and remove APIs. Used when the irqchip driver is to be used as a module.
+ * @irqchip_initp:	Function pointer for init/entry point of a irqchip driver.
+ * @irqchip_removep:Function pointer for irqchip driver remove function.
+ */
+struct irqc_init_remove_funps {
+	int (*irqchip_initp)(struct device_node *irqc,
+			     struct device_node *parent);
+	int (*irqchip_removep)(struct device_node *irqc,
+			       struct device_node *parent);
+};
+#endif
+
 /* Generic chip callback functions */
 void irq_gc_noop(struct irq_data *d);
 void irq_gc_mask_disable_reg(struct irq_data *d);
