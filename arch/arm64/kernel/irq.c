@@ -84,7 +84,11 @@ static void default_handle_fiq(struct pt_regs *regs)
 void (*handle_arch_irq)(struct pt_regs *) __ro_after_init = default_handle_irq;
 void (*handle_arch_fiq)(struct pt_regs *) __ro_after_init = default_handle_fiq;
 
+#ifndef CONFIG_IRQCHIP_XILINX_INTC_MODULE_SUPPORT_EXPERIMENTAL
 int __init set_handle_irq(void (*handle_irq)(struct pt_regs *))
+#else
+int set_handle_irq(void (*handle_irq)(struct pt_regs *))
+#endif
 {
 	if (handle_arch_irq != default_handle_irq)
 		return -EBUSY;
