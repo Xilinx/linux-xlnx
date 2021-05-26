@@ -43,11 +43,10 @@ extern int platform_irqchip_remove(struct platform_device *pdev);
 
 #define IRQCHIP_PLATFORM_DRIVER_BEGIN(drv_name) \
 static const struct of_device_id drv_name##_irqchip_match_table[] = {
-
+#ifndef CONFIG_IRQCHIP_XILINX_INTC_MODULE_SUPPORT_EXPERIMENTAL
 #define IRQCHIP_MATCH(compat, fn) { .compatible = compat,		\
 				    .data = typecheck_irq_init_cb(fn), },
 
-#ifndef CONFIG_IRQCHIP_XILINX_INTC_MODULE_SUPPORT_EXPERIMENTAL
 #define IRQCHIP_PLATFORM_DRIVER_END(drv_name, ...)			\
 	{},								\
 };									\
@@ -65,6 +64,7 @@ static struct platform_driver drv_name##_driver = {			\
 };									\
 builtin_platform_driver(drv_name##_driver)
 #else
+#define IRQCHIP_MATCH(compat, fn) { .compatible = compat, .data = fn },
 #define IRQCHIP_PLATFORM_DRIVER_END(drv_name)				\
 	{},								\
 };									\
