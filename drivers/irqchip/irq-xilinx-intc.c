@@ -41,6 +41,9 @@ struct xintc_irq_chip {
 	struct		irq_domain *root_domain;
 	u32		intr_mask;
 	u32		nr_irq;
+#ifdef CONFIG_IRQCHIP_XILINX_INTC_MODULE_SUPPORT_EXPERIMENTAL
+	int				irq;
+#endif
 };
 
 static struct xintc_irq_chip *primary_intc;
@@ -165,8 +168,13 @@ static void xil_intc_handle_irq(struct pt_regs *regs)
 	} while (true);
 }
 
+#ifndef CONFIG_IRQCHIP_XILINX_INTC_MODULE_SUPPORT_EXPERIMENTAL
 static int __init xilinx_intc_of_init(struct device_node *intc,
 					     struct device_node *parent)
+#else
+static int xilinx_intc_of_init(struct device_node *intc,
+			       struct device_node *parent)
+#endif
 {
 	struct xintc_irq_chip *irqc;
 	int ret, irq;
@@ -222,6 +230,10 @@ static int __init xilinx_intc_of_init(struct device_node *intc,
 
 	if (parent) {
 		irq = irq_of_parse_and_map(intc, 0);
+#ifdef CONFIG_IRQCHIP_XILINX_INTC_MODULE_SUPPORT_EXPERIMENTAL
+		irqc->irq = irq;
+		intc->data = irqc;
+#endif
 		if (irq) {
 			irq_set_chained_handler_and_data(irq,
 							 xil_intc_irq_handler,
@@ -246,5 +258,63 @@ error:
 
 }
 
+#ifdef CONFIG_IRQCHIP_XILINX_INTC_MODULE_SUPPORT_EXPERIMENTAL
+static int xilinx_intc_of_remove(struct device_node *intc,
+				 struct device_node *parent)
+{
+	int irq;
+	struct xintc_irq_chip *irqc;
+
+	if (!parent)
+		return 0;
+
+	irqc = intc->data;
+	irq = irqc->irq;
+
+	irq_set_chained_handler_and_data(irq, NULL, NULL);
+
+	if (irqc->root_domain) {
+		unsigned int tempirq;
+		unsigned int i;
+
+		for (i = 0; i < irqc->root_domain->mapcount; i++) {
+			tempirq = irq_find_mapping(irqc->root_domain, i);
+			if (tempirq)
+				irq_dispose_mapping(tempirq);
+		}
+		irq_dispose_mapping(irq);
+		irq_domain_remove(irqc->root_domain);
+	}
+
+	/*
+	 * Disable all external interrupts until they are
+	 * explicity requested.
+	 */
+	xintc_write(irqc, IER, 0);
+	/* Acknowledge any pending interrupts just in case. */
+	xintc_write(irqc, IAR, 0xffffffff);
+	/* Turn off the Master Enable. */
+	xintc_write(irqc, MER, 0x0);
+
+	iounmap(irqc->base);
+	kfree(irqc);
+
+	return 0;
+}
+
+static struct irqc_init_remove_funps intc_funps = {
+	.irqchip_initp = xilinx_intc_of_init,
+	.irqchip_removep = xilinx_intc_of_remove,
+};
+
+IRQCHIP_PLATFORM_DRIVER_BEGIN(xilinx_intc_xps)
+IRQCHIP_MATCH("xlnx,xps-intc-1.00.a", &intc_funps)
+IRQCHIP_PLATFORM_DRIVER_END(xilinx_intc_xps)
+
+IRQCHIP_PLATFORM_DRIVER_BEGIN(xilinx_intc_opb)
+IRQCHIP_MATCH("xlnx,opb-intc-1.00.c", &intc_funps)
+IRQCHIP_PLATFORM_DRIVER_END(xilinx_intc_opb)
+#else
 IRQCHIP_DECLARE(xilinx_intc_xps, "xlnx,xps-intc-1.00.a", xilinx_intc_of_init);
 IRQCHIP_DECLARE(xilinx_intc_opb, "xlnx,opb-intc-1.00.c", xilinx_intc_of_init);
+#endif
