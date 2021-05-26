@@ -280,8 +280,13 @@ static void xil_intc_handle_irq(struct pt_regs *regs)
 	} while (1);
 }
 
+#ifndef CONFIG_IRQCHIP_XILINX_INTC_MODULE_SUPPORT_EXPERIMENTAL
 static int __init xilinx_intc_of_init(struct device_node *intc,
 					     struct device_node *parent)
+#else
+static int xilinx_intc_of_init(struct device_node *intc,
+			       struct device_node *parent)
+#endif
 {
 	int ret, irq;
 	struct xintc_irq_chip *irqc;
