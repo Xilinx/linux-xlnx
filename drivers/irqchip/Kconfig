@@ -300,6 +300,13 @@ config XILINX_INTC
 	  with MicroBlaze and Zynq. It is a secondary chained controller when
 	  used with Zynq.
 
+config IRQCHIP_XILINX_INTC_MODULE_SUPPORT_EXPERIMENTAL
+	bool "IRQCHIP Xilinx Intc driver module support (experimental)"
+	depends on XILINX_INTC
+	help
+	  Enable support to load irqchip driver as a module as part of DT overlay.
+	  This is currently supported for XIlinx INTC irqchip driver.
+
 config IRQ_CROSSBAR
 	bool
 	help
