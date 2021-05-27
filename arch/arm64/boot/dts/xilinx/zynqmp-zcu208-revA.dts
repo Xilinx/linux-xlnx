@@ -651,7 +651,7 @@
 
 &psgtr {
 	status = "okay";
-	/* nc, nc, usb3, dp */
+	/* nc, nc, usb3, sata */
 	clocks = <&si5341 0 2>, <&si5341 0 3>;
 	clock-names = "ref2", "ref3";
 };
