@@ -63,6 +63,15 @@ config DRM_XLNX_DSI
 	help
 	  DRM driver for Xilinx MIPI-DSI.
 
+config DRM_XLNX_HDMITX
+	tristate "Xilinx DRM HDMI Subsystem Driver"
+	depends on DRM_XLNX
+	help
+	  DRM driver for Xilinx HDMI Tx Subsystem for FPGA. Choose
+	  this option if you have a FPGA display pipeline that includes
+	  the Xilinx HDMI Tx Subsystem IP. The driver provides
+	  the kernel mode setting functionalities for the IP.
+
 config DRM_XLNX_MIXER
 	tristate "Xilinx DRM Mixer Driver"
 	depends on DRM_XLNX
