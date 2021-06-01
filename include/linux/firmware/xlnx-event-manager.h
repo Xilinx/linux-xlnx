@@ -26,8 +26,8 @@ static inline int xlnx_register_event(const enum pm_api_cb_id cb_type, const u32
 	return -ENODEV;
 }
 
-istatic inline int xlnx_unregister_event(const enum pm_api_cb_id cb_type, const u32 node_id,
-					 const u32 event, event_cb_func_t cb_fun)
+static inline int xlnx_unregister_event(const enum pm_api_cb_id cb_type, const u32 node_id,
+					const u32 event, event_cb_func_t cb_fun)
 {
 	return -ENODEV;
 }
