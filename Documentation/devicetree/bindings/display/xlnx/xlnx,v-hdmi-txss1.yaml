@@ -1,0 +1,146 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/display/xlnx/xlnx,v-hdmi-txss1.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx HDMI Transmitter Subsystem
+
+maintainers:
+  - Venkateshwar Rao Gannavarapu <venkateshwar.rao.gannavarapu@xilinx.com>
+
+description: |
+  The Xilinx HDMI Tx Subsystem contains several subcores to implement
+  a HDMI Transmitter and outputs video data using HDMI protocol.
+  For more details refer to PG350 Xilinx HDMI-2.1 Tx Subsystem.
+
+properties:
+  compatible:
+    items:
+      - enum:
+          - xlnx,v-hdmi-txss1-1.1
+
+  reg:
+    maxItems: 1
+
+  interrupts:
+    maxItems: 1
+
+  clocks:
+    description: List of clock specifiers
+    items:
+      - description: AXI Lite CPU clock
+      - description: Link clock
+      - description: Video clock
+      - description: Fixed Rate Link clock
+      - description: AXI4-Stream Video clock
+
+  clock-names:
+    items:
+      - const: s_axi_cpu_aclk
+      - const: link_clk
+      - const: video_clk
+      - const: frl_clk
+      - const: s_axis_video_aclk
+
+  phys:
+    description: This denotes phandles for phy lanes registered
+                 for HDMI protocol. HDMI always require 4 lanes
+
+  phy-names:
+    items:
+      - const: hdmi-phy0
+      - const: hdmi-phy1
+      - const: hdmi-phy2
+      - const: hdmi-phy3
+
+  xlnx,input-pixels-per-clock:
+    description: Configurable samples per clock.
+                 Possible values are 4, 8.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [4, 8]
+
+  xlnx,max-bits-per-component:
+    description: |
+      Max BPC value that IP configured with. For example if IP is configured
+      with 12 BPC means it supports (8, 10, 12) up to 12bpc.
+      Possible values are 8, 10, 12, 16.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [8, 10, 12, 16]
+
+  xlnx,vid-interface:
+    description: Supported video interface.
+                 Possible values are 0 for AXI4-Stream,
+                 1 for Native and 2 for Native-IDE interface.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0, 1, 2]
+
+  ports:
+    type: object
+
+    properties:
+      port@0:
+        type: object
+        description: |
+          Output / source port node, endpoint describing modules
+          connected the HDMI transmitter
+
+        properties:
+          reg:
+            const: 0
+
+          endpoint:
+            type: object
+
+            properties:
+
+              remote-endpoint: true
+
+            required:
+              - remote-endpoint
+
+required:
+  - compatible
+  - reg
+  - interrupts
+  - clocks
+  - clock-names
+  - phys
+  - phy-names
+  - xlnx,input-pixels-per-clock
+  - xlnx,max-bits-per-component
+  - xlnx,vid-interface
+  - ports
+
+additionalProperties: false
+
+examples:
+  - |
+    v_hdmi_txss1@80020000 {
+        compatible = "xlnx,v-hdmi-txss1-1.1";
+        reg = <0x80020000 0x20000>;
+        interrupts = <0 91 4>;
+        clock-names = "s_axi_cpu_aclk", "link_clk", "video_clk", "frl_clk", "s_axis_video_aclk";
+        clocks = <&zynqmp_clk 71>, <&misc_clk_1>, <&misc_clk_3>, <&misc_clk_4>, <&misc_clk_5>;
+        xlnx,input-pixels-per-clock = <4>;
+        xlnx,max-bits-per-component = <0x8>;
+        xlnx,vid-interface = <0>;
+        phy-names = "hdmi-phy0", "hdmi-phy1", "hdmi-phy2", "hdmi-phy3";
+        phys = <&hdmiphy_lane0 0 1 1 1>, <&hdmiphy_lane1 0 1 1 1>,
+               <&hdmiphy_lane2 0 1 1 1>, <&hdmiphy_lane3 0 1 1 1>;
+        ports {
+            #address-cells = <1>;
+            #size-cells = <0>;
+
+            port@0 {
+                reg = <0>;
+                hdmi_encoder: endpoint {
+                    remote-endpoint = <&dmaengine_crtc>;
+                };
+            };
+        };
+    };
+...
