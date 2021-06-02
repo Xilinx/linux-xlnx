@@ -13,7 +13,8 @@ description: |
   The DisplayPort subsystem is a full feature, hierarchically packaged
   subsystem with a DisplayPort sink(RX). DP RX subsystem can capture
   video data in different formats at different resolutions.
-  For more details, please refer to PG233 at https://www.xilinx.com/support/documentation/ip_documentation/dp_rx_subsystem/v2_1/pg233-displayport-rx-subsystem.pdf
+  For more details, please refer to PG233 at
+  https://www.xilinx.com/support/documentation/ip_documentation/dp_rx_subsystem/v2_1/pg233-displayport-rx-subsystem.pdf
 
 properties:
   compatible:
@@ -139,7 +140,7 @@ required:
   - ports
 
 examples:
- - |
+  - |
    v_dp_rxss1@a0040000 {
        clock-names = "s_axi_aclk", "rx_lnk_clk", "rx_vid_clk" ;
        clocks = <&zynqmp_clk 71>, <&zynqmp_clk 72>;

@@ -12,7 +12,8 @@ maintainers:
 description: |
   The Xilinx DisplayPort Tx Subsystem contains several subcores to implement
   a DisplayPort Transmitter and outputs video data using DisplayPort protocol.
-  For more details, please refer to PG199 at https://www.xilinx.com/support/documentation/ip_documentation/dp_tx_subsystem/v2_1/pg199-displayport-tx-subsystem.pdf
+  For more details, please refer to PG199 at
+  https://www.xilinx.com/support/documentation/ip_documentation/dp_tx_subsystem/v2_1/pg199-displayport-tx-subsystem.pdf
 
 properties:
   compatible:
@@ -133,7 +134,7 @@ required:
 additionalProperties: false
 
 examples:
- - |
+  - |
    bus {
        #address-cells = <2>;
        #size-cells = <2>;

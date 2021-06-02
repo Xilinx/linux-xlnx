@@ -7,7 +7,7 @@ $schema: http://devicetree.org/meta-schemas/core.yaml#
 title: Xilinux AI Engine
 
 maintainers:
- - Wendy Liang <wendy.liang@xilinx.com>
+  - Wendy Liang <wendy.liang@xilinx.com>
 
 description: |+
   The Xilinx AI Engine is a tile processor with many cores (up to 400) that
