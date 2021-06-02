@@ -122,8 +122,8 @@ static int aie_tile_sysfs_create(struct aie_tile *atile)
 	ttype = atile->apart->adev->ops->get_tile_type(&atile->loc);
 
 	if (attr->num_dev_attrs) {
-		dev_attrs = devm_kzalloc(&atile->dev, attr->num_dev_attrs + 1,
-					 GFP_KERNEL);
+		dev_attrs = devm_kzalloc(&atile->dev, sizeof(*dev_attrs) *
+					 (attr->num_dev_attrs + 1), GFP_KERNEL);
 		if (!dev_attrs)
 			return -ENOMEM;
 
@@ -145,8 +145,8 @@ static int aie_tile_sysfs_create(struct aie_tile *atile)
 	}
 
 	if (attr->num_bin_attrs) {
-		bin_attrs = devm_kzalloc(&atile->dev, attr->num_bin_attrs + 1,
-					 GFP_KERNEL);
+		bin_attrs = devm_kzalloc(&atile->dev, sizeof(*bin_attrs) *
+					 (attr->num_bin_attrs + 1), GFP_KERNEL);
 		if (!bin_attrs)
 			return -ENOMEM;
 
@@ -206,8 +206,8 @@ static int aie_part_sysfs_create(struct aie_partition *apart)
 	attr = apart->adev->part_sysfs_attr;
 
 	if (attr->num_dev_attrs) {
-		dev_attrs = devm_kzalloc(&apart->dev, attr->num_dev_attrs + 1,
-					 GFP_KERNEL);
+		dev_attrs = devm_kzalloc(&apart->dev, sizeof(*dev_attrs) *
+					 (attr->num_dev_attrs + 1), GFP_KERNEL);
 		if (!dev_attrs)
 			return -ENOMEM;
 
@@ -226,8 +226,8 @@ static int aie_part_sysfs_create(struct aie_partition *apart)
 	}
 
 	if (attr->num_bin_attrs) {
-		bin_attrs = devm_kzalloc(&apart->dev, attr->num_bin_attrs + 1,
-					 GFP_KERNEL);
+		bin_attrs = devm_kzalloc(&apart->dev, sizeof(*bin_attrs) *
+					 (attr->num_bin_attrs + 1), GFP_KERNEL);
 		if (!bin_attrs)
 			return -ENOMEM;
 
