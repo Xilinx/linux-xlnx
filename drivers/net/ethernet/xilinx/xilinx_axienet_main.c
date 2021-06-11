@@ -1839,7 +1839,7 @@ static int axienet_open(struct net_device *ndev)
 		}
 	}
 
-	if (lp->phy_mode == XXE_PHY_TYPE_USXGMII) {
+	if (lp->phy_mode == PHY_INTERFACE_MODE_USXGMII) {
 		netdev_dbg(ndev, "RX reg: 0x%x\n",
 			   axienet_ior(lp, XXV_RCW1_OFFSET));
 		/* USXGMII setup at selected speed */
@@ -3344,7 +3344,9 @@ static int axienet_probe(struct platform_device *pdev)
 	 *  value as the default.
 	 */
 	lp->phy_mode = PHY_INTERFACE_MODE_NA;
-	of_property_read_u32(pdev->dev.of_node, "xlnx,phy-type", &lp->phy_mode);
+	ret = of_property_read_u32(pdev->dev.of_node, "xlnx,phy-type", &lp->phy_mode);
+	if (!ret)
+		netdev_warn(ndev, "xlnx,phy-type is deprecated, Please upgrade your device tree to use phy-mode");
 
 	/* Set default USXGMII rate */
 	lp->usxgmii_rate = SPEED_1000;
@@ -3564,7 +3566,7 @@ static int axienet_probe(struct platform_device *pdev)
 	if (ret < 0)
 		dev_warn(&pdev->dev, "couldn't find phy i/f\n");
 	lp->phy_interface = ret;
-	if (lp->phy_mode == XAE_PHY_TYPE_1000BASE_X)
+	if (lp->phy_mode == PHY_INTERFACE_MODE_1000BASEX)
 		lp->phy_flags = XAE_PHY_TYPE_1000BASE_X;
 
 	lp->phy_node = of_parse_phandle(pdev->dev.of_node, "phy-handle", 0);
