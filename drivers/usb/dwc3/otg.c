@@ -1972,7 +1972,7 @@ static ssize_t store_hnp(struct device *dev, struct device_attribute *attr,
 	}
 
 	dev_info(dev, "b_hnp_enable is FALSE\n");
-	dwc->gadget.host_request_flag = 1;
+	dwc->gadget->host_request_flag = 1;
 
 	usb_put_phy(phy);
 	return count;
