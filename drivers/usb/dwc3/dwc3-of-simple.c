@@ -188,11 +188,11 @@ void dwc3_simple_wakeup_capable(struct device *dev, bool wakeup)
 
 	/* check for valid parent node */
 	while (node) {
-		if (!of_device_is_compatible(node, "xlnx,zynqmp-dwc3") ||
-		    !of_device_is_compatible(node, "xlnx,versal-dwc3"))
-			node = of_get_next_parent(node);
-		else
+		if (of_device_is_compatible(node, "xlnx,zynqmp-dwc3") ||
+		    of_device_is_compatible(node, "xlnx,versal-dwc3"))
 			break;
+
+		node = of_get_next_parent(node);
 	}
 
 	if (node)  {
