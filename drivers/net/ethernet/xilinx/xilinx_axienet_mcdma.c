@@ -147,19 +147,22 @@ void __maybe_unused axienet_mcdma_rx_bd_free(struct net_device *ndev,
 	int i;
 	struct axienet_local *lp = netdev_priv(ndev);
 
+	if (!q->rxq_bd_v)
+		return;
+
 	for (i = 0; i < lp->rx_bd_num; i++) {
-		dma_unmap_single(ndev->dev.parent, q->rxq_bd_v[i].phys,
-				 lp->max_frm_size, DMA_FROM_DEVICE);
+		if (q->rxq_bd_v[i].phys)
+			dma_unmap_single(ndev->dev.parent, q->rxq_bd_v[i].phys,
+					 lp->max_frm_size, DMA_FROM_DEVICE);
 		dev_kfree_skb((struct sk_buff *)
 			      (q->rxq_bd_v[i].sw_id_offset));
 	}
 
-	if (q->rxq_bd_v) {
-		dma_free_coherent(ndev->dev.parent,
-				  sizeof(*q->rxq_bd_v) * lp->rx_bd_num,
-				  q->rxq_bd_v,
-				  q->rx_bd_p);
-	}
+	dma_free_coherent(ndev->dev.parent,
+			  sizeof(*q->rxq_bd_v) * lp->rx_bd_num,
+			  q->rxq_bd_v,
+			  q->rx_bd_p);
+	q->rxq_bd_v = NULL;
 }
 
 /**
