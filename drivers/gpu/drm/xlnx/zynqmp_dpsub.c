@@ -22,6 +22,9 @@
 #include "zynqmp_dp.h"
 #include "zynqmp_dpsub.h"
 
+#define DP_PCM_NAME_0 "zynqmp_dp_snd_pcm0"
+#define DP_PCM_NAME_1 "zynqmp_dp_snd_pcm1"
+
 static int
 zynqmp_dpsub_bind(struct device *dev, struct device *master, void *data)
 {
@@ -49,6 +52,12 @@ zynqmp_dpsub_unbind(struct device *dev, struct device *master, void *data)
 static const struct component_ops zynqmp_dpsub_component_ops = {
 	.bind	= zynqmp_dpsub_bind,
 	.unbind	= zynqmp_dpsub_unbind,
+};
+
+static struct of_dev_auxdata zynqmp_dpsub_auxdata_lookup[] = {
+	OF_DEV_AUXDATA("xlnx,dp-snd-pcm0", 0, DP_PCM_NAME_0, NULL),
+	OF_DEV_AUXDATA("xlnx,dp-snd-pcm1", 0, DP_PCM_NAME_1, NULL),
+	{ /* end of table */ }
 };
 
 static int zynqmp_dpsub_probe(struct platform_device *pdev)
@@ -84,7 +93,8 @@ static int zynqmp_dpsub_probe(struct platform_device *pdev)
 	of_reserved_mem_device_init(&pdev->dev);
 
 	/* Populate the sound child nodes */
-	ret = of_platform_populate(pdev->dev.of_node, NULL, NULL, &pdev->dev);
+	ret = of_platform_populate(pdev->dev.of_node, NULL,
+				   zynqmp_dpsub_auxdata_lookup, &pdev->dev);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to populate child nodes\n");
 		goto err_rmem;
