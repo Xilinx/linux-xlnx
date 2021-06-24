@@ -452,6 +452,7 @@ static void zynqmp_disp_blend_layer_coeff(struct zynqmp_disp_blend *blend,
 	u32 sdtv_offsets_yonly[] = { 0x1800, 0x1800, 0x0 };
 	u32 null_offsets[] = { 0x0, 0x0, 0x0 };
 	u32 *offsets;
+	struct zynqmp_disp *display = layer->disp;
 
 	if (layer->id == ZYNQMP_DISP_LAYER_VID)
 		offset = ZYNQMP_DISP_V_BLEND_IN1CSC_COEFF0;
@@ -462,7 +463,7 @@ static void zynqmp_disp_blend_layer_coeff(struct zynqmp_disp_blend *blend,
 		coeffs = null_coeffs;
 		offsets = null_offsets;
 	} else {
-		if (!layer->fmt->rgb) {
+		if ((!layer->fmt->rgb) && (!display->tpg_on)) {
 			/*
 			 * In case of Y_ONLY formats, pixels are unpacked
 			 * differently compared to YCbCr
@@ -1617,9 +1618,8 @@ static int zynqmp_disp_layer_set_tpg(struct zynqmp_disp *disp,
 		return -EIO;
 	}
 
-	zynqmp_disp_blend_layer_coeff(&disp->blend, layer, tpg_on);
-	zynqmp_disp_av_buf_set_tpg(&disp->av_buf, tpg_on);
 	disp->tpg_on = tpg_on;
+	zynqmp_disp_av_buf_set_tpg(&disp->av_buf, tpg_on);
 
 	return 0;
 }
