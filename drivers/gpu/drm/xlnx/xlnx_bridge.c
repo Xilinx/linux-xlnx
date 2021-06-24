@@ -311,7 +311,7 @@ static ssize_t xlnx_bridge_debugfs_read(struct file *f, char __user *buf,
 					size_t size, loff_t *pos)
 {
 	struct xlnx_bridge *bridge = f->f_inode->i_private;
-	int ret;
+	int ret, count = 0;
 
 	if (size <= 0)
 		return -EINVAL;
@@ -319,13 +319,14 @@ static ssize_t xlnx_bridge_debugfs_read(struct file *f, char __user *buf,
 	if (*pos != 0)
 		return 0;
 
-	size = min(size, strlen(bridge->debugfs_file->status));
-	ret = copy_to_user(buf, bridge->debugfs_file->status, size);
-	if (ret)
-		return ret;
+	if (bridge->debugfs_file->status) {
+		count = min(size, strlen(bridge->debugfs_file->status));
+		ret = copy_to_user(buf, bridge->debugfs_file->status, count);
+		if (ret)
+			count = -EFAULT;
+	}
 
-	*pos = size + 1;
-	return size;
+	return count;
 }
 
 static ssize_t xlnx_bridge_debugfs_write(struct file *f, const char __user *buf,
