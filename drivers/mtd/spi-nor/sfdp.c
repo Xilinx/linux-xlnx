@@ -1179,11 +1179,18 @@ int spi_nor_parse_sfdp(struct spi_nor *nor,
 		case SFDP_SECTOR_MAP_ID:
 			err = spi_nor_parse_smpt(nor, param_header, params);
 			break;
-
+#ifdef CONFIG_OF
 		case SFDP_4BAIT_ID:
-			err = spi_nor_parse_4bait(nor, param_header, params);
-			break;
+			{
+				struct device_node *np = spi_nor_get_flash_node(nor);
+				struct device_node *np_spi = of_get_next_parent(np);
 
+				if (of_property_match_string(np_spi, "compatible",
+							     "xlnx,zynq-qspi-1.0") < 0)
+					err = spi_nor_parse_4bait(nor, param_header, params);
+			}
+			break;
+#endif
 		default:
 			break;
 		}
