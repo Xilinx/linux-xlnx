@@ -119,6 +119,7 @@
 #include <net/compat.h>
 
 #include <trace/events/sock.h>
+#include <xen/pvcalls.h>
 
 /* The inetsw table contains everything that inet_create needs to
  * build a new socket.
@@ -1987,6 +1988,11 @@ static int __init inet_init(void)
 	/* Register the socket-side information for inet_create. */
 	for (r = &inetsw[0]; r < &inetsw[SOCK_MAX]; ++r)
 		INIT_LIST_HEAD(r);
+
+	if (pvcalls) {
+		pr_info("Enabling pvcalls for AF_INET SOCK_STREAM\n");
+		inetsw_array[0].ops = &pvcalls_stream_ops;
+	}
 
 	for (q = inetsw_array; q < &inetsw_array[INETSW_ARRAY_LEN]; ++q)
 		inet_register_protosw(q);
