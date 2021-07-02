@@ -150,7 +150,7 @@ static int zynqmp_aes_xcrypt(struct skcipher_request *req, unsigned int flags)
 		abuf->key = 0;
 	}
 
-	zynqmp_pm_aes_engine(dma_addr_buf, &ret);
+	zynqmp_pm_aes_engine(dma_addr_buf, (u32 *)&ret);
 
 	if (ret != 0) {
 		switch (ret) {
