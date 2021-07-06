@@ -408,6 +408,7 @@ struct ap1302_device {
 	struct media_pad pads[AP1302_PAD_MAX];
 	struct ap1302_format formats[AP1302_PAD_MAX];
 	unsigned int width_factor;
+	bool streaming;
 
 	struct v4l2_ctrl_handler ctrls;
 
@@ -1211,8 +1212,10 @@ static int ap1302_stall(struct ap1302_device *ap1302, bool stall)
 		if (ret < 0)
 			return ret;
 
+		ap1302->streaming = false;
 		return 0;
 	} else {
+		ap1302->streaming = true;
 		return ap1302_write(ap1302, AP1302_SYS_START,
 				    AP1302_SYS_START_PLL_LOCK |
 				    AP1302_SYS_START_STALL_STATUS |
@@ -1669,6 +1672,9 @@ static int ap1302_s_stream(struct v4l2_subdev *sd, int enable)
 	int ret;
 
 	mutex_lock(&ap1302->lock);
+
+	if (enable == ap1302->streaming)
+		goto done;
 
 	if (enable) {
 		ret = ap1302_configure(ap1302);
