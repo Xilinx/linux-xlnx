@@ -47,6 +47,8 @@
 #define DRIVER_MAJOR	1
 #define DRIVER_MINOR	0
 
+#define MAX_CRTC	3
+
 static uint xlnx_fbdev_vres = 2;
 module_param_named(fbdev_vres, xlnx_fbdev_vres, uint, 0444);
 MODULE_PARM_DESC(fbdev_vres,
@@ -242,7 +244,7 @@ static int xlnx_bind(struct device *dev)
 	drm_mode_config_init(drm);
 	drm->mode_config.funcs = &xlnx_mode_config_funcs;
 
-	ret = drm_vblank_init(drm, 1);
+	ret = drm_vblank_init(drm, MAX_CRTC);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to initialize vblank\n");
 		goto err_xlnx_drm;
