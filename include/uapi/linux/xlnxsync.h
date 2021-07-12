@@ -3,6 +3,8 @@
 #ifndef __XLNXSYNC_H__
 #define __XLNXSYNC_H__
 
+#include <linux/types.h>
+
 #define XLNXSYNC_IOCTL_HDR_VER		0x10004
 
 /*
@@ -32,12 +34,12 @@
  * @cdiff: Chroma buffer difference interrupt
  */
 struct xlnxsync_err_intr {
-	u8 prod_sync : 1;
-	u8 prod_wdg : 1;
-	u8 cons_sync : 1;
-	u8 cons_wdg : 1;
-	u8 ldiff : 1;
-	u8 cdiff : 1;
+	__u8 prod_sync : 1;
+	__u8 prod_wdg : 1;
+	__u8 cons_sync : 1;
+	__u8 cons_wdg : 1;
+	__u8 ldiff : 1;
+	__u8 cdiff : 1;
 };
 
 /**
@@ -50,12 +52,12 @@ struct xlnxsync_err_intr {
  * @cons_cfbdone: Consumer chroma frame buffer done interrupt
  */
 struct xlnxsync_intr {
-	u64 hdr_ver;
+	__u64 hdr_ver;
 	struct xlnxsync_err_intr err;
-	u8 prod_lfbdone : 1;
-	u8 prod_cfbdone : 1;
-	u8 cons_lfbdone : 1;
-	u8 cons_cfbdone : 1;
+	__u8 prod_lfbdone : 1;
+	__u8 prod_cfbdone : 1;
+	__u8 cons_lfbdone : 1;
+	__u8 cons_cfbdone : 1;
 };
 
 /**
@@ -78,18 +80,18 @@ struct xlnxsync_intr {
  * framebuffer on a particular channel.
  */
 struct xlnxsync_chan_config {
-	u64 hdr_ver;
-	u64 luma_start_offset[XLNXSYNC_IO];
-	u64 chroma_start_offset[XLNXSYNC_IO];
-	u64 luma_end_offset[XLNXSYNC_IO];
-	u64 chroma_end_offset[XLNXSYNC_IO];
-	u32 luma_margin;
-	u32 chroma_margin;
-	u32 luma_core_offset[XLNXSYNC_MAX_CORES];
-	u32 chroma_core_offset[XLNXSYNC_MAX_CORES];
-	u32 dma_fd;
-	u8 fb_id[XLNXSYNC_IO];
-	u8 ismono[XLNXSYNC_IO];
+	__u64 hdr_ver;
+	__u64 luma_start_offset[XLNXSYNC_IO];
+	__u64 chroma_start_offset[XLNXSYNC_IO];
+	__u64 luma_end_offset[XLNXSYNC_IO];
+	__u64 chroma_end_offset[XLNXSYNC_IO];
+	__u32 luma_margin;
+	__u32 chroma_margin;
+	__u32 luma_core_offset[XLNXSYNC_MAX_CORES];
+	__u32 chroma_core_offset[XLNXSYNC_MAX_CORES];
+	__u32 dma_fd;
+	__u8 fb_id[XLNXSYNC_IO];
+	__u8 ismono[XLNXSYNC_IO];
 };
 
 /**
@@ -98,7 +100,7 @@ struct xlnxsync_chan_config {
  * @err: Structure for error interrupts
  */
 struct xlnxsync_clr_err {
-	u64 hdr_ver;
+	__u64 hdr_ver;
 	struct xlnxsync_err_intr err;
 };
 
@@ -108,8 +110,8 @@ struct xlnxsync_clr_err {
  * @status: Framebuffer Done status
  */
 struct xlnxsync_fbdone {
-	u64 hdr_ver;
-	u8 status[XLNXSYNC_BUF_PER_CHAN][XLNXSYNC_IO];
+	__u64 hdr_ver;
+	__u8 status[XLNXSYNC_BUF_PER_CHAN][XLNXSYNC_IO];
 };
 
 /**
@@ -121,12 +123,12 @@ struct xlnxsync_fbdone {
  * @reserved_id: Reserved channel ID for instance
  */
 struct xlnxsync_config {
-	u64	hdr_ver;
-	u8	encode;
-	u8	max_channels;
-	u8	active_channels;
-	u8	reserved_id;
-	u32	reserved[10];
+	__u64	hdr_ver;
+	__u8	encode;
+	__u8	max_channels;
+	__u8	active_channels;
+	__u8	reserved_id;
+	__u32	reserved[10];
 };
 
 /**
@@ -137,9 +139,9 @@ struct xlnxsync_config {
  * @err: Structure for error interrupts
  */
 struct xlnxsync_stat {
-	u64 hdr_ver;
-	u8 fbdone[XLNXSYNC_BUF_PER_CHAN][XLNXSYNC_IO];
-	u8 enable;
+	__u64 hdr_ver;
+	__u8 fbdone[XLNXSYNC_BUF_PER_CHAN][XLNXSYNC_IO];
+	__u8 enable;
 	struct xlnxsync_err_intr err;
 };
 
@@ -152,7 +154,7 @@ struct xlnxsync_stat {
 #define XLNXSYNC_GET_CFG		_IOR(XLNXSYNC_MAGIC, 1,\
 					     struct xlnxsync_config *)
 /* This ioctl is used to get the channel status */
-#define XLNXSYNC_CHAN_GET_STATUS	_IOR(XLNXSYNC_MAGIC, 2, u32 *)
+#define XLNXSYNC_CHAN_GET_STATUS	_IOR(XLNXSYNC_MAGIC, 2, __u32 *)
 /* This is used to set the framebuffer address for a channel */
 #define XLNXSYNC_CHAN_SET_CONFIG	_IOW(XLNXSYNC_MAGIC, 3,\
 					     struct xlnxsync_chan_config *)
