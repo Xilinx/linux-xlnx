@@ -11,6 +11,7 @@
 #ifndef __XLNX_MPG2TSMUX_INTERFACE_H__
 #define __XLNX_MPG2TSMUX_INTERFACE_H__
 
+#include <linux/types.h>
 #include <linux/ioctl.h>
 
 /**
@@ -55,20 +56,20 @@ enum ts_mux_command {
  */
 struct stream_context_in {
 	enum ts_mux_command command;
-	u8 stream_id;
-	u8 extended_stream_id;
-	bool is_pcr_stream;
-	bool is_valid_pts;
-	bool is_valid_dts;
-	bool is_dmabuf;
-	u16 pid;
-	u64 size_data_in;
-	u64 pts;
-	u64 dts;
-	u32 srcbuf_id;
-	bool insert_pcr;
-	u16 pcr_extension;
-	u64 pcr_base;
+	__u8 stream_id;
+	__u8 extended_stream_id;
+	int is_pcr_stream;
+	int is_valid_pts;
+	int is_valid_dts;
+	int is_dmabuf;
+	__u16 pid;
+	__u64 size_data_in;
+	__u64 pts;
+	__u64 dts;
+	__u32 srcbuf_id;
+	int insert_pcr;
+	__u16 pcr_extension;
+	__u64 pcr_base;
 };
 
 /**
@@ -78,9 +79,9 @@ struct stream_context_in {
  * @dmabuf_size: size in bytes of output buffer
  */
 struct muxer_context_in {
-	bool is_dmabuf;
-	u32 dstbuf_id;
-	u32 dmabuf_size;
+	int is_dmabuf;
+	__u32 dstbuf_id;
+	__u32 dmabuf_size;
 };
 
 /**
@@ -101,8 +102,8 @@ enum xlnx_tsmux_status {
  * @buf_size: size of each buffer
  */
 struct strc_bufs_info {
-	u32 num_buf;
-	u32 buf_size;
+	__u32 num_buf;
+	__u32 buf_size;
 };
 
 /**
@@ -111,8 +112,8 @@ struct strc_bufs_info {
  * @buf_write: output bytes written in buf
  */
 struct out_buffer {
-	u32 buf_id;
-	u32 buf_write;
+	__u32 buf_id;
+	__u32 buf_write;
 };
 
 /**
@@ -134,7 +135,7 @@ enum strmtbl_cnxt {
  */
 struct strc_strminfo {
 	enum strmtbl_cnxt strmtbl_ctxt;
-	u16 pid;
+	__u16 pid;
 };
 
 /**
