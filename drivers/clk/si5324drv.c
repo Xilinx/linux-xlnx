@@ -151,12 +151,13 @@ static int si5324_find_n2ls(struct si5324_settingst *settings)
 				SI5324_FIN_FOUT_SHIFT)) {
 			pr_debug("Fout frequency out of range.\n");
 		} else {
+			u64 divident = fosc_actual >> SI5324_FIN_FOUT_SHIFT;
+
 			pr_debug("Found solution: fout = %dHz delta = %dHz.\n",
 				 (u32)(fout_actual >> SI5324_FIN_FOUT_SHIFT),
 				 (u32)(delta_fout >> SI5324_FIN_FOUT_SHIFT));
 			pr_debug("fosc = %dkHz f3 = %dHz.\n",
-				 (u32)((fosc_actual >> SI5324_FIN_FOUT_SHIFT) /
-				       1000),
+				 (u32)(do_div(divident, 1000)),
 				 (u32)(f3_actual >> SI5324_FIN_FOUT_SHIFT));
 
 			if (((u64)abs(delta_fout)) <
