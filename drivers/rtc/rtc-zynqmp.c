@@ -193,9 +193,10 @@ static void xlnx_init_rtc(struct xlnx_rtc_dev *xrtcdev)
 static int xlnx_rtc_read_offset(struct device *dev, long *offset)
 {
 	struct xlnx_rtc_dev *xrtcdev = dev_get_drvdata(dev);
+	unsigned long long rtc_ppb = RTC_PPB;
 	long offset_val;
 	unsigned int reg;
-	unsigned int tick_mult = RTC_PPB / xrtcdev->calibval;
+	unsigned int tick_mult = do_div(rtc_ppb, xrtcdev->calibval);
 
 	reg = readl(xrtcdev->reg_base + RTC_CALIB_RD);
 
@@ -216,11 +217,12 @@ static int xlnx_rtc_read_offset(struct device *dev, long *offset)
 static int xlnx_rtc_set_offset(struct device *dev, long offset)
 {
 	struct xlnx_rtc_dev *xrtcdev = dev_get_drvdata(dev);
+	unsigned long long rtc_ppb = RTC_PPB;
 	short int  max_tick;
 	unsigned char fract_tick = 0;
 	unsigned int calibval;
 	int fract_offset;
-	unsigned int tick_mult = RTC_PPB / xrtcdev->calibval;
+	unsigned int tick_mult = do_div(rtc_ppb, xrtcdev->calibval);
 
 	/* Make sure offset value is within supported range */
 	if (offset < RTC_OFFSET_MIN || offset > RTC_OFFSET_MAX)
