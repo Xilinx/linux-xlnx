@@ -326,7 +326,7 @@ struct cqspi_driver_platdata {
 #define CQSPI_RESET_TYPE_HWPIN		0
 #define CQSPI_READ_ID			0x9F
 #define CQSPI_READ_ID_LEN		6
-#define TERA_MACRO			1000000000000l
+#define TERA_MACRO			1000000000000ULL
 #define SILICON_VER_MASK		0xFF
 #define SILICON_VER_1			0x10
 #define CQSPI_DLL_MODE_MASTER		0
@@ -1363,6 +1363,7 @@ static int cqspi_setdlldelay(struct spi_mem *mem)
 	u8 dummy_flag = 0;
 	u32 reg;
 	u8 count;
+	u64 tera_macro = TERA_MACRO;
 	u8 max_index = 0, min_index = 0;
 	struct spi_mem_op op =
 			SPI_MEM_OP(SPI_MEM_OP_CMD(CQSPI_READ_ID, 8),
@@ -1375,7 +1376,7 @@ static int cqspi_setdlldelay(struct spi_mem *mem)
 		return ret;
 
 	f_pdata = &cqspi->f_pdata[mem->spi->chip_select];
-	max_tap = ((TERA_MACRO / cqspi->master_ref_clk_hz) / 160);
+	max_tap = (do_div(tera_macro, cqspi->master_ref_clk_hz) / 160);
 	if (cqspi->dll_mode == CQSPI_DLL_MODE_MASTER) {
 		/* Drive DLL reset bit to low */
 		writel(0, cqspi->iobase + CQSPI_REG_PHY_CONFIG);
