@@ -24,15 +24,15 @@
 
 /*
  * TODO: to be made static as well, so that multiple instances can be used. As
- * of now, the "lp" structure is shared among the multiple source files
+ * of now, the "xroe_lp" structure is shared among the multiple source files
  */
-struct framer_local *lp;
+struct framer_local *xroe_lp;
 static struct platform_driver framer_driver;
 /*
  * TODO: placeholder for the IRQ once it's been implemented
  * in the framer block
  */
-static irqreturn_t framer_irq(int irq, void *lp)
+static irqreturn_t framer_irq(int irq, void *xroe_lp)
 {
 	return IRQ_HANDLED;
 }
@@ -54,17 +54,17 @@ static int framer_probe(struct platform_device *pdev)
 	int rc = 0;
 
 	dev_dbg(dev, "Device Tree Probing\n");
-	lp = devm_kzalloc(&pdev->dev, sizeof(*lp), GFP_KERNEL);
-	if (!lp)
+	xroe_lp = devm_kzalloc(&pdev->dev, sizeof(*xroe_lp), GFP_KERNEL);
+	if (!xroe_lp)
 		return -ENOMEM;
 
 	/* Get iospace for the device */
 	r_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	lp->base_addr = devm_ioremap_resource(&pdev->dev, r_mem);
-	if (IS_ERR(lp->base_addr))
-		return PTR_ERR(lp->base_addr);
+	xroe_lp->base_addr = devm_ioremap_resource(&pdev->dev, r_mem);
+	if (IS_ERR(xroe_lp->base_addr))
+		return PTR_ERR(xroe_lp->base_addr);
 
-	dev_set_drvdata(dev, lp);
+	dev_set_drvdata(dev, xroe_lp);
 	xroe_sysfs_init();
 	/* Get IRQ for the device */
 	/*
@@ -81,10 +81,10 @@ static int framer_probe(struct platform_device *pdev)
 		 */
 		return 0;
 	}
-	rc = devm_request_irq(dev, lp->irq, &framer_irq, 0, DRIVER_NAME, lp);
+	rc = devm_request_irq(dev, xroe_lp->irq, &framer_irq, 0, DRIVER_NAME, xroe_lp);
 	if (rc) {
 		dev_err(dev, "testmodule: Could not allocate interrupt %d.\n",
-			lp->irq);
+			xroe_lp->irq);
 		/*
 		 * TODO: Return non-zero (error) code on no IRQ found.
 		 * To be implemented once the IRQ is in the block
