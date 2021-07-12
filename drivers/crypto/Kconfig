@@ -761,7 +761,7 @@ config CRYPTO_DEV_ROCKCHIP
 
 config CRYPTO_DEV_ZYNQMP_SHA3
 	tristate "Support for Xilinx ZynqMP SHA3 hw accelerator"
-	depends on ARCH_ZYNQMP || COMPILE_TEST
+	depends on ARCH_ZYNQMP
 	select CRYPTO_HASH
 	help
 	  Xilinx processors have SHA384 engine used for calculation
