@@ -7,6 +7,7 @@
  */
 
 #include <linux/clk.h>
+#include <linux/bitfield.h>
 #include <linux/firmware.h>
 #include <linux/of.h>
 #include <linux/phy/phy.h>
