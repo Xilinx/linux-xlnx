@@ -777,13 +777,13 @@ static inline int zynqmp_pm_sd_dll_reset(u32 node_id, u32 type)
 	return -ENODEV;
 }
 
-static inline int zynqmp_pm_reset_assert(const enum zynqmp_pm_reset reset,
+static inline int zynqmp_pm_reset_assert(const u32 reset,
 					 const enum zynqmp_pm_reset_action assert_flag)
 {
 	return -ENODEV;
 }
 
-static inline int zynqmp_pm_reset_get_status(const enum zynqmp_pm_reset reset,
+static inline int zynqmp_pm_reset_get_status(const u32 reset,
 					     u32 *status)
 {
 	return -ENODEV;
@@ -865,7 +865,7 @@ static inline int zynqmp_pm_read_pggs(u32 index, u32 *value)
 	return -ENODEV;
 }
 
-static inline int zynqmp_pm_usb_set_state(u32 state, u32 value)
+static inline int zynqmp_pm_usb_set_state(u32 node, u32 state, u32 value)
 {
 	return -ENODEV;
 }
@@ -1068,7 +1068,7 @@ static inline int zynqmp_pm_probe_counter_read(u32 deviceid, u32 reg, u32 *value
 	return -ENODEV;
 }
 
-static inline int zynqmp_pm_probe_counter_write(u32 reg, u32 value)
+static inline int zynqmp_pm_probe_counter_write(u32 domain, u32 reg, u32 value)
 {
 	return -ENODEV;
 }
