@@ -57,7 +57,7 @@ aie_sysfs_create_dev_attr(struct device *dev, const struct aie_dev_attr *attr)
 	if (!node)
 		return ERR_PTR(-ENOMEM);
 
-	sysfs_attr_init(node);
+	sysfs_attr_init(&node->attr);
 
 	node->attr.name = attr->name;
 	node->attr.mode = attr->mode;
