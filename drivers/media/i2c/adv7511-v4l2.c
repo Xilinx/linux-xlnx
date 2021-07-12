@@ -424,7 +424,7 @@ static void adv7511_set_rgb_quantization_mode(struct v4l2_subdev *sd, struct v4l
 	struct adv7511_state *state = get_adv7511_state(sd);
 
 #ifdef XYLON_LOGICVC_INTG
-	return 0;
+	return;
 #endif
 
 	/* Only makes sense for RGB formats */
