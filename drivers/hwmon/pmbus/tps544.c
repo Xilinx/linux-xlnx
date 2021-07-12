@@ -62,9 +62,9 @@ static const struct vlut tps544_vout[3] = {
 };
 #endif
 
-static int tps544_read_word_data(struct i2c_client *client, int page, int reg)
+static int tps544_read_word_data(struct i2c_client *client, int page, int phase, int reg)
 {
-	return pmbus_read_word_data(client, page, reg);
+	return pmbus_read_word_data(client, page, phase, reg);
 }
 
 static int tps544_read_byte_data(struct i2c_client *client, int page, int reg)
@@ -95,7 +95,7 @@ static int tps544_regulator_get_voltage(struct regulator_dev *rdev)
 	struct i2c_client *client = to_i2c_client(dev->parent);
 	int page = 0;
 
-	return pmbus_read_word_data(client, page, PMBUS_READ_VOUT);
+	return pmbus_read_word_data(client, page, 0xff, PMBUS_READ_VOUT);
 }
 
 static int tps544_regulator_set_voltage(struct regulator_dev *rdev, int min_uV,
@@ -200,7 +200,7 @@ static ssize_t tps544_geti_show(struct device *dev,
 	struct i2c_client *client = to_i2c_client(dev->parent);
 	u16 reg_iout;
 
-	reg_iout = pmbus_read_word_data(client, 0, PMBUS_READ_IOUT) &
+	reg_iout = pmbus_read_word_data(client, 0, 0xff, PMBUS_READ_IOUT) &
 			TPS544_IOUTREAD_MASK;
 
 	return sprintf(buf, "%d\n", reg_iout * TPS544_IOUTREAD_MULTIPLIER);
@@ -214,7 +214,7 @@ static ssize_t tps544_setcali_show(struct device *dev,
 	struct i2c_client *client = to_i2c_client(dev->parent);
 	int reg_cali;
 
-	reg_cali = pmbus_read_word_data(client, 0, TPS544_MFR_IOUT_CAL_OFFSET);
+	reg_cali = pmbus_read_word_data(client, 0, 0xff, TPS544_MFR_IOUT_CAL_OFFSET);
 
 	return sprintf(buf, "Current: 0x%x; Set value in hex to calibrate\n",
 		       reg_cali);
@@ -256,8 +256,7 @@ static const struct regulator_desc tps544_reg_desc[] = {
 };
 #endif /* CONFIG_SENSORS_TPS544_REGULATOR */
 
-static int tps544_probe(struct i2c_client *client,
-			const struct i2c_device_id *id)
+static int tps544_probe(struct i2c_client *client)
 {
 	unsigned int i;
 	struct device *dev = &client->dev;
@@ -317,7 +316,7 @@ static int tps544_probe(struct i2c_client *client,
 	dev_set_drvdata(dev, rdev);
 #endif
 
-	return pmbus_do_probe(client, id, info);
+	return pmbus_do_probe(client, info);
 }
 
 static int tps544_remove(struct i2c_client *client)
@@ -328,7 +327,6 @@ static int tps544_remove(struct i2c_client *client)
 
 	sysfs_remove_groups(&rdev->dev.kobj, reg_groups);
 #endif
-	pmbus_do_remove(client);
 
 	return 0;
 }
@@ -352,7 +350,7 @@ static struct i2c_driver tps544_driver = {
 		.name = "tps544",
 		.of_match_table = of_match_ptr(tps544_of_match),
 	},
-	.probe = tps544_probe,
+	.probe_new = tps544_probe,
 	.remove = tps544_remove,
 	.id_table = tps544_id,
 };
