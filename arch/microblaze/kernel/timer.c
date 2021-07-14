@@ -309,7 +309,7 @@ static int __init xilinx_timer_init(struct device_node *timer)
 	bool clocksource = false;
 	bool clockevent = false;
 
-	ret = of_property_read_u32(timer, "cpu-id", &cpu_id);
+	ret = of_property_read_u32(timer, "cpu-id", (u32 *)&cpu_id);
 	if (!ret && NR_CPUS > 1) {
 		/* cpu_id will say if this is clocksource or clockevent */
 		if (cpu_id >= NR_CPUS)
