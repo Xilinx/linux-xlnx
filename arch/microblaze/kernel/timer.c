@@ -324,7 +324,14 @@ static int __init xilinx_timer_init(struct device_node *timer)
 
 	if (clocksource) {
 		/* TODO Add support for clocksource from one timer only */
-		of_property_read_u32(timer, "xlnx,one-timer-only", &timer_num);
+		ret = of_property_read_u32(timer, "xlnx,one-timer-only",
+					   &timer_num);
+		if (ret) {
+			pr_err("%pOF: missing %s property\n",
+				timer, "xlnx,one-timer-only");
+			return -EINVAL;
+		}
+
 		if (timer_num) {
 			pr_err("%pOF: Please enable two timers in HW\n", timer);
 			return -EINVAL;
