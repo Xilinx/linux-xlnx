@@ -334,6 +334,37 @@ struct aie_rsc_bc_req {
 	__u32 id;
 };
 
+/* AI engine resource statistics types */
+#define AIE_RSC_STAT_TYPE_STATIC	0U
+#define AIE_RSC_STAT_TYPE_AVAIL		1U
+#define AIE_RSC_STAT_TYPE_MAX		2U
+
+/**
+ * struct aie_rsc_user_stat - AIE user requested resource statistics
+ * @loc: tile location, single byte for column and row each
+ * @mod: module type
+ * @type: resource type
+ * @num_rscs: number of resources
+ */
+struct aie_rsc_user_stat {
+	struct aie_location_byte loc;
+	__u8 mod;
+	__u8 type;
+	__u8 num_rscs;
+} __attribute__((packed, aligned(4)));
+
+/**
+ * struct aie_rsc_user_stat_array - AIE user requested resource statistics array
+ * @stats: resource statistics array
+ * @num_stats: number of resource statistics elements
+ * @stats_type: resource statistics type
+ */
+struct aie_rsc_user_stat_array {
+	__u64 stats;
+	__u32 num_stats;
+	__u32 stats_type;
+};
+
 #define AIE_IOCTL_BASE 'A'
 
 /* AI engine device IOCTL operations */
@@ -529,5 +560,17 @@ struct aie_rsc_bc_req {
  */
 #define AIE_RSC_GET_COMMON_BROADCAST_IOCTL	_IOW(AIE_IOCTL_BASE, 0x19, \
 						struct aie_rsc_bc_req)
+
+/**
+ * DOC: AIE_RSC_GET_STAT_IOCTL - get resource usage statistics
+ *
+ * This ioctl is used to get resource usage statistics. User passes an array of
+ * resource statistics requests and the resources statistics type that is if it
+ * is statically allocated or available resources. Each request specifies the
+ * tile, module type and the resource type. This ioctl returns the number of
+ * resources of the specified statistics type per request.
+ */
+#define AIE_RSC_GET_STAT_IOCTL		_IOW(AIE_IOCTL_BASE, 0x1a, \
+					struct aie_rsc_user_stat_array)
 
 #endif

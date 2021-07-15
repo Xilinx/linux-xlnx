@@ -32,6 +32,15 @@
 #define AIE_RSC_BITMAP_HEAD_VAL(N, v) \
 	(((v) & AIE_RSC_BITMAP_##N ##_MASK) >> AIE_RSC_BITMAP_##N ##_BITSHIFT)
 
+/*
+ * enum for AI engine resource bitmap allocation types
+ */
+enum aie_rsc_alloc_type {
+	AIE_RSC_ALLOC_STATIC = 0,
+	AIE_RSC_ALLOC_AVAIL = 1,
+	AIE_RSC_ALLOC_MAX = 2
+};
+
 /**
  * struct aie_rsc_meta_header - struct of a resource bitmaps meta data header
  * @stat: statistics information of the bitmaps, such as number of bitmaps
@@ -1367,6 +1376,159 @@ int aie_part_rscmgr_set_static(struct aie_partition *apart, void *meta)
 		bitmap = (struct aie_rsc_bitmap *)((void *)bitmap +
 						   sizeof(header) +
 						   rlen * sizeof(u64));
+	}
+
+	return 0;
+}
+
+/**
+ * aie_part_rscmgr_check_static() - check the number of static resources
+ *
+ * @rstat: resource statistics structure which contains bitmaps of a resource
+ *	   type of a module type of a tile type.
+ * @sbit: start bit of the resource bitmap of a tile of a module
+ * @total: number of total resources bits to check
+ *
+ * @return: number of static resources
+ *
+ * This function returns the number of static resources of a resource
+ * bitmap.
+ */
+static int aie_part_rscmgr_check_static(struct aie_rsc_stat *rstat,
+					u32 sbit, u32 total)
+{
+	u32 i;
+	int num_static = 0;
+
+	for (i = sbit; i < sbit + total; i++) {
+		if (aie_resource_testbit(&rstat->sbits, i))
+			num_static++;
+	}
+
+	return num_static;
+}
+
+/**
+ * aie_part_rscmgr_check_avail() - check the number of available resources
+ *
+ * @rstat: resource statistics structure which contains bitmaps of a resource
+ *	   type of a module type of a tile type.
+ * @sbit: start bit of the resource bitmap of a tile of a module
+ * @total: number of total resources bits to check
+ *
+ * @return: number of available resources for success, negative value for
+ *	    failure
+ *
+ * This function returns the number of available resources of a resource
+ * bitmap.
+ */
+static int aie_part_rscmgr_check_avail(struct aie_rsc_stat *rstat,
+				       u32 sbit, u32 total)
+{
+	return aie_resource_check_common_avail(&rstat->rbits,
+					       &rstat->sbits,
+					       sbit, total);
+}
+
+/**
+ * aie_part_rscmgr_get_statistics() - get resource statistics based on user
+ *				      request
+ *
+ * @apart: AI engine partition
+ * @user_args: user resource statistics request. it contains the number of
+ *	       resource statistics wants to get followed by the statistics
+ *	       array and the statistics type to specify if it is for static
+ *	       allocated resources or available resources. Each statistics
+ *	       element contains the tile location, module type and the resource
+ *	       type.
+ *
+ * @return: 0 for success, negative value for failure
+ *
+ * This function returns the resource statistics based on the user request.
+ * If user requests for available resource statistics, it returns the number
+ * of available resources of each resource statistics entry. If user requests
+ * for static resources statistics, it returns the number of static resources
+ * of each resource statistics entry.
+ */
+long aie_part_rscmgr_get_statistics(struct aie_partition *apart,
+				    void __user *user_args)
+{
+	struct aie_rsc_user_stat_array args;
+	struct aie_rsc_user_stat __user *ustat_ptr;
+	u32 i;
+
+	if (copy_from_user(&args, user_args, sizeof(args)))
+		return -EFAULT;
+
+	if (args.stats_type >= AIE_RSC_STAT_TYPE_MAX) {
+		dev_err(&apart->dev,
+			"get rsc statistics failed, invalid rsc stat type %u.\n",
+			args.stats_type);
+		return -EINVAL;
+	}
+
+	ustat_ptr = (struct aie_rsc_user_stat __user *)args.stats;
+	for (i = 0; i < args.num_stats; i++) {
+		struct aie_rsc_user_stat ustat;
+		struct aie_rsc_stat *rstat;
+		struct aie_location rloc, loc;
+		long ret;
+		int max_rscs, start_bit;
+
+		if (copy_from_user(&ustat, (void __user *)ustat_ptr,
+				   sizeof(ustat)))
+			return -EFAULT;
+
+		/* convert user tile loc to kernel tile loc format */
+		rloc.col = (u32)(ustat.loc.col & 0xFF);
+		rloc.row = (u32)(ustat.loc.row & 0xFF);
+		ret = aie_part_adjust_loc(apart, rloc, &loc);
+		if (ret < 0)
+			return ret;
+
+		if (ustat.type > AIE_RSCTYPE_MAX) {
+			dev_err(&apart->dev,
+				"get rsc statistics failed, invalid resource type %d.\n",
+				ustat.type);
+			return -EINVAL;
+		}
+
+		rstat = aie_part_get_rsc_bitmaps(apart, loc, ustat.mod,
+						 ustat.type);
+		start_bit = aie_part_get_rsc_startbit(apart, loc, ustat.mod,
+						      ustat.type);
+		if (!rstat || start_bit < 0) {
+			dev_err(&apart->dev,
+				"get rsc statistics failed, invalid resource(%u,%u),mod:%u,rsc:%u.\n",
+				loc.col, loc.row, ustat.mod, ustat.type);
+			return -EINVAL;
+		}
+
+		max_rscs = aie_part_get_mod_num_rscs(apart, loc, ustat.mod,
+						     ustat.type);
+		ret = mutex_lock_interruptible(&apart->mlock);
+		if (ret)
+			return ret;
+
+		if (args.stats_type == AIE_RSC_STAT_TYPE_STATIC)
+			ustat.num_rscs = aie_part_rscmgr_check_static(rstat,
+								      start_bit,
+								      max_rscs);
+		else
+			ustat.num_rscs = aie_part_rscmgr_check_avail(rstat,
+								     start_bit,
+								     max_rscs);
+
+		mutex_unlock(&apart->mlock);
+		if (WARN_ON(ustat.num_rscs < 0))
+			return -EFAULT;
+
+		/* copy the information back to userspace */
+		if (copy_to_user((void __user *)ustat_ptr, &ustat,
+				 sizeof(ustat)))
+			return -EFAULT;
+
+		ustat_ptr++;
 	}
 
 	return 0;

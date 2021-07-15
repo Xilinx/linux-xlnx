@@ -1088,5 +1088,7 @@ void aie_read_event_status(struct aie_partition *apart,
 			   enum aie_module_type module, u32 *reg);
 ssize_t aie_part_read_cb_status(struct kobject *kobj, char *buffer,
 				ssize_t size);
+long aie_part_rscmgr_get_statistics(struct aie_partition *apart,
+				    void __user *user_args);
 
 #endif /* AIE_INTERNAL_H */
