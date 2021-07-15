@@ -269,40 +269,42 @@ int aie_resource_check_common_avail(struct aie_resource *res0,
 /**
  * aie_resource_get_common_avail() - get common available bits
  *				     of two resources table
- * @res0: pointer to AI engine resource0
- * @res1: pointer to AI engine resource1
+ * @rres: pointer to AI engine runtime resource, runtime resource bitmap will
+ *	  be updated if the required resources are available.
+ * @sres: pointer to AI engine static resource, static resource bitmap will
+ *	  not be updated even if the required resources are available.
  * @sbit: start bit to check
  * @nbits: number of bits to get
  * @total: total number of bits to check
  * @rscs: resources array to return for resources ids
  * @return: number of allocated bits for success, negative value for failure
  */
-int aie_resource_get_common_avail(struct aie_resource *res0,
-				  struct aie_resource *res1,
+int aie_resource_get_common_avail(struct aie_resource *rres,
+				  struct aie_resource *sres,
 				  u32 sbit, u32 nbits, u32 total,
 				  struct aie_rsc *rscs)
 {
 	u32 ebit, tsbit, tnbits;
 
-	if (!nbits || !res0 || !res1 || !res0->bitmap || !res1->bitmap ||
-	    nbits > total || (sbit + total) > res0->total ||
-	    (sbit + total) > res1->total)
+	if (!nbits || !rres || !sres || !rres->bitmap || !sres->bitmap ||
+	    nbits > total || (sbit + total) > rres->total ||
+	    (sbit + total) > sres->total)
 		return -EINVAL;
 
 	ebit = sbit + total - 1;
 	tsbit = sbit;
 	tnbits = 0;
 	while (tsbit <= ebit && tnbits != nbits) {
-		unsigned long *bitmap0, *bitmap1, tbits;
+		unsigned long *rbitmap, *sbitmap, tbits;
 		u32 tlbit, lbit = tsbit % BITS_PER_LONG;
 		u32 lnbits = ebit - tsbit + 1;
 
 		if (lnbits + lbit > BITS_PER_LONG)
 			lnbits = BITS_PER_LONG - lbit;
 
-		bitmap0 = &res0->bitmap[sbit / BITS_PER_LONG];
-		bitmap1 = &res1->bitmap[sbit / BITS_PER_LONG];
-		bitmap_or(&tbits, bitmap0, bitmap1, BITS_PER_LONG);
+		rbitmap = &rres->bitmap[sbit / BITS_PER_LONG];
+		sbitmap = &sres->bitmap[sbit / BITS_PER_LONG];
+		bitmap_or(&tbits, rbitmap, sbitmap, BITS_PER_LONG);
 		tlbit = lbit;
 		while (tlbit < lbit + lnbits && tnbits != nbits) {
 			u32 b = bitmap_find_next_zero_area(&tbits,
@@ -320,10 +322,8 @@ int aie_resource_get_common_avail(struct aie_resource *res0,
 	if (tnbits != nbits)
 		return -EINVAL;
 
-	while (tnbits--) {
-		aie_resource_set(res0, sbit + rscs[tnbits].id, 1);
-		aie_resource_set(res1, sbit + rscs[tnbits].id, 1);
-	}
+	while (tnbits--)
+		aie_resource_set(rres, sbit + rscs[tnbits].id, 1);
 
 	return nbits;
 }
