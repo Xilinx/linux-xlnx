@@ -720,6 +720,8 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 		return aie_part_rscmgr_rsc_check_avail(apart, argp);
 	case AIE_RSC_GET_COMMON_BROADCAST_IOCTL:
 		return aie_part_rscmgr_get_broadcast(apart, argp);
+	case AIE_RSC_GET_STAT_IOCTL:
+		return aie_part_rscmgr_get_statistics(apart, argp);
 	default:
 		dev_err(&apart->dev, "Invalid ioctl command %u.\n", cmd);
 		ret = -EINVAL;
