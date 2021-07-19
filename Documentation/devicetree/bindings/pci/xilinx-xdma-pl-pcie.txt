@@ -86,52 +86,6 @@ MSI DECODE mode:
 		};
 	};
 
-Versal CPM host Bridge DT description.
-
-The properties and their meanings are identical to those described in
-above Xilinx XDMA PL PCIe Root Port Bridge description.
-
-Properties that differ are:
-- compatible: Should contain "xlnx,versal-cpm-host-1.00"
-- reg: Should contain configuration space and CPM system level control and
-	status registers, and length
-- reg-names: Must include the following entries:
-	"cfg": configuration space region
-	"cpm_slcr": CPM system level control and status registers
-- msi-map: Maps a Requester ID to an MSI controller and associated MSI
-	sideband data
-
-Refer to the following binding document for more detailed description on
-the use of 'msi-map':
-	 Documentation/devicetree/bindings/pci/pci-msi.txt
-
-Example:
-	pci@fca10000 {
-		#address-cells = <3>;
-		#interrupt-cells = <1>;
-		#size-cells = <2>;
-		compatible = "xlnx,versal-cpm-host-1.00";
-		interrupt-map = <0 0 0 1 &pcie_intc_0 1>,
-				<0 0 0 2 &pcie_intc_0 2>,
-				<0 0 0 3 &pcie_intc_0 3>,
-				<0 0 0 4 &pcie_intc_0 4>;
-		interrupt-map-mask = <0 0 0 7>;
-		interrupt-parent = <&gic>;
-		interrupt-names = "misc";
-		interrupts = <0 72 4>;
-		ranges = <0x02000000 0x00000000 0xE0000000 0x0 0xE0000000 0x00000000 0x10000000>,
-			 <0x43000000 0x00000080 0x00000000 0x00000080 0x00000000 0x00000000 0x80000000>;
-		msi-map = <0x0 &its_gic 0x0 0x10000>;
-		reg = <0x0 0xfca10000 0x0 0x1000>,
-		      <0x6 0x00000000 0x0 0x1000000>;
-		reg-names = "cpm_slcr", "cfg";
-		pcie_intc_0: pci-interrupt-controller {
-			#address-cells = <0>;
-			#interrupt-cells = <1>;
-			interrupt-controller ;
-		};
-	};
-
 Versal PL PCIe host Bridge DT description.
 
 The properties and their meanings are identical to those described in
