@@ -98,8 +98,9 @@
 #define XILINX_NUM_MSI_IRQS		64
 #define INTX_NUM                        4
 
+#define DMA_BRIDGE_BASE_OFF		0xCD8
+
 /* For CPM Versal */
-#define CPM_BRIDGE_BASE_OFF		0xCD8
 #define XILINX_PCIE_MISC_IR_STATUS	0x00000340
 #define XILINX_PCIE_MISC_IR_ENABLE	0x00000348
 #define XILINX_PCIE_MISC_IR_LOCAL	BIT(1)
@@ -167,7 +168,7 @@ static inline u32 pcie_read(struct xilinx_pcie_port *port, u32 reg)
 	if (port->xdma_config == XDMA_ZYNQMP_PL)
 		return readl(port->reg_base + reg);
 	else
-		return readl(port->reg_base + reg + CPM_BRIDGE_BASE_OFF);
+		return readl(port->reg_base + reg + DMA_BRIDGE_BASE_OFF);
 }
 
 static inline void pcie_write(struct xilinx_pcie_port *port, u32 val, u32 reg)
@@ -175,7 +176,7 @@ static inline void pcie_write(struct xilinx_pcie_port *port, u32 val, u32 reg)
 	if (port->xdma_config == XDMA_ZYNQMP_PL)
 		writel(val, port->reg_base + reg);
 	else
-		writel(val, port->reg_base + reg + CPM_BRIDGE_BASE_OFF);
+		writel(val, port->reg_base + reg + DMA_BRIDGE_BASE_OFF);
 }
 
 static inline bool xilinx_pcie_link_is_up(struct xilinx_pcie_port *port)
