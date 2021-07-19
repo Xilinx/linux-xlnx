@@ -100,20 +100,6 @@
 
 #define DMA_BRIDGE_BASE_OFF		0xCD8
 
-/* For CPM Versal */
-#define XILINX_PCIE_MISC_IR_STATUS	0x00000340
-#define XILINX_PCIE_MISC_IR_ENABLE	0x00000348
-#define XILINX_PCIE_MISC_IR_LOCAL	BIT(1)
-
-/* CPM versal Interrupt registers */
-#define XILINX_PCIE_INTR_CFG_PCIE_TIMEOUT	BIT(4)
-#define XILINX_PCIE_INTR_CFG_ERR_POISON		BIT(12)
-#define XILINX_PCIE_INTR_PME_TO_ACK_RCVD	BIT(15)
-#define XILINX_PCIE_INTR_PM_PME_RCVD		BIT(17)
-#define XILINX_PCIE_INTR_SLV_PCIE_TIMEOUT	BIT(28)
-
-#define XILINX_PCIE_IMR_ALL_MASK_CPM		0x1FF39FF9
-
 enum msi_mode {
 	MSI_DECD_MODE = 1,
 	MSI_FIFO_MODE,
@@ -121,7 +107,6 @@ enum msi_mode {
 
 enum xdma_config {
 	XDMA_ZYNQMP_PL = 1,
-	XDMA_VERSAL_CPM,
 	XDMA_VERSAL_PL,
 };
 
@@ -138,7 +123,6 @@ struct xilinx_msi {
 /**
  * struct xilinx_pcie_port - PCIe port information
  * @reg_base: IO Mapped Register Base
- * @cpm_base: CPM SLCR Register Base
  * @irq: Interrupt number
  * @root_busno: Root Bus number
  * @dev: Device pointer
@@ -151,7 +135,6 @@ struct xilinx_msi {
  */
 struct xilinx_pcie_port {
 	void __iomem *reg_base;
-	void __iomem *cpm_base;
 	u32 irq;
 	u8 root_busno;
 	struct device *dev;
@@ -392,7 +375,7 @@ static irqreturn_t xilinx_pcie_intr_handler(int irq, void *data)
 	}
 
 	if (port->msi_mode == MSI_FIFO_MODE &&
-	    (status & XILINX_PCIE_INTR_MSI) && (!port->cpm_base)) {
+	    (status & XILINX_PCIE_INTR_MSI)) {
 		/* MSI Interrupt */
 		val = pcie_read(port, XILINX_PCIE_REG_RPIFR1);
 
@@ -443,32 +426,9 @@ static irqreturn_t xilinx_pcie_intr_handler(int irq, void *data)
 	if (status & XILINX_PCIE_INTR_MST_SLVERR)
 		dev_warn(port->dev, "Master slave error\n");
 
-	if (port->cpm_base) {
-		if (status & XILINX_PCIE_INTR_CFG_PCIE_TIMEOUT)
-			dev_warn(port->dev, "PCIe ECAM access timeout\n");
-
-		if (status & XILINX_PCIE_INTR_CFG_ERR_POISON)
-			dev_warn(port->dev, "ECAM poisoned completion received\n");
-
-		if (status & XILINX_PCIE_INTR_PME_TO_ACK_RCVD)
-			dev_warn(port->dev, "PME_TO_ACK message received\n");
-
-		if (status & XILINX_PCIE_INTR_PM_PME_RCVD)
-			dev_warn(port->dev, "PM_PME message received\n");
-
-		if (status & XILINX_PCIE_INTR_SLV_PCIE_TIMEOUT)
-			dev_warn(port->dev, "PCIe completion timeout received\n");
-	}
-
 error:
 	/* Clear the Interrupt Decode register */
 	pcie_write(port, status, XILINX_PCIE_REG_IDR);
-	if (port->cpm_base) {
-		val = readl(port->cpm_base + XILINX_PCIE_MISC_IR_STATUS);
-		if (val)
-			writel(val,
-			       port->cpm_base + XILINX_PCIE_MISC_IR_STATUS);
-	}
 
 	return IRQ_HANDLED;
 }
@@ -638,9 +598,7 @@ static void xilinx_pcie_init_port(struct xilinx_pcie_port *port)
 		   XILINX_PCIE_REG_IDR);
 
 	/* Enable all interrupts */
-	if (!port->cpm_base)
-		pcie_write(port, XILINX_PCIE_IMR_ALL_MASK,
-			   XILINX_PCIE_REG_IMR);
+	pcie_write(port, XILINX_PCIE_IMR_ALL_MASK, XILINX_PCIE_REG_IMR);
 	pcie_write(port, XILINX_PCIE_IDRN_MASK, XILINX_PCIE_REG_IDRN_MASK);
 	if (port->msi_mode == MSI_DECD_MODE) {
 		pcie_write(port, XILINX_PCIE_IDR_ALL_MASK,
@@ -653,12 +611,6 @@ static void xilinx_pcie_init_port(struct xilinx_pcie_port *port)
 			 XILINX_PCIE_REG_RPSC_BEN,
 		   XILINX_PCIE_REG_RPSC);
 
-	if (port->cpm_base) {
-		writel(XILINX_PCIE_MISC_IR_LOCAL,
-		       port->cpm_base + XILINX_PCIE_MISC_IR_ENABLE);
-		pcie_write(port, XILINX_PCIE_IMR_ALL_MASK_CPM,
-			   XILINX_PCIE_REG_IMR);
-	}
 }
 
 static int xilinx_request_misc_irq(struct xilinx_pcie_port *port)
@@ -731,8 +683,6 @@ static int xilinx_pcie_parse_dt(struct xilinx_pcie_port *port)
 		port->xdma_config = XDMA_ZYNQMP_PL;
 	else if (of_device_is_compatible(node, "xlnx,pcie-dma-versal-2.0"))
 		port->xdma_config = XDMA_VERSAL_PL;
-	else if (of_device_is_compatible(node, "xlnx,versal-cpm-host-1.00"))
-		port->xdma_config = XDMA_VERSAL_CPM;
 
 	if (port->xdma_config == XDMA_ZYNQMP_PL ||
 	    port->xdma_config == XDMA_VERSAL_PL) {
@@ -796,24 +746,6 @@ static int xilinx_pcie_parse_dt(struct xilinx_pcie_port *port)
 				return err;
 			}
 		}
-	} else if (port->xdma_config == XDMA_VERSAL_CPM) {
-		struct resource *res;
-		struct platform_device *pdev = to_platform_device(dev);
-
-		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "cfg");
-		port->reg_base = devm_ioremap_resource(dev, res);
-		if (IS_ERR(port->reg_base))
-			return PTR_ERR(port->reg_base);
-
-		res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-						   "cpm_slcr");
-		port->cpm_base = devm_ioremap_resource(dev, res);
-		if (IS_ERR(port->cpm_base))
-			return PTR_ERR(port->cpm_base);
-
-		err = xilinx_request_misc_irq(port);
-		if (err)
-			return err;
 	}
 
 	return 0;
@@ -880,7 +812,6 @@ static int xilinx_pcie_probe(struct platform_device *pdev)
 
 static const struct of_device_id xilinx_pcie_of_match[] = {
 	{ .compatible = "xlnx,xdma-host-3.00", },
-	{ .compatible = "xlnx,versal-cpm-host-1.00", },
 	{ .compatible = "xlnx,pcie-dma-versal-2.0", },
 	{}
 };
