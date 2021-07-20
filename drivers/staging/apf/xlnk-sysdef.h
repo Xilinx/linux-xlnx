@@ -1,3 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Copyright (C) 2010 Xilinx, Inc. All rights reserved.
+ */
+
 #ifndef XLNK_SYSDEF_H
 #define XLNK_SYSDEF_H
 

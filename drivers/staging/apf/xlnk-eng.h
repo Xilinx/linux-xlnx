@@ -1,9 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Xilinx XLNK Engine Driver
  *
  * Copyright (C) 2010 Xilinx, Inc. All rights reserved.
- *
- *
  */
 
 #ifndef XLNK_ENG_H
