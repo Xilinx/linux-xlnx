@@ -1122,6 +1122,7 @@ void aie_part_remove(struct aie_partition *apart)
 	     index++, atile++)
 		aie_tile_remove(atile);
 
+	of_node_clear_flag(apart->dev.of_node, OF_POPULATED);
 	device_del(&apart->dev);
 	put_device(&apart->dev);
 }
