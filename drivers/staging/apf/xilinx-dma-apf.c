@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Xilinx AXI DMA Engine support
  *
@@ -9,12 +10,6 @@
  *    configured to have one channel or two channels. If configured as two
  *    channels, one is for transmit to device and another is for receive from
  *    device.
- *
- * This is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
  */
 
 #include <asm/cacheflush.h>
