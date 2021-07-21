@@ -1,3 +1,11 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Xilinx PHY specific header
+ *
+ * (C) Copyright 2015-2021 Xilinx, Inc. All rights reserved.
+ *
+ */
+
 #ifndef _XILINX_PHY_H
 #define _XILINX_PHY_H
 
