@@ -30,6 +30,7 @@
 #include <drm/drm_fourcc.h>
 #include <drm/drm_of.h>
 #include <drm/drm_probe_helper.h>
+#include <sound/hdmi-codec.h>
 
 /* Link configuration registers */
 #define XDPTX_LINKBW_SET_REG			0x0
@@ -75,6 +76,7 @@
 #define XDPTX_INTR_HPDPULSE_MASK		BIT(4)
 #define XDPTX_INTR_CHBUFUNDFW_MASK		GENMASK(21, 16)
 #define XDPTX_INTR_CHBUFOVFW_MASK		GENMASK(27, 22)
+#define XDPTX_INTR_VBLANK_MASK			BIT(10)
 #define XDPTX_HPD_DURATION_REG			0x150
 
 /* Main stream attribute registers */
@@ -220,6 +222,33 @@
 #define XDPTX_VTC_GVSHOFF_F1				0x090
 #define XDPTX_VTC_GASIZE_F1				0x094
 
+#define XDPTX_AUDIO_CTRL_REG				0x300
+#define XDPTX_AUDIO_EN_MASK				BIT(0)
+#define XDPTX_AUDIO_MUTE_MASK				BIT(16)
+#define XDPTX_AUDIO_CHANNELS_REG			0x304
+#define XDPTX_AUDIO_INFO_DATA_REG			0x308
+#define XDPTX_AUDIO_MAUD_REG				0x328
+#define XDPTX_AUDIO_NAUD_REG				0x32C
+#define XDPTX_AUDIO_INFO_BUFF_STATUS			0x6A0
+#define XDPTX_AUDIO_INFO_BUFF_FULL			BIT(0)
+#define XDPTX_AUDIO_INFO_BUFF_OVERFLOW			BIT(1)
+
+#define DP_INFOFRAME_FIFO_SIZE_WORDS	8
+#define DP_INFOFRAME_FIFO_SIZE		(DP_INFOFRAME_FIFO_SIZE_WORDS * 4)
+#define DP_INFOFRAME_HEADER_SIZE	4
+#define DP_AUDIO_INFOFRAME_SIZE		10
+
+#define DP_INFOFRAME_SIZE(type)	\
+	(DP_INFOFRAME_HEADER_SIZE + DP_ ## type ## _INFOFRAME_SIZE)
+
+/**
+ * struct xlnx_dptx_audio_data - Audio data structure
+ * @buffer: Audio infoframe data buffer
+ */
+struct xlnx_dptx_audio_data {
+	u32 buffer[DP_INFOFRAME_FIFO_SIZE_WORDS];
+};
+
 /*
  * struct xlnx_dp_link_config - Common link config between source and sink
  * @max_rate: Miaximum link rate
@@ -262,6 +291,7 @@ struct xlnx_dp_mode {
  * @num_colors: Number of color components
  * @ppc: Pixels per component
  * @fmt: Color format
+ * @audio_enabled: flag to indicate audio is enabled in device tree
  */
 struct xlnx_dp_config {
 	u32 max_lanes;
@@ -272,6 +302,7 @@ struct xlnx_dp_config {
 	u8 num_colors;
 	u8 ppc;
 	u8 fmt;
+	bool audio_enabled;
 };
 
 /**
@@ -293,6 +324,8 @@ struct xlnx_dp_config {
  * @tx_vid_clk: tx video clock
  * @reset_gpio: reset gpio
  * @hpd_work: hot plug detection worker
+ * @tx_audio_data: audio data
+ * @audio_pdev: audio platform device
  * @phy_opts: Opaque generic phy configuration
  * @status: connection status
  * @dp_base: Base address of DisplayPort Tx subsystem
@@ -301,6 +334,8 @@ struct xlnx_dp_config {
  * @train_set: set of training data
  * @num_lanes: number of enabled phy lanes
  * @enabled: flag to indicate if the device is enabled
+ * @audio_init: flag to indicate audio is initialized
+ * @have_edid: flag to indicate if edid is available
  *
  */
 struct xlnx_dp {
@@ -320,6 +355,8 @@ struct xlnx_dp {
 	struct clk *tx_vid_clk;
 	struct gpio_desc *reset_gpio;
 	struct delayed_work hpd_work;
+	struct xlnx_dptx_audio_data *tx_audio_data;
+	struct platform_device *audio_pdev;
 	union phy_configure_opts phy_opts;
 	enum drm_connector_status status;
 	void __iomem *dp_base;
@@ -328,6 +365,8 @@ struct xlnx_dp {
 	u8 train_set[XDPTX_MAX_LANES];
 	u8 num_lanes;
 	unsigned int enabled : 1;
+	bool audio_init;
+	bool have_edid;
 };
 
 static inline struct xlnx_dp *encoder_to_dp(struct drm_encoder *encoder)
@@ -1548,11 +1587,13 @@ static int xlnx_dp_connector_get_modes(struct drm_connector *connector)
 	edid = drm_get_edid(connector, &dp->aux.ddc);
 	if (!edid) {
 		drm_connector_update_edid_property(connector, NULL);
+		dp->have_edid = false;
 		return 0;
 	}
 
 	drm_connector_update_edid_property(connector, edid);
 	ret = drm_add_edid_modes(connector, edid);
+	dp->have_edid = true;
 	kfree(edid);
 
 	return ret;
@@ -1660,6 +1701,163 @@ static struct drm_connector_helper_funcs xlnx_dp_connector_helper_funcs = {
 	.best_encoder	= xlnx_dp_connector_best_encoder,
 	.mode_valid	= xlnx_dp_connector_mode_valid,
 };
+
+/**
+ * audio_codec_startup - initialize audio during audio usecase
+ * @dev: device
+ * @data: optional data set during registration
+ *
+ * This function is called by ALSA framework before audio
+ * playback begins. This callback initializes audio.
+ *
+ * Return: 0 on success
+ */
+static int audio_codec_startup(struct device *dev, void *data)
+{
+	struct xlnx_dp *dp = dev_get_drvdata(dev);
+
+	/* Enabling the audio in dp core */
+	xlnx_dp_clr(dp->dp_base, XDPTX_AUDIO_CTRL_REG, XDPTX_AUDIO_EN_MASK);
+
+	xlnx_dp_set(dp->dp_base, XDPTX_AUDIO_CTRL_REG, XDPTX_AUDIO_EN_MASK);
+
+	return 0;
+}
+
+/**
+ * audio_codec_hw_params - sets the playback stream properties
+ * @dev: device
+ * @data: optional data set during registration
+ * @fmt: Protocol between ASoC cpu-dai and HDMI-encoder
+ * @hparams: stream parameters
+ *
+ * This function is called by ALSA framework after startup callback
+ * packs the audio infoframe from stream paremters and programs ACR
+ * block
+ *
+ * Return: 0 on success
+ */
+static int audio_codec_hw_params(struct device *dev, void *data,
+				 struct hdmi_codec_daifmt *fmt,
+				 struct hdmi_codec_params *hparams)
+{
+	struct hdmi_audio_infoframe *infoframe = &hparams->cea;
+	struct xlnx_dp *dp = dev_get_drvdata(dev);
+	u8 infopckt[DP_INFOFRAME_SIZE(AUDIO)] = {0};
+	u8 *ptr = (u8 *)dp->tx_audio_data->buffer;
+
+	/* Setting audio channels */
+	xlnx_dp_write(dp->dp_base, XDPTX_AUDIO_CHANNELS_REG,
+		      infoframe->channels - 1);
+
+	hdmi_audio_infoframe_pack(infoframe, infopckt,
+				  DP_INFOFRAME_SIZE(AUDIO));
+	/* Setting audio infoframe packet header. Please refer to PG 299 */
+	ptr[0] = 0x00;
+	ptr[1] = 0x84;
+	ptr[2] = 0x1B;
+	ptr[3] = 0x44;
+	memcpy((void *)(&ptr[4]), (void *)(&infopckt[4]),
+	       (DP_INFOFRAME_SIZE(AUDIO) - DP_INFOFRAME_HEADER_SIZE));
+
+	return 0;
+}
+
+/**
+ * audio_codec_shutdown - Deinitialze audio when audio usecase is stopped
+ * @dev: device
+ * @data: optional data set during registration
+ *
+ * This function is called by ALSA framework before audio playback usecase
+ * ends.
+ */
+static void audio_codec_shutdown(struct device *dev, void *data)
+{
+	struct xlnx_dp *dp = dev_get_drvdata(dev);
+
+	/* Disabling the audio in dp core */
+	xlnx_dp_clr(dp->dp_base, XDPTX_AUDIO_CTRL_REG, XDPTX_AUDIO_EN_MASK);
+}
+
+/**
+ * audio_codec_digital_mute - mute or unmute audio
+ * @dev: device
+ * @data: optional data set during registration
+ * @enable: enable or disable mute
+ * @direction: direction to enable mute (capture/playback)
+ *
+ * This function is called by ALSA framework before audio usecase
+ * starts and before audio usecase ends
+ *
+ * Return: 0 on success
+ */
+static int audio_codec_digital_mute(struct device *dev, void *data,
+				    bool enable, int direction)
+{
+	struct xlnx_dp *dp = dev_get_drvdata(dev);
+
+	if (enable)
+		xlnx_dp_set(dp->dp_base, XDPTX_AUDIO_CTRL_REG, XDPTX_AUDIO_MUTE_MASK);
+	else
+		xlnx_dp_clr(dp->dp_base, XDPTX_AUDIO_CTRL_REG, XDPTX_AUDIO_MUTE_MASK);
+
+	return 0;
+}
+
+static int audio_codec_get_eld(struct device *dev, void *data,
+			       u8 *buf, size_t len)
+{
+	struct xlnx_dp *dp = dev_get_drvdata(dev);
+	size_t size;
+
+	if (!dp->have_edid)
+		return -EIO;
+
+	size = drm_eld_size(dp->connector.eld);
+	if (!size)
+		return -EINVAL;
+
+	if (len < size)
+		size = len;
+	memcpy(buf, dp->connector.eld, size);
+
+	return 0;
+}
+
+static const struct hdmi_codec_ops audio_ops = {
+	.audio_startup = audio_codec_startup,
+	.hw_params = audio_codec_hw_params,
+	.audio_shutdown = audio_codec_shutdown,
+	.mute_stream = audio_codec_digital_mute,
+	.get_eld = audio_codec_get_eld,
+	.no_capture_mute = 1,
+};
+
+/**
+ * dptx_register_aud_dev - register audio device
+ * @dev: device
+ *
+ * This functions registers a new platform device and a corresponding
+ * module is loaded which registers a audio codec device and
+ * calls the registered callbacks
+ *
+ * Return: platform device
+ */
+static struct platform_device *dptx_register_aud_dev(struct device *dev)
+{
+	struct platform_device *audio_pdev;
+	struct hdmi_codec_pdata codec_pdata = {
+		.ops = &audio_ops,
+		.i2s = 1,
+		.max_i2s_channels = 8,
+	};
+
+	audio_pdev = platform_device_register_data(dev, HDMI_CODEC_DRV_NAME,
+						   0, &codec_pdata,
+						   sizeof(codec_pdata));
+
+	return audio_pdev;
+}
 
 static void xlnx_dp_encoder_enable(struct drm_encoder *encoder)
 {
@@ -1882,6 +2080,22 @@ static int xlnx_dp_txconnected(struct xlnx_dp *dp)
 	return true;
 }
 
+static void xlnx_dp_vsync_handler(struct xlnx_dp *dp)
+{
+	int i;
+	u32 fifosts = xlnx_dp_read(dp->dp_base, XDPTX_AUDIO_INFO_BUFF_STATUS);
+
+	if (!(fifosts & (XDPTX_AUDIO_INFO_BUFF_FULL |
+					XDPTX_AUDIO_INFO_BUFF_OVERFLOW))) {
+		/* Write new audio info packet */
+		for (i = 0; i < DP_INFOFRAME_FIFO_SIZE_WORDS; i++) {
+			xlnx_dp_write(dp->dp_base,
+				      XDPTX_AUDIO_INFO_DATA_REG,
+				      dp->tx_audio_data->buffer[i]);
+		}
+	}
+}
+
 static irqreturn_t xlnx_dp_irq_handler(int irq, void *data)
 {
 	struct xlnx_dp *dp = (struct xlnx_dp *)data;
@@ -1915,6 +2129,9 @@ static irqreturn_t xlnx_dp_irq_handler(int irq, void *data)
 
 	if (intrstatus & XDPTX_INTR_HPDEVENT_MASK)
 		schedule_delayed_work(&dp->hpd_work, 0);
+
+	if (intrstatus & XDPTX_INTR_VBLANK_MASK)
+		xlnx_dp_vsync_handler(dp);
 
 	return IRQ_HANDLED;
 }
@@ -1985,6 +2202,9 @@ static int xlnx_dp_parse_of(struct xlnx_dp *dp)
 		return -EINVAL;
 	}
 
+	config->audio_enabled =
+		of_property_read_bool(node, "xlnx,audio-enable");
+
 	return 0;
 }
 
@@ -1997,6 +2217,12 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 
 	dp = devm_kzalloc(&pdev->dev, sizeof(*dp), GFP_KERNEL);
 	if (!dp)
+		return -ENOMEM;
+
+	dp->tx_audio_data =
+		devm_kzalloc(&pdev->dev, sizeof(struct xlnx_dptx_audio_data),
+			     GFP_KERNEL);
+	if (!dp->tx_audio_data)
 		return -ENOMEM;
 
 	dp->dpms = DRM_MODE_DPMS_OFF;
@@ -2085,6 +2311,18 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 
 	if (ret < 0)
 		goto error;
+
+	if (dp->config.audio_enabled) {
+		dp->audio_pdev = dptx_register_aud_dev(dp->dev);
+		if (IS_ERR(dp->audio_pdev)) {
+			dp->audio_init = false;
+			dev_err(dp->dev, "dp tx audio init failed\n");
+			goto error;
+		} else {
+			dp->audio_init = true;
+			dev_info(dp->dev, "dp tx audio initialized\n");
+		}
+	}
 
 	return component_add(&pdev->dev, &xlnx_dp_component_ops);
 
