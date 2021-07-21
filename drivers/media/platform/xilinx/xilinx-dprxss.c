@@ -28,7 +28,15 @@
 #include <media/v4l2-event.h>
 #include <media/v4l2-subdev.h>
 
+#include <sound/soc.h>
+
 #include "xilinx-vip.h"
+
+#define XV_AES_ENABLE			0x8
+#define XDP_AUDIO_DETECT_TIMEOUT	500 /* milliseconds */
+#define INFO_PCKT_SIZE_WORDS		8
+#define INFO_PCKT_SIZE			(INFO_PCKT_SIZE_WORDS * 4)
+#define INFO_PCKT_TYPE_AUDIO		0x84
 
 /* DP Rx subsysetm register map, bitmask, and offsets. */
 #define XDPRX_LINK_ENABLE_REG		0x000
@@ -48,6 +56,7 @@
 #define XDPRX_INTR_VBLANK_MASK		BIT(3)
 #define XDPRX_INTR_TRLOST_MASK		BIT(4)
 #define XDPRX_INTR_VID_MASK		BIT(6)
+#define XDPRX_INTR_AUDIO_MASK		BIT(8)
 #define XDPRX_INTR_TRDONE_MASK		BIT(14)
 #define XDPRX_INTR_BWCHANGE_MASK	BIT(15)
 #define XDPRX_INTR_TP1_MASK		BIT(16)
@@ -120,6 +129,13 @@
 #define XDPRX_BSIDLE_TIME_REG		0x220
 #define XDPRX_BSIDLE_TMOUT_VAL		0x047868C0
 
+#define XDPRX_AUDIO_CONTROL		0x300
+#define XDPRX_AUDIO_EN_MASK		BIT(0)
+#define XDPRX_AUDIO_INFO_DATA		0x304
+#define XDPRX_AUDIO_MAUD		0x324
+#define XDPRX_AUDIO_NAUD		0x328
+#define XDPRX_AUDIO_STATUS		0x32C
+
 #define XDPRX_LINK_BW_REG		0x400
 #define XDPRX_LANE_COUNT_REG		0x404
 #define XDPRX_MSA_HRES_REG		0x500
@@ -162,6 +178,18 @@
 #define XDPRX_HPD_PLUSE_750		750
 
 /**
+ * struct xlnx_dprx_audio_data - DP Rx Subsystem audio data structure
+ * @infoframe: Audio infoframe that is received
+ * @audio_detected: To indicate audio detection
+ * @audio_update_q: wait queue for audio detection
+ */
+struct xlnx_dprx_audio_data {
+	u32 infoframe[8];
+	bool audio_detected;
+	wait_queue_head_t audio_update_q;
+};
+
+/**
  * struct xdprxss_state - DP Rx Subsystem device structure
  * @dev: Platform structure
  * @subdev: The v4l2 subdev structure
@@ -182,6 +210,8 @@
  * @bpc: Bits per component
  * @hdcp_enable: To indicate hdcp enabled or not
  * @audio_enable: To indicate audio enabled or not
+ * @audio_init: flag to indicate audio is initialized
+ * @rx_audio_data: audio data
  * @valid_stream: To indicate valid video
  * @streaming: Flag for storing streaming state
  * This structure contains the device driver related parameters
@@ -207,6 +237,8 @@ struct xdprxss_state {
 	u32 bpc;
 	bool hdcp_enable;
 	bool audio_enable;
+	bool audio_init;
+	struct xlnx_dprx_audio_data *rx_audio_data;
 	unsigned int valid_stream : 1;
 	unsigned int streaming : 1;
 };
@@ -710,6 +742,22 @@ static void xdprxss_irq_valid_video(struct xdprxss_state *state)
 	}
 }
 
+static void xdprxss_irq_audio_detected(struct xdprxss_state *state)
+{
+	u32 buff[INFO_PCKT_SIZE_WORDS];
+	u8 *buf_ptr;
+	int i;
+
+	for (i = 0; i < INFO_PCKT_SIZE_WORDS; i++)
+		buff[i] = xdprxss_read(state, XDPRX_AUDIO_INFO_DATA);
+
+	buf_ptr = (u8 *)buff;
+	memcpy(state->rx_audio_data->infoframe, buff, INFO_PCKT_SIZE);
+
+	if (buf_ptr[1] == INFO_PCKT_TYPE_AUDIO)
+		state->rx_audio_data->audio_detected = true;
+}
+
 static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 {
 	struct xdprxss_state *state = (struct xdprxss_state *)dev_id;
@@ -731,6 +779,8 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 		xdprxss_irq_no_video(state);
 	if (status & XDPRX_INTR_VID_MASK)
 		xdprxss_irq_valid_video(state);
+	if (status & XDPRX_INTR_AUDIO_MASK)
+		xdprxss_irq_audio_detected(state);
 #ifdef DEBUG
 	if (status & XDPRX_INTR_TRDONE_MASK)
 		dev_dbg(state->dev, "DP Link training is done !!\n");
@@ -1035,6 +1085,124 @@ static const struct v4l2_subdev_ops xdprxss_ops = {
 };
 
 /* ----------------------------------------------------------------
+ * DP audio operation
+ */
+/**
+ * xlnx_rx_pcm_startup - initialize audio during audio usecase
+ *
+ * @substream: Pointer to sound pcm substream structure
+ * @dai: Pointer to sound soc dai structure
+ *
+ * This function is called by ALSA framework before audio
+ * capture begins.
+ *
+ * Return: -EIO if no audio is detected or 0 on success
+ */
+static int xlnx_rx_pcm_startup(struct snd_pcm_substream *substream,
+			       struct snd_soc_dai *dai)
+{
+	int err;
+	struct xlnx_dprx_audio_data *adata;
+	unsigned long jiffies = msecs_to_jiffies(XDP_AUDIO_DETECT_TIMEOUT);
+	struct xdprxss_state *xdprxss = dev_get_drvdata(dai->dev);
+
+	adata = xdprxss->rx_audio_data;
+
+	xdprxss_clr(xdprxss, XDPRX_AUDIO_CONTROL, XDPRX_AUDIO_EN_MASK);
+	xdprxss_set(xdprxss, XDPRX_AUDIO_CONTROL, XDPRX_AUDIO_EN_MASK);
+
+	/*
+	 * TODO: Currently the audio infoframe packet interrupts are not
+	 * coming for the first time without the below msleep.
+	 * Need to find out the root cause and should remove this msleep
+	 */
+	msleep(50);
+
+	/* Enable DP Rx audio and interruts */
+	xdprxss_set(xdprxss, XDPRX_INTR_MASK_REG, XDPRX_INTR_AUDIO_MASK);
+
+	err = wait_event_interruptible_timeout(adata->audio_update_q,
+					       adata->audio_detected,
+					       jiffies);
+	if (!err) {
+		dev_err(dai->dev, "No audio detected in input stream\n");
+		return -EIO;
+	}
+
+	dev_info(dai->dev, "Detected audio, starting capture\n");
+
+	return 0;
+}
+
+/**
+ * xlnx_rx_pcm_shutdown - Deinitialze audio when audio usecase is stopped
+ *
+ * @substream: Pointer to sound pcm substream structure
+ * @dai: Pointer to sound soc dai structure
+ *
+ * This function is called by ALSA framework before audio capture usecase
+ * ends.
+ */
+static void xlnx_rx_pcm_shutdown(struct snd_pcm_substream *substream,
+				 struct snd_soc_dai *dai)
+{
+	struct xdprxss_state *xdprxss = dev_get_drvdata(dai->dev);
+
+	xdprxss_clr(xdprxss, XDPRX_AUDIO_CONTROL, XDPRX_AUDIO_EN_MASK);
+	xdprxss_clr(xdprxss, XDPRX_INTR_MASK_REG, XDPRX_INTR_AUDIO_MASK);
+}
+
+static const struct snd_soc_dai_ops xlnx_rx_dai_ops = {
+	.startup = xlnx_rx_pcm_startup,
+	.shutdown = xlnx_rx_pcm_shutdown,
+};
+
+static struct snd_soc_dai_driver xlnx_rx_audio_dai = {
+	.name = "xlnx_dp_rx",
+	.capture = {
+		.stream_name = "Capture",
+		.channels_min = 2,
+		.channels_max = 8,
+		.rates = SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_44100 |
+			 SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_88200 |
+			 SNDRV_PCM_RATE_96000 | SNDRV_PCM_RATE_176400 |
+			 SNDRV_PCM_RATE_192000,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE,
+	},
+	.ops = &xlnx_rx_dai_ops,
+};
+
+static const struct snd_soc_component_driver xlnx_rx_dummy_codec_driver;
+
+/**
+ * dprx_register_aud_dev - register audio device
+ *
+ * @dev: Pointer to Platform structure
+ *
+ * This function registers codec DAI device as part of
+ * ALSA SoC framework.
+ *
+ * Return: 0 on success, error value otherwise
+ */
+static int dprx_register_aud_dev(struct device *dev)
+{
+	return snd_soc_register_component(dev, &xlnx_rx_dummy_codec_driver,
+			&xlnx_rx_audio_dai, 1);
+}
+
+/**
+ * dprx_unregister_aud_dev - register audio device
+ *
+ * @dev: Pointer to Platform structure
+ *
+ * This functions unregisters codec DAI device
+ */
+static void dprx_unregister_aud_dev(struct device *dev)
+{
+	snd_soc_unregister_component(dev);
+}
+
+/* ----------------------------------------------------------------
  * Platform Device Driver
  */
 static int xdprxss_parse_of(struct xdprxss_state *xdprxss)
@@ -1068,11 +1236,8 @@ static int xdprxss_parse_of(struct xdprxss_state *xdprxss)
 
 	xdprxss->audio_enable = of_property_read_bool(node,
 						      "xlnx,audio-enable");
-	/* TODO : This driver does not support audio */
-	if (xdprxss->audio_enable) {
-		dev_err(xdprxss->dev, "audio unsupported\n");
-		return -EINVAL;
-	}
+	if (!xdprxss->audio_enable)
+		dev_info(xdprxss->dev, "audio not enabled\n");
 
 	ret = of_property_read_u32(node, "xlnx,link-rate", &val);
 	if (ret < 0) {
@@ -1121,6 +1286,7 @@ static int xdprxss_probe(struct platform_device *pdev)
 	struct resource *res;
 	int ret, irq;
 	unsigned int i = 0, j;
+	struct xlnx_dprx_audio_data *adata;
 
 	xdprxss = devm_kzalloc(dev, sizeof(*xdprxss), GFP_KERNEL);
 	if (!xdprxss)
@@ -1128,6 +1294,14 @@ static int xdprxss_probe(struct platform_device *pdev)
 
 	xdprxss->dev = &pdev->dev;
 	node = xdprxss->dev->of_node;
+
+	xdprxss->rx_audio_data =
+		devm_kzalloc(&pdev->dev, sizeof(struct xlnx_dprx_audio_data),
+			     GFP_KERNEL);
+	if (!xdprxss->rx_audio_data)
+		return -ENOMEM;
+
+	adata = xdprxss->rx_audio_data;
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "dp_base");
 	xdprxss->dp_base = devm_ioremap_resource(dev, res);
@@ -1252,6 +1426,19 @@ static int xdprxss_probe(struct platform_device *pdev)
 		goto error;
 	}
 
+	if (xdprxss->audio_enable) {
+		ret = dprx_register_aud_dev(xdprxss->dev);
+		if (ret < 0) {
+			xdprxss->audio_init = false;
+			dev_err(xdprxss->dev, "dp rx audio init failed\n");
+			goto error;
+		} else {
+			xdprxss->audio_init = true;
+			init_waitqueue_head(&adata->audio_update_q);
+			dev_info(xdprxss->dev, "dp rx audio initialized\n");
+		}
+	}
+
 	return 0;
 
 error:
@@ -1293,6 +1480,10 @@ static int xdprxss_remove(struct platform_device *pdev)
 		phy_exit(xdprxss->phy[i]);
 		xdprxss->phy[i] = NULL;
 	}
+
+	if (xdprxss->audio_init)
+		dprx_unregister_aud_dev(&pdev->dev);
+
 	return 0;
 }
 
