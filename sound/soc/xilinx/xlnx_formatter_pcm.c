@@ -486,7 +486,8 @@ static int xlnx_formatter_pcm_hw_params(struct snd_soc_component *component,
 	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE &&
 	    stream_data->xfer_mode == AES_TO_PCM &&
 	    ((strstr(adata->nodes[XLNX_CAPTURE]->name, "hdmi")) ||
-	    (strstr(adata->nodes[XLNX_CAPTURE]->name, "sdi")))) {
+	    (strstr(adata->nodes[XLNX_CAPTURE]->name, "sdi")) ||
+	    (strstr(adata->nodes[XLNX_CAPTURE]->name, "dp")))) {
 		/*
 		 * If formatter is in AES_PCM mode for HDMI/SDI capture path,
 		 * parse AES header
