@@ -614,7 +614,11 @@ static int xlnx_pl_disp_remove(struct platform_device *pdev)
 	struct xlnx_pl_disp *xlnx_pl_disp = platform_get_drvdata(pdev);
 	struct xlnx_dma_chan *xlnx_dma_chan = xlnx_pl_disp->chan;
 
-	of_xlnx_bridge_put(xlnx_pl_disp->vtc_bridge);
+	if (xlnx_pl_disp->vtc_bridge) {
+		of_xlnx_bridge_put(xlnx_pl_disp->vtc_bridge);
+		if (!xlnx_pl_disp->vtc_bridge->available)
+			xlnx_bridge_unregister(xlnx_pl_disp->vtc_bridge);
+	}
 	xlnx_drm_pipeline_exit(xlnx_pl_disp->master);
 	component_del(&pdev->dev, &xlnx_pl_disp_component_ops);
 

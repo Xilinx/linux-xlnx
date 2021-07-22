@@ -393,6 +393,7 @@ static int xlnx_vtc_probe(struct platform_device *pdev)
 	vtc->bridge.disable = &xlnx_vtc_disable;
 	vtc->bridge.set_timing = &xlnx_vtc_set_timing;
 	vtc->bridge.of_node = dev->of_node;
+	vtc->bridge.available = true;
 	ret = xlnx_bridge_register(&vtc->bridge);
 	if (ret) {
 		dev_err(dev, "Bridge registration failed\n");
@@ -415,7 +416,9 @@ static int xlnx_vtc_remove(struct platform_device *pdev)
 {
 	struct xlnx_vtc *vtc = platform_get_drvdata(pdev);
 
-	xlnx_bridge_unregister(&vtc->bridge);
+	vtc->bridge.available = false;
+	if (!vtc->bridge.owned)
+		xlnx_bridge_unregister(&vtc->bridge);
 	clk_disable_unprepare(vtc->vid_clk);
 	clk_disable_unprepare(vtc->axi_clk);
 
