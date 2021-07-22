@@ -3116,8 +3116,11 @@ static int xlnx_mix_remove(struct platform_device *pdev)
 {
 	struct xlnx_mix *mixer = platform_get_drvdata(pdev);
 
-	if (mixer->vtc_bridge)
+	if (mixer->vtc_bridge) {
 		of_xlnx_bridge_put(mixer->vtc_bridge);
+		if (!mixer->vtc_bridge->available)
+			xlnx_bridge_unregister(mixer->vtc_bridge);
+	}
 	if (mixer->disp_bridge) {
 		of_xlnx_bridge_put(mixer->disp_bridge);
 		xlnx_mix_crtc_atomic_disable(&mixer->crtc.crtc, NULL);
