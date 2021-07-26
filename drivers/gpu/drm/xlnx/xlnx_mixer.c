@@ -731,7 +731,7 @@ static int xlnx_mix_set_active_area(struct xlnx_mix_hw *mixer,
 
 	if (hactive > ld->hw_config.max_width ||
 	    vactive > ld->hw_config.max_height) {
-		DRM_ERROR("Invalid layer dimention\n");
+		DRM_ERROR("Invalid layer dimension\n");
 		return -EINVAL;
 	}
 	/* set resolution */
