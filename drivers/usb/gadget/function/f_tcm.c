@@ -2259,13 +2259,6 @@ static int tcm_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 	return -EOPNOTSUPP;
 }
 
-static int tcm_get_alt(struct usb_function *f, unsigned int intf)
-{
-	struct f_uas *fu = to_f_uas(f);
-
-	return fu->flags & USBG_IS_UAS ? 1 : 0;
-}
-
 static void tcm_disable(struct usb_function *f)
 {
 	struct f_uas *fu = to_f_uas(f);
