@@ -96,7 +96,7 @@ void xlnx_bridge_unregister(struct xlnx_bridge *bridge);
 
 struct xlnx_bridge_helper;
 
-static inline inline int xlnx_bridge_helper_init(void)
+static inline int xlnx_bridge_helper_init(void)
 {
 	return 0;
 }
