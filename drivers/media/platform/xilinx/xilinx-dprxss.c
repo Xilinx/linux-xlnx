@@ -562,7 +562,7 @@ static void xdprxss_set_training_params(struct xdprxss_state *xdprxss)
 	unsigned int offset;
 
 	/*
-	 * This register is used to set a minimum value which which must be met
+	 * This register is used to set a minimum value which must be met
 	 * As per the Display Port protocol.The internal logic forces training
 	 * to fail until this value is met.Please refer to PG 300
 	 * https://www.xilinx.com/support/documentation/ip_documentation/dp_rx_subsystem/v2_1/pg233-displayport-rx-subsystem.pdf
