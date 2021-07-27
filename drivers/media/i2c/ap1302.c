@@ -166,7 +166,26 @@
 #define AP1302_PREVIEW_HINF_CTRL_MIPI_LANES(n)	((n) << 0)
 
 /* IQ Registers */
+#define AP1302_AE_CTRL			AP1302_REG_16BIT(0x5002)
+#define AP1302_AE_CTRL_STATS_SEL		BIT(11)
+#define AP1302_AE_CTRL_IMM				BIT(10)
+#define AP1302_AE_CTRL_ROUND_ISO		BIT(9)
+#define AP1302_AE_CTRL_UROI_FACE		BIT(7)
+#define AP1302_AE_CTRL_UROI_LOCK		BIT(6)
+#define AP1302_AE_CTRL_UROI_BOUND		BIT(5)
+#define AP1302_AE_CTRL_IMM1				BIT(4)
+#define AP1302_AE_CTRL_MANUAL_EXP_TIME_GAIN	(0U << 0)
+#define AP1302_AE_CTRL_MANUAL_BV_EXP_TIME	(1U << 0)
+#define AP1302_AE_CTRL_MANUAL_BV_GAIN		(2U << 0)
+#define AP1302_AE_CTRL_MANUAL_BV_ISO		(3U << 0)
+#define AP1302_AE_CTRL_AUTO_BV_EXP_TIME		(9U << 0)
+#define AP1302_AE_CTRL_AUTO_BV_GAIN			(10U << 0)
+#define AP1302_AE_CTRL_AUTO_BV_ISO			(11U << 0)
+#define AP1302_AE_CTRL_FULL_AUTO			(12U << 0)
+#define AP1302_AE_CTRL_MODE_MASK		0x000f
+#define AP1302_AE_MANUAL_GAIN		AP1302_REG_16BIT(0x5006)
 #define AP1302_AE_BV_OFF			AP1302_REG_16BIT(0x5014)
+#define AP1302_AE_MET				AP1302_REG_16BIT(0x503E)
 #define AP1302_AWB_CTRL				AP1302_REG_16BIT(0x5100)
 #define AP1302_AWB_CTRL_RECALC			BIT(13)
 #define AP1302_AWB_CTRL_POSTGAIN		BIT(12)
@@ -272,6 +291,11 @@
 #define AP1302_DMA_CTRL_MODE_UNPACK		(4 << 0)
 #define AP1302_DMA_CTRL_MODE_OTP_READ		(5 << 0)
 #define AP1302_DMA_CTRL_MODE_SIP_PROBE		(6 << 0)
+
+#define AP1302_BRIGHTNESS			AP1302_REG_16BIT(0x7000)
+#define AP1302_CONTRAST			AP1302_REG_16BIT(0x7002)
+#define AP1302_SATURATION			AP1302_REG_16BIT(0x7006)
+#define AP1302_GAMMA				AP1302_REG_16BIT(0x700A)
 
 /* Misc Registers */
 #define AP1302_REG_ADV_START			0xe000
@@ -1287,6 +1311,51 @@ static int ap1302_set_wb_mode(struct ap1302_device *ap1302, s32 mode)
 	return ap1302_write(ap1302, AP1302_AWB_CTRL, val, NULL);
 }
 
+static int ap1302_set_exposure(struct ap1302_device *ap1302, s32 mode)
+{
+	u32 val;
+	int ret;
+
+	ret = ap1302_read(ap1302, AP1302_AE_CTRL, &val);
+	if (ret)
+		return ret;
+
+	val &= ~AP1302_AE_CTRL_MODE_MASK;
+	val |= mode;
+
+	return ap1302_write(ap1302, AP1302_AE_CTRL, val, NULL);
+}
+
+static int ap1302_set_exp_met(struct ap1302_device *ap1302, s32 val)
+{
+	return ap1302_write(ap1302, AP1302_AE_MET, val, NULL);
+}
+
+static int ap1302_set_gain(struct ap1302_device *ap1302, s32 val)
+{
+	return ap1302_write(ap1302, AP1302_AE_MANUAL_GAIN, val, NULL);
+}
+
+static int ap1302_set_contrast(struct ap1302_device *ap1302, s32 val)
+{
+	return ap1302_write(ap1302, AP1302_CONTRAST, val, NULL);
+}
+
+static int ap1302_set_brightness(struct ap1302_device *ap1302, s32 val)
+{
+	return ap1302_write(ap1302, AP1302_BRIGHTNESS, val, NULL);
+}
+
+static int ap1302_set_saturation(struct ap1302_device *ap1302, s32 val)
+{
+	return ap1302_write(ap1302, AP1302_SATURATION, val, NULL);
+}
+
+static int ap1302_set_gamma(struct ap1302_device *ap1302, s32 val)
+{
+	return ap1302_write(ap1302, AP1302_GAMMA, val, NULL);
+}
+
 static int ap1302_set_zoom(struct ap1302_device *ap1302, s32 val)
 {
 	return ap1302_write(ap1302, AP1302_DZ_TGT_FCT, val, NULL);
@@ -1362,6 +1431,27 @@ static int ap1302_s_ctrl(struct v4l2_ctrl *ctrl)
 	case V4L2_CID_AUTO_N_PRESET_WHITE_BALANCE:
 		return ap1302_set_wb_mode(ap1302, ctrl->val);
 
+	case V4L2_CID_EXPOSURE:
+		return ap1302_set_exposure(ap1302, ctrl->val);
+
+	case V4L2_CID_EXPOSURE_METERING:
+		return ap1302_set_exp_met(ap1302, ctrl->val);
+
+	case V4L2_CID_GAIN:
+		return ap1302_set_gain(ap1302, ctrl->val);
+
+	case V4L2_CID_GAMMA:
+		return ap1302_set_gamma(ap1302, ctrl->val);
+
+	case V4L2_CID_CONTRAST:
+		return ap1302_set_contrast(ap1302, ctrl->val);
+
+	case V4L2_CID_BRIGHTNESS:
+		return ap1302_set_brightness(ap1302, ctrl->val);
+
+	case V4L2_CID_SATURATION:
+		return ap1302_set_saturation(ap1302, ctrl->val);
+
 	case V4L2_CID_ZOOM_ABSOLUTE:
 		return ap1302_set_zoom(ap1302, ctrl->val);
 
@@ -1390,6 +1480,69 @@ static const struct v4l2_ctrl_config ap1302_ctrls[] = {
 		.min = 0,
 		.max = 9,
 		.def = 1,
+	}, {
+		.ops = &ap1302_ctrl_ops,
+		.id = V4L2_CID_GAMMA,
+		.name = "Gamma",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0x0100,
+		.max = 0xFFFF,
+		.step = 0x100,
+		.def = 0x1000,
+	}, {
+		.ops = &ap1302_ctrl_ops,
+		.id = V4L2_CID_CONTRAST,
+		.name = "Contrast",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0x100,
+		.max = 0xFFFF,
+		.step = 0x100,
+		.def = 0x100,
+	}, {
+		.ops = &ap1302_ctrl_ops,
+		.id = V4L2_CID_BRIGHTNESS,
+		.name = "Brightness",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0x100,
+		.max = 0xFFFF,
+		.step = 0x100,
+		.def = 0x100,
+	}, {
+		.ops = &ap1302_ctrl_ops,
+		.id = V4L2_CID_SATURATION,
+		.name = "Saturation",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0x0100,
+		.max = 0xFFFF,
+		.step = 0x100,
+		.def = 0x1000,
+	}, {
+		.ops = &ap1302_ctrl_ops,
+		.id = V4L2_CID_EXPOSURE,
+		.name = "Exposure",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0x0,
+		.max = 0xC,
+		.step = 1,
+		.def = 0xC,
+	}, {
+		.ops = &ap1302_ctrl_ops,
+		.id = V4L2_CID_EXPOSURE_METERING,
+		.name = "Exposure Metering",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0x0,
+		.max = 0x3,
+		.step = 1,
+		.def = 0x1,
+	}, {
+		.ops = &ap1302_ctrl_ops,
+		.id = V4L2_CID_GAIN,
+		.name = "Gain",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0x0100,
+		.max = 0xFFFF,
+		.step = 0x100,
+		.def = 0x100,
 	}, {
 		.ops = &ap1302_ctrl_ops,
 		.id = V4L2_CID_ZOOM_ABSOLUTE,
