@@ -1074,7 +1074,7 @@ static int axienet_create_tsheader(u8 *buf, u8 msg_type,
 #endif
 	u64 val;
 	u32 tmp[MRMAC_TS_HEADER_WORDS];
-	u32 flags;
+	unsigned long flags;
 	int i;
 
 #ifdef CONFIG_AXIENET_HAS_MCDMA
