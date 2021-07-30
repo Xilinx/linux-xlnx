@@ -6,3 +6,4 @@ xilinx-hdmiphy-objs := xhdmiphy.o
 xilinx-hdmiphy-objs += xhdmiphy_core.o
 xilinx-hdmiphy-objs += xhdmiphy_modules.o
 xilinx-hdmiphy-objs += xhdmiphy_gt_helper.o
+xilinx-hdmiphy-objs += xhdmiphy_mmcm.o

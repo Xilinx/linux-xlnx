@@ -278,6 +278,11 @@ static bool xhdmiphy_dir_reconf(struct xhdmiphy_dev *inst, enum chid chid, enum 
 
 	xhdmiphy_ch2ids(inst, chid, &id0, &id1);
 	for (id = id0; id <= id1; id++) {
+		if (dir == XHDMIPHY_DIR_TX)
+			status |= xhdmiphy_txch_reconf(inst, id);
+		else
+			status |= xhdmiphy_rxch_reconf(inst, id);
+
 		if (status != 0)
 			return true;
 	}
@@ -305,6 +310,7 @@ static bool xhdmiphy_clk_reconf(struct xhdmiphy_dev *inst, enum chid chid)
 	xhdmiphy_ch2ids(inst, chid, &id0, &id1);
 	for (id = id0; id <= id1; id++) {
 		if (xhdmiphy_is_ch(id)) {
+			status |= xhdmiphy_clk_ch_reconf(inst, (enum chid)id);
 		} else if (xhdmiphy_is_cmn(chid)) {
 			if (((xhdmiphy_is_hdmi(inst, XHDMIPHY_DIR_TX)) ||
 			     (xhdmiphy_is_hdmi(inst, XHDMIPHY_DIR_RX))) &&
@@ -313,6 +319,7 @@ static bool xhdmiphy_clk_reconf(struct xhdmiphy_dev *inst, enum chid chid)
 					"return failure: qpll is not present\n");
 				return false;
 			}
+			status |= xhdmiphy_clk_cmn_reconf(inst, (enum chid)id);
 		}
 		if (status)
 			return false;
@@ -634,11 +641,14 @@ static void xhdmiphy_txgpo_risingedge_handler(struct xhdmiphy_dev *inst)
 {
 	u8 id, id0, id1;
 
+	xhdmiphy_check_linerate_cfg(inst, XHDMIPHY_CHID_CH1, XHDMIPHY_DIR_TX);
 	xhdmiphy_set_gpi(inst, XHDMIPHY_CHID_CHA, XHDMIPHY_DIR_TX, false);
 
 	/* wait for GPO TX = 0 */
 	while (xhdmiphy_get_gpo(inst, XHDMIPHY_CHID_CHA, XHDMIPHY_DIR_TX))
 		;
+
+	xhdmiphy_mmcm_start(inst, XHDMIPHY_DIR_TX);
 
 	xhdmiphy_dir_reconf(inst, XHDMIPHY_CHID_CHA, XHDMIPHY_DIR_TX);
 
@@ -1058,6 +1068,7 @@ static void xhdmiphy_tx_timertimeout_handler(struct xhdmiphy_dev *inst)
 						 XHDMIPHY_CHID_CH1);
 		/* determine which channel(s) to operate on */
 		chid = xhdmiphy_get_rcfg_chid(pll_type);
+		xhdmiphy_mmcm_start(inst, XHDMIPHY_DIR_TX);
 		xhdmiphy_powerdown_gtpll(inst, (pll_type == XHDMIPHY_PLL_CPLL) ?
 					       XHDMIPHY_CHID_CHA :
 					       XHDMIPHY_CHID_CMNA,
@@ -1104,7 +1115,10 @@ static void xhdmiphy_tx_timertimeout_handler(struct xhdmiphy_dev *inst)
 			inst->quad.plls[XHDMIPHY_CH2IDX(id)].tx_state =
 						XHDMIPHY_GT_STATE_GPO_RE;
 		}
-
+		/* compare the current and next CFG values */
+		val_cmp = xhdmiphy_check_linerate_cfg(inst,
+						      XHDMIPHY_CHID_CH1,
+						      XHDMIPHY_DIR_TX);
 		if (!val_cmp) {
 			xhdmiphy_set_gpi(inst, XHDMIPHY_CHID_CHA,
 					 XHDMIPHY_DIR_TX, true);
@@ -1118,6 +1132,7 @@ static void xhdmiphy_rxgpo_risingedge_handler(struct xhdmiphy_dev *inst)
 {
 	u8 id, id0, id1;
 
+	xhdmiphy_check_linerate_cfg(inst, XHDMIPHY_CHID_CH1, XHDMIPHY_DIR_RX);
 	/* De-assert GPI port. */
 	xhdmiphy_set_gpi(inst, XHDMIPHY_CHID_CHA,
 			 XHDMIPHY_DIR_RX, false);
@@ -1149,9 +1164,11 @@ static void xhdmiphy_rx_timertimeout_handler(struct xhdmiphy_dev *inst)
 	if (!inst->rx_hdmi21_cfg.is_en) {
 		dev_info(inst->dev, "xhdmi 2.0 protocl is enabled\n");
 	} else {
-		if (inst->conf.rx_refclk_sel == inst->conf.rx_frl_refclk_sel)
+		if (inst->conf.rx_refclk_sel == inst->conf.rx_frl_refclk_sel) {
 			xhdmiphy_mmcm_clkin_sel(inst, XHDMIPHY_DIR_RX,
 						XHDMIPHY_MMCM_CLKINSEL_CLKIN1);
+			xhdmiphy_mmcm_start(inst, XHDMIPHY_DIR_RX);
+		}
 	}
 
 	pll_type = xhdmiphy_get_pll_type(inst, XHDMIPHY_DIR_RX,
@@ -1219,6 +1236,9 @@ static void xhdmiphy_rx_timertimeout_handler(struct xhdmiphy_dev *inst)
 						XHDMIPHY_GT_STATE_GPO_RE;
 		}
 
+		/* compare the current and next CFG values */
+		val_cmp = xhdmiphy_check_linerate_cfg(inst, XHDMIPHY_CHID_CH1,
+						      XHDMIPHY_DIR_RX);
 		if (!val_cmp) {
 			xhdmiphy_set_gpi(inst, XHDMIPHY_CHID_CHA,
 					 XHDMIPHY_DIR_RX, true);
@@ -1622,6 +1642,7 @@ static void xhdmiphy_tx_freqchnage_handler(struct xhdmiphy_dev *inst)
 			       XHDMIPHY_TXPCS_RESET_MASK));
 	}
 
+	xhdmiphy_mmcm_lock_en(inst, XHDMIPHY_DIR_TX, true);
 	xhdmiphy_set(inst, XHDMIPHY_CLKDET_CTRL_REG,
 		     XHDMIPHY_CLKDET_CTRL_TX_TMR_CLR_MASK);
 
@@ -1653,6 +1674,10 @@ static void xhdmiphy_rx_freqchange_handler(struct xhdmiphy_dev *inst)
 	for (id = id0; id <= id1; id++)
 		inst->quad.plls[XHDMIPHY_CH2IDX(id)].rx_state =
 							XHDMIPHY_GT_STATE_IDLE;
+	if (!inst->rx_hdmi21_cfg.is_en)
+		/* mask the MMCM Lock */
+		xhdmiphy_mmcm_lock_en(inst, XHDMIPHY_DIR_RX, true);
+
 	/* determine PLL type and RX reference clock selection */
 	pll_type = xhdmiphy_get_pll_type(inst, XHDMIPHY_DIR_RX,
 					 XHDMIPHY_CHID_CH1);
