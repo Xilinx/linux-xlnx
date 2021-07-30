@@ -11,3 +11,12 @@ config PHY_XILINX_ZYNQMP
 	help
 	  Enable this to support ZynqMP High Speed Gigabit Transceiver
 	  that is part of ZynqMP SoC.
+
+config PHY_XILINX_HDMIPHY
+       tristate "Xilinx HDMI PHY driver"
+       depends on ARCH_ZYNQMP
+       select GENERIC_PHY
+       help
+         Enable this to support HDMI PHY Controller core in FPGA.It is designed
+         for enabling plug-and-play connectivity with xilinx HDMI 2.1
+         technology MAC transmit or receive subsystem.
