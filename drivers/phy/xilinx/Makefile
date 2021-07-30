@@ -5,3 +5,4 @@ obj-$(CONFIG_PHY_XILINX_HDMIPHY)       += xilinx-hdmiphy.o
 xilinx-hdmiphy-objs := xhdmiphy.o
 xilinx-hdmiphy-objs += xhdmiphy_core.o
 xilinx-hdmiphy-objs += xhdmiphy_modules.o
+xilinx-hdmiphy-objs += xhdmiphy_gt_helper.o
