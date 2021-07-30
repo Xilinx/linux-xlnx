@@ -62,6 +62,96 @@ static int xhdmiphy_reset(struct phy *phy)
 
 static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 {
+	struct xhdmiphy_lane *phy_lane = phy_get_drvdata(phy);
+	struct xhdmiphy_dev *phy_dev = phy_lane->data;
+	struct phy_configure_opts_hdmi *cfg = &opts->hdmi;
+	struct hdmiphy_callback *cb_ptr = &cfg->hdmiphycb;
+	unsigned int ret = 0;
+	static int count_tx, count_rx;
+
+	if (!phy_lane->direction) {
+		count_rx++;
+		if (count_rx < XHDMIPHY_MAX_LANES) {
+			return 0;
+		} else if (cfg->ibufds) {
+			xhdmiphy_ibufds_en(phy_dev, XHDMIPHY_DIR_RX,
+					   cfg->ibufds_en);
+		} else if (cfg->tmdsclock_ratio_flag) {
+			/* update TMDS clock ratio */
+			phy_dev->rx_tmdsclock_ratio = cfg->tmdsclock_ratio;
+		} else if (cfg->phycb) {
+			switch (cb_ptr->type) {
+			case RX_INIT_CB:
+				phy_dev->phycb[RX_INIT_CB].cb =
+							cfg->hdmiphycb.cb;
+				phy_dev->phycb[RX_INIT_CB].data =
+							cfg->hdmiphycb.data;
+				break;
+			case RX_READY_CB:
+				phy_dev->phycb[RX_READY_CB].cb =
+							cfg->hdmiphycb.cb;
+				phy_dev->phycb[RX_READY_CB].data =
+							cfg->hdmiphycb.data;
+				break;
+			default:
+				dev_info(phy_dev->dev,
+					 "type - %d phy callback does't match\n\r",
+					 cb_ptr->type);
+				break;
+			}
+		} else if (cfg->cal_mmcm_param) {
+			ret = xhdmiphy_cal_mmcm_param(phy_dev,
+						      XHDMIPHY_CHID_CH1,
+						      XHDMIPHY_DIR_RX, cfg->ppc,
+						      cfg->bpc);
+			if (ret)
+				dev_err(phy_dev->dev,
+					"failed to update mmcm params\n\r");
+
+			xhdmiphy_mmcm_start(phy_dev, XHDMIPHY_DIR_RX);
+		} else if (cfg->clkout1_obuftds) {
+			xhdmiphy_clkout1_obuftds_en(phy_dev, XHDMIPHY_DIR_RX,
+						    cfg->clkout1_obuftds_en);
+			cfg->clkout1_obuftds_en = 0;
+		} else if (cfg->config_hdmi20 && !cfg->config_hdmi21) {
+			xhdmiphy_hdmi20_conf(phy_dev, XHDMIPHY_DIR_RX);
+		} else if (cfg->rx_get_refclk) {
+			cfg->rx_refclk_hz = phy_dev->rx_refclk_hz;
+		}
+		count_rx = 0;
+	}
+
+	if (phy_lane->direction) {
+		count_tx++;
+
+		if (count_tx < XHDMIPHY_MAX_LANES) {
+			return 0;
+		} else if (cfg->ibufds) {
+			xhdmiphy_ibufds_en(phy_dev, XHDMIPHY_DIR_TX,
+					   cfg->ibufds_en);
+			cfg->ibufds = 0;
+		} else if (cfg->clkout1_obuftds) {
+			xhdmiphy_clkout1_obuftds_en(phy_dev, XHDMIPHY_DIR_TX,
+						    cfg->clkout1_obuftds_en);
+			cfg->clkout1_obuftds_en = 0;
+		} else if (cfg->tx_params) {
+			phy_dev->tx_refclk_hz = cfg->tx_tmdsclk;
+
+			clk_set_rate(phy_dev->tmds_clk, phy_dev->tx_refclk_hz);
+			ret = xhdmiphy_set_tx_param(phy_dev,
+						    XHDMIPHY_CHID_CHA,
+						    cfg->ppc, cfg->bpc,
+						    cfg->fmt);
+			if (ret)
+				dev_err(phy_dev->dev,
+					"unable to set requested tx resolutions\n\r");
+			cfg->tx_params = 0;
+			dev_info(phy_dev->dev,
+				 "tx_tmdsclk %lld\n", cfg->tx_tmdsclk);
+		}
+		count_tx = 0;
+	}
+
 	return 0;
 }
 

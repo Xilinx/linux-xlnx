@@ -1342,6 +1342,113 @@ void xhdmiphy_hdmi20_conf(struct xhdmiphy_dev *inst, enum dir dir)
 }
 
 /**
+ * xhdmiphy_hdmi21_conf - This function will configure the GT for HDMI 2.1
+ * operation
+ *
+ * @inst:	inst is a pointer to the Hdmiphy core instance
+ * @dir:	chid is the channel ID to operate on
+ * @linerate:	dir is an indicator for RX or TX
+ * @nchannels:	no of channels
+ *
+ * @return:	- 0 if Tx parameters set/updated
+ *		- 1 if low resolution video not supported
+ */
+u32 xhdmiphy_hdmi21_conf(struct xhdmiphy_dev *inst, enum dir dir, u64 linerate,
+			 u8 nchannels)
+{
+	enum pll_type pll_type;
+	u32 status = 0;
+
+	if (inst->conf.gt_type == XHDMIPHY_GTHE4 ||
+	    inst->conf.gt_type == XHDMIPHY_GTYE4) {
+		char speedgrade[5] = "-2";
+		char comp_val[5] = "-1";
+		char *speed_grade_ptr = &speedgrade[0];
+		char *compval_ptr = &comp_val[0];
+
+		if (strncmp(speed_grade_ptr, compval_ptr, 2) == 0) {
+			if (linerate > XHDMIPHY_LRATE_8G) {
+				dev_err(inst->dev, "linkrate is not supported\n");
+				return 1;
+			}
+		}
+	}
+
+	pll_type = xhdmiphy_get_pll_type(inst, dir, XHDMIPHY_CHID_CH1);
+	if (dir == XHDMIPHY_DIR_TX) {
+		if (inst->conf.tx_refclk_sel != inst->conf.tx_frl_refclk_sel)
+			xhdmiphy_intr_dis(inst,
+					  XHDMIPHY_INTR_TXFREQCHANGE_MASK);
+
+		/* enable 4th channel output */
+		xhdmiphy_clkout1_obuftds_en(inst, XHDMIPHY_DIR_TX, (true));
+	} else {
+		if (inst->conf.rx_refclk_sel != inst->conf.rx_frl_refclk_sel)
+			xhdmiphy_intr_dis(inst, XHDMIPHY_INTR_RXFREQCHANGE_MASK);
+	}
+
+	if (inst->conf.gt_type != XHDMIPHY_GTYE5) {
+		xhdmiphy_pll_refclk_sel(inst, ((pll_type == XHDMIPHY_PLL_CPLL) ?
+					XHDMIPHY_CHID_CHA : XHDMIPHY_CHID_CMNA),
+					((dir == XHDMIPHY_DIR_TX) ?
+					inst->conf.tx_frl_refclk_sel :
+					inst->conf.rx_frl_refclk_sel));
+
+		xhdmiphy_write_refclksel(inst);
+	}
+
+	/* update HDMI confurations */
+	if (dir == XHDMIPHY_DIR_TX) {
+		inst->tx_refclk_hz = XHDMIPHY_HDMI21_FRL_REFCLK;
+		inst->tx_hdmi21_cfg.linerate = linerate;
+		inst->tx_hdmi21_cfg.nchannels = nchannels;
+		inst->tx_hdmi21_cfg.is_en = true;
+
+		status = xhdmiphy_set_tx_param(inst,
+					       ((pll_type == XHDMIPHY_PLL_CPLL) ?
+					       XHDMIPHY_CHID_CHA :
+					       XHDMIPHY_CHID_CMNA),
+					       inst->conf.ppc, XVIDC_BPC_8,
+					       XVIDC_CSF_RGB);
+
+		xhdmiphy_mmcm_lock_en(inst, dir, true);
+
+		if (inst->conf.tx_refclk_sel == inst->conf.tx_frl_refclk_sel)
+			xhdmiphy_mmcm_clkin_sel(inst, dir,
+						XHDMIPHY_MMCM_CLKINSEL_CLKIN1);
+		else
+			xhdmiphy_mmcm_clkin_sel(inst, dir,
+						XHDMIPHY_MMCM_CLKINSEL_CLKIN2);
+
+		if (inst->conf.tx_refclk_sel != inst->conf.tx_frl_refclk_sel)
+			xhdmiphy_tx_timertimeout_handler(inst);
+	} else {
+		inst->rx_refclk_hz = XHDMIPHY_HDMI21_FRL_REFCLK;
+		inst->rx_hdmi21_cfg.linerate = linerate;
+		inst->rx_hdmi21_cfg.nchannels = nchannels;
+		inst->rx_hdmi21_cfg.is_en = true;
+
+		/* set mmcm dividers for frl mode */
+		xhdmiphy_mmcm_param(inst, XHDMIPHY_DIR_RX);
+
+		/* mask the mmcm lock */
+		xhdmiphy_mmcm_lock_en(inst, dir, true);
+
+		if (inst->conf.rx_refclk_sel != inst->conf.rx_frl_refclk_sel) {
+			/* set mmcm clkinsel to clk2 */
+			xhdmiphy_mmcm_clkin_sel(inst, dir,
+						XHDMIPHY_MMCM_CLKINSEL_CLKIN2);
+
+			xhdmiphy_mmcm_start(inst, XHDMIPHY_DIR_RX);
+
+			xhdmiphy_rx_timertimeout_handler(inst);
+		}
+	}
+
+	return status;
+}
+
+/**
  * xhdmiphy_is_pll_locked - This function will check the status of a PLL lock
  * on the specified channel.
  *
