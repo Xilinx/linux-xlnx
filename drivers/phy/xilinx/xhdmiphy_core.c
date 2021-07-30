@@ -27,6 +27,39 @@ void xhdmiphy_set_clr(struct xhdmiphy_dev *inst, u32 addr, u32 reg_val,
 	xhdmiphy_write(inst, addr, reg_val);
 }
 
+/**
+ * xhdmiphy_cfg_set_cdr - This function is a transceiver adaptor to set the
+ * clock and data recovery (CDR) values for a given channel.
+ *
+ * @inst:	inst is a pointer to the xhdmiphy core instance
+ * @chid:	chid is the channel id to operate on
+ *
+ * @return:	- 0 if the configuration was successful
+ *		- 1 otherwise
+ */
+static bool xhdmiphy_cfg_set_cdr(struct xhdmiphy_dev *inst, enum chid chid)
+{
+	return inst->gt_adp->cfg_set_cdr(inst, chid);
+}
+
+/**
+ * xhdmiphy_check_pll_oprange - This function is a transceiver adaptor to check
+ * if a given PLL output frequency is within the operating range of the PLL for
+ * the GT type.
+ *
+ * @inst:		inst is a pointer to the xhdmiphy core instance
+ * @chid:		chid is the channel ID to operate on
+ * @pllclk_out_freq:	pllclk_out_freq is the frequency to check
+ *
+ * @return:	- 0 if the frequency resides within the PLL's range
+ *		- 1 otherwise
+ */
+static bool xhdmiphy_check_pll_oprange(struct xhdmiphy_dev *inst, enum chid chid,
+				       u64 pllclk_out_freq)
+{
+	return inst->gt_adp->check_pll_oprange(inst, chid, pllclk_out_freq);
+}
+
 u32 xhdmiphy_outdiv_ch_reconf(struct xhdmiphy_dev *inst, enum chid chid,
 			      enum dir dir)
 {
@@ -986,4 +1019,90 @@ u64 xhdmiphy_get_pll_vco_freq(struct xhdmiphy_dev *inst, enum chid chid,
 			     pll_prm.m_refclk_div;
 
 	return pll_vco_rate;
+}
+
+/**
+ * xhdmiphy_pll_cal - This function will try to find the necessary PLL divisor
+ * values to produce the configured line rate given the specified PLL input
+ * frequency.
+ *
+ * @inst:	inst is a pointer to the xhdmiphy core instance
+ * @chid:	chid is the channel ID to calculate the PLL values for
+ * @dir:	dir is an indicator for TX or RX
+ * @pll_clkin_freq:
+ *		pll_clkin_freq is the PLL input frequency on which to base the
+ *		calculations on. A value of 0 indicates to use the currently
+ *		configured quad PLL reference clock. A non-zero value indicates
+ *		to ignore what is currently configured in SW, and use a custom
+ *		frequency instead.
+ *
+ * @return:	- 0 if valid PLL values were found to satisfy the constraints
+ *		- 1 otherwise
+ */
+u32 xhdmiphy_pll_cal(struct xhdmiphy_dev *inst, enum chid chid, enum dir dir,
+		     u32 pll_clkin_freq)
+{
+	const struct gtpll_divs *gtpll_divs;
+	struct channel *pll_ptr = &inst->quad.plls[XHDMIPHY_CH2IDX(chid)];
+	u64 pllclk_out_freq, linerate_freq;
+	u64 pll_clkin_freqin = pll_clkin_freq;
+	u32 status;
+	const u8 *m, *n1, *n2, *d;
+	u8 id, id0, id1;
+
+	if (!pll_clkin_freqin)
+		pll_clkin_freqin =
+			xhdmiphy_get_quad_refclk(inst, pll_ptr->pll_refclk);
+
+	/* select PLL value table offsets */
+	if (xhdmiphy_is_ch(chid))
+		gtpll_divs = &inst->gt_adp->cpll_divs;
+	else
+		gtpll_divs = &inst->gt_adp->qpll_divs;
+
+	for (n2 = gtpll_divs->n2; *n2 != 0; n2++) {
+		for (n1 = gtpll_divs->n1; *n1 != 0; n1++) {
+			for (m = gtpll_divs->m; *m != 0; m++) {
+				pllclk_out_freq = (pll_clkin_freqin * *n1 * *n2) / *m;
+				/* Test if the calculated PLL clock is in the VCO range */
+				status = xhdmiphy_check_pll_oprange(inst, chid,
+								    pllclk_out_freq);
+				if (status != 0)
+					continue;
+
+				if ((xhdmiphy_is_ch(chid)))
+					pllclk_out_freq *= 2;
+
+				/* Apply TX/RX divisor */
+				for (d = gtpll_divs->d; *d != 0; d++) {
+					linerate_freq = pllclk_out_freq / *d;
+					if (linerate_freq == pll_ptr->linerate)
+						goto calc_done;
+				}
+			}
+		}
+	}
+	/* Calculation failed, don't change divisor settings */
+	return 1;
+
+calc_done:
+	/* Found the multiplier and divisor values for requested line rate */
+	pll_ptr->pll_param.m_refclk_div = *m;
+	pll_ptr->pll_param.nfb_div = *n1;
+	pll_ptr->pll_param.n2fb_div = *n2;
+	pll_ptr->pll_param.is_lowerband = 1;
+
+	if (xhdmiphy_is_cmn(chid)) {
+		/* Same divisor value for all channels if using a QPLL */
+		chid = XHDMIPHY_CHID_CHA;
+	}
+
+	xhdmiphy_ch2ids(inst, chid, &id0, &id1);
+	for (id = id0; id <= id1; id++) {
+		inst->quad.plls[XHDMIPHY_CH2IDX(id)].outdiv[dir] = *d;
+		if (dir == XHDMIPHY_DIR_RX)
+			xhdmiphy_cfg_set_cdr(inst, (enum chid)id);
+	}
+
+	return 0;
 }
