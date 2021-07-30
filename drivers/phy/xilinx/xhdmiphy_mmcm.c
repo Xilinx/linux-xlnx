@@ -19,6 +19,48 @@ struct gthdmi_chars {
 	u16 pll_scale;
 };
 
+static const struct gthdmi_chars gthe4hdmi_chars = {
+	.dru_linerate = XHDMIPHY_HDMI_GTHE4_DRU_LRATE,
+	.pll_scale = XHDMIPHY_HDMI_GTHE4_PLL_SCALE,
+	.qpll0_refclk_min = XHDMIPHY_HDMI_GTHE4_QPLL0_REFCLK_MIN,
+	.qpll1_refclk_min = XHDMIPHY_HDMI_GTHE4_QPLL1_REFCLK_MIN,
+	.cpll_refclk_min = XHDMIPHY_HDMI_GTHE4_CPLL_REFCLK_MIN,
+	.tx_mmcm_scale = XHDMIPHY_HDMI_GTHE4_TX_MMCM_SCALE,
+	.tx_mmcm_fvcomin = XHDMIPHY_HDMI_GTHE4_TX_MMCM_FVCO_MIN,
+	.tx_mmcm_fvcomax = XHDMIPHY_HDMI_GTHE4_TX_MMCM_FVCO_MAX,
+	.rx_mmcm_scale = XHDMIPHY_HDMI_GTHE4_RX_MMCM_SCALE,
+	.rx_mmcm_fvcomin = XHDMIPHY_HDMI_GTHE4_RX_MMCM_FVCO_MIN,
+	.rx_mmcm_fvcomax = XHDMIPHY_HDMI_GTHE4_RX_MMCM_FVCO_MAX,
+};
+
+static const struct gthdmi_chars gtye4hdmi_chars = {
+	.dru_linerate = XHDMIPHY_HDMI_GTYE4_DRU_LRATE,
+	.pll_scale = XHDMIPHY_HDMI_GTYE4_PLL_SCALE,
+	.qpll0_refclk_min = XHDMIPHY_HDMI_GTYE4_QPLL0_REFCLK_MIN,
+	.qpll1_refclk_min = XHDMIPHY_HDMI_GTYE4_QPLL1_REFCLK_MIN,
+	.cpll_refclk_min = XHDMIPHY_HDMI_GTYE4_CPLL_REFCLK_MIN,
+	.tx_mmcm_scale = XHDMIPHY_HDMI_GTYE4_TX_MMCM_SCALE,
+	.tx_mmcm_fvcomin = XHDMIPHY_HDMI_GTYE4_TX_MMCM_FVCO_MIN,
+	.tx_mmcm_fvcomax = XHDMIPHY_HDMI_GTYE4_TX_MMCM_FVCO_MAX,
+	.rx_mmcm_scale = XHDMIPHY_HDMI_GTYE4_RX_MMCM_SCALE,
+	.rx_mmcm_fvcomin = XHDMIPHY_HDMI_GTYE4_RX_MMCM_FVCO_MIN,
+	.rx_mmcm_fvcomax = XHDMIPHY_HDMI_GTYE4_RX_MMCM_FVCO_MAX,
+};
+
+static const struct gthdmi_chars gtye5hdmi_chars = {
+	.dru_linerate = XHDMIPHY_HDMI_GTYE5_DRU_LRATE,
+	.pll_scale = XHDMIPHY_HDMI_GTYE5_PLL_SCALE,
+	.qpll0_refclk_min = XHDMIPHY_HDMI_GTYE5_LCPLL_REFCLK_MIN,
+	.qpll1_refclk_min = XHDMIPHY_HDMI_GTYE5_RPLL_REFCLK_MIN,
+	.cpll_refclk_min = 0,
+	.tx_mmcm_scale = XHDMIPHY_HDMI_GTYE5_TX_MMCM_SCALE,
+	.tx_mmcm_fvcomin = XHDMIPHY_HDMI_GTYE5_TX_MMCM_FVCO_MIN,
+	.tx_mmcm_fvcomax = XHDMIPHY_HDMI_GTYE5_TX_MMCM_FVCO_MAX,
+	.rx_mmcm_scale = XHDMIPHY_HDMI_GTYE5_RX_MMCM_SCALE,
+	.rx_mmcm_fvcomin = XHDMIPHY_HDMI_GTYE5_RX_MMCM_FVCO_MIN,
+	.rx_mmcm_fvcomax = XHDMIPHY_HDMI_GTYE5_RX_MMCM_FVCO_MAX,
+};
+
 /*
  * Following are the MMCM Parameter values for each rate.
  * Based on the MAX rate config in PHY the MMCM
@@ -66,6 +108,18 @@ static struct xhdmiphy_mmcm *get_mmcm_conf(struct xhdmiphy_dev *inst)
 		return gthe4_gtye4_mmcm;
 
 	return gtye5_mmcm;
+}
+
+static const struct gthdmi_chars *get_gthdmi_ptr(struct xhdmiphy_dev *inst)
+{
+	if (inst->conf.gt_type == XHDMIPHY_GTHE4)
+		return &gthe4hdmi_chars;
+	else if (inst->conf.gt_type == XHDMIPHY_GTYE4)
+		return &gtye4hdmi_chars;
+	else if (inst->conf.gt_type == XHDMIPHY_GTYE5)
+		return &gtye5hdmi_chars;
+
+	return NULL;
 }
 
 /**
@@ -498,4 +552,796 @@ void xhdmiphy_mmcm_param(struct xhdmiphy_dev *inst, enum dir dir)
 	default:
 		break;
 	}
+}
+
+static void xhdmiphy_set_clkout2_div(struct xhdmiphy_dev *inst, enum dir dir,
+				     u64 linerate, struct xhdmiphy_mmcm *mmcm_ptr)
+{
+	/* Only do this when the clkout2_div has been set */
+	if (mmcm_ptr->clkout2_div) {
+		if (dir == XHDMIPHY_DIR_RX) {
+			/* Correct divider value if TMDS clock ratio is 1/40 */
+			if (inst->rx_tmdsclock_ratio) {
+				if ((mmcm_ptr->clkout2_div % 4) == 0) {
+					mmcm_ptr->clkout2_div =
+					mmcm_ptr->clkout2_div / 4;
+				} else {
+				/*
+				 * Not divisible by 4: repeat
+				 * loop with a lower multiply
+				 * value
+				 */
+					if (inst->conf.gt_type != XHDMIPHY_GTYE5)
+						mmcm_ptr->clkout2_div = 255;
+					else
+						mmcm_ptr->clkout2_div = 65535;
+				}
+			}
+		}
+		/* TX */
+		else if ((((linerate / 1000000) >= XHDMIPHY_LRATE_3400) &&
+			  (inst->tx_samplerate == 1)) ||
+			  (((linerate / 1000000) / inst->tx_samplerate) >=
+			    XHDMIPHY_LRATE_3400)) {
+			if ((mmcm_ptr->clkout2_div % 4) == 0) {
+				mmcm_ptr->clkout2_div = mmcm_ptr->clkout2_div / 4;
+			} else {
+			/*
+			 * Not divisible by 4: repeat loop with
+			 * a lower multiply value
+			 */
+				if (inst->conf.gt_type != XHDMIPHY_GTYE5)
+					mmcm_ptr->clkout2_div = 255;
+				else
+					mmcm_ptr->clkout2_div = 65535;
+			}
+		}
+	}
+}
+
+/**
+ * xhdmiphy_cal_mmcm_param - This function calculates the HDMI mmcm parameters.
+ *
+ * @inst:	inst is a pointer to the Hdmiphy core instance
+ * @chid:	chid is the channel ID to operate on
+ * @dir:	dir is an indicator for RX or TX
+ * @ppc:	ppc specifies the total number of pixels per clock
+ *		- 1 = XVIDC_PPC_1
+ *		- 2 = XVIDC_PPC_2
+ *		- 4 = XVIDC_PPC_4
+ * @bpc:	bpc specifies the color depth/bits per color component
+ *		- 6 = XVIDC_BPC_6
+ *		- 8 = XVIDC_BPC_8
+ *		- 10 = XVIDC_BPC_10
+ *		- 12 = XVIDC_BPC_12
+ *		- 16 = XVIDC_BPC_16
+ *
+ * @return:	- 0 if calculated PLL parameters updated successfully
+ *		- 1 if parameters not updated
+ */
+u32 xhdmiphy_cal_mmcm_param(struct xhdmiphy_dev *inst, enum chid chid,
+			    enum dir dir, enum ppc ppc, enum color_depth bpc)
+{
+	struct xhdmiphy_mmcm *mmcm_ptr;
+	enum pll_type pll_type;
+	u64 linerate = 0;
+	u32 refclk, div, mult;
+	u16 mult_div;
+	u8 valid;
+
+	pll_type = xhdmiphy_get_pll_type(inst, dir, XHDMIPHY_CHID_CH1);
+
+	switch (pll_type) {
+	case XHDMIPHY_PLL_QPLL:
+	case XHDMIPHY_PLL_QPLL0:
+	case XHDMIPHY_PLL_LCPLL:
+		linerate = inst->quad.cmn0.linerate;
+		break;
+	case XHDMIPHY_PLL_QPLL1:
+	case XHDMIPHY_PLL_RPLL:
+		linerate = inst->quad.cmn1.linerate;
+		break;
+	default:
+		linerate = inst->quad.ch1.linerate;
+		break;
+	}
+
+	if (((linerate / 1000000) > 2970) && ppc == XVIDC_PPC_1) {
+		dev_err(inst->dev, "ppc not supported\n");
+		return 1;
+	}
+
+	div = 1;
+	do {
+		if (dir == XHDMIPHY_DIR_RX) {
+			refclk = inst->rx_refclk_hz;
+			mmcm_ptr = &inst->quad.rx_mmcm;
+			refclk = refclk / (get_gthdmi_ptr(inst))->rx_mmcm_scale;
+			mult = (get_gthdmi_ptr(inst))->rx_mmcm_fvcomax * div / refclk;
+		} else {
+			refclk = inst->tx_refclk_hz;
+			mmcm_ptr = &inst->quad.tx_mmcm;
+			refclk = refclk / (get_gthdmi_ptr(inst))->tx_mmcm_scale;
+			mult = (get_gthdmi_ptr(inst))->tx_mmcm_fvcomax * div / refclk;
+		}
+
+		/* return if refclk is below valid range */
+		if (refclk < 20000000)
+			return (1);
+
+		/* in case of 4 pixels per clock, the M must be a multiple of four */
+		if (ppc == XVIDC_PPC_4) {
+			mult = mult / 4;
+			mult = mult * 4;
+		} else if (ppc == XVIDC_PPC_2) {
+		/* else the M must be a multiple of two */
+			mult = mult / 2;
+			mult = mult * 2;
+		}
+
+		valid = (false);
+		do {
+			mult_div = mult / div;
+			mmcm_ptr->clkfbout_mult = mult;
+			mmcm_ptr->divclk_divide = div;
+			if (inst->conf.transceiver_width == 4) {
+				/* link clock: TMDS clock ratio 1/40 */
+				if ((linerate / 1000000) >= XHDMIPHY_LRATE_3400) {
+					if (dir == XHDMIPHY_DIR_TX &&
+					    (((linerate / 1000000) / inst->tx_samplerate) < 3400)) {
+						mmcm_ptr->clkout0_div = mult_div * 4;
+					} else {
+						mmcm_ptr->clkout0_div = mult_div;
+					}
+				} else {
+				/* link clock: TMDS clock ratio 1/10 */
+					mmcm_ptr->clkout0_div = mult_div * 4;
+				}
+			} else {
+				/* 2 Byte Mode */
+				/* link clock: TMDS clock ratio 1/40 */
+				if ((linerate / 1000000) >= XHDMIPHY_LRATE_3400) {
+					if (dir == XHDMIPHY_DIR_TX &&
+					    (((linerate / 1000000) / inst->tx_samplerate) < 3400)) {
+						mmcm_ptr->clkout0_div = mult_div * 2;
+					} else {
+						mmcm_ptr->clkout0_div = mult_div / 2;
+					}
+				} else {
+				/* link clock: TMDS clock ratio 1/10 */
+					mmcm_ptr->clkout0_div = mult_div * 2;
+				}
+			}
+			/* TMDS clock */
+			mmcm_ptr->clkout1_div = mult_div *
+						((dir == XHDMIPHY_DIR_TX) ?
+						(inst->tx_samplerate) : 1);
+			/* video clock */
+			mmcm_ptr->clkout2_div = 0;
+			switch (bpc) {
+			case XVIDC_BPC_10:
+				/* quad pixel */
+				if (ppc == (XVIDC_PPC_4)) {
+					mmcm_ptr->clkout2_div = (mult_div * 5 *
+						((dir == XHDMIPHY_DIR_TX) ?
+						(inst->tx_samplerate) : 1));
+				/* dual pixel */
+				} else if (ppc == (XVIDC_PPC_2)) {
+					/*
+					 * The clock ratio is 2.5. The PLL only
+					 * supports integer value. The mult_div
+					 * must be dividable by two
+					 * (2 * 2.5 = 5) to get an integer
+					 * number
+					 */
+					if ((mult_div % 2) == 0) {
+						mmcm_ptr->clkout2_div =
+							(mult_div * 5 / 2 *
+							((dir == XHDMIPHY_DIR_TX) ?
+							(inst->tx_samplerate) : 1));
+					}
+				/* single pixel */
+				} else {
+					/*
+					 * The clock ratio is 1.25. The pll only
+					 * supports integer values The multDiv
+					 * must be dividable by four
+					 * (4 * 1.25 = 5) to get an integer
+					 * number
+					 */
+					if ((mult_div % 4) == 0) {
+						mmcm_ptr->clkout2_div = (mult_div * 5 / 4 *
+							((dir == XHDMIPHY_DIR_TX) ?
+							(inst->tx_samplerate) : 1));
+					}
+				}
+				break;
+			case XVIDC_BPC_12:
+				/* quad pixel */
+				if (ppc == (XVIDC_PPC_4)) {
+					mmcm_ptr->clkout2_div = (mult_div * 6 *
+						((dir == XHDMIPHY_DIR_TX) ?
+						(inst->tx_samplerate) : 1));
+				} else if (ppc == (XVIDC_PPC_2)) {
+				/* dual pixel */
+					mmcm_ptr->clkout2_div = (mult_div * 3 *
+						((dir == XHDMIPHY_DIR_TX) ?
+						(inst->tx_samplerate) : 1));
+				/* single pixel */
+				} else {
+					/*
+					 * The clock ratio is 1.5. The PLL only
+					 * supports integer values. The mult_div
+					 * must be dividable by two (2 * 1.5 = 3)
+					 * to get an integer number
+					 */
+					if ((mult_div % 2) == 0) {
+						mmcm_ptr->clkout2_div = (mult_div * 3 / 2 *
+							((dir == XHDMIPHY_DIR_TX) ?
+							(inst->tx_samplerate) : 1));
+					}
+				}
+				break;
+			case XVIDC_BPC_16:
+				/* quad pixel */
+				if (ppc == (XVIDC_PPC_4)) {
+					mmcm_ptr->clkout2_div = (mult_div * 8 *
+						((dir == XHDMIPHY_DIR_TX) ?
+						(inst->tx_samplerate) : 1));
+				} else if (ppc == (XVIDC_PPC_2)) {
+				/* dual pixel */
+					mmcm_ptr->clkout2_div = (mult_div * 4 *
+						((dir == XHDMIPHY_DIR_TX) ?
+						(inst->tx_samplerate) : 1));
+				} else {
+				/* single pixel */
+					mmcm_ptr->clkout2_div = (mult_div * 2 *
+						((dir == XHDMIPHY_DIR_TX) ?
+						(inst->tx_samplerate) : 1));
+				}
+				break;
+			case XVIDC_BPC_8:
+			default:
+				/* quad pixel */
+				if (ppc == (XVIDC_PPC_4)) {
+					mmcm_ptr->clkout2_div = (mult_div * 4 *
+						((dir == XHDMIPHY_DIR_TX) ?
+						(inst->tx_samplerate) : 1));
+				} else if (ppc == (XVIDC_PPC_2)) {
+				/* dual pixel */
+					mmcm_ptr->clkout2_div = (mult_div * 2 *
+						((dir == XHDMIPHY_DIR_TX) ?
+						(inst->tx_samplerate) : 1));
+				} else {
+				/* single pixel */
+					mmcm_ptr->clkout2_div = (mult_div *
+						((dir == XHDMIPHY_DIR_TX) ?
+						(inst->tx_samplerate) : 1));
+				}
+				break;
+			}
+			xhdmiphy_set_clkout2_div(inst, dir, linerate, mmcm_ptr);
+
+			/* Check values */
+			if (inst->conf.gt_type != XHDMIPHY_GTYE5) {
+				if (mmcm_ptr->clkout0_div > 0 &&
+				    mmcm_ptr->clkout0_div <= 128 &&
+				    mmcm_ptr->clkout1_div > 0 &&
+				    mmcm_ptr->clkout1_div <= 128 &&
+				    mmcm_ptr->clkout2_div > 0 &&
+				    mmcm_ptr->clkout2_div <= 128) {
+					valid = (true);
+				} else {
+					/* 4 pixels per clock */
+					if (ppc == (XVIDC_PPC_4)) {
+						/* Decrease mult value */
+						mult -= 4;
+					} else if (ppc == (XVIDC_PPC_2)) {
+					/* 2 pixels per clock */
+						/* Decrease M value */
+						mult -= 2;
+					} else {
+						/* 1 pixel per clock */
+						/* Decrease M value */
+						mult -= 1;
+					}
+				}
+			} else {
+				if (mmcm_ptr->clkout0_div > 0 &&
+				    mmcm_ptr->clkout0_div <= 511 &&
+				    mmcm_ptr->clkout1_div > 0 &&
+				    mmcm_ptr->clkout1_div <= 511 &&
+				    mmcm_ptr->clkout2_div > 0 &&
+				    mmcm_ptr->clkout2_div <= 511) {
+					valid = (true);
+				} else { /* 4 pixels per clock */
+					if (ppc == (XVIDC_PPC_4)) {
+						/* Decrease mult value */
+						mult -= 4;
+					} else if (ppc == (XVIDC_PPC_2)) {
+						/* 2 pixels per clock */
+						/* Decrease M value */
+						mult -= 2;
+					} else {
+						/* 1 pixel per clock */
+						/* Decrease M value */
+						mult -= 1;
+					}
+				}
+			}
+		} while (!valid && (mult > 0) && (mult < 129));
+
+		/* Increment divider */
+		div++;
+	} while (!valid && (div > 0) && (div < 107));
+
+	if (valid)
+		return 0;
+
+	dev_err(inst->dev, "failed to caliculate mmmcm params\n");
+
+	return 1;
+}
+
+/**
+ * xhdmiphy_clk_cal_params - This function will try to find the necessary PLL
+ * divisor values to produce the configured line rate given the specified PLL
+ * input frequency. This will be done for all channels specified by chid.
+ * This function is a wrapper for xhdmiphy_pll_cal.
+ *
+ * @inst:		inst is a pointer to the xhdmiphy core instance.
+ * @chid:		chid is the channel ID to calculate the PLL values for.
+ * @dir:		dir is an indicator for TX or RX.
+ * @pll_in_freq:	pll_clkin_freq is the PLL input frequency on which to
+ *			base the calculations on. A value of 0 indicates to use
+ *			the currently configured quad PLL reference clock.
+ *			A non-zero value indicates to ignore what is currently
+ *			configured in SW, and use a custom frequency instead.
+ *
+ * @return:		- 0 if valid PLL values were found to satisfy the
+ *			constraints
+ *			- 1 otherwise
+ */
+static u32 xhdmiphy_clk_cal_params(struct xhdmiphy_dev *inst, enum chid chid,
+				   enum dir dir, u32 pll_in_freq)
+{
+	u32 status = 0;
+	u8 id, id0, id1;
+
+	xhdmiphy_ch2ids(inst, chid, &id0, &id1);
+
+	for (id = id0; id <= id1; id++) {
+		status = xhdmiphy_pll_cal(inst, (enum chid)id, dir,
+					  pll_in_freq);
+		if (status != 0)
+			return status;
+	}
+
+	return status;
+}
+
+/**
+ * xhdmiphy_qpll_param - This function calculates the qpll parameters.
+ *
+ * @inst:	inst is a pointer to the HDMI GT core instance
+ * @chid:	chid is the channel ID to operate on
+ * @dir:	dir is an indicator for RX or TX
+ *
+ * @return:
+ *		- 0 if calculated QPLL parameters updated
+ *			successfully
+ *		- 1 if parameters not updated
+ */
+u32 xhdmiphy_qpll_param(struct xhdmiphy_dev *inst, enum chid chid, enum dir dir)
+{
+	enum sysclk_data_sel sysclk_data_sel = 0;
+	enum chid act_cmnid = XHDMIPHY_CHID_CMN0;
+	enum sysclk_outsel sysclk_out_sel = 0;
+	u64 refclk = 0, tx_linerate = 0;
+	u32 *refclk_ptr;
+	u32 qpll_clkmin = 0;
+	u32 status, qpll_refclk;
+	u8 sr_arr[] = {1, 3, 5};
+	u8 sr_index, sr_val, id, id0, id1;
+
+	/* determine qpll reference clock from the first (master) channel */
+	if (dir == XHDMIPHY_DIR_RX) {
+		qpll_refclk = inst->rx_refclk_hz;
+		refclk_ptr = &inst->rx_refclk_hz;
+	} else {
+		qpll_refclk = inst->tx_refclk_hz;
+		refclk_ptr = &inst->tx_refclk_hz;
+	}
+
+	if (inst->conf.gt_type == XHDMIPHY_GTHE4) {
+		/* determine which QPLL to use */
+		if ((qpll_refclk >= 102343750 && qpll_refclk <= 122500000) ||
+		    (qpll_refclk >= 204687500 && qpll_refclk <= 245000000) ||
+		    (qpll_refclk >= 409375000 && qpll_refclk <= 490000000)) {
+			sysclk_data_sel = XHDMIPHY_SYSCLKSELDATA_QPLL1_OUTCLK;
+			sysclk_out_sel = XHDMIPHY_SYSCLKSELOUT_QPLL1_REFCLK;
+			act_cmnid = XHDMIPHY_CHID_CMN1;
+			qpll_clkmin = (u32)XHDMIPHY_HDMI_GTHE4_QPLL1_REFCLK_MIN;
+		} else {
+			sysclk_data_sel = XHDMIPHY_SYSCLKSELDATA_QPLL0_OUTCLK;
+			sysclk_out_sel = XHDMIPHY_SYSCLKSELOUT_QPLL0_REFCLK;
+			act_cmnid = XHDMIPHY_CHID_CMN0;
+			qpll_clkmin = (u32)XHDMIPHY_HDMI_GTHE4_QPLL0_REFCLK_MIN;
+		}
+	} else if (inst->conf.gt_type == XHDMIPHY_GTYE4) {
+		if ((qpll_refclk >= 102343750 && qpll_refclk <= 122500000) ||
+		    (qpll_refclk >= 204687500 && qpll_refclk <= 245000000) ||
+		    (qpll_refclk >= 409375000 && qpll_refclk <= 490000000)) {
+			sysclk_data_sel = XHDMIPHY_SYSCLKSELDATA_QPLL1_OUTCLK;
+			sysclk_out_sel = XHDMIPHY_SYSCLKSELOUT_QPLL1_REFCLK;
+			act_cmnid = XHDMIPHY_CHID_CMN1;
+			qpll_clkmin = (u32)XHDMIPHY_HDMI_GTYE4_QPLL1_REFCLK_MIN;
+		} else {
+			sysclk_data_sel = XHDMIPHY_SYSCLKSELDATA_QPLL0_OUTCLK;
+			sysclk_out_sel = XHDMIPHY_SYSCLKSELOUT_QPLL0_REFCLK;
+			act_cmnid = XHDMIPHY_CHID_CMN0;
+			qpll_clkmin = (u32)XHDMIPHY_HDMI_GTYE4_QPLL0_REFCLK_MIN;
+		}
+	}
+
+	/* update qpll clock selections */
+	xhdmiphy_sysclk_data_sel(inst, dir, sysclk_data_sel);
+	xhdmiphy_sysclk_out_sel(inst, dir, sysclk_out_sel);
+
+	/* rx is using qpll */
+	if (dir == XHDMIPHY_DIR_RX) {
+		/*
+		 * check if the reference clock is not below the minimum qpll
+		 * input frequency
+		 */
+		if (qpll_refclk >= qpll_clkmin) {
+			refclk = qpll_refclk;
+			/* Scaled line rate */
+			if (inst->rx_hdmi21_cfg.is_en == 0) {
+				if (inst->rx_tmdsclock_ratio)
+					xhdmiphy_cfg_linerate(inst,
+							      XHDMIPHY_CHID_CMNA,
+							      (refclk * 40));
+				else
+					xhdmiphy_cfg_linerate(inst,
+							      XHDMIPHY_CHID_CMNA,
+							      (refclk * 10));
+			} else {
+				xhdmiphy_cfg_linerate(inst,
+						      XHDMIPHY_CHID_CMNA,
+						      inst->rx_hdmi21_cfg.linerate);
+			}
+			/* clear DRU is enabled flag */
+			inst->rx_dru_enabled = 0;
+
+			/* Set RX data width */
+			xhdmiphy_ch2ids(inst, XHDMIPHY_CHID_CHA, &id0, &id1);
+			for (id = id0; id <= id1; id++) {
+				if (inst->conf.transceiver_width == 2) {
+					inst->quad.plls[XHDMIPHY_CH2IDX(id)].rx_data_width = 20;
+					inst->quad.plls[XHDMIPHY_CH2IDX(id)].rx_intdata_width = 2;
+				} else {
+					inst->quad.plls[XHDMIPHY_CH2IDX(id)].rx_data_width = 40;
+					inst->quad.plls[XHDMIPHY_CH2IDX(id)].rx_intdata_width = 4;
+				}
+			}
+		} else if (inst->conf.dru_present) {
+			refclk = xhdmiphy_get_dru_refclk(inst);
+			/* check DRU frequency */
+			if (refclk == 1) {
+				dev_err(inst->dev, "cannot get dru refclk\n");
+				return 1;
+			}
+
+			/* round input frequency to 10 kHz */
+			refclk = (refclk + 5000) / 10000;
+			refclk = refclk * 10000;
+
+			/* wet the DRU to operate at a linerate of 2.5 Gbps */
+			xhdmiphy_cfg_linerate(inst, XHDMIPHY_CHID_CMNA,
+					      (get_gthdmi_ptr(inst))->dru_linerate);
+
+			/* set DRU is enabled flag */
+			inst->rx_dru_enabled = 1;
+
+			/* set RX data width to 40 and 4 bytes */
+			xhdmiphy_ch2ids(inst, XHDMIPHY_CHID_CHA, &id0, &id1);
+			for (id = id0; id <= id1; id++) {
+				inst->quad.plls[XHDMIPHY_CH2IDX(id)].rx_data_width = 20;
+				inst->quad.plls[XHDMIPHY_CH2IDX(id)].rx_intdata_width = 2;
+			}
+		} else {
+			dev_err(inst->dev, "dru is not present\n");
+			return 1;
+		}
+	/* TX is using QPLL */
+	} else {
+		/* Set default TX sample rate */
+		inst->tx_samplerate = 1;
+
+		if (inst->tx_hdmi21_cfg.is_en == 0) {
+			/* Update TX line rates */
+			xhdmiphy_cfg_linerate(inst, XHDMIPHY_CHID_CMNA,
+					      ((u64)(*refclk_ptr) * 10));
+			tx_linerate = (*refclk_ptr) / 100000;
+
+			/* Check if the linerate is above the 340 Mcsc */
+			if ((tx_linerate) >= XHDMIPHY_LRATE_3400)
+				(*refclk_ptr) = (*refclk_ptr) / 4;
+		} else { /* inst->tx_hdmi21_cfg.is_en == 1 */
+			xhdmiphy_cfg_linerate(inst, XHDMIPHY_CHID_CMNA,
+					      inst->tx_hdmi21_cfg.linerate);
+		}
+	}
+
+	/* Calculate QPLL values */
+	for (sr_index = 0; sr_index < sizeof(sr_arr); sr_index++) {
+		/* Only use oversampling when then TX is using the QPLL */
+		if (dir == XHDMIPHY_DIR_TX) {
+			sr_val = sr_arr[sr_index];
+
+			if (inst->tx_hdmi21_cfg.is_en == 0) {
+				/*
+				 * TX reference clock is below the minimum QPLL
+				 * clock input frequency
+				 */
+				if ((*refclk_ptr) < qpll_clkmin) {
+					refclk = ((*refclk_ptr) * sr_val);
+
+					/* Calculate scaled line rate */
+					if (tx_linerate >= XHDMIPHY_LRATE_3400) {
+						xhdmiphy_cfg_linerate(inst,
+								      XHDMIPHY_CHID_CMNA,
+								      (u64)(refclk * 40));
+					} else {
+						xhdmiphy_cfg_linerate(inst,
+								      XHDMIPHY_CHID_CMNA,
+								      (u64)(refclk * 10));
+					}
+				} else {
+					/*
+					 * TX reference clock is in QPLL clock input range.
+					 * In this case don't increase the reference clock, but
+					 * increase the line rate.
+					 */
+					refclk = (*refclk_ptr);
+
+					/* Calculate scaled line rate */
+					if (tx_linerate >= XHDMIPHY_LRATE_3400) {
+						xhdmiphy_cfg_linerate(inst,
+								      XHDMIPHY_CHID_CMNA,
+								      (u64)(refclk * 40 * sr_val));
+					} else {
+						xhdmiphy_cfg_linerate(inst,
+								      XHDMIPHY_CHID_CMNA,
+								      (u64)(refclk * 10 * sr_val));
+					}
+				}
+			} else { /* inst->tx_hdmi21_cfg.is_en == 1 */
+				refclk = (*refclk_ptr);
+			}
+		} else {
+			/* For all other reference clocks force sample rate to one */
+			sr_val = 1;
+		}
+
+		status = xhdmiphy_clk_cal_params(inst, act_cmnid, dir, refclk);
+		if (status == 0) {
+			/* Only execute when the TX is using the QPLL */
+			if (dir == XHDMIPHY_DIR_TX) {
+				/* Set TX sample rate */
+				inst->tx_samplerate = sr_val;
+
+				/*
+				 * Update reference clock only when the
+				 * reference clock is below the minimum QPLL
+				 * input frequency.
+				 */
+				if ((*refclk_ptr) < qpll_clkmin) {
+					(*refclk_ptr) = (*refclk_ptr) * sr_val;
+				} else if (sr_val > 1) {
+					dev_err(inst->dev,
+						"failed to configure qpll params\n");
+					return 1;
+				}
+			}
+			/*
+			 * Check Userclock Frequency (300 MHz + 0.5%) + 10 KHz
+			 * (Clkdet accuracy)
+			 */
+			if (301500000 < (xhdmiphy_get_linerate(inst, act_cmnid) /
+					 (inst->conf.transceiver_width * 10))) {
+				dev_err(inst->dev, "user clock error\n");
+				return 1;
+			}
+
+			return 0;
+		}
+	}
+
+	dev_err(inst->dev, "failed to configure qpll params\n");
+	return 1;
+}
+
+/**
+ * xhdmiphy_cpll_param - This function calculates the CPLL parameters.
+ *
+ * @inst:	inst is a pointer to the HDMI GT core instance
+ * @chid:	chid is the channel ID to operate on
+ * @dir:	dir is an indicator for RX or TX
+ *
+ * @return:	- 0 if calculated CPLL parameters updated
+ *		  successfully
+ *		- 1 if parameters not updated
+ */
+u32 xhdmiphy_cpll_param(struct xhdmiphy_dev *inst, enum chid chid, enum dir dir)
+{
+	enum chid ch_id = XHDMIPHY_CHID_CHA;
+	u64 refclk = 0;
+	u32 *refclk_ptr;
+	u32 tx_linerate = 0;
+	u32 status;
+	u8 sr_arr[] = {1, 3, 5};
+	u8 sr_index, sr_val, id, id0, id1;
+
+	/* tx is using cpll */
+	if (dir == XHDMIPHY_DIR_TX) {
+		/* set default tx sample rate */
+		inst->tx_samplerate = 1;
+		refclk_ptr = &inst->tx_refclk_hz;
+		if (inst->tx_hdmi21_cfg.is_en == 0) {
+			xhdmiphy_cfg_linerate(inst, ch_id,
+					      (u64)((*refclk_ptr) * 10));
+			tx_linerate = (*refclk_ptr)  / 100000;
+			/* check if the line rate is above the 340 Mcsc */
+			if (tx_linerate >= XHDMIPHY_LRATE_3400)
+				(*refclk_ptr) = (*refclk_ptr) / 4;
+		} else {
+			xhdmiphy_cfg_linerate(inst, ch_id,
+					      (u64)(inst->tx_hdmi21_cfg.linerate));
+			tx_linerate = inst->tx_hdmi21_cfg.linerate / 100000;
+		}
+	} else {
+		/* rx is using cpll */
+		refclk_ptr = &inst->rx_refclk_hz;
+		/*
+		 * check if the reference clock is not below the minimum CPLL
+		 * input frequency
+		 */
+		if ((*refclk_ptr) >= (get_gthdmi_ptr(inst))->cpll_refclk_min) {
+			refclk = (*refclk_ptr);
+			/* scaled linerate */
+			if (inst->rx_hdmi21_cfg.is_en == 0) {
+				if (inst->rx_tmdsclock_ratio) {
+					xhdmiphy_cfg_linerate(inst, ch_id,
+							      (refclk * 40));
+				} else {
+					xhdmiphy_cfg_linerate(inst, ch_id,
+							      (refclk * 10));
+				}
+			} else { /* inst->rx_hdmi21_cfg.is_en == 1 */
+				xhdmiphy_cfg_linerate(inst, ch_id,
+						      inst->rx_hdmi21_cfg.linerate);
+			}
+
+			inst->rx_dru_enabled = 0;
+			xhdmiphy_ch2ids(inst, XHDMIPHY_CHID_CHA, &id0,
+					&id1);
+			for (id = id0; id <= id1; id++) {
+				if (inst->conf.transceiver_width == 2) {
+					inst->quad.plls[XHDMIPHY_CH2IDX(id)].rx_data_width = 20;
+					inst->quad.plls[XHDMIPHY_CH2IDX(id)].rx_intdata_width = 2;
+				} else {
+					inst->quad.plls[XHDMIPHY_CH2IDX(id)].rx_data_width = 40;
+					inst->quad.plls[XHDMIPHY_CH2IDX(id)].rx_intdata_width = 4;
+				}
+			}
+		} else {
+			if (inst->conf.dru_present) {
+				/* Return config not found error when TMDS ratio is 1/40 */
+				if (inst->rx_tmdsclock_ratio) {
+					dev_err(inst->dev, "cpll config not found\n");
+					return 1;
+				}
+				refclk = xhdmiphy_get_dru_refclk(inst);
+				/* check DRU frequency */
+				if (refclk == 1) {
+					dev_err(inst->dev,
+						"cannot get dru refclk\n");
+					return 1;
+				}
+
+				/* Round input frequency to 10 kHz */
+				refclk = (refclk + 5000) / 10000;
+				refclk = refclk * 10000;
+
+				/*
+				 * set the dru to operate at a linerate of
+				 * 2.5 Gbps
+				 */
+				xhdmiphy_cfg_linerate(inst, ch_id,
+						      (get_gthdmi_ptr(inst))->
+						      dru_linerate);
+				/* Set dru is enabled flag */
+				inst->rx_dru_enabled = 1;
+
+				/* set rx data width */
+				xhdmiphy_ch2ids(inst, XHDMIPHY_CHID_CHA,
+						&id0, &id1);
+				for (id = id0; id <= id1; id++) {
+					inst->quad.plls[XHDMIPHY_CH2IDX(id)].rx_data_width = 20;
+					inst->quad.plls[XHDMIPHY_CH2IDX(id)].rx_intdata_width = 2;
+				}
+
+				if (tx_linerate > (((get_gthdmi_ptr(inst))->
+						dru_linerate) / 1000000)) {
+					dev_err(inst->dev,
+						"video format is not supported\n");
+					return 1;
+				}
+			} else {
+				/* return config not found error when TMDS ratio is 1/40 */
+				if (inst->rx_tmdsclock_ratio) {
+					dev_err(inst->dev,
+						"cpll config not found\n");
+				} else {
+					dev_err(inst->dev, "no dru present\n");
+				}
+				return 1;
+			}
+		}
+	}
+
+	/* try different sample rates */
+	for (sr_index = 0; sr_index < sizeof(sr_arr); sr_index++) {
+		/* only use oversampling when then tx is using the cpll */
+		if (dir == XHDMIPHY_DIR_TX) {
+			sr_val = sr_arr[sr_index];
+			if (inst->tx_hdmi21_cfg.is_en == 0) {
+				/* multiply the reference clock with the sample
+				 * rate value
+				 */
+				refclk = ((*refclk_ptr) * sr_val);
+				/* calculate scaled line rate */
+				if (tx_linerate >= XHDMIPHY_LRATE_3400) {
+					xhdmiphy_cfg_linerate(inst, ch_id,
+							      (refclk * 40));
+				} else {
+					xhdmiphy_cfg_linerate(inst,
+							      ch_id,
+							      (refclk * 10));
+				}
+			} else { /* inst->tx_hdmi21_cfg.is_en == 1 */
+				refclk = (*refclk_ptr);
+			}
+		/* for all other reference clocks force sample rate to one */
+		} else {
+			sr_val = 1;
+		}
+
+		status = xhdmiphy_clk_cal_params(inst, ch_id, dir, refclk);
+		if (status == (0)) {
+			/* only execute when the tx is using the qpll */
+			if (dir == XHDMIPHY_DIR_TX) {
+				inst->tx_samplerate = sr_val;
+				(*refclk_ptr) = (*refclk_ptr) * sr_val;
+			}
+
+			/* check userclock frequency */
+			/* (300 MHz + 0.5%) + 10 KHz (clkdet accuracy) */
+			if (301500000 <
+			    (xhdmiphy_get_linerate(inst,
+						   XHDMIPHY_CHID_CH1) /
+						   (inst->conf.transceiver_width * 10))) {
+				dev_err(inst->dev, "user clock error\n");
+				return 1;
+			}
+
+			return 0;
+		}
+	}
+
+	dev_err(inst->dev, "cpll config not found\n");
+
+	return 1;
 }
