@@ -4,3 +4,4 @@ obj-$(CONFIG_PHY_XILINX_ZYNQMP)		+= phy-zynqmp.o
 obj-$(CONFIG_PHY_XILINX_HDMIPHY)       += xilinx-hdmiphy.o
 xilinx-hdmiphy-objs := xhdmiphy.o
 xilinx-hdmiphy-objs += xhdmiphy_core.o
+xilinx-hdmiphy-objs += xhdmiphy_modules.o

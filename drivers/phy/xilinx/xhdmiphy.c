@@ -28,6 +28,24 @@ struct xhdmiphy_lane {
 
 static int xhdmiphy_init(struct phy *phy)
 {
+	struct xhdmiphy_lane *phy_lane = phy_get_drvdata(phy);
+	struct xhdmiphy_dev *phy_dev = phy_lane->data;
+	unsigned int ret;
+	static int count;
+
+	count++;
+
+	if (count < XHDMIPHY_MAX_LANES)
+		return 0;
+
+	/* initialize HDMI phy */
+	ret = xhdmiphy_init_phy(phy_dev);
+	if (ret != 0) {
+		dev_err(phy_dev->dev, "HDMI PHY initialization error\n");
+		return -ENODEV;
+	}
+	count = 0;
+
 	return 0;
 }
 
