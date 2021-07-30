@@ -1,0 +1,202 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause) %YAML 1.2
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/phy/xlnx,v-hmdi-phy1.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx HDMI PHY
+
+maintainers:
+  - Rajesh Gugulothu <gugulothu.rajesh@xilinx.com>
+
+description: |
+  The Xilinx HDMI PHY Controller core is designed for enabling plug-and-play
+  connectivity with Xilinx HDMI 2.1 technology MAC transmit or receive
+  subsystems. The interface between the video MAC and PHY layers are
+  standardized to enable ease of use in accessing shared transceiver resource.
+
+properties:
+  compatible:
+    items:
+      - enum:
+          - xlnx,v-hdmi-phy1-1.0
+
+  reg:
+    maxItems: 1
+
+  interrupts:
+    maxItems: 1
+
+  clocks:
+    description: List of clock specifiers
+    items:
+      - description: AXI Lite clock
+      - description: DRP clock
+
+  clock-names:
+    items:
+      - const: axi4lite_aclk
+      - const: drpclk
+
+  xlnx,transceiver-type:
+    description: |
+      Gigabit transceiver type that IP configured with.Possible values are as
+      below -
+      5  - GTHE4
+      6  - GTYE4
+      7  - GTYE5
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [5, 6, 7]
+
+  xlnx,tx-no-of-channels:
+    description: Max number of channels that Tx configured with.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [1, 2, 4]
+
+  xlnx,rx-no-of-channels:
+    description: Max number of channels that Rx configured with.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [1, 2, 4]
+
+  xlnx,rx-protocol:
+    description: Protocol type that Tx is configured with.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 1
+    maximum: 3
+
+  xlnx,tx-protocol:
+    description: Protocol type that Rx is configured with.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 1
+    maximum: 3
+
+  xlnx,nidru:
+    description: nidru present in the IP or not.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0, 1]
+
+  xlnx,tx-refclk-sel:
+    description: Available reference clocks for Tx PLL clock selection
+                 multiplexer.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 0
+    maximum: 6
+
+  xlnx,rx-refclk-sel:
+    description: Available reference clocks for Rx PLL clock selection
+                 multiplexer.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 0
+    maximum: 6
+
+  xlnx,tx-frl-refclk-sel:
+    description: Available reference clocks for Tx PLL FRL(fixed rate link)
+                 clock selection multiplexer.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 1
+    maximum: 7
+
+  xlnx,rx-frl-refclk-sel:
+    description: Available reference clocks for Rx PLL FRL(fixed rate link)
+                 clock selection multiplexer.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 0
+    maximum: 6
+
+  xlnx,tx-pll-selection:
+    description: Available reference clocks used to driver Tx datapath.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 0
+    maximum: 6
+
+  xlnx,rx-pll-selection:
+    description: Available reference clocks used to driver Rx datapath.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 0
+    maximum: 6
+
+  xlnx,nidru-refclk-sel:
+    description: Available reference clocks for NI-DRU(non-integer data rate
+                 unit) clock selection multiplexer.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 1
+    maximum: 7
+
+  xlnx,transceiver-width:
+    description: Transceiver width that IP is configured with.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [2, 4]
+
+  xlnx,input-pixels-per-clock:
+    description: |
+      Input number of pixel per clock that IP configured with.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [1, 2, 4, 8]
+
+  xlnx,use-gt-ch4-hdmi:
+    description: |
+      use 4th GT channel as tx TMDS clock.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0, 1]
+
+  "#phy-cells":
+    const: 0
+
+required:
+  - clock-names
+  - clocks
+  - compatible
+  - interrupts
+  - reg
+  - xlnx,transceiver-type
+  - xlnx,tx-no-of-channels
+  - xlnx,rx-no-of-channels
+  - xlnx,tx-refclk-sel
+  - xlnx,rx-refclk-sel
+  - xlnx,tx-frl-refclk-sel
+  - xlnx,rx-frl-refclk-sel
+  - xlnx,tx-pll-selection
+  - xlnx,rx-pll-selection
+  - xlnx,nidru-refclk-sel
+  - xlnx,transceiver-width
+  - xlnx,input-pixels-per-clock
+  - xlnx,use-gt-ch4-hdmi
+  - '#phy-cells'
+
+additionalProperties: false
+
+examples:
+  - |
+   v_hdmi_phy1@80040000 {
+           clock-names = "axi4lite_aclk", "drpclk";
+           clocks =  <&zynqmp_clk 71>, <&zynqmp_clk 71>;
+           compatible = "xlnx,v-hdmi-phy1-1.0";
+           interrupt-parent = <&gic>;
+           interrupts = <0 89 4>;
+           reg = <0x80040000 0x10000>;
+           xlnx,transceiver-type = <5>;
+           xlnx,tx-no-of-channels = <4>;
+           xlnx,rx-no-of-channels = <4>;
+           xlnx,rx-protocol = <2>;
+           xlnx,tx-protocol = <2>;
+           xlnx,tx-refclk-sel = <2>;
+           xlnx,rx-refclk-sel = <0>;
+           xlnx,tx-frl-refclk-sel = <2>;
+           xlnx,rx-frl-refclk-sel = <0>;
+           xlnx,tx-pll-selection = <6>;
+           xlnx,rx-pll-selection = <0>;
+           xlnx,nidru = <1>;
+           xlnx,nidru-refclk-sel = <4>;
+           xlnx,transceiver-width = <4>;
+           xlnx,input-pixels-per-clock = <4>;
+           xlnx,use-gt-ch4-hdmi = <1>;
+           #phy-cells = <0>;
+   };
+...
