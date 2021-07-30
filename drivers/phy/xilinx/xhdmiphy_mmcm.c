@@ -123,6 +123,410 @@ static const struct gthdmi_chars *get_gthdmi_ptr(struct xhdmiphy_dev *inst)
 }
 
 /**
+ * xhdmiphy_mmcme5_div_enc - This function returns the DRP encoding of
+ * clkfbout_mult optimized for: Phase = 0; Dutycycle = 0.5; No Fractional
+ * division. The calculations are based on XAPP888
+ *
+ * @div_type:	divider type to be encoded
+ * @div:	div is the divider to be encoded
+ *
+ * @return:	- Encoded Value for clk_reg1 [15: 0]
+ *		- Encoded Value for clk_reg2 [31:16]
+ */
+static u32 xhdmiphy_mmcme5_div_enc(enum mmcm_divs div_type, u16 div)
+{
+	u32 clk_reg1, clk_reg2;
+	u16 divde = div;
+	u8 hi_time, lo_time;
+
+	if (div_type == XHDMIPHY_MMCM_CLKOUT_DIVIDE) {
+		if (div % 2)
+			divde = (div / 2);
+		else
+			divde = (div / 2) + (div % 2);
+	}
+
+	hi_time = divde / 2;
+	lo_time = hi_time;
+
+	clk_reg2 = lo_time & 0xff;
+	clk_reg2 |= (hi_time & 0xff) << 8;
+
+	if (div_type == XHDMIPHY_MMCM_CLKFBOUT_MULT_F) {
+		clk_reg1 = (divde % 2) ? 0x00001700 : 0x00001600;
+	} else {
+		if (div % 2)
+			clk_reg1 = (divde % 2) ? 0x0000bb00 : 0x0000ba00;
+		else
+			clk_reg1 = (divde % 2) ? 0x00001b00 : 0x00001a00;
+	}
+
+	return (clk_reg2 << 16) | clk_reg1;
+}
+
+/**
+ * xhdmiphy_mmcme5_cpres_enc - This function returns the DRP encoding of CP and
+ * Res optimized for: Phase = 0; Dutycycle = 0.5; BW = low; No Fractional
+ * division
+ *
+ * @mult:	mult is the divider to be encoded
+ *
+ * @return:	- [3:0] CP
+ *		- [20:17] RES
+ *
+ * note: For more details about DRP encoding values , refer GT user guide
+ */
+static u32 xhdmiphy_mmcme5_cpres_enc(u16 mult)
+{
+	u16 cp, res;
+
+	switch (mult) {
+	case 4:
+		cp = 5; res = 15;
+	break;
+	case 5:
+		cp = 6; res = 15;
+	break;
+	case 6:
+		cp = 7; res = 15;
+	break;
+	case 7:
+		cp = 13; res = 15;
+	break;
+	case 8:
+		cp = 14; res = 15;
+	break;
+	case 9:
+		cp = 15; res = 15;
+	break;
+	case 10:
+		cp = 14; res = 7;
+	break;
+	case 11:
+		cp = 15; res = 7;
+	break;
+	case 12 ... 13:
+		cp = 15; res = 11;
+	break;
+	case 14:
+		cp = 15; res = 13;
+	break;
+	case 15:
+		cp = 15; res = 3;
+	break;
+	case 16 ... 17:
+		cp = 14; res = 5;
+	break;
+	case 18 ... 19:
+		cp = 15; res = 5;
+	break;
+	case 20 ... 21:
+		cp = 15; res = 9;
+		break;
+	case 22 ... 23:
+		cp = 14; res = 14;
+		break;
+	case 24 ... 26:
+		cp = 15; res = 14;
+		break;
+	case 27 ... 28:
+		cp = 14; res = 1;
+		break;
+	case 29 ... 33:
+		cp = 15; res = 1;
+		break;
+	case 34 ... 37:
+		cp = 14; res = 6;
+		break;
+	case 38 ... 44:
+		cp = 15; res = 6;
+		break;
+	case 45 ... 57:
+		cp = 15; res = 10;
+		break;
+	case 58 ... 63:
+		cp = 13; res = 12;
+		break;
+	case 64 ... 70:
+		cp = 14; res = 12;
+		break;
+	case 71 ... 86:
+		cp = 15; res = 12;
+		break;
+	case 87 ... 93:
+		cp = 14; res = 2;
+		break;
+	case 94:
+		cp = 5; res = 15;
+		break;
+	case 95:
+		cp = 6; res = 15;
+		break;
+	case 96:
+		cp = 7; res = 15;
+		break;
+	case 97:
+		cp = 13; res = 15;
+		break;
+	case 98:
+		cp = 14; res = 15;
+		break;
+	case 99:
+		cp = 15; res = 15;
+		break;
+	case 100:
+		cp = 14; res = 7;
+		break;
+	case 101:
+		cp = 15; res = 7;
+		break;
+	case 102 ... 103:
+		cp = 15; res = 11;
+		break;
+	case 104:
+		cp = 15; res = 13;
+		break;
+	case 105:
+		cp = 15; res = 3;
+		break;
+	case 106 ... 107:
+		cp = 14; res = 5;
+		break;
+	case 108 ... 109:
+		cp = 15; res = 5;
+		break;
+	case 110 ... 111:
+		cp = 15; res = 9;
+		break;
+	case 112 ... 113:
+		cp = 14; res = 14;
+		break;
+	case 114 ... 116:
+		cp = 15; res = 14;
+		break;
+	case 117 ... 118:
+		cp = 14; res = 1;
+		break;
+	case 119 ... 123:
+		cp = 15; res = 1;
+		break;
+	case 124 ... 127:
+		cp = 14; res = 6;
+		break;
+	case 128 ... 134:
+		cp = 15; res = 6;
+		break;
+	case 135 ... 147:
+		cp = 15; res = 10;
+		break;
+	case 148 ... 153:
+		cp = 13; res = 12;
+		break;
+	case 154 ... 160:
+		cp = 14; res = 12;
+		break;
+	case 161 ... 176:
+		cp = 15; res = 12;
+		break;
+	case 177 ... 183:
+		cp = 14; res = 2;
+		break;
+	case 184 ... 200:
+		cp = 14; res = 4;
+		break;
+	case 201 ... 273:
+		cp = 15; res = 4;
+		break;
+	case 274 ... 300:
+		cp = 13; res = 8;
+		break;
+	case 301 ... 325:
+		cp = 14; res = 8;
+		break;
+	case 326 ... 432:
+		cp = 15; res = 8;
+		break;
+	default:
+		cp = 13; res = 8;
+		break;
+	}
+
+	return ((res & 0xf) << 17) | ((cp & 0xf) | 0x160);
+}
+
+/**
+ * xhdmiphy_mmcme5_lockreg12_enc - This function returns the DRP encoding of
+ * lock Reg1 & Reg2 optimized for: Phase = 0; Dutycycle = 0.5; BW = low;
+ * No Fractional division
+ *
+ * @mult:	mult is the divider to be encoded
+ *
+ * @return:	- [15:0] lock_1 Reg
+ *		- [31:16] lock_2 Reg
+ *
+ * note: For more details about DRP encoding values , refer GT user guide
+ */
+static u32 xhdmiphy_mmcme5_lockreg12_enc(u16 mult)
+{
+	u16 lock_1, lock_2, lock_ref_dly, lock_fb_dly, lock_cnt;
+	u16 lock_sat_high = 9;
+
+	switch (mult) {
+	case 4:
+		lock_ref_dly = 4;
+		lock_fb_dly = 4;
+		lock_cnt = 1000;
+		break;
+	case 5:
+		lock_ref_dly = 6;
+		lock_fb_dly = 6;
+		lock_cnt = 1000;
+		break;
+	case 6 ... 7:
+		lock_ref_dly = 7;
+		lock_fb_dly = 7;
+		lock_cnt = 1000;
+		break;
+	case 8:
+		lock_ref_dly = 9;
+		lock_fb_dly = 9;
+		lock_cnt = 1000;
+		break;
+	case 9 ... 10:
+		lock_ref_dly = 10;
+		lock_fb_dly = 10;
+		lock_cnt = 1000;
+		break;
+	case 11:
+		lock_ref_dly = 11;
+		lock_fb_dly = 11;
+		lock_cnt = 1000;
+		break;
+	case 12:
+		lock_ref_dly = 13;
+		lock_fb_dly = 13;
+		lock_cnt = 1000;
+		break;
+	case 13 ... 14:
+		lock_ref_dly = 14;
+		lock_fb_dly = 14;
+		lock_cnt = 1000;
+		break;
+	case 15:
+		lock_ref_dly = 16;
+		lock_fb_dly = 16;
+		lock_cnt = 900;
+		break;
+	case 16 ... 17:
+		lock_ref_dly = 16;
+		lock_fb_dly = 16;
+		lock_cnt = 825;
+		break;
+	case 18:
+		lock_ref_dly = 16;
+		lock_fb_dly = 16;
+		lock_cnt = 750;
+		break;
+	case 19 ... 20:
+		lock_ref_dly = 16;
+		lock_fb_dly = 16;
+		lock_cnt = 700;
+		break;
+	case 21:
+		lock_ref_dly = 16;
+		lock_fb_dly = 16;
+		lock_cnt = 650;
+		break;
+	case 22 ... 23:
+		lock_ref_dly = 16;
+		lock_fb_dly = 16;
+		lock_cnt = 625;
+		break;
+	case 24:
+		lock_ref_dly = 16;
+		lock_fb_dly = 16;
+		lock_cnt = 575;
+		break;
+	case 25:
+		lock_ref_dly = 16;
+		lock_fb_dly = 16;
+		lock_cnt = 550;
+		break;
+	case 26 ... 28:
+		lock_ref_dly = 16;
+		lock_fb_dly = 16;
+		lock_cnt = 525;
+		break;
+	case 29 ... 30:
+		lock_ref_dly = 16;
+		lock_fb_dly = 16;
+		lock_cnt = 475;
+		break;
+	case 31:
+		lock_ref_dly = 16;
+		lock_fb_dly = 16;
+		lock_cnt = 450;
+		break;
+	case 32 ... 33:
+		lock_ref_dly = 16;
+		lock_fb_dly = 16;
+		lock_cnt = 425;
+		break;
+	case 34 ... 36:
+		lock_ref_dly = 16;
+		lock_fb_dly = 16;
+		lock_cnt = 400;
+		break;
+	case 37:
+		lock_ref_dly = 16;
+		lock_fb_dly = 16;
+		lock_cnt = 375;
+		break;
+	case 38 ... 40:
+		lock_ref_dly = 16;
+		lock_fb_dly = 16;
+		lock_cnt = 350;
+		break;
+	case 41 ... 43:
+		lock_ref_dly = 16;
+		lock_fb_dly = 16;
+		lock_cnt = 325;
+		break;
+	case 44 ... 47:
+		lock_ref_dly = 16;
+		lock_fb_dly = 16;
+		lock_cnt = 300;
+		break;
+	case 48 ... 51:
+		lock_ref_dly = 16;
+		lock_fb_dly = 16;
+		lock_cnt = 275;
+		break;
+	case 52 ... 205:
+		lock_ref_dly = 16;
+		lock_fb_dly = 16;
+		lock_cnt = 950;
+		break;
+	case 206 ... 432:
+		lock_ref_dly = 16;
+		lock_fb_dly = 16;
+		lock_cnt = 925;
+		break;
+	default:
+		lock_ref_dly = 16;
+		lock_fb_dly = 16;
+		lock_cnt = 250;
+		break;
+	}
+
+	lock_1 = ((lock_fb_dly & 0x1f) << 10) | (lock_cnt & 0x3ff);
+
+	lock_2 = ((lock_ref_dly & 0x1f) << 10) | (lock_sat_high & 0x3ff);
+
+	return (lock_2 << 16) | lock_1;
+}
+
+/**
  * xhdmiphy_mmcme4_div_enc - This function returns the DRP encoding of
  * clkfbout_mult optimized for: Phase = 0; Dutycycle = 0.5; No Fractional
  * division The calculations are based on XAPP888
@@ -320,6 +724,114 @@ static u16 xhdmiphy_mmcme4_lockreg3_enc(u8 mult)
 }
 
 /**
+ * xhdmiphy_wr_mmcm5_params - This function will write the mixed-mode clock
+ * manager (MMCM) values currently stored in the driver's instance structure to
+ * hardware
+ *
+ * @inst:	inst is a pointer to the xhdmiphy core instance
+ * @dir:	dir is an indicator for TX or RX
+ *
+ * @return:	- 0 if the MMCM write was successful
+ *		- 1 otherwise, if the configuration success bit did not go low
+ */
+static bool xhdmiphy_wr_mmcm5_params(struct xhdmiphy_dev *inst, enum dir dir)
+{
+	struct xhdmiphy_mmcm *mmcm_params;
+	u32 drp_val32;
+	u16 drp_rdval;
+	u8 chid;
+
+	chid = (dir == XHDMIPHY_DIR_TX) ? XHDMIPHY_CHID_TXMMCM :
+		       XHDMIPHY_CHID_RXMMCM;
+
+	mmcm_params = &inst->quad.mmcm[dir];
+
+	/* check parameters if has been initialized */
+	if (!mmcm_params->divclk_divide && !mmcm_params->clkfbout_mult &&
+	    !mmcm_params->clkout0_div && !mmcm_params->clkout1_div &&
+	    !mmcm_params->clkout2_div)
+		return 1;
+
+	/* write CLKFBOUT_1 & CLKFBOUT_2 values */
+	drp_val32 = xhdmiphy_mmcme5_div_enc(XHDMIPHY_MMCM_CLKFBOUT_MULT_F,
+					    mmcm_params->clkfbout_mult);
+	xhdmiphy_drpwr(inst, chid, XHDMIPHY_MMCM5_DRP_CLKFBOUT_1_REG,
+		       (u16)(drp_val32 & XHDMIPHY_MMCM5_WRITE_VAL));
+	xhdmiphy_drpwr(inst, chid, XHDMIPHY_MMCM5_DRP_CLKFBOUT_2_REG,
+		       (u16)((drp_val32 >> 16) & XHDMIPHY_MMCM5_WRITE_VAL));
+
+	/* write DIVCLK_DIVIDE & DESKEW_2 values */
+	drp_val32 = xhdmiphy_mmcme5_div_enc(XHDMIPHY_MMCM_DIVCLK_DIVIDE,
+					    mmcm_params->divclk_divide);
+	xhdmiphy_drpwr(inst, chid, XHDMIPHY_MMCM5_DRP_DIVCLK_DIVIDE_REG,
+		       (u16)((drp_val32 >> 16) & XHDMIPHY_MMCM5_WRITE_VAL));
+	xhdmiphy_drpwr(inst, chid, XHDMIPHY_MMCM5_DRP_DESKEW_REG,
+		       ((mmcm_params->divclk_divide == 0) ? 0x0000 :
+		       ((mmcm_params->divclk_divide % 2) ? 0x0400 : 0x0000)));
+
+	/* write CLKOUT0_1 & CLKOUT0_2 values */
+	drp_val32 = xhdmiphy_mmcme5_div_enc(XHDMIPHY_MMCM_CLKOUT_DIVIDE,
+					    mmcm_params->clkout0_div);
+	xhdmiphy_drpwr(inst, chid, XHDMIPHY_MMCM5_DRP_CLKOUT0_REG1,
+		       (u16)(drp_val32 & XHDMIPHY_MMCM5_WRITE_VAL));
+	xhdmiphy_drpwr(inst, chid, XHDMIPHY_MMCM5_DRP_CLKOUT0_REG2,
+		       (u16)((drp_val32 >> 16) & XHDMIPHY_MMCM5_WRITE_VAL));
+
+	/* write CLKOUT1_1 & CLKOUT1_2 values */
+	drp_val32 = xhdmiphy_mmcme5_div_enc(XHDMIPHY_MMCM_CLKOUT_DIVIDE,
+					    mmcm_params->clkout1_div);
+	xhdmiphy_drpwr(inst, chid, XHDMIPHY_MMCM5_DRP_CLKOUT1_REG1,
+		       (u16)(drp_val32 & XHDMIPHY_MMCM5_WRITE_VAL));
+	xhdmiphy_drpwr(inst, chid, XHDMIPHY_MMCM5_DRP_CLKOUT1_REG2,
+		       (u16)((drp_val32 >> 16) & XHDMIPHY_MMCM5_WRITE_VAL));
+
+	/* write CLKOUT2_1 & CLKOUT2_2 values */
+	drp_val32 = xhdmiphy_mmcme5_div_enc(XHDMIPHY_MMCM_CLKOUT_DIVIDE,
+					    mmcm_params->clkout2_div);
+	xhdmiphy_drpwr(inst, chid, XHDMIPHY_MMCM5_DRP_CLKOUT2_REG1,
+		       (u16)(drp_val32 & XHDMIPHY_MMCM5_WRITE_VAL));
+	xhdmiphy_drpwr(inst, chid, XHDMIPHY_MMCM5_DRP_CLKOUT2_REG2,
+		       (u16)((drp_val32 >> 16) & XHDMIPHY_MMCM5_WRITE_VAL));
+
+	/* write CP & RES values */
+	drp_val32 = xhdmiphy_mmcme5_cpres_enc(mmcm_params->clkfbout_mult);
+	drp_rdval = xhdmiphy_drprd(inst, chid, XHDMIPHY_MMCM5_DRP_CP_REG1,
+				   &drp_rdval);
+	drp_rdval &= ~(XHDMIPHY_MMCM5_CP_RES_MASK);
+
+	xhdmiphy_drpwr(inst, chid, XHDMIPHY_MMCM5_DRP_CP_REG1,
+		       (u16)((drp_val32 & XHDMIPHY_MMCM5_CP_RES_MASK) |
+			     drp_rdval));
+
+	drp_rdval = xhdmiphy_drprd(inst, chid, XHDMIPHY_MMCM5_DRP_RES_REG1,
+				   &drp_rdval);
+	drp_rdval &= ~(XHDMIPHY_MMCM5_RES_MASK);
+	xhdmiphy_drpwr(inst, chid, XHDMIPHY_MMCM5_DRP_RES_REG1,
+		       (u16)(((drp_val32 >> 15) & XHDMIPHY_MMCM5_RES_MASK) |
+			      drp_rdval));
+
+	/* write lock reg1 & reg2 values */
+	drp_val32 = xhdmiphy_mmcme5_lockreg12_enc(mmcm_params->clkfbout_mult);
+	/* lock_1 */
+	drp_rdval = xhdmiphy_drprd(inst, chid, XHDMIPHY_MMCM5_DRP_LOCK_REG1,
+				   &drp_rdval);
+	drp_rdval &= ~(XHDMIPHY_MMCM5_LOCK1_MASK1);
+	xhdmiphy_drpwr(inst, chid, XHDMIPHY_MMCM5_DRP_LOCK_REG1,
+		       (u16)((drp_val32 & XHDMIPHY_MMCM5_LOCK1_MASK2) |
+			     drp_rdval));
+
+	/* lock_2 */
+	drp_rdval = xhdmiphy_drprd(inst, chid, XHDMIPHY_MMCM5_DRP_LOCK_REG2,
+				   &drp_rdval);
+	drp_rdval &= ~(XHDMIPHY_MMCM5_LOCK1_MASK1);
+	xhdmiphy_drpwr(inst, chid, XHDMIPHY_MMCM5_DRP_LOCK_REG2,
+		       (u16)(((drp_val32 >> 16) & XHDMIPHY_MMCM5_LOCK1_MASK2) |
+			     drp_rdval));
+
+	return 0;
+}
+
+/**
  * xhdmiphy_wr_mmcm4_params - This function will write the mixed-mode clock
  * manager (mmcm) values currently stored in the driver's instance structure
  * to hardware .
@@ -435,7 +947,10 @@ void xhdmiphy_mmcm_start(struct xhdmiphy_dev *inst, enum dir dir)
 
 	xhdmiphy_mmcm_reset(inst, dir, true);
 
-	xhdmiphy_wr_mmcm4_params(inst, dir);
+	if (inst->conf.gt_type != XHDMIPHY_GTYE5)
+		xhdmiphy_wr_mmcm4_params(inst, dir);
+	else
+		xhdmiphy_wr_mmcm5_params(inst, dir);
 
 	xhdmiphy_mmcm_reset(inst, dir, false);
 	xhdmiphy_mmcm_lock_en(inst, dir, false);
