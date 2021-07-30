@@ -51,6 +51,12 @@ static int xhdmiphy_init(struct phy *phy)
 
 static int xhdmiphy_reset(struct phy *phy)
 {
+	struct xhdmiphy_lane *phy_lane = phy_get_drvdata(phy);
+	struct xhdmiphy_dev *phy_dev = phy_lane->data;
+
+	if (!phy_lane->direction)
+		xhdmiphy_ibufds_en(phy_dev, XHDMIPHY_DIR_TX, false);
+
 	return 0;
 }
 
@@ -110,16 +116,60 @@ static irqreturn_t xhdmiphy_irq_handler(int irq, void *dev_id)
 	if (!priv)
 		return IRQ_NONE;
 
+	/*
+	 * disable interrupts in the HDMI PHY, they are re-enabled once
+	 * serviced
+	 */
+	xhdmiphy_intr_dis(priv, XHDMIPHY_INTR_ALL_MASK);
+
 	return IRQ_WAKE_THREAD;
 }
 
 static irqreturn_t xhdmiphy_irq_thread(int irq, void *dev_id)
 {
 	struct xhdmiphy_dev *priv;
+	u32 status;
+	u32 event_mask;
+	u32 event_ack;
 
 	priv = (struct xhdmiphy_dev *)dev_id;
 	if (!priv)
 		return IRQ_NONE;
+
+	/* call baremetal interrupt handler with mutex locked */
+	mutex_lock(&priv->hdmiphy_mutex);
+
+	status = xhdmiphy_read(priv, XHDMIPHY_INTR_STS_REG);
+	dev_dbg(priv->dev, "xhdmiphy status = %x\n", status);
+
+	if (priv->conf.gt_type != XHDMIPHY_GTYE5) {
+		event_mask = XHDMIPHY_INTR_QPLL0_LOCK_MASK |
+			     XHDMIPHY_INTR_CPLL_LOCK_MASK |
+			     XHDMIPHY_INTR_QPLL1_LOCK_MASK |
+			     XHDMIPHY_INTR_TXALIGNDONE_MASK |
+			     XHDMIPHY_INTR_TXRESETDONE_MASK |
+			     XHDMIPHY_INTR_RXRESETDONE_MASK |
+			     XHDMIPHY_INTR_TXMMCMUSRCLK_LOCK_MASK |
+			     XHDMIPHY_INTR_RXMMCMUSRCLK_LOCK_MASK;
+	} else {
+		event_mask = XHDMIPHY_INTR_LCPLL_LOCK_MASK |
+			     XHDMIPHY_INTR_RPLL_LOCK_MASK |
+			     XHDMIPHY_INTR_TXGPO_RE_MASK |
+			     XHDMIPHY_INTR_RXGPO_RE_MASK |
+			     XHDMIPHY_INTR_TXRESETDONE_MASK |
+			     XHDMIPHY_INTR_RXRESETDONE_MASK |
+			     XHDMIPHY_INTR_TXMMCMUSRCLK_LOCK_MASK |
+			     XHDMIPHY_INTR_RXMMCMUSRCLK_LOCK_MASK;
+	}
+
+	event_ack = event_mask & status;
+	if (event_ack)
+		xhdmiphy_gt_handler(priv, event_ack, status);
+
+	mutex_unlock(&priv->hdmiphy_mutex);
+
+	/* enable interrupt requesting in the PHY */
+	xhdmiphy_intr_en(priv, XHDMIPHY_INTR_ALL_MASK);
 
 	return IRQ_HANDLED;
 }
