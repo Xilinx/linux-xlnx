@@ -27,6 +27,32 @@ void xhdmiphy_set_clr(struct xhdmiphy_dev *inst, u32 addr, u32 reg_val,
 	xhdmiphy_write(inst, addr, reg_val);
 }
 
+u32 xhdmiphy_outdiv_ch_reconf(struct xhdmiphy_dev *inst, enum chid chid,
+			      enum dir dir)
+{
+	return inst->gt_adp->outdiv_ch_reconf(inst, chid, dir);
+}
+
+u32 xhdmiphy_clk_ch_reconf(struct xhdmiphy_dev *inst, enum chid chid)
+{
+	return inst->gt_adp->clk_ch_reconf(inst, chid);
+}
+
+u32 xhdmiphy_clk_cmn_reconf(struct xhdmiphy_dev *inst, enum chid chid)
+{
+	return inst->gt_adp->clk_cmn_reconf(inst, chid);
+}
+
+u32 xhdmiphy_rxch_reconf(struct xhdmiphy_dev *inst, enum chid chid)
+{
+	return inst->gt_adp->rxch_reconf(inst, chid);
+}
+
+u32 xhdmiphy_txch_reconf(struct xhdmiphy_dev *inst, enum chid chid)
+{
+	return inst->gt_adp->txch_reconf(inst, chid);
+}
+
 /**
  * xhdmiphy_is_hdmi - This function checks if Instance is HDMI 2.0 or HDMI 2.1
  *
@@ -204,6 +230,11 @@ void xhdmiphy_sysclk_out_sel(struct xhdmiphy_dev *inst, enum dir dir,
 void xhdmiphy_cfg_init(struct xhdmiphy_dev *inst)
 {
 	u8 sel;
+
+	if (inst->conf.gt_type == XHDMIPHY_GTHE4)
+		inst->gt_adp = &gthe4_conf;
+	else if (inst->conf.gt_type == XHDMIPHY_GTYE5)
+		inst->gt_adp = &gtye5_conf;
 
 	if (inst->conf.gt_type != XHDMIPHY_GTYE5) {
 		const enum sysclk_data_sel sysclk[7][2] = {
@@ -922,4 +953,37 @@ void xhdmiphy_mmcm_reset(struct xhdmiphy_dev *inst, enum dir dir, u8 hold)
 		reg_val &= ~XHDMIPHY_MMCM_USRCLK_CTRL_RST_MASK;
 		xhdmiphy_write(inst, reg_off, reg_val);
 	}
+}
+
+u64 xhdmiphy_get_pll_vco_freq(struct xhdmiphy_dev *inst, enum chid chid,
+			      enum dir dir)
+{
+	struct channel *pll_ptr = &inst->quad.plls[XHDMIPHY_CH2IDX(chid)];
+	struct pll_param pll_prm;
+	u64 pll_vco_rate, pll_refclk;
+	u32 qrefclk;
+
+	pll_prm = inst->quad.plls[XHDMIPHY_CH2IDX(chid)].pll_param;
+	qrefclk = xhdmiphy_get_quad_refclk(inst, pll_ptr->pll_refclk);
+
+	if (dir == XHDMIPHY_DIR_TX) {
+		if (xhdmiphy_is_hdmi(inst, XHDMIPHY_DIR_TX))
+			pll_refclk = inst->tx_refclk_hz;
+		else
+			pll_refclk = qrefclk;
+	} else {
+		if (xhdmiphy_is_hdmi(inst, XHDMIPHY_DIR_RX)) {
+			if (inst->rx_dru_enabled)
+				pll_refclk = xhdmiphy_get_dru_refclk(inst);
+			else
+				pll_refclk = inst->rx_refclk_hz;
+		} else {
+			pll_refclk = qrefclk;
+		}
+	}
+
+	pll_vco_rate = (u64)(pll_refclk * pll_prm.n1fb_div * pll_prm.n2fb_div) /
+			     pll_prm.m_refclk_div;
+
+	return pll_vco_rate;
 }
