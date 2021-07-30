@@ -32,6 +32,25 @@ inline void xhdmiphy_clr(struct xhdmiphy_dev *inst, u32 addr, u32 clr)
 }
 
 /**
+ * xhdmiphy_outdiv_reconf - This function will set the current output divider
+ * configuration over DRP.
+ *
+ * @inst:	inst is a pointer to the xhdmiphy core instance
+ * @chid:	chid is the channel ID for which to write the settings for
+ * @dir:	dir is an indicator for RX or TX
+ */
+static void xhdmiphy_outdiv_reconf(struct xhdmiphy_dev *inst, enum chid chid,
+				   enum dir dir)
+{
+	u8 id0, id1;
+
+	if (!xhdmiphy_is_ch(chid))
+		chid = XHDMIPHY_CHID_CHA;
+
+	xhdmiphy_ch2ids(inst, chid, &id0, &id1);
+}
+
+/**
  * xhdmiphy_clkdet_freq_threshold - This function sets the clock detector
  * frequency lock counter threshold value.
  *
@@ -106,6 +125,46 @@ static void xhdmiphy_dru_en(struct xhdmiphy_dev *inst, enum chid chid, u8 en)
 	xhdmiphy_set_clr(inst, XHDMIPHY_DRU_CTRL_REG, reg_val, mask_val, en);
 }
 
+static void xhdmiphy_dru_mode_en(struct xhdmiphy_dev *inst, u8 en)
+{
+	u32 reg_val, reg_mask = 0;
+	u8 id, id0, id1;
+
+	reg_val = xhdmiphy_read(inst, XHDMIPHY_RX_EQ_CDR_REG);
+
+	xhdmiphy_ch2ids(inst, XHDMIPHY_CHID_CHA, &id0, &id1);
+	for (id = id0; id <= id1; id++) {
+		reg_mask |= XHDMIPHY_RX_STATUS_RXCDRHOLD_MASK(id) |
+			    XHDMIPHY_RX_STATUS_RXOSOVRDEN_MASK(id) |
+			    XHDMIPHY_RX_STATUS_RXLPMLFKLOVRDEN_MASK(id) |
+			    XHDMIPHY_RX_STATUS_RXLPMHFOVRDEN_MASK(id);
+	}
+
+	xhdmiphy_set_clr(inst, XHDMIPHY_RX_EQ_CDR_REG, reg_val, reg_mask, en);
+}
+
+static void xhdmiphy_set_dru_centerfreq(struct xhdmiphy_dev *inst,
+					enum chid chid, u64 center_freq)
+{
+	u32 center_freq_l, center_freq_h, reg_off;
+	u8 id, id0, id1;
+
+	/* Split the 64-bit input into 2 32-bit values */
+	center_freq_l = lower_32_bits(center_freq);
+	center_freq_h = upper_32_bits(center_freq);
+
+	center_freq_h &= XHDMIPHY_DRU_CFREQ_H_MASK;
+
+	xhdmiphy_ch2ids(inst, chid, &id0, &id1);
+	for (id = id0; id <= id1; id++) {
+		reg_off = XHDMIPHY_DRU_CFREQ_L_REG(id);
+		xhdmiphy_write(inst, reg_off, center_freq_l);
+
+		reg_off = XHDMIPHY_DRU_CFREQ_H_REG(id);
+		xhdmiphy_write(inst, reg_off, center_freq_h);
+	}
+}
+
 /**
  * xhdmiphy_get_dru_refclk - This function returns the frequency of the DRU
  * reference clock as measured by the clock detector peripheral.
@@ -153,6 +212,55 @@ u32 xhdmiphy_get_dru_refclk(struct xhdmiphy_dev *inst)
 }
 
 /**
+ * xhdmiphy_dru_cal_centerfreq - This function calculates the center frequency
+ * value for the DRU.
+ *
+ * @inst:	inst is a pointer to the xhdmiphy GT core instance
+ * @chid:	chid is the channel ID to operate on
+ *
+ * @return:	The calculated DRU Center frequency value.
+ *		According to XAPP1240 Center_f = fDIN * (2^32)/fdruclk
+ *		The DRU clock is derived from the measured reference clock and
+ *		the current QPLL settings.
+ */
+static u64 xhdmiphy_dru_cal_centerfreq(struct xhdmiphy_dev *inst,
+				       enum chid chid)
+{
+	struct channel *ch_ptr;
+	struct pll_param *pll_prm;
+	u64 dru_refclk, clkdet_refclk, data_rate, f_din, fdru_clk;
+
+	clkdet_refclk = xhdmiphy_read(inst, XHDMIPHY_CLKDET_FREQ_RX_REG);
+	pll_prm = &inst->quad.plls[XHDMIPHY_CH2IDX(chid)].pll_param;
+
+	if (inst->conf.gt_type != XHDMIPHY_GTYE5) {
+		dru_refclk = xhdmiphy_get_dru_refclk(inst);
+		/* take the master channel (channel 1) */
+		ch_ptr = &inst->quad.ch1;
+		if (chid == XHDMIPHY_CHID_CMN0 || chid == XHDMIPHY_CHID_CMN1) {
+			fdru_clk = (dru_refclk * pll_prm->nfb_div) /
+				    (pll_prm->m_refclk_div *
+				     (ch_ptr->rx_outdiv * 20));
+		} else {
+			fdru_clk = (dru_refclk * ch_ptr->pll_param.n1fb_div *
+				    ch_ptr->pll_param.n2fb_div * 2) /
+				    (ch_ptr->pll_param.m_refclk_div *
+				    ch_ptr->rx_outdiv * 20);
+		}
+	} else {
+		fdru_clk = (u64)(XHDMIPHY_HDMI_GTYE5_DRU_LRATE / 20);
+	}
+
+	data_rate = 10 * clkdet_refclk;
+	f_din = data_rate * ((u64)1 << 32);
+
+	if (f_din && fdru_clk)
+		return (f_din / fdru_clk);
+
+	return 0;
+}
+
+/**
  * xhdmiphy_dir_reconf - This function will set the current RX/TX configuration
  * over DRP.
  *
@@ -172,6 +280,42 @@ static bool xhdmiphy_dir_reconf(struct xhdmiphy_dev *inst, enum chid chid, enum 
 	for (id = id0; id <= id1; id++) {
 		if (status != 0)
 			return true;
+	}
+
+	return status;
+}
+
+/**
+ * xhdmiphy_clk_reconf - This function will set the current clocking settings
+ * for each channel to hardware based on the configuration stored in the
+ * driver's instance. hardware based on the configuration stored in the driver's
+ * instance.
+ *
+ * @inst:	inst is a pointer to the xhdmiphy core instance
+ * @chid:	chid is the channel ID for which to write the settings for
+ *
+ * @return:	- 0 if the configuration was successful
+ *		- 1 otherwise
+ */
+static bool xhdmiphy_clk_reconf(struct xhdmiphy_dev *inst, enum chid chid)
+{
+	u32 status = 0;
+	u8 id, id0, id1;
+
+	xhdmiphy_ch2ids(inst, chid, &id0, &id1);
+	for (id = id0; id <= id1; id++) {
+		if (xhdmiphy_is_ch(id)) {
+		} else if (xhdmiphy_is_cmn(chid)) {
+			if (((xhdmiphy_is_hdmi(inst, XHDMIPHY_DIR_TX)) ||
+			     (xhdmiphy_is_hdmi(inst, XHDMIPHY_DIR_RX))) &&
+			     inst->qpll_present == 0) {
+				dev_err(inst->dev,
+					"return failure: qpll is not present\n");
+				return false;
+			}
+		}
+		if (status)
+			return false;
 	}
 
 	return status;
@@ -509,6 +653,467 @@ static void xhdmiphy_txgpo_risingedge_handler(struct xhdmiphy_dev *inst)
 	}
 }
 
+/**
+ * xhdmiphy_lcpll_param - This function calculates the lcpll parameters.
+ *
+ * @inst:	inst is a pointer to the HDMI GT core instance
+ * @chid:	chid is the channel ID to operate on
+ * @dir:	dir is an indicator for RX or TX
+ *
+ * @return:	- 0 if calculated LCPLL parameters updated successfully
+ *		- 1 if parameters not updated
+ */
+static u32 xhdmiphy_lcpll_param(struct xhdmiphy_dev *inst, enum chid chid,
+				enum dir dir)
+{
+	u64 linerate = 0;
+	u32 status = 0;
+	u32 *refclk_ptr;
+	u8 tmdsclk_ratio = 0, is_hdmi21 = 0;
+
+	/* pre-calculation */
+	if (dir == XHDMIPHY_DIR_RX) {
+		refclk_ptr = &inst->rx_refclk_hz;
+		is_hdmi21 = inst->rx_hdmi21_cfg.is_en;
+		tmdsclk_ratio = inst->rx_tmdsclock_ratio;
+
+		/* calculate line rate */
+		if (is_hdmi21)
+			linerate = inst->rx_hdmi21_cfg.linerate;
+		else
+			linerate = (u64)(*refclk_ptr) *
+				   ((tmdsclk_ratio ? 40 : 10));
+
+		inst->rx_dru_enabled = 0;
+
+		/* enable DRU based on incoming REFCLK */
+		if (!is_hdmi21 && !tmdsclk_ratio &&
+		    inst->rx_refclk_hz < XHDMIPHY_LCPLL_MIN_REFCLK) {
+			if (inst->conf.dru_present) {
+				/* check DRU frequency */
+				if (xhdmiphy_get_dru_refclk(inst) == 1) {
+					dev_err(inst->dev,
+						"cannot get dru refclk\n");
+					return 1;
+				}
+
+				inst->rx_dru_enabled = 1;
+				linerate = XHDMIPHY_HDMI_GTYE5_DRU_LRATE;
+			} else {
+				dev_err(inst->dev, "dru is not present\n");
+				return 1;
+			}
+		}
+	} else {
+		refclk_ptr = &inst->tx_refclk_hz;
+		is_hdmi21 = inst->tx_hdmi21_cfg.is_en;
+		inst->tx_samplerate = 1;
+
+		if (!is_hdmi21) {
+			/* Determine if HDMI 2.0 mode */
+			if (*refclk_ptr >= XHDMIPHY_HDMI20_REFCLK_RANGE7) {
+				tmdsclk_ratio = 1;
+				(*refclk_ptr) = (*refclk_ptr) / 4;
+			} else if (*refclk_ptr >=
+				   XHDMIPHY_HDMI20_REFCLK_RANGE5) {
+			/* check for x1 Over sampling mode */
+				inst->tx_samplerate = 1;
+			} else if (*refclk_ptr >=
+				   XHDMIPHY_HDMI20_REFCLK_RANGE3) {
+			/* check for x2 Over sampling mode */
+				inst->tx_samplerate = 2;
+				(*refclk_ptr) = (*refclk_ptr) * 2;
+			} else if (*refclk_ptr >=
+				   XHDMIPHY_HDMI20_REFCLK_RANGE1) {
+			/* check for x3 Over sampling mode */
+				inst->tx_samplerate = 3;
+				(*refclk_ptr) = (*refclk_ptr) * 3;
+			} else if (*refclk_ptr <
+				   XHDMIPHY_HDMI20_REFCLK_RANGE1) {
+			/* check for x5 Over sampling mode */
+				inst->tx_samplerate = 5;
+				(*refclk_ptr) = (*refclk_ptr) * 5;
+			}
+		}
+
+		if (is_hdmi21)
+			linerate = inst->tx_hdmi21_cfg.linerate;
+		else
+			linerate = (u64)(*refclk_ptr) *
+						((tmdsclk_ratio ? 40 : 10));
+	}
+
+	/* check for DRU mode */
+	if (dir == XHDMIPHY_DIR_RX &&
+	    inst->rx_dru_enabled) {
+		inst->quad.lcpll.linerate_cfg = 0;
+	} else if (!is_hdmi21) {
+		/* check for HDMI 1.4/2.0 GT linerate config */
+		/* HDMI 1.4 */
+		if (!tmdsclk_ratio) {
+			if ((XHDMIPHY_HDMI14_REFCLK_RANGE1 <= (*refclk_ptr)) &&
+			    ((*refclk_ptr) <= XHDMIPHY_HDMI14_REFCLK_RANGE2)) {
+				inst->quad.lcpll.linerate_cfg = 1;
+			} else if ((XHDMIPHY_HDMI14_REFCLK_RANGE3 <= (*refclk_ptr)) &&
+						/* 297 MHz + 0.5% + 10 KHz error */
+						((*refclk_ptr) <=
+						 XHDMIPHY_HDMI14_REFCLK_RANGE3)) {
+				inst->quad.lcpll.linerate_cfg = 2;
+			} else {
+				status = 1;
+			}
+		} else {
+			/* HDMI 2.0 */
+			if ((XHDMIPHY_HDMI20_REFCLK_RANGE2 <= (*refclk_ptr)) &&
+			    ((*refclk_ptr) <= XHDMIPHY_HDMI20_REFCLK_RANGE4)) {
+				inst->quad.lcpll.linerate_cfg = 3;
+			} else if ((XHDMIPHY_HDMI20_REFCLK_RANGE4 <= (*refclk_ptr)) &&
+				   ((*refclk_ptr) <=
+				    XHDMIPHY_HDMI20_REFCLK_RANGE6)) {
+				inst->quad.lcpll.linerate_cfg = 4;
+			} else {
+				status = 1;
+			}
+		}
+	} else if (is_hdmi21) {
+		/* check for HDMI 2.1 GT linerate config */
+		if (linerate == XHDMIPHY_LRATE_3G)
+			inst->quad.lcpll.linerate_cfg = 5;
+		else if (linerate == XHDMIPHY_LRATE_6G)
+			inst->quad.lcpll.linerate_cfg = 6;
+		else if (linerate == XHDMIPHY_LRATE_8G)
+			inst->quad.lcpll.linerate_cfg = 7;
+		else if (linerate == XHDMIPHY_LRATE_10G)
+			inst->quad.lcpll.linerate_cfg = 8;
+		else if (linerate == XHDMIPHY_LRATE_12G)
+			inst->quad.lcpll.linerate_cfg = 9;
+		else
+			status = 1;
+	}
+
+	xhdmiphy_cfg_linerate(inst, XHDMIPHY_CHID_CMN0, linerate);
+
+	if (status == 1)
+		dev_err(inst->dev, "failed to configure lcpll params\n");
+
+	return status;
+}
+
+/**
+ * xhdmiphy_rpll_param - This function calculates the rpll parameters.
+ *
+ * @inst:	inst is a pointer to the HDMI GT core instance
+ * @chid:	chid is the channel Id to operate on
+ * @dir:	dir is an indicator for Rx or Tx
+ *
+ * @return:	- 0 if calculated RPLL parameters updated successfully
+ *		- 1 if parameters not updated
+ */
+static u32 xhdmiphy_rpll_param(struct xhdmiphy_dev *inst, enum chid chid,
+			       enum dir dir)
+{
+	u64 linerate = 0;
+	u32 status = 0;
+	u32 *refclk_ptr;
+	u8 tmdsclk_ratio = 0, is_hdmi21 = 0;
+
+	/* Pre-calculation */
+	if (dir == XHDMIPHY_DIR_RX) {
+		refclk_ptr = &inst->rx_refclk_hz;
+		is_hdmi21 = inst->tx_hdmi21_cfg.is_en;
+		tmdsclk_ratio = inst->rx_tmdsclock_ratio;
+
+		/* calculate line rate */
+		if (is_hdmi21) {
+			linerate = inst->rx_hdmi21_cfg.linerate;
+		} else {
+			linerate = (u64)(*refclk_ptr) *
+						((tmdsclk_ratio ? 40 : 10));
+		}
+
+		inst->rx_dru_enabled = 0;
+
+		/* enable DRU based on incoming REFCLK */
+		if (!is_hdmi21 && !tmdsclk_ratio &&
+		    inst->rx_refclk_hz < XHDMIPHY_RPLL_MIN_REFCLK) {
+			if (inst->conf.dru_present) {
+				/* check DRU frequency */
+				if (xhdmiphy_get_dru_refclk(inst) == 1) {
+					dev_err(inst->dev,
+						"cannot get dru refclk\n");
+					return 1;
+				}
+
+				inst->rx_dru_enabled = 1;
+				linerate = XHDMIPHY_HDMI_GTYE5_DRU_LRATE;
+			} else {
+				dev_err(inst->dev, "dru is not present\n");
+				return 1;
+			}
+		}
+	} else {
+		refclk_ptr = &inst->tx_refclk_hz;
+		is_hdmi21 = inst->tx_hdmi21_cfg.is_en;
+		inst->tx_samplerate = 1;
+
+		if (!is_hdmi21) {
+			/* determine if HDMI 2.0 mode */
+			if (*refclk_ptr >= XHDMIPHY_HDMI20_REFCLK_RANGE7) {
+				tmdsclk_ratio = 1;
+				(*refclk_ptr) = (*refclk_ptr) / 4;
+			} else if (*refclk_ptr >=
+				   XHDMIPHY_HDMI20_REFCLK_RANGE5) {
+			/* check for x1 over sampling mode */
+				inst->tx_samplerate = 1;
+			} else if (*refclk_ptr >=
+				   XHDMIPHY_HDMI20_REFCLK_RANGE3) {
+			/* check for x2 Over sampling mode */
+				inst->tx_samplerate = 2;
+				(*refclk_ptr) = (*refclk_ptr) * 2;
+			} else if (*refclk_ptr >=
+				   XHDMIPHY_HDMI20_REFCLK_RANGE1) {
+			/* check for x3 Over sampling mode */
+				inst->tx_samplerate = 3;
+				(*refclk_ptr) = (*refclk_ptr) * 3;
+			/* check for x5 Over sampling mode */
+			} else if (*refclk_ptr <
+				   XHDMIPHY_HDMI20_REFCLK_RANGE1) {
+				inst->tx_samplerate = 5;
+				(*refclk_ptr) = (*refclk_ptr) * 5;
+			}
+		}
+
+		/* calculate line rate */
+		if (is_hdmi21)
+			linerate = inst->tx_hdmi21_cfg.linerate;
+		else
+			linerate = (u64)(*refclk_ptr) * ((tmdsclk_ratio ? 40 : 10));
+	}
+
+	/* check for DRU mode */
+	if (dir == XHDMIPHY_DIR_RX && inst->rx_dru_enabled) {
+		inst->quad.rpll.linerate_cfg = 0;
+	/* check for HDMI 1.4/2.0 GT linerate config */
+	} else if (!is_hdmi21) {
+		/* HDMI 1.4 */
+		if (!tmdsclk_ratio) {
+			if ((XHDMIPHY_HDMI14_REFCLK_RANGE1 <= (*refclk_ptr)) &&
+			    ((*refclk_ptr) <= 200000000)) {
+				inst->quad.rpll.linerate_cfg = 1;
+			} else if ((200000000 <= (*refclk_ptr)) &&
+				   ((*refclk_ptr) <=
+				    XHDMIPHY_HDMI14_REFCLK_RANGE3)) {
+				inst->quad.rpll.linerate_cfg = 2;
+			} else {
+				status = 1;
+			}
+		/* HDMI 2.0 */
+		} else {
+			if ((XHDMIPHY_HDMI20_REFCLK_RANGE2 <= (*refclk_ptr)) &&
+			    ((*refclk_ptr) <= 100000000)) {
+				inst->quad.rpll.linerate_cfg = 3;
+			} else if ((100000000 <= (*refclk_ptr)) &&
+				   ((*refclk_ptr) <=
+				    XHDMIPHY_HDMI20_REFCLK_RANGE6)) {
+				inst->quad.rpll.linerate_cfg = 4;
+			} else {
+				status = 1;
+			}
+		}
+	/* check for HDMI 2.1 gt linerate config */
+	} else if (is_hdmi21) {
+		if (linerate == XHDMIPHY_LRATE_3G)
+			inst->quad.rpll.linerate_cfg = 5;
+		else if (linerate == XHDMIPHY_LRATE_6G)
+			inst->quad.rpll.linerate_cfg = 6;
+		else if (linerate == XHDMIPHY_LRATE_8G)
+			inst->quad.rpll.linerate_cfg = 7;
+		else if (linerate == XHDMIPHY_LRATE_10G)
+			inst->quad.rpll.linerate_cfg = 8;
+		else if (linerate == XHDMIPHY_LRATE_12G)
+			inst->quad.rpll.linerate_cfg = 9;
+		else
+			status = 1;
+	}
+
+	/* update line rate value */
+	xhdmiphy_cfg_linerate(inst, XHDMIPHY_CHID_CMN1, linerate);
+	if (status == 1)
+		dev_err(inst->dev, "failed to configure rpll params\n");
+
+	return status;
+}
+
+/**
+ * xhdmiphy_txpll_param - This function calculates the Tx pll parameters.
+ *
+ * @inst:	inst is a pointer to the HDMI GT core instance
+ * @chid:	chid is the channel ID to operate on
+ *
+ * @return:	- 0 if calculated qpll parameters updated successfully
+ *		- 1 if parameters not updated
+ */
+static u32 xhdmiphy_txpll_param(struct xhdmiphy_dev *inst, enum chid chid)
+{
+	enum pll_type pll_type;
+
+	pll_type = xhdmiphy_get_pll_type(inst, XHDMIPHY_DIR_TX,
+					 XHDMIPHY_CHID_CH1);
+
+	if (pll_type == XHDMIPHY_PLL_LCPLL)
+		return xhdmiphy_lcpll_param(inst, chid, XHDMIPHY_DIR_TX);
+
+	return xhdmiphy_rpll_param(inst, chid, XHDMIPHY_DIR_TX);
+}
+
+/**
+ * xhdmiphy_rxpll_param - This function calculates the Rx pll parameters.
+ *
+ * @inst:	inst is a pointer to the HDMI GT core instance
+ * @chid:	chid is the channel id to operate on
+ *
+ * @return:	- 0 if calculated qpll parameters updated
+ *		successfully
+ *		- 1 if parameters not updated
+ */
+static bool xhdmiphy_rxpll_param(struct xhdmiphy_dev *inst, enum chid chid)
+{
+	enum pll_type pll_type;
+
+	pll_type = xhdmiphy_get_pll_type(inst, XHDMIPHY_DIR_RX,
+					 XHDMIPHY_CHID_CH1);
+
+	if (pll_type == XHDMIPHY_PLL_LCPLL)
+		return xhdmiphy_lcpll_param(inst, chid, XHDMIPHY_DIR_RX);
+
+	return xhdmiphy_rpll_param(inst, chid, XHDMIPHY_DIR_RX);
+}
+
+/**
+ * xhdmiphy_set_tx_param - This function update/set the HDMI TX parameter.
+ *
+ * @inst:		is a pointer to the Hdmiphy core instance
+ * @chid:		chid is the channel ID to operate on
+ * @ppc:		ppc is the pixels per clock to set
+ * @bpc:		bpc is the bits per color to set
+ * @fmt:		fmt is the color format to set
+ *
+ * @return:
+ *		- 0 if TX parameters set/updated
+ *		- gc if low resolution video not supported
+ */
+u32 xhdmiphy_set_tx_param(struct xhdmiphy_dev *inst, enum chid chid,
+			  enum ppc ppc, enum color_depth bpc,
+			  enum color_fmt fmt)
+{
+	u32 status;
+
+	status = xhdmiphy_txpll_param(inst, chid);
+
+	if (status == 1)
+		return status;
+
+	/* Is HDMITXSS PPC match with HDMIPHY PPC? */
+	if (ppc == inst->conf.ppc) {
+		status = 0;
+	} else {
+		dev_err(inst->dev,
+			"HDMITXSS ppc does't match with hdmiphy ppc\n");
+		status = 1;
+	}
+
+	return status;
+}
+
+static u32 xhdmiphy_set_rx_param(struct xhdmiphy_dev *inst, enum chid chid)
+{
+	u64 dru_center_freq;
+	u32 status;
+	enum chid ch_id = chid;
+	enum pll_type pll_type;
+
+	status = xhdmiphy_rxpll_param(inst, chid);
+
+	if (inst->rx_dru_enabled) {
+		pll_type = xhdmiphy_get_pll_type(inst, XHDMIPHY_DIR_RX,
+						 XHDMIPHY_CHID_CH1);
+		/* update the chid */
+		ch_id = xhdmiphy_get_rcfg_chid(pll_type);
+		dru_center_freq = xhdmiphy_dru_cal_centerfreq(inst, ch_id);
+		xhdmiphy_set_dru_centerfreq(inst, XHDMIPHY_CHID_CHA,
+					    dru_center_freq);
+	}
+
+	return status;
+}
+
+static void xhdmiphy_tx_timertimeout_handler(struct xhdmiphy_dev *inst)
+{
+	enum chid chid;
+	enum pll_type pll_type;
+	u8 val_cmp, id, id0, id1;
+
+	if (inst->conf.gt_type != XHDMIPHY_GTYE5) {
+		pll_type = xhdmiphy_get_pll_type(inst, XHDMIPHY_DIR_TX,
+						 XHDMIPHY_CHID_CH1);
+		/* determine which channel(s) to operate on */
+		chid = xhdmiphy_get_rcfg_chid(pll_type);
+		xhdmiphy_powerdown_gtpll(inst, (pll_type == XHDMIPHY_PLL_CPLL) ?
+					       XHDMIPHY_CHID_CHA :
+					       XHDMIPHY_CHID_CMNA,
+					       false);
+
+		if (pll_type != XHDMIPHY_PLL_CPLL)
+			xhdmiphy_write_refclksel(inst);
+
+		xhdmiphy_clk_reconf(inst, chid);
+		xhdmiphy_outdiv_reconf(inst, XHDMIPHY_CHID_CHA,
+				       XHDMIPHY_DIR_TX);
+		if (inst->conf.gt_type == XHDMIPHY_GTTYPE_GTHE4 ||
+		    inst->conf.gt_type == XHDMIPHY_GTTYPE_GTYE4) {
+			xhdmiphy_set_bufgtdiv(inst, XHDMIPHY_DIR_TX,
+					      (pll_type == XHDMIPHY_PLL_CPLL) ?
+					      inst->quad.plls->tx_outdiv :
+					      (inst->quad.plls->tx_outdiv != 16) ?
+					      inst->quad.plls->tx_outdiv :
+					      inst->quad.plls->tx_outdiv / 2);
+		}
+
+		xhdmiphy_dir_reconf(inst, XHDMIPHY_CHID_CHA,
+				    XHDMIPHY_DIR_TX);
+		/* assert PLL reset */
+		xhdmiphy_reset_gtpll(inst, XHDMIPHY_CHID_CHA,
+				     XHDMIPHY_DIR_TX, true);
+		/* de-assert PLL reset */
+		xhdmiphy_reset_gtpll(inst, XHDMIPHY_CHID_CHA,
+				     XHDMIPHY_DIR_TX, false);
+
+		if (inst->conf.gt_type == XHDMIPHY_GTTYPE_GTHE4 ||
+		    inst->conf.gt_type == XHDMIPHY_GTTYPE_GTYE4) {
+			xhdmiphy_tx_align_start(inst, chid, false);
+		}
+
+		xhdmiphy_ch2ids(inst, XHDMIPHY_CHID_CHA, &id0, &id1);
+		for (id = id0; id <= id1; id++) {
+			inst->quad.plls[XHDMIPHY_CH2IDX(id)].tx_state =
+							XHDMIPHY_GT_STATE_LOCK;
+		}
+	} else {
+		xhdmiphy_ch2ids(inst, XHDMIPHY_CHID_CHA, &id0, &id1);
+		for (id = id0; id <= id1; id++) {
+			inst->quad.plls[XHDMIPHY_CH2IDX(id)].tx_state =
+						XHDMIPHY_GT_STATE_GPO_RE;
+		}
+
+		if (!val_cmp) {
+			xhdmiphy_set_gpi(inst, XHDMIPHY_CHID_CHA,
+					 XHDMIPHY_DIR_TX, true);
+		} else {
+			xhdmiphy_txgpo_risingedge_handler(inst);
+		}
+	}
+}
+
 static void xhdmiphy_rxgpo_risingedge_handler(struct xhdmiphy_dev *inst)
 {
 	u8 id, id0, id1;
@@ -531,6 +1136,95 @@ static void xhdmiphy_rxgpo_risingedge_handler(struct xhdmiphy_dev *inst)
 	for (id = id0; id <= id1; id++) {
 		inst->quad.plls[XHDMIPHY_CH2IDX(id)].rx_state =
 						XHDMIPHY_GT_STATE_LOCK;
+	}
+}
+
+static void xhdmiphy_rx_timertimeout_handler(struct xhdmiphy_dev *inst)
+{
+	enum chid chid;
+	enum pll_type pll_type;
+	u32 status;
+	u8 id, id0, id1, val_cmp;
+
+	if (!inst->rx_hdmi21_cfg.is_en) {
+		dev_info(inst->dev, "xhdmi 2.0 protocl is enabled\n");
+	} else {
+		if (inst->conf.rx_refclk_sel == inst->conf.rx_frl_refclk_sel)
+			xhdmiphy_mmcm_clkin_sel(inst, XHDMIPHY_DIR_RX,
+						XHDMIPHY_MMCM_CLKINSEL_CLKIN1);
+	}
+
+	pll_type = xhdmiphy_get_pll_type(inst, XHDMIPHY_DIR_RX,
+					 XHDMIPHY_CHID_CH1);
+	/* determine which channel(s) to operate on */
+	chid = xhdmiphy_get_rcfg_chid(pll_type);
+	xhdmiphy_ch2ids(inst, XHDMIPHY_CHID_CHA, &id0, &id1);
+
+	status = xhdmiphy_set_rx_param(inst, chid);
+	if (status != 0) {
+		for (id = id0; id <= id1; id++) {
+			inst->quad.plls[XHDMIPHY_CH2IDX(id)].rx_state =
+							XHDMIPHY_GT_STATE_IDLE;
+		}
+
+		return;
+	}
+
+	/* enable DRU to set the clock muxes */
+	xhdmiphy_dru_en(inst, XHDMIPHY_CHID_CHA, inst->rx_dru_enabled);
+
+	xhdmiphy_dru_mode_en(inst, inst->rx_dru_enabled);
+
+	if (inst->conf.gt_type != XHDMIPHY_GTYE5) {
+		/* enable PLL */
+		xhdmiphy_powerdown_gtpll(inst, (pll_type == XHDMIPHY_PLL_CPLL) ?
+					 XHDMIPHY_CHID_CHA :
+					 XHDMIPHY_CHID_CMNA, false);
+
+		/* update reference clock election */
+		if (!inst->rx_hdmi21_cfg.is_en) {
+			xhdmiphy_pll_refclk_sel(inst,
+						((pll_type == XHDMIPHY_PLL_CPLL) ?
+						XHDMIPHY_CHID_CHA :
+						XHDMIPHY_CHID_CMNA),
+						((inst->rx_dru_enabled) ?
+						inst->conf.dru_refclk_sel :
+						inst->conf.rx_refclk_sel));
+		}
+		xhdmiphy_write_refclksel(inst);
+
+		pll_type = xhdmiphy_get_pll_type(inst, XHDMIPHY_DIR_RX,
+						 XHDMIPHY_CHID_CH1);
+		/* determine which channel(s) to operate on */
+		chid = xhdmiphy_get_rcfg_chid(pll_type);
+		xhdmiphy_clk_reconf(inst, chid);
+		xhdmiphy_outdiv_reconf(inst, XHDMIPHY_CHID_CHA,
+				       XHDMIPHY_DIR_RX);
+		xhdmiphy_dir_reconf(inst, XHDMIPHY_CHID_CHA,
+				    XHDMIPHY_DIR_RX);
+		/* assert RX PLL reset */
+		xhdmiphy_reset_gtpll(inst, XHDMIPHY_CHID_CHA,
+				     XHDMIPHY_DIR_RX, true);
+		/* de-assert RX PLL reset */
+		xhdmiphy_reset_gtpll(inst, XHDMIPHY_CHID_CHA,
+				     XHDMIPHY_DIR_RX, false);
+		for (id = id0; id <= id1; id++) {
+			inst->quad.plls[XHDMIPHY_CH2IDX(id)].rx_state =
+							XHDMIPHY_GT_STATE_LOCK;
+		}
+	} else {
+		xhdmiphy_ch2ids(inst, XHDMIPHY_CHID_CHA, &id0, &id1);
+		for (id = id0; id <= id1; id++) {
+			inst->quad.plls[XHDMIPHY_CH2IDX(id)].rx_state =
+						XHDMIPHY_GT_STATE_GPO_RE;
+		}
+
+		if (!val_cmp) {
+			xhdmiphy_set_gpi(inst, XHDMIPHY_CHID_CHA,
+					 XHDMIPHY_DIR_RX, true);
+		} else {
+			xhdmiphy_rxgpo_risingedge_handler(inst);
+		}
 	}
 }
 
@@ -891,6 +1585,126 @@ static void xhdmiphy_rxgt_rstdone_handler(struct xhdmiphy_dev *inst)
 		inst->phycb[RX_READY_CB].cb(inst->phycb[RX_READY_CB].data);
 }
 
+static void xhdmiphy_tx_freqchnage_handler(struct xhdmiphy_dev *inst)
+{
+	enum pll_type pll_type;
+	u8 id, id0, id1;
+
+	if (inst->tx_hdmi21_cfg.is_en) {
+		if (inst->conf.tx_refclk_sel != inst->conf.tx_frl_refclk_sel)
+			return;
+	}
+
+	/* set tX TMDS clock pattern generator */
+	if (inst->conf.gt_as_tx_tmdsclk &&
+	    (inst->tx_hdmi21_cfg.is_en == 0 ||
+	    (inst->tx_hdmi21_cfg.is_en == 1 &&
+	    inst->tx_hdmi21_cfg.nchannels == 3)))
+		xhdmiphy_clr(inst, XHDMIPHY_PATGEN_CTRL_REG,
+			     XHDMIPHY_PATGEN_CTRL_ENABLE_MASK);
+
+	pll_type = xhdmiphy_get_pll_type(inst, XHDMIPHY_DIR_TX,
+					 XHDMIPHY_CHID_CH1);
+
+	/* If the TX frequency has changed, the PLL is always disabled */
+	if (inst->conf.gt_type != XHDMIPHY_GTYE5) {
+		xhdmiphy_powerdown_gtpll(inst, (pll_type == XHDMIPHY_PLL_CPLL) ?
+					 XHDMIPHY_CHID_CHA :
+					 XHDMIPHY_CHID_CMNA, true);
+		xhdmiphy_reset_gtpll(inst, XHDMIPHY_CHID_CHA,
+				     XHDMIPHY_DIR_TX, true);
+	} else {
+		/* Mask RESET DONE */
+		/* Deassert TX LNKRDY MASK */
+		xhdmiphy_write(inst, XHDMIPHY_TX_INIT_REG,
+			       (xhdmiphy_read(inst,
+			       XHDMIPHY_TX_INIT_REG) |
+			       XHDMIPHY_TXPCS_RESET_MASK));
+	}
+
+	xhdmiphy_set(inst, XHDMIPHY_CLKDET_CTRL_REG,
+		     XHDMIPHY_CLKDET_CTRL_TX_TMR_CLR_MASK);
+
+	if (inst->conf.gt_type != XHDMIPHY_GTYE5)
+		xhdmiphy_tx_align_start(inst, XHDMIPHY_CHID_CHA, false);
+
+	xhdmiphy_ch2ids(inst, XHDMIPHY_CHID_CHA, &id0, &id1);
+	for (id = id0; id <= id1; id++)
+		inst->quad.plls[XHDMIPHY_CH2IDX(id)].tx_state =
+							XHDMIPHY_GT_STATE_IDLE;
+
+	/* If there is no reference clock, load TX timer in usec */
+	if (xhdmiphy_read(inst, XHDMIPHY_CLKDET_FREQ_TX_REG))
+		xhdmiphy_write(inst, XHDMIPHY_CLKDET_TMR_TX_REG,
+			       inst->conf.axilite_freq / 1000);
+}
+
+static void xhdmiphy_rx_freqchange_handler(struct xhdmiphy_dev *inst)
+{
+	enum pll_type pll_type;
+	u32 rx_refclk;
+	u8 id, id0, id1;
+
+	if (inst->rx_hdmi21_cfg.is_en)
+		if (inst->conf.rx_refclk_sel != inst->conf.rx_frl_refclk_sel)
+			return;
+
+	xhdmiphy_ch2ids(inst, XHDMIPHY_CHID_CHA, &id0, &id1);
+	for (id = id0; id <= id1; id++)
+		inst->quad.plls[XHDMIPHY_CH2IDX(id)].rx_state =
+							XHDMIPHY_GT_STATE_IDLE;
+	/* determine PLL type and RX reference clock selection */
+	pll_type = xhdmiphy_get_pll_type(inst, XHDMIPHY_DIR_RX,
+					 XHDMIPHY_CHID_CH1);
+
+	/* fetch New RX Reference Clock Frequency */
+	rx_refclk = xhdmiphy_read(inst, XHDMIPHY_CLKDET_FREQ_RX_REG);
+
+	/* round input frequency to 10 kHz */
+	rx_refclk = (rx_refclk + 5000) / 10000;
+	rx_refclk = rx_refclk * 10000;
+
+	/* store RX reference clock */
+	if (inst->rx_hdmi21_cfg.is_en)
+		inst->rx_refclk_hz = XHDMIPHY_HDMI21_FRL_REFCLK;
+	else
+		inst->rx_refclk_hz = rx_refclk;
+
+	/* If the RX frequency has changed, the PLL is always disabled */
+	if (inst->conf.gt_type != XHDMIPHY_GTYE5) {
+		xhdmiphy_powerdown_gtpll(inst, (pll_type == XHDMIPHY_PLL_CPLL) ?
+					 XHDMIPHY_CHID_CHA :
+					 XHDMIPHY_CHID_CMNA, true);
+		xhdmiphy_reset_gtpll(inst, XHDMIPHY_CHID_CHA,
+				     XHDMIPHY_DIR_RX, true);
+	} else {
+		xhdmiphy_write(inst, XHDMIPHY_RX_INIT_REG,
+			       (xhdmiphy_read(inst, XHDMIPHY_RX_INIT_REG) |
+					      XHDMIPHY_RXPCS_RESET_MASK));
+	}
+
+	/* if DRU is present, disable it and assert reset */
+	if (inst->conf.dru_present) {
+		xhdmiphy_dru_reset(inst, XHDMIPHY_CHID_CHA, true);
+		xhdmiphy_dru_en(inst, XHDMIPHY_CHID_CHA, false);
+	}
+	/* clear RX timer */
+	xhdmiphy_set(inst, XHDMIPHY_CLKDET_CTRL_REG,
+		     XHDMIPHY_CLKDET_CTRL_RX_TMR_CLR_MASK);
+	/*
+	 * If there is reference clock, load RX timer in usec.
+	 * The reference clock should be larger than 25Mhz. We are using a
+	 * 20Mhz instead to keep some margin for errors.
+	 */
+
+	if (rx_refclk > 20000000) {
+		xhdmiphy_write(inst, XHDMIPHY_CLKDET_TMR_RX_REG,
+			       inst->conf.axilite_freq / 1000);
+		if (inst->phycb[RX_INIT_CB].cb)
+			inst->phycb[RX_INIT_CB].cb(inst->phycb[RX_INIT_CB].data);
+	}
+}
+
 void xhdmiphy_gt_handler(struct xhdmiphy_dev *inst, u32 event_ack, u32 event)
 {
 	enum gt_state *tx_state;
@@ -956,6 +1770,24 @@ void xhdmiphy_gt_handler(struct xhdmiphy_dev *inst, u32 event_ack, u32 event)
 		    (*rx_state == XHDMIPHY_GT_STATE_RESET))
 			xhdmiphy_rxgt_rstdone_handler(inst);
 	}
+
+	xhdmiphy_write(inst, XHDMIPHY_INTR_STS_REG, event_ack);
+}
+
+void xhdmiphy_clkdet_handler(struct xhdmiphy_dev *inst, u32 event_ack,
+			     u32 event)
+{
+	if (event & XHDMIPHY_INTR_TXFREQCHANGE_MASK)
+		xhdmiphy_tx_freqchnage_handler(inst);
+
+	if (event & XHDMIPHY_INTR_RXFREQCHANGE_MASK)
+		xhdmiphy_rx_freqchange_handler(inst);
+
+	if (event & XHDMIPHY_INTR_TXTMRTIMEOUT_MASK)
+		xhdmiphy_tx_timertimeout_handler(inst);
+
+	if (event & XHDMIPHY_INTR_RXTMRTIMEOUT_MASK)
+		xhdmiphy_rx_timertimeout_handler(inst);
 
 	xhdmiphy_write(inst, XHDMIPHY_INTR_STS_REG, event_ack);
 }
