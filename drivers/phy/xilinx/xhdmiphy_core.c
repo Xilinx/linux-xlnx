@@ -201,6 +201,41 @@ void xhdmiphy_sysclk_out_sel(struct xhdmiphy_dev *inst, enum dir dir,
 	}
 }
 
+void xhdmiphy_cfg_init(struct xhdmiphy_dev *inst)
+{
+	u8 sel;
+
+	if (inst->conf.gt_type != XHDMIPHY_GTYE5) {
+		const enum sysclk_data_sel sysclk[7][2] = {
+			{0, XHDMIPHY_SYSCLKSELDATA_CPLL_OUTCLK},
+			{1, XHDMIPHY_SYSCLKSELDATA_QPLL0_OUTCLK},
+			{2, XHDMIPHY_SYSCLKSELDATA_QPLL1_OUTCLK},
+			{3, XHDMIPHY_SYSCLKSELDATA_QPLL_OUTCLK},
+			{4, XHDMIPHY_SYSCLKSELDATA_PLL0_OUTCLK},
+			{5, XHDMIPHY_SYSCLKSELDATA_PLL1_OUTCLK},
+			{6, XHDMIPHY_SYSCLKSELDATA_QPLL0_OUTCLK},
+		};
+
+		for (sel = 0; sel < 7; sel++) {
+			if (inst->conf.tx_pllclk_sel == sysclk[sel][0])
+				inst->conf.tx_pllclk_sel = sysclk[sel][1];
+			if (inst->conf.rx_pllclk_sel == sysclk[sel][0])
+				inst->conf.rx_pllclk_sel = sysclk[sel][1];
+		}
+
+		inst->conf.tx_refclk_sel = inst->conf.tx_refclk_sel +
+					   XHDMIPHY_PLL_REFCLKSEL_GTREFCLK0;
+		inst->conf.rx_refclk_sel = inst->conf.rx_refclk_sel +
+					   XHDMIPHY_PLL_REFCLKSEL_GTREFCLK0;
+		inst->conf.tx_frl_refclk_sel = inst->conf.tx_frl_refclk_sel +
+					       XHDMIPHY_PLL_REFCLKSEL_GTREFCLK0;
+		inst->conf.rx_frl_refclk_sel = inst->conf.rx_frl_refclk_sel +
+					       XHDMIPHY_PLL_REFCLKSEL_GTREFCLK0;
+		inst->conf.dru_refclk_sel = inst->conf.dru_refclk_sel +
+					    XHDMIPHY_PLL_REFCLKSEL_GTREFCLK0;
+	}
+}
+
 static unsigned int xhdmiphy_pll2sysclk_data(enum pll_type pll_sel)
 {
 	if (pll_sel == XHDMIPHY_PLL_CPLL)
@@ -781,4 +816,110 @@ u8 xhdmiphy_get_gpo(struct xhdmiphy_dev *inst, enum chid chid, enum dir dir)
 	return ((reg_val &
 		XHDMIPHY_RX_GPO_MASK_ALL(inst->conf.rx_channels)) >>
 		XHDMIPHY_RX_GPO_SHIFT);
+}
+
+/**
+ * xhdmiphy_set_bufgtdiv - This function obtains the divider value of the
+ * BUFG_GT peripheral.
+ *
+ * @inst:	inst is a pointer to the xhdmiphy core instance
+ * @dir:	dir is an indicator for TX or RX
+ * @div:	div 3-bit divider value
+ */
+void xhdmiphy_set_bufgtdiv(struct xhdmiphy_dev *inst, enum dir dir, u8 div)
+{
+	u32 reg_val, reg_off;
+
+	if (div == 0)
+		div = 1;
+	else
+		div = div - 1;
+
+	if (dir == XHDMIPHY_DIR_TX)
+		reg_off = XHDMIPHY_BUFGGT_TXUSRCLK_REG;
+	else
+		reg_off = XHDMIPHY_BUFGGT_RXUSRCLK_REG;
+
+	/* read BUFG_GT register */
+	reg_val = xhdmiphy_read(inst, reg_off);
+	reg_val &= ~XHDMIPHY_BUFGGT_XXUSRCLK_DIV_MASK;
+
+	/* shift divider value to correct position */
+	div <<= XHDMIPHY_BUFGGT_XXUSRCLK_DIV_SHIFT;
+	div &= XHDMIPHY_BUFGGT_XXUSRCLK_DIV_MASK;
+	reg_val |= div;
+
+	/* write new value to BUFG_GT ctrl register */
+	xhdmiphy_write(inst, reg_off, reg_val);
+}
+
+/**
+ * xhdmiphy_powerdown_gtpll - This function will power down the specified GT PLL.
+ *
+ * @inst:	inst is a pointer to the xhdmiphy core instance
+ * @chid:	chid is the channel ID to power down the PLL for
+ * @hold:	hold is an indicator whether to "hold" the power down if set
+ *		to 1. If set to 0: power down, then power back up
+ */
+void xhdmiphy_powerdown_gtpll(struct xhdmiphy_dev *inst, enum chid chid, u8 hold)
+{
+	u32 mask_val = 0, reg_val;
+	u8 id, id0, id1;
+
+	if (xhdmiphy_is_ch(chid))
+		xhdmiphy_ch2ids(inst, chid, &id0, &id1);
+	else
+		xhdmiphy_ch2ids(inst, XHDMIPHY_CHID_CHA, &id0, &id1);
+
+	for (id = id0; id <= id1; id++) {
+		if (chid == XHDMIPHY_CHID_CMN0) {
+			mask_val |= XHDMIPHY_POWERDOWN_CONTROL_QPLL0PD_MASK(id);
+		} else if (chid == XHDMIPHY_CHID_CMN1) {
+			mask_val |= XHDMIPHY_POWERDOWN_CONTROL_QPLL1PD_MASK(id);
+		} else if (chid == XHDMIPHY_CHID_CMNA) {
+			mask_val |= XHDMIPHY_POWERDOWN_CONTROL_QPLL0PD_MASK(id) |
+				   XHDMIPHY_POWERDOWN_CONTROL_QPLL1PD_MASK(id);
+		} else {
+			mask_val |= XHDMIPHY_POWERDOWN_CONTROL_CPLLPD_MASK(id);
+		}
+	}
+
+	reg_val = xhdmiphy_read(inst, XHDMIPHY_POWERDOWN_CONTROL_REG);
+	reg_val |= mask_val;
+	xhdmiphy_write(inst, XHDMIPHY_POWERDOWN_CONTROL_REG, reg_val);
+
+	if (!hold) {
+		reg_val &= ~mask_val;
+		xhdmiphy_write(inst, XHDMIPHY_POWERDOWN_CONTROL_REG, reg_val);
+	}
+}
+
+/**
+ * xhdmiphy_mmcm_reset - This function will reset the mixed-mode clock manager
+ * (MMCM) core.
+ *
+ * @inst:	inst is a pointer to the xhdmiphy core instance
+ * @dir:	dir is an indicator for TX or RX
+ * @hold:	Hold is an indicator whether to "hold" the reset if set to 1
+ *		If set to 0: reset, then enable
+ */
+void xhdmiphy_mmcm_reset(struct xhdmiphy_dev *inst, enum dir dir, u8 hold)
+{
+	u32 reg_off, reg_val;
+
+	if (dir == XHDMIPHY_DIR_TX)
+		reg_off = XHDMIPHY_MMCM_TXUSRCLK_CTRL_REG;
+	else
+		reg_off = XHDMIPHY_MMCM_RXUSRCLK_CTRL_REG;
+
+	/* assert reset */
+	reg_val = xhdmiphy_read(inst, reg_off);
+	reg_val |= XHDMIPHY_MMCM_USRCLK_CTRL_RST_MASK;
+	xhdmiphy_write(inst, reg_off, reg_val);
+
+	if (!hold) {
+		/* de-assert reset */
+		reg_val &= ~XHDMIPHY_MMCM_USRCLK_CTRL_RST_MASK;
+		xhdmiphy_write(inst, reg_off, reg_val);
+	}
 }
