@@ -42,12 +42,19 @@ inline void xhdmiphy_clr(struct xhdmiphy_dev *inst, u32 addr, u32 clr)
 static void xhdmiphy_outdiv_reconf(struct xhdmiphy_dev *inst, enum chid chid,
 				   enum dir dir)
 {
-	u8 id0, id1;
+	u32 ret = 0;
+	u8 id, id0, id1;
 
 	if (!xhdmiphy_is_ch(chid))
 		chid = XHDMIPHY_CHID_CHA;
 
 	xhdmiphy_ch2ids(inst, chid, &id0, &id1);
+
+	for (id = id0; id <= id1; id++) {
+		ret = xhdmiphy_outdiv_ch_reconf(inst, (enum chid)id, dir);
+		if (ret != 0)
+			break;
+	}
 }
 
 /**
@@ -1018,7 +1025,21 @@ u32 xhdmiphy_set_tx_param(struct xhdmiphy_dev *inst, enum chid chid,
 {
 	u32 status;
 
-	status = xhdmiphy_txpll_param(inst, chid);
+	if (inst->conf.gt_type != XHDMIPHY_GTYE5) {
+		/*
+		 * only calculate the QPLL/CPLL parameters when the GT TX and
+		 * RX are not coupled
+		 */
+		if (xhdmiphy_is_tx_using_cpll(inst, chid)) {
+			status = xhdmiphy_cpll_param(inst, chid, XHDMIPHY_DIR_TX);
+		} else {
+			status = xhdmiphy_qpll_param(inst, chid, XHDMIPHY_DIR_TX);
+			/* update sysClk and PLL clk registers immediately */
+			xhdmiphy_write_refclksel(inst);
+		}
+	} else {
+		status = xhdmiphy_txpll_param(inst, chid);
+	}
 
 	if (status == 1)
 		return status;
@@ -1029,6 +1050,33 @@ u32 xhdmiphy_set_tx_param(struct xhdmiphy_dev *inst, enum chid chid,
 	} else {
 		dev_err(inst->dev,
 			"HDMITXSS ppc does't match with hdmiphy ppc\n");
+		status = 1;
+	}
+	if (status == 0) {
+		/* HDMI 2.1 */
+		if (inst->tx_hdmi21_cfg.is_en) {
+			xhdmiphy_mmcm_param(inst, XHDMIPHY_DIR_TX);
+
+			return status;
+		}
+
+		/*
+		 * calculate TXPLL parameters.
+		 * In HDMI the colordepth in YUV422 is always 12 bits,
+		 * although on the link itself it is being transmitted as
+		 * 8-bits. Therefore if the colorspace is YUV422, then force the
+		 * colordepth to 8 bits.
+		 */
+		if (fmt == XVIDC_CSF_YCRCB_422) {
+			status = xhdmiphy_cal_mmcm_param(inst, chid,
+							 XHDMIPHY_DIR_TX, ppc,
+							 XVIDC_BPC_8);
+		} else {
+			status = xhdmiphy_cal_mmcm_param(inst, chid,
+							 XHDMIPHY_DIR_TX, ppc,
+							 bpc);
+		}
+	} else {
 		status = 1;
 	}
 
@@ -1042,7 +1090,19 @@ static u32 xhdmiphy_set_rx_param(struct xhdmiphy_dev *inst, enum chid chid)
 	enum chid ch_id = chid;
 	enum pll_type pll_type;
 
-	status = xhdmiphy_rxpll_param(inst, chid);
+	if (inst->conf.gt_type != XHDMIPHY_GTYE5) {
+		if (xhdmiphy_is_rx_using_cpll(inst, chid)) {
+			status = xhdmiphy_cpll_param(inst, chid,
+						     XHDMIPHY_DIR_RX);
+		} else {
+			status = xhdmiphy_qpll_param(inst, chid,
+						     XHDMIPHY_DIR_RX);
+			/* update SysClk and PLL clk registers immediately */
+			xhdmiphy_write_refclksel(inst);
+		}
+	} else {
+		status = xhdmiphy_rxpll_param(inst, chid);
+	}
 
 	if (inst->rx_dru_enabled) {
 		pll_type = xhdmiphy_get_pll_type(inst, XHDMIPHY_DIR_RX,
