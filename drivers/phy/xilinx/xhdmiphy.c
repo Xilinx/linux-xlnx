@@ -166,6 +166,15 @@ static irqreturn_t xhdmiphy_irq_thread(int irq, void *dev_id)
 	if (event_ack)
 		xhdmiphy_gt_handler(priv, event_ack, status);
 
+	event_mask = XHDMIPHY_INTR_TXFREQCHANGE_MASK |
+		     XHDMIPHY_INTR_RXFREQCHANGE_MASK |
+		     XHDMIPHY_INTR_TXTMRTIMEOUT_MASK |
+		     XHDMIPHY_INTR_RXTMRTIMEOUT_MASK;
+
+	event_ack = event_mask & status;
+	if (event_ack)
+		xhdmiphy_clkdet_handler(priv, event_ack, status);
+
 	mutex_unlock(&priv->hdmiphy_mutex);
 
 	/* enable interrupt requesting in the PHY */
