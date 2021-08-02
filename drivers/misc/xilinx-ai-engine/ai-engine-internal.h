@@ -633,6 +633,7 @@ struct aie_tile {
 	struct aie_location loc;
 	struct aie_partition *apart;
 	struct device dev;
+	struct attribute_group *attr_grp;
 };
 
 /**
@@ -795,6 +796,7 @@ struct aie_partition {
 	struct aie_resource mem_event_status;
 	struct aie_resource pl_event_status;
 	struct aie_resource l2_mask;
+	struct attribute_group *attr_grp;
 	u32 partition_id;
 	u32 status;
 	u32 cntrflag;
@@ -1041,7 +1043,10 @@ int aie_part_rscmgr_set_tile_broadcast(struct aie_partition *apart,
 				       struct aie_location loc,
 				       enum aie_module_type mod, uint32_t id);
 
-int aie_part_sysfs_init(struct aie_partition *apart);
+int aie_part_sysfs_create_entries(struct aie_partition *apart);
+void aie_part_sysfs_remove_entries(struct aie_partition *apart);
+int aie_tile_sysfs_create_entries(struct aie_tile *atile);
+void aie_tile_sysfs_remove_entries(struct aie_tile *atile);
 ssize_t aie_sysfs_read_handler(struct file *filp, struct kobject *kobj,
 			       struct bin_attribute *attr, char *buf,
 			       loff_t offset, size_t max_size);
