@@ -136,7 +136,6 @@ struct zynqmp_disp_layer_dma {
  * struct zynqmp_disp_layer - Display subsystem layer
  * @plane: DRM plane
  * @bridge: Xlnx bridge
- * @of_node: device node
  * @dma: struct for DMA engine
  * @num_chan: Number of DMA channel
  * @id: Layer ID
@@ -156,7 +155,6 @@ struct zynqmp_disp_layer_dma {
 struct zynqmp_disp_layer {
 	struct drm_plane plane;
 	struct xlnx_bridge bridge;
-	struct device_node *of_node;
 	struct zynqmp_disp_layer_dma dma[ZYNQMP_DISP_MAX_NUM_SUB_PLANES];
 	unsigned int num_chan;
 	enum zynqmp_disp_layer_type id;
@@ -1768,7 +1766,7 @@ zynqmp_disp_layer_request_dma(struct zynqmp_disp *disp,
 
 		dma = &layer->dma[i];
 		snprintf(temp, sizeof(temp), "%s%d", name, i);
-		dma->chan = of_dma_request_slave_channel(layer->of_node,
+		dma->chan = of_dma_request_slave_channel(disp->dev->of_node,
 							 temp);
 		if (IS_ERR(dma->chan)) {
 			dev_err(disp->dev, "failed to request dma channel\n");
@@ -1848,11 +1846,8 @@ static void zynqmp_disp_layer_destroy(struct zynqmp_disp *disp)
 {
 	unsigned int i;
 
-	for (i = 0; i < ZYNQMP_DISP_NUM_LAYERS; i++) {
+	for (i = 0; i < ZYNQMP_DISP_NUM_LAYERS; i++)
 		zynqmp_disp_layer_release_dma(disp, &disp->layers[i]);
-		if (disp->layers[i].of_node)
-			of_node_put(disp->layers[i].of_node);
-	}
 }
 
 /**
@@ -1877,7 +1872,6 @@ static int zynqmp_disp_layer_create(struct zynqmp_disp *disp)
 		layer->offset = i * 4;
 		layer->other = &disp->layers[!i];
 		layer->num_chan = num_chans[i];
-		layer->of_node = disp->dev->of_node;
 		ret = zynqmp_disp_layer_request_dma(disp, layer, dma_name[i]);
 		if (ret)
 			goto err;
@@ -3160,7 +3154,7 @@ int zynqmp_disp_probe(struct platform_device *pdev)
 		layer->bridge.get_input_fmts =
 			&zynqmp_disp_bridge_get_input_fmts;
 		layer->bridge.set_timing = &zynqmp_disp_bridge_set_timing;
-		layer->bridge.of_node = layer->of_node;
+		layer->bridge.of_node = disp->dev->of_node;
 		layer->bridge.extra_name = ((i == 0) ? ".vid" : ".gfx");
 		ret = xlnx_bridge_register(&layer->bridge);
 		if (ret) {
