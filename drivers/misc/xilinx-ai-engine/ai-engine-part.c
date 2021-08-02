@@ -749,7 +749,7 @@ const struct file_operations aie_part_fops = {
  */
 static void aie_tile_release_device(struct device *dev)
 {
-	put_device(dev);
+	(void)dev;
 }
 
 /**
@@ -763,9 +763,7 @@ static void aie_part_release_device(struct device *dev)
 {
 	struct aie_partition *apart = dev_to_aiepart(dev);
 	struct aie_device *adev = apart->adev;
-	struct aie_tile *atile = apart->atiles;
 	int ret;
-	u32 index;
 
 	ret = mutex_lock_interruptible(&adev->mlock);
 	if (ret) {
@@ -777,17 +775,10 @@ static void aie_part_release_device(struct device *dev)
 				apart->range.size.col);
 	aie_part_release_event_bitmap(apart);
 	aie_resource_uninitialize(&apart->l2_mask);
-
-	for (index = 0; index < apart->range.size.col * apart->range.size.row;
-	     index++, atile++)
-		put_device(&atile->dev);
-
 	list_del(&apart->node);
 	mutex_unlock(&adev->mlock);
-	aie_fpga_free_bridge(apart);
 	aie_resource_uninitialize(&apart->cores_clk_state);
 	aie_part_rscmgr_finish(apart);
-	put_device(apart->dev.parent);
 }
 
 /**
@@ -1021,7 +1012,6 @@ static struct aie_partition *aie_create_partition(struct aie_device *adev,
 	}
 	list_add_tail(&apart->node, &adev->partitions);
 	mutex_unlock(&adev->mlock);
-	get_device(&adev->dev);
 	dev_dbg(dev, "created AIE partition device.\n");
 
 	return apart;
