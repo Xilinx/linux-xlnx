@@ -174,13 +174,20 @@ static int aie_tile_sysfs_create(struct aie_tile *atile)
 		if (!attr_grp)
 			return -ENOMEM;
 
+		atile->attr_grp = attr_grp;
+
 		if (attr->num_dev_attrs)
 			attr_grp->attrs = dev_attrs;
 
 		if (attr->num_bin_attrs)
 			attr_grp->bin_attrs = bin_attrs;
 
-		ret = devm_device_add_group(&atile->dev, attr_grp);
+		/* TODO - use the non managed api to create sysfs group.
+		 * This workaround solves an issue where the device_del()
+		 * removes the SYSFS files before the managed create group.
+		 * This results in an error where files cannot be found.
+		 */
+		ret = sysfs_create_group(&atile->dev.kobj, attr_grp);
 		if (ret) {
 			dev_err(&atile->dev,
 				"Failed to add sysfs attributes group\n");
@@ -252,13 +259,20 @@ static int aie_part_sysfs_create(struct aie_partition *apart)
 		if (!attr_grp)
 			return -ENOMEM;
 
+		apart->attr_grp = attr_grp;
+
 		if (attr->num_dev_attrs)
 			attr_grp->attrs = dev_attrs;
 
 		if (attr->num_bin_attrs)
 			attr_grp->bin_attrs = bin_attrs;
 
-		ret = devm_device_add_group(&apart->dev, attr_grp);
+		/* TODO - use the non managed api to create sysfs group.
+		 * This workaround solves an issue where the device_del()
+		 * removes the SYSFS files before the managed create group.
+		 * This results in an error where files cannot be found.
+		 */
+		ret = sysfs_create_group(&apart->dev.kobj, attr_grp);
 		if (ret) {
 			dev_err(&apart->dev,
 				"Failed to add sysfs attributes group\n");
@@ -268,33 +282,53 @@ static int aie_part_sysfs_create(struct aie_partition *apart)
 }
 
 /**
- * aie_part_sysfs_init() - initializes sysfs interface by creating node at tile
- *			   and partition granularity.
+ * aie_part_sysfs_create() - creates sysfs group for partition device.
  * @apart: AI engine partition.
  * @return: 0 for success, error code for failure.
  */
-int aie_part_sysfs_init(struct aie_partition *apart)
+int aie_part_sysfs_create_entries(struct aie_partition *apart)
 {
-	struct aie_tile *atile = apart->atiles;
-	u32 index;
 	int ret;
 
 	ret = aie_part_sysfs_create(apart);
 	if (ret < 0) {
-		dev_err(&apart->dev,
-			"Failed to create partition level sysfs nodes\n");
+		dev_err(&apart->dev, "Failed to create sysfs partition\n");
 		return ret;
 	}
+	return ret;
+}
 
-	for (index = 0; index < apart->range.size.col * apart->range.size.row;
-	     index++) {
-		ret = aie_tile_sysfs_create(atile);
-		if (ret < 0) {
-			dev_err(&atile->dev,
-				"Failed to create tile level sysfs nodes\n");
-			return ret;
-		}
-		atile++;
+/**
+ * aie_tile_sysfs_create() - creates sysfs group for tile device.
+ * @apart: AI engine partition.
+ * @return: 0 for success, error code for failure.
+ */
+int aie_tile_sysfs_create_entries(struct aie_tile *atile)
+{
+	int ret;
+
+	ret = aie_tile_sysfs_create(atile);
+	if (ret < 0) {
+		dev_err(&atile->dev, "Failed to create sysfs tile\n");
+		return ret;
 	}
 	return ret;
+}
+
+/**
+ * aie_part_sysfs_remove() - removes sysfs group from partition device.
+ * @apart: AI engine partition.
+ */
+void aie_part_sysfs_remove_entries(struct aie_partition *apart)
+{
+	sysfs_remove_group(&apart->dev.kobj, apart->attr_grp);
+}
+
+/**
+ * aie_tile_sysfs_remove() - removes sysfs group from tile device.
+ * @atile: AI engine tile.
+ */
+void aie_tile_sysfs_remove_entries(struct aie_tile *atile)
+{
+	sysfs_remove_group(&atile->dev.kobj, atile->attr_grp);
 }
