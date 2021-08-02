@@ -471,10 +471,14 @@ free_dev:
 static int xilinx_ai_engine_remove(struct platform_device *pdev)
 {
 	struct aie_device *adev = platform_get_drvdata(pdev);
-	struct aie_partition *apart;
+	struct list_head *node, *pos;
 
-	list_for_each_entry(apart, &adev->partitions, node)
+	list_for_each_safe(pos, node, &adev->partitions) {
+		struct aie_partition *apart;
+
+		apart = list_entry(pos, struct aie_partition, node);
 		aie_part_remove(apart);
+	}
 
 	device_del(&adev->dev);
 	put_device(&adev->dev);
