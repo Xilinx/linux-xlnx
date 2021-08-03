@@ -126,7 +126,7 @@ static int xvip_pipeline_set_stream(struct xvip_pipeline *pipe, bool on)
 	xdev = pipe->xdev;
 
 	if (on) {
-		if (pipe->stream_count == pipe->num_dmas - 1) {
+		if (pipe->stream_count == pipe->num_dmas - 1 || xdev->atomic_streamon) {
 			ret = xvip_graph_pipeline_start_stop(xdev, pipe, true);
 			if (ret < 0)
 				goto done;

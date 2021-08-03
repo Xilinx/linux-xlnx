@@ -824,6 +824,8 @@ static int xvip_composite_probe(struct platform_device *pdev)
 	if (ret < 0)
 		goto error;
 
+	xdev->atomic_streamon = of_property_read_bool(xdev->dev->of_node, "xlnx,atomic_streamon");
+
 	ret = of_reserved_mem_device_init(&pdev->dev);
 	if (ret)
 		dev_dbg(&pdev->dev, "of_reserved_mem_device_init: %d\n", ret);
