@@ -3124,11 +3124,9 @@ static int xlnx_mix_remove(struct platform_device *pdev)
 	if (mixer->disp_bridge) {
 		of_xlnx_bridge_put(mixer->disp_bridge);
 		xlnx_mix_crtc_atomic_disable(&mixer->crtc.crtc, NULL);
-		xlnx_drm_pipeline_exit(mixer->master);
-	} else {
-		xlnx_drm_pipeline_exit(mixer->master);
-		component_del(&pdev->dev, &xlnx_mix_component_ops);
 	}
+	xlnx_drm_pipeline_exit(mixer->master);
+	component_del(&pdev->dev, &xlnx_mix_component_ops);
 	return 0;
 }
 
