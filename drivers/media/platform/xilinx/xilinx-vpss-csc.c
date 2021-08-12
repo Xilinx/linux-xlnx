@@ -310,16 +310,6 @@ static void xcsc_write_coeff(struct xcsc_dev *xcsc)
 	xcsc_write_rgb_offset(xcsc);
 }
 
-static void xcsc_set_v4l2_ctrl_defaults(struct xcsc_dev *xcsc)
-{
-	unsigned int i;
-
-	mutex_lock(xcsc->ctrl_handler.lock);
-	for (i = 0; i < XCSC_COLOR_CTRL_COUNT; i++)
-		xcsc->custom_ctrls[i]->cur.val = XCSC_COLOR_CTRL_DEFAULT;
-	mutex_unlock(xcsc->ctrl_handler.lock);
-}
-
 static void xcsc_set_control_defaults(struct xcsc_dev *xcsc)
 {
 	/* These are VPSS CSC IP specific defaults */
@@ -620,6 +610,10 @@ static void xcsc_set_brightness(struct xcsc_dev *xcsc)
 	xcsc->brightness_active = xcsc->brightness;
 	xcsc_correct_coeff(xcsc, xcsc->shadow_coeff);
 	xcsc_write_coeff(xcsc);
+#ifdef DEBUG
+	xcsc_print_k_hw(xcsc);
+	xcsc_print_coeff(xcsc);
+#endif
 }
 
 static void xcsc_set_contrast(struct xcsc_dev *xcsc)
@@ -641,6 +635,10 @@ static void xcsc_set_contrast(struct xcsc_dev *xcsc)
 	xcsc->contrast_active = xcsc->contrast;
 	xcsc_correct_coeff(xcsc, xcsc->shadow_coeff);
 	xcsc_write_coeff(xcsc);
+#ifdef DEBUG
+	xcsc_print_k_hw(xcsc);
+	xcsc_print_coeff(xcsc);
+#endif
 }
 
 static void xcsc_set_red_gain(struct xcsc_dev *xcsc)
@@ -664,6 +662,10 @@ static void xcsc_set_red_gain(struct xcsc_dev *xcsc)
 		xcsc_correct_coeff(xcsc, xcsc->shadow_coeff);
 		xcsc_write_coeff(xcsc);
 	}
+#ifdef DEBUG
+	xcsc_print_k_hw(xcsc);
+	xcsc_print_coeff(xcsc);
+#endif
 }
 
 static void xcsc_set_green_gain(struct xcsc_dev *xcsc)
@@ -687,6 +689,10 @@ static void xcsc_set_green_gain(struct xcsc_dev *xcsc)
 		xcsc_correct_coeff(xcsc, xcsc->shadow_coeff);
 		xcsc_write_coeff(xcsc);
 	}
+#ifdef DEBUG
+	xcsc_print_k_hw(xcsc);
+	xcsc_print_coeff(xcsc);
+#endif
 }
 
 static void xcsc_set_blue_gain(struct xcsc_dev *xcsc)
@@ -710,6 +716,10 @@ static void xcsc_set_blue_gain(struct xcsc_dev *xcsc)
 		xcsc_correct_coeff(xcsc, xcsc->shadow_coeff);
 		xcsc_write_coeff(xcsc);
 	}
+#ifdef DEBUG
+	xcsc_print_k_hw(xcsc);
+	xcsc_print_coeff(xcsc);
+#endif
 }
 
 static void xcsc_set_size(struct xcsc_dev *xcsc)
@@ -734,8 +744,24 @@ static int xcsc_s_stream(struct v4l2_subdev *subdev, int enable)
 		/* Reset the Global IP Reset through PS GPIO */
 		gpiod_set_value_cansleep(xcsc->rst_gpio, XCSC_RESET_ASSERT);
 		gpiod_set_value_cansleep(xcsc->rst_gpio, XCSC_RESET_DEASSERT);
+
+		/* Reset the active controls */
+		xcsc->brightness_active	= 120;
+		xcsc->contrast_active = 0;
+		xcsc->red_gain_active = 120;
+		xcsc->blue_gain_active = 120;
+		xcsc->green_gain_active = 120;
+		xcsc_copy_coeff(xcsc->shadow_coeff, rgb_unity_matrix);
+
 		return 0;
 	}
+	/* Set the controls */
+	xcsc_set_brightness(xcsc);
+	xcsc_set_contrast(xcsc);
+	xcsc_set_red_gain(xcsc);
+	xcsc_set_green_gain(xcsc);
+	xcsc_set_blue_gain(xcsc);
+
 	xcsc_write(xcsc, XV_CSC_INVIDEOFORMAT, xcsc->cft_in);
 	xcsc_write(xcsc, XV_CSC_OUTVIDEOFORMAT, xcsc->cft_out);
 	xcsc_write(xcsc, XV_CSC_CLIPMAX, xcsc->clip_max);
@@ -825,8 +851,6 @@ static int xcsc_set_format(struct v4l2_subdev *subdev,
 
 	fmt->format = *__format;
 	xcsc_update_formats(xcsc);
-	xcsc_set_control_defaults(xcsc);
-	xcsc_set_v4l2_ctrl_defaults(xcsc);
 	dev_info(xcsc->xvip.dev, "VPSS CSC color controls reset to defaults");
 	return 0;
 }
@@ -852,29 +876,20 @@ static int xcsc_s_ctrl(struct v4l2_ctrl *ctrl)
 	switch (ctrl->id) {
 	case V4L2_CID_XILINX_CSC_BRIGHTNESS:
 		xcsc->brightness = (2 * ctrl->val) + 20;
-		xcsc_set_brightness(xcsc);
 		break;
 	case V4L2_CID_XILINX_CSC_CONTRAST:
 		xcsc->contrast = (4 * ctrl->val) - 200;
-		xcsc_set_contrast(xcsc);
 		break;
 	case V4L2_CID_XILINX_CSC_RED_GAIN:
 		xcsc->red_gain =  (2 * ctrl->val) + 20;
-		xcsc_set_red_gain(xcsc);
 		break;
 	case V4L2_CID_XILINX_CSC_BLUE_GAIN:
 		xcsc->blue_gain =  (2 * ctrl->val) + 20;
-		xcsc_set_blue_gain(xcsc);
 		break;
 	case V4L2_CID_XILINX_CSC_GREEN_GAIN:
 		xcsc->green_gain =  (2 * ctrl->val) + 20;
-		xcsc_set_green_gain(xcsc);
 		break;
 	}
-#ifdef DEBUG
-	xcsc_print_k_hw(xcsc);
-	xcsc_print_coeff(xcsc);
-#endif
 	return 0;
 }
 
