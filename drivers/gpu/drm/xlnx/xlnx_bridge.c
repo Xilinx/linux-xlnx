@@ -396,8 +396,12 @@ static int xlnx_bridge_debugfs_register(struct xlnx_bridge *bridge)
 	if (!file)
 		return -ENOMEM;
 
-	snprintf(file_name, sizeof(file_name), "xlnx_bridge-%s%s",
-		 bridge->of_node->name, bridge->extra_name);
+	if (bridge->extra_name)
+		snprintf(file_name, sizeof(file_name), "xlnx_bridge-%s%s",
+			 bridge->of_node->name, bridge->extra_name);
+	else
+		snprintf(file_name, sizeof(file_name), "xlnx_bridge-%s",
+			 bridge->of_node->name);
 	file->file = debugfs_create_file(file_name, 0444, dir->dir, bridge,
 					 &xlnx_bridge_debugfs_fops);
 	bridge->debugfs_file = file;
@@ -407,6 +411,10 @@ static int xlnx_bridge_debugfs_register(struct xlnx_bridge *bridge)
 
 static void xlnx_bridge_debugfs_unregister(struct xlnx_bridge *bridge)
 {
+	if (!bridge->debugfs_file) {
+		pr_err("bridge %s debugfs file is NULL\n", bridge->of_node->name);
+		return;
+	}
 	debugfs_remove(bridge->debugfs_file->file);
 	kfree(bridge->debugfs_file);
 }
