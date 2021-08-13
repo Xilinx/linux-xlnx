@@ -282,7 +282,7 @@ static int aie_part_sysfs_create(struct aie_partition *apart)
 }
 
 /**
- * aie_part_sysfs_create() - creates sysfs group for partition device.
+ * aie_part_sysfs_create_entries() - creates sysfs group for partition device.
  * @apart: AI engine partition.
  * @return: 0 for success, error code for failure.
  */
@@ -299,8 +299,8 @@ int aie_part_sysfs_create_entries(struct aie_partition *apart)
 }
 
 /**
- * aie_tile_sysfs_create() - creates sysfs group for tile device.
- * @apart: AI engine partition.
+ * aie_tile_sysfs_create_entries() - creates sysfs group for tile device.
+ * @atile: AI engine tile.
  * @return: 0 for success, error code for failure.
  */
 int aie_tile_sysfs_create_entries(struct aie_tile *atile)
@@ -316,7 +316,7 @@ int aie_tile_sysfs_create_entries(struct aie_tile *atile)
 }
 
 /**
- * aie_part_sysfs_remove() - removes sysfs group from partition device.
+ * aie_part_sysfs_remove_entries() - removes sysfs group from partition device.
  * @apart: AI engine partition.
  */
 void aie_part_sysfs_remove_entries(struct aie_partition *apart)
@@ -325,7 +325,7 @@ void aie_part_sysfs_remove_entries(struct aie_partition *apart)
 }
 
 /**
- * aie_tile_sysfs_remove() - removes sysfs group from tile device.
+ * aie_tile_sysfs_remove_entries() - removes sysfs group from tile device.
  * @atile: AI engine tile.
  */
 void aie_tile_sysfs_remove_entries(struct aie_tile *atile)
