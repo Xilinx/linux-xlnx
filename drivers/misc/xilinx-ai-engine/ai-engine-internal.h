@@ -628,6 +628,7 @@ struct aie_sysfs_attr {
  * @loc: tile co-ordinates
  * @apart: parent partition the tile belongs to
  * @dev: device for the AI engine tile device
+ * @attr_grp: attribute group
  */
 struct aie_tile {
 	struct aie_location loc;
@@ -766,6 +767,7 @@ struct aie_part_bridge {
  * @mem_event_status: memory module event bitmap
  * @pl_event_status: pl module event bitmap
  * @l2_mask: level 2 interrupt controller mask bitmap
+ * @attr_grp: attribute group
  * @partition_id: partition id. Partition ID is the identifier
  *		  of the AI engine partition in the system.
  * @status: indicate if the partition is in use
