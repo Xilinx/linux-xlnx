@@ -115,9 +115,7 @@
 #define XILINX_CLK_PROP				BIT(3)
 #define XILINX_THREE_PLANES_PROP		BIT(4)
 
-#define XILINX_FRMBUF_MAX_HEIGHT		(4320)
 #define XILINX_FRMBUF_MIN_HEIGHT		(64)
-#define XILINX_FRMBUF_MAX_WIDTH			(8192)
 #define XILINX_FRMBUF_MIN_WIDTH			(64)
 
 /**
@@ -1568,7 +1566,7 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 	enum dma_transfer_direction dma_dir;
 	const struct of_device_id *match;
 	int err;
-	u32 i, j, align;
+	u32 i, j, align, max_width, max_height;
 	int hw_vid_fmt_cnt;
 	const char *vid_fmts[ARRAY_SIZE(xilinx_frmbuf_formats)];
 
@@ -1617,21 +1615,31 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 	if (IS_ERR(xdev->regs))
 		return PTR_ERR(xdev->regs);
 
+	if (xdev->cfg->flags & XILINX_THREE_PLANES_PROP)
+		max_height = 8640;
+	else
+		max_height = 4320;
+
 	err = of_property_read_u32(node, "xlnx,max-height", &xdev->max_height);
 	if (err < 0) {
 		dev_err(xdev->dev, "xlnx,max-height is missing!");
 		return -EINVAL;
-	} else if (xdev->max_height > XILINX_FRMBUF_MAX_HEIGHT ||
+	} else if (xdev->max_height > max_height ||
 		   xdev->max_height < XILINX_FRMBUF_MIN_HEIGHT) {
 		dev_err(&pdev->dev, "Invalid height in dt");
 		return -EINVAL;
 	}
 
+	if (xdev->cfg->flags & XILINX_THREE_PLANES_PROP)
+		max_width = 15360;
+	else
+		max_width = 8192;
+
 	err = of_property_read_u32(node, "xlnx,max-width", &xdev->max_width);
 	if (err < 0) {
 		dev_err(xdev->dev, "xlnx,max-width is missing!");
 		return -EINVAL;
-	} else if (xdev->max_width > XILINX_FRMBUF_MAX_WIDTH ||
+	} else if (xdev->max_width > max_width ||
 		   xdev->max_width < XILINX_FRMBUF_MIN_WIDTH) {
 		dev_err(&pdev->dev, "Invalid width in dt");
 		return -EINVAL;
