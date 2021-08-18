@@ -22,6 +22,7 @@
 #define WZRD_CLK_CFG_REG(n)	(0x330 + 4 * (n))
 
 #define WZRD_CLKFBOUT_FRAC_EN	BIT(1)
+#define WZRD_CLKFBOUT_PREDIV2	(BIT(11) | BIT(12) | BIT(9))
 
 #define WZRD_CLKFBOUT_L_SHIFT	0
 #define WZRD_CLKFBOUT_H_SHIFT	8
@@ -130,7 +131,11 @@ static unsigned long clk_wzrd_recalc_rate(struct clk_hw *hw,
 	all = valh + vall + edge;
 	if (!all)
 		all = 1;
-	div = (prediv2 + 1) * (all + (prediv2 * p5en) / 2);
+	if (prediv2)
+		div =  (2 * all + prediv2 * p5en);
+	else
+		div =  all;
+
 	return  DIV_ROUND_UP_ULL((u64)parent_rate, div);
 }
 
@@ -154,9 +159,9 @@ static int clk_wzrd_dynamic_reconfig(struct clk_hw *hw, unsigned long rate,
 
 	value = DIV_ROUND_CLOSEST(parent_rate, rate);
 	regh = (value / 4);
-	regh = regh * 2;
 	regval = regh | (regh << 8);
 	regval1 = readl(div_addr);
+	regval1 |= WZRD_CLKFBOUT_PREDIV2;
 	regval1 = regval1 &  ~(BIT(8) | BIT(13) | BIT(15));
 	if (value % 4 > 1) {
 		edged = 1;
