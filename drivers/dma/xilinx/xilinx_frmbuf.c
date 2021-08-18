@@ -1096,8 +1096,7 @@ static enum dma_status xilinx_frmbuf_tx_status(struct dma_chan *dchan,
 static void xilinx_frmbuf_halt(struct xilinx_frmbuf_chan *chan)
 {
 	frmbuf_clr(chan, XILINX_FRMBUF_CTRL_OFFSET,
-			XILINX_FRMBUF_CTRL_AP_START |
-			chan->mode);
+		   XILINX_FRMBUF_CTRL_AP_START | chan->mode);
 	chan->idle = true;
 }
 
@@ -1108,8 +1107,7 @@ static void xilinx_frmbuf_halt(struct xilinx_frmbuf_chan *chan)
 static void xilinx_frmbuf_start(struct xilinx_frmbuf_chan *chan)
 {
 	frmbuf_set(chan, XILINX_FRMBUF_CTRL_OFFSET,
-			XILINX_FRMBUF_CTRL_AP_START |
-			chan->mode);
+		   XILINX_FRMBUF_CTRL_AP_START | chan->mode);
 	chan->idle = false;
 }
 
