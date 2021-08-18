@@ -54,6 +54,7 @@
 #define XILINX_FRMBUF_ADDR_OFFSET		0x30
 #define XILINX_FRMBUF_ADDR2_OFFSET		0x3c
 #define XILINX_FRMBUF_FID_OFFSET		0x48
+#define XILINX_FRMBUF_ADDR3_OFFSET		0x54
 
 /* Control Registers */
 #define XILINX_FRMBUF_CTRL_AP_START		BIT(0)
@@ -98,6 +99,7 @@
 #define XILINX_FRMBUF_FMT_BGR8			29
 #define XILINX_FRMBUF_FMT_RGBX12		30
 #define XILINX_FRMBUF_FMT_RGB16			35
+#define XILINX_FRMBUF_FMT_Y_U_V8		42
 
 /* FID Register */
 #define XILINX_FRMBUF_FID_MASK			BIT(0)
@@ -111,6 +113,7 @@
 #define XILINX_FLUSH_PROP			BIT(1)
 #define XILINX_FID_PROP				BIT(2)
 #define XILINX_CLK_PROP				BIT(3)
+#define XILINX_THREE_PLANES_PROP		BIT(4)
 
 #define XILINX_FRMBUF_MAX_HEIGHT		(4320)
 #define XILINX_FRMBUF_MIN_HEIGHT		(64)
@@ -128,7 +131,7 @@
  */
 struct xilinx_frmbuf_desc_hw {
 	dma_addr_t luma_plane_addr;
-	dma_addr_t chroma_plane_addr;
+	dma_addr_t chroma_plane_addr[2];
 	u32 vsize;
 	u32 hsize;
 	u32 stride;
@@ -467,6 +470,16 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.v4l2_fmt = V4L2_PIX_FMT_BGR48,
 		.fmt_bitmask = BIT(23),
 	},
+	{
+		.dts_name = "y_u_v8",
+		.id = XILINX_FRMBUF_FMT_Y_U_V8,
+		.bpw = 32,
+		.ppw = 4,
+		.num_planes = 3,
+		.v4l2_fmt = V4L2_PIX_FMT_YUV444M,
+		.drm_fmt = DRM_FORMAT_YUV444,
+		.fmt_bitmask = BIT(24),
+	},
 };
 
 /**
@@ -525,6 +538,13 @@ static const struct xilinx_frmbuf_feature xlnx_fbwr_cfg_v21 = {
 		| XILINX_FID_PROP | XILINX_CLK_PROP,
 };
 
+static const struct xilinx_frmbuf_feature xlnx_fbwr_cfg_v22 = {
+	.direction = DMA_DEV_TO_MEM,
+	.flags = XILINX_PPC_PROP | XILINX_FLUSH_PROP
+		| XILINX_FID_PROP | XILINX_CLK_PROP
+		| XILINX_THREE_PLANES_PROP,
+};
+
 static const struct xilinx_frmbuf_feature xlnx_fbrd_cfg_v20 = {
 	.direction = DMA_MEM_TO_DEV,
 };
@@ -535,15 +555,26 @@ static const struct xilinx_frmbuf_feature xlnx_fbrd_cfg_v21 = {
 		| XILINX_FID_PROP | XILINX_CLK_PROP,
 };
 
+static const struct xilinx_frmbuf_feature xlnx_fbrd_cfg_v22 = {
+	.direction = DMA_MEM_TO_DEV,
+	.flags = XILINX_PPC_PROP | XILINX_FLUSH_PROP
+		| XILINX_FID_PROP | XILINX_CLK_PROP
+		| XILINX_THREE_PLANES_PROP,
+};
+
 static const struct of_device_id xilinx_frmbuf_of_ids[] = {
 	{ .compatible = "xlnx,axi-frmbuf-wr-v2",
 		.data = (void *)&xlnx_fbwr_cfg_v20},
 	{ .compatible = "xlnx,axi-frmbuf-wr-v2.1",
 		.data = (void *)&xlnx_fbwr_cfg_v21},
+	{ .compatible = "xlnx,axi-frmbuf-wr-v2.2",
+		.data = (void *)&xlnx_fbwr_cfg_v22},
 	{ .compatible = "xlnx,axi-frmbuf-rd-v2",
 		.data = (void *)&xlnx_fbrd_cfg_v20},
 	{ .compatible = "xlnx,axi-frmbuf-rd-v2.1",
 		.data = (void *)&xlnx_fbrd_cfg_v21},
+	{ .compatible = "xlnx,axi-frmbuf-rd-v2.2",
+		.data = (void *)&xlnx_fbrd_cfg_v22},
 	{/* end of list */}
 };
 
@@ -697,16 +728,35 @@ static int frmbuf_verify_format(struct dma_chan *chan, u32 fourcc, u32 type)
 static void xilinx_xdma_set_config(struct dma_chan *chan, u32 fourcc, u32 type)
 {
 	struct xilinx_frmbuf_chan *xil_chan;
+	struct xilinx_frmbuf_device *xdev;
+	const struct xilinx_frmbuf_format_desc *old_vid_fmt;
 	int ret;
 
 	xil_chan = frmbuf_find_chan(chan);
 	if (IS_ERR(xil_chan))
 		return;
+
+	xdev = frmbuf_find_dev(chan);
+	if (IS_ERR(xdev))
+		return;
+
+	/* Save old video format */
+	old_vid_fmt = xil_chan->vid_fmt;
+
 	ret = frmbuf_verify_format(chan, fourcc, type);
 	if (ret == -EINVAL) {
 		dev_err(chan->device->dev,
 			"Framebuffer not configured for fourcc 0x%x\n",
 			fourcc);
+		return;
+	}
+
+	if ((!(xdev->cfg->flags & XILINX_THREE_PLANES_PROP)) &&
+	    xil_chan->vid_fmt->id == XILINX_FRMBUF_FMT_Y_U_V8) {
+		dev_err(chan->device->dev, "doesn't support %s format\n",
+			xil_chan->vid_fmt->dts_name);
+		/* Restore to old video format */
+		xil_chan->vid_fmt = old_vid_fmt;
 		return;
 	}
 }
@@ -1095,6 +1145,9 @@ static void xilinx_frmbuf_complete_descriptor(struct xilinx_frmbuf_chan *chan)
 static void xilinx_frmbuf_start_transfer(struct xilinx_frmbuf_chan *chan)
 {
 	struct xilinx_frmbuf_tx_descriptor *desc;
+	struct xilinx_frmbuf_device *xdev;
+
+	xdev = container_of(chan, struct xilinx_frmbuf_device, chan);
 
 	if (!chan->idle)
 		return;
@@ -1128,7 +1181,10 @@ static void xilinx_frmbuf_start_transfer(struct xilinx_frmbuf_chan *chan)
 	chan->write_addr(chan, XILINX_FRMBUF_ADDR_OFFSET,
 			 desc->hw.luma_plane_addr);
 	chan->write_addr(chan, XILINX_FRMBUF_ADDR2_OFFSET,
-			 desc->hw.chroma_plane_addr);
+			 desc->hw.chroma_plane_addr[0]);
+	if (xdev->cfg->flags & XILINX_THREE_PLANES_PROP)
+		chan->write_addr(chan, XILINX_FRMBUF_ADDR3_OFFSET,
+				desc->hw.chroma_plane_addr[1]);
 
 	/* HW expects these parameters to be same for one transaction */
 	frmbuf_write(chan, XILINX_FRMBUF_WIDTH_OFFSET, desc->hw.hsize);
@@ -1321,16 +1377,26 @@ xilinx_frmbuf_dma_prep_interleaved(struct dma_chan *dchan,
 
 	if (chan->direction == DMA_MEM_TO_DEV) {
 		hw->luma_plane_addr = xt->src_start;
-		if (xt->frame_size == 2)
-			hw->chroma_plane_addr =
+		if (xt->frame_size == 2 || xt->frame_size == 3)
+			hw->chroma_plane_addr[0] =
 				xt->src_start +
+				xt->numf * hw->stride +
+				xt->sgl[0].src_icg;
+		if (xt->frame_size == 3)
+			hw->chroma_plane_addr[1] =
+				hw->chroma_plane_addr[0] +
 				xt->numf * hw->stride +
 				xt->sgl[0].src_icg;
 	} else {
 		hw->luma_plane_addr = xt->dst_start;
-		if (xt->frame_size == 2)
-			hw->chroma_plane_addr =
+		if (xt->frame_size == 2 || xt->frame_size == 3)
+			hw->chroma_plane_addr[0] =
 				xt->dst_start +
+				xt->numf * hw->stride +
+				xt->sgl[0].dst_icg;
+		if (xt->frame_size == 3)
+			hw->chroma_plane_addr[1] =
+				hw->chroma_plane_addr[0] +
 				xt->numf * hw->stride +
 				xt->sgl[0].dst_icg;
 	}
