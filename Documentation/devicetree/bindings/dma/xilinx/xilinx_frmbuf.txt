@@ -39,9 +39,9 @@ Required Properties Common to both FB Read and FB Write for v2.1:
 - clocks: Reference to the AXI Streaming clock feeding the AP_CLK
 - clock-names: Must have "ap_clk"
 - xlnx,max-height	: Maximum number of lines.
-			  Valid range from 64 to 4320.
+			  Valid range from 64 to 8640.
 - xlnx,max-width	: Maximum number of pixels in a line.
-			  Valid range from 64 to 8192.
+			  Valid range from 64 to 15360.
 
 Optional Properties Common to both FB Read and FB Write for v2.1:
 - xlnx,dma-align	: DMA alignment required in bytes.
