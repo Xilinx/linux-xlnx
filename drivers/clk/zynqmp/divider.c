@@ -292,6 +292,29 @@ static u32 zynqmp_clk_get_max_divisor(u32 clk_id, u32 type)
 	return ret_payload[1];
 }
 
+static inline unsigned long zynqmp_clk_map_divider_ccf_flags(
+					       const u32 zynqmp_type_flag)
+{
+	unsigned long ccf_flag = 0;
+
+	if (zynqmp_type_flag & ZYNQMP_CLK_DIVIDER_ONE_BASED)
+		ccf_flag |= CLK_DIVIDER_ONE_BASED;
+	if (zynqmp_type_flag & ZYNQMP_CLK_DIVIDER_POWER_OF_TWO)
+		ccf_flag |= CLK_DIVIDER_POWER_OF_TWO;
+	if (zynqmp_type_flag & ZYNQMP_CLK_DIVIDER_ALLOW_ZERO)
+		ccf_flag |= CLK_DIVIDER_ALLOW_ZERO;
+	if (zynqmp_type_flag & ZYNQMP_CLK_DIVIDER_POWER_OF_TWO)
+		ccf_flag |= CLK_DIVIDER_HIWORD_MASK;
+	if (zynqmp_type_flag & ZYNQMP_CLK_DIVIDER_ROUND_CLOSEST)
+		ccf_flag |= CLK_DIVIDER_ROUND_CLOSEST;
+	if (zynqmp_type_flag & ZYNQMP_CLK_DIVIDER_READ_ONLY)
+		ccf_flag |= CLK_DIVIDER_READ_ONLY;
+	if (zynqmp_type_flag & ZYNQMP_CLK_DIVIDER_MAX_AT_ZERO)
+		ccf_flag |= CLK_DIVIDER_MAX_AT_ZERO;
+
+	return ccf_flag;
+}
+
 /**
  * zynqmp_clk_register_divider() - Register a divider clock
  * @name:		Name of this clock
@@ -323,29 +346,16 @@ struct clk_hw *zynqmp_clk_register_divider(const char *name,
 		init.ops = &zynqmp_clk_divider_ro_ops;
 	else
 		init.ops = &zynqmp_clk_divider_ops;
-	/* CLK_FRAC is not defined in the common clk framework */
-	init.flags = nodes->flag & ~CLK_FRAC;
+
+	init.flags = zynqmp_clk_map_common_ccf_flags(nodes->flag);
+
 	init.parent_names = parents;
 	init.num_parents = 1;
 
 	/* struct clk_divider assignments */
 	div->is_frac = !!((nodes->flag & CLK_FRAC) |
 			  (nodes->custom_type_flag & CUSTOM_FLAG_CLK_FRAC));
-	div->flags = 0;
-	div->flags |= (nodes->type_flag & ZYNQMP_CLK_DIVIDER_ONE_BASED) ?
-		      CLK_DIVIDER_ONE_BASED : 0;
-	div->flags |= (nodes->type_flag & ZYNQMP_CLK_DIVIDER_POWER_OF_TWO) ?
-		      CLK_DIVIDER_POWER_OF_TWO : 0;
-	div->flags |= (nodes->type_flag & ZYNQMP_CLK_DIVIDER_ALLOW_ZERO) ?
-		      CLK_DIVIDER_ALLOW_ZERO : 0;
-	div->flags |= (nodes->type_flag & ZYNQMP_CLK_DIVIDER_POWER_OF_TWO) ?
-		      CLK_DIVIDER_HIWORD_MASK : 0;
-	div->flags |= (nodes->type_flag & ZYNQMP_CLK_DIVIDER_ROUND_CLOSEST) ?
-		      CLK_DIVIDER_ROUND_CLOSEST : 0;
-	div->flags |= (nodes->type_flag & ZYNQMP_CLK_DIVIDER_READ_ONLY) ?
-		      CLK_DIVIDER_READ_ONLY : 0;
-	div->flags |= (nodes->type_flag & ZYNQMP_CLK_DIVIDER_MAX_AT_ZERO) ?
-		      CLK_DIVIDER_MAX_AT_ZERO : 0;
+	div->flags = zynqmp_clk_map_divider_ccf_flags(nodes->type_flag);
 	div->hw.init = &init;
 	div->clk_id = clk_id;
 	div->div_type = nodes->type;
