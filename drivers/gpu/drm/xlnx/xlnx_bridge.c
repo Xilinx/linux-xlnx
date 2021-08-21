@@ -514,7 +514,8 @@ void xlnx_bridge_unregister(struct xlnx_bridge *bridge)
 		return;
 
 	mutex_lock(&helper.lock);
-	WARN_ON(bridge->owned);
+	pr_warn("unregister bridge %s which is owned by other component\n",
+		bridge->of_node->name);
 	xlnx_bridge_debugfs_unregister(bridge);
 	list_del(&bridge->list);
 	mutex_unlock(&helper.lock);

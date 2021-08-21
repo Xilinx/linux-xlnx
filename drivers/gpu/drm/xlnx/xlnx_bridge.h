@@ -28,7 +28,6 @@ struct xlnx_bridge_debugfs_file;
  * @list: list node for Xilinx bridge device list
  * @of_node: OF node for the bridge
  * @owned: flag if the bridge is owned
- * @available: flag if the bridge is available
  * @enable: callback to enable the bridge
  * @disable: callback to disable the bridge
  * @set_input: callback to set the input
@@ -43,7 +42,6 @@ struct xlnx_bridge {
 	struct list_head list;
 	struct device_node *of_node;
 	bool owned;
-	bool available;
 	int (*enable)(struct xlnx_bridge *bridge);
 	void (*disable)(struct xlnx_bridge *bridge);
 	int (*set_input)(struct xlnx_bridge *bridge,
