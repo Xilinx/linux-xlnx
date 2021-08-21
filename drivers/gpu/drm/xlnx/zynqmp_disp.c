@@ -3178,11 +3178,8 @@ int zynqmp_disp_remove(struct platform_device *pdev)
 	zynqmp_disp_layer_destroy(disp);
 	if (disp->audclk)
 		zynqmp_disp_clk_disable(disp->audclk, &disp->audclk_en);
-	if (disp->vtc_bridge) {
+	if (disp->vtc_bridge)
 		of_xlnx_bridge_put(disp->vtc_bridge);
-		if (!disp->vtc_bridge->available)
-			xlnx_bridge_unregister(disp->vtc_bridge);
-	}
 	zynqmp_disp_clk_disable(disp->aclk, &disp->aclk_en);
 	zynqmp_disp_clk_disable(disp->pclk, &disp->pclk_en);
 	dpsub->disp = NULL;
