@@ -204,7 +204,7 @@ config XEN_PCIDEV_BACKEND
 	  If in doubt, say m.
 
 config XEN_PVCALLS_FRONTEND
-	tristate "XEN PV Calls frontend driver"
+	bool "XEN PV Calls frontend driver"
 	depends on INET && XEN
 	select XEN_XENBUS_FRONTEND
 	help
