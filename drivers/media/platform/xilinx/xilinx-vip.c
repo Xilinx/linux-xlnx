@@ -326,7 +326,7 @@ void xvip_set_format_size(struct v4l2_mbus_framefmt *format,
 	format->width = clamp_t(unsigned int, fmt->format.width,
 				XVIP_MIN_WIDTH, XVIP_MAX_WIDTH);
 	format->height = clamp_t(unsigned int, fmt->format.height,
-			 XVIP_MIN_HEIGHT, XVIP_MAX_HEIGHT);
+				 XVIP_MIN_HEIGHT, XVIP_MAX_HEIGHT);
 }
 EXPORT_SYMBOL_GPL(xvip_set_format_size);
 
