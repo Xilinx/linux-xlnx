@@ -947,11 +947,15 @@ static void xhdmirx1_setpixelclk(struct xhdmirx_state *xhdmi)
 static int xhdmirx_phy_configure(struct xhdmirx_state *xhdmi,
 				 union phy_configure_opts *opts)
 {
-	int ret;
+	int ret, i;
 
-	ret = phy_configure(xhdmi->phy[0], opts);
-	if (ret)
-		dev_err(xhdmi->dev, "phy_configure error %d\n", ret);
+	for (i = 0; i < XHDMI_MAX_LANES; i++) {
+		ret = phy_configure(xhdmi->phy[i], opts);
+		if (ret) {
+			dev_err(xhdmi->dev, "phy_configure error %d\n", ret);
+			return ret;
+		}
+	}
 
 	return ret;
 }
