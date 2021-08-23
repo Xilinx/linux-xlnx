@@ -1414,6 +1414,7 @@ static void xhdmirx_pioint_handler(struct xhdmirx_state *xhdmi)
 				    HDMIRX_VTD_CTRL_SYNC_LOSS_MASK);
 
 			streamdown(xhdmi);
+			xhdmi->hdmi_stream_up = 0;
 		}
 	}
 
