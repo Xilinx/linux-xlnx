@@ -90,7 +90,6 @@ static int xvip_dma_verify_format(struct xvip_dma *dma)
  * Pipeline Stream Management
  */
 
-
 /**
  * xvip_pipeline_set_stream - Enable/disable streaming on a pipeline
  * @pipe: The pipeline
