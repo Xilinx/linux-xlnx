@@ -108,6 +108,9 @@ struct phy_configure_opts_hdmi {
 	 * Allowed values: 0, 1
 	 */
 	u8 config_hdmi21 : 1;
+	/* these are used with hdmi21 conf */
+	u64 linerate;
+	u8 nchannels;
 	/**
 	 * @rx_get_refclk:
 	 *
@@ -184,6 +187,12 @@ struct phy_configure_opts_hdmi {
 	 * Allowed values: 0, 1, 2, 3
 	 */
 	u8 fmt;
+	/**
+	 * @reset_gt
+	 *
+	 * Reset GT
+	 */
+	u8 reset_gt:1;
 };
 
 #endif /* __PHY_HDMI_H_ */
