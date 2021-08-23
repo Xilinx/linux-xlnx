@@ -945,7 +945,7 @@ static struct dma_chan *of_dma_xilinx_xlate(struct of_phandle_args *dma_spec,
  */
 
 /**
- * xilinx_frmbuf_tx_descriptor - Allocate transaction descriptor
+ * xilinx_frmbuf_alloc_tx_descriptor - Allocate transaction descriptor
  * @chan: Driver specific dma channel
  *
  * Return: The allocated descriptor on success and NULL on failure.
