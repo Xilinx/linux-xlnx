@@ -109,6 +109,22 @@ struct phy_configure_opts_hdmi {
 	 */
 	u8 config_hdmi21 : 1;
 	/**
+	 * @linerate:
+	 *
+	 * Supported linerates(in Gb/s) to be configured in FRL mode.
+	 *
+	 * Allowed values: 3, 6, 8. 10, 12
+	 */
+	u64 linerate;
+	/**
+	 * @nchannels:
+	 *
+	 * No of channels to confiure in FRL mode.
+	 *
+	 * Allowed values: 3, 4
+	 */
+	u8 nchannels;
+	/**
 	 * @rx_get_refclk:
 	 *
 	 * Flag to get the rx reference clock value from the PHY driver
@@ -184,6 +200,12 @@ struct phy_configure_opts_hdmi {
 	 * Allowed values: 0, 1, 2, 3
 	 */
 	u8 fmt;
+	/**
+	 * @reset_gt:
+	 *
+	 * Flag to reset the GT
+	 */
+	u8 reset_gt : 1;
 };
 
 #endif /* __PHY_HDMI_H_ */
