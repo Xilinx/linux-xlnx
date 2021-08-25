@@ -151,12 +151,26 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 {
 	struct zynqmp_r5_rproc *z_rproc = rproc->priv;
 	enum rpu_boot_mem bootmem;
+	int ret;
+	u32 status;
 
 	bootmem = (rproc->bootaddr & 0xF0000000) == 0xF0000000 ?
 		  PM_RPU_BOOTMEM_HIVEC : PM_RPU_BOOTMEM_LOVEC;
 
 	dev_dbg(rproc->dev.parent, "RPU boot from %s.",
 		bootmem == PM_RPU_BOOTMEM_HIVEC ? "OCM" : "TCM");
+
+	/* If core is already powered on, turn off before re-wake. */
+	ret = zynqmp_pm_get_node_status(z_rproc->pnode_id, &status, NULL, NULL);
+	if (ret)
+		return ret;
+
+	if (status) {
+		ret = zynqmp_pm_force_pwrdwn(z_rproc->pnode_id,
+					     ZYNQMP_PM_REQUEST_ACK_BLOCKING);
+		if (ret)
+			return ret;
+	}
 
 	return zynqmp_pm_request_wake(z_rproc->pnode_id, 1,
 				     bootmem, ZYNQMP_PM_REQUEST_ACK_NO);
