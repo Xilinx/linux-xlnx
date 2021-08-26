@@ -2386,31 +2386,27 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 	u32 read_len = 0;
 	u32 rem_bank_len = 0;
 	u8 bank;
-	u8 is_ofst_odd = 0;
 	u8 cur_bank;
 	u8 nxt_bank;
 	u32 bank_size;
-	u_char *ptr;
 
 #define OFFSET_16_MB 0x1000000
 	dev_dbg(nor->dev, "from 0x%08x, len %zd\n", (u32)from, len);
+	if (nor->isparallel && (from & 1)) {
+		u8 two[2];
+		size_t local_retlen;
 
-	if (nor->isparallel && (offset & 1)) {
-		/* We can hit this case when we use file system like ubifs */
-		from = (loff_t)(from - 1);
-		len = (size_t)(len + 1);
-		is_ofst_odd = 1;
-		ptr = kmalloc(len, GFP_KERNEL);
-		if (!ptr)
-			return -ENOMEM;
-
-	} else {
-		ptr = buf;
+		ret = spi_nor_read(mtd, (from & ~1), 2, &local_retlen, two);
+		if (ret < 0)
+			return ret;
+		buf[0] = two[1]; /* copy odd byte to buffer */
+		++buf;
+		*retlen += 1; /* We've read only one actual byte */
+		--len;
+		++from;
 	}
 	ret = spi_nor_lock_and_prep(nor);
 	if (ret) {
-		if (is_ofst_odd == 1)
-			kfree(ptr);
 		return ret;
 	}
 
@@ -2484,7 +2480,7 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 
 		offset = spi_nor_convert_addr(nor, offset);
 
-		ret = spi_nor_read_data(nor, (offset), read_len, ptr);
+		ret = spi_nor_read_data(nor, (offset), read_len, buf);
 		if (ret == 0) {
 			/* We shouldn't see 0-length reads */
 			ret = -EIO;
@@ -2494,23 +2490,14 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 			goto read_err;
 
 		WARN_ON(ret > len);
-		if (is_ofst_odd == 1) {
-			memcpy(buf, (ptr + 1), (len - 1));
-			*retlen += (ret - 1);
-		} else {
-			*retlen += ret;
-		}
+		*retlen += ret;
 		buf += ret;
-		if (!is_ofst_odd)
-			ptr += ret;
 		from += ret;
 		len -= ret;
 	}
 	ret = 0;
 
 read_err:
-	if (is_ofst_odd == 1)
-		kfree(ptr);
 	spi_nor_unlock_and_unprep(nor);
 	return ret;
 }
