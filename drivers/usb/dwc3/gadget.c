@@ -3562,6 +3562,17 @@ static void dwc3_gadget_conndone_interrupt(struct dwc3 *dwc)
 		reg = dwc3_readl(dwc->regs, DWC3_DCTL);
 		reg |= DWC3_DCTL_KEEP_CONNECT;
 		dwc3_writel(dwc->regs, DWC3_DCTL, reg);
+
+		/*
+		 * WORKAROUND: In USB 2.0, before connection done early
+		 * hibernation interrupt occurred. To avoid early hibernation
+		 * event for gadget mode set DWC3_GCTL_GBLHIBERNATIONEN bit
+		 * after connection done instead of global core setup in
+		 * dwc3 core.
+		 */
+		reg = dwc3_readl(dwc->regs, DWC3_GCTL);
+		reg |= DWC3_GCTL_GBLHIBERNATIONEN;
+		dwc3_writel(dwc->regs, DWC3_GCTL, reg);
 	}
 
 	/*
