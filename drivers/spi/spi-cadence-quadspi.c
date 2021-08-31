@@ -333,7 +333,7 @@ struct cqspi_driver_platdata {
 #define CQSPI_DLL_MODE_BYPASS		1
 #define TAP_GRAN_SEL_MIN_FREQ		120000000
 #define CQSPI_TX_TAP_MASTER		0x1E
-#define CQSPI_MAX_DLL_TAPS		128
+#define CQSPI_MAX_DLL_TAPS		127
 
 #define CQSPI_CS_LOWER			0
 #define CQSPI_CS_UPPER			1
