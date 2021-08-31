@@ -2027,12 +2027,7 @@ static int xlnx_mix_plane_atomic_check(struct drm_plane *plane,
 	struct xlnx_mix_hw *mixer_hw = to_mixer_hw(mix_plane);
 	struct xlnx_mix *mix;
 	int scale_factor[3] = {1, 2, 4};
-	int fb_width = 0, fb_height = 0;
 
-	if (state->fb) {
-		fb_width = state->fb->width;
-		fb_height = state->fb->height;
-	}
 	/* No check required for the drm_primary_plane */
 	mix = container_of(mixer_hw, struct xlnx_mix, mixer_hw);
 	if (mix->drm_primary_layer == mix_plane)
@@ -2041,9 +2036,9 @@ static int xlnx_mix_plane_atomic_check(struct drm_plane *plane,
 	scale = xlnx_mix_get_layer_scaling(mixer_hw,
 					   mix_plane->mixer_layer->id);
 
-	if (state->fb && ((fb_width * scale_factor[scale] != state->crtc_w) ||
-			  (fb_height * scale_factor[scale] != state->crtc_h))) {
-		DRM_DEBUG_KMS("Not possible to scale to desired dimensions\n");
+	if (state->fb && (((state->src_w >> 16) * scale_factor[scale] != state->crtc_w) ||
+			  ((state->src_h >> 16) * scale_factor[scale] != state->crtc_h))) {
+		DRM_DEBUG_KMS("Not possible to scale to the desired dimensions\n");
 		return -EINVAL;
 	}
 
