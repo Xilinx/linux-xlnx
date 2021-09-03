@@ -39,6 +39,18 @@ enum operation_mode {
 	AUTO_RESTART = BIT(7),
 };
 
+/**
+ * enum fid_modes - FB IP fid mode register settings to select mode
+ * @FID_MODE_0: carries the fid value shared by application
+ * @FID_MODE_1: sets the fid after first frame
+ * @FID_MODE_2: sets the fid after second frame
+ */
+enum fid_modes {
+	FID_MODE_0 = 0,
+	FID_MODE_1 = 1,
+	FID_MODE_2 = 2,
+};
+
 #if IS_ENABLED(CONFIG_XILINX_FRMBUF)
 /**
  * xilinx_xdma_set_mode - Set operation mode for framebuffer IP
@@ -130,6 +142,28 @@ int xilinx_xdma_set_fid(struct dma_chan *chan,
 			struct dma_async_tx_descriptor *async_tx, u32 fid);
 
 /**
+ * xilinx_xdma_get_fid_err_flag - Get the Field ID error flag.
+ *
+ * @chan: dma channel instance
+ * @fid_err_flag: Field id error detect flag. 0 - no error, 1 - error.
+ *
+ * Return: 0 on success, -EINVAL in case of invalid chan
+ */
+int xilinx_xdma_get_fid_err_flag(struct dma_chan *chan,
+				 u32 *fid_err_flag);
+
+/**
+ * xilinx_xdma_get_fid_out - Get the Field ID out signal value.
+ *
+ * @chan: dma channel instance
+ * @fid_out_val: Field id out signal value.
+ *
+ * Return: 0 on success, -EINVAL in case of invalid chan
+ */
+int xilinx_xdma_get_fid_out(struct dma_chan *chan,
+			    u32 *fid_out_val);
+
+/**:
  * xilinx_xdma_get_earlycb - Get info if early callback has been enabled.
  *
  * @chan: dma channel instance
