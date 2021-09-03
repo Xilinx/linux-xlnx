@@ -65,7 +65,10 @@ struct xlnx_dma_chan {
  * @fmt: drm color format
  * @vtc_bridge: vtc_bridge structure
  * @fid: field id
- * @prev_fid: previous field id
+ * @fid_err_prop: field id error property
+ * @fid_err_val: field id error value
+ * @fid_out_prop: field id out property
+ * @fid_out_val: field out value
  */
 struct xlnx_pl_disp {
 	struct device *dev;
@@ -80,7 +83,10 @@ struct xlnx_pl_disp {
 	u32 fmt;
 	struct xlnx_bridge *vtc_bridge;
 	u32 fid;
-	u32 prev_fid;
+	struct drm_property *fid_err_prop;
+	u32 fid_err_val;
+	struct drm_property *fid_out_prop;
+	u32 fid_out_val;
 };
 
 /*
@@ -102,6 +108,19 @@ static void xlnx_pl_disp_complete(void *param)
 {
 	struct xlnx_pl_disp *xlnx_pl_disp = param;
 	struct drm_device *drm = xlnx_pl_disp->drm;
+	struct xlnx_dma_chan *xlnx_dma_chan = xlnx_pl_disp->chan;
+	int ret;
+
+	/* Get fid err flag and fid out val */
+	ret = xilinx_xdma_get_fid_err_flag(xlnx_dma_chan->dma_chan,
+					   &xlnx_pl_disp->fid_err_val);
+	if (ret)
+		dev_dbg(xlnx_pl_disp->dev, "failed to get fid_err info\n");
+
+	ret = xilinx_xdma_get_fid_out(xlnx_dma_chan->dma_chan,
+				      &xlnx_pl_disp->fid_out_val);
+	if (ret)
+		dev_dbg(xlnx_pl_disp->dev, "failed to get fid_out info\n");
 
 	drm_handle_vblank(drm, 0);
 }
@@ -202,17 +221,11 @@ static void xlnx_pl_disp_plane_enable(struct drm_plane *plane)
 			 * dummy packets before the video field, need to set
 			 * the fid correctly to avoid display distortion
 			 */
-			xlnx_pl_disp->fid = !xlnx_pl_disp->prev_fid;
-		}
-
-		if (xlnx_pl_disp->fid == xlnx_pl_disp->prev_fid) {
-			xlnx_pl_disp_complete(xlnx_pl_disp);
-			return;
+			xlnx_pl_disp->fid = 0;
 		}
 
 		xilinx_xdma_set_fid(xlnx_dma_chan->dma_chan, desc,
 				    xlnx_pl_disp->fid);
-		xlnx_pl_disp->prev_fid = xlnx_pl_disp->fid;
 	}
 
 	dmaengine_submit(desc);
@@ -338,6 +351,24 @@ xlnx_pl_disp_plane_atomic_check(struct drm_plane *plane,
 	return 0;
 }
 
+static int
+xlnx_pl_disp_plane_atomic_get_property(struct drm_plane *plane,
+				       const struct drm_plane_state *state,
+				       struct drm_property *property,
+				       uint64_t *val)
+{
+	struct xlnx_pl_disp *xlnx_pl_disp = plane_to_dma(plane);
+
+	if (property == xlnx_pl_disp->fid_err_prop)
+		*val = xlnx_pl_disp->fid_err_val;
+	else if (property == xlnx_pl_disp->fid_out_prop)
+		*val = xlnx_pl_disp->fid_out_val;
+	else
+		return -EINVAL;
+
+	return 0;
+}
+
 static const struct drm_plane_helper_funcs xlnx_pl_disp_plane_helper_funcs = {
 	.atomic_update = xlnx_pl_disp_plane_atomic_update,
 	.atomic_disable = xlnx_pl_disp_plane_atomic_disable,
@@ -351,6 +382,7 @@ static struct drm_plane_funcs xlnx_pl_disp_plane_funcs = {
 	.reset = drm_atomic_helper_plane_reset,
 	.atomic_duplicate_state	= drm_atomic_helper_plane_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_plane_destroy_state,
+	.atomic_get_property = xlnx_pl_disp_plane_atomic_get_property,
 };
 
 static inline struct xlnx_pl_disp *drm_crtc_to_dma(struct drm_crtc *crtc)
@@ -417,9 +449,6 @@ static void xlnx_pl_disp_crtc_atomic_disable(struct drm_crtc *crtc,
 	xlnx_pl_disp_clear_event(crtc);
 	drm_crtc_vblank_off(crtc);
 	xlnx_bridge_disable(xlnx_pl_disp->vtc_bridge);
-
-	/* first field is expected to be bottom so init previous field to top */
-	xlnx_pl_disp->prev_fid = 1;
 }
 
 static int xlnx_pl_disp_crtc_atomic_check(struct drm_crtc *crtc,
@@ -482,6 +511,7 @@ static int xlnx_pl_disp_bind(struct device *dev, struct device *master,
 {
 	struct drm_device *drm = data;
 	struct xlnx_pl_disp *xlnx_pl_disp = dev_get_drvdata(dev);
+	struct drm_mode_object *obj = &xlnx_pl_disp->plane.base;
 	int ret;
 	u32 *fmts = NULL;
 	unsigned int num_fmts = 0;
@@ -513,6 +543,14 @@ static int xlnx_pl_disp_bind(struct device *dev, struct device *master,
 	xlnx_pl_disp->xlnx_crtc.get_format = &xlnx_pl_disp_get_format;
 	xlnx_pl_disp->xlnx_crtc.get_align = &xlnx_pl_disp_get_align;
 	xlnx_pl_disp->drm = drm;
+
+	xlnx_pl_disp->fid_err_prop = drm_property_create_bool(xlnx_pl_disp->drm,
+							      0, "fid_err");
+	xlnx_pl_disp->fid_out_prop = drm_property_create_bool(xlnx_pl_disp->drm,
+							      0, "fid_out");
+	drm_object_attach_property(obj, xlnx_pl_disp->fid_err_prop, 0);
+	drm_object_attach_property(obj, xlnx_pl_disp->fid_out_prop, 0);
+
 	xlnx_crtc_register(xlnx_pl_disp->drm, &xlnx_pl_disp->xlnx_crtc);
 
 	return 0;
@@ -523,6 +561,8 @@ static void xlnx_pl_disp_unbind(struct device *dev, struct device *master,
 {
 	struct xlnx_pl_disp *xlnx_pl_disp = dev_get_drvdata(dev);
 
+	drm_property_destroy(xlnx_pl_disp->drm, xlnx_pl_disp->fid_out_prop);
+	drm_property_destroy(xlnx_pl_disp->drm, xlnx_pl_disp->fid_err_prop);
 	xlnx_crtc_unregister(xlnx_pl_disp->drm, &xlnx_pl_disp->xlnx_crtc);
 	drm_plane_cleanup(&xlnx_pl_disp->plane);
 	drm_crtc_cleanup(&xlnx_pl_disp->xlnx_crtc.crtc);
@@ -593,9 +633,6 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 		dev_err(dev, "failed to initialize the drm pipeline\n");
 		goto err_component;
 	}
-
-	/* first field is expected to be bottom so init previous field to top */
-	xlnx_pl_disp->prev_fid = 1;
 
 	dev_info(&pdev->dev, "Xlnx PL display driver probed\n");
 
