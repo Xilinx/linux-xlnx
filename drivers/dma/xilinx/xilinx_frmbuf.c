@@ -50,7 +50,10 @@
 #define XILINX_FRMBUF_ADDR_OFFSET		0x30
 #define XILINX_FRMBUF_ADDR2_OFFSET		0x3c
 #define XILINX_FRMBUF_FID_OFFSET		0x48
+#define XILINX_FRMBUF_FID_MODE_OFFSET	0x50
 #define XILINX_FRMBUF_ADDR3_OFFSET		0x54
+#define XILINX_FRMBUF_FID_ERR_OFFSET	0x58
+#define XILINX_FRMBUF_FID_OUT_OFFSET	0x60
 
 /* Control Registers */
 #define XILINX_FRMBUF_CTRL_AP_START		BIT(0)
@@ -100,6 +103,10 @@
 /* FID Register */
 #define XILINX_FRMBUF_FID_MASK			BIT(0)
 
+/* FID ERR Register */
+#define XILINX_FRMBUF_FID_ERR_MASK		BIT(0)
+#define XILINX_FRMBUF_FID_OUT_MASK		BIT(0)
+
 #define XILINX_FRMBUF_ALIGN_MUL			8
 
 #define WAIT_FOR_FLUSH_DONE			25
@@ -110,6 +117,7 @@
 #define XILINX_FID_PROP				BIT(2)
 #define XILINX_CLK_PROP				BIT(3)
 #define XILINX_THREE_PLANES_PROP		BIT(4)
+#define XILINX_FID_ERR_DETECT_PROP		BIT(5)
 
 #define XILINX_FRMBUF_MIN_HEIGHT		(64)
 #define XILINX_FRMBUF_MIN_WIDTH			(64)
@@ -166,6 +174,9 @@ struct xilinx_frmbuf_tx_descriptor {
  * @vid_fmt: Reference to currently assigned video format description
  * @hw_fid: FID enabled in hardware flag
  * @mode: Select operation mode
+ * @fid_err_flag: Field id error detection flag
+ * @fid_out_val: Field id out val
+ * @fid_mode: Select fid mode
  */
 struct xilinx_frmbuf_chan {
 	struct xilinx_frmbuf_device *xdev;
@@ -187,6 +198,9 @@ struct xilinx_frmbuf_chan {
 	const struct xilinx_frmbuf_format_desc *vid_fmt;
 	bool hw_fid;
 	enum operation_mode mode;
+	u8 fid_err_flag;
+	u8 fid_out_val;
+	enum fid_modes fid_mode;
 };
 
 /**
@@ -553,7 +567,8 @@ static const struct xilinx_frmbuf_feature xlnx_fbrd_cfg_v22 = {
 	.direction = DMA_MEM_TO_DEV,
 	.flags = XILINX_PPC_PROP | XILINX_FLUSH_PROP
 		| XILINX_FID_PROP | XILINX_CLK_PROP
-		| XILINX_THREE_PLANES_PROP,
+		| XILINX_THREE_PLANES_PROP
+		| XILINX_FID_ERR_DETECT_PROP,
 };
 
 static const struct of_device_id xilinx_frmbuf_of_ids[] = {
@@ -865,6 +880,42 @@ int xilinx_xdma_set_fid(struct dma_chan *chan,
 	return 0;
 }
 EXPORT_SYMBOL(xilinx_xdma_set_fid);
+
+int xilinx_xdma_get_fid_err_flag(struct dma_chan *chan,
+				 u32 *fid_err_flag)
+{
+	struct xilinx_frmbuf_device *xdev;
+
+	xdev = frmbuf_find_dev(chan);
+	if (IS_ERR(xdev))
+		return PTR_ERR(xdev);
+
+	if (xdev->chan.direction != DMA_DEV_TO_MEM || !xdev->chan.idle)
+		return -EINVAL;
+
+	*fid_err_flag = xdev->chan.fid_err_flag;
+
+	return 0;
+}
+EXPORT_SYMBOL(xilinx_xdma_get_fid_err_flag);
+
+int xilinx_xdma_get_fid_out(struct dma_chan *chan,
+			    u32 *fid_out_val)
+{
+	struct xilinx_frmbuf_device *xdev;
+
+	xdev = frmbuf_find_dev(chan);
+	if (IS_ERR(xdev))
+		return PTR_ERR(xdev);
+
+	if (xdev->chan.direction != DMA_DEV_TO_MEM || !xdev->chan.idle)
+		return -EINVAL;
+
+	*fid_out_val = xdev->chan.fid_out_val;
+
+	return 0;
+}
+EXPORT_SYMBOL(xilinx_xdma_get_fid_out);
 
 int xilinx_xdma_get_width_align(struct dma_chan *chan, u32 *width_align)
 {
@@ -1234,6 +1285,8 @@ static void xilinx_frmbuf_chan_reset(struct xilinx_frmbuf_chan *chan)
 	xilinx_frmbuf_reset(chan);
 	frmbuf_write(chan, XILINX_FRMBUF_IE_OFFSET, XILINX_FRMBUF_IE_AP_DONE);
 	frmbuf_write(chan, XILINX_FRMBUF_GIE_OFFSET, XILINX_FRMBUF_GIE_EN);
+	chan->fid_err_flag = 0;
+	chan->fid_out_val = 0;
 }
 
 /**
@@ -1276,6 +1329,31 @@ static irqreturn_t xilinx_frmbuf_irq_handler(int irq, void *data)
 			xilinx_frmbuf_complete_descriptor(chan);
 			chan->active_desc = NULL;
 		}
+
+		/* Update fid err detect flag and out value */
+		if (chan->direction == DMA_MEM_TO_DEV &&
+		    chan->hw_fid && chan->idle &&
+		    chan->xdev->cfg->flags & XILINX_FID_ERR_DETECT_PROP) {
+			if (chan->mode == AUTO_RESTART)
+				chan->fid_mode = FID_MODE_2;
+			else
+				chan->fid_mode = FID_MODE_1;
+
+			frmbuf_write(chan, XILINX_FRMBUF_FID_MODE_OFFSET,
+				     chan->fid_mode);
+			dev_dbg(chan->xdev->dev, "fid mode = %d\n",
+				frmbuf_read(chan, XILINX_FRMBUF_FID_MODE_OFFSET));
+
+			chan->fid_err_flag = frmbuf_read(chan,
+							 XILINX_FRMBUF_FID_ERR_OFFSET) &
+							XILINX_FRMBUF_FID_ERR_MASK;
+			chan->fid_out_val = frmbuf_read(chan,
+							XILINX_FRMBUF_FID_OUT_OFFSET) &
+							XILINX_FRMBUF_FID_OUT_MASK;
+			dev_dbg(chan->xdev->dev, "fid err cnt = 0x%x\n",
+				frmbuf_read(chan, XILINX_FRMBUF_FID_ERR_OFFSET));
+		}
+
 		xilinx_frmbuf_start_transfer(chan);
 		spin_unlock(&chan->lock);
 	}
@@ -1496,6 +1574,8 @@ static int xilinx_frmbuf_chan_probe(struct xilinx_frmbuf_device *xdev,
 	chan->dev = xdev->dev;
 	chan->xdev = xdev;
 	chan->idle = true;
+	chan->fid_err_flag = 0;
+	chan->fid_out_val = 0;
 	chan->mode = AUTO_RESTART;
 
 	err = of_property_read_u32(node, "xlnx,dma-addr-width",
