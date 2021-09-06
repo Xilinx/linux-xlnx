@@ -790,7 +790,7 @@ static void xilinx_vdma_free_tx_segment(struct xilinx_dma_chan *chan,
 }
 
 /**
- * xilinx_dma_tx_descriptor - Allocate transaction descriptor
+ * xilinx_dma_alloc_tx_descriptor - Allocate transaction descriptor
  * @chan: Driver specific DMA channel
  *
  * Return: The allocated descriptor on success and NULL on failure.
@@ -2454,7 +2454,7 @@ static int xilinx_dma_terminate_all(struct dma_chan *dchan)
 }
 
 /**
- * xilinx_dma_channel_set_config - Configure VDMA channel
+ * xilinx_vdma_channel_set_config - Configure VDMA channel
  * Run-time configuration for Axi VDMA, supports:
  * . halt the channel
  * . configure interrupt coalescing and inter-packet delay threshold
