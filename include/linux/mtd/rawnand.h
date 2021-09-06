@@ -1505,6 +1505,10 @@ int nand_read_page_op(struct nand_chip *chip, unsigned int page,
 int nand_change_read_column_op(struct nand_chip *chip,
 			       unsigned int offset_in_page, void *buf,
 			       unsigned int len, bool force_8bit);
+int nand_check_change_read_column_op(struct nand_chip *chip,
+				     unsigned int offset_in_page, void *buf,
+				     unsigned int len, bool force_8bit,
+				     bool check_only);
 int nand_read_oob_op(struct nand_chip *chip, unsigned int page,
 		     unsigned int offset_in_page, void *buf, unsigned int len);
 int nand_prog_page_begin_op(struct nand_chip *chip, unsigned int page,
