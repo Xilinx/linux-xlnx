@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Xilinx SDI Rx Subsystem
  *
@@ -5,14 +6,6 @@
  *
  * Contacts: Vishal Sagar <vsagar@xilinx.com>
  *
- * This software is licensed under the terms of the GNU General Public
- * License version 2, as published by the Free Software Foundation, and
- * may be copied, distributed, and modified under those terms.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <dt-bindings/media/xilinx-vip.h>
@@ -874,9 +867,9 @@ static void xsdirx_setedherrcnttrigger(struct xsdirxss_core *core, u32 enable)
 static inline void xsdirx_setvidlockwindow(struct xsdirxss_core *core, u32 val)
 {
 	/*
-	 * The video lock window is the amount of time for which the
-	 * the mode and transport stream should be locked to get the
-	 * video lock interrupt.
+	 * The video lock window is the amount of time for which
+	 * the mode and transport stream should be locked to get
+	 * the video lock interrupt.
 	 */
 	xsdirxss_write(core, XSDIRX_VID_LOCK_WINDOW_REG, val);
 }
