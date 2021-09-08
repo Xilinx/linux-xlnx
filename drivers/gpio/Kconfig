@@ -1079,6 +1079,15 @@ config GPIO_PCF857X
 	  This driver provides an in-kernel interface to those GPIOs using
 	  platform-neutral GPIO calls.
 
+config GPIO_SLG7XL45106
+	tristate "SLG7XL45106 8-Bit I2C GPO expander"
+	help
+	  Say yes here to enable the GPO driver for the Dialog SLG7XL45106 chip.
+	  This expander has 8 output pins.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called gpio-slg7xl45106.
+
 config GPIO_TPIC2810
 	tristate "TPIC2810 8-Bit I2C GPO expander"
 	help
