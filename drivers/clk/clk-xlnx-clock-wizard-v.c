@@ -15,6 +15,7 @@
 #include <linux/of.h>
 #include <linux/module.h>
 #include <linux/err.h>
+#include <linux/iopoll.h>
 
 #define WZRD_NUM_OUTPUTS	7
 #define WZRD_ACLK_MAX_FREQ	250000000UL
@@ -39,12 +40,14 @@
 #define WZRD_CLKOUT_FRAC_MASK		0x3ff
 
 #define WZRD_DR_MAX_INT_DIV_VALUE	32767
-#define WZRD_DR_NUM_RETRIES		10000
 #define WZRD_DR_STATUS_REG_OFFSET	0x04
 #define WZRD_DR_LOCK_BIT_MASK		0x00000001
 #define WZRD_DR_INIT_REG_OFFSET		0x14
 #define WZRD_DR_DIV_TO_PHASE_OFFSET	4
 #define WZRD_DR_BEGIN_DYNA_RECONF	0x03
+#define WZRD_MIN_ERR			500000
+#define WZRD_USEC_POLL			10
+#define WZRD_TIMEOUT_POLL		1000
 
 /* Get the mask from width */
 #define div_mask(width)			((1 << (width)) - 1)
@@ -142,8 +145,7 @@ static unsigned long clk_wzrd_recalc_rate(struct clk_hw *hw,
 static int clk_wzrd_dynamic_reconfig(struct clk_hw *hw, unsigned long rate,
 				     unsigned long parent_rate)
 {
-	int err = 0;
-	u16 retries;
+	int err;
 	u32 value;
 	unsigned long flags = 0;
 	u32 regh, edged;
@@ -174,34 +176,20 @@ static int clk_wzrd_dynamic_reconfig(struct clk_hw *hw, unsigned long rate,
 	regval = regh | regh << 8;
 	writel(regval, div_addr + 4);
 	/* Check status register */
-	retries = WZRD_DR_NUM_RETRIES;
-	while (retries--) {
-		if (readl(divider->base + WZRD_DR_STATUS_REG_OFFSET) &
-							WZRD_DR_LOCK_BIT_MASK)
-			break;
-	}
-
-	if (retries == 0) {
-		err = -ETIMEDOUT;
+	err = readl_poll_timeout(divider->base + WZRD_DR_STATUS_REG_OFFSET,
+				 value, value & WZRD_DR_LOCK_BIT_MASK,
+				 WZRD_USEC_POLL, WZRD_TIMEOUT_POLL);
+	if (err)
 		goto err_reconfig;
-	}
 
 	/* Initiate reconfiguration */
 	writel(WZRD_DR_BEGIN_DYNA_RECONF,
 	       divider->base + WZRD_DR_INIT_REG_OFFSET);
 
 	/* Check status register */
-	retries = WZRD_DR_NUM_RETRIES;
-	while (retries--) {
-		if (readl(divider->base + WZRD_DR_STATUS_REG_OFFSET) &
-							WZRD_DR_LOCK_BIT_MASK)
-			break;
-	}
-
-	if (retries == 0) {
-		pr_err("NOT LOCKED\n");
-		err = -ETIMEDOUT;
-	}
+	err = readl_poll_timeout(divider->base + WZRD_DR_STATUS_REG_OFFSET,
+				 value, value & WZRD_DR_LOCK_BIT_MASK,
+				 WZRD_USEC_POLL, WZRD_TIMEOUT_POLL);
 
 err_reconfig:
 	if (divider->lock)
