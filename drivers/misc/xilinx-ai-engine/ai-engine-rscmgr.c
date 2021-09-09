@@ -565,8 +565,10 @@ long aie_part_rscmgr_rsc_req(struct aie_partition *apart,
 		return -ENOMEM;
 
 	ret = mutex_lock_interruptible(&apart->mlock);
-	if (ret)
+	if (ret) {
+		kfree(rscs);
 		return ret;
+	}
 
 	/*
 	 * There can be some resources needs to be contiguous, such as combo events.
@@ -600,14 +602,18 @@ long aie_part_rscmgr_rsc_req(struct aie_partition *apart,
 				args.req.loc.col, args.req.loc.row,
 				args.req.mod, args.req.type, args.req.num_rscs);
 		}
+		kfree(rscs);
 		return ret;
 	}
 
 	if (copy_to_user((void __user *)args.rscs, rscs,
 			 sizeof(*rscs) * args.req.num_rscs))
-		return -EFAULT;
+		ret = -EFAULT;
+	else
+		ret = 0;
 
-	return 0;
+	kfree(rscs);
+	return ret;
 }
 
 /**
