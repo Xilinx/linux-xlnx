@@ -746,6 +746,9 @@ const struct file_operations aie_part_fops = {
  * @apart: AI engine partition instance pointer
  * @rsc_metadata: pointer to static resource metadata
  * @return: 0 for success, negative value for failure
+ *
+ * This function will make the AI engine partition instance ready to use. It
+ * should be called when the partition is requested.
  */
 int aie_part_open(struct aie_partition *apart, void *rsc_metadata)
 {
@@ -764,7 +767,8 @@ int aie_part_open(struct aie_partition *apart, void *rsc_metadata)
 			return ret;
 	}
 
-	return 0;
+	/* preallocate memory pool for storing dmabuf descriptors */
+	return aie_part_prealloc_dbufs_cache(apart);
 }
 
 /**

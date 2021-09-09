@@ -298,7 +298,7 @@ static struct aie_dmabuf *aie_part_attach_dmabuf(struct aie_partition *apart,
 		}
 	}
 
-	adbuf = devm_kzalloc(&apart->dev, sizeof(*adbuf), GFP_KERNEL);
+	adbuf = kmem_cache_alloc(apart->dbufs_cache, GFP_KERNEL);
 	if (!adbuf) {
 		dma_buf_unmap_attachment(attach, sgt, attach->dir);
 		dma_buf_detach(dbuf, attach);
@@ -339,15 +339,18 @@ static void aie_part_dmabuf_attach_get(struct aie_dmabuf *adbuf)
 static void aie_part_dmabuf_attach_put(struct aie_dmabuf *adbuf)
 {
 	struct dma_buf *dbuf;
+	struct aie_partition *apart;
 
 	if (!refcount_dec_and_test(&adbuf->refs))
 		return;
 
+	apart = dev_to_aiepart(adbuf->attach->dev);
 	dbuf = adbuf->attach->dmabuf;
 	dma_buf_unmap_attachment(adbuf->attach, adbuf->sgt, adbuf->attach->dir);
 	dma_buf_detach(dbuf, adbuf->attach);
 	dma_buf_put(dbuf);
 	list_del(&adbuf->node);
+	kmem_cache_free(apart->dbufs_cache, adbuf);
 }
 
 /**
@@ -366,7 +369,7 @@ void aie_part_release_dmabufs(struct aie_partition *apart)
 		dma_buf_detach(dbuf, adbuf->attach);
 		dma_buf_put(dbuf);
 		list_del(&adbuf->node);
-		devm_kfree(&apart->dev, adbuf);
+		kmem_cache_free(apart->dbufs_cache, adbuf);
 	}
 }
 
@@ -634,4 +637,31 @@ long aie_part_set_dmabuf_bd(struct aie_partition *apart,
 
 	kfree(bd);
 	return ret;
+}
+
+/**
+ * aie_part_prealloc_dbufs_cache() - Preallocate dmabuf descriptors memory
+ *
+ * @apart: AI engine partition
+ *
+ * @return: 0 for success, negative value for failure
+ *
+ * This function preallocate memories to save dmabuf descriptors. When dmabuf
+ * is attached to the partition at runtime, it can get the descriptor memory
+ * from this preallocated memory pool.
+ */
+int aie_part_prealloc_dbufs_cache(struct aie_partition *apart)
+{
+	struct kmem_cache *dbufs_cache;
+	char name[64];
+
+	sprintf(name, "%s_dbufs", dev_name(&apart->dev));
+	dbufs_cache = kmem_cache_create(name, sizeof(struct aie_dmabuf),
+					0, 0, NULL);
+	if (!dbufs_cache)
+		return -ENOMEM;
+
+	apart->dbufs_cache = dbufs_cache;
+
+	return 0;
 }

@@ -23,6 +23,7 @@
 #include <linux/mutex.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
+#include <linux/slab.h>
 #include <uapi/linux/xlnx-ai-engine.h>
 
 /*
@@ -753,6 +754,7 @@ struct aie_part_bridge {
  * @adev: pointer to AI device instance
  * @filep: pointer to file for refcount on the users of the partition
  * @pmems: pointer to partition memories types
+ * @dbufs_cache: memory management object for preallocated dmabuf descriptors
  * @trscs: resources bitmaps for each tile
  * @freq_req: required frequency
  * @br: AI engine FPGA bridge
@@ -785,6 +787,7 @@ struct aie_partition {
 	struct aie_device *adev;
 	struct file *filep;
 	struct aie_part_mem *pmems;
+	struct kmem_cache *dbufs_cache;
 	struct aie_tile_rscs trscs[AIE_TILE_TYPE_MAX];
 	u64 freq_req;
 	struct aie_range range;
@@ -999,6 +1002,7 @@ long aie_part_set_bd(struct aie_partition *apart, void __user *user_args);
 long aie_part_set_dmabuf_bd(struct aie_partition *apart,
 			    void __user *user_args);
 void aie_part_release_dmabufs(struct aie_partition *apart);
+int aie_part_prealloc_dbufs_cache(struct aie_partition *apart);
 
 int aie_part_scan_clk_state(struct aie_partition *apart);
 bool aie_part_check_clk_enable_loc(struct aie_partition *apart,
