@@ -984,6 +984,7 @@ struct aie_partition *of_aie_part_probe(struct aie_device *adev,
 					struct device_node *nc);
 void aie_part_remove(struct aie_partition *apart);
 int aie_part_clean(struct aie_partition *apart);
+int aie_part_open(struct aie_partition *apart, void *rsc_metadata);
 
 int aie_fpga_create_bridge(struct aie_partition *apart);
 void aie_fpga_free_bridge(struct aie_partition *apart);
