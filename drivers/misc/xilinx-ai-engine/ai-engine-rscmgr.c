@@ -359,10 +359,12 @@ int aie_part_rscmgr_init(struct aie_partition *apart)
 			if (!trsc_attr)
 				continue;
 
-			mod_rscs = devm_kcalloc(&apart->dev, tattr->num_mods,
-						sizeof(*mod_rscs), GFP_KERNEL);
-			if (!mod_rscs)
+			mod_rscs = kcalloc(tattr->num_mods,
+					   sizeof(*mod_rscs), GFP_KERNEL);
+			if (!mod_rscs) {
+				aie_part_rscmgr_finish(apart);
 				return -ENOMEM;
+			}
 
 			trscs->mod_rscs[r] = mod_rscs;
 			for (m = 0 ; m < tattr->num_mods; m++) {
@@ -378,11 +380,12 @@ int aie_part_rscmgr_init(struct aie_partition *apart)
 				if (!num_mrscs)
 					continue;
 
-				rscs_stat = devm_kzalloc(&apart->dev,
-							 sizeof(*rscs_stat),
-							 GFP_KERNEL);
-				if (!rscs_stat)
+				rscs_stat = kzalloc(sizeof(*rscs_stat),
+						    GFP_KERNEL);
+				if (!rscs_stat) {
+					aie_part_rscmgr_finish(apart);
 					return -ENOMEM;
+				}
 
 				mod_rscs[m].rscs_stat = rscs_stat;
 				total_rscs = num_mrscs * num_rows * num_cols;
@@ -392,12 +395,16 @@ int aie_part_rscmgr_init(struct aie_partition *apart)
 				 */
 				ret = aie_resource_initialize(&rscs_stat->rbits,
 							      total_rscs);
-				if (ret)
+				if (ret) {
+					aie_part_rscmgr_finish(apart);
 					return ret;
+				}
 				ret = aie_resource_initialize(&rscs_stat->sbits,
 							      total_rscs);
-				if (ret)
+				if (ret) {
+					aie_part_rscmgr_finish(apart);
 					return ret;
+				}
 			}
 		}
 	}
@@ -444,6 +451,9 @@ void aie_part_rscmgr_finish(struct aie_partition *apart)
 				aie_resource_uninitialize(&rscs_stat->rbits);
 				aie_resource_uninitialize(&rscs_stat->sbits);
 			}
+
+			kfree(mod_rscs);
+			trscs->mod_rscs[r] = NULL;
 		}
 	}
 }
