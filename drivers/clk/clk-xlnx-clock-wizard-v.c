@@ -137,9 +137,9 @@ static unsigned long clk_wzrd_recalc_rate(struct clk_hw *hw,
 	if (prediv2)
 		div =  (2 * all + prediv2 * p5en);
 	else
-		div =  all;
+		div = all;
 
-	return  DIV_ROUND_UP_ULL((u64)parent_rate, div);
+	return DIV_ROUND_UP_ULL((u64)parent_rate, div);
 }
 
 static int clk_wzrd_dynamic_reconfig(struct clk_hw *hw, unsigned long rate,
