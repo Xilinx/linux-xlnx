@@ -2171,65 +2171,119 @@ static void xhdmirx_pioint_handler(struct xhdmirx_state *xhdmi)
 		if (data & HDMIRX_PIO_IN_DET_MASK) {
 			/* cable connected */
 			xhdmi->stream.cable_connected = true;
-			/* reset frl as false */
+			xhdmi_frlreset(xhdmi, false);
 			xhdmi->stream.ishdmi = false;
+			xhdmi->stream.isfrl = false;
 			rxconnect(xhdmi);
 			tmdsconfig(xhdmi);
 		} else {
 			xhdmi->stream.cable_connected = false;
 			xhdmirx_ddcscdc_clear(xhdmi);
 			/* reset frl as true */
+			xhdmi_frlreset(xhdmi, true);
 			rxconnect(xhdmi);
 		}
 	}
 
 	if (event & HDMIRX_PIO_IN_LNK_RDY_MASK) {
-		xhdmi->stream.state = XSTREAM_IDLE;
-		dev_dbg_ratelimited(xhdmi->dev, "pio lnk rdy state = XSTREAM_IDLE\n");
-		/* start 10 ms timer */
-		xhdmirx_tmr1_start(xhdmi, TIME_10MS);
+		if (xhdmi->stream.state == XSTATE_FRL_LINK_TRAININIG) {
+			if (data & HDMIRX_PIO_IN_LNK_RDY_MASK) {
+				switch (xhdmi->stream.frl.trainingstate) {
+				case XFRLSTATE_LTS_3_RATE_CH:
+					xhdmi->stream.frl.trainingstate =
+						XFRLSTATE_LTS_3_ARM_LNK_RDY;
+					break;
+				case XFRLSTATE_LTS_3_ARM_VID_RDY:
+					xhdmi->stream.frl.trainingstate = XFRLSTATE_LTS_3;
+					xhdmi_execfrlstate(xhdmi);
+					break;
+				default:
+					/* Link Ready Error callback */
+					dev_dbg_ratelimited(xhdmi->dev, "LNK_RDY 1 Error %d",
+							    xhdmi->stream.frl.trainingstate);
+					break;
+				}
+			} else {
+				dev_dbg(xhdmi->dev, "LNK_RDY:0");
+			}
+		} else if (xhdmi->stream.isfrl) {
+			/* Link Ready Error callback */
+			dev_dbg_ratelimited(xhdmi->dev, "LNK_RDY during FRL Link");
+		} else {
+			dev_dbg_ratelimited(xhdmi->dev, "LNK_RDY TMDS");
+			xhdmi->stream.state = XSTREAM_IDLE;
+			dev_dbg_ratelimited(xhdmi->dev, "pio lnk rdy state = XSTREAM_IDLE");
+			/* start 10 ms timer */
+			xhdmirx_tmr1_start(xhdmi, TIME_10MS);
+		}
 	}
 
 	if (event & HDMIRX_PIO_IN_VID_RDY_MASK) {
-		if (data & HDMIRX_PIO_IN_VID_RDY_MASK) {
-			if (xhdmi->stream.state == XSTREAM_INIT) {
-				dev_dbg_ratelimited(xhdmi->dev, "pio vid rdy state = XSTREAM_INIT\n");
-				/* Toggle Rx Core reset */
-				xhdmirx_rxcore_vrst_assert(xhdmi);
-				xhdmirx_rxcore_vrst_deassert(xhdmi);
-
-				/* Toggle bridge reset */
-				xhdmirx_ext_vrst_assert(xhdmi);
-				xhdmirx_sysrst_assert(xhdmi);
-				xhdmirx_ext_vrst_deassert(xhdmi);
-				xhdmirx_sysrst_deassert(xhdmi);
-
-				xhdmi->stream.state = XSTREAM_ARM;
-				/* start 200 ms timer */
-				xhdmirx_tmr1_start(xhdmi, TIME_200MS);
+		if (xhdmi->stream.state == XSTATE_FRL_LINK_TRAININIG) {
+			if (data & HDMIRX_PIO_IN_VID_RDY_MASK) {
+				switch (xhdmi->stream.frl.trainingstate) {
+				case XFRLSTATE_LTS_3_RATE_CH:
+					xhdmi->stream.frl.trainingstate =
+						XFRLSTATE_LTS_3_ARM_VID_RDY;
+					break;
+				case XFRLSTATE_LTS_3_ARM_LNK_RDY:
+					xhdmi->stream.frl.trainingstate = XFRLSTATE_LTS_3;
+					xhdmi_execfrlstate(xhdmi);
+					break;
+				default:
+					/* video ready error */
+					dev_dbg_ratelimited(xhdmi->dev, "VID_RDY 1 Error! %d",
+							    xhdmi->stream.frl.trainingstate);
+					break;
+				}
+			} else {
+				dev_dbg_ratelimited(xhdmi->dev, "VID_RDY:0");
 			}
+		} else if (xhdmi->stream.isfrl) {
+			/* video ready error */
+			dev_err_ratelimited(xhdmi->dev, "VID_RDY during FRL Link fail!");
 		} else {
-			/* Stream Down */
-			xhdmirx_rxcore_vrst_assert(xhdmi);
-			xhdmirx_rxcore_lrst_assert(xhdmi);
+			/* Ready */
+			if (data & HDMIRX_PIO_IN_VID_RDY_MASK) {
+				if (xhdmi->stream.state == XSTREAM_INIT) {
+					dev_dbg_ratelimited(xhdmi->dev, "pio vid rdy state = XSTREAM_INIT\n");
+					/* Toggle Rx Core reset */
+					xhdmirx_rxcore_vrst_assert(xhdmi);
+					xhdmirx_rxcore_vrst_deassert(xhdmi);
 
-			xhdmirx1_clear(xhdmi);
+					/* Toggle bridge reset */
+					xhdmirx_ext_vrst_assert(xhdmi);
+					xhdmirx_sysrst_assert(xhdmi);
+					xhdmirx_ext_vrst_deassert(xhdmi);
+					xhdmirx_sysrst_deassert(xhdmi);
 
-			xhdmirx_aux_disable(xhdmi);
-			xhdmirx_aud_disable(xhdmi);
-			xhdmirx_vtd_disable(xhdmi);
-			xhdmirx_link_disable(xhdmi);
-			xhdmirx_video_enable(xhdmi);
-			xhdmirx_axi4s_disable(xhdmi);
+					xhdmi->stream.state = XSTREAM_ARM;
+					/* start 200 ms timer */
+					xhdmirx_tmr1_start(xhdmi, TIME_200MS);
+				}
+			} else {
+				/* Stream Down */
+				xhdmirx_rxcore_vrst_assert(xhdmi);
+				xhdmirx_rxcore_lrst_assert(xhdmi);
 
-			xhdmi->stream.state = XSTREAM_DOWN;
-			dev_dbg_ratelimited(xhdmi->dev, "pio vid rdy state = XSTREAM_DOWN\n");
+				xhdmirx1_clear(xhdmi);
 
-			xhdmi_write(xhdmi, HDMIRX_VTD_CTRL_CLR_OFFSET,
-				    HDMIRX_VTD_CTRL_SYNC_LOSS_MASK);
+				xhdmirx_aux_disable(xhdmi);
+				xhdmirx_aud_disable(xhdmi);
+				xhdmirx_vtd_disable(xhdmi);
+				xhdmirx_link_disable(xhdmi);
+				xhdmirx_video_enable(xhdmi);
+				xhdmirx_axi4s_disable(xhdmi);
 
-			streamdown(xhdmi);
-			xhdmi->hdmi_stream_up = 0;
+				xhdmi->stream.state = XSTREAM_DOWN;
+				dev_dbg_ratelimited(xhdmi->dev, "pio vid rdy state = XSTREAM_DOWN\n");
+
+				xhdmi_write(xhdmi, HDMIRX_VTD_CTRL_CLR_OFFSET,
+					    HDMIRX_VTD_CTRL_SYNC_LOSS_MASK);
+
+				streamdown(xhdmi);
+				xhdmi->hdmi_stream_up = 0;
+			}
 		}
 	}
 
@@ -2241,7 +2295,8 @@ static void xhdmirx_pioint_handler(struct xhdmirx_state *xhdmi)
 			xhdmirx_scrambler_disable(xhdmi);
 	}
 
-	if (event & HDMIRX_PIO_IN_MODE_MASK) {
+	if (xhdmi->stream.state != XSTATE_FRL_LINK_TRAININIG &&
+	    (event & HDMIRX_PIO_IN_MODE_MASK) && !xhdmi->stream.isfrl) {
 		if (data & HDMIRX_PIO_IN_MODE_MASK)
 			xhdmi->stream.ishdmi = true;
 		else /* DVI */
