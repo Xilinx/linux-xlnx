@@ -794,6 +794,7 @@ static inline void xhdmirx_scrambler_enable(struct xhdmirx_state *xhdmi)
 	xhdmi_write(xhdmi, HDMIRX_PIO_OUT_SET_OFFSET,
 		    HDMIRX_PIO_OUT_SCRM_MASK);
 	xhdmi->stream.isscrambled = true;
+	xhdmi_frlddcwritefield(xhdmi, XSCDCFIELD_SCRAMBLER_STAT, 1);
 }
 
 static inline void xhdmirx_scrambler_disable(struct xhdmirx_state *xhdmi)
@@ -801,6 +802,7 @@ static inline void xhdmirx_scrambler_disable(struct xhdmirx_state *xhdmi)
 	xhdmi_write(xhdmi, HDMIRX_PIO_OUT_CLR_OFFSET,
 		    HDMIRX_PIO_OUT_SCRM_MASK);
 	xhdmi->stream.isscrambled = false;
+	xhdmi_frlddcwritefield(xhdmi, XSCDCFIELD_SCRAMBLER_STAT, 0);
 }
 
 static inline void xhdmirx_ddcscdc_clear(struct xhdmirx_state *xhdmi)
