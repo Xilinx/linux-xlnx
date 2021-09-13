@@ -163,6 +163,8 @@ struct xhdmi_aux {
  * @delayed_work_enable_hotplug: Delayed work to enable hotplug
  * @phy: array of phy structure pointers
  * @clks: array of clocks
+ * @frlclkfreqkhz: FRL Clock Freq in KHz
+ * @vidclkfreqkhz: Video Clock Freq in KHz
  * @intrstatus: Array to save the interrupt status registers
  * @edid_user: User EDID
  * @edid_user_blocks: Number of blocks in user EDID
@@ -189,6 +191,8 @@ struct xhdmirx_state {
 	struct delayed_work delayed_work_enable_hotplug;
 	struct phy *phy[XHDMI_MAX_LANES];
 	struct clk_bulk_data *clks;
+	u32 frlclkfreqkhz;
+	u32 vidclkfreqkhz;
 	u32 intrstatus[8];
 	u8 *edid_user;
 	int edid_user_blocks;
@@ -1825,6 +1829,12 @@ static void xhdmirx_init(struct xhdmirx_state *xhdmi)
 	xhdmirx_reset(xhdmi);
 }
 
+static void print_dt_clk_err_msg(struct xhdmirx_state *xhdmi, u8 isfrlclk, const char *range)
+{
+	dev_err(xhdmi->dev, "The %s port is driven by a clock outside the valid range (%s MHz)",
+		isfrlclk ? "frl_clk" : "vid_clk", range);
+}
+
 static int xhdmirx_parse_of(struct xhdmirx_state *xhdmi)
 {
 	struct device_node *node = xhdmi->dev->of_node;
@@ -1887,7 +1897,100 @@ static int xhdmirx_parse_of(struct xhdmirx_state *xhdmi)
 		return -EINVAL;
 	}
 
-	return 0;
+	ret = of_property_read_u32(node, "xlnx,frl-clk-freq-khz",
+				   &xhdmi->frlclkfreqkhz);
+	if (ret) {
+		dev_err(dev, "frl clk freq khz property not found!");
+		return ret;
+	}
+
+	ret = of_property_read_u32(node, "xlnx,vid-clk-freq-khz",
+				   &xhdmi->vidclkfreqkhz);
+	if (ret) {
+		dev_err(dev, "video clk freq khz property not found!");
+		return ret;
+	}
+
+	switch (xhdmi->max_frl_rate) {
+	case 6:
+		/* 12G @ 4 Lanes */
+		if (xhdmi->frlclkfreqkhz < 449000 || xhdmi->frlclkfreqkhz > 451000) {
+			print_dt_clk_err_msg(xhdmi, 1, "449-451");
+			ret = -EINVAL;
+		}
+		if (xhdmi->vidclkfreqkhz < 399000 || xhdmi->vidclkfreqkhz > 401000) {
+			print_dt_clk_err_msg(xhdmi, 0, "399-401");
+			ret = -EINVAL;
+		}
+		break;
+	case 5:
+		/* 10G @ 4 Lanes */
+		if (xhdmi->frlclkfreqkhz < 379000 || xhdmi->frlclkfreqkhz > 381000) {
+			print_dt_clk_err_msg(xhdmi, 1, "379-381");
+			ret = -EINVAL;
+		}
+		if (xhdmi->vidclkfreqkhz < 374000 || xhdmi->vidclkfreqkhz > 376000) {
+			print_dt_clk_err_msg(xhdmi, 0, "374-376");
+			ret = -EINVAL;
+		}
+		break;
+	case 4:
+		/* 8G @ 4 Lanes */
+		if (xhdmi->frlclkfreqkhz < 324000 || xhdmi->frlclkfreqkhz > 326000) {
+			print_dt_clk_err_msg(xhdmi, 1, "324-326");
+			ret = -EINVAL;
+		}
+		if (xhdmi->vidclkfreqkhz < 299000 || xhdmi->vidclkfreqkhz > 301000) {
+			print_dt_clk_err_msg(xhdmi, 0, "299-301");
+			ret = -EINVAL;
+		}
+		break;
+	case 3:
+		/* 6G @ 4 Lanes */
+		if (xhdmi->frlclkfreqkhz < 249000 || xhdmi->frlclkfreqkhz > 251000) {
+			print_dt_clk_err_msg(xhdmi, 1, "249-251");
+			ret = -EINVAL;
+		}
+		if (xhdmi->vidclkfreqkhz < 224000 || xhdmi->vidclkfreqkhz > 226000) {
+			print_dt_clk_err_msg(xhdmi, 0, "224-226");
+			ret = -EINVAL;
+		}
+		break;
+	case 2:
+		/* 6G @ 4 Lanes */
+		if (xhdmi->frlclkfreqkhz < 199000 || xhdmi->frlclkfreqkhz > 201000) {
+			print_dt_clk_err_msg(xhdmi, 1, "199-201");
+			ret = -EINVAL;
+		}
+		if (xhdmi->vidclkfreqkhz < 174000 || xhdmi->vidclkfreqkhz > 176000) {
+			print_dt_clk_err_msg(xhdmi, 0, "174-176");
+			ret = -EINVAL;
+		}
+		break;
+	case 1:
+		/* 3G @ 3 Lanes */
+		if (xhdmi->frlclkfreqkhz < 149000 || xhdmi->frlclkfreqkhz > 151000) {
+			print_dt_clk_err_msg(xhdmi, 1, "149-151");
+			ret = -EINVAL;
+		}
+		if (xhdmi->vidclkfreqkhz < 149000 || xhdmi->vidclkfreqkhz > 151000) {
+			print_dt_clk_err_msg(xhdmi, 0, "149-151");
+			ret = -EINVAL;
+		}
+		break;
+	default:
+		/* TMDS */
+		if (xhdmi->frlclkfreqkhz < 149000 || xhdmi->frlclkfreqkhz > 151000) {
+			print_dt_clk_err_msg(xhdmi, 1, "149-151");
+			ret = -EINVAL;
+		}
+		if (xhdmi->vidclkfreqkhz < 149000 || xhdmi->vidclkfreqkhz > 151000) {
+			print_dt_clk_err_msg(xhdmi, 0, "149-151");
+			ret = -EINVAL;
+		}
+	}
+
+	return ret;
 }
 
 static void xhdmirx_phy_release(struct xhdmirx_state *xhdmi)
