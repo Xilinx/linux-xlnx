@@ -8,6 +8,7 @@
 
 #include <linux/clk.h>
 #include <linux/bitfield.h>
+#include <linux/delay.h>
 #include <linux/firmware.h>
 #include <linux/of.h>
 #include <linux/phy/phy.h>
@@ -809,9 +810,12 @@ static inline void xhdmirx_ddcscdc_clear(struct xhdmirx_state *xhdmi)
 {
 	xhdmi_write(xhdmi, HDMIRX_DDC_CTRL_SET_OFFSET,
 		    HDMIRX_DDC_CTRL_SCDC_CLR_MASK);
-	/* add a usleep(50) here */
+	/* 50 ms sleep as this will be needed by IP core to clear FIFO */
+	usleep_range(50, 100);
 	xhdmi_write(xhdmi, HDMIRX_DDC_CTRL_CLR_OFFSET,
 		    HDMIRX_DDC_CTRL_SCDC_CLR_MASK);
+	xhdmi_frlddcwritefield(xhdmi, XSCDCFIELD_FLT_READY, 1);
+	xhdmi_frlddcwritefield(xhdmi, XSCDCFIELD_SINK_VER, 1);
 }
 
 /**
