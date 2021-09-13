@@ -450,6 +450,7 @@ static const struct v4l2_event xhdmi_ev_fmt = {
 #define xhdmirx_tmr1_start(xhdmi, value) \
 	xhdmi_write(xhdmi, HDMIRX_TMR_1_CNT_OFFSET, \
 		    value)
+#define xhdmirx_tmr1_getval(xhdmi) xhdmi_read(xhdmi, HDMIRX_TMR_1_CNT_OFFSET)
 
 #define xhdmirx_tmr2_enable(xhdmi) \
 	xhdmi_write(xhdmi, HDMIRX_TMR_CTRL_SET_OFFSET, \
@@ -466,6 +467,7 @@ static const struct v4l2_event xhdmi_ev_fmt = {
 #define xhdmirx_tmr2_start(xhdmi, value) \
 	xhdmi_write(xhdmi, HDMIRX_TMR_2_CNT_OFFSET, \
 		    value)
+#define xhdmirx_tmr2_getval(xhdmi) xhdmi_read(xhdmi, HDMIRX_TMR_2_CNT_OFFSET)
 
 #define xhdmirx_tmr3_enable(xhdmi) \
 	xhdmi_write(xhdmi, HDMIRX_TMR_CTRL_SET_OFFSET, \
@@ -482,6 +484,7 @@ static const struct v4l2_event xhdmi_ev_fmt = {
 #define xhdmirx_tmr3_start(xhdmi, value) \
 	xhdmi_write(xhdmi, HDMIRX_TMR_3_CNT_OFFSET, \
 		    value)
+#define xhdmirx_tmr3_getval(xhdmi) xhdmi_read(xhdmi, HDMIRX_TMR_3_CNT_OFFSET)
 
 #define xhdmirx_tmr4_enable(xhdmi) \
 	xhdmi_write(xhdmi, HDMIRX_TMR_CTRL_SET_OFFSET, \
@@ -498,6 +501,7 @@ static const struct v4l2_event xhdmi_ev_fmt = {
 #define xhdmirx_tmr4_start(xhdmi, value) \
 	xhdmi_write(xhdmi, HDMIRX_TMR_4_CNT_OFFSET, \
 		    value)
+#define xhdmirx_tmr4_getval(xhdmi) xhdmi_read(xhdmi, HDMIRX_TMR_4_CNT_OFFSET)
 
 #define xhdmirx_vtdintr_disable(xhdmi) \
 	xhdmi_write(xhdmi, HDMIRX_VTD_CTRL_CLR_OFFSET, \
@@ -644,6 +648,8 @@ static const struct v4l2_event xhdmi_ev_fmt = {
 	xhdmi_write(xhdmi, HDMIRX_PIO_OUT_CLR_OFFSET, \
 		    HDMIRX_PIO_OUT_AXIS_EN_MASK)
 
+static void xhdmi_execfrlstate(struct xhdmirx_state *xhdmi);
+
 static inline u32 xhdmi_read(struct xhdmirx_state *xhdmi, u32 addr)
 {
 	return ioread32(xhdmi->regs + addr);
@@ -660,6 +666,13 @@ static inline struct xhdmirx_state *to_xhdmirx_state(struct v4l2_subdev *subdev)
 	return container_of(subdev, struct xhdmirx_state, sd);
 }
 
+static u32 xhdmi_getpatternsmatchstatus(struct xhdmirx_state *xhdmi)
+{
+	u32 data = xhdmi_read(xhdmi, HDMIRX_FRL_STA_OFFSET);
+
+	return FIELD_GET(HDMIRX_FRL_STA_FLT_PM_ALLL_MASK, data);
+}
+
 /**
  * xhdmirx_vtd_settimebase - Set the Video Timing Detector
  *
@@ -673,6 +686,88 @@ static inline void xhdmirx_vtd_settimebase(struct xhdmirx_state *xhdmi, u32 coun
 	val &= ~HDMIRX_VTD_CTRL_TIMERBASE_MASK;
 	val |= FIELD_PREP(HDMIRX_VTD_CTRL_TIMERBASE_MASK, count);
 	xhdmi_write(xhdmi, HDMIRX_VTD_CTRL_OFFSET, val);
+}
+
+static u32 xhdmi_frlddcreadfield(struct xhdmirx_state *xhdmi, enum xhdmi_frlscdcfieldtype field)
+{
+	u32 data = 0xFFFFFFFF;
+	int i;
+
+	for (i = 0; i < MAX_FRL_RETRY; i++) {
+		data = xhdmi_read(xhdmi, HDMIRX_FRL_SCDC_OFFSET);
+		if (data & HDMIRX_FRL_SCDC_RDY_MASK)
+			break;
+	}
+
+	if (!(data & HDMIRX_FRL_SCDC_RDY_MASK)) {
+		dev_dbg_ratelimited(xhdmi->dev, "%s - scdc is not ready!", __func__);
+		return data;
+	}
+
+	data = HDMIRX_FRL_SCDC_ADDR_MASK & frlscdcfield[field].offset;
+	data |=	HDMIRX_FRL_SCDC_RD_MASK;
+
+	xhdmi_write(xhdmi, HDMIRX_FRL_SCDC_OFFSET, data);
+
+	for (i = 0; i < MAX_FRL_RETRY; i++) {
+		data = xhdmi_read(xhdmi, HDMIRX_FRL_SCDC_OFFSET);
+		if (data & HDMIRX_FRL_SCDC_RDY_MASK) {
+			data = data >> HDMIRX_FRL_SCDC_DAT_SHIFT;
+			return ((data >> frlscdcfield[field].shift) &
+				frlscdcfield[field].mask);
+		}
+	}
+
+	dev_dbg_ratelimited(xhdmi->dev, "%s - failed!", __func__);
+	return 0xFFFFFFFF;
+}
+
+static int xhdmi_frlddcwritefield(struct xhdmirx_state *xhdmi,
+				  enum xhdmi_frlscdcfieldtype field,
+				  u8 value)
+{
+	/* 256 byte FIFO but doubling to 512 tries for safety */
+	u32 data = 0xFFFFFFFF, retrycount = 2 * MAX_FRL_RETRY;
+
+	if (frlscdcfield[field].mask != 0xFF)
+		data = xhdmi_frlddcreadfield(xhdmi, field);
+
+	if (data == 0xFFFFFFFF)
+		return -EINVAL;
+
+	do {
+		data = xhdmi_read(xhdmi, HDMIRX_FRL_SCDC_OFFSET);
+	} while (!(data & HDMIRX_FRL_SCDC_RDY_MASK) && retrycount--);
+
+	if (!retrycount)
+		return -EBUSY;
+
+	if (frlscdcfield[field].mask != 0xFF) {
+		data &= ~((frlscdcfield[field].mask <<
+			   frlscdcfield[field].shift) <<
+			  HDMIRX_FRL_SCDC_DAT_SHIFT);
+	} else {
+		data &= ~((u32)(HDMIRX_FRL_SCDC_DAT_MASK <<
+				HDMIRX_FRL_SCDC_DAT_SHIFT));
+	}
+
+	data &= ~((u32)HDMIRX_FRL_SCDC_ADDR_MASK);
+
+	data |= (((value & frlscdcfield[field].mask) <<
+		frlscdcfield[field].shift) <<
+		HDMIRX_FRL_SCDC_DAT_SHIFT) |
+		(frlscdcfield[field].offset & HDMIRX_FRL_SCDC_ADDR_MASK) |
+		HDMIRX_FRL_SCDC_WR_MASK;
+
+	xhdmi_write(xhdmi, HDMIRX_FRL_SCDC_OFFSET, data);
+
+	data = xhdmi_frlddcreadfield(xhdmi, field);
+	if (data != value) {
+		dev_err_ratelimited(xhdmi->dev, "field %u to write %u != written value %u",
+				    field, value, data);
+	}
+
+	return 0;
 }
 
 static inline void xhdmirx_scrambler_enable(struct xhdmirx_state *xhdmi)
@@ -1454,6 +1549,30 @@ static void tmdsconfig(struct xhdmirx_state *xhdmi)
 	dev_dbg_ratelimited(xhdmi->dev, "Set HDMI 2.0 phy");
 }
 
+static void frlconfig(struct xhdmirx_state *xhdmi)
+{
+	union phy_configure_opts phy_cfg = {0};
+	u64 linerate = xhdmi->stream.frl.linerate * (u64)(1e9);
+	u8 nchannels = xhdmi->stream.frl.lanes;
+
+	phy_cfg.hdmi.linerate = linerate;
+	phy_cfg.hdmi.nchannels = nchannels;
+	phy_cfg.hdmi.config_hdmi21 = 1;
+	xhdmirx_phy_configure(xhdmi, &phy_cfg);
+	dev_dbg_ratelimited(xhdmi->dev, "Set HDMI 2.1 phy");
+}
+
+static void phyresetcb(struct xhdmirx_state *xhdmi)
+{
+	union phy_configure_opts opts = {0};
+
+	xhdmi->stream.frl.ltpmatchpollcounts = 0;
+	xhdmi->stream.frl.ltpmatchwaitcounts = 0;
+
+	opts.hdmi.reset_gt = true;
+	xhdmirx_phy_configure(xhdmi, &opts);
+}
+
 /**
  * streamdown - called on stream down event
  *
@@ -1466,8 +1585,10 @@ static void streamdown(struct xhdmirx_state *xhdmi)
 	dev_dbg_ratelimited(xhdmi->dev, "%s - enter\n", __func__);
 
 	/* In TMDS mode */
-	xhdmirx_rxcore_vrst_assert(xhdmi);
-	xhdmirx_rxcore_lrst_assert(xhdmi);
+	if (!xhdmi->stream.isfrl) {
+		xhdmirx_rxcore_vrst_assert(xhdmi);
+		xhdmirx_rxcore_lrst_assert(xhdmi);
+	}
 	xhdmirx_sysrst_assert(xhdmi);
 	xhdmi->isstreamup = false;
 }
@@ -1494,7 +1615,536 @@ static void xhdmirx1_clear(struct xhdmirx_state *xhdmi)
 	memset(&xhdmi->dv_timings, 0, sizeof(xhdmi->dv_timings));
 	memset(&xhdmi->mbus_fmt, 0, sizeof(xhdmi->mbus_fmt));
 
+	xhdmi->stream.isfrl = false;
+	xhdmi->stream.frl.trainingstate = XFRLSTATE_LTS_L;
+
 	streamdown(xhdmi);
+}
+
+static int xhdmi_retrievefrlratelanes(struct xhdmirx_state *xhdmi)
+{
+	u32 data;
+	int ret = 0;
+
+	data = xhdmi_frlddcreadfield(xhdmi, XSCDCFIELD_FRL_RATE);
+	xhdmi->stream.frl.curfrlrate = data;
+
+	switch (data) {
+	case 6:
+		xhdmi->stream.frl.linerate = 12;
+		xhdmi->stream.frl.lanes = 4;
+		break;
+	case 5:
+		xhdmi->stream.frl.linerate = 10;
+		xhdmi->stream.frl.lanes = 4;
+		break;
+	case 4:
+		xhdmi->stream.frl.linerate = 8;
+		xhdmi->stream.frl.lanes = 4;
+		break;
+	case 3:
+		xhdmi->stream.frl.linerate = 6;
+		xhdmi->stream.frl.lanes = 4;
+		break;
+	case 2:
+		xhdmi->stream.frl.linerate = 6;
+		xhdmi->stream.frl.lanes = 3;
+		break;
+	case 1:
+		xhdmi->stream.frl.linerate = 3;
+		xhdmi->stream.frl.lanes = 3;
+		break;
+	default:
+		xhdmi->stream.frl.linerate = 0;
+		xhdmi->stream.frl.lanes = 0;
+		ret = -EINVAL;
+		break;
+	}
+
+	return ret;
+}
+
+static u32 xhdmi_getfrlltpdetection(struct xhdmirx_state *xhdmi, u8 lane)
+{
+	u32 data = 0;
+
+	if (lane < XHDMI_MAX_LANES)
+		data = xhdmi_frlddcreadfield(xhdmi, XSCDCFIELD_LN0_LTP_REQ + lane);
+	else
+		dev_dbg(xhdmi->dev, "RX:ERROR, Wrong lane is selected to get!");
+
+	return data;
+}
+
+static void xhdmi_setfrlltpdetection(struct xhdmirx_state *xhdmi, u8 lane,
+				     enum xhdmi_frlltptype ltp)
+{
+	u32 value = (u32)ltp;
+
+	if (lane < XHDMI_MAX_LANES)
+		xhdmi_frlddcwritefield(xhdmi, XSCDCFIELD_LN0_LTP_REQ + lane, value);
+	else
+		dev_dbg(xhdmi->dev, "RX:ERROR, Wrong lane is selected to set!");
+}
+
+static void xhdmi_frlfltupdate(struct xhdmirx_state *xhdmi, bool flag)
+{
+	u8 data = flag ? 1 : 0;
+
+	xhdmi_frlddcwritefield(xhdmi, XSCDCFIELD_FLT_UPDATE, data);
+	xhdmi->stream.frl.fltupdateasserted = flag;
+}
+
+static void xhdmi_resetfrlltpdetection(struct xhdmirx_state *xhdmi)
+{
+	xhdmi_write(xhdmi, HDMIRX_FRL_CTRL_SET_OFFSET, HDMIRX_FRL_CTRL_FLT_CLR_MASK);
+	xhdmi_write(xhdmi, HDMIRX_FRL_CTRL_CLR_OFFSET, HDMIRX_FRL_CTRL_FLT_CLR_MASK);
+}
+
+static void xhdmi_clearfrlltp(struct xhdmirx_state *xhdmi)
+{
+	u8 lanes;
+
+	for (lanes = 0; lanes < XHDMI_MAX_LANES; lanes++) {
+		xhdmi_setfrlltpdetection(xhdmi, lanes, XLTP_RATE_CHANGE);
+		xhdmi_resetfrlltpdetection(xhdmi);
+	}
+}
+
+static void xhdmi_setfrlltpthreshold(struct xhdmirx_state *xhdmi, u8 threshold)
+{
+	u32 data;
+
+	data = xhdmi_read(xhdmi, HDMIRX_FRL_CTRL_OFFSET);
+	data &= (~(u32)HDMIRX_FRL_CTRL_FLT_THRES_MASK);
+	data |= FIELD_PREP(HDMIRX_FRL_CTRL_FLT_THRES_MASK, threshold);
+	xhdmi_write(xhdmi, HDMIRX_FRL_CTRL_OFFSET, data);
+}
+
+static int xhdmi_configfrlltpdetection(struct xhdmirx_state *xhdmi)
+{
+	u32 data, configuredltp = 0;
+
+	data = xhdmi->stream.frl.fltupdateasserted;
+
+	/* flt_update not cleared */
+	if (data)
+		return -EINVAL;
+
+	/* check if source has read and cleared flt_update, false = cleared */
+	if (xhdmi->stream.frl.trainingstate == XFRLSTATE_LTS_3_RATE_CH &&
+	    xhdmi->stream.frl.curfrlrate > xhdmi->max_frl_rate) {
+		data = true;
+	} else if (xhdmi->stream.frl.curfrlrate <= xhdmi->max_frl_rate) {
+		u8 ln;
+
+		for (ln = 0; ln < XHDMI_MAX_LANES; ln++) {
+			configuredltp = xhdmi_getfrlltpdetection(xhdmi, ln);
+
+			/*
+			 * if the lane was previously configured as 0xe, it needs to be
+			 * configured back to the ltp to resume link training.
+			 */
+			if (configuredltp == 0xE) {
+				xhdmi->stream.frl.ltp.byte[ln] =
+					xhdmi->stream.frl.defaultltp.byte[ln];
+			}
+
+			/* check if the ltp data requires updating */
+			if (configuredltp != xhdmi->stream.frl.ltp.byte[ln]) {
+				xhdmi_setfrlltpdetection(xhdmi, ln,
+							 xhdmi->stream.frl.ltp.byte[ln]);
+				data = true;
+			}
+		}
+	}
+
+	/* no updates are made */
+	if (!data)
+		return -ENODATA;
+
+	dev_dbg(xhdmi->dev, "rx: ltpreq: %x %x %x %x",
+		xhdmi->stream.frl.ltp.byte[0], xhdmi->stream.frl.ltp.byte[1],
+		xhdmi->stream.frl.ltp.byte[2], xhdmi->stream.frl.ltp.byte[3]);
+
+	dev_dbg(xhdmi->dev, "assert flt_update (%d)",
+		xhdmirx_tmr1_getval(xhdmi));
+
+	xhdmi_frlfltupdate(xhdmi, true);
+	xhdmi_resetfrlltpdetection(xhdmi);
+	return 0;
+}
+
+static void xhdmi_setfrlratewrevent_en(struct xhdmirx_state *xhdmi)
+{
+	xhdmi_write(xhdmi, HDMIRX_FRL_CTRL_SET_OFFSET,
+		    HDMIRX_FRL_CTRL_FRL_RATE_WR_EVT_EN_MASK);
+}
+
+static void xhdmi_frlreset(struct xhdmirx_state *xhdmi, u8 reset)
+{
+	if (reset) {
+		xhdmi_write(xhdmi, HDMIRX_FRL_CTRL_CLR_OFFSET,
+			    HDMIRX_FRL_CTRL_RSTN_MASK);
+		xhdmi_frlddcwritefield(xhdmi, XSCDCFIELD_SINK_VER, 1);
+		xhdmi_frlddcwritefield(xhdmi, XSCDCFIELD_SCRAMBLER_EN, 0);
+	} else {
+		xhdmi_write(xhdmi, HDMIRX_FRL_CTRL_SET_OFFSET,
+			    HDMIRX_FRL_CTRL_RSTN_MASK);
+		xhdmi_frlddcwritefield(xhdmi, XSCDCFIELD_FRL_RATE, 0);
+	}
+}
+
+static void xhdmirx_tmrstartms(struct xhdmirx_state *xhdmi, u32 milliseconds,
+			       u8 timerselect)
+{
+	u32 clockcycles = 0;
+
+	if (milliseconds)
+		clockcycles = AXILITE_FREQ / (1000 / milliseconds);
+
+	switch (timerselect) {
+	case 1:
+		xhdmirx_tmr1_start(xhdmi, clockcycles);
+		break;
+	case 2:
+		xhdmirx_tmr2_start(xhdmi, clockcycles);
+		break;
+	case 3:
+		xhdmirx_tmr3_start(xhdmi, clockcycles);
+		break;
+	case 4:
+		xhdmirx_tmr4_start(xhdmi, clockcycles);
+		break;
+	}
+}
+
+static void xhdmi_setfrltimer(struct xhdmirx_state *xhdmi, u32 milliseconds)
+{
+	/* frl uses timer1 */
+	xhdmirx_tmrstartms(xhdmi, milliseconds, 1);
+}
+
+static void xhdmirx_execfrlstate_ltsl(struct xhdmirx_state *xhdmi)
+{
+	dev_dbg(xhdmi->dev, "RX: LTS:L");
+
+	/* Clear HDMI variables */
+	xhdmirx1_clear(xhdmi);
+
+	xhdmi_frlddcwritefield(xhdmi, XSCDCFIELD_FLT_READY, 1);
+	xhdmi_frlddcwritefield(xhdmi, XSCDCFIELD_FRL_RATE, 0);
+
+	tmdsconfig(xhdmi);
+	/* FrlLtsLCallback is just a logging function */
+}
+
+static void xhdmirx_execfrlstate_lts2(struct xhdmirx_state *xhdmi)
+{
+	dev_dbg(xhdmi->dev, "RX: LTS:2");
+	xhdmi_frlddcwritefield(xhdmi, XSCDCFIELD_FLT_READY, 1);
+}
+
+static void xhdmirx_execfrlstate_lts3_ratechange(struct xhdmirx_state *xhdmi)
+{
+	int status;
+
+	xhdmi->stream.frl.timercnt = 0;
+	status = xhdmi_retrievefrlratelanes(xhdmi);
+
+	if (xhdmi->stream.frl.ffesuppflag)
+		xhdmi->stream.frl.ffelevels =
+			xhdmi_frlddcreadfield(xhdmi, XSCDCFIELD_FFE_LEVELS);
+	else
+		xhdmi->stream.frl.ffelevels = 0;
+
+	dev_dbg(xhdmi->dev, "RX: LTS:3 Rate Change");
+	/* FrlLts3Callback is just logging function */
+	xhdmi_frlfltupdate(xhdmi, false);
+
+	if (!status && xhdmi->stream.frl.linerate) {
+		int i;
+
+		xhdmi->stream.frl.trainingstate = XFRLSTATE_LTS_3_RATE_CH;
+		xhdmi->stream.state = XSTATE_FRL_LINK_TRAININIG;
+		xhdmi->stream.isfrl = true;
+		xhdmi->stream.ishdmi = true;
+		dev_dbg(xhdmi->dev, "RX: Rate: %d Lanes: %d Ffe_lvl: %d",
+			xhdmi->stream.frl.linerate, xhdmi->stream.frl.lanes,
+			xhdmi->stream.frl.ffelevels);
+
+		xhdmirx_rxcore_lrst_assert(xhdmi);
+		xhdmirx_rxcore_vrst_assert(xhdmi);
+		xhdmirx_ext_vrst_assert(xhdmi);
+		xhdmirx_sysrst_assert(xhdmi);
+
+		xhdmirx_vtd_disable(xhdmi);
+		xhdmi_resetfrlltpdetection(xhdmi);
+		xhdmi_clearfrlltp(xhdmi);
+		xhdmi_setfrltimer(xhdmi, frltimeoutlts3[xhdmi->stream.frl.ffelevels]);
+
+		for (i = 0; i < XHDMI_MAX_LANES; i++)
+			xhdmi->stream.frl.ltp.byte[i] =
+				xhdmi->stream.frl.defaultltp.byte[i];
+
+		xhdmi->stream.frl.ltpmatchedcounts = 0;
+		xhdmi->stream.frl.ltpmatchwaitcounts = 0;
+		xhdmi->stream.frl.ltpmatchpollcounts = 0;
+
+		frlconfig(xhdmi);
+
+		/* set a 4 ms on Timer 3 for PhyReset callback */
+		xhdmirx_tmr3_enable(xhdmi);
+		xhdmirx_tmrstartms(xhdmi, 4, 3);
+	} else {
+		xhdmi->stream.frl.trainingstate = XFRLSTATE_LTS_L;
+		xhdmi_execfrlstate(xhdmi);
+		xhdmi->stream.state = XSTREAM_DOWN;
+	}
+}
+
+static void xhdmirx_execfrlstate_lts3_ltpdetected(struct xhdmirx_state *xhdmi)
+{
+	u8 data;
+
+	dev_dbg(xhdmi->dev, "RX: LTS:3 LTP Detected %d",
+		xhdmirx_tmr1_getval(xhdmi));
+
+	/* Make sure phy is reset at least once after the pattterns have matched */
+	if (!xhdmi->stream.frl.ltpmatchedcounts) {
+		xhdmi->stream.frl.ltpmatchedcounts++;
+		xhdmi->stream.frl.ltpmatchpollcounts = 0;
+		xhdmi->stream.frl.ltpmatchwaitcounts = 0;
+
+		phyresetcb(xhdmi);
+		xhdmi->stream.frl.trainingstate = XFRLSTATE_LTS_3;
+
+		dev_dbg(xhdmi->dev, "%s - fail", __func__);
+		return;
+	}
+
+	data = xhdmi_getpatternsmatchstatus(xhdmi);
+
+	if ((xhdmi->stream.frl.lanes == 3 ? 0x7 : 0xF) == data) {
+		/* disable timer 3 which triggers Phy reset */
+		xhdmirx_tmrstartms(xhdmi, 0, 3);
+		xhdmirx_tmr3_disable(xhdmi);
+
+		/* 0 = Link Training Passing */
+		xhdmi->stream.frl.ltp.data = 0x0;
+		xhdmi->stream.frl.trainingstate = XFRLSTATE_LTS_3_RDY;
+
+		/* FrlLtsPCallback is only a logging function */
+		dev_dbg(xhdmi->dev, "LTP_DET:MATCH");
+	} else {
+		xhdmi->stream.frl.trainingstate = XFRLSTATE_LTS_3;
+		dev_dbg(xhdmi->dev, "LTP_DET:FALSE:%x", data);
+	}
+}
+
+static void xhdmirx_execfrlstate_lts3_timer(struct xhdmirx_state *xhdmi)
+{
+	u8 data = xhdmi_getpatternsmatchstatus(xhdmi);
+
+	xhdmi->stream.frl.fltnoretrain =
+		xhdmi_frlddcreadfield(xhdmi, XSCDCFIELD_FLT_NO_RETRAIN);
+	xhdmi->stream.frl.timercnt = frltimeoutlts3[xhdmi->stream.frl.ffelevels];
+
+	if (xhdmi->stream.frl.trainingstate == XFRLSTATE_LTS_P) {
+		dev_dbg(xhdmi->dev, "RX: LTS:P Lts3_Timer OUT FFE_LVL: %d",
+			xhdmi->stream.frl.ffelevels);
+	}
+
+	if (xhdmi->stream.frl.trainingstate == XFRLSTATE_LTS_3 ||
+	    xhdmi->stream.frl.trainingstate == XFRLSTATE_LTS_3_TMR ||
+	    xhdmi->stream.frl.trainingstate == XFRLSTATE_LTS_3_RATE_CH ||
+	    xhdmi->stream.frl.trainingstate == XFRLSTATE_LTS_3_RDY) {
+		if (!xhdmi->stream.frl.fltnotimeout && !xhdmi->stream.frl.fltnoretrain) {
+			if (xhdmi->stream.frl.timercnt >
+			    (frltimeoutlts3[xhdmi->stream.frl.ffelevels] *
+			     xhdmi->stream.frl.ffelevels)) {
+				/* If LTPs are not detected on all active lanes */
+				if ((xhdmi->stream.frl.lanes == 3 ? 0x7 : 0xF) != data) {
+					/* Stop the timer which will initiate phy reset */
+					xhdmirx_tmrstartms(xhdmi, 0, 3);
+					xhdmi->stream.frl.ltp.byte[0] = 0xF;
+					xhdmi->stream.frl.ltp.byte[1] = 0xF;
+					xhdmi->stream.frl.ltp.byte[2] = 0xF;
+					xhdmi->stream.frl.ltp.byte[3] = 0xF;
+					/* FrlLts4Callback is just logging function */
+				}
+			} else if (xhdmi->stream.frl.ffesuppflag) {
+				u8 lanes;
+
+				for (lanes = 0; lanes < xhdmi->stream.frl.lanes; lanes++) {
+					/* if any lane is not passing by link training */
+					if (((data >> lanes) & 0x1) != 0x1) {
+						/* 0xE = Request to change TxFFE */
+						xhdmi->stream.frl.ltp.byte[lanes] = 0xE;
+						dev_dbg(xhdmi->dev, "RX: %d:0xE", lanes);
+					}
+				}
+				xhdmi_resetfrlltpdetection(xhdmi);
+				xhdmi_setfrltimer(xhdmi,
+						  frltimeoutlts3[xhdmi->stream.frl.ffelevels]);
+			}
+		}
+	}
+
+	if (xhdmi->stream.frl.trainingstate != XFRLSTATE_LTS_3_RDY)
+		xhdmi->stream.frl.trainingstate = XFRLSTATE_LTS_3;
+}
+
+static void xhdmirx_execfrlstate_lts3(struct xhdmirx_state *xhdmi)
+{
+	int status;
+
+	dev_dbg(xhdmi->dev, "RX: LTS:3 %d", xhdmirx_tmr1_getval(xhdmi));
+	dev_dbg(xhdmi->dev, "scdc flt update = %d",
+		xhdmi_frlddcreadfield(xhdmi, XSCDCFIELD_FLT_UPDATE));
+
+	xhdmi_frlddcwritefield(xhdmi, XSCDCFIELD_FRL_START, 0);
+
+	status = xhdmi_configfrlltpdetection(xhdmi);
+	if (!status) {
+		if (xhdmi->stream.frl.trainingstate == XFRLSTATE_LTS_3_RDY) {
+			xhdmi->stream.frl.trainingstate = XFRLSTATE_LTS_P;
+			dev_dbg(xhdmi->dev, "RX: LTP Pass");
+			/* Disable timer */
+			xhdmi_setfrltimer(xhdmi, 0);
+			status = 0;
+		} else if (xhdmi->stream.frl.trainingstate == XFRLSTATE_LTS_3_TMR) {
+		} else if (xhdmi->stream.frl.trainingstate == XFRLSTATE_LTS_3) {
+		} else {
+			dev_dbg(xhdmi->dev, " --->ELSE");
+		}
+		status = 0;
+	} else if (status == -EINVAL) {
+		/*
+		 * source has not cleared FLT_update so sink should not update
+		 * FLT_req and FLT_update as to ensure proper data handshake
+		 */
+		dev_dbg(xhdmi->dev, "RX: LTS_3-->FLT_UPDATE not Cleared %d",
+			xhdmirx_tmr1_getval(xhdmi));
+	} else {
+		/* case of -ENODATA */
+		/*
+		 * Source has cleared FLT_update but no update from sink is required
+		 */
+	}
+}
+
+static void xhdmirx_execfrlstate_ltsp(struct xhdmirx_state *xhdmi)
+{
+	dev_dbg(xhdmi->dev, "RX: LTS:P");
+
+	if (xhdmi->stream.frl.trainingstate == XFRLSTATE_LTS_P_FRL_RDY &&
+	    !xhdmi->stream.frl.fltupdateasserted) {
+		dev_dbg(xhdmi->dev, "RX: LTS: P_FRL_RDY");
+		xhdmi_frlddcwritefield(xhdmi, XSCDCFIELD_FRL_START, 1);
+		dev_dbg(xhdmi->dev, "RX: FRL_START");
+		/* FrlStartCallback is just logging function */
+	}
+}
+
+static void xhdmirx_execfrlstate_ltsp_timeout(struct xhdmirx_state *xhdmi)
+{
+	dev_dbg(xhdmi->dev, "rx: lts:p timeout");
+	tmdsconfig(xhdmi);
+}
+
+static void xhdmi_execfrlstate(struct xhdmirx_state *xhdmi)
+{
+	dev_dbg(xhdmi->dev, "Rx : LTS :%u", xhdmi->stream.frl.trainingstate);
+
+	switch (xhdmi->stream.frl.trainingstate) {
+	case XFRLSTATE_LTS_L:
+		xhdmirx_execfrlstate_ltsl(xhdmi);
+		dev_dbg(xhdmi->dev, "---LTSL:");
+		break;
+
+	case XFRLSTATE_LTS_2:
+		xhdmirx_execfrlstate_lts2(xhdmi);
+		break;
+
+	case XFRLSTATE_LTS_3_RATE_CH:
+		xhdmirx_execfrlstate_lts3_ratechange(xhdmi);
+		/* Note : With some sources such as Realtek, the execution
+		 * of LTS3 state can be removed to check if the system still
+		 * works.
+		 */
+		xhdmirx_execfrlstate_lts3(xhdmi);
+		break;
+
+	case XFRLSTATE_LTS_3_ARM_LNK_RDY:
+	case XFRLSTATE_LTS_3_ARM_VID_RDY:
+		break;
+
+	case XFRLSTATE_LTS_3_LTP_DET:
+		xhdmirx_execfrlstate_lts3_ltpdetected(xhdmi);
+		xhdmirx_execfrlstate_lts3(xhdmi);
+		break;
+
+	case XFRLSTATE_LTS_3_TMR:
+		xhdmirx_execfrlstate_lts3_timer(xhdmi);
+		xhdmirx_execfrlstate_lts3(xhdmi);
+		break;
+
+	case XFRLSTATE_LTS_3:
+	case XFRLSTATE_LTS_3_RDY:
+		xhdmirx_execfrlstate_lts3(xhdmi);
+		break;
+
+	case XFRLSTATE_LTS_P:
+	case XFRLSTATE_LTS_P_FRL_RDY:
+	case XFRLSTATE_LTS_P_VID_RDY:
+		xhdmirx_execfrlstate_ltsp(xhdmi);
+		break;
+
+	case XFRLSTATE_LTS_P_TIMEOUT:
+		xhdmirx_execfrlstate_ltsp_timeout(xhdmi);
+		break;
+
+	default:
+		dev_err(xhdmi->dev, "RX:S:FRL_INVALID_STATE(%u)!",
+			xhdmi->stream.frl.trainingstate);
+		break;
+	}
+}
+
+static int xhdmirx_frlmodeenable(struct xhdmirx_state *xhdmi, u8 ltpthreshold,
+				 union xhdmi_frlltp defaultltp, u8 ffesuppflag)
+{
+	int i;
+
+	if (ffesuppflag > 1) {
+		dev_err(xhdmi->dev, "ffesuppflag can be 0 or 1 and not %u", ffesuppflag);
+		return -EINVAL;
+	}
+
+	for (i = 0; i < XHDMI_MAX_LANES; i++) {
+		if (defaultltp.byte[i] < XLTP_LFSR0 ||
+		    defaultltp.byte[i] > XLTP_LFSR3) {
+			if (i == 3 && !defaultltp.byte[i])
+				break;
+
+			dev_err(xhdmi->dev, "invalid ltp byte %u for lane %u",
+				defaultltp.byte[i], i);
+			return -EINVAL;
+		}
+	}
+
+	for (i = 0; i < XHDMI_MAX_LANES; i++)
+		xhdmi->stream.frl.defaultltp.byte[i] = defaultltp.byte[i];
+
+	xhdmi->stream.frl.ffesuppflag = ffesuppflag;
+
+	xhdmi_setfrlltpthreshold(xhdmi, ltpthreshold);
+	xhdmi->stream.frl.trainingstate = XFRLSTATE_LTS_2;
+
+	xhdmi_execfrlstate(xhdmi);
+
+	return 0;
 }
 
 /**
@@ -1932,6 +2582,15 @@ static void xhdmirx_init(struct xhdmirx_state *xhdmi)
 {
 	u32 mask;
 
+	xhdmirx1_clear(xhdmi);
+	xhdmi->stream.frl.fltnoretrain = false;
+	xhdmi->stream.frl.fltnotimeout = false;
+
+	xhdmirx_frlintr_disable(xhdmi);
+	xhdmi_frlreset(xhdmi, true);
+	xhdmi_frlddcwritefield(xhdmi, XSCDCFIELD_SINK_VER, 1);
+	xhdmi_frlddcwritefield(xhdmi, XSCDCFIELD_FRL_RATE, 0);
+
 	xhdmirx_pio_disable(xhdmi);
 	xhdmirx_tmr1_disable(xhdmi);
 	xhdmirx_tmr2_disable(xhdmi);
@@ -1942,9 +2601,6 @@ static void xhdmirx_init(struct xhdmirx_state *xhdmi)
 	xhdmirx_aux_disable(xhdmi);
 	xhdmirx_aud_disable(xhdmi);
 	xhdmirx_lnksta_disable(xhdmi);
-	/* keeps HDMI 2.0 mode initially */
-	xhdmirx_frl_disable(xhdmi);
-
 	xhdmirx_piointr_disable(xhdmi);
 	xhdmirx_tmr1intr_disable(xhdmi);
 	xhdmirx_tmr2intr_disable(xhdmi);
@@ -1984,6 +2640,8 @@ static void xhdmirx_init(struct xhdmirx_state *xhdmi)
 	xhdmirx_tmr3intr_enable(xhdmi);
 	xhdmirx_tmr4intr_enable(xhdmi);
 
+	xhdmirx_skewlockevt_enable(xhdmi);
+
 	/* set VTD for 200 ms different from bare metal's 16ms */
 	xhdmirx_vtd_settimebase(xhdmi, TIME_200MS);
 
@@ -1992,8 +2650,15 @@ static void xhdmirx_init(struct xhdmirx_state *xhdmi)
 	xhdmirx_auxintr_enable(xhdmi);
 	xhdmirx_lnksta_enable(xhdmi);
 
-	xhdmirx_load_edid(xhdmi, (u8 *)&xilinx_edid,
-			  sizeof(xilinx_edid));
+	xhdmi_frlreset(xhdmi, false);
+	xhdmirx_frlintr_enable(xhdmi);
+	xhdmi->stream.frl.defaultltp.byte[0] = XLTP_LFSR0;
+	xhdmi->stream.frl.defaultltp.byte[1] = XLTP_LFSR1;
+	xhdmi->stream.frl.defaultltp.byte[2] = XLTP_LFSR2;
+	xhdmi->stream.frl.defaultltp.byte[3] = XLTP_LFSR3;
+	xhdmi_frlddcwritefield(xhdmi, XSCDCFIELD_FLT_READY, 1);
+	xhdmi_frlddcwritefield(xhdmi, XSCDCFIELD_FRL_RATE, 0);
+	xhdmi_setfrlratewrevent_en(xhdmi);
 
 	xhdmirx_reset(xhdmi);
 }
@@ -2581,6 +3246,13 @@ static int xhdmirx_probe(struct platform_device *pdev)
 
 	xhdmirx_init(xhdmi);
 	xhdmirx_disable_allintr(xhdmi);
+
+	ret = xhdmirx_frlmodeenable(xhdmi, DEFAULT_LTPTHRESHOLD,
+				    xhdmi->stream.frl.defaultltp, true);
+	if (ret) {
+		dev_err(xhdmi->dev, "Failed to enable FRL mode %d", ret);
+		goto wrkq_err;
+	}
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
