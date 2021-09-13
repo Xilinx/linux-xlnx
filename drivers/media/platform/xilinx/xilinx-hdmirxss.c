@@ -2477,6 +2477,132 @@ static void xhdmirx_auxint_handler(struct xhdmirx_state *xhdmi)
 	}
 }
 
+/**
+ * xhdmirx_frlint_handler - Function to handle the FRL interrupt
+ *
+ * @xhdmi: pointer to driver state
+ *
+ * Function to handle the FRL interrupts
+ */
+static void xhdmirx_frlint_handler(struct xhdmirx_state *xhdmi)
+{
+	u32 data;
+	u8 streamdownflag = false;
+
+	data = xhdmi_read(xhdmi, HDMIRX_FRL_STA_OFFSET);
+	dev_dbg_ratelimited(xhdmi->dev, "FRL intr");
+
+	if (data & HDMIRX_FRL_STA_RATE_EVT_MASK) {
+		xhdmi_write(xhdmi, HDMIRX_FRL_STA_OFFSET, HDMIRX_FRL_STA_RATE_EVT_MASK);
+		/* TODO disable Dynamic HDR */
+		streamdown(xhdmi);
+		xhdmi->stream.frl.trainingstate = XFRLSTATE_LTS_3_RATE_CH;
+		xhdmi_execfrlstate(xhdmi);
+	}
+
+	if (data & HDMIRX_FRL_STA_FLT_UPD_EVT_MASK) {
+		xhdmi_write(xhdmi, HDMIRX_FRL_STA_OFFSET, HDMIRX_FRL_STA_FLT_UPD_EVT_MASK);
+		xhdmi->stream.frl.fltupdateasserted = false;
+		dev_dbg_ratelimited(xhdmi->dev, "RX: INTR FLT_UP cleared %d",
+				    xhdmirx_tmr1_getval(xhdmi));
+		switch (xhdmi->stream.frl.trainingstate) {
+		case XFRLSTATE_LTS_P:
+			fallthrough;
+		case XFRLSTATE_LTS_3_RDY:
+			fallthrough;
+		case XFRLSTATE_LTS_3_ARM_VID_RDY:
+			fallthrough;
+		case XFRLSTATE_LTS_3_ARM_LNK_RDY:
+			fallthrough;
+		case XFRLSTATE_LTS_P_FRL_RDY:
+			break;
+		default:
+			xhdmi->stream.frl.trainingstate = XFRLSTATE_LTS_3;
+			break;
+		}
+		xhdmi_execfrlstate(xhdmi);
+	}
+
+	/* Link training pattern has matched for all the active lanes */
+	if (data & HDMIRX_FRL_STA_FLT_PM_EVT_MASK) {
+		xhdmi_write(xhdmi, HDMIRX_FRL_STA_OFFSET, HDMIRX_FRL_STA_FLT_PM_EVT_MASK);
+		dev_dbg_ratelimited(xhdmi->dev, "RX: INTR LTP_DET");
+		if (xhdmi->stream.frl.trainingstate == XFRLSTATE_LTS_3 ||
+		    xhdmi->stream.frl.trainingstate == XFRLSTATE_LTS_3_LTP_DET) {
+			xhdmi->stream.frl.trainingstate = XFRLSTATE_LTS_3_LTP_DET;
+			xhdmi_execfrlstate(xhdmi);
+		}
+	}
+
+	if (data & HDMIRX_FRL_STA_LANE_LOCK_EVT_MASK) {
+		u8 temp = xhdmi_frlddcreadfield(xhdmi, XSCDCFIELD_LNS_LOCK);
+
+		xhdmi_write(xhdmi, HDMIRX_FRL_STA_OFFSET, HDMIRX_FRL_STA_LANE_LOCK_EVT_MASK);
+
+		if (((xhdmi->stream.frl.lanes == 3 ? 0x7 : 0xF) == temp) &&
+		    xhdmi->stream.frl.trainingstate == XFRLSTATE_LTS_P) {
+			dev_dbg_ratelimited(xhdmi->dev, "LTS_P_FRL_RDY");
+			xhdmi->stream.frl.trainingstate = XFRLSTATE_LTS_P_FRL_RDY;
+			dev_dbg_ratelimited(xhdmi->dev, "RX: INTR FRL_START");
+			xhdmi_execfrlstate(xhdmi);
+		}
+	}
+
+	if (data & HDMIRX_FRL_STA_SKEW_LOCK_EVT_MASK) {
+		xhdmi_write(xhdmi, HDMIRX_FRL_STA_OFFSET, HDMIRX_FRL_STA_SKEW_LOCK_EVT_MASK);
+
+		if (xhdmi_read(xhdmi, HDMIRX_FRL_STA_OFFSET) & HDMIRX_FRL_STA_SKEW_LOCK_MASK) {
+			if (xhdmi->stream.frl.trainingstate == XFRLSTATE_LTS_P_VID_RDY) {
+				streamdownflag = true;
+				dev_dbg_ratelimited(xhdmi->dev, "skew lock err 1 occurred!");
+			} else {
+				/* Skew has locked. No actions needed */
+				dev_dbg_ratelimited(xhdmi->dev, "skew lock occurred!");
+			}
+
+			xhdmi->stream.frl.trainingstate = XFRLSTATE_LTS_P_VID_RDY;
+		} else {
+			if (xhdmi->stream.frl.trainingstate == XFRLSTATE_LTS_P_FRL_RDY) {
+				streamdownflag = true;
+			} else if (xhdmi->stream.frl.trainingstate != XFRLSTATE_LTS_3_RATE_CH) {
+				/*
+				 * unexpected skew lock event is true only when it is not caused by
+				 * rate change request.
+				 */
+				dev_dbg_ratelimited(xhdmi->dev, "skew lock err 2 occurred!");
+			}
+
+			if (xhdmi->stream.frl.trainingstate == XFRLSTATE_LTS_P_VID_RDY)
+				xhdmi->stream.frl.trainingstate = XFRLSTATE_LTS_P_FRL_RDY;
+		}
+
+		if (streamdownflag) {
+			xhdmirx_rxcore_lrst_assert(xhdmi);
+			xhdmirx_rxcore_vrst_assert(xhdmi);
+			xhdmirx_ext_vrst_assert(xhdmi);
+			xhdmirx_sysrst_assert(xhdmi);
+
+			xhdmirx_vtd_disable(xhdmi);
+			/* TODO Dynamic HDR disable */
+			streamdown(xhdmi);
+		}
+
+		switch (xhdmi->stream.frl.trainingstate) {
+		case XFRLSTATE_LTS_P_FRL_RDY:
+			xhdmi->stream.state = XSTREAM_DOWN;
+			break;
+		case XFRLSTATE_LTS_P_VID_RDY:
+			/* set stream status to idle */
+			xhdmi->stream.state = XSTREAM_IDLE;
+			/* Load timer for 10 ms */
+			xhdmirx_tmr1_start(xhdmi, TIME_10MS);
+			break;
+		default:
+			break;
+		}
+	}
+}
+
 static irqreturn_t xhdmirx_irq_handler(int irq, void *param)
 {
 	struct xhdmirx_state *xhdmi = (struct xhdmirx_state *)param;
@@ -2525,7 +2651,7 @@ static irqreturn_t xhdmirx_irq_thread(int irq, void *param)
 	if (xhdmi->intrstatus[6])
 		xhdmi_write(xhdmi, HDMIRX_LNKSTA_STA_OFFSET, xhdmi->intrstatus[6]);
 	if (xhdmi->intrstatus[7])
-		xhdmi_write(xhdmi, HDMIRX_FRL_STA_OFFSET, xhdmi->intrstatus[7]);
+		xhdmirx_frlint_handler(xhdmi);
 
 	xhdmirx_enable_allintr(xhdmi);
 
