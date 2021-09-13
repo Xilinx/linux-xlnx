@@ -72,6 +72,16 @@ properties:
     $ref: /schemas/types.yaml#/definitions/uint8
     enum: [ 4, 5, 6 ]
 
+  xlnx,frl-clk-freq-khz:
+    description: |
+      FRL clock frequency in KHz
+    $ref: /schemas/types.yaml#/definitions/uint32
+
+  xlnx,vid-clk-freq-khz:
+    description: |
+      Video clock frequency in KHz
+    $ref: /schemas/types.yaml#/definitions/uint32
+
   phys:
     description: |
       This denotes phandles for phy lanes registered for HDMI protocol.
@@ -142,6 +152,8 @@ required:
   - xlnx,edid-ram-size
   - xlnx,max-bits-per-component
   - xlnx,max-frl-rate
+  - xlnx,frl-clk-freq-khz
+  - xlnx,vid-clk-freq-khz
   - xlnx,input-pixels-per-clock
   - phys
   - phy-names
@@ -162,6 +174,8 @@ examples:
       xlnx,input-pixels-per-clock = /bits/ 8 <0x8>;
       xlnx,max-bits-per-component = /bits/ 8 <0xa>;
       xlnx,max-frl-rate = /bits/ 8 <0x6>;
+      xlnx,frl-clk-freq-khz = <449955>;
+      xlnx,vid-clk-freq-khz = <400000>;
       phy-names = "hdmi-phy0", "hdmi-phy1", "hdmi-phy2", "hdmi-phy3";
       phys = <&hdmiphy1_lane0 0 1 1 0>,
              <&hdmiphy1_lane1 0 1 1 0>,
