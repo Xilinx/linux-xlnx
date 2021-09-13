@@ -647,7 +647,6 @@ static u32 xhdmirx1_gettmdsclkratio(struct xhdmirx_state *xhdmi)
 {
 	u32 val;
 
-	/* Get TMDS clock ratio */
 	val = xhdmi_read(xhdmi, HDMIRX_PIO_IN_OFFSET);
 	val = FIELD_GET(HDMIRX_PIO_IN_SCDC_TMDS_CLOCK_RATIO_MASK, val);
 
@@ -721,7 +720,6 @@ static enum xcolordepth xhdmirx1_getgcp_colordepth(struct xhdmirx_state *xhdmi)
 	enum xcolordepth ret;
 
 	val = xhdmi_read(xhdmi, HDMIRX_AUX_STA_OFFSET);
-
 	switch (FIELD_GET(HDMIRX_AUX_STA_GCP_CD_MASK, val)) {
 	case 1:
 		ret = XCD_10;
@@ -738,6 +736,7 @@ static enum xcolordepth xhdmirx1_getgcp_colordepth(struct xhdmirx_state *xhdmi)
 	}
 
 	dev_dbg_ratelimited(xhdmi->dev, "get GCP colordepth %u\n", ret);
+
 	return ret;
 }
 
@@ -1123,15 +1122,12 @@ static void rxstreamup(struct xhdmirx_state *xhdmi)
 {
 	struct xvideostream *stream;
 
-	dev_dbg_ratelimited(xhdmi->dev, "%s - enter\n", __func__);
-
 	xhdmirx1_clearlinkstatus(xhdmi);
 	xhdmi->isstreamup = true;
 
 	xhdmirx1_configbridgemode(xhdmi);
 
 	/* enable clock forwarding */
-
 	stream = &xhdmi->stream.video;
 
 	/*
@@ -1202,7 +1198,6 @@ static void rxstreamup(struct xhdmirx_state *xhdmi)
 	xhdmi->isstreamup = true;
 
 	v4l2_subdev_notify_event(&xhdmi->sd, &xhdmi_ev_fmt);
-	/* can enable audio now */
 
 	dev_dbg_ratelimited(xhdmi->dev, "mbus fmt width = %u height = %u code = 0x%08x\n",
 			    xhdmi->mbus_fmt.width, xhdmi->mbus_fmt.height, xhdmi->mbus_fmt.code);
@@ -1223,8 +1218,6 @@ static void rxstreaminit(struct xhdmirx_state *xhdmi)
 	union phy_configure_opts cfg = {0};
 	struct xvideostream *vidstream = &xhdmi->stream.video;
 	u8 colordepth = (u8)xhdmi->stream.video.colordepth;
-
-	dev_dbg_ratelimited(xhdmi->dev, "%s - enter\n", __func__);
 
 	if (vidstream->colorspace == XCS_YUV422)
 		colordepth = (u8)XCD_8;
@@ -1260,7 +1253,6 @@ static void rxconnect(struct xhdmirx_state *xhdmi)
 	} else {
 		xhdmirx_set_hpd(xhdmi, 0);
 		xhdmirx_scrambler_disable(xhdmi);
-		/* frl ddc write scrambler stat as 0 */
 
 		phy_cfg.hdmi.tmdsclock_ratio_flag = 1;
 		phy_cfg.hdmi.tmdsclock_ratio = 0;
@@ -1283,14 +1275,10 @@ static void tmdsconfig(struct xhdmirx_state *xhdmi)
 {
 	union phy_configure_opts phy_cfg = {0};
 
-	dev_dbg_ratelimited(xhdmi->dev, "%s - enter\n", __func__);
-
 	phy_cfg.hdmi.config_hdmi20 = 1;
 	xhdmirx_phy_configure(xhdmi, &phy_cfg);
-	dev_dbg(xhdmi->dev, "set phy to hdmi20\n");
-
-	/* XV_Rx_HdmiTrigCb_VfmcRxClkSel */
 	xhdmirx_setfrl_vclkvckeratio(xhdmi, 0);
+	dev_dbg_ratelimited(xhdmi->dev, "Set HDMI 2.0 phy");
 }
 
 /**
@@ -1526,6 +1514,7 @@ static void xhdmirx_tmrint_handler(struct xhdmirx_state *xhdmi)
 	if (status & HDMIRX_TMR4_STA_CNT_EVT_MASK) {
 		xhdmi_write(xhdmi, HDMIRX_TMR_STA_OFFSET,
 			    HDMIRX_TMR4_STA_CNT_EVT_MASK);
+		/* currently unused */
 	}
 }
 
