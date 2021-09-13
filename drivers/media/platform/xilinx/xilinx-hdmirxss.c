@@ -2636,8 +2636,22 @@ static void xhdmirx_auxint_handler(struct xhdmirx_state *xhdmi)
 		dev_dbg_ratelimited(xhdmi->dev, "aux gcp intr\n");
 		xhdmi_write(xhdmi, HDMIRX_AUX_STA_OFFSET,
 			    HDMIRX_AUX_STA_GCP_CD_EVT_MASK);
-		if (status & HDMIRX_AUX_STA_GCP_MASK)
+
+		if (xhdmi->stream.state == XSTATE_FRL_LINK_TRAININIG)
+			return;
+
+		if (status & HDMIRX_AUX_STA_GCP_MASK) {
 			xhdmi->stream.video.colordepth = xhdmirx1_getgcp_colordepth(xhdmi);
+
+			if (xhdmi->stream.isfrl) {
+				dev_dbg_ratelimited(xhdmi->dev, "FRL Mode Stream Down");
+				xhdmirx_aux_disable(xhdmi);
+				streamdown(xhdmi);
+				xhdmirx_aux_enable(xhdmi);
+				xhdmi->stream.state = XSTREAM_INIT;
+				xhdmirx_tmr1_start(xhdmi, TIME_200MS);
+			}
+		}
 	}
 
 	if (status & HDMIRX_AUX_STA_NEW_MASK) {
@@ -2647,7 +2661,12 @@ static void xhdmirx_auxint_handler(struct xhdmirx_state *xhdmi)
 		xhdmi_write(xhdmi, HDMIRX_AUX_STA_OFFSET,
 			    HDMIRX_AUX_STA_NEW_MASK);
 
-		xhdmi->stream.ishdmi = true;
+		if (xhdmi->stream.state == XSTATE_FRL_LINK_TRAININIG)
+			return;
+
+		if (!xhdmi->stream.isfrl)
+			xhdmi->stream.ishdmi = true;
+
 		xhdmi->aux.header.data = xhdmi_read(xhdmi,
 						    HDMIRX_AUX_DAT_OFFSET);
 		for (i = 0; i < 8; i++)
@@ -2659,6 +2678,8 @@ static void xhdmirx_auxint_handler(struct xhdmirx_state *xhdmi)
 	if (status & HDMIRX_AUX_STA_ERR_MASK) {
 		dev_dbg_ratelimited(xhdmi->dev, "aux err intr\n");
 		xhdmi_write(xhdmi, HDMIRX_AUX_STA_OFFSET,  HDMIRX_AUX_STA_ERR_MASK);
+		if (xhdmi->stream.state == XSTATE_FRL_LINK_TRAININIG)
+			return;
 		/* link error call back */
 	}
 }
