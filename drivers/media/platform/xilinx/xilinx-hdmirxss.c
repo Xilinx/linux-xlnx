@@ -1825,6 +1825,34 @@ static void xhdmi_setfrltimer(struct xhdmirx_state *xhdmi, u32 milliseconds)
 	xhdmirx_tmrstartms(xhdmi, milliseconds, 1);
 }
 
+static void xhdmi_phyresetpoll(struct xhdmirx_state *xhdmi)
+{
+	u8 data = xhdmi_getpatternsmatchstatus(xhdmi);
+
+	/* Polls every 4ms */
+	xhdmirx_tmrstartms(xhdmi, 4, 3);
+
+	/*
+	 * One or more lanes are patterns matched but the remaining
+	 * lanes failed to patterns matched within 4ms or no patterns
+	 * have been matched for up to 12ms, proceed to reset Phy
+	 */
+	if (xhdmi->stream.frl.ltpmatchwaitcounts >= 1 ||
+	    xhdmi->stream.frl.ltpmatchpollcounts >= 3) {
+		phyresetcb(xhdmi);
+		return;
+	}
+
+	/* Increments the wait counter */
+	xhdmi->stream.frl.ltpmatchpollcounts++;
+
+	/* If LTP on some of the lanes are successfully matched */
+	if (data && data !=
+		(xhdmi->stream.frl.lanes == 3 ? 0x7 : 0xf)) {
+		xhdmi->stream.frl.ltpmatchwaitcounts++;
+	}
+}
+
 static void xhdmirx_execfrlstate_ltsl(struct xhdmirx_state *xhdmi)
 {
 	dev_dbg(xhdmi->dev, "RX: LTS:L");
@@ -2341,20 +2369,44 @@ static void xhdmirx_tmrint_handler(struct xhdmirx_state *xhdmi)
 		xhdmi_write(xhdmi, HDMIRX_TMR_STA_OFFSET,
 			    HDMIRX_TMR1_STA_CNT_EVT_MASK);
 
-		/* TODO Add FRL related code here */
+		if (xhdmi->stream.state == XSTATE_FRL_LINK_TRAININIG) {
+			switch (xhdmi->stream.frl.trainingstate) {
+			case XFRLSTATE_LTS_L:
+				xhdmi_execfrlstate(xhdmi);
+				break;
+			case XFRLSTATE_LTS_P:
+				fallthrough;
+			case XFRLSTATE_LTS_P_FRL_RDY:
+				fallthrough;
+			case XFRLSTATE_LTS_P_VID_RDY:
+				fallthrough;
+			case XFRLSTATE_LTS_3_RDY:
+				break;
+			default:
+				xhdmi->stream.frl.trainingstate = XFRLSTATE_LTS_3_TMR;
+				xhdmi_execfrlstate(xhdmi);
+				break;
+			}
+			return;
+		}
 
 		if (xhdmi->stream.state == XSTREAM_IDLE) {
-			dev_dbg_ratelimited(xhdmi->dev, "state = XSTREAM_IDLE\n");
+			dev_dbg_ratelimited(xhdmi->dev, "state = XSTREAM_IDLE isfrl = %d trainingstate = %d",
+					    xhdmi->stream.isfrl, xhdmi->stream.frl.trainingstate);
 
-			xhdmirx_aux_enable(xhdmi);
-			/* enable audio */
-			/* release the internal vrst & lrst */
-			xhdmirx_rxcore_vrst_deassert(xhdmi);
-			xhdmirx_rxcore_lrst_deassert(xhdmi);
-			xhdmirx_link_enable(xhdmi);
+			if (!xhdmi->stream.isfrl ||
+			    (xhdmi->stream.isfrl &&
+			     xhdmi->stream.frl.trainingstate == XFRLSTATE_LTS_P_VID_RDY)) {
+				xhdmirx_aux_enable(xhdmi);
+				/* enable audio */
+				/* release the internal vrst & lrst */
+				xhdmirx_rxcore_vrst_deassert(xhdmi);
+				xhdmirx_rxcore_lrst_deassert(xhdmi);
+				xhdmirx_link_enable(xhdmi);
 
-			xhdmi->stream.state = XSTREAM_INIT;
-			xhdmi->stream.getvidproptries = 0;
+				xhdmi->stream.state = XSTREAM_INIT;
+				xhdmi->stream.getvidproptries = 0;
+			}
 			xhdmirx_tmr1_start(xhdmi, TIME_200MS);
 
 		} else if (xhdmi->stream.state == XSTREAM_INIT) {
@@ -2365,7 +2417,26 @@ static void xhdmirx_tmrint_handler(struct xhdmirx_state *xhdmi)
 				xhdmirx_tmr1_start(xhdmi, TIME_200MS);
 			} else {
 				xhdmirx1_setpixelclk(xhdmi);
-				rxstreaminit(xhdmi);
+
+				if (xhdmi->stream.isfrl) {
+					dev_dbg_ratelimited(xhdmi->dev, "Virtual Vid_Rdy: XSTREAM_INIT");
+
+					/* Toggle video reset for HDMI Rx core */
+					xhdmirx_rxcore_vrst_assert(xhdmi);
+					xhdmirx_rxcore_vrst_deassert(xhdmi);
+
+					/* Toggle bridge reset */
+					xhdmirx_ext_vrst_assert(xhdmi);
+					xhdmirx_sysrst_assert(xhdmi);
+
+					xhdmirx_ext_vrst_deassert(xhdmi);
+					xhdmirx_sysrst_deassert(xhdmi);
+
+					xhdmi->stream.state = XSTREAM_ARM;
+					xhdmirx_tmr1_start(xhdmi, TIME_200MS);
+				} else {
+					rxstreaminit(xhdmi);
+				}
 			}
 
 		} else if (xhdmi->stream.state == XSTREAM_ARM) {
@@ -2386,7 +2457,7 @@ static void xhdmirx_tmrint_handler(struct xhdmirx_state *xhdmi)
 	if (status & HDMIRX_TMR3_STA_CNT_EVT_MASK) {
 		xhdmi_write(xhdmi, HDMIRX_TMR_STA_OFFSET,
 			    HDMIRX_TMR3_STA_CNT_EVT_MASK);
-		/* TODO add HdmiRx1_PhyResetPoll() */
+		xhdmi_phyresetpoll(xhdmi);
 	}
 
 	if (status & HDMIRX_TMR4_STA_CNT_EVT_MASK) {
