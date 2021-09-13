@@ -30,6 +30,8 @@
 #define MAX_VID_PROP_TRIES	7
 #define MAX_FIELDS		2
 #define COREPIXPERCLK		4
+#define MAX_FRL_RETRY		(256)
+#define DEFAULT_LTPTHRESHOLD	(150)
 
 enum xhdmirx_stream_state {
 	XSTREAM_IDLE = 0,
@@ -38,7 +40,8 @@ enum xhdmirx_stream_state {
 	XSTREAM_ARM = 3,
 	XSTREAM_UP = 4,
 	XSTREAM_DOWN = 5,
-	XSTREAM_MAX_STATE = 6,
+	XSTATE_FRL_LINK_TRAININIG = 6,
+	XSTREAM_MAX_STATE = 7,
 };
 
 enum xhdmirx_syncstatus {
@@ -107,9 +110,172 @@ struct xvideostream {
 	bool isinterlaced;
 };
 
+/* FRL SCDC Fields */
+enum xhdmi_frlscdcfieldtype {
+	XSCDCFIELD_SINK_VER = 0,
+	XSCDCFIELD_SOURCE_VER = 1,
+	XSCDCFIELD_CED_UPDATE = 2,
+	XSCDCFIELD_SOURCE_TEST_UPDATE = 3,
+	XSCDCFIELD_FRL_START = 4,
+	XSCDCFIELD_FLT_UPDATE = 5,
+	XSCDCFIELD_RSED_UPDATE = 6,
+	XSCDCFIELD_SCRAMBLER_EN = 7,
+	XSCDCFIELD_SCRAMBLER_STAT = 8,
+	XSCDCFIELD_FLT_NO_RETRAIN = 9,
+	XSCDCFIELD_FRL_RATE = 10,
+	XSCDCFIELD_FFE_LEVELS = 11,
+	XSCDCFIELD_FLT_NO_TIMEOUT = 12,
+	XSCDCFIELD_LNS_LOCK = 13,
+	XSCDCFIELD_FLT_READY = 14,
+	XSCDCFIELD_LN0_LTP_REQ = 15,
+	XSCDCFIELD_LN1_LTP_REQ = 16,
+	XSCDCFIELD_LN2_LTP_REQ = 17,
+	XSCDCFIELD_LN3_LTP_REQ = 18,
+	XSCDCFIELD_CH0_ERRCNT_LSB = 19,
+	XSCDCFIELD_CH0_ERRCNT_MSB = 20,
+	XSCDCFIELD_CH1_ERRCNT_LSB = 21,
+	XSCDCFIELD_CH1_ERRCNT_MSB = 22,
+	XSCDCFIELD_CH2_ERRCNT_LSB = 23,
+	XSCDCFIELD_CH2_ERRCNT_MSB = 24,
+	XSCDCFIELD_CED_CHECKSUM = 25,
+	XSCDCFIELD_CH3_ERRCNT_LSB = 26,
+	XSCDCFIELD_CH3_ERRCNT_MSB = 27,
+	XSCDCFIELD_RSCCNT_LSB = 28,
+	XSCDCFIELD_RSCCNT_MSB = 29,
+	XSCDCFIELD_SIZE = 30,
+};
+
+/* FRL Training States */
+enum xhdmi_frltrainingstate {
+	XFRLSTATE_LTS_L = 0,
+	XFRLSTATE_LTS_2 = 1,
+	XFRLSTATE_LTS_3_RATE_CH = 2,
+	XFRLSTATE_LTS_3_ARM_LNK_RDY = 3,
+	XFRLSTATE_LTS_3_ARM_VID_RDY = 4,
+	XFRLSTATE_LTS_3_LTP_DET = 5,
+	XFRLSTATE_LTS_3_TMR = 6,
+	XFRLSTATE_LTS_3 = 7,
+	XFRLSTATE_LTS_3_RDY = 8,
+	XFRLSTATE_LTS_P = 9,
+	XFRLSTATE_LTS_P_TIMEOUT = 10,
+	/* LTS:P (FRL_START = 1) */
+	XFRLSTATE_LTS_P_FRL_RDY = 11,
+	/* LTS:P (Skew Locked) */
+	XFRLSTATE_LTS_P_VID_RDY = 12,
+};
+
+/* LTP type */
+enum xhdmi_frlltptype {
+	XLTP_SUCCESS = 0,
+	XLTP_ALL_ONES = 1,
+	XLTP_ALL_ZEROES = 2,
+	XLTP_NYQUIST_CLOCK = 3,
+	XLTP_RXDDE_COMPLIANCE = 4,
+	XLTP_LFSR0 = 5,
+	XLTP_LFSR1 = 6,
+	XLTP_LFSR2 = 7,
+	XLTP_LFSR3 = 8,
+	XLTP_FFE_CHANGE = 0xE,
+	XLTP_RATE_CHANGE = 0xF,
+};
+
+union xhdmi_frlffeadjtype {
+	u32 data;
+	u8 byte[4];
+};
+
+union xhdmi_frlltp {
+	u32 data;
+	u8 byte[4];
+};
+
+struct xhdmi_frlscdcfield {
+	u8 offset;
+	u8 mask;
+	u8 shift;
+};
+
+static const struct xhdmi_frlscdcfield frlscdcfield[XSCDCFIELD_SIZE] = {
+	{0x01, 0xFF, 0},	/* XSCDCFIELD_SINK_VER */
+	{0x02, 0xFF, 0},	/* XSCDCFIELD_SOURCE_VER */
+	{0x10, 0x01, 1},	/* XSCDCFIELD_CED_UPDATE */
+	{0x10, 0x01, 3},	/* XSCDCFIELD_SOURCE_TEST_UPDATE */
+	{0x10, 0x01, 4},	/* XSCDCFIELD_FRL_START */
+	{0x10, 0x01, 5},	/* XSCDCFIELD_FLT_UPDATE */
+	{0x10, 0x01, 6},	/* XSCDCFIELD_RSED_UPDATE */
+	{0x20, 0x03, 0},	/* XSCDCFIELD_SCRAMBLER_EN */
+	{0x21, 0x01, 0},	/* XSCDCFIELD_SCRAMBLER_STAT */
+	{0x30, 0x01, 1},	/* XSCDCFIELD_FLT_NO_RETRAIN */
+	{0x31, 0x0F, 0},	/* XSCDCFIELD_FRL_RATE */
+	{0x31, 0x0F, 4},	/* XSCDCFIELD_FFE_LEVELS */
+	{0x35, 0x01, 5},	/* XSCDCFIELD_FLT_NO_TIMEOUT */
+	{0x40, 0x0F, 1},	/* XSCDCFIELD_LNS_LOCK */
+	{0x40, 0x01, 6},	/* XSCDCFIELD_FLT_READY */
+	{0x41, 0x0F, 0},	/* XSCDCFIELD_LN0_LTP_REQ */
+	{0x41, 0x0F, 4},	/* XSCDCFIELD_LN1_LTP_REQ */
+	{0x42, 0x0F, 0},	/* XSCDCFIELD_LN2_LTP_REQ */
+	{0x42, 0x0F, 4},	/* XSCDCFIELD_LN3_LTP_REQ */
+	{0x50, 0xFF, 0},	/* XSCDCFIELD_CH0_ERRCNT_LSB */
+	{0x51, 0xFF, 0},	/* XSCDCFIELD_CH0_ERRCNT_MSB */
+	{0x52, 0xFF, 0},	/* XSCDCFIELD_CH1_ERRCNT_LSB */
+	{0x53, 0xFF, 0},	/* XSCDCFIELD_CH1_ERRCNT_MSB */
+	{0x54, 0xFF, 0},	/* XSCDCFIELD_CH2_ERRCNT_LSB */
+	{0x55, 0xFF, 0},	/* XSCDCFIELD_CH2_ERRCNT_MSB */
+	{0x56, 0xFF, 0},	/* XSCDCFIELD_CED_CHECKSUM */
+	{0x57, 0xFF, 0},	/* XSCDCFIELD_CH3_ERRCNT_LSB */
+	{0x58, 0xFF, 0},	/* XSCDCFIELD_CH3_ERRCNT_MSB */
+	{0x59, 0xFF, 0},	/* XSCDCFIELD_RSCCNT_LSB */
+	{0x5A, 0xFF, 0},	/* XSCDCFIELD_RSCCNT_MSB */
+};
+
+/**
+ * struct xhdmirx_frl - FRL related structure
+ * @trainingstate: Fixed Rate Link State
+ * @timercnt: FRL timer
+ * @linerate: Current line rate from FRL rate
+ * @curfrlrate: Current FRL rate supported
+ * @lanes: Current number of lanes used
+ * @ffelevels: Number of supported FFE levels for current FRL rate
+ * @ffesuppflag: RX core's support for FFE levels
+ * @fltupdateasserted: Flag for FLT update asserted
+ * @ltp: LTP to be detected by the RX core and queried by source
+ * @defaultltp: LTP which will be used by Rx core for link training
+ * @laneffeadjreq: RxFFE for each lane
+ * @fltnotimeout: Flag for no timeout
+ * @fltnoretrain: Flag for no retrain
+ * @ltpmatchwaitcounts: counter for link training pattern match waiting
+ * @ltpmatchedcounts: counter for link training pattern matched
+ * @ltpmatchpollcounts: counter for link training pattern poll match
+ */
+struct xhdmirx_frl {
+	enum xhdmi_frltrainingstate trainingstate;
+	u32 timercnt;
+	u8 linerate;
+	u32 curfrlrate;
+	u8 lanes;
+	u8 ffelevels;
+	u8 ffesuppflag;
+	u8 fltupdateasserted;
+	union xhdmi_frlltp ltp;
+	union xhdmi_frlltp defaultltp;
+	union xhdmi_frlffeadjtype laneffeadjreq;
+	u8 fltnotimeout;
+	u8 fltnoretrain;
+	u8 ltpmatchwaitcounts;
+	u8 ltpmatchedcounts;
+	u8 ltpmatchpollcounts;
+};
+
+/*
+ * This is timeout period of LTS3 for different FFE levels (0 - 3)
+ * in milliseconds
+ */
+static const u16 frltimeoutlts3[4] = { 180, 90, 60, 45};
+
 /**
  * struct xstream - Stream structure
  * @video: video stream properties struct
+ * @frl: FRL related struct
  * @state: streaming state
  * @syncstatus: whether sync established or lost
  * @pixelclk: Pixel clock
@@ -119,9 +285,11 @@ struct xvideostream {
  * @vic: AVI vic code
  * @getvidproptries: Number of tries to get video properties
  * @ishdmi: whether hdmi or dvi
+ * @isfrl: FRL flag. 1 - FRL mode 0 - TMDS mode
  */
 struct xstream {
 	struct xvideostream video;
+	struct xhdmirx_frl frl;
 	enum xhdmirx_stream_state state;
 	enum xhdmirx_syncstatus syncstatus;
 	u32 pixelclk;
@@ -131,6 +299,7 @@ struct xstream {
 	u8 vic;
 	u8 getvidproptries;
 	u8 ishdmi;
+	u8 isfrl;
 };
 
 union xhdmi_auxheader {
