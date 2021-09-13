@@ -666,6 +666,16 @@ static inline struct xhdmirx_state *to_xhdmirx_state(struct v4l2_subdev *subdev)
 	return container_of(subdev, struct xhdmirx_state, sd);
 }
 
+static inline u32 xhdmi_getfrlactivepixratio(struct xhdmirx_state *xhdmi)
+{
+	return xhdmi_read(xhdmi, HDMIRX_FRL_RATIO_ACT_OFFSET);
+}
+
+static inline u32 xhdmi_getfrltotalpixratio(struct xhdmirx_state *xhdmi)
+{
+	return xhdmi_read(xhdmi, HDMIRX_FRL_RATIO_TOT_OFFSET);
+}
+
 static u32 xhdmi_getpatternsmatchstatus(struct xhdmirx_state *xhdmi)
 {
 	u32 data = xhdmi_read(xhdmi, HDMIRX_FRL_STA_OFFSET);
@@ -2477,6 +2487,8 @@ static void xhdmirx_tmrint_handler(struct xhdmirx_state *xhdmi)
 static void xhdmirx_vtdint_handler(struct xhdmirx_state *xhdmi)
 {
 	u32 status;
+	u32 totalpixfrlratio = 0, activepixfrlratio = 0;
+	u64 vidclk = 0;
 
 	status = xhdmi_read(xhdmi, HDMIRX_VTD_STA_OFFSET);
 
@@ -2484,6 +2496,9 @@ static void xhdmirx_vtdint_handler(struct xhdmirx_state *xhdmi)
 		xhdmi_write(xhdmi, HDMIRX_VTD_STA_OFFSET,
 			    HDMIRX_VTD_STA_TIMEBASE_EVT_MASK);
 		dev_dbg_ratelimited(xhdmi->dev, "vtd intr\n");
+
+		if (xhdmi->stream.state == XSTATE_FRL_LINK_TRAININIG)
+			return;
 
 		if (xhdmi->stream.state == XSTREAM_LOCK) {
 			int ret;
@@ -2494,7 +2509,38 @@ static void xhdmirx_vtdint_handler(struct xhdmirx_state *xhdmi)
 			ret = xhdmirx1_get_vid_timing(xhdmi);
 
 			if (!ret) {
+				if (xhdmi->stream.isfrl) {
+					u32 val;
+
+					val = xhdmi_getfrlactivepixratio(xhdmi);
+					activepixfrlratio = DIV_ROUND_CLOSEST(val, 1000);
+
+					val = xhdmi_getfrltotalpixratio(xhdmi);
+					totalpixfrlratio = DIV_ROUND_CLOSEST(val, 1000);
+
+					vidclk = activepixfrlratio *
+						 DIV_ROUND_CLOSEST(xhdmi->frlclkfreqkhz, 100);
+					vidclk = DIV_ROUND_CLOSEST(vidclk, totalpixfrlratio);
+					xhdmi->stream.refclk = vidclk * 100000;
+					if (xhdmirx1_get_video_properties(xhdmi))
+						dev_err_ratelimited(xhdmi->dev, "Failed get video properties!");
+				}
+
 				xhdmirx1_setpixelclk(xhdmi);
+
+				if (xhdmi->stream.isfrl) {
+					u32 remainder;
+
+					vidclk = (xhdmi->stream.pixelclk / 100000) / COREPIXPERCLK;
+					vidclk = xhdmi->vidclkfreqkhz / vidclk;
+					remainder = vidclk % 100;
+					vidclk = vidclk / 100;
+					if (remainder >= 50)
+						vidclk++;
+
+					xhdmirx_setfrl_vclkvckeratio(xhdmi, vidclk);
+				}
+
 				/* calculate framerate */
 				divisor = xhdmi->stream.video.timing.vtot[0];
 				divisor *= xhdmi->stream.video.timing.htot;
@@ -2525,9 +2571,23 @@ static void xhdmirx_vtdint_handler(struct xhdmirx_state *xhdmi)
 					/* call syncloss callback */
 				}
 			} else {
-				/* in tmds mode just set state to lock */
-				xhdmi->stream.state = XSTREAM_LOCK;
-				/* need to do frl mode */
+				if (!xhdmi->stream.isfrl) {
+					/* in tmds mode just set state to lock */
+					xhdmi->stream.state = XSTREAM_LOCK;
+				} else {
+					/* need to do frl mode */
+					xhdmirx_rxcore_lrst_assert(xhdmi);
+					xhdmirx_rxcore_lrst_deassert(xhdmi);
+					xhdmirx_aux_disable(xhdmi);
+
+					streamdown(xhdmi);
+
+					/* switch to bursty vcke generation */
+					xhdmirx_setfrl_vclkvckeratio(xhdmi, 0);
+					xhdmi->stream.state = XSTREAM_INIT;
+					xhdmirx_aux_enable(xhdmi);
+					xhdmirx_tmr1_start(xhdmi, TIME_200MS);
+				}
 			}
 		}
 	} else if (status & HDMIRX_VTD_STA_SYNC_LOSS_EVT_MASK) {
