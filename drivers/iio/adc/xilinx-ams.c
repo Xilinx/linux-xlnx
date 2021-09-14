@@ -358,6 +358,11 @@ static int ams_read_raw(struct iio_dev *indio_dev,
 				else
 					*val = AMS_SUPPLY_SCALE_6VOLT;
 				break;
+			case AMS_VREFP:
+			case AMS_VREFN:
+					*val = AMS_SUPPLY_SCALE_3VOLT;
+				break;
+
 			default:
 				if (chan->scan_index >= (PS_SEQ_MAX * 3))
 					*val = AMS_SUPPLY_SCALE_3VOLT;
