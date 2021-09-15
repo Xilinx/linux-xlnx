@@ -26,6 +26,7 @@ enum spi_nor_option_flags {
 	SNOR_F_HAS_SR_TB_BIT6	= BIT(11),
 	SNOR_F_HAS_4BIT_BP      = BIT(12),
 	SNOR_F_HAS_SR_BP3_BIT6  = BIT(13),
+	SNOR_F_HAS_SR_BP3_BIT5  = BIT(14),
 };
 
 struct spi_nor_read_command {
@@ -315,7 +316,10 @@ struct flash_info {
 #define	SST_GLOBAL_PROT_UNLK	BIT(16)	/* Unlock the Global protection for
 					 * sst flashes
 					 */
-
+#define SPI_NOR_BP3_SR_BIT5	BIT(20) /*
+					 * BP3 is bit 5 of status register.
+					 * Must be used with SPI_NOR_4BIT_BP.
+					 */
 	int	(*quad_enable)(struct spi_nor *nor);
 	/* Part specific fixup hooks. */
 	const struct spi_nor_fixups *fixups;

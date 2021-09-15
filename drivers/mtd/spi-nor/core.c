@@ -1670,6 +1670,8 @@ static u8 spi_nor_get_sr_bp_mask(struct spi_nor *nor)
 
 	if (nor->flags & SNOR_F_HAS_SR_BP3_BIT6)
 		return mask | SR_BP3_BIT6;
+	else if (nor->flags & SNOR_F_HAS_SR_BP3_BIT5)
+		return mask | SR_BP3_BIT5;
 
 	if (nor->flags & SNOR_F_HAS_4BIT_BP)
 		return mask | SR_BP3;
@@ -1854,6 +1856,9 @@ static int spi_nor_sr_lock(struct spi_nor *nor, loff_t ofs, uint64_t len)
 
 		if (nor->flags & SNOR_F_HAS_SR_BP3_BIT6 && val & SR_BP3)
 			val = (val & ~SR_BP3) | SR_BP3_BIT6;
+		else if (nor->flags & SNOR_F_HAS_SR_BP3_BIT5 &&
+			 val & SR_BP3_BIT5)
+			val |= SR_BP3_BIT5;
 
 		if (val & ~mask)
 			return -EINVAL;
@@ -1939,6 +1944,9 @@ static int spi_nor_sr_unlock(struct spi_nor *nor, loff_t ofs, uint64_t len)
 
 		if (nor->flags & SNOR_F_HAS_SR_BP3_BIT6 && val & SR_BP3)
 			val = (val & ~SR_BP3) | SR_BP3_BIT6;
+		else if (nor->flags & SNOR_F_HAS_SR_BP3_BIT5 &&
+			 val & SR_BP3_BIT5)
+			val |= SR_BP3_BIT5;
 
 		/* Some power-of-two sizes are not supported */
 		if (val & ~mask)
@@ -2007,6 +2015,14 @@ static int write_sr_modify_protection(struct spi_nor *nor, u8 status,
 
 		if (lock_bits > 7)
 			bp_mask |= SR_BP3;
+	} else if (nor->jedec_id == CFI_MFR_WINBND) { /* Winbond */
+		status_new &= ~SR_BP3_BIT5;
+
+		/* Protected area starts from top */
+		status_new &= ~SR_BP_TB;
+
+		if (lock_bits > 7)
+			bp_mask |= SR_BP3_BIT5;
 	}
 
 	if (nor->is_lock)
@@ -2033,6 +2049,9 @@ static u8 bp_bits_from_sr(struct spi_nor *nor, u8 status)
 	ret = (((status) & SR_BP_BIT_MASK) >> SR_BP_BIT_OFFSET);
 	if (nor->jedec_id == 0x20)
 		ret |= ((status & SR_BP3) >> (SR_BP_BIT_OFFSET + 1));
+	else if ((nor->jedec_id == CFI_MFR_WINBND) &&
+		 (nor->flags & SNOR_F_HAS_4BIT_BP))
+		ret |= ((status & SR_BP3_BIT5) >> SR_BP_BIT_OFFSET);
 
 	return ret;
 }
@@ -3905,6 +3924,8 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 		nor->flags |= SNOR_F_HAS_4BIT_BP;
 		if (info->flags & SPI_NOR_BP3_SR_BIT6)
 			nor->flags |= SNOR_F_HAS_SR_BP3_BIT6;
+		else if (info->flags & SPI_NOR_BP3_SR_BIT5)
+			nor->flags |= SNOR_F_HAS_SR_BP3_BIT5;
 	}
 
 	if (info->flags & SPI_NOR_NO_ERASE)
