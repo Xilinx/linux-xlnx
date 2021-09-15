@@ -128,6 +128,7 @@
 #define SR_BP3                 BIT(6)  /* Block protect 3 */
 #define SR_TB_BIT5		BIT(5)	/* Top/Bottom protect */
 #define SR_BP3_BIT6		BIT(6)	/* Block protect 3 */
+#define SR_BP3_BIT5		BIT(5)	/* Block protect 3 */
 #define SR_TB_BIT6		BIT(6)	/* Top/Bottom protect */
 #define SR_SRWD			BIT(7)	/* SR write protect */
 /* Bit to determine whether protection starts from top or bottom */
