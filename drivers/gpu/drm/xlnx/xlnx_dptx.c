@@ -43,6 +43,8 @@
 /* DPTX Core enable registers */
 #define XDPTX_ENABLE_REG			0x80
 #define XDPTX_MAINSTRM_ENABLE_REG		0x84
+#define XDPTX_SCRAMBLER_RESET			0xc0
+#define XDPTX_SCRAMBLER_RESET_MASK		BIT(0)
 
 /* AUX channel interface registers */
 #define XDPTX_AUXCMD_REG			0x100
@@ -142,6 +144,7 @@
 
 #define XDPTX_MAX_LANES				0x4
 #define XDPTX_MAX_FREQ				3000000
+#define XDPTX_SINK_PWR_CYCLES			3
 
 #define XDPTX_REDUCED_BIT_RATE			162000
 #define XDPTX_HIGH_BIT_RATE_1			270000
@@ -221,7 +224,11 @@
 #define XDPTX_VTC_GVSYNC_F1				0x08c
 #define XDPTX_VTC_GVSHOFF_F1				0x090
 #define XDPTX_VTC_GASIZE_F1				0x094
-
+/*
+ * This is sleep time in milliseconds before start training and it can be
+ * modified as per the monitor
+ */
+#define XDPTX_POWERON_DELAY_MS				4
 #define XDPTX_AUDIO_CTRL_REG				0x300
 #define XDPTX_AUDIO_EN_MASK				BIT(0)
 #define XDPTX_AUDIO_MUTE_MASK				BIT(16)
@@ -851,7 +858,7 @@ static int xlnx_dp_link_train_cr(struct xlnx_dp *dp)
 {
 	u8 prev_vs_level = 0;
 	u8 same_vs_level_count = 0;
-	u8 aux_data;
+	u8 aux_data[5];
 	u16 max_tries;
 	u8 link_status[DP_LINK_STATUS_SIZE];
 	u8 lane_cnt = dp->mode.lane_cnt;
@@ -865,8 +872,9 @@ static int xlnx_dp_link_train_cr(struct xlnx_dp *dp)
 	xlnx_dp_write(dp->dp_base, XDPTX_TRNGPAT_SET_REG,
 		      DP_TRAINING_PATTERN_1);
 	xlnx_dp_write(dp->dp_base, XDPTX_SCRAMBLING_DIS_REG, 1);
-	aux_data = DP_TRAINING_PATTERN_1 | DP_LINK_SCRAMBLING_DISABLE;
-	ret = drm_dp_dpcd_writeb(&dp->aux, DP_TRAINING_PATTERN_SET, aux_data);
+	aux_data[0] = DP_TRAINING_PATTERN_1 | DP_LINK_SCRAMBLING_DISABLE;
+	xlnx_dp_tx_set_vswing_preemp(dp, &aux_data[1]);
+	ret = drm_dp_dpcd_write(&dp->aux, DP_TRAINING_PATTERN_SET, aux_data, 5);
 	if (ret < 0)
 		return ret;
 
@@ -1010,7 +1018,7 @@ static int xlnx_dp_link_train_ce(struct xlnx_dp *dp)
  */
 static int xlnx_dp_train(struct xlnx_dp *dp)
 {
-	u32 reg;
+	u32 reg, val;
 	u8 bw_code = dp->mode.bw_code;
 	u8 lane_cnt = dp->mode.lane_cnt;
 	u8 aux_lane_cnt = lane_cnt;
@@ -1069,8 +1077,31 @@ static int xlnx_dp_train(struct xlnx_dp *dp)
 	default:
 		reg = XDPTX_PHYCLOCK_FBSETTING810_MASK;
 	}
-	xlnx_dp_write(dp->dp_base, XDPTX_PHYCLOCK_FBSETTING_REG,
-		      reg);
+
+	/*
+	 * set the clock frequency for the DisplayPort PHY corresponding
+	 * to a desired link rate
+	 */
+	val = xlnx_dp_read(dp->dp_base, XDPTX_ENABLE_REG);
+	xlnx_dp_write(dp->dp_base, XDPTX_ENABLE_REG, 0);
+	xlnx_dp_write(dp->dp_base, XDPTX_PHYCLOCK_FBSETTING_REG, reg);
+	if (val)
+		xlnx_dp_write(dp->dp_base, XDPTX_ENABLE_REG, 1);
+
+	/* Wait for PHY ready */
+	ret = xlnx_dp_phy_ready(dp);
+	if (ret < 0)
+		return ret;
+
+	/* Disable main link during training. */
+	val = xlnx_dp_read(dp->dp_base, XDPTX_MAINSTRM_ENABLE_REG);
+	if (val) {
+		xlnx_dp_write(dp->dp_base, XDPTX_MAINSTRM_ENABLE_REG, 0);
+		xlnx_dp_write(dp->dp_base, XDPTX_SCRAMBLER_RESET,
+			      XDPTX_SCRAMBLER_RESET_MASK);
+	}
+
+	/* Wait for PHY ready */
 	ret = xlnx_dp_phy_ready(dp);
 	if (ret < 0)
 		return ret;
@@ -1124,10 +1155,32 @@ static int xlnx_dp_train(struct xlnx_dp *dp)
 		dev_err(dp->dev, "failed to disable training pattern\n");
 		return ret;
 	}
-	/* Disable the scrambler.*/
+	/* Enable the scrambler */
 	xlnx_dp_write(dp->dp_base, XDPTX_SCRAMBLING_DIS_REG, 0);
 
 	return 0;
+}
+
+static void xlnx_dp_phy_reset(struct xlnx_dp *dp, u32 reset)
+{
+	u32 phy_val, reg_val;
+
+	xlnx_dp_write(dp->dp_base, XDPTX_ENABLE_REG, 0);
+
+	/* Preserve the current PHY settings */
+	phy_val = xlnx_dp_read(dp->dp_base, XDPTX_PHYCONFIG_REG);
+
+	/* Apply reset */
+	reg_val = phy_val | reset;
+	xlnx_dp_write(dp->dp_base, XDPTX_PHYCONFIG_REG, reg_val);
+
+	/* Remove reset */
+	xlnx_dp_write(dp->dp_base, XDPTX_PHYCONFIG_REG, phy_val);
+
+	/* Wait for the PHY to be ready */
+	xlnx_dp_phy_ready(dp);
+
+	xlnx_dp_write(dp->dp_base, XDPTX_ENABLE_REG, 1);
 }
 
 /**
@@ -1135,8 +1188,11 @@ static int xlnx_dp_train(struct xlnx_dp *dp)
  * @dp: DisplayPort IP core structure
  *
  * Train the link by downshifting the link rate if training is not successful.
+ *
+ * Return: 0 if training is successful
+ * -EIO when connector status is disconnected or failed to train the link
  */
-static void xlnx_dp_train_loop(struct xlnx_dp *dp)
+static int xlnx_dp_train_loop(struct xlnx_dp *dp)
 {
 	struct xlnx_dp_mode *mode = &dp->mode;
 	u8 bw = mode->bw_code;
@@ -1145,10 +1201,10 @@ static void xlnx_dp_train_loop(struct xlnx_dp *dp)
 	do {
 		if (dp->status == connector_status_disconnected ||
 		    !dp->enabled)
-			return;
+			return -EIO;
 		ret = xlnx_dp_train(dp);
 		if (!ret)
-			return;
+			return ret;
 		ret = xlnx_dp_mode_configure(dp, mode->pclock, bw);
 		if (ret < 0)
 			goto err_out;
@@ -1158,6 +1214,8 @@ static void xlnx_dp_train_loop(struct xlnx_dp *dp)
 
 err_out:
 	dev_err(dp->dev, "failed to train the DP link\n");
+
+	return -EIO;
 }
 
 /**
@@ -1202,7 +1260,7 @@ static int xlnx_dp_aux_cmd_submit(struct xlnx_dp *dp, u32 cmd, u16 addr,
 	}
 
 	reg = cmd << XDPTX_AUXCMD_SHIFT;
-	if (!buf || !bytes)
+	if (!bytes)
 		reg |= XDPTX_AUXCMD_ADDRONLY_MASK;
 	else
 		reg |= (bytes - 1) << XDPTX_AUXCMD_BYTES_SHIFT;
@@ -1510,6 +1568,87 @@ static void xlnx_dp_encoder_mode_set_stream(struct xlnx_dp *dp,
 	xlnx_dp_write(dp_base, XDPTX_TRANSFER_UNITSIZE_REG, 0x40);
 }
 
+/**
+ * xlnx_dp_start - start the DisplayPort core
+ * @dp: DisplayPort IP core structure
+ *
+ * This function trains the DisplayPort link based on the sink capabilities and
+ * enables the main link.
+ */
+static void xlnx_dp_start(struct xlnx_dp *dp)
+{
+	void __iomem *dp_base = dp->dp_base;
+	unsigned int i;
+	int ret = 0;
+
+	/* Reset PHY */
+	xlnx_dp_phy_reset(dp, XDPTX_PHYCONFIG_RESET_MASK);
+
+	xlnx_dp_init_aux(dp);
+	if (dp->status != connector_status_connected) {
+		dev_info(dp->dev, "Display not connected\n");
+		return;
+	}
+
+	/* Sink Power cycle */
+	for (i = 0; i < XDPTX_SINK_PWR_CYCLES; i++) {
+		u8 value;
+
+		ret = drm_dp_dpcd_readb(&dp->aux, DP_SET_POWER, &value);
+		if (ret < 0)
+			break;
+
+		value &= ~DP_SET_POWER_MASK;
+		value |= DP_SET_POWER_D3;
+		ret = drm_dp_dpcd_writeb(&dp->aux, DP_SET_POWER, value);
+		if (ret < 0)
+			break;
+
+		value &= ~DP_SET_POWER_MASK;
+		value |= DP_SET_POWER_D0;
+		ret = drm_dp_dpcd_writeb(&dp->aux, DP_SET_POWER, value);
+		if (ret == 0) {
+			/* Per DP spec, the sink exits within 1 msec */
+			usleep_range(1000, 2000);
+			break;
+		}
+		usleep_range(300, 500);
+	}
+
+	if (ret < 0) {
+		dev_err(dp->dev, "DP aux failed\n");
+		return;
+	}
+
+	/* Some monitors take time to wake up properly */
+	msleep(XDPTX_POWERON_DELAY_MS);
+
+	ret = xlnx_dp_train_loop(dp);
+	if (ret < 0) {
+		dev_err(dp->dev, "DP Link Training Failed\n");
+		return;
+	}
+
+	/* Enable VTC and MainStream */
+	xlnx_dp_set(dp->dp_base, XDPTX_VTC_BASE + XDPTX_VTC_CTL,
+		    XDPTX_VTC_CTL_GE);
+	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_ENABLE_REG, 1);
+}
+
+/**
+ * xlnx_dp_stop - stop the DisplayPort core
+ * @dp: DisplayPort IP core structure
+ *
+ * This function disables the DisplayPort main link and VTC.
+ */
+static void xlnx_dp_stop(struct xlnx_dp *dp)
+{
+	xlnx_dp_write(dp->dp_base, XDPTX_MAINSTRM_ENABLE_REG, 0);
+	/* Disable VTC */
+	xlnx_dp_clr(dp->dp_base, XDPTX_VTC_BASE + XDPTX_VTC_CTL,
+		    XDPTX_VTC_CTL_GE);
+}
+
 /*
  * DRM connector functions
  */
@@ -1539,7 +1678,7 @@ xlnx_dp_connector_detect(struct drm_connector *connector, bool force)
 			dev_info(dp->dev, "DPCD read failes");
 			goto disconnected;
 		}
-		dp->dpcd[1] = 0x1e;
+
 		link_config->max_rate = min_t(int,
 					      drm_dp_max_link_rate(dp->dpcd),
 					      dp->config.max_link_rate);
@@ -1574,6 +1713,8 @@ xlnx_dp_connector_detect(struct drm_connector *connector, bool force)
 	}
 disconnected:
 	dp->status = connector_status_disconnected;
+	if (dp->enabled)
+		xlnx_dp_stop(dp);
 
 	return connector_status_disconnected;
 }
@@ -1862,63 +2003,26 @@ static struct platform_device *dptx_register_aud_dev(struct device *dev)
 static void xlnx_dp_encoder_enable(struct drm_encoder *encoder)
 {
 	struct xlnx_dp *dp = encoder_to_dp(encoder);
-	void __iomem *dp_base = dp->dp_base;
-	unsigned int i;
-	int ret = 0;
-	unsigned int xlnx_dp_power_on_delay_ms = 4;
 
 	pm_runtime_get_sync(dp->dev);
-	dp->enabled = true;
-	xlnx_dp_init_aux(dp);
-	if (dp->status == connector_status_connected) {
-		for (i = 0; i < 3; i++) {
-			u8 value;
 
-			ret = drm_dp_dpcd_readb(&dp->aux, DP_SET_POWER, &value);
-			if (ret < 0)
-				break;
+	if (!dp->enabled) {
+		dp->enabled = true;
 
-			value &= ~DP_SET_POWER_MASK;
-			value |= DP_SET_POWER_D3;
-			ret = drm_dp_dpcd_writeb(&dp->aux, DP_SET_POWER, value);
-			if (ret < 0)
-				break;
-
-			value &= ~DP_SET_POWER_MASK;
-			value |= DP_SET_POWER_D0;
-			ret = drm_dp_dpcd_writeb(&dp->aux, DP_SET_POWER, value);
-			if (ret == 0) {
-				/* Per DP spec, the sink exits within 1 msec */
-				usleep_range(1000, 2000);
-				break;
-			}
-			usleep_range(300, 500);
-		}
-		/* Some monitors take time to wake up properly */
-		msleep(xlnx_dp_power_on_delay_ms);
+		xlnx_dp_start(dp);
+		xlnx_dp_write(dp->dp_base, XDPTX_INTR_MASK_REG, 0);
 	}
-	if (ret < 0)
-		dev_err(dp->dev, "DP aux failed\n");
-	else
-		xlnx_dp_train_loop(dp);
-
-	/* Enable VTC */
-	xlnx_dp_set(dp->dp_base,
-		    XDPTX_VTC_BASE + XDPTX_VTC_CTL, XDPTX_VTC_CTL_GE);
-	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_ENABLE_REG, 1);
 }
 
 static void xlnx_dp_encoder_disable(struct drm_encoder *encoder)
 {
 	struct xlnx_dp *dp = encoder_to_dp(encoder);
-	void __iomem *dp_base = dp->dp_base;
 
-	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_ENABLE_REG, 0);
-	dp->enabled = false;
-	cancel_delayed_work(&dp->hpd_work);
-	/* Disable VTC */
-	xlnx_dp_clr(dp->dp_base,
-		    XDPTX_VTC_BASE + XDPTX_VTC_CTL, XDPTX_VTC_CTL_GE);
+	if (dp->enabled) {
+		dp->enabled = false;
+		cancel_delayed_work(&dp->hpd_work);
+		xlnx_dp_stop(dp);
+	}
 	pm_runtime_put_sync(dp->dev);
 }
 
