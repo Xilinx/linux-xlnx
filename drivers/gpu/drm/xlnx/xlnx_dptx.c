@@ -15,6 +15,7 @@
 #include <linux/device.h>
 #include <linux/gpio/consumer.h>
 #include <linux/of_address.h>
+#include <linux/of_device.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/phy/phy.h>
@@ -39,6 +40,32 @@
 #define XDPTX_TRNGPAT_SET_REG			0xc
 #define XDPTX_SCRAMBLING_DIS_REG		0x14
 #define XDPTX_DOWNSPREAD_CTL_REG		0x18
+
+/* GtCtrl Registers */
+#define XDPTX_GTCTL_REG				0x4c
+#define XDPTX_GTCTL_VSWING_MASK			GENMASK(12, 8)
+#define XDPTX_GTCTL_POST_CUR_MASK		GENMASK(22, 18)
+#define XDPTX_GTCTL_LINE_RATE_MASK		GENMASK(2, 1)
+#define XDPTX_GTCTL_LINE_RATE_810G		0x03
+#define XDPTX_GTCTL_LINE_RATE_540G		0x02
+#define XDPTX_GTCTL_LINE_RATE_270G		0x01
+#define XDPTX_GTCTL_LINE_RATE_162G		0x00
+
+/* GTHE4 */
+#define XVPHY_GTHE4_DIFF_SWING_DP_V0P0		0x01
+#define XVPHY_GTHE4_DIFF_SWING_DP_V0P1		0x02
+#define XVPHY_GTHE4_DIFF_SWING_DP_V0P2		0x05
+#define XVPHY_GTHE4_DIFF_SWING_DP_V0P3		0x0b
+#define XVPHY_GTHE4_DIFF_SWING_DP_V1P0		0x02
+#define XVPHY_GTHE4_DIFF_SWING_DP_V1P1		0x05
+#define XVPHY_GTHE4_DIFF_SWING_DP_V1P2		0x07
+#define XVPHY_GTHE4_DIFF_SWING_DP_V2P0		0x04
+#define XVPHY_GTHE4_DIFF_SWING_DP_V2P1		0x07
+#define XVPHY_GTHE4_DIFF_SWING_DP_V3P0		0x08
+#define XVPHY_GTHE4_PREEMP_DP_L0		0x03
+#define XVPHY_GTHE4_PREEMP_DP_L1		0x0d
+#define XVPHY_GTHE4_PREEMP_DP_L2		0x16
+#define XVPHY_GTHE4_PREEMP_DP_L3		0x1d
 
 /* DPTX Core enable registers */
 #define XDPTX_ENABLE_REG			0x80
@@ -248,6 +275,13 @@
 #define DP_INFOFRAME_SIZE(type)	\
 	(DP_INFOFRAME_HEADER_SIZE + DP_ ## type ## _INFOFRAME_SIZE)
 
+/* Gt Quad Base Registers */
+#define GT_QUAD_BASE_CTL				0x0c
+#define GT_QUAD_BASE_CTL_VALUE				0xf9e8d7c6
+#define GT_QUAD_BASE_CH1_CLK_DIV_REG			0x3694
+#define GT_QUAD_BASE_CH1_CLK_DIV_MASK			GENMASK(9, 0)
+#define GT_QUAD_BASE_CH1_CLK_DIV_VALUE			0x260
+
 /**
  * struct xlnx_dptx_audio_data - Audio data structure
  * @buffer: Audio infoframe data buffer
@@ -299,6 +333,7 @@ struct xlnx_dp_mode {
  * @ppc: Pixels per component
  * @fmt: Color format
  * @audio_enabled: flag to indicate audio is enabled in device tree
+ * @versal_gt_present: flag to indicate versal-gt property in device tree
  */
 struct xlnx_dp_config {
 	u32 max_lanes;
@@ -310,6 +345,7 @@ struct xlnx_dp_config {
 	u8 ppc;
 	u8 fmt;
 	bool audio_enabled;
+	bool versal_gt_present;
 };
 
 /**
@@ -336,6 +372,7 @@ struct xlnx_dp_config {
  * @phy_opts: Opaque generic phy configuration
  * @status: connection status
  * @dp_base: Base address of DisplayPort Tx subsystem
+ * @gt_quad_base: Base address of GT Quad Base IP
  * @dpms: current dpms state
  * @dpcd: DP configuration data from currently connected sink device
  * @train_set: set of training data
@@ -367,6 +404,7 @@ struct xlnx_dp {
 	union phy_configure_opts phy_opts;
 	enum drm_connector_status status;
 	void __iomem *dp_base;
+	void __iomem *gt_quad_base;
 	int dpms;
 	u8 dpcd[DP_RECEIVER_CAP_SIZE];
 	u8 train_set[XDPTX_MAX_LANES];
@@ -754,6 +792,168 @@ static void xlnx_dp_tx_set_vswing_preemp(struct xlnx_dp *dp, u8 *aux_data)
 	}
 }
 
+static int config_gt_control_linerate(struct xlnx_dp *dp, int bw_code)
+{
+	u32 data, regval;
+
+	switch (bw_code) {
+	case DP_LINK_BW_1_62:
+		data = XDPTX_GTCTL_LINE_RATE_162G;
+		break;
+	case DP_LINK_BW_2_7:
+		data = XDPTX_GTCTL_LINE_RATE_270G;
+		break;
+	case DP_LINK_BW_5_4:
+		data = XDPTX_GTCTL_LINE_RATE_540G;
+		break;
+	case DP_LINK_BW_8_1:
+		data = XDPTX_GTCTL_LINE_RATE_810G;
+		break;
+	default:
+		data = XDPTX_GTCTL_LINE_RATE_810G;
+	}
+
+	regval = xlnx_dp_read(dp->dp_base, XDPTX_GTCTL_REG);
+	regval &= ~XDPTX_GTCTL_LINE_RATE_MASK;
+	regval |= FIELD_PREP(XDPTX_GTCTL_LINE_RATE_MASK, data);
+	xlnx_dp_write(dp->dp_base, XDPTX_GTCTL_REG, regval);
+
+	/* Wait for PHY ready */
+	return xlnx_dp_phy_ready(dp);
+}
+
+static int xlnx_dp_tx_gt_control_init(struct xlnx_dp *dp)
+{
+	u32 data;
+	int ret;
+
+	/* Setting initial vswing */
+	data = xlnx_dp_read(dp->dp_base, XDPTX_GTCTL_REG);
+	data &= ~XDPTX_GTCTL_VSWING_MASK;
+	data |= FIELD_PREP(XDPTX_GTCTL_VSWING_MASK, 0x05);
+	xlnx_dp_write(dp->dp_base, XDPTX_GTCTL_REG, data);
+
+	xlnx_dp_clr(dp->dp_base, XDPTX_GTCTL_REG, 0x01);
+	ret = xlnx_dp_phy_ready(dp);
+	if (ret < 0)
+		return ret;
+
+	/* Setting initial link rate */
+	ret = config_gt_control_linerate(dp, DP_LINK_BW_5_4);
+	if (ret) {
+		dev_err(dp->dev, "Default Line Rate setting Failed\n");
+		return ret;
+	}
+
+	return 0;
+}
+
+static void config_gt_quad_base(struct xlnx_dp *dp)
+{
+	u32 data;
+
+	/*
+	 * Unlocking the NPI space so that GT CH1 divider value can be
+	 * programmed. This will generate a /20 clk
+	 */
+	xlnx_dp_write(dp->gt_quad_base, GT_QUAD_BASE_CTL,
+		      GT_QUAD_BASE_CTL_VALUE);
+
+	data = xlnx_dp_read(dp->gt_quad_base, GT_QUAD_BASE_CH1_CLK_DIV_REG);
+	data &= ~GT_QUAD_BASE_CH1_CLK_DIV_MASK;
+	data |= FIELD_PREP(GT_QUAD_BASE_CH1_CLK_DIV_MASK,
+			   GT_QUAD_BASE_CH1_CLK_DIV_VALUE);
+	xlnx_dp_write(dp->gt_quad_base, GT_QUAD_BASE_CH1_CLK_DIV_REG, data);
+}
+
+/**
+ * xlnx_dp_tx_pe_vs_adjust_handler - Calculate and configure pe and vs values
+ * @dp: DisplayPort IP core structure
+ * @dp_phy_opts: phy configuration structure
+ *
+ * This function adjusts the pre emphasis and voltage swing values of phy.
+ */
+static void xlnx_dp_tx_pe_vs_adjust_handler(struct xlnx_dp *dp,
+					    struct phy_configure_opts_dp *dp_phy_opts)
+{
+	u8 preemp = 0, diff_swing = 0;
+	u32 data;
+
+	switch (dp_phy_opts->pre[0]) {
+	case 0:
+		preemp = XVPHY_GTHE4_PREEMP_DP_L0;
+		break;
+	case 1:
+		preemp = XVPHY_GTHE4_PREEMP_DP_L1;
+		break;
+	case 2:
+		preemp = XVPHY_GTHE4_PREEMP_DP_L2;
+		break;
+	case 3:
+		preemp = XVPHY_GTHE4_PREEMP_DP_L3;
+		break;
+	}
+
+	switch (dp_phy_opts->voltage[0]) {
+	case 0:
+		switch (dp_phy_opts->pre[0]) {
+		case 0:
+			diff_swing = XVPHY_GTHE4_DIFF_SWING_DP_V0P0;
+			break;
+		case 1:
+			diff_swing = XVPHY_GTHE4_DIFF_SWING_DP_V0P1;
+			break;
+		case 2:
+			diff_swing = XVPHY_GTHE4_DIFF_SWING_DP_V0P2;
+			break;
+		case 3:
+			diff_swing = XVPHY_GTHE4_DIFF_SWING_DP_V0P3;
+			break;
+		}
+		break;
+	case 1:
+		switch (dp_phy_opts->pre[0]) {
+		case 0:
+			diff_swing = XVPHY_GTHE4_DIFF_SWING_DP_V1P0;
+			break;
+		case 1:
+			diff_swing = XVPHY_GTHE4_DIFF_SWING_DP_V1P1;
+			break;
+		case 2:
+			fallthrough;
+		case 3:
+			diff_swing = XVPHY_GTHE4_DIFF_SWING_DP_V1P2;
+			break;
+		}
+		break;
+	case 2:
+		switch (dp_phy_opts->pre[0]) {
+		case 0:
+			diff_swing = XVPHY_GTHE4_DIFF_SWING_DP_V2P0;
+			break;
+		case 1:
+			fallthrough;
+		case 2:
+			fallthrough;
+		case 3:
+			diff_swing = XVPHY_GTHE4_DIFF_SWING_DP_V2P1;
+			break;
+		}
+		break;
+	case 3:
+		diff_swing = XVPHY_GTHE4_DIFF_SWING_DP_V3P0;
+		break;
+	}
+
+	data = xlnx_dp_read(dp->dp_base, XDPTX_GTCTL_REG);
+	data &= ~(XDPTX_GTCTL_POST_CUR_MASK | XDPTX_GTCTL_VSWING_MASK);
+	data |= FIELD_PREP(XDPTX_GTCTL_VSWING_MASK, diff_swing) |
+		FIELD_PREP(XDPTX_GTCTL_POST_CUR_MASK, preemp);
+	xlnx_dp_write(dp->dp_base, XDPTX_GTCTL_REG, data);
+
+	dp_phy_opts->set_voltages = 0;
+}
+
 /**
  * xlnx_dp_tx_adj_vswing_preemp - Sets voltage swing and pre-emphasis levels
  * @dp:Pointer to xlnx_dp structure
@@ -842,7 +1042,10 @@ static int xlnx_dp_tx_adj_vswing_preemp(struct xlnx_dp *dp, u8 link_status[6])
 	phy_cfg->voltage[0] = dp->tx_link_config.vs_level;
 	phy_cfg->set_voltages = 1;
 
-	phy_configure(dp->phy[0], &dp->phy_opts);
+	if (!dp->config.versal_gt_present)
+		phy_configure(dp->phy[0], &dp->phy_opts);
+	else
+		xlnx_dp_tx_pe_vs_adjust_handler(dp, &dp->phy_opts.dp);
 
 	return 0;
 }
@@ -1018,7 +1221,7 @@ static int xlnx_dp_link_train_ce(struct xlnx_dp *dp)
  */
 static int xlnx_dp_train(struct xlnx_dp *dp)
 {
-	u32 reg, val;
+	u32 reg, lrate_val, val;
 	u8 bw_code = dp->mode.bw_code;
 	u8 lane_cnt = dp->mode.lane_cnt;
 	u8 aux_lane_cnt = lane_cnt;
@@ -1065,17 +1268,28 @@ static int xlnx_dp_train(struct xlnx_dp *dp)
 	switch (bw_code) {
 	case DP_LINK_BW_1_62:
 		reg = XDPTX_PHYCLOCK_FBSETTING162_MASK;
+		if (dp->config.versal_gt_present)
+			lrate_val = XDPTX_GTCTL_LINE_RATE_162G;
 		break;
 	case DP_LINK_BW_2_7:
 		reg = XDPTX_PHYCLOCK_FBSETTING270_MASK;
+		if (dp->config.versal_gt_present)
+			lrate_val = XDPTX_GTCTL_LINE_RATE_270G;
 		break;
 	case DP_LINK_BW_5_4:
-		/* fall-through */
+		reg = XDPTX_PHYCLOCK_FBSETTING810_MASK;
+		if (dp->config.versal_gt_present)
+			lrate_val = XDPTX_GTCTL_LINE_RATE_540G;
+		break;
 	case DP_LINK_BW_8_1:
 		reg = XDPTX_PHYCLOCK_FBSETTING810_MASK;
+		if (dp->config.versal_gt_present)
+			lrate_val = XDPTX_GTCTL_LINE_RATE_810G;
 		break;
 	default:
 		reg = XDPTX_PHYCLOCK_FBSETTING810_MASK;
+		if (dp->config.versal_gt_present)
+			lrate_val = XDPTX_GTCTL_LINE_RATE_810G;
 	}
 
 	/*
@@ -1092,6 +1306,13 @@ static int xlnx_dp_train(struct xlnx_dp *dp)
 	ret = xlnx_dp_phy_ready(dp);
 	if (ret < 0)
 		return ret;
+
+	if (dp->config.versal_gt_present) {
+		val = xlnx_dp_read(dp->dp_base, XDPTX_GTCTL_REG);
+		val &= ~XDPTX_GTCTL_LINE_RATE_MASK;
+		val |= FIELD_PREP(XDPTX_GTCTL_LINE_RATE_MASK, lrate_val);
+		xlnx_dp_write(dp->dp_base, XDPTX_GTCTL_REG, val);
+	}
 
 	/* Disable main link during training. */
 	val = xlnx_dp_read(dp->dp_base, XDPTX_MAINSTRM_ENABLE_REG);
@@ -1358,10 +1579,9 @@ static int xlnx_dp_init_aux(struct xlnx_dp *dp)
 			break;
 	}
 
-	if (w > 48) {
-		dev_err(dp->dev, "aclk frequency too high\n");
-		return -EINVAL;
-	}
+	if (w > 48)
+		w = 48;
+
 	reg = w << XDPTX_CLKDIV_AUXFILTER_SHIFT;
 	reg |= rate / XDPTX_CLKDIV_MHZ;
 	xlnx_dp_write(dp->dp_base, XDPTX_CLKDIV_REG, reg);
@@ -1707,7 +1927,13 @@ xlnx_dp_connector_detect(struct drm_connector *connector, bool force)
 
 		phy_cfg->set_rate = 1;
 		phy_cfg->lanes = link_config->max_lanes;
-		phy_configure(dp->phy[0], &dp->phy_opts);
+		if (!dp->config.versal_gt_present)
+			phy_configure(dp->phy[0], &dp->phy_opts);
+
+		if (dp->enabled) {
+			xlnx_dp_stop(dp);
+			xlnx_dp_start(dp);
+		}
 
 		return connector_status_connected;
 	}
@@ -2309,13 +2535,20 @@ static int xlnx_dp_parse_of(struct xlnx_dp *dp)
 	config->audio_enabled =
 		of_property_read_bool(node, "xlnx,audio-enable");
 
+	config->versal_gt_present =
+		of_property_read_bool(node, "xlnx,versal-gt");
+
 	return 0;
 }
 
 static int xlnx_dp_probe(struct platform_device *pdev)
 {
+	struct device_node *pnode = pdev->dev.of_node;
+	struct device_node *fnode;
+	struct platform_device *iface_pdev;
 	struct xlnx_dp *dp;
 	struct resource *res;
+	void *ptr;
 	unsigned int i;
 	int irq, ret;
 
@@ -2344,6 +2577,37 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return ret;
 
+	if (dp->config.versal_gt_present) {
+		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "gt_quad_base");
+		dp->gt_quad_base = devm_ioremap_resource(dp->dev, res);
+		if (IS_ERR(dp->gt_quad_base)) {
+			dev_err(&pdev->dev,
+				"couldn't map GT Quad Base IP registers\n");
+			return -ENODEV;
+		}
+
+		fnode = of_parse_phandle(pnode, "xlnx,xilinx-vfmc", 0);
+		if (!fnode) {
+			dev_err(&pdev->dev, "platform node not found\n");
+			of_node_put(fnode);
+		} else {
+			iface_pdev = of_find_device_by_node(fnode);
+			if (!iface_pdev) {
+				of_node_put(pnode);
+				return -ENODEV;
+			}
+
+			ptr = dev_get_drvdata(&iface_pdev->dev);
+			if (!ptr) {
+				dev_info(&pdev->dev,
+					 "platform device not found -EPROBE_DEFER\n");
+				of_node_put(fnode);
+				return -EPROBE_DEFER;
+			}
+			of_node_put(fnode);
+		}
+	}
+
 	dp->axi_lite_clk = devm_clk_get(&pdev->dev, "s_axi_aclk");
 	if (IS_ERR(dp->axi_lite_clk))
 		return PTR_ERR(dp->axi_lite_clk);
@@ -2359,30 +2623,38 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 	dp->tx_link_config.vs_level = 0;
 	dp->tx_link_config.pe_level = 0;
 
-	/* acquire vphy lanes */
-	for (i = 0; i < dp->config.max_lanes; i++) {
-		char phy_name[16];
+	if (!dp->config.versal_gt_present) {
+		/* acquire vphy lanes */
+		for (i = 0; i < dp->config.max_lanes; i++) {
+			char phy_name[16];
 
-		snprintf(phy_name, sizeof(phy_name), "dp-phy%d", i);
-		dp->phy[i] = devm_phy_get(dp->dev, phy_name);
-		if (IS_ERR(dp->phy[i])) {
-			ret = PTR_ERR(dp->phy[i]);
-			dp->phy[i] = NULL;
-			if (ret == -EPROBE_DEFER) {
-				dev_info(dp->dev,
-					 "xvphy not ready -EPROBE_DEFER\n");
-				return ret;
+			snprintf(phy_name, sizeof(phy_name), "dp-phy%d", i);
+			dp->phy[i] = devm_phy_get(dp->dev, phy_name);
+			if (IS_ERR(dp->phy[i])) {
+				ret = PTR_ERR(dp->phy[i]);
+				dp->phy[i] = NULL;
+				if (ret == -EPROBE_DEFER) {
+					dev_info(dp->dev,
+						 "xvphy not ready -EPROBE_DEFER\n");
+					return ret;
+				}
+				if (ret != -EPROBE_DEFER)
+					dev_err(dp->dev, "failed to get phy lane %s i %d, error %d\n",
+						phy_name, i, ret);
+				goto error_phy;
 			}
-			if (ret != -EPROBE_DEFER)
-				dev_err(dp->dev, "failed to get phy lane %s i %d, error %d\n",
-					phy_name, i, ret);
-			goto error_phy;
 		}
-	}
 
-	ret = xlnx_dp_init_phy(dp);
-	if (ret)
-		goto error_phy;
+		ret = xlnx_dp_init_phy(dp);
+		if (ret)
+			goto error_phy;
+	} else {
+		config_gt_quad_base(dp);
+
+		ret = xlnx_dp_tx_gt_control_init(dp);
+		if (ret < 0)
+			return ret;
+	}
 
 	ret = clk_prepare_enable(dp->axi_lite_clk);
 	if (ret) {
@@ -2435,8 +2707,10 @@ tx_vid_clk_err:
 error:
 	drm_dp_aux_unregister(&dp->aux);
 error_phy:
-	dev_dbg(&pdev->dev, "xdprxss_probe() error_phy:\n");
-	xlnx_dp_exit_phy(dp);
+	if (dp->config.versal_gt_present) {
+		dev_dbg(&pdev->dev, "xdprxss_probe() error_phy:\n");
+		xlnx_dp_exit_phy(dp);
+	}
 
 	return ret;
 }
