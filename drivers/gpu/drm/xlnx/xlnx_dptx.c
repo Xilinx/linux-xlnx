@@ -558,37 +558,37 @@ static void xlnx_dp_set_color(struct xlnx_dp *dp, u32 drm_fourcc)
 
 	switch (drm_fourcc) {
 	case DRM_FORMAT_XBGR8888:
-		/* fall-through */
+		fallthrough;
 	case DRM_FORMAT_XRGB8888:
-		/* fall-through */
+		fallthrough;
 	case DRM_FORMAT_BGR888:
-		/* fall-through */
+		fallthrough;
 	case DRM_FORMAT_RGB888:
-		/* fall-through */
+		fallthrough;
 	case DRM_FORMAT_XBGR2101010:
 		config->misc0 |= XDPTX_MISC0_RGB_MASK;
 		config->num_colors = 3;
 		config->fmt = 0x0;
 		break;
 	case DRM_FORMAT_VUY888:
-		/* fall-through */
+		fallthrough;
 	case DRM_FORMAT_XVUY8888:
-		/* fall-through */
+		fallthrough;
 	case DRM_FORMAT_Y8:
-		/* fall-through */
+		fallthrough;
 	case DRM_FORMAT_XVUY2101010:
-		/* fall-through */
+		fallthrough;
 	case DRM_FORMAT_Y10:
 		config->misc0 |= XDPTX_MISC0_YCRCB444_MASK;
 		config->num_colors = 3;
 		config->fmt = 0x1;
 		break;
 	case DRM_FORMAT_YUYV:
-		/* fall-through */
+		fallthrough;
 	case DRM_FORMAT_UYVY:
-		/* fall-through */
+		fallthrough;
 	case DRM_FORMAT_NV16:
-		/* fall-through */
+		fallthrough;
 	case DRM_FORMAT_XV20:
 		config->misc0 |= XDPTX_MISC0_YCRCB422_MASK;
 		config->num_colors = 2;
