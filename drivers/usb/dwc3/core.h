@@ -29,6 +29,7 @@
 #include <linux/ulpi/interface.h>
 
 #include <linux/phy/phy.h>
+#include <../drivers/usb/host/xhci.h>
 
 #define DWC3_MSG_MAX	500
 
@@ -1472,6 +1473,9 @@ struct dwc3_gadget_ep_cmd_params {
 void dwc3_set_prtcap(struct dwc3 *dwc, u32 mode);
 void dwc3_set_mode(struct dwc3 *dwc, u32 mode);
 u32 dwc3_core_fifo_space(struct dwc3_ep *dep, u8 type);
+
+typedef void (*dwc3_wakeup_t)(struct device *dev, bool wakeup);
+void dwc3_host_wakeup_register(dwc3_wakeup_t func);
 
 #define DWC3_IP_IS(_ip)							\
 	(dwc->ip == _ip##_IP)
