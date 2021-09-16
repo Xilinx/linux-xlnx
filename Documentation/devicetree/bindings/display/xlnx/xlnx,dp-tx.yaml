@@ -22,12 +22,13 @@ properties:
           - xlnx,v-dp-txss-3.0
 
   reg:
-    maxItems: 1
+    maxItems: 2
     description: DisplayPort Transmitter Subsystem registers
 
   reg-names:
     items:
       - const: dp_base
+      - const: gt_quad_base
 
   interrupts:
     maxItems: 1
@@ -89,6 +90,15 @@ properties:
       - $ref: /schemas/types.yaml#/definitions/uint32
       - enum: [2, 3, 4, 5, 6, 7, 8]
 
+  xlnx,versal-gt:
+    type: boolean
+    description: |
+      Boolean property present when versal GT is present in design.
+
+  xlnx,xilinx-vfmc:
+    description: phandle of xilinx video FMC node
+    $ref: /schemas/types.yaml#/definitions/phandle
+
   ports:
     type: object
 
@@ -141,15 +151,17 @@ examples:
 
        v_dp_txss1@a0100000 {
            compatible = "xlnx,v-dp-txss-3.0";
-           reg = <0x0 0xa0100000 0x0 0x40000>;
-           reg-names = "dp_base";
+           reg = <0x0 0xa0100000 0x0 0x40000>, <0x0 0xa4080000 0x0 0x10000>;
+           reg-names = "dp_base", "gt_quad_base";
            clock-names = "s_axi_aclk", "tx_vid_clk";
            clocks = <&zynqmp_clk 71>, <&si570_1>;
            interrupts = <0 92 4>;
            xlnx,max-lanes = <4>;
            xlnx,max-link-rate = <810000>;
            xlnx,bpc = <8>;
-           xlnx,audio-chan = <2>;
+           xlnx,audio-channels = <2>;
+           xlnx,versal-gt;
+           xlnx,xilinx-vfmc = <&xfmc>;
            phy-names = "dp-phy0", "dp-phy1", "dp-phy2", "dp-phy3";
            phys = <&vphy_lane0 0 1 1 0>, <&vphy_lane1 0 1 1 0>,
                   <&vphy_lane2 0 1 1 0>, <&vphy_lane3 0 1 1 0>;
