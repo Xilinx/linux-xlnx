@@ -8,6 +8,7 @@
  */
 
 #include <linux/cpuhotplug.h>
+#include <linux/firmware/xlnx-error-events.h>
 #include <linux/firmware/xlnx-event-manager.h>
 #include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/hashtable.h>
@@ -65,10 +66,11 @@ struct registered_event_data {
 
 static bool xlnx_is_error_event(const u32 node_id)
 {
-	if (node_id == EVENT_ERROR_PMC_ERR1 ||
-	    node_id == EVENT_ERROR_PMC_ERR2 ||
-	    node_id == EVENT_ERROR_PSM_ERR1 ||
-	    node_id == EVENT_ERROR_PSM_ERR2)
+	if (node_id == XPM_NODETYPE_EVENT_ERROR_PMC_ERR1 ||
+	    node_id == XPM_NODETYPE_EVENT_ERROR_PMC_ERR2 ||
+	    node_id == XPM_NODETYPE_EVENT_ERROR_PSM_ERR1 ||
+	    node_id == XPM_NODETYPE_EVENT_ERROR_PSM_ERR2 ||
+	    node_id == XPM_NODETYPE_EVENT_ERROR_SW_ERR)
 		return true;
 
 	return false;
