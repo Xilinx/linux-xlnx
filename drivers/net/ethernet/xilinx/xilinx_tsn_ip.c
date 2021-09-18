@@ -320,7 +320,7 @@ int axienet_tsn_open(struct net_device *ndev)
 			phydev = of_phy_connect(lp->ndev, lp->phy_node,
 						axienet_adjust_link,
 						lp->phy_flags,
-						lp->phy_interface);
+						lp->phy_mode);
 		}
 
 		if (!phydev)

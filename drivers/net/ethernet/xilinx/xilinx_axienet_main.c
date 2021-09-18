@@ -1785,7 +1785,7 @@ static int axienet_open(struct net_device *ndev)
 		phydev = of_phy_connect(lp->ndev, lp->phy_node,
 					axienet_adjust_link,
 					lp->phy_flags,
-					lp->phy_interface);
+					lp->phy_mode);
 
 		if (!phydev)
 			dev_err(lp->dev, "of_phy_connect() failed\n");
@@ -3576,7 +3576,6 @@ static int axienet_probe(struct platform_device *pdev)
 	ret = of_get_phy_mode(pdev->dev.of_node, &lp->phy_mode);
 	if (ret < 0)
 		dev_warn(&pdev->dev, "couldn't find phy i/f\n");
-	lp->phy_interface = ret;
 	if (lp->phy_mode == PHY_INTERFACE_MODE_1000BASEX)
 		lp->phy_flags = XAE_PHY_TYPE_1000BASE_X;
 
