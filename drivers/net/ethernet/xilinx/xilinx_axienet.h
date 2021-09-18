@@ -734,7 +734,6 @@ enum axienet_tsn_ioctl {
  * @csum_offload_on_rx_path:	Stores the checksum selection on RX side.
  * @coalesce_count_rx:	Store the irq coalesce on RX side.
  * @coalesce_count_tx:	Store the irq coalesce on TX side.
- * @phy_interface: Phy interface type.
  * @phy_flags:	Phy interface flags.
  * @eth_hasnobuf: Ethernet is configured in Non buf mode.
  * @eth_hasptp: Ethernet is configured for ptp.
@@ -830,7 +829,6 @@ struct axienet_local {
 
 	u32 coalesce_count_rx;
 	u32 coalesce_count_tx;
-	u32 phy_interface;
 	u32 phy_flags;
 	bool eth_hasnobuf;
 	bool eth_hasptp;
