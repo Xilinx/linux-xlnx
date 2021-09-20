@@ -482,6 +482,7 @@ struct xlnx_hdmi_stream {
  * @config: IP configuration structure
  * @stream: stream properties
  * @intr_status: Flag to indicate irq status
+ * @frl_status: Flag to indicate FRL interrupt status
  * @wait_for_streamup: Flag for stream up
  * @tmds_clk: TMDS clock
  * @wait_event: Wait event
@@ -506,6 +507,7 @@ struct xlnx_hdmi {
 	struct xlnx_hdmi_config config;
 	struct xlnx_hdmi_stream stream;
 	u32 intr_status;
+	u32 frl_status;
 	u32 wait_for_streamup:1;
 	u32 tmds_clk;
 	wait_queue_head_t wait_event;
@@ -2122,6 +2124,29 @@ static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 	}
 }
 
+/**
+ * xlnx_hdmi_frlintr_handler - HDMI TX FRL interrupt handler.
+ * @hdmi: pointer to HDMI TX core instance
+ */
+static void xlnx_hdmi_frlintr_handler(struct xlnx_hdmi *hdmi)
+{
+	u32 data;
+
+	/* Read FRL Status register */
+	data = xlnx_hdmi_readl(hdmi, HDMI_TX_FRL_STA);
+
+	/* Check FRL timer event */
+	if ((data) & (HDMI_TX_FRL_STA_TMR_EVT)) {
+		xlnx_hdmi_writel(hdmi, HDMI_TX_FRL_STA,
+				 HDMI_TX_FRL_STA_TMR_EVT);
+		/* Set Timer event flag */
+		hdmi->stream.frl_config.timer_event = true;
+
+		/* Execute state machine */
+		xlnx_hdmi_exec_frl_state(hdmi);
+	}
+}
+
 static irqreturn_t hdmitx_irq_handler(int irq, void *dev_id)
 {
 	struct xlnx_hdmi *hdmi = (struct xlnx_hdmi *)dev_id;
@@ -2131,8 +2156,17 @@ static irqreturn_t hdmitx_irq_handler(int irq, void *dev_id)
 	hdmi->intr_status = xlnx_hdmi_readl(hdmi, HDMI_TX_PIO_STA);
 	hdmi->intr_status &= HDMI_TX_PIO_STA_IRQ;
 
+	if (hdmi->stream.is_frl) {
+		hdmi->frl_status = xlnx_hdmi_readl(hdmi, HDMI_TX_FRL_STA);
+		hdmi->frl_status &= HDMI_TX_FRL_STA_IRQ;
+	}
+
 	spin_lock_irqsave(&hdmi->irq_lock, flags);
 	xlnx_hdmi_piointr_disable(hdmi);
+	if (hdmi->frl_status) {
+		xlnx_hdmi_frl_intr_disable(hdmi);
+		xlnx_hdmi_frl_execute(hdmi);
+	}
 	spin_unlock_irqrestore(&hdmi->irq_lock, flags);
 
 	return IRQ_WAKE_THREAD;
@@ -2150,6 +2184,10 @@ static irqreturn_t hdmitx_irq_thread(int irq, void *data)
 
 	if (hdmi->intr_status)
 		xlnx_hdmi_piointr_handler(hdmi);
+
+	if (hdmi->frl_status && hdmi->stream.is_frl)
+		xlnx_hdmi_frlintr_handler(hdmi);
+
 	hdmi->cable_connected = 1;
 
 	hdmi_mutex_unlock(&hdmi->hdmi_mutex);
