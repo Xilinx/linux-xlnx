@@ -280,6 +280,8 @@
 #define hdmi_mutex_lock(x)	mutex_lock(x)
 #define hdmi_mutex_unlock(x)	mutex_unlock(x)
 
+#define HDMI_TX_MAX_FRL_RATE	6
+
 /**
  * enum hdmi_state - Stream state
  * @HDMI_TX_STATE_STREAM_DOWN: stream down
@@ -322,11 +324,13 @@ enum vid_interface {
  * @bpc: Bits per component
  * @ppc: Pixels per component
  * @vid_interface: AXI_stream or Native interface
+ * @max_frl_rate: maximum frl rate supported by hardware
  */
 struct xlnx_hdmi_config {
 	enum color_depths bpc;
 	enum config_ppc ppc;
 	enum vid_interface vid_interface;
+	u8 max_frl_rate;
 };
 
 /**
@@ -1945,7 +1949,7 @@ static int xlnx_hdmi_parse_of(struct xlnx_hdmi *hdmi)
 	struct xlnx_hdmi_config *config = &hdmi->config;
 	struct device_node *node = hdmi->dev->of_node;
 	int ret;
-	u32 ppc, bpc, vid;
+	u32 ppc, bpc, vid, frl_rate;
 
 	ret = of_property_read_u32(node, "xlnx,input-pixels-per-clock", &ppc);
 	if (ret || (ppc != HDMI_TX_PPC_4 && ppc != HDMI_TX_PPC_8)) {
@@ -1969,6 +1973,13 @@ static int xlnx_hdmi_parse_of(struct xlnx_hdmi *hdmi)
 		return -EINVAL;
 	}
 	config->vid_interface = vid;
+
+	ret = of_property_read_u32(node, "xlnx,max-frl-rate", &frl_rate);
+	if (ret || frl_rate > HDMI_TX_MAX_FRL_RATE) {
+		dev_err(hdmi->dev, "missing or unsupported frl rate\n");
+		return -EINVAL;
+	}
+	config->max_frl_rate = frl_rate;
 
 	return 0;
 }
