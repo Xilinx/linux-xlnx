@@ -162,6 +162,11 @@
 #define HDMI_TX_FRL_CTRL_FRL_LTP2_REQ		GENMASK(19, 16)
 #define HDMI_TX_FRL_CTRL_FRL_LTP1_REQ		GENMASK(15, 12)
 #define HDMI_TX_FRL_CTRL_FRL_LTP0_REQ		GENMASK(11, 8)
+#define HDMI_TX_FRL_CTRL_FRL_REQ_MASK		0xF
+#define HDMI_TX_FRL_CTRL_FRL_LTP0_SHIFT		8
+#define HDMI_TX_FRL_CTRL_FRL_LTP1_SHIFT		12
+#define HDMI_TX_FRL_CTRL_FRL_LTP2_SHIFT		16
+#define HDMI_TX_FRL_CTRL_FRL_LTP3_SHIFT		20
 #define HDMI_TX_FRL_CTRL_FRL_ACT		BIT(7)
 #define HDMI_TX_FRL_CTRL_TST_RC_DISABLE		BIT(5)
 #define HDMI_TX_FRL_CTRL_EXEC			BIT(4)
@@ -265,10 +270,34 @@
 #define HDMI_TX_DDC_SLAVEADDR			0x54
 #define HDMI_TX_DDC_CLKDIV			100000
 #define HDMI_TX_DDC_EDID_LENGTH			256
+#define HDMI_TX_DDC_EDID_SINK_BW		187
+#define HDMI_TX_DDC_EDID_BW_SHIFT		4
 #define HDMI_TX_DDC_ADDR			0x50
 #define HDMI_TX_DDC_READ_DIR			1
 #define HDMI_TX_DDC_DATA_MSK			0xFF
 #define HDMI_TX_DDC_CMD_MSK			0xFE
+#define HDMI_TX_DDC_CFG_1_FFE_LVLS_MASK		0xF
+#define HDMI_TX_DDC_CFG_1_FFE_LVLS_SHIFT	4
+#define HDMI_TX_DDC_CFG_1_FRL_RATE_MASK		0xF
+#define HDMI_TX_DDC_SINK_VER_REG		0x01
+#define HDMI_TX_DDC_UPDATE_FLGS_REG		0x10
+#define HDMI_TX_DDC_CED_REG			0x50
+#define HDMI_TX_DDC_STCR_REG			0x35
+#define HDMI_TX_DDC_STAT_FLGS_REG		0x40
+#define HDMI_TX_DDC_STAT_FLGS_LN01_REG		0x41
+#define HDMI_TX_DDC_STAT_FLGS_LN23_REG		0x42
+#define HDMI_TX_DDC_UPDATE_FLGS_CED_UPDATE_MASK	0x02
+#define HDMI_TX_DDC_UPDATE_FLGS_STUPDATE_MASK	0x08
+#define HDMI_TX_DDC_UPDATE_FLGS_FRL_START_MASK	0x10
+#define HDMI_TX_DDC_UPDATE_FLGS_FLT_UPDATE_MASK	0x20
+#define HDMI_TX_DDC_STCR_FLT_NO_TIMEOUT_MASK	0x20
+#define HDMI_TX_DDC_STAT_FLGS_FLT_RDY_MASK	0x40
+#define HDMI_TX_DDC_STAT_FLGS_LN01_LN0_MASK	0x0F
+#define HDMI_TX_DDC_STAT_FLGS_LN01_LN1_SHIFT	4
+#define HDMI_TX_DDC_STAT_FLGS_LN23_LN2_MASK	0x0F
+#define HDMI_TX_DDC_STAT_FLGS_LN23_LN3_MASK	0x0F
+#define HDMI_TX_DDC_STAT_FLGS_LN23_LN3_SHIFT	4
+
 #define HDMI_TX_FRL_CLK_CYCLES			0x3E7
 #define HDMI_TX_PIXEL_MAXRATE			340000
 
@@ -279,6 +308,13 @@
 
 #define hdmi_mutex_lock(x)	mutex_lock(x)
 #define hdmi_mutex_unlock(x)	mutex_unlock(x)
+
+#define TIMEOUT_2MS		2
+#define TIMEOUT_5MS		5
+#define TIMEOUT_100MS		100
+#define TIMEOUT_200MS		200
+#define TIMEOUT_250MS		250
+#define TIMEOUT_10US		10
 
 #define HDMI_TX_MAX_FRL_RATE	6
 
@@ -319,6 +355,70 @@ enum vid_interface {
 	HDMI_TX_NATIVE_IDE = 2
 };
 
+/* FRL Training States */
+enum frl_train_state {
+	HDMI_TX_FRLSTATE_LTS_L = 0,
+	HDMI_TX_FRLSTATE_LTS_1 = 1,
+	HDMI_TX_FRLSTATE_LTS_2 = 2,
+	HDMI_TX_FRLSTATE_LTS_3_ARM = 3,
+	HDMI_TX_FRLSTATE_LTS_3 = 4,
+	HDMI_TX_FRLSTATE_LTS_4 = 5,
+	HDMI_TX_FRLSTATE_LTS_P_ARM = 6,
+	HDMI_TX_FRLSTATE_LTS_P = 7,
+	HDMI_TX_FRLSTATE_LTS_P_FRL_RDY = 8
+};
+
+/* LTP type */
+enum frl_ltp_type {
+	HDMI_TX_LTP_NO_LTP = 0,
+	HDMI_TX_LTP_ALL_ONES = 1,
+	HDMI_TX_LTP_ALL_ZEROES = 2,
+	HDMI_TX_LTP_NYQUIST_CLOCK = 3,
+	HDMI_TX_LTP_TXDDE_COMPLIANCE = 4,
+	HDMI_TX_LTP_LFSR0 = 5,
+	HDMI_TX_LTP_LFSR1 = 6,
+	HDMI_TX_LTP_LFSR2 = 7,
+	HDMI_TX_LTP_LFSR3 = 8
+};
+
+enum frl_active_mode {
+	HDMI_TX_FRL_ACTIVE_MODE_GAP_ONLY = 0,
+	HDMI_TX_FRL_ACTIVE_MODE_FULL_STREAM = 1
+};
+
+/* HDMI TX SCDC Fields */
+enum xlnx_hdmi_scdc_fields {
+	HDMI_TX_SCDC_FIELD_SOURCE_VER = 0,
+	HDMI_TX_SCDC_FIELD_SNK_CFG0 = 1,
+	HDMI_TX_SCDC_FIELD_SNK_CFG1 = 2,
+	HDMI_TX_SCDC_FIELD_SNK_STU = 3,
+	HDMI_TX_SCDC_FIELD_CED_UPDATE = 4,
+	HDMI_TX_SCDC_FIELD_FRL_START = 5,
+	HDMI_TX_SCDC_FIELD_FLT_UPDATE = 6,
+	HDMI_TX_SCDC_FIELD_FLT_NO_RETRAIN = 7,
+	HDMI_TX_SCDC_FIELD_SIZE = 8
+};
+
+struct xlnx_hdmi_scdc_field {
+	u8 offset;
+	u8 msk;
+	u8 shift;
+};
+
+/**
+ * struct xlnx_hdmi_frl_config - FRL config structure
+ * @timer_cnt: frl timer
+ * @timer_event: flag for timer event
+ * @flt_no_timeout: flag for no timeout
+ * @frl_train_states: indicates the frl training state
+ */
+struct xlnx_hdmi_frl_config {
+	u16 timer_cnt;
+	u8 timer_event;
+	u8 flt_no_timeout;
+	enum frl_train_state frl_train_states;
+};
+
 /**
  * struct xlnx_hdmi_config - Configuration of HDMI
  * @bpc: Bits per component
@@ -335,12 +435,16 @@ struct xlnx_hdmi_config {
 
 /**
  * struct xlnx_hdmi_stream - Stream status
+ * @frl_config: frl config structure
+ * @is_frl: flag indicates frl or tmds
  * @tmds_clock_ratio: tmds clock ratio
  * @is_hdmi: flag indicates dvi or hdmi
  * @is_scrambled: scrambled enabled status;
  * @state: enum reflects the stream is up or down
  */
 struct xlnx_hdmi_stream {
+	struct xlnx_hdmi_frl_config frl_config;
+	u8 is_frl;
 	u8 tmds_clock_ratio;
 	u8 is_hdmi;
 	u8 is_scrambled;
@@ -506,9 +610,18 @@ static struct clk_bulk_data hdmitx_clks[] = {
 #define xlnx_hdmi_auxintr_enable(hdmi) \
 	xlnx_hdmi_writel(hdmi, HDMI_TX_AUX_CTRL_SET,\
 			 HDMI_TX_AUD_CTRL_IE)
+
+#define xlnx_hdmi_auxintr_disable(hdmi) \
+	xlnx_hdmi_writel(hdmi, HDMI_TX_AUX_CTRL_CLR,\
+			 HDMI_TX_AUD_CTRL_IE)
+
 /* Fixed Rate Link */
 #define xlnx_hdmi_frl_intr_disable(hdmi) \
 	xlnx_hdmi_writel(hdmi, HDMI_TX_FRL_CTRL_CLR,\
+			 HDMI_TX_FRL_CTRL_IE)
+
+#define xlnx_hdmi_frl_intr_enable(hdmi) \
+	xlnx_hdmi_writel(hdmi, HDMI_TX_FRL_CTRL_SET,\
 			 HDMI_TX_FRL_CTRL_IE)
 
 #define xlnx_hdmi_frl_clear(hdmi) \
@@ -523,10 +636,30 @@ static struct clk_bulk_data hdmitx_clks[] = {
 	xlnx_hdmi_writel(hdmi, HDMI_TX_FRL_CTRL_SET,\
 			 HDMI_TX_FRL_CTRL_RST)
 
+#define xlnx_hdmi_frl_reset_assert(hdmi) \
+	xlnx_hdmi_writel(hdmi, HDMI_TX_FRL_CTRL_CLR,\
+			 HDMI_TX_FRL_CTRL_RST)
+
+#define xlnx_hdmi_frl_reset_deassert(hdmi) \
+	xlnx_hdmi_writel(hdmi, HDMI_TX_FRL_CTRL_SET,\
+			 HDMI_TX_FRL_CTRL_RST)
+
 #define xlnx_hdmi_frl_sleep(hdmi) \
 	xlnx_hdmi_writel(hdmi, HDMI_TX_FRL_CTRL,\
 			 HDMI_TX_FRL_CTRL_RST |\
 			 HDMI_TX_FRL_CTRL_IE |\
+			 HDMI_TX_FRL_CTRL_EXEC)
+
+#define xlnx_hdmi_frl_mode_enable(hdmi) \
+	xlnx_hdmi_writel(hdmi, HDMI_TX_FRL_CTRL_SET,\
+			 HDMI_TX_FRL_CTRL_OP_MODE)
+
+#define xlnx_hdmi_frl_mode_disable(hdmi) \
+	xlnx_hdmi_writel(hdmi, HDMI_TX_FRL_CTRL_CLR,\
+			 HDMI_TX_FRL_CTRL_OP_MODE)
+
+#define xlnx_hdmi_frl_execute(hdmi) \
+	xlnx_hdmi_writel(hdmi, HDMI_TX_FRL_CTRL_SET,\
 			 HDMI_TX_FRL_CTRL_EXEC)
 
 #define xlnx_hdmi_set_hdmi_mode(hdmi) \
