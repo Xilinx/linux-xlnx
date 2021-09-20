@@ -78,6 +78,14 @@ properties:
       - $ref: /schemas/types.yaml#/definitions/uint32
       - enum: [0, 1, 2]
 
+  xlnx,max-frl-rate:
+    description: Maximum FRL Rate.
+                 Possible values are 0 for TMDS mode,
+                 1 to 6 for FRL mode of operation.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0, 1, 2, 3, 4, 5, 6]
+
   ports:
     type: object
 
@@ -113,6 +121,7 @@ required:
   - xlnx,input-pixels-per-clock
   - xlnx,max-bits-per-component
   - xlnx,vid-interface
+  - xlnx,max-frl-rate
   - ports
 
 additionalProperties: false
@@ -128,6 +137,7 @@ examples:
         xlnx,input-pixels-per-clock = <4>;
         xlnx,max-bits-per-component = <0x8>;
         xlnx,vid-interface = <0>;
+        xlnx,max-frl-rate = <0x6>;
         phy-names = "hdmi-phy0", "hdmi-phy1", "hdmi-phy2", "hdmi-phy3";
         phys = <&hdmiphy_lane0 0 1 1 1>, <&hdmiphy_lane1 0 1 1 1>,
                <&hdmiphy_lane2 0 1 1 1>, <&hdmiphy_lane3 0 1 1 1>;
