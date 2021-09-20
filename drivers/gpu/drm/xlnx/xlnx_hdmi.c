@@ -2453,8 +2453,8 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	struct drm_display_mode *mode = &crtc_state->mode;
 	struct drm_display_mode *adjusted_mode = &crtc_state->adjusted_mode;
 	union phy_configure_opts phy_cfg = {0};
-	int ret;
-	u32 drm_fourcc;
+	int ret, i;
+	u32 drm_fourcc, lnk_clk, vid_clk;
 
 	dev_dbg(hdmi->dev, "mode->clock = %d\n", mode->clock * 1000);
 	dev_dbg(hdmi->dev, "mode->crtc_clock = %d\n", mode->crtc_clock * 1000);
@@ -2474,6 +2474,15 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	dev_dbg(hdmi->dev, "mode->flags = %d interlace = %d\n", mode->flags,
 		!!(mode->flags & DRM_MODE_FLAG_INTERLACE));
 
+	if (hdmi->stream.is_frl) {
+		xlnx_hdmi_frl_reset_deassert(hdmi);
+		xlnx_hdmi_frl_intr_enable(hdmi);
+		xlnx_hdmi_frl_execute(hdmi);
+	} else {
+		xlnx_hdmi_frl_ext_vidsrc(hdmi);
+		xlnx_hdmi_frl_sleep(hdmi);
+	}
+
 	drm_fourcc = encoder->crtc->primary->state->fb->format->format;
 	hdmi->xvidc_colorfmt = xlnx_hdmi_find_media_bus(hdmi, drm_fourcc);
 	dev_dbg(hdmi->dev, "xvidc_colorfmt = %d\n", hdmi->xvidc_colorfmt);
@@ -2482,34 +2491,65 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	hdmi->tmds_clk = adjusted_mode->clock * 1000;
 	dev_dbg(hdmi->dev, "tmds_clk = %u\n", hdmi->tmds_clk);
 
-	phy_cfg.hdmi.clkout1_obuftds = 1;
-	phy_cfg.hdmi.clkout1_obuftds_en = false;
-	ret = phy_configure(hdmi->phy[0], &phy_cfg);
-	if (ret)
-		dev_err(hdmi->dev, "phy_cfg:10bufds_en err\n");
+	if (hdmi->stream.is_frl) {
+		phy_cfg.hdmi.clkout1_obuftds = 1;
+		phy_cfg.hdmi.clkout1_obuftds_en = false;
+		for (i = 0; i < HDMI_MAX_LANES; i++) {
+			ret = phy_configure(hdmi->phy[i], &phy_cfg);
+			if (ret) {
+				dev_err(hdmi->dev, "phy_cfg:10bufds_en err\n");
+				return;
+			}
+		}
+	}
 
 	xlnx_hdmi_stream_start(hdmi);
-	xlnx_hdmi_clkratio(hdmi);
-
-	/* Assert VID_IN bridge resets */
-	xlnx_hdmi_ext_sysrst_assert(hdmi);
-	xlnx_hdmi_ext_vrst_assert(hdmi);
-
-	/* Assert HDMI TXCore resets */
-	xlnx_hdmi_int_lrst_assert(hdmi);
-	xlnx_hdmi_int_vrst_assert(hdmi);
-
 	/* get tmds clock from phy */
-	phy_cfg.hdmi.tx_params = 1;
-	phy_cfg.hdmi.ppc = config->ppc;
-	phy_cfg.hdmi.bpc = config->bpc;
-	phy_cfg.hdmi.fmt = hdmi->xvidc_colorfmt;
-	phy_cfg.hdmi.tx_tmdsclk = hdmi->tmds_clk;
-	ret = phy_configure(hdmi->phy[0], &phy_cfg);
-	if (ret)
-		dev_err(hdmi->dev, "phy_config: set txparams error %d\n", ret);
+	if (!hdmi->stream.is_frl) {
+		xlnx_hdmi_clkratio(hdmi);
 
-	xlnx_hdmi_start_frl_train(hdmi, hdmi->config.max_frl_rate);
+		/* Assert VID_IN bridge resets */
+		xlnx_hdmi_ext_sysrst_assert(hdmi);
+		xlnx_hdmi_ext_vrst_assert(hdmi);
+
+		/* Assert HDMI TXCore resets */
+		xlnx_hdmi_int_lrst_assert(hdmi);
+		xlnx_hdmi_int_vrst_assert(hdmi);
+
+		phy_cfg.hdmi.tx_params = 1;
+		phy_cfg.hdmi.ppc = config->ppc;
+		phy_cfg.hdmi.bpc = config->bpc;
+		phy_cfg.hdmi.fmt = hdmi->xvidc_colorfmt;
+		phy_cfg.hdmi.tx_tmdsclk = hdmi->tmds_clk;
+		for (i = 0; i < HDMI_MAX_LANES; i++) {
+			ret = phy_configure(hdmi->phy[i], &phy_cfg);
+			if (ret) {
+				dev_err(hdmi->dev, "phy_config: set txparams error %d\n", ret);
+				return;
+			}
+		}
+	} else {
+		lnk_clk = adjusted_mode->clock / config->ppc;
+		vid_clk = lnk_clk;
+
+		xlnx_set_frl_link_clk(hdmi, lnk_clk);
+		xlnx_set_frl_vid_clk(hdmi, vid_clk);
+
+		xlnx_hdmi_aux_enable(hdmi);
+		xlnx_hdmi_start_frl_train(hdmi, hdmi->config.max_frl_rate);
+		xlnx_hdmi_auxintr_enable(hdmi);
+		xlnx_hdmi_set_samplerate(hdmi, 1);
+
+		/* release vid_in bridge resets */
+		xlnx_hdmi_ext_sysrst_deassert(hdmi);
+		xlnx_hdmi_ext_vrst_deassert(hdmi);
+		/* release tx cor resets */
+		xlnx_hdmi_int_lrst_deassert(hdmi);
+		xlnx_hdmi_int_vrst_deassert(hdmi);
+		xlnx_pioout_bridge_yuv_clr(hdmi);
+		xlnx_pioout_bridge_pixel_clr(hdmi);
+	}
+
 	dev_dbg(hdmi->dev, "mode->clock = %u Hz\n", adjusted_mode->clock);
 
 	hdmi->wait_for_streamup = 0;
@@ -2523,11 +2563,18 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 		dev_dbg(hdmi->dev, "TX: Video ready interrupt received\n");
 		if (!config->vid_interface)
 			xlnx_hdmi_vtc_set_timing(hdmi, adjusted_mode);
+		if (hdmi->stream.is_frl)
+			xlnx_hdmi_vtc_writel(hdmi, HDMI_TX_VTC_CTL,
+					     HDMI_TX_VTC_CTL_GE);
 	} else {
 		dev_dbg(hdmi->dev, "video ready interrupt not received\n");
 	}
 
-	xlnx_hdmi_ext_sysrst_assert(hdmi);
+	if (hdmi->stream.is_frl)
+		xlnx_hdmi_set_frl_active(hdmi,
+					 HDMI_TX_FRL_ACTIVE_MODE_FULL_STREAM);
+	else
+		xlnx_hdmi_ext_sysrst_assert(hdmi);
 }
 
 static const struct drm_encoder_funcs xlnx_hdmi_encoder_funcs = {
@@ -2668,7 +2715,7 @@ static void xlnx_hdmi_exit_phy(struct xlnx_hdmi *hdmi)
 static int xlnx_hdmi_initialize(struct xlnx_hdmi *hdmi)
 {
 	union phy_configure_opts phy_cfg = {0};
-	int ret;
+	int ret, i;
 	unsigned long val, clkrate;
 
 	/* mutex that protects against concurrent access */
@@ -2686,7 +2733,6 @@ static int xlnx_hdmi_initialize(struct xlnx_hdmi *hdmi)
 	xlnx_hdmi_aux_disable(hdmi);
 	xlnx_hdmi_frl_intr_disable(hdmi);
 	xlnx_hdmi_frl_clear(hdmi);
-	xlnx_hdmi_frl_ext_vidsrc(hdmi);
 	xlnx_hdmi_piointr_clear(hdmi);
 	xlnx_hdmi_ddc_intr_clear(hdmi);
 
@@ -2731,10 +2777,12 @@ static int xlnx_hdmi_initialize(struct xlnx_hdmi *hdmi)
 	xlnx_hdmi_reset(hdmi);
 
 	phy_cfg.hdmi.config_hdmi20 = 1;
-	ret = phy_configure(hdmi->phy[0], &phy_cfg);
-	if (ret) {
-		dev_err(hdmi->dev, "phy_cfg: hdmi20 err\n");
-		return ret;
+	for (i = 0; i < HDMI_MAX_LANES; i++) {
+		ret = phy_configure(hdmi->phy[i], &phy_cfg);
+		if (ret) {
+			dev_err(hdmi->dev, "phy_cfg: hdmi20 err\n");
+			return ret;
+		}
 	}
 
 	/* Enable Interrupts */
