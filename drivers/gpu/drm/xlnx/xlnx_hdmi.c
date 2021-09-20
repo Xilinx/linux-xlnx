@@ -2018,7 +2018,7 @@ xlnx_hdmi_start_frl_train(struct xlnx_hdmi *hdmi, u32 frl_rate)
 static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 {
 	union phy_configure_opts phy_cfg = {0};
-	int ret;
+	int ret, i;
 	u32 event, data;
 
 	/* Read PIO IN Event register */
@@ -2040,28 +2040,49 @@ static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 		if (data & HDMI_TX_PIO_IN_HPD_CONNECT) {
 			hdmi->cable_connected = 1;
 			hdmi->connector.status = connector_status_connected;
-			xlnx_hdmi_frl_sleep(hdmi);
 			xlnx_hdmi_ddc_disable(hdmi);
 
 			phy_cfg.hdmi.ibufds = 1;
 			phy_cfg.hdmi.ibufds_en = true;
-			ret = phy_configure(hdmi->phy[0], &phy_cfg);
-			if (ret)
-				dev_err(hdmi->dev, "phy_cfg: Ibufds err\n");
+			for (i = 0; i < HDMI_MAX_LANES; i++) {
+				ret = phy_configure(hdmi->phy[i], &phy_cfg);
+				if (ret) {
+					dev_err(hdmi->dev, "phy_cfg: Ibufds err\n");
+					return;
+				}
+			}
 
 			phy_cfg.hdmi.config_hdmi20 = 1;
-			ret = phy_configure(hdmi->phy[0], &phy_cfg);
-			if (ret)
-				dev_err(hdmi->dev, "phy_cfg: hdmi20 err\n");
+			for (i = 0; i < HDMI_MAX_LANES; i++) {
+				ret = phy_configure(hdmi->phy[i], &phy_cfg);
+				if (ret) {
+					dev_err(hdmi->dev, "phy_cfg: hdmi20 err\n");
+					return;
+				}
+			}
+
+			phy_cfg.hdmi.clkout1_obuftds = 1;
+			phy_cfg.hdmi.clkout1_obuftds_en = false;
+			for (i = 0; i < HDMI_MAX_LANES; i++) {
+				ret = phy_configure(hdmi->phy[i], &phy_cfg);
+				if (ret) {
+					dev_err(hdmi->dev, "phy_cfg:obuftds_en err\n");
+					return;
+				}
+			}
 		} else {
 			hdmi->cable_connected = 0;
 			hdmi->connector.status = connector_status_disconnected;
 			dev_info(hdmi->dev, "stream is not connected\n");
 			phy_cfg.hdmi.clkout1_obuftds = 1;
 			phy_cfg.hdmi.clkout1_obuftds_en = false;
-			ret = phy_configure(hdmi->phy[0], &phy_cfg);
-			if (ret)
-				dev_err(hdmi->dev, "phy_cfg:10bufds_en err\n");
+			for (i = 0; i < HDMI_MAX_LANES; i++) {
+				ret = phy_configure(hdmi->phy[i], &phy_cfg);
+				if (ret) {
+					dev_err(hdmi->dev, "phy_cfg:obuftds_dis err\n");
+					return;
+				}
+			}
 		}
 
 		if (hdmi->connector.dev)
@@ -2072,6 +2093,8 @@ static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 
 	/* Bridge Unlocked event has occurred */
 	if (event & HDMI_TX_PIO_IN_BRIDGE_LOCKED) {
+		dev_dbg(hdmi->dev, "PIO IN status = 0x%x\n",
+			xlnx_hdmi_readl(hdmi, HDMI_TX_PIO_IN));
 		if (data & HDMI_TX_PIO_IN_BRIDGE_LOCKED)
 			dev_dbg(hdmi->dev, "Bridge locked\n");
 		else
@@ -2091,30 +2114,41 @@ static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 		/* Check the link status */
 		if (data & HDMI_TX_PIO_IN_LNK_RDY) {
 			hdmi->stream.state = HDMI_TX_STATE_STREAM_UP;
-			xlnx_hdmi_aux_enable(hdmi);
-			xlnx_hdmi_auxintr_enable(hdmi);
+			if (hdmi->stream.frl_config.frl_train_states ==
+			    HDMI_TX_FRLSTATE_LTS_3_ARM) {
+				/* Execute state machine */
+				xlnx_hdmi_exec_frl_state(hdmi);
+			}
+			if (!hdmi->stream.is_frl) {
+				xlnx_hdmi_aux_enable(hdmi);
+				xlnx_hdmi_auxintr_enable(hdmi);
 
-			phy_cfg.hdmi.clkout1_obuftds = 1;
-			phy_cfg.hdmi.clkout1_obuftds_en = true;
-			ret = phy_configure(hdmi->phy[0], &phy_cfg);
-			if (ret)
-				dev_err(hdmi->dev, "phy_cfg: 10bufds_en err\n");
+				phy_cfg.hdmi.clkout1_obuftds = 1;
+				phy_cfg.hdmi.clkout1_obuftds_en = true;
+				for (i = 0; i < HDMI_MAX_LANES; i++) {
+					ret = phy_configure(hdmi->phy[i],
+							    &phy_cfg);
+					if (ret) {
+						dev_err(hdmi->dev, "phy_cfg: 10bufds_en err\n");
+						return;
+					}
+				}
+				xlnx_hdmi_set_samplerate(hdmi, 1);
 
-			xlnx_hdmi_set_samplerate(hdmi, 1);
+				/* release vid_in bridge resets */
+				xlnx_hdmi_ext_sysrst_deassert(hdmi);
+				xlnx_hdmi_ext_vrst_deassert(hdmi);
+				/* release tx core resets */
+				xlnx_hdmi_int_lrst_deassert(hdmi);
+				xlnx_hdmi_int_vrst_deassert(hdmi);
 
-			/* release vid_in bridge resets */
-			xlnx_hdmi_ext_sysrst_deassert(hdmi);
-			xlnx_hdmi_ext_vrst_deassert(hdmi);
-			/* release tx core resets */
-			xlnx_hdmi_int_lrst_deassert(hdmi);
-			xlnx_hdmi_int_vrst_deassert(hdmi);
+				hdmi->hdmi_stream_up = 1;
 
-			hdmi->hdmi_stream_up = 1;
-
-			xlnx_pioout_bridge_yuv_clr(hdmi);
-			xlnx_pioout_bridge_pixel_clr(hdmi);
-			xlnx_hdmi_stream_start(hdmi);
-			xlnx_hdmi_clkratio(hdmi);
+				xlnx_pioout_bridge_yuv_clr(hdmi);
+				xlnx_pioout_bridge_pixel_clr(hdmi);
+				xlnx_hdmi_stream_start(hdmi);
+				xlnx_hdmi_clkratio(hdmi);
+			}
 		} else {
 			/* Set stream status to down */
 			hdmi->stream.state = HDMI_TX_STATE_STREAM_DOWN;
