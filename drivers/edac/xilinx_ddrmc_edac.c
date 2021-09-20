@@ -619,7 +619,7 @@ static void xddr_err_callback(const u32 *payload, void *data)
 }
 
 /**
- * xddr_get_dtype - Return the controller memory width.
+ * xddr_get_dwidth - Return the controller memory width.
  * @base:	DDR memory controller base address.
  *
  * Get the EDAC device type width appropriate for the controller
@@ -834,7 +834,7 @@ static int xddr_setup_irq(struct mem_ctl_info *mci,
 #define to_mci(k) container_of(k, struct mem_ctl_info, dev)
 
 /**
- * ddr_poison_setup - Update poison registers.
+ * xddr_poison_setup - Update poison registers.
  * @priv:	DDR memory controller private instance data.
  *
  * Update poison registers as per DDR mapping.
