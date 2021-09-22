@@ -2,7 +2,7 @@
 /*
  * dts file for Xilinx ZynqMP ZCU100 revC
  *
- * (C) Copyright 2016 - 2020, Xilinx, Inc.
+ * (C) Copyright 2016 - 2021, Xilinx, Inc.
  *
  * Michal Simek <michal.simek@xilinx.com>
  * Nathalie Chan King Choy
@@ -23,7 +23,6 @@
 	compatible = "xlnx,zynqmp-zcu100-revC", "xlnx,zynqmp-zcu100", "xlnx,zynqmp";
 
 	aliases {
-		gpio0 = &gpio;
 		i2c0 = &i2c1;
 		rtc0 = &rtc;
 		serial0 = &uart1;
@@ -483,6 +482,13 @@
 	};
 };
 
+&psgtr {
+	status = "okay";
+	/* usb3, dp */
+	clocks = <&si5335_0>, <&si5335_1>;
+	clock-names = "ref0", "ref1";
+};
+
 &rtc {
 	status = "okay";
 };
@@ -518,13 +524,6 @@
 	};
 };
 
-&psgtr {
-	status = "okay";
-	/* usb3, dp */
-	clocks = <&si5335_0>, <&si5335_1>;
-	clock-names = "ref0", "ref1";
-};
-
 &spi0 { /* Low Speed connector */
 	status = "okay";
 	label = "LS-SPI0";
@@ -555,7 +554,6 @@
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart1_default>;
-
 };
 
 /* ULPI SMSC USB3320 */
@@ -563,13 +561,13 @@
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usb0_default>;
+	phy-names = "usb3-phy";
+	phys = <&psgtr 2 PHY_TYPE_USB3 0 0>;
 };
 
 &dwc3_0 {
 	status = "okay";
 	dr_mode = "peripheral";
-	phy-names = "usb3-phy";
-	phys = <&psgtr 2 PHY_TYPE_USB3 0 0>;
 	maximum-speed = "super-speed";
 };
 
@@ -578,13 +576,13 @@
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usb1_default>;
+	phy-names = "usb3-phy";
+	phys = <&psgtr 3 PHY_TYPE_USB3 1 0>;
 };
 
 &dwc3_1 {
 	status = "okay";
 	dr_mode = "host";
-	phy-names = "usb3-phy";
-	phys = <&psgtr 3 PHY_TYPE_USB3 1 0>;
 	maximum-speed = "super-speed";
 };
 

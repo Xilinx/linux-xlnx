@@ -2,7 +2,7 @@
 /*
  * dts file for Xilinx ZynqMP ZCU106
  *
- * (C) Copyright 2016 - 2020, Xilinx, Inc.
+ * (C) Copyright 2016 - 2021, Xilinx, Inc.
  *
  * Michal Simek <michal.simek@xilinx.com>
  */
@@ -22,10 +22,10 @@
 
 	aliases {
 		ethernet0 = &gem3;
-		gpio0 = &gpio;
 		i2c0 = &i2c0;
 		i2c1 = &i2c1;
 		mmc0 = &sdhci1;
+		nvmem0 = &eeprom;
 		rtc0 = &rtc;
 		serial0 = &uart0;
 		serial1 = &uart1;
@@ -37,7 +37,6 @@
 	chosen {
 		bootargs = "earlycon";
 		stdout-path = "serial0:115200n8";
-		xlnx,eeprom = &eeprom;
 	};
 
 	memory@0 {
@@ -947,6 +946,13 @@
 	};
 };
 
+&psgtr {
+	status = "okay";
+	/* nc, sata, usb3, dp */
+	clocks = <&si5341 0 3>, <&si5341 0 2>, <&si5341 0 0>;
+	clock-names = "ref1", "ref2", "ref3";
+};
+
 &qspi {
 	status = "okay";
 	is-dual = <1>;
@@ -975,13 +981,6 @@
 			reg = <0x620000 0x5E0000>;
 		};
 	};
-};
-
-&psgtr {
-	status = "okay";
-	/* nc, sata, usb3, dp */
-	clocks = <&si5341 0 3>, <&si5341 0 2>, <&si5341 0 0>;
-	clock-names = "ref1", "ref2", "ref3";
 };
 
 &rtc {
@@ -1032,14 +1031,15 @@
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usb0_default>;
+	phy-names = "usb3-phy";
+	phys = <&psgtr 2 PHY_TYPE_USB3 0 2>;
 };
 
 &dwc3_0 {
 	status = "okay";
 	dr_mode = "host";
 	snps,usb3_lpm_capable;
-	phy-names = "usb3-phy";
-	phys = <&psgtr 2 PHY_TYPE_USB3 0 2>;
+	maximum-speed = "super-speed";
 };
 
 &watchdog0 {
