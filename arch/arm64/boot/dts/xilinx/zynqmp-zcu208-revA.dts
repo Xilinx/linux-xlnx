@@ -2,7 +2,7 @@
 /*
  * dts file for Xilinx ZynqMP ZCU208
  *
- * (C) Copyright 2017 - 2020, Xilinx, Inc.
+ * (C) Copyright 2017 - 2021, Xilinx, Inc.
  *
  * Michal Simek <michal.simek@xilinx.com>
  */
@@ -22,10 +22,10 @@
 
 	aliases {
 		ethernet0 = &gem3;
-		gpio0 = &gpio;
 		i2c0 = &i2c0;
 		i2c1 = &i2c1;
 		mmc0 = &sdhci1;
+		nvmem0 = &eeprom;
 		rtc0 = &rtc;
 		serial0 = &uart0;
 		serial1 = &dcc;
@@ -36,7 +36,6 @@
 	chosen {
 		bootargs = "earlycon";
 		stdout-path = "serial0:115200n8";
-		xlnx,eeprom = &eeprom;
 	};
 
 	memory@0 {
@@ -693,12 +692,13 @@
 /* ULPI SMSC USB3320 */
 &usb0 {
 	status = "okay";
+	phy-names = "usb3-phy";
+	phys = <&psgtr 2 PHY_TYPE_USB3 0 2>;
 };
 
 &dwc3_0 {
 	status = "okay";
 	dr_mode = "host";
 	snps,usb3_lpm_capable;
-	phy-names = "usb3-phy";
-	phys = <&psgtr 2 PHY_TYPE_USB3 0 2>;
+	maximum-speed = "super-speed";
 };

@@ -2,7 +2,7 @@
 /*
  * dts file for Xilinx ZynqMP zc1751-xm016-dc2
  *
- * (C) Copyright 2015 - 2020, Xilinx, Inc.
+ * (C) Copyright 2015 - 2021, Xilinx, Inc.
  *
  * Michal Simek <michal.simek@xilinx.com>
  */
@@ -19,10 +19,7 @@
 	compatible = "xlnx,zynqmp-zc1751", "xlnx,zynqmp";
 
 	aliases {
-		can0 = &can0;
-		can1 = &can1;
 		ethernet0 = &gem2;
-		gpio0 = &gpio;
 		i2c0 = &i2c0;
 		rtc0 = &rtc;
 		serial0 = &uart0;
@@ -143,6 +140,8 @@
 		nand-ecc-algo = "bch";
 		nand-rb = <0>;
 		label = "main-storage-0";
+		nand-ecc-step-size = <1024>;
+		nand-ecc-strength = <24>;
 
 		partition@0 {	/* for testing purpose */
 			label = "nand-fsbl-uboot";
@@ -177,6 +176,8 @@
 		nand-ecc-algo = "bch";
 		nand-rb = <0>;
 		label = "main-storage-1";
+		nand-ecc-step-size = <1024>;
+		nand-ecc-strength = <24>;
 
 		partition@0 {	/* for testing purpose */
 			label = "nand1-fsbl-uboot";
