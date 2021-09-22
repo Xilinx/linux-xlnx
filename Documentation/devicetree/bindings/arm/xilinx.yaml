@@ -141,6 +141,21 @@ properties:
               - xlnx,zynqmp-zcu1285-revA
               - xlnx,zynqmp-zcu1285-rev1.0
           - const: xlnx,zynqmp-zcu1285
+
+      - description: Xilinx Kria SOMs
+        items:
+          - const: xlnx,zynqmp-sm-k26-rev1
+          - const: xlnx,zynqmp-sm-k26-revB
+          - const: xlnx,zynqmp-sm-k26-revA
+          - const: xlnx,zynqmp-sm-k26
+          - const: xlnx,zynqmp
+
+      - description: Xilinx Kria SOMs (starter)
+        items:
+          - const: xlnx,zynqmp-smk-k26-rev1
+          - const: xlnx,zynqmp-smk-k26-revB
+          - const: xlnx,zynqmp-smk-k26-revA
+          - const: xlnx,zynqmp-smk-k26
           - const: xlnx,zynqmp
 
 additionalProperties: true
