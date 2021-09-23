@@ -350,7 +350,6 @@ static void zynqmp_qspi_set_tapdelay(struct zynqmp_qspi *xqspi, u32 baudrateval)
 
 	zynqmp_gqspi_write(xqspi, GQSPI_LPBK_DLY_ADJ_OFST, lpbkdlyadj);
 	zynqmp_gqspi_write(xqspi, GQSPI_DATA_DLY_ADJ_OFST, datadlyadj);
-	xqspi->set_tapdelay = true;
 }
 
 static u32 zynqmp_disable_intr(struct zynqmp_qspi *xqspi)
@@ -621,6 +620,7 @@ static int zynqmp_qspi_setup_transfer(struct spi_device *qspi,
 		xqspi->speed_hz = clk_rate / (GQSPI_BAUD_DIV_SHIFT <<
 				baud_rate_val);
 		zynqmp_qspi_set_tapdelay(xqspi, baud_rate_val);
+		xqspi->set_tapdelay = true;
 	}
 
 	return 0;
