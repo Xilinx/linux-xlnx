@@ -32,9 +32,19 @@ static int usb5744_init_hw(struct device *dev, struct usb5744 *data)
 
 	if (data->reset_gpio) {
 		/* Toggle RESET_N to reset the hub. */
-		gpiod_set_value(data->reset_gpio, 0);
+		if (dev_is_platform(dev))
+			gpiod_set_value(data->reset_gpio, 0);
+		else
+			gpiod_set_value_cansleep(data->reset_gpio, 0);
+
+		/* Delay - Sleep for an approximate time 5 to 20 usecs */
 		usleep_range(5, 20);
-		gpiod_set_value(data->reset_gpio, 1);
+
+		if (dev_is_platform(dev))
+			gpiod_set_value(data->reset_gpio, 0);
+		else
+			gpiod_set_value_cansleep(data->reset_gpio, 1);
+
 		msleep(5);
 	}
 
