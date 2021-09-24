@@ -105,7 +105,9 @@ enum clk_wzrd_int_clks {
  *      +->| clkout[1]      |-> output6 rate
  *         | (int divide)   |
  *         +----------------+
- *
+ */
+
+/**
  * struct clk_wzrd - Clock wizard private data structure
  *
  * @clk_data:		Clock data
