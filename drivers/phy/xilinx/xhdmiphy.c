@@ -115,8 +115,15 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 			cfg->clkout1_obuftds_en = 0;
 		} else if (cfg->config_hdmi20 && !cfg->config_hdmi21) {
 			xhdmiphy_hdmi20_conf(phy_dev, XHDMIPHY_DIR_RX);
+		} else if (!cfg->config_hdmi20 && cfg->config_hdmi21) {
+			xhdmiphy_hdmi21_conf(phy_dev, XHDMIPHY_DIR_RX,
+					     cfg->linerate, cfg->nchannels);
+			xhdmiphy_clkdet_freq_reset(phy_dev, XHDMIPHY_DIR_RX);
 		} else if (cfg->rx_get_refclk) {
 			cfg->rx_refclk_hz = phy_dev->rx_refclk_hz;
+		} else if (cfg->reset_gt) {
+			xhdmiphy_rst_gt_txrx(phy_dev, XHDMIPHY_CHID_CHA,
+					     XHDMIPHY_DIR_RX, false);
 		}
 		count_rx = 0;
 	}
@@ -148,6 +155,11 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 			cfg->tx_params = 0;
 			dev_info(phy_dev->dev,
 				 "tx_tmdsclk %lld\n", cfg->tx_tmdsclk);
+		} else if (cfg->config_hdmi21) {
+			xhdmiphy_hdmi21_conf(phy_dev, XHDMIPHY_DIR_TX,
+					     cfg->linerate, cfg->nchannels);
+			xhdmiphy_clkdet_freq_reset(phy_dev, XHDMIPHY_DIR_TX);
+			cfg->config_hdmi21 = 0;
 		}
 		count_tx = 0;
 	}

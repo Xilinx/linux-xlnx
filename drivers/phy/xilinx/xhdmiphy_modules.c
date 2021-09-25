@@ -58,6 +58,25 @@ static void xhdmiphy_outdiv_reconf(struct xhdmiphy_dev *inst, enum chid chid,
 }
 
 /**
+ * xhdmiphy_clkdet_freq_reset - This function will reset the clock change detector module.
+ *
+ * @inst:	inst is a pointer to the xhdmiphy core instance
+ * @dir:	dir is an indicator for RX or TX
+ */
+void xhdmiphy_clkdet_freq_reset(struct xhdmiphy_dev *inst, enum dir dir)
+{
+	u32 regval;
+
+	regval = xhdmiphy_read(inst, XHDMIPHY_CLKDET_CTRL_REG);
+	if (dir == XHDMIPHY_DIR_TX)
+		regval |= XHDMIPHY_CLKDET_CTRL_TX_FREQ_RST_MASK;
+	else
+		regval |= XHDMIPHY_CLKDET_CTRL_RX_FREQ_RST_MASK;
+
+	xhdmiphy_write(inst, XHDMIPHY_CLKDET_CTRL_REG, regval);
+}
+
+/**
  * xhdmiphy_clkdet_freq_threshold - This function sets the clock detector
  * frequency lock counter threshold value.
  *
@@ -1572,8 +1591,8 @@ static void xhdmiphy_rpll_lock_handler(struct xhdmiphy_dev *inst)
  * @hold:	hold is an indicator whether to "hold" the reset if set to 1
  *		If set to 0: reset, then enable
  */
-static void xhdmiphy_rst_gt_txrx(struct xhdmiphy_dev *inst, enum chid chid,
-				 enum dir dir, u8 hold)
+void xhdmiphy_rst_gt_txrx(struct xhdmiphy_dev *inst, enum chid chid,
+			  enum dir dir, u8 hold)
 {
 	u32 reg_val, mask_val, reg_off;
 
