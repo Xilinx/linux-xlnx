@@ -375,6 +375,7 @@
 #define XHDMIPHY_CLKDET_CTRL_RX_TMR_CLR_MASK		BIT(2)
 #define XHDMIPHY_CLKDET_CTRL_RX_FREQ_RST_MASK		BIT(4)
 #define XHDMIPHY_CLKDET_CTRL_FREQ_LOCK_THRESH_SHIFT	5
+#define XHDMIPHY_CLKDET_CTRL_TX_FREQ_RST_MASK		0x8
 /* 0x300: dru control */
 #define XHDMIPHY_DRU_CTRL_RST_MASK(ch)			(0x01 << (8 * ((ch) - 1)))
 #define XHDMIPHY_DRU_CTRL_EN_MASK(ch)			(0x02 << (8 * ((ch) - 1)))
@@ -1054,6 +1055,8 @@ void xhdmiphy_mmcm_start(struct xhdmiphy_dev *inst, enum dir dir);
 void xhdmiphy_mmcm_param(struct xhdmiphy_dev *inst, enum dir dir);
 void xhdmiphy_ibufds_en(struct xhdmiphy_dev *inst, enum dir dir, u8 en);
 void xhdmiphy_clkout1_obuftds_en(struct xhdmiphy_dev *inst, enum dir dir, u8 en);
+void xhdmiphy_rst_gt_txrx(struct xhdmiphy_dev *inst, enum chid chid,
+			  enum dir dir, u8 hold);
 u32 xhdmiphy_init_phy(struct xhdmiphy_dev *inst);
 u32 xhdmiphy_set_tx_param(struct xhdmiphy_dev *inst, enum chid chid,
 			  enum ppc ppc, enum color_depth bpc,
@@ -1063,7 +1066,7 @@ u32 xhdmiphy_cal_mmcm_param(struct xhdmiphy_dev *inst, enum chid chid,
 u32 xhdmiphy_get_dru_refclk(struct xhdmiphy_dev *inst);
 void xhdmiphy_hdmi20_conf(struct xhdmiphy_dev *inst, enum dir dir);
 u32 xhdmiphy_hdmi21_conf(struct xhdmiphy_dev *inst, enum dir dir, u64 linerate, u8 nchannels);
-
+void xhdmiphy_clkdet_freq_reset(struct xhdmiphy_dev *inst, enum dir dir);
 u32 xhdmiphy_read(struct xhdmiphy_dev *inst, u32 addr);
 void xhdmiphy_write(struct xhdmiphy_dev *inst, u32 addr, u32 val);
 
