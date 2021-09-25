@@ -1504,9 +1504,9 @@ static bool xhdmiphy_is_pll_locked(struct xhdmiphy_dev *inst, enum chid chid)
 	reg_val = xhdmiphy_read(inst, XHDMIPHY_PLL_LOCK_STATUS_REG);
 
 	if ((reg_val & mask_val) == mask_val)
-		return true;
+		return false;
 
-	return false;
+	return true;
 }
 
 static void xhdmiphy_lcpll_lock_handler(struct xhdmiphy_dev *inst)
