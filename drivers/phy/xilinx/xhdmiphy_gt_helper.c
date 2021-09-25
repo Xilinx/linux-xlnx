@@ -253,7 +253,7 @@ static bool xhdmiphy_cpll_cal_counttol(struct xhdmiphy_dev *inst, enum chid chid
 	reg_val |= cpll_cal_tol & XHDMIPHY_CPLL_CAL_TOL_MASK;
 	xhdmiphy_write(inst, XHDMIPHY_CPLL_CAL_TOL_REG, reg_val);
 
-	return true;
+	return false;
 }
 
 /**
