@@ -41,6 +41,7 @@
 #include <asm/types.h>
 #include <linux/compiler.h>
 #include <asm/asm-compat.h>
+#include <asm/barrier.h>
 #include <linux/stringify.h>
 
 /*
