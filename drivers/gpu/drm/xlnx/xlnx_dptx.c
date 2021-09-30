@@ -1880,6 +1880,7 @@ xlnx_dp_connector_detect(struct drm_connector *connector, bool force)
 	struct phy_configure_opts_dp *phy_cfg = &dp->phy_opts.dp;
 	u32 state, i;
 	int ret;
+	u8 max_link_rate;
 
 	/*
 	 * This is from heuristic. It takes some delay (ex, 100 ~ 500 msec) to
@@ -1897,6 +1898,19 @@ xlnx_dp_connector_detect(struct drm_connector *connector, bool force)
 		if (ret < 0) {
 			dev_info(dp->dev, "DPCD read failes");
 			goto disconnected;
+		}
+
+		if (dp->dpcd[DP_TRAINING_AUX_RD_INTERVAL] &
+		    DP_EXTENDED_RECEIVER_CAP_FIELD_PRESENT) {
+			ret = drm_dp_dpcd_read(&dp->aux, DP_DP13_MAX_LINK_RATE,
+					       &max_link_rate, 1);
+			if (ret < 0) {
+				dev_dbg(dp->dev, "DPCD read failed");
+				goto disconnected;
+			}
+
+			if (max_link_rate == DP_LINK_BW_8_1)
+				dp->dpcd[DP_MAX_LINK_RATE] = DP_LINK_BW_8_1;
 		}
 
 		link_config->max_rate = min_t(int,
