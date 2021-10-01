@@ -54,6 +54,7 @@
 #define XILINX_FRMBUF_ADDR3_OFFSET		0x54
 #define XILINX_FRMBUF_FID_ERR_OFFSET	0x58
 #define XILINX_FRMBUF_FID_OUT_OFFSET	0x60
+#define XILINX_FRMBUF_RD_ADDR3_OFFSET		0x74
 
 /* Control Registers */
 #define XILINX_FRMBUF_CTRL_AP_START		BIT(0)
@@ -1225,9 +1226,14 @@ static void xilinx_frmbuf_start_transfer(struct xilinx_frmbuf_chan *chan)
 			 desc->hw.luma_plane_addr);
 	chan->write_addr(chan, XILINX_FRMBUF_ADDR2_OFFSET,
 			 desc->hw.chroma_plane_addr[0]);
-	if (xdev->cfg->flags & XILINX_THREE_PLANES_PROP)
-		chan->write_addr(chan, XILINX_FRMBUF_ADDR3_OFFSET,
-				desc->hw.chroma_plane_addr[1]);
+	if (xdev->cfg->flags & XILINX_THREE_PLANES_PROP) {
+		if (chan->direction == DMA_MEM_TO_DEV)
+			chan->write_addr(chan, XILINX_FRMBUF_RD_ADDR3_OFFSET,
+					 desc->hw.chroma_plane_addr[1]);
+		else
+			chan->write_addr(chan, XILINX_FRMBUF_ADDR3_OFFSET,
+					 desc->hw.chroma_plane_addr[1]);
+	}
 
 	/* HW expects these parameters to be same for one transaction */
 	frmbuf_write(chan, XILINX_FRMBUF_WIDTH_OFFSET, desc->hw.hsize);
