@@ -24,6 +24,12 @@ properties:
   reg:
     maxItems: 1
 
+  rxch4-sel-gpios:
+    maxItems: 1
+    description: |
+      Select HDMI 2.1 PHY Rx channel as data or clock based on FRL or TMDS mode.
+      Polarity of this GPIO is GPIO_ACTIVE_LOW
+
   interrupts:
     maxItems: 1
 
@@ -146,6 +152,20 @@ properties:
       - $ref: /schemas/types.yaml#/definitions/uint32
       - enum: [0, 1]
 
+  xlnx,rx-max-gt-line-rate:
+    description: |
+      Maxmimum Rx GT linerate that IP is configured with.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [3, 6, 8 ,10, 12]
+
+  xlnx,tx-max-gt-line-rate:
+    description: |
+      Maxmimum Tx GT linerate that IP is configured with.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [3, 6, 8 ,10, 12]
+
   "#phy-cells":
     const: 0
 
@@ -155,6 +175,7 @@ required:
   - compatible
   - interrupts
   - reg
+  - rxch4-sel-gpios
   - xlnx,transceiver-type
   - xlnx,tx-no-of-channels
   - xlnx,rx-no-of-channels
@@ -168,6 +189,8 @@ required:
   - xlnx,transceiver-width
   - xlnx,input-pixels-per-clock
   - xlnx,use-gt-ch4-hdmi
+  - xlnx,rx-max-gt-line-rate
+  - xlnx,tx-max-gt-line-rate
   - '#phy-cells'
 
 additionalProperties: false
@@ -181,6 +204,7 @@ examples:
            interrupt-parent = <&gic>;
            interrupts = <0 89 4>;
            reg = <0x80040000 0x10000>;
+           rxch4-sel-gpios = <&foo_gpio 18 1>;
            xlnx,transceiver-type = <5>;
            xlnx,tx-no-of-channels = <4>;
            xlnx,rx-no-of-channels = <4>;
@@ -197,6 +221,8 @@ examples:
            xlnx,transceiver-width = <4>;
            xlnx,input-pixels-per-clock = <4>;
            xlnx,use-gt-ch4-hdmi = <1>;
+           xlnx,rx-max-gt-line-rate = <0xc>;
+           xlnx,tx-max-gt-line-rate = <0xc>;
            #phy-cells = <0>;
    };
 ...
