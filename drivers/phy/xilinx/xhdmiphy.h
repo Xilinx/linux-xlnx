@@ -980,6 +980,7 @@ struct xhdmiphy_dev {
 	struct hdmi21_cfg tx_hdmi21_cfg;
 	struct hdmi21_cfg rx_hdmi21_cfg;
 	struct quad quad;
+	struct gpio_desc *rxch4_gpio;
 	u32 rx_refclk_hz;
 	u32 tx_refclk_hz;
 	u8 bpc;
