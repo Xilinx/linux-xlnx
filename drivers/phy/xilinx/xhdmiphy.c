@@ -10,6 +10,7 @@
 
 #include <linux/clk.h>
 #include <linux/device.h>
+#include <linux/of_device.h>
 #include <linux/gpio/consumer.h>
 #include <linux/interrupt.h>
 #include <linux/phy/phy.h>
@@ -58,6 +59,27 @@ static int xhdmiphy_reset(struct phy *phy)
 		xhdmiphy_ibufds_en(phy_dev, XHDMIPHY_DIR_TX, false);
 
 	return 0;
+}
+
+static bool xhdmiphy_clk_srcsel(struct xhdmiphy_dev *priv, u8 dir, u8 clksrc)
+{
+	if (priv->data && !priv->data->sel_mux(dir, clksrc))
+		return 0;
+
+	dev_dbg(priv->dev, "failed to select clock source\n");
+
+	return -EIO;
+}
+
+static bool xhdmiphy_set_lrate(struct xhdmiphy_dev *priv, u8 dir, u8 mode,
+			       u64 lrate)
+{
+	if (priv->data && !priv->data->set_linerate(dir, mode, lrate))
+		return 0;
+
+	dev_dbg(priv->dev, "failed to set linerate\n");
+
+	return -EIO;
 }
 
 static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
@@ -117,12 +139,31 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 			/* set Rx ch4 as clock */
 			gpiod_set_value(phy_dev->rxch4_gpio, 0);
 			xhdmiphy_hdmi20_conf(phy_dev, XHDMIPHY_DIR_RX);
+			xhdmiphy_clk_srcsel(phy_dev, phy_lane->direction,
+					    tmds_mode);
 		} else if (!cfg->config_hdmi20 && cfg->config_hdmi21) {
+			/*
+			 * Phy needs to switch between rxch4 as data or
+			 * clk based on FRL or TMDS mode. Note we can have TMDS
+			 * mode in HDMI2.1
+			 */
+			gpiod_set_value(phy_dev->rxch4_gpio, 1);
+			if (phy_dev->conf.rx_refclk_sel !=
+			    phy_dev->conf.rx_frl_refclk_sel) {
+				xhdmiphy_ibufds_en(phy_dev, XHDMIPHY_DIR_RX, 1);
+			}
+
 			xhdmiphy_hdmi21_conf(phy_dev, XHDMIPHY_DIR_RX,
 					     cfg->linerate, cfg->nchannels);
+			xhdmiphy_clk_srcsel(phy_dev, phy_lane->direction,
+					    frl_mode);
 			xhdmiphy_clkdet_freq_reset(phy_dev, XHDMIPHY_DIR_RX);
+			xhdmiphy_set_lrate(phy_dev, phy_lane->direction, 1,
+					   cfg->rx_refclk_hz);
 		} else if (cfg->rx_get_refclk) {
 			cfg->rx_refclk_hz = phy_dev->rx_refclk_hz;
+			xhdmiphy_set_lrate(phy_dev, phy_lane->direction, 1,
+					   cfg->rx_refclk_hz);
 		} else if (cfg->reset_gt) {
 			xhdmiphy_rst_gt_txrx(phy_dev, XHDMIPHY_CHID_CHA,
 					     XHDMIPHY_DIR_RX, false);
@@ -144,6 +185,9 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 						    cfg->clkout1_obuftds_en);
 			cfg->clkout1_obuftds_en = 0;
 		} else if (cfg->tx_params) {
+			xhdmiphy_clk_srcsel(phy_dev, phy_lane->direction,
+					    tmds_mode);
+			usleep_range(1000, 1100);
 			phy_dev->tx_refclk_hz = cfg->tx_tmdsclk;
 
 			clk_set_rate(phy_dev->tmds_clk, phy_dev->tx_refclk_hz);
@@ -157,7 +201,15 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 			cfg->tx_params = 0;
 			dev_info(phy_dev->dev,
 				 "tx_tmdsclk %lld\n", cfg->tx_tmdsclk);
+			xhdmiphy_set_lrate(phy_dev, phy_lane->direction, 0,
+					   cfg->tx_tmdsclk);
 		} else if (cfg->config_hdmi21) {
+			xhdmiphy_clk_srcsel(phy_dev, phy_lane->direction,
+					    frl_mode);
+			usleep_range(1000, 1100);
+			xhdmiphy_set_lrate(phy_dev, phy_lane->direction, 1,
+					   cfg->tx_tmdsclk);
+			gpiod_set_value(phy_dev->rxch4_gpio, 1);
 			xhdmiphy_hdmi21_conf(phy_dev, XHDMIPHY_DIR_TX,
 					     cfg->linerate, cfg->nchannels);
 			xhdmiphy_clkdet_freq_reset(phy_dev, XHDMIPHY_DIR_TX);
@@ -652,6 +704,8 @@ static int xhdmiphy_probe(struct platform_device *pdev)
 	struct xhdmiphy_dev *priv;
 	struct phy_provider *provider;
 	struct xhdmiphy_lane *hdmiphy_lane;
+	struct platform_device *iface_pdev;
+	struct device_node *fnode;
 	struct resource *res;
 	struct phy *phy;
 	int index = 0, ret;
@@ -666,6 +720,26 @@ static int xhdmiphy_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(priv->dev, "Error parsing device tree\n");
 		return ret;
+	}
+
+	fnode = of_parse_phandle(np, "xlnx,hdmi-connector", 0);
+	if (!fnode) {
+		dev_err(&pdev->dev, "platform node not found\n");
+		of_node_put(fnode);
+	} else {
+		iface_pdev = of_find_device_by_node(fnode);
+		if (!iface_pdev) {
+			of_node_put(np);
+			return -ENODEV;
+		}
+		priv->data = dev_get_drvdata(&iface_pdev->dev);
+		if (!priv->data) {
+			dev_dbg(&pdev->dev,
+				"platform device not found -EPROBE_DEFER\n");
+			of_node_put(fnode);
+			return -EPROBE_DEFER;
+		}
+		of_node_put(fnode);
 	}
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);

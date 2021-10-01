@@ -803,6 +803,11 @@ enum prbs_pat {
 	XHDMIPHY_PRBSSEL_SQUARE_16UI = 0xA,	/* square wave with 16 UI */
 };
 
+enum xhdmiphy_mode {
+	tmds_mode = 0,
+	frl_mode = 1,
+};
+
 struct pll_param {
 	u8 m_refclk_div;
 	union {
@@ -939,6 +944,11 @@ struct hdmi21_cfg {
 	u8 is_en;
 };
 
+struct clk_config {
+	int (*sel_mux)(u8 direction, u8 clksrc);
+	int (*set_linerate)(u8 direction, u8 mode, u64 lrate);
+};
+
 struct xhdmiphy_conf {
 	u8 tx_channels;
 	u8 rx_channels;
@@ -972,6 +982,7 @@ struct xhdmiphy_dev {
 	int irq;
 	struct mutex hdmiphy_mutex;	/* protecting phy operations */
 	struct xhdmiphy_lane *lanes[4];
+	struct clk_config *data;
 	struct clk *axi_lite_clk;
 	struct clk *dru_clk;
 	struct clk *tmds_clk;
