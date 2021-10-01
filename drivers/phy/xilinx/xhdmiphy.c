@@ -114,6 +114,8 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 						    cfg->clkout1_obuftds_en);
 			cfg->clkout1_obuftds_en = 0;
 		} else if (cfg->config_hdmi20 && !cfg->config_hdmi21) {
+			/* set Rx ch4 as clock */
+			gpiod_set_value(phy_dev->rxch4_gpio, 0);
 			xhdmiphy_hdmi20_conf(phy_dev, XHDMIPHY_DIR_RX);
 		} else if (!cfg->config_hdmi20 && cfg->config_hdmi21) {
 			xhdmiphy_hdmi21_conf(phy_dev, XHDMIPHY_DIR_RX,
@@ -478,6 +480,34 @@ static int xhdmiphy_parse_of(struct xhdmiphy_dev *priv)
 	}
 	xgtphycfg->transceiver_width = val;
 
+	rc = of_property_read_u32(node, "xlnx,rx-max-gt-line-rate", &val);
+	if (rc < 0) {
+		dev_err(priv->dev, "unable to parse %s property\n",
+			"xlnx,rx-max-gt-line-rate");
+		return rc;
+	}
+
+	if (val != 3 && val != 6 && val != 8 && val != 10 && val != 12) {
+		dev_err(priv->dev, "dt rx-max-gt-line-rate %d is invalid\n",
+			val);
+		return -EINVAL;
+	}
+	xgtphycfg->rx_maxrate = val;
+
+	rc = of_property_read_u32(node, "xlnx,tx-max-gt-line-rate", &val);
+	if (rc < 0) {
+		dev_err(priv->dev, "unable to parse %s property\n",
+			"xlnx,tx-max-gt-line-rate");
+		return rc;
+	}
+
+	if (val != 3 && val != 6 && val != 8 && val != 10 && val != 12) {
+		dev_err(priv->dev, "dt tx-max-gt-line-rate %d is invalid\n",
+			val);
+		return -EINVAL;
+	}
+	xgtphycfg->tx_maxrate = val;
+
 	rc = of_property_read_u32(node, "xlnx,use-gt-ch4-hdmi", &val);
 	if (rc < 0) {
 		dev_err(priv->dev, "unable to parse %s property\n",
@@ -521,6 +551,15 @@ static int xhdmiphy_parse_of(struct xhdmiphy_dev *priv)
 		return -EINVAL;
 	}
 	xgtphycfg->tx_frl_refclk_sel = val;
+
+	priv->rxch4_gpio = devm_gpiod_get(priv->dev,
+					  "rxch4-sel", GPIOD_OUT_LOW);
+
+	if (IS_ERR(priv->rxch4_gpio)) {
+		if (PTR_ERR(priv->rxch4_gpio) != -EPROBE_DEFER)
+			dev_err(priv->dev, "rxch4-sel not setup in DT\n");
+		return PTR_ERR(priv->rxch4_gpio);
+	}
 
 	return rc;
 }
