@@ -29,6 +29,7 @@
 #include "xlnx_crtc.h"
 #include "xlnx_drv.h"
 
+#define XLNX_PL_DISP_MAX_NUM_PLANES	3
 /*
  * Overview
  * --------
@@ -251,7 +252,7 @@ static int xlnx_pl_disp_plane_mode_set(struct drm_plane *plane,
 	size_t stride;
 	struct xlnx_dma_chan *xlnx_dma_chan = xlnx_pl_disp->chan;
 
-	if (info->num_planes > 2) {
+	if (info->num_planes > XLNX_PL_DISP_MAX_NUM_PLANES) {
 		dev_err(xlnx_pl_disp->dev, "Color format not supported\n");
 		return -EINVAL;
 	}
