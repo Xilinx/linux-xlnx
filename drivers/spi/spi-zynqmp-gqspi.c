@@ -166,7 +166,7 @@
 enum mode_type {GQSPI_MODE_IO, GQSPI_MODE_DMA};
 
 /**
- * struct zynq_platform_data - zynqmp qspi platform data structure
+ * struct qspi_platform_data - zynqmp qspi platform data structure
  * @quirks:	Flags is used to identify the platform
  */
 struct qspi_platform_data {
@@ -196,6 +196,7 @@ struct qspi_platform_data {
  * @io_mode:		Defines the operating mode, either IO or dma
  * @has_tapdelay:	Used for tapdelay register available in qspi
  * @data_completion:	completion structure
+ * @op_lock:		Operational lock
  */
 struct zynqmp_qspi {
 	void __iomem *regs;
