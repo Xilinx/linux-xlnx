@@ -39,6 +39,16 @@
 /* Loader commands */
 #define PM_LOAD_PDI			0x701
 
+/* NVM Commands */
+#define PM_BBRAM_WRITE_KEY		0xB01
+#define PM_BBRAM_ZEROIZE		0xB02
+#define PM_BBRAM_WRITE_USERDATA		0xB03
+#define PM_BBRAM_READ_USERDATA		0xB04
+#define PM_BBRAM_LOCK_USERDATA		0xB05
+
+/* Secure Commands */
+#define PM_WRITE_AES_KEY		0x568
+
 /* Number of 32bits values in payload */
 #define PAYLOAD_ARG_CNT	4U
 
@@ -629,6 +639,12 @@ int zynqmp_pm_aes_engine(const u64 address, u32 *out);
 int zynqmp_pm_efuse_access(const u64 address, u32 *out);
 int zynqmp_pm_secure_load(const u64 src_addr, u64 key_addr, u64 *dst);
 int zynqmp_pm_load_pdi(const u32 src, const u64 address);
+int zynqmp_pm_write_aes_key(const u32 keylen, const u32 keysrc, const u64 keyaddr);
+int zynqmp_pm_bbram_write_usrdata(u32 data);
+int zynqmp_pm_bbram_read_usrdata(const u64 outaddr);
+int zynqmp_pm_bbram_write_aeskey(u32 keylen, const u64 keyaddr);
+int zynqmp_pm_bbram_zeroize(void);
+int zynqmp_pm_bbram_lock_userdata(void);
 int zynqmp_pm_fpga_read(const u32 reg_numframes, const u64 phys_address,
 			u32 readback_type, u32 *value);
 int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags);
@@ -1064,6 +1080,36 @@ static inline int zynqmp_pm_fpga_read(const u32 reg_numframes,
 }
 
 static inline int zynqmp_pm_load_pdi(const u32 src, const u64 address)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_write_aes_key(const u32 keylen, const u32 keysrc, const u64 keyaddr)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_bbram_write_usrdata(u32 data)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_bbram_read_usrdata(const u64 outaddr)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_bbram_write_aeskey(const u64 keyaddr, u16 keylen)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_bbram_zeroize(void)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_bbram_lock_userdata(void)
 {
 	return -ENODEV;
 }
