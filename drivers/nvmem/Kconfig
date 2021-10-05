@@ -271,6 +271,17 @@ config NVMEM_ZYNQMP
 
 	  If sure, say yes. If unsure, say no.
 
+config XLNX_SEC_CFG
+	tristate "Xilinx Secure Configuration nvmem firmware support"
+	depends on ARCH_ZYNQMP
+	help
+	  This is a driver to support secure configuration for Versal.
+	  The supported features are programming and zeroization of BBRAM AES key,
+	  programming, reading user data in BBRAM and locking user data for write.
+	  It also supports of programming AES keys in volatile user keys.
+
+	  If sure, say yes. If unsure, say no.
+
 config SPRD_EFUSE
 	tristate "Spreadtrum SoC eFuse Support"
 	depends on ARCH_SPRD || COMPILE_TEST
