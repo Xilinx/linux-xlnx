@@ -1005,6 +1005,16 @@ static int sysmon_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static int sysmon_resume(struct platform_device *pdev)
+{
+	struct iio_dev *indio_dev = platform_get_drvdata(pdev);
+	struct sysmon *sysmon = iio_priv(indio_dev);
+
+	sysmon_write_reg(sysmon, SYSMON_NPI_LOCK, NPI_UNLOCK);
+
+	return 0;
+}
+
 static const struct of_device_id sysmon_of_match_table[] = {
 	{ .compatible = "xlnx,versal-sysmon" },
 	{}
@@ -1014,6 +1024,7 @@ MODULE_DEVICE_TABLE(of, sysmon_of_match_table);
 static struct platform_driver sysmon_driver = {
 	.probe = sysmon_probe,
 	.remove = sysmon_remove,
+	.resume = sysmon_resume,
 	.driver = {
 		.name = "sysmon",
 		.of_match_table = sysmon_of_match_table,
