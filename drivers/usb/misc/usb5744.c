@@ -46,7 +46,7 @@ static int usb5744_init_hw(struct device *dev, struct usb5744 *data)
 		usleep_range(5, 20);
 
 		if (dev_is_platform(dev))
-			gpiod_set_value(data->reset_gpio, 0);
+			gpiod_set_value(data->reset_gpio, 1);
 		else
 			gpiod_set_value_cansleep(data->reset_gpio, 1);
 
