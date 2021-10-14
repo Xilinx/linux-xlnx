@@ -242,6 +242,14 @@ config USB_HUB_USB251XB
 	  parameters may be set in devicetree or platform data.
 	  Say Y or M here if you need to configure such a device via SMBus.
 
+config USB_USB2244
+	tristate "Microchip USB2244 Ultra Fast USB 2.0 SD driver"
+	depends on GPIOLIB
+	help
+	  This option enables support for Microchip USB2244 Ultra Fast USB 2.0
+	  SD controller. This driver reset the gpio pin makes controller out of
+	  reset.
+
 config USB_USB5744
 	tristate "Microchip USB5744 Hub driver"
 	depends on I2C
