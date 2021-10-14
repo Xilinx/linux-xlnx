@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: "http://devicetree.org/schemas/usb/microchip,usb2244.yaml#"
+$schema: "http://devicetree.org/meta-schemas/core.yaml#"
+
+title: Bindings for the Microchip USB2244 Ultra Fast USB-SD Controller
+
+description:
+  Microchip’s USB224x is a USB 2.0 compliant, Hi-Speed bulk only mass
+  storage class peripheral controller intended for reading and writing
+  to popular flash media from the xDPicture Card™, Memory Stick® (MS),
+  Secure Digital (SD), and MultiMediaCard™ (MMC) families.
+
+  USB224x is a flash media card reader solution fully compliant with the
+  USB 2.0 specification
+
+maintainers:
+  - Piyush Mehta <piyush.mehta@xilinx.com>
+
+properties:
+  compatible:
+    const: microchip,usb2244
+
+  reset-gpios:
+    maxItems: 1
+    description:
+      The phandle and specifier for the GPIO that controls the RESET line of
+      flash media controller.
+
+required:
+  - compatible
+
+additionalProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/gpio/gpio.h>
+
+    usb {
+       compatible = "microchip,usb2244";
+       reset-gpios = <&gpio 2 GPIO_ACTIVE_LOW>;
+    };
