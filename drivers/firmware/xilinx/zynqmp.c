@@ -94,7 +94,7 @@ static int zynqmp_pm_ret_code(u32 ret_status)
 	}
 }
 
-static noinline int do_fw_call_fail(u64 arg0, u64 arg1, u64 arg2,
+static noinline int do_fw_call_fail(u64 arg0, u64 arg1, u64 arg2, u64 arg3,
 				    u32 *ret_payload)
 {
 	return -ENODEV;
@@ -104,25 +104,26 @@ static noinline int do_fw_call_fail(u64 arg0, u64 arg1, u64 arg2,
  * PM function call wrapper
  * Invoke do_fw_call_smc or do_fw_call_hvc, depending on the configuration
  */
-static int (*do_fw_call)(u64, u64, u64, u32 *ret_payload) = do_fw_call_fail;
+static int (*do_fw_call)(u64, u64, u64, u64, u32 *ret_payload) = do_fw_call_fail;
 
 /**
  * do_fw_call_smc() - Call system-level platform management layer (SMC)
  * @arg0:		Argument 0 to SMC call
  * @arg1:		Argument 1 to SMC call
  * @arg2:		Argument 2 to SMC call
+ * @arg3:		Argument 3 to SMC call
  * @ret_payload:	Returned value array
  *
  * Invoke platform management function via SMC call (no hypervisor present).
  *
  * Return: Returns status, either success or error+reason
  */
-static noinline int do_fw_call_smc(u64 arg0, u64 arg1, u64 arg2,
+static noinline int do_fw_call_smc(u64 arg0, u64 arg1, u64 arg2, u64 arg3,
 				   u32 *ret_payload)
 {
 	struct arm_smccc_res res;
 
-	arm_smccc_smc(arg0, arg1, arg2, 0, 0, 0, 0, 0, &res);
+	arm_smccc_smc(arg0, arg1, arg2, arg3, 0, 0, 0, 0, &res);
 
 	if (ret_payload) {
 		ret_payload[0] = lower_32_bits(res.a0);
@@ -139,6 +140,7 @@ static noinline int do_fw_call_smc(u64 arg0, u64 arg1, u64 arg2,
  * @arg0:		Argument 0 to HVC call
  * @arg1:		Argument 1 to HVC call
  * @arg2:		Argument 2 to HVC call
+ * @arg3:		Argument 3 to HVC call
  * @ret_payload:	Returned value array
  *
  * Invoke platform management function via HVC
@@ -147,12 +149,12 @@ static noinline int do_fw_call_smc(u64 arg0, u64 arg1, u64 arg2,
  *
  * Return: Returns status, either success or error+reason
  */
-static noinline int do_fw_call_hvc(u64 arg0, u64 arg1, u64 arg2,
+static noinline int do_fw_call_hvc(u64 arg0, u64 arg1, u64 arg2, u64 arg3,
 				   u32 *ret_payload)
 {
 	struct arm_smccc_res res;
 
-	arm_smccc_hvc(arg0, arg1, arg2, 0, 0, 0, 0, 0, &res);
+	arm_smccc_hvc(arg0, arg1, arg2, arg3, 0, 0, 0, 0, &res);
 
 	if (ret_payload) {
 		ret_payload[0] = lower_32_bits(res.a0);
@@ -196,7 +198,7 @@ int zynqmp_pm_feature(const u32 api_id)
 	smc_arg[0] = PM_SIP_SVC | PM_FEATURE_CHECK;
 	smc_arg[1] = api_id;
 
-	ret = do_fw_call(smc_arg[0], smc_arg[1], 0, ret_payload);
+	ret = do_fw_call(smc_arg[0], smc_arg[1], 0, 0, ret_payload);
 	if (ret)
 		ret = -EOPNOTSUPP;
 	else
@@ -216,6 +218,7 @@ int zynqmp_pm_feature(const u32 api_id)
  * @arg1:		Argument 1 to requested PM-API call
  * @arg2:		Argument 2 to requested PM-API call
  * @arg3:		Argument 3 to requested PM-API call
+ * @arg4:		Argument 4 to requested PM-API call
  * @ret_payload:	Returned value array
  *
  * Invoke platform management function for SMC or HVC call, depending on
@@ -234,7 +237,8 @@ int zynqmp_pm_feature(const u32 api_id)
  * Return: Returns status, either success or error+reason
  */
 int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 arg0, u32 arg1,
-			u32 arg2, u32 arg3, u32 *ret_payload)
+			u32 arg2, u32 arg3, u32 arg4,
+			u32 *ret_payload)
 {
 	/*
 	 * Added SIP service call Function Identifier
@@ -251,8 +255,10 @@ int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 arg0, u32 arg1,
 	smc_arg[0] = PM_SIP_SVC | pm_api_id;
 	smc_arg[1] = ((u64)arg1 << 32) | arg0;
 	smc_arg[2] = ((u64)arg3 << 32) | arg2;
+	smc_arg[3] = ((u64)arg4);
 
-	return do_fw_call(smc_arg[0], smc_arg[1], smc_arg[2], ret_payload);
+	return do_fw_call(smc_arg[0], smc_arg[1], smc_arg[2], smc_arg[3],
+			  ret_payload);
 }
 
 static u32 pm_api_version;
@@ -277,7 +283,7 @@ int zynqmp_pm_get_api_version(u32 *version)
 		*version = pm_api_version;
 		return 0;
 	}
-	ret = zynqmp_pm_invoke_fn(PM_GET_API_VERSION, 0, 0, 0, 0, ret_payload);
+	ret = zynqmp_pm_invoke_fn(PM_GET_API_VERSION, 0, 0, 0, 0, 0, ret_payload);
 	*version = ret_payload[1];
 
 	return ret;
@@ -300,7 +306,7 @@ int zynqmp_pm_get_chipid(u32 *idcode, u32 *version)
 	if (!idcode || !version)
 		return -EINVAL;
 
-	ret = zynqmp_pm_invoke_fn(PM_GET_CHIPID, 0, 0, 0, 0, ret_payload);
+	ret = zynqmp_pm_invoke_fn(PM_GET_CHIPID, 0, 0, 0, 0, 0, ret_payload);
 	*idcode = ret_payload[1];
 	*version = ret_payload[2];
 
@@ -328,7 +334,7 @@ static int zynqmp_pm_get_trustzone_version(u32 *version)
 		return 0;
 	}
 	ret = zynqmp_pm_invoke_fn(PM_GET_TRUSTZONE_VERSION, 0, 0,
-				  0, 0, ret_payload);
+				  0, 0, 0, ret_payload);
 	*version = ret_payload[1];
 
 	return ret;
@@ -376,7 +382,7 @@ int zynqmp_pm_query_data(struct zynqmp_pm_query_data qdata, u32 *out)
 	int ret;
 
 	ret = zynqmp_pm_invoke_fn(PM_QUERY_DATA, qdata.qid, qdata.arg1,
-				  qdata.arg2, qdata.arg3, out);
+				  qdata.arg2, qdata.arg3, 0, out);
 
 	/*
 	 * For clock name query, all bytes in SMC response are clock name
@@ -398,7 +404,8 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_query_data);
  */
 int zynqmp_pm_clock_enable(u32 clock_id)
 {
-	return zynqmp_pm_invoke_fn(PM_CLOCK_ENABLE, clock_id, 0, 0, 0, NULL);
+	return zynqmp_pm_invoke_fn(PM_CLOCK_ENABLE, clock_id, 0, 0, 0, 0,
+				   NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_clock_enable);
 
@@ -413,7 +420,8 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_clock_enable);
  */
 int zynqmp_pm_clock_disable(u32 clock_id)
 {
-	return zynqmp_pm_invoke_fn(PM_CLOCK_DISABLE, clock_id, 0, 0, 0, NULL);
+	return zynqmp_pm_invoke_fn(PM_CLOCK_DISABLE, clock_id, 0, 0, 0, 0,
+				   NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_clock_disable);
 
@@ -433,7 +441,7 @@ int zynqmp_pm_clock_getstate(u32 clock_id, u32 *state)
 	int ret;
 
 	ret = zynqmp_pm_invoke_fn(PM_CLOCK_GETSTATE, clock_id, 0,
-				  0, 0, ret_payload);
+				  0, 0, 0, ret_payload);
 	*state = ret_payload[1];
 
 	return ret;
@@ -453,7 +461,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_clock_getstate);
 int zynqmp_pm_clock_setdivider(u32 clock_id, u32 divider)
 {
 	return zynqmp_pm_invoke_fn(PM_CLOCK_SETDIVIDER, clock_id, divider,
-				   0, 0, NULL);
+				   0, 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_clock_setdivider);
 
@@ -473,7 +481,7 @@ int zynqmp_pm_clock_getdivider(u32 clock_id, u32 *divider)
 	int ret;
 
 	ret = zynqmp_pm_invoke_fn(PM_CLOCK_GETDIVIDER, clock_id, 0,
-				  0, 0, ret_payload);
+				  0, 0, 0, ret_payload);
 	*divider = ret_payload[1];
 
 	return ret;
@@ -494,7 +502,7 @@ int zynqmp_pm_clock_setrate(u32 clock_id, u64 rate)
 	return zynqmp_pm_invoke_fn(PM_CLOCK_SETRATE, clock_id,
 				   lower_32_bits(rate),
 				   upper_32_bits(rate),
-				   0, NULL);
+				   0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_clock_setrate);
 
@@ -514,7 +522,7 @@ int zynqmp_pm_clock_getrate(u32 clock_id, u64 *rate)
 	int ret;
 
 	ret = zynqmp_pm_invoke_fn(PM_CLOCK_GETRATE, clock_id, 0,
-				  0, 0, ret_payload);
+				  0, 0, 0, ret_payload);
 	*rate = ((u64)ret_payload[2] << 32) | ret_payload[1];
 
 	return ret;
@@ -533,7 +541,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_clock_getrate);
 int zynqmp_pm_clock_setparent(u32 clock_id, u32 parent_id)
 {
 	return zynqmp_pm_invoke_fn(PM_CLOCK_SETPARENT, clock_id,
-				   parent_id, 0, 0, NULL);
+				   parent_id, 0, 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_clock_setparent);
 
@@ -553,7 +561,7 @@ int zynqmp_pm_clock_getparent(u32 clock_id, u32 *parent_id)
 	int ret;
 
 	ret = zynqmp_pm_invoke_fn(PM_CLOCK_GETPARENT, clock_id, 0,
-				  0, 0, ret_payload);
+				  0, 0, 0, ret_payload);
 	*parent_id = ret_payload[1];
 
 	return ret;
@@ -573,7 +581,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_clock_getparent);
 int zynqmp_pm_set_pll_frac_mode(u32 clk_id, u32 mode)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_SET_PLL_FRAC_MODE,
-				   clk_id, mode, NULL);
+				   clk_id, mode, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_pll_frac_mode);
 
@@ -590,7 +598,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_pll_frac_mode);
 int zynqmp_pm_get_pll_frac_mode(u32 clk_id, u32 *mode)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_GET_PLL_FRAC_MODE,
-				   clk_id, 0, mode);
+				   clk_id, 0, 0, mode);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_get_pll_frac_mode);
 
@@ -608,7 +616,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_get_pll_frac_mode);
 int zynqmp_pm_set_pll_frac_data(u32 clk_id, u32 data)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_SET_PLL_FRAC_DATA,
-				   clk_id, data, NULL);
+				   clk_id, data, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_pll_frac_data);
 
@@ -625,7 +633,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_pll_frac_data);
 int zynqmp_pm_get_pll_frac_data(u32 clk_id, u32 *data)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_GET_PLL_FRAC_DATA,
-				   clk_id, 0, data);
+				   clk_id, 0, 0, data);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_get_pll_frac_data);
 
@@ -643,7 +651,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_get_pll_frac_data);
 int zynqmp_pm_set_sd_tapdelay(u32 node_id, u32 type, u32 value)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, node_id, IOCTL_SET_SD_TAPDELAY,
-				   type, value, NULL);
+				   type, value, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_sd_tapdelay);
 
@@ -660,7 +668,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_sd_tapdelay);
 int zynqmp_pm_sd_dll_reset(u32 node_id, u32 type)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, node_id, IOCTL_SD_DLL_RESET,
-				   type, 0, NULL);
+				   type, 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_sd_dll_reset);
 
@@ -676,7 +684,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_sd_dll_reset);
 int zynqmp_pm_write_ggs(u32 index, u32 value)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_WRITE_GGS,
-				   index, value, NULL);
+				   index, value, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_write_ggs);
 
@@ -692,7 +700,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_write_ggs);
 int zynqmp_pm_read_ggs(u32 index, u32 *value)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_READ_GGS,
-				   index, 0, value);
+				   index, 0, 0, value);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_read_ggs);
 
@@ -709,7 +717,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_read_ggs);
 int zynqmp_pm_write_pggs(u32 index, u32 value)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_WRITE_PGGS, index, value,
-				   NULL);
+				   0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_write_pggs);
 
@@ -726,26 +734,27 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_write_pggs);
 int zynqmp_pm_read_pggs(u32 index, u32 *value)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_READ_PGGS, index, 0,
-				   value);
+				   0, value);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_read_pggs);
 
 int zynqmp_pm_usb_set_state(u32 node, u32 state, u32 value)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, node, IOCTL_USB_SET_STATE, state,
-				   value, NULL);
+				   value, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_usb_set_state);
 
 int zynqmp_pm_ulpi_reset(void)
 {
-	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_ULPI_RESET, 0, 0, NULL);
+	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_ULPI_RESET, 0, 0, 0,
+				   NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_ulpi_reset);
 
 int zynqmp_pm_afi(u32 index, u32 value)
 {
-	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_AFI, index, value,
+	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_AFI, index, value, 0,
 				   NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_afi);
@@ -753,42 +762,42 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_afi);
 int zynqmp_pm_set_sgmii_mode(u32 enable)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_SET_SGMII_MODE, enable, 0,
-				   NULL);
+				   0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_sgmii_mode);
 
 int zynqmp_pm_set_tapdelay_bypass(u32 index, u32 value)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_SET_TAPDELAY_BYPASS,
-				   index, value, NULL);
+				   index, value, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_tapdelay_bypass);
 
 int zynqmp_pm_probe_counter_read(u32 deviceid, u32 reg, u32 *value)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, deviceid, IOCTL_PROBE_COUNTER_READ, reg,
-				   0, value);
+				   0, 0, value);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_probe_counter_read);
 
 int zynqmp_pm_probe_counter_write(u32 domain, u32 reg, u32 value)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, domain, IOCTL_PROBE_COUNTER_WRITE, reg,
-				   value, NULL);
+				   value, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_probe_counter_write);
 
 int zynqmp_pm_ospi_mux_select(u32 dev_id, u32 select)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, dev_id, IOCTL_OSPI_MUX_SELECT, select,
-				   0, NULL);
+				   0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_ospi_mux_select);
 
 int zynqmp_pm_get_last_reset_reason(u32 *reset_reason)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_GET_LAST_RESET_REASON, 0,
-				   0, reset_reason);
+				   0, 0, reset_reason);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_get_last_reset_reason);
 
@@ -804,7 +813,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_get_last_reset_reason);
 int zynqmp_pm_set_boot_health_status(u32 value)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_SET_BOOT_HEALTH_STATUS,
-				   value, 0, NULL);
+				   value, 0, 0, NULL);
 }
 
 /**
@@ -817,7 +826,7 @@ int zynqmp_pm_set_boot_health_status(u32 value)
 int zynqmp_pm_clear_aie_npi_isr(u32 node, u32 irq_mask)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, node, IOCTL_AIE_ISR_CLEAR,
-				   irq_mask, 0, NULL);
+				   irq_mask, 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_clear_aie_npi_isr);
 
@@ -833,7 +842,7 @@ int zynqmp_pm_reset_assert(const u32 reset,
 			   const enum zynqmp_pm_reset_action assert_flag)
 {
 	return zynqmp_pm_invoke_fn(PM_RESET_ASSERT, reset, assert_flag,
-				   0, 0, NULL);
+				   0, 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_reset_assert);
 
@@ -853,7 +862,7 @@ int zynqmp_pm_reset_get_status(const u32 reset, u32 *status)
 		return -EINVAL;
 
 	ret = zynqmp_pm_invoke_fn(PM_RESET_GET_STATUS, reset, 0,
-				  0, 0, ret_payload);
+				  0, 0, 0, ret_payload);
 	*status = ret_payload[1];
 
 	return ret;
@@ -876,7 +885,8 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_reset_get_status);
 int zynqmp_pm_fpga_load(const u64 address, const u32 size, const u32 flags)
 {
 	return zynqmp_pm_invoke_fn(PM_FPGA_LOAD, lower_32_bits(address),
-				   upper_32_bits(address), size, flags, NULL);
+				   upper_32_bits(address), size, flags, 0,
+				   NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_load);
 
@@ -897,7 +907,8 @@ int zynqmp_pm_fpga_get_status(u32 *value)
 	if (!value)
 		return -EINVAL;
 
-	ret = zynqmp_pm_invoke_fn(PM_FPGA_GET_STATUS, 0, 0, 0, 0, ret_payload);
+	ret = zynqmp_pm_invoke_fn(PM_FPGA_GET_STATUS, 0, 0, 0, 0, 0,
+				  ret_payload);
 	*value = ret_payload[1];
 
 	return ret;
@@ -917,7 +928,8 @@ int zynqmp_pm_load_pdi(const u32 src, const u64 address)
 {
 	return zynqmp_pm_invoke_fn(PM_LOAD_PDI, src,
 				   lower_32_bits(address),
-				   upper_32_bits(address), 0, NULL);
+				   upper_32_bits(address), 0,
+				   0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_load_pdi);
 
@@ -938,7 +950,7 @@ int zynqmp_pm_write_aes_key(const u32 keylen, const u32 keysrc,
 {
 	return zynqmp_pm_invoke_fn(PM_WRITE_AES_KEY, keylen, keysrc,
 				   lower_32_bits(keyaddr),
-				   upper_32_bits(keyaddr), NULL);
+				   upper_32_bits(keyaddr), 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_write_aes_key);
 
@@ -956,7 +968,7 @@ int zynqmp_pm_bbram_write_aeskey(u32 keylen, const u64 keyaddr)
 {
 	return zynqmp_pm_invoke_fn(PM_BBRAM_WRITE_KEY, keylen,
 				   lower_32_bits(keyaddr),
-				   upper_32_bits(keyaddr), 0, NULL);
+				   upper_32_bits(keyaddr), 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_bbram_write_aeskey);
 
@@ -971,7 +983,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_bbram_write_aeskey);
  */
 int zynqmp_pm_bbram_write_usrdata(u32 data)
 {
-	return zynqmp_pm_invoke_fn(PM_BBRAM_WRITE_USERDATA, data, 0, 0, 0,
+	return zynqmp_pm_invoke_fn(PM_BBRAM_WRITE_USERDATA, data, 0, 0, 0, 0,
 				   NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_bbram_write_usrdata);
@@ -986,7 +998,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_bbram_write_usrdata);
  */
 int zynqmp_pm_bbram_read_usrdata(const u64 outaddr)
 {
-	return zynqmp_pm_invoke_fn(PM_BBRAM_READ_USERDATA, outaddr, 0, 0, 0,
+	return zynqmp_pm_invoke_fn(PM_BBRAM_READ_USERDATA, outaddr, 0, 0, 0, 0,
 				   NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_bbram_read_usrdata);
@@ -1001,7 +1013,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_bbram_read_usrdata);
  */
 int zynqmp_pm_bbram_zeroize(void)
 {
-	return zynqmp_pm_invoke_fn(PM_BBRAM_ZEROIZE, 0, 0, 0, 0, NULL);
+	return zynqmp_pm_invoke_fn(PM_BBRAM_ZEROIZE, 0, 0, 0, 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_bbram_zeroize);
 
@@ -1015,7 +1027,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_bbram_zeroize);
  */
 int zynqmp_pm_bbram_lock_userdata(void)
 {
-	return zynqmp_pm_invoke_fn(PM_BBRAM_LOCK_USERDATA, 0, 0, 0, 0, NULL);
+	return zynqmp_pm_invoke_fn(PM_BBRAM_LOCK_USERDATA, 0, 0, 0, 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_bbram_lock_userdata);
 
@@ -1040,7 +1052,7 @@ int zynqmp_pm_get_uid_info(const u64 address, const u32 size, u32 *count)
 	ret = zynqmp_pm_invoke_fn(PM_GET_UID_INFO_LIST,
 				  upper_32_bits(address),
 				  lower_32_bits(address),
-				  size, 0, ret_payload);
+				  size, 0, 0, ret_payload);
 
 	*count = ret_payload[1];
 
@@ -1072,7 +1084,7 @@ int zynqmp_pm_fpga_read(const u32 reg_numframes, const u64 phys_address,
 	ret = zynqmp_pm_invoke_fn(PM_FPGA_READ, reg_numframes,
 				  lower_32_bits(phys_address),
 				  upper_32_bits(phys_address), readback_type,
-				  ret_payload);
+				  0, ret_payload);
 	*value = ret_payload[1];
 
 	return ret;
@@ -1101,7 +1113,7 @@ int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags)
 	u32 upper_32_bits = (u32)(address >> 32);
 
 	return zynqmp_pm_invoke_fn(PM_SECURE_SHA, upper_32_bits, lower_32_bits,
-				   size, flags, NULL);
+				   size, flags, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_sha_hash);
 
@@ -1122,7 +1134,7 @@ int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags)
 	u32 upper_32_bits = (u32)(address >> 32);
 
 	return zynqmp_pm_invoke_fn(PM_SECURE_RSA, upper_32_bits, lower_32_bits,
-				   size, flags, NULL);
+				   size, flags, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_rsa);
 
@@ -1141,7 +1153,7 @@ int zynqmp_pm_request_suspend(const u32 node,
 			      const u32 latency, const u32 state)
 {
 	return zynqmp_pm_invoke_fn(PM_REQUEST_SUSPEND, node, ack,
-				   latency, state, NULL);
+				   latency, state, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_request_suspend);
 
@@ -1156,7 +1168,8 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_request_suspend);
 int zynqmp_pm_force_powerdown(const u32 target,
 			      const enum zynqmp_pm_request_ack ack)
 {
-	return zynqmp_pm_invoke_fn(PM_FORCE_POWERDOWN, target, ack, 0, 0, NULL);
+	return zynqmp_pm_invoke_fn(PM_FORCE_POWERDOWN, target, ack, 0, 0,
+				   0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_force_powerdown);
 
@@ -1175,7 +1188,7 @@ int zynqmp_pm_request_wakeup(const u32 node, const bool set_addr,
 {
 	/* set_addr flag is encoded into 1st bit of address */
 	return zynqmp_pm_invoke_fn(PM_REQUEST_WAKEUP, node, address | set_addr,
-				   address >> 32, ack, NULL);
+				   address >> 32, ack, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_request_wakeup);
 
@@ -1192,7 +1205,7 @@ int zynqmp_pm_set_wakeup_source(const u32 target, const u32 wakeup_node,
 				const u32 enable)
 {
 	return zynqmp_pm_invoke_fn(PM_SET_WAKEUP_SOURCE, target,
-				   wakeup_node, enable, 0, NULL);
+				   wakeup_node, enable, 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_wakeup_source);
 
@@ -1206,7 +1219,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_wakeup_source);
 int zynqmp_pm_set_max_latency(const u32 node, const u32 latency)
 {
 	return zynqmp_pm_invoke_fn(PM_SET_MAX_LATENCY, node, latency,
-				   0, 0, NULL);
+				   0, 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_max_latency);
 
@@ -1219,7 +1232,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_max_latency);
 int zynqmp_pm_set_configuration(const u32 physical_addr)
 {
 	return zynqmp_pm_invoke_fn(PM_SET_CONFIGURATION, physical_addr, 0,
-				   0, 0, NULL);
+				   0, 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_configuration);
 
@@ -1252,7 +1265,7 @@ int zynqmp_pm_get_node_status(const u32 node, u32 *const status,
 		return -EINVAL;
 
 	ret = zynqmp_pm_invoke_fn(PM_GET_NODE_STATUS, node, 0, 0,
-				  0, ret_payload);
+				  0, 0, ret_payload);
 	if (ret_payload[0] == XST_PM_SUCCESS) {
 		*status = ret_payload[1];
 		if (requirements)
@@ -1285,7 +1298,7 @@ int zynqmp_pm_get_operating_characteristic(const u32 node,
 		return -EINVAL;
 
 	ret = zynqmp_pm_invoke_fn(PM_GET_OPERATING_CHARACTERISTIC,
-				  node, type, 0, 0, ret_payload);
+				  node, type, 0, 0, 0, ret_payload);
 	if (ret_payload[0] == XST_PM_SUCCESS)
 		*result = ret_payload[1];
 
@@ -1303,7 +1316,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_get_operating_characteristic);
  */
 int zynqmp_pm_pinctrl_request(const u32 pin)
 {
-	return zynqmp_pm_invoke_fn(PM_PINCTRL_REQUEST, pin, 0, 0, 0, NULL);
+	return zynqmp_pm_invoke_fn(PM_PINCTRL_REQUEST, pin, 0, 0, 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_request);
 
@@ -1317,7 +1330,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_request);
  */
 int zynqmp_pm_pinctrl_release(const u32 pin)
 {
-	return zynqmp_pm_invoke_fn(PM_PINCTRL_RELEASE, pin, 0, 0, 0, NULL);
+	return zynqmp_pm_invoke_fn(PM_PINCTRL_RELEASE, pin, 0, 0, 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_release);
 
@@ -1339,7 +1352,7 @@ int zynqmp_pm_pinctrl_get_function(const u32 pin, u32 *id)
 		return -EINVAL;
 
 	ret = zynqmp_pm_invoke_fn(PM_PINCTRL_GET_FUNCTION, pin, 0,
-				  0, 0, ret_payload);
+				  0, 0, 0, ret_payload);
 	*id = ret_payload[1];
 
 	return ret;
@@ -1358,7 +1371,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_get_function);
 int zynqmp_pm_pinctrl_set_function(const u32 pin, const u32 id)
 {
 	return zynqmp_pm_invoke_fn(PM_PINCTRL_SET_FUNCTION, pin, id,
-				   0, 0, NULL);
+				   0, 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_set_function);
 
@@ -1382,7 +1395,7 @@ int zynqmp_pm_pinctrl_get_config(const u32 pin, const u32 param,
 		return -EINVAL;
 
 	ret = zynqmp_pm_invoke_fn(PM_PINCTRL_CONFIG_PARAM_GET, pin, param,
-				  0, 0, ret_payload);
+				  0, 0, 0, ret_payload);
 	*value = ret_payload[1];
 
 	return ret;
@@ -1406,7 +1419,7 @@ int zynqmp_pm_config_reg_access(u32 register_access_id, u32 address,
 				u32 mask, u32 value, u32 *out)
 {
 	return zynqmp_pm_invoke_fn(PM_REGISTER_ACCESS, register_access_id,
-				   address, mask, value, out);
+				   address, mask, value, 0, out);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_config_reg_access);
 
@@ -1425,7 +1438,7 @@ int zynqmp_pm_mmio_read(u32 address, u32 *out)
 	u32 ret_payload[PAYLOAD_ARG_CNT];
 	int ret;
 
-	ret = zynqmp_pm_invoke_fn(PM_MMIO_READ, address, 0, 0, 0,
+	ret = zynqmp_pm_invoke_fn(PM_MMIO_READ, address, 0, 0, 0, 0,
 				  ret_payload);
 	*out = ret_payload[1];
 
@@ -1447,7 +1460,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_mmio_read);
 int zynqmp_pm_mmio_write(u32 address, u32 mask, u32 value)
 {
 	return zynqmp_pm_invoke_fn(PM_MMIO_WRITE, address, mask,
-				   value, 0, NULL);
+				   value, 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_mmio_write);
 
@@ -1465,7 +1478,7 @@ int zynqmp_pm_pinctrl_set_config(const u32 pin, const u32 param,
 				 u32 value)
 {
 	return zynqmp_pm_invoke_fn(PM_PINCTRL_CONFIG_PARAM_SET, pin,
-				   param, value, 0, NULL);
+				   param, value, 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_set_config);
 
@@ -1484,7 +1497,7 @@ unsigned int zynqmp_pm_bootmode_read(u32 *ps_mode)
 	u32 ret_payload[PAYLOAD_ARG_CNT];
 
 	ret = zynqmp_pm_invoke_fn(PM_MMIO_READ, CRL_APB_BOOT_PIN_CTRL, 0,
-				  0, 0, ret_payload);
+				  0, 0, 0, ret_payload);
 
 	*ps_mode = ret_payload[1];
 
@@ -1504,7 +1517,8 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_bootmode_read);
 int zynqmp_pm_bootmode_write(u32 ps_mode)
 {
 	return zynqmp_pm_invoke_fn(PM_MMIO_WRITE, CRL_APB_BOOT_PIN_CTRL,
-				   CRL_APB_BOOTPIN_CTRL_MASK, ps_mode, 0, NULL);
+				   CRL_APB_BOOTPIN_CTRL_MASK, ps_mode, 0,
+				   0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_bootmode_write);
 
@@ -1519,7 +1533,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_bootmode_write);
  */
 int zynqmp_pm_init_finalize(void)
 {
-	return zynqmp_pm_invoke_fn(PM_PM_INIT_FINALIZE, 0, 0, 0, 0, NULL);
+	return zynqmp_pm_invoke_fn(PM_PM_INIT_FINALIZE, 0, 0, 0, 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_init_finalize);
 
@@ -1533,7 +1547,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_init_finalize);
  */
 int zynqmp_pm_set_suspend_mode(u32 mode)
 {
-	return zynqmp_pm_invoke_fn(PM_SET_SUSPEND_MODE, mode, 0, 0, 0, NULL);
+	return zynqmp_pm_invoke_fn(PM_SET_SUSPEND_MODE, mode, 0, 0, 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_suspend_mode);
 
@@ -1553,7 +1567,7 @@ int zynqmp_pm_request_node(const u32 node, const u32 capabilities,
 			   const u32 qos, const enum zynqmp_pm_request_ack ack)
 {
 	return zynqmp_pm_invoke_fn(PM_REQUEST_NODE, node, capabilities,
-				   qos, ack, NULL);
+				   qos, ack, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_request_node);
 
@@ -1569,7 +1583,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_request_node);
  */
 int zynqmp_pm_release_node(const u32 node)
 {
-	return zynqmp_pm_invoke_fn(PM_RELEASE_NODE, node, 0, 0, 0, NULL);
+	return zynqmp_pm_invoke_fn(PM_RELEASE_NODE, node, 0, 0, 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_release_node);
 
@@ -1589,7 +1603,8 @@ int zynqmp_pm_get_rpu_mode(u32 node_id, enum rpu_oper_mode *rpu_mode)
 	int ret;
 
 	ret = zynqmp_pm_invoke_fn(PM_IOCTL, node_id,
-				  IOCTL_GET_RPU_OPER_MODE, 0, 0, ret_payload);
+				  IOCTL_GET_RPU_OPER_MODE, 0, 0, 0,
+				  ret_payload);
 
 	/* only set rpu_mode if no error */
 	if (ret == XST_PM_SUCCESS)
@@ -1613,7 +1628,7 @@ int zynqmp_pm_set_rpu_mode(u32 node_id, enum rpu_oper_mode rpu_mode)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, node_id,
 				   IOCTL_SET_RPU_OPER_MODE, (u32)rpu_mode,
-				   0, NULL);
+				   0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_rpu_mode);
 
@@ -1631,7 +1646,7 @@ int zynqmp_pm_set_tcm_config(u32 node_id, enum rpu_tcm_comb tcm_mode)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, node_id,
 				   IOCTL_TCM_COMB_CONFIG, (u32)tcm_mode, 0,
-				   NULL);
+				   0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_tcm_config);
 
@@ -1646,7 +1661,8 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_tcm_config);
 int zynqmp_pm_force_pwrdwn(const u32 node,
 			   const enum zynqmp_pm_request_ack ack)
 {
-	return zynqmp_pm_invoke_fn(PM_FORCE_POWERDOWN, node, ack, 0, 0, NULL);
+	return zynqmp_pm_invoke_fn(PM_FORCE_POWERDOWN, node, ack, 0, 0, 0,
+				   NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_force_pwrdwn);
 
@@ -1666,7 +1682,7 @@ int zynqmp_pm_request_wake(const u32 node,
 {
 	/* set_addr flag is encoded into 1st bit of address */
 	return zynqmp_pm_invoke_fn(PM_REQUEST_WAKEUP, node, address | set_addr,
-				   address >> 32, ack, NULL);
+				   address >> 32, ack, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_request_wake);
 
@@ -1687,7 +1703,7 @@ int zynqmp_pm_set_requirement(const u32 node, const u32 capabilities,
 			      const enum zynqmp_pm_request_ack ack)
 {
 	return zynqmp_pm_invoke_fn(PM_SET_REQUIREMENT, node, capabilities,
-				   qos, ack, NULL);
+				   qos, ack, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_requirement);
 
@@ -1709,7 +1725,7 @@ int zynqmp_pm_aes_engine(const u64 address, u32 *out)
 
 	ret = zynqmp_pm_invoke_fn(PM_SECURE_AES, upper_32_bits(address),
 				  lower_32_bits(address),
-				  0, 0, ret_payload);
+				  0, 0, 0, ret_payload);
 	*out = ret_payload[1];
 
 	return ret;
@@ -1732,7 +1748,8 @@ int zynqmp_pm_efuse_access(const u64 address, u32 *out)
 		return -EINVAL;
 
 	ret = zynqmp_pm_invoke_fn(PM_EFUSE_ACCESS, upper_32_bits(address),
-				  lower_32_bits(address), 0, 0, ret_payload);
+				  lower_32_bits(address), 0, 0, 0,
+				  ret_payload);
 	*out = ret_payload[1];
 
 	return ret;
@@ -1752,7 +1769,7 @@ int zynqmp_pm_secure_load(const u64 src_addr, u64 key_addr, u64 *dst)
 					upper_32_bits(src_addr),
 					lower_32_bits(key_addr),
 					upper_32_bits(key_addr),
-					ret_payload);
+					0, ret_payload);
 	*dst = ((u64)ret_payload[1] << 32) | ret_payload[2];
 
 	return ret_value;
@@ -1778,7 +1795,7 @@ int zynqmp_pm_register_notifier(const u32 node, const u32 event,
 				const u32 wake, const u32 enable)
 {
 	return zynqmp_pm_invoke_fn(PM_REGISTER_NOTIFIER, node, event,
-				   wake, enable, NULL);
+				   wake, enable, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_register_notifier);
 
@@ -1792,7 +1809,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_register_notifier);
 int zynqmp_pm_system_shutdown(const u32 type, const u32 subtype)
 {
 	return zynqmp_pm_invoke_fn(PM_SYSTEM_SHUTDOWN, type, subtype,
-				   0, 0, NULL);
+				   0, 0, 0, NULL);
 }
 
 /**
@@ -1805,7 +1822,7 @@ int zynqmp_pm_system_shutdown(const u32 type, const u32 subtype)
 int zynqmp_pm_set_feature_config(enum pm_feature_config_id id, u32 value)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_SET_FEATURE_CONFIG,
-				   id, value, NULL);
+				   id, value, 0, NULL);
 }
 
 /**
@@ -1819,7 +1836,7 @@ int zynqmp_pm_get_feature_config(enum pm_feature_config_id id,
 				 u32 *payload)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_GET_FEATURE_CONFIG,
-				   id, 0, payload);
+				   id, 0, 0, payload);
 }
 
 /**

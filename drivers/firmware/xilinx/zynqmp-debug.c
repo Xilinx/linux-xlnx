@@ -83,7 +83,7 @@ static int zynqmp_pm_self_suspend(const u32 node, const u32 latency,
 				  const u32 state)
 {
 	return zynqmp_pm_invoke_fn(PM_SELF_SUSPEND, node, latency,
-				   state, 0, NULL);
+				   state, 0, 0, NULL);
 }
 
 /**
@@ -95,7 +95,8 @@ static int zynqmp_pm_self_suspend(const u32 node, const u32 latency,
  */
 static int zynqmp_pm_abort_suspend(const enum zynqmp_pm_abort_reason reason)
 {
-	return zynqmp_pm_invoke_fn(PM_ABORT_SUSPEND, reason, 0, 0, 0, NULL);
+	return zynqmp_pm_invoke_fn(PM_ABORT_SUSPEND, reason, 0, 0, 0, 0,
+				   NULL);
 }
 
 /**
@@ -111,7 +112,7 @@ static int zynqmp_pm_abort_suspend(const enum zynqmp_pm_abort_reason reason)
 static int zynqmp_pm_ioctl(const u32 node, const u32 ioctl, const u32 arg1,
 			   const u32 arg2, u32 *out)
 {
-	return zynqmp_pm_invoke_fn(PM_IOCTL, node, ioctl, arg1, arg2, out);
+	return zynqmp_pm_invoke_fn(PM_IOCTL, node, ioctl, arg1, arg2, 0, out);
 }
 
 /**
