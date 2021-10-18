@@ -1148,6 +1148,7 @@ static inline int zynqmp_pm_register_notifier(const u32 node, const u32 event,
 {
 	return -ENODEV;
 }
+
 static inline int zynqmp_pm_feature(const u32 api_id)
 {
 	return -ENODEV;

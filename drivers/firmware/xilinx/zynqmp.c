@@ -1288,8 +1288,8 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_get_node_status);
  * Return:	Returns status, either success or error+reason
  */
 int zynqmp_pm_get_operating_characteristic(const u32 node,
-		const enum zynqmp_pm_opchar_type type,
-		u32 *const result)
+					   const enum zynqmp_pm_opchar_type type,
+					   u32 *const result)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
 	int ret;

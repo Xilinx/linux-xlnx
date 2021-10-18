@@ -82,8 +82,8 @@ static irqreturn_t zynqmp_pm_isr(int irq, void *data)
 			pm_suspend(PM_SUSPEND_MEM);
 			break;
 		default:
-			pr_err("%s Unsupported InitSuspendCb reason "
-				"code %d\n", __func__, payload[1]);
+			pr_err("%s Unsupported InitSuspendCb reason code %d\n",
+			       __func__, payload[1]);
 		}
 	}
 
@@ -251,8 +251,8 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 						dev_name(&pdev->dev),
 						&pdev->dev);
 		if (ret) {
-			dev_err(&pdev->dev, "devm_request_threaded_irq '%d' "
-					    "failed with %d\n", irq, ret);
+			dev_err(&pdev->dev, "devm_request_threaded_irq '%d' failed with %d\n",
+				irq, ret);
 			return ret;
 		}
 	} else {
@@ -287,17 +287,17 @@ static int zynqmp_pm_remove(struct platform_device *pdev)
 
 static int __init do_init_finalize(void)
 {
-       struct device_node *np;
+	struct device_node *np;
 
-       np = of_find_compatible_node(NULL, NULL, "xlnx,zynqmp");
-       if (!np) {
-               np = of_find_compatible_node(NULL, NULL, "xlnx,versal");
-               if (!np)
-                       return 0;
-       }
-       of_node_put(np);
+	np = of_find_compatible_node(NULL, NULL, "xlnx,zynqmp");
+	if (!np) {
+		np = of_find_compatible_node(NULL, NULL, "xlnx,versal");
+		if (!np)
+			return 0;
+	}
+	of_node_put(np);
 
-       return zynqmp_pm_init_finalize();
+	return zynqmp_pm_init_finalize();
 }
 
 late_initcall_sync(do_init_finalize);

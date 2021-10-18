@@ -249,7 +249,7 @@ static int process_api_request(u32 pm_id, u64 *pm_api_arg, u32 *pm_api_ret)
 		break;
 	case PM_GET_OPERATING_CHARACTERISTIC:
 		ret = zynqmp_pm_get_operating_characteristic(pm_api_arg[0],
-				pm_api_arg[1] ? pm_api_arg[1] :
+							     pm_api_arg[1] ? pm_api_arg[1] :
 				ZYNQMP_PM_OPERATING_CHARACTERISTIC_POWER,
 				&pm_api_ret[0]);
 		if (!ret)
