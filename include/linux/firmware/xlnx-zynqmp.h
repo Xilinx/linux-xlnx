@@ -212,6 +212,9 @@ enum pm_ioctl_id {
 	/* Runtime feature configuration */
 	IOCTL_SET_FEATURE_CONFIG = 26,
 	IOCTL_GET_FEATURE_CONFIG = 27,
+	/* IOCTL for Secure Read/Write Interface */
+	IOCTL_READ_REG = 28,
+	IOCTL_MASK_WRITE_REG = 29,
 	/* Dynamic SD/GEM configuration */
 	IOCTL_SET_SD_CONFIG = 30,
 	IOCTL_SET_GEM_CONFIG = 31,
@@ -667,6 +670,9 @@ int zynqmp_pm_is_function_supported(const u32 api_id, const u32 id);
 int zynqmp_pm_set_feature_config(enum pm_feature_config_id id, u32 value);
 int zynqmp_pm_get_feature_config(enum pm_feature_config_id id, u32 *payload);
 int zynqmp_pm_get_uid_info(const u64 address, const u32 size, u32 *count);
+int zynqmp_pm_sec_read_reg(u32 node_id, u32 offset, u32 *ret_value);
+int zynqmp_pm_sec_mask_write_reg(const u32 node_id, const u32 offset,
+				 u32 mask, u32 value);
 int zynqmp_pm_register_sgi(u32 sgi_num, u32 reset);
 int zynqmp_pm_set_sd_config(u32 node, enum pm_sd_config_type config, u32 value);
 int zynqmp_pm_set_gem_config(u32 node, enum pm_gem_config_type config,
@@ -1111,6 +1117,17 @@ static inline int zynqmp_pm_get_feature_config(enum pm_feature_config_id id,
 
 static inline int zynqmp_pm_get_uid_info(const u64 address, const u32 size,
 					 u32 *count)
+{
+	return -ENODEV;
+}
+
+static int zynqmp_pm_sec_read_reg(u32 node_id, u32 offset, u32 *ret_value)
+{
+	return -ENODEV;
+}
+
+static int zynqmp_pm_sec_mask_write_reg(const u32 node_id, const u32 offset,
+					u32 mask, u32 value)
 {
 	return -ENODEV;
 }
