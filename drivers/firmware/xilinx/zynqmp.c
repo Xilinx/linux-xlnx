@@ -1813,6 +1813,44 @@ int zynqmp_pm_get_feature_config(enum pm_feature_config_id id,
 }
 
 /**
+ * zynqmp_pm_sec_read_reg - PM call to securely read from given offset
+ *		of the node
+ * @node_id:	Node Id of the device
+ * @offset:	Offset to be used (20-bit)
+ * @ret_value:	Output data read from the given offset after
+ *		firmware access policy is successfully enforced
+ *
+ * Return:	Returns 0 on success or error value on failure
+ */
+int zynqmp_pm_sec_read_reg(u32 node_id, u32 offset, u32 *ret_value)
+{
+	u32 count = 1;
+
+	if (!ret_value)
+		return -EINVAL;
+
+	return zynqmp_pm_invoke_fn(PM_IOCTL, node_id, IOCTL_READ_REG, offset,
+				   count, 0, ret_value);
+}
+
+/**
+ * zynqmp_pm_sec_mask_write_reg - PM call to securely write to given offset
+ *		of the node
+ * @node_id:	Node Id of the device
+ * @offset:	Offset to be used (20-bit)
+ * @mask:	Mask to be used
+ * @value:	Value to be written
+ *
+ * Return:	Returns 0 on success or error value on failure
+ */
+int zynqmp_pm_sec_mask_write_reg(const u32 node_id, const u32 offset, u32 mask,
+				 u32 value)
+{
+	return zynqmp_pm_invoke_fn(PM_IOCTL, node_id, IOCTL_MASK_WRITE_REG,
+				   offset, mask, value, NULL);
+}
+
+/**
  * struct zynqmp_pm_shutdown_scope - Struct for shutdown scope
  * @subtype:	Shutdown subtype
  * @name:	Matching string for scope argument

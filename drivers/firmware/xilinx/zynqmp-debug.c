@@ -2,7 +2,7 @@
 /*
  * Xilinx Zynq MPSoC Firmware layer for debugfs APIs
  *
- *  Copyright (C) 2014-2018 Xilinx, Inc.
+ *  Copyright (C) 2014-2021 Xilinx, Inc.
  *
  *  Michal Simek <michal.simek@xilinx.com>
  *  Davorin Mista <davorin.mista@aggios.com>
@@ -105,14 +105,16 @@ static int zynqmp_pm_abort_suspend(const enum zynqmp_pm_abort_reason reason)
  * @ioctl:	ID of the requested IOCTL
  * @arg1:	Argument 1 of requested IOCTL call
  * @arg2:	Argument 2 of requested IOCTL call
+ * @arg3:	Argument 3 of requested IOCTL call
  * @out:	Returned output value
  *
  * Return:	Returns status, either success or error+reason
  */
 static int zynqmp_pm_ioctl(const u32 node, const u32 ioctl, const u32 arg1,
-			   const u32 arg2, u32 *out)
+			   const u32 arg2, const u32 arg3, u32 *out)
 {
-	return zynqmp_pm_invoke_fn(PM_IOCTL, node, ioctl, arg1, arg2, 0, out);
+	return zynqmp_pm_invoke_fn(PM_IOCTL, node, ioctl, arg1, arg2, arg3,
+				   out);
 }
 
 /**
@@ -311,13 +313,14 @@ static int process_api_request(u32 pm_id, u64 *pm_api_arg, u32 *pm_api_ret)
 	case PM_IOCTL:
 		ret = zynqmp_pm_ioctl(pm_api_arg[0], pm_api_arg[1],
 				      pm_api_arg[2], pm_api_arg[3],
-				      &pm_api_ret[0]);
+				      pm_api_arg[4], &pm_api_ret[0]);
 		if (!ret && (pm_api_arg[1] == IOCTL_GET_RPU_OPER_MODE ||
 			     pm_api_arg[1] == IOCTL_GET_PLL_FRAC_MODE ||
 			     pm_api_arg[1] == IOCTL_GET_PLL_FRAC_DATA ||
 			     pm_api_arg[1] == IOCTL_READ_GGS ||
 			     pm_api_arg[1] == IOCTL_READ_PGGS ||
-			     pm_api_arg[1] == IOCTL_PROBE_COUNTER_READ))
+			     pm_api_arg[1] == IOCTL_PROBE_COUNTER_READ ||
+			     pm_api_arg[1] == IOCTL_READ_REG))
 			sprintf(debugfs_buf, "IOCTL return value: %u\n",
 				pm_api_ret[1]);
 		break;
@@ -422,7 +425,7 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 	char *kern_buff, *tmp_buff;
 	char *pm_api_req;
 	u32 pm_id = 0;
-	u64 pm_api_arg[4] = {0, 0, 0, 0};
+	u64 pm_api_arg[5] = {0, 0, 0, 0, 0};
 	/* Return values from PM APIs calls */
 	u32 pm_api_ret[4] = {0, 0, 0, 0};
 
