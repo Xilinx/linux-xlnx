@@ -235,7 +235,7 @@ static const struct aie_dma_attr aie_shimdma = {
 		.mask = BIT(28),
 		.regoff = 1U,
 	},
-	.bd_regoff = 0x0001d000U,
+	.bd_regoff = AIE_SHIMNOC_DMA_BD0_ADDRLOW_REGOFF,
 	.mm2s_sts_regoff = 0x1d164U,
 	.s2mm_sts_regoff = 0x1d160U,
 	.num_bds = 16,
