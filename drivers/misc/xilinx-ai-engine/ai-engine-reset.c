@@ -222,6 +222,7 @@ int aie_part_clean(struct aie_partition *apart)
  * This function will:
  * - gate all the columns
  * - reset AI engine partition columns
+ * - ungate all the columns
  * - reset AI engine shims
  * - gate all the tiles in a partition.
  *
@@ -255,6 +256,7 @@ int aie_part_reset(struct aie_partition *apart)
 
 	aie_part_set_cols_clkbuf(apart, false);
 	aie_part_set_cols_reset(apart, true);
+	aie_part_set_cols_clkbuf(apart, true);
 
 	ret = apart->adev->ops->reset_shim(adev, &apart->range);
 	if (ret < 0) {
