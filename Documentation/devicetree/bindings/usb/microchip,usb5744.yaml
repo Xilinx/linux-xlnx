@@ -51,6 +51,6 @@ examples:
         usb5744@2d {
             compatible = "microchip,usb5744";
             reg = <0x2d>;
-            reset-gpios = <&gpio 44 GPIO_ACTIVE_HIGH>;
+            reset-gpios = <&gpio 44 GPIO_ACTIVE_LOW>;
         };
     };
