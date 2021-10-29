@@ -24,7 +24,7 @@ static int usb2244_init_hw(struct device *dev, struct usb2244 *data)
 	if (!data)
 		return -ENOMEM;
 
-	data->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
+	data->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_LOW);
 	if (IS_ERR(data->reset_gpio)) {
 		dev_err_probe(dev, PTR_ERR(data->reset_gpio),
 			      "Failed to request reset GPIO %d, errcode",
@@ -33,9 +33,9 @@ static int usb2244_init_hw(struct device *dev, struct usb2244 *data)
 	}
 
 	/* Toggle RESET_N to reset the hub. */
-	gpiod_set_value_cansleep(data->reset_gpio, 0);
-	usleep_range(5, 10);
 	gpiod_set_value_cansleep(data->reset_gpio, 1);
+	usleep_range(5, 10);
+	gpiod_set_value_cansleep(data->reset_gpio, 0);
 	msleep(5);
 
 	return 0;
