@@ -29,7 +29,7 @@ static int usb5744_init_hw(struct device *dev, struct usb5744 *data)
 	if (!data)
 		return -ENOMEM;
 
-	data->reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_HIGH);
+	data->reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW);
 	if (IS_ERR(data->reset_gpio)) {
 		dev_err_probe(dev, PTR_ERR(data->reset_gpio),
 			      "Failed to request reset GPIO %d, errcode",
@@ -37,23 +37,21 @@ static int usb5744_init_hw(struct device *dev, struct usb5744 *data)
 		return PTR_ERR(data->reset_gpio);
 	}
 
-	if (data->reset_gpio) {
-		/* Toggle RESET_N to reset the hub. */
-		if (dev_is_platform(dev))
-			gpiod_set_value(data->reset_gpio, 0);
-		else
-			gpiod_set_value_cansleep(data->reset_gpio, 0);
+	/* Toggle RESET_N to reset the hub. */
+	if (dev_is_platform(dev))
+		gpiod_set_value(data->reset_gpio, 1);
+	else
+		gpiod_set_value_cansleep(data->reset_gpio, 1);
 
-		/* Delay - Sleep for an approximate time 5 to 20 usecs */
-		usleep_range(5, 20);
+	/* Delay - Sleep for an approximate time 5 to 20 usecs */
+	usleep_range(5, 20);
 
-		if (dev_is_platform(dev))
-			gpiod_set_value(data->reset_gpio, 1);
-		else
-			gpiod_set_value_cansleep(data->reset_gpio, 1);
+	if (dev_is_platform(dev))
+		gpiod_set_value(data->reset_gpio, 0);
+	else
+		gpiod_set_value_cansleep(data->reset_gpio, 0);
 
-		msleep(5);
-	}
+	msleep(5);
 
 	return 0;
 }
