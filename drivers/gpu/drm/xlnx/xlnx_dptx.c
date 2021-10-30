@@ -282,6 +282,8 @@
 #define GT_QUAD_BASE_CH1_CLK_DIV_MASK			GENMASK(9, 0)
 #define GT_QUAD_BASE_CH1_CLK_DIV_VALUE			0x260
 
+#define DP_LINK_BW_SET_MASK			GENMASK(4, 0)
+
 /**
  * struct xlnx_dptx_audio_data - Audio data structure
  * @buffer: Audio infoframe data buffer
@@ -367,6 +369,7 @@ struct xlnx_dp_config {
  * @tx_vid_clk: tx video clock
  * @reset_gpio: reset gpio
  * @hpd_work: hot plug detection worker
+ * @hpd_pulse_work: hot plug pulse detection worker
  * @tx_audio_data: audio data
  * @audio_pdev: audio platform device
  * @phy_opts: Opaque generic phy configuration
@@ -399,6 +402,7 @@ struct xlnx_dp {
 	struct clk *tx_vid_clk;
 	struct gpio_desc *reset_gpio;
 	struct delayed_work hpd_work;
+	struct delayed_work hpd_pulse_work;
 	struct xlnx_dptx_audio_data *tx_audio_data;
 	struct platform_device *audio_pdev;
 	union phy_configure_opts phy_opts;
@@ -413,6 +417,8 @@ struct xlnx_dp {
 	bool audio_init;
 	bool have_edid;
 };
+
+static void xlnx_dp_hpd_pulse_work_func(struct work_struct *work);
 
 static inline struct xlnx_dp *encoder_to_dp(struct drm_encoder *encoder)
 {
@@ -2261,6 +2267,7 @@ static void xlnx_dp_encoder_disable(struct drm_encoder *encoder)
 	if (dp->enabled) {
 		dp->enabled = false;
 		cancel_delayed_work(&dp->hpd_work);
+		cancel_delayed_work(&dp->hpd_pulse_work);
 		xlnx_dp_stop(dp);
 	}
 	pm_runtime_put_sync(dp->dev);
@@ -2381,6 +2388,7 @@ static int xlnx_dp_bind(struct device *dev, struct device *master, void *data)
 		goto error_prop;
 	}
 	INIT_DELAYED_WORK(&dp->hpd_work, xlnx_dp_hpd_work_func);
+	INIT_DELAYED_WORK(&dp->hpd_pulse_work, xlnx_dp_hpd_pulse_work_func);
 
 	return 0;
 
@@ -2400,6 +2408,7 @@ static void xlnx_dp_unbind(struct device *dev,
 	struct xlnx_dp *dp = dev_get_drvdata(dev);
 
 	cancel_delayed_work_sync(&dp->hpd_work);
+	cancel_delayed_work_sync(&dp->hpd_pulse_work);
 	xlnx_dp_exit_aux(dp);
 	drm_property_destroy(dp->drm, dp->bpc_prop);
 	drm_property_destroy(dp->drm, dp->sync_prop);
@@ -2422,6 +2431,55 @@ static int xlnx_dp_txconnected(struct xlnx_dp *dp)
 	} while (status == 0);
 
 	return true;
+}
+
+static void xlnx_dp_hpd_pulse_work_func(struct work_struct *work)
+{
+	struct xlnx_dp *dp;
+	int ret;
+	u8 link_status[DP_LINK_STATUS_SIZE];
+	u8 bw_set, lane_set;
+
+	dp = container_of(work, struct xlnx_dp, hpd_pulse_work.work);
+
+	if (!dp->enabled)
+		return;
+
+	if (!xlnx_dp_txconnected(dp)) {
+		dev_err(dp->dev, "incorrect HPD pulse received\n");
+		return;
+	}
+
+	/* Read Link information from downstream device */
+	ret = drm_dp_dpcd_read_link_status(&dp->aux, link_status);
+	if (ret < 0)
+		return;
+	ret |= drm_dp_dpcd_read(&dp->aux, DP_LINK_BW_SET, &bw_set, 1);
+	ret |= drm_dp_dpcd_read(&dp->aux, DP_LANE_COUNT_SET, &lane_set, 1);
+	if (ret < 0)
+		return;
+
+	bw_set &= DP_LINK_BW_SET_MASK;
+	if (bw_set != DP_LINK_BW_8_1 &&
+	    bw_set != DP_LINK_BW_5_4 &&
+	    bw_set != DP_LINK_BW_2_7 &&
+	    bw_set != DP_LINK_BW_1_62)
+		goto retrain_link;
+
+	lane_set &= DP_LANE_COUNT_MASK;
+	if (lane_set != 1 && lane_set != 2 && lane_set != 4)
+		goto retrain_link;
+
+	/* Verify the link status */
+	ret = drm_dp_channel_eq_ok(link_status, lane_set);
+	if (!ret)
+		goto retrain_link;
+
+	return;
+
+retrain_link:
+	xlnx_dp_stop(dp);
+	xlnx_dp_start(dp);
 }
 
 static void xlnx_dp_vsync_handler(struct xlnx_dp *dp)
@@ -2473,6 +2531,8 @@ static irqreturn_t xlnx_dp_irq_handler(int irq, void *data)
 
 	if (intrstatus & XDPTX_INTR_HPDEVENT_MASK)
 		schedule_delayed_work(&dp->hpd_work, 0);
+	if (intrstatus & XDPTX_INTR_HPDPULSE_MASK)
+		schedule_delayed_work(&dp->hpd_pulse_work, 0);
 
 	if (intrstatus & XDPTX_INTR_VBLANK_MASK)
 		xlnx_dp_vsync_handler(dp);
