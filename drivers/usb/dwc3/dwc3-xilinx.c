@@ -484,9 +484,9 @@ skip_usb3_phy:
 
 	if (reset_gpio) {
 		/* Toggle ulpi to reset the phy. */
-		gpiod_set_value(reset_gpio, 1);
+		gpiod_set_value_cansleep(reset_gpio, 1);
 		usleep_range(5000, 10000); /* delay */
-		gpiod_set_value(reset_gpio, 0);
+		gpiod_set_value_cansleep(reset_gpio, 0);
 		usleep_range(5000, 10000); /* delay */
 	}
 
