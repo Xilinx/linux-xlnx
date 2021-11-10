@@ -412,7 +412,7 @@ static ssize_t zynqmp_ocm_edac_inject_uebitpos1_show(
 }
 
 /**
- * zynqmp_ocm_edac_inject_uebitposition1_store - Set UE second bit postion
+ * zynqmp_ocm_edac_inject_uebitpos1_store - Set UE second bit postion
  * @dci:	Pointer to the edac device struct
  * @data:	Pointer to user data
  * @count:	read the size bytes from buffer
