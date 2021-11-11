@@ -1734,6 +1734,7 @@ static int dwc3_remove(struct platform_device *pdev)
 
 	pm_runtime_get_sync(&pdev->dev);
 
+#ifdef CONFIG_PM_SLEEP
 	if (dwc->is_hibernated) {
 		/*
 		 * As we are about to get removed, wake the controller from
@@ -1743,6 +1744,7 @@ static int dwc3_remove(struct platform_device *pdev)
 		dwc3_gadget_exit_hibernation(dwc);
 		dwc->force_hiber_wake = false;
 	}
+#endif /* CONFIG_PM_SLEEP */
 
 	dwc3_debugfs_exit(dwc);
 	dwc3_core_exit_mode(dwc);
