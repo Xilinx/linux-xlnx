@@ -299,7 +299,7 @@ struct xtg_dev_info {
 };
 
 /**
- * enum xtg_sysfs_ioctl - Ioctl opcodes
+ * enum xtg_sysfs_ioctl_opcode - Ioctl opcodes
  * @XTG_GET_MASTER_CMP_STS: get master complete status
  * @XTG_GET_SLV_CTRL_REG: get slave control reg status
  * @XTG_GET_ERR_STS: get error status
@@ -505,7 +505,7 @@ static void xtg_prepare_cmd_words(struct xtg_dev_info *tg,
 }
 
 /**
- * xtg_prepare_param_words - Prepares Parameter RAM word
+ * xtg_prepare_param_word - Prepares Parameter RAM word
  * @tg: Pointer to xtg_dev_info structure
  * @cmdp: Pointer to xtg_pram structure
  * @param_word: Pointer to Param Word that needs to be prepared
@@ -744,7 +744,7 @@ static ssize_t xtg_sysfs_ioctl(struct device *dev, const char *buf,
 	case XTG_SET_STREAM_ENABLE:
 		if (wrval) {
 			rdval = readl(tg->regs + XTG_STREAM_CNTL_OFFSET);
-			rdval |= XTG_STREAM_CNTL_STEN_MASK,
+			rdval |= XTG_STREAM_CNTL_STEN_MASK;
 			writel(rdval,
 			       tg->regs + XTG_STREAM_CNTL_OFFSET);
 		} else {
