@@ -14,6 +14,7 @@
 #include <linux/module.h>
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
+#include <linux/of_device.h>
 #include <linux/phy/phy.h>
 #include <linux/phy/phy-dp.h>
 #include <linux/platform_device.h>
@@ -111,6 +112,10 @@
 #define XDPRX_PHYRST_ENBL_MASK		0x0
 #define XDPRX_PHY_INIT_MASK		GENMASK(29, 27)
 
+#define XDPRX_PHYSTATUS_REG			0x208
+#define XDPRX_PHYSTATUS_ALL_LANES_GOOD_MASK	GENMASK(6, 0)
+#define XDPRX_PHYSTATUS_READ_COUNT	100
+
 #define XDPRX_MINVOLT_SWING_REG		0x214
 #define XDPRX_VS_PE_SHIFT		12
 #define XDPRX_VS_SWEEP_CNTSHIFT		4
@@ -177,6 +182,29 @@
  */
 #define XDPRX_HPD_PLUSE_750		750
 
+/* GtCtrl Registers */
+#define XDPRX_GTCTL_REG			0x4C
+#define XDPRX_GTCTL_EN			BIT(0)
+#define XDPRX_GTCTL_VSWING_MASK		GENMASK(12, 8)
+#define XDPRX_GTCTL_VSWING_INIT_VAL	0x05
+#define XDPRX_GTCTL_LINE_RATE_MASK	GENMASK(2, 1)
+#define XDPRX_GTCTL_LINE_RATE_810G	3
+#define XDPRX_GTCTL_LINE_RATE_540G	2
+#define XDPRX_GTCTL_LINE_RATE_270G	1
+#define XDPRX_GTCTL_LINE_RATE_162G	0
+
+/* Gt Quad Base Registers */
+#define GT_QUAD_BASE_CTL		0x0c
+#define GT_QUAD_BASE_CTL_VALUE		0xf9e8d7c6
+#define GT_QUAD_BASE_CH1_CLK_DIV_REG	0x3694
+#define GT_QUAD_BASE_CH1_CLK_DIV_MASK	GENMASK(9, 0)
+#define GT_QUAD_BASE_CH1_CLK_DIV_VALUE	0x260
+
+#define DP_LINK_BW_1_62G	1620
+#define DP_LINK_BW_2_7G		2700
+#define DP_LINK_BW_5_4G		5400    /* 1.2 */
+#define DP_LINK_BW_8_1G		8100    /* 1.4 */
+
 /**
  * struct xlnx_dprx_audio_data - DP Rx Subsystem audio data structure
  * @infoframe: Audio infoframe that is received
@@ -200,14 +228,18 @@ struct xlnx_dprx_audio_data {
  * @axi_clk: Axi lite interface clock
  * @rx_lnk_clk: DP Rx GT clock
  * @rx_vid_clk: DP RX Video clock
+ * @rx_dec_clk: DP Rx Decode clock
  * @dp_base: Base address of DP Rx Subsystem
  * @edid_base: Bare Address of EDID block
+ * @gt_quad_base: Base address of GT Quad Base IP
+ * @tp1_work: training pattern 1 worker
  * @lock: Lock is used for width, height, framerate variables
  * @format: Active V4L2 format on each pad
  * @frame_interval: Captures the frame rate
  * @max_linkrate: Maximum supported link rate
  * @max_lanecount: Maximux supported lane count
  * @bpc: Bits per component
+ * @versal_gt_present: flag to indicate versal-gt property in device tree
  * @hdcp_enable: To indicate hdcp enabled or not
  * @audio_enable: To indicate audio enabled or not
  * @audio_init: flag to indicate audio is initialized
@@ -226,8 +258,11 @@ struct xdprxss_state {
 	struct clk *axi_clk;
 	struct clk *rx_lnk_clk;
 	struct clk *rx_vid_clk;
+	struct clk *rx_dec_clk;
 	void __iomem *dp_base;
 	void __iomem *edid_base;
+	void __iomem *gt_quad_base;
+	struct delayed_work tp1_work;
 	/* protects width, height, framerate variables */
 	spinlock_t lock;
 	struct v4l2_mbus_framefmt format;
@@ -235,6 +270,7 @@ struct xdprxss_state {
 	u32 max_linkrate;
 	u32 max_lanecount;
 	u32 bpc;
+	bool versal_gt_present;
 	bool hdcp_enable;
 	bool audio_enable;
 	bool audio_init;
@@ -437,6 +473,17 @@ static inline void xdprxss_set(struct xdprxss_state *xdprxss, u32 addr,
 	xdprxss_write(xdprxss, addr, xdprxss_read(xdprxss, addr) | set);
 }
 
+static void xdprxss_clrset(struct xdprxss_state *dp, u32 addr,
+			   u32 clr_mask, u32 set_data)
+{
+	u32 regval;
+
+	regval = xdprxss_read(dp, addr);
+	regval &= ~clr_mask;
+	regval |= FIELD_PREP(clr_mask, set_data);
+	xdprxss_write(dp, addr, regval);
+}
+
 static inline void xdprxss_dpcd_update_start(struct xdprxss_state *xdprxss)
 {
 	iowrite32(0x1, xdprxss->dp_base + XDPRX_CTRL_DPCD_REG);
@@ -461,6 +508,121 @@ static inline void xdprxss_dpcd_update(struct xdprxss_state *xdprxss,
 				       u32 addr, u32 val)
 {
 	xdprxss_write(xdprxss, addr, val);
+}
+
+/**
+ * xlnx_dp_phy_ready - check if PHY is ready
+ * @dp: DisplayPort IP core structure
+ *
+ * check if PHY is ready. If PHY is not ready, wait 1ms to check for 100 times.
+ * This amount of delay was suggested by IP designer.
+ *
+ * Return: 0 if PHY is ready, or -ENODEV if PHY is not ready.
+ */
+static int xlnx_dp_phy_ready(struct xdprxss_state *dp)
+{
+	u32 i, reg, ready;
+
+	ready = XDPRX_PHYSTATUS_ALL_LANES_GOOD_MASK;
+
+	/* Wait for 100ms. This should be enough time for PHY to be ready */
+	for (i = 0; i < XDPRX_PHYSTATUS_READ_COUNT; i++) {
+		reg = xdprxss_read(dp, XDPRX_PHYSTATUS_REG);
+		if ((reg & ready) == ready)
+			break;
+
+		usleep_range(1000, 1100);
+	}
+
+	if (i == XDPRX_PHYSTATUS_READ_COUNT) {
+		dev_err(dp->dev, "PHY isn't ready\n");
+		return -ENODEV;
+	}
+
+	return 0;
+}
+
+static int config_gt_control_linerate(struct xdprxss_state *dp, int bw_code)
+{
+	u32 data;
+
+	switch (bw_code) {
+	case DP_LINK_BW_1_62:
+		data = XDPRX_GTCTL_LINE_RATE_162G;
+		break;
+	case DP_LINK_BW_2_7:
+		data = XDPRX_GTCTL_LINE_RATE_270G;
+		break;
+	case DP_LINK_BW_5_4:
+		data = XDPRX_GTCTL_LINE_RATE_540G;
+		break;
+	case DP_LINK_BW_8_1:
+		data = XDPRX_GTCTL_LINE_RATE_810G;
+		break;
+	default:
+		data = XDPRX_GTCTL_LINE_RATE_810G;
+	}
+
+	/*
+	 * Configuring MMCM to give a /20 clock output for /16 clk input.
+	 *
+	 * GT ch0outclk (/16) --> MMCM --> /20 clock
+	 *
+	 * Thus:
+	 * 8.1G  : Input MMCM clock is 506.25, output is 405
+	 * 5.4G  : Input MMCM clock is 337.5, output is 270
+	 * 2.7G  : Input MMCM clock is 168.75, output is 135
+	 * 1.62G : Input MMCM clock is 101.25, output is 81
+	 *
+	 * TODO: The /20 clock should be configured in MMCM but the MMCM driver
+	 * has a limitation for variable input clocks, once that is fixed
+	 * it needs to set the clock using clk_set_rate.
+	 */
+	xdprxss_clrset(dp, XDPRX_GTCTL_REG, XDPRX_GTCTL_LINE_RATE_MASK, data);
+
+	return xlnx_dp_phy_ready(dp);
+}
+
+static int xlnx_dp_rx_gt_control_init(struct xdprxss_state *dp)
+{
+	int ret;
+
+	/* setting initial vswing */
+	xdprxss_clrset(dp, XDPRX_GTCTL_REG, XDPRX_GTCTL_VSWING_MASK,
+		       XDPRX_GTCTL_VSWING_INIT_VAL);
+
+	xdprxss_clr(dp, XDPRX_GTCTL_REG, XDPRX_GTCTL_EN);
+	ret = xlnx_dp_phy_ready(dp);
+	if (ret < 0)
+		return ret;
+
+	/* Setting initial link rate */
+	ret = config_gt_control_linerate(dp, DP_LINK_BW_8_1);
+	if (ret) {
+		dev_err(dp->dev, "Default Line Rate setting Failed\n");
+		return ret;
+	}
+
+	return 0;
+}
+
+static void config_gt_quad_base(struct xdprxss_state *dp)
+{
+	u32 data;
+
+	/*
+	 * Unlocking the NPI space so that GT CH1 divider value can be
+	 * programmed. This will generate a /20 clk
+	 */
+	iowrite32(GT_QUAD_BASE_CTL_VALUE,
+		  (dp->gt_quad_base + GT_QUAD_BASE_CTL));
+
+	data = ioread32(dp->gt_quad_base + GT_QUAD_BASE_CH1_CLK_DIV_REG);
+	data &= ~GT_QUAD_BASE_CH1_CLK_DIV_MASK;
+	data |= FIELD_PREP(GT_QUAD_BASE_CH1_CLK_DIV_MASK,
+			   GT_QUAD_BASE_CH1_CLK_DIV_VALUE);
+	iowrite32(data,
+		  (dp->gt_quad_base + GT_QUAD_BASE_CH1_CLK_DIV_REG));
 }
 
 /**
@@ -677,13 +839,20 @@ static void xdprxss_irq_tp1(struct xdprxss_state *state)
 		dev_err(state->dev, "invalid link rate\n");
 		break;
 	}
-	phy_cfg->set_rate = 1;
-	for (i = 0; i < state->max_lanecount; i++)
-		phy_configure(state->phy[i], &phy_opts);
 
-	/* Initialize phy logic of DP-RX core */
-	xdprxss_write(state, XDPRX_PHY_REG, XDPRX_PHY_INIT_MASK);
-	phy_reset(state->phy[0]);
+	if (!state->versal_gt_present) {
+		phy_cfg->set_rate = 1;
+		for (i = 0; i < state->max_lanecount; i++)
+			phy_configure(state->phy[i], &phy_opts);
+		/* Initialize phy logic of DP-RX core */
+		xdprxss_write(state, XDPRX_PHY_REG, XDPRX_PHY_INIT_MASK);
+		phy_reset(state->phy[0]);
+	} else {
+		config_gt_control_linerate(state, linkrate);
+		/* Initialize phy logic of DP-RX core */
+		xdprxss_write(state, XDPRX_PHY_REG, XDPRX_PHY_INIT_MASK);
+	}
+
 	xdprxss_clr(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_ALL_MASK);
 }
 
@@ -772,7 +941,7 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 	if (status & XDPRX_INTR_UNPLUG_MASK)
 		xdprxss_irq_unplug(state);
 	if (status & XDPRX_INTR_TP1_MASK)
-		xdprxss_irq_tp1(state);
+		schedule_delayed_work(&state->tp1_work, 0);
 	if (status & XDPRX_INTR_TRLOST_MASK)
 		xdprxss_training_failure(state);
 	if (status & XDPRX_INTR_NOVID_MASK)
@@ -1239,6 +1408,9 @@ static int xdprxss_parse_of(struct xdprxss_state *xdprxss)
 	if (!xdprxss->audio_enable)
 		dev_info(xdprxss->dev, "audio not enabled\n");
 
+	xdprxss->versal_gt_present =
+		of_property_read_bool(node, "xlnx,versal-gt");
+
 	ret = of_property_read_u32(node, "xlnx,link-rate", &val);
 	if (ret < 0) {
 		dev_err(xdprxss->dev, "xlnx,link-rate property not found\n");
@@ -1272,6 +1444,46 @@ static int xdprxss_parse_of(struct xdprxss_state *xdprxss)
 	if (val > 0) {
 		dev_err(xdprxss->dev, "driver does't support MST mode\n");
 		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static void xlnx_dp_tp1_work_func(struct work_struct *work)
+{
+	struct xdprxss_state *dp;
+
+	dp = container_of(work, struct xdprxss_state, tp1_work.work);
+
+	xdprxss_irq_tp1(dp);
+}
+
+static int xlnx_find_device(struct platform_device *pdev, const char *name)
+{
+	struct device_node *pnode = pdev->dev.of_node;
+	struct device_node *fnode;
+	struct platform_device *iface_pdev;
+	void *ptr;
+
+	fnode = of_parse_phandle(pnode, name, 0);
+	if (!fnode) {
+		dev_err(&pdev->dev, "platform node %s not found\n", name);
+		of_node_put(fnode);
+	} else {
+		iface_pdev = of_find_device_by_node(fnode);
+		if (!iface_pdev) {
+			of_node_put(pnode);
+			return -ENODEV;
+		}
+
+		ptr = dev_get_drvdata(&iface_pdev->dev);
+		if (!ptr) {
+			dev_info(&pdev->dev,
+				 "platform device(%s) not found -EPROBE_DEFER\n", name);
+			of_node_put(fnode);
+			return -EPROBE_DEFER;
+		}
+		of_node_put(fnode);
 	}
 
 	return 0;
@@ -1342,29 +1554,56 @@ static int xdprxss_probe(struct platform_device *pdev)
 	if (ret < 0)
 		goto clk_err;
 
-	/* acquire vphy lanes */
-	for (i = 0; i < xdprxss->max_lanecount; i++) {
-		char phy_name[16];
+	if (!xdprxss->versal_gt_present) {
+		/* acquire vphy lanes */
+		for (i = 0; i < xdprxss->max_lanecount; i++) {
+			char phy_name[16];
 
-		snprintf(phy_name, sizeof(phy_name), "dp-phy%d", i);
-		xdprxss->phy[i] = devm_phy_get(xdprxss->dev, phy_name);
-		if (IS_ERR(xdprxss->phy[i])) {
-			ret = PTR_ERR(xdprxss->phy[i]);
-			xdprxss->phy[i] = NULL;
-			if (ret == -EPROBE_DEFER)
-				dev_info(dev, "phy not ready -EPROBE_DEFER\n");
-			if (ret != -EPROBE_DEFER)
+			snprintf(phy_name, sizeof(phy_name), "dp-phy%d", i);
+			xdprxss->phy[i] = devm_phy_get(xdprxss->dev, phy_name);
+			if (IS_ERR(xdprxss->phy[i])) {
+				ret = PTR_ERR(xdprxss->phy[i]);
+				xdprxss->phy[i] = NULL;
+				if (ret == -EPROBE_DEFER)
+					dev_info(dev, "phy not ready -EPROBE_DEFER\n");
+				else
+					dev_err(dev,
+						"failed to get phy lane %s i %d\n",
+						phy_name, i);
+				goto error_phy;
+			}
+			ret = phy_init(xdprxss->phy[i]);
+			if (ret) {
 				dev_err(dev,
-					"failed to get phy lane %s i %d\n",
-					phy_name, i);
-			goto error_phy;
+					"failed to init phy lane %d\n", i);
+				goto error_phy;
+			}
 		}
-		ret = phy_init(xdprxss->phy[i]);
-		if (ret) {
-			dev_err(dev,
-				"failed to init phy lane %d\n", i);
-			goto error_phy;
+	} else {
+		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "gt_quad_base");
+		xdprxss->gt_quad_base = devm_ioremap_resource(xdprxss->dev, res);
+		if (IS_ERR(xdprxss->gt_quad_base)) {
+			dev_err(&pdev->dev,
+				"couldn't map GT Quad Base IP registers\n");
+			return PTR_ERR(xdprxss->gt_quad_base);
 		}
+
+		ret = xlnx_find_device(pdev, "xlnx,xilinx-vfmc");
+		if (ret)
+			return ret;
+
+		xdprxss->rx_dec_clk = devm_clk_get(dev, "rx_dec_clk");
+		if (IS_ERR(xdprxss->rx_dec_clk)) {
+			ret = PTR_ERR(xdprxss->rx_dec_clk);
+			dev_err(&pdev->dev, "failed to get rx_dec_clk (%d)\n", ret);
+			return ret;
+		}
+
+		config_gt_quad_base(xdprxss);
+
+		ret = xlnx_dp_rx_gt_control_init(xdprxss);
+		if (ret < 0)
+			return ret;
 	}
 
 	ret = clk_prepare_enable(xdprxss->axi_clk);
@@ -1383,6 +1622,11 @@ static int xdprxss_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(dev, "failed to enable rx_vid_clk (%d)\n", ret);
 		goto rx_vid_clk_err;
+	}
+	ret = clk_prepare_enable(xdprxss->rx_dec_clk);
+	if (ret) {
+		dev_err(dev, "failed to enable rx_dec_clk (%d)\n", ret);
+		goto rx_dec_clk_err;
 	}
 
 	spin_lock_init(&xdprxss->lock);
@@ -1439,11 +1683,15 @@ static int xdprxss_probe(struct platform_device *pdev)
 		}
 	}
 
+	INIT_DELAYED_WORK(&xdprxss->tp1_work, xlnx_dp_tp1_work_func);
+
 	return 0;
 
 error:
 	media_entity_cleanup(&subdev->entity);
 clk_err:
+	clk_disable_unprepare(xdprxss->rx_dec_clk);
+rx_dec_clk_err:
 	clk_disable_unprepare(xdprxss->rx_vid_clk);
 rx_vid_clk_err:
 	clk_disable_unprepare(xdprxss->rx_lnk_clk);
@@ -1458,7 +1706,6 @@ error_phy:
 				"phy_exit() xdprxss->phy[%d] = %p\n",
 				j, xdprxss->phy[j]);
 			phy_exit(xdprxss->phy[j]);
-			xdprxss->phy[j] = NULL;
 		}
 	}
 
@@ -1471,15 +1718,15 @@ static int xdprxss_remove(struct platform_device *pdev)
 	struct v4l2_subdev *subdev = &xdprxss->subdev;
 	unsigned int i;
 
+	cancel_delayed_work_sync(&xdprxss->tp1_work);
 	v4l2_async_unregister_subdev(subdev);
 	media_entity_cleanup(&subdev->entity);
 	clk_disable_unprepare(xdprxss->rx_vid_clk);
 	clk_disable_unprepare(xdprxss->rx_lnk_clk);
 	clk_disable_unprepare(xdprxss->axi_clk);
-	for (i = 0; i < XDPRX_MAX_LANE_COUNT; i++) {
-		phy_exit(xdprxss->phy[i]);
-		xdprxss->phy[i] = NULL;
-	}
+	if (!xdprxss->versal_gt_present)
+		for (i = 0; i < XDPRX_MAX_LANE_COUNT; i++)
+			phy_exit(xdprxss->phy[i]);
 
 	if (xdprxss->audio_init)
 		dprx_unregister_aud_dev(&pdev->dev);
