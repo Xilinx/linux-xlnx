@@ -916,24 +916,6 @@ int zynqmp_pm_fpga_get_status(u32 *value)
 EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_get_status);
 
 /**
- * zynqmp_pm_load_pdi - Load and process pdi
- * @src:	Source device where PDI is located
- * @address:	Pdi src address
- *
- * This function provides support to load pdi from linux
- *
- * Return: Returns status, either success or error+reason
- */
-int zynqmp_pm_load_pdi(const u32 src, const u64 address)
-{
-	return zynqmp_pm_invoke_fn(PM_LOAD_PDI, src,
-				   lower_32_bits(address),
-				   upper_32_bits(address), 0,
-				   0, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_load_pdi);
-
-/**
  * zynqmp_pm_write_aes_key - Write AES key registers
  * @keylen:	Size of the input key to be written
  * @keysrc:	Key Source to be selected to which provided
@@ -1706,6 +1688,24 @@ int zynqmp_pm_set_requirement(const u32 node, const u32 capabilities,
 				   qos, ack, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_requirement);
+
+/**
+ * zynqmp_pm_load_pdi - Load and process PDI
+ * @src:	Source device where PDI is located
+ * @address:	PDI src address
+ *
+ * This function provides support to load PDI from linux
+ *
+ * Return: Returns status, either success or error+reason
+ */
+int zynqmp_pm_load_pdi(const u32 src, const u64 address)
+{
+	return zynqmp_pm_invoke_fn(PM_LOAD_PDI, src,
+				   lower_32_bits(address),
+				   upper_32_bits(address), 0,
+				   0, NULL);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_load_pdi);
 
 /**
  * zynqmp_pm_aes_engine - Access AES hardware to encrypt/decrypt the data using

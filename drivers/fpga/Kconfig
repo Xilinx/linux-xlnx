@@ -249,8 +249,8 @@ config FPGA_MGR_VERSAL_FPGA
 	depends on ARCH_ZYNQMP || COMPILE_TEST
 	help
 	  Select this option to enable FPGA manager driver support for
-	  Xilinx Versal SOC. This driver uses the versal soc firmware
-	  interface to load programmable logic(PL) images
-	  on versal soc.
+	  Xilinx Versal SoC. This driver uses the firmware interface to
+	  configure the programmable logic(PL).
 
+	  To compile this as a module, choose M here.
 endif # FPGA

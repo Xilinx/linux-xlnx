@@ -36,9 +36,6 @@
 #define PM_SET_SUSPEND_MODE		0xa02
 #define GET_CALLBACK_DATA		0xa01
 
-/* Loader commands */
-#define PM_LOAD_PDI			0x701
-
 /* NVM Commands */
 #define PM_BBRAM_WRITE_KEY		0xB01
 #define PM_BBRAM_ZEROIZE		0xB02
@@ -78,6 +75,10 @@
 #define	ZYNQMP_PM_CAPABILITY_CONTEXT	0x2U
 #define	ZYNQMP_PM_CAPABILITY_WAKEUP	0x4U
 #define	ZYNQMP_PM_CAPABILITY_UNUSABLE	0x8U
+
+/* Loader commands */
+#define PM_LOAD_PDI	0x701
+#define PDI_SRC_DDR	0xF
 
 /*
  * Firmware FPGA Manager flags
@@ -644,7 +645,6 @@ int zynqmp_pm_set_requirement(const u32 node, const u32 capabilities,
 int zynqmp_pm_aes_engine(const u64 address, u32 *out);
 int zynqmp_pm_efuse_access(const u64 address, u32 *out);
 int zynqmp_pm_secure_load(const u64 src_addr, u64 key_addr, u64 *dst);
-int zynqmp_pm_load_pdi(const u32 src, const u64 address);
 int zynqmp_pm_write_aes_key(const u32 keylen, const u32 keysrc, const u64 keyaddr);
 int zynqmp_pm_bbram_write_usrdata(u32 data);
 int zynqmp_pm_bbram_read_usrdata(const u64 outaddr);
@@ -707,6 +707,7 @@ int zynqmp_pm_pinctrl_get_config(const u32 pin, const u32 param,
 				 u32 *value);
 int zynqmp_pm_pinctrl_set_config(const u32 pin, const u32 param,
 				 u32 value);
+int zynqmp_pm_load_pdi(const u32 src, const u64 address);
 int zynqmp_pm_register_notifier(const u32 node, const u32 event,
 				const u32 wake, const u32 enable);
 int zynqmp_pm_feature(const u32 api_id);
@@ -997,6 +998,11 @@ static inline int zynqmp_pm_pinctrl_set_config(const u32 pin, const u32 param,
 	return -ENODEV;
 }
 
+static inline int zynqmp_pm_load_pdi(const u32 src, const u64 address)
+{
+	return -ENODEV;
+}
+
 static inline int zynqmp_pm_efuse_access(const u64 address, u32 *out)
 {
 	return -ENODEV;
@@ -1085,11 +1091,6 @@ static inline int zynqmp_pm_set_wakeup_source(const u32 target,
 static inline int zynqmp_pm_fpga_read(const u32 reg_numframes,
 				      const u64 phys_address, u32 readback_type,
 				      u32 *value)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_load_pdi(const u32 src, const u64 address)
 {
 	return -ENODEV;
 }

@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: GPL-2.0+
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2019 Xilinx, Inc.
+ * Copyright (C) 2019-2021 Xilinx, Inc.
  */
 
 #include <linux/dma-mapping.h>
@@ -11,9 +11,6 @@
 #include <linux/of_address.h>
 #include <linux/string.h>
 #include <linux/firmware/xlnx-zynqmp.h>
-
-/* Constant Definitions */
-#define PDI_SOURCE_TYPE	0xF
 
 /**
  * struct versal_fpga_priv - Private data structure
@@ -44,7 +41,7 @@ static int versal_fpga_ops_write_sg(struct fpga_manager *mgr,
 	int ret;
 
 	dma_addr = sg_dma_address(sgt->sgl);
-	ret = zynqmp_pm_load_pdi(PDI_SOURCE_TYPE, dma_addr);
+	ret = zynqmp_pm_load_pdi(PDI_SRC_DDR, dma_addr);
 
 	return ret;
 }
@@ -67,7 +64,7 @@ static int versal_fpga_ops_write(struct fpga_manager *mgr,
 
 	wmb(); /* ensure all writes are done before initiate FW call */
 
-	ret = zynqmp_pm_load_pdi(PDI_SOURCE_TYPE, dma_addr);
+	ret = zynqmp_pm_load_pdi(PDI_SRC_DDR, dma_addr);
 
 	dma_free_coherent(priv->dev, size, kbuf, dma_addr);
 
