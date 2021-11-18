@@ -126,7 +126,7 @@ enum pm_api_id {
 	/* ID 25 is been used by U-boot to process secure boot images */
 	/* Secure library generic API functions */
 	PM_SECURE_SHA = 26,
-	PM_SECURE_RSA,
+	PM_SECURE_RSA = 27,
 	PM_PINCTRL_REQUEST = 28,
 	PM_PINCTRL_RELEASE = 29,
 	PM_PINCTRL_GET_FUNCTION = 30,
@@ -223,7 +223,7 @@ enum pm_query_id {
 	PM_QID_PINCTRL_GET_PIN_GROUPS = 11,
 	PM_QID_CLOCK_GET_NUM_CLOCKS = 12,
 	PM_QID_CLOCK_GET_MAX_DIVISOR = 13,
-	PM_QID_PLD_GET_PARENT,
+	PM_QID_PLD_GET_PARENT = 14,
 };
 
 enum rpu_oper_mode {
@@ -563,8 +563,8 @@ enum sgmii_mode {
 };
 
 enum pm_register_access_id {
-	CONFIG_REG_WRITE,
-	CONFIG_REG_READ,
+	CONFIG_REG_WRITE = 0,
+	CONFIG_REG_READ = 1,
 };
 
 enum ospi_mux_select_type {
