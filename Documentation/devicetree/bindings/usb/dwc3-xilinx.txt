@@ -36,11 +36,11 @@ Example device node:
 			#size-cells = <0x1>;
 			compatible = "xlnx,zynqmp-dwc3";
 			reg = <0x0 0xff9d0000 0x0 0x100>;
-			clock-names = "bus_clk" "ref_clk";
+			clock-names = "bus_clk", "ref_clk";
 			clocks = <&clk125>, <&clk125>;
-			resets = <&zynqmp_reset ZYNQMP_RESET_USB0_CORERESET>,
-				 <&zynqmp_reset ZYNQMP_RESET_USB0_HIBERRESET>,
-				 <&zynqmp_reset ZYNQMP_RESET_USB0_APB>;
+			resets = <&zynqmp_reset ZYNQMP_RESET_USB1_CORERESET>,
+				 <&zynqmp_reset ZYNQMP_RESET_USB1_HIBERRESET>,
+				 <&zynqmp_reset ZYNQMP_RESET_USB1_APB>;
 			reset-names = "usb_crst", "usb_hibrst", "usb_apbrst";
 			reset-gpio = <&modepin_gpio 1 0>;
 			ranges;
@@ -50,6 +50,8 @@ Example device node:
 				reg = <0x0 0xfe200000 0x40000>;
 				interrupt-names = "dwc_usb3", "otg", "hiber";
 				interrupts = <0 65 4>, <0 69 4>, <0 75 4>;
+				phys = <&psgtr 2 PHY_TYPE_USB3 0 2>;
+				phy-names = "usb3-phy";
 				dr_mode = "host";
 				dma-coherent;
 			};
