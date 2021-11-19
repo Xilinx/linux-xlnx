@@ -183,7 +183,6 @@ struct onfi_params {
 	bool fast_tCAD;
 	u16 sdr_timing_modes;
 	u16 nvddr_timing_modes;
-	u16 src_sync_timing_mode;
 	u16 vendor_revision;
 	u8 vendor[88];
 	u8 jedec_id;
