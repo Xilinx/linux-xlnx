@@ -1241,6 +1241,9 @@ int of_overlay_remove(int *ovcs_id)
 			ret = ret_tmp;
 	}
 
+	/* Wait for completion of call_rcu()'s */
+	rcu_barrier();
+
 	free_overlay_changeset(ovcs);
 
 out_unlock:
