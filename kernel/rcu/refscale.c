@@ -46,6 +46,18 @@
 #define VERBOSE_SCALEOUT(s, x...) \
 	do { if (verbose) pr_alert("%s" SCALE_FLAG s, scale_type, ## x); } while (0)
 
+static atomic_t verbose_batch_ctr;
+
+#define VERBOSE_SCALEOUT_BATCH(s, x...)							\
+do {											\
+	if (verbose &&									\
+	    (verbose_batched <= 0 ||							\
+	     !(atomic_inc_return(&verbose_batch_ctr) % verbose_batched))) {		\
+		schedule_timeout_uninterruptible(1);					\
+		pr_alert("%s" SCALE_FLAG s, scale_type, ## x);				\
+	}										\
+} while (0)
+
 #define VERBOSE_SCALEOUT_ERRSTRING(s, x...) \
 	do { if (verbose) pr_alert("%s" SCALE_FLAG "!!! " s, scale_type, ## x); } while (0)
 
@@ -57,6 +69,7 @@ module_param(scale_type, charp, 0444);
 MODULE_PARM_DESC(scale_type, "Type of test (rcu, srcu, refcnt, rwsem, rwlock.");
 
 torture_param(int, verbose, 0, "Enable verbose debugging printk()s");
+torture_param(int, verbose_batched, 0, "Batch verbose debugging printk()s");
 
 // Wait until there are multiple CPUs before starting test.
 torture_param(int, holdoff, IS_BUILTIN(CONFIG_RCU_REF_SCALE_TEST) ? 10 : 0,
@@ -349,6 +362,145 @@ static struct ref_scale_ops rwsem_ops = {
 	.name		= "rwsem"
 };
 
+// Definitions for global spinlock
+static DEFINE_SPINLOCK(test_lock);
+
+static void ref_lock_section(const int nloops)
+{
+	int i;
+
+	preempt_disable();
+	for (i = nloops; i >= 0; i--) {
+		spin_lock(&test_lock);
+		spin_unlock(&test_lock);
+	}
+	preempt_enable();
+}
+
+static void ref_lock_delay_section(const int nloops, const int udl, const int ndl)
+{
+	int i;
+
+	preempt_disable();
+	for (i = nloops; i >= 0; i--) {
+		spin_lock(&test_lock);
+		un_delay(udl, ndl);
+		spin_unlock(&test_lock);
+	}
+	preempt_enable();
+}
+
+static struct ref_scale_ops lock_ops = {
+	.readsection	= ref_lock_section,
+	.delaysection	= ref_lock_delay_section,
+	.name		= "lock"
+};
+
+// Definitions for global irq-save spinlock
+
+static void ref_lock_irq_section(const int nloops)
+{
+	unsigned long flags;
+	int i;
+
+	preempt_disable();
+	for (i = nloops; i >= 0; i--) {
+		spin_lock_irqsave(&test_lock, flags);
+		spin_unlock_irqrestore(&test_lock, flags);
+	}
+	preempt_enable();
+}
+
+static void ref_lock_irq_delay_section(const int nloops, const int udl, const int ndl)
+{
+	unsigned long flags;
+	int i;
+
+	preempt_disable();
+	for (i = nloops; i >= 0; i--) {
+		spin_lock_irqsave(&test_lock, flags);
+		un_delay(udl, ndl);
+		spin_unlock_irqrestore(&test_lock, flags);
+	}
+	preempt_enable();
+}
+
+static struct ref_scale_ops lock_irq_ops = {
+	.readsection	= ref_lock_irq_section,
+	.delaysection	= ref_lock_irq_delay_section,
+	.name		= "lock-irq"
+};
+
+// Definitions acquire-release.
+static DEFINE_PER_CPU(unsigned long, test_acqrel);
+
+static void ref_acqrel_section(const int nloops)
+{
+	unsigned long x;
+	int i;
+
+	preempt_disable();
+	for (i = nloops; i >= 0; i--) {
+		x = smp_load_acquire(this_cpu_ptr(&test_acqrel));
+		smp_store_release(this_cpu_ptr(&test_acqrel), x + 1);
+	}
+	preempt_enable();
+}
+
+static void ref_acqrel_delay_section(const int nloops, const int udl, const int ndl)
+{
+	unsigned long x;
+	int i;
+
+	preempt_disable();
+	for (i = nloops; i >= 0; i--) {
+		x = smp_load_acquire(this_cpu_ptr(&test_acqrel));
+		un_delay(udl, ndl);
+		smp_store_release(this_cpu_ptr(&test_acqrel), x + 1);
+	}
+	preempt_enable();
+}
+
+static struct ref_scale_ops acqrel_ops = {
+	.readsection	= ref_acqrel_section,
+	.delaysection	= ref_acqrel_delay_section,
+	.name		= "acqrel"
+};
+
+static volatile u64 stopopts;
+
+static void ref_clock_section(const int nloops)
+{
+	u64 x = 0;
+	int i;
+
+	preempt_disable();
+	for (i = nloops; i >= 0; i--)
+		x += ktime_get_real_fast_ns();
+	preempt_enable();
+	stopopts = x;
+}
+
+static void ref_clock_delay_section(const int nloops, const int udl, const int ndl)
+{
+	u64 x = 0;
+	int i;
+
+	preempt_disable();
+	for (i = nloops; i >= 0; i--) {
+		x += ktime_get_real_fast_ns();
+		un_delay(udl, ndl);
+	}
+	preempt_enable();
+	stopopts = x;
+}
+
+static struct ref_scale_ops clock_ops = {
+	.readsection	= ref_clock_section,
+	.delaysection	= ref_clock_delay_section,
+	.name		= "clock"
+};
+
 static void rcu_scale_one_reader(void)
 {
 	if (readdelay <= 0)
@@ -368,14 +520,14 @@ ref_scale_reader(void *arg)
 	u64 start;
 	s64 duration;
 
-	VERBOSE_SCALEOUT("ref_scale_reader %ld: task started", me);
-	set_cpus_allowed_ptr(current, cpumask_of(me % nr_cpu_ids));
+	VERBOSE_SCALEOUT_BATCH("ref_scale_reader %ld: task started", me);
+	WARN_ON_ONCE(set_cpus_allowed_ptr(current, cpumask_of(me % nr_cpu_ids)));
 	set_user_nice(current, MAX_NICE);
 	atomic_inc(&n_init);
 	if (holdoff)
 		schedule_timeout_interruptible(holdoff * HZ);
 repeat:
-	VERBOSE_SCALEOUT("ref_scale_reader %ld: waiting to start next experiment on cpu %d", me, smp_processor_id());
+	VERBOSE_SCALEOUT_BATCH("ref_scale_reader %ld: waiting to start next experiment on cpu %d", me, raw_smp_processor_id());
 
 	// Wait for signal that this reader can start.
 	wait_event(rt->wq, (atomic_read(&nreaders_exp) && smp_load_acquire(&rt->start_reader)) ||
@@ -385,14 +537,14 @@ repeat:
 		goto end;
 
 	// Make sure that the CPU is affinitized appropriately during testing.
-	WARN_ON_ONCE(smp_processor_id() != me);
+	WARN_ON_ONCE(raw_smp_processor_id() != me);
 
 	WRITE_ONCE(rt->start_reader, 0);
 	if (!atomic_dec_return(&n_started))
 		while (atomic_read_acquire(&n_started))
 			cpu_relax();
 
-	VERBOSE_SCALEOUT("ref_scale_reader %ld: experiment %d started", me, exp_idx);
+	VERBOSE_SCALEOUT_BATCH("ref_scale_reader %ld: experiment %d started", me, exp_idx);
 
 
 	// To reduce noise, do an initial cache-warming invocation, check
@@ -421,8 +573,8 @@ repeat:
 	if (atomic_dec_and_test(&nreaders_exp))
 		wake_up(&main_wq);
 
-	VERBOSE_SCALEOUT("ref_scale_reader %ld: experiment %d ended, (readers remaining=%d)",
-			me, exp_idx, atomic_read(&nreaders_exp));
+	VERBOSE_SCALEOUT_BATCH("ref_scale_reader %ld: experiment %d ended, (readers remaining=%d)",
+				me, exp_idx, atomic_read(&nreaders_exp));
 
 	if (!torture_must_stop())
 		goto repeat;
@@ -640,8 +792,8 @@ ref_scale_init(void)
 	long i;
 	int firsterr = 0;
 	static struct ref_scale_ops *scale_ops[] = {
-		&rcu_ops, &srcu_ops, &rcu_trace_ops, &rcu_tasks_ops,
-		&refcnt_ops, &rwlock_ops, &rwsem_ops,
+		&rcu_ops, &srcu_ops, &rcu_trace_ops, &rcu_tasks_ops, &refcnt_ops, &rwlock_ops,
+		&rwsem_ops, &lock_ops, &lock_irq_ops, &acqrel_ops, &clock_ops,
 	};
 
 	if (!torture_init_begin(scale_type, verbose))
@@ -658,7 +810,6 @@ ref_scale_init(void)
 		for (i = 0; i < ARRAY_SIZE(scale_ops); i++)
 			pr_cont(" %s", scale_ops[i]->name);
 		pr_cont("\n");
-		WARN_ON(!IS_MODULE(CONFIG_RCU_REF_SCALE_TEST));
 		firsterr = -EINVAL;
 		cur_ops = NULL;
 		goto unwind;
@@ -681,6 +832,12 @@ ref_scale_init(void)
 	// Reader tasks (default to ~75% of online CPUs).
 	if (nreaders < 0)
 		nreaders = (num_online_cpus() >> 1) + (num_online_cpus() >> 2);
+	if (WARN_ONCE(loops <= 0, "%s: loops = %ld, adjusted to 1\n", __func__, loops))
+		loops = 1;
+	if (WARN_ONCE(nreaders <= 0, "%s: nreaders = %d, adjusted to 1\n", __func__, nreaders))
+		nreaders = 1;
+	if (WARN_ONCE(nruns <= 0, "%s: nruns = %d, adjusted to 1\n", __func__, nruns))
+		nruns = 1;
 	reader_tasks = kcalloc(nreaders, sizeof(reader_tasks[0]),
 			       GFP_KERNEL);
 	if (!reader_tasks) {
@@ -712,6 +869,10 @@ ref_scale_init(void)
 unwind:
 	torture_init_end();
 	ref_scale_cleanup();
+	if (shutdown) {
+		WARN_ON(!IS_MODULE(CONFIG_RCU_REF_SCALE_TEST));
+		kernel_power_off();
+	}
 	return firsterr;
 }
 

@@ -150,6 +150,9 @@ extern int cachefiles_has_space(struct cachefiles_cache *cache,
  */
 extern const struct fscache_cache_ops cachefiles_cache_ops;
 
+void cachefiles_put_object(struct fscache_object *_object,
+			   enum fscache_obj_ref_trace why);
+
 /*
  * key.c
  */
@@ -178,31 +181,6 @@ extern int cachefiles_check_in_use(struct cachefiles_cache *cache,
 				   struct dentry *dir, char *filename);
 
 /*
- * proc.c
- */
-#ifdef CONFIG_CACHEFILES_HISTOGRAM
-extern atomic_t cachefiles_lookup_histogram[HZ];
-extern atomic_t cachefiles_mkdir_histogram[HZ];
-extern atomic_t cachefiles_create_histogram[HZ];
-
-extern int __init cachefiles_proc_init(void);
-extern void cachefiles_proc_cleanup(void);
-static inline
-void cachefiles_hist(atomic_t histogram[], unsigned long start_jif)
-{
-	unsigned long jif = jiffies - start_jif;
-	if (jif >= HZ)
-		jif = HZ - 1;
-	atomic_inc(&histogram[jif]);
-}
-
-#else
-#define cachefiles_proc_init()		(0)
-#define cachefiles_proc_cleanup()	do {} while (0)
-#define cachefiles_hist(hist, start_jif) do {} while (0)
-#endif
-
-/*
  * rdwr.c
  */
 extern int cachefiles_read_or_alloc_page(struct fscache_retrieval *,
@@ -216,6 +194,12 @@ extern int cachefiles_allocate_pages(struct fscache_retrieval *,
 				     struct list_head *, unsigned *, gfp_t);
 extern int cachefiles_write_page(struct fscache_storage *, struct page *);
 extern void cachefiles_uncache_page(struct fscache_object *, struct page *);
+
+/*
+ * rdwr2.c
+ */
+extern int cachefiles_begin_read_operation(struct netfs_read_request *,
+					   struct fscache_retrieval *);
 
 /*
  * security.c

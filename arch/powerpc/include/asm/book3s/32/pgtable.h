@@ -4,7 +4,43 @@
 
 #include <asm-generic/pgtable-nopmd.h>
 
-#include <asm/book3s/32/hash.h>
+/*
+ * The "classic" 32-bit implementation of the PowerPC MMU uses a hash
+ * table containing PTEs, together with a set of 16 segment registers,
+ * to define the virtual to physical address mapping.
+ *
+ * We use the hash table as an extended TLB, i.e. a cache of currently
+ * active mappings.  We maintain a two-level page table tree, much
+ * like that used by the i386, for the sake of the Linux memory
+ * management code.  Low-level assembler code in hash_low_32.S
+ * (procedure hash_page) is responsible for extracting ptes from the
+ * tree and putting them into the hash table when necessary, and
+ * updating the accessed and modified bits in the page table tree.
+ */
+
+#define _PAGE_PRESENT	0x001	/* software: pte contains a translation */
+#define _PAGE_HASHPTE	0x002	/* hash_page has made an HPTE for this pte */
+#define _PAGE_USER	0x004	/* usermode access allowed */
+#define _PAGE_GUARDED	0x008	/* G: prohibit speculative access */
+#define _PAGE_COHERENT	0x010	/* M: enforce memory coherence (SMP systems) */
+#define _PAGE_NO_CACHE	0x020	/* I: cache inhibit */
+#define _PAGE_WRITETHRU	0x040	/* W: cache write-through */
+#define _PAGE_DIRTY	0x080	/* C: page changed */
+#define _PAGE_ACCESSED	0x100	/* R: page referenced */
+#define _PAGE_EXEC	0x200	/* software: exec allowed */
+#define _PAGE_RW	0x400	/* software: user write access allowed */
+#define _PAGE_SPECIAL	0x800	/* software: Special page */
+
+#ifdef CONFIG_PTE_64BIT
+/* We never clear the high word of the pte */
+#define _PTE_NONE_MASK	(0xffffffff00000000ULL | _PAGE_HASHPTE)
+#else
+#define _PTE_NONE_MASK	_PAGE_HASHPTE
+#endif
+
+#define _PMD_PRESENT	0
+#define _PMD_PRESENT_MASK (PAGE_MASK)
+#define _PMD_BAD	(~PAGE_MASK)
 
 /* And here we include common definitions */
 
@@ -194,10 +230,8 @@ int map_kernel_page(unsigned long va, phys_addr_t pa, pgprot_t prot);
 #define VMALLOC_END	ioremap_bot
 #endif
 
-#ifdef CONFIG_STRICT_KERNEL_RWX
 #define MODULES_END	ALIGN_DOWN(PAGE_OFFSET, SZ_256M)
 #define MODULES_VADDR	(MODULES_END - SZ_256M)
-#endif
 
 #ifndef __ASSEMBLY__
 #include <linux/sched.h>
@@ -240,8 +274,14 @@ extern void add_hash_page(unsigned context, unsigned long va,
 			  unsigned long pmdval);
 
 /* Flush an entry from the TLB/hash table */
-extern void flush_hash_entry(struct mm_struct *mm, pte_t *ptep,
-			     unsigned long address);
+static inline void flush_hash_entry(struct mm_struct *mm, pte_t *ptep, unsigned long addr)
+{
+	if (mmu_has_feature(MMU_FTR_HPTE_TABLE)) {
+		unsigned long ptephys = __pa(ptep) & PAGE_MASK;
+
+		flush_hash_pages(mm->context.id, addr, ptephys, 1);
+	}
+}
 
 /*
  * PTE updates. This function is called whenever an existing
@@ -293,10 +333,9 @@ static inline int __ptep_test_and_clear_young(struct mm_struct *mm,
 {
 	unsigned long old;
 	old = pte_update(mm, addr, ptep, _PAGE_ACCESSED, 0, 0);
-	if (old & _PAGE_HASHPTE) {
-		unsigned long ptephys = __pa(ptep) & PAGE_MASK;
-		flush_hash_pages(mm->context.id, addr, ptephys, 1);
-	}
+	if (old & _PAGE_HASHPTE)
+		flush_hash_entry(mm, ptep, addr);
+
 	return (old & _PAGE_ACCESSED) != 0;
 }
 #define ptep_test_and_clear_young(__vma, __addr, __ptep) \
@@ -524,9 +563,9 @@ static inline void __set_pte_at(struct mm_struct *mm, unsigned long addr,
 	if (pte_val(*ptep) & _PAGE_HASHPTE)
 		flush_hash_entry(mm, ptep, addr);
 	__asm__ __volatile__("\
-		stw%U0%X0 %2,%0\n\
+		stw%X0 %2,%0\n\
 		eieio\n\
-		stw%U0%X0 %L2,%1"
+		stw%X1 %L2,%1"
 	: "=m" (*ptep), "=m" (*((unsigned char *)ptep+4))
 	: "r" (pte) : "memory");
 

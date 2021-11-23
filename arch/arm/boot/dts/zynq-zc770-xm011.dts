@@ -47,7 +47,7 @@
 	};
 };
 
-&nand0 {
+&nfc0 {
 	status = "okay";
 	arm,nand-cycle-t0 = <0x4>;
 	arm,nand-cycle-t1 = <0x4>;

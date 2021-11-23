@@ -183,7 +183,7 @@ static const struct file_operations xlnx_fops = {
 	.open		= drm_open,
 	.release	= xlnx_drm_release,
 	.unlocked_ioctl	= drm_ioctl,
-	.mmap		= drm_gem_cma_mmap,
+	.mmap		= drm_gem_mmap,
 	.poll		= drm_poll,
 	.read		= drm_read,
 #ifdef CONFIG_COMPAT
@@ -198,19 +198,7 @@ static struct drm_driver xlnx_drm_driver = {
 	.open				= xlnx_drm_open,
 	.lastclose			= xlnx_lastclose,
 
-	.prime_handle_to_fd		= drm_gem_prime_handle_to_fd,
-	.prime_fd_to_handle		= drm_gem_prime_fd_to_handle,
-	.gem_prime_export		= drm_gem_prime_export,
-	.gem_prime_import		= drm_gem_prime_import,
-	.gem_prime_get_sg_table		= drm_gem_cma_prime_get_sg_table,
-	.gem_prime_import_sg_table	= drm_gem_cma_prime_import_sg_table,
-	.gem_prime_vmap			= drm_gem_cma_prime_vmap,
-	.gem_prime_vunmap		= drm_gem_cma_prime_vunmap,
-	.gem_prime_mmap			= drm_gem_cma_prime_mmap,
-	.gem_vm_ops			= &drm_gem_cma_vm_ops,
-	.gem_free_object_unlocked	= drm_gem_cma_free_object,
-	.dumb_create			= xlnx_gem_cma_dumb_create,
-	.dumb_destroy			= drm_gem_dumb_destroy,
+	DRM_GEM_CMA_DRIVER_OPS_VMAP_WITH_DUMB_CREATE(xlnx_gem_cma_dumb_create),
 
 	.fops				= &xlnx_fops,
 
@@ -250,7 +238,6 @@ static int xlnx_bind(struct device *dev)
 		goto err_xlnx_drm;
 	}
 
-	drm->irq_enabled = 1;
 	drm->dev_private = xlnx_drm;
 	xlnx_drm->drm = drm;
 	xlnx_drm->master = master;

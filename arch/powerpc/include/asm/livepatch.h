@@ -12,9 +12,11 @@
 #include <linux/sched/task_stack.h>
 
 #ifdef CONFIG_LIVEPATCH
-static inline void klp_arch_set_pc(struct pt_regs *regs, unsigned long ip)
+static inline void klp_arch_set_pc(struct ftrace_regs *fregs, unsigned long ip)
 {
-	regs->nip = ip;
+	struct pt_regs *regs = ftrace_get_regs(fregs);
+
+	regs_set_return_ip(regs, ip);
 }
 
 #define klp_get_ftrace_location klp_get_ftrace_location

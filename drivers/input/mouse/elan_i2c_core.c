@@ -34,7 +34,6 @@
 #include <linux/completion.h>
 #include <linux/of.h>
 #include <linux/property.h>
-#include <linux/input/elan-i2c-ids.h>
 #include <linux/regulator/consumer.h>
 #include <asm/unaligned.h>
 
@@ -47,17 +46,8 @@
 #define ETP_FINGER_WIDTH	15
 #define ETP_RETRY_COUNT		3
 
-#define ETP_MAX_FINGERS		5
-#define ETP_FINGER_DATA_LEN	5
-#define ETP_REPORT_ID		0x5D
-#define ETP_REPORT_ID2		0x60	/* High precision report */
-#define ETP_TP_REPORT_ID	0x5E
-#define ETP_REPORT_ID_OFFSET	2
-#define ETP_TOUCH_INFO_OFFSET	3
-#define ETP_FINGER_DATA_OFFSET	4
-#define ETP_HOVER_INFO_OFFSET	30
-#define ETP_MK_DATA_OFFSET	33	/* For high precision reports */
-#define ETP_MAX_REPORT_LEN	39
+/* quirks to control the device */
+#define ETP_QUIRK_QUICK_WAKEUP	BIT(0)
 
 /* The main device structure */
 struct elan_tp_data {
@@ -103,7 +93,38 @@ struct elan_tp_data {
 	bool			baseline_ready;
 	u8			clickpad;
 	bool			middle_button;
+
+	u32			quirks;		/* Various quirks */
 };
+
+static u32 elan_i2c_lookup_quirks(u16 ic_type, u16 product_id)
+{
+	static const struct {
+		u16 ic_type;
+		u16 product_id;
+		u32 quirks;
+	} elan_i2c_quirks[] = {
+		{ 0x0D, ETP_PRODUCT_ID_DELBIN, ETP_QUIRK_QUICK_WAKEUP },
+		{ 0x0D, ETP_PRODUCT_ID_WHITEBOX, ETP_QUIRK_QUICK_WAKEUP },
+		{ 0x10, ETP_PRODUCT_ID_VOXEL, ETP_QUIRK_QUICK_WAKEUP },
+		{ 0x14, ETP_PRODUCT_ID_MAGPIE, ETP_QUIRK_QUICK_WAKEUP },
+		{ 0x14, ETP_PRODUCT_ID_BOBBA, ETP_QUIRK_QUICK_WAKEUP },
+	};
+	u32 quirks = 0;
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(elan_i2c_quirks); i++) {
+		if (elan_i2c_quirks[i].ic_type == ic_type &&
+		    elan_i2c_quirks[i].product_id == product_id) {
+			quirks = elan_i2c_quirks[i].quirks;
+		}
+	}
+
+	if (ic_type >= 0x0D && product_id >= 0x123)
+		quirks |= ETP_QUIRK_QUICK_WAKEUP;
+
+	return quirks;
+}
 
 static int elan_get_fwinfo(u16 ic_type, u8 iap_version, u16 *validpage_count,
 			   u32 *signature_address, u16 *page_size)
@@ -271,16 +292,18 @@ static int elan_check_ASUS_special_fw(struct elan_tp_data *data)
 	return false;
 }
 
-static int __elan_initialize(struct elan_tp_data *data)
+static int __elan_initialize(struct elan_tp_data *data, bool skip_reset)
 {
 	struct i2c_client *client = data->client;
 	bool woken_up = false;
 	int error;
 
-	error = data->ops->initialize(client);
-	if (error) {
-		dev_err(&client->dev, "device initialize failed: %d\n", error);
-		return error;
+	if (!skip_reset) {
+		error = data->ops->initialize(client);
+		if (error) {
+			dev_err(&client->dev, "device initialize failed: %d\n", error);
+			return error;
+		}
 	}
 
 	error = elan_query_product(data);
@@ -324,16 +347,17 @@ static int __elan_initialize(struct elan_tp_data *data)
 	return 0;
 }
 
-static int elan_initialize(struct elan_tp_data *data)
+static int elan_initialize(struct elan_tp_data *data, bool skip_reset)
 {
 	int repeat = ETP_RETRY_COUNT;
 	int error;
 
 	do {
-		error = __elan_initialize(data);
+		error = __elan_initialize(data, skip_reset);
 		if (!error)
 			return 0;
 
+		skip_reset = false;
 		msleep(30);
 	} while (--repeat > 0);
 
@@ -369,6 +393,8 @@ static int elan_query_device_info(struct elan_tp_data *data)
 					       &data->report_len);
 	if (error)
 		return error;
+
+	data->quirks = elan_i2c_lookup_quirks(data->ic_type, data->product_id);
 
 	error = elan_get_fwinfo(data->ic_type, data->iap_version,
 				&data->fw_validpage_count,
@@ -559,7 +585,7 @@ static int elan_update_firmware(struct elan_tp_data *data,
 		data->ops->iap_reset(client);
 	} else {
 		/* Reinitialize TP after fw is updated */
-		elan_initialize(data);
+		elan_initialize(data, false);
 		elan_query_device_info(data);
 	}
 
@@ -1076,6 +1102,7 @@ static irqreturn_t elan_isr(int irq, void *dev_id)
 		elan_report_absolute(data, report, true);
 		break;
 	case ETP_TP_REPORT_ID:
+	case ETP_TP_REPORT_ID2:
 		elan_report_trackpoint(data, report);
 		break;
 	default:
@@ -1259,7 +1286,7 @@ static int elan_probe(struct i2c_client *client,
 	}
 
 	/* Initialize the touchpad. */
-	error = elan_initialize(data);
+	error = elan_initialize(data, false);
 	if (error)
 		return error;
 
@@ -1396,7 +1423,7 @@ static int __maybe_unused elan_resume(struct device *dev)
 		goto err;
 	}
 
-	error = elan_initialize(data);
+	error = elan_initialize(data, data->quirks & ETP_QUIRK_QUICK_WAKEUP);
 	if (error)
 		dev_err(dev, "initialize when resuming failed: %d\n", error);
 
@@ -1414,6 +1441,7 @@ static const struct i2c_device_id elan_id[] = {
 MODULE_DEVICE_TABLE(i2c, elan_id);
 
 #ifdef CONFIG_ACPI
+#include <linux/input/elan-i2c-ids.h>
 MODULE_DEVICE_TABLE(acpi, elan_acpi_id);
 #endif
 

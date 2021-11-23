@@ -116,7 +116,7 @@ static int xsw_s_stream(struct v4l2_subdev *subdev, int enable)
 
 static struct v4l2_mbus_framefmt *
 xsw_get_pad_format(struct xswitch_device *xsw,
-		   struct v4l2_subdev_pad_config *cfg,
+		   struct v4l2_subdev_state *sd_state,
 		   unsigned int pad, u32 which)
 {
 	struct v4l2_mbus_framefmt *format;
@@ -124,7 +124,7 @@ xsw_get_pad_format(struct xswitch_device *xsw,
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
 		format = v4l2_subdev_get_try_format(&xsw->xvip.subdev,
-						    cfg, pad);
+						    sd_state, pad);
 		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
 		format = &xsw->formats[pad];
@@ -138,7 +138,7 @@ xsw_get_pad_format(struct xswitch_device *xsw,
 }
 
 static int xsw_get_format(struct v4l2_subdev *subdev,
-			  struct v4l2_subdev_pad_config *cfg,
+			  struct v4l2_subdev_state *sd_state,
 			  struct v4l2_subdev_format *fmt)
 {
 	struct xswitch_device *xsw = to_xsw(subdev);
@@ -153,7 +153,7 @@ static int xsw_get_format(struct v4l2_subdev *subdev,
 		}
 	}
 
-	format = xsw_get_pad_format(xsw, cfg, pad, fmt->which);
+	format = xsw_get_pad_format(xsw, sd_state, pad, fmt->which);
 	if (!format)
 		return -EINVAL;
 
@@ -163,7 +163,7 @@ static int xsw_get_format(struct v4l2_subdev *subdev,
 }
 
 static int xsw_set_format(struct v4l2_subdev *subdev,
-			  struct v4l2_subdev_pad_config *cfg,
+			  struct v4l2_subdev_state *sd_state,
 			  struct v4l2_subdev_format *fmt)
 {
 	struct xswitch_device *xsw = to_xsw(subdev);
@@ -173,9 +173,9 @@ static int xsw_set_format(struct v4l2_subdev *subdev,
 	 * can't be modified.
 	 */
 	if (fmt->pad >= xsw->nsinks)
-		return xsw_get_format(subdev, cfg, fmt);
+		return xsw_get_format(subdev, sd_state, fmt);
 
-	format = xsw_get_pad_format(xsw, cfg, fmt->pad, fmt->which);
+	format = xsw_get_pad_format(xsw, sd_state, fmt->pad, fmt->which);
 	if (!format)
 		return -EINVAL;
 
@@ -271,7 +271,7 @@ static void xsw_init_formats(struct v4l2_subdev *subdev,
 		format.format.width = 1920;
 		format.format.height = 1080;
 
-		xsw_set_format(subdev, fh ? fh->pad : NULL, &format);
+		xsw_set_format(subdev, fh ? fh->state : NULL, &format);
 	}
 }
 

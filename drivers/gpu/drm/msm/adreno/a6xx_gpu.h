@@ -19,7 +19,16 @@ struct a6xx_gpu {
 	uint64_t sqe_iova;
 
 	struct msm_ringbuffer *cur_ring;
-	struct msm_file_private *cur_ctx;
+
+	/**
+	 * cur_ctx_seqno:
+	 *
+	 * The ctx->seqno value of the context with current pgtables
+	 * installed.  Tracked by seqno rather than pointer value to
+	 * avoid dangling pointers, and cases where a ctx can be freed
+	 * and a new one created with the same address.
+	 */
+	int cur_ctx_seqno;
 
 	struct a6xx_gmu gmu;
 
@@ -28,6 +37,11 @@ struct a6xx_gpu {
 	uint32_t *shadow;
 
 	bool has_whereami;
+
+	void __iomem *llc_mmio;
+	void *llc_slice;
+	void *htw_llc_slice;
+	bool have_mmu500;
 };
 
 #define to_a6xx_gpu(x) container_of(x, struct a6xx_gpu, base)
@@ -37,7 +51,7 @@ struct a6xx_gpu {
  * REG_CP_PROTECT_REG(n) - this will block both reads and writes for _len
  * registers starting at _reg.
  */
-#define A6XX_PROTECT_RW(_reg, _len) \
+#define A6XX_PROTECT_NORDWR(_reg, _len) \
 	((1 << 31) | \
 	(((_len) & 0x3FFF) << 18) | ((_reg) & 0x3FFFF))
 

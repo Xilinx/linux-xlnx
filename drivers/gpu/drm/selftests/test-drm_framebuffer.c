@@ -8,6 +8,7 @@
 #include <drm/drm_device.h>
 #include <drm/drm_mode.h>
 #include <drm/drm_fourcc.h>
+#include <drm/drm_print.h>
 
 #include "../drm_crtc_internal.h"
 
@@ -330,10 +331,9 @@ static struct drm_device mock_drm_device = {
 static int execute_drm_mode_fb_cmd2(struct drm_mode_fb_cmd2 *r)
 {
 	int buffer_created = 0;
-	struct drm_framebuffer *fb;
 
 	mock_drm_device.dev_private = &buffer_created;
-	fb = drm_internal_framebuffer_create(&mock_drm_device, r, NULL);
+	drm_internal_framebuffer_create(&mock_drm_device, r, NULL);
 	return buffer_created;
 }
 

@@ -10,7 +10,7 @@ The memory of Protected Virtual Machines (PVMs) is not accessible to
 I/O or the hypervisor. In those cases where the hypervisor needs to
 access the memory of a PVM, that memory must be made accessible.
 Memory made accessible to the hypervisor will be encrypted. See
-:doc:`s390-pv` for details."
+Documentation/virt/kvm/s390-pv.rst for details."
 
 On IPL (boot) a small plaintext bootloader is started, which provides
 information about the encrypted components and necessary metadata to
@@ -80,5 +80,5 @@ Keys
 ----
 Every CEC will have a unique public key to enable tooling to build
 encrypted images.
-See  `s390-tools <https://github.com/ibm-s390-tools/s390-tools/>`_
+See  `s390-tools <https://github.com/ibm-s390-linux/s390-tools/>`_
 for the tooling.

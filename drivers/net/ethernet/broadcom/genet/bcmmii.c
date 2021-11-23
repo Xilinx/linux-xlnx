@@ -63,11 +63,11 @@ void bcmgenet_mii_setup(struct net_device *dev)
 
 		/* speed */
 		if (phydev->speed == SPEED_1000)
-			cmd_bits = UMAC_SPEED_1000;
+			cmd_bits = CMD_SPEED_1000;
 		else if (phydev->speed == SPEED_100)
-			cmd_bits = UMAC_SPEED_100;
+			cmd_bits = CMD_SPEED_100;
 		else
-			cmd_bits = UMAC_SPEED_10;
+			cmd_bits = CMD_SPEED_10;
 		cmd_bits <<= CMD_SPEED_SHIFT;
 
 		/* duplex */
@@ -359,7 +359,7 @@ int bcmgenet_mii_probe(struct net_device *dev)
 	 * those versions of GENET.
 	 */
 	if (priv->internal_phy && !GENET_IS_V5(priv))
-		dev->phydev->irq = PHY_IGNORE_INTERRUPT;
+		dev->phydev->irq = PHY_MAC_INTERRUPT;
 
 	return 0;
 }
@@ -423,6 +423,10 @@ static int bcmgenet_mii_register(struct bcmgenet_priv *priv)
 	int id, ret;
 
 	pres = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!pres) {
+		dev_err(&pdev->dev, "Invalid resource\n");
+		return -EINVAL;
+	}
 	memset(&res, 0, sizeof(res));
 	memset(&ppd, 0, sizeof(ppd));
 

@@ -877,10 +877,10 @@ static int ray_hw_xmit(unsigned char *data, int len, struct net_device *dev,
 	switch (ccsindex = get_free_tx_ccs(local)) {
 	case ECCSBUSY:
 		pr_debug("ray_hw_xmit tx_ccs table busy\n");
-		/* fall through */
+		fallthrough;
 	case ECCSFULL:
 		pr_debug("ray_hw_xmit No free tx ccs\n");
-		/* fall through */
+		fallthrough;
 	case ECARDGONE:
 		netif_stop_queue(dev);
 		return XMIT_NO_CCS;
@@ -982,7 +982,9 @@ AP to AP	1	1	dest AP		src AP		dest	source
 	if (local->net_type == ADHOC) {
 		writeb(0, &ptx->mac.frame_ctl_2);
 		memcpy_toio(ptx->mac.addr_1, ((struct ethhdr *)data)->h_dest,
-			    2 * ADDRLEN);
+			    ADDRLEN);
+		memcpy_toio(ptx->mac.addr_2, ((struct ethhdr *)data)->h_source,
+			    ADDRLEN);
 		memcpy_toio(ptx->mac.addr_3, local->bss_id, ADDRLEN);
 	} else { /* infrastructure */
 
@@ -1272,7 +1274,7 @@ static int ray_set_mode(struct net_device *dev, struct iw_request_info *info,
 	switch (wrqu->mode) {
 	case IW_MODE_ADHOC:
 		card_mode = 0;
-		/* Fall through */
+		fallthrough;
 	case IW_MODE_INFRA:
 		local->sparm.b5.a_network_type = card_mode;
 		break;
@@ -2424,9 +2426,7 @@ static void rx_authenticate(ray_dev_t *local, struct rcs __iomem *prcs,
 	copy_from_rx_buff(local, buff, pkt_addr, rx_len & 0xff);
 	/* if we are trying to get authenticated */
 	if (local->sparm.b4.a_network_type == ADHOC) {
-		pr_debug("ray_cs rx_auth var= %02x %02x %02x %02x %02x %02x\n",
-		      msg->var[0], msg->var[1], msg->var[2], msg->var[3],
-		      msg->var[4], msg->var[5]);
+		pr_debug("ray_cs rx_auth var= %6ph\n", msg->var);
 		if (msg->var[2] == 1) {
 			pr_debug("ray_cs Sending authentication response.\n");
 			if (!build_auth_frame

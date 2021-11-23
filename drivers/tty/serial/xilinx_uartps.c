@@ -192,6 +192,7 @@ MODULE_PARM_DESC(rx_timeout, "Rx timeout, 1-255");
  * @baud:		Current baud rate
  * @clk_rate_change_nb:	Notifier block for clock changes
  * @quirks:		Flags for RXBS support.
+ * @cts_override:	Modem control state override
  */
 struct cdns_uart {
 	struct uart_port	*port;
@@ -307,9 +308,8 @@ static void cdns_uart_handle_rx(void *dev_id, unsigned int isrstatus)
 		tty_insert_flip_char(&port->state->port, data, status);
 		isrstatus = 0;
 	}
-	spin_unlock(&port->lock);
+
 	tty_flip_buffer_push(&port->state->port);
-	spin_lock(&port->lock);
 }
 
 /**
@@ -493,7 +493,7 @@ static unsigned int cdns_uart_set_baud_rate(struct uart_port *port,
 
 #ifdef CONFIG_COMMON_CLK
 /**
- * cdns_uart_clk_notitifer_cb - Clock notifier callback
+ * cdns_uart_clk_notifier_cb - Clock notifier callback
  * @nb:		Notifier block
  * @event:	Notify event
  * @data:	Notifier data
@@ -506,8 +506,8 @@ static int cdns_uart_clk_notifier_cb(struct notifier_block *nb,
 	struct uart_port *port;
 	int locked = 0;
 	struct clk_notifier_data *ndata = data;
-	unsigned long flags = 0;
 	struct cdns_uart *cdns_uart = to_cdns_uart(nb);
+	unsigned long flags;
 
 	port = cdns_uart->port;
 	if (port->suspended)
@@ -1169,7 +1169,7 @@ static void cdns_uart_console_putchar(struct uart_port *port, int ch)
 }
 
 static void cdns_early_write(struct console *con, const char *s,
-				    unsigned n)
+				    unsigned int n)
 {
 	struct earlycon_device *dev = con->data;
 
@@ -1230,7 +1230,7 @@ static void cdns_uart_console_write(struct console *co, const char *s,
 				unsigned int count)
 {
 	struct uart_port *port = console_port;
-	unsigned long flags = 0;
+	unsigned long flags;
 	unsigned int imr, ctrl;
 	int locked = 1;
 
@@ -1328,7 +1328,7 @@ static int cdns_uart_suspend(struct device *device)
 	may_wake = device_may_wakeup(device);
 
 	if (console_suspend_enabled && uart_console(port) && may_wake) {
-		unsigned long flags = 0;
+		unsigned long flags;
 
 		spin_lock_irqsave(&port->lock, flags);
 		/* Empty the receive FIFO 1st before making changes */
@@ -1359,7 +1359,7 @@ static int cdns_uart_resume(struct device *device)
 {
 	struct uart_port *port = dev_get_drvdata(device);
 	struct cdns_uart *cdns_uart = port->private_data;
-	unsigned long flags = 0;
+	unsigned long flags;
 	u32 ctrl_reg;
 	int may_wake;
 	int ret;

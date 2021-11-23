@@ -365,12 +365,8 @@ out_putf:
 
 int rw_verify_area(int read_write, struct file *file, const loff_t *ppos, size_t count)
 {
-	struct inode *inode;
-	int retval = -EINVAL;
-
-	inode = file_inode(file);
 	if (unlikely((ssize_t) count < 0))
-		return retval;
+		return -EINVAL;
 
 	/*
 	 * ranged mandatory locking does not apply to streams - it makes sense
@@ -381,19 +377,12 @@ int rw_verify_area(int read_write, struct file *file, const loff_t *ppos, size_t
 
 		if (unlikely(pos < 0)) {
 			if (!unsigned_offsets(file))
-				return retval;
+				return -EINVAL;
 			if (count >= -pos) /* both values are in 0..LLONG_MAX */
 				return -EOVERFLOW;
 		} else if (unlikely((loff_t) (pos + count) < 0)) {
 			if (!unsigned_offsets(file))
-				return retval;
-		}
-
-		if (unlikely(inode->i_flctx && mandatory_lock(inode))) {
-			retval = locks_mandatory_area(inode, file, pos, pos + count - 1,
-					read_write == READ ? F_RDLCK : F_WRLCK);
-			if (retval < 0)
-				return retval;
+				return -EINVAL;
 		}
 	}
 
@@ -1188,6 +1177,7 @@ static ssize_t do_sendfile(int out_fd, int in_fd, loff_t *ppos,
 {
 	struct fd in, out;
 	struct inode *in_inode, *out_inode;
+	struct pipe_inode_info *opipe;
 	loff_t pos;
 	loff_t out_pos;
 	ssize_t retval;
@@ -1228,9 +1218,6 @@ static ssize_t do_sendfile(int out_fd, int in_fd, loff_t *ppos,
 	in_inode = file_inode(in.file);
 	out_inode = file_inode(out.file);
 	out_pos = out.file->f_pos;
-	retval = rw_verify_area(WRITE, out.file, &out_pos, count);
-	if (retval < 0)
-		goto fput_out;
 
 	if (!max)
 		max = min(in_inode->i_sb->s_maxbytes, out_inode->i_sb->s_maxbytes);
@@ -1253,9 +1240,18 @@ static ssize_t do_sendfile(int out_fd, int in_fd, loff_t *ppos,
 	if (in.file->f_flags & O_NONBLOCK)
 		fl = SPLICE_F_NONBLOCK;
 #endif
-	file_start_write(out.file);
-	retval = do_splice_direct(in.file, &pos, out.file, &out_pos, count, fl);
-	file_end_write(out.file);
+	opipe = get_pipe_info(out.file, true);
+	if (!opipe) {
+		retval = rw_verify_area(WRITE, out.file, &out_pos, count);
+		if (retval < 0)
+			goto fput_out;
+		file_start_write(out.file);
+		retval = do_splice_direct(in.file, &pos, out.file, &out_pos,
+					  count, fl);
+		file_end_write(out.file);
+	} else {
+		retval = splice_file_to_pipe(in.file, opipe, &pos, count, fl);
+	}
 
 	if (retval > 0) {
 		add_rchar(current, retval);

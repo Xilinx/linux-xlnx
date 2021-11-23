@@ -311,7 +311,7 @@ static LIST_HEAD(tomoyo_log);
 /* Lock for "struct list_head tomoyo_log". */
 static DEFINE_SPINLOCK(tomoyo_log_lock);
 
-/* Length of "stuct list_head tomoyo_log". */
+/* Length of "struct list_head tomoyo_log". */
 static unsigned int tomoyo_log_count;
 
 /**
@@ -320,6 +320,7 @@ static unsigned int tomoyo_log_count;
  * @ns:          Pointer to "struct tomoyo_policy_namespace".
  * @profile:     Profile number.
  * @index:       Index number of functionality.
+ * @matched_acl: Pointer to "struct tomoyo_acl_info".
  * @is_granted:  True if granted log, false otherwise.
  *
  * Returns true if this request should be audited, false otherwise.

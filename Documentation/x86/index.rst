@@ -27,9 +27,13 @@ x86-specific Documentation
    pti
    mds
    microcode
-   resctrl_ui
+   resctrl
    tsx_async_abort
+   buslock
    usb-legacy-support
    i386/index
    x86_64/index
    sva
+   sgx
+   features
+   elf_auxvec

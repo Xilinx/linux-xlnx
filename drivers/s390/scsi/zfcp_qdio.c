@@ -10,6 +10,7 @@
 #define KMSG_COMPONENT "zfcp"
 #define pr_fmt(fmt) KMSG_COMPONENT ": " fmt
 
+#include <linux/lockdep.h>
 #include <linux/slab.h>
 #include <linux/module.h>
 #include "zfcp_ext.h"
@@ -18,6 +19,9 @@
 static bool enable_multibuffer = true;
 module_param_named(datarouter, enable_multibuffer, bool, 0400);
 MODULE_PARM_DESC(datarouter, "Enable hardware data router support (default on)");
+
+#define ZFCP_QDIO_REQUEST_RESCAN_MSECS	(MSEC_PER_SEC * 10)
+#define ZFCP_QDIO_REQUEST_SCAN_MSECS	MSEC_PER_SEC
 
 static void zfcp_qdio_handler_error(struct zfcp_qdio *qdio, char *dbftag,
 				    unsigned int qdio_err)
@@ -65,19 +69,42 @@ static void zfcp_qdio_int_req(struct ccw_device *cdev, unsigned int qdio_err,
 {
 	struct zfcp_qdio *qdio = (struct zfcp_qdio *) parm;
 
-	if (unlikely(qdio_err)) {
-		zfcp_qdio_handler_error(qdio, "qdireq1", qdio_err);
-		return;
+	zfcp_qdio_handler_error(qdio, "qdireq1", qdio_err);
+}
+
+static void zfcp_qdio_request_tasklet(struct tasklet_struct *tasklet)
+{
+	struct zfcp_qdio *qdio = from_tasklet(qdio, tasklet, request_tasklet);
+	struct ccw_device *cdev = qdio->adapter->ccw_device;
+	unsigned int start, error;
+	int completed;
+
+	completed = qdio_inspect_queue(cdev, 0, false, &start, &error);
+	if (completed > 0) {
+		if (error) {
+			zfcp_qdio_handler_error(qdio, "qdreqt1", error);
+		} else {
+			/* cleanup all SBALs being program-owned now */
+			zfcp_qdio_zero_sbals(qdio->req_q, start, completed);
+
+			spin_lock_irq(&qdio->stat_lock);
+			zfcp_qdio_account(qdio);
+			spin_unlock_irq(&qdio->stat_lock);
+			atomic_add(completed, &qdio->req_q_free);
+			wake_up(&qdio->req_q_wq);
+		}
 	}
 
-	/* cleanup all SBALs being program-owned now */
-	zfcp_qdio_zero_sbals(qdio->req_q, idx, count);
+	if (atomic_read(&qdio->req_q_free) < QDIO_MAX_BUFFERS_PER_Q)
+		timer_reduce(&qdio->request_timer,
+			     jiffies + msecs_to_jiffies(ZFCP_QDIO_REQUEST_RESCAN_MSECS));
+}
 
-	spin_lock_irq(&qdio->stat_lock);
-	zfcp_qdio_account(qdio);
-	spin_unlock_irq(&qdio->stat_lock);
-	atomic_add(count, &qdio->req_q_free);
-	wake_up(&qdio->req_q_wq);
+static void zfcp_qdio_request_timer(struct timer_list *timer)
+{
+	struct zfcp_qdio *qdio = from_timer(qdio, timer, request_timer);
+
+	tasklet_schedule(&qdio->request_tasklet);
 }
 
 static void zfcp_qdio_int_resp(struct ccw_device *cdev, unsigned int qdio_err,
@@ -127,8 +154,38 @@ static void zfcp_qdio_int_resp(struct ccw_device *cdev, unsigned int qdio_err,
 	/*
 	 * put SBALs back to response queue
 	 */
-	if (do_QDIO(cdev, QDIO_FLAG_SYNC_INPUT, 0, idx, count))
+	if (do_QDIO(cdev, QDIO_FLAG_SYNC_INPUT, 0, idx, count, NULL))
 		zfcp_erp_adapter_reopen(qdio->adapter, 0, "qdires2");
+}
+
+static void zfcp_qdio_irq_tasklet(struct tasklet_struct *tasklet)
+{
+	struct zfcp_qdio *qdio = from_tasklet(qdio, tasklet, irq_tasklet);
+	struct ccw_device *cdev = qdio->adapter->ccw_device;
+	unsigned int start, error;
+	int completed;
+
+	if (atomic_read(&qdio->req_q_free) < QDIO_MAX_BUFFERS_PER_Q)
+		tasklet_schedule(&qdio->request_tasklet);
+
+	/* Check the Response Queue: */
+	completed = qdio_inspect_queue(cdev, 0, true, &start, &error);
+	if (completed < 0)
+		return;
+	if (completed > 0)
+		zfcp_qdio_int_resp(cdev, error, 0, start, completed,
+				   (unsigned long) qdio);
+
+	if (qdio_start_irq(cdev))
+		/* More work pending: */
+		tasklet_schedule(&qdio->irq_tasklet);
+}
+
+static void zfcp_qdio_poll(struct ccw_device *cdev, unsigned long data)
+{
+	struct zfcp_qdio *qdio = (struct zfcp_qdio *) data;
+
+	tasklet_schedule(&qdio->irq_tasklet);
 }
 
 static struct qdio_buffer_element *
@@ -256,6 +313,13 @@ int zfcp_qdio_send(struct zfcp_qdio *qdio, struct zfcp_qdio_req *q_req)
 	int retval;
 	u8 sbal_number = q_req->sbal_number;
 
+	/*
+	 * This should actually be a spin_lock_bh(stat_lock), to protect against
+	 * Request Queue completion processing in tasklet context.
+	 * But we can't do so (and are safe), as we always get called with IRQs
+	 * disabled by spin_lock_irq[save](req_q_lock).
+	 */
+	lockdep_assert_irqs_disabled();
 	spin_lock(&qdio->stat_lock);
 	zfcp_qdio_account(qdio);
 	spin_unlock(&qdio->stat_lock);
@@ -263,7 +327,7 @@ int zfcp_qdio_send(struct zfcp_qdio *qdio, struct zfcp_qdio_req *q_req)
 	atomic_sub(sbal_number, &qdio->req_q_free);
 
 	retval = do_QDIO(qdio->adapter->ccw_device, QDIO_FLAG_SYNC_OUTPUT, 0,
-			 q_req->sbal_first, sbal_number);
+			 q_req->sbal_first, sbal_number, NULL);
 
 	if (unlikely(retval)) {
 		/* Failed to submit the IO, roll back our modifications. */
@@ -272,6 +336,12 @@ int zfcp_qdio_send(struct zfcp_qdio *qdio, struct zfcp_qdio_req *q_req)
 				     sbal_number);
 		return retval;
 	}
+
+	if (atomic_read(&qdio->req_q_free) <= 2 * ZFCP_QDIO_MAX_SBALS_PER_REQ)
+		tasklet_schedule(&qdio->request_tasklet);
+	else
+		timer_reduce(&qdio->request_timer,
+			     jiffies + msecs_to_jiffies(ZFCP_QDIO_REQUEST_SCAN_MSECS));
 
 	/* account for transferred buffers */
 	qdio->req_q_idx += sbal_number;
@@ -314,7 +384,7 @@ free_req_q:
 }
 
 /**
- * zfcp_close_qdio - close qdio queues for an adapter
+ * zfcp_qdio_close - close qdio queues for an adapter
  * @qdio: pointer to structure zfcp_qdio
  */
 void zfcp_qdio_close(struct zfcp_qdio *qdio)
@@ -332,6 +402,10 @@ void zfcp_qdio_close(struct zfcp_qdio *qdio)
 
 	wake_up(&qdio->req_q_wq);
 
+	tasklet_disable(&qdio->irq_tasklet);
+	tasklet_disable(&qdio->request_tasklet);
+	del_timer_sync(&qdio->request_timer);
+	qdio_stop_irq(adapter->ccw_device);
 	qdio_shutdown(adapter->ccw_device, QDIO_FLAG_CLEANUP_USING_CLEAR);
 
 	/* cleanup used outbound sbals */
@@ -387,11 +461,10 @@ int zfcp_qdio_open(struct zfcp_qdio *qdio)
 	init_data.no_output_qs = 1;
 	init_data.input_handler = zfcp_qdio_int_resp;
 	init_data.output_handler = zfcp_qdio_int_req;
+	init_data.irq_poll = zfcp_qdio_poll;
 	init_data.int_parm = (unsigned long) qdio;
 	init_data.input_sbal_addr_array = input_sbals;
 	init_data.output_sbal_addr_array = output_sbals;
-	init_data.scan_threshold =
-		QDIO_MAX_BUFFERS_PER_Q - ZFCP_QDIO_MAX_SBALS_PER_REQ * 2;
 
 	if (qdio_establish(cdev, &init_data))
 		goto failed_establish;
@@ -425,13 +498,21 @@ int zfcp_qdio_open(struct zfcp_qdio *qdio)
 		sbale->addr = 0;
 	}
 
-	if (do_QDIO(cdev, QDIO_FLAG_SYNC_INPUT, 0, 0, QDIO_MAX_BUFFERS_PER_Q))
+	if (do_QDIO(cdev, QDIO_FLAG_SYNC_INPUT, 0, 0, QDIO_MAX_BUFFERS_PER_Q,
+		    NULL))
 		goto failed_qdio;
 
 	/* set index of first available SBALS / number of available SBALS */
 	qdio->req_q_idx = 0;
 	atomic_set(&qdio->req_q_free, QDIO_MAX_BUFFERS_PER_Q);
 	atomic_or(ZFCP_STATUS_ADAPTER_QDIOUP, &qdio->adapter->status);
+
+	/* Enable processing for Request Queue completions: */
+	tasklet_enable(&qdio->request_tasklet);
+	/* Enable processing for QDIO interrupts: */
+	tasklet_enable(&qdio->irq_tasklet);
+	/* This results in a qdio_start_irq(): */
+	tasklet_schedule(&qdio->irq_tasklet);
 
 	zfcp_qdio_shost_update(adapter, qdio);
 
@@ -449,6 +530,9 @@ void zfcp_qdio_destroy(struct zfcp_qdio *qdio)
 {
 	if (!qdio)
 		return;
+
+	tasklet_kill(&qdio->irq_tasklet);
+	tasklet_kill(&qdio->request_tasklet);
 
 	if (qdio->adapter->ccw_device)
 		qdio_free(qdio->adapter->ccw_device);
@@ -475,6 +559,11 @@ int zfcp_qdio_setup(struct zfcp_adapter *adapter)
 
 	spin_lock_init(&qdio->req_q_lock);
 	spin_lock_init(&qdio->stat_lock);
+	timer_setup(&qdio->request_timer, zfcp_qdio_request_timer, 0);
+	tasklet_setup(&qdio->irq_tasklet, zfcp_qdio_irq_tasklet);
+	tasklet_setup(&qdio->request_tasklet, zfcp_qdio_request_tasklet);
+	tasklet_disable(&qdio->irq_tasklet);
+	tasklet_disable(&qdio->request_tasklet);
 
 	adapter->qdio = qdio;
 	return 0;

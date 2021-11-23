@@ -23,7 +23,7 @@ __invalid_entry:
 	adr	r0, strerr
 	mrs	r1, ipsr
 	mov	r2, lr
-	bl	printk
+	bl	_printk
 #endif
 	mov	r0, sp
 	bl	show_regs
@@ -59,7 +59,7 @@ __irq_entry:
 
 	get_thread_info tsk
 	ldr	r2, [tsk, #TI_FLAGS]
-	tst	r2, #_TIF_WORK_MASK
+	movs	r2, r2, lsl #16
 	beq	2f			@ no work pending
 	mov	r0, #V7M_SCB_ICSR_PENDSVSET
 	str	r0, [r1, V7M_SCB_ICSR]	@ raise PendSV

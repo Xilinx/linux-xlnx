@@ -547,6 +547,8 @@ static void bfq_pd_init(struct blkg_policy_data *pd)
 
 	entity->orig_weight = entity->weight = entity->new_weight = d->weight;
 	entity->my_sched_data = &bfqg->sched_data;
+	entity->last_bfqq_created = NULL;
+
 	bfqg->my_entity = entity; /*
 				   * the root_group's will be set to NULL
 				   * in bfq_init_queue()
@@ -663,6 +665,12 @@ void bfq_bfqq_move(struct bfq_data *bfqd, struct bfq_queue *bfqq,
 	else if (entity->on_st_or_in_serv)
 		bfq_put_idle_entity(bfq_entity_service_tree(entity), entity);
 	bfqg_and_blkg_put(bfqq_group(bfqq));
+
+	if (entity->parent &&
+	    entity->parent->last_bfqq_created == bfqq)
+		entity->parent->last_bfqq_created = NULL;
+	else if (bfqd->last_bfqq_created == bfqq)
+		bfqd->last_bfqq_created = NULL;
 
 	entity->parent = bfqg->my_entity;
 	entity->sched_data = &bfqg->sched_data;

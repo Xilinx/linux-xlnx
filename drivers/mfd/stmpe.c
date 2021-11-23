@@ -337,6 +337,7 @@ static const struct mfd_cell stmpe_gpio_cell_noirq = {
  */
 
 static struct resource stmpe_keypad_resources[] = {
+	/* Start and end filled dynamically */
 	{
 		.name	= "KEYPAD",
 		.flags	= IORESOURCE_IRQ,
@@ -358,6 +359,7 @@ static const struct mfd_cell stmpe_keypad_cell = {
  * PWM (1601, 2401, 2403)
  */
 static struct resource stmpe_pwm_resources[] = {
+	/* Start and end filled dynamically */
 	{
 		.name	= "PWM0",
 		.flags	= IORESOURCE_IRQ,
@@ -446,6 +448,7 @@ static struct stmpe_variant_info stmpe801_noirq = {
  */
 
 static struct resource stmpe_ts_resources[] = {
+	/* Start and end filled dynamically */
 	{
 		.name	= "TOUCH_DET",
 		.flags	= IORESOURCE_IRQ,
@@ -468,6 +471,7 @@ static const struct mfd_cell stmpe_ts_cell = {
  */
 
 static struct resource stmpe_adc_resources[] = {
+	/* Start and end filled dynamically */
 	{
 		.name	= "STMPE_TEMP_SENS",
 		.flags	= IORESOURCE_IRQ,
@@ -1091,7 +1095,7 @@ static irqreturn_t stmpe_irq(int irq, void *data)
 
 	if (variant->id_val == STMPE801_ID ||
 	    variant->id_val == STMPE1600_ID) {
-		int base = irq_create_mapping(stmpe->domain, 0);
+		int base = irq_find_mapping(stmpe->domain, 0);
 
 		handle_nested_irq(base);
 		return IRQ_HANDLED;
@@ -1119,7 +1123,7 @@ static irqreturn_t stmpe_irq(int irq, void *data)
 		while (status) {
 			int bit = __ffs(status);
 			int line = bank * 8 + bit;
-			int nestedirq = irq_create_mapping(stmpe->domain, line);
+			int nestedirq = irq_find_mapping(stmpe->domain, line);
 
 			handle_nested_irq(nestedirq);
 			status &= ~(1 << bit);

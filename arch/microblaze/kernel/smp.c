@@ -30,6 +30,9 @@ unsigned long irq_err_count;
 
 static unsigned int boot_cpuid;
 
+DEFINE_PER_CPU_SHARED_ALIGNED(irq_cpustat_t, irq_stat);
+EXPORT_SYMBOL(irq_stat);
+
 static DEFINE_PER_CPU(cpumask_var_t, cpu_core_map);
 
 static volatile unsigned int cpu_callin_map[NR_CPUS];

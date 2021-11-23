@@ -154,7 +154,7 @@ struct btrfs_scrub_progress {
 	__u64 tree_bytes_scrubbed;	/* # of tree bytes scrubbed */
 	__u64 read_errors;		/* # of read errors encountered (EIO) */
 	__u64 csum_errors;		/* # of failed csum checks */
-	__u64 verify_errors;		/* # of occurences, where the metadata
+	__u64 verify_errors;		/* # of occurrences, where the metadata
 					 * of a tree block did not match the
 					 * expected values, like generation or
 					 * logical */
@@ -174,7 +174,7 @@ struct btrfs_scrub_progress {
 	__u64 last_physical;		/* last physical address scrubbed. In
 					 * case a scrub was aborted, this can
 					 * be used to restart the scrub */
-	__u64 unverified_errors;	/* # of occurences where a read for a
+	__u64 unverified_errors;	/* # of occurrences where a read for a
 					 * full (64k) bio failed, but the re-
 					 * check succeeded for each 4k piece.
 					 * Intermittent error. */
@@ -288,6 +288,7 @@ struct btrfs_ioctl_fs_info_args {
  * first mount when booting older kernel versions.
  */
 #define BTRFS_FEATURE_COMPAT_RO_FREE_SPACE_TREE_VALID	(1ULL << 1)
+#define BTRFS_FEATURE_COMPAT_RO_VERITY			(1ULL << 2)
 
 #define BTRFS_FEATURE_INCOMPAT_MIXED_BACKREF	(1ULL << 0)
 #define BTRFS_FEATURE_INCOMPAT_DEFAULT_SUBVOL	(1ULL << 1)
@@ -307,6 +308,7 @@ struct btrfs_ioctl_fs_info_args {
 #define BTRFS_FEATURE_INCOMPAT_NO_HOLES		(1ULL << 9)
 #define BTRFS_FEATURE_INCOMPAT_METADATA_UUID	(1ULL << 10)
 #define BTRFS_FEATURE_INCOMPAT_RAID1C34		(1ULL << 11)
+#define BTRFS_FEATURE_INCOMPAT_ZONED		(1ULL << 12)
 
 struct btrfs_ioctl_feature_flags {
 	__u64 compat_flags;

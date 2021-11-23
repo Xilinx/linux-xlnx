@@ -134,8 +134,6 @@ struct sk_buff *validate_xmit_xfrm(struct sk_buff *skb, netdev_features_t featur
 		return skb;
 	}
 
-	xo->flags |= XFRM_XMIT;
-
 	if (skb_is_gso(skb) && unlikely(x->xso.dev != dev)) {
 		struct sk_buff *segs;
 
@@ -270,6 +268,7 @@ int xfrm_dev_state_add(struct net *net, struct xfrm_state *x,
 		xso->num_exthdrs = 0;
 		xso->flags = 0;
 		xso->dev = NULL;
+		xso->real_dev = NULL;
 		dev_put(dev);
 
 		if (err != -EOPNOTSUPP)

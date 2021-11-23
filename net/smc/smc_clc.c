@@ -230,7 +230,8 @@ static int smc_clc_prfx_set(struct socket *clcsock,
 		goto out_rel;
 	}
 	/* get address to which the internal TCP socket is bound */
-	kernel_getsockname(clcsock, (struct sockaddr *)&addrs);
+	if (kernel_getsockname(clcsock, (struct sockaddr *)&addrs) < 0)
+		goto out_rel;
 	/* analyze IP specific data of net_device belonging to TCP socket */
 	addr6 = (struct sockaddr_in6 *)&addrs;
 	rcu_read_lock();
@@ -770,6 +771,11 @@ int smc_clc_send_accept(struct smc_sock *new_smc, bool srv_first_contact,
 		len = len >= 0 ? -EPROTO : -new_smc->clcsock->sk->sk_err;
 
 	return len > 0 ? 0 : len;
+}
+
+void smc_clc_get_hostname(u8 **host)
+{
+	*host = &smc_hostname[0];
 }
 
 void __init smc_clc_init(void)

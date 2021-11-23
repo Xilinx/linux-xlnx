@@ -91,6 +91,7 @@ nfs_proc_get_root(struct nfs_server *server, struct nfs_fh *fhandle,
 	info->dtpref = fsinfo.tsize;
 	info->maxfilesize = 0x7FFFFFFF;
 	info->lease_time = 0;
+	info->change_attr_type = NFS4_CHANGE_TYPE_IS_TIME_METADATA;
 	return 0;
 }
 
@@ -499,26 +500,26 @@ nfs_proc_rmdir(struct inode *dir, const struct qstr *name)
  * sure it is syntactically correct; the entries itself are decoded
  * from nfs_readdir by calling the decode_entry function directly.
  */
-static int
-nfs_proc_readdir(struct dentry *dentry, const struct cred *cred,
-		 u64 cookie, struct page **pages, unsigned int count, bool plus)
+static int nfs_proc_readdir(struct nfs_readdir_arg *nr_arg,
+			    struct nfs_readdir_res *nr_res)
 {
-	struct inode		*dir = d_inode(dentry);
+	struct inode		*dir = d_inode(nr_arg->dentry);
 	struct nfs_readdirargs	arg = {
 		.fh		= NFS_FH(dir),
-		.cookie		= cookie,
-		.count		= count,
-		.pages		= pages,
+		.cookie		= nr_arg->cookie,
+		.count		= nr_arg->page_len,
+		.pages		= nr_arg->pages,
 	};
 	struct rpc_message	msg = {
 		.rpc_proc	= &nfs_procedures[NFSPROC_READDIR],
 		.rpc_argp	= &arg,
-		.rpc_cred	= cred,
+		.rpc_cred	= nr_arg->cred,
 	};
 	int			status;
 
-	dprintk("NFS call  readdir %d\n", (unsigned int)cookie);
+	dprintk("NFS call  readdir %llu\n", (unsigned long long)nr_arg->cookie);
 	status = rpc_call_sync(NFS_CLIENT(dir), &msg, 0);
+	nr_res->verf[0] = nr_res->verf[1] = 0;
 
 	nfs_invalidate_atime(dir);
 

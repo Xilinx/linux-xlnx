@@ -2108,8 +2108,8 @@ static int xvip_graph_init(struct xvip_m2m_dev *xdev)
 
 	/* Register the subdevices notifier. */
 	list_for_each_entry(entity, &xdev->entities, list) {
-		ret = v4l2_async_notifier_add_subdev(&xdev->notifier,
-						     &entity->asd);
+		ret = __v4l2_async_notifier_add_subdev(&xdev->notifier,
+						       &entity->asd);
 		if (ret)
 			goto done;
 	}

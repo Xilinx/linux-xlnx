@@ -438,7 +438,7 @@ static void temac_do_set_mac_address(struct net_device *ndev)
 
 static int temac_init_mac_address(struct net_device *ndev, const void *address)
 {
-	ether_addr_copy(ndev->dev_addr, address);
+	memcpy(ndev->dev_addr, address, ETH_ALEN);
 	if (!is_valid_ether_addr(ndev->dev_addr))
 		eth_hw_addr_random(ndev);
 	temac_do_set_mac_address(ndev);
@@ -942,6 +942,9 @@ temac_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	wmb();
 	lp->dma_out(lp, TX_TAILDESC_PTR, tail_p); /* DMA start */
 
+	if (temac_check_tx_bd_space(lp, MAX_SKB_FRAGS + 1))
+		netif_stop_queue(ndev);
+
 	return NETDEV_TX_OK;
 }
 
@@ -1234,7 +1237,7 @@ static const struct net_device_ops temac_netdev_ops = {
 	.ndo_set_rx_mode = temac_set_multicast_list,
 	.ndo_set_mac_address = temac_set_mac_address,
 	.ndo_validate_addr = eth_validate_addr,
-	.ndo_do_ioctl = phy_do_ioctl_running,
+	.ndo_eth_ioctl = phy_do_ioctl_running,
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller = temac_poll_controller,
 #endif
@@ -1307,8 +1310,11 @@ static int ll_temac_ethtools_set_ringparam(struct net_device *ndev,
 	return 0;
 }
 
-static int ll_temac_ethtools_get_coalesce(struct net_device *ndev,
-					  struct ethtool_coalesce *ec)
+static int
+ll_temac_ethtools_get_coalesce(struct net_device *ndev,
+			       struct ethtool_coalesce *ec,
+			       struct kernel_ethtool_coalesce *kernel_coal,
+			       struct netlink_ext_ack *extack)
 {
 	struct temac_local *lp = netdev_priv(ndev);
 
@@ -1319,8 +1325,11 @@ static int ll_temac_ethtools_get_coalesce(struct net_device *ndev,
 	return 0;
 }
 
-static int ll_temac_ethtools_set_coalesce(struct net_device *ndev,
-					  struct ethtool_coalesce *ec)
+static int
+ll_temac_ethtools_set_coalesce(struct net_device *ndev,
+			       struct ethtool_coalesce *ec,
+			       struct kernel_ethtool_coalesce *kernel_coal,
+			       struct netlink_ext_ack *extack)
 {
 	struct temac_local *lp = netdev_priv(ndev);
 
@@ -1367,7 +1376,7 @@ static int temac_probe(struct platform_device *pdev)
 	struct device_node *temac_np = dev_of_node(&pdev->dev), *dma_np;
 	struct temac_local *lp;
 	struct net_device *ndev;
-	const void *addr;
+	u8 addr[ETH_ALEN];
 	__be32 *p;
 	bool little_endian;
 	int rc = 0;
@@ -1558,8 +1567,8 @@ static int temac_probe(struct platform_device *pdev)
 
 	if (temac_np) {
 		/* Retrieve the MAC address */
-		addr = of_get_mac_address(temac_np);
-		if (IS_ERR(addr)) {
+		rc = of_get_mac_address(temac_np, addr);
+		if (rc) {
 			dev_err(&pdev->dev, "could not find MAC address\n");
 			return -ENODEV;
 		}

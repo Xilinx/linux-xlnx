@@ -49,7 +49,7 @@ struct lock_stat {
 
 	/*
 	 * FIXME: evsel__intval() returns u64,
-	 * so address of lockdep_map should be dealed as 64bit.
+	 * so address of lockdep_map should be treated as 64bit.
 	 * Is there more better solution?
 	 */
 	void			*addr;		/* address of lockdep_map, used as ID */
@@ -868,7 +868,7 @@ static int __cmd_report(bool display_info)
 		.force = force,
 	};
 
-	session = perf_session__new(&data, false, &eops);
+	session = perf_session__new(&data, &eops);
 	if (IS_ERR(session)) {
 		pr_err("Initializing perf session failed\n");
 		return PTR_ERR(session);

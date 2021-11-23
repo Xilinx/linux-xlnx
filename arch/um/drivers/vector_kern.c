@@ -8,7 +8,6 @@
  * Copyright (C) 2001 by various other people who didn't put their name here.
  */
 
-#include <linux/version.h>
 #include <linux/memblock.h>
 #include <linux/etherdevice.h>
 #include <linux/ethtool.h>
@@ -1196,9 +1195,9 @@ static int vector_net_close(struct net_device *dev)
 
 /* TX tasklet */
 
-static void vector_tx_poll(unsigned long data)
+static void vector_tx_poll(struct tasklet_struct *t)
 {
-	struct vector_private *vp = (struct vector_private *)data;
+	struct vector_private *vp = from_tasklet(vp, t, tx_poll);
 
 	vp->estats.tx_kicks++;
 	vector_send(vp->tx_queue);
@@ -1271,7 +1270,7 @@ static int vector_net_open(struct net_device *dev)
 		irq_rr + VECTOR_BASE_IRQ, vp->fds->rx_fd,
 			IRQ_READ, vector_rx_interrupt,
 			IRQF_SHARED, dev->name, dev);
-	if (err != 0) {
+	if (err < 0) {
 		netdev_err(dev, "vector_open: failed to get rx irq(%d)\n", err);
 		err = -ENETUNREACH;
 		goto out_close;
@@ -1286,7 +1285,7 @@ static int vector_net_open(struct net_device *dev)
 			irq_rr + VECTOR_BASE_IRQ, vp->fds->tx_fd,
 				IRQ_WRITE, vector_tx_interrupt,
 				IRQF_SHARED, dev->name, dev);
-		if (err != 0) {
+		if (err < 0) {
 			netdev_err(dev,
 				"vector_open: failed to get tx irq(%d)\n", err);
 			err = -ENETUNREACH;
@@ -1489,7 +1488,9 @@ static void vector_get_ethtool_stats(struct net_device *dev,
 }
 
 static int vector_get_coalesce(struct net_device *netdev,
-					struct ethtool_coalesce *ec)
+			       struct ethtool_coalesce *ec,
+			       struct kernel_ethtool_coalesce *kernel_coal,
+			       struct netlink_ext_ack *extack)
 {
 	struct vector_private *vp = netdev_priv(netdev);
 
@@ -1498,7 +1499,9 @@ static int vector_get_coalesce(struct net_device *netdev,
 }
 
 static int vector_set_coalesce(struct net_device *netdev,
-					struct ethtool_coalesce *ec)
+			       struct ethtool_coalesce *ec,
+			       struct kernel_ethtool_coalesce *kernel_coal,
+			       struct netlink_ext_ack *extack)
 {
 	struct vector_private *vp = netdev_priv(netdev);
 
@@ -1629,7 +1632,7 @@ static void vector_eth_configure(
 	});
 
 	dev->features = dev->hw_features = (NETIF_F_SG | NETIF_F_FRAGLIST);
-	tasklet_init(&vp->tx_poll, vector_tx_poll, (unsigned long)vp);
+	tasklet_setup(&vp->tx_poll, vector_tx_poll);
 	INIT_WORK(&vp->reset_tx, vector_reset_tx);
 
 	timer_setup(&vp->tl, vector_timer_expire, 0);

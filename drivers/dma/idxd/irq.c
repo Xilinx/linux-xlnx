@@ -11,6 +11,17 @@
 #include "idxd.h"
 #include "registers.h"
 
+enum irq_work_type {
+	IRQ_WORK_NORMAL = 0,
+	IRQ_WORK_PROCESS_FAULT,
+};
+
+struct idxd_fault {
+	struct work_struct work;
+	u64 addr;
+	struct idxd_device *idxd;
+};
+
 static void idxd_device_reinit(struct work_struct *work)
 {
 	struct idxd_device *idxd = container_of(work, struct idxd_device, work);
@@ -27,13 +38,13 @@ static void idxd_device_reinit(struct work_struct *work)
 		goto out;
 
 	for (i = 0; i < idxd->max_wqs; i++) {
-		struct idxd_wq *wq = &idxd->wqs[i];
+		struct idxd_wq *wq = idxd->wqs[i];
 
 		if (wq->state == IDXD_WQ_ENABLED) {
 			rc = idxd_wq_enable(wq);
 			if (rc < 0) {
 				dev_warn(dev, "Unable to re-enable wq %s\n",
-					 dev_name(&wq->conf_dev));
+					 dev_name(wq_confdev(wq)));
 			}
 		}
 	}
@@ -41,56 +52,44 @@ static void idxd_device_reinit(struct work_struct *work)
 	return;
 
  out:
-	idxd_device_wqs_clear_state(idxd);
+	idxd_device_clear_state(idxd);
 }
 
-irqreturn_t idxd_irq_handler(int vec, void *data)
+static int process_misc_interrupts(struct idxd_device *idxd, u32 cause)
 {
-	struct idxd_irq_entry *irq_entry = data;
-	struct idxd_device *idxd = irq_entry->idxd;
-
-	idxd_mask_msix_vector(idxd, irq_entry->id);
-	return IRQ_WAKE_THREAD;
-}
-
-irqreturn_t idxd_misc_thread(int vec, void *data)
-{
-	struct idxd_irq_entry *irq_entry = data;
-	struct idxd_device *idxd = irq_entry->idxd;
 	struct device *dev = &idxd->pdev->dev;
 	union gensts_reg gensts;
-	u32 cause, val = 0;
+	u32 val = 0;
 	int i;
 	bool err = false;
 
-	cause = ioread32(idxd->reg_base + IDXD_INTCAUSE_OFFSET);
-	iowrite32(cause, idxd->reg_base + IDXD_INTCAUSE_OFFSET);
-
 	if (cause & IDXD_INTC_ERR) {
-		spin_lock_bh(&idxd->dev_lock);
+		spin_lock(&idxd->dev_lock);
 		for (i = 0; i < 4; i++)
 			idxd->sw_err.bits[i] = ioread64(idxd->reg_base +
 					IDXD_SWERR_OFFSET + i * sizeof(u64));
-		iowrite64(IDXD_SWERR_ACK, idxd->reg_base + IDXD_SWERR_OFFSET);
+
+		iowrite64(idxd->sw_err.bits[0] & IDXD_SWERR_ACK,
+			  idxd->reg_base + IDXD_SWERR_OFFSET);
 
 		if (idxd->sw_err.valid && idxd->sw_err.wq_idx_valid) {
 			int id = idxd->sw_err.wq_idx;
-			struct idxd_wq *wq = &idxd->wqs[id];
+			struct idxd_wq *wq = idxd->wqs[id];
 
 			if (wq->type == IDXD_WQT_USER)
-				wake_up_interruptible(&wq->idxd_cdev.err_queue);
+				wake_up_interruptible(&wq->err_queue);
 		} else {
 			int i;
 
 			for (i = 0; i < idxd->max_wqs; i++) {
-				struct idxd_wq *wq = &idxd->wqs[i];
+				struct idxd_wq *wq = idxd->wqs[i];
 
 				if (wq->type == IDXD_WQT_USER)
-					wake_up_interruptible(&wq->idxd_cdev.err_queue);
+					wake_up_interruptible(&wq->err_queue);
 			}
 		}
 
-		spin_unlock_bh(&idxd->dev_lock);
+		spin_unlock(&idxd->dev_lock);
 		val |= IDXD_INTC_ERR;
 
 		for (i = 0; i < 4; i++)
@@ -110,11 +109,8 @@ irqreturn_t idxd_misc_thread(int vec, void *data)
 	}
 
 	if (cause & IDXD_INTC_PERFMON_OVFL) {
-		/*
-		 * Driver does not utilize perfmon counter overflow interrupt
-		 * yet.
-		 */
 		val |= IDXD_INTC_PERFMON_OVFL;
+		perfmon_counter_overflow(idxd);
 	}
 
 	val ^= cause;
@@ -123,7 +119,7 @@ irqreturn_t idxd_misc_thread(int vec, void *data)
 			      val);
 
 	if (!err)
-		goto out;
+		return 0;
 
 	gensts.bits = ioread32(idxd->reg_base + IDXD_GENSTATS_OFFSET);
 	if (gensts.state == IDXD_DEVICE_STATE_HALT) {
@@ -137,78 +133,118 @@ irqreturn_t idxd_misc_thread(int vec, void *data)
 			INIT_WORK(&idxd->work, idxd_device_reinit);
 			queue_work(idxd->wq, &idxd->work);
 		} else {
-			spin_lock_bh(&idxd->dev_lock);
-			idxd_device_wqs_clear_state(idxd);
+			spin_lock(&idxd->dev_lock);
+			idxd_wqs_quiesce(idxd);
+			idxd_wqs_unmap_portal(idxd);
+			idxd_device_clear_state(idxd);
 			dev_err(&idxd->pdev->dev,
 				"idxd halted, need %s.\n",
 				gensts.reset_type == IDXD_DEVICE_RESET_FLR ?
 				"FLR" : "system reset");
-			spin_unlock_bh(&idxd->dev_lock);
+			spin_unlock(&idxd->dev_lock);
+			return -ENXIO;
 		}
 	}
 
- out:
-	idxd_unmask_msix_vector(idxd, irq_entry->id);
+	return 0;
+}
+
+irqreturn_t idxd_misc_thread(int vec, void *data)
+{
+	struct idxd_irq_entry *irq_entry = data;
+	struct idxd_device *idxd = irq_entry->idxd;
+	int rc;
+	u32 cause;
+
+	cause = ioread32(idxd->reg_base + IDXD_INTCAUSE_OFFSET);
+	if (cause)
+		iowrite32(cause, idxd->reg_base + IDXD_INTCAUSE_OFFSET);
+
+	while (cause) {
+		rc = process_misc_interrupts(idxd, cause);
+		if (rc < 0)
+			break;
+		cause = ioread32(idxd->reg_base + IDXD_INTCAUSE_OFFSET);
+		if (cause)
+			iowrite32(cause, idxd->reg_base + IDXD_INTCAUSE_OFFSET);
+	}
+
 	return IRQ_HANDLED;
 }
 
-static int irq_process_pending_llist(struct idxd_irq_entry *irq_entry,
-				     int *processed)
+static void irq_process_pending_llist(struct idxd_irq_entry *irq_entry)
 {
 	struct idxd_desc *desc, *t;
 	struct llist_node *head;
-	int queued = 0;
 
-	*processed = 0;
 	head = llist_del_all(&irq_entry->pending_llist);
 	if (!head)
-		return 0;
+		return;
 
 	llist_for_each_entry_safe(desc, t, head, llnode) {
-		if (desc->completion->status) {
-			idxd_dma_complete_txd(desc, IDXD_COMPLETE_NORMAL);
-			idxd_free_desc(desc->wq, desc);
-			(*processed)++;
+		u8 status = desc->completion->status & DSA_COMP_STATUS_MASK;
+
+		if (status) {
+			/*
+			 * Check against the original status as ABORT is software defined
+			 * and 0xff, which DSA_COMP_STATUS_MASK can mask out.
+			 */
+			if (unlikely(desc->completion->status == IDXD_COMP_DESC_ABORT)) {
+				complete_desc(desc, IDXD_COMPLETE_ABORT);
+				continue;
+			}
+
+			complete_desc(desc, IDXD_COMPLETE_NORMAL);
 		} else {
-			list_add_tail(&desc->list, &irq_entry->work_list);
-			queued++;
+			spin_lock(&irq_entry->list_lock);
+			list_add_tail(&desc->list,
+				      &irq_entry->work_list);
+			spin_unlock(&irq_entry->list_lock);
 		}
 	}
-
-	return queued;
 }
 
-static int irq_process_work_list(struct idxd_irq_entry *irq_entry,
-				 int *processed)
+static void irq_process_work_list(struct idxd_irq_entry *irq_entry)
 {
-	struct list_head *node, *next;
-	int queued = 0;
+	LIST_HEAD(flist);
+	struct idxd_desc *desc, *n;
 
-	*processed = 0;
-	if (list_empty(&irq_entry->work_list))
-		return 0;
+	/*
+	 * This lock protects list corruption from access of list outside of the irq handler
+	 * thread.
+	 */
+	spin_lock(&irq_entry->list_lock);
+	if (list_empty(&irq_entry->work_list)) {
+		spin_unlock(&irq_entry->list_lock);
+		return;
+	}
 
-	list_for_each_safe(node, next, &irq_entry->work_list) {
-		struct idxd_desc *desc =
-			container_of(node, struct idxd_desc, list);
-
+	list_for_each_entry_safe(desc, n, &irq_entry->work_list, list) {
 		if (desc->completion->status) {
 			list_del(&desc->list);
-			/* process and callback */
-			idxd_dma_complete_txd(desc, IDXD_COMPLETE_NORMAL);
-			idxd_free_desc(desc->wq, desc);
-			(*processed)++;
-		} else {
-			queued++;
+			list_add_tail(&desc->list, &flist);
 		}
 	}
 
-	return queued;
+	spin_unlock(&irq_entry->list_lock);
+
+	list_for_each_entry(desc, &flist, list) {
+		/*
+		 * Check against the original status as ABORT is software defined
+		 * and 0xff, which DSA_COMP_STATUS_MASK can mask out.
+		 */
+		if (unlikely(desc->completion->status == IDXD_COMP_DESC_ABORT)) {
+			complete_desc(desc, IDXD_COMPLETE_ABORT);
+			continue;
+		}
+
+		complete_desc(desc, IDXD_COMPLETE_NORMAL);
+	}
 }
 
-static int idxd_desc_process(struct idxd_irq_entry *irq_entry)
+irqreturn_t idxd_wq_thread(int irq, void *data)
 {
-	int rc, processed, total = 0;
+	struct idxd_irq_entry *irq_entry = data;
 
 	/*
 	 * There are two lists we are processing. The pending_llist is where
@@ -227,31 +263,9 @@ static int idxd_desc_process(struct idxd_irq_entry *irq_entry)
 	 *    and process the completed entries.
 	 * 4. If the entry is still waiting on hardware, list_add_tail() to
 	 *    the work_list.
-	 * 5. Repeat until no more descriptors.
 	 */
-	do {
-		rc = irq_process_work_list(irq_entry, &processed);
-		total += processed;
-		if (rc != 0)
-			continue;
-
-		rc = irq_process_pending_llist(irq_entry, &processed);
-		total += processed;
-	} while (rc != 0);
-
-	return total;
-}
-
-irqreturn_t idxd_wq_thread(int irq, void *data)
-{
-	struct idxd_irq_entry *irq_entry = data;
-	int processed;
-
-	processed = idxd_desc_process(irq_entry);
-	idxd_unmask_msix_vector(irq_entry->idxd, irq_entry->id);
-
-	if (processed == 0)
-		return IRQ_NONE;
+	irq_process_work_list(irq_entry);
+	irq_process_pending_llist(irq_entry);
 
 	return IRQ_HANDLED;
 }

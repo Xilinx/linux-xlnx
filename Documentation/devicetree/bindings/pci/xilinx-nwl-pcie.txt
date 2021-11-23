@@ -18,7 +18,6 @@ Required properties:
 	"msi1, msi0": interrupt asserted when an MSI is received
 	"intx": interrupt asserted when a legacy interrupt is received
 	"misc": interrupt asserted when miscellaneous interrupt is received
-- clocks: Should contain a clock specifier for the device
 - interrupt-map-mask and interrupt-map: standard PCI properties to define the
 	mapping of the PCI interface to interrupt numbers.
 - ranges: ranges for the PCI memory regions (I/O space region is not
@@ -36,6 +35,7 @@ Required properties:
 
 Optional properties:
 - dma-coherent: present if DMA operations are coherent
+- clocks: Input clock specifier. Refer to common clock bindings
 
 Example:
 ++++++++
@@ -55,7 +55,6 @@ nwl_pcie: pcie@fd0e0000 {
 			<0x0 0x0 0x0 0x2 &pcie_intc 0x2>,
 			<0x0 0x0 0x0 0x3 &pcie_intc 0x3>,
 			<0x0 0x0 0x0 0x4 &pcie_intc 0x4>;
-	clocks = <&clkc 23>
 
 	msi-parent = <&nwl_pcie>;
 	reg = <0x0 0xfd0e0000 0x0 0x1000>,

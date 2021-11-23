@@ -48,8 +48,8 @@ enum brcmf_pcie_state {
 BRCMF_FW_DEF(43602, "brcmfmac43602-pcie");
 BRCMF_FW_DEF(4350, "brcmfmac4350-pcie");
 BRCMF_FW_DEF(4350C, "brcmfmac4350c2-pcie");
-BRCMF_FW_DEF(4356, "brcmfmac4356-pcie");
-BRCMF_FW_DEF(43570, "brcmfmac43570-pcie");
+BRCMF_FW_CLM_DEF(4356, "brcmfmac4356-pcie");
+BRCMF_FW_CLM_DEF(43570, "brcmfmac43570-pcie");
 BRCMF_FW_DEF(4358, "brcmfmac4358-pcie");
 BRCMF_FW_DEF(4359, "brcmfmac4359-pcie");
 BRCMF_FW_DEF(4364, "brcmfmac4364-pcie");
@@ -77,6 +77,7 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
 	BRCMF_FW_ENTRY(BRCM_CC_4366_CHIP_ID, 0x0000000F, 4366B),
 	BRCMF_FW_ENTRY(BRCM_CC_4366_CHIP_ID, 0xFFFFFFF0, 4366C),
 	BRCMF_FW_ENTRY(BRCM_CC_43664_CHIP_ID, 0xFFFFFFF0, 4366C),
+	BRCMF_FW_ENTRY(BRCM_CC_43666_CHIP_ID, 0xFFFFFFF0, 4366C),
 	BRCMF_FW_ENTRY(BRCM_CC_4371_CHIP_ID, 0xFFFFFFFF, 4371),
 };
 
@@ -759,6 +760,7 @@ static void brcmf_pcie_bus_console_init(struct brcmf_pciedev_info *devinfo)
 /**
  * brcmf_pcie_bus_console_read - reads firmware messages
  *
+ * @devinfo: pointer to the device data structure
  * @error: specifies if error has occurred (prints messages unconditionally)
  */
 static void brcmf_pcie_bus_console_read(struct brcmf_pciedev_info *devinfo,
@@ -1884,7 +1886,8 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	devinfo->pdev = pdev;
 	pcie_bus_dev = NULL;
-	devinfo->ci = brcmf_chip_attach(devinfo, &brcmf_pcie_buscore_ops);
+	devinfo->ci = brcmf_chip_attach(devinfo, pdev->device,
+					&brcmf_pcie_buscore_ops);
 	if (IS_ERR(devinfo->ci)) {
 		ret = PTR_ERR(devinfo->ci);
 		devinfo->ci = NULL;
@@ -1936,16 +1939,18 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	fwreq = brcmf_pcie_prepare_fw_request(devinfo);
 	if (!fwreq) {
 		ret = -ENOMEM;
-		goto fail_bus;
+		goto fail_brcmf;
 	}
 
 	ret = brcmf_fw_get_firmwares(bus->dev, fwreq, brcmf_pcie_setup);
 	if (ret < 0) {
 		kfree(fwreq);
-		goto fail_bus;
+		goto fail_brcmf;
 	}
 	return 0;
 
+fail_brcmf:
+	brcmf_free(&devinfo->pdev->dev);
 fail_bus:
 	kfree(bus->msgbuf);
 	kfree(bus);
@@ -2071,7 +2076,7 @@ cleanup:
 
 	err = brcmf_pcie_probe(pdev, NULL);
 	if (err)
-		brcmf_err(bus, "probe after resume failed, err=%d\n", err);
+		__brcmf_err(NULL, __func__, "probe after resume failed, err=%d\n", err);
 
 	return err;
 }
@@ -2136,15 +2141,10 @@ static struct pci_driver brcmf_pciedrvr = {
 };
 
 
-void brcmf_pcie_register(void)
+int brcmf_pcie_register(void)
 {
-	int err;
-
 	brcmf_dbg(PCIE, "Enter\n");
-	err = pci_register_driver(&brcmf_pciedrvr);
-	if (err)
-		brcmf_err(NULL, "PCIE driver registration failed, err=%d\n",
-			  err);
+	return pci_register_driver(&brcmf_pciedrvr);
 }
 
 

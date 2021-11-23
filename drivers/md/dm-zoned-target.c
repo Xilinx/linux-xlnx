@@ -1119,6 +1119,9 @@ static void dmz_status(struct dm_target *ti, status_type_t type,
 			DMEMIT(" %s", buf);
 		}
 		break;
+	case STATUSTYPE_IMA:
+		*result = '\0';
+		break;
 	}
 	return;
 }
@@ -1143,7 +1146,7 @@ static int dmz_message(struct dm_target *ti, unsigned int argc, char **argv,
 static struct target_type dmz_type = {
 	.name		 = "zoned",
 	.version	 = {2, 0, 0},
-	.features	 = DM_TARGET_SINGLETON | DM_TARGET_ZONED_HM,
+	.features	 = DM_TARGET_SINGLETON | DM_TARGET_MIXED_ZONED_MODEL,
 	.module		 = THIS_MODULE,
 	.ctr		 = dmz_ctr,
 	.dtr		 = dmz_dtr,

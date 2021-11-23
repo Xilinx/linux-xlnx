@@ -80,6 +80,33 @@ int metricgroup__copy_metric_events(struct evlist *evlist, struct cgroup *cgrp,
 }
 
 /*
+ * XXX: All these evsel destructors need some better mechanism, like a linked
+ * list of destructors registered when the relevant code indeed is used instead
+ * of having more and more calls in perf_evsel__delete(). -- acme
+ *
+ * For now, add some more:
+ *
+ * Not to drag the BPF bandwagon...
+ */
+void bpf_counter__destroy(struct evsel *evsel);
+int bpf_counter__install_pe(struct evsel *evsel, int cpu, int fd);
+int bpf_counter__disable(struct evsel *evsel);
+
+void bpf_counter__destroy(struct evsel *evsel __maybe_unused)
+{
+}
+
+int bpf_counter__install_pe(struct evsel *evsel __maybe_unused, int cpu __maybe_unused, int fd __maybe_unused)
+{
+	return 0;
+}
+
+int bpf_counter__disable(struct evsel *evsel __maybe_unused)
+{
+	return 0;
+}
+
+/*
  * Support debug printing even though util/debug.c is not linked.  That means
  * implementing 'verbose' and 'eprintf'.
  */
@@ -1005,7 +1032,7 @@ static PyObject *pyrf_evlist__add(struct pyrf_evlist *pevlist,
 
 	Py_INCREF(pevsel);
 	evsel = &((struct pyrf_evsel *)pevsel)->evsel;
-	evsel->idx = evlist->core.nr_entries;
+	evsel->core.idx = evlist->core.nr_entries;
 	evlist__add(evlist, evsel);
 
 	return Py_BuildValue("i", evlist->core.nr_entries);
@@ -1055,7 +1082,7 @@ static PyObject *pyrf_evlist__read_on_cpu(struct pyrf_evlist *pevlist,
 		if (pyevent == NULL)
 			return PyErr_NoMemory();
 
-		evsel = perf_evlist__event2evsel(evlist, event);
+		evsel = evlist__event2evsel(evlist, event);
 		if (!evsel) {
 			Py_INCREF(Py_None);
 			return Py_None;
@@ -1089,7 +1116,7 @@ static PyObject *pyrf_evlist__open(struct pyrf_evlist *pevlist,
 		return NULL;
 
 	if (group)
-		perf_evlist__set_leader(evlist);
+		evlist__set_leader(evlist);
 
 	if (evlist__open(evlist) < 0) {
 		PyErr_SetFromErrno(PyExc_OSError);

@@ -52,6 +52,9 @@ static int dma_heap_buffer_alloc(struct dma_heap *heap, size_t len,
 				 unsigned int fd_flags,
 				 unsigned int heap_flags)
 {
+	struct dma_buf *dmabuf;
+	int fd;
+
 	/*
 	 * Allocations from all heaps have to begin
 	 * and end on page boundaries.
@@ -60,7 +63,16 @@ static int dma_heap_buffer_alloc(struct dma_heap *heap, size_t len,
 	if (!len)
 		return -EINVAL;
 
-	return heap->ops->allocate(heap, len, fd_flags, heap_flags);
+	dmabuf = heap->ops->allocate(heap, len, fd_flags, heap_flags);
+	if (IS_ERR(dmabuf))
+		return PTR_ERR(dmabuf);
+
+	fd = dma_buf_fd(dmabuf, fd_flags);
+	if (fd < 0) {
+		dma_buf_put(dmabuf);
+		/* just return, as put will call release and that will free */
+	}
+	return fd;
 }
 
 static int dma_heap_open(struct inode *inode, struct file *file)
@@ -188,6 +200,18 @@ static const struct file_operations dma_heap_fops = {
 void *dma_heap_get_drvdata(struct dma_heap *heap)
 {
 	return heap->priv;
+}
+
+/**
+ * dma_heap_get_name() - get heap name
+ * @heap: DMA-Heap to retrieve private data for
+ *
+ * Returns:
+ * The char* for the heap name.
+ */
+const char *dma_heap_get_name(struct dma_heap *heap)
+{
+	return heap->name;
 }
 
 struct dma_heap *dma_heap_add(const struct dma_heap_export_info *exp_info)

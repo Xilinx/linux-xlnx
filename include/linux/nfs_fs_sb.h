@@ -62,6 +62,7 @@ struct nfs_client {
 
 	u32			cl_minorversion;/* NFSv4 minorversion */
 	unsigned int		cl_nconnect;	/* Number of connections */
+	unsigned int		cl_max_connect; /* max number of xprts allowed */
 	const char *		cl_principal;  /* used for machine cred */
 
 #if IS_ENABLED(CONFIG_NFS_V4)
@@ -142,7 +143,7 @@ struct nfs_server {
 	struct nlm_host		*nlm_host;	/* NLM client handle */
 	struct nfs_iostats __percpu *io_stats;	/* I/O statistics */
 	atomic_long_t		writeback;	/* number of writeback pages */
-	int			flags;		/* various flags */
+	unsigned int		flags;		/* various flags */
 
 /* The following are for internal use only. Also see uapi/linux/nfs_mount.h */
 #define NFS_MOUNT_LOOKUP_CACHE_NONEG	0x10000
@@ -153,7 +154,10 @@ struct nfs_server {
 #define NFS_MOUNT_LOCAL_FCNTL		0x200000
 #define NFS_MOUNT_SOFTERR		0x400000
 #define NFS_MOUNT_SOFTREVAL		0x800000
+#define NFS_MOUNT_WRITE_EAGER		0x01000000
+#define NFS_MOUNT_WRITE_WAIT		0x02000000
 
+	unsigned int		fattr_valid;	/* Valid attributes */
 	unsigned int		caps;		/* server capabilities */
 	unsigned int		rsize;		/* read size */
 	unsigned int		rpages;		/* read size (in pages) */
@@ -177,6 +181,9 @@ struct nfs_server {
 	unsigned int		clone_blksize;	/* granularity of a CLONE operation */
 #define NFS_OPTION_FSCACHE	0x00000001	/* - local caching enabled */
 #define NFS_OPTION_MIGRATION	0x00000002	/* - NFSv4 migration enabled */
+
+	enum nfs4_change_attr_type
+				change_attr_type;/* Description of change attribute */
 
 	struct nfs_fsid		fsid;
 	__u64			maxfilesize;	/* maximum file size */
@@ -254,6 +261,7 @@ struct nfs_server {
 
 	/* User namespace info */
 	const struct cred	*cred;
+	bool			has_sec_mnt_opts;
 };
 
 /* Server capabilities */
@@ -262,16 +270,7 @@ struct nfs_server {
 #define NFS_CAP_SYMLINKS	(1U << 2)
 #define NFS_CAP_ACLS		(1U << 3)
 #define NFS_CAP_ATOMIC_OPEN	(1U << 4)
-/* #define NFS_CAP_CHANGE_ATTR	(1U << 5) */
 #define NFS_CAP_LGOPEN		(1U << 5)
-#define NFS_CAP_FILEID		(1U << 6)
-#define NFS_CAP_MODE		(1U << 7)
-#define NFS_CAP_NLINK		(1U << 8)
-#define NFS_CAP_OWNER		(1U << 9)
-#define NFS_CAP_OWNER_GROUP	(1U << 10)
-#define NFS_CAP_ATIME		(1U << 11)
-#define NFS_CAP_CTIME		(1U << 12)
-#define NFS_CAP_MTIME		(1U << 13)
 #define NFS_CAP_POSIX_LOCK	(1U << 14)
 #define NFS_CAP_UIDGID_NOMAP	(1U << 15)
 #define NFS_CAP_STATEID_NFSV41	(1U << 16)

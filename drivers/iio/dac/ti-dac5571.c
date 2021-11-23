@@ -166,7 +166,7 @@ static ssize_t dac5571_read_powerdown(struct iio_dev *indio_dev,
 {
 	struct dac5571_data *data = iio_priv(indio_dev);
 
-	return sprintf(buf, "%d\n", data->powerdown[chan->channel]);
+	return sysfs_emit(buf, "%d\n", data->powerdown[chan->channel]);
 }
 
 static ssize_t dac5571_write_powerdown(struct iio_dev *indio_dev,
@@ -350,6 +350,7 @@ static int dac5571_probe(struct i2c_client *client,
 		data->dac5571_pwrdwn = dac5571_pwrdwn_quad;
 		break;
 	default:
+		ret = -EINVAL;
 		goto err;
 	}
 

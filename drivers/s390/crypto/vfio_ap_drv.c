@@ -22,8 +22,6 @@ MODULE_AUTHOR("IBM Corporation");
 MODULE_DESCRIPTION("VFIO AP device driver, Copyright IBM Corp. 2018");
 MODULE_LICENSE("GPL v2");
 
-static struct ap_driver vfio_ap_drv;
-
 struct ap_matrix_dev *matrix_dev;
 
 /* Only type 10 adapters (CEX4 and later) are supported
@@ -71,18 +69,20 @@ static int vfio_ap_queue_dev_probe(struct ap_device *apdev)
 static void vfio_ap_queue_dev_remove(struct ap_device *apdev)
 {
 	struct vfio_ap_queue *q;
-	int apid, apqi;
 
 	mutex_lock(&matrix_dev->lock);
 	q = dev_get_drvdata(&apdev->device);
+	vfio_ap_mdev_reset_queue(q, 1);
 	dev_set_drvdata(&apdev->device, NULL);
-	apid = AP_QID_CARD(q->apqn);
-	apqi = AP_QID_QUEUE(q->apqn);
-	vfio_ap_mdev_reset_queue(apid, apqi, 1);
-	vfio_ap_irq_disable(q);
 	kfree(q);
 	mutex_unlock(&matrix_dev->lock);
 }
+
+static struct ap_driver vfio_ap_drv = {
+	.probe = vfio_ap_queue_dev_probe,
+	.remove = vfio_ap_queue_dev_remove,
+	.ids = ap_queue_ids,
+};
 
 static void vfio_ap_matrix_dev_release(struct device *dev)
 {
@@ -184,11 +184,6 @@ static int __init vfio_ap_init(void)
 	ret = vfio_ap_matrix_dev_create();
 	if (ret)
 		return ret;
-
-	memset(&vfio_ap_drv, 0, sizeof(vfio_ap_drv));
-	vfio_ap_drv.probe = vfio_ap_queue_dev_probe;
-	vfio_ap_drv.remove = vfio_ap_queue_dev_remove;
-	vfio_ap_drv.ids = ap_queue_ids;
 
 	ret = ap_driver_register(&vfio_ap_drv, THIS_MODULE, VFIO_AP_DRV_NAME);
 	if (ret) {

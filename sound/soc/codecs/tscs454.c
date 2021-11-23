@@ -177,7 +177,7 @@ static bool tscs454_volatile(struct device *dev, unsigned int reg)
 		return true;
 	default:
 		return false;
-	};
+	}
 }
 
 static bool tscs454_writable(struct device *dev, unsigned int reg)
@@ -197,7 +197,7 @@ static bool tscs454_writable(struct device *dev, unsigned int reg)
 		return false;
 	default:
 		return true;
-	};
+	}
 }
 
 static bool tscs454_readable(struct device *dev, unsigned int reg)
@@ -217,7 +217,7 @@ static bool tscs454_readable(struct device *dev, unsigned int reg)
 		return false;
 	default:
 		return true;
-	};
+	}
 }
 
 static bool tscs454_precious(struct device *dev, unsigned int reg)
@@ -246,7 +246,7 @@ static bool tscs454_precious(struct device *dev, unsigned int reg)
 		return true;
 	default:
 		return false;
-	};
+	}
 }
 
 static const struct regmap_range_cfg tscs454_regmap_range_cfg = {
@@ -727,7 +727,12 @@ static int pll_power_event(struct snd_soc_dapm_widget *w,
 	if (enable)
 		val = pll1 ? FV_PLL1CLKEN_ENABLE : FV_PLL2CLKEN_ENABLE;
 	else
-		val = pll1 ? FV_PLL1CLKEN_DISABLE : FV_PLL2CLKEN_DISABLE;
+		/*
+		 * FV_PLL1CLKEN_DISABLE and FV_PLL2CLKEN_DISABLE are
+		 * identical zero vzalues, there is no need to test
+		 * the PLL index
+		 */
+		val = FV_PLL1CLKEN_DISABLE;
 
 	ret = snd_soc_component_update_bits(component, R_PLLCTL, msk, val);
 	if (ret < 0) {
@@ -3346,9 +3351,9 @@ static struct snd_soc_dai_driver tscs454_dais[] = {
 			.rates = TSCS454_RATES,
 			.formats = TSCS454_FORMATS,},
 		.ops = &tscs454_dai1_ops,
-		.symmetric_rates = 1,
+		.symmetric_rate = 1,
 		.symmetric_channels = 1,
-		.symmetric_samplebits = 1,
+		.symmetric_sample_bits = 1,
 	},
 	{
 		.name = "tscs454-dai2",
@@ -3366,9 +3371,9 @@ static struct snd_soc_dai_driver tscs454_dais[] = {
 			.rates = TSCS454_RATES,
 			.formats = TSCS454_FORMATS,},
 		.ops = &tscs454_dai23_ops,
-		.symmetric_rates = 1,
+		.symmetric_rate = 1,
 		.symmetric_channels = 1,
-		.symmetric_samplebits = 1,
+		.symmetric_sample_bits = 1,
 	},
 	{
 		.name = "tscs454-dai3",
@@ -3386,9 +3391,9 @@ static struct snd_soc_dai_driver tscs454_dais[] = {
 			.rates = TSCS454_RATES,
 			.formats = TSCS454_FORMATS,},
 		.ops = &tscs454_dai23_ops,
-		.symmetric_rates = 1,
+		.symmetric_rate = 1,
 		.symmetric_channels = 1,
-		.symmetric_samplebits = 1,
+		.symmetric_sample_bits = 1,
 	},
 };
 

@@ -21,6 +21,7 @@ struct bio *blk_next_bio(struct bio *bio, unsigned int nr_pages, gfp_t gfp)
 
 	return new;
 }
+EXPORT_SYMBOL_GPL(blk_next_bio);
 
 int __blkdev_issue_discard(struct block_device *bdev, sector_t sector,
 		sector_t nr_sects, gfp_t gfp_mask, int flags,
@@ -65,7 +66,7 @@ int __blkdev_issue_discard(struct block_device *bdev, sector_t sector,
 
 	/* In case the discard request is in a partition */
 	if (bdev_is_partition(bdev))
-		part_offset = bdev->bd_part->start_sect;
+		part_offset = bdev->bd_start_sect;
 
 	while (nr_sects) {
 		sector_t granularity_aligned_lba, req_sects;
@@ -296,7 +297,7 @@ static unsigned int __blkdev_sectors_to_bio_pages(sector_t nr_sects)
 {
 	sector_t pages = DIV_ROUND_UP_SECTOR_T(nr_sects, PAGE_SIZE / 512);
 
-	return min(pages, (sector_t)BIO_MAX_PAGES);
+	return min(pages, (sector_t)BIO_MAX_VECS);
 }
 
 static int __blkdev_issue_zero_pages(struct block_device *bdev,

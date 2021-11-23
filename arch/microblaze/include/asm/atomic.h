@@ -11,9 +11,9 @@
 
 #define ATOMIC_INIT(i)	{ (i) }
 
-#define atomic_read(v)	READ_ONCE((v)->counter)
+#define arch_atomic_read(v)	READ_ONCE((v)->counter)
 
-static inline void atomic_set(atomic_t *v, int i)
+static inline void arch_atomic_set(atomic_t *v, int i)
 {
 	int result, tmp;
 
@@ -33,11 +33,11 @@ static inline void atomic_set(atomic_t *v, int i)
 		: "cc", "memory"
 	);
 }
-#define atomic_set	atomic_set
+#define arch_atomic_set	arch_atomic_set
 
 /* Atomically perform op with v->counter and i, return result */
 #define ATOMIC_OP_RETURN(op, asm)					\
-static inline int atomic_##op##_return_relaxed(int i, atomic_t *v)	\
+static inline int arch_atomic_##op##_return_relaxed(int i, atomic_t *v)	\
 {									\
 	int result, tmp;						\
 									\
@@ -62,14 +62,14 @@ static inline int atomic_##op##_return_relaxed(int i, atomic_t *v)	\
 	return result;							\
 }									\
 									\
-static inline void atomic_##op(int i, atomic_t *v)			\
+static inline void arch_atomic_##op(int i, atomic_t *v)			\
 {									\
-	atomic_##op##_return_relaxed(i, v);				\
+	arch_atomic_##op##_return_relaxed(i, v);				\
 }
 
 /* Atomically perform op with v->counter and i, return orig v->counter */
 #define ATOMIC_FETCH_OP_RELAXED(op, asm)				\
-static inline int atomic_fetch_##op##_relaxed(int i, atomic_t *v)	\
+static inline int arch_atomic_fetch_##op##_relaxed(int i, atomic_t *v)	\
 {									\
 	int old, tmp;							\
 									\
@@ -99,31 +99,31 @@ static inline int atomic_fetch_##op##_relaxed(int i, atomic_t *v)	\
 	ATOMIC_OP_RETURN(op, asm)
 
 ATOMIC_OPS(and, and)
-#define atomic_and			atomic_and
-#define atomic_and_return_relaxed	atomic_and_return_relaxed
-#define atomic_fetch_and_relaxed	atomic_fetch_and_relaxed
+#define arch_atomic_and			arch_atomic_and
+#define arch_atomic_and_return_relaxed	arch_atomic_and_return_relaxed
+#define arch_atomic_fetch_and_relaxed	arch_atomic_fetch_and_relaxed
 
 ATOMIC_OPS(add, add)
-#define atomic_add			atomic_add
-#define atomic_add_return_relaxed	atomic_add_return_relaxed
-#define atomic_fetch_add_relaxed	atomic_fetch_add_relaxed
+#define arch_atomic_add			arch_atomic_add
+#define arch_atomic_add_return_relaxed	arch_atomic_add_return_relaxed
+#define arch_atomic_fetch_add_relaxed	arch_atomic_fetch_add_relaxed
 
 ATOMIC_OPS(xor, xor)
-#define atomic_xor			atomic_xor
-#define atomic_xor_return_relaxed	atomic_xor_return_relaxed
-#define atomic_fetch_xor_relaxed	atomic_fetch_xor_relaxed
+#define arch_atomic_xor			arch_atomic_xor
+#define arch_atomic_xor_return_relaxed	arch_atomic_xor_return_relaxed
+#define arch_atomic_fetch_xor_relaxed	arch_atomic_fetch_xor_relaxed
 
 ATOMIC_OPS(or, or)
-#define atomic_or			atomic_or
-#define atomic_or_return_relaxed	atomic_or_return_relaxed
-#define atomic_fetch_or_relaxed		atomic_fetch_or_relaxed
+#define arch_atomic_or			arch_atomic_or
+#define arch_atomic_or_return_relaxed	arch_atomic_or_return_relaxed
+#define arch_atomic_fetch_or_relaxed	arch_atomic_fetch_or_relaxed
 
 ATOMIC_OPS(sub, rsub)
-#define atomic_sub			atomic_sub
-#define atomic_sub_return_relaxed	atomic_sub_return_relaxed
-#define atomic_fetch_sub_relaxed	atomic_fetch_sub_relaxed
+#define arch_atomic_sub			arch_atomic_sub
+#define arch_atomic_sub_return_relaxed	arch_atomic_sub_return_relaxed
+#define arch_atomic_fetch_sub_relaxed	arch_atomic_fetch_sub_relaxed
 
-static inline int atomic_inc_return_relaxed(atomic_t *v)
+static inline int arch_atomic_inc_return_relaxed(atomic_t *v)
 {
 	int result, tmp;
 
@@ -147,11 +147,11 @@ static inline int atomic_inc_return_relaxed(atomic_t *v)
 
 	return result;
 }
-#define atomic_inc_return_relaxed	atomic_inc_return_relaxed
+#define arch_atomic_inc_return_relaxed	arch_atomic_inc_return_relaxed
 
-#define atomic_inc_and_test(v)	(atomic_inc_return(v) == 0)
+#define arch_atomic_inc_and_test(v)	(arch_atomic_inc_return(v) == 0)
 
-static inline int atomic_dec_return(atomic_t *v)
+static inline int arch_atomic_dec_return(atomic_t *v)
 {
 	int result, tmp;
 
@@ -175,19 +175,19 @@ static inline int atomic_dec_return(atomic_t *v)
 
 	return result;
 }
-#define atomic_dec_return	atomic_dec_return
+#define arch_atomic_dec_return	arch_atomic_dec_return
 
-static inline void atomic_dec(atomic_t *v)
+static inline void arch_atomic_dec(atomic_t *v)
 {
-	atomic_dec_return(v);
+	arch_atomic_dec_return(v);
 }
-#define atomic_dec	atomic_dec
+#define arch_atomic_dec	arch_atomic_dec
 
-#define atomic_sub_and_test(a, v)	(atomic_sub_return((a), (v)) == 0)
-#define atomic_dec_and_test(v)		(atomic_dec_return((v)) == 0)
+#define arch_atomic_sub_and_test(a, v)	(arch_atomic_sub_return((a), (v)) == 0)
+#define arch_atomic_dec_and_test(v)	(arch_atomic_dec_return((v)) == 0)
 
-#define atomic_cmpxchg(v, o, n)	(cmpxchg(&((v)->counter), (o), (n)))
-#define atomic_xchg(v, new)	(xchg(&((v)->counter), new))
+#define arch_atomic_cmpxchg(v, o, n)	(arch_cmpxchg(&((v)->counter), (o), (n)))
+#define arch_atomic_xchg(v, new)	(arch_xchg(&((v)->counter), new))
 
 /**
  * atomic_add_unless - add unless the number is a given value
@@ -233,7 +233,7 @@ static inline int __atomic_add_unless(atomic_t *v, int a, int u)
  * The function returns the old value of *v minus 1, even if
  * the atomic variable, v, was not decremented.
  */
-static inline int atomic_dec_if_positive(atomic_t *v)
+static inline int arch_atomic_dec_if_positive(atomic_t *v)
 {
 	int result, tmp;
 
@@ -260,9 +260,9 @@ static inline int atomic_dec_if_positive(atomic_t *v)
 
 	return result;
 }
-#define atomic_dec_if_positive	atomic_dec_if_positive
+#define arch_atomic_dec_if_positive	arch_atomic_dec_if_positive
 
-#define atomic_add_negative(i, v)	(atomic_add_return(i, v) < 0)
+#define arch_atomic_add_negative(i, v)	(arch_atomic_add_return(i, v) < 0)
 
 #include <asm-generic/atomic64.h>
 

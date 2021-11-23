@@ -685,7 +685,7 @@ static void iser_cleanup_handler(struct rdma_cm_id *cma_id,
 	iser_disconnected_handler(cma_id);
 	iser_free_ib_conn_res(iser_conn, destroy);
 	complete(&iser_conn->ib_completion);
-};
+}
 
 static int iser_cma_handler(struct rdma_cm_id *cma_id, struct rdma_cm_event *event)
 {
@@ -761,7 +761,7 @@ void iser_conn_init(struct iser_conn *iser_conn)
 	ib_conn->reg_cqe.done = iser_reg_comp;
 }
 
- /**
+/*
  * starts the process of connecting to the target
  * sleeps until the connection is established or rejected
  */
@@ -949,7 +949,7 @@ u8 iser_check_task_pi_status(struct iscsi_iser_task *iser_task,
 			sector_t sector_off = mr_status.sig_err.sig_err_offset;
 
 			sector_div(sector_off, sector_size + 8);
-			*sector = scsi_get_lba(iser_task->sc) + sector_off;
+			*sector = scsi_get_sector(iser_task->sc) + sector_off;
 
 			iser_err("PI error found type %d at sector %llx "
 			       "expected %x vs actual %x\n",

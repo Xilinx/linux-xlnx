@@ -27,6 +27,15 @@
 #define S3C2410_UERSTAT	  (0x14)
 #define S3C2410_UFSTAT	  (0x18)
 #define S3C2410_UMSTAT	  (0x1C)
+#define USI_CON		  (0xC4)
+#define USI_OPTION	  (0xC8)
+
+#define USI_CON_RESET			(1<<0)
+#define USI_CON_RESET_MASK		(1<<0)
+
+#define USI_OPTION_HWACG_CLKREQ_ON	(1<<1)
+#define USI_OPTION_HWACG_CLKSTOP_ON	(1<<2)
+#define USI_OPTION_HWACG_MASK		(3<<1)
 
 #define S3C2410_LCON_CFGMASK	  ((0xF<<3)|(0x3))
 
@@ -246,6 +255,22 @@
 				 S5PV210_UFCON_TXTRIG4 |	\
 				 S5PV210_UFCON_RXTRIG4)
 
+#define APPLE_S5L_UCON_RXTO_ENA		9
+#define APPLE_S5L_UCON_RXTHRESH_ENA	12
+#define APPLE_S5L_UCON_TXTHRESH_ENA	13
+#define APPLE_S5L_UCON_RXTO_ENA_MSK	(1 << APPLE_S5L_UCON_RXTO_ENA)
+#define APPLE_S5L_UCON_RXTHRESH_ENA_MSK	(1 << APPLE_S5L_UCON_RXTHRESH_ENA)
+#define APPLE_S5L_UCON_TXTHRESH_ENA_MSK	(1 << APPLE_S5L_UCON_TXTHRESH_ENA)
+
+#define APPLE_S5L_UCON_DEFAULT		(S3C2410_UCON_TXIRQMODE | \
+					 S3C2410_UCON_RXIRQMODE | \
+					 S3C2410_UCON_RXFIFO_TOI)
+
+#define APPLE_S5L_UTRSTAT_RXTHRESH	(1<<4)
+#define APPLE_S5L_UTRSTAT_TXTHRESH	(1<<5)
+#define APPLE_S5L_UTRSTAT_RXTO		(1<<9)
+#define APPLE_S5L_UTRSTAT_ALL_FLAGS	(0x3f0)
+
 #ifndef __ASSEMBLY__
 
 #include <linux/serial_core.h>
@@ -254,7 +279,7 @@
  * serial port
  *
  * the pointer is setup by the machine specific initialisation from the
- * arch/arm/mach-s3c2410/ directory.
+ * arch/arm/mach-s3c/ directory.
 */
 
 struct s3c2410_uartcfg {

@@ -41,7 +41,7 @@ static inline unsigned long __xchg(unsigned long x, volatile void *ptr,
 	return x;
 }
 
-#define xchg(ptr, x) ({							\
+#define arch_xchg(ptr, x) ({							\
 	((__typeof__(*(ptr)))						\
 		__xchg((unsigned long)(x), (ptr), sizeof(*(ptr))));	\
 })
@@ -85,11 +85,10 @@ static inline unsigned long __cmpxchg(volatile void *ptr, unsigned long old,
 	return old;
 }
 
-#define cmpxchg(ptr, o, n) ({						\
+#define arch_cmpxchg(ptr, o, n) ({						\
 	((__typeof__(*(ptr)))__cmpxchg((ptr), (unsigned long)(o),	\
 			(unsigned long)(n), sizeof(*(ptr))));		\
 })
-
 
 #endif
 

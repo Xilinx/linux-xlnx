@@ -57,8 +57,8 @@ static ssize_t secure_load_store(struct device *dev,
 		memcpy(kbuf + fw->size, key, ZYNQMP_AES_KEY_SIZE);
 
 	/* To ensure cache coherency */
-	__flush_cache_user_range((unsigned long)kbuf,
-				 (unsigned long)kbuf + dma_size);
+	caches_clean_inval_user_pou((unsigned long)kbuf,
+				    (unsigned long)kbuf + dma_size);
 	release_firmware(fw);
 
 	if (keyptr)

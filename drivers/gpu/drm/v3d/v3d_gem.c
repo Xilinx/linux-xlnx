@@ -126,6 +126,8 @@ v3d_reset(struct v3d_dev *v3d)
 	v3d_mmu_set_page_table(v3d);
 	v3d_irq_reset(v3d);
 
+	v3d_perfmon_stop(v3d, v3d->active_perfmon, false);
+
 	trace_v3d_reset_end(dev);
 }
 
@@ -275,6 +277,8 @@ v3d_lock_bo_reservations(struct v3d_job *job,
  * @dev: DRM device
  * @file_priv: DRM file for this fd
  * @job: V3D job being set up
+ * @bo_handles: GEM handles
+ * @bo_count: Number of GEM handles passed in
  *
  * The command validator needs to reference BOs by their index within
  * the submitted job's BO list.  This does the validation of the job's
@@ -372,6 +376,9 @@ v3d_job_free(struct kref *ref)
 
 	pm_runtime_mark_last_busy(job->v3d->drm.dev);
 	pm_runtime_put_autosuspend(job->v3d->drm.dev);
+
+	if (job->perfmon)
+		v3d_perfmon_put(job->perfmon);
 
 	kfree(job);
 }
@@ -537,6 +544,9 @@ v3d_submit_cl_ioctl(struct drm_device *dev, void *data,
 
 	trace_v3d_submit_cl_ioctl(&v3d->drm, args->rcl_start, args->rcl_end);
 
+	if (args->pad != 0)
+		return -EINVAL;
+
 	if (args->flags != 0 &&
 	    args->flags != DRM_V3D_SUBMIT_CL_FLUSH_CACHE) {
 		DRM_INFO("invalid flags: %d\n", args->flags);
@@ -609,8 +619,20 @@ v3d_submit_cl_ioctl(struct drm_device *dev, void *data,
 	if (ret)
 		goto fail;
 
+	if (args->perfmon_id) {
+		render->base.perfmon = v3d_perfmon_find(v3d_priv,
+							args->perfmon_id);
+
+		if (!render->base.perfmon) {
+			ret = -ENOENT;
+			goto fail;
+		}
+	}
+
 	mutex_lock(&v3d->sched_lock);
 	if (bin) {
+		bin->base.perfmon = render->base.perfmon;
+		v3d_perfmon_get(bin->base.perfmon);
 		ret = v3d_push_job(v3d_priv, &bin->base, V3D_BIN);
 		if (ret)
 			goto fail_unreserve;
@@ -631,6 +653,8 @@ v3d_submit_cl_ioctl(struct drm_device *dev, void *data,
 		ret = drm_gem_fence_array_add(&clean_job->deps, render_fence);
 		if (ret)
 			goto fail_unreserve;
+		clean_job->perfmon = render->base.perfmon;
+		v3d_perfmon_get(clean_job->perfmon);
 		ret = v3d_push_job(v3d_priv, clean_job, V3D_CACHE_CLEAN);
 		if (ret)
 			goto fail_unreserve;
@@ -824,6 +848,15 @@ v3d_submit_csd_ioctl(struct drm_device *dev, void *data,
 	ret = v3d_lock_bo_reservations(clean_job, &acquire_ctx);
 	if (ret)
 		goto fail;
+
+	if (args->perfmon_id) {
+		job->base.perfmon = v3d_perfmon_find(v3d_priv,
+						     args->perfmon_id);
+		if (!job->base.perfmon) {
+			ret = -ENOENT;
+			goto fail;
+		}
+	}
 
 	mutex_lock(&v3d->sched_lock);
 	ret = v3d_push_job(v3d_priv, &job->base, V3D_CSD);

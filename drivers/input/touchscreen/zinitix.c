@@ -161,7 +161,7 @@ static int zinitix_read_data(struct i2c_client *client,
 
 	ret = i2c_master_recv(client, (u8 *)values, length);
 	if (ret != length)
-		return ret < 0 ? ret : -EIO; ;
+		return ret < 0 ? ret : -EIO;
 
 	return 0;
 }
@@ -190,7 +190,7 @@ static int zinitix_write_cmd(struct i2c_client *client, u16 reg)
 	return 0;
 }
 
-static bool zinitix_init_touch(struct bt541_ts_data *bt541)
+static int zinitix_init_touch(struct bt541_ts_data *bt541)
 {
 	struct i2c_client *client = bt541->client;
 	int i;
@@ -513,10 +513,10 @@ static int zinitix_ts_probe(struct i2c_client *client)
 		return -EINVAL;
 	}
 
-	irq_set_status_flags(client->irq, IRQ_NOAUTOEN);
 	error = devm_request_threaded_irq(&client->dev, client->irq,
 					  NULL, zinitix_ts_irq_handler,
-					  IRQF_ONESHOT, client->name, bt541);
+					  IRQF_ONESHOT | IRQF_NO_AUTOEN,
+					  client->name, bt541);
 	if (error) {
 		dev_err(&client->dev, "Failed to request IRQ: %d\n", error);
 		return error;
@@ -532,7 +532,7 @@ static int __maybe_unused zinitix_suspend(struct device *dev)
 
 	mutex_lock(&bt541->input_dev->mutex);
 
-	if (bt541->input_dev->users)
+	if (input_device_enabled(bt541->input_dev))
 		zinitix_stop(bt541);
 
 	mutex_unlock(&bt541->input_dev->mutex);
@@ -548,7 +548,7 @@ static int __maybe_unused zinitix_resume(struct device *dev)
 
 	mutex_lock(&bt541->input_dev->mutex);
 
-	if (bt541->input_dev->users)
+	if (input_device_enabled(bt541->input_dev))
 		ret = zinitix_start(bt541);
 
 	mutex_unlock(&bt541->input_dev->mutex);

@@ -843,7 +843,8 @@ static int ina2xx_buffer_enable(struct iio_dev *indio_dev)
 		chip->allow_async_readout);
 
 	task = kthread_create(ina2xx_capture_thread, (void *)indio_dev,
-			      "%s:%d-%uus", indio_dev->name, indio_dev->id,
+			      "%s:%d-%uus", indio_dev->name,
+			      iio_device_id(indio_dev),
 			      sampling_us);
 	if (IS_ERR(task))
 		return PTR_ERR(task);
@@ -953,7 +954,6 @@ static int ina2xx_probe(struct i2c_client *client,
 {
 	struct ina2xx_chip_info *chip;
 	struct iio_dev *indio_dev;
-	struct iio_buffer *buffer;
 	unsigned int val;
 	enum ina2xx_ids type;
 	int ret;
@@ -1017,7 +1017,7 @@ static int ina2xx_probe(struct i2c_client *client,
 		return ret;
 	}
 
-	indio_dev->modes = INDIO_DIRECT_MODE | INDIO_BUFFER_SOFTWARE;
+	indio_dev->modes = INDIO_DIRECT_MODE;
 	if (id->driver_data == ina226) {
 		indio_dev->channels = ina226_channels;
 		indio_dev->num_channels = ARRAY_SIZE(ina226_channels);
@@ -1028,13 +1028,12 @@ static int ina2xx_probe(struct i2c_client *client,
 		indio_dev->info = &ina219_info;
 	}
 	indio_dev->name = id->name;
-	indio_dev->setup_ops = &ina2xx_setup_ops;
 
-	buffer = devm_iio_kfifo_allocate(&indio_dev->dev);
-	if (!buffer)
-		return -ENOMEM;
-
-	iio_device_attach_buffer(indio_dev, buffer);
+	ret = devm_iio_kfifo_buffer_setup(&client->dev, indio_dev,
+					  INDIO_BUFFER_SOFTWARE,
+					  &ina2xx_setup_ops);
+	if (ret)
+		return ret;
 
 	return iio_device_register(indio_dev);
 }

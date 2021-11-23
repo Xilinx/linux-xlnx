@@ -729,7 +729,7 @@ static int _snd_pcm_new(struct snd_card *card, const char *id, int device,
 	init_waitqueue_head(&pcm->open_wait);
 	INIT_LIST_HEAD(&pcm->list);
 	if (id)
-		strlcpy(pcm->id, id, sizeof(pcm->id));
+		strscpy(pcm->id, id, sizeof(pcm->id));
 
 	err = snd_pcm_new_stream(pcm, SNDRV_PCM_STREAM_PLAYBACK,
 				 playback_count);
@@ -1004,7 +1004,7 @@ void snd_pcm_detach_substream(struct snd_pcm_substream *substream)
 	substream->pstr->substream_opened--;
 }
 
-static ssize_t show_pcm_class(struct device *dev,
+static ssize_t pcm_class_show(struct device *dev,
 			      struct device_attribute *attr, char *buf)
 {
 	struct snd_pcm_str *pstr = container_of(dev, struct snd_pcm_str, dev);
@@ -1024,7 +1024,7 @@ static ssize_t show_pcm_class(struct device *dev,
 	return sprintf(buf, "%s\n", str);
 }
 
-static DEVICE_ATTR(pcm_class, 0444, show_pcm_class, NULL);
+static DEVICE_ATTR_RO(pcm_class);
 static struct attribute *pcm_dev_attrs[] = {
 	&dev_attr_pcm_class.attr,
 	NULL
@@ -1095,21 +1095,22 @@ static int snd_pcm_dev_disconnect(struct snd_device *device)
 	mutex_lock(&pcm->open_mutex);
 	wake_up(&pcm->open_wait);
 	list_del_init(&pcm->list);
-	for (cidx = 0; cidx < 2; cidx++) {
-		for (substream = pcm->streams[cidx].substream; substream; substream = substream->next) {
-			snd_pcm_stream_lock_irq(substream);
-			if (substream->runtime) {
-				if (snd_pcm_running(substream))
-					snd_pcm_stop(substream,
-						     SNDRV_PCM_STATE_DISCONNECTED);
-				/* to be sure, set the state unconditionally */
-				substream->runtime->status->state = SNDRV_PCM_STATE_DISCONNECTED;
-				wake_up(&substream->runtime->sleep);
-				wake_up(&substream->runtime->tsleep);
-			}
-			snd_pcm_stream_unlock_irq(substream);
+
+	for_each_pcm_substream(pcm, cidx, substream) {
+		snd_pcm_stream_lock_irq(substream);
+		if (substream->runtime) {
+			if (snd_pcm_running(substream))
+				snd_pcm_stop(substream, SNDRV_PCM_STATE_DISCONNECTED);
+			/* to be sure, set the state unconditionally */
+			substream->runtime->status->state = SNDRV_PCM_STATE_DISCONNECTED;
+			wake_up(&substream->runtime->sleep);
+			wake_up(&substream->runtime->tsleep);
 		}
+		snd_pcm_stream_unlock_irq(substream);
 	}
+
+	for_each_pcm_substream(pcm, cidx, substream)
+		snd_pcm_sync_stop(substream, false);
 
 	pcm_call_notify(pcm, n_disconnect);
 	for (cidx = 0; cidx < 2; cidx++) {

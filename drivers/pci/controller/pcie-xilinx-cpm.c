@@ -222,7 +222,7 @@ static void xilinx_cpm_pcie_intx_flow(struct irq_desc *desc)
 			pcie_read(port, XILINX_CPM_PCIE_REG_IDRN));
 
 	for_each_set_bit(i, &val, PCI_NUM_INTX)
-		generic_handle_irq(irq_find_mapping(port->intx_domain, i));
+		generic_handle_domain_irq(port->intx_domain, i);
 
 	chained_irq_exit(chip, desc);
 }
@@ -282,7 +282,7 @@ static void xilinx_cpm_pcie_event_flow(struct irq_desc *desc)
 	val =  pcie_read(port, XILINX_CPM_PCIE_REG_IDR);
 	val &= pcie_read(port, XILINX_CPM_PCIE_REG_IMR);
 	for_each_set_bit(i, &val, 32)
-		generic_handle_irq(irq_find_mapping(port->cpm_domain, i));
+		generic_handle_domain_irq(port->cpm_domain, i);
 	pcie_write(port, val, XILINX_CPM_PCIE_REG_IDR);
 
 	/*
@@ -404,6 +404,7 @@ static int xilinx_cpm_pcie_init_irq_domain(struct xilinx_cpm_pcie_port *port)
 	return 0;
 out:
 	xilinx_cpm_free_irq_domains(port);
+	of_node_put(pcie_intc_node);
 	dev_err(dev, "Failed to allocate IRQ domains\n");
 
 	return -ENOMEM;

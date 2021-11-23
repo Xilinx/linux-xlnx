@@ -39,7 +39,7 @@
 		};
 	};
 
-	gpio_keys {
+	gpio-keys {
 		compatible = "gpio-keys";
 
 		wakeup {
@@ -344,14 +344,15 @@
 &hsi2c_4 {
 	status = "okay";
 
-	s2mps11_pmic@66 {
+	pmic@66 {
 		compatible = "samsung,s2mps11-pmic";
 		reg = <0x66>;
 
 		interrupt-parent = <&gpx3>;
-		interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
+		interrupts = <2 IRQ_TYPE_LEVEL_LOW>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&s2mps11_irq>;
+		wakeup-source;
 
 		s2mps11_osc: clocks {
 			compatible = "samsung,s2mps11-clk";

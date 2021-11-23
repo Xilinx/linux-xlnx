@@ -3387,13 +3387,13 @@ static int xhdmirx_query_dv_timings(struct v4l2_subdev *subdev,
 
 static struct v4l2_mbus_framefmt *
 __xhdmirx_get_pad_format_ptr(struct xhdmirx_state *xhdmi,
-			     struct v4l2_subdev_pad_config *cfg,
+			     struct v4l2_subdev_state *sd_state,
 			     unsigned int pad, u32 which)
 {
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
 		dev_dbg(xhdmi->dev, "%s V4L2_SUBDEV_FORMAT_TRY\n", __func__);
-		return v4l2_subdev_get_try_format(&xhdmi->sd, cfg, pad);
+		return v4l2_subdev_get_try_format(&xhdmi->sd, sd_state, pad);
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
 		dev_dbg(xhdmi->dev, "%s V4L2_SUBDEV_FORMAT_ACTIVE\n", __func__);
 		return &xhdmi->mbus_fmt;
@@ -3415,7 +3415,7 @@ __xhdmirx_get_pad_format_ptr(struct xhdmirx_state *xhdmi,
  * Returns: 0 on success else -EINVAL
  */
 static int xhdmirx_set_format(struct v4l2_subdev *subdev,
-			      struct v4l2_subdev_pad_config *cfg,
+			      struct v4l2_subdev_state *sd_state,
 			      struct v4l2_subdev_format *fmt)
 {
 	struct xhdmirx_state *xhdmi = to_xhdmirx_state(subdev);
@@ -3439,7 +3439,7 @@ static int xhdmirx_set_format(struct v4l2_subdev *subdev,
  * Returns: 0 on success else -EINVAL
  */
 static int xhdmirx_get_format(struct v4l2_subdev *subdev,
-			      struct v4l2_subdev_pad_config *cfg,
+			      struct v4l2_subdev_state *sd_state,
 			      struct v4l2_subdev_format *fmt)
 {
 	struct xhdmirx_state *xhdmi = to_xhdmirx_state(subdev);
@@ -3449,7 +3449,8 @@ static int xhdmirx_get_format(struct v4l2_subdev *subdev,
 		return -EINVAL;
 
 	/* copy either try or currently-active (i.e. detected) format to caller */
-	gfmt = __xhdmirx_get_pad_format_ptr(xhdmi, cfg, fmt->pad, fmt->which);
+	gfmt = __xhdmirx_get_pad_format_ptr(xhdmi, sd_state, fmt->pad,
+					    fmt->which);
 	if (!gfmt)
 		return -EINVAL;
 

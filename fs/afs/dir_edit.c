@@ -215,8 +215,7 @@ void afs_edit_dir_add(struct afs_vnode *vnode,
 	}
 
 	/* Work out how many slots we're going to need. */
-	need_slots = round_up(12 + name->len + 1 + 4, AFS_DIR_DIRENT_SIZE);
-	need_slots /= AFS_DIR_DIRENT_SIZE;
+	need_slots = afs_dir_calc_slots(name->len);
 
 	meta_page = kmap(page0);
 	meta = &meta_page->blocks[0];
@@ -264,7 +263,7 @@ void afs_edit_dir_add(struct afs_vnode *vnode,
 		if (b == nr_blocks) {
 			_debug("init %u", b);
 			afs_edit_init_block(meta, block, b);
-			i_size_write(&vnode->vfs_inode, (b + 1) * AFS_DIR_BLOCK_SIZE);
+			afs_set_i_size(vnode, (b + 1) * AFS_DIR_BLOCK_SIZE);
 		}
 
 		/* Only lower dir pages have a counter in the header. */
@@ -297,7 +296,7 @@ void afs_edit_dir_add(struct afs_vnode *vnode,
 new_directory:
 	afs_edit_init_block(meta, meta, 0);
 	i_size = AFS_DIR_BLOCK_SIZE;
-	i_size_write(&vnode->vfs_inode, i_size);
+	afs_set_i_size(vnode, i_size);
 	slot = AFS_DIR_RESV_BLOCKS0;
 	page = page0;
 	block = meta;
@@ -393,8 +392,7 @@ void afs_edit_dir_remove(struct afs_vnode *vnode,
 	}
 
 	/* Work out how many slots we're going to discard. */
-	need_slots = round_up(12 + name->len + 1 + 4, AFS_DIR_DIRENT_SIZE);
-	need_slots /= AFS_DIR_DIRENT_SIZE;
+	need_slots = afs_dir_calc_slots(name->len);
 
 	meta_page = kmap(page0);
 	meta = &meta_page->blocks[0];

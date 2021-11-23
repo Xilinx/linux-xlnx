@@ -59,7 +59,6 @@ MODULE_PARM_DESC(hwrng_seed, "Turn on/off hwrng auto seed, default is 1 (on).");
 
 DEFINE_SPINLOCK(zcrypt_list_lock);
 LIST_HEAD(zcrypt_card_list);
-int zcrypt_device_count;
 
 static atomic_t zcrypt_open_count = ATOMIC_INIT(0);
 static atomic_t zcrypt_rescan_count = ATOMIC_INIT(0);
@@ -72,7 +71,7 @@ static LIST_HEAD(zcrypt_ops_list);
 /* Zcrypt related debug feature stuff. */
 debug_info_t *zcrypt_dbf_info;
 
-/**
+/*
  * Process a rescan of the transport layer.
  *
  * Returns 1, if the rescan has been processed, otherwise 0.
@@ -463,7 +462,7 @@ static void zcdn_destroy_all(void)
 
 #endif
 
-/**
+/*
  * zcrypt_read (): Not supported beyond zcrypt 1.3.1.
  *
  * This function is not supported beyond zcrypt 1.3.1.
@@ -474,7 +473,7 @@ static ssize_t zcrypt_read(struct file *filp, char __user *buf,
 	return -EPERM;
 }
 
-/**
+/*
  * zcrypt_write(): Not allowed.
  *
  * Write is is not allowed
@@ -485,7 +484,7 @@ static ssize_t zcrypt_write(struct file *filp, const char __user *buf,
 	return -EPERM;
 }
 
-/**
+/*
  * zcrypt_open(): Count number of users.
  *
  * Device open function to count number of users.
@@ -513,7 +512,7 @@ static int zcrypt_open(struct inode *inode, struct file *filp)
 	return stream_open(inode, filp);
 }
 
-/**
+/*
  * zcrypt_release(): Count number of users.
  *
  * Device close function to count number of users.
@@ -573,14 +572,14 @@ static inline struct zcrypt_queue *zcrypt_pick_queue(struct zcrypt_card *zc,
 						     struct module **pmod,
 						     unsigned int weight)
 {
-	if (!zq || !try_module_get(zq->queue->ap_dev.drv->driver.owner))
+	if (!zq || !try_module_get(zq->queue->ap_dev.device.driver->owner))
 		return NULL;
 	zcrypt_queue_get(zq);
 	get_device(&zq->queue->ap_dev.device);
 	atomic_add(weight, &zc->load);
 	atomic_add(weight, &zq->load);
 	zq->request_count++;
-	*pmod = zq->queue->ap_dev.drv->driver.owner;
+	*pmod = zq->queue->ap_dev.device.driver->owner;
 	return zq;
 }
 
@@ -901,6 +900,9 @@ static long _zcrypt_send_cprb(bool userspace, struct ap_perms *perms,
 		if (xcRB->user_defined != AUTOSELECT &&
 		    xcRB->user_defined != zc->card->id)
 			continue;
+		/* check if request size exceeds card max msg size */
+		if (ap_msg.len > zc->card->maxmsgsize)
+			continue;
 		/* check if device node has admission for this card */
 		if (!zcrypt_check_card(perms, zc->card->id))
 			continue;
@@ -1068,6 +1070,9 @@ static long _zcrypt_send_ep11_cprb(bool userspace, struct ap_perms *perms,
 		/* Check for user selected EP11 card */
 		if (targets &&
 		    !is_desired_ep11_card(zc->card->id, target_num, targets))
+			continue;
+		/* check if request size exceeds card max msg size */
+		if (ap_msg.len > zc->card->maxmsgsize)
 			continue;
 		/* check if device node has admission for this card */
 		if (!zcrypt_check_card(perms, zc->card->id))
@@ -1438,6 +1443,8 @@ static int icarsamodexpo_ioctl(struct ap_perms *perms, unsigned long arg)
 			if (rc == -EAGAIN)
 				tr.again_counter++;
 		} while (rc == -EAGAIN && tr.again_counter < TRACK_AGAIN_MAX);
+	if (rc == -EAGAIN && tr.again_counter >= TRACK_AGAIN_MAX)
+		rc = -EIO;
 	if (rc) {
 		ZCRYPT_DBF(DBF_DEBUG, "ioctl ICARSAMODEXPO rc=%d\n", rc);
 		return rc;
@@ -1481,6 +1488,8 @@ static int icarsacrt_ioctl(struct ap_perms *perms, unsigned long arg)
 			if (rc == -EAGAIN)
 				tr.again_counter++;
 		} while (rc == -EAGAIN && tr.again_counter < TRACK_AGAIN_MAX);
+	if (rc == -EAGAIN && tr.again_counter >= TRACK_AGAIN_MAX)
+		rc = -EIO;
 	if (rc) {
 		ZCRYPT_DBF(DBF_DEBUG, "ioctl ICARSACRT rc=%d\n", rc);
 		return rc;
@@ -1524,6 +1533,8 @@ static int zsecsendcprb_ioctl(struct ap_perms *perms, unsigned long arg)
 			if (rc == -EAGAIN)
 				tr.again_counter++;
 		} while (rc == -EAGAIN && tr.again_counter < TRACK_AGAIN_MAX);
+	if (rc == -EAGAIN && tr.again_counter >= TRACK_AGAIN_MAX)
+		rc = -EIO;
 	if (rc)
 		ZCRYPT_DBF(DBF_DEBUG, "ioctl ZSENDCPRB rc=%d status=0x%x\n",
 			   rc, xcRB.status);
@@ -1568,6 +1579,8 @@ static int zsendep11cprb_ioctl(struct ap_perms *perms, unsigned long arg)
 			if (rc == -EAGAIN)
 				tr.again_counter++;
 		} while (rc == -EAGAIN && tr.again_counter < TRACK_AGAIN_MAX);
+	if (rc == -EAGAIN && tr.again_counter >= TRACK_AGAIN_MAX)
+		rc = -EIO;
 	if (rc)
 		ZCRYPT_DBF(DBF_DEBUG, "ioctl ZSENDEP11CPRB rc=%d\n", rc);
 	if (copy_to_user(uxcrb, &xcrb, sizeof(xcrb)))
@@ -1744,6 +1757,8 @@ static long trans_modexpo32(struct ap_perms *perms, struct file *filp,
 			if (rc == -EAGAIN)
 				tr.again_counter++;
 		} while (rc == -EAGAIN && tr.again_counter < TRACK_AGAIN_MAX);
+	if (rc == -EAGAIN && tr.again_counter >= TRACK_AGAIN_MAX)
+		rc = -EIO;
 	if (rc)
 		return rc;
 	return put_user(mex64.outputdatalength,
@@ -1795,6 +1810,8 @@ static long trans_modexpo_crt32(struct ap_perms *perms, struct file *filp,
 			if (rc == -EAGAIN)
 				tr.again_counter++;
 		} while (rc == -EAGAIN && tr.again_counter < TRACK_AGAIN_MAX);
+	if (rc == -EAGAIN && tr.again_counter >= TRACK_AGAIN_MAX)
+		rc = -EIO;
 	if (rc)
 		return rc;
 	return put_user(crt64.outputdatalength,
@@ -1865,6 +1882,8 @@ static long trans_xcRB32(struct ap_perms *perms, struct file *filp,
 			if (rc == -EAGAIN)
 				tr.again_counter++;
 		} while (rc == -EAGAIN && tr.again_counter < TRACK_AGAIN_MAX);
+	if (rc == -EAGAIN && tr.again_counter >= TRACK_AGAIN_MAX)
+		rc = -EIO;
 	xcRB32.reply_control_blk_length = xcRB64.reply_control_blk_length;
 	xcRB32.reply_data_length = xcRB64.reply_data_length;
 	xcRB32.status = xcRB64.status;
@@ -1992,6 +2011,72 @@ void zcrypt_rng_device_remove(void)
 	mutex_unlock(&zcrypt_rng_mutex);
 }
 
+/*
+ * Wait until the zcrypt api is operational.
+ * The AP bus scan and the binding of ap devices to device drivers is
+ * an asynchronous job. This function waits until these initial jobs
+ * are done and so the zcrypt api should be ready to serve crypto
+ * requests - if there are resources available. The function uses an
+ * internal timeout of 60s. The very first caller will either wait for
+ * ap bus bindings complete or the timeout happens. This state will be
+ * remembered for further callers which will only be blocked until a
+ * decision is made (timeout or bindings complete).
+ * On timeout -ETIME is returned, on success the return value is 0.
+ */
+int zcrypt_wait_api_operational(void)
+{
+	static DEFINE_MUTEX(zcrypt_wait_api_lock);
+	static int zcrypt_wait_api_state;
+	int rc;
+
+	rc = mutex_lock_interruptible(&zcrypt_wait_api_lock);
+	if (rc)
+		return rc;
+
+	switch (zcrypt_wait_api_state) {
+	case 0:
+		/* initial state, invoke wait for the ap bus complete */
+		rc = ap_wait_init_apqn_bindings_complete(
+			msecs_to_jiffies(60 * 1000));
+		switch (rc) {
+		case 0:
+			/* ap bus bindings are complete */
+			zcrypt_wait_api_state = 1;
+			break;
+		case -EINTR:
+			/* interrupted, go back to caller */
+			break;
+		case -ETIME:
+			/* timeout */
+			ZCRYPT_DBF(DBF_WARN,
+				   "%s ap_wait_init_apqn_bindings_complete() returned with ETIME\n",
+				   __func__);
+			zcrypt_wait_api_state = -ETIME;
+			break;
+		default:
+			/* other failure */
+			ZCRYPT_DBF(DBF_DEBUG,
+				   "%s ap_wait_init_apqn_bindings_complete() failure rc=%d\n",
+				   __func__, rc);
+			break;
+		}
+		break;
+	case 1:
+		/* a previous caller already found ap bus bindings complete */
+		rc = 0;
+		break;
+	default:
+		/* a previous caller had timeout or other failure */
+		rc = zcrypt_wait_api_state;
+		break;
+	}
+
+	mutex_unlock(&zcrypt_wait_api_lock);
+
+	return rc;
+}
+EXPORT_SYMBOL(zcrypt_wait_api_operational);
+
 int __init zcrypt_debug_init(void)
 {
 	zcrypt_dbf_info = debug_register("zcrypt", 1, 1,
@@ -2068,7 +2153,7 @@ static void zcdn_exit(void)
 
 #endif
 
-/**
+/*
  * zcrypt_api_init(): Module initialization.
  *
  * The module initialization code.
@@ -2106,7 +2191,7 @@ out:
 	return rc;
 }
 
-/**
+/*
  * zcrypt_api_exit(): Module termination.
  *
  * The module termination code.

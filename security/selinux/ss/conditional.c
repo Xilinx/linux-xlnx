@@ -254,7 +254,8 @@ struct cond_insertf_data {
 	struct cond_av_list *other;
 };
 
-static int cond_insertf(struct avtab *a, struct avtab_key *k, struct avtab_datum *d, void *ptr)
+static int cond_insertf(struct avtab *a, const struct avtab_key *k,
+			const struct avtab_datum *d, void *ptr)
 {
 	struct cond_insertf_data *data = ptr;
 	struct policydb *p = data->p;
@@ -605,7 +606,6 @@ static int cond_dup_av_list(struct cond_av_list *new,
 			struct cond_av_list *orig,
 			struct avtab *avtab)
 {
-	struct avtab_node *avnode;
 	u32 i;
 
 	memset(new, 0, sizeof(*new));
@@ -615,10 +615,11 @@ static int cond_dup_av_list(struct cond_av_list *new,
 		return -ENOMEM;
 
 	for (i = 0; i < orig->len; i++) {
-		avnode = avtab_search_node(avtab, &orig->nodes[i]->key);
-		if (WARN_ON(!avnode))
-			return -EINVAL;
-		new->nodes[i] = avnode;
+		new->nodes[i] = avtab_insert_nonunique(avtab,
+						       &orig->nodes[i]->key,
+						       &orig->nodes[i]->datum);
+		if (!new->nodes[i])
+			return -ENOMEM;
 		new->len++;
 	}
 
@@ -628,9 +629,10 @@ static int cond_dup_av_list(struct cond_av_list *new,
 static int duplicate_policydb_cond_list(struct policydb *newp,
 					struct policydb *origp)
 {
-	int rc, i, j;
+	int rc;
+	u32 i;
 
-	rc = avtab_duplicate(&newp->te_cond_avtab, &origp->te_cond_avtab);
+	rc = avtab_alloc_dup(&newp->te_cond_avtab, &origp->te_cond_avtab);
 	if (rc)
 		return rc;
 
@@ -648,12 +650,12 @@ static int duplicate_policydb_cond_list(struct policydb *newp,
 		newp->cond_list_len++;
 
 		newn->cur_state = orign->cur_state;
-		newn->expr.nodes = kcalloc(orign->expr.len,
-					sizeof(*newn->expr.nodes), GFP_KERNEL);
+		newn->expr.nodes = kmemdup(orign->expr.nodes,
+				orign->expr.len * sizeof(*orign->expr.nodes),
+				GFP_KERNEL);
 		if (!newn->expr.nodes)
 			goto error;
-		for (j = 0; j < orign->expr.len; j++)
-			newn->expr.nodes[j] = orign->expr.nodes[j];
+
 		newn->expr.len = orign->expr.len;
 
 		rc = cond_dup_av_list(&newn->true_list, &orign->true_list,

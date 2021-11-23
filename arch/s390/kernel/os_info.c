@@ -52,7 +52,7 @@ void os_info_entry_add(int nr, void *ptr, u64 size)
 }
 
 /*
- * Initialize OS info struture and set lowcore pointer
+ * Initialize OS info structure and set lowcore pointer
  */
 void __init os_info_init(void)
 {
@@ -121,7 +121,7 @@ static void os_info_old_init(void)
 
 	if (os_info_init)
 		return;
-	if (!OLDMEM_BASE)
+	if (!oldmem_data.start)
 		goto fail;
 	if (copy_oldmem_kernel(&addr, &S390_lowcore.os_info, sizeof(addr)))
 		goto fail;

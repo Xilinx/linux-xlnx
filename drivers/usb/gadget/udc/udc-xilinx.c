@@ -794,7 +794,7 @@ static int xudc_ep_set_halt(struct usb_ep *_ep, int value)
 }
 
 /**
- * xudc_ep_enable - Enables the given endpoint.
+ * __xudc_ep_enable - Enables the given endpoint.
  * @ep: pointer to the xusb endpoint structure.
  * @desc: pointer to usb endpoint descriptor.
  *
@@ -846,8 +846,8 @@ static int __xudc_ep_enable(struct xusb_ep *ep,
 		break;
 	}
 
-	ep->buffer0ready = 0;
-	ep->buffer1ready = 0;
+	ep->buffer0ready = false;
+	ep->buffer1ready = false;
 	ep->curbufnum = 0;
 	ep->rambase = rambase[ep->epnumber];
 	xudc_epconfig(ep, udc);
@@ -871,11 +871,11 @@ static int __xudc_ep_enable(struct xusb_ep *ep,
 	if (ep->epnumber && !ep->is_in) {
 		udc->write_fn(udc->addr, XUSB_BUFFREADY_OFFSET,
 			      1 << ep->epnumber);
-		ep->buffer0ready = 1;
+		ep->buffer0ready = true;
 		udc->write_fn(udc->addr, XUSB_BUFFREADY_OFFSET,
 			     (1 << (ep->epnumber +
 			      XUSB_STATUS_EP_BUFF2_SHIFT)));
-		ep->buffer1ready = 1;
+		ep->buffer1ready = true;
 	}
 
 	return 0;
@@ -990,7 +990,7 @@ static void xudc_free_request(struct usb_ep *_ep, struct usb_request *_req)
 }
 
 /**
- * xudc_ep0_queue - Adds the request to endpoint 0 queue.
+ * __xudc_ep0_queue - Adds the request to endpoint 0 queue.
  * @ep0: pointer to the xusb endpoint 0 structure.
  * @req: pointer to the xusb request structure.
  *
@@ -1957,7 +1957,7 @@ static void xudc_nonctrl_ep_handler(struct xusb_udc *udc, u8 epnum,
 	if (intrstatus & (XUSB_STATUS_EP0_BUFF1_COMP_MASK << epnum))
 		ep->buffer0ready = 0;
 	if (intrstatus & (XUSB_STATUS_EP0_BUFF2_COMP_MASK << epnum))
-		ep->buffer1ready = 0;
+		ep->buffer1ready = false;
 
 	if (list_empty(&ep->queue))
 		return;

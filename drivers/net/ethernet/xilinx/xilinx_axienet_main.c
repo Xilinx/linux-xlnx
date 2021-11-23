@@ -275,18 +275,14 @@ static int axienet_dma_bd_init(struct net_device *ndev)
 /**
  * axienet_set_mac_address - Write the MAC address
  * @ndev:	Pointer to the net_device structure
- * @address:	6 byte Address to be written as MAC address
  *
  * This function is called to initialize the MAC address of the Axi Ethernet
  * core. It writes to the UAW0 and UAW1 registers of the core.
  */
-void axienet_set_mac_address(struct net_device *ndev,
-			     const void *address)
+void axienet_set_mac_address(struct net_device *ndev)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
 
-	if (address)
-		ether_addr_copy(ndev->dev_addr, address);
 	if (!is_valid_ether_addr(ndev->dev_addr))
 		eth_hw_addr_random(ndev);
 
@@ -322,7 +318,12 @@ static int netdev_set_mac_address(struct net_device *ndev, void *p)
 {
 	struct sockaddr *addr = p;
 
-	axienet_set_mac_address(ndev, addr->sa_data);
+	if (!is_valid_ether_addr(addr->sa_data))
+		return -EADDRNOTAVAIL;
+
+	ether_addr_copy(ndev->dev_addr, addr->sa_data);
+
+	axienet_set_mac_address(ndev);
 	return 0;
 }
 
@@ -699,7 +700,7 @@ static int axienet_device_reset(struct net_device *ndev)
 	lp->axienet_config->setoptions(ndev, lp->options &
 				       ~(XAE_OPTION_TXEN | XAE_OPTION_RXEN));
 
-	axienet_set_mac_address(ndev, NULL);
+	axienet_set_mac_address(ndev);
 	axienet_set_multicast_list(ndev);
 	lp->axienet_config->setoptions(ndev, lp->options);
 
@@ -2535,6 +2536,8 @@ axienet_ethtools_set_pauseparam(struct net_device *ndev,
  * axienet_ethtools_get_coalesce - Get DMA interrupt coalescing count.
  * @ndev:	Pointer to net_device structure
  * @ecoalesce:	Pointer to ethtool_coalesce structure
+ * @kernel_coal: ethtool CQE mode setting structure
+ * @extack:	extack for reporting error messages
  *
  * This implements ethtool command for getting the DMA interrupt coalescing
  * count on Tx and Rx paths. Issue "ethtool -c ethX" under linux prompt to
@@ -2542,8 +2545,11 @@ axienet_ethtools_set_pauseparam(struct net_device *ndev,
  *
  * Return: 0 always
  */
-static int axienet_ethtools_get_coalesce(struct net_device *ndev,
-					 struct ethtool_coalesce *ecoalesce)
+static int
+axienet_ethtools_get_coalesce(struct net_device *ndev,
+			      struct ethtool_coalesce *ecoalesce,
+			      struct kernel_ethtool_coalesce *kernel_coal,
+			      struct netlink_ext_ack *extack)
 {
 	u32 regval = 0;
 	struct axienet_local *lp = netdev_priv(ndev);
@@ -2556,15 +2562,16 @@ static int axienet_ethtools_get_coalesce(struct net_device *ndev,
 		regval = axienet_dma_in32(q, XAXIDMA_RX_CR_OFFSET);
 		ecoalesce->rx_max_coalesced_frames +=
 						(regval & XAXIDMA_COALESCE_MASK)
-						     >> XAXIDMA_COALESCE_SHIFT;
+							>> XAXIDMA_COALESCE_SHIFT;
 	}
 	for_each_tx_dma_queue(lp, i) {
 		q = lp->dq[i];
 		regval = axienet_dma_in32(q, XAXIDMA_TX_CR_OFFSET);
 		ecoalesce->tx_max_coalesced_frames +=
 						(regval & XAXIDMA_COALESCE_MASK)
-						     >> XAXIDMA_COALESCE_SHIFT;
+							>> XAXIDMA_COALESCE_SHIFT;
 	}
+
 	return 0;
 }
 
@@ -2572,6 +2579,8 @@ static int axienet_ethtools_get_coalesce(struct net_device *ndev,
  * axienet_ethtools_set_coalesce - Set DMA interrupt coalescing count.
  * @ndev:	Pointer to net_device structure
  * @ecoalesce:	Pointer to ethtool_coalesce structure
+ * @kernel_coal: ethtool CQE mode setting structure
+ * @extack:	extack for reporting error messages
  *
  * This implements ethtool command for setting the DMA interrupt coalescing
  * count on Tx and Rx paths. Issue "ethtool -C ethX rx-frames 5" under linux
@@ -2579,8 +2588,11 @@ static int axienet_ethtools_get_coalesce(struct net_device *ndev,
  *
  * Return: 0, on success, Non-zero error value on failure.
  */
-static int axienet_ethtools_set_coalesce(struct net_device *ndev,
-					 struct ethtool_coalesce *ecoalesce)
+static int
+axienet_ethtools_set_coalesce(struct net_device *ndev,
+			      struct ethtool_coalesce *ecoalesce,
+			      struct kernel_ethtool_coalesce *kernel_coal,
+			      struct netlink_ext_ack *extack)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
 
@@ -2590,27 +2602,6 @@ static int axienet_ethtools_set_coalesce(struct net_device *ndev,
 		return -EFAULT;
 	}
 
-	if ((ecoalesce->rx_coalesce_usecs) ||
-	    (ecoalesce->rx_coalesce_usecs_irq) ||
-	    (ecoalesce->rx_max_coalesced_frames_irq) ||
-	    (ecoalesce->tx_coalesce_usecs) ||
-	    (ecoalesce->tx_coalesce_usecs_irq) ||
-	    (ecoalesce->tx_max_coalesced_frames_irq) ||
-	    (ecoalesce->stats_block_coalesce_usecs) ||
-	    (ecoalesce->use_adaptive_rx_coalesce) ||
-	    (ecoalesce->use_adaptive_tx_coalesce) ||
-	    (ecoalesce->pkt_rate_low) ||
-	    (ecoalesce->rx_coalesce_usecs_low) ||
-	    (ecoalesce->rx_max_coalesced_frames_low) ||
-	    (ecoalesce->tx_coalesce_usecs_low) ||
-	    (ecoalesce->tx_max_coalesced_frames_low) ||
-	    (ecoalesce->pkt_rate_high) ||
-	    (ecoalesce->rx_coalesce_usecs_high) ||
-	    (ecoalesce->rx_max_coalesced_frames_high) ||
-	    (ecoalesce->tx_coalesce_usecs_high) ||
-	    (ecoalesce->tx_max_coalesced_frames_high) ||
-	    (ecoalesce->rate_sample_interval))
-		return -EOPNOTSUPP;
 	if (ecoalesce->rx_max_coalesced_frames)
 		lp->coalesce_count_rx = ecoalesce->rx_max_coalesced_frames;
 	if (ecoalesce->tx_max_coalesced_frames)
@@ -3212,7 +3203,6 @@ static int axienet_probe(struct platform_device *pdev)
 	struct device_node *np;
 	struct axienet_local *lp;
 	struct net_device *ndev;
-	const void *mac_addr;
 	struct resource *ethres;
 	u32 value;
 	u16 num_queues = XAE_MAX_QUEUES;
@@ -3562,13 +3552,12 @@ static int axienet_probe(struct platform_device *pdev)
 		dev_info(&pdev->dev, "Ethernet core IRQ not defined\n");
 
 	/* Retrieve the MAC address */
-	mac_addr = of_get_mac_address(pdev->dev.of_node);
-	if (IS_ERR(mac_addr)) {
-		dev_warn(&pdev->dev, "could not find MAC address property: %ld\n",
-			 PTR_ERR(mac_addr));
-		mac_addr = NULL;
-	}
-	axienet_set_mac_address(ndev, mac_addr);
+	ret = of_get_mac_address(pdev->dev.of_node, ndev->dev_addr);
+	if (ret)
+		dev_warn(&pdev->dev,
+			 "could not find MAC address property: %d\n", ret);
+
+	axienet_set_mac_address(ndev);
 
 	lp->coalesce_count_rx = XAXIDMA_DFT_RX_THRESHOLD;
 	lp->coalesce_count_tx = XAXIDMA_DFT_TX_THRESHOLD;

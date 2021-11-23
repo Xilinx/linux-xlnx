@@ -1,24 +1,11 @@
+// SPDX-License-Identifier: LGPL-2.1
 /*
- *   fs/cifs/smb2inode.c
  *
  *   Copyright (C) International Business Machines  Corp., 2002, 2011
  *                 Etersoft, 2012
  *   Author(s): Pavel Shilovsky (pshilovsky@samba.org),
  *              Steve French (sfrench@us.ibm.com)
  *
- *   This library is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU Lesser General Public License as published
- *   by the Free Software Foundation; either version 2.1 of the License, or
- *   (at your option) any later version.
- *
- *   This library is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See
- *   the GNU Lesser General Public License for more details.
- *
- *   You should have received a copy of the GNU Lesser General Public License
- *   along with this library; if not, write to the Free Software
- *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
 #include <linux/fs.h>
 #include <linux/stat.h>
@@ -358,6 +345,7 @@ smb2_compound_op(const unsigned int xid, struct cifs_tcon *tcon,
 	if (cfile)
 		goto after_close;
 	/* Close */
+	flags |= CIFS_CP_CREATE_CLOSE_OP;
 	rqst[num_rqst].rq_iov = &vars->close_iov[0];
 	rqst[num_rqst].rq_nvec = 1;
 	rc = SMB2_close_init(tcon, server,
@@ -511,7 +499,6 @@ smb2_query_path_info(const unsigned int xid, struct cifs_tcon *tcon,
 	int rc;
 	struct smb2_file_all_info *smb2_data;
 	__u32 create_options = 0;
-	bool no_cached_open = tcon->nohandlecache;
 	struct cifsFileInfo *cfile;
 	struct cached_fid *cfid = NULL;
 
@@ -524,11 +511,8 @@ smb2_query_path_info(const unsigned int xid, struct cifs_tcon *tcon,
 		return -ENOMEM;
 
 	/* If it is a root and its handle is cached then use it */
-	if (!strlen(full_path) && !no_cached_open) {
-		rc = open_shroot(xid, tcon, cifs_sb, &cfid);
-		if (rc)
-			goto out;
-
+	rc = open_cached_dir(xid, tcon, full_path, cifs_sb, &cfid);
+	if (!rc) {
 		if (tcon->crfid.file_all_info_is_valid) {
 			move_smb2_info_to_cifs(data,
 					       &tcon->crfid.file_all_info);
@@ -539,7 +523,7 @@ smb2_query_path_info(const unsigned int xid, struct cifs_tcon *tcon,
 			if (!rc)
 				move_smb2_info_to_cifs(data, smb2_data);
 		}
-		close_shroot(cfid);
+		close_cached_dir(cfid);
 		goto out;
 	}
 

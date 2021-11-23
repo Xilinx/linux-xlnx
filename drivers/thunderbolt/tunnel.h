@@ -27,6 +27,7 @@ enum tb_tunnel_type {
  * @paths: All paths required by the tunnel
  * @npaths: Number of paths in @paths
  * @init: Optional tunnel specific initialization
+ * @deinit: Optional tunnel specific de-initialization
  * @activate: Optional tunnel specific activation/deactivation
  * @consumed_bandwidth: Return how much bandwidth the tunnel consumes
  * @release_unused_bandwidth: Release all unused bandwidth
@@ -47,6 +48,7 @@ struct tb_tunnel {
 	struct tb_path **paths;
 	size_t npaths;
 	int (*init)(struct tb_tunnel *tunnel);
+	void (*deinit)(struct tb_tunnel *tunnel);
 	int (*activate)(struct tb_tunnel *tunnel, bool activate);
 	int (*consumed_bandwidth)(struct tb_tunnel *tunnel, int *consumed_up,
 				  int *consumed_down);
@@ -70,9 +72,11 @@ struct tb_tunnel *tb_tunnel_alloc_dp(struct tb *tb, struct tb_port *in,
 				     struct tb_port *out, int max_up,
 				     int max_down);
 struct tb_tunnel *tb_tunnel_alloc_dma(struct tb *tb, struct tb_port *nhi,
-				      struct tb_port *dst, int transmit_ring,
-				      int transmit_path, int receive_ring,
-				      int receive_path);
+				      struct tb_port *dst, int transmit_path,
+				      int transmit_ring, int receive_path,
+				      int receive_ring);
+bool tb_tunnel_match_dma(const struct tb_tunnel *tunnel, int transmit_path,
+			 int transmit_ring, int receive_path, int receive_ring);
 struct tb_tunnel *tb_tunnel_discover_usb3(struct tb *tb, struct tb_port *down);
 struct tb_tunnel *tb_tunnel_alloc_usb3(struct tb *tb, struct tb_port *up,
 				       struct tb_port *down, int max_up,

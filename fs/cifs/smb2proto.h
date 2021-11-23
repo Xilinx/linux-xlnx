@@ -1,24 +1,11 @@
+/* SPDX-License-Identifier: LGPL-2.1 */
 /*
- *   fs/cifs/smb2proto.h
  *
  *   Copyright (c) International Business Machines  Corp., 2002, 2011
  *                 Etersoft, 2012
  *   Author(s): Steve French (sfrench@us.ibm.com)
  *              Pavel Shilovsky (pshilovsky@samba.org) 2012
  *
- *   This library is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU Lesser General Public License as published
- *   by the Free Software Foundation; either version 2.1 of the License, or
- *   (at your option) any later version.
- *
- *   This library is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See
- *   the GNU Lesser General Public License for more details.
- *
- *   You should have received a copy of the GNU Lesser General Public License
- *   along with this library; if not, write to the Free Software
- *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
 #ifndef _SMB2PROTO_H
 #define _SMB2PROTO_H
@@ -64,17 +51,19 @@ extern void smb2_echo_request(struct work_struct *work);
 extern __le32 smb2_get_lease_state(struct cifsInodeInfo *cinode);
 extern bool smb2_is_valid_oplock_break(char *buffer,
 				       struct TCP_Server_Info *srv);
-extern struct cifs_ses *smb2_find_smb_ses(struct TCP_Server_Info *server,
-					  __u64 ses_id);
 extern int smb3_handle_read_data(struct TCP_Server_Info *server,
 				 struct mid_q_entry *mid);
 
-extern int open_shroot(unsigned int xid, struct cifs_tcon *tcon,
-		       struct cifs_sb_info *cifs_sb,
-		       struct cached_fid **cfid);
-extern void close_shroot(struct cached_fid *cfid);
-extern void close_shroot_lease(struct cached_fid *cfid);
-extern void close_shroot_lease_locked(struct cached_fid *cfid);
+extern int open_cached_dir(unsigned int xid, struct cifs_tcon *tcon,
+			   const char *path,
+			   struct cifs_sb_info *cifs_sb,
+			   struct cached_fid **cfid);
+extern int open_cached_dir_by_dentry(struct cifs_tcon *tcon,
+				     struct dentry *dentry,
+				     struct cached_fid **cfid);
+extern void close_cached_dir(struct cached_fid *cfid);
+extern void close_cached_dir_lease(struct cached_fid *cfid);
+extern void close_cached_dir_lease_locked(struct cached_fid *cfid);
 extern void move_smb2_info_to_cifs(FILE_ALL_INFO *dst,
 				   struct smb2_file_all_info *src);
 extern int smb2_query_reparse_tag(const unsigned int xid, struct cifs_tcon *tcon,
@@ -200,8 +189,8 @@ extern int SMB2_query_info_init(struct cifs_tcon *tcon,
 				size_t input_len, void *input);
 extern void SMB2_query_info_free(struct smb_rqst *rqst);
 extern int SMB2_query_acl(const unsigned int xid, struct cifs_tcon *tcon,
-			   u64 persistent_file_id, u64 volatile_file_id,
-			   void **data, unsigned int *plen);
+			  u64 persistent_file_id, u64 volatile_file_id,
+			  void **data, unsigned int *plen, u32 info);
 extern int SMB2_get_srv_num(const unsigned int xid, struct cifs_tcon *tcon,
 			    u64 persistent_fid, u64 volatile_fid,
 			    __le64 *uniqueid);
@@ -246,8 +235,7 @@ extern int SMB2_oplock_break(const unsigned int xid, struct cifs_tcon *tcon,
 extern int smb2_handle_cancelled_close(struct cifs_tcon *tcon,
 				       __u64 persistent_fid,
 				       __u64 volatile_fid);
-extern int smb2_handle_cancelled_mid(char *buffer,
-					struct TCP_Server_Info *server);
+extern int smb2_handle_cancelled_mid(struct mid_q_entry *mid, struct TCP_Server_Info *server);
 void smb2_cancelled_close_fid(struct work_struct *work);
 extern int SMB2_QFS_info(const unsigned int xid, struct cifs_tcon *tcon,
 			 u64 persistent_file_id, u64 volatile_file_id,

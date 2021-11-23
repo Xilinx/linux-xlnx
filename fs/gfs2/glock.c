@@ -212,8 +212,7 @@ void gfs2_glock_add_to_lru(struct gfs2_glock *gl)
 
 	spin_lock(&lru_lock);
 
-	list_del(&gl->gl_lru);
-	list_add_tail(&gl->gl_lru, &lru_list);
+	list_move_tail(&gl->gl_lru, &lru_list);
 
 	if (!test_bit(GLF_LRU, &gl->gl_flags)) {
 		set_bit(GLF_LRU, &gl->gl_flags);
@@ -273,8 +272,7 @@ static void __gfs2_glock_put(struct gfs2_glock *gl)
 	if (mapping) {
 		truncate_inode_pages_final(mapping);
 		if (!gfs2_withdrawn(sdp))
-			GLOCK_BUG_ON(gl, mapping->nrpages ||
-				     mapping->nrexceptional);
+			GLOCK_BUG_ON(gl, !mapping_empty(mapping));
 	}
 	trace_gfs2_glock_put(gl);
 	sdp->sd_lockstruct.ls_ops->lm_put_lock(gl);
@@ -313,9 +311,23 @@ void gfs2_glock_put(struct gfs2_glock *gl)
 static inline int may_grant(const struct gfs2_glock *gl, const struct gfs2_holder *gh)
 {
 	const struct gfs2_holder *gh_head = list_first_entry(&gl->gl_holders, const struct gfs2_holder, gh_list);
-	if ((gh->gh_state == LM_ST_EXCLUSIVE ||
-	     gh_head->gh_state == LM_ST_EXCLUSIVE) && gh != gh_head)
-		return 0;
+
+	if (gh != gh_head) {
+		/**
+		 * Here we make a special exception to grant holders who agree
+		 * to share the EX lock with other holders who also have the
+		 * bit set. If the original holder has the LM_FLAG_NODE_SCOPE bit
+		 * is set, we grant more holders with the bit set.
+		 */
+		if (gh_head->gh_state == LM_ST_EXCLUSIVE &&
+		    (gh_head->gh_flags & LM_FLAG_NODE_SCOPE) &&
+		    gh->gh_state == LM_ST_EXCLUSIVE &&
+		    (gh->gh_flags & LM_FLAG_NODE_SCOPE))
+			return 1;
+		if ((gh->gh_state == LM_ST_EXCLUSIVE ||
+		     gh_head->gh_state == LM_ST_EXCLUSIVE))
+			return 0;
+	}
 	if (gl->gl_state == gh->gh_state)
 		return 1;
 	if (gh->gh_flags & GL_EXACT)
@@ -345,7 +357,8 @@ static void gfs2_holder_wake(struct gfs2_holder *gh)
 
 /**
  * do_error - Something unexpected has happened during a lock request
- *
+ * @gl: The glock
+ * @ret: The status from the DLM
  */
 
 static void do_error(struct gfs2_glock *gl, const int ret)
@@ -440,8 +453,7 @@ static inline struct gfs2_holder *find_first_waiter(const struct gfs2_glock *gl)
 /**
  * state_change - record that the glock is now in a different state
  * @gl: the glock
- * @new_state the new state
- *
+ * @new_state: the new state
  */
 
 static void state_change(struct gfs2_glock *gl, unsigned int new_state)
@@ -552,7 +564,7 @@ retry:
 	if (state != LM_ST_UNLOCKED) {
 		if (glops->go_xmote_bh) {
 			spin_unlock(&gl->gl_lockref.lock);
-			rv = glops->go_xmote_bh(gl, gh);
+			rv = glops->go_xmote_bh(gl);
 			spin_lock(&gl->gl_lockref.lock);
 			if (rv) {
 				do_error(gl, rv);
@@ -567,6 +579,16 @@ out:
 	clear_bit(GLF_LOCK, &gl->gl_flags);
 out_locked:
 	spin_unlock(&gl->gl_lockref.lock);
+}
+
+static bool is_system_glock(struct gfs2_glock *gl)
+{
+	struct gfs2_sbd *sdp = gl->gl_name.ln_sbd;
+	struct gfs2_inode *m_ip = GFS2_I(sdp->sd_statfs_inode);
+
+	if (gl == m_ip->i_gl)
+		return true;
+	return false;
 }
 
 /**
@@ -658,17 +680,25 @@ skip_inval:
 	 * to see sd_log_error and withdraw, and in the meantime, requeue the
 	 * work for later.
 	 *
+	 * We make a special exception for some system glocks, such as the
+	 * system statfs inode glock, which needs to be granted before the
+	 * gfs2_quotad daemon can exit, and that exit needs to finish before
+	 * we can unmount the withdrawn file system.
+	 *
 	 * However, if we're just unlocking the lock (say, for unmount, when
 	 * gfs2_gl_hash_clear calls clear_glock) and recovery is complete
 	 * then it's okay to tell dlm to unlock it.
 	 */
 	if (unlikely(sdp->sd_log_error && !gfs2_withdrawn(sdp)))
 		gfs2_withdraw_delayed(sdp);
-	if (glock_blocked_by_withdraw(gl)) {
-		if (target != LM_ST_UNLOCKED ||
-		    test_bit(SDF_WITHDRAW_RECOVERY, &sdp->sd_flags)) {
+	if (glock_blocked_by_withdraw(gl) &&
+	    (target != LM_ST_UNLOCKED ||
+	     test_bit(SDF_WITHDRAW_RECOVERY, &sdp->sd_flags))) {
+		if (!is_system_glock(gl)) {
 			gfs2_glock_queue_work(gl, GL_GLOCK_DFT_HOLD);
 			goto out;
+		} else {
+			clear_bit(GLF_INVALIDATE_IN_PROGRESS, &gl->gl_flags);
 		}
 	}
 
@@ -856,12 +886,6 @@ static void delete_work_func(struct work_struct *work)
 	spin_lock(&gl->gl_lockref.lock);
 	clear_bit(GLF_PENDING_DELETE, &gl->gl_flags);
 	spin_unlock(&gl->gl_lockref.lock);
-
-	/* If someone's using this glock to create a new dinode, the block must
-	   have been freed by another node, then re-used, in which case our
-	   iopen callback is too late after the fact. Ignore it. */
-	if (test_bit(GLF_INODE_CREATING, &gl->gl_flags))
-		goto out;
 
 	if (test_bit(GLF_DEMOTE, &gl->gl_flags)) {
 		/*
@@ -1260,6 +1284,8 @@ wait_for_dlm:
  * handle_callback - process a demote request
  * @gl: the glock
  * @state: the state the caller wants us to change to
+ * @delay: zero to demote immediately; otherwise pending demote
+ * @remote: true if this came from a different cluster node
  *
  * There are only two requests that we are going to see in actual
  * practise: LM_ST_SHARED and LM_ST_UNLOCKED
@@ -1457,21 +1483,22 @@ void gfs2_glock_dq(struct gfs2_holder *gh)
 	    glock_blocked_by_withdraw(gl) &&
 	    gh->gh_gl != sdp->sd_jinode_gl) {
 		sdp->sd_glock_dqs_held++;
+		spin_unlock(&gl->gl_lockref.lock);
 		might_sleep();
 		wait_on_bit(&sdp->sd_flags, SDF_WITHDRAW_RECOVERY,
 			    TASK_UNINTERRUPTIBLE);
+		spin_lock(&gl->gl_lockref.lock);
 	}
 	if (gh->gh_flags & GL_NOCACHE)
 		handle_callback(gl, LM_ST_UNLOCKED, 0, false);
 
 	list_del_init(&gh->gh_list);
 	clear_bit(HIF_HOLDER, &gh->gh_iflags);
-	if (find_first_holder(gl) == NULL) {
-		if (list_empty(&gl->gl_holders) &&
-		    !test_bit(GLF_PENDING_DEMOTE, &gl->gl_flags) &&
-		    !test_bit(GLF_DEMOTE, &gl->gl_flags))
-			fast_path = 1;
-	}
+	if (list_empty(&gl->gl_holders) &&
+	    !test_bit(GLF_PENDING_DEMOTE, &gl->gl_flags) &&
+	    !test_bit(GLF_DEMOTE, &gl->gl_flags))
+		fast_path = 1;
+
 	if (!test_bit(GLF_LFLUSH, &gl->gl_flags) && demote_ok(gl))
 		gfs2_glock_add_to_lru(gl);
 
@@ -1561,6 +1588,7 @@ static int glock_compare(const void *arg_a, const void *arg_b)
  * nq_m_sync - synchonously acquire more than one glock in deadlock free order
  * @num_gh: the number of structures
  * @ghs: an array of struct gfs2_holder structures
+ * @p: placeholder for the holder structure to pass back
  *
  * Returns: 0 on success (all glocks acquired),
  *          errno on failure (no glocks acquired)
@@ -1724,7 +1752,8 @@ void gfs2_glock_complete(struct gfs2_glock *gl, int ret)
 	spin_unlock(&gl->gl_lockref.lock);
 }
 
-static int glock_cmp(void *priv, struct list_head *a, struct list_head *b)
+static int glock_cmp(void *priv, const struct list_head *a,
+		     const struct list_head *b)
 {
 	struct gfs2_glock *gla, *glb;
 
@@ -1764,6 +1793,7 @@ __acquires(&lru_lock)
 	while(!list_empty(list)) {
 		gl = list_first_entry(list, struct gfs2_glock, gl_lru);
 		list_del_init(&gl->gl_lru);
+		clear_bit(GLF_LRU, &gl->gl_flags);
 		if (!spin_trylock(&gl->gl_lockref.lock)) {
 add_back_to_lru:
 			list_add(&gl->gl_lru, &lru_list);
@@ -1809,7 +1839,6 @@ static long gfs2_scan_glock_lru(int nr)
 		if (!test_bit(GLF_LOCK, &gl->gl_flags)) {
 			list_move(&gl->gl_lru, &dispose);
 			atomic_dec(&lru_count);
-			clear_bit(GLF_LRU, &gl->gl_flags);
 			freed++;
 			continue;
 		}
@@ -1977,7 +2006,6 @@ static void dump_glock_func(struct gfs2_glock *gl)
 /**
  * gfs2_gl_hash_clear - Empty out the glock hash table
  * @sdp: the filesystem
- * @wait: wait until it's all gone
  *
  * Called when unmounting the filesystem.
  */
@@ -2036,6 +2064,8 @@ static const char *hflags2str(char *buf, u16 flags, unsigned long iflags)
 		*p++ = 'A';
 	if (flags & LM_FLAG_PRIORITY)
 		*p++ = 'p';
+	if (flags & LM_FLAG_NODE_SCOPE)
+		*p++ = 'n';
 	if (flags & GL_ASYNC)
 		*p++ = 'a';
 	if (flags & GL_EXACT)
@@ -2046,8 +2076,6 @@ static const char *hflags2str(char *buf, u16 flags, unsigned long iflags)
 		*p++ = 'H';
 	if (test_bit(HIF_WAIT, &iflags))
 		*p++ = 'W';
-	if (test_bit(HIF_FIRST, &iflags))
-		*p++ = 'F';
 	*p = 0;
 	return buf;
 }
@@ -2112,8 +2140,6 @@ static const char *gflags2str(char *buf, const struct gfs2_glock *gl)
 		*p++ = 'o';
 	if (test_bit(GLF_BLOCKING, gflags))
 		*p++ = 'b';
-	if (test_bit(GLF_INODE_CREATING, gflags))
-		*p++ = 'c';
 	if (test_bit(GLF_PENDING_DELETE, gflags))
 		*p++ = 'P';
 	if (test_bit(GLF_FREEING, gflags))

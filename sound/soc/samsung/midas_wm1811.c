@@ -129,7 +129,7 @@ static int midas_aif1_hw_params(struct snd_pcm_substream *substream,
 	return midas_start_fll1(rtd, pll_out);
 }
 
-static struct snd_soc_ops midas_aif1_ops = {
+static const struct snd_soc_ops midas_aif1_ops = {
 	.hw_params = midas_aif1_hw_params,
 };
 
@@ -531,7 +531,6 @@ static struct platform_driver midas_driver = {
 	.driver = {
 		.name = "midas-audio",
 		.of_match_table = midas_of_match,
-		.owner = THIS_MODULE,
 		.pm = &snd_soc_pm_ops,
 	},
 	.probe = midas_probe,

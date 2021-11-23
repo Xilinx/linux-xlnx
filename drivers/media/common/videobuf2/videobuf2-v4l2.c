@@ -118,8 +118,7 @@ static int __verify_length(struct vb2_buffer *vb, const struct v4l2_buffer *b)
 				return -EINVAL;
 		}
 	} else {
-		length = (b->memory == VB2_MEMORY_USERPTR ||
-			  b->memory == VB2_MEMORY_DMABUF)
+		length = (b->memory == VB2_MEMORY_USERPTR)
 			? b->length : vb->planes[0].length;
 
 		if (b->bytesused > length)
@@ -487,11 +486,6 @@ static int vb2_queue_or_prepare_buf(struct vb2_queue *q, struct media_device *md
 		     q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) &&
 		    !q->ops->buf_out_validate))
 		return -EINVAL;
-
-	if (b->request_fd < 0) {
-		dprintk(q, 1, "%s: request_fd < 0\n", opname);
-		return -EINVAL;
-	}
 
 	req = media_request_get_by_fd(mdev, b->request_fd);
 	if (IS_ERR(req)) {
@@ -944,6 +938,20 @@ void vb2_queue_release(struct vb2_queue *q)
 	vb2_core_queue_release(q);
 }
 EXPORT_SYMBOL_GPL(vb2_queue_release);
+
+int vb2_queue_change_type(struct vb2_queue *q, unsigned int type)
+{
+	if (type == q->type)
+		return 0;
+
+	if (vb2_is_busy(q))
+		return -EBUSY;
+
+	q->type = type;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(vb2_queue_change_type);
 
 __poll_t vb2_poll(struct vb2_queue *q, struct file *file, poll_table *wait)
 {

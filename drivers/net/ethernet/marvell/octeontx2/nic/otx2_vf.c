@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Marvell OcteonTx2 RVU Virtual Function ethernet driver */
+/* Marvell RVU Virtual Function ethernet driver
+ *
+ * Copyright (C) 2020 Marvell.
+ *
+ */
 
 #include <linux/etherdevice.h>
 #include <linux/module.h>
@@ -7,9 +11,10 @@
 
 #include "otx2_common.h"
 #include "otx2_reg.h"
+#include "cn10k.h"
 
-#define DRV_NAME	"octeontx2-nicvf"
-#define DRV_STRING	"Marvell OcteonTX2 NIC Virtual Function Driver"
+#define DRV_NAME	"rvu_nicvf"
+#define DRV_STRING	"Marvell RVU NIC Virtual Function Driver"
 
 static const struct pci_device_id otx2_vf_id_table[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_CAVIUM, PCI_DEVID_OCTEONTX2_RVU_AFVF) },
@@ -277,7 +282,7 @@ static void otx2vf_vfaf_mbox_destroy(struct otx2_nic *vf)
 		vf->mbox_wq = NULL;
 	}
 
-	if (mbox->mbox.hwbase)
+	if (mbox->mbox.hwbase && !test_bit(CN10K_MBOX, &vf->hw.cap_flag))
 		iounmap((void __iomem *)mbox->mbox.hwbase);
 
 	otx2_mbox_destroy(&mbox->mbox);
@@ -297,16 +302,25 @@ static int otx2vf_vfaf_mbox_init(struct otx2_nic *vf)
 	if (!vf->mbox_wq)
 		return -ENOMEM;
 
-	/* Mailbox is a reserved memory (in RAM) region shared between
-	 * admin function (i.e PF0) and this VF, shouldn't be mapped as
-	 * device memory to allow unaligned accesses.
-	 */
-	hwbase = ioremap_wc(pci_resource_start(vf->pdev, PCI_MBOX_BAR_NUM),
-			    pci_resource_len(vf->pdev, PCI_MBOX_BAR_NUM));
-	if (!hwbase) {
-		dev_err(vf->dev, "Unable to map VFAF mailbox region\n");
-		err = -ENOMEM;
-		goto exit;
+	if (test_bit(CN10K_MBOX, &vf->hw.cap_flag)) {
+		/* For cn10k platform, VF mailbox region is in its BAR2
+		 * register space
+		 */
+		hwbase = vf->reg_base + RVU_VF_MBOX_REGION;
+	} else {
+		/* Mailbox is a reserved memory (in RAM) region shared between
+		 * admin function (i.e PF0) and this VF, shouldn't be mapped as
+		 * device memory to allow unaligned accesses.
+		 */
+		hwbase = ioremap_wc(pci_resource_start(vf->pdev,
+						       PCI_MBOX_BAR_NUM),
+				    pci_resource_len(vf->pdev,
+						     PCI_MBOX_BAR_NUM));
+		if (!hwbase) {
+			dev_err(vf->dev, "Unable to map VFAF mailbox region\n");
+			err = -ENOMEM;
+			goto exit;
+		}
 	}
 
 	err = otx2_mbox_init(&mbox->mbox, hwbase, vf->pdev, vf->reg_base,
@@ -329,6 +343,8 @@ static int otx2vf_vfaf_mbox_init(struct otx2_nic *vf)
 
 	return 0;
 exit:
+	if (hwbase && !test_bit(CN10K_MBOX, &vf->hw.cap_flag))
+		iounmap(hwbase);
 	destroy_workqueue(vf->mbox_wq);
 	return err;
 }
@@ -383,6 +399,42 @@ static netdev_tx_t otx2vf_xmit(struct sk_buff *skb, struct net_device *netdev)
 	return NETDEV_TX_OK;
 }
 
+static void otx2vf_set_rx_mode(struct net_device *netdev)
+{
+	struct otx2_nic *vf = netdev_priv(netdev);
+
+	queue_work(vf->otx2_wq, &vf->rx_mode_work);
+}
+
+static void otx2vf_do_set_rx_mode(struct work_struct *work)
+{
+	struct otx2_nic *vf = container_of(work, struct otx2_nic, rx_mode_work);
+	struct net_device *netdev = vf->netdev;
+	unsigned int flags = netdev->flags;
+	struct nix_rx_mode *req;
+
+	mutex_lock(&vf->mbox.lock);
+
+	req = otx2_mbox_alloc_msg_nix_set_rx_mode(&vf->mbox);
+	if (!req) {
+		mutex_unlock(&vf->mbox.lock);
+		return;
+	}
+
+	req->mode = NIX_RX_MODE_UCAST;
+
+	if (flags & IFF_PROMISC)
+		req->mode |= NIX_RX_MODE_PROMISC;
+	if (flags & (IFF_ALLMULTI | IFF_MULTICAST))
+		req->mode |= NIX_RX_MODE_ALLMULTI;
+
+	req->mode |= NIX_RX_MODE_USE_MCE;
+
+	otx2_sync_mbox_msg(&vf->mbox);
+
+	mutex_unlock(&vf->mbox.lock);
+}
+
 static int otx2vf_change_mtu(struct net_device *netdev, int new_mtu)
 {
 	bool if_up = netif_running(netdev);
@@ -416,15 +468,50 @@ static void otx2vf_reset_task(struct work_struct *work)
 	rtnl_unlock();
 }
 
+static int otx2vf_set_features(struct net_device *netdev,
+			       netdev_features_t features)
+{
+	netdev_features_t changed = features ^ netdev->features;
+	bool ntuple_enabled = !!(features & NETIF_F_NTUPLE);
+	struct otx2_nic *vf = netdev_priv(netdev);
+
+	if (changed & NETIF_F_NTUPLE) {
+		if (!ntuple_enabled) {
+			otx2_mcam_flow_del(vf);
+			return 0;
+		}
+
+		if (!otx2_get_maxflows(vf->flow_cfg)) {
+			netdev_err(netdev,
+				   "Can't enable NTUPLE, MCAM entries not allocated\n");
+			return -EINVAL;
+		}
+	}
+	return 0;
+}
+
 static const struct net_device_ops otx2vf_netdev_ops = {
 	.ndo_open = otx2vf_open,
 	.ndo_stop = otx2vf_stop,
 	.ndo_start_xmit = otx2vf_xmit,
+	.ndo_set_rx_mode = otx2vf_set_rx_mode,
 	.ndo_set_mac_address = otx2_set_mac_address,
 	.ndo_change_mtu = otx2vf_change_mtu,
+	.ndo_set_features = otx2vf_set_features,
 	.ndo_get_stats64 = otx2_get_stats64,
 	.ndo_tx_timeout = otx2_tx_timeout,
 };
+
+static int otx2_wq_init(struct otx2_nic *vf)
+{
+	vf->otx2_wq = create_singlethread_workqueue("otx2vf_wq");
+	if (!vf->otx2_wq)
+		return -ENOMEM;
+
+	INIT_WORK(&vf->rx_mode_work, otx2vf_do_set_rx_mode);
+	INIT_WORK(&vf->reset_task, otx2vf_reset_task);
+	return 0;
+}
 
 static int otx2vf_realloc_msix_vectors(struct otx2_nic *vf)
 {
@@ -525,6 +612,7 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_free_irq_vectors;
 	}
 
+	otx2_setup_dev_hw_settings(vf);
 	/* Init VF <=> PF mailbox stuff */
 	err = otx2vf_vfaf_mbox_init(vf);
 	if (err)
@@ -548,7 +636,9 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (err)
 		goto err_detach_rsrc;
 
-	otx2_setup_dev_hw_settings(vf);
+	err = cn10k_lmtst_init(vf);
+	if (err)
+		goto err_detach_rsrc;
 
 	/* Assign default mac address */
 	otx2_get_mac_from_af(netdev);
@@ -558,17 +648,22 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 			      NETIF_F_SG | NETIF_F_TSO | NETIF_F_TSO6 |
 			      NETIF_F_GSO_UDP_L4;
 	netdev->features = netdev->hw_features;
+	/* Support TSO on tag interface */
+	netdev->vlan_features |= netdev->features;
+	netdev->hw_features  |= NETIF_F_HW_VLAN_CTAG_TX |
+				NETIF_F_HW_VLAN_STAG_TX;
+	netdev->features |= netdev->hw_features;
+
+	netdev->hw_features |= NETIF_F_NTUPLE;
+	netdev->hw_features |= NETIF_F_RXALL;
 
 	netdev->gso_max_segs = OTX2_MAX_GSO_SEGS;
 	netdev->watchdog_timeo = OTX2_TX_TIMEOUT;
 
 	netdev->netdev_ops = &otx2vf_netdev_ops;
 
-	/* MTU range: 68 - 9190 */
 	netdev->min_mtu = OTX2_MIN_MTU;
-	netdev->max_mtu = OTX2_MAX_MTU;
-
-	INIT_WORK(&vf->reset_task, otx2vf_reset_task);
+	netdev->max_mtu = otx2_get_max_mtu(vf);
 
 	/* To distinguish, for LBK VFs set netdev name explicitly */
 	if (is_otx2_lbkvf(vf->pdev)) {
@@ -586,7 +681,19 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_detach_rsrc;
 	}
 
+	err = otx2_wq_init(vf);
+	if (err)
+		goto err_unreg_netdev;
+
 	otx2vf_set_ethtool_ops(netdev);
+
+	err = otx2vf_mcam_flow_init(vf);
+	if (err)
+		goto err_unreg_netdev;
+
+	err = otx2_register_dl(vf);
+	if (err)
+		goto err_unreg_netdev;
 
 	/* Enable pause frames by default */
 	vf->flags |= OTX2_FLAG_RX_PAUSE_ENABLED;
@@ -594,7 +701,11 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	return 0;
 
+err_unreg_netdev:
+	unregister_netdev(netdev);
 err_detach_rsrc:
+	if (test_bit(CN10K_LMTST, &vf->hw.cap_flag))
+		qmem_free(vf->dev, vf->dync_lmt);
 	otx2_detach_resources(&vf->mbox);
 err_disable_mbox_intr:
 	otx2vf_disable_mbox_intr(vf);
@@ -621,10 +732,14 @@ static void otx2vf_remove(struct pci_dev *pdev)
 	vf = netdev_priv(netdev);
 
 	cancel_work_sync(&vf->reset_task);
+	otx2_unregister_dl(vf);
 	unregister_netdev(netdev);
+	if (vf->otx2_wq)
+		destroy_workqueue(vf->otx2_wq);
 	otx2vf_disable_mbox_intr(vf);
-
 	otx2_detach_resources(&vf->mbox);
+	if (test_bit(CN10K_LMTST, &vf->hw.cap_flag))
+		qmem_free(vf->dev, vf->dync_lmt);
 	otx2vf_vfaf_mbox_destroy(vf);
 	pci_free_irq_vectors(vf->pdev);
 	pci_set_drvdata(pdev, NULL);

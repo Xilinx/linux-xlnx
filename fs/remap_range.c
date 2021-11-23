@@ -99,23 +99,11 @@ static int generic_remap_checks(struct file *file_in, loff_t pos_in,
 static int remap_verify_area(struct file *file, loff_t pos, loff_t len,
 			     bool write)
 {
-	struct inode *inode = file_inode(file);
-
 	if (unlikely(pos < 0 || len < 0))
 		return -EINVAL;
 
 	if (unlikely((loff_t) (pos + len) < 0))
 		return -EINVAL;
-
-	if (unlikely(inode->i_flctx && mandatory_lock(inode))) {
-		loff_t end = len ? pos + len - 1 : OFFSET_MAX;
-		int retval;
-
-		retval = locks_mandatory_area(inode, file, pos, end,
-				write ? F_WRLCK : F_RDLCK);
-		if (retval < 0)
-			return retval;
-	}
 
 	return security_file_permission(file, write ? MAY_WRITE : MAY_READ);
 }
@@ -432,13 +420,16 @@ EXPORT_SYMBOL(vfs_clone_file_range);
 /* Check whether we are allowed to dedupe the destination file */
 static bool allow_file_dedupe(struct file *file)
 {
+	struct user_namespace *mnt_userns = file_mnt_user_ns(file);
+	struct inode *inode = file_inode(file);
+
 	if (capable(CAP_SYS_ADMIN))
 		return true;
 	if (file->f_mode & FMODE_WRITE)
 		return true;
-	if (uid_eq(current_fsuid(), file_inode(file)->i_uid))
+	if (uid_eq(current_fsuid(), i_uid_into_mnt(mnt_userns, inode)))
 		return true;
-	if (!inode_permission(file_inode(file), MAY_WRITE))
+	if (!inode_permission(mnt_userns, inode, MAY_WRITE))
 		return true;
 	return false;
 }
@@ -456,8 +447,16 @@ loff_t vfs_dedupe_file_range_one(struct file *src_file, loff_t src_pos,
 	if (ret)
 		return ret;
 
+	/*
+	 * This is redundant if called from vfs_dedupe_file_range(), but other
+	 * callers need it and it's not performance sesitive...
+	 */
+	ret = remap_verify_area(src_file, src_pos, len, false);
+	if (ret)
+		goto out_drop_write;
+
 	ret = remap_verify_area(dst_file, dst_pos, len, true);
-	if (ret < 0)
+	if (ret)
 		goto out_drop_write;
 
 	ret = -EPERM;

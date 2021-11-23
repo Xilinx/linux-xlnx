@@ -750,7 +750,7 @@ static int kmx61_set_power_state(struct kmx61_data *data, bool on, u8 device)
 	}
 
 	if (on) {
-		ret = pm_runtime_get_sync(&data->client->dev);
+		ret = pm_runtime_resume_and_get(&data->client->dev);
 	} else {
 		pm_runtime_mark_last_busy(&data->client->dev);
 		ret = pm_runtime_put_autosuspend(&data->client->dev);
@@ -759,8 +759,6 @@ static int kmx61_set_power_state(struct kmx61_data *data, bool on, u8 device)
 		dev_err(&data->client->dev,
 			"Failed: kmx61_set_power_state for %d, ret %d\n",
 			on, ret);
-		if (on)
-			pm_runtime_put_noidle(&data->client->dev);
 
 		return ret;
 	}
@@ -1063,24 +1061,20 @@ err_unlock:
 	return ret;
 }
 
-static int kmx61_trig_try_reenable(struct iio_trigger *trig)
+static void kmx61_trig_reenable(struct iio_trigger *trig)
 {
 	struct iio_dev *indio_dev = iio_trigger_get_drvdata(trig);
 	struct kmx61_data *data = kmx61_get_data(indio_dev);
 	int ret;
 
 	ret = i2c_smbus_read_byte_data(data->client, KMX61_REG_INL);
-	if (ret < 0) {
+	if (ret < 0)
 		dev_err(&data->client->dev, "Error reading reg_inl\n");
-		return ret;
-	}
-
-	return 0;
 }
 
 static const struct iio_trigger_ops kmx61_trigger_ops = {
 	.set_trigger_state = kmx61_data_rdy_trigger_set_state,
-	.try_reenable = kmx61_trig_try_reenable,
+	.reenable = kmx61_trig_reenable,
 };
 
 static irqreturn_t kmx61_event_handler(int irq, void *private)
@@ -1268,11 +1262,10 @@ static struct iio_trigger *kmx61_trigger_setup(struct kmx61_data *data,
 				      "%s-%s-dev%d",
 				      indio_dev->name,
 				      tag,
-				      indio_dev->id);
+				      iio_device_id(indio_dev));
 	if (!trig)
 		return ERR_PTR(-ENOMEM);
 
-	trig->dev.parent = &data->client->dev;
 	trig->ops = &kmx61_trigger_ops;
 	iio_trigger_set_drvdata(trig, indio_dev);
 
@@ -1431,7 +1424,6 @@ static int kmx61_remove(struct i2c_client *client)
 
 	pm_runtime_disable(&client->dev);
 	pm_runtime_set_suspended(&client->dev);
-	pm_runtime_put_noidle(&client->dev);
 
 	if (client->irq > 0) {
 		iio_triggered_buffer_cleanup(data->acc_indio_dev);

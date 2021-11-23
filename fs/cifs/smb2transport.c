@@ -1,5 +1,5 @@
+// SPDX-License-Identifier: LGPL-2.1
 /*
- *   fs/cifs/smb2transport.c
  *
  *   Copyright (C) International Business Machines  Corp., 2002, 2011
  *                 Etersoft, 2012
@@ -7,19 +7,6 @@
  *              Jeremy Allison (jra@samba.org) 2006
  *              Pavel Shilovsky (pshilovsky@samba.org) 2012
  *
- *   This library is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU Lesser General Public License as published
- *   by the Free Software Foundation; either version 2.1 of the License, or
- *   (at your option) any later version.
- *
- *   This library is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See
- *   the GNU Lesser General Public License for more details.
- *
- *   You should have received a copy of the GNU Lesser General Public License
- *   along with this library; if not, write to the Free Software
- *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
 
 #include <linux/fs.h>
@@ -154,6 +141,7 @@ smb2_find_smb_ses_unlocked(struct TCP_Server_Info *server, __u64 ses_id)
 	list_for_each_entry(ses, &server->smb_ses_list, smb_ses_list) {
 		if (ses->Suid != ses_id)
 			continue;
+		++ses->ses_count;
 		return ses;
 	}
 
@@ -205,7 +193,14 @@ smb2_find_smb_tcon(struct TCP_Server_Info *server, __u64 ses_id, __u32  tid)
 		return NULL;
 	}
 	tcon = smb2_find_smb_sess_tcon_unlocked(ses, tid);
+	if (!tcon) {
+		cifs_put_smb_ses(ses);
+		spin_unlock(&cifs_tcp_ses_lock);
+		return NULL;
+	}
 	spin_unlock(&cifs_tcp_ses_lock);
+	/* tcon already has a ref to ses, so we don't need ses anymore */
+	cifs_put_smb_ses(ses);
 
 	return tcon;
 }
@@ -239,7 +234,7 @@ smb2_calc_signature(struct smb_rqst *rqst, struct TCP_Server_Info *server,
 		if (rc) {
 			cifs_server_dbg(VFS,
 					"%s: sha256 alloc failed\n", __func__);
-			return rc;
+			goto out;
 		}
 		shash = &sdesc->shash;
 	} else {
@@ -290,6 +285,8 @@ smb2_calc_signature(struct smb_rqst *rqst, struct TCP_Server_Info *server,
 out:
 	if (allocate_crypto)
 		cifs_free_hash(&hash, &sdesc);
+	if (ses)
+		cifs_put_smb_ses(ses);
 	return rc;
 }
 
@@ -298,7 +295,8 @@ static int generate_key(struct cifs_ses *ses, struct kvec label,
 {
 	unsigned char zero = 0x0;
 	__u8 i[4] = {0, 0, 0, 1};
-	__u8 L[4] = {0, 0, 0, 128};
+	__u8 L128[4] = {0, 0, 0, 128};
+	__u8 L256[4] = {0, 0, 1, 0};
 	int rc = 0;
 	unsigned char prfhash[SMB2_HMACSHA256_SIZE];
 	unsigned char *hashptr = prfhash;
@@ -354,8 +352,14 @@ static int generate_key(struct cifs_ses *ses, struct kvec label,
 		goto smb3signkey_ret;
 	}
 
-	rc = crypto_shash_update(&server->secmech.sdeschmacsha256->shash,
-				L, 4);
+	if ((server->cipher_type == SMB2_ENCRYPTION_AES256_CCM) ||
+		(server->cipher_type == SMB2_ENCRYPTION_AES256_GCM)) {
+		rc = crypto_shash_update(&server->secmech.sdeschmacsha256->shash,
+				L256, 4);
+	} else {
+		rc = crypto_shash_update(&server->secmech.sdeschmacsha256->shash,
+				L128, 4);
+	}
 	if (rc) {
 		cifs_server_dbg(VFS, "%s: Could not update with L\n", __func__);
 		goto smb3signkey_ret;
@@ -390,6 +394,9 @@ generate_smb3signingkey(struct cifs_ses *ses,
 			const struct derivation_triplet *ptriplet)
 {
 	int rc;
+#ifdef CONFIG_CIFS_DEBUG_DUMP_KEYS
+	struct TCP_Server_Info *server = ses->server;
+#endif
 
 	/*
 	 * All channels use the same encryption/decryption keys but
@@ -422,11 +429,11 @@ generate_smb3signingkey(struct cifs_ses *ses,
 		rc = generate_key(ses, ptriplet->encryption.label,
 				  ptriplet->encryption.context,
 				  ses->smb3encryptionkey,
-				  SMB3_SIGN_KEY_SIZE);
+				  SMB3_ENC_DEC_KEY_SIZE);
 		rc = generate_key(ses, ptriplet->decryption.label,
 				  ptriplet->decryption.context,
 				  ses->smb3decryptionkey,
-				  SMB3_SIGN_KEY_SIZE);
+				  SMB3_ENC_DEC_KEY_SIZE);
 		if (rc)
 			return rc;
 	}
@@ -442,14 +449,23 @@ generate_smb3signingkey(struct cifs_ses *ses,
 	 */
 	cifs_dbg(VFS, "Session Id    %*ph\n", (int)sizeof(ses->Suid),
 			&ses->Suid);
+	cifs_dbg(VFS, "Cipher type   %d\n", server->cipher_type);
 	cifs_dbg(VFS, "Session Key   %*ph\n",
 		 SMB2_NTLMV2_SESSKEY_SIZE, ses->auth_key.response);
 	cifs_dbg(VFS, "Signing Key   %*ph\n",
 		 SMB3_SIGN_KEY_SIZE, ses->smb3signingkey);
-	cifs_dbg(VFS, "ServerIn Key  %*ph\n",
-		 SMB3_SIGN_KEY_SIZE, ses->smb3encryptionkey);
-	cifs_dbg(VFS, "ServerOut Key %*ph\n",
-		 SMB3_SIGN_KEY_SIZE, ses->smb3decryptionkey);
+	if ((server->cipher_type == SMB2_ENCRYPTION_AES256_CCM) ||
+		(server->cipher_type == SMB2_ENCRYPTION_AES256_GCM)) {
+		cifs_dbg(VFS, "ServerIn Key  %*ph\n",
+				SMB3_GCM256_CRYPTKEY_SIZE, ses->smb3encryptionkey);
+		cifs_dbg(VFS, "ServerOut Key %*ph\n",
+				SMB3_GCM256_CRYPTKEY_SIZE, ses->smb3decryptionkey);
+	} else {
+		cifs_dbg(VFS, "ServerIn Key  %*ph\n",
+				SMB3_GCM128_CRYPTKEY_SIZE, ses->smb3encryptionkey);
+		cifs_dbg(VFS, "ServerOut Key %*ph\n",
+				SMB3_GCM128_CRYPTKEY_SIZE, ses->smb3decryptionkey);
+	}
 #endif
 	return rc;
 }

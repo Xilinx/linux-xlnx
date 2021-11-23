@@ -48,6 +48,12 @@ static int ksz9477_spi_probe(struct spi_device *spi)
 	if (spi->dev.platform_data)
 		dev->pdata = spi->dev.platform_data;
 
+	/* setup spi */
+	spi->mode = SPI_MODE_3;
+	ret = spi_setup(spi);
+	if (ret)
+		return ret;
+
 	ret = ksz9477_switch_register(dev);
 
 	/* Main DSA driver may not be started yet. */
@@ -66,6 +72,8 @@ static int ksz9477_spi_remove(struct spi_device *spi)
 	if (dev)
 		ksz_switch_remove(dev);
 
+	spi_set_drvdata(spi, NULL);
+
 	return 0;
 }
 
@@ -73,8 +81,10 @@ static void ksz9477_spi_shutdown(struct spi_device *spi)
 {
 	struct ksz_device *dev = spi_get_drvdata(spi);
 
-	if (dev && dev->dev_ops->shutdown)
-		dev->dev_ops->shutdown(dev);
+	if (dev)
+		dsa_switch_shutdown(dev->ds);
+
+	spi_set_drvdata(spi, NULL);
 }
 
 static const struct of_device_id ksz9477_dt_ids[] = {

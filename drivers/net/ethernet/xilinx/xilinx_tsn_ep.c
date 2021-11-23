@@ -294,7 +294,6 @@ static int tsn_ep_probe(struct platform_device *pdev)
 	struct axienet_local *lp;
 	struct net_device *ndev;
 	struct resource *ethres;
-	const void *mac_addr;
 	u16 num_tc = 0;
 	char irq_name[32];
 
@@ -338,13 +337,11 @@ static int tsn_ep_probe(struct platform_device *pdev)
 						 "xlnx,eth-hasnobuf");
 
 	/* Retrieve the MAC address */
-	mac_addr = of_get_mac_address(pdev->dev.of_node);
-	if (!mac_addr) {
+	ret = of_get_mac_address(pdev->dev.of_node, ndev->dev_addr);
+	if (ret) {
 		dev_err(&pdev->dev, "could not find MAC address\n");
 		goto free_netdev;
 	}
-	if (mac_addr)
-		ether_addr_copy(ndev->dev_addr, mac_addr);
 	if (!is_valid_ether_addr(ndev->dev_addr))
 		eth_hw_addr_random(ndev);
 

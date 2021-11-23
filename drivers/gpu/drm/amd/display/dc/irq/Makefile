@@ -93,14 +93,37 @@ IRQ_DCN21 = irq_service_dcn21.o
 AMD_DAL_IRQ_DCN21= $(addprefix $(AMDDALPATH)/dc/irq/dcn21/,$(IRQ_DCN21))
 
 AMD_DISPLAY_FILES += $(AMD_DAL_IRQ_DCN21)
-endif
 ###############################################################################
 # DCN 30
 ###############################################################################
-ifdef CONFIG_DRM_AMD_DC_DCN3_0
 IRQ_DCN3 = irq_service_dcn30.o
 
 AMD_DAL_IRQ_DCN3 = $(addprefix $(AMDDALPATH)/dc/irq/dcn30/,$(IRQ_DCN3))
 
 AMD_DISPLAY_FILES += $(AMD_DAL_IRQ_DCN3)
+###############################################################################
+# DCN 3_02
+###############################################################################
+IRQ_DCN3_02 = irq_service_dcn302.o
+
+AMD_DAL_IRQ_DCN3_02 = $(addprefix $(AMDDALPATH)/dc/irq/dcn302/,$(IRQ_DCN3_02))
+
+AMD_DISPLAY_FILES += $(AMD_DAL_IRQ_DCN3_02)
+###############################################################################
+# DCN 3_03
+###############################################################################
+IRQ_DCN3_03 = irq_service_dcn303.o
+
+AMD_DAL_IRQ_DCN3_03 = $(addprefix $(AMDDALPATH)/dc/irq/dcn303/,$(IRQ_DCN3_03))
+
+AMD_DISPLAY_FILES += $(AMD_DAL_IRQ_DCN3_03)
+
+###############################################################################
+# DCN 31
+###############################################################################
+IRQ_DCN31 = irq_service_dcn31.o
+
+AMD_DAL_IRQ_DCN31= $(addprefix $(AMDDALPATH)/dc/irq/dcn31/,$(IRQ_DCN31))
+
+AMD_DISPLAY_FILES += $(AMD_DAL_IRQ_DCN31)
 endif

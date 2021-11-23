@@ -24,12 +24,10 @@
 
 static irqreturn_t isr_uh_routine(int irq, void *user_data)
 {
-	struct net_device *dev = user_data;
-	struct wilc_vif *vif = netdev_priv(dev);
-	struct wilc *wilc = vif->wilc;
+	struct wilc *wilc = user_data;
 
 	if (wilc->close) {
-		netdev_err(dev, "Can't handle UH interrupt\n");
+		pr_err("Can't handle UH interrupt");
 		return IRQ_HANDLED;
 	}
 	return IRQ_WAKE_THREAD;
@@ -37,12 +35,10 @@ static irqreturn_t isr_uh_routine(int irq, void *user_data)
 
 static irqreturn_t isr_bh_routine(int irq, void *userdata)
 {
-	struct net_device *dev = userdata;
-	struct wilc_vif *vif = netdev_priv(userdata);
-	struct wilc *wilc = vif->wilc;
+	struct wilc *wilc = userdata;
 
 	if (wilc->close) {
-		netdev_err(dev, "Can't handle BH interrupt\n");
+		pr_err("Can't handle BH interrupt\n");
 		return IRQ_HANDLED;
 	}
 
@@ -60,7 +56,7 @@ static int init_irq(struct net_device *dev)
 	ret = request_threaded_irq(wl->dev_irq_num, isr_uh_routine,
 				   isr_bh_routine,
 				   IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
-				   "WILC_IRQ", dev);
+				   "WILC_IRQ", wl);
 	if (ret) {
 		netdev_err(dev, "Failed to request IRQ [%d]\n", ret);
 		return ret;
@@ -575,7 +571,6 @@ static int wilc_mac_open(struct net_device *ndev)
 {
 	struct wilc_vif *vif = netdev_priv(ndev);
 	struct wilc *wl = vif->wilc;
-	unsigned char mac_add[ETH_ALEN] = {0};
 	int ret = 0;
 	struct mgmt_frame_regs mgmt_regs = {};
 
@@ -598,9 +593,12 @@ static int wilc_mac_open(struct net_device *ndev)
 
 	wilc_set_operation_mode(vif, wilc_get_vif_idx(vif), vif->iftype,
 				vif->idx);
-	wilc_get_mac_address(vif, mac_add);
-	netdev_dbg(ndev, "Mac address: %pM\n", mac_add);
-	ether_addr_copy(ndev->dev_addr, mac_add);
+
+	if (is_valid_ether_addr(ndev->dev_addr))
+		wilc_set_mac_address(vif, ndev->dev_addr);
+	else
+		wilc_get_mac_address(vif, ndev->dev_addr);
+	netdev_dbg(ndev, "Mac address: %pM\n", ndev->dev_addr);
 
 	if (!is_valid_ether_addr(ndev->dev_addr)) {
 		netdev_err(ndev, "Wrong MAC address\n");
@@ -626,6 +624,48 @@ static struct net_device_stats *mac_stats(struct net_device *dev)
 	struct wilc_vif *vif = netdev_priv(dev);
 
 	return &vif->netstats;
+}
+
+static int wilc_set_mac_addr(struct net_device *dev, void *p)
+{
+	int result;
+	struct wilc_vif *vif = netdev_priv(dev);
+	struct wilc *wilc = vif->wilc;
+	struct sockaddr *addr = (struct sockaddr *)p;
+	unsigned char mac_addr[ETH_ALEN];
+	struct wilc_vif *tmp_vif;
+	int srcu_idx;
+
+	if (!is_valid_ether_addr(addr->sa_data))
+		return -EADDRNOTAVAIL;
+
+	if (!vif->mac_opened) {
+		eth_commit_mac_addr_change(dev, p);
+		return 0;
+	}
+
+	/* Verify MAC Address is not already in use: */
+
+	srcu_idx = srcu_read_lock(&wilc->srcu);
+	list_for_each_entry_rcu(tmp_vif, &wilc->vif_list, list) {
+		wilc_get_mac_address(tmp_vif, mac_addr);
+		if (ether_addr_equal(addr->sa_data, mac_addr)) {
+			if (vif != tmp_vif) {
+				srcu_read_unlock(&wilc->srcu, srcu_idx);
+				return -EADDRNOTAVAIL;
+			}
+			srcu_read_unlock(&wilc->srcu, srcu_idx);
+			return 0;
+		}
+	}
+	srcu_read_unlock(&wilc->srcu, srcu_idx);
+
+	result = wilc_set_mac_address(vif, (u8 *)addr->sa_data);
+	if (result)
+		return result;
+
+	eth_commit_mac_addr_change(dev, p);
+	return result;
 }
 
 static void wilc_set_multicast_list(struct net_device *dev)
@@ -700,7 +740,7 @@ netdev_tx_t wilc_mac_xmit(struct sk_buff *skb, struct net_device *ndev)
 
 	vif->netstats.tx_packets++;
 	vif->netstats.tx_bytes += tx_data->size;
-	queue_count = wilc_wlan_txq_add_net_pkt(ndev, (void *)tx_data,
+	queue_count = wilc_wlan_txq_add_net_pkt(ndev, tx_data,
 						tx_data->buff, tx_data->size,
 						wilc_tx_complete);
 
@@ -813,6 +853,7 @@ static const struct net_device_ops wilc_netdev_ops = {
 	.ndo_init = mac_init_fn,
 	.ndo_open = wilc_mac_open,
 	.ndo_stop = wilc_mac_close,
+	.ndo_set_mac_address = wilc_set_mac_addr,
 	.ndo_start_xmit = wilc_mac_xmit,
 	.ndo_get_stats = mac_stats,
 	.ndo_set_rx_mode  = wilc_set_multicast_list,
@@ -912,7 +953,7 @@ struct wilc_vif *wilc_netdev_ifc_init(struct wilc *wl, const char *name,
 	vif->priv.dev = ndev;
 
 	if (rtnl_locked)
-		ret = register_netdevice(ndev);
+		ret = cfg80211_register_netdevice(ndev);
 	else
 		ret = register_netdev(ndev);
 

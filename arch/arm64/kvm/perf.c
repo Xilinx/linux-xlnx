@@ -11,6 +11,8 @@
 
 #include <asm/kvm_emulate.h>
 
+DEFINE_STATIC_KEY_FALSE(kvm_arm_pmu_available);
+
 static int kvm_is_in_guest(void)
 {
         return kvm_get_running_vcpu() != NULL;

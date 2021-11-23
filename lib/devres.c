@@ -10,6 +10,7 @@ enum devm_ioremap_type {
 	DEVM_IOREMAP = 0,
 	DEVM_IOREMAP_UC,
 	DEVM_IOREMAP_WC,
+	DEVM_IOREMAP_NP,
 };
 
 void devm_ioremap_release(struct device *dev, void *res)
@@ -41,6 +42,9 @@ static void __iomem *__devm_ioremap(struct device *dev, resource_size_t offset,
 		break;
 	case DEVM_IOREMAP_WC:
 		addr = ioremap_wc(offset, size);
+		break;
+	case DEVM_IOREMAP_NP:
+		addr = ioremap_np(offset, size);
 		break;
 	}
 
@@ -99,6 +103,21 @@ void __iomem *devm_ioremap_wc(struct device *dev, resource_size_t offset,
 EXPORT_SYMBOL(devm_ioremap_wc);
 
 /**
+ * devm_ioremap_np - Managed ioremap_np()
+ * @dev: Generic device to remap IO address for
+ * @offset: Resource address to map
+ * @size: Size of map
+ *
+ * Managed ioremap_np().  Map is automatically unmapped on driver detach.
+ */
+void __iomem *devm_ioremap_np(struct device *dev, resource_size_t offset,
+			      resource_size_t size)
+{
+	return __devm_ioremap(dev, offset, size, DEVM_IOREMAP_NP);
+}
+EXPORT_SYMBOL(devm_ioremap_np);
+
+/**
  * devm_iounmap - Managed iounmap()
  * @dev: Generic device to unmap for
  * @addr: Address to unmap
@@ -128,6 +147,9 @@ __devm_ioremap_resource(struct device *dev, const struct resource *res,
 		return IOMEM_ERR_PTR(-EINVAL);
 	}
 
+	if (type == DEVM_IOREMAP && res->flags & IORESOURCE_MEM_NONPOSTED)
+		type = DEVM_IOREMAP_NP;
+
 	size = resource_size(res);
 
 	if (res->name)
@@ -135,8 +157,10 @@ __devm_ioremap_resource(struct device *dev, const struct resource *res,
 					     dev_name(dev), res->name);
 	else
 		pretty_name = devm_kstrdup(dev, dev_name(dev), GFP_KERNEL);
-	if (!pretty_name)
+	if (!pretty_name) {
+		dev_err(dev, "can't generate pretty name for resource %pR\n", res);
 		return IOMEM_ERR_PTR(-ENOMEM);
+	}
 
 	if (!devm_request_mem_region(dev, res->start, size, pretty_name)) {
 		dev_err(dev, "can't request region for resource %pR\n", res);
@@ -331,7 +355,7 @@ static void pcim_iomap_release(struct device *gendev, void *res)
  * detach.
  *
  * This function might sleep when the table is first allocated but can
- * be safely called without context and guaranteed to succed once
+ * be safely called without context and guaranteed to succeed once
  * allocated.
  */
 void __iomem * const *pcim_iomap_table(struct pci_dev *pdev)

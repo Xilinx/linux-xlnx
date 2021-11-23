@@ -160,7 +160,6 @@ static struct i2c_driver xdpe122_driver = {
 		.of_match_table = of_match_ptr(xdpe122_of_match),
 	},
 	.probe_new = xdpe122_probe,
-	.remove = pmbus_do_remove,
 	.id_table = xdpe122_id,
 };
 
@@ -169,3 +168,4 @@ module_i2c_driver(xdpe122_driver);
 MODULE_AUTHOR("Vadim Pasternak <vadimp@mellanox.com>");
 MODULE_DESCRIPTION("PMBus driver for Infineon XDPE122 family");
 MODULE_LICENSE("GPL");
+MODULE_IMPORT_NS(PMBUS);

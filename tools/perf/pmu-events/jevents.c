@@ -55,6 +55,7 @@ char *prog;
 
 struct json_event {
 	char *name;
+	char *compat;
 	char *event;
 	char *desc;
 	char *long_desc;
@@ -81,6 +82,23 @@ enum aggr_mode_class convert(const char *aggr_mode)
 }
 
 typedef int (*func)(void *data, struct json_event *je);
+
+static LIST_HEAD(sys_event_tables);
+
+struct sys_event_table {
+	struct list_head list;
+	char *soc_id;
+};
+
+static void free_sys_event_tables(void)
+{
+	struct sys_event_table *et, *next;
+
+	list_for_each_entry_safe(et, next, &sys_event_tables, list) {
+		free(et->soc_id);
+		free(et);
+	}
+}
 
 int eprintf(int level, int var, const char *fmt, ...)
 {
@@ -263,8 +281,12 @@ static struct map {
 	{ "hisi_sccl,ddrc", "hisi_sccl,ddrc" },
 	{ "hisi_sccl,hha", "hisi_sccl,hha" },
 	{ "hisi_sccl,l3c", "hisi_sccl,l3c" },
+	/* it's not realistic to keep adding these, we need something more scalable ... */
+	{ "imx8_ddr", "imx8_ddr" },
 	{ "L3PMC", "amd_l3" },
 	{ "DFPMC", "amd_df" },
+	{ "cpu_core", "cpu_core" },
+	{ "cpu_atom", "cpu_atom" },
 	{}
 };
 
@@ -360,6 +382,8 @@ static int print_events_table_entry(void *data, struct json_event *je)
 	if (je->event)
 		fprintf(outfp, "\t.event = \"%s\",\n", je->event);
 	fprintf(outfp, "\t.desc = \"%s\",\n", je->desc);
+	if (je->compat)
+		fprintf(outfp, "\t.compat = \"%s\",\n", je->compat);
 	fprintf(outfp, "\t.topic = \"%s\",\n", topic);
 	if (je->long_desc && je->long_desc[0])
 		fprintf(outfp, "\t.long_desc = \"%s\",\n", je->long_desc);
@@ -390,6 +414,7 @@ struct event_struct {
 	struct list_head list;
 	char *name;
 	char *event;
+	char *compat;
 	char *desc;
 	char *long_desc;
 	char *pmu;
@@ -583,6 +608,8 @@ static int json_events(const char *fn,
 				free(code);
 			} else if (json_streq(map, field, "EventName")) {
 				addfield(map, &je.name, "", "", val);
+			} else if (json_streq(map, field, "Compat")) {
+				addfield(map, &je.compat, "", "", val);
 			} else if (json_streq(map, field, "BriefDescription")) {
 				addfield(map, &je.desc, "", "", val);
 				fixdesc(je.desc);
@@ -683,6 +710,7 @@ free_strings:
 		free(event);
 		free(je.desc);
 		free(je.name);
+		free(je.compat);
 		free(je.long_desc);
 		free(extra_desc);
 		free(je.pmu);
@@ -747,6 +775,15 @@ static char *file_name_to_table_name(char *fname)
 	return tblname;
 }
 
+static bool is_sys_dir(char *fname)
+{
+	size_t len = strlen(fname), len2 = strlen("/sys");
+
+	if (len2 > len)
+		return false;
+	return !strcmp(fname+len-len2, "/sys");
+}
+
 static void print_mapping_table_prefix(FILE *outfp)
 {
 	fprintf(outfp, "struct pmu_events_map pmu_events_map[] = {\n");
@@ -777,8 +814,36 @@ static void print_mapping_test_table(FILE *outfp)
 	fprintf(outfp, "\t.cpuid = \"testcpu\",\n");
 	fprintf(outfp, "\t.version = \"v1\",\n");
 	fprintf(outfp, "\t.type = \"core\",\n");
-	fprintf(outfp, "\t.table = pme_test_cpu,\n");
+	fprintf(outfp, "\t.table = pme_test_soc_cpu,\n");
 	fprintf(outfp, "},\n");
+}
+
+static void print_system_event_mapping_table_prefix(FILE *outfp)
+{
+	fprintf(outfp, "\nstruct pmu_sys_events pmu_sys_event_tables[] = {");
+}
+
+static void print_system_event_mapping_table_suffix(FILE *outfp)
+{
+	fprintf(outfp, "\n\t{\n\t\t.table = 0\n\t},");
+	fprintf(outfp, "\n};\n");
+}
+
+static int process_system_event_tables(FILE *outfp)
+{
+	struct sys_event_table *sys_event_table;
+
+	print_system_event_mapping_table_prefix(outfp);
+
+	list_for_each_entry(sys_event_table, &sys_event_tables, list) {
+		fprintf(outfp, "\n\t{\n\t\t.table = %s,\n\t\t.name = \"%s\",\n\t},",
+			sys_event_table->soc_id,
+			sys_event_table->soc_id);
+	}
+
+	print_system_event_mapping_table_suffix(outfp);
+
+	return 0;
 }
 
 static int process_mapfile(FILE *outfp, char *fpath)
@@ -886,6 +951,8 @@ static void create_empty_mapping(const char *output_file)
 	fprintf(outfp, "#include \"pmu-events/pmu-events.h\"\n");
 	print_mapping_table_prefix(outfp);
 	print_mapping_table_suffix(outfp);
+	print_system_event_mapping_table_prefix(outfp);
+	print_system_event_mapping_table_suffix(outfp);
 	fclose(outfp);
 }
 
@@ -894,7 +961,7 @@ static int get_maxfds(void)
 	struct rlimit rlim;
 
 	if (getrlimit(RLIMIT_NOFILE, &rlim) == 0)
-		return min((int)rlim.rlim_max / 2, 512);
+		return min(rlim.rlim_max / 2, (rlim_t)512);
 
 	return 512;
 }
@@ -978,15 +1045,20 @@ static int process_one_file(const char *fpath, const struct stat *sb,
 	int level   = ftwbuf->level;
 	int err = 0;
 
-	if (level == 2 && is_dir) {
+	if (level >= 2 && is_dir) {
+		int count = 0;
 		/*
 		 * For level 2 directory, bname will include parent name,
 		 * like vendor/platform. So search back from platform dir
 		 * to find this.
+		 * Something similar for level 3 directory, but we're a PMU
+		 * category folder, like vendor/platform/cpu.
 		 */
 		bname = (char *) fpath + ftwbuf->base - 2;
 		for (;;) {
 			if (*bname == '/')
+				count++;
+			if (count == level - 1)
 				break;
 			bname--;
 		}
@@ -999,13 +1071,13 @@ static int process_one_file(const char *fpath, const struct stat *sb,
 		 level, sb->st_size, bname, fpath);
 
 	/* base dir or too deep */
-	if (level == 0 || level > 3)
+	if (level == 0 || level > 4)
 		return 0;
 
 
 	/* model directory, reset topic */
 	if ((level == 1 && is_dir && is_leaf_dir(fpath)) ||
-	    (level == 2 && is_dir)) {
+	    (level >= 2 && is_dir && is_leaf_dir(fpath))) {
 		if (close_table)
 			print_events_table_suffix(eventsfp);
 
@@ -1019,6 +1091,22 @@ static int process_one_file(const char *fpath, const struct stat *sb,
 			pr_info("%s: Error determining table name for %s\n", prog,
 				bname);
 			return -1;
+		}
+
+		if (is_sys_dir(bname)) {
+			struct sys_event_table *sys_event_table;
+
+			sys_event_table = malloc(sizeof(*sys_event_table));
+			if (!sys_event_table)
+				return -1;
+
+			sys_event_table->soc_id = strdup(tblname);
+			if (!sys_event_table->soc_id) {
+				free(sys_event_table);
+				return -1;
+			}
+			list_add_tail(&sys_event_table->list,
+				      &sys_event_tables);
 		}
 
 		print_events_table_prefix(eventsfp, tblname);
@@ -1036,8 +1124,10 @@ static int process_one_file(const char *fpath, const struct stat *sb,
 			mapfile = strdup(fpath);
 			return 0;
 		}
-
-		pr_info("%s: Ignoring file %s\n", prog, fpath);
+		if (is_json_file(bname))
+			pr_debug("%s: ArchStd json is preprocessed %s\n", prog, fpath);
+		else
+			pr_info("%s: Ignoring file %s\n", prog, fpath);
 		return 0;
 	}
 
@@ -1064,7 +1154,7 @@ static int process_one_file(const char *fpath, const struct stat *sb,
 	 * and directory tree could result in build failure due to table
 	 * names not being found.
 	 *
-	 * Atleast for now, be strict with processing JSON file names.
+	 * At least for now, be strict with processing JSON file names.
 	 * i.e. if JSON file name cannot be mapped to C-style table name,
 	 * fail.
 	 */
@@ -1100,12 +1190,13 @@ static int process_one_file(const char *fpath, const struct stat *sb,
  */
 int main(int argc, char *argv[])
 {
-	int rc, ret = 0;
+	int rc, ret = 0, empty_map = 0;
 	int maxfds;
 	char ldirname[PATH_MAX];
 	const char *arch;
 	const char *output_file;
 	const char *start_dirname;
+	char *err_string_ext = "";
 	struct stat stbuf;
 
 	prog = basename(argv[0]);
@@ -1133,7 +1224,8 @@ int main(int argc, char *argv[])
 	/* If architecture does not have any event lists, bail out */
 	if (stat(ldirname, &stbuf) < 0) {
 		pr_info("%s: Arch %s has no PMU event lists\n", prog, arch);
-		goto empty_map;
+		empty_map = 1;
+		goto err_close_eventsfp;
 	}
 
 	/* Include pmu-events.h first */
@@ -1150,75 +1242,72 @@ int main(int argc, char *argv[])
 	 */
 
 	maxfds = get_maxfds();
-	mapfile = NULL;
 	rc = nftw(ldirname, preprocess_arch_std_files, maxfds, 0);
-	if (rc && verbose) {
-		pr_info("%s: Error preprocessing arch standard files %s\n",
-			prog, ldirname);
-		goto empty_map;
-	} else if (rc < 0) {
-		/* Make build fail */
-		fclose(eventsfp);
-		free_arch_std_events();
-		return 1;
-	} else if (rc) {
-		goto empty_map;
-	}
+	if (rc)
+		goto err_processing_std_arch_event_dir;
 
 	rc = nftw(ldirname, process_one_file, maxfds, 0);
-	if (rc && verbose) {
-		pr_info("%s: Error walking file tree %s\n", prog, ldirname);
-		goto empty_map;
-	} else if (rc < 0) {
-		/* Make build fail */
-		fclose(eventsfp);
-		free_arch_std_events();
-		ret = 1;
-		goto out_free_mapfile;
-	} else if (rc) {
-		goto empty_map;
-	}
+	if (rc)
+		goto err_processing_dir;
 
 	sprintf(ldirname, "%s/test", start_dirname);
 
+	rc = nftw(ldirname, preprocess_arch_std_files, maxfds, 0);
+	if (rc)
+		goto err_processing_std_arch_event_dir;
+
 	rc = nftw(ldirname, process_one_file, maxfds, 0);
-	if (rc && verbose) {
-		pr_info("%s: Error walking file tree %s rc=%d for test\n",
-			prog, ldirname, rc);
-		goto empty_map;
-	} else if (rc < 0) {
-		/* Make build fail */
-		free_arch_std_events();
-		ret = 1;
-		goto out_free_mapfile;
-	} else if (rc) {
-		goto empty_map;
-	}
+	if (rc)
+		goto err_processing_dir;
 
 	if (close_table)
 		print_events_table_suffix(eventsfp);
 
 	if (!mapfile) {
 		pr_info("%s: No CPU->JSON mapping?\n", prog);
-		goto empty_map;
+		empty_map = 1;
+		goto err_close_eventsfp;
 	}
 
-	if (process_mapfile(eventsfp, mapfile)) {
+	rc = process_mapfile(eventsfp, mapfile);
+	if (rc) {
 		pr_info("%s: Error processing mapfile %s\n", prog, mapfile);
 		/* Make build fail */
-		fclose(eventsfp);
-		free_arch_std_events();
 		ret = 1;
+		goto err_close_eventsfp;
 	}
 
-
-	goto out_free_mapfile;
-
-empty_map:
+	rc = process_system_event_tables(eventsfp);
 	fclose(eventsfp);
-	create_empty_mapping(output_file);
+	if (rc) {
+		ret = 1;
+		goto err_out;
+	}
+
 	free_arch_std_events();
-out_free_mapfile:
+	free_sys_event_tables();
+	free(mapfile);
+	return 0;
+
+err_processing_std_arch_event_dir:
+	err_string_ext = " for std arch event";
+err_processing_dir:
+	if (verbose) {
+		pr_info("%s: Error walking file tree %s%s\n", prog, ldirname,
+			err_string_ext);
+		empty_map = 1;
+	} else if (rc < 0) {
+		ret = 1;
+	} else {
+		empty_map = 1;
+	}
+err_close_eventsfp:
+	fclose(eventsfp);
+	if (empty_map)
+		create_empty_mapping(output_file);
+err_out:
+	free_arch_std_events();
+	free_sys_event_tables();
 	free(mapfile);
 	return ret;
 }

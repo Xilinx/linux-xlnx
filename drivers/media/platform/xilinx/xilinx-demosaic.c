@@ -87,7 +87,7 @@ static inline struct xdmsc_dev *to_xdmsc(struct v4l2_subdev *subdev)
 
 static struct v4l2_mbus_framefmt
 *__xdmsc_get_pad_format(struct xdmsc_dev *xdmsc,
-			struct v4l2_subdev_pad_config *cfg,
+			struct v4l2_subdev_state *sd_state,
 			unsigned int pad, u32 which)
 {
 	struct v4l2_mbus_framefmt *get_fmt;
@@ -95,7 +95,7 @@ static struct v4l2_mbus_framefmt
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
 		get_fmt = v4l2_subdev_get_try_format(&xdmsc->xvip.subdev,
-						     cfg, pad);
+						     sd_state, pad);
 		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
 		get_fmt = &xdmsc->formats[pad];
@@ -137,13 +137,13 @@ static const struct v4l2_subdev_video_ops xdmsc_video_ops = {
 };
 
 static int xdmsc_get_format(struct v4l2_subdev *subdev,
-			    struct v4l2_subdev_pad_config *cfg,
+			    struct v4l2_subdev_state *sd_state,
 			    struct v4l2_subdev_format *fmt)
 {
 	struct xdmsc_dev *xdmsc = to_xdmsc(subdev);
 	struct v4l2_mbus_framefmt *get_fmt;
 
-	get_fmt = __xdmsc_get_pad_format(xdmsc, cfg, fmt->pad, fmt->which);
+	get_fmt = __xdmsc_get_pad_format(xdmsc, sd_state, fmt->pad, fmt->which);
 	if (!get_fmt)
 		return -EINVAL;
 
@@ -188,13 +188,13 @@ xdmsc_is_format_bayer(struct xdmsc_dev *xdmsc, u32 code)
 }
 
 static int xdmsc_set_format(struct v4l2_subdev *subdev,
-			    struct v4l2_subdev_pad_config *cfg,
+			    struct v4l2_subdev_state *sd_state,
 			    struct v4l2_subdev_format *fmt)
 {
 	struct xdmsc_dev *xdmsc = to_xdmsc(subdev);
 	struct v4l2_mbus_framefmt *__format;
 
-	__format = __xdmsc_get_pad_format(xdmsc, cfg, fmt->pad, fmt->which);
+	__format = __xdmsc_get_pad_format(xdmsc, sd_state, fmt->pad, fmt->which);
 	if (!__format)
 		return -EINVAL;
 
@@ -234,10 +234,10 @@ static int xdmsc_open(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
 	struct xdmsc_dev *xdmsc = to_xdmsc(subdev);
 	struct v4l2_mbus_framefmt *format;
 
-	format = v4l2_subdev_get_try_format(subdev, fh->pad, XVIP_PAD_SINK);
+	format = v4l2_subdev_get_try_format(subdev, fh->state, XVIP_PAD_SINK);
 	*format = xdmsc->default_formats[XVIP_PAD_SINK];
 
-	format = v4l2_subdev_get_try_format(subdev, fh->pad, XVIP_PAD_SOURCE);
+	format = v4l2_subdev_get_try_format(subdev, fh->state, XVIP_PAD_SOURCE);
 	*format = xdmsc->default_formats[XVIP_PAD_SOURCE];
 	return 0;
 }

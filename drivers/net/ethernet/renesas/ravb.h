@@ -165,7 +165,7 @@ enum ravb_reg {
 	GTO2	= 0x03A8,
 	GIC	= 0x03AC,
 	GIS	= 0x03B0,
-	GCPT	= 0x03B4,	/* Undocumented? */
+	GCPT	= 0x03B4,	/* Documented for R-Car Gen3 only */
 	GCT0	= 0x03B8,
 	GCT1	= 0x03BC,
 	GCT2	= 0x03C0,
@@ -225,7 +225,7 @@ enum CSR_BIT {
 	CSR_OPS_RESET	= 0x00000001,
 	CSR_OPS_CONFIG	= 0x00000002,
 	CSR_OPS_OPERATION = 0x00000004,
-	CSR_OPS_STANDBY	= 0x00000008,	/* Undocumented? */
+	CSR_OPS_STANDBY	= 0x00000008,	/* Documented for R-Car Gen3 only */
 	CSR_DTS		= 0x00000100,
 	CSR_TPO0	= 0x00010000,
 	CSR_TPO1	= 0x00020000,
@@ -241,13 +241,12 @@ enum ESR_BIT {
 	ESR_EIL		= 0x00001000,
 };
 
-/* APSR */
+/* APSR (R-Car Gen3 only) */
 enum APSR_BIT {
-	APSR_MEMS		= 0x00000002,
-	APSR_CMSW		= 0x00000010,
-	APSR_DM			= 0x00006000,	/* Undocumented? */
-	APSR_DM_RDM		= 0x00002000,
-	APSR_DM_TDM		= 0x00004000,
+	APSR_MEMS	= 0x00000002,	/* Undocumented */
+	APSR_CMSW	= 0x00000010,
+	APSR_RDM	= 0x00002000,
+	APSR_TDM	= 0x00004000,
 };
 
 /* RCR */
@@ -530,16 +529,16 @@ enum RIS2_BIT {
 
 /* TIC */
 enum TIC_BIT {
-	TIC_FTE0	= 0x00000001,	/* Undocumented? */
-	TIC_FTE1	= 0x00000002,	/* Undocumented? */
+	TIC_FTE0	= 0x00000001,	/* Documented for R-Car Gen3 only */
+	TIC_FTE1	= 0x00000002,	/* Documented for R-Car Gen3 only */
 	TIC_TFUE	= 0x00000100,
 	TIC_TFWE	= 0x00000200,
 };
 
 /* TIS */
 enum TIS_BIT {
-	TIS_FTF0	= 0x00000001,	/* Undocumented? */
-	TIS_FTF1	= 0x00000002,	/* Undocumented? */
+	TIS_FTF0	= 0x00000001,	/* Documented for R-Car Gen3 only */
+	TIS_FTF1	= 0x00000002,	/* Documented for R-Car Gen3 only */
 	TIS_TFUF	= 0x00000100,
 	TIS_TFWF	= 0x00000200,
 	TIS_RESERVED	= (GENMASK(31, 20) | GENMASK(15, 12) | GENMASK(7, 4))
@@ -547,8 +546,8 @@ enum TIS_BIT {
 
 /* ISS */
 enum ISS_BIT {
-	ISS_FRS		= 0x00000001,	/* Undocumented? */
-	ISS_FTS		= 0x00000004,	/* Undocumented? */
+	ISS_FRS		= 0x00000001,	/* Documented for R-Car Gen3 only */
+	ISS_FTS		= 0x00000004,	/* Documented for R-Car Gen3 only */
 	ISS_ES		= 0x00000040,
 	ISS_MS		= 0x00000080,
 	ISS_TFUS	= 0x00000100,
@@ -608,13 +607,13 @@ enum GTI_BIT {
 
 /* GIC */
 enum GIC_BIT {
-	GIC_PTCE	= 0x00000001,	/* Undocumented? */
+	GIC_PTCE	= 0x00000001,	/* Documented for R-Car Gen3 only */
 	GIC_PTME	= 0x00000004,
 };
 
 /* GIS */
 enum GIS_BIT {
-	GIS_PTCF	= 0x00000001,	/* Undocumented? */
+	GIS_PTCF	= 0x00000001,	/* Documented for R-Car Gen3 only */
 	GIS_PTMF	= 0x00000004,
 	GIS_RESERVED	= GENMASK(15, 10),
 };
@@ -808,10 +807,10 @@ enum ECMR_BIT {
 	ECMR_TE		= 0x00000020,
 	ECMR_RE		= 0x00000040,
 	ECMR_MPDE	= 0x00000200,
-	ECMR_TXF	= 0x00010000,	/* Undocumented? */
+	ECMR_TXF	= 0x00010000,	/* Documented for R-Car Gen3 only */
 	ECMR_RXF	= 0x00020000,
 	ECMR_PFR	= 0x00040000,
-	ECMR_ZPF	= 0x00080000,	/* Undocumented? */
+	ECMR_ZPF	= 0x00080000,	/* Documented for R-Car Gen3 only */
 	ECMR_RZPF	= 0x00100000,
 	ECMR_DPAD	= 0x00200000,
 	ECMR_RCSC	= 0x00800000,
@@ -830,7 +829,7 @@ enum ECSR_BIT {
 enum ECSIPR_BIT {
 	ECSIPR_ICDIP	= 0x00000001,
 	ECSIPR_MPDIP	= 0x00000002,
-	ECSIPR_LCHNGIP	= 0x00000004,	/* Undocumented? */
+	ECSIPR_LCHNGIP	= 0x00000004,
 };
 
 /* PIR */
@@ -865,7 +864,7 @@ enum GECMR_BIT {
 
 /* The Ethernet AVB descriptor definitions. */
 struct ravb_desc {
-	__le16 ds;		/* Descriptor size */
+	__le16 ds;	/* Descriptor size */
 	u8 cc;		/* Content control MSBs (reserved) */
 	u8 die_dt;	/* Descriptor interrupt enable and type */
 	__le32 dptr;	/* Descriptor pointer */
@@ -957,10 +956,6 @@ enum RAVB_QUEUE {
 
 #define RX_BUF_SZ	(2048 - ETH_FCS_LEN + sizeof(__sum16))
 
-/* TX descriptors per packet */
-#define NUM_TX_DESC_GEN2	2
-#define NUM_TX_DESC_GEN3	1
-
 struct ravb_tstamp_skb {
 	struct list_head list;
 	struct sk_buff *skb;
@@ -984,9 +979,29 @@ struct ravb_ptp {
 	struct ravb_ptp_perout perout[N_PER_OUT];
 };
 
-enum ravb_chip_id {
-	RCAR_GEN2,
-	RCAR_GEN3,
+struct ravb_hw_info {
+	void (*rx_ring_free)(struct net_device *ndev, int q);
+	void (*rx_ring_format)(struct net_device *ndev, int q);
+	void *(*alloc_rx_desc)(struct net_device *ndev, int q);
+	bool (*receive)(struct net_device *ndev, int *quota, int q);
+	void (*set_rate)(struct net_device *ndev);
+	int (*set_rx_csum_feature)(struct net_device *ndev, netdev_features_t features);
+	void (*dmac_init)(struct net_device *ndev);
+	void (*emac_init)(struct net_device *ndev);
+	const char (*gstrings_stats)[ETH_GSTRING_LEN];
+	size_t gstrings_size;
+	netdev_features_t net_hw_features;
+	netdev_features_t net_features;
+	int stats_len;
+	size_t max_rx_len;
+	unsigned aligned_tx: 1;
+
+	/* hardware features */
+	unsigned internal_delay:1;	/* AVB-DMAC has internal delays */
+	unsigned tx_counters:1;		/* E-MAC has TX counters */
+	unsigned multi_irqs:1;		/* AVB-DMAC and E-MAC has multiple irqs */
+	unsigned no_ptp_cfg_active:1;	/* AVB-DMAC does not support gPTP active in config mode */
+	unsigned ptp_cfg_active:1;	/* AVB-DMAC has gPTP support active in config mode */
 };
 
 struct ravb_private {
@@ -994,6 +1009,7 @@ struct ravb_private {
 	struct platform_device *pdev;
 	void __iomem *addr;
 	struct clk *clk;
+	struct clk *refclk;
 	struct mdiobb_ctrl mdiobb;
 	u32 num_rx_ring[NUM_RX_QUEUE];
 	u32 num_tx_ring[NUM_TX_QUEUE];
@@ -1029,7 +1045,6 @@ struct ravb_private {
 	int msg_enable;
 	int speed;
 	int emac_irq;
-	enum ravb_chip_id chip_id;
 	int rx_irqs[NUM_RX_QUEUE];
 	int tx_irqs[NUM_TX_QUEUE];
 
@@ -1039,7 +1054,10 @@ struct ravb_private {
 	unsigned rxcidm:1;		/* RX Clock Internal Delay Mode */
 	unsigned txcidm:1;		/* TX Clock Internal Delay Mode */
 	unsigned rgmii_override:1;	/* Deprecated rgmii-*id behavior */
-	int num_tx_desc;		/* TX descriptors per packet */
+	unsigned int num_tx_desc;	/* TX descriptors per packet */
+
+	const struct ravb_hw_info *info;
+	struct reset_control *rstc;
 };
 
 static inline u32 ravb_read(struct net_device *ndev, enum ravb_reg reg)

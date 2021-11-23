@@ -20,6 +20,7 @@
 #include "rcu-string.h"
 #include "raid56.h"
 #include "block-group.h"
+#include "zoned.h"
 
 /*
  * This is only the first step towards a full-features scrub. It reads all
@@ -71,11 +72,9 @@ struct scrub_page {
 	u64			physical;
 	u64			physical_for_dev_replace;
 	atomic_t		refs;
-	struct {
-		unsigned int	mirror_num:8;
-		unsigned int	have_csum:1;
-		unsigned int	io_error:1;
-	};
+	u8			mirror_num;
+	int			have_csum:1;
+	int			io_error:1;
 	u8			csum[BTRFS_CSUM_SIZE];
 
 	struct scrub_recover	*recover;
@@ -131,7 +130,7 @@ struct scrub_parity {
 
 	int			nsectors;
 
-	u64			stripe_len;
+	u32			stripe_len;
 
 	refcount_t		refs;
 
@@ -161,13 +160,17 @@ struct scrub_ctx {
 	atomic_t		workers_pending;
 	spinlock_t		list_lock;
 	wait_queue_head_t	list_wait;
-	u16			csum_size;
 	struct list_head	csum_list;
 	atomic_t		cancel_req;
 	int			readonly;
 	int			pages_per_rd_bio;
 
+	/* State of IO submission throttling affecting the associated device */
+	ktime_t			throttle_deadline;
+	u64			throttle_sent;
+
 	int			is_dev_replace;
+	u64			write_pointer;
 
 	struct scrub_bio        *wr_curr_bio;
 	struct mutex            wr_lock;
@@ -207,9 +210,6 @@ struct full_stripe_lock {
 	struct mutex mutex;
 };
 
-static void scrub_pending_bio_inc(struct scrub_ctx *sctx);
-static void scrub_pending_bio_dec(struct scrub_ctx *sctx);
-static int scrub_handle_errored_block(struct scrub_block *sblock_to_check);
 static int scrub_setup_recheck_block(struct scrub_block *original_sblock,
 				     struct scrub_block *sblocks_for_recheck);
 static void scrub_recheck_block(struct btrfs_fs_info *fs_info,
@@ -227,23 +227,20 @@ static int scrub_write_page_to_dev_replace(struct scrub_block *sblock,
 static int scrub_checksum_data(struct scrub_block *sblock);
 static int scrub_checksum_tree_block(struct scrub_block *sblock);
 static int scrub_checksum_super(struct scrub_block *sblock);
-static void scrub_block_get(struct scrub_block *sblock);
 static void scrub_block_put(struct scrub_block *sblock);
 static void scrub_page_get(struct scrub_page *spage);
 static void scrub_page_put(struct scrub_page *spage);
 static void scrub_parity_get(struct scrub_parity *sparity);
 static void scrub_parity_put(struct scrub_parity *sparity);
-static int scrub_add_page_to_rd_bio(struct scrub_ctx *sctx,
-				    struct scrub_page *spage);
-static int scrub_pages(struct scrub_ctx *sctx, u64 logical, u64 len,
+static int scrub_pages(struct scrub_ctx *sctx, u64 logical, u32 len,
 		       u64 physical, struct btrfs_device *dev, u64 flags,
-		       u64 gen, int mirror_num, u8 *csum, int force,
+		       u64 gen, int mirror_num, u8 *csum,
 		       u64 physical_for_dev_replace);
 static void scrub_bio_end_io(struct bio *bio);
 static void scrub_bio_end_io_worker(struct btrfs_work *work);
 static void scrub_block_complete(struct scrub_block *sblock);
 static void scrub_remap_extent(struct btrfs_fs_info *fs_info,
-			       u64 extent_logical, u64 extent_len,
+			       u64 extent_logical, u32 extent_len,
 			       u64 *extent_physical,
 			       struct btrfs_device **extent_dev,
 			       int *extent_mirror_num);
@@ -252,14 +249,12 @@ static int scrub_add_page_to_wr_bio(struct scrub_ctx *sctx,
 static void scrub_wr_submit(struct scrub_ctx *sctx);
 static void scrub_wr_bio_end_io(struct bio *bio);
 static void scrub_wr_bio_end_io_worker(struct btrfs_work *work);
-static void __scrub_blocked_if_needed(struct btrfs_fs_info *fs_info);
-static void scrub_blocked_if_needed(struct btrfs_fs_info *fs_info);
 static void scrub_put_ctx(struct scrub_ctx *sctx);
 
-static inline int scrub_is_page_on_raid56(struct scrub_page *page)
+static inline int scrub_is_page_on_raid56(struct scrub_page *spage)
 {
-	return page->recover &&
-	       (page->recover->bbio->map_type & BTRFS_BLOCK_GROUP_RAID56_MASK);
+	return spage->recover &&
+	       (spage->recover->bbio->map_type & BTRFS_BLOCK_GROUP_RAID56_MASK);
 }
 
 static void scrub_pending_bio_inc(struct scrub_ctx *sctx)
@@ -610,11 +605,11 @@ static noinline_for_stack struct scrub_ctx *scrub_setup_ctx(
 	atomic_set(&sctx->bios_in_flight, 0);
 	atomic_set(&sctx->workers_pending, 0);
 	atomic_set(&sctx->cancel_req, 0);
-	sctx->csum_size = btrfs_super_csum_size(fs_info->super_copy);
 
 	spin_lock_init(&sctx->list_lock);
 	spin_lock_init(&sctx->stat_lock);
 	init_waitqueue_head(&sctx->list_wait);
+	sctx->throttle_deadline = 0;
 
 	WARN_ON(sctx->wr_curr_bio != NULL);
 	mutex_init(&sctx->wr_lock);
@@ -636,7 +631,6 @@ nomem:
 static int scrub_print_warning_inode(u64 inum, u64 offset, u64 root,
 				     void *warn_ctx)
 {
-	u64 isize;
 	u32 nlink;
 	int ret;
 	int i;
@@ -672,7 +666,6 @@ static int scrub_print_warning_inode(u64 inum, u64 offset, u64 root,
 	eb = swarn->path->nodes[0];
 	inode_item = btrfs_item_ptr(eb, swarn->path->slots[0],
 					struct btrfs_inode_item);
-	isize = btrfs_inode_size(eb, inode_item);
 	nlink = btrfs_inode_nlink(eb, inode_item);
 	btrfs_release_path(swarn->path);
 
@@ -701,12 +694,12 @@ static int scrub_print_warning_inode(u64 inum, u64 offset, u64 root,
 	 */
 	for (i = 0; i < ipath->fspath->elem_cnt; ++i)
 		btrfs_warn_in_rcu(fs_info,
-"%s at logical %llu on dev %s, physical %llu, root %llu, inode %llu, offset %llu, length %llu, links %u (path: %s)",
+"%s at logical %llu on dev %s, physical %llu, root %llu, inode %llu, offset %llu, length %u, links %u (path: %s)",
 				  swarn->errstr, swarn->logical,
 				  rcu_str_deref(swarn->dev->name),
 				  swarn->physical,
 				  root, inum, offset,
-				  min(isize - offset, (u64)PAGE_SIZE), nlink,
+				  fs_info->sectorsize, nlink,
 				  (char *)(unsigned long)ipath->fspath->val[i]);
 
 	btrfs_put_root(local_root);
@@ -859,6 +852,9 @@ static int scrub_handle_errored_block(struct scrub_block *sblock_to_check)
 	have_csum = sblock_to_check->pagev[0]->have_csum;
 	dev = sblock_to_check->pagev[0]->dev;
 
+	if (btrfs_is_zoned(fs_info) && !sctx->is_dev_replace)
+		return btrfs_repair_one_zone(fs_info, logical);
+
 	/*
 	 * We must use GFP_NOFS because the scrub task might be waiting for a
 	 * worker task executing this function and in turn a transaction commit
@@ -892,25 +888,25 @@ static int scrub_handle_errored_block(struct scrub_block *sblock_to_check)
 	 * read all mirrors one after the other. This includes to
 	 * re-read the extent or metadata block that failed (that was
 	 * the cause that this fixup code is called) another time,
-	 * page by page this time in order to know which pages
+	 * sector by sector this time in order to know which sectors
 	 * caused I/O errors and which ones are good (for all mirrors).
 	 * It is the goal to handle the situation when more than one
 	 * mirror contains I/O errors, but the errors do not
 	 * overlap, i.e. the data can be repaired by selecting the
-	 * pages from those mirrors without I/O error on the
-	 * particular pages. One example (with blocks >= 2 * PAGE_SIZE)
-	 * would be that mirror #1 has an I/O error on the first page,
-	 * the second page is good, and mirror #2 has an I/O error on
-	 * the second page, but the first page is good.
-	 * Then the first page of the first mirror can be repaired by
-	 * taking the first page of the second mirror, and the
-	 * second page of the second mirror can be repaired by
-	 * copying the contents of the 2nd page of the 1st mirror.
-	 * One more note: if the pages of one mirror contain I/O
+	 * sectors from those mirrors without I/O error on the
+	 * particular sectors. One example (with blocks >= 2 * sectorsize)
+	 * would be that mirror #1 has an I/O error on the first sector,
+	 * the second sector is good, and mirror #2 has an I/O error on
+	 * the second sector, but the first sector is good.
+	 * Then the first sector of the first mirror can be repaired by
+	 * taking the first sector of the second mirror, and the
+	 * second sector of the second mirror can be repaired by
+	 * copying the contents of the 2nd sector of the 1st mirror.
+	 * One more note: if the sectors of one mirror contain I/O
 	 * errors, the checksum cannot be verified. In order to get
 	 * the best data for repairing, the first attempt is to find
 	 * a mirror without I/O errors and with a validated checksum.
-	 * Only if this is not possible, the pages are picked from
+	 * Only if this is not possible, the sectors are picked from
 	 * mirrors with I/O errors without considering the checksum.
 	 * If the latter is the case, at the end, the checksum of the
 	 * repaired area is verified in order to correctly maintain
@@ -1067,36 +1063,36 @@ static int scrub_handle_errored_block(struct scrub_block *sblock_to_check)
 
 	/*
 	 * In case of I/O errors in the area that is supposed to be
-	 * repaired, continue by picking good copies of those pages.
-	 * Select the good pages from mirrors to rewrite bad pages from
+	 * repaired, continue by picking good copies of those sectors.
+	 * Select the good sectors from mirrors to rewrite bad sectors from
 	 * the area to fix. Afterwards verify the checksum of the block
 	 * that is supposed to be repaired. This verification step is
 	 * only done for the purpose of statistic counting and for the
 	 * final scrub report, whether errors remain.
 	 * A perfect algorithm could make use of the checksum and try
-	 * all possible combinations of pages from the different mirrors
+	 * all possible combinations of sectors from the different mirrors
 	 * until the checksum verification succeeds. For example, when
-	 * the 2nd page of mirror #1 faces I/O errors, and the 2nd page
+	 * the 2nd sector of mirror #1 faces I/O errors, and the 2nd sector
 	 * of mirror #2 is readable but the final checksum test fails,
-	 * then the 2nd page of mirror #3 could be tried, whether now
+	 * then the 2nd sector of mirror #3 could be tried, whether now
 	 * the final checksum succeeds. But this would be a rare
 	 * exception and is therefore not implemented. At least it is
 	 * avoided that the good copy is overwritten.
 	 * A more useful improvement would be to pick the sectors
 	 * without I/O error based on sector sizes (512 bytes on legacy
-	 * disks) instead of on PAGE_SIZE. Then maybe 512 byte of one
+	 * disks) instead of on sectorsize. Then maybe 512 byte of one
 	 * mirror could be repaired by taking 512 byte of a different
-	 * mirror, even if other 512 byte sectors in the same PAGE_SIZE
+	 * mirror, even if other 512 byte sectors in the same sectorsize
 	 * area are unreadable.
 	 */
 	success = 1;
 	for (page_num = 0; page_num < sblock_bad->page_count;
 	     page_num++) {
-		struct scrub_page *page_bad = sblock_bad->pagev[page_num];
+		struct scrub_page *spage_bad = sblock_bad->pagev[page_num];
 		struct scrub_block *sblock_other = NULL;
 
 		/* skip no-io-error page in scrub */
-		if (!page_bad->io_error && !sctx->is_dev_replace)
+		if (!spage_bad->io_error && !sctx->is_dev_replace)
 			continue;
 
 		if (scrub_is_page_on_raid56(sblock_bad->pagev[0])) {
@@ -1108,7 +1104,7 @@ static int scrub_handle_errored_block(struct scrub_block *sblock_to_check)
 			 * sblock_for_recheck array to target device.
 			 */
 			sblock_other = NULL;
-		} else if (page_bad->io_error) {
+		} else if (spage_bad->io_error) {
 			/* try to find no-io-error page in mirrors */
 			for (mirror_index = 0;
 			     mirror_index < BTRFS_MAX_MIRRORS &&
@@ -1147,7 +1143,7 @@ static int scrub_handle_errored_block(struct scrub_block *sblock_to_check)
 							       sblock_other,
 							       page_num, 0);
 			if (0 == ret)
-				page_bad->io_error = 0;
+				spage_bad->io_error = 0;
 			else
 				success = 0;
 		}
@@ -1267,7 +1263,7 @@ static int scrub_setup_recheck_block(struct scrub_block *original_sblock,
 {
 	struct scrub_ctx *sctx = original_sblock->sctx;
 	struct btrfs_fs_info *fs_info = sctx->fs_info;
-	u64 length = original_sblock->page_count * PAGE_SIZE;
+	u64 length = original_sblock->page_count * fs_info->sectorsize;
 	u64 logical = original_sblock->pagev[0]->logical;
 	u64 generation = original_sblock->pagev[0]->generation;
 	u64 flags = original_sblock->pagev[0]->flags;
@@ -1290,13 +1286,13 @@ static int scrub_setup_recheck_block(struct scrub_block *original_sblock,
 	 */
 
 	while (length > 0) {
-		sublen = min_t(u64, length, PAGE_SIZE);
+		sublen = min_t(u64, length, fs_info->sectorsize);
 		mapped_length = sublen;
 		bbio = NULL;
 
 		/*
-		 * with a length of PAGE_SIZE, each returned stripe
-		 * represents one mirror
+		 * With a length of sectorsize, each returned stripe represents
+		 * one mirror
 		 */
 		btrfs_bio_counter_inc_blocked(fs_info);
 		ret = btrfs_map_sblock(fs_info, BTRFS_MAP_GET_READ_MIRRORS,
@@ -1325,13 +1321,13 @@ static int scrub_setup_recheck_block(struct scrub_block *original_sblock,
 		for (mirror_index = 0; mirror_index < nmirrors;
 		     mirror_index++) {
 			struct scrub_block *sblock;
-			struct scrub_page *page;
+			struct scrub_page *spage;
 
 			sblock = sblocks_for_recheck + mirror_index;
 			sblock->sctx = sctx;
 
-			page = kzalloc(sizeof(*page), GFP_NOFS);
-			if (!page) {
+			spage = kzalloc(sizeof(*spage), GFP_NOFS);
+			if (!spage) {
 leave_nomem:
 				spin_lock(&sctx->stat_lock);
 				sctx->stat.malloc_errors++;
@@ -1339,17 +1335,17 @@ leave_nomem:
 				scrub_put_recover(fs_info, recover);
 				return -ENOMEM;
 			}
-			scrub_page_get(page);
-			sblock->pagev[page_index] = page;
-			page->sblock = sblock;
-			page->flags = flags;
-			page->generation = generation;
-			page->logical = logical;
-			page->have_csum = have_csum;
+			scrub_page_get(spage);
+			sblock->pagev[page_index] = spage;
+			spage->sblock = sblock;
+			spage->flags = flags;
+			spage->generation = generation;
+			spage->logical = logical;
+			spage->have_csum = have_csum;
 			if (have_csum)
-				memcpy(page->csum,
+				memcpy(spage->csum,
 				       original_sblock->pagev[0]->csum,
-				       sctx->csum_size);
+				       sctx->fs_info->csum_size);
 
 			scrub_stripe_index_and_offset(logical,
 						      bbio->map_type,
@@ -1360,23 +1356,23 @@ leave_nomem:
 						      mirror_index,
 						      &stripe_index,
 						      &stripe_offset);
-			page->physical = bbio->stripes[stripe_index].physical +
+			spage->physical = bbio->stripes[stripe_index].physical +
 					 stripe_offset;
-			page->dev = bbio->stripes[stripe_index].dev;
+			spage->dev = bbio->stripes[stripe_index].dev;
 
 			BUG_ON(page_index >= original_sblock->page_count);
-			page->physical_for_dev_replace =
+			spage->physical_for_dev_replace =
 				original_sblock->pagev[page_index]->
 				physical_for_dev_replace;
 			/* for missing devices, dev->bdev is NULL */
-			page->mirror_num = mirror_index + 1;
+			spage->mirror_num = mirror_index + 1;
 			sblock->page_count++;
-			page->page = alloc_page(GFP_NOFS);
-			if (!page->page)
+			spage->page = alloc_page(GFP_NOFS);
+			if (!spage->page)
 				goto leave_nomem;
 
 			scrub_get_recover(recover);
-			page->recover = recover;
+			spage->recover = recover;
 		}
 		scrub_put_recover(fs_info, recover);
 		length -= sublen;
@@ -1394,19 +1390,19 @@ static void scrub_bio_wait_endio(struct bio *bio)
 
 static int scrub_submit_raid56_bio_wait(struct btrfs_fs_info *fs_info,
 					struct bio *bio,
-					struct scrub_page *page)
+					struct scrub_page *spage)
 {
 	DECLARE_COMPLETION_ONSTACK(done);
 	int ret;
 	int mirror_num;
 
-	bio->bi_iter.bi_sector = page->logical >> 9;
+	bio->bi_iter.bi_sector = spage->logical >> 9;
 	bio->bi_private = &done;
 	bio->bi_end_io = scrub_bio_wait_endio;
 
-	mirror_num = page->sblock->pagev[0]->mirror_num;
-	ret = raid56_parity_recover(fs_info, bio, page->recover->bbio,
-				    page->recover->map_length,
+	mirror_num = spage->sblock->pagev[0]->mirror_num;
+	ret = raid56_parity_recover(fs_info, bio, spage->recover->bbio,
+				    spage->recover->map_length,
 				    mirror_num, 0);
 	if (ret)
 		return ret;
@@ -1427,14 +1423,14 @@ static void scrub_recheck_block_on_raid56(struct btrfs_fs_info *fs_info,
 	if (!first_page->dev->bdev)
 		goto out;
 
-	bio = btrfs_io_bio_alloc(BIO_MAX_PAGES);
+	bio = btrfs_io_bio_alloc(BIO_MAX_VECS);
 	bio_set_dev(bio, first_page->dev->bdev);
 
 	for (page_num = 0; page_num < sblock->page_count; page_num++) {
-		struct scrub_page *page = sblock->pagev[page_num];
+		struct scrub_page *spage = sblock->pagev[page_num];
 
-		WARN_ON(!page->page);
-		bio_add_page(bio, page->page, PAGE_SIZE, 0);
+		WARN_ON(!spage->page);
+		bio_add_page(bio, spage->page, PAGE_SIZE, 0);
 	}
 
 	if (scrub_submit_raid56_bio_wait(fs_info, bio, first_page)) {
@@ -1475,24 +1471,24 @@ static void scrub_recheck_block(struct btrfs_fs_info *fs_info,
 
 	for (page_num = 0; page_num < sblock->page_count; page_num++) {
 		struct bio *bio;
-		struct scrub_page *page = sblock->pagev[page_num];
+		struct scrub_page *spage = sblock->pagev[page_num];
 
-		if (page->dev->bdev == NULL) {
-			page->io_error = 1;
+		if (spage->dev->bdev == NULL) {
+			spage->io_error = 1;
 			sblock->no_io_error_seen = 0;
 			continue;
 		}
 
-		WARN_ON(!page->page);
+		WARN_ON(!spage->page);
 		bio = btrfs_io_bio_alloc(1);
-		bio_set_dev(bio, page->dev->bdev);
+		bio_set_dev(bio, spage->dev->bdev);
 
-		bio_add_page(bio, page->page, PAGE_SIZE, 0);
-		bio->bi_iter.bi_sector = page->physical >> 9;
+		bio_add_page(bio, spage->page, fs_info->sectorsize, 0);
+		bio->bi_iter.bi_sector = spage->physical >> 9;
 		bio->bi_opf = REQ_OP_READ;
 
 		if (btrfsic_submit_bio_wait(bio)) {
-			page->io_error = 1;
+			spage->io_error = 1;
 			sblock->no_io_error_seen = 0;
 		}
 
@@ -1548,36 +1544,37 @@ static int scrub_repair_page_from_good_copy(struct scrub_block *sblock_bad,
 					    struct scrub_block *sblock_good,
 					    int page_num, int force_write)
 {
-	struct scrub_page *page_bad = sblock_bad->pagev[page_num];
-	struct scrub_page *page_good = sblock_good->pagev[page_num];
+	struct scrub_page *spage_bad = sblock_bad->pagev[page_num];
+	struct scrub_page *spage_good = sblock_good->pagev[page_num];
 	struct btrfs_fs_info *fs_info = sblock_bad->sctx->fs_info;
+	const u32 sectorsize = fs_info->sectorsize;
 
-	BUG_ON(page_bad->page == NULL);
-	BUG_ON(page_good->page == NULL);
+	BUG_ON(spage_bad->page == NULL);
+	BUG_ON(spage_good->page == NULL);
 	if (force_write || sblock_bad->header_error ||
-	    sblock_bad->checksum_error || page_bad->io_error) {
+	    sblock_bad->checksum_error || spage_bad->io_error) {
 		struct bio *bio;
 		int ret;
 
-		if (!page_bad->dev->bdev) {
+		if (!spage_bad->dev->bdev) {
 			btrfs_warn_rl(fs_info,
 				"scrub_repair_page_from_good_copy(bdev == NULL) is unexpected");
 			return -EIO;
 		}
 
 		bio = btrfs_io_bio_alloc(1);
-		bio_set_dev(bio, page_bad->dev->bdev);
-		bio->bi_iter.bi_sector = page_bad->physical >> 9;
+		bio_set_dev(bio, spage_bad->dev->bdev);
+		bio->bi_iter.bi_sector = spage_bad->physical >> 9;
 		bio->bi_opf = REQ_OP_WRITE;
 
-		ret = bio_add_page(bio, page_good->page, PAGE_SIZE, 0);
-		if (PAGE_SIZE != ret) {
+		ret = bio_add_page(bio, spage_good->page, sectorsize, 0);
+		if (ret != sectorsize) {
 			bio_put(bio);
 			return -EIO;
 		}
 
 		if (btrfsic_submit_bio_wait(bio)) {
-			btrfs_dev_stat_inc_and_print(page_bad->dev,
+			btrfs_dev_stat_inc_and_print(spage_bad->dev,
 				BTRFS_DEV_STAT_WRITE_ERRS);
 			atomic64_inc(&fs_info->dev_replace.num_write_errors);
 			bio_put(bio);
@@ -1622,11 +1619,34 @@ static int scrub_write_page_to_dev_replace(struct scrub_block *sblock,
 	return scrub_add_page_to_wr_bio(sblock->sctx, spage);
 }
 
+static int fill_writer_pointer_gap(struct scrub_ctx *sctx, u64 physical)
+{
+	int ret = 0;
+	u64 length;
+
+	if (!btrfs_is_zoned(sctx->fs_info))
+		return 0;
+
+	if (!btrfs_dev_is_sequential(sctx->wr_tgtdev, physical))
+		return 0;
+
+	if (sctx->write_pointer < physical) {
+		length = physical - sctx->write_pointer;
+
+		ret = btrfs_zoned_issue_zeroout(sctx->wr_tgtdev,
+						sctx->write_pointer, length);
+		if (!ret)
+			sctx->write_pointer = physical;
+	}
+	return ret;
+}
+
 static int scrub_add_page_to_wr_bio(struct scrub_ctx *sctx,
 				    struct scrub_page *spage)
 {
 	struct scrub_bio *sbio;
 	int ret;
+	const u32 sectorsize = sctx->fs_info->sectorsize;
 
 	mutex_lock(&sctx->wr_lock);
 again:
@@ -1644,6 +1664,13 @@ again:
 	if (sbio->page_count == 0) {
 		struct bio *bio;
 
+		ret = fill_writer_pointer_gap(sctx,
+					      spage->physical_for_dev_replace);
+		if (ret) {
+			mutex_unlock(&sctx->wr_lock);
+			return ret;
+		}
+
 		sbio->physical = spage->physical_for_dev_replace;
 		sbio->logical = spage->logical;
 		sbio->dev = sctx->wr_tgtdev;
@@ -1659,16 +1686,16 @@ again:
 		bio->bi_iter.bi_sector = sbio->physical >> 9;
 		bio->bi_opf = REQ_OP_WRITE;
 		sbio->status = 0;
-	} else if (sbio->physical + sbio->page_count * PAGE_SIZE !=
+	} else if (sbio->physical + sbio->page_count * sectorsize !=
 		   spage->physical_for_dev_replace ||
-		   sbio->logical + sbio->page_count * PAGE_SIZE !=
+		   sbio->logical + sbio->page_count * sectorsize !=
 		   spage->logical) {
 		scrub_wr_submit(sctx);
 		goto again;
 	}
 
-	ret = bio_add_page(sbio->bio, spage->page, PAGE_SIZE, 0);
-	if (ret != PAGE_SIZE) {
+	ret = bio_add_page(sbio->bio, spage->page, sectorsize, 0);
+	if (ret != sectorsize) {
 		if (sbio->page_count < 1) {
 			bio_put(sbio->bio);
 			sbio->bio = NULL;
@@ -1698,13 +1725,17 @@ static void scrub_wr_submit(struct scrub_ctx *sctx)
 
 	sbio = sctx->wr_curr_bio;
 	sctx->wr_curr_bio = NULL;
-	WARN_ON(!sbio->bio->bi_disk);
+	WARN_ON(!sbio->bio->bi_bdev);
 	scrub_pending_bio_inc(sctx);
 	/* process all writes in a single worker thread. Then the block layer
 	 * orders the requests before sending them to the driver which
 	 * doubled the write performance on spinning disks when measured
 	 * with Linux 3.5 */
 	btrfsic_submit_bio(sbio->bio);
+
+	if (btrfs_is_zoned(sctx->fs_info))
+		sctx->write_pointer = sbio->physical + sbio->page_count *
+			sctx->fs_info->sectorsize;
 }
 
 static void scrub_wr_bio_end_io(struct bio *bio)
@@ -1798,11 +1829,15 @@ static int scrub_checksum_data(struct scrub_block *sblock)
 
 	shash->tfm = fs_info->csum_shash;
 	crypto_shash_init(shash);
-	crypto_shash_digest(shash, kaddr, PAGE_SIZE, csum);
 
-	if (memcmp(csum, spage->csum, sctx->csum_size))
+	/*
+	 * In scrub_pages() and scrub_pages_for_parity() we ensure each spage
+	 * only contains one sector of data.
+	 */
+	crypto_shash_digest(shash, kaddr, fs_info->sectorsize, csum);
+
+	if (memcmp(csum, spage->csum, fs_info->csum_size))
 		sblock->checksum_error = 1;
-
 	return sblock->checksum_error;
 }
 
@@ -1814,16 +1849,26 @@ static int scrub_checksum_tree_block(struct scrub_block *sblock)
 	SHASH_DESC_ON_STACK(shash, fs_info->csum_shash);
 	u8 calculated_csum[BTRFS_CSUM_SIZE];
 	u8 on_disk_csum[BTRFS_CSUM_SIZE];
-	const int num_pages = sctx->fs_info->nodesize >> PAGE_SHIFT;
+	/*
+	 * This is done in sectorsize steps even for metadata as there's a
+	 * constraint for nodesize to be aligned to sectorsize. This will need
+	 * to change so we don't misuse data and metadata units like that.
+	 */
+	const u32 sectorsize = sctx->fs_info->sectorsize;
+	const int num_sectors = fs_info->nodesize >> fs_info->sectorsize_bits;
 	int i;
 	struct scrub_page *spage;
 	char *kaddr;
 
 	BUG_ON(sblock->page_count < 1);
+
+	/* Each member in pagev is just one block, not a full page */
+	ASSERT(sblock->page_count == num_sectors);
+
 	spage = sblock->pagev[0];
 	kaddr = page_address(spage->page);
 	h = (struct btrfs_header *)kaddr;
-	memcpy(on_disk_csum, h->csum, sctx->csum_size);
+	memcpy(on_disk_csum, h->csum, sctx->fs_info->csum_size);
 
 	/*
 	 * we don't use the getter functions here, as we
@@ -1848,15 +1893,15 @@ static int scrub_checksum_tree_block(struct scrub_block *sblock)
 	shash->tfm = fs_info->csum_shash;
 	crypto_shash_init(shash);
 	crypto_shash_update(shash, kaddr + BTRFS_CSUM_SIZE,
-			    PAGE_SIZE - BTRFS_CSUM_SIZE);
+			    sectorsize - BTRFS_CSUM_SIZE);
 
-	for (i = 1; i < num_pages; i++) {
+	for (i = 1; i < num_sectors; i++) {
 		kaddr = page_address(sblock->pagev[i]->page);
-		crypto_shash_update(shash, kaddr, PAGE_SIZE);
+		crypto_shash_update(shash, kaddr, sectorsize);
 	}
 
 	crypto_shash_final(shash, calculated_csum);
-	if (memcmp(calculated_csum, on_disk_csum, sctx->csum_size))
+	if (memcmp(calculated_csum, on_disk_csum, sctx->fs_info->csum_size))
 		sblock->checksum_error = 1;
 
 	return sblock->header_error || sblock->checksum_error;
@@ -1893,7 +1938,7 @@ static int scrub_checksum_super(struct scrub_block *sblock)
 	crypto_shash_digest(shash, kaddr + BTRFS_CSUM_SIZE,
 			BTRFS_SUPER_INFO_SIZE - BTRFS_CSUM_SIZE, calculated_csum);
 
-	if (memcmp(calculated_csum, s->csum, sctx->csum_size))
+	if (memcmp(calculated_csum, s->csum, sctx->fs_info->csum_size))
 		++fail_cor;
 
 	if (fail_cor + fail_gen) {
@@ -1949,12 +1994,73 @@ static void scrub_page_put(struct scrub_page *spage)
 	}
 }
 
+/*
+ * Throttling of IO submission, bandwidth-limit based, the timeslice is 1
+ * second.  Limit can be set via /sys/fs/UUID/devinfo/devid/scrub_speed_max.
+ */
+static void scrub_throttle(struct scrub_ctx *sctx)
+{
+	const int time_slice = 1000;
+	struct scrub_bio *sbio;
+	struct btrfs_device *device;
+	s64 delta;
+	ktime_t now;
+	u32 div;
+	u64 bwlimit;
+
+	sbio = sctx->bios[sctx->curr];
+	device = sbio->dev;
+	bwlimit = READ_ONCE(device->scrub_speed_max);
+	if (bwlimit == 0)
+		return;
+
+	/*
+	 * Slice is divided into intervals when the IO is submitted, adjust by
+	 * bwlimit and maximum of 64 intervals.
+	 */
+	div = max_t(u32, 1, (u32)(bwlimit / (16 * 1024 * 1024)));
+	div = min_t(u32, 64, div);
+
+	/* Start new epoch, set deadline */
+	now = ktime_get();
+	if (sctx->throttle_deadline == 0) {
+		sctx->throttle_deadline = ktime_add_ms(now, time_slice / div);
+		sctx->throttle_sent = 0;
+	}
+
+	/* Still in the time to send? */
+	if (ktime_before(now, sctx->throttle_deadline)) {
+		/* If current bio is within the limit, send it */
+		sctx->throttle_sent += sbio->bio->bi_iter.bi_size;
+		if (sctx->throttle_sent <= div_u64(bwlimit, div))
+			return;
+
+		/* We're over the limit, sleep until the rest of the slice */
+		delta = ktime_ms_delta(sctx->throttle_deadline, now);
+	} else {
+		/* New request after deadline, start new epoch */
+		delta = 0;
+	}
+
+	if (delta) {
+		long timeout;
+
+		timeout = div_u64(delta * HZ, 1000);
+		schedule_timeout_interruptible(timeout);
+	}
+
+	/* Next call will start the deadline period */
+	sctx->throttle_deadline = 0;
+}
+
 static void scrub_submit(struct scrub_ctx *sctx)
 {
 	struct scrub_bio *sbio;
 
 	if (sctx->curr == -1)
 		return;
+
+	scrub_throttle(sctx);
 
 	sbio = sctx->bios[sctx->curr];
 	sctx->curr = -1;
@@ -1967,6 +2073,7 @@ static int scrub_add_page_to_rd_bio(struct scrub_ctx *sctx,
 {
 	struct scrub_block *sblock = spage->sblock;
 	struct scrub_bio *sbio;
+	const u32 sectorsize = sctx->fs_info->sectorsize;
 	int ret;
 
 again:
@@ -2005,9 +2112,9 @@ again:
 		bio->bi_iter.bi_sector = sbio->physical >> 9;
 		bio->bi_opf = REQ_OP_READ;
 		sbio->status = 0;
-	} else if (sbio->physical + sbio->page_count * PAGE_SIZE !=
+	} else if (sbio->physical + sbio->page_count * sectorsize !=
 		   spage->physical ||
-		   sbio->logical + sbio->page_count * PAGE_SIZE !=
+		   sbio->logical + sbio->page_count * sectorsize !=
 		   spage->logical ||
 		   sbio->dev != spage->dev) {
 		scrub_submit(sctx);
@@ -2015,8 +2122,8 @@ again:
 	}
 
 	sbio->pagev[sbio->page_count] = spage;
-	ret = bio_add_page(sbio->bio, spage->page, PAGE_SIZE, 0);
-	if (ret != PAGE_SIZE) {
+	ret = bio_add_page(sbio->bio, spage->page, sectorsize, 0);
+	if (ret != sectorsize) {
 		if (sbio->page_count < 1) {
 			bio_put(sbio->bio);
 			sbio->bio = NULL;
@@ -2150,12 +2257,13 @@ bbio_out:
 	spin_unlock(&sctx->stat_lock);
 }
 
-static int scrub_pages(struct scrub_ctx *sctx, u64 logical, u64 len,
+static int scrub_pages(struct scrub_ctx *sctx, u64 logical, u32 len,
 		       u64 physical, struct btrfs_device *dev, u64 flags,
-		       u64 gen, int mirror_num, u8 *csum, int force,
+		       u64 gen, int mirror_num, u8 *csum,
 		       u64 physical_for_dev_replace)
 {
 	struct scrub_block *sblock;
+	const u32 sectorsize = sctx->fs_info->sectorsize;
 	int index;
 
 	sblock = kzalloc(sizeof(*sblock), GFP_KERNEL);
@@ -2174,7 +2282,12 @@ static int scrub_pages(struct scrub_ctx *sctx, u64 logical, u64 len,
 
 	for (index = 0; len > 0; index++) {
 		struct scrub_page *spage;
-		u64 l = min_t(u64, len, PAGE_SIZE);
+		/*
+		 * Here we will allocate one page for one sector to scrub.
+		 * This is fine if PAGE_SIZE == sectorsize, but will cost
+		 * more memory for PAGE_SIZE > sectorsize case.
+		 */
+		u32 l = min(sectorsize, len);
 
 		spage = kzalloc(sizeof(*spage), GFP_KERNEL);
 		if (!spage) {
@@ -2198,7 +2311,7 @@ leave_nomem:
 		spage->mirror_num = mirror_num;
 		if (csum) {
 			spage->have_csum = 1;
-			memcpy(spage->csum, csum, sctx->csum_size);
+			memcpy(spage->csum, csum, sctx->fs_info->csum_size);
 		} else {
 			spage->have_csum = 0;
 		}
@@ -2231,7 +2344,7 @@ leave_nomem:
 			}
 		}
 
-		if (force)
+		if (flags & BTRFS_EXTENT_FLAG_SUPER)
 			scrub_submit(sctx);
 	}
 
@@ -2295,12 +2408,11 @@ static void scrub_bio_end_io_worker(struct btrfs_work *work)
 
 static inline void __scrub_mark_bitmap(struct scrub_parity *sparity,
 				       unsigned long *bitmap,
-				       u64 start, u64 len)
+				       u64 start, u32 len)
 {
 	u64 offset;
-	u64 nsectors64;
 	u32 nsectors;
-	int sectorsize = sparity->sctx->fs_info->sectorsize;
+	u32 sectorsize_bits = sparity->sctx->fs_info->sectorsize_bits;
 
 	if (len >= sparity->stripe_len) {
 		bitmap_set(bitmap, 0, sparity->nsectors);
@@ -2309,11 +2421,8 @@ static inline void __scrub_mark_bitmap(struct scrub_parity *sparity,
 
 	start -= sparity->logic_start;
 	start = div64_u64_rem(start, sparity->stripe_len, &offset);
-	offset = div_u64(offset, sectorsize);
-	nsectors64 = div_u64(len, sectorsize);
-
-	ASSERT(nsectors64 < UINT_MAX);
-	nsectors = (u32)nsectors64;
+	offset = offset >> sectorsize_bits;
+	nsectors = len >> sectorsize_bits;
 
 	if (offset + nsectors <= sparity->nsectors) {
 		bitmap_set(bitmap, offset, nsectors);
@@ -2325,13 +2434,13 @@ static inline void __scrub_mark_bitmap(struct scrub_parity *sparity,
 }
 
 static inline void scrub_parity_mark_sectors_error(struct scrub_parity *sparity,
-						   u64 start, u64 len)
+						   u64 start, u32 len)
 {
 	__scrub_mark_bitmap(sparity, sparity->ebitmap, start, len);
 }
 
 static inline void scrub_parity_mark_sectors_data(struct scrub_parity *sparity,
-						  u64 start, u64 len)
+						  u64 start, u32 len)
 {
 	__scrub_mark_bitmap(sparity, sparity->dbitmap, start, len);
 }
@@ -2357,50 +2466,79 @@ static void scrub_block_complete(struct scrub_block *sblock)
 	if (sblock->sparity && corrupted && !sblock->data_corrected) {
 		u64 start = sblock->pagev[0]->logical;
 		u64 end = sblock->pagev[sblock->page_count - 1]->logical +
-			  PAGE_SIZE;
+			  sblock->sctx->fs_info->sectorsize;
 
+		ASSERT(end - start <= U32_MAX);
 		scrub_parity_mark_sectors_error(sblock->sparity,
 						start, end - start);
 	}
 }
 
+static void drop_csum_range(struct scrub_ctx *sctx, struct btrfs_ordered_sum *sum)
+{
+	sctx->stat.csum_discards += sum->len >> sctx->fs_info->sectorsize_bits;
+	list_del(&sum->list);
+	kfree(sum);
+}
+
+/*
+ * Find the desired csum for range [logical, logical + sectorsize), and store
+ * the csum into @csum.
+ *
+ * The search source is sctx->csum_list, which is a pre-populated list
+ * storing bytenr ordered csum ranges.  We're responsible to cleanup any range
+ * that is before @logical.
+ *
+ * Return 0 if there is no csum for the range.
+ * Return 1 if there is csum for the range and copied to @csum.
+ */
 static int scrub_find_csum(struct scrub_ctx *sctx, u64 logical, u8 *csum)
 {
-	struct btrfs_ordered_sum *sum = NULL;
-	unsigned long index;
-	unsigned long num_sectors;
+	bool found = false;
 
 	while (!list_empty(&sctx->csum_list)) {
+		struct btrfs_ordered_sum *sum = NULL;
+		unsigned long index;
+		unsigned long num_sectors;
+
 		sum = list_first_entry(&sctx->csum_list,
 				       struct btrfs_ordered_sum, list);
+		/* The current csum range is beyond our range, no csum found */
 		if (sum->bytenr > logical)
-			return 0;
-		if (sum->bytenr + sum->len > logical)
 			break;
 
-		++sctx->stat.csum_discards;
-		list_del(&sum->list);
-		kfree(sum);
-		sum = NULL;
+		/*
+		 * The current sum is before our bytenr, since scrub is always
+		 * done in bytenr order, the csum will never be used anymore,
+		 * clean it up so that later calls won't bother with the range,
+		 * and continue search the next range.
+		 */
+		if (sum->bytenr + sum->len <= logical) {
+			drop_csum_range(sctx, sum);
+			continue;
+		}
+
+		/* Now the csum range covers our bytenr, copy the csum */
+		found = true;
+		index = (logical - sum->bytenr) >> sctx->fs_info->sectorsize_bits;
+		num_sectors = sum->len >> sctx->fs_info->sectorsize_bits;
+
+		memcpy(csum, sum->sums + index * sctx->fs_info->csum_size,
+		       sctx->fs_info->csum_size);
+
+		/* Cleanup the range if we're at the end of the csum range */
+		if (index == num_sectors - 1)
+			drop_csum_range(sctx, sum);
+		break;
 	}
-	if (!sum)
+	if (!found)
 		return 0;
-
-	index = div_u64(logical - sum->bytenr, sctx->fs_info->sectorsize);
-	ASSERT(index < UINT_MAX);
-
-	num_sectors = sum->len / sctx->fs_info->sectorsize;
-	memcpy(csum, sum->sums + index * sctx->csum_size, sctx->csum_size);
-	if (index == num_sectors - 1) {
-		list_del(&sum->list);
-		kfree(sum);
-	}
 	return 1;
 }
 
 /* scrub extent tries to collect up to 64 kB for each bio */
 static int scrub_extent(struct scrub_ctx *sctx, struct map_lookup *map,
-			u64 logical, u64 len,
+			u64 logical, u32 len,
 			u64 physical, struct btrfs_device *dev, u64 flags,
 			u64 gen, int mirror_num, u64 physical_for_dev_replace)
 {
@@ -2432,7 +2570,7 @@ static int scrub_extent(struct scrub_ctx *sctx, struct map_lookup *map,
 	}
 
 	while (len) {
-		u64 l = min_t(u64, len, blocksize);
+		u32 l = min(len, blocksize);
 		int have_csum = 0;
 
 		if (flags & BTRFS_EXTENT_FLAG_DATA) {
@@ -2442,7 +2580,7 @@ static int scrub_extent(struct scrub_ctx *sctx, struct map_lookup *map,
 				++sctx->stat.no_csum;
 		}
 		ret = scrub_pages(sctx, logical, l, physical, dev, flags, gen,
-				  mirror_num, have_csum ? csum : NULL, 0,
+				  mirror_num, have_csum ? csum : NULL,
 				  physical_for_dev_replace);
 		if (ret)
 			return ret;
@@ -2455,13 +2593,16 @@ static int scrub_extent(struct scrub_ctx *sctx, struct map_lookup *map,
 }
 
 static int scrub_pages_for_parity(struct scrub_parity *sparity,
-				  u64 logical, u64 len,
+				  u64 logical, u32 len,
 				  u64 physical, struct btrfs_device *dev,
 				  u64 flags, u64 gen, int mirror_num, u8 *csum)
 {
 	struct scrub_ctx *sctx = sparity->sctx;
 	struct scrub_block *sblock;
+	const u32 sectorsize = sctx->fs_info->sectorsize;
 	int index;
+
+	ASSERT(IS_ALIGNED(len, sectorsize));
 
 	sblock = kzalloc(sizeof(*sblock), GFP_KERNEL);
 	if (!sblock) {
@@ -2481,7 +2622,6 @@ static int scrub_pages_for_parity(struct scrub_parity *sparity,
 
 	for (index = 0; len > 0; index++) {
 		struct scrub_page *spage;
-		u64 l = min_t(u64, len, PAGE_SIZE);
 
 		spage = kzalloc(sizeof(*spage), GFP_KERNEL);
 		if (!spage) {
@@ -2508,7 +2648,7 @@ leave_nomem:
 		spage->mirror_num = mirror_num;
 		if (csum) {
 			spage->have_csum = 1;
-			memcpy(spage->csum, csum, sctx->csum_size);
+			memcpy(spage->csum, csum, sctx->fs_info->csum_size);
 		} else {
 			spage->have_csum = 0;
 		}
@@ -2516,9 +2656,12 @@ leave_nomem:
 		spage->page = alloc_page(GFP_KERNEL);
 		if (!spage->page)
 			goto leave_nomem;
-		len -= l;
-		logical += l;
-		physical += l;
+
+
+		/* Iterate over the stripe range in sectorsize steps */
+		len -= sectorsize;
+		logical += sectorsize;
+		physical += sectorsize;
 	}
 
 	WARN_ON(sblock->page_count == 0);
@@ -2539,7 +2682,7 @@ leave_nomem:
 }
 
 static int scrub_extent_for_parity(struct scrub_parity *sparity,
-				   u64 logical, u64 len,
+				   u64 logical, u32 len,
 				   u64 physical, struct btrfs_device *dev,
 				   u64 flags, u64 gen, int mirror_num)
 {
@@ -2563,7 +2706,7 @@ static int scrub_extent_for_parity(struct scrub_parity *sparity,
 	}
 
 	while (len) {
-		u64 l = min_t(u64, len, blocksize);
+		u32 l = min(len, blocksize);
 		int have_csum = 0;
 
 		if (flags & BTRFS_EXTENT_FLAG_DATA) {
@@ -2767,7 +2910,8 @@ static noinline_for_stack int scrub_raid56_parity(struct scrub_ctx *sctx,
 	u64 generation;
 	u64 extent_logical;
 	u64 extent_physical;
-	u64 extent_len;
+	/* Check the comment in scrub_stripe() for why u32 is enough here */
+	u32 extent_len;
 	u64 mapped_length;
 	struct btrfs_device *extent_dev;
 	struct scrub_parity *sparity;
@@ -2776,7 +2920,8 @@ static noinline_for_stack int scrub_raid56_parity(struct scrub_ctx *sctx,
 	int extent_mirror_num;
 	int stop_loop = 0;
 
-	nsectors = div_u64(map->stripe_len, fs_info->sectorsize);
+	ASSERT(map->stripe_len <= U32_MAX);
+	nsectors = map->stripe_len >> fs_info->sectorsize_bits;
 	bitmap_len = scrub_calc_parity_bitmap_len(nsectors);
 	sparity = kzalloc(sizeof(struct scrub_parity) + 2 * bitmap_len,
 			  GFP_NOFS);
@@ -2787,6 +2932,7 @@ static noinline_for_stack int scrub_raid56_parity(struct scrub_ctx *sctx,
 		return -ENOMEM;
 	}
 
+	ASSERT(map->stripe_len <= U32_MAX);
 	sparity->stripe_len = map->stripe_len;
 	sparity->nsectors = nsectors;
 	sparity->sctx = sctx;
@@ -2881,6 +3027,7 @@ static noinline_for_stack int scrub_raid56_parity(struct scrub_ctx *sctx,
 			}
 again:
 			extent_logical = key.objectid;
+			ASSERT(bytes <= U32_MAX);
 			extent_len = bytes;
 
 			if (extent_logical < logic_start) {
@@ -2959,9 +3106,11 @@ next:
 		logic_start += map->stripe_len;
 	}
 out:
-	if (ret < 0)
+	if (ret < 0) {
+		ASSERT(logic_end - logic_start <= U32_MAX);
 		scrub_parity_mark_sectors_error(sparity, logic_start,
 						logic_end - logic_start);
+	}
 	scrub_parity_put(sparity);
 	scrub_submit(sctx);
 	mutex_lock(&sctx->wr_lock);
@@ -2970,6 +3119,46 @@ out:
 
 	btrfs_release_path(path);
 	return ret < 0 ? ret : 0;
+}
+
+static void sync_replace_for_zoned(struct scrub_ctx *sctx)
+{
+	if (!btrfs_is_zoned(sctx->fs_info))
+		return;
+
+	sctx->flush_all_writes = true;
+	scrub_submit(sctx);
+	mutex_lock(&sctx->wr_lock);
+	scrub_wr_submit(sctx);
+	mutex_unlock(&sctx->wr_lock);
+
+	wait_event(sctx->list_wait, atomic_read(&sctx->bios_in_flight) == 0);
+}
+
+static int sync_write_pointer_for_zoned(struct scrub_ctx *sctx, u64 logical,
+					u64 physical, u64 physical_end)
+{
+	struct btrfs_fs_info *fs_info = sctx->fs_info;
+	int ret = 0;
+
+	if (!btrfs_is_zoned(fs_info))
+		return 0;
+
+	wait_event(sctx->list_wait, atomic_read(&sctx->bios_in_flight) == 0);
+
+	mutex_lock(&sctx->wr_lock);
+	if (sctx->write_pointer < physical_end) {
+		ret = btrfs_sync_zone_write_pointer(sctx->wr_tgtdev, logical,
+						    physical,
+						    sctx->write_pointer);
+		if (ret)
+			btrfs_err(fs_info,
+				  "zoned: failed to recover write pointer");
+	}
+	mutex_unlock(&sctx->wr_lock);
+	btrfs_dev_clear_zone_empty(sctx->wr_tgtdev, physical);
+
+	return ret;
 }
 
 static noinline_for_stack int scrub_stripe(struct scrub_ctx *sctx,
@@ -3003,7 +3192,11 @@ static noinline_for_stack int scrub_stripe(struct scrub_ctx *sctx,
 	u64 offset;
 	u64 extent_logical;
 	u64 extent_physical;
-	u64 extent_len;
+	/*
+	 * Unlike chunk length, extent length should never go beyond
+	 * BTRFS_MAX_EXTENT_SIZE, thus u32 is enough here.
+	 */
+	u32 extent_len;
 	u64 stripe_logical;
 	u64 stripe_end;
 	struct btrfs_device *extent_dev;
@@ -3013,28 +3206,23 @@ static noinline_for_stack int scrub_stripe(struct scrub_ctx *sctx,
 	physical = map->stripes[num].physical;
 	offset = 0;
 	nstripes = div64_u64(length, map->stripe_len);
+	mirror_num = 1;
+	increment = map->stripe_len;
 	if (map->type & BTRFS_BLOCK_GROUP_RAID0) {
 		offset = map->stripe_len * num;
 		increment = map->stripe_len * map->num_stripes;
-		mirror_num = 1;
 	} else if (map->type & BTRFS_BLOCK_GROUP_RAID10) {
 		int factor = map->num_stripes / map->sub_stripes;
 		offset = map->stripe_len * (num / map->sub_stripes);
 		increment = map->stripe_len * factor;
 		mirror_num = num % map->sub_stripes + 1;
 	} else if (map->type & BTRFS_BLOCK_GROUP_RAID1_MASK) {
-		increment = map->stripe_len;
 		mirror_num = num % map->num_stripes + 1;
 	} else if (map->type & BTRFS_BLOCK_GROUP_DUP) {
-		increment = map->stripe_len;
 		mirror_num = num % map->num_stripes + 1;
 	} else if (map->type & BTRFS_BLOCK_GROUP_RAID56_MASK) {
 		get_raid56_logic_offset(physical, num, map, &offset, NULL);
 		increment = map->stripe_len * nr_data_stripes(map);
-		mirror_num = 1;
-	} else {
-		increment = map->stripe_len;
-		mirror_num = 1;
 	}
 
 	path = btrfs_alloc_path();
@@ -3084,17 +3272,21 @@ static noinline_for_stack int scrub_stripe(struct scrub_ctx *sctx,
 	key_end.offset = (u64)-1;
 	reada1 = btrfs_reada_add(root, &key, &key_end);
 
-	key.objectid = BTRFS_EXTENT_CSUM_OBJECTID;
-	key.type = BTRFS_EXTENT_CSUM_KEY;
-	key.offset = logical;
-	key_end.objectid = BTRFS_EXTENT_CSUM_OBJECTID;
-	key_end.type = BTRFS_EXTENT_CSUM_KEY;
-	key_end.offset = logic_end;
-	reada2 = btrfs_reada_add(csum_root, &key, &key_end);
+	if (cache->flags & BTRFS_BLOCK_GROUP_DATA) {
+		key.objectid = BTRFS_EXTENT_CSUM_OBJECTID;
+		key.type = BTRFS_EXTENT_CSUM_KEY;
+		key.offset = logical;
+		key_end.objectid = BTRFS_EXTENT_CSUM_OBJECTID;
+		key_end.type = BTRFS_EXTENT_CSUM_KEY;
+		key_end.offset = logic_end;
+		reada2 = btrfs_reada_add(csum_root, &key, &key_end);
+	} else {
+		reada2 = NULL;
+	}
 
 	if (!IS_ERR(reada1))
 		btrfs_reada_wait(reada1);
-	if (!IS_ERR(reada2))
+	if (!IS_ERR_OR_NULL(reada2))
 		btrfs_reada_wait(reada2);
 
 
@@ -3103,6 +3295,14 @@ static noinline_for_stack int scrub_stripe(struct scrub_ctx *sctx,
 	 * the scrub. This might currently (crc32) end up to be about 1MB
 	 */
 	blk_start_plug(&plug);
+
+	if (sctx->is_dev_replace &&
+	    btrfs_dev_is_sequential(sctx->wr_tgtdev, physical)) {
+		mutex_lock(&sctx->wr_lock);
+		sctx->write_pointer = physical;
+		mutex_unlock(&sctx->wr_lock);
+		sctx->flush_all_writes = true;
+	}
 
 	/*
 	 * now find all extents for each stripe and scrub them
@@ -3248,6 +3448,7 @@ static noinline_for_stack int scrub_stripe(struct scrub_ctx *sctx,
 
 again:
 			extent_logical = key.objectid;
+			ASSERT(bytes <= U32_MAX);
 			extent_len = bytes;
 
 			/*
@@ -3290,6 +3491,9 @@ again:
 
 			if (ret)
 				goto out;
+
+			if (sctx->is_dev_replace)
+				sync_replace_for_zoned(sctx);
 
 			if (extent_logical + extent_len <
 			    key.objectid + bytes) {
@@ -3358,6 +3562,17 @@ out:
 	blk_finish_plug(&plug);
 	btrfs_free_path(path);
 	btrfs_free_path(ppath);
+
+	if (sctx->is_dev_replace && ret >= 0) {
+		int ret2;
+
+		ret2 = sync_write_pointer_for_zoned(sctx, base + offset,
+						    map->stripes[num].physical,
+						    physical_end);
+		if (ret2)
+			ret = ret2;
+	}
+
 	return ret < 0 ? ret : 0;
 }
 
@@ -3411,6 +3626,25 @@ out:
 	free_extent_map(em);
 
 	return ret;
+}
+
+static int finish_extent_writes_for_zoned(struct btrfs_root *root,
+					  struct btrfs_block_group *cache)
+{
+	struct btrfs_fs_info *fs_info = cache->fs_info;
+	struct btrfs_trans_handle *trans;
+
+	if (!btrfs_is_zoned(fs_info))
+		return 0;
+
+	btrfs_wait_block_group_reservations(cache);
+	btrfs_wait_nocow_writers(cache);
+	btrfs_wait_ordered_roots(fs_info, U64_MAX, cache->start, cache->length);
+
+	trans = btrfs_join_transaction(root);
+	if (IS_ERR(trans))
+		return PTR_ERR(trans);
+	return btrfs_commit_transaction(trans);
 }
 
 static noinline_for_stack
@@ -3499,6 +3733,16 @@ int scrub_enumerate_chunks(struct scrub_ctx *sctx,
 		if (!cache)
 			goto skip;
 
+		if (sctx->is_dev_replace && btrfs_is_zoned(fs_info)) {
+			spin_lock(&cache->lock);
+			if (!cache->to_copy) {
+				spin_unlock(&cache->lock);
+				btrfs_put_block_group(cache);
+				goto skip;
+			}
+			spin_unlock(&cache->lock);
+		}
+
 		/*
 		 * Make sure that while we are scrubbing the corresponding block
 		 * group doesn't get its logical address and its device extents
@@ -3557,6 +3801,16 @@ int scrub_enumerate_chunks(struct scrub_ctx *sctx,
 		 * group is not RO.
 		 */
 		ret = btrfs_inc_block_group_ro(cache, sctx->is_dev_replace);
+		if (!ret && sctx->is_dev_replace) {
+			ret = finish_extent_writes_for_zoned(root, cache);
+			if (ret) {
+				btrfs_dec_block_group_ro(cache);
+				scrub_pause_off(fs_info);
+				btrfs_put_block_group(cache);
+				break;
+			}
+		}
+
 		if (ret == 0) {
 			ro_set = 1;
 		} else if (ret == -ENOSPC && !sctx->is_dev_replace) {
@@ -3568,6 +3822,13 @@ int scrub_enumerate_chunks(struct scrub_ctx *sctx,
 			 * commit_transactions.
 			 */
 			ro_set = 0;
+		} else if (ret == -ETXTBSY) {
+			btrfs_warn(fs_info,
+		   "skipping scrub of block group %llu due to active swapfile",
+				   cache->start);
+			scrub_pause_off(fs_info);
+			ret = 0;
+			goto skip_unfreeze;
 		} else {
 			btrfs_warn(fs_info,
 				   "failed setting block group ro: %d", ret);
@@ -3630,6 +3891,11 @@ int scrub_enumerate_chunks(struct scrub_ctx *sctx,
 
 		scrub_pause_off(fs_info);
 
+		if (sctx->is_dev_replace &&
+		    !btrfs_finish_block_group_to_copy(dev_replace->srcdev,
+						      cache, found_key.offset))
+			ro_set = 0;
+
 		down_write(&dev_replace->rwsem);
 		dev_replace->cursor_left = dev_replace->cursor_right;
 		dev_replace->item_needs_writeback = 1;
@@ -3657,7 +3923,7 @@ int scrub_enumerate_chunks(struct scrub_ctx *sctx,
 		} else {
 			spin_unlock(&cache->lock);
 		}
-
+skip_unfreeze:
 		btrfs_unfreeze_block_group(cache);
 		btrfs_put_block_group(cache);
 		if (ret)
@@ -3704,10 +3970,12 @@ static noinline_for_stack int scrub_supers(struct scrub_ctx *sctx,
 		if (bytenr + BTRFS_SUPER_INFO_SIZE >
 		    scrub_dev->commit_total_bytes)
 			break;
+		if (!btrfs_check_super_location(scrub_dev, bytenr))
+			continue;
 
 		ret = scrub_pages(sctx, bytenr, BTRFS_SUPER_INFO_SIZE, bytenr,
 				  scrub_dev, BTRFS_EXTENT_FLAG_SUPER, gen, i,
-				  NULL, 1, bytenr);
+				  NULL, bytenr);
 		if (ret)
 			return ret;
 	}
@@ -3821,14 +4089,6 @@ int btrfs_scrub_dev(struct btrfs_fs_info *fs_info, u64 devid, u64 start,
 		return -EINVAL;
 	}
 
-	if (fs_info->sectorsize != PAGE_SIZE) {
-		/* not supported for data w/o checksums */
-		btrfs_err_rl(fs_info,
-			   "scrub: size assumption sectorsize != PAGE_SIZE (%d != %lu) fails",
-		       fs_info->sectorsize, PAGE_SIZE);
-		return -EINVAL;
-	}
-
 	if (fs_info->nodesize >
 	    PAGE_SIZE * SCRUB_MAX_PAGES_PER_BLOCK ||
 	    fs_info->sectorsize > PAGE_SIZE * SCRUB_MAX_PAGES_PER_BLOCK) {
@@ -3855,7 +4115,7 @@ int btrfs_scrub_dev(struct btrfs_fs_info *fs_info, u64 devid, u64 start,
 		goto out_free_ctx;
 
 	mutex_lock(&fs_info->fs_devices->device_list_mutex);
-	dev = btrfs_find_device(fs_info->fs_devices, devid, NULL, NULL, true);
+	dev = btrfs_find_device(fs_info->fs_devices, devid, NULL, NULL);
 	if (!dev || (test_bit(BTRFS_DEV_STATE_MISSING, &dev->dev_state) &&
 		     !is_dev_replace)) {
 		mutex_unlock(&fs_info->fs_devices->device_list_mutex);
@@ -4032,7 +4292,7 @@ int btrfs_scrub_progress(struct btrfs_fs_info *fs_info, u64 devid,
 	struct scrub_ctx *sctx = NULL;
 
 	mutex_lock(&fs_info->fs_devices->device_list_mutex);
-	dev = btrfs_find_device(fs_info->fs_devices, devid, NULL, NULL, true);
+	dev = btrfs_find_device(fs_info->fs_devices, devid, NULL, NULL);
 	if (dev)
 		sctx = dev->scrub_ctx;
 	if (sctx)
@@ -4043,7 +4303,7 @@ int btrfs_scrub_progress(struct btrfs_fs_info *fs_info, u64 devid,
 }
 
 static void scrub_remap_extent(struct btrfs_fs_info *fs_info,
-			       u64 extent_logical, u64 extent_len,
+			       u64 extent_logical, u32 extent_len,
 			       u64 *extent_physical,
 			       struct btrfs_device **extent_dev,
 			       int *extent_mirror_num)

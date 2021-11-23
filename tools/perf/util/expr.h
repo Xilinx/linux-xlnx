@@ -3,7 +3,7 @@
 #define PARSE_CTX_H 1
 
 // There are fixes that need to land upstream before we can use libbpf's headers,
-// for now use our copy uncoditionally, since the data structures at this point
+// for now use our copy unconditionally, since the data structures at this point
 // are exactly the same, no problem.
 //#ifdef HAVE_LIBBPF_SUPPORT
 //#include <bpf/hashmap.h>
@@ -23,19 +23,7 @@ struct expr_parse_ctx {
 	struct expr_id	*parent;
 };
 
-struct expr_id_data {
-	union {
-		double val;
-		struct {
-			const char *metric_name;
-			const char *metric_expr;
-			bool counted;
-		} ref;
-		struct expr_id	*parent;
-	};
-
-	bool is_ref;
-};
+struct expr_id_data;
 
 struct expr_scanner_ctx {
 	int start_token;
@@ -56,5 +44,8 @@ int expr__parse(double *final_val, struct expr_parse_ctx *ctx,
 		const char *expr, int runtime);
 int expr__find_other(const char *expr, const char *one,
 		struct expr_parse_ctx *ids, int runtime);
+
+double expr_id_data__value(const struct expr_id_data *data);
+struct expr_id *expr_id_data__parent(struct expr_id_data *data);
 
 #endif

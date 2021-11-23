@@ -147,12 +147,12 @@ static void prog_load(void)
 		 */
 		BPF_MOV64_REG(BPF_REG_9, BPF_REG_0),
 		BPF_MOV64_IMM(BPF_REG_1, 1),
-		BPF_STX_XADD(BPF_DW, BPF_REG_9, BPF_REG_1,
-				offsetof(struct stats, packets)),
+		BPF_ATOMIC_OP(BPF_DW, BPF_ADD, BPF_REG_9, BPF_REG_1,
+			      offsetof(struct stats, packets)),
 		BPF_LDX_MEM(BPF_W, BPF_REG_1, BPF_REG_6,
 				offsetof(struct __sk_buff, len)),
-		BPF_STX_XADD(BPF_DW, BPF_REG_9, BPF_REG_1,
-				offsetof(struct stats, bytes)),
+		BPF_ATOMIC_OP(BPF_DW, BPF_ADD, BPF_REG_9, BPF_REG_1,
+			      offsetof(struct stats, bytes)),
 		BPF_LDX_MEM(BPF_W, BPF_REG_0, BPF_REG_6,
 				offsetof(struct __sk_buff, len)),
 		BPF_EXIT_INSN(),
@@ -167,7 +167,7 @@ static void prog_load(void)
 static void prog_attach_iptables(char *file)
 {
 	int ret;
-	char rules[100];
+	char rules[256];
 
 	if (bpf_obj_pin(prog_fd, file))
 		error(1, errno, "bpf_obj_pin");
@@ -175,8 +175,13 @@ static void prog_attach_iptables(char *file)
 		printf("file path too long: %s\n", file);
 		exit(1);
 	}
-	sprintf(rules, "iptables -A OUTPUT -m bpf --object-pinned %s -j ACCEPT",
-		file);
+	ret = snprintf(rules, sizeof(rules),
+		       "iptables -A OUTPUT -m bpf --object-pinned %s -j ACCEPT",
+		       file);
+	if (ret < 0 || ret >= sizeof(rules)) {
+		printf("error constructing iptables command\n");
+		exit(1);
+	}
 	ret = system(rules);
 	if (ret < 0) {
 		printf("iptables rule update failed: %d/n", WEXITSTATUS(ret));
@@ -313,7 +318,7 @@ int main(int argc, char *argv[])
 			print_table();
 			printf("\n");
 			sleep(1);
-		};
+		}
 	} else if (cfg_test_cookie) {
 		udp_client();
 	}

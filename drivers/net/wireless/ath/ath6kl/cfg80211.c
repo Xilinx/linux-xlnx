@@ -3303,8 +3303,8 @@ static int ath6kl_cfg80211_sscan_start(struct wiphy *wiphy,
 		if (ret < 0)
 			return ret;
 	} else {
-		 ret = ath6kl_wmi_bssfilter_cmd(ar->wmi, vif->fw_vif_idx,
-						MATCHED_SSID_FILTER, 0);
+		ret = ath6kl_wmi_bssfilter_cmd(ar->wmi, vif->fw_vif_idx,
+					       MATCHED_SSID_FILTER, 0);
 		if (ret < 0)
 			return ret;
 	}
@@ -3648,7 +3648,7 @@ void ath6kl_cfg80211_vif_cleanup(struct ath6kl_vif *vif)
 		kfree(mc_filter);
 	}
 
-	unregister_netdevice(vif->ndev);
+	cfg80211_unregister_netdevice(vif->ndev);
 
 	ar->num_vif--;
 }
@@ -3821,7 +3821,7 @@ struct wireless_dev *ath6kl_interface_add(struct ath6kl *ar, const char *name,
 
 	netdev_set_default_ethtool_ops(ndev, &ath6kl_ethtool_ops);
 
-	if (register_netdevice(ndev))
+	if (cfg80211_register_netdevice(ndev))
 		goto err;
 
 	ar->avail_idx_map &= ~BIT(fw_vif_idx);

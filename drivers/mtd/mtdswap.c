@@ -1053,7 +1053,6 @@ static int mtdswap_writesect(struct mtd_blktrans_dev *dev,
 	if (ret < 0)
 		return ret;
 
-	eb = d->eb_data + (newblock / d->pages_per_eblk);
 	d->page_data[page] = newblock;
 
 	return 0;
@@ -1485,19 +1484,7 @@ static struct mtd_blktrans_ops mtdswap_ops = {
 	.owner		= THIS_MODULE,
 };
 
-static int __init mtdswap_modinit(void)
-{
-	return register_mtd_blktrans(&mtdswap_ops);
-}
-
-static void __exit mtdswap_modexit(void)
-{
-	deregister_mtd_blktrans(&mtdswap_ops);
-}
-
-module_init(mtdswap_modinit);
-module_exit(mtdswap_modexit);
-
+module_mtd_blktrans(mtdswap_ops);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Jarkko Lavinen <jarkko.lavinen@nokia.com>");

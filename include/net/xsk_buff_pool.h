@@ -73,6 +73,11 @@ struct xsk_buff_pool {
 	bool dma_need_sync;
 	bool unaligned;
 	void *addrs;
+	/* Mutual exclusion of the completion ring in the SKB mode. Two cases to protect:
+	 * NAPI TX thread and sendmsg error paths in the SKB destructor callback and when
+	 * sockets share a single cq when the same netdev and queue id is shared.
+	 */
+	spinlock_t cq_lock;
 	struct xdp_buff_xsk *free_heads[];
 };
 
@@ -142,11 +147,16 @@ static inline bool xp_desc_crosses_non_contig_pg(struct xsk_buff_pool *pool,
 {
 	bool cross_pg = (addr & (PAGE_SIZE - 1)) + len > PAGE_SIZE;
 
-	if (pool->dma_pages_cnt && cross_pg) {
+	if (likely(!cross_pg))
+		return false;
+
+	if (pool->dma_pages_cnt) {
 		return !(pool->dma_pages[addr >> PAGE_SHIFT] &
 			 XSK_NEXT_PG_CONTIG_MASK);
 	}
-	return false;
+
+	/* skb path */
+	return addr + len > pool->addrs_cnt;
 }
 
 static inline u64 xp_aligned_extract_addr(struct xsk_buff_pool *pool, u64 addr)

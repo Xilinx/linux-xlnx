@@ -778,7 +778,7 @@ static int qup_i2c_bam_schedule_desc(struct qup_i2c_dev *qup)
 			ret = -EINVAL;
 
 			/* abort TX descriptors */
-			dmaengine_terminate_all(qup->btx.dma);
+			dmaengine_terminate_sync(qup->btx.dma);
 			goto desc_err;
 		}
 
@@ -1603,7 +1603,7 @@ out:
 
 static u32 qup_i2c_func(struct i2c_adapter *adap)
 {
-	return I2C_FUNC_I2C | (I2C_FUNC_SMBUS_EMUL & ~I2C_FUNC_SMBUS_QUICK);
+	return I2C_FUNC_I2C | (I2C_FUNC_SMBUS_EMUL_ALL & ~I2C_FUNC_SMBUS_QUICK);
 }
 
 static const struct i2c_algorithm qup_i2c_algo = {

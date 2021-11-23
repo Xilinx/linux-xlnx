@@ -9,12 +9,12 @@
 #include <linux/kallsyms.h>
 #include <linux/kthread.h>
 #include <linux/module.h>
+#include <linux/timer.h>
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/kprobes.h>
 #include <linux/wait.h>
 #include <asm/irq.h>
-#include <asm/delay.h>
 
 #define BT_BUF_SIZE (PAGE_SIZE * 4)
 
@@ -64,8 +64,8 @@ static noinline int test_unwind(struct task_struct *task, struct pt_regs *regs,
 			break;
 		if (state.reliable && !addr) {
 			pr_err("unwind state reliable but addr is 0\n");
-			kfree(bt);
-			return -EINVAL;
+			ret = -EINVAL;
+			break;
 		}
 		sprint_symbol(sym, addr);
 		if (bt_pos < BT_BUF_SIZE) {
@@ -120,7 +120,7 @@ static struct unwindme *unwindme;
 #define UWM_REGS		0x2	/* Pass regs to test_unwind(). */
 #define UWM_SP			0x4	/* Pass sp to test_unwind(). */
 #define UWM_CALLER		0x8	/* Unwind starting from caller. */
-#define UWM_SWITCH_STACK	0x10	/* Use CALL_ON_STACK. */
+#define UWM_SWITCH_STACK	0x10	/* Use call_on_stack. */
 #define UWM_IRQ			0x20	/* Unwind from irq context. */
 #define UWM_PGM			0x40	/* Unwind from program check handler. */
 
@@ -205,12 +205,16 @@ static noinline int unwindme_func3(struct unwindme *u)
 /* This function must appear in the backtrace. */
 static noinline int unwindme_func2(struct unwindme *u)
 {
+	unsigned long flags;
 	int rc;
 
 	if (u->flags & UWM_SWITCH_STACK) {
-		preempt_disable();
-		rc = CALL_ON_STACK(unwindme_func3, S390_lowcore.nodat_stack, 1, u);
-		preempt_enable();
+		local_irq_save(flags);
+		local_mcck_disable();
+		rc = call_on_stack(1, S390_lowcore.nodat_stack,
+				   int, unwindme_func3, struct unwindme *, u);
+		local_mcck_enable();
+		local_irq_restore(flags);
 		return rc;
 	} else {
 		return unwindme_func3(u);
@@ -223,31 +227,27 @@ static noinline int unwindme_func1(void *u)
 	return unwindme_func2((struct unwindme *)u);
 }
 
-static void unwindme_irq_handler(struct ext_code ext_code,
-				       unsigned int param32,
-				       unsigned long param64)
+static void unwindme_timer_fn(struct timer_list *unused)
 {
 	struct unwindme *u = READ_ONCE(unwindme);
 
-	if (u && u->task == current) {
+	if (u) {
 		unwindme = NULL;
 		u->task = NULL;
 		u->ret = unwindme_func1(u);
+		complete(&u->task_ready);
 	}
 }
 
+static struct timer_list unwind_timer;
+
 static int test_unwind_irq(struct unwindme *u)
 {
-	preempt_disable();
-	if (register_external_irq(EXT_IRQ_CLK_COMP, unwindme_irq_handler)) {
-		pr_info("Couldn't register external interrupt handler");
-		return -1;
-	}
-	u->task = current;
 	unwindme = u;
-	udelay(1);
-	unregister_external_irq(EXT_IRQ_CLK_COMP, unwindme_irq_handler);
-	preempt_enable();
+	init_completion(&u->task_ready);
+	timer_setup(&unwind_timer, unwindme_timer_fn, 0);
+	mod_timer(&unwind_timer, jiffies + 1);
+	wait_for_completion(&u->task_ready);
 	return u->ret;
 }
 
@@ -297,19 +297,22 @@ static int test_unwind_flags(int flags)
 
 static int test_unwind_init(void)
 {
-	int ret = 0;
+	int failed = 0;
+	int total = 0;
 
 #define TEST(flags)							\
 do {									\
 	pr_info("[ RUN      ] " #flags "\n");				\
+	total++;							\
 	if (!test_unwind_flags((flags))) {				\
 		pr_info("[       OK ] " #flags "\n");			\
 	} else {							\
 		pr_err("[  FAILED  ] " #flags "\n");			\
-		ret = -EINVAL;						\
+		failed++;						\
 	}								\
 } while (0)
 
+	pr_info("running stack unwinder tests");
 	TEST(UWM_DEFAULT);
 	TEST(UWM_SP);
 	TEST(UWM_REGS);
@@ -336,8 +339,14 @@ do {									\
 	TEST(UWM_PGM | UWM_SP | UWM_REGS);
 #endif
 #undef TEST
+	if (failed) {
+		pr_err("%d of %d stack unwinder tests failed", failed, total);
+		WARN(1, "%d of %d stack unwinder tests failed", failed, total);
+	} else {
+		pr_info("all %d stack unwinder tests passed", total);
+	}
 
-	return ret;
+	return failed ? -EINVAL : 0;
 }
 
 static void test_unwind_exit(void)

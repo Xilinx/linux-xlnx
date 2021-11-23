@@ -26,6 +26,7 @@ properties:
     oneOf:
       - const: fsl,imx6sx-mu
       - const: fsl,imx7ulp-mu
+      - const: fsl,imx8ulp-mu
       - const: fsl,imx8-mu-scu
       - items:
           - enum:
@@ -34,12 +35,15 @@ properties:
               - fsl,imx8mm-mu
               - fsl,imx8mn-mu
               - fsl,imx8mp-mu
+              - fsl,imx8qm-mu
               - fsl,imx8qxp-mu
           - const: fsl,imx6sx-mu
       - description: To communicate with i.MX8 SCU with fast IPC
         items:
           - const: fsl,imx8-mu-scu
-          - const: fsl,imx8qxp-mu
+          - enum:
+              - fsl,imx8qm-mu
+              - fsl,imx8qxp-mu
           - const: fsl,imx6sx-mu
 
   reg:

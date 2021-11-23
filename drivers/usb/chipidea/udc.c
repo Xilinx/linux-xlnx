@@ -26,6 +26,7 @@
 #include "bits.h"
 #include "otg.h"
 #include "otg_fsm.h"
+#include "trace.h"
 
 /* control endpoint description */
 static const struct usb_endpoint_descriptor
@@ -239,7 +240,7 @@ static int hw_ep_set_halt(struct ci_hdrc *ci, int num, int dir, int value)
 }
 
 /**
- * hw_is_port_high_speed: test if port is high speed
+ * hw_port_is_high_speed: test if port is high speed
  * @ci: the controller
  *
  * This function returns true if high speed port
@@ -571,14 +572,18 @@ static int _hardware_enqueue(struct ci_hw_ep *hwep, struct ci_hw_req *hwreq)
 	if (ret)
 		return ret;
 
-	firstnode = list_first_entry(&hwreq->tds, struct td_node, td);
-
 	lastnode = list_entry(hwreq->tds.prev,
 		struct td_node, td);
 
 	lastnode->ptr->next = cpu_to_le32(TD_TERMINATE);
 	if (!hwreq->req.no_interrupt)
 		lastnode->ptr->token |= cpu_to_le32(TD_IOC);
+
+	list_for_each_entry_safe(firstnode, lastnode, &hwreq->tds, td)
+		trace_ci_prepare_td(hwep, hwreq, firstnode);
+
+	firstnode = list_first_entry(&hwreq->tds, struct td_node, td);
+
 	wmb();
 
 	hwreq->req.actual = 0;
@@ -679,6 +684,7 @@ static int _hardware_dequeue(struct ci_hw_ep *hwep, struct ci_hw_req *hwreq)
 
 	list_for_each_entry_safe(node, tmpnode, &hwreq->tds, td) {
 		tmptoken = le32_to_cpu(node->ptr->token);
+		trace_ci_complete_td(hwep, hwreq, node);
 		if ((TD_STATUS_ACTIVE & tmptoken) != 0) {
 			int n = hw_ep_bit(hwep->num, hwep->dir);
 
@@ -2064,6 +2070,7 @@ static int udc_start(struct ci_hdrc *ci)
 	ci->gadget.name         = ci->platdata->name;
 	ci->gadget.otg_caps	= otg_caps;
 	ci->gadget.sg_supported = 1;
+	ci->gadget.irq		= ci->irq;
 
 	if (ci->platdata->flags & CI_HDRC_REQUIRES_ALIGNED_DMA)
 		ci->gadget.quirk_avoids_skb_reserve = 1;

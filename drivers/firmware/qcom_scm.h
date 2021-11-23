@@ -61,8 +61,11 @@ struct qcom_scm_res {
 };
 
 #define SCM_SMC_FNID(s, c)	((((s) & 0xFF) << 8) | ((c) & 0xFF))
-extern int scm_smc_call(struct device *dev, const struct qcom_scm_desc *desc,
-			struct qcom_scm_res *res, bool atomic);
+extern int __scm_smc_call(struct device *dev, const struct qcom_scm_desc *desc,
+			  enum qcom_scm_convention qcom_convention,
+			  struct qcom_scm_res *res, bool atomic);
+#define scm_smc_call(dev, desc, res, atomic) \
+	__scm_smc_call((dev), (desc), qcom_scm_convention, (res), (atomic))
 
 #define SCM_LEGACY_FNID(s, c)	(((s) << 10) | ((c) & 0x3ff))
 extern int scm_legacy_call_atomic(struct device *dev,
@@ -110,6 +113,10 @@ extern int scm_legacy_call(struct device *dev, const struct qcom_scm_desc *desc,
 
 #define QCOM_SCM_SVC_HDCP		0x11
 #define QCOM_SCM_HDCP_INVOKE		0x01
+
+#define QCOM_SCM_SVC_LMH			0x13
+#define QCOM_SCM_LMH_LIMIT_PROFILE_CHANGE	0x01
+#define QCOM_SCM_LMH_LIMIT_DCVSH		0x10
 
 #define QCOM_SCM_SVC_SMMU_PROGRAM		0x15
 #define QCOM_SCM_SMMU_CONFIG_ERRATA1		0x03

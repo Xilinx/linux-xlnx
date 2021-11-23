@@ -28,7 +28,6 @@ struct usbmix_ctl_map {
 	const struct usbmix_name_map *map;
 	const struct usbmix_selector_map *selector_map;
 	const struct usbmix_connector_map *connector_map;
-	int ignore_ctl_error;
 };
 
 /*
@@ -337,6 +336,13 @@ static const struct usbmix_name_map bose_companion5_map[] = {
 	{ 0 }	/* terminator */
 };
 
+/* Sennheiser Communications Headset [PC 8], the dB value is reported as -6 negative maximum  */
+static const struct usbmix_dB_map sennheiser_pc8_dB = {-9500, 0};
+static const struct usbmix_name_map sennheiser_pc8_map[] = {
+	{ 9, NULL, .dB = &sennheiser_pc8_dB },
+	{ 0 }   /* terminator */
+};
+
 /*
  * Dell usb dock with ALC4020 codec had a firmware problem where it got
  * screwed up when zero volume is passed; just skip it as a workaround
@@ -425,7 +431,6 @@ static const struct usbmix_ctl_map usbmix_ctl_maps[] = {
 	{
 		.id = USB_ID(0x041e, 0x3000),
 		.map = extigy_map,
-		.ignore_ctl_error = 1,
 	},
 	{
 		.id = USB_ID(0x041e, 0x3010),
@@ -445,27 +450,9 @@ static const struct usbmix_ctl_map usbmix_ctl_maps[] = {
 		.map = audigy2nx_map,
 		.selector_map = audigy2nx_selectors,
 	},
-	{	/* Logitech, Inc. QuickCam Pro for Notebooks */
-		.id = USB_ID(0x046d, 0x0991),
-		.ignore_ctl_error = 1,
-	},
-	{	/* Logitech, Inc. QuickCam E 3500 */
-		.id = USB_ID(0x046d, 0x09a4),
-		.ignore_ctl_error = 1,
-	},
 	{	/* Plantronics GameCom 780 */
 		.id = USB_ID(0x047f, 0xc010),
 		.map = gamecom780_map,
-	},
-	{
-		/* Hercules DJ Console (Windows Edition) */
-		.id = USB_ID(0x06f8, 0xb000),
-		.ignore_ctl_error = 1,
-	},
-	{
-		/* Hercules DJ Console (Macintosh Edition) */
-		.id = USB_ID(0x06f8, 0xd002),
-		.ignore_ctl_error = 1,
 	},
 	{
 		/* Hercules Gamesurround Muse Pocket LT
@@ -485,7 +472,6 @@ static const struct usbmix_ctl_map usbmix_ctl_maps[] = {
 	{
 		.id = USB_ID(0x08bb, 0x2702),
 		.map = linex_map,
-		.ignore_ctl_error = 1,
 	},
 	{
 		.id = USB_ID(0x0a92, 0x0091),
@@ -510,7 +496,6 @@ static const struct usbmix_ctl_map usbmix_ctl_maps[] = {
 	{
 		.id = USB_ID(0x13e5, 0x0001),
 		.map = scratch_live_map,
-		.ignore_ctl_error = 1,
 	},
 	{
 		.id = USB_ID(0x200c, 0x1018),
@@ -535,6 +520,16 @@ static const struct usbmix_ctl_map usbmix_ctl_maps[] = {
 		/* Bose Companion 5 */
 		.id = USB_ID(0x05a7, 0x1020),
 		.map = bose_companion5_map,
+	},
+	{
+		/* Corsair Virtuoso SE (wired mode) */
+		.id = USB_ID(0x1b1c, 0x0a3d),
+		.map = corsair_virtuoso_map,
+	},
+	{
+		/* Corsair Virtuoso SE (wireless mode) */
+		.id = USB_ID(0x1b1c, 0x0a3e),
+		.map = corsair_virtuoso_map,
 	},
 	{
 		/* Corsair Virtuoso (wired mode) */
@@ -582,6 +577,11 @@ static const struct usbmix_ctl_map usbmix_ctl_maps[] = {
 	{	/* Lenovo ThinkStation P620 Rear */
 		.id = USB_ID(0x17aa, 0x1046),
 		.map = lenovo_p620_rear_map,
+	},
+	{
+		/* Sennheiser Communications Headset [PC 8] */
+		.id = USB_ID(0x1395, 0x0025),
+		.map = sennheiser_pc8_map,
 	},
 	{ 0 } /* terminator */
 };

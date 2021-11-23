@@ -12,7 +12,6 @@
 #include <linux/i2c.h>
 #include <linux/init.h>
 #include <linux/module.h>
-#include <linux/platform_data/adau1977.h>
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
@@ -23,6 +22,8 @@
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
 #include <sound/tlv.h>
+
+#include <dt-bindings/sound/adi,adau1977.h>
 
 #include "adau1977.h"
 
@@ -235,8 +236,6 @@ static int adau1977_reset(struct adau1977 *adau1977)
 	ret = regmap_write(adau1977->regmap, ADAU1977_REG_POWER,
 			ADAU1977_POWER_RESET);
 	regcache_cache_bypass(adau1977->regmap, false);
-	if (ret)
-		return ret;
 
 	return ret;
 }
@@ -881,13 +880,9 @@ static const struct snd_soc_component_driver adau1977_component_driver = {
 
 static int adau1977_setup_micbias(struct adau1977 *adau1977)
 {
-	struct adau1977_platform_data *pdata = adau1977->dev->platform_data;
 	unsigned int micbias;
 
-	if (pdata)
-		micbias = pdata->micbias;
-	else if (device_property_read_u32(adau1977->dev, "adi,micbias",
-					  &micbias))
+	if (device_property_read_u32(adau1977->dev, "adi,micbias", &micbias))
 		micbias = ADAU1977_MICBIAS_8V5;
 
 	if (micbias > ADAU1977_MICBIAS_9V0) {

@@ -197,6 +197,9 @@ struct bfq_entity {
 
 	/* flag, set if the entity is counted in groups_with_pending_reqs */
 	bool in_groups_with_pending_reqs;
+
+	/* last child queue of entity created (for non-leaf entities) */
+	struct bfq_queue *last_bfqq_created;
 };
 
 struct bfq_group;
@@ -230,6 +233,8 @@ struct bfq_ttime {
 struct bfq_queue {
 	/* reference counter */
 	int ref;
+	/* counter of references from other queues for delayed stable merge */
+	int stable_ref;
 	/* parent bfq_data */
 	struct bfq_data *bfqd;
 
@@ -290,6 +295,11 @@ struct bfq_queue {
 
 	/* associated @bfq_ttime struct */
 	struct bfq_ttime ttime;
+
+	/* when bfqq started to do I/O within the last observation window */
+	u64 io_start_time;
+	/* how long bfqq has remained empty during the last observ. window */
+	u64 tot_idle_time;
 
 	/* bit vector: a 1 for each seeky requests in history */
 	u32 seek_history;
@@ -360,6 +370,8 @@ struct bfq_queue {
 
 	unsigned long first_IO_time; /* time of first I/O for this queue */
 
+	unsigned long creation_time; /* when this queue is created */
+
 	/* max service rate measured so far */
 	u32 max_service_rate;
 
@@ -371,6 +383,11 @@ struct bfq_queue {
 	 * bfq_select_queue().
 	 */
 	struct bfq_queue *waker_bfqq;
+	/* pointer to the curr. tentative waker queue, see bfq_check_waker() */
+	struct bfq_queue *tentative_waker_bfqq;
+	/* number of times the same tentative waker has been detected */
+	unsigned int num_waker_detections;
+
 	/* node for woken_list, see below */
 	struct hlist_node woken_list_node;
 	/*
@@ -407,6 +424,9 @@ struct bfq_io_cq {
 	 */
 	bool saved_IO_bound;
 
+	u64 saved_io_start_time;
+	u64 saved_tot_idle_time;
+
 	/*
 	 * Same purpose as the previous fields for the value of the
 	 * field keeping the queue's belonging to a large burst
@@ -432,9 +452,20 @@ struct bfq_io_cq {
 	 */
 	unsigned long saved_wr_coeff;
 	unsigned long saved_last_wr_start_finish;
+	unsigned long saved_service_from_wr;
 	unsigned long saved_wr_start_at_switch_to_srt;
 	unsigned int saved_wr_cur_max_time;
 	struct bfq_ttime saved_ttime;
+
+	/* Save also injection state */
+	u64 saved_last_serv_time_ns;
+	unsigned int saved_inject_limit;
+	unsigned long saved_decrease_time_jif;
+
+	/* candidate queue for a stable merge (due to close creation time) */
+	struct bfq_queue *stable_merge_bfqq;
+
+	bool stably_merged;	/* non splittable if true */
 };
 
 /**
@@ -559,6 +590,9 @@ struct bfq_data {
 	/* bfqq owning the last completed rq */
 	struct bfq_queue *last_completed_rq_bfqq;
 
+	/* last bfqq created, among those in the root group */
+	struct bfq_queue *last_bfqq_created;
+
 	/* time of last transition from empty to non-empty (ns) */
 	u64 last_empty_occupied_ns;
 
@@ -640,14 +674,6 @@ struct bfq_data {
 	 * without service-domain guarantees).
 	 */
 	unsigned int bfq_timeout;
-
-	/*
-	 * Number of consecutive requests that must be issued within
-	 * the idle time slice to set again idling to a queue which
-	 * was marked as non-I/O-bound (see the definition of the
-	 * IO_bound flag for further details).
-	 */
-	unsigned int bfq_requests_within_timer;
 
 	/*
 	 * Force device idling whenever needed to provide accurate
@@ -770,7 +796,6 @@ enum bfqq_state_flags {
 				 */
 	BFQQF_coop,		/* bfqq is shared */
 	BFQQF_split_coop,	/* shared bfqq will be split */
-	BFQQF_has_waker		/* bfqq has a waker queue */
 };
 
 #define BFQ_BFQQ_FNS(name)						\
@@ -790,7 +815,6 @@ BFQ_BFQQ_FNS(in_large_burst);
 BFQ_BFQQ_FNS(coop);
 BFQ_BFQQ_FNS(split_coop);
 BFQ_BFQQ_FNS(softrt_update);
-BFQ_BFQQ_FNS(has_waker);
 #undef BFQ_BFQQ_FNS
 
 /* Expiration reasons. */
@@ -907,7 +931,7 @@ struct bfq_group {
 
 	void *bfqd;
 
-	struct bfq_queue *async_bfqq[2][IOPRIO_BE_NR];
+	struct bfq_queue *async_bfqq[2][IOPRIO_NR_LEVELS];
 	struct bfq_queue *async_idle_bfqq;
 
 	struct bfq_entity *my_entity;
@@ -924,14 +948,12 @@ struct bfq_group {
 	struct bfq_entity entity;
 	struct bfq_sched_data sched_data;
 
-	struct bfq_queue *async_bfqq[2][IOPRIO_BE_NR];
+	struct bfq_queue *async_bfqq[2][IOPRIO_NR_LEVELS];
 	struct bfq_queue *async_idle_bfqq;
 
 	struct rb_root rq_pos_tree;
 };
 #endif
-
-struct bfq_queue *bfq_entity_to_bfqq(struct bfq_entity *entity);
 
 /* --------------- main algorithm interface ----------------- */
 

@@ -66,12 +66,14 @@
 #include <linux/acpi.h>
 #include <linux/pci.h>
 #include <linux/power_supply.h>
+#include <linux/platform_profile.h>
 #include <sound/core.h>
 #include <sound/control.h>
 #include <sound/initval.h>
 #include <linux/uaccess.h>
 #include <acpi/battery.h>
 #include <acpi/video.h>
+#include "dual_accel_detect.h"
 
 /* ThinkPad CMOS commands */
 #define TP_CMOS_VOLUME_DOWN	0
@@ -174,6 +176,12 @@ enum tpacpi_hkey_event_t {
 						     or port replicator */
 	TP_HKEY_EV_HOTPLUG_UNDOCK	= 0x4011, /* undocked from hotplug
 						     dock or port replicator */
+	/*
+	 * Thinkpad X1 Tablet series devices emit 0x4012 and 0x4013
+	 * when keyboard cover is attached, detached or folded onto the back
+	 */
+	TP_HKEY_EV_KBD_COVER_ATTACH	= 0x4012, /* keyboard cover attached */
+	TP_HKEY_EV_KBD_COVER_DETACH	= 0x4013, /* keyboard cover detached or folded back */
 
 	/* User-interface events */
 	TP_HKEY_EV_LID_CLOSE		= 0x5001, /* laptop lid closed */
@@ -1025,7 +1033,7 @@ static struct attribute_set *create_attr_set(unsigned int max_members,
 }
 
 #define destroy_attr_set(_set) \
-	kfree(_set);
+	kfree(_set)
 
 /* not multi-threaded safe, use it in a single thread per set */
 static int add_to_attr_set(struct attribute_set *s, struct attribute *attr)
@@ -3225,7 +3233,7 @@ static int hotkey_init_tablet_mode(void)
 		 * the laptop/tent/tablet mode to the EC. The bmc150 iio driver
 		 * does not support this, so skip the hotkey on these models.
 		 */
-		if (has_tablet_mode && !acpi_dev_present("BOSC0200", "1", -1))
+		if (has_tablet_mode && !dual_accel_detect())
 			tp_features.hotkey_tablet = TP_HOTKEY_TABLET_USES_GMMS;
 		type = "GMMS";
 	} else if (acpi_evalf(hkey_handle, &res, "MHKG", "qd")) {
@@ -3990,6 +3998,23 @@ static bool hotkey_notify_dockevent(const u32 hkey,
 		pr_info("undocked from hotplug port replicator\n");
 		return true;
 
+	/*
+	 * Deliberately ignore attaching and detaching the keybord cover to avoid
+	 * duplicates from intel-vbtn, which already emits SW_TABLET_MODE events
+	 * to userspace.
+	 *
+	 * Please refer to the following thread for more information and a preliminary
+	 * implementation using the GTOP ("Get Tablet OPtions") interface that could be
+	 * extended to other attachment options of the ThinkPad X1 Tablet series, such as
+	 * the Pico cartridge dock module:
+	 * https://lore.kernel.org/platform-driver-x86/38cb8265-1e30-d547-9e12-b4ae290be737@a-kobel.de/
+	 */
+	case TP_HKEY_EV_KBD_COVER_ATTACH:
+	case TP_HKEY_EV_KBD_COVER_DETACH:
+		*send_acpi_ev = false;
+		*ignore_acpi_ev = true;
+		return true;
+
 	default:
 		return false;
 	}
@@ -4028,6 +4053,7 @@ static bool hotkey_notify_usrevent(const u32 hkey,
 }
 
 static void thermal_dump_all_sensors(void);
+static void palmsensor_refresh(void);
 
 static bool hotkey_notify_6xxx(const u32 hkey,
 				 bool *send_acpi_ev,
@@ -4079,9 +4105,15 @@ static bool hotkey_notify_6xxx(const u32 hkey,
 
 	case TP_HKEY_EV_KEY_NUMLOCK:
 	case TP_HKEY_EV_KEY_FN:
-	case TP_HKEY_EV_KEY_FN_ESC:
 		/* key press events, we just ignore them as long as the EC
 		 * is still reporting them in the normal keyboard stream */
+		*send_acpi_ev = false;
+		*ignore_acpi_ev = true;
+		return true;
+
+	case TP_HKEY_EV_KEY_FN_ESC:
+		/* Get the media key status to force the status LED to update */
+		acpi_evalf(hkey_handle, NULL, "GMKS", "v");
 		*send_acpi_ev = false;
 		*ignore_acpi_ev = true;
 		return true;
@@ -4094,8 +4126,8 @@ static bool hotkey_notify_6xxx(const u32 hkey,
 
 	case TP_HKEY_EV_PALM_DETECTED:
 	case TP_HKEY_EV_PALM_UNDETECTED:
-		/* palm detected hovering the keyboard, forward to user-space
-		 * via netlink for consumption */
+		/* palm detected  - pass on to event handler */
+		palmsensor_refresh();
 		return true;
 
 	default:
@@ -6252,6 +6284,7 @@ enum thermal_access_mode {
 enum { /* TPACPI_THERMAL_TPEC_* */
 	TP_EC_THERMAL_TMP0 = 0x78,	/* ACPI EC regs TMP 0..7 */
 	TP_EC_THERMAL_TMP8 = 0xC0,	/* ACPI EC regs TMP 8..15 */
+	TP_EC_FUNCREV      = 0xEF,      /* ACPI EC Functional revision */
 	TP_EC_THERMAL_TMP_NA = -128,	/* ACPI EC sensor not available */
 
 	TPACPI_THERMAL_SENSOR_NA = -128000, /* Sensor not available */
@@ -6264,6 +6297,8 @@ struct ibm_thermal_sensors_struct {
 };
 
 static enum thermal_access_mode thermal_read_mode;
+static const struct attribute_group *thermal_attr_group;
+static bool thermal_use_labels;
 
 /* idx is zero-based */
 static int thermal_get_sensor(int idx, s32 *value)
@@ -6446,11 +6481,33 @@ static const struct attribute_group thermal_temp_input8_group = {
 #undef THERMAL_SENSOR_ATTR_TEMP
 #undef THERMAL_ATTRS
 
+static ssize_t temp1_label_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return sysfs_emit(buf, "CPU\n");
+}
+static DEVICE_ATTR_RO(temp1_label);
+
+static ssize_t temp2_label_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return sysfs_emit(buf, "GPU\n");
+}
+static DEVICE_ATTR_RO(temp2_label);
+
+static struct attribute *temp_label_attributes[] = {
+	&dev_attr_temp1_label.attr,
+	&dev_attr_temp2_label.attr,
+	NULL
+};
+
+static const struct attribute_group temp_label_attr_group = {
+	.attrs = temp_label_attributes,
+};
+
 /* --------------------------------------------------------------------- */
 
 static int __init thermal_init(struct ibm_init_struct *iibm)
 {
-	u8 t, ta1, ta2;
+	u8 t, ta1, ta2, ver = 0;
 	int i;
 	int acpi_tmp7;
 	int res;
@@ -6465,7 +6522,14 @@ static int __init thermal_init(struct ibm_init_struct *iibm)
 		 * 0x78-0x7F, 0xC0-0xC7.  Registers return 0x00 for
 		 * non-implemented, thermal sensors return 0x80 when
 		 * not available
+		 * The above rule is unfortunately flawed. This has been seen with
+		 * 0xC2 (power supply ID) causing thermal control problems.
+		 * The EC version can be determined by offset 0xEF and at least for
+		 * version 3 the Lenovo firmware team confirmed that registers 0xC0-0xC7
+		 * are not thermal registers.
 		 */
+		if (!acpi_ec_read(TP_EC_FUNCREV, &ver))
+			pr_warn("Thinkpad ACPI EC unable to access EC version\n");
 
 		ta1 = ta2 = 0;
 		for (i = 0; i < 8; i++) {
@@ -6475,11 +6539,13 @@ static int __init thermal_init(struct ibm_init_struct *iibm)
 				ta1 = 0;
 				break;
 			}
-			if (acpi_ec_read(TP_EC_THERMAL_TMP8 + i, &t)) {
-				ta2 |= t;
-			} else {
-				ta1 = 0;
-				break;
+			if (ver < 3) {
+				if (acpi_ec_read(TP_EC_THERMAL_TMP8 + i, &t)) {
+					ta2 |= t;
+				} else {
+					ta1 = 0;
+					break;
+				}
 			}
 		}
 		if (ta1 == 0) {
@@ -6492,9 +6558,14 @@ static int __init thermal_init(struct ibm_init_struct *iibm)
 				thermal_read_mode = TPACPI_THERMAL_NONE;
 			}
 		} else {
-			thermal_read_mode =
-			    (ta2 != 0) ?
-			    TPACPI_THERMAL_TPEC_16 : TPACPI_THERMAL_TPEC_8;
+			if (ver >= 3) {
+				thermal_read_mode = TPACPI_THERMAL_TPEC_8;
+				thermal_use_labels = true;
+			} else {
+				thermal_read_mode =
+					(ta2 != 0) ?
+					TPACPI_THERMAL_TPEC_16 : TPACPI_THERMAL_TPEC_8;
+			}
 		}
 	} else if (acpi_tmp7) {
 		if (tpacpi_is_ibm() &&
@@ -6516,22 +6587,28 @@ static int __init thermal_init(struct ibm_init_struct *iibm)
 
 	switch (thermal_read_mode) {
 	case TPACPI_THERMAL_TPEC_16:
-		res = sysfs_create_group(&tpacpi_hwmon->kobj,
-				&thermal_temp_input16_group);
-		if (res)
-			return res;
+		thermal_attr_group = &thermal_temp_input16_group;
 		break;
 	case TPACPI_THERMAL_TPEC_8:
 	case TPACPI_THERMAL_ACPI_TMP07:
 	case TPACPI_THERMAL_ACPI_UPDT:
-		res = sysfs_create_group(&tpacpi_hwmon->kobj,
-				&thermal_temp_input8_group);
-		if (res)
-			return res;
+		thermal_attr_group = &thermal_temp_input8_group;
 		break;
 	case TPACPI_THERMAL_NONE:
 	default:
 		return 1;
+	}
+
+	res = sysfs_create_group(&tpacpi_hwmon->kobj, thermal_attr_group);
+	if (res)
+		return res;
+
+	if (thermal_use_labels) {
+		res = sysfs_create_group(&tpacpi_hwmon->kobj, &temp_label_attr_group);
+		if (res) {
+			sysfs_remove_group(&tpacpi_hwmon->kobj, thermal_attr_group);
+			return res;
+		}
 	}
 
 	return 0;
@@ -6539,21 +6616,11 @@ static int __init thermal_init(struct ibm_init_struct *iibm)
 
 static void thermal_exit(void)
 {
-	switch (thermal_read_mode) {
-	case TPACPI_THERMAL_TPEC_16:
-		sysfs_remove_group(&tpacpi_hwmon->kobj,
-				   &thermal_temp_input16_group);
-		break;
-	case TPACPI_THERMAL_TPEC_8:
-	case TPACPI_THERMAL_ACPI_TMP07:
-	case TPACPI_THERMAL_ACPI_UPDT:
-		sysfs_remove_group(&tpacpi_hwmon->kobj,
-				   &thermal_temp_input8_group);
-		break;
-	case TPACPI_THERMAL_NONE:
-	default:
-		break;
-	}
+	if (thermal_attr_group)
+		sysfs_remove_group(&tpacpi_hwmon->kobj, thermal_attr_group);
+
+	if (thermal_use_labels)
+		sysfs_remove_group(&tpacpi_hwmon->kobj, &temp_label_attr_group);
 }
 
 static int thermal_read(struct seq_file *m)
@@ -7872,7 +7939,7 @@ static int volume_write(char *buf)
 				continue;
 			} else if (sscanf(cmd, "level %u", &l) == 1 &&
 				   l >= 0 && l <= TP_EC_VOLUME_MAX) {
-					new_level = l;
+				new_level = l;
 				continue;
 			}
 		}
@@ -8782,10 +8849,12 @@ static const struct tpacpi_quirk fan_quirk_table[] __initconst = {
 	TPACPI_Q_LNV3('N', '1', 'T', TPACPI_FAN_2CTL),	/* P71 */
 	TPACPI_Q_LNV3('N', '1', 'U', TPACPI_FAN_2CTL),	/* P51 */
 	TPACPI_Q_LNV3('N', '2', 'C', TPACPI_FAN_2CTL),	/* P52 / P72 */
+	TPACPI_Q_LNV3('N', '2', 'N', TPACPI_FAN_2CTL),	/* P53 / P73 */
 	TPACPI_Q_LNV3('N', '2', 'E', TPACPI_FAN_2CTL),	/* P1 / X1 Extreme (1st gen) */
 	TPACPI_Q_LNV3('N', '2', 'O', TPACPI_FAN_2CTL),	/* P1 / X1 Extreme (2nd gen) */
 	TPACPI_Q_LNV3('N', '2', 'V', TPACPI_FAN_2CTL),	/* P1 / X1 Extreme (3nd gen) */
 	TPACPI_Q_LNV3('N', '3', '0', TPACPI_FAN_2CTL),	/* P15 (1st gen) / P15v (1st gen) */
+	TPACPI_Q_LNV3('N', '3', '2', TPACPI_FAN_2CTL),	/* X1 Carbon (9th gen) */
 };
 
 static int __init fan_init(struct ibm_init_struct *iibm)
@@ -9839,18 +9908,25 @@ static struct ibm_struct lcdshadow_driver_data = {
 };
 
 /*************************************************************************
- * DYTC subdriver, for the Lenovo lapmode feature
+ * Thinkpad sensor interfaces
  */
+
+#define DYTC_CMD_QUERY        0 /* To get DYTC status - enable/revision */
+#define DYTC_QUERY_ENABLE_BIT 8  /* Bit        8 - 0 = disabled, 1 = enabled */
+#define DYTC_QUERY_SUBREV_BIT 16 /* Bits 16 - 27 - sub revision */
+#define DYTC_QUERY_REV_BIT    28 /* Bits 28 - 31 - revision */
 
 #define DYTC_CMD_GET          2 /* To get current IC function and mode */
 #define DYTC_GET_LAPMODE_BIT 17 /* Set when in lapmode */
 
-static bool dytc_lapmode;
+#define PALMSENSOR_PRESENT_BIT 0 /* Determine if psensor present */
+#define PALMSENSOR_ON_BIT      1 /* psensor status */
 
-static void dytc_lapmode_notify_change(void)
-{
-	sysfs_notify(&tpacpi_pdev->dev.kobj, NULL, "dytc_lapmode");
-}
+static bool has_palmsensor;
+static bool has_lapsensor;
+static bool palm_state;
+static bool lap_state;
+static int dytc_version;
 
 static int dytc_command(int command, int *output)
 {
@@ -9865,56 +9941,19 @@ static int dytc_command(int command, int *output)
 	return 0;
 }
 
-static int dytc_lapmode_get(bool *state)
+static int dytc_get_version(void)
 {
-	int output, err;
+	int err, output;
 
-	err = dytc_command(DYTC_CMD_GET, &output);
-	if (err)
-		return err;
-	*state = output & BIT(DYTC_GET_LAPMODE_BIT) ? true : false;
-	return 0;
-}
+	/* Check if we've been called before - and just return cached value */
+	if (dytc_version)
+		return dytc_version;
 
-static void dytc_lapmode_refresh(void)
-{
-	bool new_state;
-	int err;
-
-	err = dytc_lapmode_get(&new_state);
-	if (err || (new_state == dytc_lapmode))
-		return;
-
-	dytc_lapmode = new_state;
-	dytc_lapmode_notify_change();
-}
-
-/* sysfs lapmode entry */
-static ssize_t dytc_lapmode_show(struct device *dev,
-					struct device_attribute *attr,
-					char *buf)
-{
-	return snprintf(buf, PAGE_SIZE, "%d\n", dytc_lapmode);
-}
-
-static DEVICE_ATTR_RO(dytc_lapmode);
-
-static struct attribute *dytc_attributes[] = {
-	&dev_attr_dytc_lapmode.attr,
-	NULL,
-};
-
-static const struct attribute_group dytc_attr_group = {
-	.attrs = dytc_attributes,
-};
-
-static int tpacpi_dytc_init(struct ibm_init_struct *iibm)
-{
-	int err;
-
-	err = dytc_lapmode_get(&dytc_lapmode);
-	/* If support isn't available (ENODEV) then don't return an error
-	 * but just don't create the sysfs group
+	/* Otherwise query DYTC and extract version information */
+	err = dytc_command(DYTC_CMD_QUERY, &output);
+	/*
+	 * If support isn't available (ENODEV) then don't return an error
+	 * and don't create the sysfs group
 	 */
 	if (err == -ENODEV)
 		return 0;
@@ -9922,19 +9961,700 @@ static int tpacpi_dytc_init(struct ibm_init_struct *iibm)
 	if (err)
 		return err;
 
-	/* Platform supports this feature - create the group */
-	err = sysfs_create_group(&tpacpi_pdev->dev.kobj, &dytc_attr_group);
+	/* Check DYTC is enabled and supports mode setting */
+	if (output & BIT(DYTC_QUERY_ENABLE_BIT))
+		dytc_version = (output >> DYTC_QUERY_REV_BIT) & 0xF;
+
+	return 0;
+}
+
+static int lapsensor_get(bool *present, bool *state)
+{
+	int output, err;
+
+	*present = false;
+	err = dytc_command(DYTC_CMD_GET, &output);
+	if (err)
+		return err;
+
+	*present = true; /*If we get his far, we have lapmode support*/
+	*state = output & BIT(DYTC_GET_LAPMODE_BIT) ? true : false;
+	return 0;
+}
+
+static int palmsensor_get(bool *present, bool *state)
+{
+	acpi_handle psensor_handle;
+	int output;
+
+	*present = false;
+	if (ACPI_FAILURE(acpi_get_handle(hkey_handle, "GPSS", &psensor_handle)))
+		return -ENODEV;
+	if (!acpi_evalf(psensor_handle, &output, NULL, "d"))
+		return -EIO;
+
+	*present = output & BIT(PALMSENSOR_PRESENT_BIT) ? true : false;
+	*state = output & BIT(PALMSENSOR_ON_BIT) ? true : false;
+	return 0;
+}
+
+static void lapsensor_refresh(void)
+{
+	bool state;
+	int err;
+
+	if (has_lapsensor) {
+		err = lapsensor_get(&has_lapsensor, &state);
+		if (err)
+			return;
+		if (lap_state != state) {
+			lap_state = state;
+			sysfs_notify(&tpacpi_pdev->dev.kobj, NULL, "dytc_lapmode");
+		}
+	}
+}
+
+static void palmsensor_refresh(void)
+{
+	bool state;
+	int err;
+
+	if (has_palmsensor) {
+		err = palmsensor_get(&has_palmsensor, &state);
+		if (err)
+			return;
+		if (palm_state != state) {
+			palm_state = state;
+			sysfs_notify(&tpacpi_pdev->dev.kobj, NULL, "palmsensor");
+		}
+	}
+}
+
+static ssize_t dytc_lapmode_show(struct device *dev,
+					struct device_attribute *attr,
+					char *buf)
+{
+	if (has_lapsensor)
+		return sysfs_emit(buf, "%d\n", lap_state);
+	return sysfs_emit(buf, "\n");
+}
+static DEVICE_ATTR_RO(dytc_lapmode);
+
+static ssize_t palmsensor_show(struct device *dev,
+					struct device_attribute *attr,
+					char *buf)
+{
+	if (has_palmsensor)
+		return sysfs_emit(buf, "%d\n", palm_state);
+	return sysfs_emit(buf, "\n");
+}
+static DEVICE_ATTR_RO(palmsensor);
+
+static int tpacpi_proxsensor_init(struct ibm_init_struct *iibm)
+{
+	int palm_err, lap_err, err;
+
+	palm_err = palmsensor_get(&has_palmsensor, &palm_state);
+	lap_err = lapsensor_get(&has_lapsensor, &lap_state);
+	/*
+	 * If support isn't available (ENODEV) for both devices then quit, but
+	 * don't return an error.
+	 */
+	if ((palm_err == -ENODEV) && (lap_err == -ENODEV))
+		return 0;
+	/* Otherwise, if there was an error return it */
+	if (palm_err && (palm_err != -ENODEV))
+		return palm_err;
+	if (lap_err && (lap_err != -ENODEV))
+		return lap_err;
+
+	if (has_palmsensor) {
+		err = sysfs_create_file(&tpacpi_pdev->dev.kobj, &dev_attr_palmsensor.attr);
+		if (err)
+			return err;
+	}
+
+	/* Check if we know the DYTC version, if we don't then get it */
+	if (!dytc_version) {
+		err = dytc_get_version();
+		if (err)
+			return err;
+	}
+	/*
+	 * Platforms before DYTC version 5 claim to have a lap sensor, but it doesn't work, so we
+	 * ignore them
+	 */
+	if (has_lapsensor && (dytc_version >= 5)) {
+		err = sysfs_create_file(&tpacpi_pdev->dev.kobj, &dev_attr_dytc_lapmode.attr);
+		if (err)
+			return err;
+	}
+	return 0;
+}
+
+static void proxsensor_exit(void)
+{
+	if (has_lapsensor)
+		sysfs_remove_file(&tpacpi_pdev->dev.kobj, &dev_attr_dytc_lapmode.attr);
+	if (has_palmsensor)
+		sysfs_remove_file(&tpacpi_pdev->dev.kobj, &dev_attr_palmsensor.attr);
+}
+
+static struct ibm_struct proxsensor_driver_data = {
+	.name = "proximity-sensor",
+	.exit = proxsensor_exit,
+};
+
+/*************************************************************************
+ * DYTC Platform Profile interface
+ */
+
+#define DYTC_CMD_SET          1 /* To enable/disable IC function mode */
+#define DYTC_CMD_MMC_GET      8 /* To get current MMC function and mode */
+#define DYTC_CMD_RESET    0x1ff /* To reset back to default */
+
+#define DYTC_GET_FUNCTION_BIT 8  /* Bits  8-11 - function setting */
+#define DYTC_GET_MODE_BIT     12 /* Bits 12-15 - mode setting */
+
+#define DYTC_SET_FUNCTION_BIT 12 /* Bits 12-15 - function setting */
+#define DYTC_SET_MODE_BIT     16 /* Bits 16-19 - mode setting */
+#define DYTC_SET_VALID_BIT    20 /* Bit     20 - 1 = on, 0 = off */
+
+#define DYTC_FUNCTION_STD     0  /* Function = 0, standard mode */
+#define DYTC_FUNCTION_CQL     1  /* Function = 1, lap mode */
+#define DYTC_FUNCTION_MMC     11 /* Function = 11, desk mode */
+
+#define DYTC_MODE_PERFORM     2  /* High power mode aka performance */
+#define DYTC_MODE_LOWPOWER    3  /* Low power mode */
+#define DYTC_MODE_BALANCE   0xF  /* Default mode aka balanced */
+#define DYTC_MODE_MMC_BALANCE 0  /* Default mode from MMC_GET, aka balanced */
+
+#define DYTC_ERR_MASK       0xF  /* Bits 0-3 in cmd result are the error result */
+#define DYTC_ERR_SUCCESS      1  /* CMD completed successful */
+
+#define DYTC_SET_COMMAND(function, mode, on) \
+	(DYTC_CMD_SET | (function) << DYTC_SET_FUNCTION_BIT | \
+	 (mode) << DYTC_SET_MODE_BIT | \
+	 (on) << DYTC_SET_VALID_BIT)
+
+#define DYTC_DISABLE_CQL DYTC_SET_COMMAND(DYTC_FUNCTION_CQL, DYTC_MODE_BALANCE, 0)
+
+#define DYTC_ENABLE_CQL DYTC_SET_COMMAND(DYTC_FUNCTION_CQL, DYTC_MODE_BALANCE, 1)
+
+static bool dytc_profile_available;
+static enum platform_profile_option dytc_current_profile;
+static atomic_t dytc_ignore_event = ATOMIC_INIT(0);
+static DEFINE_MUTEX(dytc_mutex);
+static bool dytc_mmc_get_available;
+
+static int convert_dytc_to_profile(int dytcmode, enum platform_profile_option *profile)
+{
+	switch (dytcmode) {
+	case DYTC_MODE_LOWPOWER:
+		*profile = PLATFORM_PROFILE_LOW_POWER;
+		break;
+	case DYTC_MODE_BALANCE:
+	case DYTC_MODE_MMC_BALANCE:
+		*profile =  PLATFORM_PROFILE_BALANCED;
+		break;
+	case DYTC_MODE_PERFORM:
+		*profile =  PLATFORM_PROFILE_PERFORMANCE;
+		break;
+	default: /* Unknown mode */
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static int convert_profile_to_dytc(enum platform_profile_option profile, int *perfmode)
+{
+	switch (profile) {
+	case PLATFORM_PROFILE_LOW_POWER:
+		*perfmode = DYTC_MODE_LOWPOWER;
+		break;
+	case PLATFORM_PROFILE_BALANCED:
+		*perfmode = DYTC_MODE_BALANCE;
+		break;
+	case PLATFORM_PROFILE_PERFORMANCE:
+		*perfmode = DYTC_MODE_PERFORM;
+		break;
+	default: /* Unknown profile */
+		return -EOPNOTSUPP;
+	}
+	return 0;
+}
+
+/*
+ * dytc_profile_get: Function to register with platform_profile
+ * handler. Returns current platform profile.
+ */
+static int dytc_profile_get(struct platform_profile_handler *pprof,
+			    enum platform_profile_option *profile)
+{
+	*profile = dytc_current_profile;
+	return 0;
+}
+
+/*
+ * Helper function - check if we are in CQL mode and if we are
+ *  -  disable CQL,
+ *  - run the command
+ *  - enable CQL
+ *  If not in CQL mode, just run the command
+ */
+static int dytc_cql_command(int command, int *output)
+{
+	int err, cmd_err, dummy;
+	int cur_funcmode;
+
+	/* Determine if we are in CQL mode. This alters the commands we do */
+	err = dytc_command(DYTC_CMD_GET, output);
+	if (err)
+		return err;
+
+	cur_funcmode = (*output >> DYTC_GET_FUNCTION_BIT) & 0xF;
+	/* Check if we're OK to return immediately */
+	if ((command == DYTC_CMD_GET) && (cur_funcmode != DYTC_FUNCTION_CQL))
+		return 0;
+
+	if (cur_funcmode == DYTC_FUNCTION_CQL) {
+		atomic_inc(&dytc_ignore_event);
+		err = dytc_command(DYTC_DISABLE_CQL, &dummy);
+		if (err)
+			return err;
+	}
+
+	cmd_err = dytc_command(command,	output);
+	/* Check return condition after we've restored CQL state */
+
+	if (cur_funcmode == DYTC_FUNCTION_CQL) {
+		err = dytc_command(DYTC_ENABLE_CQL, &dummy);
+		if (err)
+			return err;
+	}
+	return cmd_err;
+}
+
+/*
+ * dytc_profile_set: Function to register with platform_profile
+ * handler. Sets current platform profile.
+ */
+static int dytc_profile_set(struct platform_profile_handler *pprof,
+			    enum platform_profile_option profile)
+{
+	int output;
+	int err;
+
+	if (!dytc_profile_available)
+		return -ENODEV;
+
+	err = mutex_lock_interruptible(&dytc_mutex);
+	if (err)
+		return err;
+
+	if (profile == PLATFORM_PROFILE_BALANCED) {
+		/*
+		 * To get back to balanced mode we need to issue a reset command.
+		 * Note we still need to disable CQL mode before hand and re-enable
+		 * it afterwards, otherwise dytc_lapmode gets reset to 0 and stays
+		 * stuck at 0 for aprox. 30 minutes.
+		 */
+		err = dytc_cql_command(DYTC_CMD_RESET, &output);
+		if (err)
+			goto unlock;
+	} else {
+		int perfmode;
+
+		err = convert_profile_to_dytc(profile, &perfmode);
+		if (err)
+			goto unlock;
+
+		/* Determine if we are in CQL mode. This alters the commands we do */
+		err = dytc_cql_command(DYTC_SET_COMMAND(DYTC_FUNCTION_MMC, perfmode, 1), &output);
+		if (err)
+			goto unlock;
+	}
+	/* Success - update current profile */
+	dytc_current_profile = profile;
+unlock:
+	mutex_unlock(&dytc_mutex);
 	return err;
 }
 
-static void dytc_exit(void)
+static void dytc_profile_refresh(void)
 {
-	sysfs_remove_group(&tpacpi_pdev->dev.kobj, &dytc_attr_group);
+	enum platform_profile_option profile;
+	int output, err;
+	int perfmode;
+
+	mutex_lock(&dytc_mutex);
+	if (dytc_mmc_get_available)
+		err = dytc_command(DYTC_CMD_MMC_GET, &output);
+	else
+		err = dytc_cql_command(DYTC_CMD_GET, &output);
+	mutex_unlock(&dytc_mutex);
+	if (err)
+		return;
+
+	perfmode = (output >> DYTC_GET_MODE_BIT) & 0xF;
+	convert_dytc_to_profile(perfmode, &profile);
+	if (profile != dytc_current_profile) {
+		dytc_current_profile = profile;
+		platform_profile_notify();
+	}
 }
 
-static struct ibm_struct dytc_driver_data = {
-	.name = "dytc",
-	.exit = dytc_exit,
+static struct platform_profile_handler dytc_profile = {
+	.profile_get = dytc_profile_get,
+	.profile_set = dytc_profile_set,
+};
+
+static int tpacpi_dytc_profile_init(struct ibm_init_struct *iibm)
+{
+	int err, output;
+
+	/* Setup supported modes */
+	set_bit(PLATFORM_PROFILE_LOW_POWER, dytc_profile.choices);
+	set_bit(PLATFORM_PROFILE_BALANCED, dytc_profile.choices);
+	set_bit(PLATFORM_PROFILE_PERFORMANCE, dytc_profile.choices);
+
+	dytc_profile_available = false;
+	err = dytc_command(DYTC_CMD_QUERY, &output);
+	/*
+	 * If support isn't available (ENODEV) then don't return an error
+	 * and don't create the sysfs group
+	 */
+	if (err == -ENODEV)
+		return 0;
+	/* For all other errors we can flag the failure */
+	if (err)
+		return err;
+
+	/* Check if we know the DYTC version, if we don't then get it */
+	if (!dytc_version) {
+		err = dytc_get_version();
+		if (err)
+			return err;
+	}
+	/* Check DYTC is enabled and supports mode setting */
+	if (dytc_version >= 5) {
+		dbg_printk(TPACPI_DBG_INIT,
+				"DYTC version %d: thermal mode available\n", dytc_version);
+		/*
+		 * Check if MMC_GET functionality available
+		 * Version > 6 and return success from MMC_GET command
+		 */
+		dytc_mmc_get_available = false;
+		if (dytc_version >= 6) {
+			err = dytc_command(DYTC_CMD_MMC_GET, &output);
+			if (!err && ((output & DYTC_ERR_MASK) == DYTC_ERR_SUCCESS))
+				dytc_mmc_get_available = true;
+		}
+		/* Create platform_profile structure and register */
+		err = platform_profile_register(&dytc_profile);
+		/*
+		 * If for some reason platform_profiles aren't enabled
+		 * don't quit terminally.
+		 */
+		if (err)
+			return 0;
+
+		dytc_profile_available = true;
+		/* Ensure initial values are correct */
+		dytc_profile_refresh();
+	}
+	return 0;
+}
+
+static void dytc_profile_exit(void)
+{
+	if (dytc_profile_available) {
+		dytc_profile_available = false;
+		platform_profile_remove();
+	}
+}
+
+static struct ibm_struct  dytc_profile_driver_data = {
+	.name = "dytc-profile",
+	.exit = dytc_profile_exit,
+};
+
+/*************************************************************************
+ * Keyboard language interface
+ */
+
+struct keyboard_lang_data {
+	const char *lang_str;
+	int lang_code;
+};
+
+static const struct keyboard_lang_data keyboard_lang_data[] = {
+	{"be", 0x080c},
+	{"cz", 0x0405},
+	{"da", 0x0406},
+	{"de", 0x0c07},
+	{"en", 0x0000},
+	{"es", 0x2c0a},
+	{"et", 0x0425},
+	{"fr", 0x040c},
+	{"fr-ch", 0x100c},
+	{"hu", 0x040e},
+	{"it", 0x0410},
+	{"jp", 0x0411},
+	{"nl", 0x0413},
+	{"nn", 0x0414},
+	{"pl", 0x0415},
+	{"pt", 0x0816},
+	{"sl", 0x041b},
+	{"sv", 0x081d},
+	{"tr", 0x041f},
+};
+
+static int set_keyboard_lang_command(int command)
+{
+	acpi_handle sskl_handle;
+	int output;
+
+	if (ACPI_FAILURE(acpi_get_handle(hkey_handle, "SSKL", &sskl_handle))) {
+		/* Platform doesn't support SSKL */
+		return -ENODEV;
+	}
+
+	if (!acpi_evalf(sskl_handle, &output, NULL, "dd", command))
+		return -EIO;
+
+	return 0;
+}
+
+static int get_keyboard_lang(int *output)
+{
+	acpi_handle gskl_handle;
+	int kbd_lang;
+
+	if (ACPI_FAILURE(acpi_get_handle(hkey_handle, "GSKL", &gskl_handle))) {
+		/* Platform doesn't support GSKL */
+		return -ENODEV;
+	}
+
+	if (!acpi_evalf(gskl_handle, &kbd_lang, NULL, "dd", 0x02000000))
+		return -EIO;
+
+	/*
+	 * METHOD_ERR gets returned on devices where there are no special (e.g. '=',
+	 * '(' and ')') keys which use layout dependent key-press emulation.
+	 */
+	if (kbd_lang & METHOD_ERR)
+		return -ENODEV;
+
+	*output = kbd_lang;
+
+	return 0;
+}
+
+/* sysfs keyboard language entry */
+static ssize_t keyboard_lang_show(struct device *dev,
+				struct device_attribute *attr,
+				char *buf)
+{
+	int output, err, i, len = 0;
+
+	err = get_keyboard_lang(&output);
+	if (err)
+		return err;
+
+	for (i = 0; i < ARRAY_SIZE(keyboard_lang_data); i++) {
+		if (i)
+			len += sysfs_emit_at(buf, len, "%s", " ");
+
+		if (output == keyboard_lang_data[i].lang_code) {
+			len += sysfs_emit_at(buf, len, "[%s]", keyboard_lang_data[i].lang_str);
+		} else {
+			len += sysfs_emit_at(buf, len, "%s", keyboard_lang_data[i].lang_str);
+		}
+	}
+	len += sysfs_emit_at(buf, len, "\n");
+
+	return len;
+}
+
+static ssize_t keyboard_lang_store(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	int err, i;
+	bool lang_found = false;
+	int lang_code = 0;
+
+	for (i = 0; i < ARRAY_SIZE(keyboard_lang_data); i++) {
+		if (sysfs_streq(buf, keyboard_lang_data[i].lang_str)) {
+			lang_code = keyboard_lang_data[i].lang_code;
+			lang_found = true;
+			break;
+		}
+	}
+
+	if (lang_found) {
+		lang_code = lang_code | 1 << 24;
+
+		/* Set language code */
+		err = set_keyboard_lang_command(lang_code);
+		if (err)
+			return err;
+	} else {
+		dev_err(&tpacpi_pdev->dev, "Unknown Keyboard language. Ignoring\n");
+		return -EINVAL;
+	}
+
+	tpacpi_disclose_usertask(attr->attr.name,
+			"keyboard language is set to  %s\n", buf);
+
+	sysfs_notify(&tpacpi_pdev->dev.kobj, NULL, "keyboard_lang");
+
+	return count;
+}
+static DEVICE_ATTR_RW(keyboard_lang);
+
+static struct attribute *kbdlang_attributes[] = {
+	&dev_attr_keyboard_lang.attr,
+	NULL
+};
+
+static const struct attribute_group kbdlang_attr_group = {
+	.attrs = kbdlang_attributes,
+};
+
+static int tpacpi_kbdlang_init(struct ibm_init_struct *iibm)
+{
+	int err, output;
+
+	err = get_keyboard_lang(&output);
+	/*
+	 * If support isn't available (ENODEV) then don't return an error
+	 * just don't create the sysfs group.
+	 */
+	if (err == -ENODEV)
+		return 0;
+
+	if (err)
+		return err;
+
+	/* Platform supports this feature - create the sysfs file */
+	return sysfs_create_group(&tpacpi_pdev->dev.kobj, &kbdlang_attr_group);
+}
+
+static void kbdlang_exit(void)
+{
+	sysfs_remove_group(&tpacpi_pdev->dev.kobj, &kbdlang_attr_group);
+}
+
+static struct ibm_struct kbdlang_driver_data = {
+	.name = "kbdlang",
+	.exit = kbdlang_exit,
+};
+
+/*************************************************************************
+ * DPRC(Dynamic Power Reduction Control) subdriver, for the Lenovo WWAN
+ * and WLAN feature.
+ */
+#define DPRC_GET_WWAN_ANTENNA_TYPE      0x40000
+#define DPRC_WWAN_ANTENNA_TYPE_A_BIT    BIT(4)
+#define DPRC_WWAN_ANTENNA_TYPE_B_BIT    BIT(8)
+static bool has_antennatype;
+static int wwan_antennatype;
+
+static int dprc_command(int command, int *output)
+{
+	acpi_handle dprc_handle;
+
+	if (ACPI_FAILURE(acpi_get_handle(hkey_handle, "DPRC", &dprc_handle))) {
+		/* Platform doesn't support DPRC */
+		return -ENODEV;
+	}
+
+	if (!acpi_evalf(dprc_handle, output, NULL, "dd", command))
+		return -EIO;
+
+	/*
+	 * METHOD_ERR gets returned on devices where few commands are not supported
+	 * for example command to get WWAN Antenna type command is not supported on
+	 * some devices.
+	 */
+	if (*output & METHOD_ERR)
+		return -ENODEV;
+
+	return 0;
+}
+
+static int get_wwan_antenna(int *wwan_antennatype)
+{
+	int output, err;
+
+	/* Get current Antenna type */
+	err = dprc_command(DPRC_GET_WWAN_ANTENNA_TYPE, &output);
+	if (err)
+		return err;
+
+	if (output & DPRC_WWAN_ANTENNA_TYPE_A_BIT)
+		*wwan_antennatype = 1;
+	else if (output & DPRC_WWAN_ANTENNA_TYPE_B_BIT)
+		*wwan_antennatype = 2;
+	else
+		return -ENODEV;
+
+	return 0;
+}
+
+/* sysfs wwan antenna type entry */
+static ssize_t wwan_antenna_type_show(struct device *dev,
+					struct device_attribute *attr,
+					char *buf)
+{
+	switch (wwan_antennatype) {
+	case 1:
+		return sysfs_emit(buf, "type a\n");
+	case 2:
+		return sysfs_emit(buf, "type b\n");
+	default:
+		return -ENODATA;
+	}
+}
+static DEVICE_ATTR_RO(wwan_antenna_type);
+
+static int tpacpi_dprc_init(struct ibm_init_struct *iibm)
+{
+	int wwanantenna_err, err;
+
+	wwanantenna_err = get_wwan_antenna(&wwan_antennatype);
+	/*
+	 * If support isn't available (ENODEV) then quit, but don't
+	 * return an error.
+	 */
+	if (wwanantenna_err == -ENODEV)
+		return 0;
+
+	/* if there was an error return it */
+	if (wwanantenna_err && (wwanantenna_err != -ENODEV))
+		return wwanantenna_err;
+	else if (!wwanantenna_err)
+		has_antennatype = true;
+
+	if (has_antennatype) {
+		err = sysfs_create_file(&tpacpi_pdev->dev.kobj, &dev_attr_wwan_antenna_type.attr);
+		if (err)
+			return err;
+	}
+	return 0;
+}
+
+static void dprc_exit(void)
+{
+	if (has_antennatype)
+		sysfs_remove_file(&tpacpi_pdev->dev.kobj, &dev_attr_wwan_antenna_type.attr);
+}
+
+static struct ibm_struct dprc_driver_data = {
+	.name = "dprc",
+	.exit = dprc_exit,
 };
 
 /****************************************************************************
@@ -9985,9 +10705,12 @@ static void tpacpi_driver_event(const unsigned int hkey_event)
 		mutex_unlock(&kbdlight_mutex);
 	}
 
-	if (hkey_event == TP_HKEY_EV_THM_CSM_COMPLETED)
-		dytc_lapmode_refresh();
-
+	if (hkey_event == TP_HKEY_EV_THM_CSM_COMPLETED) {
+		lapsensor_refresh();
+		/* If we are already accessing DYTC then skip dytc update */
+		if (!atomic_add_unless(&dytc_ignore_event, -1, 0))
+			dytc_profile_refresh();
+	}
 }
 
 static void hotkey_driver_event(const unsigned int scancode)
@@ -10427,8 +11150,20 @@ static struct ibm_init_struct ibms_init[] __initdata = {
 		.data = &lcdshadow_driver_data,
 	},
 	{
-		.init = tpacpi_dytc_init,
-		.data = &dytc_driver_data,
+		.init = tpacpi_proxsensor_init,
+		.data = &proxsensor_driver_data,
+	},
+	{
+		.init = tpacpi_dytc_profile_init,
+		.data = &dytc_profile_driver_data,
+	},
+	{
+		.init = tpacpi_kbdlang_init,
+		.data = &kbdlang_driver_data,
+	},
+	{
+		.init = tpacpi_dprc_init,
+		.data = &dprc_driver_data,
 	},
 };
 

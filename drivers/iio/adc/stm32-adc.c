@@ -177,7 +177,7 @@ struct stm32_adc_cfg {
  * @offset:		ADC instance register offset in ADC block
  * @cfg:		compatible configuration data
  * @completion:		end of single conversion completion
- * @buffer:		data buffer
+ * @buffer:		data buffer + 8 bytes for timestamp if enabled
  * @clk:		clock for this adc instance
  * @irq:		interrupt for this adc instance
  * @lock:		spinlock
@@ -200,7 +200,7 @@ struct stm32_adc {
 	u32			offset;
 	const struct stm32_adc_cfg	*cfg;
 	struct completion	completion;
-	u16			buffer[STM32_ADC_MAX_SQ];
+	u16			buffer[STM32_ADC_MAX_SQ + 4] __aligned(8);
 	struct clk		*clk;
 	int			irq;
 	spinlock_t		lock;		/* interrupt lock */
@@ -449,7 +449,7 @@ static const struct stm32_adc_regspec stm32h7_adc_regspec = {
 	.smp_bits = stm32h7_smp_bits,
 };
 
-/**
+/*
  * STM32 ADC registers access routines
  * @adc: stm32 adc instance
  * @reg: reg offset in adc instance
@@ -546,8 +546,7 @@ static int stm32_adc_hw_stop(struct device *dev)
 	if (adc->cfg->unprepare)
 		adc->cfg->unprepare(indio_dev);
 
-	if (adc->clk)
-		clk_disable_unprepare(adc->clk);
+	clk_disable_unprepare(adc->clk);
 
 	return 0;
 }
@@ -558,11 +557,9 @@ static int stm32_adc_hw_start(struct device *dev)
 	struct stm32_adc *adc = iio_priv(indio_dev);
 	int ret;
 
-	if (adc->clk) {
-		ret = clk_prepare_enable(adc->clk);
-		if (ret)
-			return ret;
-	}
+	ret = clk_prepare_enable(adc->clk);
+	if (ret)
+		return ret;
 
 	stm32_adc_set_res(adc);
 
@@ -575,8 +572,7 @@ static int stm32_adc_hw_start(struct device *dev)
 	return 0;
 
 err_clk_dis:
-	if (adc->clk)
-		clk_disable_unprepare(adc->clk);
+	clk_disable_unprepare(adc->clk);
 
 	return ret;
 }
@@ -855,7 +851,7 @@ static int stm32h7_adc_restore_selfcalib(struct iio_dev *indio_dev)
 	return 0;
 }
 
-/**
+/*
  * Fixed timeout value for ADC calibration.
  * worst cases:
  * - low clock frequency
@@ -1162,11 +1158,9 @@ static int stm32_adc_single_conv(struct iio_dev *indio_dev,
 
 	adc->bufi = 0;
 
-	ret = pm_runtime_get_sync(dev);
-	if (ret < 0) {
-		pm_runtime_put_noidle(dev);
+	ret = pm_runtime_resume_and_get(dev);
+	if (ret < 0)
 		return ret;
-	}
 
 	/* Apply sampling time settings */
 	stm32_adc_writel(adc, regs->smpr[0], adc->smpr_val[0]);
@@ -1353,7 +1347,7 @@ static int stm32_adc_set_watermark(struct iio_dev *indio_dev, unsigned int val)
 	 * dma cyclic transfers are used, buffer is split into two periods.
 	 * There should be :
 	 * - always one buffer (period) dma is working on
-	 * - one buffer (period) driver can push with iio_trigger_poll().
+	 * - one buffer (period) driver can push data.
 	 */
 	watermark = min(watermark, val * (unsigned)(sizeof(u16)));
 	adc->rx_buf_sz = min(rx_buf_sz, watermark * 2 * adc->num_conv);
@@ -1368,11 +1362,9 @@ static int stm32_adc_update_scan_mode(struct iio_dev *indio_dev,
 	struct device *dev = indio_dev->dev.parent;
 	int ret;
 
-	ret = pm_runtime_get_sync(dev);
-	if (ret < 0) {
-		pm_runtime_put_noidle(dev);
+	ret = pm_runtime_resume_and_get(dev);
+	if (ret < 0)
 		return ret;
-	}
 
 	adc->num_conv = bitmap_weight(scan_mask, indio_dev->masklength);
 
@@ -1417,11 +1409,9 @@ static int stm32_adc_debugfs_reg_access(struct iio_dev *indio_dev,
 	struct device *dev = indio_dev->dev.parent;
 	int ret;
 
-	ret = pm_runtime_get_sync(dev);
-	if (ret < 0) {
-		pm_runtime_put_noidle(dev);
+	ret = pm_runtime_resume_and_get(dev);
+	if (ret < 0)
 		return ret;
-	}
 
 	if (!readval)
 		stm32_adc_writel(adc, reg, writeval);
@@ -1541,11 +1531,9 @@ static int stm32_adc_buffer_postenable(struct iio_dev *indio_dev)
 	struct device *dev = indio_dev->dev.parent;
 	int ret;
 
-	ret = pm_runtime_get_sync(dev);
-	if (ret < 0) {
-		pm_runtime_put_noidle(dev);
+	ret = pm_runtime_resume_and_get(dev);
+	if (ret < 0)
 		return ret;
-	}
 
 	ret = stm32_adc_set_trig(indio_dev, indio_dev->trig);
 	if (ret) {
@@ -1616,31 +1604,14 @@ static irqreturn_t stm32_adc_trigger_handler(int irq, void *p)
 
 	dev_dbg(&indio_dev->dev, "%s bufi=%d\n", __func__, adc->bufi);
 
-	if (!adc->dma_chan) {
-		/* reset buffer index */
-		adc->bufi = 0;
-		iio_push_to_buffers_with_timestamp(indio_dev, adc->buffer,
-						   pf->timestamp);
-	} else {
-		int residue = stm32_adc_dma_residue(adc);
-
-		while (residue >= indio_dev->scan_bytes) {
-			u16 *buffer = (u16 *)&adc->rx_buf[adc->bufi];
-
-			iio_push_to_buffers_with_timestamp(indio_dev, buffer,
-							   pf->timestamp);
-			residue -= indio_dev->scan_bytes;
-			adc->bufi += indio_dev->scan_bytes;
-			if (adc->bufi >= adc->rx_buf_sz)
-				adc->bufi = 0;
-		}
-	}
-
+	/* reset buffer index */
+	adc->bufi = 0;
+	iio_push_to_buffers_with_timestamp(indio_dev, adc->buffer,
+					   pf->timestamp);
 	iio_trigger_notify_done(indio_dev->trig);
 
 	/* re-enable eoc irq */
-	if (!adc->dma_chan)
-		stm32_adc_conv_irq_enable(adc);
+	stm32_adc_conv_irq_enable(adc);
 
 	return IRQ_HANDLED;
 }
@@ -1735,7 +1706,7 @@ static void stm32_adc_chan_init_one(struct iio_dev *indio_dev,
 	}
 }
 
-static int stm32_adc_chan_of_init(struct iio_dev *indio_dev)
+static int stm32_adc_chan_of_init(struct iio_dev *indio_dev, bool timestamping)
 {
 	struct device_node *node = indio_dev->dev.of_node;
 	struct stm32_adc *adc = iio_priv(indio_dev);
@@ -1782,6 +1753,9 @@ static int stm32_adc_chan_of_init(struct iio_dev *indio_dev)
 		dev_err(&indio_dev->dev, "Invalid st,min-sample-time-nsecs\n");
 		return -EINVAL;
 	}
+
+	if (timestamping)
+		num_channels++;
 
 	channels = devm_kcalloc(&indio_dev->dev, num_channels,
 				sizeof(struct iio_chan_spec), GFP_KERNEL);
@@ -1831,6 +1805,19 @@ static int stm32_adc_chan_of_init(struct iio_dev *indio_dev)
 					   i, &smp);
 		/* Prepare sampling time settings */
 		stm32_adc_smpr_init(adc, channels[i].channel, smp);
+	}
+
+	if (timestamping) {
+		struct iio_chan_spec *timestamp = &channels[scan_index];
+
+		timestamp->type = IIO_TIMESTAMP;
+		timestamp->channel = -1;
+		timestamp->scan_index = scan_index;
+		timestamp->scan_type.sign = 's';
+		timestamp->scan_type.realbits = 64;
+		timestamp->scan_type.storagebits = 64;
+
+		scan_index++;
 	}
 
 	indio_dev->num_channels = scan_index;
@@ -1892,6 +1879,7 @@ static int stm32_adc_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	irqreturn_t (*handler)(int irq, void *p) = NULL;
 	struct stm32_adc *adc;
+	bool timestamping = false;
 	int ret;
 
 	if (!pdev->dev.of_node)
@@ -1948,16 +1936,22 @@ static int stm32_adc_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return ret;
 
-	ret = stm32_adc_chan_of_init(indio_dev);
-	if (ret < 0)
-		return ret;
-
 	ret = stm32_adc_dma_request(dev, indio_dev);
 	if (ret < 0)
 		return ret;
 
-	if (!adc->dma_chan)
+	if (!adc->dma_chan) {
+		/* For PIO mode only, iio_pollfunc_store_time stores a timestamp
+		 * in the primary trigger IRQ handler and stm32_adc_trigger_handler
+		 * runs in the IRQ thread to push out buffer along with timestamp.
+		 */
 		handler = &stm32_adc_trigger_handler;
+		timestamping = true;
+	}
+
+	ret = stm32_adc_chan_of_init(indio_dev, timestamping);
+	if (ret < 0)
+		goto err_dma_disable;
 
 	ret = iio_triggered_buffer_setup(indio_dev,
 					 &iio_pollfunc_store_time, handler,

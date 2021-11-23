@@ -426,6 +426,7 @@ static void vivid_fillbuff(struct vivid_dev *dev, struct vivid_buffer *buf)
 		is_loop = true;
 
 	buf->vb.sequence = dev->vid_cap_seq_count;
+	v4l2_ctrl_s_ctrl(dev->ro_int32, buf->vb.sequence & 0xff);
 	if (dev->field_cap == V4L2_FIELD_ALTERNATE) {
 		/*
 		 * 60 Hz standards start with the bottom field, 50 Hz standards
@@ -515,10 +516,11 @@ static void vivid_fillbuff(struct vivid_dev *dev, struct vivid_buffer *buf)
 		mutex_unlock(dev->ctrl_hdl_user_aud.lock);
 		tpg_gen_text(tpg, basep, line++ * line_height, 16, str);
 		mutex_lock(dev->ctrl_hdl_user_gen.lock);
-		snprintf(str, sizeof(str), " int32 %d, int64 %lld, bitmask %08x ",
-			dev->int32->cur.val,
-			*dev->int64->p_cur.p_s64,
-			dev->bitmask->cur.val);
+		snprintf(str, sizeof(str), " int32 %d, ro_int32 %d, int64 %lld, bitmask %08x ",
+			 dev->int32->cur.val,
+			 dev->ro_int32->cur.val,
+			 *dev->int64->p_cur.p_s64,
+			 dev->bitmask->cur.val);
 		tpg_gen_text(tpg, basep, line++ * line_height, 16, str);
 		snprintf(str, sizeof(str), " boolean %d, menu %s, string \"%s\" ",
 			dev->boolean->cur.val,
@@ -750,7 +752,7 @@ static noinline_for_stack void vivid_thread_vid_cap_tick(struct vivid_dev *dev,
 
 		v4l2_ctrl_request_setup(vbi_cap_buf->vb.vb2_buf.req_obj.req,
 					&dev->ctrl_hdl_vbi_cap);
-		if (dev->stream_sliced_vbi_cap)
+		if (vbi_cap_buf->vb.vb2_buf.type == V4L2_BUF_TYPE_SLICED_VBI_CAPTURE)
 			vivid_sliced_vbi_cap_process(dev, vbi_cap_buf);
 		else
 			vivid_raw_vbi_cap_process(dev, vbi_cap_buf);
@@ -819,7 +821,7 @@ static int vivid_thread_vid_cap(void *data)
 			break;
 
 		if (!mutex_trylock(&dev->mutex)) {
-			schedule_timeout_uninterruptible(1);
+			schedule();
 			continue;
 		}
 
@@ -888,7 +890,9 @@ static int vivid_thread_vid_cap(void *data)
 			next_jiffies_since_start = jiffies_since_start;
 
 		wait_jiffies = next_jiffies_since_start - jiffies_since_start;
-		schedule_timeout_interruptible(wait_jiffies ? wait_jiffies : 1);
+		while (jiffies - cur_jiffies < wait_jiffies &&
+		       !kthread_should_stop())
+			schedule();
 	}
 	dprintk(dev, 1, "Video Capture Thread End\n");
 	return 0;

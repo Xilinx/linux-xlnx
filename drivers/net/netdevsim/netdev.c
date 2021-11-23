@@ -113,6 +113,11 @@ static int nsim_set_vf_rate(struct net_device *dev, int vf, int min, int max)
 	struct netdevsim *ns = netdev_priv(dev);
 	struct nsim_bus_dev *nsim_bus_dev = ns->nsim_bus_dev;
 
+	if (nsim_esw_mode_is_switchdev(ns->nsim_dev)) {
+		pr_err("Not supported in switchdev mode. Please use devlink API.\n");
+		return -EOPNOTSUPP;
+	}
+
 	if (vf >= nsim_bus_dev->num_vfs)
 		return -EINVAL;
 
@@ -258,8 +263,18 @@ static const struct net_device_ops nsim_netdev_ops = {
 	.ndo_setup_tc		= nsim_setup_tc,
 	.ndo_set_features	= nsim_set_features,
 	.ndo_bpf		= nsim_bpf,
-	.ndo_udp_tunnel_add	= udp_tunnel_nic_add_port,
-	.ndo_udp_tunnel_del	= udp_tunnel_nic_del_port,
+	.ndo_get_devlink_port	= nsim_get_devlink_port,
+};
+
+static const struct net_device_ops nsim_vf_netdev_ops = {
+	.ndo_start_xmit		= nsim_start_xmit,
+	.ndo_set_rx_mode	= nsim_set_rx_mode,
+	.ndo_set_mac_address	= eth_mac_addr,
+	.ndo_validate_addr	= eth_validate_addr,
+	.ndo_change_mtu		= nsim_change_mtu,
+	.ndo_get_stats64	= nsim_get_stats64,
+	.ndo_setup_tc		= nsim_setup_tc,
+	.ndo_set_features	= nsim_set_features,
 	.ndo_get_devlink_port	= nsim_get_devlink_port,
 };
 
@@ -282,30 +297,15 @@ static void nsim_setup(struct net_device *dev)
 	dev->max_mtu = ETH_MAX_MTU;
 }
 
-struct netdevsim *
-nsim_create(struct nsim_dev *nsim_dev, struct nsim_dev_port *nsim_dev_port)
+static int nsim_init_netdevsim(struct netdevsim *ns)
 {
-	struct net_device *dev;
-	struct netdevsim *ns;
 	int err;
 
-	dev = alloc_netdev(sizeof(*ns), "eth%d", NET_NAME_UNKNOWN, nsim_setup);
-	if (!dev)
-		return ERR_PTR(-ENOMEM);
+	ns->netdev->netdev_ops = &nsim_netdev_ops;
 
-	dev_net_set(dev, nsim_dev_net(nsim_dev));
-	ns = netdev_priv(dev);
-	ns->netdev = dev;
-	ns->nsim_dev = nsim_dev;
-	ns->nsim_dev_port = nsim_dev_port;
-	ns->nsim_bus_dev = nsim_dev->nsim_bus_dev;
-	SET_NETDEV_DEV(dev, &ns->nsim_bus_dev->dev);
-	dev->netdev_ops = &nsim_netdev_ops;
-	nsim_ethtool_init(ns);
-
-	err = nsim_udp_tunnels_info_create(nsim_dev, dev);
+	err = nsim_udp_tunnels_info_create(ns->nsim_dev, ns->netdev);
 	if (err)
-		goto err_free_netdev;
+		return err;
 
 	rtnl_lock();
 	err = nsim_bpf_init(ns);
@@ -314,19 +314,61 @@ nsim_create(struct nsim_dev *nsim_dev, struct nsim_dev_port *nsim_dev_port)
 
 	nsim_ipsec_init(ns);
 
-	err = register_netdevice(dev);
+	err = register_netdevice(ns->netdev);
 	if (err)
 		goto err_ipsec_teardown;
 	rtnl_unlock();
-
-	return ns;
+	return 0;
 
 err_ipsec_teardown:
 	nsim_ipsec_teardown(ns);
 	nsim_bpf_uninit(ns);
 err_utn_destroy:
 	rtnl_unlock();
-	nsim_udp_tunnels_info_destroy(dev);
+	nsim_udp_tunnels_info_destroy(ns->netdev);
+	return err;
+}
+
+static int nsim_init_netdevsim_vf(struct netdevsim *ns)
+{
+	int err;
+
+	ns->netdev->netdev_ops = &nsim_vf_netdev_ops;
+	rtnl_lock();
+	err = register_netdevice(ns->netdev);
+	rtnl_unlock();
+	return err;
+}
+
+struct netdevsim *
+nsim_create(struct nsim_dev *nsim_dev, struct nsim_dev_port *nsim_dev_port)
+{
+	struct net_device *dev;
+	struct netdevsim *ns;
+	int err;
+
+	dev = alloc_netdev_mq(sizeof(*ns), "eth%d", NET_NAME_UNKNOWN, nsim_setup,
+			      nsim_dev->nsim_bus_dev->num_queues);
+	if (!dev)
+		return ERR_PTR(-ENOMEM);
+
+	dev_net_set(dev, nsim_dev_net(nsim_dev));
+	ns = netdev_priv(dev);
+	ns->netdev = dev;
+	u64_stats_init(&ns->syncp);
+	ns->nsim_dev = nsim_dev;
+	ns->nsim_dev_port = nsim_dev_port;
+	ns->nsim_bus_dev = nsim_dev->nsim_bus_dev;
+	SET_NETDEV_DEV(dev, &ns->nsim_bus_dev->dev);
+	nsim_ethtool_init(ns);
+	if (nsim_dev_port_is_pf(nsim_dev_port))
+		err = nsim_init_netdevsim(ns);
+	else
+		err = nsim_init_netdevsim_vf(ns);
+	if (err)
+		goto err_free_netdev;
+	return ns;
+
 err_free_netdev:
 	free_netdev(dev);
 	return ERR_PTR(err);
@@ -338,17 +380,21 @@ void nsim_destroy(struct netdevsim *ns)
 
 	rtnl_lock();
 	unregister_netdevice(dev);
-	nsim_ipsec_teardown(ns);
-	nsim_bpf_uninit(ns);
+	if (nsim_dev_port_is_pf(ns->nsim_dev_port)) {
+		nsim_ipsec_teardown(ns);
+		nsim_bpf_uninit(ns);
+	}
 	rtnl_unlock();
-	nsim_udp_tunnels_info_destroy(dev);
+	if (nsim_dev_port_is_pf(ns->nsim_dev_port))
+		nsim_udp_tunnels_info_destroy(dev);
 	free_netdev(dev);
 }
 
 static int nsim_validate(struct nlattr *tb[], struct nlattr *data[],
 			 struct netlink_ext_ack *extack)
 {
-	NL_SET_ERR_MSG_MOD(extack, "Please use: echo \"[ID] [PORT_COUNT]\" > /sys/bus/netdevsim/new_device");
+	NL_SET_ERR_MSG_MOD(extack,
+			   "Please use: echo \"[ID] [PORT_COUNT] [NUM_QUEUES]\" > /sys/bus/netdevsim/new_device");
 	return -EOPNOTSUPP;
 }
 

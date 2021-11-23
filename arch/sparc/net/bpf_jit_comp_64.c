@@ -1287,6 +1287,9 @@ static int build_insn(const struct bpf_insn *insn, struct jit_ctx *ctx)
 			return 1;
 		break;
 	}
+	/* speculation barrier */
+	case BPF_ST | BPF_NOSPEC:
+		break;
 	/* ST: *(size *)(dst + off) = imm */
 	case BPF_ST | BPF_MEM | BPF_W:
 	case BPF_ST | BPF_MEM | BPF_H:
@@ -1366,11 +1369,17 @@ static int build_insn(const struct bpf_insn *insn, struct jit_ctx *ctx)
 		break;
 	}
 
-	/* STX XADD: lock *(u32 *)(dst + off) += src */
-	case BPF_STX | BPF_XADD | BPF_W: {
+	case BPF_STX | BPF_ATOMIC | BPF_W: {
 		const u8 tmp = bpf2sparc[TMP_REG_1];
 		const u8 tmp2 = bpf2sparc[TMP_REG_2];
 		const u8 tmp3 = bpf2sparc[TMP_REG_3];
+
+		if (insn->imm != BPF_ADD) {
+			pr_err_once("unknown atomic op %02x\n", insn->imm);
+			return -EINVAL;
+		}
+
+		/* lock *(u32 *)(dst + off) += src */
 
 		if (insn->dst_reg == BPF_REG_FP)
 			ctx->saw_frame_pointer = true;
@@ -1390,10 +1399,15 @@ static int build_insn(const struct bpf_insn *insn, struct jit_ctx *ctx)
 		break;
 	}
 	/* STX XADD: lock *(u64 *)(dst + off) += src */
-	case BPF_STX | BPF_XADD | BPF_DW: {
+	case BPF_STX | BPF_ATOMIC | BPF_DW: {
 		const u8 tmp = bpf2sparc[TMP_REG_1];
 		const u8 tmp2 = bpf2sparc[TMP_REG_2];
 		const u8 tmp3 = bpf2sparc[TMP_REG_3];
+
+		if (insn->imm != BPF_ADD) {
+			pr_err_once("unknown atomic op %02x\n", insn->imm);
+			return -EINVAL;
+		}
 
 		if (insn->dst_reg == BPF_REG_FP)
 			ctx->saw_frame_pointer = true;

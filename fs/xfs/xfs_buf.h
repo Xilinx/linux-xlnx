@@ -124,7 +124,7 @@ struct xfs_buf_ops {
 	xfs_failaddr_t (*verify_struct)(struct xfs_buf *bp);
 };
 
-typedef struct xfs_buf {
+struct xfs_buf {
 	/*
 	 * first cacheline holds all the fields needed for an uncontended cache
 	 * hit to be fully processed. The semaphore straddles the cacheline
@@ -133,7 +133,8 @@ typedef struct xfs_buf {
 	 * fast-path on locking.
 	 */
 	struct rhash_head	b_rhash_head;	/* pag buffer hash node */
-	xfs_daddr_t		b_bn;		/* block number of buffer */
+
+	xfs_daddr_t		b_rhash_key;	/* buffer cache index */
 	int			b_length;	/* size of buffer in BBs */
 	atomic_t		b_hold;		/* reference count */
 	atomic_t		b_lru_ref;	/* lru reclaim ref count */
@@ -152,7 +153,7 @@ typedef struct xfs_buf {
 	struct list_head	b_list;
 	struct xfs_perag	*b_pag;		/* contains rbtree root */
 	struct xfs_mount	*b_mount;
-	xfs_buftarg_t		*b_target;	/* buffer target (device) */
+	struct xfs_buftarg	*b_target;	/* buffer target (device) */
 	void			*b_addr;	/* virtual address of buffer */
 	struct work_struct	b_ioend_work;
 	struct completion	b_iowait;	/* queue for I/O waiters */
@@ -167,7 +168,8 @@ typedef struct xfs_buf {
 	atomic_t		b_pin_count;	/* pin count */
 	atomic_t		b_io_remaining;	/* #outstanding I/O requests */
 	unsigned int		b_page_count;	/* size of page array */
-	unsigned int		b_offset;	/* page offset in first page */
+	unsigned int		b_offset;	/* page offset of b_addr,
+						   only for _XBF_KMEM buffers */
 	int			b_error;	/* error code on I/O */
 
 	/*
@@ -190,7 +192,7 @@ typedef struct xfs_buf {
 	int			b_last_error;
 
 	const struct xfs_buf_ops	*b_ops;
-} xfs_buf_t;
+};
 
 /* Finding and Reading Buffers */
 struct xfs_buf *xfs_buf_incore(struct xfs_buftarg *target,
@@ -253,16 +255,16 @@ int _xfs_buf_read(struct xfs_buf *bp, xfs_buf_flags_t flags);
 void xfs_buf_hold(struct xfs_buf *bp);
 
 /* Releasing Buffers */
-extern void xfs_buf_rele(xfs_buf_t *);
+extern void xfs_buf_rele(struct xfs_buf *);
 
 /* Locking and Unlocking Buffers */
-extern int xfs_buf_trylock(xfs_buf_t *);
-extern void xfs_buf_lock(xfs_buf_t *);
-extern void xfs_buf_unlock(xfs_buf_t *);
+extern int xfs_buf_trylock(struct xfs_buf *);
+extern void xfs_buf_lock(struct xfs_buf *);
+extern void xfs_buf_unlock(struct xfs_buf *);
 #define xfs_buf_islocked(bp) \
 	((bp)->b_sema.count <= 0)
 
-static inline void xfs_buf_relse(xfs_buf_t *bp)
+static inline void xfs_buf_relse(struct xfs_buf *bp)
 {
 	xfs_buf_unlock(bp);
 	xfs_buf_rele(bp);
@@ -295,18 +297,10 @@ extern int xfs_buf_delwri_pushbuf(struct xfs_buf *, struct list_head *);
 extern int xfs_buf_init(void);
 extern void xfs_buf_terminate(void);
 
-/*
- * These macros use the IO block map rather than b_bn. b_bn is now really
- * just for the buffer cache index for cached buffers. As IO does not use b_bn
- * anymore, uncached buffers do not use b_bn at all and hence must modify the IO
- * map directly. Uncached buffers are not allowed to be discontiguous, so this
- * is safe to do.
- *
- * In future, uncached buffers will pass the block number directly to the io
- * request function and hence these macros will go away at that point.
- */
-#define XFS_BUF_ADDR(bp)		((bp)->b_maps[0].bm_bn)
-#define XFS_BUF_SET_ADDR(bp, bno)	((bp)->b_maps[0].bm_bn = (xfs_daddr_t)(bno))
+static inline xfs_daddr_t xfs_buf_daddr(struct xfs_buf *bp)
+{
+	return bp->b_maps[0].bm_bn;
+}
 
 void xfs_buf_set_ref(struct xfs_buf *bp, int lru_ref);
 
@@ -344,20 +338,15 @@ xfs_buf_update_cksum(struct xfs_buf *bp, unsigned long cksum_offset)
 /*
  *	Handling of buftargs.
  */
-extern xfs_buftarg_t *xfs_alloc_buftarg(struct xfs_mount *,
-			struct block_device *, struct dax_device *);
+extern struct xfs_buftarg *xfs_alloc_buftarg(struct xfs_mount *,
+		struct block_device *, struct dax_device *);
 extern void xfs_free_buftarg(struct xfs_buftarg *);
-extern void xfs_wait_buftarg(xfs_buftarg_t *);
-extern int xfs_setsize_buftarg(xfs_buftarg_t *, unsigned int);
+extern void xfs_buftarg_wait(struct xfs_buftarg *);
+extern void xfs_buftarg_drain(struct xfs_buftarg *);
+extern int xfs_setsize_buftarg(struct xfs_buftarg *, unsigned int);
 
 #define xfs_getsize_buftarg(buftarg)	block_size((buftarg)->bt_bdev)
 #define xfs_readonly_buftarg(buftarg)	bdev_read_only((buftarg)->bt_bdev)
-
-static inline int
-xfs_buftarg_dma_alignment(struct xfs_buftarg *bt)
-{
-	return queue_dma_alignment(bt->bt_bdev->bd_disk->queue);
-}
 
 int xfs_buf_reverify(struct xfs_buf *bp, const struct xfs_buf_ops *ops);
 bool xfs_verify_magic(struct xfs_buf *bp, __be32 dmagic);

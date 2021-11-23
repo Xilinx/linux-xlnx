@@ -23,6 +23,7 @@
 #include "cifs_debug.h"
 #include "cifs_unicode.h"
 #include "dfs_cache.h"
+#include "fs_context.h"
 
 static LIST_HEAD(cifs_dfs_automount_list);
 
@@ -124,8 +125,7 @@ cifs_build_devname(char *nodename, const char *prepath)
  * @sb_mountdata:	parent/root DFS mount options (template)
  * @fullpath:		full path in UNC format
  * @ref:		optional server's referral
- * @devname:		optional pointer for saving device name
- *
+ * @devname:		return the built cifs device name if passed pointer not NULL
  * creates mount options for submount based on template options sb_mountdata
  * and replacing unc,ip,prefixpath options with ones we've got form ref_unc.
  *
@@ -133,9 +133,9 @@ cifs_build_devname(char *nodename, const char *prepath)
  * Caller is responsible for freeing returned value if it is not error.
  */
 char *cifs_compose_mount_options(const char *sb_mountdata,
-				   const char *fullpath,
-				   const struct dfs_info3_param *ref,
-				   char **devname)
+				 const char *fullpath,
+				 const struct dfs_info3_param *ref,
+				 char **devname)
 {
 	int rc;
 	char *name;
@@ -151,6 +151,9 @@ char *cifs_compose_mount_options(const char *sb_mountdata,
 		return ERR_PTR(-EINVAL);
 
 	if (ref) {
+		if (WARN_ON_ONCE(!ref->node_name || ref->path_consumed < 0))
+			return ERR_PTR(-EINVAL);
+
 		if (strlen(fullpath) - ref->path_consumed) {
 			prepath = fullpath + ref->path_consumed;
 			/* skip initial delimiter */
@@ -173,7 +176,7 @@ char *cifs_compose_mount_options(const char *sb_mountdata,
 		}
 	}
 
-	rc = dns_resolve_server_name_to_ip(name, &srvIP);
+	rc = dns_resolve_server_name_to_ip(name, &srvIP, NULL);
 	if (rc < 0) {
 		cifs_dbg(FYI, "%s: Failed to resolve server part of %s to IP: %d\n",
 			 __func__, name, rc);
@@ -208,6 +211,10 @@ char *cifs_compose_mount_options(const char *sb_mountdata,
 		else
 			noff = tkn_e - (sb_mountdata + off) + 1;
 
+		if (strncasecmp(sb_mountdata + off, "cruid=", 6) == 0) {
+			off += noff;
+			continue;
+		}
 		if (strncasecmp(sb_mountdata + off, "unc=", 4) == 0) {
 			off += noff;
 			continue;
@@ -258,6 +265,7 @@ compose_mount_options_err:
  * to perform failover in case we failed to connect to the first target in the
  * referral.
  *
+ * @mntpt:		directory entry for the path we are trying to automount
  * @cifs_sb:		parent/root superblock
  * @fullpath:		full path in UNC format
  */
@@ -269,14 +277,18 @@ static struct vfsmount *cifs_dfs_do_mount(struct dentry *mntpt,
 	char *mountdata;
 	char *devname;
 
-	devname = kstrndup(fullpath, strlen(fullpath), GFP_KERNEL);
+	devname = kstrdup(fullpath, GFP_KERNEL);
 	if (!devname)
 		return ERR_PTR(-ENOMEM);
 
 	convert_delimiter(devname, '/');
 
+	/* TODO: change to call fs_context_for_mount(), fill in context directly, call fc_mount */
+
+	/* See afs_mntpt_do_automount in fs/afs/mntpt.c for an example */
+
 	/* strip first '\' from fullpath */
-	mountdata = cifs_compose_mount_options(cifs_sb->mountdata,
+	mountdata = cifs_compose_mount_options(cifs_sb->ctx->mount_options,
 					       fullpath + 1, NULL, NULL);
 	if (IS_ERR(mountdata)) {
 		kfree(devname);
@@ -297,6 +309,7 @@ static struct vfsmount *cifs_dfs_do_automount(struct dentry *mntpt)
 	struct cifs_sb_info *cifs_sb;
 	struct cifs_ses *ses;
 	struct cifs_tcon *tcon;
+	void *page;
 	char *full_path, *root_path;
 	unsigned int xid;
 	int rc;
@@ -319,10 +332,13 @@ static struct vfsmount *cifs_dfs_do_automount(struct dentry *mntpt)
 		goto cdda_exit;
 	}
 
+	page = alloc_dentry_path();
 	/* always use tree name prefix */
-	full_path = build_path_from_dentry_optional_prefix(mntpt, true);
-	if (full_path == NULL)
-		goto cdda_exit;
+	full_path = build_path_from_dentry_optional_prefix(mntpt, page, true);
+	if (IS_ERR(full_path)) {
+		mnt = ERR_CAST(full_path);
+		goto free_full_path;
+	}
 
 	convert_delimiter(full_path, '\\');
 
@@ -380,7 +396,7 @@ static struct vfsmount *cifs_dfs_do_automount(struct dentry *mntpt)
 free_root_path:
 	kfree(root_path);
 free_full_path:
-	kfree(full_path);
+	free_dentry_path(page);
 cdda_exit:
 	cifs_dbg(FYI, "leaving %s\n" , __func__);
 	return mnt;

@@ -74,6 +74,7 @@ MCE_INJECT_SET(status);
 MCE_INJECT_SET(misc);
 MCE_INJECT_SET(addr);
 MCE_INJECT_SET(synd);
+MCE_INJECT_SET(ipid);
 
 #define MCE_INJECT_GET(reg)						\
 static int inj_##reg##_get(void *data, u64 *val)			\
@@ -88,11 +89,13 @@ MCE_INJECT_GET(status);
 MCE_INJECT_GET(misc);
 MCE_INJECT_GET(addr);
 MCE_INJECT_GET(synd);
+MCE_INJECT_GET(ipid);
 
 DEFINE_SIMPLE_ATTRIBUTE(status_fops, inj_status_get, inj_status_set, "%llx\n");
 DEFINE_SIMPLE_ATTRIBUTE(misc_fops, inj_misc_get, inj_misc_set, "%llx\n");
 DEFINE_SIMPLE_ATTRIBUTE(addr_fops, inj_addr_get, inj_addr_set, "%llx\n");
 DEFINE_SIMPLE_ATTRIBUTE(synd_fops, inj_synd_get, inj_synd_set, "%llx\n");
+DEFINE_SIMPLE_ATTRIBUTE(ipid_fops, inj_ipid_get, inj_ipid_set, "%llx\n");
 
 static void setup_inj_struct(struct mce *m)
 {
@@ -232,7 +235,7 @@ static void __maybe_unused raise_mce(struct mce *m)
 		unsigned long start;
 		int cpu;
 
-		get_online_cpus();
+		cpus_read_lock();
 		cpumask_copy(mce_inject_cpumask, cpu_online_mask);
 		cpumask_clear_cpu(get_cpu(), mce_inject_cpumask);
 		for_each_online_cpu(cpu) {
@@ -266,7 +269,7 @@ static void __maybe_unused raise_mce(struct mce *m)
 		}
 		raise_local();
 		put_cpu();
-		put_online_cpus();
+		cpus_read_unlock();
 	} else {
 		preempt_disable();
 		raise_local();
@@ -522,11 +525,11 @@ static void do_inject(void)
 	if (boot_cpu_has(X86_FEATURE_AMD_DCM) &&
 	    b == 4 &&
 	    boot_cpu_data.x86 < 0x17) {
-		toggle_nb_mca_mst_cpu(amd_get_nb_id(cpu));
-		cpu = get_nbc_for_node(amd_get_nb_id(cpu));
+		toggle_nb_mca_mst_cpu(topology_die_id(cpu));
+		cpu = get_nbc_for_node(topology_die_id(cpu));
 	}
 
-	get_online_cpus();
+	cpus_read_lock();
 	if (!cpu_online(cpu))
 		goto err;
 
@@ -550,7 +553,7 @@ static void do_inject(void)
 	}
 
 err:
-	put_online_cpus();
+	cpus_read_unlock();
 
 }
 
@@ -629,6 +632,8 @@ static const char readme_msg[] =
 "\t    is present in hardware. \n"
 "\t  - \"th\": Trigger APIC interrupt for Threshold errors. Causes threshold \n"
 "\t    APIC interrupt handler to handle the error. \n"
+"\n"
+"ipid:\t IPID (AMD-specific)\n"
 "\n";
 
 static ssize_t
@@ -652,6 +657,7 @@ static struct dfs_node {
 	{ .name = "misc",	.fops = &misc_fops,   .perm = S_IRUSR | S_IWUSR },
 	{ .name = "addr",	.fops = &addr_fops,   .perm = S_IRUSR | S_IWUSR },
 	{ .name = "synd",	.fops = &synd_fops,   .perm = S_IRUSR | S_IWUSR },
+	{ .name = "ipid",	.fops = &ipid_fops,   .perm = S_IRUSR | S_IWUSR },
 	{ .name = "bank",	.fops = &bank_fops,   .perm = S_IRUSR | S_IWUSR },
 	{ .name = "flags",	.fops = &flags_fops,  .perm = S_IRUSR | S_IWUSR },
 	{ .name = "cpu",	.fops = &extcpu_fops, .perm = S_IRUSR | S_IWUSR },

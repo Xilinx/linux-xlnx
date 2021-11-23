@@ -89,7 +89,7 @@ static inline void htt_print_tx_pdev_stats_cmn_tlv(const void *tag_buf,
 	len += HTT_DBG_OUT(buf + len, buf_len - len, "tx_abort = %u",
 			   htt_stats_buf->tx_abort);
 	len += HTT_DBG_OUT(buf + len, buf_len - len, "mpdu_requeued = %u",
-			   htt_stats_buf->mpdu_requed);
+			   htt_stats_buf->mpdu_requeued);
 	len += HTT_DBG_OUT(buf + len, buf_len - len, "tx_xretry = %u",
 			   htt_stats_buf->tx_xretry);
 	len += HTT_DBG_OUT(buf + len, buf_len - len, "data_rc = %u",
@@ -3845,6 +3845,18 @@ htt_print_pdev_obss_pd_stats_tlv_v(const void *tag_buf,
 			   htt_stats_buf->num_obss_tx_ppdu_success);
 	len += HTT_DBG_OUT(buf + len, buf_len - len, "OBSS Tx failures PPDU = %u\n",
 			   htt_stats_buf->num_obss_tx_ppdu_failure);
+	len += HTT_DBG_OUT(buf + len, buf_len - len, "Non-SRG Opportunities = %u\n",
+			   htt_stats_buf->num_non_srg_opportunities);
+	len += HTT_DBG_OUT(buf + len, buf_len - len, "Non-SRG tried PPDU = %u\n",
+			   htt_stats_buf->num_non_srg_ppdu_tried);
+	len += HTT_DBG_OUT(buf + len, buf_len - len, "Non-SRG success PPDU = %u\n",
+			   htt_stats_buf->num_non_srg_ppdu_success);
+	len += HTT_DBG_OUT(buf + len, buf_len - len, "SRG Opportunities = %u\n",
+			   htt_stats_buf->num_srg_opportunities);
+	len += HTT_DBG_OUT(buf + len, buf_len - len, "SRG tried PPDU = %u\n",
+			   htt_stats_buf->num_srg_ppdu_tried);
+	len += HTT_DBG_OUT(buf + len, buf_len - len, "SRG success PPDU = %u\n",
+			   htt_stats_buf->num_srg_ppdu_success);
 
 	if (len >= buf_len)
 		buf[buf_len - 1] = 0;

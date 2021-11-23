@@ -173,6 +173,7 @@ struct ath11k_ce {
 
 extern const struct ce_attr ath11k_host_ce_config_ipq8074[];
 extern const struct ce_attr ath11k_host_ce_config_qca6390[];
+extern const struct ce_attr ath11k_host_ce_config_qcn9074[];
 
 void ath11k_ce_cleanup_pipes(struct ath11k_base *ab);
 void ath11k_ce_rx_replenish_retry(struct timer_list *t);
@@ -190,4 +191,6 @@ int ath11k_ce_map_service_to_pipe(struct ath11k_base *ab, u16 service_id,
 int ath11k_ce_attr_attach(struct ath11k_base *ab);
 void ath11k_ce_get_shadow_config(struct ath11k_base *ab,
 				 u32 **shadow_cfg, u32 *shadow_cfg_len);
+void ath11k_ce_stop_shadow_timers(struct ath11k_base *ab);
+
 #endif

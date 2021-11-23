@@ -67,9 +67,6 @@ config KEYBOARD_AMIGA
 	  To compile this driver as a module, choose M here: the
 	  module will be called amikbd.
 
-config ATARI_KBD_CORE
-	bool
-
 config KEYBOARD_APPLESPI
 	tristate "Apple SPI keyboard and trackpad"
 	depends on ACPI && EFI
@@ -213,7 +210,7 @@ config KEYBOARD_LKKBD
 	select SERIO
 	help
 	  Say Y here if you want to use a LK201 or LK401 style serial
-	  keyboard. This keyboard is also useable on PCs if you attach
+	  keyboard. This keyboard is also usable on PCs if you attach
 	  it with the inputattach program. The connector pinout is
 	  described within lkkbd.c.
 
@@ -446,7 +443,7 @@ config KEYBOARD_MPR121
 
 config KEYBOARD_SNVS_PWRKEY
 	tristate "IMX SNVS Power Key Driver"
-	depends on ARCH_MXC || COMPILE_TEST
+	depends on ARCH_MXC || (COMPILE_TEST && HAS_IOMEM)
 	depends on OF
 	help
 	  This is the snvs powerkey driver for the Freescale i.MX application
@@ -457,7 +454,7 @@ config KEYBOARD_SNVS_PWRKEY
 
 config KEYBOARD_IMX
 	tristate "IMX keypad support"
-	depends on ARCH_MXC
+	depends on ARCH_MXC || COMPILE_TEST
 	select INPUT_MATRIXKMAP
 	help
 	  Enable support for IMX keypad port.
@@ -685,7 +682,7 @@ config KEYBOARD_OMAP
 
 config KEYBOARD_OMAP4
 	tristate "TI OMAP4+ keypad support"
-	depends on OF || ARCH_OMAP2PLUS
+	depends on (OF && HAS_IOMEM) || ARCH_OMAP2PLUS
 	select INPUT_MATRIXKMAP
 	help
 	  Say Y here if you want to use the OMAP4+ keypad.
@@ -773,7 +770,7 @@ config KEYBOARD_CAP11XX
 
 config KEYBOARD_BCM
 	tristate "Broadcom keypad driver"
-	depends on OF && HAVE_CLK
+	depends on OF && HAVE_CLK && HAS_IOMEM
 	select INPUT_MATRIXKMAP
 	default ARCH_BCM_CYGNUS
 	help

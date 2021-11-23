@@ -169,7 +169,7 @@ struct acpi_ec_query {
 };
 
 static int acpi_ec_query(struct acpi_ec *ec, u8 *data);
-static void advance_transaction(struct acpi_ec *ec);
+static void advance_transaction(struct acpi_ec *ec, bool interrupt);
 static void acpi_ec_event_handler(struct work_struct *work);
 static void acpi_ec_event_processor(struct work_struct *work);
 
@@ -183,6 +183,7 @@ static struct workqueue_struct *ec_query_wq;
 
 static int EC_FLAGS_CORRECT_ECDT; /* Needs ECDT port address correction */
 static int EC_FLAGS_IGNORE_DSDT_GPE; /* Needs ECDT GPE as correction setting */
+static int EC_FLAGS_TRUST_DSDT_GPE; /* Needs DSDT GPE as correction setting */
 static int EC_FLAGS_CLEAR_ON_RESUME; /* Needs acpi_ec_clear() on boot/resume */
 
 /* --------------------------------------------------------------------------
@@ -335,12 +336,12 @@ static const char *acpi_ec_cmd_string(u8 cmd)
  *                           GPE Registers
  * -------------------------------------------------------------------------- */
 
-static inline bool acpi_ec_is_gpe_raised(struct acpi_ec *ec)
+static inline bool acpi_ec_gpe_status_set(struct acpi_ec *ec)
 {
 	acpi_event_status gpe_status = 0;
 
 	(void)acpi_get_gpe_status(NULL, ec->gpe, &gpe_status);
-	return (gpe_status & ACPI_EVENT_FLAG_STATUS_SET) ? true : false;
+	return !!(gpe_status & ACPI_EVENT_FLAG_STATUS_SET);
 }
 
 static inline void acpi_ec_enable_gpe(struct acpi_ec *ec, bool open)
@@ -351,14 +352,14 @@ static inline void acpi_ec_enable_gpe(struct acpi_ec *ec, bool open)
 		BUG_ON(ec->reference_count < 1);
 		acpi_set_gpe(NULL, ec->gpe, ACPI_GPE_ENABLE);
 	}
-	if (acpi_ec_is_gpe_raised(ec)) {
+	if (acpi_ec_gpe_status_set(ec)) {
 		/*
 		 * On some platforms, EN=1 writes cannot trigger GPE. So
 		 * software need to manually trigger a pseudo GPE event on
 		 * EN=1 writes.
 		 */
 		ec_dbg_raw("Polling quirk");
-		advance_transaction(ec);
+		advance_transaction(ec, false);
 	}
 }
 
@@ -370,23 +371,6 @@ static inline void acpi_ec_disable_gpe(struct acpi_ec *ec, bool close)
 		BUG_ON(ec->reference_count < 1);
 		acpi_set_gpe(NULL, ec->gpe, ACPI_GPE_DISABLE);
 	}
-}
-
-static inline void acpi_ec_clear_gpe(struct acpi_ec *ec)
-{
-	/*
-	 * GPE STS is a W1C register, which means:
-	 * 1. Software can clear it without worrying about clearing other
-	 *    GPEs' STS bits when the hardware sets them in parallel.
-	 * 2. As long as software can ensure only clearing it when it is
-	 *    set, hardware won't set it in parallel.
-	 * So software can clear GPE in any contexts.
-	 * Warning: do not move the check into advance_transaction() as the
-	 * EC commands will be sent without GPE raised.
-	 */
-	if (!acpi_ec_is_gpe_raised(ec))
-		return;
-	acpi_clear_gpe(NULL, ec->gpe);
 }
 
 /* --------------------------------------------------------------------------
@@ -488,7 +472,7 @@ static inline void __acpi_ec_enable_event(struct acpi_ec *ec)
 	 * Unconditionally invoke this once after enabling the event
 	 * handling mechanism to detect the pending events.
 	 */
-	advance_transaction(ec);
+	advance_transaction(ec, false);
 }
 
 static inline void __acpi_ec_disable_event(struct acpi_ec *ec)
@@ -632,24 +616,41 @@ static inline void ec_transaction_transition(struct acpi_ec *ec, unsigned long f
 	}
 }
 
-static void advance_transaction(struct acpi_ec *ec)
+static void acpi_ec_spurious_interrupt(struct acpi_ec *ec, struct transaction *t)
 {
-	struct transaction *t;
-	u8 status;
-	bool wakeup = false;
+	if (t->irq_count < ec_storm_threshold)
+		++t->irq_count;
 
-	ec_dbg_stm("%s (%d)", in_interrupt() ? "IRQ" : "TASK",
-		   smp_processor_id());
+	/* Trigger if the threshold is 0 too. */
+	if (t->irq_count == ec_storm_threshold)
+		acpi_ec_mask_events(ec);
+}
+
+static void advance_transaction(struct acpi_ec *ec, bool interrupt)
+{
+	struct transaction *t = ec->curr;
+	bool wakeup = false;
+	u8 status;
+
+	ec_dbg_stm("%s (%d)", interrupt ? "IRQ" : "TASK", smp_processor_id());
+
 	/*
-	 * By always clearing STS before handling all indications, we can
-	 * ensure a hardware STS 0->1 change after this clearing can always
-	 * trigger a GPE interrupt.
+	 * Clear GPE_STS upfront to allow subsequent hardware GPE_STS 0->1
+	 * changes to always trigger a GPE interrupt.
+	 *
+	 * GPE STS is a W1C register, which means:
+	 *
+	 * 1. Software can clear it without worrying about clearing the other
+	 *    GPEs' STS bits when the hardware sets them in parallel.
+	 *
+	 * 2. As long as software can ensure only clearing it when it is set,
+	 *    hardware won't set it in parallel.
 	 */
-	if (ec->gpe >= 0)
-		acpi_ec_clear_gpe(ec);
+	if (ec->gpe >= 0 && acpi_ec_gpe_status_set(ec))
+		acpi_clear_gpe(NULL, ec->gpe);
 
 	status = acpi_ec_read_status(ec);
-	t = ec->curr;
+
 	/*
 	 * Another IRQ or a guarded polling mode advancement is detected,
 	 * the next QR_EC submission is then allowed.
@@ -661,56 +662,43 @@ static void advance_transaction(struct acpi_ec *ec)
 			clear_bit(EC_FLAGS_QUERY_GUARDING, &ec->flags);
 			acpi_ec_complete_query(ec);
 		}
+		if (!t)
+			goto out;
 	}
-	if (!t)
-		goto err;
+
 	if (t->flags & ACPI_EC_COMMAND_POLL) {
 		if (t->wlen > t->wi) {
-			if ((status & ACPI_EC_FLAG_IBF) == 0)
+			if (!(status & ACPI_EC_FLAG_IBF))
 				acpi_ec_write_data(ec, t->wdata[t->wi++]);
-			else
-				goto err;
+			else if (interrupt && !(status & ACPI_EC_FLAG_SCI))
+				acpi_ec_spurious_interrupt(ec, t);
 		} else if (t->rlen > t->ri) {
-			if ((status & ACPI_EC_FLAG_OBF) == 1) {
+			if (status & ACPI_EC_FLAG_OBF) {
 				t->rdata[t->ri++] = acpi_ec_read_data(ec);
 				if (t->rlen == t->ri) {
 					ec_transaction_transition(ec, ACPI_EC_COMMAND_COMPLETE);
+					wakeup = true;
 					if (t->command == ACPI_EC_COMMAND_QUERY)
 						ec_dbg_evt("Command(%s) completed by hardware",
 							   acpi_ec_cmd_string(ACPI_EC_COMMAND_QUERY));
-					wakeup = true;
 				}
-			} else
-				goto err;
-		} else if (t->wlen == t->wi &&
-			   (status & ACPI_EC_FLAG_IBF) == 0) {
+			} else if (interrupt && !(status & ACPI_EC_FLAG_SCI)) {
+				acpi_ec_spurious_interrupt(ec, t);
+			}
+		} else if (t->wlen == t->wi && !(status & ACPI_EC_FLAG_IBF)) {
 			ec_transaction_transition(ec, ACPI_EC_COMMAND_COMPLETE);
 			wakeup = true;
 		}
-		goto out;
 	} else if (!(status & ACPI_EC_FLAG_IBF)) {
 		acpi_ec_write_cmd(ec, t->command);
 		ec_transaction_transition(ec, ACPI_EC_COMMAND_POLL);
-		goto out;
 	}
-err:
-	/*
-	 * If SCI bit is set, then don't think it's a false IRQ
-	 * otherwise will take a not handled IRQ as a false one.
-	 */
-	if (!(status & ACPI_EC_FLAG_SCI)) {
-		if (in_interrupt() && t) {
-			if (t->irq_count < ec_storm_threshold)
-				++t->irq_count;
-			/* Allow triggering on 0 threshold */
-			if (t->irq_count == ec_storm_threshold)
-				acpi_ec_mask_events(ec);
-		}
-	}
+
 out:
 	if (status & ACPI_EC_FLAG_SCI)
 		acpi_ec_submit_query(ec);
-	if (wakeup && in_interrupt())
+
+	if (wakeup && interrupt)
 		wake_up(&ec->wait);
 }
 
@@ -767,7 +755,7 @@ static int ec_poll(struct acpi_ec *ec)
 			if (!ec_guard(ec))
 				return 0;
 			spin_lock_irqsave(&ec->lock, flags);
-			advance_transaction(ec);
+			advance_transaction(ec, false);
 			spin_unlock_irqrestore(&ec->lock, flags);
 		} while (time_before(jiffies, delay));
 		pr_debug("controller reset, restart transaction\n");
@@ -1216,7 +1204,7 @@ static void acpi_ec_check_event(struct acpi_ec *ec)
 			 * taking care of it.
 			 */
 			if (!ec->curr)
-				advance_transaction(ec);
+				advance_transaction(ec, false);
 			spin_unlock_irqrestore(&ec->lock, flags);
 		}
 	}
@@ -1259,7 +1247,7 @@ static void acpi_ec_handle_interrupt(struct acpi_ec *ec)
 	unsigned long flags;
 
 	spin_lock_irqsave(&ec->lock, flags);
-	advance_transaction(ec);
+	advance_transaction(ec, true);
 	spin_unlock_irqrestore(&ec->lock, flags);
 }
 
@@ -1606,7 +1594,8 @@ static int acpi_ec_add(struct acpi_device *device)
 		}
 
 		if (boot_ec && ec->command_addr == boot_ec->command_addr &&
-		    ec->data_addr == boot_ec->data_addr) {
+		    ec->data_addr == boot_ec->data_addr &&
+		    !EC_FLAGS_TRUST_DSDT_GPE) {
 			/*
 			 * Trust PNP0C09 namespace location rather than
 			 * ECDT ID. But trust ECDT GPE rather than _GPE
@@ -1640,7 +1629,7 @@ static int acpi_ec_add(struct acpi_device *device)
 	WARN(!ret, "Could not request EC cmd io port 0x%lx", ec->command_addr);
 
 	/* Reprobe devices depending on the EC */
-	acpi_walk_dep_device_list(ec->handle);
+	acpi_dev_clear_dependencies(device);
 
 	acpi_handle_debug(ec->handle, "enumerated.\n");
 	return 0;
@@ -1830,6 +1819,18 @@ static int ec_correct_ecdt(const struct dmi_system_id *id)
 }
 
 /*
+ * Some ECDTs contain wrong GPE setting, but they share the same port addresses
+ * with DSDT EC, don't duplicate the DSDT EC with ECDT EC in this case.
+ * https://bugzilla.kernel.org/show_bug.cgi?id=209989
+ */
+static int ec_honor_dsdt_gpe(const struct dmi_system_id *id)
+{
+	pr_debug("Detected system needing DSDT GPE setting.\n");
+	EC_FLAGS_TRUST_DSDT_GPE = 1;
+	return 0;
+}
+
+/*
  * Some DSDTs contain wrong GPE setting.
  * Asus FX502VD/VE, GL702VMK, X550VXK, X580VD
  * https://bugzilla.kernel.org/show_bug.cgi?id=195651
@@ -1859,6 +1860,22 @@ static const struct dmi_system_id ec_dmi_table[] __initconst = {
 	DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
 	DMI_MATCH(DMI_PRODUCT_NAME, "GL702VMK"),}, NULL},
 	{
+	ec_honor_ecdt_gpe, "ASUSTeK COMPUTER INC. X505BA", {
+	DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
+	DMI_MATCH(DMI_PRODUCT_NAME, "X505BA"),}, NULL},
+	{
+	ec_honor_ecdt_gpe, "ASUSTeK COMPUTER INC. X505BP", {
+	DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
+	DMI_MATCH(DMI_PRODUCT_NAME, "X505BP"),}, NULL},
+	{
+	ec_honor_ecdt_gpe, "ASUSTeK COMPUTER INC. X542BA", {
+	DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
+	DMI_MATCH(DMI_PRODUCT_NAME, "X542BA"),}, NULL},
+	{
+	ec_honor_ecdt_gpe, "ASUSTeK COMPUTER INC. X542BP", {
+	DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
+	DMI_MATCH(DMI_PRODUCT_NAME, "X542BP"),}, NULL},
+	{
 	ec_honor_ecdt_gpe, "ASUS X550VXK", {
 	DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
 	DMI_MATCH(DMI_PRODUCT_NAME, "X550VXK"),}, NULL},
@@ -1866,6 +1883,11 @@ static const struct dmi_system_id ec_dmi_table[] __initconst = {
 	ec_honor_ecdt_gpe, "ASUS X580VD", {
 	DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
 	DMI_MATCH(DMI_PRODUCT_NAME, "X580VD"),}, NULL},
+	{
+	/* https://bugzilla.kernel.org/show_bug.cgi?id=209989 */
+	ec_honor_dsdt_gpe, "HP Pavilion Gaming Laptop 15-cx0xxx", {
+	DMI_MATCH(DMI_SYS_VENDOR, "HP"),
+	DMI_MATCH(DMI_PRODUCT_NAME, "HP Pavilion Gaming Laptop 15-cx0xxx"),}, NULL},
 	{
 	ec_clear_on_resume, "Samsung hardware", {
 	DMI_MATCH(DMI_SYS_VENDOR, "SAMSUNG ELECTRONICS CO., LTD.")}, NULL},

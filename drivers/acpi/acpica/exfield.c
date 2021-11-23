@@ -3,7 +3,7 @@
  *
  * Module Name: exfield - AML execution - field_unit read/write
  *
- * Copyright (C) 2000 - 2020, Intel Corp.
+ * Copyright (C) 2000 - 2021, Intel Corp.
  *
  *****************************************************************************/
 
@@ -139,7 +139,9 @@ acpi_ex_read_data_from_field(struct acpi_walk_state *walk_state,
 		    || obj_desc->field.region_obj->region.space_id ==
 		    ACPI_ADR_SPACE_GSBUS
 		    || obj_desc->field.region_obj->region.space_id ==
-		    ACPI_ADR_SPACE_IPMI)) {
+		    ACPI_ADR_SPACE_IPMI
+		    || obj_desc->field.region_obj->region.space_id ==
+		    ACPI_ADR_SPACE_PLATFORM_RT)) {
 
 		/* SMBus, GSBus, IPMI serial */
 
@@ -301,7 +303,9 @@ acpi_ex_write_data_to_field(union acpi_operand_object *source_desc,
 		    || obj_desc->field.region_obj->region.space_id ==
 		    ACPI_ADR_SPACE_GSBUS
 		    || obj_desc->field.region_obj->region.space_id ==
-		    ACPI_ADR_SPACE_IPMI)) {
+		    ACPI_ADR_SPACE_IPMI
+		    || obj_desc->field.region_obj->region.space_id ==
+		    ACPI_ADR_SPACE_PLATFORM_RT)) {
 
 		/* SMBus, GSBus, IPMI serial */
 

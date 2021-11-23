@@ -14,6 +14,7 @@
 #include "locking.h"
 #include "volumes.h"
 #include "qgroup.h"
+#include "tree-mod-log.h"
 
 static int split_node(struct btrfs_trans_handle *trans, struct btrfs_root
 		      *root, struct btrfs_path *path, int level);
@@ -221,604 +222,16 @@ int btrfs_copy_root(struct btrfs_trans_handle *trans,
 		ret = btrfs_inc_ref(trans, root, cow, 1);
 	else
 		ret = btrfs_inc_ref(trans, root, cow, 0);
-
-	if (ret)
+	if (ret) {
+		btrfs_tree_unlock(cow);
+		free_extent_buffer(cow);
+		btrfs_abort_transaction(trans, ret);
 		return ret;
+	}
 
 	btrfs_mark_buffer_dirty(cow);
 	*cow_ret = cow;
 	return 0;
-}
-
-enum mod_log_op {
-	MOD_LOG_KEY_REPLACE,
-	MOD_LOG_KEY_ADD,
-	MOD_LOG_KEY_REMOVE,
-	MOD_LOG_KEY_REMOVE_WHILE_FREEING,
-	MOD_LOG_KEY_REMOVE_WHILE_MOVING,
-	MOD_LOG_MOVE_KEYS,
-	MOD_LOG_ROOT_REPLACE,
-};
-
-struct tree_mod_root {
-	u64 logical;
-	u8 level;
-};
-
-struct tree_mod_elem {
-	struct rb_node node;
-	u64 logical;
-	u64 seq;
-	enum mod_log_op op;
-
-	/* this is used for MOD_LOG_KEY_* and MOD_LOG_MOVE_KEYS operations */
-	int slot;
-
-	/* this is used for MOD_LOG_KEY* and MOD_LOG_ROOT_REPLACE */
-	u64 generation;
-
-	/* those are used for op == MOD_LOG_KEY_{REPLACE,REMOVE} */
-	struct btrfs_disk_key key;
-	u64 blockptr;
-
-	/* this is used for op == MOD_LOG_MOVE_KEYS */
-	struct {
-		int dst_slot;
-		int nr_items;
-	} move;
-
-	/* this is used for op == MOD_LOG_ROOT_REPLACE */
-	struct tree_mod_root old_root;
-};
-
-/*
- * Pull a new tree mod seq number for our operation.
- */
-static inline u64 btrfs_inc_tree_mod_seq(struct btrfs_fs_info *fs_info)
-{
-	return atomic64_inc_return(&fs_info->tree_mod_seq);
-}
-
-/*
- * This adds a new blocker to the tree mod log's blocker list if the @elem
- * passed does not already have a sequence number set. So when a caller expects
- * to record tree modifications, it should ensure to set elem->seq to zero
- * before calling btrfs_get_tree_mod_seq.
- * Returns a fresh, unused tree log modification sequence number, even if no new
- * blocker was added.
- */
-u64 btrfs_get_tree_mod_seq(struct btrfs_fs_info *fs_info,
-			   struct seq_list *elem)
-{
-	write_lock(&fs_info->tree_mod_log_lock);
-	if (!elem->seq) {
-		elem->seq = btrfs_inc_tree_mod_seq(fs_info);
-		list_add_tail(&elem->list, &fs_info->tree_mod_seq_list);
-	}
-	write_unlock(&fs_info->tree_mod_log_lock);
-
-	return elem->seq;
-}
-
-void btrfs_put_tree_mod_seq(struct btrfs_fs_info *fs_info,
-			    struct seq_list *elem)
-{
-	struct rb_root *tm_root;
-	struct rb_node *node;
-	struct rb_node *next;
-	struct tree_mod_elem *tm;
-	u64 min_seq = (u64)-1;
-	u64 seq_putting = elem->seq;
-
-	if (!seq_putting)
-		return;
-
-	write_lock(&fs_info->tree_mod_log_lock);
-	list_del(&elem->list);
-	elem->seq = 0;
-
-	if (!list_empty(&fs_info->tree_mod_seq_list)) {
-		struct seq_list *first;
-
-		first = list_first_entry(&fs_info->tree_mod_seq_list,
-					 struct seq_list, list);
-		if (seq_putting > first->seq) {
-			/*
-			 * Blocker with lower sequence number exists, we
-			 * cannot remove anything from the log.
-			 */
-			write_unlock(&fs_info->tree_mod_log_lock);
-			return;
-		}
-		min_seq = first->seq;
-	}
-
-	/*
-	 * anything that's lower than the lowest existing (read: blocked)
-	 * sequence number can be removed from the tree.
-	 */
-	tm_root = &fs_info->tree_mod_log;
-	for (node = rb_first(tm_root); node; node = next) {
-		next = rb_next(node);
-		tm = rb_entry(node, struct tree_mod_elem, node);
-		if (tm->seq >= min_seq)
-			continue;
-		rb_erase(node, tm_root);
-		kfree(tm);
-	}
-	write_unlock(&fs_info->tree_mod_log_lock);
-}
-
-/*
- * key order of the log:
- *       node/leaf start address -> sequence
- *
- * The 'start address' is the logical address of the *new* root node
- * for root replace operations, or the logical address of the affected
- * block for all other operations.
- */
-static noinline int
-__tree_mod_log_insert(struct btrfs_fs_info *fs_info, struct tree_mod_elem *tm)
-{
-	struct rb_root *tm_root;
-	struct rb_node **new;
-	struct rb_node *parent = NULL;
-	struct tree_mod_elem *cur;
-
-	lockdep_assert_held_write(&fs_info->tree_mod_log_lock);
-
-	tm->seq = btrfs_inc_tree_mod_seq(fs_info);
-
-	tm_root = &fs_info->tree_mod_log;
-	new = &tm_root->rb_node;
-	while (*new) {
-		cur = rb_entry(*new, struct tree_mod_elem, node);
-		parent = *new;
-		if (cur->logical < tm->logical)
-			new = &((*new)->rb_left);
-		else if (cur->logical > tm->logical)
-			new = &((*new)->rb_right);
-		else if (cur->seq < tm->seq)
-			new = &((*new)->rb_left);
-		else if (cur->seq > tm->seq)
-			new = &((*new)->rb_right);
-		else
-			return -EEXIST;
-	}
-
-	rb_link_node(&tm->node, parent, new);
-	rb_insert_color(&tm->node, tm_root);
-	return 0;
-}
-
-/*
- * Determines if logging can be omitted. Returns 1 if it can. Otherwise, it
- * returns zero with the tree_mod_log_lock acquired. The caller must hold
- * this until all tree mod log insertions are recorded in the rb tree and then
- * write unlock fs_info::tree_mod_log_lock.
- */
-static inline int tree_mod_dont_log(struct btrfs_fs_info *fs_info,
-				    struct extent_buffer *eb) {
-	smp_mb();
-	if (list_empty(&(fs_info)->tree_mod_seq_list))
-		return 1;
-	if (eb && btrfs_header_level(eb) == 0)
-		return 1;
-
-	write_lock(&fs_info->tree_mod_log_lock);
-	if (list_empty(&(fs_info)->tree_mod_seq_list)) {
-		write_unlock(&fs_info->tree_mod_log_lock);
-		return 1;
-	}
-
-	return 0;
-}
-
-/* Similar to tree_mod_dont_log, but doesn't acquire any locks. */
-static inline int tree_mod_need_log(const struct btrfs_fs_info *fs_info,
-				    struct extent_buffer *eb)
-{
-	smp_mb();
-	if (list_empty(&(fs_info)->tree_mod_seq_list))
-		return 0;
-	if (eb && btrfs_header_level(eb) == 0)
-		return 0;
-
-	return 1;
-}
-
-static struct tree_mod_elem *
-alloc_tree_mod_elem(struct extent_buffer *eb, int slot,
-		    enum mod_log_op op, gfp_t flags)
-{
-	struct tree_mod_elem *tm;
-
-	tm = kzalloc(sizeof(*tm), flags);
-	if (!tm)
-		return NULL;
-
-	tm->logical = eb->start;
-	if (op != MOD_LOG_KEY_ADD) {
-		btrfs_node_key(eb, &tm->key, slot);
-		tm->blockptr = btrfs_node_blockptr(eb, slot);
-	}
-	tm->op = op;
-	tm->slot = slot;
-	tm->generation = btrfs_node_ptr_generation(eb, slot);
-	RB_CLEAR_NODE(&tm->node);
-
-	return tm;
-}
-
-static noinline int tree_mod_log_insert_key(struct extent_buffer *eb, int slot,
-		enum mod_log_op op, gfp_t flags)
-{
-	struct tree_mod_elem *tm;
-	int ret;
-
-	if (!tree_mod_need_log(eb->fs_info, eb))
-		return 0;
-
-	tm = alloc_tree_mod_elem(eb, slot, op, flags);
-	if (!tm)
-		return -ENOMEM;
-
-	if (tree_mod_dont_log(eb->fs_info, eb)) {
-		kfree(tm);
-		return 0;
-	}
-
-	ret = __tree_mod_log_insert(eb->fs_info, tm);
-	write_unlock(&eb->fs_info->tree_mod_log_lock);
-	if (ret)
-		kfree(tm);
-
-	return ret;
-}
-
-static noinline int tree_mod_log_insert_move(struct extent_buffer *eb,
-		int dst_slot, int src_slot, int nr_items)
-{
-	struct tree_mod_elem *tm = NULL;
-	struct tree_mod_elem **tm_list = NULL;
-	int ret = 0;
-	int i;
-	int locked = 0;
-
-	if (!tree_mod_need_log(eb->fs_info, eb))
-		return 0;
-
-	tm_list = kcalloc(nr_items, sizeof(struct tree_mod_elem *), GFP_NOFS);
-	if (!tm_list)
-		return -ENOMEM;
-
-	tm = kzalloc(sizeof(*tm), GFP_NOFS);
-	if (!tm) {
-		ret = -ENOMEM;
-		goto free_tms;
-	}
-
-	tm->logical = eb->start;
-	tm->slot = src_slot;
-	tm->move.dst_slot = dst_slot;
-	tm->move.nr_items = nr_items;
-	tm->op = MOD_LOG_MOVE_KEYS;
-
-	for (i = 0; i + dst_slot < src_slot && i < nr_items; i++) {
-		tm_list[i] = alloc_tree_mod_elem(eb, i + dst_slot,
-		    MOD_LOG_KEY_REMOVE_WHILE_MOVING, GFP_NOFS);
-		if (!tm_list[i]) {
-			ret = -ENOMEM;
-			goto free_tms;
-		}
-	}
-
-	if (tree_mod_dont_log(eb->fs_info, eb))
-		goto free_tms;
-	locked = 1;
-
-	/*
-	 * When we override something during the move, we log these removals.
-	 * This can only happen when we move towards the beginning of the
-	 * buffer, i.e. dst_slot < src_slot.
-	 */
-	for (i = 0; i + dst_slot < src_slot && i < nr_items; i++) {
-		ret = __tree_mod_log_insert(eb->fs_info, tm_list[i]);
-		if (ret)
-			goto free_tms;
-	}
-
-	ret = __tree_mod_log_insert(eb->fs_info, tm);
-	if (ret)
-		goto free_tms;
-	write_unlock(&eb->fs_info->tree_mod_log_lock);
-	kfree(tm_list);
-
-	return 0;
-free_tms:
-	for (i = 0; i < nr_items; i++) {
-		if (tm_list[i] && !RB_EMPTY_NODE(&tm_list[i]->node))
-			rb_erase(&tm_list[i]->node, &eb->fs_info->tree_mod_log);
-		kfree(tm_list[i]);
-	}
-	if (locked)
-		write_unlock(&eb->fs_info->tree_mod_log_lock);
-	kfree(tm_list);
-	kfree(tm);
-
-	return ret;
-}
-
-static inline int
-__tree_mod_log_free_eb(struct btrfs_fs_info *fs_info,
-		       struct tree_mod_elem **tm_list,
-		       int nritems)
-{
-	int i, j;
-	int ret;
-
-	for (i = nritems - 1; i >= 0; i--) {
-		ret = __tree_mod_log_insert(fs_info, tm_list[i]);
-		if (ret) {
-			for (j = nritems - 1; j > i; j--)
-				rb_erase(&tm_list[j]->node,
-					 &fs_info->tree_mod_log);
-			return ret;
-		}
-	}
-
-	return 0;
-}
-
-static noinline int tree_mod_log_insert_root(struct extent_buffer *old_root,
-			 struct extent_buffer *new_root, int log_removal)
-{
-	struct btrfs_fs_info *fs_info = old_root->fs_info;
-	struct tree_mod_elem *tm = NULL;
-	struct tree_mod_elem **tm_list = NULL;
-	int nritems = 0;
-	int ret = 0;
-	int i;
-
-	if (!tree_mod_need_log(fs_info, NULL))
-		return 0;
-
-	if (log_removal && btrfs_header_level(old_root) > 0) {
-		nritems = btrfs_header_nritems(old_root);
-		tm_list = kcalloc(nritems, sizeof(struct tree_mod_elem *),
-				  GFP_NOFS);
-		if (!tm_list) {
-			ret = -ENOMEM;
-			goto free_tms;
-		}
-		for (i = 0; i < nritems; i++) {
-			tm_list[i] = alloc_tree_mod_elem(old_root, i,
-			    MOD_LOG_KEY_REMOVE_WHILE_FREEING, GFP_NOFS);
-			if (!tm_list[i]) {
-				ret = -ENOMEM;
-				goto free_tms;
-			}
-		}
-	}
-
-	tm = kzalloc(sizeof(*tm), GFP_NOFS);
-	if (!tm) {
-		ret = -ENOMEM;
-		goto free_tms;
-	}
-
-	tm->logical = new_root->start;
-	tm->old_root.logical = old_root->start;
-	tm->old_root.level = btrfs_header_level(old_root);
-	tm->generation = btrfs_header_generation(old_root);
-	tm->op = MOD_LOG_ROOT_REPLACE;
-
-	if (tree_mod_dont_log(fs_info, NULL))
-		goto free_tms;
-
-	if (tm_list)
-		ret = __tree_mod_log_free_eb(fs_info, tm_list, nritems);
-	if (!ret)
-		ret = __tree_mod_log_insert(fs_info, tm);
-
-	write_unlock(&fs_info->tree_mod_log_lock);
-	if (ret)
-		goto free_tms;
-	kfree(tm_list);
-
-	return ret;
-
-free_tms:
-	if (tm_list) {
-		for (i = 0; i < nritems; i++)
-			kfree(tm_list[i]);
-		kfree(tm_list);
-	}
-	kfree(tm);
-
-	return ret;
-}
-
-static struct tree_mod_elem *
-__tree_mod_log_search(struct btrfs_fs_info *fs_info, u64 start, u64 min_seq,
-		      int smallest)
-{
-	struct rb_root *tm_root;
-	struct rb_node *node;
-	struct tree_mod_elem *cur = NULL;
-	struct tree_mod_elem *found = NULL;
-
-	read_lock(&fs_info->tree_mod_log_lock);
-	tm_root = &fs_info->tree_mod_log;
-	node = tm_root->rb_node;
-	while (node) {
-		cur = rb_entry(node, struct tree_mod_elem, node);
-		if (cur->logical < start) {
-			node = node->rb_left;
-		} else if (cur->logical > start) {
-			node = node->rb_right;
-		} else if (cur->seq < min_seq) {
-			node = node->rb_left;
-		} else if (!smallest) {
-			/* we want the node with the highest seq */
-			if (found)
-				BUG_ON(found->seq > cur->seq);
-			found = cur;
-			node = node->rb_left;
-		} else if (cur->seq > min_seq) {
-			/* we want the node with the smallest seq */
-			if (found)
-				BUG_ON(found->seq < cur->seq);
-			found = cur;
-			node = node->rb_right;
-		} else {
-			found = cur;
-			break;
-		}
-	}
-	read_unlock(&fs_info->tree_mod_log_lock);
-
-	return found;
-}
-
-/*
- * this returns the element from the log with the smallest time sequence
- * value that's in the log (the oldest log item). any element with a time
- * sequence lower than min_seq will be ignored.
- */
-static struct tree_mod_elem *
-tree_mod_log_search_oldest(struct btrfs_fs_info *fs_info, u64 start,
-			   u64 min_seq)
-{
-	return __tree_mod_log_search(fs_info, start, min_seq, 1);
-}
-
-/*
- * this returns the element from the log with the largest time sequence
- * value that's in the log (the most recent log item). any element with
- * a time sequence lower than min_seq will be ignored.
- */
-static struct tree_mod_elem *
-tree_mod_log_search(struct btrfs_fs_info *fs_info, u64 start, u64 min_seq)
-{
-	return __tree_mod_log_search(fs_info, start, min_seq, 0);
-}
-
-static noinline int tree_mod_log_eb_copy(struct extent_buffer *dst,
-		     struct extent_buffer *src, unsigned long dst_offset,
-		     unsigned long src_offset, int nr_items)
-{
-	struct btrfs_fs_info *fs_info = dst->fs_info;
-	int ret = 0;
-	struct tree_mod_elem **tm_list = NULL;
-	struct tree_mod_elem **tm_list_add, **tm_list_rem;
-	int i;
-	int locked = 0;
-
-	if (!tree_mod_need_log(fs_info, NULL))
-		return 0;
-
-	if (btrfs_header_level(dst) == 0 && btrfs_header_level(src) == 0)
-		return 0;
-
-	tm_list = kcalloc(nr_items * 2, sizeof(struct tree_mod_elem *),
-			  GFP_NOFS);
-	if (!tm_list)
-		return -ENOMEM;
-
-	tm_list_add = tm_list;
-	tm_list_rem = tm_list + nr_items;
-	for (i = 0; i < nr_items; i++) {
-		tm_list_rem[i] = alloc_tree_mod_elem(src, i + src_offset,
-		    MOD_LOG_KEY_REMOVE, GFP_NOFS);
-		if (!tm_list_rem[i]) {
-			ret = -ENOMEM;
-			goto free_tms;
-		}
-
-		tm_list_add[i] = alloc_tree_mod_elem(dst, i + dst_offset,
-		    MOD_LOG_KEY_ADD, GFP_NOFS);
-		if (!tm_list_add[i]) {
-			ret = -ENOMEM;
-			goto free_tms;
-		}
-	}
-
-	if (tree_mod_dont_log(fs_info, NULL))
-		goto free_tms;
-	locked = 1;
-
-	for (i = 0; i < nr_items; i++) {
-		ret = __tree_mod_log_insert(fs_info, tm_list_rem[i]);
-		if (ret)
-			goto free_tms;
-		ret = __tree_mod_log_insert(fs_info, tm_list_add[i]);
-		if (ret)
-			goto free_tms;
-	}
-
-	write_unlock(&fs_info->tree_mod_log_lock);
-	kfree(tm_list);
-
-	return 0;
-
-free_tms:
-	for (i = 0; i < nr_items * 2; i++) {
-		if (tm_list[i] && !RB_EMPTY_NODE(&tm_list[i]->node))
-			rb_erase(&tm_list[i]->node, &fs_info->tree_mod_log);
-		kfree(tm_list[i]);
-	}
-	if (locked)
-		write_unlock(&fs_info->tree_mod_log_lock);
-	kfree(tm_list);
-
-	return ret;
-}
-
-static noinline int tree_mod_log_free_eb(struct extent_buffer *eb)
-{
-	struct tree_mod_elem **tm_list = NULL;
-	int nritems = 0;
-	int i;
-	int ret = 0;
-
-	if (btrfs_header_level(eb) == 0)
-		return 0;
-
-	if (!tree_mod_need_log(eb->fs_info, NULL))
-		return 0;
-
-	nritems = btrfs_header_nritems(eb);
-	tm_list = kcalloc(nritems, sizeof(struct tree_mod_elem *), GFP_NOFS);
-	if (!tm_list)
-		return -ENOMEM;
-
-	for (i = 0; i < nritems; i++) {
-		tm_list[i] = alloc_tree_mod_elem(eb, i,
-		    MOD_LOG_KEY_REMOVE_WHILE_FREEING, GFP_NOFS);
-		if (!tm_list[i]) {
-			ret = -ENOMEM;
-			goto free_tms;
-		}
-	}
-
-	if (tree_mod_dont_log(eb->fs_info, eb))
-		goto free_tms;
-
-	ret = __tree_mod_log_free_eb(eb->fs_info, tm_list, nritems);
-	write_unlock(&eb->fs_info->tree_mod_log_lock);
-	if (ret)
-		goto free_tms;
-	kfree(tm_list);
-
-	return 0;
-
-free_tms:
-	for (i = 0; i < nritems; i++)
-		kfree(tm_list[i]);
-	kfree(tm_list);
-
-	return ret;
 }
 
 /*
@@ -951,49 +364,6 @@ static noinline int update_ref_for_cow(struct btrfs_trans_handle *trans,
 	return 0;
 }
 
-static struct extent_buffer *alloc_tree_block_no_bg_flush(
-					  struct btrfs_trans_handle *trans,
-					  struct btrfs_root *root,
-					  u64 parent_start,
-					  const struct btrfs_disk_key *disk_key,
-					  int level,
-					  u64 hint,
-					  u64 empty_size,
-					  enum btrfs_lock_nesting nest)
-{
-	struct btrfs_fs_info *fs_info = root->fs_info;
-	struct extent_buffer *ret;
-
-	/*
-	 * If we are COWing a node/leaf from the extent, chunk, device or free
-	 * space trees, make sure that we do not finish block group creation of
-	 * pending block groups. We do this to avoid a deadlock.
-	 * COWing can result in allocation of a new chunk, and flushing pending
-	 * block groups (btrfs_create_pending_block_groups()) can be triggered
-	 * when finishing allocation of a new chunk. Creation of a pending block
-	 * group modifies the extent, chunk, device and free space trees,
-	 * therefore we could deadlock with ourselves since we are holding a
-	 * lock on an extent buffer that btrfs_create_pending_block_groups() may
-	 * try to COW later.
-	 * For similar reasons, we also need to delay flushing pending block
-	 * groups when splitting a leaf or node, from one of those trees, since
-	 * we are holding a write lock on it and its parent or when inserting a
-	 * new root node for one of those trees.
-	 */
-	if (root == fs_info->extent_root ||
-	    root == fs_info->chunk_root ||
-	    root == fs_info->dev_root ||
-	    root == fs_info->free_space_root)
-		trans->can_flush_pending_bgs = false;
-
-	ret = btrfs_alloc_tree_block(trans, root, parent_start,
-				     root->root_key.objectid, disk_key, level,
-				     hint, empty_size, nest);
-	trans->can_flush_pending_bgs = true;
-
-	return ret;
-}
-
 /*
  * does the dirty work in cow of a single block.  The parent block (if
  * supplied) is updated to point to the new cow copy.  The new buffer is marked
@@ -1042,8 +412,9 @@ static noinline int __btrfs_cow_block(struct btrfs_trans_handle *trans,
 	if ((root->root_key.objectid == BTRFS_TREE_RELOC_OBJECTID) && parent)
 		parent_start = parent->start;
 
-	cow = alloc_tree_block_no_bg_flush(trans, root, parent_start, &disk_key,
-					   level, search_start, empty_size, nest);
+	cow = btrfs_alloc_tree_block(trans, root, parent_start,
+				     root->root_key.objectid, &disk_key, level,
+				     search_start, empty_size, nest);
 	if (IS_ERR(cow))
 		return PTR_ERR(cow);
 
@@ -1087,7 +458,7 @@ static noinline int __btrfs_cow_block(struct btrfs_trans_handle *trans,
 			parent_start = buf->start;
 
 		atomic_inc(&cow->refs);
-		ret = tree_mod_log_insert_root(root->node, cow, 1);
+		ret = btrfs_tree_mod_log_insert_root(root->node, cow, true);
 		BUG_ON(ret < 0);
 		rcu_assign_pointer(root->node, cow);
 
@@ -1097,15 +468,15 @@ static noinline int __btrfs_cow_block(struct btrfs_trans_handle *trans,
 		add_root_to_dirty_list(root);
 	} else {
 		WARN_ON(trans->transid != btrfs_header_generation(parent));
-		tree_mod_log_insert_key(parent, parent_slot,
-					MOD_LOG_KEY_REPLACE, GFP_NOFS);
+		btrfs_tree_mod_log_insert_key(parent, parent_slot,
+					      BTRFS_MOD_LOG_KEY_REPLACE, GFP_NOFS);
 		btrfs_set_node_blockptr(parent, parent_slot,
 					cow->start);
 		btrfs_set_node_ptr_generation(parent, parent_slot,
 					      trans->transid);
 		btrfs_mark_buffer_dirty(parent);
 		if (last_ref) {
-			ret = tree_mod_log_free_eb(buf);
+			ret = btrfs_tree_mod_log_free_eb(buf);
 			if (ret) {
 				btrfs_tree_unlock(cow);
 				free_extent_buffer(cow);
@@ -1122,299 +493,6 @@ static noinline int __btrfs_cow_block(struct btrfs_trans_handle *trans,
 	btrfs_mark_buffer_dirty(cow);
 	*cow_ret = cow;
 	return 0;
-}
-
-/*
- * returns the logical address of the oldest predecessor of the given root.
- * entries older than time_seq are ignored.
- */
-static struct tree_mod_elem *__tree_mod_log_oldest_root(
-		struct extent_buffer *eb_root, u64 time_seq)
-{
-	struct tree_mod_elem *tm;
-	struct tree_mod_elem *found = NULL;
-	u64 root_logical = eb_root->start;
-	int looped = 0;
-
-	if (!time_seq)
-		return NULL;
-
-	/*
-	 * the very last operation that's logged for a root is the
-	 * replacement operation (if it is replaced at all). this has
-	 * the logical address of the *new* root, making it the very
-	 * first operation that's logged for this root.
-	 */
-	while (1) {
-		tm = tree_mod_log_search_oldest(eb_root->fs_info, root_logical,
-						time_seq);
-		if (!looped && !tm)
-			return NULL;
-		/*
-		 * if there are no tree operation for the oldest root, we simply
-		 * return it. this should only happen if that (old) root is at
-		 * level 0.
-		 */
-		if (!tm)
-			break;
-
-		/*
-		 * if there's an operation that's not a root replacement, we
-		 * found the oldest version of our root. normally, we'll find a
-		 * MOD_LOG_KEY_REMOVE_WHILE_FREEING operation here.
-		 */
-		if (tm->op != MOD_LOG_ROOT_REPLACE)
-			break;
-
-		found = tm;
-		root_logical = tm->old_root.logical;
-		looped = 1;
-	}
-
-	/* if there's no old root to return, return what we found instead */
-	if (!found)
-		found = tm;
-
-	return found;
-}
-
-/*
- * tm is a pointer to the first operation to rewind within eb. then, all
- * previous operations will be rewound (until we reach something older than
- * time_seq).
- */
-static void
-__tree_mod_log_rewind(struct btrfs_fs_info *fs_info, struct extent_buffer *eb,
-		      u64 time_seq, struct tree_mod_elem *first_tm)
-{
-	u32 n;
-	struct rb_node *next;
-	struct tree_mod_elem *tm = first_tm;
-	unsigned long o_dst;
-	unsigned long o_src;
-	unsigned long p_size = sizeof(struct btrfs_key_ptr);
-
-	n = btrfs_header_nritems(eb);
-	read_lock(&fs_info->tree_mod_log_lock);
-	while (tm && tm->seq >= time_seq) {
-		/*
-		 * all the operations are recorded with the operator used for
-		 * the modification. as we're going backwards, we do the
-		 * opposite of each operation here.
-		 */
-		switch (tm->op) {
-		case MOD_LOG_KEY_REMOVE_WHILE_FREEING:
-			BUG_ON(tm->slot < n);
-			fallthrough;
-		case MOD_LOG_KEY_REMOVE_WHILE_MOVING:
-		case MOD_LOG_KEY_REMOVE:
-			btrfs_set_node_key(eb, &tm->key, tm->slot);
-			btrfs_set_node_blockptr(eb, tm->slot, tm->blockptr);
-			btrfs_set_node_ptr_generation(eb, tm->slot,
-						      tm->generation);
-			n++;
-			break;
-		case MOD_LOG_KEY_REPLACE:
-			BUG_ON(tm->slot >= n);
-			btrfs_set_node_key(eb, &tm->key, tm->slot);
-			btrfs_set_node_blockptr(eb, tm->slot, tm->blockptr);
-			btrfs_set_node_ptr_generation(eb, tm->slot,
-						      tm->generation);
-			break;
-		case MOD_LOG_KEY_ADD:
-			/* if a move operation is needed it's in the log */
-			n--;
-			break;
-		case MOD_LOG_MOVE_KEYS:
-			o_dst = btrfs_node_key_ptr_offset(tm->slot);
-			o_src = btrfs_node_key_ptr_offset(tm->move.dst_slot);
-			memmove_extent_buffer(eb, o_dst, o_src,
-					      tm->move.nr_items * p_size);
-			break;
-		case MOD_LOG_ROOT_REPLACE:
-			/*
-			 * this operation is special. for roots, this must be
-			 * handled explicitly before rewinding.
-			 * for non-roots, this operation may exist if the node
-			 * was a root: root A -> child B; then A gets empty and
-			 * B is promoted to the new root. in the mod log, we'll
-			 * have a root-replace operation for B, a tree block
-			 * that is no root. we simply ignore that operation.
-			 */
-			break;
-		}
-		next = rb_next(&tm->node);
-		if (!next)
-			break;
-		tm = rb_entry(next, struct tree_mod_elem, node);
-		if (tm->logical != first_tm->logical)
-			break;
-	}
-	read_unlock(&fs_info->tree_mod_log_lock);
-	btrfs_set_header_nritems(eb, n);
-}
-
-/*
- * Called with eb read locked. If the buffer cannot be rewound, the same buffer
- * is returned. If rewind operations happen, a fresh buffer is returned. The
- * returned buffer is always read-locked. If the returned buffer is not the
- * input buffer, the lock on the input buffer is released and the input buffer
- * is freed (its refcount is decremented).
- */
-static struct extent_buffer *
-tree_mod_log_rewind(struct btrfs_fs_info *fs_info, struct btrfs_path *path,
-		    struct extent_buffer *eb, u64 time_seq)
-{
-	struct extent_buffer *eb_rewin;
-	struct tree_mod_elem *tm;
-
-	if (!time_seq)
-		return eb;
-
-	if (btrfs_header_level(eb) == 0)
-		return eb;
-
-	tm = tree_mod_log_search(fs_info, eb->start, time_seq);
-	if (!tm)
-		return eb;
-
-	btrfs_set_path_blocking(path);
-	btrfs_set_lock_blocking_read(eb);
-
-	if (tm->op == MOD_LOG_KEY_REMOVE_WHILE_FREEING) {
-		BUG_ON(tm->slot != 0);
-		eb_rewin = alloc_dummy_extent_buffer(fs_info, eb->start);
-		if (!eb_rewin) {
-			btrfs_tree_read_unlock_blocking(eb);
-			free_extent_buffer(eb);
-			return NULL;
-		}
-		btrfs_set_header_bytenr(eb_rewin, eb->start);
-		btrfs_set_header_backref_rev(eb_rewin,
-					     btrfs_header_backref_rev(eb));
-		btrfs_set_header_owner(eb_rewin, btrfs_header_owner(eb));
-		btrfs_set_header_level(eb_rewin, btrfs_header_level(eb));
-	} else {
-		eb_rewin = btrfs_clone_extent_buffer(eb);
-		if (!eb_rewin) {
-			btrfs_tree_read_unlock_blocking(eb);
-			free_extent_buffer(eb);
-			return NULL;
-		}
-	}
-
-	btrfs_tree_read_unlock_blocking(eb);
-	free_extent_buffer(eb);
-
-	btrfs_set_buffer_lockdep_class(btrfs_header_owner(eb_rewin),
-				       eb_rewin, btrfs_header_level(eb_rewin));
-	btrfs_tree_read_lock(eb_rewin);
-	__tree_mod_log_rewind(fs_info, eb_rewin, time_seq, tm);
-	WARN_ON(btrfs_header_nritems(eb_rewin) >
-		BTRFS_NODEPTRS_PER_BLOCK(fs_info));
-
-	return eb_rewin;
-}
-
-/*
- * get_old_root() rewinds the state of @root's root node to the given @time_seq
- * value. If there are no changes, the current root->root_node is returned. If
- * anything changed in between, there's a fresh buffer allocated on which the
- * rewind operations are done. In any case, the returned buffer is read locked.
- * Returns NULL on error (with no locks held).
- */
-static inline struct extent_buffer *
-get_old_root(struct btrfs_root *root, u64 time_seq)
-{
-	struct btrfs_fs_info *fs_info = root->fs_info;
-	struct tree_mod_elem *tm;
-	struct extent_buffer *eb = NULL;
-	struct extent_buffer *eb_root;
-	u64 eb_root_owner = 0;
-	struct extent_buffer *old;
-	struct tree_mod_root *old_root = NULL;
-	u64 old_generation = 0;
-	u64 logical;
-	int level;
-
-	eb_root = btrfs_read_lock_root_node(root);
-	tm = __tree_mod_log_oldest_root(eb_root, time_seq);
-	if (!tm)
-		return eb_root;
-
-	if (tm->op == MOD_LOG_ROOT_REPLACE) {
-		old_root = &tm->old_root;
-		old_generation = tm->generation;
-		logical = old_root->logical;
-		level = old_root->level;
-	} else {
-		logical = eb_root->start;
-		level = btrfs_header_level(eb_root);
-	}
-
-	tm = tree_mod_log_search(fs_info, logical, time_seq);
-	if (old_root && tm && tm->op != MOD_LOG_KEY_REMOVE_WHILE_FREEING) {
-		btrfs_tree_read_unlock(eb_root);
-		free_extent_buffer(eb_root);
-		old = read_tree_block(fs_info, logical, 0, level, NULL);
-		if (WARN_ON(IS_ERR(old) || !extent_buffer_uptodate(old))) {
-			if (!IS_ERR(old))
-				free_extent_buffer(old);
-			btrfs_warn(fs_info,
-				   "failed to read tree block %llu from get_old_root",
-				   logical);
-		} else {
-			eb = btrfs_clone_extent_buffer(old);
-			free_extent_buffer(old);
-		}
-	} else if (old_root) {
-		eb_root_owner = btrfs_header_owner(eb_root);
-		btrfs_tree_read_unlock(eb_root);
-		free_extent_buffer(eb_root);
-		eb = alloc_dummy_extent_buffer(fs_info, logical);
-	} else {
-		btrfs_set_lock_blocking_read(eb_root);
-		eb = btrfs_clone_extent_buffer(eb_root);
-		btrfs_tree_read_unlock_blocking(eb_root);
-		free_extent_buffer(eb_root);
-	}
-
-	if (!eb)
-		return NULL;
-	if (old_root) {
-		btrfs_set_header_bytenr(eb, eb->start);
-		btrfs_set_header_backref_rev(eb, BTRFS_MIXED_BACKREF_REV);
-		btrfs_set_header_owner(eb, eb_root_owner);
-		btrfs_set_header_level(eb, old_root->level);
-		btrfs_set_header_generation(eb, old_generation);
-	}
-	btrfs_set_buffer_lockdep_class(btrfs_header_owner(eb), eb,
-				       btrfs_header_level(eb));
-	btrfs_tree_read_lock(eb);
-	if (tm)
-		__tree_mod_log_rewind(fs_info, eb, time_seq, tm);
-	else
-		WARN_ON(btrfs_header_level(eb) != 0);
-	WARN_ON(btrfs_header_nritems(eb) > BTRFS_NODEPTRS_PER_BLOCK(fs_info));
-
-	return eb;
-}
-
-int btrfs_old_root_level(struct btrfs_root *root, u64 time_seq)
-{
-	struct tree_mod_elem *tm;
-	int level;
-	struct extent_buffer *eb_root = btrfs_root_node(root);
-
-	tm = __tree_mod_log_oldest_root(eb_root, time_seq);
-	if (tm && tm->op == MOD_LOG_ROOT_REPLACE) {
-		level = tm->old_root.level;
-	} else {
-		level = btrfs_header_level(eb_root);
-	}
-	free_extent_buffer(eb_root);
-
-	return level;
 }
 
 static inline int should_cow_block(struct btrfs_trans_handle *trans,
@@ -1476,16 +554,11 @@ noinline int btrfs_cow_block(struct btrfs_trans_handle *trans,
 		       trans->transid, fs_info->generation);
 
 	if (!should_cow_block(trans, root, buf)) {
-		trans->dirty = true;
 		*cow_ret = buf;
 		return 0;
 	}
 
 	search_start = buf->start & ~((u64)SZ_1G - 1);
-
-	if (parent)
-		btrfs_set_lock_blocking_write(parent);
-	btrfs_set_lock_blocking_write(buf);
 
 	/*
 	 * Before CoWing this block for later modification, check if it's
@@ -1501,6 +574,7 @@ noinline int btrfs_cow_block(struct btrfs_trans_handle *trans,
 
 	return ret;
 }
+ALLOW_ERROR_INJECTION(btrfs_cow_block, ERRNO);
 
 /*
  * helper function for defrag to decide if two blocks pointed to by a
@@ -1578,7 +652,6 @@ int btrfs_realloc_node(struct btrfs_trans_handle *trans,
 	struct btrfs_fs_info *fs_info = root->fs_info;
 	struct extent_buffer *cur;
 	u64 blocknr;
-	u64 gen;
 	u64 search_start = *last_ret;
 	u64 last_block = 0;
 	u64 other;
@@ -1586,13 +659,9 @@ int btrfs_realloc_node(struct btrfs_trans_handle *trans,
 	int end_slot;
 	int i;
 	int err = 0;
-	int parent_level;
-	int uptodate;
 	u32 blocksize;
 	int progress_passed = 0;
 	struct btrfs_disk_key disk_key;
-
-	parent_level = btrfs_header_level(parent);
 
 	WARN_ON(trans->transaction != fs_info->running_transaction);
 	WARN_ON(trans->transid != fs_info->generation);
@@ -1604,10 +673,7 @@ int btrfs_realloc_node(struct btrfs_trans_handle *trans,
 	if (parent_nritems <= 1)
 		return 0;
 
-	btrfs_set_lock_blocking_write(parent);
-
 	for (i = start_slot; i <= end_slot; i++) {
-		struct btrfs_key first_key;
 		int close = 1;
 
 		btrfs_node_key(parent, &disk_key, i);
@@ -1616,8 +682,6 @@ int btrfs_realloc_node(struct btrfs_trans_handle *trans,
 
 		progress_passed = 1;
 		blocknr = btrfs_node_blockptr(parent, i);
-		gen = btrfs_node_ptr_generation(parent, i);
-		btrfs_node_key_to_cpu(parent, &first_key, i);
 		if (last_block == 0)
 			last_block = blocknr;
 
@@ -1634,36 +698,13 @@ int btrfs_realloc_node(struct btrfs_trans_handle *trans,
 			continue;
 		}
 
-		cur = find_extent_buffer(fs_info, blocknr);
-		if (cur)
-			uptodate = btrfs_buffer_uptodate(cur, gen, 0);
-		else
-			uptodate = 0;
-		if (!cur || !uptodate) {
-			if (!cur) {
-				cur = read_tree_block(fs_info, blocknr, gen,
-						      parent_level - 1,
-						      &first_key);
-				if (IS_ERR(cur)) {
-					return PTR_ERR(cur);
-				} else if (!extent_buffer_uptodate(cur)) {
-					free_extent_buffer(cur);
-					return -EIO;
-				}
-			} else if (!uptodate) {
-				err = btrfs_read_buffer(cur, gen,
-						parent_level - 1,&first_key);
-				if (err) {
-					free_extent_buffer(cur);
-					return err;
-				}
-			}
-		}
+		cur = btrfs_read_node_slot(parent, i);
+		if (IS_ERR(cur))
+			return PTR_ERR(cur);
 		if (search_start == 0)
 			search_start = last_block;
 
 		btrfs_tree_lock(cur);
-		btrfs_set_lock_blocking_write(cur);
 		err = __btrfs_cow_block(trans, root, cur, parent, i,
 					&cur, search_start,
 					min(16 * blocksize,
@@ -1685,21 +726,21 @@ int btrfs_realloc_node(struct btrfs_trans_handle *trans,
 
 /*
  * search for key in the extent_buffer.  The items start at offset p,
- * and they are item_size apart.  There are 'max' items in p.
+ * and they are item_size apart.
  *
  * the slot in the array is returned via slot, and it points to
  * the place where you would insert key if it is not found in
  * the array.
  *
- * slot may point to max if the key is bigger than all of the keys
+ * Slot may point to total number of items if the key is bigger than
+ * all of the keys
  */
 static noinline int generic_bin_search(struct extent_buffer *eb,
 				       unsigned long p, int item_size,
-				       const struct btrfs_key *key,
-				       int max, int *slot)
+				       const struct btrfs_key *key, int *slot)
 {
 	int low = 0;
-	int high = max;
+	int high = btrfs_header_nritems(eb);
 	int ret;
 	const int key_size = sizeof(struct btrfs_disk_key);
 
@@ -1723,9 +764,10 @@ static noinline int generic_bin_search(struct extent_buffer *eb,
 		oip = offset_in_page(offset);
 
 		if (oip + key_size <= PAGE_SIZE) {
-			const unsigned long idx = offset >> PAGE_SHIFT;
+			const unsigned long idx = get_eb_page_index(offset);
 			char *kaddr = page_address(eb->pages[idx]);
 
+			oip = get_eb_offset_in_page(eb, offset);
 			tmp = (struct btrfs_disk_key *)(kaddr + oip);
 		} else {
 			read_extent_buffer(eb, &unaligned, offset, key_size);
@@ -1757,15 +799,11 @@ int btrfs_bin_search(struct extent_buffer *eb, const struct btrfs_key *key,
 	if (btrfs_header_level(eb) == 0)
 		return generic_bin_search(eb,
 					  offsetof(struct btrfs_leaf, items),
-					  sizeof(struct btrfs_item),
-					  key, btrfs_header_nritems(eb),
-					  slot);
+					  sizeof(struct btrfs_item), key, slot);
 	else
 		return generic_bin_search(eb,
 					  offsetof(struct btrfs_node, ptrs),
-					  sizeof(struct btrfs_key_ptr),
-					  key, btrfs_header_nritems(eb),
-					  slot);
+					  sizeof(struct btrfs_key_ptr), key, slot);
 }
 
 static void root_add_used(struct btrfs_root *root, u32 size)
@@ -1801,6 +839,7 @@ struct extent_buffer *btrfs_read_node_slot(struct extent_buffer *parent,
 
 	btrfs_node_key_to_cpu(parent, &first_key, slot);
 	eb = read_tree_block(parent->fs_info, btrfs_node_blockptr(parent, slot),
+			     btrfs_header_owner(parent),
 			     btrfs_node_ptr_generation(parent, slot),
 			     level - 1, &first_key);
 	if (!IS_ERR(eb) && !extent_buffer_uptodate(eb)) {
@@ -1835,8 +874,7 @@ static noinline int balance_level(struct btrfs_trans_handle *trans,
 
 	mid = path->nodes[level];
 
-	WARN_ON(path->locks[level] != BTRFS_WRITE_LOCK &&
-		path->locks[level] != BTRFS_WRITE_LOCK_BLOCKING);
+	WARN_ON(path->locks[level] != BTRFS_WRITE_LOCK);
 	WARN_ON(btrfs_header_generation(mid) != trans->transid);
 
 	orig_ptr = btrfs_node_blockptr(mid, orig_slot);
@@ -1865,7 +903,6 @@ static noinline int balance_level(struct btrfs_trans_handle *trans,
 		}
 
 		btrfs_tree_lock(child);
-		btrfs_set_lock_blocking_write(child);
 		ret = btrfs_cow_block(trans, root, child, mid, 0, &child,
 				      BTRFS_NESTING_COW);
 		if (ret) {
@@ -1874,7 +911,7 @@ static noinline int balance_level(struct btrfs_trans_handle *trans,
 			goto enospc;
 		}
 
-		ret = tree_mod_log_insert_root(root->node, child, 1);
+		ret = btrfs_tree_mod_log_insert_root(root->node, child, true);
 		BUG_ON(ret < 0);
 		rcu_assign_pointer(root->node, child);
 
@@ -1904,7 +941,6 @@ static noinline int balance_level(struct btrfs_trans_handle *trans,
 
 	if (left) {
 		__btrfs_tree_lock(left, BTRFS_NESTING_LEFT);
-		btrfs_set_lock_blocking_write(left);
 		wret = btrfs_cow_block(trans, root, left,
 				       parent, pslot - 1, &left,
 				       BTRFS_NESTING_LEFT_COW);
@@ -1920,7 +956,6 @@ static noinline int balance_level(struct btrfs_trans_handle *trans,
 
 	if (right) {
 		__btrfs_tree_lock(right, BTRFS_NESTING_RIGHT);
-		btrfs_set_lock_blocking_write(right);
 		wret = btrfs_cow_block(trans, root, right,
 				       parent, pslot + 1, &right,
 				       BTRFS_NESTING_RIGHT_COW);
@@ -1956,8 +991,8 @@ static noinline int balance_level(struct btrfs_trans_handle *trans,
 		} else {
 			struct btrfs_disk_key right_key;
 			btrfs_node_key(right, &right_key, 0);
-			ret = tree_mod_log_insert_key(parent, pslot + 1,
-					MOD_LOG_KEY_REPLACE, GFP_NOFS);
+			ret = btrfs_tree_mod_log_insert_key(parent, pslot + 1,
+					BTRFS_MOD_LOG_KEY_REPLACE, GFP_NOFS);
 			BUG_ON(ret < 0);
 			btrfs_set_node_key(parent, &right_key, pslot + 1);
 			btrfs_mark_buffer_dirty(parent);
@@ -2002,8 +1037,8 @@ static noinline int balance_level(struct btrfs_trans_handle *trans,
 		/* update the parent key to reflect our changes */
 		struct btrfs_disk_key mid_key;
 		btrfs_node_key(mid, &mid_key, 0);
-		ret = tree_mod_log_insert_key(parent, pslot,
-				MOD_LOG_KEY_REPLACE, GFP_NOFS);
+		ret = btrfs_tree_mod_log_insert_key(parent, pslot,
+				BTRFS_MOD_LOG_KEY_REPLACE, GFP_NOFS);
 		BUG_ON(ret < 0);
 		btrfs_set_node_key(parent, &mid_key, pslot);
 		btrfs_mark_buffer_dirty(parent);
@@ -2084,7 +1119,6 @@ static noinline int push_nodes_for_insert(struct btrfs_trans_handle *trans,
 		u32 left_nr;
 
 		__btrfs_tree_lock(left, BTRFS_NESTING_LEFT);
-		btrfs_set_lock_blocking_write(left);
 
 		left_nr = btrfs_header_nritems(left);
 		if (left_nr >= BTRFS_NODEPTRS_PER_BLOCK(fs_info) - 1) {
@@ -2105,8 +1139,8 @@ static noinline int push_nodes_for_insert(struct btrfs_trans_handle *trans,
 			struct btrfs_disk_key disk_key;
 			orig_slot += left_nr;
 			btrfs_node_key(mid, &disk_key, 0);
-			ret = tree_mod_log_insert_key(parent, pslot,
-					MOD_LOG_KEY_REPLACE, GFP_NOFS);
+			ret = btrfs_tree_mod_log_insert_key(parent, pslot,
+					BTRFS_MOD_LOG_KEY_REPLACE, GFP_NOFS);
 			BUG_ON(ret < 0);
 			btrfs_set_node_key(parent, &disk_key, pslot);
 			btrfs_mark_buffer_dirty(parent);
@@ -2139,7 +1173,6 @@ static noinline int push_nodes_for_insert(struct btrfs_trans_handle *trans,
 		u32 right_nr;
 
 		__btrfs_tree_lock(right, BTRFS_NESTING_RIGHT);
-		btrfs_set_lock_blocking_write(right);
 
 		right_nr = btrfs_header_nritems(right);
 		if (right_nr >= BTRFS_NODEPTRS_PER_BLOCK(fs_info) - 1) {
@@ -2160,8 +1193,8 @@ static noinline int push_nodes_for_insert(struct btrfs_trans_handle *trans,
 			struct btrfs_disk_key disk_key;
 
 			btrfs_node_key(right, &disk_key, 0);
-			ret = tree_mod_log_insert_key(parent, pslot + 1,
-					MOD_LOG_KEY_REPLACE, GFP_NOFS);
+			ret = btrfs_tree_mod_log_insert_key(parent, pslot + 1,
+					BTRFS_MOD_LOG_KEY_REPLACE, GFP_NOFS);
 			BUG_ON(ret < 0);
 			btrfs_set_node_key(parent, &disk_key, pslot + 1);
 			btrfs_mark_buffer_dirty(parent);
@@ -2199,12 +1232,12 @@ static void reada_for_search(struct btrfs_fs_info *fs_info,
 	u64 search;
 	u64 target;
 	u64 nread = 0;
-	struct extent_buffer *eb;
+	u64 nread_max;
 	u32 nr;
 	u32 blocksize;
 	u32 nscan = 0;
 
-	if (level != 1)
+	if (level != 1 && path->reada != READA_FORWARD_ALWAYS)
 		return;
 
 	if (!path->nodes[level])
@@ -2212,12 +1245,30 @@ static void reada_for_search(struct btrfs_fs_info *fs_info,
 
 	node = path->nodes[level];
 
+	/*
+	 * Since the time between visiting leaves is much shorter than the time
+	 * between visiting nodes, limit read ahead of nodes to 1, to avoid too
+	 * much IO at once (possibly random).
+	 */
+	if (path->reada == READA_FORWARD_ALWAYS) {
+		if (level > 1)
+			nread_max = node->fs_info->nodesize;
+		else
+			nread_max = SZ_128K;
+	} else {
+		nread_max = SZ_64K;
+	}
+
 	search = btrfs_node_blockptr(node, slot);
 	blocksize = fs_info->nodesize;
-	eb = find_extent_buffer(fs_info, search);
-	if (eb) {
-		free_extent_buffer(eb);
-		return;
+	if (path->reada != READA_FORWARD_ALWAYS) {
+		struct extent_buffer *eb;
+
+		eb = find_extent_buffer(fs_info, search);
+		if (eb) {
+			free_extent_buffer(eb);
+			return;
+		}
 	}
 
 	target = search;
@@ -2230,7 +1281,8 @@ static void reada_for_search(struct btrfs_fs_info *fs_info,
 			if (nr == 0)
 				break;
 			nr--;
-		} else if (path->reada == READA_FORWARD) {
+		} else if (path->reada == READA_FORWARD ||
+			   path->reada == READA_FORWARD_ALWAYS) {
 			nr++;
 			if (nr >= nritems)
 				break;
@@ -2241,27 +1293,23 @@ static void reada_for_search(struct btrfs_fs_info *fs_info,
 				break;
 		}
 		search = btrfs_node_blockptr(node, nr);
-		if ((search <= target && target - search <= 65536) ||
+		if (path->reada == READA_FORWARD_ALWAYS ||
+		    (search <= target && target - search <= 65536) ||
 		    (search > target && search - target <= 65536)) {
-			readahead_tree_block(fs_info, search);
+			btrfs_readahead_node_child(node, nr);
 			nread += blocksize;
 		}
 		nscan++;
-		if ((nread > 65536 || nscan > 32))
+		if (nread > nread_max || nscan > 32)
 			break;
 	}
 }
 
-static noinline void reada_for_balance(struct btrfs_fs_info *fs_info,
-				       struct btrfs_path *path, int level)
+static noinline void reada_for_balance(struct btrfs_path *path, int level)
 {
+	struct extent_buffer *parent;
 	int slot;
 	int nritems;
-	struct extent_buffer *parent;
-	struct extent_buffer *eb;
-	u64 gen;
-	u64 block1 = 0;
-	u64 block2 = 0;
 
 	parent = path->nodes[level + 1];
 	if (!parent)
@@ -2270,32 +1318,10 @@ static noinline void reada_for_balance(struct btrfs_fs_info *fs_info,
 	nritems = btrfs_header_nritems(parent);
 	slot = path->slots[level + 1];
 
-	if (slot > 0) {
-		block1 = btrfs_node_blockptr(parent, slot - 1);
-		gen = btrfs_node_ptr_generation(parent, slot - 1);
-		eb = find_extent_buffer(fs_info, block1);
-		/*
-		 * if we get -eagain from btrfs_buffer_uptodate, we
-		 * don't want to return eagain here.  That will loop
-		 * forever
-		 */
-		if (eb && btrfs_buffer_uptodate(eb, gen, 1) != 0)
-			block1 = 0;
-		free_extent_buffer(eb);
-	}
-	if (slot + 1 < nritems) {
-		block2 = btrfs_node_blockptr(parent, slot + 1);
-		gen = btrfs_node_ptr_generation(parent, slot + 1);
-		eb = find_extent_buffer(fs_info, block2);
-		if (eb && btrfs_buffer_uptodate(eb, gen, 1) != 0)
-			block2 = 0;
-		free_extent_buffer(eb);
-	}
-
-	if (block1)
-		readahead_tree_block(fs_info, block1);
-	if (block2)
-		readahead_tree_block(fs_info, block2);
+	if (slot > 0)
+		btrfs_readahead_node_child(parent, slot - 1);
+	if (slot + 1 < nritems)
+		btrfs_readahead_node_child(parent, slot + 1);
 }
 
 
@@ -2383,6 +1409,9 @@ read_block_for_search(struct btrfs_root *root, struct btrfs_path *p,
 
 	tmp = find_extent_buffer(fs_info, blocknr);
 	if (tmp) {
+		if (p->reada == READA_FORWARD_ALWAYS)
+			reada_for_search(fs_info, p, level, slot, key->objectid);
+
 		/* first we do an atomic uptodate check */
 		if (btrfs_buffer_uptodate(tmp, gen, 1) > 0) {
 			/*
@@ -2398,14 +1427,6 @@ read_block_for_search(struct btrfs_root *root, struct btrfs_path *p,
 			*eb_ret = tmp;
 			return 0;
 		}
-
-		/* the pages were up to date, but we failed
-		 * the generation number check.  Do a full
-		 * read for the generation number that is correct.
-		 * We must do this without dropping locks so
-		 * we can trust our generation number
-		 */
-		btrfs_set_path_blocking(p);
 
 		/* now we're allowed to do a blocking uptodate check */
 		ret = btrfs_read_buffer(tmp, gen, parent_level - 1, &first_key);
@@ -2426,14 +1447,13 @@ read_block_for_search(struct btrfs_root *root, struct btrfs_path *p,
 	 * out which blocks to read.
 	 */
 	btrfs_unlock_up_safe(p, level + 1);
-	btrfs_set_path_blocking(p);
 
 	if (p->reada != READA_NONE)
 		reada_for_search(fs_info, p, level, slot, key->objectid);
 
 	ret = -EAGAIN;
-	tmp = read_tree_block(fs_info, blocknr, gen, parent_level - 1,
-			      &first_key);
+	tmp = read_tree_block(fs_info, blocknr, root->root_key.objectid,
+			      gen, parent_level - 1, &first_key);
 	if (!IS_ERR(tmp)) {
 		/*
 		 * If the read above didn't mark this buffer up to date,
@@ -2468,58 +1488,42 @@ setup_nodes_for_search(struct btrfs_trans_handle *trans,
 		       int *write_lock_level)
 {
 	struct btrfs_fs_info *fs_info = root->fs_info;
-	int ret;
+	int ret = 0;
 
 	if ((p->search_for_split || ins_len > 0) && btrfs_header_nritems(b) >=
 	    BTRFS_NODEPTRS_PER_BLOCK(fs_info) - 3) {
-		int sret;
 
 		if (*write_lock_level < level + 1) {
 			*write_lock_level = level + 1;
 			btrfs_release_path(p);
-			goto again;
+			return -EAGAIN;
 		}
 
-		btrfs_set_path_blocking(p);
-		reada_for_balance(fs_info, p, level);
-		sret = split_node(trans, root, p, level);
+		reada_for_balance(p, level);
+		ret = split_node(trans, root, p, level);
 
-		BUG_ON(sret > 0);
-		if (sret) {
-			ret = sret;
-			goto done;
-		}
 		b = p->nodes[level];
 	} else if (ins_len < 0 && btrfs_header_nritems(b) <
 		   BTRFS_NODEPTRS_PER_BLOCK(fs_info) / 2) {
-		int sret;
 
 		if (*write_lock_level < level + 1) {
 			*write_lock_level = level + 1;
 			btrfs_release_path(p);
-			goto again;
+			return -EAGAIN;
 		}
 
-		btrfs_set_path_blocking(p);
-		reada_for_balance(fs_info, p, level);
-		sret = balance_level(trans, root, p, level);
+		reada_for_balance(p, level);
+		ret = balance_level(trans, root, p, level);
+		if (ret)
+			return ret;
 
-		if (sret) {
-			ret = sret;
-			goto done;
-		}
 		b = p->nodes[level];
 		if (!b) {
 			btrfs_release_path(p);
-			goto again;
+			return -EAGAIN;
 		}
 		BUG_ON(btrfs_header_nritems(b) == 1);
 	}
-	return 0;
-
-again:
-	ret = -EAGAIN;
-done:
 	return ret;
 }
 
@@ -2616,7 +1620,7 @@ static struct extent_buffer *btrfs_search_slot_get_root(struct btrfs_root *root,
 		 * We don't know the level of the root node until we actually
 		 * have it read locked
 		 */
-		b = __btrfs_read_lock_root_node(root, p->recurse);
+		b = btrfs_read_lock_root_node(root);
 		level = btrfs_header_level(b);
 		if (level > write_lock_level)
 			goto out;
@@ -2651,8 +1655,14 @@ out:
  * @p:		Holds all btree nodes along the search path
  * @root:	The root node of the tree
  * @key:	The key we are looking for
- * @ins_len:	Indicates purpose of search, for inserts it is 1, for
- *		deletions it's -1. 0 for plain searches
+ * @ins_len:	Indicates purpose of search:
+ *              >0  for inserts it's size of item inserted (*)
+ *              <0  for deletions
+ *               0  for plain searches, not modifying the tree
+ *
+ *              (*) If size of item inserted doesn't include
+ *              sizeof(struct btrfs_item), then p->search_for_extension must
+ *              be set.
  * @cow:	boolean should CoW operations be performed. Must always be 1
  *		when modifying the tree.
  *
@@ -2734,10 +1744,8 @@ again:
 			 * then we don't want to set the path blocking,
 			 * so we test it here
 			 */
-			if (!should_cow_block(trans, root, b)) {
-				trans->dirty = true;
+			if (!should_cow_block(trans, root, b))
 				goto cow_done;
-			}
 
 			/*
 			 * must have write locks on this node and the
@@ -2752,7 +1760,6 @@ again:
 				goto again;
 			}
 
-			btrfs_set_path_blocking(p);
 			if (last_level)
 				err = btrfs_cow_block(trans, root, b, NULL, 0,
 						      &b,
@@ -2814,6 +1821,20 @@ cow_done:
 
 		if (level == 0) {
 			p->slots[level] = slot;
+			/*
+			 * Item key already exists. In this case, if we are
+			 * allowed to insert the item (for example, in dir_item
+			 * case, item key collision is allowed), it will be
+			 * merged with the original item. Only the item size
+			 * grows, no new btrfs item will be added. If
+			 * search_for_extension is not set, ins_len already
+			 * accounts the size btrfs_item, deduct it here so leaf
+			 * space check will be correct.
+			 */
+			if (ret == 0 && ins_len > 0 && !p->search_for_extension) {
+				ASSERT(ins_len >= sizeof(struct btrfs_item));
+				ins_len -= sizeof(struct btrfs_item);
+			}
 			if (ins_len > 0 &&
 			    btrfs_leaf_free_space(b) < ins_len) {
 				if (write_lock_level < 1) {
@@ -2822,7 +1843,6 @@ cow_done:
 					goto again;
 				}
 
-				btrfs_set_path_blocking(p);
 				err = split_leaf(trans, root, key,
 						 p, ins_len, ret == 0);
 
@@ -2884,17 +1904,10 @@ cow_done:
 		if (!p->skip_locking) {
 			level = btrfs_header_level(b);
 			if (level <= write_lock_level) {
-				if (!btrfs_try_tree_write_lock(b)) {
-					btrfs_set_path_blocking(p);
-					btrfs_tree_lock(b);
-				}
+				btrfs_tree_lock(b);
 				p->locks[level] = BTRFS_WRITE_LOCK;
 			} else {
-				if (!btrfs_tree_read_lock_atomic(b)) {
-					btrfs_set_path_blocking(p);
-					__btrfs_tree_read_lock(b, BTRFS_NESTING_NORMAL,
-							       p->recurse);
-				}
+				btrfs_tree_read_lock(b);
 				p->locks[level] = BTRFS_READ_LOCK;
 			}
 			p->nodes[level] = b;
@@ -2902,16 +1915,11 @@ cow_done:
 	}
 	ret = 1;
 done:
-	/*
-	 * we don't really know what they plan on doing with the path
-	 * from here on, so for now just mark it as blocking
-	 */
-	if (!p->leave_spinning)
-		btrfs_set_path_blocking(p);
 	if (ret < 0 && !p->skip_release_on_error)
 		btrfs_release_path(p);
 	return ret;
 }
+ALLOW_ERROR_INJECTION(btrfs_search_slot, ERRNO);
 
 /*
  * Like btrfs_search_slot, this looks for a key in the given tree. It uses the
@@ -2945,7 +1953,7 @@ int btrfs_search_old_slot(struct btrfs_root *root, const struct btrfs_key *key,
 	}
 
 again:
-	b = get_old_root(root, time_seq);
+	b = btrfs_get_old_root(root, time_seq);
 	if (!b) {
 		ret = -EIO;
 		goto done;
@@ -2999,11 +2007,8 @@ again:
 		}
 
 		level = btrfs_header_level(b);
-		if (!btrfs_tree_read_lock_atomic(b)) {
-			btrfs_set_path_blocking(p);
-			btrfs_tree_read_lock(b);
-		}
-		b = tree_mod_log_rewind(fs_info, p, b, time_seq);
+		btrfs_tree_read_lock(b);
+		b = btrfs_tree_mod_log_rewind(fs_info, p, b, time_seq);
 		if (!b) {
 			ret = -ENOMEM;
 			goto done;
@@ -3013,8 +2018,6 @@ again:
 	}
 	ret = 1;
 done:
-	if (!p->leave_spinning)
-		btrfs_set_path_blocking(p);
 	if (ret < 0)
 		btrfs_release_path(p);
 
@@ -3099,6 +2102,27 @@ again:
 }
 
 /*
+ * Execute search and call btrfs_previous_item to traverse backwards if the item
+ * was not found.
+ *
+ * Return 0 if found, 1 if not found and < 0 if error.
+ */
+int btrfs_search_backwards(struct btrfs_root *root, struct btrfs_key *key,
+			   struct btrfs_path *path)
+{
+	int ret;
+
+	ret = btrfs_search_slot(NULL, root, key, path, 0, 0);
+	if (ret > 0)
+		ret = btrfs_previous_item(root, path, key->objectid, key->type);
+
+	if (ret == 0)
+		btrfs_item_key_to_cpu(path->nodes[0], key, path->slots[0]);
+
+	return ret;
+}
+
+/*
  * adjust the pointers going up the tree, starting at level
  * making sure the right key of each node is points to 'key'.
  * This is used after shifting pointers to the left, so it stops
@@ -3119,8 +2143,8 @@ static void fixup_low_keys(struct btrfs_path *path,
 		if (!path->nodes[i])
 			break;
 		t = path->nodes[i];
-		ret = tree_mod_log_insert_key(t, tslot, MOD_LOG_KEY_REPLACE,
-				GFP_ATOMIC);
+		ret = btrfs_tree_mod_log_insert_key(t, tslot,
+				BTRFS_MOD_LOG_KEY_REPLACE, GFP_ATOMIC);
 		BUG_ON(ret < 0);
 		btrfs_set_node_key(t, key, tslot);
 		btrfs_mark_buffer_dirty(path->nodes[i]);
@@ -3283,7 +2307,7 @@ static int push_node_left(struct btrfs_trans_handle *trans,
 		btrfs_abort_transaction(trans, ret);
 		return ret;
 	}
-	ret = tree_mod_log_eb_copy(dst, src, dst_nritems, 0, push_items);
+	ret = btrfs_tree_mod_log_eb_copy(dst, src, dst_nritems, 0, push_items);
 	if (ret) {
 		btrfs_abort_transaction(trans, ret);
 		return ret;
@@ -3295,8 +2319,8 @@ static int push_node_left(struct btrfs_trans_handle *trans,
 
 	if (push_items < src_nritems) {
 		/*
-		 * Don't call tree_mod_log_insert_move here, key removal was
-		 * already fully logged by tree_mod_log_eb_copy above.
+		 * Don't call btrfs_tree_mod_log_insert_move() here, key removal
+		 * was already fully logged by btrfs_tree_mod_log_eb_copy() above.
 		 */
 		memmove_extent_buffer(src, btrfs_node_key_ptr_offset(0),
 				      btrfs_node_key_ptr_offset(push_items),
@@ -3357,15 +2381,15 @@ static int balance_node_right(struct btrfs_trans_handle *trans,
 		btrfs_abort_transaction(trans, ret);
 		return ret;
 	}
-	ret = tree_mod_log_insert_move(dst, push_items, 0, dst_nritems);
+	ret = btrfs_tree_mod_log_insert_move(dst, push_items, 0, dst_nritems);
 	BUG_ON(ret < 0);
 	memmove_extent_buffer(dst, btrfs_node_key_ptr_offset(push_items),
 				      btrfs_node_key_ptr_offset(0),
 				      (dst_nritems) *
 				      sizeof(struct btrfs_key_ptr));
 
-	ret = tree_mod_log_eb_copy(dst, src, 0, src_nritems - push_items,
-				   push_items);
+	ret = btrfs_tree_mod_log_eb_copy(dst, src, 0, src_nritems - push_items,
+					 push_items);
 	if (ret) {
 		btrfs_abort_transaction(trans, ret);
 		return ret;
@@ -3412,9 +2436,9 @@ static noinline int insert_new_root(struct btrfs_trans_handle *trans,
 	else
 		btrfs_node_key(lower, &lower_key, 0);
 
-	c = alloc_tree_block_no_bg_flush(trans, root, 0, &lower_key, level,
-					 root->node->start, 0,
-					 BTRFS_NESTING_NEW_ROOT);
+	c = btrfs_alloc_tree_block(trans, root, 0, root->root_key.objectid,
+				   &lower_key, level, root->node->start, 0,
+				   BTRFS_NESTING_NEW_ROOT);
 	if (IS_ERR(c))
 		return PTR_ERR(c);
 
@@ -3431,7 +2455,7 @@ static noinline int insert_new_root(struct btrfs_trans_handle *trans,
 	btrfs_mark_buffer_dirty(c);
 
 	old = root->node;
-	ret = tree_mod_log_insert_root(root->node, c, 0);
+	ret = btrfs_tree_mod_log_insert_root(root->node, c, false);
 	BUG_ON(ret < 0);
 	rcu_assign_pointer(root->node, c);
 
@@ -3441,7 +2465,7 @@ static noinline int insert_new_root(struct btrfs_trans_handle *trans,
 	add_root_to_dirty_list(root);
 	atomic_inc(&c->refs);
 	path->nodes[level] = c;
-	path->locks[level] = BTRFS_WRITE_LOCK_BLOCKING;
+	path->locks[level] = BTRFS_WRITE_LOCK;
 	path->slots[level] = 0;
 	return 0;
 }
@@ -3470,8 +2494,8 @@ static void insert_ptr(struct btrfs_trans_handle *trans,
 	BUG_ON(nritems == BTRFS_NODEPTRS_PER_BLOCK(trans->fs_info));
 	if (slot != nritems) {
 		if (level) {
-			ret = tree_mod_log_insert_move(lower, slot + 1, slot,
-					nritems - slot);
+			ret = btrfs_tree_mod_log_insert_move(lower, slot + 1,
+					slot, nritems - slot);
 			BUG_ON(ret < 0);
 		}
 		memmove_extent_buffer(lower,
@@ -3480,8 +2504,8 @@ static void insert_ptr(struct btrfs_trans_handle *trans,
 			      (nritems - slot) * sizeof(struct btrfs_key_ptr));
 	}
 	if (level) {
-		ret = tree_mod_log_insert_key(lower, slot, MOD_LOG_KEY_ADD,
-				GFP_NOFS);
+		ret = btrfs_tree_mod_log_insert_key(lower, slot,
+					    BTRFS_MOD_LOG_KEY_ADD, GFP_NOFS);
 		BUG_ON(ret < 0);
 	}
 	btrfs_set_node_key(lower, key, slot);
@@ -3522,9 +2546,9 @@ static noinline int split_node(struct btrfs_trans_handle *trans,
 		 * tree mod log: We don't log_removal old root in
 		 * insert_new_root, because that root buffer will be kept as a
 		 * normal node. We are going to log removal of half of the
-		 * elements below with tree_mod_log_eb_copy. We're holding a
-		 * tree lock on the buffer, which is why we cannot race with
-		 * other tree_mod_log users.
+		 * elements below with btrfs_tree_mod_log_eb_copy(). We're
+		 * holding a tree lock on the buffer, which is why we cannot
+		 * race with other tree_mod_log users.
 		 */
 		ret = insert_new_root(trans, root, path, level + 1);
 		if (ret)
@@ -3543,15 +2567,16 @@ static noinline int split_node(struct btrfs_trans_handle *trans,
 	mid = (c_nritems + 1) / 2;
 	btrfs_node_key(c, &disk_key, mid);
 
-	split = alloc_tree_block_no_bg_flush(trans, root, 0, &disk_key, level,
-					     c->start, 0, BTRFS_NESTING_SPLIT);
+	split = btrfs_alloc_tree_block(trans, root, 0, root->root_key.objectid,
+				       &disk_key, level, c->start, 0,
+				       BTRFS_NESTING_SPLIT);
 	if (IS_ERR(split))
 		return PTR_ERR(split);
 
 	root_add_used(root, fs_info->nodesize);
 	ASSERT(btrfs_header_level(c) == level);
 
-	ret = tree_mod_log_eb_copy(split, c, 0, mid, c_nritems - mid);
+	ret = btrfs_tree_mod_log_eb_copy(split, c, 0, mid, c_nritems - mid);
 	if (ret) {
 		btrfs_abort_transaction(trans, ret);
 		return ret;
@@ -3562,7 +2587,6 @@ static noinline int split_node(struct btrfs_trans_handle *trans,
 			   (c_nritems - mid) * sizeof(struct btrfs_key_ptr));
 	btrfs_set_header_nritems(split, c_nritems - mid);
 	btrfs_set_header_nritems(c, mid);
-	ret = 0;
 
 	btrfs_mark_buffer_dirty(c);
 	btrfs_mark_buffer_dirty(split);
@@ -3580,7 +2604,7 @@ static noinline int split_node(struct btrfs_trans_handle *trans,
 		btrfs_tree_unlock(split);
 		free_extent_buffer(split);
 	}
-	return ret;
+	return 0;
 }
 
 /*
@@ -3814,7 +2838,6 @@ static int push_leaf_right(struct btrfs_trans_handle *trans, struct btrfs_root
 		return 1;
 
 	__btrfs_tree_lock(right, BTRFS_NESTING_RIGHT);
-	btrfs_set_lock_blocking_write(right);
 
 	free_space = btrfs_leaf_free_space(right);
 	if (free_space < data_size)
@@ -4053,7 +3076,6 @@ static int push_leaf_left(struct btrfs_trans_handle *trans, struct btrfs_root
 		return 1;
 
 	__btrfs_tree_lock(left, BTRFS_NESTING_LEFT);
-	btrfs_set_lock_blocking_write(left);
 
 	free_space = btrfs_leaf_free_space(left);
 	if (free_space < data_size) {
@@ -4338,10 +3360,10 @@ again:
 	 * BTRFS_NESTING_SPLIT_THE_SPLITTENING if we need to, but for now just
 	 * use BTRFS_NESTING_NEW_ROOT.
 	 */
-	right = alloc_tree_block_no_bg_flush(trans, root, 0, &disk_key, 0,
-					     l->start, 0, num_doubles ?
-					     BTRFS_NESTING_NEW_ROOT :
-					     BTRFS_NESTING_SPLIT);
+	right = btrfs_alloc_tree_block(trans, root, 0, root->root_key.objectid,
+				       &disk_key, 0, l->start, 0,
+				       num_doubles ? BTRFS_NESTING_NEW_ROOT :
+				       BTRFS_NESTING_SPLIT);
 	if (IS_ERR(right))
 		return PTR_ERR(right);
 
@@ -4448,7 +3470,6 @@ static noinline int setup_leaf_for_split(struct btrfs_trans_handle *trans,
 			goto err;
 	}
 
-	btrfs_set_path_blocking(path);
 	ret = split_leaf(trans, root, &key, path, ins_len, 1);
 	if (ret)
 		goto err;
@@ -4477,8 +3498,6 @@ static noinline int split_item(struct btrfs_path *path,
 
 	leaf = path->nodes[0];
 	BUG_ON(btrfs_leaf_free_space(leaf) < sizeof(struct btrfs_item));
-
-	btrfs_set_path_blocking(path);
 
 	item = btrfs_item_nr(path->slots[0]);
 	orig_offset = btrfs_item_offset(leaf, item);
@@ -4939,8 +3958,8 @@ static void del_ptr(struct btrfs_root *root, struct btrfs_path *path,
 	nritems = btrfs_header_nritems(parent);
 	if (slot != nritems - 1) {
 		if (level) {
-			ret = tree_mod_log_insert_move(parent, slot, slot + 1,
-					nritems - slot - 1);
+			ret = btrfs_tree_mod_log_insert_move(parent, slot,
+					slot + 1, nritems - slot - 1);
 			BUG_ON(ret < 0);
 		}
 		memmove_extent_buffer(parent,
@@ -4949,8 +3968,8 @@ static void del_ptr(struct btrfs_root *root, struct btrfs_path *path,
 			      sizeof(struct btrfs_key_ptr) *
 			      (nritems - slot - 1));
 	} else if (level) {
-		ret = tree_mod_log_insert_key(parent, slot, MOD_LOG_KEY_REMOVE,
-				GFP_NOFS);
+		ret = btrfs_tree_mod_log_insert_key(parent, slot,
+				BTRFS_MOD_LOG_KEY_REMOVE, GFP_NOFS);
 		BUG_ON(ret < 0);
 	}
 
@@ -5055,7 +4074,6 @@ int btrfs_del_items(struct btrfs_trans_handle *trans, struct btrfs_root *root,
 		if (leaf == root->node) {
 			btrfs_set_header_level(leaf, 0);
 		} else {
-			btrfs_set_path_blocking(path);
 			btrfs_clean_tree_block(leaf);
 			btrfs_del_leaf(trans, root, path, leaf);
 		}
@@ -5077,7 +4095,6 @@ int btrfs_del_items(struct btrfs_trans_handle *trans, struct btrfs_root *root,
 			slot = path->slots[1];
 			atomic_inc(&leaf->refs);
 
-			btrfs_set_path_blocking(path);
 			wret = push_leaf_left(trans, root, path, 1, 1,
 					      1, (u32)-1);
 			if (wret < 0 && wret != -ENOSPC)
@@ -5248,7 +4265,6 @@ find_next_key:
 		 */
 		if (slot >= nritems) {
 			path->slots[level] = slot;
-			btrfs_set_path_blocking(path);
 			sret = btrfs_find_next_key(root, path, min_key, level,
 						  min_trans);
 			if (sret == 0) {
@@ -5265,7 +4281,6 @@ find_next_key:
 			ret = 0;
 			goto out;
 		}
-		btrfs_set_path_blocking(path);
 		cur = btrfs_read_node_slot(cur, slot);
 		if (IS_ERR(cur)) {
 			ret = PTR_ERR(cur);
@@ -5282,7 +4297,6 @@ out:
 	path->keep_locks = keep_locks;
 	if (ret == 0) {
 		btrfs_unlock_up_safe(path, path->lowest_level + 1);
-		btrfs_set_path_blocking(path);
 		memcpy(min_key, &found_key, sizeof(found_key));
 	}
 	return ret;
@@ -5364,16 +4378,6 @@ next:
 	return 1;
 }
 
-/*
- * search the tree again to find a leaf with greater keys
- * returns 0 if it found something or 1 if there are no greater leaves.
- * returns < 0 on io errors.
- */
-int btrfs_next_leaf(struct btrfs_root *root, struct btrfs_path *path)
-{
-	return btrfs_next_old_leaf(root, path, 0);
-}
-
 int btrfs_next_old_leaf(struct btrfs_root *root, struct btrfs_path *path,
 			u64 time_seq)
 {
@@ -5384,8 +4388,7 @@ int btrfs_next_old_leaf(struct btrfs_root *root, struct btrfs_path *path,
 	struct btrfs_key key;
 	u32 nritems;
 	int ret;
-	int old_spinning = path->leave_spinning;
-	int next_rw_lock = 0;
+	int i;
 
 	nritems = btrfs_header_nritems(path->nodes[0]);
 	if (nritems == 0)
@@ -5395,11 +4398,9 @@ int btrfs_next_old_leaf(struct btrfs_root *root, struct btrfs_path *path,
 again:
 	level = 1;
 	next = NULL;
-	next_rw_lock = 0;
 	btrfs_release_path(path);
 
 	path->keep_locks = 1;
-	path->leave_spinning = 1;
 
 	if (time_seq)
 		ret = btrfs_search_old_slot(root, &key, path, time_seq);
@@ -5459,13 +4460,22 @@ again:
 			continue;
 		}
 
-		if (next) {
-			btrfs_tree_unlock_rw(next, next_rw_lock);
-			free_extent_buffer(next);
+
+		/*
+		 * Our current level is where we're going to start from, and to
+		 * make sure lockdep doesn't complain we need to drop our locks
+		 * and nodes from 0 to our current level.
+		 */
+		for (i = 0; i < level; i++) {
+			if (path->locks[level]) {
+				btrfs_tree_read_unlock(path->nodes[i]);
+				path->locks[i] = 0;
+			}
+			free_extent_buffer(path->nodes[i]);
+			path->nodes[i] = NULL;
 		}
 
 		next = c;
-		next_rw_lock = path->locks[level];
 		ret = read_block_for_search(root, path, &next, level,
 					    slot, &key);
 		if (ret == -EAGAIN)
@@ -5491,28 +4501,18 @@ again:
 				cond_resched();
 				goto again;
 			}
-			if (!ret) {
-				btrfs_set_path_blocking(path);
-				__btrfs_tree_read_lock(next,
-						       BTRFS_NESTING_RIGHT,
-						       path->recurse);
-			}
-			next_rw_lock = BTRFS_READ_LOCK;
+			if (!ret)
+				btrfs_tree_read_lock(next);
 		}
 		break;
 	}
 	path->slots[level] = slot;
 	while (1) {
 		level--;
-		c = path->nodes[level];
-		if (path->locks[level])
-			btrfs_tree_unlock_rw(c, path->locks[level]);
-
-		free_extent_buffer(c);
 		path->nodes[level] = next;
 		path->slots[level] = 0;
 		if (!path->skip_locking)
-			path->locks[level] = next_rw_lock;
+			path->locks[level] = BTRFS_READ_LOCK;
 		if (!level)
 			break;
 
@@ -5526,23 +4526,12 @@ again:
 			goto done;
 		}
 
-		if (!path->skip_locking) {
-			ret = btrfs_try_tree_read_lock(next);
-			if (!ret) {
-				btrfs_set_path_blocking(path);
-				__btrfs_tree_read_lock(next,
-						       BTRFS_NESTING_RIGHT,
-						       path->recurse);
-			}
-			next_rw_lock = BTRFS_READ_LOCK;
-		}
+		if (!path->skip_locking)
+			btrfs_tree_read_lock(next);
 	}
 	ret = 0;
 done:
 	unlock_up(path, 0, 1, 0, NULL);
-	path->leave_spinning = old_spinning;
-	if (!old_spinning)
-		btrfs_set_path_blocking(path);
 
 	return ret;
 }
@@ -5564,7 +4553,6 @@ int btrfs_previous_item(struct btrfs_root *root,
 
 	while (1) {
 		if (path->slots[0] == 0) {
-			btrfs_set_path_blocking(path);
 			ret = btrfs_prev_leaf(root, path);
 			if (ret != 0)
 				return ret;
@@ -5606,7 +4594,6 @@ int btrfs_previous_extent_item(struct btrfs_root *root,
 
 	while (1) {
 		if (path->slots[0] == 0) {
-			btrfs_set_path_blocking(path);
 			ret = btrfs_prev_leaf(root, path);
 			if (ret != 0)
 				return ret;

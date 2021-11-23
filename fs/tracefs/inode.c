@@ -67,7 +67,9 @@ static char *get_dname(struct dentry *dentry)
 	return name;
 }
 
-static int tracefs_syscall_mkdir(struct inode *inode, struct dentry *dentry, umode_t mode)
+static int tracefs_syscall_mkdir(struct user_namespace *mnt_userns,
+				 struct inode *inode, struct dentry *dentry,
+				 umode_t mode)
 {
 	char *name;
 	int ret;
@@ -475,7 +477,7 @@ struct dentry *tracefs_create_dir(const char *name, struct dentry *parent)
  *
  * The instances directory is special as it allows for mkdir and rmdir to
  * to be done by userspace. When a mkdir or rmdir is performed, the inode
- * locks are released and the methhods passed in (@mkdir and @rmdir) are
+ * locks are released and the methods passed in (@mkdir and @rmdir) are
  * called without locks and with the name of the directory being created
  * within the instances directory.
  *

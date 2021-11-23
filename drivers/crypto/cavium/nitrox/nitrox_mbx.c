@@ -4,10 +4,11 @@
 #include "nitrox_csr.h"
 #include "nitrox_hal.h"
 #include "nitrox_dev.h"
+#include "nitrox_mbx.h"
 
 #define RING_TO_VFNO(_x, _y)	((_x) / (_y))
 
-/**
+/*
  * mbx_msg_type - Mailbox message types
  */
 enum mbx_msg_type {
@@ -17,7 +18,7 @@ enum mbx_msg_type {
 	MBX_MSG_TYPE_NACK,
 };
 
-/**
+/*
  * mbx_msg_opcode - Mailbox message opcodes
  */
 enum mbx_msg_opcode {
@@ -112,7 +113,7 @@ static void pf2vf_resp_handler(struct work_struct *work)
 	case MBX_MSG_TYPE_ACK:
 	case MBX_MSG_TYPE_NACK:
 		break;
-	};
+	}
 
 	kfree(pf2vf_resp);
 }

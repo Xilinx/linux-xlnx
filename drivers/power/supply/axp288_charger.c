@@ -548,14 +548,15 @@ out:
 
 /*
  * The HP Pavilion x2 10 series comes in a number of variants:
- * Bay Trail SoC    + AXP288 PMIC, DMI_BOARD_NAME: "815D"
- * Cherry Trail SoC + AXP288 PMIC, DMI_BOARD_NAME: "813E"
- * Cherry Trail SoC + TI PMIC,     DMI_BOARD_NAME: "827C" or "82F4"
+ * Bay Trail SoC    + AXP288 PMIC, Micro-USB, DMI_BOARD_NAME: "8021"
+ * Bay Trail SoC    + AXP288 PMIC, Type-C,    DMI_BOARD_NAME: "815D"
+ * Cherry Trail SoC + AXP288 PMIC, Type-C,    DMI_BOARD_NAME: "813E"
+ * Cherry Trail SoC + TI PMIC,     Type-C,    DMI_BOARD_NAME: "827C" or "82F4"
  *
- * The variants with the AXP288 PMIC are all kinds of special:
+ * The variants with the AXP288 + Type-C connector are all kinds of special:
  *
- * 1. All variants use a Type-C connector which the AXP288 does not support, so
- * when using a Type-C charger it is not recognized. Unlike most AXP288 devices,
+ * 1. They use a Type-C connector which the AXP288 does not support, so when
+ * using a Type-C charger it is not recognized. Unlike most AXP288 devices,
  * this model actually has mostly working ACPI AC / Battery code, the ACPI code
  * "solves" this by simply setting the input_current_limit to 3A.
  * There are still some issues with the ACPI code, so we use this native driver,
@@ -578,12 +579,17 @@ out:
  */
 static const struct dmi_system_id axp288_hp_x2_dmi_ids[] = {
 	{
-		/*
-		 * Bay Trail model has "Hewlett-Packard" as sys_vendor, Cherry
-		 * Trail model has "HP", so we only match on product_name.
-		 */
 		.matches = {
-			DMI_MATCH(DMI_PRODUCT_NAME, "HP Pavilion x2 Detachable"),
+			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "Hewlett-Packard"),
+			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "HP Pavilion x2 Detachable"),
+			DMI_EXACT_MATCH(DMI_BOARD_NAME, "815D"),
+		},
+	},
+	{
+		.matches = {
+			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "HP"),
+			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "HP Pavilion x2 Detachable"),
+			DMI_EXACT_MATCH(DMI_BOARD_NAME, "813E"),
 		},
 	},
 	{} /* Terminating entry */
@@ -807,7 +813,7 @@ static int axp288_charger_probe(struct platform_device *pdev)
 	if (val == 0)
 		return -ENODEV;
 
-	info = devm_kzalloc(&pdev->dev, sizeof(*info), GFP_KERNEL);
+	info = devm_kzalloc(dev, sizeof(*info), GFP_KERNEL);
 	if (!info)
 		return -ENOMEM;
 
@@ -817,7 +823,7 @@ static int axp288_charger_probe(struct platform_device *pdev)
 
 	info->cable.edev = extcon_get_extcon_dev(AXP288_EXTCON_DEV_NAME);
 	if (info->cable.edev == NULL) {
-		dev_dbg(&pdev->dev, "%s is not ready, probe deferred\n",
+		dev_dbg(dev, "%s is not ready, probe deferred\n",
 			AXP288_EXTCON_DEV_NAME);
 		return -EPROBE_DEFER;
 	}
@@ -828,8 +834,7 @@ static int axp288_charger_probe(struct platform_device *pdev)
 			dev_dbg(dev, "EXTCON_USB_HOST is not ready, probe deferred\n");
 			return -EPROBE_DEFER;
 		}
-		dev_info(&pdev->dev,
-			 "Using " USB_HOST_EXTCON_HID " extcon for usb-id\n");
+		dev_info(dev, "Using " USB_HOST_EXTCON_HID " extcon for usb-id\n");
 	}
 
 	platform_set_drvdata(pdev, info);
@@ -868,7 +873,7 @@ static int axp288_charger_probe(struct platform_device *pdev)
 	INIT_WORK(&info->otg.work, axp288_charger_otg_evt_worker);
 	info->otg.id_nb.notifier_call = axp288_charger_handle_otg_evt;
 	if (info->otg.cable) {
-		ret = devm_extcon_register_notifier(&pdev->dev, info->otg.cable,
+		ret = devm_extcon_register_notifier(dev, info->otg.cable,
 					EXTCON_USB_HOST, &info->otg.id_nb);
 		if (ret) {
 			dev_err(dev, "failed to register EXTCON_USB_HOST notifier\n");
@@ -893,7 +898,7 @@ static int axp288_charger_probe(struct platform_device *pdev)
 					NULL, axp288_charger_irq_thread_handler,
 					IRQF_ONESHOT, info->pdev->name, info);
 		if (ret) {
-			dev_err(&pdev->dev, "failed to request interrupt=%d\n",
+			dev_err(dev, "failed to request interrupt=%d\n",
 								info->irq[i]);
 			return ret;
 		}

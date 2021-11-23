@@ -246,7 +246,7 @@ struct ucan_message_in {
 		 */
 		struct ucan_tx_complete_entry_t can_tx_complete_msg[0];
 	} __aligned(0x4) msg;
-} __packed;
+} __packed __aligned(0x4);
 
 /* Macros to calculate message lengths */
 #define UCAN_OUT_HDR_SIZE offsetof(struct ucan_message_out, msg)
@@ -303,12 +303,12 @@ struct ucan_priv {
 	struct ucan_urb_context *context_array;
 };
 
-static u8 ucan_get_can_dlc(struct ucan_can_msg *msg, u16 len)
+static u8 ucan_can_cc_dlc2len(struct ucan_can_msg *msg, u16 len)
 {
 	if (le32_to_cpu(msg->id) & CAN_RTR_FLAG)
-		return get_can_dlc(msg->dlc);
+		return can_cc_dlc2len(msg->dlc);
 	else
-		return get_can_dlc(len - (UCAN_IN_HDR_SIZE + sizeof(msg->id)));
+		return can_cc_dlc2len(len - (UCAN_IN_HDR_SIZE + sizeof(msg->id)));
 }
 
 static void ucan_release_context_array(struct ucan_priv *up)
@@ -614,15 +614,15 @@ static void ucan_rx_can_msg(struct ucan_priv *up, struct ucan_message_in *m)
 	cf->can_id = canid;
 
 	/* compute DLC taking RTR_FLAG into account */
-	cf->can_dlc = ucan_get_can_dlc(&m->msg.can_msg, len);
+	cf->len = ucan_can_cc_dlc2len(&m->msg.can_msg, len);
 
 	/* copy the payload of non RTR frames */
 	if (!(cf->can_id & CAN_RTR_FLAG) || (cf->can_id & CAN_ERR_FLAG))
-		memcpy(cf->data, m->msg.can_msg.data, cf->can_dlc);
+		memcpy(cf->data, m->msg.can_msg.data, cf->len);
 
 	/* don't count error frames as real packets */
 	stats->rx_packets++;
-	stats->rx_bytes += cf->can_dlc;
+	stats->rx_bytes += cf->len;
 
 	/* pass it to Linux */
 	netif_rx(skb);
@@ -672,10 +672,10 @@ static void ucan_tx_complete_msg(struct ucan_priv *up,
 			/* update statistics */
 			up->netdev->stats.tx_packets++;
 			up->netdev->stats.tx_bytes += dlc;
-			can_get_echo_skb(up->netdev, echo_index);
+			can_get_echo_skb(up->netdev, echo_index, NULL);
 		} else {
 			up->netdev->stats.tx_dropped++;
-			can_free_echo_skb(up->netdev, echo_index);
+			can_free_echo_skb(up->netdev, echo_index, NULL);
 		}
 		spin_unlock_irqrestore(&up->echo_skb_lock, flags);
 	}
@@ -843,7 +843,7 @@ static void ucan_write_bulk_callback(struct urb *urb)
 
 		/* update counters an cleanup */
 		spin_lock_irqsave(&up->echo_skb_lock, flags);
-		can_free_echo_skb(up->netdev, context - up->context_array);
+		can_free_echo_skb(up->netdev, context - up->context_array, NULL);
 		spin_unlock_irqrestore(&up->echo_skb_lock, flags);
 
 		up->netdev->stats.tx_dropped++;
@@ -1078,15 +1078,15 @@ static struct urb *ucan_prepare_tx_urb(struct ucan_priv *up,
 		mlen = UCAN_OUT_HDR_SIZE +
 			offsetof(struct ucan_can_msg, dlc) +
 			sizeof(m->msg.can_msg.dlc);
-		m->msg.can_msg.dlc = cf->can_dlc;
+		m->msg.can_msg.dlc = cf->len;
 	} else {
 		mlen = UCAN_OUT_HDR_SIZE +
-			sizeof(m->msg.can_msg.id) + cf->can_dlc;
-		memcpy(m->msg.can_msg.data, cf->data, cf->can_dlc);
+			sizeof(m->msg.can_msg.id) + cf->len;
+		memcpy(m->msg.can_msg.data, cf->data, cf->len);
 	}
 	m->len = cpu_to_le16(mlen);
 
-	context->dlc = cf->can_dlc;
+	context->dlc = cf->len;
 
 	m->subtype = echo_index;
 
@@ -1137,7 +1137,7 @@ static netdev_tx_t ucan_start_xmit(struct sk_buff *skb,
 
 	/* put the skb on can loopback stack */
 	spin_lock_irqsave(&up->echo_skb_lock, flags);
-	can_put_echo_skb(skb, up->netdev, echo_index);
+	can_put_echo_skb(skb, up->netdev, echo_index, 0);
 	spin_unlock_irqrestore(&up->echo_skb_lock, flags);
 
 	/* transmit it */
@@ -1157,7 +1157,7 @@ static netdev_tx_t ucan_start_xmit(struct sk_buff *skb,
 		 * frees the skb
 		 */
 		spin_lock_irqsave(&up->echo_skb_lock, flags);
-		can_free_echo_skb(up->netdev, echo_index);
+		can_free_echo_skb(up->netdev, echo_index, NULL);
 		spin_unlock_irqrestore(&up->echo_skb_lock, flags);
 
 		if (ret == -ENODEV) {

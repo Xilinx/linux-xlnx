@@ -112,6 +112,8 @@ struct snd_sof_dai {
 	const char *cpu_dai_name;
 
 	struct sof_ipc_comp_dai comp_dai;
+	int number_configs;
+	int current_config;
 	struct sof_ipc_dai_config *dai_config;
 	struct list_head list;	/* list in sdev dai list */
 };
@@ -124,6 +126,8 @@ int snd_sof_volume_get(struct snd_kcontrol *kcontrol,
 		       struct snd_ctl_elem_value *ucontrol);
 int snd_sof_volume_put(struct snd_kcontrol *kcontrol,
 		       struct snd_ctl_elem_value *ucontrol);
+int snd_sof_volume_info(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_info *uinfo);
 int snd_sof_switch_get(struct snd_kcontrol *kcontrol,
 		       struct snd_ctl_elem_value *ucontrol);
 int snd_sof_switch_put(struct snd_kcontrol *kcontrol,
@@ -211,6 +215,9 @@ int snd_sof_ipc_set_get_comp_data(struct snd_sof_control *scontrol,
 				  enum sof_ipc_ctrl_type ctrl_type,
 				  enum sof_ipc_ctrl_cmd ctrl_cmd,
 				  bool send);
+
+/* DAI link fixup */
+int sof_pcm_dai_link_fixup(struct snd_soc_pcm_runtime *rtd, struct snd_pcm_hw_params *params);
 
 /* PM */
 int sof_restore_pipelines(struct device *dev);

@@ -21,6 +21,17 @@
 #include "record.h"
 #include "util/synthetic-events.h"
 
+struct btf * __weak btf__load_from_kernel_by_id(__u32 id)
+{
+       struct btf *btf;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+       int err = btf__get_from_id(id, &btf);
+#pragma GCC diagnostic pop
+
+       return err ? ERR_PTR(err) : btf;
+}
+
 #define ptr_to_u64(ptr)    ((__u64)(unsigned long)(ptr))
 
 static int snprintf_hex(char *buf, size_t size, unsigned char *data, size_t len)
@@ -196,30 +207,37 @@ static int perf_event__synthesize_one_bpf_prog(struct perf_session *session,
 	}
 
 	if (info_linear->info_len < offsetof(struct bpf_prog_info, prog_tags)) {
+		free(info_linear);
 		pr_debug("%s: the kernel is too old, aborting\n", __func__);
 		return -2;
 	}
 
 	info = &info_linear->info;
+	if (!info->jited_ksyms) {
+		free(info_linear);
+		return -1;
+	}
 
 	/* number of ksyms, func_lengths, and tags should match */
 	sub_prog_cnt = info->nr_jited_ksyms;
 	if (sub_prog_cnt != info->nr_prog_tags ||
-	    sub_prog_cnt != info->nr_jited_func_lens)
+	    sub_prog_cnt != info->nr_jited_func_lens) {
+		free(info_linear);
 		return -1;
+	}
 
 	/* check BTF func info support */
 	if (info->btf_id && info->nr_func_info && info->func_info_rec_size) {
 		/* btf func info number should be same as sub_prog_cnt */
 		if (sub_prog_cnt != info->nr_func_info) {
 			pr_debug("%s: mismatch in BPF sub program count and BTF function info count, aborting\n", __func__);
-			err = -1;
-			goto out;
+			free(info_linear);
+			return -1;
 		}
-		if (btf__get_from_id(info->btf_id, &btf)) {
+		btf = btf__load_from_kernel_by_id(info->btf_id);
+		if (libbpf_get_error(btf)) {
 			pr_debug("%s: failed to get BTF of id %u, aborting\n", __func__, info->btf_id);
 			err = -1;
-			btf = NULL;
 			goto out;
 		}
 		perf_env__fetch_btf(env, info->btf_id, btf);
@@ -289,7 +307,7 @@ static int perf_event__synthesize_one_bpf_prog(struct perf_session *session,
 
 out:
 	free(info_linear);
-	free(btf);
+	btf__free(btf);
 	return err ? -1 : 0;
 }
 
@@ -471,7 +489,8 @@ static void perf_env__add_bpf_info(struct perf_env *env, u32 id)
 	if (btf_id == 0)
 		goto out;
 
-	if (btf__get_from_id(btf_id, &btf)) {
+	btf = btf__load_from_kernel_by_id(btf_id);
+	if (libbpf_get_error(btf)) {
 		pr_debug("%s: failed to get BTF of id %u, aborting\n",
 			 __func__, btf_id);
 		goto out;
@@ -479,7 +498,7 @@ static void perf_env__add_bpf_info(struct perf_env *env, u32 id)
 	perf_env__fetch_btf(env, btf_id, btf);
 
 out:
-	free(btf);
+	btf__free(btf);
 	close(fd);
 }
 
@@ -526,7 +545,7 @@ int evlist__add_bpf_sb_event(struct evlist *evlist, struct perf_env *env)
 	 */
 	attr.wakeup_watermark = 1;
 
-	return perf_evlist__add_sb_event(evlist, &attr, bpf_event__sb_cb, env);
+	return evlist__add_sb_event(evlist, &attr, bpf_event__sb_cb, env);
 }
 
 void bpf_event__print_bpf_prog_info(struct bpf_prog_info *info,

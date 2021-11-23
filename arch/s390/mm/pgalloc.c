@@ -58,7 +58,7 @@ unsigned long *crst_table_alloc(struct mm_struct *mm)
 	if (!page)
 		return NULL;
 	arch_set_page_dat(page, 2);
-	return (unsigned long *) page_to_phys(page);
+	return (unsigned long *) page_to_virt(page);
 }
 
 void crst_table_free(struct mm_struct *mm, unsigned long *table)
@@ -70,19 +70,10 @@ static void __crst_table_upgrade(void *arg)
 {
 	struct mm_struct *mm = arg;
 
-	/* we must change all active ASCEs to avoid the creation of new TLBs */
+	/* change all active ASCEs to avoid the creation of new TLBs */
 	if (current->active_mm == mm) {
 		S390_lowcore.user_asce = mm->context.asce;
-		if (current->thread.mm_segment == USER_DS) {
-			__ctl_load(S390_lowcore.user_asce, 1, 1);
-			/* Mark user-ASCE present in CR1 */
-			clear_cpu_flag(CIF_ASCE_PRIMARY);
-		}
-		if (current->thread.mm_segment == USER_DS_SACF) {
-			__ctl_load(S390_lowcore.user_asce, 7, 7);
-			/* enable_sacf_uaccess does all or nothing */
-			WARN_ON(!test_cpu_flag(CIF_ASCE_SECONDARY));
-		}
+		__ctl_load(S390_lowcore.user_asce, 7, 7);
 	}
 	__tlb_flush_local();
 }
@@ -170,7 +161,7 @@ struct page *page_table_alloc_pgste(struct mm_struct *mm)
 
 	page = alloc_page(GFP_KERNEL);
 	if (page) {
-		table = (u64 *)page_to_phys(page);
+		table = (u64 *)page_to_virt(page);
 		memset64(table, _PAGE_INVALID, PTRS_PER_PTE);
 		memset64(table + PTRS_PER_PTE, 0, PTRS_PER_PTE);
 	}
@@ -203,7 +194,7 @@ unsigned long *page_table_alloc(struct mm_struct *mm)
 			mask = atomic_read(&page->_refcount) >> 24;
 			mask = (mask | (mask >> 4)) & 3;
 			if (mask != 3) {
-				table = (unsigned long *) page_to_phys(page);
+				table = (unsigned long *) page_to_virt(page);
 				bit = mask & 1;		/* =1 -> second 2K */
 				if (bit)
 					table += PTRS_PER_PTE;
@@ -226,7 +217,7 @@ unsigned long *page_table_alloc(struct mm_struct *mm)
 	}
 	arch_set_page_dat(page, 0);
 	/* Initialize page table */
-	table = (unsigned long *) page_to_phys(page);
+	table = (unsigned long *) page_to_virt(page);
 	if (mm_alloc_pgste(mm)) {
 		/* Return 4K page table with PGSTEs */
 		atomic_xor_bits(&page->_refcount, 3 << 24);
@@ -248,10 +239,10 @@ void page_table_free(struct mm_struct *mm, unsigned long *table)
 	struct page *page;
 	unsigned int bit, mask;
 
-	page = pfn_to_page(__pa(table) >> PAGE_SHIFT);
+	page = virt_to_page(table);
 	if (!mm_alloc_pgste(mm)) {
 		/* Free 2K page table fragment of a 4K page */
-		bit = (__pa(table) & ~PAGE_MASK)/(PTRS_PER_PTE*sizeof(pte_t));
+		bit = ((unsigned long) table & ~PAGE_MASK)/(PTRS_PER_PTE*sizeof(pte_t));
 		spin_lock_bh(&mm->context.lock);
 		mask = atomic_xor_bits(&page->_refcount, 1U << (bit + 24));
 		mask >>= 24;
@@ -278,14 +269,14 @@ void page_table_free_rcu(struct mmu_gather *tlb, unsigned long *table,
 	unsigned int bit, mask;
 
 	mm = tlb->mm;
-	page = pfn_to_page(__pa(table) >> PAGE_SHIFT);
+	page = virt_to_page(table);
 	if (mm_alloc_pgste(mm)) {
 		gmap_unlink(mm, table, vmaddr);
-		table = (unsigned long *) (__pa(table) | 3);
+		table = (unsigned long *) ((unsigned long)table | 3);
 		tlb_remove_table(tlb, table);
 		return;
 	}
-	bit = (__pa(table) & ~PAGE_MASK) / (PTRS_PER_PTE*sizeof(pte_t));
+	bit = ((unsigned long) table & ~PAGE_MASK) / (PTRS_PER_PTE*sizeof(pte_t));
 	spin_lock_bh(&mm->context.lock);
 	mask = atomic_xor_bits(&page->_refcount, 0x11U << (bit + 24));
 	mask >>= 24;
@@ -294,7 +285,7 @@ void page_table_free_rcu(struct mmu_gather *tlb, unsigned long *table,
 	else
 		list_del(&page->lru);
 	spin_unlock_bh(&mm->context.lock);
-	table = (unsigned long *) (__pa(table) | (1U << bit));
+	table = (unsigned long *) ((unsigned long) table | (1U << bit));
 	tlb_remove_table(tlb, table);
 }
 
@@ -302,7 +293,7 @@ void __tlb_remove_table(void *_table)
 {
 	unsigned int mask = (unsigned long) _table & 3;
 	void *table = (void *)((unsigned long) _table ^ mask);
-	struct page *page = pfn_to_page(__pa(table) >> PAGE_SHIFT);
+	struct page *page = virt_to_page(table);
 
 	switch (mask) {
 	case 0:		/* pmd, pud, or p4d */

@@ -1678,13 +1678,13 @@ static int xscaler_s_stream(struct v4l2_subdev *subdev, int enable)
  */
 
 static int xscaler_enum_frame_size(struct v4l2_subdev *subdev,
-				   struct v4l2_subdev_pad_config *cfg,
+				   struct v4l2_subdev_state *sd_state,
 				   struct v4l2_subdev_frame_size_enum *fse)
 {
 	struct v4l2_mbus_framefmt *format;
 	struct xscaler_device *xscaler = to_scaler(subdev);
 
-	format = v4l2_subdev_get_try_format(subdev, cfg, fse->pad);
+	format = v4l2_subdev_get_try_format(subdev, sd_state, fse->pad);
 	if (fse->index || fse->code != format->code)
 		return -EINVAL;
 
@@ -1698,14 +1698,15 @@ static int xscaler_enum_frame_size(struct v4l2_subdev *subdev,
 
 static struct v4l2_mbus_framefmt *
 __xscaler_get_pad_format(struct xscaler_device *xscaler,
-			 struct v4l2_subdev_pad_config *cfg,
+			 struct v4l2_subdev_state *sd_state,
 			 unsigned int pad, u32 which)
 {
 	struct v4l2_mbus_framefmt *format;
 
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		format = v4l2_subdev_get_try_format(&xscaler->xvip.subdev, cfg,
+		format = v4l2_subdev_get_try_format(&xscaler->xvip.subdev,
+						    sd_state,
 						    pad);
 		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
@@ -1720,13 +1721,13 @@ __xscaler_get_pad_format(struct xscaler_device *xscaler,
 }
 
 static int xscaler_get_format(struct v4l2_subdev *subdev,
-			      struct v4l2_subdev_pad_config *cfg,
+			      struct v4l2_subdev_state *sd_state,
 			      struct v4l2_subdev_format *fmt)
 {
 	struct xscaler_device *xscaler = to_scaler(subdev);
 	struct v4l2_mbus_framefmt *format;
 
-	format = __xscaler_get_pad_format(xscaler, cfg, fmt->pad,
+	format = __xscaler_get_pad_format(xscaler, sd_state, fmt->pad,
 					  fmt->which);
 	if (!format)
 		return -EINVAL;
@@ -1737,13 +1738,14 @@ static int xscaler_get_format(struct v4l2_subdev *subdev,
 }
 
 static int xscaler_set_format(struct v4l2_subdev *subdev,
-			      struct v4l2_subdev_pad_config *cfg,
+			      struct v4l2_subdev_state *sd_state,
 			      struct v4l2_subdev_format *fmt)
 {
 	struct xscaler_device *xscaler = to_scaler(subdev);
 	struct v4l2_mbus_framefmt *format;
 
-	format = __xscaler_get_pad_format(xscaler, cfg, fmt->pad, fmt->which);
+	format = __xscaler_get_pad_format(xscaler, sd_state, fmt->pad,
+					  fmt->which);
 	if (!format)
 		return -EINVAL;
 
@@ -1769,10 +1771,11 @@ xscaler_open(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
 	struct v4l2_mbus_framefmt *format;
 
 	/* Initialize with default formats */
-	format = v4l2_subdev_get_try_format(subdev, fh->pad, XVIP_PAD_SINK);
+	format = v4l2_subdev_get_try_format(subdev, fh->state, XVIP_PAD_SINK);
 	*format = xscaler->default_formats[XVIP_PAD_SINK];
 
-	format = v4l2_subdev_get_try_format(subdev, fh->pad, XVIP_PAD_SOURCE);
+	format = v4l2_subdev_get_try_format(subdev, fh->state,
+					    XVIP_PAD_SOURCE);
 	*format = xscaler->default_formats[XVIP_PAD_SOURCE];
 
 	return 0;

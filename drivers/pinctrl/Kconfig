@@ -82,6 +82,7 @@ config PINCTRL_AT91
 config PINCTRL_AT91PIO4
 	bool "AT91 PIO4 pinctrl driver"
 	depends on OF
+	depends on HAS_IOMEM
 	depends on ARCH_AT91 || COMPILE_TEST
 	select PINMUX
 	select GENERIC_PINCONF
@@ -207,13 +208,18 @@ config PINCTRL_OXNAS
 	select MFD_SYSCON
 
 config PINCTRL_ROCKCHIP
-	bool
+	tristate "Rockchip gpio and pinctrl driver"
+	depends on ARCH_ROCKCHIP || COMPILE_TEST
 	depends on OF
+	select GPIOLIB
 	select PINMUX
 	select GENERIC_PINCONF
 	select GENERIC_IRQ_CHIP
 	select MFD_SYSCON
 	select OF_GPIO
+	default ARCH_ROCKCHIP
+	help
+          This support pinctrl and gpio driver for Rockchip SoCs.
 
 config PINCTRL_SINGLE
 	tristate "One-register-per-pin type device tree based pinctrl driver"
@@ -224,14 +230,6 @@ config PINCTRL_SINGLE
 	select GENERIC_PINCONF
 	help
 	  This selects the device tree based generic pinctrl driver.
-
-config PINCTRL_SIRF
-	bool "CSR SiRFprimaII pin controller driver"
-	depends on ARCH_SIRF
-	select PINMUX
-	select PINCONF
-	select GENERIC_PINCONF
-	select GPIOLIB_IRQCHIP
 
 config PINCTRL_SX150X
 	bool "Semtech SX150x I2C GPIO expander pinctrl driver"
@@ -250,12 +248,15 @@ config PINCTRL_SX150X
 	  - 16 bits: sx1509q, sx1506q
 
 config PINCTRL_PISTACHIO
-	def_bool y if MACH_PISTACHIO
+	bool "IMG Pistachio SoC pinctrl driver"
+	depends on OF && (MIPS || COMPILE_TEST)
 	depends on GPIOLIB
 	select PINMUX
 	select GENERIC_PINCONF
 	select GPIOLIB_IRQCHIP
 	select OF_GPIO
+    help
+	  This support pinctrl and gpio driver for IMG Pistachio SoC.
 
 config PINCTRL_ST
 	bool
@@ -277,22 +278,6 @@ config PINCTRL_STMFX
 	  This provides a GPIO interface supporting inputs and outputs,
 	  and configuring push-pull, open-drain, and can also be used as
 	  interrupt-controller.
-
-config PINCTRL_U300
-	bool "U300 pin controller driver"
-	depends on ARCH_U300
-	select PINMUX
-	select GENERIC_PINCONF
-
-config PINCTRL_COH901
-	bool "ST-Ericsson U300 COH 901 335/571 GPIO"
-	depends on GPIOLIB && ARCH_U300 && PINCTRL_U300
-	select GPIOLIB_IRQCHIP
-	help
-	  Say yes here to support GPIO interface on ST-Ericsson U300.
-	  The names of the two IP block variants supported are
-	  COH 901 335 and COH 901 571/3. They contain 3, 5 or 7
-	  ports of 8 GPIO pins each.
 
 config PINCTRL_MAX77620
 	tristate "MAX77620/MAX20024 Pincontrol support"
@@ -390,6 +375,57 @@ config PINCTRL_OCELOT
 	select OF_GPIO
 	select REGMAP_MMIO
 
+config PINCTRL_MICROCHIP_SGPIO
+	bool "Pinctrl driver for Microsemi/Microchip Serial GPIO"
+	depends on OF
+	depends on HAS_IOMEM
+	select GPIOLIB
+	select GPIOLIB_IRQCHIP
+	select GENERIC_PINCONF
+	select GENERIC_PINCTRL_GROUPS
+	select GENERIC_PINMUX_FUNCTIONS
+	select OF_GPIO
+	help
+	  Support for the serial GPIO interface used on Microsemi and
+	  Microchip SoC's. By using a serial interface, the SIO
+	  controller significantly extends the number of available
+	  GPIOs with a minimum number of additional pins on the
+	  device. The primary purpose of the SIO controller is to
+	  connect control signals from SFP modules and to act as an
+	  LED controller.
+
+config PINCTRL_K210
+	bool "Pinctrl driver for the Canaan Kendryte K210 SoC"
+	depends on RISCV && SOC_CANAAN && OF
+	select GENERIC_PINMUX_FUNCTIONS
+	select GENERIC_PINCONF
+	select GPIOLIB
+	select OF_GPIO
+	select REGMAP_MMIO
+	default SOC_CANAAN
+	help
+	  Add support for the Canaan Kendryte K210 RISC-V SOC Field
+	  Programmable IO Array (FPIOA) controller.
+
+config PINCTRL_KEEMBAY
+	tristate "Pinctrl driver for Intel Keem Bay SoC"
+	depends on ARCH_KEEMBAY || (ARM64 && COMPILE_TEST)
+	depends on HAS_IOMEM
+	select PINMUX
+	select PINCONF
+	select GENERIC_PINCONF
+	select GENERIC_PINCTRL_GROUPS
+	select GENERIC_PINMUX_FUNCTIONS
+	select GPIOLIB
+	select GPIOLIB_IRQCHIP
+	select GPIO_GENERIC
+	help
+	  This selects pin control driver for the Intel Keembay SoC.
+	  It provides pin config functions such as pullup, pulldown,
+	  interrupt, drive strength, sec lock, schmitt trigger, slew
+	  rate control and direction control. This module will be
+	  called as pinctrl-keembay.
+
 source "drivers/pinctrl/actions/Kconfig"
 source "drivers/pinctrl/aspeed/Kconfig"
 source "drivers/pinctrl/bcm/Kconfig"
@@ -401,6 +437,7 @@ source "drivers/pinctrl/nomadik/Kconfig"
 source "drivers/pinctrl/nuvoton/Kconfig"
 source "drivers/pinctrl/pxa/Kconfig"
 source "drivers/pinctrl/qcom/Kconfig"
+source "drivers/pinctrl/ralink/Kconfig"
 source "drivers/pinctrl/renesas/Kconfig"
 source "drivers/pinctrl/samsung/Kconfig"
 source "drivers/pinctrl/spear/Kconfig"
@@ -412,7 +449,6 @@ source "drivers/pinctrl/ti/Kconfig"
 source "drivers/pinctrl/uniphier/Kconfig"
 source "drivers/pinctrl/vt8500/Kconfig"
 source "drivers/pinctrl/mediatek/Kconfig"
-source "drivers/pinctrl/zte/Kconfig"
 source "drivers/pinctrl/meson/Kconfig"
 source "drivers/pinctrl/cirrus/Kconfig"
 source "drivers/pinctrl/visconti/Kconfig"

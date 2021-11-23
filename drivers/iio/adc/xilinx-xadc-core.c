@@ -739,27 +739,23 @@ static const struct iio_trigger_ops xadc_trigger_ops = {
 static struct iio_trigger *xadc_alloc_trigger(struct iio_dev *indio_dev,
 	const char *name)
 {
+	struct device *dev = indio_dev->dev.parent;
 	struct iio_trigger *trig;
 	int ret;
 
-	trig = iio_trigger_alloc("%s%d-%s", indio_dev->name,
-				indio_dev->id, name);
+	trig = devm_iio_trigger_alloc(dev, "%s%d-%s", indio_dev->name,
+				      iio_device_id(indio_dev), name);
 	if (trig == NULL)
 		return ERR_PTR(-ENOMEM);
 
-	trig->dev.parent = indio_dev->dev.parent;
 	trig->ops = &xadc_trigger_ops;
 	iio_trigger_set_drvdata(trig, iio_priv(indio_dev));
 
-	ret = iio_trigger_register(trig);
+	ret = devm_iio_trigger_register(dev, trig);
 	if (ret)
-		goto error_free_trig;
+		return ERR_PTR(ret);
 
 	return trig;
-
-error_free_trig:
-	iio_trigger_free(trig);
-	return ERR_PTR(ret);
 }
 
 static int xadc_power_adc_b(struct xadc *xadc, unsigned int seq_mode)

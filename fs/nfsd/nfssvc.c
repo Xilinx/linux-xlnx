@@ -29,13 +29,9 @@
 #include "netns.h"
 #include "filecache.h"
 
-#define NFSDDBG_FACILITY	NFSDDBG_SVC
+#include "trace.h"
 
-bool inter_copy_offload_enable;
-EXPORT_SYMBOL_GPL(inter_copy_offload_enable);
-module_param(inter_copy_offload_enable, bool, 0644);
-MODULE_PARM_DESC(inter_copy_offload_enable,
-		 "Enable inter server to server copy offload. Default: false");
+#define NFSDDBG_FACILITY	NFSDDBG_SVC
 
 extern struct svc_program	nfsd_program;
 static int			nfsd(void *vrqstp);
@@ -88,7 +84,7 @@ DEFINE_MUTEX(nfsd_mutex);
  * version 4.1 DRC caches.
  * nfsd_drc_pages_used tracks the current version 4.1 DRC memory usage.
  */
-spinlock_t	nfsd_drc_lock;
+DEFINE_SPINLOCK(nfsd_drc_lock);
 unsigned long	nfsd_drc_max_mem;
 unsigned long	nfsd_drc_mem_used;
 
@@ -312,7 +308,7 @@ static int nfsd_init_socks(struct net *net, const struct cred *cred)
 
 static int nfsd_users = 0;
 
-static int nfsd_startup_generic(int nrservs)
+static int nfsd_startup_generic(void)
 {
 	int ret;
 
@@ -378,7 +374,7 @@ void nfsd_reset_boot_verifier(struct nfsd_net *nn)
 	write_sequnlock(&nn->boot_lock);
 }
 
-static int nfsd_startup_net(int nrservs, struct net *net, const struct cred *cred)
+static int nfsd_startup_net(struct net *net, const struct cred *cred)
 {
 	struct nfsd_net *nn = net_generic(net, nfsd_net_id);
 	int ret;
@@ -386,7 +382,7 @@ static int nfsd_startup_net(int nrservs, struct net *net, const struct cred *cre
 	if (nn->nfsd_net_up)
 		return 0;
 
-	ret = nfsd_startup_generic(nrservs);
+	ret = nfsd_startup_generic();
 	if (ret)
 		return ret;
 	ret = nfsd_init_socks(net, cred);
@@ -407,6 +403,9 @@ static int nfsd_startup_net(int nrservs, struct net *net, const struct cred *cre
 	if (ret)
 		goto out_filecache;
 
+#ifdef CONFIG_NFSD_V4_2_INTER_SSC
+	nfsd4_ssc_init_umount_work(nn);
+#endif
 	nn->nfsd_net_up = true;
 	return 0;
 
@@ -527,8 +526,7 @@ static void nfsd_last_thread(struct svc_serv *serv, struct net *net)
 		return;
 
 	nfsd_shutdown_net(net);
-	printk(KERN_WARNING "nfsd: last server has exited, flushing export "
-			    "cache\n");
+	pr_info("nfsd: last server has exited, flushing export cache\n");
 	nfsd_export_flush(net);
 }
 
@@ -568,7 +566,6 @@ static void set_max_drc(void)
 	nfsd_drc_max_mem = (nr_free_buffer_pages()
 					>> NFSD_DRC_SIZE_SHIFT) * PAGE_SIZE;
 	nfsd_drc_mem_used = 0;
-	spin_lock_init(&nfsd_drc_lock);
 	dprintk("%s nfsd_drc_max_mem %lu \n", __func__, nfsd_drc_max_mem);
 }
 
@@ -601,6 +598,37 @@ static const struct svc_serv_ops nfsd_thread_sv_ops = {
 	.svo_module		= THIS_MODULE,
 };
 
+static void nfsd_complete_shutdown(struct net *net)
+{
+	struct nfsd_net *nn = net_generic(net, nfsd_net_id);
+
+	WARN_ON(!mutex_is_locked(&nfsd_mutex));
+
+	nn->nfsd_serv = NULL;
+	complete(&nn->nfsd_shutdown_complete);
+}
+
+void nfsd_shutdown_threads(struct net *net)
+{
+	struct nfsd_net *nn = net_generic(net, nfsd_net_id);
+	struct svc_serv *serv;
+
+	mutex_lock(&nfsd_mutex);
+	serv = nn->nfsd_serv;
+	if (serv == NULL) {
+		mutex_unlock(&nfsd_mutex);
+		return;
+	}
+
+	svc_get(serv);
+	/* Kill outstanding nfsd threads */
+	serv->sv_ops->svo_setup(serv, NULL, 0);
+	nfsd_destroy(net);
+	mutex_unlock(&nfsd_mutex);
+	/* Wait for shutdown of nfsd_serv to complete */
+	wait_for_completion(&nn->nfsd_shutdown_complete);
+}
+
 bool i_am_nfsd(void)
 {
 	return kthread_func(current) == nfsd;
@@ -623,11 +651,13 @@ int nfsd_create_serv(struct net *net)
 						&nfsd_thread_sv_ops);
 	if (nn->nfsd_serv == NULL)
 		return -ENOMEM;
+	init_completion(&nn->nfsd_shutdown_complete);
 
 	nn->nfsd_serv->sv_maxconn = nn->max_connections;
 	error = svc_bind(nn->nfsd_serv, net);
 	if (error < 0) {
 		svc_destroy(nn->nfsd_serv);
+		nfsd_complete_shutdown(net);
 		return error;
 	}
 
@@ -676,7 +706,7 @@ void nfsd_destroy(struct net *net)
 		svc_shutdown_net(nn->nfsd_serv, net);
 	svc_destroy(nn->nfsd_serv);
 	if (destroy)
-		nn->nfsd_serv = NULL;
+		nfsd_complete_shutdown(net);
 }
 
 int nfsd_set_nrthreads(int n, int *nthreads, struct net *net)
@@ -763,7 +793,7 @@ nfsd_svc(int nrservs, struct net *net, const struct cred *cred)
 
 	nfsd_up_before = nn->nfsd_net_up;
 
-	error = nfsd_startup_net(nrservs, net, cred);
+	error = nfsd_startup_net(net, cred);
 	if (error)
 		goto out_destroy;
 	error = nn->nfsd_serv->sv_ops->svo_setup(nn->nfsd_serv,
@@ -960,37 +990,6 @@ out:
 	return 0;
 }
 
-/*
- * A write procedure can have a large argument, and a read procedure can
- * have a large reply, but no NFSv2 or NFSv3 procedure has argument and
- * reply that can both be larger than a page.  The xdr code has taken
- * advantage of this assumption to be a sloppy about bounds checking in
- * some cases.  Pending a rewrite of the NFSv2/v3 xdr code to fix that
- * problem, we enforce these assumptions here:
- */
-static bool nfs_request_too_big(struct svc_rqst *rqstp,
-				const struct svc_procedure *proc)
-{
-	/*
-	 * The ACL code has more careful bounds-checking and is not
-	 * susceptible to this problem:
-	 */
-	if (rqstp->rq_prog != NFS_PROGRAM)
-		return false;
-	/*
-	 * Ditto NFSv4 (which can in theory have argument and reply both
-	 * more than a page):
-	 */
-	if (rqstp->rq_vers >= 4)
-		return false;
-	/* The reply will be small, we're OK: */
-	if (proc->pc_xdrressize > 0 &&
-	    proc->pc_xdrressize < XDR_QUADLEN(PAGE_SIZE))
-		return false;
-
-	return rqstp->rq_arg.len > PAGE_SIZE;
-}
-
 /**
  * nfsd_dispatch - Process an NFS or NFSACL Request
  * @rqstp: incoming request
@@ -1009,17 +1008,13 @@ int nfsd_dispatch(struct svc_rqst *rqstp, __be32 *statp)
 	struct kvec *resv = &rqstp->rq_res.head[0];
 	__be32 *p;
 
-	dprintk("nfsd_dispatch: vers %d proc %d\n",
-				rqstp->rq_vers, rqstp->rq_proc);
-
-	if (nfs_request_too_big(rqstp, proc))
-		goto out_too_large;
-
 	/*
 	 * Give the xdr decoder a chance to change this if it wants
 	 * (necessary in the NFSv4.0 compound case)
 	 */
 	rqstp->rq_cachetype = proc->pc_cachetype;
+
+	svcxdr_init_decode(rqstp);
 	if (!proc->pc_decode(rqstp, argv->iov_base))
 		goto out_decode_err;
 
@@ -1037,7 +1032,7 @@ int nfsd_dispatch(struct svc_rqst *rqstp, __be32 *statp)
 	 * NFSv4 does some encoding while processing
 	 */
 	p = resv->iov_base + resv->iov_len;
-	resv->iov_len += sizeof(__be32);
+	svcxdr_init_encode(rqstp);
 
 	*statp = proc->pc_func(rqstp);
 	if (*statp == rpc_drop_reply || test_bit(RQ_DROPME, &rqstp->rq_flags))
@@ -1050,26 +1045,48 @@ int nfsd_dispatch(struct svc_rqst *rqstp, __be32 *statp)
 out_cached_reply:
 	return 1;
 
-out_too_large:
-	dprintk("nfsd: NFSv%d argument too large\n", rqstp->rq_vers);
-	*statp = rpc_garbage_args;
-	return 1;
-
 out_decode_err:
-	dprintk("nfsd: failed to decode arguments!\n");
+	trace_nfsd_garbage_args_err(rqstp);
 	*statp = rpc_garbage_args;
 	return 1;
 
 out_update_drop:
-	dprintk("nfsd: Dropping request; may be revisited later\n");
 	nfsd_cache_update(rqstp, RC_NOCACHE, NULL);
 out_dropit:
 	return 0;
 
 out_encode_err:
-	dprintk("nfsd: failed to encode result!\n");
+	trace_nfsd_cant_encode_err(rqstp);
 	nfsd_cache_update(rqstp, RC_NOCACHE, NULL);
 	*statp = rpc_system_err;
+	return 1;
+}
+
+/**
+ * nfssvc_decode_voidarg - Decode void arguments
+ * @rqstp: Server RPC transaction context
+ * @p: buffer containing arguments to decode
+ *
+ * Return values:
+ *   %0: Arguments were not valid
+ *   %1: Decoding was successful
+ */
+int nfssvc_decode_voidarg(struct svc_rqst *rqstp, __be32 *p)
+{
+	return 1;
+}
+
+/**
+ * nfssvc_encode_voidres - Encode void results
+ * @rqstp: Server RPC transaction context
+ * @p: buffer in which to encode results
+ *
+ * Return values:
+ *   %0: Local error while encoding
+ *   %1: Encoding was successful
+ */
+int nfssvc_encode_voidres(struct svc_rqst *rqstp, __be32 *p)
+{
 	return 1;
 }
 

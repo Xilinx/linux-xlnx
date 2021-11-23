@@ -76,6 +76,7 @@ static void dwc2_set_s3c6400_params(struct dwc2_hsotg *hsotg)
 	struct dwc2_core_params *p = &hsotg->params;
 
 	p->power_down = DWC2_POWER_DOWN_PARAM_NONE;
+	p->no_clock_gating = true;
 	p->phy_utmi_width = 8;
 }
 
@@ -177,7 +178,10 @@ static void dwc2_set_stm32mp15_fsotg_params(struct dwc2_hsotg *hsotg)
 	p->i2c_enable = false;
 	p->activate_stm_fs_transceiver = true;
 	p->activate_stm_id_vb_detection = true;
+	p->ahbcfg = GAHBCFG_HBSTLEN_INCR16 << GAHBCFG_HBSTLEN_SHIFT;
 	p->power_down = DWC2_POWER_DOWN_PARAM_NONE;
+	p->host_support_fs_ls_low_power = true;
+	p->host_ls_low_power_phy_clk = true;
 }
 
 static void dwc2_set_stm32mp15_hsotg_params(struct dwc2_hsotg *hsotg)
@@ -189,7 +193,12 @@ static void dwc2_set_stm32mp15_hsotg_params(struct dwc2_hsotg *hsotg)
 	p->host_rx_fifo_size = 440;
 	p->host_nperio_tx_fifo_size = 256;
 	p->host_perio_tx_fifo_size = 256;
+	p->ahbcfg = GAHBCFG_HBSTLEN_INCR16 << GAHBCFG_HBSTLEN_SHIFT;
 	p->power_down = DWC2_POWER_DOWN_PARAM_NONE;
+	p->lpm = false;
+	p->lpm_clock_gating = false;
+	p->besl = false;
+	p->hird_threshold_en = false;
 }
 
 const struct of_device_id dwc2_of_match_table[] = {
@@ -223,6 +232,12 @@ const struct of_device_id dwc2_of_match_table[] = {
 	{},
 };
 MODULE_DEVICE_TABLE(of, dwc2_of_match_table);
+
+const struct acpi_device_id dwc2_acpi_match[] = {
+	{ "BCM2848", (kernel_ulong_t)dwc2_set_bcm_params },
+	{ },
+};
+MODULE_DEVICE_TABLE(acpi, dwc2_acpi_match);
 
 static void dwc2_set_param_otg_cap(struct dwc2_hsotg *hsotg)
 {
@@ -770,8 +785,8 @@ static void dwc2_get_dev_hwparams(struct dwc2_hsotg *hsotg)
 }
 
 /**
- * During device initialization, read various hardware configuration
- * registers and interpret the contents.
+ * dwc2_get_hwparams() - During device initialization, read various hardware
+ *                       configuration registers and interpret the contents.
  *
  * @hsotg: Programming view of the DWC_otg controller
  *
@@ -858,10 +873,12 @@ int dwc2_get_hwparams(struct dwc2_hsotg *hsotg)
 	return 0;
 }
 
+typedef void (*set_params_cb)(struct dwc2_hsotg *data);
+
 int dwc2_init_params(struct dwc2_hsotg *hsotg)
 {
 	const struct of_device_id *match;
-	void (*set_params)(struct dwc2_hsotg *data);
+	set_params_cb set_params;
 
 	dwc2_set_default_params(hsotg);
 	dwc2_get_device_properties(hsotg);
@@ -870,6 +887,14 @@ int dwc2_init_params(struct dwc2_hsotg *hsotg)
 	if (match && match->data) {
 		set_params = match->data;
 		set_params(hsotg);
+	} else {
+		const struct acpi_device_id *amatch;
+
+		amatch = acpi_match_device(dwc2_acpi_match, hsotg->dev);
+		if (amatch && amatch->driver_data) {
+			set_params = (set_params_cb)amatch->driver_data;
+			set_params(hsotg);
+		}
 	}
 
 	dwc2_check_params(hsotg);

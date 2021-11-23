@@ -20,6 +20,21 @@ possible source of information on its own, the EM framework intervenes as an
 abstraction layer which standardizes the format of power cost tables in the
 kernel, hence enabling to avoid redundant work.
 
+The power values might be expressed in milli-Watts or in an 'abstract scale'.
+Multiple subsystems might use the EM and it is up to the system integrator to
+check that the requirements for the power value scale types are met. An example
+can be found in the Energy-Aware Scheduler documentation
+Documentation/scheduler/sched-energy.rst. For some subsystems like thermal or
+powercap power values expressed in an 'abstract scale' might cause issues.
+These subsystems are more interested in estimation of power used in the past,
+thus the real milli-Watts might be needed. An example of these requirements can
+be found in the Intelligent Power Allocation in
+Documentation/driver-api/thermal/power_allocator.rst.
+Kernel subsystems might implement automatic detection to check whether EM
+registered devices have inconsistent scale (based on EM internal flag).
+Important thing to keep in mind is that when the power values are expressed in
+an 'abstract scale' deriving real energy in milli-Joules would not be possible.
+
 The figure below depicts an example of drivers (Arm-specific here, but the
 approach is applicable to any architecture) providing power costs to the EM
 framework, and interested clients reading the data from it::
@@ -73,7 +88,7 @@ Drivers are expected to register performance domains into the EM framework by
 calling the following API::
 
   int em_dev_register_perf_domain(struct device *dev, unsigned int nr_states,
-		struct em_data_callback *cb, cpumask_t *cpus);
+		struct em_data_callback *cb, cpumask_t *cpus, bool milliwatts);
 
 Drivers must provide a callback function returning <frequency, power> tuples
 for each performance state. The callback function provided by the driver is free
@@ -81,9 +96,12 @@ to fetch data from any relevant location (DT, firmware, ...), and by any mean
 deemed necessary. Only for CPU devices, drivers must specify the CPUs of the
 performance domains using cpumask. For other devices than CPUs the last
 argument must be set to NULL.
+The last argument 'milliwatts' is important to set with correct value. Kernel
+subsystems which use EM might rely on this flag to check if all EM devices use
+the same scale. If there are different scales, these subsystems might decide
+to: return warning/error, stop working or panic.
 See Section 3. for an example of driver implementing this
-callback, and kernel/power/energy_model.c for further documentation on this
-API.
+callback, or Section 2.4 for further documentation on this API
 
 
 2.3 Accessing performance domains
@@ -104,7 +122,17 @@ em_cpu_energy() API. The estimation is performed assuming that the schedutil
 CPUfreq governor is in use in case of CPU device. Currently this calculation is
 not provided for other type of devices.
 
-More details about the above APIs can be found in include/linux/energy_model.h.
+More details about the above APIs can be found in ``<linux/energy_model.h>``
+or in Section 2.4
+
+
+2.4 Description details of this API
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.. kernel-doc:: include/linux/energy_model.h
+   :internal:
+
+.. kernel-doc:: kernel/power/energy_model.c
+   :export:
 
 
 3. Example driver
@@ -156,7 +184,8 @@ EM framework::
   37     	nr_opp = foo_get_nr_opp(policy);
   38
   39     	/* And register the new performance domain */
-  40     	em_dev_register_perf_domain(cpu_dev, nr_opp, &em_cb, policy->cpus);
-  41
-  42	        return 0;
-  43	}
+  40     	em_dev_register_perf_domain(cpu_dev, nr_opp, &em_cb, policy->cpus,
+  41					    true);
+  42
+  43	        return 0;
+  44	}

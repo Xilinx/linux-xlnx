@@ -53,7 +53,6 @@ static struct i2c_driver ir38064_driver = {
 		   .name = "ir38064",
 		   },
 	.probe_new = ir38064_probe,
-	.remove = pmbus_do_remove,
 	.id_table = ir38064_id,
 };
 
@@ -62,3 +61,4 @@ module_i2c_driver(ir38064_driver);
 MODULE_AUTHOR("Maxim Sloyko <maxims@google.com>");
 MODULE_DESCRIPTION("PMBus driver for Infineon IR38064");
 MODULE_LICENSE("GPL");
+MODULE_IMPORT_NS(PMBUS);

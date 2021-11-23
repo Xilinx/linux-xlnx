@@ -33,6 +33,7 @@
 #define VIVID_CID_U16_MATRIX		(VIVID_CID_CUSTOM_BASE + 9)
 #define VIVID_CID_U8_4D_ARRAY		(VIVID_CID_CUSTOM_BASE + 10)
 #define VIVID_CID_AREA			(VIVID_CID_CUSTOM_BASE + 11)
+#define VIVID_CID_RO_INTEGER		(VIVID_CID_CUSTOM_BASE + 12)
 
 #define VIVID_CID_VIVID_BASE		(0x00f00000 | 0xf000)
 #define VIVID_CID_VIVID_CLASS		(0x00f00000 | 1)
@@ -100,6 +101,14 @@
 
 /* General User Controls */
 
+static void vivid_unregister_dev(bool valid, struct video_device *vdev)
+{
+	if (!valid)
+		return;
+	clear_bit(V4L2_FL_REGISTERED, &vdev->flags);
+	v4l2_event_wake_all(vdev);
+}
+
 static int vivid_user_gen_s_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct vivid_dev *dev = container_of(ctrl->handler, struct vivid_dev, ctrl_hdl_user_gen);
@@ -107,14 +116,17 @@ static int vivid_user_gen_s_ctrl(struct v4l2_ctrl *ctrl)
 	switch (ctrl->id) {
 	case VIVID_CID_DISCONNECT:
 		v4l2_info(&dev->v4l2_dev, "disconnect\n");
-		clear_bit(V4L2_FL_REGISTERED, &dev->vid_cap_dev.flags);
-		clear_bit(V4L2_FL_REGISTERED, &dev->vid_out_dev.flags);
-		clear_bit(V4L2_FL_REGISTERED, &dev->vbi_cap_dev.flags);
-		clear_bit(V4L2_FL_REGISTERED, &dev->vbi_out_dev.flags);
-		clear_bit(V4L2_FL_REGISTERED, &dev->sdr_cap_dev.flags);
-		clear_bit(V4L2_FL_REGISTERED, &dev->radio_rx_dev.flags);
-		clear_bit(V4L2_FL_REGISTERED, &dev->radio_tx_dev.flags);
-		clear_bit(V4L2_FL_REGISTERED, &dev->meta_cap_dev.flags);
+		dev->disconnect_error = true;
+		vivid_unregister_dev(dev->has_vid_cap, &dev->vid_cap_dev);
+		vivid_unregister_dev(dev->has_vid_out, &dev->vid_out_dev);
+		vivid_unregister_dev(dev->has_vbi_cap, &dev->vbi_cap_dev);
+		vivid_unregister_dev(dev->has_vbi_out, &dev->vbi_out_dev);
+		vivid_unregister_dev(dev->has_radio_rx, &dev->radio_rx_dev);
+		vivid_unregister_dev(dev->has_radio_tx, &dev->radio_tx_dev);
+		vivid_unregister_dev(dev->has_sdr_cap, &dev->sdr_cap_dev);
+		vivid_unregister_dev(dev->has_meta_cap, &dev->meta_cap_dev);
+		vivid_unregister_dev(dev->has_meta_out, &dev->meta_out_dev);
+		vivid_unregister_dev(dev->has_touch_cap, &dev->touch_cap_dev);
 		break;
 	case VIVID_CID_BUTTON:
 		dev->button_pressed = 30;
@@ -278,6 +290,17 @@ static const struct v4l2_ctrl_config vivid_ctrl_area = {
 	.name = "Area",
 	.type = V4L2_CTRL_TYPE_AREA,
 	.p_def.p_const = &area,
+};
+
+static const struct v4l2_ctrl_config vivid_ctrl_ro_int32 = {
+	.ops = &vivid_user_gen_ctrl_ops,
+	.id = VIVID_CID_RO_INTEGER,
+	.name = "Read-Only Integer 32 Bits",
+	.type = V4L2_CTRL_TYPE_INTEGER,
+	.flags = V4L2_CTRL_FLAG_READ_ONLY,
+	.min = 0,
+	.max = 255,
+	.step = 1,
 };
 
 /* Framebuffer Controls */
@@ -1590,6 +1613,7 @@ int vivid_create_controls(struct vivid_dev *dev, bool show_ccs_cap,
 	dev->string = v4l2_ctrl_new_custom(hdl_user_gen, &vivid_ctrl_string, NULL);
 	dev->bitmask = v4l2_ctrl_new_custom(hdl_user_gen, &vivid_ctrl_bitmask, NULL);
 	dev->int_menu = v4l2_ctrl_new_custom(hdl_user_gen, &vivid_ctrl_int_menu, NULL);
+	dev->ro_int32 = v4l2_ctrl_new_custom(hdl_user_gen, &vivid_ctrl_ro_int32, NULL);
 	v4l2_ctrl_new_custom(hdl_user_gen, &vivid_ctrl_area, NULL);
 	v4l2_ctrl_new_custom(hdl_user_gen, &vivid_ctrl_u32_array, NULL);
 	v4l2_ctrl_new_custom(hdl_user_gen, &vivid_ctrl_u16_matrix, NULL);

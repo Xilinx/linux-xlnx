@@ -10,15 +10,15 @@ understand it. This guide assumes a working knowledge of the Linux kernel and
 some basic knowledge of testing.
 
 For a high level introduction to KUnit, including setting up KUnit for your
-project, see :doc:`start`.
+project, see Documentation/dev-tools/kunit/start.rst.
 
 Organization of this document
 =============================
 
-This document is organized into two main sections: Testing and Isolating
-Behavior. The first covers what unit tests are and how to use KUnit to write
-them. The second covers how to use KUnit to isolate code and make it possible
-to unit test code that was otherwise un-unit-testable.
+This document is organized into two main sections: Testing and Common Patterns.
+The first covers what unit tests are and how to use KUnit to write them. The
+second covers common testing patterns, e.g. how to isolate code and make it
+possible to unit test code that was otherwise un-unit-testable.
 
 Testing
 =======
@@ -99,7 +99,8 @@ violated; however, the test will continue running, potentially trying other
 expectations until the test case ends or is otherwise terminated. This is as
 opposed to *assertions* which are discussed later.
 
-To learn about more expectations supported by KUnit, see :doc:`api/test`.
+To learn about more expectations supported by KUnit, see
+Documentation/dev-tools/kunit/api/test.rst.
 
 .. note::
    A single test case should be pretty short, pretty easy to understand,
@@ -216,10 +217,14 @@ test suite in a special linker section so that it can be run by KUnit either
 after late_init, or when the test module is loaded (depending on whether the
 test was built in or not).
 
-For more information on these types of things see the :doc:`api/test`.
+For more information on these types of things see the
+Documentation/dev-tools/kunit/api/test.rst.
+
+Common Patterns
+===============
 
 Isolating Behavior
-==================
+------------------
 
 The most important aspect of unit testing that other forms of testing do not
 provide is the ability to limit the amount of code under test to a single unit.
@@ -233,7 +238,7 @@ implementer, and architecture-specific functions which have definitions selected
 at compile time.
 
 Classes
--------
+~~~~~~~
 
 Classes are not a construct that is built into the C programming language;
 however, it is an easily derived concept. Accordingly, pretty much every project
@@ -451,6 +456,130 @@ We can now use it to test ``struct eeprom_buffer``:
 		destroy_eeprom_buffer(ctx->eeprom_buffer);
 	}
 
+Testing against multiple inputs
+-------------------------------
+
+Testing just a few inputs might not be enough to have confidence that the code
+works correctly, e.g. for a hash function.
+
+In such cases, it can be helpful to have a helper macro or function, e.g. this
+fictitious example for ``sha1sum(1)``
+
+.. code-block:: c
+
+	#define TEST_SHA1(in, want) \
+		sha1sum(in, out); \
+		KUNIT_EXPECT_STREQ_MSG(test, out, want, "sha1sum(%s)", in);
+
+	char out[40];
+	TEST_SHA1("hello world",  "2aae6c35c94fcfb415dbe95f408b9ce91ee846ed");
+	TEST_SHA1("hello world!", "430ce34d020724ed75a196dfc2ad67c77772d169");
+
+
+Note the use of ``KUNIT_EXPECT_STREQ_MSG`` to give more context when it fails
+and make it easier to track down. (Yes, in this example, ``want`` is likely
+going to be unique enough on its own).
+
+The ``_MSG`` variants are even more useful when the same expectation is called
+multiple times (in a loop or helper function) and thus the line number isn't
+enough to identify what failed, like below.
+
+In some cases, it can be helpful to write a *table-driven test* instead, e.g.
+
+.. code-block:: c
+
+	int i;
+	char out[40];
+
+	struct sha1_test_case {
+		const char *str;
+		const char *sha1;
+	};
+
+	struct sha1_test_case cases[] = {
+		{
+			.str = "hello world",
+			.sha1 = "2aae6c35c94fcfb415dbe95f408b9ce91ee846ed",
+		},
+		{
+			.str = "hello world!",
+			.sha1 = "430ce34d020724ed75a196dfc2ad67c77772d169",
+		},
+	};
+	for (i = 0; i < ARRAY_SIZE(cases); ++i) {
+		sha1sum(cases[i].str, out);
+		KUNIT_EXPECT_STREQ_MSG(test, out, cases[i].sha1,
+		                      "sha1sum(%s)", cases[i].str);
+	}
+
+
+There's more boilerplate involved, but it can:
+
+* be more readable when there are multiple inputs/outputs thanks to field names,
+
+  * E.g. see ``fs/ext4/inode-test.c`` for an example of both.
+* reduce duplication if test cases can be shared across multiple tests.
+
+  * E.g. if we wanted to also test ``sha256sum``, we could add a ``sha256``
+    field and reuse ``cases``.
+
+* be converted to a "parameterized test", see below.
+
+Parameterized Testing
+~~~~~~~~~~~~~~~~~~~~~
+
+The table-driven testing pattern is common enough that KUnit has special
+support for it.
+
+Reusing the same ``cases`` array from above, we can write the test as a
+"parameterized test" with the following.
+
+.. code-block:: c
+
+	// This is copy-pasted from above.
+	struct sha1_test_case {
+		const char *str;
+		const char *sha1;
+	};
+	struct sha1_test_case cases[] = {
+		{
+			.str = "hello world",
+			.sha1 = "2aae6c35c94fcfb415dbe95f408b9ce91ee846ed",
+		},
+		{
+			.str = "hello world!",
+			.sha1 = "430ce34d020724ed75a196dfc2ad67c77772d169",
+		},
+	};
+
+	// Need a helper function to generate a name for each test case.
+	static void case_to_desc(const struct sha1_test_case *t, char *desc)
+	{
+		strcpy(desc, t->str);
+	}
+	// Creates `sha1_gen_params()` to iterate over `cases`.
+	KUNIT_ARRAY_PARAM(sha1, cases, case_to_desc);
+
+	// Looks no different from a normal test.
+	static void sha1_test(struct kunit *test)
+	{
+		// This function can just contain the body of the for-loop.
+		// The former `cases[i]` is accessible under test->param_value.
+		char out[40];
+		struct sha1_test_case *test_param = (struct sha1_test_case *)(test->param_value);
+
+		sha1sum(test_param->str, out);
+		KUNIT_EXPECT_STREQ_MSG(test, out, test_param->sha1,
+				      "sha1sum(%s)", test_param->str);
+	}
+
+	// Instead of KUNIT_CASE, we use KUNIT_CASE_PARAM and pass in the
+	// function declared by KUNIT_ARRAY_PARAM.
+	static struct kunit_case sha1_test_cases[] = {
+		KUNIT_CASE_PARAM(sha1_test, sha1_gen_params),
+		{}
+	};
+
 .. _kunit-on-non-uml:
 
 KUnit on non-UML architectures
@@ -481,17 +610,45 @@ non-UML architectures:
 None of these are reasons not to run your KUnit tests on real hardware; they are
 only things to be aware of when doing so.
 
-The biggest impediment will likely be that certain KUnit features and
-infrastructure may not support your target environment. For example, at this
-time the KUnit Wrapper (``tools/testing/kunit/kunit.py``) does not work outside
-of UML. Unfortunately, there is no way around this. Using UML (or even just a
-particular architecture) allows us to make a lot of assumptions that make it
-possible to do things which might otherwise be impossible.
+Currently, the KUnit Wrapper (``tools/testing/kunit/kunit.py``) (aka
+kunit_tool) only fully supports running tests inside of UML and QEMU; however,
+this is only due to our own time limitations as humans working on KUnit. It is
+entirely possible to support other emulators and even actual hardware, but for
+now QEMU and UML is what is fully supported within the KUnit Wrapper. Again, to
+be clear, this is just the Wrapper. The actualy KUnit tests and the KUnit
+library they are written in is fully architecture agnostic and can be used in
+virtually any setup, you just won't have the benefit of typing a single command
+out of the box and having everything magically work perfectly.
 
-Nevertheless, all core KUnit framework features are fully supported on all
-architectures, and using them is straightforward: all you need to do is to take
-your kunitconfig, your Kconfig options for the tests you would like to run, and
-merge them into whatever config your are using for your platform. That's it!
+Again, all core KUnit framework features are fully supported on all
+architectures, and using them is straightforward: Most popular architectures
+are supported directly in the KUnit Wrapper via QEMU. Currently, supported
+architectures on QEMU include:
+
+*   i386
+*   x86_64
+*   arm
+*   arm64
+*   alpha
+*   powerpc
+*   riscv
+*   s390
+*   sparc
+
+In order to run KUnit tests on one of these architectures via QEMU with the
+KUnit wrapper, all you need to do is specify the flags ``--arch`` and
+``--cross_compile`` when invoking the KUnit Wrapper. For example, we could run
+the default KUnit tests on ARM in the following manner (assuming we have an ARM
+toolchain installed):
+
+.. code-block:: bash
+
+	tools/testing/kunit/kunit.py run --timeout=60 --jobs=12 --arch=arm --cross_compile=arm-linux-gnueabihf-
+
+Alternatively, if you want to run your tests on real hardware or in some other
+emulation environment, all you need to do is to take your kunitconfig, your
+Kconfig options for the tests you would like to run, and merge them into
+whatever config your are using for your platform. That's it!
 
 For example, let's say you have the following kunitconfig:
 

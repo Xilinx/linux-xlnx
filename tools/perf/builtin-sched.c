@@ -670,7 +670,7 @@ static void create_tasks(struct perf_sched *sched)
 	err = pthread_attr_init(&attr);
 	BUG_ON(err);
 	err = pthread_attr_setstacksize(&attr,
-			(size_t) max(16 * 1024, PTHREAD_STACK_MIN));
+			(size_t) max(16 * 1024, (int)PTHREAD_STACK_MIN));
 	BUG_ON(err);
 	err = pthread_mutex_lock(&sched->start_work_mutex);
 	BUG_ON(err);
@@ -1712,7 +1712,7 @@ static int perf_sched__process_fork_event(struct perf_tool *tool,
 {
 	struct perf_sched *sched = container_of(tool, struct perf_sched, tool);
 
-	/* run the fork event through the perf machineruy */
+	/* run the fork event through the perf machinery */
 	perf_event__process_fork(tool, event, sample, machine);
 
 	/* and then run additional processing needed for this command */
@@ -1804,7 +1804,7 @@ static int perf_sched__read_events(struct perf_sched *sched)
 	};
 	int rc = -1;
 
-	session = perf_session__new(&data, false, &sched->tool);
+	session = perf_session__new(&data, &sched->tool);
 	if (IS_ERR(session)) {
 		pr_debug("Error creating perf session");
 		return PTR_ERR(session);
@@ -3011,7 +3011,7 @@ static int perf_sched__timehist(struct perf_sched *sched)
 
 	symbol_conf.use_callchain = sched->show_callchain;
 
-	session = perf_session__new(&data, false, &sched->tool);
+	session = perf_session__new(&data, &sched->tool);
 	if (IS_ERR(session))
 		return PTR_ERR(session);
 
@@ -3036,8 +3036,7 @@ static int perf_sched__timehist(struct perf_sched *sched)
 	setup_pager();
 
 	/* prefer sched_waking if it is captured */
-	if (perf_evlist__find_tracepoint_by_name(session->evlist,
-						  "sched:sched_waking"))
+	if (evlist__find_tracepoint_by_name(session->evlist, "sched:sched_waking"))
 		handlers[1].handler = timehist_sched_wakeup_ignore;
 
 	/* setup per-evsel handlers */
@@ -3045,8 +3044,7 @@ static int perf_sched__timehist(struct perf_sched *sched)
 		goto out;
 
 	/* sched_switch event at a minimum needs to exist */
-	if (!perf_evlist__find_tracepoint_by_name(session->evlist,
-						  "sched:sched_switch")) {
+	if (!evlist__find_tracepoint_by_name(session->evlist, "sched:sched_switch")) {
 		pr_err("No sched_switch events found. Have you run 'perf sched record'?\n");
 		goto out;
 	}
@@ -3337,6 +3335,16 @@ static void setup_sorting(struct perf_sched *sched, const struct option *options
 	sort_dimension__add("pid", &sched->cmp_pid);
 }
 
+static bool schedstat_events_exposed(void)
+{
+	/*
+	 * Select "sched:sched_stat_wait" event to check
+	 * whether schedstat tracepoints are exposed.
+	 */
+	return IS_ERR(trace_event__tp_format("sched", "sched_stat_wait")) ?
+		false : true;
+}
+
 static int __cmd_record(int argc, const char **argv)
 {
 	unsigned int rec_argc, i, j;
@@ -3348,21 +3356,33 @@ static int __cmd_record(int argc, const char **argv)
 		"-m", "1024",
 		"-c", "1",
 		"-e", "sched:sched_switch",
-		"-e", "sched:sched_stat_wait",
-		"-e", "sched:sched_stat_sleep",
-		"-e", "sched:sched_stat_iowait",
 		"-e", "sched:sched_stat_runtime",
 		"-e", "sched:sched_process_fork",
 		"-e", "sched:sched_wakeup_new",
 		"-e", "sched:sched_migrate_task",
 	};
+
+	/*
+	 * The tracepoints trace_sched_stat_{wait, sleep, iowait}
+	 * are not exposed to user if CONFIG_SCHEDSTATS is not set,
+	 * to prevent "perf sched record" execution failure, determine
+	 * whether to record schedstat events according to actual situation.
+	 */
+	const char * const schedstat_args[] = {
+		"-e", "sched:sched_stat_wait",
+		"-e", "sched:sched_stat_sleep",
+		"-e", "sched:sched_stat_iowait",
+	};
+	unsigned int schedstat_argc = schedstat_events_exposed() ?
+		ARRAY_SIZE(schedstat_args) : 0;
+
 	struct tep_event *waking_event;
 
 	/*
 	 * +2 for either "-e", "sched:sched_wakeup" or
 	 * "-e", "sched:sched_waking"
 	 */
-	rec_argc = ARRAY_SIZE(record_args) + 2 + argc - 1;
+	rec_argc = ARRAY_SIZE(record_args) + 2 + schedstat_argc + argc - 1;
 	rec_argv = calloc(rec_argc + 1, sizeof(char *));
 
 	if (rec_argv == NULL)
@@ -3377,6 +3397,9 @@ static int __cmd_record(int argc, const char **argv)
 		rec_argv[i++] = strdup("sched:sched_waking");
 	else
 		rec_argv[i++] = strdup("sched:sched_wakeup");
+
+	for (j = 0; j < schedstat_argc; j++)
+		rec_argv[i++] = strdup(schedstat_args[j]);
 
 	for (j = 1; j < (unsigned int)argc; j++, i++)
 		rec_argv[i] = argv[j];

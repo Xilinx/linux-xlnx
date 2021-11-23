@@ -435,7 +435,7 @@ static int ina260_buffer_enable(struct iio_dev *indio_dev)
 	struct task_struct *task;
 
 	task = kthread_create(ina260_capture_thread, (void *)indio_dev,
-			      "%s:%d-%uus", indio_dev->name, indio_dev->id,
+			      "%s:%d-%uus", indio_dev->name, iio_device_id(indio_dev),
 			      sampling_us);
 
 	if (IS_ERR(task))
@@ -469,7 +469,6 @@ static const struct iio_buffer_setup_ops ina260_setup_ops = {
 static int ina260_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
 	struct iio_dev *indio_dev;
-	struct iio_buffer *buffer;
 	struct ina260_chip *chip;
 	enum ina260_ids type = 0;
 	int ret;
@@ -489,7 +488,7 @@ static int ina260_probe(struct i2c_client *client, const struct i2c_device_id *i
 
 	mutex_init(&chip->lock);
 
-	indio_dev->modes = INDIO_DIRECT_MODE | INDIO_BUFFER_SOFTWARE;
+	indio_dev->modes = INDIO_DIRECT_MODE;
 	indio_dev->dev.parent = &client->dev;
 	indio_dev->dev.of_node = client->dev.of_node;
 
@@ -504,13 +503,12 @@ static int ina260_probe(struct i2c_client *client, const struct i2c_device_id *i
 	indio_dev->num_channels = ARRAY_SIZE(ina260_channels);
 	indio_dev->info = &ina260_info;
 	indio_dev->name = id->name;
-	indio_dev->setup_ops = &ina260_setup_ops;
 
-	buffer = devm_iio_kfifo_allocate(&indio_dev->dev);
-	if (!buffer)
-		return -ENOMEM;
-
-	iio_device_attach_buffer(indio_dev, buffer);
+	ret = devm_iio_kfifo_buffer_setup(&indio_dev->dev, indio_dev,
+					  INDIO_BUFFER_SOFTWARE,
+					  &ina260_setup_ops);
+	if (ret)
+		return ret;
 
 	return iio_device_register(indio_dev);
 }

@@ -42,6 +42,11 @@
 	status = "okay";
 };
 
+&gpu {
+	mali-supply = <&mt6358_vgpu_reg>;
+	sram-supply = <&mt6358_vsram_gpu_reg>;
+};
+
 &i2c0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c_pins_0>;
@@ -344,6 +349,16 @@
 			bias-disable;
 		};
 	};
+
+	pwm_pins_1: pwm1 {
+		pins_pwm {
+			pinmux = <PINMUX_GPIO90__FUNC_PWM_A>;
+		};
+	};
+};
+
+&mfg {
+	domain-supply = <&mt6358_vgpu_reg>;
 };
 
 &spi0 {
@@ -391,4 +406,10 @@
 
 &uart0 {
 	status = "okay";
+};
+
+&pwm1 {
+	status = "okay";
+	pinctrl-0 = <&pwm_pins_1>;
+	pinctrl-names = "default";
 };

@@ -1683,7 +1683,6 @@ static int __vpe_try_fmt(struct vpe_ctx *ctx, struct v4l2_format *f,
 		}
 	}
 
-	memset(pix->reserved, 0, sizeof(pix->reserved));
 	for (i = 0; i < pix->num_planes; i++) {
 		plane_fmt = &pix->plane_fmt[i];
 		depth = fmt->vpdma_fmt[i]->depth;
@@ -1713,7 +1712,6 @@ static int __vpe_try_fmt(struct vpe_ctx *ctx, struct v4l2_format *f,
 					       plane_fmt->bytesperline *
 					       depth) >> 3;
 		}
-		memset(plane_fmt->reserved, 0, sizeof(plane_fmt->reserved));
 	}
 
 	return 0;
@@ -2473,11 +2471,9 @@ static int vpe_runtime_get(struct platform_device *pdev)
 
 	dev_dbg(&pdev->dev, "vpe_runtime_get\n");
 
-	r = pm_runtime_get_sync(&pdev->dev);
+	r = pm_runtime_resume_and_get(&pdev->dev);
 	WARN_ON(r < 0);
-	if (r)
-		pm_runtime_put_noidle(&pdev->dev);
-	return r < 0 ? r : 0;
+	return r;
 }
 
 static void vpe_runtime_put(struct platform_device *pdev)
@@ -2582,7 +2578,7 @@ static int vpe_probe(struct platform_device *pdev)
 	pm_runtime_enable(&pdev->dev);
 
 	ret = vpe_runtime_get(pdev);
-	if (ret)
+	if (ret < 0)
 		goto rel_m2m;
 
 	/* Perform clk enable followed by reset */

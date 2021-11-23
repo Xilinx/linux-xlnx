@@ -17,6 +17,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/mman.h>
 #include "kselftest.h"
 
 static inline int _no_printf(const char *format, ...) { return 0; }
@@ -64,7 +65,56 @@ int64_t timespec_to_ns(struct timespec ts);
 struct timespec timespec_add_ns(struct timespec ts, int64_t ns);
 struct timespec timespec_add(struct timespec ts1, struct timespec ts2);
 struct timespec timespec_sub(struct timespec ts1, struct timespec ts2);
-struct timespec timespec_diff_now(struct timespec start);
+struct timespec timespec_elapsed(struct timespec start);
 struct timespec timespec_div(struct timespec ts, int divisor);
+
+enum vm_mem_backing_src_type {
+	VM_MEM_SRC_ANONYMOUS,
+	VM_MEM_SRC_ANONYMOUS_THP,
+	VM_MEM_SRC_ANONYMOUS_HUGETLB,
+	VM_MEM_SRC_ANONYMOUS_HUGETLB_16KB,
+	VM_MEM_SRC_ANONYMOUS_HUGETLB_64KB,
+	VM_MEM_SRC_ANONYMOUS_HUGETLB_512KB,
+	VM_MEM_SRC_ANONYMOUS_HUGETLB_1MB,
+	VM_MEM_SRC_ANONYMOUS_HUGETLB_2MB,
+	VM_MEM_SRC_ANONYMOUS_HUGETLB_8MB,
+	VM_MEM_SRC_ANONYMOUS_HUGETLB_16MB,
+	VM_MEM_SRC_ANONYMOUS_HUGETLB_32MB,
+	VM_MEM_SRC_ANONYMOUS_HUGETLB_256MB,
+	VM_MEM_SRC_ANONYMOUS_HUGETLB_512MB,
+	VM_MEM_SRC_ANONYMOUS_HUGETLB_1GB,
+	VM_MEM_SRC_ANONYMOUS_HUGETLB_2GB,
+	VM_MEM_SRC_ANONYMOUS_HUGETLB_16GB,
+	VM_MEM_SRC_SHMEM,
+	VM_MEM_SRC_SHARED_HUGETLB,
+	NUM_SRC_TYPES,
+};
+
+#define DEFAULT_VM_MEM_SRC VM_MEM_SRC_ANONYMOUS
+
+struct vm_mem_backing_src_alias {
+	const char *name;
+	uint32_t flag;
+};
+
+#define MIN_RUN_DELAY_NS	200000UL
+
+bool thp_configured(void);
+size_t get_trans_hugepagesz(void);
+size_t get_def_hugetlb_pagesz(void);
+const struct vm_mem_backing_src_alias *vm_mem_backing_src_alias(uint32_t i);
+size_t get_backing_src_pagesz(uint32_t i);
+void backing_src_help(const char *flag);
+enum vm_mem_backing_src_type parse_backing_src_type(const char *type_name);
+long get_run_delay(void);
+
+/*
+ * Whether or not the given source type is shared memory (as opposed to
+ * anonymous).
+ */
+static inline bool backing_src_is_shared(enum vm_mem_backing_src_type t)
+{
+	return vm_mem_backing_src_alias(t)->flag & MAP_SHARED;
+}
 
 #endif /* SELFTEST_KVM_TEST_UTIL_H */

@@ -17,8 +17,6 @@
 #include <linux/iio/iio.h>
 #include <linux/iio/sysfs.h>
 
-#include <linux/platform_data/ad7303.h>
-
 #define AD7303_CFG_EXTERNAL_VREF BIT(15)
 #define AD7303_CFG_POWER_DOWN(ch) BIT(11 + (ch))
 #define AD7303_CFG_ADDR_OFFSET	10
@@ -67,7 +65,7 @@ static ssize_t ad7303_read_dac_powerdown(struct iio_dev *indio_dev,
 {
 	struct ad7303_state *st = iio_priv(indio_dev);
 
-	return sprintf(buf, "%d\n", (bool)(st->config &
+	return sysfs_emit(buf, "%d\n", (bool)(st->config &
 		AD7303_CFG_POWER_DOWN(chan->channel)));
 }
 

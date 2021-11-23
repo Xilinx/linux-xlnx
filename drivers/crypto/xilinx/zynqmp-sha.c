@@ -16,7 +16,8 @@
 #include <linux/crypto.h>
 #include <crypto/scatterwalk.h>
 #include <crypto/algapi.h>
-#include <crypto/sha.h>
+#include <crypto/sha1.h>
+#include <crypto/sha2.h>
 #include <crypto/hash.h>
 #include <crypto/internal/hash.h>
 #include <linux/firmware/xlnx-zynqmp.h>
@@ -116,8 +117,8 @@ static int zynqmp_sha_update(struct ahash_request *req)
 		return -ENOMEM;
 
 	scatterwalk_map_and_copy(kbuf, req->src, 0, req->nbytes, 0);
-	 __flush_cache_user_range((unsigned long)kbuf,
-				  (unsigned long)kbuf + dma_size);
+	caches_clean_inval_user_pou((unsigned long)kbuf,
+				    (unsigned long)kbuf + dma_size);
 	ret = zynqmp_pm_sha_hash(dma_addr, req->nbytes, ZYNQMP_SHA3_UPDATE);
 	if (ret) {
 		mutex_unlock(&zynqmp_sha.hw_engine_mutex);

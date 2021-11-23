@@ -106,6 +106,7 @@ static void linear_status(struct dm_target *ti, status_type_t type,
 			  unsigned status_flags, char *result, unsigned maxlen)
 {
 	struct linear_c *lc = (struct linear_c *) ti->private;
+	size_t sz = 0;
 
 	switch (type) {
 	case STATUSTYPE_INFO:
@@ -113,8 +114,13 @@ static void linear_status(struct dm_target *ti, status_type_t type,
 		break;
 
 	case STATUSTYPE_TABLE:
-		snprintf(result, maxlen, "%s %llu", lc->dev->name,
-				(unsigned long long)lc->start);
+		DMEMIT("%s %llu", lc->dev->name, (unsigned long long)lc->start);
+		break;
+
+	case STATUSTYPE_IMA:
+		DMEMIT_TARGET_NAME_VERSION(ti->type);
+		DMEMIT(",device_name=%s,start=%llu;", lc->dev->name,
+		       (unsigned long long)lc->start);
 		break;
 	}
 }
@@ -140,12 +146,13 @@ static int linear_report_zones(struct dm_target *ti,
 		struct dm_report_zones_args *args, unsigned int nr_zones)
 {
 	struct linear_c *lc = ti->private;
-	sector_t sector = linear_map_sector(ti, args->next_sector);
 
-	args->start = lc->start;
-	return blkdev_report_zones(lc->dev->bdev, sector, nr_zones,
-				   dm_report_zones_cb, args);
+	return dm_report_zones(lc->dev->bdev, lc->start,
+			       linear_map_sector(ti, args->next_sector),
+			       args, nr_zones);
 }
+#else
+#define linear_report_zones NULL
 #endif
 
 static int linear_iterate_devices(struct dm_target *ti,
@@ -227,13 +234,9 @@ static int linear_dax_zero_page_range(struct dm_target *ti, pgoff_t pgoff,
 static struct target_type linear_target = {
 	.name   = "linear",
 	.version = {1, 4, 0},
-#ifdef CONFIG_BLK_DEV_ZONED
 	.features = DM_TARGET_PASSES_INTEGRITY | DM_TARGET_NOWAIT |
-		    DM_TARGET_ZONED_HM,
+		    DM_TARGET_ZONED_HM | DM_TARGET_PASSES_CRYPTO,
 	.report_zones = linear_report_zones,
-#else
-	.features = DM_TARGET_PASSES_INTEGRITY | DM_TARGET_NOWAIT,
-#endif
 	.module = THIS_MODULE,
 	.ctr    = linear_ctr,
 	.dtr    = linear_dtr,

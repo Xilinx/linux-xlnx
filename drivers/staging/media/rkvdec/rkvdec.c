@@ -29,7 +29,7 @@
 
 static int rkvdec_try_ctrl(struct v4l2_ctrl *ctrl)
 {
-	if (ctrl->id == V4L2_CID_MPEG_VIDEO_H264_SPS) {
+	if (ctrl->id == V4L2_CID_STATELESS_H264_SPS) {
 		const struct v4l2_ctrl_h264_sps *sps = ctrl->p_new.p_h264_sps;
 		/*
 		 * TODO: The hardware supports 10-bit and 4:2:2 profiles,
@@ -55,32 +55,42 @@ static const struct v4l2_ctrl_ops rkvdec_ctrl_ops = {
 
 static const struct rkvdec_ctrl_desc rkvdec_h264_ctrl_descs[] = {
 	{
-		.mandatory = true,
-		.cfg.id = V4L2_CID_MPEG_VIDEO_H264_DECODE_PARAMS,
+		.cfg.id = V4L2_CID_STATELESS_H264_DECODE_PARAMS,
 	},
 	{
-		.mandatory = true,
-		.cfg.id = V4L2_CID_MPEG_VIDEO_H264_SPS,
+		.cfg.id = V4L2_CID_STATELESS_H264_SPS,
 		.cfg.ops = &rkvdec_ctrl_ops,
 	},
 	{
-		.mandatory = true,
-		.cfg.id = V4L2_CID_MPEG_VIDEO_H264_PPS,
+		.cfg.id = V4L2_CID_STATELESS_H264_PPS,
 	},
 	{
-		.cfg.id = V4L2_CID_MPEG_VIDEO_H264_SCALING_MATRIX,
+		.cfg.id = V4L2_CID_STATELESS_H264_SCALING_MATRIX,
 	},
 	{
-		.cfg.id = V4L2_CID_MPEG_VIDEO_H264_DECODE_MODE,
-		.cfg.min = V4L2_MPEG_VIDEO_H264_DECODE_MODE_FRAME_BASED,
-		.cfg.max = V4L2_MPEG_VIDEO_H264_DECODE_MODE_FRAME_BASED,
-		.cfg.def = V4L2_MPEG_VIDEO_H264_DECODE_MODE_FRAME_BASED,
+		.cfg.id = V4L2_CID_STATELESS_H264_DECODE_MODE,
+		.cfg.min = V4L2_STATELESS_H264_DECODE_MODE_FRAME_BASED,
+		.cfg.max = V4L2_STATELESS_H264_DECODE_MODE_FRAME_BASED,
+		.cfg.def = V4L2_STATELESS_H264_DECODE_MODE_FRAME_BASED,
 	},
 	{
-		.cfg.id = V4L2_CID_MPEG_VIDEO_H264_START_CODE,
-		.cfg.min = V4L2_MPEG_VIDEO_H264_START_CODE_ANNEX_B,
-		.cfg.def = V4L2_MPEG_VIDEO_H264_START_CODE_ANNEX_B,
-		.cfg.max = V4L2_MPEG_VIDEO_H264_START_CODE_ANNEX_B,
+		.cfg.id = V4L2_CID_STATELESS_H264_START_CODE,
+		.cfg.min = V4L2_STATELESS_H264_START_CODE_ANNEX_B,
+		.cfg.def = V4L2_STATELESS_H264_START_CODE_ANNEX_B,
+		.cfg.max = V4L2_STATELESS_H264_START_CODE_ANNEX_B,
+	},
+	{
+		.cfg.id = V4L2_CID_MPEG_VIDEO_H264_PROFILE,
+		.cfg.min = V4L2_MPEG_VIDEO_H264_PROFILE_BASELINE,
+		.cfg.max = V4L2_MPEG_VIDEO_H264_PROFILE_HIGH,
+		.cfg.menu_skip_mask =
+			BIT(V4L2_MPEG_VIDEO_H264_PROFILE_EXTENDED),
+		.cfg.def = V4L2_MPEG_VIDEO_H264_PROFILE_MAIN,
+	},
+	{
+		.cfg.id = V4L2_CID_MPEG_VIDEO_H264_LEVEL,
+		.cfg.min = V4L2_MPEG_VIDEO_H264_LEVEL_1_0,
+		.cfg.max = V4L2_MPEG_VIDEO_H264_LEVEL_5_1,
 	},
 };
 
@@ -130,7 +140,7 @@ static void rkvdec_reset_fmt(struct rkvdec_ctx *ctx, struct v4l2_format *f,
 	memset(f, 0, sizeof(*f));
 	f->fmt.pix_mp.pixelformat = fourcc;
 	f->fmt.pix_mp.field = V4L2_FIELD_NONE;
-	f->fmt.pix_mp.colorspace = V4L2_COLORSPACE_REC709,
+	f->fmt.pix_mp.colorspace = V4L2_COLORSPACE_REC709;
 	f->fmt.pix_mp.ycbcr_enc = V4L2_YCBCR_ENC_DEFAULT;
 	f->fmt.pix_mp.quantization = V4L2_QUANTIZATION_DEFAULT;
 	f->fmt.pix_mp.xfer_func = V4L2_XFER_FUNC_DEFAULT;
@@ -471,7 +481,15 @@ static int rkvdec_buf_prepare(struct vb2_buffer *vb)
 		if (vb2_plane_size(vb, i) < sizeimage)
 			return -EINVAL;
 	}
-	vb2_set_plane_payload(vb, 0, f->fmt.pix_mp.plane_fmt[0].sizeimage);
+
+	/*
+	 * Buffer's bytesused must be written by driver for CAPTURE buffers.
+	 * (for OUTPUT buffers, if userspace passes 0 bytesused, v4l2-core sets
+	 * it to buffer length).
+	 */
+	if (V4L2_TYPE_IS_CAPTURE(vq->type))
+		vb2_set_plane_payload(vb, 0, f->fmt.pix_mp.plane_fmt[0].sizeimage);
+
 	return 0;
 }
 
@@ -572,56 +590,13 @@ static const struct vb2_ops rkvdec_queue_ops = {
 
 static int rkvdec_request_validate(struct media_request *req)
 {
-	struct media_request_object *obj;
-	const struct rkvdec_ctrls *ctrls;
-	struct v4l2_ctrl_handler *hdl;
-	struct rkvdec_ctx *ctx = NULL;
-	unsigned int count, i;
-	int ret;
-
-	list_for_each_entry(obj, &req->objects, list) {
-		if (vb2_request_object_is_buffer(obj)) {
-			struct vb2_buffer *vb;
-
-			vb = container_of(obj, struct vb2_buffer, req_obj);
-			ctx = vb2_get_drv_priv(vb->vb2_queue);
-			break;
-		}
-	}
-
-	if (!ctx)
-		return -EINVAL;
+	unsigned int count;
 
 	count = vb2_request_buffer_cnt(req);
 	if (!count)
 		return -ENOENT;
 	else if (count > 1)
 		return -EINVAL;
-
-	hdl = v4l2_ctrl_request_hdl_find(req, &ctx->ctrl_hdl);
-	if (!hdl)
-		return -ENOENT;
-
-	ret = 0;
-	ctrls = ctx->coded_fmt_desc->ctrls;
-	for (i = 0; ctrls && i < ctrls->num_ctrls; i++) {
-		u32 id = ctrls->ctrls[i].cfg.id;
-		struct v4l2_ctrl *ctrl;
-
-		if (!ctrls->ctrls[i].mandatory)
-			continue;
-
-		ctrl = v4l2_ctrl_request_hdl_ctrl_find(hdl, id);
-		if (!ctrl) {
-			ret = -ENOENT;
-			break;
-		}
-	}
-
-	v4l2_ctrl_request_hdl_put(hdl);
-
-	if (ret)
-		return ret;
 
 	return vb2_request_validate(req);
 }
@@ -691,7 +666,7 @@ static void rkvdec_device_run(void *priv)
 	if (WARN_ON(!desc))
 		return;
 
-	ret = pm_runtime_get_sync(rkvdec->dev);
+	ret = pm_runtime_resume_and_get(rkvdec->dev);
 	if (ret < 0) {
 		rkvdec_job_finish_no_pm(ctx, VB2_BUF_STATE_ERROR);
 		return;
@@ -1038,10 +1013,8 @@ static int rkvdec_probe(struct platform_device *pdev)
 	vb2_dma_contig_set_max_seg_size(&pdev->dev, DMA_BIT_MASK(32));
 
 	irq = platform_get_irq(pdev, 0);
-	if (irq <= 0) {
-		dev_err(&pdev->dev, "Could not get vdec IRQ\n");
+	if (irq <= 0)
 		return -ENXIO;
-	}
 
 	ret = devm_request_threaded_irq(&pdev->dev, irq, NULL,
 					rkvdec_irq_handler, IRQF_ONESHOT,
@@ -1107,7 +1080,7 @@ static struct platform_driver rkvdec_driver = {
 	.remove = rkvdec_remove,
 	.driver = {
 		   .name = "rkvdec",
-		   .of_match_table = of_match_ptr(of_rkvdec_match),
+		   .of_match_table = of_rkvdec_match,
 		   .pm = &rkvdec_pm_ops,
 	},
 };

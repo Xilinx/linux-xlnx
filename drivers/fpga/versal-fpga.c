@@ -139,7 +139,6 @@ static const struct of_device_id versal_fpga_of_match[] = {
 	{ .compatible = "xlnx,versal-fpga", },
 	{},
 };
-
 MODULE_DEVICE_TABLE(of, versal_fpga_of_match);
 
 static struct platform_driver versal_fpga_driver = {
@@ -150,7 +149,6 @@ static struct platform_driver versal_fpga_driver = {
 		.of_match_table = of_match_ptr(versal_fpga_of_match),
 	},
 };
-
 module_platform_driver(versal_fpga_driver);
 
 MODULE_AUTHOR("Nava kishore Manne <nava.manne@xilinx.com>");

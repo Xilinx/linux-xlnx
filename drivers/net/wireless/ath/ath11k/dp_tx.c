@@ -84,7 +84,6 @@ int ath11k_dp_tx(struct ath11k *ar, struct ath11k_vif *arvif,
 	struct ath11k_dp *dp = &ab->dp;
 	struct hal_tx_info ti = {0};
 	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
-	struct ieee80211_key_conf *key = info->control.hw_key;
 	struct ath11k_skb_cb *skb_cb = ATH11K_SKB_CB(skb);
 	struct hal_srng *tcl_ring;
 	struct ieee80211_hdr *hdr = (void *)skb->data;
@@ -105,14 +104,14 @@ int ath11k_dp_tx(struct ath11k *ar, struct ath11k_vif *arvif,
 
 	pool_id = skb_get_queue_mapping(skb) & (ATH11K_HW_MAX_QUEUES - 1);
 
-	/* Let the default ring selection be based on a round robin
-	 * fashion where one of the 3 tcl rings are selected based on
-	 * the tcl_ring_selector counter. In case that ring
+	/* Let the default ring selection be based on current processor
+	 * number, where one of the 3 tcl rings are selected based on
+	 * the smp_processor_id(). In case that ring
 	 * is full/busy, we resort to other available rings.
 	 * If all rings are full, we drop the packet.
 	 * //TODO Add throttling logic when all rings are full
 	 */
-	ring_selector = atomic_inc_return(&ab->tcl_ring_selector);
+	ring_selector = smp_processor_id();
 
 tcl_ring_sel:
 	tcl_ring_retry = false;
@@ -149,9 +148,9 @@ tcl_ring_sel:
 	ti.meta_data_flags = arvif->tcl_metadata;
 
 	if (ti.encap_type == HAL_TCL_ENCAP_TYPE_RAW) {
-		if (key) {
+		if (skb_cb->flags & ATH11K_SKB_CIPHER_SET) {
 			ti.encrypt_type =
-				ath11k_dp_tx_get_encrypt_type(key->cipher);
+				ath11k_dp_tx_get_encrypt_type(skb_cb->cipher);
 
 			if (ieee80211_has_protected(hdr->frame_control))
 				skb_put(skb, IEEE80211_CCMP_MIC_LEN);
@@ -166,6 +165,7 @@ tcl_ring_sel:
 	ti.pkt_offset = 0;
 	ti.lmac_id = ar->lmac_id;
 	ti.bss_ast_hash = arvif->ast_hash;
+	ti.bss_ast_idx = arvif->ast_idx;
 	ti.dscp_tid_tbl_idx = 0;
 
 	if (skb->ip_summed == CHECKSUM_PARTIAL &&
@@ -178,7 +178,7 @@ tcl_ring_sel:
 	}
 
 	if (ieee80211_vif_is_mesh(arvif->vif))
-		ti.flags1 |= FIELD_PREP(HAL_TCL_DATA_CMD_INFO2_MESH_ENABLE, 1);
+		ti.enable_mesh = true;
 
 	ti.flags1 |= FIELD_PREP(HAL_TCL_DATA_CMD_INFO2_TID_OVERWRITE, 1);
 
@@ -792,8 +792,8 @@ int ath11k_dp_tx_htt_srng_setup(struct ath11k_base *ab, u32 ring_id,
 	cmd->ring_tail_off32_remote_addr_hi = (u64)tp_addr >>
 					      HAL_ADDR_MSB_REG_SHIFT;
 
-	cmd->ring_msi_addr_lo = params.msi_addr & 0xffffffff;
-	cmd->ring_msi_addr_hi = ((uint64_t)(params.msi_addr) >> 32) & 0xffffffff;
+	cmd->ring_msi_addr_lo = lower_32_bits(params.msi_addr);
+	cmd->ring_msi_addr_hi = upper_32_bits(params.msi_addr);
 	cmd->msi_data = params.msi_data;
 
 	cmd->intr_info = FIELD_PREP(

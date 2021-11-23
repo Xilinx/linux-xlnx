@@ -498,7 +498,8 @@ static void ep_aio_complete(struct usb_ep *ep, struct usb_request *req)
 		iocb->private = NULL;
 		/* aio_complete() reports bytes-transferred _and_ faults */
 
-		iocb->ki_complete(iocb, req->actual ? req->actual : req->status,
+		iocb->ki_complete(iocb,
+				req->actual ? req->actual : (long)req->status,
 				req->status);
 	} else {
 		/* ep_copy_to_user() won't report both; we hide some faults */
@@ -1213,8 +1214,8 @@ dev_release (struct inode *inode, struct file *fd)
 static __poll_t
 ep0_poll (struct file *fd, poll_table *wait)
 {
-       struct dev_data         *dev = fd->private_data;
-       __poll_t                mask = 0;
+	struct dev_data         *dev = fd->private_data;
+	__poll_t                mask = 0;
 
 	if (dev->state <= STATE_DEV_OPENED)
 		return DEFAULT_POLLMASK;

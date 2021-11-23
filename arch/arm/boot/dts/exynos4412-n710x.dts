@@ -45,13 +45,13 @@
 	pinctrl-names = "default";
 	status = "okay";
 
-	mms152-touchscreen@48 {
+	touchscreen@48 {
 		compatible = "melfas,mms152";
 		reg = <0x48>;
 		interrupt-parent = <&gpm2>;
 		interrupts = <3 IRQ_TYPE_EDGE_FALLING>;
-		x-size = <720>;
-		y-size = <1280>;
+		touchscreen-size-x = <720>;
+		touchscreen-size-y = <1280>;
 		avdd-supply = <&ldo23_reg>;
 		vdd-supply = <&ldo24_reg>;
 	};

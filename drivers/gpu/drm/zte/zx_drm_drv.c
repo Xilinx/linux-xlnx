@@ -34,7 +34,7 @@ static const struct drm_mode_config_funcs zx_drm_mode_config_funcs = {
 
 DEFINE_DRM_GEM_CMA_FOPS(zx_drm_fops);
 
-static struct drm_driver zx_drm_driver = {
+static const struct drm_driver zx_drm_driver = {
 	.driver_features = DRIVER_GEM | DRIVER_MODESET | DRIVER_ATOMIC,
 	DRM_GEM_CMA_DRIVER_OPS,
 	.fops = &zx_drm_fops,
@@ -74,12 +74,6 @@ static int zx_drm_bind(struct device *dev)
 		DRM_DEV_ERROR(dev, "failed to init vblank: %d\n", ret);
 		goto out_unbind;
 	}
-
-	/*
-	 * We will manage irq handler on our own.  In this case, irq_enabled
-	 * need to be true for using vblank core support.
-	 */
-	drm->irq_enabled = true;
 
 	drm_mode_config_reset(drm);
 	drm_kms_helper_poll_init(drm);

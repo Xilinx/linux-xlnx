@@ -130,7 +130,7 @@ static int dust_add_block(struct dust_device *dd, unsigned long long block,
 
 	dd->badblock_count++;
 	if (!dd->quiet_mode) {
-		DMINFO("%s: badblock added at block %llu with write fail count %hhu",
+		DMINFO("%s: badblock added at block %llu with write fail count %u",
 		       __func__, block, wr_fail_cnt);
 	}
 	spin_unlock_irqrestore(&dd->dust_lock, flags);
@@ -526,6 +526,10 @@ static void dust_status(struct dm_target *ti, status_type_t type,
 	case STATUSTYPE_TABLE:
 		DMEMIT("%s %llu %u", dd->dev->name,
 		       (unsigned long long)dd->start, dd->blksz);
+		break;
+
+	case STATUSTYPE_IMA:
+		*result = '\0';
 		break;
 	}
 }

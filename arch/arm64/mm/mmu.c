@@ -22,6 +22,7 @@
 #include <linux/io.h>
 #include <linux/mm.h>
 #include <linux/vmalloc.h>
+#include <linux/set_memory.h>
 
 #include <asm/barrier.h>
 #include <asm/cputype.h>
@@ -39,8 +40,9 @@
 
 #define NO_BLOCK_MAPPINGS	BIT(0)
 #define NO_CONT_MAPPINGS	BIT(1)
+#define NO_EXEC_MAPPINGS	BIT(2)	/* assumes FEAT_HPDS is not used */
 
-u64 idmap_t0sz = TCR_T0SZ(VA_BITS);
+u64 idmap_t0sz = TCR_T0SZ(VA_BITS_MIN);
 u64 idmap_ptrs_per_pgd = PTRS_PER_PGD;
 
 u64 __section(".mmuoff.data.write") vabits_actual;
@@ -81,7 +83,7 @@ void set_swapper_pgd(pgd_t *pgdp, pgd_t pgd)
 pgprot_t phys_mem_access_prot(struct file *file, unsigned long pfn,
 			      unsigned long size, pgprot_t vma_prot)
 {
-	if (!pfn_valid(pfn))
+	if (!pfn_is_map_memory(pfn))
 		return pgprot_noncached(vma_prot);
 	else if (file->f_flags & O_SYNC)
 		return pgprot_writecombine(vma_prot);
@@ -185,10 +187,14 @@ static void alloc_init_cont_pte(pmd_t *pmdp, unsigned long addr,
 
 	BUG_ON(pmd_sect(pmd));
 	if (pmd_none(pmd)) {
+		pmdval_t pmdval = PMD_TYPE_TABLE | PMD_TABLE_UXN;
 		phys_addr_t pte_phys;
+
+		if (flags & NO_EXEC_MAPPINGS)
+			pmdval |= PMD_TABLE_PXN;
 		BUG_ON(!pgtable_alloc);
 		pte_phys = pgtable_alloc(PAGE_SHIFT);
-		__pmd_populate(pmdp, pte_phys, PMD_TYPE_TABLE);
+		__pmd_populate(pmdp, pte_phys, pmdval);
 		pmd = READ_ONCE(*pmdp);
 	}
 	BUG_ON(pmd_bad(pmd));
@@ -223,7 +229,7 @@ static void init_pmd(pud_t *pudp, unsigned long addr, unsigned long end,
 		next = pmd_addr_end(addr, end);
 
 		/* try section mapping first */
-		if (((addr | next | phys) & ~SECTION_MASK) == 0 &&
+		if (((addr | next | phys) & ~PMD_MASK) == 0 &&
 		    (flags & NO_BLOCK_MAPPINGS) == 0) {
 			pmd_set_huge(pmdp, phys, prot);
 
@@ -259,10 +265,14 @@ static void alloc_init_cont_pmd(pud_t *pudp, unsigned long addr,
 	 */
 	BUG_ON(pud_sect(pud));
 	if (pud_none(pud)) {
+		pudval_t pudval = PUD_TYPE_TABLE | PUD_TABLE_UXN;
 		phys_addr_t pmd_phys;
+
+		if (flags & NO_EXEC_MAPPINGS)
+			pudval |= PUD_TABLE_PXN;
 		BUG_ON(!pgtable_alloc);
 		pmd_phys = pgtable_alloc(PMD_SHIFT);
-		__pud_populate(pudp, pmd_phys, PUD_TYPE_TABLE);
+		__pud_populate(pudp, pmd_phys, pudval);
 		pud = READ_ONCE(*pudp);
 	}
 	BUG_ON(pud_bad(pud));
@@ -306,10 +316,14 @@ static void alloc_init_pud(pgd_t *pgdp, unsigned long addr, unsigned long end,
 	p4d_t p4d = READ_ONCE(*p4dp);
 
 	if (p4d_none(p4d)) {
+		p4dval_t p4dval = P4D_TYPE_TABLE | P4D_TABLE_UXN;
 		phys_addr_t pud_phys;
+
+		if (flags & NO_EXEC_MAPPINGS)
+			p4dval |= P4D_TABLE_PXN;
 		BUG_ON(!pgtable_alloc);
 		pud_phys = pgtable_alloc(PUD_SHIFT);
-		__p4d_populate(p4dp, pud_phys, PUD_TYPE_TABLE);
+		__p4d_populate(p4dp, pud_phys, p4dval);
 		p4d = READ_ONCE(*p4dp);
 	}
 	BUG_ON(p4d_bad(p4d));
@@ -464,21 +478,46 @@ void __init mark_linear_text_alias_ro(void)
 	/*
 	 * Remove the write permissions from the linear alias of .text/.rodata
 	 */
-	update_mapping_prot(__pa_symbol(_text), (unsigned long)lm_alias(_text),
-			    (unsigned long)__init_begin - (unsigned long)_text,
+	update_mapping_prot(__pa_symbol(_stext), (unsigned long)lm_alias(_stext),
+			    (unsigned long)__init_begin - (unsigned long)_stext,
 			    PAGE_KERNEL_RO);
 }
 
+static bool crash_mem_map __initdata;
+
+static int __init enable_crash_mem_map(char *arg)
+{
+	/*
+	 * Proper parameter parsing is done by reserve_crashkernel(). We only
+	 * need to know if the linear map has to avoid block mappings so that
+	 * the crashkernel reservations can be unmapped later.
+	 */
+	crash_mem_map = true;
+
+	return 0;
+}
+early_param("crashkernel", enable_crash_mem_map);
+
 static void __init map_mem(pgd_t *pgdp)
 {
-	phys_addr_t kernel_start = __pa_symbol(_text);
+	static const u64 direct_map_end = _PAGE_END(VA_BITS_MIN);
+	phys_addr_t kernel_start = __pa_symbol(_stext);
 	phys_addr_t kernel_end = __pa_symbol(__init_begin);
 	phys_addr_t start, end;
-	int flags = 0;
+	int flags = NO_EXEC_MAPPINGS;
 	u64 i;
 
-	if (rodata_full || debug_pagealloc_enabled())
-		flags = NO_BLOCK_MAPPINGS | NO_CONT_MAPPINGS;
+	/*
+	 * Setting hierarchical PXNTable attributes on table entries covering
+	 * the linear region is only possible if it is guaranteed that no table
+	 * entries at any level are being shared between the linear region and
+	 * the vmalloc region. Check whether this is true for the PGD level, in
+	 * which case it is guaranteed to be true for all other levels as well.
+	 */
+	BUILD_BUG_ON(pgd_index(direct_map_end - 1) == pgd_index(direct_map_end));
+
+	if (can_set_direct_map() || crash_mem_map || IS_ENABLED(CONFIG_KFENCE))
+		flags |= NO_BLOCK_MAPPINGS | NO_CONT_MAPPINGS;
 
 	/*
 	 * Take care not to create a writable alias for the
@@ -487,11 +526,6 @@ static void __init map_mem(pgd_t *pgdp)
 	 * the following for-loop
 	 */
 	memblock_mark_nomap(kernel_start, kernel_end - kernel_start);
-#ifdef CONFIG_KEXEC_CORE
-	if (crashk_res.end)
-		memblock_mark_nomap(crashk_res.start,
-				    resource_size(&crashk_res));
-#endif
 
 	/* map all the memory banks */
 	for_each_mem_range(i, &start, &end) {
@@ -502,11 +536,12 @@ static void __init map_mem(pgd_t *pgdp)
 		 * if MTE is present. Otherwise, it has the same attributes as
 		 * PAGE_KERNEL.
 		 */
-		__map_memblock(pgdp, start, end, PAGE_KERNEL_TAGGED, flags);
+		__map_memblock(pgdp, start, end, pgprot_tagged(PAGE_KERNEL),
+			       flags);
 	}
 
 	/*
-	 * Map the linear alias of the [_text, __init_begin) interval
+	 * Map the linear alias of the [_stext, __init_begin) interval
 	 * as non-executable now, and remove the write permission in
 	 * mark_linear_text_alias_ro() below (which will be called after
 	 * alternative patching has completed). This makes the contents
@@ -518,21 +553,6 @@ static void __init map_mem(pgd_t *pgdp)
 	__map_memblock(pgdp, kernel_start, kernel_end,
 		       PAGE_KERNEL, NO_CONT_MAPPINGS);
 	memblock_clear_nomap(kernel_start, kernel_end - kernel_start);
-
-#ifdef CONFIG_KEXEC_CORE
-	/*
-	 * Use page-level mappings here so that we can shrink the region
-	 * in page granularity and put back unused memory to buddy system
-	 * through /sys/kernel/kexec_crash_size interface.
-	 */
-	if (crashk_res.end) {
-		__map_memblock(pgdp, crashk_res.start, crashk_res.end + 1,
-			       PAGE_KERNEL,
-			       NO_BLOCK_MAPPINGS | NO_CONT_MAPPINGS);
-		memblock_clear_nomap(crashk_res.start,
-				     resource_size(&crashk_res));
-	}
-#endif
 }
 
 void mark_rodata_ro(void)
@@ -633,7 +653,7 @@ static bool arm64_early_this_cpu_has_bti(void)
 	if (!IS_ENABLED(CONFIG_ARM64_BTI_KERNEL))
 		return false;
 
-	pfr1 = read_sysreg_s(SYS_ID_AA64PFR1_EL1);
+	pfr1 = __read_sysreg_by_encoding(SYS_ID_AA64PFR1_EL1);
 	return cpuid_feature_extract_unsigned_field(pfr1,
 						    ID_AA64PFR1_BT_SHIFT);
 }
@@ -665,7 +685,7 @@ static void __init map_kernel(pgd_t *pgdp)
 	 * Only rodata will be remapped with different permissions later on,
 	 * all other segments are allowed to use contiguous mappings.
 	 */
-	map_kernel_segment(pgdp, _text, _etext, text_prot, &vmlinux_text, 0,
+	map_kernel_segment(pgdp, _stext, _etext, text_prot, &vmlinux_text, 0,
 			   VM_NO_GUARD);
 	map_kernel_segment(pgdp, __start_rodata, __inittext_begin, PAGE_KERNEL,
 			   &vmlinux_rodata, NO_CONT_MAPPINGS, VM_NO_GUARD);
@@ -1094,14 +1114,14 @@ static void free_empty_tables(unsigned long addr, unsigned long end,
 }
 #endif
 
-#ifdef CONFIG_SPARSEMEM_VMEMMAP
-#if !ARM64_SWAPPER_USES_SECTION_MAPS
+#if !ARM64_KERNEL_USES_PMD_MAPS
 int __meminit vmemmap_populate(unsigned long start, unsigned long end, int node,
 		struct vmem_altmap *altmap)
 {
+	WARN_ON((start < VMEMMAP_START) || (end > VMEMMAP_END));
 	return vmemmap_populate_basepages(start, end, node, altmap);
 }
-#else	/* !ARM64_SWAPPER_USES_SECTION_MAPS */
+#else	/* !ARM64_KERNEL_USES_PMD_MAPS */
 int __meminit vmemmap_populate(unsigned long start, unsigned long end, int node,
 		struct vmem_altmap *altmap)
 {
@@ -1112,6 +1132,7 @@ int __meminit vmemmap_populate(unsigned long start, unsigned long end, int node,
 	pud_t *pudp;
 	pmd_t *pmdp;
 
+	WARN_ON((start < VMEMMAP_START) || (end > VMEMMAP_END));
 	do {
 		next = pmd_addr_end(addr, end);
 
@@ -1132,8 +1153,11 @@ int __meminit vmemmap_populate(unsigned long start, unsigned long end, int node,
 			void *p = NULL;
 
 			p = vmemmap_alloc_block_buf(PMD_SIZE, node, altmap);
-			if (!p)
-				return -ENOMEM;
+			if (!p) {
+				if (vmemmap_populate_basepages(addr, next, node, altmap))
+					return -ENOMEM;
+				continue;
+			}
 
 			pmd_set_huge(pmdp, __pa(p), __pgprot(PROT_SECT_NORMAL));
 		} else
@@ -1142,20 +1166,20 @@ int __meminit vmemmap_populate(unsigned long start, unsigned long end, int node,
 
 	return 0;
 }
-#endif	/* !ARM64_SWAPPER_USES_SECTION_MAPS */
+#endif	/* !ARM64_KERNEL_USES_PMD_MAPS */
+
+#ifdef CONFIG_MEMORY_HOTPLUG
 void vmemmap_free(unsigned long start, unsigned long end,
 		struct vmem_altmap *altmap)
 {
-#ifdef CONFIG_MEMORY_HOTPLUG
 	WARN_ON((start < VMEMMAP_START) || (end > VMEMMAP_END));
 
 	unmap_hotplug_range(start, end, true, altmap);
 	free_empty_tables(start, end, VMEMMAP_START, VMEMMAP_END);
-#endif
 }
-#endif	/* CONFIG_SPARSEMEM_VMEMMAP */
+#endif /* CONFIG_MEMORY_HOTPLUG */
 
-static inline pud_t * fixmap_pud(unsigned long addr)
+static inline pud_t *fixmap_pud(unsigned long addr)
 {
 	pgd_t *pgdp = pgd_offset_k(addr);
 	p4d_t *p4dp = p4d_offset(pgdp, addr);
@@ -1166,7 +1190,7 @@ static inline pud_t * fixmap_pud(unsigned long addr)
 	return pud_offset_kimg(p4dp, addr);
 }
 
-static inline pmd_t * fixmap_pmd(unsigned long addr)
+static inline pmd_t *fixmap_pmd(unsigned long addr)
 {
 	pud_t *pudp = fixmap_pud(addr);
 	pud_t pud = READ_ONCE(*pudp);
@@ -1176,7 +1200,7 @@ static inline pmd_t * fixmap_pmd(unsigned long addr)
 	return pmd_offset_kimg(pudp, addr);
 }
 
-static inline pte_t * fixmap_pte(unsigned long addr)
+static inline pte_t *fixmap_pte(unsigned long addr)
 {
 	return &bm_pte[pte_index(addr)];
 }
@@ -1209,11 +1233,11 @@ void __init early_fixmap_init(void)
 		pudp = pud_offset_kimg(p4dp, addr);
 	} else {
 		if (p4d_none(p4d))
-			__p4d_populate(p4dp, __pa_symbol(bm_pud), PUD_TYPE_TABLE);
+			__p4d_populate(p4dp, __pa_symbol(bm_pud), P4D_TYPE_TABLE);
 		pudp = fixmap_pud(addr);
 	}
 	if (pud_none(READ_ONCE(*pudp)))
-		__pud_populate(pudp, __pa_symbol(bm_pmd), PMD_TYPE_TABLE);
+		__pud_populate(pudp, __pa_symbol(bm_pmd), PUD_TYPE_TABLE);
 	pmdp = fixmap_pmd(addr);
 	__pmd_populate(pmdp, __pa_symbol(bm_pte), PMD_TYPE_TABLE);
 
@@ -1315,27 +1339,6 @@ void *__init fixmap_remap_fdt(phys_addr_t dt_phys, int *size, pgprot_t prot)
 	return dt_virt;
 }
 
-int __init arch_ioremap_p4d_supported(void)
-{
-	return 0;
-}
-
-int __init arch_ioremap_pud_supported(void)
-{
-	/*
-	 * Only 4k granule supports level 1 block mappings.
-	 * SW table walks can't handle removal of intermediate entries.
-	 */
-	return IS_ENABLED(CONFIG_ARM64_4K_PAGES) &&
-	       !IS_ENABLED(CONFIG_PTDUMP_DEBUGFS);
-}
-
-int __init arch_ioremap_pmd_supported(void)
-{
-	/* See arch_ioremap_pud_supported() */
-	return !IS_ENABLED(CONFIG_PTDUMP_DEBUGFS);
-}
-
 int pud_set_huge(pud_t *pudp, phys_addr_t phys, pgprot_t prot)
 {
 	pud_t new_pud = pfn_pud(__phys_to_pfn(phys), mk_pud_sect_prot(prot));
@@ -1427,11 +1430,6 @@ int pud_free_pmd_page(pud_t *pudp, unsigned long addr)
 	return 1;
 }
 
-int p4d_free_pud_page(p4d_t *p4d, unsigned long addr)
-{
-	return 0;	/* Don't attempt a block mapping */
-}
-
 #ifdef CONFIG_MEMORY_HOTPLUG
 static void __remove_pgd_mapping(pgd_t *pgdir, unsigned long start, u64 size)
 {
@@ -1444,30 +1442,51 @@ static void __remove_pgd_mapping(pgd_t *pgdir, unsigned long start, u64 size)
 	free_empty_tables(start, end, PAGE_OFFSET, PAGE_END);
 }
 
-static bool inside_linear_region(u64 start, u64 size)
+struct range arch_get_mappable_range(void)
 {
+	struct range mhp_range;
+	u64 start_linear_pa = __pa(_PAGE_OFFSET(vabits_actual));
+	u64 end_linear_pa = __pa(PAGE_END - 1);
+
+	if (IS_ENABLED(CONFIG_RANDOMIZE_BASE)) {
+		/*
+		 * Check for a wrap, it is possible because of randomized linear
+		 * mapping the start physical address is actually bigger than
+		 * the end physical address. In this case set start to zero
+		 * because [0, end_linear_pa] range must still be able to cover
+		 * all addressable physical addresses.
+		 */
+		if (start_linear_pa > end_linear_pa)
+			start_linear_pa = 0;
+	}
+
+	WARN_ON(start_linear_pa > end_linear_pa);
+
 	/*
 	 * Linear mapping region is the range [PAGE_OFFSET..(PAGE_END - 1)]
 	 * accommodating both its ends but excluding PAGE_END. Max physical
 	 * range which can be mapped inside this linear mapping range, must
 	 * also be derived from its end points.
 	 */
-	return start >= __pa(_PAGE_OFFSET(vabits_actual)) &&
-	       (start + size - 1) <= __pa(PAGE_END - 1);
+	mhp_range.start = start_linear_pa;
+	mhp_range.end =  end_linear_pa;
+
+	return mhp_range;
 }
 
 int arch_add_memory(int nid, u64 start, u64 size,
 		    struct mhp_params *params)
 {
-	int ret, flags = 0;
+	int ret, flags = NO_EXEC_MAPPINGS;
 
-	if (!inside_linear_region(start, size)) {
-		pr_err("[%llx %llx] is outside linear mapping region\n", start, start + size);
-		return -EINVAL;
-	}
+	VM_BUG_ON(!mhp_range_allowed(start, size, true));
 
-	if (rodata_full || debug_pagealloc_enabled())
-		flags = NO_BLOCK_MAPPINGS | NO_CONT_MAPPINGS;
+	/*
+	 * KFENCE requires linear map to be mapped at page granularity, so that
+	 * it is possible to protect/unprotect single pages in the KFENCE pool.
+	 */
+	if (can_set_direct_map() || IS_ENABLED(CONFIG_KFENCE))
+		flags |= NO_BLOCK_MAPPINGS | NO_CONT_MAPPINGS;
 
 	__create_pgd_mapping(swapper_pg_dir, start, __phys_to_virt(start),
 			     size, params->pgprot, __pgd_pgtable_alloc,
@@ -1483,8 +1502,7 @@ int arch_add_memory(int nid, u64 start, u64 size,
 	return ret;
 }
 
-void arch_remove_memory(int nid, u64 start, u64 size,
-			struct vmem_altmap *altmap)
+void arch_remove_memory(u64 start, u64 size, struct vmem_altmap *altmap)
 {
 	unsigned long start_pfn = start >> PAGE_SHIFT;
 	unsigned long nr_pages = size >> PAGE_SHIFT;
@@ -1510,13 +1528,43 @@ static int prevent_bootmem_remove_notifier(struct notifier_block *nb,
 	unsigned long end_pfn = arg->start_pfn + arg->nr_pages;
 	unsigned long pfn = arg->start_pfn;
 
-	if (action != MEM_GOING_OFFLINE)
+	if ((action != MEM_GOING_OFFLINE) && (action != MEM_OFFLINE))
 		return NOTIFY_OK;
 
 	for (; pfn < end_pfn; pfn += PAGES_PER_SECTION) {
+		unsigned long start = PFN_PHYS(pfn);
+		unsigned long end = start + (1UL << PA_SECTION_SHIFT);
+
 		ms = __pfn_to_section(pfn);
-		if (early_section(ms))
+		if (!early_section(ms))
+			continue;
+
+		if (action == MEM_GOING_OFFLINE) {
+			/*
+			 * Boot memory removal is not supported. Prevent
+			 * it via blocking any attempted offline request
+			 * for the boot memory and just report it.
+			 */
+			pr_warn("Boot memory [%lx %lx] offlining attempted\n", start, end);
 			return NOTIFY_BAD;
+		} else if (action == MEM_OFFLINE) {
+			/*
+			 * This should have never happened. Boot memory
+			 * offlining should have been prevented by this
+			 * very notifier. Probably some memory removal
+			 * procedure might have changed which would then
+			 * require further debug.
+			 */
+			pr_err("Boot memory [%lx %lx] offlined\n", start, end);
+
+			/*
+			 * Core memory hotplug does not process a return
+			 * code from the notifier for MEM_OFFLINE events.
+			 * The error condition has been reported. Return
+			 * from here as if ignored.
+			 */
+			return NOTIFY_DONE;
+		}
 	}
 	return NOTIFY_OK;
 }
@@ -1525,9 +1573,66 @@ static struct notifier_block prevent_bootmem_remove_nb = {
 	.notifier_call = prevent_bootmem_remove_notifier,
 };
 
+/*
+ * This ensures that boot memory sections on the platform are online
+ * from early boot. Memory sections could not be prevented from being
+ * offlined, unless for some reason they are not online to begin with.
+ * This helps validate the basic assumption on which the above memory
+ * event notifier works to prevent boot memory section offlining and
+ * its possible removal.
+ */
+static void validate_bootmem_online(void)
+{
+	phys_addr_t start, end, addr;
+	struct mem_section *ms;
+	u64 i;
+
+	/*
+	 * Scanning across all memblock might be expensive
+	 * on some big memory systems. Hence enable this
+	 * validation only with DEBUG_VM.
+	 */
+	if (!IS_ENABLED(CONFIG_DEBUG_VM))
+		return;
+
+	for_each_mem_range(i, &start, &end) {
+		for (addr = start; addr < end; addr += (1UL << PA_SECTION_SHIFT)) {
+			ms = __pfn_to_section(PHYS_PFN(addr));
+
+			/*
+			 * All memory ranges in the system at this point
+			 * should have been marked as early sections.
+			 */
+			WARN_ON(!early_section(ms));
+
+			/*
+			 * Memory notifier mechanism here to prevent boot
+			 * memory offlining depends on the fact that each
+			 * early section memory on the system is initially
+			 * online. Otherwise a given memory section which
+			 * is already offline will be overlooked and can
+			 * be removed completely. Call out such sections.
+			 */
+			if (!online_section(ms))
+				pr_err("Boot memory [%llx %llx] is offline, can be removed\n",
+					addr, addr + (1UL << PA_SECTION_SHIFT));
+		}
+	}
+}
+
 static int __init prevent_bootmem_remove_init(void)
 {
-	return register_memory_notifier(&prevent_bootmem_remove_nb);
+	int ret = 0;
+
+	if (!IS_ENABLED(CONFIG_MEMORY_HOTREMOVE))
+		return ret;
+
+	validate_bootmem_online();
+	ret = register_memory_notifier(&prevent_bootmem_remove_nb);
+	if (ret)
+		pr_err("%s: Notifier registration failed %d\n", __func__, ret);
+
+	return ret;
 }
-device_initcall(prevent_bootmem_remove_init);
+early_initcall(prevent_bootmem_remove_init);
 #endif

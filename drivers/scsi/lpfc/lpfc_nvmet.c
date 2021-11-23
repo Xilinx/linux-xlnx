@@ -1,7 +1,7 @@
 /*******************************************************************
  * This file is part of the Emulex Linux Device Driver for         *
- * Fibre Channsel Host Bus Adapters.                               *
- * Copyright (C) 2017-2019 Broadcom. All Rights Reserved. The term *
+ * Fibre Channel Host Bus Adapters.                                *
+ * Copyright (C) 2017-2021 Broadcom. All Rights Reserved. The term *
  * “Broadcom” refers to Broadcom Inc. and/or its subsidiaries.     *
  * Copyright (C) 2004-2016 Emulex.  All rights reserved.           *
  * EMULEX and SLI are trademarks of Emulex.                        *
@@ -105,7 +105,7 @@ lpfc_nvmet_cmd_template(void)
 	/* Word 9  - reqtag, rcvoxid is variable */
 
 	/* Word 10 - wqes, xc is variable */
-	bf_set(wqe_nvme, &wqe->fcp_tsend.wqe_com, 1);
+	bf_set(wqe_xchg, &wqe->fcp_tsend.wqe_com, LPFC_NVME_XCHG);
 	bf_set(wqe_dbde, &wqe->fcp_tsend.wqe_com, 1);
 	bf_set(wqe_wqes, &wqe->fcp_tsend.wqe_com, 0);
 	bf_set(wqe_xc, &wqe->fcp_tsend.wqe_com, 1);
@@ -153,7 +153,7 @@ lpfc_nvmet_cmd_template(void)
 	/* Word 10 - xc is variable */
 	bf_set(wqe_dbde, &wqe->fcp_treceive.wqe_com, 1);
 	bf_set(wqe_wqes, &wqe->fcp_treceive.wqe_com, 0);
-	bf_set(wqe_nvme, &wqe->fcp_treceive.wqe_com, 1);
+	bf_set(wqe_xchg, &wqe->fcp_treceive.wqe_com, LPFC_NVME_XCHG);
 	bf_set(wqe_iod, &wqe->fcp_treceive.wqe_com, LPFC_WQE_IOD_READ);
 	bf_set(wqe_lenloc, &wqe->fcp_treceive.wqe_com, LPFC_WQE_LENLOC_WORD12);
 	bf_set(wqe_xc, &wqe->fcp_tsend.wqe_com, 1);
@@ -195,7 +195,7 @@ lpfc_nvmet_cmd_template(void)
 
 	/* Word 10 wqes, xc is variable */
 	bf_set(wqe_dbde, &wqe->fcp_trsp.wqe_com, 1);
-	bf_set(wqe_nvme, &wqe->fcp_trsp.wqe_com, 1);
+	bf_set(wqe_xchg, &wqe->fcp_trsp.wqe_com, LPFC_NVME_XCHG);
 	bf_set(wqe_wqes, &wqe->fcp_trsp.wqe_com, 0);
 	bf_set(wqe_xc, &wqe->fcp_trsp.wqe_com, 0);
 	bf_set(wqe_iod, &wqe->fcp_trsp.wqe_com, LPFC_WQE_IOD_NONE);
@@ -371,8 +371,7 @@ finish:
 /**
  * lpfc_nvmet_ctxbuf_post - Repost a NVMET RQ DMA buffer and clean up context
  * @phba: HBA buffer is associated with
- * @ctxp: context to clean up
- * @mp: Buffer to free
+ * @ctx_buf: ctx buffer context
  *
  * Description: Frees the given DMA buffer in the appropriate way given by
  * reposting it to its associated RQ so it can be reused.
@@ -1291,10 +1290,10 @@ lpfc_nvmet_ls_req_cmp(struct lpfc_hba *phba, struct lpfc_iocbq *cmdwqe,
 
 /**
  * lpfc_nvmet_ls_req - Issue an Link Service request
- * @targetport - pointer to target instance registered with nvmet transport.
- * @hosthandle - hosthandle set by the driver in a prior ls_rqst_rcv.
+ * @targetport: pointer to target instance registered with nvmet transport.
+ * @hosthandle: hosthandle set by the driver in a prior ls_rqst_rcv.
  *               Driver sets this value to the ndlp pointer.
- * @pnvme_lsreq - the transport nvme_ls_req structure for the LS
+ * @pnvme_lsreq: the transport nvme_ls_req structure for the LS
  *
  * Driver registers this routine to handle any link service request
  * from the nvme_fc transport to a remote nvme-aware port.
@@ -1336,9 +1335,9 @@ lpfc_nvmet_ls_req(struct nvmet_fc_target_port *targetport,
 /**
  * lpfc_nvmet_ls_abort - Abort a prior NVME LS request
  * @targetport: Transport targetport, that LS was issued from.
- * @hosthandle - hosthandle set by the driver in a prior ls_rqst_rcv.
+ * @hosthandle: hosthandle set by the driver in a prior ls_rqst_rcv.
  *               Driver sets this value to the ndlp pointer.
- * @pnvme_lsreq - the transport nvme_ls_req structure for LS to be aborted
+ * @pnvme_lsreq: the transport nvme_ls_req structure for LS to be aborted
  *
  * Driver registers this routine to abort an NVME LS request that is
  * in progress (from the transports perspective).
@@ -1368,17 +1367,22 @@ static void
 lpfc_nvmet_host_release(void *hosthandle)
 {
 	struct lpfc_nodelist *ndlp = hosthandle;
-	struct lpfc_hba *phba = NULL;
+	struct lpfc_hba *phba = ndlp->phba;
 	struct lpfc_nvmet_tgtport *tgtp;
 
-	phba = ndlp->phba;
 	if (!phba->targetport || !phba->targetport->private)
 		return;
 
 	lpfc_printf_log(phba, KERN_ERR, LOG_NVME,
-			"6202 NVMET XPT releasing hosthandle x%px\n",
-			hosthandle);
+			"6202 NVMET XPT releasing hosthandle x%px "
+			"DID x%x xflags x%x refcnt %d\n",
+			hosthandle, ndlp->nlp_DID, ndlp->fc4_xpt_flags,
+			kref_read(&ndlp->kref));
 	tgtp = (struct lpfc_nvmet_tgtport *)phba->targetport->private;
+	spin_lock_irq(&ndlp->lock);
+	ndlp->fc4_xpt_flags &= ~NLP_XPT_HAS_HH;
+	spin_unlock_irq(&ndlp->lock);
+	lpfc_nlp_put(ndlp);
 	atomic_set(&tgtp->state, 0);
 }
 
@@ -1436,7 +1440,10 @@ __lpfc_nvmet_clean_io_for_cpu(struct lpfc_hba *phba,
 		list_del_init(&ctx_buf->list);
 		spin_unlock(&phba->sli4_hba.abts_nvmet_buf_list_lock);
 
+		spin_lock(&phba->hbalock);
 		__lpfc_clear_active_sglq(phba, ctx_buf->sglq->sli4_lxritag);
+		spin_unlock(&phba->hbalock);
+
 		ctx_buf->sglq->state = SGL_FREED;
 		ctx_buf->sglq->ndlp = NULL;
 
@@ -1783,31 +1790,33 @@ lpfc_sli4_nvmet_xri_aborted(struct lpfc_hba *phba,
 		atomic_inc(&tgtp->xmt_fcp_xri_abort_cqe);
 	}
 
-	spin_lock_irqsave(&phba->hbalock, iflag);
-	spin_lock(&phba->sli4_hba.abts_nvmet_buf_list_lock);
+	spin_lock_irqsave(&phba->sli4_hba.abts_nvmet_buf_list_lock, iflag);
 	list_for_each_entry_safe(ctxp, next_ctxp,
 				 &phba->sli4_hba.lpfc_abts_nvmet_ctx_list,
 				 list) {
 		if (ctxp->ctxbuf->sglq->sli4_xritag != xri)
 			continue;
 
-		spin_lock(&ctxp->ctxlock);
+		spin_unlock_irqrestore(&phba->sli4_hba.abts_nvmet_buf_list_lock,
+				       iflag);
+
+		spin_lock_irqsave(&ctxp->ctxlock, iflag);
 		/* Check if we already received a free context call
 		 * and we have completed processing an abort situation.
 		 */
 		if (ctxp->flag & LPFC_NVME_CTX_RLS &&
 		    !(ctxp->flag & LPFC_NVME_ABORT_OP)) {
+			spin_lock(&phba->sli4_hba.abts_nvmet_buf_list_lock);
 			list_del_init(&ctxp->list);
+			spin_unlock(&phba->sli4_hba.abts_nvmet_buf_list_lock);
 			released = true;
 		}
 		ctxp->flag &= ~LPFC_NVME_XBUSY;
-		spin_unlock(&ctxp->ctxlock);
-		spin_unlock(&phba->sli4_hba.abts_nvmet_buf_list_lock);
+		spin_unlock_irqrestore(&ctxp->ctxlock, iflag);
 
 		rrq_empty = list_empty(&phba->active_rrq_list);
-		spin_unlock_irqrestore(&phba->hbalock, iflag);
 		ndlp = lpfc_findnode_did(phba->pport, ctxp->sid);
-		if (ndlp && NLP_CHK_NODE_ACT(ndlp) &&
+		if (ndlp &&
 		    (ndlp->nlp_state == NLP_STE_UNMAPPED_NODE ||
 		     ndlp->nlp_state == NLP_STE_MAPPED_NODE)) {
 			lpfc_set_rrq_active(phba, ndlp,
@@ -1826,9 +1835,7 @@ lpfc_sli4_nvmet_xri_aborted(struct lpfc_hba *phba,
 			lpfc_worker_wake_up(phba);
 		return;
 	}
-	spin_unlock(&phba->sli4_hba.abts_nvmet_buf_list_lock);
-	spin_unlock_irqrestore(&phba->hbalock, iflag);
-
+	spin_unlock_irqrestore(&phba->sli4_hba.abts_nvmet_buf_list_lock, iflag);
 	ctxp = lpfc_nvmet_get_ctx_for_xri(phba, xri);
 	if (ctxp) {
 		/*
@@ -1872,8 +1879,7 @@ lpfc_nvmet_rcv_unsol_abort(struct lpfc_vport *vport,
 	sid = sli4_sid_from_fc_hdr(fc_hdr);
 	oxid = be16_to_cpu(fc_hdr->fh_ox_id);
 
-	spin_lock_irqsave(&phba->hbalock, iflag);
-	spin_lock(&phba->sli4_hba.abts_nvmet_buf_list_lock);
+	spin_lock_irqsave(&phba->sli4_hba.abts_nvmet_buf_list_lock, iflag);
 	list_for_each_entry_safe(ctxp, next_ctxp,
 				 &phba->sli4_hba.lpfc_abts_nvmet_ctx_list,
 				 list) {
@@ -1882,9 +1888,8 @@ lpfc_nvmet_rcv_unsol_abort(struct lpfc_vport *vport,
 
 		xri = ctxp->ctxbuf->sglq->sli4_xritag;
 
-		spin_unlock(&phba->sli4_hba.abts_nvmet_buf_list_lock);
-		spin_unlock_irqrestore(&phba->hbalock, iflag);
-
+		spin_unlock_irqrestore(&phba->sli4_hba.abts_nvmet_buf_list_lock,
+				       iflag);
 		spin_lock_irqsave(&ctxp->ctxlock, iflag);
 		ctxp->flag |= LPFC_NVME_ABTS_RCV;
 		spin_unlock_irqrestore(&ctxp->ctxlock, iflag);
@@ -1903,9 +1908,7 @@ lpfc_nvmet_rcv_unsol_abort(struct lpfc_vport *vport,
 		lpfc_sli4_seq_abort_rsp(vport, fc_hdr, 1);
 		return 0;
 	}
-	spin_unlock(&phba->sli4_hba.abts_nvmet_buf_list_lock);
-	spin_unlock_irqrestore(&phba->hbalock, iflag);
-
+	spin_unlock_irqrestore(&phba->sli4_hba.abts_nvmet_buf_list_lock, iflag);
 	/* check the wait list */
 	if (phba->sli4_hba.nvmet_io_wait_cnt) {
 		struct rqb_dmabuf *nvmebuf;
@@ -2597,7 +2600,7 @@ lpfc_nvmet_prep_ls_wqe(struct lpfc_hba *phba,
 	}
 
 	ndlp = lpfc_findnode_did(phba->pport, ctxp->sid);
-	if (!ndlp || !NLP_CHK_NODE_ACT(ndlp) ||
+	if (!ndlp ||
 	    ((ndlp->nlp_state != NLP_STE_UNMAPPED_NODE) &&
 	    (ndlp->nlp_state != NLP_STE_MAPPED_NODE))) {
 		lpfc_printf_log(phba, KERN_ERR, LOG_TRACE_EVENT,
@@ -2717,7 +2720,7 @@ lpfc_nvmet_prep_fcp_wqe(struct lpfc_hba *phba,
 	}
 
 	ndlp = lpfc_findnode_did(phba->pport, ctxp->sid);
-	if (!ndlp || !NLP_CHK_NODE_ACT(ndlp) ||
+	if (!ndlp ||
 	    ((ndlp->nlp_state != NLP_STE_UNMAPPED_NODE) &&
 	     (ndlp->nlp_state != NLP_STE_MAPPED_NODE))) {
 		lpfc_printf_log(phba, KERN_ERR, LOG_TRACE_EVENT,
@@ -3249,7 +3252,7 @@ lpfc_nvmet_unsol_issue_abort(struct lpfc_hba *phba,
 		tgtp = (struct lpfc_nvmet_tgtport *)phba->targetport->private;
 
 	ndlp = lpfc_findnode_did(phba->pport, sid);
-	if (!ndlp || !NLP_CHK_NODE_ACT(ndlp) ||
+	if (!ndlp ||
 	    ((ndlp->nlp_state != NLP_STE_UNMAPPED_NODE) &&
 	    (ndlp->nlp_state != NLP_STE_MAPPED_NODE))) {
 		if (tgtp)
@@ -3300,7 +3303,6 @@ lpfc_nvmet_unsol_issue_abort(struct lpfc_hba *phba,
 	bf_set(wqe_rcvoxid, &wqe_abts->xmit_sequence.wqe_com, xri);
 
 	/* Word 10 */
-	bf_set(wqe_dbde, &wqe_abts->xmit_sequence.wqe_com, 1);
 	bf_set(wqe_iod, &wqe_abts->xmit_sequence.wqe_com, LPFC_WQE_IOD_WRITE);
 	bf_set(wqe_lenloc, &wqe_abts->xmit_sequence.wqe_com,
 	       LPFC_WQE_LENLOC_WORD12);
@@ -3328,6 +3330,46 @@ lpfc_nvmet_unsol_issue_abort(struct lpfc_hba *phba,
 	return 1;
 }
 
+/**
+ * lpfc_nvmet_prep_abort_wqe - set up 'abort' work queue entry.
+ * @pwqeq: Pointer to command iocb.
+ * @xritag: Tag that  uniqely identifies the local exchange resource.
+ * @opt: Option bits -
+ *		bit 0 = inhibit sending abts on the link
+ *
+ * This function is called with hbalock held.
+ **/
+static void
+lpfc_nvmet_prep_abort_wqe(struct lpfc_iocbq *pwqeq, u16 xritag, u8 opt)
+{
+	union lpfc_wqe128 *wqe = &pwqeq->wqe;
+
+	/* WQEs are reused.  Clear stale data and set key fields to
+	 * zero like ia, iaab, iaar, xri_tag, and ctxt_tag.
+	 */
+	memset(wqe, 0, sizeof(*wqe));
+
+	if (opt & INHIBIT_ABORT)
+		bf_set(abort_cmd_ia, &wqe->abort_cmd, 1);
+	/* Abort specified xri tag, with the mask deliberately zeroed */
+	bf_set(abort_cmd_criteria, &wqe->abort_cmd, T_XRI_TAG);
+
+	bf_set(wqe_cmnd, &wqe->abort_cmd.wqe_com, CMD_ABORT_XRI_CX);
+
+	/* Abort the I/O associated with this outstanding exchange ID. */
+	wqe->abort_cmd.wqe_com.abort_tag = xritag;
+
+	/* iotag for the wqe completion. */
+	bf_set(wqe_reqtag, &wqe->abort_cmd.wqe_com, pwqeq->iotag);
+
+	bf_set(wqe_qosd, &wqe->abort_cmd.wqe_com, 1);
+	bf_set(wqe_lenloc, &wqe->abort_cmd.wqe_com, LPFC_WQE_LENLOC_NONE);
+
+	bf_set(wqe_cmd_type, &wqe->abort_cmd.wqe_com, OTHER_COMMAND);
+	bf_set(wqe_wqec, &wqe->abort_cmd.wqe_com, 1);
+	bf_set(wqe_cqid, &wqe->abort_cmd.wqe_com, LPFC_WQE_CQ_ID_DEFAULT);
+}
+
 static int
 lpfc_nvmet_sol_fcp_issue_abort(struct lpfc_hba *phba,
 			       struct lpfc_async_xchg_ctx *ctxp,
@@ -3347,7 +3389,7 @@ lpfc_nvmet_sol_fcp_issue_abort(struct lpfc_hba *phba,
 	}
 
 	ndlp = lpfc_findnode_did(phba->pport, sid);
-	if (!ndlp || !NLP_CHK_NODE_ACT(ndlp) ||
+	if (!ndlp ||
 	    ((ndlp->nlp_state != NLP_STE_UNMAPPED_NODE) &&
 	    (ndlp->nlp_state != NLP_STE_MAPPED_NODE))) {
 		atomic_inc(&tgtp->xmt_abort_rsp_error);
@@ -3423,7 +3465,7 @@ lpfc_nvmet_sol_fcp_issue_abort(struct lpfc_hba *phba,
 	/* Ready - mark outstanding as aborted by driver. */
 	abts_wqeq->iocb_flag |= LPFC_DRIVER_ABORTED;
 
-	lpfc_nvme_prep_abort_wqe(abts_wqeq, ctxp->wqeq->sli4_xritag, opt);
+	lpfc_nvmet_prep_abort_wqe(abts_wqeq, ctxp->wqeq->sli4_xritag, opt);
 
 	/* ABTS WQE must go to the same WQ as the WQE to be aborted */
 	abts_wqeq->hba_wqidx = ctxp->wqeq->hba_wqidx;
@@ -3596,8 +3638,8 @@ out:
 /**
  * lpfc_nvmet_invalidate_host
  *
- * @phba - pointer to the driver instance bound to an adapter port.
- * @ndlp - pointer to an lpfc_nodelist type
+ * @phba: pointer to the driver instance bound to an adapter port.
+ * @ndlp: pointer to an lpfc_nodelist type
  *
  * This routine upcalls the nvmet transport to invalidate an NVME
  * host to which this target instance had active connections.
@@ -3605,14 +3647,32 @@ out:
 void
 lpfc_nvmet_invalidate_host(struct lpfc_hba *phba, struct lpfc_nodelist *ndlp)
 {
+	u32 ndlp_has_hh;
 	struct lpfc_nvmet_tgtport *tgtp;
 
-	lpfc_printf_log(phba, KERN_INFO, LOG_NVME | LOG_NVME_ABTS,
+	lpfc_printf_log(phba, KERN_INFO,
+			LOG_NVME | LOG_NVME_ABTS | LOG_NVME_DISC,
 			"6203 Invalidating hosthandle x%px\n",
 			ndlp);
 
 	tgtp = (struct lpfc_nvmet_tgtport *)phba->targetport->private;
 	atomic_set(&tgtp->state, LPFC_NVMET_INV_HOST_ACTIVE);
+
+	spin_lock_irq(&ndlp->lock);
+	ndlp_has_hh = ndlp->fc4_xpt_flags & NLP_XPT_HAS_HH;
+	spin_unlock_irq(&ndlp->lock);
+
+	/* Do not invalidate any nodes that do not have a hosthandle.
+	 * The host_release callbk will cause a node reference
+	 * count imbalance and a crash.
+	 */
+	if (!ndlp_has_hh) {
+		lpfc_printf_log(phba, KERN_INFO,
+				LOG_NVME | LOG_NVME_ABTS | LOG_NVME_DISC,
+				"6204 Skip invalidate on node x%px DID x%x\n",
+				ndlp, ndlp->nlp_DID);
+		return;
+	}
 
 #if (IS_ENABLED(CONFIG_NVME_TARGET_FC))
 	/* Need to get the nvmet_fc_target_port pointer here.*/

@@ -237,12 +237,12 @@ static int c4iw_allocate_pd(struct ib_pd *pd, struct ib_udata *udata)
 	return 0;
 }
 
-static int c4iw_query_gid(struct ib_device *ibdev, u8 port, int index,
+static int c4iw_query_gid(struct ib_device *ibdev, u32 port, int index,
 			  union ib_gid *gid)
 {
 	struct c4iw_dev *dev;
 
-	pr_debug("ibdev %p, port %d, index %d, gid %p\n",
+	pr_debug("ibdev %p, port %u, index %d, gid %p\n",
 		 ibdev, port, index, gid);
 	if (!port)
 		return -EINVAL;
@@ -295,7 +295,7 @@ static int c4iw_query_device(struct ib_device *ibdev, struct ib_device_attr *pro
 	return 0;
 }
 
-static int c4iw_query_port(struct ib_device *ibdev, u8 port,
+static int c4iw_query_port(struct ib_device *ibdev, u32 port,
 			   struct ib_port_attr *props)
 {
 	int ret = 0;
@@ -322,8 +322,9 @@ static ssize_t hw_rev_show(struct device *dev,
 			rdma_device_to_drv_device(dev, struct c4iw_dev, ibdev);
 
 	pr_debug("dev 0x%p\n", dev);
-	return sprintf(buf, "%d\n",
-		       CHELSIO_CHIP_RELEASE(c4iw_dev->rdev.lldi.adapter_type));
+	return sysfs_emit(
+		buf, "%d\n",
+		CHELSIO_CHIP_RELEASE(c4iw_dev->rdev.lldi.adapter_type));
 }
 static DEVICE_ATTR_RO(hw_rev);
 
@@ -337,7 +338,7 @@ static ssize_t hca_type_show(struct device *dev,
 
 	pr_debug("dev 0x%p\n", dev);
 	lldev->ethtool_ops->get_drvinfo(lldev, &info);
-	return sprintf(buf, "%s\n", info.driver);
+	return sysfs_emit(buf, "%s\n", info.driver);
 }
 static DEVICE_ATTR_RO(hca_type);
 
@@ -348,8 +349,8 @@ static ssize_t board_id_show(struct device *dev, struct device_attribute *attr,
 			rdma_device_to_drv_device(dev, struct c4iw_dev, ibdev);
 
 	pr_debug("dev 0x%p\n", dev);
-	return sprintf(buf, "%x.%x\n", c4iw_dev->rdev.lldi.pdev->vendor,
-		       c4iw_dev->rdev.lldi.pdev->device);
+	return sysfs_emit(buf, "%x.%x\n", c4iw_dev->rdev.lldi.pdev->vendor,
+			  c4iw_dev->rdev.lldi.pdev->device);
 }
 static DEVICE_ATTR_RO(board_id);
 
@@ -376,21 +377,18 @@ static const char * const names[] = {
 	[IP6OUTRSTS] = "ip6OutRsts"
 };
 
-static struct rdma_hw_stats *c4iw_alloc_stats(struct ib_device *ibdev,
-					      u8 port_num)
+static struct rdma_hw_stats *c4iw_alloc_device_stats(struct ib_device *ibdev)
 {
 	BUILD_BUG_ON(ARRAY_SIZE(names) != NR_COUNTERS);
 
-	if (port_num != 0)
-		return NULL;
-
+	/* FIXME: these look like port stats */
 	return rdma_alloc_hw_stats_struct(names, NR_COUNTERS,
 					  RDMA_HW_STATS_DEFAULT_LIFESPAN);
 }
 
 static int c4iw_get_mib(struct ib_device *ibdev,
 			struct rdma_hw_stats *stats,
-			u8 port, int index)
+			u32 port, int index)
 {
 	struct tp_tcp_stats v4, v6;
 	struct c4iw_dev *c4iw_dev = to_c4iw_dev(ibdev);
@@ -419,7 +417,7 @@ static const struct attribute_group c4iw_attr_group = {
 	.attrs = c4iw_class_attributes,
 };
 
-static int c4iw_port_immutable(struct ib_device *ibdev, u8 port_num,
+static int c4iw_port_immutable(struct ib_device *ibdev, u32 port_num,
 			       struct ib_port_immutable *immutable)
 {
 	struct ib_port_attr attr;
@@ -454,21 +452,20 @@ static const struct ib_device_ops c4iw_dev_ops = {
 	.driver_id = RDMA_DRIVER_CXGB4,
 	.uverbs_abi_ver = C4IW_UVERBS_ABI_VERSION,
 
-	.alloc_hw_stats = c4iw_alloc_stats,
+	.alloc_hw_device_stats = c4iw_alloc_device_stats,
 	.alloc_mr = c4iw_alloc_mr,
-	.alloc_mw = c4iw_alloc_mw,
 	.alloc_pd = c4iw_allocate_pd,
 	.alloc_ucontext = c4iw_alloc_ucontext,
 	.create_cq = c4iw_create_cq,
 	.create_qp = c4iw_create_qp,
 	.create_srq = c4iw_create_srq,
-	.dealloc_mw = c4iw_dealloc_mw,
 	.dealloc_pd = c4iw_deallocate_pd,
 	.dealloc_ucontext = c4iw_dealloc_ucontext,
 	.dereg_mr = c4iw_dereg_mr,
 	.destroy_cq = c4iw_destroy_cq,
 	.destroy_qp = c4iw_destroy_qp,
 	.destroy_srq = c4iw_destroy_srq,
+	.device_group = &c4iw_attr_group,
 	.fill_res_cq_entry = c4iw_fill_res_cq_entry,
 	.fill_res_cm_id_entry = c4iw_fill_res_cm_id_entry,
 	.fill_res_mr_entry = c4iw_fill_res_mr_entry,
@@ -502,6 +499,7 @@ static const struct ib_device_ops c4iw_dev_ops = {
 	INIT_RDMA_OBJ_SIZE(ib_cq, c4iw_cq, ibcq),
 	INIT_RDMA_OBJ_SIZE(ib_mw, c4iw_mw, ibmw),
 	INIT_RDMA_OBJ_SIZE(ib_pd, c4iw_pd, ibpd),
+	INIT_RDMA_OBJ_SIZE(ib_qp, c4iw_qp, ibqp),
 	INIT_RDMA_OBJ_SIZE(ib_srq, c4iw_srq, ibsrq),
 	INIT_RDMA_OBJ_SIZE(ib_ucontext, c4iw_ucontext, ibucontext),
 };
@@ -533,28 +531,6 @@ void c4iw_register_device(struct work_struct *work)
 	if (fastreg_support)
 		dev->device_cap_flags |= IB_DEVICE_MEM_MGT_EXTENSIONS;
 	dev->ibdev.local_dma_lkey = 0;
-	dev->ibdev.uverbs_cmd_mask =
-	    (1ull << IB_USER_VERBS_CMD_GET_CONTEXT) |
-	    (1ull << IB_USER_VERBS_CMD_QUERY_DEVICE) |
-	    (1ull << IB_USER_VERBS_CMD_QUERY_PORT) |
-	    (1ull << IB_USER_VERBS_CMD_ALLOC_PD) |
-	    (1ull << IB_USER_VERBS_CMD_DEALLOC_PD) |
-	    (1ull << IB_USER_VERBS_CMD_REG_MR) |
-	    (1ull << IB_USER_VERBS_CMD_DEREG_MR) |
-	    (1ull << IB_USER_VERBS_CMD_CREATE_COMP_CHANNEL) |
-	    (1ull << IB_USER_VERBS_CMD_CREATE_CQ) |
-	    (1ull << IB_USER_VERBS_CMD_DESTROY_CQ) |
-	    (1ull << IB_USER_VERBS_CMD_REQ_NOTIFY_CQ) |
-	    (1ull << IB_USER_VERBS_CMD_CREATE_QP) |
-	    (1ull << IB_USER_VERBS_CMD_MODIFY_QP) |
-	    (1ull << IB_USER_VERBS_CMD_QUERY_QP) |
-	    (1ull << IB_USER_VERBS_CMD_POLL_CQ) |
-	    (1ull << IB_USER_VERBS_CMD_DESTROY_QP) |
-	    (1ull << IB_USER_VERBS_CMD_POST_SEND) |
-	    (1ull << IB_USER_VERBS_CMD_POST_RECV) |
-	    (1ull << IB_USER_VERBS_CMD_CREATE_SRQ) |
-	    (1ull << IB_USER_VERBS_CMD_MODIFY_SRQ) |
-	    (1ull << IB_USER_VERBS_CMD_DESTROY_SRQ);
 	dev->ibdev.node_type = RDMA_NODE_RNIC;
 	BUILD_BUG_ON(sizeof(C4IW_NODE_DESC) > IB_DEVICE_NODE_DESC_MAX);
 	memcpy(dev->ibdev.node_desc, C4IW_NODE_DESC, sizeof(C4IW_NODE_DESC));
@@ -565,7 +541,6 @@ void c4iw_register_device(struct work_struct *work)
 	memcpy(dev->ibdev.iw_ifname, dev->rdev.lldi.ports[0]->name,
 	       sizeof(dev->ibdev.iw_ifname));
 
-	rdma_set_device_sysfs_group(&dev->ibdev, &c4iw_attr_group);
 	ib_set_device_ops(&dev->ibdev, &c4iw_dev_ops);
 	ret = set_netdevs(&dev->ibdev, &dev->rdev);
 	if (ret)

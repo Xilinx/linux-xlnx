@@ -37,15 +37,15 @@
 #define EXYNOS3250_IRQ_TIMEOUT		0x10000000
 
 /* a selection of JPEG markers */
-#define TEM				0x01
-#define SOF0				0xc0
-#define DHT				0xc4
-#define RST				0xd0
-#define SOI				0xd8
-#define EOI				0xd9
-#define	SOS				0xda
-#define DQT				0xdb
-#define DHP				0xde
+#define JPEG_MARKER_TEM				0x01
+#define JPEG_MARKER_SOF0				0xc0
+#define JPEG_MARKER_DHT				0xc4
+#define JPEG_MARKER_RST				0xd0
+#define JPEG_MARKER_SOI				0xd8
+#define JPEG_MARKER_EOI				0xd9
+#define	JPEG_MARKER_SOS				0xda
+#define JPEG_MARKER_DQT				0xdb
+#define JPEG_MARKER_DHP				0xde
 
 /* Flags that indicate a format can be used for capture/output */
 #define SJPEG_FMT_FLAG_ENC_CAPTURE	(1 << 0)
@@ -111,12 +111,12 @@ enum s5p_jpeg_ctx_state {
  * @m2m_dev:		v4l2 mem2mem device data
  * @regs:		JPEG IP registers mapping
  * @irq:		JPEG IP irq
+ * @irq_ret:		JPEG IP irq result value
  * @clocks:		JPEG IP clock(s)
  * @dev:		JPEG IP struct device
  * @variant:		driver variant to be used
- * @irq_status		interrupt flags set during single encode/decode
-			operation
-
+ * @irq_status:		interrupt flags set during single encode/decode
+ *			operation
  */
 struct s5p_jpeg {
 	struct mutex		lock;
@@ -149,12 +149,14 @@ struct s5p_jpeg_variant {
 };
 
 /**
- * struct jpeg_fmt - driver's internal color format data
+ * struct s5p_jpeg_fmt - driver's internal color format data
  * @fourcc:	the fourcc code, 0 if not applicable
  * @depth:	number of bits per pixel
  * @colplanes:	number of color planes (1 for packed formats)
+ * @memplanes:	number of memory planes (1 for packed formats)
  * @h_align:	horizontal alignment order (align to 2^h_align)
  * @v_align:	vertical alignment order (align to 2^v_align)
+ * @subsampling:subsampling of a raw format or a JPEG
  * @flags:	flags describing format applicability
  */
 struct s5p_jpeg_fmt {
@@ -169,7 +171,7 @@ struct s5p_jpeg_fmt {
 };
 
 /**
- * s5p_jpeg_marker - collection of markers from jpeg header
+ * struct s5p_jpeg_marker - collection of markers from jpeg header
  * @marker:	markers' positions relative to the buffer beginning
  * @len:	markers' payload lengths (without length field)
  * @n:		number of markers in collection
@@ -181,15 +183,15 @@ struct s5p_jpeg_marker {
 };
 
 /**
- * s5p_jpeg_q_data - parameters of one queue
+ * struct s5p_jpeg_q_data - parameters of one queue
  * @fmt:	driver-specific format of this queue
  * @w:		image width
  * @h:		image height
- * @sos:	SOS marker's position relative to the buffer beginning
- * @dht:	DHT markers' positions relative to the buffer beginning
- * @dqt:	DQT markers' positions relative to the buffer beginning
- * @sof:	SOF0 marker's position relative to the buffer beginning
- * @sof_len:	SOF0 marker's payload length (without length field itself)
+ * @sos:	JPEG_MARKER_SOS's position relative to the buffer beginning
+ * @dht:	JPEG_MARKER_DHT' positions relative to the buffer beginning
+ * @dqt:	JPEG_MARKER_DQT' positions relative to the buffer beginning
+ * @sof:	JPEG_MARKER_SOF0's position relative to the buffer beginning
+ * @sof_len:	JPEG_MARKER_SOF0's payload length (without length field itself)
  * @size:	image buffer size in bytes
  */
 struct s5p_jpeg_q_data {
@@ -205,7 +207,7 @@ struct s5p_jpeg_q_data {
 };
 
 /**
- * s5p_jpeg_ctx - the device context data
+ * struct s5p_jpeg_ctx - the device context data
  * @jpeg:		JPEG IP device for this context
  * @mode:		compression (encode) operation or decompression (decode)
  * @compr_quality:	destination image quality in compression (encode) mode
@@ -239,7 +241,7 @@ struct s5p_jpeg_ctx {
 };
 
 /**
- * s5p_jpeg_buffer - description of memory containing input JPEG data
+ * struct s5p_jpeg_buffer - description of memory containing input JPEG data
  * @size:	buffer size
  * @curr:	current position in the buffer
  * @data:	pointer to the data

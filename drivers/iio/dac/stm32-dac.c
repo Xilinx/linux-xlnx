@@ -69,9 +69,8 @@ static int stm32_dac_set_enable_state(struct iio_dev *indio_dev, int ch,
 	}
 
 	if (enable) {
-		ret = pm_runtime_get_sync(dev);
+		ret = pm_runtime_resume_and_get(dev);
 		if (ret < 0) {
-			pm_runtime_put_noidle(dev);
 			mutex_unlock(&dac->lock);
 			return ret;
 		}
@@ -210,7 +209,7 @@ static ssize_t stm32_dac_read_powerdown(struct iio_dev *indio_dev,
 	if (ret < 0)
 		return ret;
 
-	return sprintf(buf, "%d\n", ret ? 0 : 1);
+	return sysfs_emit(buf, "%d\n", ret ? 0 : 1);
 }
 
 static ssize_t stm32_dac_write_powerdown(struct iio_dev *indio_dev,

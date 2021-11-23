@@ -47,8 +47,8 @@
 /*
  * MAX_CMD          : maximum commands that can be outstanding with IOA
  * MAX_IO_CMD       : command blocks available for IO commands
- * MAX_HCAM_CMD     : command blocks avaibale for HCAMS
- * MAX_INTERNAL_CMD : command blocks avaible for internal commands like reset
+ * MAX_HCAM_CMD     : command blocks available for HCAMS
+ * MAX_INTERNAL_CMD : command blocks available for internal commands like reset
  */
 #define PMCRAID_MAX_CMD				1024
 #define PMCRAID_MAX_IO_CMD			1020
@@ -244,7 +244,7 @@ struct pmcraid_ioarcb {
 	__u8  hrrq_id;
 	__u8  cdb[PMCRAID_MAX_CDB_LEN];
 	struct pmcraid_ioarcb_add_data add_data;
-} __attribute__((packed, aligned(PMCRAID_IOARCB_ALIGNMENT)));
+};
 
 /* well known resource handle values */
 #define PMCRAID_IOA_RES_HANDLE        0xffffffff
@@ -1040,8 +1040,8 @@ struct pmcraid_passthrough_ioctl_buffer {
 	struct pmcraid_ioctl_header ioctl_header;
 	struct pmcraid_ioarcb ioarcb;
 	struct pmcraid_ioasa  ioasa;
-	u8  request_buffer[1];
-} __attribute__ ((packed));
+	u8  request_buffer[];
+} __attribute__ ((packed, aligned(PMCRAID_IOARCB_ALIGNMENT)));
 
 /*
  * keys to differentiate between driver handled IOCTLs and passthrough

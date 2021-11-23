@@ -1550,16 +1550,12 @@ static void rocker_world_port_stop(struct rocker_port *rocker_port)
 }
 
 static int rocker_world_port_attr_stp_state_set(struct rocker_port *rocker_port,
-						u8 state,
-						struct switchdev_trans *trans)
+						u8 state)
 {
 	struct rocker_world_ops *wops = rocker_port->rocker->wops;
 
 	if (!wops->port_attr_stp_state_set)
 		return -EOPNOTSUPP;
-
-	if (switchdev_trans_ph_prepare(trans))
-		return 0;
 
 	return wops->port_attr_stp_state_set(rocker_port, state);
 }
@@ -1580,8 +1576,7 @@ rocker_world_port_attr_bridge_flags_support_get(const struct rocker_port *
 
 static int
 rocker_world_port_attr_pre_bridge_flags_set(struct rocker_port *rocker_port,
-					    unsigned long brport_flags,
-					    struct switchdev_trans *trans)
+					    struct switchdev_brport_flags flags)
 {
 	struct rocker_world_ops *wops = rocker_port->rocker->wops;
 	unsigned long brport_flags_s;
@@ -1595,7 +1590,7 @@ rocker_world_port_attr_pre_bridge_flags_set(struct rocker_port *rocker_port,
 	if (err)
 		return err;
 
-	if (brport_flags & ~brport_flags_s)
+	if (flags.mask & ~brport_flags_s)
 		return -EINVAL;
 
 	return 0;
@@ -1603,51 +1598,36 @@ rocker_world_port_attr_pre_bridge_flags_set(struct rocker_port *rocker_port,
 
 static int
 rocker_world_port_attr_bridge_flags_set(struct rocker_port *rocker_port,
-					unsigned long brport_flags,
-					struct switchdev_trans *trans)
+					struct switchdev_brport_flags flags)
 {
 	struct rocker_world_ops *wops = rocker_port->rocker->wops;
 
 	if (!wops->port_attr_bridge_flags_set)
 		return -EOPNOTSUPP;
 
-	if (switchdev_trans_ph_prepare(trans))
-		return 0;
-
-	return wops->port_attr_bridge_flags_set(rocker_port, brport_flags,
-						trans);
+	return wops->port_attr_bridge_flags_set(rocker_port, flags.val);
 }
 
 static int
 rocker_world_port_attr_bridge_ageing_time_set(struct rocker_port *rocker_port,
-					      u32 ageing_time,
-					      struct switchdev_trans *trans)
-
+					      u32 ageing_time)
 {
 	struct rocker_world_ops *wops = rocker_port->rocker->wops;
 
 	if (!wops->port_attr_bridge_ageing_time_set)
 		return -EOPNOTSUPP;
 
-	if (switchdev_trans_ph_prepare(trans))
-		return 0;
-
-	return wops->port_attr_bridge_ageing_time_set(rocker_port, ageing_time,
-						      trans);
+	return wops->port_attr_bridge_ageing_time_set(rocker_port, ageing_time);
 }
 
 static int
 rocker_world_port_obj_vlan_add(struct rocker_port *rocker_port,
-			       const struct switchdev_obj_port_vlan *vlan,
-			       struct switchdev_trans *trans)
+			       const struct switchdev_obj_port_vlan *vlan)
 {
 	struct rocker_world_ops *wops = rocker_port->rocker->wops;
 
 	if (!wops->port_obj_vlan_add)
 		return -EOPNOTSUPP;
-
-	if (switchdev_trans_ph_prepare(trans))
-		return 0;
 
 	return wops->port_obj_vlan_add(rocker_port, vlan);
 }
@@ -1690,13 +1670,14 @@ rocker_world_port_fdb_del(struct rocker_port *rocker_port,
 }
 
 static int rocker_world_port_master_linked(struct rocker_port *rocker_port,
-					   struct net_device *master)
+					   struct net_device *master,
+					   struct netlink_ext_ack *extack)
 {
 	struct rocker_world_ops *wops = rocker_port->rocker->wops;
 
 	if (!wops->port_master_linked)
 		return -EOPNOTSUPP;
-	return wops->port_master_linked(rocker_port, master);
+	return wops->port_master_linked(rocker_port, master, extack);
 }
 
 static int rocker_world_port_master_unlinked(struct rocker_port *rocker_port,
@@ -2066,8 +2047,7 @@ static const struct net_device_ops rocker_port_netdev_ops = {
  ********************/
 
 static int rocker_port_attr_set(struct net_device *dev,
-				const struct switchdev_attr *attr,
-				struct switchdev_trans *trans)
+				const struct switchdev_attr *attr)
 {
 	struct rocker_port *rocker_port = netdev_priv(dev);
 	int err = 0;
@@ -2075,23 +2055,19 @@ static int rocker_port_attr_set(struct net_device *dev,
 	switch (attr->id) {
 	case SWITCHDEV_ATTR_ID_PORT_STP_STATE:
 		err = rocker_world_port_attr_stp_state_set(rocker_port,
-							   attr->u.stp_state,
-							   trans);
+							   attr->u.stp_state);
 		break;
 	case SWITCHDEV_ATTR_ID_PORT_PRE_BRIDGE_FLAGS:
 		err = rocker_world_port_attr_pre_bridge_flags_set(rocker_port,
-							      attr->u.brport_flags,
-							      trans);
+								  attr->u.brport_flags);
 		break;
 	case SWITCHDEV_ATTR_ID_PORT_BRIDGE_FLAGS:
 		err = rocker_world_port_attr_bridge_flags_set(rocker_port,
-							      attr->u.brport_flags,
-							      trans);
+							      attr->u.brport_flags);
 		break;
 	case SWITCHDEV_ATTR_ID_BRIDGE_AGEING_TIME:
 		err = rocker_world_port_attr_bridge_ageing_time_set(rocker_port,
-								    attr->u.ageing_time,
-								    trans);
+								    attr->u.ageing_time);
 		break;
 	default:
 		err = -EOPNOTSUPP;
@@ -2102,8 +2078,7 @@ static int rocker_port_attr_set(struct net_device *dev,
 }
 
 static int rocker_port_obj_add(struct net_device *dev,
-			       const struct switchdev_obj *obj,
-			       struct switchdev_trans *trans)
+			       const struct switchdev_obj *obj)
 {
 	struct rocker_port *rocker_port = netdev_priv(dev);
 	int err = 0;
@@ -2111,8 +2086,7 @@ static int rocker_port_obj_add(struct net_device *dev,
 	switch (obj->id) {
 	case SWITCHDEV_OBJ_ID_PORT_VLAN:
 		err = rocker_world_port_obj_vlan_add(rocker_port,
-						     SWITCHDEV_OBJ_PORT_VLAN(obj),
-						     trans);
+						     SWITCHDEV_OBJ_PORT_VLAN(obj));
 		break;
 	default:
 		err = -EOPNOTSUPP;
@@ -2725,8 +2699,7 @@ rocker_switchdev_port_attr_set_event(struct net_device *netdev,
 {
 	int err;
 
-	err = rocker_port_attr_set(netdev, port_attr_info->attr,
-				   port_attr_info->trans);
+	err = rocker_port_attr_set(netdev, port_attr_info->attr);
 
 	port_attr_info->handled = true;
 	return notifier_from_errno(err);
@@ -2743,7 +2716,7 @@ static void
 rocker_fdb_offload_notify(struct rocker_port *rocker_port,
 			  struct switchdev_notifier_fdb_info *recv_info)
 {
-	struct switchdev_notifier_fdb_info info;
+	struct switchdev_notifier_fdb_info info = {};
 
 	info.addr = recv_info->addr;
 	info.vid = recv_info->vid;
@@ -2764,7 +2737,7 @@ static void rocker_switchdev_event_work(struct work_struct *work)
 	switch (switchdev_work->event) {
 	case SWITCHDEV_FDB_ADD_TO_DEVICE:
 		fdb_info = &switchdev_work->fdb_info;
-		if (!fdb_info->added_by_user)
+		if (!fdb_info->added_by_user || fdb_info->is_local)
 			break;
 		err = rocker_world_port_fdb_add(rocker_port, fdb_info);
 		if (err) {
@@ -2775,7 +2748,7 @@ static void rocker_switchdev_event_work(struct work_struct *work)
 		break;
 	case SWITCHDEV_FDB_DEL_TO_DEVICE:
 		fdb_info = &switchdev_work->fdb_info;
-		if (!fdb_info->added_by_user)
+		if (!fdb_info->added_by_user || fdb_info->is_local)
 			break;
 		err = rocker_world_port_fdb_del(rocker_port, fdb_info);
 		if (err)
@@ -2847,8 +2820,7 @@ rocker_switchdev_port_obj_event(unsigned long event, struct net_device *netdev,
 
 	switch (event) {
 	case SWITCHDEV_PORT_OBJ_ADD:
-		err = rocker_port_obj_add(netdev, port_obj_info->obj,
-					  port_obj_info->trans);
+		err = rocker_port_obj_add(netdev, port_obj_info->obj);
 		break;
 	case SWITCHDEV_PORT_OBJ_DEL:
 		err = rocker_port_obj_del(netdev, port_obj_info->obj);
@@ -3136,6 +3108,7 @@ struct rocker_port *rocker_port_dev_lower_find(struct net_device *dev,
 static int rocker_netdevice_event(struct notifier_block *unused,
 				  unsigned long event, void *ptr)
 {
+	struct netlink_ext_ack *extack = netdev_notifier_info_to_extack(ptr);
 	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
 	struct netdev_notifier_changeupper_info *info;
 	struct rocker_port *rocker_port;
@@ -3152,7 +3125,8 @@ static int rocker_netdevice_event(struct notifier_block *unused,
 		rocker_port = netdev_priv(dev);
 		if (info->linking) {
 			err = rocker_world_port_master_linked(rocker_port,
-							      info->upper_dev);
+							      info->upper_dev,
+							      extack);
 			if (err)
 				netdev_warn(dev, "failed to reflect master linked (err %d)\n",
 					    err);

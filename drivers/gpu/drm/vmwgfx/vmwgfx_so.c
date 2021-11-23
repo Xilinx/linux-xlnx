@@ -33,7 +33,7 @@
  * The currently only reason we need to keep track of views is that if we
  * destroy a hardware surface, all views pointing to it must also be destroyed,
  * otherwise the device will error.
- * So in particuar if a surface is evicted, we must destroy all views pointing
+ * So in particular if a surface is evicted, we must destroy all views pointing
  * to it, and all context bindings of that view. Similarly we must restore
  * the view bindings, views and surfaces pointed to by the views when a
  * context is referenced in the command stream.
@@ -42,6 +42,7 @@
 /**
  * struct vmw_view - view metadata
  *
+ * @rcu: RCU callback head
  * @res: The struct vmw_resource we derive from
  * @ctx: Non-refcounted pointer to the context this view belongs to.
  * @srf: Refcounted pointer to the surface pointed to by this view.
@@ -89,7 +90,7 @@ static const struct vmw_res_func vmw_view_func = {
 };
 
 /**
- * struct vmw_view - view define command body stub
+ * struct vmw_view_define - view define command body stub
  *
  * @view_id: The device id of the view being defined
  * @sid: The surface id of the view being defined
@@ -170,7 +171,7 @@ static int vmw_view_create(struct vmw_resource *res)
 		return 0;
 	}
 
-	cmd = VMW_FIFO_RESERVE_DX(res->dev_priv, view->cmd_size, view->ctx->id);
+	cmd = VMW_CMD_CTX_RESERVE(res->dev_priv, view->cmd_size, view->ctx->id);
 	if (!cmd) {
 		mutex_unlock(&dev_priv->binding_mutex);
 		return -ENOMEM;
@@ -181,7 +182,7 @@ static int vmw_view_create(struct vmw_resource *res)
 	/* Sid may have changed due to surface eviction. */
 	WARN_ON(view->srf->id == SVGA3D_INVALID_ID);
 	cmd->body.sid = view->srf->id;
-	vmw_fifo_commit(res->dev_priv, view->cmd_size);
+	vmw_cmd_commit(res->dev_priv, view->cmd_size);
 	res->id = view->view_id;
 	list_add_tail(&view->srf_head, &srf->view_list);
 	vmw_cotable_add_resource(view->cotable, &view->cotable_head);
@@ -213,14 +214,14 @@ static int vmw_view_destroy(struct vmw_resource *res)
 	if (!view->committed || res->id == -1)
 		return 0;
 
-	cmd = VMW_FIFO_RESERVE_DX(dev_priv, sizeof(*cmd), view->ctx->id);
+	cmd = VMW_CMD_CTX_RESERVE(dev_priv, sizeof(*cmd), view->ctx->id);
 	if (!cmd)
 		return -ENOMEM;
 
 	cmd->header.id = vmw_view_destroy_cmds[view->view_type];
 	cmd->header.size = sizeof(cmd->body);
 	cmd->body.view_id = view->view_id;
-	vmw_fifo_commit(dev_priv, sizeof(*cmd));
+	vmw_cmd_commit(dev_priv, sizeof(*cmd));
 	res->id = -1;
 	list_del_init(&view->cotable_head);
 	list_del_init(&view->srf_head);
@@ -538,7 +539,8 @@ const SVGACOTableType vmw_so_cotables[] = {
 	[vmw_so_ds] = SVGA_COTABLE_DEPTHSTENCIL,
 	[vmw_so_rs] = SVGA_COTABLE_RASTERIZERSTATE,
 	[vmw_so_ss] = SVGA_COTABLE_SAMPLER,
-	[vmw_so_so] = SVGA_COTABLE_STREAMOUTPUT
+	[vmw_so_so] = SVGA_COTABLE_STREAMOUTPUT,
+	[vmw_so_max]= SVGA_COTABLE_MAX
 };
 
 

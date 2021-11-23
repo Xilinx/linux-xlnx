@@ -43,6 +43,11 @@ struct ieee80211_radiotap_header {
 	 * @it_present: (first) present word
 	 */
 	__le32 it_present;
+
+	/**
+	 * @it_optional: all remaining presence bitmaps
+	 */
+	__le32 it_optional[];
 } __packed;
 
 /* version is always 0 */
@@ -118,6 +123,7 @@ enum ieee80211_radiotap_tx_flags {
 	IEEE80211_RADIOTAP_F_TX_RTS = 0x0004,
 	IEEE80211_RADIOTAP_F_TX_NOACK = 0x0008,
 	IEEE80211_RADIOTAP_F_TX_NOSEQNO = 0x0010,
+	IEEE80211_RADIOTAP_F_TX_ORDER = 0x0020,
 };
 
 /* for IEEE80211_RADIOTAP_MCS "have" flags */

@@ -1773,7 +1773,8 @@ fail2:
 	return error;
 }
 
-static int ns_mkdir_op(struct inode *dir, struct dentry *dentry, umode_t mode)
+static int ns_mkdir_op(struct user_namespace *mnt_userns, struct inode *dir,
+		       struct dentry *dentry, umode_t mode)
 {
 	struct aa_ns *ns, *parent;
 	/* TODO: improve permission check */
@@ -2045,9 +2046,6 @@ fail2:
 
 	return error;
 }
-
-
-#define list_entry_is_head(pos, head, member) (&pos->member == (head))
 
 /**
  * __next_ns - find the next namespace to list

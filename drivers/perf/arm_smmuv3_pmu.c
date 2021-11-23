@@ -74,6 +74,7 @@
 #define SMMU_PMCG_CFGR_NCTR             GENMASK(5, 0)
 #define SMMU_PMCG_CR                    0xE04
 #define SMMU_PMCG_CR_ENABLE             BIT(0)
+#define SMMU_PMCG_IIDR                  0xE08
 #define SMMU_PMCG_CEID0                 0xE20
 #define SMMU_PMCG_CEID1                 0xE28
 #define SMMU_PMCG_IRQ_CTRL              0xE50
@@ -112,6 +113,7 @@ struct smmu_pmu {
 	void __iomem *reloc_base;
 	u64 counter_mask;
 	u32 options;
+	u32 iidr;
 	bool global_filter;
 };
 
@@ -275,7 +277,7 @@ static int smmu_pmu_apply_event_filter(struct smmu_pmu *smmu_pmu,
 				       struct perf_event *event, int idx)
 {
 	u32 span, sid;
-	unsigned int num_ctrs = smmu_pmu->num_counters;
+	unsigned int cur_idx, num_ctrs = smmu_pmu->num_counters;
 	bool filter_en = !!get_filter_enable(event);
 
 	span = filter_en ? get_filter_span(event) :
@@ -283,17 +285,19 @@ static int smmu_pmu_apply_event_filter(struct smmu_pmu *smmu_pmu,
 	sid = filter_en ? get_filter_stream_id(event) :
 			   SMMU_PMCG_DEFAULT_FILTER_SID;
 
-	/* Support individual filter settings */
-	if (!smmu_pmu->global_filter) {
+	cur_idx = find_first_bit(smmu_pmu->used_counters, num_ctrs);
+	/*
+	 * Per-counter filtering, or scheduling the first globally-filtered
+	 * event into an empty PMU so idx == 0 and it works out equivalent.
+	 */
+	if (!smmu_pmu->global_filter || cur_idx == num_ctrs) {
 		smmu_pmu_set_event_filter(event, idx, span, sid);
 		return 0;
 	}
 
-	/* Requested settings same as current global settings*/
-	idx = find_first_bit(smmu_pmu->used_counters, num_ctrs);
-	if (idx == num_ctrs ||
-	    smmu_pmu_check_global_filter(smmu_pmu->events[idx], event)) {
-		smmu_pmu_set_event_filter(event, 0, span, sid);
+	/* Otherwise, must match whatever's currently scheduled */
+	if (smmu_pmu_check_global_filter(smmu_pmu->events[cur_idx], event)) {
+		smmu_pmu_set_evtyper(smmu_pmu, idx, get_event(event));
 		return 0;
 	}
 
@@ -491,7 +495,7 @@ static struct attribute *smmu_pmu_cpumask_attrs[] = {
 	NULL
 };
 
-static struct attribute_group smmu_pmu_cpumask_group = {
+static const struct attribute_group smmu_pmu_cpumask_group = {
 	.attrs = smmu_pmu_cpumask_attrs,
 };
 
@@ -504,30 +508,21 @@ static ssize_t smmu_pmu_event_show(struct device *dev,
 
 	pmu_attr = container_of(attr, struct perf_pmu_events_attr, attr);
 
-	return sprintf(page, "event=0x%02llx\n", pmu_attr->id);
+	return sysfs_emit(page, "event=0x%02llx\n", pmu_attr->id);
 }
 
-#define SMMU_EVENT_ATTR(name, config) \
-	PMU_EVENT_ATTR(name, smmu_event_attr_##name, \
-		       config, smmu_pmu_event_show)
-SMMU_EVENT_ATTR(cycles, 0);
-SMMU_EVENT_ATTR(transaction, 1);
-SMMU_EVENT_ATTR(tlb_miss, 2);
-SMMU_EVENT_ATTR(config_cache_miss, 3);
-SMMU_EVENT_ATTR(trans_table_walk_access, 4);
-SMMU_EVENT_ATTR(config_struct_access, 5);
-SMMU_EVENT_ATTR(pcie_ats_trans_rq, 6);
-SMMU_EVENT_ATTR(pcie_ats_trans_passed, 7);
+#define SMMU_EVENT_ATTR(name, config)			\
+	PMU_EVENT_ATTR_ID(name, smmu_pmu_event_show, config)
 
 static struct attribute *smmu_pmu_events[] = {
-	&smmu_event_attr_cycles.attr.attr,
-	&smmu_event_attr_transaction.attr.attr,
-	&smmu_event_attr_tlb_miss.attr.attr,
-	&smmu_event_attr_config_cache_miss.attr.attr,
-	&smmu_event_attr_trans_table_walk_access.attr.attr,
-	&smmu_event_attr_config_struct_access.attr.attr,
-	&smmu_event_attr_pcie_ats_trans_rq.attr.attr,
-	&smmu_event_attr_pcie_ats_trans_passed.attr.attr,
+	SMMU_EVENT_ATTR(cycles, 0),
+	SMMU_EVENT_ATTR(transaction, 1),
+	SMMU_EVENT_ATTR(tlb_miss, 2),
+	SMMU_EVENT_ATTR(config_cache_miss, 3),
+	SMMU_EVENT_ATTR(trans_table_walk_access, 4),
+	SMMU_EVENT_ATTR(config_struct_access, 5),
+	SMMU_EVENT_ATTR(pcie_ats_trans_rq, 6),
+	SMMU_EVENT_ATTR(pcie_ats_trans_passed, 7),
 	NULL
 };
 
@@ -546,10 +541,44 @@ static umode_t smmu_pmu_event_is_visible(struct kobject *kobj,
 	return 0;
 }
 
-static struct attribute_group smmu_pmu_events_group = {
+static const struct attribute_group smmu_pmu_events_group = {
 	.name = "events",
 	.attrs = smmu_pmu_events,
 	.is_visible = smmu_pmu_event_is_visible,
+};
+
+static ssize_t smmu_pmu_identifier_attr_show(struct device *dev,
+					struct device_attribute *attr,
+					char *page)
+{
+	struct smmu_pmu *smmu_pmu = to_smmu_pmu(dev_get_drvdata(dev));
+
+	return sysfs_emit(page, "0x%08x\n", smmu_pmu->iidr);
+}
+
+static umode_t smmu_pmu_identifier_attr_visible(struct kobject *kobj,
+						struct attribute *attr,
+						int n)
+{
+	struct device *dev = kobj_to_dev(kobj);
+	struct smmu_pmu *smmu_pmu = to_smmu_pmu(dev_get_drvdata(dev));
+
+	if (!smmu_pmu->iidr)
+		return 0;
+	return attr->mode;
+}
+
+static struct device_attribute smmu_pmu_identifier_attr =
+	__ATTR(identifier, 0444, smmu_pmu_identifier_attr_show, NULL);
+
+static struct attribute *smmu_pmu_identifier_attrs[] = {
+	&smmu_pmu_identifier_attr.attr,
+	NULL
+};
+
+static const struct attribute_group smmu_pmu_identifier_group = {
+	.attrs = smmu_pmu_identifier_attrs,
+	.is_visible = smmu_pmu_identifier_attr_visible,
 };
 
 /* Formats */
@@ -566,7 +595,7 @@ static struct attribute *smmu_pmu_formats[] = {
 	NULL
 };
 
-static struct attribute_group smmu_pmu_format_group = {
+static const struct attribute_group smmu_pmu_format_group = {
 	.name = "format",
 	.attrs = smmu_pmu_formats,
 };
@@ -575,6 +604,7 @@ static const struct attribute_group *smmu_pmu_attr_grps[] = {
 	&smmu_pmu_cpumask_group,
 	&smmu_pmu_events_group,
 	&smmu_pmu_format_group,
+	&smmu_pmu_identifier_group,
 	NULL
 };
 
@@ -597,7 +627,7 @@ static int smmu_pmu_offline_cpu(unsigned int cpu, struct hlist_node *node)
 
 	perf_pmu_migrate_context(&smmu_pmu->pmu, cpu, target);
 	smmu_pmu->on_cpu = target;
-	WARN_ON(irq_set_affinity_hint(smmu_pmu->irq, cpumask_of(target)));
+	WARN_ON(irq_set_affinity(smmu_pmu->irq, cpumask_of(target)));
 
 	return 0;
 }
@@ -795,6 +825,8 @@ static int smmu_pmu_probe(struct platform_device *pdev)
 		return err;
 	}
 
+	smmu_pmu->iidr = readl_relaxed(smmu_pmu->reg_base + SMMU_PMCG_IIDR);
+
 	name = devm_kasprintf(&pdev->dev, GFP_KERNEL, "smmuv3_pmcg_%llx",
 			      (res_0->start) >> SMMU_PMCG_PA_SHIFT);
 	if (!name) {
@@ -806,15 +838,14 @@ static int smmu_pmu_probe(struct platform_device *pdev)
 
 	/* Pick one CPU to be the preferred one to use */
 	smmu_pmu->on_cpu = raw_smp_processor_id();
-	WARN_ON(irq_set_affinity_hint(smmu_pmu->irq,
-				      cpumask_of(smmu_pmu->on_cpu)));
+	WARN_ON(irq_set_affinity(smmu_pmu->irq, cpumask_of(smmu_pmu->on_cpu)));
 
 	err = cpuhp_state_add_instance_nocalls(cpuhp_state_num,
 					       &smmu_pmu->node);
 	if (err) {
 		dev_err(dev, "Error %d registering hotplug, PMU @%pa\n",
 			err, &res_0->start);
-		goto out_clear_affinity;
+		return err;
 	}
 
 	err = perf_pmu_register(&smmu_pmu->pmu, name, -1);
@@ -833,8 +864,6 @@ static int smmu_pmu_probe(struct platform_device *pdev)
 
 out_unregister:
 	cpuhp_state_remove_instance_nocalls(cpuhp_state_num, &smmu_pmu->node);
-out_clear_affinity:
-	irq_set_affinity_hint(smmu_pmu->irq, NULL);
 	return err;
 }
 
@@ -844,7 +873,6 @@ static int smmu_pmu_remove(struct platform_device *pdev)
 
 	perf_pmu_unregister(&smmu_pmu->pmu);
 	cpuhp_state_remove_instance_nocalls(cpuhp_state_num, &smmu_pmu->node);
-	irq_set_affinity_hint(smmu_pmu->irq, NULL);
 
 	return 0;
 }

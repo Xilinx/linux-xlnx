@@ -881,7 +881,8 @@ int ubifs_jnl_write_inode(struct ubifs_info *c, const struct inode *inode)
 		struct inode *xino;
 		struct ubifs_dent_node *xent, *pxent = NULL;
 
-		if (ui->xattr_cnt >= ubifs_xattr_max_cnt(c)) {
+		if (ui->xattr_cnt > ubifs_xattr_max_cnt(c)) {
+			err = -EPERM;
 			ubifs_err(c, "Cannot delete inode, it has too much xattrs!");
 			goto out_release;
 		}
@@ -1431,7 +1432,7 @@ out_free:
 /**
  * truncate_data_node - re-compress/encrypt a truncated data node.
  * @c: UBIFS file-system description object
- * @inode: inode which referes to the data node
+ * @inode: inode which refers to the data node
  * @block: data block number
  * @dn: data node to re-compress
  * @new_len: new length
@@ -1559,7 +1560,8 @@ int ubifs_jnl_truncate(struct ubifs_info *c, const struct inode *inode,
 			if (dn_len <= 0 || dn_len > UBIFS_BLOCK_SIZE) {
 				ubifs_err(c, "bad data node (block %u, inode %lu)",
 					  blk, inode->i_ino);
-				ubifs_dump_node(c, dn);
+				ubifs_dump_node(c, dn, sz - UBIFS_INO_NODE_SZ -
+						UBIFS_TRUN_NODE_SZ);
 				goto out_free;
 			}
 

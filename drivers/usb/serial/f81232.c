@@ -192,13 +192,9 @@ static int f81232_set_register(struct usb_serial_port *port, u16 reg, u8 val)
 				tmp,
 				sizeof(val),
 				USB_CTRL_SET_TIMEOUT);
-	if (status != sizeof(val)) {
+	if (status < 0) {
 		dev_err(&port->dev, "%s failed status: %d\n", __func__, status);
-
-		if (status < 0)
-			status = usb_translate_errors(status);
-		else
-			status = -EIO;
+		status = usb_translate_errors(status);
 	} else {
 		status = 0;
 	}
@@ -824,17 +820,12 @@ static int f81232_carrier_raised(struct usb_serial_port *port)
 	return 0;
 }
 
-static int f81232_get_serial_info(struct tty_struct *tty,
-		struct serial_struct *ss)
+static void f81232_get_serial(struct tty_struct *tty, struct serial_struct *ss)
 {
 	struct usb_serial_port *port = tty->driver_data;
 	struct f81232_private *priv = usb_get_serial_port_data(port);
 
-	ss->type = PORT_16550A;
-	ss->line = port->minor;
-	ss->port = port->port_number;
 	ss->baud_base = priv->baud_base;
-	return 0;
 }
 
 static void  f81232_interrupt_work(struct work_struct *work)
@@ -886,10 +877,6 @@ static int f81534a_ctrl_set_register(struct usb_interface *intf, u16 reg,
 			status = usb_translate_errors(status);
 			if (status == -EIO)
 				continue;
-		} else if (status != size) {
-			/* Retry on short transfers */
-			status = -EIO;
-			continue;
 		} else {
 			status = 0;
 		}
@@ -961,7 +948,6 @@ static int f81232_port_probe(struct usb_serial_port *port)
 
 	usb_set_serial_port_data(port, priv);
 
-	port->port.drain_delay = 256;
 	priv->port = port;
 
 	return 0;
@@ -1029,7 +1015,7 @@ static struct usb_serial_driver f81232_device = {
 	.close =		f81232_close,
 	.dtr_rts =		f81232_dtr_rts,
 	.carrier_raised =	f81232_carrier_raised,
-	.get_serial =		f81232_get_serial_info,
+	.get_serial =		f81232_get_serial,
 	.break_ctl =		f81232_break_ctl,
 	.set_termios =		f81232_set_termios,
 	.tiocmget =		f81232_tiocmget,
@@ -1054,7 +1040,7 @@ static struct usb_serial_driver f81534a_device = {
 	.close =		f81232_close,
 	.dtr_rts =		f81232_dtr_rts,
 	.carrier_raised =	f81232_carrier_raised,
-	.get_serial =		f81232_get_serial_info,
+	.get_serial =		f81232_get_serial,
 	.break_ctl =		f81232_break_ctl,
 	.set_termios =		f81232_set_termios,
 	.tiocmget =		f81232_tiocmget,

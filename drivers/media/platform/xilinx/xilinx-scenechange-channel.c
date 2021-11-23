@@ -38,14 +38,14 @@
  */
 
 static int xscd_enum_mbus_code(struct v4l2_subdev *subdev,
-			       struct v4l2_subdev_pad_config *cfg,
+			       struct v4l2_subdev_state *sd_state,
 			       struct v4l2_subdev_mbus_code_enum *code)
 {
 	return 0;
 }
 
 static int xscd_enum_frame_size(struct v4l2_subdev *subdev,
-				struct v4l2_subdev_pad_config *cfg,
+				struct v4l2_subdev_state *sd_state,
 				struct v4l2_subdev_frame_size_enum *fse)
 {
 	return 0;
@@ -53,12 +53,13 @@ static int xscd_enum_frame_size(struct v4l2_subdev *subdev,
 
 static struct v4l2_mbus_framefmt *
 __xscd_get_pad_format(struct xscd_chan *chan,
-		      struct v4l2_subdev_pad_config *cfg,
+		      struct v4l2_subdev_state *sd_state,
 		      unsigned int pad, u32 which)
 {
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		return v4l2_subdev_get_try_format(&chan->subdev, cfg, pad);
+		return v4l2_subdev_get_try_format(&chan->subdev, sd_state,
+						  pad);
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
 		return &chan->format;
 	default:
@@ -68,23 +69,24 @@ __xscd_get_pad_format(struct xscd_chan *chan,
 }
 
 static int xscd_get_format(struct v4l2_subdev *subdev,
-			   struct v4l2_subdev_pad_config *cfg,
+			   struct v4l2_subdev_state *sd_state,
 			   struct v4l2_subdev_format *fmt)
 {
 	struct xscd_chan *chan = to_xscd_chan(subdev);
 
-	fmt->format = *__xscd_get_pad_format(chan, cfg, fmt->pad, fmt->which);
+	fmt->format = *__xscd_get_pad_format(chan, sd_state, fmt->pad,
+					     fmt->which);
 	return 0;
 }
 
 static int xscd_set_format(struct v4l2_subdev *subdev,
-			   struct v4l2_subdev_pad_config *cfg,
+			   struct v4l2_subdev_state *sd_state,
 			   struct v4l2_subdev_format *fmt)
 {
 	struct xscd_chan *chan = to_xscd_chan(subdev);
 	struct v4l2_mbus_framefmt *format;
 
-	format = __xscd_get_pad_format(chan, cfg, fmt->pad, fmt->which);
+	format = __xscd_get_pad_format(chan, sd_state, fmt->pad, fmt->which);
 	format->width = clamp_t(unsigned int, fmt->format.width,
 				XSCD_MIN_WIDTH, XSCD_MAX_WIDTH);
 	format->height = clamp_t(unsigned int, fmt->format.height,

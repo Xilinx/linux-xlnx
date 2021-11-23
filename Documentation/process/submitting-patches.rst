@@ -10,10 +10,11 @@ can greatly increase the chances of your change being accepted.
 
 This document contains a large number of suggestions in a relatively terse
 format.  For detailed information on how the kernel development process
-works, see :doc:`development-process`. Also, read :doc:`submit-checklist`
+works, see Documentation/process/development-process.rst. Also, read
+Documentation/process/submit-checklist.rst
 for a list of items to check before submitting code.  If you are submitting
-a driver, also read :doc:`submitting-drivers`; for device tree binding patches,
-read :doc:`submitting-patches`.
+a driver, also read Documentation/process/submitting-drivers.rst; for device
+tree binding patches, read Documentation/process/submitting-patches.rst.
 
 This documentation assumes that you're using ``git`` to prepare your patches.
 If you're unfamiliar with ``git``, you would be well-advised to learn how to
@@ -178,8 +179,7 @@ Style-check your changes
 ------------------------
 
 Check your patch for basic style violations, details of which can be
-found in
-:ref:`Documentation/process/coding-style.rst <codingstyle>`.
+found in Documentation/process/coding-style.rst.
 Failure to do so simply wastes
 the reviewers time and will get your patch rejected, probably
 without even being read.
@@ -216,11 +216,11 @@ cannot find a maintainer for the subsystem you are working on, Andrew
 Morton (akpm@linux-foundation.org) serves as a maintainer of last resort.
 
 You should also normally choose at least one mailing list to receive a copy
-of your patch set.  linux-kernel@vger.kernel.org functions as a list of
-last resort, but the volume on that list has caused a number of developers
-to tune it out.  Look in the MAINTAINERS file for a subsystem-specific
-list; your patch will probably get more attention there.  Please do not
-spam unrelated lists, though.
+of your patch set.  linux-kernel@vger.kernel.org should be used by default
+for all patches, but the volume on that list has caused a number of
+developers to tune it out.  Look in the MAINTAINERS file for a
+subsystem-specific list; your patch will probably get more attention there.
+Please do not spam unrelated lists, though.
 
 Many kernel-related lists are hosted on vger.kernel.org; you can find a
 list of them at http://vger.kernel.org/vger-lists.html.  There are
@@ -238,7 +238,7 @@ If you have a patch that fixes an exploitable security bug, send that patch
 to security@kernel.org.  For severe bugs, a short embargo may be considered
 to allow distributors to get the patch out to users; in such cases,
 obviously, the patch should not be sent to any public lists. See also
-:doc:`/admin-guide/security-bugs`.
+Documentation/admin-guide/security-bugs.rst.
 
 Patches that fix a severe bug in a released kernel should be directed
 toward the stable maintainers by putting a line like this::
@@ -246,14 +246,8 @@ toward the stable maintainers by putting a line like this::
   Cc: stable@vger.kernel.org
 
 into the sign-off area of your patch (note, NOT an email recipient).  You
-should also read
-:ref:`Documentation/process/stable-kernel-rules.rst <stable_kernel_rules>`
-in addition to this file.
-
-Note, however, that some subsystem maintainers want to come to their own
-conclusions on which patches should go to the stable trees.  The networking
-maintainer, in particular, would rather not see individual developers
-adding lines like the above to their patches.
+should also read Documentation/process/stable-kernel-rules.rst
+in addition to this document.
 
 If changes affect userland-kernel interfaces, please send the MAN-PAGES
 maintainer (as listed in the MAINTAINERS file) a man-pages patch, or at
@@ -310,8 +304,8 @@ decreasing the likelihood of your MIME-attached change being accepted.
 Exception:  If your mailer is mangling patches then someone may ask
 you to re-send them using MIME.
 
-See :doc:`/process/email-clients` for hints about configuring your e-mail
-client so that it sends your patches untouched.
+See Documentation/process/email-clients.rst for hints about configuring
+your e-mail client so that it sends your patches untouched.
 
 Respond to review comments
 --------------------------
@@ -329,7 +323,7 @@ for their time.  Code review is a tiring and time-consuming process, and
 reviewers sometimes get grumpy.  Even in that case, though, respond
 politely and address the problems they have pointed out.
 
-See :doc:`email-clients` for recommendations on email
+See Documentation/process/email-clients.rst for recommendations on email
 clients and mailing list etiquette.
 
 
@@ -345,6 +339,16 @@ receive comments within a week or so; if that does not happen, make sure
 that you have sent your patches to the right place.  Wait for a minimum of
 one week before resubmitting or pinging reviewers - possibly longer during
 busy times like merge windows.
+
+It's also ok to resend the patch or the patch series after a couple of
+weeks with the word "RESEND" added to the subject line::
+
+   [PATCH Vx RESEND] sub/sys: Condensed patch summary
+
+Don't add "RESEND" when you are submitting a modified version of your
+patch or patch series - "RESEND" only applies to resubmission of a
+patch or patch series which have not been modified in any way from the
+previous submission.
 
 
 Include PATCH in the subject
@@ -404,10 +408,18 @@ then you just add a line saying::
 
 using your real name (sorry, no pseudonyms or anonymous contributions.)
 This will be done for you automatically if you use ``git commit -s``.
+Reverts should also include "Signed-off-by". ``git revert -s`` does that
+for you.
 
 Some people also put extra tags at the end.  They'll just be ignored for
 now, but you can do this to mark internal company procedures or just
 point out some special detail about the sign-off.
+
+Any further SoBs (Signed-off-by:'s) following the author's SoB are from
+people handling and transporting the patch, but were not involved in its
+development. SoB chains should reflect the **real** route a patch took
+as it was propagated to the maintainers and ultimately to Linus, with
+the first SoB entry signalling primary authorship of a single author.
 
 
 When to use Acked-by:, Cc:, and Co-developed-by:
@@ -444,7 +456,7 @@ patch.  This tag documents that potentially interested parties
 have been included in the discussion.
 
 Co-developed-by: states that the patch was co-created by multiple developers;
-it is a used to give attribution to co-authors (in addition to the author
+it is used to give attribution to co-authors (in addition to the author
 attributed by the From: tag) when several people work on a single patch.  Since
 Co-developed-by: denotes authorship, every Co-developed-by: must be immediately
 followed by a Signed-off-by: of the associated co-author.  Standard sign-off
@@ -548,6 +560,11 @@ which stable kernel versions should receive your fix. This is the preferred
 method for indicating a bug fixed by the patch. See :ref:`describe_changes`
 for more details.
 
+Note: Attaching a Fixes: tag does not subvert the stable kernel rules
+process nor the requirement to Cc: stable@vger.kernel.org on all stable
+patch candidates. For more information, please read
+Documentation/process/stable-kernel-rules.rst.
+
 .. _the_canonical_patch_format:
 
 The canonical patch format
@@ -617,16 +634,19 @@ not considered part of the summary phrase, but describe how the patch
 should be treated.  Common tags might include a version descriptor if
 the multiple versions of the patch have been sent out in response to
 comments (i.e., "v1, v2, v3"), or "RFC" to indicate a request for
-comments.  If there are four patches in a patch series the individual
-patches may be numbered like this: 1/4, 2/4, 3/4, 4/4.  This assures
-that developers understand the order in which the patches should be
-applied and that they have reviewed or applied all of the patches in
-the patch series.
+comments.
 
-A couple of example Subjects::
+If there are four patches in a patch series the individual patches may
+be numbered like this: 1/4, 2/4, 3/4, 4/4. This assures that developers
+understand the order in which the patches should be applied and that
+they have reviewed or applied all of the patches in the patch series.
+
+Here are some good example Subjects::
 
     Subject: [PATCH 2/5] ext2: improve scalability of bitmap searching
     Subject: [PATCH v2 01/27] x86: fix eflags tracking
+    Subject: [PATCH v2] sub/sys: Condensed patch summary
+    Subject: [PATCH v2 M/N] sub/sys: Condensed patch summary
 
 The ``from`` line must be the very first line in the message body,
 and has the form:
@@ -639,37 +659,77 @@ then the ``From:`` line from the email header will be used to determine
 the patch author in the changelog.
 
 The explanation body will be committed to the permanent source
-changelog, so should make sense to a competent reader who has long
-since forgotten the immediate details of the discussion that might
-have led to this patch.  Including symptoms of the failure which the
-patch addresses (kernel log messages, oops messages, etc.) is
-especially useful for people who might be searching the commit logs
-looking for the applicable patch.  If a patch fixes a compile failure,
-it may not be necessary to include _all_ of the compile failures; just
-enough that it is likely that someone searching for the patch can find
-it.  As in the ``summary phrase``, it is important to be both succinct as
-well as descriptive.
+changelog, so should make sense to a competent reader who has long since
+forgotten the immediate details of the discussion that might have led to
+this patch. Including symptoms of the failure which the patch addresses
+(kernel log messages, oops messages, etc.) are especially useful for
+people who might be searching the commit logs looking for the applicable
+patch. The text should be written in such detail so that when read
+weeks, months or even years later, it can give the reader the needed
+details to grasp the reasoning for **why** the patch was created.
 
-The ``---`` marker line serves the essential purpose of marking for patch
-handling tools where the changelog message ends.
+If a patch fixes a compile failure, it may not be necessary to include
+_all_ of the compile failures; just enough that it is likely that
+someone searching for the patch can find it. As in the ``summary
+phrase``, it is important to be both succinct as well as descriptive.
 
-One good use for the additional comments after the ``---`` marker is for
-a ``diffstat``, to show what files have changed, and the number of
-inserted and deleted lines per file.  A ``diffstat`` is especially useful
-on bigger patches.  Other comments relevant only to the moment or the
-maintainer, not suitable for the permanent changelog, should also go
-here.  A good example of such comments might be ``patch changelogs``
-which describe what has changed between the v1 and v2 version of the
-patch.
+The ``---`` marker line serves the essential purpose of marking for
+patch handling tools where the changelog message ends.
 
-If you are going to include a ``diffstat`` after the ``---`` marker, please
-use ``diffstat`` options ``-p 1 -w 70`` so that filenames are listed from
-the top of the kernel source tree and don't use too much horizontal
-space (easily fit in 80 columns, maybe with some indentation).  (``git``
-generates appropriate diffstats by default.)
+One good use for the additional comments after the ``---`` marker is
+for a ``diffstat``, to show what files have changed, and the number of
+inserted and deleted lines per file. A ``diffstat`` is especially useful
+on bigger patches. If you are going to include a ``diffstat`` after the
+``---`` marker, please use ``diffstat`` options ``-p 1 -w 70`` so that
+filenames are listed from the top of the kernel source tree and don't
+use too much horizontal space (easily fit in 80 columns, maybe with some
+indentation). (``git`` generates appropriate diffstats by default.)
+
+Other comments relevant only to the moment or the maintainer, not
+suitable for the permanent changelog, should also go here. A good
+example of such comments might be ``patch changelogs`` which describe
+what has changed between the v1 and v2 version of the patch.
+
+Please put this information **after** the ``---`` line which separates
+the changelog from the rest of the patch. The version information is
+not part of the changelog which gets committed to the git tree. It is
+additional information for the reviewers. If it's placed above the
+commit tags, it needs manual interaction to remove it. If it is below
+the separator line, it gets automatically stripped off when applying the
+patch::
+
+  <commit message>
+  ...
+  Signed-off-by: Author <author@mail>
+  ---
+  V2 -> V3: Removed redundant helper function
+  V1 -> V2: Cleaned up coding style and addressed review comments
+
+  path/to/file | 5+++--
+  ...
 
 See more details on the proper patch format in the following
 references.
+
+Backtraces in commit mesages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Backtraces help document the call chain leading to a problem. However,
+not all backtraces are helpful. For example, early boot call chains are
+unique and obvious. Copying the full dmesg output verbatim, however,
+adds distracting information like timestamps, module lists, register and
+stack dumps.
+
+Therefore, the most useful backtraces should distill the relevant
+information from the dump, which makes it easier to focus on the real
+issue. Here is an example of a well-trimmed backtrace::
+
+  unchecked MSR access error: WRMSR to 0xd51 (tried to write 0x0000000000000064)
+  at rIP: 0xffffffffae059994 (native_write_msr+0x4/0x20)
+  Call Trace:
+  mba_wrmsr
+  update_domains
+  rdtgroup_mkdir
 
 .. _explicit_in_reply_to:
 
@@ -761,13 +821,12 @@ Greg Kroah-Hartman, "How to piss off a kernel subsystem maintainer".
   <http://www.kroah.com/log/linux/maintainer-06.html>
 
 NO!!!! No more huge patch bombs to linux-kernel@vger.kernel.org people!
-  <https://lkml.org/lkml/2005/7/11/336>
+  <https://lore.kernel.org/r/20050711.125305.08322243.davem@davemloft.net>
 
-Kernel Documentation/process/coding-style.rst:
-  :ref:`Documentation/process/coding-style.rst <codingstyle>`
+Kernel Documentation/process/coding-style.rst
 
 Linus Torvalds's mail on the canonical patch format:
-  <http://lkml.org/lkml/2005/4/7/183>
+  <https://lore.kernel.org/r/Pine.LNX.4.58.0504071023190.28951@ppc970.osdl.org>
 
 Andi Kleen, "On submitting kernel patches"
   Some strategies to get difficult or controversial changes in.

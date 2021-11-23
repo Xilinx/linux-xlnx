@@ -69,7 +69,7 @@ int test__basic_mmap(struct test *test __maybe_unused, int subtest __maybe_unuse
 
 	evlist = evlist__new();
 	if (evlist == NULL) {
-		pr_debug("perf_evlist__new\n");
+		pr_debug("evlist__new\n");
 		goto out_free_cpus;
 	}
 
@@ -126,20 +126,20 @@ int test__basic_mmap(struct test *test __maybe_unused, int subtest __maybe_unuse
 			goto out_delete_evlist;
 		}
 
-		err = perf_evlist__parse_sample(evlist, event, &sample);
+		err = evlist__parse_sample(evlist, event, &sample);
 		if (err) {
 			pr_err("Can't parse sample, err = %d\n", err);
 			goto out_delete_evlist;
 		}
 
 		err = -1;
-		evsel = perf_evlist__id2evsel(evlist, sample.id);
+		evsel = evlist__id2evsel(evlist, sample.id);
 		if (evsel == NULL) {
 			pr_debug("event with id %" PRIu64
 				 " doesn't map to an evsel\n", sample.id);
 			goto out_delete_evlist;
 		}
-		nr_events[evsel->idx]++;
+		nr_events[evsel->core.idx]++;
 		perf_mmap__consume(&md->core);
 	}
 	perf_mmap__read_done(&md->core);
@@ -147,10 +147,10 @@ int test__basic_mmap(struct test *test __maybe_unused, int subtest __maybe_unuse
 out_init:
 	err = 0;
 	evlist__for_each_entry(evlist, evsel) {
-		if (nr_events[evsel->idx] != expected_nr_events[evsel->idx]) {
+		if (nr_events[evsel->core.idx] != expected_nr_events[evsel->core.idx]) {
 			pr_debug("expected %d %s events, got %d\n",
-				 expected_nr_events[evsel->idx],
-				 evsel__name(evsel), nr_events[evsel->idx]);
+				 expected_nr_events[evsel->core.idx],
+				 evsel__name(evsel), nr_events[evsel->core.idx]);
 			err = -1;
 			goto out_delete_evlist;
 		}
@@ -158,8 +158,6 @@ out_init:
 
 out_delete_evlist:
 	evlist__delete(evlist);
-	cpus	= NULL;
-	threads = NULL;
 out_free_cpus:
 	perf_cpu_map__put(cpus);
 out_free_threads:

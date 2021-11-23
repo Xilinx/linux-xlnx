@@ -128,7 +128,7 @@ __tx2_pmu_##_var##_show(struct device *dev,				\
 			       char *page)				\
 {									\
 	BUILD_BUG_ON(sizeof(_format) >= PAGE_SIZE);			\
-	return sprintf(page, _format "\n");				\
+	return sysfs_emit(page, _format "\n");				\
 }									\
 									\
 static struct device_attribute format_attr_##_var =			\
@@ -176,7 +176,7 @@ static ssize_t tx2_pmu_event_show(struct device *dev,
 	struct dev_ext_attribute *eattr;
 
 	eattr = container_of(attr, struct dev_ext_attribute, attr);
-	return sprintf(buf, "event=0x%lx\n", (unsigned long) eattr->var);
+	return sysfs_emit(buf, "event=0x%lx\n", (unsigned long) eattr->var);
 }
 
 #define TX2_EVENT_ATTR(name, config) \
@@ -817,10 +817,8 @@ static struct tx2_uncore_pmu *tx2_uncore_pmu_init_dev(struct device *dev,
 	}
 
 	base = devm_ioremap_resource(dev, &res);
-	if (IS_ERR(base)) {
-		dev_err(dev, "PMU type %d: Fail to map resource\n", type);
+	if (IS_ERR(base))
 		return NULL;
-	}
 
 	tx2_pmu = devm_kzalloc(dev, sizeof(*tx2_pmu), GFP_KERNEL);
 	if (!tx2_pmu)

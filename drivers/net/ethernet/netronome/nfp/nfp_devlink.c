@@ -333,7 +333,7 @@ nfp_devlink_flash_update(struct devlink *devlink,
 			 struct devlink_flash_update_params *params,
 			 struct netlink_ext_ack *extack)
 {
-	return nfp_flash_update_common(devlink_priv(devlink), params->file_name, extack);
+	return nfp_flash_update_common(devlink_priv(devlink), params->fw, extack);
 }
 
 const struct devlink_ops nfp_devlink_ops = {
@@ -364,6 +364,7 @@ int nfp_devlink_port_register(struct nfp_app *app, struct nfp_port *port)
 
 	attrs.split = eth_port.is_split;
 	attrs.splittable = !attrs.split;
+	attrs.lanes = eth_port.port_lanes;
 	attrs.flavour = DEVLINK_PORT_FLAVOUR_PHYSICAL;
 	attrs.phys.port_number = eth_port.label_port;
 	attrs.phys.split_subport_number = eth_port.label_subport;

@@ -15,6 +15,8 @@
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
 #include <linux/err.h>
+#include <linux/ima.h>
+#include <generated/utsrelease.h>
 
 #include "ima.h"
 
@@ -106,6 +108,10 @@ void __init ima_load_x509(void)
 
 	ima_policy_flag &= ~unset_flags;
 	integrity_load_x509(INTEGRITY_KEYRING_IMA, CONFIG_IMA_X509_PATH);
+
+	/* load also EVM key to avoid appraisal */
+	evm_load_x509();
+
 	ima_policy_flag |= unset_flags;
 }
 #endif
@@ -146,6 +152,10 @@ int __init ima_init(void)
 		return rc;
 
 	ima_init_key_queue();
+
+	ima_measure_critical_data("kernel_info", "kernel_version",
+				  UTS_RELEASE, strlen(UTS_RELEASE), false,
+				  NULL, 0);
 
 	return rc;
 }

@@ -527,7 +527,7 @@ static inline struct xcsc_dev *to_csc(struct v4l2_subdev *subdev)
 
 static struct v4l2_mbus_framefmt *
 __xcsc_get_pad_format(struct xcsc_dev *xcsc,
-		      struct v4l2_subdev_pad_config *cfg,
+		      struct v4l2_subdev_state *sd_state,
 		      unsigned int pad, u32 which)
 {
 	struct v4l2_mbus_framefmt *format;
@@ -535,7 +535,7 @@ __xcsc_get_pad_format(struct xcsc_dev *xcsc,
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
 		format = v4l2_subdev_get_try_format(&xcsc->xvip.subdev,
-						    cfg, pad);
+						    sd_state, pad);
 		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
 		format = &xcsc->formats[pad];
@@ -788,13 +788,13 @@ static const struct v4l2_subdev_video_ops xcsc_video_ops = {
 };
 
 static int xcsc_get_format(struct v4l2_subdev *subdev,
-			   struct v4l2_subdev_pad_config *cfg,
+			   struct v4l2_subdev_state *sd_state,
 			   struct v4l2_subdev_format *fmt)
 {
 	struct xcsc_dev *xcsc = to_csc(subdev);
 	struct v4l2_mbus_framefmt *format;
 
-	format = __xcsc_get_pad_format(xcsc, cfg, fmt->pad, fmt->which);
+	format = __xcsc_get_pad_format(xcsc, sd_state, fmt->pad, fmt->which);
 	if (!format)
 		return -EINVAL;
 
@@ -803,19 +803,19 @@ static int xcsc_get_format(struct v4l2_subdev *subdev,
 }
 
 static int xcsc_set_format(struct v4l2_subdev *subdev,
-			   struct v4l2_subdev_pad_config *cfg,
+			   struct v4l2_subdev_state *sd_state,
 			   struct v4l2_subdev_format *fmt)
 {
 	struct xcsc_dev *xcsc = to_csc(subdev);
 	struct v4l2_mbus_framefmt *__format;
 	struct v4l2_mbus_framefmt *__propagate;
 
-	__format = __xcsc_get_pad_format(xcsc, cfg, fmt->pad, fmt->which);
+	__format = __xcsc_get_pad_format(xcsc, sd_state, fmt->pad, fmt->which);
 	if (!__format)
 		return -EINVAL;
 
 	/* Propagate to Source Pad */
-	__propagate = __xcsc_get_pad_format(xcsc, cfg,
+	__propagate = __xcsc_get_pad_format(xcsc, sd_state,
 					    XVIP_PAD_SOURCE, fmt->which);
 	if (!__propagate)
 		return -EINVAL;
@@ -965,10 +965,11 @@ static int xcsc_open(struct v4l2_subdev *subdev,
 	struct v4l2_mbus_framefmt *format;
 
 	/* Initialize with default formats */
-	format = v4l2_subdev_get_try_format(subdev, fh->pad, XVIP_PAD_SINK);
+	format = v4l2_subdev_get_try_format(subdev, fh->state, XVIP_PAD_SINK);
 	*format = xcsc->default_formats[XVIP_PAD_SINK];
 
-	format = v4l2_subdev_get_try_format(subdev, fh->pad, XVIP_PAD_SOURCE);
+	format = v4l2_subdev_get_try_format(subdev, fh->state,
+					    XVIP_PAD_SOURCE);
 	*format = xcsc->default_formats[XVIP_PAD_SOURCE];
 
 	return 0;

@@ -22,6 +22,7 @@
 #include <linux/delay.h>
 #include <linux/workqueue.h>
 
+#include <asm/interrupt.h>
 #include <asm/io.h>
 #include <asm/reg.h>
 #include <asm/nvram.h>
@@ -100,16 +101,13 @@ static void TAUupdate(int cpu)
  * with interrupts disabled
  */
 
-void TAUException(struct pt_regs * regs)
+DEFINE_INTERRUPT_HANDLER_ASYNC(TAUException)
 {
 	int cpu = smp_processor_id();
 
-	irq_enter();
 	tau[cpu].interrupts++;
 
 	TAUupdate(cpu);
-
-	irq_exit();
 }
 #endif /* CONFIG_TAU_INT */
 
@@ -166,7 +164,7 @@ static void tau_work_func(struct work_struct *work)
 	queue_work(tau_workq, work);
 }
 
-DECLARE_WORK(tau_work, tau_work_func);
+static DECLARE_WORK(tau_work, tau_work_func);
 
 /*
  * setup the TAU
@@ -203,7 +201,7 @@ static int __init TAU_init(void)
 	tau_int_enable = IS_ENABLED(CONFIG_TAU_INT) &&
 			 !strcmp(cur_cpu_spec->platform, "ppc750");
 
-	tau_workq = alloc_workqueue("tau", WQ_UNBOUND, 1, 0);
+	tau_workq = alloc_workqueue("tau", WQ_UNBOUND, 1);
 	if (!tau_workq)
 		return -ENOMEM;
 

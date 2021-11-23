@@ -698,14 +698,15 @@ stream_done:
 
 static struct v4l2_mbus_framefmt *
 __xcsi2rxss_get_pad_format(struct xcsi2rxss_state *xcsi2rxss,
-			   struct v4l2_subdev_pad_config *cfg,
+			   struct v4l2_subdev_state *sd_state,
 			   unsigned int pad, u32 which)
 {
 	struct v4l2_mbus_framefmt *get_fmt;
 
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		get_fmt = v4l2_subdev_get_try_format(&xcsi2rxss->subdev, cfg, pad);
+		get_fmt = v4l2_subdev_get_try_format(&xcsi2rxss->subdev,
+						     sd_state, pad);
 		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
 		get_fmt = &xcsi2rxss->format;
@@ -729,7 +730,7 @@ __xcsi2rxss_get_pad_format(struct xcsi2rxss_state *xcsi2rxss,
  * Return: 0 on success
  */
 static int xcsi2rxss_init_cfg(struct v4l2_subdev *sd,
-			      struct v4l2_subdev_pad_config *cfg)
+			      struct v4l2_subdev_state *sd_state)
 {
 	struct xcsi2rxss_state *xcsi2rxss = to_xcsi2rxssstate(sd);
 	struct v4l2_mbus_framefmt *format;
@@ -737,7 +738,7 @@ static int xcsi2rxss_init_cfg(struct v4l2_subdev *sd,
 
 	mutex_lock(&xcsi2rxss->lock);
 	for (i = 0; i < XCSI_MEDIA_PADS; i++) {
-		format = v4l2_subdev_get_try_format(sd, cfg, i);
+		format = v4l2_subdev_get_try_format(sd, sd_state, i);
 		*format = xcsi2rxss->default_format;
 	}
 	mutex_unlock(&xcsi2rxss->lock);
@@ -756,7 +757,7 @@ static int xcsi2rxss_init_cfg(struct v4l2_subdev *sd,
  * Return: 0 on success
  */
 static int xcsi2rxss_get_format(struct v4l2_subdev *sd,
-				struct v4l2_subdev_pad_config *cfg,
+				struct v4l2_subdev_state *sd_state,
 				struct v4l2_subdev_format *fmt)
 {
 	struct xcsi2rxss_state *xcsi2rxss = to_xcsi2rxssstate(sd);
@@ -765,7 +766,7 @@ static int xcsi2rxss_get_format(struct v4l2_subdev *sd,
 
 	mutex_lock(&xcsi2rxss->lock);
 
-	get_fmt = __xcsi2rxss_get_pad_format(xcsi2rxss, cfg, fmt->pad,
+	get_fmt = __xcsi2rxss_get_pad_format(xcsi2rxss, sd_state, fmt->pad,
 					     fmt->which);
 	if (!get_fmt) {
 		ret = -EINVAL;
@@ -794,7 +795,7 @@ unlock_get_format:
  * Return: 0 on success
  */
 static int xcsi2rxss_set_format(struct v4l2_subdev *sd,
-				struct v4l2_subdev_pad_config *cfg,
+				struct v4l2_subdev_state *sd_state,
 				struct v4l2_subdev_format *fmt)
 {
 	struct xcsi2rxss_state *xcsi2rxss = to_xcsi2rxssstate(sd);
@@ -809,7 +810,7 @@ static int xcsi2rxss_set_format(struct v4l2_subdev *sd,
 	 * CSI format cannot be changed at runtime.
 	 * Ensure that format to set is copied to over to CSI pad format
 	 */
-	__format = __xcsi2rxss_get_pad_format(xcsi2rxss, cfg,
+	__format = __xcsi2rxss_get_pad_format(xcsi2rxss, sd_state,
 					      fmt->pad, fmt->which);
 	if (!__format) {
 		ret = -EINVAL;
@@ -852,7 +853,7 @@ unlock_set_format:
  * Return: -EINVAL or zero on success
  */
 static int xcsi2rxss_enum_mbus_code(struct v4l2_subdev *sd,
-				    struct v4l2_subdev_pad_config *cfg,
+				    struct v4l2_subdev_state *sd_state,
 				    struct v4l2_subdev_mbus_code_enum *code)
 {
 	struct xcsi2rxss_state *state = to_xcsi2rxssstate(sd);

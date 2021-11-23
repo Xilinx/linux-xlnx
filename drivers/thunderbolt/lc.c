@@ -158,6 +158,41 @@ void tb_lc_unconfigure_xdomain(struct tb_port *port)
 	tb_lc_set_xdomain_configured(port, false);
 }
 
+/**
+ * tb_lc_start_lane_initialization() - Start lane initialization
+ * @port: Device router lane 0 adapter
+ *
+ * Starts lane initialization for @port after the router resumed from
+ * sleep. Should be called for those downstream lane adapters that were
+ * not connected (tb_lc_configure_port() was not called) before sleep.
+ *
+ * Returns %0 in success and negative errno in case of failure.
+ */
+int tb_lc_start_lane_initialization(struct tb_port *port)
+{
+	struct tb_switch *sw = port->sw;
+	int ret, cap;
+	u32 ctrl;
+
+	if (!tb_route(sw))
+		return 0;
+
+	if (sw->generation < 2)
+		return 0;
+
+	cap = find_port_lc_cap(port);
+	if (cap < 0)
+		return cap;
+
+	ret = tb_sw_read(sw, &ctrl, TB_CFG_SWITCH, cap + TB_LC_SX_CTRL, 1);
+	if (ret)
+		return ret;
+
+	ctrl |= TB_LC_SX_CTRL_SLI;
+
+	return tb_sw_write(sw, &ctrl, TB_CFG_SWITCH, cap + TB_LC_SX_CTRL, 1);
+}
+
 static int tb_lc_set_wake_one(struct tb_switch *sw, unsigned int offset,
 			      unsigned int flags)
 {
@@ -173,8 +208,8 @@ static int tb_lc_set_wake_one(struct tb_switch *sw, unsigned int offset,
 	if (ret)
 		return ret;
 
-	ctrl &= ~(TB_LC_SX_CTRL_WOC | TB_LC_SX_CTRL_WOD | TB_LC_SX_CTRL_WOP |
-		  TB_LC_SX_CTRL_WOU4);
+	ctrl &= ~(TB_LC_SX_CTRL_WOC | TB_LC_SX_CTRL_WOD | TB_LC_SX_CTRL_WODPC |
+		  TB_LC_SX_CTRL_WODPD | TB_LC_SX_CTRL_WOP | TB_LC_SX_CTRL_WOU4);
 
 	if (flags & TB_WAKE_ON_CONNECT)
 		ctrl |= TB_LC_SX_CTRL_WOC | TB_LC_SX_CTRL_WOD;
@@ -182,6 +217,8 @@ static int tb_lc_set_wake_one(struct tb_switch *sw, unsigned int offset,
 		ctrl |= TB_LC_SX_CTRL_WOU4;
 	if (flags & TB_WAKE_ON_PCIE)
 		ctrl |= TB_LC_SX_CTRL_WOP;
+	if (flags & TB_WAKE_ON_DP)
+		ctrl |= TB_LC_SX_CTRL_WODPC | TB_LC_SX_CTRL_WODPD;
 
 	return tb_sw_write(sw, &ctrl, TB_CFG_SWITCH, offset + TB_LC_SX_CTRL, 1);
 }

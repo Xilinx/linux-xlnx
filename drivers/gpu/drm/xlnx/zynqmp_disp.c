@@ -2336,9 +2336,10 @@ static struct drm_plane_funcs zynqmp_disp_plane_funcs = {
 
 static void
 zynqmp_disp_plane_atomic_update(struct drm_plane *plane,
-				struct drm_plane_state *old_state)
+				struct drm_atomic_state *state)
 {
 	int ret;
+	struct drm_plane_state *old_state = drm_atomic_get_old_plane_state(state, plane);
 
 	if (!plane->state->crtc || !plane->state->fb)
 		return;
@@ -2375,22 +2376,23 @@ zynqmp_disp_plane_atomic_update(struct drm_plane *plane,
 
 static void
 zynqmp_disp_plane_atomic_disable(struct drm_plane *plane,
-				 struct drm_plane_state *old_state)
+				 struct drm_atomic_state *state)
 {
 	zynqmp_disp_plane_disable(plane);
 }
 
 static int zynqmp_disp_plane_atomic_async_check(struct drm_plane *plane,
-						struct drm_plane_state *state)
+						struct drm_atomic_state *state)
 {
 	return 0;
 }
 
 static void
 zynqmp_disp_plane_atomic_async_update(struct drm_plane *plane,
-				      struct drm_plane_state *new_state)
+				      struct drm_atomic_state *state)
 {
 	int ret;
+	struct drm_plane_state *new_state = drm_atomic_get_new_plane_state(state, plane);
 
 	if (plane->state->fb == new_state->fb)
 		return;
@@ -2573,7 +2575,7 @@ static int zynqmp_disp_crtc_mode_set(struct drm_crtc *crtc,
 
 static void
 zynqmp_disp_crtc_atomic_enable(struct drm_crtc *crtc,
-			       struct drm_crtc_state *old_crtc_state)
+			       struct drm_atomic_state *state)
 {
 	struct zynqmp_disp *disp = crtc_to_disp(crtc);
 	struct drm_display_mode *adjusted_mode = &crtc->state->adjusted_mode;
@@ -2604,7 +2606,7 @@ zynqmp_disp_crtc_atomic_enable(struct drm_crtc *crtc,
 
 static void
 zynqmp_disp_crtc_atomic_disable(struct drm_crtc *crtc,
-				struct drm_crtc_state *old_crtc_state)
+				struct drm_atomic_state *state)
 {
 	struct zynqmp_disp *disp = crtc_to_disp(crtc);
 
@@ -2617,14 +2619,14 @@ zynqmp_disp_crtc_atomic_disable(struct drm_crtc *crtc,
 }
 
 static int zynqmp_disp_crtc_atomic_check(struct drm_crtc *crtc,
-					 struct drm_crtc_state *state)
+					 struct drm_atomic_state *state)
 {
-	return drm_atomic_add_affected_planes(state->state, crtc);
+	return drm_atomic_add_affected_planes(state, crtc);
 }
 
 static void
 zynqmp_disp_crtc_atomic_begin(struct drm_crtc *crtc,
-			      struct drm_crtc_state *old_crtc_state)
+			      struct drm_atomic_state *state)
 {
 	drm_crtc_vblank_on(crtc);
 	/* Don't rely on vblank when disabling crtc */

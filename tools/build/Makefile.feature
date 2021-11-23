@@ -34,7 +34,6 @@ FEATURE_TESTS_BASIC :=                  \
         dwarf_getlocations              \
         eventfd                         \
         fortify-source                  \
-        sync-compare-and-swap           \
         get_current_dir_name            \
         gettid				\
         glibc                           \
@@ -52,6 +51,7 @@ FEATURE_TESTS_BASIC :=                  \
         libpython-version               \
         libslang                        \
         libslang-include-subdir         \
+        libtraceevent                   \
         libcrypto                       \
         libunwind                       \
         pthread-attr-setaffinity-np     \
@@ -99,7 +99,9 @@ FEATURE_TESTS_EXTRA :=                  \
          clang                          \
          libbpf                         \
          libpfm4                        \
-         libdebuginfod
+         libdebuginfod			\
+         clang-bpf-co-re
+
 
 FEATURE_TESTS ?= $(FEATURE_TESTS_BASIC)
 
@@ -237,17 +239,24 @@ ifeq ($(VF),1)
   feature_verbose := 1
 endif
 
-ifeq ($(feature_display),1)
-  $(info )
-  $(info Auto-detecting system features:)
-  $(foreach feat,$(FEATURE_DISPLAY),$(call feature_print_status,$(feat),))
-  ifneq ($(feature_verbose),1)
+feature_display_entries = $(eval $(feature_display_entries_code))
+define feature_display_entries_code
+  ifeq ($(feature_display),1)
+    $(info )
+    $(info Auto-detecting system features:)
+    $(foreach feat,$(FEATURE_DISPLAY),$(call feature_print_status,$(feat),))
+    ifneq ($(feature_verbose),1)
+      $(info )
+    endif
+  endif
+
+  ifeq ($(feature_verbose),1)
+    TMP := $(filter-out $(FEATURE_DISPLAY),$(FEATURE_TESTS))
+    $(foreach feat,$(TMP),$(call feature_print_status,$(feat),))
     $(info )
   endif
-endif
+endef
 
-ifeq ($(feature_verbose),1)
-  TMP := $(filter-out $(FEATURE_DISPLAY),$(FEATURE_TESTS))
-  $(foreach feat,$(TMP),$(call feature_print_status,$(feat),))
-  $(info )
+ifeq ($(FEATURE_DISPLAY_DEFERRED),)
+  $(call feature_display_entries)
 endif

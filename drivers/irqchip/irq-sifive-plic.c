@@ -77,8 +77,8 @@ struct plic_handler {
 	void __iomem		*enable_base;
 	struct plic_priv	*priv;
 };
-static int plic_parent_irq;
-static bool plic_cpuhp_setup_done;
+static int plic_parent_irq __ro_after_init;
+static bool plic_cpuhp_setup_done __ro_after_init;
 static DEFINE_PER_CPU(struct plic_handler, plic_handlers);
 
 static inline void plic_toggle(struct plic_handler *handler,
@@ -233,13 +233,11 @@ static void plic_handle_irq(struct irq_desc *desc)
 	chained_irq_enter(chip, desc);
 
 	while ((hwirq = readl(claim))) {
-		int irq = irq_find_mapping(handler->priv->irqdomain, hwirq);
-
-		if (unlikely(irq <= 0))
+		int err = generic_handle_domain_irq(handler->priv->irqdomain,
+						    hwirq);
+		if (unlikely(err))
 			pr_warn_ratelimited("can't find mapping for hwirq %lu\n",
 					hwirq);
-		else
-			generic_handle_irq(irq);
 	}
 
 	chained_irq_exit(chip, desc);

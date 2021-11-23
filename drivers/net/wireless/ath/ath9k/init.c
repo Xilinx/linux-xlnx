@@ -37,7 +37,6 @@ static char *dev_info = "ath9k";
 
 MODULE_AUTHOR("Atheros Communications");
 MODULE_DESCRIPTION("Support for Atheros 802.11n wireless LAN cards.");
-MODULE_SUPPORTED_DEVICE("Atheros 802.11n WLAN cards");
 MODULE_LICENSE("Dual BSD/GPL");
 
 static unsigned int ath9k_debug = ATH_DBG_DEFAULT;
@@ -618,7 +617,6 @@ static int ath9k_of_init(struct ath_softc *sc)
 	struct ath_hw *ah = sc->sc_ah;
 	struct ath_common *common = ath9k_hw_common(ah);
 	enum ath_bus_type bus_type = common->bus_ops->ath_bus_type;
-	const char *mac;
 	char eeprom_name[100];
 	int ret;
 
@@ -641,9 +639,7 @@ static int ath9k_of_init(struct ath_softc *sc)
 		ah->ah_flags |= AH_NO_EEP_SWAP;
 	}
 
-	mac = of_get_mac_address(np);
-	if (!IS_ERR(mac))
-		ether_addr_copy(common->macaddr, mac);
+	of_get_mac_address(np, common->macaddr);
 
 	return 0;
 }
@@ -832,12 +828,6 @@ static const struct ieee80211_iface_limit if_limits[] = {
 				 BIT(NL80211_IFTYPE_P2P_GO) },
 };
 
-#ifdef CONFIG_WIRELESS_WDS
-static const struct ieee80211_iface_limit wds_limits[] = {
-	{ .max = 2048,	.types = BIT(NL80211_IFTYPE_WDS) },
-};
-#endif
-
 #ifdef CONFIG_ATH9K_CHANNEL_CONTEXT
 
 static const struct ieee80211_iface_limit if_limits_multi[] = {
@@ -874,15 +864,6 @@ static const struct ieee80211_iface_combination if_comb[] = {
 					BIT(NL80211_CHAN_WIDTH_40),
 #endif
 	},
-#ifdef CONFIG_WIRELESS_WDS
-	{
-		.limits = wds_limits,
-		.n_limits = ARRAY_SIZE(wds_limits),
-		.max_interfaces = 2048,
-		.num_different_channels = 1,
-		.beacon_int_infra_match = true,
-	},
-#endif
 };
 
 #ifdef CONFIG_ATH9K_CHANNEL_CONTEXT
@@ -897,7 +878,6 @@ static void ath9k_set_mcc_capab(struct ath_softc *sc, struct ieee80211_hw *hw)
 	ieee80211_hw_set(hw, QUEUE_CONTROL);
 	hw->queues = ATH9K_NUM_TX_QUEUES;
 	hw->offchannel_tx_hw_queue = hw->queues - 1;
-	hw->wiphy->interface_modes &= ~ BIT(NL80211_IFTYPE_WDS);
 	hw->wiphy->iface_combinations = if_comb_multi;
 	hw->wiphy->n_iface_combinations = ARRAY_SIZE(if_comb_multi);
 	hw->wiphy->max_scan_ssids = 255;
@@ -953,9 +933,6 @@ static void ath9k_set_hw_capab(struct ath_softc *sc, struct ieee80211_hw *hw)
 			BIT(NL80211_IFTYPE_STATION) |
 			BIT(NL80211_IFTYPE_ADHOC) |
 			BIT(NL80211_IFTYPE_MESH_POINT) |
-#ifdef CONFIG_WIRELESS_WDS
-			BIT(NL80211_IFTYPE_WDS) |
-#endif
 			BIT(NL80211_IFTYPE_OCB);
 
 		if (ath9k_is_chanctx_enabled())

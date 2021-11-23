@@ -770,7 +770,6 @@ static void bnx2fc_process_unsol_compl(struct bnx2fc_rport *tgt, u16 wqe)
 			} else
 				printk(KERN_ERR PFX "SRR in progress\n");
 			goto ret_err_rqe;
-			break;
 		default:
 			break;
 		}
@@ -1332,7 +1331,7 @@ static void bnx2fc_init_failure(struct bnx2fc_hba *hba, u32 err_code)
 }
 
 /**
- * bnx2fc_indicae_kcqe - process KCQE
+ * bnx2fc_indicate_kcqe() - process KCQE
  *
  * @context:	adapter structure pointer
  * @kcq:	kcqe pointer

@@ -9,7 +9,7 @@
 #include <linux/completion.h>
 #include <linux/firmware.h>
 #include <crypto/hash.h>
-#include <crypto/sha.h>
+#include <crypto/sha1.h>
 
 #include "s3fwrn5.h"
 #include "firmware.h"
@@ -266,7 +266,7 @@ static int s3fwrn5_fw_complete_update_mode(struct s3fwrn5_fw_info *fw_info)
 }
 
 /*
- * Firmware header stucture:
+ * Firmware header structure:
  *
  * 0x00 - 0x0B : Date and time string (w/o NUL termination)
  * 0x10 - 0x13 : Firmware version
@@ -280,7 +280,7 @@ static int s3fwrn5_fw_complete_update_mode(struct s3fwrn5_fw_info *fw_info)
 
 #define S3FWRN5_FW_IMAGE_HEADER_SIZE 44
 
-static int s3fwrn5_fw_request_firmware(struct s3fwrn5_fw_info *fw_info)
+int s3fwrn5_fw_request_firmware(struct s3fwrn5_fw_info *fw_info)
 {
 	struct s3fwrn5_fw_image *fw = &fw_info->fw;
 	u32 sig_off;
@@ -293,8 +293,10 @@ static int s3fwrn5_fw_request_firmware(struct s3fwrn5_fw_info *fw_info)
 	if (ret < 0)
 		return ret;
 
-	if (fw->fw->size < S3FWRN5_FW_IMAGE_HEADER_SIZE)
+	if (fw->fw->size < S3FWRN5_FW_IMAGE_HEADER_SIZE) {
+		release_firmware(fw->fw);
 		return -EINVAL;
+	}
 
 	memcpy(fw->date, fw->fw->data + 0x00, 12);
 	fw->date[12] = '\0';
@@ -358,15 +360,6 @@ int s3fwrn5_fw_setup(struct s3fwrn5_fw_info *fw_info)
 	struct s3fwrn5_fw_cmd_get_bootinfo_rsp bootinfo;
 	int ret;
 
-	/* Get firmware data */
-
-	ret = s3fwrn5_fw_request_firmware(fw_info);
-	if (ret < 0) {
-		dev_err(&fw_info->ndev->nfc_dev->dev,
-			"Failed to get fw file, ret=%02x\n", ret);
-		return ret;
-	}
-
 	/* Get bootloader info */
 
 	ret = s3fwrn5_fw_get_bootinfo(fw_info, &bootinfo);
@@ -428,10 +421,9 @@ int s3fwrn5_fw_download(struct s3fwrn5_fw_info *fw_info)
 
 	tfm = crypto_alloc_shash("sha1", 0, 0);
 	if (IS_ERR(tfm)) {
-		ret = PTR_ERR(tfm);
 		dev_err(&fw_info->ndev->nfc_dev->dev,
-			"Cannot allocate shash (code=%d)\n", ret);
-		goto out;
+			"Cannot allocate shash (code=%pe)\n", tfm);
+		return PTR_ERR(tfm);
 	}
 
 	ret = crypto_shash_tfm_digest(tfm, fw->image, image_size, hash_data);
@@ -440,7 +432,7 @@ int s3fwrn5_fw_download(struct s3fwrn5_fw_info *fw_info)
 	if (ret) {
 		dev_err(&fw_info->ndev->nfc_dev->dev,
 			"Cannot compute hash (code=%d)\n", ret);
-		goto out;
+		return ret;
 	}
 
 	/* Firmware update process */
@@ -453,7 +445,7 @@ int s3fwrn5_fw_download(struct s3fwrn5_fw_info *fw_info)
 	if (ret < 0) {
 		dev_err(&fw_info->ndev->nfc_dev->dev,
 			"Unable to enter update mode\n");
-		goto out;
+		return ret;
 	}
 
 	for (off = 0; off < image_size; off += fw_info->sector_size) {
@@ -462,7 +454,7 @@ int s3fwrn5_fw_download(struct s3fwrn5_fw_info *fw_info)
 		if (ret < 0) {
 			dev_err(&fw_info->ndev->nfc_dev->dev,
 				"Firmware update error (code=%d)\n", ret);
-			goto out;
+			return ret;
 		}
 	}
 
@@ -470,13 +462,12 @@ int s3fwrn5_fw_download(struct s3fwrn5_fw_info *fw_info)
 	if (ret < 0) {
 		dev_err(&fw_info->ndev->nfc_dev->dev,
 			"Unable to complete update mode\n");
-		goto out;
+		return ret;
 	}
 
 	dev_info(&fw_info->ndev->nfc_dev->dev,
 		"Firmware update: success\n");
 
-out:
 	return ret;
 }
 

@@ -22,6 +22,26 @@
 #include "block-group.h"
 #include "qgroup.h"
 
+/*
+ * Structure name                       Path
+ * --------------------------------------------------------------------------
+ * btrfs_supported_static_feature_attrs /sys/fs/btrfs/features
+ * btrfs_supported_feature_attrs	/sys/fs/btrfs/features and
+ *					/sys/fs/btrfs/<uuid>/features
+ * btrfs_attrs				/sys/fs/btrfs/<uuid>
+ * devid_attrs				/sys/fs/btrfs/<uuid>/devinfo/<devid>
+ * allocation_attrs			/sys/fs/btrfs/<uuid>/allocation
+ * qgroup_attrs				/sys/fs/btrfs/<uuid>/qgroups/<level>_<qgroupid>
+ * space_info_attrs			/sys/fs/btrfs/<uuid>/allocation/<bg-type>
+ * raid_attrs				/sys/fs/btrfs/<uuid>/allocation/<bg-type>/<bg-profile>
+ *
+ * When built with BTRFS_CONFIG_DEBUG:
+ *
+ * btrfs_debug_feature_attrs		/sys/fs/btrfs/debug
+ * btrfs_debug_mount_attrs		/sys/fs/btrfs/<uuid>/debug
+ * discard_debug_attrs			/sys/fs/btrfs/<uuid>/debug/discard
+ */
+
 struct btrfs_feature_attr {
 	struct kobj_attribute kobj_attr;
 	enum btrfs_feature_set feature_set;
@@ -263,7 +283,21 @@ BTRFS_FEAT_ATTR_INCOMPAT(no_holes, NO_HOLES);
 BTRFS_FEAT_ATTR_INCOMPAT(metadata_uuid, METADATA_UUID);
 BTRFS_FEAT_ATTR_COMPAT_RO(free_space_tree, FREE_SPACE_TREE);
 BTRFS_FEAT_ATTR_INCOMPAT(raid1c34, RAID1C34);
+/* Remove once support for zoned allocation is feature complete */
+#ifdef CONFIG_BTRFS_DEBUG
+BTRFS_FEAT_ATTR_INCOMPAT(zoned, ZONED);
+#endif
+#ifdef CONFIG_FS_VERITY
+BTRFS_FEAT_ATTR_COMPAT_RO(verity, VERITY);
+#endif
 
+/*
+ * Features which depend on feature bits and may differ between each fs.
+ *
+ * /sys/fs/btrfs/features      - all available features implemeted by this version
+ * /sys/fs/btrfs/UUID/features - features of the fs which are enabled or
+ *                               can be changed on a mounted filesystem.
+ */
 static struct attribute *btrfs_supported_feature_attrs[] = {
 	BTRFS_FEAT_ATTR_PTR(mixed_backref),
 	BTRFS_FEAT_ATTR_PTR(default_subvol),
@@ -278,16 +312,15 @@ static struct attribute *btrfs_supported_feature_attrs[] = {
 	BTRFS_FEAT_ATTR_PTR(metadata_uuid),
 	BTRFS_FEAT_ATTR_PTR(free_space_tree),
 	BTRFS_FEAT_ATTR_PTR(raid1c34),
+#ifdef CONFIG_BTRFS_DEBUG
+	BTRFS_FEAT_ATTR_PTR(zoned),
+#endif
+#ifdef CONFIG_FS_VERITY
+	BTRFS_FEAT_ATTR_PTR(verity),
+#endif
 	NULL
 };
 
-/*
- * Features which depend on feature bits and may differ between each fs.
- *
- * /sys/fs/btrfs/features lists all available features of this kernel while
- * /sys/fs/btrfs/UUID/features shows features of the fs which are enabled or
- * can be changed online.
- */
 static const struct attribute_group btrfs_feature_attr_group = {
 	.name = "features",
 	.is_visible = btrfs_feature_visible,
@@ -329,19 +362,63 @@ static ssize_t send_stream_version_show(struct kobject *kobj,
 }
 BTRFS_ATTR(static_feature, send_stream_version, send_stream_version_show);
 
-static struct attribute *btrfs_supported_static_feature_attrs[] = {
-	BTRFS_ATTR_PTR(static_feature, rmdir_subvol),
-	BTRFS_ATTR_PTR(static_feature, supported_checksums),
-	BTRFS_ATTR_PTR(static_feature, send_stream_version),
-	NULL
+static const char *rescue_opts[] = {
+	"usebackuproot",
+	"nologreplay",
+	"ignorebadroots",
+	"ignoredatacsums",
+	"all",
 };
+
+static ssize_t supported_rescue_options_show(struct kobject *kobj,
+					     struct kobj_attribute *a,
+					     char *buf)
+{
+	ssize_t ret = 0;
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(rescue_opts); i++)
+		ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%s%s",
+				 (i ? " " : ""), rescue_opts[i]);
+	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "\n");
+	return ret;
+}
+BTRFS_ATTR(static_feature, supported_rescue_options,
+	   supported_rescue_options_show);
+
+static ssize_t supported_sectorsizes_show(struct kobject *kobj,
+					  struct kobj_attribute *a,
+					  char *buf)
+{
+	ssize_t ret = 0;
+
+	/* 4K sector size is also supported with 64K page size */
+	if (PAGE_SIZE == SZ_64K)
+		ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%u ", SZ_4K);
+
+	/* Only sectorsize == PAGE_SIZE is now supported */
+	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%lu\n", PAGE_SIZE);
+
+	return ret;
+}
+BTRFS_ATTR(static_feature, supported_sectorsizes,
+	   supported_sectorsizes_show);
 
 /*
  * Features which only depend on kernel version.
  *
  * These are listed in /sys/fs/btrfs/features along with
- * btrfs_feature_attr_group
+ * btrfs_supported_feature_attrs.
  */
+static struct attribute *btrfs_supported_static_feature_attrs[] = {
+	BTRFS_ATTR_PTR(static_feature, rmdir_subvol),
+	BTRFS_ATTR_PTR(static_feature, supported_checksums),
+	BTRFS_ATTR_PTR(static_feature, send_stream_version),
+	BTRFS_ATTR_PTR(static_feature, supported_rescue_options),
+	BTRFS_ATTR_PTR(static_feature, supported_sectorsizes),
+	NULL
+};
+
 static const struct attribute_group btrfs_static_feature_attr_group = {
 	.name = "features",
 	.attrs = btrfs_supported_static_feature_attrs,
@@ -382,7 +459,7 @@ static ssize_t btrfs_discard_bitmap_bytes_show(struct kobject *kobj,
 {
 	struct btrfs_fs_info *fs_info = discard_to_fs_info(kobj);
 
-	return scnprintf(buf, PAGE_SIZE, "%lld\n",
+	return scnprintf(buf, PAGE_SIZE, "%llu\n",
 			fs_info->discard_ctl.discard_bitmap_bytes);
 }
 BTRFS_ATTR(discard, discard_bitmap_bytes, btrfs_discard_bitmap_bytes_show);
@@ -404,7 +481,7 @@ static ssize_t btrfs_discard_extent_bytes_show(struct kobject *kobj,
 {
 	struct btrfs_fs_info *fs_info = discard_to_fs_info(kobj);
 
-	return scnprintf(buf, PAGE_SIZE, "%lld\n",
+	return scnprintf(buf, PAGE_SIZE, "%llu\n",
 			fs_info->discard_ctl.discard_extent_bytes);
 }
 BTRFS_ATTR(discard, discard_extent_bytes, btrfs_discard_extent_bytes_show);
@@ -433,7 +510,8 @@ static ssize_t btrfs_discard_iops_limit_store(struct kobject *kobj,
 		return -EINVAL;
 
 	WRITE_ONCE(discard_ctl->iops_limit, iops_limit);
-
+	btrfs_discard_calc_delay(discard_ctl);
+	btrfs_discard_schedule_work(discard_ctl, true);
 	return len;
 }
 BTRFS_ATTR_RW(discard, iops_limit, btrfs_discard_iops_limit_show,
@@ -463,7 +541,7 @@ static ssize_t btrfs_discard_kbps_limit_store(struct kobject *kobj,
 		return -EINVAL;
 
 	WRITE_ONCE(discard_ctl->kbps_limit, kbps_limit);
-
+	btrfs_discard_schedule_work(discard_ctl, true);
 	return len;
 }
 BTRFS_ATTR_RW(discard, kbps_limit, btrfs_discard_kbps_limit_show,
@@ -499,6 +577,11 @@ static ssize_t btrfs_discard_max_discard_size_store(struct kobject *kobj,
 BTRFS_ATTR_RW(discard, max_discard_size, btrfs_discard_max_discard_size_show,
 	      btrfs_discard_max_discard_size_store);
 
+/*
+ * Per-filesystem debugging of discard (when mounted with discard=async).
+ *
+ * Path: /sys/fs/btrfs/<uuid>/debug/discard/
+ */
 static const struct attribute *discard_debug_attrs[] = {
 	BTRFS_ATTR_PTR(discard, discardable_bytes),
 	BTRFS_ATTR_PTR(discard, discardable_extents),
@@ -512,15 +595,19 @@ static const struct attribute *discard_debug_attrs[] = {
 };
 
 /*
- * Runtime debugging exported via sysfs
+ * Per-filesystem runtime debugging exported via sysfs.
  *
- * /sys/fs/btrfs/debug - applies to module or all filesystems
- * /sys/fs/btrfs/UUID  - applies only to the given filesystem
+ * Path: /sys/fs/btrfs/UUID/debug/
  */
 static const struct attribute *btrfs_debug_mount_attrs[] = {
 	NULL,
 };
 
+/*
+ * Runtime debugging exported via sysfs, applies to all mounted filesystems.
+ *
+ * Path: /sys/fs/btrfs/debug
+ */
 static struct attribute *btrfs_debug_feature_attrs[] = {
 	NULL
 };
@@ -589,6 +676,11 @@ static ssize_t raid_bytes_show(struct kobject *kobj,
 	return scnprintf(buf, PAGE_SIZE, "%llu\n", val);
 }
 
+/*
+ * Allocation information about block group profiles.
+ *
+ * Path: /sys/fs/btrfs/<uuid>/allocation/<bg-type>/<bg-profile>/
+ */
 static struct attribute *raid_attrs[] = {
 	BTRFS_ATTR_PTR(raid, total_bytes),
 	BTRFS_ATTR_PTR(raid, used_bytes),
@@ -617,15 +709,6 @@ static ssize_t btrfs_space_info_show_##field(struct kobject *kobj,	\
 }									\
 BTRFS_ATTR(space_info, field, btrfs_space_info_show_##field)
 
-static ssize_t btrfs_space_info_show_total_bytes_pinned(struct kobject *kobj,
-						       struct kobj_attribute *a,
-						       char *buf)
-{
-	struct btrfs_space_info *sinfo = to_space_info(kobj);
-	s64 val = percpu_counter_sum(&sinfo->total_bytes_pinned);
-	return scnprintf(buf, PAGE_SIZE, "%lld\n", val);
-}
-
 SPACE_INFO_ATTR(flags);
 SPACE_INFO_ATTR(total_bytes);
 SPACE_INFO_ATTR(bytes_used);
@@ -633,11 +716,15 @@ SPACE_INFO_ATTR(bytes_pinned);
 SPACE_INFO_ATTR(bytes_reserved);
 SPACE_INFO_ATTR(bytes_may_use);
 SPACE_INFO_ATTR(bytes_readonly);
+SPACE_INFO_ATTR(bytes_zone_unusable);
 SPACE_INFO_ATTR(disk_used);
 SPACE_INFO_ATTR(disk_total);
-BTRFS_ATTR(space_info, total_bytes_pinned,
-	   btrfs_space_info_show_total_bytes_pinned);
 
+/*
+ * Allocation information about block group types.
+ *
+ * Path: /sys/fs/btrfs/<uuid>/allocation/<bg-type>/
+ */
 static struct attribute *space_info_attrs[] = {
 	BTRFS_ATTR_PTR(space_info, flags),
 	BTRFS_ATTR_PTR(space_info, total_bytes),
@@ -646,9 +733,9 @@ static struct attribute *space_info_attrs[] = {
 	BTRFS_ATTR_PTR(space_info, bytes_reserved),
 	BTRFS_ATTR_PTR(space_info, bytes_may_use),
 	BTRFS_ATTR_PTR(space_info, bytes_readonly),
+	BTRFS_ATTR_PTR(space_info, bytes_zone_unusable),
 	BTRFS_ATTR_PTR(space_info, disk_used),
 	BTRFS_ATTR_PTR(space_info, disk_total),
-	BTRFS_ATTR_PTR(space_info, total_bytes_pinned),
 	NULL,
 };
 ATTRIBUTE_GROUPS(space_info);
@@ -656,7 +743,6 @@ ATTRIBUTE_GROUPS(space_info);
 static void space_info_release(struct kobject *kobj)
 {
 	struct btrfs_space_info *sinfo = to_space_info(kobj);
-	percpu_counter_destroy(&sinfo->total_bytes_pinned);
 	kfree(sinfo);
 }
 
@@ -666,6 +752,11 @@ static struct kobj_type space_info_ktype = {
 	.default_groups = space_info_groups,
 };
 
+/*
+ * Allocation information about block groups.
+ *
+ * Path: /sys/fs/btrfs/<uuid>/allocation/
+ */
 static const struct attribute *allocation_attrs[] = {
 	BTRFS_ATTR_PTR(allocation, global_rsv_reserved),
 	BTRFS_ATTR_PTR(allocation, global_rsv_size),
@@ -854,6 +945,122 @@ static ssize_t btrfs_exclusive_operation_show(struct kobject *kobj,
 }
 BTRFS_ATTR(, exclusive_operation, btrfs_exclusive_operation_show);
 
+static ssize_t btrfs_generation_show(struct kobject *kobj,
+				     struct kobj_attribute *a, char *buf)
+{
+	struct btrfs_fs_info *fs_info = to_fs_info(kobj);
+
+	return scnprintf(buf, PAGE_SIZE, "%llu\n", fs_info->generation);
+}
+BTRFS_ATTR(, generation, btrfs_generation_show);
+
+/*
+ * Look for an exact string @string in @buffer with possible leading or
+ * trailing whitespace
+ */
+static bool strmatch(const char *buffer, const char *string)
+{
+	const size_t len = strlen(string);
+
+	/* Skip leading whitespace */
+	buffer = skip_spaces(buffer);
+
+	/* Match entire string, check if the rest is whitespace or empty */
+	if (strncmp(string, buffer, len) == 0 &&
+	    strlen(skip_spaces(buffer + len)) == 0)
+		return true;
+
+	return false;
+}
+
+static const char * const btrfs_read_policy_name[] = { "pid" };
+
+static ssize_t btrfs_read_policy_show(struct kobject *kobj,
+				      struct kobj_attribute *a, char *buf)
+{
+	struct btrfs_fs_devices *fs_devices = to_fs_devs(kobj);
+	ssize_t ret = 0;
+	int i;
+
+	for (i = 0; i < BTRFS_NR_READ_POLICY; i++) {
+		if (fs_devices->read_policy == i)
+			ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%s[%s]",
+					 (ret == 0 ? "" : " "),
+					 btrfs_read_policy_name[i]);
+		else
+			ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%s%s",
+					 (ret == 0 ? "" : " "),
+					 btrfs_read_policy_name[i]);
+	}
+
+	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "\n");
+
+	return ret;
+}
+
+static ssize_t btrfs_read_policy_store(struct kobject *kobj,
+				       struct kobj_attribute *a,
+				       const char *buf, size_t len)
+{
+	struct btrfs_fs_devices *fs_devices = to_fs_devs(kobj);
+	int i;
+
+	for (i = 0; i < BTRFS_NR_READ_POLICY; i++) {
+		if (strmatch(buf, btrfs_read_policy_name[i])) {
+			if (i != fs_devices->read_policy) {
+				fs_devices->read_policy = i;
+				btrfs_info(fs_devices->fs_info,
+					   "read policy set to '%s'",
+					   btrfs_read_policy_name[i]);
+			}
+			return len;
+		}
+	}
+
+	return -EINVAL;
+}
+BTRFS_ATTR_RW(, read_policy, btrfs_read_policy_show, btrfs_read_policy_store);
+
+static ssize_t btrfs_bg_reclaim_threshold_show(struct kobject *kobj,
+					       struct kobj_attribute *a,
+					       char *buf)
+{
+	struct btrfs_fs_info *fs_info = to_fs_info(kobj);
+	ssize_t ret;
+
+	ret = scnprintf(buf, PAGE_SIZE, "%d\n",
+			READ_ONCE(fs_info->bg_reclaim_threshold));
+
+	return ret;
+}
+
+static ssize_t btrfs_bg_reclaim_threshold_store(struct kobject *kobj,
+						struct kobj_attribute *a,
+						const char *buf, size_t len)
+{
+	struct btrfs_fs_info *fs_info = to_fs_info(kobj);
+	int thresh;
+	int ret;
+
+	ret = kstrtoint(buf, 10, &thresh);
+	if (ret)
+		return ret;
+
+	if (thresh != 0 && (thresh <= 50 || thresh > 100))
+		return -EINVAL;
+
+	WRITE_ONCE(fs_info->bg_reclaim_threshold, thresh);
+
+	return len;
+}
+BTRFS_ATTR_RW(, bg_reclaim_threshold, btrfs_bg_reclaim_threshold_show,
+	      btrfs_bg_reclaim_threshold_store);
+
+/*
+ * Per-filesystem information and stats.
+ *
+ * Path: /sys/fs/btrfs/<uuid>/
+ */
 static const struct attribute *btrfs_attrs[] = {
 	BTRFS_ATTR_PTR(, label),
 	BTRFS_ATTR_PTR(, nodesize),
@@ -863,6 +1070,9 @@ static const struct attribute *btrfs_attrs[] = {
 	BTRFS_ATTR_PTR(, metadata_uuid),
 	BTRFS_ATTR_PTR(, checksum),
 	BTRFS_ATTR_PTR(, exclusive_operation),
+	BTRFS_ATTR_PTR(, generation),
+	BTRFS_ATTR_PTR(, read_policy),
+	BTRFS_ATTR_PTR(, bg_reclaim_threshold),
 	NULL,
 };
 
@@ -1207,7 +1417,7 @@ static const char *alloc_name(u64 flags)
 	default:
 		WARN_ON(1);
 		return "invalid-combination";
-	};
+	}
 }
 
 /*
@@ -1232,8 +1442,6 @@ int btrfs_sysfs_add_space_info_type(struct btrfs_fs_info *fs_info,
 
 void btrfs_sysfs_remove_device(struct btrfs_device *device)
 {
-	struct hd_struct *disk;
-	struct kobject *disk_kobj;
 	struct kobject *devices_kobj;
 
 	/*
@@ -1243,11 +1451,8 @@ void btrfs_sysfs_remove_device(struct btrfs_device *device)
 	devices_kobj = device->fs_info->fs_devices->devices_kobj;
 	ASSERT(devices_kobj);
 
-	if (device->bdev) {
-		disk = device->bdev->bd_part;
-		disk_kobj = &part_to_dev(disk)->kobj;
-		sysfs_remove_link(devices_kobj, disk_kobj->name);
-	}
+	if (device->bdev)
+		sysfs_remove_link(devices_kobj, bdev_kobj(device->bdev)->name);
 
 	if (device->devid_kobj.state_initialized) {
 		kobject_del(&device->devid_kobj);
@@ -1297,6 +1502,33 @@ static ssize_t btrfs_devinfo_replace_target_show(struct kobject *kobj,
 }
 BTRFS_ATTR(devid, replace_target, btrfs_devinfo_replace_target_show);
 
+static ssize_t btrfs_devinfo_scrub_speed_max_show(struct kobject *kobj,
+					     struct kobj_attribute *a,
+					     char *buf)
+{
+	struct btrfs_device *device = container_of(kobj, struct btrfs_device,
+						   devid_kobj);
+
+	return scnprintf(buf, PAGE_SIZE, "%llu\n",
+			 READ_ONCE(device->scrub_speed_max));
+}
+
+static ssize_t btrfs_devinfo_scrub_speed_max_store(struct kobject *kobj,
+					      struct kobj_attribute *a,
+					      const char *buf, size_t len)
+{
+	struct btrfs_device *device = container_of(kobj, struct btrfs_device,
+						   devid_kobj);
+	char *endptr;
+	unsigned long long limit;
+
+	limit = memparse(buf, &endptr);
+	WRITE_ONCE(device->scrub_speed_max, limit);
+	return len;
+}
+BTRFS_ATTR_RW(devid, scrub_speed_max, btrfs_devinfo_scrub_speed_max_show,
+	      btrfs_devinfo_scrub_speed_max_store);
+
 static ssize_t btrfs_devinfo_writeable_show(struct kobject *kobj,
 					    struct kobj_attribute *a, char *buf)
 {
@@ -1310,10 +1542,45 @@ static ssize_t btrfs_devinfo_writeable_show(struct kobject *kobj,
 }
 BTRFS_ATTR(devid, writeable, btrfs_devinfo_writeable_show);
 
+static ssize_t btrfs_devinfo_error_stats_show(struct kobject *kobj,
+		struct kobj_attribute *a, char *buf)
+{
+	struct btrfs_device *device = container_of(kobj, struct btrfs_device,
+						   devid_kobj);
+
+	if (!device->dev_stats_valid)
+		return scnprintf(buf, PAGE_SIZE, "invalid\n");
+
+	/*
+	 * Print all at once so we get a snapshot of all values from the same
+	 * time. Keep them in sync and in order of definition of
+	 * btrfs_dev_stat_values.
+	 */
+	return scnprintf(buf, PAGE_SIZE,
+		"write_errs %d\n"
+		"read_errs %d\n"
+		"flush_errs %d\n"
+		"corruption_errs %d\n"
+		"generation_errs %d\n",
+		btrfs_dev_stat_read(device, BTRFS_DEV_STAT_WRITE_ERRS),
+		btrfs_dev_stat_read(device, BTRFS_DEV_STAT_READ_ERRS),
+		btrfs_dev_stat_read(device, BTRFS_DEV_STAT_FLUSH_ERRS),
+		btrfs_dev_stat_read(device, BTRFS_DEV_STAT_CORRUPTION_ERRS),
+		btrfs_dev_stat_read(device, BTRFS_DEV_STAT_GENERATION_ERRS));
+}
+BTRFS_ATTR(devid, error_stats, btrfs_devinfo_error_stats_show);
+
+/*
+ * Information about one device.
+ *
+ * Path: /sys/fs/btrfs/<uuid>/devinfo/<devid>/
+ */
 static struct attribute *devid_attrs[] = {
+	BTRFS_ATTR_PTR(devid, error_stats),
 	BTRFS_ATTR_PTR(devid, in_fs_metadata),
 	BTRFS_ATTR_PTR(devid, missing),
 	BTRFS_ATTR_PTR(devid, replace_target),
+	BTRFS_ATTR_PTR(devid, scrub_speed_max),
 	BTRFS_ATTR_PTR(devid, writeable),
 	NULL
 };
@@ -1353,11 +1620,7 @@ int btrfs_sysfs_add_device(struct btrfs_device *device)
 	nofs_flag = memalloc_nofs_save();
 
 	if (device->bdev) {
-		struct hd_struct *disk;
-		struct kobject *disk_kobj;
-
-		disk = device->bdev->bd_part;
-		disk_kobj = &part_to_dev(disk)->kobj;
+		struct kobject *disk_kobj = bdev_kobj(device->bdev);
 
 		ret = sysfs_create_link(devices_kobj, disk_kobj, disk_kobj->name);
 		if (ret) {
@@ -1601,6 +1864,11 @@ QGROUP_RSV_ATTR(data, BTRFS_QGROUP_RSV_DATA);
 QGROUP_RSV_ATTR(meta_pertrans, BTRFS_QGROUP_RSV_META_PERTRANS);
 QGROUP_RSV_ATTR(meta_prealloc, BTRFS_QGROUP_RSV_META_PREALLOC);
 
+/*
+ * Qgroup information.
+ *
+ * Path: /sys/fs/btrfs/<uuid>/qgroups/<level>_<qgroupid>/
+ */
 static struct attribute *qgroup_attrs[] = {
 	BTRFS_ATTR_PTR(qgroup, referenced),
 	BTRFS_ATTR_PTR(qgroup, exclusive),

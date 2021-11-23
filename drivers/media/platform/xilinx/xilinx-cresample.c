@@ -86,7 +86,7 @@ static int xcresample_s_stream(struct v4l2_subdev *subdev, int enable)
 
 static struct v4l2_mbus_framefmt *
 __xcresample_get_pad_format(struct xcresample_device *xcresample,
-			    struct v4l2_subdev_pad_config *cfg,
+			    struct v4l2_subdev_state *sd_state,
 			    unsigned int pad, u32 which)
 {
 	struct v4l2_mbus_framefmt *format;
@@ -94,7 +94,7 @@ __xcresample_get_pad_format(struct xcresample_device *xcresample,
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
 		format = v4l2_subdev_get_try_format(&xcresample->xvip.subdev,
-						    cfg, pad);
+						    sd_state, pad);
 		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
 		format = &xcresample->formats[pad];
@@ -108,13 +108,13 @@ __xcresample_get_pad_format(struct xcresample_device *xcresample,
 }
 
 static int xcresample_get_format(struct v4l2_subdev *subdev,
-				 struct v4l2_subdev_pad_config *cfg,
+				 struct v4l2_subdev_state *sd_state,
 				 struct v4l2_subdev_format *fmt)
 {
 	struct xcresample_device *xcresample = to_cresample(subdev);
 	struct v4l2_mbus_framefmt *format;
 
-	format = __xcresample_get_pad_format(xcresample, cfg, fmt->pad,
+	format = __xcresample_get_pad_format(xcresample, sd_state, fmt->pad,
 					     fmt->which);
 	if (!format)
 		return -EINVAL;
@@ -125,13 +125,13 @@ static int xcresample_get_format(struct v4l2_subdev *subdev,
 }
 
 static int xcresample_set_format(struct v4l2_subdev *subdev,
-				 struct v4l2_subdev_pad_config *cfg,
+				 struct v4l2_subdev_state *sd_state,
 				 struct v4l2_subdev_format *fmt)
 {
 	struct xcresample_device *xcresample = to_cresample(subdev);
 	struct v4l2_mbus_framefmt *format;
 
-	format = __xcresample_get_pad_format(xcresample, cfg, fmt->pad,
+	format = __xcresample_get_pad_format(xcresample, sd_state, fmt->pad,
 					     fmt->which);
 	if (!format)
 		return -EINVAL;
@@ -146,8 +146,8 @@ static int xcresample_set_format(struct v4l2_subdev *subdev,
 	fmt->format = *format;
 
 	/* Propagate the format to the source pad. */
-	format = __xcresample_get_pad_format(xcresample, cfg, XVIP_PAD_SOURCE,
-					     fmt->which);
+	format = __xcresample_get_pad_format(xcresample, sd_state,
+					     XVIP_PAD_SOURCE, fmt->which);
 
 	xvip_set_format_size(format, fmt);
 
@@ -165,10 +165,10 @@ static int xcresample_open(struct v4l2_subdev *subdev,
 	struct v4l2_mbus_framefmt *format;
 
 	/* Initialize with default formats */
-	format = v4l2_subdev_get_try_format(subdev, fh->pad, XVIP_PAD_SINK);
+	format = v4l2_subdev_get_try_format(subdev, fh->state, XVIP_PAD_SINK);
 	*format = xcresample->default_formats[XVIP_PAD_SINK];
 
-	format = v4l2_subdev_get_try_format(subdev, fh->pad, XVIP_PAD_SOURCE);
+	format = v4l2_subdev_get_try_format(subdev, fh->state, XVIP_PAD_SOURCE);
 	*format = xcresample->default_formats[XVIP_PAD_SOURCE];
 
 	return 0;

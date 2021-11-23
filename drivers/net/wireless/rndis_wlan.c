@@ -1036,14 +1036,11 @@ static bool is_associated(struct usbnet *usbdev)
 {
 	struct rndis_wlan_private *priv = get_rndis_wlan_priv(usbdev);
 	u8 bssid[ETH_ALEN];
-	int ret;
 
 	if (!priv->radio_on)
 		return false;
 
-	ret = get_bssid(usbdev, bssid);
-
-	return (ret == 0 && !is_zero_ether_addr(bssid));
+	return (get_bssid(usbdev, bssid) == 0 && !is_zero_ether_addr(bssid));
 }
 
 static int disassociate(struct usbnet *usbdev, bool reset_ssid)
@@ -3379,7 +3376,7 @@ static const struct net_device_ops rndis_wlan_netdev_ops = {
 	.ndo_stop		= usbnet_stop,
 	.ndo_start_xmit		= usbnet_start_xmit,
 	.ndo_tx_timeout		= usbnet_tx_timeout,
-	.ndo_get_stats64	= usbnet_get_stats64,
+	.ndo_get_stats64	= dev_get_tstats64,
 	.ndo_set_mac_address 	= eth_mac_addr,
 	.ndo_validate_addr	= eth_validate_addr,
 	.ndo_set_rx_mode	= rndis_wlan_set_multicast_list,

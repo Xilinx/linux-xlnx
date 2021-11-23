@@ -195,7 +195,6 @@ static void vmw_fb_dirty_flush(struct work_struct *work)
 	if (!cur_fb)
 		goto out_unlock;
 
-	(void) ttm_read_lock(&vmw_priv->reservation_sem, false);
 	(void) ttm_bo_reserve(&vbo->base, false, false, NULL);
 	virtual = vmw_bo_map_and_cache(vbo);
 	if (!virtual)
@@ -254,11 +253,10 @@ static void vmw_fb_dirty_flush(struct work_struct *work)
 
 out_unreserve:
 	ttm_bo_unreserve(&vbo->base);
-	ttm_read_unlock(&vmw_priv->reservation_sem);
 	if (w && h) {
 		WARN_ON_ONCE(par->set_fb->funcs->dirty(cur_fb, NULL, 0, 0,
 						       &clip, 1));
-		vmw_fifo_flush(vmw_priv, false);
+		vmw_cmd_flush(vmw_priv, false);
 	}
 out_unlock:
 	mutex_unlock(&par->bo_mutex);
@@ -396,8 +394,6 @@ static int vmw_fb_create_bo(struct vmw_private *vmw_priv,
 	struct vmw_buffer_object *vmw_bo;
 	int ret;
 
-	(void) ttm_write_lock(&vmw_priv->reservation_sem, false);
-
 	vmw_bo = kmalloc(sizeof(*vmw_bo), GFP_KERNEL);
 	if (!vmw_bo) {
 		ret = -ENOMEM;
@@ -406,18 +402,14 @@ static int vmw_fb_create_bo(struct vmw_private *vmw_priv,
 
 	ret = vmw_bo_init(vmw_priv, vmw_bo, size,
 			      &vmw_sys_placement,
-			      false,
+			      false, false,
 			      &vmw_bo_bo_free);
 	if (unlikely(ret != 0))
 		goto err_unlock; /* init frees the buffer on failure */
 
 	*out = vmw_bo;
-	ttm_write_unlock(&vmw_priv->reservation_sem);
-
-	return 0;
 
 err_unlock:
-	ttm_write_unlock(&vmw_priv->reservation_sem);
 	return ret;
 }
 
@@ -481,7 +473,7 @@ static int vmw_fb_kms_detach(struct vmw_fb_par *par,
 			DRM_ERROR("Could not unset a mode.\n");
 			return ret;
 		}
-		drm_mode_destroy(par->vmw_priv->dev, par->set_mode);
+		drm_mode_destroy(&par->vmw_priv->drm, par->set_mode);
 		par->set_mode = NULL;
 	}
 
@@ -567,7 +559,7 @@ static int vmw_fb_set_par(struct fb_info *info)
 	struct drm_display_mode *mode;
 	int ret;
 
-	mode = drm_mode_duplicate(vmw_priv->dev, &new_mode);
+	mode = drm_mode_duplicate(&vmw_priv->drm, &new_mode);
 	if (!mode) {
 		DRM_ERROR("Could not create new fb mode.\n");
 		return -ENOMEM;
@@ -581,7 +573,7 @@ static int vmw_fb_set_par(struct fb_info *info)
 					mode->hdisplay *
 					DIV_ROUND_UP(var->bits_per_pixel, 8),
 					mode->vdisplay)) {
-		drm_mode_destroy(vmw_priv->dev, mode);
+		drm_mode_destroy(&vmw_priv->drm, mode);
 		return -EINVAL;
 	}
 
@@ -615,7 +607,7 @@ static int vmw_fb_set_par(struct fb_info *info)
 
 out_unlock:
 	if (par->set_mode)
-		drm_mode_destroy(vmw_priv->dev, par->set_mode);
+		drm_mode_destroy(&vmw_priv->drm, par->set_mode);
 	par->set_mode = mode;
 
 	mutex_unlock(&par->bo_mutex);
@@ -638,7 +630,7 @@ static const struct fb_ops vmw_fb_ops = {
 
 int vmw_fb_init(struct vmw_private *vmw_priv)
 {
-	struct device *device = &vmw_priv->dev->pdev->dev;
+	struct device *device = vmw_priv->drm.dev;
 	struct vmw_fb_par *par;
 	struct fb_info *info;
 	unsigned fb_width, fb_height;

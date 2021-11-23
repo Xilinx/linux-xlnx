@@ -124,6 +124,11 @@ static const struct cpg_core_clk r8a77990_core_clks[] __initconst = {
 };
 
 static const struct mssr_mod_clk r8a77990_mod_clks[] __initconst = {
+	DEF_MOD("tmu4",			 121,	R8A77990_CLK_S0D6C),
+	DEF_MOD("tmu3",			 122,	R8A77990_CLK_S3D2C),
+	DEF_MOD("tmu2",			 123,	R8A77990_CLK_S3D2C),
+	DEF_MOD("tmu1",			 124,	R8A77990_CLK_S3D2C),
+	DEF_MOD("tmu0",			 125,	R8A77990_CLK_CP),
 	DEF_MOD("scif5",		 202,	R8A77990_CLK_S3D4C),
 	DEF_MOD("scif4",		 203,	R8A77990_CLK_S3D4C),
 	DEF_MOD("scif3",		 204,	R8A77990_CLK_S3D4C),
@@ -227,6 +232,7 @@ static const struct mssr_mod_clk r8a77990_mod_clks[] __initconst = {
 	DEF_MOD("ssi2",			1013,	MOD_CLK_ID(1005)),
 	DEF_MOD("ssi1",			1014,	MOD_CLK_ID(1005)),
 	DEF_MOD("ssi0",			1015,	MOD_CLK_ID(1005)),
+	DEF_MOD("dab",			1016,	R8A77990_CLK_S3D1),
 	DEF_MOD("scu-all",		1017,	R8A77990_CLK_S3D4),
 	DEF_MOD("scu-dvc1",		1018,	MOD_CLK_ID(1017)),
 	DEF_MOD("scu-dvc0",		1019,	MOD_CLK_ID(1017)),

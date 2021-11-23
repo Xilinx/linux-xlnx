@@ -42,6 +42,8 @@
 };
 
 &gem1 {
+	/delete-property/ #address-cells;
+	/delete-property/ #size-cells;
 	status = "okay";
 	mdio {
 		#address-cells = <1>;

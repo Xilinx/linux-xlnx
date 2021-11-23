@@ -16,6 +16,7 @@
 #include <linux/console.h>
 #include <linux/iommu.h>
 
+#include <drm/drm_aperture.h>
 #include <drm/drm_drv.h>
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_gem_cma_helper.h>
@@ -35,7 +36,7 @@
 #define DRIVER_MINOR	0
 
 static bool is_support_iommu = true;
-static struct drm_driver rockchip_drm_driver;
+static const struct drm_driver rockchip_drm_driver;
 
 /*
  * Attach a (component) device to the shared drm dma mapping from master drm
@@ -114,6 +115,15 @@ static int rockchip_drm_bind(struct device *dev)
 	struct rockchip_drm_private *private;
 	int ret;
 
+	/* Remove existing drivers that may own the framebuffer memory. */
+	ret = drm_aperture_remove_framebuffers(false, &rockchip_drm_driver);
+	if (ret) {
+		DRM_DEV_ERROR(dev,
+			      "Failed to remove existing framebuffers - %d.\n",
+			      ret);
+		return ret;
+	}
+
 	drm_dev = drm_dev_alloc(&rockchip_drm_driver, dev);
 	if (IS_ERR(drm_dev))
 		return PTR_ERR(drm_dev);
@@ -151,12 +161,6 @@ static int rockchip_drm_bind(struct device *dev)
 		goto err_unbind_all;
 
 	drm_mode_config_reset(drm_dev);
-
-	/*
-	 * enable drm irq mode.
-	 * - with irq_enabled = true, we can use the vblank feature.
-	 */
-	drm_dev->irq_enabled = true;
 
 	ret = rockchip_drm_fbdev_init(drm_dev);
 	if (ret)
@@ -209,18 +213,13 @@ static const struct file_operations rockchip_drm_driver_fops = {
 	.release = drm_release,
 };
 
-static struct drm_driver rockchip_drm_driver = {
+static const struct drm_driver rockchip_drm_driver = {
 	.driver_features	= DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC,
 	.lastclose		= drm_fb_helper_lastclose,
-	.gem_vm_ops		= &drm_gem_cma_vm_ops,
-	.gem_free_object_unlocked = rockchip_gem_free_object,
 	.dumb_create		= rockchip_gem_dumb_create,
 	.prime_handle_to_fd	= drm_gem_prime_handle_to_fd,
 	.prime_fd_to_handle	= drm_gem_prime_fd_to_handle,
-	.gem_prime_get_sg_table	= rockchip_gem_prime_get_sg_table,
 	.gem_prime_import_sg_table	= rockchip_gem_prime_import_sg_table,
-	.gem_prime_vmap		= rockchip_gem_prime_vmap,
-	.gem_prime_vunmap	= rockchip_gem_prime_vunmap,
 	.gem_prime_mmap		= rockchip_gem_mmap_buf,
 	.fops			= &rockchip_drm_driver_fops,
 	.name	= DRIVER_NAME,

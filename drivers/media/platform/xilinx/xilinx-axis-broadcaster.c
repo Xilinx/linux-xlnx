@@ -58,12 +58,12 @@ static int xvbr_s_stream(struct v4l2_subdev *subdev, int enable)
 
 static struct v4l2_mbus_framefmt *
 xvbr_get_pad_format(struct xvbroadcaster_device *xvbr,
-		    struct v4l2_subdev_pad_config *cfg,
+		    struct v4l2_subdev_state *sd_state,
 		    unsigned int pad, u32 which)
 {
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		return v4l2_subdev_get_try_format(&xvbr->subdev, cfg, pad);
+		return v4l2_subdev_get_try_format(&xvbr->subdev, sd_state, pad);
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
 		return &xvbr->formats;
 	default:
@@ -72,24 +72,24 @@ xvbr_get_pad_format(struct xvbroadcaster_device *xvbr,
 }
 
 static int xvbr_get_format(struct v4l2_subdev *subdev,
-			   struct v4l2_subdev_pad_config *cfg,
+			   struct v4l2_subdev_state *sd_state,
 			   struct v4l2_subdev_format *fmt)
 {
 	struct xvbroadcaster_device *xvbr = to_xvbr(subdev);
 
-	fmt->format = *xvbr_get_pad_format(xvbr, cfg, fmt->pad, fmt->which);
+	fmt->format = *xvbr_get_pad_format(xvbr, sd_state, fmt->pad, fmt->which);
 
 	return 0;
 }
 
 static int xvbr_set_format(struct v4l2_subdev *subdev,
-			   struct v4l2_subdev_pad_config *cfg,
+			   struct v4l2_subdev_state *sd_state,
 			   struct v4l2_subdev_format *fmt)
 {
 	struct xvbroadcaster_device *xvbr = to_xvbr(subdev);
 	struct v4l2_mbus_framefmt *format;
 
-	format = xvbr_get_pad_format(xvbr, cfg, fmt->pad, fmt->which);
+	format = xvbr_get_pad_format(xvbr, sd_state, fmt->pad, fmt->which);
 
 	*format = fmt->format;
 
@@ -107,7 +107,7 @@ static int xvbr_open(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
 	unsigned int i;
 
 	for (i = 0; i < xvbr->npads; ++i) {
-		format = v4l2_subdev_get_try_format(subdev, fh->pad, i);
+		format = v4l2_subdev_get_try_format(subdev, fh->state, i);
 		*format = xvbr->formats;
 	}
 

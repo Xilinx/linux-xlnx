@@ -110,6 +110,12 @@ background_gc=%s	 Turn on/off cleaning operations, namely garbage
 			 on synchronous garbage collection running in background.
 			 Default value for this option is on. So garbage
 			 collection is on by default.
+gc_merge		 When background_gc is on, this option can be enabled to
+			 let background GC thread to handle foreground GC requests,
+			 it can eliminate the sluggish issue caused by slow foreground
+			 GC operation when GC is triggered from a process with limited
+			 I/O and CPU resources.
+nogc_merge		 Disable GC merge feature.
 disable_roll_forward	 Disable the roll-forward recovery routine
 norecovery		 Disable the roll-forward recovery routine, mounted read-
 			 only (i.e., -o ro,disable_roll_forward)
@@ -179,7 +185,7 @@ fault_type=%d		 Support configuring fault injection type, should be
 			 FAULT_KVMALLOC		  0x000000002
 			 FAULT_PAGE_ALLOC	  0x000000004
 			 FAULT_PAGE_GET		  0x000000008
-			 FAULT_ALLOC_BIO	  0x000000010
+			 FAULT_ALLOC_BIO	  0x000000010 (obsolete)
 			 FAULT_ALLOC_NID	  0x000000020
 			 FAULT_ORPHAN		  0x000000040
 			 FAULT_BLOCK		  0x000000080
@@ -190,6 +196,7 @@ fault_type=%d		 Support configuring fault injection type, should be
 			 FAULT_CHECKPOINT	  0x000001000
 			 FAULT_DISCARD		  0x000002000
 			 FAULT_WRITE_IO		  0x000004000
+			 FAULT_SLAB_ALLOC	  0x000008000
 			 ===================	  ===========
 mode=%s			 Control block allocation mode which supports "adaptive"
 			 and "lfs". In "lfs" mode, there should be no random
@@ -247,8 +254,24 @@ checkpoint=%s[:%u[%]]	 Set to "disable" to turn off checkpointing. Set to "enabl
 			 hide up to all remaining free space. The actual space that
 			 would be unusable can be viewed at /sys/fs/f2fs/<disk>/unusable
 			 This space is reclaimed once checkpoint=enable.
+checkpoint_merge	 When checkpoint is enabled, this can be used to create a kernel
+			 daemon and make it to merge concurrent checkpoint requests as
+			 much as possible to eliminate redundant checkpoint issues. Plus,
+			 we can eliminate the sluggish issue caused by slow checkpoint
+			 operation when the checkpoint is done in a process context in
+			 a cgroup having low i/o budget and cpu shares. To make this
+			 do better, we set the default i/o priority of the kernel daemon
+			 to "3", to give one higher priority than other kernel threads.
+			 This is the same way to give a I/O priority to the jbd2
+			 journaling thread of ext4 filesystem.
+nocheckpoint_merge	 Disable checkpoint merge feature.
 compress_algorithm=%s	 Control compress algorithm, currently f2fs supports "lzo",
 			 "lz4", "zstd" and "lzo-rle" algorithm.
+compress_algorithm=%s:%d Control compress algorithm and its compress level, now, only
+			 "lz4" and "zstd" support compress level config.
+			 algorithm	level range
+			 lz4		3 - 16
+			 zstd		1 - 22
 compress_log_size=%u	 Support configuring compress cluster size, the size will
 			 be 4KB * (1 << %u), 16KB is minimum size, also it's
 			 default size.
@@ -260,6 +283,29 @@ compress_extension=%s	 Support adding specified extension, so that f2fs can enab
 			 For other files, we can still enable compression via ioctl.
 			 Note that, there is one reserved special extension '*', it
 			 can be set to enable compression for all files.
+nocompress_extension=%s	   Support adding specified extension, so that f2fs can disable
+			 compression on those corresponding files, just contrary to compression extension.
+			 If you know exactly which files cannot be compressed, you can use this.
+			 The same extension name can't appear in both compress and nocompress
+			 extension at the same time.
+			 If the compress extension specifies all files, the types specified by the
+			 nocompress extension will be treated as special cases and will not be compressed.
+			 Don't allow use '*' to specifie all file in nocompress extension.
+			 After add nocompress_extension, the priority should be:
+			 dir_flag < comp_extention,nocompress_extension < comp_file_flag,no_comp_file_flag.
+			 See more in compression sections.
+
+compress_chksum		 Support verifying chksum of raw data in compressed cluster.
+compress_mode=%s	 Control file compression mode. This supports "fs" and "user"
+			 modes. In "fs" mode (default), f2fs does automatic compression
+			 on the compression enabled files. In "user" mode, f2fs disables
+			 the automaic compression and gives the user discretion of
+			 choosing the target file and the timing. The user can do manual
+			 compression/decompression on the compression enabled files using
+			 ioctls.
+compress_cache		 Support to use address space of a filesystem managed inode to
+			 cache compressed block, in order to improve cache hit ratio of
+			 random read.
 inlinecrypt		 When possible, encrypt/decrypt the contents of encrypted
 			 files using the blk-crypto framework rather than
 			 filesystem-layer encryption. This allows the use of
@@ -268,6 +314,14 @@ inlinecrypt		 When possible, encrypt/decrypt the contents of encrypted
 			 Documentation/block/inline-encryption.rst.
 atgc			 Enable age-threshold garbage collection, it provides high
 			 effectiveness and efficiency on background GC.
+discard_unit=%s		 Control discard unit, the argument can be "block", "segment"
+			 and "section", issued discard command's offset/size will be
+			 aligned to the unit, by default, "discard_unit=block" is set,
+			 so that small discard functionality is enabled.
+			 For blkzoned device, "discard_unit=section" will be set by
+			 default, it is helpful for large sized SMR or ZNS devices to
+			 reduce memory cost by getting rid of fs metadata supports small
+			 discard.
 ======================== ============================================================
 
 Debugfs Entries
@@ -688,10 +742,10 @@ users.
 ===================== ======================== ===================
 User                  F2FS                     Block
 ===================== ======================== ===================
-                      META                     WRITE_LIFE_NOT_SET
-                      HOT_NODE                 "
-                      WARM_NODE                "
-                      COLD_NODE                "
+N/A                   META                     WRITE_LIFE_NOT_SET
+N/A                   HOT_NODE                 "
+N/A                   WARM_NODE                "
+N/A                   COLD_NODE                "
 ioctl(COLD)           COLD_DATA                WRITE_LIFE_EXTREME
 extension list        "                        "
 
@@ -717,10 +771,10 @@ WRITE_LIFE_LONG       "                        WRITE_LIFE_LONG
 ===================== ======================== ===================
 User                  F2FS                     Block
 ===================== ======================== ===================
-                      META                     WRITE_LIFE_MEDIUM;
-                      HOT_NODE                 WRITE_LIFE_NOT_SET
-                      WARM_NODE                "
-                      COLD_NODE                WRITE_LIFE_NONE
+N/A                   META                     WRITE_LIFE_MEDIUM;
+N/A                   HOT_NODE                 WRITE_LIFE_NOT_SET
+N/A                   WARM_NODE                "
+N/A                   COLD_NODE                WRITE_LIFE_NONE
 ioctl(COLD)           COLD_DATA                WRITE_LIFE_EXTREME
 extension list        "                        "
 
@@ -785,11 +839,39 @@ Compression implementation
   all logical blocks in cluster contain valid data and compress ratio of
   cluster data is lower than specified threshold.
 
-- To enable compression on regular inode, there are three ways:
+- To enable compression on regular inode, there are four ways:
 
   * chattr +c file
   * chattr +c dir; touch dir/file
   * mount w/ -o compress_extension=ext; touch file.ext
+  * mount w/ -o compress_extension=*; touch any_file
+
+- To disable compression on regular inode, there are two ways:
+
+  * chattr -c file
+  * mount w/ -o nocompress_extension=ext; touch file.ext
+
+- Priority in between FS_COMPR_FL, FS_NOCOMP_FS, extensions:
+
+  * compress_extension=so; nocompress_extension=zip; chattr +c dir; touch
+    dir/foo.so; touch dir/bar.zip; touch dir/baz.txt; then foo.so and baz.txt
+    should be compresse, bar.zip should be non-compressed. chattr +c dir/bar.zip
+    can enable compress on bar.zip.
+  * compress_extension=so; nocompress_extension=zip; chattr -c dir; touch
+    dir/foo.so; touch dir/bar.zip; touch dir/baz.txt; then foo.so should be
+    compresse, bar.zip and baz.txt should be non-compressed.
+    chattr+c dir/bar.zip; chattr+c dir/baz.txt; can enable compress on bar.zip
+    and baz.txt.
+
+- At this point, compression feature doesn't expose compressed space to user
+  directly in order to guarantee potential data updates later to the space.
+  Instead, the main goal is to reduce data writes to flash disk as much as
+  possible, resulting in extending disk life time as well as relaxing IO
+  congestion. Alternatively, we've added ioctl(F2FS_IOC_RELEASE_COMPRESS_BLOCKS)
+  interface to reclaim compressed space and show it to user after putting the
+  immutable bit. Immutable bit, after release, it doesn't allow writing/mmaping
+  on the file, until reserving compressed space via
+  ioctl(F2FS_IOC_RESERVE_COMPRESS_BLOCKS) or truncating filesize to zero.
 
 Compress metadata layout::
 
@@ -809,6 +891,34 @@ Compress metadata layout::
 	+-------------+-------------+----------+----------------------------+
 	| data length | data chksum | reserved |      compressed data       |
 	+-------------+-------------+----------+----------------------------+
+
+Compression mode
+--------------------------
+
+f2fs supports "fs" and "user" compression modes with "compression_mode" mount option.
+With this option, f2fs provides a choice to select the way how to compress the
+compression enabled files (refer to "Compression implementation" section for how to
+enable compression on a regular inode).
+
+1) compress_mode=fs
+This is the default option. f2fs does automatic compression in the writeback of the
+compression enabled files.
+
+2) compress_mode=user
+This disables the automatic compression and gives the user discretion of choosing the
+target file and the timing. The user can do manual compression/decompression on the
+compression enabled files using F2FS_IOC_DECOMPRESS_FILE and F2FS_IOC_COMPRESS_FILE
+ioctls like the below.
+
+To decompress a file,
+
+fd = open(filename, O_WRONLY, 0);
+ret = ioctl(fd, F2FS_IOC_DECOMPRESS_FILE);
+
+To compress a file,
+
+fd = open(filename, O_WRONLY, 0);
+ret = ioctl(fd, F2FS_IOC_COMPRESS_FILE);
 
 NVMe Zoned Namespace devices
 ----------------------------

@@ -33,6 +33,8 @@ struct pci_controller *init_phb_dynamic(struct device_node *dn)
 
 	pci_devs_phb_init_dynamic(phb);
 
+	pseries_msi_allocate_domains(phb);
+
 	/* Create EEH devices for the PHB */
 	eeh_phb_pe_create(phb);
 
@@ -50,6 +52,7 @@ EXPORT_SYMBOL_GPL(init_phb_dynamic);
 int remove_phb_dynamic(struct pci_controller *phb)
 {
 	struct pci_bus *b = phb->bus;
+	struct pci_host_bridge *host_bridge = to_pci_host_bridge(b->bridge);
 	struct resource *res;
 	int rc, i;
 
@@ -73,10 +76,13 @@ int remove_phb_dynamic(struct pci_controller *phb)
 		}
 	}
 
+	pseries_msi_free_domains(phb);
+
 	/* Remove the PCI bus and unregister the bridge device from sysfs */
 	phb->bus = NULL;
 	pci_remove_bus(b);
-	device_unregister(b->bridge);
+	host_bridge->bus = NULL;
+	device_unregister(&host_bridge->dev);
 
 	/* Now release the IO resource */
 	if (res->flags & IORESOURCE_IO)

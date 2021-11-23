@@ -37,7 +37,7 @@ TTM initialization
     This section is outdated.
 
 Drivers wishing to support TTM must pass a filled :c:type:`ttm_bo_driver
-<ttm_bo_driver>` structure to ttm_bo_device_init, together with an
+<ttm_bo_driver>` structure to ttm_device_init, together with an
 initialized global reference to the memory manager.  The ttm_bo_driver
 structure contains several fields with function pointers for
 initializing the TTM, allocating and freeing memory, waiting for command
@@ -182,11 +182,11 @@ acquired and release by calling drm_gem_object_get() and drm_gem_object_put()
 respectively.
 
 When the last reference to a GEM object is released the GEM core calls
-the :c:type:`struct drm_driver <drm_driver>` gem_free_object_unlocked
+the :c:type:`struct drm_gem_object_funcs <gem_object_funcs>` free
 operation. That operation is mandatory for GEM-enabled drivers and must
 free the GEM object and all associated resources.
 
-void (\*gem_free_object) (struct drm_gem_object \*obj); Drivers are
+void (\*free) (struct drm_gem_object \*obj); Drivers are
 responsible for freeing all GEM object resources. This includes the
 resources created by the GEM core, which need to be released with
 drm_gem_object_release().
@@ -469,8 +469,8 @@ DRM MM Range Allocator Function References
 .. kernel-doc:: drivers/gpu/drm/drm_mm.c
    :export:
 
-DRM Cache Handling
-==================
+DRM Cache Handling and Fast WC memcpy()
+=======================================
 
 .. kernel-doc:: drivers/gpu/drm/drm_cache.c
    :export:

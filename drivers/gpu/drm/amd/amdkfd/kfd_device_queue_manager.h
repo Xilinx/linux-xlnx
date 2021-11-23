@@ -121,11 +121,6 @@ struct device_queue_manager_ops {
 					   void __user *alternate_aperture_base,
 					   uint64_t alternate_aperture_size);
 
-	int	(*set_trap_handler)(struct device_queue_manager *dqm,
-				    struct qcm_process_device *qpd,
-				    uint64_t tba_addr,
-				    uint64_t tma_addr);
-
 	int (*process_termination)(struct device_queue_manager *dqm,
 			struct qcm_process_device *qpd);
 
@@ -174,7 +169,7 @@ struct device_queue_manager {
 	struct device_queue_manager_asic_ops asic_ops;
 
 	struct mqd_manager	*mqd_mgrs[KFD_MQD_TYPE_MAX];
-	struct packet_manager	packets;
+	struct packet_manager	packet_mgr;
 	struct kfd_dev		*dev;
 	struct mutex		lock_hidden; /* use dqm_lock/unlock(dqm) */
 	struct list_head	queues;
@@ -192,7 +187,7 @@ struct device_queue_manager {
 	uint16_t		vmid_pasid[VMID_NUM];
 	uint64_t		pipelines_addr;
 	uint64_t		fence_gpu_addr;
-	unsigned int		*fence_addr;
+	uint64_t		*fence_addr;
 	struct kfd_mem_obj	*fence_mem;
 	bool			active_runlist;
 	int			sched_policy;
@@ -243,11 +238,11 @@ get_sh_mem_bases_nybble_64(struct kfd_process_device *pdd)
 static inline void dqm_lock(struct device_queue_manager *dqm)
 {
 	mutex_lock(&dqm->lock_hidden);
-	dqm->saved_flags = memalloc_nofs_save();
+	dqm->saved_flags = memalloc_noreclaim_save();
 }
 static inline void dqm_unlock(struct device_queue_manager *dqm)
 {
-	memalloc_nofs_restore(dqm->saved_flags);
+	memalloc_noreclaim_restore(dqm->saved_flags);
 	mutex_unlock(&dqm->lock_hidden);
 }
 

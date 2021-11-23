@@ -521,7 +521,6 @@ static int xwdt_probe(struct platform_device *pdev)
 	} else {
 		pfreq = clk_get_rate(xdev->clk);
 		rc = clk_prepare_enable(xdev->clk);
-
 		if (rc) {
 			dev_err(dev, "unable to enable clock\n");
 			return rc;

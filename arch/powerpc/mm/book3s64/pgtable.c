@@ -6,9 +6,9 @@
 #include <linux/sched.h>
 #include <linux/mm_types.h>
 #include <linux/memblock.h>
+#include <linux/debugfs.h>
 #include <misc/cxl-base.h>
 
-#include <asm/debugfs.h>
 #include <asm/pgalloc.h>
 #include <asm/tlb.h>
 #include <asm/trace.h>
@@ -19,6 +19,8 @@
 
 #include <mm/mmu_decl.h>
 #include <trace/events/thp.h>
+
+#include "internal.h"
 
 unsigned long __pmd_frag_nr;
 EXPORT_SYMBOL(__pmd_frag_nr);
@@ -79,10 +81,15 @@ void set_pmd_at(struct mm_struct *mm, unsigned long addr,
 	return set_pte_at(mm, addr, pmdp_ptep(pmdp), pmd_pte(pmd));
 }
 
-static void do_nothing(void *unused)
+static void do_serialize(void *arg)
 {
-
+	/* We've taken the IPI, so try to trim the mask while here */
+	if (radix_enabled()) {
+		struct mm_struct *mm = arg;
+		exit_lazy_flush_tlb(mm, false);
+	}
 }
+
 /*
  * Serialize against find_current_mm_pte which does lock-less
  * lookup in page tables with local interrupts disabled. For huge pages
@@ -96,7 +103,7 @@ static void do_nothing(void *unused)
 void serialize_against_pte_lookup(struct mm_struct *mm)
 {
 	smp_mb();
-	smp_call_function_many(mm_cpumask(mm), do_nothing, NULL, 1);
+	smp_call_function_many(mm_cpumask(mm), do_serialize, mm, 1);
 }
 
 /*
@@ -136,12 +143,18 @@ static pmd_t pmd_set_protbits(pmd_t pmd, pgprot_t pgprot)
 	return __pmd(pmd_val(pmd) | pgprot_val(pgprot));
 }
 
+/*
+ * At some point we should be able to get rid of
+ * pmd_mkhuge() and mk_huge_pmd() when we update all the
+ * other archs to mark the pmd huge in pfn_pmd()
+ */
 pmd_t pfn_pmd(unsigned long pfn, pgprot_t pgprot)
 {
 	unsigned long pmdv;
 
 	pmdv = (pfn << PAGE_SHIFT) & PTE_RPN_MASK;
-	return pmd_set_protbits(__pmd(pmdv), pgprot);
+
+	return __pmd_mkhuge(pmd_set_protbits(__pmd(pmdv), pgprot));
 }
 
 pmd_t mk_pmd(struct page *page, pgprot_t pgprot)
@@ -159,8 +172,8 @@ pmd_t pmd_modify(pmd_t pmd, pgprot_t newprot)
 }
 #endif /* CONFIG_TRANSPARENT_HUGEPAGE */
 
-/* For use by kexec */
-void mmu_cleanup_all(void)
+/* For use by kexec, called with MMU off */
+notrace void mmu_cleanup_all(void)
 {
 	if (radix_enabled())
 		radix__mmu_cleanup_all();
@@ -507,7 +520,7 @@ static int __init pgtable_debugfs_setup(void)
 	 * invalidated as expected.
 	 */
 	debugfs_create_bool("tlbie_enabled", 0600,
-			powerpc_debugfs_root,
+			arch_debugfs_dir,
 			&tlbie_enabled);
 
 	return 0;

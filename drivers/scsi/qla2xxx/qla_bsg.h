@@ -31,6 +31,11 @@
 #define QL_VND_DPORT_DIAGNOSTICS	0x19
 #define QL_VND_GET_PRIV_STATS_EX	0x1A
 #define QL_VND_SS_GET_FLASH_IMAGE_STATUS	0x1E
+#define QL_VND_EDIF_MGMT                0X1F
+#define QL_VND_MANAGE_HOST_STATS	0x23
+#define QL_VND_GET_HOST_STATS		0x24
+#define QL_VND_GET_TGT_STATS		0x25
+#define QL_VND_MANAGE_HOST_PORT		0x26
 
 /* BSG Vendor specific subcode returns */
 #define EXT_STATUS_OK			0
@@ -40,6 +45,7 @@
 #define EXT_STATUS_DATA_OVERRUN		7
 #define EXT_STATUS_DATA_UNDERRUN	8
 #define EXT_STATUS_MAILBOX		11
+#define EXT_STATUS_BUFFER_TOO_SMALL	16
 #define EXT_STATUS_NO_MEMORY		17
 #define EXT_STATUS_DEVICE_OFFLINE	22
 
@@ -288,5 +294,7 @@ struct qla_active_regions {
 	uint8_t npiv_config_2_3;
 	uint8_t reserved[32];
 } __packed;
+
+#include "qla_edif_bsg.h"
 
 #endif

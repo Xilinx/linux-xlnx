@@ -13,6 +13,7 @@
 #include <linux/kernel.h>
 #include <linux/log2.h>
 #include <linux/platform_device.h>
+#include <linux/ratelimit.h>
 #include <linux/reset.h>
 #include <linux/slab.h>
 #include <linux/videodev2.h>
@@ -293,12 +294,11 @@ static bool coda_bitstream_try_queue(struct coda_ctx *ctx,
 			coda_dbg(1, ctx,
 				 "could not parse header, sequence initialization might fail\n");
 		}
-	}
 
-	/* Add padding before the first buffer, if it is too small */
-	if (ctx->qsequence == 0 && payload < 512 &&
-	    ctx->codec->src_fourcc == V4L2_PIX_FMT_H264)
-		coda_h264_bitstream_pad(ctx, 512 - payload);
+		/* Add padding before the first buffer, if it is too small */
+		if (ctx->codec->src_fourcc == V4L2_PIX_FMT_H264)
+			coda_h264_bitstream_pad(ctx, 512 - payload);
+	}
 
 	ret = coda_bitstream_queue(ctx, vaddr, payload);
 	if (ret < 0) {
@@ -1837,6 +1837,29 @@ static bool coda_reorder_enable(struct coda_ctx *ctx)
 	return profile > V4L2_MPEG_VIDEO_H264_PROFILE_BASELINE;
 }
 
+static void coda_decoder_drop_used_metas(struct coda_ctx *ctx)
+{
+	struct coda_buffer_meta *meta, *tmp;
+
+	/*
+	 * All metas that end at or before the RD pointer (fifo out),
+	 * are now consumed by the VPU and should be released.
+	 */
+	spin_lock(&ctx->buffer_meta_lock);
+	list_for_each_entry_safe(meta, tmp, &ctx->buffer_meta_list, list) {
+		if (ctx->bitstream_fifo.kfifo.out >= meta->end) {
+			coda_dbg(2, ctx, "releasing meta: seq=%d start=%d end=%d\n",
+				 meta->sequence, meta->start, meta->end);
+
+			list_del(&meta->list);
+			ctx->num_metas--;
+			ctx->first_frame_sequence++;
+			kfree(meta);
+		}
+	}
+	spin_unlock(&ctx->buffer_meta_lock);
+}
+
 static int __coda_decoder_seq_init(struct coda_ctx *ctx)
 {
 	struct coda_q_data *q_data_src, *q_data_dst;
@@ -1922,9 +1945,16 @@ static int __coda_decoder_seq_init(struct coda_ctx *ctx)
 	}
 	ctx->sequence_offset = ~0U;
 	ctx->initialized = 1;
+	ctx->first_frame_sequence = 0;
 
 	/* Update kfifo out pointer from coda bitstream read pointer */
 	coda_kfifo_sync_from_device(ctx);
+
+	/*
+	 * After updating the read pointer, we need to check if
+	 * any metas are consumed and should be released.
+	 */
+	coda_decoder_drop_used_metas(ctx);
 
 	if (coda_read(dev, CODA_RET_DEC_SEQ_SUCCESS) == 0) {
 		v4l2_err(&dev->v4l2_dev,
@@ -2005,21 +2035,13 @@ static void coda_dec_seq_init_work(struct work_struct *work)
 	struct coda_ctx *ctx = container_of(work,
 					    struct coda_ctx, seq_init_work);
 	struct coda_dev *dev = ctx->dev;
-	int ret;
 
 	mutex_lock(&ctx->buffer_mutex);
 	mutex_lock(&dev->coda_mutex);
 
-	if (ctx->initialized == 1)
-		goto out;
+	if (!ctx->initialized)
+		__coda_decoder_seq_init(ctx);
 
-	ret = __coda_decoder_seq_init(ctx);
-	if (ret < 0)
-		goto out;
-
-	ctx->initialized = 1;
-
-out:
 	mutex_unlock(&dev->coda_mutex);
 	mutex_unlock(&ctx->buffer_mutex);
 }
@@ -2031,16 +2053,24 @@ static int __coda_start_decoding(struct coda_ctx *ctx)
 	u32 src_fourcc, dst_fourcc;
 	int ret;
 
-	if (!ctx->initialized) {
-		ret = __coda_decoder_seq_init(ctx);
-		if (ret < 0)
-			return ret;
-	}
-
 	q_data_src = get_q_data(ctx, V4L2_BUF_TYPE_VIDEO_OUTPUT);
 	q_data_dst = get_q_data(ctx, V4L2_BUF_TYPE_VIDEO_CAPTURE);
 	src_fourcc = q_data_src->fourcc;
 	dst_fourcc = q_data_dst->fourcc;
+
+	if (!ctx->initialized) {
+		ret = __coda_decoder_seq_init(ctx);
+		if (ret < 0)
+			return ret;
+	} else {
+		ctx->frame_mem_ctrl &= ~(CODA_FRAME_CHROMA_INTERLEAVE | (0x3 << 9) |
+					 CODA9_FRAME_TILED2LINEAR);
+		if (dst_fourcc == V4L2_PIX_FMT_NV12 || dst_fourcc == V4L2_PIX_FMT_YUYV)
+			ctx->frame_mem_ctrl |= CODA_FRAME_CHROMA_INTERLEAVE;
+		if (ctx->tiled_map_type == GDI_TILED_FRAME_MB_RASTER_MAP)
+			ctx->frame_mem_ctrl |= (0x3 << 9) |
+				((ctx->use_vdoa) ? 0 : CODA9_FRAME_TILED2LINEAR);
+	}
 
 	coda_write(dev, ctx->parabuf.paddr, CODA_REG_BIT_PARA_BUF_ADDR);
 
@@ -2348,9 +2378,12 @@ static void coda_finish_decode(struct coda_ctx *ctx)
 	}
 
 	err_mb = coda_read(dev, CODA_RET_DEC_PIC_ERR_MB);
-	if (err_mb > 0)
-		v4l2_err(&dev->v4l2_dev,
-			 "errors in %d macroblocks\n", err_mb);
+	if (err_mb > 0) {
+		if (__ratelimit(&dev->mb_err_rs))
+			coda_dbg(1, ctx, "errors in %d macroblocks\n", err_mb);
+		v4l2_ctrl_s_ctrl(ctx->mb_err_cnt_ctrl,
+				 v4l2_ctrl_g_ctrl(ctx->mb_err_cnt_ctrl) + err_mb);
+	}
 
 	if (dev->devtype->product == CODA_HX4 ||
 	    dev->devtype->product == CODA_7541) {
@@ -2404,12 +2437,16 @@ static void coda_finish_decode(struct coda_ctx *ctx)
 		v4l2_err(&dev->v4l2_dev,
 			 "decoded frame index out of range: %d\n", decoded_idx);
 	} else {
+		int sequence;
+
 		decoded_frame = &ctx->internal_frames[decoded_idx];
 
 		val = coda_read(dev, CODA_RET_DEC_PIC_FRAME_NUM);
 		if (ctx->sequence_offset == -1)
 			ctx->sequence_offset = val;
-		val -= ctx->sequence_offset;
+
+		sequence = val + ctx->first_frame_sequence
+			       - ctx->sequence_offset;
 		spin_lock(&ctx->buffer_meta_lock);
 		if (!list_empty(&ctx->buffer_meta_list)) {
 			meta = list_first_entry(&ctx->buffer_meta_list,
@@ -2424,10 +2461,10 @@ static void coda_finish_decode(struct coda_ctx *ctx)
 			 * should be enough to detect most errors and saves us
 			 * from doing different things based on the format.
 			 */
-			if ((val & 0xffff) != (meta->sequence & 0xffff)) {
+			if ((sequence & 0xffff) != (meta->sequence & 0xffff)) {
 				v4l2_err(&dev->v4l2_dev,
 					 "sequence number mismatch (%d(%d) != %d)\n",
-					 val, ctx->sequence_offset,
+					 sequence, ctx->sequence_offset,
 					 meta->sequence);
 			}
 			decoded_frame->meta = *meta;
@@ -2437,7 +2474,7 @@ static void coda_finish_decode(struct coda_ctx *ctx)
 			v4l2_err(&dev->v4l2_dev, "empty timestamp list!\n");
 			memset(&decoded_frame->meta, 0,
 			       sizeof(struct coda_buffer_meta));
-			decoded_frame->meta.sequence = val;
+			decoded_frame->meta.sequence = sequence;
 			decoded_frame->meta.last = false;
 			ctx->sequence_offset++;
 		}

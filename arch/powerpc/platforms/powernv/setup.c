@@ -157,7 +157,7 @@ static void __init pnv_check_guarded_cores(void)
 	for_each_node_by_type(dn, "cpu") {
 		if (of_property_match_string(dn, "status", "bad") >= 0)
 			bad_count++;
-	};
+	}
 
 	if (bad_count) {
 		printk("  _     _______________\n");
@@ -179,9 +179,6 @@ static void __init pnv_setup_arch(void)
 
 	/* Initialize SMP */
 	pnv_smp_init();
-
-	/* Setup PCI */
-	pnv_pci_init();
 
 	/* Setup RTC and NVRAM callbacks */
 	if (firmware_has_feature(FW_FEATURE_OPAL))
@@ -547,6 +544,7 @@ define_machine(powernv) {
 	.init_IRQ		= pnv_init_IRQ,
 	.show_cpuinfo		= pnv_show_cpuinfo,
 	.get_proc_freq          = pnv_get_proc_freq,
+	.discover_phbs		= pnv_pci_init,
 	.progress		= pnv_progress,
 	.machine_shutdown	= pnv_shutdown,
 	.power_save             = NULL,

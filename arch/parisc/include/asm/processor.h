@@ -45,14 +45,11 @@
 #define STACK_TOP	TASK_SIZE
 #define STACK_TOP_MAX	DEFAULT_TASK_SIZE
 
-/* Allow bigger stacks for 64-bit processes */
-#define STACK_SIZE_MAX	(USER_WIDE_MODE					\
-			 ? (1 << 30)	/* 1 GB */			\
-			 : (CONFIG_MAX_STACK_SIZE_MB*1024*1024))
-
 #endif
 
 #ifndef __ASSEMBLY__
+
+unsigned long calc_max_stack_size(unsigned long stack_max);
 
 /*
  * Data detected about CPUs at boot time which is the same for all CPU's.
@@ -97,17 +94,12 @@ struct cpuinfo_parisc {
 	unsigned long cpu_loc;      /* CPU location from PAT firmware */
 	unsigned int state;
 	struct parisc_device *dev;
-	unsigned long loops_per_jiffy;
 };
 
 extern struct system_cpuinfo_parisc boot_cpu_data;
 DECLARE_PER_CPU(struct cpuinfo_parisc, cpu_data);
 
 #define CPU_HVERSION ((boot_cpu_data.hversion >> 4) & 0x0FFF)
-
-typedef struct {
-	int seg;  
-} mm_segment_t;
 
 #define ARCH_MIN_TASKALIGN	8
 
@@ -276,7 +268,6 @@ on downward growing arches, it looks like this:
 	regs->gr[23] = 0;				\
 } while(0)
 
-struct task_struct;
 struct mm_struct;
 
 /* Free all resources held by a thread. */

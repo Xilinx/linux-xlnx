@@ -3,11 +3,11 @@
  * Copyright (C) 2002 Roman Zippel <zippel@linux-m68k.org>
  */
 
+#include <sys/types.h>
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 #include <regex.h>
-#include <sys/utsname.h>
 
 #include "lkc.h"
 
@@ -35,7 +35,6 @@ static struct symbol symbol_empty = {
 	.flags = SYMBOL_VALID,
 };
 
-struct symbol *sym_defconfig_list;
 struct symbol *modules_sym;
 static tristate modules_val;
 
@@ -473,7 +472,7 @@ void sym_clear_all_valid(void)
 
 	for_all_symbols(i, sym)
 		sym->flags &= ~SYMBOL_VALID;
-	sym_add_change_count(1);
+	conf_set_changed(true);
 	sym_calc_value(modules_sym);
 }
 

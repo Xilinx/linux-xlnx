@@ -3,6 +3,7 @@
  * Copyright 2015-2020 Amazon.com, Inc. or its affiliates. All rights reserved.
  */
 
+#include <linux/ethtool.h>
 #include <linux/pci.h>
 
 #include "ena_netdev.h"
@@ -94,6 +95,7 @@ static const struct ena_stats ena_stats_rx_strings[] = {
 	ENA_STAT_RX_ENTRY(xdp_pass),
 	ENA_STAT_RX_ENTRY(xdp_tx),
 	ENA_STAT_RX_ENTRY(xdp_invalid),
+	ENA_STAT_RX_ENTRY(xdp_redirect),
 };
 
 static const struct ena_stats ena_stats_ena_com_strings[] = {
@@ -231,10 +233,13 @@ int ena_get_sset_count(struct net_device *netdev, int sset)
 {
 	struct ena_adapter *adapter = netdev_priv(netdev);
 
-	if (sset != ETH_SS_STATS)
-		return -EOPNOTSUPP;
+	switch (sset) {
+	case ETH_SS_STATS:
+		return ena_get_sw_stats_count(adapter) +
+		       ena_get_hw_stats_count(adapter);
+	}
 
-	return ena_get_sw_stats_count(adapter) + ena_get_hw_stats_count(adapter);
+	return -EOPNOTSUPP;
 }
 
 static void ena_queue_strings(struct ena_adapter *adapter, u8 **data)
@@ -249,10 +254,10 @@ static void ena_queue_strings(struct ena_adapter *adapter, u8 **data)
 		for (j = 0; j < ENA_STATS_ARRAY_TX; j++) {
 			ena_stats = &ena_stats_tx_strings[j];
 
-			snprintf(*data, ETH_GSTRING_LEN,
-				 "queue_%u_%s_%s", i,
-				 is_xdp ? "xdp_tx" : "tx", ena_stats->name);
-			(*data) += ETH_GSTRING_LEN;
+			ethtool_sprintf(data,
+					"queue_%u_%s_%s", i,
+					is_xdp ? "xdp_tx" : "tx",
+					ena_stats->name);
 		}
 
 		if (!is_xdp) {
@@ -262,9 +267,9 @@ static void ena_queue_strings(struct ena_adapter *adapter, u8 **data)
 			for (j = 0; j < ENA_STATS_ARRAY_RX; j++) {
 				ena_stats = &ena_stats_rx_strings[j];
 
-				snprintf(*data, ETH_GSTRING_LEN,
-					 "queue_%u_rx_%s", i, ena_stats->name);
-				(*data) += ETH_GSTRING_LEN;
+				ethtool_sprintf(data,
+						"queue_%u_rx_%s", i,
+						ena_stats->name);
 			}
 		}
 	}
@@ -278,9 +283,8 @@ static void ena_com_dev_strings(u8 **data)
 	for (i = 0; i < ENA_STATS_ARRAY_ENA_COM; i++) {
 		ena_stats = &ena_stats_ena_com_strings[i];
 
-		snprintf(*data, ETH_GSTRING_LEN,
-			 "ena_admin_q_%s", ena_stats->name);
-		(*data) += ETH_GSTRING_LEN;
+		ethtool_sprintf(data,
+				"ena_admin_q_%s", ena_stats->name);
 	}
 }
 
@@ -293,15 +297,13 @@ static void ena_get_strings(struct ena_adapter *adapter,
 
 	for (i = 0; i < ENA_STATS_ARRAY_GLOBAL; i++) {
 		ena_stats = &ena_stats_global_strings[i];
-		memcpy(data, ena_stats->name, ETH_GSTRING_LEN);
-		data += ETH_GSTRING_LEN;
+		ethtool_sprintf(&data, ena_stats->name);
 	}
 
 	if (eni_stats_needed) {
 		for (i = 0; i < ENA_STATS_ARRAY_ENI(adapter); i++) {
 			ena_stats = &ena_stats_eni_strings[i];
-			memcpy(data, ena_stats->name, ETH_GSTRING_LEN);
-			data += ETH_GSTRING_LEN;
+			ethtool_sprintf(&data, ena_stats->name);
 		}
 	}
 
@@ -315,10 +317,11 @@ static void ena_get_ethtool_strings(struct net_device *netdev,
 {
 	struct ena_adapter *adapter = netdev_priv(netdev);
 
-	if (sset != ETH_SS_STATS)
-		return;
-
-	ena_get_strings(adapter, data, adapter->eni_stats_supported);
+	switch (sset) {
+	case ETH_SS_STATS:
+		ena_get_strings(adapter, data, adapter->eni_stats_supported);
+		break;
+	}
 }
 
 static int ena_get_link_ksettings(struct net_device *netdev,
@@ -354,7 +357,9 @@ static int ena_get_link_ksettings(struct net_device *netdev,
 }
 
 static int ena_get_coalesce(struct net_device *net_dev,
-			    struct ethtool_coalesce *coalesce)
+			    struct ethtool_coalesce *coalesce,
+			    struct kernel_ethtool_coalesce *kernel_coal,
+			    struct netlink_ext_ack *extack)
 {
 	struct ena_adapter *adapter = netdev_priv(net_dev);
 	struct ena_com_dev *ena_dev = adapter->ena_dev;
@@ -399,7 +404,9 @@ static void ena_update_rx_rings_nonadaptive_intr_moderation(struct ena_adapter *
 }
 
 static int ena_set_coalesce(struct net_device *net_dev,
-			    struct ethtool_coalesce *coalesce)
+			    struct ethtool_coalesce *coalesce,
+			    struct kernel_ethtool_coalesce *kernel_coal,
+			    struct netlink_ext_ack *extack)
 {
 	struct ena_adapter *adapter = netdev_priv(net_dev);
 	struct ena_com_dev *ena_dev = adapter->ena_dev;
@@ -838,7 +845,7 @@ static int ena_set_channels(struct net_device *netdev,
 	/* The check for max value is already done in ethtool */
 	if (count < ENA_MIN_NUM_IO_QUEUES ||
 	    (ena_xdp_present(adapter) &&
-	    !ena_xdp_legal_queue_count(adapter, channels->combined_count)))
+	    !ena_xdp_legal_queue_count(adapter, count)))
 		return -EINVAL;
 
 	return ena_update_queue_count(adapter, count);

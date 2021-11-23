@@ -55,9 +55,13 @@ u8 rtw_phy_pwrtrack_get_delta(struct rtw_dev *rtwdev, u8 path);
 s8 rtw_phy_pwrtrack_get_pwridx(struct rtw_dev *rtwdev,
 			       struct rtw_swing_table *swing_table,
 			       u8 tbl_path, u8 therm_path, u8 delta);
+bool rtw_phy_pwrtrack_need_lck(struct rtw_dev *rtwdev);
 bool rtw_phy_pwrtrack_need_iqk(struct rtw_dev *rtwdev);
 void rtw_phy_config_swing_table(struct rtw_dev *rtwdev,
 				struct rtw_swing_table *swing_table);
+void rtw_phy_parsing_cfo(struct rtw_dev *rtwdev,
+			 struct rtw_rx_pkt_stat *pkt_stat);
+void rtw_phy_tx_path_diversity(struct rtw_dev *rtwdev);
 
 struct rtw_txpwr_lmt_cfg_pair {
 	u8 regd;
@@ -184,5 +188,8 @@ enum rtw_phy_cck_pd_lv {
 #define LSSI_READ_ADDR_MASK	0x7f800000
 #define LSSI_READ_EDGE_MASK	0x80000000
 #define LSSI_READ_DATA_MASK	0xfffff
+
+#define RRSR_RATE_ORDER_MAX	0xfffff
+#define RRSR_RATE_ORDER_CCK_LEN	4
 
 #endif

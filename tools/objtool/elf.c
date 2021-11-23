@@ -9,16 +9,17 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
-#include "builtin.h"
+#include <objtool/builtin.h>
 
-#include "elf.h"
-#include "warn.h"
+#include <objtool/elf.h>
+#include <objtool/warn.h>
 
 #define MAX_NAME_LEN 128
 
@@ -27,91 +28,46 @@ static inline u32 str_hash(const char *str)
 	return jhash(str, strlen(str), 0);
 }
 
-static inline int elf_hash_bits(void)
-{
-	return vmlinux ? ELF_HASH_BITS : 16;
-}
+#define __elf_table(name)	(elf->name##_hash)
+#define __elf_bits(name)	(elf->name##_bits)
 
-#define elf_hash_add(hashtable, node, key) \
-	hlist_add_head(node, &hashtable[hash_min(key, elf_hash_bits())])
+#define elf_hash_add(name, node, key) \
+	hlist_add_head(node, &__elf_table(name)[hash_min(key, __elf_bits(name))])
 
-static void elf_hash_init(struct hlist_head *table)
-{
-	__hash_init(table, 1U << elf_hash_bits());
-}
+#define elf_hash_for_each_possible(name, obj, member, key) \
+	hlist_for_each_entry(obj, &__elf_table(name)[hash_min(key, __elf_bits(name))], member)
 
-#define elf_hash_for_each_possible(name, obj, member, key)			\
-	hlist_for_each_entry(obj, &name[hash_min(key, elf_hash_bits())], member)
+#define elf_alloc_hash(name, size) \
+({ \
+	__elf_bits(name) = max(10, ilog2(size)); \
+	__elf_table(name) = mmap(NULL, sizeof(struct hlist_head) << __elf_bits(name), \
+				 PROT_READ|PROT_WRITE, \
+				 MAP_PRIVATE|MAP_ANON, -1, 0); \
+	if (__elf_table(name) == (void *)-1L) { \
+		WARN("mmap fail " #name); \
+		__elf_table(name) = NULL; \
+	} \
+	__elf_table(name); \
+})
 
-static void rb_add(struct rb_root *tree, struct rb_node *node,
-		   int (*cmp)(struct rb_node *, const struct rb_node *))
-{
-	struct rb_node **link = &tree->rb_node;
-	struct rb_node *parent = NULL;
-
-	while (*link) {
-		parent = *link;
-		if (cmp(node, parent) < 0)
-			link = &parent->rb_left;
-		else
-			link = &parent->rb_right;
-	}
-
-	rb_link_node(node, parent, link);
-	rb_insert_color(node, tree);
-}
-
-static struct rb_node *rb_find_first(const struct rb_root *tree, const void *key,
-			       int (*cmp)(const void *key, const struct rb_node *))
-{
-	struct rb_node *node = tree->rb_node;
-	struct rb_node *match = NULL;
-
-	while (node) {
-		int c = cmp(key, node);
-		if (c <= 0) {
-			if (!c)
-				match = node;
-			node = node->rb_left;
-		} else if (c > 0) {
-			node = node->rb_right;
-		}
-	}
-
-	return match;
-}
-
-static struct rb_node *rb_next_match(struct rb_node *node, const void *key,
-				    int (*cmp)(const void *key, const struct rb_node *))
-{
-	node = rb_next(node);
-	if (node && cmp(key, node))
-		node = NULL;
-	return node;
-}
-
-#define rb_for_each(tree, node, key, cmp) \
-	for ((node) = rb_find_first((tree), (key), (cmp)); \
-	     (node); (node) = rb_next_match((node), (key), (cmp)))
-
-static int symbol_to_offset(struct rb_node *a, const struct rb_node *b)
+static bool symbol_to_offset(struct rb_node *a, const struct rb_node *b)
 {
 	struct symbol *sa = rb_entry(a, struct symbol, node);
 	struct symbol *sb = rb_entry(b, struct symbol, node);
 
 	if (sa->offset < sb->offset)
-		return -1;
+		return true;
 	if (sa->offset > sb->offset)
-		return 1;
+		return false;
 
 	if (sa->len < sb->len)
-		return -1;
+		return true;
 	if (sa->len > sb->len)
-		return 1;
+		return false;
 
 	sa->alias = sb;
 
-	return 0;
+	return false;
 }
 
 static int symbol_by_offset(const void *key, const struct rb_node *node)
@@ -131,9 +87,10 @@ struct section *find_section_by_name(const struct elf *elf, const char *name)
 {
 	struct section *sec;
 
-	elf_hash_for_each_possible(elf->section_name_hash, sec, name_hash, str_hash(name))
+	elf_hash_for_each_possible(section_name, sec, name_hash, str_hash(name)) {
 		if (!strcmp(sec->name, name))
 			return sec;
+	}
 
 	return NULL;
 }
@@ -143,9 +100,10 @@ static struct section *find_section_by_index(struct elf *elf,
 {
 	struct section *sec;
 
-	elf_hash_for_each_possible(elf->section_hash, sec, hash, idx)
+	elf_hash_for_each_possible(section, sec, hash, idx) {
 		if (sec->idx == idx)
 			return sec;
+	}
 
 	return NULL;
 }
@@ -154,9 +112,10 @@ static struct symbol *find_symbol_by_index(struct elf *elf, unsigned int idx)
 {
 	struct symbol *sym;
 
-	elf_hash_for_each_possible(elf->symbol_hash, sym, hash, idx)
+	elf_hash_for_each_possible(symbol, sym, hash, idx) {
 		if (sym->idx == idx)
 			return sym;
+	}
 
 	return NULL;
 }
@@ -165,7 +124,7 @@ struct symbol *find_symbol_by_offset(struct section *sec, unsigned long offset)
 {
 	struct rb_node *node;
 
-	rb_for_each(&sec->symbol_tree, node, &offset, symbol_by_offset) {
+	rb_for_each(node, &offset, &sec->symbol_tree, symbol_by_offset) {
 		struct symbol *s = rb_entry(node, struct symbol, node);
 
 		if (s->offset == offset && s->type != STT_SECTION)
@@ -179,7 +138,7 @@ struct symbol *find_func_by_offset(struct section *sec, unsigned long offset)
 {
 	struct rb_node *node;
 
-	rb_for_each(&sec->symbol_tree, node, &offset, symbol_by_offset) {
+	rb_for_each(node, &offset, &sec->symbol_tree, symbol_by_offset) {
 		struct symbol *s = rb_entry(node, struct symbol, node);
 
 		if (s->offset == offset && s->type == STT_FUNC)
@@ -193,7 +152,7 @@ struct symbol *find_symbol_containing(const struct section *sec, unsigned long o
 {
 	struct rb_node *node;
 
-	rb_for_each(&sec->symbol_tree, node, &offset, symbol_by_offset) {
+	rb_for_each(node, &offset, &sec->symbol_tree, symbol_by_offset) {
 		struct symbol *s = rb_entry(node, struct symbol, node);
 
 		if (s->type != STT_SECTION)
@@ -207,7 +166,7 @@ struct symbol *find_func_containing(struct section *sec, unsigned long offset)
 {
 	struct rb_node *node;
 
-	rb_for_each(&sec->symbol_tree, node, &offset, symbol_by_offset) {
+	rb_for_each(node, &offset, &sec->symbol_tree, symbol_by_offset) {
 		struct symbol *s = rb_entry(node, struct symbol, node);
 
 		if (s->type == STT_FUNC)
@@ -221,9 +180,10 @@ struct symbol *find_symbol_by_name(const struct elf *elf, const char *name)
 {
 	struct symbol *sym;
 
-	elf_hash_for_each_possible(elf->symbol_name_hash, sym, name_hash, str_hash(name))
+	elf_hash_for_each_possible(symbol_name, sym, name_hash, str_hash(name)) {
 		if (!strcmp(sym->name, name))
 			return sym;
+	}
 
 	return NULL;
 }
@@ -240,8 +200,8 @@ struct reloc *find_reloc_by_dest_range(const struct elf *elf, struct section *se
 	sec = sec->reloc;
 
 	for_offset_range(o, offset, offset + len) {
-		elf_hash_for_each_possible(elf->reloc_hash, reloc, hash,
-				       sec_offset_hash(sec, o)) {
+		elf_hash_for_each_possible(reloc, reloc, hash,
+					   sec_offset_hash(sec, o)) {
 			if (reloc->sec != sec)
 				continue;
 
@@ -278,6 +238,10 @@ static int read_sections(struct elf *elf)
 		WARN_ELF("elf_getshdrstrndx");
 		return -1;
 	}
+
+	if (!elf_alloc_hash(section, sections_nr) ||
+	    !elf_alloc_hash(section_name, sections_nr))
+		return -1;
 
 	for (i = 0; i < sections_nr; i++) {
 		sec = malloc(sizeof(*sec));
@@ -322,15 +286,19 @@ static int read_sections(struct elf *elf)
 				return -1;
 			}
 		}
-		sec->len = sec->sh.sh_size;
+
+		if (sec->sh.sh_flags & SHF_EXECINSTR)
+			elf->text_size += sec->sh.sh_size;
 
 		list_add_tail(&sec->list, &elf->sections);
-		elf_hash_add(elf->section_hash, &sec->hash, sec->idx);
-		elf_hash_add(elf->section_name_hash, &sec->name_hash, str_hash(sec->name));
+		elf_hash_add(section, &sec->hash, sec->idx);
+		elf_hash_add(section_name, &sec->name_hash, str_hash(sec->name));
 	}
 
-	if (stats)
+	if (stats) {
 		printf("nr_sections: %lu\n", (unsigned long)sections_nr);
+		printf("section_bits: %d\n", elf->section_bits);
+	}
 
 	/* sanity check, one more call to elf_nextscn() should return NULL */
 	if (elf_nextscn(elf->elf, s)) {
@@ -341,28 +309,64 @@ static int read_sections(struct elf *elf)
 	return 0;
 }
 
+static void elf_add_symbol(struct elf *elf, struct symbol *sym)
+{
+	struct list_head *entry;
+	struct rb_node *pnode;
+
+	sym->type = GELF_ST_TYPE(sym->sym.st_info);
+	sym->bind = GELF_ST_BIND(sym->sym.st_info);
+
+	sym->offset = sym->sym.st_value;
+	sym->len = sym->sym.st_size;
+
+	rb_add(&sym->node, &sym->sec->symbol_tree, symbol_to_offset);
+	pnode = rb_prev(&sym->node);
+	if (pnode)
+		entry = &rb_entry(pnode, struct symbol, node)->list;
+	else
+		entry = &sym->sec->symbol_list;
+	list_add(&sym->list, entry);
+	elf_hash_add(symbol, &sym->hash, sym->idx);
+	elf_hash_add(symbol_name, &sym->name_hash, str_hash(sym->name));
+
+	/*
+	 * Don't store empty STT_NOTYPE symbols in the rbtree.  They
+	 * can exist within a function, confusing the sorting.
+	 */
+	if (!sym->len)
+		rb_erase(&sym->node, &sym->sec->symbol_tree);
+}
+
 static int read_symbols(struct elf *elf)
 {
 	struct section *symtab, *symtab_shndx, *sec;
 	struct symbol *sym, *pfunc;
-	struct list_head *entry;
-	struct rb_node *pnode;
 	int symbols_nr, i;
 	char *coldstr;
 	Elf_Data *shndx_data = NULL;
 	Elf32_Word shndx;
 
 	symtab = find_section_by_name(elf, ".symtab");
-	if (!symtab) {
-		WARN("missing symbol table");
-		return -1;
+	if (symtab) {
+		symtab_shndx = find_section_by_name(elf, ".symtab_shndx");
+		if (symtab_shndx)
+			shndx_data = symtab_shndx->data;
+
+		symbols_nr = symtab->sh.sh_size / symtab->sh.sh_entsize;
+	} else {
+		/*
+		 * A missing symbol table is actually possible if it's an empty
+		 * .o file. This can happen for thunk_64.o. Make sure to at
+		 * least allocate the symbol hash tables so we can do symbol
+		 * lookups without crashing.
+		 */
+		symbols_nr = 0;
 	}
 
-	symtab_shndx = find_section_by_name(elf, ".symtab_shndx");
-	if (symtab_shndx)
-		shndx_data = symtab_shndx->data;
-
-	symbols_nr = symtab->sh.sh_size / symtab->sh.sh_entsize;
+	if (!elf_alloc_hash(symbol, symbols_nr) ||
+	    !elf_alloc_hash(symbol_name, symbols_nr))
+		return -1;
 
 	for (i = 0; i < symbols_nr; i++) {
 		sym = malloc(sizeof(*sym));
@@ -388,9 +392,6 @@ static int read_symbols(struct elf *elf)
 			goto err;
 		}
 
-		sym->type = GELF_ST_TYPE(sym->sym.st_info);
-		sym->bind = GELF_ST_BIND(sym->sym.st_info);
-
 		if ((sym->sym.st_shndx > SHN_UNDEF &&
 		     sym->sym.st_shndx < SHN_LORESERVE) ||
 		    (shndx_data && sym->sym.st_shndx == SHN_XINDEX)) {
@@ -403,29 +404,20 @@ static int read_symbols(struct elf *elf)
 				     sym->name);
 				goto err;
 			}
-			if (sym->type == STT_SECTION) {
+			if (GELF_ST_TYPE(sym->sym.st_info) == STT_SECTION) {
 				sym->name = sym->sec->name;
 				sym->sec->sym = sym;
 			}
 		} else
 			sym->sec = find_section_by_index(elf, 0);
 
-		sym->offset = sym->sym.st_value;
-		sym->len = sym->sym.st_size;
-
-		rb_add(&sym->sec->symbol_tree, &sym->node, symbol_to_offset);
-		pnode = rb_prev(&sym->node);
-		if (pnode)
-			entry = &rb_entry(pnode, struct symbol, node)->list;
-		else
-			entry = &sym->sec->symbol_list;
-		list_add(&sym->list, entry);
-		elf_hash_add(elf->symbol_hash, &sym->hash, sym->idx);
-		elf_hash_add(elf->symbol_name_hash, &sym->name_hash, str_hash(sym->name));
+		elf_add_symbol(elf, sym);
 	}
 
-	if (stats)
+	if (stats) {
 		printf("nr_symbols: %lu\n", (unsigned long)symbols_nr);
+		printf("symbol_bits: %d\n", elf->symbol_bits);
+	}
 
 	/* Create parent/child links for any cold subfunctions */
 	list_for_each_entry(sec, &elf->sections, list) {
@@ -488,12 +480,74 @@ err:
 	return -1;
 }
 
-void elf_add_reloc(struct elf *elf, struct reloc *reloc)
-{
-	struct section *sec = reloc->sec;
+static struct section *elf_create_reloc_section(struct elf *elf,
+						struct section *base,
+						int reltype);
 
-	list_add_tail(&reloc->list, &sec->reloc_list);
-	elf_hash_add(elf->reloc_hash, &reloc->hash, reloc_hash(reloc));
+int elf_add_reloc(struct elf *elf, struct section *sec, unsigned long offset,
+		  unsigned int type, struct symbol *sym, int addend)
+{
+	struct reloc *reloc;
+
+	if (!sec->reloc && !elf_create_reloc_section(elf, sec, SHT_RELA))
+		return -1;
+
+	reloc = malloc(sizeof(*reloc));
+	if (!reloc) {
+		perror("malloc");
+		return -1;
+	}
+	memset(reloc, 0, sizeof(*reloc));
+
+	reloc->sec = sec->reloc;
+	reloc->offset = offset;
+	reloc->type = type;
+	reloc->sym = sym;
+	reloc->addend = addend;
+
+	list_add_tail(&reloc->list, &sec->reloc->reloc_list);
+	elf_hash_add(reloc, &reloc->hash, reloc_hash(reloc));
+
+	sec->reloc->sh.sh_size += sec->reloc->sh.sh_entsize;
+	sec->reloc->changed = true;
+
+	return 0;
+}
+
+int elf_add_reloc_to_insn(struct elf *elf, struct section *sec,
+			  unsigned long offset, unsigned int type,
+			  struct section *insn_sec, unsigned long insn_off)
+{
+	struct symbol *sym;
+	int addend;
+
+	if (insn_sec->sym) {
+		sym = insn_sec->sym;
+		addend = insn_off;
+
+	} else {
+		/*
+		 * The Clang assembler strips section symbols, so we have to
+		 * reference the function symbol instead:
+		 */
+		sym = find_symbol_containing(insn_sec, insn_off);
+		if (!sym) {
+			/*
+			 * Hack alert.  This happens when we need to reference
+			 * the NOP pad insn immediately after the function.
+			 */
+			sym = find_symbol_containing(insn_sec, insn_off - 1);
+		}
+
+		if (!sym) {
+			WARN("can't find symbol containing %s+0x%lx", insn_sec->name, insn_off);
+			return -1;
+		}
+
+		addend = insn_off - sym->offset;
+	}
+
+	return elf_add_reloc(elf, sec, offset, type, sym, addend);
 }
 
 static int read_rel_reloc(struct section *sec, int i, struct reloc *reloc, unsigned int *symndx)
@@ -529,6 +583,9 @@ static int read_relocs(struct elf *elf)
 	int i;
 	unsigned int symndx;
 	unsigned long nr_reloc, max_reloc = 0, tot_reloc = 0;
+
+	if (!elf_alloc_hash(reloc, elf->text_size / 16))
+		return -1;
 
 	list_for_each_entry(sec, &elf->sections, list) {
 		if ((sec->sh.sh_type != SHT_RELA) &&
@@ -573,7 +630,9 @@ static int read_relocs(struct elf *elf)
 				return -1;
 			}
 
-			elf_add_reloc(elf, reloc);
+			list_add_tail(&reloc->list, &sec->reloc_list);
+			elf_hash_add(reloc, &reloc->hash, reloc_hash(reloc));
+
 			nr_reloc++;
 		}
 		max_reloc = max(max_reloc, nr_reloc);
@@ -583,6 +642,7 @@ static int read_relocs(struct elf *elf)
 	if (stats) {
 		printf("max_reloc: %lu\n", max_reloc);
 		printf("tot_reloc: %lu\n", tot_reloc);
+		printf("reloc_bits: %d\n", elf->reloc_bits);
 	}
 
 	return 0;
@@ -603,12 +663,6 @@ struct elf *elf_open_read(const char *name, int flags)
 	memset(elf, 0, offsetof(struct elf, sections));
 
 	INIT_LIST_HEAD(&elf->sections);
-
-	elf_hash_init(elf->symbol_hash);
-	elf_hash_init(elf->symbol_name_hash);
-	elf_hash_init(elf->section_hash);
-	elf_hash_init(elf->section_name_hash);
-	elf_hash_init(elf->reloc_hash);
 
 	elf->fd = open(name, flags);
 	if (elf->fd == -1) {
@@ -651,13 +705,132 @@ err:
 	return NULL;
 }
 
+static int elf_add_string(struct elf *elf, struct section *strtab, char *str)
+{
+	Elf_Data *data;
+	Elf_Scn *s;
+	int len;
+
+	if (!strtab)
+		strtab = find_section_by_name(elf, ".strtab");
+	if (!strtab) {
+		WARN("can't find .strtab section");
+		return -1;
+	}
+
+	s = elf_getscn(elf->elf, strtab->idx);
+	if (!s) {
+		WARN_ELF("elf_getscn");
+		return -1;
+	}
+
+	data = elf_newdata(s);
+	if (!data) {
+		WARN_ELF("elf_newdata");
+		return -1;
+	}
+
+	data->d_buf = str;
+	data->d_size = strlen(str) + 1;
+	data->d_align = 1;
+
+	len = strtab->sh.sh_size;
+	strtab->sh.sh_size += data->d_size;
+	strtab->changed = true;
+
+	return len;
+}
+
+struct symbol *elf_create_undef_symbol(struct elf *elf, const char *name)
+{
+	struct section *symtab, *symtab_shndx;
+	struct symbol *sym;
+	Elf_Data *data;
+	Elf_Scn *s;
+
+	sym = malloc(sizeof(*sym));
+	if (!sym) {
+		perror("malloc");
+		return NULL;
+	}
+	memset(sym, 0, sizeof(*sym));
+
+	sym->name = strdup(name);
+
+	sym->sym.st_name = elf_add_string(elf, NULL, sym->name);
+	if (sym->sym.st_name == -1)
+		return NULL;
+
+	sym->sym.st_info = GELF_ST_INFO(STB_GLOBAL, STT_NOTYPE);
+	// st_other 0
+	// st_shndx 0
+	// st_value 0
+	// st_size 0
+
+	symtab = find_section_by_name(elf, ".symtab");
+	if (!symtab) {
+		WARN("can't find .symtab");
+		return NULL;
+	}
+
+	s = elf_getscn(elf->elf, symtab->idx);
+	if (!s) {
+		WARN_ELF("elf_getscn");
+		return NULL;
+	}
+
+	data = elf_newdata(s);
+	if (!data) {
+		WARN_ELF("elf_newdata");
+		return NULL;
+	}
+
+	data->d_buf = &sym->sym;
+	data->d_size = sizeof(sym->sym);
+	data->d_align = 1;
+	data->d_type = ELF_T_SYM;
+
+	sym->idx = symtab->sh.sh_size / sizeof(sym->sym);
+
+	symtab->sh.sh_size += data->d_size;
+	symtab->changed = true;
+
+	symtab_shndx = find_section_by_name(elf, ".symtab_shndx");
+	if (symtab_shndx) {
+		s = elf_getscn(elf->elf, symtab_shndx->idx);
+		if (!s) {
+			WARN_ELF("elf_getscn");
+			return NULL;
+		}
+
+		data = elf_newdata(s);
+		if (!data) {
+			WARN_ELF("elf_newdata");
+			return NULL;
+		}
+
+		data->d_buf = &sym->sym.st_size; /* conveniently 0 */
+		data->d_size = sizeof(Elf32_Word);
+		data->d_align = 4;
+		data->d_type = ELF_T_WORD;
+
+		symtab_shndx->sh.sh_size += 4;
+		symtab_shndx->changed = true;
+	}
+
+	sym->sec = find_section_by_index(elf, 0);
+
+	elf_add_symbol(elf, sym);
+
+	return sym;
+}
+
 struct section *elf_create_section(struct elf *elf, const char *name,
 				   unsigned int sh_flags, size_t entsize, int nr)
 {
 	struct section *sec, *shstrtab;
 	size_t size = entsize * nr;
 	Elf_Scn *s;
-	Elf_Data *data;
 
 	sec = malloc(sizeof(*sec));
 	if (!sec) {
@@ -682,7 +855,6 @@ struct section *elf_create_section(struct elf *elf, const char *name,
 	}
 
 	sec->idx = elf_ndxscn(s);
-	sec->len = size;
 	sec->changed = true;
 
 	sec->data = elf_newdata(s);
@@ -714,7 +886,6 @@ struct section *elf_create_section(struct elf *elf, const char *name,
 	sec->sh.sh_addralign = 1;
 	sec->sh.sh_flags = SHF_ALLOC | sh_flags;
 
-
 	/* Add section name to .shstrtab (or .strtab for Clang) */
 	shstrtab = find_section_by_name(elf, ".shstrtab");
 	if (!shstrtab)
@@ -723,31 +894,13 @@ struct section *elf_create_section(struct elf *elf, const char *name,
 		WARN("can't find .shstrtab or .strtab section");
 		return NULL;
 	}
-
-	s = elf_getscn(elf->elf, shstrtab->idx);
-	if (!s) {
-		WARN_ELF("elf_getscn");
+	sec->sh.sh_name = elf_add_string(elf, shstrtab, sec->name);
+	if (sec->sh.sh_name == -1)
 		return NULL;
-	}
-
-	data = elf_newdata(s);
-	if (!data) {
-		WARN_ELF("elf_newdata");
-		return NULL;
-	}
-
-	data->d_buf = sec->name;
-	data->d_size = strlen(name) + 1;
-	data->d_align = 1;
-
-	sec->sh.sh_name = shstrtab->len;
-
-	shstrtab->len += strlen(name) + 1;
-	shstrtab->changed = true;
 
 	list_add_tail(&sec->list, &elf->sections);
-	elf_hash_add(elf->section_hash, &sec->hash, sec->idx);
-	elf_hash_add(elf->section_name_hash, &sec->name_hash, str_hash(sec->name));
+	elf_hash_add(section, &sec->hash, sec->idx);
+	elf_hash_add(section_name, &sec->name_hash, str_hash(sec->name));
 
 	elf->changed = true;
 
@@ -814,7 +967,7 @@ static struct section *elf_create_rela_reloc_section(struct elf *elf, struct sec
 	return sec;
 }
 
-struct section *elf_create_reloc_section(struct elf *elf,
+static struct section *elf_create_reloc_section(struct elf *elf,
 					 struct section *base,
 					 int reltype)
 {
@@ -825,80 +978,74 @@ struct section *elf_create_reloc_section(struct elf *elf,
 	}
 }
 
-static int elf_rebuild_rel_reloc_section(struct section *sec, int nr)
+static int elf_rebuild_rel_reloc_section(struct section *sec)
 {
 	struct reloc *reloc;
-	int idx = 0, size;
-	GElf_Rel *relocs;
+	int idx = 0;
+	void *buf;
 
 	/* Allocate a buffer for relocations */
-	size = nr * sizeof(*relocs);
-	relocs = malloc(size);
-	if (!relocs) {
+	buf = malloc(sec->sh.sh_size);
+	if (!buf) {
 		perror("malloc");
 		return -1;
 	}
 
-	sec->data->d_buf = relocs;
-	sec->data->d_size = size;
-
-	sec->sh.sh_size = size;
+	sec->data->d_buf = buf;
+	sec->data->d_size = sec->sh.sh_size;
+	sec->data->d_type = ELF_T_REL;
 
 	idx = 0;
 	list_for_each_entry(reloc, &sec->reloc_list, list) {
-		relocs[idx].r_offset = reloc->offset;
-		relocs[idx].r_info = GELF_R_INFO(reloc->sym->idx, reloc->type);
+		reloc->rel.r_offset = reloc->offset;
+		reloc->rel.r_info = GELF_R_INFO(reloc->sym->idx, reloc->type);
+		if (!gelf_update_rel(sec->data, idx, &reloc->rel)) {
+			WARN_ELF("gelf_update_rel");
+			return -1;
+		}
 		idx++;
 	}
 
 	return 0;
 }
 
-static int elf_rebuild_rela_reloc_section(struct section *sec, int nr)
+static int elf_rebuild_rela_reloc_section(struct section *sec)
 {
 	struct reloc *reloc;
-	int idx = 0, size;
-	GElf_Rela *relocs;
+	int idx = 0;
+	void *buf;
 
 	/* Allocate a buffer for relocations with addends */
-	size = nr * sizeof(*relocs);
-	relocs = malloc(size);
-	if (!relocs) {
+	buf = malloc(sec->sh.sh_size);
+	if (!buf) {
 		perror("malloc");
 		return -1;
 	}
 
-	sec->data->d_buf = relocs;
-	sec->data->d_size = size;
-
-	sec->sh.sh_size = size;
+	sec->data->d_buf = buf;
+	sec->data->d_size = sec->sh.sh_size;
+	sec->data->d_type = ELF_T_RELA;
 
 	idx = 0;
 	list_for_each_entry(reloc, &sec->reloc_list, list) {
-		relocs[idx].r_offset = reloc->offset;
-		relocs[idx].r_addend = reloc->addend;
-		relocs[idx].r_info = GELF_R_INFO(reloc->sym->idx, reloc->type);
+		reloc->rela.r_offset = reloc->offset;
+		reloc->rela.r_addend = reloc->addend;
+		reloc->rela.r_info = GELF_R_INFO(reloc->sym->idx, reloc->type);
+		if (!gelf_update_rela(sec->data, idx, &reloc->rela)) {
+			WARN_ELF("gelf_update_rela");
+			return -1;
+		}
 		idx++;
 	}
 
 	return 0;
 }
 
-int elf_rebuild_reloc_section(struct elf *elf, struct section *sec)
+static int elf_rebuild_reloc_section(struct elf *elf, struct section *sec)
 {
-	struct reloc *reloc;
-	int nr;
-
-	sec->changed = true;
-	elf->changed = true;
-
-	nr = 0;
-	list_for_each_entry(reloc, &sec->reloc_list, list)
-		nr++;
-
 	switch (sec->sh.sh_type) {
-	case SHT_REL:  return elf_rebuild_rel_reloc_section(sec, nr);
-	case SHT_RELA: return elf_rebuild_rela_reloc_section(sec, nr);
+	case SHT_REL:  return elf_rebuild_rel_reloc_section(sec);
+	case SHT_RELA: return elf_rebuild_rela_reloc_section(sec);
 	default:       return -1;
 	}
 }
@@ -955,7 +1102,7 @@ int elf_write(struct elf *elf)
 	struct section *sec;
 	Elf_Scn *s;
 
-	/* Update section headers for changed sections: */
+	/* Update changed relocation sections and section headers: */
 	list_for_each_entry(sec, &elf->sections, list) {
 		if (sec->changed) {
 			s = elf_getscn(elf->elf, sec->idx);
@@ -968,7 +1115,14 @@ int elf_write(struct elf *elf)
 				return -1;
 			}
 
+			if (sec->base &&
+			    elf_rebuild_reloc_section(elf, sec)) {
+				WARN("elf_rebuild_reloc_section");
+				return -1;
+			}
+
 			sec->changed = false;
+			elf->changed = true;
 		}
 	}
 

@@ -154,7 +154,7 @@ static int sof_probe_continue(struct snd_sof_dev *sdev)
 	if (ret < 0) {
 		dev_err(sdev->dev, "error: failed to get machine info %d\n",
 			ret);
-		goto dbg_err;
+		goto dsp_err;
 	}
 
 	/* set up platform component driver */
@@ -232,8 +232,11 @@ static int sof_probe_continue(struct snd_sof_dev *sdev)
 	}
 
 	ret = snd_sof_machine_register(sdev, plat_data);
-	if (ret < 0)
+	if (ret < 0) {
+		dev_err(sdev->dev,
+			"error: failed to register machine driver %d\n", ret);
 		goto fw_trace_err;
+	}
 
 	/*
 	 * Some platforms in SOF, ex: BYT, may not have their platform PM
@@ -246,6 +249,8 @@ static int sof_probe_continue(struct snd_sof_dev *sdev)
 	if (plat_data->sof_probe_complete)
 		plat_data->sof_probe_complete(sdev->dev);
 
+	sdev->probe_completed = true;
+
 	return 0;
 
 fw_trace_err:
@@ -255,8 +260,9 @@ fw_run_err:
 fw_load_err:
 	snd_sof_ipc_free(sdev);
 ipc_err:
-	snd_sof_free_debug(sdev);
 dbg_err:
+	snd_sof_free_debug(sdev);
+dsp_err:
 	snd_sof_remove(sdev);
 
 	/* all resources freed, update state to match */
@@ -306,8 +312,10 @@ int snd_sof_device_probe(struct device *dev, struct snd_sof_pdata *plat_data)
 	    !sof_ops(sdev)->block_read || !sof_ops(sdev)->block_write ||
 	    !sof_ops(sdev)->send_msg || !sof_ops(sdev)->load_firmware ||
 	    !sof_ops(sdev)->ipc_msg_data || !sof_ops(sdev)->ipc_pcm_params ||
-	    !sof_ops(sdev)->fw_ready)
+	    !sof_ops(sdev)->fw_ready) {
+		dev_err(dev, "error: missing mandatory ops\n");
 		return -EINVAL;
+	}
 
 	INIT_LIST_HEAD(&sdev->pcm_list);
 	INIT_LIST_HEAD(&sdev->kcontrol_list);
@@ -316,6 +324,7 @@ int snd_sof_device_probe(struct device *dev, struct snd_sof_pdata *plat_data)
 	INIT_LIST_HEAD(&sdev->route_list);
 	spin_lock_init(&sdev->ipc_lock);
 	spin_lock_init(&sdev->hw_lock);
+	mutex_init(&sdev->power_state_access);
 
 	if (IS_ENABLED(CONFIG_SND_SOC_SOF_PROBE_WORK_QUEUE))
 		INIT_WORK(&sdev->probe_work, sof_probe_work);
@@ -339,6 +348,14 @@ int snd_sof_device_probe(struct device *dev, struct snd_sof_pdata *plat_data)
 }
 EXPORT_SYMBOL(snd_sof_device_probe);
 
+bool snd_sof_device_probe_completed(struct device *dev)
+{
+	struct snd_sof_dev *sdev = dev_get_drvdata(dev);
+
+	return sdev->probe_completed;
+}
+EXPORT_SYMBOL(snd_sof_device_probe_completed);
+
 int snd_sof_device_remove(struct device *dev)
 {
 	struct snd_sof_dev *sdev = dev_get_drvdata(dev);
@@ -354,7 +371,6 @@ int snd_sof_device_remove(struct device *dev)
 			dev_warn(dev, "error: %d failed to prepare DSP for device removal",
 				 ret);
 
-		snd_sof_fw_unload(sdev);
 		snd_sof_ipc_free(sdev);
 		snd_sof_free_debug(sdev);
 		snd_sof_free_trace(sdev);
@@ -377,12 +393,25 @@ int snd_sof_device_remove(struct device *dev)
 		snd_sof_remove(sdev);
 
 	/* release firmware */
-	release_firmware(pdata->fw);
-	pdata->fw = NULL;
+	snd_sof_fw_unload(sdev);
 
 	return 0;
 }
 EXPORT_SYMBOL(snd_sof_device_remove);
+
+int snd_sof_device_shutdown(struct device *dev)
+{
+	struct snd_sof_dev *sdev = dev_get_drvdata(dev);
+
+	if (IS_ENABLED(CONFIG_SND_SOC_SOF_PROBE_WORK_QUEUE))
+		cancel_work_sync(&sdev->probe_work);
+
+	if (sdev->fw_state == SOF_FW_BOOT_COMPLETE)
+		return snd_sof_shutdown(sdev);
+
+	return 0;
+}
+EXPORT_SYMBOL(snd_sof_device_shutdown);
 
 MODULE_AUTHOR("Liam Girdwood");
 MODULE_DESCRIPTION("Sound Open Firmware (SOF) Core");

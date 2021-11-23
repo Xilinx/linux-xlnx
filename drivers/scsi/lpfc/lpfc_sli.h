@@ -1,7 +1,7 @@
 /*******************************************************************
  * This file is part of the Emulex Linux Device Driver for         *
  * Fibre Channel Host Bus Adapters.                                *
- * Copyright (C) 2017-2019 Broadcom. All Rights Reserved. The term *
+ * Copyright (C) 2017-2021 Broadcom. All Rights Reserved. The term *
  * “Broadcom” refers to Broadcom Inc. and/or its subsidiaries.     *
  * Copyright (C) 2004-2016 Emulex.  All rights reserved.           *
  * EMULEX and SLI are trademarks of Emulex.                        *
@@ -34,6 +34,12 @@ typedef enum _lpfc_ctx_cmd {
 	LPFC_CTX_TGT,
 	LPFC_CTX_HOST
 } lpfc_ctx_cmd;
+
+union lpfc_vmid_iocb_tag {
+	uint32_t app_id;
+	uint8_t cs_ctl_vmid;
+	struct lpfc_vmid_context *vmid_context;	/* UVEM context information */
+};
 
 struct lpfc_cq_event {
 	struct list_head list;
@@ -100,12 +106,15 @@ struct lpfc_iocbq {
 #define LPFC_IO_NVME	        0x200000 /* NVME FCP command */
 #define LPFC_IO_NVME_LS		0x400000 /* NVME LS command */
 #define LPFC_IO_NVMET		0x800000 /* NVMET command */
+#define LPFC_IO_VMID            0x1000000 /* VMID tagged IO */
+#define LPFC_IO_CMF		0x4000000 /* CMF command */
 
 	uint32_t drvrTimeout;	/* driver timeout in seconds */
 	struct lpfc_vport *vport;/* virtual port pointer */
 	void *context1;		/* caller context information */
 	void *context2;		/* caller context information */
 	void *context3;		/* caller context information */
+	uint32_t event_tag;	/* LA Event tag */
 	union {
 		wait_queue_head_t    *wait_queue;
 		struct lpfc_iocbq    *rsp_iocb;
@@ -114,6 +123,7 @@ struct lpfc_iocbq {
 		struct lpfc_node_rrq *rrq;
 	} context_un;
 
+	union lpfc_vmid_iocb_tag vmid_tag;
 	void (*fabric_iocb_cmpl)(struct lpfc_hba *, struct lpfc_iocbq *,
 			   struct lpfc_iocbq *);
 	void (*wait_iocb_cmpl)(struct lpfc_hba *, struct lpfc_iocbq *,
@@ -130,6 +140,9 @@ struct lpfc_iocbq {
 #define IOCB_BUSY           1
 #define IOCB_ERROR          2
 #define IOCB_TIMEDOUT       3
+#define IOCB_ABORTED        4
+#define IOCB_ABORTING	    5
+#define IOCB_NORESOURCE	    6
 
 #define SLI_WQE_RET_WQE    1    /* Return WQE if cmd ring full */
 
@@ -138,6 +151,8 @@ struct lpfc_iocbq {
 #define WQE_ERROR          2
 #define WQE_TIMEDOUT       3
 #define WQE_ABORTED        4
+#define WQE_ABORTING	   5
+#define WQE_NORESOURCE	   6
 
 #define LPFC_MBX_WAKE		1
 #define LPFC_MBX_IMED_UNREG	2
@@ -448,4 +463,5 @@ struct lpfc_io_buf {
 	uint64_t ts_isr_cmpl;
 	uint64_t ts_data_io;
 #endif
+	uint64_t rx_cmd_start;
 };

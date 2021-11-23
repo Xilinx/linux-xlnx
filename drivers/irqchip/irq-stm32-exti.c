@@ -193,7 +193,14 @@ static const struct stm32_desc_irq stm32mp1_desc_irq[] = {
 	{ .exti = 23, .irq_parent = 72, .chip = &stm32_exti_h_chip_direct },
 	{ .exti = 24, .irq_parent = 95, .chip = &stm32_exti_h_chip_direct },
 	{ .exti = 25, .irq_parent = 107, .chip = &stm32_exti_h_chip_direct },
+	{ .exti = 26, .irq_parent = 37, .chip = &stm32_exti_h_chip_direct },
+	{ .exti = 27, .irq_parent = 38, .chip = &stm32_exti_h_chip_direct },
+	{ .exti = 28, .irq_parent = 39, .chip = &stm32_exti_h_chip_direct },
+	{ .exti = 29, .irq_parent = 71, .chip = &stm32_exti_h_chip_direct },
 	{ .exti = 30, .irq_parent = 52, .chip = &stm32_exti_h_chip_direct },
+	{ .exti = 31, .irq_parent = 53, .chip = &stm32_exti_h_chip_direct },
+	{ .exti = 32, .irq_parent = 82, .chip = &stm32_exti_h_chip_direct },
+	{ .exti = 33, .irq_parent = 83, .chip = &stm32_exti_h_chip_direct },
 	{ .exti = 47, .irq_parent = 93, .chip = &stm32_exti_h_chip_direct },
 	{ .exti = 48, .irq_parent = 138, .chip = &stm32_exti_h_chip_direct },
 	{ .exti = 50, .irq_parent = 139, .chip = &stm32_exti_h_chip_direct },
@@ -250,7 +257,7 @@ static void stm32_irq_handler(struct irq_desc *desc)
 {
 	struct irq_domain *domain = irq_desc_get_handler_data(desc);
 	struct irq_chip *chip = irq_desc_get_chip(desc);
-	unsigned int virq, nbanks = domain->gc->num_chips;
+	unsigned int nbanks = domain->gc->num_chips;
 	struct irq_chip_generic *gc;
 	unsigned long pending;
 	int n, i, irq_base = 0;
@@ -261,11 +268,9 @@ static void stm32_irq_handler(struct irq_desc *desc)
 		gc = irq_get_domain_generic_chip(domain, irq_base);
 
 		while ((pending = stm32_exti_pending(gc))) {
-			for_each_set_bit(n, &pending, IRQS_PER_BANK) {
-				virq = irq_find_mapping(domain, irq_base + n);
-				generic_handle_irq(virq);
-			}
-		}
+			for_each_set_bit(n, &pending, IRQS_PER_BANK)
+				generic_handle_domain_irq(domain, irq_base + n);
+ 		}
 	}
 
 	chained_irq_exit(chip, desc);
@@ -885,10 +890,8 @@ static int stm32_exti_probe(struct platform_device *pdev)
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	host_data->base = devm_ioremap_resource(dev, res);
-	if (IS_ERR(host_data->base)) {
-		dev_err(dev, "Unable to map registers\n");
+	if (IS_ERR(host_data->base))
 		return PTR_ERR(host_data->base);
-	}
 
 	for (i = 0; i < drv_data->bank_nr; i++)
 		stm32_exti_chip_init(host_data, i, np);

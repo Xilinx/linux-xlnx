@@ -478,17 +478,10 @@ static int sof_pcm_open(struct snd_soc_component *component,
 
 	caps = &spcm->pcm.caps[substream->stream];
 
-	/* set any runtime constraints based on topology */
-	snd_pcm_hw_constraint_step(substream->runtime, 0,
-				   SNDRV_PCM_HW_PARAM_BUFFER_BYTES,
-				   le32_to_cpu(caps->period_size_min));
-	snd_pcm_hw_constraint_step(substream->runtime, 0,
-				   SNDRV_PCM_HW_PARAM_PERIOD_BYTES,
-				   le32_to_cpu(caps->period_size_min));
-
 	/* set runtime config */
 	runtime->hw.info = ops->hw_info; /* platform-specific */
 
+	/* set any runtime constraints based on topology */
 	runtime->hw.formats = le64_to_cpu(caps->formats);
 	runtime->hw.period_bytes_min = le32_to_cpu(caps->period_size_min);
 	runtime->hw.period_bytes_max = le32_to_cpu(caps->period_size_max);
@@ -626,9 +619,33 @@ capture:
 	return 0;
 }
 
+static void ssp_dai_config_pcm_params_match(struct snd_sof_dev *sdev, const char *link_name,
+					    struct snd_pcm_hw_params *params)
+{
+	struct sof_ipc_dai_config *config;
+	struct snd_sof_dai *dai;
+	int i;
+
+	/*
+	 * Search for all matching DAIs as we can have both playback and capture DAI
+	 * associated with the same link.
+	 */
+	list_for_each_entry(dai, &sdev->dai_list, list) {
+		if (!dai->name || strcmp(link_name, dai->name))
+			continue;
+		for (i = 0; i < dai->number_configs; i++) {
+			config = &dai->dai_config[i];
+			if (config->ssp.fsync_rate == params_rate(params)) {
+				dev_dbg(sdev->dev, "DAI config %d matches pcm hw params\n", i);
+				dai->current_config = i;
+				break;
+			}
+		}
+	}
+}
+
 /* fixup the BE DAI link to match any values from topology */
-static int sof_pcm_dai_link_fixup(struct snd_soc_pcm_runtime *rtd,
-				  struct snd_pcm_hw_params *params)
+int sof_pcm_dai_link_fixup(struct snd_soc_pcm_runtime *rtd, struct snd_pcm_hw_params *params)
 {
 	struct snd_interval *rate = hw_param_interval(params,
 			SNDRV_PCM_HW_PARAM_RATE);
@@ -639,6 +656,7 @@ static int sof_pcm_dai_link_fixup(struct snd_soc_pcm_runtime *rtd,
 		snd_soc_rtdcom_lookup(rtd, SOF_AUDIO_PCM_DRV_NAME);
 	struct snd_sof_dai *dai =
 		snd_sof_find_dai(component, (char *)rtd->dai_link->name);
+	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(component);
 	struct snd_soc_dpcm *dpcm;
 
 	/* no topology exists for this BE, try a common configuration */
@@ -681,10 +699,13 @@ static int sof_pcm_dai_link_fixup(struct snd_soc_pcm_runtime *rtd,
 	/* read rate and channels from topology */
 	switch (dai->dai_config->type) {
 	case SOF_DAI_INTEL_SSP:
-		rate->min = dai->dai_config->ssp.fsync_rate;
-		rate->max = dai->dai_config->ssp.fsync_rate;
-		channels->min = dai->dai_config->ssp.tdm_slots;
-		channels->max = dai->dai_config->ssp.tdm_slots;
+		/* search for config to pcm params match, if not found use default */
+		ssp_dai_config_pcm_params_match(sdev, (char *)rtd->dai_link->name, params);
+
+		rate->min = dai->dai_config[dai->current_config].ssp.fsync_rate;
+		rate->max = dai->dai_config[dai->current_config].ssp.fsync_rate;
+		channels->min = dai->dai_config[dai->current_config].ssp.tdm_slots;
+		channels->max = dai->dai_config[dai->current_config].ssp.tdm_slots;
 
 		dev_dbg(component->dev,
 			"rate_min: %d rate_max: %d\n", rate->min, rate->max);
@@ -715,7 +736,12 @@ static int sof_pcm_dai_link_fixup(struct snd_soc_pcm_runtime *rtd,
 		}
 		break;
 	case SOF_DAI_INTEL_ALH:
-		/* do nothing for ALH dai_link */
+		/*
+		 * Dai could run with different channel count compared with
+		 * front end, so get dai channel count from topology
+		 */
+		channels->min = dai->dai_config->alh.channels;
+		channels->max = dai->dai_config->alh.channels;
 		break;
 	case SOF_DAI_IMX_ESAI:
 		rate->min = dai->dai_config->esai.fsync_rate;
@@ -749,6 +775,7 @@ static int sof_pcm_dai_link_fixup(struct snd_soc_pcm_runtime *rtd,
 
 	return 0;
 }
+EXPORT_SYMBOL(sof_pcm_dai_link_fixup);
 
 static int sof_pcm_probe(struct snd_soc_component *component)
 {
@@ -780,7 +807,7 @@ static int sof_pcm_probe(struct snd_soc_component *component)
 static void sof_pcm_remove(struct snd_soc_component *component)
 {
 	/* remove topology */
-	snd_soc_tplg_component_remove(component, SND_SOC_TPLG_INDEX_ALL);
+	snd_soc_tplg_component_remove(component);
 }
 
 void snd_sof_new_platform_drv(struct snd_sof_dev *sdev)

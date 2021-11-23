@@ -30,6 +30,7 @@
 #include <nvif/event.h>
 #include <nvif/cl0046.h>
 
+#include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_vblank.h>
@@ -49,11 +50,9 @@ nv50_head_flush_clr(struct nv50_head *head,
 }
 
 void
-nv50_head_flush_set(struct nv50_head *head, struct nv50_head_atom *asyh)
+nv50_head_flush_set_wndw(struct nv50_head *head, struct nv50_head_atom *asyh)
 {
-	if (asyh->set.view   ) head->func->view    (head, asyh);
-	if (asyh->set.mode   ) head->func->mode    (head, asyh);
-	if (asyh->set.core   ) head->func->core_set(head, asyh);
+	if (asyh->set.curs   ) head->func->curs_set(head, asyh);
 	if (asyh->set.olut   ) {
 		asyh->olut.offset = nv50_lut_load(&head->olut,
 						  asyh->olut.buffer,
@@ -61,7 +60,14 @@ nv50_head_flush_set(struct nv50_head *head, struct nv50_head_atom *asyh)
 						  asyh->olut.load);
 		head->func->olut_set(head, asyh);
 	}
-	if (asyh->set.curs   ) head->func->curs_set(head, asyh);
+}
+
+void
+nv50_head_flush_set(struct nv50_head *head, struct nv50_head_atom *asyh)
+{
+	if (asyh->set.view   ) head->func->view    (head, asyh);
+	if (asyh->set.mode   ) head->func->mode    (head, asyh);
+	if (asyh->set.core   ) head->func->core_set(head, asyh);
 	if (asyh->set.base   ) head->func->base    (head, asyh);
 	if (asyh->set.ovly   ) head->func->ovly    (head, asyh);
 	if (asyh->set.dither ) head->func->dither  (head, asyh);
@@ -310,12 +316,16 @@ nv50_head_atomic_check_mode(struct nv50_head *head, struct nv50_head_atom *asyh)
 }
 
 static int
-nv50_head_atomic_check(struct drm_crtc *crtc, struct drm_crtc_state *state)
+nv50_head_atomic_check(struct drm_crtc *crtc, struct drm_atomic_state *state)
 {
+	struct drm_crtc_state *old_crtc_state = drm_atomic_get_old_crtc_state(state,
+									      crtc);
+	struct drm_crtc_state *crtc_state = drm_atomic_get_new_crtc_state(state,
+									  crtc);
 	struct nouveau_drm *drm = nouveau_drm(crtc->dev);
 	struct nv50_head *head = nv50_head(crtc);
-	struct nv50_head_atom *armh = nv50_head_atom(crtc->state);
-	struct nv50_head_atom *asyh = nv50_head_atom(state);
+	struct nv50_head_atom *armh = nv50_head_atom(old_crtc_state);
+	struct nv50_head_atom *asyh = nv50_head_atom(crtc_state);
 	struct nouveau_conn_atom *asyc = NULL;
 	struct drm_connector_state *conns;
 	struct drm_connector *conn;
@@ -498,7 +508,6 @@ nv50_head_destroy(struct drm_crtc *crtc)
 static const struct drm_crtc_funcs
 nv50_head_func = {
 	.reset = nv50_head_reset,
-	.gamma_set = drm_atomic_helper_legacy_gamma_set,
 	.destroy = nv50_head_destroy,
 	.set_config = drm_atomic_helper_set_config,
 	.page_flip = drm_atomic_helper_page_flip,
@@ -513,7 +522,6 @@ nv50_head_func = {
 static const struct drm_crtc_funcs
 nvd9_head_func = {
 	.reset = nv50_head_reset,
-	.gamma_set = drm_atomic_helper_legacy_gamma_set,
 	.destroy = nv50_head_destroy,
 	.set_config = drm_atomic_helper_set_config,
 	.page_flip = drm_atomic_helper_page_flip,

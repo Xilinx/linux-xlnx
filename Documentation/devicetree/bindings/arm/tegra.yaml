@@ -54,7 +54,7 @@ properties:
           - const: toradex,apalis_t30
           - const: nvidia,tegra30
       - items:
-          - const: toradex,apalis_t30-eval-v1.1
+          - const: toradex,apalis_t30-v1.1-eval
           - const: toradex,apalis_t30-eval
           - const: toradex,apalis_t30-v1.1
           - const: toradex,apalis_t30
@@ -70,6 +70,9 @@ properties:
       - items:
           - const: asus,tilapia
           - const: asus,grouper
+          - const: nvidia,tegra30
+      - items:
+          - const: ouya,ouya
           - const: nvidia,tegra30
       - items:
           - enum:
@@ -108,6 +111,7 @@ properties:
       - items:
           - enum:
               - nvidia,p2771-0000
+              - nvidia,p3509-0000+p3636-0001
           - const: nvidia,tegra186
       - items:
           - enum:
@@ -117,9 +121,17 @@ properties:
         items:
           - const: nvidia,p3668-0000
           - const: nvidia,tegra194
+      - description: Jetson Xavier NX (eMMC)
+        items:
+          - const: nvidia,p3668-0001
+          - const: nvidia,tegra194
       - description: Jetson Xavier NX Developer Kit
         items:
           - const: nvidia,p3509-0000+p3668-0000
+          - const: nvidia,tegra194
+      - description: Jetson Xavier NX Developer Kit (eMMC)
+        items:
+          - const: nvidia,p3509-0000+p3668-0001
           - const: nvidia,tegra194
       - items:
           - enum:

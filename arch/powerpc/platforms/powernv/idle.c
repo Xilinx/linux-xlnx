@@ -14,6 +14,7 @@
 
 #include <asm/asm-prototypes.h>
 #include <asm/firmware.h>
+#include <asm/interrupt.h>
 #include <asm/machdep.h>
 #include <asm/opal.h>
 #include <asm/cputhreads.h>
@@ -198,12 +199,12 @@ static ssize_t store_fastsleep_workaround_applyonce(struct device *dev,
 	 */
 	power7_fastsleep_workaround_exit = false;
 
-	get_online_cpus();
+	cpus_read_lock();
 	primary_thread_mask = cpu_online_cores_map();
 	on_each_cpu_mask(&primary_thread_mask,
 				pnv_fastsleep_workaround_apply,
 				&err, 1);
-	put_online_cpus();
+	cpus_read_unlock();
 	if (err) {
 		pr_err("fastsleep_workaround_applyonce change failed while running pnv_fastsleep_workaround_apply");
 		goto fail;
@@ -589,6 +590,7 @@ struct p9_sprs {
 	u64 spurr;
 	u64 dscr;
 	u64 wort;
+	u64 ciabr;
 
 	u64 mmcra;
 	u32 mmcr0;
@@ -602,7 +604,7 @@ struct p9_sprs {
 	u64 uamor;
 };
 
-static unsigned long power9_idle_stop(unsigned long psscr, bool mmu_on)
+static unsigned long power9_idle_stop(unsigned long psscr)
 {
 	int cpu = raw_smp_processor_id();
 	int first = cpu_first_thread_sibling(cpu);
@@ -617,8 +619,6 @@ static unsigned long power9_idle_stop(unsigned long psscr, bool mmu_on)
 
 	if (!(psscr & (PSSCR_EC|PSSCR_ESL))) {
 		/* EC=ESL=0 case */
-
-		BUG_ON(!mmu_on);
 
 		/*
 		 * Wake synchronously. SRESET via xscom may still cause
@@ -667,7 +667,7 @@ static unsigned long power9_idle_stop(unsigned long psscr, bool mmu_on)
 		sprs.purr	= mfspr(SPRN_PURR);
 		sprs.spurr	= mfspr(SPRN_SPURR);
 		sprs.dscr	= mfspr(SPRN_DSCR);
-		sprs.wort	= mfspr(SPRN_WORT);
+		sprs.ciabr	= mfspr(SPRN_CIABR);
 
 		sprs.mmcra	= mfspr(SPRN_MMCRA);
 		sprs.mmcr0	= mfspr(SPRN_MMCR0);
@@ -784,7 +784,7 @@ core_woken:
 	mtspr(SPRN_PURR,	sprs.purr);
 	mtspr(SPRN_SPURR,	sprs.spurr);
 	mtspr(SPRN_DSCR,	sprs.dscr);
-	mtspr(SPRN_WORT,	sprs.wort);
+	mtspr(SPRN_CIABR,	sprs.ciabr);
 
 	mtspr(SPRN_MMCRA,	sprs.mmcra);
 	mtspr(SPRN_MMCR0,	sprs.mmcr0);
@@ -799,8 +799,7 @@ core_woken:
 		__slb_restore_bolted_realmode();
 
 out:
-	if (mmu_on)
-		mtmsr(MSR_KERNEL);
+	mtmsr(MSR_KERNEL);
 
 	return srr1;
 }
@@ -891,7 +890,7 @@ struct p10_sprs {
 	 */
 };
 
-static unsigned long power10_idle_stop(unsigned long psscr, bool mmu_on)
+static unsigned long power10_idle_stop(unsigned long psscr)
 {
 	int cpu = raw_smp_processor_id();
 	int first = cpu_first_thread_sibling(cpu);
@@ -904,8 +903,6 @@ static unsigned long power10_idle_stop(unsigned long psscr, bool mmu_on)
 
 	if (!(psscr & (PSSCR_EC|PSSCR_ESL))) {
 		/* EC=ESL=0 case */
-
-		BUG_ON(!mmu_on);
 
 		/*
 		 * Wake synchronously. SRESET via xscom may still cause
@@ -987,8 +984,7 @@ core_woken:
 		__slb_restore_bolted_realmode();
 
 out:
-	if (mmu_on)
-		mtmsr(MSR_KERNEL);
+	mtmsr(MSR_KERNEL);
 
 	return srr1;
 }
@@ -998,40 +994,10 @@ static unsigned long arch300_offline_stop(unsigned long psscr)
 {
 	unsigned long srr1;
 
-#ifndef CONFIG_KVM_BOOK3S_HV_POSSIBLE
-	__ppc64_runlatch_off();
 	if (cpu_has_feature(CPU_FTR_ARCH_31))
-		srr1 = power10_idle_stop(psscr, true);
+		srr1 = power10_idle_stop(psscr);
 	else
-		srr1 = power9_idle_stop(psscr, true);
-	__ppc64_runlatch_on();
-#else
-	/*
-	 * Tell KVM we're entering idle.
-	 * This does not have to be done in real mode because the P9 MMU
-	 * is independent per-thread. Some steppings share radix/hash mode
-	 * between threads, but in that case KVM has a barrier sync in real
-	 * mode before and after switching between radix and hash.
-	 *
-	 * kvm_start_guest must still be called in real mode though, hence
-	 * the false argument.
-	 */
-	local_paca->kvm_hstate.hwthread_state = KVM_HWTHREAD_IN_IDLE;
-
-	__ppc64_runlatch_off();
-	if (cpu_has_feature(CPU_FTR_ARCH_31))
-		srr1 = power10_idle_stop(psscr, false);
-	else
-		srr1 = power9_idle_stop(psscr, false);
-	__ppc64_runlatch_on();
-
-	local_paca->kvm_hstate.hwthread_state = KVM_HWTHREAD_IN_KERNEL;
-	/* Order setting hwthread_state vs. testing hwthread_req */
-	smp_mb();
-	if (local_paca->kvm_hstate.hwthread_req)
-		srr1 = idle_kvm_start_guest(srr1);
-	mtmsr(MSR_KERNEL);
-#endif
+		srr1 = power9_idle_stop(psscr);
 
 	return srr1;
 }
@@ -1051,9 +1017,9 @@ void arch300_idle_type(unsigned long stop_psscr_val,
 
 	__ppc64_runlatch_off();
 	if (cpu_has_feature(CPU_FTR_ARCH_31))
-		srr1 = power10_idle_stop(psscr, true);
+		srr1 = power10_idle_stop(psscr);
 	else
-		srr1 = power9_idle_stop(psscr, true);
+		srr1 = power9_idle_stop(psscr);
 	__ppc64_runlatch_on();
 
 	fini_irq_for_idle_irqsoff();

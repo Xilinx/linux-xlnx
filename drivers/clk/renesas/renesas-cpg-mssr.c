@@ -100,13 +100,9 @@ static const u16 srcr_for_v3u[] = {
 	0x2C20, 0x2C24, 0x2C28, 0x2C2C, 0x2C30, 0x2C34, 0x2C38,
 };
 
-/* Realtime Module Stop Control Register offsets */
-#define RMSTPCR(i)	(smstpcr[i] - 0x20)
-
-/* Modem Module Stop Control Register offsets (r8a73a4) */
-#define MMSTPCR(i)	(smstpcr[i] + 0x20)
-
-/* Software Reset Clearing Register offsets */
+/*
+ * Software Reset Clearing Register offsets
+ */
 
 static const u16 srstclr[] = {
 	0x940, 0x944, 0x948, 0x94C, 0x950, 0x954, 0x958, 0x95C,
@@ -119,7 +115,8 @@ static const u16 srstclr_for_v3u[] = {
 };
 
 /**
- * Clock Pulse Generator / Module Standby and Software Reset Private Data
+ * struct cpg_mssr_priv - Clock Pulse Generator / Module Standby
+ *                        and Software Reset Private Data
  *
  * @rcdev: Optional reset controller entity
  * @dev: CPG/MSSR device
@@ -135,8 +132,8 @@ static const u16 srstclr_for_v3u[] = {
  * @control_regs: Pointer to control registers array
  * @reset_regs: Pointer to reset registers array
  * @reset_clear_regs:  Pointer to reset clearing registers array
- * @smstpcr_saved[].mask: Mask of SMSTPCR[] bits under our control
- * @smstpcr_saved[].val: Saved values of SMSTPCR[]
+ * @smstpcr_saved: [].mask: Mask of SMSTPCR[] bits under our control
+ *                 [].val: Saved values of SMSTPCR[]
  * @clks: Array containing all Core and Module Clocks
  */
 struct cpg_mssr_priv {
@@ -407,7 +404,7 @@ static void __init cpg_mssr_register_mod_clk(const struct mssr_mod_clk *mod,
 	struct mstp_clock *clock = NULL;
 	struct device *dev = priv->dev;
 	unsigned int id = mod->id;
-	struct clk_init_data init;
+	struct clk_init_data init = {};
 	struct clk *parent, *clk;
 	const char *parent_name;
 	unsigned int i;

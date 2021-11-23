@@ -152,7 +152,7 @@ config HW_RANDOM_VIA
 
 config HW_RANDOM_IXP4XX
 	tristate "Intel IXP4xx NPU HW Pseudo-Random Number Generator support"
-	depends on ARCH_IXP4XX
+	depends on ARCH_IXP4XX || COMPILE_TEST
 	default HW_RANDOM
 	help
 	  This driver provides kernel-side support for the Pseudo-Random
@@ -165,17 +165,17 @@ config HW_RANDOM_IXP4XX
 
 config HW_RANDOM_OMAP
 	tristate "OMAP Random Number Generator support"
-	depends on ARCH_OMAP16XX || ARCH_OMAP2PLUS || ARCH_MVEBU
+	depends on ARCH_OMAP16XX || ARCH_OMAP2PLUS || ARCH_MVEBU || ARCH_K3
 	default HW_RANDOM
 	help
- 	  This driver provides kernel-side support for the Random Number
+	  This driver provides kernel-side support for the Random Number
 	  Generator hardware found on OMAP16xx, OMAP2/3/4/5, AM33xx/AM43xx
 	  multimedia processors, and Marvell Armada 7k/8k SoCs.
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called omap-rng.
 
- 	  If unsure, say Y.
+	  If unsure, say Y.
 
 config HW_RANDOM_OMAP3_ROM
 	tristate "OMAP3 ROM Random Number Generator support"
@@ -348,19 +348,6 @@ config HW_RANDOM_HISI
 
 	  If unsure, say Y.
 
-config HW_RANDOM_HISI_V2
-	tristate "HiSilicon True Random Number Generator V2 support"
-	depends on HW_RANDOM && ARM64 && ACPI
-	default HW_RANDOM
-	help
-	  This driver provides kernel-side support for the True Random Number
-	  Generator V2 hardware found on HiSilicon Hi1620 SoC.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called hisi-trng-v2.
-
-	  If unsure, say Y.
-
 config HW_RANDOM_ST
 	tristate "ST Microelectronics HW Random Number Generator support"
 	depends on HW_RANDOM && ARCH_STI
@@ -498,16 +485,17 @@ config HW_RANDOM_NPCM
 	depends on ARCH_NPCM || COMPILE_TEST
 	default HW_RANDOM
 	help
- 	  This driver provides support for the Random Number
+	  This driver provides support for the Random Number
 	  Generator hardware available in Nuvoton NPCM SoCs.
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called npcm-rng.
 
- 	  If unsure, say Y.
+	  If unsure, say Y.
 
 config HW_RANDOM_KEYSTONE
 	depends on ARCH_KEYSTONE || COMPILE_TEST
+	depends on HAS_IOMEM && OF
 	default HW_RANDOM
 	tristate "TI Keystone NETCP SA Hardware random number generator"
 	help
@@ -536,19 +524,33 @@ config HW_RANDOM_XIPHERA
 	  To compile this driver as a module, choose M here: the
 	  module will be called xiphera-trng.
 
+config HW_RANDOM_ARM_SMCCC_TRNG
+	tristate "Arm SMCCC TRNG firmware interface support"
+	depends on HAVE_ARM_SMCCC_DISCOVERY
+	default HW_RANDOM
+	help
+	  Say 'Y' to enable the True Random Number Generator driver using
+	  the Arm SMCCC TRNG firmware interface. This reads entropy from
+	  higher exception levels (firmware, hypervisor). Uses SMCCC for
+	  communicating with the firmware:
+	  https://developer.arm.com/documentation/den0098/latest/
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called arm_smccc_trng.
+
 endif # HW_RANDOM
 
 config UML_RANDOM
 	depends on UML
-	tristate "Hardware random number generator"
+	select HW_RANDOM
+	tristate "UML Random Number Generator support"
 	help
 	  This option enables UML's "hardware" random number generator.  It
 	  attaches itself to the host's /dev/random, supplying as much entropy
 	  as the host has, rather than the small amount the UML gets from its
-	  own drivers.  It registers itself as a standard hardware random number
-	  generator, major 10, minor 183, and the canonical device name is
-	  /dev/hwrng.
-	  The way to make use of this is to install the rng-tools package
-	  (check your distro, or download from
-	  http://sourceforge.net/projects/gkernel/).  rngd periodically reads
-	  /dev/hwrng and injects the entropy into /dev/random.
+	  own drivers. It registers itself as a rng-core driver thus providing
+	  a device which is usually called /dev/hwrng. This hardware random
+	  number generator does feed into the kernel's random number generator
+	  entropy pool.
+
+	  If unsure, say Y.

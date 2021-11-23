@@ -298,7 +298,6 @@ static const struct pwm_ops twl6030_pwm_ops = {
 static int twl_pwm_probe(struct platform_device *pdev)
 {
 	struct twl_pwm_chip *twl;
-	int ret;
 
 	twl = devm_kzalloc(&pdev->dev, sizeof(*twl), GFP_KERNEL);
 	if (!twl)
@@ -310,25 +309,11 @@ static int twl_pwm_probe(struct platform_device *pdev)
 		twl->chip.ops = &twl6030_pwm_ops;
 
 	twl->chip.dev = &pdev->dev;
-	twl->chip.base = -1;
 	twl->chip.npwm = 2;
 
 	mutex_init(&twl->mutex);
 
-	ret = pwmchip_add(&twl->chip);
-	if (ret < 0)
-		return ret;
-
-	platform_set_drvdata(pdev, twl);
-
-	return 0;
-}
-
-static int twl_pwm_remove(struct platform_device *pdev)
-{
-	struct twl_pwm_chip *twl = platform_get_drvdata(pdev);
-
-	return pwmchip_remove(&twl->chip);
+	return devm_pwmchip_add(&pdev->dev, &twl->chip);
 }
 
 #ifdef CONFIG_OF
@@ -346,7 +331,6 @@ static struct platform_driver twl_pwm_driver = {
 		.of_match_table = of_match_ptr(twl_pwm_of_match),
 	},
 	.probe = twl_pwm_probe,
-	.remove = twl_pwm_remove,
 };
 module_platform_driver(twl_pwm_driver);
 

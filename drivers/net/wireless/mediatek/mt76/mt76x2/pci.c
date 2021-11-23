@@ -10,9 +10,9 @@
 #include "mt76x2.h"
 
 static const struct pci_device_id mt76x2e_device_table[] = {
-	{ PCI_DEVICE(0x14c3, 0x7662) },
-	{ PCI_DEVICE(0x14c3, 0x7612) },
-	{ PCI_DEVICE(0x14c3, 0x7602) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_MEDIATEK, 0x7662) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_MEDIATEK, 0x7612) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_MEDIATEK, 0x7602) },
 	{ },
 };
 
@@ -90,7 +90,8 @@ mt76x2e_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	return 0;
 
 error:
-	ieee80211_free_hw(mt76_hw(dev));
+	mt76_free_device(&dev->mt76);
+
 	return ret;
 }
 

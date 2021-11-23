@@ -12,25 +12,23 @@
 
 int vbox_mm_init(struct vbox_private *vbox)
 {
-	struct drm_vram_mm *vmm;
 	int ret;
 	struct drm_device *dev = &vbox->ddev;
+	struct pci_dev *pdev = to_pci_dev(dev->dev);
 
-	vmm = drm_vram_helper_alloc_mm(dev, pci_resource_start(dev->pdev, 0),
+	ret = drmm_vram_helper_init(dev, pci_resource_start(pdev, 0),
 				       vbox->available_vram_size);
-	if (IS_ERR(vmm)) {
-		ret = PTR_ERR(vmm);
+	if (ret) {
 		DRM_ERROR("Error initializing VRAM MM; %d\n", ret);
 		return ret;
 	}
 
-	vbox->fb_mtrr = arch_phys_wc_add(pci_resource_start(dev->pdev, 0),
-					 pci_resource_len(dev->pdev, 0));
+	vbox->fb_mtrr = arch_phys_wc_add(pci_resource_start(pdev, 0),
+					 pci_resource_len(pdev, 0));
 	return 0;
 }
 
 void vbox_mm_fini(struct vbox_private *vbox)
 {
 	arch_phys_wc_del(vbox->fb_mtrr);
-	drm_vram_helper_release_mm(&vbox->ddev);
 }

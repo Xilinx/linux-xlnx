@@ -107,8 +107,6 @@ cpu_enable_trap_ctr_access(const struct arm64_cpu_capabilities *cap)
 }
 
 #ifdef CONFIG_ARM64_ERRATUM_1463225
-DEFINE_PER_CPU(int, __in_cortex_a76_erratum_1463225_wa);
-
 static bool
 has_cortex_a76_erratum_1463225(const struct arm64_cpu_capabilities *entry,
 			       int scope)
@@ -195,16 +193,6 @@ has_neoverse_n1_erratum_1542419(const struct arm64_cpu_capabilities *entry,
 	WARN_ON(scope != SCOPE_LOCAL_CPU || preemptible());
 	return is_midr_in_range(midr, &range) && has_dic;
 }
-
-#ifdef CONFIG_RANDOMIZE_BASE
-
-static const struct midr_range ca57_a72[] = {
-	MIDR_ALL_VERSIONS(MIDR_CORTEX_A57),
-	MIDR_ALL_VERSIONS(MIDR_CORTEX_A72),
-	{},
-};
-
-#endif
 
 #ifdef CONFIG_ARM64_WORKAROUND_REPEAT_TLBI
 static const struct arm64_cpu_capabilities arm64_repeat_tlbi_list[] = {
@@ -461,9 +449,12 @@ const struct arm64_cpu_capabilities arm64_errata[] = {
 	},
 #ifdef CONFIG_RANDOMIZE_BASE
 	{
-		.desc = "EL2 vector hardening",
-		.capability = ARM64_HARDEN_EL2_VECTORS,
-		ERRATA_MIDR_RANGE_LIST(ca57_a72),
+	/* Must come after the Spectre-v2 entry */
+		.desc = "Spectre-v3a",
+		.capability = ARM64_SPECTRE_V3A,
+		.type = ARM64_CPUCAP_LOCAL_CPU_ERRATUM,
+		.matches = has_spectre_v3a,
+		.cpu_enable = spectre_v3a_enable_mitigation,
 	},
 #endif
 	{
@@ -533,6 +524,14 @@ const struct arm64_cpu_capabilities arm64_errata[] = {
 		ERRATA_MIDR_RANGE(MIDR_CORTEX_A77,
 				  0, 0,
 				  1, 0),
+	},
+#endif
+#ifdef CONFIG_NVIDIA_CARMEL_CNP_ERRATUM
+	{
+		/* NVIDIA Carmel */
+		.desc = "NVIDIA Carmel CNP erratum",
+		.capability = ARM64_WORKAROUND_NVIDIA_CARMEL_CNP,
+		ERRATA_MIDR_ALL_VERSIONS(MIDR_NVIDIA_CARMEL),
 	},
 #endif
 	{

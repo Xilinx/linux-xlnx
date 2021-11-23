@@ -9,13 +9,11 @@
 
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/slab.h>
 #include <linux/iio/iio.h>
 #include <linux/iio/trigger.h>
 #include <linux/interrupt.h>
 #include <linux/iio/buffer.h>
 #include <linux/iio/trigger_consumer.h>
-#include <linux/iio/triggered_buffer.h>
 #include <linux/irqreturn.h>
 #include <linux/regmap.h>
 
@@ -57,7 +55,7 @@ irqreturn_t st_sensors_trigger_handler(int irq, void *p)
 	s64 timestamp;
 
 	/*
-	 * If we do timetamping here, do it before reading the values, because
+	 * If we do timestamping here, do it before reading the values, because
 	 * once we've read the values, new interrupts can occur (when using
 	 * the hardware trigger) and the hw_timestamp may get updated.
 	 * By storing it in a local variable first, we are safe.

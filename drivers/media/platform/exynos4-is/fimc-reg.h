@@ -302,8 +302,8 @@ void fimc_hw_set_rgb_alpha(struct fimc_ctx *ctx);
 void fimc_hw_set_in_dma(struct fimc_ctx *ctx);
 void fimc_hw_set_input_path(struct fimc_ctx *ctx);
 void fimc_hw_set_output_path(struct fimc_ctx *ctx);
-void fimc_hw_set_input_addr(struct fimc_dev *fimc, struct fimc_addr *paddr);
-void fimc_hw_set_output_addr(struct fimc_dev *fimc, struct fimc_addr *paddr,
+void fimc_hw_set_input_addr(struct fimc_dev *fimc, struct fimc_addr *addr);
+void fimc_hw_set_output_addr(struct fimc_dev *fimc, struct fimc_addr *addr,
 			     int index);
 int fimc_hw_set_camera_source(struct fimc_dev *fimc,
 			      struct fimc_source_info *cam);
@@ -324,6 +324,7 @@ void fimc_deactivate_capture(struct fimc_dev *fimc);
 
 /**
  * fimc_hw_set_dma_seq - configure output DMA buffer sequence
+ * @dev: fimc device
  * @mask: bitmask for the DMA output buffer registers, set to 0 to skip buffer
  * This function masks output DMA ring buffers, it allows to select which of
  * the 32 available output buffer address registers will be used by the DMA

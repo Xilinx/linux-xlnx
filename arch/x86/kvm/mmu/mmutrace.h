@@ -40,7 +40,7 @@
 			 role.direct ? " direct" : "",			\
 			 access_str[role.access],			\
 			 role.invalid ? " invalid" : "",		\
-			 role.nxe ? "" : "!",				\
+			 role.efer_nx ? "" : "!",			\
 			 role.ad_disabled ? "!" : "",			\
 			 __entry->root_count,				\
 			 __entry->unsync ? "unsync" : "sync", 0);	\
@@ -53,6 +53,12 @@
 	{ PFERR_USER_MASK, "U" },	\
 	{ PFERR_RSVD_MASK, "RSVD" },	\
 	{ PFERR_FETCH_MASK, "F" }
+
+TRACE_DEFINE_ENUM(RET_PF_RETRY);
+TRACE_DEFINE_ENUM(RET_PF_EMULATE);
+TRACE_DEFINE_ENUM(RET_PF_INVALID);
+TRACE_DEFINE_ENUM(RET_PF_FIXED);
+TRACE_DEFINE_ENUM(RET_PF_SPURIOUS);
 
 /*
  * A pagetable walk has started
@@ -378,6 +384,35 @@ TRACE_EVENT(
 
 	TP_printk("gfn %llx pfn %llx level %d",
 		  __entry->gfn, __entry->pfn, __entry->level
+	)
+);
+
+TRACE_EVENT(
+	kvm_tdp_mmu_spte_changed,
+	TP_PROTO(int as_id, gfn_t gfn, int level, u64 old_spte, u64 new_spte),
+	TP_ARGS(as_id, gfn, level, old_spte, new_spte),
+
+	TP_STRUCT__entry(
+		__field(u64, gfn)
+		__field(u64, old_spte)
+		__field(u64, new_spte)
+		/* Level cannot be larger than 5 on x86, so it fits in a u8. */
+		__field(u8, level)
+		/* as_id can only be 0 or 1 x86, so it fits in a u8. */
+		__field(u8, as_id)
+	),
+
+	TP_fast_assign(
+		__entry->gfn = gfn;
+		__entry->old_spte = old_spte;
+		__entry->new_spte = new_spte;
+		__entry->level = level;
+		__entry->as_id = as_id;
+	),
+
+	TP_printk("as id %d gfn %llx level %d old_spte %llx new_spte %llx",
+		  __entry->as_id, __entry->gfn, __entry->level,
+		  __entry->old_spte, __entry->new_spte
 	)
 );
 

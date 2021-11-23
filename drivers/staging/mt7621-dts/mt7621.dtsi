@@ -1,5 +1,6 @@
 #include <dt-bindings/interrupt-controller/mips-gic.h>
 #include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/clock/mt7621-clk.h>
 
 / {
 	#address-cells = <1>;
@@ -27,27 +28,6 @@
 		serial0 = &uartlite;
 	};
 
-	cpuclock: cpuclock@0 {
-		#clock-cells = <0>;
-		compatible = "fixed-clock";
-
-		/* FIXME: there should be way to detect this */
-		clock-frequency = <880000000>;
-	};
-
-	sysclock: sysclock@0 {
-		#clock-cells = <0>;
-		compatible = "fixed-clock";
-
-		/* This is normally 1/4 of cpuclock */
-		clock-frequency = <220000000>;
-	};
-
-	mmc_clock: mmc_clock@0 {
-		#clock-cells = <0>;
-		compatible = "fixed-clock";
-		clock-frequency = <48000000>;
-	};
 
 	mmc_fixed_3v3: fixedregulator@0 {
 		compatible = "regulator-fixed";
@@ -75,13 +55,18 @@
 		#address-cells = <1>;
 		#size-cells = <1>;
 
-		sysc: sysc@0 {
-			compatible = "mtk,mt7621-sysc";
+		sysc: syscon@0 {
+			compatible = "mediatek,mt7621-sysc", "syscon";
 			reg = <0x0 0x100>;
+			#clock-cells = <1>;
+			ralink,memctl = <&memc>;
+			clock-output-names = "xtal", "cpu", "bus",
+					     "50m", "125m", "150m",
+					     "250m", "270m";
 		};
 
 		wdt: wdt@100 {
-			compatible = "mtk,mt7621-wdt";
+			compatible = "mediatek,mt7621-wdt";
 			reg = <0x100 0x100>;
 		};
 
@@ -90,6 +75,7 @@
 			#interrupt-cells = <2>;
 			compatible = "mediatek,mt7621-gpio";
 			gpio-controller;
+			gpio-ranges = <&pinctrl 0 0 95>;
 			interrupt-controller;
 			reg = <0x600 0x100>;
 			interrupt-parent = <&gic>;
@@ -100,8 +86,8 @@
 			compatible = "mediatek,mt7621-i2c";
 			reg = <0x900 0x100>;
 
-			clocks = <&sysclock>;
-
+			clocks = <&sysc MT7621_CLK_I2C>;
+			clock-names = "i2c";
 			resets = <&rstctrl 16>;
 			reset-names = "i2c";
 
@@ -118,8 +104,8 @@
 			compatible = "mediatek,mt7621-i2s";
 			reg = <0xa00 0x100>;
 
-			clocks = <&sysclock>;
-
+			clocks = <&sysc MT7621_CLK_I2S>;
+			clock-names = "i2s";
 			resets = <&rstctrl 17>;
 			reset-names = "i2s";
 
@@ -136,18 +122,18 @@
 			status = "disabled";
 		};
 
-		memc: memc@5000 {
-			compatible = "mtk,mt7621-memc";
+		memc: syscon@5000 {
+			compatible = "mediatek,mt7621-memc", "syscon";
 			reg = <0x5000 0x1000>;
 		};
 
 		cpc: cpc@1fbf0000 {
-			     compatible = "mtk,mt7621-cpc";
+			     compatible = "mediatek,mt7621-cpc";
 			     reg = <0x1fbf0000 0x8000>;
 		};
 
 		mc: mc@1fbf8000 {
-			    compatible = "mtk,mt7621-mc";
+			    compatible = "mediatek,mt7621-mc";
 			    reg = <0x1fbf8000 0x8000>;
 		};
 
@@ -155,8 +141,8 @@
 			compatible = "ns16550a";
 			reg = <0xc00 0x100>;
 
-			clocks = <&sysclock>;
-			clock-frequency = <50000000>;
+			clocks = <&sysc MT7621_CLK_UART1>;
+			clock-names = "uart1";
 
 			interrupt-parent = <&gic>;
 			interrupts = <GIC_SHARED 26 IRQ_TYPE_LEVEL_HIGH>;
@@ -172,7 +158,8 @@
 			compatible = "ralink,mt7621-spi";
 			reg = <0xb00 0x100>;
 
-			clocks = <&sysclock>;
+			clocks = <&sysc MT7621_CLK_SPI>;
+			clock-names = "spi";
 
 			resets = <&rstctrl 18>;
 			reset-names = "spi";
@@ -188,6 +175,8 @@
 			compatible = "ralink,rt3883-gdma";
 			reg = <0x2800 0x800>;
 
+			clocks = <&sysc MT7621_CLK_GDMA>;
+			clock-names = "gdma";
 			resets = <&rstctrl 14>;
 			reset-names = "dma";
 
@@ -205,6 +194,8 @@
 			compatible = "mediatek,mt7621-hsdma";
 			reg = <0x7000 0x1000>;
 
+			clocks = <&sysc MT7621_CLK_HSDMA>;
+			clock-names = "hsdma";
 			resets = <&rstctrl 5>;
 			reset-names = "hsdma";
 
@@ -221,89 +212,84 @@
 
 	pinctrl: pinctrl {
 		compatible = "ralink,rt2880-pinmux";
-		pinctrl-names = "default";
-		pinctrl-0 = <&state_default>;
 
-		state_default: pinctrl0 {
-		};
-
-		i2c_pins: i2c0 {
-			i2c0 {
+		i2c_pins: i2c0-pins {
+			pinmux {
 				groups = "i2c";
 				function = "i2c";
 			};
 		};
 
-		spi_pins: spi0 {
-			spi0 {
+		spi_pins: spi0-pins {
+			pinmux {
 				groups = "spi";
 				function = "spi";
 			};
 		};
 
-		uart1_pins: uart1 {
-			uart1 {
+		uart1_pins: uart1-pins {
+			pinmux {
 				groups = "uart1";
 				function = "uart1";
 			};
 		};
 
-		uart2_pins: uart2 {
-			uart2 {
+		uart2_pins: uart2-pins {
+			pinmux {
 				groups = "uart2";
 				function = "uart2";
 			};
 		};
 
-		uart3_pins: uart3 {
-			uart3 {
+		uart3_pins: uart3-pins {
+			pinmux {
 				groups = "uart3";
 				function = "uart3";
 			};
 		};
 
-		rgmii1_pins: rgmii1 {
-			rgmii1 {
+		rgmii1_pins: rgmii1-pins {
+			pinmux {
 				groups = "rgmii1";
 				function = "rgmii1";
 			};
 		};
 
-		rgmii2_pins: rgmii2 {
-			rgmii2 {
+		rgmii2_pins: rgmii2-pins {
+			pinmux {
 				groups = "rgmii2";
 				function = "rgmii2";
 			};
 		};
 
-		mdio_pins: mdio0 {
-			mdio0 {
+		mdio_pins: mdio0-pins {
+			pinmux {
 				groups = "mdio";
 				function = "mdio";
 			};
 		};
 
-		pcie_pins: pcie0 {
-			pcie0 {
+		pcie_pins: pcie0-pins {
+			pinmux {
 				groups = "pcie";
 				function = "gpio";
 			};
 		};
 
-		nand_pins: nand0 {
-			spi-nand {
+		nand_pins: nand0-pins {
+			spi-pinmux {
 				groups = "spi";
 				function = "nand1";
 			};
 
-			sdhci-nand {
+			sdhci-pinmux {
 				groups = "sdhci";
 				function = "nand2";
 			};
 		};
 
-		sdhci_pins: sdhci0 {
-			sdhci0 {
+		sdhci_pins: sdhci0-pins {
+			pinmux {
 				groups = "sdhci";
 				function = "sdhci";
 			};
@@ -313,11 +299,6 @@
 	rstctrl: rstctrl {
 		compatible = "ralink,rt2880-reset";
 		#reset-cells = <1>;
-	};
-
-	clkctrl: clkctrl {
-		compatible = "ralink,rt2880-clock";
-		#clock-cells = <1>;
 	};
 
 	sdhci: sdhci@1E130000 {
@@ -338,7 +319,8 @@
 		pinctrl-0 = <&sdhci_pins>;
 		pinctrl-1 = <&sdhci_pins>;
 
-		clocks = <&mmc_clock &mmc_clock>;
+		clocks = <&sysc MT7621_CLK_SHXC>,
+			 <&sysc MT7621_CLK_50M>;
 		clock-names = "source", "hclk";
 
 		interrupt-parent = <&gic>;
@@ -353,7 +335,7 @@
 		       0x1e1d0700 0x0100>;
 		reg-names = "mac", "ippc";
 
-		clocks = <&sysclock>;
+		clocks = <&sysc MT7621_CLK_XTAL>;
 		clock-names = "sys_ck";
 
 		interrupt-parent = <&gic>;
@@ -372,34 +354,31 @@
 		timer {
 			compatible = "mti,gic-timer";
 			interrupts = <GIC_LOCAL 1 IRQ_TYPE_NONE>;
-			clocks = <&cpuclock>;
+			clocks = <&sysc MT7621_CLK_CPU>;
 		};
 	};
 
 	nand: nand@1e003000 {
 		status = "disabled";
 
-		compatible = "mtk,mt7621-nand";
+		compatible = "mediatek,mt7621-nand";
 		bank-width = <2>;
 		reg = <0x1e003000 0x800
 			0x1e003800 0x800>;
 		#address-cells = <1>;
 		#size-cells = <1>;
-	};
 
-	ethsys: syscon@1e000000 {
-		compatible = "mediatek,mt7621-ethsys",
-			     "syscon";
-		reg = <0x1e000000 0x1000>;
-		#clock-cells = <1>;
+		clocks = <&sysc MT7621_CLK_NAND>;
+		clock-names = "nand";
 	};
 
 	ethernet: ethernet@1e100000 {
 		compatible = "mediatek,mt7621-eth";
 		reg = <0x1e100000 0x10000>;
 
-		clocks = <&sysclock>;
-		clock-names = "ethif";
+		clocks = <&sysc MT7621_CLK_FE>,
+			 <&sysc MT7621_CLK_ETH>;
+		clock-names = "fe", "ethif";
 
 		#address-cells = <1>;
 		#size-cells = <0>;
@@ -410,7 +389,7 @@
 		interrupt-parent = <&gic>;
 		interrupts = <GIC_SHARED 3 IRQ_TYPE_LEVEL_HIGH>;
 
-		mediatek,ethsys = <&ethsys>;
+		mediatek,ethsys = <&sysc>;
 
 
 		gmac0: mac@0 {
@@ -451,6 +430,10 @@
 				mediatek,mcm;
 				resets = <&rstctrl 2>;
 				reset-names = "mcm";
+				interrupt-controller;
+				#interrupt-cells = <1>;
+				interrupt-parent = <&gic>;
+				interrupts = <GIC_SHARED 23 IRQ_TYPE_LEVEL_HIGH>;
 
 				ports {
 					#address-cells = <1>;
@@ -496,19 +479,12 @@
 		};
 	};
 
-	gsw: gsw@1e110000 {
-		compatible = "mediatek,mt7621-gsw";
-		reg = <0x1e110000 0x8000>;
-		interrupt-parent = <&gic>;
-		interrupts = <GIC_SHARED 23 IRQ_TYPE_LEVEL_HIGH>;
-	};
-
 	pcie: pcie@1e140000 {
 		compatible = "mediatek,mt7621-pci";
-		reg = <0x1e140000 0x100     /* host-pci bridge registers */
-			0x1e142000 0x100    /* pcie port 0 RC control registers */
-			0x1e143000 0x100    /* pcie port 1 RC control registers */
-			0x1e144000 0x100>;  /* pcie port 2 RC control registers */
+		reg = <0x1e140000 0x100>, /* host-pci bridge registers */
+		      <0x1e142000 0x100>, /* pcie port 0 RC control registers */
+		      <0x1e143000 0x100>, /* pcie port 1 RC control registers */
+		      <0x1e144000 0x100>; /* pcie port 2 RC control registers */
 		#address-cells = <3>;
 		#size-cells = <2>;
 
@@ -517,25 +493,16 @@
 
 		device_type = "pci";
 
-		bus-range = <0 255>;
-		ranges = <
-			0x02000000 0 0x00000000 0x60000000 0 0x10000000 /* pci memory */
-			0x01000000 0 0x00000000 0x1e160000 0 0x00010000 /* io space */
-		>;
+		ranges = <0x02000000 0 0x60000000 0x60000000 0 0x10000000>, /* pci memory */
+			 <0x01000000 0 0x00000000 0x1e160000 0 0x00010000>; /* io space */
 
-		interrupt-parent = <&gic>;
-		interrupts = <GIC_SHARED 4 IRQ_TYPE_LEVEL_HIGH
-				GIC_SHARED 24 IRQ_TYPE_LEVEL_HIGH
-				GIC_SHARED 25 IRQ_TYPE_LEVEL_HIGH>;
+		#interrupt-cells = <1>;
+		interrupt-map-mask = <0xF800 0 0 0>;
+		interrupt-map = <0x0000 0 0 0 &gic GIC_SHARED 4 IRQ_TYPE_LEVEL_HIGH>,
+				<0x0800 0 0 0 &gic GIC_SHARED 24 IRQ_TYPE_LEVEL_HIGH>,
+				<0x1000 0 0 0 &gic GIC_SHARED 25 IRQ_TYPE_LEVEL_HIGH>;
 
 		status = "disabled";
-
-		resets = <&rstctrl 24 &rstctrl 25 &rstctrl 26>;
-		reset-names = "pcie0", "pcie1", "pcie2";
-		clocks = <&clkctrl 24 &clkctrl 25 &clkctrl 26>;
-		clock-names = "pcie0", "pcie1", "pcie2";
-		phys = <&pcie0_phy 1>, <&pcie2_phy 0>;
-		phy-names = "pcie-phy0", "pcie-phy2";
 
 		reset-gpios = <&gpio 19 GPIO_ACTIVE_LOW>;
 
@@ -543,36 +510,59 @@
 			reg = <0x0000 0 0 0 0>;
 			#address-cells = <3>;
 			#size-cells = <2>;
+			device_type = "pci";
+			#interrupt-cells = <1>;
+			interrupt-map-mask = <0 0 0 0>;
+			interrupt-map = <0 0 0 0 &gic GIC_SHARED 4 IRQ_TYPE_LEVEL_HIGH>;
+			resets = <&rstctrl 24>;
+			clocks = <&sysc MT7621_CLK_PCIE0>;
+			phys = <&pcie0_phy 1>;
+			phy-names = "pcie-phy0";
 			ranges;
-			bus-range = <0x00 0xff>;
 		};
 
 		pcie@1,0 {
 			reg = <0x0800 0 0 0 0>;
 			#address-cells = <3>;
 			#size-cells = <2>;
+			device_type = "pci";
+			#interrupt-cells = <1>;
+			interrupt-map-mask = <0 0 0 0>;
+			interrupt-map = <0 0 0 0 &gic GIC_SHARED 24 IRQ_TYPE_LEVEL_HIGH>;
+			resets = <&rstctrl 25>;
+			clocks = <&sysc MT7621_CLK_PCIE1>;
+			phys = <&pcie0_phy 1>;
+			phy-names = "pcie-phy1";
 			ranges;
-			bus-range = <0x00 0xff>;
 		};
 
 		pcie@2,0 {
 			reg = <0x1000 0 0 0 0>;
 			#address-cells = <3>;
 			#size-cells = <2>;
+			device_type = "pci";
+			#interrupt-cells = <1>;
+			interrupt-map-mask = <0 0 0 0>;
+			interrupt-map = <0 0 0 0 &gic GIC_SHARED 25 IRQ_TYPE_LEVEL_HIGH>;
+			resets = <&rstctrl 26>;
+			clocks = <&sysc MT7621_CLK_PCIE2>;
+			phys = <&pcie2_phy 0>;
+			phy-names = "pcie-phy2";
 			ranges;
-			bus-range = <0x00 0xff>;
 		};
 	};
 
 	pcie0_phy: pcie-phy@1e149000 {
 		compatible = "mediatek,mt7621-pci-phy";
 		reg = <0x1e149000 0x0700>;
+		clocks = <&sysc MT7621_CLK_XTAL>;
 		#phy-cells = <1>;
 	};
 
 	pcie2_phy: pcie-phy@1e14a000 {
 		compatible = "mediatek,mt7621-pci-phy";
 		reg = <0x1e14a000 0x0700>;
+		clocks = <&sysc MT7621_CLK_XTAL>;
 		#phy-cells = <1>;
 	};
 };

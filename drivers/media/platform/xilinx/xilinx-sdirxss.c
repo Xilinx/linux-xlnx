@@ -1949,14 +1949,15 @@ static int xsdirxss_g_input_status(struct v4l2_subdev *sd, u32 *status)
 
 static struct v4l2_mbus_framefmt *
 __xsdirxss_get_pad_format(struct xsdirxss_state *xsdirxss,
-			  struct v4l2_subdev_pad_config *cfg,
+			  struct v4l2_subdev_state *sd_state,
 			  unsigned int pad, u32 which)
 {
 	struct v4l2_mbus_framefmt *format;
 
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		format = v4l2_subdev_get_try_format(&xsdirxss->subdev, cfg,
+		format = v4l2_subdev_get_try_format(&xsdirxss->subdev,
+						    sd_state,
 						    pad);
 		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
@@ -1981,7 +1982,7 @@ __xsdirxss_get_pad_format(struct xsdirxss_state *xsdirxss,
  * Return: 0 on success
  */
 static int xsdirxss_get_format(struct v4l2_subdev *sd,
-			       struct v4l2_subdev_pad_config *cfg,
+			       struct v4l2_subdev_state *sd_state,
 			       struct v4l2_subdev_format *fmt)
 {
 	struct xsdirxss_state *xsdirxss = to_xsdirxssstate(sd);
@@ -1993,7 +1994,7 @@ static int xsdirxss_get_format(struct v4l2_subdev *sd,
 		return -EINVAL;
 	}
 
-	format = __xsdirxss_get_pad_format(xsdirxss, cfg,
+	format = __xsdirxss_get_pad_format(xsdirxss, sd_state,
 					   fmt->pad, fmt->which);
 	if (!format)
 		return -EINVAL;
@@ -2019,7 +2020,7 @@ static int xsdirxss_get_format(struct v4l2_subdev *sd,
  * Return: 0 on success
  */
 static int xsdirxss_set_format(struct v4l2_subdev *sd,
-			       struct v4l2_subdev_pad_config *cfg,
+			       struct v4l2_subdev_state *sd_state,
 			       struct v4l2_subdev_format *fmt)
 {
 	struct v4l2_mbus_framefmt *__format;
@@ -2031,7 +2032,7 @@ static int xsdirxss_set_format(struct v4l2_subdev *sd,
 		fmt->format.code, fmt->format.field,
 		fmt->format.colorspace);
 
-	__format = __xsdirxss_get_pad_format(xsdirxss, cfg,
+	__format = __xsdirxss_get_pad_format(xsdirxss, sd_state,
 					     fmt->pad, fmt->which);
 	if (!__format)
 		return -EINVAL;
@@ -2052,7 +2053,7 @@ static int xsdirxss_set_format(struct v4l2_subdev *sd,
  * Return: -EINVAL or zero on success
  */
 static int xsdirxss_enum_mbus_code(struct v4l2_subdev *sd,
-				   struct v4l2_subdev_pad_config *cfg,
+				   struct v4l2_subdev_state *sd_state,
 				   struct v4l2_subdev_mbus_code_enum *code)
 {
 	struct xsdirxss_state *xsdirxss = to_xsdirxssstate(sd);
@@ -2134,7 +2135,7 @@ static int xsdirxss_open(struct v4l2_subdev *sd,
 	struct v4l2_mbus_framefmt *format;
 	struct xsdirxss_state *xsdirxss = to_xsdirxssstate(sd);
 
-	format = v4l2_subdev_get_try_format(sd, fh->pad, 0);
+	format = v4l2_subdev_get_try_format(sd, fh->state, 0);
 	*format = xsdirxss->default_format;
 
 	return 0;

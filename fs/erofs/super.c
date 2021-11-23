@@ -2,7 +2,6 @@
 /*
  * Copyright (C) 2017-2018 HUAWEI, Inc.
  *             https://www.huawei.com/
- * Created by Gao Xiang <gaoxiang25@huawei.com>
  */
 #include <linux/module.h>
 #include <linux/buffer_head.h>
@@ -12,6 +11,7 @@
 #include <linux/crc32c.h>
 #include <linux/fs_context.h>
 #include <linux/fs_parser.h>
+#include <linux/dax.h>
 #include "xattr.h"
 
 #define CREATE_TRACE_POINTS
@@ -122,6 +122,136 @@ static bool check_layout_compatibility(struct super_block *sb,
 	return true;
 }
 
+#ifdef CONFIG_EROFS_FS_ZIP
+/* read variable-sized metadata, offset will be aligned by 4-byte */
+static void *erofs_read_metadata(struct super_block *sb, struct page **pagep,
+				 erofs_off_t *offset, int *lengthp)
+{
+	struct page *page = *pagep;
+	u8 *buffer, *ptr;
+	int len, i, cnt;
+	erofs_blk_t blk;
+
+	*offset = round_up(*offset, 4);
+	blk = erofs_blknr(*offset);
+
+	if (!page || page->index != blk) {
+		if (page) {
+			unlock_page(page);
+			put_page(page);
+		}
+		page = erofs_get_meta_page(sb, blk);
+		if (IS_ERR(page))
+			goto err_nullpage;
+	}
+
+	ptr = kmap(page);
+	len = le16_to_cpu(*(__le16 *)&ptr[erofs_blkoff(*offset)]);
+	if (!len)
+		len = U16_MAX + 1;
+	buffer = kmalloc(len, GFP_KERNEL);
+	if (!buffer) {
+		buffer = ERR_PTR(-ENOMEM);
+		goto out;
+	}
+	*offset += sizeof(__le16);
+	*lengthp = len;
+
+	for (i = 0; i < len; i += cnt) {
+		cnt = min(EROFS_BLKSIZ - (int)erofs_blkoff(*offset), len - i);
+		blk = erofs_blknr(*offset);
+
+		if (!page || page->index != blk) {
+			if (page) {
+				kunmap(page);
+				unlock_page(page);
+				put_page(page);
+			}
+			page = erofs_get_meta_page(sb, blk);
+			if (IS_ERR(page)) {
+				kfree(buffer);
+				goto err_nullpage;
+			}
+			ptr = kmap(page);
+		}
+		memcpy(buffer + i, ptr + erofs_blkoff(*offset), cnt);
+		*offset += cnt;
+	}
+out:
+	kunmap(page);
+	*pagep = page;
+	return buffer;
+err_nullpage:
+	*pagep = NULL;
+	return page;
+}
+
+static int erofs_load_compr_cfgs(struct super_block *sb,
+				 struct erofs_super_block *dsb)
+{
+	struct erofs_sb_info *sbi;
+	struct page *page;
+	unsigned int algs, alg;
+	erofs_off_t offset;
+	int size, ret;
+
+	sbi = EROFS_SB(sb);
+	sbi->available_compr_algs = le16_to_cpu(dsb->u1.available_compr_algs);
+
+	if (sbi->available_compr_algs & ~Z_EROFS_ALL_COMPR_ALGS) {
+		erofs_err(sb, "try to load compressed fs with unsupported algorithms %x",
+			  sbi->available_compr_algs & ~Z_EROFS_ALL_COMPR_ALGS);
+		return -EINVAL;
+	}
+
+	offset = EROFS_SUPER_OFFSET + sbi->sb_size;
+	page = NULL;
+	alg = 0;
+	ret = 0;
+
+	for (algs = sbi->available_compr_algs; algs; algs >>= 1, ++alg) {
+		void *data;
+
+		if (!(algs & 1))
+			continue;
+
+		data = erofs_read_metadata(sb, &page, &offset, &size);
+		if (IS_ERR(data)) {
+			ret = PTR_ERR(data);
+			goto err;
+		}
+
+		switch (alg) {
+		case Z_EROFS_COMPRESSION_LZ4:
+			ret = z_erofs_load_lz4_config(sb, dsb, data, size);
+			break;
+		default:
+			DBG_BUGON(1);
+			ret = -EFAULT;
+		}
+		kfree(data);
+		if (ret)
+			goto err;
+	}
+err:
+	if (page) {
+		unlock_page(page);
+		put_page(page);
+	}
+	return ret;
+}
+#else
+static int erofs_load_compr_cfgs(struct super_block *sb,
+				 struct erofs_super_block *dsb)
+{
+	if (dsb->u1.available_compr_algs) {
+		erofs_err(sb, "try to load compressed fs when compression is disabled");
+		return -EINVAL;
+	}
+	return 0;
+}
+#endif
+
 static int erofs_read_superblock(struct super_block *sb)
 {
 	struct erofs_sb_info *sbi;
@@ -149,23 +279,30 @@ static int erofs_read_superblock(struct super_block *sb)
 	}
 
 	sbi->feature_compat = le32_to_cpu(dsb->feature_compat);
-	if (sbi->feature_compat & EROFS_FEATURE_COMPAT_SB_CHKSUM) {
+	if (erofs_sb_has_sb_chksum(sbi)) {
 		ret = erofs_superblock_csum_verify(sb, data);
 		if (ret)
 			goto out;
 	}
 
+	ret = -EINVAL;
 	blkszbits = dsb->blkszbits;
 	/* 9(512 bytes) + LOG_SECTORS_PER_BLOCK == LOG_BLOCK_SIZE */
 	if (blkszbits != LOG_BLOCK_SIZE) {
-		erofs_err(sb, "blksize %u isn't supported on this platform",
-			  1 << blkszbits);
+		erofs_err(sb, "blkszbits %u isn't supported on this platform",
+			  blkszbits);
 		goto out;
 	}
 
 	if (!check_layout_compatibility(sb, dsb))
 		goto out;
 
+	sbi->sb_size = 128 + dsb->sb_extslots * EROFS_SB_EXTSLOT_SIZE;
+	if (sbi->sb_size > EROFS_BLKSIZ) {
+		erofs_err(sb, "invalid sb_extslots %u (more than a fs block)",
+			  sbi->sb_size);
+		goto out;
+	}
 	sbi->blocks = le32_to_cpu(dsb->blocks);
 	sbi->meta_blkaddr = le32_to_cpu(dsb->meta_blkaddr);
 #ifdef CONFIG_EROFS_FS_XATTR
@@ -187,7 +324,12 @@ static int erofs_read_superblock(struct super_block *sb)
 		ret = -EFSCORRUPTED;
 		goto out;
 	}
-	ret = 0;
+
+	/* parse on-disk compression configurations */
+	if (erofs_sb_has_compr_cfgs(sbi))
+		ret = erofs_load_compr_cfgs(sb, dsb);
+	else
+		ret = z_erofs_load_lz4_config(sb, dsb, NULL, 0);
 out:
 	kunmap(page);
 	put_page(page);
@@ -200,6 +342,7 @@ static void erofs_default_options(struct erofs_fs_context *ctx)
 #ifdef CONFIG_EROFS_FS_ZIP
 	ctx->cache_strategy = EROFS_ZIP_CACHE_READAROUND;
 	ctx->max_sync_decompress_pages = 3;
+	ctx->readahead_sync_decompress = false;
 #endif
 #ifdef CONFIG_EROFS_FS_XATTR
 	set_opt(ctx, XATTR_USER);
@@ -213,6 +356,8 @@ enum {
 	Opt_user_xattr,
 	Opt_acl,
 	Opt_cache_strategy,
+	Opt_dax,
+	Opt_dax_enum,
 	Opt_err
 };
 
@@ -223,13 +368,46 @@ static const struct constant_table erofs_param_cache_strategy[] = {
 	{}
 };
 
+static const struct constant_table erofs_dax_param_enums[] = {
+	{"always",	EROFS_MOUNT_DAX_ALWAYS},
+	{"never",	EROFS_MOUNT_DAX_NEVER},
+	{}
+};
+
 static const struct fs_parameter_spec erofs_fs_parameters[] = {
 	fsparam_flag_no("user_xattr",	Opt_user_xattr),
 	fsparam_flag_no("acl",		Opt_acl),
 	fsparam_enum("cache_strategy",	Opt_cache_strategy,
 		     erofs_param_cache_strategy),
+	fsparam_flag("dax",             Opt_dax),
+	fsparam_enum("dax",		Opt_dax_enum, erofs_dax_param_enums),
 	{}
 };
+
+static bool erofs_fc_set_dax_mode(struct fs_context *fc, unsigned int mode)
+{
+#ifdef CONFIG_FS_DAX
+	struct erofs_fs_context *ctx = fc->fs_private;
+
+	switch (mode) {
+	case EROFS_MOUNT_DAX_ALWAYS:
+		warnfc(fc, "DAX enabled. Warning: EXPERIMENTAL, use at your own risk");
+		set_opt(ctx, DAX_ALWAYS);
+		clear_opt(ctx, DAX_NEVER);
+		return true;
+	case EROFS_MOUNT_DAX_NEVER:
+		set_opt(ctx, DAX_NEVER);
+		clear_opt(ctx, DAX_ALWAYS);
+		return true;
+	default:
+		DBG_BUGON(1);
+		return false;
+	}
+#else
+	errorfc(fc, "dax options not supported");
+	return false;
+#endif
+}
 
 static int erofs_fc_parse_param(struct fs_context *fc,
 				struct fs_parameter *param)
@@ -270,6 +448,14 @@ static int erofs_fc_parse_param(struct fs_context *fc,
 		errorfc(fc, "compression not supported, cache_strategy ignored");
 #endif
 		break;
+	case Opt_dax:
+		if (!erofs_fc_set_dax_mode(fc, EROFS_MOUNT_DAX_ALWAYS))
+			return -EINVAL;
+		break;
+	case Opt_dax_enum:
+		if (!erofs_fc_set_dax_mode(fc, result.uint_32))
+			return -EINVAL;
+		break;
 	default:
 		return -ENOPARAM;
 	}
@@ -288,7 +474,7 @@ static int erofs_managed_cache_releasepage(struct page *page, gfp_t gfp_mask)
 	DBG_BUGON(mapping->a_ops != &managed_cache_aops);
 
 	if (PagePrivate(page))
-		ret = erofs_try_to_free_cached_page(mapping, page);
+		ret = erofs_try_to_free_cached_page(page);
 
 	return ret;
 }
@@ -354,10 +540,16 @@ static int erofs_fc_fill_super(struct super_block *sb, struct fs_context *fc)
 		return -ENOMEM;
 
 	sb->s_fs_info = sbi;
+	sbi->dax_dev = fs_dax_get_by_bdev(sb->s_bdev);
 	err = erofs_read_superblock(sb);
 	if (err)
 		return err;
 
+	if (test_opt(ctx, DAX_ALWAYS) &&
+	    !dax_supported(sbi->dax_dev, sb->s_bdev, EROFS_BLKSIZ, 0, bdev_nr_sectors(sb->s_bdev))) {
+		errorfc(fc, "DAX unsupported by block device. Turning off DAX.");
+		clear_opt(ctx, DAX_ALWAYS);
+	}
 	sb->s_flags |= SB_RDONLY | SB_NOATIME;
 	sb->s_maxbytes = MAX_LFS_FILESIZE;
 	sb->s_time_gran = 1;
@@ -467,6 +659,7 @@ static void erofs_kill_sb(struct super_block *sb)
 	sbi = EROFS_SB(sb);
 	if (!sbi)
 		return;
+	fs_put_dax(sbi->dax_dev);
 	kfree(sbi);
 	sb->s_fs_info = NULL;
 }
@@ -513,6 +706,7 @@ static int __init erofs_module_init(void)
 	if (err)
 		goto shrinker_err;
 
+	erofs_pcpubuf_init();
 	err = z_erofs_init_zip_subsystem();
 	if (err)
 		goto zip_err;
@@ -542,6 +736,7 @@ static void __exit erofs_module_exit(void)
 	/* Ensure all RCU free inodes are safe before cache is destroyed. */
 	rcu_barrier();
 	kmem_cache_destroy(erofs_inode_cachep);
+	erofs_pcpubuf_exit();
 }
 
 /* get filesystem statistics */
@@ -567,8 +762,8 @@ static int erofs_statfs(struct dentry *dentry, struct kstatfs *buf)
 
 static int erofs_show_options(struct seq_file *seq, struct dentry *root)
 {
-	struct erofs_sb_info *sbi __maybe_unused = EROFS_SB(root->d_sb);
-	struct erofs_fs_context *ctx __maybe_unused = &sbi->ctx;
+	struct erofs_sb_info *sbi = EROFS_SB(root->d_sb);
+	struct erofs_fs_context *ctx = &sbi->ctx;
 
 #ifdef CONFIG_EROFS_FS_XATTR
 	if (test_opt(ctx, XATTR_USER))
@@ -590,6 +785,10 @@ static int erofs_show_options(struct seq_file *seq, struct dentry *root)
 	else if (ctx->cache_strategy == EROFS_ZIP_CACHE_READAROUND)
 		seq_puts(seq, ",cache_strategy=readaround");
 #endif
+	if (test_opt(ctx, DAX_ALWAYS))
+		seq_puts(seq, ",dax=always");
+	if (test_opt(ctx, DAX_NEVER))
+		seq_puts(seq, ",dax=never");
 	return 0;
 }
 
@@ -607,4 +806,3 @@ module_exit(erofs_module_exit);
 MODULE_DESCRIPTION("Enhanced ROM File System");
 MODULE_AUTHOR("Gao Xiang, Chao Yu, Miao Xie, CONSUMER BG, HUAWEI Inc.");
 MODULE_LICENSE("GPL");
-

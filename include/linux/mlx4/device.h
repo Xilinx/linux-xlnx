@@ -46,7 +46,6 @@
 
 #define DEFAULT_UAR_PAGE_SHIFT  12
 
-#define MAX_MSIX_P_PORT		17
 #define MAX_MSIX		128
 #define MIN_MSIX_P_PORT		5
 #define MLX4_IS_LEGACY_EQ_MODE(dev_cap) ((dev_cap).num_comp_vectors < \
@@ -631,6 +630,7 @@ struct mlx4_caps {
 	bool			wol_port[MLX4_MAX_PORTS + 1];
 	struct mlx4_rate_limit_caps rl_caps;
 	u32			health_buffer_addrs;
+	bool			map_clock_to_user;
 };
 
 struct mlx4_buf_list {

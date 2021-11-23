@@ -17,6 +17,7 @@
 #include <linux/mutex.h>
 #include <linux/spinlock.h>
 #include <linux/videodev2.h>
+#include <linux/wait.h>
 
 #include <media/media-device.h>
 #include <media/v4l2-async.h>
@@ -24,21 +25,47 @@
 #include <media/v4l2-dev.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-fwnode.h>
+#include <media/v4l2-subdev.h>
 #include <media/videobuf2-v4l2.h>
 
 #define CAL_MODULE_NAME			"cal"
-#define CAL_NUM_CONTEXT			2
+#define CAL_MAX_NUM_CONTEXT		8
 #define CAL_NUM_CSI2_PORTS		2
 
-#define MAX_WIDTH_BYTES			(8192 * 8)
-#define MAX_HEIGHT_LINES		16383
+/*
+ * The width is limited by the size of the CAL_WR_DMA_XSIZE_j.XSIZE field,
+ * expressed in multiples of 64 bits. The height is limited by the size of the
+ * CAL_CSI2_CTXi_j.CTXi_LINES and CAL_WR_DMA_CTRL_j.YSIZE fields, expressed in
+ * lines.
+ */
+#define CAL_MIN_WIDTH_BYTES		16
+#define CAL_MAX_WIDTH_BYTES		(8192 * 8)
+#define CAL_MIN_HEIGHT_LINES		1
+#define CAL_MAX_HEIGHT_LINES		16383
+
+#define CAL_CAMERARX_PAD_SINK		0
+#define CAL_CAMERARX_PAD_FIRST_SOURCE	1
+#define CAL_CAMERARX_NUM_SOURCE_PADS	1
+#define CAL_CAMERARX_NUM_PADS		(1 + CAL_CAMERARX_NUM_SOURCE_PADS)
+
+static inline bool cal_rx_pad_is_sink(u32 pad)
+{
+	/* Camera RX has 1 sink pad, and N source pads */
+	return pad == 0;
+}
+
+static inline bool cal_rx_pad_is_source(u32 pad)
+{
+	/* Camera RX has 1 sink pad, and N source pads */
+	return pad >= CAL_CAMERARX_PAD_FIRST_SOURCE &&
+	       pad <= CAL_CAMERARX_NUM_SOURCE_PADS;
+}
 
 struct device;
 struct device_node;
 struct resource;
 struct regmap;
 struct regmap_fied;
-struct v4l2_subdev;
 
 /* CTRL_CORE_CAMERRX_CONTROL register field id */
 enum cal_camerarx_field {
@@ -49,11 +76,19 @@ enum cal_camerarx_field {
 	F_MAX_FIELDS,
 };
 
-struct cal_fmt {
+enum cal_dma_state {
+	CAL_DMA_RUNNING,
+	CAL_DMA_STOP_REQUESTED,
+	CAL_DMA_STOP_PENDING,
+	CAL_DMA_STOPPED,
+};
+
+struct cal_format_info {
 	u32	fourcc;
 	u32	code;
 	/* Bits per pixel */
 	u8	bpp;
+	bool	meta;
 };
 
 /* buffer for one video frame */
@@ -63,8 +98,37 @@ struct cal_buffer {
 	struct list_head	list;
 };
 
+/**
+ * struct cal_dmaqueue - Queue of DMA buffers
+ */
 struct cal_dmaqueue {
-	struct list_head	active;
+	/**
+	 * @lock: Protects all fields in the cal_dmaqueue.
+	 */
+	spinlock_t		lock;
+
+	/**
+	 * @queue: Buffers queued to the driver and waiting for DMA processing.
+	 * Buffers are added to the list by the vb2 .buffer_queue() operation,
+	 * and move to @pending when they are scheduled for the next frame.
+	 */
+	struct list_head	queue;
+	/**
+	 * @pending: Buffer provided to the hardware to DMA the next frame.
+	 * Will move to @active at the end of the current frame.
+	 */
+	struct cal_buffer	*pending;
+	/**
+	 * @active: Buffer being DMA'ed to for the current frame. Will be
+	 * retired and given back to vb2 at the end of the current frame if
+	 * a @pending buffer has been scheduled to replace it.
+	 */
+	struct cal_buffer	*active;
+
+	/** @state: State of the DMA engine. */
+	enum cal_dma_state	state;
+	/** @wait: Wait queue to signal a @state transition to CAL_DMA_STOPPED. */
+	struct wait_queue_head	wait;
 };
 
 struct cal_camerarx_data {
@@ -101,15 +165,29 @@ struct cal_data {
 struct cal_camerarx {
 	void __iomem		*base;
 	struct resource		*res;
-	struct device		*dev;
 	struct regmap_field	*fields[F_MAX_FIELDS];
 
 	struct cal_dev		*cal;
 	unsigned int		instance;
 
 	struct v4l2_fwnode_endpoint	endpoint;
-	struct device_node	*sensor_node;
-	struct v4l2_subdev	*sensor;
+	struct device_node	*source_ep_node;
+	struct device_node	*source_node;
+	struct v4l2_subdev	*source;
+	struct media_pipeline	pipe;
+
+	struct v4l2_subdev	subdev;
+	struct media_pad	pads[CAL_CAMERARX_NUM_PADS];
+	struct v4l2_mbus_framefmt	formats[CAL_CAMERARX_NUM_PADS];
+
+	/*
+	 * Lock for camerarx ops. Protects:
+	 * - formats
+	 * - enable_count
+	 */
+	struct mutex		mutex;
+
+	unsigned int		enable_count;
 };
 
 struct cal_dev {
@@ -129,11 +207,14 @@ struct cal_dev {
 	/* Camera Core Module handle */
 	struct cal_camerarx	*phy[CAL_NUM_CSI2_PORTS];
 
-	struct cal_ctx		*ctx[CAL_NUM_CONTEXT];
+	u32 num_contexts;
+	struct cal_ctx		*ctx[CAL_MAX_NUM_CONTEXT];
 
 	struct media_device	mdev;
 	struct v4l2_device	v4l2_dev;
 	struct v4l2_async_notifier notifier;
+
+	unsigned long		reserved_pix_proc_mask;
 };
 
 /*
@@ -149,37 +230,33 @@ struct cal_ctx {
 
 	/* v4l2_ioctl mutex */
 	struct mutex		mutex;
-	/* v4l2 buffers lock */
-	spinlock_t		slock;
 
-	struct cal_dmaqueue	vidq;
+	struct cal_dmaqueue	dma;
 
 	/* video capture */
-	const struct cal_fmt	*fmt;
+	const struct cal_format_info	*fmtinfo;
 	/* Used to store current pixel format */
-	struct v4l2_format		v_fmt;
-	/* Used to store current mbus frame format */
-	struct v4l2_mbus_framefmt	m_fmt;
+	struct v4l2_format	v_fmt;
 
-	/* Current subdev enumerated format */
-	const struct cal_fmt	**active_fmt;
+	/* Current subdev enumerated format (legacy) */
+	const struct cal_format_info	**active_fmt;
 	unsigned int		num_active_fmt;
 
 	unsigned int		sequence;
 	struct vb2_queue	vb_vidq;
-	unsigned int		index;
-	unsigned int		cport;
+	u8			dma_ctx;
+	u8			cport;
+	u8			csi2_ctx;
+	u8			pix_proc;
+	u8			vc;
+	u8			datatype;
 
-	/* Pointer pointing to current v4l2_buffer */
-	struct cal_buffer	*cur_frm;
-	/* Pointer pointing to next v4l2_buffer */
-	struct cal_buffer	*next_frm;
-
-	bool dma_act;
+	bool			use_pix_proc;
 };
 
 extern unsigned int cal_debug;
 extern int cal_video_nr;
+extern bool cal_mc_api;
 
 #define cal_dbg(level, cal, fmt, arg...)				\
 	do {								\
@@ -192,11 +269,11 @@ extern int cal_video_nr;
 	dev_err((cal)->dev, fmt, ##arg)
 
 #define ctx_dbg(level, ctx, fmt, arg...)				\
-	cal_dbg(level, (ctx)->cal, "ctx%u: " fmt, (ctx)->index, ##arg)
+	cal_dbg(level, (ctx)->cal, "ctx%u: " fmt, (ctx)->dma_ctx, ##arg)
 #define ctx_info(ctx, fmt, arg...)					\
-	cal_info((ctx)->cal, "ctx%u: " fmt, (ctx)->index, ##arg)
+	cal_info((ctx)->cal, "ctx%u: " fmt, (ctx)->dma_ctx, ##arg)
 #define ctx_err(ctx, fmt, arg...)					\
-	cal_err((ctx)->cal, "ctx%u: " fmt, (ctx)->index, ##arg)
+	cal_err((ctx)->cal, "ctx%u: " fmt, (ctx)->dma_ctx, ##arg)
 
 #define phy_dbg(level, phy, fmt, arg...)				\
 	cal_dbg(level, (phy)->cal, "phy%u: " fmt, (phy)->instance, ##arg)
@@ -215,7 +292,7 @@ static inline void cal_write(struct cal_dev *cal, u32 offset, u32 val)
 	iowrite32(val, cal->base + offset);
 }
 
-static inline u32 cal_read_field(struct cal_dev *cal, u32 offset, u32 mask)
+static __always_inline u32 cal_read_field(struct cal_dev *cal, u32 offset, u32 mask)
 {
 	return FIELD_GET(mask, cal_read(cal, offset));
 }
@@ -239,25 +316,24 @@ static inline void cal_set_field(u32 *valp, u32 field, u32 mask)
 	*valp = val;
 }
 
+extern const struct cal_format_info cal_formats[];
+extern const unsigned int cal_num_formats;
+const struct cal_format_info *cal_format_by_fourcc(u32 fourcc);
+const struct cal_format_info *cal_format_by_code(u32 code);
+
 void cal_quickdump_regs(struct cal_dev *cal);
 
 void cal_camerarx_disable(struct cal_camerarx *phy);
-int cal_camerarx_start(struct cal_camerarx *phy, const struct cal_fmt *fmt);
-void cal_camerarx_stop(struct cal_camerarx *phy);
-void cal_camerarx_enable_irqs(struct cal_camerarx *phy);
-void cal_camerarx_disable_irqs(struct cal_camerarx *phy);
-void cal_camerarx_ppi_enable(struct cal_camerarx *phy);
-void cal_camerarx_ppi_disable(struct cal_camerarx *phy);
 void cal_camerarx_i913_errata(struct cal_camerarx *phy);
 struct cal_camerarx *cal_camerarx_create(struct cal_dev *cal,
 					 unsigned int instance);
 void cal_camerarx_destroy(struct cal_camerarx *phy);
 
-void cal_ctx_csi2_config(struct cal_ctx *ctx);
-void cal_ctx_pix_proc_config(struct cal_ctx *ctx);
-void cal_ctx_wr_dma_config(struct cal_ctx *ctx, unsigned int width,
-			   unsigned int height);
-void cal_ctx_wr_dma_addr(struct cal_ctx *ctx, unsigned int dmaaddr);
+int cal_ctx_prepare(struct cal_ctx *ctx);
+void cal_ctx_unprepare(struct cal_ctx *ctx);
+void cal_ctx_set_dma_addr(struct cal_ctx *ctx, dma_addr_t addr);
+void cal_ctx_start(struct cal_ctx *ctx);
+void cal_ctx_stop(struct cal_ctx *ctx);
 
 int cal_ctx_v4l2_register(struct cal_ctx *ctx);
 void cal_ctx_v4l2_unregister(struct cal_ctx *ctx);

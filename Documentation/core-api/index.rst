@@ -48,12 +48,11 @@ Concurrency primitives
 ======================
 
 How Linux keeps everything from happening at the same time.  See
-:doc:`/locking/index` for more related documentation.
+Documentation/locking/index.rst for more related documentation.
 
 .. toctree::
    :maxdepth: 1
 
-   atomic_ops
    refcount-vs-atomic
    irq/index
    local_ops
@@ -78,7 +77,7 @@ Memory management
 =================
 
 How to allocate and use memory in the kernel.  Note that there is a lot
-more memory-management documentation in :doc:`/vm/index`.
+more memory-management documentation in Documentation/vm/index.rst.
 
 .. toctree::
    :maxdepth: 1

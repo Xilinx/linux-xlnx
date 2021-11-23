@@ -307,7 +307,7 @@ static void cortex_arm64_edac_check(struct edac_device_ctl_info *edac_ctl)
 	cpumask_clear(&cluster_mask);
 	cpumask_clear(&old_mask);
 
-	get_online_cpus();
+	cpus_read_lock();
 	for_each_online_cpu(cpu) {
 		/* Check CPU L1 error */
 		smp_call_function_single(cpu, parse_cpumerrsr, NULL, 0);
@@ -318,7 +318,7 @@ static void cortex_arm64_edac_check(struct edac_device_ctl_info *edac_ctl)
 		/* Check CPU L2 error */
 		smp_call_function_any(&cluster_mask, parse_l2merrsr, NULL, 0);
 	}
-	put_online_cpus();
+	cpus_read_unlock();
 }
 
 static ssize_t cortexa53_edac_inject_L2_show(struct edac_device_ctl_info

@@ -16,10 +16,6 @@
 unsigned int hpage_shift;
 EXPORT_SYMBOL(hpage_shift);
 
-extern long hpte_insert_repeating(unsigned long hash, unsigned long vpn,
-				  unsigned long pa, unsigned long rlags,
-				  unsigned long vflags, int psize, int ssize);
-
 int __hash_page_huge(unsigned long ea, unsigned long access, unsigned long vsid,
 		     pte_t *ptep, unsigned long trap, unsigned long flags,
 		     int ssize, unsigned int shift, unsigned int mmu_psize)
@@ -70,7 +66,7 @@ int __hash_page_huge(unsigned long ea, unsigned long access, unsigned long vsid,
 	if (old_pte & (H_PAGE_THP_HUGE | _PAGE_DEVMAP))
 		return 0;
 
-	rflags = htab_convert_pte_flags(new_pte);
+	rflags = htab_convert_pte_flags(new_pte, flags);
 	if (unlikely(mmu_psize == MMU_PAGE_16G))
 		offset = PTRS_PER_PUD;
 	else

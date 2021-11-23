@@ -22,13 +22,13 @@
  */
 
 #include <linux/bitops.h>
+#include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/i2c.h>
 #include <linux/slab.h>
 #include <linux/v4l2-mediabus.h>
 #include <linux/module.h>
 
-#include <media/v4l2-clk.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
 
@@ -194,7 +194,7 @@ struct ov6650 {
 		struct v4l2_ctrl *blue;
 		struct v4l2_ctrl *red;
 	};
-	struct v4l2_clk		*clk;
+	struct clk		*clk;
 	bool			half_scale;	/* scale down output by 2 */
 	struct v4l2_rect	rect;		/* sensor cropping window */
 	struct v4l2_fract	tpf;		/* as requested with s_frame_interval */
@@ -459,15 +459,15 @@ static int ov6650_s_power(struct v4l2_subdev *sd, int on)
 	int ret = 0;
 
 	if (on)
-		ret = v4l2_clk_enable(priv->clk);
+		ret = clk_prepare_enable(priv->clk);
 	else
-		v4l2_clk_disable(priv->clk);
+		clk_disable_unprepare(priv->clk);
 
 	return ret;
 }
 
 static int ov6650_get_selection(struct v4l2_subdev *sd,
-		struct v4l2_subdev_pad_config *cfg,
+		struct v4l2_subdev_state *sd_state,
 		struct v4l2_subdev_selection *sel)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
@@ -492,7 +492,7 @@ static int ov6650_get_selection(struct v4l2_subdev *sd,
 }
 
 static int ov6650_set_selection(struct v4l2_subdev *sd,
-		struct v4l2_subdev_pad_config *cfg,
+		struct v4l2_subdev_state *sd_state,
 		struct v4l2_subdev_selection *sel)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
@@ -535,7 +535,7 @@ static int ov6650_set_selection(struct v4l2_subdev *sd,
 }
 
 static int ov6650_get_fmt(struct v4l2_subdev *sd,
-		struct v4l2_subdev_pad_config *cfg,
+		struct v4l2_subdev_state *sd_state,
 		struct v4l2_subdev_format *format)
 {
 	struct v4l2_mbus_framefmt *mf = &format->format;
@@ -550,9 +550,9 @@ static int ov6650_get_fmt(struct v4l2_subdev *sd,
 
 	/* update media bus format code and frame size */
 	if (format->which == V4L2_SUBDEV_FORMAT_TRY) {
-		mf->width = cfg->try_fmt.width;
-		mf->height = cfg->try_fmt.height;
-		mf->code = cfg->try_fmt.code;
+		mf->width = sd_state->pads->try_fmt.width;
+		mf->height = sd_state->pads->try_fmt.height;
+		mf->code = sd_state->pads->try_fmt.code;
 
 	} else {
 		mf->width = priv->rect.width >> priv->half_scale;
@@ -668,7 +668,7 @@ static int ov6650_s_fmt(struct v4l2_subdev *sd, struct v4l2_mbus_framefmt *mf)
 }
 
 static int ov6650_set_fmt(struct v4l2_subdev *sd,
-		struct v4l2_subdev_pad_config *cfg,
+		struct v4l2_subdev_state *sd_state,
 		struct v4l2_subdev_format *format)
 {
 	struct v4l2_mbus_framefmt *mf = &format->format;
@@ -701,15 +701,15 @@ static int ov6650_set_fmt(struct v4l2_subdev *sd,
 
 	if (format->which == V4L2_SUBDEV_FORMAT_TRY) {
 		/* store media bus format code and frame size in pad config */
-		cfg->try_fmt.width = mf->width;
-		cfg->try_fmt.height = mf->height;
-		cfg->try_fmt.code = mf->code;
+		sd_state->pads->try_fmt.width = mf->width;
+		sd_state->pads->try_fmt.height = mf->height;
+		sd_state->pads->try_fmt.code = mf->code;
 
 		/* return default mbus frame format updated with pad config */
 		*mf = ov6650_def_fmt;
-		mf->width = cfg->try_fmt.width;
-		mf->height = cfg->try_fmt.height;
-		mf->code = cfg->try_fmt.code;
+		mf->width = sd_state->pads->try_fmt.width;
+		mf->height = sd_state->pads->try_fmt.height;
+		mf->code = sd_state->pads->try_fmt.code;
 
 	} else {
 		/* apply new media bus format code and frame size */
@@ -728,7 +728,7 @@ static int ov6650_set_fmt(struct v4l2_subdev *sd,
 }
 
 static int ov6650_enum_mbus_code(struct v4l2_subdev *sd,
-		struct v4l2_subdev_pad_config *cfg,
+		struct v4l2_subdev_state *sd_state,
 		struct v4l2_subdev_mbus_code_enum *code)
 {
 	if (code->pad || code->index >= ARRAY_SIZE(ov6650_codes))
@@ -821,14 +821,14 @@ static int ov6650_video_probe(struct v4l2_subdev *sd)
 	u8 pidh, pidl, midh, midl;
 	int i, ret = 0;
 
-	priv->clk = v4l2_clk_get(&client->dev, NULL);
+	priv->clk = devm_clk_get(&client->dev, NULL);
 	if (IS_ERR(priv->clk)) {
 		ret = PTR_ERR(priv->clk);
-		dev_err(&client->dev, "v4l2_clk request err: %d\n", ret);
+		dev_err(&client->dev, "clk request err: %d\n", ret);
 		return ret;
 	}
 
-	rate = v4l2_clk_get_rate(priv->clk);
+	rate = clk_get_rate(priv->clk);
 	for (i = 0; rate && i < ARRAY_SIZE(ov6650_xclk); i++) {
 		if (rate != ov6650_xclk[i].rate)
 			continue;
@@ -839,8 +839,8 @@ static int ov6650_video_probe(struct v4l2_subdev *sd)
 		break;
 	}
 	for (i = 0; !xclk && i < ARRAY_SIZE(ov6650_xclk); i++) {
-		ret = v4l2_clk_set_rate(priv->clk, ov6650_xclk[i].rate);
-		if (ret || v4l2_clk_get_rate(priv->clk) != ov6650_xclk[i].rate)
+		ret = clk_set_rate(priv->clk, ov6650_xclk[i].rate);
+		if (ret || clk_get_rate(priv->clk) != ov6650_xclk[i].rate)
 			continue;
 
 		xclk = &ov6650_xclk[i];
@@ -852,12 +852,12 @@ static int ov6650_video_probe(struct v4l2_subdev *sd)
 		dev_err(&client->dev, "unable to get supported clock rate\n");
 		if (!ret)
 			ret = -EINVAL;
-		goto eclkput;
+		return ret;
 	}
 
 	ret = ov6650_s_power(sd, 1);
 	if (ret < 0)
-		goto eclkput;
+		return ret;
 
 	msleep(20);
 
@@ -899,11 +899,6 @@ static int ov6650_video_probe(struct v4l2_subdev *sd)
 
 done:
 	ov6650_s_power(sd, 0);
-	if (!ret)
-		return 0;
-eclkput:
-	v4l2_clk_put(priv->clk);
-
 	return ret;
 }
 
@@ -1089,7 +1084,6 @@ static int ov6650_remove(struct i2c_client *client)
 {
 	struct ov6650 *priv = to_ov6650(client);
 
-	v4l2_clk_put(priv->clk);
 	v4l2_async_unregister_subdev(&priv->subdev);
 	v4l2_ctrl_handler_free(&priv->hdl);
 	return 0;

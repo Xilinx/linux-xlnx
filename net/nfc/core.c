@@ -189,7 +189,8 @@ static const struct rfkill_ops nfc_rfkill_ops = {
  * nfc_start_poll - start polling for nfc targets
  *
  * @dev: The nfc device that must start polling
- * @protocols: bitset of nfc protocols that must be used for polling
+ * @im_protocols: bitset of nfc initiator protocols to be used for polling
+ * @tm_protocols: bitset of nfc transport protocols to be used for polling
  *
  * The device remains polling for targets until a target is found or
  * the nfc_stop_poll function is called.
@@ -436,6 +437,7 @@ error:
  *
  * @dev: The nfc device that found the target
  * @target_idx: index of the target that must be deactivated
+ * @mode: idle or sleep?
  */
 int nfc_deactivate_target(struct nfc_dev *dev, u32 target_idx, u8 mode)
 {
@@ -634,7 +636,7 @@ error:
 	return rc;
 }
 
-int nfc_set_remote_general_bytes(struct nfc_dev *dev, u8 *gb, u8 gb_len)
+int nfc_set_remote_general_bytes(struct nfc_dev *dev, const u8 *gb, u8 gb_len)
 {
 	pr_debug("dev_name=%s gb_len=%d\n", dev_name(&dev->dev), gb_len);
 
@@ -663,7 +665,7 @@ int nfc_tm_data_received(struct nfc_dev *dev, struct sk_buff *skb)
 EXPORT_SYMBOL(nfc_tm_data_received);
 
 int nfc_tm_activated(struct nfc_dev *dev, u32 protocol, u8 comm_mode,
-		     u8 *gb, size_t gb_len)
+		     const u8 *gb, size_t gb_len)
 {
 	int rc;
 
@@ -703,7 +705,11 @@ EXPORT_SYMBOL(nfc_tm_deactivated);
 /**
  * nfc_alloc_send_skb - allocate a skb for data exchange responses
  *
+ * @dev: device sending the response
+ * @sk: socket sending the response
+ * @flags: MSG_DONTWAIT flag
  * @size: size to allocate
+ * @err: pointer to memory to store the error code
  */
 struct sk_buff *nfc_alloc_send_skb(struct nfc_dev *dev, struct sock *sk,
 				   unsigned int flags, unsigned int size,
@@ -818,7 +824,7 @@ EXPORT_SYMBOL(nfc_targets_found);
  */
 int nfc_target_lost(struct nfc_dev *dev, u32 target_idx)
 {
-	struct nfc_target *tg;
+	const struct nfc_target *tg;
 	int i;
 
 	pr_debug("dev_name %s n_target %d\n", dev_name(&dev->dev), target_idx);
@@ -1039,8 +1045,10 @@ struct nfc_dev *nfc_get_device(unsigned int idx)
  *
  * @ops: device operations
  * @supported_protocols: NFC protocols supported by the device
+ * @tx_headroom: reserved space at beginning of skb
+ * @tx_tailroom: reserved space at end of skb
  */
-struct nfc_dev *nfc_allocate_device(struct nfc_ops *ops,
+struct nfc_dev *nfc_allocate_device(const struct nfc_ops *ops,
 				    u32 supported_protocols,
 				    int tx_headroom, int tx_tailroom)
 {

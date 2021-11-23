@@ -3,8 +3,6 @@ config PARISC
 	def_bool y
 	select ARCH_32BIT_OFF_T if !64BIT
 	select ARCH_MIGHT_HAVE_PC_PARPORT
-	select HAVE_IDE
-	select HAVE_OPROFILE
 	select HAVE_FUNCTION_TRACER
 	select HAVE_FUNCTION_GRAPH_TRACER
 	select HAVE_SYSCALL_TRACEPOINTS
@@ -13,6 +11,7 @@ config PARISC
 	select ARCH_HAS_STRICT_KERNEL_RWX
 	select ARCH_HAS_UBSAN_SANITIZE_ALL
 	select ARCH_NO_SG_CHAIN
+	select ARCH_SUPPORTS_HUGETLBFS if PA20
 	select ARCH_SUPPORTS_MEMORY_FAILURE
 	select DMA_OPS
 	select RTC_CLASS
@@ -34,7 +33,7 @@ config PARISC
 	select ARCH_HAVE_NMI_SAFE_CMPXCHG
 	select GENERIC_SMP_IDLE_THREAD
 	select GENERIC_CPU_DEVICES
-	select GENERIC_STRNCPY_FROM_USER
+	select GENERIC_LIB_DEVMEM_IS_ALLOWED
 	select SYSCTL_ARCH_UNALIGN_ALLOW
 	select SYSCTL_EXCEPTION_TRACE
 	select HAVE_MOD_ARCH_SPECIFIC
@@ -52,7 +51,7 @@ config PARISC
 	select HAVE_REGS_AND_STACK_ACCESS_API
 	select GENERIC_SCHED_CLOCK
 	select HAVE_UNSTABLE_SCHED_CLOCK if SMP
-	select GENERIC_CLOCKEVENTS
+	select LEGACY_TIMER_TICK
 	select CPU_NO_EFFICIENT_FFS
 	select NEED_DMA_MAP_STATE
 	select NEED_SG_DMA_LENGTH
@@ -61,9 +60,11 @@ config PARISC
 	select HAVE_KRETPROBES
 	select HAVE_DYNAMIC_FTRACE if $(cc-option,-fpatchable-function-entry=1,1)
 	select HAVE_FTRACE_MCOUNT_RECORD if HAVE_DYNAMIC_FTRACE
+	select FTRACE_MCOUNT_USE_PATCHABLE_FUNCTION_ENTRY if DYNAMIC_FTRACE
 	select HAVE_KPROBES_ON_FTRACE
 	select HAVE_DYNAMIC_FTRACE_WITH_REGS
-	select SET_FS
+	select HAVE_SOFTIRQ_ON_OWN_STACK if IRQSTACKS
+	select TRACE_IRQFLAGS_SUPPORT
 
 	help
 	  The PA-RISC microprocessor is designed by Hewlett-Packard and used
@@ -136,10 +137,6 @@ config PGTABLE_LEVELS
 	default 3 if 64BIT && PARISC_PAGE_SIZE_4KB
 	default 2
 
-config SYS_SUPPORTS_HUGETLBFS
-	def_bool y if PA20
-
-
 menu "Processor type and features"
 
 choice
@@ -201,10 +198,12 @@ config PREFETCH
 	def_bool y
 	depends on PA8X00 || PA7200
 
+config PARISC_HUGE_KERNEL
+	def_bool y if !MODULES || UBSAN || FTRACE || COMPILE_TEST
+
 config MLONGCALLS
-	bool "Enable the -mlong-calls compiler option for big kernels"
-	default y if !MODULES || UBSAN || FTRACE
-	default n
+	def_bool y if PARISC_HUGE_KERNEL
+	bool "Enable the -mlong-calls compiler option for big kernels" if !PARISC_HUGE_KERNEL
 	depends on PA8X00
 	help
 	  If you configure the kernel to include many drivers built-in instead
@@ -312,6 +311,16 @@ config IRQSTACKS
 	  for handling hard and soft interrupts.  This can help avoid
 	  overflowing the process kernel stacks.
 
+config TLB_PTLOCK
+	bool "Use page table locks in TLB fault handler"
+	depends on SMP
+	default n
+	help
+	  Select this option to enable page table locking in the TLB
+	  fault handler. This ensures that page table entries are
+	  updated consistently on SMP machines at the expense of some
+	  loss in performance.
+
 config HOTPLUG_CPU
 	bool
 	default y if SMP
@@ -336,7 +345,6 @@ source "kernel/Kconfig.hz"
 config COMPAT
 	def_bool y
 	depends on 64BIT
-	select COMPAT_BINFMT_ELF if BINFMT_ELF
 
 config SYSVIPC_COMPAT
 	def_bool y
@@ -375,7 +383,5 @@ config KEXEC_FILE
 	  accepted by previous system call.
 
 endmenu
-
-source "drivers/firmware/Kconfig"
 
 source "drivers/parisc/Kconfig"

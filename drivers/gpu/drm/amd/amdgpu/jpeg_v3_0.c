@@ -49,10 +49,13 @@ static int jpeg_v3_0_set_powergating_state(void *handle,
 static int jpeg_v3_0_early_init(void *handle)
 {
 	struct amdgpu_device *adev = (struct amdgpu_device *)handle;
-	u32 harvest = RREG32_SOC15(JPEG, 0, mmCC_UVD_HARVESTING);
 
-	if (harvest & CC_UVD_HARVESTING__UVD_DISABLE_MASK)
-		return -ENOENT;
+	if (adev->asic_type != CHIP_YELLOW_CARP) {
+		u32 harvest = RREG32_SOC15(JPEG, 0, mmCC_UVD_HARVESTING);
+
+		if (harvest & CC_UVD_HARVESTING__UVD_DISABLE_MASK)
+			return -ENOENT;
+	}
 
 	adev->jpeg.num_jpeg_inst = 1;
 
@@ -94,7 +97,7 @@ static int jpeg_v3_0_sw_init(void *handle)
 	ring->doorbell_index = (adev->doorbell_index.vcn.vcn_ring0_1 << 1) + 1;
 	sprintf(ring->name, "jpeg_dec");
 	r = amdgpu_ring_init(adev, ring, 512, &adev->jpeg.inst->irq, 0,
-			     AMDGPU_RING_PRIO_DEFAULT);
+			     AMDGPU_RING_PRIO_DEFAULT, NULL);
 	if (r)
 		return r;
 
@@ -159,14 +162,12 @@ static int jpeg_v3_0_hw_init(void *handle)
 static int jpeg_v3_0_hw_fini(void *handle)
 {
 	struct amdgpu_device *adev = (struct amdgpu_device *)handle;
-	struct amdgpu_ring *ring;
 
-	ring = &adev->jpeg.inst->ring_dec;
+	cancel_delayed_work_sync(&adev->vcn.idle_work);
+
 	if (adev->jpeg.cur_state != AMD_PG_STATE_GATE &&
 	      RREG32_SOC15(JPEG, 0, mmUVD_JRBC_STATUS))
 		jpeg_v3_0_set_powergating_state(adev, AMD_PG_STATE_GATE);
-
-	ring->sched.ready = false;
 
 	return 0;
 }
@@ -213,7 +214,7 @@ static int jpeg_v3_0_resume(void *handle)
 	return r;
 }
 
-static void jpeg_v3_0_disable_clock_gating(struct amdgpu_device* adev)
+static void jpeg_v3_0_disable_clock_gating(struct amdgpu_device *adev)
 {
 	uint32_t data = 0;
 
@@ -243,7 +244,7 @@ static void jpeg_v3_0_disable_clock_gating(struct amdgpu_device* adev)
 	WREG32_SOC15(JPEG, 0, mmJPEG_CGC_CTRL, data);
 }
 
-static void jpeg_v3_0_enable_clock_gating(struct amdgpu_device* adev)
+static void jpeg_v3_0_enable_clock_gating(struct amdgpu_device *adev)
 {
 	uint32_t data = 0;
 
@@ -286,7 +287,7 @@ static int jpeg_v3_0_disable_static_power_gating(struct amdgpu_device *adev)
 	return 0;
 }
 
-static int jpeg_v3_0_enable_static_power_gating(struct amdgpu_device* adev)
+static int jpeg_v3_0_enable_static_power_gating(struct amdgpu_device *adev)
 {
 	/* enable anti hang mechanism */
 	WREG32_P(SOC15_REG_OFFSET(JPEG, 0, mmUVD_JPEG_POWER_STATUS),

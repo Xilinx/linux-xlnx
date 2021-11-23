@@ -51,7 +51,7 @@ enum hdac_ext_stream_type {
  * @decoupled: stream host and link is decoupled
  * @link_locked: link is locked
  * @link_prepared: link is prepared
- * link_substream: link substream
+ * @link_substream: link substream
  */
 struct hdac_ext_stream {
 	struct hdac_stream hstream;
@@ -130,6 +130,8 @@ void snd_hdac_ext_link_clear_stream_id(struct hdac_ext_link *link,
 
 int snd_hdac_ext_bus_link_get(struct hdac_bus *bus, struct hdac_ext_link *link);
 int snd_hdac_ext_bus_link_put(struct hdac_bus *bus, struct hdac_ext_link *link);
+
+void snd_hdac_ext_bus_link_power(struct hdac_device *codec, bool enable);
 
 /* update register macro */
 #define snd_hdac_updatel(addr, reg, mask, val)		\

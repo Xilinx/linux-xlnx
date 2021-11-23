@@ -1097,7 +1097,7 @@ static int xlnx_dp_link_train_cr(struct xlnx_dp *dp)
 		 * by the RX device.
 		 * Wait delay specified in TRAINING_AUX_RD_INTERVAL(0x0E)
 		 */
-		drm_dp_link_train_clock_recovery_delay(dp->dpcd);
+		drm_dp_link_train_clock_recovery_delay(&dp->aux, dp->dpcd);
 		/*
 		 * check if all lanes have realized and maintained the
 		 * frequency lock and get adjustment requests.
@@ -1185,7 +1185,7 @@ static int xlnx_dp_link_train_ce(struct xlnx_dp *dp)
 		 * Obtain the required delay for channel equalization as
 		 * specified by the RX device.
 		 */
-		drm_dp_link_train_channel_eq_delay(dp->dpcd);
+		drm_dp_link_train_channel_eq_delay(&dp->aux, dp->dpcd);
 
 		ret = drm_dp_dpcd_read_link_status(&dp->aux, link_status);
 		if (ret < 0)

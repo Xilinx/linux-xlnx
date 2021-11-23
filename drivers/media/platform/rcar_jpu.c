@@ -42,7 +42,7 @@
 
 /*
  * Align JPEG header end to cache line to make sure we will not have any issues
- * with cache; additionally to requerment (33.3.27 R01UH0501EJ0100 Rev.1.00)
+ * with cache; additionally to requirement (33.3.27 R01UH0501EJ0100 Rev.1.00)
  */
 #define JPU_JPEG_HDR_SIZE		(ALIGN(0x258, L1_CACHE_BYTES))
 #define JPU_JPEG_MAX_BYTES_PER_PIXEL	2	/* 16 bit precision format */
@@ -121,7 +121,7 @@
 #define JCCMD_JEND	(1 << 2)
 #define JCCMD_JSRT	(1 << 0)
 
-/* JPEG code quantanization table number register */
+/* JPEG code quantization table number register */
 #define JCQTN	0x0c
 #define JCQTN_SHIFT(t)		(((t) - 1) << 1)
 
@@ -648,6 +648,7 @@ static u8 jpu_parse_hdr(void *buffer, unsigned long size, unsigned int *width,
 			if (get_word_be(&jpeg_buffer, &word))
 				return 0;
 			skip(&jpeg_buffer, (long)word - 2);
+			break;
 		case 0:
 			break;
 		default:
@@ -793,7 +794,6 @@ static int __jpu_try_fmt(struct jpu_ctx *ctx, struct jpu_fmt **fmtinfo,
 	pix->colorspace = fmt->colorspace;
 	pix->field = V4L2_FIELD_NONE;
 	pix->num_planes = fmt->num_planes;
-	memset(pix->reserved, 0, sizeof(pix->reserved));
 
 	jpu_bound_align_image(&pix->width, JPU_WIDTH_MIN, JPU_WIDTH_MAX,
 			      fmt->h_align, &pix->height, JPU_HEIGHT_MIN,
@@ -808,8 +808,6 @@ static int __jpu_try_fmt(struct jpu_ctx *ctx, struct jpu_fmt **fmtinfo,
 			pix->plane_fmt[0].sizeimage = JPU_JPEG_HDR_SIZE +
 				(JPU_JPEG_MAX_BYTES_PER_PIXEL * w * h);
 		pix->plane_fmt[0].bytesperline = 0;
-		memset(pix->plane_fmt[0].reserved, 0,
-		       sizeof(pix->plane_fmt[0].reserved));
 	} else {
 		unsigned int i, bpl = 0;
 
@@ -822,8 +820,6 @@ static int __jpu_try_fmt(struct jpu_ctx *ctx, struct jpu_fmt **fmtinfo,
 		for (i = 0; i < pix->num_planes; ++i) {
 			pix->plane_fmt[i].bytesperline = bpl;
 			pix->plane_fmt[i].sizeimage = bpl * h * fmt->bpp[i] / 8;
-			memset(pix->plane_fmt[i].reserved, 0,
-			       sizeof(pix->plane_fmt[i].reserved));
 		}
 	}
 
@@ -1648,7 +1644,7 @@ static int jpu_probe(struct platform_device *pdev)
 		goto device_register_rollback;
 	}
 
-	/* fill in qantization and Huffman tables for encoder */
+	/* fill in quantization and Huffman tables for encoder */
 	for (i = 0; i < JPU_MAX_QUALITY; i++)
 		jpu_generate_hdr(i, (unsigned char *)jpeg_hdrs[i]);
 

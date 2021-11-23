@@ -193,6 +193,49 @@
 #define HNS_ROCE_AEQE_EVENT_CE_EVENT_CEQE_CEQN_S 0
 #define HNS_ROCE_AEQE_EVENT_CE_EVENT_CEQE_CEQN_M GENMASK(4, 0)
 
+/* Local Work Queue Catastrophic Error,SUBTYPE 0x5 */
+enum {
+	HNS_ROCE_LWQCE_QPC_ERROR = 1,
+	HNS_ROCE_LWQCE_MTU_ERROR,
+	HNS_ROCE_LWQCE_WQE_BA_ADDR_ERROR,
+	HNS_ROCE_LWQCE_WQE_ADDR_ERROR,
+	HNS_ROCE_LWQCE_SQ_WQE_SHIFT_ERROR,
+	HNS_ROCE_LWQCE_SL_ERROR,
+	HNS_ROCE_LWQCE_PORT_ERROR,
+};
+
+/* Local Access Violation Work Queue Error,SUBTYPE 0x7 */
+enum {
+	HNS_ROCE_LAVWQE_R_KEY_VIOLATION = 1,
+	HNS_ROCE_LAVWQE_LENGTH_ERROR,
+	HNS_ROCE_LAVWQE_VA_ERROR,
+	HNS_ROCE_LAVWQE_PD_ERROR,
+	HNS_ROCE_LAVWQE_RW_ACC_ERROR,
+	HNS_ROCE_LAVWQE_KEY_STATE_ERROR,
+	HNS_ROCE_LAVWQE_MR_OPERATION_ERROR,
+};
+
+/* DOORBELL overflow subtype */
+enum {
+	HNS_ROCE_DB_SUBTYPE_SDB_OVF = 1,
+	HNS_ROCE_DB_SUBTYPE_SDB_ALM_OVF,
+	HNS_ROCE_DB_SUBTYPE_ODB_OVF,
+	HNS_ROCE_DB_SUBTYPE_ODB_ALM_OVF,
+	HNS_ROCE_DB_SUBTYPE_SDB_ALM_EMP,
+	HNS_ROCE_DB_SUBTYPE_ODB_ALM_EMP,
+};
+
+enum {
+	/* RQ&SRQ related operations */
+	HNS_ROCE_OPCODE_SEND_DATA_RECEIVE = 0x06,
+	HNS_ROCE_OPCODE_RDMA_WITH_IMM_RECEIVE,
+};
+
+enum {
+	HNS_ROCE_PORT_DOWN = 0,
+	HNS_ROCE_PORT_UP,
+};
+
 struct hns_roce_cq_context {
 	__le32 cqc_byte_4;
 	__le32 cq_bt_l;
@@ -419,7 +462,7 @@ struct hns_roce_wqe_data_seg {
 
 struct hns_roce_wqe_raddr_seg {
 	__le32 rkey;
-	__le32 len;/* reserved */
+	__le32 len; /* reserved */
 	__le64 raddr;
 };
 
@@ -1041,6 +1084,11 @@ struct hns_roce_db_table {
 	int  odb_ext_mod;
 	struct hns_roce_ext_db *ext_db;
 };
+
+#define HW_SYNC_SLEEP_TIME_INTERVAL 20
+#define HW_SYNC_TIMEOUT_MSECS (25 * HW_SYNC_SLEEP_TIME_INTERVAL)
+#define BT_CMD_SYNC_SHIFT 31
+#define HNS_ROCE_BA_SIZE (32 * 4096)
 
 struct hns_roce_bt_table {
 	struct hns_roce_buf_list qpc_buf;

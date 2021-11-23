@@ -84,6 +84,7 @@ static int decode_layoutget(struct xdr_stream *xdr, struct rpc_rqst *req,
 /* lock,open owner id:
  * we currently use size 2 (u64) out of (NFS4_OPAQUE_LIMIT  >> 2)
  */
+#define pagepad_maxsz		(1)
 #define open_owner_id_maxsz	(1 + 2 + 1 + 1 + 2)
 #define lock_owner_id_maxsz	(1 + 1 + 4)
 #define decode_lockowner_maxsz	(1 + XDR_QUADLEN(IDMAP_NAMESZ))
@@ -143,7 +144,17 @@ static int decode_layoutget(struct xdr_stream *xdr, struct rpc_rqst *req,
  * layout types will be returned.
  */
 #define decode_fsinfo_maxsz	(op_decode_hdr_maxsz + \
-				 nfs4_fattr_bitmap_maxsz + 4 + 8 + 5)
+				 nfs4_fattr_bitmap_maxsz + 1 + \
+				 1 /* lease time */ + \
+				 2 /* max filesize */ + \
+				 2 /* max read */ + \
+				 2 /* max write */ + \
+				 nfstime4_maxsz /* time delta */ + \
+				 5 /* fs layout types */ + \
+				 1 /* layout blksize */ + \
+				 1 /* clone blksize */ + \
+				 1 /* change attr type */ + \
+				 1 /* xattr support */)
 #define encode_renew_maxsz	(op_encode_hdr_maxsz + 3)
 #define decode_renew_maxsz	(op_decode_hdr_maxsz)
 #define encode_setclientid_maxsz \
@@ -215,14 +226,14 @@ static int decode_layoutget(struct xdr_stream *xdr, struct rpc_rqst *req,
 				 nfs4_fattr_bitmap_maxsz)
 #define encode_read_maxsz	(op_encode_hdr_maxsz + \
 				 encode_stateid_maxsz + 3)
-#define decode_read_maxsz	(op_decode_hdr_maxsz + 2 + 1)
+#define decode_read_maxsz	(op_decode_hdr_maxsz + 2 + pagepad_maxsz)
 #define encode_readdir_maxsz	(op_encode_hdr_maxsz + \
 				 2 + encode_verifier_maxsz + 5 + \
 				nfs4_label_maxsz)
 #define decode_readdir_maxsz	(op_decode_hdr_maxsz + \
-				 decode_verifier_maxsz + 1)
+				 decode_verifier_maxsz + pagepad_maxsz)
 #define encode_readlink_maxsz	(op_encode_hdr_maxsz)
-#define decode_readlink_maxsz	(op_decode_hdr_maxsz + 1 + 1)
+#define decode_readlink_maxsz	(op_decode_hdr_maxsz + 1 + pagepad_maxsz)
 #define encode_write_maxsz	(op_encode_hdr_maxsz + \
 				 encode_stateid_maxsz + 4)
 #define decode_write_maxsz	(op_decode_hdr_maxsz + \
@@ -284,14 +295,14 @@ static int decode_layoutget(struct xdr_stream *xdr, struct rpc_rqst *req,
 #define decode_delegreturn_maxsz (op_decode_hdr_maxsz)
 #define encode_getacl_maxsz	(encode_getattr_maxsz)
 #define decode_getacl_maxsz	(op_decode_hdr_maxsz + \
-				 nfs4_fattr_bitmap_maxsz + 1 + 1)
+				 nfs4_fattr_bitmap_maxsz + 1 + pagepad_maxsz)
 #define encode_setacl_maxsz	(op_encode_hdr_maxsz + \
 				 encode_stateid_maxsz + 3)
 #define decode_setacl_maxsz	(decode_setattr_maxsz)
 #define encode_fs_locations_maxsz \
 				(encode_getattr_maxsz)
 #define decode_fs_locations_maxsz \
-				(1)
+				(pagepad_maxsz)
 #define encode_secinfo_maxsz	(op_encode_hdr_maxsz + nfs4_name_maxsz)
 #define decode_secinfo_maxsz	(op_decode_hdr_maxsz + 1 + ((NFS_MAX_SECFLAVORS * (16 + GSS_OID_MAX_LEN)) / 4))
 
@@ -393,12 +404,13 @@ static int decode_layoutget(struct xdr_stream *xdr, struct rpc_rqst *req,
 				  /* devaddr4 payload is read into page */ \
 				1 /* notification bitmap length */ + \
 				1 /* notification bitmap, word 0 */ + \
-				1 /* possible XDR padding */)
+				pagepad_maxsz /* possible XDR padding */)
 #define encode_layoutget_maxsz	(op_encode_hdr_maxsz + 10 + \
 				encode_stateid_maxsz)
 #define decode_layoutget_maxsz	(op_decode_hdr_maxsz + 8 + \
 				decode_stateid_maxsz + \
-				XDR_QUADLEN(PNFS_LAYOUT_MAXSIZE) + 1)
+				XDR_QUADLEN(PNFS_LAYOUT_MAXSIZE) + \
+				pagepad_maxsz)
 #define encode_layoutcommit_maxsz (op_encode_hdr_maxsz +          \
 				2 /* offset */ + \
 				2 /* length */ + \
@@ -2342,7 +2354,7 @@ static void nfs4_xdr_enc_open(struct rpc_rqst *req, struct xdr_stream *xdr,
 		encode_layoutget(xdr, args->lg_args, &hdr);
 		rpc_prepare_reply_pages(req, args->lg_args->layout.pages, 0,
 					args->lg_args->layout.pglen,
-					hdr.replen);
+					hdr.replen - pagepad_maxsz);
 	}
 	encode_nops(&hdr);
 }
@@ -2388,7 +2400,7 @@ static void nfs4_xdr_enc_open_noattr(struct rpc_rqst *req,
 		encode_layoutget(xdr, args->lg_args, &hdr);
 		rpc_prepare_reply_pages(req, args->lg_args->layout.pages, 0,
 					args->lg_args->layout.pglen,
-					hdr.replen);
+					hdr.replen - pagepad_maxsz);
 	}
 	encode_nops(&hdr);
 }
@@ -2499,7 +2511,7 @@ static void nfs4_xdr_enc_readlink(struct rpc_rqst *req, struct xdr_stream *xdr,
 	encode_readlink(xdr, args, req, &hdr);
 
 	rpc_prepare_reply_pages(req, args->pages, args->pgbase,
-				args->pglen, hdr.replen);
+				args->pglen, hdr.replen - pagepad_maxsz);
 	encode_nops(&hdr);
 }
 
@@ -2520,7 +2532,7 @@ static void nfs4_xdr_enc_readdir(struct rpc_rqst *req, struct xdr_stream *xdr,
 	encode_readdir(xdr, args, req, &hdr);
 
 	rpc_prepare_reply_pages(req, args->pages, args->pgbase,
-				args->count, hdr.replen);
+				args->count, hdr.replen - pagepad_maxsz);
 	encode_nops(&hdr);
 }
 
@@ -2541,7 +2553,7 @@ static void nfs4_xdr_enc_read(struct rpc_rqst *req, struct xdr_stream *xdr,
 	encode_read(xdr, args, &hdr);
 
 	rpc_prepare_reply_pages(req, args->pages, args->pgbase,
-				args->count, hdr.replen);
+				args->count, hdr.replen - pagepad_maxsz);
 	req->rq_rcv_buf.flags |= XDRBUF_READ;
 	encode_nops(&hdr);
 }
@@ -2588,7 +2600,7 @@ static void nfs4_xdr_enc_getacl(struct rpc_rqst *req, struct xdr_stream *xdr,
 			ARRAY_SIZE(nfs4_acl_bitmap), &hdr);
 
 	rpc_prepare_reply_pages(req, args->acl_pages, 0,
-				args->acl_len, replen + 1);
+				args->acl_len, replen);
 	encode_nops(&hdr);
 }
 
@@ -2810,7 +2822,7 @@ static void nfs4_xdr_enc_fs_locations(struct rpc_rqst *req,
 	}
 
 	rpc_prepare_reply_pages(req, (struct page **)&args->page, 0,
-				PAGE_SIZE, replen + 1);
+				PAGE_SIZE, replen);
 	encode_nops(&hdr);
 }
 
@@ -3009,15 +3021,19 @@ static void nfs4_xdr_enc_getdeviceinfo(struct rpc_rqst *req,
 	struct compound_hdr hdr = {
 		.minorversion = nfs4_xdr_minorversion(&args->seq_args),
 	};
+	uint32_t replen;
 
 	encode_compound_hdr(xdr, req, &hdr);
 	encode_sequence(xdr, &args->seq_args, &hdr);
+
+	replen = hdr.replen + op_decode_hdr_maxsz + 2;
+
 	encode_getdeviceinfo(xdr, args, &hdr);
 
-	/* set up reply kvec. Subtract notification bitmap max size (2)
-	 * so that notification bitmap is put in xdr_buf tail */
+	/* set up reply kvec. device_addr4 opaque data is read into the
+	 * pages */
 	rpc_prepare_reply_pages(req, args->pdev->pages, args->pdev->pgbase,
-				args->pdev->pglen, hdr.replen - 2);
+				args->pdev->pglen, replen);
 	encode_nops(&hdr);
 }
 
@@ -3039,7 +3055,7 @@ static void nfs4_xdr_enc_layoutget(struct rpc_rqst *req,
 	encode_layoutget(xdr, args, &hdr);
 
 	rpc_prepare_reply_pages(req, args->layout.pages, 0,
-				args->layout.pglen, hdr.replen);
+				args->layout.pglen, hdr.replen - pagepad_maxsz);
 	encode_nops(&hdr);
 }
 
@@ -3194,9 +3210,7 @@ out_status:
 	*nfs_retval = nfs4_stat_to_errno(nfserr);
 	return true;
 out_bad_operation:
-	dprintk("nfs: Server returned operation"
-		" %d but we issued a request for %d\n",
-			opnum, expected);
+	trace_nfs4_xdr_bad_operation(xdr, opnum, expected);
 	*nfs_retval = -EREMOTEIO;
 	return false;
 out_overflow:
@@ -3481,8 +3495,11 @@ static int decode_attr_filehandle(struct xdr_stream *xdr, uint32_t *bitmap, stru
 		if (unlikely(!p))
 			return -EIO;
 		len = be32_to_cpup(p);
-		if (len > NFS4_FHSIZE)
-			return -EIO;
+		if (len > NFS4_FHSIZE || len == 0) {
+			trace_nfs4_xdr_bad_filehandle(xdr, OP_READDIR,
+						      NFS4ERR_BADHANDLE);
+			return -EREMOTEIO;
+		}
 		p = xdr_inline_decode(xdr, len);
 		if (unlikely(!p))
 			return -EIO;
@@ -4831,6 +4848,32 @@ static int decode_attr_clone_blksize(struct xdr_stream *xdr, uint32_t *bitmap,
 	return 0;
 }
 
+static int decode_attr_change_attr_type(struct xdr_stream *xdr,
+					uint32_t *bitmap,
+					enum nfs4_change_attr_type *res)
+{
+	u32 tmp = NFS4_CHANGE_TYPE_IS_UNDEFINED;
+
+	dprintk("%s: bitmap is %x\n", __func__, bitmap[2]);
+	if (bitmap[2] & FATTR4_WORD2_CHANGE_ATTR_TYPE) {
+		if (xdr_stream_decode_u32(xdr, &tmp))
+			return -EIO;
+		bitmap[2] &= ~FATTR4_WORD2_CHANGE_ATTR_TYPE;
+	}
+
+	switch(tmp) {
+	case NFS4_CHANGE_TYPE_IS_MONOTONIC_INCR:
+	case NFS4_CHANGE_TYPE_IS_VERSION_COUNTER:
+	case NFS4_CHANGE_TYPE_IS_VERSION_COUNTER_NOPNFS:
+	case NFS4_CHANGE_TYPE_IS_TIME_METADATA:
+		*res = tmp;
+		break;
+	default:
+		*res = NFS4_CHANGE_TYPE_IS_UNDEFINED;
+	}
+	return 0;
+}
+
 static int decode_fsinfo(struct xdr_stream *xdr, struct nfs_fsinfo *fsinfo)
 {
 	unsigned int savep;
@@ -4879,6 +4922,11 @@ static int decode_fsinfo(struct xdr_stream *xdr, struct nfs_fsinfo *fsinfo)
 	if (status)
 		goto xdr_error;
 
+	status = decode_attr_change_attr_type(xdr, bitmap,
+					      &fsinfo->change_attr_type);
+	if (status)
+		goto xdr_error;
+
 	status = decode_attr_xattrsupport(xdr, bitmap,
 					  &fsinfo->xattr_support);
 	if (status)
@@ -4907,8 +4955,10 @@ static int decode_getfh(struct xdr_stream *xdr, struct nfs_fh *fh)
 	if (unlikely(!p))
 		return -EIO;
 	len = be32_to_cpup(p);
-	if (len > NFS4_FHSIZE)
-		return -EIO;
+	if (len > NFS4_FHSIZE || len == 0) {
+		trace_nfs4_xdr_bad_filehandle(xdr, OP_GETFH, NFS4ERR_BADHANDLE);
+		return -EREMOTEIO;
+	}
 	fh->size = len;
 	p = xdr_inline_decode(xdr, len);
 	if (unlikely(!p))
@@ -5331,11 +5381,11 @@ static int decode_getacl(struct xdr_stream *xdr, struct rpc_rqst *req,
 		res->acl_len = attrlen;
 
 		/* Check for receive buffer overflow */
-		if (res->acl_len > (xdr->nwords << 2) ||
+		if (res->acl_len > xdr_stream_remaining(xdr) ||
 		    res->acl_len + res->acl_data_offset > xdr->buf->page_len) {
 			res->acl_flags |= NFS4_ACL_TRUNC;
-			dprintk("NFS: acl reply: attrlen %u > page_len %u\n",
-					attrlen, xdr->nwords << 2);
+			dprintk("NFS: acl reply: attrlen %u > page_len %zu\n",
+				attrlen, xdr_stream_remaining(xdr));
 		}
 	} else
 		status = -EOPNOTSUPP;
@@ -6403,10 +6453,8 @@ nfs4_xdr_dec_getacl(struct rpc_rqst *rqstp, struct xdr_stream *xdr,
 	struct compound_hdr hdr;
 	int status;
 
-	if (res->acl_scratch != NULL) {
-		void *p = page_address(res->acl_scratch);
-		xdr_set_scratch_buffer(xdr, p, PAGE_SIZE);
-	}
+	if (res->acl_scratch != NULL)
+		xdr_set_scratch_page(xdr, res->acl_scratch);
 	status = decode_compound_hdr(xdr, &hdr);
 	if (status)
 		goto out;
@@ -7625,9 +7673,3 @@ const struct rpc_version nfs_version4 = {
 	.procs			= nfs4_procedures,
 	.counts			= nfs_version4_counts,
 };
-
-/*
- * Local variables:
- *  c-basic-offset: 8
- * End:
- */

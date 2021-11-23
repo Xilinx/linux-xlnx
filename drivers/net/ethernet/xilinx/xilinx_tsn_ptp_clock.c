@@ -52,7 +52,7 @@ static void xlnx_tod_read(struct xlnx_ptp_timer *timer, struct timespec64 *ts)
 static void xlnx_rtc_offset_write(struct xlnx_ptp_timer *timer,
 				  const struct timespec64 *ts)
 {
-	pr_debug("%s: sec: %ld nsec: %ld\n", __func__, ts->tv_sec, ts->tv_nsec);
+	pr_debug("%s: sec: %lld nsec: %ld\n", __func__, ts->tv_sec, ts->tv_nsec);
 
 	out_be32((timer->baseaddr + XTIMER1588_RTC_OFFSET_SEC_H), 0);
 	out_be32((timer->baseaddr + XTIMER1588_RTC_OFFSET_SEC_L),

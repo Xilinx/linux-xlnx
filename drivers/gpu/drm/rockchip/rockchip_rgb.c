@@ -18,6 +18,7 @@
 
 #include "rockchip_drm_drv.h"
 #include "rockchip_drm_vop.h"
+#include "rockchip_rgb.h"
 
 #define encoder_to_rgb(c) container_of(c, struct rockchip_rgb, encoder)
 
@@ -142,11 +143,8 @@ struct rockchip_rgb *rockchip_rgb_init(struct device *dev,
 	rgb->bridge = bridge;
 
 	ret = drm_bridge_attach(encoder, rgb->bridge, NULL, 0);
-	if (ret) {
-		DRM_DEV_ERROR(drm_dev->dev,
-			      "failed to attach bridge: %d\n", ret);
+	if (ret)
 		goto err_free_encoder;
-	}
 
 	return rgb;
 

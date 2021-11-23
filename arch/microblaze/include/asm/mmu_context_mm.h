@@ -37,10 +37,6 @@
    to represent all kernel pages as shared among all contexts.
  */
 
-static inline void enter_lazy_tlb(struct mm_struct *mm, struct task_struct *tsk)
-{
-}
-
 # define NO_CONTEXT	256
 # define LAST_CONTEXT	255
 # define FIRST_CONTEXT	1
@@ -67,12 +63,14 @@ extern void steal_context(void);
  * Set up the context for a new address space.
  */
 extern int init_new_context(struct task_struct *tsk, struct mm_struct *mm);
+#define init_new_context init_new_context
 
 /*
  * We're finished using the context for an address space.
  */
 extern void destroy_context(struct mm_struct *mm);
 
+#define destroy_context destroy_context
 /*
  * Switch context
  */
@@ -106,7 +104,10 @@ static inline void activate_mm(struct mm_struct *active_mm,
 	switch_mm(active_mm, mm, current);
 	local_irq_restore(flags);
 }
+#define activate_mm	activate_mm
 
 extern void mmu_context_init(void);
+
+#include <asm-generic/mmu_context.h>
 
 #endif /* _ASM_MICROBLAZE_MMU_CONTEXT_H */

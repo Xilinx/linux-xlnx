@@ -1561,32 +1561,12 @@ static int bfd2elf_binding(asymbol *symbol)
 int dso__load_bfd_symbols(struct dso *dso, const char *debugfile)
 {
 	int err = -1;
-	long symbols_size, symbols_count;
+	long symbols_size, symbols_count, i;
 	asection *section;
 	asymbol **symbols, *sym;
 	struct symbol *symbol;
 	bfd *abfd;
-	u_int i;
 	u64 start, len;
-
-	abfd = bfd_openr(dso->long_name, NULL);
-	if (!abfd)
-		return -1;
-
-	if (!bfd_check_format(abfd, bfd_object)) {
-		pr_debug2("%s: cannot read %s bfd file.\n", __func__,
-			  dso->long_name);
-		goto out_close;
-	}
-
-	if (bfd_get_flavour(abfd) == bfd_target_elf_flavour)
-		goto out_close;
-
-	section = bfd_get_section_by_name(abfd, ".text");
-	if (section)
-		dso->text_offset = section->vma - section->filepos;
-
-	bfd_close(abfd);
 
 	abfd = bfd_openr(debugfile, NULL);
 	if (!abfd)
@@ -1594,7 +1574,7 @@ int dso__load_bfd_symbols(struct dso *dso, const char *debugfile)
 
 	if (!bfd_check_format(abfd, bfd_object)) {
 		pr_debug2("%s: cannot read %s bfd file.\n", __func__,
-			  debugfile);
+			  dso->long_name);
 		goto out_close;
 	}
 
@@ -1617,6 +1597,22 @@ int dso__load_bfd_symbols(struct dso *dso, const char *debugfile)
 	symbols_count = bfd_canonicalize_symtab(abfd, symbols);
 	if (symbols_count < 0)
 		goto out_free;
+
+	section = bfd_get_section_by_name(abfd, ".text");
+	if (section) {
+		for (i = 0; i < symbols_count; ++i) {
+			if (!strcmp(bfd_asymbol_name(symbols[i]), "__ImageBase") ||
+			    !strcmp(bfd_asymbol_name(symbols[i]), "__image_base__"))
+				break;
+		}
+		if (i < symbols_count) {
+			/* PE symbols can only have 4 bytes, so use .text high bits */
+			dso->text_offset = section->vma - (u32)section->vma;
+			dso->text_offset += (u32)bfd_asymbol_value(symbols[i]);
+		} else {
+			dso->text_offset = section->vma - section->filepos;
+		}
+	}
 
 	qsort(symbols, symbols_count, sizeof(asymbol *), bfd_symbols__cmpvalue);
 
@@ -1867,8 +1863,10 @@ int dso__load(struct dso *dso, struct map *map)
 		if (nsexit)
 			nsinfo__mountns_enter(dso->nsinfo, &nsc);
 
-		if (bfdrc == 0)
+		if (bfdrc == 0) {
+			ret = 0;
 			break;
+		}
 
 		if (!is_reg || sirc < 0)
 			continue;
@@ -2189,6 +2187,8 @@ static int dso__load_kernel_sym(struct dso *dso, struct map *map)
 	int err;
 	const char *kallsyms_filename = NULL;
 	char *kallsyms_allocated_filename = NULL;
+	char *filename = NULL;
+
 	/*
 	 * Step 1: if the user specified a kallsyms or vmlinux filename, use
 	 * it and only it, reporting errors to the user if it cannot be used.
@@ -2211,6 +2211,20 @@ static int dso__load_kernel_sym(struct dso *dso, struct map *map)
 
 	if (!symbol_conf.ignore_vmlinux && symbol_conf.vmlinux_name != NULL) {
 		return dso__load_vmlinux(dso, map, symbol_conf.vmlinux_name, false);
+	}
+
+	/*
+	 * Before checking on common vmlinux locations, check if it's
+	 * stored as standard build id binary (not kallsyms) under
+	 * .debug cache.
+	 */
+	if (!symbol_conf.ignore_vmlinux_buildid)
+		filename = __dso__build_id_filename(dso, NULL, 0, false, false);
+	if (filename != NULL) {
+		err = dso__load_vmlinux(dso, map, filename, true);
+		if (err > 0)
+			return err;
+		free(filename);
 	}
 
 	if (!symbol_conf.ignore_vmlinux && vmlinux_path != NULL) {
@@ -2390,6 +2404,49 @@ int setup_intlist(struct intlist **list, const char *list_str,
 	return 0;
 }
 
+static int setup_addrlist(struct intlist **addr_list, struct strlist *sym_list)
+{
+	struct str_node *pos, *tmp;
+	unsigned long val;
+	char *sep;
+	const char *end;
+	int i = 0, err;
+
+	*addr_list = intlist__new(NULL);
+	if (!*addr_list)
+		return -1;
+
+	strlist__for_each_entry_safe(pos, tmp, sym_list) {
+		errno = 0;
+		val = strtoul(pos->s, &sep, 16);
+		if (errno || (sep == pos->s))
+			continue;
+
+		if (*sep != '\0') {
+			end = pos->s + strlen(pos->s) - 1;
+			while (end >= sep && isspace(*end))
+				end--;
+
+			if (end >= sep)
+				continue;
+		}
+
+		err = intlist__add(*addr_list, val);
+		if (err)
+			break;
+
+		strlist__remove(sym_list, pos);
+		i++;
+	}
+
+	if (i == 0) {
+		intlist__delete(*addr_list);
+		*addr_list = NULL;
+	}
+
+	return 0;
+}
+
 static bool symbol__read_kptr_restrict(void)
 {
 	bool value = false;
@@ -2473,6 +2530,10 @@ int symbol__init(struct perf_env *env)
 		       symbol_conf.sym_list_str, "symbol") < 0)
 		goto out_free_tid_list;
 
+	if (symbol_conf.sym_list &&
+	    setup_addrlist(&symbol_conf.addr_list, symbol_conf.sym_list) < 0)
+		goto out_free_sym_list;
+
 	if (setup_list(&symbol_conf.bt_stop_list,
 		       symbol_conf.bt_stop_list_str, "symbol") < 0)
 		goto out_free_sym_list;
@@ -2496,6 +2557,7 @@ int symbol__init(struct perf_env *env)
 
 out_free_sym_list:
 	strlist__delete(symbol_conf.sym_list);
+	intlist__delete(symbol_conf.addr_list);
 out_free_tid_list:
 	intlist__delete(symbol_conf.tid_list);
 out_free_pid_list:
@@ -2517,6 +2579,7 @@ void symbol__exit(void)
 	strlist__delete(symbol_conf.comm_list);
 	intlist__delete(symbol_conf.tid_list);
 	intlist__delete(symbol_conf.pid_list);
+	intlist__delete(symbol_conf.addr_list);
 	vmlinux_path__exit();
 	symbol_conf.sym_list = symbol_conf.dso_list = symbol_conf.comm_list = NULL;
 	symbol_conf.bt_stop_list = NULL;

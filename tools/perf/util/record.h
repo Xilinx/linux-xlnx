@@ -22,6 +22,8 @@ struct record_opts {
 	bool	      raw_samples;
 	bool	      sample_address;
 	bool	      sample_phys_addr;
+	bool	      sample_data_page_size;
+	bool	      sample_code_page_size;
 	bool	      sample_weight;
 	bool	      sample_time;
 	bool	      sample_time_set;
@@ -49,6 +51,7 @@ struct record_opts {
 	bool	      no_bpf_event;
 	bool	      kcore;
 	bool	      text_poke;
+	bool	      build_id;
 	unsigned int  freq;
 	unsigned int  mmap_pages;
 	unsigned int  auxtrace_mmap_pages;

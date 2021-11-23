@@ -387,7 +387,7 @@ static struct attribute *suspend_attrs[] = {
 	NULL,
 };
 
-static struct attribute_group suspend_attr_group = {
+static const struct attribute_group suspend_attr_group = {
 	.name = "suspend_stats",
 	.attrs = suspend_attrs,
 };
@@ -577,7 +577,7 @@ static inline void pm_print_times_init(void) {}
 
 struct kobject *power_kobj;
 
-/**
+/*
  * state - control system sleep states.
  *
  * show() returns available sleep state labels, which may be "mem", "standby",

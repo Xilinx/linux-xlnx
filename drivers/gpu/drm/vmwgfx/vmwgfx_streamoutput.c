@@ -99,17 +99,17 @@ static int vmw_dx_streamoutput_unscrub(struct vmw_resource *res)
 	if (!list_empty(&so->cotable_head) || !so->committed )
 		return 0;
 
-	cmd = VMW_FIFO_RESERVE_DX(dev_priv, sizeof(*cmd), so->ctx->id);
+	cmd = VMW_CMD_CTX_RESERVE(dev_priv, sizeof(*cmd), so->ctx->id);
 	if (!cmd)
 		return -ENOMEM;
 
 	cmd->header.id = SVGA_3D_CMD_DX_BIND_STREAMOUTPUT;
 	cmd->header.size = sizeof(cmd->body);
 	cmd->body.soid = so->id;
-	cmd->body.mobid = res->backup->base.mem.start;
+	cmd->body.mobid = res->backup->base.resource->start;
 	cmd->body.offsetInBytes = res->backup_offset;
 	cmd->body.sizeInBytes = so->size;
-	vmw_fifo_commit(dev_priv, sizeof(*cmd));
+	vmw_cmd_commit(dev_priv, sizeof(*cmd));
 
 	vmw_cotable_add_resource(so->cotable, &so->cotable_head);
 
@@ -142,7 +142,7 @@ static int vmw_dx_streamoutput_bind(struct vmw_resource *res,
 	struct ttm_buffer_object *bo = val_buf->bo;
 	int ret;
 
-	if (WARN_ON(bo->mem.mem_type != VMW_PL_MOB))
+	if (WARN_ON(bo->resource->mem_type != VMW_PL_MOB))
 		return -EINVAL;
 
 	mutex_lock(&dev_priv->binding_mutex);
@@ -172,7 +172,7 @@ static int vmw_dx_streamoutput_scrub(struct vmw_resource *res)
 
 	WARN_ON_ONCE(!so->committed);
 
-	cmd = VMW_FIFO_RESERVE_DX(dev_priv, sizeof(*cmd), so->ctx->id);
+	cmd = VMW_CMD_CTX_RESERVE(dev_priv, sizeof(*cmd), so->ctx->id);
 	if (!cmd)
 		return -ENOMEM;
 
@@ -182,7 +182,7 @@ static int vmw_dx_streamoutput_scrub(struct vmw_resource *res)
 	cmd->body.mobid = SVGA3D_INVALID_ID;
 	cmd->body.offsetInBytes = 0;
 	cmd->body.sizeInBytes = so->size;
-	vmw_fifo_commit(dev_priv, sizeof(*cmd));
+	vmw_cmd_commit(dev_priv, sizeof(*cmd));
 
 	res->id = -1;
 	list_del_init(&so->cotable_head);
@@ -197,7 +197,7 @@ static int vmw_dx_streamoutput_unbind(struct vmw_resource *res, bool readback,
 	struct vmw_fence_obj *fence;
 	int ret;
 
-	if (WARN_ON(res->backup->base.mem.mem_type != VMW_PL_MOB))
+	if (WARN_ON(res->backup->base.resource->mem_type != VMW_PL_MOB))
 		return -EINVAL;
 
 	mutex_lock(&dev_priv->binding_mutex);

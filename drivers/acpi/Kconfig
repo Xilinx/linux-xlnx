@@ -87,6 +87,14 @@ config ACPI_SPCR_TABLE
 	  This table provides information about the configuration of the
 	  earlycon console.
 
+config ACPI_FPDT
+	bool "ACPI Firmware Performance Data Table (FPDT) support"
+	depends on X86_64
+	help
+	  Enable support for the Firmware Performance Data Table (FPDT).
+	  This table provides information on the timing of the system
+	  boot, S3 suspend and S3 resume firmware code paths.
+
 config ACPI_LPIT
 	bool
 	depends on X86_64
@@ -272,9 +280,9 @@ config ACPI_CPPC_LIB
 
 config ACPI_PROCESSOR
 	tristate "Processor"
-	depends on X86 || IA64 || ARM64
+	depends on X86 || IA64 || ARM64 || LOONGARCH
 	select ACPI_PROCESSOR_IDLE
-	select ACPI_CPU_FREQ_PSS if X86 || IA64
+	select ACPI_CPU_FREQ_PSS if X86 || IA64 || LOONGARCH
 	default y
 	help
 	  This driver adds support for the ACPI Processor package. It is required
@@ -326,6 +334,9 @@ config ACPI_THERMAL
 	  To compile this driver as a module, choose M here:
 	  the module will be called thermal.
 
+config ACPI_PLATFORM_PROFILE
+	tristate
+
 config ACPI_CUSTOM_DSDT_FILE
 	string "Custom DSDT Table file to include"
 	default ""
@@ -359,7 +370,7 @@ config ACPI_TABLE_UPGRADE
 config ACPI_TABLE_OVERRIDE_VIA_BUILTIN_INITRD
 	bool "Override ACPI tables from built-in initrd"
 	depends on ACPI_TABLE_UPGRADE
-	depends on INITRAMFS_SOURCE!="" && INITRAMFS_COMPRESSION=""
+	depends on INITRAMFS_SOURCE!="" && INITRAMFS_COMPRESSION_NONE
 	help
 	  This option provides functionality to override arbitrary ACPI tables
 	  from built-in uncompressed initrd.
@@ -395,9 +406,6 @@ config ACPI_CONTAINER
 
 	  This helps support hotplug of nodes, CPUs, and memory.
 
-	  To compile this driver as a module, choose M here:
-	  the module will be called container.
-
 config ACPI_HOTPLUG_MEMORY
 	bool "Memory Hotplug"
 	depends on MEMORY_HOTPLUG
@@ -410,9 +418,6 @@ config ACPI_HOTPLUG_MEMORY
 	  If your hardware and firmware do not support adding or
 	  removing memory devices at runtime, you need not enable
 	  this driver.
-
-	  To compile this driver as a module, choose M here:
-	  the module will be called acpi_memhotplug.
 
 config ACPI_HOTPLUG_IOAPIC
 	bool
@@ -521,6 +526,9 @@ endif
 
 source "drivers/acpi/pmic/Kconfig"
 
+config ACPI_VIOT
+	bool
+
 endif	# ACPI
 
 config X86_PM_TIMER
@@ -538,3 +546,18 @@ config X86_PM_TIMER
 
 	  You should nearly always say Y here because many modern
 	  systems require this timer.
+
+config ACPI_PRMT
+	bool "Platform Runtime Mechanism Support"
+	depends on EFI && X86_64
+	default y
+	help
+	  Platform Runtime Mechanism (PRM) is a firmware interface exposing a
+	  set of binary executables that can be called from the AML interpreter
+	  or directly from device drivers.
+
+	  Say Y to enable the AML interpreter to execute the PRM code.
+
+	  While this feature is optional in principle, leaving it out may
+	  substantially increase computational overhead related to the
+	  initialization of some server systems.

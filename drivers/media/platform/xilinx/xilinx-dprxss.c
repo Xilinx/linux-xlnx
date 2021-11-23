@@ -1028,14 +1028,15 @@ static int xdprxss_g_input_status(struct v4l2_subdev *sd, u32 *status)
 
 static struct v4l2_mbus_framefmt *
 __xdprxss_get_pad_format(struct xdprxss_state *xdprxss,
-			 struct v4l2_subdev_pad_config *cfg,
+			 struct v4l2_subdev_state *sd_state,
 			 unsigned int pad, u32 which)
 {
 	struct v4l2_mbus_framefmt *format;
 
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		format = v4l2_subdev_get_try_format(&xdprxss->subdev, cfg, pad);
+		format = v4l2_subdev_get_try_format(&xdprxss->subdev,
+						    sd_state, pad);
 		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
 		format = &xdprxss->format;
@@ -1059,12 +1060,12 @@ __xdprxss_get_pad_format(struct xdprxss_state *xdprxss,
  * Return: 0 on success
  */
 static int xdprxss_init_cfg(struct v4l2_subdev *sd,
-			    struct v4l2_subdev_pad_config *cfg)
+			    struct v4l2_subdev_state *sd_state)
 {
 	struct xdprxss_state *xdprxss = to_xdprxssstate(sd);
 	struct v4l2_mbus_framefmt *format;
 
-	format = v4l2_subdev_get_try_format(sd, cfg, 0);
+	format = v4l2_subdev_get_try_format(sd, sd_state, 0);
 
 	if (!xdprxss->valid_stream)
 		*format = xdprxss->format;
@@ -1085,7 +1086,7 @@ static int xdprxss_init_cfg(struct v4l2_subdev *sd,
  * Return: 0 on success
  */
 static int xdprxss_getset_format(struct v4l2_subdev *sd,
-				 struct v4l2_subdev_pad_config *cfg,
+				 struct v4l2_subdev_state *sd_state,
 				 struct v4l2_subdev_format *fmt)
 {
 	struct xdprxss_state *xdprxss = to_xdprxssstate(sd);
@@ -1101,7 +1102,7 @@ static int xdprxss_getset_format(struct v4l2_subdev *sd,
 		fmt->format.width, fmt->format.height,
 		fmt->format.code, fmt->format.field,
 		fmt->format.colorspace);
-	format = __xdprxss_get_pad_format(xdprxss, cfg,
+	format = __xdprxss_get_pad_format(xdprxss, sd_state,
 					  fmt->pad, fmt->which);
 	if (!format)
 		return -EINVAL;
@@ -1120,7 +1121,7 @@ static int xdprxss_getset_format(struct v4l2_subdev *sd,
  * Return: -EINVAL or zero on success
  */
 static int xdprxss_enum_mbus_code(struct v4l2_subdev *sd,
-				  struct v4l2_subdev_pad_config *cfg,
+				  struct v4l2_subdev_state *sd_state,
 				  struct v4l2_subdev_mbus_code_enum *code)
 {
 	struct xdprxss_state *xdprxss = to_xdprxssstate(sd);

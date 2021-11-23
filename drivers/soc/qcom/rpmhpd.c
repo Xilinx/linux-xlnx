@@ -24,9 +24,12 @@
  * struct rpmhpd - top level RPMh power domain resource data structure
  * @dev:		rpmh power domain controller device
  * @pd:			generic_pm_domain corrresponding to the power domain
+ * @parent:		generic_pm_domain corrresponding to the parent's power domain
  * @peer:		A peer power domain in case Active only Voting is
  *			supported
  * @active_only:	True if it represents an Active only peer
+ * @corner:		current corner
+ * @active_corner:	current active corner
  * @level:		An array of level (vlvl) to corner (hlvl) mappings
  *			derived from cmd-db
  * @level_count:	Number of levels supported by the power domain. max
@@ -132,6 +135,18 @@ static const struct rpmhpd_desc sdm845_desc = {
 	.num_pds = ARRAY_SIZE(sdm845_rpmhpds),
 };
 
+/* SDX55 RPMH powerdomains */
+static struct rpmhpd *sdx55_rpmhpds[] = {
+	[SDX55_MSS] = &sdm845_mss,
+	[SDX55_MX] = &sdm845_mx,
+	[SDX55_CX] = &sdm845_cx,
+};
+
+static const struct rpmhpd_desc sdx55_desc = {
+	.rpmhpds = sdx55_rpmhpds,
+	.num_pds = ARRAY_SIZE(sdx55_rpmhpds),
+};
+
 /* SM8150 RPMH powerdomains */
 
 static struct rpmhpd sm8150_mmcx_ao;
@@ -185,6 +200,42 @@ static const struct rpmhpd_desc sm8250_desc = {
 	.num_pds = ARRAY_SIZE(sm8250_rpmhpds),
 };
 
+/* SM8350 Power domains */
+static struct rpmhpd sm8350_mxc_ao;
+static struct rpmhpd sm8350_mxc = {
+	.pd = { .name = "mxc", },
+	.peer = &sm8150_mmcx_ao,
+	.res_name = "mxc.lvl",
+};
+
+static struct rpmhpd sm8350_mxc_ao = {
+	.pd = { .name = "mxc_ao", },
+	.active_only = true,
+	.peer = &sm8350_mxc,
+	.res_name = "mxc.lvl",
+};
+
+static struct rpmhpd *sm8350_rpmhpds[] = {
+	[SM8350_CX] = &sdm845_cx,
+	[SM8350_CX_AO] = &sdm845_cx_ao,
+	[SM8350_EBI] = &sdm845_ebi,
+	[SM8350_GFX] = &sdm845_gfx,
+	[SM8350_LCX] = &sdm845_lcx,
+	[SM8350_LMX] = &sdm845_lmx,
+	[SM8350_MMCX] = &sm8150_mmcx,
+	[SM8350_MMCX_AO] = &sm8150_mmcx_ao,
+	[SM8350_MX] = &sdm845_mx,
+	[SM8350_MX_AO] = &sdm845_mx_ao,
+	[SM8350_MXC] = &sm8350_mxc,
+	[SM8350_MXC_AO] = &sm8350_mxc_ao,
+	[SM8350_MSS] = &sdm845_mss,
+};
+
+static const struct rpmhpd_desc sm8350_desc = {
+	.rpmhpds = sm8350_rpmhpds,
+	.num_pds = ARRAY_SIZE(sm8350_rpmhpds),
+};
+
 /* SC7180 RPMH powerdomains */
 static struct rpmhpd *sc7180_rpmhpds[] = {
 	[SC7180_CX] = &sdm845_cx,
@@ -202,11 +253,53 @@ static const struct rpmhpd_desc sc7180_desc = {
 	.num_pds = ARRAY_SIZE(sc7180_rpmhpds),
 };
 
+/* SC7280 RPMH powerdomains */
+static struct rpmhpd *sc7280_rpmhpds[] = {
+	[SC7280_CX] = &sdm845_cx,
+	[SC7280_CX_AO] = &sdm845_cx_ao,
+	[SC7280_EBI] = &sdm845_ebi,
+	[SC7280_GFX] = &sdm845_gfx,
+	[SC7280_MX] = &sdm845_mx,
+	[SC7280_MX_AO] = &sdm845_mx_ao,
+	[SC7280_LMX] = &sdm845_lmx,
+	[SC7280_LCX] = &sdm845_lcx,
+	[SC7280_MSS] = &sdm845_mss,
+};
+
+static const struct rpmhpd_desc sc7280_desc = {
+	.rpmhpds = sc7280_rpmhpds,
+	.num_pds = ARRAY_SIZE(sc7280_rpmhpds),
+};
+
+/* SC8180x RPMH powerdomains */
+static struct rpmhpd *sc8180x_rpmhpds[] = {
+	[SC8180X_CX] = &sdm845_cx,
+	[SC8180X_CX_AO] = &sdm845_cx_ao,
+	[SC8180X_EBI] = &sdm845_ebi,
+	[SC8180X_GFX] = &sdm845_gfx,
+	[SC8180X_LCX] = &sdm845_lcx,
+	[SC8180X_LMX] = &sdm845_lmx,
+	[SC8180X_MMCX] = &sm8150_mmcx,
+	[SC8180X_MMCX_AO] = &sm8150_mmcx_ao,
+	[SC8180X_MSS] = &sdm845_mss,
+	[SC8180X_MX] = &sdm845_mx,
+	[SC8180X_MX_AO] = &sdm845_mx_ao,
+};
+
+static const struct rpmhpd_desc sc8180x_desc = {
+	.rpmhpds = sc8180x_rpmhpds,
+	.num_pds = ARRAY_SIZE(sc8180x_rpmhpds),
+};
+
 static const struct of_device_id rpmhpd_match_table[] = {
 	{ .compatible = "qcom,sc7180-rpmhpd", .data = &sc7180_desc },
+	{ .compatible = "qcom,sc7280-rpmhpd", .data = &sc7280_desc },
+	{ .compatible = "qcom,sc8180x-rpmhpd", .data = &sc8180x_desc },
 	{ .compatible = "qcom,sdm845-rpmhpd", .data = &sdm845_desc },
+	{ .compatible = "qcom,sdx55-rpmhpd", .data = &sdx55_desc},
 	{ .compatible = "qcom,sm8150-rpmhpd", .data = &sm8150_desc },
 	{ .compatible = "qcom,sm8250-rpmhpd", .data = &sm8250_desc },
+	{ .compatible = "qcom,sm8350-rpmhpd", .data = &sm8350_desc },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, rpmhpd_match_table);
@@ -310,12 +403,11 @@ static int rpmhpd_power_on(struct generic_pm_domain *domain)
 static int rpmhpd_power_off(struct generic_pm_domain *domain)
 {
 	struct rpmhpd *pd = domain_to_rpmhpd(domain);
-	int ret = 0;
+	int ret;
 
 	mutex_lock(&rpmhpd_lock);
 
-	ret = rpmhpd_aggregate_corner(pd, pd->level[0]);
-
+	ret = rpmhpd_aggregate_corner(pd, 0);
 	if (!ret)
 		pd->enabled = false;
 

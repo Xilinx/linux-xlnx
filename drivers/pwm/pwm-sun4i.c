@@ -294,12 +294,8 @@ static int sun4i_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 
 	ctrl |= BIT_CH(PWM_CLK_GATING, pwm->hwpwm);
 
-	if (state->enabled) {
+	if (state->enabled)
 		ctrl |= BIT_CH(PWM_EN, pwm->hwpwm);
-	} else {
-		ctrl &= ~BIT_CH(PWM_EN, pwm->hwpwm);
-		ctrl &= ~BIT_CH(PWM_CLK_GATING, pwm->hwpwm);
-	}
 
 	sun4i_pwm_writel(sun4i_pwm, ctrl, PWM_CTRL_REG);
 
@@ -395,7 +391,6 @@ MODULE_DEVICE_TABLE(of, sun4i_pwm_dt_ids);
 static int sun4i_pwm_probe(struct platform_device *pdev)
 {
 	struct sun4i_pwm_chip *pwm;
-	struct resource *res;
 	int ret;
 
 	pwm = devm_kzalloc(&pdev->dev, sizeof(*pwm), GFP_KERNEL);
@@ -406,8 +401,7 @@ static int sun4i_pwm_probe(struct platform_device *pdev)
 	if (!pwm->data)
 		return -ENODEV;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	pwm->base = devm_ioremap_resource(&pdev->dev, res);
+	pwm->base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(pwm->base))
 		return PTR_ERR(pwm->base);
 
@@ -465,10 +459,7 @@ static int sun4i_pwm_probe(struct platform_device *pdev)
 
 	pwm->chip.dev = &pdev->dev;
 	pwm->chip.ops = &sun4i_pwm_ops;
-	pwm->chip.base = -1;
 	pwm->chip.npwm = pwm->data->npwm;
-	pwm->chip.of_xlate = of_pwm_xlate_with_flags;
-	pwm->chip.of_pwm_n_cells = 3;
 
 	spin_lock_init(&pwm->ctrl_lock);
 
@@ -493,11 +484,8 @@ err_bus:
 static int sun4i_pwm_remove(struct platform_device *pdev)
 {
 	struct sun4i_pwm_chip *pwm = platform_get_drvdata(pdev);
-	int ret;
 
-	ret = pwmchip_remove(&pwm->chip);
-	if (ret)
-		return ret;
+	pwmchip_remove(&pwm->chip);
 
 	clk_disable_unprepare(pwm->bus_clk);
 	reset_control_assert(pwm->rst);

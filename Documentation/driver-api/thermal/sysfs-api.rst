@@ -54,7 +54,7 @@ temperature) and throttle appropriate devices.
     trips:
 	the total number of trip points this thermal zone supports.
     mask:
-	Bit string: If 'n'th bit is set, then trip point 'n' is writeable.
+	Bit string: If 'n'th bit is set, then trip point 'n' is writable.
     devdata:
 	device private data
     ops:
@@ -406,7 +406,7 @@ Thermal cooling device sys I/F, created once it's registered::
     |---stats/reset:		Writing any value resets the statistics
     |---stats/time_in_state_ms:	Time (msec) spent in various cooling states
     |---stats/total_trans:	Total number of times cooling state is changed
-    |---stats/trans_table:	Cooing state transition table
+    |---stats/trans_table:	Cooling state transition table
 
 
 Then next two dynamic attributes are created/removed in pairs. They represent
@@ -517,19 +517,6 @@ available_policies
 	zone. For example, if a cooling device has a weight double
 	than that of other, it's twice as effective in cooling the
 	thermal zone.
-
-	RW, Optional
-
-passive
-	Attribute is only present for zones in which the passive cooling
-	policy is not supported by native thermal driver. Default is zero
-	and can be set to a temperature (in millidegrees) to enable a
-	passive trip point for the zone. Activation is done by polling with
-	an interval of 1 second.
-
-	Unit: millidegrees Celsius
-
-	Valid values: 0 (disabled) or greater than 1000
 
 	RW, Optional
 
@@ -654,8 +641,7 @@ stats/time_in_state_ms:
 	The amount of time spent by the cooling device in various cooling
 	states. The output will have "<state> <time>" pair in each line, which
 	will mean this cooling device spent <time> msec of time at <state>.
-	Output will have one line for each of the supported states.  usertime
-	units here is 10mS (similar to other time exported in /proc).
+	Output will have one line for each of the supported states.
 	RO, Required
 
 
@@ -744,17 +730,7 @@ This function returns the thermal_instance corresponding to a given
 {thermal_zone, cooling_device, trip_point} combination. Returns NULL
 if such an instance does not exist.
 
-4.3. thermal_notify_framework
------------------------------
-
-This function handles the trip events from sensor drivers. It starts
-throttling the cooling devices according to the policy configured.
-For CRITICAL and HOT trip points, this notifies the respective drivers,
-and does actual throttling for other trip points i.e ACTIVE and PASSIVE.
-The throttling policy is based on the configured platform data; if no
-platform data is provided, this uses the step_wise throttling policy.
-
-4.4. thermal_cdev_update
+4.3. thermal_cdev_update
 ------------------------
 
 This function serves as an arbitrator to set the state of a cooling
@@ -764,21 +740,15 @@ possible.
 5. thermal_emergency_poweroff
 =============================
 
-On an event of critical trip temperature crossing. Thermal framework
-allows the system to shutdown gracefully by calling orderly_poweroff().
-In the event of a failure of orderly_poweroff() to shut down the system
-we are in danger of keeping the system alive at undesirably high
-temperatures. To mitigate this high risk scenario we program a work
-queue to fire after a pre-determined number of seconds to start
-an emergency shutdown of the device using the kernel_power_off()
-function. In case kernel_power_off() fails then finally
-emergency_restart() is called in the worst case.
+On an event of critical trip temperature crossing the thermal framework
+shuts down the system by calling hw_protection_shutdown(). The
+hw_protection_shutdown() first attempts to perform an orderly shutdown
+but accepts a delay after which it proceeds doing a forced power-off
+or as last resort an emergency_restart.
 
 The delay should be carefully profiled so as to give adequate time for
-orderly_poweroff(). In case of failure of an orderly_poweroff() the
-emergency poweroff kicks in after the delay has elapsed and shuts down
-the system.
+orderly poweroff.
 
-If set to 0 emergency poweroff will not be supported. So a carefully
-profiled non-zero positive value is a must for emergerncy poweroff to be
-triggered.
+If the delay is set to 0 emergency poweroff will not be supported. So a
+carefully profiled non-zero positive value is a must for emergency
+poweroff to be triggered.

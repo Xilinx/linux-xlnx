@@ -10,6 +10,7 @@
 #ifndef __RENESAS_RPC_IF_H
 #define __RENESAS_RPC_IF_H
 
+#include <linux/pm_runtime.h>
 #include <linux/types.h>
 
 enum rpcif_data_dir {
@@ -18,7 +19,7 @@ enum rpcif_data_dir {
 	RPCIF_DATA_OUT,
 };
 
-struct	rpcif_op {
+struct rpcif_op {
 	struct {
 		u8 buswidth;
 		u8 opcode;
@@ -56,7 +57,7 @@ struct	rpcif_op {
 	} data;
 };
 
-struct	rpcif {
+struct rpcif {
 	struct device *dev;
 	void __iomem *dirmap;
 	struct regmap *regmap;
@@ -75,13 +76,21 @@ struct	rpcif {
 	u32 ddr;		/* DRDRENR or SMDRENR */
 };
 
-int  rpcif_sw_init(struct rpcif *rpc, struct device *dev);
+int rpcif_sw_init(struct rpcif *rpc, struct device *dev);
 void rpcif_hw_init(struct rpcif *rpc, bool hyperflash);
-void rpcif_enable_rpm(struct rpcif *rpc);
-void rpcif_disable_rpm(struct rpcif *rpc);
 void rpcif_prepare(struct rpcif *rpc, const struct rpcif_op *op, u64 *offs,
 		   size_t *len);
 int rpcif_manual_xfer(struct rpcif *rpc);
 ssize_t rpcif_dirmap_read(struct rpcif *rpc, u64 offs, size_t len, void *buf);
+
+static inline void rpcif_enable_rpm(struct rpcif *rpc)
+{
+	pm_runtime_enable(rpc->dev);
+}
+
+static inline void rpcif_disable_rpm(struct rpcif *rpc)
+{
+	pm_runtime_disable(rpc->dev);
+}
 
 #endif // __RENESAS_RPC_IF_H

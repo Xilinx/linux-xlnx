@@ -208,20 +208,23 @@ out_fc:
 }
 
 static int
-nfs_namespace_getattr(const struct path *path, struct kstat *stat,
-			u32 request_mask, unsigned int query_flags)
+nfs_namespace_getattr(struct user_namespace *mnt_userns,
+		      const struct path *path, struct kstat *stat,
+		      u32 request_mask, unsigned int query_flags)
 {
 	if (NFS_FH(d_inode(path->dentry))->size != 0)
-		return nfs_getattr(path, stat, request_mask, query_flags);
-	generic_fillattr(d_inode(path->dentry), stat);
+		return nfs_getattr(mnt_userns, path, stat, request_mask,
+				   query_flags);
+	generic_fillattr(&init_user_ns, d_inode(path->dentry), stat);
 	return 0;
 }
 
 static int
-nfs_namespace_setattr(struct dentry *dentry, struct iattr *attr)
+nfs_namespace_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
+		      struct iattr *attr)
 {
 	if (NFS_FH(d_inode(dentry))->size != 0)
-		return nfs_setattr(dentry, attr);
+		return nfs_setattr(mnt_userns, dentry, attr);
 	return -EACCES;
 }
 
@@ -359,7 +362,7 @@ static const struct kernel_param_ops param_ops_nfs_timeout = {
 	.set = param_set_nfs_timeout,
 	.get = param_get_nfs_timeout,
 };
-#define param_check_nfs_timeout(name, p) __param_check(name, p, int);
+#define param_check_nfs_timeout(name, p) __param_check(name, p, int)
 
 module_param(nfs_mountpoint_expiry_timeout, nfs_timeout, 0644);
 MODULE_PARM_DESC(nfs_mountpoint_expiry_timeout,

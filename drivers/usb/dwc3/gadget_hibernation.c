@@ -498,7 +498,7 @@ void dwc3_gadget_exit_hibernation(void *_dwc)
 		reg = dwc3_readl(dwc->regs, DWC3_DCTL);
 		reg &= ~DWC3_DCTL_KEEP_CONNECT;
 		dwc3_writel(dwc->regs, DWC3_DCTL, reg);
-		/* fall through */
+		fallthrough;
 	case DWC3_LINK_STATE_U3:
 		/* Ignore wakeup event as the link is still in U3 state */
 		dev_dbg(dwc->dev, "False wakeup event %d\n", link_state);

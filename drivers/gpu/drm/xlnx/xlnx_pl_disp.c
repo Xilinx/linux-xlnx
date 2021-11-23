@@ -234,7 +234,7 @@ static void xlnx_pl_disp_plane_enable(struct drm_plane *plane)
 }
 
 static void xlnx_pl_disp_plane_atomic_disable(struct drm_plane *plane,
-					      struct drm_plane_state *old_state)
+					      struct drm_atomic_state *state)
 {
 	xlnx_pl_disp_plane_disable(plane);
 }
@@ -295,7 +295,7 @@ static int xlnx_pl_disp_plane_mode_set(struct drm_plane *plane,
 }
 
 static void xlnx_pl_disp_plane_atomic_update(struct drm_plane *plane,
-					     struct drm_plane_state *old_state)
+					     struct drm_atomic_state *state)
 {
 	int ret;
 	struct xlnx_pl_disp *xlnx_pl_disp = plane_to_dma(plane);
@@ -323,9 +323,9 @@ static void xlnx_pl_disp_plane_atomic_update(struct drm_plane *plane,
 
 static int
 xlnx_pl_disp_plane_atomic_check(struct drm_plane *plane,
-				struct drm_plane_state *new_plane_state)
+				struct drm_atomic_state *state)
 {
-	struct drm_atomic_state *state = new_plane_state->state;
+	struct drm_plane_state *new_plane_state = drm_atomic_get_new_plane_state(state, plane);
 	const struct drm_plane_state *old_plane_state =
 		drm_atomic_get_old_plane_state(state, plane);
 	struct drm_crtc *crtc = new_plane_state->crtc ?: old_plane_state->crtc;
@@ -394,7 +394,7 @@ static inline struct xlnx_pl_disp *drm_crtc_to_dma(struct drm_crtc *crtc)
 }
 
 static void xlnx_pl_disp_crtc_atomic_begin(struct drm_crtc *crtc,
-					   struct drm_crtc_state *old_state)
+					   struct drm_atomic_state *state)
 {
 	drm_crtc_vblank_on(crtc);
 	spin_lock_irq(&crtc->dev->event_lock);
@@ -417,7 +417,7 @@ static void xlnx_pl_disp_clear_event(struct drm_crtc *crtc)
 }
 
 static void xlnx_pl_disp_crtc_atomic_enable(struct drm_crtc *crtc,
-					    struct drm_crtc_state *old_state)
+					    struct drm_atomic_state *state)
 {
 	struct drm_display_mode *adjusted_mode = &crtc->state->adjusted_mode;
 	int vrefresh;
@@ -441,7 +441,7 @@ static void xlnx_pl_disp_crtc_atomic_enable(struct drm_crtc *crtc,
 }
 
 static void xlnx_pl_disp_crtc_atomic_disable(struct drm_crtc *crtc,
-					     struct drm_crtc_state *old_state)
+					     struct drm_atomic_state *state)
 {
 	struct xlnx_crtc *xlnx_crtc = to_xlnx_crtc(crtc);
 	struct xlnx_pl_disp *xlnx_pl_disp = crtc_to_dma(xlnx_crtc);
@@ -453,9 +453,9 @@ static void xlnx_pl_disp_crtc_atomic_disable(struct drm_crtc *crtc,
 }
 
 static int xlnx_pl_disp_crtc_atomic_check(struct drm_crtc *crtc,
-					  struct drm_crtc_state *state)
+					  struct drm_atomic_state *state)
 {
-	return drm_atomic_add_affected_planes(state->state, crtc);
+	return drm_atomic_add_affected_planes(state, crtc);
 }
 
 static struct drm_crtc_helper_funcs xlnx_pl_disp_crtc_helper_funcs = {

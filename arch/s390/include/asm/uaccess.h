@@ -18,23 +18,7 @@
 #include <asm/extable.h>
 #include <asm/facility.h>
 
-/*
- * The fs value determines whether argument validity checking should be
- * performed or not.  If get_fs() == USER_DS, checking is performed, with
- * get_fs() == KERNEL_DS, checking is bypassed.
- *
- * For historical reasons, these macros are grossly misnamed.
- */
-
-#define KERNEL_DS	(0)
-#define KERNEL_DS_SACF	(1)
-#define USER_DS		(2)
-#define USER_DS_SACF	(3)
-
-#define get_fs()        (current->thread.mm_segment)
-#define uaccess_kernel() ((get_fs() & 2) == KERNEL_DS)
-
-void set_fs(mm_segment_t fs);
+void debug_user_asce(int exit);
 
 static inline int __range_ok(unsigned long addr, unsigned long size)
 {
@@ -65,52 +49,51 @@ int __get_user_bad(void) __attribute__((noreturn));
 
 #ifdef CONFIG_HAVE_MARCH_Z10_FEATURES
 
-#define __put_get_user_asm(to, from, size, spec)		\
+#define __put_get_user_asm(to, from, size, insn)		\
 ({								\
-	register unsigned long __reg0 asm("0") = spec;		\
 	int __rc;						\
 								\
 	asm volatile(						\
-		"0:	mvcos	%1,%3,%2\n"			\
-		"1:	xr	%0,%0\n"			\
+		insn "		0,%[spec]\n"			\
+		"0:	mvcos	%[_to],%[_from],%[_size]\n"	\
+		"1:	xr	%[rc],%[rc]\n"			\
 		"2:\n"						\
 		".pushsection .fixup, \"ax\"\n"			\
-		"3:	lhi	%0,%5\n"			\
+		"3:	lhi	%[rc],%[retval]\n"		\
 		"	jg	2b\n"				\
 		".popsection\n"					\
 		EX_TABLE(0b,3b) EX_TABLE(1b,3b)			\
-		: "=d" (__rc), "+Q" (*(to))			\
-		: "d" (size), "Q" (*(from)),			\
-		  "d" (__reg0), "K" (-EFAULT)			\
-		: "cc");					\
+		: [rc] "=&d" (__rc), [_to] "+Q" (*(to))		\
+		: [_size] "d" (size), [_from] "Q" (*(from)),	\
+		  [retval] "K" (-EFAULT), [spec] "K" (0x81UL)	\
+		: "cc", "0");					\
 	__rc;							\
 })
 
 static __always_inline int __put_user_fn(void *x, void __user *ptr, unsigned long size)
 {
-	unsigned long spec = 0x010000UL;
 	int rc;
 
 	switch (size) {
 	case 1:
 		rc = __put_get_user_asm((unsigned char __user *)ptr,
 					(unsigned char *)x,
-					size, spec);
+					size, "llilh");
 		break;
 	case 2:
 		rc = __put_get_user_asm((unsigned short __user *)ptr,
 					(unsigned short *)x,
-					size, spec);
+					size, "llilh");
 		break;
 	case 4:
 		rc = __put_get_user_asm((unsigned int __user *)ptr,
 					(unsigned int *)x,
-					size, spec);
+					size, "llilh");
 		break;
 	case 8:
 		rc = __put_get_user_asm((unsigned long __user *)ptr,
 					(unsigned long *)x,
-					size, spec);
+					size, "llilh");
 		break;
 	default:
 		__put_user_bad();
@@ -121,29 +104,28 @@ static __always_inline int __put_user_fn(void *x, void __user *ptr, unsigned lon
 
 static __always_inline int __get_user_fn(void *x, const void __user *ptr, unsigned long size)
 {
-	unsigned long spec = 0x01UL;
 	int rc;
 
 	switch (size) {
 	case 1:
 		rc = __put_get_user_asm((unsigned char *)x,
 					(unsigned char __user *)ptr,
-					size, spec);
+					size, "lghi");
 		break;
 	case 2:
 		rc = __put_get_user_asm((unsigned short *)x,
 					(unsigned short __user *)ptr,
-					size, spec);
+					size, "lghi");
 		break;
 	case 4:
 		rc = __put_get_user_asm((unsigned int *)x,
 					(unsigned int __user *)ptr,
-					size, spec);
+					size, "lghi");
 		break;
 	case 8:
 		rc = __put_get_user_asm((unsigned long *)x,
 					(unsigned long __user *)ptr,
-					size, spec);
+					size, "lghi");
 		break;
 	default:
 		__get_user_bad();
@@ -245,29 +227,12 @@ static inline int __get_user_fn(void *x, const void __user *ptr, unsigned long s
 	__get_user(x, ptr);					\
 })
 
-unsigned long __must_check
-raw_copy_in_user(void __user *to, const void __user *from, unsigned long n);
-
 /*
  * Copy a null terminated string from userspace.
  */
+long __must_check strncpy_from_user(char *dst, const char __user *src, long count);
 
-long __strncpy_from_user(char *dst, const char __user *src, long count);
-
-static inline long __must_check
-strncpy_from_user(char *dst, const char __user *src, long count)
-{
-	might_fault();
-	return __strncpy_from_user(dst, src, count);
-}
-
-unsigned long __must_check __strnlen_user(const char __user *src, unsigned long count);
-
-static inline unsigned long strnlen_user(const char __user *src, unsigned long n)
-{
-	might_fault();
-	return __strnlen_user(src, n);
-}
+long __must_check strnlen_user(const char __user *src, long count);
 
 /*
  * Zero Userspace

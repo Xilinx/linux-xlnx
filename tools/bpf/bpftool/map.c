@@ -51,6 +51,7 @@ const char * const map_type_name[] = {
 	[BPF_MAP_TYPE_STRUCT_OPS]		= "struct_ops",
 	[BPF_MAP_TYPE_RINGBUF]			= "ringbuf",
 	[BPF_MAP_TYPE_INODE_STORAGE]		= "inode_storage",
+	[BPF_MAP_TYPE_TASK_STORAGE]		= "task_storage",
 };
 
 const size_t map_type_name_size = ARRAY_SIZE(map_type_name);
@@ -99,7 +100,7 @@ static int do_dump_btf(const struct btf_dumper *d,
 		       void *value)
 {
 	__u32 value_id;
-	int ret;
+	int ret = 0;
 
 	/* start of key-value pair */
 	jsonw_start_object(d->jw);
@@ -806,10 +807,11 @@ static struct btf *get_map_kv_btf(const struct bpf_map_info *info)
 	} else if (info->btf_value_type_id) {
 		int err;
 
-		err = btf__get_from_id(info->btf_id, &btf);
-		if (err || !btf) {
+		btf = btf__load_from_kernel_by_id(info->btf_id);
+		err = libbpf_get_error(btf);
+		if (err) {
 			p_err("failed to get btf");
-			btf = err ? ERR_PTR(err) : ERR_PTR(-ESRCH);
+			btf = ERR_PTR(err);
 		}
 	}
 
@@ -1038,11 +1040,10 @@ static void print_key_value(struct bpf_map_info *info, void *key,
 			    void *value)
 {
 	json_writer_t *btf_wtr;
-	struct btf *btf = NULL;
-	int err;
+	struct btf *btf;
 
-	err = btf__get_from_id(info->btf_id, &btf);
-	if (err) {
+	btf = btf__load_from_kernel_by_id(info->btf_id);
+	if (libbpf_get_error(btf)) {
 		p_err("failed to get btf");
 		return;
 	}
@@ -1464,8 +1465,10 @@ static int do_help(int argc, char **argv)
 		"                 lru_percpu_hash | lpm_trie | array_of_maps | hash_of_maps |\n"
 		"                 devmap | devmap_hash | sockmap | cpumap | xskmap | sockhash |\n"
 		"                 cgroup_storage | reuseport_sockarray | percpu_cgroup_storage |\n"
-		"                 queue | stack | sk_storage | struct_ops | ringbuf | inode_storage }\n"
-		"       " HELP_SPEC_OPTIONS "\n"
+		"                 queue | stack | sk_storage | struct_ops | ringbuf | inode_storage |\n"
+		"                 task_storage }\n"
+		"       " HELP_SPEC_OPTIONS " |\n"
+		"                    {-f|--bpffs} | {-n|--nomount} }\n"
 		"",
 		bin_name, argv[-2]);
 

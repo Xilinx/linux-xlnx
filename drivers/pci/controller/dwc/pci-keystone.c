@@ -121,6 +121,7 @@ struct keystone_pcie {
 
 	int			msi_host_irq;
 	int			num_lanes;
+	u32			num_viewport;
 	struct phy		**phy;
 	struct device_link	**link;
 	struct			device_node *msi_intc_np;
@@ -258,26 +259,16 @@ static void ks_pcie_handle_legacy_irq(struct keystone_pcie *ks_pcie,
 	struct dw_pcie *pci = ks_pcie->pci;
 	struct device *dev = pci->dev;
 	u32 pending;
-	int virq;
 
 	pending = ks_pcie_app_readl(ks_pcie, IRQ_STATUS(offset));
 
 	if (BIT(0) & pending) {
-		virq = irq_linear_revmap(ks_pcie->legacy_irq_domain, offset);
-		dev_dbg(dev, ": irq: irq_offset %d, virq %d\n", offset, virq);
-		generic_handle_irq(virq);
+		dev_dbg(dev, ": irq: irq_offset %d", offset);
+		generic_handle_domain_irq(ks_pcie->legacy_irq_domain, offset);
 	}
 
 	/* EOI the INTx interrupt */
 	ks_pcie_app_writel(ks_pcie, IRQ_EOI, offset);
-}
-
-/*
- * Dummy function so that DW core doesn't configure MSI
- */
-static int ks_pcie_am654_msi_host_init(struct pcie_port *pp)
-{
-	return 0;
 }
 
 static void ks_pcie_enable_error_irq(struct keystone_pcie *ks_pcie)
@@ -353,8 +344,9 @@ static const struct irq_domain_ops ks_pcie_legacy_irq_domain_ops = {
 };
 
 /**
- * ks_pcie_set_dbi_mode() - Set DBI mode to access overlaid BAR mask
- * registers
+ * ks_pcie_set_dbi_mode() - Set DBI mode to access overlaid BAR mask registers
+ * @ks_pcie: A pointer to the keystone_pcie structure which holds the KeyStone
+ *	     PCIe host controller driver information.
  *
  * Since modification of dbi_cs2 involves different clock domain, read the
  * status back to ensure the transition is complete.
@@ -374,6 +366,8 @@ static void ks_pcie_set_dbi_mode(struct keystone_pcie *ks_pcie)
 
 /**
  * ks_pcie_clear_dbi_mode() - Disable DBI mode
+ * @ks_pcie: A pointer to the keystone_pcie structure which holds the KeyStone
+ *	     PCIe host controller driver information.
  *
  * Since modification of dbi_cs2 involves different clock domain, read the
  * status back to ensure the transition is complete.
@@ -394,9 +388,9 @@ static void ks_pcie_clear_dbi_mode(struct keystone_pcie *ks_pcie)
 static void ks_pcie_setup_rc_app_regs(struct keystone_pcie *ks_pcie)
 {
 	u32 val;
+	u32 num_viewport = ks_pcie->num_viewport;
 	struct dw_pcie *pci = ks_pcie->pci;
 	struct pcie_port *pp = &pci->pp;
-	u32 num_viewport = pci->num_viewport;
 	u64 start, end;
 	struct resource *mem;
 	int i;
@@ -456,6 +450,7 @@ static struct pci_ops ks_child_pcie_ops = {
 
 /**
  * ks_pcie_v3_65_add_bus() - keystone add_bus post initialization
+ * @bus: A pointer to the PCI bus structure.
  *
  * This sets BAR0 to enable inbound access for MSI_IRQ register
  */
@@ -495,6 +490,8 @@ static struct pci_ops ks_pcie_ops = {
 
 /**
  * ks_pcie_link_up() - Check if link up
+ * @pci: A pointer to the dw_pcie structure which holds the DesignWare PCIe host
+ *	 controller driver information.
  */
 static int ks_pcie_link_up(struct dw_pcie *pci)
 {
@@ -519,13 +516,7 @@ static void ks_pcie_stop_link(struct dw_pcie *pci)
 static int ks_pcie_start_link(struct dw_pcie *pci)
 {
 	struct keystone_pcie *ks_pcie = to_keystone_pcie(pci);
-	struct device *dev = pci->dev;
 	u32 val;
-
-	if (dw_pcie_link_up(pci)) {
-		dev_dbg(dev, "link is already up\n");
-		return 0;
-	}
 
 	/* Initiate Link Training */
 	val = ks_pcie_app_readl(ks_pcie, CMD_STATUS);
@@ -586,7 +577,7 @@ static void ks_pcie_msi_irq_handler(struct irq_desc *desc)
 	struct pcie_port *pp = &pci->pp;
 	struct device *dev = pci->dev;
 	struct irq_chip *chip = irq_desc_get_chip(desc);
-	u32 vector, virq, reg, pos;
+	u32 vector, reg, pos;
 
 	dev_dbg(dev, "%s, irq %d\n", __func__, irq);
 
@@ -607,10 +598,8 @@ static void ks_pcie_msi_irq_handler(struct irq_desc *desc)
 			continue;
 
 		vector = offset + (pos << 3);
-		virq = irq_linear_revmap(pp->irq_domain, vector);
-		dev_dbg(dev, "irq: bit %d, vector %d, virq %d\n", pos, vector,
-			virq);
-		generic_handle_irq(virq);
+		dev_dbg(dev, "irq: bit %d, vector %d\n", pos, vector);
+		generic_handle_domain_irq(pp->irq_domain, vector);
 	}
 
 	chained_irq_exit(chip, desc);
@@ -618,7 +607,6 @@ static void ks_pcie_msi_irq_handler(struct irq_desc *desc)
 
 /**
  * ks_pcie_legacy_irq_handler() - Handle legacy interrupt
- * @irq: IRQ line for legacy interrupts
  * @desc: Pointer to irq descriptor
  *
  * Traverse through pending legacy interrupts and invoke handler for each. Also
@@ -811,7 +799,8 @@ static int __init ks_pcie_host_init(struct pcie_port *pp)
 	int ret;
 
 	pp->bridge->ops = &ks_pcie_ops;
-	pp->bridge->child_ops = &ks_child_pcie_ops;
+	if (!ks_pcie->is_am6)
+		pp->bridge->child_ops = &ks_child_pcie_ops;
 
 	ret = ks_pcie_config_legacy_irq(ks_pcie);
 	if (ret)
@@ -820,8 +809,6 @@ static int __init ks_pcie_host_init(struct pcie_port *pp)
 	ret = ks_pcie_config_msi_irq(ks_pcie);
 	if (ret)
 		return ret;
-
-	dw_pcie_setup_rc(pp);
 
 	ks_pcie_stop_link(pci);
 	ks_pcie_setup_rc_app_regs(ks_pcie);
@@ -841,9 +828,6 @@ static int __init ks_pcie_host_init(struct pcie_port *pp)
 			"Asynchronous external abort");
 #endif
 
-	ks_pcie_start_link(pci);
-	dw_pcie_wait_for_link(pci);
-
 	return 0;
 }
 
@@ -854,7 +838,6 @@ static const struct dw_pcie_host_ops ks_pcie_host_ops = {
 
 static const struct dw_pcie_host_ops ks_pcie_am654_host_ops = {
 	.host_init = ks_pcie_host_init,
-	.msi_host_init = ks_pcie_am654_msi_host_init,
 };
 
 static irqreturn_t ks_pcie_err_irq_handler(int irq, void *priv)
@@ -862,23 +845,6 @@ static irqreturn_t ks_pcie_err_irq_handler(int irq, void *priv)
 	struct keystone_pcie *ks_pcie = priv;
 
 	return ks_pcie_handle_error_irq(ks_pcie);
-}
-
-static int __init ks_pcie_add_pcie_port(struct keystone_pcie *ks_pcie,
-					struct platform_device *pdev)
-{
-	struct dw_pcie *pci = ks_pcie->pci;
-	struct pcie_port *pp = &pci->pp;
-	struct device *dev = &pdev->dev;
-	int ret;
-
-	ret = dw_pcie_host_init(pp);
-	if (ret) {
-		dev_err(dev, "failed to initialize host\n");
-		return ret;
-	}
-
-	return 0;
 }
 
 static void ks_pcie_am654_write_dbi2(struct dw_pcie *pci, void __iomem *base,
@@ -976,33 +942,6 @@ static const struct dw_pcie_ep_ops ks_pcie_am654_ep_ops = {
 	.raise_irq = ks_pcie_am654_raise_irq,
 	.get_features = &ks_pcie_am654_get_features,
 };
-
-static int __init ks_pcie_add_pcie_ep(struct keystone_pcie *ks_pcie,
-				      struct platform_device *pdev)
-{
-	int ret;
-	struct dw_pcie_ep *ep;
-	struct resource *res;
-	struct device *dev = &pdev->dev;
-	struct dw_pcie *pci = ks_pcie->pci;
-
-	ep = &pci->ep;
-
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "addr_space");
-	if (!res)
-		return -EINVAL;
-
-	ep->phys_base = res->start;
-	ep->addr_size = resource_size(res);
-
-	ret = dw_pcie_ep_init(ep);
-	if (ret) {
-		dev_err(dev, "failed to initialize endpoint\n");
-		return ret;
-	}
-
-	return 0;
-}
 
 static void ks_pcie_disable_phy(struct keystone_pcie *ks_pcie)
 {
@@ -1157,6 +1096,7 @@ static int __init ks_pcie_probe(struct platform_device *pdev)
 	struct resource *res;
 	unsigned int version;
 	void __iomem *base;
+	u32 num_viewport;
 	struct phy **phy;
 	u32 num_lanes;
 	char name[10];
@@ -1288,6 +1228,12 @@ static int __init ks_pcie_probe(struct platform_device *pdev)
 			goto err_get_sync;
 		}
 
+		ret = of_property_read_u32(np, "num-viewport", &num_viewport);
+		if (ret < 0) {
+			dev_err(dev, "unable to read *num-viewport* property\n");
+			goto err_get_sync;
+		}
+
 		/*
 		 * "Power Sequencing and Reset Signal Timings" table in
 		 * PCI EXPRESS CARD ELECTROMECHANICAL SPECIFICATION, REV. 2.0
@@ -1301,8 +1247,9 @@ static int __init ks_pcie_probe(struct platform_device *pdev)
 			gpiod_set_value_cansleep(gpiod, 1);
 		}
 
+		ks_pcie->num_viewport = num_viewport;
 		pci->pp.ops = host_ops;
-		ret = ks_pcie_add_pcie_port(ks_pcie, pdev);
+		ret = dw_pcie_host_init(&pci->pp);
 		if (ret < 0)
 			goto err_get_sync;
 		break;
@@ -1313,7 +1260,7 @@ static int __init ks_pcie_probe(struct platform_device *pdev)
 		}
 
 		pci->ep.ops = ep_ops;
-		ret = ks_pcie_add_pcie_ep(ks_pcie, pdev);
+		ret = dw_pcie_ep_init(&pci->ep);
 		if (ret < 0)
 			goto err_get_sync;
 		break;

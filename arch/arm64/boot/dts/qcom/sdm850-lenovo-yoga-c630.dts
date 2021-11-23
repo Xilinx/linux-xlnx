@@ -8,11 +8,24 @@
 /dts-v1/;
 
 #include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/gpio-keys.h>
+#include <dt-bindings/input/input.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
 #include <dt-bindings/sound/qcom,q6afe.h>
 #include <dt-bindings/sound/qcom,q6asm.h>
-#include "sdm845.dtsi"
+#include "sdm850.dtsi"
 #include "pm8998.dtsi"
+
+/*
+ * Update following upstream (sdm845.dtsi) reserved
+ * memory mappings for firmware loading to succeed
+ * and enable the IPA device.
+ */
+/delete-node/ &ipa_fw_mem;
+/delete-node/ &ipa_gsi_mem;
+/delete-node/ &gpu_mem;
+/delete-node/ &adsp_mem;
+/delete-node/ &wlan_msa_mem;
 
 / {
 	model = "Lenovo Yoga C630";
@@ -20,6 +33,70 @@
 
 	aliases {
 		hsuart0 = &uart6;
+	};
+
+	gpio-keys {
+		compatible = "gpio-keys";
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&lid_pin_active>, <&mode_pin_active>;
+
+		lid {
+			gpios = <&tlmm 124 GPIO_ACTIVE_HIGH>;
+			linux,input-type = <EV_SW>;
+			linux,code = <SW_LID>;
+			wakeup-source;
+			wakeup-event-action = <EV_ACT_DEASSERTED>;
+		};
+
+		mode {
+			gpios = <&tlmm 95 GPIO_ACTIVE_HIGH>;
+			linux,input-type = <EV_SW>;
+			linux,code = <SW_TABLET_MODE>;
+		};
+	};
+
+	panel {
+		compatible = "boe,nv133fhm-n61";
+		no-hpd;
+
+		ports {
+			port {
+				panel_in_edp: endpoint {
+					remote-endpoint = <&sn65dsi86_out>;
+				};
+			};
+		};
+	};
+
+	/* Reserved memory changes for IPA */
+	reserved-memory {
+		wlan_msa_mem: memory@8c400000 {
+			reg = <0 0x8c400000 0 0x100000>;
+			no-map;
+		};
+
+		gpu_mem: memory@8c515000 {
+			reg = <0 0x8c515000 0 0x2000>;
+			no-map;
+		};
+
+		ipa_fw_mem: memory@8c517000 {
+			reg = <0 0x8c517000 0 0x5a000>;
+			no-map;
+		};
+
+		adsp_mem: memory@8c600000 {
+			reg = <0 0x8c600000 0 0x1a00000>;
+			no-map;
+		};
+	};
+
+	sn65dsi86_refclk: sn65dsi86-refclk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+
+		clock-frequency = <19200000>;
 	};
 };
 
@@ -232,20 +309,36 @@
 	};
 };
 
-&apps_smmu {
-	/* TODO: Figure out how to survive booting with this enabled */
-	status = "disabled";
-};
-
 &cdsp_pas {
 	firmware-name = "qcom/LENOVO/81JL/qccdsp850.mbn";
 	status = "okay";
 };
 
+&dsi0 {
+	status = "okay";
+	vdda-supply = <&vreg_l26a_1p2>;
+
+	ports {
+		port@1 {
+			endpoint {
+				remote-endpoint = <&sn65dsi86_in_a>;
+				data-lanes = <0 1 2 3>;
+			};
+		};
+	};
+};
+
+&dsi0_phy {
+	status = "okay";
+	vdds-supply = <&vreg_l1a_0p875>;
+};
+
 &gcc {
 	protected-clocks = <GCC_QSPI_CORE_CLK>,
 			   <GCC_QSPI_CORE_CLK_SRC>,
-			   <GCC_QSPI_CNOC_PERIPH_AHB_CLK>;
+			   <GCC_QSPI_CNOC_PERIPH_AHB_CLK>,
+			   <GCC_LPASS_Q6_AXI_CLK>,
+			   <GCC_LPASS_SWAY_CLK>;
 };
 
 &gpu {
@@ -263,24 +356,23 @@
 &i2c3 {
 	status = "okay";
 	clock-frequency = <400000>;
+	/* Overwrite pinctrl-0 from sdm845.dtsi */
+	pinctrl-0 = <&qup_i2c3_default &i2c3_hid_active>;
 
-	hid@15 {
+	tsel: hid@15 {
 		compatible = "hid-over-i2c";
 		reg = <0x15>;
 		hid-descr-addr = <0x1>;
 
-		interrupts-extended = <&tlmm 37 IRQ_TYPE_EDGE_RISING>;
+		interrupts-extended = <&tlmm 37 IRQ_TYPE_LEVEL_HIGH>;
 	};
 
-	hid@2c {
+	tsc2: hid@2c {
 		compatible = "hid-over-i2c";
 		reg = <0x2c>;
 		hid-descr-addr = <0x20>;
 
-		interrupts-extended = <&tlmm 37 IRQ_TYPE_EDGE_RISING>;
-
-		pinctrl-names = "default";
-		pinctrl-0 = <&i2c2_hid_active>;
+		interrupts-extended = <&tlmm 37 IRQ_TYPE_LEVEL_HIGH>;
 	};
 };
 
@@ -288,15 +380,56 @@
 	status = "okay";
 	clock-frequency = <400000>;
 
-	hid@10 {
+	tsc1: hid@10 {
 		compatible = "hid-over-i2c";
 		reg = <0x10>;
 		hid-descr-addr = <0x1>;
 
-		interrupts-extended = <&tlmm 125 IRQ_TYPE_EDGE_FALLING>;
+		interrupts-extended = <&tlmm 125 IRQ_TYPE_LEVEL_LOW>;
 
 		pinctrl-names = "default";
-		pinctrl-0 = <&i2c6_hid_active>;
+		pinctrl-0 = <&i2c5_hid_active>;
+	};
+};
+
+&i2c10 {
+	status = "okay";
+	clock-frequency = <400000>;
+
+	sn65dsi86: bridge@2c {
+		compatible = "ti,sn65dsi86";
+		reg = <0x2c>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&sn65dsi86_pin_active>;
+
+		enable-gpios = <&tlmm 96 GPIO_ACTIVE_HIGH>;
+
+		vpll-supply = <&vreg_l14a_1p88>;
+		vccio-supply = <&vreg_l14a_1p88>;
+
+		clocks = <&sn65dsi86_refclk>;
+		clock-names = "refclk";
+
+		no-hpd;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+				sn65dsi86_in_a: endpoint {
+					remote-endpoint = <&dsi0_out>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+				sn65dsi86_out: endpoint {
+					remote-endpoint = <&panel_in_edp>;
+				};
+			};
+		};
 	};
 };
 
@@ -304,7 +437,7 @@
 	status = "okay";
 	clock-frequency = <400000>;
 
-	hid@5c {
+	ecsh: hid@5c {
 		compatible = "hid-over-i2c";
 		reg = <0x5c>;
 		hid-descr-addr = <0x1>;
@@ -312,12 +445,33 @@
 		interrupts-extended = <&tlmm 92 IRQ_TYPE_LEVEL_LOW>;
 
 		pinctrl-names = "default";
-		pinctrl-0 = <&i2c12_hid_active>;
+		pinctrl-0 = <&i2c11_hid_active>;
 	};
+};
+
+&ipa {
+	status = "okay";
+	memory-region = <&ipa_fw_mem>;
+};
+
+&mdss {
+	status = "okay";
+};
+
+&mdss_mdp {
+	status = "okay";
 };
 
 &mss_pil {
 	firmware-name = "qcom/LENOVO/81JL/qcdsp1v2850.mbn", "qcom/LENOVO/81JL/qcdsp2850.mbn";
+};
+
+&qup_i2c10_default {
+	pinconf {
+		pins = "gpio55", "gpio56";
+		drive-strength = <2>;
+		bias-disable;
+	};
 };
 
 &qup_i2c12_default {
@@ -426,8 +580,14 @@
 &tlmm {
 	gpio-reserved-ranges = <0 4>, <81 4>;
 
-	i2c2_hid_active: i2c2-hid-active {
-		pins = <37>;
+	sn65dsi86_pin_active: sn65dsi86-enable {
+		pins = "gpio96";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
+	i2c3_hid_active: i2c2-hid-active {
+		pins = "gpio37";
 		function = "gpio";
 
 		input-enable;
@@ -435,8 +595,8 @@
 		drive-strength = <2>;
 	};
 
-	i2c6_hid_active: i2c6-hid-active {
-		pins = <125>;
+	i2c5_hid_active: i2c5-hid-active {
+		pins = "gpio125";
 		function = "gpio";
 
 		input-enable;
@@ -444,8 +604,8 @@
 		drive-strength = <2>;
 	};
 
-	i2c12_hid_active: i2c12-hid-active {
-		pins = <92>;
+	i2c11_hid_active: i2c11-hid-active {
+		pins = "gpio92";
 		function = "gpio";
 
 		input-enable;
@@ -454,12 +614,28 @@
 	};
 
 	wcd_intr_default: wcd_intr_default {
-		pins = <54>;
+		pins = "gpio54";
 		function = "gpio";
 
 		input-enable;
 		bias-pull-down;
 		drive-strength = <2>;
+	};
+
+	lid_pin_active: lid-pin {
+		pins = "gpio124";
+		function = "gpio";
+
+		input-enable;
+		bias-disable;
+	};
+
+	mode_pin_active: mode-pin {
+		pins = "gpio95";
+		function = "gpio";
+
+		input-enable;
+		bias-disable;
 	};
 };
 
@@ -563,7 +739,7 @@
 		left_spkr: wsa8810-left{
 			compatible = "sdw10217211000";
 			reg = <0 3>;
-			powerdown-gpios = <&wcdgpio 2 GPIO_ACTIVE_HIGH>;
+			powerdown-gpios = <&wcdgpio 1 GPIO_ACTIVE_HIGH>;
 			#thermal-sensor-cells = <0>;
 			sound-name-prefix = "SpkrLeft";
 			#sound-dai-cells = <0>;
@@ -571,7 +747,7 @@
 
 		right_spkr: wsa8810-right{
 			compatible = "sdw10217211000";
-			powerdown-gpios = <&wcdgpio 3 GPIO_ACTIVE_HIGH>;
+			powerdown-gpios = <&wcdgpio 2 GPIO_ACTIVE_HIGH>;
 			reg = <0 4>;
 			#thermal-sensor-cells = <0>;
 			sound-name-prefix = "SpkrRight";

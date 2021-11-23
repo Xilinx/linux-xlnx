@@ -406,7 +406,7 @@ static long adf_ctl_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 		ret = adf_ctl_ioctl_get_status(fp, cmd, arg);
 		break;
 	default:
-		pr_err("QAT: Invalid ioctl\n");
+		pr_err_ratelimited("QAT: Invalid ioctl %d\n", cmd);
 		ret = -EFAULT;
 		break;
 	}
@@ -464,3 +464,4 @@ MODULE_AUTHOR("Intel");
 MODULE_DESCRIPTION("Intel(R) QuickAssist Technology");
 MODULE_ALIAS_CRYPTO("intel_qat");
 MODULE_VERSION(ADF_DRV_VERSION);
+MODULE_IMPORT_NS(CRYPTO_INTERNAL);

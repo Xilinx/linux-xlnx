@@ -2020,13 +2020,15 @@ static void xlnx_mix_plane_cleanup_fb(struct drm_plane *plane,
 }
 
 static int xlnx_mix_plane_atomic_check(struct drm_plane *plane,
-				       struct drm_plane_state *state)
+				       struct drm_atomic_state *statea)
 {
 	int scale;
 	struct xlnx_mix_plane *mix_plane = to_xlnx_plane(plane);
 	struct xlnx_mix_hw *mixer_hw = to_mixer_hw(mix_plane);
 	struct xlnx_mix *mix;
 	int scale_factor[3] = {1, 2, 4};
+	struct drm_plane_state *state = drm_atomic_get_new_plane_state(statea,
+								       plane);
 
 	/* No check required for the drm_primary_plane */
 	mix = container_of(mixer_hw, struct xlnx_mix, mixer_hw);
@@ -2050,10 +2052,11 @@ static int xlnx_mix_plane_atomic_check(struct drm_plane *plane,
 }
 
 static void xlnx_mix_plane_atomic_update(struct drm_plane *plane,
-					 struct drm_plane_state *old_state)
+					 struct drm_atomic_state *state)
 {
 	int ret;
-
+	struct drm_plane_state *old_state = drm_atomic_get_old_plane_state(state, plane);
+	
 	if (!plane->state->crtc || !plane->state->fb)
 		return;
 
@@ -2081,23 +2084,23 @@ static void xlnx_mix_plane_atomic_update(struct drm_plane *plane,
 }
 
 static void xlnx_mix_plane_atomic_disable(struct drm_plane *plane,
-					  struct drm_plane_state *old_state)
+					  struct drm_atomic_state *state)
 {
 	xlnx_mix_plane_dpms(plane, DRM_MODE_DPMS_OFF);
 }
 
 static int xlnx_mix_plane_atomic_async_check(struct drm_plane *plane,
-					     struct drm_plane_state *state)
+					     struct drm_atomic_state *state)
 {
 	return 0;
 }
 
 static void
 xlnx_mix_plane_atomic_async_update(struct drm_plane *plane,
-				   struct drm_plane_state *new_state)
+				   struct drm_atomic_state *state)
 {
-	struct drm_plane_state *old_state =
-		drm_atomic_get_old_plane_state(new_state->state, plane);
+	struct drm_plane_state *new_state =
+		drm_atomic_get_new_plane_state(state, plane);
 
 	/* Update the current state with new configurations */
 	swap(plane->state->fb, new_state->fb);
@@ -2112,7 +2115,7 @@ xlnx_mix_plane_atomic_async_update(struct drm_plane *plane,
 	plane->state->src_h = new_state->src_h;
 	plane->state->state = new_state->state;
 
-	xlnx_mix_plane_atomic_update(plane, old_state);
+	xlnx_mix_plane_atomic_update(plane, state);
 }
 
 static const struct drm_plane_helper_funcs xlnx_mix_plane_helper_funcs = {
@@ -2863,7 +2866,7 @@ static struct drm_crtc_funcs xlnx_mix_crtc_funcs = {
 
 static void
 xlnx_mix_crtc_atomic_enable(struct drm_crtc *crtc,
-			    struct drm_crtc_state *old_crtc_state)
+			    struct drm_atomic_state *state)
 {
 	struct drm_display_mode *adjusted_mode = &crtc->state->adjusted_mode;
 	int vrefresh;
@@ -2891,7 +2894,7 @@ static void xlnx_mix_clear_event(struct drm_crtc *crtc)
 
 static void
 xlnx_mix_crtc_atomic_disable(struct drm_crtc *crtc,
-			     struct drm_crtc_state *old_crtc_state)
+			     struct drm_atomic_state *state)
 {
 	xlnx_mix_crtc_dpms(crtc, DRM_MODE_DPMS_OFF);
 	xlnx_mix_clear_event(crtc);
@@ -2903,14 +2906,14 @@ static void xlnx_mix_crtc_mode_set_nofb(struct drm_crtc *crtc)
 }
 
 static int xlnx_mix_crtc_atomic_check(struct drm_crtc *crtc,
-				      struct drm_crtc_state *state)
+				      struct drm_atomic_state *state)
 {
-	return drm_atomic_add_affected_planes(state->state, crtc);
+	return drm_atomic_add_affected_planes(state, crtc);
 }
 
 static void
 xlnx_mix_crtc_atomic_begin(struct drm_crtc *crtc,
-			   struct drm_crtc_state *old_crtc_state)
+			   struct drm_atomic_state *state)
 {
 	drm_crtc_vblank_on(crtc);
 	/* Don't rely on vblank when disabling crtc */

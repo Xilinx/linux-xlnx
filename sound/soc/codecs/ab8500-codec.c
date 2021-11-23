@@ -113,13 +113,6 @@ enum amic_idx {
 	AMIC_IDX_2
 };
 
-struct ab8500_codec_drvdata_dbg {
-	struct regulator *vaud;
-	struct regulator *vamic1;
-	struct regulator *vamic2;
-	struct regulator *vdmic;
-};
-
 /* Private data for AB8500 device-driver */
 struct ab8500_codec_drvdata {
 	struct regmap *regmap;
@@ -2384,7 +2377,7 @@ static struct snd_soc_dai_driver ab8500_codec_dai[] = {
 			.formats = AB8500_SUPPORTED_FMT,
 		},
 		.ops = &ab8500_codec_ops,
-		.symmetric_rates = 1
+		.symmetric_rate = 1
 	},
 	{
 		.name = "ab8500-codec-dai.1",
@@ -2397,7 +2390,7 @@ static struct snd_soc_dai_driver ab8500_codec_dai[] = {
 			.formats = AB8500_SUPPORTED_FMT,
 		},
 		.ops = &ab8500_codec_ops,
-		.symmetric_rates = 1
+		.symmetric_rate = 1
 	}
 };
 

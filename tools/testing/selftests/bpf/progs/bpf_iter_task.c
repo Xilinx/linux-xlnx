@@ -2,7 +2,6 @@
 /* Copyright (c) 2020 Facebook */
 #include "bpf_iter.h"
 #include <bpf/bpf_helpers.h>
-#include <bpf/bpf_tracing.h>
 
 char _license[] SEC("license") = "GPL";
 
@@ -11,9 +10,10 @@ int dump_task(struct bpf_iter__task *ctx)
 {
 	struct seq_file *seq = ctx->meta->seq;
 	struct task_struct *task = ctx->task;
+	static char info[] = "    === END ===";
 
 	if (task == (void *)0) {
-		BPF_SEQ_PRINTF(seq, "    === END ===\n");
+		BPF_SEQ_PRINTF(seq, "%s\n", info);
 		return 0;
 	}
 

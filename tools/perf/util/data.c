@@ -20,7 +20,7 @@
 
 static void close_dir(struct perf_data_file *files, int nr)
 {
-	while (--nr >= 1) {
+	while (--nr >= 0) {
 		close(files[nr].fd);
 		zfree(&files[nr].path);
 	}
@@ -35,7 +35,7 @@ void perf_data__close_dir(struct perf_data *data)
 int perf_data__create_dir(struct perf_data *data, int nr)
 {
 	struct perf_data_file *files = NULL;
-	int i, ret = -1;
+	int i, ret;
 
 	if (WARN_ON(!data->is_dir))
 		return -EINVAL;
@@ -51,7 +51,8 @@ int perf_data__create_dir(struct perf_data *data, int nr)
 	for (i = 0; i < nr; i++) {
 		struct perf_data_file *file = &files[i];
 
-		if (asprintf(&file->path, "%s/data.%d", data->path, i) < 0)
+		ret = asprintf(&file->path, "%s/data.%d", data->path, i);
+		if (ret < 0)
 			goto out_err;
 
 		ret = open(file->path, O_RDWR|O_CREAT|O_TRUNC, S_IRUSR|S_IWUSR);
@@ -174,8 +175,21 @@ static bool check_pipe(struct perf_data *data)
 			is_pipe = true;
 	}
 
-	if (is_pipe)
-		data->file.fd = fd;
+	if (is_pipe) {
+		if (data->use_stdio) {
+			const char *mode;
+
+			mode = perf_data__is_read(data) ? "r" : "w";
+			data->file.fptr = fdopen(fd, mode);
+
+			if (data->file.fptr == NULL) {
+				data->file.fd = fd;
+				data->use_stdio = false;
+			}
+		} else {
+			data->file.fd = fd;
+		}
+	}
 
 	return data->is_pipe = is_pipe;
 }
@@ -226,11 +240,12 @@ static bool is_dir(struct perf_data *data)
 
 static int open_file_read(struct perf_data *data)
 {
+	int flags = data->in_place_update ? O_RDWR : O_RDONLY;
 	struct stat st;
 	int fd;
 	char sbuf[STRERR_BUFSIZE];
 
-	fd = open(data->file.path, O_RDONLY);
+	fd = open(data->file.path, flags);
 	if (fd < 0) {
 		int err = errno;
 
@@ -334,6 +349,9 @@ int perf_data__open(struct perf_data *data)
 	if (check_pipe(data))
 		return 0;
 
+	/* currently it allows stdio for pipe only */
+	data->use_stdio = false;
+
 	if (!data->path)
 		data->path = "perf.data";
 
@@ -353,7 +371,21 @@ void perf_data__close(struct perf_data *data)
 		perf_data__close_dir(data);
 
 	zfree(&data->file.path);
-	close(data->file.fd);
+
+	if (data->use_stdio)
+		fclose(data->file.fptr);
+	else
+		close(data->file.fd);
+}
+
+ssize_t perf_data__read(struct perf_data *data, void *buf, size_t size)
+{
+	if (data->use_stdio) {
+		if (fread(buf, size, 1, data->file.fptr) == 1)
+			return size;
+		return feof(data->file.fptr) ? 0 : -1;
+	}
+	return readn(data->file.fd, buf, size);
 }
 
 ssize_t perf_data_file__write(struct perf_data_file *file,
@@ -365,6 +397,11 @@ ssize_t perf_data_file__write(struct perf_data_file *file,
 ssize_t perf_data__write(struct perf_data *data,
 			      void *buf, size_t size)
 {
+	if (data->use_stdio) {
+		if (fwrite(buf, size, 1, data->file.fptr) == 1)
+			return size;
+		return -1;
+	}
 	return perf_data_file__write(&data->file, buf, size);
 }
 
@@ -456,4 +493,23 @@ char *perf_data__kallsyms_name(struct perf_data *data)
 	}
 
 	return kallsyms_name;
+}
+
+bool is_perf_data(const char *path)
+{
+	bool ret = false;
+	FILE *file;
+	u64 magic;
+
+	file = fopen(path, "r");
+	if (!file)
+		return false;
+
+	if (fread(&magic, 1, 8, file) < 8)
+		goto out;
+
+	ret = is_perf_magic(magic);
+out:
+	fclose(file);
+	return ret;
 }

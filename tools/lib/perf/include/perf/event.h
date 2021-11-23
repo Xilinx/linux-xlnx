@@ -8,6 +8,8 @@
 #include <linux/bpf.h>
 #include <sys/types.h> /* pid_t */
 
+#define event_contains(obj, mem) ((obj).header.size > offsetof(typeof(obj), mem))
+
 struct perf_record_mmap {
 	struct perf_event_header header;
 	__u32			 pid, tid;
@@ -23,10 +25,20 @@ struct perf_record_mmap2 {
 	__u64			 start;
 	__u64			 len;
 	__u64			 pgoff;
-	__u32			 maj;
-	__u32			 min;
-	__u64			 ino;
-	__u64			 ino_generation;
+	union {
+		struct {
+			__u32	 maj;
+			__u32	 min;
+			__u64	 ino;
+			__u64	 ino_generation;
+		};
+		struct {
+			__u8	 build_id_size;
+			__u8	 __reserved_1;
+			__u16	 __reserved_2;
+			__u8	 build_id[20];
+		};
+	};
 	__u32			 prot;
 	__u32			 flags;
 	char			 filename[PATH_MAX];
@@ -336,8 +348,9 @@ struct perf_record_time_conv {
 	__u64			 time_zero;
 	__u64			 time_cycles;
 	__u64			 time_mask;
-	bool			 cap_user_time_zero;
-	bool			 cap_user_time_short;
+	__u8			 cap_user_time_zero;
+	__u8			 cap_user_time_short;
+	__u8			 reserved[6];	/* For alignment */
 };
 
 struct perf_record_header_feature {

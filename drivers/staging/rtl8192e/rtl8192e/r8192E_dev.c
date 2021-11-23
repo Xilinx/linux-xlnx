@@ -129,9 +129,9 @@ void rtl92e_set_reg(struct net_device *dev, u8 variable, u8 *val)
 		RegRCR = rtl92e_readl(dev, RCR);
 		priv->ReceiveConfig = RegRCR;
 
-		if (Type == true)
+		if (Type)
 			RegRCR |= (RCR_CBSSID);
-		else if (Type == false)
+		else
 			RegRCR &= (~RCR_CBSSID);
 
 		rtl92e_writel(dev, RCR, RegRCR);
@@ -690,7 +690,7 @@ bool rtl92e_start_adapter(struct net_device *dev)
 	u8 tmpvalue;
 	u8 ICVersion, SwitchingRegulatorOutput;
 	bool bfirmwareok = true;
-	u32 tmpRegA, tmpRegC, TempCCk;
+	u32 tmpRegA, TempCCk;
 	int i = 0;
 	u32 retry_times = 0;
 
@@ -800,12 +800,10 @@ start:
 	}
 	rtl92e_writew(dev, ATIMWND, 2);
 	rtl92e_writew(dev, BCN_INTERVAL, 100);
-	{
-		int i;
 
-		for (i = 0; i < QOS_QUEUE_NUM; i++)
-			rtl92e_writel(dev, WDCAPARA_ADD[i], 0x005e4332);
-	}
+	for (i = 0; i < QOS_QUEUE_NUM; i++)
+		rtl92e_writel(dev, WDCAPARA_ADD[i], 0x005e4332);
+
 	rtl92e_writeb(dev, 0xbe, 0xc0);
 
 	rtl92e_config_mac(dev);
@@ -889,8 +887,8 @@ start:
 		if (priv->IC_Cut >= IC_VersionCut_D) {
 			tmpRegA = rtl92e_get_bb_reg(dev, rOFDM0_XATxIQImbalance,
 						    bMaskDWord);
-			tmpRegC = rtl92e_get_bb_reg(dev, rOFDM0_XCTxIQImbalance,
-						    bMaskDWord);
+			rtl92e_get_bb_reg(dev, rOFDM0_XCTxIQImbalance, bMaskDWord);
+
 			for (i = 0; i < TxBBGainTableLength; i++) {
 				if (tmpRegA == dm_tx_bb_gain[i]) {
 					priv->rfa_txpowertrackingindex = (u8)i;
@@ -2169,7 +2167,7 @@ rtl92e_init_variables(struct net_device  *dev)
 {
 	struct r8192_priv *priv = rtllib_priv(dev);
 
-	strcpy(priv->nick, "rtl8192E");
+	strscpy(priv->nick, "rtl8192E", sizeof(priv->nick));
 
 	priv->rtllib->softmac_features  = IEEE_SOFTMAC_SCAN |
 		IEEE_SOFTMAC_ASSOCIATE | IEEE_SOFTMAC_PROBERQ |

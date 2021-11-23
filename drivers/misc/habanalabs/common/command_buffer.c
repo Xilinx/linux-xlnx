@@ -11,7 +11,6 @@
 #include <linux/mm.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
-#include <linux/genalloc.h>
 
 static int cb_map_mem(struct hl_ctx *ctx, struct hl_cb *cb)
 {
@@ -68,9 +67,9 @@ static int cb_map_mem(struct hl_ctx *ctx, struct hl_cb *cb)
 	bus_addr = cb->bus_address;
 	offset = 0;
 	list_for_each_entry(va_block, &cb->va_block_list, node) {
-		rc = hl_mmu_map(ctx, va_block->start, bus_addr, va_block->size,
-				list_is_last(&va_block->node,
-						&cb->va_block_list));
+		rc = hl_mmu_map_page(ctx, va_block->start, bus_addr,
+				va_block->size, list_is_last(&va_block->node,
+							&cb->va_block_list));
 		if (rc) {
 			dev_err(hdev->dev, "Failed to map VA %#llx to CB\n",
 				va_block->start);
@@ -93,7 +92,7 @@ err_va_umap:
 	list_for_each_entry(va_block, &cb->va_block_list, node) {
 		if (offset <= 0)
 			break;
-		hl_mmu_unmap(ctx, va_block->start, va_block->size,
+		hl_mmu_unmap_page(ctx, va_block->start, va_block->size,
 				offset <= va_block->size);
 		offset -= va_block->size;
 	}
@@ -120,7 +119,7 @@ static void cb_unmap_mem(struct hl_ctx *ctx, struct hl_cb *cb)
 	mutex_lock(&ctx->mmu_lock);
 
 	list_for_each_entry(va_block, &cb->va_block_list, node)
-		if (hl_mmu_unmap(ctx, va_block->start, va_block->size,
+		if (hl_mmu_unmap_page(ctx, va_block->start, va_block->size,
 				list_is_last(&va_block->node,
 						&cb->va_block_list)))
 			dev_warn_ratelimited(hdev->dev,
@@ -182,7 +181,7 @@ static void cb_release(struct kref *ref)
 static struct hl_cb *hl_cb_alloc(struct hl_device *hdev, u32 cb_size,
 					int ctx_id, bool internal_cb)
 {
-	struct hl_cb *cb;
+	struct hl_cb *cb = NULL;
 	u32 cb_offset;
 	void *p;
 
@@ -194,9 +193,10 @@ static struct hl_cb *hl_cb_alloc(struct hl_device *hdev, u32 cb_size,
 	 * the kernel's copy. Hence, we must never sleep in this code section
 	 * and must use GFP_ATOMIC for all memory allocations.
 	 */
-	if (ctx_id == HL_KERNEL_ASID_ID)
+	if (ctx_id == HL_KERNEL_ASID_ID && !hdev->disabled)
 		cb = kzalloc(sizeof(*cb), GFP_ATOMIC);
-	else
+
+	if (!cb)
 		cb = kzalloc(sizeof(*cb), GFP_KERNEL);
 
 	if (!cb)
@@ -215,6 +215,9 @@ static struct hl_cb *hl_cb_alloc(struct hl_device *hdev, u32 cb_size,
 	} else if (ctx_id == HL_KERNEL_ASID_ID) {
 		p = hdev->asic_funcs->asic_dma_alloc_coherent(hdev, cb_size,
 						&cb->bus_address, GFP_ATOMIC);
+		if (!p)
+			p = hdev->asic_funcs->asic_dma_alloc_coherent(hdev,
+					cb_size, &cb->bus_address, GFP_KERNEL);
 	} else {
 		p = hdev->asic_funcs->asic_dma_alloc_coherent(hdev, cb_size,
 						&cb->bus_address,
@@ -376,17 +379,49 @@ int hl_cb_destroy(struct hl_device *hdev, struct hl_cb_mgr *mgr, u64 cb_handle)
 	return rc;
 }
 
+static int hl_cb_info(struct hl_device *hdev, struct hl_cb_mgr *mgr,
+			u64 cb_handle, u32 *usage_cnt)
+{
+	struct hl_cb *cb;
+	u32 handle;
+	int rc = 0;
+
+	/* The CB handle was given to user to do mmap, so need to shift it back
+	 * to the value which was allocated by the IDR module.
+	 */
+	cb_handle >>= PAGE_SHIFT;
+	handle = (u32) cb_handle;
+
+	spin_lock(&mgr->cb_lock);
+
+	cb = idr_find(&mgr->cb_handles, handle);
+	if (!cb) {
+		dev_err(hdev->dev,
+			"CB info failed, no match to handle 0x%x\n", handle);
+		rc = -EINVAL;
+		goto out;
+	}
+
+	*usage_cnt = atomic_read(&cb->cs_cnt);
+
+out:
+	spin_unlock(&mgr->cb_lock);
+	return rc;
+}
+
 int hl_cb_ioctl(struct hl_fpriv *hpriv, void *data)
 {
 	union hl_cb_args *args = data;
 	struct hl_device *hdev = hpriv->hdev;
+	enum hl_device_status status;
 	u64 handle = 0;
+	u32 usage_cnt = 0;
 	int rc;
 
-	if (hl_device_disabled_or_in_reset(hdev)) {
+	if (!hl_device_operational(hdev, &status)) {
 		dev_warn_ratelimited(hdev->dev,
 			"Device is %s. Can't execute CB IOCTL\n",
-			atomic_read(&hdev->in_reset) ? "in_reset" : "disabled");
+			hdev->status[status]);
 		return -EBUSY;
 	}
 
@@ -411,6 +446,13 @@ int hl_cb_ioctl(struct hl_fpriv *hpriv, void *data)
 	case HL_CB_OP_DESTROY:
 		rc = hl_cb_destroy(hdev, &hpriv->cb_mgr,
 					args->in.cb_handle);
+		break;
+
+	case HL_CB_OP_INFO:
+		rc = hl_cb_info(hdev, &hpriv->cb_mgr, args->in.cb_handle,
+				&usage_cnt);
+		memset(args, 0, sizeof(*args));
+		args->out.usage_cnt = usage_cnt;
 		break;
 
 	default:
@@ -508,7 +550,7 @@ int hl_cb_mmap(struct hl_fpriv *hpriv, struct vm_area_struct *vma)
 
 	vma->vm_private_data = cb;
 
-	rc = hdev->asic_funcs->cb_mmap(hdev, vma, cb->kernel_address,
+	rc = hdev->asic_funcs->mmap(hdev, vma, cb->kernel_address,
 					cb->bus_address, cb->size);
 	if (rc) {
 		spin_lock(&cb->lock);
@@ -517,6 +559,7 @@ int hl_cb_mmap(struct hl_fpriv *hpriv, struct vm_area_struct *vma)
 	}
 
 	cb->mmap_size = cb->size;
+	vma->vm_pgoff = handle;
 
 	return 0;
 
@@ -596,10 +639,12 @@ struct hl_cb *hl_cb_kernel_create(struct hl_device *hdev, u32 cb_size,
 
 	cb_handle >>= PAGE_SHIFT;
 	cb = hl_cb_get(hdev, &hdev->kernel_cb_mgr, (u32) cb_handle);
-	/* hl_cb_get should never fail here so use kernel WARN */
-	WARN(!cb, "Kernel CB handle invalid 0x%x\n", (u32) cb_handle);
-	if (!cb)
+	/* hl_cb_get should never fail here */
+	if (!cb) {
+		dev_crit(hdev->dev, "Kernel CB handle invalid 0x%x\n",
+				(u32) cb_handle);
 		goto destroy_cb;
+	}
 
 	return cb;
 

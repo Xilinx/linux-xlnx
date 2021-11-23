@@ -16,6 +16,7 @@
 #include <linux/platform_device.h>
 #include <linux/printk.h>
 #include <linux/screen_info.h>
+#include <linux/pm_runtime.h>
 #include <video/vga.h>
 #include <asm/efi.h>
 #include <drm/drm_utils.h> /* For drm_get_panel_orientation_quirk */
@@ -139,7 +140,7 @@ static bool efifb_bgrt_sanity_check(struct screen_info *si, u32 bmp_width)
 
 static void efifb_show_boot_graphics(struct fb_info *info)
 {
-	u32 bmp_width, bmp_height, bmp_pitch, screen_pitch, dst_x, y, src_y;
+	u32 bmp_width, bmp_height, bmp_pitch, dst_x, y, src_y;
 	struct screen_info *si = &screen_info;
 	struct bmp_file_header *file_header;
 	struct bmp_dib_header *dib_header;
@@ -193,7 +194,6 @@ static void efifb_show_boot_graphics(struct fb_info *info)
 	bmp_width = dib_header->width;
 	bmp_height = abs(dib_header->height);
 	bmp_pitch = round_up(3 * bmp_width, 4);
-	screen_pitch = si->lfb_linelength;
 
 	if ((file_header->bitmap_offset + bmp_pitch * bmp_height) >
 				bgrt_image_size)
@@ -575,6 +575,8 @@ static int efifb_probe(struct platform_device *dev)
 		goto err_fb_dealoc;
 	}
 	fb_info(info, "%s frame buffer device\n", info->fix.id);
+	if (efifb_pci_dev)
+		pm_runtime_get_sync(&efifb_pci_dev->dev);
 	return 0;
 
 err_fb_dealoc:
@@ -601,6 +603,8 @@ static int efifb_remove(struct platform_device *pdev)
 	unregister_framebuffer(info);
 	sysfs_remove_groups(&pdev->dev.kobj, efifb_groups);
 	framebuffer_release(info);
+	if (efifb_pci_dev)
+		pm_runtime_put(&efifb_pci_dev->dev);
 
 	return 0;
 }

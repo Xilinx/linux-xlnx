@@ -510,7 +510,6 @@ static int pwm_samsung_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct samsung_pwm_chip *chip;
-	struct resource *res;
 	unsigned int chan;
 	int ret;
 
@@ -520,7 +519,6 @@ static int pwm_samsung_probe(struct platform_device *pdev)
 
 	chip->chip.dev = &pdev->dev;
 	chip->chip.ops = &pwm_samsung_ops;
-	chip->chip.base = -1;
 	chip->chip.npwm = SAMSUNG_PWM_NUM;
 	chip->inverter_mask = BIT(SAMSUNG_PWM_NUM) - 1;
 
@@ -528,9 +526,6 @@ static int pwm_samsung_probe(struct platform_device *pdev)
 		ret = pwm_samsung_parse_dt(chip);
 		if (ret)
 			return ret;
-
-		chip->chip.of_xlate = of_pwm_xlate_with_flags;
-		chip->chip.of_pwm_n_cells = 3;
 	} else {
 		if (!pdev->dev.platform_data) {
 			dev_err(&pdev->dev, "no platform data specified\n");
@@ -541,8 +536,7 @@ static int pwm_samsung_probe(struct platform_device *pdev)
 							sizeof(chip->variant));
 	}
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	chip->base = devm_ioremap_resource(&pdev->dev, res);
+	chip->base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(chip->base))
 		return PTR_ERR(chip->base);
 
@@ -586,11 +580,8 @@ static int pwm_samsung_probe(struct platform_device *pdev)
 static int pwm_samsung_remove(struct platform_device *pdev)
 {
 	struct samsung_pwm_chip *chip = platform_get_drvdata(pdev);
-	int ret;
 
-	ret = pwmchip_remove(&chip->chip);
-	if (ret < 0)
-		return ret;
+	pwmchip_remove(&chip->chip);
 
 	clk_disable_unprepare(chip->base_clk);
 

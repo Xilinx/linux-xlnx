@@ -1,5 +1,5 @@
+// SPDX-License-Identifier: LGPL-2.1
 /*
- *   fs/cifs/smb2pdu.c
  *
  *   Copyright (C) International Business Machines  Corp., 2009, 2013
  *                 Etersoft, 2012
@@ -8,19 +8,6 @@
  *
  *   Contains the routines for constructing the SMB2 PDUs themselves
  *
- *   This library is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU Lesser General Public License as published
- *   by the Free Software Foundation; either version 2.1 of the License, or
- *   (at your option) any later version.
- *
- *   This library is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See
- *   the GNU Lesser General Public License for more details.
- *
- *   You should have received a copy of the GNU Lesser General Public License
- *   along with this library; if not, write to the Free Software
- *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
 
  /* SMB2 PDU handling routines here - except for leftovers (eg session setup) */
@@ -427,8 +414,8 @@ build_preauth_ctxt(struct smb2_preauth_neg_context *pneg_ctxt)
 	pneg_ctxt->ContextType = SMB2_PREAUTH_INTEGRITY_CAPABILITIES;
 	pneg_ctxt->DataLength = cpu_to_le16(38);
 	pneg_ctxt->HashAlgorithmCount = cpu_to_le16(1);
-	pneg_ctxt->SaltLength = cpu_to_le16(SMB311_SALT_SIZE);
-	get_random_bytes(pneg_ctxt->Salt, SMB311_SALT_SIZE);
+	pneg_ctxt->SaltLength = cpu_to_le16(SMB311_LINUX_CLIENT_SALT_SIZE);
+	get_random_bytes(pneg_ctxt->Salt, SMB311_LINUX_CLIENT_SALT_SIZE);
 	pneg_ctxt->HashAlgorithms = SMB2_PREAUTH_INTEGRITY_SHA512;
 }
 
@@ -443,6 +430,29 @@ build_compression_ctxt(struct smb2_compression_capabilities_context *pneg_ctxt)
 	pneg_ctxt->CompressionAlgorithms[0] = SMB3_COMPRESS_LZ77;
 	pneg_ctxt->CompressionAlgorithms[1] = SMB3_COMPRESS_LZ77_HUFF;
 	pneg_ctxt->CompressionAlgorithms[2] = SMB3_COMPRESS_LZNT1;
+}
+
+static unsigned int
+build_signing_ctxt(struct smb2_signing_capabilities *pneg_ctxt)
+{
+	unsigned int ctxt_len = sizeof(struct smb2_signing_capabilities);
+	unsigned short num_algs = 1; /* number of signing algorithms sent */
+
+	pneg_ctxt->ContextType = SMB2_SIGNING_CAPABILITIES;
+	/*
+	 * Context Data length must be rounded to multiple of 8 for some servers
+	 */
+	pneg_ctxt->DataLength = cpu_to_le16(DIV_ROUND_UP(
+				sizeof(struct smb2_signing_capabilities) -
+				sizeof(struct smb2_neg_context) +
+				(num_algs * 2 /* sizeof u16 */), 8) * 8);
+	pneg_ctxt->SigningAlgorithmCount = cpu_to_le16(num_algs);
+	pneg_ctxt->SigningAlgorithms[0] = cpu_to_le16(SIGNING_ALG_AES_CMAC);
+
+	ctxt_len += 2 /* sizeof le16 */ * num_algs;
+	ctxt_len = DIV_ROUND_UP(ctxt_len, 8) * 8;
+	return ctxt_len;
+	/* TBD add SIGNING_ALG_AES_GMAC and/or SIGNING_ALG_HMAC_SHA256 */
 }
 
 static void
@@ -510,7 +520,7 @@ assemble_neg_contexts(struct smb2_negotiate_req *req,
 		      struct TCP_Server_Info *server, unsigned int *total_len)
 {
 	char *pneg_ctxt;
-	unsigned int ctxt_len;
+	unsigned int ctxt_len, neg_context_count;
 
 	if (*total_len > 200) {
 		/* In case length corrupted don't want to overrun smb buffer */
@@ -537,6 +547,17 @@ assemble_neg_contexts(struct smb2_negotiate_req *req,
 	*total_len += ctxt_len;
 	pneg_ctxt += ctxt_len;
 
+	ctxt_len = build_netname_ctxt((struct smb2_netname_neg_context *)pneg_ctxt,
+					server->hostname);
+	*total_len += ctxt_len;
+	pneg_ctxt += ctxt_len;
+
+	build_posix_ctxt((struct smb2_posix_neg_context *)pneg_ctxt);
+	*total_len += sizeof(struct smb2_posix_neg_context);
+	pneg_ctxt += sizeof(struct smb2_posix_neg_context);
+
+	neg_context_count = 4;
+
 	if (server->compress_algorithm) {
 		build_compression_ctxt((struct smb2_compression_capabilities_context *)
 				pneg_ctxt);
@@ -545,17 +566,20 @@ assemble_neg_contexts(struct smb2_negotiate_req *req,
 				8) * 8;
 		*total_len += ctxt_len;
 		pneg_ctxt += ctxt_len;
-		req->NegotiateContextCount = cpu_to_le16(5);
-	} else
-		req->NegotiateContextCount = cpu_to_le16(4);
+		neg_context_count++;
+	}
 
-	ctxt_len = build_netname_ctxt((struct smb2_netname_neg_context *)pneg_ctxt,
-					server->hostname);
-	*total_len += ctxt_len;
-	pneg_ctxt += ctxt_len;
+	if (enable_negotiate_signing) {
+		ctxt_len = build_signing_ctxt((struct smb2_signing_capabilities *)
+				pneg_ctxt);
+		*total_len += ctxt_len;
+		pneg_ctxt += ctxt_len;
+		neg_context_count++;
+	}
 
-	build_posix_ctxt((struct smb2_posix_neg_context *)pneg_ctxt);
-	*total_len += sizeof(struct smb2_posix_neg_context);
+	/* check for and add transport_capabilities and signing capabilities */
+	req->NegotiateContextCount = cpu_to_le16(neg_context_count);
+
 }
 
 static void decode_preauth_context(struct smb2_preauth_neg_context *ctxt)
@@ -565,6 +589,9 @@ static void decode_preauth_context(struct smb2_preauth_neg_context *ctxt)
 	/* If invalid preauth context warn but use what we requested, SHA-512 */
 	if (len < MIN_PREAUTH_CTXT_DATA_LEN) {
 		pr_warn_once("server sent bad preauth context\n");
+		return;
+	} else if (len < MIN_PREAUTH_CTXT_DATA_LEN + le16_to_cpu(ctxt->SaltLength)) {
+		pr_warn_once("server sent invalid SaltLength\n");
 		return;
 	}
 	if (le16_to_cpu(ctxt->HashAlgorithmCount) != 1)
@@ -641,6 +668,31 @@ static int decode_encrypt_ctx(struct TCP_Server_Info *server,
 	return 0;
 }
 
+static void decode_signing_ctx(struct TCP_Server_Info *server,
+			       struct smb2_signing_capabilities *pctxt)
+{
+	unsigned int len = le16_to_cpu(pctxt->DataLength);
+
+	if ((len < 4) || (len > 16)) {
+		pr_warn_once("server sent bad signing negcontext\n");
+		return;
+	}
+	if (le16_to_cpu(pctxt->SigningAlgorithmCount) != 1) {
+		pr_warn_once("Invalid signing algorithm count\n");
+		return;
+	}
+	if (le16_to_cpu(pctxt->SigningAlgorithms[0]) > 2) {
+		pr_warn_once("unknown signing algorithm\n");
+		return;
+	}
+
+	server->signing_negotiated = true;
+	server->signing_algorithm = le16_to_cpu(pctxt->SigningAlgorithms[0]);
+	cifs_dbg(FYI, "signing algorithm %d chosen\n",
+		     server->signing_algorithm);
+}
+
+
 static int smb311_decode_neg_context(struct smb2_negotiate_rsp *rsp,
 				     struct TCP_Server_Info *server,
 				     unsigned int len_of_smb)
@@ -684,6 +736,9 @@ static int smb311_decode_neg_context(struct smb2_negotiate_rsp *rsp,
 				(struct smb2_compression_capabilities_context *)pctx);
 		else if (pctx->ContextType == SMB2_POSIX_EXTENSIONS_AVAILABLE)
 			server->posix_ext_supported = true;
+		else if (pctx->ContextType == SMB2_SIGNING_CAPABILITIES)
+			decode_signing_ctx(server,
+				(struct smb2_signing_capabilities *)pctx);
 		else
 			cifs_server_dbg(VFS, "unknown negcontext of type %d ignored\n",
 				le16_to_cpu(pctx->ContextType));
@@ -811,8 +866,9 @@ SMB2_negotiate(const unsigned int xid, struct cifs_ses *ses)
 		   SMB3ANY_VERSION_STRING) == 0) {
 		req->Dialects[0] = cpu_to_le16(SMB30_PROT_ID);
 		req->Dialects[1] = cpu_to_le16(SMB302_PROT_ID);
-		req->DialectCount = cpu_to_le16(2);
-		total_len += 4;
+		req->Dialects[2] = cpu_to_le16(SMB311_PROT_ID);
+		req->DialectCount = cpu_to_le16(3);
+		total_len += 6;
 	} else if (strcmp(server->vals->version_string,
 		   SMBDEFAULT_VERSION_STRING) == 0) {
 		req->Dialects[0] = cpu_to_le16(SMB21_PROT_ID);
@@ -837,6 +893,8 @@ SMB2_negotiate(const unsigned int xid, struct cifs_ses *ses)
 		req->SecurityMode = 0;
 
 	req->Capabilities = cpu_to_le32(server->vals->req_capabilities);
+	if (ses->chan_max > 1)
+		req->Capabilities |= cpu_to_le32(SMB2_GLOBAL_CAP_MULTI_CHANNEL);
 
 	/* ClientGUID must be zero for SMB2.02 dialect */
 	if (server->vals->protocol_id == SMB20_PROT_ID)
@@ -845,6 +903,8 @@ SMB2_negotiate(const unsigned int xid, struct cifs_ses *ses)
 		memcpy(req->ClientGUID, server->client_guid,
 			SMB2_CLIENT_GUID_SIZE);
 		if ((server->vals->protocol_id == SMB311_PROT_ID) ||
+		    (strcmp(server->vals->version_string,
+		     SMB3ANY_VERSION_STRING) == 0) ||
 		    (strcmp(server->vals->version_string,
 		     SMBDEFAULT_VERSION_STRING) == 0))
 			assemble_neg_contexts(req, server, &total_len);
@@ -880,6 +940,10 @@ SMB2_negotiate(const unsigned int xid, struct cifs_ses *ses)
 			cifs_server_dbg(VFS,
 				"SMB2.1 dialect returned but not requested\n");
 			return -EIO;
+		} else if (rsp->DialectRevision == cpu_to_le16(SMB311_PROT_ID)) {
+			/* ops set to 3.0 by default for default so update */
+			server->ops = &smb311_operations;
+			server->vals = &smb311_values;
 		}
 	} else if (strcmp(server->vals->version_string,
 		   SMBDEFAULT_VERSION_STRING) == 0) {
@@ -945,6 +1009,13 @@ SMB2_negotiate(const unsigned int xid, struct cifs_ses *ses)
 	server->capabilities = le32_to_cpu(rsp->Capabilities);
 	/* Internal types */
 	server->capabilities |= SMB2_NT_FIND | SMB2_LARGE_FILES;
+
+	/*
+	 * SMB3.0 supports only 1 cipher and doesn't have a encryption neg context
+	 * Set the cipher type manually.
+	 */
+	if (server->dialect == SMB30_PROT_ID && (server->capabilities & SMB2_GLOBAL_CAP_ENCRYPTION))
+		server->cipher_type = SMB2_ENCRYPTION_AES128_CCM;
 
 	security_blob = smb2_get_data_area_len(&blob_offset, &blob_length,
 					       (struct smb2_sync_hdr *)rsp);
@@ -1022,6 +1093,9 @@ int smb3_validate_negotiate(const unsigned int xid, struct cifs_tcon *tcon)
 
 	pneg_inbuf->Capabilities =
 			cpu_to_le32(server->vals->req_capabilities);
+	if (tcon->ses->chan_max > 1)
+		pneg_inbuf->Capabilities |= cpu_to_le32(SMB2_GLOBAL_CAP_MULTI_CHANNEL);
+
 	memcpy(pneg_inbuf->Guid, server->client_guid,
 					SMB2_CLIENT_GUID_SIZE);
 
@@ -1039,10 +1113,11 @@ int smb3_validate_negotiate(const unsigned int xid, struct cifs_tcon *tcon)
 		SMB3ANY_VERSION_STRING) == 0) {
 		pneg_inbuf->Dialects[0] = cpu_to_le16(SMB30_PROT_ID);
 		pneg_inbuf->Dialects[1] = cpu_to_le16(SMB302_PROT_ID);
-		pneg_inbuf->DialectCount = cpu_to_le16(2);
-		/* structure is big enough for 3 dialects, sending only 2 */
+		pneg_inbuf->Dialects[2] = cpu_to_le16(SMB311_PROT_ID);
+		pneg_inbuf->DialectCount = cpu_to_le16(3);
+		/* SMB 2.1 not included so subtract one dialect from len */
 		inbuflen = sizeof(*pneg_inbuf) -
-				(2 * sizeof(pneg_inbuf->Dialects[0]));
+				(sizeof(pneg_inbuf->Dialects[0]));
 	} else if (strcmp(server->vals->version_string,
 		SMBDEFAULT_VERSION_STRING) == 0) {
 		pneg_inbuf->Dialects[0] = cpu_to_le16(SMB21_PROT_ID);
@@ -1050,7 +1125,7 @@ int smb3_validate_negotiate(const unsigned int xid, struct cifs_tcon *tcon)
 		pneg_inbuf->Dialects[2] = cpu_to_le16(SMB302_PROT_ID);
 		pneg_inbuf->Dialects[3] = cpu_to_le16(SMB311_PROT_ID);
 		pneg_inbuf->DialectCount = cpu_to_le16(4);
-		/* structure is big enough for 3 dialects */
+		/* structure is big enough for 4 dialects */
 		inbuflen = sizeof(*pneg_inbuf);
 	} else {
 		/* otherwise specific dialect was requested */
@@ -1250,7 +1325,7 @@ SMB2_sess_sendreceive(struct SMB2_sess_data *sess_data)
 			    cifs_ses_server(sess_data->ses),
 			    &rqst,
 			    &sess_data->buf0_type,
-			    CIFS_LOG_ERROR | CIFS_NEG_OP, &rsp_iov);
+			    CIFS_LOG_ERROR | CIFS_SESS_OP, &rsp_iov);
 	cifs_small_buf_release(sess_data->iov[0].iov_base);
 	memcpy(&sess_data->iov[0], &rsp_iov, sizeof(struct kvec));
 
@@ -1768,10 +1843,8 @@ SMB2_tcon(const unsigned int xid, struct cifs_ses *ses, const char *tree,
 	rsp = (struct smb2_tree_connect_rsp *)rsp_iov.iov_base;
 	trace_smb3_tcon(xid, tcon->tid, ses->Suid, tree, rc);
 	if (rc != 0) {
-		if (tcon) {
-			cifs_stats_fail_inc(tcon, SMB2_TREE_CONNECT_HE);
-			tcon->need_reconnect = true;
-		}
+		cifs_stats_fail_inc(tcon, SMB2_TREE_CONNECT_HE);
+		tcon->need_reconnect = true;
 		goto tcon_error_exit;
 	}
 
@@ -1846,7 +1919,7 @@ SMB2_tdis(const unsigned int xid, struct cifs_tcon *tcon)
 	if ((tcon->need_reconnect) || (tcon->ses->need_reconnect))
 		return 0;
 
-	close_shroot_lease(&tcon->crfid);
+	close_cached_dir_lease(&tcon->crfid);
 
 	rc = smb2_plain_req_init(SMB2_TREE_DISCONNECT, tcon, ses->server,
 				 (void **) &req,
@@ -2324,7 +2397,7 @@ create_sd_buf(umode_t mode, bool set_owner, unsigned int *len)
 	buf->sd.OffsetDacl = cpu_to_le32(ptr - (__u8 *)&buf->sd);
 	/* Ship the ACL for now. we will copy it into buf later. */
 	aclptr = ptr;
-	ptr += sizeof(struct cifs_acl);
+	ptr += sizeof(struct smb3_acl);
 
 	/* create one ACE to hold the mode embedded in reserved special SID */
 	acelen = setup_special_mode_ACE((struct cifs_ace *)ptr, (__u64)mode);
@@ -2349,10 +2422,10 @@ create_sd_buf(umode_t mode, bool set_owner, unsigned int *len)
 	acl.AclRevision = ACL_REVISION; /* See 2.4.4.1 of MS-DTYP */
 	acl.AclSize = cpu_to_le16(acl_size);
 	acl.AceCount = cpu_to_le16(ace_count);
-	memcpy(aclptr, &acl, sizeof(struct cifs_acl));
+	memcpy(aclptr, &acl, sizeof(struct smb3_acl));
 
 	buf->ccontext.DataLength = cpu_to_le32(ptr - (__u8 *)&buf->sd);
-	*len = ptr - (__u8 *)buf;
+	*len = roundup(ptr - (__u8 *)buf, 8);
 
 	return buf;
 }
@@ -2883,7 +2956,10 @@ SMB2_open(const unsigned int xid, struct cifs_open_parms *oparms, __le16 *path,
 #endif /* CIFS_DEBUG2 */
 
 	if (buf) {
-		memcpy(buf, &rsp->CreationTime, 32);
+		buf->CreationTime = rsp->CreationTime;
+		buf->LastAccessTime = rsp->LastAccessTime;
+		buf->LastWriteTime = rsp->LastWriteTime;
+		buf->ChangeTime = rsp->ChangeTime;
 		buf->AllocationSize = rsp->AllocationSize;
 		buf->EndOfFile = rsp->EndofFile;
 		buf->Attributes = rsp->FileAttributes;
@@ -3245,7 +3321,7 @@ close_exit:
 	free_rsp_buf(resp_buftype, rsp);
 
 	/* retry close in a worker thread if this one is interrupted */
-	if (rc == -EINTR) {
+	if (is_interrupt_error(rc)) {
 		int tmp_rc;
 
 		tmp_rc = smb2_handle_cancelled_close(tcon, persistent_fid,
@@ -3461,6 +3537,8 @@ int SMB2_query_info(const unsigned int xid, struct cifs_tcon *tcon,
 			  NULL);
 }
 
+#if 0
+/* currently unused, as now we are doing compounding instead (see smb311_posix_query_path_info) */
 int
 SMB311_posix_query_info(const unsigned int xid, struct cifs_tcon *tcon,
 		u64 persistent_fid, u64 volatile_fid, struct smb311_posix_qinfo *data, u32 *plen)
@@ -3472,14 +3550,17 @@ SMB311_posix_query_info(const unsigned int xid, struct cifs_tcon *tcon,
 	return query_info(xid, tcon, persistent_fid, volatile_fid,
 			  SMB_FIND_FILE_POSIX_INFO, SMB2_O_INFO_FILE, 0,
 			  output_len, sizeof(struct smb311_posix_qinfo), (void **)&data, plen);
+	/* Note caller must free "data" (passed in above). It may be allocated in query_info call */
 }
+#endif
 
 int
 SMB2_query_acl(const unsigned int xid, struct cifs_tcon *tcon,
-		u64 persistent_fid, u64 volatile_fid,
-		void **data, u32 *plen)
+	       u64 persistent_fid, u64 volatile_fid,
+	       void **data, u32 *plen, u32 extra_info)
 {
-	__u32 additional_info = OWNER_SECINFO | GROUP_SECINFO | DACL_SECINFO;
+	__u32 additional_info = OWNER_SECINFO | GROUP_SECINFO | DACL_SECINFO |
+				extra_info;
 	*plen = 0;
 
 	return query_info(xid, tcon, persistent_fid, volatile_fid,
@@ -3883,10 +3964,10 @@ smb2_new_read_req(void **buf, unsigned int *total_len,
 			 * Related requests use info from previous read request
 			 * in chain.
 			 */
-			shdr->SessionId = 0xFFFFFFFF;
+			shdr->SessionId = 0xFFFFFFFFFFFFFFFF;
 			shdr->TreeId = 0xFFFFFFFF;
-			req->PersistentFileId = 0xFFFFFFFF;
-			req->VolatileFileId = 0xFFFFFFFF;
+			req->PersistentFileId = 0xFFFFFFFFFFFFFFFF;
+			req->VolatileFileId = 0xFFFFFFFFFFFFFFFF;
 		}
 	}
 	if (remaining_bytes > io_parms->length)
@@ -4029,8 +4110,7 @@ smb2_async_readv(struct cifs_readdata *rdata)
 	if (rdata->credits.value > 0) {
 		shdr->CreditCharge = cpu_to_le16(DIV_ROUND_UP(rdata->bytes,
 						SMB2_MAX_BUFFER_SIZE));
-		shdr->CreditRequest =
-			cpu_to_le16(le16_to_cpu(shdr->CreditCharge) + 1);
+		shdr->CreditRequest = cpu_to_le16(le16_to_cpu(shdr->CreditCharge) + 8);
 
 		rc = adjust_credits(server, &rdata->credits, rdata->bytes);
 		if (rc)
@@ -4336,8 +4416,7 @@ smb2_async_writev(struct cifs_writedata *wdata,
 	if (wdata->credits.value > 0) {
 		shdr->CreditCharge = cpu_to_le16(DIV_ROUND_UP(wdata->bytes,
 						    SMB2_MAX_BUFFER_SIZE));
-		shdr->CreditRequest =
-			cpu_to_le16(le16_to_cpu(shdr->CreditCharge) + 1);
+		shdr->CreditRequest = cpu_to_le16(le16_to_cpu(shdr->CreditCharge) + 8);
 
 		rc = adjust_credits(server, &wdata->credits, wdata->bytes);
 		if (rc)
@@ -4476,7 +4555,7 @@ int posix_info_parse(const void *beg, const void *end,
 
 {
 	int total_len = 0;
-	int sid_len;
+	int owner_len, group_len;
 	int name_len;
 	const void *owner_sid;
 	const void *group_sid;
@@ -4499,17 +4578,17 @@ int posix_info_parse(const void *beg, const void *end,
 
 	/* check owner sid */
 	owner_sid = beg + total_len;
-	sid_len = posix_info_sid_size(owner_sid, end);
-	if (sid_len < 0)
+	owner_len = posix_info_sid_size(owner_sid, end);
+	if (owner_len < 0)
 		return -1;
-	total_len += sid_len;
+	total_len += owner_len;
 
 	/* check group sid */
 	group_sid = beg + total_len;
-	sid_len = posix_info_sid_size(group_sid, end);
-	if (sid_len < 0)
+	group_len = posix_info_sid_size(group_sid, end);
+	if (group_len < 0)
 		return -1;
-	total_len += sid_len;
+	total_len += group_len;
 
 	/* check name len */
 	if (beg + total_len + 4 > end)
@@ -4530,10 +4609,8 @@ int posix_info_parse(const void *beg, const void *end,
 		out->size = total_len;
 		out->name_len = name_len;
 		out->name = name;
-		memcpy(&out->owner, owner_sid,
-		       posix_info_sid_size(owner_sid, end));
-		memcpy(&out->group, group_sid,
-		       posix_info_sid_size(group_sid, end));
+		memcpy(&out->owner, owner_sid, owner_len);
+		memcpy(&out->group, group_sid, group_len);
 	}
 	return total_len;
 }

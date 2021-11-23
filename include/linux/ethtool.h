@@ -15,9 +15,8 @@
 
 #include <linux/bitmap.h>
 #include <linux/compat.h>
+#include <linux/netlink.h>
 #include <uapi/linux/ethtool.h>
-
-#ifdef CONFIG_COMPAT
 
 struct compat_ethtool_rx_flow_spec {
 	u32		flow_type;
@@ -37,8 +36,6 @@ struct compat_ethtool_rxnfc {
 	u32				rule_cnt;
 	u32				rule_locs[];
 };
-
-#endif /* CONFIG_COMPAT */
 
 #include <linux/rculist.h>
 
@@ -81,15 +78,14 @@ enum {
 #define ETH_RSS_HASH_NO_CHANGE	0
 
 struct net_device;
+struct netlink_ext_ack;
 
 /* Some generic methods drivers may use in their ethtool_ops */
 u32 ethtool_op_get_link(struct net_device *dev);
 int ethtool_op_get_ts_info(struct net_device *dev, struct ethtool_ts_info *eti);
 
 
-/**
- * struct ethtool_link_ext_state_info - link extended state and substate.
- */
+/* Link extended state and substate. */
 struct ethtool_link_ext_state_info {
 	enum ethtool_link_ext_state link_ext_state;
 	union {
@@ -128,6 +124,7 @@ struct ethtool_link_ksettings {
 		__ETHTOOL_DECLARE_LINK_MODE_MASK(advertising);
 		__ETHTOOL_DECLARE_LINK_MODE_MASK(lp_advertising);
 	} link_modes;
+	u32	lanes;
 };
 
 /**
@@ -176,6 +173,11 @@ extern int
 __ethtool_get_link_ksettings(struct net_device *dev,
 			     struct ethtool_link_ksettings *link_ksettings);
 
+struct kernel_ethtool_coalesce {
+	u8 use_cqe_mode_tx;
+	u8 use_cqe_mode_rx;
+};
+
 /**
  * ethtool_intersect_link_masks - Given two link masks, AND them together
  * @dst: first mask and where result is stored
@@ -215,6 +217,9 @@ bool ethtool_convert_link_mode_to_legacy_u32(u32 *legacy_u32,
 #define ETHTOOL_COALESCE_TX_USECS_HIGH		BIT(19)
 #define ETHTOOL_COALESCE_TX_MAX_FRAMES_HIGH	BIT(20)
 #define ETHTOOL_COALESCE_RATE_SAMPLE_INTERVAL	BIT(21)
+#define ETHTOOL_COALESCE_USE_CQE_RX		BIT(22)
+#define ETHTOOL_COALESCE_USE_CQE_TX		BIT(23)
+#define ETHTOOL_COALESCE_ALL_PARAMS		GENMASK(23, 0)
 
 #define ETHTOOL_COALESCE_USECS						\
 	(ETHTOOL_COALESCE_RX_USECS | ETHTOOL_COALESCE_TX_USECS)
@@ -240,8 +245,60 @@ bool ethtool_convert_link_mode_to_legacy_u32(u32 *legacy_u32,
 	 ETHTOOL_COALESCE_RX_USECS_LOW | ETHTOOL_COALESCE_RX_USECS_HIGH | \
 	 ETHTOOL_COALESCE_PKT_RATE_LOW | ETHTOOL_COALESCE_PKT_RATE_HIGH | \
 	 ETHTOOL_COALESCE_RATE_SAMPLE_INTERVAL)
+#define ETHTOOL_COALESCE_USE_CQE					\
+	(ETHTOOL_COALESCE_USE_CQE_RX | ETHTOOL_COALESCE_USE_CQE_TX)
 
 #define ETHTOOL_STAT_NOT_SET	(~0ULL)
+
+static inline void ethtool_stats_init(u64 *stats, unsigned int n)
+{
+	while (n--)
+		stats[n] = ETHTOOL_STAT_NOT_SET;
+}
+
+/* Basic IEEE 802.3 MAC statistics (30.3.1.1.*), not otherwise exposed
+ * via a more targeted API.
+ */
+struct ethtool_eth_mac_stats {
+	u64 FramesTransmittedOK;
+	u64 SingleCollisionFrames;
+	u64 MultipleCollisionFrames;
+	u64 FramesReceivedOK;
+	u64 FrameCheckSequenceErrors;
+	u64 AlignmentErrors;
+	u64 OctetsTransmittedOK;
+	u64 FramesWithDeferredXmissions;
+	u64 LateCollisions;
+	u64 FramesAbortedDueToXSColls;
+	u64 FramesLostDueToIntMACXmitError;
+	u64 CarrierSenseErrors;
+	u64 OctetsReceivedOK;
+	u64 FramesLostDueToIntMACRcvError;
+	u64 MulticastFramesXmittedOK;
+	u64 BroadcastFramesXmittedOK;
+	u64 FramesWithExcessiveDeferral;
+	u64 MulticastFramesReceivedOK;
+	u64 BroadcastFramesReceivedOK;
+	u64 InRangeLengthErrors;
+	u64 OutOfRangeLengthField;
+	u64 FrameTooLongErrors;
+};
+
+/* Basic IEEE 802.3 PHY statistics (30.3.2.1.*), not otherwise exposed
+ * via a more targeted API.
+ */
+struct ethtool_eth_phy_stats {
+	u64 SymbolErrorDuringCarrier;
+};
+
+/* Basic IEEE 802.3 MAC Ctrl statistics (30.3.3.*), not otherwise exposed
+ * via a more targeted API.
+ */
+struct ethtool_eth_ctrl_stats {
+	u64 MACControlFramesTransmitted;
+	u64 MACControlFramesReceived;
+	u64 UnsupportedOpcodesReceived;
+};
 
 /**
  * struct ethtool_pause_stats - statistics for IEEE 802.3x pause frames
@@ -262,8 +319,106 @@ struct ethtool_pause_stats {
 	u64 rx_pause_frames;
 };
 
+#define ETHTOOL_MAX_LANES	8
+
+/**
+ * struct ethtool_fec_stats - statistics for IEEE 802.3 FEC
+ * @corrected_blocks: number of received blocks corrected by FEC
+ *	Reported to user space as %ETHTOOL_A_FEC_STAT_CORRECTED.
+ *
+ *	Equivalent to `30.5.1.1.17 aFECCorrectedBlocks` from the standard.
+ *
+ * @uncorrectable_blocks: number of received blocks FEC was not able to correct
+ *	Reported to user space as %ETHTOOL_A_FEC_STAT_UNCORR.
+ *
+ *	Equivalent to `30.5.1.1.18 aFECUncorrectableBlocks` from the standard.
+ *
+ * @corrected_bits: number of bits corrected by FEC
+ *	Similar to @corrected_blocks but counts individual bit changes,
+ *	not entire FEC data blocks. This is a non-standard statistic.
+ *	Reported to user space as %ETHTOOL_A_FEC_STAT_CORR_BITS.
+ *
+ * @lane: per-lane/PCS-instance counts as defined by the standard
+ * @total: error counts for the entire port, for drivers incapable of reporting
+ *	per-lane stats
+ *
+ * Drivers should fill in either only total or per-lane statistics, core
+ * will take care of adding lane values up to produce the total.
+ */
+struct ethtool_fec_stats {
+	struct ethtool_fec_stat {
+		u64 total;
+		u64 lanes[ETHTOOL_MAX_LANES];
+	} corrected_blocks, uncorrectable_blocks, corrected_bits;
+};
+
+/**
+ * struct ethtool_rmon_hist_range - byte range for histogram statistics
+ * @low: low bound of the bucket (inclusive)
+ * @high: high bound of the bucket (inclusive)
+ */
+struct ethtool_rmon_hist_range {
+	u16 low;
+	u16 high;
+};
+
+#define ETHTOOL_RMON_HIST_MAX	10
+
+/**
+ * struct ethtool_rmon_stats - selected RMON (RFC 2819) statistics
+ * @undersize_pkts: Equivalent to `etherStatsUndersizePkts` from the RFC.
+ * @oversize_pkts: Equivalent to `etherStatsOversizePkts` from the RFC.
+ * @fragments: Equivalent to `etherStatsFragments` from the RFC.
+ * @jabbers: Equivalent to `etherStatsJabbers` from the RFC.
+ * @hist: Packet counter for packet length buckets (e.g.
+ *	`etherStatsPkts128to255Octets` from the RFC).
+ * @hist_tx: Tx counters in similar form to @hist, not defined in the RFC.
+ *
+ * Selection of RMON (RFC 2819) statistics which are not exposed via different
+ * APIs, primarily the packet-length-based counters.
+ * Unfortunately different designs choose different buckets beyond
+ * the 1024B mark (jumbo frame teritory), so the definition of the bucket
+ * ranges is left to the driver.
+ */
+struct ethtool_rmon_stats {
+	u64 undersize_pkts;
+	u64 oversize_pkts;
+	u64 fragments;
+	u64 jabbers;
+
+	u64 hist[ETHTOOL_RMON_HIST_MAX];
+	u64 hist_tx[ETHTOOL_RMON_HIST_MAX];
+};
+
+#define ETH_MODULE_EEPROM_PAGE_LEN	128
+#define ETH_MODULE_MAX_I2C_ADDRESS	0x7f
+
+/**
+ * struct ethtool_module_eeprom - EEPROM dump from specified page
+ * @offset: Offset within the specified EEPROM page to begin read, in bytes.
+ * @length: Number of bytes to read.
+ * @page: Page number to read from.
+ * @bank: Page bank number to read from, if applicable by EEPROM spec.
+ * @i2c_address: I2C address of a page. Value less than 0x7f expected. Most
+ *	EEPROMs use 0x50 or 0x51.
+ * @data: Pointer to buffer with EEPROM data of @length size.
+ *
+ * This can be used to manage pages during EEPROM dump in ethtool and pass
+ * required information to the driver.
+ */
+struct ethtool_module_eeprom {
+	u32	offset;
+	u32	length;
+	u8	page;
+	u8	bank;
+	u8	i2c_address;
+	u8	*data;
+};
+
 /**
  * struct ethtool_ops - optional netdev operations
+ * @cap_link_lanes_supported: indicates if the driver supports lanes
+ *	parameter.
  * @supported_coalesce_params: supported types of interrupt coalescing.
  * @get_drvinfo: Report driver/device information.  Should only set the
  *	@driver, @version, @fw_version and @bus_info fields.  If not
@@ -287,6 +442,9 @@ struct ethtool_pause_stats {
  *	do not attach ext_substate attribute to netlink message). If link_ext_state
  *	and link_ext_substate are unknown, return -ENODATA. If not implemented,
  *	link_ext_state and link_ext_substate will not be sent to userspace.
+ * @get_eeprom_len: Read range of EEPROM addresses for validation of
+ *	@get_eeprom and @set_eeprom requests.
+ *	Returns 0 if device does not support EEPROM access.
  * @get_eeprom: Read data from the device EEPROM.
  *	Should fill in the magic field.  Don't need to check len for zero
  *	or wraparound.  Fill in the data argument with the eeprom values
@@ -379,6 +537,8 @@ struct ethtool_pause_stats {
  * @get_module_eeprom: Get the eeprom information from the plug-in module
  * @get_eee: Get Energy-Efficient (EEE) supported and status.
  * @set_eee: Set EEE status (enable/disable) as well as LPI timers.
+ * @get_tunable: Read the value of a driver / device tunable.
+ * @set_tunable: Set the value of a driver / device tunable.
  * @get_per_queue_coalesce: Get interrupt coalescing parameters per queue.
  *	It must check that the given queue number is valid. If neither a RX nor
  *	a TX queue has this number, return -EINVAL. If only a RX queue or a TX
@@ -400,11 +560,26 @@ struct ethtool_pause_stats {
  *	ignored (use %__ETHTOOL_LINK_MODE_MASK_NBITS instead of the latter),
  *	any change to them will be overwritten by kernel. Returns a negative
  *	error code or zero.
+ * @get_fec_stats: Report FEC statistics.
+ *	Core will sum up per-lane stats to get the total.
+ *	Drivers must not zero statistics which they don't report. The stats
+ *	structure is initialized to ETHTOOL_STAT_NOT_SET indicating driver does
+ *	not report statistics.
  * @get_fecparam: Get the network device Forward Error Correction parameters.
  * @set_fecparam: Set the network device Forward Error Correction parameters.
  * @get_ethtool_phy_stats: Return extended statistics about the PHY device.
  *	This is only useful if the device maintains PHY statistics and
  *	cannot use the standard PHY library helpers.
+ * @get_phy_tunable: Read the value of a PHY tunable.
+ * @set_phy_tunable: Set the value of a PHY tunable.
+ * @get_module_eeprom_by_page: Get a region of plug-in module EEPROM data from
+ *	specified page. Returns a negative error code or the amount of bytes
+ *	read.
+ * @get_eth_phy_stats: Query some of the IEEE 802.3 PHY statistics.
+ * @get_eth_mac_stats: Query some of the IEEE 802.3 MAC statistics.
+ * @get_eth_ctrl_stats: Query some of the IEEE 802.3 MAC Ctrl statistics.
+ * @get_rmon_stats: Query some of the RMON (RFC 2819) statistics.
+ *	Set %ranges to a pointer to zero-terminated array of byte ranges.
  *
  * All operations are optional (i.e. the function pointer may be set
  * to %NULL) and callers must take this into account.  Callers must
@@ -419,6 +594,7 @@ struct ethtool_pause_stats {
  * of the generic netdev features interface.
  */
 struct ethtool_ops {
+	u32     cap_link_lanes_supported:1;
 	u32	supported_coalesce_params;
 	void	(*get_drvinfo)(struct net_device *, struct ethtool_drvinfo *);
 	int	(*get_regs_len)(struct net_device *);
@@ -436,8 +612,14 @@ struct ethtool_ops {
 			      struct ethtool_eeprom *, u8 *);
 	int	(*set_eeprom)(struct net_device *,
 			      struct ethtool_eeprom *, u8 *);
-	int	(*get_coalesce)(struct net_device *, struct ethtool_coalesce *);
-	int	(*set_coalesce)(struct net_device *, struct ethtool_coalesce *);
+	int	(*get_coalesce)(struct net_device *,
+				struct ethtool_coalesce *,
+				struct kernel_ethtool_coalesce *,
+				struct netlink_ext_ack *);
+	int	(*set_coalesce)(struct net_device *,
+				struct ethtool_coalesce *,
+				struct kernel_ethtool_coalesce *,
+				struct netlink_ext_ack *);
 	void	(*get_ringparam)(struct net_device *,
 				 struct ethtool_ringparam *);
 	int	(*set_ringparam)(struct net_device *,
@@ -499,6 +681,8 @@ struct ethtool_ops {
 				      struct ethtool_link_ksettings *);
 	int	(*set_link_ksettings)(struct net_device *,
 				      const struct ethtool_link_ksettings *);
+	void	(*get_fec_stats)(struct net_device *dev,
+				 struct ethtool_fec_stats *fec_stats);
 	int	(*get_fecparam)(struct net_device *,
 				      struct ethtool_fecparam *);
 	int	(*set_fecparam)(struct net_device *,
@@ -509,6 +693,18 @@ struct ethtool_ops {
 				   const struct ethtool_tunable *, void *);
 	int	(*set_phy_tunable)(struct net_device *,
 				   const struct ethtool_tunable *, const void *);
+	int	(*get_module_eeprom_by_page)(struct net_device *dev,
+					     const struct ethtool_module_eeprom *page,
+					     struct netlink_ext_ack *extack);
+	void	(*get_eth_phy_stats)(struct net_device *dev,
+				     struct ethtool_eth_phy_stats *phy_stats);
+	void	(*get_eth_mac_stats)(struct net_device *dev,
+				     struct ethtool_eth_mac_stats *mac_stats);
+	void	(*get_eth_ctrl_stats)(struct net_device *dev,
+				      struct ethtool_eth_ctrl_stats *ctrl_stats);
+	void	(*get_rmon_stats)(struct net_device *dev,
+				  struct ethtool_rmon_stats *rmon_stats,
+				  const struct ethtool_rmon_hist_range **ranges);
 };
 
 int ethtool_check_ops(const struct ethtool_ops *ops);
@@ -532,7 +728,6 @@ int ethtool_virtdev_set_link_ksettings(struct net_device *dev,
 				       const struct ethtool_link_ksettings *cmd,
 				       u32 *dev_speed, u8 *dev_duplex);
 
-struct netlink_ext_ack;
 struct phy_device;
 struct phy_tdr_config;
 
@@ -541,8 +736,8 @@ struct phy_tdr_config;
  * @get_sset_count: Get number of strings that @get_strings will write.
  * @get_strings: Return a set of strings that describe the requested objects
  * @get_stats: Return extended statistics about the PHY device.
- * @start_cable_test - Start a cable test
- * @start_cable_test_tdr - Start a Time Domain Reflectometry cable test
+ * @start_cable_test: Start a cable test
+ * @start_cable_test_tdr: Start a Time Domain Reflectometry cable test
  *
  * All operations are optional (i.e. the function pointer may be set to %NULL)
  * and callers must take this into account. Callers must hold the RTNL lock.
@@ -565,4 +760,32 @@ struct ethtool_phy_ops {
  */
 void ethtool_set_ethtool_phy_ops(const struct ethtool_phy_ops *ops);
 
+/**
+ * ethtool_params_from_link_mode - Derive link parameters from a given link mode
+ * @link_ksettings: Link parameters to be derived from the link mode
+ * @link_mode: Link mode
+ */
+void
+ethtool_params_from_link_mode(struct ethtool_link_ksettings *link_ksettings,
+			      enum ethtool_link_mode_bit_indices link_mode);
+
+/**
+ * ethtool_get_phc_vclocks - Derive phc vclocks information, and caller
+ *                           is responsible to free memory of vclock_index
+ * @dev: pointer to net_device structure
+ * @vclock_index: pointer to pointer of vclock index
+ *
+ * Return number of phc vclocks
+ */
+int ethtool_get_phc_vclocks(struct net_device *dev, int **vclock_index);
+
+/**
+ * ethtool_sprintf - Write formatted string to ethtool string data
+ * @data: Pointer to start of string to update
+ * @fmt: Format of string to write
+ *
+ * Write formatted string to data. Update data to point at start of
+ * next string.
+ */
+extern __printf(2, 3) void ethtool_sprintf(u8 **data, const char *fmt, ...);
 #endif /* _LINUX_ETHTOOL_H */

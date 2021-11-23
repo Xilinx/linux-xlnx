@@ -20,10 +20,13 @@ typedef struct {
 	unsigned int ipi_irqs[MICROBLAZE_NUM_IPIS];
 } ____cacheline_aligned irq_cpustat_t;
 
-#include <linux/irq_cpustat.h>	/* Standard mappings for irq_cpustat_t above */
+#define __ARCH_IRQ_STAT
+DECLARE_PER_CPU_SHARED_ALIGNED(irq_cpustat_t, irq_stat);
 
-#define __inc_irq_stat(cpu, member)	__IRQ_STAT(cpu, member)++
-#define __get_irq_stat(cpu, member)	__IRQ_STAT(cpu, member)
+#define local_softirq_pending_ref	irq_stat.__softirq_pending
+
+#define __inc_irq_stat(cpu, member)	this_cpu_inc(irq_stat.member)
+#define __get_irq_stat(cpu, member)	this_cpu_read(irq_stat.member)
 
 u64 smp_irq_stat_cpu(unsigned int cpu);
 #define arch_irq_stat_cpu	smp_irq_stat_cpu
