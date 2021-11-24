@@ -377,6 +377,8 @@
 #define XXV_STATRX_BLKLCK_OFFSET	0x0000040C
 #define XXV_USXGMII_AN_OFFSET		0x000000C8
 #define XXV_USXGMII_AN_STS_OFFSET	0x00000458
+#define XXV_STAT_GTWIZ_OFFSET		0x000004A0
+#define XXV_CONFIG_REVISION		0x00000024
 
 /* XXV MAC Register Mask Definitions */
 #define XXV_GT_RESET_MASK	BIT(0)
@@ -389,6 +391,9 @@
 #define XXV_RX_BLKLCK_MASK	BIT(0)
 #define XXV_TICKREG_STATEN_MASK BIT(0)
 #define XXV_MAC_MIN_PKT_LEN	64
+#define XXV_GTWIZ_RESET_DONE	(BIT(0) | BIT(1))
+#define XXV_MAJ_MASK		GENMASK(7, 0)
+#define XXV_MIN_MASK		GENMASK(15, 8)
 
 /* USXGMII Register Mask Definitions  */
 #define USXGMII_AN_EN		BIT(5)
@@ -764,6 +769,7 @@ enum axienet_tsn_ioctl {
  * @phc_index: Index to corresponding PTP clock used.
  * @gt_lane: MRMAC GT lane index used.
  * @ptp_os_cf: CF TS of PTP PDelay req for one step usage.
+ * @xxv_ip_version: XXV IP version
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -864,6 +870,7 @@ struct axienet_local {
 	u32 phc_index;		/* Index to corresponding PTP clock used  */
 	u32 gt_lane;		/* MRMAC GT lane index used */
 	u64 ptp_os_cf;		/* CF TS of PTP PDelay req for one step usage */
+	u32 xxv_ip_version;
 };
 
 /**

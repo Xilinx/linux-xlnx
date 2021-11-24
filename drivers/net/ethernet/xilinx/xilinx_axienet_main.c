@@ -578,6 +578,7 @@ static int axienet_device_reset(struct net_device *ndev)
 	struct axienet_dma_q *q;
 	u32 i;
 	int ret;
+	u8 maj, minor;
 
 	if (lp->axienet_config->mactype == XAXIENET_10G_25G) {
 		/* Reset the XXV MAC */
@@ -645,7 +646,22 @@ static int axienet_device_reset(struct net_device *ndev)
 		/* Check for block lock bit got set or not
 		 * This ensures that 10G ethernet IP
 		 * is functioning normally or not.
+		 * IP version 3.2 and above, check GT status
+		 * before reading any register
 		 */
+		maj = lp->xxv_ip_version & XXV_MAJ_MASK;
+		minor = (lp->xxv_ip_version & XXV_MIN_MASK) >> 8;
+
+		if (maj == 3 ? minor >= 2 : maj > 3) {
+			err = readl_poll_timeout(lp->regs + XXV_STAT_GTWIZ_OFFSET,
+						 val, (val & XXV_GTWIZ_RESET_DONE),
+						 10, DELAY_OF_ONE_MILLISEC);
+			if (err) {
+				netdev_err(ndev, "XXV MAC GT reset not complete! Cross-check the MAC ref clock configuration\n");
+				axienet_dma_bd_release(ndev);
+				return err;
+			}
+		}
 		err = readl_poll_timeout(lp->regs + XXV_STATRX_BLKLCK_OFFSET,
 					 val, (val & XXV_RX_BLKLCK_MASK),
 					 10, DELAY_OF_ONE_MILLISEC);
@@ -3554,6 +3570,8 @@ static int axienet_probe(struct platform_device *pdev)
 		of_node_put(np);
 	}
 #endif
+	if (lp->axienet_config->mactype == XAXIENET_10G_25G)
+		lp->xxv_ip_version = axienet_ior(lp, XXV_CONFIG_REVISION);
 
 #ifdef CONFIG_XILINX_TSN
 	if (lp->is_tsn)
