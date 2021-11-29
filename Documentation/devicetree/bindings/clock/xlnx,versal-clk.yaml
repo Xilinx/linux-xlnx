@@ -30,13 +30,11 @@ properties:
       clocks to the given clock controller.
     items:
       - description: reference clock
-      - description: alternate reference clock
       - description: alternate reference clock for programmable logic
 
   clock-names:
     items:
       - const: ref
-      - const: alt_ref
       - const: pl_alt_ref
 
 required:
@@ -56,8 +54,8 @@ examples:
         versal_clk: clock-controller {
           #clock-cells = <1>;
           compatible = "xlnx,versal-clk";
-          clocks = <&ref>, <&alt_ref>, <&pl_alt_ref>;
-          clock-names = "ref", "alt_ref", "pl_alt_ref";
+          clocks = <&ref>, <&pl_alt_ref>;
+          clock-names = "ref", "pl_alt_ref";
         };
       };
     };
