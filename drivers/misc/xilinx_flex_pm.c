@@ -39,6 +39,12 @@
 #define FPM_WRREQ_L			0x60000
 #define FPM_RDRSP_L			0x50000
 #define FPM_RDREQ_L			0x40000
+
+#define FPM_WRRSP_FPD			0x30000
+#define FPM_WRREQ_FPD			0x20000
+#define FPM_RDRSP_FPD			0x10000
+#define FPM_RDREQ_FPD			0x0
+
 #define FPM_PROBE_SHIFT			16
 #define FPM_COUNTER_OFFSET		0x14
 #define FPM_GLOBALEN			BIT(0)
@@ -267,25 +273,25 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 		break;
 
 	case XFLEX_GET_COUNTER_FPD_WRRSP:
-		reg = flexpm->counterid_fpd | FPM_WRRSP_L | FPM_VAL;
+		reg = flexpm->counterid_fpd | FPM_WRRSP_FPD | FPM_VAL;
 		domain = FPM_FPD;
 
 		break;
 
 	case XFLEX_GET_COUNTER_FPD_WRREQ:
-		reg = flexpm->counterid_fpd | FPM_WRREQ_L | FPM_VAL;
+		reg = flexpm->counterid_fpd | FPM_WRREQ_FPD | FPM_VAL;
 		domain = FPM_FPD;
 
 		break;
 
 	case XFLEX_GET_COUNTER_FPD_RDRSP:
-		reg = flexpm->counterid_fpd | FPM_RDRSP_L | FPM_VAL;
+		reg = flexpm->counterid_fpd | FPM_RDRSP_FPD | FPM_VAL;
 		domain = FPM_FPD;
 
 		break;
 
 	case XFLEX_GET_COUNTER_FPD_RDREQ:
-		reg = flexpm->counterid_fpd | FPM_RDREQ_L | FPM_VAL;
+		reg = flexpm->counterid_fpd | FPM_RDREQ_FPD | FPM_VAL;
 		domain = FPM_FPD;
 
 		break;
