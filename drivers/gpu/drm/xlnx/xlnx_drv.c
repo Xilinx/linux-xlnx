@@ -310,9 +310,11 @@ static void xlnx_unbind(struct device *dev)
 	struct drm_device *drm = xlnx_drm->drm;
 
 	drm_dev_unregister(drm);
-	if (xlnx_drm->fb)
-		xlnx_fb_fini(xlnx_drm->fb);
 	component_unbind_all(&xlnx_drm->master->dev, drm);
+	if (xlnx_drm->fb) {
+		xlnx_fb_fini(xlnx_drm->fb);
+		xlnx_drm->fb = NULL;
+	}
 	xlnx_crtc_helper_fini(drm, xlnx_drm->crtc);
 	drm_kms_helper_poll_fini(drm);
 	drm_mode_config_cleanup(drm);
