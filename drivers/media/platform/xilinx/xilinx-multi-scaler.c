@@ -1286,7 +1286,7 @@ static void xm2msc_device_run(void *priv)
 		 * channel while streaming is going on
 		 */
 		if (xm2msc->out_streamed_chan || xm2msc->cap_streamed_chan)
-			dev_err(xm2msc->dev,
+			dev_dbg(xm2msc->dev,
 				"Buffer not available, streaming chan 0x%x\n",
 				xm2msc->cap_streamed_chan);
 
