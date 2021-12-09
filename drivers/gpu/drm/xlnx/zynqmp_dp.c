@@ -1797,6 +1797,7 @@ int zynqmp_dp_bind(struct device *dev, struct device *master, void *data)
 	connector->dpms = DRM_MODE_DPMS_OFF;
 
 	dp->drm = drm;
+	dp->aux.drm_dev = drm;
 	dp->sync_prop = drm_property_create_bool(drm, 0, "sync");
 	dp->bpc_prop = drm_property_create_enum(drm, 0, "bpc",
 						zynqmp_dp_bpc_enum,
