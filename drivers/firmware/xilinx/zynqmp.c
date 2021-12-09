@@ -1961,6 +1961,22 @@ int zynqmp_pm_set_gem_config(u32 node, enum pm_gem_config_type config,
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_gem_config);
 
 /**
+ * zynqmp_pm_set_usb_config - PM call to set value of USB config registers
+ * @node:	USB node ID
+ * @config:	The config type of USB registers
+ * @value:	Value to be set
+ *
+ * Return:      Returns 0 on success or error value on failure.
+ */
+int zynqmp_pm_set_usb_config(u32 node, enum pm_usb_config_type config,
+			     u32 value)
+{
+	return zynqmp_pm_invoke_fn(PM_IOCTL, node, IOCTL_SET_USB_CONFIG,
+				   config, value, 0, NULL);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_set_usb_config);
+
+/**
  * struct zynqmp_pm_shutdown_scope - Struct for shutdown scope
  * @subtype:	Shutdown subtype
  * @name:	Matching string for scope argument
