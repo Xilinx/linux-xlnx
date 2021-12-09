@@ -1887,6 +1887,9 @@ static const struct flash_info *spi_nor_read_id(struct spi_nor *nor)
 		return ERR_PTR(ret);
 	}
 
+	for (i = 0; i < SPI_NOR_MAX_ID_LEN; i++)
+		nor->spimem->device_id[i] = id[i];
+
 	for (i = 0; i < ARRAY_SIZE(manufacturers); i++) {
 		info = spi_nor_search_part_by_id(manufacturers[i]->parts,
 						 manufacturers[i]->nparts,
