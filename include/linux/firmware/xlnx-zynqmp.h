@@ -201,6 +201,10 @@ enum pm_ioctl_id {
 	/* IOCTL for Secure Read/Write Interface */
 	IOCTL_READ_REG = 28,
 	IOCTL_MASK_WRITE_REG = 29,
+	/* Dynamic SD/GEM/USB configuration */
+	IOCTL_SET_SD_CONFIG = 30,
+	IOCTL_SET_GEM_CONFIG = 31,
+	IOCTL_SET_USB_CONFIG = 32,
 };
 
 enum pm_query_id {
@@ -502,6 +506,22 @@ enum pm_feature_config_id {
 	PM_FEATURE_EXTWDT_VALUE = 4,
 };
 
+enum pm_sd_config_type {
+	SD_CONFIG_EMMC_SEL = 1, /* To set SD_EMMC_SEL in CTRL_REG_SD and SD_SLOTTYPE */
+	SD_CONFIG_BASECLK = 2, /* To set SD_BASECLK in SD_CONFIG_REG1 */
+	SD_CONFIG_8BIT = 3, /* To set SD_8BIT in SD_CONFIG_REG2 */
+	SD_CONFIG_FIXED = 4, /* To set fixed config registers */
+};
+
+enum pm_gem_config_type {
+	GEM_CONFIG_SGMII_MODE = 1, /* To set GEM_SGMII_MODE in GEM_CLK_CTRL register */
+	GEM_CONFIG_FIXED = 2, /* To set fixed config registers */
+};
+
+enum pm_usb_config_type {
+	USB_CONFIG_FIXED = 1, /* To set fixed config registers */
+};
+
 /**
  * struct zynqmp_pm_query_data - PM query data
  * @qid:	query ID
@@ -624,6 +644,11 @@ int zynqmp_pm_get_uid_info(const u64 address, const u32 size, u32 *count);
 int zynqmp_pm_sec_read_reg(u32 node_id, u32 offset, u32 *ret_value);
 int zynqmp_pm_sec_mask_write_reg(const u32 node_id, const u32 offset,
 				 u32 mask, u32 value);
+int zynqmp_pm_set_sd_config(u32 node, enum pm_sd_config_type config, u32 value);
+int zynqmp_pm_set_gem_config(u32 node, enum pm_gem_config_type config,
+			     u32 value);
+int zynqmp_pm_set_usb_config(u32 node, enum pm_usb_config_type config,
+			     u32 value);
 #else
 static inline int zynqmp_pm_get_api_version(u32 *version)
 {
@@ -1087,6 +1112,26 @@ static int zynqmp_pm_sec_mask_write_reg(const u32 node_id, const u32 offset,
 	return -ENODEV;
 }
 
+static inline int zynqmp_pm_set_sd_config(u32 node,
+					  enum pm_sd_config_type config,
+					  u32 value)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_set_gem_config(u32 node,
+					   enum pm_gem_config_type config,
+					   u32 value)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_set_usb_config(u32 node,
+					   enum pm_usb_config_type config,
+					   u32 value)
+{
+	return -ENODEV;
+}
 #endif
 
 #endif /* __FIRMWARE_ZYNQMP_H__ */
