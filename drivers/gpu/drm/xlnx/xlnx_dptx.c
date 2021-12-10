@@ -1984,6 +1984,23 @@ static void xlnx_dp_stop(struct xlnx_dp *dp)
 		    XDPTX_VTC_CTL_GE);
 }
 
+static int xlnx_dp_txconnected(struct xlnx_dp *dp)
+{
+	u32 status;
+	u8 retries = 0;
+
+	do {
+		status = xlnx_dp_read(dp->dp_base,
+				      XDPTX_INTR_SIGSTATE_REG) & 0x1;
+		if (retries > 5)
+			return false;
+		retries++;
+		usleep_range(1000, 1100);
+	} while (status == 0);
+
+	return true;
+}
+
 /*
  * DRM connector functions
  */
@@ -1993,27 +2010,41 @@ xlnx_dp_connector_detect(struct drm_connector *connector, bool force)
 	struct xlnx_dp *dp = connector_to_dp(connector);
 	struct xlnx_dp_link_config *link_config = &dp->link_config;
 	struct phy_configure_opts_dp *phy_cfg = &dp->phy_opts.dp;
-	u32 state, i;
 	int ret;
-	u8 max_link_rate, data;
+	u8 dpcd_ext[DP_RECEIVER_CAP_SIZE];
+	u8 max_link_rate, ext_cap_rd = 0, data;
 
-	/*
-	 * This is from heuristic. It takes some delay (ex, 100 ~ 500 msec) to
-	 * get the HPD signal with some monitors.
-	 */
-	for (i = 0; i < 10; i++) {
-		state = xlnx_dp_read(dp->dp_base, XDPTX_INTR_SIGSTATE_REG);
-		if (state & XDPTX_INTR_SIGHPDSTATE)
-			break;
-		msleep(100);
+	if (!xlnx_dp_txconnected(dp)) {
+		dev_dbg(dp->dev, "Display is not connected");
+		goto disconnected;
 	}
-	if (state & XDPTX_INTR_SIGHPDSTATE) {
-		ret = drm_dp_dpcd_read(&dp->aux, 0x0, dp->dpcd,
+
+	/* Reading the Ext capability for compliance */
+	ret = drm_dp_dpcd_read(&dp->aux, DP_DP13_DPCD_REV, dpcd_ext,
+			       sizeof(dpcd_ext));
+	if ((dp->dpcd[6] & 0x1) == 0x1) {
+		ret = drm_dp_dpcd_read(&dp->aux, DP_DOWNSTREAM_PORT_0,
+				       dpcd_ext, sizeof(dpcd_ext));
+	}
+
+	ret = drm_dp_dpcd_read(&dp->aux, DP_DPCD_REV, dp->dpcd,
+			       sizeof(dp->dpcd));
+	if (ret < 0) {
+		dev_dbg(dp->dev, "DPCD read first try fails");
+		ret = drm_dp_dpcd_read(&dp->aux, DP_DPCD_REV, dp->dpcd,
 				       sizeof(dp->dpcd));
 		if (ret < 0) {
 			dev_info(dp->dev, "DPCD read failes");
 			goto disconnected;
 		}
+	}
+	/* set MaxLinkRate to TX rate, if sink provides a non-standard value */
+	if (dp->dpcd[DP_MAX_LINK_RATE] != DP_LINK_BW_8_1 &&
+	    dp->dpcd[DP_MAX_LINK_RATE] != DP_LINK_BW_5_4 &&
+	    dp->dpcd[DP_MAX_LINK_RATE] != DP_LINK_BW_2_7 &&
+	    dp->dpcd[DP_MAX_LINK_RATE] != DP_LINK_BW_1_62) {
+		dp->dpcd[DP_MAX_LINK_RATE] = DP_LINK_BW_8_1;
+	}
 
 		if (dp->dpcd[DP_TRAINING_AUX_RD_INTERVAL] &
 		    DP_EXTENDED_RECEIVER_CAP_FIELD_PRESENT) {
@@ -2026,6 +2057,26 @@ xlnx_dp_connector_detect(struct drm_connector *connector, bool force)
 
 			if (max_link_rate == DP_LINK_BW_8_1)
 				dp->dpcd[DP_MAX_LINK_RATE] = DP_LINK_BW_8_1;
+
+			/* compliance: UCD400 required reading these extended registers */
+			ret = drm_dp_dpcd_read(&dp->aux, DP_DP13_MAX_LINK_RATE,
+					       &ext_cap_rd, 1);
+			ret = drm_dp_dpcd_read(&dp->aux, DP_SINK_COUNT_ESI,
+					       &ext_cap_rd, 1);
+			ret = drm_dp_dpcd_read(&dp->aux,
+					       DP_DEVICE_SERVICE_IRQ_VECTOR_ESI0,
+					       &ext_cap_rd, 1);
+			ret = drm_dp_dpcd_read(&dp->aux, DP_LANE0_1_STATUS_ESI,
+					       &ext_cap_rd, 1);
+			ret = drm_dp_dpcd_read(&dp->aux, DP_LANE2_3_STATUS_ESI,
+					       &ext_cap_rd, 1);
+			ret = drm_dp_dpcd_read(&dp->aux,
+					       DP_LANE_ALIGN_STATUS_UPDATED_ESI,
+					       &ext_cap_rd, 1);
+			ret = drm_dp_dpcd_read(&dp->aux, DP_SINK_STATUS_ESI,
+					       &ext_cap_rd, 1);
+			if (ret < 0)
+				dev_dbg(dp->dev, "DPCD read fails");
 		}
 
 		link_config->max_rate = min_t(int,
@@ -2041,6 +2092,7 @@ xlnx_dp_connector_detect(struct drm_connector *connector, bool force)
 			goto disconnected;
 		}
 		dp->status = connector_status_connected;
+
 		if (data & DP_VSC_SDP_EXT_FOR_COLORIMETRY_SUPPORTED)
 			dp->colorimetry_through_vsc = true;
 		else
@@ -2075,7 +2127,6 @@ xlnx_dp_connector_detect(struct drm_connector *connector, bool force)
 		}
 
 		return connector_status_connected;
-	}
 disconnected:
 	dp->status = connector_status_disconnected;
 	if (dp->enabled)
@@ -2535,23 +2586,6 @@ static void xlnx_dp_unbind(struct device *dev,
 	drm_property_destroy(dp->drm, dp->sync_prop);
 	xlnx_dp_connector_destroy(&dp->connector);
 	drm_encoder_cleanup(&dp->encoder);
-}
-
-static int xlnx_dp_txconnected(struct xlnx_dp *dp)
-{
-	u32 status;
-	u8 retries = 0;
-
-	do {
-		status = xlnx_dp_read(dp->dp_base,
-				      XDPTX_INTR_SIGSTATE_REG) & 0x1;
-		if (retries > 5)
-			return false;
-		retries++;
-		usleep_range(1000, 1100);
-	} while (status == 0);
-
-	return true;
 }
 
 static void xlnx_dp_hpd_pulse_work_func(struct work_struct *work)
