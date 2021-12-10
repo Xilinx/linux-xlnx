@@ -1978,7 +1978,23 @@ static void xlnx_dp_start(struct xlnx_dp *dp)
  */
 static void xlnx_dp_stop(struct xlnx_dp *dp)
 {
+	struct phy_configure_opts_dp *phy_cfg = &dp->phy_opts.dp;
+
 	xlnx_dp_write(dp->dp_base, XDPTX_MAINSTRM_ENABLE_REG, 0);
+
+	/* Disabling the audio in dp core */
+	xlnx_dp_clr(dp->dp_base, XDPTX_AUDIO_CTRL_REG, 0);
+
+	/* set Vs and Pe to 0, 0 on cable disconnect */
+	phy_cfg->pre[0] = 0;
+	phy_cfg->voltage[0] = 0;
+	phy_cfg->set_voltages = 1;
+
+	if (!dp->config.versal_gt_present)
+		phy_configure(dp->phy[0], &dp->phy_opts);
+	else
+		xlnx_dp_tx_pe_vs_adjust_handler(dp, &dp->phy_opts.dp);
+
 	/* Disable VTC */
 	xlnx_dp_clr(dp->dp_base, XDPTX_VTC_BASE + XDPTX_VTC_CTL,
 		    XDPTX_VTC_CTL_GE);
@@ -2009,7 +2025,6 @@ xlnx_dp_connector_detect(struct drm_connector *connector, bool force)
 {
 	struct xlnx_dp *dp = connector_to_dp(connector);
 	struct xlnx_dp_link_config *link_config = &dp->link_config;
-	struct phy_configure_opts_dp *phy_cfg = &dp->phy_opts.dp;
 	int ret;
 	u8 dpcd_ext[DP_RECEIVER_CAP_SIZE];
 	u8 max_link_rate, ext_cap_rd = 0, data;
@@ -2097,29 +2112,6 @@ xlnx_dp_connector_detect(struct drm_connector *connector, bool force)
 			dp->colorimetry_through_vsc = true;
 		else
 			dp->colorimetry_through_vsc = false;
-
-		switch (dp->dpcd[1]) {
-		case DP_LINK_BW_1_62:
-			phy_cfg->link_rate = 1620;
-			break;
-		case DP_LINK_BW_2_7:
-			phy_cfg->link_rate = 2700;
-			break;
-		case DP_LINK_BW_5_4:
-			phy_cfg->link_rate = 5400;
-			break;
-		case DP_LINK_BW_8_1:
-			phy_cfg->link_rate = 8100;
-			break;
-		default:
-			dev_err(dp->dev, "invalid link rate\n");
-			break;
-		}
-
-		phy_cfg->set_rate = 1;
-		phy_cfg->lanes = link_config->max_lanes;
-		if (!dp->config.versal_gt_present)
-			phy_configure(dp->phy[0], &dp->phy_opts);
 
 		if (dp->enabled) {
 			xlnx_dp_stop(dp);
