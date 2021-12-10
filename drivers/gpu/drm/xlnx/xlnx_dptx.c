@@ -106,6 +106,7 @@
 #define XDPTX_INTR_CHBUFUNDFW_MASK		GENMASK(21, 16)
 #define XDPTX_INTR_CHBUFOVFW_MASK		GENMASK(27, 22)
 #define XDPTX_INTR_VBLANK_MASK			BIT(10)
+#define XDPTX_INTR_EXTPKT_TXD_MASK		BIT(5)
 #define XDPTX_HPD_DURATION_REG			0x150
 
 /* Main stream attribute registers */
@@ -122,7 +123,9 @@
 #define XDPTX_MAINSTRM_VSTART_REG		0x1a0
 #define XDPTX_MAINSTRM_MISC0_REG		0x1a4
 #define XDPTX_MAINSTRM_MISC0_MASK		BIT(0)
+#define XDPTX_MAINSTRM_MISC0_EXT_VSYNC_MASK	BIT(12)
 #define XDPTX_MAINSTRM_MISC1_REG		0x1a8
+#define XDPTX_MAINSTRM_MISC1_TIMING_IGNORED_MASK BIT(6)
 
 #define XDPTX_M_VID_REG				0x1ac
 #define XDPTX_TRANSFER_UNITSIZE_REG		0x1b0
@@ -274,6 +277,13 @@
 
 #define DP_INFOFRAME_SIZE(type)	\
 	(DP_INFOFRAME_HEADER_SIZE + DP_ ## type ## _INFOFRAME_SIZE)
+#define XDPTX_AUDIO_EXT_DATA(NUM)	(0x330 + 4 * ((NUM) - 1))
+#define XDPTX_AUDIO_EXT_DATA_2ND_TO_9TH_WORD		8
+#define XDPTX_VSC_SDP_PIXELENC_HEADER_MASK		0x13050700
+#define XDPTX_VSC_SDP_DYNAMIC_RANGE_SHIFT		15
+#define XDPTX_VSC_SDP_BPC_SHIFT				8
+#define XDPTX_VSC_SDP_BPC_MASK				GENMASK(2, 0)
+#define XDPTX_VSC_SDP_FMT_SHIFT				4
 
 /* Gt Quad Base Registers */
 #define GT_QUAD_BASE_CTL				0x0c
@@ -290,6 +300,24 @@
  */
 struct xlnx_dptx_audio_data {
 	u32 buffer[DP_INFOFRAME_FIFO_SIZE_WORDS];
+};
+
+/**
+ * struct xlnx_dp_vscpkt: VSC extended packet structure
+ * @payload: VSC packet payload bytes from DB0 to DB28
+ * @header: VSC packet header
+ * @bpc: Number of bits per color component
+ * @fmt: The color format currenctly in use by the video stream
+ * @dynamic_range: The dynamic range colorimetry currenctly in use by te video stream
+ * @ycbcr_colorimetry: The ycbcr colorimetry currently in use by te video stream
+ */
+struct xlnx_dp_vscpkt {
+	u32 payload[8];
+	u32 header;
+	u32 bpc;
+	u8 fmt;
+	u8 dynamic_range;
+	u8 ycbcr_colorimetry;
 };
 
 /*
@@ -371,6 +399,7 @@ struct xlnx_dp_config {
  * @hpd_work: hot plug detection worker
  * @hpd_pulse_work: hot plug pulse detection worker
  * @tx_audio_data: audio data
+ * @vscpkt: VSC extended packet data
  * @audio_pdev: audio platform device
  * @phy_opts: Opaque generic phy configuration
  * @status: connection status
@@ -383,6 +412,7 @@ struct xlnx_dp_config {
  * @enabled: flag to indicate if the device is enabled
  * @audio_init: flag to indicate audio is initialized
  * @have_edid: flag to indicate if edid is available
+ * @colorimetry_through_vsc: colorimetry information through vsc packets
  *
  */
 struct xlnx_dp {
@@ -404,6 +434,7 @@ struct xlnx_dp {
 	struct delayed_work hpd_work;
 	struct delayed_work hpd_pulse_work;
 	struct xlnx_dptx_audio_data *tx_audio_data;
+	struct xlnx_dp_vscpkt vscpkt;
 	struct platform_device *audio_pdev;
 	union phy_configure_opts phy_opts;
 	enum drm_connector_status status;
@@ -416,6 +447,7 @@ struct xlnx_dp {
 	unsigned int enabled : 1;
 	bool audio_init;
 	bool have_edid;
+	unsigned int colorimetry_through_vsc : 1;
 };
 
 static void xlnx_dp_hpd_pulse_work_func(struct work_struct *work);
@@ -1620,8 +1652,14 @@ static void xlnx_dp_update_misc(struct xlnx_dp *dp)
 {
 	struct xlnx_dp_config *config = &dp->config;
 
-	xlnx_dp_write(dp->dp_base, XDPTX_MAINSTRM_MISC0_REG, config->misc0);
-	xlnx_dp_write(dp->dp_base, XDPTX_MAINSTRM_MISC1_REG, 0x0);
+	if (!dp->colorimetry_through_vsc) {
+		xlnx_dp_write(dp->dp_base, XDPTX_MAINSTRM_MISC0_REG,
+			      config->misc0);
+		xlnx_dp_write(dp->dp_base, XDPTX_MAINSTRM_MISC1_REG, 0x0);
+	} else {
+		xlnx_dp_set(dp->dp_base, XDPTX_MAINSTRM_MISC1_REG,
+			    XDPTX_MAINSTRM_MISC1_TIMING_IGNORED_MASK);
+	}
 }
 
 /**
@@ -1640,6 +1678,70 @@ static void xlnx_dp_set_sync_mode(struct xlnx_dp *dp, bool mode)
 		config->misc0 |= XDPTX_MAINSTRM_MISC0_MASK;
 	else
 		config->misc0 &= ~XDPTX_MAINSTRM_MISC0_MASK;
+}
+
+static void xlnx_dp_vsc_pkt_handler(struct xlnx_dp *dp)
+{
+	struct xlnx_dp_vscpkt *vscpkt = &dp->vscpkt;
+	int i;
+
+	if (dp->colorimetry_through_vsc) {
+		xlnx_dp_write(dp->dp_base, XDPTX_AUDIO_EXT_DATA(1),
+			      vscpkt->header);
+		for (i = 0; i < XDPTX_AUDIO_EXT_DATA_2ND_TO_9TH_WORD; i++) {
+			xlnx_dp_write(dp->dp_base, XDPTX_AUDIO_EXT_DATA(i + 2),
+				      vscpkt->payload[i]);
+		}
+	}
+}
+
+static void xlnx_dp_prepare_vsc(struct xlnx_dp *dp)
+{
+	struct xlnx_dp_config *config = &dp->config;
+	struct xlnx_dp_vscpkt *vscpkt = &dp->vscpkt;
+	int i;
+	u32 payload_data = 0, bpc;
+
+	vscpkt->header = XDPTX_VSC_SDP_PIXELENC_HEADER_MASK;
+	payload_data |= config->fmt << XDPTX_VSC_SDP_FMT_SHIFT;
+
+	switch (config->bpc) {
+	case 6:
+		bpc = 0x0;
+		break;
+	case 8:
+		bpc = 0x1;
+		break;
+	case 10:
+		bpc = 0x2;
+		break;
+	case 12:
+		bpc = 0x3;
+		break;
+	case 16:
+		bpc = 0x4;
+		break;
+	default:
+		dev_err(dp->dev, "Not supported bpc (%u). fall back to 8bpc\n",
+			config->bpc);
+		bpc = 0x0;
+	}
+
+	bpc &= XDPTX_VSC_SDP_BPC_MASK;
+	payload_data |= (bpc << XDPTX_VSC_SDP_BPC_SHIFT);
+	/* TODO: it has to be dynamic */
+	payload_data |= (0x1 << XDPTX_VSC_SDP_DYNAMIC_RANGE_SHIFT);
+
+	dev_dbg(dp->dev, "payload_data 0x%x", payload_data);
+
+	/* population vsc payload */
+	for (i = 0; i < 8; i++) {
+		if (i == 4) {
+			vscpkt->payload[i] = payload_data;
+			continue;
+		}
+		vscpkt->payload[i] = 0x0;
+	}
 }
 
 /**
@@ -1855,6 +1957,13 @@ static void xlnx_dp_start(struct xlnx_dp *dp)
 		return;
 	}
 
+	if (dp->colorimetry_through_vsc) {
+		/* program the VSC extended packet */
+		xlnx_dp_vsc_pkt_handler(dp);
+		/* This ensures that VSC pkt is sent every frame */
+		xlnx_dp_set(dp->dp_base, XDPTX_MAINSTRM_MISC0_REG,
+			    XDPTX_MAINSTRM_MISC0_EXT_VSYNC_MASK);
+	}
 	/* Enable VTC and MainStream */
 	xlnx_dp_set(dp->dp_base, XDPTX_VTC_BASE + XDPTX_VTC_CTL,
 		    XDPTX_VTC_CTL_GE);
@@ -1886,7 +1995,7 @@ xlnx_dp_connector_detect(struct drm_connector *connector, bool force)
 	struct phy_configure_opts_dp *phy_cfg = &dp->phy_opts.dp;
 	u32 state, i;
 	int ret;
-	u8 max_link_rate;
+	u8 max_link_rate, data;
 
 	/*
 	 * This is from heuristic. It takes some delay (ex, 100 ~ 500 msec) to
@@ -1925,7 +2034,17 @@ xlnx_dp_connector_detect(struct drm_connector *connector, bool force)
 		link_config->max_lanes = min_t(u8,
 					       drm_dp_max_lane_count(dp->dpcd),
 					       dp->config.max_lanes);
+		ret = drm_dp_dpcd_readb(&dp->aux, DP_DPRX_FEATURE_ENUMERATION_LIST,
+					&data);
+		if (ret < 0) {
+			dev_dbg(dp->dev, "DPCD read failed");
+			goto disconnected;
+		}
 		dp->status = connector_status_connected;
+		if (data & DP_VSC_SDP_EXT_FOR_COLORIMETRY_SUPPORTED)
+			dp->colorimetry_through_vsc = true;
+		else
+			dp->colorimetry_through_vsc = false;
 
 		switch (dp->dpcd[1]) {
 		case DP_LINK_BW_1_62:
@@ -2313,6 +2432,8 @@ xlnx_dp_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	clk_set_rate(dp->tx_vid_clk, clock / dp->config.ppc);
 
 	xlnx_dp_vtc_set_timing(dp, adjusted_mode);
+	/* prepare a vsc packet */
+	xlnx_dp_prepare_vsc(dp);
 }
 
 static const struct drm_encoder_funcs xlnx_dp_encoder_funcs = {
@@ -2533,7 +2654,8 @@ static irqreturn_t xlnx_dp_irq_handler(int irq, void *data)
 		schedule_delayed_work(&dp->hpd_work, 0);
 	if (intrstatus & XDPTX_INTR_HPDPULSE_MASK)
 		schedule_delayed_work(&dp->hpd_pulse_work, 0);
-
+	if (intrstatus & XDPTX_INTR_EXTPKT_TXD_MASK)
+		xlnx_dp_vsc_pkt_handler(dp);
 	if (intrstatus & XDPTX_INTR_VBLANK_MASK)
 		xlnx_dp_vsync_handler(dp);
 
