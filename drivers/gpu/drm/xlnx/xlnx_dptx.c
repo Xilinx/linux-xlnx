@@ -1804,8 +1804,9 @@ static void
 xlnx_dp_encoder_mode_set_transfer_unit(struct xlnx_dp *dp,
 				       struct drm_display_mode *mode)
 {
+	struct xlnx_dp_config *config = &dp->config;
 	u32 tu = XDPTX_DEF_TRANSFER_UNITSIZE, temp;
-	u32 bw, vid_kbytes, avg_bytes_per_tu, init_wait;
+	u32 bw, vid_kbytes, avg_bytes_per_tu, init_wait, min_bytes_per_tu;
 
 	/* Use the max transfer unit size (default) */
 	xlnx_dp_write(dp->dp_base, XDPTX_TRANSFER_UNITSIZE_REG, tu);
@@ -1813,20 +1814,21 @@ xlnx_dp_encoder_mode_set_transfer_unit(struct xlnx_dp *dp,
 	vid_kbytes = (mode->clock / 1000) * (dp->config.bpp / 8);
 	bw = drm_dp_bw_code_to_link_rate(dp->mode.bw_code);
 	avg_bytes_per_tu = vid_kbytes * tu / (dp->mode.lane_cnt * bw);
-
+	min_bytes_per_tu = avg_bytes_per_tu / 1000;
 	xlnx_dp_write(dp->dp_base, XDPTX_MINBYTES_PERTU_REG,
-		      avg_bytes_per_tu / 1000);
+		      min_bytes_per_tu);
 
 	temp = (avg_bytes_per_tu % 1000) * 1024 / 1000;
 	xlnx_dp_write(dp->dp_base, XDPTX_FRACBYTES_PERTU_REG, temp);
 
+	init_wait = tu - min_bytes_per_tu;
+
 	/* Configure the initial wait cycle based on transfer unit size */
-	if (tu < (avg_bytes_per_tu / 1000))
-		init_wait = 0;
-	else if ((avg_bytes_per_tu / 1000) <= 4)
+	if (min_bytes_per_tu <= 4)
 		init_wait = tu;
-	else
-		init_wait = tu - avg_bytes_per_tu / 1000;
+	else if ((config->misc0 & XDPTX_MISC0_YCRCB422_MASK) ==
+		XDPTX_MISC0_YCRCB422_MASK)
+		init_wait = init_wait / 2;
 
 	xlnx_dp_write(dp->dp_base, XDPTX_INIT_WAIT_REG, init_wait);
 }
@@ -1843,9 +1845,8 @@ static void xlnx_dp_encoder_mode_set_stream(struct xlnx_dp *dp,
 					    struct drm_display_mode *mode)
 {
 	void __iomem *dp_base = dp->dp_base;
+	u32 reg, wpl, ppc;
 	u8 lane_cnt = dp->mode.lane_cnt;
-	u32 reg, wpl;
-	unsigned int ppc;
 
 	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_HTOTAL_REG, mode->htotal);
 	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_VTOTAL_REG, mode->vtotal);
@@ -1869,17 +1870,6 @@ static void xlnx_dp_encoder_mode_set_stream(struct xlnx_dp *dp,
 		      mode->vtotal - mode->vsync_start);
 	xlnx_dp_update_misc(dp);
 
-	reg = drm_dp_bw_code_to_link_rate(dp->mode.bw_code);
-	xlnx_dp_write(dp_base, XDPTX_N_VID_REG, reg);
-	xlnx_dp_write(dp_base, XDPTX_M_VID_REG, mode->clock);
-
-	/* In synchronous mode, set the dividers */
-	if (dp->config.misc0 & XDPTX_MAINSTRM_MISC0_MASK) {
-		reg = drm_dp_bw_code_to_link_rate(dp->mode.bw_code);
-		xlnx_dp_write(dp_base, XDPTX_N_VID_REG, reg);
-		xlnx_dp_write(dp_base, XDPTX_M_VID_REG, mode->clock);
-	}
-
 	if (mode->clock > 530000)
 		ppc = 4;
 	else if (mode->clock > 270000)
@@ -1890,10 +1880,20 @@ static void xlnx_dp_encoder_mode_set_stream(struct xlnx_dp *dp,
 	xlnx_dp_write(dp_base, XDPTX_USER_PIXELWIDTH_REG, ppc);
 	dp->config.ppc = ppc;
 
+	xlnx_dp_write(dp_base, XDPTX_M_VID_REG, mode->clock);
+	reg = drm_dp_bw_code_to_link_rate(dp->mode.bw_code);
+	xlnx_dp_write(dp_base, XDPTX_N_VID_REG, reg);
+
+	/* In synchronous mode, set the dividers */
+	if (dp->config.misc0 & XDPTX_MAINSTRM_MISC0_MASK) {
+		reg = drm_dp_bw_code_to_link_rate(dp->mode.bw_code);
+		xlnx_dp_write(dp_base, XDPTX_N_VID_REG, reg);
+		xlnx_dp_write(dp_base, XDPTX_M_VID_REG, mode->clock);
+	}
+
 	wpl = (mode->hdisplay * dp->config.bpp + 15) / 16;
 	reg = wpl + wpl % lane_cnt - lane_cnt;
 	xlnx_dp_write(dp_base, XDPTX_USER_DATACNTPERLANE_REG, reg);
-	xlnx_dp_write(dp_base, XDPTX_TRANSFER_UNITSIZE_REG, 0x40);
 }
 
 /**
