@@ -172,11 +172,23 @@ aie_aperture_request_part_from_id(struct aie_aperture *aperture,
 				  u32 partition_id)
 {
 	struct aie_partition *apart = NULL;
+	u32 in_partition_id = partition_id;
 	u8 start_col, num_cols;
 	int ret;
 
 	start_col = aie_part_id_get_start_col(partition_id);
 	num_cols = aie_part_id_get_num_cols(partition_id);
+	/*
+	 * TODO: this is for backward compatibility, once zocl update
+	 * to pass the expected partition id format, can remove the
+	 * num_cols.
+	 */
+	if (num_cols == 0) {
+		start_col = aperture->range.start.col;
+		num_cols = aperture->range.size.col;
+		partition_id = ((u32)start_col << AIE_PART_ID_START_COL_SHIFT) |
+			       ((u32)num_cols << AIE_PART_ID_NUM_COLS_SHIFT);
+	}
 
 	if (start_col < aperture->range.start.col ||
 	    num_cols > aperture->range.size.col ||
@@ -194,7 +206,7 @@ aie_aperture_request_part_from_id(struct aie_aperture *aperture,
 	ret = aie_resource_get_region(&aperture->cols_res, start_col, num_cols);
 	if (ret != (u32)start_col) {
 		dev_err(&aperture->dev, "partition %u already requested.\n",
-			partition_id);
+			in_partition_id);
 		mutex_unlock(&aperture->mlock);
 		return ERR_PTR(-EINVAL);
 	}
@@ -231,6 +243,16 @@ int aie_aperture_check_part_avail(struct aie_aperture *aperture,
 
 	start_col = aie_part_id_get_start_col(req->partition_id);
 	num_cols = aie_part_id_get_num_cols(req->partition_id);
+	/*
+	 * TODO: this is for backward compatibility, once zocl update
+	 * to pass the expected partition id format, can remove the
+	 * num_cols.
+	 */
+	if (num_cols == 0) {
+		start_col = aperture->range.start.col;
+		num_cols = aperture->range.size.col;
+	}
+
 	end_col = start_col + num_cols - 1;
 
 	if (start_col < aperture->range.start.col ||
