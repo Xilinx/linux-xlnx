@@ -284,6 +284,9 @@ ssize_t aie_sysfs_get_errors(struct aie_partition *apart,
 	if (!(core_count || mem_count || pl_count))
 		return len;
 
+	len += scnprintf(&buffer[len], max(0L, size - len), "%d_%d: ", loc->col,
+			 loc->row);
+
 	if (core_count) {
 		len += scnprintf(&buffer[len], max(0L, size - len), "core: ");
 		len += aie_get_error_category_str(apart, *loc, AIE_CORE_MOD,
@@ -305,6 +308,8 @@ ssize_t aie_sysfs_get_errors(struct aie_partition *apart,
 						  pl_attr, &buffer[len],
 						  size - len);
 	}
+
+	len += scnprintf(&buffer[len], max(0L, size - len), "\n");
 	return len;
 }
 
@@ -337,11 +342,8 @@ ssize_t aie_part_read_cb_error(struct kobject *kobj, char *buffer, ssize_t size)
 
 	for (index = 0; index < apart->range.size.col * apart->range.size.row;
 	     index++, atile++) {
-		len += scnprintf(&buffer[len], max(0L, size - len), "%d_%d: ",
-				 atile->loc.col, atile->loc.row);
 		len += aie_sysfs_get_errors(apart, &atile->loc, &buffer[len],
 					    size - len);
-		len += scnprintf(&buffer[len], max(0L, size - len), "\n");
 	}
 
 	mutex_unlock(&apart->mlock);
