@@ -30,6 +30,7 @@
 #include <linux/spi/spi.h>
 #include <linux/spi/spi-mem.h>
 #include <linux/timer.h>
+#include <linux/workqueue.h>
 
 #define CQSPI_NAME			"cadence-qspi"
 #define CQSPI_MAX_CHIPSELECT		16
@@ -90,6 +91,8 @@ struct cqspi_st {
 	bool			extra_dummy;
 	bool			clk_tuned;
 	u8			dll_mode;
+	struct completion	tuning_complete;
+	struct spi_mem_op	tuning_op;
 };
 
 struct cqspi_driver_platdata {
@@ -104,6 +107,8 @@ struct cqspi_driver_platdata {
 /* Operation timeout value */
 #define CQSPI_TIMEOUT_MS			500
 #define CQSPI_READ_TIMEOUT_MS			10
+#define CQSPI_TUNING_TIMEOUT_MS			5000
+#define CQSPI_TUNING_PERIODICITY_MS		300000
 
 /* Instruction type */
 #define CQSPI_INST_TYPE_SINGLE			0
@@ -699,6 +704,12 @@ static int cqspi_setdlldelay(struct spi_mem *mem, const struct spi_mem_op *op)
 	u8 count;
 	u64 tera_macro = TERA_MACRO;
 	u8 max_index = 0, min_index = 0;
+	unsigned int reg;
+
+	reg = readl(cqspi->iobase + CQSPI_REG_CONFIG);
+	reg &= CQSPI_REG_CONFIG_ENABLE_MASK;
+	if (!reg)
+		return 0;
 
 	f_pdata = &cqspi->f_pdata[mem->spi->chip_select];
 	max_tap = (do_div(tera_macro, cqspi->master_ref_clk_hz) / 160);
@@ -875,17 +886,54 @@ static void cqspi_setup_ddrmode(struct cqspi_st *cqspi)
 	writel(reg, cqspi->iobase + CQSPI_REG_CONFIG);
 }
 
+static void cqspi_periodictuning(struct work_struct *work)
+{
+	struct delayed_work *d = to_delayed_work(work);
+	struct spi_mem *mem = container_of(d, struct spi_mem, complete_work);
+	struct cqspi_st *cqspi = spi_master_get_devdata(mem->spi->master);
+	int ret;
+	u8 buf[CQSPI_READ_ID_LEN];
+
+	if (!mem->request_completion.done)
+		wait_for_completion(&mem->request_completion);
+
+	reinit_completion(&cqspi->tuning_complete);
+	cqspi->tuning_op.data.buf.in = buf;
+	cqspi->tuning_op.data.nbytes = CQSPI_READ_ID_LEN;
+	ret = cqspi_setdlldelay(mem, &cqspi->tuning_op);
+	complete_all(&cqspi->tuning_complete);
+	if (ret) {
+		dev_err(&cqspi->pdev->dev,
+			"Setting dll delay error (%i)\n", ret);
+	} else {
+		schedule_delayed_work(&mem->complete_work,
+				      msecs_to_jiffies(CQSPI_TUNING_PERIODICITY_MS));
+	}
+}
+
 static int cqspi_setup_edgemode(struct spi_mem *mem,
 				const struct spi_mem_op *op)
 {
 	struct cqspi_st *cqspi = spi_master_get_devdata(mem->spi->master);
+	int ret;
 
 	if (cqspi->clk_tuned)
 		return 0;
 
+	memcpy(&cqspi->tuning_op, op, sizeof(struct spi_mem_op));
+
 	cqspi_setup_ddrmode(cqspi);
 
-	return cqspi_setdlldelay(mem, op);
+	ret = cqspi_setdlldelay(mem, op);
+	if (ret)
+		return ret;
+
+	complete_all(&cqspi->tuning_complete);
+	INIT_DELAYED_WORK(&mem->complete_work, cqspi_periodictuning);
+	schedule_delayed_work(&mem->complete_work,
+			      msecs_to_jiffies(CQSPI_TUNING_PERIODICITY_MS));
+
+	return 0;
 }
 
 static int cqspi_command_write(struct cqspi_flash_pdata *f_pdata,
@@ -1820,7 +1868,11 @@ static int cqspi_mem_process(struct spi_mem *mem, const struct spi_mem_op *op)
 
 static int cqspi_exec_mem_op(struct spi_mem *mem, const struct spi_mem_op *op)
 {
+	struct cqspi_st *cqspi = spi_master_get_devdata(mem->spi->master);
+	struct cqspi_flash_pdata *f_pdata;
 	int ret;
+
+	f_pdata = &cqspi->f_pdata[mem->spi->chip_select];
 
 	if (op->cmd.dtr &&
 	    (!op->addr.nbytes || op->addr.dtr) &&
@@ -1828,6 +1880,12 @@ static int cqspi_exec_mem_op(struct spi_mem *mem, const struct spi_mem_op *op)
 		ret = cqspi_setup_edgemode(mem, op);
 		if (ret)
 			return ret;
+	}
+
+	if (f_pdata->dtr && !cqspi->tuning_complete.done &&
+	    !wait_for_completion_timeout(&cqspi->tuning_complete,
+		msecs_to_jiffies(CQSPI_TUNING_TIMEOUT_MS))) {
+		return -ETIMEDOUT;
 	}
 
 	ret = cqspi_mem_process(mem, op);
@@ -2121,6 +2179,7 @@ static int cqspi_probe(struct platform_device *pdev)
 	cqspi->ahb_size = resource_size(res_ahb);
 
 	init_completion(&cqspi->transfer_complete);
+	init_completion(&cqspi->tuning_complete);
 
 	/* Obtain IRQ line. */
 	irq = platform_get_irq(pdev, 0);
@@ -2268,6 +2327,12 @@ static int cqspi_remove(struct platform_device *pdev)
 static int cqspi_suspend(struct device *dev)
 {
 	struct cqspi_st *cqspi = dev_get_drvdata(dev);
+
+	if (!cqspi->tuning_complete.done &&
+	    !wait_for_completion_timeout(&cqspi->tuning_complete,
+		msecs_to_jiffies(CQSPI_TUNING_TIMEOUT_MS))) {
+		return -ETIMEDOUT;
+	}
 
 	cqspi_controller_enable(cqspi, 0);
 	return 0;

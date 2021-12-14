@@ -1664,6 +1664,8 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
 	if (ret)
 		return ret;
 
+	reinit_completion(&nor->spimem->request_completion);
+
 	/* whole-chip erase? */
 	if (len == mtd->size && !(nor->flags & SNOR_F_NO_OP_CHIP_ERASE)) {
 		unsigned long timeout;
@@ -1723,6 +1725,8 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
 	ret = spi_nor_write_disable(nor);
 
 erase_err:
+	complete(&nor->spimem->request_completion);
+
 	spi_nor_unlock_and_unprep(nor);
 
 	return ret;
@@ -1917,6 +1921,8 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 	if (ret)
 		return ret;
 
+	reinit_completion(&nor->spimem->request_completion);
+
 	while (len) {
 		loff_t addr = from;
 
@@ -1940,6 +1946,7 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 	ret = 0;
 
 read_err:
+	complete(&nor->spimem->request_completion);
 	spi_nor_unlock_and_unprep(nor);
 	return ret;
 }
@@ -1961,6 +1968,8 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 	ret = spi_nor_lock_and_prep(nor);
 	if (ret)
 		return ret;
+
+	reinit_completion(&nor->spimem->request_completion);
 
 	for (i = 0; i < len; ) {
 		ssize_t written;
@@ -2001,6 +2010,7 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 	}
 
 write_err:
+	complete(&nor->spimem->request_completion);
 	spi_nor_unlock_and_unprep(nor);
 	return ret;
 }
@@ -3313,6 +3323,9 @@ static int spi_nor_probe(struct spi_mem *spimem)
 	nor->spimem = spimem;
 	nor->dev = &spi->dev;
 	spi_nor_set_flash_node(nor, spi->dev.of_node);
+
+	if (nor->spimem)
+		init_completion(&nor->spimem->request_completion);
 
 	spi_mem_set_drvdata(spimem, nor);
 

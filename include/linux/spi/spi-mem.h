@@ -198,6 +198,8 @@ struct spi_mem {
 	void *drvpriv;
 	const char *name;
 	u8 device_id[SPI_MEM_DEV_MAX_ID_LEN];
+	struct delayed_work	complete_work;
+	struct completion	request_completion;
 };
 
 /**
