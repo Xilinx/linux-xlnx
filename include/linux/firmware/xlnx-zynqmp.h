@@ -12,6 +12,8 @@
 
 #ifndef __FIRMWARE_ZYNQMP_H__
 #define __FIRMWARE_ZYNQMP_H__
+
+#include <linux/bits.h>
 #include <linux/types.h>
 
 #include <linux/err.h>
@@ -21,6 +23,7 @@
 
 #define ZYNQMP_PM_VERSION	((ZYNQMP_PM_VERSION_MAJOR << 16) | \
 					ZYNQMP_PM_VERSION_MINOR)
+#define ZYNQMP_PM_FEATURE_VERSION_MASK	GENMASK(15, 0)
 
 #define ZYNQMP_TZ_VERSION_MAJOR	1
 #define ZYNQMP_TZ_VERSION_MINOR	0

@@ -382,10 +382,24 @@ static int get_set_conduit_method(struct device_node *np)
  */
 int zynqmp_pm_query_data(struct zynqmp_pm_query_data qdata, u32 *out)
 {
-	int ret;
+	int ret, i, version;
 
 	ret = zynqmp_pm_invoke_fn(PM_QUERY_DATA, qdata.qid, qdata.arg1,
 				  qdata.arg2, qdata.arg3, 0, out);
+
+	version = zynqmp_pm_feature(PM_QUERY_DATA);
+	if ((version & ZYNQMP_PM_FEATURE_VERSION_MASK) == 3) {
+		if (qdata.qid == PM_QID_CLOCK_GET_NAME ||
+		    qdata.qid == PM_QID_PINCTRL_GET_FUNCTION_NAME) {
+			/* first byte is clk/pinctrl get name command status */
+			if (out[0] != 0)
+				return (int)out[0];
+
+			/* discard first byte as it is command status */
+			for (i = 1; i < PAYLOAD_ARG_CNT; i++)
+				out[i - 1] = out[i];
+		}
+	}
 
 	/*
 	 * For clock name query, all bytes in SMC response are clock name
