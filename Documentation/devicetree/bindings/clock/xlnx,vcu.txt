@@ -16,11 +16,18 @@ Required properties:
 - clocks: phandle for aclk and pll_ref clocksource
 - clock-names: The identification string, "aclk", is always required for
    the axi clock. "pll_ref" is required for pll.
+
+Optional properties:
+- reset-gpios : The GPIO used to reset the VCU, if available. Need use this
+		reset gpio when in design 'vcu_resetn' is driven by gpio. See
+		Documentation/devicetree/bindings/gpio/gpio.txt for details.
+
 Example:
 
 	xlnx_vcu: vcu@a0040000 {
 		compatible = "xlnx,vcu-logicoreip-1.0";
 		reg = <0x0 0xa0040000 0x0 0x1000>;
+		reset-gpios = <&gpio 0x4e GPIO_ACTIVE_HIGH>;t
 		clocks = <&si570_1>, <&clkc 71>;
 		clock-names = "pll_ref", "aclk";
 	};
