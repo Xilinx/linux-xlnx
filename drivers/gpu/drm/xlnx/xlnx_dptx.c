@@ -36,10 +36,15 @@
 /* Link configuration registers */
 #define XDPTX_LINKBW_SET_REG			0x0
 #define XDPTX_LANECNT_SET_REG			0x4
+#define XDPTX_DPCD_LANECNT_SET_MASK		GENMASK(4, 0)
 #define XDPTX_EFRAME_EN_REG			0x8
 #define XDPTX_TRNGPAT_SET_REG			0xc
 #define XDPTX_SCRAMBLING_DIS_REG		0x14
 #define XDPTX_DOWNSPREAD_CTL_REG		0x18
+#define XDPTX_DPCD_SPREAD_AMP_MASK		BIT(4)
+#define XDPTX_SOFT_RST				0x1c
+#define XDPTX_SOFT_RST_VIDEO_STREAM_ALL_MASK	GENMASK(3, 0)
+#define XDPTX_SOFT_RST_HDCP_MASK		BIT(8)
 
 /* GtCtrl Registers */
 #define XDPTX_GTCTL_REG				0x4c
@@ -72,6 +77,7 @@
 #define XDPTX_MAINSTRM_ENABLE_REG		0x84
 #define XDPTX_SCRAMBLER_RESET			0xc0
 #define XDPTX_SCRAMBLER_RESET_MASK		BIT(0)
+#define XDPTX_MST_CONFIG			0xd0
 
 /* AUX channel interface registers */
 #define XDPTX_AUXCMD_REG			0x100
@@ -153,7 +159,7 @@
 #define XDPTX_PHYCLOCK_FBSETTING270_MASK	0x3
 #define XDPTX_PHYCLOCK_FBSETTING810_MASK	0x5
 
-#define XDPTX_VS_PE_LEVEL_MAXCOUNT		0x3
+#define XDPTX_VS_PE_LEVEL_MAXCOUNT		3
 #define XDPTX_VS_LEVEL_MAXCOUNT			0x5
 
 #define XDPTX_PHYSTATUS_REG			0x280
@@ -328,6 +334,8 @@ struct xlnx_dp_vscpkt {
 struct xlnx_dp_link_config {
 	int max_rate;
 	u8 max_lanes;
+	int link_rate;
+	u8 lane_count;
 };
 
 /**
@@ -451,6 +459,7 @@ struct xlnx_dp {
 };
 
 static void xlnx_dp_hpd_pulse_work_func(struct work_struct *work);
+static int xlnx_dp_txconnected(struct xlnx_dp *dp);
 
 static inline struct xlnx_dp *encoder_to_dp(struct drm_encoder *encoder)
 {
@@ -905,6 +914,59 @@ static void config_gt_quad_base(struct xlnx_dp *dp)
 }
 
 /**
+ * xlnx_dp_set_train_patttern - This function sets the training pattern to be
+ * used during link training for both the DisplayPort TX core and Rx core.
+ * @dp: DisplayPort IP core structure
+ * @pattern: pattern selects the pattern to be used. One of the following
+ *	- DP_TRAINING_PATTERN_DISABLE
+ *	- DP_TRAINING_PATTERN_1
+ *	- DP_TRAINING_PATTERN_2
+ *	- DP_TRAINING_PATTERN_3
+ *	- DP_TRAINING_PATTERN_4
+ *
+ * Returns:
+ *	- 0 on success or negative error code on failure
+ */
+static int xlnx_dp_set_train_patttern(struct xlnx_dp *dp, u32 pattern)
+{
+	int ret;
+	u8 aux_data[5];
+
+	xlnx_dp_write(dp->dp_base, XDPTX_TRNGPAT_SET_REG, pattern);
+	aux_data[0] = pattern;
+
+	/* write scrambler disable to DisplayPort TX core */
+	switch (pattern) {
+	case DP_TRAINING_PATTERN_DISABLE:
+		xlnx_dp_write(dp->dp_base, XDPTX_SCRAMBLING_DIS_REG, 0);
+		break;
+	case DP_TRAINING_PATTERN_1:
+	case DP_TRAINING_PATTERN_2:
+	case DP_TRAINING_PATTERN_3:
+		aux_data[0] |= DP_LINK_SCRAMBLING_DISABLE;
+		xlnx_dp_write(dp->dp_base, XDPTX_SCRAMBLING_DIS_REG, 1);
+		break;
+	case DP_TRAINING_PATTERN_4:
+		xlnx_dp_write(dp->dp_base, XDPTX_SCRAMBLING_DIS_REG, 0);
+		break;
+	default:
+		break;
+	}
+
+	/* Make the adjustment to both the DisplayPort TX core and the RX */
+	xlnx_dp_tx_set_vswing_preemp(dp, &aux_data[1]);
+
+	if (pattern == DP_TRAINING_PATTERN_DISABLE)
+		ret = drm_dp_dpcd_write(&dp->aux, DP_TRAINING_PATTERN_SET,
+					aux_data, 1);
+	else
+		ret = drm_dp_dpcd_write(&dp->aux, DP_TRAINING_PATTERN_SET,
+					aux_data, 5);
+
+	return ret;
+}
+
+/**
  * xlnx_dp_tx_pe_vs_adjust_handler - Calculate and configure pe and vs values
  * @dp: DisplayPort IP core structure
  * @dp_phy_opts: phy configuration structure
@@ -1084,6 +1146,199 @@ static int xlnx_dp_tx_adj_vswing_preemp(struct xlnx_dp *dp, u8 link_status[6])
 		phy_configure(dp->phy[0], &dp->phy_opts);
 	else
 		xlnx_dp_tx_pe_vs_adjust_handler(dp, &dp->phy_opts.dp);
+
+	return 0;
+}
+
+static int xlnx_dp_set_linkrate(struct xlnx_dp *dp, u8 bw_code)
+{
+	struct phy_configure_opts_dp *phy_cfg = &dp->phy_opts.dp;
+	int ret;
+	u32 reg, lrate_val = 0, val;
+	u8 lane_count = dp->mode.lane_cnt;
+
+	if (!xlnx_dp_txconnected(dp)) {
+		dev_dbg(dp->dev, "display is not connected");
+		return connector_status_disconnected;
+	}
+
+	dp->mode.bw_code = bw_code;
+
+	switch (bw_code) {
+	case DP_LINK_BW_1_62:
+		reg = XDPTX_PHYCLOCK_FBSETTING162_MASK;
+		phy_cfg->link_rate = XDPTX_REDUCED_BIT_RATE / 100;
+		if (dp->config.versal_gt_present)
+			lrate_val = XDPTX_GTCTL_LINE_RATE_162G;
+		break;
+	case DP_LINK_BW_2_7:
+		reg = XDPTX_PHYCLOCK_FBSETTING270_MASK;
+		phy_cfg->link_rate = XDPTX_HIGH_BIT_RATE_1 / 100;
+		if (dp->config.versal_gt_present)
+			lrate_val = XDPTX_GTCTL_LINE_RATE_270G;
+		break;
+	case DP_LINK_BW_5_4:
+		reg = XDPTX_PHYCLOCK_FBSETTING810_MASK;
+		phy_cfg->link_rate = XDPTX_HIGH_BIT_RATE_2 / 100;
+		if (dp->config.versal_gt_present)
+			lrate_val = XDPTX_GTCTL_LINE_RATE_540G;
+		break;
+	case DP_LINK_BW_8_1:
+		reg = XDPTX_PHYCLOCK_FBSETTING810_MASK;
+		phy_cfg->link_rate = XDPTX_HIGH_BIT_RATE_3 / 100;
+		if (dp->config.versal_gt_present)
+			lrate_val = XDPTX_GTCTL_LINE_RATE_810G;
+		break;
+	default:
+		reg = XDPTX_PHYCLOCK_FBSETTING810_MASK;
+		phy_cfg->link_rate = XDPTX_HIGH_BIT_RATE_3 / 100;
+		if (dp->config.versal_gt_present)
+			lrate_val = XDPTX_GTCTL_LINE_RATE_810G;
+	}
+
+	/*
+	 * set the clock frequency for the DisplayPort PHY corresponding
+	 * to a desired link rate
+	 */
+	val = xlnx_dp_read(dp->dp_base, XDPTX_ENABLE_REG);
+	xlnx_dp_write(dp->dp_base, XDPTX_ENABLE_REG, 0);
+	xlnx_dp_write(dp->dp_base, XDPTX_PHYCLOCK_FBSETTING_REG, reg);
+	if (val)
+		xlnx_dp_write(dp->dp_base, XDPTX_ENABLE_REG, 1);
+	/* Wait for PHY ready */
+	ret = xlnx_dp_phy_ready(dp);
+	if (ret < 0)
+		return ret;
+
+	/* write new link rate to the DisplayPort TX core */
+	xlnx_dp_write(dp->dp_base, XDPTX_LINKBW_SET_REG, bw_code);
+	/* write new link rate to the RX device */
+	ret = drm_dp_dpcd_writeb(&dp->aux, DP_LINK_BW_SET, bw_code);
+	if (ret < 0) {
+		dev_err(dp->dev, "failed to set DP bandwidth\n");
+		return ret;
+	}
+	/* configure video phy controller to new link rate */
+	phy_cfg->set_rate = 1;
+	phy_cfg->lanes = lane_count;
+	if (!dp->config.versal_gt_present)
+		phy_configure(dp->phy[0], &dp->phy_opts);
+
+	if (dp->config.versal_gt_present) {
+		val = xlnx_dp_read(dp->dp_base, XDPTX_GTCTL_REG);
+		val &= ~XDPTX_GTCTL_LINE_RATE_MASK;
+		val |= FIELD_PREP(XDPTX_GTCTL_LINE_RATE_MASK, lrate_val);
+		xlnx_dp_write(dp->dp_base, XDPTX_GTCTL_REG, val);
+	}
+
+	return 0;
+}
+
+static int xlnx_dp_set_lanecount(struct xlnx_dp *dp, u8 lane_cnt)
+{
+	int ret;
+	u8 data;
+
+	dp->mode.lane_cnt = lane_cnt;
+	xlnx_dp_write(dp->dp_base, XDPTX_LANECNT_SET_REG, lane_cnt);
+
+	ret = drm_dp_dpcd_readb(&dp->aux, DP_LANE_COUNT_SET, &data);
+	if (ret < 0) {
+		dev_err(dp->dev, "DPCD read retry fails");
+		return ret;
+	}
+
+	data &= ~XDPTX_DPCD_LANECNT_SET_MASK;
+	data |= dp->mode.lane_cnt;
+	ret = drm_dp_dpcd_writeb(&dp->aux, DP_LANE_COUNT_SET, data);
+	if (ret < 0) {
+		dev_err(dp->dev, "failed to set lane count\n");
+		return ret;
+	}
+
+	return 0;
+}
+
+/**
+ * xlnx_dp_check_link_status - This function checks if the receiver has
+ * achieved and maintained clock recovery, channel equalization, symbol lock, and
+ * interlane alignment for all lanes currently in use
+ * @dp: DisplayPort IP core structure
+ *
+ * Return: 0 if link status is successfully.
+ * error value on failure.
+ */
+static int xlnx_dp_check_link_status(struct xlnx_dp *dp)
+{
+	int ret;
+	u8 link_status[DP_LINK_STATUS_SIZE];
+	u8 retry = 0;
+
+	memset(link_status, 0, sizeof(link_status));
+
+	if (!xlnx_dp_txconnected(dp)) {
+		dev_dbg(dp->dev, "display is not connected");
+		return connector_status_disconnected;
+	}
+
+	for (retry = 0; retry < 5; retry++) {
+		ret = drm_dp_dpcd_read_link_status(&dp->aux, link_status);
+		if (ret < 0)
+			return ret;
+
+		if (drm_dp_clock_recovery_ok(link_status, dp->mode.lane_cnt) ||
+		    drm_dp_channel_eq_ok(link_status, dp->mode.lane_cnt))
+			return 0;
+	}
+
+	return -EINVAL;
+}
+
+static int xlnx_dp_post_training(struct xlnx_dp *dp)
+{
+	int ret;
+	u8 data;
+
+	if (dp->dpcd[DP_DPCD_REV] == XDPTX_V1_4) {
+		ret = drm_dp_dpcd_readb(&dp->aux, DP_LANE_COUNT_SET, &data);
+		if (ret < 0) {
+			dev_dbg(dp->dev, "DPCD read first try fails");
+			ret = drm_dp_dpcd_readb(&dp->aux,
+						DP_LANE_COUNT_SET, &data);
+			if (ret < 0) {
+				dev_err(dp->dev, "DPCD read retry fails");
+				return ret;
+			}
+		}
+
+		/*
+		 * Post Link Training ; An upstream device with a DPTX sets
+		 * this bit to 1 to grant the POST_LT_ADJ_REQ sequence by the
+		 * downstream DPRX if the downstream DPRX supports
+		 * POST_LT_ADJ_REQ
+		 */
+		data |= 0x20;
+		ret = drm_dp_dpcd_writeb(&dp->aux, DP_LANE_COUNT_SET, data);
+		if (ret < 0) {
+			dev_dbg(dp->dev, "DPCD write first try fails");
+			ret = drm_dp_dpcd_writeb(&dp->aux,
+						 DP_LANE_COUNT_SET, data);
+			if (ret < 0) {
+				dev_err(dp->dev, "DPCD write retry fails");
+				return ret;
+			}
+		}
+	}
+
+	ret = xlnx_dp_check_link_status(dp);
+	if (ret < 0)
+		return ret;
+
+	ret = xlnx_dp_set_train_patttern(dp, DP_TRAINING_PATTERN_DISABLE);
+	if (ret < 0) {
+		dev_err(dp->dev, "failed to disable training pattern\n");
+		return ret;
+	}
 
 	return 0;
 }
@@ -1896,6 +2151,45 @@ static void xlnx_dp_encoder_mode_set_stream(struct xlnx_dp *dp,
 	xlnx_dp_write(dp_base, XDPTX_USER_DATACNTPERLANE_REG, reg);
 }
 
+static void xlnx_dp_mainlink_en(struct xlnx_dp *dp, u8 enable)
+{
+	xlnx_dp_write(dp->dp_base, XDPTX_SCRAMBLER_RESET,
+		      XDPTX_SCRAMBLER_RESET_MASK);
+	xlnx_dp_write(dp->dp_base, XDPTX_MAINSTRM_ENABLE_REG, enable);
+}
+
+static int xlnx_dp_power_cycle(struct xlnx_dp *dp)
+{
+	int ret = 0, i;
+	u8 value;
+
+	/* sink Power cycle */
+	for (i = 0; i < XDPTX_SINK_PWR_CYCLES; i++) {
+		ret = drm_dp_dpcd_readb(&dp->aux, DP_SET_POWER, &value);
+
+		value &= ~DP_SET_POWER_MASK;
+		value |= DP_SET_POWER_D3;
+		ret = drm_dp_dpcd_writeb(&dp->aux, DP_SET_POWER, value);
+
+		usleep_range(300, 400);
+		value &= ~DP_SET_POWER_MASK;
+		value |= DP_SET_POWER_D0;
+		ret = drm_dp_dpcd_writeb(&dp->aux, DP_SET_POWER, value);
+		usleep_range(300, 400);
+		ret = drm_dp_dpcd_writeb(&dp->aux, DP_SET_POWER, value);
+		if (ret == 1)
+			break;
+		usleep_range(3000, 4000);
+	}
+
+	if (ret < 0) {
+		dev_err(dp->dev, "DP aux failed\n");
+		return ret;
+	}
+
+	return 0;
+}
+
 /**
  * xlnx_dp_start - start the DisplayPort core
  * @dp: DisplayPort IP core structure
@@ -1905,12 +2199,15 @@ static void xlnx_dp_encoder_mode_set_stream(struct xlnx_dp *dp,
  */
 static void xlnx_dp_start(struct xlnx_dp *dp)
 {
-	void __iomem *dp_base = dp->dp_base;
-	unsigned int i;
+	struct xlnx_dp_mode *mode = &dp->mode;
+	int link_rate = dp->link_config.link_rate;
 	int ret = 0;
+	u32 val, intr_mask;
+	u8 data;
+	bool enhanced;
 
-	/* Reset PHY */
-	xlnx_dp_phy_reset(dp, XDPTX_PHYCONFIG_RESET_MASK);
+	mode->bw_code = drm_dp_link_rate_to_bw_code(link_rate);
+	mode->lane_cnt = dp->link_config.lane_count;
 
 	xlnx_dp_init_aux(dp);
 	if (dp->status != connector_status_connected) {
@@ -1918,45 +2215,121 @@ static void xlnx_dp_start(struct xlnx_dp *dp)
 		return;
 	}
 
-	/* Sink Power cycle */
-	for (i = 0; i < XDPTX_SINK_PWR_CYCLES; i++) {
-		u8 value;
+	xlnx_dp_power_cycle(dp);
+	xlnx_dp_write(dp->dp_base, XDPTX_ENABLE_REG, 0);
+	/*
+	 * Give a bit of time for DP IP after monitor came up and starting
+	 * link training
+	 */
+	msleep(100);
+	xlnx_dp_write(dp->dp_base, XDPTX_ENABLE_REG, 1);
 
-		ret = drm_dp_dpcd_readb(&dp->aux, DP_SET_POWER, &value);
-		if (ret < 0)
-			break;
-
-		value &= ~DP_SET_POWER_MASK;
-		value |= DP_SET_POWER_D3;
-		ret = drm_dp_dpcd_writeb(&dp->aux, DP_SET_POWER, value);
-		if (ret < 0)
-			break;
-
-		value &= ~DP_SET_POWER_MASK;
-		value |= DP_SET_POWER_D0;
-		ret = drm_dp_dpcd_writeb(&dp->aux, DP_SET_POWER, value);
-		if (ret == 0) {
-			/* Per DP spec, the sink exits within 1 msec */
-			usleep_range(1000, 2000);
-			break;
-		}
-		usleep_range(300, 500);
-	}
-
+	ret = xlnx_dp_set_linkrate(dp, mode->bw_code);
 	if (ret < 0) {
-		dev_err(dp->dev, "DP aux failed\n");
+		dev_err(dp->dev, "failed to set link rate\n");
 		return;
 	}
 
-	/* Some monitors take time to wake up properly */
-	msleep(XDPTX_POWERON_DELAY_MS);
+	ret = xlnx_dp_set_lanecount(dp, mode->lane_cnt);
+	if (ret < 0) {
+		dev_err(dp->dev, "failed to set lane count\n");
+		return;
+	}
 
+	/* Disable MST mode in both the RX and TX */
+	ret = drm_dp_dpcd_writeb(&dp->aux, DP_MSTM_CTRL, 0);
+	if (ret < 0) {
+		dev_dbg(dp->dev, "DPCD write failed");
+		return;
+	}
+	xlnx_dp_write(dp->dp_base, XDPTX_MST_CONFIG, 0x0);
+
+	/* Disable main link during training. */
+	val = xlnx_dp_read(dp->dp_base, XDPTX_MAINSTRM_ENABLE_REG);
+	if (val)
+		xlnx_dp_mainlink_en(dp, 0x0);
+
+	/* Disable HPD pulse interrupts during link training */
+	intr_mask = xlnx_dp_read(dp->dp_base, XDPTX_INTR_MASK_REG);
+	xlnx_dp_write(dp->dp_base, XDPTX_INTR_MASK_REG,
+		      intr_mask | XDPTX_INTR_HPDPULSE_MASK);
+
+	/* Enable clock spreading for both DP TX and RX device */
+	drm_dp_dpcd_readb(&dp->aux, DP_DOWNSPREAD_CTRL, &data);
+	if (dp->dpcd[DP_MAX_DOWNSPREAD] & 0x1) {
+		xlnx_dp_write(dp->dp_base, XDPTX_DOWNSPREAD_CTL_REG, 1);
+		data |=  XDPTX_DPCD_SPREAD_AMP_MASK;
+	} else {
+		xlnx_dp_write(dp->dp_base, XDPTX_DOWNSPREAD_CTL_REG, 0);
+		data &= ~XDPTX_DPCD_SPREAD_AMP_MASK;
+	}
+	drm_dp_dpcd_writeb(&dp->aux, DP_DOWNSPREAD_CTRL, data);
+
+	/* Enahanced framing model */
+	drm_dp_dpcd_readb(&dp->aux, DP_LANE_COUNT_SET, &data);
+	enhanced = drm_dp_enhanced_frame_cap(dp->dpcd);
+	if (enhanced) {
+		xlnx_dp_write(dp->dp_base, XDPTX_EFRAME_EN_REG, 1);
+		data |= DP_LANE_COUNT_ENHANCED_FRAME_EN;
+	}
+
+	ret = drm_dp_dpcd_writeb(&dp->aux, DP_LANE_COUNT_SET, data);
+	if (ret < 0) {
+		dev_err(dp->dev, "failed to set lane count\n");
+		return;
+	}
+	/* set channel encoding */
+	ret = drm_dp_dpcd_writeb(&dp->aux, DP_MAIN_LINK_CHANNEL_CODING_SET,
+				 DP_SET_ANSI_8B10B);
+	if (ret < 0) {
+		dev_err(dp->dev, "failed to set ANSI 8B/10B encoding\n");
+		return;
+	}
+	/* Reset PHY */
+	xlnx_dp_phy_reset(dp, XDPTX_PHYCONFIG_RESET_MASK);
+
+	/* Wait for PHY ready */
+	ret = xlnx_dp_phy_ready(dp);
+	if (ret < 0)
+		return;
+
+	memset(dp->train_set, 0, XDPTX_MAX_LANES);
 	ret = xlnx_dp_train_loop(dp);
 	if (ret < 0) {
 		dev_err(dp->dev, "DP Link Training Failed\n");
 		return;
 	}
 
+	ret = xlnx_dp_post_training(dp);
+	if (ret < 0) {
+		dev_err(dp->dev, "failed post trining settings\n");
+		return;
+	}
+
+	/* re-enable main link after training if required */
+	if (val)
+		xlnx_dp_mainlink_en(dp, 0x1);
+	/* Enable HDP interrupts after link training */
+	xlnx_dp_write(dp->dp_base, XDPTX_INTR_MASK_REG, intr_mask);
+
+	dev_dbg(dp->dev, "Training done:");
+
+	/* reset the transmitter */
+	xlnx_dp_write(dp->dp_base, XDPTX_SOFT_RST,
+		      XDPTX_SOFT_RST_VIDEO_STREAM_ALL_MASK |
+		      XDPTX_SOFT_RST_HDCP_MASK);
+	xlnx_dp_write(dp->dp_base, XDPTX_SOFT_RST, 0x0);
+
+	/* Enable VTC and MainStream */
+	xlnx_dp_set(dp->dp_base, XDPTX_VTC_BASE + XDPTX_VTC_CTL,
+		    XDPTX_VTC_CTL_GE);
+	xlnx_dp_mainlink_en(dp, 0x1);
+
+	ret = xlnx_dp_check_link_status(dp);
+	if (ret < 0) {
+		dev_err(dp->dev, "Link is DOWN after main link enabled!\n");
+		return;
+	}
 	if (dp->colorimetry_through_vsc) {
 		/* program the VSC extended packet */
 		xlnx_dp_vsc_pkt_handler(dp);
@@ -1964,10 +2337,10 @@ static void xlnx_dp_start(struct xlnx_dp *dp)
 		xlnx_dp_set(dp->dp_base, XDPTX_MAINSTRM_MISC0_REG,
 			    XDPTX_MAINSTRM_MISC0_EXT_VSYNC_MASK);
 	}
-	/* Enable VTC and MainStream */
-	xlnx_dp_set(dp->dp_base, XDPTX_VTC_BASE + XDPTX_VTC_CTL,
-		    XDPTX_VTC_CTL_GE);
-	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_ENABLE_REG, 1);
+	/* enable audio */
+	xlnx_dp_set(dp->dp_base, XDPTX_AUDIO_CTRL_REG, 0x1);
+	/* Enabling TX interrupts */
+	xlnx_dp_write(dp->dp_base, XDPTX_INTR_MASK_REG, 0);
 }
 
 /**
@@ -2025,6 +2398,7 @@ xlnx_dp_connector_detect(struct drm_connector *connector, bool force)
 {
 	struct xlnx_dp *dp = connector_to_dp(connector);
 	struct xlnx_dp_link_config *link_config = &dp->link_config;
+	struct xlnx_dp_mode *mode = &dp->mode;
 	int ret;
 	u8 dpcd_ext[DP_RECEIVER_CAP_SIZE];
 	u8 max_link_rate, ext_cap_rd = 0, data;
@@ -2061,64 +2435,69 @@ xlnx_dp_connector_detect(struct drm_connector *connector, bool force)
 		dp->dpcd[DP_MAX_LINK_RATE] = DP_LINK_BW_8_1;
 	}
 
-		if (dp->dpcd[DP_TRAINING_AUX_RD_INTERVAL] &
-		    DP_EXTENDED_RECEIVER_CAP_FIELD_PRESENT) {
-			ret = drm_dp_dpcd_read(&dp->aux, DP_DP13_MAX_LINK_RATE,
-					       &max_link_rate, 1);
-			if (ret < 0) {
-				dev_dbg(dp->dev, "DPCD read failed");
-				goto disconnected;
-			}
-
-			if (max_link_rate == DP_LINK_BW_8_1)
-				dp->dpcd[DP_MAX_LINK_RATE] = DP_LINK_BW_8_1;
-
-			/* compliance: UCD400 required reading these extended registers */
-			ret = drm_dp_dpcd_read(&dp->aux, DP_DP13_MAX_LINK_RATE,
-					       &ext_cap_rd, 1);
-			ret = drm_dp_dpcd_read(&dp->aux, DP_SINK_COUNT_ESI,
-					       &ext_cap_rd, 1);
-			ret = drm_dp_dpcd_read(&dp->aux,
-					       DP_DEVICE_SERVICE_IRQ_VECTOR_ESI0,
-					       &ext_cap_rd, 1);
-			ret = drm_dp_dpcd_read(&dp->aux, DP_LANE0_1_STATUS_ESI,
-					       &ext_cap_rd, 1);
-			ret = drm_dp_dpcd_read(&dp->aux, DP_LANE2_3_STATUS_ESI,
-					       &ext_cap_rd, 1);
-			ret = drm_dp_dpcd_read(&dp->aux,
-					       DP_LANE_ALIGN_STATUS_UPDATED_ESI,
-					       &ext_cap_rd, 1);
-			ret = drm_dp_dpcd_read(&dp->aux, DP_SINK_STATUS_ESI,
-					       &ext_cap_rd, 1);
-			if (ret < 0)
-				dev_dbg(dp->dev, "DPCD read fails");
-		}
-
-		link_config->max_rate = min_t(int,
-					      drm_dp_max_link_rate(dp->dpcd),
-					      dp->config.max_link_rate);
-		link_config->max_lanes = min_t(u8,
-					       drm_dp_max_lane_count(dp->dpcd),
-					       dp->config.max_lanes);
-		ret = drm_dp_dpcd_readb(&dp->aux, DP_DPRX_FEATURE_ENUMERATION_LIST,
-					&data);
+	if (dp->dpcd[DP_TRAINING_AUX_RD_INTERVAL] &
+	    DP_EXTENDED_RECEIVER_CAP_FIELD_PRESENT) {
+		ret = drm_dp_dpcd_read(&dp->aux, DP_DP13_MAX_LINK_RATE,
+				       &max_link_rate, 1);
 		if (ret < 0) {
 			dev_dbg(dp->dev, "DPCD read failed");
 			goto disconnected;
 		}
-		dp->status = connector_status_connected;
 
-		if (data & DP_VSC_SDP_EXT_FOR_COLORIMETRY_SUPPORTED)
-			dp->colorimetry_through_vsc = true;
-		else
-			dp->colorimetry_through_vsc = false;
+		if (max_link_rate == DP_LINK_BW_8_1)
+			dp->dpcd[DP_MAX_LINK_RATE] = DP_LINK_BW_8_1;
 
-		if (dp->enabled) {
-			xlnx_dp_stop(dp);
-			xlnx_dp_start(dp);
-		}
+		/* compliance: UCD400 required reading these extended registers */
+		ret = drm_dp_dpcd_read(&dp->aux, DP_DP13_MAX_LINK_RATE,
+				       &ext_cap_rd, 1);
+		ret = drm_dp_dpcd_read(&dp->aux, DP_SINK_COUNT_ESI,
+				       &ext_cap_rd, 1);
+		ret = drm_dp_dpcd_read(&dp->aux,
+				       DP_DEVICE_SERVICE_IRQ_VECTOR_ESI0,
+				       &ext_cap_rd, 1);
+		ret = drm_dp_dpcd_read(&dp->aux, DP_LANE0_1_STATUS_ESI,
+				       &ext_cap_rd, 1);
+		ret = drm_dp_dpcd_read(&dp->aux, DP_LANE2_3_STATUS_ESI,
+				       &ext_cap_rd, 1);
+		ret = drm_dp_dpcd_read(&dp->aux,
+				       DP_LANE_ALIGN_STATUS_UPDATED_ESI,
+				       &ext_cap_rd, 1);
+		ret = drm_dp_dpcd_read(&dp->aux, DP_SINK_STATUS_ESI,
+				       &ext_cap_rd, 1);
+		if (ret < 0)
+			dev_dbg(dp->dev, "DPCD read fails");
+	}
 
-		return connector_status_connected;
+	link_config->max_rate = min_t(int,
+				      drm_dp_max_link_rate(dp->dpcd),
+				      dp->config.max_link_rate);
+	link_config->max_lanes = min_t(u8,
+				       drm_dp_max_lane_count(dp->dpcd),
+				       dp->config.max_lanes);
+	link_config->link_rate = link_config->max_rate;
+	link_config->lane_count = link_config->max_lanes;
+	mode->lane_cnt = link_config->max_lanes;
+	mode->bw_code = drm_dp_link_rate_to_bw_code(link_config->link_rate);
+
+	ret = drm_dp_dpcd_readb(&dp->aux, DP_DPRX_FEATURE_ENUMERATION_LIST,
+				&data);
+	if (ret < 0) {
+		dev_dbg(dp->dev, "DPCD read failed");
+		goto disconnected;
+	}
+	dp->status = connector_status_connected;
+
+	if (data & DP_VSC_SDP_EXT_FOR_COLORIMETRY_SUPPORTED)
+		dp->colorimetry_through_vsc = true;
+	else
+		dp->colorimetry_through_vsc = false;
+
+	if (dp->enabled) {
+		xlnx_dp_stop(dp);
+		xlnx_dp_start(dp);
+	}
+
+	return connector_status_connected;
 disconnected:
 	dp->status = connector_status_disconnected;
 	if (dp->enabled)
