@@ -299,6 +299,19 @@
 #define GT_QUAD_BASE_CH1_CLK_DIV_VALUE			0x260
 
 #define DP_LINK_BW_SET_MASK			GENMASK(4, 0)
+#define DP_MAX_TRAINING_TRIES				5
+
+#define XDPTX_DP_LANE_COUNT_1				0x01
+#define XDPTX_DP_LANE_COUNT_2				0x02
+#define XDPTX_DP_LANE_COUNT_4				0x04
+
+#define XDPTX_DPCD_LANE02_CRDONE_MASK			0x01
+#define XDPTX_DPCD_LANE13_CRDONE_MASK			0x10
+
+#define XDPTX_LANE0_CRDONE_MASK				0x0
+#define XDPTX_LANE1_CRDONE_MASK				0x1
+#define XDPTX_LANE2_CRDONE_MASK				0x2
+#define XDPTX_LANE3_CRDONE_MASK				0x3
 
 /**
  * struct xlnx_dptx_audio_data - Audio data structure
@@ -336,6 +349,8 @@ struct xlnx_dp_link_config {
 	u8 max_lanes;
 	int link_rate;
 	u8 lane_count;
+	u8 cr_done_cnt;
+	u8 cr_done_oldstate;
 };
 
 /**
@@ -384,6 +399,15 @@ struct xlnx_dp_config {
 	u8 fmt;
 	bool audio_enabled;
 	bool versal_gt_present;
+};
+
+enum xlnx_dp_train_state {
+	XLNX_DP_TRAIN_CR = 0,
+	XLNX_DP_TRAIN_CE = 1,
+	XLNX_DP_ADJUST_LINKRATE = 2,
+	XLNX_DP_ADJUST_LANECOUNT = 3,
+	XLNX_DP_TRAIN_FAILURE = 4,
+	XLNX_DP_TRAIN_SUCCESS = 5
 };
 
 /**
@@ -729,68 +753,6 @@ static int xlnx_dp_phy_ready(struct xlnx_dp *dp)
 }
 
 /**
- * xlnx_dp_mode_configure - Configure the link values
- * @dp: DisplayPort IP core structure
- * @pclock: pixel clock for requested display mode
- * @current_bw: current link rate
- *
- * Find the link configuration values, rate and lane count for requested pixel
- * clock @pclock. The @pclock is stored in the mode to be used in other
- * functions later. The returned rate is downshifted from the current rate
- * @current_bw.
- *
- * Return: Current link rate code, or -EINVAL.
- */
-static int xlnx_dp_mode_configure(struct xlnx_dp *dp, int pclock,
-				  u8 current_bw)
-{
-	int max_rate = dp->link_config.max_rate;
-	u8 bw_code;
-	u8 max_lanes = dp->link_config.max_lanes;
-	u8 max_link_rate_code = drm_dp_link_rate_to_bw_code(max_rate);
-	u8 bpp = dp->config.bpp;
-	u8 lane_cnt;
-
-	/* Downshift from current bandwidth */
-	switch (current_bw) {
-	case DP_LINK_BW_8_1:
-		bw_code = DP_LINK_BW_5_4;
-		break;
-	case DP_LINK_BW_5_4:
-		bw_code = DP_LINK_BW_2_7;
-		break;
-	case DP_LINK_BW_2_7:
-		bw_code = DP_LINK_BW_1_62;
-		break;
-	case DP_LINK_BW_1_62:
-		dev_err(dp->dev, "can't downshift. already lowest link rate\n");
-		return -EINVAL;
-	default:
-		/* If not given, start with max supported */
-		bw_code = max_link_rate_code;
-		break;
-	}
-
-	for (lane_cnt = max_lanes; lane_cnt >= 1; lane_cnt >>= 1) {
-		int bw;
-		u32 rate;
-
-		bw = drm_dp_bw_code_to_link_rate(bw_code);
-		rate = XDPTX_MAX_RATE(bw, lane_cnt, bpp);
-		if (pclock <= rate) {
-			dp->mode.bw_code = bw_code;
-			dp->mode.lane_cnt = lane_cnt;
-			dp->mode.pclock = pclock;
-			return dp->mode.bw_code;
-		}
-	}
-
-	dev_err(dp->dev, "failed to configure link values\n");
-
-	return -EINVAL;
-}
-
-/**
  * xlnx_dp_tx_set_vswing_preemp - This function sets current voltage swing and
  * pre-emphasis level settings from the link_config structure to hardware.
  * @dp: DisplayPort IP core structure
@@ -1056,6 +1018,7 @@ static void xlnx_dp_tx_pe_vs_adjust_handler(struct xlnx_dp *dp,
 
 /**
  * xlnx_dp_tx_adj_vswing_preemp - Sets voltage swing and pre-emphasis levels
+ * using the adjustment requests obtained from the RX device
  * @dp:Pointer to xlnx_dp structure
  * @link_status: An array of link status register
  *
@@ -1146,6 +1109,71 @@ static int xlnx_dp_tx_adj_vswing_preemp(struct xlnx_dp *dp, u8 link_status[6])
 		phy_configure(dp->phy[0], &dp->phy_opts);
 	else
 		xlnx_dp_tx_pe_vs_adjust_handler(dp, &dp->phy_opts.dp);
+
+	return 0;
+}
+
+/**
+ * xlnx_dp_check_clock_recovery - This function checks if the RX device's DPCD
+ * indicates that the clock recovery sequence during link training was
+ * successful - the RX device's link clock and data recovery unit has realized
+ * and maintained the frequency lock for all the lanes currently in use.
+ * @dp: DisplayPort IP core structure
+ * @lane_cnt: Number of lanes in use
+ *
+ * Return: 0 if the RX device's clock recovery PLL has achieved frequency lock
+ * for all the lanes in use.Othewise returns error value.
+ */
+static int xlnx_dp_check_clock_recovery(struct xlnx_dp *dp, u8 lane_cnt)
+{
+	struct xlnx_dp_link_config *link_config = &dp->link_config;
+	int ret;
+	u8 link_status[DP_LINK_STATUS_SIZE];
+
+	ret = drm_dp_dpcd_read_link_status(&dp->aux, link_status);
+	if (ret < 0)
+		return ret;
+
+	switch (lane_cnt) {
+	case XDPTX_DP_LANE_COUNT_4:
+		if (!(link_status[0] & XDPTX_DPCD_LANE02_CRDONE_MASK)) {
+			link_config->cr_done_cnt = XDPTX_LANE0_CRDONE_MASK;
+			return 1;
+		}
+		if (!(link_status[0] & XDPTX_DPCD_LANE13_CRDONE_MASK)) {
+			link_config->cr_done_cnt = XDPTX_LANE1_CRDONE_MASK;
+			return 1;
+		}
+		if (!(link_status[1] & XDPTX_DPCD_LANE02_CRDONE_MASK)) {
+			link_config->cr_done_cnt = XDPTX_LANE2_CRDONE_MASK;
+			return 1;
+		}
+		if (!(link_status[1] & XDPTX_DPCD_LANE13_CRDONE_MASK)) {
+			link_config->cr_done_cnt = XDPTX_LANE3_CRDONE_MASK;
+			return 1;
+		}
+		link_config->cr_done_cnt = 0x4;
+		fallthrough;
+	case XDPTX_DP_LANE_COUNT_2:
+		if (!(link_status[0] & XDPTX_DPCD_LANE02_CRDONE_MASK)) {
+			link_config->cr_done_cnt = 0x0;
+			return 1;
+		}
+		if (!(link_status[0] & XDPTX_DPCD_LANE13_CRDONE_MASK)) {
+			link_config->cr_done_cnt = 0x1;
+			return 1;
+		}
+		link_config->cr_done_cnt = 0x2;
+		fallthrough;
+	case XDPTX_DP_LANE_COUNT_1:
+		if (!(link_status[0] & XDPTX_DPCD_LANE02_CRDONE_MASK)) {
+			link_config->cr_done_cnt = 0x0;
+			return 1;
+		}
+		link_config->cr_done_cnt = 0x1;
+	default:
+		break;
+	}
 
 	return 0;
 }
@@ -1352,27 +1380,22 @@ static int xlnx_dp_post_training(struct xlnx_dp *dp)
  */
 static int xlnx_dp_link_train_cr(struct xlnx_dp *dp)
 {
-	u8 prev_vs_level = 0;
-	u8 same_vs_level_count = 0;
-	u8 aux_data[5];
+	struct xlnx_dp_tx_link_config *link_config = &dp->tx_link_config;
+	struct xlnx_dp_link_config *config = &dp->link_config;
+	int ret;
 	u16 max_tries;
+	u8 prev_vs_level = 0, same_vs_level_count = 0;
 	u8 link_status[DP_LINK_STATUS_SIZE];
 	u8 lane_cnt = dp->mode.lane_cnt;
 	bool cr_done = 0;
-	int ret;
-	struct xlnx_dp_tx_link_config *link_config = &dp->tx_link_config;
 
+	/* start from minimal vs and pe levels */
 	dp->tx_link_config.vs_level = 0;
 	dp->tx_link_config.pe_level = 0;
 
-	xlnx_dp_write(dp->dp_base, XDPTX_TRNGPAT_SET_REG,
-		      DP_TRAINING_PATTERN_1);
-	xlnx_dp_write(dp->dp_base, XDPTX_SCRAMBLING_DIS_REG, 1);
-	aux_data[0] = DP_TRAINING_PATTERN_1 | DP_LINK_SCRAMBLING_DISABLE;
-	xlnx_dp_tx_set_vswing_preemp(dp, &aux_data[1]);
-	ret = drm_dp_dpcd_write(&dp->aux, DP_TRAINING_PATTERN_SET, aux_data, 5);
+	ret = xlnx_dp_set_train_patttern(dp, DP_TRAINING_PATTERN_1);
 	if (ret < 0)
-		return ret;
+		return XLNX_DP_TRAIN_FAILURE;
 
 	/*
 	 * 256 loops should be maximum iterations for 4 lanes and 4 values.
@@ -1391,10 +1414,11 @@ static int xlnx_dp_link_train_cr(struct xlnx_dp *dp)
 		 */
 		ret = drm_dp_dpcd_read_link_status(&dp->aux, link_status);
 		if (ret < 0)
-			return ret;
-		cr_done = drm_dp_clock_recovery_ok(link_status, lane_cnt);
-		if (cr_done)
-			break;
+			return XLNX_DP_TRAIN_FAILURE;
+
+		cr_done = xlnx_dp_check_clock_recovery(dp, lane_cnt);
+		if (!cr_done)
+			return XLNX_DP_TRAIN_CE;
 		/*
 		 * check if the same voltage swing for each lane has been
 		 * used 5 consecutive times.
@@ -1406,22 +1430,145 @@ static int xlnx_dp_link_train_cr(struct xlnx_dp *dp)
 			prev_vs_level = link_config->vs_level;
 		}
 
-		if (same_vs_level_count == XDPTX_VS_LEVEL_MAXCOUNT)
+		if (same_vs_level_count >= XDPTX_VS_LEVEL_MAXCOUNT)
 			break;
 
 		if (link_config->vs_level == XDPTX_VS_PE_LEVEL_MAXCOUNT)
 			break;
-
+		/* Adjust the drive settings as requested by the RX device */
 		ret = xlnx_dp_tx_adj_vswing_preemp(dp, link_status);
 		if (ret < 0)
-			return ret;
-	}
-	if (!cr_done) {
-		dev_err(dp->dev, "training cr failed\n");
-		return -ETIMEDOUT;
+			return XLNX_DP_TRAIN_FAILURE;
 	}
 
-	return 0;
+	if (dp->mode.bw_code == DP_LINK_BW_1_62) {
+		if (config->cr_done_cnt != 0x4 && config->cr_done_cnt != 0x0) {
+			ret = xlnx_dp_set_train_patttern(dp, DP_TRAINING_PATTERN_DISABLE);
+			if (ret < 0) {
+				dev_err(dp->dev, "failed to disable training pattern\n");
+				return ret;
+			}
+
+			ret = xlnx_dp_set_linkrate(dp, DP_LINK_BW_8_1);
+			if (ret < 0) {
+				dev_err(dp->dev, "failed to set link rate\n");
+				return ret;
+			}
+
+			ret = xlnx_dp_set_lanecount(dp, config->cr_done_cnt);
+			if (ret < 0) {
+				dev_err(dp->dev, "failed to set lane count\n");
+				return ret;
+			}
+			config->cr_done_oldstate = config->cr_done_cnt;
+
+			return XLNX_DP_TRAIN_CR;
+		}
+	}
+
+	return XLNX_DP_ADJUST_LINKRATE;
+}
+
+/**
+ * xlnx_dp_adjust_linkrate - Adjust the link rate
+ * @dp: DisplayPort core structure
+ *
+ * This function is reached if either the clock recovery or the channel
+ * equalization process failed during training. As a result, the data rate will
+ * be downshifted and training will be re-attempted at the reduced data rate. If
+ * the data rate is already at 1.62 Gbps, a downshited in lane count will be
+ * attempted.
+ *
+ * Return: The next training state:
+ *	- XLNX_DP_ADJUST_LANECOUNT if the minimal data rate is already in use.
+ *	re-attempt training at a reduced lane count.
+ *	- XLNX_DP_TRAIN_CR otherwise. Re-attempt training.
+ */
+static int xlnx_dp_adjust_linkrate(struct xlnx_dp *dp)
+{
+	int ret;
+	u8 bw_code;
+
+	switch (dp->mode.bw_code) {
+	case DP_LINK_BW_8_1:
+		bw_code = DP_LINK_BW_5_4;
+		break;
+	case DP_LINK_BW_5_4:
+		bw_code = DP_LINK_BW_2_7;
+		break;
+	case DP_LINK_BW_2_7:
+		bw_code = DP_LINK_BW_1_62;
+		break;
+	default:
+		/*
+		 * Already at the lowest link rate. Try reducing the lane
+		 * count next
+		 */
+		return XLNX_DP_ADJUST_LANECOUNT;
+	}
+
+	ret = xlnx_dp_set_linkrate(dp, bw_code);
+	if (ret < 0) {
+		dev_err(dp->dev, "failed to set link rate\n");
+		return XLNX_DP_TRAIN_FAILURE;
+	}
+
+	ret = xlnx_dp_set_lanecount(dp, dp->link_config.cr_done_oldstate);
+	if (ret < 0) {
+		dev_err(dp->dev, "failed to set lane count\n");
+		return XLNX_DP_TRAIN_FAILURE;
+	}
+
+	return XLNX_DP_TRAIN_CR;
+}
+
+/**
+ * xlnx_dp_adjust_lanecount - Adjust the lane count
+ * @dp: DisplayPort core structure
+ *
+ * This function is reached if either the clock recovery or the channel
+ * equalization process failed during training. As a result, the number of lanes
+ * will be downshifted and training will be re-attempted at this lower lane
+ * count.
+ *
+ * note: Training will be re-attempted with the maximum data rate being used
+ * with the reduced lane count to train the main link at the maximum bandwidth
+ * possible.
+ *
+ * Return: The next training state:
+ *	- XLNX_DP_TRAIN_FAILURE if only one lane is already in use
+ *	- XLNX_DP_TRAIN_CR otherwise. Re-attempt training
+ */
+static int xlnx_dp_adjust_lanecount(struct xlnx_dp *dp)
+{
+	int max_rate = dp->link_config.max_rate, ret;
+	u8 bw_code = drm_dp_link_rate_to_bw_code(max_rate), lane_cnt;
+
+	switch (dp->mode.lane_cnt) {
+	case XDPTX_DP_LANE_COUNT_4:
+		lane_cnt = XDPTX_DP_LANE_COUNT_2;
+		break;
+	case XDPTX_DP_LANE_COUNT_2:
+		lane_cnt = XDPTX_DP_LANE_COUNT_1;
+		break;
+	default:
+		dev_err(dp->dev, " Training failed at lowest linkrate and lane count\n");
+		return XLNX_DP_TRAIN_FAILURE;
+	}
+
+	ret = xlnx_dp_set_linkrate(dp, bw_code);
+	if (ret < 0) {
+		dev_err(dp->dev, "failed to set link rate\n");
+		return XLNX_DP_TRAIN_FAILURE;
+	}
+
+	ret = xlnx_dp_set_lanecount(dp, lane_cnt);
+	if (ret < 0) {
+		dev_err(dp->dev, "failed to set lane count\n");
+		return XLNX_DP_TRAIN_FAILURE;
+	}
+
+	return XLNX_DP_TRAIN_CR;
 }
 
 /**
@@ -1434,40 +1581,28 @@ static int xlnx_dp_link_train_cr(struct xlnx_dp *dp)
 
 static int xlnx_dp_link_train_ce(struct xlnx_dp *dp)
 {
+	struct xlnx_dp_link_config *config = &dp->link_config;
+	struct xlnx_dp_mode *mode = &dp->mode;
 	int ret;
-	u8 pat;
 	u32 i;
-	u8 link_status[DP_LINK_STATUS_SIZE];
+	u8 pat, link_status[DP_LINK_STATUS_SIZE];
 	u8 lane_cnt = dp->mode.lane_cnt;
-	u8 aux_data[5];
-	bool ce_done;
+	bool ce_done, cr_done;
 
 	if (dp->dpcd[DP_DPCD_REV] == XDPTX_V1_4 &&
 	    dp->dpcd[DP_MAX_DOWNSPREAD] & DP_TPS4_SUPPORTED) {
 		pat = DP_TRAINING_PATTERN_4;
-	} else if (dp->dpcd[DP_DPCD_REV] >= XDPTX_V1_2 &&
-		dp->dpcd[DP_MAX_LANE_COUNT] & DP_TPS3_SUPPORTED) {
+	} else if (dp->dpcd[DP_MAX_LANE_COUNT] & DP_TPS3_SUPPORTED) {
 		pat = DP_TRAINING_PATTERN_3;
 	} else {
 		pat = DP_TRAINING_PATTERN_2;
 	}
 
-	xlnx_dp_write(dp->dp_base, XDPTX_TRNGPAT_SET_REG, pat);
-
-	if (dp->dpcd[DP_DPCD_REV] == XDPTX_V1_4) {
-		xlnx_dp_write(dp->dp_base, XDPTX_SCRAMBLING_DIS_REG, 0);
-		aux_data[0] = DP_TRAINING_PATTERN_4;
-	} else {
-		xlnx_dp_write(dp->dp_base, XDPTX_SCRAMBLING_DIS_REG, 1);
-		aux_data[0] = pat | DP_LINK_SCRAMBLING_DISABLE;
-	}
-	xlnx_dp_tx_set_vswing_preemp(dp, &aux_data[1]);
-	ret = drm_dp_dpcd_write(&dp->aux, DP_TRAINING_PATTERN_SET,
-				&aux_data[0], 5);
+	ret = xlnx_dp_set_train_patttern(dp, pat);
 	if (ret < 0)
-		return ret;
+		return XLNX_DP_TRAIN_FAILURE;
 
-	for (i = 0; i < 8; i++) {
+	for (i = 0; i < DP_MAX_TRAINING_TRIES; i++) {
 		/*
 		 * Obtain the required delay for channel equalization as
 		 * specified by the RX device.
@@ -1476,203 +1611,116 @@ static int xlnx_dp_link_train_ce(struct xlnx_dp *dp)
 
 		ret = drm_dp_dpcd_read_link_status(&dp->aux, link_status);
 		if (ret < 0)
-			return ret;
+			return XLNX_DP_TRAIN_FAILURE;
 
+		cr_done = drm_dp_clock_recovery_ok(link_status, lane_cnt);
+		if (!cr_done)
+			break;
 		/*
 		 * check if all lanes have accomplished channel equalization,
 		 * symbol lock, and interlane alignment.
 		 */
 		ce_done = drm_dp_channel_eq_ok(link_status, lane_cnt);
 		if (ce_done)
-			break;
+			return XLNX_DP_TRAIN_SUCCESS;
 
 		ret = drm_dp_dpcd_read_link_status(&dp->aux, link_status);
 		if (ret < 0)
-			return ret;
+			return XLNX_DP_TRAIN_FAILURE;
 
 		ret = xlnx_dp_tx_adj_vswing_preemp(dp, link_status);
 		if (ret != 0)
-			return ret;
+			return XLNX_DP_TRAIN_FAILURE;
 	}
 	/*
-	 * Tried 8 times with no success. Try a reduced bitrate first, then
+	 * Tried 5 times with no success. Try a reduced bitrate first, then
 	 * reduce the number of lanes.
 	 */
-	if (!ce_done) {
-		dev_err(dp->dev, "training ce failed\n");
-		return -ETIMEDOUT;
+
+	if (!cr_done) {
+		/* Down link on CR failure in EQ state */
+		config->cr_done_oldstate = config->max_lanes;
+		return XLNX_DP_ADJUST_LINKRATE;
+	} else if ((mode->lane_cnt == 1) && !ce_done) {
+		/* Need to set lanecount for next iter */
+		mode->lane_cnt = config->max_lanes;
+		config->cr_done_oldstate = config->max_lanes;
+		return XLNX_DP_ADJUST_LINKRATE;
+	} else if ((mode->lane_cnt > 1) && !ce_done) {
+		/* For EQ failure downlink the lane count */
+		return XLNX_DP_ADJUST_LANECOUNT;
 	}
 
-	return 0;
+	config->cr_done_oldstate = config->max_lanes;
+
+	return XLNX_DP_ADJUST_LINKRATE;
 }
 
 /**
- * xlnx_dp_train - Train the link
- * @dp: DisplayPort IP core structure
+ * xlnx_dp_run_training - Run the link training process
+ * @dp: DisplayPort core structure
  *
- * Return: 0 if all trains are done successfully, or corresponding error code.
+ * This function is implemented as a state machine, with each state returning
+ * the next state. First, the clock recovery sequence will be run; if successful,
+ * the channel equalization sequence will run. If either the clock recovery or
+ * channel equalization sequence failed, the link rate or the number of lanes
+ * used will be reduced and training will be re-attempted. If training fails
+ * at the minimal data rate, 1.62 Gbps with a single lane, training will no
+ * longer re-attempt and fail.
+ *
+ * Return: 0 if the training process succeeded.
+ * error value on training failure.
  */
-static int xlnx_dp_train(struct xlnx_dp *dp)
+static int xlnx_dp_run_training(struct xlnx_dp *dp)
 {
-	u32 reg, lrate_val, val;
-	u8 bw_code = dp->mode.bw_code;
-	u8 lane_cnt = dp->mode.lane_cnt;
-	u8 aux_lane_cnt = lane_cnt;
-	u8 data;
-	bool enhanced;
+	struct xlnx_dp_link_config *config = &dp->link_config;
+	enum xlnx_dp_train_state state = XLNX_DP_TRAIN_CR;
 	int ret;
 
-	xlnx_dp_write(dp->dp_base, XDPTX_LANECNT_SET_REG, lane_cnt);
-	enhanced = drm_dp_enhanced_frame_cap(dp->dpcd);
-	if (enhanced) {
-		xlnx_dp_write(dp->dp_base, XDPTX_EFRAME_EN_REG, 1);
-		aux_lane_cnt |= DP_LANE_COUNT_ENHANCED_FRAME_EN;
-	}
-
-	if (dp->dpcd[3] & 0x1) {
-		xlnx_dp_write(dp->dp_base, XDPTX_DOWNSPREAD_CTL_REG, 1);
-		drm_dp_dpcd_writeb(&dp->aux, DP_MAX_DOWNSPREAD,
-				   DP_MAX_DOWNSPREAD_0_5);
-	} else {
-		xlnx_dp_write(dp->dp_base, XDPTX_DOWNSPREAD_CTL_REG, 0);
-		drm_dp_dpcd_writeb(&dp->aux, DP_DOWNSPREAD_CTRL, 0);
-	}
-
-	ret = drm_dp_dpcd_writeb(&dp->aux, DP_LANE_COUNT_SET, aux_lane_cnt);
-	if (ret < 0) {
-		dev_err(dp->dev, "failed to set lane count\n");
-		return ret;
-	}
-
-	ret = drm_dp_dpcd_writeb(&dp->aux, DP_MAIN_LINK_CHANNEL_CODING_SET,
-				 DP_SET_ANSI_8B10B);
-	if (ret < 0) {
-		dev_err(dp->dev, "failed to set ANSI 8B/10B encoding\n");
-		return ret;
-	}
-
-	ret = drm_dp_dpcd_writeb(&dp->aux, DP_LINK_BW_SET, bw_code);
-	if (ret < 0) {
-		dev_err(dp->dev, "failed to set DP bandwidth\n");
-		return ret;
-	}
-	xlnx_dp_write(dp->dp_base, XDPTX_LINKBW_SET_REG, bw_code);
-
-	switch (bw_code) {
-	case DP_LINK_BW_1_62:
-		reg = XDPTX_PHYCLOCK_FBSETTING162_MASK;
-		if (dp->config.versal_gt_present)
-			lrate_val = XDPTX_GTCTL_LINE_RATE_162G;
-		break;
-	case DP_LINK_BW_2_7:
-		reg = XDPTX_PHYCLOCK_FBSETTING270_MASK;
-		if (dp->config.versal_gt_present)
-			lrate_val = XDPTX_GTCTL_LINE_RATE_270G;
-		break;
-	case DP_LINK_BW_5_4:
-		reg = XDPTX_PHYCLOCK_FBSETTING810_MASK;
-		if (dp->config.versal_gt_present)
-			lrate_val = XDPTX_GTCTL_LINE_RATE_540G;
-		break;
-	case DP_LINK_BW_8_1:
-		reg = XDPTX_PHYCLOCK_FBSETTING810_MASK;
-		if (dp->config.versal_gt_present)
-			lrate_val = XDPTX_GTCTL_LINE_RATE_810G;
-		break;
-	default:
-		reg = XDPTX_PHYCLOCK_FBSETTING810_MASK;
-		if (dp->config.versal_gt_present)
-			lrate_val = XDPTX_GTCTL_LINE_RATE_810G;
-	}
-
-	/*
-	 * set the clock frequency for the DisplayPort PHY corresponding
-	 * to a desired link rate
-	 */
-	val = xlnx_dp_read(dp->dp_base, XDPTX_ENABLE_REG);
-	xlnx_dp_write(dp->dp_base, XDPTX_ENABLE_REG, 0);
-	xlnx_dp_write(dp->dp_base, XDPTX_PHYCLOCK_FBSETTING_REG, reg);
-	if (val)
-		xlnx_dp_write(dp->dp_base, XDPTX_ENABLE_REG, 1);
-
-	/* Wait for PHY ready */
-	ret = xlnx_dp_phy_ready(dp);
-	if (ret < 0)
-		return ret;
-
-	if (dp->config.versal_gt_present) {
-		val = xlnx_dp_read(dp->dp_base, XDPTX_GTCTL_REG);
-		val &= ~XDPTX_GTCTL_LINE_RATE_MASK;
-		val |= FIELD_PREP(XDPTX_GTCTL_LINE_RATE_MASK, lrate_val);
-		xlnx_dp_write(dp->dp_base, XDPTX_GTCTL_REG, val);
-	}
-
-	/* Disable main link during training. */
-	val = xlnx_dp_read(dp->dp_base, XDPTX_MAINSTRM_ENABLE_REG);
-	if (val) {
-		xlnx_dp_write(dp->dp_base, XDPTX_MAINSTRM_ENABLE_REG, 0);
-		xlnx_dp_write(dp->dp_base, XDPTX_SCRAMBLER_RESET,
-			      XDPTX_SCRAMBLER_RESET_MASK);
-	}
-
-	/* Wait for PHY ready */
-	ret = xlnx_dp_phy_ready(dp);
-	if (ret < 0)
-		return ret;
-
-	memset(dp->train_set, 0, XDPTX_MAX_LANES);
-	ret = xlnx_dp_link_train_cr(dp);
-	if (ret)
-		return ret;
-
-	ret = xlnx_dp_link_train_ce(dp);
-	if (ret)
-		return ret;
-
-	if (dp->dpcd[DP_DPCD_REV] == XDPTX_V1_4) {
-		ret = drm_dp_dpcd_readb(&dp->aux, DP_LANE_COUNT_SET, &data);
-		if (ret < 0) {
-			dev_dbg(dp->dev, "DPCD read first try fails");
-			ret = drm_dp_dpcd_readb(&dp->aux,
-						DP_LANE_COUNT_SET, &data);
-			if (ret < 0) {
-				dev_err(dp->dev, "DPCD read retry fails");
-				return ret;
-			}
+	while (1) {
+		switch (state) {
+		case XLNX_DP_TRAIN_CR:
+			state = xlnx_dp_link_train_cr(dp);
+			break;
+		case XLNX_DP_TRAIN_CE:
+			state = xlnx_dp_link_train_ce(dp);
+			break;
+		case XLNX_DP_ADJUST_LINKRATE:
+			state = xlnx_dp_adjust_linkrate(dp);
+			break;
+		case XLNX_DP_ADJUST_LANECOUNT:
+			state = xlnx_dp_adjust_lanecount(dp);
+			break;
+		default:
+			break;
 		}
 
-		/*
-		 * Post Link Training ; An upstream device with a DPTX sets
-		 * this bit to 1 to grant the POST_LT_ADJ_REQ sequence by the
-		 * downstream DPRX if the downstream DPRX supports
-		 * POST_LT_ADJ_REQ
-		 */
-		data |= 0x20;
-		ret = drm_dp_dpcd_writeb(&dp->aux, DP_LANE_COUNT_SET, data);
-		if (ret < 0) {
-			dev_dbg(dp->dev, "DPCD write first try fails");
-			ret = drm_dp_dpcd_writeb(&dp->aux,
-						 DP_LANE_COUNT_SET, data);
+		if (state == XLNX_DP_TRAIN_SUCCESS) {
+			config->cr_done_oldstate = config->max_lanes;
+			config->cr_done_cnt = config->max_lanes;
+			dev_dbg(dp->dev, "dp training is success !!");
+			break;
+		} else if (state == XLNX_DP_TRAIN_FAILURE) {
+			config->cr_done_oldstate = config->max_lanes;
+			config->cr_done_cnt = config->max_lanes;
+			goto err_out;
+		}
+
+		if (state == XLNX_DP_ADJUST_LINKRATE ||
+		    state == XLNX_DP_ADJUST_LANECOUNT) {
+			ret = xlnx_dp_set_train_patttern(dp, DP_TRAINING_PATTERN_DISABLE);
 			if (ret < 0) {
-				dev_err(dp->dev, "DPCD write retry fails");
-				return ret;
+				dev_err(dp->dev,
+					"failed to disable training pattern\n");
+				goto err_out;
 			}
 		}
 	}
-	xlnx_dp_write(dp->dp_base, XDPTX_SCRAMBLING_DIS_REG, 0);
-
-	xlnx_dp_write(dp->dp_base, XDPTX_TRNGPAT_SET_REG,
-		      DP_TRAINING_PATTERN_DISABLE);
-	ret = drm_dp_dpcd_writeb(&dp->aux, DP_TRAINING_PATTERN_SET,
-				 DP_TRAINING_PATTERN_DISABLE);
-	if (ret < 0) {
-		dev_err(dp->dev, "failed to disable training pattern\n");
-		return ret;
-	}
-	/* Enable the scrambler */
-	xlnx_dp_write(dp->dp_base, XDPTX_SCRAMBLING_DIS_REG, 0);
 
 	return 0;
+err_out:
+	dev_err(dp->dev, "failed to train the DP link\n");
+	return -EIO;
 }
 
 static void xlnx_dp_phy_reset(struct xlnx_dp *dp, u32 reset)
@@ -1695,41 +1743,6 @@ static void xlnx_dp_phy_reset(struct xlnx_dp *dp, u32 reset)
 	xlnx_dp_phy_ready(dp);
 
 	xlnx_dp_write(dp->dp_base, XDPTX_ENABLE_REG, 1);
-}
-
-/**
- * xlnx_dp_train_loop - Downshift the link rate during training
- * @dp: DisplayPort IP core structure
- *
- * Train the link by downshifting the link rate if training is not successful.
- *
- * Return: 0 if training is successful
- * -EIO when connector status is disconnected or failed to train the link
- */
-static int xlnx_dp_train_loop(struct xlnx_dp *dp)
-{
-	struct xlnx_dp_mode *mode = &dp->mode;
-	u8 bw = mode->bw_code;
-	int ret;
-
-	do {
-		if (dp->status == connector_status_disconnected ||
-		    !dp->enabled)
-			return -EIO;
-		ret = xlnx_dp_train(dp);
-		if (!ret)
-			return ret;
-		ret = xlnx_dp_mode_configure(dp, mode->pclock, bw);
-		if (ret < 0)
-			goto err_out;
-
-		bw = ret;
-	} while (bw >= DP_LINK_BW_1_62);
-
-err_out:
-	dev_err(dp->dev, "failed to train the DP link\n");
-
-	return -EIO;
 }
 
 /**
@@ -2208,6 +2221,7 @@ static void xlnx_dp_start(struct xlnx_dp *dp)
 
 	mode->bw_code = drm_dp_link_rate_to_bw_code(link_rate);
 	mode->lane_cnt = dp->link_config.lane_count;
+	dp->link_config.cr_done_oldstate = dp->link_config.max_lanes;
 
 	xlnx_dp_init_aux(dp);
 	if (dp->status != connector_status_connected) {
@@ -2294,7 +2308,8 @@ static void xlnx_dp_start(struct xlnx_dp *dp)
 		return;
 
 	memset(dp->train_set, 0, XDPTX_MAX_LANES);
-	ret = xlnx_dp_train_loop(dp);
+
+	ret = xlnx_dp_run_training(dp);
 	if (ret < 0) {
 		dev_err(dp->dev, "DP Link Training Failed\n");
 		return;
@@ -2795,9 +2810,7 @@ static void xlnx_dp_encoder_enable(struct drm_encoder *encoder)
 
 	if (!dp->enabled) {
 		dp->enabled = true;
-
 		xlnx_dp_start(dp);
-		xlnx_dp_write(dp->dp_base, XDPTX_INTR_MASK_REG, 0);
 	}
 }
 
@@ -2822,12 +2835,10 @@ xlnx_dp_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	struct xlnx_dp *dp = encoder_to_dp(encoder);
 	struct drm_display_mode *mode = &crtc_state->mode;
 	struct drm_display_mode *adjusted_mode = &crtc_state->adjusted_mode;
+	int rate, max_rate = dp->link_config.max_rate;
+	u32 clock, drm_fourcc;
 	u8 max_lanes = dp->link_config.max_lanes;
 	u8 bpp = dp->config.bpp;
-	int rate, max_rate = dp->link_config.max_rate;
-	int ret;
-	u32 clock;
-	u32 drm_fourcc;
 
 	/*
 	 * This assumes that there is no conversion  between framebuffer
@@ -2843,9 +2854,6 @@ xlnx_dp_encoder_atomic_mode_set(struct drm_encoder *encoder,
 			mode->name);
 		drm_mode_debug_printmodeline(mode);
 	}
-	ret = xlnx_dp_mode_configure(dp, adjusted_mode->clock, 0);
-	if (ret < 0)
-		return;
 
 	/* The timing register should be programmed always */
 	xlnx_dp_encoder_mode_set_stream(dp, adjusted_mode);
