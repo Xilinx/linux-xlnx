@@ -1848,7 +1848,7 @@ xlnx_dp_aux_transfer(struct drm_dp_aux *aux, struct drm_dp_aux_msg *msg)
 			return -ENODEV;
 		}
 
-		usleep_range(400, 500);
+		usleep_range(3200, 3300);
 	}
 
 	dev_info(dp->dev, "failed aux transfer\n");
