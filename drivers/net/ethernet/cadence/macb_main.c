@@ -957,7 +957,7 @@ static int macb_mii_init(struct macb *bp)
 
 	dev_set_drvdata(&bp->dev->dev, bp->mii_bus);
 
-	np = bp->pdev->dev.of_node;;
+	np = bp->pdev->dev.of_node;
 	mdio_np = of_get_child_by_name(np, "mdio");
 	if (mdio_np) {
 		of_node_put(mdio_np);
@@ -5006,7 +5006,7 @@ static int __maybe_unused macb_resume(struct device *dev)
 
 	if (device_may_wakeup(&bp->dev->dev)) {
 		spin_lock_irqsave(&bp->lock, flags);
- 		macb_writel(bp, IDR, MACB_BIT(WOL));
+		macb_writel(bp, IDR, MACB_BIT(WOL));
 		gem_writel(bp, WOL, 0);
 		/* Clear Q0 ISR as WOL was enabled on Q0 */
 		if (bp->caps & MACB_CAPS_ISR_CLEAR_ON_WRITE)
