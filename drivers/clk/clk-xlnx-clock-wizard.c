@@ -49,13 +49,8 @@
 
 #define WZRD_USEC_POLL		10
 #define WZRD_TIMEOUT_POLL		1000
-/* Multiplier limits, from UG572 Table 3-4 for Ultrascale+ */
-#define CLKFBOUT_MULT_F_MIN		2000U
-#define CLKFBOUT_MULT_F_MAX		128000U
 
 /* Divider limits, from UG572 Table 3-4 for Ultrascale+ */
-#define DIVCLK_DIVIDE_MIN		1U
-#define DIVCLK_DIVIDE_MAX		106U
 #define DIV_O				0x01
 #define DIV_ALL				0x03
 
@@ -499,30 +494,18 @@ static struct clk *clk_wzrd_register_divf(struct device *dev,
 	struct clk_init_data init;
 	int ret;
 
-	if (clk_divider_flags & CLK_DIVIDER_HIWORD_MASK) {
-		if (width + shift > 16) {
-			pr_warn("divider value exceeds LOWORD field\n");
-			return ERR_PTR(-EINVAL);
-		}
-	}
-
-	/* allocate the divider */
-	div = kzalloc(sizeof(*div), GFP_KERNEL);
+	div = devm_kzalloc(dev, sizeof(*div), GFP_KERNEL);
 	if (!div)
 		return ERR_PTR(-ENOMEM);
 
 	init.name = name;
 
-	if (clk_divider_flags & CLK_DIVIDER_READ_ONLY)
-		init.ops = &clk_divider_ro_ops;
-	else
-		init.ops = &clk_wzrd_clk_divider_ops_f;
+	init.ops = &clk_wzrd_clk_divider_ops_f;
 
 	init.flags = flags;
-	init.parent_names = (parent_name ? &parent_name : NULL);
-	init.num_parents = (parent_name ? 1 : 0);
+	init.parent_names = &parent_name;
+	init.num_parents = 1;
 
-	/* struct clk_divider assignments */
 	div->base = base;
 	div->offset = offset;
 	div->shift = shift;
@@ -532,13 +515,10 @@ static struct clk *clk_wzrd_register_divf(struct device *dev,
 	div->hw.init = &init;
 	div->table = NULL;
 
-	/* register the clock */
 	hw = &div->hw;
-	ret = clk_hw_register(dev, hw);
-	if (ret) {
-		kfree(div);
+	ret = devm_clk_hw_register(dev, hw);
+	if (ret)
 		return ERR_PTR(ret);
-	}
 
 	return hw->clk;
 }
@@ -558,15 +538,7 @@ static struct clk *clk_wzrd_register_divider(struct device *dev,
 	struct clk_init_data init;
 	int ret;
 
-	if (clk_divider_flags & CLK_DIVIDER_HIWORD_MASK) {
-		if (width + shift > 16) {
-			pr_warn("divider value exceeds LOWORD field\n");
-			return ERR_PTR(-EINVAL);
-		}
-	}
-
-	/* allocate the divider */
-	div = kzalloc(sizeof(*div), GFP_KERNEL);
+	div = devm_kzalloc(dev, sizeof(*div), GFP_KERNEL);
 	if (!div)
 		return ERR_PTR(-ENOMEM);
 
@@ -578,10 +550,9 @@ static struct clk *clk_wzrd_register_divider(struct device *dev,
 	else
 		init.ops = &clk_wzrd_clk_div_all_ops;
 	init.flags = flags;
-	init.parent_names = (parent_name ? &parent_name : NULL);
-	init.num_parents = (parent_name ? 1 : 0);
+	init.parent_names = &parent_name;
+	init.num_parents = 1;
 
-	/* struct clk_divider assignments */
 	div->base = base;
 	div->offset = offset;
 	div->shift = shift;
@@ -591,13 +562,10 @@ static struct clk *clk_wzrd_register_divider(struct device *dev,
 	div->hw.init = &init;
 	div->table = NULL;
 
-	/* register the clock */
 	hw = &div->hw;
-	ret = clk_hw_register(dev, hw);
-	if (ret) {
-		kfree(div);
+	ret = devm_clk_hw_register(dev, hw);
+	if (ret)
 		hw = ERR_PTR(ret);
-	}
 
 	return hw->clk;
 }
