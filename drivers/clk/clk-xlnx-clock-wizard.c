@@ -408,7 +408,7 @@ static unsigned long clk_wzrd_recalc_ratef(struct clk_hw *hw,
 	div = val & div_mask(divider->width);
 	frac = (val >> WZRD_CLKOUT_FRAC_SHIFT) & WZRD_CLKOUT_FRAC_MASK;
 
-	return ((parent_rate * 1000) / ((div * 1000) + frac));
+	return mult_frac(parent_rate, 1000, (div * 1000) + frac);
 }
 
 static int clk_wzrd_dynamic_reconfig_f(struct clk_hw *hw, unsigned long rate,
@@ -416,25 +416,19 @@ static int clk_wzrd_dynamic_reconfig_f(struct clk_hw *hw, unsigned long rate,
 {
 	int err = 0;
 	u32 value, pre;
-	unsigned long flags = 0;
 	unsigned long rate_div, f, clockout0_div;
 	struct clk_wzrd_divider *divider = to_clk_wzrd_divider(hw);
 	void __iomem *div_addr = divider->base + divider->offset;
 
-	if (divider->lock)
-		spin_lock_irqsave(divider->lock, flags);
-	else
-		__acquire(divider->lock);
-
-	rate_div = ((parent_rate * 1000) / rate);
+	rate_div = DIV_ROUND_DOWN_ULL(parent_rate * 1000, rate);
 	clockout0_div = rate_div / 1000;
 
 	pre = DIV_ROUND_CLOSEST((parent_rate * 1000), rate);
 	f = (u32)(pre - (clockout0_div * 1000));
 	f = f & WZRD_CLKOUT_FRAC_MASK;
+	f = f << WZRD_CLKOUT_DIVIDE_WIDTH;
 
-	value = ((f << WZRD_CLKOUT_DIVIDE_WIDTH) | (clockout0_div &
-			WZRD_CLKOUT_DIVIDE_MASK));
+	value = (f  | (clockout0_div & WZRD_CLKOUT_DIVIDE_MASK));
 
 	/* Set divisor and clear phase offset */
 	writel(value, div_addr);
@@ -445,7 +439,7 @@ static int clk_wzrd_dynamic_reconfig_f(struct clk_hw *hw, unsigned long rate,
 				 value & WZRD_DR_LOCK_BIT_MASK,
 				 WZRD_USEC_POLL, WZRD_TIMEOUT_POLL);
 	if (err)
-		goto err_reconfig;
+		return err;
 
 	/* Initiate reconfiguration */
 	writel(WZRD_DR_BEGIN_DYNA_RECONF_5_2,
@@ -454,17 +448,9 @@ static int clk_wzrd_dynamic_reconfig_f(struct clk_hw *hw, unsigned long rate,
 	       divider->base + WZRD_DR_INIT_REG_OFFSET);
 
 	/* Check status register */
-	err = readl_poll_timeout(divider->base + WZRD_DR_STATUS_REG_OFFSET, value,
-				 value & WZRD_DR_LOCK_BIT_MASK,
-				 WZRD_USEC_POLL, WZRD_TIMEOUT_POLL);
-
-err_reconfig:
-	if (divider->lock)
-		spin_unlock_irqrestore(divider->lock, flags);
-	else
-		__release(divider->lock);
-
-	return err;
+	return readl_poll_timeout(divider->base + WZRD_DR_STATUS_REG_OFFSET, value,
+				  value & WZRD_DR_LOCK_BIT_MASK,
+				  WZRD_USEC_POLL, WZRD_TIMEOUT_POLL);
 }
 
 static long clk_wzrd_round_rate_f(struct clk_hw *hw, unsigned long rate,
