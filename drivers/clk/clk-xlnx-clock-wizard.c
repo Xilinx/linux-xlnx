@@ -179,8 +179,7 @@ static unsigned long clk_wzrd_recalc_rate(struct clk_hw *hw,
 					  unsigned long parent_rate)
 {
 	struct clk_wzrd_divider *divider = to_clk_wzrd_divider(hw);
-	void __iomem *div_addr =
-			(void __iomem *)(divider->base + divider->offset);
+	void __iomem *div_addr = divider->base + divider->offset;
 	unsigned int val;
 
 	val = readl(div_addr) >> divider->shift;
@@ -197,8 +196,7 @@ static int clk_wzrd_dynamic_reconfig(struct clk_hw *hw, unsigned long rate,
 	u32 value;
 	unsigned long flags = 0;
 	struct clk_wzrd_divider *divider = to_clk_wzrd_divider(hw);
-	void __iomem *div_addr =
-			(void __iomem *)(divider->base + divider->offset);
+	void __iomem *div_addr = divider->base + divider->offset;
 
 	if (divider->lock)
 		spin_lock_irqsave(divider->lock, flags);
@@ -405,8 +403,7 @@ static unsigned long clk_wzrd_recalc_ratef(struct clk_hw *hw,
 	unsigned int val;
 	u32 div, frac;
 	struct clk_wzrd_divider *divider = to_clk_wzrd_divider(hw);
-	void __iomem *div_addr =
-			(void __iomem *)(divider->base + divider->offset);
+	void __iomem *div_addr = divider->base + divider->offset;
 
 	val = readl(div_addr);
 	div = val & div_mask(divider->width);
@@ -423,8 +420,7 @@ static int clk_wzrd_dynamic_reconfig_f(struct clk_hw *hw, unsigned long rate,
 	unsigned long flags = 0;
 	unsigned long rate_div, f, clockout0_div;
 	struct clk_wzrd_divider *divider = to_clk_wzrd_divider(hw);
-	void __iomem *div_addr =
-			(void __iomem *)(divider->base + divider->offset);
+	void __iomem *div_addr = divider->base + divider->offset;
 
 	if (divider->lock)
 		spin_lock_irqsave(divider->lock, flags);
