@@ -1,0 +1,56 @@
+# SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/misc/xlnx,axi-traffic-gen.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx Axi Traffic generator Device Tree Bindings
+
+maintainers:
+  - shubhrajyoti.datta@xilinx.com
+
+properties:
+  compatible:
+    enum:
+      - xlnx,axi-traffic-gen
+      - xlnx,axi-traffic-gen-1.0
+
+  reg:
+    maxItems: 1
+
+  interrupts:
+    items:
+      - description: err-out interrupt
+      - description: irq-out interrupt
+
+  interrupt-names:
+    items:
+      - const: err-out
+      - const: irq-out
+
+  clocks:
+    minItems: 1
+
+  xlnx,device-id:
+    description: Device instance id
+    $ref: /schemas/types.yaml#/definitions/uint32
+
+required:
+  - compatible
+  - reg
+  - interrupts
+  - interrupt-names
+
+additionalProperties: false
+
+examples:
+  - |
+    trafgen_0: trafgen@76000000 {
+        compatible = "xlnx,axi-traffic-gen";
+        clocks = <&clkc 15>;
+        interrupts = <0 93 4 >, < 0 94 4 >;
+        interrupt-parent = <&axi_intc_1>;
+        interrupt-names = "err-out", "irq-out";
+        reg = <0x76000000 0x800000>;
+        xlnx,device-id = <0x0>;
+    };
