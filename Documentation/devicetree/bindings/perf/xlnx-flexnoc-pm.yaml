@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/perf/xlnx-flexnoc-pm.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx flexnoc Performance Monitor device tree bindings
+
+maintainers:
+  - Shubhrajyoti Datta <shubhrajyoti.datta@xilinx.com>
+
+properties:
+  compatible:
+    # Versal SoC based boards
+    items:
+      - enum:
+          - xlnx,flexnoc-pm-2.7
+
+  reg:
+    items:
+      - description: funnel registers
+      - description: baselpd registers
+      - description: basefpd registers
+
+  reg-names:
+    # The core schema enforces this is a string array
+    items:
+      - const: funnel
+      - const: baselpd
+      - const: basefpd
+
+required:
+  - compatible
+  - reg
+
+additionalProperties: false
+
+examples:
+  - |
+    performance-monitor@f0920000 {
+        compatible = "xlnx,flexnoc-pm-2.7";
+        reg-names = "funnel", "baselpd", "basefpd";
+        reg = <0x0 0xf0920000 0x0 0x1000>,
+              <0x0 0xf0980000 0x0 0x9000>,
+              <0x0 0xf0b80000 0x0 0x9000>;
+    };
