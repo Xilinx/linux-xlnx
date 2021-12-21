@@ -15,6 +15,7 @@
 #include <linux/of.h>
 #include <linux/module.h>
 #include <linux/err.h>
+#include <linux/iopoll.h>
 
 #define WZRD_NUM_OUTPUTS	7
 #define WZRD_ACLK_MAX_FREQ	250000000UL
@@ -38,13 +39,14 @@
 #define WZRD_CLKOUT0_FRAC_MASK		GENMASK(17, 8)
 
 #define WZRD_DR_MAX_INT_DIV_VALUE	255
-#define WZRD_DR_NUM_RETRIES		10000
 #define WZRD_DR_STATUS_REG_OFFSET	0x04
 #define WZRD_DR_LOCK_BIT_MASK		0x00000001
 #define WZRD_DR_INIT_REG_OFFSET		0x25C
 #define WZRD_DR_DIV_TO_PHASE_OFFSET	4
 #define WZRD_DR_BEGIN_DYNA_RECONF	0x03
 
+#define WZRD_USEC_POLL		10
+#define WZRD_TIMEOUT_POLL		1000
 /* Multiplier limits, from UG572 Table 3-4 for Ultrascale+ */
 #define CLKFBOUT_MULT_F_MIN		2000U
 #define CLKFBOUT_MULT_F_MAX		128000U
@@ -192,7 +194,6 @@ static int clk_wzrd_dynamic_reconfig(struct clk_hw *hw, unsigned long rate,
 				     unsigned long parent_rate)
 {
 	int err = 0;
-	u16 retries;
 	u32 value;
 	unsigned long flags = 0;
 	struct clk_wzrd_divider *divider = to_clk_wzrd_divider(hw);
@@ -207,41 +208,27 @@ static int clk_wzrd_dynamic_reconfig(struct clk_hw *hw, unsigned long rate,
 	value = DIV_ROUND_CLOSEST(parent_rate, rate);
 
 	/* Cap the value to max */
-	if (value > WZRD_DR_MAX_INT_DIV_VALUE)
-		value = WZRD_DR_MAX_INT_DIV_VALUE;
+	min_t(u32, value, WZRD_DR_MAX_INT_DIV_VALUE);
 
 	/* Set divisor and clear phase offset */
 	writel(value, div_addr);
 	writel(0x00, div_addr + WZRD_DR_DIV_TO_PHASE_OFFSET);
 
 	/* Check status register */
-	retries = WZRD_DR_NUM_RETRIES;
-	while (retries--) {
-		if (readl(divider->base + WZRD_DR_STATUS_REG_OFFSET) &
-							WZRD_DR_LOCK_BIT_MASK)
-			break;
-	}
-
-	if (retries == 0) {
-		err = -ETIMEDOUT;
+	err = readl_poll_timeout(divider->base + WZRD_DR_STATUS_REG_OFFSET,
+				 value, value & WZRD_DR_LOCK_BIT_MASK,
+				 WZRD_USEC_POLL, WZRD_TIMEOUT_POLL);
+	if (err)
 		goto err_reconfig;
-	}
 
 	/* Initiate reconfiguration */
 	writel(WZRD_DR_BEGIN_DYNA_RECONF,
 	       divider->base + WZRD_DR_INIT_REG_OFFSET);
 
 	/* Check status register */
-	retries = WZRD_DR_NUM_RETRIES;
-	while (retries--) {
-		if (readl(divider->base + WZRD_DR_STATUS_REG_OFFSET) &
-							WZRD_DR_LOCK_BIT_MASK)
-			break;
-	}
-
-	if (retries == 0)
-		err = -ETIMEDOUT;
-
+	err = readl_poll_timeout(divider->base + WZRD_DR_STATUS_REG_OFFSET,
+				 value, value & WZRD_DR_LOCK_BIT_MASK,
+				 WZRD_USEC_POLL, WZRD_TIMEOUT_POLL);
 err_reconfig:
 	if (divider->lock)
 		spin_unlock_irqrestore(divider->lock, flags);
@@ -306,7 +293,7 @@ static int clk_wzrd_dynamic_all_nolock(struct clk_hw *hw, unsigned long rate,
 {
 	struct clk_wzrd_divider *divider = to_clk_wzrd_divider(hw);
 	u32 reg, pre;
-	u16 retries;
+	u32 value;
 	int err;
 	u64 vco_freq, rate_div, f, clockout0_div;
 
@@ -334,14 +321,10 @@ static int clk_wzrd_dynamic_all_nolock(struct clk_hw *hw, unsigned long rate,
 	writel(divider->valueo, divider->base + WZRD_CLK_CFG_REG(2));
 	writel(0, divider->base + WZRD_CLK_CFG_REG(3));
 	/* Check status register */
-	retries = WZRD_DR_NUM_RETRIES;
-	while (retries--) {
-		if (readl(divider->base + WZRD_DR_STATUS_REG_OFFSET) &
-							WZRD_DR_LOCK_BIT_MASK)
-			break;
-	}
-
-	if (!retries)
+	err = readl_poll_timeout(divider->base + WZRD_DR_STATUS_REG_OFFSET, value,
+				 value & WZRD_DR_LOCK_BIT_MASK,
+				 WZRD_USEC_POLL, WZRD_TIMEOUT_POLL);
+	if (err)
 		return -ETIMEDOUT;
 
 	/* Initiate reconfiguration */
@@ -349,14 +332,10 @@ static int clk_wzrd_dynamic_all_nolock(struct clk_hw *hw, unsigned long rate,
 	       divider->base + WZRD_DR_INIT_REG_OFFSET);
 
 	/* Check status register */
-	retries = WZRD_DR_NUM_RETRIES;
-	while (retries--) {
-		if (readl(divider->base + WZRD_DR_STATUS_REG_OFFSET) &
-							WZRD_DR_LOCK_BIT_MASK)
-			break;
-	}
-
-	if (!retries)
+	err = readl_poll_timeout(divider->base + WZRD_DR_STATUS_REG_OFFSET, value,
+				 value & WZRD_DR_LOCK_BIT_MASK,
+				 WZRD_USEC_POLL, WZRD_TIMEOUT_POLL);
+	if (err)
 		return -ETIMEDOUT;
 
 	return 0;
@@ -440,7 +419,6 @@ static int clk_wzrd_dynamic_reconfig_f(struct clk_hw *hw, unsigned long rate,
 				       unsigned long parent_rate)
 {
 	int err = 0;
-	u16 retries;
 	u32 value, pre;
 	unsigned long flags = 0;
 	unsigned long rate_div, f, clockout0_div;
@@ -468,32 +446,20 @@ static int clk_wzrd_dynamic_reconfig_f(struct clk_hw *hw, unsigned long rate,
 	writel(0x0, div_addr + WZRD_DR_DIV_TO_PHASE_OFFSET);
 
 	/* Check status register */
-	retries = WZRD_DR_NUM_RETRIES;
-	while (retries--) {
-		if (readl(divider->base + WZRD_DR_STATUS_REG_OFFSET) &
-							WZRD_DR_LOCK_BIT_MASK)
-			break;
-	}
-
-	if (!retries) {
-		err = -ETIMEDOUT;
+	err = readl_poll_timeout(divider->base + WZRD_DR_STATUS_REG_OFFSET, value,
+				 value & WZRD_DR_LOCK_BIT_MASK,
+				 WZRD_USEC_POLL, WZRD_TIMEOUT_POLL);
+	if (err)
 		goto err_reconfig;
-	}
 
 	/* Initiate reconfiguration */
 	writel(WZRD_DR_BEGIN_DYNA_RECONF,
 	       divider->base + WZRD_DR_INIT_REG_OFFSET);
 
 	/* Check status register */
-	retries = WZRD_DR_NUM_RETRIES;
-	while (retries--) {
-		if (readl(divider->base + WZRD_DR_STATUS_REG_OFFSET) &
-							WZRD_DR_LOCK_BIT_MASK)
-			break;
-	}
-
-	if (!retries)
-		err = -ETIMEDOUT;
+	err = readl_poll_timeout(divider->base + WZRD_DR_STATUS_REG_OFFSET, value,
+				 value & WZRD_DR_LOCK_BIT_MASK,
+				 WZRD_USEC_POLL, WZRD_TIMEOUT_POLL);
 
 err_reconfig:
 	if (divider->lock)
