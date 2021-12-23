@@ -492,6 +492,17 @@ config PWM_SIFIVE
 	  To compile this driver as a module, choose M here: the module
 	  will be called pwm-sifive.
 
+config PWM_CADENCE
+	tristate "Cadence PWM support"
+	depends on OF
+	depends on COMMON_CLK
+	help
+	  Generic PWM framework driver for cadence TTC IP found on
+	  Xilinx Zynq/ZynqMP/Versal SOCs. Each TTC device has 3 PWM
+	  channels. Output of 0th PWM channel of each TTC device can
+	  be routed to MIO or EMIO, and output of 1st and 2nd PWM
+	  channels can be routed only to EMIO.
+
 config PWM_SL28CPLD
 	tristate "Kontron sl28cpld PWM support"
 	depends on MFD_SL28CPLD || COMPILE_TEST
