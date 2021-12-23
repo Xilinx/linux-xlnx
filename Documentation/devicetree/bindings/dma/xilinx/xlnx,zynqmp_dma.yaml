@@ -1,0 +1,86 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/dma/xilinx/xlnx,zynqmp_dma.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx ZynqMP DMA Controller Device Tree Bindings
+
+description:
+  Xilinx ZynqMP DMA engine, it does support memory to memory transfers,
+  memory to device and device to memory transfers. It also has flow
+  control and rate control support for slave/peripheral dma access.
+
+maintainers:
+  - Harini Katakam <harini.katakam@xilinx.com>
+  - Shravya Kumbham <shravya.kumbham@xilinx.com>
+
+allOf:
+  - $ref: "../dma-controller.yaml#"
+
+properties:
+  "#dma-cells":
+    const: 1
+    description:
+      The cell is the DMA channel ID.
+
+  compatible:
+    const: xlnx,zynqmp-dma-1.0
+
+  reg:
+    description: Memory map for gdma/adma module access.
+    maxItems: 1
+
+  interrupts:
+    description: Should contain DMA channel interrupt.
+    maxItems: 1
+
+  clocks:
+    maxItems: 2
+
+  clock-names:
+    description: The main and apb clocks
+    items:
+      - const: clk_main
+      - const: clk_apb
+
+  xlnx,bus-width:
+    description: Axi buswidth in bits. Should contain 128 or 64.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [64, 128]
+
+  dma-coherent: true
+
+  iommus:
+    maxItems: 1
+
+  power-domains:
+    maxItems: 1
+
+required:
+  - "#dma-cells"
+  - compatible
+  - reg
+  - interrupts
+  - clocks
+  - clock-names
+  - xlnx,bus-width
+
+additionalProperties: false
+
+examples:
+  - |
+    fpd_dma_chan1: dma-controller@fd500000 {
+      #dma-cells = <1>;
+      compatible = "xlnx,zynqmp-dma-1.0";
+      reg = <0xFD500000 0x1000>;
+      interrupt-parent = <&gic>;
+      interrupts = <0 117 4>;
+      clocks = <&dma_clk>, <&dma_clk>;
+      clock-names = "clk_main", "clk_apb";
+      xlnx,bus-width = <128>;
+      dma-coherent;
+    };
+
+...
