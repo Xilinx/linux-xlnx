@@ -476,6 +476,9 @@ static int __init ttc_timer_probe(struct platform_device *pdev)
 	u32 timer_width = 16;
 	struct device_node *timer = pdev->dev.of_node;
 
+	if (of_property_read_bool(timer, "#pwm-cells"))
+		return -ENODEV;
+
 	if (initialized)
 		return 0;
 
