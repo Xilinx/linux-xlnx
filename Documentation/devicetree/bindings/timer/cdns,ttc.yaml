@@ -30,11 +30,23 @@ properties:
     description: |
       Bit width of the timer, necessary if not 16.
 
+  "#pwm-cells":
+    description: |
+      Required to configure TTC as PWM device, supported cells are 0 to 3.
+
 required:
   - compatible
   - reg
-  - interrupts
   - clocks
+
+allOf:
+  - if:
+      not:
+        required:
+          - "#pwm-cells"
+    then:
+      required:
+        - interrupts
 
 additionalProperties: false
 
@@ -47,4 +59,13 @@ examples:
         reg = <0xF8001000 0x1000>;
         clocks = <&cpu_clk 3>;
         timer-width = <32>;
+    };
+
+  - |
+    ttc1: ttc1@f8002000 {
+        compatible = "cdns,ttc";
+        reg = <0xF8002000 0x1000>;
+        clocks = <&cpu_clk 3>;
+        timer-width = <32>;
+        #pwm-cells = <0>;
     };
