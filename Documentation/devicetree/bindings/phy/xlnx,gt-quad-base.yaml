@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/phy/xlnx,gt-quad-base.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx DP GTQUAD PHY
+
+maintainers:
+  - Jagadeesh Banisetti <jagadeesh.banisetti@xilinx.com>
+
+description: |
+  The Xilinx DP GTQUAD PHY Controller core is designed for enabling
+  connectivity with Xilinx DP RX and TX with xilinx versal devices.
+
+properties:
+  compatible:
+    items:
+      - enum:
+          - xlnx,gt-quad-base-1.1
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    description: List of clock specifiers
+    items:
+      - description: AXI Lite clock
+
+  "#phy-cells":
+    const: 0
+
+required:
+  - clocks
+  - compatible
+  - reg
+  - '#phy-cells'
+
+additionalProperties: false
+
+examples:
+  - |
+   gt_quad_base: gt_qb@a4080000 {
+           clocks = <&misc_clk_0>;
+           compatible = "xlnx,gt-quad-base-1.1";
+           reg = <0xa4080000 0x10000>;
+           #phy-cells = <0>;
+   };
+...
