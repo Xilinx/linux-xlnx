@@ -329,7 +329,7 @@
 		};
 
 		/* GDMA */
-		fpd_dma_chan1: dma@fd500000 {
+		fpd_dma_chan1: dma-controller@fd500000 {
 			status = "disabled";
 			compatible = "xlnx,zynqmp-dma-1.0";
 			reg = <0x0 0xfd500000 0x0 0x1000>;
@@ -339,9 +339,10 @@
 			xlnx,bus-width = <128>;
 			iommus = <&smmu 0x14e8>;
 			power-domains = <&zynqmp_firmware PD_GDMA>;
+			#dma-cells = <1>;
 		};
 
-		fpd_dma_chan2: dma@fd510000 {
+		fpd_dma_chan2: dma-controller@fd510000 {
 			status = "disabled";
 			compatible = "xlnx,zynqmp-dma-1.0";
 			reg = <0x0 0xfd510000 0x0 0x1000>;
@@ -351,9 +352,10 @@
 			xlnx,bus-width = <128>;
 			iommus = <&smmu 0x14e9>;
 			power-domains = <&zynqmp_firmware PD_GDMA>;
+			#dma-cells = <1>;
 		};
 
-		fpd_dma_chan3: dma@fd520000 {
+		fpd_dma_chan3: dma-controller@fd520000 {
 			status = "disabled";
 			compatible = "xlnx,zynqmp-dma-1.0";
 			reg = <0x0 0xfd520000 0x0 0x1000>;
@@ -363,9 +365,10 @@
 			xlnx,bus-width = <128>;
 			iommus = <&smmu 0x14ea>;
 			power-domains = <&zynqmp_firmware PD_GDMA>;
+			#dma-cells = <1>;
 		};
 
-		fpd_dma_chan4: dma@fd530000 {
+		fpd_dma_chan4: dma-controller@fd530000 {
 			status = "disabled";
 			compatible = "xlnx,zynqmp-dma-1.0";
 			reg = <0x0 0xfd530000 0x0 0x1000>;
@@ -375,9 +378,10 @@
 			xlnx,bus-width = <128>;
 			iommus = <&smmu 0x14eb>;
 			power-domains = <&zynqmp_firmware PD_GDMA>;
+			#dma-cells = <1>;
 		};
 
-		fpd_dma_chan5: dma@fd540000 {
+		fpd_dma_chan5: dma-controller@fd540000 {
 			status = "disabled";
 			compatible = "xlnx,zynqmp-dma-1.0";
 			reg = <0x0 0xfd540000 0x0 0x1000>;
@@ -387,9 +391,10 @@
 			xlnx,bus-width = <128>;
 			iommus = <&smmu 0x14ec>;
 			power-domains = <&zynqmp_firmware PD_GDMA>;
+			#dma-cells = <1>;
 		};
 
-		fpd_dma_chan6: dma@fd550000 {
+		fpd_dma_chan6: dma-controller@fd550000 {
 			status = "disabled";
 			compatible = "xlnx,zynqmp-dma-1.0";
 			reg = <0x0 0xfd550000 0x0 0x1000>;
@@ -399,9 +404,10 @@
 			xlnx,bus-width = <128>;
 			iommus = <&smmu 0x14ed>;
 			power-domains = <&zynqmp_firmware PD_GDMA>;
+			#dma-cells = <1>;
 		};
 
-		fpd_dma_chan7: dma@fd560000 {
+		fpd_dma_chan7: dma-controller@fd560000 {
 			status = "disabled";
 			compatible = "xlnx,zynqmp-dma-1.0";
 			reg = <0x0 0xfd560000 0x0 0x1000>;
@@ -411,9 +417,10 @@
 			xlnx,bus-width = <128>;
 			iommus = <&smmu 0x14ee>;
 			power-domains = <&zynqmp_firmware PD_GDMA>;
+			#dma-cells = <1>;
 		};
 
-		fpd_dma_chan8: dma@fd570000 {
+		fpd_dma_chan8: dma-controller@fd570000 {
 			status = "disabled";
 			compatible = "xlnx,zynqmp-dma-1.0";
 			reg = <0x0 0xfd570000 0x0 0x1000>;
@@ -423,6 +430,7 @@
 			xlnx,bus-width = <128>;
 			iommus = <&smmu 0x14ef>;
 			power-domains = <&zynqmp_firmware PD_GDMA>;
+			#dma-cells = <1>;
 		};
 
 		gic: interrupt-controller@f9010000 {
@@ -453,7 +461,7 @@
 		 * These dma channels, Users should ensure that these dma
 		 * Channels are allowed for non secure access.
 		 */
-		lpd_dma_chan1: dma@ffa80000 {
+		lpd_dma_chan1: dma-controller@ffa80000 {
 			status = "disabled";
 			compatible = "xlnx,zynqmp-dma-1.0";
 			reg = <0x0 0xffa80000 0x0 0x1000>;
@@ -463,9 +471,10 @@
 			xlnx,bus-width = <64>;
 			/* iommus = <&smmu 0x868>; */
 			power-domains = <&zynqmp_firmware PD_ADMA>;
+			#dma-cells = <1>;
 		};
 
-		lpd_dma_chan2: dma@ffa90000 {
+		lpd_dma_chan2: dma-controller@ffa90000 {
 			status = "disabled";
 			compatible = "xlnx,zynqmp-dma-1.0";
 			reg = <0x0 0xffa90000 0x0 0x1000>;
@@ -475,9 +484,10 @@
 			xlnx,bus-width = <64>;
 			/* iommus = <&smmu 0x869>; */
 			power-domains = <&zynqmp_firmware PD_ADMA>;
+			#dma-cells = <1>;
 		};
 
-		lpd_dma_chan3: dma@ffaa0000 {
+		lpd_dma_chan3: dma-controller@ffaa0000 {
 			status = "disabled";
 			compatible = "xlnx,zynqmp-dma-1.0";
 			reg = <0x0 0xffaa0000 0x0 0x1000>;
@@ -487,9 +497,10 @@
 			xlnx,bus-width = <64>;
 			/* iommus = <&smmu 0x86a>; */
 			power-domains = <&zynqmp_firmware PD_ADMA>;
+			#dma-cells = <1>;
 		};
 
-		lpd_dma_chan4: dma@ffab0000 {
+		lpd_dma_chan4: dma-controller@ffab0000 {
 			status = "disabled";
 			compatible = "xlnx,zynqmp-dma-1.0";
 			reg = <0x0 0xffab0000 0x0 0x1000>;
@@ -499,9 +510,10 @@
 			xlnx,bus-width = <64>;
 			/* iommus = <&smmu 0x86b>; */
 			power-domains = <&zynqmp_firmware PD_ADMA>;
+			#dma-cells = <1>;
 		};
 
-		lpd_dma_chan5: dma@ffac0000 {
+		lpd_dma_chan5: dma-controller@ffac0000 {
 			status = "disabled";
 			compatible = "xlnx,zynqmp-dma-1.0";
 			reg = <0x0 0xffac0000 0x0 0x1000>;
@@ -511,9 +523,10 @@
 			xlnx,bus-width = <64>;
 			/* iommus = <&smmu 0x86c>; */
 			power-domains = <&zynqmp_firmware PD_ADMA>;
+			#dma-cells = <1>;
 		};
 
-		lpd_dma_chan6: dma@ffad0000 {
+		lpd_dma_chan6: dma-controller@ffad0000 {
 			status = "disabled";
 			compatible = "xlnx,zynqmp-dma-1.0";
 			reg = <0x0 0xffad0000 0x0 0x1000>;
@@ -523,9 +536,10 @@
 			xlnx,bus-width = <64>;
 			/* iommus = <&smmu 0x86d>; */
 			power-domains = <&zynqmp_firmware PD_ADMA>;
+			#dma-cells = <1>;
 		};
 
-		lpd_dma_chan7: dma@ffae0000 {
+		lpd_dma_chan7: dma-controller@ffae0000 {
 			status = "disabled";
 			compatible = "xlnx,zynqmp-dma-1.0";
 			reg = <0x0 0xffae0000 0x0 0x1000>;
@@ -535,9 +549,10 @@
 			xlnx,bus-width = <64>;
 			/* iommus = <&smmu 0x86e>; */
 			power-domains = <&zynqmp_firmware PD_ADMA>;
+			#dma-cells = <1>;
 		};
 
-		lpd_dma_chan8: dma@ffaf0000 {
+		lpd_dma_chan8: dma-controller@ffaf0000 {
 			status = "disabled";
 			compatible = "xlnx,zynqmp-dma-1.0";
 			reg = <0x0 0xffaf0000 0x0 0x1000>;
@@ -547,6 +562,7 @@
 			xlnx,bus-width = <64>;
 			/* iommus = <&smmu 0x86f>; */
 			power-domains = <&zynqmp_firmware PD_ADMA>;
+			#dma-cells = <1>;
 		};
 
 		mc: memory-controller@fd070000 {
