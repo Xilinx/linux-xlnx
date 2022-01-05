@@ -1230,12 +1230,16 @@ static int __maybe_unused cdns_i2c_runtime_resume(struct device *dev)
 static void cdns_i2c_prepare_recovery(struct i2c_adapter *adapter)
 {
 	struct cdns_i2c *p_cdns_i2c;
+	int ret;
 
 	p_cdns_i2c = container_of(adapter, struct cdns_i2c, adap);
 
 	/* Setting pin state as gpio */
-	pinctrl_select_state(p_cdns_i2c->pinctrl,
+	ret = pinctrl_select_state(p_cdns_i2c->pinctrl,
 			     p_cdns_i2c->pinctrl_pins_gpio);
+	if (ret < 0)
+		dev_err(p_cdns_i2c->adap.dev.parent,
+				"pinctrl_select_state failed\n");
 }
 
 /**
@@ -1248,12 +1252,16 @@ static void cdns_i2c_prepare_recovery(struct i2c_adapter *adapter)
 static void cdns_i2c_unprepare_recovery(struct i2c_adapter *adapter)
 {
 	struct cdns_i2c *p_cdns_i2c;
+	int ret;
 
 	p_cdns_i2c = container_of(adapter, struct cdns_i2c, adap);
 
 	/* Setting pin state to default(i2c) */
-	pinctrl_select_state(p_cdns_i2c->pinctrl,
+	ret = pinctrl_select_state(p_cdns_i2c->pinctrl,
 			     p_cdns_i2c->pinctrl_pins_default);
+	if (ret < 0)
+		dev_err(p_cdns_i2c->adap.dev.parent,
+				"pinctrl_select_state failed\n");
 }
 
 /**
