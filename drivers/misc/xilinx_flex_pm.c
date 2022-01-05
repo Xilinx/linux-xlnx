@@ -298,7 +298,8 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 
 	default:
 		dev_err(dev, "Invalid option\n");
-		break;
+		ret = -EINVAL;
+		goto exit_unlock;
 	}
 
 	ret = zynqmp_pm_probe_counter_read(domain, reg, &pm_api_ret[0]);
