@@ -118,6 +118,9 @@
 /* Maximum number of chip selects */
 #define ZYNQ_QSPI_MAX_NUM_CS		2
 
+/* Maximum address width */
+#define ZYNQ_QSPI_MAX_ADDR_WIDTH	3
+
 /**
  * struct zynq_qspi - Defines qspi driver instance
  * @dev:		Pointer to the this device's information
@@ -539,7 +542,8 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
  *
  * This function first selects the chip and starts the memory operation.
  *
- * Return: 0 in case of success, a negative error code otherwise.
+ * Return: 0 in case of success, -EINVAL if address size greater than
+ * ZYNQ_QSPI_MAX_ADDR_WIDTH.
  */
 static int zynq_qspi_exec_mem_op(struct spi_mem *mem,
 				 const struct spi_mem_op *op)
@@ -547,10 +551,14 @@ static int zynq_qspi_exec_mem_op(struct spi_mem *mem,
 	struct zynq_qspi *xqspi = spi_controller_get_devdata(mem->spi->master);
 	int err = 0, i;
 	u8 *tmpbuf;
+	u8 opaddr[ZYNQ_QSPI_MAX_ADDR_WIDTH];
 
 	dev_dbg(xqspi->dev, "cmd:%#x mode:%d.%d.%d.%d\n",
 		op->cmd.opcode, op->cmd.buswidth, op->addr.buswidth,
 		op->dummy.buswidth, op->data.buswidth);
+
+	if (op->addr.nbytes > ZYNQ_QSPI_MAX_ADDR_WIDTH)
+		return -EINVAL;
 
 	zynq_qspi_chipselect(mem->spi, true);
 	zynq_qspi_config_op(xqspi, mem->spi);
@@ -570,6 +578,7 @@ static int zynq_qspi_exec_mem_op(struct spi_mem *mem,
 	}
 
 	if (op->addr.nbytes) {
+		xqspi->txbuf = opaddr;
 		for (i = 0; i < op->addr.nbytes; i++) {
 			xqspi->txbuf[i] = op->addr.val >>
 					(8 * (op->addr.nbytes - i - 1));
