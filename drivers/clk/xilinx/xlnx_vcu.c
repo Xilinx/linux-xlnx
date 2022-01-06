@@ -732,7 +732,7 @@ static int xvcu_probe(struct platform_device *pdev)
 	if (IS_ERR(xvcu->reset_gpio)) {
 		ret = PTR_ERR(xvcu->reset_gpio);
 		dev_err(&pdev->dev, "failed to get reset gpio for vcu.\n");
-		return ret;
+		goto error_get_gpio;
 	}
 
 	if (xvcu->reset_gpio) {
@@ -759,6 +759,7 @@ static int xvcu_probe(struct platform_device *pdev)
 
 error_clk_provider:
 	xvcu_unregister_clock_provider(xvcu);
+error_get_gpio:
 	clk_disable_unprepare(xvcu->aclk);
 	return ret;
 }
