@@ -17,6 +17,7 @@
 #include <linux/mfd/syscon/xlnx-vcu.h>
 #include <linux/module.h>
 #include <linux/mod_devicetable.h>
+#include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
 
@@ -754,6 +755,12 @@ static int xvcu_probe(struct platform_device *pdev)
 	}
 
 	dev_set_drvdata(&pdev->dev, xvcu);
+
+	ret = devm_of_platform_populate(&pdev->dev);
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to register allegro codecs\n");
+		goto error_clk_provider;
+	}
 
 	return 0;
 
