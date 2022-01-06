@@ -755,6 +755,12 @@ static int xvcu_probe(struct platform_device *pdev)
 
 	dev_set_drvdata(&pdev->dev, xvcu);
 
+	ret = devm_of_platform_populate(&pdev->dev);
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to register allegro codecs\n");
+		goto error_clk_provider;
+	}
+
 	return 0;
 
 error_clk_provider:
