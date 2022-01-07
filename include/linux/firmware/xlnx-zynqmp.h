@@ -679,6 +679,7 @@ int zynqmp_pm_load_pdi(const u32 src, const u64 address);
 int zynqmp_pm_register_notifier(const u32 node, const u32 event,
 				const u32 wake, const u32 enable);
 int zynqmp_pm_feature(const u32 api_id);
+int zynqmp_pm_is_function_supported(const u32 api_id, const u32 id);
 int zynqmp_pm_set_feature_config(enum pm_feature_config_id id, u32 value);
 int zynqmp_pm_get_feature_config(enum pm_feature_config_id id, u32 *payload);
 int zynqmp_pm_get_uid_info(const u64 address, const u32 size, u32 *count);
@@ -962,6 +963,11 @@ static inline int zynqmp_pm_pinctrl_release(const u32 pin)
 }
 
 static inline int zynqmp_pm_pinctrl_get_function(const u32 pin, u32 *id)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_is_function_supported(const u32 api_id, const u32 id)
 {
 	return -ENODEV;
 }
