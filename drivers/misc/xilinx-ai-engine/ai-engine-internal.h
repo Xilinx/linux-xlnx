@@ -96,6 +96,7 @@ enum aie_tile_type {
 #define AIE_SYSFS_QUEUE_SIZE_SIZE	40U
 #define AIE_SYSFS_QUEUE_STS_SIZE	60U
 #define AIE_SYSFS_BD_SIZE		40U
+#define AIE_SYSFS_FIFO_LEN_SIZE		40U
 #define AIE_SYSFS_ERROR_SIZE		300U
 #define AIE_SYSFS_ERROR_CATEGORY_SIZE	500U
 #define AIE_SYSFS_LOCK_STS_SIZE		400U
@@ -264,9 +265,11 @@ struct aie_part_mem {
  * @qsize: queue size field attributes
  * @curbd: current buffer descriptor field attributes
  * @qsts: queue status field attributes
+ * @fifo_cnt: FIFO counter field attributes
  * @bd_regoff: SHIM DMA buffer descriptors register offset
  * @mm2s_sts_regoff: MM2S status register offset
  * @s2mm_sts_regoff: S2MM status register offset
+ * @fifo_cnt_regoff: FIFO counter register offset
  * @num_mm2s_chan: number of MM2S channels
  * @num_s2mm_chan: number of S2MM channels
  * @num_bds: number of buffer descriptors
@@ -281,9 +284,11 @@ struct aie_dma_attr {
 	struct aie_single_reg_field qsize;
 	struct aie_single_reg_field curbd;
 	struct aie_single_reg_field qsts;
+	struct aie_single_reg_field fifo_cnt;
 	u32 bd_regoff;
 	u32 mm2s_sts_regoff;
 	u32 s2mm_sts_regoff;
+	u32 fifo_cnt_regoff;
 	u32 num_mm2s_chan;
 	u32 num_s2mm_chan;
 	u32 num_bds;
