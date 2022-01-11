@@ -25,9 +25,12 @@ extern int zynq_cpun_start(u32 address, int cpu);
 extern const struct smp_operations zynq_smp_ops;
 #endif
 
+extern void __iomem *zynq_slcr_base;
 extern void __iomem *zynq_scu_base;
 
 void zynq_pm_late_init(void);
+extern unsigned int zynq_sys_suspend_sz;
+int zynq_sys_suspend(void __iomem *ddrc_base, void __iomem *slcr_base);
 
 static inline void zynq_core_pm_init(void)
 {
