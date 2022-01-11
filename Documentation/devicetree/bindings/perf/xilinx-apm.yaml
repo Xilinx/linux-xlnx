@@ -75,6 +75,13 @@ properties:
     description:
       Metric Counter width.
 
+  xlnx,metric-count-scale:
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [1, 2, 4, 8]
+    description:
+      Metric Counter scale factor.
+
   xlnx,num-of-counters:
     allOf:
       - $ref: /schemas/types.yaml#/definitions/uint32
@@ -104,6 +111,8 @@ required:
   - reg
   - clocks
   - interrupts
+
+additionalProperties: false
 
 examples:
   - |
