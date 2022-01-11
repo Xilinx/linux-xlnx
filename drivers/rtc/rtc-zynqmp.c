@@ -40,6 +40,12 @@
 #define RTC_CALIB_MASK		0x1FFFFF
 #define RTC_ALRM_MASK          BIT(1)
 #define RTC_MSEC               1000
+#define RTC_FR_MASK		0xF0000
+#define RTC_SEC_MAX_VAL		0xFFFFFFFF
+#define RTC_FR_MAX_TICKS	16
+#define RTC_OFFSET_MAX		150000
+#define RTC_OFFSET_MIN		-150000
+#define RTC_PPB			1000000000LL
 
 struct xlnx_rtc_dev {
 	struct rtc_device	*rtc;
@@ -184,12 +190,84 @@ static void xlnx_init_rtc(struct xlnx_rtc_dev *xrtcdev)
 	writel(xrtcdev->calibval, (xrtcdev->reg_base + RTC_CALIB_WR));
 }
 
+static int xlnx_rtc_read_offset(struct device *dev, long *offset)
+{
+	struct xlnx_rtc_dev *xrtcdev = dev_get_drvdata(dev);
+	long offset_val;
+	unsigned int reg;
+	unsigned int tick_mult = RTC_PPB / xrtcdev->calibval;
+
+	reg = readl(xrtcdev->reg_base + RTC_CALIB_RD);
+
+	/* Offset with seconds ticks */
+	offset_val = reg & RTC_TICK_MASK;
+	offset_val = offset_val - xrtcdev->calibval;
+	offset_val = offset_val * tick_mult;
+
+	/* Offset with fractional ticks */
+	if (reg & RTC_FR_EN)
+		offset_val += ((reg & RTC_FR_MASK) >> RTC_FR_DATSHIFT)
+			* (tick_mult / RTC_FR_MAX_TICKS);
+	*offset = offset_val;
+
+	return 0;
+}
+
+static int xlnx_rtc_set_offset(struct device *dev, long offset)
+{
+	struct xlnx_rtc_dev *xrtcdev = dev_get_drvdata(dev);
+	short int  max_tick;
+	unsigned char fract_tick = 0;
+	unsigned int calibval;
+	int fract_offset;
+	unsigned int tick_mult = RTC_PPB / xrtcdev->calibval;
+
+	/* Make sure offset value is within supported range */
+	if (offset < RTC_OFFSET_MIN || offset > RTC_OFFSET_MAX)
+		return -ERANGE;
+
+	/* Number ticks for given offset */
+	max_tick = div_s64_rem(offset, tick_mult, &fract_offset);
+
+	/* Number fractional ticks for given offset */
+	if (fract_offset) {
+		if (fract_offset < 0) {
+			fract_offset = fract_offset + tick_mult;
+			max_tick--;
+		}
+		if (fract_offset > (tick_mult / RTC_FR_MAX_TICKS)) {
+			for (fract_tick = 1; fract_tick < 16; fract_tick++) {
+				if (fract_offset <=
+				    (fract_tick *
+				     (tick_mult / RTC_FR_MAX_TICKS)))
+					break;
+			}
+		}
+	}
+
+	/* Zynqmp RTC uses second and fractional tick
+	 * counters for compensation
+	 */
+	calibval = max_tick + xrtcdev->calibval;
+
+	if (fract_tick)
+		calibval |= RTC_FR_EN;
+
+	calibval |= (fract_tick << RTC_FR_DATSHIFT);
+
+	writel(calibval, (xrtcdev->reg_base + RTC_CALIB_WR));
+
+	return 0;
+}
+
 static const struct rtc_class_ops xlnx_rtc_ops = {
 	.set_time	  = xlnx_rtc_set_time,
 	.read_time	  = xlnx_rtc_read_time,
 	.read_alarm	  = xlnx_rtc_read_alarm,
 	.set_alarm	  = xlnx_rtc_set_alarm,
 	.alarm_irq_enable = xlnx_rtc_alarm_irq_enable,
+	.read_offset	  = xlnx_rtc_read_offset,
+	.set_offset	  = xlnx_rtc_set_offset,
 };
 
 static irqreturn_t xlnx_rtc_interrupt(int irq, void *id)
