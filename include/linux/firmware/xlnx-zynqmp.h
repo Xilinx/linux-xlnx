@@ -30,6 +30,12 @@
 
 /* SMC SIP service Call Function Identifier Prefix */
 #define PM_SIP_SVC			0xC2000000
+
+/* PM API versions */
+#define PM_API_VERSION_2	2
+
+/* ATF only commands */
+#define TF_A_PM_REGISTER_SGI		0xa04
 #define PM_GET_TRUSTZONE_VERSION	0xa03
 #define PM_SET_SUSPEND_MODE		0xa02
 #define GET_CALLBACK_DATA		0xa01
@@ -669,7 +675,7 @@ int zynqmp_pm_set_usb_config(u32 node, enum pm_usb_config_type config,
 			     u32 value);
 int zynqmp_pm_get_meta_header(const u64 src, const u64 dst,
 			      const u32 size, u32 *count);
-
+int zynqmp_pm_register_sgi(u32 sgi_num, u32 reset);
 #else
 static inline int zynqmp_pm_get_api_version(u32 *version)
 {
@@ -1161,6 +1167,11 @@ static inline int zynqmp_pm_set_usb_config(u32 node,
 
 static inline int zynqmp_pm_get_meta_header(const u64 src, const u64 dst,
 					    const u32 size, u32 *count)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_register_sgi(u32 sgi_num, u32 reset)
 {
 	return -ENODEV;
 }
