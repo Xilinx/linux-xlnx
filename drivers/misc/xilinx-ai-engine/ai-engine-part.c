@@ -1110,11 +1110,6 @@ of_aie_part_probe(struct aie_device *adev, struct device_node *nc)
 	if (ret)
 		dev_warn(&apart->dev, "Failed to configure DMA.\n");
 
-	/* Create FPGA bridge for AI engine partition */
-	ret = aie_fpga_create_bridge(apart);
-	if (ret < 0)
-		dev_warn(&apart->dev, "failed to create fpga region.\n");
-
 	dev_info(&adev->dev,
 		 "AI engine part(%u,%u),(%u,%u), id %u is probed successfully.\n",
 		 range.start.col, range.start.row,
@@ -1151,7 +1146,6 @@ void aie_part_remove(struct aie_partition *apart)
 	     index++, atile++)
 		aie_tile_remove(atile);
 
-	aie_fpga_free_bridge(apart);
 	aie_part_sysfs_remove_entries(apart);
 	of_node_clear_flag(apart->dev.of_node, OF_POPULATED);
 	device_del(&apart->dev);

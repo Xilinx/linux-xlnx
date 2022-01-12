@@ -81,8 +81,6 @@ enum aie_rsc_type {
 
 /* AI engine partition is in use */
 #define XAIE_PART_STATUS_INUSE		(1U << 0)
-/* AI engine partition bridge is enabled */
-#define XAIE_PART_STATUS_BRIDGE_ENABLED	(1U << 1)
 
 /*
  * AI engine partition control flags

@@ -16,7 +16,6 @@
 #include <linux/device.h>
 #include <linux/dma-buf.h>
 #include <linux/file.h>
-#include <linux/fpga/fpga-bridge.h>
 #include <linux/io.h>
 #include <linux/interrupt.h>
 #include <linux/list.h>
@@ -52,8 +51,6 @@ enum aie_tile_type {
 						AIE_REGS_ATTR_TILE_TYPE_SHIFT)
 #define AIE_REGS_ATTR_PERM_MASK		GENMASK(15, \
 						AIE_REGS_ATTR_PERM_SHIFT)
-
-#define AIE_PART_STATUS_BRIDGE_DISABLED	0x1U
 
 /* Silicon Engineering Sample(ES) revision ID */
 #define VERSAL_ES1_REV_ID		0x0
@@ -743,16 +740,6 @@ struct aie_device {
 };
 
 /**
- * struct aie_part_bridge - AI engine FPGA bridge
- * @name: name of the FPGA bridge
- * @br: pointer to FPGA bridge
- */
-struct aie_part_bridge {
-	char name[32];
-	struct fpga_bridge *br;
-};
-
-/**
  * struct aie_partition - AI engine partition structure
  * @node: list node
  * @dbufs: dmabufs list
@@ -762,7 +749,6 @@ struct aie_part_bridge {
  * @dbufs_cache: memory management object for preallocated dmabuf descriptors
  * @trscs: resources bitmaps for each tile
  * @freq_req: required frequency
- * @br: AI engine FPGA bridge
  * @range: range of partition
  * @mlock: protection for AI engine partition operations
  * @dev: device for the AI engine partition
@@ -788,7 +774,6 @@ struct aie_part_bridge {
 struct aie_partition {
 	struct list_head node;
 	struct list_head dbufs;
-	struct aie_part_bridge br;
 	struct aie_device *adev;
 	struct file *filep;
 	struct aie_part_mem *pmems;
@@ -993,9 +978,6 @@ struct aie_partition *of_aie_part_probe(struct aie_device *adev,
 void aie_part_remove(struct aie_partition *apart);
 int aie_part_clean(struct aie_partition *apart);
 int aie_part_open(struct aie_partition *apart, void *rsc_metadata);
-
-int aie_fpga_create_bridge(struct aie_partition *apart);
-void aie_fpga_free_bridge(struct aie_partition *apart);
 
 int aie_mem_get_info(struct aie_partition *apart, unsigned long arg);
 
