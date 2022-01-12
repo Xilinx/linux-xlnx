@@ -161,6 +161,8 @@
 #define XDPRX_INTR_ERRORCNT_MASK	BIT(28)
 #define XDPRX_INTR_LANESET_MASK		BIT(30)
 
+#define XDPRX_EXT_VRD_BWSET_REG		0x7f0
+
 #define XDPRX_COLOR_FORMAT_RGB		0x0
 #define XDPRX_COLOR_FORMAT_422		0x1
 #define XDPRX_COLOR_FORMAT_444		0x2
@@ -214,6 +216,9 @@
 #define xdprxss_disable_audio(state) \
 		xdprxss_clr(state, XDPRX_AUDIO_CONTROL, XDPRX_AUDIO_EN_MASK)
 #define xdprxss_dtg_enable(state)	xdprxss_set(state, XDPRX_DTG_REG, 1)
+#define xdprxss_update_ext_rcv_cap(xdprxss, max_linkrate) \
+		xdprxss_write(xdprxss, \
+			      XDPRX_EXT_VRD_BWSET_REG, max_linkrate)
 
 /**
  * struct xlnx_dprx_audio_data - DP Rx Subsystem audio data structure
@@ -793,6 +798,7 @@ static void xdprxss_core_init(struct xdprxss_state *xdprxss)
 	xdprxss_dpcd_update_start(xdprxss);
 	xdprxss_dpcd_update(xdprxss,
 			    XDPRX_VRD_BWSET_REG, xdprxss->max_linkrate);
+	xdprxss_update_ext_rcv_cap(xdprxss, xdprxss->max_linkrate);
 	max_lanecount |= (XDPRX_EFRAME_CAP_MASK | XDPRX_LNCNT_TPS3_MASK);
 	xdprxss_dpcd_update(xdprxss, XDPRX_LANE_CNT_REG, max_lanecount);
 	xdprxss_dpcd_update_end(xdprxss);
