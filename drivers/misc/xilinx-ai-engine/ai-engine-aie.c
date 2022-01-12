@@ -1307,8 +1307,6 @@ static void aie_device_init_rscs_attr(struct aie_device *adev)
  */
 int aie_device_init(struct aie_device *adev)
 {
-	int ret;
-
 	adev->array_shift = AIE_ARRAY_SHIFT;
 	adev->col_shift = AIE_COL_SHIFT;
 	adev->row_shift = AIE_ROW_SHIFT;
@@ -1343,11 +1341,5 @@ int aie_device_init(struct aie_device *adev)
 
 	aie_device_init_rscs_attr(adev);
 
-	/* Get the columns resource */
-	/* Get number of columns from AI engine memory resource */
-	ret = aie_resource_initialize(&adev->cols_res, 50);
-	if (ret)
-		dev_err(&adev->dev, "failed to initialize columns resource.\n");
-
-	return ret;
+	return 0;
 }

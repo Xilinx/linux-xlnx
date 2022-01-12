@@ -642,6 +642,7 @@ struct aie_tile {
 
 /**
  * struct aie_device - AI engine device structure
+ * @apertures: list of apertures
  * @partitions: list of partitions requested
  * @cdev: cdev for the AI engine
  * @dev: device for the AI engine device
@@ -664,7 +665,6 @@ struct aie_tile {
  * @core_errors: core module error attribute
  * @mem_errors: memory module error attribute
  * @shim_errors: shim tile error attribute
- * @size: size of the AI engine address space
  * @array_shift: array address shift
  * @col_shift: column address shift
  * @row_shift: row address shift
@@ -691,10 +691,11 @@ struct aie_tile {
  * @lock_status_str: lock status in string format
  */
 struct aie_device {
+	struct list_head apertures;
 	struct list_head partitions;
 	struct cdev cdev;
 	struct device dev;
-	struct mutex mlock; /* protection for AI engine partitions */
+	struct mutex mlock; /* protection for AI engine apertures */
 	void __iomem *base;
 	struct clk *clk;
 	struct resource *res;
@@ -713,8 +714,6 @@ struct aie_device {
 	const struct aie_error_attr *core_errors;
 	const struct aie_error_attr *mem_errors;
 	const struct aie_error_attr *shim_errors;
-	size_t size;
-	struct aie_resource cols_res;
 	u32 array_shift;
 	u32 col_shift;
 	u32 row_shift;
@@ -740,9 +739,42 @@ struct aie_device {
 };
 
 /**
+ * struct aie_aperture - AI engine aperture structure
+ * @node: list node
+ * @partitions: list of partitions of this aperture
+ * @adev: pointer to AI device instance
+ * @mlock: protection for AI engine aperture operations
+ * @base: AI engine aperture base virtual address
+ * @res: memory resource of AI engine aperture
+ * @dev: device of aperture
+ * @cols_res: AI engine columns resources to indicate
+ *	      while columns are occupied by partitions.
+ * @node_id: AI engine aperture node id which is to identify
+ *	     the aperture in the system in firmware
+ * @irq: Linux IRQ number
+ * @range: range of aperture
+ * @backtrack: workqueue to backtrack interrupt
+ */
+struct aie_aperture {
+	struct list_head node;
+	struct list_head partitions;
+	struct aie_device *adev;
+	struct mutex mlock; /* protection for AI engine aperture operations */
+	void __iomem *base;
+	struct resource res;
+	struct device dev;
+	struct aie_resource cols_res;
+	u32 node_id;
+	int irq;
+	struct aie_range range;
+	struct work_struct backtrack;
+};
+
+/**
  * struct aie_partition - AI engine partition structure
  * @node: list node
  * @dbufs: dmabufs list
+ * @aperture: pointer to AI engine aperture
  * @adev: pointer to AI device instance
  * @filep: pointer to file for refcount on the users of the partition
  * @pmems: pointer to partition memories types
@@ -774,6 +806,7 @@ struct aie_device {
 struct aie_partition {
 	struct list_head node;
 	struct list_head dbufs;
+	struct aie_aperture *aperture;
 	struct aie_device *adev;
 	struct file *filep;
 	struct aie_part_mem *pmems;
@@ -973,8 +1006,6 @@ const struct file_operations *aie_part_get_fops(void);
 u8 aie_part_in_use(struct aie_partition *apart);
 struct aie_partition *aie_get_partition_from_id(struct aie_device *adev,
 						u32 partition_id);
-struct aie_partition *of_aie_part_probe(struct aie_device *adev,
-					struct device_node *nc);
 void aie_part_remove(struct aie_partition *apart);
 int aie_part_clean(struct aie_partition *apart);
 int aie_part_open(struct aie_partition *apart, void *rsc_metadata);
@@ -1003,11 +1034,6 @@ int aie_part_release_tiles_from_user(struct aie_partition *apart,
 				     void __user *user_args);
 int aie_device_init(struct aie_device *adev);
 
-void aie_array_backtrack(struct work_struct *work);
-irqreturn_t aie_interrupt(int irq, void *data);
-void aie_part_clear_cached_events(struct aie_partition *apart);
-int aie_part_set_intr_rscs(struct aie_partition *apart);
-
 bool aie_part_has_mem_mmapped(struct aie_partition *apart);
 bool aie_part_has_regs_mmapped(struct aie_partition *apart);
 
@@ -1016,6 +1042,27 @@ int aie_part_get_tile_rows(struct aie_partition *apart,
 
 int aie_part_reset(struct aie_partition *apart);
 int aie_part_post_reinit(struct aie_partition *apart);
+struct aie_partition *aie_create_partition(struct aie_aperture *aperture,
+					   u32 partition_id);
+
+void aie_array_backtrack(struct work_struct *work);
+irqreturn_t aie_interrupt(int irq, void *data);
+void aie_part_clear_cached_events(struct aie_partition *apart);
+int aie_part_set_intr_rscs(struct aie_partition *apart);
+
+struct aie_aperture *
+of_aie_aperture_probe(struct aie_device *adev, struct device_node *nc);
+int aie_aperture_remove(struct aie_aperture *aperture);
+int aie_aperture_check_part_avail(struct aie_aperture *aperture,
+				  struct aie_partition_req *req);
+struct aie_partition *
+aie_aperture_request_part_from_id(struct aie_aperture *aperture,
+				  u32 partition_id);
+int aie_aperture_enquire_parts(struct aie_aperture *aperture,
+			       unsigned int num_queries,
+			       struct aie_range_args  *queries,
+			       int *num_parts_left, bool to_user);
+unsigned int aie_aperture_get_num_parts(struct aie_aperture *aperture);
 
 int aie_part_rscmgr_init(struct aie_partition *apart);
 void aie_part_rscmgr_finish(struct aie_partition *apart);
