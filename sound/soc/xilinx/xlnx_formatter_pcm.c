@@ -326,7 +326,7 @@ static irqreturn_t xlnx_s2mm_irq_handler(int irq, void *arg)
 }
 
 static int xlnx_formatter_pcm_open(struct snd_soc_component *component,
-			       struct snd_pcm_substream *substream)
+				   struct snd_pcm_substream *substream)
 {
 	int err;
 	u32 val, data_format_mode;
@@ -423,7 +423,7 @@ static int xlnx_formatter_pcm_open(struct snd_soc_component *component,
 }
 
 static int xlnx_formatter_pcm_close(struct snd_soc_component *component,
-			       struct snd_pcm_substream *substream)
+				    struct snd_pcm_substream *substream)
 {
 	int ret;
 	struct xlnx_pcm_stream_param *stream_data =
@@ -446,7 +446,7 @@ err_reset:
 
 static snd_pcm_uframes_t
 xlnx_formatter_pcm_pointer(struct snd_soc_component *component,
-					struct snd_pcm_substream *substream)
+			   struct snd_pcm_substream *substream)
 {
 	u32 pos;
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -557,13 +557,13 @@ static int xlnx_formatter_pcm_hw_params(struct snd_soc_component *component,
 }
 
 static int xlnx_formatter_pcm_hw_free(struct snd_soc_component *component,
-					struct snd_pcm_substream *substream)
+				      struct snd_pcm_substream *substream)
 {
 	return snd_pcm_lib_free_pages(substream);
 }
 
 static int xlnx_formatter_pcm_trigger(struct snd_soc_component *component,
-					struct snd_pcm_substream *substream, int cmd)
+				      struct snd_pcm_substream *substream, int cmd)
 {
 	u32 val;
 	struct xlnx_pcm_stream_param *stream_data =
@@ -590,19 +590,20 @@ static int xlnx_formatter_pcm_trigger(struct snd_soc_component *component,
 }
 
 static int xlnx_formatter_pcm_new(struct snd_soc_component *component,
-					struct snd_soc_pcm_runtime *rtd)
+				  struct snd_soc_pcm_runtime *rtd)
 {
 	if (!component)
 		return -ENODEV;
 
 	snd_pcm_lib_preallocate_pages_for_all(rtd->pcm,
-			SNDRV_DMA_TYPE_DEV, component->dev,
-			xlnx_pcm_hardware.buffer_bytes_max,
-			xlnx_pcm_hardware.buffer_bytes_max);
+					      SNDRV_DMA_TYPE_DEV,
+					      component->dev,
+					      xlnx_pcm_hardware.buffer_bytes_max,
+					      xlnx_pcm_hardware.buffer_bytes_max);
 	return 0;
 }
 
-static struct snd_soc_component_driver xlnx_asoc_component = {
+static const struct snd_soc_component_driver xlnx_asoc_component = {
 	.name = DRV_NAME,
 	.open = xlnx_formatter_pcm_open,
 	.close = xlnx_formatter_pcm_close,
