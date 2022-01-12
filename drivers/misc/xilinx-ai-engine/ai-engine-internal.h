@@ -59,7 +59,7 @@ enum aie_tile_type {
 #define AIE_NPI_ERROR_ID		BIT(1)
 
 /* Macros relevant to interrupts */
-#define AIE_INTR_L2_CTRL_MASK_WIDTH	32
+#define AIE_INTR_L2_CTRL_MASK_WIDTH	32U
 
 /* Max number of modules per tile */
 #define AIE_MAX_MODS_PER_TILE		2U
@@ -645,7 +645,6 @@ struct aie_tile {
 /**
  * struct aie_device - AI engine device structure
  * @apertures: list of apertures
- * @partitions: list of partitions requested
  * @cdev: cdev for the AI engine
  * @dev: device for the AI engine device
  * @mlock: protection for AI engine device operations
@@ -672,8 +671,6 @@ struct aie_tile {
  *	      while columns are occupied by partitions.
  * @num_kernel_regs: number of kernel only registers range
  * @num_core_regs: number of core registers range
- * @irq: Linux IRQ number
- * @backtrack: workqueue to backtrack interrupt
  * @version: AI engine device version
  * @pm_node_id: AI Engine platform management node ID
  * @clock_id: AI Engine clock ID
@@ -692,7 +689,6 @@ struct aie_tile {
  */
 struct aie_device {
 	struct list_head apertures;
-	struct list_head partitions;
 	struct cdev cdev;
 	struct device dev;
 	struct mutex mlock; /* protection for AI engine apertures */
@@ -717,8 +713,6 @@ struct aie_device {
 	u32 row_shift;
 	u32 num_kernel_regs;
 	u32 num_core_regs;
-	int irq;
-	struct work_struct backtrack;
 	int version;
 	u32 pm_node_id;
 	u32 clock_id;
@@ -752,6 +746,7 @@ struct aie_device {
  * @irq: Linux IRQ number
  * @range: range of aperture
  * @backtrack: workqueue to backtrack interrupt
+ * @l2_mask: level 2 interrupt controller mask bitmap
  */
 struct aie_aperture {
 	struct list_head node;
@@ -766,6 +761,7 @@ struct aie_aperture {
 	int irq;
 	struct aie_range range;
 	struct work_struct backtrack;
+	struct aie_resource l2_mask;
 };
 
 /**
@@ -789,7 +785,6 @@ struct aie_aperture {
  * @core_event_status: core module event bitmap
  * @mem_event_status: memory module event bitmap
  * @pl_event_status: pl module event bitmap
- * @l2_mask: level 2 interrupt controller mask bitmap
  * @attr_grp: attribute group
  * @partition_id: partition id. Partition ID is the identifier
  *		  of the AI engine partition in the system.
@@ -821,7 +816,6 @@ struct aie_partition {
 	struct aie_resource core_event_status;
 	struct aie_resource mem_event_status;
 	struct aie_resource pl_event_status;
-	struct aie_resource l2_mask;
 	struct attribute_group *attr_grp;
 	u32 partition_id;
 	u32 status;
@@ -1059,8 +1053,10 @@ int aie_part_post_reinit(struct aie_partition *apart);
 struct aie_partition *aie_create_partition(struct aie_aperture *aperture,
 					   u32 partition_id);
 
-void aie_array_backtrack(struct work_struct *work);
+void aie_aperture_backtrack(struct work_struct *work);
 irqreturn_t aie_interrupt(int irq, void *data);
+int aie_aperture_create_l2_bitmap(struct aie_aperture *aperture);
+bool aie_part_has_error(struct aie_partition *apart);
 void aie_part_clear_cached_events(struct aie_partition *apart);
 int aie_part_set_intr_rscs(struct aie_partition *apart);
 

@@ -216,7 +216,6 @@ static int aie_partition_get(struct aie_partition *apart,
 	filep->f_mode |= (FMODE_LSEEK | FMODE_PREAD | FMODE_PWRITE);
 	apart->filep = filep;
 
-	apart->status = XAIE_PART_STATUS_INUSE;
 	apart->cntrflag = req->flag;
 
 	/* open AI engine partition instance to get it ready for use */
@@ -389,8 +388,6 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	platform_set_drvdata(pdev, adev);
 	INIT_LIST_HEAD(&adev->apertures);
-	/* TODO: remove once interrupt is moved to aperture */
-	INIT_LIST_HEAD(&adev->partitions);
 	mutex_init(&adev->mlock);
 
 	ret = aie_device_init(adev);

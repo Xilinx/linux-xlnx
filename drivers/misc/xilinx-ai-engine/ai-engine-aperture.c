@@ -13,6 +13,7 @@
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_device.h>
+#include <linux/of_irq.h>
 #include <uapi/linux/xlnx-ai-engine.h>
 
 #include "ai-engine-internal.h"
@@ -279,6 +280,7 @@ static void aie_aperture_release_device(struct device *dev)
 	struct aie_aperture *aperture = dev_get_drvdata(dev);
 
 	aie_resource_uninitialize(&aperture->cols_res);
+	aie_resource_uninitialize(&aperture->l2_mask);
 	kfree(aperture);
 }
 
@@ -441,6 +443,29 @@ of_aie_aperture_probe(struct aie_device *adev, struct device_node *nc)
 	ret = of_dma_configure(&aperture->dev, nc, true);
 	if (ret)
 		dev_warn(&aperture->dev, "Failed to configure DMA.\n");
+
+	/* Initialize interrupt */
+	ret = of_irq_get_byname(nc, "interrupt1");
+	if (ret < 0) {
+		dev_warn(dev, "no interrupt in device node.");
+	} else {
+		aperture->irq = ret;
+		INIT_WORK(&aperture->backtrack, aie_aperture_backtrack);
+		ret = aie_aperture_create_l2_bitmap(aperture);
+		if (ret) {
+			dev_err(dev,
+				"failed to initialize l2 mask resource.\n");
+			goto put_aperture_dev;
+		}
+
+		ret = devm_request_threaded_irq(dev, aperture->irq, NULL,
+						aie_interrupt, IRQF_ONESHOT,
+						dev_name(dev), aperture);
+		if (ret) {
+			dev_err(dev, "Failed to request AIE IRQ.\n");
+			goto put_aperture_dev;
+		}
+	}
 
 	of_node_get(nc);
 
