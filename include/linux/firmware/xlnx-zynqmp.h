@@ -98,6 +98,15 @@
 #define XILINX_ZYNQMP_PM_FPGA_ENCRYPTION_USERKEY	BIT(3)
 #define XILINX_ZYNQMP_PM_FPGA_ENCRYPTION_DEVKEY		BIT(4)
 
+/* AIE Operation */
+#define XILINX_AIE_OPS_COL_RST				BIT(0)
+#define XILINX_AIE_OPS_SHIM_RST				BIT(1)
+#define XILINX_AIE_OPS_ENB_COL_CLK_BUFF			BIT(2)
+#define XILINX_AIE_OPS_ZEROISATION			BIT(3)
+#define XILINX_AIE_OPS_DIS_COL_CLK_BUFF			BIT(4)
+#define XILINX_AIE_OPS_ENB_AXI_MM_ERR_EVENT		BIT(5)
+#define XILINX_AIE_OPS_SET_L2_CTRL_NPI_INTR		BIT(6)
+
 enum pm_api_cb_id {
 	PM_INIT_SUSPEND_CB = 30,
 	PM_ACKNOWLEDGE_CB = 31,
@@ -217,6 +226,8 @@ enum pm_ioctl_id {
 	IOCTL_SET_SD_CONFIG = 30,
 	IOCTL_SET_GEM_CONFIG = 31,
 	IOCTL_SET_USB_CONFIG = 32,
+	/* AIE/AIEML Operations */
+	IOCTL_AIE_OPS = 33,
 };
 
 enum pm_query_id {
@@ -676,6 +687,7 @@ int zynqmp_pm_set_usb_config(u32 node, enum pm_usb_config_type config,
 int zynqmp_pm_get_meta_header(const u64 src, const u64 dst,
 			      const u32 size, u32 *count);
 int zynqmp_pm_register_sgi(u32 sgi_num, u32 reset);
+int zynqmp_pm_aie_operation(u32 node, u16 start_col, u16 num_col, u32 operation);
 #else
 static inline int zynqmp_pm_get_api_version(u32 *version)
 {
@@ -1172,6 +1184,12 @@ static inline int zynqmp_pm_get_meta_header(const u64 src, const u64 dst,
 }
 
 static inline int zynqmp_pm_register_sgi(u32 sgi_num, u32 reset)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_aie_operation(u32 node, u16 start_col,
+					  u16 num_col, u32 operation)
 {
 	return -ENODEV;
 }
