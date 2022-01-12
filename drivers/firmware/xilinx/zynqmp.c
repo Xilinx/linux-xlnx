@@ -960,6 +960,26 @@ int zynqmp_pm_set_boot_health_status(u32 value)
 }
 
 /**
+ * zynqmp_pm_aie_operation - AI engine run time operations
+ * @node:	AI engine node id
+ * @start_col:	Starting column of AI partition
+ * @num_col:	Number of column in AI partition
+ * @operation:	ORed value of operations
+ *
+ * Return: Returns status, either success or error+reason
+ */
+int zynqmp_pm_aie_operation(u32 node, u16 start_col, u16 num_col, u32 operation)
+{
+	u32 partition;
+
+	partition = num_col;
+	partition = ((partition << 16U) | start_col);
+	return zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 4, node, IOCTL_AIE_OPS,
+				   partition, operation);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_aie_operation);
+
+/**
  * zynqmp_pm_reset_assert - Request setting of reset (1 - assert, 0 - release)
  * @reset:		Reset to be configured
  * @assert_flag:	Flag stating should reset be asserted (1) or
