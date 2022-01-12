@@ -223,6 +223,9 @@
 #define xdprxss_set_clk_data_recovery_timeout_val(xdprxss, value) \
 		xdprxss_write(xdprxss, XDPRX_CDRCTRL_CFG_REG, \
 				FIELD_PREP(XDPRX_CDRCTRL_TDLOCK_MASK, value))
+#define xdprxss_enable_training_timeout(xdprxss) \
+		xdprxss_clr(xdprxss, XDPRX_CDRCTRL_CFG_REG, \
+			    XDPRX_CDRCTRL_DIS_TIMEOUT)
 
 /**
  * struct xlnx_dprx_audio_data - DP Rx Subsystem audio data structure
@@ -828,6 +831,7 @@ static void xdprxss_core_init(struct xdprxss_state *xdprxss)
 		      XDPRX_PHYRST_TP1START_MASK);
 	xdprxss_write(xdprxss, XDPRX_MST_CAP_REG, 0x0);
 	xdprxss_write(xdprxss, XDPRX_SINK_COUNT_REG, 1);
+	xdprxss_enable_training_timeout(xdprxss);
 	xdprxss_set_training_params(xdprxss);
 }
 
