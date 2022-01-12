@@ -207,10 +207,23 @@ struct aie_partition_query {
 	__u32 partition_cnt;
 };
 
+#define AIE_PART_ID_START_COL_SHIFT	0U
+#define AIE_PART_ID_NUM_COLS_SHIFT	8U
+#define AIE_PART_ID_START_COL_MASK	GENMASK(7, 0)
+#define AIE_PART_ID_NUM_COLS_MASK	GENMASK(15, 8)
+
+#define aie_part_id_get_val(part_id, F) \
+	(((part_id) & AIE_PART_ID_##F ##_MASK) >> AIE_PART_ID_##F ##_SHIFT)
+#define aie_part_id_get_start_col(part_id) \
+	aie_part_id_get_val(part_id, START_COL)
+#define aie_part_id_get_num_cols(part_id) \
+	aie_part_id_get_val(part_id, NUM_COLS)
+
 /**
  * struct aie_partition_req - AIE request partition arguments
  * @partition_id: partition node id. It is used to identify the AI engine
- *		  partition in the system.
+ *		  partition. Its format is:
+ *		  Reserved_16bits | start_col_8bits | num_cols_8bits
  * @uid: image identifier loaded on the AI engine partition
  * @meta_data: meta data to indicate which resources used by application.
  * @flag: used for application to indicate particular driver requirements
