@@ -4,7 +4,7 @@
 $id: http://devicetree.org/schemas/soc/xilinx/xlnx,ai-engine.yaml#
 $schema: http://devicetree.org/meta-schemas/core.yaml#
 
-title: Xilinux AI Engine
+title: Xilinx AI Engine
 
 maintainers:
   - Wendy Liang <wendy.liang@xilinx.com>
@@ -13,11 +13,17 @@ description: |+
   The Xilinx AI Engine is a tile processor with many cores (up to 400) that
   can run in parallel. The data routing between cores is configured through
   internal switches, and shim tiles interface with external interconnect, such
-  as memory or PL.
+  as memory or PL. One AI engine device can have multiple apertures, each
+  has its own address space and interrupt. At runtime application can create
+  multiple partitions within an aperture which are groups of columns of AI
+  engine tiles. Each AI engine partition is the minimum resetable unit for an
+  AI engine application.
 
 properties:
   compatible:
-    const: xlnx,ai-engine-v1.0 # deprecated
+    enum:
+      - xlnx,ai-engine-v2.0
+      - xlnx,ai-engine-v1.0 # deprecated
 
   reg:
     deprecated: true
@@ -49,17 +55,68 @@ properties:
     description: |
       Should be "interrupt1", "interrupt2" or "interrupt3".
 
+  ranges: true
+
+  xlnx,shim-rows:
+    $ref: /schemas/types.yaml#/definitions/uint8-array
+    description: |
+      start row and the number of rows of SHIM tiles of the AI engine device
+
+  xlnx,core-rows:
+    $ref: /schemas/types.yaml#/definitions/uint8-array
+    description: |
+      start row and the number of rows of core tiles of the AI engine device
+
 required:
   - compatible
-  - reg
   - '#address-cells'
   - '#size-cells'
+  - ranges
   - power-domains
-  - interrupt-parent
-  - interrupts
-  - interrupt-names
+  - xlnx,shim-rows
+  - xlnx,core-rows
 
 patternProperties:
+  "^aperture@[0-9]+$":
+    type: object
+    description: |
+      AI engine aperture which is a group of column based tiles of the
+      AI engine device. Each AI engine apertures isolated from the
+      other AI engine apertures. An AI engine aperture is defined by
+      Xilinx platform design tools.
+
+    properties:
+      reg:
+        description: |
+          Physical base address and length of the aperture registers.
+          The AI engine address space assigned to Linux is defined by Xilinx
+          platform design tool.
+
+      xlnx,columns:
+        $ref: /schemas/types.yaml#/definitions/uint32-array
+        description:
+          It describes the location of the aperture. It specifies the start
+          column and the number of columns. E.g. an aperture starts from
+          column 0 and there are 50 columns, it will be presented as <0 50>.
+
+      interrupts:
+        maxItems: 3
+
+      interrupt-names:
+        description: |
+          Should be "interrupt1", "interrupt2" or "interrupt3".
+
+      xlnx,node-id:
+        $ref: /schemas/types.yaml#/definitions/uint32
+        description: |
+          AI engine aperture node ID, which is defined by Xilinx platform design
+          tool to identify the AI engine aperture in the firmware.
+
+    required:
+      - reg
+      - xlnx,columns
+      - xlnx,node-id
+
   "^partition[0-9]@[0-9]+$":
     deprecated: true
     type: object
@@ -95,29 +152,33 @@ patternProperties:
       - reg
       - xlnx,partition-id
 
+additionalProperties: true
+
 examples:
   - |
     #include <dt-bindings/power/xlnx-versal-power.h>
     bus {
       #address-cells = <2>;
       #size-cells = <2>;
-
-      ai_engine: ai-engine@20000000000 {
-        compatible = "xlnx,ai-engine-v1.0";
-        reg = <0x200 0x0 0x1 0x0>;
+      ai_engine: ai_engine {
+        compatible = "xlnx,ai-engine-v2.0";
+        xlnx,shim-rows = /bits/ 8 <0 1>;
+        xlnx,core-rows = /bits/ 8 <1 8>;
+        power-domains = <&versal_firmware PM_DEV_AI>;
         #address-cells = <2>;
         #size-cells = <2>;
-        power-domains = <&versal_firmware PM_DEV_AI>;
-        interrupt-parent = <&gic>;
-        interrupts = <0x0 0x94 0x4>,
-                        <0x0 0x95 0x4>,
-                        <0x0 0x96 0x4>;
-        interrupt-names = "interrupt1", "interrupt2", "interrupt3";
+        ranges;
 
-        aie_partition0: aie-partition@0 {
-                /* 50 columns and 8 core tile rows + 1 SHIM row */
-                reg = <0 0 50 9>;
-                xlnx,partition-id = <1>;
+        aperture0: aperture@0 {
+          /* 50 columns and 8 core tile rows + 1 SHIM row */
+          reg = <0x200 0x0 0x1 0x0>;
+          xlnx,columns = <0 50>;
+          xlnx,node-id = <1>;
+          interrupt-parent = <&gic>;
+          interrupts = <0x0 0x94 0x4>,
+                       <0x0 0x95 0x4>,
+                       <0x0 0x96 0x4>;
+          interrupt-names = "interrupt1", "interrupt2", "interrupt3";
         };
       };
     };
