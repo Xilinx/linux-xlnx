@@ -450,6 +450,7 @@ void aie_part_rscmgr_finish(struct aie_partition *apart)
 
 				aie_resource_uninitialize(&rscs_stat->rbits);
 				aie_resource_uninitialize(&rscs_stat->sbits);
+				kfree(rscs_stat);
 			}
 
 			kfree(mod_rscs);
