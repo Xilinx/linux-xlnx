@@ -26,38 +26,30 @@
 #define MAX_RPROCS	2 /* Support up to 2 RPU */
 #define BANK_LIST_PROP	"sram"
 #define DDR_LIST_PROP	"memory-region"
+#define PD_PROP		"power-domain"
 
 /* IPI buffer MAX length */
 #define IPI_BUF_LEN_MAX	32U
 /* RX mailbox client buffer max length */
 #define RX_MBOX_CLIENT_BUF_MAX	(IPI_BUF_LEN_MAX + \
 				 sizeof(struct zynqmp_ipi_message))
+#define MAX_BANKS 4U
+
+/**
+ * struct xlnx_r5_data - match data to handle SoC variations
+ * @versal_soc: flag to denote if running on Versal SoC.
+ */
+struct xlnx_r5_data {
+	bool versal_soc;
+};
 
 /*
  * Map each Xilinx on-chip SRAM  Bank address to their own respective
  * pm_node_id.
  */
 struct sram_addr_data {
-	phys_addr_t addr;
-	enum pm_node_id id;
+	enum pm_node_id ids[MAX_BANKS];
 };
-
-#define NUM_SRAMS 8U
-static const struct sram_addr_data zynqmp_banks[NUM_SRAMS] = {
-	{0xfffc0000UL, NODE_OCM_BANK_0},
-	{0xfffd0000UL, NODE_OCM_BANK_1},
-	{0xfffe0000UL, NODE_OCM_BANK_2},
-	{0xffff0000UL, NODE_OCM_BANK_3},
-	{0xffe00000UL, NODE_TCM_0_A},
-	{0xffe20000UL, NODE_TCM_0_B},
-	{0xffe90000UL, NODE_TCM_1_A},
-	{0xffeb0000UL, NODE_TCM_1_B},
-};
-
-#define VERSAL_TCM(ID)	((ID) + 0x18317FFCU)
-#define VERSAL_OCM(ID)	((ID) + 0x18313FFCU)
-#define VERSAL_RPU_0	(NODE_RPU_0 + 0x1810FFFEU)
-#define VERSAL_RPU_1	(VERSAL_RPU_0 + 1U)
 
 /**
  * struct zynqmp_r5_rproc - ZynqMP R5 core structure
@@ -133,10 +125,51 @@ static int r5_set_mode(struct zynqmp_r5_rproc *z_rproc,
  */
 static int sram_mem_release(struct rproc *rproc, struct rproc_mem_entry *mem)
 {
-	u32 pnode_id = (u64)mem->priv;
+	struct zynqmp_r5_rproc *z_rproc = rproc->priv;
+	struct device *dev = &rproc->dev;
+	unsigned int i;
+	int ret = 0;
+	struct sram_addr_data *sram_banks = (struct sram_addr_data *)mem->priv;
+	u32 pnode_id, status, usage = 0;
 
 	iounmap(mem->va);
-	return zynqmp_pm_release_node(pnode_id);
+	/*
+	 * This loop is to go over each bank in sram property.
+	 *
+	 * Note that each of the functions zynqmp_pm_get_node_status and
+	 * zynqmp_pm_release_node will not error out and only report with
+	 * dev_warn as there may be other nodes remaining to attempt to
+	 * power off.
+	 *
+	 * If zynqmp_pm_get_node_status fails, then the subsequent call to
+	 * zynqmp_pm_release_node should also fail so error out in this case.
+	 */
+
+	for (i = 0; i < MAX_BANKS; i++) {
+		pnode_id = sram_banks->ids[i];
+
+		if (!pnode_id)
+			continue;
+
+		if (z_rproc->versal) {
+			/* only request node if not already requested */
+			ret = zynqmp_pm_get_node_status(pnode_id, &status, NULL, &usage);
+			if (ret) {
+				dev_warn(dev, "Unable to get status for node %d\n",
+					 pnode_id);
+				continue;
+			}
+		}
+
+		if (usage || !z_rproc->versal) {
+			ret = zynqmp_pm_release_node(pnode_id);
+			if (ret < 0)
+				dev_warn(dev, "Unable to release node %d\n",
+					 pnode_id);
+		}
+	}
+
+	return ret;
 }
 
 /*
@@ -275,6 +308,7 @@ static int parse_mem_regions(struct rproc *rproc)
 			if (strlen(node->name) < 15) {
 				dev_err(dev, "%pOF is less than 14 chars",
 					node);
+				of_node_put(node);
 				return -EINVAL;
 			}
 
@@ -314,6 +348,9 @@ static int parse_mem_regions(struct rproc *rproc)
 						   rmem->size, rmem->base,
 						   alloc, release, name);
 		}
+
+		of_node_put(node);
+
 		if (!mem)
 			return -ENOMEM;
 
@@ -323,54 +360,77 @@ static int parse_mem_regions(struct rproc *rproc)
 	return 0;
 }
 
-/*
- * zynqmp_r5_pm_request_tcm
- * @addr: base address of mem provided in R5 core's sram property.
+/**
+ * zynqmp_r5_pm_request_sram - power up SRAMS for R5.
+ * @dev: Device pointer of rproc instance.
+ * @dt_node: node with power domain to request use for power-on.
  * @versal: denote whether to use Versal or ZU+ platform IDs
- * @pnode_id: store platform ID here for later use
+ * @sram_banks: list of srams associated with carveout
+ * Given sram, attempt to power up the bank with its corresponding Xilinx
+ * Platform Management ID.
  *
- * Given sram base address, determine its corresponding Xilinx
- * Platform Management ID and then request access to this node
- * so that it can be power up.
+ * Ensure SRAMs associated with the core are powered on.
  *
- * return 0 on success, otherwise non-zero value on failure
+ * Return: return 0 on success, otherwise non-zero value on failure
  */
-static int zynqmp_r5_pm_request_sram(phys_addr_t addr, bool versal,
-				     u32 *pnode_id)
+static int zynqmp_r5_pm_request_sram(struct device *dev,
+				     struct device_node *dt_node, bool versal,
+				     struct sram_addr_data *sram_banks)
 {
-	unsigned int i;
+	int ret, index, num_banks, sram_index = 0;
+	u32 pnode_id, status, usage = 0;
 
-	for (i = 0; i < NUM_SRAMS; i++) {
-		if (zynqmp_banks[i].addr == addr) {
-			*pnode_id = zynqmp_banks[i].id;
+	if (!of_get_property(dt_node, PD_PROP, NULL))
+		return -EINVAL;
 
-			if (versal) {
-				switch (addr) {
-				case 0xffe00000UL:
-				case 0xffe20000UL:
-				case 0xffe90000UL:
-				case 0xffeb0000UL:
-					*pnode_id = VERSAL_TCM(zynqmp_banks[i].id);
-					break;
-				case 0xfffc0000UL:
-				case 0xfffd0000UL:
-				case 0xfffe0000UL:
-				case 0xffff0000UL:
-					*pnode_id = VERSAL_OCM(zynqmp_banks[i].id);
-					break;
-				default:
-					return -EINVAL;
-				}
+	num_banks = of_count_phandle_with_args(dt_node, PD_PROP, NULL);
+
+	/*
+	 * As the elements are in the order of:
+	 * <SoC_firmware> <power-domain> ...
+	 * Only use even elements in this list.
+	 *
+	 * Note that each of the functions zynqmp_pm_get_node_status and
+	 * zynqmp_pm_request_node will not error out and only report with
+	 * dev_warn as there may be other nodes remaining to attempt to
+	 * power on.
+	 *
+	 * If zynqmp_pm_get_node_status fails, then the subsequent call to
+	 * zynqmp_pm_request_node should also fail so error out in this case.
+	 */
+	for (index = 1; index < num_banks; index += 2) {
+		of_property_read_u32_index(dt_node, PD_PROP, index, &pnode_id);
+
+		if (versal) {
+			/* only request node if not already requested */
+			ret = zynqmp_pm_get_node_status(pnode_id, &status, NULL,
+							&usage);
+			if (ret) {
+				dev_err(dev, "get status for node %d, %d\n",
+					pnode_id, ret);
+				return ret;
 			}
-
-			return zynqmp_pm_request_node(*pnode_id,
-						      ZYNQMP_PM_CAPABILITY_ACCESS,
-						      0,
-						      ZYNQMP_PM_REQUEST_ACK_BLOCKING);
 		}
+
+		if (!versal || usage == PM_USAGE_NO_MASTER) {
+			ret = zynqmp_pm_request_node(pnode_id,
+						     ZYNQMP_PM_CAPABILITY_ACCESS,
+						     0,
+						     ZYNQMP_PM_REQUEST_ACK_BLOCKING);
+			if (ret < 0) {
+				dev_err(dev, "Unable to request node %d\n",
+					pnode_id);
+				return ret;
+			}
+		} else {
+			ret = 0;
+		}
+
+		/* Only have 4 elements in sram_banks so use indices 0-3. */
+		sram_banks->ids[sram_index++] = pnode_id;
 	}
 
-	return -EINVAL;
+	return 0;
 }
 
 /*
@@ -399,8 +459,11 @@ static int sram_mem_alloc(struct rproc *rproc, struct rproc_mem_entry *mem)
 	va = devm_ioremap_wc(dev, mem->da, mem->len);
 	if (!va)
 		return -ENOMEM;
-	/* Handle TCM translation for R5-relative addresses */
-	if (mem->da >= 0xffe00000UL && mem->da <= 0xffeb0000UL) {
+	/*
+	 * Handle TCM translation for R5-relative addresses. Here go from
+	 * start of TM0A to end of TCM1B in mapping.
+	 */
+	if (mem->da >= 0xffe00000UL && mem->da < 0xffeb0000UL + 0x10000UL) {
 		/* As R5 is 32 bit, wipe out extra high bits */
 		mem->da &= 0x000fffff;
 		/*
@@ -438,10 +501,11 @@ static int sram_mem_alloc(struct rproc *rproc, struct rproc_mem_entry *mem)
  */
 static int parse_tcm_banks(struct rproc *rproc)
 {
-	int i, num_banks;
+	int i, num_banks, ret = 0;
 	struct zynqmp_r5_rproc *z_rproc = rproc->priv;
 	struct device *dev = &rproc->dev;
 	struct device_node *r5_node = z_rproc->dev->of_node;
+	struct sram_addr_data *sram_banks;
 
 	/* go through TCM banks for r5 node */
 	num_banks = of_count_phandle_with_args(r5_node, BANK_LIST_PROP, NULL);
@@ -455,7 +519,6 @@ static int parse_tcm_banks(struct rproc *rproc)
 		struct device_node *dt_node;
 		struct rproc_mem_entry *mem;
 		int ret;
-		u32 pnode_id; /* zynqmp_pm* fn's expect u32 */
 
 		dt_node = of_parse_phandle(r5_node, BANK_LIST_PROP, i);
 		if (!dt_node)
@@ -465,14 +528,32 @@ static int parse_tcm_banks(struct rproc *rproc)
 			ret = of_address_to_resource(dt_node, 0, &rsc);
 			if (ret < 0)
 				return ret;
-			ret = zynqmp_r5_pm_request_sram(rsc.start,
+
+			size = resource_size(&rsc);
+
+			/*
+			 * This is used later to power off the banks when
+			 * stopping rpu core.
+			 *
+			 * This will be managed as a result of 'devm' so does
+			 * not need a free.
+			 */
+			sram_banks = devm_kzalloc(dev, sizeof(struct sram_addr_data),
+						  GFP_KERNEL);
+			if (!sram_banks) {
+				of_node_put(dt_node);
+				return -ENOMEM;
+			}
+
+			ret = zynqmp_r5_pm_request_sram(dev, dt_node,
 							z_rproc->versal,
-							&pnode_id);
-			if (ret < 0)
-				return ret;
+							sram_banks);
+			if (ret < 0) {
+				of_node_put(dt_node);
+				goto error;
+			}
 
 			/* add carveout */
-			size = resource_size(&rsc);
 			mem = rproc_mem_entry_init(dev, NULL, rsc.start,
 						   (int)size, rsc.start,
 						   sram_mem_alloc,
@@ -481,12 +562,14 @@ static int parse_tcm_banks(struct rproc *rproc)
 			if (!mem)
 				return -ENOMEM;
 
-			mem->priv = (void *)(u64)pnode_id;
+			mem->priv = (void *)sram_banks;
 			rproc_add_carveout(rproc, mem);
 		}
+		of_node_put(dt_node);
 	}
-
 	return 0;
+error:
+	return ret;
 }
 
 /*
@@ -725,6 +808,7 @@ static int zynqmp_r5_setup_mbox(struct zynqmp_r5_rproc *z_rproc,
  * @pdev: domain platform device for current R5 core
  * @node: pointer of the device node for current R5 core
  * @rpu_mode: mode to configure RPU, split or lockstep
+ * @data: structure to hold SoC specific data
  * @z_rproc: Xilinx specific remoteproc structure used later to link
  *           in to cluster of cores
  *
@@ -733,9 +817,10 @@ static int zynqmp_r5_setup_mbox(struct zynqmp_r5_rproc *z_rproc,
 static int zynqmp_r5_probe(struct platform_device *pdev,
 			   struct device_node *node,
 			   enum rpu_oper_mode rpu_mode,
+			   const struct xlnx_r5_data *data,
 			   struct zynqmp_r5_rproc **z_rproc)
 {
-	int ret;
+	int ret, r5_entries, pnode_id;
 	struct device *dev = &pdev->dev;
 	struct rproc *rproc_ptr;
 
@@ -756,14 +841,27 @@ static int zynqmp_r5_probe(struct platform_device *pdev,
 	if (ret)
 		goto error;
 
-	/* Get R5 power domain node */
-	ret = of_property_read_u32(node, "power-domain", &(*z_rproc)->pnode_id);
-	if (ret)
+	if (!of_get_property(node, PD_PROP, NULL)) {
+		ret = -EINVAL;
 		goto error;
+	}
 
-	if ((VERSAL_RPU_0 == (*z_rproc)->pnode_id) ||
-	    (VERSAL_RPU_1 == (*z_rproc)->pnode_id))
-		(*z_rproc)->versal = true;
+	/* expect 2 elements for RPU power-domain */
+	r5_entries = of_count_phandle_with_args(node, PD_PROP, NULL);
+	if (r5_entries < 2) {
+		ret = -EINVAL;
+		goto error;
+	}
+
+	/*
+	 * Get R5 power domain node. As the elements are in the order of:
+	 * SoC_firmware power-domain ...
+	 * Only use every other element in this list.
+	 */
+	of_property_read_u32_index(node, PD_PROP, 1U, &pnode_id);
+	(*z_rproc)->pnode_id = pnode_id;
+
+	(*z_rproc)->versal = data->versal_soc;
 
 	ret = r5_set_mode(*z_rproc, rpu_mode);
 	if (ret)
@@ -823,6 +921,7 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	struct zynqmp_r5_rproc *z_rproc = NULL;
 	struct platform_device *child_pdev;
 	struct list_head *pos;
+	const struct xlnx_r5_data *data;
 
 	ret = of_property_read_u32(dev->of_node, "xlnx,cluster-mode", &rpu_mode);
 	if (ret < 0 || (rpu_mode != PM_RPU_MODE_LOCKSTEP &&
@@ -857,6 +956,16 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	/*
+	 * SoC specific information. For now, just flag to determine if
+	 * on versal platform for node management.
+	 */
+	data = of_device_get_match_data(&pdev->dev);
+	if (!data) {
+		dev_err(dev, "SoC-specific data is not defined\n");
+		return -ENODEV;
+	}
+
 	/* probe each individual r5 core's remoteproc-related info */
 	for_each_available_child_of_node(dev->of_node, nc) {
 		child_pdev = of_find_device_by_node(nc);
@@ -865,16 +974,20 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 			ret = -ENODEV;
 			goto out;
 		}
-
-		ret = zynqmp_r5_probe(child_pdev, nc, rpu_mode, &z_rproc);
+		ret = zynqmp_r5_probe(child_pdev, nc, rpu_mode, data,
+				      &z_rproc);
 		dev_dbg(dev, "%s to probe rpu %pOF\n",
 			ret ? "Failed" : "Able",
 			nc);
 		if (!z_rproc)
 			ret = -EINVAL;
-		if (ret)
+		if (ret) {
+			put_device(&child_pdev->dev);
 			goto out;
+		}
+
 		list_add_tail(&z_rproc->elem, cluster);
+		put_device(&child_pdev->dev);
 	}
 	/* wire in so each core can be cleaned up at driver remove */
 	platform_set_drvdata(pdev, cluster);
@@ -933,19 +1046,28 @@ static int zynqmp_r5_remoteproc_remove(struct platform_device *pdev)
 	return 0;
 }
 
-/* Match table for OF platform binding */
-static const struct of_device_id zynqmp_r5_remoteproc_match[] = {
-	{ .compatible = "xlnx,zynqmp-r5-remoteproc", },
-	{ /* end of list */ },
+static const struct xlnx_r5_data versal_data = {
+	.versal_soc = true,
 };
-MODULE_DEVICE_TABLE(of, zynqmp_r5_remoteproc_match);
 
+static const struct xlnx_r5_data zynqmp_data = {
+	.versal_soc = false,
+};
+
+static const struct of_device_id xilinx_r5_of_match[] = {
+	{ .compatible = "xlnx,zynqmp-r5-remoteproc", .data = &zynqmp_data, },
+	{ .compatible = "xlnx,versal-r5-remoteproc", .data = &versal_data, },
+	{ /* sentinel */ },
+};
+MODULE_DEVICE_TABLE(of, xilinx_r5_of_match);
+
+/* Match table for OF platform binding */
 static struct platform_driver zynqmp_r5_remoteproc_driver = {
 	.probe = zynqmp_r5_remoteproc_probe,
 	.remove = zynqmp_r5_remoteproc_remove,
 	.driver = {
 		.name = "zynqmp_r5_remoteproc",
-		.of_match_table = zynqmp_r5_remoteproc_match,
+		.of_match_table = xilinx_r5_of_match,
 	},
 };
 module_platform_driver(zynqmp_r5_remoteproc_driver);
