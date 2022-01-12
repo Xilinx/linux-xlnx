@@ -205,6 +205,10 @@
 #define DP_LINK_BW_5_4G		5400    /* 1.2 */
 #define DP_LINK_BW_8_1G		8100    /* 1.4 */
 
+#define xdprxss_generate_hpd_intr(state, duration) \
+		xdprxss_write(state, XDPRX_HPD_INTR_REG, \
+			      FIELD_PREP(XDPRX_HPD_PULSE_MASK, duration) |\
+			      XDPRX_HPD_INTR_MASK)
 #define xdprxss_disable_unplug_intr(state) \
 		xdprxss_set(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_UNPLUG_MASK)
 
@@ -814,6 +818,7 @@ static void xdprxss_irq_unplug(struct xdprxss_state *state)
 	 * disconnected
 	 */
 	xdprxss_disable_unplug_intr(state);
+	xdprxss_generate_hpd_intr(state, XDPRX_HPD_PULSE_750);
 
 	/*
 	 * In a scenario, where the cable is plugged-in but the training
