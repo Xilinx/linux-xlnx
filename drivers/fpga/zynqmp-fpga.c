@@ -32,6 +32,18 @@
 #define IXR_FPGA_CONFIG_STAT_OFFSET	7U
 #define IXR_FPGA_READ_CONFIG_TYPE	0U
 
+#define XILINX_ZYNQMP_PM_FPGA_READ_BACK		BIT(6)
+#define XILINX_ZYNQMP_PM_FPGA_REG_READ_BACK	BIT(7)
+
+#define DEFAULT_FEATURE_LIST	(XILINX_ZYNQMP_PM_FPGA_FULL | \
+				 XILINX_ZYNQMP_PM_FPGA_PARTIAL | \
+				 XILINX_ZYNQMP_PM_FPGA_AUTHENTICATION_DDR | \
+				 XILINX_ZYNQMP_PM_FPGA_AUTHENTICATION_OCM | \
+				 XILINX_ZYNQMP_PM_FPGA_ENCRYPTION_USERKEY | \
+				 XILINX_ZYNQMP_PM_FPGA_ENCRYPTION_DEVKEY | \
+				 XILINX_ZYNQMP_PM_FPGA_READ_BACK | \
+				 XILINX_ZYNQMP_PM_FPGA_REG_READ_BACK)
+
 static bool readback_type;
 module_param(readback_type, bool, 0644);
 MODULE_PARM_DESC(readback_type,
@@ -74,11 +86,17 @@ static struct zynqmp_configreg cfgreg[] = {
 /**
  * struct zynqmp_fpga_priv - Private data structure
  * @dev:	Device data structure
+ * @feature_list: Firmware supported feature list
+ * @version: Firmware version info. The higher 16 bytes belong to
+ *           the major version number and the lower 16 bytes belong
+ *           to a minor version number.
  * @flags:	flags which is used to identify the bitfile type
  * @size:	Size of the Bit-stream used for readback
  */
 struct zynqmp_fpga_priv {
 	struct device *dev;
+	u32 feature_list;
+	u32 version;
 	u32 flags;
 	u32 size;
 };
@@ -88,9 +106,26 @@ static int zynqmp_fpga_ops_write_init(struct fpga_manager *mgr,
 				      const char *buf, size_t size)
 {
 	struct zynqmp_fpga_priv *priv;
+	int  eemi_flags = 0;
 
 	priv = mgr->priv;
 	priv->flags = info->flags;
+
+	/* Update firmware flags */
+	if (priv->flags & FPGA_MGR_USERKEY_ENCRYPTED_BITSTREAM)
+		eemi_flags |= XILINX_ZYNQMP_PM_FPGA_ENCRYPTION_USERKEY;
+	else if (priv->flags & FPGA_MGR_ENCRYPTED_BITSTREAM)
+		eemi_flags |= XILINX_ZYNQMP_PM_FPGA_ENCRYPTION_DEVKEY;
+	if (priv->flags & FPGA_MGR_DDR_MEM_AUTH_BITSTREAM)
+		eemi_flags |= XILINX_ZYNQMP_PM_FPGA_AUTHENTICATION_DDR;
+	else if (priv->flags & FPGA_MGR_SECURE_MEM_AUTH_BITSTREAM)
+		eemi_flags |= XILINX_ZYNQMP_PM_FPGA_AUTHENTICATION_OCM;
+	if (priv->flags & FPGA_MGR_PARTIAL_RECONFIG)
+		eemi_flags |= XILINX_ZYNQMP_PM_FPGA_PARTIAL;
+
+	/* Validate user flgas with firmware feature list */
+	if ((priv->feature_list & eemi_flags) != eemi_flags)
+		return -EINVAL;
 
 	return 0;
 }
@@ -272,7 +307,13 @@ static int zynqmp_fpga_read_cfgreg(struct fpga_manager *mgr,
 	u32 val;
 	unsigned int *buf;
 	dma_addr_t dma_addr = 0;
+	struct zynqmp_fpga_priv *priv;
 	struct zynqmp_configreg *p = cfgreg;
+
+	priv = mgr->priv;
+
+	if (!(priv->feature_list & XILINX_ZYNQMP_PM_FPGA_READ_BACK))
+		return -EINVAL;
 
 	buf = dma_alloc_coherent(mgr->dev.parent, READ_DMA_SIZE,
 				 &dma_addr, GFP_KERNEL);
@@ -308,6 +349,10 @@ static int zynqmp_fpga_read_cfgdata(struct fpga_manager *mgr,
 	size_t size;
 
 	priv = mgr->priv;
+
+	if (!(priv->feature_list & XILINX_ZYNQMP_PM_FPGA_REG_READ_BACK))
+		return -EINVAL;
+
 	size = priv->size + READ_DMA_SIZE + DUMMY_FRAMES_SIZE;
 
 	buf = dma_alloc_coherent(mgr->dev.parent, size, &dma_addr,
@@ -361,6 +406,13 @@ static int zynqmp_fpga_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	priv->dev = dev;
+
+	if (!(zynqmp_pm_fpga_get_version(&priv->version))) {
+		if (zynqmp_pm_fpga_get_feature_list(&priv->feature_list))
+			priv->feature_list = DEFAULT_FEATURE_LIST;
+	} else {
+		priv->feature_list = DEFAULT_FEATURE_LIST;
+	}
 
 	mgr = devm_fpga_mgr_create(dev, "Xilinx ZynqMP FPGA Manager",
 				   &zynqmp_fpga_ops, priv);
