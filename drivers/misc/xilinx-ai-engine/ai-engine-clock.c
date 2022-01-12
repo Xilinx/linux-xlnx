@@ -23,7 +23,8 @@ static int aie_part_get_clk_state_bit(struct aie_partition *apart,
 	if (apart->adev->ops->get_tile_type(loc) != AIE_TILE_TYPE_TILE)
 		return -EINVAL;
 
-	return loc->col * (apart->range.size.row - 1) + loc->row - 1;
+	return (loc->col - apart->range.start.col) *
+	       (apart->range.size.row - 1) + loc->row - 1;
 }
 
 /**

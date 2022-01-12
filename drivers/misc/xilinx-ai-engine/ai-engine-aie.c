@@ -1165,8 +1165,8 @@ static int aie_set_col_clocks(struct aie_partition *apart,
 	}
 
 	/* Update clock state bitmap */
-	startbit = range->start.col * (apart->range.size.row - 1) +
-		   range->start.row - 1;
+	startbit = (range->start.col - apart->range.start.col) *
+		   (apart->range.size.row - 1) + range->start.row - 1;
 	if (enable)
 		aie_resource_set(&apart->cores_clk_state, startbit,
 				 range->size.row);
@@ -1180,7 +1180,7 @@ static int aie_set_col_clocks(struct aie_partition *apart,
 static int aie_set_part_clocks(struct aie_partition *apart)
 {
 	struct aie_range *range = &apart->range, lrange;
-	struct aie_location loc;
+	struct aie_location rloc;
 
 	/*
 	 * The tiles below the highest tile whose clock is on, need to have the
@@ -1188,26 +1188,24 @@ static int aie_set_part_clocks(struct aie_partition *apart)
 	 * see which tiles are required to be clocked on, and update the bitmap
 	 * to make sure the tiles below are also required to be clocked on.
 	 */
-	for (loc.col = range->start.col;
-	     loc.col < range->start.col + range->size.col;
-	     loc.col++) {
+	for (rloc.col = 0; rloc.col < range->size.col; rloc.col++) {
 		u32 startbit, inuse_toprow = 0, clk_toprow = 0;
 
-		startbit = loc.col * (range->size.row - 1);
+		startbit = rloc.col * (range->size.row - 1);
 
-		for (loc.row = range->start.row + 1;
-		     loc.row < range->start.row + range->size.row;
-		     loc.row++) {
-			u32 bit = startbit + loc.row - 1;
+		for (rloc.row = range->start.row + 1;
+		     rloc.row < range->start.row + range->size.row;
+		     rloc.row++) {
+			u32 bit = startbit + rloc.row - 1;
 
 			if (aie_resource_testbit(&apart->tiles_inuse, bit))
-				inuse_toprow = loc.row;
+				inuse_toprow = rloc.row;
 			if (aie_resource_testbit(&apart->cores_clk_state, bit))
-				clk_toprow = loc.row;
+				clk_toprow = rloc.row;
 		}
 
 		/* Update clock states of a column */
-		lrange.start.col = loc.col;
+		lrange.start.col = rloc.col + range->start.col;
 		lrange.size.col = 1;
 		if (inuse_toprow < clk_toprow) {
 			lrange.start.row = inuse_toprow + 1;
