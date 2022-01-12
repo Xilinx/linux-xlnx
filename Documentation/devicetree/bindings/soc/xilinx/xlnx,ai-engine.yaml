@@ -17,9 +17,10 @@ description: |+
 
 properties:
   compatible:
-    const: xlnx,ai-engine-v1.0
+    const: xlnx,ai-engine-v1.0 # deprecated
 
   reg:
+    deprecated: true
     description: |
       Physical base address and length of the device registers.
       The AI engine address space assigned to Linux is defined by Xilinx
@@ -40,9 +41,11 @@ properties:
       As the AI engine tiles are 2D array, the size cell is 2.
 
   interrupts:
+    deprecated: true
     maxItems: 3
 
   interrupt-names:
+    deprecated: true
     description: |
       Should be "interrupt1", "interrupt2" or "interrupt3".
 
@@ -58,6 +61,7 @@ required:
 
 patternProperties:
   "^partition[0-9]@[0-9]+$":
+    deprecated: true
     type: object
     description: |
       AI engine partition which is a group of column based tiles of the AI
@@ -115,22 +119,5 @@ examples:
                 reg = <0 0 50 9>;
                 xlnx,partition-id = <1>;
         };
-      };
-    };
-
-  - |
-    /*
-     * Device tree overlay example to for FPGA partial configuration which
-     * connects to AI engine partition.
-     */
-    fpga_region0: fpga_region0 {
-      fpga-bridges = <&aie_partition0>;
-    };
-    fragment@0 {
-      target = <&fpga_region0>;
-      #address-cells = <1>;
-      #size-cells = <1>;
-      __overlay__ {
-        firmware-name = "partition.pdi";
       };
     };
