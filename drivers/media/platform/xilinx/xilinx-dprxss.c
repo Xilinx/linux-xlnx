@@ -213,6 +213,7 @@
 		xdprxss_set(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_UNPLUG_MASK)
 #define xdprxss_disable_audio(state) \
 		xdprxss_clr(state, XDPRX_AUDIO_CONTROL, XDPRX_AUDIO_EN_MASK)
+#define xdprxss_dtg_enable(state)	xdprxss_set(state, XDPRX_DTG_REG, 1)
 
 /**
  * struct xlnx_dprx_audio_data - DP Rx Subsystem audio data structure
@@ -519,6 +520,12 @@ static inline void xdprxss_dpcd_update(struct xdprxss_state *xdprxss,
 	xdprxss_write(xdprxss, addr, val);
 }
 
+static inline void xdprxss_soft_video_reset(struct xdprxss_state *xdprxss)
+{
+	xdprxss_write(xdprxss, XDPRX_SOFT_RST_REG, XDPRX_SOFT_VIDRST_MASK);
+	xdprxss_write(xdprxss, XDPRX_SOFT_RST_REG, 0x0);
+}
+
 /**
  * xlnx_dp_phy_ready - check if PHY is ready
  * @dp: DisplayPort IP core structure
@@ -632,6 +639,12 @@ static void config_gt_quad_base(struct xdprxss_state *dp)
 			   GT_QUAD_BASE_CH1_CLK_DIV_VALUE);
 	iowrite32(data,
 		  (dp->gt_quad_base + GT_QUAD_BASE_CH1_CLK_DIV_REG));
+}
+
+static void xdprxss_dtg_disable(struct xdprxss_state *state)
+{
+	xdprxss_write(state, XDPRX_DTG_REG, XDPRX_DTG_DIS_MASK);
+	xdprxss_soft_video_reset(state);
 }
 
 /**
@@ -894,13 +907,9 @@ static void xdprxss_irq_no_video(struct xdprxss_state *state)
 	xdprxss_write(state, XDPRX_VIDEO_UNSUPPORTED_REG, 0x1);
 	xdprxss_clr(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_VBLANK_MASK);
 	xdprxss_set(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_NOVID_MASK);
-	/* reset the dtg core */
-	xdprxss_set(state, XDPRX_DTG_REG, 0x0);
-	xdprxss_set(state, XDPRX_DTG_REG, 0x1);
 
-	/* reset the video logic */
-	xdprxss_set(state, XDPRX_SOFT_RST_REG, XDPRX_SOFT_VIDRST_MASK);
-	xdprxss_clr(state, XDPRX_SOFT_RST_REG, XDPRX_SOFT_VIDRST_MASK);
+	xdprxss_dtg_disable(state);
+	xdprxss_dtg_enable(state);
 
 	/* notify source change event */
 	memset(&state->event, 0, sizeof(state->event));
