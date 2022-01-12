@@ -20,9 +20,10 @@
 	(_loc->row << _adev->row_shift) + (regoff); \
 	})
 
-#define aie_cal_reg_pa(adev, loc, regoff) ({ \
-	struct aie_device *__adev = (adev); \
-	__adev->res->start + aie_cal_reg_goffset(__adev, loc, regoff); \
+#define aie_cal_reg_pa(aperture, loc, regoff) ({ \
+	struct aie_aperture *__aperture = (aperture); \
+	__aperture->res.start + aie_cal_reg_goffset(__aperture->adev, loc, \
+						    regoff); \
 	})
 
 static struct sg_table *
@@ -99,7 +100,7 @@ static int aie_mem_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 			len = msize - toffset;
 			if (len > remainder)
 				len = remainder;
-			mempa = aie_cal_reg_pa(apart->adev, loc,
+			mempa = aie_cal_reg_pa(apart->aperture, loc,
 					       toffset + mem->offset);
 
 			ret = remap_pfn_range(vma, addr, mempa >> PAGE_SHIFT,

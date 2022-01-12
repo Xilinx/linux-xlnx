@@ -24,7 +24,7 @@ static u32 aie_get_dma_s2mm_status(struct aie_partition *apart,
 		stsoff = apart->adev->tile_dma->s2mm_sts_regoff;
 
 	regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
-	return ioread32(apart->adev->base + regoff);
+	return ioread32(apart->aperture->base + regoff);
 }
 
 /**
@@ -45,7 +45,7 @@ static u32 aie_get_dma_mm2s_status(struct aie_partition *apart,
 		stsoff = apart->adev->tile_dma->mm2s_sts_regoff;
 
 	regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
-	return ioread32(apart->adev->base + regoff);
+	return ioread32(apart->aperture->base + regoff);
 }
 
 /**
@@ -180,7 +180,7 @@ static u32 aie_get_fifo_status(struct aie_partition *apart,
 	fifo_off = apart->adev->tile_dma->fifo_cnt_regoff;
 
 	regoff = aie_cal_regoff(apart->adev, *loc, fifo_off);
-	return ioread32(apart->adev->base + regoff);
+	return ioread32(apart->aperture->base + regoff);
 }
 
 /**

@@ -19,7 +19,7 @@ static u32 aie_get_core_pc(struct aie_partition *apart,
 
 	regoff = aie_cal_regoff(apart->adev, *loc,
 				apart->adev->core_pc->regoff);
-	return ioread32(apart->adev->base + regoff);
+	return ioread32(apart->aperture->base + regoff);
 }
 
 /**
@@ -35,7 +35,7 @@ static u32 aie_get_core_lr(struct aie_partition *apart,
 
 	regoff = aie_cal_regoff(apart->adev, *loc,
 				apart->adev->core_lr->regoff);
-	return ioread32(apart->adev->base + regoff);
+	return ioread32(apart->aperture->base + regoff);
 }
 
 /**
@@ -51,7 +51,7 @@ static u32 aie_get_core_sp(struct aie_partition *apart,
 
 	regoff = aie_cal_regoff(apart->adev, *loc,
 				apart->adev->core_sp->regoff);
-	return ioread32(apart->adev->base + regoff);
+	return ioread32(apart->aperture->base + regoff);
 }
 
 /**

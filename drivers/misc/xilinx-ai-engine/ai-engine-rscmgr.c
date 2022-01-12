@@ -279,7 +279,7 @@ int aie_part_get_rsc_startbit(struct aie_partition *apart,
 
 /**
  * aie_part_adjust_loc - adjust relative tile location to partition to
- *				absolute location in AI engine device
+ *			 absolute location in AI engine device
  * @apart: AI engine partition
  * @rloc: relative location in AI engine partition
  * @loc: returns absolute location in AI engine device
@@ -289,16 +289,16 @@ static
 int aie_part_adjust_loc(struct aie_partition *apart,
 			struct aie_location rloc, struct aie_location *loc)
 {
-	loc->col = rloc.col + apart->range.start.col;
-	loc->row = rloc.row + apart->range.start.row;
-
-	if (aie_validate_location(apart, *loc) < 0) {
+	if (aie_validate_location(apart, rloc) < 0) {
 		dev_err(&apart->dev,
 			"invalid loc (%u,%u) in (%u,%u).\n",
 			rloc.col, rloc.row,
 			apart->range.size.col, apart->range.size.row);
 		return -EINVAL;
 	}
+
+	loc->col = rloc.col + apart->range.start.col;
+	loc->row = rloc.row + apart->range.start.row;
 
 	return 0;
 }
@@ -1110,7 +1110,7 @@ static int aie_part_rscmgr_check_rscs_modules(struct aie_partition *apart,
 	for (i = 0; i < num_rscs; i++) {
 		struct aie_location l;
 
-		l.col = apart->range.start.col + rscs[i].loc.col;
+		l.col = rscs[i].loc.col;
 		l.row = rscs[i].loc.row;
 		/* validate tile location */
 		if (aie_validate_location(apart, l)) {
@@ -1120,6 +1120,7 @@ static int aie_part_rscmgr_check_rscs_modules(struct aie_partition *apart,
 			return -EINVAL;
 		}
 
+		l.col += apart->range.start.col;
 		/* validate module */
 		if (aie_dev_get_mod_id(adev, adev->ops->get_tile_type(&l),
 				       rscs[i].mod) < 0) {

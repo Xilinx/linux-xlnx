@@ -302,6 +302,7 @@ struct aie_core_regs_attr {
 	u32 width;
 };
 
+struct aie_aperture;
 /**
  * struct aie_tile_operations - AI engine device operations
  * @get_tile_type: get type of tile based on tile operation
@@ -334,7 +335,8 @@ struct aie_tile_operations {
 				     struct aie_part_mem *pmem);
 	u32 (*get_core_status)(struct aie_partition *apart,
 			       struct aie_location *loc);
-	int (*reset_shim)(struct aie_device *adev, struct aie_range *range);
+	int (*reset_shim)(struct aie_aperture *aperture,
+			  struct aie_range *range);
 	int (*init_part_clk_state)(struct aie_partition *apart);
 	int (*scan_part_clocks)(struct aie_partition *apart);
 	int (*set_part_clocks)(struct aie_partition *apart);
@@ -647,9 +649,7 @@ struct aie_tile {
  * @cdev: cdev for the AI engine
  * @dev: device for the AI engine device
  * @mlock: protection for AI engine device operations
- * @base: AI engine device base virtual address
  * @clk: AI enigne device clock
- * @res: memory resource of AI engine device
  * @kernel_regs: array of kernel only registers
  * @core_regs: array of core registers
  * @ops: tile operations
@@ -696,9 +696,7 @@ struct aie_device {
 	struct cdev cdev;
 	struct device dev;
 	struct mutex mlock; /* protection for AI engine apertures */
-	void __iomem *base;
 	struct clk *clk;
-	struct resource *res;
 	const struct aie_tile_regs *kernel_regs;
 	const struct aie_core_regs_attr *core_regs;
 	const struct aie_tile_operations *ops;
@@ -923,10 +921,28 @@ static inline u32 aie_cal_regoff(struct aie_device *adev,
 }
 
 /**
+ * aie_aperture_cal_regoff() - calculate register offset to the whole AI engine
+ *                             device start address
+ * @aperture: AI aperture
+ * @loc: AI engine tile location
+ * @regoff_intile: register offset within a tile
+ * @return: register offset to the whole AI engine device start address
+ */
+static inline u32 aie_aperture_cal_regoff(struct aie_aperture *aperture,
+					  struct aie_location loc,
+					  u32 regoff_intile)
+{
+	struct aie_device *adev = aperture->adev;
+
+	return regoff_intile + ((loc.col - aperture->range.start.col) <<
+				adev->col_shift) + (loc.row << adev->row_shift);
+}
+
+/**
  * aie_validate_location() - validate tile location within an AI engine
  *			     partition
  * @apart: AI engine partition
- * @loc: AI engine tile location
+ * @loc: AI engine tile location relative in partition
  * @return: return 0 if it is valid, negative value for errors.
  *
  * This function checks if the AI engine location is within the AI engine
@@ -935,10 +951,8 @@ static inline u32 aie_cal_regoff(struct aie_device *adev,
 static inline int aie_validate_location(struct aie_partition *apart,
 					struct aie_location loc)
 {
-	if (loc.col < apart->range.start.col ||
-	    loc.col >= apart->range.start.col + apart->range.size.col ||
-	    loc.row < apart->range.start.row ||
-	    loc.row >= apart->range.start.row + apart->range.size.row)
+	if (loc.col >= apart->range.size.col ||
+	    loc.row >= apart->range.size.row)
 		return -EINVAL;
 
 	return 0;

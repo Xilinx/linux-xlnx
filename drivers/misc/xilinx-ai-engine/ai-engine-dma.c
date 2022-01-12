@@ -179,7 +179,7 @@ aie_part_get_dmabuf_da_from_off(struct aie_partition *apart, int dmabuf_fd,
  * aie_part_set_shimdma_bd() - Set the buffer descriptor to AI engine partition
  *			       hardware
  * @apart: AI engine partition
- * @loc: AI engine tile location
+ * @loc: AI engine tile location relative in partition
  * @bd_id: buffer descriptor ID
  * @bd: pointer buffer descriptor content
  * @return: 0 for success, negative value for failure
@@ -190,6 +190,7 @@ aie_part_get_dmabuf_da_from_off(struct aie_partition *apart, int dmabuf_fd,
 static int aie_part_set_shimdma_bd(struct aie_partition *apart,
 				   struct aie_location loc, u32 bd_id, u32 *bd)
 {
+	struct aie_aperture *aperture = apart->aperture;
 	const struct aie_dma_attr *shim_dma = apart->adev->shim_dma;
 	struct aie_location loc_adjust;
 	u32 i, regoff, intile_regoff;
@@ -197,11 +198,11 @@ static int aie_part_set_shimdma_bd(struct aie_partition *apart,
 	intile_regoff = shim_dma->bd_regoff + shim_dma->bd_len * bd_id;
 	loc_adjust.col = loc.col + apart->range.start.col;
 	loc_adjust.row = loc.row + apart->range.start.row;
-	regoff = aie_cal_regoff(apart->adev, loc_adjust, intile_regoff);
+	regoff = aie_aperture_cal_regoff(aperture, loc_adjust, intile_regoff);
 
 	for (i = 0; i < shim_dma->bd_len / (sizeof(*bd));
 	     i++, regoff += sizeof(*bd))
-		iowrite32(bd[i], apart->adev->base + regoff);
+		iowrite32(bd[i], aperture->base + regoff);
 	return 0;
 }
 
@@ -225,7 +226,7 @@ static int aie_part_validate_bdloc(struct aie_partition *apart,
 	loc_adjust.col = loc.col + apart->range.start.col;
 	loc_adjust.row = loc.row + apart->range.start.row;
 
-	if (aie_validate_location(apart, loc_adjust) < 0) {
+	if (aie_validate_location(apart, loc) < 0) {
 		dev_err(&apart->dev,
 			"invalid loc (%u,%u) in (%u,%u).\n",
 			loc.col, loc.row,

@@ -47,7 +47,7 @@ static void aie_cal_loc(struct aie_device *adev,
 /**
  * aie_part_reg_validation() - validate AI engine partition register access
  * @apart: AI engine partition
- * @offset: AI engine register offset
+ * @offset: AI engine register offset relative in partition.
  * @len: len of data to write/read
  * @is_write: is the access to write to register
  * @return: 0 for success, or negative value for failure.
@@ -61,7 +61,7 @@ static int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
 	struct aie_device *adev;
 	u32 regend32, ttype;
 	u64 regoff, regend64;
-	struct aie_location loc;
+	struct aie_location loc, aloc;
 	unsigned int i;
 
 	adev = apart->adev;
@@ -88,9 +88,8 @@ static int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
 	aie_cal_loc(adev, &loc, offset);
 	if (aie_validate_location(apart, loc)) {
 		dev_err(&apart->dev,
-			"Invalid (%d,%d) out of part(%d,%d),(%d,%d)\n",
+			"Invalid (%d,%d) out of part(%d,%d)\n",
 			loc.col, loc.row,
-			apart->range.start.col, apart->range.start.row,
 			apart->range.size.col, apart->range.size.row);
 		return -EINVAL;
 	}
@@ -110,7 +109,9 @@ static int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
 	 * TODO: To solve this, we need to either request EEMI to configure
 	 * AXI MM or split the mmapped space into tiles based lists.
 	 */
-	if (!aie_part_check_clk_enable_loc(apart, &loc)) {
+	aloc.col = loc.col + apart->range.start.col;
+	aloc.row = loc.row;
+	if (!aie_part_check_clk_enable_loc(apart, &aloc)) {
 		dev_err(&apart->dev,
 			"Tile(%u,%d) is gated.\n", loc.col, loc.row);
 		return -EINVAL;
@@ -120,7 +121,7 @@ static int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
 		return 0;
 
 	regend32 = lower_32_bits(regend64);
-	ttype = adev->ops->get_tile_type(&loc);
+	ttype = adev->ops->get_tile_type(&aloc);
 	for (i = 0; i < adev->num_kernel_regs; i++) {
 		const struct aie_tile_regs *regs;
 		u32 rttype, writable;
@@ -161,6 +162,7 @@ static int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
 static int aie_part_write_register(struct aie_partition *apart, size_t offset,
 				   size_t len, void *data, u32 mask)
 {
+	struct aie_aperture *aperture = apart->aperture;
 	u32 i;
 	int ret;
 	void __iomem *va;
@@ -173,7 +175,6 @@ static int aie_part_write_register(struct aie_partition *apart, size_t offset,
 	}
 
 	/* offset is expected to be relative to the start of the partition */
-	offset += aie_cal_regoff(apart->adev, apart->range.start, 0);
 	ret = aie_part_reg_validation(apart, offset, len, 1);
 	if (ret < 0) {
 		dev_err(&apart->dev, "failed to write to 0x%zx,0x%zx.\n",
@@ -181,7 +182,8 @@ static int aie_part_write_register(struct aie_partition *apart, size_t offset,
 		return ret;
 	}
 
-	va = apart->adev->base + offset;
+	offset += aie_aperture_cal_regoff(aperture, apart->range.start, 0);
+	va = aperture->base + offset;
 	if (!mask) {
 		/*
 		 * TODO: use the burst mode to improve performance when len
@@ -215,11 +217,11 @@ static int aie_part_write_register(struct aie_partition *apart, size_t offset,
 static int aie_part_read_register(struct aie_partition *apart, size_t offset,
 				  size_t len, void *data)
 {
+	struct aie_aperture *aperture = apart->aperture;
 	void __iomem *va;
 	int ret;
 
 	/* offset is expected to be relative to the start of the partition */
-	offset += aie_cal_regoff(apart->adev, apart->range.start, 0);
 	ret = aie_part_reg_validation(apart, offset, len, 0);
 	if (ret) {
 		dev_err(&apart->dev, "Invalid read request 0x%zx,0x%zx.\n",
@@ -227,7 +229,8 @@ static int aie_part_read_register(struct aie_partition *apart, size_t offset,
 		return -EINVAL;
 	}
 
-	va = apart->adev->base + offset;
+	offset += aie_aperture_cal_regoff(aperture, apart->range.start, 0);
+	va = aperture->base + offset;
 	if (len == 4)
 		*((u32 *)data) = ioread32(va);
 	else
@@ -514,12 +517,19 @@ static int aie_part_release(struct inode *inode, struct file *filp)
 	struct aie_partition *apart = filp->private_data;
 	int ret;
 
+	/* some reset bits in NPI are global, we need to lock adev */
+	ret = mutex_lock_interruptible(&apart->adev->mlock);
+	if (ret)
+		return ret;
+
 	ret = mutex_lock_interruptible(&apart->mlock);
 	if (ret)
 		return ret;
 
 	aie_part_release_dmabufs(apart);
+	/* aie_part_clean() will do hardware reset */
 	aie_part_clean(apart);
+	mutex_unlock(&apart->adev->mlock);
 
 	apart->error_cb.cb = NULL;
 	apart->error_cb.priv = NULL;
@@ -631,7 +641,7 @@ static int aie_part_mmap(struct file *fp, struct vm_area_struct *vma)
 	}
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 	/* Calculate the partition address */
-	addr = adev->res->start;
+	addr = apart->aperture->res.start;
 	addr += (phys_addr_t)apart->range.start.col << adev->col_shift;
 	addr += (phys_addr_t)apart->range.start.row << adev->row_shift;
 	addr += offset;

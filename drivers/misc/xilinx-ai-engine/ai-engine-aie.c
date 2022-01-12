@@ -948,11 +948,11 @@ static unsigned int aie_get_mem_info(struct aie_range *range,
 
 /**
  * aie_set_shim_reset() - Set AI engine SHIM reset
- * @adev: AI engine device
+ * @aperture: AI engine aperture
  * @range: range of AI engine tiles
  * @assert: true to set reset, false to unset reset
  */
-static void aie_set_shim_reset(struct aie_device *adev,
+static void aie_set_shim_reset(struct aie_aperture *aperture,
 			       struct aie_range *range, bool assert)
 {
 	u32 c;
@@ -966,23 +966,25 @@ static void aie_set_shim_reset(struct aie_device *adev,
 		u32 regoff;
 
 		loc.col = c;
-		regoff = aie_cal_regoff(adev, loc, AIE_SHIMPL_RESET_REGOFF);
-		iowrite32(val, adev->base + regoff);
+		regoff = aie_cal_regoff(aperture->adev, loc,
+					AIE_SHIMPL_RESET_REGOFF);
+		iowrite32(val, aperture->base + regoff);
 	}
 }
 
-static int aie_reset_shim(struct aie_device *adev, struct aie_range *range)
+static int aie_reset_shim(struct aie_aperture *aperture,
+			  struct aie_range *range)
 {
 	int ret;
 
 	/* Enable shim reset of each column */
-	aie_set_shim_reset(adev, range, true);
+	aie_set_shim_reset(aperture, range, true);
 
 	/* Assert shim reset of AI engine array */
 	ret = zynqmp_pm_reset_assert(VERSAL_PM_RST_AIE_SHIM_ID,
 				     PM_RESET_ACTION_ASSERT);
 	if (ret < 0) {
-		dev_err(&adev->dev, "failed to assert SHIM reset.\n");
+		dev_err(&aperture->dev, "failed to assert SHIM reset.\n");
 		return ret;
 	}
 
@@ -990,12 +992,12 @@ static int aie_reset_shim(struct aie_device *adev, struct aie_range *range)
 	ret = zynqmp_pm_reset_assert(VERSAL_PM_RST_AIE_SHIM_ID,
 				     PM_RESET_ACTION_RELEASE);
 	if (ret < 0) {
-		dev_err(&adev->dev, "failed to release SHIM reset.\n");
+		dev_err(&aperture->dev, "failed to release SHIM reset.\n");
 		return ret;
 	}
 
 	/* Disable shim reset of each column */
-	aie_set_shim_reset(adev, range, false);
+	aie_set_shim_reset(aperture, range, false);
 
 	return 0;
 }
@@ -1026,6 +1028,7 @@ static int aie_init_part_clk_state(struct aie_partition *apart)
 static int aie_scan_part_clocks(struct aie_partition *apart)
 {
 	struct aie_device *adev = apart->adev;
+	struct aie_aperture *aperture = apart->aperture;
 	struct aie_range *range = &apart->range;
 	struct aie_location loc;
 
@@ -1050,7 +1053,7 @@ static int aie_scan_part_clocks(struct aie_partition *apart)
 
 			if (aie_get_tile_type(&loc) != AIE_TILE_TYPE_TILE) {
 				/* Checks shim tile for next core tile */
-				va = adev->base +
+				va = aperture->base +
 				     aie_cal_regoff(adev, loc,
 						    AIE_SHIMPL_CLKCNTR_REGOFF);
 				val = ioread32(va);
@@ -1071,7 +1074,7 @@ static int aie_scan_part_clocks(struct aie_partition *apart)
 			}
 
 			/* Checks core tile for next tile */
-			va = adev->base +
+			va = aperture->base +
 			     aie_cal_regoff(adev, loc,
 					    AIE_TILE_CORE_CLKCNTR_REGOFF);
 			val = ioread32(va);
@@ -1122,6 +1125,7 @@ static int aie_set_col_clocks(struct aie_partition *apart,
 	     ploc.row < range->start.row + range->size.row - 1;
 	     ploc.row++) {
 		struct aie_device *adev = apart->adev;
+		struct aie_aperture *aperture = apart->aperture;
 
 		if (!ploc.row) {
 			void __iomem *va;
@@ -1134,7 +1138,7 @@ static int aie_set_col_clocks(struct aie_partition *apart,
 			if (enable)
 				val = AIE_SHIMPL_CLKCNTR_COLBUF_MASK |
 				      AIE_SHIMPL_CLKCNTR_NEXTCLK_MASK;
-			va = adev->base +
+			va = aperture->base +
 			     aie_cal_regoff(adev, ploc,
 					    AIE_SHIMPL_CLKCNTR_REGOFF);
 			iowrite32(val, va);
@@ -1149,7 +1153,7 @@ static int aie_set_col_clocks(struct aie_partition *apart,
 			if (enable)
 				val = AIE_TILE_CLKCNTR_COLBUF_MASK |
 				      AIE_TILE_CLKCNTR_NEXTCLK_MASK;
-			va = adev->base +
+			va = aperture->base +
 			     aie_cal_regoff(adev, ploc,
 					    AIE_TILE_CORE_CLKCNTR_REGOFF);
 			iowrite32(val, va);
@@ -1231,13 +1235,13 @@ static u32 aie_get_core_status(struct aie_partition *apart,
 	u32 regoff, regvalue, eventval;
 
 	regoff = aie_cal_regoff(apart->adev, *loc, aie_core_sts.regoff);
-	regvalue = ioread32(apart->adev->base + regoff);
+	regvalue = ioread32(apart->aperture->base + regoff);
 
 	/* Apply core done workaround */
 	if (!FIELD_GET(aie_core_done.mask, regvalue)) {
 		regoff = aie_cal_regoff(apart->adev, *loc,
 					aie_core_disable_event_sts.regoff);
-		eventval = ioread32(apart->adev->base + regoff);
+		eventval = ioread32(apart->aperture->base + regoff);
 
 		if (FIELD_GET(aie_core_disable_event_sts.mask, eventval))
 			regvalue |= aie_core_done.mask;

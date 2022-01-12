@@ -29,7 +29,7 @@ static void aie_part_set_col_reset(struct aie_partition *apart, u32 col,
 
 	val = aie_get_field_val(col_rst, (reset ? 1 : 0));
 	regoff = aie_cal_regoff(adev, loc, col_rst->regoff);
-	iowrite32(val, adev->base + regoff);
+	iowrite32(val, apart->aperture->base + regoff);
 }
 
 /**
@@ -51,7 +51,7 @@ static void aie_part_set_col_clkbuf(struct aie_partition *apart, u32 col,
 
 	val = aie_get_field_val(col_clkbuf, (enable ? 1 : 0));
 	regoff = aie_cal_regoff(adev, loc, col_clkbuf->regoff);
-	iowrite32(val, adev->base + regoff);
+	iowrite32(val, apart->aperture->base + regoff);
 }
 
 /**
@@ -92,6 +92,7 @@ static void aie_part_set_cols_clkbuf(struct aie_partition *apart, bool enable)
 static void aie_part_clear_mems(struct aie_partition *apart)
 {
 	struct aie_device *adev = apart->adev;
+	struct aie_aperture *aperture = apart->aperture;
 	struct aie_part_mem *pmems = apart->pmems;
 	u32 i, num_mems;
 
@@ -116,7 +117,8 @@ static void aie_part_clear_mems(struct aie_partition *apart)
 				loc.col = c;
 				loc.row = r;
 				memoff = aie_cal_regoff(adev, loc, mem->offset);
-				memset_io(adev->base + memoff, 0, mem->size);
+				memset_io(aperture->base + memoff, 0,
+					  mem->size);
 			}
 		}
 	}
@@ -131,6 +133,7 @@ static void aie_part_clear_core_regs_of_tile(struct aie_partition *apart,
 					     struct aie_location loc)
 {
 	struct aie_device *adev = apart->adev;
+	struct aie_aperture *aperture = apart->aperture;
 	const struct aie_core_regs_attr *regs = adev->core_regs;
 	u32 i;
 
@@ -142,7 +145,7 @@ static void aie_part_clear_core_regs_of_tile(struct aie_partition *apart,
 
 		for (reg = soff; reg <= eoff; reg += AIE_CORE_REGS_STEP) {
 			for (j = 0; j < regs[i].width; j++)
-				iowrite32(0, adev->base + reg + j * 4);
+				iowrite32(0, aperture->base + reg + j * 4);
 		}
 	}
 }
@@ -193,7 +196,7 @@ static void aie_part_clear_core_regs(struct aie_partition *apart)
  */
 int aie_part_clean(struct aie_partition *apart)
 {
-	struct aie_device *adev = apart->adev;
+	struct aie_aperture *aperture = apart->aperture;
 	int ret;
 
 	if (apart->cntrflag & XAIE_PART_NOT_RST_ON_RELEASE)
@@ -202,7 +205,7 @@ int aie_part_clean(struct aie_partition *apart)
 	aie_part_set_cols_clkbuf(apart, false);
 	aie_part_set_cols_reset(apart, true);
 
-	ret = apart->adev->ops->reset_shim(adev, &apart->range);
+	ret = aperture->adev->ops->reset_shim(aperture, &apart->range);
 	if (ret < 0)
 		return ret;
 
@@ -231,7 +234,6 @@ int aie_part_clean(struct aie_partition *apart)
  */
 int aie_part_reset(struct aie_partition *apart)
 {
-	struct aie_device *adev = apart->adev;
 	int ret;
 
 	ret = mutex_lock_interruptible(&apart->mlock);
@@ -258,7 +260,7 @@ int aie_part_reset(struct aie_partition *apart)
 	aie_part_set_cols_reset(apart, true);
 	aie_part_set_cols_clkbuf(apart, true);
 
-	ret = apart->adev->ops->reset_shim(adev, &apart->range);
+	ret = apart->adev->ops->reset_shim(apart->aperture, &apart->range);
 	if (ret < 0) {
 		mutex_unlock(&apart->mlock);
 		return ret;

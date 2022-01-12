@@ -23,7 +23,7 @@ static u32 aie_get_lock_status(struct aie_partition *apart,
 	else
 		stsoff = apart->adev->mem_lock->sts_regoff;
 	regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
-	return ioread32(apart->adev->base + regoff);
+	return ioread32(apart->aperture->base + regoff);
 }
 
 /**

@@ -43,7 +43,7 @@ static u8 aie_get_broadcast_event(struct aie_partition *apart,
 
 	bcoff = event_mod->bc_regoff + event_mod->bc_event.regoff + bc_id * 4U;
 	regoff = aie_cal_regoff(apart->adev, *loc, bcoff);
-	return ioread32(apart->adev->base + regoff);
+	return ioread32(apart->aperture->base + regoff);
 }
 
 /**
@@ -71,7 +71,7 @@ void aie_read_event_status(struct aie_partition *apart,
 		u32 status_off = event_mod->status_regoff + offset * 4U;
 		u32 regoff = aie_cal_regoff(apart->adev, *loc, status_off);
 
-		reg[offset] = ioread32(apart->adev->base + regoff);
+		reg[offset] = ioread32(apart->aperture->base + regoff);
 	}
 }
 
@@ -101,7 +101,7 @@ static void aie_clear_event_status(struct aie_partition *apart,
 
 	status_off = event_mod->status_regoff + (event / 32) * 4U;
 	regoff = aie_cal_regoff(apart->adev, *loc, status_off);
-	iowrite32(BIT(event % 32), apart->adev->base + regoff);
+	iowrite32(BIT(event % 32), apart->aperture->base + regoff);
 }
 
 /**
@@ -127,7 +127,7 @@ static u32 aie_check_group_errors_enabled(struct aie_partition *apart,
 
 	groff = event_mod->group_regoff + event_mod->group_error.regoff;
 	regoff = aie_cal_regoff(apart->adev, *loc, groff);
-	return ioread32(apart->adev->base + regoff);
+	return ioread32(apart->aperture->base + regoff);
 }
 
 /**
@@ -153,7 +153,7 @@ static void aie_set_error_event(struct aie_partition *apart,
 
 	groff = event_mod->group_regoff + event_mod->group_error.regoff;
 	regoff = aie_cal_regoff(apart->adev, *loc, groff);
-	iowrite32(bitmap, apart->adev->base + regoff);
+	iowrite32(bitmap, apart->aperture->base + regoff);
 }
 
 /**
@@ -229,7 +229,7 @@ static u8 aie_get_l1_event(struct aie_partition *apart,
 	}
 
 	regoff = aie_cal_regoff(apart->adev, *loc, l1off);
-	reg_value = ioread32(apart->adev->base + regoff);
+	reg_value = ioread32(apart->aperture->base + regoff);
 	reg_value &= l1mask << (irq_id * intr_ctrl->event_lsb);
 	reg_value >>= (irq_id * intr_ctrl->event_lsb);
 	return reg_value;
@@ -255,7 +255,7 @@ static void aie_clear_l1_intr(struct aie_partition *apart,
 		l1off = intr_ctrl->regoff + intr_ctrl->swb_status.regoff;
 
 	regoff = aie_cal_regoff(apart->adev, *loc, l1off);
-	iowrite32(BIT(irq_id), apart->adev->base + regoff);
+	iowrite32(BIT(irq_id), apart->aperture->base + regoff);
 }
 
 /**
@@ -278,7 +278,7 @@ static u32 aie_get_l1_status(struct aie_partition *apart,
 		l1off = intr_ctrl->regoff + intr_ctrl->swb_status.regoff;
 
 	regoff = aie_cal_regoff(apart->adev, *loc, l1off);
-	return ioread32(apart->adev->base + regoff);
+	return ioread32(apart->aperture->base + regoff);
 }
 
 /**
@@ -295,7 +295,7 @@ static void aie_clear_l2_intr(struct aie_partition *apart,
 	u32 l2off = intr_ctrl->regoff + intr_ctrl->status.regoff;
 	u32 regoff = aie_cal_regoff(apart->adev, *loc, l2off);
 
-	iowrite32(bitmap_irq, apart->adev->base + regoff);
+	iowrite32(bitmap_irq, apart->aperture->base + regoff);
 }
 
 /**
@@ -311,7 +311,7 @@ static u32 aie_get_l2_status(struct aie_partition *apart,
 	u32 l2off = intr_ctrl->regoff + intr_ctrl->status.regoff;
 	u32 regoff = aie_cal_regoff(apart->adev, *loc, l2off);
 
-	return ioread32(apart->adev->base + regoff);
+	return ioread32(apart->aperture->base + regoff);
 }
 
 /**
@@ -327,7 +327,7 @@ static u32 aie_get_l2_mask(struct aie_partition *apart,
 	u32 l2off = intr_ctrl->regoff + intr_ctrl->mask.regoff;
 	u32 regoff = aie_cal_regoff(apart->adev, *loc, l2off);
 
-	return ioread32(apart->adev->base + regoff);
+	return ioread32(apart->aperture->base + regoff);
 }
 
 /**
@@ -344,7 +344,7 @@ static void aie_enable_l2_ctrl(struct aie_partition *apart,
 	u32 regoff = aie_cal_regoff(apart->adev, *loc, l2off);
 
 	bit_map &= intr_ctrl->enable.mask;
-	iowrite32(bit_map, apart->adev->base + regoff);
+	iowrite32(bit_map, apart->aperture->base + regoff);
 }
 
 /**
@@ -361,7 +361,7 @@ static void aie_disable_l2_ctrl(struct aie_partition *apart,
 	u32 regoff = aie_cal_regoff(apart->adev, *loc, l2off);
 
 	bit_map &= intr_ctrl->disable.mask;
-	iowrite32(bit_map, apart->adev->base + regoff);
+	iowrite32(bit_map, apart->aperture->base + regoff);
 }
 
 /**
