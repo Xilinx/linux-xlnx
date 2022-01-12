@@ -220,10 +220,10 @@ static int do_feature_check_call(const u32 api_id)
 
 	if (api_id == PM_IOCTL)
 		/* Store supported IOCTL IDs mask */
-		memcpy(ioctl_features, ret_payload, FEATURE_PAYLOAD_SIZE * 4);
+		memcpy(ioctl_features, &ret_payload[2], FEATURE_PAYLOAD_SIZE * 4);
 	else if (api_id == PM_QUERY_DATA)
 		/* Store supported QUERY IDs mask */
-		memcpy(query_features, ret_payload, FEATURE_PAYLOAD_SIZE * 4);
+		memcpy(query_features, &ret_payload[2], FEATURE_PAYLOAD_SIZE * 4);
 
 	return ret;
 }
