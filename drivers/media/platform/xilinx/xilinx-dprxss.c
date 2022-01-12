@@ -127,8 +127,9 @@
 					 (1 << XDPRX_VS_PE_SHIFT))
 
 #define XDPRX_CDRCTRL_CFG_REG		0x21c
-/* CDR tDLOCK calibration value */
+/* default CDR tDLOCK calibration value */
 #define XDPRX_CDRCTRL_TDLOCK_VAL	0x1388
+#define XDPRX_CDRCTRL_TDLOCK_MASK	GENMASK(19, 0)
 #define XDPRX_CDRCTRL_DIS_TIMEOUT	BIT(30)
 
 #define XDPRX_BSIDLE_TIME_REG		0x220
@@ -219,6 +220,9 @@
 #define xdprxss_update_ext_rcv_cap(xdprxss, max_linkrate) \
 		xdprxss_write(xdprxss, \
 			      XDPRX_EXT_VRD_BWSET_REG, max_linkrate)
+#define xdprxss_set_clk_data_recovery_timeout_val(xdprxss, value) \
+		xdprxss_write(xdprxss, XDPRX_CDRCTRL_CFG_REG, \
+				FIELD_PREP(XDPRX_CDRCTRL_TDLOCK_MASK, value))
 
 /**
  * struct xlnx_dprx_audio_data - DP Rx Subsystem audio data structure
@@ -810,6 +814,8 @@ static void xdprxss_core_init(struct xdprxss_state *xdprxss)
 		      XDPRX_PHY_GTRXRST_MASK);
 	/* Release CPLL reset */
 	xdprxss_write(xdprxss, XDPRX_PHY_REG, XDPRX_PHY_GTRXRST_MASK);
+	xdprxss_set_clk_data_recovery_timeout_val(xdprxss,
+						  XDPRX_CDRCTRL_TDLOCK_VAL);
 	/*
 	 * Remove the reset from the PHY and configure to issue reset after
 	 * every training iteration, link rate change, and start of training
