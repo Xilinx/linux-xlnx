@@ -175,12 +175,12 @@
  * IRQ_HPD pulse for upstream device is 5ms as per
  * the VESA standard
  */
-#define XDPRX_HPD_PLUSE_5000		5000
+#define XDPRX_HPD_PULSE_5000		5000
 /*
  * low going IRQ_HPD generated for upstream device
  * as per the VESA standard
  */
-#define XDPRX_HPD_PLUSE_750		750
+#define XDPRX_HPD_PULSE_750		750
 
 /* GtCtrl Registers */
 #define XDPRX_GTCTL_REG			0x4C
@@ -822,7 +822,7 @@ static void xdprxss_irq_unplug(struct xdprxss_state *state)
 	 * can retrain the link.
 	 */
 	xdprxss_write(state, XDPRX_HPD_INTR_REG,
-		      FIELD_PREP(XDPRX_HPD_PULSE_MASK, XDPRX_HPD_PLUSE_5000) |
+		      FIELD_PREP(XDPRX_HPD_PULSE_MASK, XDPRX_HPD_PULSE_5000) |
 		      XDPRX_HPD_INTR_MASK);
 }
 
@@ -871,7 +871,7 @@ static void xdprxss_training_failure(struct xdprxss_state *state)
 	state->valid_stream = false;
 
 	xdprxss_write(state, XDPRX_HPD_INTR_REG,
-		      FIELD_PREP(XDPRX_HPD_PULSE_MASK, XDPRX_HPD_PLUSE_750) |
+		      FIELD_PREP(XDPRX_HPD_PULSE_MASK, XDPRX_HPD_PULSE_750) |
 		      XDPRX_HPD_INTR_MASK);
 
 	/* reset the aux logic */
