@@ -205,6 +205,9 @@
 #define DP_LINK_BW_5_4G		5400    /* 1.2 */
 #define DP_LINK_BW_8_1G		8100    /* 1.4 */
 
+#define xdprxss_disable_unplug_intr(state) \
+		xdprxss_set(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_UNPLUG_MASK)
+
 /**
  * struct xlnx_dprx_audio_data - DP Rx Subsystem audio data structure
  * @infoframe: Audio infoframe that is received
@@ -806,6 +809,12 @@ static void xdprxss_irq_unplug(struct xdprxss_state *state)
 
 	xdprxss_set(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_ALL_MASK);
 	xdprxss_clr(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_TRNG_MASK);
+	/*
+	 * Disable unplug interrupt so that no unplug event when RX is
+	 * disconnected
+	 */
+	xdprxss_disable_unplug_intr(state);
+
 	/*
 	 * In a scenario, where the cable is plugged-in but the training
 	 * is lost, the software is expected to assert a HPD upon the
