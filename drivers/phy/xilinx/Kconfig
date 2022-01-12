@@ -20,3 +20,12 @@ config PHY_XILINX_HDMIPHY
          Enable this to support HDMI PHY Controller core in FPGA.It is designed
          for enabling plug-and-play connectivity with xilinx HDMI 2.1
          technology MAC transmit or receive subsystem.
+
+config PHY_XILINX_DPGTQUAD
+	tristate "Xilinx GT Quad Base PHY driver for Displayport TX and RX"
+	depends on (VIDEO_XILINX_DPRXSS || DRM_XLNX_DPTX)
+	select GENERIC_PHY
+	help
+	  Enable this to support DP GT QUAD PHY controller core in FPGA.
+	  It is designed for enabling gt quad base configuration for Xilinx
+	  Displayport Tx and Rx subsystems.
