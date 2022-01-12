@@ -1272,7 +1272,7 @@ static void aie_device_init_rscs_attr(struct aie_device *adev)
 	 * TODO: number of rows information of the AI engine device should get
 	 * from device tree.
 	 */
-	tattr->num_rows = 0xFF;
+	tattr->num_rows = 0x8;
 	tattr->num_mods = 2;
 	tattr->rscs_attr = aie_core_tile_rscs_attr;
 	tattr->mods = aie_core_tile_module_types;

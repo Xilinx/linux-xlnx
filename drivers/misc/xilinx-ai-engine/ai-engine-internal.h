@@ -1014,6 +1014,10 @@ const struct file_operations *aie_part_get_fops(void);
 u8 aie_part_in_use(struct aie_partition *apart);
 struct aie_partition *aie_get_partition_from_id(struct aie_device *adev,
 						u32 partition_id);
+int xilinx_ai_engine_add_dev(struct aie_device *adev,
+			     struct platform_device *pdev);
+int xilinx_ai_engine_probe_v1(struct platform_device *pdev);
+
 void aie_part_remove(struct aie_partition *apart);
 int aie_part_clean(struct aie_partition *apart);
 int aie_part_open(struct aie_partition *apart, void *rsc_metadata);
@@ -1073,6 +1077,8 @@ int aie_aperture_enquire_parts(struct aie_aperture *aperture,
 			       struct aie_range_args  *queries,
 			       int *num_parts_left, bool to_user);
 unsigned int aie_aperture_get_num_parts(struct aie_aperture *aperture);
+int aie_aperture_add_dev(struct aie_aperture *aperture,
+			 struct device_node *nc);
 
 int aie_part_rscmgr_init(struct aie_partition *apart);
 void aie_part_rscmgr_finish(struct aie_partition *apart);

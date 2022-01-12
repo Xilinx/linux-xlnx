@@ -9,6 +9,7 @@ xilinx-aie-$(CONFIG_XILINX_AIE) := ai-engine-aie.o		\
 				   ai-engine-aperture.o		\
 				   ai-engine-clock.o		\
 				   ai-engine-dev.o		\
+				   ai-engine-dev-v1_0.o		\
 				   ai-engine-dma.o		\
 				   ai-engine-interrupt.o	\
 				   ai-engine-mem.o		\

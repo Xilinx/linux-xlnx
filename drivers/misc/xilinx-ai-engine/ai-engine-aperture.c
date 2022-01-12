@@ -317,6 +317,36 @@ int aie_aperture_remove(struct aie_aperture *aperture)
 }
 
 /**
+ * aie_aperture_add_dev() - initialize and add AI engine aperture device
+ * @aperture: AI engine aperture
+ * @nc: AI engine aperture device node
+ * @return: 0 for success, negative value for failure
+ *
+ * This function will initialize and add AI engine aperture device to Linux
+ * kernel device framework.
+ * TODO: This function should be moved back to of_aie_aperture_probe()
+ * implementation once v1.0 device node support is removed.
+ */
+int aie_aperture_add_dev(struct aie_aperture *aperture,
+			 struct device_node *nc)
+{
+	struct device *dev = &aperture->dev;
+
+	/* register device for aperture */
+	dev = &aperture->dev;
+	dev->class = aie_class;
+	dev->parent = &aperture->adev->dev;
+	dev->of_node = nc;
+	dev->driver_data = aperture;
+	dev_set_name(dev, "aieaperture_%u_%u", aperture->range.start.col,
+		     aperture->range.size.col);
+	/* We can now rely on the release function for cleanup */
+	dev->release = aie_aperture_release_device;
+
+	return device_register(&aperture->dev);
+}
+
+/**
  * of_aie_aperture_probe() - probes AI engine aperture node
  * @adev: AI engine device
  * @nc: aperture device node
@@ -400,20 +430,12 @@ of_aie_aperture_probe(struct aie_device *adev, struct device_node *nc)
 	}
 
 	/* register device for aperture */
-	dev = &aperture->dev;
-	dev->class = aie_class;
-	dev->parent = &adev->dev;
-	dev->of_node = nc;
-	dev->driver_data = aperture;
-	dev_set_name(dev, "aieaperture_%u_%u", aperture->range.start.col,
-		     aperture->range.size.col);
-	/* We can now rely on the release function for cleanup */
-	dev->release = aie_aperture_release_device;
-	ret = device_register(&aperture->dev);
+	ret = aie_aperture_add_dev(aperture, nc);
 	if (ret) {
 		dev_err(&aperture->dev, "device_add failed: %d\n", ret);
 		goto free_aperture;
 	}
+	dev = &aperture->dev;
 
 	/*
 	 * Initialize columns resource map to remember which columns have been

@@ -375,10 +375,65 @@ static void of_xilinx_ai_engine_aperture_probe(struct aie_device *adev)
 	}
 }
 
+/**
+ * xilinx_ai_engine_add_dev() - initialize and add AI engine device
+ * @adev: AI engine device
+ * @pdev: AI engine platform device
+ * @return: 0 for success, negative value for failure
+ *
+ * This function will initialize and add AI engine device to Linux kernel
+ * device framework.
+ * TODO: This function should be moved back to xilinx_ai_engine_probe()
+ * implementation once v1.0 device node support is removed.
+ */
+int xilinx_ai_engine_add_dev(struct aie_device *adev,
+			     struct platform_device *pdev)
+{
+	struct device *dev;
+	int ret;
+
+	dev = &adev->dev;
+	device_initialize(dev);
+	dev->class = aie_class;
+	dev->parent = &pdev->dev;
+	dev->of_node = pdev->dev.of_node;
+
+	ret = ida_simple_get(&aie_minor_ida, 0, AIE_DEV_MAX, GFP_KERNEL);
+	if (ret < 0)
+		return ret;
+	dev->devt = MKDEV(MAJOR(aie_major), ret);
+	ret = ida_simple_get(&aie_device_ida, 0, 0, GFP_KERNEL);
+	if (ret < 0) {
+		ida_simple_remove(&aie_minor_ida, MINOR(dev->devt));
+		return ret;
+	}
+	dev->id = ret;
+	dev_set_name(&adev->dev, "aie%d", dev->id);
+
+	cdev_init(&adev->cdev, &aie_device_fops);
+	adev->cdev.owner = THIS_MODULE;
+	ret = cdev_add(&adev->cdev, dev->devt, 1);
+	if (ret) {
+		ida_simple_remove(&aie_device_ida, dev->id);
+		ida_simple_remove(&aie_minor_ida, MINOR(dev->devt));
+		return ret;
+	}
+	/* We can now rely on the release function for cleanup */
+	dev->release = xilinx_ai_engine_release_device;
+
+	ret = device_add(dev);
+	if (ret) {
+		dev_err(&pdev->dev, "device_add failed: %d\n", ret);
+		put_device(dev);
+		return ret;
+	}
+
+	return 0;
+}
+
 static int xilinx_ai_engine_probe(struct platform_device *pdev)
 {
 	struct aie_device *adev;
-	struct device *dev;
 	u32 idcode, version, pm_reg[2];
 	int ret;
 	u8 regs_u8[2];
@@ -396,7 +451,10 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	/* TODO:check if it is "xlnx,ai-engine-v2.0" device node presentation */
+	/* check if device node is v1.0 or not */
+	ret = of_device_is_compatible(pdev->dev.of_node, "xlnx,ai-engine-v1.0");
+	if (ret)
+		return xilinx_ai_engine_probe_v1(pdev);
 
 	ret = of_property_read_u8_array(pdev->dev.of_node, "xlnx,shim-rows",
 					regs_u8, ARRAY_SIZE(regs_u8));
@@ -446,34 +504,9 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	dev = &adev->dev;
-	device_initialize(dev);
-	dev->class = aie_class;
-	dev->parent = &pdev->dev;
-	dev->of_node = pdev->dev.of_node;
-
-	ret = ida_simple_get(&aie_minor_ida, 0, AIE_DEV_MAX, GFP_KERNEL);
-	if (ret < 0)
-		goto free_dev;
-	dev->devt = MKDEV(MAJOR(aie_major), ret);
-	ret = ida_simple_get(&aie_device_ida, 0, 0, GFP_KERNEL);
-	if (ret < 0)
-		goto free_minor_ida;
-	dev->id = ret;
-	dev_set_name(&adev->dev, "aie%d", dev->id);
-
-	cdev_init(&adev->cdev, &aie_device_fops);
-	adev->cdev.owner = THIS_MODULE;
-	ret = cdev_add(&adev->cdev, dev->devt, 1);
-	if (ret)
-		goto free_ida;
-	/* We can now rely on the release function for cleanup */
-	dev->release = xilinx_ai_engine_release_device;
-
-	ret = device_add(dev);
+	ret = xilinx_ai_engine_add_dev(adev, pdev);
 	if (ret) {
-		dev_err(&pdev->dev, "device_add failed: %d\n", ret);
-		put_device(dev);
+		dev_err(&pdev->dev, "Failed to add ai engine device.\n");
 		return ret;
 	}
 
@@ -482,15 +515,6 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 		 dev_name(&pdev->dev));
 
 	return 0;
-
-free_ida:
-	ida_simple_remove(&aie_device_ida, dev->id);
-free_minor_ida:
-	ida_simple_remove(&aie_minor_ida, MINOR(dev->devt));
-free_dev:
-	put_device(dev);
-
-	return ret;
 }
 
 static int xilinx_ai_engine_remove(struct platform_device *pdev)
