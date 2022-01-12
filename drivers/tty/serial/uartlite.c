@@ -297,7 +297,6 @@ static void ulite_shutdown(struct uart_port *port)
 	struct uartlite_data *pdata = port->private_data;
 
 	uart_out32(0, ULITE_CONTROL, port);
-	uart_in32(ULITE_CONTROL, port); /* dummy */
 	free_irq(port->irq, port);
 	clk_disable(pdata->clk);
 }
@@ -368,7 +367,6 @@ static int ulite_request_port(struct uart_port *port)
 	}
 
 	pdata->reg_ops = &uartlite_be;
-	ret = uart_in32(ULITE_CONTROL, port);
 	uart_out32(ULITE_CONTROL_RST_TX, ULITE_CONTROL, port);
 	ret = uart_in32(ULITE_STATUS, port);
 	/* Endianess detection */
