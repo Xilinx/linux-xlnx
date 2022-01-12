@@ -211,6 +211,8 @@
 			      XDPRX_HPD_INTR_MASK)
 #define xdprxss_disable_unplug_intr(state) \
 		xdprxss_set(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_UNPLUG_MASK)
+#define xdprxss_disable_audio(state) \
+		xdprxss_clr(state, XDPRX_AUDIO_CONTROL, XDPRX_AUDIO_EN_MASK)
 
 /**
  * struct xlnx_dprx_audio_data - DP Rx Subsystem audio data structure
@@ -882,6 +884,7 @@ static void xdprxss_training_failure(struct xdprxss_state *state)
 	/* reset the aux logic */
 	xdprxss_set(state, XDPRX_SOFT_RST_REG, XDPRX_SOFT_AUXRST_MASK);
 	xdprxss_clr(state, XDPRX_SOFT_RST_REG, XDPRX_SOFT_AUXRST_MASK);
+	xdprxss_disable_audio(state);
 }
 
 static void xdprxss_irq_no_video(struct xdprxss_state *state)
