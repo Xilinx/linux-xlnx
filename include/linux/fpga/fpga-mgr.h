@@ -224,6 +224,8 @@ struct fpga_manager_ops {
  * @flags: flags determines the type of Bitstream
  * @key: key value useful for Encrypted Bitstream loading to read the userkey
  * @dev: fpga manager device
+ * @miscdev: information about character device node
+ * @dmabuf: shared dma buffer
  * @ref_mutex: only allows one reference to fpga manager
  * @state: state of fpga manager
  * @compat_id: FPGA manager id for compatibility check.
