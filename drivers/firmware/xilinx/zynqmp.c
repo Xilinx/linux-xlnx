@@ -887,17 +887,25 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_reset_get_status);
  * @flags:	Bitstream type
  *	-XILINX_ZYNQMP_PM_FPGA_FULL:  FPGA full reconfiguration
  *	-XILINX_ZYNQMP_PM_FPGA_PARTIAL: FPGA partial reconfiguration
+ * @status:	Returned status
  *
  * This function provides access to pmufw. To transfer
  * the required bitstream into PL.
  *
  * Return: Returns status, either success or error+reason
  */
-int zynqmp_pm_fpga_load(const u64 address, const u32 size, const u32 flags)
+int zynqmp_pm_fpga_load(const u64 address, const u32 size,
+			const u32 flags, u32 *status)
 {
-	return zynqmp_pm_invoke_fn(PM_FPGA_LOAD, lower_32_bits(address),
-				   upper_32_bits(address), size, flags, 0,
-				   NULL);
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	ret = zynqmp_pm_invoke_fn(PM_FPGA_LOAD, lower_32_bits(address),
+				  upper_32_bits(address), size, flags, 0,
+				  ret_payload);
+	*status = ret_payload[0];
+
+	return ret;
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_load);
 
