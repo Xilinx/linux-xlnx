@@ -64,12 +64,14 @@ static inline int fpga_mgr_write_complete(struct fpga_manager *mgr,
 {
 	int ret = 0;
 
+	mgr->err = 0;
 	mgr->state = FPGA_MGR_STATE_WRITE_COMPLETE;
 	if (mgr->mops->write_complete)
 		ret = mgr->mops->write_complete(mgr, info);
 	if (ret) {
 		dev_err(&mgr->dev, "Error after writing image data to FPGA\n");
 		mgr->state = FPGA_MGR_STATE_WRITE_COMPLETE_ERR;
+		mgr->err = ret;
 		return ret;
 	}
 	mgr->state = FPGA_MGR_STATE_OPERATING;
@@ -150,6 +152,7 @@ static int fpga_mgr_write_init_buf(struct fpga_manager *mgr,
 {
 	int ret;
 
+	mgr->err = 0;
 	mgr->state = FPGA_MGR_STATE_WRITE_INIT;
 	if (!mgr->mops->initial_header_size)
 		ret = fpga_mgr_write_init(mgr, info, NULL, 0);
@@ -160,6 +163,7 @@ static int fpga_mgr_write_init_buf(struct fpga_manager *mgr,
 	if (ret) {
 		dev_err(&mgr->dev, "Error preparing FPGA for writing\n");
 		mgr->state = FPGA_MGR_STATE_WRITE_INIT_ERR;
+		mgr->err = ret;
 		return ret;
 	}
 
@@ -237,6 +241,7 @@ static int fpga_mgr_buf_load_sg(struct fpga_manager *mgr,
 		return ret;
 
 	/* Write the FPGA image to the FPGA. */
+	mgr->err = 0;
 	mgr->state = FPGA_MGR_STATE_WRITE;
 	if (mgr->mops->write_sg) {
 		ret = fpga_mgr_write_sg(mgr, sgt);
@@ -255,6 +260,7 @@ static int fpga_mgr_buf_load_sg(struct fpga_manager *mgr,
 	if (ret) {
 		dev_err(&mgr->dev, "Error while writing image data to FPGA\n");
 		mgr->state = FPGA_MGR_STATE_WRITE_ERR;
+		mgr->err = ret;
 		return ret;
 	}
 
@@ -274,11 +280,13 @@ static int fpga_mgr_buf_load_mapped(struct fpga_manager *mgr,
 	/*
 	 * Write the FPGA image to the FPGA.
 	 */
+	mgr->err = 0;
 	mgr->state = FPGA_MGR_STATE_WRITE;
 	ret = fpga_mgr_write(mgr, buf, count);
 	if (ret) {
 		dev_err(&mgr->dev, "Error while writing image data to FPGA\n");
 		mgr->state = FPGA_MGR_STATE_WRITE_ERR;
+		mgr->err = ret;
 		return ret;
 	}
 
@@ -414,6 +422,7 @@ static int fpga_mgr_firmware_load(struct fpga_manager *mgr,
 
 	dev_info(dev, "writing %s to %s\n", image_name, mgr->name);
 
+	mgr->err = 0;
 	mgr->state = FPGA_MGR_STATE_FIRMWARE_REQ;
 
 	/* flags indicates whether to do full or partial reconfiguration */
@@ -423,6 +432,7 @@ static int fpga_mgr_firmware_load(struct fpga_manager *mgr,
 	ret = request_firmware(&fw, image_name, dev);
 	if (ret) {
 		mgr->state = FPGA_MGR_STATE_FIRMWARE_REQ_ERR;
+		mgr->err = ret;
 		dev_err(dev, "Error requesting firmware %s\n", image_name);
 		return ret;
 	}
@@ -496,6 +506,9 @@ static ssize_t state_show(struct device *dev,
 			  struct device_attribute *attr, char *buf)
 {
 	struct fpga_manager *mgr = to_fpga_manager(dev);
+
+	if (mgr->err)
+		return sprintf(buf, "%s: 0x%x\n", state_str[mgr->state], mgr->err);
 
 	return sprintf(buf, "%s\n", state_str[mgr->state]);
 }
