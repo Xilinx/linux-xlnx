@@ -1075,6 +1075,8 @@ static void devm_fpga_mgr_unregister(struct device *dev, void *res)
  * @dev: managing device for this FPGA manager
  * @mgr: fpga manager struct
  *
+ * @return: 0 on success, negative error code otherwise.
+ *
  * This is the devres variant of fpga_mgr_register() for which the unregister
  * function will be called automatically when the managing device is detached.
  */
