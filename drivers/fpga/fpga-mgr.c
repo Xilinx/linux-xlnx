@@ -157,8 +157,8 @@ static int fpga_mgr_write_init_buf(struct fpga_manager *mgr,
 	if (!mgr->mops->initial_header_size)
 		ret = fpga_mgr_write_init(mgr, info, NULL, 0);
 	else
-		ret = fpga_mgr_write_init(
-		    mgr, info, buf, min(mgr->mops->initial_header_size, count));
+		ret = fpga_mgr_write_init(mgr, info, buf,
+					  min(mgr->mops->initial_header_size, count));
 
 	if (ret) {
 		dev_err(&mgr->dev, "Error preparing FPGA for writing\n");
@@ -891,8 +891,8 @@ struct fpga_manager *fpga_mgr_create(struct device *parent, const char *name,
 	ret = dma_coerce_mask_and_coherent(&mgr->dev, dma_get_mask(parent));
 	if (ret) {
 		dev_warn(parent,
-		"Failed to set DMA mask %llx. Trying to continue... %x\n",
-		dma_get_mask(parent), ret);
+			 "Failed to set DMA mask %llx. Trying to continue... %x\n",
+			 dma_get_mask(parent), ret);
 	}
 
 	ret = dev_set_name(&mgr->dev, "fpga%d", id);
