@@ -229,6 +229,7 @@ struct fpga_manager_ops {
  * @compat_id: FPGA manager id for compatibility check.
  * @mops: pointer to struct of fpga manager ops
  * @priv: low level driver private date
+ * @err: low level driver error code
  * @dir: debugfs image directory
  */
 struct fpga_manager {
@@ -243,6 +244,7 @@ struct fpga_manager {
 	struct fpga_compat_id *compat_id;
 	const struct fpga_manager_ops *mops;
 	void *priv;
+	int err;
 #ifdef CONFIG_FPGA_MGR_DEBUG_FS
 	struct dentry *dir;
 #endif
