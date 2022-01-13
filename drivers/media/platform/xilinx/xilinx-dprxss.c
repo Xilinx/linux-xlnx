@@ -196,13 +196,6 @@
 #define XDPRX_GTCTL_LINE_RATE_270G	1
 #define XDPRX_GTCTL_LINE_RATE_162G	0
 
-/* Gt Quad Base Registers */
-#define GT_QUAD_BASE_CTL		0x0c
-#define GT_QUAD_BASE_CTL_VALUE		0xf9e8d7c6
-#define GT_QUAD_BASE_CH1_CLK_DIV_REG	0x3694
-#define GT_QUAD_BASE_CH1_CLK_DIV_MASK	GENMASK(9, 0)
-#define GT_QUAD_BASE_CH1_CLK_DIV_VALUE	0x260
-
 #define DP_LINK_BW_1_62G	1620
 #define DP_LINK_BW_2_7G		2700
 #define DP_LINK_BW_5_4G		5400    /* 1.2 */
@@ -253,7 +246,6 @@ struct xlnx_dprx_audio_data {
  * @rx_dec_clk: DP Rx Decode clock
  * @dp_base: Base address of DP Rx Subsystem
  * @edid_base: Bare Address of EDID block
- * @gt_quad_base: Base address of GT Quad Base IP
  * @tp1_work: training pattern 1 worker
  * @lock: Lock is used for width, height, framerate variables
  * @format: Active V4L2 format on each pad
@@ -283,7 +275,6 @@ struct xdprxss_state {
 	struct clk *rx_dec_clk;
 	void __iomem *dp_base;
 	void __iomem *edid_base;
-	void __iomem *gt_quad_base;
 	struct delayed_work tp1_work;
 	/* protects width, height, framerate variables */
 	spinlock_t lock;
@@ -632,25 +623,6 @@ static int xlnx_dp_rx_gt_control_init(struct xdprxss_state *dp)
 	}
 
 	return 0;
-}
-
-static void config_gt_quad_base(struct xdprxss_state *dp)
-{
-	u32 data;
-
-	/*
-	 * Unlocking the NPI space so that GT CH1 divider value can be
-	 * programmed. This will generate a /20 clk
-	 */
-	iowrite32(GT_QUAD_BASE_CTL_VALUE,
-		  (dp->gt_quad_base + GT_QUAD_BASE_CTL));
-
-	data = ioread32(dp->gt_quad_base + GT_QUAD_BASE_CH1_CLK_DIV_REG);
-	data &= ~GT_QUAD_BASE_CH1_CLK_DIV_MASK;
-	data |= FIELD_PREP(GT_QUAD_BASE_CH1_CLK_DIV_MASK,
-			   GT_QUAD_BASE_CH1_CLK_DIV_VALUE);
-	iowrite32(data,
-		  (dp->gt_quad_base + GT_QUAD_BASE_CH1_CLK_DIV_REG));
 }
 
 static void xdprxss_dtg_disable(struct xdprxss_state *state)
@@ -1611,8 +1583,8 @@ static int xdprxss_probe(struct platform_device *pdev)
 					dev_info(dev, "phy not ready -EPROBE_DEFER\n");
 				else
 					dev_err(dev,
-						"failed to get phy lane %s i %d\n",
-						phy_name, i);
+						"failed to get phy lane %s i %d, ret = %d\n",
+						phy_name, i, ret);
 				goto error_phy;
 			}
 			ret = phy_init(xdprxss->phy[i]);
@@ -1623,12 +1595,15 @@ static int xdprxss_probe(struct platform_device *pdev)
 			}
 		}
 	} else {
-		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "gt_quad_base");
-		xdprxss->gt_quad_base = devm_ioremap_resource(xdprxss->dev, res);
-		if (IS_ERR(xdprxss->gt_quad_base)) {
-			dev_err(&pdev->dev,
-				"couldn't map GT Quad Base IP registers\n");
-			return PTR_ERR(xdprxss->gt_quad_base);
+		xdprxss->phy[0] = devm_phy_get(xdprxss->dev, "dp-gtquad");
+		if (IS_ERR(xdprxss->phy[0]))
+			return dev_err_probe(dev, PTR_ERR(xdprxss->phy[0]),
+					"failed to get phy\n");
+
+		ret = phy_init(xdprxss->phy[0]);
+		if (ret) {
+			dev_err(dev, "failed to init phy\n");
+			goto error_phy;
 		}
 
 		ret = xlnx_find_device(pdev, "xlnx,xilinx-vfmc");
@@ -1641,8 +1616,6 @@ static int xdprxss_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev, "failed to get rx_dec_clk (%d)\n", ret);
 			return ret;
 		}
-
-		config_gt_quad_base(xdprxss);
 
 		ret = xlnx_dp_rx_gt_control_init(xdprxss);
 		if (ret < 0)
@@ -1743,13 +1716,17 @@ rx_lnk_clk_err:
 error_phy:
 	dev_dbg(dev, " %s error_phy:\n", __func__);
 	/* release the lanes that we did get, if we did not get all lanes */
-	for (j = 0; j < i; j++) {
-		if (xdprxss->phy[j]) {
-			dev_dbg(dev,
-				"phy_exit() xdprxss->phy[%d] = %p\n",
-				j, xdprxss->phy[j]);
-			phy_exit(xdprxss->phy[j]);
+	if (!xdprxss->versal_gt_present) {
+		for (j = 0; j < i; j++) {
+			if (xdprxss->phy[j]) {
+				dev_dbg(dev,
+					"phy_exit() xdprxss->phy[%d] = %p\n",
+					j, xdprxss->phy[j]);
+				phy_exit(xdprxss->phy[j]);
+			}
 		}
+	} else {
+		phy_exit(xdprxss->phy[0]);
 	}
 
 	return ret;
@@ -1770,6 +1747,8 @@ static int xdprxss_remove(struct platform_device *pdev)
 	if (!xdprxss->versal_gt_present)
 		for (i = 0; i < XDPRX_MAX_LANE_COUNT; i++)
 			phy_exit(xdprxss->phy[i]);
+	else
+		phy_exit(xdprxss->phy[0]);
 
 	if (xdprxss->audio_init)
 		dprx_unregister_aud_dev(&pdev->dev);
