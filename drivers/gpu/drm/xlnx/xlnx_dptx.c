@@ -291,13 +291,6 @@
 #define XDPTX_VSC_SDP_BPC_MASK				GENMASK(2, 0)
 #define XDPTX_VSC_SDP_FMT_SHIFT				4
 
-/* Gt Quad Base Registers */
-#define GT_QUAD_BASE_CTL				0x0c
-#define GT_QUAD_BASE_CTL_VALUE				0xf9e8d7c6
-#define GT_QUAD_BASE_CH1_CLK_DIV_REG			0x3694
-#define GT_QUAD_BASE_CH1_CLK_DIV_MASK			GENMASK(9, 0)
-#define GT_QUAD_BASE_CH1_CLK_DIV_VALUE			0x260
-
 #define DP_LINK_BW_SET_MASK			GENMASK(4, 0)
 #define DP_MAX_TRAINING_TRIES				5
 
@@ -436,7 +429,6 @@ enum xlnx_dp_train_state {
  * @phy_opts: Opaque generic phy configuration
  * @status: connection status
  * @dp_base: Base address of DisplayPort Tx subsystem
- * @gt_quad_base: Base address of GT Quad Base IP
  * @dpms: current dpms state
  * @dpcd: DP configuration data from currently connected sink device
  * @train_set: set of training data
@@ -471,7 +463,6 @@ struct xlnx_dp {
 	union phy_configure_opts phy_opts;
 	enum drm_connector_status status;
 	void __iomem *dp_base;
-	void __iomem *gt_quad_base;
 	int dpms;
 	u8 dpcd[DP_RECEIVER_CAP_SIZE];
 	u8 train_set[XDPTX_MAX_LANES];
@@ -855,24 +846,6 @@ static int xlnx_dp_tx_gt_control_init(struct xlnx_dp *dp)
 	}
 
 	return 0;
-}
-
-static void config_gt_quad_base(struct xlnx_dp *dp)
-{
-	u32 data;
-
-	/*
-	 * Unlocking the NPI space so that GT CH1 divider value can be
-	 * programmed. This will generate a /20 clk
-	 */
-	xlnx_dp_write(dp->gt_quad_base, GT_QUAD_BASE_CTL,
-		      GT_QUAD_BASE_CTL_VALUE);
-
-	data = xlnx_dp_read(dp->gt_quad_base, GT_QUAD_BASE_CH1_CLK_DIV_REG);
-	data &= ~GT_QUAD_BASE_CH1_CLK_DIV_MASK;
-	data |= FIELD_PREP(GT_QUAD_BASE_CH1_CLK_DIV_MASK,
-			   GT_QUAD_BASE_CH1_CLK_DIV_VALUE);
-	xlnx_dp_write(dp->gt_quad_base, GT_QUAD_BASE_CH1_CLK_DIV_REG, data);
 }
 
 /**
@@ -3187,13 +3160,13 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 		return ret;
 
 	if (dp->config.versal_gt_present) {
-		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "gt_quad_base");
-		dp->gt_quad_base = devm_ioremap_resource(dp->dev, res);
-		if (IS_ERR(dp->gt_quad_base)) {
-			dev_err(&pdev->dev,
-				"couldn't map GT Quad Base IP registers\n");
-			return -ENODEV;
-		}
+		dp->phy[0] = devm_phy_get(dp->dev, "dp-gtquad");
+		if (IS_ERR(dp->phy[0]))
+			return dev_err_probe(dp->dev, ret, "failed to get phy\n");
+
+		ret = phy_init(dp->phy[0]);
+		if (ret)
+			goto error_phy;
 
 		fnode = of_parse_phandle(pnode, "xlnx,xilinx-vfmc", 0);
 		if (!fnode) {
@@ -3258,8 +3231,6 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 		if (ret)
 			goto error_phy;
 	} else {
-		config_gt_quad_base(dp);
-
 		ret = xlnx_dp_tx_gt_control_init(dp);
 		if (ret < 0)
 			return ret;
@@ -3316,9 +3287,11 @@ tx_vid_clk_err:
 error:
 	drm_dp_aux_unregister(&dp->aux);
 error_phy:
-	if (dp->config.versal_gt_present) {
+	if (!dp->config.versal_gt_present) {
 		dev_dbg(&pdev->dev, "xdprxss_probe() error_phy:\n");
 		xlnx_dp_exit_phy(dp);
+	} else {
+		phy_exit(dp->phy[0]);
 	}
 
 	return ret;
@@ -3330,7 +3303,10 @@ static int xlnx_dp_remove(struct platform_device *pdev)
 
 	xlnx_dp_write(dp->dp_base, XDPTX_ENABLE_REG, 0);
 	drm_dp_aux_unregister(&dp->aux);
-	xlnx_dp_exit_phy(dp);
+	if (!dp->config.versal_gt_present)
+		xlnx_dp_exit_phy(dp);
+	else
+		phy_exit(dp->phy[0]);
 	component_del(&pdev->dev, &xlnx_dp_component_ops);
 
 	return 0;
