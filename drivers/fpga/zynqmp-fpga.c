@@ -102,6 +102,7 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 	dma_addr_t dma_addr = 0;
 	u32 eemi_flags = 0;
 	size_t dma_size;
+	u32 status;
 	char *kbuf;
 	int ret;
 
@@ -138,11 +139,15 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 
 	if (priv->flags & FPGA_MGR_USERKEY_ENCRYPTED_BITSTREAM)
 		ret = zynqmp_pm_fpga_load(dma_addr, dma_addr + size,
-					  eemi_flags);
+					  eemi_flags, &status);
 	else
-		ret = zynqmp_pm_fpga_load(dma_addr, size, eemi_flags);
+		ret = zynqmp_pm_fpga_load(dma_addr, size,
+					  eemi_flags, &status);
 
 	dma_free_coherent(priv->dev, dma_size, kbuf, dma_addr);
+
+	if (status)
+		return status;
 
 	return ret;
 }
@@ -171,6 +176,7 @@ static int zynqmp_fpga_ops_write_sg(struct fpga_manager *mgr,
 	struct zynqmp_fpga_priv *priv;
 	unsigned long contig_size;
 	u32 eemi_flags = 0;
+	u32 status;
 	char *kbuf;
 	int ret;
 
@@ -196,11 +202,16 @@ static int zynqmp_fpga_ops_write_sg(struct fpga_manager *mgr,
 		if (!kbuf)
 			return -ENOMEM;
 		memcpy(kbuf, mgr->key, ENCRYPTED_KEY_LEN);
-		ret = zynqmp_pm_fpga_load(dma_addr, key_addr, eemi_flags);
+		ret = zynqmp_pm_fpga_load(dma_addr, key_addr,
+					  eemi_flags, &status);
 		dma_free_coherent(priv->dev, ENCRYPTED_KEY_LEN, kbuf, key_addr);
 	} else {
-		ret = zynqmp_pm_fpga_load(dma_addr, contig_size, eemi_flags);
+		ret = zynqmp_pm_fpga_load(dma_addr, contig_size,
+					  eemi_flags, &status);
 	}
+
+	if (status)
+		return status;
 
 	return ret;
 }

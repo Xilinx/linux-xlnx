@@ -661,7 +661,8 @@ int zynqmp_pm_get_operating_characteristic(const u32 node,
 					   const enum zynqmp_pm_opchar_type type,
 					   u32 *const result);
 int zynqmp_pm_set_wakeup_source(const u32 target, const u32 wakeup_node, const u32 enable);
-int zynqmp_pm_fpga_load(const u64 address, const u32 size, const u32 flags);
+int zynqmp_pm_fpga_load(const u64 address, const u32 size,
+			const u32 flags, u32 *status);
 int zynqmp_pm_fpga_get_status(u32 *value);
 int zynqmp_pm_write_ggs(u32 index, u32 value);
 int zynqmp_pm_read_ggs(u32 index, u32 *value);
@@ -878,7 +879,7 @@ static inline int zynqmp_pm_sha_hash(const u64 address, const u32 size,
 }
 
 static inline int zynqmp_pm_fpga_load(const u64 address, const u32 size,
-				      const u32 flags)
+				      const u32 flags, u32 *status)
 {
 	return -ENODEV;
 }
