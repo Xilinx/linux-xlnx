@@ -255,6 +255,14 @@ struct retimer_cfg {
 };
 
 /**
+ * struct vidphy_cfg - Video phy configuration structure
+ * @vidphy_prbs_mode: Function pointer to prbs mode enable/disable function
+ */
+struct vidphy_cfg {
+	void (*vidphy_prbs_mode)(u8 enable);
+};
+
+/**
  * struct xdprxss_state - DP Rx Subsystem device structure
  * @dev: Platform structure
  * @subdev: The v4l2 subdev structure
@@ -270,6 +278,7 @@ struct retimer_cfg {
  * @edid_base: Bare Address of EDID block
  * @prvdata: Pointer to device private data
  * @retimer_prvdata: Pointer to retimer private data structure
+ * @vidphy_prvdata: Pointer to video phy private data structure
  * @tp1_work: training pattern 1 worker
  * @lock: Lock is used for width, height, framerate variables
  * @format: Active V4L2 format on each pad
@@ -303,6 +312,7 @@ struct xdprxss_state {
 	void __iomem *edid_base;
 	void *prvdata;
 	struct retimer_cfg *retimer_prvdata;
+	struct vidphy_cfg *vidphy_prvdata;
 	struct delayed_work tp1_work;
 	/* protects width, height, framerate variables */
 	spinlock_t lock;
@@ -1016,12 +1026,17 @@ static void xdprxss_irq_access_linkqual(struct xdprxss_state *state)
 	read_val = xdprxss_read(state, XDPRX_DPC_LINK_QUAL_CONFIG);
 
 	if ((read_val & XDPRX_LINK_QUAL_PRBS_MODE_MASK) ==
-	    XDPRX_DPCD_LINK_QUAL_PRBS_MASK)
+	    XDPRX_DPCD_LINK_QUAL_PRBS_MASK) {
+		/* enable PRBS mode in video phy */
+		state->vidphy_prvdata->vidphy_prbs_mode(1);
 		/* enable PRBS mode in retimer */
 		state->retimer_prvdata->retimer_prbs_mode(1);
-	else
+	} else {
+		/* disable PRBS mode in video phy */
+		state->vidphy_prvdata->vidphy_prbs_mode(0);
 		/* disable PRBS mode in retimer */
 		state->retimer_prvdata->retimer_prbs_mode(0);
+	}
 }
 
 static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
@@ -1618,6 +1633,11 @@ static int xdprxss_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 	xdprxss->retimer_prvdata = xdprxss->prvdata;
+
+	ret = xlnx_find_device(pdev, xdprxss, "xlnx,vidphy");
+	if (ret)
+		return ret;
+	xdprxss->vidphy_prvdata = xdprxss->prvdata;
 
 	xdprxss->rx_audio_data =
 		devm_kzalloc(&pdev->dev, sizeof(struct xlnx_dprx_audio_data),
