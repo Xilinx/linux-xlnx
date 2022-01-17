@@ -243,6 +243,8 @@
 		xdprxss_set(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_ALL_MASK)
 #define xdprxss_disable_allintr_1(state) \
 		xdprxss_set(state, XDPRX_INTR_MASK_1_REG, XDPRX_INTR_ALL_MASK_1)
+#define xdprxss_enable_audio_intr(state) \
+		xdprxss_clr(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_AUDIO_MASK)
 
 /**
  * struct xlnx_dprx_audio_data - DP Rx Subsystem audio data structure
@@ -977,6 +979,8 @@ static void xdprxss_irq_no_video(struct xdprxss_state *state)
 
 	xdprxss_dtg_disable(state);
 	xdprxss_dtg_enable(state);
+
+	xdprxss_enable_audio_intr(state);
 
 	/* notify source change event */
 	memset(&state->event, 0, sizeof(state->event));
