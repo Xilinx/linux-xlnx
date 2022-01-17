@@ -431,6 +431,14 @@ static const u32 xdprxss_supported_mbus_fmts[] = {
 		V4L2_DV_BT_STD_CEA861) \
 }
 
+#define XLNX_V4L2_DV_BT_7680X4320P25 { \
+	.type = V4L2_DV_BT_656_1120, \
+	V4L2_INIT_BT_TIMINGS(7680, 4320, 0, \
+		V4L2_DV_HSYNC_POS_POL | V4L2_DV_VSYNC_POS_POL, \
+		74250000, 2552, 176, 592, 16, 20, 44, 0, 0, 0, \
+		V4L2_DV_BT_STD_CEA861) \
+}
+
 #define XLNX_V4L2_DV_BT_7680X4320P30 { \
 	.type = V4L2_DV_BT_656_1120, \
 	V4L2_INIT_BT_TIMINGS(7680, 4320, 0, \
@@ -511,6 +519,7 @@ static const struct xdprxss_dv_map xdprxss_dv_timings[] = {
 	/* 3G - 2048x1080p59.94 */
 	/* 3G - 2048x1080p60 */
 	{ 2048, 1080, 60, XLNX_V4L2_DV_BT_2048X1080P60 },
+	{ 7680, 4320, 25, XLNX_V4L2_DV_BT_7680X4320P25 },
 	{ 7680, 4320, 30, XLNX_V4L2_DV_BT_7680X4320P30 }
 };
 
