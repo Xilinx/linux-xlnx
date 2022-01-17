@@ -1066,7 +1066,7 @@ __xdprxss_get_pad_format(struct xdprxss_state *xdprxss,
 /**
  * xdprxss_init_cfg - Initialise the pad format config to default
  * @sd: Pointer to V4L2 Sub device structure
- * @cfg: Pointer to sub device pad information structure
+ * @sd_state: Pointer to sub device pad information structure
  *
  * This function is used to initialize the pad format with the default
  * values.
@@ -1090,7 +1090,7 @@ static int xdprxss_init_cfg(struct v4l2_subdev *sd,
 /**
  * xdprxss_getset_format - This is used to set and get the pad format
  * @sd: Pointer to V4L2 Sub device structure
- * @cfg: Pointer to sub device pad information structure
+ * @sd_state: Pointer to sub device pad information structure
  * @fmt: Pointer to pad level media bus format
  *
  * This function is used to set the pad format.
@@ -1129,7 +1129,7 @@ static int xdprxss_getset_format(struct v4l2_subdev *sd,
 /**
  * xdprxss_enum_mbus_code - Handle pixel format enumeration
  * @sd: pointer to v4l2 subdev structure
- * @cfg: V4L2 subdev pad configuration
+ * @sd_state: V4L2 subdev pad configuration
  * @code: pointer to v4l2_subdev_mbus_code_enum structure
  *
  * Return: -EINVAL or zero on success
