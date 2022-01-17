@@ -73,7 +73,15 @@
 					 XDPRX_INTR_CRCTST_MASK |\
 					 XDPRX_INTR_BWCHANGE_MASK)
 #define XDPRX_INTR_ACCESS_LANE_SET_MASK		BIT(30)
+#define XDPRX_INTR_TP4_MASK			BIT(31)
+#define XDPRX_INTR_ACCESS_LINK_QUAL_MASK	BIT(29)
+#define XDPRX_INTR_ACCESS_ERR_CNT_MASK		BIT(28)
+#define XDPRX_INTR_TRNG_MASK_1		(XDPRX_INTR_TP4_MASK | \
+					 XDPRX_INTR_ACCESS_LANE_SET_MASK | \
+					 XDPRX_INTR_ACCESS_LINK_QUAL_MASK | \
+					 XDPRX_INTR_ACCESS_ERR_CNT_MASK)
 #define XDPRX_INTR_ALL_MASK		0xffffffff
+#define XDPRX_INTR_ALL_MASK_1		0xffffffff
 
 #define XDPRX_SOFT_RST_REG		0x01c
 #define XDPRX_SOFT_VIDRST_MASK		BIT(0)
@@ -227,6 +235,14 @@
 #define xdprxss_enable_training_timeout(xdprxss) \
 		xdprxss_clr(xdprxss, XDPRX_CDRCTRL_CFG_REG, \
 			    XDPRX_CDRCTRL_DIS_TIMEOUT)
+#define xdprxss_enable_training_intr(xdprxss) \
+		xdprxss_clr(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_TRNG_MASK)
+#define xdprxss_enable_training_intr_1(state) \
+		xdprxss_clr(state, XDPRX_INTR_MASK_1_REG, XDPRX_INTR_TRNG_MASK_1)
+#define xdprxss_disable_allintr(state) \
+		xdprxss_set(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_ALL_MASK)
+#define xdprxss_disable_allintr_1(state) \
+		xdprxss_set(state, XDPRX_INTR_MASK_1_REG, XDPRX_INTR_ALL_MASK_1)
 
 /**
  * struct xlnx_dprx_audio_data - DP Rx Subsystem audio data structure
@@ -863,8 +879,6 @@ static void xdprxss_irq_unplug(struct xdprxss_state *state)
 	if (state->retimer_prvdata)
 		state->retimer_prvdata->retimer_rst_dp_path();
 
-	xdprxss_set(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_ALL_MASK);
-	xdprxss_clr(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_TRNG_MASK);
 	/*
 	 * Disable unplug interrupt so that no unplug event when RX is
 	 * disconnected
@@ -872,6 +886,11 @@ static void xdprxss_irq_unplug(struct xdprxss_state *state)
 	xdprxss_disable_unplug_intr(state);
 	xdprxss_generate_hpd_intr(state, XDPRX_HPD_PULSE_750);
 
+	xdprxss_disable_allintr(state);
+	xdprxss_disable_allintr_1(state);
+
+	xdprxss_enable_training_intr(state);
+	xdprxss_enable_training_intr_1(state);
 	/*
 	 * In a scenario, where the cable is plugged-in but the training
 	 * is lost, the software is expected to assert a HPD upon the
