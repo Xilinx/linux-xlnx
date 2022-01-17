@@ -821,9 +821,12 @@ static void xdprxss_set_training_params(struct xdprxss_state *xdprxss)
 
 	/* Disable all the interrupts */
 	xdprxss_set(xdprxss, XDPRX_INTR_MASK_REG, XDPRX_INTR_ALL_MASK);
+	xdprxss_disable_allintr_1(xdprxss);
 
 	/* Enable trainng related interrupts */
 	xdprxss_clr(xdprxss, XDPRX_INTR_MASK_REG, XDPRX_INTR_TRNG_MASK);
+	xdprxss_enable_training_intr_1(xdprxss);
+
 	xdprxss_write(xdprxss, XDPRX_AUX_CLKDIV_REG,
 		      xdprxss_read(xdprxss, XDPRX_AUX_CLKDIV_REG) |
 		      FIELD_PREP(XDPRX_AUX_DEFER_MASK, XDPRX_AUX_DEFER_COUNT));
