@@ -224,8 +224,6 @@
 };
 
 &gem1 {
-	/delete-property/ #address-cells;
-	/delete-property/ #size-cells;
 	mdio {
 		#address-cells = <1>;
 		#size-cells = <0>;
