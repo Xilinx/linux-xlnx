@@ -233,6 +233,16 @@ struct xlnx_dprx_audio_data {
 };
 
 /**
+ * struct retimer_cfg - Retimer configuration structure
+ * @retimer_access_laneset: Function pointer to retimer access laneset function
+ * @retimer_rst_cr_path: Function pointer to retimer reset cr path function
+ */
+struct retimer_cfg {
+	void (*retimer_access_laneset)(void);
+	void (*retimer_rst_cr_path)(void);
+};
+
+/**
  * struct xdprxss_state - DP Rx Subsystem device structure
  * @dev: Platform structure
  * @subdev: The v4l2 subdev structure
@@ -246,6 +256,8 @@ struct xlnx_dprx_audio_data {
  * @rx_dec_clk: DP Rx Decode clock
  * @dp_base: Base address of DP Rx Subsystem
  * @edid_base: Bare Address of EDID block
+ * @prvdata: Pointer to device private data
+ * @retimer_prvdata: Pointer to retimer private data structure
  * @tp1_work: training pattern 1 worker
  * @lock: Lock is used for width, height, framerate variables
  * @format: Active V4L2 format on each pad
@@ -275,6 +287,8 @@ struct xdprxss_state {
 	struct clk *rx_dec_clk;
 	void __iomem *dp_base;
 	void __iomem *edid_base;
+	void *prvdata;
+	struct retimer_cfg *retimer_prvdata;
 	struct delayed_work tp1_work;
 	/* protects width, height, framerate variables */
 	spinlock_t lock;
@@ -855,6 +869,11 @@ static void xdprxss_irq_tp1(struct xdprxss_state *state)
 	default:
 		dev_err(state->dev, "invalid link rate\n");
 		break;
+	}
+
+	if (state->retimer_prvdata) {
+		state->retimer_prvdata->retimer_rst_cr_path();
+		state->retimer_prvdata->retimer_access_laneset();
 	}
 
 	if (!state->versal_gt_present) {
@@ -1473,12 +1492,12 @@ static void xlnx_dp_tp1_work_func(struct work_struct *work)
 	xdprxss_irq_tp1(dp);
 }
 
-static int xlnx_find_device(struct platform_device *pdev, const char *name)
+static int xlnx_find_device(struct platform_device *pdev,
+			    struct xdprxss_state *xdprxss, const char *name)
 {
 	struct device_node *pnode = pdev->dev.of_node;
 	struct device_node *fnode;
 	struct platform_device *iface_pdev;
-	void *ptr;
 
 	fnode = of_parse_phandle(pnode, name, 0);
 	if (!fnode) {
@@ -1491,8 +1510,8 @@ static int xlnx_find_device(struct platform_device *pdev, const char *name)
 			return -ENODEV;
 		}
 
-		ptr = dev_get_drvdata(&iface_pdev->dev);
-		if (!ptr) {
+		xdprxss->prvdata = dev_get_drvdata(&iface_pdev->dev);
+		if (!xdprxss->prvdata) {
 			dev_info(&pdev->dev,
 				 "platform device(%s) not found -EPROBE_DEFER\n", name);
 			of_node_put(fnode);
@@ -1521,6 +1540,11 @@ static int xdprxss_probe(struct platform_device *pdev)
 
 	xdprxss->dev = &pdev->dev;
 	node = xdprxss->dev->of_node;
+
+	ret = xlnx_find_device(pdev, xdprxss, "xlnx,dp-retimer");
+	if (ret)
+		return ret;
+	xdprxss->retimer_prvdata = xdprxss->prvdata;
 
 	xdprxss->rx_audio_data =
 		devm_kzalloc(&pdev->dev, sizeof(struct xlnx_dprx_audio_data),
@@ -1606,7 +1630,7 @@ static int xdprxss_probe(struct platform_device *pdev)
 			goto error_phy;
 		}
 
-		ret = xlnx_find_device(pdev, "xlnx,xilinx-vfmc");
+		ret = xlnx_find_device(pdev, xdprxss, "xlnx,xilinx-vfmc");
 		if (ret)
 			return ret;
 
