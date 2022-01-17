@@ -72,6 +72,7 @@
 					 XDPRX_INTR_POWER_MASK |\
 					 XDPRX_INTR_CRCTST_MASK |\
 					 XDPRX_INTR_BWCHANGE_MASK)
+#define XDPRX_INTR_ACCESS_LANE_SET_MASK		BIT(30)
 #define XDPRX_INTR_ALL_MASK		0xffffffff
 
 #define XDPRX_SOFT_RST_REG		0x01c
@@ -83,7 +84,8 @@
 #define XDPRX_HPD_PULSE_MASK		GENMASK(31, 16)
 
 #define XDPRX_INTR_CAUSE_REG		0x040
-#define XDPRX_INTR_CAUSE1_REG		0x048
+#define XDPRX_INTR_MASK_1_REG		0x044
+#define XDPRX_INTR_CAUSE_1_REG		0x048
 #define XDPRX_CRC_CONFIG_REG		0x074
 #define XDPRX_CRC_EN_MASK		BIT(5)
 
@@ -144,6 +146,9 @@
 
 #define XDPRX_LINK_BW_REG		0x400
 #define XDPRX_LANE_COUNT_REG		0x404
+#define XDPRX_DPCD_TRAINING_PATTERN_SET	0x40c
+#define XDPRX_DPCD_LANE01_STATUS	0x43c
+#define XDPRX_LANE01_PEVS_MASK		GENMASK(15, 8)
 #define XDPRX_MSA_HRES_REG		0x500
 #define XDPRX_MSA_VHEIGHT_REG		0x514
 #define XDPRX_MSA_HTOTAL_REG		0x510
@@ -267,6 +272,7 @@ struct retimer_cfg {
  * @max_linkrate: Maximum supported link rate
  * @max_lanecount: Maximux supported lane count
  * @bpc: Bits per component
+ * @ce_req_val: Variable for storing channel status
  * @versal_gt_present: flag to indicate versal-gt property in device tree
  * @hdcp_enable: To indicate hdcp enabled or not
  * @audio_enable: To indicate audio enabled or not
@@ -274,6 +280,7 @@ struct retimer_cfg {
  * @rx_audio_data: audio data
  * @valid_stream: To indicate valid video
  * @streaming: Flag for storing streaming state
+ * @ltstate: Flag for storing link training state
  * This structure contains the device driver related parameters
  */
 struct xdprxss_state {
@@ -299,6 +306,7 @@ struct xdprxss_state {
 	u32 max_linkrate;
 	u32 max_lanecount;
 	u32 bpc;
+	u32 ce_req_val;
 	bool versal_gt_present;
 	bool hdcp_enable;
 	bool audio_enable;
@@ -306,6 +314,7 @@ struct xdprxss_state {
 	struct xlnx_dprx_audio_data *rx_audio_data;
 	unsigned int valid_stream : 1;
 	unsigned int streaming : 1;
+	unsigned int ltstate : 2;
 };
 
 /*
@@ -521,6 +530,12 @@ static inline void xdprxss_dpcd_update_start(struct xdprxss_state *xdprxss)
 static inline void xdprxss_dpcd_update_end(struct xdprxss_state *xdprxss)
 {
 	iowrite32(0x0, xdprxss->dp_base + XDPRX_CTRL_DPCD_REG);
+}
+
+static inline int xdprxss_get_lane01_reqval(struct xdprxss_state *xdprxss)
+{
+	return xdprxss_read(xdprxss, XDPRX_DPCD_LANE01_STATUS) &
+			    XDPRX_LANE01_PEVS_MASK;
 }
 
 /**
@@ -893,8 +908,14 @@ static void xdprxss_irq_tp1(struct xdprxss_state *state)
 		/* Initialize phy logic of DP-RX core */
 		xdprxss_write(state, XDPRX_PHY_REG, XDPRX_PHY_INIT_MASK);
 	}
-
+	state->ltstate = 1;
 	xdprxss_clr(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_ALL_MASK);
+}
+
+static void xdprxss_irq_tp2(struct xdprxss_state *state)
+{
+	dev_dbg(state->dev, "Asserted traning pattern 2\n");
+	state->ltstate = 2;
 }
 
 static void xdprxss_training_failure(struct xdprxss_state *state)
@@ -965,21 +986,46 @@ static void xdprxss_irq_audio_detected(struct xdprxss_state *state)
 		state->rx_audio_data->audio_detected = true;
 }
 
+static void xdprxss_irq_access_laneset(struct xdprxss_state *state)
+{
+	u32 read_val;
+	u8 training;
+
+	training = xdprxss_read(state, XDPRX_DPCD_TRAINING_PATTERN_SET);
+
+	if (state->ltstate == 2 && training != 1) {
+		read_val = xdprxss_get_lane01_reqval(state);
+
+		if (state->ce_req_val != read_val && state->retimer_prvdata)
+			state->retimer_prvdata->retimer_access_laneset();
+
+		/* Update the value to be used in next round */
+		state->ce_req_val = xdprxss_get_lane01_reqval(state);
+	}
+}
+
 static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 {
 	struct xdprxss_state *state = (struct xdprxss_state *)dev_id;
-	u32 status;
+	u32 status, status1;
 
 	status = xdprxss_read(state, XDPRX_INTR_CAUSE_REG);
 	status &= ~xdprxss_read(state, XDPRX_INTR_MASK_REG);
 
+	status1 = xdprxss_read(state, XDPRX_INTR_CAUSE_1_REG);
+	status1 &= ~xdprxss_read(state, XDPRX_INTR_MASK_1_REG);
+
 	if (!status)
 		return IRQ_NONE;
 
+	if (status1 & XDPRX_INTR_ACCESS_LANE_SET_MASK)
+		xdprxss_irq_access_laneset(state);
 	if (status & XDPRX_INTR_UNPLUG_MASK)
 		xdprxss_irq_unplug(state);
 	if (status & XDPRX_INTR_TP1_MASK)
 		schedule_delayed_work(&state->tp1_work, 0);
+	if (status & XDPRX_INTR_TP2_MASK)
+		xdprxss_irq_tp2(state);
 	if (status & XDPRX_INTR_TRLOST_MASK)
 		xdprxss_training_failure(state);
 	if (status & XDPRX_INTR_NOVID_MASK)
