@@ -20,7 +20,6 @@ properties:
           - xlnx,versal-ddrmc-edac
 
   reg:
-    maxItems: 2
     items:
       - description: DDR Memory Controller registers
       - description: NOC registers corresponding to DDR Memory Controller
@@ -43,6 +42,8 @@ required:
   - reg-names
   - interrupts
   - xlnx,mc-id
+
+additionalProperties: false
 
 examples:
   - |
