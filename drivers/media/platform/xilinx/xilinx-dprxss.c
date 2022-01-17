@@ -149,6 +149,9 @@
 #define XDPRX_DPCD_TRAINING_PATTERN_SET	0x40c
 #define XDPRX_DPCD_LANE01_STATUS	0x43c
 #define XDPRX_LANE01_PEVS_MASK		GENMASK(15, 8)
+#define XDPRX_DPC_LINK_QUAL_CONFIG	0x454
+#define XDPRX_DPCD_LINK_QUAL_PRBS_MASK	GENMASK(1, 0)
+#define XDPRX_LINK_QUAL_PRBS_MODE_MASK	GENMASK(2, 0)
 #define XDPRX_MSA_HRES_REG		0x500
 #define XDPRX_MSA_VHEIGHT_REG		0x514
 #define XDPRX_MSA_HTOTAL_REG		0x510
@@ -242,11 +245,13 @@ struct xlnx_dprx_audio_data {
  * @retimer_access_laneset: Function pointer to retimer access laneset function
  * @retimer_rst_cr_path: Function pointer to retimer reset cr path function
  * @retimer_rst_dp_path: Function pointer to retimer reset dp path function
+ * @retimer_prbs_mode: Function pointer to prbs mode enable/disable function
  */
 struct retimer_cfg {
 	void (*retimer_access_laneset)(void);
 	void (*retimer_rst_cr_path)(void);
 	void (*retimer_rst_dp_path)(void);
+	void (*retimer_prbs_mode)(u8 enable);
 };
 
 /**
@@ -1004,6 +1009,21 @@ static void xdprxss_irq_access_laneset(struct xdprxss_state *state)
 	}
 }
 
+static void xdprxss_irq_access_linkqual(struct xdprxss_state *state)
+{
+	u32 read_val;
+
+	read_val = xdprxss_read(state, XDPRX_DPC_LINK_QUAL_CONFIG);
+
+	if ((read_val & XDPRX_LINK_QUAL_PRBS_MODE_MASK) ==
+	    XDPRX_DPCD_LINK_QUAL_PRBS_MASK)
+		/* enable PRBS mode in retimer */
+		state->retimer_prvdata->retimer_prbs_mode(1);
+	else
+		/* disable PRBS mode in retimer */
+		state->retimer_prvdata->retimer_prbs_mode(0);
+}
+
 static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 {
 	struct xdprxss_state *state = (struct xdprxss_state *)dev_id;
@@ -1020,6 +1040,8 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 
 	if (status1 & XDPRX_INTR_ACCESS_LANE_SET_MASK)
 		xdprxss_irq_access_laneset(state);
+	if (status1 & XDPRX_INTR_LINKQUAL_MASK)
+		xdprxss_irq_access_linkqual(state);
 	if (status & XDPRX_INTR_UNPLUG_MASK)
 		xdprxss_irq_unplug(state);
 	if (status & XDPRX_INTR_TP1_MASK)
