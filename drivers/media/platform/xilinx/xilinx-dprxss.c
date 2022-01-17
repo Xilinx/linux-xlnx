@@ -236,10 +236,12 @@ struct xlnx_dprx_audio_data {
  * struct retimer_cfg - Retimer configuration structure
  * @retimer_access_laneset: Function pointer to retimer access laneset function
  * @retimer_rst_cr_path: Function pointer to retimer reset cr path function
+ * @retimer_rst_dp_path: Function pointer to retimer reset dp path function
  */
 struct retimer_cfg {
 	void (*retimer_access_laneset)(void);
 	void (*retimer_rst_cr_path)(void);
+	void (*retimer_rst_dp_path)(void);
 };
 
 /**
@@ -827,6 +829,9 @@ static void xdprxss_irq_unplug(struct xdprxss_state *state)
 
 	xdprxss_set(state, XDPRX_SOFT_RST_REG, XDPRX_SOFT_VIDRST_MASK);
 	xdprxss_clr(state, XDPRX_SOFT_RST_REG, XDPRX_SOFT_VIDRST_MASK);
+
+	if (state->retimer_prvdata)
+		state->retimer_prvdata->retimer_rst_dp_path();
 
 	xdprxss_set(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_ALL_MASK);
 	xdprxss_clr(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_TRNG_MASK);
