@@ -253,7 +253,6 @@
 			#size-cells = <0>;
 		};
 
-
 		gem0: ethernet@e000b000 {
 			compatible = "cdns,zynq-gem", "cdns,gem";
 			reg = <0xe000b000 0x1000>;
@@ -295,12 +294,12 @@
 				reg = <0 0 0x1000000>;
 				status = "disabled";
 				#address-cells = <1>;
-				#size-cells = <0>;
+				#size-cells = <1>;
 			};
-			nor0: flash@0,1000000 {
+			nor0: flash@1,0 {
 				status = "disabled";
 				compatible = "cfi-flash";
-				reg = <0 0x1000000 0x2000000>; // fixme
+				reg = <1 0 0x2000000>;
 				#address-cells = <1>;
 				#size-cells = <1>;
 			};
