@@ -3065,6 +3065,14 @@ static void xlnx_mix_unbind(struct device *dev, struct device *master,
 			    void *data)
 {
 	struct xlnx_mix *mixer = dev_get_drvdata(dev);
+	int i, j;
+
+	for (i = 0; i < mixer->num_planes; i++) {
+		for (j = 0; j < XVMIX_MAX_NUM_SUB_PLANES; j++) {
+			if (mixer->planes[i].dma[j].chan)
+				dma_release_channel(mixer->planes[i].dma[j].chan);
+		}
+	}
 
 	dev_set_drvdata(dev, NULL);
 	xlnx_mix_intrpt_disable(&mixer->mixer_hw);
