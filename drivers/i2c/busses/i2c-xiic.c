@@ -834,13 +834,13 @@ static void xiic_start_recv(struct xiic_i2c *i2c)
 				      i2c_8bit_addr_from_msg(msg) |
 				      XIIC_TX_DYN_START_MASK);
 
-		xiic_irq_clr_en(i2c, XIIC_INTR_BNB_MASK);
-
 		/* If last message, include dynamic stop bit with length */
 		val = (i2c->nmsgs == 1) ? XIIC_TX_DYN_STOP_MASK : 0;
 		val |= msg->len;
 
 		xiic_setreg16(i2c, XIIC_DTR_REG_OFFSET, val);
+
+		xiic_irq_clr_en(i2c, XIIC_INTR_BNB_MASK);
 	} else {
 		/*
 		 * If previous message is Tx, make sure that Tx FIFO is empty
