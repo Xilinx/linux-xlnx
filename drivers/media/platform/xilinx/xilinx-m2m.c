@@ -2072,6 +2072,7 @@ static void xvip_graph_cleanup(struct xvip_m2m_dev *xdev)
 	struct xvip_graph_entity *entityp;
 	struct xvip_graph_entity *entity;
 
+	xvip_m2m_dma_deinit(xdev->dma);
 	v4l2_async_notifier_cleanup(&xdev->notifier);
 	v4l2_async_notifier_unregister(&xdev->notifier);
 
