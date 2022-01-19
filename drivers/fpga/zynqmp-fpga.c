@@ -251,12 +251,6 @@ static int zynqmp_fpga_ops_write_sg(struct fpga_manager *mgr,
 	return ret;
 }
 
-static int zynqmp_fpga_ops_write_complete(struct fpga_manager *mgr,
-					  struct fpga_image_info *info)
-{
-	return 0;
-}
-
 static enum fpga_mgr_states zynqmp_fpga_ops_state(struct fpga_manager *mgr)
 {
 	u32 status = 0;
@@ -398,7 +392,6 @@ static const struct fpga_manager_ops zynqmp_fpga_ops = {
 	.write_init = zynqmp_fpga_ops_write_init,
 	.write = zynqmp_fpga_ops_write,
 	.write_sg = zynqmp_fpga_ops_write_sg,
-	.write_complete = zynqmp_fpga_ops_write_complete,
 	.read = zynqmp_fpga_ops_read,
 };
 
