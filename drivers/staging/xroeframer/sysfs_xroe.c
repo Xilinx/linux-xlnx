@@ -191,7 +191,7 @@ static ssize_t deframer_restart_show(struct kobject *kobj,
 	u32 mask = DEFM_RESTART_MASK;
 	u32 buffer = 0;
 	u32 restart = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr
+	void __iomem *working_address = ((u8 *)xroe_lp->base_addr
 	+ DEFM_RESTART_ADDR);
 
 	buffer = ioread32(working_address);
@@ -224,7 +224,7 @@ static ssize_t deframer_restart_store(struct kobject *kobj,
 {
 	u32 offset = DEFM_RESTART_OFFSET;
 	u32 mask = DEFM_RESTART_MASK;
-	void __iomem *working_address = ((u8 *)lp->base_addr
+	void __iomem *working_address = ((u8 *)xroe_lp->base_addr
 	+ DEFM_RESTART_ADDR);
 	u32 restart = 0;
 
@@ -260,7 +260,7 @@ static ssize_t xxv_reset_show(struct kobject *kobj, struct kobj_attribute *attr,
 	u32 mask = CFG_USER_RW_OUT_MASK;
 	u32 buffer = 0;
 	u32 restart = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
+	void __iomem *working_address = ((u8 *)xroe_lp->base_addr +
 	CFG_USER_RW_OUT_ADDR);
 
 	buffer = ioread32(working_address);
@@ -290,7 +290,7 @@ static ssize_t xxv_reset_store(struct  kobject *kobj,
 {
 	u32 offset = CFG_USER_RW_OUT_OFFSET;
 	u32 mask = CFG_USER_RW_OUT_MASK;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
+	void __iomem *working_address = ((u8 *)xroe_lp->base_addr +
 	CFG_USER_RW_OUT_ADDR);
 	u32 restart = 0;
 
@@ -326,7 +326,7 @@ static ssize_t framing_show(struct kobject *kobj, struct kobj_attribute *attr,
 	DEFM_DATA_PKT_MESSAGE_TYPE_OFFSET);
 	u8 buffer = 0;
 	u8 framing = 0xff;
-	void __iomem *working_address = ((u8 *)lp->base_addr + offset);
+	void __iomem *working_address = ((u8 *)xroe_lp->base_addr + offset);
 
 	buffer = ioread8(working_address);
 	framing = buffer;
@@ -354,7 +354,7 @@ static ssize_t framing_store(struct kobject *kobj, struct kobj_attribute *attr,
 {
 	u32 offset = (DEFM_DATA_PKT_MESSAGE_TYPE_ADDR +
 	DEFM_DATA_PKT_MESSAGE_TYPE_OFFSET);
-	void __iomem *working_address = ((u8 *)lp->base_addr + offset);
+	void __iomem *working_address = ((u8 *)xroe_lp->base_addr + offset);
 
 	xroe_size = min_t(size_t, count, (size_t)XROE_SIZE_MAX);
 	strncpy(xroe_tmp, buff, xroe_size);
@@ -529,7 +529,7 @@ void utils_sysfs_store_wrapper(u32 address, u32 offset, u32 mask, u32 value,
 	void __iomem *working_address;
 
 	port = utils_sysfs_path_to_eth_port_num(kobj);
-	working_address = (void __iomem *)(lp->base_addr +
+	working_address = (void __iomem *)(xroe_lp->base_addr +
 			  (address + (0x100 * port)));
 	utils_write32withmask(working_address, value, mask, offset);
 }
@@ -555,7 +555,7 @@ u32 utils_sysfs_show_wrapper(u32 address, u32 offset, u32 mask,
 	u32 buffer;
 
 	port = utils_sysfs_path_to_eth_port_num(kobj);
-	working_address = (void __iomem *)(lp->base_addr +
+	working_address = (void __iomem *)(xroe_lp->base_addr +
 			  (address + (0x100 * port)));
 	buffer = ioread32(working_address);
 	return (buffer & mask) >> offset;

@@ -33,7 +33,7 @@
  * of now, the following 3 structures are shared among the multiple
  * source files
  */
-extern struct framer_local *lp;
+extern struct framer_local *xroe_lp;
 extern struct kobject *root_xroe_kobj;
 extern struct kobject *kobj_framer;
 extern struct kobject *kobj_eth_ports[MAX_NUM_ETH_PORTS];
