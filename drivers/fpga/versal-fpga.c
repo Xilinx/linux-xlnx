@@ -12,25 +12,10 @@
 #include <linux/string.h>
 #include <linux/firmware/xlnx-zynqmp.h>
 
-/**
- * struct versal_fpga_priv - Private data structure
- * @dev:	Device data structure
- * @flags:	flags which is used to identify the PL Image type
- */
-struct versal_fpga_priv {
-	struct device *dev;
-	u32 flags;
-};
-
 static int versal_fpga_ops_write_init(struct fpga_manager *mgr,
 				      struct fpga_image_info *info,
 				      const char *buf, size_t size)
 {
-	struct versal_fpga_priv *priv;
-
-	priv = mgr->priv;
-	priv->flags = info->flags;
-
 	return 0;
 }
 
@@ -49,14 +34,11 @@ static int versal_fpga_ops_write_sg(struct fpga_manager *mgr,
 static int versal_fpga_ops_write(struct fpga_manager *mgr,
 				 const char *buf, size_t size)
 {
-	struct versal_fpga_priv *priv;
 	dma_addr_t dma_addr = 0;
 	char *kbuf;
 	int ret;
 
-	priv = mgr->priv;
-
-	kbuf = dma_alloc_coherent(priv->dev, size, &dma_addr, GFP_KERNEL);
+	kbuf = dma_alloc_coherent(mgr->dev.parent, size, &dma_addr, GFP_KERNEL);
 	if (!kbuf)
 		return -ENOMEM;
 
@@ -66,7 +48,7 @@ static int versal_fpga_ops_write(struct fpga_manager *mgr,
 
 	ret = zynqmp_pm_load_pdi(PDI_SRC_DDR, dma_addr);
 
-	dma_free_coherent(priv->dev, size, kbuf, dma_addr);
+	dma_free_coherent(mgr->dev.parent, size, kbuf, dma_addr);
 
 	return ret;
 }
@@ -93,15 +75,9 @@ static const struct fpga_manager_ops versal_fpga_ops = {
 static int versal_fpga_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct versal_fpga_priv *priv;
 	struct fpga_manager *mgr;
 	int err, ret;
 
-	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
-	if (!priv)
-		return -ENOMEM;
-
-	priv->dev = dev;
 	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
 	if (ret < 0) {
 		dev_err(dev, "no usable DMA configuration");
@@ -109,7 +85,7 @@ static int versal_fpga_probe(struct platform_device *pdev)
 	}
 
 	mgr = devm_fpga_mgr_create(dev, "Xilinx Versal FPGA Manager",
-				   &versal_fpga_ops, priv);
+				   &versal_fpga_ops, NULL);
 	if (!mgr)
 		return -ENOMEM;
 
