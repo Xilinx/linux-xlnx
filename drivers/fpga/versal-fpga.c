@@ -43,11 +43,7 @@ static int versal_fpga_ops_write(struct fpga_manager *mgr,
 		return -ENOMEM;
 
 	memcpy(kbuf, buf, size);
-
-	wmb(); /* ensure all writes are done before initiate FW call */
-
 	ret = zynqmp_pm_load_pdi(PDI_SRC_DDR, dma_addr);
-
 	dma_free_coherent(mgr->dev.parent, size, kbuf, dma_addr);
 
 	return ret;
@@ -63,11 +59,11 @@ static int versal_fpga_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct fpga_manager *mgr;
-	int err, ret;
+	int ret;
 
 	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
 	if (ret < 0) {
-		dev_err(dev, "no usable DMA configuration");
+		dev_err(dev, "no usable DMA configuration\n");
 		return ret;
 	}
 
@@ -76,26 +72,7 @@ static int versal_fpga_probe(struct platform_device *pdev)
 	if (!mgr)
 		return -ENOMEM;
 
-	platform_set_drvdata(pdev, mgr);
-
-	err = fpga_mgr_register(mgr);
-	if (err) {
-		dev_err(dev, "unable to register FPGA manager");
-		fpga_mgr_free(mgr);
-		return err;
-	}
-
-	return 0;
-}
-
-static int versal_fpga_remove(struct platform_device *pdev)
-{
-	struct fpga_manager *mgr = platform_get_drvdata(pdev);
-
-	fpga_mgr_unregister(mgr);
-	fpga_mgr_free(mgr);
-
-	return 0;
+	return devm_fpga_mgr_register(dev, mgr);
 }
 
 static const struct of_device_id versal_fpga_of_match[] = {
@@ -106,7 +83,6 @@ MODULE_DEVICE_TABLE(of, versal_fpga_of_match);
 
 static struct platform_driver versal_fpga_driver = {
 	.probe = versal_fpga_probe,
-	.remove = versal_fpga_remove,
 	.driver = {
 		.name = "versal_fpga_manager",
 		.of_match_table = of_match_ptr(versal_fpga_of_match),
