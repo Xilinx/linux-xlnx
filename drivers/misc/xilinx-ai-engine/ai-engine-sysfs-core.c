@@ -6,6 +6,8 @@
  */
 #include "ai-engine-internal.h"
 
+#define AIE_CORE_STS_ENABLE_MASK	0x3U
+
 /**
  * aie_get_core_pc() - reads the AI engine core program counter value.
  * @apart: AI engine partition.
@@ -69,8 +71,10 @@ ssize_t aie_sysfs_get_core_status(struct aie_partition *apart,
 				  ssize_t size)
 {
 	ssize_t len = 0;
-	u32 ttype;
+	u32 ttype, n;
 	unsigned long status;
+	bool is_delimit_req = false;
+	char **str = apart->adev->core_status_str;
 
 	ttype = apart->adev->ops->get_tile_type(loc);
 	if (ttype != AIE_TILE_TYPE_TILE)
@@ -81,25 +85,25 @@ ssize_t aie_sysfs_get_core_status(struct aie_partition *apart,
 		return len;
 	}
 
+	/*
+	 * core is in disabled state when neither the enable nor reset bit is
+	 * high
+	 */
 	status = apart->adev->ops->get_core_status(apart, loc);
-	if (!status) {
+	if (!(status & AIE_CORE_STS_ENABLE_MASK)) {
 		len += scnprintf(&buffer[len], max(0L, size - len), "disabled");
-	} else {
-		u32 n;
-		bool is_delimit_req = false;
-		char **str = apart->adev->core_status_str;
-
-		for_each_set_bit(n, &status, 32) {
-			if (is_delimit_req) {
-				len += scnprintf(&buffer[len],
-						 max(0L, size - len),
-						 DELIMITER_LEVEL0);
-			}
-			len += scnprintf(&buffer[len], max(0L, size - len),
-					 str[n]);
-			is_delimit_req = true;
-		}
+		is_delimit_req = true;
 	}
+
+	for_each_set_bit(n, &status, 32) {
+		if (is_delimit_req) {
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					 DELIMITER_LEVEL0);
+		}
+		len += scnprintf(&buffer[len], max(0L, size - len), str[n]);
+		is_delimit_req = true;
+	}
+
 	return len;
 }
 
