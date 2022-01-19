@@ -132,19 +132,6 @@ static void intc_mask_ack(struct irq_data *d)
 	xintc_write(local_intc, IAR, mask);
 }
 
-static unsigned int xintc_get_irq_local(struct xintc_irq_chip *local_intc)
-{
-	int hwirq, irq = -1;
-
-	hwirq = xintc_read(local_intc, IVR);
-	if (hwirq != -1U)
-		irq = irq_find_mapping(local_intc->domain, hwirq);
-
-	pr_debug("irq-xilinx: hwirq=%d, irq=%d\n", hwirq, irq);
-
-	return irq;
-}
-
 static int xintc_map(struct irq_domain *d, unsigned int irq, irq_hw_number_t hw)
 {
 	struct xintc_irq_chip *local_intc = d->host_data;
@@ -231,16 +218,18 @@ static void xil_intc_initial_setup(struct xintc_irq_chip *irqc)
 static void xil_intc_irq_handler(struct irq_desc *desc)
 {
 	struct irq_chip *chip = irq_desc_get_chip(desc);
-	struct xintc_irq_chip *local_intc =
+	struct xintc_irq_chip *irqc =
 		irq_data_get_irq_handler_data(&desc->irq_data);
-	u32 pending;
 
 	chained_irq_enter(chip, desc);
+
 	do {
-		pending = xintc_get_irq_local(local_intc);
-		if (pending == -1U)
+		u32 hwirq = xintc_read(irqc, IVR);
+
+		if (hwirq == -1U)
 			break;
-		generic_handle_irq(pending);
+
+		generic_handle_domain_irq(irqc->domain, hwirq);
 	} while (true);
 	chained_irq_exit(chip, desc);
 }
