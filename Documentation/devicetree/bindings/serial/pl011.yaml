@@ -24,9 +24,13 @@ select:
 
 properties:
   compatible:
-    items:
-      - const: arm,pl011
-      - const: arm,primecell
+    oneOf:
+      - items:
+          - const: arm,pl011
+          - const: arm,primecell
+      - items:
+          - const: arm,pl011
+          - const: arm,xlnx-uart # xilinx uart as platform device
 
   reg:
     maxItems: 1
