@@ -30,6 +30,7 @@
 
 #include <linux/init.h>
 #include <linux/linkage.h>
+#include <asm/entry.h>
 #include <asm/thread_info.h>
 #include <asm/page.h>
 #include <linux/of_fdt.h>		/* for OF_DT_HEADER */
@@ -37,6 +38,7 @@
 #include <asm/setup.h> /* COMMAND_LINE_SIZE */
 #include <asm/mmu.h>
 #include <asm/processor.h>
+#include <asm/asm-offsets.h>
 
 .section .data
 .global empty_zero_page
@@ -46,6 +48,11 @@ empty_zero_page:
 .global swapper_pg_dir
 swapper_pg_dir:
 	.space	PAGE_SIZE
+#ifdef CONFIG_SMP
+temp_boot_stack:
+	.space	1024
+#define CURRENT_SAVE	CURRENT_SAVE_ADDR
+#endif /* CONFIG_SMP */
 
 .section .rodata
 .align 4
@@ -75,6 +82,13 @@ real_start:
 	mfs	r1, rmsr
 	msrclr	r8, 0 /* clear nothing - just read msr for test */
 	cmpu	r8, r8, r1 /* r1 must contain msr reg content */
+
+#ifdef CONFIG_SMP
+	/* skip FDT copy if secondary */
+	mfs	r11, rpvr0
+	andi	r11, r11, 0xFF
+	bnei	r11, _setup_initial_mmu
+#endif /* CONFIG_SMP */
 
 /* r7 may point to an FDT, or there may be one linked in.
    if it's in r7, we've got to save it away ASAP.
@@ -142,6 +156,7 @@ _copy_bram:
 #endif
 	/* We have to turn on the MMU right away. */
 
+_setup_initial_mmu:
 	/*
 	 * Set up the initial MMU state so we can do the first level of
 	 * kernel initialization.  This maps the first 16 MBytes of memory 1:1
@@ -316,6 +331,18 @@ jump_over2:
 	 */
 turn_on_mmu:
 	ori	r15,r0,start_here
+#ifdef CONFIG_SMP
+	/*
+	 * Read PVR and mask off all but CPU id bits to use to select
+	 * boot sequence
+	 */
+	mfs	r4, rpvr0
+	andi	r4, r4, 0xFF
+
+	beqi	r4, finish
+	ori	r15, r0, start_secondary_cpu
+finish:
+#endif /* CONFIG_SMP */
 	ori	r4,r0,MSR_KERNEL_VMS
 	mts	rmsr,r4
 	nop
@@ -333,6 +360,10 @@ start_here:
 
 	/* Initialize r31 with current task address */
 	addik	r31, r0, init_task
+#ifdef CONFIG_MMU
+	/* save current for CPU 0 */
+	swi	CURRENT_TASK, r0, PER_CPU(CURRENT_SAVE);
+#endif
 
 	addik	r11, r0, machine_early_init
 	brald	r15, r11
@@ -371,3 +402,61 @@ kernel_load_context:
 	nop
 	rted	r17, 0		/* enable MMU and jump to start_kernel */
 	nop
+
+#ifdef CONFIG_SMP
+/* Entry point for secondary processors */
+start_secondary_cpu:
+
+	/* Initialize small data anchors */
+	addik	r13, r0, _KERNEL_SDA_BASE_
+	addik	r2, r0, _KERNEL_SDA2_BASE_
+
+	/* Initialize stack pointer */
+	addik	r1, r0, temp_boot_stack + 1024 - 4
+
+	/*
+	 * Initialize the exception table.
+	 */
+	addik	r11, r0, secondary_machine_init
+	brald	r15, r11
+	nop
+
+	lwi	r1, r0, secondary_ti
+
+	/* Initialize r31 with current task address */
+	lwi	CURRENT_TASK, r1, TI_TASK
+	/* save current for secondary CPU */
+	swi	CURRENT_TASK, r0, PER_CPU(CURRENT_SAVE);
+
+	/* Initialize stack pointer */
+	addi	r1, r1, THREAD_SIZE - 4
+	swi	r0, r1, 0
+
+	/* Initialize MMU */
+	ori	r11, r0, 0x10000000
+	mts	rzpr, r11
+
+	ori	r15, r0, TOPHYS(kernel_load_context_secondary)
+	ori	r4, r0, MSR_KERNEL
+	mts	rmsr, r4
+	nop
+	bri	4
+	rted	r15, 0
+	nop
+
+	/* Load up the kernel context */
+kernel_load_context_secondary:
+	# Keep entry 0 and 1 valid. Entry 3 mapped to LMB can go away.
+	ori	r5, r0, MICROBLAZE_LMB_TLB_ID
+	mts     rtlbx, r5
+	nop
+	mts	rtlbhi, r0
+	nop
+	addi	r15, r0, machine_halt
+	ori	r17, r0, start_secondary
+	ori	r4, r0, MSR_KERNEL_VMS
+	mts	rmsr, r4
+	nop
+	rted	r17, 0		/* enable MMU and jump to start_kernel */
+	nop
+#endif /* CONFIG_SMP */
