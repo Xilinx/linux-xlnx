@@ -3070,9 +3070,20 @@ static int spi_nor_octal_dtr_enable(struct spi_nor *nor, bool enable)
 	if (!(nor->flags & SNOR_F_IO_MODE_EN_VOLATILE))
 		return 0;
 
+	if (nor->isstacked)
+		nor->spimem->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+
 	ret = nor->params->octal_dtr_enable(nor, enable);
 	if (ret)
 		return ret;
+
+	if (nor->isstacked) {
+		nor->spimem->spi->master->flags |= SPI_MASTER_U_PAGE;
+		ret = nor->params->octal_dtr_enable(nor, enable);
+		nor->spimem->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+		if (ret)
+			return ret;
+	}
 
 	if (enable)
 		nor->reg_proto = SNOR_PROTO_8_8_8_DTR;
