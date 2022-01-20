@@ -171,7 +171,7 @@ static int xintc_map(struct irq_domain *d, unsigned int irq, irq_hw_number_t hw)
 	/*
 	 * Setup all IRQs to be per CPU because servicing it by different
 	 * cpu is not implemented yet. And for uniprocessor system this flag
-	 * is nop all time time.
+	 * is nop all time.
 	 */
 	irq_set_status_flags(irq, IRQ_PER_CPU);
 
