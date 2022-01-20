@@ -1200,7 +1200,6 @@ static ssize_t xtg_pram_write(struct file *filp, struct kobject *kobj,
 
 	/* Program each command */
 	if (count == sizeof(struct xtg_pram)) {
-
 		if (!cmdp)
 			return -EINVAL;
 
@@ -1288,7 +1287,6 @@ static ssize_t xtg_cram_write(struct file *filp, struct kobject *kobj,
 
 	/* Program each command */
 	if (count == sizeof(struct xtg_cram)) {
-
 		if (!cmdp)
 			return -EINVAL;
 
