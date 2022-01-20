@@ -24185,6 +24185,11 @@ F:	Documentation/driver-api/uio-howto.rst
 F:	drivers/uio/
 F:	include/linux/uio_driver.h
 
+USERSPACE I/O (XILINX_AI_ENGINE)
+M:	Govindarajulu Varadarajan <govindarajulu.varadarajan@amd.com>
+S:	Maintained
+F:	drivers/uio/uio_xilinx_ai_engine.c
+
 USERSPACE I/O (UIO_DMABUF)
 M:	Govindarajulu Varadarajan <govindarajulu.varadarajan@amd.com>
 S:	Maintained
