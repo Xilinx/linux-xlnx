@@ -101,7 +101,6 @@ static int xilinx_wdt_start(struct watchdog_device *wdd)
 	int ret;
 	u32 control_status_reg;
 	struct xwdt_device *xdev = watchdog_get_drvdata(wdd);
-	struct watchdog_device *xilinx_wdt_wdd = &xdev->xilinx_wdt_wdd;
 
 	ret = clk_enable(xdev->clk);
 	if (ret) {
@@ -122,7 +121,7 @@ static int xilinx_wdt_start(struct watchdog_device *wdd)
 
 	spin_unlock(&xdev->spinlock);
 
-	dev_dbg(xilinx_wdt_wdd->parent, "Watchdog Started!\n");
+	dev_dbg(wdd->parent, "Watchdog Started!\n");
 
 	return 0;
 }
@@ -131,7 +130,6 @@ static int xilinx_wdt_stop(struct watchdog_device *wdd)
 {
 	u32 control_status_reg;
 	struct xwdt_device *xdev = watchdog_get_drvdata(wdd);
-	struct watchdog_device *xilinx_wdt_wdd = &xdev->xilinx_wdt_wdd;
 
 	spin_lock(&xdev->spinlock);
 
@@ -146,7 +144,7 @@ static int xilinx_wdt_stop(struct watchdog_device *wdd)
 
 	clk_disable(xdev->clk);
 
-	dev_dbg(xilinx_wdt_wdd->parent, "Watchdog Stopped!\n");
+	dev_dbg(wdd->parent, "Watchdog Stopped!\n");
 
 	return 0;
 }
