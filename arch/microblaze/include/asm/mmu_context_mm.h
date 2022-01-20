@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
+ * Copyright (C) 2013-2020 Xilinx, Inc
  * Copyright (C) 2008-2009 Michal Simek <monstr@monstr.eu>
  * Copyright (C) 2008-2009 PetaLogix
  * Copyright (C) 2006 Atmark Techno, Inc.
@@ -13,10 +14,13 @@
 #include <linux/sched.h>
 
 #include <asm/bitops.h>
+#include <linux/kernel.h>
+#include <linux/mm.h>
+#include <linux/sched.h>
+#include <linux/spinlock.h>
 #include <asm/mmu.h>
 #include <asm-generic/mm_hooks.h>
 
-# ifdef __KERNEL__
 /*
  * This function defines the mapping from contexts to VSIDs (virtual
  * segment IDs).  We use a skew on both the context and the high 4 bits
@@ -39,7 +43,7 @@
 
 /*
  * Set the current MMU context.
- * This is done byloading up the segment registers for the user part of the
+ * This is done by loading up the segment registers for the user part of the
  * address space.
  *
  * Since the PGD is immediately available, it is much faster to simply
@@ -47,94 +51,63 @@
  * can be used for debugging on all processors (if you happen to have
  * an Abatron).
  */
-extern void set_context(mm_context_t context, pgd_t *pgd);
-
-/*
- * Bitmap of contexts in use.
- * The size of this bitmap is LAST_CONTEXT + 1 bits.
- */
-extern unsigned long context_map[];
-
-/*
- * This caches the next context number that we expect to be free.
- * Its use is an optimization only, we can't rely on this context
- * number to be free, but it usually will be.
- */
-extern mm_context_t next_mmu_context;
+extern void set_context(unsigned long id, pgd_t *pgd);
 
 /*
  * Since we don't have sufficient contexts to give one to every task
  * that could be in the system, we need to be able to steal contexts.
- * These variables support that.
  */
-extern atomic_t nr_free_contexts;
-extern struct mm_struct *context_mm[LAST_CONTEXT+1];
 extern void steal_context(void);
-
-/*
- * Get a new mmu context for the address space described by `mm'.
- */
-static inline void get_mmu_context(struct mm_struct *mm)
-{
-	mm_context_t ctx;
-
-	if (mm->context != NO_CONTEXT)
-		return;
-	while (atomic_dec_if_positive(&nr_free_contexts) < 0)
-		steal_context();
-	ctx = next_mmu_context;
-	while (test_and_set_bit(ctx, context_map)) {
-		ctx = find_next_zero_bit(context_map, LAST_CONTEXT+1, ctx);
-		if (ctx > LAST_CONTEXT)
-			ctx = 0;
-	}
-	next_mmu_context = (ctx + 1) & LAST_CONTEXT;
-	mm->context = ctx;
-	context_mm[ctx] = mm;
-}
 
 /*
  * Set up the context for a new address space.
  */
-# define init_new_context(tsk, mm)	(((mm)->context = NO_CONTEXT), 0)
+extern int init_new_context(struct task_struct *tsk, struct mm_struct *mm);
+#define init_new_context init_new_context
 
 /*
  * We're finished using the context for an address space.
  */
+extern void destroy_context(struct mm_struct *mm);
+
 #define destroy_context destroy_context
-static inline void destroy_context(struct mm_struct *mm)
-{
-	if (mm->context != NO_CONTEXT) {
-		clear_bit(mm->context, context_map);
-		mm->context = NO_CONTEXT;
-		atomic_inc(&nr_free_contexts);
-	}
-}
+/*
+ * Switch context
+ */
+extern void switch_mmu_context(struct mm_struct *prev, struct mm_struct *next);
 
 static inline void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 			     struct task_struct *tsk)
 {
+	/* Mark this context has been used on the new CPU */
+	cpumask_set_cpu(smp_processor_id(), mm_cpumask(next));
 	tsk->thread.pgdir = next->pgd;
-	get_mmu_context(next);
-	set_context(next->context, next->pgd);
+
+	/* Nothing else to do if we aren't actually switching */
+	if (prev == next)
+		return;
+
+	/* Out of line for now */
+	switch_mmu_context(prev, next);
 }
 
 /*
  * After we have set current->mm to a new value, this activates
  * the context for the new mm so we see the new mappings.
  */
-#define activate_mm activate_mm
 static inline void activate_mm(struct mm_struct *active_mm,
 			struct mm_struct *mm)
 {
-	current->thread.pgdir = mm->pgd;
-	get_mmu_context(mm);
-	set_context(mm->context, mm->pgd);
+	unsigned long flags;
+
+	local_irq_save(flags);
+	switch_mm(active_mm, mm, current);
+	local_irq_restore(flags);
 }
+#define activate_mm	activate_mm
 
 extern void mmu_context_init(void);
 
 #include <asm-generic/mmu_context.h>
 
-# endif /* __KERNEL__ */
 #endif /* _ASM_MICROBLAZE_MMU_CONTEXT_H */
