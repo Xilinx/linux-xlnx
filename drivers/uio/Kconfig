@@ -178,6 +178,16 @@ config UIO_XILINX_APM
 	  To compile this driver as a module, choose M here; the module
 	  will be called uio_xilinx_apm.
 
+config UIO_XILINX_AI_ENGINE
+	tristate "Xilinx AI Engine driver"
+	select IRQ_SIM
+	select UIO_DMEM_GENIRQ
+	select UIO_PDRV_GENIRQ
+	help
+	  The driver for Xilinx AI Engine that utilizes the uio_dmem_genirq.
+	  The userspace library will use this to interact with the AI Engine
+	  hardware, as well as for the memory allocation.
+	  Say 'y' only for platforms with the AI Engine IP.
 
 config UIO_DFL
 	tristate "Generic driver for DFL (Device Feature List) bus"
