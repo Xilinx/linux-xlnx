@@ -255,6 +255,8 @@ enum pm_ioctl_id {
 	IOCTL_SET_GEM_CONFIG = 31,
 	/* AIE/AIEML Operations */
 	IOCTL_AIE_OPS = 33,
+	/* IOCTL to get default/current QoS */
+	IOCTL_GET_QOS = 34,
 };
 
 enum pm_query_id {
@@ -657,6 +659,7 @@ int zynqmp_pm_set_gem_config(u32 node, enum pm_gem_config_type config,
 			     u32 value);
 int zynqmp_pm_get_last_reset_reason(u32 *reset_reason);
 int zynqmp_pm_aie_operation(u32 node, u16 start_col, u16 num_col, u32 operation);
+int zynqmp_pm_get_qos(u32 node, u32 *const def_qos, u32 *const qos);
 #else
 static inline int zynqmp_pm_get_api_version(u32 *version)
 {
@@ -982,6 +985,11 @@ static inline int zynqmp_pm_get_node_status(const u32 node, u32 *const status,
 static inline int zynqmp_pm_set_sd_config(u32 node,
 					  enum pm_sd_config_type config,
 					  u32 value)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_get_qos(u32 node, u32 *const def_qos, u32 *const qos)
 {
 	return -ENODEV;
 }

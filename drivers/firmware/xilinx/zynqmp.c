@@ -1623,6 +1623,32 @@ int zynqmp_pm_get_feature_config(enum pm_feature_config_id id,
 }
 
 /**
+ * zynqmp_pm_get_qos - PM call to query default and current QoS of the node
+ * @node:	Node Id of the device
+ * @def_qos:	Default QoS value
+ * @qos:	Current QoS value
+ *
+ * Return:	Returns 0 on success and the default and current QoS registers in
+ *		@def_qos and @qos or error value on failure
+ */
+int zynqmp_pm_get_qos(u32 node, u32 *const def_qos, u32 *const qos)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	if (!def_qos || !qos)
+		return -EINVAL;
+
+	ret = zynqmp_pm_invoke_fn(PM_IOCTL, ret_payload, 2, node, IOCTL_GET_QOS);
+
+	*def_qos = ret_payload[1];
+	*qos = ret_payload[2];
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_get_qos);
+
+/**
  * zynqmp_pm_set_sd_config - PM call to set value of SD config registers
  * @node:	SD node ID
  * @config:	The config type of SD registers
