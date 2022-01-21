@@ -1854,11 +1854,6 @@ static int cqspi_mem_process(struct spi_mem *mem, const struct spi_mem_op *op)
 	struct cqspi_flash_pdata *f_pdata;
 
 	f_pdata = &cqspi->f_pdata[mem->spi->chip_select];
-	if (mem->spi->master->flags & SPI_MASTER_U_PAGE)
-		f_pdata->cs = CQSPI_CS_UPPER;
-	else
-		f_pdata->cs = CQSPI_CS_LOWER;
-
 	cqspi_configure(f_pdata, mem->spi->max_speed_hz);
 
 	if (op->data.dir == SPI_MEM_DATA_IN && op->data.buf.in) {
@@ -1881,6 +1876,11 @@ static int cqspi_exec_mem_op(struct spi_mem *mem, const struct spi_mem_op *op)
 	int ret;
 
 	f_pdata = &cqspi->f_pdata[mem->spi->chip_select];
+
+	if (mem->spi->master->flags & SPI_MASTER_U_PAGE)
+		f_pdata->cs = CQSPI_CS_UPPER;
+	else
+		f_pdata->cs = CQSPI_CS_LOWER;
 
 	if (op->cmd.dtr &&
 	    (!op->addr.nbytes || op->addr.dtr) &&

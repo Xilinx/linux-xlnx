@@ -67,6 +67,10 @@ static int spi_nor_gigadevice_octal_dtr_enable(struct spi_nor *nor, bool enable)
 	if (ret)
 		return ret;
 
+	if (nor->isstacked &&
+	    !(nor->spimem->spi->master->flags & SPI_MASTER_U_PAGE))
+		return 0;
+
 	/* Read flash ID to make sure the switch was successful. */
 	op = (struct spi_mem_op)
 		SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_RDID, 1),
