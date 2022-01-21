@@ -230,6 +230,8 @@ enum pm_ioctl_id {
 	IOCTL_SET_USB_CONFIG = 32,
 	/* AIE/AIEML Operations */
 	IOCTL_AIE_OPS = 33,
+	/* IOCTL to get default/current QoS */
+	IOCTL_GET_QOS = 34,
 };
 
 enum pm_query_id {
@@ -692,6 +694,7 @@ int zynqmp_pm_register_sgi(u32 sgi_num, u32 reset);
 int zynqmp_pm_aie_operation(u32 node, u16 start_col, u16 num_col, u32 operation);
 int zynqmp_pm_fpga_get_version(u32 *value);
 int zynqmp_pm_fpga_get_feature_list(u32 *value);
+int zynqmp_pm_get_qos(u32 node, u32 *const def_qos, u32 *const qos);
 #else
 static inline int zynqmp_pm_get_api_version(u32 *version)
 {
@@ -1163,6 +1166,11 @@ static int zynqmp_pm_sec_mask_write_reg(const u32 node_id, const u32 offset,
 static inline int zynqmp_pm_set_sd_config(u32 node,
 					  enum pm_sd_config_type config,
 					  u32 value)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_get_qos(u32 node, u32 *const def_qos, u32 *const qos)
 {
 	return -ENODEV;
 }
