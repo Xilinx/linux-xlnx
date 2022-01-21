@@ -269,8 +269,6 @@ static struct flash_info spansion_parts[] = {
 			     SPI_NOR_4B_OPCODES) },
 	{ "cy15x104q",  INFO6(0x042cc2, 0x7f7f7f, 512 * 1024, 1,
 			      SPI_NOR_NO_ERASE) },
-	{ "sst26wf016B", INFO(0xbf2651, 0, 64 * 1024, 32,
-			SECT_4K | SST_GLOBAL_PROT_UNLK) },
 	{ "s28hs512t",   INFO(0x345b1a,      0, 256 * 1024, 256,
 			     SECT_4K | SPI_NOR_OCTAL_DTR_READ |
 			      SPI_NOR_OCTAL_DTR_PP)
