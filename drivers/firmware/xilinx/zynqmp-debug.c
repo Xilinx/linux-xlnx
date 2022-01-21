@@ -323,6 +323,9 @@ static int process_api_request(u32 pm_id, u64 *pm_api_arg, u32 *pm_api_ret)
 			     pm_api_arg[1] == IOCTL_READ_REG))
 			sprintf(debugfs_buf, "IOCTL return value: %u\n",
 				pm_api_ret[1]);
+		if (!ret && pm_api_arg[1] == IOCTL_GET_QOS)
+			sprintf(debugfs_buf, "Default QoS: %u\nCurrent QoS: %u\n",
+				pm_api_ret[1], pm_api_ret[2]);
 		break;
 	case PM_CLOCK_ENABLE:
 		ret = zynqmp_pm_clock_enable(pm_api_arg[0]);
