@@ -161,8 +161,16 @@
 #define XDPRX_DPCD_LINK_QUAL_PRBS_MASK	GENMASK(1, 0)
 #define XDPRX_LINK_QUAL_PRBS_MODE_MASK	GENMASK(2, 0)
 #define XDPRX_MSA_HRES_REG		0x500
+#define XDPRX_MSA_HSPOL_REG		0x504
+#define XDPRX_MSA_HSPOL_MASK		BIT(0)
+#define XDPRX_MSA_HSWIDTH_REG		0x508
+#define XDPRX_MSA_HSTART_REG		0x50c
 #define XDPRX_MSA_VHEIGHT_REG		0x514
 #define XDPRX_MSA_HTOTAL_REG		0x510
+#define XDPRX_MSA_VSPOL_REG		0x518
+#define XDPRX_MSA_VSPOL_MASK		BIT(0)
+#define XDPRX_MSA_VSWIDTH_REG		0x51c
+#define XDPRX_MSA_VSTART_REG		0x520
 #define XDPRX_MSA_VTOTAL_REG		0x524
 #define XDPRX_MSA_MISC0_REG		0x528
 #define XDPRX_MSA_FMT_MASK		GENMASK(2, 1)
@@ -473,56 +481,6 @@ static const struct v4l2_dv_timings fmt_cap[] = {
 	XLNX_V4L2_DV_BT_7680X4320P30,
 };
 
-struct xdprxss_dv_map {
-	u32 width;
-	u32 height;
-	u32 fps;
-	struct v4l2_dv_timings timing;
-};
-
-static const struct xdprxss_dv_map xdprxss_dv_timings[] = {
-	/* HD - 1280x720p25 */
-	{ 1280, 720, 25, V4L2_DV_BT_CEA_1280X720P25 },
-	/* HD - 1280x720p30 */
-	{ 1280, 720, 30, V4L2_DV_BT_CEA_1280X720P30 },
-	/* HD - 1280x720p50 */
-	{ 1280, 720, 50, V4L2_DV_BT_CEA_1280X720P50 },
-	/* HD - 1280x720p60 */
-	{ 1280, 720, 60, V4L2_DV_BT_CEA_1280X720P60 },
-	/* HD - 1920x1080p25 */
-	{ 1920, 1080, 25, V4L2_DV_BT_CEA_1920X1080P25 },
-	/* HD - 1920x1080p30 */
-	{ 1920, 1080, 30, V4L2_DV_BT_CEA_1920X1080P30 },
-	/* HD - 1920x1080p50 */
-	{ 1920, 1080, 50, V4L2_DV_BT_CEA_1920X1080P50 },
-	/* HD - 1920x1080p60 */
-	{ 1920, 1080, 60, V4L2_DV_BT_CEA_1920X1080P60 },
-	/* HD - 1920x1080i50 */
-	{ 1920, 540, 25, V4L2_DV_BT_CEA_1920X1080I50 },
-	/* HD - 1920x1080i59.94 */
-	/* HD - 1920x1080i60 */
-	{ 1920, 540, 30, V4L2_DV_BT_CEA_1920X1080I60 },
-	{ 3840, 2160, 30, V4L2_DV_BT_CEA_3840X2160P30 },
-	{ 3840, 2160, 50, V4L2_DV_BT_CEA_3840X2160P50 },
-	{ 3840, 2160, 60, V4L2_DV_BT_CEA_3840X2160P60 },
-	{ 4096, 2160, 25, V4L2_DV_BT_CEA_4096X2160P25 },
-	{ 4096, 2160, 30, V4L2_DV_BT_CEA_4096X2160P30 },
-	{ 4096, 2160, 50, V4L2_DV_BT_CEA_4096X2160P50 },
-	{ 4096, 2160, 60, V4L2_DV_BT_CEA_4096X2160P60 },
-	/* HD - 2048x1080i50 */
-	{ 2048, 540, 25, XLNX_V4L2_DV_BT_2048X1080I50 },
-	/* HD - 2048x1080i59.94 */
-	/* HD - 2048x1080i60 */
-	{ 2048, 540, 30, XLNX_V4L2_DV_BT_2048X1080I60 },
-	/* 3G - 2048x1080p50 */
-	{ 2048, 1080, 50, XLNX_V4L2_DV_BT_2048X1080P50 },
-	/* 3G - 2048x1080p59.94 */
-	/* 3G - 2048x1080p60 */
-	{ 2048, 1080, 60, XLNX_V4L2_DV_BT_2048X1080P60 },
-	{ 7680, 4320, 25, XLNX_V4L2_DV_BT_7680X4320P25 },
-	{ 7680, 4320, 30, XLNX_V4L2_DV_BT_7680X4320P30 }
-};
-
 static inline struct xdprxss_state *
 to_xdprxssstate(struct v4l2_subdev *subdev)
 {
@@ -715,25 +673,29 @@ static void xdprxss_dtg_disable(struct xdprxss_state *state)
 static int xdprxss_get_stream_properties(struct xdprxss_state *state)
 {
 	struct v4l2_mbus_framefmt *format = &state->format;
-	struct v4l2_bt_timings *bt = &state->detected_timings.bt;
-
-	u32 rxmsa_mvid, rxmsa_nvid, rxmsa_misc, recv_clk_freq, linkrate;
+	struct v4l2_dv_timings *dv_timings = &state->detected_timings;
+	u32 rxmsa_mvid, rxmsa_nvid, rxmsa_misc, recv_clk_freq, linkrate, data;
 	u16 vres_total, hres_total, framerate, lanecount;
+	u16 hact, vact, hsw, vsw, hstart, vstart;
 	u8 pixel_width, fmt;
 	u16 read_val;
 
 	rxmsa_mvid = xdprxss_read(state, XDPRX_MSA_MVID_REG);
 	rxmsa_nvid = xdprxss_read(state, XDPRX_MSA_NVID_REG);
 
-	bt->width = xdprxss_read(state, XDPRX_MSA_HRES_REG);
+	hact = xdprxss_read(state, XDPRX_MSA_HRES_REG);
 
-	bt->height = xdprxss_read(state, XDPRX_MSA_VHEIGHT_REG);
+	vact = xdprxss_read(state, XDPRX_MSA_VHEIGHT_REG);
 	rxmsa_misc = xdprxss_read(state, XDPRX_MSA_MISC0_REG);
 
 	vres_total = xdprxss_read(state, XDPRX_MSA_VTOTAL_REG);
 	hres_total = xdprxss_read(state, XDPRX_MSA_HTOTAL_REG);
 	linkrate = xdprxss_read(state, XDPRX_LINK_BW_REG);
 	lanecount = xdprxss_read(state, XDPRX_LANE_COUNT_REG);
+	hstart = xdprxss_read(state, XDPRX_MSA_HSTART_REG);
+	vstart = xdprxss_read(state, XDPRX_MSA_VSTART_REG);
+	hsw = xdprxss_read(state, XDPRX_MSA_HSWIDTH_REG);
+	vsw = xdprxss_read(state, XDPRX_MSA_VSWIDTH_REG);
 
 	recv_clk_freq = (linkrate * 27 * rxmsa_mvid) / rxmsa_nvid;
 
@@ -781,9 +743,35 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state)
 		return -EINVAL;
 	}
 
+	dv_timings->type = V4L2_DV_BT_656_1120;
+	/*
+	 * TODO : For now driver supports only progressive video.
+	 * In future, driver may add with other interlace support
+	 */
+	dv_timings->bt.interlaced = false;
+	dv_timings->bt.width = hact;
+	dv_timings->bt.height = vact;
+	dv_timings->bt.polarities = 0;
+
+	data = xdprxss_read(state, XDPRX_MSA_HSPOL_REG);
+	if (data & XDPRX_MSA_HSPOL_MASK)
+		dv_timings->bt.polarities = V4L2_DV_HSYNC_POS_POL;
+
+	data = xdprxss_read(state, XDPRX_MSA_VSPOL_REG);
+	if (data & XDPRX_MSA_VSPOL_MASK)
+		dv_timings->bt.polarities |= V4L2_DV_VSYNC_POS_POL;
+
+	dv_timings->bt.pixelclock = vres_total * hres_total * framerate;
+	dv_timings->bt.hsync = hsw;
+	dv_timings->bt.hfrontporch = (hres_total - (hact + hstart));
+	dv_timings->bt.hbackporch = hstart - hsw;
+	dv_timings->bt.vsync = vsw;
+	dv_timings->bt.vfrontporch = (vres_total - (vact + vstart));
+	dv_timings->bt.vbackporch = vstart - vsw;
+
 	spin_lock(&state->lock);
-	format->width = bt->width;
-	format->height = bt->height;
+	format->width = dv_timings->bt.width;
+	format->height = dv_timings->bt.height;
 	format->colorspace = V4L2_COLORSPACE_REC709;
 	format->xfer_func = V4L2_XFER_FUNC_DEFAULT;
 	format->ycbcr_enc = V4L2_YCBCR_ENC_DEFAULT;
@@ -793,7 +781,7 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state)
 	spin_unlock(&state->lock);
 
 	dev_dbg(state->dev, "detected properties : width %d height %d\n",
-		bt->width, bt->height);
+		dv_timings->bt.width, dv_timings->bt.height);
 
 	return 0;
 }
@@ -1357,23 +1345,16 @@ static int xdprxss_query_dv_timings(struct v4l2_subdev *sd,
 				    struct v4l2_dv_timings *timings)
 {
 	struct xdprxss_state *state = to_xdprxssstate(sd);
-	unsigned int i;
 
 	if (!timings)
 		return -EINVAL;
 
 	if (!state->valid_stream)
 		return -ENOLCK;
-	for (i = 0; i < ARRAY_SIZE(xdprxss_dv_timings); i++) {
-		if (state->format.width == xdprxss_dv_timings[i].width &&
-		    state->format.height == xdprxss_dv_timings[i].height &&
-		    state->frame_interval == xdprxss_dv_timings[i].fps) {
-			*timings = xdprxss_dv_timings[i].timing;
-			return 0;
-		}
-	}
 
-	return -ERANGE;
+	*timings = state->detected_timings;
+
+	return 0;
 }
 
 /* ------------------------------------------------------------
