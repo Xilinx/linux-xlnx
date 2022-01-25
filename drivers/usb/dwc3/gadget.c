@@ -2632,6 +2632,16 @@ static int __dwc3_gadget_start(struct dwc3 *dwc)
 	reg |= DWC3_DCFG_IGNSTRMPP;
 	dwc3_writel(dwc->regs, DWC3_DCFG, reg);
 
+	/* For OTG mode, check if the core is currently in Host mode.
+	 * This is not an error condition as there are times when the core is
+	 * working as host and kernel is told to initiate bind operation with
+	 * gadget class driver module.
+	 * The below remaining operations are handled in OTG driver whenever
+	 * required.
+	 */
+	if (dwc3_readl(dwc->regs, DWC3_GSTS) & DWC3_GSTS_CUR_MODE)
+		return 0;
+
 	/* Start with SuperSpeed Default */
 	dwc3_gadget_ep0_desc.wMaxPacketSize = cpu_to_le16(512);
 
@@ -4298,6 +4308,19 @@ int dwc3_gadget_init(struct dwc3 *dwc)
 
 	dwc->irq_gadget = irq;
 
+	if (dwc->dr_mode == USB_DR_MODE_OTG) {
+		struct usb_phy *phy;
+
+		/* Switch otg to peripheral mode */
+		phy = usb_get_phy(USB_PHY_TYPE_USB3);
+		if (!IS_ERR(phy)) {
+			if (phy && phy->otg)
+				otg_set_peripheral(phy->otg,
+						(struct usb_gadget *)1);
+			usb_put_phy(phy);
+		}
+	}
+
 	dwc->ep0_trb = dma_alloc_coherent(dwc->sysdev,
 					  sizeof(*dwc->ep0_trb) * 2,
 					  &dwc->ep0_trb_addr, GFP_KERNEL);
@@ -4375,6 +4398,26 @@ int dwc3_gadget_init(struct dwc3 *dwc)
 	if (ret) {
 		dev_err(dwc->dev, "failed to add gadget\n");
 		goto err5;
+	}
+
+	if (dwc->dr_mode == USB_DR_MODE_OTG) {
+		struct usb_phy *phy;
+
+		phy = usb_get_phy(USB_PHY_TYPE_USB3);
+		if (!IS_ERR(phy)) {
+			if (phy && phy->otg) {
+				ret = otg_set_peripheral(phy->otg,
+						dwc->gadget);
+				if (ret) {
+					dev_err(dwc->dev,
+					"otg_set_peripheral failed\n");
+					usb_put_phy(phy);
+					goto err5;
+				}
+			} else {
+				usb_put_phy(phy);
+			}
+		}
 	}
 
 	if (DWC3_IP_IS(DWC32) && dwc->maximum_speed == USB_SPEED_SUPER_PLUS)
