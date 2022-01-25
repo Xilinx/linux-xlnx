@@ -13,6 +13,7 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/dma-mapping.h>
+#include <linux/of_gpio.h>
 #include <linux/of_platform.h>
 #include <linux/pm_runtime.h>
 #include <linux/reset.h>
@@ -353,6 +354,7 @@ static int dwc3_xlnx_init_zynqmp(struct dwc3_xlnx *priv_data)
 	struct phy		*usb3_phy;
 	int			ret;
 	u32			reg;
+	struct gpio_desc	*reset_gpio = NULL;
 
 	usb3_phy = devm_phy_get(dev, "usb3-phy");
 	if (PTR_ERR(usb3_phy) == -EPROBE_DEFER) {
@@ -450,6 +452,22 @@ static int dwc3_xlnx_init_zynqmp(struct dwc3_xlnx *priv_data)
 		reg = readl(priv_data->regs + XLNX_USB_TRAFFIC_ROUTE_CONFIG);
 		reg |= XLNX_USB_TRAFFIC_ROUTE_FPD;
 		writel(reg, priv_data->regs + XLNX_USB_TRAFFIC_ROUTE_CONFIG);
+	}
+
+	/* ulpi reset via gpio-modepin or gpio-framework driver */
+	reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_HIGH);
+	if (IS_ERR(reset_gpio)) {
+		dev_err_probe(dev, PTR_ERR(reset_gpio),
+			      "Failed to bind reset gpio\n");
+		goto err;
+	}
+
+	if (reset_gpio) {
+		/* Toggle ulpi to reset the phy. */
+		gpiod_set_value(reset_gpio, 0);
+		usleep_range(5000, 10000); /* delay */
+		gpiod_set_value(reset_gpio, 1);
+		usleep_range(5000, 10000); /* delay */
 	}
 
 err:
