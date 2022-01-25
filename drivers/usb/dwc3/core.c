@@ -323,11 +323,8 @@ static void dwc3_frame_length_adjustment(struct dwc3 *dwc)
 	gfladj = reg;
 
 	if (dwc->refclk_fladj) {
-		if ((reg & DWC3_GFLADJ_REFCLK_FLADJ) !=
-				    (dwc->fladj & DWC3_GFLADJ_REFCLK_FLADJ)) {
-			reg &= ~DWC3_GFLADJ_REFCLK_FLADJ;
-			reg |= (dwc->fladj & DWC3_GFLADJ_REFCLK_FLADJ);
-		}
+		reg &= ~DWC3_GFLADJ_REFCLK_FLADJ;
+		reg |= (dwc->fladj & DWC3_GFLADJ_REFCLK_FLADJ);
 	}
 
 	dft = reg & DWC3_GFLADJ_30MHZ_MASK;
