@@ -50,6 +50,8 @@ properties:
       - const: dwc_usb3
       - items:
           enum: [host, peripheral, otg]
+      - items:
+          enum: [dwc_usb3, otg, hiber]
 
   clocks:
     description:
