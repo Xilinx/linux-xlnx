@@ -476,8 +476,9 @@ skip_usb3_phy:
 	/* ulpi reset via gpio-modepin or gpio-framework driver */
 	reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_HIGH);
 	if (IS_ERR(reset_gpio)) {
-		dev_err_probe(dev, PTR_ERR(reset_gpio),
-			      "Failed to bind reset gpio\n");
+		ret = PTR_ERR(reset_gpio);
+		dev_err_probe(dev, ret,
+			      "Failed to bind reset gpio %d,errcode\n", ret);
 		goto err;
 	}
 
