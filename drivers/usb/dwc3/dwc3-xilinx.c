@@ -82,6 +82,7 @@ struct dwc3_xlnx {
 	struct reset_control		*crst;
 	bool				enable_d3_suspend;
 	enum usb_dr_mode		dr_mode;
+	struct regulator_desc		dwc3_xlnx_reg_desc;
 };
 
 static const char *const usb_dr_modes[] = {
@@ -293,14 +294,6 @@ static struct regulator_ops dwc3_xlnx_reg_ops = {
 	.is_enabled		= dwc3_xlnx_reg_is_enabled,
 };
 
-static const struct regulator_desc dwc3_xlnx_reg_desc = {
-	.name = "dwc3-pmu-regulator",
-	.id = -1,
-	.type = REGULATOR_VOLTAGE,
-	.owner = THIS_MODULE,
-	.ops = &dwc3_xlnx_reg_ops,
-};
-
 static int dwc3_xlnx_register_regulator(struct device *dev,
 					struct dwc3_xlnx *priv_data)
 {
@@ -311,9 +304,17 @@ static int dwc3_xlnx_register_regulator(struct device *dev,
 	config.driver_data = (void *)priv_data;
 	config.init_data = &dwc3_xlnx_reg_initdata;
 
+	priv_data->dwc3_xlnx_reg_desc.name = dev->of_node->full_name;
+	priv_data->dwc3_xlnx_reg_desc.id = -1;
+	priv_data->dwc3_xlnx_reg_desc.type = REGULATOR_VOLTAGE;
+	priv_data->dwc3_xlnx_reg_desc.owner = THIS_MODULE;
+	priv_data->dwc3_xlnx_reg_desc.ops = &dwc3_xlnx_reg_ops;
+
 	/* Register the dwc3 PMU regulator */
 	priv_data->dwc3_xlnx_reg_rdev =
-		devm_regulator_register(dev, &dwc3_xlnx_reg_desc, &config);
+		devm_regulator_register(dev, &priv_data->dwc3_xlnx_reg_desc,
+					&config);
+
 	if (IS_ERR(priv_data->dwc3_xlnx_reg_rdev)) {
 		ret = PTR_ERR(priv_data->dwc3_xlnx_reg_rdev);
 		pr_err("Failed to register regulator: %d\n", ret);

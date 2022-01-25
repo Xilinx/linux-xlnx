@@ -1760,7 +1760,8 @@ static int dwc3_probe(struct platform_device *pdev)
 	 * which requests the power controller for entering into
 	 * D3/D0 state. Try getting the regulator.
 	 */
-	dwc->dwc3_pmu = devm_regulator_get(dev, "dwc3-pmu-regulator");
+	dwc->dwc3_pmu = devm_regulator_get(dev,
+					   dev->parent->of_node->full_name);
 	if (!IS_ERR(dwc->dwc3_pmu)) {
 		ret = regulator_enable(dwc->dwc3_pmu);
 		if (ret) {
