@@ -1061,7 +1061,7 @@ static int zynqmp_qspi_exec_op(struct spi_mem *mem,
 			}
 		}
 		if (!wait_for_completion_timeout
-		    (&xqspi->data_completion, msecs_to_jiffies(1000)))
+		    (&xqspi->data_completion, msecs_to_jiffies(1000000)))
 			err = -ETIMEDOUT;
 	}
 
