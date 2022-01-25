@@ -439,6 +439,9 @@ int dwc3_event_buffers_setup(struct dwc3 *dwc)
 {
 	struct dwc3_event_buffer	*evt;
 
+	if (dwc->dr_mode == USB_DR_MODE_HOST)
+		return 0;
+
 	evt = dwc->ev_buf;
 	evt->lpos = 0;
 	dwc3_writel(dwc->regs, DWC3_GEVNTADRLO(0),
@@ -469,6 +472,9 @@ void dwc3_event_buffers_cleanup(struct dwc3 *dwc)
 
 static int dwc3_alloc_scratch_buffers(struct dwc3 *dwc)
 {
+	if (dwc->dr_mode == USB_DR_MODE_HOST)
+		return 0;
+
 	if (!dwc->has_hibernation)
 		return 0;
 
@@ -492,6 +498,9 @@ static int dwc3_setup_scratch_buffers(struct dwc3 *dwc)
 	dma_addr_t scratch_addr;
 	u32 param;
 	int ret;
+
+	if (dwc->dr_mode == USB_DR_MODE_HOST)
+		return 0;
 
 	if (!dwc->has_hibernation)
 		return 0;
