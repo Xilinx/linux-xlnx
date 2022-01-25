@@ -3102,6 +3102,8 @@ static int spi_nor_octal_dtr_enable(struct spi_nor *nor, bool enable)
  */
 static int spi_nor_quad_enable(struct spi_nor *nor)
 {
+	int err;
+
 	if (!nor->params->quad_enable)
 		return 0;
 
@@ -3109,7 +3111,13 @@ static int spi_nor_quad_enable(struct spi_nor *nor)
 	      spi_nor_get_protocol_width(nor->write_proto) == 4))
 		return 0;
 
-	return nor->params->quad_enable(nor);
+	err = nor->params->quad_enable(nor);
+	if (nor->isstacked) {
+		nor->spimem->spi->master->flags |= SPI_MASTER_U_PAGE;
+		err = nor->params->quad_enable(nor);
+		nor->spimem->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+	}
+	return err;
 }
 
 static int spi_nor_init(struct spi_nor *nor)
@@ -3353,6 +3361,13 @@ static int spi_nor_set_addr_width(struct spi_nor *nor)
 
 			nor->addr_width = 3;
 			nor->params->set_4byte_addr_mode(nor, false);
+			if (nor->isstacked) {
+				nor->spimem->spi->master->flags |=
+					SPI_MASTER_U_PAGE;
+				nor->params->set_4byte_addr_mode(nor, false);
+				nor->spimem->spi->master->flags &=
+					~SPI_MASTER_U_PAGE;
+			}
 			status = read_ear(nor, (struct flash_info *)nor->info);
 			if (status < 0)
 				dev_warn(nor->dev, "failed to read ear reg\n");
@@ -3368,6 +3383,14 @@ static int spi_nor_set_addr_width(struct spi_nor *nor)
 			if (nor->jedec_id == CFI_MFR_AMD ||
 			    nor->info->flags & SPI_NOR_4B_OPCODES) {
 				spi_nor_set_4byte_opcodes(nor);
+				nor->params->set_4byte_addr_mode(nor, true);
+				if (nor->isstacked) {
+					nor->spimem->spi->master->flags |=
+					SPI_MASTER_U_PAGE;
+					nor->params->set_4byte_addr_mode(nor, true);
+					nor->spimem->spi->master->flags &=
+					~SPI_MASTER_U_PAGE;
+				}
 			} else {
 				np_spi = of_get_next_parent(np);
 				if (of_property_match_string(np_spi,
