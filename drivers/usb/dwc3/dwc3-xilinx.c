@@ -80,6 +80,7 @@ struct dwc3_xlnx {
 	struct regulator_dev		*dwc3_xlnx_reg_rdev;
 	enum dwc3_xlnx_core_state	pmu_state;
 	struct reset_control		*crst;
+	bool				enable_d3_suspend;
 	enum usb_dr_mode		dr_mode;
 };
 
@@ -115,6 +116,10 @@ static int dwc3_zynqmp_power_req(struct device *dev, bool on)
 
 	priv_data = dev_get_drvdata(dev);
 	reg_base = priv_data->regs;
+
+	/* Check if entering into D3 state is allowed during suspend */
+	if (!priv_data->enable_d3_suspend)
+		return 0;
 
 	if (on) {
 		dev_dbg(priv_data->dev,
@@ -546,6 +551,12 @@ static int dwc3_xlnx_probe(struct platform_device *pdev)
 		priv_data->dr_mode = usb_get_dr_mode_from_string(dr_modes);
 
 	of_node_put(dwc3_child_node);
+
+	/*
+	 * TODO: This flag needs to be handled while implementing
+	 *	the remote wake-up feature.
+	 */
+	priv_data->enable_d3_suspend = false;
 
 	platform_set_drvdata(pdev, priv_data);
 
