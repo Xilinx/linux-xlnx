@@ -557,4 +557,7 @@ static struct spi_nor __maybe_unused *mtd_to_spi_nor(struct mtd_info *mtd)
 	return mtd->priv;
 }
 
+int sst_write(struct mtd_info *mtd, loff_t to, size_t len,
+	      size_t *retlen, const u_char *buf);
+
 #endif /* __LINUX_MTD_SPI_NOR_INTERNAL_H */
