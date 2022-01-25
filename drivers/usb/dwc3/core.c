@@ -838,7 +838,8 @@ static void dwc3_core_setup_global_control(struct dwc3 *dwc)
 		 * REVISIT Enabling this bit so that host-mode hibernation
 		 * will work. Device-mode hibernation is not yet implemented.
 		 */
-		reg |= DWC3_GCTL_GBLHIBERNATIONEN;
+		if (dwc->dr_mode == USB_DR_MODE_HOST)
+			reg |= DWC3_GCTL_GBLHIBERNATIONEN;
 		break;
 	default:
 		/* nothing */
