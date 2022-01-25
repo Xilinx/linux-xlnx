@@ -304,6 +304,7 @@ static void dummy_scsi_done(struct scsi_cmnd *cmnd)
 	struct uas_dev_info *devinfo = (void *)cmnd->device->hostdata;
 
 	devinfo->cmnd[cmdinfo->uas_tag - 1] = NULL;
+	kfree(scsi_cmd_to_rq(cmnd));
 	kfree(cmnd);
 }
 
@@ -463,6 +464,7 @@ static int uas_workaround(struct urb *urb)
 	struct scsi_cmnd *temp_cmnd;
 	struct uas_cmd_info *temp_cmdinfo;
 	struct urb *sense_urb, *data_urb, *cmnd_urb;
+	struct request *temp_request;
 	unsigned int idx;
 	int err;
 	char inquiry[16] = { 0x12, 0x0, 0x0, 0x0, 0x10, 0x0, 0x0, 0x0,
@@ -494,11 +496,21 @@ static int uas_workaround(struct urb *urb)
 		goto free;
 	}
 
+	temp_request = kzalloc(sizeof(struct request), GFP_ATOMIC);
+	if (!temp_cmnd) {
+		shost_printk(KERN_INFO, sdev->host,
+			"%s: Failed to allocate memory for request\n",
+			__func__);
+		err = -ENOMEM;
+		goto free;
+	}
+
 	temp_cmnd->device = cmnd->device;
 	temp_cmnd->cmnd = inquiry;
 	temp_cmnd->cmd_len = 16;
 	temp_cmnd->sdb.length = 0x10;
 	temp_cmnd->scsi_done = dummy_scsi_done;
+	temp_request->tag = idx;
 
 	temp_cmdinfo = (struct uas_cmd_info *)&temp_cmnd->SCp;
 	memset(temp_cmdinfo, 0, sizeof(struct uas_cmd_info));
@@ -512,6 +524,7 @@ static int uas_workaround(struct urb *urb)
 		shost_printk(KERN_INFO, sdev->host,
 			"%s: submit err %d\n", __func__, err);
 		kfree(temp_cmnd);
+		kfree(temp_request);
 		goto free;
 	}
 	usb_anchor_urb(urb, &devinfo->data_urbs);
@@ -519,6 +532,7 @@ static int uas_workaround(struct urb *urb)
 	/* Allocate and submit SENSE urb for next available tag */
 	sense_urb = uas_workaround_sense(devinfo, GFP_ATOMIC, temp_cmnd);
 	if (!sense_urb) {
+		kfree(temp_request);
 		kfree(temp_cmnd);
 		goto free;
 	}
@@ -530,6 +544,7 @@ static int uas_workaround(struct urb *urb)
 		sense_urb->context = NULL;
 		usb_kill_urb(sense_urb);
 		usb_put_urb(sense_urb);
+		kfree(temp_request);
 		kfree(temp_cmnd);
 		goto free;
 	}
@@ -541,6 +556,7 @@ static int uas_workaround(struct urb *urb)
 		data_urb->context = NULL;
 		usb_kill_urb(data_urb);
 		usb_put_urb(data_urb);
+		kfree(temp_request);
 		kfree(temp_cmnd);
 	}
 
