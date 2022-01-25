@@ -828,27 +828,34 @@ static irqreturn_t zynqmp_qspi_irq(int irq, void *dev_id)
 				   dma_status);
 	}
 
-	if (mask & GQSPI_ISR_TXNOT_FULL_MASK) {
-		zynqmp_qspi_filltxfifo(xqspi, GQSPI_TX_FIFO_FILL);
-		ret = IRQ_HANDLED;
-	}
-
 	if (dma_status & GQSPI_QSPIDMA_DST_I_STS_DONE_MASK) {
 		zynqmp_process_dma_irq(xqspi);
 		ret = IRQ_HANDLED;
-	} else if (!(mask & GQSPI_IER_RXEMPTY_MASK) &&
-			(mask & GQSPI_IER_GENFIFOEMPTY_MASK)) {
+	} else if ((mask & GQSPI_IER_RXNEMPTY_MASK)) {
+		zynqmp_qspi_readrxfifo(xqspi, GQSPI_RX_FIFO_FILL);
+		ret = IRQ_HANDLED;
+	}
+	if (!(mask & GQSPI_IER_RXEMPTY_MASK) &&
+	    (mask & GQSPI_IER_GENFIFOEMPTY_MASK)) {
 		zynqmp_qspi_readrxfifo(xqspi, GQSPI_RX_FIFO_FILL);
 		ret = IRQ_HANDLED;
 	}
 
 	if (xqspi->bytes_to_receive == 0 && xqspi->bytes_to_transfer == 0 &&
 	    ((status & GQSPI_IRQ_MASK) == GQSPI_IRQ_MASK)) {
-		zynqmp_gqspi_write(xqspi, GQSPI_IDR_OFST, GQSPI_ISR_IDR_MASK);
-		complete(&xqspi->data_completion);
+		goto transfer_complete;
+	}
+	if (mask & GQSPI_ISR_TXNOT_FULL_MASK) {
+		zynqmp_qspi_filltxfifo(xqspi, GQSPI_TX_FIFO_FILL);
 		ret = IRQ_HANDLED;
 	}
+
 	return ret;
+
+transfer_complete:
+	zynqmp_disable_intr(xqspi);
+	complete(&xqspi->data_completion);
+	return IRQ_HANDLED;
 }
 
 /**
