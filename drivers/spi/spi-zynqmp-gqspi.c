@@ -154,6 +154,7 @@ enum mode_type {GQSPI_MODE_IO, GQSPI_MODE_DMA};
  * @dma_addr:		DMA address after mapping the kernel buffer
  * @genfifoentry:	Used for storing the genfifoentry instruction.
  * @mode:		Defines the mode in which QSPI is operating
+ * @io_mode:		Defines the operating mode, either IO or dma
  * @data_completion:	completion structure
  */
 struct zynqmp_qspi {
@@ -173,6 +174,7 @@ struct zynqmp_qspi {
 	dma_addr_t dma_addr;
 	u32 genfifoentry;
 	enum mode_type mode;
+	bool io_mode;
 	struct completion data_completion;
 	struct mutex op_lock;
 };
@@ -326,10 +328,11 @@ static void zynqmp_qspi_init_hw(struct zynqmp_qspi *xqspi)
 	zynqmp_gqspi_selectslave(xqspi,
 				 GQSPI_SELECT_FLASH_CS_LOWER,
 				 GQSPI_SELECT_FLASH_BUS_LOWER);
-	/* Initialize DMA */
-	zynqmp_gqspi_write(xqspi,
-			   GQSPI_QSPIDMA_DST_CTRL_OFST,
-			   GQSPI_QSPIDMA_DST_CTRL_RESET_VAL);
+	if (!xqspi->io_mode)
+		/* Initialize DMA */
+		zynqmp_gqspi_write(xqspi,
+				   GQSPI_QSPIDMA_DST_CTRL_OFST,
+				   GQSPI_QSPIDMA_DST_CTRL_RESET_VAL);
 
 	/* Enable the GQSPI */
 	zynqmp_gqspi_write(xqspi, GQSPI_EN_OFST, GQSPI_EN_MASK);
@@ -738,7 +741,7 @@ static int zynqmp_qspi_setuprxdma(struct zynqmp_qspi *xqspi)
 	dma_addr_t addr;
 	u64 dma_align =  (u64)(uintptr_t)xqspi->rxbuf;
 
-	if (xqspi->bytes_to_receive < 8 ||
+	if ((xqspi->bytes_to_receive < 8 || xqspi->io_mode) ||
 	    ((dma_align & GQSPI_DMA_UNALIGN) != 0x0)) {
 		/* Setting to IO mode */
 		config_reg = zynqmp_gqspi_read(xqspi, GQSPI_CONFIG_OFST);
@@ -1148,6 +1151,9 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 	pm_runtime_set_autosuspend_delay(&pdev->dev, SPI_AUTOSUSPEND_TIMEOUT);
 	pm_runtime_set_active(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
+
+	if (of_property_read_bool(pdev->dev.of_node, "has-io-mode"))
+		xqspi->io_mode = true;
 
 	ret = pm_runtime_get_sync(&pdev->dev);
 	if (ret < 0) {
