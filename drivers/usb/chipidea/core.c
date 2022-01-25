@@ -324,7 +324,8 @@ static int _ci_usb_phy_init(struct ci_hdrc *ci)
 
 		ret = phy_power_on(ci->phy);
 		if (ret) {
-			phy_exit(ci->phy);
+			if (phy_exit(ci->phy) < 0)
+				dev_dbg(ci->dev, "phy exit failed\r\n");
 			return ret;
 		}
 	} else {
@@ -341,12 +342,20 @@ static int _ci_usb_phy_init(struct ci_hdrc *ci)
  */
 static void ci_usb_phy_exit(struct ci_hdrc *ci)
 {
+	int ret;
+
 	if (ci->platdata->flags & CI_HDRC_OVERRIDE_PHY_CONTROL)
 		return;
 
 	if (ci->phy) {
-		phy_power_off(ci->phy);
-		phy_exit(ci->phy);
+		ret = phy_power_off(ci->phy);
+		if (ret < 0)
+			dev_dbg(ci->dev, "phy poweroff failed\r\n");
+
+		ret = phy_exit(ci->phy);
+		if (ret < 0)
+			dev_dbg(ci->dev, "phy exit failed\r\n");
+
 	} else {
 		usb_phy_shutdown(ci->usb_phy);
 	}
