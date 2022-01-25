@@ -577,7 +577,7 @@ static int spansion_set_4byte_addr_mode(struct spi_nor *nor, bool enable)
 /**
  * spi_nor_write_ear() - Write Extended Address Register.
  * @nor:	pointer to 'struct spi_nor'.
- * @ear:	value to write to the Extended Address Register.
+ * @addr:	value to write to the Extended Address Register.
  *
  * Return: 0 on success, -errno otherwise.
  */
