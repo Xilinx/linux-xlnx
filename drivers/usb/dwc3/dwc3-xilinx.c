@@ -474,7 +474,7 @@ static int dwc3_xlnx_init_zynqmp(struct dwc3_xlnx *priv_data)
 
 skip_usb3_phy:
 	/* ulpi reset via gpio-modepin or gpio-framework driver */
-	reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_HIGH);
+	reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW);
 	if (IS_ERR(reset_gpio)) {
 		ret = PTR_ERR(reset_gpio);
 		dev_err_probe(dev, ret,
@@ -484,9 +484,9 @@ skip_usb3_phy:
 
 	if (reset_gpio) {
 		/* Toggle ulpi to reset the phy. */
-		gpiod_set_value(reset_gpio, 0);
-		usleep_range(5000, 10000); /* delay */
 		gpiod_set_value(reset_gpio, 1);
+		usleep_range(5000, 10000); /* delay */
+		gpiod_set_value(reset_gpio, 0);
 		usleep_range(5000, 10000); /* delay */
 	}
 
