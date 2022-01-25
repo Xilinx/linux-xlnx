@@ -242,6 +242,14 @@ config USB_HUB_USB251XB
 	  parameters may be set in devicetree or platform data.
 	  Say Y or M here if you need to configure such a device via SMBus.
 
+config USB_USB5744
+	tristate "Microchip USB5744 Hub driver"
+	depends on I2C
+	depends on GPIOLIB
+	help
+	  This option enables support for Microchip USB5744 Hub. This driver
+	  reset the hub using gpio pin and configure hub via i2c.
+
 config USB_HSIC_USB3503
 	tristate "USB3503 HSIC to USB20 Driver"
 	depends on I2C
