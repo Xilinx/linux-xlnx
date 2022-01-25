@@ -288,7 +288,7 @@ static int save_endpoint_state(struct dwc3_ep *dep)
 void dwc3_gadget_enter_hibernation(struct dwc3 *dwc)
 {
 	u32 epnum, reg;
-	int retries;
+	int retries, ret;
 
 	/* Check if the link state is valid before hibernating */
 	switch (dwc3_gadget_get_link_state(dwc)) {
@@ -367,6 +367,16 @@ void dwc3_gadget_enter_hibernation(struct dwc3 *dwc)
 		goto err;
 	}
 
+	if (dwc->dwc3_pmu) {
+		ret = regulator_disable(dwc->dwc3_pmu);
+		if (ret) {
+			dev_err(dwc->dev,
+					"%s: %d Failed to enable dwc3_pmu supply\n",
+					__func__, __LINE__);
+			goto err;
+		}
+	}
+
 	dev_dbg(dwc->dev, "Hibernated!\n");
 	return;
 
@@ -391,6 +401,16 @@ void dwc3_gadget_exit_hibernation(void *_dwc)
 	if (!dwc->is_hibernated) {
 		dev_dbg(dwc->dev, "Not in hibernated state\n");
 		goto err;
+	}
+
+	if (dwc->dwc3_pmu) {
+		ret = regulator_enable(dwc->dwc3_pmu);
+		if (ret) {
+			dev_err(dwc->dev,
+					"%s:%d: Failed to enable dwc3_pmu supply\n",
+					__func__, __LINE__);
+			goto err;
+		}
 	}
 
 	restore_regs(dwc);
