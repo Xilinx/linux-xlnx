@@ -684,6 +684,7 @@ struct xhci_stream_info *xhci_alloc_stream_info(struct xhci_hcd *xhci,
 			 */
 			timer_setup(&cur_ring->stream_timer,
 				    xhci_stream_timeout, 0);
+			cur_ring->xhci = xhci;
 		}
 
 		ret = xhci_update_stream_mapping(cur_ring, mem_flags);
