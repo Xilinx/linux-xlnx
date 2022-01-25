@@ -3005,6 +3005,14 @@ static int spi_nor_init(struct spi_nor *nor)
 {
 	int err;
 
+	if (nor->jedec_id == CFI_MFR_ATMEL ||
+	    nor->jedec_id == CFI_MFR_INTEL ||
+	    nor->jedec_id == CFI_MFR_SST ||
+	    nor->flags & SNOR_F_HAS_LOCK) {
+		spi_nor_write_enable(nor);
+		nor->bouncebuf[0] = 0;
+		spi_nor_write_sr(nor, nor->bouncebuf, 1);
+	}
 	err = spi_nor_octal_dtr_enable(nor, true);
 	if (err) {
 		dev_dbg(nor->dev, "octal mode not supported\n");
@@ -3475,6 +3483,8 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 		nor->flags |= SNOR_F_HAS_4BIT_BP;
 		if (info->flags & SPI_NOR_BP3_SR_BIT6)
 			nor->flags |= SNOR_F_HAS_SR_BP3_BIT6;
+		else if (info->flags & SPI_NOR_BP3_SR_BIT5)
+			nor->flags |= SNOR_F_HAS_SR_BP3_BIT5;
 	}
 
 	if (info->flags & SPI_NOR_NO_ERASE)

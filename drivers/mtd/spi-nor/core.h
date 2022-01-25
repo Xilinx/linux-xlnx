@@ -29,6 +29,7 @@ enum spi_nor_option_flags {
 	SNOR_F_IO_MODE_EN_VOLATILE = BIT(14),
 	SNOR_F_SOFT_RESET	= BIT(15),
 	SNOR_F_SWP_IS_VOLATILE	= BIT(16),
+	SNOR_F_HAS_SR_BP3_BIT5  = BIT(17),
 };
 
 struct spi_nor_read_command {
@@ -382,6 +383,14 @@ struct flash_info {
 					 * protection bits. Usually these will
 					 * power-up in a write-protected state.
 					 */
+#define SST_GLOBAL_PROT_UNLK	BIT(24)	/* Unlock the Global protection for
+					 * sst flashes
+					 */
+#define SPI_NOR_BP3_SR_BIT5	BIT(25) /*
+					 * BP3 is bit 5 of status register.
+					 * Must be used with SPI_NOR_4BIT_BP.
+					 */
+	int	(*quad_enable)(struct spi_nor *nor);
 
 	const struct spi_nor_otp_organization otp_org;
 
