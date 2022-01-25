@@ -173,6 +173,7 @@ config USB_TEGRA_PHY
 config USB_ULPI
 	bool "Generic ULPI Transceiver Driver"
 	depends on ARM || ARM64 || COMPILE_TEST
+	depends on USB_PHY
 	select USB_ULPI_VIEWPORT
 	help
 	  Enable this to support ULPI connected USB OTG transceivers which
