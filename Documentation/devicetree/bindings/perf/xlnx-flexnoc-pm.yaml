@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-2.0-or-later OR BSD-2-Clause
+# SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
 %YAML 1.2
 ---
 $id: http://devicetree.org/schemas/perf/xlnx-flexnoc-pm.yaml#
@@ -7,8 +7,7 @@ $schema: http://devicetree.org/meta-schemas/core.yaml#
 title: Xilinx flexnoc Performance Monitor device tree bindings
 
 maintainers:
-  - Arnd Bergmann <arnd@arndb.de>
-  - Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+  - Shubhrajyoti Datta <shubhrajyoti.datta@xilinx.com>
 
 properties:
   compatible:
