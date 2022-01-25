@@ -28,6 +28,8 @@
 
 #include <linux/phy/phy.h>
 
+#include "core.h"
+
 /* USB phy reset mask register */
 #define XLNX_USB_PHY_RST_EN			0x001C
 #define XLNX_PHY_RST_MASK			0x1
@@ -79,6 +81,7 @@ struct dwc3_xlnx {
 	struct regulator		*dwc3_pmu;
 	struct regulator_dev		*dwc3_xlnx_reg_rdev;
 	enum dwc3_xlnx_core_state	pmu_state;
+	bool				wakeup_capable;
 	struct reset_control		*crst;
 	bool				enable_d3_suspend;
 	enum usb_dr_mode		dr_mode;
@@ -158,6 +161,8 @@ static int dwc3_zynqmp_power_req(struct device *dev, bool on)
 		}
 
 		priv_data->pmu_state = D0_STATE;
+		/* disable D3 entry */
+		priv_data->enable_d3_suspend = false;
 	} else {
 		dev_dbg(priv_data->dev, "Trying to set power state to D3...\n");
 
@@ -499,6 +504,36 @@ err:
 	return ret;
 }
 
+/* xilinx feature support functions */
+void dwc3_xilinx_wakeup_capable(struct device *dev, bool wakeup)
+{
+	struct device_node *node = of_node_get(dev->parent->of_node);
+
+	/* check for valid parent node */
+	while (node) {
+		if (of_device_is_compatible(node, "xlnx,zynqmp-dwc3") ||
+		    of_device_is_compatible(node, "xlnx,versal-dwc3"))
+			break;
+
+		/* get the next parent node */
+		node = of_get_next_parent(node);
+	}
+
+	if (node) {
+		struct platform_device *pdev_parent;
+		struct dwc3_xlnx *priv_data;
+
+		pdev_parent = of_find_device_by_node(node);
+		priv_data = platform_get_drvdata(pdev_parent);
+
+		/* Set wakeup capable as true or false */
+		priv_data->wakeup_capable = wakeup;
+
+		/* Allow D3 state if wakeup capable only */
+		priv_data->enable_d3_suspend = wakeup;
+	}
+}
+
 static const struct of_device_id dwc3_xlnx_of_match[] = {
 	{
 		.compatible = "xlnx,zynqmp-dwc3",
@@ -566,6 +601,8 @@ static int dwc3_xlnx_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 #endif
+	/* Register the dwc3-xilinx wakeup function to dwc3 host */
+	dwc3_host_wakeup_register(dwc3_xilinx_wakeup_capable);
 
 	ret = devm_clk_bulk_get_all(priv_data->dev, &priv_data->clks);
 	if (ret < 0)
@@ -605,6 +642,8 @@ static int dwc3_xlnx_remove(struct platform_device *pdev)
 
 	of_platform_depopulate(dev);
 
+	/* Unregister the dwc3-xilinx wakeup function from dwc3 host */
+	dwc3_host_wakeup_register(NULL);
 	clk_bulk_disable_unprepare(priv_data->num_clocks, priv_data->clks);
 	priv_data->num_clocks = 0;
 
@@ -643,14 +682,15 @@ static int __maybe_unused dwc3_xlnx_suspend(struct device *dev)
 {
 	struct dwc3_xlnx *priv_data = dev_get_drvdata(dev);
 
+	if (!priv_data->wakeup_capable) {
 #ifdef CONFIG_PM
-	if (priv_data->dr_mode == USB_DR_MODE_PERIPHERAL)
-		/* Put the core into D3 */
-		dwc3_set_usb_core_power(dev, false);
+		if (priv_data->dr_mode == USB_DR_MODE_PERIPHERAL)
+			/* Put the core into D3 */
+			dwc3_set_usb_core_power(dev, false);
 #endif
-	/* Disable the clocks */
-	clk_bulk_disable(priv_data->num_clocks, priv_data->clks);
-
+		/* Disable the clocks */
+		clk_bulk_disable(priv_data->num_clocks, priv_data->clks);
+	}
 	return 0;
 }
 
@@ -658,6 +698,9 @@ static int __maybe_unused dwc3_xlnx_resume(struct device *dev)
 {
 	struct dwc3_xlnx *priv_data = dev_get_drvdata(dev);
 	int ret;
+
+	if (priv_data->wakeup_capable)
+		return 0;
 
 #ifdef CONFIG_PM
 	if (priv_data->dr_mode == USB_DR_MODE_PERIPHERAL)
