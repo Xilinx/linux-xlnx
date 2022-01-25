@@ -3810,6 +3810,20 @@ static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 			dwc3_gadget_disconnect_interrupt(dwc);
 	}
 
+	/*
+	 * To avoid hibernation interrupt at the time of connection on hot-plug
+	 * clear DWC3_DCTL_KEEP_CONNECT bit on gadget enumeration and disable
+	 * DWC3_GCTL_GBLHIBERNATIONEN hibernation interrupt.
+	 */
+	if (dwc->has_hibernation) {
+		reg = dwc3_readl(dwc->regs, DWC3_DCTL);
+		reg &= ~DWC3_DCTL_KEEP_CONNECT;
+		dwc3_writel(dwc->regs, DWC3_DCTL, reg);
+		reg = dwc3_readl(dwc->regs, DWC3_GCTL);
+		reg &= ~DWC3_GCTL_GBLHIBERNATIONEN;
+		dwc3_writel(dwc->regs, DWC3_GCTL, reg);
+	}
+
 	dwc3_reset_gadget(dwc);
 	/*
 	 * In the Synopsis DesignWare Cores USB3 Databook Rev. 3.30a
