@@ -23,6 +23,7 @@
 #include <linux/regulator/driver.h>
 #include <linux/regulator/machine.h>
 #include <linux/regulator/consumer.h>
+#include <linux/usb/of.h>
 #include <linux/io.h>
 
 #include <linux/phy/phy.h>
@@ -79,7 +80,23 @@ struct dwc3_xlnx {
 	struct regulator_dev		*dwc3_xlnx_reg_rdev;
 	enum dwc3_xlnx_core_state	pmu_state;
 	struct reset_control		*crst;
+	enum usb_dr_mode		dr_mode;
 };
+
+static const char *const usb_dr_modes[] = {
+	[USB_DR_MODE_UNKNOWN]		= "",
+	[USB_DR_MODE_HOST]		= "host",
+	[USB_DR_MODE_PERIPHERAL]	= "peripheral",
+	[USB_DR_MODE_OTG]		= "otg",
+};
+
+static enum usb_dr_mode usb_get_dr_mode_from_string(const char *str)
+{
+	int ret;
+
+	ret = match_string(usb_dr_modes, ARRAY_SIZE(usb_dr_modes), str);
+	return (ret < 0) ? USB_DR_MODE_UNKNOWN : ret;
+}
 
 #ifdef CONFIG_PM
 static struct regulator_init_data dwc3_xlnx_reg_initdata = {
@@ -492,9 +509,11 @@ static int dwc3_xlnx_probe(struct platform_device *pdev)
 	struct dwc3_xlnx		*priv_data;
 	struct device			*dev = &pdev->dev;
 	struct device_node		*np = dev->of_node;
+	struct device_node		*dwc3_child_node = NULL;
 	const struct of_device_id	*match;
 	void __iomem			*regs;
 	int				ret;
+	const char                      *dr_modes;
 
 	priv_data = devm_kzalloc(dev, sizeof(*priv_data), GFP_KERNEL);
 	if (!priv_data)
@@ -509,9 +528,21 @@ static int dwc3_xlnx_probe(struct platform_device *pdev)
 
 	match = of_match_node(dwc3_xlnx_of_match, pdev->dev.of_node);
 
+	dwc3_child_node = of_get_next_child(pdev->dev.of_node, dwc3_child_node);
+	if (!dwc3_child_node)
+		return -ENODEV;
+
 	priv_data->pltfm_init = match->data;
 	priv_data->regs = regs;
 	priv_data->dev = dev;
+
+	/* get the dr_mode from child node */
+	ret = of_property_read_string(dwc3_child_node, "dr_mode", &dr_modes);
+	priv_data->dr_mode = usb_get_dr_mode_from_string(dr_modes);
+	if (ret < 0)
+		priv_data->dr_mode = USB_DR_MODE_UNKNOWN;
+
+	of_node_put(dwc3_child_node);
 
 	platform_set_drvdata(pdev, priv_data);
 
@@ -598,8 +629,9 @@ static int __maybe_unused dwc3_xlnx_suspend(struct device *dev)
 	struct dwc3_xlnx *priv_data = dev_get_drvdata(dev);
 
 #ifdef CONFIG_PM
-	/* Put the core into D3 */
-	dwc3_set_usb_core_power(dev, false);
+	if (priv_data->dr_mode == USB_DR_MODE_PERIPHERAL)
+		/* Put the core into D3 */
+		dwc3_set_usb_core_power(dev, false);
 #endif
 	/* Disable the clocks */
 	clk_bulk_disable(priv_data->num_clocks, priv_data->clks);
@@ -613,8 +645,9 @@ static int __maybe_unused dwc3_xlnx_resume(struct device *dev)
 	int ret;
 
 #ifdef CONFIG_PM
-	/* Put the core into D0 */
-	dwc3_set_usb_core_power(dev, true);
+	if (priv_data->dr_mode == USB_DR_MODE_PERIPHERAL)
+		/* Put the core into D0 */
+		dwc3_set_usb_core_power(dev, true);
 #endif
 
 	ret = clk_bulk_enable(priv_data->num_clocks, priv_data->clks);
