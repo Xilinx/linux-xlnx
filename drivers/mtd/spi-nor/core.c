@@ -1281,8 +1281,8 @@ static int spi_nor_erase_chip(struct spi_nor *nor)
 				return ret;
 			nor->spimem->spi->master->flags |= SPI_MASTER_U_PAGE;
 			ret = spi_mem_exec_op(nor->spimem, &op);
+			nor->spimem->spi->master->flags &= ~SPI_MASTER_U_PAGE;
 		}
-		return ret;
 	} else {
 		ret = spi_nor_controller_ops_write_reg(nor,
 						       SPINOR_OP_CHIP_ERASE,
