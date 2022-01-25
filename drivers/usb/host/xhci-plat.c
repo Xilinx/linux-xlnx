@@ -31,6 +31,8 @@ static struct hc_driver __read_mostly xhci_plat_hc_driver;
 static int xhci_plat_setup(struct usb_hcd *hcd);
 static int xhci_plat_start(struct usb_hcd *hcd);
 
+static host_wakeup_t host_wakeup_fn;
+
 static const struct xhci_driver_overrides xhci_plat_overrides __initconst = {
 	.extra_priv_size = sizeof(struct xhci_plat_priv),
 	.reset = xhci_plat_setup,
@@ -85,6 +87,17 @@ static void xhci_plat_quirks(struct device *dev, struct xhci_hcd *xhci)
 	 * dev struct in order to setup MSI
 	 */
 	xhci->quirks |= XHCI_PLAT | priv->quirks;
+}
+
+static void host_wakeup_register(host_wakeup_t func)
+{
+	host_wakeup_fn = func;
+}
+
+static void host_wakeup_capable(struct device *dev, bool wakeup)
+{
+	if (host_wakeup_fn)
+		host_wakeup_fn(dev, wakeup);
 }
 
 /* called during probe() after chip reset completes */
@@ -253,6 +266,9 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
+	/* Set the controller as wakeup capable */
+	device_set_wakeup_capable(&pdev->dev, true);
+
 	pm_runtime_set_active(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
 	pm_runtime_get_noresume(&pdev->dev);
@@ -313,6 +329,7 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	}
 
 	device_set_wakeup_capable(&pdev->dev, true);
+	host_wakeup_register(dwc3_host_wakeup_capable);
 
 	xhci->main_hcd = hcd;
 
@@ -442,6 +459,7 @@ static int xhci_plat_remove(struct platform_device *dev)
 
 	usb_phy_shutdown(hcd->usb_phy);
 
+	host_wakeup_register(NULL);
 	usb_otg_set_host(&dev->dev, hcd, false);
 
 	usb_remove_hcd(hcd);
@@ -472,6 +490,15 @@ static int __maybe_unused xhci_plat_suspend(struct device *dev)
 	ret = xhci_priv_suspend_quirk(hcd);
 	if (ret)
 		return ret;
+
+	/* Inform dwc3 driver about the device wakeup capability */
+	if (device_may_wakeup(&hcd->self.root_hub->dev)) {
+		host_wakeup_capable(dev, true);
+		enable_irq_wake(hcd->irq);
+	} else {
+		host_wakeup_capable(dev, false);
+	}
+
 	/*
 	 * xhci_suspend() needs `do_wakeup` to know whether host is allowed
 	 * to do wakeup during suspend.
@@ -531,6 +558,9 @@ static int __maybe_unused xhci_plat_runtime_resume(struct device *dev)
 {
 	struct usb_hcd  *hcd = dev_get_drvdata(dev);
 	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
+
+	if (device_may_wakeup(&hcd->self.root_hub->dev))
+		disable_irq_wake(hcd->irq);
 
 	return xhci_resume(xhci, 0);
 }
