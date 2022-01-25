@@ -537,6 +537,9 @@ err1:
 
 static void dwc3_free_scratch_buffers(struct dwc3 *dwc)
 {
+	if (dwc->dr_mode == USB_DR_MODE_HOST)
+		return;
+
 	if (!dwc->has_hibernation)
 		return;
 
