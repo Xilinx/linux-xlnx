@@ -269,8 +269,10 @@ static int dwc3_core_soft_reset(struct dwc3 *dwc)
 	 * We're resetting only the device side because, if we're in host mode,
 	 * XHCI driver will reset the host block. If dwc3 was configured for
 	 * host-only mode, then we can return early.
+	 * When hibernated don't perform core soft reset.
 	 */
-	if (dwc->current_dr_role == DWC3_GCTL_PRTCAP_HOST)
+	if (dwc->current_dr_role == DWC3_GCTL_PRTCAP_HOST ||
+	    dwc->is_hibernated == true)
 		return 0;
 
 	reg = dwc3_readl(dwc->regs, DWC3_DCTL);
@@ -381,7 +383,7 @@ static struct dwc3_event_buffer *dwc3_alloc_one_event_buffer(struct dwc3 *dwc,
  * dwc3_free_event_buffers - frees all allocated event buffers
  * @dwc: Pointer to our controller context structure
  */
-static void dwc3_free_event_buffers(struct dwc3 *dwc)
+void dwc3_free_event_buffers(struct dwc3 *dwc)
 {
 	struct dwc3_event_buffer	*evt;
 
@@ -398,7 +400,7 @@ static void dwc3_free_event_buffers(struct dwc3 *dwc)
  * Returns 0 on success otherwise negative errno. In the error case, dwc
  * may contain some buffers allocated but not all which were requested.
  */
-static int dwc3_alloc_event_buffers(struct dwc3 *dwc, unsigned length)
+int dwc3_alloc_event_buffers(struct dwc3 *dwc, unsigned length)
 {
 	struct dwc3_event_buffer *evt;
 
@@ -458,8 +460,12 @@ static int dwc3_alloc_scratch_buffers(struct dwc3 *dwc)
 	if (!dwc->nr_scratch)
 		return 0;
 
-	dwc->scratchbuf = kmalloc_array(dwc->nr_scratch,
-			DWC3_SCRATCHBUF_SIZE, GFP_KERNEL);
+	/* Allocate only if scratchbuf is NULL */
+	if (dwc->scratchbuf)
+		return 0;
+
+	dwc->scratchbuf = kzalloc(dwc->nr_scratch * DWC3_SCRATCHBUF_SIZE,
+				  GFP_KERNEL);
 	if (!dwc->scratchbuf)
 		return -ENOMEM;
 
@@ -479,28 +485,31 @@ static int dwc3_setup_scratch_buffers(struct dwc3 *dwc)
 		return 0;
 
 	 /* should never fall here */
-	if (!WARN_ON(dwc->scratchbuf))
+	if (WARN_ON(!dwc->scratchbuf))
 		return 0;
 
-	scratch_addr = dma_map_single(dwc->sysdev, dwc->scratchbuf,
-			dwc->nr_scratch * DWC3_SCRATCHBUF_SIZE,
-			DMA_BIDIRECTIONAL);
-	if (dma_mapping_error(dwc->sysdev, scratch_addr)) {
-		dev_err(dwc->sysdev, "failed to map scratch buffer\n");
-		ret = -EFAULT;
-		goto err0;
+	/* Don't allocate scratchpad buffer if already allocated. */
+	if (!dwc->scratch_addr) {
+		scratch_addr = dma_map_single(dwc->sysdev, dwc->scratchbuf,
+				dwc->nr_scratch * DWC3_SCRATCHBUF_SIZE,
+				DMA_BIDIRECTIONAL);
+		if (dma_mapping_error(dwc->sysdev, scratch_addr)) {
+			dev_err(dwc->sysdev, "failed to map scratch buffer\n");
+			ret = -EFAULT;
+			goto err0;
+		}
+
+		dwc->scratch_addr = scratch_addr;
 	}
 
-	dwc->scratch_addr = scratch_addr;
-
-	param = lower_32_bits(scratch_addr);
+	param = lower_32_bits(dwc->scratch_addr);
 
 	ret = dwc3_send_gadget_generic_command(dwc,
 			DWC3_DGCMD_SET_SCRATCHPAD_ADDR_LO, param);
 	if (ret < 0)
 		goto err1;
 
-	param = upper_32_bits(scratch_addr);
+	param = upper_32_bits(dwc->scratch_addr);
 
 	ret = dwc3_send_gadget_generic_command(dwc,
 			DWC3_DGCMD_SET_SCRATCHPAD_ADDR_HI, param);
@@ -526,7 +535,7 @@ static void dwc3_free_scratch_buffers(struct dwc3 *dwc)
 		return;
 
 	 /* should never fall here */
-	if (!WARN_ON(dwc->scratchbuf))
+	if (WARN_ON(!dwc->scratchbuf))
 		return;
 
 	dma_unmap_single(dwc->sysdev, dwc->scratch_addr, dwc->nr_scratch *
@@ -790,6 +799,7 @@ static void dwc3_core_setup_global_control(struct dwc3 *dwc)
 	case DWC3_GHWPARAMS1_EN_PWROPT_HIB:
 		/* enable hibernation here */
 		dwc->nr_scratch = DWC3_GHWPARAMS4_HIBER_SCRATCHBUFS(hwparams4);
+		dwc->has_hibernation = 1;
 
 		/*
 		 * REVISIT Enabling this bit so that host-mode hibernation
@@ -934,7 +944,7 @@ static void dwc3_set_incr_burst_type(struct dwc3 *dwc)
  *
  * Returns 0 on success otherwise negative errno.
  */
-static int dwc3_core_init(struct dwc3 *dwc)
+int dwc3_core_init(struct dwc3 *dwc)
 {
 	unsigned int		hw_mode;
 	u32			reg;
@@ -999,6 +1009,13 @@ static int dwc3_core_init(struct dwc3 *dwc)
 
 	dwc3_core_setup_global_control(dwc);
 	dwc3_core_num_eps(dwc);
+
+	ret = dwc3_alloc_scratch_buffers(dwc);
+	if (ret) {
+		dev_err(dwc->dev,
+			"Not enough memory for scratch buffers\n");
+		goto err1;
+	}
 
 	ret = dwc3_setup_scratch_buffers(dwc);
 	if (ret)
@@ -1629,10 +1646,6 @@ static int dwc3_probe(struct platform_device *pdev)
 	if (ret)
 		goto err3;
 
-	ret = dwc3_alloc_scratch_buffers(dwc);
-	if (ret)
-		goto err3;
-
 	ret = dwc3_core_init(dwc);
 	if (ret) {
 		dev_err_probe(dev, ret, "failed to initialize core\n");
@@ -1695,6 +1708,16 @@ static int dwc3_remove(struct platform_device *pdev)
 	struct dwc3	*dwc = platform_get_drvdata(pdev);
 
 	pm_runtime_get_sync(&pdev->dev);
+
+	if (dwc->is_hibernated) {
+		/*
+		 * As we are about to get removed, wake the controller from
+		 * D3 & hibernation states
+		 */
+		dwc->force_hiber_wake = true;
+		dwc3_gadget_exit_hibernation(dwc);
+		dwc->force_hiber_wake = false;
+	}
 
 	dwc3_core_exit_mode(dwc);
 	dwc3_debugfs_exit(dwc);
@@ -1954,6 +1977,16 @@ static int dwc3_suspend(struct device *dev)
 {
 	struct dwc3	*dwc = dev_get_drvdata(dev);
 	int		ret;
+
+	if (dwc->is_hibernated) {
+		/*
+		 * As we are about to suspend, wake the controller from
+		 * D3 & hibernation states
+		 */
+		dwc->force_hiber_wake = true;
+		dwc3_gadget_exit_hibernation(dwc);
+		dwc->force_hiber_wake = false;
+	}
 
 	ret = dwc3_suspend_common(dwc, PMSG_SUSPEND);
 	if (ret)
