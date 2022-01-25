@@ -1032,7 +1032,8 @@ static int __maybe_unused zynqmp_runtime_suspend(struct device *dev)
  */
 static int __maybe_unused zynqmp_runtime_resume(struct device *dev)
 {
-	struct zynqmp_qspi *xqspi = dev_get_drvdata(dev);
+	struct spi_controller *ctlr = dev_get_drvdata(dev);
+	struct zynqmp_qspi *xqspi = spi_controller_get_devdata(ctlr);
 	int ret;
 
 	ret = clk_prepare_enable(xqspi->pclk);
@@ -1211,7 +1212,8 @@ return_err:
 
 static int __maybe_unused zynqmp_runtime_idle(struct device *dev)
 {
-	struct zynqmp_qspi *xqspi = dev_get_drvdata(dev);
+	struct spi_controller *ctlr = dev_get_drvdata(dev);
+	struct zynqmp_qspi *xqspi = spi_controller_get_devdata(ctlr);
 	u32 value;
 
 	value = zynqmp_gqspi_read(xqspi, GQSPI_EN_OFST);
