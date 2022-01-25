@@ -657,7 +657,7 @@ static int __maybe_unused cdns_spi_resume(struct device *dev)
 }
 
 /**
- * cdns_spi_runtime_resume - Runtime resume method for the SPI driver
+ * cdns_runtime_resume - Runtime resume method for the SPI driver
  * @dev:	Address of the platform_device structure
  *
  * This function enables the clocks
@@ -686,7 +686,7 @@ static int __maybe_unused cnds_runtime_resume(struct device *dev)
 }
 
 /**
- * cdns_spi_runtime_suspend - Runtime suspend method for the SPI driver
+ * cdns_runtime_suspend - Runtime suspend method for the SPI driver
  * @dev:	Address of the platform_device structure
  *
  * This function disables the clocks
