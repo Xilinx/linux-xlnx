@@ -1010,16 +1010,20 @@ int dwc3_core_init(struct dwc3 *dwc)
 	dwc3_core_setup_global_control(dwc);
 	dwc3_core_num_eps(dwc);
 
-	ret = dwc3_alloc_scratch_buffers(dwc);
-	if (ret) {
-		dev_err(dwc->dev,
-			"Not enough memory for scratch buffers\n");
-		goto err1;
+	if (dwc->scratchbuf == NULL) {
+		ret = dwc3_alloc_scratch_buffers(dwc);
+		if (ret) {
+			dev_err(dwc->dev,
+				"Not enough memory for scratch buffers\n");
+			goto err1;
+		}
 	}
 
 	ret = dwc3_setup_scratch_buffers(dwc);
-	if (ret)
+	if (ret) {
+		dev_err(dwc->dev, "Failed to setup scratch buffers: %d\n", ret);
 		goto err1;
+	}
 
 	/* Adjust Frame Length */
 	dwc3_frame_length_adjustment(dwc);
