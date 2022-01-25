@@ -1903,7 +1903,7 @@ struct xhci_hcd {
 #define XHCI_NO_SOFT_RETRY	BIT_ULL(40)
 #define XHCI_BROKEN_D3COLD	BIT_ULL(41)
 #define XHCI_EP_CTX_BROKEN_DCS	BIT_ULL(42)
-#define XHCI_STREAM_QUIRK	BIT_ULL(48) /* FIXME this is wrong */
+#define XHCI_STREAM_QUIRK	BIT_ULL(43) /* FIXME this is wrong */
 
 	unsigned int		num_active_eps;
 	unsigned int		limit_active_eps;

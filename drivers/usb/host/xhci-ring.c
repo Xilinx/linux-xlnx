@@ -841,7 +841,16 @@ static int xhci_td_cleanup(struct xhci_hcd *xhci, struct xhci_td *td,
 		/* set isoc urb status to 0 just as EHCI, UHCI, and OHCI */
 		if (usb_pipetype(urb->pipe) == PIPE_ISOCHRONOUS)
 			status = 0;
-		xhci_giveback_urb_in_irq(xhci, td, status);
+		if ((xhci->quirks & XHCI_STREAM_QUIRK) &&
+		    (ep_ring->stream_timeout_handler == true)) {
+			/* We get here if stream timer time-out and stop
+			 * command is issued. Send urb status as -EAGAIN
+			 * so that the same urb can be re-submitted.
+			 */
+			xhci_giveback_urb_in_irq(xhci, td, -EAGAIN);
+			ep_ring->stream_timeout_handler = false;
+		} else
+			xhci_giveback_urb_in_irq(xhci, td, status);
 	}
 
 	return 0;

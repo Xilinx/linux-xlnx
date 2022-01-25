@@ -683,7 +683,7 @@ struct xhci_stream_info *xhci_alloc_stream_info(struct xhci_hcd *xhci,
 			 * DoorBell, so setup a timer to aviod hang condition.
 			 */
 			timer_setup(&cur_ring->stream_timer,
-				xhci_stream_timeout, 0);
+				    xhci_stream_timeout, 0);
 			cur_ring->xhci = xhci;
 		}
 
