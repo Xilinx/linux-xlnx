@@ -1333,6 +1333,11 @@ static int dwc3_core_init_mode(struct dwc3 *dwc)
 		ret = dwc3_drd_init(dwc);
 		if (ret)
 			return dev_err_probe(dev, ret, "failed to initialize dual-role\n");
+
+#if IS_ENABLED(CONFIG_USB_DWC3_OTG)
+		dwc->current_dr_role = 0;
+		dwc3_set_mode(dwc, DWC3_GCTL_PRTCAP_OTG);
+#endif
 		break;
 	default:
 		dev_err(dev, "Unsupported mode of operation %d\n", dwc->dr_mode);
