@@ -81,10 +81,9 @@ static const struct flash_info sst_parts[] = {
 	{ "sst25wf080",  INFO(0xbf2505, 0, 64 * 1024, 16,
 			      SECT_4K | SST_WRITE | SPI_NOR_HAS_LOCK | SPI_NOR_SWP_IS_VOLATILE) },
 	{ "sst26wf016b", INFO(0xbf2651, 0, 64 * 1024, 32,
-			      SECT_4K | SPI_NOR_DUAL_READ |
-			      SPI_NOR_QUAD_READ) },
+			      SECT_4K | SST_GLOBAL_PROT_UNLK | SPI_NOR_SWP_IS_VOLATILE) },
 	{ "sst26vf016b", INFO(0xbf2641, 0, 64 * 1024, 32,
-			      SECT_4K | SPI_NOR_DUAL_READ) },
+			      SECT_4K | SST_GLOBAL_PROT_UNLK | SPI_NOR_SWP_IS_VOLATILE) },
 	{ "sst26vf064b", INFO(0xbf2643, 0, 64 * 1024, 128,
 			      SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ |
 			      SPI_NOR_HAS_LOCK | SPI_NOR_SWP_IS_VOLATILE)
