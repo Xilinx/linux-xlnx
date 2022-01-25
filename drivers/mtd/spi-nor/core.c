@@ -577,19 +577,46 @@ static int spansion_set_4byte_addr_mode(struct spi_nor *nor, bool enable)
 /**
  * spi_nor_write_ear() - Write Extended Address Register.
  * @nor:	pointer to 'struct spi_nor'.
- * @ear:	value to write to the Extended Address Register.
+ * @addr:	value to write to the Extended Address Register.
  *
  * Return: 0 on success, -errno otherwise.
  */
-int spi_nor_write_ear(struct spi_nor *nor, u8 ear)
+int spi_nor_write_ear(struct spi_nor *nor, u32 addr)
 {
+	u8 code = SPINOR_OP_WREAR;
+	u32 ear;
 	int ret;
+	struct mtd_info *mtd = &nor->mtd;
 
+	/* Wait until finished previous write command. */
+	if (spi_nor_wait_till_ready(nor))
+		return 1;
+
+	if (mtd->size <= (0x1000000) << nor->shift)
+		return 0;
+
+	addr = addr % (u32)mtd->size;
+	ear = addr >> 24;
+
+	if (!nor->isstacked && ear == nor->curbank)
+		return 0;
+
+	if (nor->isstacked && mtd->size <= 0x2000000)
+		return 0;
+
+	if (nor->jedec_id == CFI_MFR_AMD)
+		code = SPINOR_OP_BRWR;
+	if (nor->jedec_id == CFI_MFR_ST ||
+	    nor->jedec_id == CFI_MFR_MACRONIX ||
+	    nor->jedec_id == CFI_MFR_PMC) {
+		spi_nor_write_enable(nor);
+		code = SPINOR_OP_WREAR;
+	}
 	nor->bouncebuf[0] = ear;
 
 	if (nor->spimem) {
 		struct spi_mem_op op =
-			SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_WREAR, 0),
+			SPI_MEM_OP(SPI_MEM_OP_CMD(code, 0),
 				   SPI_MEM_OP_NO_ADDR,
 				   SPI_MEM_OP_NO_DUMMY,
 				   SPI_MEM_OP_DATA_OUT(1, nor->bouncebuf, 0));
@@ -598,12 +625,12 @@ int spi_nor_write_ear(struct spi_nor *nor, u8 ear)
 
 		ret = spi_mem_exec_op(nor->spimem, &op);
 	} else {
-		ret = spi_nor_controller_ops_write_reg(nor, SPINOR_OP_WREAR,
-						       nor->bouncebuf, 1);
+		ret = spi_nor_controller_ops_write_reg(nor, code, nor->bouncebuf, 1);
+		if (ret < 0)
+			return ret;
 	}
 
-	if (ret)
-		dev_dbg(nor->dev, "error %d writing EAR\n", ret);
+	nor->curbank = ear;
 
 	return ret;
 }
@@ -640,6 +667,49 @@ int spi_nor_xread_sr(struct spi_nor *nor, u8 *sr)
 
 	return ret;
 }
+
+/**
+ * read_ear - Get the extended/bank address register value
+ * @nor:	Pointer to the flash control structure
+ *
+ * This routine reads the Extended/bank address register value
+ *
+ * Return:	Negative if error occurred.
+ */
+static int read_ear(struct spi_nor *nor, struct flash_info *info)
+{
+	int ret;
+	u8 code;
+
+	/* This is actually Spansion */
+	if (nor->jedec_id == CFI_MFR_AMD)
+		code = SPINOR_OP_BRRD;
+	/* This is actually Micron */
+	else if (nor->jedec_id == CFI_MFR_ST ||
+		 nor->jedec_id == CFI_MFR_MACRONIX ||
+		 nor->jedec_id == CFI_MFR_PMC)
+		code = SPINOR_OP_RDEAR;
+	else
+		return -EINVAL;
+	if (nor->spimem) {
+		struct spi_mem_op op =
+			SPI_MEM_OP(SPI_MEM_OP_CMD(code, 1),
+				   SPI_MEM_OP_NO_ADDR,
+				   SPI_MEM_OP_NO_DUMMY,
+				   SPI_MEM_OP_DATA_IN(1, nor->bouncebuf, 1));
+
+		ret = spi_mem_exec_op(nor->spimem, &op);
+	} else {
+		ret = nor->controller_ops->read_reg(nor, code, nor->bouncebuf, 1);
+	}
+	if (ret < 0) {
+		pr_err("error %d reading EAR\n", ret);
+		return ret;
+	}
+
+	return nor->bouncebuf[0];
+}
+
 
 /**
  * spi_nor_xsr_ready() - Query the Status Register of the S3AN flash to see if
@@ -1291,6 +1361,16 @@ static bool spi_nor_has_uniform_erase(const struct spi_nor *nor)
 
 static void spi_nor_set_4byte_opcodes(struct spi_nor *nor)
 {
+	/* Do some manufacturer fixups first */
+	switch (nor->jedec_id) {
+	case CFI_MFR_AMD:
+		/* No small sector erase for 4-byte command set */
+		nor->erase_opcode = SPINOR_OP_SE;
+		nor->mtd.erasesize = nor->info->sector_size;
+		break;
+	default:
+		break;
+	}
 	nor->read_opcode = spi_nor_convert_3to4_read(nor->read_opcode);
 	nor->program_opcode = spi_nor_convert_3to4_program(nor->program_opcode);
 	nor->erase_opcode = spi_nor_convert_3to4_erase(nor->erase_opcode);
@@ -1726,9 +1806,6 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
 			ret = spi_nor_write_enable(nor);
 			if (ret)
 				goto erase_err;
-			ret = spi_nor_wait_till_ready(nor);
-			if (ret)
-				goto erase_err;
 			offset = addr;
 			if (nor->isparallel == 1)
 				offset /= 2;
@@ -1742,6 +1819,19 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
 						~SPI_MASTER_U_PAGE;
 				}
 			}
+			if (nor->addr_width == 3) {
+				/* Update Extended Address Register */
+				ret = spi_nor_write_ear(nor, offset);
+				if (ret)
+					goto erase_err;
+			}
+			ret = spi_nor_wait_till_ready(nor);
+			if (ret)
+				goto erase_err;
+
+			ret = spi_nor_write_enable(nor);
+			if (ret)
+				goto erase_err;
 			ret = spi_nor_erase_sector(nor, offset);
 			if (ret)
 				goto erase_err;
@@ -2034,6 +2124,13 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 						(offset << nor->shift);
 			}
 		}
+		if (nor->addr_width == 3) {
+			ret = spi_nor_write_ear(nor, offset);
+			if (ret) {
+				dev_err(nor->dev, "While writing ear register\n");
+				goto read_err;
+			}
+		}
 		if (len < rem_bank_len)
 			read_len = len;
 		else
@@ -2150,6 +2247,13 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 		/* Die cross over issue is not handled */
 		if (nor->addr_width == 4)
 			rem_bank_len = (mtd->size >> stack_shift) - offset;
+		if (nor->addr_width == 3) {
+			ret = spi_nor_write_ear(nor, offset);
+			if (ret) {
+				dev_err(nor->dev, "While writing ear register\n");
+				goto write_err;
+			}
+		}
 		if (nor->isstacked == 1) {
 			if ((len - i) <= rem_bank_len) {
 				page_remain = min_t(size_t,
@@ -2169,6 +2273,9 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 					    nor->page_size -
 					    page_offset, len - i);
 		}
+		ret = spi_nor_wait_till_ready(nor);
+		if (ret)
+			goto write_err;
 
 		offset = spi_nor_convert_addr(nor, offset);
 
@@ -3013,6 +3120,7 @@ static int spi_nor_init(struct spi_nor *nor)
 		nor->bouncebuf[0] = 0;
 		spi_nor_write_sr(nor, nor->bouncebuf, 1);
 	}
+
 	err = spi_nor_octal_dtr_enable(nor, true);
 	if (err) {
 		dev_dbg(nor->dev, "octal mode not supported\n");
@@ -3178,8 +3286,10 @@ static void spi_nor_put_device(struct mtd_info *mtd)
 void spi_nor_restore(struct spi_nor *nor)
 {
 	/* restore the addressing mode */
-	if (nor->addr_width == 4 && !(nor->flags & SNOR_F_4B_OPCODES) &&
-	    nor->flags & SNOR_F_BROKEN_RESET)
+	if (nor->addr_width == 4 && !(nor->info->flags & SNOR_F_4B_OPCODES) &&
+	    (nor->flags & SNOR_F_BROKEN_RESET) &&
+	    (nor->jedec_id != CFI_MFR_AMD) &&
+	    !(nor->info->flags & SPI_NOR_4B_OPCODES))
 		nor->params->set_4byte_addr_mode(nor, false);
 
 	if (nor->flags & SNOR_F_SOFT_RESET)
@@ -3206,6 +3316,8 @@ static const struct flash_info *spi_nor_match_id(struct spi_nor *nor,
 
 static int spi_nor_set_addr_width(struct spi_nor *nor)
 {
+	struct device_node *np = spi_nor_get_flash_node(nor);
+	struct device_node *np_spi;
 	if (nor->addr_width) {
 		/* already configured from SFDP */
 	} else if (nor->read_proto == SNOR_PROTO_8_8_8_DTR) {
@@ -3229,24 +3341,65 @@ static int spi_nor_set_addr_width(struct spi_nor *nor)
 	}
 
 	if (nor->addr_width == 3 && nor->mtd.size > 0x1000000) {
-		/*
-		 * enable 4-byte addressing if the
-		 * device exceeds 16MiB
-		 */
-		nor->addr_width = 4;
-		if (nor->jedec_id == CFI_MFR_AMD ||
-		    nor->info->flags & SPI_NOR_4B_OPCODES) {
-			spi_nor_set_4byte_opcodes(nor);
+#ifdef CONFIG_OF
+		np_spi = of_get_next_parent(np);
+		if (of_property_match_string(np_spi, "compatible",
+					     "xlnx,zynq-qspi-1.0") >= 0) {
+			int status;
 
-		nor->params->set_4byte_addr_mode(nor, true);
-		if (nor->isstacked) {
-			nor->spimem->spi->master->flags |=
-				SPI_MASTER_U_PAGE;
-			nor->params->set_4byte_addr_mode(nor, true);
-			nor->spimem->spi->master->flags &=
-				~SPI_MASTER_U_PAGE;
+			nor->addr_width = 3;
+			nor->params->set_4byte_addr_mode(nor, false);
+			if (nor->isstacked) {
+				nor->spimem->spi->master->flags |=
+					SPI_MASTER_U_PAGE;
+				nor->params->set_4byte_addr_mode(nor, false);
+				nor->spimem->spi->master->flags &=
+					~SPI_MASTER_U_PAGE;
 			}
+			status = read_ear(nor, (struct flash_info *)nor->info);
+			if (status < 0)
+				dev_warn(nor->dev, "failed to read ear reg\n");
+			else
+				nor->curbank = status & EAR_SEGMENT_MASK;
+		} else {
+#endif
+			/*
+			 * enable 4-byte addressing if the
+			 * device exceeds 16MiB
+			 */
+			nor->addr_width = 4;
+			if (nor->jedec_id == CFI_MFR_AMD ||
+			    nor->info->flags & SPI_NOR_4B_OPCODES) {
+				spi_nor_set_4byte_opcodes(nor);
+				nor->params->set_4byte_addr_mode(nor, true);
+				if (nor->isstacked) {
+					nor->spimem->spi->master->flags |=
+					SPI_MASTER_U_PAGE;
+					nor->params->set_4byte_addr_mode(nor, true);
+					nor->spimem->spi->master->flags &=
+					~SPI_MASTER_U_PAGE;
+				}
+			} else {
+				np_spi = of_get_next_parent(np);
+				if (of_property_match_string(np_spi,
+							     "compatible",
+							     "xlnx,xps-spi-2.00.a") >= 0) {
+					nor->addr_width = 3;
+					nor->params->set_4byte_addr_mode(nor, false);
+				} else {
+					nor->params->set_4byte_addr_mode(nor, true);
+					if (nor->isstacked) {
+						nor->spimem->spi->master->flags |=
+							SPI_MASTER_U_PAGE;
+						nor->params->set_4byte_addr_mode(nor, true);
+						nor->spimem->spi->master->flags &=
+							~SPI_MASTER_U_PAGE;
+					}
+				}
+			}
+#ifdef CONFIG_OF
 		}
+#endif
 	}
 
 	if (nor->addr_width > SPI_NOR_MAX_ADDR_WIDTH) {
@@ -3701,6 +3854,9 @@ static void spi_nor_shutdown(struct spi_mem *spimem)
 {
 	struct spi_nor *nor = spi_mem_get_drvdata(spimem);
 
+	if (nor->addr_width == 3 &&
+	    (nor->mtd.size >> nor->shift) > 0x1000000)
+		spi_nor_write_ear(nor, 0);
 	spi_nor_restore(nor);
 }
 
