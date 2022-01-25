@@ -14,7 +14,11 @@ allOf:
 
 properties:
   compatible:
-    const: xlnx,zynqmp-qspi-1.0
+    oneOf:
+      - items:
+          - enum:
+              - xlnx,zynqmp-qspi-1.0
+              - xlnx,versal-qspi-1.0
 
   reg:
     maxItems: 2
