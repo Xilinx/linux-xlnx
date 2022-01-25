@@ -1069,6 +1069,20 @@ int dwc3_core_init(struct dwc3 *dwc)
 		dwc3_writel(dwc->regs, DWC3_GUCTL1, reg);
 	}
 
+	/* SNPS controller when configureed in HOST mode maintains Inter Packet
+	 * Delay (IPD) of ~380ns which works with most of the super-speed hubs
+	 * except VIA-LAB hubs. When IPD is ~380ns HOST controller fails to
+	 * enumerate FS/LS devices when connected behind VIA-LAB hubs.
+	 * Enabling bit 9 of GUCTL1 enables the workaround in HW to reduce the
+	 * ULPI clock latency by 1 cycle, thus reducing the IPD (~360ns) and
+	 * making controller enumerate FS/LS devices connected behind VIA-LAB.
+	 */
+	if (dwc->enable_guctl1_ipd_quirk) {
+		reg = dwc3_readl(dwc->regs, DWC3_GUCTL1);
+		reg |= DWC3_GUCTL1_IPD_QUIRK;
+		dwc3_writel(dwc->regs, DWC3_GUCTL1, reg);
+	}
+
 	if (!DWC3_VER_IS_PRIOR(DWC3, 250A)) {
 		reg = dwc3_readl(dwc->regs, DWC3_GUCTL1);
 
@@ -1425,6 +1439,8 @@ static void dwc3_get_properties(struct dwc3 *dwc)
 
 	dwc->enable_guctl1_resume_quirk = device_property_read_bool(dev,
 				"snps,enable_guctl1_resume_quirk");
+	dwc->enable_guctl1_ipd_quirk = device_property_read_bool(dev,
+				"snps,enable_guctl1_ipd_quirk");
 	dwc->dis_metastability_quirk = device_property_read_bool(dev,
 				"snps,dis_metastability_quirk");
 

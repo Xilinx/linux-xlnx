@@ -392,6 +392,7 @@
 
 /* Global User Control Register 1 */
 #define DWC3_GUCTL1_RESUME_QUIRK		(1 << 10)
+#define DWC3_GUCTL1_IPD_QUIRK			(1 << 9)
 
 /* Global User Control Register 2 */
 #define DWC3_GUCTL2_RST_ACTBITLATER		BIT(14)
@@ -1078,6 +1079,8 @@ struct dwc3_scratchpad_array {
  *			change quirk.
  * @enable_guctl1_resume_quirk: Set if we enable quirk for fixing improper crc
  *			generation after resume from suspend.
+ * @enable_guctl1_ipd_quirk: set if we enable quirk for reducing timing of inter
+ *			packet delay(ipd).
  * @dis_tx_ipgap_linecheck_quirk: set if we disable u2mac linestate
  *			check during HS transmit.
  * @parkmode_disable_ss_quirk: set if we need to disable all SuperSpeed
@@ -1300,6 +1303,7 @@ struct dwc3 {
 	unsigned		dis_u2_freeclk_exists_quirk:1;
 	unsigned		dis_del_phy_power_chg_quirk:1;
 	unsigned		enable_guctl1_resume_quirk:1;
+	unsigned		enable_guctl1_ipd_quirk:1;
 	unsigned		dis_tx_ipgap_linecheck_quirk:1;
 	unsigned		parkmode_disable_ss_quirk:1;
 
