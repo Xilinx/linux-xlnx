@@ -1073,9 +1073,9 @@ struct dwc3_scratchpad_array {
  * @dis_start_transfer_quirk: set if start_transfer failure SW workaround is
  *			not needed for DWC_usb31 version 1.70a-ea06 and below
  * @usb3_lpm_capable: set if hadrware supports Link Power Management
- * @remote_wakeup: set if host supports Remote Wakeup from Peripheral
  * @usb2_lpm_disable: set to disable usb2 lpm for host
  * @usb2_gadget_lpm_disable: set to disable usb2 lpm for gadget
+ * @remote_wakeup: set if host supports Remote Wakeup from Peripheral
  * @disable_scramble_quirk: set if we enable the disable scramble quirk
  * @u2exit_lfps_quirk: set if we enable u2exit lfps quirk
  * @u2ss_inp3_quirk: set if we enable P3 OK for U2/SS Inactive quirk
@@ -1115,17 +1115,17 @@ struct dwc3_scratchpad_array {
  * @dis_split_quirk: set to disable split boundary.
  * @imod_interval: set the interrupt moderation interval in 250ns
  *			increments or 0 to disable.
+ * @max_cfg_eps: current max number of IN eps used across all USB configs.
+ * @last_fifo_depth: last fifo depth used to determine next fifo ram start
+ *		     address.
+ * @num_ep_resized: carries the current number endpoints which have had its tx
+ *		    fifo resized.
  * @is_d3: set if the controller is in d3 state
  * @saved_regs: registers to be saved/restored during hibernation/wakeup events
  * @irq_wakeup: wakeup IRQ number, triggered when host asks to wakeup from
  *              hibernation
  * @force_hiber_wake: flag set when the gadget driver is forcefully triggering
 		a hibernation wakeup event
- * @max_cfg_eps: current max number of IN eps used across all USB configs.
- * @last_fifo_depth: last fifo depth used to determine next fifo ram start
- *		     address.
- * @num_ep_resized: carries the current number endpoints which have had its tx
- *		    fifo resized.
  */
 struct dwc3 {
 	struct work_struct	drd_work;
@@ -1340,14 +1340,14 @@ struct dwc3 {
 	unsigned		async_callbacks:1;
 
 	u16			imod_interval;
-	bool			is_d3;
-	u32			*saved_regs;
-	u32			irq_wakeup;
-	bool			force_hiber_wake;
 
 	int			max_cfg_eps;
 	int			last_fifo_depth;
 	int			num_ep_resized;
+	bool			is_d3;
+	u32			*saved_regs;
+	u32			irq_wakeup;
+	bool			force_hiber_wake;
 };
 
 #define INCRX_BURST_MODE 0
@@ -1584,8 +1584,8 @@ int dwc3_send_gadget_ep_cmd(struct dwc3_ep *dep, unsigned int cmd,
 		struct dwc3_gadget_ep_cmd_params *params);
 int dwc3_send_gadget_generic_command(struct dwc3 *dwc, unsigned int cmd,
 		u32 param);
-int dwc3_core_init(struct dwc3 *dwc);
 void dwc3_gadget_clear_tx_fifos(struct dwc3 *dwc);
+int dwc3_core_init(struct dwc3 *dwc);
 #else
 static inline int dwc3_gadget_init(struct dwc3 *dwc)
 { return 0; }

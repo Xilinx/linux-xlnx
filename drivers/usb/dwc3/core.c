@@ -1051,7 +1051,7 @@ int dwc3_core_init(struct dwc3 *dwc)
 	}
 
 	ret = dwc3_setup_scratch_buffers(dwc);
-	if (ret ){
+	if (ret) {
 		dev_err(dwc->dev, "Failed to setup scratch buffers: %d\n", ret);
 		goto err1;
 	}
@@ -1746,6 +1746,7 @@ static int dwc3_probe(struct platform_device *pdev)
 	}
 
 	dwc3_check_params(dwc);
+	dwc3_debugfs_init(dwc);
 
 	ret = dwc3_core_init_mode(dwc);
 	if (ret)
@@ -1766,7 +1767,6 @@ static int dwc3_probe(struct platform_device *pdev)
 		}
 	}
 
-	dwc3_debugfs_init(dwc);
 	pm_runtime_put(dev);
 
 	return 0;

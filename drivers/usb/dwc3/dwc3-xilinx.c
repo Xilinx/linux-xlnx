@@ -64,14 +64,13 @@
 #define PIPE_CLK_DESELECT			1
 #define PIPE_CLK_SELECT				0
 #define XLNX_USB_FPD_POWER_PRSNT		0x80
+#define FPD_POWER_PRSNT_OPTION			BIT(0)
 
 enum dwc3_xlnx_core_state {
 	UNKNOWN_STATE = 0,
 	D0_STATE,
 	D3_STATE
 };
-
-#define FPD_POWER_PRSNT_OPTION			BIT(0)
 
 struct dwc3_xlnx {
 	int				num_clocks;
@@ -385,16 +384,6 @@ static int dwc3_xlnx_init_zynqmp(struct dwc3_xlnx *priv_data)
 	u32			reg;
 	struct gpio_desc	*reset_gpio = NULL;
 
-	usb3_phy = devm_phy_get(dev, "usb3-phy");
-	if (PTR_ERR(usb3_phy) == -EPROBE_DEFER) {
-		ret = -EPROBE_DEFER;
-		goto err;
-	} else if (IS_ERR(usb3_phy)) {
-		usb3_phy = NULL;
-		ret = 0;
-		goto skip_usb3_phy;
-	}
-
 	crst = devm_reset_control_get_exclusive(dev, "usb_crst");
 	if (IS_ERR(crst)) {
 		ret = PTR_ERR(crst);
@@ -418,6 +407,15 @@ static int dwc3_xlnx_init_zynqmp(struct dwc3_xlnx *priv_data)
 		dev_err_probe(dev, ret,
 			      "failed to get APB reset signal\n");
 		goto err;
+	}
+
+	usb3_phy = devm_phy_get(dev, "usb3-phy");
+	if (PTR_ERR(usb3_phy) == -EPROBE_DEFER) {
+		ret = -EPROBE_DEFER;
+		goto err;
+	} else if (IS_ERR(usb3_phy)) {
+		ret = 0;
+		goto skip_usb3_phy;
 	}
 
 	ret = reset_control_assert(crst);
@@ -486,9 +484,9 @@ skip_usb3_phy:
 
 	if (reset_gpio) {
 		/* Toggle ulpi to reset the phy. */
-		gpiod_set_value_cansleep(reset_gpio, 1);
+		gpiod_set_value(reset_gpio, 1);
 		usleep_range(5000, 10000); /* delay */
-		gpiod_set_value_cansleep(reset_gpio, 0);
+		gpiod_set_value(reset_gpio, 0);
 		usleep_range(5000, 10000); /* delay */
 	}
 
@@ -657,7 +655,7 @@ static int dwc3_xlnx_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static int __maybe_unused dwc3_xlnx_suspend_common(struct device *dev)
+static int __maybe_unused dwc3_xlnx_runtime_suspend(struct device *dev)
 {
 	struct dwc3_xlnx *priv_data = dev_get_drvdata(dev);
 
@@ -666,7 +664,7 @@ static int __maybe_unused dwc3_xlnx_suspend_common(struct device *dev)
 	return 0;
 }
 
-static int __maybe_unused dwc3_xlnx_resume_common(struct device *dev)
+static int __maybe_unused dwc3_xlnx_runtime_resume(struct device *dev)
 {
 	struct dwc3_xlnx *priv_data = dev_get_drvdata(dev);
 
@@ -720,8 +718,8 @@ static int __maybe_unused dwc3_xlnx_resume(struct device *dev)
 
 static const struct dev_pm_ops dwc3_xlnx_dev_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(dwc3_xlnx_suspend, dwc3_xlnx_resume)
-	SET_RUNTIME_PM_OPS(dwc3_xlnx_suspend_common,
-			dwc3_xlnx_resume_common, dwc3_xlnx_runtime_idle)
+	SET_RUNTIME_PM_OPS(dwc3_xlnx_runtime_suspend,
+			dwc3_xlnx_runtime_resume, dwc3_xlnx_runtime_idle)
 };
 
 static struct platform_driver dwc3_xlnx_driver = {

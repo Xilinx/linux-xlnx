@@ -547,4 +547,3 @@ err:
 	dev_err(dwc->dev, "Fail in handling Wakeup Interrupt\n");
 	return;
 }
-

@@ -2664,16 +2664,6 @@ static int __dwc3_gadget_start(struct dwc3 *dwc)
 
 	dwc3_gadget_setup_nump(dwc);
 
-	/* For OTG mode, check if the core is currently in Host mode.
-	 * This is not an error condition as there are times when the core is
-	 * working as host and kernel is told to initiate bind operation with
-	 * gadget class driver module.
-	 * The below remaining operations are handled in OTG driver whenever
-	 * required.
-	 */
-	if (dwc3_readl(dwc->regs, DWC3_GSTS) & DWC3_GSTS_CUR_MODE)
-		return 0;
-
 	/*
 	 * Currently the controller handles single stream only. So, Ignore
 	 * Packet Pending bit for stream selection and don't search for another
@@ -2684,6 +2674,16 @@ static int __dwc3_gadget_start(struct dwc3 *dwc)
 	reg = dwc3_readl(dwc->regs, DWC3_DCFG);
 	reg |= DWC3_DCFG_IGNSTRMPP;
 	dwc3_writel(dwc->regs, DWC3_DCFG, reg);
+
+	/* For OTG mode, check if the core is currently in Host mode.
+	 * This is not an error condition as there are times when the core is
+	 * working as host and kernel is told to initiate bind operation with
+	 * gadget class driver module.
+	 * The below remaining operations are handled in OTG driver whenever
+	 * required.
+	 */
+	if (dwc3_readl(dwc->regs, DWC3_GSTS) & DWC3_GSTS_CUR_MODE)
+		return 0;
 
 	/* Start with SuperSpeed Default */
 	dwc3_gadget_ep0_desc.wMaxPacketSize = cpu_to_le16(512);
@@ -2746,6 +2746,7 @@ static int dwc3_gadget_start(struct usb_gadget *g,
 		if (ret) {
 			dev_err(dwc->dev, "failed to request wakeup irq #%d --> %d\n",
 				irq, ret);
+			free_irq(dwc->irq_gadget, dwc);
 			return ret;
 		}
 	}
