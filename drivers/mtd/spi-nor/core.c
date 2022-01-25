@@ -2068,9 +2068,8 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 		++from;
 	}
 	ret = spi_nor_lock_and_prep(nor);
-	if (ret) {
+	if (ret)
 		return ret;
-	}
 
 	reinit_completion(&nor->spimem->request_completion);
 
