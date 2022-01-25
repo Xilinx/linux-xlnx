@@ -296,8 +296,8 @@ static const struct regulator_desc dwc3_xlnx_reg_desc = {
 	.ops = &dwc3_xlnx_reg_ops,
 };
 
-int dwc3_xlnx_register_regulator(struct device *dev,
-				 struct dwc3_xlnx *priv_data)
+static int dwc3_xlnx_register_regulator(struct device *dev,
+					struct dwc3_xlnx *priv_data)
 {
 	struct regulator_config config = { };
 	int ret = 0;
