@@ -271,6 +271,9 @@ static int xhci_plat_probe(struct platform_device *pdev)
 			return ret;
 	}
 
+	/* Set the controller as wakeup capable */
+	device_set_wakeup_capable(&pdev->dev, true);
+
 	pm_runtime_set_active(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
 	pm_runtime_get_noresume(&pdev->dev);
@@ -521,6 +524,9 @@ static int __maybe_unused xhci_plat_runtime_resume(struct device *dev)
 {
 	struct usb_hcd  *hcd = dev_get_drvdata(dev);
 	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
+
+	if (device_may_wakeup(&hcd->self.root_hub->dev))
+		disable_irq_wake(hcd->irq);
 
 	return xhci_resume(xhci, 0);
 }
