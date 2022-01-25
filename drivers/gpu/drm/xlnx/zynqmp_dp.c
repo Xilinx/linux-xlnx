@@ -418,10 +418,6 @@ static int zynqmp_dp_phy_init(struct zynqmp_dp *dp)
 	int ret;
 	int i;
 
-	ret = zynqmp_dp_reset(dp, true);
-	if (ret < 0)
-		return ret;
-
 	for (i = 0; i < dp->num_lanes; i++) {
 		ret = phy_init(dp->phy[i]);
 		if (ret) {
@@ -429,10 +425,6 @@ static int zynqmp_dp_phy_init(struct zynqmp_dp *dp)
 			return ret;
 		}
 	}
-
-	ret = zynqmp_dp_reset(dp, false);
-	if (ret < 0)
-		return ret;
 
 	zynqmp_dp_write(dp->iomem, ZYNQMP_DP_SUB_TX_INTR_DS, ZYNQMP_DP_TX_INTR_ALL);
 	zynqmp_dp_clr(dp->iomem, ZYNQMP_DP_TX_PHY_CONFIG, ZYNQMP_DP_TX_PHY_CONFIG_ALL_RESET);
@@ -1920,6 +1912,15 @@ int zynqmp_dp_probe(struct platform_device *pdev)
 	if (IS_ERR(dp->iomem))
 		return PTR_ERR(dp->iomem);
 
+	dp->reset = devm_reset_control_get(dp->dev, NULL);
+	if (IS_ERR(dp->reset))
+		return dev_err_probe(dp->dev, PTR_ERR(dp->reset),
+			"failed to get reset: %ld\n", PTR_ERR(dp->reset));
+
+	ret = zynqmp_dp_reset(dp, false);
+	if (ret < 0)
+		return ret;
+
 	zynqmp_dp_write(dp->iomem, ZYNQMP_DP_TX_PHY_POWER_DOWN,
 			ZYNQMP_DP_TX_PHY_POWER_DOWN_ALL);
 	zynqmp_dp_set(dp->iomem, ZYNQMP_DP_TX_PHY_CONFIG,
@@ -1927,14 +1928,9 @@ int zynqmp_dp_probe(struct platform_device *pdev)
 	zynqmp_dp_write(dp->iomem, ZYNQMP_DP_TX_FORCE_SCRAMBLER_RESET, 1);
 	zynqmp_dp_write(dp->iomem, ZYNQMP_DP_TX_ENABLE, 0);
 
-	dp->reset = devm_reset_control_get(dp->dev, NULL);
-	if (IS_ERR(dp->reset))
-		return dev_err_probe(dp->dev, PTR_ERR(dp->reset),
-			"failed to get reset: %ld\n", PTR_ERR(dp->reset));
-
 	ret = zynqmp_dp_phy_probe(dp);
 	if (ret)
-		return ret;
+		goto error_reset;
 
 	ret = zynqmp_dp_phy_init(dp);
 	if (ret)
@@ -1984,6 +1980,9 @@ error:
 	drm_dp_aux_unregister(&dp->aux);
 error_phy:
 	zynqmp_dp_phy_exit(dp);
+error_reset:
+	zynqmp_dp_reset(dp, true);
+
 	return ret;
 }
 
@@ -1995,6 +1994,7 @@ int zynqmp_dp_remove(struct platform_device *pdev)
 	zynqmp_dp_write(dp->iomem, ZYNQMP_DP_TX_ENABLE, 0);
 	drm_dp_aux_unregister(&dp->aux);
 	zynqmp_dp_phy_exit(dp);
+	zynqmp_dp_reset(dp, true);
 	dpsub->dp = NULL;
 
 	return 0;
