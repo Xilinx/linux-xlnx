@@ -24,6 +24,7 @@ config USB_DWC3_ULPI
 choice
 	bool "DWC3 Mode Selection"
 	default USB_DWC3_DUAL_ROLE if (USB && USB_GADGET)
+	default USB_DWC3_OTG if (USB && USB_GADGET && USB_OTG && USB_OTG_FSM)
 	default USB_DWC3_HOST if (USB && !USB_GADGET)
 	default USB_DWC3_GADGET if (!USB && USB_GADGET)
 
@@ -48,6 +49,15 @@ config USB_DWC3_DUAL_ROLE
 	help
 	  This is the default mode of working of DWC3 controller where
 	  both host and gadget features are enabled.
+
+config USB_DWC3_OTG
+	bool "Dual Role mode + OTG"
+	depends on ((USB=y || USB=USB_DWC3) && \
+			(USB_GADGET=y || USB_GADGET=USB_DWC3) && \
+				USB_OTG && USB_OTG_FSM && PM)
+	help
+	  This is the default mode of working of DWC3 controller where
+	  both host and gadget features are enabled with OTG support.
 
 endchoice
 
