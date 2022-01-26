@@ -1591,7 +1591,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_get_node_status);
  *						characteristic information
  * @node:	Node ID of the slave
  * @type:	Type of the operating characteristic requested
- * @result:	Used to return the reqeusted operating characteristic
+ * @result:	Used to return the requested operating characteristic
  *
  * Return:	Returns status, either success or error+reason
  */
