@@ -1930,7 +1930,7 @@ int zynqmp_dp_probe(struct platform_device *pdev)
 
 	ret = zynqmp_dp_phy_probe(dp);
 	if (ret)
-		goto error_reset;
+		goto err_reset;
 
 	ret = zynqmp_dp_phy_init(dp);
 	if (ret)
@@ -1980,7 +1980,7 @@ error:
 	drm_dp_aux_unregister(&dp->aux);
 error_phy:
 	zynqmp_dp_phy_exit(dp);
-error_reset:
+err_reset:
 	zynqmp_dp_reset(dp, true);
 
 	return ret;
