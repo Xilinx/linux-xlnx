@@ -365,7 +365,7 @@ static void xlnx_call_notify_cb_handler(const u32 *payload)
 			eve_data->eve_cb(&payload[0], eve_data->agent_data);
 			is_callback_found = true;
 
-			/* re regisfer with firmware to get future events */
+			/* re register with firmware to get future events */
 			ret = zynqmp_pm_register_notifier(payload[1], payload[2],
 							  eve_data->wake, true);
 			if (ret) {
