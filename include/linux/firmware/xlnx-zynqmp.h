@@ -109,6 +109,7 @@
 
 enum pm_api_cb_id {
 	PM_INIT_SUSPEND_CB = 30,
+	PM_ACKNOWLEDGE_CB = 31,
 	PM_NOTIFY_CB = 32,
 };
 
