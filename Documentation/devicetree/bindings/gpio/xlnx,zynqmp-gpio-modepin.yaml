@@ -32,10 +32,12 @@ additionalProperties: false
 
 examples:
   - |
-    modepin_gpio: gpio {
-        compatible = "xlnx,zynqmp-gpio-modepin";
-        gpio-controller;
-        #gpio-cells = <2>;
+    zynqmp-firmware {
+        gpio {
+            compatible = "xlnx,zynqmp-gpio-modepin";
+            gpio-controller;
+            #gpio-cells = <2>;
+        };
     };
 
 ...
