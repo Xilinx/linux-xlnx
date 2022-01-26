@@ -594,12 +594,6 @@ enum pm_register_access_id {
 	CONFIG_REG_READ = 1,
 };
 
-enum ospi_mux_select_type {
-	PM_OSPI_MUX_SEL_DMA = 0,
-	PM_OSPI_MUX_SEL_LINEAR = 1,
-	PM_OSPI_MUX_GET_MODE = 2,
-};
-
 enum pm_reset_reason {
 	PM_RESET_REASON_EXT_POR = 0,
 	PM_RESET_REASON_SW_POR = 1,
@@ -633,6 +627,11 @@ enum pm_gem_config_type {
 
 enum pm_usb_config_type {
 	USB_CONFIG_FIXED = 1, /* To set fixed config registers */
+};
+
+enum ospi_mux_select_type {
+	PM_OSPI_MUX_SEL_DMA = 0,
+	PM_OSPI_MUX_SEL_LINEAR = 1,
 };
 
 /**
@@ -671,6 +670,7 @@ int zynqmp_pm_set_pll_frac_data(u32 clk_id, u32 data);
 int zynqmp_pm_get_pll_frac_data(u32 clk_id, u32 *data);
 int zynqmp_pm_set_sd_tapdelay(u32 node_id, u32 type, u32 value);
 int zynqmp_pm_sd_dll_reset(u32 node_id, u32 type);
+int zynqmp_pm_ospi_mux_select(u32 dev_id, u32 select);
 int zynqmp_pm_reset_assert(const u32 reset,
 			   const enum zynqmp_pm_reset_action assert_flag);
 int zynqmp_pm_reset_get_status(const u32 reset, u32 *status);
@@ -728,7 +728,6 @@ int zynqmp_pm_set_sgmii_mode(u32 enable);
 int zynqmp_pm_ulpi_reset(void);
 int zynqmp_pm_probe_counter_read(u32 domain, u32 reg, u32 *value);
 int zynqmp_pm_probe_counter_write(u32 domain, u32 reg, u32 value);
-int zynqmp_pm_ospi_mux_select(u32 dev_id, u32 select);
 int zynqmp_pm_get_last_reset_reason(u32 *reset_reason);
 int zynqmp_pm_system_shutdown(const u32 type, const u32 subtype);
 int zynqmp_pm_set_boot_health_status(u32 value);
@@ -861,6 +860,11 @@ static inline int zynqmp_pm_set_sd_tapdelay(u32 node_id, u32 type, u32 value)
 }
 
 static inline int zynqmp_pm_sd_dll_reset(u32 node_id, u32 type)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_ospi_mux_select(u32 dev_id, u32 select)
 {
 	return -ENODEV;
 }
@@ -1192,11 +1196,6 @@ static inline int zynqmp_pm_probe_counter_read(u32 deviceid, u32 reg, u32 *value
 }
 
 static inline int zynqmp_pm_probe_counter_write(u32 domain, u32 reg, u32 value)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_ospi_mux_select(u32 dev_id, u32 select)
 {
 	return -ENODEV;
 }
