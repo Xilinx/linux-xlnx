@@ -2889,7 +2889,7 @@ static int zynqmp_firmware_probe(struct platform_device *pdev)
 		em_dev = platform_device_register_data(&pdev->dev, "xlnx_event_manager",
 						       -1, NULL, 0);
 		if (IS_ERR(em_dev))
-			dev_err_probe(&pdev->dev, PTR_ERR(pdev), "EM register fail with error\n");
+			dev_err_probe(&pdev->dev, PTR_ERR(em_dev), "EM register fail with error\n");
 	}
 	of_node_put(np);
 
