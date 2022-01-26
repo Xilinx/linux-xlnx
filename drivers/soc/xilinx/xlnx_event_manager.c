@@ -554,13 +554,14 @@ static int xlnx_event_manager_probe(struct platform_device *pdev)
 
 	ret = zynqmp_pm_register_sgi(sgi_num, 0);
 	if (ret) {
-		dev_err(&pdev->dev, "SGI Registration over ATF failed with %d\n", ret);
+		dev_err(&pdev->dev, "SGI %d Registration over ATF failed with %d\n", sgi_num, ret);
 		xlnx_event_cleanup_sgi(pdev);
 		return ret;
 	}
 
 	event_manager_availability = 0;
 
+	dev_info(&pdev->dev, "SGI %d Registered over ATF\n", sgi_num);
 	dev_info(&pdev->dev, "Xilinx Event Management driver probed\n");
 
 	return ret;
@@ -596,4 +597,5 @@ static struct platform_driver xlnx_event_manager_driver = {
 		.name = "xlnx_event_manager",
 	},
 };
+module_param(sgi_num, uint, 0);
 module_platform_driver(xlnx_event_manager_driver);
