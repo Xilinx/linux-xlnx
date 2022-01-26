@@ -1276,8 +1276,8 @@ static inline int zynqmp_pm_set_usb_config(u32 node,
 	return -ENODEV;
 }
 
-int zynqmp_pm_get_meta_header(const u64 src, const u64 dst,
-			      const u32 size, u32 *count)
+static inline int zynqmp_pm_get_meta_header(const u64 src, const u64 dst,
+					    const u32 size, u32 *count)
 {
 	return -ENODEV;
 }
