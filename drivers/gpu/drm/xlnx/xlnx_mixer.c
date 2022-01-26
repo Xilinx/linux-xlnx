@@ -2056,7 +2056,7 @@ static void xlnx_mix_plane_atomic_update(struct drm_plane *plane,
 {
 	int ret;
 	struct drm_plane_state *old_state = drm_atomic_get_old_plane_state(state, plane);
-	
+
 	if (!plane->state->crtc || !plane->state->fb)
 		return;
 
