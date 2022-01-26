@@ -364,21 +364,21 @@
 #define XPM_EVENT_ERROR_MASK_PMCXPPU		BIT(28)
 
 /**
- * XPM_EVENT_ERROR_MASK_SSIT0: Error event mask for For Master SLR:
+ * XPM_EVENT_ERROR_MASK_SSIT0: Error event mask for Master SLR:
  * SSIT Error from Slave SLR1.,
  * For Slave SLRs: SSIT Error0 from Master SLR.
  */
 #define XPM_EVENT_ERROR_MASK_SSIT0		BIT(29)
 
 /**
- * XPM_EVENT_ERROR_MASK_SSIT1: Error event mask for For Master SLR:
+ * XPM_EVENT_ERROR_MASK_SSIT1: Error event mask for Master SLR:
  * SSIT Error from Slave SLR2.,
  * For Slave SLRs: SSIT Error1 from Master SLR.
  */
 #define XPM_EVENT_ERROR_MASK_SSIT1		BIT(30)
 
 /**
- * XPM_EVENT_ERROR_MASK_SSIT2: Error event mask for For Master SLR:
+ * XPM_EVENT_ERROR_MASK_SSIT2: Error event mask for Master SLR:
  * SSIT Error from Slave SLR3.,
  * For Slave SLRs: SSIT Error2 from Master SLR.
  */
