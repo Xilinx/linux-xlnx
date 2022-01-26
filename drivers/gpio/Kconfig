@@ -765,7 +765,8 @@ config GPIO_ZYNQ
 
 config GPIO_ZYNQMP_MODEPIN
 	tristate "ZynqMP ps-mode pin gpio configuration driver"
-	depends on ZYNQMP_FIRMWARE && ARCH_ZYNQMP
+	depends on ZYNQMP_FIRMWARE
+	default ZYNQMP_FIRMWARE
 	help
 	  Say yes here to support the ZynqMP ps-mode pin gpio configuration
 	  driver.

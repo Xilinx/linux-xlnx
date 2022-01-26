@@ -11,13 +11,12 @@
 #include <linux/io.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/firmware/xlnx-zynqmp.h>
 
+/* 4-bit boot mode pins */
 #define MODE_PINS			4
-#define GET_OUTEN_PIN(pin)		(1U << (pin))
 
 /**
  * modepin_gpio_get_value - Get the state of the specified pin of GPIO device
@@ -31,19 +30,20 @@
  */
 static int modepin_gpio_get_value(struct gpio_chip *chip, unsigned int pin)
 {
-	u32 out_en;
 	u32 regval = 0;
 	int ret;
 
-	out_en = GET_OUTEN_PIN(pin);
-
 	ret = zynqmp_pm_bootmode_read(&regval);
-	if (ret) {
-		pr_err("modepin: get value err %d\n", ret);
+	if (ret)
 		return ret;
-	}
 
-	return (out_en & (regval >> 8U)) ? 1 : 0;
+	/* When [0:3] corresponding bit is set, then read output bit [8:11],
+	 * if the bit is clear then read input bit [4:7] for status or value.
+	 */
+	if (regval & BIT(pin))
+		return !!(regval & BIT(pin + 8));
+	else
+		return !!(regval & BIT(pin + 4));
 }
 
 /**
@@ -52,23 +52,31 @@ static int modepin_gpio_get_value(struct gpio_chip *chip, unsigned int pin)
  * @pin:	gpio pin number within the device
  * @state:	value used to modify the state of the specified pin
  *
+ * This function reads the state of the specified pin of the GPIO device, mask
+ * with the capture state of GPIO pin, and update pin of GPIO device.
+ *
  * Return:	None.
  */
 static void modepin_gpio_set_value(struct gpio_chip *chip, unsigned int pin,
 				   int state)
 {
-	u32 out_en;
 	u32 bootpin_val = 0;
 	int ret;
 
-	out_en = GET_OUTEN_PIN(pin);
-	state = state != 0 ? out_en : 0;
-	bootpin_val = (state << (8U)) | out_en;
+	zynqmp_pm_bootmode_read(&bootpin_val);
+
+	/* Configure pin as an output by set bit [0:3] */
+	bootpin_val |= BIT(pin);
+
+	if (state)
+		bootpin_val |= BIT(pin + 8);
+	else
+		bootpin_val &= ~BIT(pin + 8);
 
 	/* Configure bootpin value */
 	ret = zynqmp_pm_bootmode_write(bootpin_val);
 	if (ret)
-		pr_err("modepin: %s failed\n", __func__);
+		pr_err("modepin: set value error %d for pin %d\n", ret, pin);
 }
 
 /**
@@ -128,7 +136,7 @@ static int modepin_gpio_probe(struct platform_device *pdev)
 	/* modepin gpio registration */
 	status = devm_gpiochip_add_data(&pdev->dev, chip, chip);
 	if (status)
-		dev_err_probe(&pdev->dev, status,
+		return dev_err_probe(&pdev->dev, status,
 			      "Failed to add GPIO chip\n");
 
 	return status;
