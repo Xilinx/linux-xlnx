@@ -125,6 +125,7 @@ enum pm_api_id {
 	PM_CLOCK_GETRATE = 42,
 	PM_CLOCK_SETPARENT = 43,
 	PM_CLOCK_GETPARENT = 44,
+	PM_FPGA_READ = 46,
 	PM_SECURE_AES = 47,
 	/* PM_REGISTER_ACCESS API */
 	PM_REGISTER_ACCESS = 52,
@@ -481,6 +482,8 @@ int zynqmp_pm_set_requirement(const u32 node, const u32 capabilities,
 			      const enum zynqmp_pm_request_ack ack);
 int zynqmp_pm_aes_engine(const u64 address, u32 *out);
 int zynqmp_pm_efuse_access(const u64 address, u32 *out);
+int zynqmp_pm_fpga_read(const u32 reg_numframes, const u64 phys_address,
+			u32 readback_type, u32 *value);
 int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_config_reg_access(u32 register_access_id, u32 address, u32 mask,
@@ -850,6 +853,13 @@ static inline int zynqmp_pm_request_wakeup(const u32 node, const bool set_addr,
 static inline int zynqmp_pm_set_wakeup_source(const u32 target,
 					      const u32 wakeup_node,
 					      const u32 enable)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_fpga_read(const u32 reg_numframes,
+				      const u64 phys_address, u32 readback_type,
+				      u32 *value)
 {
 	return -ENODEV;
 }
