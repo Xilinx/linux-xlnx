@@ -328,7 +328,7 @@ static int xemaclite_send_data(struct net_local *drvdata, u8 *data,
 		 * if it is configured in HW
 		 */
 
-		addr = (void __iomem __force *)((ulong __force)addr ^
+		addr = (void __iomem __force *)((uintptr_t __force)addr ^
 						 XEL_BUFFER_OFFSET);
 		reg_data = xemaclite_readl(addr + XEL_TSR_OFFSET);
 
@@ -390,8 +390,9 @@ static u16 xemaclite_recv_data(struct net_local *drvdata, u8 *data, int maxlen)
 		 * will correct on subsequent calls
 		 */
 		if (drvdata->rx_ping_pong != 0)
-			addr = (void __iomem __force *)((ulong __force)addr ^
-							 XEL_BUFFER_OFFSET);
+			addr = (void __iomem __force *)
+				((uintptr_t __force)addr ^
+				 XEL_BUFFER_OFFSET);
 		else
 			return 0;	/* No data was available */
 
