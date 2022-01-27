@@ -62,6 +62,13 @@
 #define PM_SET_SUSPEND_MODE		0xa02
 #define GET_CALLBACK_DATA		0xa01
 
+/* NVM Commands */
+#define PM_BBRAM_WRITE_KEY		0xB01
+#define PM_BBRAM_ZEROIZE		0xB02
+#define PM_BBRAM_WRITE_USERDATA		0xB03
+#define PM_BBRAM_READ_USERDATA		0xB04
+#define PM_BBRAM_LOCK_USERDATA		0xB05
+
 /* xilSecure API commands  module id + api id */
 #define XSECURE_API_SHA3_UPDATE		0x504
 #define XSECURE_API_AES_OP_INIT		0x50a
@@ -71,6 +78,9 @@
 #define XSECURE_API_AES_DECRYPT_UPDATE	0x50e
 #define XSECURE_API_AES_DECRYPT_FINAL	0x50f
 #define XSECURE_API_AES_WRITE_KEY	0x511
+
+/* Secure Commands */
+#define PM_WRITE_AES_KEY		0x568
 
 /* XilPuf API commands module id + api id */
 #define XPUF_API_PUF_REGISTRATION	0xc01
@@ -630,6 +640,12 @@ int zynqmp_pm_set_requirement(const u32 node, const u32 capabilities,
 			      const enum zynqmp_pm_request_ack ack);
 int zynqmp_pm_aes_engine(const u64 address, u32 *out);
 int zynqmp_pm_efuse_access(const u64 address, u32 *out);
+int zynqmp_pm_write_aes_key(const u32 keylen, const u32 keysrc, const u64 keyaddr);
+int zynqmp_pm_bbram_write_usrdata(u32 data);
+int zynqmp_pm_bbram_read_usrdata(const u64 outaddr);
+int zynqmp_pm_bbram_write_aeskey(u32 keylen, const u64 keyaddr);
+int zynqmp_pm_bbram_zeroize(void);
+int zynqmp_pm_bbram_lock_userdata(void);
 int zynqmp_pm_fpga_read(const u32 reg_numframes, const u64 phys_address,
 			u32 readback_type, u32 *value);
 int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags);
@@ -969,6 +985,36 @@ static inline int zynqmp_pm_load_pdi(const u32 src, const u64 address)
 static inline int zynqmp_pm_fpga_read(const u32 reg_numframes,
 				      const u64 phys_address, u32 readback_type,
 				      u32 *value)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_write_aes_key(const u32 keylen, const u32 keysrc, const u64 keyaddr)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_bbram_write_usrdata(u32 data)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_bbram_read_usrdata(const u64 outaddr)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_bbram_write_aeskey(const u64 keyaddr, u16 keylen)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_bbram_zeroize(void)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_bbram_lock_userdata(void)
 {
 	return -ENODEV;
 }
