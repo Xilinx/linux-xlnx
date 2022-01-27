@@ -47,6 +47,8 @@
 /* To Get UID info list */
 #define PM_GET_UID_INFO_LIST		0x705
 
+#define PM_GET_META_HEADER_INFO_LIST	0x706
+
 /* Number of 32bits values in payload */
 #define PAYLOAD_ARG_CNT	4U
 
@@ -665,6 +667,9 @@ int zynqmp_pm_set_gem_config(u32 node, enum pm_gem_config_type config,
 			     u32 value);
 int zynqmp_pm_set_usb_config(u32 node, enum pm_usb_config_type config,
 			     u32 value);
+int zynqmp_pm_get_meta_header(const u64 src, const u64 dst,
+			      const u32 size, u32 *count);
+
 #else
 static inline int zynqmp_pm_get_api_version(u32 *version)
 {
@@ -1150,6 +1155,12 @@ static inline int zynqmp_pm_set_gem_config(u32 node,
 static inline int zynqmp_pm_set_usb_config(u32 node,
 					   enum pm_usb_config_type config,
 					   u32 value)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_get_meta_header(const u64 src, const u64 dst,
+					    const u32 size, u32 *count)
 {
 	return -ENODEV;
 }

@@ -14,6 +14,7 @@
 #include <linux/compiler.h>
 #include <linux/device.h>
 #include <linux/dma-mapping.h>
+#include <linux/firmware.h>
 #include <linux/init.h>
 #include <linux/mfd/core.h>
 #include <linux/module.h>
@@ -47,6 +48,8 @@ static DEFINE_HASHTABLE(pm_api_features_map, PM_API_FEATURE_CHECK_MAX_ORDER);
 
 static unsigned long register_address;
 static struct platform_device *em_dev;
+
+static char image_name[NAME_MAX];
 
 /**
  * struct pm_api_feature_data - PM API Feature data
@@ -1191,6 +1194,37 @@ int zynqmp_pm_get_uid_info(const u64 address, const u32 size, u32 *count)
 EXPORT_SYMBOL_GPL(zynqmp_pm_get_uid_info);
 
 /**
+ * zynqmp_pm_get_meta_header - It is used to get image meta header Info
+ * @src:	PDI Image source buffer address.
+ * @dst:	Meta-header destination buffer address
+ * @size:	Size of the PDI image.
+ * @count:	Number of bytes read from the firmware.
+ *
+ * This function provides a support to get the image meta header Info
+ *
+ * Return: Returns status, either success or error+reason
+ */
+int zynqmp_pm_get_meta_header(const u64 src, const u64 dst,
+			      const u32 size, u32 *count)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	if (!count)
+		return -EINVAL;
+
+	ret = zynqmp_pm_invoke_fn(PM_GET_META_HEADER_INFO_LIST,
+				  upper_32_bits(src), lower_32_bits(src),
+				  upper_32_bits(dst), lower_32_bits(dst),
+				  size, ret_payload);
+
+	*count = ret_payload[1];
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_get_meta_header);
+
+/**
  * zynqmp_pm_fpga_read - Perform the fpga configuration readback
  * @reg_numframes: Configuration register offset (or) Number of frames to read
  * @phys_address: Physical Address of the buffer
@@ -2292,6 +2326,21 @@ static ssize_t feature_config_value_store(struct device *device,
 
 static DEVICE_ATTR_RW(feature_config_value);
 
+static ssize_t firmware_store(struct device *dev,
+			      struct device_attribute *attr,
+			      const char *buf, size_t count)
+{
+	unsigned int len;
+
+	len = strscpy(image_name, buf, NAME_MAX);
+	/* lose terminating \n */
+	if (image_name[len - 1] == '\n')
+		image_name[len - 1] = 0;
+
+	return count;
+}
+static DEVICE_ATTR_WO(firmware);
+
 static struct attribute *zynqmp_firmware_attrs[] = {
 	&dev_attr_ggs0.attr,
 	&dev_attr_ggs1.attr,
@@ -2306,6 +2355,7 @@ static struct attribute *zynqmp_firmware_attrs[] = {
 	&dev_attr_last_reset_reason.attr,
 	&dev_attr_feature_config_id.attr,
 	&dev_attr_feature_config_value.attr,
+	&dev_attr_firmware.attr,
 	NULL,
 };
 
@@ -2500,6 +2550,56 @@ static const struct bin_attribute uid_attr = {
 	.read = firmware_uid_get_data,
 };
 
+static ssize_t firmware_meta_header_get_data(struct file *filp,
+					     struct kobject *kobj,
+					     struct bin_attribute *attr,
+					     char *buf, loff_t off,
+					     size_t count)
+{
+	struct device *kdev = kobj_to_dev(kobj);
+	const struct firmware *fw;
+	dma_addr_t dma_addr = 0;
+	char *kbuf;
+	u32 size;
+	int ret;
+
+	ret = request_firmware(&fw, image_name, kdev);
+	if (ret) {
+		dev_err(kdev, "Error requesting firmware %s\n", image_name);
+		return ret;
+	}
+
+	kbuf = dma_alloc_coherent(kdev, fw->size, &dma_addr, GFP_KERNEL);
+	if (!kbuf) {
+		ret = -ENOMEM;
+		goto free_firmware;
+	}
+
+	memcpy(kbuf, fw->data, fw->size);
+
+	/* Read from the firmware memory */
+	ret = zynqmp_pm_get_meta_header(dma_addr, dma_addr, fw->size, &size);
+	if (ret)
+		goto free_dma;
+
+	memcpy(buf, kbuf, size);
+	ret = size;
+
+free_dma:
+	dma_free_coherent(kdev, fw->size, kbuf, dma_addr);
+free_firmware:
+	release_firmware(fw);
+
+	return ret;
+}
+
+static const struct bin_attribute meta_header_attr = {
+	.attr.name = "meta-header-read",
+	.attr.mode = 00400,
+	.size = 1,
+	.read = firmware_meta_header_get_data,
+};
+
 static int zynqmp_firmware_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -2572,6 +2672,13 @@ static int zynqmp_firmware_probe(struct platform_device *pdev)
 	if (ret) {
 		pr_err("%s() Failed to create sysfs binary file for uid-read with error%d\n",
 		       __func__, ret);
+		return ret;
+	}
+
+	ret = sysfs_create_bin_file(&pdev->dev.kobj, &meta_header_attr);
+	if (ret) {
+		dev_err(dev, "%s() Failed to create sysfs binary file for meta-header-read with error%d\n",
+			__func__, ret);
 		return ret;
 	}
 
