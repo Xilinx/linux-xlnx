@@ -1287,6 +1287,47 @@ int zynqmp_pm_config_reg_access(u32 register_access_id, u32 address,
 EXPORT_SYMBOL_GPL(zynqmp_pm_config_reg_access);
 
 /**
+ * zynqmp_pm_mmio_read - Provide access to register read.
+ * @address:	Address of the register to be accessed
+ * @out:	Returned output value
+ *
+ * This function calls MMIO_READ to read the register.
+ *
+ * Return:	Returns status, either success or error+reason
+ */
+
+int zynqmp_pm_mmio_read(u32 address, u32 *out)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	ret = zynqmp_pm_invoke_fn(PM_MMIO_READ, address, 0, 0, 0,
+				  ret_payload);
+	*out = ret_payload[1];
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_mmio_read);
+
+/**
+ * zynqmp_pm_mmio_write - Provide access to register write.
+ * @address:	Address of the register to be accessed
+ * @mask:	Mask to be written to the register
+ * @value:	Value to be written to the register
+ *
+ * This function calls MMIO_WRITE to write the register.
+ *
+ * Return:	Returns status, either success or error+reason
+ */
+
+int zynqmp_pm_mmio_write(u32 address, u32 mask, u32 value)
+{
+	return zynqmp_pm_invoke_fn(PM_MMIO_WRITE, address, mask,
+				   value, 0, NULL);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_mmio_write);
+
+/**
  * zynqmp_pm_bootmode_read() - PM Config API for read bootpin status
  * @ps_mode: Returned output value of ps_mode
  *
