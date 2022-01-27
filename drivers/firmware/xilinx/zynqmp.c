@@ -972,6 +972,57 @@ int zynqmp_pm_fpga_get_status(u32 *value)
 EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_get_status);
 
 /**
+ * zynqmp_pm_fpga_get_version -Get xilfpga component version info
+ * @value: Value to read
+ *
+ * This function provides access to the pmufw to get the xilfpga
+ * component version info.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+int zynqmp_pm_fpga_get_version(u32 *value)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	if (!value)
+		return -EINVAL;
+
+	ret = zynqmp_pm_invoke_fn(PM_FPGA_GET_VERSION, 0, 0, 0, 0, 0,
+				  ret_payload);
+	*value = ret_payload[1];
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_get_version);
+
+/**
+ * zynqmp_pm_fpga_get_feature_list - Get xilfpga component supported feature
+ * list.
+ * @value: Value to read
+ *
+ * This function provides access to the pmufw to get the xilfpga component
+ * supported feature list.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+int zynqmp_pm_fpga_get_feature_list(u32 *value)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	if (!value)
+		return -EINVAL;
+
+	ret = zynqmp_pm_invoke_fn(PM_FPGA_GET_FEATURE_LIST, 0, 0, 0, 0, 0,
+				  ret_payload);
+	*value = ret_payload[1];
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_get_feature_list);
+
+/**
  * zynqmp_pm_pinctrl_request - Request Pin from firmware
  * @pin: Pin number to request
  *

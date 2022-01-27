@@ -166,6 +166,8 @@ enum pm_api_id {
 	/* PM_REGISTER_ACCESS API */
 	PM_REGISTER_ACCESS = 52,
 	PM_EFUSE_ACCESS = 53,
+	PM_FPGA_GET_VERSION = 54,
+	PM_FPGA_GET_FEATURE_LIST = 55,
 	PM_FEATURE_CHECK = 63,
 };
 
@@ -688,6 +690,8 @@ int zynqmp_pm_get_meta_header(const u64 src, const u64 dst,
 			      const u32 size, u32 *count);
 int zynqmp_pm_register_sgi(u32 sgi_num, u32 reset);
 int zynqmp_pm_aie_operation(u32 node, u16 start_col, u16 num_col, u32 operation);
+int zynqmp_pm_fpga_get_version(u32 *value);
+int zynqmp_pm_fpga_get_feature_list(u32 *value);
 #else
 static inline int zynqmp_pm_get_api_version(u32 *version)
 {
@@ -1190,6 +1194,16 @@ static inline int zynqmp_pm_register_sgi(u32 sgi_num, u32 reset)
 
 static inline int zynqmp_pm_aie_operation(u32 node, u16 start_col,
 					  u16 num_col, u32 operation)
+{
+	return -ENODEV;
+}
+
+static int zynqmp_pm_fpga_get_version(u32 *value)
+{
+	return -ENODEV;
+}
+
+static int zynqmp_pm_fpga_get_feature_list(u32 *value)
 {
 	return -ENODEV;
 }
