@@ -1331,7 +1331,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_bbram_lock_userdata);
  * @address:	Buffer address
  * @size:	Number of bytes required to read from the firmware.
  * @count:	Number of bytes read from the firmware.
- *.
+ *
  * This function provides support to used to get image Info List
  *
  * Return: Returns status, either success or error+reason
@@ -1644,7 +1644,6 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_get_operating_characteristic);
  *
  * Return:	Returns status, either success or error+reason
  */
-
 int zynqmp_pm_config_reg_access(u32 register_access_id, u32 address,
 				u32 mask, u32 value, u32 *out)
 {
