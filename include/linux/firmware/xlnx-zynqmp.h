@@ -95,6 +95,8 @@
 /* To Get UID info list */
 #define PM_GET_UID_INFO_LIST		0x705
 
+#define PM_GET_META_HEADER_INFO_LIST	0x706
+
 /* Number of 32bits values in payload */
 #define PAYLOAD_ARG_CNT	4U
 
@@ -716,6 +718,8 @@ int zynqmp_pm_xilsem_cntrl_ops(u32 cmd, u32 *const response);
 int zynqmp_pm_xilsem_cram_errinj(u32 frame, u32 qword, u32 bit, u32 row, u32 *const response);
 int zynqmp_pm_xilsem_cram_readecc(u32 frame, u32 row, u32 *const response);
 int zynqmp_pm_xilsem_read_cfg(u32 *const response);
+int zynqmp_pm_get_meta_header(const u64 src, const u64 dst,
+			      const u32 size, u32 *count);
 int zynqmp_pm_aie_operation(u32 node, u16 start_col, u16 num_col, u32 operation);
 int versal_pm_puf_registration(const u64 in_addr);
 int versal_pm_puf_regeneration(const u64 in_addr);
@@ -1174,6 +1178,12 @@ static inline int zynqmp_pm_xilsem_cram_errinj(u32 frame, u32 qword, u32 bit,
 }
 
 static inline int zynqmp_pm_xilsem_read_cfg(u32 *const response)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_get_meta_header(const u64 src, const u64 dst,
+					    const u32 size, u32 *count)
 {
 	return -ENODEV;
 }
