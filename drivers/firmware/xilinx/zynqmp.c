@@ -1196,6 +1196,24 @@ int zynqmp_pm_pinctrl_get_config(const u32 pin, const u32 param,
 EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_get_config);
 
 /**
+ * zynqmp_pm_pinctrl_set_config - Set configuration parameter for the pin
+ * @pin: Pin number
+ * @param: Parameter to set
+ * @value: Parameter value to set
+ *
+ * This function sets requested configuration parameter for the given pin.
+ *
+ * Return: Returns status, either success or error+reason.
+ */
+int zynqmp_pm_pinctrl_set_config(const u32 pin, const u32 param,
+				 u32 value)
+{
+	return zynqmp_pm_invoke_fn(PM_PINCTRL_CONFIG_PARAM_SET, pin,
+				   param, value, 0, 0, NULL);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_set_config);
+
+/**
  * zynqmp_pm_init_finalize() - PM call to inform firmware that the caller
  *			       master has initialized its own power management
  *
@@ -1675,24 +1693,6 @@ int zynqmp_pm_mmio_write(u32 address, u32 mask, u32 value)
 				   value, 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_mmio_write);
-
-/**
- * zynqmp_pm_pinctrl_set_config - Set configuration parameter for the pin
- * @pin: Pin number
- * @param: Parameter to set
- * @value: Parameter value to set
- *
- * This function sets requested configuration parameter for the given pin.
- *
- * Return: Returns status, either success or error+reason.
- */
-int zynqmp_pm_pinctrl_set_config(const u32 pin, const u32 param,
-				 u32 value)
-{
-	return zynqmp_pm_invoke_fn(PM_PINCTRL_CONFIG_PARAM_SET, pin,
-				   param, value, 0, 0, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_set_config);
 
 /**
  * zynqmp_pm_bootmode_read() - PM Config API for read bootpin status
