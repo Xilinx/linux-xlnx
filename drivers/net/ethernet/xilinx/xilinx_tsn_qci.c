@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Xilinx FPGA Xilinx TSN QCI Controller module.
  *
@@ -137,9 +138,9 @@ void get_psfp_static_counter(struct psfp_static_counter *data)
 								offset + 0x4);
 
 	data->err_filter_ins_port.lsb = axienet_ior(&lp,
-					FLTR_INGS_PORT_ERR_OFFSET + offset);
+						    FLTR_INGS_PORT_ERR_OFFSET + offset);
 	data->err_filter_ins_port.msb = axienet_ior(&lp,
-				FLTR_INGS_PORT_ERR_OFFSET + offset + 0x4);
+						    FLTR_INGS_PORT_ERR_OFFSET + offset + 0x4);
 
 	data->err_filtr_sdu.lsb = axienet_ior(&lp, FLTR_STDU_ERR_OFFSET +
 									offset);

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Xilinx FPGA Xilinx TSN Switch Controller driver.
  *
@@ -231,174 +232,174 @@ static void get_switch_regs(struct switch_data *data)
 static void get_memory_static_counter(struct switch_data *data)
 {
 	data->mem_arr_cnt.cam_lookup.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_CAM_LOOKUP);
+						       XAS_MEM_STCNTR_CAM_LOOKUP);
 	data->mem_arr_cnt.cam_lookup.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_CAM_LOOKUP + 0x4);
+						       XAS_MEM_STCNTR_CAM_LOOKUP + 0x4);
 
 	data->mem_arr_cnt.multicast_fr.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_MULTCAST);
+							 XAS_MEM_STCNTR_MULTCAST);
 	data->mem_arr_cnt.multicast_fr.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_MULTCAST + 0x4);
+							 XAS_MEM_STCNTR_MULTCAST + 0x4);
 
 	data->mem_arr_cnt.err_mac1.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_MAC1);
+						     XAS_MEM_STCNTR_ERR_MAC1);
 	data->mem_arr_cnt.err_mac1.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_MAC1 + 0x4);
+						     XAS_MEM_STCNTR_ERR_MAC1 + 0x4);
 
 	data->mem_arr_cnt.err_mac2.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_MAC2);
+						     XAS_MEM_STCNTR_ERR_MAC2);
 	data->mem_arr_cnt.err_mac2.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_MAC2 + 0x4);
+						     XAS_MEM_STCNTR_ERR_MAC2 + 0x4);
 
 	data->mem_arr_cnt.sc_mac1_ep.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_SC_MAC1_EP);
+						       XAS_MEM_STCNTR_SC_MAC1_EP);
 	data->mem_arr_cnt.sc_mac1_ep.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_SC_MAC1_EP + 0x4);
+						       XAS_MEM_STCNTR_SC_MAC1_EP + 0x4);
 	data->mem_arr_cnt.res_mac1_ep.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_RES_MAC1_EP);
+							XAS_MEM_STCNTR_RES_MAC1_EP);
 	data->mem_arr_cnt.res_mac1_ep.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_RES_MAC1_EP + 0x4);
+							XAS_MEM_STCNTR_RES_MAC1_EP + 0x4);
 	data->mem_arr_cnt.be_mac1_ep.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_BE_MAC1_EP);
+						       XAS_MEM_STCNTR_BE_MAC1_EP);
 	data->mem_arr_cnt.be_mac1_ep.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_BE_MAC1_EP + 0x4);
+						       XAS_MEM_STCNTR_BE_MAC1_EP + 0x4);
 	data->mem_arr_cnt.err_sc_mac1_ep.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_SC_MAC1_EP);
+							   XAS_MEM_STCNTR_ERR_SC_MAC1_EP);
 	data->mem_arr_cnt.err_sc_mac1_ep.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_SC_MAC1_EP + 0x4);
+							   XAS_MEM_STCNTR_ERR_SC_MAC1_EP + 0x4);
 	data->mem_arr_cnt.err_res_mac1_ep.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_RES_MAC1_EP);
+							    XAS_MEM_STCNTR_ERR_RES_MAC1_EP);
 	data->mem_arr_cnt.err_res_mac1_ep.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_RES_MAC1_EP + 0x4);
+							    XAS_MEM_STCNTR_ERR_RES_MAC1_EP + 0x4);
 	data->mem_arr_cnt.err_be_mac1_ep.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_BE_MAC1_EP);
+							   XAS_MEM_STCNTR_ERR_BE_MAC1_EP);
 	data->mem_arr_cnt.err_be_mac1_ep.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_BE_MAC1_EP + 0x4);
+							   XAS_MEM_STCNTR_ERR_BE_MAC1_EP + 0x4);
 
 	data->mem_arr_cnt.sc_mac2_ep.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_SC_MAC2_EP);
+						       XAS_MEM_STCNTR_SC_MAC2_EP);
 	data->mem_arr_cnt.sc_mac2_ep.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_SC_MAC2_EP + 0x4);
+						       XAS_MEM_STCNTR_SC_MAC2_EP + 0x4);
 	data->mem_arr_cnt.res_mac2_ep.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_RES_MAC2_EP);
+							XAS_MEM_STCNTR_RES_MAC2_EP);
 	data->mem_arr_cnt.res_mac2_ep.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_RES_MAC2_EP + 0x4);
+							XAS_MEM_STCNTR_RES_MAC2_EP + 0x4);
 	data->mem_arr_cnt.be_mac2_ep.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_BE_MAC2_EP);
+						       XAS_MEM_STCNTR_BE_MAC2_EP);
 	data->mem_arr_cnt.be_mac2_ep.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_BE_MAC2_EP + 0x4);
+						       XAS_MEM_STCNTR_BE_MAC2_EP + 0x4);
 	data->mem_arr_cnt.err_sc_mac2_ep.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_SC_MAC2_EP);
+							   XAS_MEM_STCNTR_ERR_SC_MAC2_EP);
 	data->mem_arr_cnt.err_sc_mac2_ep.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_SC_MAC2_EP + 0x4);
+							   XAS_MEM_STCNTR_ERR_SC_MAC2_EP + 0x4);
 	data->mem_arr_cnt.err_res_mac2_ep.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_RES_MAC2_EP);
+							    XAS_MEM_STCNTR_ERR_RES_MAC2_EP);
 	data->mem_arr_cnt.err_res_mac2_ep.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_RES_MAC2_EP + 0x4);
+							    XAS_MEM_STCNTR_ERR_RES_MAC2_EP + 0x4);
 	data->mem_arr_cnt.err_be_mac2_ep.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_BE_MAC2_EP);
+							   XAS_MEM_STCNTR_ERR_BE_MAC2_EP);
 	data->mem_arr_cnt.err_be_mac2_ep.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_BE_MAC2_EP + 0x4);
+							   XAS_MEM_STCNTR_ERR_BE_MAC2_EP + 0x4);
 
 	data->mem_arr_cnt.sc_ep_mac1.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_SC_EP_MAC1);
+						       XAS_MEM_STCNTR_SC_EP_MAC1);
 	data->mem_arr_cnt.sc_ep_mac1.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_SC_EP_MAC1 + 0x4);
+						       XAS_MEM_STCNTR_SC_EP_MAC1 + 0x4);
 	data->mem_arr_cnt.res_ep_mac1.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_RES_EP_MAC1);
+							XAS_MEM_STCNTR_RES_EP_MAC1);
 	data->mem_arr_cnt.res_ep_mac1.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_RES_EP_MAC1 + 0x4);
+							XAS_MEM_STCNTR_RES_EP_MAC1 + 0x4);
 	data->mem_arr_cnt.be_ep_mac1.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_BE_EP_MAC1);
+						       XAS_MEM_STCNTR_BE_EP_MAC1);
 	data->mem_arr_cnt.be_ep_mac1.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_BE_EP_MAC1 + 0x4);
+						       XAS_MEM_STCNTR_BE_EP_MAC1 + 0x4);
 	data->mem_arr_cnt.err_sc_ep_mac1.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_SC_EP_MAC1);
+							   XAS_MEM_STCNTR_ERR_SC_EP_MAC1);
 	data->mem_arr_cnt.err_sc_ep_mac1.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_SC_EP_MAC1 + 0x4);
+							   XAS_MEM_STCNTR_ERR_SC_EP_MAC1 + 0x4);
 	data->mem_arr_cnt.err_res_ep_mac1.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_RES_EP_MAC1);
+							    XAS_MEM_STCNTR_ERR_RES_EP_MAC1);
 	data->mem_arr_cnt.err_res_ep_mac1.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_RES_EP_MAC1 + 0x4);
+							    XAS_MEM_STCNTR_ERR_RES_EP_MAC1 + 0x4);
 	data->mem_arr_cnt.err_be_ep_mac1.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_BE_EP_MAC1);
+							   XAS_MEM_STCNTR_ERR_BE_EP_MAC1);
 	data->mem_arr_cnt.err_be_ep_mac1.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_BE_EP_MAC1 + 0x4);
+							   XAS_MEM_STCNTR_ERR_BE_EP_MAC1 + 0x4);
 
 	data->mem_arr_cnt.sc_mac2_mac1.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_SC_MAC2_MAC1);
+							 XAS_MEM_STCNTR_SC_MAC2_MAC1);
 	data->mem_arr_cnt.sc_mac2_mac1.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_SC_MAC2_MAC1 + 0x4);
+							 XAS_MEM_STCNTR_SC_MAC2_MAC1 + 0x4);
 	data->mem_arr_cnt.res_mac2_mac1.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_RES_MAC2_MAC1);
+							  XAS_MEM_STCNTR_RES_MAC2_MAC1);
 	data->mem_arr_cnt.res_mac2_mac1.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_RES_MAC2_MAC1 + 0x4);
+							  XAS_MEM_STCNTR_RES_MAC2_MAC1 + 0x4);
 	data->mem_arr_cnt.be_mac2_mac1.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_BE_MAC2_MAC1);
+							 XAS_MEM_STCNTR_BE_MAC2_MAC1);
 	data->mem_arr_cnt.be_mac2_mac1.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_BE_MAC2_MAC1 + 0x4);
+							 XAS_MEM_STCNTR_BE_MAC2_MAC1 + 0x4);
 	data->mem_arr_cnt.err_sc_mac2_mac1.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_SC_MAC2_MAC1);
+							     XAS_MEM_STCNTR_ERR_SC_MAC2_MAC1);
 	data->mem_arr_cnt.err_sc_mac2_mac1.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_SC_MAC2_MAC1 + 0x4);
+							     XAS_MEM_STCNTR_ERR_SC_MAC2_MAC1 + 0x4);
 	data->mem_arr_cnt.err_res_mac2_mac1.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_RES_MAC2_MAC1);
-	data->mem_arr_cnt.err_res_mac2_mac1.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_RES_MAC2_MAC1 + 0x4);
+							      XAS_MEM_STCNTR_ERR_RES_MAC2_MAC1);
+	data->mem_arr_cnt.err_res_mac2_mac1.msb =
+	axienet_ior(&lp, XAS_MEM_STCNTR_ERR_RES_MAC2_MAC1 + 0x4);
 	data->mem_arr_cnt.err_be_mac2_mac1.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_BE_MAC2_MAC1);
+							     XAS_MEM_STCNTR_ERR_BE_MAC2_MAC1);
 	data->mem_arr_cnt.err_be_mac2_mac1.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_BE_MAC2_MAC1 + 0x4);
+							     XAS_MEM_STCNTR_ERR_BE_MAC2_MAC1 + 0x4);
 
 	data->mem_arr_cnt.sc_ep_mac2.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_SC_EP_MAC2);
+						       XAS_MEM_STCNTR_SC_EP_MAC2);
 	data->mem_arr_cnt.sc_ep_mac2.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_SC_EP_MAC2 + 0x4);
+						       XAS_MEM_STCNTR_SC_EP_MAC2 + 0x4);
 	data->mem_arr_cnt.res_ep_mac2.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_RES_EP_MAC2);
+							XAS_MEM_STCNTR_RES_EP_MAC2);
 	data->mem_arr_cnt.res_ep_mac2.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_RES_EP_MAC2 + 0x4);
+							XAS_MEM_STCNTR_RES_EP_MAC2 + 0x4);
 	data->mem_arr_cnt.be_ep_mac2.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_BE_EP_MAC2);
+						       XAS_MEM_STCNTR_BE_EP_MAC2);
 	data->mem_arr_cnt.be_ep_mac2.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_BE_EP_MAC2 + 0x4);
+						       XAS_MEM_STCNTR_BE_EP_MAC2 + 0x4);
 	data->mem_arr_cnt.err_sc_ep_mac2.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_SC_EP_MAC2);
+							   XAS_MEM_STCNTR_ERR_SC_EP_MAC2);
 	data->mem_arr_cnt.err_sc_ep_mac2.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_SC_EP_MAC2 + 0x4);
+							   XAS_MEM_STCNTR_ERR_SC_EP_MAC2 + 0x4);
 	data->mem_arr_cnt.err_res_ep_mac2.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_RES_EP_MAC2);
+							    XAS_MEM_STCNTR_ERR_RES_EP_MAC2);
 	data->mem_arr_cnt.err_res_ep_mac2.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_RES_EP_MAC2 + 0x4);
+							    XAS_MEM_STCNTR_ERR_RES_EP_MAC2 + 0x4);
 	data->mem_arr_cnt.err_be_ep_mac2.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_BE_EP_MAC2);
+							   XAS_MEM_STCNTR_ERR_BE_EP_MAC2);
 	data->mem_arr_cnt.err_be_ep_mac2.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_BE_EP_MAC2 + 0x4);
+							   XAS_MEM_STCNTR_ERR_BE_EP_MAC2 + 0x4);
 
 	data->mem_arr_cnt.sc_mac1_mac2.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_SC_MAC1_MAC2);
+							 XAS_MEM_STCNTR_SC_MAC1_MAC2);
 	data->mem_arr_cnt.sc_mac1_mac2.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_SC_MAC1_MAC2 + 0x4);
+							 XAS_MEM_STCNTR_SC_MAC1_MAC2 + 0x4);
 	data->mem_arr_cnt.res_mac1_mac2.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_RES_MAC1_MAC2);
+							  XAS_MEM_STCNTR_RES_MAC1_MAC2);
 	data->mem_arr_cnt.res_mac1_mac2.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_RES_MAC1_MAC2 + 0x4);
+							  XAS_MEM_STCNTR_RES_MAC1_MAC2 + 0x4);
 	data->mem_arr_cnt.be_mac1_mac2.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_BE_MAC1_MAC2);
+							 XAS_MEM_STCNTR_BE_MAC1_MAC2);
 	data->mem_arr_cnt.be_mac1_mac2.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_BE_MAC1_MAC2 + 0x4);
+							 XAS_MEM_STCNTR_BE_MAC1_MAC2 + 0x4);
 	data->mem_arr_cnt.err_sc_mac1_mac2.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_SC_MAC1_MAC2);
+							     XAS_MEM_STCNTR_ERR_SC_MAC1_MAC2);
 	data->mem_arr_cnt.err_sc_mac1_mac2.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_SC_MAC1_MAC2 + 0x4);
+							     XAS_MEM_STCNTR_ERR_SC_MAC1_MAC2 + 0x4);
 	data->mem_arr_cnt.err_res_mac1_mac2.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_RES_MAC1_MAC2);
-	data->mem_arr_cnt.err_res_mac1_mac2.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_RES_MAC1_MAC2 + 0x4);
+							      XAS_MEM_STCNTR_ERR_RES_MAC1_MAC2);
+	data->mem_arr_cnt.err_res_mac1_mac2.msb =
+	axienet_ior(&lp, XAS_MEM_STCNTR_ERR_RES_MAC1_MAC2 + 0x4);
 	data->mem_arr_cnt.err_be_mac1_mac2.lsb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_BE_MAC1_MAC2);
+							     XAS_MEM_STCNTR_ERR_BE_MAC1_MAC2);
 	data->mem_arr_cnt.err_be_mac1_mac2.msb = axienet_ior(&lp,
-					XAS_MEM_STCNTR_ERR_BE_MAC1_MAC2 + 0x4);
+							     XAS_MEM_STCNTR_ERR_BE_MAC1_MAC2 + 0x4);
 }
 
 static void add_delete_cam_entry(struct cam_struct data, u8 add)
@@ -735,9 +736,9 @@ static int tsn_switch_cam_init(u16 num_q)
 	/* map pcp = 2,3 to queue1
 	 *     pcp = 4 to queue2
 	 */
-	pmap = ((PMAP_EGRESS_QUEUE1_SELECT << PMAP_PRIORITY2_SHIFT) |
-		(PMAP_EGRESS_QUEUE1_SELECT << PMAP_PRIORITY3_SHIFT) |
-		(PMAP_EGRESS_QUEUE2_SELECT << PMAP_PRIORITY4_SHIFT));
+		pmap = ((PMAP_EGRESS_QUEUE1_SELECT << PMAP_PRIORITY2_SHIFT) |
+			(PMAP_EGRESS_QUEUE1_SELECT << PMAP_PRIORITY3_SHIFT) |
+			(PMAP_EGRESS_QUEUE2_SELECT << PMAP_PRIORITY4_SHIFT));
 	} else if (num_q == 2) {
 		/*     pcp = 4 to queue1 */
 		pmap = (PMAP_EGRESS_QUEUE1_SELECT << PMAP_PRIORITY4_SHIFT);

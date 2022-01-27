@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Xilinx FPGA Xilinx TSN QCI Controller module.
  *
@@ -152,8 +153,8 @@ void get_frer_static_counter(struct frer_static_counter *data)
 
 	data->disc_frames_ind_recv.lsb = axienet_ior(&lp,
 						     FRER_DISCARD_FRAMES_INDV_OFFSET + offset);
-	data->disc_frames_ind_recv.msb = axienet_ior(&lp,
-						     FRER_DISCARD_FRAMES_INDV_OFFSET + offset + 0x4);
+	data->disc_frames_ind_recv.msb =
+	axienet_ior(&lp, FRER_DISCARD_FRAMES_INDV_OFFSET + offset + 0x4);
 
 	data->pass_frames_seq_recv.lsb = axienet_ior(&lp,
 						     FRER_PASS_FRAMES_SEQ_OFFSET + offset);

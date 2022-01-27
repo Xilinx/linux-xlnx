@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Xilinx FPGA Xilinx TSN QBU/QBR - Frame Preemption module.
  *

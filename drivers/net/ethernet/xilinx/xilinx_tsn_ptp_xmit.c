@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Xilinx FPGA Xilinx TSN PTP transfer protocol module.
  *
@@ -68,7 +69,7 @@ static void memcpy_fromio_32(struct axienet_local *lp,
  * @data:	Source data
  * @len:	Len to copy
  *
- * This functions copies the source data to desination ptp buffer
+ * This functions copies the source data to destination ptp buffer
  */
 static void memcpy_toio_32(struct axienet_local *lp,
 			   unsigned long offset, u8 *data, size_t len)
@@ -200,7 +201,7 @@ static void axienet_set_timestamp(struct axienet_local *lp,
 
 	/* Upper 32 bits contain s, lower 32 bits contain ns. */
 	hwtstamps->hwtstamp = ktime_set(captured_sec,
-						captured_ns);
+					captured_ns);
 }
 
 /**

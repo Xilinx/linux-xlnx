@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Xilinx FPGA Xilinx TSN PTP protocol clock Controller module.
  *
@@ -228,7 +229,7 @@ static irqreturn_t xlnx_ptp_timer_isr(int irq, void *priv)
 	++timer->countpulse;
 	if (timer->countpulse >= PULSESIN1PPS) {
 		timer->countpulse = 0;
-		if ((timer->ptp_clock) && (timer->pps_enable))
+		if (timer->ptp_clock && timer->pps_enable)
 			ptp_clock_event(timer->ptp_clock, &event);
 	}
 	out_be32((timer->baseaddr + XTIMER1588_INTERRUPT),
@@ -279,8 +280,7 @@ void *axienet_ptp_timer_probe(void __iomem *base, struct platform_device *pdev)
 	if (timer->irq < 0) {
 		timer->irq = platform_get_irq_byname(pdev, "rtc_irq");
 		if (timer->irq > 0) {
-			pr_err("ptp timer interrupt name 'rtc_irq' is"
-				"deprecated\n");
+			pr_err("ptp timer interrupt name 'rtc_irq' is deprecated\n");
 		} else {
 			pr_err("ptp timer interrupt not found\n");
 			kfree(timer);

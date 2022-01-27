@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Xilinx FPGA Xilinx TSN End point driver.
  *
@@ -351,8 +352,7 @@ static int tsn_ep_probe(struct platform_device *pdev)
 		goto free_netdev;
 	}
 
-	ret = of_property_read_u16(
-		pdev->dev.of_node, "xlnx,num-tc", &num_tc);
+	ret = of_property_read_u16(pdev->dev.of_node, "xlnx,num-tc", &num_tc);
 	if (ret || (num_tc != 2 && num_tc != 3))
 		lp->num_tc = XAE_MAX_TSN_TC;
 	else
