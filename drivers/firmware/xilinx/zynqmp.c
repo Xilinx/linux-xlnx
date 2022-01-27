@@ -29,6 +29,13 @@
 /* Max HashMap Order for PM API feature check (1<<7 = 128) */
 #define PM_API_FEATURE_CHECK_MAX_ORDER  7
 
+/* CRL registers and bitfields */
+#define CRL_APB_BASE			0xFF5E0000U
+/* BOOT_PIN_CTRL- Used to control the mode pins after boot */
+#define CRL_APB_BOOT_PIN_CTRL		(CRL_APB_BASE + (0x250U))
+/* BOOT_PIN_CTRL_MASK- out_val[11:8], out_en[3:0] */
+#define CRL_APB_BOOTPIN_CTRL_MASK	0xF0FU
+
 static bool feature_check_enabled;
 static DEFINE_HASHTABLE(pm_api_features_map, PM_API_FEATURE_CHECK_MAX_ORDER);
 
@@ -1278,6 +1285,46 @@ int zynqmp_pm_config_reg_access(u32 register_access_id, u32 address,
 				   address, mask, value, out);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_config_reg_access);
+
+/**
+ * zynqmp_pm_bootmode_read() - PM Config API for read bootpin status
+ * @ps_mode: Returned output value of ps_mode
+ *
+ * This API function is to be used for notify the power management controller
+ * to read bootpin status.
+ *
+ * Return: status, either success or error+reason
+ */
+unsigned int zynqmp_pm_bootmode_read(u32 *ps_mode)
+{
+	unsigned int ret;
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+
+	ret = zynqmp_pm_invoke_fn(PM_MMIO_READ, CRL_APB_BOOT_PIN_CTRL,
+				  0, 0, 0, ret_payload);
+
+	*ps_mode = ret_payload[1];
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_bootmode_read);
+
+/**
+ * zynqmp_pm_bootmode_write() - PM Config API for Configure bootpin
+ * @ps_mode: Value to be written to the bootpin ctrl register
+ *
+ * This API function is to be used for notify the power management controller
+ * to configure bootpin.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+int zynqmp_pm_bootmode_write(u32 ps_mode)
+{
+	return zynqmp_pm_invoke_fn(PM_MMIO_WRITE, CRL_APB_BOOT_PIN_CTRL,
+				   CRL_APB_BOOTPIN_CTRL_MASK, ps_mode,
+				   0, NULL);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_bootmode_write);
 
 /**
  * zynqmp_pm_set_suspend_mode()	- Set system suspend mode
