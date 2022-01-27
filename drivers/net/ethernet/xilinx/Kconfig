@@ -18,8 +18,8 @@ if NET_VENDOR_XILINX
 
 config XILINX_EMACLITE
 	tristate "Xilinx 10/100 Ethernet Lite support"
-	select PHYLIB
 	depends on HAS_IOMEM
+	select PHYLIB
 	help
 	  This driver supports the 10/100 Ethernet Lite from Xilinx.
 
@@ -36,7 +36,7 @@ config XILINX_AXI_EMAC_HWTSTAMP
 	depends on XILINX_AXI_EMAC
 	select PTP_1588_CLOCK
 	help
-	  Generate hardware packet timestamps. This is to facilitate IEE 1588.
+	  Generate hardware packet timestamps. This is to facilitate IEEE 1588.
 
 config AXIENET_HAS_MCDMA
 	bool "AXI Ethernet is configured with MCDMA"
@@ -63,7 +63,7 @@ config XILINX_TSN_PTP
 	select PTP_1588_CLOCK
 	default y
 	help
-	  Generate hardare packet timestamps. This is to facilitate IEE 1588.
+	  Generate hardware packet timestamps. This is to facilitate IEEE 1588.
 
 config XILINX_TSN_QBV
 	bool "Support Qbv protocol in TSN"
