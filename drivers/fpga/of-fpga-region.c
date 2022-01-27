@@ -313,6 +313,8 @@ static int of_fpga_region_notify_pre_apply(struct fpga_region *region,
 	}
 
 	region->info = info;
+	pm_runtime_put_sync(dev->parent);
+	pm_runtime_barrier(dev->parent);
 	pm_runtime_get_sync(dev->parent);
 	ret = fpga_region_program_fpga(region);
 	if (ret) {
@@ -430,8 +432,6 @@ static int of_fpga_region_probe(struct platform_device *pdev)
 	ret = pm_runtime_get_sync(&pdev->dev);
 	if (ret < 0)
 		goto err_pm;
-
-	pm_runtime_put(&pdev->dev);
 
 	ret = fpga_region_register(region);
 	if (ret)
