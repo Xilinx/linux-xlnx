@@ -16,6 +16,7 @@
 #include <linux/net_tstamp.h>
 #include <linux/phy.h>
 #include <linux/of_platform.h>
+#include <linux/clk.h>
 
 /* Packet size info */
 #define XAE_HDR_SIZE			14 /* Size of Ethernet header */
@@ -663,6 +664,7 @@ struct aximcdma_bd {
 	u32 tx_desc_mapping;
 } __aligned(XAXIDMA_BD_MINIMUM_ALIGNMENT);
 
+#define XAE_NUM_MISC_CLOCKS 3
 #define DESC_DMA_MAP_SINGLE 0
 #define DESC_DMA_MAP_PAGE 1
 
@@ -699,7 +701,8 @@ enum axienet_tsn_ioctl {
  * @ndev:	Pointer for net_device to which it will be attached.
  * @dev:	Pointer to device structure
  * @phy_node:	Pointer to device node structure
- * @clk:	AXI bus clock
+ * @axi_clk:	AXI4-Lite bus clock
+ * @misc_clks:	Misc ethernet clocks (AXI4-Stream, Ref, MGT clocks)
  * @mii_bus:	Pointer to MII bus structure
  * @mii_clk_div: MII bus clock divider value
  * @regs_start: Resource start for axienet device addresses
@@ -774,12 +777,11 @@ struct axienet_local {
 
 	struct device_node *phy_node;
 
-	/* Clock for AXI bus */
-	struct clk *clk;
+	struct clk *axi_clk;
+	struct clk_bulk_data misc_clks[XAE_NUM_MISC_CLOCKS];
 
-	/* MDIO bus data */
-	struct mii_bus *mii_bus;	/* MII bus reference */
-	u8 mii_clk_div; /* MII bus clock divider value */
+	struct mii_bus *mii_bus;
+	u8 mii_clk_div;
 
 	resource_size_t regs_start;
 	void __iomem *regs;

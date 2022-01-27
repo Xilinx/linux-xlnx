@@ -3277,6 +3277,34 @@ static int axienet_probe(struct platform_device *pdev)
 	lp->rx_bd_num = RX_BD_NUM_DEFAULT;
 	lp->tx_bd_num = TX_BD_NUM_DEFAULT;
 
+	lp->axi_clk = devm_clk_get_optional(&pdev->dev, "s_axi_lite_clk");
+	if (!lp->axi_clk) {
+		/* For backward compatibility, if named AXI clock is not present,
+		 * treat the first clock specified as the AXI clock.
+		 */
+		lp->axi_clk = devm_clk_get_optional(&pdev->dev, NULL);
+	}
+	if (IS_ERR(lp->axi_clk)) {
+		ret = PTR_ERR(lp->axi_clk);
+		goto free_netdev;
+	}
+	ret = clk_prepare_enable(lp->axi_clk);
+	if (ret) {
+		dev_err(&pdev->dev, "Unable to enable AXI clock: %d\n", ret);
+		goto free_netdev;
+	}
+
+	lp->misc_clks[0].id = "axis_clk";
+	lp->misc_clks[1].id = "ref_clk";
+	lp->misc_clks[2].id = "mgt_clk";
+
+	ret = devm_clk_bulk_get_optional(&pdev->dev, XAE_NUM_MISC_CLOCKS, lp->misc_clks);
+	if (ret)
+		goto cleanup_clk;
+
+	ret = clk_bulk_prepare_enable(XAE_NUM_MISC_CLOCKS, lp->misc_clks);
+	if (ret)
+		goto cleanup_clk;
 #ifdef CONFIG_XILINX_TSN
 	ret = of_property_read_u16(pdev->dev.of_node, "xlnx,num-tc",
 				   &lp->num_tc);
@@ -3289,7 +3317,7 @@ static int axienet_probe(struct platform_device *pdev)
 	lp->regs = devm_ioremap_resource(&pdev->dev, ethres);
 	if (IS_ERR(lp->regs)) {
 		ret = PTR_ERR(lp->regs);
-		goto free_netdev;
+		goto cleanup_clk;
 	}
 	lp->regs_start = ethres->start;
 
@@ -3589,20 +3617,6 @@ static int axienet_probe(struct platform_device *pdev)
 
 	lp->phy_node = of_parse_phandle(pdev->dev.of_node, "phy-handle", 0);
 	if (lp->phy_node) {
-		lp->clk = devm_clk_get(&pdev->dev, NULL);
-		if (IS_ERR(lp->clk)) {
-			dev_warn(&pdev->dev, "Failed to get clock: %ld\n",
-				 PTR_ERR(lp->clk));
-			lp->clk = NULL;
-		} else {
-			ret = clk_prepare_enable(lp->clk);
-			if (ret) {
-				dev_err(&pdev->dev, "Unable to enable clock: %d\n",
-					ret);
-				goto free_netdev;
-			}
-		}
-
 		ret = axienet_mdio_setup(lp);
 		if (ret)
 			dev_warn(&pdev->dev,
@@ -3622,13 +3636,18 @@ static int axienet_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(lp->dev, "register_netdev() error (%i)\n", ret);
 		axienet_mdio_teardown(lp);
-		goto err_disable_clk;
+		goto cleanup_clk;
 	}
 
 	return 0;
 
+cleanup_clk:
+	clk_bulk_disable_unprepare(XAE_NUM_MISC_CLOCKS, lp->misc_clks);
+	clk_disable_unprepare(lp->axi_clk);
+
 err_disable_clk:
 	axienet_clk_disable(pdev);
+
 free_netdev:
 	free_netdev(ndev);
 
@@ -3657,8 +3676,8 @@ static int axienet_remove(struct platform_device *pdev)
 	if (lp->mii_bus)
 		axienet_mdio_teardown(lp);
 
-	if (lp->clk)
-		clk_disable_unprepare(lp->clk);
+	clk_bulk_disable_unprepare(XAE_NUM_MISC_CLOCKS, lp->misc_clks);
+	clk_disable_unprepare(lp->axi_clk);
 
 #ifdef CONFIG_AXIENET_HAS_MCDMA
 	axeinet_mcdma_remove_sysfs(&lp->dev->kobj);
