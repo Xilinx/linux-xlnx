@@ -1469,7 +1469,7 @@ out:
  * start the transmission. Additionally if checksum offloading is supported,
  * it populates AXI Stream Control fields with appropriate values.
  */
-static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
+static int __maybe_unused axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 {
 	u16 map = skb_get_queue_mapping(skb); /* Single dma queue default*/
 
@@ -1781,7 +1781,7 @@ static irqreturn_t axienet_eth_irq(int irq, void *_ndev)
  * and ISR handling. Axi Ethernet core is reset through Axi DMA core. Buffer
  * descriptors are initialized.
  */
-static int axienet_open(struct net_device *ndev)
+static int __maybe_unused axienet_open(struct net_device *ndev)
 {
 	int ret = 0, i = 0;
 	struct axienet_local *lp = netdev_priv(ndev);
