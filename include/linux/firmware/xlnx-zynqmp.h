@@ -174,6 +174,8 @@ enum pm_ioctl_id {
 	IOCTL_OSPI_MUX_SELECT = 21,
 	/* IOCTL for USB power request */
 	IOCTL_USB_SET_STATE = 22,
+	/* IOCTL to get last reset reason */
+	IOCTL_GET_LAST_RESET_REASON = 23,
 	/* AI engine NPI ISR clear */
 	IOCTL_AIE_ISR_CLEAR = 24,
 	/* Register SGI to ATF */
@@ -541,6 +543,7 @@ int zynqmp_pm_set_sgmii_mode(u32 enable);
 int zynqmp_pm_ulpi_reset(void);
 int zynqmp_pm_probe_counter_read(u32 domain, u32 reg, u32 *value);
 int zynqmp_pm_probe_counter_write(u32 domain, u32 reg, u32 value);
+int zynqmp_pm_get_last_reset_reason(u32 *reset_reason);
 int zynqmp_pm_system_shutdown(const u32 type, const u32 subtype);
 int zynqmp_pm_set_boot_health_status(u32 value);
 int zynqmp_pm_force_pwrdwn(const u32 target,
@@ -929,6 +932,11 @@ static inline int zynqmp_pm_probe_counter_read(u32 deviceid, u32 reg, u32 *value
 }
 
 static inline int zynqmp_pm_probe_counter_write(u32 domain, u32 reg, u32 value)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_get_last_reset_reason(u32 *reset_reason)
 {
 	return -ENODEV;
 }
