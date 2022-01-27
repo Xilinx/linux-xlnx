@@ -344,7 +344,7 @@ void axienet_set_multicast_list(struct net_device *ndev)
 	u32 reg, af0reg, af1reg;
 	struct axienet_local *lp = netdev_priv(ndev);
 
-	if ((lp->axienet_config->mactype != XAXIENET_1G) || lp->eth_hasnobuf)
+	if (lp->axienet_config->mactype != XAXIENET_1G || lp->eth_hasnobuf)
 		return;
 
 	if (ndev->flags & (IFF_ALLMULTI | IFF_PROMISC) ||
@@ -618,7 +618,7 @@ static int axienet_device_reset(struct net_device *ndev)
 		lp->options &= (~XAE_OPTION_JUMBO);
 	}
 
-	if ((ndev->mtu > XAE_MTU) && (ndev->mtu <= XAE_JUMBO_MTU)) {
+	if (ndev->mtu > XAE_MTU && ndev->mtu <= XAE_JUMBO_MTU) {
 		lp->max_frm_size = ndev->mtu + VLAN_ETH_HLEN +
 					XAE_TRL_SIZE;
 		if (lp->max_frm_size <= lp->rxmem &&
@@ -666,9 +666,9 @@ static int axienet_device_reset(struct net_device *ndev)
 		err = readl_poll_timeout(lp->regs + XXV_STATRX_BLKLCK_OFFSET,
 					 val, (val & XXV_RX_BLKLCK_MASK),
 					 10, DELAY_OF_ONE_MILLISEC);
-		if (err) {
+		if (err)
 			netdev_err(ndev, "XXV MAC block lock not complete! Cross-check the MAC ref clock configuration\n");
-		}
+
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
 		if (!lp->is_tsn) {
 			axienet_rxts_iow(lp, XAXIFIFO_TXTS_RDFR,
@@ -696,7 +696,7 @@ static int axienet_device_reset(struct net_device *ndev)
 	}
 #endif
 
-	if ((lp->axienet_config->mactype == XAXIENET_1G) &&
+	if (lp->axienet_config->mactype == XAXIENET_1G &&
 	    !lp->eth_hasnobuf) {
 		axienet_status = axienet_ior(lp, XAE_IP_OFFSET);
 		if (axienet_status & XAE_INT_RXRJECT_MASK)
@@ -743,12 +743,12 @@ void axienet_adjust_link(struct net_device *ndev)
 
 	link_state = phy->speed | (phy->duplex << 1) | phy->link;
 	if (lp->last_link != link_state) {
-		if ((phy->speed == SPEED_10) || (phy->speed == SPEED_100)) {
+		if (phy->speed == SPEED_10 || phy->speed == SPEED_100) {
 			if (lp->phy_mode == PHY_INTERFACE_MODE_1000BASEX)
 				setspeed = 0;
 		} else {
-			if ((phy->speed == SPEED_1000) &&
-			    (lp->phy_mode == PHY_INTERFACE_MODE_MII))
+			if (phy->speed == SPEED_1000 &&
+			    lp->phy_mode == PHY_INTERFACE_MODE_MII)
 				setspeed = 0;
 		}
 
@@ -1197,11 +1197,11 @@ static int axienet_skb_tstsmp(struct sk_buff **__skb, struct axienet_dma_q *q,
 	cur_p = &q->tx_bd_v[q->tx_bd_tail];
 #endif
 
-	if ((((lp->tstamp_config.tx_type == HWTSTAMP_TX_ONESTEP_SYNC) ||
-	      (lp->tstamp_config.tx_type == HWTSTAMP_TX_ON)) ||
-	       lp->eth_hasptp) && (lp->axienet_config->mactype !=
-	       XAXIENET_10G_25G) &&
-	       (lp->axienet_config->mactype != XAXIENET_MRMAC)) {
+	if (((lp->tstamp_config.tx_type == HWTSTAMP_TX_ONESTEP_SYNC ||
+	      lp->tstamp_config.tx_type == HWTSTAMP_TX_ON) ||
+	       lp->eth_hasptp) && lp->axienet_config->mactype !=
+	       XAXIENET_10G_25G &&
+	       lp->axienet_config->mactype != XAXIENET_MRMAC) {
 		u8 *tmp;
 		struct sk_buff *new_skb;
 
@@ -1239,16 +1239,16 @@ static int axienet_skb_tstsmp(struct sk_buff **__skb, struct axienet_dma_q *q,
 				axienet_create_tsheader(tmp,
 							TX_TS_OP_TWOSTEP
 							, q);
-				skb_shinfo(skb)->tx_flags
-						|= SKBTX_IN_PROGRESS;
+				skb_shinfo(skb)->tx_flags |=
+						SKBTX_IN_PROGRESS;
 				cur_p->ptp_tx_skb =
 					(unsigned long)skb_get(skb);
 			}
 		}
 	} else if ((skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) &&
-		   (lp->axienet_config->mactype == XAXIENET_10G_25G ||
-		   lp->axienet_config->mactype == XAXIENET_MRMAC)) {
-			cur_p->ptp_tx_ts_tag = prandom_u32_max(XAXIFIFO_TXTS_TAG_MAX) + 1;
+			  (lp->axienet_config->mactype == XAXIENET_10G_25G ||
+			   lp->axienet_config->mactype == XAXIENET_MRMAC)) {
+		cur_p->ptp_tx_ts_tag = prandom_u32_max(XAXIFIFO_TXTS_TAG_MAX) + 1;
 			dev_dbg(lp->dev, "tx_tag:[%04x]\n",
 				cur_p->ptp_tx_ts_tag);
 			if (lp->tstamp_config.tx_type == HWTSTAMP_TX_ONESTEP_SYNC ||
@@ -1284,7 +1284,7 @@ static int axienet_skb_tstsmp(struct sk_buff **__skb, struct axienet_dma_q *q,
 			}
 	} else if (lp->axienet_config->mactype == XAXIENET_10G_25G ||
 		   lp->axienet_config->mactype == XAXIENET_MRMAC) {
-			dev_dbg(lp->dev, "tx_tag:NOOP\n");
+		dev_dbg(lp->dev, "tx_tag:NOOP\n");
 			if (axienet_create_tsheader(lp->tx_ptpheader,
 						    TX_TS_OP_NOOP, q))
 				return NETDEV_TX_BUSY;
@@ -1363,9 +1363,8 @@ int axienet_queue_xmit(struct sk_buff *skb,
 		return NETDEV_TX_BUSY;
 	}
 #endif
-
 	if (skb->ip_summed == CHECKSUM_PARTIAL && !lp->eth_hasnobuf &&
-	    (lp->axienet_config->mactype == XAXIENET_1G)) {
+	    lp->axienet_config->mactype == XAXIENET_1G) {
 		if (lp->features & XAE_FEATURE_FULL_TX_CSUM) {
 			/* Tx Full Checksum Offload Enabled */
 			cur_p->app0 |= 2;
@@ -1534,7 +1533,7 @@ static int axienet_recv(struct net_device *ndev, int budget,
 		skb = (struct sk_buff *)(cur_p->sw_id_offset);
 
 		if (lp->eth_hasnobuf ||
-		    (lp->axienet_config->mactype != XAXIENET_1G))
+		    lp->axienet_config->mactype != XAXIENET_1G)
 			length = cur_p->status & XAXIDMA_BD_STS_ACTUAL_LEN_MASK;
 		else
 			length = cur_p->app4 & 0x0000FFFF;
@@ -1630,7 +1629,7 @@ static int axienet_recv(struct net_device *ndev, int budget,
 		wmb();
 
 		cur_p->phys = dma_map_single(ndev->dev.parent, new_skb->data,
-					   lp->max_frm_size,
+					     lp->max_frm_size,
 					   DMA_FROM_DEVICE);
 		cur_p->cntrl = lp->max_frm_size;
 		cur_p->status = 0;
@@ -1963,7 +1962,7 @@ static int axienet_open(struct net_device *ndev)
 	}
 
 	/* Enable interrupts for Axi Ethernet core (if defined) */
-	if (!lp->eth_hasnobuf && (lp->axienet_config->mactype == XAXIENET_1G)) {
+	if (!lp->eth_hasnobuf && lp->axienet_config->mactype == XAXIENET_1G) {
 		ret = request_irq(lp->eth_irq, axienet_eth_irq, IRQF_SHARED,
 				  ndev->name, ndev);
 		if (ret)
@@ -2061,7 +2060,7 @@ static int axienet_stop(struct net_device *ndev)
 			free_irq(lp->ptp_rx_irq, ndev);
 		}
 #endif
-		if ((lp->axienet_config->mactype == XAXIENET_1G) && !lp->eth_hasnobuf)
+		if (lp->axienet_config->mactype == XAXIENET_1G && !lp->eth_hasnobuf)
 			free_irq(lp->eth_irq, ndev);
 
 		if (ndev->phydev)
@@ -2578,16 +2577,15 @@ axienet_ethtools_get_coalesce(struct net_device *ndev,
 		regval = axienet_dma_in32(q, XAXIDMA_RX_CR_OFFSET);
 		ecoalesce->rx_max_coalesced_frames +=
 						(regval & XAXIDMA_COALESCE_MASK)
-							>> XAXIDMA_COALESCE_SHIFT;
+						     >> XAXIDMA_COALESCE_SHIFT;
 	}
 	for_each_tx_dma_queue(lp, i) {
 		q = lp->dq[i];
 		regval = axienet_dma_in32(q, XAXIDMA_TX_CR_OFFSET);
 		ecoalesce->tx_max_coalesced_frames +=
 						(regval & XAXIDMA_COALESCE_MASK)
-							>> XAXIDMA_COALESCE_SHIFT;
+						     >> XAXIDMA_COALESCE_SHIFT;
 	}
-
 	return 0;
 }
 
@@ -2868,7 +2866,6 @@ static int __maybe_unused axienet_dma_probe(struct platform_device *pdev,
 		}
 		lp->dq[i]->tx_irq = irq_of_parse_and_map(np, 0);
 		lp->dq[i]->rx_irq = irq_of_parse_and_map(np, 1);
-
 	}
 
 	of_node_put(np);
@@ -3223,6 +3220,9 @@ static int axienet_probe(struct platform_device *pdev)
 	u32 value;
 	u16 num_queues = XAE_MAX_QUEUES;
 	bool is_tsn = false;
+#ifdef CONFIG_XILINX_TSN
+	bool slave = false;
+#endif
 
 	is_tsn = of_property_read_bool(pdev->dev.of_node, "xlnx,tsn");
 	ret = of_property_read_u16(pdev->dev.of_node, "xlnx,num-queues",
@@ -3246,7 +3246,6 @@ static int axienet_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, ndev);
 #ifdef CONFIG_XILINX_TSN
-	bool slave = false;
 	if (is_tsn) {
 		slave = of_property_read_bool(pdev->dev.of_node,
 					      "xlnx,tsn-slave");
@@ -3380,7 +3379,7 @@ static int axienet_probe(struct platform_device *pdev)
 	lp->eth_hasptp = of_property_read_bool(pdev->dev.of_node,
 					       "xlnx,eth-hasptp");
 
-	if ((lp->axienet_config->mactype == XAXIENET_1G) && !lp->eth_hasnobuf)
+	if (lp->axienet_config->mactype == XAXIENET_1G && !lp->eth_hasnobuf)
 		lp->eth_irq = platform_get_irq(pdev, 0);
 
 	if (lp->axienet_config->mactype == XAXIENET_MRMAC) {
@@ -3505,7 +3504,7 @@ static int axienet_probe(struct platform_device *pdev)
 			}
 
 			lp->rx_ts_regs = devm_ioremap_resource(&pdev->dev,
-								&rxtsres);
+							       &rxtsres);
 			if (IS_ERR(lp->rx_ts_regs)) {
 				dev_err(&pdev->dev,
 					"couldn't map rx-timestamp regs\n");
@@ -3542,7 +3541,8 @@ static int axienet_probe(struct platform_device *pdev)
 
 		if (dma_set_mask_and_coherent(lp->dev, DMA_BIT_MASK(lp->dma_mask)) != 0) {
 			dev_warn(&pdev->dev, "default to %d-bit dma mask\n", XAE_DMA_MASK_MIN);
-			if (dma_set_mask_and_coherent(lp->dev, DMA_BIT_MASK(XAE_DMA_MASK_MIN)) != 0) {
+			if (dma_set_mask_and_coherent(lp->dev,
+						      DMA_BIT_MASK(XAE_DMA_MASK_MIN)) != 0) {
 				dev_err(&pdev->dev, "dma_set_mask_and_coherent failed, aborting\n");
 				goto free_netdev;
 			}

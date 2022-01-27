@@ -764,10 +764,10 @@ int __maybe_unused axienet_mcdma_tx_probe(struct platform_device *pdev,
 {
 	int i;
 	char dma_name[24];
-	int ret = 0;
 
 #ifdef CONFIG_XILINX_TSN
 	u32 num = XAE_TSN_MIN_QUEUES;
+	int ret = 0;
 	/* get number of associated queues */
 	ret = of_property_read_u32(np, "xlnx,num-mm2s-channels", &num);
 	if (ret)
