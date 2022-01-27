@@ -2043,6 +2043,7 @@ static int axienet_stop(struct net_device *ndev)
 				sr = axienet_dma_in32(q, XAXIDMA_TX_SR_OFFSET);
 			}
 
+			/* Do a reset to ensure DMA is really stopped */
 			__axienet_device_reset(q);
 			free_irq(q->tx_irq, ndev);
 		}

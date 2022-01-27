@@ -772,7 +772,6 @@ struct axienet_local {
 	struct net_device *ndev;
 	struct device *dev;
 
-	/* Connection to PHY device */
 	struct device_node *phy_node;
 
 	/* Clock for AXI bus */
@@ -782,7 +781,6 @@ struct axienet_local {
 	struct mii_bus *mii_bus;	/* MII bus reference */
 	u8 mii_clk_div; /* MII bus clock divider value */
 
-	/* IO registers, dma functions and IRQs */
 	resource_size_t regs_start;
 	void __iomem *regs;
 	void __iomem *mcdma_regs;
