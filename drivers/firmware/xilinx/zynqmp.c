@@ -1007,6 +1007,173 @@ int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags)
 EXPORT_SYMBOL_GPL(zynqmp_pm_rsa);
 
 /**
+ * zynqmp_pm_request_suspend - PM call to request for another PU or subsystem to
+ *					be suspended gracefully.
+ * @node:	Node ID of the targeted PU or subsystem
+ * @ack:	Flag to specify whether acknowledge is requested
+ * @latency:	Requested wakeup latency (not supported)
+ * @state:	Requested state (not supported)
+ *
+ * Return:	Returns status, either success or error+reason
+ */
+int zynqmp_pm_request_suspend(const u32 node,
+			      const enum zynqmp_pm_request_ack ack,
+			      const u32 latency, const u32 state)
+{
+	return zynqmp_pm_invoke_fn(PM_REQUEST_SUSPEND, node, ack,
+				   latency, state, NULL);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_request_suspend);
+
+/**
+ * zynqmp_pm_force_powerdown - PM call to request for another PU or subsystem to
+ *				be powered down forcefully
+ * @target:	Node ID of the targeted PU or subsystem
+ * @ack:	Flag to specify whether acknowledge is requested
+ *
+ * Return:	Returns status, either success or error+reason
+ */
+int zynqmp_pm_force_powerdown(const u32 target,
+			      const enum zynqmp_pm_request_ack ack)
+{
+	return zynqmp_pm_invoke_fn(PM_FORCE_POWERDOWN, target, ack, 0, 0, NULL);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_force_powerdown);
+
+/**
+ * zynqmp_pm_request_wakeup - PM call to wake up selected master or subsystem
+ * @node:	Node ID of the master or subsystem
+ * @set_addr:	Specifies whether the address argument is relevant
+ * @address:	Address from which to resume when woken up
+ * @ack:	Flag to specify whether acknowledge requested
+ *
+ * Return:	Returns status, either success or error+reason
+ */
+int zynqmp_pm_request_wakeup(const u32 node, const bool set_addr,
+			     const u64 address,
+			     const enum zynqmp_pm_request_ack ack)
+{
+	/* set_addr flag is encoded into 1st bit of address */
+	return zynqmp_pm_invoke_fn(PM_REQUEST_WAKEUP, node, address | set_addr,
+				   address >> 32, ack, NULL);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_request_wakeup);
+
+/**
+ * zynqmp_pm_set_wakeup_source - PM call to specify the wakeup source
+ *					while suspended
+ * @target:	Node ID of the targeted PU or subsystem
+ * @wakeup_node:Node ID of the wakeup peripheral
+ * @enable:	Enable or disable the specified peripheral as wake source
+ *
+ * Return:	Returns status, either success or error+reason
+ */
+int zynqmp_pm_set_wakeup_source(const u32 target, const u32 wakeup_node,
+				const u32 enable)
+{
+	return zynqmp_pm_invoke_fn(PM_SET_WAKEUP_SOURCE, target,
+				   wakeup_node, enable, 0, NULL);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_set_wakeup_source);
+
+/**
+ * zynqmp_pm_set_max_latency - PM call to set wakeup latency requirements
+ * @node:	Node ID of the slave
+ * @latency:	Requested maximum wakeup latency
+ *
+ * Return:	Returns status, either success or error+reason
+ */
+int zynqmp_pm_set_max_latency(const u32 node, const u32 latency)
+{
+	return zynqmp_pm_invoke_fn(PM_SET_MAX_LATENCY, node, latency,
+				   0, 0, NULL);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_set_max_latency);
+
+/**
+ * zynqmp_pm_set_configuration - PM call to set system configuration
+ * @physical_addr:	Physical 32-bit address of data structure in memory
+ *
+ * Return:		Returns status, either success or error+reason
+ */
+int zynqmp_pm_set_configuration(const u32 physical_addr)
+{
+	return zynqmp_pm_invoke_fn(PM_SET_CONFIGURATION, physical_addr, 0,
+				   0, 0, NULL);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_set_configuration);
+
+/**
+ * zynqmp_pm_get_node_status - PM call to request a node's current power state
+ * @node:		ID of the component or sub-system in question
+ * @status:		Current operating state of the requested node
+ * @requirements:	Current requirements asserted on the node,
+ *			used for slave nodes only.
+ * @usage:		Usage information, used for slave nodes only:
+ *			PM_USAGE_NO_MASTER	- No master is currently using
+ *						  the node
+ *			PM_USAGE_CURRENT_MASTER	- Only requesting master is
+ *						  currently using the node
+ *			PM_USAGE_OTHER_MASTER	- Only other masters are
+ *						  currently using the node
+ *			PM_USAGE_BOTH_MASTERS	- Both the current and at least
+ *						  one other master is currently
+ *						  using the node
+ *
+ * Return:		Returns status, either success or error+reason
+ */
+int zynqmp_pm_get_node_status(const u32 node, u32 *const status,
+			      u32 *const requirements, u32 *const usage)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	if (!status)
+		return -EINVAL;
+
+	ret = zynqmp_pm_invoke_fn(PM_GET_NODE_STATUS, node, 0, 0,
+				  0, ret_payload);
+	if (ret_payload[0] == XST_PM_SUCCESS) {
+		*status = ret_payload[1];
+		if (requirements)
+			*requirements = ret_payload[2];
+		if (usage)
+			*usage = ret_payload[3];
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_get_node_status);
+
+/**
+ * zynqmp_pm_get_operating_characteristic - PM call to request operating
+ *						characteristic information
+ * @node:	Node ID of the slave
+ * @type:	Type of the operating characteristic requested
+ * @result:	Used to return the requested operating characteristic
+ *
+ * Return:	Returns status, either success or error+reason
+ */
+int zynqmp_pm_get_operating_characteristic(const u32 node,
+					   const enum zynqmp_pm_opchar_type type,
+					   u32 *const result)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	if (!result)
+		return -EINVAL;
+
+	ret = zynqmp_pm_invoke_fn(PM_GET_OPERATING_CHARACTERISTIC,
+				  node, type, 0, 0, ret_payload);
+	if (ret_payload[0] == XST_PM_SUCCESS)
+		*result = ret_payload[1];
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_get_operating_characteristic);
+
+/**
  * zynqmp_pm_config_reg_access - PM Config API for Config register access
  * @register_access_id:	ID of the requested REGISTER_ACCESS
  * @address:		Address of the register to be accessed
