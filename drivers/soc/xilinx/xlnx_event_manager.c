@@ -384,7 +384,7 @@ static void xlnx_call_notify_cb_handler(const u32 *payload)
 
 static void xlnx_get_event_callback_data(u32 *buf)
 {
-	zynqmp_pm_invoke_fn(GET_CALLBACK_DATA, 0, 0, 0, 0, buf);
+	zynqmp_pm_invoke_fn(GET_CALLBACK_DATA, 0, 0, 0, 0, 0, buf);
 }
 
 static irqreturn_t xlnx_event_handler(int irq, void *dev_id)
@@ -553,7 +553,7 @@ static int xlnx_event_manager_probe(struct platform_device *pdev)
 			  xlnx_event_cpuhp_start, xlnx_event_cpuhp_down);
 
 	ret = zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_REGISTER_SGI, sgi_num,
-				  0, NULL);
+				  0, 0, NULL);
 	if (ret) {
 		dev_err(&pdev->dev, "SGI %d Registration over ATF failed with %d\n", sgi_num, ret);
 		xlnx_event_cleanup_sgi(pdev);
@@ -580,7 +580,7 @@ static int xlnx_event_manager_remove(struct platform_device *pdev)
 		kfree(eve_data);
 	}
 
-	ret = zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_REGISTER_SGI, 0, 1, NULL);
+	ret = zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_REGISTER_SGI, 0, 1, 0, NULL);
 	if (ret)
 		dev_err(&pdev->dev, "SGI unregistration over ATF failed with %d\n", ret);
 
