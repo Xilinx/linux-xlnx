@@ -34,6 +34,9 @@
 #define PM_SET_SUSPEND_MODE		0xa02
 #define GET_CALLBACK_DATA		0xa01
 
+/* To Get UID info list */
+#define PM_GET_UID_INFO_LIST		0x705
+
 /* Number of 32bits values in payload */
 #define PAYLOAD_ARG_CNT	4U
 
@@ -598,6 +601,7 @@ int zynqmp_pm_register_notifier(const u32 node, const u32 event,
 int zynqmp_pm_feature(const u32 api_id);
 int zynqmp_pm_set_feature_config(enum pm_feature_config_id id, u32 value);
 int zynqmp_pm_get_feature_config(enum pm_feature_config_id id, u32 *payload);
+int zynqmp_pm_get_uid_info(const u64 address, const u32 size, u32 *count);
 #else
 static inline int zynqmp_pm_get_api_version(u32 *version)
 {
@@ -1010,6 +1014,12 @@ static inline int zynqmp_pm_set_feature_config(enum pm_feature_config_id id,
 
 static inline int zynqmp_pm_get_feature_config(enum pm_feature_config_id id,
 					       u32 *payload)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_get_uid_info(const u64 address, const u32 size,
+					 u32 *count)
 {
 	return -ENODEV;
 }
