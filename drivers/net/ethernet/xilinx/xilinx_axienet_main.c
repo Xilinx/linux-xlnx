@@ -3313,8 +3313,7 @@ static int axienet_probe(struct platform_device *pdev)
 #endif
 
 	/* Map device registers */
-	ethres = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	lp->regs = devm_ioremap_resource(&pdev->dev, ethres);
+	lp->regs = devm_platform_get_and_ioremap_resource(pdev, 0, &ethres);
 	if (IS_ERR(lp->regs)) {
 		ret = PTR_ERR(lp->regs);
 		goto cleanup_clk;
