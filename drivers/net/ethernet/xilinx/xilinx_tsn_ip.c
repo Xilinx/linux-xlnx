@@ -242,7 +242,7 @@ static void axienet_device_reset(struct net_device *ndev)
 	lp->axienet_config->setoptions(ndev, lp->options &
 				       ~(XAE_OPTION_TXEN | XAE_OPTION_RXEN));
 
-	axienet_set_mac_address(ndev);
+	axienet_set_mac_address(ndev, NULL);
 	axienet_set_multicast_list(ndev);
 	lp->axienet_config->setoptions(ndev, lp->options);
 

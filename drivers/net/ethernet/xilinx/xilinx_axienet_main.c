@@ -275,14 +275,18 @@ static int axienet_dma_bd_init(struct net_device *ndev)
 /**
  * axienet_set_mac_address - Write the MAC address
  * @ndev:	Pointer to the net_device structure
+ * @address:	6 byte Address to be written as MAC address
  *
  * This function is called to initialize the MAC address of the Axi Ethernet
  * core. It writes to the UAW0 and UAW1 registers of the core.
  */
-void axienet_set_mac_address(struct net_device *ndev)
+void axienet_set_mac_address(struct net_device *ndev,
+			     const void *address)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
 
+	if (address)
+		ether_addr_copy(ndev->dev_addr, address);
 	if (!is_valid_ether_addr(ndev->dev_addr))
 		eth_hw_addr_random(ndev);
 
@@ -318,12 +322,7 @@ static int netdev_set_mac_address(struct net_device *ndev, void *p)
 {
 	struct sockaddr *addr = p;
 
-	if (!is_valid_ether_addr(addr->sa_data))
-		return -EADDRNOTAVAIL;
-
-	ether_addr_copy(ndev->dev_addr, addr->sa_data);
-
-	axienet_set_mac_address(ndev);
+	axienet_set_mac_address(ndev, addr->sa_data);
 	return 0;
 }
 
@@ -716,7 +715,7 @@ static int axienet_device_reset(struct net_device *ndev)
 	lp->axienet_config->setoptions(ndev, lp->options &
 				       ~(XAE_OPTION_TXEN | XAE_OPTION_RXEN));
 
-	axienet_set_mac_address(ndev);
+	axienet_set_mac_address(ndev, NULL);
 	axienet_set_multicast_list(ndev);
 	lp->axienet_config->setoptions(ndev, lp->options);
 
@@ -3217,6 +3216,7 @@ static int axienet_probe(struct platform_device *pdev)
 	struct device_node *np;
 	struct axienet_local *lp;
 	struct net_device *ndev;
+	u8 mac_addr[ETH_ALEN];
 	struct resource *ethres;
 	u32 value;
 	u16 num_queues = XAE_MAX_QUEUES;
@@ -3598,12 +3598,14 @@ static int axienet_probe(struct platform_device *pdev)
 		dev_info(&pdev->dev, "Ethernet core IRQ not defined\n");
 
 	/* Retrieve the MAC address */
-	ret = of_get_mac_address(pdev->dev.of_node, ndev->dev_addr);
-	if (ret)
-		dev_warn(&pdev->dev,
-			 "could not find MAC address property: %d\n", ret);
-
-	axienet_set_mac_address(ndev);
+	ret = of_get_mac_address(pdev->dev.of_node, mac_addr);
+	if (!ret) {
+		axienet_set_mac_address(ndev, mac_addr);
+	} else {
+		dev_warn(&pdev->dev, "could not find MAC address property: %d\n",
+			 ret);
+		axienet_set_mac_address(ndev, NULL);
+	}
 
 	lp->coalesce_count_rx = XAXIDMA_DFT_RX_THRESHOLD;
 	lp->coalesce_count_tx = XAXIDMA_DFT_TX_THRESHOLD;

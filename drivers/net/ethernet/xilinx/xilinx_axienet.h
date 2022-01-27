@@ -1235,7 +1235,7 @@ irqreturn_t __maybe_unused axienet_rx_irq(int irq, void *_ndev);
 void axienet_start_xmit_done(struct net_device *ndev, struct axienet_dma_q *q);
 void axienet_dma_bd_release(struct net_device *ndev);
 void __axienet_device_reset(struct axienet_dma_q *q);
-void axienet_set_mac_address(struct net_device *ndev);
+void axienet_set_mac_address(struct net_device *ndev, const void *address);
 void axienet_set_multicast_list(struct net_device *ndev);
 int xaxienet_rx_poll(struct napi_struct *napi, int quota);
 void axienet_setoptions(struct net_device *ndev, u32 options);

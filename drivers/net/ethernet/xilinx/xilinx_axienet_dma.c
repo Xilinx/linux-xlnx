@@ -480,7 +480,7 @@ void __maybe_unused axienet_dma_err_handler(unsigned long data)
 
 	lp->axienet_config->setoptions(ndev, lp->options &
 			   ~(XAE_OPTION_TXEN | XAE_OPTION_RXEN));
-	axienet_set_mac_address(ndev);
+	axienet_set_mac_address(ndev, NULL);
 	axienet_set_multicast_list(ndev);
 	lp->axienet_config->setoptions(ndev, lp->options);
 }
