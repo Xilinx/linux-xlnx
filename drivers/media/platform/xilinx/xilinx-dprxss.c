@@ -225,6 +225,70 @@
 #define DP_LINK_BW_5_4G		5400    /* 1.2 */
 #define DP_LINK_BW_8_1G		8100    /* 1.4 */
 
+#define XDPRXSS_MMCM_OFFSET		0x5000
+
+/* Clock Wizard registers */
+#define XDPRX_MMCM_SWRST_OFFSET		0x00000000
+#define XDPRX_MMCM_SWRST_VAL		0xA
+#define XDPRX_MMCM_STATUS_OFFSET	0x00000004
+#define XDPRX_MMCM_ISR_OFFSET		0x0000000C
+#define XDPRX_MMCM_IER_OFFSET		0x00000010
+#define XDPRX_MMCM_RECONFIG_OFFSET	0x00000014
+#define XDPRX_MMCM_REG1_OFFSET		0x00000330
+#define XDPRX_MMCM_REG2_OFFSET		0x00000334
+#define XDPRX_MMCM_REG3_OFFSET		0x00000338
+#define XDPRX_MMCM_REG4_OFFSET		0x0000033C
+#define XDPRX_MMCM_REG12_OFFSET		0x00000380
+#define XDPRX_MMCM_REG13_OFFSET		0x00000384
+#define XDPRX_MMCM_REG11_OFFSET		0x00000378
+#define XDPRX_MMCM_REG11_VAL		0x2e
+#define XDPRX_MMCM_REG14_OFFSET		0x00000398
+#define XDPRX_MMCM_REG14_VAL		0xe80
+#define XDPRX_MMCM_REG15_OFFSET		0x0000039C
+#define XDPRX_MMCM_REG15_VAL		0x4271
+#define XDPRX_MMCM_REG16_OFFSET		0x000003A0
+#define XDPRX_MMCM_REG16_VAL		0x43e9
+#define XDPRX_MMCM_REG17_OFFSET		0x000003A8
+#define XDPRX_MMCM_REG17_VAL		0x1c
+#define XDPRX_MMCM_REG19_OFFSET		0x000003CC
+#define XDPRX_MMCM_REG25_OFFSET		0x000003F0
+#define XDPRX_MMCM_REG26_OFFSET		0x000003FC
+#define XDPRX_MMCM_REG26_VAL		1
+
+#define XDPRX_MMCM_LOCK			BIT(0)
+#define XDPRX_MMCM_REG3_PREDIV2		BIT(11)
+#define XDPRX_MMCM_REG3_USED		BIT(12)
+#define XDPRX_MMCM_REG3_MX		BIT(9)
+#define XDPRX_MMCM_REG1_PREDIV2		BIT(12)
+#define XDPRX_MMCM_REG1_EN		BIT(9)
+#define XDPRX_MMCM_REG1_MX		BIT(10)
+#define XDPRX_MMCM_RECONFIG_LOAD	BIT(0)
+#define XDPRX_MMCM_RECONFIG_SADDR	BIT(1)
+#define XDPRX_MMCM_REG1_EDGE_MASK	BIT(8)
+
+#define XDPRX_MMCM_CLKOUT0_PREDIV2_SHIFT	11
+#define XDPRX_MMCM_CLKOUT0_MX_SHIFT		9
+#define XDPRX_MMCM_CLKOUT0_P5EN_SHIFT		13
+#define XDPRX_MMCM_CLKOUT0_P5FEDGE_SHIFT	15
+#define XDPRX_MMCM_REG12_EDGE_SHIFT		10
+
+#define XDPRX_MMCM_M_VAL_405		28
+#define XDPRX_MMCM_M_VAL_270		44
+#define XDPRX_MMCM_M_VAL_135		88
+#define XDPRX_MMCM_M_VAL_81		148
+#define XDPRX_MMCM_D_VAL		5
+#define XDPRX_MMCM_M_O_VAL_RATIO	4
+#define XDPRX_MMCM_STATUS_RETRY		10000
+
+#define MMCM_O_VAL_FEDGE_DIVIDER	2
+#define MMCM_O_VAL_HIGHTIME_DIVIDER	4
+#define MMCM_O_VAL_EDGE_DIVIDER		4
+#define MMCM_D_VAL_EDGE_DIVIDER		2
+#define MMCM_D_VAL_HIGHTIME_DIVIDER	2
+#define MMCM_M_VAL_EDGE_DIVIDER		2
+#define MMCM_M_VAL_HIGHTIME_DIVIDER	2
+#define MMCM_MDO_VAL_HIGHTIME_SHIFT	8
+
 #define xdprxss_generate_hpd_intr(state, duration) \
 		xdprxss_write(state, XDPRX_HPD_INTR_REG, \
 			      FIELD_PREP(XDPRX_HPD_PULSE_MASK, duration) |\
@@ -333,7 +397,6 @@ struct xdprxss_state {
 	struct clk *axi_clk;
 	struct clk *rx_lnk_clk;
 	struct clk *rx_vid_clk;
-	struct clk *rx_dec_clk;
 	void __iomem *dp_base;
 	void __iomem *edid_base;
 	void *prvdata;
@@ -488,6 +551,17 @@ to_xdprxssstate(struct v4l2_subdev *subdev)
 }
 
 /* Register related operations */
+static inline u32 xdprxss_mmcm_read(struct xdprxss_state *xdprxss, u32 addr)
+{
+	return ioread32(xdprxss->dp_base + XDPRXSS_MMCM_OFFSET + addr);
+}
+
+static inline void xdprxss_mmcm_write(struct xdprxss_state *xdprxss, u32 addr,
+				      u32 value)
+{
+	iowrite32(value, xdprxss->dp_base + XDPRXSS_MMCM_OFFSET + addr);
+}
+
 static inline u32 xdprxss_read(struct xdprxss_state *xdprxss, u32 addr)
 {
 	return ioread32(xdprxss->dp_base + addr);
@@ -592,6 +666,106 @@ static int xlnx_dp_phy_ready(struct xdprxss_state *dp)
 	return 0;
 }
 
+static void config_rx_dec_clk(struct xdprxss_state *dp, int bw_code)
+{
+	u8 p5_fedge_en, o_val, d_val, m_val;
+	u16 hightime, div_edge;
+	u32 reg;
+
+	/*
+	 * Configuring MMCM to give a /20 clock output for /16 clk input.
+	 *
+	 * GT ch0outclk (/16) --> MMCM --> /20 clock
+	 *
+	 * Thus:
+	 * 8.1G  : Input MMCM clock is 506.25, output is 405
+	 * 5.4G  : Input MMCM clock is 337.5, output is 270
+	 * 2.7G  : Input MMCM clock is 168.75, output is 135
+	 * 1.62G : Input MMCM clock is 101.25, output is 81
+	 */
+	switch (bw_code) {
+	case DP_LINK_BW_8_1:
+		m_val = XDPRX_MMCM_M_VAL_405;
+		break;
+	case DP_LINK_BW_5_4:
+		m_val = XDPRX_MMCM_M_VAL_270;
+		break;
+	case DP_LINK_BW_2_7:
+		m_val = XDPRX_MMCM_M_VAL_135;
+		break;
+	default:
+		m_val = XDPRX_MMCM_M_VAL_81;
+	}
+	d_val = XDPRX_MMCM_D_VAL;
+	o_val = m_val / XDPRX_MMCM_M_O_VAL_RATIO;
+
+	/*
+	 * MMCM is dynamically programmed for the respective rate
+	 * using the M, D, Div values
+	 */
+	hightime = o_val / MMCM_O_VAL_HIGHTIME_DIVIDER;
+	reg = XDPRX_MMCM_REG3_PREDIV2 | XDPRX_MMCM_REG3_USED | XDPRX_MMCM_REG3_MX;
+	if (o_val % MMCM_O_VAL_EDGE_DIVIDER > 1)
+		reg |= BIT(8);
+
+	p5_fedge_en = o_val % MMCM_O_VAL_FEDGE_DIVIDER;
+	reg |= p5_fedge_en << XDPRX_MMCM_CLKOUT0_P5EN_SHIFT |
+		p5_fedge_en << XDPRX_MMCM_CLKOUT0_P5FEDGE_SHIFT;
+	xdprxss_mmcm_write(dp, XDPRX_MMCM_REG3_OFFSET, reg);
+	reg = hightime | hightime << MMCM_MDO_VAL_HIGHTIME_SHIFT;
+	xdprxss_mmcm_write(dp, XDPRX_MMCM_REG4_OFFSET, reg);
+
+	/* Implement D */
+	reg = 0;
+	div_edge = d_val % MMCM_D_VAL_EDGE_DIVIDER;
+	hightime = d_val / MMCM_D_VAL_HIGHTIME_DIVIDER;
+	reg = reg | div_edge << XDPRX_MMCM_REG12_EDGE_SHIFT;
+	xdprxss_mmcm_write(dp, XDPRX_MMCM_REG12_OFFSET, reg);
+	reg = hightime | hightime << MMCM_MDO_VAL_HIGHTIME_SHIFT;
+	xdprxss_mmcm_write(dp, XDPRX_MMCM_REG13_OFFSET, reg);
+
+	/* Implement M */
+	xdprxss_mmcm_write(dp, XDPRX_MMCM_REG25_OFFSET, 0);
+
+	div_edge = m_val % MMCM_M_VAL_EDGE_DIVIDER;
+	hightime = m_val / MMCM_M_VAL_HIGHTIME_DIVIDER;
+	reg = hightime | hightime << MMCM_MDO_VAL_HIGHTIME_SHIFT;
+	xdprxss_mmcm_write(dp, XDPRX_MMCM_REG2_OFFSET, reg);
+	reg = XDPRX_MMCM_REG1_PREDIV2 | XDPRX_MMCM_REG1_EN | XDPRX_MMCM_REG1_MX;
+
+	if (div_edge)
+		reg = reg | XDPRX_MMCM_REG1_EDGE_MASK;
+	else
+		reg = reg & ~XDPRX_MMCM_REG1_EDGE_MASK;
+
+	xdprxss_mmcm_write(dp, XDPRX_MMCM_REG1_OFFSET, reg);
+	xdprxss_mmcm_write(dp, XDPRX_MMCM_REG11_OFFSET, XDPRX_MMCM_REG11_VAL);
+	xdprxss_mmcm_write(dp, XDPRX_MMCM_REG14_OFFSET, XDPRX_MMCM_REG14_VAL);
+	xdprxss_mmcm_write(dp, XDPRX_MMCM_REG15_OFFSET, XDPRX_MMCM_REG15_VAL);
+	xdprxss_mmcm_write(dp, XDPRX_MMCM_REG16_OFFSET, XDPRX_MMCM_REG16_VAL);
+	xdprxss_mmcm_write(dp, XDPRX_MMCM_REG17_OFFSET, XDPRX_MMCM_REG17_VAL);
+	xdprxss_mmcm_write(dp, XDPRX_MMCM_REG26_OFFSET, XDPRX_MMCM_REG26_VAL);
+	xdprxss_mmcm_write(dp, XDPRX_MMCM_RECONFIG_OFFSET,
+			   XDPRX_MMCM_RECONFIG_LOAD | XDPRX_MMCM_RECONFIG_SADDR);
+}
+
+static int get_rx_dec_clk_lock(struct xdprxss_state *dp)
+{
+	u32 retry = 0;
+
+	/* MMCM issued a reset */
+	xdprxss_mmcm_write(dp, XDPRX_MMCM_SWRST_OFFSET, XDPRX_MMCM_SWRST_VAL);
+	while (!(xdprxss_mmcm_read(dp, XDPRX_MMCM_STATUS_OFFSET) & BIT(0))) {
+		if (retry == XDPRX_MMCM_STATUS_RETRY)
+			return -ENODEV;
+
+		usleep_range(1000, 1100);
+		retry++;
+	}
+
+	return 0;
+}
+
 static int config_gt_control_linerate(struct xdprxss_state *dp, int bw_code)
 {
 	u32 data;
@@ -613,21 +787,6 @@ static int config_gt_control_linerate(struct xdprxss_state *dp, int bw_code)
 		data = XDPRX_GTCTL_LINE_RATE_810G;
 	}
 
-	/*
-	 * Configuring MMCM to give a /20 clock output for /16 clk input.
-	 *
-	 * GT ch0outclk (/16) --> MMCM --> /20 clock
-	 *
-	 * Thus:
-	 * 8.1G  : Input MMCM clock is 506.25, output is 405
-	 * 5.4G  : Input MMCM clock is 337.5, output is 270
-	 * 2.7G  : Input MMCM clock is 168.75, output is 135
-	 * 1.62G : Input MMCM clock is 101.25, output is 81
-	 *
-	 * TODO: The /20 clock should be configured in MMCM but the MMCM driver
-	 * has a limitation for variable input clocks, once that is fixed
-	 * it needs to set the clock using clk_set_rate.
-	 */
 	xdprxss_clrset(dp, XDPRX_GTCTL_REG, XDPRX_GTCTL_LINE_RATE_MASK, data);
 
 	return xlnx_dp_phy_ready(dp);
@@ -940,7 +1099,13 @@ static void xdprxss_irq_tp1(struct xdprxss_state *state)
 		xdprxss_write(state, XDPRX_PHY_REG, XDPRX_PHY_INIT_MASK);
 		phy_reset(state->phy[0]);
 	} else {
+		config_rx_dec_clk(state, linkrate);
+
 		config_gt_control_linerate(state, linkrate);
+
+		if (get_rx_dec_clk_lock(state))
+			dev_info(state->dev, "rx decryption clock failed to lock\n");
+
 		/* Initialize phy logic of DP-RX core */
 		xdprxss_write(state, XDPRX_PHY_REG, XDPRX_PHY_INIT_MASK);
 	}
@@ -1743,16 +1908,12 @@ static int xdprxss_probe(struct platform_device *pdev)
 		if (ret)
 			return ret;
 
-		xdprxss->rx_dec_clk = devm_clk_get(dev, "rx_dec_clk");
-		if (IS_ERR(xdprxss->rx_dec_clk)) {
-			ret = PTR_ERR(xdprxss->rx_dec_clk);
-			dev_err(&pdev->dev, "failed to get rx_dec_clk (%d)\n", ret);
-			return ret;
-		}
-
 		ret = xlnx_dp_rx_gt_control_init(xdprxss);
 		if (ret < 0)
 			return ret;
+
+		if (get_rx_dec_clk_lock(xdprxss))
+			dev_info(dev, "rx decryption clock failed to lock\n");
 	}
 
 	ret = clk_prepare_enable(xdprxss->axi_clk);
@@ -1771,11 +1932,6 @@ static int xdprxss_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(dev, "failed to enable rx_vid_clk (%d)\n", ret);
 		goto rx_vid_clk_err;
-	}
-	ret = clk_prepare_enable(xdprxss->rx_dec_clk);
-	if (ret) {
-		dev_err(dev, "failed to enable rx_dec_clk (%d)\n", ret);
-		goto rx_dec_clk_err;
 	}
 
 	spin_lock_init(&xdprxss->lock);
@@ -1839,8 +1995,6 @@ static int xdprxss_probe(struct platform_device *pdev)
 error:
 	media_entity_cleanup(&subdev->entity);
 clk_err:
-	clk_disable_unprepare(xdprxss->rx_dec_clk);
-rx_dec_clk_err:
 	clk_disable_unprepare(xdprxss->rx_vid_clk);
 rx_vid_clk_err:
 	clk_disable_unprepare(xdprxss->rx_lnk_clk);
