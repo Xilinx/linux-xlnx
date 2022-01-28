@@ -189,7 +189,7 @@ static unsigned long clk_wzrd_recalc_rate(struct clk_hw *hw,
 static int clk_wzrd_dynamic_reconfig(struct clk_hw *hw, unsigned long rate,
 				     unsigned long parent_rate)
 {
-	int err;
+	int err = 0;
 	u32 value;
 	unsigned long flags = 0;
 	struct clk_wzrd_divider *divider = to_clk_wzrd_divider(hw);
@@ -231,6 +231,7 @@ err_reconfig:
 		spin_unlock_irqrestore(divider->lock, flags);
 	else
 		__release(divider->lock);
+
 	return err;
 }
 
@@ -240,12 +241,12 @@ static long clk_wzrd_round_rate(struct clk_hw *hw, unsigned long rate,
 	u8 div;
 
 	/*
-	 * since we don't change parent rate we just round rate to closest
+	 * since we donot change parent rate we just round rate to closest
 	 * achievable
 	 */
 	div = DIV_ROUND_CLOSEST(*prate, rate);
 
-	return *prate / div;
+	return (*prate / div);
 }
 
 static u64 clk_wzrd_get_divisors(struct clk_hw *hw, unsigned long rate,
@@ -413,7 +414,7 @@ static unsigned long clk_wzrd_recalc_ratef(struct clk_hw *hw,
 static int clk_wzrd_dynamic_reconfig_f(struct clk_hw *hw, unsigned long rate,
 				       unsigned long parent_rate)
 {
-	int err;
+	int err = 0;
 	u32 value, pre;
 	unsigned long rate_div, f, clockout0_div;
 	struct clk_wzrd_divider *divider = to_clk_wzrd_divider(hw);
@@ -448,8 +449,8 @@ static int clk_wzrd_dynamic_reconfig_f(struct clk_hw *hw, unsigned long rate,
 
 	/* Check status register */
 	return readl_poll_timeout(divider->base + WZRD_DR_STATUS_REG_OFFSET, value,
-				value & WZRD_DR_LOCK_BIT_MASK,
-				WZRD_USEC_POLL, WZRD_TIMEOUT_POLL);
+				  value & WZRD_DR_LOCK_BIT_MASK,
+				  WZRD_USEC_POLL, WZRD_TIMEOUT_POLL);
 }
 
 static long clk_wzrd_round_rate_f(struct clk_hw *hw, unsigned long rate,
@@ -501,7 +502,7 @@ static struct clk *clk_wzrd_register_divf(struct device *dev,
 	div->table = NULL;
 
 	hw = &div->hw;
-	ret =  devm_clk_hw_register(dev, hw);
+	ret = devm_clk_hw_register(dev, hw);
 	if (ret)
 		return ERR_PTR(ret);
 
@@ -535,8 +536,8 @@ static struct clk *clk_wzrd_register_divider(struct device *dev,
 	else
 		init.ops = &clk_wzrd_clk_div_all_ops;
 	init.flags = flags;
-	init.parent_names =  &parent_name;
-	init.num_parents =  1;
+	init.parent_names = &parent_name;
+	init.num_parents = 1;
 
 	div->base = base;
 	div->offset = offset;
@@ -621,7 +622,7 @@ static int clk_wzrd_probe(struct platform_device *pdev)
 	const char *clk_name;
 	void __iomem *ctrl_reg;
 	struct clk_wzrd *clk_wzrd;
-	int nr_outputs;
+	int outputs;
 	unsigned long flags = 0;
 	const char *clkout_name;
 	struct device_node *np = pdev->dev.of_node;
@@ -670,14 +671,14 @@ static int clk_wzrd_probe(struct platform_device *pdev)
 		goto err_disable_clk;
 	}
 
-	nr_outputs = of_property_count_strings(np, "clock-output-names");
+	outputs = of_property_count_strings(np, "clock-output-names");
 	clk_name = kasprintf(GFP_KERNEL, "%s_mul_div", dev_name(&pdev->dev));
 	if (!clk_name) {
 		ret = -ENOMEM;
 		goto err_rm_int_clk;
 	}
 
-	if (nr_outputs == 1) {
+	if (outputs == 1) {
 		if (of_property_read_string_index(np, "clock-output-names", 0,
 						  &clkout_name)) {
 			dev_err(&pdev->dev,
@@ -741,7 +742,7 @@ static int clk_wzrd_probe(struct platform_device *pdev)
 	}
 
 	/* register div per output */
-	for (i = nr_outputs - 1; i >= 0 ; i--) {
+	for (i = outputs - 1; i >= 0 ; i--) {
 		if (of_property_read_string_index(np, "clock-output-names", i,
 						  &clkout_name)) {
 			dev_err(&pdev->dev,
@@ -770,7 +771,7 @@ static int clk_wzrd_probe(struct platform_device *pdev)
 		if (IS_ERR(clk_wzrd->clkout[i])) {
 			int j;
 
-			for (j = i + 1; j < nr_outputs; j++)
+			for (j = i + 1; j < outputs; j++)
 				clk_unregister(clk_wzrd->clkout[j]);
 			dev_err(&pdev->dev,
 				"unable to register divider clock\n");
