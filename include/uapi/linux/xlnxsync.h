@@ -174,4 +174,6 @@ struct xlnxsync_stat {
 /* This is used to set interrupt mask */
 #define XLNXSYNC_CHAN_SET_INTR_MASK	_IOW(XLNXSYNC_MAGIC, 9,\
 					     struct xlnxsync_intr *)
+/* This is used to reset the last programmed slot */
+#define XLNXSYNC_RESET_SLOT		_IO(XLNXSYNC_MAGIC, 10)
 #endif
