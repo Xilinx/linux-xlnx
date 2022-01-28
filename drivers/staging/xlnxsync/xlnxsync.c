@@ -609,6 +609,39 @@ static int xlnxsync_chan_get_status(struct xlnxsync_channel *channel,
 	return ret;
 }
 
+static int xlnxsync_reset_slot(struct xlnxsync_channel *channel)
+{
+	struct xlnxsync_device *dev = channel->dev;
+	int slot;
+
+	if (dev->config.hdr_ver != XLNXSYNC_IOCTL_HDR_VER) {
+		dev_err(dev->dev, "ioctl not supported!\n");
+		return -EINVAL;
+	}
+
+	/* check channel v/s max from dt */
+	if (channel->id >= dev->config.max_channels) {
+		dev_err(dev->dev, "Invalid channel %d. Max channels = %d!\n",
+			channel->id, dev->config.max_channels);
+		return -EINVAL;
+	}
+
+	slot = channel->last_buf_used + 1;
+	if (slot == XLNXSYNC_BUF_PER_CHAN)
+		slot = 0;
+
+	xlnxsync_write(dev, channel->id,
+		       XLNXSYNC_CL_START_LO_REG + 4 + (slot << 3), 0);
+	xlnxsync_write(dev, channel->id,
+		       XLNXSYNC_CC_START_LO_REG + 4 + (slot << 3), 0);
+	xlnxsync_write(dev, channel->id,
+		       XLNXSYNC_PL_START_LO_REG + 4 + (slot << 3), 0);
+	xlnxsync_write(dev, channel->id,
+		       XLNXSYNC_PC_START_LO_REG + 4 + (slot << 3), 0);
+
+	return 0;
+}
+
 static int xlnxsync_chan_enable(struct xlnxsync_channel *channel, bool enable)
 {
 	struct xlnxsync_device *dev = channel->dev;
@@ -929,6 +962,12 @@ static long xlnxsync_ioctl(struct file *fptr, unsigned int cmd,
 		if (mutex_lock_interruptible(&channel->mutex))
 			return -ERESTARTSYS;
 		ret = xlnxsync_chan_set_int_mask(channel, arg);
+		mutex_unlock(&channel->mutex);
+		break;
+	case XLNXSYNC_RESET_SLOT:
+		if (mutex_lock_interruptible(&channel->mutex))
+			return -ERESTARTSYS;
+		ret = xlnxsync_reset_slot(channel);
 		mutex_unlock(&channel->mutex);
 		break;
 	}
