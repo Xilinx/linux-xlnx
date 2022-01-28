@@ -535,7 +535,7 @@ static int xlnx_event_manager_probe(struct platform_device *pdev)
 
 	if ((ret & FIRMWARE_VERSION_MASK) <
 	    REGISTER_NOTIFIER_FIRMWARE_VERSION) {
-		dev_err(&pdev->dev, "Register notifier firmware version error. Expected: v%d - Found: v%d\n",
+		dev_err(&pdev->dev, "Register notifier version error. Expected Firmware: v%d - Found: v%d\n",
 			REGISTER_NOTIFIER_FIRMWARE_VERSION,
 			ret & FIRMWARE_VERSION_MASK);
 		return -EOPNOTSUPP;
