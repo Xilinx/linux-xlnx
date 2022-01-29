@@ -21,6 +21,7 @@
 #include <linux/of_device.h>
 #include <linux/phy/phy.h>
 #include <linux/regmap.h>
+#include <linux/reset.h>
 #include <linux/of.h>
 #include <linux/firmware/xlnx-zynqmp.h>
 
@@ -1495,6 +1496,51 @@ static int sdhci_arasan_register_sdclk(struct sdhci_arasan_data *sdhci_arasan,
 	return 0;
 }
 
+static int sdhci_zynqmp_set_dynamic_config(struct device *dev,
+					   struct sdhci_arasan_data *sdhci_arasan)
+{
+	struct sdhci_host *host = sdhci_arasan->host;
+	struct clk_hw *hw = &sdhci_arasan->clk_data.sdcardclk_hw;
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	const char *clk_name = clk_hw_get_name(hw);
+	u32 node_id = !strcmp(clk_name, "clk_out_sd0") ? NODE_SD_0 : NODE_SD_1;
+	struct reset_control *rstc;
+	u32 mhz;
+	int ret;
+
+	/* Obtain SDHC reset control */
+	rstc = devm_reset_control_get_optional_exclusive(dev, NULL);
+	if (IS_ERR(rstc)) {
+		dev_err(dev, "Cannot get SDHC reset.\n");
+		return PTR_ERR(rstc);
+	}
+
+	reset_control_assert(rstc);
+
+	ret = zynqmp_pm_set_sd_config(node_id, SD_CONFIG_FIXED, 0);
+	if (ret)
+		return ret;
+
+	ret = zynqmp_pm_set_sd_config(node_id, SD_CONFIG_EMMC_SEL,
+				      !!(host->mmc->caps & MMC_CAP_NONREMOVABLE));
+	if (ret)
+		return ret;
+
+	mhz = DIV_ROUND_CLOSEST_ULL(clk_get_rate(pltfm_host->clk), 1000000);
+	ret = zynqmp_pm_set_sd_config(node_id, SD_CONFIG_BASECLK, mhz);
+	if (ret)
+		return ret;
+
+	ret = zynqmp_pm_set_sd_config(node_id, SD_CONFIG_8BIT,
+				      !!(host->mmc->caps & MMC_CAP_8_BIT_DATA));
+	if (ret)
+		return ret;
+
+	reset_control_deassert(rstc);
+
+	return 0;
+}
+
 static int sdhci_arasan_add_host(struct sdhci_arasan_data *sdhci_arasan)
 {
 	struct sdhci_host *host = sdhci_arasan->host;
@@ -1653,6 +1699,15 @@ static int sdhci_arasan_probe(struct platform_device *pdev)
 	if (ret) {
 		ret = dev_err_probe(dev, ret, "parsing dt failed.\n");
 		goto unreg_clk;
+	}
+
+	if (of_device_is_compatible(np, "xlnx,zynqmp-8.9a")) {
+		ret = zynqmp_pm_is_function_supported(PM_IOCTL, IOCTL_SET_SD_CONFIG);
+		if (!ret) {
+			ret = sdhci_zynqmp_set_dynamic_config(dev, sdhci_arasan);
+			if (ret)
+				goto unreg_clk;
+		}
 	}
 
 	sdhci_arasan->phy = ERR_PTR(-ENODEV);
