@@ -1,23 +1,37 @@
 XILINX AXI ETHERNET Device Tree Bindings
 --------------------------------------------------------
 
-Also called  AXI 1G/2.5G Ethernet Subsystem, the xilinx axi ethernet IP core
-provides connectivity to an external ethernet PHY supporting different
-interfaces: MII, GMII, RGMII, SGMII, 1000BaseX. It also includes two
-segments of memory for buffering TX and RX, as well as the capability of
-offloading TX/RX checksum calculation off the processor.
+This driver supports following MAC configurations-
+a) AXI 1G/2.5G Ethernet Subsystem.
+b) 10G/25G High Speed Ethernet Subsystem.
+c) 10 Gigabit Ethernet Subsystem.
+d) USXGMII Ethernet Subsystem.
+
+AXI 1G/2.5G Ethernet Subsystem- also called  AXI 1G/2.5G Ethernet Subsystem,
+the xilinx axi ethernet IP core provides connectivity to an external ethernet
+PHY supporting different interfaces: MII, GMII, RGMII, SGMII, 1000BaseX.
+It also includes two segments of memory for buffering TX and RX, as well as
+the capability of offloading TX/RX checksum calculation off the processor.
 
 Management configuration is done through the AXI interface, while payload is
 sent and received through means of an AXI DMA controller. This driver
 includes the DMA driver code, so this driver is incompatible with AXI DMA
 driver.
 
-For more details about mdio please refer phy.txt file in the same directory.
+For details about MDIO please refer phy.txt [1].
 
 Required properties:
-- compatible	: Must be one of "xlnx,axi-ethernet-1.00.a",
-		  "xlnx,axi-ethernet-1.01.a", "xlnx,axi-ethernet-2.01.a"
-- reg		: Address and length of the IO space.
+- compatible	: Must be one of "xlnx,axi-ethernet-1.00.a" or
+		  "xlnx,axi-ethernet-1.01.a" or "xlnx,axi-ethernet-2.01.a"
+		  for 1G MAC,
+		  "xlnx,ten-gig-eth-mac" for 10 Gigabit Ethernet Subsystem,
+		  "xlnx,xxv-ethernet-1.0" for 10G/25G MAC,
+		  "xlnx,axi-2_5-gig-ethernet-1.0" for 2.5G MAC and
+		  "xlnx,xxv-usxgmii-ethernet-1.0" for USXGMII.
+- reg		: Address and length of the IO space, as well as the address
+                  and length of the AXI DMA controller IO space, unless
+                  axistream-connected is specified, in which case the reg
+                  attribute of the node referenced by it is used.
 - interrupts	: Should be a list of 2 or 3 interrupts: TX DMA, RX DMA,
 		  and optionally Ethernet core.
 - phy-handle	: Should point to the external phy device.
@@ -40,26 +54,57 @@ Optional properties:
  - mdio		: Child node for MDIO bus. Must be defined if PHY access is
 		  required through the core's MDIO interface (i.e. always,
 		  unless the PHY is accessed through a different bus).
+- dma-coherent		: Present if dma operations are coherent.
+- xlnx,eth-hasnobuf	: Used when 1G MAC is configured in non-processor mode.
 
-Example:
-	axi_ethernet_eth: ethernet@40c00000 {
-		compatible = "xlnx,axi-ethernet-1.00.a";
-		device_type = "network";
-		interrupt-parent = <&microblaze_0_axi_intc>;
-		interrupts = <2 0>;
-		clocks = <&axi_clk>;
-		phy-mode = "mii";
-		reg = <0x40c00000 0x40000>;
-		xlnx,rxcsum = <0x2>;
-		xlnx,rxmem = <0x800>;
-		xlnx,txcsum = <0x2>;
-		phy-handle = <&phy0>;
-		axi_ethernetlite_0_mdio: mdio {
-			#address-cells = <1>;
-			#size-cells = <0>;
-			phy0: phy@0 {
-				device_type = "ethernet-phy";
-				reg = <1>;
+Optional properties for connected DMA node:
+- xlnx,addrwidth	: Specify the width of the DMA address space in bits.
+			  Value type is u8. Valid range is 32-64. Default is 32.
+- xlnx,include-dre	: Tells whether DMA h/w is configured with data
+			  realignment engine(DRE) or not.
+
+Optional properties (When USXGMII is in use):
+- xlnx,usxgmii-rate	: USXGMII PHY speed - can be 10, 100, 1000, 2500,
+			  5000 or 10000.
+
+NOTE: Time Sensitive Networking (TSN) related DT bindings are explained in [4].
+
+[1] Documentation/devicetree/bindings/net/phy.txt
+[2] Documentation/devicetree/bindings/net/ethernet.txt
+[3] Documentation/devicetree/bindings/net/xilinx-phy.txt
+[4] Documentation/devicetree/bindings/net/xilinx_tsn.txt
+
+
+Example: AXI 1G/2.5G Ethernet Subsystem + AXIDMA
+
+	axi_eth_0_dma: dma@80040000 {
+			#dma-cells = <1>;
+			compatible = "xlnx,eth-dma";
+			xlnx,addrwidth = /bits/ 8 <32>;
+			<snip>
+	};
+
+	axi_eth_0: ethernet@80000000 {
+			axistream-connected = <&axi_eth_0_dma>;
+			compatible = "xlnx,axi-ethernet-1.00.a";
+			device_type = "network";
+			interrupt-names = "interrupt";
+			interrupt-parent = <&gic>;
+			interrupts = <0 91 4>;
+			phy-handle = <&phy2>;
+			phy-mode = "sgmii";
+			reg = <0x0 0x80000000 0x0 0x40000>;
+			xlnx,include-dre ;
+			xlnx,phy-type = <0x5>;
+			xlnx,rxcsum = <0x0>;
+			xlnx,rxmem = <0x1000>;
+			xlnx,txcsum = <0x0>;
+			axi_eth_0_mdio: mdio {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				phy2: phy@2 {
+					device_type = "ethernet-phy";
+					reg = <2>;
+				};
 			};
-		};
 	};
