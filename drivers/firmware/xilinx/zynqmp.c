@@ -2065,13 +2065,19 @@ int zynqmp_pm_get_feature_config(enum pm_feature_config_id id,
  */
 int zynqmp_pm_sec_read_reg(u32 node_id, u32 offset, u32 *ret_value)
 {
+	u32 ret_payload[PAYLOAD_ARG_CNT];
 	u32 count = 1;
+	int ret;
 
 	if (!ret_value)
 		return -EINVAL;
 
-	return zynqmp_pm_invoke_fn(PM_IOCTL, node_id, IOCTL_READ_REG, offset,
-				   count, 0, ret_value);
+	ret = zynqmp_pm_invoke_fn(PM_IOCTL, node_id, IOCTL_READ_REG, offset,
+				  count, 0, ret_payload);
+
+	*ret_value = ret_payload[1];
+
+	return ret;
 }
 
 /**
