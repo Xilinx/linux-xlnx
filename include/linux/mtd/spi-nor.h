@@ -103,7 +103,7 @@
 
 /* Used for Spansion flashes only. */
 #define SPINOR_OP_BRWR		0x17	/* Bank register write */
-#define	SPINOR_OP_BRRD		0x16	/* Bank register read */
+#define SPINOR_OP_BRRD		0x16	/* Bank register read */
 #define SPINOR_OP_CLSR		0x30	/* Clear status register 1 */
 
 /* Used for Micron flashes only. */
@@ -122,9 +122,9 @@
 #define SR_BP0			BIT(2)	/* Block protect 0 */
 #define SR_BP1			BIT(3)	/* Block protect 1 */
 #define SR_BP2			BIT(4)	/* Block protect 2 */
-#define	SR_BP_BIT_OFFSET	2	/* Offset to Block protect 0 */
-#define	SR_BP_BIT_MASK		(SR_BP2 | SR_BP1 | SR_BP0)
-#define SR_BP3                 BIT(6)  /* Block protect 3 */
+#define SR_BP_BIT_OFFSET	2	/* Offset to Block protect 0 */
+#define SR_BP_BIT_MASK		(SR_BP2 | SR_BP1 | SR_BP0)
+#define SR_BP3			BIT(6)	/* Block protect 3 */
 #define SR_TB_BIT5		BIT(5)	/* Top/Bottom protect */
 #define SR_BP3_BIT6		BIT(6)	/* Block protect 3 */
 #define SR_BP3_BIT5		BIT(5)	/* Block protect 3 */

@@ -206,14 +206,14 @@ static struct flash_info issi_parts[] = {
 			SECT_4K | SPI_NOR_DUAL_READ |
 			SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK |
 			SPI_NOR_4B_OPCODES) },
-        { "is25lp01g", INFO(0x9d601b, 0, 64 * 1024, 2048,
-                        SECT_4K | SPI_NOR_DUAL_READ |
-                        SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK |
-                        SPI_NOR_4B_OPCODES) },
-        { "is25wp01g", INFO(0x9d701b, 0, 64 * 1024, 2048,
-                        SECT_4K | SPI_NOR_DUAL_READ |
-                        SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK |
-                        SPI_NOR_4B_OPCODES) },
+	{ "is25lp01g", INFO(0x9d601b, 0, 64 * 1024, 2048,
+			SECT_4K | SPI_NOR_DUAL_READ |
+			SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK |
+			SPI_NOR_4B_OPCODES) },
+	{ "is25wp01g", INFO(0x9d701b, 0, 64 * 1024, 2048,
+			SECT_4K | SPI_NOR_DUAL_READ |
+			SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK |
+			SPI_NOR_4B_OPCODES) },
 	{ "is25wx256",  INFO(0x9d5b19, 0, 128 * 1024, 256,
 			     SECT_4K | USE_FSR | SPI_NOR_OCTAL_READ |
 			     SPI_NOR_4B_OPCODES | SPI_NOR_OCTAL_DTR_READ |

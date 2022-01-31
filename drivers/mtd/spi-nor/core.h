@@ -383,7 +383,7 @@ struct flash_info {
 					 * protection bits. Usually these will
 					 * power-up in a write-protected state.
 					 */
-#define	SST_GLOBAL_PROT_UNLK	BIT(24)	/* Unlock the Global protection for
+#define SST_GLOBAL_PROT_UNLK	BIT(24)	/* Unlock the Global protection for
 					 * sst flashes
 					 */
 #define SPI_NOR_BP3_SR_BIT5	BIT(25) /*
