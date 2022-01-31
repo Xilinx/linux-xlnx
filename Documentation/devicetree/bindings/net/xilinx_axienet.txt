@@ -6,6 +6,7 @@ a) AXI 1G/2.5G Ethernet Subsystem.
 b) 10G/25G High Speed Ethernet Subsystem.
 c) 10 Gigabit Ethernet Subsystem.
 d) USXGMII Ethernet Subsystem.
+e) MRMAC Ethernet Subsystem.
 
 AXI 1G/2.5G Ethernet Subsystem- also called  AXI 1G/2.5G Ethernet Subsystem,
 the xilinx axi ethernet IP core provides connectivity to an external ethernet
@@ -18,6 +19,9 @@ sent and received through means of an AXI DMA controller. This driver
 includes the DMA driver code, so this driver is incompatible with AXI DMA
 driver.
 
+MRMAC is a hardened Ethernet IP on Versal supporting multiple rates from
+10G to 100G which can be used with a soft DMA controller.
+
 For details about MDIO please refer phy.txt [1].
 
 Required properties:
@@ -26,8 +30,9 @@ Required properties:
 		  for 1G MAC,
 		  "xlnx,ten-gig-eth-mac" for 10 Gigabit Ethernet Subsystem,
 		  "xlnx,xxv-ethernet-1.0" for 10G/25G MAC,
-		  "xlnx,axi-2_5-gig-ethernet-1.0" for 2.5G MAC and
-		  "xlnx,xxv-usxgmii-ethernet-1.0" for USXGMII.
+		  "xlnx,axi-2_5-gig-ethernet-1.0" for 2.5G MAC,
+		  "xlnx,xxv-usxgmii-ethernet-1.0" for USXGMII and
+		  "xlnx,mrmac-ethernet-1.0" for MRMAC.
 - reg		: Address and length of the IO space, as well as the address
                   and length of the AXI DMA controller IO space, unless
                   axistream-connected is specified, in which case the reg
@@ -40,6 +45,15 @@ Required properties:
 Required properties (When AxiEthernet is configured with MCDMA):
 - xlnx,channel-ids	: Queue Identifier associated with the MCDMA Channel.
 - interrupt-names	: Should contain the interrupt names.
+
+Required properties when configured as MRMAC:
+- xlnx,mrmac-rate	: Can be 10000 or 25000 providing rate in Mbps.
+- xlnx,gtlane		: Indicate the GT reset and speed control lane for the
+			  the current MRMAC lane. Valid range is 0 to 3.
+- xlnx,gtpll		: Handle to AXI GPIO instance for GT PLL mask control.
+			  This is required to control the common PLL mask bits.
+- xlnx,gtctrl		: Handle to AXI GPIO instance for GT speed and reset
+			  control for each MRMAC lane.
 
 Optional properties:
 - phy-mode	: See ethernet.txt
@@ -75,6 +89,11 @@ Optional properties (When USXGMII is in use):
 
 Optional properties (When AxiEthernet is configured with MCDMA):
 - xlnx,num-queues	: Number of queues h/w configured for.
+
+Optional properties for MRMAC:
+- xlnx,phcindex		: Indicate the index of the physical hardware clock
+			  to be used as per PTP clock connected to the given
+			  MRMAC lane. Valid range is 0 to 3.
 
 NOTE: Time Sensitive Networking (TSN) related DT bindings are explained in [4].
 
@@ -116,4 +135,34 @@ Example: AXI 1G/2.5G Ethernet Subsystem + AXIDMA
 					reg = <2>;
 				};
 			};
+	};
+
+Example for MRMAC Ethernet subsystem with MCDMA:
+	axi_mcdma_0: axi_mcdma@a4050000 {
+			#dma-cells = <1>;
+			compatible = "xlnx,axi-mcdma-1.1";
+			xlnx,addrwidth = <0x20>;
+			xlnx,include-dre;
+			<snip>
+	};
+
+	gt_pll: gpio@a4000000 {
+		reg = <0x0 0xa4000000 0x0 0x10000>;
+		<snip>
+	}
+
+	gt_ctrl: gpio@a4010000 {
+		reg = <0x0 0xa4010000 0x0 0x40000>;
+		<snip>
+	};
+
+	mrmac_0: mrmac@80000000 {
+		axistream-connected = <&axi_mcdma_0>;
+		compatible = "xlnx,mrmac-ethernet-1.0";
+		reg = <0x0 0xa4090000 0x0 0x1000>;
+		xlnx,mrmac-rate = <10000>;
+		xlnx,gtpll = <&gt_pll>;
+		xlnx,gtctrl = <&gt_ctrl>;
+		xlnx,gtlane = <0x0>;
+		xlnx,rxmem = <0x8000>;
 	};
