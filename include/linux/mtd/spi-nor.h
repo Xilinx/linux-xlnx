@@ -110,15 +110,6 @@
 #define SPINOR_OP_RD_EVCR      0x65    /* Read EVCR register */
 #define SPINOR_OP_WD_EVCR      0x61    /* Write EVCR register */
 
-/* For Octal SPI Macronix flashes only */
-#define SPINOR_OP_WR_CFG_REG2	0x72	 /* Write Config register2 */
-
-/* For Octal SPI Macronix flashes only */
-#define SPINOR_MACRONIX_CFG2_OCTAL_DDR		0x2
-
-/* For Micron flashes only */
-#define SPINOR_VCR_OCTAL_DDR	0xE7	/* VCR BYTE0 value for Octal DDR mode */
-
 /* Used for GigaDevices and Winbond flashes. */
 #define SPINOR_OP_ESECR		0x44	/* Erase Security registers */
 #define SPINOR_OP_PSECR		0x42	/* Program Security registers */
@@ -162,13 +153,6 @@
 
 /* Extended/Bank Address Register bits */
 #define EAR_SEGMENT_MASK	0x7 /* 128 Mb segment mask */
-
-enum read_mode {
-	SPI_NOR_NORMAL = 0,
-	SPI_NOR_FAST,
-	SPI_NOR_DUAL,
-	SPI_NOR_QUAD,
-};
 /* Status Register 2 bits. */
 #define SR2_QUAD_EN_BIT1	BIT(1)
 #define SR2_LB1			BIT(3)	/* Security Register Lock Bit 1 */
@@ -436,7 +420,6 @@ struct spi_nor {
 	u8			read_opcode;
 	u8			read_dummy;
 	u8			program_opcode;
-	enum read_mode		flash_read;
 	u32			jedec_id;
 	u16			curbank;
 	u16			n_sectors;

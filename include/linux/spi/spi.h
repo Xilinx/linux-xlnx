@@ -516,8 +516,6 @@ struct spi_controller {
 #define SPI_CONTROLLER_MUST_TX		BIT(4)	/* requires tx */
 
 #define SPI_MASTER_GPIO_SS		BIT(5)	/* GPIO CS must select slave */
-
-#define SPI_MASTER_QUAD_MODE	BIT(6) /* support quad mode */
 	/*
 	 * Controller may support data stripe feature when more than one
 	 * chips are present.
@@ -532,7 +530,6 @@ struct spi_controller {
 	 */
 #define SPI_MASTER_BOTH_CS	BIT(8)		/* assert both chip selects */
 #define SPI_MASTER_U_PAGE	BIT(9)		/* select upper flash */
-#define SPI_DUAL_BYTE_OP	BIT(10)		/* select Dual-Byte opcode */
 	/* flag indicating if the allocation of this struct is devres-managed */
 	bool			devm_allocated;
 

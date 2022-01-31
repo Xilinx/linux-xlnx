@@ -103,7 +103,6 @@ struct spi_mem_op {
 		u8 buswidth;
 		u8 dtr : 1;
 		u16 opcode;
-		u8 tune_clk;
 	} cmd;
 
 	struct {
