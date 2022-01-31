@@ -12,6 +12,9 @@
 
 #include "versal-sysmon.h"
 
+#define SYSMON_EVENT_WORK_DELAY_MS	1000
+#define SYSMON_UNMASK_WORK_DELAY_MS	500
+
 /* This structure describes temperature events */
 static const struct iio_event_spec sysmon_temp_events[] = {
 	{
@@ -750,7 +753,7 @@ static void sysmon_unmask_worker(struct work_struct *work)
 	/* if still pending some alarm re-trigger the timer */
 	if (sysmon->masked_temp)
 		schedule_delayed_work(&sysmon->sysmon_unmask_work,
-				      msecs_to_jiffies(500));
+				      msecs_to_jiffies(SYSMON_UNMASK_WORK_DELAY_MS));
 	else
 		/*
 		 * Reset the temp_max_max and temp_min_min values to reset the
@@ -782,7 +785,7 @@ static irqreturn_t sysmon_iio_irq(int irq, void *data)
 		sysmon_handle_events(indio_dev, isr);
 
 		schedule_delayed_work(&sysmon->sysmon_unmask_work,
-				      msecs_to_jiffies(500));
+				      msecs_to_jiffies(SYSMON_UNMASK_WORK_DELAY_MS));
 	}
 
 	spin_unlock(&sysmon->lock);
