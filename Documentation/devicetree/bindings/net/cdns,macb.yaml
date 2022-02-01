@@ -22,6 +22,7 @@ properties:
           - enum:
               - cdns,zynq-gem         # Xilinx Zynq-7xxx SoC
               - cdns,zynqmp-gem       # Xilinx Zynq Ultrascale+ MPSoC
+              - cdns,versal-gem       # Xilinx Versal
           - const: cdns,gem           # Generic
 
       - items:
@@ -95,6 +96,11 @@ properties:
   '#size-cells':
     const: 0
 
+  rx-watermark:
+    description:
+      Set watermark value for pbuf_rxcutthru reg and enable rx partial store
+      and forward, only when compatible = "cdns,zynqmp-gem"
+    maximum: 0xFF
   mdio:
     type: object
     description:
