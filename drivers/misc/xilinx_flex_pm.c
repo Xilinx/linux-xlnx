@@ -207,7 +207,7 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 
 		flexpm->counterid_lpd = val;
 		reset_default(dev, val, FPM_LPD);
-		break;
+		goto exit_unlock;
 
 	case XFLEX_SET_PORT_COUNTER_FPD:
 		ret = kstrtou32(buf, 0, &val);
@@ -217,7 +217,7 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 		counter = flexpm->counterid_fpd * FPM_COUNTER_OFFSET;
 		offset = FPM_PORT_SEL_OFFSET + counter * FPM_COUNTER_OFFSET;
 		fpm_reg(flexpm->basefpd, val, offset);
-		break;
+		goto exit_unlock;
 
 	case XFLEX_SET_PORT_COUNTER_LPD:
 		ret = kstrtou32(buf, 0, &val);
@@ -227,7 +227,7 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 		counter = flexpm->counterid_lpd * FPM_COUNTER_OFFSET;
 		offset = FPM_PORT_SEL_OFFSET + counter * FPM_COUNTER_OFFSET;
 		fpm_reg(flexpm->baselpd, val, offset);
-		break;
+		goto exit_unlock;
 
 	case XFLEX_SET_SRC_COUNTER_LPD:
 		reg = flexpm->counterid_lpd;
@@ -270,7 +270,7 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 
 		flexpm->counterid_fpd = val;
 		reset_default(dev, val, FPM_FPD);
-		break;
+		goto exit_unlock;
 
 	case XFLEX_GET_COUNTER_FPD_WRRSP:
 		reg = flexpm->counterid_fpd | FPM_WRRSP_FPD | FPM_VAL;
@@ -304,12 +304,10 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 
 	ret = zynqmp_pm_probe_counter_read(domain, reg, &pm_api_ret[0]);
 
-	if (ret < 0) {
+	if (ret < 0)
 		dev_err(dev, "Counter read error %d\n", ret);
-		return ret;
-	}
-	mutex_unlock(&flexpm->mutex);
-	return pm_api_ret[1];
+	else
+		ret = pm_api_ret[1];
 
 exit_unlock:
 	mutex_unlock(&flexpm->mutex);
