@@ -1,6 +1,9 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright (C) 2011 - 2014 Xilinx
+ * Xilinx Zynq 7000 DTSI
+ * Describes the hardware common to all Zynq 7000-based boards.
+ *
+ *  Copyright (C) 2011 - 2015 Xilinx
  */
 
 / {
@@ -93,6 +96,7 @@
 	};
 
 	amba: axi {
+		u-boot,dm-pre-reloc;
 		compatible = "simple-bus";
 		#address-cells = <1>;
 		#size-cells = <1>;
@@ -237,6 +241,18 @@
 			#size-cells = <0>;
 		};
 
+		qspi: spi@e000d000 {
+			clock-names = "ref_clk", "pclk";
+			clocks = <&clkc 10>, <&clkc 43>;
+			compatible = "xlnx,zynq-qspi-1.0";
+			status = "disabled";
+			interrupt-parent = <&intc>;
+			interrupts = <0 19 4>;
+			reg = <0xe000d000 0x1000>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+
 		gem0: ethernet@e000b000 {
 			compatible = "cdns,zynq-gem", "cdns,gem";
 			reg = <0xe000b000 0x1000>;
@@ -270,13 +286,22 @@
 				  0x2 0x0 0xe4000000 0x2000000>; /* SRAM/NOR CS1 region */
 			#address-cells = <2>;
 			#size-cells = <1>;
+			interrupt-parent = <&intc>;
+			interrupts = <0 18 4>;
 
 			nfc0: nand-controller@0,0 {
 				compatible = "arm,pl353-nand-r2p1";
 				reg = <0 0 0x1000000>;
 				status = "disabled";
 				#address-cells = <1>;
-				#size-cells = <0>;
+				#size-cells = <1>;
+			};
+			nor0: flash@1,0 {
+				status = "disabled";
+				compatible = "cfi-flash";
+				reg = <1 0 0x2000000>;
+				#address-cells = <1>;
+				#size-cells = <1>;
 			};
 		};
 
@@ -301,15 +326,17 @@
 		};
 
 		slcr: slcr@f8000000 {
+			u-boot,dm-pre-reloc;
 			#address-cells = <1>;
 			#size-cells = <1>;
 			compatible = "xlnx,zynq-slcr", "syscon", "simple-mfd";
 			reg = <0xF8000000 0x1000>;
 			ranges;
 			clkc: clkc@100 {
+				u-boot,dm-pre-reloc;
 				#clock-cells = <1>;
 				compatible = "xlnx,ps7-clkc";
-				fclk-enable = <0>;
+				fclk-enable = <0xf>;
 				clock-output-names = "armpll", "ddrpll", "iopll", "cpu_6or4x",
 						"cpu_3or2x", "cpu_2x", "cpu_1x", "ddr2x", "ddr3x",
 						"dci", "lqspi", "smc", "pcap", "gem0", "gem1",
@@ -358,11 +385,11 @@
 
 		devcfg: devcfg@f8007000 {
 			compatible = "xlnx,zynq-devcfg-1.0";
-			reg = <0xf8007000 0x100>;
 			interrupt-parent = <&intc>;
 			interrupts = <0 8 4>;
-			clocks = <&clkc 12>;
-			clock-names = "ref_clk";
+			reg = <0xf8007000 0x100>;
+			clocks = <&clkc 12>, <&clkc 15>, <&clkc 16>, <&clkc 17>, <&clkc 18>;
+			clock-names = "ref_clk", "fclk0", "fclk1", "fclk2", "fclk3";
 			syscon = <&slcr>;
 		};
 
