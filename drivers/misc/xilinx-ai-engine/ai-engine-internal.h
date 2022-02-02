@@ -1014,6 +1014,8 @@ const struct file_operations *aie_part_get_fops(void);
 u8 aie_part_in_use(struct aie_partition *apart);
 struct aie_partition *aie_get_partition_from_id(struct aie_device *adev,
 						u32 partition_id);
+void of_xilinx_ai_engine_aperture_probe(struct aie_device *adev);
+struct aie_device *of_ai_engine_class_find(struct device_node *np);
 int xilinx_ai_engine_add_dev(struct aie_device *adev,
 			     struct platform_device *pdev);
 int xilinx_ai_engine_probe_v1(struct platform_device *pdev);
@@ -1153,4 +1155,6 @@ ssize_t aie_part_read_cb_status(struct kobject *kobj, char *buffer,
 long aie_part_rscmgr_get_statistics(struct aie_partition *apart,
 				    void __user *user_args);
 
+int aie_overlay_register_notifier(void);
+void aie_overlay_unregister_notifier(void);
 #endif /* AIE_INTERNAL_H */

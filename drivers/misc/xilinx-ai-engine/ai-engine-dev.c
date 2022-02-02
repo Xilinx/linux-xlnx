@@ -346,7 +346,7 @@ static void xilinx_ai_engine_release_device(struct device *dev)
  * This function will probe children AI engine apertures nodes and create
  * an AI engine aperture instance for each node.
  */
-static void of_xilinx_ai_engine_aperture_probe(struct aie_device *adev)
+void of_xilinx_ai_engine_aperture_probe(struct aie_device *adev)
 {
 	struct device_node *nc;
 
@@ -553,6 +553,25 @@ static struct platform_driver xilinx_ai_engine_driver = {
 		.of_match_table	= xilinx_ai_engine_of_match,
 	},
 };
+
+/**
+ * of_ai_engine_class_find() - find AI engine device with device node
+ * @np: device node
+ * @return: AI engine device pointer if found, NULL if it is not found
+ *
+ * This function checks every AI engine device of the aie_class, returns the
+ * one whose of_node matches the input of node.
+ */
+struct aie_device *of_ai_engine_class_find(struct device_node *np)
+{
+	struct device *dev;
+
+	dev = class_find_device(aie_class, NULL, np, device_match_of_node);
+	if (!dev)
+		return NULL;
+
+	return dev_to_aiedev(dev);
+}
 
 /**
  * aie_partition_is_available() - Check if an AI engine partition is available
@@ -780,6 +799,12 @@ static int __init xilinx_ai_engine_init(void)
 		return PTR_ERR(aie_class);
 	}
 
+	ret = aie_overlay_register_notifier();
+	if (ret) {
+		pr_err("aie: failed to register device tree overlay notifier.\n");
+		return ret;
+	}
+
 	platform_driver_register(&xilinx_ai_engine_driver);
 
 	return 0;
@@ -788,6 +813,7 @@ postcore_initcall(xilinx_ai_engine_init);
 
 static void __exit xilinx_ai_engine_exit(void)
 {
+	aie_overlay_unregister_notifier();
 	platform_driver_unregister(&xilinx_ai_engine_driver);
 	class_destroy(aie_class);
 	unregister_chrdev_region(aie_major, AIE_DEV_MAX);
