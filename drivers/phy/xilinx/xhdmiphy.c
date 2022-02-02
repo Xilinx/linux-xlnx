@@ -141,6 +141,8 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 			xhdmiphy_hdmi20_conf(phy_dev, XHDMIPHY_DIR_RX);
 			xhdmiphy_clk_srcsel(phy_dev, phy_lane->direction,
 					    tmds_mode);
+			xhdmiphy_set_lrate(phy_dev, phy_lane->direction, 0,
+					   cfg->rx_refclk_hz);
 		} else if (!cfg->config_hdmi20 && cfg->config_hdmi21) {
 			/*
 			 * Phy needs to switch between rxch4 as data or
