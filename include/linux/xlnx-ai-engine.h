@@ -81,6 +81,10 @@ const char *aie_get_error_string(struct aie_errors *aie_errs,
 int aie_flush_errors(struct device *dev);
 void aie_free_errors(struct aie_errors *aie_errs);
 
+int aie_partition_set_freq_req(struct device *dev, u64 freq);
+int aie_partition_get_freq(struct device *dev, u64 *freq);
+int aie_partition_get_freq_req(struct device *dev, u64 *freq);
+
 /**
  * aie_get_error_category() - Get the category of an AIE error
  * @err: AI engine hardware error
@@ -158,6 +162,21 @@ static inline void aie_free_errors(struct aie_errors *aie_errs) {}
 static inline u32 aie_get_error_category(struct aie_error *err)
 {
 	return 0;
+}
+
+static inline int aie_partition_set_freq_req(struct device *dev, u64 freq)
+{
+	return -EINVAL;
+}
+
+static inline int aie_partition_get_freq(struct device *dev, u64 *freq)
+{
+	return -EINVAL;
+}
+
+static inline int aie_partition_get_freq_req(struct device *dev, u64 *freq)
+{
+	return -EINVAL;
 }
 #endif /* CONFIG_XILINX_AIE */
 #endif

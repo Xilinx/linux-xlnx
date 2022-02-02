@@ -1040,7 +1040,7 @@ int aie_part_scan_clk_state(struct aie_partition *apart);
 bool aie_part_check_clk_enable_loc(struct aie_partition *apart,
 				   struct aie_location *loc);
 int aie_part_set_freq(struct aie_partition *apart, u64 freq);
-int aie_part_get_running_freq(struct aie_partition *apart, u64 *freq);
+int aie_part_get_freq(struct aie_partition *apart, u64 *freq);
 
 int aie_part_request_tiles_from_user(struct aie_partition *apart,
 				     void __user *user_args);
