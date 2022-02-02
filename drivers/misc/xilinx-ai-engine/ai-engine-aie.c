@@ -880,6 +880,7 @@ static const struct aie_dev_attr aie_tile_dev_attr[] = {
 
 static const struct aie_dev_attr aie_part_dev_attr[] = {
 	AIE_PART_DEV_ATTR_RO(error_stat),
+	AIE_PART_DEV_ATTR_RO(current_freq),
 };
 
 static const struct aie_bin_attr aie_part_bin_attr[] = {
