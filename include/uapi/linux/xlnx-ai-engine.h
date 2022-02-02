@@ -487,30 +487,6 @@ struct aie_rsc_user_stat_array {
 					     struct aie_txn_inst)
 
 /**
- * DOC: AIE_SET_FREQUENCY_IOCTL - set AI engine partition clock frequency
- *
- * This ioctl is used to set AI engine partition clock frequency.
- * AI engine partition driver converts the required clock frequency to QoS
- * based on the full frequency. And then it sends the set QoS request to
- * firmware. As AI engine device can have multiple users but there is only
- * one clock for the whole device, the firmware will check all the QoS
- * requirements from all users, and set the AI engine device to run on the
- * max required frequency.
- */
-#define AIE_SET_FREQUENCY_IOCTL	_IOW(AIE_IOCTL_BASE, 0x12, __u64)
-
-/**
- * DOC: AIE_GET_FREQUENCY_IOCTL - get AI engine partition running clock
- *				  frequency
- *
- * This ioctl is used to get AI engine partition running clock frequency.
- * AI engine partition driver sends get divider requests to the firmware.
- * And then the driver calculates the running frequency with the full frequency
- * and the divider, and returns the running clock frequency.
- */
-#define AIE_GET_FREQUENCY_IOCTL	_IOR(AIE_IOCTL_BASE, 0x13, __u64)
-
-/**
  * DOC: AIE_RSC_REQ_IOCTL - request a type of resources of a tile
  *
  * This ioctl is used to request a type of resources of a tile of an AI engine
