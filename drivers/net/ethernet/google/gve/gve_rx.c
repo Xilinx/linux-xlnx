@@ -79,7 +79,8 @@ static int gve_rx_alloc_buffer(struct gve_priv *priv, struct device *dev,
 	dma_addr_t dma;
 	int err;
 
-	err = gve_alloc_page(priv, dev, &page, &dma, DMA_FROM_DEVICE);
+	err = gve_alloc_page(priv, dev, &page, &dma, DMA_FROM_DEVICE,
+			     GFP_ATOMIC);
 	if (err)
 		return err;
 
@@ -514,8 +515,13 @@ static bool gve_rx_refill_buffers(struct gve_priv *priv, struct gve_rx_ring *rx)
 
 				gve_rx_free_buffer(dev, page_info, data_slot);
 				page_info->page = NULL;
-				if (gve_rx_alloc_buffer(priv, dev, page_info, data_slot))
+				if (gve_rx_alloc_buffer(priv, dev, page_info,
+							data_slot)) {
+					u64_stats_update_begin(&rx->statss);
+					rx->rx_buf_alloc_fail++;
+					u64_stats_update_end(&rx->statss);
 					break;
+				}
 			}
 		}
 		fill_cnt++;

@@ -1069,6 +1069,7 @@ struct amdgpu_device {
 	bool                            runpm;
 	bool                            in_runpm;
 	bool                            has_pr3;
+	bool                            is_fw_fb;
 
 	bool                            pm_sysfs_en;
 	bool                            ucode_sysfs_en;
@@ -1077,8 +1078,6 @@ struct amdgpu_device {
 	char				product_number[16];
 	char				product_name[32];
 	char				serial[20];
-
-	struct amdgpu_autodump		autodump;
 
 	atomic_t			throttling_logging_enabled;
 	struct ratelimit_state		throttling_logging_rs;

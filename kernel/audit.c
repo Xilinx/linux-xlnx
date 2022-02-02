@@ -718,7 +718,7 @@ static int kauditd_send_queue(struct sock *sk, u32 portid,
 {
 	int rc = 0;
 	struct sk_buff *skb;
-	static unsigned int failed = 0;
+	unsigned int failed = 0;
 
 	/* NOTE: kauditd_thread takes care of all our locking, we just use
 	 *       the netlink info passed to us (e.g. sk and portid) */
@@ -735,32 +735,30 @@ static int kauditd_send_queue(struct sock *sk, u32 portid,
 			continue;
 		}
 
+retry:
 		/* grab an extra skb reference in case of error */
 		skb_get(skb);
 		rc = netlink_unicast(sk, skb, portid, 0);
 		if (rc < 0) {
-			/* fatal failure for our queue flush attempt? */
+			/* send failed - try a few times unless fatal error */
 			if (++failed >= retry_limit ||
 			    rc == -ECONNREFUSED || rc == -EPERM) {
-				/* yes - error processing for the queue */
 				sk = NULL;
 				if (err_hook)
 					(*err_hook)(skb);
-				if (!skb_hook)
-					goto out;
-				/* keep processing with the skb_hook */
+				if (rc == -EAGAIN)
+					rc = 0;
+				/* continue to drain the queue */
 				continue;
 			} else
-				/* no - requeue to preserve ordering */
-				skb_queue_head(queue, skb);
+				goto retry;
 		} else {
-			/* it worked - drop the extra reference and continue */
+			/* skb sent - drop the extra reference and continue */
 			consume_skb(skb);
 			failed = 0;
 		}
 	}
 
-out:
 	return (rc >= 0 ? 0 : rc);
 }
 
@@ -1542,6 +1540,20 @@ static void audit_receive(struct sk_buff  *skb)
 		nlh = nlmsg_next(nlh, &len);
 	}
 	audit_ctl_unlock();
+
+	/* can't block with the ctrl lock, so penalize the sender now */
+	if (audit_backlog_limit &&
+	    (skb_queue_len(&audit_queue) > audit_backlog_limit)) {
+		DECLARE_WAITQUEUE(wait, current);
+
+		/* wake kauditd to try and flush the queue */
+		wake_up_interruptible(&kauditd_wait);
+
+		add_wait_queue_exclusive(&audit_backlog_wait, &wait);
+		set_current_state(TASK_UNINTERRUPTIBLE);
+		schedule_timeout(audit_backlog_wait_time);
+		remove_wait_queue(&audit_backlog_wait, &wait);
+	}
 }
 
 /* Log information about who is connecting to the audit multicast socket */
@@ -1609,7 +1621,8 @@ static int __net_init audit_net_init(struct net *net)
 		audit_panic("cannot initialize netlink socket in namespace");
 		return -ENOMEM;
 	}
-	aunet->sk->sk_sndtimeo = MAX_SCHEDULE_TIMEOUT;
+	/* limit the timeout in case auditd is blocked/stopped */
+	aunet->sk->sk_sndtimeo = HZ / 10;
 
 	return 0;
 }
@@ -1825,7 +1838,9 @@ struct audit_buffer *audit_log_start(struct audit_context *ctx, gfp_t gfp_mask,
 	 *    task_tgid_vnr() since auditd_pid is set in audit_receive_msg()
 	 *    using a PID anchored in the caller's namespace
 	 * 2. generator holding the audit_cmd_mutex - we don't want to block
-	 *    while holding the mutex */
+	 *    while holding the mutex, although we do penalize the sender
+	 *    later in audit_receive() when it is safe to block
+	 */
 	if (!(auditd_test_task(current) || audit_ctl_owner_current())) {
 		long stime = audit_backlog_wait_time;
 

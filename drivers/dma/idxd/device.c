@@ -394,14 +394,21 @@ static void idxd_wq_disable_cleanup(struct idxd_wq *wq)
 	lockdep_assert_held(&wq->wq_lock);
 	memset(wq->wqcfg, 0, idxd->wqcfg_size);
 	wq->type = IDXD_WQT_NONE;
-	wq->size = 0;
-	wq->group = NULL;
 	wq->threshold = 0;
 	wq->priority = 0;
 	wq->ats_dis = 0;
 	clear_bit(WQ_FLAG_DEDICATED, &wq->flags);
 	clear_bit(WQ_FLAG_BLOCK_ON_FAULT, &wq->flags);
 	memset(wq->name, 0, WQ_NAME_SIZE);
+}
+
+static void idxd_wq_device_reset_cleanup(struct idxd_wq *wq)
+{
+	lockdep_assert_held(&wq->wq_lock);
+
+	idxd_wq_disable_cleanup(wq);
+	wq->size = 0;
+	wq->group = NULL;
 }
 
 static void idxd_wq_ref_release(struct percpu_ref *ref)
@@ -427,7 +434,6 @@ void idxd_wq_quiesce(struct idxd_wq *wq)
 {
 	percpu_ref_kill(&wq->wq_active);
 	wait_for_completion(&wq->wq_dead);
-	percpu_ref_exit(&wq->wq_active);
 }
 
 /* Device control bits */
@@ -584,6 +590,8 @@ void idxd_device_reset(struct idxd_device *idxd)
 	spin_lock(&idxd->dev_lock);
 	idxd_device_clear_state(idxd);
 	idxd->state = IDXD_DEV_DISABLED;
+	idxd_unmask_error_interrupts(idxd);
+	idxd_msix_perm_setup(idxd);
 	spin_unlock(&idxd->dev_lock);
 }
 
@@ -710,6 +718,7 @@ static void idxd_device_wqs_clear_state(struct idxd_device *idxd)
 
 		if (wq->state == IDXD_WQ_ENABLED) {
 			idxd_wq_disable_cleanup(wq);
+			idxd_wq_device_reset_cleanup(wq);
 			wq->state = IDXD_WQ_DISABLED;
 		}
 	}
