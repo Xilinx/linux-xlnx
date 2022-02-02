@@ -7,6 +7,7 @@
 
 #include <linux/bitmap.h>
 #include <linux/device.h>
+#include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/mutex.h>
@@ -281,6 +282,7 @@ static void aie_aperture_release_device(struct device *dev)
 
 	aie_resource_uninitialize(&aperture->cols_res);
 	aie_resource_uninitialize(&aperture->l2_mask);
+	zynqmp_pm_release_node(aperture->node_id);
 	kfree(aperture);
 }
 
@@ -487,6 +489,14 @@ of_aie_aperture_probe(struct aie_device *adev, struct device_node *nc)
 			dev_err(dev, "Failed to request AIE IRQ.\n");
 			goto put_aperture_dev;
 		}
+	}
+
+	ret = zynqmp_pm_request_node(aperture->node_id,
+				     ZYNQMP_PM_CAPABILITY_ACCESS, 0,
+				     ZYNQMP_PM_REQUEST_ACK_BLOCKING);
+	if (ret < 0) {
+		dev_err(dev, "Unable to request node %d\n", aperture->node_id);
+		goto put_aperture_dev;
 	}
 
 	of_node_get(nc);
