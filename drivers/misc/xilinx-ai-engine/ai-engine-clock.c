@@ -292,7 +292,7 @@ int aie_part_set_freq(struct aie_partition *apart, u64 freq)
 	struct aie_device *adev = apart->adev;
 	struct aie_aperture *aperture = apart->aperture;
 	unsigned long clk_rate;
-	u32 qos;
+	u32 boot_qos, current_qos, target_qos;
 	int ret;
 
 	clk_rate = clk_get_rate(adev->clk);
@@ -309,13 +309,19 @@ int aie_part_set_freq(struct aie_partition *apart, u64 freq)
 	if (!freq)
 		return 0;
 
-	/* TODO: qos calculation is not defined by PLM yet */
-	qos = clk_rate / (unsigned long)freq;
-	ret = zynqmp_pm_set_requirement(apart->partition_id,
-					ZYNQMP_PM_CAPABILITY_ACCESS, qos,
+	ret = zynqmp_pm_get_qos(aperture->node_id, &boot_qos, &current_qos);
+	if (ret < 0) {
+		dev_err(&apart->dev, "Failed to get clock divider value.\n");
+		return -EINVAL;
+	}
+
+	target_qos = (boot_qos * freq) / clk_rate;
+	ret = zynqmp_pm_set_requirement(aperture->node_id,
+					ZYNQMP_PM_CAPABILITY_ACCESS, target_qos,
 					ZYNQMP_PM_REQUEST_ACK_BLOCKING);
 	if (ret < 0)
-		dev_err(&apart->dev, "failed to set frequency requirement.\n");
+		dev_err(&apart->dev, "Failed to set frequency requirement.\n");
+
 	return ret;
 }
 
@@ -358,21 +364,21 @@ int aie_part_get_freq(struct aie_partition *apart, u64 *freq)
 {
 	unsigned long clk_rate;
 	struct aie_device *adev = apart->adev;
-	u32 divider;
+	u32 boot_qos, current_qos;
 	int ret;
 
 	if (!freq)
 		return -EINVAL;
 
 	clk_rate = clk_get_rate(adev->clk);
-	/* TODO: AIE clock id is not defined yet */
-	ret = zynqmp_pm_clock_getdivider(adev->clock_id, &divider);
+	ret = zynqmp_pm_get_qos(apart->aperture->node_id, &boot_qos,
+				&current_qos);
 	if (ret < 0) {
-		dev_err(&apart->dev, "failed to get clock divider.\n");
+		dev_err(&apart->dev, "Failed to get clock divider value.\n");
 		return ret;
 	}
 
-	*freq = (u64)clk_rate / (u64)(divider & 0xFFFFFFFF);
+	*freq = (clk_rate * current_qos) / boot_qos;
 	return 0;
 }
 
