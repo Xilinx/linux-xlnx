@@ -656,36 +656,6 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 		return aie_part_release_tiles_from_user(apart, argp);
 	case AIE_TRANSACTION_IOCTL:
 		return aie_part_execute_transaction_from_user(apart, argp);
-	case AIE_SET_FREQUENCY_IOCTL:
-	{
-		u64 freq;
-
-		if (copy_from_user(&freq, argp, sizeof(freq)))
-			return -EFAULT;
-
-		ret = mutex_lock_interruptible(&apart->mlock);
-		if (ret)
-			return ret;
-		ret = aie_part_set_freq(apart, freq);
-		mutex_unlock(&apart->mlock);
-		return ret;
-	}
-	case AIE_GET_FREQUENCY_IOCTL:
-	{
-		u64 freq;
-
-		ret = mutex_lock_interruptible(&apart->mlock);
-		if (ret)
-			return ret;
-		ret = aie_part_get_freq(apart, &freq);
-		mutex_unlock(&apart->mlock);
-
-		if (!ret) {
-			if (copy_to_user(argp, &freq, sizeof(freq)))
-				return -EFAULT;
-		}
-		return ret;
-	}
 	case AIE_RSC_REQ_IOCTL:
 		return aie_part_rscmgr_rsc_req(apart, argp);
 	case AIE_RSC_REQ_SPECIFIC_IOCTL:
@@ -701,7 +671,8 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 	case AIE_RSC_GET_STAT_IOCTL:
 		return aie_part_rscmgr_get_statistics(apart, argp);
 	default:
-		dev_err(&apart->dev, "Invalid ioctl command %u.\n", cmd);
+		dev_err(&apart->dev, "Invalid/Unsupported ioctl command %u.\n",
+			cmd);
 		ret = -EINVAL;
 		break;
 	}
