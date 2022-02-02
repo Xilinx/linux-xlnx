@@ -1143,6 +1143,8 @@ ssize_t aie_tile_show_error(struct device *dev, struct device_attribute *attr,
 			    char *buffer);
 ssize_t aie_part_show_error_stat(struct device *dev,
 				 struct device_attribute *attr, char *buffer);
+ssize_t aie_part_show_current_freq(struct device *dev,
+				   struct device_attribute *attr, char *buffer);
 ssize_t aie_part_read_cb_error(struct kobject *kobj, char *buffer,
 			       ssize_t size);
 ssize_t aie_tile_show_event(struct device *dev, struct device_attribute *attr,
