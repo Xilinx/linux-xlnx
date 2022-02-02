@@ -164,8 +164,6 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 					   cfg->rx_refclk_hz);
 		} else if (cfg->rx_get_refclk) {
 			cfg->rx_refclk_hz = phy_dev->rx_refclk_hz;
-			xhdmiphy_set_lrate(phy_dev, phy_lane->direction, 1,
-					   cfg->rx_refclk_hz);
 		} else if (cfg->reset_gt) {
 			xhdmiphy_rst_gt_txrx(phy_dev, XHDMIPHY_CHID_CHA,
 					     XHDMIPHY_DIR_RX, false);
