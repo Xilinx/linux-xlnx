@@ -677,7 +677,7 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 		ret = mutex_lock_interruptible(&apart->mlock);
 		if (ret)
 			return ret;
-		ret = aie_part_get_running_freq(apart, &freq);
+		ret = aie_part_get_freq(apart, &freq);
 		mutex_unlock(&apart->mlock);
 
 		if (!ret) {
@@ -798,6 +798,8 @@ static void aie_part_release_device(struct device *dev)
 	aie_resource_uninitialize(&apart->cores_clk_state);
 	aie_resource_uninitialize(&apart->tiles_inuse);
 	aie_part_rscmgr_finish(apart);
+	/* Check and set frequency requirement for aperture */
+	aie_part_set_freq(apart, 0);
 }
 
 /**
