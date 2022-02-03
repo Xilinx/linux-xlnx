@@ -3734,6 +3734,7 @@ static int xhdmirx_remove(struct platform_device *pdev)
 
 static const struct of_device_id xhdmirx_of_id_table[] = {
 	{ .compatible = "xlnx,v-hdmi-rxss1-1.1" },
+	{ .compatible = "xlnx,v-hdmi-rxss1-1.2" },
 	{ }
 };
 
