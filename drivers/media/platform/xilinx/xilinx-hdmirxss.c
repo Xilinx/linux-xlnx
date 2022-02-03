@@ -2942,8 +2942,8 @@ static void xhdmirx_init(struct xhdmirx_state *xhdmi)
 	xhdmirx_pio_disable(xhdmi);
 	xhdmirx_tmr1_disable(xhdmi);
 	xhdmirx_tmr2_disable(xhdmi);
-	xhdmirx_tmr2_disable(xhdmi);
-	xhdmirx_tmr2_disable(xhdmi);
+	xhdmirx_tmr3_disable(xhdmi);
+	xhdmirx_tmr4_disable(xhdmi);
 	xhdmirx_vtd_disable(xhdmi);
 	xhdmirx_ddc_disable(xhdmi);
 	xhdmirx_aux_disable(xhdmi);
