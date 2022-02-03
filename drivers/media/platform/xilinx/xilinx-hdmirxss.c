@@ -747,7 +747,7 @@ static int xhdmi_frlddcwritefield(struct xhdmirx_state *xhdmi,
 				  u8 value)
 {
 	/* 256 byte FIFO but doubling to 512 tries for safety */
-	u32 data = 0xFFFFFFFF, retrycount = 2 * MAX_FRL_RETRY;
+	u32 data = 0, retrycount = 2 * MAX_FRL_RETRY;
 
 	if (frlscdcfield[field].mask != 0xFF)
 		data = xhdmi_frlddcreadfield(xhdmi, field);
