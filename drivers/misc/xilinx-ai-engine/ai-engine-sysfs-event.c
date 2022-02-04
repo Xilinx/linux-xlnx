@@ -22,7 +22,8 @@ static ssize_t aie_tile_print_event(struct aie_tile *atile, char *buffer,
 	ssize_t len = 0, size = PAGE_SIZE;
 	u32 ttype;
 
-	ttype = atile->apart->adev->ops->get_tile_type(&atile->loc);
+	ttype = atile->apart->adev->ops->get_tile_type(atile->apart->adev,
+						       &atile->loc);
 	if (ttype == AIE_TILE_TYPE_TILE) {
 		len += scnprintf(&buffer[len], max(0L, size - len),
 				 "core: %s\n", core);
@@ -62,7 +63,7 @@ ssize_t aie_tile_show_event(struct device *dev, struct device_attribute *attr,
 		return 0;
 	}
 
-	ttype = apart->adev->ops->get_tile_type(&atile->loc);
+	ttype = apart->adev->ops->get_tile_type(apart->adev, &atile->loc);
 
 	if (!aie_part_check_clk_enable_loc(apart, &atile->loc)) {
 		mutex_unlock(&apart->mlock);

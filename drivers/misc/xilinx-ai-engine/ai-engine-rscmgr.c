@@ -209,7 +209,7 @@ struct aie_rsc_stat *aie_part_get_rsc_bitmaps(struct aie_partition *apart,
 					      enum aie_module_type mod,
 					      enum aie_rsc_type rtype)
 {
-	u32 ttype = apart->adev->ops->get_tile_type(&loc);
+	u32 ttype = apart->adev->ops->get_tile_type(apart->adev, &loc);
 
 	return aie_part_get_ttype_rsc_bitmaps(apart, ttype, mod, rtype);
 }
@@ -230,7 +230,7 @@ int aie_part_get_mod_num_rscs(struct aie_partition *apart,
 			      enum aie_module_type mod,
 			      enum aie_rsc_type rtype)
 {
-	u32 ttype = apart->adev->ops->get_tile_type(&loc);
+	u32 ttype = apart->adev->ops->get_tile_type(apart->adev, &loc);
 	const struct aie_mod_rsc_attr *mattr;
 
 	mattr = aie_dev_get_mod_rsc_attr(apart->adev, ttype, mod, rtype);
@@ -264,7 +264,7 @@ int aie_part_get_rsc_startbit(struct aie_partition *apart,
 	int num_rows;
 	struct aie_tile_attr *tattr;
 
-	ttype = adev->ops->get_tile_type(&loc);
+	ttype = adev->ops->get_tile_type(adev, &loc);
 
 	mattr = aie_dev_get_mod_rsc_attr(adev, ttype, mod, rtype);
 	if (!mattr)
@@ -911,7 +911,7 @@ static int aie_part_rscmgr_get_ungated_bc_mods(struct aie_partition *apart,
 
 			l.col = apart->range.start.col + c;
 			l.row = r;
-			ttype = adev->ops->get_tile_type(&l);
+			ttype = adev->ops->get_tile_type(adev, &l);
 			tattr = &adev->ttype_attr[ttype];
 			rattr = &tattr->rscs_attr[rtype];
 			for (m = 0; m < tattr->num_mods; m++) {
@@ -1122,7 +1122,7 @@ static int aie_part_rscmgr_check_rscs_modules(struct aie_partition *apart,
 
 		l.col += apart->range.start.col;
 		/* validate module */
-		if (aie_dev_get_mod_id(adev, adev->ops->get_tile_type(&l),
+		if (aie_dev_get_mod_id(adev, adev->ops->get_tile_type(adev, &l),
 				       rscs[i].mod) < 0) {
 			dev_err(&apart->dev,
 				"failed resource check, tile(%u,%u) mod %u invalid.\n",
