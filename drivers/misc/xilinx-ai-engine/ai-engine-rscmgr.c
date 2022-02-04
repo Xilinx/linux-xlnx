@@ -324,6 +324,15 @@ int aie_part_rscmgr_init(struct aie_partition *apart)
 	struct aie_device *adev = apart->adev;
 	u32 t;
 
+	/*
+	 * TODO: resource manager is not supported for AIEML device and the
+	 * users are not expected to call any function as of now.
+	 */
+	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIEML) {
+		dev_warn(&apart->dev, "Skipping rsc mgr init.\n");
+		return 0;
+	}
+
 	for (t = AIE_TILE_TYPE_TILE; t < AIE_TILE_TYPE_MAX; t++) {
 		struct aie_tile_rscs *trscs = &apart->trscs[t];
 		struct aie_tile_attr *tattr;
@@ -423,6 +432,15 @@ void aie_part_rscmgr_finish(struct aie_partition *apart)
 	struct aie_device *adev = apart->adev;
 	u32 t;
 
+	/*
+	 * TODO: resource manager is not supported for AIEML device and the
+	 * users are not expected to call any function as of now.
+	 */
+	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIEML) {
+		dev_warn(&apart->dev, "rsc mgr not supported for device.\n");
+		return;
+	}
+
 	for (t = AIE_TILE_TYPE_TILE; t < AIE_TILE_TYPE_MAX; t++) {
 		struct aie_tile_rscs *trscs = &apart->trscs[t];
 		struct aie_tile_attr *tattr;
@@ -471,6 +489,15 @@ void aie_part_rscmgr_reset(struct aie_partition *apart)
 {
 	struct aie_device *adev = apart->adev;
 	u32 t;
+
+	/*
+	 * TODO: resource manager is not supported for AIEML device and the
+	 * users are not expected to call any function as of now.
+	 */
+	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIEML) {
+		dev_warn(&apart->dev, "rsc mgr not supported for device.\n");
+		return;
+	}
 
 	for (t = AIE_TILE_TYPE_TILE; t < AIE_TILE_TYPE_MAX; t++) {
 		struct aie_tile_rscs *trscs = &apart->trscs[t];
@@ -528,6 +555,15 @@ long aie_part_rscmgr_rsc_req(struct aie_partition *apart,
 	long ret;
 	int mod_num_rscs, start_bit;
 	struct aie_rsc *rscs;
+
+	/*
+	 * TODO: resource manager is not supported for AIEML device and the
+	 * users are not expected to call any function as of now.
+	 */
+	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIEML) {
+		dev_warn(&apart->dev, "rsc mgr not supported for device.\n");
+		return -EINVAL;
+	}
 
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
@@ -650,6 +686,15 @@ static long aie_part_rscmgr_rsc_clearbit(struct aie_partition *apart,
 	long ret;
 	int mod_num_rscs, start_bit;
 
+	/*
+	 * TODO: resource manager is not supported for AIEML device and the
+	 * users are not expected to call any function as of now.
+	 */
+	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIEML) {
+		dev_warn(&apart->dev, "rsc mgr not supported for device.\n");
+		return -EINVAL;
+	}
+
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
 
@@ -763,6 +808,15 @@ long aie_part_rscmgr_rsc_req_specific(struct aie_partition *apart,
 	long ret;
 	int mod_num_rscs, start_bit;
 
+	/*
+	 * TODO: resource manager is not supported for AIEML device and the
+	 * users are not expected to call any function as of now.
+	 */
+	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIEML) {
+		dev_warn(&apart->dev, "rsc mgr not supported for device.\n");
+		return -EINVAL;
+	}
+
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
 
@@ -838,6 +892,15 @@ long aie_part_rscmgr_rsc_check_avail(struct aie_partition *apart,
 	long ret;
 	int mod_num_rscs, start_bit;
 	struct aie_rsc_req args;
+
+	/*
+	 * TODO: resource manager is not supported for AIEML device and the
+	 * users are not expected to call any function as of now.
+	 */
+	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIEML) {
+		dev_warn(&apart->dev, "rsc mgr not supported for device.\n");
+		return -EINVAL;
+	}
 
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
@@ -1164,6 +1227,15 @@ int aie_part_rscmgr_set_tile_broadcast(struct aie_partition *apart,
 	struct aie_rsc_stat *rstat;
 	int start_bit;
 
+	/*
+	 * TODO: resource manager is not supported for AIEML device and the
+	 * users are not expected to call any function as of now.
+	 */
+	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIEML) {
+		dev_warn(&apart->dev, "rsc mgr not supported for device.\n");
+		return -EINVAL;
+	}
+
 	rstat = aie_part_get_rsc_bitmaps(apart, loc, mod,
 					 AIE_RSCTYPE_BROADCAST);
 	/* bitmap pointer cannot be NULL. */
@@ -1206,6 +1278,15 @@ long aie_part_rscmgr_get_broadcast(struct aie_partition *apart,
 	struct aie_rsc *rscs;
 	u32 i;
 	long ret;
+
+	/*
+	 * TODO: resource manager is not supported for AIEML device and the
+	 * users are not expected to call any function as of now.
+	 */
+	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIEML) {
+		dev_warn(&apart->dev, "rsc mgr not supported for device.\n");
+		return -EINVAL;
+	}
 
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
@@ -1324,6 +1405,15 @@ int aie_part_rscmgr_set_static(struct aie_partition *apart, void *meta)
 	struct aie_rsc_meta_header *header = meta;
 	struct aie_rsc_bitmap *bitmap;
 	u64 i, num_bitmaps, offset;
+
+	/*
+	 * TODO: resource manager is not supported for AIEML device and the
+	 * users are not expected to call any function as of now.
+	 */
+	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIEML) {
+		dev_warn(&apart->dev, "rsc mgr not supported for device.\n");
+		return 0;
+	}
 
 	if (!header) {
 		dev_err(&apart->dev,
@@ -1474,6 +1564,15 @@ long aie_part_rscmgr_get_statistics(struct aie_partition *apart,
 	struct aie_rsc_user_stat_array args;
 	struct aie_rsc_user_stat __user *ustat_ptr;
 	u32 i;
+
+	/*
+	 * TODO: resource manager is not supported for AIEML device and the
+	 * users are not expected to call any function as of now.
+	 */
+	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIEML) {
+		dev_warn(&apart->dev, "rsc mgr not supported for device.\n");
+		return -EINVAL;
+	}
 
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
