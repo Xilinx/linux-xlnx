@@ -25,6 +25,9 @@
 #include <linux/slab.h>
 #include <uapi/linux/xlnx-ai-engine.h>
 
+#define AIE_DEVICE_GEN_AIE	1U
+#define AIE_DEVICE_GEN_AIEML	2U
+
 /*
  * Macros for AI engine tile type bitmasks
  */
@@ -718,6 +721,7 @@ struct aie_device {
 	u32 array_shift;
 	u32 col_shift;
 	u32 row_shift;
+	u32 dev_gen;
 	u32 num_kernel_regs;
 	u32 num_core_regs;
 	int version;
