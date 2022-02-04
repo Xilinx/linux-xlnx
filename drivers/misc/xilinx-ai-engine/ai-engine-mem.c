@@ -221,7 +221,8 @@ int aie_mem_get_info(struct aie_partition *apart, unsigned long arg)
 	if (copy_from_user(&margs, (void __user *)arg, sizeof(margs)))
 		return -EFAULT;
 
-	num_mems = apart->adev->ops->get_mem_info(&apart->range, NULL);
+	num_mems = apart->adev->ops->get_mem_info(apart->adev, &apart->range,
+						  NULL);
 	if (num_mems <= 0)
 		return -EINVAL;
 
@@ -289,7 +290,8 @@ bool aie_part_has_mem_mmapped(struct aie_partition *apart)
 {
 	unsigned int num_mems, i;
 
-	num_mems = apart->adev->ops->get_mem_info(&apart->range, NULL);
+	num_mems = apart->adev->ops->get_mem_info(apart->adev, &apart->range,
+			NULL);
 	if (!num_mems)
 		return false;
 

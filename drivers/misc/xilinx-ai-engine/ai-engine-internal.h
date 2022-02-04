@@ -52,6 +52,8 @@ enum aie_tile_type {
 #define AIE_REGS_ATTR_PERM_MASK		GENMASK(15, \
 						AIE_REGS_ATTR_PERM_SHIFT)
 
+#define KBYTES(n)	((n) * 1024)
+
 /* Silicon Engineering Sample(ES) revision ID */
 #define VERSAL_ES1_REV_ID		0x0
 #define VERSAL_ES2_REV_ID		0x1
@@ -332,7 +334,8 @@ struct aie_aperture;
  */
 struct aie_tile_operations {
 	u32 (*get_tile_type)(struct aie_device *adev, struct aie_location *loc);
-	unsigned int (*get_mem_info)(struct aie_range *range,
+	unsigned int (*get_mem_info)(struct aie_device *adev,
+				     struct aie_range *range,
 				     struct aie_part_mem *pmem);
 	u32 (*get_core_status)(struct aie_partition *apart,
 			       struct aie_location *loc);
