@@ -393,6 +393,7 @@ of_aie_aperture_probe(struct aie_device *adev, struct device_node *nc)
 	 */
 	range->start.row = 0;
 	range->size.row = adev->ttype_attr[AIE_TILE_TYPE_SHIMPL].num_rows +
+			  adev->ttype_attr[AIE_TILE_TYPE_MEMORY].num_rows +
 			  adev->ttype_attr[AIE_TILE_TYPE_TILE].num_rows;
 
 	ret = of_property_read_u32_index(nc, "xlnx,node-id", 0,

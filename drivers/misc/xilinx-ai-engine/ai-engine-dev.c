@@ -437,6 +437,7 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 	u32 idcode, version, pm_reg[2];
 	int ret;
 	u8 regs_u8[2];
+	u8 aie_gen;
 
 	adev = devm_kzalloc(&pdev->dev, sizeof(*adev), GFP_KERNEL);
 	if (!adev)
@@ -449,6 +450,13 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 	ret = of_device_is_compatible(pdev->dev.of_node, "xlnx,ai-engine-v1.0");
 	if (ret)
 		return xilinx_ai_engine_probe_v1(pdev);
+
+	ret = of_property_read_u8(pdev->dev.of_node, "xlnx,aie-gen", &aie_gen);
+	if (ret < 0) {
+		dev_warn(&pdev->dev,
+			 "no aie dev generation information in device tree\n");
+		return ret;
+	}
 
 	ret = of_property_read_u8_array(pdev->dev.of_node, "xlnx,shim-rows",
 					regs_u8, ARRAY_SIZE(regs_u8));
@@ -472,7 +480,26 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 	adev->ttype_attr[AIE_TILE_TYPE_TILE].start_row = regs_u8[0];
 	adev->ttype_attr[AIE_TILE_TYPE_TILE].num_rows = regs_u8[1];
 
-	ret = aie_device_init(adev);
+	ret = of_property_read_u8_array(pdev->dev.of_node, "xlnx,mem-rows",
+					regs_u8, ARRAY_SIZE(regs_u8));
+	if (ret < 0) {
+		dev_err(&pdev->dev,
+			"Failed to read mem rows information\n");
+		return ret;
+	}
+
+	adev->ttype_attr[AIE_TILE_TYPE_MEMORY].start_row = regs_u8[0];
+	adev->ttype_attr[AIE_TILE_TYPE_MEMORY].num_rows = regs_u8[1];
+
+	adev->dev_gen = aie_gen;
+	if (aie_gen == AIE_DEVICE_GEN_AIE)
+		ret = aie_device_init(adev);
+	else if (aie_gen == AIE_DEVICE_GEN_AIEML)
+		ret = aieml_device_init(adev);
+	else {
+		dev_err(&pdev->dev, "Invalid device generation\n");
+		return -EINVAL;
+	}
 	if (ret < 0) {
 		dev_err(&pdev->dev, "failed to initialize device instance.\n");
 		return ret;
