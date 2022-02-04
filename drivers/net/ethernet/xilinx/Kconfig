@@ -54,6 +54,7 @@ config XILINX_LL_TEMAC
 
 config XILINX_TSN
 	bool "Enable Xilinx's TSN IP"
+	select XILINX_AXI_EMAC
 	help
 	  Enable Xilinx's TSN IP.
 
