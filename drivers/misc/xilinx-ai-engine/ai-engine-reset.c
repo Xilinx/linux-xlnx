@@ -130,7 +130,8 @@ static void aie_part_clear_core_regs(struct aie_partition *apart)
 
 			loc.row = r;
 			loc.col = c;
-			ttype = apart->adev->ops->get_tile_type(&loc);
+			ttype = apart->adev->ops->get_tile_type(apart->adev,
+								&loc);
 			if (ttype == AIE_TILE_TYPE_TILE &&
 			    aie_part_check_clk_enable_loc(apart, &loc))
 				aie_part_clear_core_regs_of_tile(apart, loc);

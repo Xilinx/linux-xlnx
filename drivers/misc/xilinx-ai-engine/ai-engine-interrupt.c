@@ -613,13 +613,14 @@ static u32 aie_range_get_num_nocs(const struct aie_range *range,
 				  u32 *l2_bitmap_off)
 {
 	struct aie_location loc;
+	struct aie_device *adev = aperture->adev;
 	u32 num_nocs = 0;
 
 	for (loc.col = range->start.col, loc.row = 0;
 	     loc.col < range->start.col + range->size.col; loc.col++) {
 		u32 ttype;
 
-		ttype = aperture->adev->ops->get_tile_type(&loc);
+		ttype = adev->ops->get_tile_type(adev, &loc);
 		if (ttype != AIE_TILE_TYPE_SHIMNOC)
 			continue;
 		num_nocs++;
@@ -631,7 +632,7 @@ static u32 aie_range_get_num_nocs(const struct aie_range *range,
 		     loc.col < range->start.col; loc.col++) {
 			u32 ttype;
 
-			ttype = aperture->adev->ops->get_tile_type(&loc);
+			ttype = adev->ops->get_tile_type(adev, &loc);
 			if (ttype != AIE_TILE_TYPE_SHIMNOC)
 				continue;
 			*l2_bitmap_off += 1;
@@ -673,7 +674,7 @@ static void aie_l2_backtrack(struct aie_partition *apart)
 		unsigned long l2_mask;
 		u32 adjust_l2_bitmap_offset = l2_bitmap_offset * 32;
 
-		ttype = apart->adev->ops->get_tile_type(&loc);
+		ttype = apart->adev->ops->get_tile_type(apart->adev, &loc);
 		if (ttype != AIE_TILE_TYPE_SHIMNOC)
 			continue;
 
@@ -799,6 +800,7 @@ void aie_aperture_backtrack(struct work_struct *work)
 irqreturn_t aie_interrupt(int irq, void *data)
 {
 	struct aie_aperture *aperture = data;
+	struct aie_device *adev = aperture->adev;
 	int ret;
 	u32 l2_bitmap_offset = 0;
 	struct aie_location loc;
@@ -810,7 +812,7 @@ irqreturn_t aie_interrupt(int irq, void *data)
 		unsigned long l2_mask_64;
 		u32 ttype, l2_status, l2_mask, nbits_cpy, adjust_l2_bitmap_off;
 
-		ttype = aperture->adev->ops->get_tile_type(&loc);
+		ttype = adev->ops->get_tile_type(adev, &loc);
 		if (ttype != AIE_TILE_TYPE_SHIMNOC)
 			continue;
 
@@ -982,7 +984,8 @@ u32 aie_get_error_count(struct aie_partition *apart)
 	     loc.col++) {
 		for (loc.row = apart->range.start.row;
 		     loc.row < apart->range.size.row; loc.row++) {
-			ttype = apart->adev->ops->get_tile_type(&loc);
+			ttype = apart->adev->ops->get_tile_type(apart->adev,
+								&loc);
 			if (ttype == AIE_TILE_TYPE_TILE) {
 				num += aie_get_module_error_count(apart, loc,
 								  AIE_CORE_MOD,
@@ -1137,7 +1140,7 @@ int aie_part_set_intr_rscs(struct aie_partition *apart)
 
 			b = AIE_ARRAY_TILE_ERROR_BC_ID;
 			l.row = apart->range.start.row + r;
-			ttype = adev->ops->get_tile_type(&l);
+			ttype = adev->ops->get_tile_type(apart->adev, &l);
 
 			if (WARN_ON(ttype >= AIE_TILE_TYPE_MAX))
 				return -EINVAL;

@@ -17,7 +17,7 @@ static u32 aie_get_lock_status(struct aie_partition *apart,
 {
 	u32 ttype, stsoff, regoff;
 
-	ttype = apart->adev->ops->get_tile_type(loc);
+	ttype = apart->adev->ops->get_tile_type(apart->adev, loc);
 	if (ttype != AIE_TILE_TYPE_TILE)
 		stsoff = apart->adev->pl_lock->sts_regoff;
 	else
@@ -45,7 +45,7 @@ static ssize_t aie_get_lock_status_str(struct aie_partition *apart,
 	u32 ttype, mask;
 	u8 value, shift;
 
-	ttype = apart->adev->ops->get_tile_type(loc);
+	ttype = apart->adev->ops->get_tile_type(apart->adev, loc);
 	if (ttype != AIE_TILE_TYPE_TILE) {
 		shift = lock * apart->adev->pl_lock->sts.regoff;
 		mask = (apart->adev->pl_lock->sts.mask) << shift;
@@ -81,7 +81,7 @@ ssize_t aie_tile_show_lock(struct device *dev, struct device_attribute *attr,
 		return len;
 	}
 
-	ttype = apart->adev->ops->get_tile_type(&atile->loc);
+	ttype = apart->adev->ops->get_tile_type(apart->adev, &atile->loc);
 	if (ttype != AIE_TILE_TYPE_TILE)
 		num_locks = apart->adev->pl_lock->num_locks;
 	else
@@ -115,7 +115,7 @@ ssize_t aie_sysfs_get_lock_status(struct aie_partition *apart,
 	unsigned long status;
 	ssize_t len = 0;
 
-	ttype = apart->adev->ops->get_tile_type(loc);
+	ttype = apart->adev->ops->get_tile_type(apart->adev, loc);
 	if (ttype == AIE_TILE_TYPE_SHIMPL)
 		return len;
 
@@ -166,7 +166,8 @@ ssize_t aie_part_read_cb_lock(struct kobject *kobj, char *buffer, ssize_t size)
 
 	for (index = 0; index < apart->range.size.col * apart->range.size.row;
 	     index++, atile++) {
-		u32 ttype = apart->adev->ops->get_tile_type(&atile->loc);
+		u32 ttype = apart->adev->ops->get_tile_type(apart->adev,
+							    &atile->loc);
 
 		if (ttype == AIE_TILE_TYPE_SHIMPL)
 			continue;

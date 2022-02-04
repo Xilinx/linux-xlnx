@@ -234,7 +234,7 @@ static int aie_part_validate_bdloc(struct aie_partition *apart,
 		return -EINVAL;
 	}
 
-	ttype = apart->adev->ops->get_tile_type(&loc_adjust);
+	ttype = apart->adev->ops->get_tile_type(apart->adev, &loc_adjust);
 	if (ttype != AIE_TILE_TYPE_SHIMNOC) {
 		dev_err(&apart->dev,
 			"failed to set bd, (%u,%u) is not SHIM NOC\n",
