@@ -31,10 +31,8 @@ static int usb5744_init_hw(struct device *dev, struct usb5744 *data)
 
 	data->reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW);
 	if (IS_ERR(data->reset_gpio)) {
-		dev_err_probe(dev, PTR_ERR(data->reset_gpio),
-			      "Failed to request reset GPIO %d, errcode",
-			      PTR_ERR(data->reset_gpio));
-		return PTR_ERR(data->reset_gpio);
+		return dev_err_probe(dev, PTR_ERR(data->reset_gpio),
+				     "Failed to request reset GPIO\n");
 	}
 
 	/* Toggle RESET_N to reset the hub. */
