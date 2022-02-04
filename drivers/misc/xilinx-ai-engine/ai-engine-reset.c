@@ -86,45 +86,6 @@ static void aie_part_set_cols_clkbuf(struct aie_partition *apart, bool enable)
 }
 
 /**
- * aie_part_clear_mems() - clear memories of every tile in a partition
- * @apart: AI engine partition
- */
-static void aie_part_clear_mems(struct aie_partition *apart)
-{
-	struct aie_device *adev = apart->adev;
-	struct aie_aperture *aperture = apart->aperture;
-	struct aie_part_mem *pmems = apart->pmems;
-	u32 i, num_mems;
-
-	/* Get the number of different types of memories */
-	num_mems = adev->ops->get_mem_info(&apart->range, NULL);
-	if (!num_mems)
-		return;
-
-	/* Clear each type of memories in the partition */
-	for (i = 0; i < num_mems; i++) {
-		struct aie_mem *mem = &pmems[i].mem;
-		struct aie_range *range = &mem->range;
-		u32 c, r;
-
-		for (c = range->start.col;
-		     c < range->start.col + range->size.col; c++) {
-			for (r = range->start.row;
-			     r < range->start.row + range->size.row; r++) {
-				struct aie_location loc;
-				u32 memoff;
-
-				loc.col = c;
-				loc.row = r;
-				memoff = aie_cal_regoff(adev, loc, mem->offset);
-				memset_io(aperture->base + memoff, 0,
-					  mem->size);
-			}
-		}
-	}
-}
-
-/**
  * aie_part_clear_core_regs_of_tile() - clear registers of aie core
  * @apart: AI engine partition
  * @loc: location of aie tile to clear
@@ -209,7 +170,7 @@ int aie_part_clean(struct aie_partition *apart)
 	if (ret < 0)
 		return ret;
 
-	aie_part_clear_mems(apart);
+	apart->adev->ops->mem_clear(apart);
 	aie_part_clear_core_regs(apart);
 	aie_part_set_cols_clkbuf(apart, false);
 	aie_resource_clear_all(&apart->cores_clk_state);
