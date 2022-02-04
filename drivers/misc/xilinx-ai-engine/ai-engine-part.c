@@ -440,6 +440,14 @@ static int aie_part_create_event_bitmap(struct aie_partition *apart)
 	u32 num_aie_module = range.size.col * (range.size.row - 1);
 	int ret;
 
+	/*
+	 * TODO: resource manager, events is not supported for AIEML device and
+	 * the users are not expected to call any function as of now.
+	 */
+	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIEML) {
+		dev_dbg(&apart->dev, "Skipping event bitmap allocation.\n");
+		return 0;
+	}
 	bitmap_sz = num_aie_module * apart->adev->core_events->num_events;
 	ret = aie_resource_initialize(&apart->core_event_status, bitmap_sz);
 	if (ret) {
@@ -474,6 +482,10 @@ static int aie_part_create_event_bitmap(struct aie_partition *apart)
  */
 static void aie_part_release_event_bitmap(struct aie_partition *apart)
 {
+	/* TODO: remove check once resource manager is enabled for AIEML. */
+	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIEML)
+		return;
+
 	aie_resource_uninitialize(&apart->core_event_status);
 	aie_resource_uninitialize(&apart->mem_event_status);
 	aie_resource_uninitialize(&apart->pl_event_status);
