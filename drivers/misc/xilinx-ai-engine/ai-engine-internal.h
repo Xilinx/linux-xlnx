@@ -331,7 +331,7 @@ struct aie_aperture;
  * operation.
  */
 struct aie_tile_operations {
-	u32 (*get_tile_type)(struct aie_location *loc);
+	u32 (*get_tile_type)(struct aie_device *adev, struct aie_location *loc);
 	unsigned int (*get_mem_info)(struct aie_range *range,
 				     struct aie_part_mem *pmem);
 	u32 (*get_core_status)(struct aie_partition *apart,

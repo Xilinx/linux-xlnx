@@ -119,7 +119,8 @@ static int aie_tile_sysfs_create(struct aie_tile *atile)
 	u32 index, i = 0, j = 0;
 
 	attr = atile->apart->adev->tile_sysfs_attr;
-	ttype = atile->apart->adev->ops->get_tile_type(&atile->loc);
+	ttype = atile->apart->adev->ops->get_tile_type(atile->apart->adev,
+						       &atile->loc);
 
 	if (attr->num_dev_attrs) {
 		dev_attrs = devm_kzalloc(&atile->dev, sizeof(*dev_attrs) *

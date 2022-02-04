@@ -76,7 +76,7 @@ ssize_t aie_sysfs_get_core_status(struct aie_partition *apart,
 	bool is_delimit_req = false;
 	char **str = apart->adev->core_status_str;
 
-	ttype = apart->adev->ops->get_tile_type(loc);
+	ttype = apart->adev->ops->get_tile_type(apart->adev, loc);
 	if (ttype != AIE_TILE_TYPE_TILE)
 		return len;
 
@@ -177,7 +177,8 @@ ssize_t aie_part_read_cb_core(struct kobject *kobj, char *buffer, ssize_t size)
 
 	for (index = 0; index < apart->range.size.col * apart->range.size.row;
 	     index++, atile++) {
-		u32 ttype = apart->adev->ops->get_tile_type(&atile->loc);
+		u32 ttype = apart->adev->ops->get_tile_type(apart->adev,
+							    &atile->loc);
 
 		if (ttype != AIE_TILE_TYPE_TILE)
 			continue;

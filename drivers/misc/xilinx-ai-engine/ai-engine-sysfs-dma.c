@@ -17,7 +17,7 @@ static u32 aie_get_dma_s2mm_status(struct aie_partition *apart,
 {
 	u32 stsoff, regoff, ttype;
 
-	ttype = apart->adev->ops->get_tile_type(loc);
+	ttype = apart->adev->ops->get_tile_type(apart->adev, loc);
 	if (ttype != AIE_TILE_TYPE_TILE)
 		stsoff = apart->adev->shim_dma->s2mm_sts_regoff;
 	else
@@ -38,7 +38,7 @@ static u32 aie_get_dma_mm2s_status(struct aie_partition *apart,
 {
 	u32 stsoff, regoff, ttype;
 
-	ttype = apart->adev->ops->get_tile_type(loc);
+	ttype = apart->adev->ops->get_tile_type(apart->adev, loc);
 	if (ttype != AIE_TILE_TYPE_TILE)
 		stsoff = apart->adev->shim_dma->mm2s_sts_regoff;
 	else
@@ -62,7 +62,7 @@ static u8 aie_get_chan_status(struct aie_partition *apart,
 	const struct aie_single_reg_field *sts, *stall;
 	u32 mask, chan_shift, shift, value, ttype;
 
-	ttype = apart->adev->ops->get_tile_type(loc);
+	ttype = apart->adev->ops->get_tile_type(apart->adev, loc);
 	if (ttype != AIE_TILE_TYPE_TILE) {
 		sts = &apart->adev->shim_dma->sts;
 		stall = &apart->adev->shim_dma->stall;
@@ -97,7 +97,7 @@ static u8 aie_get_queue_size(struct aie_partition *apart,
 	const struct aie_single_reg_field *qsize;
 	u32 mask, chan_shift, shift, ttype;
 
-	ttype = apart->adev->ops->get_tile_type(loc);
+	ttype = apart->adev->ops->get_tile_type(apart->adev, loc);
 	if (ttype != AIE_TILE_TYPE_TILE)
 		qsize = &apart->adev->shim_dma->qsize;
 	else
@@ -123,7 +123,7 @@ static u8 aie_get_queue_status(struct aie_partition *apart,
 	const struct aie_single_reg_field *qsts;
 	u32 mask, chan_shift, shift, ttype;
 
-	ttype = apart->adev->ops->get_tile_type(loc);
+	ttype = apart->adev->ops->get_tile_type(apart->adev, loc);
 	if (ttype != AIE_TILE_TYPE_TILE)
 		qsts = &apart->adev->shim_dma->qsts;
 	else
@@ -150,7 +150,7 @@ static u8 aie_get_current_bd(struct aie_partition *apart,
 	const struct aie_single_reg_field *curbd;
 	u32 mask, chan_shift, shift, ttype;
 
-	ttype = apart->adev->ops->get_tile_type(loc);
+	ttype = apart->adev->ops->get_tile_type(apart->adev, loc);
 	if (ttype != AIE_TILE_TYPE_TILE)
 		curbd = &apart->adev->shim_dma->curbd;
 	else
@@ -173,7 +173,7 @@ static u32 aie_get_fifo_status(struct aie_partition *apart,
 {
 	u32 fifo_off, regoff, ttype;
 
-	ttype = apart->adev->ops->get_tile_type(loc);
+	ttype = apart->adev->ops->get_tile_type(apart->adev, loc);
 	if (ttype != AIE_TILE_TYPE_TILE)
 		return 0U;
 
@@ -223,7 +223,7 @@ ssize_t aie_sysfs_get_dma_status(struct aie_partition *apart,
 	bool is_delimit_req = false;
 	char **str = apart->adev->dma_status_str;
 
-	ttype = apart->adev->ops->get_tile_type(loc);
+	ttype = apart->adev->ops->get_tile_type(apart->adev, loc);
 	if (ttype == AIE_TILE_TYPE_SHIMPL)
 		return len;
 
@@ -329,7 +329,7 @@ ssize_t aie_tile_show_dma(struct device *dev, struct device_attribute *attr,
 	aie_sysfs_get_dma_status(apart, &atile->loc, ch_buf,
 				 AIE_SYSFS_CHAN_STS_SIZE);
 
-	ttype = apart->adev->ops->get_tile_type(&atile->loc);
+	ttype = apart->adev->ops->get_tile_type(apart->adev, &atile->loc);
 	if (ttype != AIE_TILE_TYPE_TILE) {
 		num_mm2s_chan = apart->adev->shim_dma->num_mm2s_chan;
 		num_s2mm_chan = apart->adev->shim_dma->num_s2mm_chan;
@@ -448,7 +448,8 @@ ssize_t aie_part_read_cb_dma(struct kobject *kobj, char *buffer, ssize_t size)
 
 	for (index = 0; index < apart->range.size.col * apart->range.size.row;
 	     index++, atile++) {
-		u32 ttype = apart->adev->ops->get_tile_type(&atile->loc);
+		u32 ttype = apart->adev->ops->get_tile_type(apart->adev,
+							    &atile->loc);
 
 		if (ttype == AIE_TILE_TYPE_SHIMPL)
 			continue;

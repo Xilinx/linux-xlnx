@@ -905,7 +905,7 @@ static const struct aie_sysfs_attr aie_tile_sysfs_attr = {
 	.num_bin_attrs = 0U,
 };
 
-static u32 aie_get_tile_type(struct aie_location *loc)
+static u32 aie_get_tile_type(struct aie_device *adev, struct aie_location *loc)
 {
 	if (loc->row)
 		return AIE_TILE_TYPE_TILE;
@@ -1052,7 +1052,8 @@ static int aie_scan_part_clocks(struct aie_partition *apart)
 			 */
 			nbitpos = loc.col * (range->size.row - 1) + loc.row;
 
-			if (aie_get_tile_type(&loc) != AIE_TILE_TYPE_TILE) {
+			if (aie_get_tile_type(adev, &loc) !=
+					AIE_TILE_TYPE_TILE) {
 				/* Checks shim tile for next core tile */
 				va = aperture->base +
 				     aie_cal_regoff(adev, loc,

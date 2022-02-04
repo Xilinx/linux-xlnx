@@ -121,7 +121,7 @@ static int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
 		return 0;
 
 	regend32 = lower_32_bits(regend64);
-	ttype = adev->ops->get_tile_type(&aloc);
+	ttype = adev->ops->get_tile_type(adev, &loc);
 	for (i = 0; i < adev->num_kernel_regs; i++) {
 		const struct aie_tile_regs *regs;
 		u32 rttype, writable;
