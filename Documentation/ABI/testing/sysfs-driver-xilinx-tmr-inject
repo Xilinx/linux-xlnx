@@ -1,0 +1,12 @@
+What:		/sys/devices/platform/amba_pl/<dev>/inject_err
+Date:		Feb 2022
+Contact:	appana.durga.rao@xilinx.com
+Description:	This control file allows to inject fault using tmr inject.
+		This file is write only.
+
+What:		/sys/devices/platform/amba_pl/<dev>/inject_cpuid
+Date:		Feb 2022
+Contact:	appana.durga.rao@xilinx.com
+Description:	This control file allows to configure the CPU identifier
+		to enable fault injection.
+		This file is write only.
