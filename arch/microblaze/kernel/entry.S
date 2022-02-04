@@ -785,6 +785,46 @@ IRQ_return: /* MS: Make global symbol for debugging */
 	rtid	r14, 0
 	nop
 
+#ifdef CONFIG_MB_MANAGER
+C_ENTRY(_xmb_manager_break):
+	addik	r1, r1, CONFIG_KERNEL_BASE_ADDR - CONFIG_KERNEL_START - PT_SIZE
+	SAVE_REGS
+	swi	r0, r1, PT_R0;	/* R0 must be saved too */
+	swi	r14, r1, PT_R14	/* rewrite saved R14 value */
+	swi	r16, r1, PT_PC; /* PC and r16 are the same */
+
+	lwi	r6, r0, TOPHYS(xmb_manager_baseaddr)
+	lwi	r7, r0, TOPHYS(xmb_manager_crval)
+	/*
+	 * When the break vector gets asserted because of error injection,
+	 * the break signal must be blocked before exiting from the
+	 * break handler, below code configures the tmr manager
+	 * control register to block break signal.
+	 */
+	swi	r7, r6, 0
+	lwi  	r5, r0, TOPHYS(xmb_manager_dev)
+	lwi	r8, r0, TOPHYS(xmb_manager_callback)
+	tovirt(r1, r1)
+	addik   r15, r0, ret_from_break;
+	rtbd	r8, 0
+	nop;
+
+ret_from_break:
+	nop;
+	nop;
+	set_bip; /* Ints masked for state restore */
+	VM_OFF;
+	tophys(r1,r1);
+	/* MS: Restore all regs */
+	RESTORE_REGS_RTBD
+	lwi	r14, r1, PT_R14;
+	lwi	r16, r1, PT_PC;
+	addik	r1, r1, PT_SIZE; /* MS: Clean up stack space */
+	tovirt(r1,r1);
+	rtbd	r16, 0;
+	nop;
+#endif
+
 /*
  * Debug trap for KGDB. Enter to _debug_exception by brki r16, 0x18
  * and call handling function with saved pt_regs
@@ -1044,8 +1084,13 @@ ENTRY(_reset)
 	brai	TOPHYS(_user_exception); /* syscall handler */
 	.org	0x10
 	brai	TOPHYS(_interrupt);	/* Interrupt handler */
+#ifdef CONFIG_MB_MANAGER
+	.org	0x18
+	brai	TOPHYS(_xmb_manager_break);	/* microblaze manager break handler */
+#else
 	.org	0x18
 	brai	TOPHYS(_debug_exception);	/* debug trap handler */
+#endif
 	.org	0x20
 	brai	TOPHYS(_hw_exception_handler);	/* HW exception handler */
 
