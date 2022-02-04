@@ -27,6 +27,7 @@
 
 #include <asm/page.h>
 #include <asm/unistd.h>
+#include <asm/xilinx_mb_manager.h>
 
 #include <linux/errno.h>
 #include <asm/signal.h>
@@ -332,6 +333,22 @@ syscall_debug_table:
  * are masked. This is nice, means we don't have to CLI before state save
  */
 C_ENTRY(_user_exception):
+#ifdef CONFIG_MB_MANAGER
+	andi	r11, r0, 0
+	ori	r11, r0, XMB_INJECT_MAGIC_VAL
+	cmp	r11, r11, r12
+	bnei	r11, ret_to_user;
+	set_bip
+	/* barrier for instructions and data accesses */
+	mbar	1
+	mbar	2
+	bralid	r15, XMB_INJECT_ERR_OFFSET
+	nop
+	nop
+	rtbd	r14, 8
+	nop
+ret_to_user:
+#endif
 	STORE_PER_CPU(r1, ENTRY_SP) /* save stack */
 	addi	r14, r14, 4	/* return address is 4 byte after call */
 
@@ -1030,6 +1047,33 @@ ENTRY(_switch_to)
 	nop
 
 #ifdef CONFIG_MB_MANAGER
+.global xmb_inject_err
+.section .text
+.align 2
+.ent xmb_inject_err
+.type xmb_inject_err, @function
+xmb_inject_err:
+	addik	r1, r1, -PT_SIZE
+	SAVE_REGS
+
+	andi	r12, r0, 0
+	ori	r12, r0, XMB_INJECT_MAGIC_VAL
+	/* barrier for instructions and data accesses */
+	mbar	1
+	mbar	2
+	/* call user exception */
+	bralid	r14, 8
+	nop;
+
+	/* barrier for instructions and data accesses */
+	mbar	1
+	mbar	2
+	RESTORE_REGS
+	addik	r1, r1, PT_SIZE
+	rtsd	r15, 8;
+	nop;
+.end xmb_inject_err
+
 .section .data
 .global xmb_manager_dev
 .global xmb_manager_baseaddr
@@ -1093,6 +1137,22 @@ ENTRY(_reset)
 #endif
 	.org	0x20
 	brai	TOPHYS(_hw_exception_handler);	/* HW exception handler */
+
+#ifdef CONFIG_MB_MANAGER
+	/*
+	 * For TMR Inject API which injects the error should
+	 * be executed from LMB.
+	 * TMR Inject is programmed with address of 0x200 so that
+	 * when program counter matches with this address error will
+	 * be injected. 0x200 is expected to be next available bram
+	 * offset, hence used for this api.
+	 */
+	.org	XMB_INJECT_ERR_OFFSET
+xmb_inject_error:
+	nop
+	rtsd	r15, 8
+	nop
+#endif
 
 .section .rodata,"a"
 #include "syscall_table.S"
