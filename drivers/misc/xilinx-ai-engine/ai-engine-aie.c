@@ -1314,19 +1314,11 @@ static void aie_device_init_rscs_attr(struct aie_device *adev)
 	struct aie_tile_attr *tattr;
 
 	tattr = &adev->ttype_attr[AIE_TILE_TYPE_TILE];
-	tattr->start_row = 1;
-	/*
-	 * TODO: number of rows information of the AI engine device should get
-	 * from device tree.
-	 */
-	tattr->num_rows = 0x8;
 	tattr->num_mods = 2;
 	tattr->rscs_attr = aie_core_tile_rscs_attr;
 	tattr->mods = aie_core_tile_module_types;
 
 	tattr = &adev->ttype_attr[AIE_TILE_TYPE_SHIMPL];
-	tattr->start_row = 0;
-	tattr->num_rows = 1;
 	tattr->num_mods = 1;
 	tattr->rscs_attr = aie_shimpl_tile_rscs_attr;
 	tattr->mods = aie_shimpl_tile_module_types;
@@ -1337,8 +1329,6 @@ static void aie_device_init_rscs_attr(struct aie_device *adev)
 	 * driver yet.
 	 */
 	tattr = &adev->ttype_attr[AIE_TILE_TYPE_SHIMNOC];
-	tattr->start_row = 0;
-	tattr->num_rows = 1;
 	tattr->num_mods = 1;
 	tattr->rscs_attr = aie_shimpl_tile_rscs_attr;
 	tattr->mods = aie_shimpl_tile_module_types;
