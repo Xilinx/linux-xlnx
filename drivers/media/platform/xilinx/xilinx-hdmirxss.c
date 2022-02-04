@@ -3406,7 +3406,7 @@ __xhdmirx_get_pad_format_ptr(struct xhdmirx_state *xhdmi,
  * xhdmirx_set_format - Set the format to the pad
  *
  * @subdev: pointer to the v4l2 subdev struct
- * @cfg: pointer to pad configuration to be set
+ * @sd_state: pointer to subdev state
  * @fmt: pointer to format structure
  *
  * This function will update the fmt structure passed to
@@ -3431,7 +3431,7 @@ static int xhdmirx_set_format(struct v4l2_subdev *subdev,
  * xhdmirx_get_format - Function to get pad format
  *
  * @subdev: pointer to v4l2 subdev struct
- * @cfg: pointer to the pad configuration
+ * @sd_state: pointer to subdev state
  * @fmt: pointer to the subdev format structure
  *
  * The fmt structure is updated based on incoming stream format.
