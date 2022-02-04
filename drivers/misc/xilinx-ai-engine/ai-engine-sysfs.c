@@ -291,6 +291,15 @@ int aie_part_sysfs_create_entries(struct aie_partition *apart)
 {
 	int ret;
 
+	/*
+	 * TODO: hardware monitoring and dump using sysfs is not supported for
+	 * AIEML as of now.
+	 */
+	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIEML) {
+		dev_dbg(&apart->dev, "Not creating sysfs entries..\n");
+		return 0;
+	}
+
 	ret = aie_part_sysfs_create(apart);
 	if (ret < 0) {
 		dev_err(&apart->dev, "Failed to create sysfs partition\n");
