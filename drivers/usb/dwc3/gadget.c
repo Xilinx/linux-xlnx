@@ -3572,6 +3572,7 @@ static void dwc3_gadget_endpoint_stream_event(struct dwc3_ep *dep,
 	case DEPEVT_STREAM_NOSTREAM:
 		if ((dep->flags & DWC3_EP_IGNORE_NEXT_NOSTREAM) ||
 		    !(dep->flags & DWC3_EP_FORCE_RESTART_STREAM) ||
+		    !(dep->flags & DWC3_EP_END_TRANSFER_PENDING) ||
 		    !(dep->flags & DWC3_EP_WAIT_TRANSFER_COMPLETE))
 			break;
 
