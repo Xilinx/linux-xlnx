@@ -32,6 +32,7 @@ enum aie_tile_type {
 	AIE_TILE_TYPE_TILE,
 	AIE_TILE_TYPE_SHIMPL,
 	AIE_TILE_TYPE_SHIMNOC,
+	AIE_TILE_TYPE_MEMORY,
 	AIE_TILE_TYPE_MAX
 };
 
@@ -39,6 +40,7 @@ enum aie_tile_type {
 #define AIE_TILE_TYPE_MASK_SHIMPL	BIT(AIE_TILE_TYPE_SHIMPL)
 /* SHIM NOC tile includes SHIM PL and SHIM NOC modules */
 #define AIE_TILE_TYPE_MASK_SHIMNOC	BIT(AIE_TILE_TYPE_SHIMNOC)
+#define AIE_TILE_TYPE_MASK_MEMORY	BIT(AIE_TILE_TYPE_MEMORY)
 
 /*
  * Macros for attribute property of AI engine registers accessed by kernel
@@ -1052,6 +1054,7 @@ int aie_part_request_tiles_from_user(struct aie_partition *apart,
 int aie_part_release_tiles_from_user(struct aie_partition *apart,
 				     void __user *user_args);
 int aie_device_init(struct aie_device *adev);
+int aieml_device_init(struct aie_device *adev);
 
 bool aie_part_has_mem_mmapped(struct aie_partition *apart);
 bool aie_part_has_regs_mmapped(struct aie_partition *apart);
