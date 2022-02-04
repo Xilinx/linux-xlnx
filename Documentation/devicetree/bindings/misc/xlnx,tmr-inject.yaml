@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/misc/xlnx,tmr-inject.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx TMR Inject Device Tree Bindings
+
+maintainers:
+  - Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
+
+description: |
+  The Triple Modular Redundancy(TMR) Inject core provides functional
+  fault injection by changing selected MicroBlaze instructions,
+  which provides the possibility to verify that the TMR
+  subsystem error detection and fault recovery logic
+  is working properly.
+
+properties:
+  compatible:
+    enum:
+      - xlnx,tmr-inject-1.0
+
+  reg:
+    maxItems: 1
+
+  xlnx,magic:
+    description: |
+      Magic number used when injecting faults. The fault inject write
+      data least significant byte (bits 7:0) must match this number
+      to have any effect. The value shall be in the range 0-255.
+    $ref: /schemas/types.yaml#/definitions/uint32
+
+required:
+  - compatible
+  - reg
+  - xlnx,magic
+
+additionalProperties: false
+
+examples:
+  - |
+    tmr-inject@44a30000 {
+            compatible = "xlnx,tmr-inject-1.0";
+            reg = <0x44a10000 0x10000>;
+            xlnx,magic = <0x46>;
+    };
