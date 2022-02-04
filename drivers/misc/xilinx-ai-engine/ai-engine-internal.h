@@ -325,6 +325,7 @@ struct aie_aperture;
  *		     caller to apply partition lock before calling this
  *		     function. The caller function will need to set the bitmap
  *		     on which tiles are required to be clocked on.
+ * @mem_clear: clear data memory banks of the partition.
  *
  * Different AI engine device version has its own device
  * operation.
@@ -340,6 +341,7 @@ struct aie_tile_operations {
 	int (*init_part_clk_state)(struct aie_partition *apart);
 	int (*scan_part_clocks)(struct aie_partition *apart);
 	int (*set_part_clocks)(struct aie_partition *apart);
+	int (*mem_clear)(struct aie_partition *apart);
 };
 
 /**

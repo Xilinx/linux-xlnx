@@ -1248,6 +1248,47 @@ static u32 aie_get_core_status(struct aie_partition *apart,
 	return regvalue;
 }
 
+/**
+ * aie_part_clear_mems() - clear memories of every tile in a partition
+ * @apart: AI engine partition
+ * @return: return 0 always.
+ */
+static int aie_part_clear_mems(struct aie_partition *apart)
+{
+	struct aie_device *adev = apart->adev;
+	struct aie_part_mem *pmems = apart->pmems;
+	u32 i, num_mems;
+
+	/* Get the number of different types of memories */
+	num_mems = adev->ops->get_mem_info(&apart->range, NULL);
+	if (!num_mems)
+		return 0;
+
+	/* Clear each type of memories in the partition */
+	for (i = 0; i < num_mems; i++) {
+		struct aie_mem *mem = &pmems[i].mem;
+		struct aie_range *range = &mem->range;
+		u32 c, r;
+
+		for (c = range->start.col;
+		     c < range->start.col + range->size.col; c++) {
+			for (r = range->start.row;
+			     r < range->start.row + range->size.row; r++) {
+				struct aie_location loc;
+				u32 memoff;
+
+				loc.col = c;
+				loc.row = r;
+				memoff = aie_cal_regoff(adev, loc, mem->offset);
+				memset_io(apart->aperture->base + memoff, 0,
+					  mem->size);
+			}
+		}
+	}
+
+	return 0;
+}
+
 static const struct aie_tile_operations aie_ops = {
 	.get_tile_type = aie_get_tile_type,
 	.get_mem_info = aie_get_mem_info,
@@ -1256,6 +1297,7 @@ static const struct aie_tile_operations aie_ops = {
 	.init_part_clk_state = aie_init_part_clk_state,
 	.scan_part_clocks = aie_scan_part_clocks,
 	.set_part_clocks = aie_set_part_clocks,
+	.mem_clear = aie_part_clear_mems,
 };
 
 /**
