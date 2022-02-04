@@ -57,6 +57,12 @@ properties:
 
   ranges: true
 
+  xlnx,aie-gen:
+    $ref: /schemas/types.yaml#/definitions/uint8
+    description: |
+      hardware generation of AI engine device. E.g. the current values supported
+      are 1 and 2, it will be presented as <0x1> or <0x2>
+
   xlnx,shim-rows:
     $ref: /schemas/types.yaml#/definitions/uint8-array
     description: |
@@ -67,14 +73,21 @@ properties:
     description: |
       start row and the number of rows of core tiles of the AI engine device
 
+  xlnx,mem-rows:
+    $ref: /schemas/types.yaml#/definitions/uint8-array
+    description: |
+      start row and the number of rows of memory tiles of the AI engine device
+
 required:
   - compatible
   - '#address-cells'
   - '#size-cells'
   - ranges
   - power-domains
+  - xlnx,aie-gen
   - xlnx,shim-rows
   - xlnx,core-rows
+  - xlnx,mem-rows
 
 patternProperties:
   "^aperture@[0-9]+$":
@@ -162,8 +175,10 @@ examples:
       #size-cells = <2>;
       ai_engine: ai_engine {
         compatible = "xlnx,ai-engine-v2.0";
+        xlnx,aie-gen = /bits/ 8 <0x1>;
         xlnx,shim-rows = /bits/ 8 <0 1>;
         xlnx,core-rows = /bits/ 8 <1 8>;
+        xlnx,mem-rows = /bits/ 8 <0 0>;
         power-domains = <&versal_firmware PM_DEV_AI>;
         #address-cells = <2>;
         #size-cells = <2>;
