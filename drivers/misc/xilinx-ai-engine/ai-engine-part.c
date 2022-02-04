@@ -786,7 +786,8 @@ static int aie_part_create_mems_info(struct aie_partition *apart)
 {
 	unsigned int i, num_mems;
 
-	num_mems = apart->adev->ops->get_mem_info(&apart->range, NULL);
+	num_mems = apart->adev->ops->get_mem_info(apart->adev, &apart->range,
+						  NULL);
 	if (!num_mems)
 		return 0;
 
@@ -796,7 +797,8 @@ static int aie_part_create_mems_info(struct aie_partition *apart)
 	if (!apart->pmems)
 		return -ENOMEM;
 
-	apart->adev->ops->get_mem_info(&apart->range, apart->pmems);
+	apart->adev->ops->get_mem_info(apart->adev, &apart->range,
+				       apart->pmems);
 	for (i = 0; i < num_mems; i++) {
 		struct aie_mem *mem = &apart->pmems[i].mem;
 

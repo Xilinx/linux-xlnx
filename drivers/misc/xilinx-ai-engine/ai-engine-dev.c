@@ -445,12 +445,6 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&adev->apertures);
 	mutex_init(&adev->mlock);
 
-	ret = aie_device_init(adev);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "failed to initialize device instance.\n");
-		return ret;
-	}
-
 	/* check if device node is v1.0 or not */
 	ret = of_device_is_compatible(pdev->dev.of_node, "xlnx,ai-engine-v1.0");
 	if (ret)
@@ -477,6 +471,12 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 	}
 	adev->ttype_attr[AIE_TILE_TYPE_TILE].start_row = regs_u8[0];
 	adev->ttype_attr[AIE_TILE_TYPE_TILE].num_rows = regs_u8[1];
+
+	ret = aie_device_init(adev);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "failed to initialize device instance.\n");
+		return ret;
+	}
 
 	/*
 	 * AI Engine platform management node ID is required for requesting

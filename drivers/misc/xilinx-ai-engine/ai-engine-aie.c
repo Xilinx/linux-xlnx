@@ -13,8 +13,6 @@
 
 #include "ai-engine-internal.h"
 
-#define KBYTES(n)	((n) * 1024)
-
 #define AIE_ARRAY_SHIFT		30U
 #define AIE_COL_SHIFT		23U
 #define AIE_ROW_SHIFT		18U
@@ -916,10 +914,12 @@ static u32 aie_get_tile_type(struct aie_device *adev, struct aie_location *loc)
 	return AIE_TILE_TYPE_SHIMNOC;
 }
 
-static unsigned int aie_get_mem_info(struct aie_range *range,
+static unsigned int aie_get_mem_info(struct aie_device *adev,
+				     struct aie_range *range,
 				     struct aie_part_mem *pmem)
 {
 	unsigned int i;
+	u8 start_row, num_rows;
 
 	if (range->start.row + range->size.row <= 1) {
 		/* SHIM row only, no memories in this range */
@@ -932,17 +932,20 @@ static unsigned int aie_get_mem_info(struct aie_range *range,
 		struct aie_mem *mem = &pmem[i].mem;
 
 		memcpy(&mem->range, range, sizeof(*range));
-		if (!mem->range.start.row) {
-			mem->range.start.row = 1;
-			mem->range.size.row--;
-		}
 	}
+
+	start_row = adev->ttype_attr[AIE_TILE_TYPE_TILE].start_row;
+	num_rows = adev->ttype_attr[AIE_TILE_TYPE_TILE].num_rows;
 	/* Setup tile data memory information */
 	pmem[0].mem.offset = 0;
 	pmem[0].mem.size = KBYTES(32);
+	pmem[0].mem.range.start.row = start_row;
+	pmem[0].mem.range.size.row = num_rows;
 	/* Setup program memory information */
 	pmem[1].mem.offset = 0x20000;
 	pmem[1].mem.size = KBYTES(16);
+	pmem[1].mem.range.start.row = start_row;
+	pmem[1].mem.range.size.row = num_rows;
 
 	return NUM_MEMS_PER_TILE;
 }
@@ -1261,7 +1264,7 @@ static int aie_part_clear_mems(struct aie_partition *apart)
 	u32 i, num_mems;
 
 	/* Get the number of different types of memories */
-	num_mems = adev->ops->get_mem_info(&apart->range, NULL);
+	num_mems = adev->ops->get_mem_info(adev, &apart->range, NULL);
 	if (!num_mems)
 		return 0;
 
