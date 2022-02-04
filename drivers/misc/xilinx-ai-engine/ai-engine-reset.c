@@ -6,84 +6,10 @@
  */
 
 #include <linux/bitfield.h>
+#include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/io.h>
 
 #include "ai-engine-internal.h"
-
-/**
- * aie_part_set_col_reset() - set AI engine column reset
- * @apart: AI engine partition
- * @col: column to reset
- * @reset: true to assert reset, false to release reset
- */
-static void aie_part_set_col_reset(struct aie_partition *apart, u32 col,
-				   bool reset)
-{
-	struct aie_device *adev = apart->adev;
-	const struct aie_single_reg_field *col_rst = adev->col_rst;
-	struct aie_location loc;
-	u32 regoff, val;
-
-	loc.row = 0;
-	loc.col = col;
-
-	val = aie_get_field_val(col_rst, (reset ? 1 : 0));
-	regoff = aie_cal_regoff(adev, loc, col_rst->regoff);
-	iowrite32(val, apart->aperture->base + regoff);
-}
-
-/**
- * aie_part_set_col_clkbuf() - set AI engine column clock buffer
- * @apart: AI engine partition
- * @col: column to reset
- * @enable: true to enable, false to disable
- */
-static void aie_part_set_col_clkbuf(struct aie_partition *apart, u32 col,
-				    bool enable)
-{
-	struct aie_device *adev = apart->adev;
-	const struct aie_single_reg_field *col_clkbuf = adev->col_clkbuf;
-	struct aie_location loc;
-	u32 regoff, val;
-
-	loc.row = 0;
-	loc.col = col;
-
-	val = aie_get_field_val(col_clkbuf, (enable ? 1 : 0));
-	regoff = aie_cal_regoff(adev, loc, col_clkbuf->regoff);
-	iowrite32(val, apart->aperture->base + regoff);
-}
-
-/**
- * aie_part_set_cols_reset() - set column reset of every column in a partition
- * @apart: AI engine partition
- * @reset: bool to assert reset, false to release reset
- */
-static void aie_part_set_cols_reset(struct aie_partition *apart, bool reset)
-{
-	struct aie_range *range = &apart->range;
-	u32 c;
-
-	for (c = range->start.col; c < range->start.col + range->size.col;
-	     c++)
-		aie_part_set_col_reset(apart, c, reset);
-}
-
-/**
- * aie_part_set_cols_clkbuf() - set column clock buffer of every column in a
- *				partition
- * @apart: AI engine partition
- * @enable: true to enable, false to disable
- */
-static void aie_part_set_cols_clkbuf(struct aie_partition *apart, bool enable)
-{
-	struct aie_range *range = &apart->range;
-	u32 c;
-
-	for (c = range->start.col; c < range->start.col + range->size.col;
-	     c++)
-		aie_part_set_col_clkbuf(apart, c, enable);
-}
 
 /**
  * aie_part_clear_core_regs_of_tile() - clear registers of aie core
@@ -158,22 +84,39 @@ static void aie_part_clear_core_regs(struct aie_partition *apart)
  */
 int aie_part_clean(struct aie_partition *apart)
 {
-	struct aie_aperture *aperture = apart->aperture;
+	u32 node_id = apart->adev->pm_node_id;
 	int ret;
 
 	if (apart->cntrflag & XAIE_PART_NOT_RST_ON_RELEASE)
 		return 0;
 
-	aie_part_set_cols_clkbuf(apart, false);
-	aie_part_set_cols_reset(apart, true);
+	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
+				      apart->range.size.col,
+				      XILINX_AIE_OPS_DIS_COL_CLK_BUFF);
+	if (ret < 0)
+		return ret;
 
-	ret = aperture->adev->ops->reset_shim(aperture, &apart->range);
+	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
+				      apart->range.size.col,
+				      XILINX_AIE_OPS_COL_RST |
+				      XILINX_AIE_OPS_SHIM_RST);
+	if (ret < 0)
+		return ret;
+
+	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
+				      apart->range.size.col,
+				      XILINX_AIE_OPS_ENB_COL_CLK_BUFF);
 	if (ret < 0)
 		return ret;
 
 	apart->adev->ops->mem_clear(apart);
 	aie_part_clear_core_regs(apart);
-	aie_part_set_cols_clkbuf(apart, false);
+	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
+				      apart->range.size.col,
+				      XILINX_AIE_OPS_DIS_COL_CLK_BUFF);
+	if (ret < 0)
+		return ret;
+
 	aie_resource_clear_all(&apart->cores_clk_state);
 
 	return 0;
@@ -196,6 +139,7 @@ int aie_part_clean(struct aie_partition *apart)
  */
 int aie_part_reset(struct aie_partition *apart)
 {
+	u32 node_id = apart->adev->pm_node_id;
 	int ret;
 
 	ret = mutex_lock_interruptible(&apart->mlock);
@@ -218,24 +162,43 @@ int aie_part_reset(struct aie_partition *apart)
 	aie_resource_clear_all(&apart->tiles_inuse);
 	aie_resource_clear_all(&apart->cores_clk_state);
 
-	aie_part_set_cols_clkbuf(apart, false);
-	aie_part_set_cols_reset(apart, true);
-	aie_part_set_cols_clkbuf(apart, true);
+	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
+				      apart->range.size.col,
+				      XILINX_AIE_OPS_DIS_COL_CLK_BUFF);
+	if (ret < 0)
+		goto exit;
 
-	ret = apart->adev->ops->reset_shim(apart->aperture, &apart->range);
-	if (ret < 0) {
-		mutex_unlock(&apart->mlock);
-		return ret;
-	}
+	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
+				      apart->range.size.col,
+				      XILINX_AIE_OPS_COL_RST);
+	if (ret < 0)
+		goto exit;
 
-	aie_part_set_cols_clkbuf(apart, false);
+	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
+				      apart->range.size.col,
+				      XILINX_AIE_OPS_ENB_COL_CLK_BUFF);
+	if (ret < 0)
+		goto exit;
+
+	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
+				      apart->range.size.col,
+				      XILINX_AIE_OPS_SHIM_RST);
+	if (ret < 0)
+		goto exit;
+
+	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
+				      apart->range.size.col,
+				      XILINX_AIE_OPS_DIS_COL_CLK_BUFF);
+	if (ret < 0)
+		goto exit;
 
 	aie_part_clear_cached_events(apart);
 	aie_part_rscmgr_reset(apart);
 
+exit:
 	mutex_unlock(&apart->mlock);
 
-	return 0;
+	return ret;
 }
 
 /**
