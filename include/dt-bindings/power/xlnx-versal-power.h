@@ -48,6 +48,7 @@
 #define PM_DEV_ADMA_5				(0x1822403aU)
 #define PM_DEV_ADMA_6				(0x1822403bU)
 #define PM_DEV_ADMA_7				(0x1822403cU)
+#define PM_DEV_AMS_ROOT				(0x18224055U)
 #define PM_DEV_AI				(0x18224072U)
 
 #endif
