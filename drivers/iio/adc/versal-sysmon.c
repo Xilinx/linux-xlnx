@@ -10,10 +10,18 @@
  * in kernel event monitoring for some modules.
  */
 
+#include <dt-bindings/power/xlnx-versal-power.h>
+#include <linux/firmware/xlnx-zynqmp.h>
+#include <linux/moduleparam.h>
 #include "versal-sysmon.h"
 
 #define SYSMON_EVENT_WORK_DELAY_MS	1000
 #define SYSMON_UNMASK_WORK_DELAY_MS	500
+
+static bool secure_mode;
+module_param(secure_mode, bool, 0444);
+MODULE_PARM_DESC(secure_mode,
+		 "Allow sysmon to access register space using EEMI, when direct register access is restricted (default: Direct Access mode)");
 
 /* This structure describes temperature events */
 static const struct iio_event_spec sysmon_temp_events[] = {
@@ -68,23 +76,66 @@ static const struct iio_chan_spec temp_events[] = {
 	SYSMON_CHAN_TEMP_EVENT(OT_EVENT, "ot", sysmon_temp_events),
 };
 
-static inline void sysmon_read_reg(struct sysmon *sysmon, u32 offset, u32 *data)
+static inline void sysmon_direct_read_reg(struct sysmon *sysmon, u32 offset, u32 *data)
 {
 	*data = readl(sysmon->base + offset);
 }
 
-static inline void sysmon_write_reg(struct sysmon *sysmon, u32 offset, u32 data)
+static inline void sysmon_direct_write_reg(struct sysmon *sysmon, u32 offset, u32 data)
 {
 	writel(data, sysmon->base + offset);
 }
 
-static inline void sysmon_update_reg(struct sysmon *sysmon, u32 offset,
-				     u32 mask, u32 data)
+static inline void sysmon_direct_update_reg(struct sysmon *sysmon, u32 offset,
+					    u32 mask, u32 data)
 {
 	u32 val;
 
-	sysmon_read_reg(sysmon, offset, &val);
-	sysmon_write_reg(sysmon, offset, (val & ~mask) | (mask & data));
+	sysmon_direct_read_reg(sysmon, offset, &val);
+	sysmon_direct_write_reg(sysmon, offset, (val & ~mask) | (mask & data));
+}
+
+static struct sysmon_ops direct_access = {
+	.read_reg = sysmon_direct_read_reg,
+	.write_reg = sysmon_direct_write_reg,
+	.update_reg = sysmon_direct_update_reg,
+};
+
+static inline void sysmon_secure_read_reg(struct sysmon *sysmon, u32 offset, u32 *data)
+{
+	zynqmp_pm_sec_read_reg(PM_DEV_AMS_ROOT, offset, data);
+}
+
+static inline void sysmon_secure_write_reg(struct sysmon *sysmon, u32 offset, u32 data)
+{
+	zynqmp_pm_sec_mask_write_reg(PM_DEV_AMS_ROOT, offset, GENMASK(31, 0), data);
+}
+
+static inline void sysmon_secure_update_reg(struct sysmon *sysmon, u32 offset,
+					    u32 mask, u32 data)
+{
+	zynqmp_pm_sec_mask_write_reg(PM_DEV_AMS_ROOT, offset, offset, data);
+}
+
+static struct sysmon_ops secure_access = {
+	.read_reg = sysmon_secure_read_reg,
+	.write_reg = sysmon_secure_write_reg,
+	.update_reg = sysmon_secure_update_reg,
+};
+
+static void sysmon_read_reg(struct sysmon *sysmon, u32 offset, u32 *data)
+{
+	sysmon->ops->read_reg(sysmon, offset, data);
+}
+
+static void sysmon_write_reg(struct sysmon *sysmon, u32 offset, u32 data)
+{
+	sysmon->ops->write_reg(sysmon, offset, data);
+}
+
+static void sysmon_update_reg(struct sysmon *sysmon, u32 offset, u32 mask, u32 data)
+{
+	sysmon->ops->update_reg(sysmon, offset, mask, data);
 }
 
 static u32 sysmon_temp_offset(int address)
@@ -952,6 +1003,7 @@ static int sysmon_probe(struct platform_device *pdev)
 	sysmon = iio_priv(indio_dev);
 
 	sysmon->dev = &pdev->dev;
+	sysmon->indio_dev = indio_dev;
 
 	mutex_init(&sysmon->mutex);
 	spin_lock_init(&sysmon->lock);
@@ -966,6 +1018,22 @@ static int sysmon_probe(struct platform_device *pdev)
 	sysmon->base = devm_ioremap_resource(&pdev->dev, mem);
 	if (IS_ERR(sysmon->base))
 		return PTR_ERR(sysmon->base);
+
+	if (secure_mode) {
+		ret = zynqmp_pm_feature(PM_IOCTL);
+		if (ret < 0) {
+			dev_err(&pdev->dev, "Feature check failed with %d\n", ret);
+			return ret;
+		}
+		if ((ret & FIRMWARE_VERSION_MASK) < PM_API_VERSION_2) {
+			dev_err(&pdev->dev, "IOCTL firmware version error. Expected: v%d - Found: v%d\n",
+				PM_API_VERSION_2, ret & FIRMWARE_VERSION_MASK);
+			return -EOPNOTSUPP;
+		}
+		sysmon->ops = &secure_access;
+	} else {
+		sysmon->ops = &direct_access;
+	}
 
 	sysmon_write_reg(sysmon, SYSMON_NPI_LOCK, NPI_UNLOCK);
 
