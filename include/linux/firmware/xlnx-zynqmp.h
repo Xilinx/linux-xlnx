@@ -34,6 +34,9 @@
 /* PM API versions */
 #define PM_API_VERSION_2	2
 
+/* Firmware feature check version mask */
+#define FIRMWARE_VERSION_MASK		0xFFFFU
+
 /* ATF only commands */
 #define TF_A_PM_REGISTER_SGI		0xa04
 #define PM_GET_TRUSTZONE_VERSION	0xa03
