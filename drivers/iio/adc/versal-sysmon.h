@@ -139,6 +139,7 @@ enum sysmon_alarm_bit {
  * struct sysmon - Driver data for Sysmon
  * @base: physical base address of device
  * @dev: pointer to device struct
+ * @indio_dev: pointer to the iio device
  * @mutex: to handle multiple user interaction
  * @lock: to help manage interrupt registers correctly
  * @irq: interrupt number of the sysmon
@@ -146,12 +147,14 @@ enum sysmon_alarm_bit {
  * @masked_temp: currently masked due to alarm
  * @temp_mask: temperature based interrupt configuration
  * @sysmon_unmask_work: re-enables event once the event condition disappears
+ * @ops: read write operations for sysmon registers
  *
  * This structure contains necessary state for Sysmon driver to operate
  */
 struct sysmon {
 	void __iomem *base;
 	struct device *dev;
+	struct iio_dev *indio_dev;
 	/* kernel doc above */
 	struct mutex mutex;
 	/* kernel doc above*/
@@ -161,6 +164,14 @@ struct sysmon {
 	unsigned int masked_temp;
 	unsigned int temp_mask;
 	struct delayed_work sysmon_unmask_work;
+	struct sysmon_ops *ops;
+};
+
+struct sysmon_ops {
+	void (*read_reg)(struct sysmon *sysmon, u32 offset, u32 *data);
+	void (*write_reg)(struct sysmon *sysmon, u32 offset, u32 data);
+	void (*update_reg)(struct sysmon *sysmon, u32 offset,
+			   u32 mask, u32 data);
 };
 
 int sysmon_register_temp_ops(void (*cb)(void *data, struct regional_node *node),
