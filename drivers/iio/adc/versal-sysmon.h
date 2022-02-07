@@ -147,6 +147,7 @@ enum sysmon_alarm_bit {
  * @masked_temp: currently masked due to alarm
  * @temp_mask: temperature based interrupt configuration
  * @sysmon_unmask_work: re-enables event once the event condition disappears
+ * @sysmon_events_work: poll for events on SSIT slices
  * @ops: read write operations for sysmon registers
  *
  * This structure contains necessary state for Sysmon driver to operate
@@ -164,6 +165,7 @@ struct sysmon {
 	unsigned int masked_temp;
 	unsigned int temp_mask;
 	struct delayed_work sysmon_unmask_work;
+	struct delayed_work sysmon_events_work;
 	struct sysmon_ops *ops;
 };
 
