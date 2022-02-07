@@ -844,6 +844,34 @@ static irqreturn_t sysmon_iio_irq(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+static void sysmon_events_worker(struct work_struct *work)
+{
+	u32 isr, imr;
+	struct sysmon *sysmon = container_of(work, struct sysmon,
+					     sysmon_events_work.work);
+
+	spin_lock(&sysmon->lock);
+
+	sysmon_read_reg(sysmon, SYSMON_ISR, &isr);
+	sysmon_read_reg(sysmon, SYSMON_IMR, &imr);
+
+	/* only process alarm that are not masked */
+	isr &= ~imr;
+
+	/* clear interrupt */
+	sysmon_write_reg(sysmon, SYSMON_ISR, isr);
+
+	if (isr) {
+		sysmon_handle_events(sysmon->indio_dev, isr);
+		schedule_delayed_work(&sysmon->sysmon_unmask_work,
+				      msecs_to_jiffies(SYSMON_UNMASK_WORK_DELAY_MS));
+	}
+	spin_unlock(&sysmon->lock);
+
+	schedule_delayed_work(&sysmon->sysmon_events_work,
+			      msecs_to_jiffies(SYSMON_EVENT_WORK_DELAY_MS));
+}
+
 static int get_hw_node_properties(struct platform_device *pdev,
 				  struct list_head *region_list)
 {
@@ -917,9 +945,7 @@ static int sysmon_parse_dt(struct iio_dev *indio_dev,
 		get_hw_node_properties(pdev, &sysmon->region_list);
 
 	/* Initialize buffer for channel specification */
-	temp_chan_size = (sysmon->irq > 0) ? (sizeof(temp_channels) +
-					      sizeof(temp_events)) :
-		sizeof(temp_channels);
+	temp_chan_size = (sizeof(temp_channels) + sizeof(temp_events));
 
 	num_temp_chan = ARRAY_SIZE(temp_channels);
 
@@ -943,11 +969,8 @@ static int sysmon_parse_dt(struct iio_dev *indio_dev,
 		sysmon_channels[i].info_mask_separate =
 			BIT(IIO_CHAN_INFO_RAW) | BIT(IIO_CHAN_INFO_PROCESSED);
 
-		if (sysmon->irq > 0) {
-			sysmon_channels[i].event_spec = sysmon_supply_events;
-			sysmon_channels[i].num_event_specs =
-				ARRAY_SIZE(sysmon_supply_events);
-		}
+		sysmon_channels[i].event_spec = sysmon_supply_events;
+		sysmon_channels[i].num_event_specs = ARRAY_SIZE(sysmon_supply_events);
 
 		sysmon_channels[i].scan_index = i;
 		sysmon_channels[i].scan_type.realbits = 19;
@@ -969,11 +992,9 @@ static int sysmon_parse_dt(struct iio_dev *indio_dev,
 	       sizeof(temp_channels));
 	indio_dev->num_channels = num_supply_chan + ARRAY_SIZE(temp_channels);
 
-	if (sysmon->irq > 0) {
-		memcpy(sysmon_channels + num_supply_chan + num_temp_chan,
-		       temp_events, sizeof(temp_events));
-		indio_dev->num_channels += ARRAY_SIZE(temp_events);
-	}
+	memcpy(sysmon_channels + num_supply_chan + num_temp_chan,
+	       temp_events, sizeof(temp_events));
+	indio_dev->num_channels += ARRAY_SIZE(temp_events);
 
 	indio_dev->channels = sysmon_channels;
 
@@ -1043,17 +1064,22 @@ static int sysmon_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
+	INIT_DELAYED_WORK(&sysmon->sysmon_unmask_work,
+			  sysmon_unmask_worker);
+	sysmon_init_interrupt(sysmon);
 	if (sysmon->irq > 0) {
 		g_sysmon = sysmon;
-		INIT_DELAYED_WORK(&sysmon->sysmon_unmask_work,
-				  sysmon_unmask_worker);
-		sysmon_init_interrupt(sysmon);
 		ret = devm_request_irq(&pdev->dev, sysmon->irq, &sysmon_iio_irq,
 				       0, "sysmon-irq", indio_dev);
 		if (ret < 0)
 			return ret;
 	} else if (sysmon->irq == -EPROBE_DEFER) {
 		return -EPROBE_DEFER;
+	} else {
+		INIT_DELAYED_WORK(&sysmon->sysmon_events_work,
+				  sysmon_events_worker);
+		schedule_delayed_work(&sysmon->sysmon_events_work,
+				      msecs_to_jiffies(SYSMON_EVENT_WORK_DELAY_MS));
 	}
 
 	platform_set_drvdata(pdev, indio_dev);
@@ -1070,6 +1096,13 @@ static int sysmon_probe(struct platform_device *pdev)
 static int sysmon_remove(struct platform_device *pdev)
 {
 	struct iio_dev *indio_dev = platform_get_drvdata(pdev);
+	struct sysmon *sysmon = iio_priv(indio_dev);
+
+	/* cancel SSIT based events */
+	if (sysmon->irq < 0)
+		cancel_delayed_work_sync(&sysmon->sysmon_events_work);
+
+	cancel_delayed_work_sync(&sysmon->sysmon_unmask_work);
 
 	/* Unregister the device */
 	iio_device_unregister(indio_dev);
