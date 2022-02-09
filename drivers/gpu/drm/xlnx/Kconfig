@@ -81,7 +81,7 @@ config DRM_XLNX_MIXER
 
 config DRM_XLNX_PL_DISP
 	tristate "Xilinx DRM PL display driver"
-	depends on DRM_XLNX
+	depends on DRM_XLNX && XILINX_FRMBUF
 	select VIDEOMODE_HELPERS
 	help
 	  DRM driver for Xilinx PL display driver, provides drm
