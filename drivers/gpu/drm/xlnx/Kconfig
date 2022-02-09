@@ -3,6 +3,7 @@ config DRM_ZYNQMP_DPSUB
 	depends on ARCH_ZYNQMP || COMPILE_TEST
 	depends on COMMON_CLK && DRM && OF
 	depends on DMADEVICES
+	depends on DRM_XLNX && VIDEOMODE_HELPERS
 	select XILINX_DMA_ENGINES
 	select PHY_XILINX_ZYNQMP
 	select XILINX_ZYNQMP_DPDMA
