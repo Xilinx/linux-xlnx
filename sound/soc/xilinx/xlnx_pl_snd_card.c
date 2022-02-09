@@ -277,6 +277,9 @@ static struct snd_soc_dai_link xlnx_snd_dai[][XLNX_MAX_PATHS] = {
 			.name = "xilinx-hdmi-playback",
 			SND_SOC_DAILINK_REG(xlnx_hdmi_tx),
 			.ops = &xlnx_hdmi_card_ops,
+			.dai_fmt = SND_SOC_DAIFMT_I2S |
+				   SND_SOC_DAIFMT_NB_NF |
+				   SND_SOC_DAIFMT_CBS_CFS,
 		},
 		{
 			.name = "xilinx-hdmi-capture",
@@ -311,6 +314,9 @@ static struct snd_soc_dai_link xlnx_snd_dai[][XLNX_MAX_PATHS] = {
 			.name = "xilinx-dp-playback",
 			SND_SOC_DAILINK_REG(xlnx_dp_tx),
 			.ops = &xlnx_dp_card_ops,
+			.dai_fmt = SND_SOC_DAIFMT_I2S |
+				   SND_SOC_DAIFMT_NB_NF |
+				   SND_SOC_DAIFMT_CBS_CFS,
 		},
 		{
 			.name = "xilinx-dp-capture",
