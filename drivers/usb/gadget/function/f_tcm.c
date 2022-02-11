@@ -339,7 +339,7 @@ static int alloc_cmd_resource(struct f_uas *fu, int num, struct usb_ep *ep,
 	for (i = 0; i < fu->ncmd; i++) {
 		fu->cmd[i] = kcalloc(fu->ncmd, sizeof(struct usbg_cdb),
 				GFP_KERNEL);
-		if (!fu->cmd)
+		if (!fu->cmd[i])
 			goto err_cmd;
 
 		fu->cmd[i]->req = usb_ep_alloc_request(ep, GFP_KERNEL);
