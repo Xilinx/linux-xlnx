@@ -955,12 +955,16 @@ static int sysmon_parse_dt(struct iio_dev *indio_dev,
 
 	for_each_child_of_node(np, child_node) {
 		ret = of_property_read_u32(child_node, "reg", &reg);
-		if (ret < 0)
+		if (ret < 0) {
+			of_node_put(child_node);
 			return ret;
+		}
 
 		ret = of_property_read_string(child_node, "xlnx,name", &name);
-		if (ret < 0)
+		if (ret < 0) {
+			of_node_put(child_node);
 			return ret;
+		}
 
 		sysmon_channels[i].type = IIO_VOLTAGE;
 		sysmon_channels[i].indexed = 1;
