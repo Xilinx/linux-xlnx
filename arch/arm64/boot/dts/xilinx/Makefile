@@ -105,3 +105,47 @@ dtb-$(CONFIG_ARCH_ZYNQMP) += zynqmp-sm-k24-revA-sck-kd-g-revA.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += zynqmp-smk-k24-revA-sck-kd-g-revA.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += zynqmp-sm-k24-revA-sck-kv-g-revB.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += zynqmp-smk-k24-revA-sck-kv-g-revB.dtb
+
+# Versal boards
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-emb-plus-ve2302-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-v350-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vek280-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vek280-revB.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vc-p-a2197-00-revA-x-prc-01-revA-ospi.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vc-p-a2197-00-revA-x-prc-01-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vc-p-a2197-00-revA-x-prc-02-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vc-p-a2197-00-revA-x-prc-03-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vc-p-a2197-00-revA-x-prc-04-revA-ospi.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vc-p-a2197-00-revA-x-prc-04-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vc-p-a2197-00-revA-x-prc-05-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vc-p-a2197-00-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vck190-rev1.1-x-ebm-01-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vck190-rev1.1-x-ebm-02-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vck190-rev1.1-x-ebm-03-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vck190-rev1.1.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vck190-revA-x-ebm-01-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vck190-revA-x-ebm-02-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vck190-revA-x-ebm-03-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vck190-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vck5000-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vmk180-rev1.1-x-ebm-01-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vmk180-rev1.1-x-ebm-02-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vmk180-rev1.1-x-ebm-03-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vmk180-rev1.1.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vmk180-revA-x-ebm-01-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vmk180-revA-x-ebm-02-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vmk180-revA-x-ebm-03-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vmk180-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vp-x-a2785-00-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vhk158-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vpk120-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vpk120-revB.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vpk180-revA.dtb
+
+versal-vck190-revB-x-ebm-01-revA-dtbs := versal-vck190-revA.dtb versal-x-ebm-01-revA.dtbo
+versal-vck190-revB-x-ebm-02-revA-dtbs := versal-vck190-revA.dtb versal-x-ebm-02-revA.dtbo
+versal-vck190-revB-x-ebm-03-revA-dtbs := versal-vck190-revA.dtb versal-x-ebm-03-revA.dtbo
+
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vck190-revB-x-ebm-01-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vck190-revB-x-ebm-02-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vck190-revB-x-ebm-03-revA.dtb
