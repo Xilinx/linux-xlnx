@@ -14,6 +14,7 @@
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/phy/phy.h>
+#include <dt-bindings/pinctrl/pinctrl-zynqmp.h>
 
 / {
 	model = "ZynqMP SM-K26 Rev1/B/A";
@@ -72,10 +73,45 @@
 			default-state = "on";
 		};
 	};
+
+	ams {
+		compatible = "iio-hwmon";
+		io-channels = <&xilinx_ams 0>, <&xilinx_ams 1>, <&xilinx_ams 2>,
+			<&xilinx_ams 3>, <&xilinx_ams 4>, <&xilinx_ams 5>,
+			<&xilinx_ams 6>, <&xilinx_ams 7>, <&xilinx_ams 8>,
+			<&xilinx_ams 9>, <&xilinx_ams 10>, <&xilinx_ams 11>,
+			<&xilinx_ams 12>, <&xilinx_ams 13>, <&xilinx_ams 14>,
+			<&xilinx_ams 15>, <&xilinx_ams 16>, <&xilinx_ams 17>,
+			<&xilinx_ams 18>, <&xilinx_ams 19>, <&xilinx_ams 20>,
+			<&xilinx_ams 21>, <&xilinx_ams 22>, <&xilinx_ams 23>,
+			<&xilinx_ams 24>, <&xilinx_ams 25>, <&xilinx_ams 26>,
+			<&xilinx_ams 27>, <&xilinx_ams 28>, <&xilinx_ams 29>;
+	};
+};
+
+&modepin_gpio {
+	label = "modepin";
 };
 
 &uart1 { /* MIO36/MIO37 */
 	status = "okay";
+};
+
+&pinctrl0 {
+	status = "okay";
+	pinctrl_sdhci0_default: sdhci0-default {
+		conf {
+			groups = "sdio0_0_grp";
+			slew-rate = <SLEW_RATE_SLOW>;
+			power-source = <IO_STANDARD_LVCMOS18>;
+			bias-disable;
+		};
+
+		mux {
+			groups = "sdio0_0_grp";
+			function = "sdio0";
+		};
+	};
 };
 
 &qspi { /* MIO 0-5 - U143 */
@@ -85,7 +121,7 @@
 		#address-cells = <1>;
 		#size-cells = <1>;
 		reg = <0>;
-		spi-tx-bus-width = <1>;
+		spi-tx-bus-width = <4>;
 		spi-rx-bus-width = <4>;
 		spi-max-frequency = <40000000>; /* 40MHz */
 		partition@0 {
@@ -171,10 +207,13 @@
 
 &sdhci0 { /* MIO13-23 - 16GB emmc MTFC16GAPALBH-IT - U133A */
 	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_sdhci0_default>;
 	non-removable;
 	disable-wp;
 	bus-width = <8>;
 	xlnx,mio-bank = <0>;
+	assigned-clock-rates = <187498123>;
 };
 
 &spi1 { /* MIO6, 9-11 */
@@ -190,17 +229,20 @@
 
 &i2c1 {
 	status = "okay";
+	u-boot,dm-pre-reloc;
 	clock-frequency = <400000>;
 	scl-gpios = <&gpio 24 GPIO_ACTIVE_HIGH>;
 	sda-gpios = <&gpio 25 GPIO_ACTIVE_HIGH>;
 
 	eeprom: eeprom@50 { /* u46 - also at address 0x58 */
+		u-boot,dm-pre-reloc;
 		compatible = "st,24c64", "atmel,24c64"; /* st m24c64 */
 		reg = <0x50>;
 		/* WP pin EE_WP_EN connected to slg7x644092@68 */
 	};
 
 	eeprom_cc: eeprom@51 { /* required by spec - also at address 0x59 */
+		u-boot,dm-pre-reloc;
 		compatible = "st,24c64", "atmel,24c64"; /* st m24c64 */
 		reg = <0x51>;
 	};
@@ -286,4 +328,20 @@
 			  "", "", "", "", "", /* 160 - 164 */
 			  "", "", "", "", "", /* 165 - 169 */
 			  "", "", "", ""; /* 170 - 174 */
+};
+
+&xilinx_ams {
+	status = "okay";
+};
+
+&ams_ps {
+	status = "okay";
+};
+
+&ams_pl {
+	status = "okay";
+};
+
+&zynqmp_dpsub {
+	status = "okay";
 };
