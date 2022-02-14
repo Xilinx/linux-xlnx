@@ -2826,6 +2826,13 @@ static int zynqmp_firmware_probe(struct platform_device *pdev)
 
 		feature_check_enabled = true;
 	}
+
+	if (!feature_check_enabled) {
+		ret = zynqmp_pm_feature(PM_FEATURE_CHECK);
+		if (!ret)
+			feature_check_enabled = true;
+	}
+
 	of_node_put(np);
 
 	ret = get_set_conduit_method(dev->of_node);
