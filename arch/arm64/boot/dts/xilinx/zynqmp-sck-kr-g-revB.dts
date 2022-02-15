@@ -297,14 +297,14 @@
 
 		conf-bootstrap {
 			pins = "MIO45", "MIO47", "MIO49";
-			bias-high-impedance;
+			bias-disable;
 			low-power-disable;
 		};
 
 		conf-tx {
 			pins = "MIO38", "MIO39", "MIO40",
 				"MIO41", "MIO42", "MIO43";
-			bias-high-impedance;
+			bias-disable;
 			low-power-enable;
 		};
 
@@ -312,7 +312,7 @@
 			groups = "mdio1_0_grp";
 			slew-rate = <SLEW_RATE_SLOW>;
 			power-source = <IO_STANDARD_LVCMOS18>;
-			bias-high-impedance;
+			bias-disable;
 		};
 
 		mux-mdio {
