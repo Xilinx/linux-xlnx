@@ -1283,6 +1283,14 @@ static void phy_rxready_cb(void *param)
 	}
 
 	xhdmi->stream.refclk = opts.hdmi.rx_refclk_hz;
+
+	/*
+	 * In case the TMDS Clock ratio is 1/40, the reference clock must be
+	 * compensated.
+	 */
+	if (xhdmirx1_gettmdsclkratio(xhdmi))
+		xhdmi->stream.refclk *= 4;
+
 	dev_dbg(xhdmi->dev, "Phy RxReadyCallback refclk = %u Hz\n", xhdmi->stream.refclk);
 }
 
