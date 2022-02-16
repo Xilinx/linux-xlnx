@@ -1438,10 +1438,17 @@ static void rxstreamup(struct xhdmirx_state *xhdmi)
 	xhdmi->mbus_fmt.width = stream->timing.hact;
 	xhdmi->mbus_fmt.height = stream->timing.vact;
 
-	if ((stream->timing.hact == 1440 &&
-	     ((stream->timing.vact == 240 && stream->framerate == 60) ||
-	      (stream->timing.vact == 288 && stream->framerate == 50))) &&
-	    !!stream->isinterlaced)
+	/*
+	 * For pixel repetition cases 1440x240@60,120,240 or
+	 * 1440x288@50,100,200, make width as half.
+	 */
+	if (stream->timing.hact == 1440 &&
+	    ((stream->timing.vact == 240 && (stream->framerate == 60 ||
+					     stream->framerate == 120 ||
+					     stream->framerate == 240)) ||
+	     (stream->timing.vact == 288 && (stream->framerate == 50 ||
+					     stream->framerate == 100 ||
+					     stream->framerate == 200))))
 		xhdmi->mbus_fmt.width /= 2;
 
 	if (stream->isinterlaced)
@@ -1460,26 +1467,30 @@ static void rxstreamup(struct xhdmirx_state *xhdmi)
 	xhdmi->dv_timings.bt.width	= stream->timing.hact;
 	xhdmi->dv_timings.bt.height	= stream->timing.vact;
 	xhdmi->dv_timings.bt.interlaced = !!stream->isinterlaced;
+	if (xhdmi->dv_timings.bt.interlaced)
+		xhdmi->dv_timings.bt.height *= 2;
+
 	xhdmi->dv_timings.bt.polarities = stream->timing.vsyncpol ?
 					  V4L2_DV_VSYNC_POS_POL : 0;
 	xhdmi->dv_timings.bt.polarities |= stream->timing.hsyncpol ?
 					   V4L2_DV_HSYNC_POS_POL : 0;
 	/* determine pixel clock */
-	if (stream->isinterlaced) {
-		xhdmi->dv_timings.bt.pixelclock = stream->timing.vtot[0] +
-						stream->timing.vtot[1];
-		xhdmi->dv_timings.bt.pixelclock *= stream->framerate / 2;
-	} else {
-		xhdmi->dv_timings.bt.pixelclock = stream->timing.vtot[0] *
-						  stream->framerate;
-	}
-	xhdmi->dv_timings.bt.pixelclock *= stream->timing.htot;
+	xhdmi->dv_timings.bt.pixelclock = xhdmi->stream.pixelclk;
 
-	if ((stream->timing.hact == 1440 &&
-	     ((stream->timing.vact == 240 && stream->framerate == 60) ||
-	      (stream->timing.vact == 288 && stream->framerate == 50))) &&
-	    !!stream->isinterlaced) {
-		xhdmi->dv_timings.bt.width /= 2;
+	/*
+	 * Double pixel clock for YUV 420 TMDS / Tri-band packing
+	 * as per Sec 7.1 of HDMI 2.1 spec.
+	 */
+	if (xhdmi->stream.video.colorspace == XCS_YUV420)
+		xhdmi->dv_timings.bt.pixelclock *= 2;
+
+	if (stream->timing.hact == 1440 &&
+	    ((stream->timing.vact == 240 && (stream->framerate == 60 ||
+					     stream->framerate == 120 ||
+					     stream->framerate == 240)) ||
+	     (stream->timing.vact == 288 && (stream->framerate == 50 ||
+					     stream->framerate == 100 ||
+					     stream->framerate == 200)))) {
 		xhdmirx1_bridgeyuv420(xhdmi, false);
 		xhdmirx1_bridgepixeldrop(xhdmi, true);
 	}
