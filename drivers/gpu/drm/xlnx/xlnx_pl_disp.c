@@ -449,7 +449,8 @@ static void xlnx_pl_disp_crtc_atomic_disable(struct drm_crtc *crtc,
 	xlnx_pl_disp_plane_disable(crtc->primary);
 	xlnx_pl_disp_clear_event(crtc);
 	drm_crtc_vblank_off(crtc);
-	xlnx_bridge_disable(xlnx_pl_disp->vtc_bridge);
+	if (xlnx_pl_disp->vtc_bridge)
+		xlnx_bridge_disable(xlnx_pl_disp->vtc_bridge);
 }
 
 static int xlnx_pl_disp_crtc_atomic_check(struct drm_crtc *crtc,
@@ -652,7 +653,8 @@ static int xlnx_pl_disp_remove(struct platform_device *pdev)
 	struct xlnx_pl_disp *xlnx_pl_disp = platform_get_drvdata(pdev);
 	struct xlnx_dma_chan *xlnx_dma_chan = xlnx_pl_disp->chan;
 
-	of_xlnx_bridge_put(xlnx_pl_disp->vtc_bridge);
+	if (xlnx_pl_disp->vtc_bridge)
+		of_xlnx_bridge_put(xlnx_pl_disp->vtc_bridge);
 	xlnx_drm_pipeline_exit(xlnx_pl_disp->master);
 	component_del(&pdev->dev, &xlnx_pl_disp_component_ops);
 
