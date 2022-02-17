@@ -525,10 +525,35 @@
 			#size-cells = <0>;
 		};
 
-		sysmon: sysmon@f1270000 {
+		sysmon0: sysmon@f1270000 {
 			compatible = "xlnx,versal-sysmon";
 			reg = <0x0 0xf1270000 0x0 0x4000>;
 			interrupts = <0 144 4>;
+			xlnx,numchannels = /bits/8 <0>;
+		};
+		sysmon1: sysmon@109270000 {
+			compatible = "xlnx,versal-sysmon";
+			#address-cells = <2>;
+			#size-cells = <2>;
+			status = "disabled";
+			reg = <0x1 0x09270000 0x0 0x4000>;
+			xlnx,numchannels = /bits/8 <0>;
+		};
+
+		sysmon2: sysmon@111270000 {
+			compatible = "xlnx,versal-sysmon";
+			status = "disabled";
+			#address-cells = <2>;
+			#size-cells = <2>;
+			reg = <0x1 0x11270000 0x0 0x4000>;
+			xlnx,numchannels = /bits/8 <0>;
+		};
+		sysmon3: sysmon@119270000 {
+			compatible = "xlnx,versal-sysmon";
+			status = "disabled";
+			#address-cells = <2>;
+			#size-cells = <2>;
+			reg = <0x1 0x19270000 0x0 0x4000>;
 			xlnx,numchannels = /bits/8 <0>;
 		};
 
