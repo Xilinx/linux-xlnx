@@ -665,8 +665,10 @@ static void aie_l2_backtrack(struct aie_partition *apart)
 
 	num_nocs = aie_range_get_num_nocs(&apart->range, aperture,
 					  &l2_bitmap_offset);
-	if (!num_nocs)
+	if (!num_nocs) {
+		mutex_unlock(&apart->mlock);
 		return;
+	}
 
 	for (loc.col = apart->range.start.col, loc.row = 0;
 	     loc.col < apart->range.start.col + apart->range.size.col;
