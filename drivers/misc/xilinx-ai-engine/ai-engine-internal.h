@@ -677,6 +677,7 @@ struct aie_tile {
  * @array_shift: array address shift
  * @col_shift: column address shift
  * @row_shift: row address shift
+ * @dev_gen: aie hardware device generation
  * @cols_res: AI engine columns resources to indicate
  *	      while columns are occupied by partitions.
  * @num_kernel_regs: number of kernel only registers range
