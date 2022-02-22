@@ -492,11 +492,11 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 	adev->ttype_attr[AIE_TILE_TYPE_MEMORY].num_rows = regs_u8[1];
 
 	adev->dev_gen = aie_gen;
-	if (aie_gen == AIE_DEVICE_GEN_AIE)
+	if (aie_gen == AIE_DEVICE_GEN_AIE) {
 		ret = aie_device_init(adev);
-	else if (aie_gen == AIE_DEVICE_GEN_AIEML)
+	} else if (aie_gen == AIE_DEVICE_GEN_AIEML) {
 		ret = aieml_device_init(adev);
-	else {
+	} else {
 		dev_err(&pdev->dev, "Invalid device generation\n");
 		return -EINVAL;
 	}
