@@ -30,8 +30,9 @@ void __maybe_unused axienet_bd_free(struct net_device *ndev,
 	struct axienet_local *lp = netdev_priv(ndev);
 
 	for (i = 0; i < lp->rx_bd_num; i++) {
-		dma_unmap_single(ndev->dev.parent, q->rx_bd_v[i].phys,
-				 lp->max_frm_size, DMA_FROM_DEVICE);
+		if (q->rx_bd_v[i].phys)
+			dma_unmap_single(ndev->dev.parent, q->rx_bd_v[i].phys,
+					 lp->max_frm_size, DMA_FROM_DEVICE);
 		dev_kfree_skb((struct sk_buff *)
 			      (q->rx_bd_v[i].sw_id_offset));
 	}
@@ -169,6 +170,11 @@ static int __dma_rxq_init(struct net_device *ndev,
 						    skb->data,
 						    lp->max_frm_size,
 						    DMA_FROM_DEVICE);
+		if (unlikely(dma_mapping_error(ndev->dev.parent, q->rx_bd_v[i].phys))) {
+			q->rx_bd_v[i].phys = 0;
+			dev_err(&ndev->dev, "axidma map error\n");
+			goto out;
+		}
 		q->rx_bd_v[i].cntrl = lp->max_frm_size;
 	}
 
