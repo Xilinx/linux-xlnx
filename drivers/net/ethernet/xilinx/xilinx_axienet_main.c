@@ -1636,6 +1636,12 @@ static int axienet_recv(struct net_device *ndev, int budget,
 		cur_p->phys = dma_map_single(ndev->dev.parent, new_skb->data,
 					     lp->max_frm_size,
 					   DMA_FROM_DEVICE);
+		if (unlikely(dma_mapping_error(ndev->dev.parent, cur_p->phys))) {
+			cur_p->phys = 0;
+			dev_kfree_skb(skb);
+			dev_err(lp->dev, "RX buffer map failed\n");
+			break;
+		}
 		cur_p->cntrl = lp->max_frm_size;
 		cur_p->status = 0;
 		cur_p->sw_id_offset = (phys_addr_t)new_skb;
