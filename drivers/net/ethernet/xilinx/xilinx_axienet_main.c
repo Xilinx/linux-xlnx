@@ -1402,6 +1402,12 @@ int axienet_queue_xmit(struct sk_buff *skb,
 	} else {
 		cur_p->phys = dma_map_single(ndev->dev.parent, skb->data,
 					     skb_headlen(skb), DMA_TO_DEVICE);
+		if (unlikely(dma_mapping_error(ndev->dev.parent, cur_p->phys))) {
+			cur_p->phys = 0;
+			spin_unlock_irqrestore(&q->tx_lock, flags);
+			dev_err(&ndev->dev, "TX buffer map failed\n");
+			return NETDEV_TX_BUSY;
+		}
 	}
 	cur_p->tx_desc_mapping = DESC_DMA_MAP_SINGLE;
 
