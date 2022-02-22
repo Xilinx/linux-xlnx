@@ -784,6 +784,12 @@ static void zynqmp_qspi_fillgenfifo(struct zynqmp_qspi *xqspi, u8 nbits,
 		if (imm_data != 0) {
 			genfifoentry &= ~GQSPI_GENFIFO_EXP;
 			genfifoentry &= ~GQSPI_GENFIFO_IMM_DATA_MASK;
+			if (imm_data % 4 != 0) {
+				if (((imm_data + 4 - (imm_data % 4)) & 0xFF) == 0x00)
+					imm_data = 0xFF;
+				else
+					imm_data = imm_data + 4 - (imm_data % 4);
+			}
 			genfifoentry |= (u8)(imm_data & 0xFF);
 			zynqmp_gqspi_write(xqspi, GQSPI_GEN_FIFO_OFST,
 					   genfifoentry);
