@@ -2818,6 +2818,10 @@ static int zynqmp_firmware_probe(struct platform_device *pdev)
 	struct device_node *np;
 	int ret;
 
+	ret = get_set_conduit_method(dev->of_node);
+	if (ret)
+		return ret;
+
 	np = of_find_compatible_node(NULL, NULL, "xlnx,zynqmp");
 	if (!np) {
 		np = of_find_compatible_node(NULL, NULL, "xlnx,versal");
@@ -2828,16 +2832,12 @@ static int zynqmp_firmware_probe(struct platform_device *pdev)
 	}
 
 	if (!feature_check_enabled) {
-		ret = zynqmp_pm_feature(PM_FEATURE_CHECK);
-		if (!ret)
+		ret = do_feature_check_call(PM_FEATURE_CHECK);
+		if (ret >= 0)
 			feature_check_enabled = true;
 	}
 
 	of_node_put(np);
-
-	ret = get_set_conduit_method(dev->of_node);
-	if (ret)
-		return ret;
 
 	/* Check PM API version number */
 	ret = zynqmp_pm_get_api_version(&pm_api_version);
