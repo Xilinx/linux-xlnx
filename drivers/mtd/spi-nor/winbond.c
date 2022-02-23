@@ -104,7 +104,7 @@ static struct flash_info winbond_parts[] = {
 			    SECT_4K | SPI_NOR_QUAD_READ | SPI_NOR_DUAL_READ |
 			    SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB |
 			    SPI_NOR_TB_SR_BIT6 | SPI_NOR_4BIT_BP |
-			    SPI_NOR_BP3_SR_BIT5) },
+			    SPI_NOR_BP3_SR_BIT5 | SPI_NOR_4B_OPCODES) },
 	{ "w25q512jvq", INFO(0xef4020, 0, 64 * 1024, 1024,
 			     SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ) },
 };
