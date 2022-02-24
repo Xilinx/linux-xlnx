@@ -62,6 +62,8 @@ static const struct xvip_video_format xvip_video_formats[] = {
 	  2, 16, V4L2_PIX_FMT_X216M, 2, 2, 1, 1 },
 	{ XVIP_VF_YUV_444, 8, NULL, MEDIA_BUS_FMT_VUY8_1X24,
 	  3, 24, V4L2_PIX_FMT_VUY24, 1, 1, 1, 1 },
+	{ XVIP_VF_YUV_444, 10, NULL, MEDIA_BUS_FMT_VUY10_1X30,
+	  1, 24, V4L2_PIX_FMT_X403, 3, 1, 1, 1 },
 	{ XVIP_VF_YUV_444, 8, NULL, MEDIA_BUS_FMT_VUY8_1X24,
 	  1, 8, V4L2_PIX_FMT_YUV444M, 3, 3, 1, 1 },
 	{ XVIP_VF_YUVX, 8, NULL, MEDIA_BUS_FMT_VUY8_1X24,
@@ -192,6 +194,7 @@ void xvip_bpl_scaling_factor(u32 fourcc, u32 *numerator, u32 *denominator)
 	case V4L2_PIX_FMT_XY10:
 	case V4L2_PIX_FMT_XV15:
 	case V4L2_PIX_FMT_XV20:
+	case V4L2_PIX_FMT_X403:
 	case V4L2_PIX_FMT_XV15M:
 	case V4L2_PIX_FMT_XV20M:
 	case V4L2_PIX_FMT_XBGR30:
@@ -232,6 +235,7 @@ void xvip_width_padding_factor(u32 fourcc, u32 *numerator, u32 *denominator)
 	case V4L2_PIX_FMT_XY10:
 	case V4L2_PIX_FMT_XV15:
 	case V4L2_PIX_FMT_XV20:
+	case V4L2_PIX_FMT_X403:
 	case V4L2_PIX_FMT_XV15M:
 	case V4L2_PIX_FMT_XV20M:
 	case V4L2_PIX_FMT_XBGR30:
