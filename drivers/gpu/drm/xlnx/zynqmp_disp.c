@@ -842,6 +842,15 @@ static const struct zynqmp_disp_fmt av_buf_vid_fmts[] = {
 		.sf[0]		= ZYNQMP_DISP_AV_BUF_10BIT_SF,
 		.sf[1]		= ZYNQMP_DISP_AV_BUF_10BIT_SF,
 		.sf[2]		= ZYNQMP_DISP_AV_BUF_10BIT_SF,
+	}, {
+		.drm_fmt	= DRM_FORMAT_X403,
+		.disp_fmt	= ZYNQMP_DISP_AV_BUF_FMT_NL_VID_YV24_10,
+		.rgb		= false,
+		.swap		= false,
+		.chroma_sub	= false,
+		.sf[0]		= ZYNQMP_DISP_AV_BUF_10BIT_SF,
+		.sf[1]		= ZYNQMP_DISP_AV_BUF_10BIT_SF,
+		.sf[2]		= ZYNQMP_DISP_AV_BUF_10BIT_SF,
 	}
 };
 
