@@ -370,6 +370,7 @@ struct vidphy_cfg {
  * @retimer_prvdata: Pointer to retimer private data structure
  * @vidphy_prvdata: Pointer to video phy private data structure
  * @tp1_work: training pattern 1 worker
+ * @unplug_work: Unplug worker
  * @lock: Lock is used for width, height, framerate variables
  * @format: Active V4L2 format on each pad
  * @frame_interval: Captures the frame rate
@@ -403,6 +404,7 @@ struct xdprxss_state {
 	struct retimer_cfg *retimer_prvdata;
 	struct vidphy_cfg *vidphy_prvdata;
 	struct delayed_work tp1_work;
+	struct delayed_work unplug_work;
 	/* protects width, height, framerate variables */
 	spinlock_t lock;
 	struct v4l2_mbus_framefmt format;
@@ -1246,7 +1248,7 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 	if (status1 & XDPRX_INTR_LINKQUAL_MASK)
 		xdprxss_irq_access_linkqual(state);
 	if (status & XDPRX_INTR_UNPLUG_MASK)
-		xdprxss_irq_unplug(state);
+		schedule_delayed_work(&state->unplug_work, 0);
 	if (status & XDPRX_INTR_TP1_MASK)
 		schedule_delayed_work(&state->tp1_work, 0);
 	if (status & XDPRX_INTR_TP2_MASK)
@@ -1761,6 +1763,15 @@ static void xlnx_dp_tp1_work_func(struct work_struct *work)
 	xdprxss_irq_tp1(dp);
 }
 
+static void xlnx_dp_unplug_work_func(struct work_struct *work)
+{
+	struct xdprxss_state *dp;
+
+	dp = container_of(work, struct xdprxss_state, unplug_work.work);
+
+	xdprxss_irq_unplug(dp);
+}
+
 static int xlnx_find_device(struct platform_device *pdev,
 			    struct xdprxss_state *xdprxss, const char *name)
 {
@@ -1989,6 +2000,7 @@ static int xdprxss_probe(struct platform_device *pdev)
 	}
 
 	INIT_DELAYED_WORK(&xdprxss->tp1_work, xlnx_dp_tp1_work_func);
+	INIT_DELAYED_WORK(&xdprxss->unplug_work, xlnx_dp_unplug_work_func);
 
 	return 0;
 
