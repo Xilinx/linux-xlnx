@@ -49,13 +49,19 @@ properties:
     const: xlnx,zynqmp-dpsub-1.7
 
   reg:
-    maxItems: 4
+    maxItems: 3
   reg-names:
     items:
       - const: dp
       - const: blend
       - const: av_buf
-      - const: aud
+
+  xlnx,dpaud-reg:
+    description:
+      A phandle to a syscon device, used to access
+      dp audio cfg registers.
+    $ref: "/schemas/types.yaml#/definitions/phandle"
+    maxItems: 1
 
   interrupts:
     maxItems: 1
@@ -121,6 +127,7 @@ required:
   - compatible
   - reg
   - reg-names
+  - xlnx,dpaud-reg
   - interrupts
   - clocks
   - clock-names
@@ -142,9 +149,9 @@ examples:
         compatible = "xlnx,zynqmp-dpsub-1.7";
         reg = <0xfd4a0000 0x1000>,
               <0xfd4aa000 0x1000>,
-              <0xfd4ab000 0x1000>,
-              <0xfd4ac000 0x1000>;
-        reg-names = "dp", "blend", "av_buf", "aud";
+              <0xfd4ab000 0x1000>;
+        reg-names = "dp", "blend", "av_buf";
+        xlnx,dpaud-reg = <&dp_aud>;
         interrupts = <0 119 4>;
         interrupt-parent = <&gic>;
 

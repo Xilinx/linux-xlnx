@@ -55,6 +55,7 @@ properties:
               - samsung,exynos4-sysreg
               - samsung,exynos5-sysreg
               - samsung,exynos5433-sysreg
+              - xlnx,zynqmp-dpaud-setting
 
           - const: syscon
 
