@@ -69,6 +69,7 @@ properties:
               - rockchip,rk3588-qos
               - rockchip,rv1126-qos
               - starfive,jh7100-sysmain
+              - xlnx,zynqmp-dpaud-setting
 
           - const: syscon
 
