@@ -19,15 +19,28 @@
 #include <linux/device.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/mfd/syscon.h>
+#include <linux/regmap.h>
 
 #include <sound/soc.h>
+
+#define ZYNQMP_DISP_AUD_CH_STATUS		0x8
+#define ZYNQMP_DISP_AUD_CH_STATUS_44K		0x0
+#define ZYNQMP_DISP_AUD_CH_STATUS_48K		0x2
+#define ZYNQMP_DISP_AUD_SMPL_RATE_44K		44100
+#define ZYNQMP_DISP_AUD_SMPL_RATE_48K		48000
+#define ZYNQMP_DISP_AUD_SMPL_RATE_TO_CLK	512
 
 /**
  * struct xilinx_dp_codec - DisplayPort codec
  * @aud_clk: audio clock
+ * @aud_base: base address for DP audio
+ * @dev: DP audio device
  */
 struct xilinx_dp_codec {
 	struct clk *aud_clk;
+	struct regmap *aud_base;
+	struct device *dev;
 };
 
 struct xilinx_dp_codec_fmt {
@@ -35,23 +48,79 @@ struct xilinx_dp_codec_fmt {
 	unsigned int snd_rate;
 };
 
+static int dp_codec_hw_params(struct snd_pcm_substream *substream,
+			      struct snd_pcm_hw_params *params,
+			      struct snd_soc_dai *socdai)
+{
+	struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream);
+	struct xilinx_dp_codec *codec =
+		snd_soc_dai_get_drvdata(asoc_rtd_to_cpu(rtd, 0));
+	unsigned long rate;
+	int ret;
+
+	u32 sample_rate = params_rate(params);
+
+	if (sample_rate != ZYNQMP_DISP_AUD_SMPL_RATE_48K &&
+	    sample_rate != ZYNQMP_DISP_AUD_SMPL_RATE_44K)
+		return -EINVAL;
+
+	clk_disable_unprepare(codec->aud_clk);
+	ret = clk_set_rate(codec->aud_clk,
+			   sample_rate * ZYNQMP_DISP_AUD_SMPL_RATE_TO_CLK);
+	if (ret) {
+		dev_err(codec->dev, "can't set aud_clk to %u err:%d\n",
+			sample_rate * ZYNQMP_DISP_AUD_SMPL_RATE_TO_CLK, ret);
+		return ret;
+	}
+	clk_prepare_enable(codec->aud_clk);
+	rate = clk_get_rate(codec->aud_clk);
+
+	/* Ignore some offset +- 10 */
+	if (abs(sample_rate * ZYNQMP_DISP_AUD_SMPL_RATE_TO_CLK - rate) > 10) {
+		dev_err(codec->dev, "aud_clk offset is higher: %ld\n",
+			sample_rate * ZYNQMP_DISP_AUD_SMPL_RATE_TO_CLK - rate);
+		ret = -EINVAL;
+		goto err_clk;
+	}
+
+	if (sample_rate == ZYNQMP_DISP_AUD_SMPL_RATE_48K)
+		regmap_write(codec->aud_base, ZYNQMP_DISP_AUD_CH_STATUS,
+			     ZYNQMP_DISP_AUD_CH_STATUS_48K);
+	else
+		regmap_write(codec->aud_base, ZYNQMP_DISP_AUD_CH_STATUS,
+			     ZYNQMP_DISP_AUD_CH_STATUS_44K);
+
+	return 0;
+
+err_clk:
+	clk_disable_unprepare(codec->aud_clk);
+	return ret;
+}
+
+static const struct snd_soc_dai_ops dp_codec_dai_ops = {
+	.hw_params	= dp_codec_hw_params,
+};
+
 static struct snd_soc_dai_driver xilinx_dp_codec_dai = {
 	.name		= "xilinx-dp-snd-codec-dai",
+	.ops		= &dp_codec_dai_ops,
 	.playback	= {
 		.channels_min	= 2,
 		.channels_max	= 2,
-		.rates		= SNDRV_PCM_RATE_44100,
+		.rates		= SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_48000,
 		.formats	= SNDRV_PCM_FMTBIT_S16_LE,
 	},
 };
 
 static const struct xilinx_dp_codec_fmt rates[] = {
 	{
-		.rate	= 48000 * 512,
+		.rate	= ZYNQMP_DISP_AUD_SMPL_RATE_48K *
+			  ZYNQMP_DISP_AUD_SMPL_RATE_TO_CLK,
 		.snd_rate = SNDRV_PCM_RATE_48000
 	},
 	{
-		.rate	= 44100 * 512,
+		.rate	= ZYNQMP_DISP_AUD_SMPL_RATE_44K *
+			  ZYNQMP_DISP_AUD_SMPL_RATE_TO_CLK,
 		.snd_rate = SNDRV_PCM_RATE_44100
 	}
 };
@@ -84,6 +153,14 @@ static int xilinx_dp_codec_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	codec->aud_base =
+		syscon_regmap_lookup_by_phandle(pdev->dev.parent->of_node,
+						"xlnx,dpaud-reg");
+	if (IS_ERR(codec->aud_base))
+		return PTR_ERR(codec->aud_base);
+
+	codec->dev = &pdev->dev;
+
 	for (i = 0; i < ARRAY_SIZE(rates); i++) {
 		clk_disable_unprepare(codec->aud_clk);
 		ret = clk_set_rate(codec->aud_clk, rates[i].rate);
@@ -93,10 +170,8 @@ static int xilinx_dp_codec_probe(struct platform_device *pdev)
 
 		rate = clk_get_rate(codec->aud_clk);
 		/* Ignore some offset +- 10 */
-		if (abs(rates[i].rate - rate) < 10) {
-			xilinx_dp_codec_dai.playback.rates = rates[i].snd_rate;
+		if (abs(rates[i].rate - rate) < 10)
 			break;
-		}
 		ret = -EINVAL;
 	}
 
@@ -112,6 +187,7 @@ static int xilinx_dp_codec_probe(struct platform_device *pdev)
 		goto error_clk;
 
 	platform_set_drvdata(pdev, codec);
+	dev_set_drvdata(&pdev->dev, codec);
 
 	dev_info(&pdev->dev, "Xilinx DisplayPort Sound Codec probed\n");
 
