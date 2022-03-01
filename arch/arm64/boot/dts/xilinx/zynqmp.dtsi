@@ -1122,15 +1122,20 @@
 			#dma-cells = <1>;
 		};
 
+		zynqmp_dpaud_setting: dp_aud@fd4ac000 {
+			compatible = "xlnx,zynqmp-dpaud-setting", "syscon";
+			reg = <0x0 0xfd4ac000 0x0 0x1000>;
+		};
+
 		zynqmp_dpsub: display@fd4a0000 {
 			u-boot,dm-pre-reloc;
 			compatible = "xlnx,zynqmp-dpsub-1.7";
 			status = "disabled";
 			reg = <0x0 0xfd4a0000 0x0 0x1000>,
 			      <0x0 0xfd4aa000 0x0 0x1000>,
-			      <0x0 0xfd4ab000 0x0 0x1000>,
-			      <0x0 0xfd4ac000 0x0 0x1000>;
-			reg-names = "dp", "blend", "av_buf", "aud";
+			      <0x0 0xfd4ab000 0x0 0x1000>;
+			reg-names = "dp", "blend", "av_buf";
+			xlnx,dpaud-reg = <&zynqmp_dpaud_setting>;
 			interrupts = <0 119 4>;
 			interrupt-parent = <&gic>;
 			#stream-id-cells = <1>;
