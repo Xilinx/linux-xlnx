@@ -36,6 +36,8 @@
 #include <linux/spinlock.h>
 #include <linux/uaccess.h>
 #include <video/videomode.h>
+#include <linux/mfd/syscon.h>
+#include <linux/regmap.h>
 
 #include "xlnx_bridge.h"
 #include "xlnx_crtc.h"
@@ -97,6 +99,15 @@ static const u32 zynqmp_disp_gfx_init_fmts[] = {
 #define ZYNQMP_DISP_MAX_HEIGHT				4096
 /* 44 bit addressing. This is actually DPDMA limitation */
 #define ZYNQMP_DISP_MAX_DMA_BIT				44
+
+static struct regmap_config dpaud_regmap_config = {
+	.name = "regmap",
+	.reg_bits = 32,
+	.val_bits = 32,
+	.reg_stride = 4,
+	.max_register = 0xfff,
+	.cache_type = REGCACHE_NONE,
+};
 
 /**
  * enum zynqmp_disp_layer_type - Layer type (can be used for hw ID)
@@ -193,7 +204,7 @@ struct zynqmp_disp_av_buf {
  * @base: Base address offset
  */
 struct zynqmp_disp_aud {
-	void __iomem *base;
+	struct regmap *base;
 };
 
 /**
@@ -1424,9 +1435,9 @@ static void zynqmp_disp_av_buf_init_live_sf(struct zynqmp_disp_av_buf *av_buf,
 static void zynqmp_disp_aud_init(struct zynqmp_disp_aud *aud)
 {
 	/* Clear the audio soft reset register as it's an non-reset flop */
-	zynqmp_disp_write(aud->base, ZYNQMP_DISP_AUD_SOFT_RESET, 0);
-	zynqmp_disp_write(aud->base, ZYNQMP_DISP_AUD_MIXER_VOLUME,
-			  ZYNQMP_DISP_AUD_MIXER_VOLUME_NO_SCALE);
+	regmap_write(aud->base, ZYNQMP_DISP_AUD_SOFT_RESET, 0);
+	regmap_write(aud->base, ZYNQMP_DISP_AUD_MIXER_VOLUME,
+		     ZYNQMP_DISP_AUD_MIXER_VOLUME_NO_SCALE);
 }
 
 /**
@@ -1437,8 +1448,9 @@ static void zynqmp_disp_aud_init(struct zynqmp_disp_aud *aud)
  */
 static void zynqmp_disp_aud_deinit(struct zynqmp_disp_aud *aud)
 {
-	zynqmp_disp_set(aud->base, ZYNQMP_DISP_AUD_SOFT_RESET,
-			ZYNQMP_DISP_AUD_SOFT_RESET_AUD_SRST);
+	regmap_write_bits(aud->base, ZYNQMP_DISP_AUD_SOFT_RESET,
+			  ZYNQMP_DISP_AUD_SOFT_RESET_AUD_SRST,
+			  ZYNQMP_DISP_AUD_SOFT_RESET_AUD_SRST);
 }
 
 /*
@@ -3036,6 +3048,7 @@ int zynqmp_disp_probe(struct platform_device *pdev)
 	struct zynqmp_dpsub *dpsub;
 	struct zynqmp_disp *disp;
 	struct resource *res;
+	void __iomem *regs;
 	int ret;
 	struct zynqmp_disp_layer *layer;
 	unsigned int i, j;
@@ -3056,10 +3069,24 @@ int zynqmp_disp_probe(struct platform_device *pdev)
 	if (IS_ERR(disp->av_buf.base))
 		return PTR_ERR(disp->av_buf.base);
 
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "aud");
-	disp->aud.base = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(disp->aud.base))
-		return PTR_ERR(disp->aud.base);
+	disp->aud.base = syscon_regmap_lookup_by_phandle(disp->dev->of_node,
+							 "xlnx,dpaud-reg");
+	if (IS_ERR(disp->aud.base)) {
+		dev_info(&pdev->dev, "could not find xlnx,dpaud-reg, trying direct register access. DisplayPort audio will not work\n");
+
+		regs = devm_platform_ioremap_resource_byname(pdev, "aud");
+		if (IS_ERR(regs)) {
+			dev_err(&pdev->dev, "get aud memory resource failed.\n");
+			return PTR_ERR(regs);
+		}
+		disp->aud.base =
+			devm_regmap_init_mmio(&pdev->dev, regs,
+					      &dpaud_regmap_config);
+		if (IS_ERR(disp->aud.base)) {
+			dev_err(&pdev->dev, "failed to init regmap\n");
+			return PTR_ERR(disp->aud.base);
+		}
+	}
 
 	dpsub = platform_get_drvdata(pdev);
 	dpsub->disp = disp;
