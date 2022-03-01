@@ -69,6 +69,7 @@ properties:
               - samsung,exynos5433-sysreg
               - samsung,exynos850-sysreg
               - samsung,exynosautov9-sysreg
+              - xlnx,zynqmp-dpaud-setting
 
           - const: syscon
 
