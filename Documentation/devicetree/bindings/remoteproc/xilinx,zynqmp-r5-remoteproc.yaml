@@ -45,7 +45,7 @@ properties:
     enum: [0, 1]
     description: |
       Configuration Mode for the Dual R5F cores within the R5F cluster.
-      Should be either a value of 1 (LockStep mode) or 0 (Split mode),
+      Should be either a value of 0 (LockStep mode) or 1 (Split mode),
       default is LockStep mode if omitted.
 
 
