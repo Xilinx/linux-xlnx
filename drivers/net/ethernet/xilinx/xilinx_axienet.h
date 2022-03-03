@@ -509,6 +509,7 @@
 #define MRMAC_TX_RT_STS_OFFSET		0x00000748
 #define MRMAC_RX_RT_STS_OFFSET		0x0000074C
 #define MRMAC_STATRX_BLKLCK_OFFSET	0x00000754
+#define MRMAC_STATRX_VALID_CTRL_OFFSET	0x000007B8
 
 /* Register bit masks */
 #define MRMAC_RX_SERDES_RST_MASK	(BIT(3) | BIT(2) | BIT(1) | BIT(0))
@@ -526,6 +527,8 @@
 #define MRMAC_TX_INS_FCS_MASK		BIT(1)
 
 #define MRMAC_RX_BLKLCK_MASK		BIT(0)
+#define MRMAC_RX_STATUS_MASK		BIT(0)
+#define MRMAC_RX_VALID_MASK		BIT(0)
 
 #define MRMAC_CTL_DATA_RATE_MASK	GENMASK(2, 0)
 #define MRMAC_CTL_DATA_RATE_10G		0
@@ -1051,6 +1054,20 @@ static inline u32 axienet_get_mrmac_blocklock(struct axienet_local *lp)
 {
 	axienet_iow(lp, MRMAC_STATRX_BLKLCK_OFFSET, MRMAC_STS_ALL_MASK);
 	return axienet_ior(lp, MRMAC_STATRX_BLKLCK_OFFSET);
+}
+
+/**
+ * axienet_get_mrmac_rx_status - Write to Clear MRMAC RX status register
+ * and read the latest status
+ * @lp:		Pointer to axienet local structure
+ *
+ * Return: The contents of the Contents of MRMAC RX status register
+ */
+
+static inline u32 axienet_get_mrmac_rx_status(struct axienet_local *lp)
+{
+	axienet_iow(lp, MRMAC_RX_STS_OFFSET, MRMAC_STS_ALL_MASK);
+	return axienet_ior(lp, MRMAC_RX_STS_OFFSET);
 }
 
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
