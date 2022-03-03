@@ -1033,6 +1033,7 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 			    sdi->width_out_prop_val &&
 			    xlnx_sdi_modes[i].mode.vdisplay ==
 			    sdi->height_out_prop_val &&
+			    adjusted_mode->flags == xlnx_sdi_modes[i].mode.flags &&
 			    drm_mode_vrefresh(&xlnx_sdi_modes[i].mode) ==
 			    drm_mode_vrefresh(adjusted_mode)) {
 				memcpy((char *)adjusted_mode +
