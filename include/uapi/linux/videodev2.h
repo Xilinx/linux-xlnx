@@ -644,6 +644,7 @@ struct v4l2_pix_format {
 #define V4L2_PIX_FMT_YUV420  v4l2_fourcc('Y', 'U', '1', '2') /* 12  YUV 4:2:0     */
 #define V4L2_PIX_FMT_YVU420  v4l2_fourcc('Y', 'V', '1', '2') /* 12  YVU 4:2:0     */
 #define V4L2_PIX_FMT_YUV422P v4l2_fourcc('4', '2', '2', 'P') /* 16  YVU422 planar */
+#define V4L2_PIX_FMT_YUV444P v4l2_fourcc('4', '4', '4', 'P') /* 24  YUV444 planar */
 #define V4L2_PIX_FMT_X403    v4l2_fourcc('X', '4', '0', '3') /* 32  XYUV 4:4:4 10-bit */
 
 /* three non contiguous planes - Y, Cb, Cr */
