@@ -285,6 +285,14 @@ bool tpg_s_fourcc(struct tpg_data *tpg, u32 fourcc)
 	case V4L2_PIX_FMT_YVU422M:
 		tpg->buffers = 3;
 		fallthrough;
+	case V4L2_PIX_FMT_YUV444P:
+		tpg->vdownsampling[1] = 1;
+		tpg->vdownsampling[2] = 1;
+		tpg->hdownsampling[1] = 1;
+		tpg->hdownsampling[2] = 1;
+		tpg->planes = 3;
+		tpg->color_enc = TGP_COLOR_ENC_YCBCR;
+		break;
 	case V4L2_PIX_FMT_YUV422P:
 		tpg->vdownsampling[1] = 1;
 		tpg->vdownsampling[2] = 1;
@@ -445,6 +453,7 @@ bool tpg_s_fourcc(struct tpg_data *tpg, u32 fourcc)
 		tpg->twopixelsize[0] = 4;
 		tpg->twopixelsize[1] = 4;
 		break;
+	case V4L2_PIX_FMT_YUV444P:
 	case V4L2_PIX_FMT_YUV444M:
 	case V4L2_PIX_FMT_YVU444M:
 	case V4L2_PIX_FMT_YUV422M:
@@ -1196,6 +1205,7 @@ static void gen_twopix(struct tpg_data *tpg,
 		buf[1][1] = g_u_s;
 		break;
 
+	case V4L2_PIX_FMT_YUV444P:
 	case V4L2_PIX_FMT_YUV444M:
 		buf[0][offset] = r_y_h;
 		buf[1][offset] = g_u_s;
