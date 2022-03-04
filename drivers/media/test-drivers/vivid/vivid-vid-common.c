@@ -74,6 +74,14 @@ struct vivid_fmt vivid_formats[] = {
 		.buffers = 1,
 	},
 	{
+		.fourcc   = V4L2_PIX_FMT_YUV444P,
+		.vdownsampling = { 1, 1, 1 },
+		.bit_depth = { 8, 8, 8 },
+		.color_enc = TGP_COLOR_ENC_YCBCR,
+		.planes   = 3,
+		.buffers = 1,
+	},
+	{
 		.fourcc   = V4L2_PIX_FMT_YUV420,
 		.vdownsampling = { 1, 2, 2 },
 		.bit_depth = { 8, 4, 4 },
