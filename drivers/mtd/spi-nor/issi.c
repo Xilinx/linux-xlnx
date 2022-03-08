@@ -159,7 +159,7 @@ static struct spi_nor_fixups is25lp256_fixups = {
 	.post_bfpt = is25lp256_post_bfpt_fixups,
 };
 
-static struct flash_info issi_parts[] = {
+static const struct flash_info issi_parts[] = {
 	/* ISSI */
 	{ "is25wp080d", INFO(0x9d7014, 0, 64 * 1024, 32, SECT_4K |
 		SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK) },
