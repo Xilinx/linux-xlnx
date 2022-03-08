@@ -83,6 +83,7 @@ static int mx25um51345g_set_4byte(struct spi_nor *nor, bool enable)
 static void mx25um51345g_default_init_fixups(struct spi_nor *nor)
 {
 	u8 id_byte1, id_byte2;
+	u32 sector_size = nor->info->sector_size;
 
 	nor->params->set_4byte_addr_mode = mx25um51345g_set_4byte;
 
@@ -99,8 +100,11 @@ static void mx25um51345g_default_init_fixups(struct spi_nor *nor)
 	nor->spimem->device_id[4] = id_byte2;
 	nor->spimem->device_id[5] = id_byte2;
 
+	if (nor->isparallel)
+		sector_size <<= 1;
+
 	spi_nor_set_erase_type(&nor->params->erase_map.erase_type[1],
-			       nor->info->sector_size, SPINOR_OP_BE_4K_4B);
+			       sector_size, SPINOR_OP_BE_4K_4B);
 	nor->params->page_programs[SNOR_CMD_PP_8_8_8_DTR].opcode =
 				SPINOR_OP_PP_4B;
 
@@ -156,7 +160,7 @@ static struct spi_nor_fixups mx25l25635_fixups = {
 	.post_bfpt = mx25l25635_post_bfpt_fixups,
 };
 
-static struct flash_info macronix_parts[] = {
+static const struct flash_info macronix_parts[] = {
 	/* Macronix */
 	{ "mx25l512e",   INFO(0xc22010, 0, 64 * 1024,   1, SECT_4K) },
 	{ "mx25l2005a",  INFO(0xc22012, 0, 64 * 1024,   4, SECT_4K) },
