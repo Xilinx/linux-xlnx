@@ -538,8 +538,8 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 	}
 
 	of_xilinx_ai_engine_aperture_probe(adev);
-	dev_info(&pdev->dev, "Xilinx AI Engine device %s probed\n",
-		 dev_name(&pdev->dev));
+	dev_info(&pdev->dev, "Xilinx AI Engine device %s probed. Device generation: %u\n",
+		 dev_name(&pdev->dev), aie_gen);
 
 	return 0;
 }
