@@ -23,7 +23,7 @@ properties:
           - xlnx,v-dprxss-3.0
 
   reg:
-    maxItems: 2
+    minItems: 1
     items:
       - description: DisplayPort Receiver Subsystem registers
       - description: EDID IP block registers
@@ -139,6 +139,8 @@ required:
   - phys
   - ports
 
+additionalProperties: false
+
 examples:
   - |
    v_dp_rxss1@a0040000 {
@@ -148,7 +150,7 @@ examples:
        interrupt-names = "dprxss_dp_irq";
        interrupt-parent = <&gic>;
        interrupts = <0 89 4>;
-       reg = <0x0 0xa0040000 0x0 0x40000>,<0x0 0xa0010000 0x0 0x1000>;
+       reg = <0xa0040000 0x40000>, <0xa0010000 0x1000>;
        reg-names = "dp_base", "edid_base";
        xlnx,link-rate = <0x1e>;
        xlnx,audio-enable;
