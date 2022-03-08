@@ -7,6 +7,7 @@
  *  Shubhrajyoti Datta <shubhrajyoti.datta@xilinx.com>
  */
 
+#include <linux/bitfield.h>
 #include <linux/platform_device.h>
 #include <linux/clk.h>
 #include <linux/clk-provider.h>
