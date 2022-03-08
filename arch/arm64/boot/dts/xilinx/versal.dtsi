@@ -598,7 +598,7 @@
 			#address-cells = <2>;
 			#size-cells = <2>;
 
-			dwc3_0: dwc3@fe200000 {
+			dwc3_0: usb@fe200000 {
 				compatible = "snps,dwc3";
 				status = "disabled";
 				reg = <0 0xfe200000 0 0x10000>;
