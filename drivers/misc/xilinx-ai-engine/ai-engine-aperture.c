@@ -503,10 +503,13 @@ of_aie_aperture_probe(struct aie_device *adev, struct device_node *nc)
 	of_node_get(nc);
 
 	dev_info(dev,
-		 "AI engine aperture %s, id %u, cols(%u, %u) rows(%u, %u) is probed successfully.\n",
+		 "AI engine aperture %s, id 0x%x, cols(%u, %u) aie_tile_rows(%u, %u) memory_tile_rows(%u, %u) is probed successfully.\n",
 		 dev_name(dev), aperture->node_id,
 		 aperture->range.start.col, aperture->range.size.col,
-		 aperture->range.start.row, aperture->range.size.row);
+		 adev->ttype_attr[AIE_TILE_TYPE_TILE].start_row,
+		 adev->ttype_attr[AIE_TILE_TYPE_TILE].num_rows,
+		 adev->ttype_attr[AIE_TILE_TYPE_MEMORY].start_row,
+		 adev->ttype_attr[AIE_TILE_TYPE_MEMORY].num_rows);
 
 	return aperture;
 
