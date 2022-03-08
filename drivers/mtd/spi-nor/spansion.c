@@ -194,7 +194,7 @@ static struct spi_nor_fixups s25fs_s_fixups = {
 	.post_bfpt = s25fs_s_post_bfpt_fixups,
 };
 
-static struct flash_info spansion_parts[] = {
+static const struct flash_info spansion_parts[] = {
 	/* Spansion/Cypress -- single (large) sector size only, at least
 	 * for the chips listed here (without boot sectors).
 	 */
@@ -278,13 +278,18 @@ static struct flash_info spansion_parts[] = {
 
 static void spansion_post_sfdp_fixups(struct spi_nor *nor)
 {
+	u32 sector_size = nor->info->sector_size;
+
 	if (nor->params->size <= SZ_16M)
 		return;
+
+	if (nor->isparallel)
+		sector_size <<= 1;
 
 	nor->flags |= SNOR_F_4B_OPCODES;
 	/* No small sector erase for 4-byte command set */
 	nor->erase_opcode = SPINOR_OP_SE;
-	nor->mtd.erasesize = nor->info->sector_size;
+	nor->mtd.erasesize = sector_size;
 }
 
 static const struct spi_nor_fixups spansion_fixups = {

@@ -1361,12 +1361,17 @@ static bool spi_nor_has_uniform_erase(const struct spi_nor *nor)
 
 static void spi_nor_set_4byte_opcodes(struct spi_nor *nor)
 {
+	u32 sector_size = nor->info->sector_size;
+
 	/* Do some manufacturer fixups first */
 	switch (nor->jedec_id) {
 	case CFI_MFR_AMD:
 		/* No small sector erase for 4-byte command set */
 		nor->erase_opcode = SPINOR_OP_SE;
-		nor->mtd.erasesize = nor->info->sector_size;
+		if (nor->isparallel)
+			sector_size <<= 1;
+
+		nor->mtd.erasesize = sector_size;
 		break;
 	default:
 		break;
@@ -2689,6 +2694,9 @@ static int spi_nor_select_erase(struct spi_nor *nor)
 	u32 wanted_size = nor->info->sector_size;
 	int i;
 
+	if (nor->isparallel)
+		wanted_size <<= 1;
+
 	if (mtd->erasesize &&
 	    nor->jedec_id != CFI_MFR_AMD)
 		return 0;
@@ -2853,6 +2861,9 @@ static void spi_nor_info_init_params(struct spi_nor *nor)
 	const struct flash_info *info = nor->info;
 	struct device_node *np = spi_nor_get_flash_node(nor);
 	u8 i, erase_mask;
+	u32 n_sectors = info->n_sectors;
+	u32 sector_size = info->sector_size;
+	u32 page_size = info->page_size;
 
 	/* Initialize default flash parameters and settings. */
 	params->quad_enable = spi_nor_sr2_bit1_quad_enable;
@@ -2865,8 +2876,16 @@ static void spi_nor_info_init_params(struct spi_nor *nor)
 
 	/* Set SPI NOR sizes. */
 	params->writesize = 1;
-	params->size = (u64)info->sector_size * info->n_sectors;
-	params->page_size = info->page_size;
+	if (nor->isstacked)
+		n_sectors <<= 1;
+
+	if (nor->isparallel) {
+		sector_size <<= 1;
+		page_size <<= 1;
+	}
+
+	params->size = (u64)sector_size * n_sectors;
+	params->page_size = page_size;
 
 	if (!(info->flags & SPI_NOR_NO_FR)) {
 		/* Default to Fast Read for DT and non-DT platform devices. */
@@ -2949,7 +2968,7 @@ static void spi_nor_info_init_params(struct spi_nor *nor)
 		i++;
 	}
 	erase_mask |= BIT(i);
-	spi_nor_set_erase_type(&map->erase_type[i], info->sector_size,
+	spi_nor_set_erase_type(&map->erase_type[i], sector_size,
 			       SPINOR_OP_SE);
 	spi_nor_init_uniform_erase_map(map, erase_mask, params->size);
 }
@@ -3480,7 +3499,7 @@ static const struct flash_info *spi_nor_get_flash_info(struct spi_nor *nor,
 int spi_nor_scan(struct spi_nor *nor, const char *name,
 		 const struct spi_nor_hwcaps *hwcaps)
 {
-	struct flash_info *info = NULL;
+	const struct flash_info *info = NULL;
 	struct device *dev = nor->dev;
 	struct mtd_info *mtd = &nor->mtd;
 	struct device_node *np = spi_nor_get_flash_node(nor);
@@ -3512,7 +3531,7 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 	if (!nor->bouncebuf)
 		return -ENOMEM;
 
-	info = (struct flash_info *)spi_nor_get_flash_info(nor, name);
+	info = spi_nor_get_flash_info(nor, name);
 	if (IS_ERR(info))
 		return PTR_ERR(info);
 
@@ -3574,9 +3593,7 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 			if (is_dual == 1) {
 				/* dual parallel */
 				nor->shift = 1;
-				info->sector_size <<= nor->shift;
-				info->page_size <<= nor->shift;
-				nor->page_size = info->page_size;
+				nor->page_size = info->page_size << nor->shift;
 				mtd->size <<= nor->shift;
 				nor->isparallel = 1;
 				nor->isstacked = 0;
@@ -3588,7 +3605,6 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 				/* dual stacked */
 				nor->shift = 0;
 				mtd->size <<= 1;
-				info->n_sectors <<= 1;
 				nor->isstacked = 1;
 				nor->isparallel = 0;
 #else
@@ -3603,7 +3619,6 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 					/* dual stacked */
 					nor->shift = 0;
 					mtd->size <<= 1;
-					info->n_sectors <<= 1;
 					nor->isstacked = 1;
 					nor->isparallel = 0;
 				} else {
