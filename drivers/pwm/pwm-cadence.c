@@ -241,6 +241,27 @@ static void ttc_pwm_get_state(struct pwm_chip *chip,
 	state->duty_cycle = DIV_ROUND_CLOSEST_ULL(tmp, rate);
 }
 
+static struct pwm_device *
+ttc_pwm_of_xlate(struct pwm_chip *chip, const struct of_phandle_args *args)
+{
+	struct pwm_device *pwm;
+
+	if (args->args[0] >= TTC_PWM_MAX_CH)
+		return NULL;
+
+	pwm = pwm_request_from_chip(chip, args->args[0], NULL);
+	if (IS_ERR(pwm))
+		return pwm;
+
+	if (args->args[1])
+		pwm->args.period = args->args[1];
+
+	if (args->args[2])
+		pwm->args.polarity = args->args[2];
+
+	return pwm;
+}
+
 static const struct pwm_ops ttc_pwm_ops = {
 	.apply = ttc_pwm_apply,
 	.get_state = ttc_pwm_get_state,
@@ -296,6 +317,7 @@ static int ttc_pwm_probe(struct platform_device *pdev)
 	priv->chip.dev = dev;
 	priv->chip.ops = &ttc_pwm_ops;
 	priv->chip.npwm = TTC_PWM_MAX_CH;
+	priv->chip.of_xlate = ttc_pwm_of_xlate;
 	ret = pwmchip_add(&priv->chip);
 	if (ret) {
 		clk_rate_exclusive_put(priv->clk);
