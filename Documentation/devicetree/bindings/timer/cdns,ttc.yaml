@@ -33,6 +33,8 @@ properties:
   "#pwm-cells":
     description: |
       Required to configure TTC as PWM device, supported cells are 0 to 3.
+    minimum: 0
+    maximum: 3
 
 required:
   - compatible
@@ -67,5 +69,5 @@ examples:
         reg = <0xF8002000 0x1000>;
         clocks = <&cpu_clk 3>;
         timer-width = <32>;
-        #pwm-cells = <0>;
+        #pwm-cells = <3>;
     };
