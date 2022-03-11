@@ -718,6 +718,8 @@ enum axienet_tsn_ioctl {
  * @phy_mode:	Phy type to identify between MII/GMII/RGMII/SGMII/1000 Base-X
  * @is_tsn:	Denotes a tsn port
  * @num_tc:	Total number of TSN Traffic classes
+ * @master:	Master endpoint
+ * @slaves:	Front panel ports
  * @timer_priv: PTP timer private data pointer
  * @ptp_tx_irq: PTP tx irq
  * @ptp_rx_irq: PTP rx irq
@@ -728,6 +730,7 @@ enum axienet_tsn_ioctl {
  * @ptp_rx_sw_pointer: ptp rx sw pointer
  * @ptp_txq:	PTP tx queue header
  * @tx_tstamp_work: PTP timestamping work queue
+ * @qbv_regs:	pointer to qbv registers base address
  * @ptp_tx_lock: PTP tx lock
  * @dma_err_tasklet: Tasklet structure to process Axi DMA errors
  * @eth_irq:	Axi Ethernet IRQ number
@@ -901,6 +904,7 @@ struct axienet_local {
  *		completed.
  * @rx_bd_ci:	Stores the index of the Rx buffer descriptor in the ring being
  *		accessed currently.
+ * @flags:      MCDMA management channel flags
  * @chan_id:    MCDMA channel to operate on.
  * @rx_offset:	MCDMA S2MM channel starting offset.
  * @txq_bd_v:	Virtual address of the MCDMA TX buffer descriptor ring
@@ -986,7 +990,7 @@ struct axienet_config {
 };
 
 /**
- * struct axiethernet_option - Used to set axi ethernet hardware options
+ * struct axienet_option - Used to set axi ethernet hardware options
  * @opt:	Option to be set.
  * @reg:	Register offset to be written for setting the option
  * @m_or:	Mask to be ORed for setting the option in the register
