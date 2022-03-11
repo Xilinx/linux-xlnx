@@ -1521,10 +1521,8 @@ static int axienet_recv(struct net_device *ndev, int budget,
 	while ((numbdfree < budget) &&
 	       (cur_p->status & XAXIDMA_BD_STS_COMPLETE_MASK)) {
 		new_skb = netdev_alloc_skb(ndev, lp->max_frm_size);
-		if (!new_skb) {
-			dev_err(lp->dev, "No memory for new_skb\n");
+		if (!new_skb)
 			break;
-		}
 #ifdef CONFIG_AXIENET_HAS_MCDMA
 		tail_p = q->rx_bd_p + sizeof(*q->rxq_bd_v) * q->rx_bd_ci;
 #else
@@ -1547,9 +1545,9 @@ static int axienet_recv(struct net_device *ndev, int budget,
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
 	if (!lp->is_tsn) {
 		if ((lp->tstamp_config.rx_filter == HWTSTAMP_FILTER_ALL ||
-			lp->eth_hasptp) &&
-			(lp->axienet_config->mactype != XAXIENET_10G_25G) &&
-			(lp->axienet_config->mactype != XAXIENET_MRMAC)) {
+		     lp->eth_hasptp) &&
+		     lp->axienet_config->mactype != XAXIENET_10G_25G &&
+		     lp->axienet_config->mactype != XAXIENET_MRMAC) {
 			u32 sec, nsec;
 			u64 time64;
 			struct skb_shared_hwtstamps *shhwtstamps;
@@ -1585,12 +1583,12 @@ static int axienet_recv(struct net_device *ndev, int budget,
 
 		/* if we're doing Rx csum offload, set it up */
 		if (lp->features & XAE_FEATURE_FULL_RX_CSUM &&
-		    (lp->axienet_config->mactype == XAXIENET_1G) &&
+		    lp->axienet_config->mactype == XAXIENET_1G &&
 		    !lp->eth_hasnobuf) {
 			csumstatus = (cur_p->app2 &
 				      XAE_FULL_CSUM_STATUS_MASK) >> 3;
-			if ((csumstatus == XAE_IP_TCP_CSUM_VALIDATED) ||
-			    (csumstatus == XAE_IP_UDP_CSUM_VALIDATED)) {
+			if (csumstatus == XAE_IP_TCP_CSUM_VALIDATED ||
+			    csumstatus == XAE_IP_UDP_CSUM_VALIDATED) {
 				skb->ip_summed = CHECKSUM_UNNECESSARY;
 			}
 		} else if ((lp->features & XAE_FEATURE_PARTIAL_RX_CSUM) != 0 &&
@@ -1800,8 +1798,6 @@ static int __maybe_unused axienet_open(struct net_device *ndev)
 	u32 reg, err;
 	struct phy_device *phydev = NULL;
 
-	dev_dbg(&ndev->dev, "axienet_open()\n");
-
 	ret  = axienet_device_reset(ndev);
 	if (ret < 0) {
 		dev_err(lp->dev, "axienet_device_reset failed\n");
@@ -1963,9 +1959,8 @@ static int __maybe_unused axienet_open(struct net_device *ndev)
 		axienet_iow(lp, MRMAC_RX_STS_OFFSET, MRMAC_STS_ALL_MASK);
 		err = readx_poll_timeout(axienet_get_mrmac_blocklock, lp, val,
 					 (val & MRMAC_RX_BLKLCK_MASK), 10, DELAY_OF_ONE_MILLISEC);
-		if (err) {
+		if (err)
 			netdev_err(ndev, "MRMAC block lock not complete! Cross-check the MAC ref clock configuration\n");
-		}
 
 		err = readx_poll_timeout(axienet_get_mrmac_rx_status, lp, val,
 					 (val & MRMAC_RX_STATUS_MASK), 10, DELAY_OF_ONE_MILLISEC);
@@ -2396,8 +2391,8 @@ static const struct net_device_ops axienet_netdev_ops = {
 static void axienet_ethtools_get_drvinfo(struct net_device *ndev,
 					 struct ethtool_drvinfo *ed)
 {
-	strlcpy(ed->driver, DRIVER_NAME, sizeof(ed->driver));
-	strlcpy(ed->version, DRIVER_VERSION, sizeof(ed->version));
+	strscpy(ed->driver, DRIVER_NAME, sizeof(ed->driver));
+	strscpy(ed->version, DRIVER_VERSION, sizeof(ed->version));
 }
 
 /**
