@@ -2711,7 +2711,7 @@ static int axienet_ethtools_get_ts_info(struct net_device *ndev,
  * Return: number of strings, on success, Non-zero error value on
  *	   failure.
  */
-int axienet_ethtools_sset_count(struct net_device *ndev, int sset)
+static int axienet_ethtools_sset_count(struct net_device *ndev, int sset)
 {
 	switch (sset) {
 	case ETH_SS_STATS:
@@ -2734,9 +2734,9 @@ int axienet_ethtools_sset_count(struct net_device *ndev, int sset)
  *
  * Return: None.
  */
-void axienet_ethtools_get_stats(struct net_device *ndev,
-				struct ethtool_stats *stats,
-				u64 *data)
+static void axienet_ethtools_get_stats(struct net_device *ndev,
+				       struct ethtool_stats *stats,
+				       u64 *data)
 {
 	unsigned int i = 0;
 
@@ -2761,7 +2761,7 @@ void axienet_ethtools_get_stats(struct net_device *ndev,
  *
  * Return: None.
  */
-void axienet_ethtools_strings(struct net_device *ndev, u32 sset, u8 *data)
+static void axienet_ethtools_strings(struct net_device *ndev, u32 sset, u8 *data)
 {
 	int i;
 
