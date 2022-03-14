@@ -226,7 +226,7 @@ SND_SOC_DAILINK_DEFS(xlnx_i2s_playback,
 
 SND_SOC_DAILINK_DEFS(xlnx_hdmi_tx,
 		     DAILINK_COMP_ARRAY(COMP_DUMMY()),
-		     DAILINK_COMP_ARRAY(COMP_CODEC("hdmi-audio-codec.0", "i2s-hifi")),
+		     DAILINK_COMP_ARRAY(COMP_CODEC(NULL, "xlnx_hdmi_tx")),
 		     DAILINK_COMP_ARRAY(COMP_PLATFORM(NULL)));
 
 SND_SOC_DAILINK_DEFS(xlnx_hdmi_rx,
@@ -236,7 +236,7 @@ SND_SOC_DAILINK_DEFS(xlnx_hdmi_rx,
 
 SND_SOC_DAILINK_DEFS(xlnx_dp_tx,
 		     DAILINK_COMP_ARRAY(COMP_DUMMY()),
-		     DAILINK_COMP_ARRAY(COMP_CODEC("hdmi-audio-codec.0", "i2s-hifi")),
+		     DAILINK_COMP_ARRAY(COMP_CODEC(NULL, "xlnx_dp_tx")),
 		     DAILINK_COMP_ARRAY(COMP_PLATFORM(NULL)));
 
 SND_SOC_DAILINK_DEFS(xlnx_dp_rx,
@@ -411,7 +411,6 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 			prv->mclk = devm_clk_get(&iface_pdev->dev, "aud_mclk");
 			if (IS_ERR(prv->mclk))
 				return PTR_ERR(prv->mclk);
-
 		}
 		of_node_put(pnode);
 
@@ -434,8 +433,7 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 		case HDMI_AUDIO:
 			*dai = xlnx_snd_dai[HDMI_AUDIO][i];
 			dai->platforms->of_node = pnode;
-			if (i == XLNX_CAPTURE)
-				dai->codecs->of_node = node[i];
+			dai->codecs->of_node = node[i];
 			card->num_links++;
 			/* TODO: support multiple sampling rates */
 			prv->mclk_ratio = 384;
@@ -467,8 +465,7 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 		case DP_AUDIO:
 			*dai = xlnx_snd_dai[DP_AUDIO][i];
 			dai->platforms->of_node = pnode;
-			if (i == XLNX_CAPTURE)
-				dai->codecs->of_node = node[i];
+			dai->codecs->of_node = node[i];
 			card->num_links++;
 			/* TODO: support multiple sampling rates */
 			prv->mclk_ratio = 512;
