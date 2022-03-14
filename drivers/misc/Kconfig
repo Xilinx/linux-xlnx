@@ -456,6 +456,20 @@ config XILINX_SDFEC
 
 	  If unsure, say N.
 
+config XILINX_DPU
+	tristate "Xilinx Deep learning Processing Unit (DPU) Driver"
+	depends on HAS_IOMEM && COMMON_CLK
+	depends on ARCH_ZYNQMP || MICROBLAZE
+	help
+	  This option enables support for the Xilinx DPUCZDX8G (Deep learning
+	  Processing Unit) Vivado flow driver.
+	  It is a configurable computation engine dedicated for convolutional
+	  neural networks. The degree of parallelism utilized in the engine
+	  is a design parameter and application. It includes a set of optimized
+	  instructions, and supports most convolutional neural networks.
+
+	  If unsure, say N.
+
 config XILINX_FLEX_PM
 	tristate "Xilinx Flexnoc Performance Monitor"
 	help
