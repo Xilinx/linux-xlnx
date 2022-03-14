@@ -84,10 +84,10 @@ config VIDEO_XILINX_REMAPPER
 	  Driver for the Xilinx Video Remapper
 
 config VIDEO_XILINX_RGB2YUV
-	tristate "Xilinx Video RGB to YUV Convertor"
+	tristate "Xilinx Video RGB to YUV Converter"
 	depends on VIDEO_XILINX
 	help
-	  Driver for the Xilinx Video RGB to YUV Convertor
+	  Driver for the Xilinx Video RGB to YUV Converter
 
 config VIDEO_XILINX_SCALER
 	tristate "Xilinx Video Scaler"
