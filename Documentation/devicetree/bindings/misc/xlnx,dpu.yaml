@@ -1,0 +1,89 @@
+# SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/misc/xlnx,dpu.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx Deep learning Processing Unit (DPU) Vivado Flow DT Bindings
+
+maintainers:
+  - Ye Yang <ye.yang@xilinx.com>
+
+description: |+
+    The DPUCZDX8G is the deep learning processing unit (DPU) designed to
+    support the Zynq UltraScale+ MPSoC. It is a configurable computation
+    engine optimized for convolutional neural networks.
+
+    The driver supports up to 4 DPU cores with 40-bit addressing and 1
+    softmax core with 32-bit addressing, depending on how the user config
+    the IP in Vivado TRD Flow.
+
+    For more details refer to PG338 "DPUCZDX8G for Zynq UltraScale+ MPSoCs"
+    (https://www.xilinx.com/content/dam/xilinx/support/documentation/ip_documentation/dpu/v3_4/pg338-dpu.pdf)
+
+properties:
+  compatible:
+    items:
+      - const: xlnx,dpuczdx8g-3.4
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    description: List of clock specifiers.
+    items:
+      - description: AXI Lite clock
+      - description: dsp clock, used for DSP blocks in the DPUCZDX8G. The frequency is twice that of dpu clock
+      - description: dpu clock, used for DPUCZDX8G general logic
+
+  clock-names:
+    items:
+      - const: s_axi_aclk
+      - const: dpu_2x_clk
+      - const: m_axi_dpu_aclk
+
+  interrupts:
+    description: One interrupt per available DPU core(up to 4) or 1 softmax core
+    minItems: 1
+    maxItems: 5
+
+  interrupt-names:
+    minItems: 1
+    maxItems: 5
+    items:
+      pattern: "^(dpu[0-3]|sfm)_interrupt$"
+
+required:
+  - compatible
+  - reg
+  - interrupts
+  - interrupt-names
+
+additionalProperties: false
+
+examples:
+  # Example for ZynqMP (2 DPU and 1 SOFTMAX)
+  - |
+    #include <dt-bindings/interrupt-controller/arm-gic.h>
+
+    dpuczdx8g@8f000000 {
+        compatible = "xlnx,dpuczdx8g-3.4";
+        reg = <0x8f000000 0x1000000>;
+        interrupt-parent = <&gic>;
+        interrupts = <GIC_SPI 88 IRQ_TYPE_LEVEL_HIGH>,
+                     <GIC_SPI 89 IRQ_TYPE_LEVEL_HIGH>,
+                     <GIC_SPI 92 IRQ_TYPE_LEVEL_HIGH>;
+        interrupt-names = "dpu0_interrupt", "dpu1_interrupt", "sfm_interrupt";
+        clocks = <&zynqmp_clk 71>, <&misc_clk_0>, <&misc_clk_1>;
+        clock-names = "s_axi_aclk", "dpu_2x_clk", "m_axi_dpu_aclk";
+    };
+
+  # Example for Microblaze (1 DPU)
+  - |
+    dpuczdx8g@1000000 {
+        compatible = "xlnx,dpuczdx8g-3.4";
+        reg = <0x01000000 0x1000000>;
+        interrupt-parent = <&microblaze_0_axi_intc>;
+        interrupts = <8 2>;
+        interrupt-names = "dpu0_interrupt";
+    };
