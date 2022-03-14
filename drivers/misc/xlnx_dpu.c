@@ -21,6 +21,9 @@
 #include <linux/clk.h>
 #include <linux/dma-mapping.h>
 #include <linux/nospec.h>
+#ifdef CONFIG_DEBUG_FS
+#include <linux/debugfs.h>
+#endif
 #include "xlnx_dpu.h"
 
 #define DEVICE_NAME "dpu"
@@ -61,6 +64,7 @@ struct cu {
  * @dpu_clk: DPU clock used for DPUCZDX8G general logic
  * @dsp_clk: DSP clock used for DSP blocks
  * @miscdev: misc device handle
+ * @root: debugfs dentry
  * @dpu_cnt: indicates how many dpu core/cu enabled in IP, up to 4
  * @sfm_cnt: indicates softmax core enabled or not
  */
@@ -73,6 +77,9 @@ struct xdpu_dev {
 	struct clk	*dpu_clk;
 	struct clk	*dsp_clk;
 	struct miscdevice	miscdev;
+#ifdef CONFIG_DEBUG_FS
+	struct dentry	*root;
+#endif
 	u8	dpu_cnt;
 	u8	sfm_cnt;
 };
@@ -90,6 +97,10 @@ struct dpu_buffer_block {
 	dma_addr_t	dma_addr;
 	size_t	capacity;
 };
+
+#ifdef CONFIG_DEBUG_FS
+static int dpu_debugfs_init(struct xdpu_dev *xdpu);
+#endif
 
 /**
  * xlnx_dpu_regs_init - initialize dpu register
@@ -849,12 +860,24 @@ static int xlnx_dpu_probe(struct platform_device *pdev)
 
 	xlnx_dpu_regs_init(xdpu);
 
+#ifdef CONFIG_DEBUG_FS
+	ret = dpu_debugfs_init(xdpu);
+	if (ret) {
+		dev_err(xdpu->dev, "failed to init dpu_debugfs)\n");
+		goto err_debugfs;
+	}
+#endif
+
 	platform_set_drvdata(pdev, xdpu);
 
 	dev_dbg(dev, "dpu registered as /dev/dpu successfully");
 
 	return 0;
 
+#ifdef CONFIG_DEBUG_FS
+err_debugfs:
+	misc_deregister(&xdpu->miscdev);
+#endif
 err_out:
 	clk_disable_unprepare(xdpu->dsp_clk);
 err_dspclk:
@@ -880,6 +903,9 @@ static int xlnx_dpu_remove(struct platform_device *pdev)
 	for (i = 0; i < DPU_REG_END; i += 4)
 		iowrite32(0, xdpu->regs + i);
 
+#ifdef CONFIG_DEBUG_FS
+	debugfs_remove_recursive(xdpu->root);
+#endif
 	platform_set_drvdata(pdev, NULL);
 	misc_deregister(&xdpu->miscdev);
 
@@ -904,6 +930,282 @@ static struct platform_driver xlnx_dpu_drv = {
 };
 
 module_platform_driver(xlnx_dpu_drv);
+
+#ifdef CONFIG_DEBUG_FS
+
+#define dump_register(n)			\
+{						\
+	.name	= #n,				\
+	.offset	= DPU_##n,				\
+}
+
+static const struct debugfs_reg32 cu_regs[4][38] = {
+	{
+	dump_register(IPVER_INFO),
+	dump_register(IPFREQENCY),
+	dump_register(TARGETID_L),
+	dump_register(TARGETID_H),
+	dump_register(IPSTART(0)),
+	dump_register(INSADDR(0)),
+	dump_register(ADDR0_L(0)),
+	dump_register(ADDR0_H(0)),
+	dump_register(ADDR1_L(0)),
+	dump_register(ADDR1_H(0)),
+	dump_register(ADDR2_L(0)),
+	dump_register(ADDR2_H(0)),
+	dump_register(ADDR3_L(0)),
+	dump_register(ADDR3_H(0)),
+	dump_register(ADDR4_L(0)),
+	dump_register(ADDR4_H(0)),
+	dump_register(ADDR5_L(0)),
+	dump_register(ADDR5_H(0)),
+	dump_register(ADDR6_L(0)),
+	dump_register(ADDR6_H(0)),
+	dump_register(ADDR7_L(0)),
+	dump_register(ADDR7_H(0)),
+	dump_register(CYCLE_L(0)),
+	dump_register(CYCLE_H(0)),
+	dump_register(P_STA_C(0)),
+	dump_register(P_END_C(0)),
+	dump_register(C_STA_C(0)),
+	dump_register(C_END_C(0)),
+	dump_register(S_STA_C(0)),
+	dump_register(S_END_C(0)),
+	dump_register(L_STA_C(0)),
+	dump_register(L_END_C(0)),
+	dump_register(AXI_STS(0)),
+	dump_register(HPBUS(0)),
+	dump_register(INT_STS),
+	dump_register(INT_MSK),
+	dump_register(INT_RAW),
+	dump_register(INT_ICR),
+	},
+	{
+	dump_register(IPVER_INFO),
+	dump_register(IPFREQENCY),
+	dump_register(TARGETID_L),
+	dump_register(TARGETID_H),
+	dump_register(IPSTART(1)),
+	dump_register(INSADDR(1)),
+	dump_register(ADDR0_L(1)),
+	dump_register(ADDR0_H(1)),
+	dump_register(ADDR1_L(1)),
+	dump_register(ADDR1_H(1)),
+	dump_register(ADDR2_L(1)),
+	dump_register(ADDR2_H(1)),
+	dump_register(ADDR3_L(1)),
+	dump_register(ADDR3_H(1)),
+	dump_register(ADDR4_L(1)),
+	dump_register(ADDR4_H(1)),
+	dump_register(ADDR5_L(1)),
+	dump_register(ADDR5_H(1)),
+	dump_register(ADDR6_L(1)),
+	dump_register(ADDR6_H(1)),
+	dump_register(ADDR7_L(1)),
+	dump_register(ADDR7_H(1)),
+	dump_register(CYCLE_L(1)),
+	dump_register(CYCLE_H(1)),
+	dump_register(P_STA_C(1)),
+	dump_register(P_END_C(1)),
+	dump_register(C_STA_C(1)),
+	dump_register(C_END_C(1)),
+	dump_register(S_STA_C(1)),
+	dump_register(S_END_C(1)),
+	dump_register(L_STA_C(1)),
+	dump_register(L_END_C(1)),
+	dump_register(AXI_STS(1)),
+	dump_register(HPBUS(1)),
+	dump_register(INT_STS),
+	dump_register(INT_MSK),
+	dump_register(INT_RAW),
+	dump_register(INT_ICR),
+	},
+	{
+	dump_register(IPVER_INFO),
+	dump_register(IPFREQENCY),
+	dump_register(TARGETID_L),
+	dump_register(TARGETID_H),
+	dump_register(IPSTART(2)),
+	dump_register(INSADDR(2)),
+	dump_register(ADDR0_L(2)),
+	dump_register(ADDR0_H(2)),
+	dump_register(ADDR1_L(2)),
+	dump_register(ADDR1_H(2)),
+	dump_register(ADDR2_L(2)),
+	dump_register(ADDR2_H(2)),
+	dump_register(ADDR3_L(2)),
+	dump_register(ADDR3_H(2)),
+	dump_register(ADDR4_L(2)),
+	dump_register(ADDR4_H(2)),
+	dump_register(ADDR5_L(2)),
+	dump_register(ADDR5_H(2)),
+	dump_register(ADDR6_L(2)),
+	dump_register(ADDR6_H(2)),
+	dump_register(ADDR7_L(2)),
+	dump_register(ADDR7_H(2)),
+	dump_register(CYCLE_L(2)),
+	dump_register(CYCLE_H(2)),
+	dump_register(P_STA_C(2)),
+	dump_register(P_END_C(2)),
+	dump_register(C_STA_C(2)),
+	dump_register(C_END_C(2)),
+	dump_register(S_STA_C(2)),
+	dump_register(S_END_C(2)),
+	dump_register(L_STA_C(2)),
+	dump_register(L_END_C(2)),
+	dump_register(AXI_STS(2)),
+	dump_register(HPBUS(2)),
+	dump_register(INT_STS),
+	dump_register(INT_MSK),
+	dump_register(INT_RAW),
+	dump_register(INT_ICR),
+	},
+	{
+	dump_register(IPVER_INFO),
+	dump_register(IPFREQENCY),
+	dump_register(TARGETID_L),
+	dump_register(TARGETID_H),
+	dump_register(IPSTART(3)),
+	dump_register(INSADDR(3)),
+	dump_register(ADDR0_L(3)),
+	dump_register(ADDR0_H(3)),
+	dump_register(ADDR1_L(3)),
+	dump_register(ADDR1_H(3)),
+	dump_register(ADDR2_L(3)),
+	dump_register(ADDR2_H(3)),
+	dump_register(ADDR3_L(3)),
+	dump_register(ADDR3_H(3)),
+	dump_register(ADDR4_L(3)),
+	dump_register(ADDR4_H(3)),
+	dump_register(ADDR5_L(3)),
+	dump_register(ADDR5_H(3)),
+	dump_register(ADDR6_L(3)),
+	dump_register(ADDR6_H(3)),
+	dump_register(ADDR7_L(3)),
+	dump_register(ADDR7_H(3)),
+	dump_register(CYCLE_L(3)),
+	dump_register(CYCLE_H(3)),
+	dump_register(P_STA_C(3)),
+	dump_register(P_END_C(3)),
+	dump_register(C_STA_C(3)),
+	dump_register(C_END_C(3)),
+	dump_register(S_STA_C(3)),
+	dump_register(S_END_C(3)),
+	dump_register(L_STA_C(3)),
+	dump_register(L_END_C(3)),
+	dump_register(AXI_STS(3)),
+	dump_register(HPBUS(3)),
+	dump_register(INT_STS),
+	dump_register(INT_MSK),
+	dump_register(INT_RAW),
+	dump_register(INT_ICR),
+	},
+};
+
+static const struct debugfs_reg32 sfm_regs[] = {
+	dump_register(IPVER_INFO),
+	dump_register(IPFREQENCY),
+	dump_register(TARGETID_L),
+	dump_register(TARGETID_H),
+	dump_register(SFM_INT_DONE),
+	dump_register(SFM_CMD_XLEN),
+	dump_register(SFM_CMD_YLEN),
+	dump_register(SFM_SRC_ADDR),
+	dump_register(SFM_DST_ADDR),
+	dump_register(SFM_CMD_SCAL),
+	dump_register(SFM_CMD_OFF),
+	dump_register(SFM_INT_CLR),
+	dump_register(SFM_START),
+	dump_register(SFM_RESET),
+	dump_register(SFM_MODE),
+	dump_register(INT_STS),
+	dump_register(INT_MSK),
+	dump_register(INT_RAW),
+	dump_register(INT_ICR),
+};
+
+static int dump_show(struct seq_file *seq, void *v)
+{
+	struct xdpu_dev *xdpu = seq->private;
+	struct dpu_buffer_block *h;
+	static const char units[] = "KMG";
+	const char *unit = units;
+	unsigned long delta = 0;
+
+	seq_puts(seq,
+		 "Virtual Address\t\t\t\tRequest Mem\t\tPhysical Address\n");
+	list_for_each_entry(h, &xdpu->head, head) {
+		delta = (h->capacity) >> 10;
+		while (!(delta & 1023) && unit[1]) {
+			delta >>= 10;
+			unit++;
+		}
+		seq_printf(seq, "%p-%p   %9lu%c         %016llx-%016llx\n",
+			   h->vaddr, h->vaddr + h->capacity,
+			   delta, *unit,
+			   (u64)h->dma_addr, (u64)(h->dma_addr + h->capacity));
+		delta = 0;
+		unit = units;
+	}
+
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(dump);
+
+/**
+ * dpu_debugfs_init - create DPU debugfs directory.
+ * @xdpu:	dpu structure
+ *
+ * Create DPU debugfs directory. Returns zero in case of success and a negative
+ * error code in case of failure.
+ *
+ * Return:	0 if successful; otherwise -errno
+ */
+static int dpu_debugfs_init(struct xdpu_dev *xdpu)
+{
+	char buf[32];
+	struct debugfs_regset32 *regset;
+	struct dentry *dentry;
+	int i;
+
+	xdpu->root = debugfs_create_dir("dpu", NULL);
+	if (IS_ERR(xdpu->root)) {
+		dev_err(xdpu->dev, "failed to create debugfs root\n");
+		return -ENODEV;
+	}
+
+	debugfs_create_file("dma_pool", 0444, xdpu->root, xdpu, &dump_fops);
+
+	for (i = 0; i < xdpu->dpu_cnt; i++) {
+		if (snprintf(buf, 32, "cu-%d", i) < 0)
+			return -EINVAL;
+
+		dentry = debugfs_create_dir(buf, xdpu->root);
+		regset = devm_kzalloc(xdpu->dev, sizeof(*regset), GFP_KERNEL);
+		if (!regset)
+			return -ENOMEM;
+
+		regset->regs = cu_regs[i];
+		regset->nregs = ARRAY_SIZE(cu_regs[i]);
+		regset->base = xdpu->regs;
+		debugfs_create_regset32("registers", 0444, dentry, regset);
+	}
+
+	if (xdpu->sfm_cnt) {
+		dentry = debugfs_create_dir("softmax", xdpu->root);
+		regset = devm_kzalloc(xdpu->dev, sizeof(*regset), GFP_KERNEL);
+		if (!regset)
+			return -ENOMEM;
+
+		regset->regs = sfm_regs;
+		regset->nregs = ARRAY_SIZE(sfm_regs);
+		regset->base = xdpu->regs;
+		debugfs_create_regset32("registers", 0444, dentry, regset);
+	}
+	return 0;
+}
+#endif
+
 MODULE_DESCRIPTION(DRIVER_DESC);
 MODULE_AUTHOR("Ye Yang <ye.yang@xilinx.com>");
 MODULE_LICENSE("GPL v2");
