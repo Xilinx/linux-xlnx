@@ -112,6 +112,90 @@ static void xlnx_dpu_regs_init(struct xdpu_dev *xdpu)
 }
 
 /**
+ * xlnx_dpu_dump_regs - dump all dpu registers
+ * @p:	dpu structure
+ */
+static void xlnx_dpu_dump_regs(struct xdpu_dev *p)
+{
+	struct device *dev = p->dev;
+	int i;
+
+#define FMT8	"%-27s %08x\n"
+#define FMT16	"%-27s %016llx\n"
+	dev_warn(dev, "------------[ cut here ]------------\n");
+	dev_warn(dev, "Dump DPU Registers:\n");
+	dev_info(dev, FMT16, "TARGET_ID",
+		 lo_hi_readq(p->regs + DPU_TARGETID_L));
+	dev_info(dev, FMT8, "PMU_RST", ioread32(p->regs + DPU_PMU_IP_RST));
+	dev_info(dev, FMT8, "IP_VER_INFO", ioread32(p->regs + DPU_IPVER_INFO));
+	dev_info(dev, FMT8, "IP_FREQENCY", ioread32(p->regs + DPU_IPFREQENCY));
+	dev_info(dev, FMT8, "INT_STS", ioread32(p->regs + DPU_INT_STS));
+	dev_info(dev, FMT8, "INT_MSK", ioread32(p->regs + DPU_INT_MSK));
+	dev_info(dev, FMT8, "INT_RAW", ioread32(p->regs + DPU_INT_RAW));
+	dev_info(dev, FMT8, "INT_ICR", ioread32(p->regs + DPU_INT_ICR));
+	for (i = 0; i < p->dpu_cnt; i++) {
+		dev_warn(dev, "[CU-%d]\n", i);
+		dev_info(dev, FMT8, "HPBUS", ioread32(p->regs + DPU_HPBUS(i)));
+		dev_info(dev, FMT8, "INSTR",
+			 ioread32(p->regs + DPU_INSADDR(i)));
+		dev_info(dev, FMT8, "START",
+			 ioread32(p->regs + DPU_IPSTART(i)));
+		dev_info(dev, FMT16, "ADDR0",
+			 lo_hi_readq(p->regs + DPU_ADDR0_L(i)));
+		dev_info(dev, FMT16, "ADDR1",
+			 lo_hi_readq(p->regs + DPU_ADDR1_L(i)));
+		dev_info(dev, FMT16, "ADDR2",
+			 lo_hi_readq(p->regs + DPU_ADDR2_L(i)));
+		dev_info(dev, FMT16, "ADDR3",
+			 lo_hi_readq(p->regs + DPU_ADDR3_L(i)));
+		dev_info(dev, FMT16, "ADDR4",
+			 lo_hi_readq(p->regs + DPU_ADDR4_L(i)));
+		dev_info(dev, FMT16, "ADDR5",
+			 lo_hi_readq(p->regs + DPU_ADDR5_L(i)));
+		dev_info(dev, FMT16, "ADDR6",
+			 lo_hi_readq(p->regs + DPU_ADDR6_L(i)));
+		dev_info(dev, FMT16, "ADDR7",
+			 lo_hi_readq(p->regs + DPU_ADDR7_L(i)));
+		dev_info(dev, FMT8, "PSTART",
+			 ioread32(p->regs + DPU_P_STA_C(i)));
+		dev_info(dev, FMT8, "PEND",
+			 ioread32(p->regs + DPU_P_END_C(i)));
+		dev_info(dev, FMT8, "CSTART",
+			 ioread32(p->regs + DPU_C_STA_C(i)));
+		dev_info(dev, FMT8, "CEND",
+			 ioread32(p->regs + DPU_C_END_C(i)));
+		dev_info(dev, FMT8, "SSTART",
+			 ioread32(p->regs + DPU_S_STA_C(i)));
+		dev_info(dev, FMT8, "SEND",
+			 ioread32(p->regs + DPU_S_END_C(i)));
+		dev_info(dev, FMT8, "LSTART",
+			 ioread32(p->regs + DPU_L_STA_C(i)));
+		dev_info(dev, FMT8, "LEND",
+			 ioread32(p->regs + DPU_L_END_C(i)));
+		dev_info(dev, FMT16, "CYCLE",
+			 lo_hi_readq(p->regs + DPU_CYCLE_L(i)));
+		dev_info(dev, FMT8, "AXI", ioread32(p->regs + DPU_AXI_STS(i)));
+	}
+	dev_warn(dev, "[SOFTMAX]\n");
+	if (p->sfm_cnt) {
+#define DUMPREG(r) \
+	dev_info(dev, FMT8, #r, ioread32(p->regs + DPU_SFM_##r))
+		DUMPREG(INT_DONE);
+		DUMPREG(CMD_XLEN);
+		DUMPREG(CMD_YLEN);
+		DUMPREG(SRC_ADDR);
+		DUMPREG(DST_ADDR);
+		DUMPREG(CMD_SCAL);
+		DUMPREG(CMD_OFF);
+		DUMPREG(INT_CLR);
+		DUMPREG(START);
+		DUMPREG(RESET);
+#undef DUMPREG
+	}
+	dev_warn(dev, "------------[ cut here ]------------\n");
+}
+
+/**
  * xlnx_dpu_int_clear - clean DPU interrupt
  * @xdpu:	dpu structure
  * @id:	indicates which cu needs to be clean interrupt
@@ -188,6 +272,8 @@ static int xlnx_dpu_softmax(struct xdpu_dev *xdpu, struct ioc_softmax_t *p)
 
 err_out:
 	dev_warn(xdpu->dev, "timeout waiting for softmax\n");
+	xlnx_dpu_dump_regs(xdpu);
+
 	return ret;
 }
 
@@ -270,6 +356,8 @@ static int xlnx_dpu_run(struct xdpu_dev *xdpu, struct ioc_kernel_run_t *p,
 
 err_out:
 	dev_warn(xdpu->dev, "cu[%d] timeout", id);
+	xlnx_dpu_dump_regs(xdpu);
+
 	return -ETIMEDOUT;
 }
 
