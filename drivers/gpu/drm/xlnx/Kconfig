@@ -60,6 +60,7 @@ config DRM_XLNX_DPTX
 	select DRM_DISPLAY_HELPER
 	select DRM_DISPLAY_HDMI_HELPER
 	select DRM_DISPLAY_DP_HELPER
+	select SND_PCM_ELD
 	help
 	  DRM driver for Xilinx DisplayPort Tx Subsystem for FPGA. Choose
 	  this option if you have a FPGA display pipeline that includes
