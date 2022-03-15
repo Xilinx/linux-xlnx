@@ -318,6 +318,7 @@
 #define TIMEOUT_10US		10
 
 #define HDMI_TX_MAX_FRL_RATE	6
+#define HDMI_TX_SCDC_MASK	0xFF
 
 /**
  * enum hdmi_state - Stream state
@@ -1194,26 +1195,26 @@ static int xlnx_hdmi_ddcwrite_field(struct xlnx_hdmi *hdmi,
 				    enum xlnx_hdmi_scdc_fields field, u8 val)
 {
 	u32 status;
-	u8 ddc_buf[2];
+	u8 ddc_buf[2] = {0};
 	u8 offset = scdc_field[field].offset;
 
-	if (scdc_field[field].msk == 0xFF)
-		return 0;
+	if (scdc_field[field].msk != HDMI_TX_SCDC_MASK) {
+		status = xlnx_hdmi_ddcwrite(hdmi, HDMI_TX_DDC_SLAVEADDR, 1,
+					    (u8 *)&offset, false);
+		if (status)
+			return status;
 
-	status = xlnx_hdmi_ddcwrite(hdmi, HDMI_TX_DDC_SLAVEADDR, 1,
-				    (u8 *)&offset, false);
-	if (status)
-		return status;
+		status = xlnx_hdmi_ddcread(hdmi, HDMI_TX_DDC_SLAVEADDR, 1,
+					   (u8 *)&ddc_buf, true);
+		if (status)
+			return status;
 
-	status = xlnx_hdmi_ddcread(hdmi, HDMI_TX_DDC_SLAVEADDR, 1,
-				   (u8 *)&ddc_buf, true);
-	if (status)
-		return status;
-
-	ddc_buf[0] &= ~(scdc_field[field].msk <<
-			scdc_field[field].shift);
-	ddc_buf[0] |= ((val & scdc_field[field].msk) <<
-		       scdc_field[field].shift);
+		ddc_buf[0] &= ~(scdc_field[field].msk <<
+				scdc_field[field].shift);
+	} else {
+		ddc_buf[0] |= ((val & scdc_field[field].msk) <<
+			       scdc_field[field].shift);
+	}
 
 	ddc_buf[1] = ddc_buf[0];
 	ddc_buf[0] = offset;
