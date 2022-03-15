@@ -300,6 +300,7 @@
 
 #define HDMI_TX_FRL_CLK_CYCLES			0x3E7
 #define HDMI_TX_PIXEL_MAXRATE			340000
+#define HDMI_TX_PIXELRATE_GBPS			((u64)1e9)
 
 #define HDMI_TX_DDC_CMD_STR_TOKEN		0x100
 #define HDMI_TX_DDC_CMD_STP_TOKEN		0x101
@@ -452,6 +453,8 @@ struct xlnx_hdmi_config {
  * @tmds_clock_ratio: tmds clock ratio
  * @is_hdmi: flag indicates dvi or hdmi
  * @is_scrambled: scrambled enabled status;
+ * @sink_max_linerate: maximum linerate supported by sink in Gbps
+ * @sink_max_lanes: maximum lanes supported by sink
  * @state: enum reflects the stream is up or down
  */
 struct xlnx_hdmi_stream {
@@ -460,6 +463,8 @@ struct xlnx_hdmi_stream {
 	u8 tmds_clock_ratio;
 	u8 is_hdmi;
 	u8 is_scrambled;
+	u8 sink_max_linerate;
+	u8 sink_max_lanes;
 	enum hdmi_state state;
 };
 
@@ -1679,6 +1684,10 @@ static int xlnx_hdmi_exec_frl_state_lts2(struct xlnx_hdmi *hdmi)
 			}
 
 			/* Enable HDMI 2.1 config */
+			phy_cfg.hdmi.linerate =
+				(u64)(hdmi->stream.sink_max_linerate *
+				      HDMI_TX_PIXELRATE_GBPS);
+			phy_cfg.hdmi.nchannels = hdmi->stream.sink_max_lanes;
 			phy_cfg.hdmi.config_hdmi21 = 1;
 			for (i = 0; i < HDMI_MAX_LANES; i++) {
 				ret = phy_configure(hdmi->phy[i], &phy_cfg);
@@ -2521,6 +2530,7 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 				  struct drm_connector_state *connector_state)
 {
 	struct xlnx_hdmi *hdmi = encoder_to_hdmi(encoder);
+	struct drm_connector *connector = &hdmi->connector;
 	struct xlnx_hdmi_config *config = &hdmi->config;
 	struct drm_display_mode *mode = &crtc_state->mode;
 	struct drm_display_mode *adjusted_mode = &crtc_state->adjusted_mode;
@@ -2550,6 +2560,10 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 		xlnx_hdmi_frl_reset_deassert(hdmi);
 		xlnx_hdmi_frl_intr_enable(hdmi);
 		xlnx_hdmi_frl_execute(hdmi);
+		hdmi->stream.sink_max_lanes =
+			connector->display_info.hdmi.max_lanes;
+		hdmi->stream.sink_max_linerate =
+			connector->display_info.hdmi.max_frl_rate_per_lane;
 	} else {
 		xlnx_hdmi_frl_ext_vidsrc(hdmi);
 		xlnx_hdmi_frl_sleep(hdmi);
