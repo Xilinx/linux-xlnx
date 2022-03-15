@@ -49,6 +49,7 @@ config DRM_XLNX_BRIDGE_DEBUG_FS
 config DRM_XLNX_DPTX
 	tristate "Xilinx DRM DisplayPort Subsystem Driver"
 	depends on DRM_XLNX
+	select SND_PCM_ELD
 	help
 	  DRM driver for Xilinx DisplayPort Tx Subsystem for FPGA. Choose
 	  this option if you have a FPGA display pipeline that includes
