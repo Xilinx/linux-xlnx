@@ -20739,6 +20739,14 @@ L:	git@xilinx.com
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-axi4s-switch.txt
 F:	drivers/media/platform/xilinx/xilinx-axis-switch.c
 
+XILINX MEDIA AXIS SWITCH DRIVER
+M:	Anil kumar M <anil.mamidala@xilinx.com>
+M:	Karthikeyan T <karthikeyan.thangavel@xilinx.com>
+L:	git@xilinx.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/media/xilinx/xlnx,axis-subsetconv.yaml
+F:	drivers/media/platform/xilinx/xilinx-axis-subsetconv.c
+
 XILINX MEDIA CSI2RXSS DRIVER
 M:	Vishal Sagar <vishal.sagar@xilinx.com>
 R:	Hyun Kwon <hyun.kwon@xilinx.com>
