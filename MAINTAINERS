@@ -23691,6 +23691,14 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/net/xlnx,axi-ethernet.yaml
 F:	drivers/net/ethernet/xilinx/xilinx_axienet*
 
+XILINX MEDIA AXIS SWITCH DRIVER
+M:	Anil kumar M <anil.mamidala@xilinx.com>
+M:	Karthikeyan T <karthikeyan.thangavel@xilinx.com>
+L:	git@xilinx.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/media/xilinx/xlnx,axis-subsetconv.yaml
+F:	drivers/media/platform/xilinx/xilinx-axis-subsetconv.c
+
 XILINX CAN DRIVER
 M:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
 R:	Naga Sureshkumar Relli <naga.sureshkumar.relli@xilinx.com>
