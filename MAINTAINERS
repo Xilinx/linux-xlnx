@@ -25458,6 +25458,14 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/net/xlnx,axi-ethernet.yaml
 F:	drivers/net/ethernet/xilinx/xilinx_axienet*
 
+XILINX MEDIA AXIS SWITCH DRIVER
+M:	Anil kumar M <anil.mamidala@xilinx.com>
+M:	Karthikeyan T <karthikeyan.thangavel@xilinx.com>
+L:	git@xilinx.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/media/xilinx/xlnx,axis-subsetconv.yaml
+F:	drivers/media/platform/xilinx/xilinx-axis-subsetconv.c
+
 XILINX CAN DRIVER
 M:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
 L:	linux-can@vger.kernel.org
@@ -25492,6 +25500,13 @@ L:	git@amd.com
 S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,axis-broadcaster.yaml
 F:	drivers/media/platform/xilinx/xilinx-axis-broadcaster.c
+
+XILINX AXI4S SUBSETCONV DRIVER
+M:	Kunal Rane <kunal.rane@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/media/xilinx/xlnx,axis-subsetconv.yaml
+F:	drivers/media/platform/xilinx/xilinx-axis-subsetconv.c
 
 XILINX MEDIA VTC DRIVER
 M:	Rajesh Gugulothu <rajesh.gugulothu@amd.com>
