@@ -185,4 +185,16 @@ config VIDEO_XILINX_AXI4S_BROADCASTER
 	  into multiple output AXI4-Stream.
 	  Say M to modularize. Say N if unsure.
 
+config VIDEO_XILINX_AXI4S_SUBSETCONV
+	tristate "Xilinx AXI4-Stream Subset Converter"
+	depends on VIDEO_XILINX
+	help
+	  This subset converter driver is for configuring the Xilinx
+	  subset converter IP which is a non-memory mapped IP used for
+	  converting formats. The format conversion of source pad and
+	  sink pad in the pipeline done by subset conveter IP will be
+	  mapped in this driver.
+	  To compile this driver as a module, choose M here.
+	  If unsure, choose N
+
 endif #VIDEO_XILINX

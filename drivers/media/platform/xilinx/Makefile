@@ -6,6 +6,7 @@ xilinx-video-objs += xilinx-dma.o xilinx-vip.o xilinx-vipp.o
 
 obj-$(CONFIG_VIDEO_XILINX) += xilinx-video.o
 obj-$(CONFIG_VIDEO_XILINX_AXI4S_BROADCASTER) += xilinx-axis-broadcaster.o
+obj-$(CONFIG_VIDEO_XILINX_AXI4S_SUBSETCONV) += xilinx-axis-subsetconv.o
 obj-$(CONFIG_VIDEO_XILINX_AXI4S_SWITCH) += xilinx-axis-switch.o
 obj-$(CONFIG_VIDEO_XILINX_CFA) += xilinx-cfa.o
 obj-$(CONFIG_VIDEO_XILINX_CRESAMPLE) += xilinx-cresample.o
