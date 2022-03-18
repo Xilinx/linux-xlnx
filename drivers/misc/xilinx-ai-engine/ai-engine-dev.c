@@ -525,7 +525,7 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 	}
 	adev->version = FIELD_GET(VERSAL_SILICON_REV_MASK, idcode);
 
-	adev->clk = devm_clk_get(&pdev->dev, NULL);
+	adev->clk = devm_clk_get(&pdev->dev, "aclk0");
 	if (!adev->clk) {
 		dev_err(&pdev->dev, "Failed to get device clock.\n");
 		return -EINVAL;
@@ -538,8 +538,9 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 	}
 
 	of_xilinx_ai_engine_aperture_probe(adev);
-	dev_info(&pdev->dev, "Xilinx AI Engine device %s probed. Device generation: %u\n",
-		 dev_name(&pdev->dev), aie_gen);
+	dev_info(&pdev->dev,
+		 "Xilinx AI Engine device %s probed. Device generation: %u. Clock frequency: %ldHz.\n",
+		 dev_name(&pdev->dev), aie_gen, clk_get_rate(adev->clk));
 
 	return 0;
 }
