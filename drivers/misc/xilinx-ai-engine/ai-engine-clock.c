@@ -294,6 +294,7 @@ int aie_part_set_freq(struct aie_partition *apart, u64 freq)
 	struct aie_device *adev = apart->adev;
 	struct aie_aperture *aperture = apart->aperture;
 	unsigned long clk_rate;
+	u64 temp_freq;
 	u32 boot_qos, current_qos, target_qos;
 	int ret;
 
@@ -305,6 +306,7 @@ int aie_part_set_freq(struct aie_partition *apart, u64 freq)
 		return -EINVAL;
 	}
 
+	temp_freq = apart->freq_req;
 	apart->freq_req = freq;
 
 	freq = aie_aperture_get_freq_req(aperture);
@@ -317,12 +319,26 @@ int aie_part_set_freq(struct aie_partition *apart, u64 freq)
 		return -EINVAL;
 	}
 
-	target_qos = (boot_qos * freq) / clk_rate;
+	target_qos = (boot_qos * clk_rate) / freq;
+
+	/* The clock divisor value (QoS) is a 10-bit value */
+	if (target_qos > (BIT(10) - 1)) {
+		/*
+		 * Reset the logged partition frequency requirement to its
+		 * pervious value.
+		 */
+		apart->freq_req = temp_freq;
+		dev_err(&apart->dev, "Failed to set frequency requirement. Frequency value out-of bound.\n");
+		return -EINVAL;
+	}
+
 	ret = zynqmp_pm_set_requirement(aperture->node_id,
 					ZYNQMP_PM_CAPABILITY_ACCESS, target_qos,
 					ZYNQMP_PM_REQUEST_ACK_BLOCKING);
-	if (ret < 0)
+	if (ret < 0) {
+		apart->freq_req = temp_freq;
 		dev_err(&apart->dev, "Failed to set frequency requirement.\n");
+	}
 
 	return ret;
 }
@@ -380,7 +396,7 @@ int aie_part_get_freq(struct aie_partition *apart, u64 *freq)
 		return ret;
 	}
 
-	*freq = (clk_rate * current_qos) / boot_qos;
+	*freq = (clk_rate * boot_qos) / current_qos;
 	return 0;
 }
 
