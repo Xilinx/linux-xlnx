@@ -28,6 +28,7 @@ config DRM_XLNX
 	select DRM_KMS_HELPER
 	select DRM_KMS_DMA_HELPER
 	select DRM_GEM_DMA_HELPER
+	select SND_PCM_ELD
 	help
 	  Xilinx DRM KMS driver. Choose this option if you have
 	  a Xilinx SoCs with hardened display pipeline or soft
@@ -60,7 +61,6 @@ config DRM_XLNX_DPTX
 	select DRM_DISPLAY_HELPER
 	select DRM_DISPLAY_HDMI_HELPER
 	select DRM_DISPLAY_DP_HELPER
-	select SND_PCM_ELD
 	help
 	  DRM driver for Xilinx DisplayPort Tx Subsystem for FPGA. Choose
 	  this option if you have a FPGA display pipeline that includes
