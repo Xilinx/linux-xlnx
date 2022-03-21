@@ -397,6 +397,19 @@ static void ulite_pm(struct uart_port *port, unsigned int state,
 	}
 }
 
+static int ulite_config_rs485(struct uart_port *port,
+			      struct serial_rs485 *rs485conf)
+{
+	port->rs485 = *rs485conf;
+
+	if (rs485conf->flags & SER_RS485_ENABLED)
+		dev_dbg(port->dev, "Setting UART to RS485\n");
+	else
+		dev_dbg(port->dev, "Setting UART to RS232\n");
+
+	return 0;
+}
+
 static const struct uart_ops ulite_ops = {
 	.tx_empty	= ulite_tx_empty,
 	.set_mctrl	= ulite_set_mctrl,
@@ -478,6 +491,9 @@ static int ulite_assign(struct device *dev, int id, phys_addr_t base, int irq,
 	port->type = PORT_UNKNOWN;
 	port->line = id;
 	port->private_data = pdata;
+
+	port->rs485.flags |= SER_RS485_ENABLED;
+	port->rs485_config = ulite_config_rs485;
 
 	dev_set_drvdata(dev, port);
 
