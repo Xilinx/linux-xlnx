@@ -112,4 +112,6 @@ source "drivers/staging/xroeframer/Kconfig"
 
 source "drivers/staging/xroetrafficgen/Kconfig"
 
+source "drivers/staging/uartlite-rs485/Kconfig"
+
 endif # STAGING
