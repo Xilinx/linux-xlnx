@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# Uartlite RS485 Serial device configuration
+#
+
+config SERIAL_UARTLITE_RS485
+	tristate "Xilinx uartlite rs485 serial port support"
+	depends on HAS_IOMEM
+	select SERIAL_CORE
+	help
+	  Say Y here if you want to use the Xilinx uartlite with rs485 serial controller.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called uartlite_485.
+
