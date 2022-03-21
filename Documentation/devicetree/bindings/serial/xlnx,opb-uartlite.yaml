@@ -15,6 +15,7 @@ properties:
       enum:
         - xlnx,xps-uartlite-1.00.a
         - xlnx,opb-uartlite-1.00.b
+        - xlnx,axi-uartlite-rs485
 
   reg:
     maxItems: 1
