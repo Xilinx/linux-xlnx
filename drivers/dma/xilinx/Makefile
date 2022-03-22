@@ -4,7 +4,4 @@ obj-$(CONFIG_XILINX_VDMATEST) += vdmatest.o
 obj-$(CONFIG_XILINX_DMA) += xilinx_dma.o
 obj-$(CONFIG_XILINX_ZYNQMP_DMA) += zynqmp_dma.o
 obj-$(CONFIG_XILINX_ZYNQMP_DPDMA) += xilinx_dpdma.o
-xilinx_ps_pcie_dma-objs := xilinx_ps_pcie_main.o xilinx_ps_pcie_platform.o
-obj-$(CONFIG_XILINX_PS_PCIE_DMA) += xilinx_ps_pcie_dma.o
-obj-$(CONFIG_XILINX_PS_PCIE_DMA_TEST) += xilinx_ps_pcie_dma_client.o
 obj-$(CONFIG_XILINX_FRMBUF) += xilinx_frmbuf.o
