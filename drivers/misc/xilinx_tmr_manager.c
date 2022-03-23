@@ -80,6 +80,19 @@ static void xtmr_manager_unblock_break(struct xtmr_manager_dev *xtmr_manager)
 }
 
 /**
+ * xmb_manager_reset_handler - clears the ffr register contents
+ * @priv: Private pointer
+ */
+static void xmb_manager_reset_handler(void *priv)
+{
+	struct xtmr_manager_dev *xtmr_manager = (struct xtmr_manager_dev *)priv;
+	/*
+	 * Clear the FFR Register contents as a part of recovery process.
+	 */
+	xtmr_manager_write(xtmr_manager, XTMR_MANAGER_FFR_OFFSET, 0);
+}
+
+/**
  * xmb_manager_update_errcnt - update the error inject count
  * @priv: Private pointer
  */
@@ -185,7 +198,8 @@ static void xtmr_manager_init(struct xtmr_manager_dev *xtmr_manager)
 	 * break and call the callback function.
 	 */
 	xmb_manager_register(xtmr_manager->phys_baseaddr, xtmr_manager->cr_val,
-			     xmb_manager_update_errcnt, xtmr_manager);
+			     xmb_manager_update_errcnt,
+			     xtmr_manager, xmb_manager_reset_handler);
 }
 
 /**

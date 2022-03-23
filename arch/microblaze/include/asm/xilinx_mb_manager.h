@@ -18,7 +18,8 @@
  * break and call the callback function.
  */
 void xmb_manager_register(uintptr_t phys_baseaddr, u32 cr_val,
-			  void (*callback)(void *data), void *priv);
+			  void (*callback)(void *data),
+			  void *priv, void (*reset_callback)(void *data));
 asmlinkage void xmb_inject_err(void);
 
 # endif /* __ASSEMBLY__ */
