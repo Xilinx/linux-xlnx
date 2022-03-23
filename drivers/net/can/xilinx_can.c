@@ -133,6 +133,8 @@ enum xcan_reg {
 #define XCAN_DLCR_BRS_MASK		0x04000000 /* BRS Mask in DLC */
 
 /* CAN register bit shift - XCAN_<REG>_<BIT>_SHIFT */
+#define XCAN_BRPR_TDCO_SHIFT_CANFD	8  /* Transmitter Delay Compensation Offset */
+#define XCAN_BRPR_TDCE_SHIFT_CANFD	16 /* Transmitter Delay Compensation (TDC) Enable */
 #define XCAN_BTR_SJW_SHIFT		7  /* Synchronous jump width */
 #define XCAN_BTR_TS2_SHIFT		4  /* Time segment 2 */
 #define XCAN_BTR_SJW_SHIFT_CANFD	16 /* Synchronous jump width */
@@ -141,6 +143,8 @@ enum xcan_reg {
 #define XCAN_IDR_ID2_SHIFT		1  /* Extended Message Identifier */
 #define XCAN_DLCR_DLC_SHIFT		28 /* Data length code */
 #define XCAN_ESR_REC_SHIFT		8  /* Rx Error Count */
+
+#define XCAN_BRPR_TDCO_MAX		64 /* TDCO max value */
 
 /* CAN frame length constants */
 #define XCAN_FRAME_MAX_DATA_LEN		8
@@ -160,6 +164,17 @@ enum xcan_reg {
  */
 #define XCAN_FLAG_RX_FIFO_MULTI	0x0010
 #define XCAN_FLAG_CANFD_2	0x0020
+
+static bool tdc_enable;
+static u8 tdc_offset;
+
+module_param(tdc_enable, bool, 0644);
+module_param(tdc_offset, byte, 0644);
+
+MODULE_PARM_DESC(tdc_enable,
+		 "Transmitter Delay Compensation (TDC) Enable");
+MODULE_PARM_DESC(tdc_offset,
+		 "Transmitter Delay Compensation Offset");
 
 enum xcan_ip_type {
 	XAXI_CAN = 0,
@@ -259,7 +274,7 @@ static const struct can_bittiming_const xcan_bittiming_const_canfd2 = {
 	.tseg2_min = 1,
 	.tseg2_max = 128,
 	.sjw_max = 128,
-	.brp_min = 2,
+	.brp_min = 1,
 	.brp_max = 256,
 	.brp_inc = 1,
 };
@@ -272,7 +287,7 @@ static struct can_bittiming_const xcan_data_bittiming_const_canfd2 = {
 	.tseg2_min = 1,
 	.tseg2_max = 16,
 	.sjw_max = 16,
-	.brp_min = 2,
+	.brp_min = 1,
 	.brp_max = 256,
 	.brp_inc = 1,
 };
@@ -425,6 +440,10 @@ static int xcan_set_bittiming(struct net_device *ndev)
 	    priv->devtype.cantype == XAXI_CANFD_2_0) {
 		/* Setting Baud Rate prescalar value in F_BRPR Register */
 		btr0 = dbt->brp - 1;
+		if (tdc_enable)
+			btr0 = btr0 |
+			tdc_offset << XCAN_BRPR_TDCO_SHIFT_CANFD |
+			tdc_enable << XCAN_BRPR_TDCE_SHIFT_CANFD;
 
 		/* Setting Time Segment 1 in BTR Register */
 		btr1 = dbt->prop_seg + dbt->phase_seg1 - 1;
@@ -1823,6 +1842,8 @@ static int xcan_probe(struct platform_device *pdev)
 		priv->write_reg(priv, XCAN_AFR_2_ID_OFFSET, 0x00000000);
 		priv->write_reg(priv, XCAN_AFR_2_MASK_OFFSET, 0x00000000);
 	}
+	if (!(tdc_enable && tdc_offset <= XCAN_BRPR_TDCO_MAX))
+		netdev_warn(ndev, "TDC Offset value not in range ");
 
 	netdev_dbg(ndev, "reg_base=0x%p irq=%d clock=%d, tx buffers: actual %d, using %d\n",
 		   priv->reg_base, ndev->irq, priv->can.clock.freq,
