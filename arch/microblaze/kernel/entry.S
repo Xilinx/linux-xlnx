@@ -333,22 +333,6 @@ syscall_debug_table:
  * are masked. This is nice, means we don't have to CLI before state save
  */
 C_ENTRY(_user_exception):
-#ifdef CONFIG_MB_MANAGER
-	andi	r11, r0, 0
-	ori	r11, r0, XMB_INJECT_MAGIC_VAL
-	cmp	r11, r11, r12
-	bnei	r11, ret_to_user;
-	set_bip
-	/* barrier for instructions and data accesses */
-	mbar	1
-	mbar	2
-	bralid	r15, XMB_INJECT_ERR_OFFSET
-	nop
-	nop
-	rtbd	r14, 8
-	nop
-ret_to_user:
-#endif
 	STORE_PER_CPU(r1, ENTRY_SP) /* save stack */
 	addi	r14, r14, 4	/* return address is 4 byte after call */
 
@@ -1056,18 +1040,22 @@ xmb_inject_err:
 	addik	r1, r1, -PT_SIZE
 	SAVE_REGS
 
-	andi	r12, r0, 0
-	ori	r12, r0, XMB_INJECT_MAGIC_VAL
-	/* barrier for instructions and data accesses */
+	/* Switch to real mode */
+	VM_OFF;
+	set_bip;
 	mbar	1
 	mbar	2
-	/* call user exception */
-	bralid	r14, 8
+	bralid	r15, XMB_INJECT_ERR_OFFSET
 	nop;
 
+	/* enable virtual mode */
+	set_vms;
 	/* barrier for instructions and data accesses */
 	mbar	1
 	mbar	2
+	rtbd    r0, 1f
+	nop;
+1:
 	RESTORE_REGS
 	addik	r1, r1, PT_SIZE
 	rtsd	r15, 8;
