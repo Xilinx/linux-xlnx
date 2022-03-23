@@ -31,6 +31,7 @@
 
 #include <linux/errno.h>
 #include <asm/signal.h>
+#include <asm/mmu.h>
 
 #undef DEBUG
 
@@ -319,6 +320,44 @@ syscall_debug_table:
 2:	LOAD_PER_CPU(CURRENT_TASK, CURRENT_SAVE)
 
 .text
+
+.extern cpu_info
+
+C_ENTRY(mb_flush_dcache):
+	addik	r1, r1, -PT_SIZE
+	SAVE_REGS
+
+	addik	r3, r0, cpu_info
+	lwi	r7, r3, CI_DCS
+	lwi	r8, r3, CI_DCL
+	sub	r9, r7, r8
+1:
+	wdc.flush r9, r0
+	bgtid	r9, 1b
+	addk	r9, r9, r8
+
+	RESTORE_REGS
+	addik	r1, r1, PT_SIZE
+	rtsd	r15, 8
+	nop
+
+C_ENTRY(mb_invalidate_icache):
+	addik	r1, r1, -PT_SIZE
+	SAVE_REGS
+
+	addik	r3, r0, cpu_info
+	lwi	r7, r3, CI_ICS
+	lwi	r8, r3, CI_ICL
+	sub	r9, r7, r8
+1:
+	wic 	r9, r0
+	bgtid	r9, 1b
+	addk	r9, r9, r8
+
+	RESTORE_REGS
+	addik	r1, r1, PT_SIZE
+	rtsd	r15, 8
+	nop
 
 /*
  * User trap.
@@ -787,8 +826,81 @@ IRQ_return: /* MS: Make global symbol for debugging */
 	nop
 
 #ifdef CONFIG_MB_MANAGER
+
+#define	PT_PID		PT_SIZE
+#define	PT_TLBI		PT_SIZE + 4
+#define	PT_ZPR		PT_SIZE	+ 8
+#define	PT_TLBL0	PT_SIZE + 12
+#define	PT_TLBH0	PT_SIZE + 16
+
+C_ENTRY(_xtmr_manager_reset):
+	lwi	r1, r0, TOPHYS(xmb_manager_stackpointer)
+
+	/* Restore MSR */
+	lwi	r2, r1, PT_MSR
+	mts	rmsr, r2
+	bri	4
+
+	/* restore Special purpose registers */
+	lwi	r2, r1, PT_PID
+	mts	rpid, r2
+
+	lwi	r2, r1, PT_TLBI
+	mts	rtlbx, r2
+
+	lwi	r2, r1, PT_ZPR
+	mts	rzpr, r2
+
+#if CONFIG_XILINX_MICROBLAZE0_USE_FPU
+	lwi	r2, r1, PT_FSR
+	mts	rfsr, r2
+#endif
+
+	/* restore all the tlb's */
+	addik	r3, r0, TOPHYS(tlb_skip)
+	addik	r6, r0, PT_TLBL0
+	addik	r7, r0, PT_TLBH0
+restore_tlb:
+	add	r6, r6, r1
+	add	r7, r7, r1
+	lwi	r2, r6, 0
+	mts 	rtlblo, r2
+	lwi	r2, r7, 0
+	mts	rtlbhi, r2
+	addik	r6, r6, 4
+	addik	r7, r7, 4
+	bgtid	r3, restore_tlb
+	addik	r3, r3, -1
+
+	lwi  	r5, r0, TOPHYS(xmb_manager_dev)
+	lwi	r8, r0, TOPHYS(xmb_manager_reset_callback)
+	tovirt(r1, r1)
+	set_vms
+	/* return from reset need -8 to adjust for rtsd r15, 8 */
+	addik   r15, r0, ret_from_reset - 8
+	rtbd	r8, 0
+	nop
+
+ret_from_reset:
+	set_bip /* Ints masked for state restore */
+	VM_OFF
+	tophys(r1, r1)
+	/* MS: Restore all regs */
+	RESTORE_REGS
+	lwi	r14, r1, PT_R14
+	lwi	r16, r1, PT_PC
+	addik	r1, r1, PT_SIZE + 36
+	tovirt(r1,r1)
+	rtbd	r16, 0
+	nop
+
 C_ENTRY(_xmb_manager_break):
-	addik	r1, r1, CONFIG_KERNEL_BASE_ADDR - CONFIG_KERNEL_START - PT_SIZE
+	/*
+	 * Reserve memory in the stack for context store/restore
+	 * (which includes memory for storing tlbs (max two tlbs))
+	 */
+	addik	r1, r1, CONFIG_KERNEL_BASE_ADDR - CONFIG_KERNEL_START - PT_SIZE - 36
+	swi	r1, r0, TOPHYS(xmb_manager_stackpointer)
 	SAVE_REGS
 	swi	r0, r1, PT_R0;	/* R0 must be saved too */
 	swi	r14, r1, PT_R14	/* rewrite saved R14 value */
@@ -803,27 +915,68 @@ C_ENTRY(_xmb_manager_break):
 	 * control register to block break signal.
 	 */
 	swi	r7, r6, 0
+
+	/* Save the special purpose registers  */
+	mfs	r2, rpid
+	swi	r2, r1, PT_PID
+
+	mfs	r2, rtlbx
+	swi	r2, r1, PT_TLBI
+
+	mfs	r2, rzpr
+	swi	r2, r1, PT_ZPR
+
+#if CONFIG_XILINX_MICROBLAZE0_USE_FPU
+	mfs	r2, rfsr
+	swi	r2, r1, PT_FSR
+#endif
+	mfs	r2, rmsr
+	swi	r2, r1, PT_MSR
+
+	/* Save all the tlb's */
+	addik	r3, r0, TOPHYS(tlb_skip)
+	addik	r6, r0, PT_TLBL0
+	addik	r7, r0, PT_TLBH0
+save_tlb:
+	add	r6, r6, r1
+	add	r7, r7, r1
+	mfs	r2, rtlblo
+	swi	r2, r6, 0
+	mfs	r2, rtlbhi
+	swi	r2, r7, 0
+	addik	r6, r6, 4
+	addik	r7, r7, 4
+	bgtid	r3, save_tlb
+	addik	r3, r3, -1
+
 	lwi  	r5, r0, TOPHYS(xmb_manager_dev)
 	lwi	r8, r0, TOPHYS(xmb_manager_callback)
 	tovirt(r1, r1)
-	addik   r15, r0, ret_from_break;
+	/* return from break need -8 to adjust for rtsd r15, 8 */
+	addik   r15, r0, ret_from_break - 8
 	rtbd	r8, 0
-	nop;
+	nop
 
 ret_from_break:
-	nop;
-	nop;
+	/* flush the d-cache */
+	bralid	r15, mb_flush_dcache
+	nop
+
+	/*
+	 * To make sure microblaze i-cache is in a proper state
+	 * invalidate the i-cache.
+	 */
+	bralid	r15, mb_invalidate_icache
+	nop
+
 	set_bip; /* Ints masked for state restore */
 	VM_OFF;
-	tophys(r1,r1);
-	/* MS: Restore all regs */
-	RESTORE_REGS_RTBD
-	lwi	r14, r1, PT_R14;
-	lwi	r16, r1, PT_PC;
-	addik	r1, r1, PT_SIZE; /* MS: Clean up stack space */
-	tovirt(r1,r1);
-	rtbd	r16, 0;
-	nop;
+	tophys(r1,r1)
+	mbar	1
+	mbar	2
+	bri	4
+	suspend
+	nop
 #endif
 
 /*
@@ -1067,6 +1220,8 @@ xmb_inject_err:
 .global xmb_manager_baseaddr
 .global xmb_manager_crval
 .global xmb_manager_callback
+.global xmb_manager_reset_callback
+.global xmb_manager_stackpointer
 .align 4
 xmb_manager_dev:
 	.long 0
@@ -1075,6 +1230,10 @@ xmb_manager_baseaddr:
 xmb_manager_crval:
 	.long 0
 xmb_manager_callback:
+	.long 0
+xmb_manager_reset_callback:
+	.long 0
+xmb_manager_stackpointer:
 	.long 0
 
 /*
@@ -1095,6 +1254,7 @@ xmb_manager_register:
 	swi	r6, r0, xmb_manager_crval
 	swi	r7, r0, xmb_manager_callback
 	swi	r8, r0, xmb_manager_dev
+	swi	r9, r0, xmb_manager_reset_callback
 
 	rtsd	r15, 8;
 	nop;
@@ -1108,9 +1268,12 @@ ENTRY(_reset)
 	/* These are compiled and loaded into high memory, then
 	 * copied into place in mach_early_setup */
 	.section	.init.ivt, "ax"
-#if CONFIG_MANUAL_RESET_VECTOR
+#if CONFIG_MANUAL_RESET_VECTOR && !defined(CONFIG_MB_MANAGER)
 	.org	0x0
 	brai	CONFIG_MANUAL_RESET_VECTOR
+#elif defined(CONFIG_MB_MANAGER)
+	.org	0x0
+	brai	TOPHYS(_xtmr_manager_reset);
 #endif
 	.org	0x8
 	brai	TOPHYS(_user_exception); /* syscall handler */
