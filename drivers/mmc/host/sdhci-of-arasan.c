@@ -1547,6 +1547,12 @@ static int sdhci_zynqmp_set_dynamic_config(struct device *dev,
 
 	reset_control_deassert(rstc);
 
+	/*
+	 * Workaround: In case of eMMC, to reach the card stable state
+	 * it is taking 1msec delay after deassert the controller reset.
+	 */
+	usleep_range(1000, 1500);
+
 	return 0;
 }
 
