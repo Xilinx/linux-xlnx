@@ -74,15 +74,19 @@ static int of_aie_notify(struct notifier_block *nb, unsigned long action,
 	switch (action) {
 	case OF_OVERLAY_POST_APPLY:
 		adev = of_ai_engine_class_find(nd->target);
-		if (!adev)
-			return NOTIFY_BAD;
+		if (!adev) {
+			pr_debug("%s OF_OVERLAY_POST_APPLY\n", __func__);
+			return NOTIFY_OK;
+		}
 
 		of_xilinx_ai_engine_aperture_probe(adev);
 		break;
 	case OF_OVERLAY_PRE_REMOVE:
 		adev = of_ai_engine_class_find(nd->target);
-		if (!adev)
-			return NOTIFY_BAD;
+		if (!adev) {
+			pr_debug("%s OF_OVERLAY_POST_APPLY\n", __func__);
+			return NOTIFY_OK;
+		}
 
 		ret = of_aie_notify_pre_remove(adev, nd);
 		break;
