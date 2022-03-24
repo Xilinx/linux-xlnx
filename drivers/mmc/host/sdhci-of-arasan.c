@@ -1527,6 +1527,15 @@ static int sdhci_zynqmp_set_dynamic_config(struct device *dev,
 		return ret;
 
 	mhz = DIV_ROUND_CLOSEST_ULL(clk_get_rate(pltfm_host->clk), 1000000);
+	if (mhz > 100 && mhz <= 200)
+		mhz = 200;
+	else if (mhz > 50 && mhz <= 100)
+		mhz = 100;
+	else if (mhz > 25 && mhz <= 50)
+		mhz = 50;
+	else
+		mhz = 25;
+
 	ret = zynqmp_pm_set_sd_config(node_id, SD_CONFIG_BASECLK, mhz);
 	if (ret)
 		return ret;
