@@ -785,7 +785,19 @@ config CRYPTO_DEV_ROCKCHIP
 	  Supporting cbc/ecb chainmode, and aes/des/des3_ede cipher mode.
 
 config CRYPTO_DEV_ZYNQMP_SHA3
-	tristate "Support for Xilinx ZynqMP SHA3 hw accelerator"
+	tristate "Support for Xilinx ZynqMP SHA3 hardware accelerator"
+	depends on ZYNQMP_FIRMWARE || COMPILE_TEST
+	depends on !CRYPTO_DEV_ZYNQMP_KECCAK_384
+	select CRYPTO_SHA3
+	help
+	  Xilinx ZynqMP has SHA3 engine used for secure hash calculation.
+	  This driver interfaces with SHA3 hardware engine.
+	  Select this if you want to use the ZynqMP module
+	  for SHA3 hash computation.
+
+config CRYPTO_DEV_ZYNQMP_KECCAK_384
+	bool "Support for Xilinx ZynqMP SHA3 hw accelerator(ahash)"
+	default y
 	depends on ARCH_ZYNQMP
 	select CRYPTO_HASH
 	help
