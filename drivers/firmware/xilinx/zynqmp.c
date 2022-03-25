@@ -1434,10 +1434,10 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_read);
  */
 int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags)
 {
-	u32 lower_32_bits = (u32)address;
-	u32 upper_32_bits = (u32)(address >> 32);
+	u32 lower_addr = lower_32_bits(address);
+	u32 upper_addr = upper_32_bits(address);
 
-	return zynqmp_pm_invoke_fn(PM_SECURE_SHA, upper_32_bits, lower_32_bits,
+	return zynqmp_pm_invoke_fn(PM_SECURE_SHA, upper_addr, lower_addr,
 				   size, flags, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_sha_hash);
