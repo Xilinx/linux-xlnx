@@ -3133,6 +3133,41 @@ static void macb_get_regs(struct net_device *dev, struct ethtool_regs *regs,
 		regs_buff[13] = gem_readl(bp, DMACFG);
 }
 
+static void macb_get_wol(struct net_device *netdev, struct ethtool_wolinfo *wol)
+{
+	struct macb *bp = netdev_priv(netdev);
+
+	memset(wol, 0, sizeof(struct ethtool_wolinfo));
+
+	if (bp->caps & MACB_CAPS_WOL) {
+		wol->supported = WAKE_ARP;
+
+		if (bp->wol)
+			wol->wolopts |= WAKE_ARP;
+	}
+}
+
+static int macb_set_wol(struct net_device *netdev, struct ethtool_wolinfo *wol)
+{
+	struct macb *bp = netdev_priv(netdev);
+
+	if (!(bp->caps & MACB_CAPS_WOL) ||
+	    (wol->wolopts & ~WAKE_ARP))
+		return -EOPNOTSUPP;
+
+	if (wol->wolopts & ~WAKE_MAGIC)
+		return -EINVAL;
+
+	if (wol->wolopts & WAKE_ARP)
+		bp->wol = 1;
+	else
+		bp->wol = 0;
+
+	device_set_wakeup_enable(&bp->dev->dev, bp->wol);
+
+	return 0;
+}
+
 static int macb_get_link_ksettings(struct net_device *netdev,
 				   struct ethtool_link_ksettings *kset)
 {
@@ -3606,6 +3641,8 @@ static const struct ethtool_ops gem_ethtool_ops = {
 	.set_ringparam		= macb_set_ringparam,
 	.get_rxnfc			= gem_get_rxnfc,
 	.set_rxnfc			= gem_set_rxnfc,
+	.get_wol		= macb_get_wol,
+	.set_wol		= macb_set_wol,
 };
 
 static int macb_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
