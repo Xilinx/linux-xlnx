@@ -913,7 +913,7 @@ int xilinx_xdma_get_fid_err_flag(struct dma_chan *chan,
 	if (IS_ERR(xdev))
 		return PTR_ERR(xdev);
 
-	if (xdev->chan.direction != DMA_DEV_TO_MEM || !xdev->chan.idle)
+	if (xdev->chan.direction != DMA_MEM_TO_DEV || xdev->chan.idle)
 		return -EINVAL;
 
 	*fid_err_flag = xdev->chan.fid_err_flag;
@@ -931,7 +931,7 @@ int xilinx_xdma_get_fid_out(struct dma_chan *chan,
 	if (IS_ERR(xdev))
 		return PTR_ERR(xdev);
 
-	if (xdev->chan.direction != DMA_DEV_TO_MEM || !xdev->chan.idle)
+	if (xdev->chan.direction != DMA_MEM_TO_DEV || xdev->chan.idle)
 		return -EINVAL;
 
 	*fid_out_val = xdev->chan.fid_out_val;
