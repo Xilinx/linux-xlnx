@@ -341,13 +341,11 @@ static int macb_mdio_read(struct mii_bus *bus, int mii_id, int regnum)
 {
 	struct macb *bp = bus->priv;
 	int status;
-	bool force_resume;
 
-	force_resume = pm_runtime_status_suspended(&bp->pdev->dev);
-	if (force_resume) {
-		status = pm_runtime_force_resume(&bp->pdev->dev);
-		if (status < 0)
-			goto mdio_pm_exit;
+	status = pm_runtime_get_sync(&bp->pdev->dev);
+	if (status < 0) {
+		pm_runtime_put_noidle(&bp->pdev->dev);
+		goto mdio_pm_exit;
 	}
 
 	status = macb_mdio_wait_for_idle(bp);
@@ -386,8 +384,8 @@ static int macb_mdio_read(struct mii_bus *bus, int mii_id, int regnum)
 	status = MACB_BFEXT(DATA, macb_readl(bp, MAN));
 
 mdio_read_exit:
-	if (force_resume)
-		pm_runtime_force_suspend(&bp->pdev->dev);
+	pm_runtime_mark_last_busy(&bp->pdev->dev);
+	pm_runtime_put_autosuspend(&bp->pdev->dev);
 mdio_pm_exit:
 	return status;
 }
@@ -397,13 +395,11 @@ static int macb_mdio_write(struct mii_bus *bus, int mii_id, int regnum,
 {
 	struct macb *bp = bus->priv;
 	int status;
-	bool force_resume;
 
-	force_resume = pm_runtime_status_suspended(&bp->pdev->dev);
-	if (force_resume) {
-		status = pm_runtime_force_resume(&bp->pdev->dev);
-		if (status < 0)
-			goto mdio_pm_exit;
+	status = pm_runtime_get_sync(&bp->pdev->dev);
+	if (status < 0) {
+		pm_runtime_put_noidle(&bp->pdev->dev);
+		goto mdio_pm_exit;
 	}
 
 	status = macb_mdio_wait_for_idle(bp);
@@ -442,8 +438,8 @@ static int macb_mdio_write(struct mii_bus *bus, int mii_id, int regnum,
 		goto mdio_write_exit;
 
 mdio_write_exit:
-	if (force_resume)
-		pm_runtime_force_suspend(&bp->pdev->dev);
+	pm_runtime_mark_last_busy(&bp->pdev->dev);
+	pm_runtime_put_autosuspend(&bp->pdev->dev);
 mdio_pm_exit:
 	return status;
 }
