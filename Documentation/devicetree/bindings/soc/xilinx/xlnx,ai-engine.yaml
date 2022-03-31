@@ -173,7 +173,7 @@ examples:
     bus {
       #address-cells = <2>;
       #size-cells = <2>;
-      ai_engine: ai_engine {
+      ai_engine: ai-engine {
         compatible = "xlnx,ai-engine-v2.0";
         xlnx,aie-gen = /bits/ 8 <0x1>;
         xlnx,shim-rows = /bits/ 8 <0 1>;
