@@ -23,6 +23,21 @@
 #define ZYNQMP_RSA_MAX_KEY_SIZE	1024
 #define ZYNQMP_RSA_BLOCKSIZE	64
 
+/* Key size in bytes */
+#define XSECURE_RSA_512_KEY_SIZE	(512U / 8U)
+#define XSECURE_RSA_576_KEY_SIZE	(576U / 8U)
+#define XSECURE_RSA_704_KEY_SIZE	(704U / 8U)
+#define XSECURE_RSA_768_KEY_SIZE	(768U / 8U)
+#define XSECURE_RSA_992_KEY_SIZE	(992U / 8U)
+#define XSECURE_RSA_1024_KEY_SIZE	(1024U / 8U)
+#define XSECURE_RSA_1152_KEY_SIZE	(1152U / 8U)
+#define XSECURE_RSA_1408_KEY_SIZE	(1408U / 8U)
+#define XSECURE_RSA_1536_KEY_SIZE	(1536U / 8U)
+#define XSECURE_RSA_1984_KEY_SIZE	(1984U / 8U)
+#define XSECURE_RSA_2048_KEY_SIZE	(2048U / 8U)
+#define XSECURE_RSA_3072_KEY_SIZE	(3072U / 8U)
+#define XSECURE_RSA_4096_KEY_SIZE	(4096U / 8U)
+
 static struct zynqmp_rsa_dev *rsa_dd;
 
 struct zynqmp_rsa_op {
@@ -109,6 +124,23 @@ static int zynqmp_rsa_xcrypt(struct skcipher_request *req, unsigned int flags)
 			goto out;
 	}
 	memcpy(kbuf + nbytes, op->key, op->keylen);
+
+	if (nbytes != XSECURE_RSA_512_KEY_SIZE ||
+	    nbytes != XSECURE_RSA_576_KEY_SIZE ||
+	    nbytes != XSECURE_RSA_704_KEY_SIZE ||
+	    nbytes != XSECURE_RSA_768_KEY_SIZE ||
+	    nbytes != XSECURE_RSA_992_KEY_SIZE ||
+	    nbytes != XSECURE_RSA_1024_KEY_SIZE ||
+	    nbytes != XSECURE_RSA_1152_KEY_SIZE ||
+	    nbytes != XSECURE_RSA_1408_KEY_SIZE ||
+	    nbytes != XSECURE_RSA_1536_KEY_SIZE ||
+	    nbytes != XSECURE_RSA_1984_KEY_SIZE ||
+	    nbytes != XSECURE_RSA_2048_KEY_SIZE ||
+	    nbytes != XSECURE_RSA_3072_KEY_SIZE ||
+	    nbytes != XSECURE_RSA_4096_KEY_SIZE) {
+		return -EOPNOTSUPP;
+	}
+
 	zynqmp_pm_rsa(dma_addr, nbytes, flags);
 
 	err = skcipher_walk_virt(&walk, req, false);
