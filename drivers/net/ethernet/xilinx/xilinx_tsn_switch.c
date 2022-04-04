@@ -16,13 +16,16 @@
  * GNU General Public License for more details.
  */
 
-#include "xilinx_tsn_switch.h"
 #include <linux/of_platform.h>
 #include <linux/module.h>
 #include <linux/miscdevice.h>
+#include "xilinx_tsn_switch.h"
 
 static struct miscdevice switch_dev;
 struct axienet_local lp;
+static u8 en_hw_addr_learning;
+
+#define DELAY_OF_FIVE_MILLISEC			(5 * DELAY_OF_ONE_MILLISEC)
 
 #define ADD					1
 #define DELETE					0
@@ -45,6 +48,7 @@ struct axienet_local lp;
 #define SDL_CAM_WR_ENABLE			BIT(0)
 #define SDL_CAM_ADD_ENTRY			0x3
 #define SDL_CAM_DELETE_ENTRY			0x5
+#define SDL_CAM_READ_KEY_ENTRY			0x1
 #define SDL_CAM_VLAN_SHIFT			16
 #define SDL_CAM_VLAN_MASK			0xFFF
 #define SDL_CAM_IPV_MASK			0x7
@@ -58,6 +62,17 @@ struct axienet_local lp;
 #define SDL_CAM_DEST_MAC_XLATION		BIT(0)
 #define SDL_CAM_VLAN_ID_XLATION			BIT(1)
 #define SDL_CAM_UNTAG_FRAME			BIT(2)
+#define SDL_CAM_LEARNT_ENT_MAC2_SHIFT		(20)
+#define SDL_CAM_LEARNT_ENT_MAC1_SHIFT		(8)
+#define SDL_CAM_LEARNT_ENT_MASK			GENMASK(11, 0)
+#define SDL_CAM_FOUND_BIT			BIT(7)
+#define SDL_CAM_READ_KEY_ADDR_SHIFT		(8)
+
+#define HW_ADDR_AGING_TIME_SHIFT		(8)
+#define HW_ADDR_AGING_TIME_MASK			GENMASK(19, 0)
+#define HW_ADDR_AGING_BIT			BIT(2)
+#define HW_ADDR_LEARN_UNTAG_BIT			BIT(1)
+#define HW_ADDR_LEARN_BIT			BIT(0)
 
 /* Match table for of_platform binding */
 static const struct of_device_id tsnswitch_of_match[] = {
@@ -475,6 +490,148 @@ static void port_vlan_mem_ctrl(u32 port_vlan_mem)
 		axienet_iow(&lp, XAS_VLAN_MEMB_CTRL_REG, port_vlan_mem);
 }
 
+static int set_mac_addr_learn(void __user *arg)
+{
+	struct mac_addr_learn mac_learn;
+	u32 u_value;
+
+	if (copy_from_user(&mac_learn, arg, sizeof(struct mac_addr_learn)))
+		return -EFAULT;
+
+	u_value = axienet_ior(&lp, XAS_HW_ADDR_LEARN_CTRL_OFFSET);
+	if (mac_learn.aging_time) {
+		u_value &= ~(HW_ADDR_AGING_TIME_MASK <<
+				HW_ADDR_AGING_TIME_SHIFT);
+		u_value |= (mac_learn.aging_time << HW_ADDR_AGING_TIME_SHIFT);
+	}
+	if (mac_learn.is_age) {
+		if (!mac_learn.aging)
+			u_value |= HW_ADDR_AGING_BIT;
+		else
+			u_value &= ~HW_ADDR_AGING_BIT;
+	}
+	if (mac_learn.is_learn) {
+		if (!mac_learn.learning)
+			u_value |= HW_ADDR_LEARN_BIT;
+		else
+			u_value &= ~HW_ADDR_LEARN_BIT;
+	}
+	if (mac_learn.is_untag) {
+		if (mac_learn.learn_untag)
+			u_value |= HW_ADDR_LEARN_UNTAG_BIT;
+		else
+			u_value &= ~HW_ADDR_LEARN_UNTAG_BIT;
+	}
+	axienet_iow(&lp, XAS_HW_ADDR_LEARN_CTRL_OFFSET, u_value);
+
+	return 0;
+}
+
+static int get_mac_addr_learn(void __user *arg)
+{
+	struct mac_addr_learn mac_learn;
+	u32 u_value;
+
+	u_value = axienet_ior(&lp, XAS_HW_ADDR_LEARN_CTRL_OFFSET);
+	mac_learn.aging_time = (u_value >> HW_ADDR_AGING_TIME_SHIFT) &
+				HW_ADDR_AGING_TIME_MASK;
+	mac_learn.aging = u_value & HW_ADDR_AGING_BIT;
+	mac_learn.learning = u_value & HW_ADDR_LEARN_BIT;
+	mac_learn.learn_untag = u_value & HW_ADDR_LEARN_UNTAG_BIT;
+
+	u_value = axienet_ior(&lp, XAS_PORT_STATE_CTRL_OFFSET);
+
+	if (copy_to_user(arg, &mac_learn, sizeof(struct mac_addr_learn)))
+		return -EFAULT;
+
+	return 0;
+}
+
+static int get_mac_addr_learnt_list(void __user *arg)
+{
+	struct mac_addr_list *mac_list;
+	u32 i = 0;
+	u32 u_value, reg, err;
+	u16 read_key_addr = 0;
+	int ret = 0;
+
+	mac_list = kzalloc(sizeof(*mac_list), GFP_KERNEL);
+	if (!mac_list) {
+		ret = -ENOMEM;
+		goto ret_status;
+	}
+
+	if (copy_from_user(mac_list, arg, sizeof(u8))) {
+		ret = -EFAULT;
+		goto free_mac_list;
+	}
+	/* wait for cam init done */
+	err = readl_poll_timeout(lp.regs + XAS_SDL_CAM_STATUS_OFFSET, reg,
+				 (reg & SDL_CAM_WR_ENABLE), 10,
+				 DELAY_OF_FIVE_MILLISEC);
+	if (err) {
+		pr_err("CAM init timed out\n");
+		ret = -ETIMEDOUT;
+		goto free_mac_list;
+	}
+	u_value = axienet_ior(&lp, XAS_SDL_CAM_STATUS_OFFSET);
+
+	if (mac_list->port_num == PORT_MAC1) {
+		mac_list->num_list = (u_value >> SDL_CAM_LEARNT_ENT_MAC1_SHIFT)
+					& SDL_CAM_LEARNT_ENT_MASK;
+	} else {
+		mac_list->num_list = (u_value >> SDL_CAM_LEARNT_ENT_MAC2_SHIFT)
+					& SDL_CAM_LEARNT_ENT_MASK;
+		read_key_addr = 0x800;
+	}
+
+	for (i = 0; i < MAX_NUM_MAC_ENTRIES ; i++) {
+		err = readl_poll_timeout(lp.regs + XAS_SDL_CAM_STATUS_OFFSET, reg,
+					 (reg & SDL_CAM_WR_ENABLE), 10,
+					 DELAY_OF_FIVE_MILLISEC);
+		if (err) {
+			pr_err("CAM init timed out\n");
+			ret = -ETIMEDOUT;
+			goto free_mac_list;
+		}
+
+		u_value = ((read_key_addr + i) << SDL_CAM_READ_KEY_ADDR_SHIFT)
+			  | SDL_CAM_READ_KEY_ENTRY;
+		axienet_iow(&lp, XAS_SDL_CAM_CTRL_OFFSET, u_value);
+
+		err = readl_poll_timeout(lp.regs + XAS_SDL_CAM_CTRL_OFFSET, reg,
+					 (!(reg & SDL_CAM_WR_ENABLE)), 10,
+					 DELAY_OF_FIVE_MILLISEC);
+		if (err) {
+			pr_err("CAM write timed out\n");
+			ret = -ETIMEDOUT;
+			goto free_mac_list;
+		}
+		u_value = axienet_ior(&lp, XAS_SDL_CAM_CTRL_OFFSET);
+
+		if (u_value & SDL_CAM_FOUND_BIT) {
+			u_value = axienet_ior(&lp, XAS_SDL_CAM_KEY1_OFFSET);
+			mac_list->list[i].mac_addr[0] = (u_value >> 24) & 0xFF;
+			mac_list->list[i].mac_addr[1] = (u_value >> 16) & 0xFF;
+			mac_list->list[i].mac_addr[2] = (u_value >> 8) & 0xFF;
+			mac_list->list[i].mac_addr[3] = (u_value) & 0xFF;
+			u_value = axienet_ior(&lp, XAS_SDL_CAM_KEY2_OFFSET);
+			mac_list->list[i].mac_addr[4] = (u_value >> 8) & 0xFF;
+			mac_list->list[i].mac_addr[5] = (u_value) & 0xFF;
+			mac_list->list[i].vlan_id     = (u_value >> 16) & 0xFFF;
+		}
+	}
+	if (copy_to_user(arg, mac_list, sizeof(struct mac_addr_list))) {
+		ret = -EFAULT;
+		goto free_mac_list;
+	}
+
+free_mac_list:
+	kfree(mac_list);
+ret_status:
+	return ret;
+}
+
 static long switch_ioctl(struct file *file, unsigned int cmd,
 			 unsigned long arg)
 {
@@ -535,6 +692,24 @@ static long switch_ioctl(struct file *file, unsigned int cmd,
 		}
 		port_vlan_mem_ctrl(data.port_vlan_mem_ctrl);
 		break;
+
+	case SET_MAC_ADDR_LEARN_CONFIG:
+		if (!en_hw_addr_learning)
+			return -EPERM;
+		retval = set_mac_addr_learn((void __user *)arg);
+		goto end;
+
+	case GET_MAC_ADDR_LEARN_CONFIG:
+		if (!en_hw_addr_learning)
+			return -EPERM;
+		retval = get_mac_addr_learn((void __user *)arg);
+		goto end;
+
+	case GET_MAC_ADDR_LEARNT_LIST:
+		if (!en_hw_addr_learning)
+			return -EPERM;
+		retval = get_mac_addr_learnt_list((void __user *)arg);
+		goto end;
 
 	case SET_FRAME_TYPE_FIELD:
 		if (copy_from_user(&data, (char __user *)arg, sizeof(data))) {
@@ -781,7 +956,12 @@ static int tsnswitch_probe(struct platform_device *pdev)
 	if (ret || (num_tc != 2 && num_tc != 3))
 		num_tc = XAE_MAX_TSN_TC;
 
+	en_hw_addr_learning = of_property_read_bool(pdev->dev.of_node,
+						    "xlnx,has-hwaddr-learning");
+
 	pr_info("TSN Switch Initializing ....\n");
+	pr_info("TSN Switch hw_addr_learning :%d\n", en_hw_addr_learning);
+
 	ret = tsn_switch_init();
 	if (ret)
 		return ret;
