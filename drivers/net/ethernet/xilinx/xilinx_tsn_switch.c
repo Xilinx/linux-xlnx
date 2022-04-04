@@ -95,6 +95,10 @@ static u8 en_hw_addr_learning;
 #define PORT_VLAN_HW_ADDR_AGING_BIT		BIT(11)
 #define PORT_VLAN_HW_ADDR_AGING_TIME_SHIFT	(12)
 
+#define NATIVE_MAC1_PCP_SHIFT			(13)
+#define NATIVE_MAC2_VLAN_SHIFT			(16)
+#define NATIVE_MAC2_PCP_SHIFT			(29)
+
 /* Match table for of_platform binding */
 static const struct of_device_id tsnswitch_of_match[] = {
 	{ .compatible = "xlnx,tsn-switch", },
@@ -919,6 +923,99 @@ static int get_vlan_mac_addr_learn(void __user *arg)
 	return 0;
 }
 
+int tsn_switch_pvid_add(struct native_vlan *port)
+{
+	u32 u_value;
+
+	switch (port->port_num) {
+	case PORT_EP:
+		u_value = axienet_ior(&lp, XAS_EP_PORT_VLAN_OFFSET);
+		u_value &= ~PORT_VLAN_ID_MASK;
+		u_value |= port->vlan_id;
+		if (port->en_ipv) {
+			u_value &= ~(SDL_CAM_IPV_MASK << NATIVE_MAC1_PCP_SHIFT);
+			u_value |= (port->ipv << NATIVE_MAC1_PCP_SHIFT);
+		}
+		axienet_iow(&lp, XAS_EP_PORT_VLAN_OFFSET, u_value);
+		break;
+	case PORT_MAC1:
+		u_value = axienet_ior(&lp, XAS_MAC_PORT_VLAN_OFFSET);
+		u_value &= ~PORT_VLAN_ID_MASK;
+		u_value |= port->vlan_id;
+		if (port->en_ipv) {
+			u_value &= ~(SDL_CAM_IPV_MASK << NATIVE_MAC1_PCP_SHIFT);
+			u_value |= (port->ipv << NATIVE_MAC1_PCP_SHIFT);
+		}
+		axienet_iow(&lp, XAS_MAC_PORT_VLAN_OFFSET, u_value);
+		break;
+	case PORT_MAC2:
+		u_value = axienet_ior(&lp, XAS_MAC_PORT_VLAN_OFFSET);
+		u_value &= ~(PORT_VLAN_ID_MASK << NATIVE_MAC2_VLAN_SHIFT);
+		u_value |= (port->vlan_id << NATIVE_MAC2_VLAN_SHIFT);
+		if (port->en_ipv) {
+			u_value &= ~(SDL_CAM_IPV_MASK << NATIVE_MAC2_PCP_SHIFT);
+			u_value |= (port->ipv << NATIVE_MAC2_PCP_SHIFT);
+		}
+		axienet_iow(&lp, XAS_MAC_PORT_VLAN_OFFSET, u_value);
+		break;
+	}
+
+	return 0;
+}
+
+static int set_native_vlan(void __user *arg)
+{
+	struct native_vlan port;
+
+	if (copy_from_user(&port, arg, sizeof(struct native_vlan)))
+		return -EFAULT;
+
+	return tsn_switch_pvid_add(&port);
+}
+
+int tsn_switch_pvid_get(struct native_vlan *port)
+{
+	u32 u_value;
+
+	switch (port->port_num) {
+	case PORT_EP:
+		u_value = axienet_ior(&lp, XAS_EP_PORT_VLAN_OFFSET);
+		port->vlan_id = u_value & PORT_VLAN_ID_MASK;
+		port->ipv = (u_value >> NATIVE_MAC1_PCP_SHIFT) &
+				SDL_CAM_IPV_MASK;
+		break;
+	case PORT_MAC1:
+		u_value = axienet_ior(&lp, XAS_MAC_PORT_VLAN_OFFSET);
+		port->vlan_id = u_value & PORT_VLAN_ID_MASK;
+		port->ipv = (u_value >> NATIVE_MAC1_PCP_SHIFT) &
+				SDL_CAM_IPV_MASK;
+		break;
+	case PORT_MAC2:
+		u_value = axienet_ior(&lp, XAS_MAC_PORT_VLAN_OFFSET);
+		port->vlan_id = (u_value >> NATIVE_MAC2_VLAN_SHIFT) &
+				PORT_VLAN_ID_MASK;
+		port->ipv = (u_value >> NATIVE_MAC2_PCP_SHIFT) &
+				SDL_CAM_IPV_MASK;
+		break;
+	}
+
+	return 0;
+}
+
+static int get_native_vlan(void __user *arg)
+{
+	struct native_vlan port;
+
+	if (copy_from_user(&port, arg, sizeof(struct native_vlan)))
+		return -EFAULT;
+
+	tsn_switch_pvid_get(&port);
+	if (copy_to_user(arg, &port, sizeof(struct native_vlan)))
+		return -EFAULT;
+
+	return 0;
+}
+
 static long switch_ioctl(struct file *file, unsigned int cmd,
 			 unsigned long arg)
 {
@@ -1032,6 +1129,14 @@ static long switch_ioctl(struct file *file, unsigned int cmd,
 
 	case GET_VLAN_MAC_ADDR_LEARN_CONFIG_VLANM:
 		retval = get_vlan_mac_addr_learn((void __user *)arg);
+		break;
+
+	case SET_PORT_NATIVE_VLAN:
+		retval = set_native_vlan((void __user *)arg);
+		break;
+
+	case GET_PORT_NATIVE_VLAN:
+		retval = get_native_vlan((void __user *)arg);
 		break;
 
 	case SET_FRAME_TYPE_FIELD:
