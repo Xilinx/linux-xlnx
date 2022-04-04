@@ -63,7 +63,7 @@ struct preempt_ctrl_sts {
 	u8 disable_preemp_verify:1;
 } __packed;
 
-struct qbu_user_override {
+struct qbu_prog_override {
 	u8 enable_value:1;
 	u16 user_hold_time:9;
 	u8 user_rel_time:6;
@@ -73,8 +73,8 @@ struct qbu_user_override {
 	u8 rel_time_override:1;
 } __packed;
 
-struct qbu_user {
-	struct qbu_user_override user;
+struct qbu_prog {
+	struct qbu_prog_override user;
 	u8 set;
 };
 
@@ -89,6 +89,11 @@ struct qbu_core_status {
 	u8 hold_rel_en:1;
 	u8 pmac_hold_req:1;
 } __packed;
+
+struct qbu_all_status {
+	struct qbu_prog_override prog;
+	struct qbu_core_status core;
+};
 
 struct cnt_64 {
 	unsigned int msb;
@@ -157,4 +162,8 @@ struct emac_pmac_stats {
 	struct pmac_counters pmac;
 };
 
+struct preempt_status {
+	u8 preemp_en;
+	struct preempt_ctrl_sts ctrl;
+};
 #endif /* XILINX_TSN_PREEMPTION_H */

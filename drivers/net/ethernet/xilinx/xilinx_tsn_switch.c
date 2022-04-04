@@ -1352,7 +1352,7 @@ static long switch_ioctl(struct file *file, unsigned int cmd,
 			retval = -EINVAL;
 			goto end;
 		}
-		program_member_reg(cb_data.frer_memb_config_data);
+		program_member_reg(cb_data);
 		break;
 
 	case CONFIG_INGRESS_FLTR:
@@ -1362,7 +1362,7 @@ static long switch_ioctl(struct file *file, unsigned int cmd,
 			retval = -EINVAL;
 			goto end;
 		}
-		config_ingress_filter(cb_data.in_fltr_data);
+		config_ingress_filter(cb_data);
 		break;
 
 	case FRER_CONTROL:

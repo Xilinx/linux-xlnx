@@ -442,9 +442,9 @@ void get_stream_filter_config(struct stream_filter *data);
 /********* cb function declararions ********/
 void frer_control(struct frer_ctrl data);
 void get_ingress_filter_config(struct in_fltr *data);
-void config_ingress_filter(struct in_fltr data);
+void config_ingress_filter(struct cb data);
 void get_member_reg(struct frer_memb_config *data);
-void program_member_reg(struct frer_memb_config data);
+void program_member_reg(struct cb data);
 void get_frer_static_counter(struct frer_static_counter *data);
 int tsn_switch_cam_set(struct cam_struct data, u8 add);
 u8 *tsn_switch_get_id(void);
