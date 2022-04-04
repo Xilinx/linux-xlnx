@@ -49,6 +49,10 @@
 #define GET_MAC_ADDR_LEARNT_LIST		0x32
 #define ADD_PORT_VLAN				0x35
 #define DEL_PORT_VLAN				0x36
+#define SET_VLAN_MAC_ADDR_LEARN_CONFIG		0x37
+#define GET_VLAN_MAC_ADDR_LEARN_CONFIG		0x38
+#define READ_CAM_ENTRY				0x39
+#define GET_VLAN_MAC_ADDR_LEARN_CONFIG_VLANM	0x3C
 
 /* Xilinx Axi Switch Offsets*/
 #define XAS_STATUS_OFFSET			0x00000
@@ -354,12 +358,19 @@ struct port_status {
 };
 
 struct port_vlan {
+	bool aging;
+	bool is_age;
+	bool learning;
+	bool is_learn;
 	bool is_mgmtq;
 	bool en_ipv;
+	bool en_port_status;
 	u8 mgmt_ext_id;
 	u8 port_num;
 	u8 ipv;
+	u8 port_status;
 	u16 vlan_id;
+	u32 aging_time;
 };
 
 enum switch_port {

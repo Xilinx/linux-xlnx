@@ -91,6 +91,9 @@ static u8 en_hw_addr_learning;
 #define PORT_VLAN_READ				(0x1)
 #define PORT_VLAN_WRITE_READ_EN_BIT		BIT(0)
 #define PORT_VLAN_PORT_LIST_VALID_BIT		BIT(3)
+#define PORT_VLAN_HW_ADDR_LEARN_BIT		BIT(9)
+#define PORT_VLAN_HW_ADDR_AGING_BIT		BIT(11)
+#define PORT_VLAN_HW_ADDR_AGING_TIME_SHIFT	(12)
 
 /* Match table for of_platform binding */
 static const struct of_device_id tsnswitch_of_match[] = {
@@ -744,7 +747,21 @@ static int get_port_status(void __user *arg)
 int tsn_switch_vlan_add(struct port_vlan *port, int add)
 {
 	u32 u_value, u_value1, reg, err;
+	u8 learning = 0;
 
+	u_value1 = axienet_ior(&lp, XAS_VLAN_MEMB_DATA_REG);
+	learning = (u_value1 & PORT_VLAN_HW_ADDR_LEARN_BIT) ? 0 : 1;
+	if (learning) {
+		if (port->en_ipv == 1) {
+			pr_err("When hardware address learning is enabled for a VLAN, TSN streams cannot be mapped to a particular priority queue\n");
+			return -EPERM;
+		}
+	} else {
+		if (port->en_port_status == 1) {
+			pr_err("When hardware address learning is disabled for a VLAN, port status cannot be set per VLAN\n");
+			return -EPERM;
+		}
+	}
 	u_value = ((port->vlan_id & PORT_VLAN_ID_MASK) << PORT_VLAN_ID_SHIFT)
 			| PORT_VLAN_READ;
 	axienet_iow(&lp, XAS_VLAN_MEMB_CTRL_REG, u_value);
@@ -758,8 +775,6 @@ int tsn_switch_vlan_add(struct port_vlan *port, int add)
 		return -ETIMEDOUT;
 	}
 
-	u_value1 = axienet_ior(&lp, XAS_VLAN_MEMB_DATA_REG);
-
 	if (add)
 		u_value1 |= PORT_VLAN_PORT_LIST_VALID_BIT | port->port_num;
 	else
@@ -768,8 +783,14 @@ int tsn_switch_vlan_add(struct port_vlan *port, int add)
 
 	u_value = ((port->vlan_id & PORT_VLAN_ID_MASK) << PORT_VLAN_ID_SHIFT)
 			| PORT_VLAN_WRITE;
-	u_value |= ((port->ipv & SDL_CAM_IPV_MASK) << PORT_VLAN_IPV_SHIFT)
+	if (port->en_port_status == 1) {
+		u_value |= ((port->port_status & SDL_CAM_IPV_MASK) << PORT_VLAN_IPV_SHIFT)
+				| (port->en_port_status << PORT_VLAN_EN_IPV_SHIFT);
+	}
+	if (port->en_ipv == 1) {
+		u_value |= ((port->ipv & SDL_CAM_IPV_MASK) << PORT_VLAN_IPV_SHIFT)
 				| (port->en_ipv << PORT_VLAN_EN_IPV_SHIFT);
+	}
 	axienet_iow(&lp, XAS_VLAN_MEMB_CTRL_REG, u_value);
 
 	/* wait for port vlan write completion */
@@ -792,6 +813,110 @@ static int add_del_port_vlan(void __user *arg, u8 add)
 		return -EFAULT;
 
 	return tsn_switch_vlan_add(&port, add);
+}
+
+static int set_vlan_mac_addr_learn(void __user *arg)
+{
+	struct port_vlan port;
+	u32 u_value, u_value1, reg, err;
+
+	if (copy_from_user(&port, arg, sizeof(struct port_vlan)))
+		return -EFAULT;
+
+	u_value = ((port.vlan_id & PORT_VLAN_ID_MASK) << PORT_VLAN_ID_SHIFT)
+			| PORT_VLAN_READ;
+	axienet_iow(&lp, XAS_VLAN_MEMB_CTRL_REG, u_value);
+
+	/* wait for port vlan write completion */
+	err = readl_poll_timeout(lp.regs + XAS_VLAN_MEMB_CTRL_REG, reg,
+				 (!(reg & PORT_VLAN_WRITE_READ_EN_BIT)), 10,
+				 DELAY_OF_FIVE_MILLISEC);
+	if (err) {
+		pr_err("Port vlan write timed out\n");
+		return -ETIMEDOUT;
+	}
+	u_value = axienet_ior(&lp, XAS_VLAN_MEMB_CTRL_REG);
+
+	u_value1 = axienet_ior(&lp, XAS_VLAN_MEMB_DATA_REG);
+
+	if (port.aging_time) {
+		u_value1 &= ~(HW_ADDR_AGING_TIME_MASK <<
+				PORT_VLAN_HW_ADDR_AGING_TIME_SHIFT);
+		u_value1 |= (port.aging_time <<
+				PORT_VLAN_HW_ADDR_AGING_TIME_SHIFT);
+	}
+	if (port.is_age) {
+		if (port.aging)
+			u_value1 |= PORT_VLAN_HW_ADDR_AGING_BIT;
+		else
+			u_value1 &= ~PORT_VLAN_HW_ADDR_AGING_BIT;
+	}
+	if (port.is_learn) {
+		if (port.learning)
+			u_value1 &= ~PORT_VLAN_HW_ADDR_LEARN_BIT;
+		else
+			u_value1 |= PORT_VLAN_HW_ADDR_LEARN_BIT;
+	}
+	axienet_iow(&lp, XAS_VLAN_MEMB_DATA_REG, u_value1);
+
+	u_value |= PORT_VLAN_WRITE;
+	axienet_iow(&lp, XAS_VLAN_MEMB_CTRL_REG, u_value);
+
+	/* wait for port vlan write completion */
+	err = readl_poll_timeout(lp.regs + XAS_VLAN_MEMB_CTRL_REG, reg,
+				 (!(reg & PORT_VLAN_WRITE_READ_EN_BIT)), 10,
+				 DELAY_OF_FIVE_MILLISEC);
+	if (err) {
+		pr_err("Port vlan write timed out\n");
+		return -ETIMEDOUT;
+	}
+
+	return 0;
+}
+
+static int get_vlan_mac_addr_learn(void __user *arg)
+{
+	struct port_vlan port;
+	u32 u_value, u_value1, reg, err;
+
+	if (copy_from_user(&port, arg, sizeof(struct port_vlan)))
+		return -EFAULT;
+
+	u_value = ((port.vlan_id & PORT_VLAN_ID_MASK) << PORT_VLAN_ID_SHIFT)
+			| PORT_VLAN_READ;
+	axienet_iow(&lp, XAS_VLAN_MEMB_CTRL_REG, u_value);
+
+	/* wait for port vlan write completion */
+	err = readl_poll_timeout(lp.regs + XAS_VLAN_MEMB_CTRL_REG, reg,
+				 (!(reg & PORT_VLAN_WRITE_READ_EN_BIT)), 10,
+				 DELAY_OF_FIVE_MILLISEC);
+	if (err) {
+		pr_err("Port vlan write timed out\n");
+		return -ETIMEDOUT;
+	}
+	u_value1 = axienet_ior(&lp, XAS_VLAN_MEMB_CTRL_REG);
+
+	u_value = axienet_ior(&lp, XAS_VLAN_MEMB_DATA_REG);
+
+	port.aging_time = (u_value >> PORT_VLAN_HW_ADDR_AGING_TIME_SHIFT) &
+				HW_ADDR_AGING_TIME_MASK;
+	port.aging = (u_value & PORT_VLAN_HW_ADDR_AGING_BIT) ? 1 : 0;
+	port.learning = (u_value & PORT_VLAN_HW_ADDR_LEARN_BIT) ? 0 : 1;
+	port.port_num = u_value & PORT_STATUS_MASK;
+
+#if IS_ENABLED(CONFIG_XILINX_TSN_QCI)
+	if (port.learning) {
+		port.port_status = (u_value1 >> PORT_VLAN_IPV_SHIFT) & SDL_CAM_IPV_MASK;
+		port.en_port_status = (u_value1 >> PORT_VLAN_EN_IPV_SHIFT) & 0x1;
+	} else {
+		port.ipv = (u_value1 >> PORT_VLAN_IPV_SHIFT) & SDL_CAM_IPV_MASK;
+		port.en_ipv = (u_value1 >> PORT_VLAN_EN_IPV_SHIFT) & 0x1;
+	}
+#endif
+	if (copy_to_user(arg, &port, sizeof(struct port_vlan)))
+		return -EFAULT;
+
+	return 0;
 }
 
 static long switch_ioctl(struct file *file, unsigned int cmd,
@@ -887,11 +1012,27 @@ static long switch_ioctl(struct file *file, unsigned int cmd,
 
 	case ADD_PORT_VLAN:
 		retval = add_del_port_vlan((void __user *)arg, ADD);
-		goto end;
+		break;
 
 	case DEL_PORT_VLAN:
 		retval = add_del_port_vlan((void __user *)arg, DELETE);
-		goto end;
+		break;
+
+	case SET_VLAN_MAC_ADDR_LEARN_CONFIG:
+		if (!en_hw_addr_learning)
+			return -EPERM;
+		retval = set_vlan_mac_addr_learn((void __user *)arg);
+		break;
+
+	case GET_VLAN_MAC_ADDR_LEARN_CONFIG:
+		if (!en_hw_addr_learning)
+			return -EPERM;
+		retval = get_vlan_mac_addr_learn((void __user *)arg);
+		break;
+
+	case GET_VLAN_MAC_ADDR_LEARN_CONFIG_VLANM:
+		retval = get_vlan_mac_addr_learn((void __user *)arg);
+		break;
 
 	case SET_FRAME_TYPE_FIELD:
 		if (copy_from_user(&data, (char __user *)arg, sizeof(data))) {
