@@ -57,6 +57,7 @@ static u8 sw_mac_addr[ETH_ALEN];
 #define SDL_CAM_IPV_MASK			0x7
 #define SDL_CAM_PORT_LIST_SHIFT			8
 #define SDL_GATEID_SHIFT			16
+#define SDL_CAM_EP_MGMTQ_EN			BIT(15)
 #define SDL_CAM_FWD_TO_EP			BIT(0)
 #define SDL_CAM_FWD_TO_PORT_1			BIT(1)
 #define SDL_CAM_FWD_TO_PORT_2			BIT(2)
@@ -67,9 +68,12 @@ static u8 sw_mac_addr[ETH_ALEN];
 #define SDL_CAM_UNTAG_FRAME			BIT(2)
 #define SDL_CAM_TAG_FRAME			BIT(3)
 
+#define PORT_MAC_ADDR_LSB_MASK			(0xF)
+#define MAC2_PORT_MAC_ADDR_LSB_SHIFT		(20)
 #define PORT_STATUS_MASK                       (0x7)
 #define MAC2_PORT_STATUS_SHIFT                 (17)
 #define MAC2_PORT_STATUS_CHG_BIT               BIT(16)
+#define MAC1_PORT_MAC_ADDR_LSB_SHIFT		(12)
 #define MAC1_PORT_STATUS_SHIFT                 (9)
 #define MAC1_PORT_STATUS_CHG_BIT               BIT(8)
 #define EP_PORT_STATUS_SHIFT                   (1)
@@ -102,6 +106,9 @@ static u8 sw_mac_addr[ETH_ALEN];
 #define NATIVE_MAC1_PCP_SHIFT			(13)
 #define NATIVE_MAC2_VLAN_SHIFT			(16)
 #define NATIVE_MAC2_PCP_SHIFT			(29)
+
+#define DEFAULT_PVID		1
+#define DEFAULT_FWD_ALL		GENMASK(2, 0)
 
 /* Match table for of_platform binding */
 static const struct of_device_id tsnswitch_of_match[] = {
@@ -142,7 +149,7 @@ static void set_mac1_mngmntq(u32 config)
 /* MAC Port-2 Management Queueing Options */
 static void set_mac2_mngmntq(u32 config)
 {
-	axienet_iow(&lp, XAS_MAC2_MNG_Q_OPTION_OFFSET, config);
+	axienet_iow(&lp, XAS_MNG_Q_CTRL_OFFSET, config);
 }
 
 /**
@@ -261,7 +268,7 @@ static void get_switch_regs(struct switch_data *data)
 	/* MAC Port 1 Management Q option*/
 	data->mac1_config = axienet_ior(&lp, XAS_MAC1_MNG_Q_OPTION_OFFSET);
 	/* MAC Port 2 Management Q option*/
-	data->mac2_config = axienet_ior(&lp, XAS_MAC2_MNG_Q_OPTION_OFFSET);
+	data->mac2_config = axienet_ior(&lp, XAS_MNG_Q_CTRL_OFFSET);
 
 	/* Port VLAN Membership control*/
 	data->port_vlan_mem_ctrl = axienet_ior(&lp, XAS_VLAN_MEMB_CTRL_REG);
@@ -506,6 +513,9 @@ int tsn_switch_cam_set(struct cam_struct data, u8 add)
 	if (data.fwd_port & PORT_MAC1 || data.fwd_port & PORT_MAC2)
 		port_action |= data.mac_port_act <<
 				SDL_CAM_MAC_ACTION_LIST_SHIFT;
+
+	if (data.flags & XAS_CAM_EP_MGMTQ_EN)
+		port_action |= SDL_CAM_EP_MGMTQ_EN;
 
 	port_action = port_action | (data.fwd_port << SDL_CAM_PORT_LIST_SHIFT);
 
@@ -1471,6 +1481,145 @@ static int tsn_switch_cam_init(u16 num_q)
 	return 0;
 }
 
+static inline void tsn_switch_set_src_mac_filter(const u8 *mac, int port)
+{
+	u32 val;
+	u32 shift = (port == 1) ? MAC1_PORT_MAC_ADDR_LSB_SHIFT :
+		MAC2_PORT_MAC_ADDR_LSB_SHIFT;
+
+	/* program the Source MAC address to filter */
+	val = axienet_ior(&lp, XAS_PORT_STATE_CTRL_OFFSET);
+
+	val &= ~(PORT_MAC_ADDR_LSB_MASK << shift);
+	val |= ((mac[5] & PORT_MAC_ADDR_LSB_MASK) << shift);
+
+	axienet_iow(&lp, XAS_PORT_STATE_CTRL_OFFSET, val);
+}
+
+/* initialize pre-configured fdbs in the system */
+static int tsn_switch_fdb_init(struct platform_device *pdev)
+{
+	u32 val, port;
+	u8 mac_addr[ETH_ALEN];
+	struct device_node *np;
+	u16 num_ports;
+	int ret;
+	struct cam_struct cam;
+
+	ret = of_property_read_u16(pdev->dev.of_node, "xlnx,num-ports",
+				   &num_ports);
+	if (ret) {
+		dev_err(&pdev->dev, "could not read xlnx,num-ports\n");
+		return -EINVAL;
+	}
+
+	/* enable source mac based filtering */
+	val = axienet_ior(&lp, XAS_MNG_Q_CTRL_OFFSET);
+
+	/* compares Source MAC address to determine the Network
+	 * Port on which a frame needs to be forwarded for frames received
+	 * with Internal Endpoint interface.
+	 * [i.e. CPU generated  management frames]
+	 */
+	val |= (1 << XAS_MNG_Q_SRC_MAC_FIL_EN_SHIFT);
+
+	axienet_iow(&lp, XAS_MNG_Q_CTRL_OFFSET, val);
+
+	/* port0 == ep, port1 == temac1 port2 == temac2
+	 * temac1, temac2.. temacn are network ports
+	 */
+	/* network port mac addresses must differ in last lsb nibble
+	 * this is a pre-requisite;
+	 * we program the last nibble here per mac basis
+	 */
+	for (port = 1; port < num_ports; port++) {
+		np = of_parse_phandle(pdev->dev.of_node, "ports", port);
+
+		ret = of_get_mac_address(np, mac_addr);
+		if (ret) {
+			dev_err(&pdev->dev, "could not find MAC address\n");
+			return -EINVAL;
+		}
+		tsn_switch_set_src_mac_filter(mac_addr, port);
+	}
+
+	/* rest of the mac addr for all ports would be same
+	 * so use the last mac instance of the loop above
+	 * set the 32bit lsb of mac address
+	 */
+	axienet_iow(&lp, XAS_MAC_LSB_OFFSET,
+		    (mac_addr[2] << 24) | (mac_addr[3] << 16) |
+		    (mac_addr[4] << 8)  | (mac_addr[5]));
+
+	/* set rest of 16bit msb and 4bit filter(0xF) */
+	axienet_iow(&lp, XAS_MAC_MSB_OFFSET,
+		    (0xF << XAS_MAC_MSB_FF_MASK_SHIFT) |
+		    (mac_addr[0] << 8) | mac_addr[1]);
+
+	/* now tell the switch which frames to consider as mgmt frames
+	 */
+	/*  DA list
+	 *  01-80-C2-00-00-00 STP 802.1d && LLDP
+	 */
+	memset(&cam, 0, sizeof(struct cam_struct));
+
+	cam.dest_addr[0] = 0x01;
+	cam.dest_addr[1] = 0x80;
+	cam.dest_addr[2] = 0xc2;
+	cam.dest_addr[3] = 0x00;
+	cam.dest_addr[4] = 0x00;
+	cam.dest_addr[5] = 0x00;
+
+	/* send it all, src mac filter will pick the port */
+	cam.fwd_port = DEFAULT_FWD_ALL;
+	cam.flags |= XAS_CAM_EP_MGMTQ_EN;
+	cam.vlanid = DEFAULT_PVID;
+	/* TODO if pvid changes on the port of switch,
+	 * these cam entries have to be updated
+	 */
+
+	if (tsn_switch_cam_set(cam, ADD) < 0)
+		dev_err(&pdev->dev, "could not add default fdb\n");
+
+	/* 01-80-c2-00-00-0e  LLDP */
+	cam.dest_addr[5] = 0x0e;
+	if (tsn_switch_cam_set(cam, ADD) < 0)
+		dev_err(&pdev->dev, "could not add default fdb\n");
+	/* CDP */
+	cam.dest_addr[0] = 0x01;
+	cam.dest_addr[1] = 0x00;
+	cam.dest_addr[2] = 0x0c;
+	cam.dest_addr[3] = 0xcc;
+	cam.dest_addr[4] = 0xcc;
+	cam.dest_addr[5] = 0xcc;
+	if (tsn_switch_cam_set(cam, ADD) < 0)
+		dev_err(&pdev->dev, "could not add default fdb\n");
+
+	/* PTPv2 UDP Announce Messages */
+	cam.dest_addr[0] = 0x01;
+	cam.dest_addr[1] = 0x00;
+	cam.dest_addr[2] = 0x5e;
+	cam.dest_addr[3] = 0x00;
+	cam.dest_addr[4] = 0x01;
+	cam.dest_addr[5] = 0x81;
+	if (tsn_switch_cam_set(cam, ADD) < 0)
+		dev_err(&pdev->dev, "could not add default fdb\n");
+	/* PTPv2 UDP P2P Mechanism Messages */
+	cam.dest_addr[4] = 0x00;
+	cam.dest_addr[5] = 0x6b;
+	if (tsn_switch_cam_set(cam, ADD) < 0)
+		dev_err(&pdev->dev, "could not add default fdb\n");
+
+	/* on RX path enable sideband management on frames forwarded to ep
+	 * this only applicable if IP param EN_INBAND_MGMT_TAG is 0
+	 */
+	val = axienet_ior(&lp, XAS_MNG_Q_CTRL_OFFSET);
+	val |= (1 << XAS_MNG_Q_SIDEBAND_EN_SHIFT);
+	axienet_iow(&lp, XAS_MNG_Q_CTRL_OFFSET, val);
+
+	return 0;
+}
+
 static int tsnswitch_probe(struct platform_device *pdev)
 {
 	struct resource *swt;
@@ -1505,10 +1654,12 @@ static int tsnswitch_probe(struct platform_device *pdev)
 	inband_mgmt_tag = of_property_read_bool(pdev->dev.of_node,
 						"xlnx,has-inband-mgmt-tag");
 	/* only support switchdev in sideband management */
-	if (!inband_mgmt_tag)
+	if (!inband_mgmt_tag) {
+		ret = tsn_switch_fdb_init(pdev);
 		xlnx_switchdev_init();
-	else
+	} else {
 		pr_info("TSN IP with inband mgmt: Linux SWITCHDEV turned off\n");
+	}
 
 	return ret;
 }
