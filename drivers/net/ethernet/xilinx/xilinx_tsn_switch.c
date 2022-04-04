@@ -423,6 +423,11 @@ static void add_delete_cam_entry(struct cam_struct data, u8 add)
 		    ((data.dest_addr[4] << 8) | data.dest_addr[5]) |
 		    ((data.vlanid & SDL_CAM_VLAN_MASK) << SDL_CAM_VLAN_SHIFT));
 
+	/* Introduce wmb to preserve KEY2 and TV1 write order fix possible
+	 * HW hang when KEY2 and TV1 registers are accessed sequentially.
+	 * TODO: Check alternatives to barrier.
+	 */
+	wmb();
 	/* TV 1 and TV 2 */
 	axienet_iow(&lp, XAS_SDL_CAM_TV1_OFFSET,
 		    (data.src_addr[0] << 24) | (data.src_addr[1] << 16) |
