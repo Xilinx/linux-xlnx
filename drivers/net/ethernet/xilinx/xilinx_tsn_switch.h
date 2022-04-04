@@ -42,6 +42,8 @@
 #define GET_STATIC_FRER_COUNTER			0x2D
 #define GET_MEMBER_REG				0x2E
 #define GET_INGRESS_FLTR			0x2F
+#define SET_PORT_STATUS				0x33
+#define GET_PORT_STATUS				0x34
 #define SET_MAC_ADDR_LEARN_CONFIG		0x30
 #define GET_MAC_ADDR_LEARN_CONFIG		0x31
 #define GET_MAC_ADDR_LEARNT_LIST		0x32
@@ -311,6 +313,8 @@ struct cam_struct {
 	u8 gate_id;
 	u8 ipv;
 	bool en_ipv;
+	u8 ep_port_act;
+	u8 mac_port_act;
 };
 
 /*Frame Filtering Type Field Option */
@@ -340,6 +344,11 @@ struct mac_addr_list {
 	u8 port_num;
 	u16 num_list;
 	struct mac_learnt list[MAX_NUM_MAC_ENTRIES];
+};
+
+struct port_status {
+	u8 port_num;
+	u8 port_status;
 };
 
 enum switch_port {
@@ -397,4 +406,5 @@ void config_ingress_filter(struct in_fltr data);
 void get_member_reg(struct frer_memb_config *data);
 void program_member_reg(struct frer_memb_config data);
 void get_frer_static_counter(struct frer_static_counter *data);
+int tsn_switch_set_stp_state(struct port_status *port);
 #endif /* XILINX_TSN_SWITCH_H */
