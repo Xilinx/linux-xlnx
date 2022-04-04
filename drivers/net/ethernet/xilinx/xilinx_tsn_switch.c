@@ -443,19 +443,20 @@ static void get_memory_static_counter(struct switch_data *data)
 							     XAS_MEM_STCNTR_ERR_BE_MAC1_MAC2 + 0x4);
 }
 
-static void add_delete_cam_entry(struct cam_struct data, u8 add)
+int tsn_switch_cam_set(struct cam_struct data, u8 add)
 {
 	u32 port_action = 0;
 	u32 tv2 = 0;
-	u32 timeout = 20000;
+	u32 reg, err;
 
-	/* wait for cam init done */
-	while (!(axienet_ior(&lp, XAS_SDL_CAM_STATUS_OFFSET) &
-		SDL_CAM_WR_ENABLE) && timeout)
-		timeout--;
+	err = readl_poll_timeout(lp.regs + XAS_SDL_CAM_STATUS_OFFSET, reg,
+				 (reg & SDL_CAM_WR_ENABLE), 10,
+				 DELAY_OF_FIVE_MILLISEC);
+	if (err) {
+		pr_err("CAM init timed out\n");
+		return -ETIMEDOUT;
+	}
 
-	if (!timeout)
-		pr_warn("CAM init took longer time!!");
 	/* mac and vlan */
 	axienet_iow(&lp, XAS_SDL_CAM_KEY1_OFFSET,
 		    (data.dest_addr[0] << 24) | (data.dest_addr[1] << 16) |
@@ -501,14 +502,16 @@ static void add_delete_cam_entry(struct cam_struct data, u8 add)
 	else
 		axienet_iow(&lp, XAS_SDL_CAM_CTRL_OFFSET, SDL_CAM_DELETE_ENTRY);
 
-	timeout = 20000;
 	/* wait for write to complete */
-	while ((axienet_ior(&lp, XAS_SDL_CAM_CTRL_OFFSET) &
-		SDL_CAM_WR_ENABLE) && timeout)
-		timeout--;
+	err = readl_poll_timeout(lp.regs + XAS_SDL_CAM_CTRL_OFFSET, reg,
+				 (!(reg & SDL_CAM_WR_ENABLE)), 10,
+				 DELAY_OF_FIVE_MILLISEC);
+	if (err) {
+		pr_err("CAM write timed out\n");
+		return -ETIMEDOUT;
+	}
 
-	if (!timeout)
-		pr_warn("CAM write took longer time!!");
+	return 0;
 }
 
 static void port_vlan_mem_ctrl(u32 port_vlan_mem)
@@ -1118,7 +1121,10 @@ static long switch_ioctl(struct file *file, unsigned int cmd,
 			retval = -EINVAL;
 			goto end;
 		}
-		add_delete_cam_entry(data.cam_data, ADD);
+		if (tsn_switch_cam_set(data.cam_data, ADD)) {
+			retval = -EINVAL;
+			goto end;
+		}
 		break;
 
 	case DELETE_CAM_ENTRY:
@@ -1127,7 +1133,10 @@ static long switch_ioctl(struct file *file, unsigned int cmd,
 			retval = -EINVAL;
 			goto end;
 		}
-		add_delete_cam_entry(data.cam_data, DELETE);
+		if (tsn_switch_cam_set(data.cam_data, DELETE)) {
+			retval = -EINVAL;
+			goto end;
+		}
 		break;
 
 	case PORT_VLAN_MEM_CTRL:
