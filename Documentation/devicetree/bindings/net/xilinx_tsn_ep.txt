@@ -18,6 +18,17 @@ Optional properties:
 			  is Tx: "1 to 2" and Rx: "2 to 5", default value is "1 to 5".
 - xlnx,eth-hasnobuf	: Used when 1G MAC is configured in non processor mode.
 
+Optional TADMA properties:
+- xlnx,num-buffers-per-stream	: Number of TADMA buffers per stream in design. Default is 64.
+- xlnx,num-streams		: Number of streams. Default is 8.
+- xlnx,num-fetch-entries	: Maximum number of entries that can be programmed to be
+				  fetched by TADMA. Default is 8.
+- axistream-connected-tx	: Reference to another node which contains the
+				  resources for the TADMA controller used by
+				  this device. The TADMA-related resources
+				  (registers and interrupts) will be used from
+				  this node.
+
 [1] Documentation/devicetree/bindings/net/ethernet.txt
 
 Example:
