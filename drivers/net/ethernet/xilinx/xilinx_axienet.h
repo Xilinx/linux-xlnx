@@ -734,6 +734,7 @@ enum axienet_tsn_ioctl {
  * @num_tc:	Total number of TSN Traffic classes
  * @master:	Master endpoint
  * @slaves:	Front panel ports
+ * @switch_prt: Switch port number
  * @timer_priv: PTP timer private data pointer
  * @ptp_tx_irq: PTP tx irq
  * @ptp_rx_irq: PTP rx irq
@@ -833,6 +834,7 @@ struct axienet_local {
 	u16    num_tc;
 	struct net_device *master; /* master endpoint */
 	struct net_device *slaves[2]; /* two front panel ports */
+	u8      switch_prt;	/* port on the switch */
 #ifdef CONFIG_XILINX_TSN_PTP
 	void *timer_priv;
 	int ptp_tx_irq;
@@ -1347,6 +1349,11 @@ void axienet_tx_hwtstamp(struct axienet_local *lp,
 #else
 void axienet_tx_hwtstamp(struct axienet_local *lp,
 			 struct axidma_bd *cur_p);
+#endif
+
+#ifdef CONFIG_XILINX_TSN_SWITCH
+int tsn_switch_get_port_parent_id(struct net_device *dev,
+				  struct netdev_phys_item_id *ppid);
 #endif
 
 #endif /* XILINX_AXI_ENET_H */

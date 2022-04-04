@@ -25,6 +25,7 @@
 #include <linux/skbuff.h>
 
 #include "xilinx_axienet.h"
+#include "xilinx_tsn_switch.h"
 
 #define TX_BD_NUM_DEFAULT	64
 #define RX_BD_NUM_DEFAULT	1024
@@ -255,6 +256,9 @@ static const struct net_device_ops ep_netdev_ops = {
 	.ndo_do_ioctl = tsn_ep_ioctl,
 	.ndo_start_xmit = tsn_ep_xmit,
 	.ndo_set_mac_address = netdev_set_mac_address,
+#if defined(CONFIG_XILINX_TSN_SWITCH)
+	.ndo_get_port_parent_id = tsn_switch_get_port_parent_id,
+#endif
 };
 
 static const struct of_device_id tsn_ep_of_match[] = {
@@ -376,6 +380,7 @@ static int tsn_ep_probe(struct platform_device *pdev)
 	lp->options = XAE_OPTION_DEFAULTS;
 	lp->tx_bd_num = TX_BD_NUM_DEFAULT;
 	lp->rx_bd_num = RX_BD_NUM_DEFAULT;
+	lp->switch_prt = PORT_EP;
 
 	/* TODO
 	 * there are two temacs or two slaves to ep
