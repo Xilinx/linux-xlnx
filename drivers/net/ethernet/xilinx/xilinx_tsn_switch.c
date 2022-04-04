@@ -83,6 +83,15 @@ static u8 en_hw_addr_learning;
 #define HW_ADDR_LEARN_UNTAG_BIT			BIT(1)
 #define HW_ADDR_LEARN_BIT			BIT(0)
 
+#define PORT_VLAN_ID_SHIFT			(16)
+#define PORT_VLAN_ID_MASK			(0xFFF)
+#define PORT_VLAN_IPV_SHIFT			(13)
+#define PORT_VLAN_EN_IPV_SHIFT			(12)
+#define PORT_VLAN_WRITE				(0x3)
+#define PORT_VLAN_READ				(0x1)
+#define PORT_VLAN_WRITE_READ_EN_BIT		BIT(0)
+#define PORT_VLAN_PORT_LIST_VALID_BIT		BIT(3)
+
 /* Match table for of_platform binding */
 static const struct of_device_id tsnswitch_of_match[] = {
 	{ .compatible = "xlnx,tsn-switch", },
@@ -732,6 +741,59 @@ static int get_port_status(void __user *arg)
 	return 0;
 }
 
+int tsn_switch_vlan_add(struct port_vlan *port, int add)
+{
+	u32 u_value, u_value1, reg, err;
+
+	u_value = ((port->vlan_id & PORT_VLAN_ID_MASK) << PORT_VLAN_ID_SHIFT)
+			| PORT_VLAN_READ;
+	axienet_iow(&lp, XAS_VLAN_MEMB_CTRL_REG, u_value);
+
+	/* wait for port vlan write completion */
+	err = readl_poll_timeout(lp.regs + XAS_VLAN_MEMB_CTRL_REG, reg,
+				 (!(reg & PORT_VLAN_WRITE_READ_EN_BIT)), 10,
+				 DELAY_OF_FIVE_MILLISEC);
+	if (err) {
+		pr_err("Port vlan write timed out\n");
+		return -ETIMEDOUT;
+	}
+
+	u_value1 = axienet_ior(&lp, XAS_VLAN_MEMB_DATA_REG);
+
+	if (add)
+		u_value1 |= PORT_VLAN_PORT_LIST_VALID_BIT | port->port_num;
+	else
+		u_value1 &= ~(port->port_num);
+	axienet_iow(&lp, XAS_VLAN_MEMB_DATA_REG, u_value1);
+
+	u_value = ((port->vlan_id & PORT_VLAN_ID_MASK) << PORT_VLAN_ID_SHIFT)
+			| PORT_VLAN_WRITE;
+	u_value |= ((port->ipv & SDL_CAM_IPV_MASK) << PORT_VLAN_IPV_SHIFT)
+				| (port->en_ipv << PORT_VLAN_EN_IPV_SHIFT);
+	axienet_iow(&lp, XAS_VLAN_MEMB_CTRL_REG, u_value);
+
+	/* wait for port vlan write completion */
+	err = readl_poll_timeout(lp.regs + XAS_VLAN_MEMB_CTRL_REG, reg,
+				 (!(reg & PORT_VLAN_WRITE_READ_EN_BIT)), 10,
+				 DELAY_OF_FIVE_MILLISEC);
+	if (err) {
+		pr_err("Port vlan write timed out\n");
+		return -ETIMEDOUT;
+	}
+
+	return 0;
+}
+
+static int add_del_port_vlan(void __user *arg, u8 add)
+{
+	struct port_vlan port;
+
+	if (copy_from_user(&port, arg, sizeof(struct port_vlan)))
+		return -EFAULT;
+
+	return tsn_switch_vlan_add(&port, add);
+}
+
 static long switch_ioctl(struct file *file, unsigned int cmd,
 			 unsigned long arg)
 {
@@ -821,6 +883,14 @@ static long switch_ioctl(struct file *file, unsigned int cmd,
 		if (!en_hw_addr_learning)
 			return -EPERM;
 		retval = get_port_status((void __user *)arg);
+		goto end;
+
+	case ADD_PORT_VLAN:
+		retval = add_del_port_vlan((void __user *)arg, ADD);
+		goto end;
+
+	case DEL_PORT_VLAN:
+		retval = add_del_port_vlan((void __user *)arg, DELETE);
 		goto end;
 
 	case SET_FRAME_TYPE_FIELD:

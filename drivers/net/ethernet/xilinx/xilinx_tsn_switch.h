@@ -47,6 +47,8 @@
 #define SET_MAC_ADDR_LEARN_CONFIG		0x30
 #define GET_MAC_ADDR_LEARN_CONFIG		0x31
 #define GET_MAC_ADDR_LEARNT_LIST		0x32
+#define ADD_PORT_VLAN				0x35
+#define DEL_PORT_VLAN				0x36
 
 /* Xilinx Axi Switch Offsets*/
 #define XAS_STATUS_OFFSET			0x00000
@@ -351,6 +353,15 @@ struct port_status {
 	u8 port_status;
 };
 
+struct port_vlan {
+	bool is_mgmtq;
+	bool en_ipv;
+	u8 mgmt_ext_id;
+	u8 port_num;
+	u8 ipv;
+	u16 vlan_id;
+};
+
 enum switch_port {
 	PORT_EP = 1,
 	PORT_MAC1 = 2,
@@ -407,4 +418,5 @@ void get_member_reg(struct frer_memb_config *data);
 void program_member_reg(struct frer_memb_config data);
 void get_frer_static_counter(struct frer_static_counter *data);
 int tsn_switch_set_stp_state(struct port_status *port);
+int tsn_switch_vlan_add(struct port_vlan *port, int add);
 #endif /* XILINX_TSN_SWITCH_H */
