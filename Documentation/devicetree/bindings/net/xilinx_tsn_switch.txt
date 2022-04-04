@@ -4,6 +4,9 @@ Xilinx TSN (time sensitive networking) Switch Driver (xilinx_tsn_switch)
 Required properties:
 - compatible		: Should be "xlnx,tsn-switch"
 - reg			: Physical base address and size of the TSN registers map.
+- xlnx,num-ports	: Number of network ports in subsystems. For ex., for an
+			  EP + Switch system to two TEMACs, this value should be 3
+			  (ep, temac1 and temac 2).
 
 Optional properties:
 - xlnx,num-tc		: Number of traffic class supported in current design,
