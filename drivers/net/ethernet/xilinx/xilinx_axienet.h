@@ -730,6 +730,7 @@ enum axienet_tsn_ioctl {
 	SIOC_TADMA_STR_ADD,
 	SIOC_TADMA_PROG_ALL,
 	SIOC_TADMA_STR_FLUSH,
+	SIOC_PREEMPTION_RECEIVE,
 };
 
 /**
@@ -1303,6 +1304,7 @@ int axienet_get_schedule(struct net_device *ndev, void __user *useraddr);
 int axienet_preemption(struct net_device *ndev, void __user *useraddr);
 int axienet_preemption_ctrl(struct net_device *ndev, void __user *useraddr);
 int axienet_preemption_sts(struct net_device *ndev, void __user *useraddr);
+int axienet_preemption_receive(struct net_device *ndev);
 int axienet_preemption_cnt(struct net_device *ndev, void __user *useraddr);
 #ifdef CONFIG_XILINX_TSN_QBV
 int axienet_qbu_user_override(struct net_device *ndev, void __user *useraddr);

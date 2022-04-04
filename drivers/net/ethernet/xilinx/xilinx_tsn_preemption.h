@@ -28,6 +28,7 @@
 #define RX_BYTES_PMAC_REG			0x00000800
 
 #define PREEMPTION_ENABLE			BIT(0)
+#define PREEMPTION_SUPPORT			BIT(15)
 
 #define TX_PREEMPTION_STS			BIT(31)
 #define MAC_MERGE_TX_VERIFY_STS_MASK		0x7
@@ -56,12 +57,12 @@
 #define PMAC_HOLD_REQ_STS			BIT(0)
 
 struct preempt_ctrl_sts {
-	u8 tx_preemp_sts:1;
-	u8 mac_tx_verify_sts:3;
-	u8 verify_timer_value:7;
-	u8 additional_frag_size:2;
-	u8 disable_preemp_verify:1;
-} __packed;
+	u8 tx_preemp_sts;
+	u8 mac_tx_verify_sts;
+	u8 verify_timer_value;
+	u8 additional_frag_size;
+	u8 disable_preemp_verify;
+};
 
 struct qbu_prog_override {
 	u8 enable_value:1;
@@ -164,6 +165,7 @@ struct emac_pmac_stats {
 
 struct preempt_status {
 	u8 preemp_en;
+	u8 preemp_sup;
 	struct preempt_ctrl_sts ctrl;
 };
 #endif /* XILINX_TSN_PREEMPTION_H */

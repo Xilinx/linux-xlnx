@@ -78,6 +78,8 @@ int axienet_preemption_sts(struct net_device *ndev, void __user *useraddr)
 
 	value = axienet_ior(lp, PREEMPTION_ENABLE_REG);
 	status.preemp_en = value & PREEMPTION_ENABLE;
+	value = axienet_ior(lp, XAE_TSN_ABL_OFFSET);
+	status.preemp_sup = (value & PREEMPTION_SUPPORT) ? 1 : 0;
 
 	value = axienet_ior(lp, PREEMPTION_CTRL_STS_REG);
 	status.ctrl.tx_preemp_sts = (value & TX_PREEMPTION_STS) ? 1 : 0;
@@ -91,6 +93,24 @@ int axienet_preemption_sts(struct net_device *ndev, void __user *useraddr)
 
 	if (copy_to_user(useraddr, &status, sizeof(struct preempt_status)))
 		return -EFAULT;
+	return 0;
+}
+
+int axienet_preemption_receive(struct net_device *ndev)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+	u32 value;
+	u8 preemption_support;
+
+	value = axienet_ior(lp, XAE_TSN_ABL_OFFSET);
+	preemption_support = (value & PREEMPTION_SUPPORT) ? 1 : 0;
+
+	if (!preemption_support)
+		return -EOPNOTSUPP;
+
+	value = axienet_ior(lp, PREEMPTION_ENABLE_REG);
+	value = value | PREEMPTION_ENABLE;
+	axienet_iow(lp, PREEMPTION_ENABLE_REG, value);
 	return 0;
 }
 
