@@ -752,6 +752,8 @@ enum axienet_tsn_ioctl {
  * @phy_mode:	Phy type to identify between MII/GMII/RGMII/SGMII/1000 Base-X
  * @is_tsn:	Denotes a tsn port
  * @num_tc:	Total number of TSN Traffic classes
+ * @st_pcp:     pcp values mapped to scheduled traffic.
+ * @res_pcp:    pcp values mapped to reserved traffic.
  * @master:	Master endpoint
  * @slaves:	Front panel ports
  * @switch_prt: Switch port number
@@ -853,6 +855,8 @@ struct axienet_local {
 	bool is_tsn;
 #ifdef CONFIG_XILINX_TSN
 	u16    num_tc;
+	u8    st_pcp;
+	u8    res_pcp;
 	struct net_device *master; /* master endpoint */
 	struct net_device *slaves[2]; /* two front panel ports */
 	u8      switch_prt;	/* port on the switch */
@@ -1287,6 +1291,8 @@ int axienet_tsn_probe(struct platform_device *pdev,
 int axienet_tsn_xmit(struct sk_buff *skb, struct net_device *ndev);
 u16 axienet_tsn_select_queue(struct net_device *ndev, struct sk_buff *skb,
 			     struct net_device *sb_dev);
+int axienet_get_pcp_mask(struct platform_device *pdev,
+			 struct axienet_local *lp, u16 num_tc);
 #endif
 #ifdef CONFIG_XILINX_TSN_PTP
 void *axienet_ptp_timer_probe(void __iomem *base, struct platform_device *pdev);

@@ -36,14 +36,6 @@ static u8 sw_mac_addr[ETH_ALEN];
 #define PMAP_EGRESS_QUEUE0_SELECT		0x0
 #define PMAP_EGRESS_QUEUE1_SELECT		0x1
 #define PMAP_EGRESS_QUEUE2_SELECT		0x2
-#define PMAP_PRIORITY0_SHIFT			0
-#define PMAP_PRIORITY1_SHIFT			4
-#define PMAP_PRIORITY2_SHIFT			8
-#define PMAP_PRIORITY3_SHIFT			12
-#define PMAP_PRIORITY4_SHIFT			16
-#define PMAP_PRIORITY5_SHIFT			20
-#define PMAP_PRIORITY6_SHIFT			24
-#define PMAP_PRIORITY7_SHIFT			28
 #define SDL_EN_CAM_IPV_SHIFT			28
 #define SDL_CAM_IPV_SHIFT			29
 
@@ -1444,8 +1436,10 @@ static int tsn_switch_init(void)
 
 static int tsn_switch_cam_init(u16 num_q)
 {
-	u32 pmap;
+	u32 pmap = 0;
 	u32 timeout = 20000;
+	u8 pmap_priority_shift = 0;
+	u8 i = 0;
 
 	/* wait for switch init done */
 	while (!(axienet_ior(&lp, XAS_STATUS_OFFSET) &
@@ -1456,15 +1450,30 @@ static int tsn_switch_cam_init(u16 num_q)
 		pr_warn("Switch init took longer time!!");
 
 	if (num_q == 3) {
-	/* map pcp = 2,3 to queue1
-	 *     pcp = 4 to queue2
-	 */
-		pmap = ((PMAP_EGRESS_QUEUE1_SELECT << PMAP_PRIORITY2_SHIFT) |
-			(PMAP_EGRESS_QUEUE1_SELECT << PMAP_PRIORITY3_SHIFT) |
-			(PMAP_EGRESS_QUEUE2_SELECT << PMAP_PRIORITY4_SHIFT));
+	/* map pcp's to queues in accordance with device tree */
+		i = 0;
+		while (i != 8) {
+			if (lp.st_pcp & (1 << i)) {
+				pmap_priority_shift = 4 * i;
+				pmap = pmap |
+				PMAP_EGRESS_QUEUE2_SELECT << pmap_priority_shift;
+			} else if (lp.res_pcp & (1 << i)) {
+				pmap_priority_shift = 4 * i;
+				pmap = pmap |
+				PMAP_EGRESS_QUEUE1_SELECT << pmap_priority_shift;
+			}
+			i = i + 1;
+		}
 	} else {
-		/*     pcp = 4 to queue1 */
-		pmap = (PMAP_EGRESS_QUEUE1_SELECT << PMAP_PRIORITY4_SHIFT);
+		i = 0;
+		while (i != 8) {
+			if (lp.st_pcp & (1 << i)) {
+				pmap_priority_shift = 4 * i;
+				pmap = pmap |
+				PMAP_EGRESS_QUEUE1_SELECT << pmap_priority_shift;
+			}
+			i = i + 1;
+		}
 	}
 
 	axienet_iow(&lp, XAS_PMAP_OFFSET, pmap);

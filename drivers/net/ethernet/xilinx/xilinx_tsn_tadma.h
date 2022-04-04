@@ -93,7 +93,6 @@
 #define SFM_UPPER 0
 #define SFM_LOWER 1
 
-#define ST_PCP_VALUE 0x4
 
 enum qtype {
 	qt_st = 0,

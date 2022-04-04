@@ -662,6 +662,7 @@ int axienet_tadma_add_stream(struct net_device *ndev, void __user *useraddr)
 	u32 idx, sid;
 	u16 vlan_tci;
 	u8 mac_vlan[8];
+	int st_pcp_val;
 
 	if (copy_from_user(&stream, useraddr, sizeof(struct tadma_stream)))
 		return -EFAULT;
@@ -676,8 +677,12 @@ int axienet_tadma_add_stream(struct net_device *ndev, void __user *useraddr)
 
 	memcpy(mac_vlan, stream.dmac, 6);
 
+	for (st_pcp_val = 0; st_pcp_val < 8; st_pcp_val++) {
+		if (lp->st_pcp & (1 << st_pcp_val))
+			break;
+	}
 	vlan_tci = stream.vid & VLAN_VID_MASK;
-	vlan_tci |= (ST_PCP_VALUE << VLAN_PRIO_SHIFT) & VLAN_PRIO_MASK;
+	vlan_tci |= (st_pcp_val << VLAN_PRIO_SHIFT) & VLAN_PRIO_MASK;
 	mac_vlan[6] = (vlan_tci >> 8) & 0xff;
 	mac_vlan[7] = (vlan_tci & 0xff);
 
