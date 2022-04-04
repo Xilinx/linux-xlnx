@@ -189,6 +189,42 @@ static int tsn_ep_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 	}
 }
 
+static u16 axienet_tsn_ep_select_queue(struct net_device *ndev, struct sk_buff *skb,
+				       struct net_device *sb_dev)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+	struct ethhdr *hdr = (struct ethhdr *)skb->data;
+	u16 ether_type = ntohs(hdr->h_proto);
+	u16 vlan_tci;
+	u8 pcp = 0;
+
+	if (unlikely(ether_type == ETH_P_8021Q)) {
+		struct vlan_ethhdr *vhdr = (struct vlan_ethhdr *)skb->data;
+
+		/* ether_type = ntohs(vhdr->h_vlan_encapsulated_proto); */
+
+		vlan_tci = ntohs(vhdr->h_vlan_TCI);
+
+		pcp = (vlan_tci & VLAN_PRIO_MASK) >> VLAN_PRIO_SHIFT;
+#ifdef CONFIG_AXIENET_HAS_TADMA
+		if (pcp == 4) { /* ST Traffic */
+			if (lp->num_tx_queues == 1) {
+				/* if number of transmit queues is 1,
+				 * reserved traffic is transmitted on BE traffic queue
+				 */
+				return ST_QUEUE_NUMBER_1;
+			}
+			return ST_QUEUE_NUMBER_2;
+		}
+#endif
+	}
+	if (lp->num_tc == 3 && (pcp == 2 || pcp == 3)) {
+		if (lp->num_tx_queues != 1)
+			return RES_QUEUE_NUMBER;
+	}
+	return BE_QUEUE_NUMBER;
+}
+
 /**
  * tsn_ep_xmit - TSN endpoint xmit routine.
  * @skb: Packet data
@@ -202,32 +238,16 @@ static int tsn_ep_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 static int tsn_ep_xmit(struct sk_buff *skb, struct net_device *ndev)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
-	struct ethhdr *hdr = (struct ethhdr *)skb->data;
-	u16 ether_type = ntohs(hdr->h_proto);
-	u16 map = 0;
-	u16 vlan_tci;
-	u8 pcp = 0;
-	u16 queue = 0; /*BE*/
-
-	if (unlikely(ether_type == ETH_P_8021Q)) {
-		struct vlan_ethhdr *vhdr = (struct vlan_ethhdr *)skb->data;
-
-		/* ether_type = ntohs(vhdr->h_vlan_encapsulated_proto); */
-
-		vlan_tci = ntohs(vhdr->h_vlan_TCI);
-
-		pcp = (vlan_tci & VLAN_PRIO_MASK) >> VLAN_PRIO_SHIFT;
+	u16 map = skb_get_queue_mapping(skb);
 
 #ifdef CONFIG_AXIENET_HAS_TADMA
-		if (pcp == 4) /* ST Traffic */
-			return axienet_tadma_xmit(skb, ndev, map);
+	if (lp->num_tx_queues == 1 && map == ST_QUEUE_NUMBER_1) /* ST Traffic */
+		return axienet_tadma_xmit(skb, ndev, map);
+	if (lp->num_tx_queues == 2 && map == ST_QUEUE_NUMBER_2) /* ST Traffic */
+		return axienet_tadma_xmit(skb, ndev, map);
 #endif
-	}
-	/* for non-ST mcdma select tx queue */
-	if (lp->num_tc == 3 && (pcp == 2 || pcp == 3))
-		queue = 1; /* RES */
 
-	return axienet_queue_xmit(skb, ndev, queue);
+	return axienet_queue_xmit(skb, ndev, map);
 }
 
 static void tsn_ep_set_mac_address(struct net_device *ndev, const void *address)
@@ -263,6 +283,7 @@ static const struct net_device_ops ep_netdev_ops = {
 	.ndo_do_ioctl = tsn_ep_ioctl,
 	.ndo_start_xmit = tsn_ep_xmit,
 	.ndo_set_mac_address = netdev_set_mac_address,
+	.ndo_select_queue = axienet_tsn_ep_select_queue,
 #if defined(CONFIG_XILINX_TSN_SWITCH)
 	.ndo_get_port_parent_id = tsn_switch_get_port_parent_id,
 #endif
@@ -363,10 +384,12 @@ static int tsn_ep_probe(struct platform_device *pdev)
 	struct axienet_local *lp;
 	struct net_device *ndev;
 	struct resource *ethres;
+	u16 num_queues = XAE_MAX_QUEUES;
 	u16 num_tc = 0;
 	char irq_name[32];
 
-	ndev = alloc_netdev(sizeof(*lp), "ep", NET_NAME_UNKNOWN, ether_setup);
+	ndev = alloc_netdev_mq(sizeof(*lp), "ep",
+			       NET_NAME_UNKNOWN, ether_setup, num_queues);
 	if (!ndev)
 		return -ENOMEM;
 
