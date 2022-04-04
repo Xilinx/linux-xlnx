@@ -686,6 +686,17 @@ struct aximcdma_bd {
 #define XAE_MAX_TSN_TC		3
 #define XAE_TSN_MIN_QUEUES	2
 #define TSN_BRIDGEEP_EPONLY	BIT(29)
+
+#ifdef CONFIG_AXIENET_HAS_TADMA
+#define TADMA_MAX_NO_STREAM	128
+struct axitadma_bd {
+	u32 phys;
+	phys_addr_t tx_skb;
+	u32 tx_desc_mapping;
+	u32 num_frag;
+	u32 len;
+};
+#endif
 #endif
 
 enum axienet_tsn_ioctl {
@@ -697,6 +708,9 @@ enum axienet_tsn_ioctl {
 	SIOC_PREEMPTION_COUNTER,
 	SIOC_QBU_USER_OVERRIDE,
 	SIOC_QBU_STS,
+	SIOC_TADMA_STR_ADD,
+	SIOC_TADMA_PROG_ALL,
+	SIOC_TADMA_STR_FLUSH,
 };
 
 /**
@@ -731,6 +745,18 @@ enum axienet_tsn_ioctl {
  * @ptp_txq:	PTP tx queue header
  * @tx_tstamp_work: PTP timestamping work queue
  * @qbv_regs:	pointer to qbv registers base address
+ * @tadma_regs: pointer to tadma registers base address
+ * @tadma_irq: TADMA IRQ number
+ * @t_cb: pointer to tadma_cb
+ * @active_sfm: current active stream fetch memory
+ * @num_tadma_buffers: number of TADMA buffers per stream
+ * @num_streams: maximum number of streams TADMA can fetch
+ * @num_entries: maximum number of entries in TADMA streams config
+ * @tx_bd: tadma transmit buffer descriptor
+ * @tx_bd_head: transmit BD head indices
+ * @tx_bd_tail: transmit BD tail indices
+ * @tx_bd_rd: TADMA read pointer offset
+ * @tadma_tx_lock: TADMA tx lock
  * @ptp_tx_lock: PTP tx lock
  * @dma_err_tasklet: Tasklet structure to process Axi DMA errors
  * @eth_irq:	Axi Ethernet IRQ number
@@ -821,6 +847,20 @@ struct axienet_local {
 #endif
 #ifdef CONFIG_XILINX_TSN_QBV
 	void __iomem *qbv_regs;
+#endif
+#ifdef CONFIG_AXIENET_HAS_TADMA
+	void __iomem *tadma_regs;
+	int tadma_irq;
+	void *t_cb;
+	int active_sfm;
+	int num_tadma_buffers;
+	int num_streams;
+	int num_entries;
+	struct axitadma_bd **tx_bd;
+	u32 tx_bd_head[TADMA_MAX_NO_STREAM];
+	u32 tx_bd_tail[TADMA_MAX_NO_STREAM];
+	u32 tx_bd_rd[TADMA_MAX_NO_STREAM];
+	spinlock_t tadma_tx_lock;               /* TSN TADMA tx lock*/
 #endif
 #endif
 	spinlock_t ptp_tx_lock;		/* PTP tx lock*/
@@ -1248,6 +1288,17 @@ int axienet_qbu_sts(struct net_device *ndev, void __user *useraddr);
 int axienet_mdio_wait_until_ready(struct axienet_local *lp);
 void __maybe_unused axienet_bd_free(struct net_device *ndev,
 				    struct axienet_dma_q *q);
+
+#ifdef CONFIG_AXIENET_HAS_TADMA
+int axienet_tadma_add_stream(struct net_device *ndev, void __user *useraddr);
+int axienet_tadma_flush_stream(struct net_device *ndev, void __user *useraddr);
+int axienet_tadma_program(struct net_device *ndev, void __user *useraddr);
+int axienet_tadma_probe(struct platform_device *pdev, struct net_device *ndev);
+int axienet_tadma_xmit(struct sk_buff *skb, struct net_device *ndev, u16 queue_type);
+int axienet_tadma_open(struct net_device *ndev);
+int axienet_tadma_stop(struct net_device *ndev);
+#endif
+
 int __maybe_unused axienet_dma_q_init(struct net_device *ndev,
 				      struct axienet_dma_q *q);
 void axienet_dma_err_handler(unsigned long data);

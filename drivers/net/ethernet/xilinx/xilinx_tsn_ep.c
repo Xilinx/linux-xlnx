@@ -79,10 +79,22 @@ static int tsn_ep_open(struct net_device *ndev)
 		if (ret)
 			goto err_dma_tx_irq;
 	}
+#ifdef CONFIG_AXIENET_HAS_TADMA
+	ret = axienet_tadma_open(ndev);
+	if (ret)
+		goto err_tadma;
+#endif
 
 	netif_tx_start_all_queues(ndev);
 	return 0;
 
+#ifdef CONFIG_AXIENET_HAS_TADMA
+err_tadma:
+	for_each_tx_dma_queue(lp, i) {
+		q = lp->dq[i];
+		free_irq(q->tx_irq, ndev);
+	}
+#endif
 err_dma_tx_irq:
 	for_each_rx_dma_queue(lp, i) {
 		q = lp->dq[i];
@@ -129,6 +141,9 @@ static int tsn_ep_stop(struct net_device *ndev)
 
 		free_irq(q->rx_irq, ndev);
 	}
+#ifdef CONFIG_AXIENET_HAS_TADMA
+	axienet_tadma_stop(ndev);
+#endif
 
 	return 0;
 }
@@ -153,6 +168,14 @@ static int tsn_ep_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 	case SIOC_GET_SCHED:
 		return axienet_get_schedule(dev, rq->ifr_data);
 #endif
+#ifdef CONFIG_AXIENET_HAS_TADMA
+	case SIOC_TADMA_STR_ADD:
+		return axienet_tadma_add_stream(dev, rq->ifr_data);
+	case SIOC_TADMA_PROG_ALL:
+		return axienet_tadma_program(dev, rq->ifr_data);
+	case SIOC_TADMA_STR_FLUSH:
+		return axienet_tadma_flush_stream(dev, rq->ifr_data);
+#endif
 	default:
 		return -EOPNOTSUPP;
 	}
@@ -173,6 +196,7 @@ static int tsn_ep_xmit(struct sk_buff *skb, struct net_device *ndev)
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct ethhdr *hdr = (struct ethhdr *)skb->data;
 	u16 ether_type = ntohs(hdr->h_proto);
+	u16 map = 0;
 	u16 vlan_tci;
 	u8 pcp = 0;
 	u16 queue = 0; /*BE*/
@@ -185,6 +209,11 @@ static int tsn_ep_xmit(struct sk_buff *skb, struct net_device *ndev)
 		vlan_tci = ntohs(vhdr->h_vlan_TCI);
 
 		pcp = (vlan_tci & VLAN_PRIO_MASK) >> VLAN_PRIO_SHIFT;
+
+#ifdef CONFIG_AXIENET_HAS_TADMA
+		if (pcp == 4) /* ST Traffic */
+			return axienet_tadma_xmit(skb, ndev, map);
+#endif
 	}
 	/* for non-ST mcdma select tx queue */
 	if (lp->num_tc == 3 && (pcp == 2 || pcp == 3))
@@ -352,6 +381,13 @@ static int tsn_ep_probe(struct platform_device *pdev)
 		goto free_netdev;
 	}
 
+#ifdef CONFIG_AXIENET_HAS_TADMA
+	ret = axienet_tadma_probe(pdev, ndev);
+	if (ret) {
+		dev_err(&pdev->dev, "Getting TADMA resource failed\n");
+		goto free_netdev;
+	}
+#endif
 	ret = of_property_read_u16(pdev->dev.of_node, "xlnx,num-tc", &num_tc);
 	if (ret || (num_tc != 2 && num_tc != 3))
 		lp->num_tc = XAE_MAX_TSN_TC;
