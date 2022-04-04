@@ -448,6 +448,7 @@ int tsn_switch_cam_set(struct cam_struct data, u8 add)
 	u32 port_action = 0;
 	u32 tv2 = 0;
 	u32 reg, err;
+	u8 en_ipv = 0;
 
 	err = readl_poll_timeout(lp.regs + XAS_SDL_CAM_STATUS_OFFSET, reg,
 				 (reg & SDL_CAM_WR_ENABLE), 10,
@@ -478,10 +479,12 @@ int tsn_switch_cam_set(struct cam_struct data, u8 add)
 	tv2 = ((data.src_addr[4] << 8) | data.src_addr[5]) |
 	       ((data.tv_vlanid & SDL_CAM_VLAN_MASK) << SDL_CAM_VLAN_SHIFT);
 
-#if IS_ENABLED(CONFIG_XILINX_TSN_QCI)
+	if (data.flags & XAS_CAM_IPV_EN)
+		en_ipv = 1;
+
 	tv2 = tv2 | ((data.ipv & SDL_CAM_IPV_MASK) << SDL_CAM_IPV_SHIFT)
-				| (data.en_ipv << SDL_EN_CAM_IPV_SHIFT);
-#endif
+				| (en_ipv << SDL_EN_CAM_IPV_SHIFT);
+
 	axienet_iow(&lp, XAS_SDL_CAM_TV2_OFFSET, tv2);
 
 	if (data.tv_en)
