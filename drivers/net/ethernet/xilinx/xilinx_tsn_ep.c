@@ -439,9 +439,10 @@ static int tsn_ep_probe(struct platform_device *pdev)
 #endif
 
 	ret = register_netdev(lp->ndev);
-	if (ret)
+	if (ret) {
 		dev_err(lp->dev, "register_netdev() error (%i)\n", ret);
-
+		goto free_netdev;
+	}
 	return ret;
 
 free_netdev:
