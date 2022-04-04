@@ -28,6 +28,7 @@
 #include <linux/xilinx_phy.h>
 
 #include "xilinx_axienet.h"
+#include "xilinx_tsn_switch.h"
 
 #ifdef CONFIG_XILINX_TSN_PTP
 #include "xilinx_tsn_ptp.h"
@@ -133,10 +134,13 @@ int axienet_tsn_probe(struct platform_device *pdev,
 
 	slave = of_property_read_bool(pdev->dev.of_node,
 				      "xlnx,tsn-slave");
-	if (slave)
+	if (slave) {
 		temac_no = XAE_TEMAC2;
-	else
+		lp->switch_prt = PORT_MAC2;
+	} else {
 		temac_no = XAE_TEMAC1;
+		lp->switch_prt = PORT_MAC1;
+	}
 
 	sprintf(irq_name, "interrupt_ptp_rx_%d", temac_no + 1);
 	lp->ptp_rx_irq = platform_get_irq_byname(pdev, irq_name);
