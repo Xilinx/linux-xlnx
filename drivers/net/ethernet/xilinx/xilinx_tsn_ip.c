@@ -76,6 +76,20 @@ static int tsn_ip_remove(struct platform_device *pdev)
 	return 0;
 }
 
+u16 axienet_tsn_select_queue(struct net_device *ndev, struct sk_buff *skb,
+			     struct net_device *sb_dev)
+{
+	struct ethhdr *hdr = (struct ethhdr *)skb->data;
+	u16 ether_type = ntohs(hdr->h_proto);
+
+#ifdef CONFIG_XILINX_TSN_PTP
+	if (ether_type == ETH_P_1588)
+		return PTP_QUEUE_NUMBER;
+#endif
+
+	return 0;
+}
+
 /**
  * axienet_tsn_xmit - Starts the TSN transmission.
  * @skb:	sk_buff pointer that contains data to be Txed.
@@ -92,13 +106,12 @@ static int tsn_ip_remove(struct platform_device *pdev)
 int axienet_tsn_xmit(struct sk_buff *skb, struct net_device *ndev)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
-	struct ethhdr *hdr = (struct ethhdr *)skb->data;
-	u16 ether_type = ntohs(hdr->h_proto);
 	struct net_device *master = lp->master;
+	u16 map = skb_get_queue_mapping(skb);
 
 #ifdef CONFIG_XILINX_TSN_PTP
 	/* check if skb is a PTP frame ? */
-	if (unlikely(ether_type == ETH_P_1588))
+	if (map == PTP_QUEUE_NUMBER)
 		return axienet_ptp_xmit(skb, ndev);
 #endif
 	/* use EP to xmit non-PTP frames */
@@ -171,7 +184,7 @@ int axienet_tsn_probe(struct platform_device *pdev,
 
 	lp->master = of_find_net_device_by_node(ep_node);
 #ifdef CONFIG_XILINX_TSN_QBV
-	lp->qbv_regs = 0;
+	lp->qbv_regs = NULL;
 	abl_reg = axienet_ior(lp, XAE_TSN_ABL_OFFSET);
 	if (!(abl_reg & TSN_BRIDGEEP_EPONLY)) {
 		if (of_property_read_u32(pdev->dev.of_node,

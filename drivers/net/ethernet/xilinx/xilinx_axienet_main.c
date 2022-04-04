@@ -2378,8 +2378,11 @@ static const struct net_device_ops axienet_netdev_ops = {
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller = axienet_poll_controller,
 #endif
+#ifdef CONFIG_XILINX_TSN
+	.ndo_select_queue = axienet_tsn_select_queue,
 #if defined(CONFIG_XILINX_TSN_SWITCH)
 	.ndo_get_port_parent_id = tsn_switch_get_port_parent_id,
+#endif
 #endif
 };
 
@@ -3282,7 +3285,7 @@ static int axienet_probe(struct platform_device *pdev)
 		}
 	}
 #ifdef CONFIG_XILINX_TSN
-	if (is_tsn && (num_queues < XAE_TSN_MIN_QUEUES ||
+	if (is_tsn && (num_queues < XAE_TOTAL_TSN_MIN_QUEUES ||
 		       num_queues > XAE_MAX_QUEUES))
 		num_queues = XAE_MAX_QUEUES;
 #endif

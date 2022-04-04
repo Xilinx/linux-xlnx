@@ -28,6 +28,14 @@
 #define XAE_MAX_VLAN_FRAME_SIZE  (XAE_MTU + VLAN_ETH_HLEN + XAE_TRL_SIZE)
 #define XAE_MAX_JUMBO_FRAME_SIZE (XAE_JUMBO_MTU + XAE_HDR_SIZE + XAE_TRL_SIZE)
 
+/* Queue Numbers of BE, RES, ST and PTP */
+
+#define BE_QUEUE_NUMBER 0
+#define RES_QUEUE_NUMBER 1
+#define ST_QUEUE_NUMBER_1 1
+#define ST_QUEUE_NUMBER_2 2
+#define PTP_QUEUE_NUMBER 1
+
 /* DMA address width min and max range */
 #define XAE_DMA_MASK_MIN	32
 #define XAE_DMA_MASK_MAX	64
@@ -685,6 +693,8 @@ struct aximcdma_bd {
  */
 #define XAE_MAX_TSN_TC		3
 #define XAE_TSN_MIN_QUEUES	2
+#define XAE_TOTAL_TSN_MIN_QUEUES	3
+
 #define TSN_BRIDGEEP_EPONLY	BIT(29)
 
 #ifdef CONFIG_AXIENET_HAS_TADMA
@@ -1263,6 +1273,8 @@ int axienet_tsn_probe(struct platform_device *pdev,
 		      struct axienet_local *lp,
 		      struct net_device *ndev);
 int axienet_tsn_xmit(struct sk_buff *skb, struct net_device *ndev);
+u16 axienet_tsn_select_queue(struct net_device *ndev, struct sk_buff *skb,
+			     struct net_device *sb_dev);
 #endif
 #ifdef CONFIG_XILINX_TSN_PTP
 void *axienet_ptp_timer_probe(void __iomem *base, struct platform_device *pdev);
