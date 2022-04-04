@@ -44,6 +44,15 @@ config AXIENET_HAS_MCDMA
 	help
 	  When hardware is generated with AXI Ethernet with MCDMA select this option.
 
+config AXIENET_HAS_TADMA
+	bool "AxiEthernet is configured with TADMA"
+	depends on XILINX_TSN
+	help
+	  When hardware is generated with Axi Ethernet with TADMA select this option.
+	  This driver enables Time Aware DMA to support TSN Qbv clause accurately.
+	  It is used to fetch schedule traffic.
+	  It contains one queue.
+
 config XILINX_LL_TEMAC
 	tristate "Xilinx LL TEMAC (LocalLink Tri-mode Ethernet MAC) driver"
 	depends on HAS_IOMEM
