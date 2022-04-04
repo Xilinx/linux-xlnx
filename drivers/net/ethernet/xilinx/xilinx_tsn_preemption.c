@@ -73,21 +73,23 @@ int axienet_preemption_ctrl(struct net_device *ndev, void __user *useraddr)
 int axienet_preemption_sts(struct net_device *ndev, void __user *useraddr)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
-	struct preempt_ctrl_sts status;
+	struct preempt_status status;
 	u32 value;
 
+	value = axienet_ior(lp, PREEMPTION_ENABLE_REG);
+	status.preemp_en = value & PREEMPTION_ENABLE;
+
 	value = axienet_ior(lp, PREEMPTION_CTRL_STS_REG);
-
-	status.tx_preemp_sts = (value & TX_PREEMPTION_STS) ? 1 : 0;
-	status.mac_tx_verify_sts = (value >> MAC_MERGE_TX_VERIFY_STS_SHIFT) &
-					MAC_MERGE_TX_VERIFY_STS_MASK;
-	status.verify_timer_value = (value >> VERIFY_TIMER_VALUE_SHIFT) &
+	status.ctrl.tx_preemp_sts = (value & TX_PREEMPTION_STS) ? 1 : 0;
+	status.ctrl.mac_tx_verify_sts = (value >> MAC_MERGE_TX_VERIFY_STS_SHIFT)
+					& MAC_MERGE_TX_VERIFY_STS_MASK;
+	status.ctrl.verify_timer_value = (value >> VERIFY_TIMER_VALUE_SHIFT) &
 					VERIFY_TIMER_VALUE_MASK;
-	status.additional_frag_size = (value >> ADDITIONAL_FRAG_SIZE_SHIFT) &
-					ADDITIONAL_FRAG_SIZE_MASK;
-	status.disable_preemp_verify = value & DISABLE_PREEMPTION_VERIFY;
+	status.ctrl.additional_frag_size = (value >> ADDITIONAL_FRAG_SIZE_SHIFT)
+						& ADDITIONAL_FRAG_SIZE_MASK;
+	status.ctrl.disable_preemp_verify = value & DISABLE_PREEMPTION_VERIFY;
 
-	if (copy_to_user(useraddr, &status, sizeof(struct preempt_ctrl_sts)))
+	if (copy_to_user(useraddr, &status, sizeof(struct preempt_status)))
 		return -EFAULT;
 	return 0;
 }
@@ -151,10 +153,10 @@ int axienet_preemption_cnt(struct net_device *ndev, void __user *useraddr)
 int axienet_qbu_user_override(struct net_device *ndev, void __user *useraddr)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
-	struct qbu_user data;
+	struct qbu_prog data;
 	u32 value;
 
-	if (copy_from_user(&data, useraddr, sizeof(struct qbu_user)))
+	if (copy_from_user(&data, useraddr, sizeof(struct qbu_prog)))
 		return -EFAULT;
 
 	value = axienet_ior(lp, QBU_USER_OVERRIDE_REG);
@@ -209,16 +211,28 @@ int axienet_qbu_user_override(struct net_device *ndev, void __user *useraddr)
 int axienet_qbu_sts(struct net_device *ndev, void __user *useraddr)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
-	struct qbu_core_status status;
+	struct qbu_all_status status;
 	u32 value = 0;
 
-	value = axienet_ior(lp, QBU_CORE_STS_REG);
-	status.hold_time = (value >> HOLD_TIME_STS_SHIFT) & HOLD_TIME_STS_MASK;
-	status.rel_time = (value >> REL_TIME_STS_SHIFT) & REL_TIME_STS_MASK;
-	status.hold_rel_en = (value & HOLD_REL_ENABLE_STS) ? 1 : 0;
-	status.pmac_hold_req = value & PMAC_HOLD_REQ_STS;
+	value = axienet_ior(lp, QBU_USER_OVERRIDE_REG);
+	status.prog.hold_rel_window = (value & USER_HOLD_REL_ENABLE_VALUE)
+					? 1 : 0;
+	status.prog.guard_band = (value & GUARD_BAND_OVERRUN_CNT_INC_OVERRIDE)
+					? 1 : 0;
+	status.prog.user_hold_time = (value >> USER_HOLD_TIME_SHIFT) &
+					USER_HOLD_TIME_MASK;
+	status.prog.user_rel_time = (value >> USER_REL_TIME_SHIFT) &
+					USER_REL_TIME_MASK;
 
-	if (copy_to_user(useraddr, &status, sizeof(struct qbu_core_status)))
+	value = axienet_ior(lp, QBU_CORE_STS_REG);
+	status.core.hold_time = (value >> HOLD_TIME_STS_SHIFT) &
+					HOLD_TIME_STS_MASK;
+	status.core.rel_time = (value >> REL_TIME_STS_SHIFT) &
+					REL_TIME_STS_MASK;
+	status.core.hold_rel_en = (value & HOLD_REL_ENABLE_STS) ? 1 : 0;
+	status.core.pmac_hold_req = value & PMAC_HOLD_REQ_STS;
+
+	if (copy_to_user(useraddr, &status, sizeof(struct qbu_all_status)))
 		return -EFAULT;
 	return 0;
 }

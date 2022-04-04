@@ -81,13 +81,22 @@ void get_ingress_filter_config(struct in_fltr *data)
  * config_stream_filter -  Configure Ingress Filter Configuration
  * @data:	Value to be programmed
  */
-void config_ingress_filter(struct in_fltr data)
+void config_ingress_filter(struct cb data)
 {
-	u32 mask = 0;
+	u32 conf_r1;
 
-	mask = ((data.in_port_id & IN_PORTID_MASK) << IN_PORTID_SHIFT) |
-					(data.max_seq_id & MAX_SEQID_MASK);
-	axienet_iow(&lp, INGRESS_FILTER_OFFSET, mask);
+	conf_r1 = axienet_ior(&lp, INGRESS_FILTER_OFFSET);
+	conf_r1 &= ~(IN_PORTID_MASK << IN_PORTID_SHIFT);
+	conf_r1 |= ((data.in_fltr_data.in_port_id & IN_PORTID_MASK) <<
+			IN_PORTID_SHIFT);
+	axienet_iow(&lp, INGRESS_FILTER_OFFSET, conf_r1);
+
+	conf_r1 = axienet_ior(&lp, FRER_CONFIG_REG1);
+	conf_r1 &= ~(SEQ_REC_HIST_LEN_MASK << SEQ_REC_HIST_LEN_SHIFT);
+	conf_r1 |= (data.frer_memb_config_data.seq_rec_hist_len &
+			SEQ_REC_HIST_LEN_MASK)
+			<< SEQ_REC_HIST_LEN_SHIFT;
+	axienet_iow(&lp, FRER_CONFIG_REG1, conf_r1);
 }
 
 /**
@@ -112,20 +121,27 @@ void get_member_reg(struct frer_memb_config *data)
  * program_member_reg -  configure frer member Configuration registers
  * @data:	Value to be programmed
  */
-void program_member_reg(struct frer_memb_config data)
+void program_member_reg(struct cb data)
 {
 	u32 conf_r1 = 0;
 
-	conf_r1 = (data.seq_rec_hist_len & SEQ_REC_HIST_LEN_MASK)
-						<< SEQ_REC_HIST_LEN_SHIFT;
-	conf_r1 = conf_r1 | ((data.split_strm_egport_id
+	conf_r1 = axienet_ior(&lp, FRER_CONFIG_REG1);
+	conf_r1 &= ~(SPLIT_STREAM_INPORTID_MASK << SPLIT_STREAM_INPORTID_SHIFT);
+	conf_r1 &= ~(SPLIT_STREAM_VLANID_MASK);
+	conf_r1 |= ((data.frer_memb_config_data.split_strm_egport_id
 					& SPLIT_STREAM_INPORTID_MASK)
 					<< SPLIT_STREAM_INPORTID_SHIFT);
-	conf_r1 = conf_r1 | (data.split_strm_vlan_id
-					& SPLIT_STREAM_VLANID_MASK);
+	conf_r1 |= (data.frer_memb_config_data.split_strm_vlan_id &
+					SPLIT_STREAM_VLANID_MASK);
 
 	axienet_iow(&lp, FRER_CONFIG_REG1, conf_r1);
-	axienet_iow(&lp, FRER_CONFIG_REG2, data.rem_ticks);
+	axienet_iow(&lp, FRER_CONFIG_REG2,
+		    data.frer_memb_config_data.rem_ticks);
+
+	conf_r1 = axienet_ior(&lp, INGRESS_FILTER_OFFSET);
+	conf_r1 &= ~MAX_SEQID_MASK;
+	conf_r1 |= (data.in_fltr_data.max_seq_id & MAX_SEQID_MASK);
+	axienet_iow(&lp, INGRESS_FILTER_OFFSET, conf_r1);
 }
 
 /**
