@@ -47,6 +47,9 @@ static int tsn_ep_open(struct net_device *ndev)
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct axienet_dma_q *q;
 
+	static char irq_name[XAE_MAX_QUEUES + XAE_TSN_MIN_QUEUES][24];
+	u8 irq_cnt = 0;
+
 	for_each_tx_dma_queue(lp, i) {
 		q = lp->dq[i];
 		/*MCDMA TX RESET*/
@@ -59,8 +62,9 @@ static int tsn_ep_open(struct net_device *ndev)
 		ret = axienet_mcdma_rx_q_init(ndev, q);
 		/* Enable interrupts for Axi MCDMA Rx
 		 */
+		sprintf(irq_name[irq_cnt], "%s_mcdma_rx_%d", ndev->name, i + 1);
 		ret = request_irq(q->rx_irq, axienet_mcdma_rx_irq,
-				  IRQF_SHARED, ndev->name, ndev);
+				  IRQF_SHARED, irq_name[irq_cnt], ndev);
 		if (ret)
 			goto err_dma_rx_irq;
 
@@ -68,6 +72,7 @@ static int tsn_ep_open(struct net_device *ndev)
 			     axienet_mcdma_err_handler,
 			     (unsigned long)lp->dq[i]);
 		napi_enable(&lp->napi[i]);
+		irq_cnt++;
 	}
 
 	for_each_tx_dma_queue(lp, i) {
@@ -75,10 +80,12 @@ static int tsn_ep_open(struct net_device *ndev)
 
 		ret = axienet_mcdma_tx_q_init(ndev, q);
 		/* Enable interrupts for Axi MCDMA Tx */
+		sprintf(irq_name[irq_cnt], "%s_mcdma_tx_%d", ndev->name, i + 1);
 		ret = request_irq(q->tx_irq, axienet_mcdma_tx_irq,
-				  IRQF_SHARED, ndev->name, ndev);
+				  IRQF_SHARED, irq_name[irq_cnt], ndev);
 		if (ret)
 			goto err_dma_tx_irq;
+		irq_cnt++;
 	}
 #ifdef CONFIG_AXIENET_HAS_TADMA
 	ret = axienet_tadma_open(ndev);
