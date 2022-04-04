@@ -222,11 +222,39 @@ static int tsn_ep_xmit(struct sk_buff *skb, struct net_device *ndev)
 	return axienet_queue_xmit(skb, ndev, queue);
 }
 
+static void tsn_ep_set_mac_address(struct net_device *ndev, const void *address)
+{
+	if (address)
+		ether_addr_copy(ndev->dev_addr, address);
+	if (!is_valid_ether_addr(ndev->dev_addr))
+		eth_hw_addr_random(ndev);
+}
+
+/**
+ * netdev_set_mac_address - Write the MAC address (from outside the driver)
+ * @ndev:	Pointer to the net_device structure
+ * @p:		6 byte Address to be written as MAC address
+ *
+ * Return: 0 for all conditions. Presently, there is no failure case.
+ *
+ * This function is called to initialize the MAC address of the Axi Ethernet
+ * core. This is the function that goes into net_device_ops structure entry
+ * ndo_set_mac_address.
+ */
+static int netdev_set_mac_address(struct net_device *ndev, void *p)
+{
+	struct sockaddr *addr = p;
+
+	tsn_ep_set_mac_address(ndev, addr->sa_data);
+	return 0;
+}
+
 static const struct net_device_ops ep_netdev_ops = {
 	.ndo_open = tsn_ep_open,
 	.ndo_stop = tsn_ep_stop,
 	.ndo_do_ioctl = tsn_ep_ioctl,
 	.ndo_start_xmit = tsn_ep_xmit,
+	.ndo_set_mac_address = netdev_set_mac_address,
 };
 
 static const struct of_device_id tsn_ep_of_match[] = {
