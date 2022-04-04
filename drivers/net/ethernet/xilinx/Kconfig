@@ -86,6 +86,7 @@ config XILINX_TSN_QBV
 config XILINX_TSN_SWITCH
 	bool "Support TSN switch"
 	depends on XILINX_TSN
+	select NET_SWITCHDEV
 	default y
 	help
 	  Enable Xilinx's TSN Switch support.

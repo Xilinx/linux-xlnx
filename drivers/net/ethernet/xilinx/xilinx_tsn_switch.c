@@ -19,11 +19,13 @@
 #include <linux/of_platform.h>
 #include <linux/module.h>
 #include <linux/miscdevice.h>
+#include <linux/of_net.h>
 #include "xilinx_tsn_switch.h"
 
 static struct miscdevice switch_dev;
 struct axienet_local lp;
 static u8 en_hw_addr_learning;
+static u8 sw_mac_addr[ETH_ALEN];
 
 #define DELAY_OF_FIVE_MILLISEC			(5 * DELAY_OF_ONE_MILLISEC)
 
@@ -265,6 +267,17 @@ static void get_switch_regs(struct switch_data *data)
 	data->port_vlan_mem_ctrl = axienet_ior(&lp, XAS_VLAN_MEMB_CTRL_REG);
 	/* Port VLAN Membership read data*/
 	data->port_vlan_mem_data = axienet_ior(&lp, XAS_VLAN_MEMB_DATA_REG);
+}
+
+int tsn_switch_get_port_parent_id(struct net_device *dev, struct netdev_phys_item_id *ppid)
+{
+	u8 *switchid;
+
+	switchid = tsn_switch_get_id();
+	ppid->id_len = ETH_ALEN;
+	memcpy(&ppid->id, switchid, ppid->id_len);
+
+	return 0;
 }
 
 /**
@@ -817,6 +830,11 @@ static int get_port_status(void __user *arg)
 		return -EINVAL;
 
 	return 0;
+}
+
+u8 *tsn_switch_get_id(void)
+{
+	return sw_mac_addr;
 }
 
 int tsn_switch_vlan_add(struct port_vlan *port, int add)
@@ -1408,6 +1426,8 @@ static int tsn_switch_init(void)
 		return ret;
 	}
 
+	eth_random_addr((u8 *)&sw_mac_addr);
+
 	pr_debug("Xilinx TSN Switch driver initialized!\n");
 	return 0;
 }
@@ -1456,6 +1476,7 @@ static int tsnswitch_probe(struct platform_device *pdev)
 	struct resource *swt;
 	int ret;
 	u16 num_tc;
+	u8 inband_mgmt_tag;
 
 	pr_info("TSN Switch probe\n");
 	/* Map device registers */
@@ -1481,12 +1502,21 @@ static int tsnswitch_probe(struct platform_device *pdev)
 	pr_info("TSN CAM Initializing ....\n");
 	ret = tsn_switch_cam_init(num_tc);
 
+	inband_mgmt_tag = of_property_read_bool(pdev->dev.of_node,
+						"xlnx,has-inband-mgmt-tag");
+	/* only support switchdev in sideband management */
+	if (!inband_mgmt_tag)
+		xlnx_switchdev_init();
+	else
+		pr_info("TSN IP with inband mgmt: Linux SWITCHDEV turned off\n");
+
 	return ret;
 }
 
 static int tsnswitch_remove(struct platform_device *pdev)
 {
 	misc_deregister(&switch_dev);
+	xlnx_switchdev_remove();
 	return 0;
 }
 
