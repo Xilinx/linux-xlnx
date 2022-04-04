@@ -49,6 +49,7 @@ static u8 en_hw_addr_learning;
 #define SDL_CAM_ADD_ENTRY			0x3
 #define SDL_CAM_DELETE_ENTRY			0x5
 #define SDL_CAM_READ_KEY_ENTRY			0x1
+#define SDL_CAM_READ_ENTRY			GENMASK(2, 0)
 #define SDL_CAM_VLAN_SHIFT			16
 #define SDL_CAM_VLAN_MASK			0xFFF
 #define SDL_CAM_IPV_MASK			0x7
@@ -513,6 +514,67 @@ static void add_delete_cam_entry(struct cam_struct data, u8 add)
 static void port_vlan_mem_ctrl(u32 port_vlan_mem)
 {
 		axienet_iow(&lp, XAS_VLAN_MEMB_CTRL_REG, port_vlan_mem);
+}
+
+static int read_cam_entry(struct cam_struct data, void __user *arg)
+{
+	u32 u_value, reg, err;
+
+	/* wait for cam init done */
+	err = readl_poll_timeout(lp.regs + XAS_SDL_CAM_STATUS_OFFSET, reg,
+				 (reg & SDL_CAM_WR_ENABLE), 10,
+				 DELAY_OF_FIVE_MILLISEC);
+	if (err) {
+		pr_err("CAM init timed out\n");
+		return -ETIMEDOUT;
+	}
+
+	/* mac and vlan */
+	axienet_iow(&lp, XAS_SDL_CAM_KEY1_OFFSET,
+		    (data.dest_addr[0] << 24) | (data.dest_addr[1] << 16) |
+		    (data.dest_addr[2] << 8)  | (data.dest_addr[3]));
+	axienet_iow(&lp, XAS_SDL_CAM_KEY2_OFFSET,
+		    ((data.dest_addr[4] << 8) | data.dest_addr[5]) |
+		    ((data.vlanid & SDL_CAM_VLAN_MASK) << SDL_CAM_VLAN_SHIFT));
+	axienet_iow(&lp, XAS_SDL_CAM_CTRL_OFFSET, SDL_CAM_READ_ENTRY);
+	err = readl_poll_timeout(lp.regs + XAS_SDL_CAM_CTRL_OFFSET, reg,
+				 (!(reg & SDL_CAM_WR_ENABLE)), 10,
+				 DELAY_OF_FIVE_MILLISEC);
+	if (err) {
+		pr_err("CAM write timed out\n");
+		return -ETIMEDOUT;
+	}
+	u_value = axienet_ior(&lp, XAS_SDL_CAM_CTRL_OFFSET);
+
+	if (u_value & SDL_CAM_FOUND_BIT) {
+		u_value = axienet_ior(&lp, XAS_SDL_CAM_TV1_OFFSET);
+		data.src_addr[0] = (u_value >> 24) & 0xFF;
+		data.src_addr[1] = (u_value >> 16) & 0xFF;
+		data.src_addr[2] = (u_value >> 8) & 0xFF;
+		data.src_addr[3] = (u_value) & 0xFF;
+		u_value = axienet_ior(&lp, XAS_SDL_CAM_TV2_OFFSET);
+		data.src_addr[4] = (u_value >> 8) & 0xFF;
+		data.src_addr[5] = (u_value) & 0xFF;
+		data.tv_vlanid   = (u_value >> SDL_CAM_VLAN_SHIFT)
+					& SDL_CAM_VLAN_MASK;
+		data.ipv = (u_value >> SDL_CAM_IPV_SHIFT) & SDL_CAM_IPV_MASK;
+		if ((u_value >> SDL_EN_CAM_IPV_SHIFT) & 0x1)
+			data.flags |= XAS_CAM_IPV_EN;
+		u_value = axienet_ior(&lp, XAS_SDL_CAM_PORT_ACT_OFFSET);
+		data.fwd_port = (u_value >> SDL_CAM_PORT_LIST_SHIFT) & 0x7;
+		data.ep_port_act = (u_value >> SDL_CAM_EP_ACTION_LIST_SHIFT)
+					& 0xF;
+		data.mac_port_act = (u_value >> SDL_CAM_MAC_ACTION_LIST_SHIFT)
+					& 0xF;
+		data.gate_id = (u_value >> SDL_GATEID_SHIFT) & 0xFF;
+		data.flags |= XAS_CAM_VALID;
+	} else {
+		data.flags &= ~XAS_CAM_VALID;
+	}
+	if (copy_to_user(arg, &data, sizeof(struct cam_struct)))
+		return -EFAULT;
+
+	return 0;
 }
 
 static int set_mac_addr_learn(void __user *arg)
@@ -1075,6 +1137,14 @@ static long switch_ioctl(struct file *file, unsigned int cmd,
 			goto end;
 		}
 		port_vlan_mem_ctrl(data.port_vlan_mem_ctrl);
+		break;
+
+	case READ_CAM_ENTRY:
+		if (copy_from_user(&data, (char __user *)arg, sizeof(data))) {
+			retval = -EFAULT;
+			goto end;
+		}
+		retval = read_cam_entry(data.cam_data, (void __user *)arg);
 		break;
 
 	case SET_MAC_ADDR_LEARN_CONFIG:
