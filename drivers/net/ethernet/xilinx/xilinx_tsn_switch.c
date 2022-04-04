@@ -43,8 +43,8 @@ struct axienet_local lp;
 #define SDL_CAM_IPV_SHIFT			29
 
 #define SDL_CAM_WR_ENABLE			BIT(0)
-#define SDL_CAM_ADD_ENTRY			0x1
-#define SDL_CAM_DELETE_ENTRY			0x3
+#define SDL_CAM_ADD_ENTRY			0x3
+#define SDL_CAM_DELETE_ENTRY			0x5
 #define SDL_CAM_VLAN_SHIFT			16
 #define SDL_CAM_VLAN_MASK			0xFFF
 #define SDL_CAM_IPV_MASK			0x7
