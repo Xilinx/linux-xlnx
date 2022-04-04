@@ -321,7 +321,6 @@ struct cam_struct {
 	u16 vlanid;
 	u16 tv_vlanid;
 	u8 fwd_port;
-	bool tv_en;
 	u8 gate_id;
 	u8 ipv;
 	u32 flags;
