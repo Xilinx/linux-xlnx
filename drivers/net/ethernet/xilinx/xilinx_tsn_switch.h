@@ -310,6 +310,10 @@ struct mem_static_arr_cntr {
 	struct static_cntr err_be_mac1_mac2;
 };
 
+#define XAS_CAM_IPV_EN		BIT(0)
+#define XAS_CAM_EP_MGMTQ_EN	BIT(1)
+#define XAS_CAM_VALID		BIT(2)
+
 /* CAM structure */
 struct cam_struct {
 	u8 src_addr[6];
@@ -321,6 +325,7 @@ struct cam_struct {
 	u8 gate_id;
 	u8 ipv;
 	bool en_ipv;
+	u32 flags;
 	u8 ep_port_act;
 	u8 mac_port_act;
 };
