@@ -53,6 +53,8 @@
 #define GET_VLAN_MAC_ADDR_LEARN_CONFIG		0x38
 #define READ_CAM_ENTRY				0x39
 #define GET_VLAN_MAC_ADDR_LEARN_CONFIG_VLANM	0x3C
+#define SET_PORT_NATIVE_VLAN			0x3A
+#define GET_PORT_NATIVE_VLAN			0x3B
 
 /* Xilinx Axi Switch Offsets*/
 #define XAS_STATUS_OFFSET			0x00000
@@ -373,6 +375,13 @@ struct port_vlan {
 	u32 aging_time;
 };
 
+struct native_vlan {
+	bool en_ipv;
+	u8 port_num;
+	u8 ipv;
+	u16 vlan_id;
+};
+
 enum switch_port {
 	PORT_EP = 1,
 	PORT_MAC1 = 2,
@@ -430,4 +439,6 @@ void program_member_reg(struct frer_memb_config data);
 void get_frer_static_counter(struct frer_static_counter *data);
 int tsn_switch_set_stp_state(struct port_status *port);
 int tsn_switch_vlan_add(struct port_vlan *port, int add);
+int tsn_switch_pvid_get(struct native_vlan *port);
+int tsn_switch_pvid_add(struct native_vlan *port);
 #endif /* XILINX_TSN_SWITCH_H */
