@@ -63,6 +63,7 @@ static u8 en_hw_addr_learning;
 #define SDL_CAM_DEST_MAC_XLATION		BIT(0)
 #define SDL_CAM_VLAN_ID_XLATION			BIT(1)
 #define SDL_CAM_UNTAG_FRAME			BIT(2)
+#define SDL_CAM_TAG_FRAME			BIT(3)
 
 #define PORT_STATUS_MASK                       (0x7)
 #define MAC2_PORT_STATUS_SHIFT                 (17)
@@ -487,9 +488,11 @@ int tsn_switch_cam_set(struct cam_struct data, u8 add)
 
 	axienet_iow(&lp, XAS_SDL_CAM_TV2_OFFSET, tv2);
 
-	if (data.tv_en)
-		port_action = ((SDL_CAM_DEST_MAC_XLATION |
-		SDL_CAM_VLAN_ID_XLATION) << SDL_CAM_MAC_ACTION_LIST_SHIFT);
+	if (data.fwd_port & PORT_EP)
+		port_action = data.ep_port_act << SDL_CAM_EP_ACTION_LIST_SHIFT;
+	if (data.fwd_port & PORT_MAC1 || data.fwd_port & PORT_MAC2)
+		port_action |= data.mac_port_act <<
+				SDL_CAM_MAC_ACTION_LIST_SHIFT;
 
 	port_action = port_action | (data.fwd_port << SDL_CAM_PORT_LIST_SHIFT);
 
