@@ -442,6 +442,7 @@ void config_ingress_filter(struct in_fltr data);
 void get_member_reg(struct frer_memb_config *data);
 void program_member_reg(struct frer_memb_config data);
 void get_frer_static_counter(struct frer_static_counter *data);
+int tsn_switch_cam_set(struct cam_struct data, u8 add);
 int tsn_switch_set_stp_state(struct port_status *port);
 int tsn_switch_vlan_add(struct port_vlan *port, int add);
 int tsn_switch_pvid_get(struct native_vlan *port);
