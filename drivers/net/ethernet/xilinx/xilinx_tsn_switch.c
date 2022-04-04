@@ -62,6 +62,15 @@ static u8 en_hw_addr_learning;
 #define SDL_CAM_DEST_MAC_XLATION		BIT(0)
 #define SDL_CAM_VLAN_ID_XLATION			BIT(1)
 #define SDL_CAM_UNTAG_FRAME			BIT(2)
+
+#define PORT_STATUS_MASK                       (0x7)
+#define MAC2_PORT_STATUS_SHIFT                 (17)
+#define MAC2_PORT_STATUS_CHG_BIT               BIT(16)
+#define MAC1_PORT_STATUS_SHIFT                 (9)
+#define MAC1_PORT_STATUS_CHG_BIT               BIT(8)
+#define EP_PORT_STATUS_SHIFT                   (1)
+#define EP_PORT_STATUS_CHG_BIT                 BIT(0)
+
 #define SDL_CAM_LEARNT_ENT_MAC2_SHIFT		(20)
 #define SDL_CAM_LEARNT_ENT_MAC1_SHIFT		(8)
 #define SDL_CAM_LEARNT_ENT_MASK			GENMASK(11, 0)
@@ -632,6 +641,97 @@ ret_status:
 	return ret;
 }
 
+int tsn_switch_set_stp_state(struct port_status *port)
+{
+	u32 u_value, reg, err;
+	u32 en_port_sts_chg_bit = 1;
+
+	u_value = axienet_ior(&lp, XAS_PORT_STATE_CTRL_OFFSET);
+	switch (port->port_num) {
+	case PORT_EP:
+		if (!(u_value & EP_PORT_STATUS_CHG_BIT)) {
+			u_value &= ~(PORT_STATUS_MASK <<
+					EP_PORT_STATUS_SHIFT);
+			u_value |= (port->port_status << EP_PORT_STATUS_SHIFT);
+			en_port_sts_chg_bit = EP_PORT_STATUS_CHG_BIT;
+		}
+		break;
+	case PORT_MAC1:
+		if (!(u_value & MAC1_PORT_STATUS_CHG_BIT)) {
+			u_value &= ~(PORT_STATUS_MASK <<
+					MAC1_PORT_STATUS_SHIFT);
+			u_value |= (port->port_status <<
+					MAC1_PORT_STATUS_SHIFT);
+			en_port_sts_chg_bit = MAC1_PORT_STATUS_CHG_BIT;
+		}
+		break;
+	case PORT_MAC2:
+		if (!(u_value & MAC2_PORT_STATUS_CHG_BIT)) {
+			u_value &= ~(PORT_STATUS_MASK <<
+					MAC2_PORT_STATUS_SHIFT);
+			u_value |= (port->port_status <<
+					MAC2_PORT_STATUS_SHIFT);
+			en_port_sts_chg_bit = MAC2_PORT_STATUS_CHG_BIT;
+		}
+		break;
+	}
+
+	u_value |= en_port_sts_chg_bit;
+	axienet_iow(&lp, XAS_PORT_STATE_CTRL_OFFSET, u_value);
+
+	/* wait for write to complete */
+	err = readl_poll_timeout(lp.regs + XAS_PORT_STATE_CTRL_OFFSET, reg,
+				 (!(reg & en_port_sts_chg_bit)), 10,
+				 DELAY_OF_FIVE_MILLISEC);
+	if (err) {
+		pr_err("CAM write timed out\n");
+		return -ETIMEDOUT;
+	}
+	u_value = axienet_ior(&lp, XAS_PORT_STATE_CTRL_OFFSET);
+
+	return 0;
+}
+
+static int set_port_status(void __user *arg)
+{
+	struct port_status port;
+
+	if (copy_from_user(&port, arg, sizeof(struct port_status)))
+		return -EFAULT;
+
+	return tsn_switch_set_stp_state(&port);
+}
+
+static int get_port_status(void __user *arg)
+{
+	struct port_status port;
+	u32 u_value;
+
+	if (copy_from_user(&port, arg, sizeof(struct port_status)))
+		return -EINVAL;
+
+	u_value = axienet_ior(&lp, XAS_PORT_STATE_CTRL_OFFSET);
+	switch (port.port_num) {
+	case PORT_EP:
+		port.port_status = (u_value >> EP_PORT_STATUS_SHIFT) &
+					PORT_STATUS_MASK;
+		break;
+	case PORT_MAC1:
+		port.port_status = (u_value >> MAC1_PORT_STATUS_SHIFT) &
+					PORT_STATUS_MASK;
+		break;
+	case PORT_MAC2:
+		port.port_status = (u_value >> MAC2_PORT_STATUS_SHIFT) &
+					PORT_STATUS_MASK;
+		break;
+	}
+
+	if (copy_to_user(arg, &port, sizeof(struct port_status)))
+		return -EINVAL;
+
+	return 0;
+}
+
 static long switch_ioctl(struct file *file, unsigned int cmd,
 			 unsigned long arg)
 {
@@ -709,6 +809,18 @@ static long switch_ioctl(struct file *file, unsigned int cmd,
 		if (!en_hw_addr_learning)
 			return -EPERM;
 		retval = get_mac_addr_learnt_list((void __user *)arg);
+		goto end;
+
+	case SET_PORT_STATUS:
+		if (!en_hw_addr_learning)
+			return -EPERM;
+		retval = set_port_status((void __user *)arg);
+		goto end;
+
+	case GET_PORT_STATUS:
+		if (!en_hw_addr_learning)
+			return -EPERM;
+		retval = get_port_status((void __user *)arg);
 		goto end;
 
 	case SET_FRAME_TYPE_FIELD:
