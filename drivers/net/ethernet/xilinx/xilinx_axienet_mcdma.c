@@ -32,6 +32,7 @@ struct axienet_stat {
  * system. These are not exposed via hdf/dtsi, so need to hardcode here
  */
 #define TSN_MAX_RX_Q_EPSWITCH 5
+#define TSN_MIN_RX_Q_EPSWITCH 4
 #define TSN_MGMT_CHAN0 2
 #define TSN_MGMT_CHAN1 3
 #endif
@@ -304,7 +305,8 @@ int __maybe_unused axienet_mcdma_rx_q_init(struct net_device *ndev,
 
 #ifdef CONFIG_XILINX_TSN
 	/* check if this is a mgmt channel */
-	if (lp->num_rx_queues == TSN_MAX_RX_Q_EPSWITCH) {
+	if (lp->num_rx_queues == TSN_MAX_RX_Q_EPSWITCH ||
+	    lp->num_rx_queues == TSN_MIN_RX_Q_EPSWITCH) {
 		if (q->chan_id == TSN_MGMT_CHAN0)
 			q->flags |= (MCDMA_MGMT_CHAN | MCDMA_MGMT_CHAN_PORT0);
 		else if (q->chan_id == TSN_MGMT_CHAN1)
