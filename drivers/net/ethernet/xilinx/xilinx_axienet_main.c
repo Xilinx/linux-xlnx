@@ -78,6 +78,32 @@
 #define MSG_TYPE_SYNC_FLAG		((PTP_TYPE_SYNC + 1) << MSG_TYPE_SHIFT)
 #define MSG_TYPE_PDELAY_RESP_FLAG	((PTP_TYPE_PDELAY_RESP + 1) << \
 									 MSG_TYPE_SHIFT)
+#define ETHERTYPE_FILTER_IPV4	0x00000008 /* Ethertype field 0x08 for IPv4 packets */
+#define ETHERTYPE_FILTER_PTP    0x0000F788 /* Ethertype field 0x88F7 for PTP packets */
+#define PROTO_FILTER_UDP	0x11000000 /* protocol field 0x11 for UDP packets */
+#define PTP_UDP_PORT		0x00003F01 /* dest port field 0x013F for PTP over UDP packes */
+#define PTP_VERSION		0x02000000 /* PTPv2 */
+
+#define DESTMAC_FILTER_ENABLE_MASK_MSB		0xFFFFFFFF /* Enable filtering for bytes 0-3 in a
+							    * packet corresponding to 4 Most
+							    * significant bytes of
+							    * Destination MAC address
+							    */
+#define DESTMAC_FILTER_ENABLE_MASK_LSB		0xFF000000 /* Enable filtering for bytes
+							    * 4-5 in a packet
+							    * corresponding to 2 Least
+							    * significant bytes of
+							    * Destination MAC address
+							    */
+#define PROTO_FILTER_DISABLE_MASK		0x0 /* Disable protocol based filtering */
+#define PORT_NUM_FILTER_DISABLE_MASK		0x0 /* Disable port number based filtering */
+#define VERSION_FILTER_DISABLE_MASK		0x0 /* Disable filtering based on PTP version */
+
+#define DESTMAC_FILTER_DISABLE_MASK_MSB		0 /* Disable Dest MAC address filtering(4 MSB'S) */
+#define DESTMAC_FILTER_DISABLE_MASK_LSB		0 /* Disable Dest MAC address filtering(2 LSB's) */
+#define PROTO_FILTER_ENABLE_MASK		0xFF000000 /* Enable protocol based filtering */
+#define PORT_NUM_FILTER_ENABLE_MASK		0x0000FFFF /* Enable port number based filtering */
+#define VERSION_FILTER_ENABLE_MASK		0xFF000000 /* Enable PTP version based filtering */
 
 #ifdef CONFIG_XILINX_TSN_PTP
 int axienet_phc_index = -1;
@@ -2188,7 +2214,7 @@ static int axienet_set_timestamp_mode(struct axienet_local *lp,
 		case HWTSTAMP_FILTER_NONE:
 			break;
 		default:
-			config->rx_filter = HWTSTAMP_FILTER_ALL;
+			config->rx_filter = lp->current_rx_filter;
 		}
 		return 0;
 	}
@@ -2257,6 +2283,35 @@ static int axienet_set_timestamp_mode(struct axienet_local *lp,
 	return 0;
 }
 
+static void change_filter_values_to_udp(struct axienet_local *lp)
+{
+	axienet_iow(lp, XAE_FMC_OFFSET, 0x100);
+	/**
+	 * axienet_iow(lp, 0x70C, 0x0); values may not
+	 * be written on to the specified address if this is not given
+	 */
+	axienet_iow(lp, XAE_FF_3_OFFSET, ETHERTYPE_FILTER_IPV4);
+	axienet_iow(lp, XAE_FF_5_OFFSET, PROTO_FILTER_UDP);
+	axienet_iow(lp, XAE_FF_9_OFFSET, PTP_UDP_PORT);
+	axienet_iow(lp, XAE_FF_10_OFFSET, PTP_VERSION);
+
+	axienet_iow(lp, XAE_AF0_MASK_OFFSET, DESTMAC_FILTER_DISABLE_MASK_MSB);
+	axienet_iow(lp, XAE_AF1_MASK_OFFSET, DESTMAC_FILTER_DISABLE_MASK_LSB);
+	axienet_iow(lp, XAE_FF_5_MASK_OFFSET, PROTO_FILTER_ENABLE_MASK);
+	axienet_iow(lp, XAE_FF_9_MASK_OFFSET, PORT_NUM_FILTER_ENABLE_MASK);
+	axienet_iow(lp, XAE_FF_10_MASK_OFFSET, VERSION_FILTER_DISABLE_MASK);
+}
+
+static void change_filter_values_to_gptp(struct axienet_local *lp)
+{
+	axienet_iow(lp, XAE_FF_3_OFFSET, ETHERTYPE_FILTER_PTP);
+	axienet_iow(lp, XAE_AF0_MASK_OFFSET, DESTMAC_FILTER_ENABLE_MASK_MSB);
+	axienet_iow(lp, XAE_AF1_MASK_OFFSET, DESTMAC_FILTER_ENABLE_MASK_LSB);
+	axienet_iow(lp, XAE_FF_5_MASK_OFFSET, PROTO_FILTER_DISABLE_MASK);
+	axienet_iow(lp, XAE_FF_9_MASK_OFFSET, PORT_NUM_FILTER_ENABLE_MASK);
+	axienet_iow(lp, XAE_FF_10_MASK_OFFSET, VERSION_FILTER_DISABLE_MASK);
+}
+
 /**
  * axienet_set_ts_config - user entry point for timestamp mode
  * @lp: Pointer to axienet local structure
@@ -2274,7 +2329,16 @@ static int axienet_set_ts_config(struct axienet_local *lp, struct ifreq *ifr)
 
 	if (copy_from_user(&config, ifr->ifr_data, sizeof(config)))
 		return -EFAULT;
-
+	if (config.rx_filter == HWTSTAMP_FILTER_PTP_V2_L2_EVENT &&
+	    lp->current_rx_filter == HWTSTAMP_FILTER_PTP_V2_L4_EVENT) {
+		lp->current_rx_filter = HWTSTAMP_FILTER_PTP_V2_L2_EVENT;
+		change_filter_values_to_gptp(lp);
+	}
+	if (config.rx_filter == HWTSTAMP_FILTER_PTP_V2_L4_EVENT &&
+	    lp->current_rx_filter == HWTSTAMP_FILTER_PTP_V2_L2_EVENT) {
+		lp->current_rx_filter = HWTSTAMP_FILTER_PTP_V2_L4_EVENT;
+		change_filter_values_to_udp(lp);
+	}
 	err = axienet_set_timestamp_mode(lp, &config);
 	if (err)
 		return err;
