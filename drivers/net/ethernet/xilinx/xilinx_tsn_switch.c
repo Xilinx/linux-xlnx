@@ -1432,7 +1432,7 @@ static int tsn_switch_cam_init(u16 num_q)
 		pmap = ((PMAP_EGRESS_QUEUE1_SELECT << PMAP_PRIORITY2_SHIFT) |
 			(PMAP_EGRESS_QUEUE1_SELECT << PMAP_PRIORITY3_SHIFT) |
 			(PMAP_EGRESS_QUEUE2_SELECT << PMAP_PRIORITY4_SHIFT));
-	} else if (num_q == 2) {
+	} else {
 		/*     pcp = 4 to queue1 */
 		pmap = (PMAP_EGRESS_QUEUE1_SELECT << PMAP_PRIORITY4_SHIFT);
 	}
