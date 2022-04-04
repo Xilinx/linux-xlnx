@@ -278,10 +278,12 @@ int axienet_tadma_open(struct net_device *ndev)
 	u32 cr;
 	u8 i = 0;
 	int ret;
+	static char irq_name[24];
 
 	if (lp->tadma_irq) {
+		sprintf(irq_name, "%s_tadma_tx", ndev->name);
 		ret = request_irq(lp->tadma_irq, tadma_irq, IRQF_SHARED,
-				  ndev->name, ndev);
+				  irq_name, ndev);
 		if (ret)
 			return ret;
 	}
