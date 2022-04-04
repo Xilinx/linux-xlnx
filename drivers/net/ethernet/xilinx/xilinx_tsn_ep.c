@@ -428,11 +428,15 @@ static int tsn_ep_probe(struct platform_device *pdev)
 		ret = PTR_ERR(lp->regs);
 		goto free_netdev;
 	}
+#ifdef CONFIG_XILINX_TSN_QBV
 	lp->qbv_regs = lp->regs;
+#endif
 
 	sprintf(irq_name, "tsn_ep_scheduler_irq");
 	lp->qbv_irq = platform_get_irq_byname(pdev, irq_name);
+#ifdef CONFIG_XILINX_TSN_QBV
 	axienet_qbv_init(ndev);
+#endif
 
 	ret = register_netdev(lp->ndev);
 	if (ret)
@@ -450,7 +454,9 @@ static int tsn_ep_remove(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
 
+#ifdef CONFIG_XILINX_TSN_QBV
 	axienet_qbv_remove(ndev);
+#endif
 	unregister_netdev(ndev);
 
 	free_netdev(ndev);
