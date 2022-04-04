@@ -30,6 +30,16 @@
 #define TX_BD_NUM_DEFAULT	64
 #define RX_BD_NUM_DEFAULT	1024
 
+static u8 st_pcp[8];
+static uint st_count;
+module_param_array(st_pcp, byte, &st_count, 0644);
+MODULE_PARM_DESC(st_pcp, "Array of pcp values mapped to ST class at the compile time");
+
+static u8 res_pcp[8];
+static uint res_count;
+module_param_array(res_pcp, byte, &res_count, 0644);
+MODULE_PARM_DESC(res_pcp, "Array of pcp values mapped to RES class at the compile time");
+
 /**
  * tsn_ep_open - TSN EP driver open routine.
  * @ndev:	Pointer to net_device structure
@@ -207,7 +217,7 @@ static u16 axienet_tsn_ep_select_queue(struct net_device *ndev, struct sk_buff *
 
 		pcp = (vlan_tci & VLAN_PRIO_MASK) >> VLAN_PRIO_SHIFT;
 #ifdef CONFIG_AXIENET_HAS_TADMA
-		if (pcp == 4) { /* ST Traffic */
+		if (lp->st_pcp & (1 << pcp)) { /* ST Traffic */
 			if (lp->num_tx_queues == 1) {
 				/* if number of transmit queues is 1,
 				 * reserved traffic is transmitted on BE traffic queue
@@ -217,10 +227,10 @@ static u16 axienet_tsn_ep_select_queue(struct net_device *ndev, struct sk_buff *
 			return ST_QUEUE_NUMBER_2;
 		}
 #endif
-	}
-	if (lp->num_tc == 3 && (pcp == 2 || pcp == 3)) {
-		if (lp->num_tx_queues != 1)
-			return RES_QUEUE_NUMBER;
+		if (lp->num_tc == 3 && (lp->res_pcp & (1 << pcp))) {
+			if (lp->num_tx_queues != 1)
+				return RES_QUEUE_NUMBER;
+		}
 	}
 	return BE_QUEUE_NUMBER;
 }
@@ -370,6 +380,60 @@ static const struct axienet_config tsn_endpoint_cfg = {
 };
 
 /**
+ *axienet_get_pcp_mask - gets the compile time pcp values that
+ *are mapped to ST and RES traffic from uEnv.txt and assigns them
+ *to st_pcp and res_pcp fields of axienet_local structure
+ *@pdev:	Pointer to platform device structure.
+ *@lp:		axienet local structure
+ *@num_tc:	number of traffic classes
+ *
+ * Return: Always returns 0
+ */
+int axienet_get_pcp_mask(struct platform_device *pdev,
+			 struct axienet_local *lp, u16 num_tc)
+{
+	u8 i;
+	u8 invalid_pcp = 0;
+
+	lp->st_pcp = 0;
+	lp->res_pcp = 0;
+	if (st_count == 0 || st_count > 8) {
+		lp->st_pcp = 1 << 4;
+	} else {
+		for (i = 0; i < st_count; i++) {
+			if (st_pcp[i] >= 8) {
+				invalid_pcp = 1;
+				break;
+			}
+			lp->st_pcp = lp->st_pcp | 1 << st_pcp[i];
+		}
+		if (invalid_pcp) {
+			pr_warn("pcp value cannot be greater than or equal to 8\n");
+			lp->st_pcp = 1 << 4;
+			invalid_pcp = 0;
+		}
+	}
+	if (num_tc == 3) {
+		if (res_count == 0 || res_count > 8) {
+			lp->res_pcp = 1 << 2 | 1 << 3;
+		} else {
+			for (i = 0; i < res_count; i++) {
+				if (res_pcp[i] >= 8) {
+					invalid_pcp = 1;
+					break;
+				}
+				lp->res_pcp = lp->res_pcp | 1 << res_pcp[i];
+			}
+			if (invalid_pcp) {
+				pr_warn("pcp value cannot be greater than or equal to 8\n");
+				lp->res_pcp = 1 << 2 | 1 << 3;
+			}
+		}
+	}
+	return 0;
+}
+
+/**
  * tsn_ep_probe - TSN ep pointer probe function.
  * @pdev:	Pointer to platform device structure.
  *
@@ -456,6 +520,7 @@ static int tsn_ep_probe(struct platform_device *pdev)
 		lp->num_tc = XAE_MAX_TSN_TC;
 	else
 		lp->num_tc = num_tc;
+	axienet_get_pcp_mask(pdev, lp, lp->num_tc);
 	/* Map device registers */
 	ethres = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	lp->regs = devm_ioremap_resource(&pdev->dev, ethres);
