@@ -21,6 +21,7 @@
 #include <linux/netdevice.h>
 #include <linux/skbuff.h>
 #include <linux/phy.h>
+#include <linux/udp.h>
 #include <linux/mii.h>
 #include <linux/of_mdio.h>
 #include <linux/of_net.h>
@@ -79,12 +80,17 @@ static int tsn_ip_remove(struct platform_device *pdev)
 u16 axienet_tsn_select_queue(struct net_device *ndev, struct sk_buff *skb,
 			     struct net_device *sb_dev)
 {
+	struct axienet_local *lp = netdev_priv(ndev);
 	struct ethhdr *hdr = (struct ethhdr *)skb->data;
-	u16 ether_type = ntohs(hdr->h_proto);
-
 #ifdef CONFIG_XILINX_TSN_PTP
-	if (ether_type == ETH_P_1588)
+	const struct udphdr *udp;
+
+	udp = udp_hdr(skb);
+	if (hdr->h_proto == htons(ETH_P_1588) ||
+	    (lp->current_rx_filter == HWTSTAMP_FILTER_PTP_V2_L4_EVENT &&
+	     hdr->h_proto == htons(ETH_P_IP) && udp->dest == htons(0x013f))) {
 		return PTP_QUEUE_NUMBER;
+	}
 #endif
 
 	return 0;
@@ -154,7 +160,7 @@ int axienet_tsn_probe(struct platform_device *pdev,
 		temac_no = XAE_TEMAC1;
 		lp->switch_prt = PORT_MAC1;
 	}
-
+	lp->current_rx_filter = HWTSTAMP_FILTER_PTP_V2_L2_EVENT;
 	sprintf(irq_name, "interrupt_ptp_rx_%d", temac_no + 1);
 	lp->ptp_rx_irq = platform_get_irq_byname(pdev, irq_name);
 

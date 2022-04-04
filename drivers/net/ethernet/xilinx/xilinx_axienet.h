@@ -215,6 +215,15 @@
 #define XAE_FMC_OFFSET		0x00000708 /* Frame Filter Control */
 #define XAE_AF0_OFFSET		0x00000710 /* Address Filter 0 */
 #define XAE_AF1_OFFSET		0x00000714 /* Address Filter 1 */
+#define XAE_FF_3_OFFSET		0x0000071C /* Frame Filter 3 */
+#define XAE_FF_5_OFFSET		0x00000724 /* Frame Filter 5 */
+#define XAE_FF_9_OFFSET		0x00000734 /* Frame Filter 9 */
+#define XAE_FF_10_OFFSET	0x00000738 /* Frame Filter 10 */
+#define XAE_AF0_MASK_OFFSET	0x00000750 /* Address Filter Mask 0 */
+#define XAE_AF1_MASK_OFFSET	0x00000754 /* Address Filter Mask 1 */
+#define XAE_FF_5_MASK_OFFSET	0x00000764 /* Frame Filter Mask register 5 */
+#define XAE_FF_9_MASK_OFFSET	0x00000774 /* Frame Filter Mask register 9 */
+#define XAE_FF_10_MASK_OFFSET	0x00000778 /* Frame Filter Mask register 10 */
 
 #define XAE_TX_VLAN_DATA_OFFSET 0x00004000 /* TX VLAN data table address */
 #define XAE_RX_VLAN_DATA_OFFSET 0x00008000 /* RX VLAN data table address */
@@ -792,6 +801,7 @@ enum axienet_tsn_ioctl {
  * @tx_ts_regs:	  Base address for the axififo device address space.
  * @rx_ts_regs:	  Base address for the rx axififo device address space.
  * @tstamp_config: Hardware timestamp config structure.
+ * @current_rx_filter : Current rx filter.
  * @tx_ptpheader: Stores the tx ptp header.
  * @aclk: AXI4-Lite clock for ethernet and dma.
  * @eth_sclk: AXI4-Stream interface clock.
@@ -902,6 +912,7 @@ struct axienet_local {
 	void __iomem *tx_ts_regs;
 	void __iomem *rx_ts_regs;
 	struct hwtstamp_config tstamp_config;
+	int current_rx_filter;
 	u8 *tx_ptpheader;
 #endif
 	struct clk *aclk;
