@@ -324,7 +324,6 @@ struct cam_struct {
 	bool tv_en;
 	u8 gate_id;
 	u8 ipv;
-	bool en_ipv;
 	u32 flags;
 	u8 ep_port_act;
 	u8 mac_port_act;
