@@ -42,6 +42,9 @@
 #define GET_STATIC_FRER_COUNTER			0x2D
 #define GET_MEMBER_REG				0x2E
 #define GET_INGRESS_FLTR			0x2F
+#define SET_MAC_ADDR_LEARN_CONFIG		0x30
+#define GET_MAC_ADDR_LEARN_CONFIG		0x31
+#define GET_MAC_ADDR_LEARNT_LIST		0x32
 
 /* Xilinx Axi Switch Offsets*/
 #define XAS_STATUS_OFFSET			0x00000
@@ -57,6 +60,8 @@
 #define XAS_MAC2MAC_BE_FIFOT_OFFSET		0x00038
 #define XAS_EP_PORT_VLAN_OFFSET			0x00040
 #define XAS_MAC_PORT_VLAN_OFFSET		0x00044
+#define XAS_HW_ADDR_LEARN_CTRL_OFFSET		0x00048
+#define XAS_PORT_STATE_CTRL_OFFSET		0x0004c
 #define XAS_FRM_FLTR_TYPE_FIELD_OPT_OFFSET	0x00050
 #define XAS_MAC2_MNG_Q_OPTION_OFFSET		0x00054
 #define XAS_MAC1_MNG_Q_OPTION_OFFSET		0x00058
@@ -314,7 +319,37 @@ struct ff_type {
 	u16 type2;
 };
 
+/* TODO Fix holes in this structure and corresponding TSN switch_prog app */
+struct mac_addr_learn {
+	bool aging;
+	bool is_age;
+	bool learning;
+	bool is_learn;
+	bool learn_untag;
+	bool is_untag;
+	u32 aging_time;
+};
+
+struct mac_learnt {
+	u8 mac_addr[6];
+	u16 vlan_id;
+};
+
+#define MAX_NUM_MAC_ENTRIES	2048
+struct mac_addr_list {
+	u8 port_num;
+	u16 num_list;
+	struct mac_learnt list[MAX_NUM_MAC_ENTRIES];
+};
+
+enum switch_port {
+	PORT_EP = 1,
+	PORT_MAC1 = 2,
+	PORT_MAC2 = 4,
+};
+
 /* Core switch structure*/
+/* TODO Fix holes in this structure and corresponding TSN switch_prog app */
 struct switch_data {
 	u32 switch_status;
 	u32 switch_ctrl;
