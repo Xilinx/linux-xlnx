@@ -2407,6 +2407,8 @@ static int axienet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 		return axienet_preemption_ctrl(dev, rq->ifr_data);
 	case SIOC_PREEMPTION_STS:
 		return axienet_preemption_sts(dev, rq->ifr_data);
+	case SIOC_PREEMPTION_RECEIVE:
+		return axienet_preemption_receive(dev);
 	case SIOC_PREEMPTION_COUNTER:
 		return axienet_preemption_cnt(dev, rq->ifr_data);
 #ifdef CONFIG_XILINX_TSN_QBV
