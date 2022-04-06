@@ -17,6 +17,11 @@ Optional properties:
 - xlnx,channel-ids 	: Queue Identifier associated with the MCDMA Channel, range
 			  is Tx: "1 to 2" and Rx: "2 to 5", default value is "1 to 5".
 - xlnx,eth-hasnobuf	: Used when 1G MAC is configured in non processor mode.
+- axistream-connected-rx	: Reference to another node which contains the
+				  resources for the MCDMA controller used by
+				  this device. The MCDMA related resources
+				  (registers and interrupts) will be used from
+				  this node.
 
 Optional TADMA properties:
 - xlnx,num-buffers-per-stream	: Number of TADMA buffers per stream in design. Default is 64.
