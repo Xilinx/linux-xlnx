@@ -19,7 +19,7 @@
 #ifndef XILINX_TSN_SWITCH_H
 #define XILINX_TSN_SWITCH_H
 
-#include "xilinx_axienet.h"
+#include "xilinx_axienet_tsn.h"
 
 /* ioctls */
 #define GET_STATUS_SWITCH			0x16

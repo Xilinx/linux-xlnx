@@ -9,7 +9,7 @@
 #include <linux/module.h>
 #include <linux/if_bridge.h>
 #include <net/switchdev.h>
-#include "xilinx_axienet.h"
+#include "xilinx_axienet_tsn.h"
 #include "xilinx_tsn_switch.h"
 
 #define tsn_to_linux_sw_state(s) \

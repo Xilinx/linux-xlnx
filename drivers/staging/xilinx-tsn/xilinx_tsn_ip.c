@@ -28,7 +28,7 @@
 #include <linux/of_address.h>
 #include <linux/xilinx_phy.h>
 
-#include "xilinx_axienet.h"
+#include "xilinx_axienet_tsn.h"
 #include "xilinx_tsn_switch.h"
 
 #ifdef CONFIG_XILINX_TSN_PTP
@@ -127,7 +127,7 @@ int axienet_tsn_xmit(struct sk_buff *skb, struct net_device *ndev)
 		if (map == ST_QUEUE_NUMBER) /* ST Traffic */
 			return axienet_tadma_xmit(skb, ndev, map);
 #endif
-		return axienet_queue_xmit(skb, ndev, map);
+		return axienet_queue_xmit_tsn(skb, ndev, map);
 	}
 	/* use EP to xmit non-PTP frames */
 	skb->dev = master;
@@ -191,7 +191,7 @@ int axienet_tsn_probe(struct platform_device *pdev,
 
 	/* enable VLAN */
 	lp->options |= XAE_OPTION_VLAN;
-	axienet_setoptions(lp->ndev, lp->options);
+	axienet_setoptions_tsn(lp->ndev, lp->options);
 
 	/* get the ep device */
 	ep_node = of_parse_phandle(pdev->dev.of_node, "tsn,endpoint", 0);
@@ -300,8 +300,8 @@ static void axienet_device_reset(struct net_device *ndev)
 	lp->axienet_config->setoptions(ndev, lp->options &
 				       ~(XAE_OPTION_TXEN | XAE_OPTION_RXEN));
 
-	axienet_set_mac_address(ndev, NULL);
-	axienet_set_multicast_list(ndev);
+	axienet_set_mac_address_tsn(ndev, NULL);
+	axienet_set_multicast_list_tsn(ndev);
 	lp->axienet_config->setoptions(ndev, lp->options);
 
 	netif_trans_update(ndev);
@@ -328,7 +328,7 @@ int axienet_tsn_open(struct net_device *ndev)
 
 	if (lp->phy_node) {
 		phydev = of_phy_connect(lp->ndev, lp->phy_node,
-					axienet_adjust_link,
+					axienet_adjust_link_tsn,
 					lp->phy_flags,
 					lp->phy_mode);
 		if (!phydev)

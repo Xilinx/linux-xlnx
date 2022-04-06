@@ -46,3 +46,4 @@ obj-$(CONFIG_XLNX_SYNC)		+= xlnxsync/
 obj-$(CONFIG_XLNX_TSMUX)	+= xlnx_tsmux/
 obj-$(CONFIG_XROE_FRAMER)	+= xroeframer/
 obj-$(CONFIG_SERIAL_UARTLITE_RS485)	+= uartlite-rs485/
+obj-$(CONFIG_XILINX_TSN)	+= xilinx-tsn/

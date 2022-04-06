@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/**
+/*
  * Xilinx TSN QBU/QBR - Frame Preemption header
  *
  * Copyright (C) 2017 Xilinx, Inc.
