@@ -623,6 +623,18 @@ int axienet_tadma_program(struct net_device *ndev, void __user *useraddr)
 	return ret;
 }
 
+int axienet_tadma_off(struct net_device *ndev, void __user *useraddr)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+
+	tadma_iow(lp, XTADMA_INT_EN_OFFSET, XTADMA_FFI_INT_EN |
+		  XTADMA_IE_INT_EN);
+	tadma_sfm_program(ndev, STRID_BE, NSEC_PER_MSEC, 0);
+	tadma_iow(lp, XTADMA_CR_OFFSET, XTADMA_CFG_DONE);
+	get_sid = 0;
+	return 0;
+}
+
 int axienet_tadma_flush_stream(struct net_device *ndev, void __user *useraddr)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
@@ -630,13 +642,11 @@ int axienet_tadma_flush_stream(struct net_device *ndev, void __user *useraddr)
 	struct tadma_stream_entry *entry;
 	struct hlist_head *bucket;
 	struct hlist_node *tmp;
-	u32 offset, cr;
+	u32 offset;
 	int hash;
 
 	/* set CFG_DONE to 0 */
-	/* TODO  remove RST after new HW fix */
-	cr = XTADMA_CFG_DONE | XTADMA_SOFT_RST;
-	tadma_iow(lp, XTADMA_CR_OFFSET, cr);
+	tadma_iow(lp, XTADMA_CR_OFFSET, 0);
 
 	for (hash = 0; hash < lp->num_entries; hash++) {
 		offset = sfm_entry_offset(lp, hash);
