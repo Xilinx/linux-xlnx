@@ -327,22 +327,10 @@ int axienet_tsn_open(struct net_device *ndev)
 	axienet_device_reset(ndev);
 
 	if (lp->phy_node) {
-		if (lp->phy_mode == XAE_PHY_TYPE_GMII) {
-			phydev = of_phy_connect(lp->ndev, lp->phy_node,
-						axienet_adjust_link, 0,
-						PHY_INTERFACE_MODE_GMII);
-		} else if (lp->phy_mode == XAE_PHY_TYPE_RGMII_2_0) {
-			phydev = of_phy_connect(lp->ndev, lp->phy_node,
-						axienet_adjust_link, 0,
-						PHY_INTERFACE_MODE_RGMII_ID);
-		} else if ((lp->axienet_config->mactype == XAXIENET_1G) ||
-			     (lp->axienet_config->mactype == XAXIENET_2_5G)) {
-			phydev = of_phy_connect(lp->ndev, lp->phy_node,
-						axienet_adjust_link,
-						lp->phy_flags,
-						lp->phy_mode);
-		}
-
+		phydev = of_phy_connect(lp->ndev, lp->phy_node,
+					axienet_adjust_link,
+					lp->phy_flags,
+					lp->phy_mode);
 		if (!phydev)
 			dev_err(lp->dev, "of_phy_connect() failed\n");
 		else
