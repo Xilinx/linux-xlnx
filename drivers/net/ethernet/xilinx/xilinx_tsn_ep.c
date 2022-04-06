@@ -181,6 +181,7 @@ static int tsn_ep_stop(struct net_device *ndev)
  * tsn_ep_ioctl - TSN endpoint ioctl interface.
  * @dev: Pointer to the net_device structure
  * @rq: Socket ioctl interface request structure
+ * @data: User data
  * @cmd: Ioctl case
  *
  * Return: 0 on success, Non-zero error value on failure.
@@ -188,24 +189,24 @@ static int tsn_ep_stop(struct net_device *ndev)
  * This is the ioctl interface for TSN end point. Currently this
  * supports only gate programming.
  */
-static int tsn_ep_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
+static int tsn_ep_ioctl(struct net_device *dev, struct ifreq *rq, void __user *data, int cmd)
 {
 	switch (cmd) {
 #ifdef CONFIG_XILINX_TSN_QBV
 	case SIOCCHIOCTL:
-		return axienet_set_schedule(dev, rq->ifr_data);
+		return axienet_set_schedule(dev, data);
 	case SIOC_GET_SCHED:
-		return axienet_get_schedule(dev, rq->ifr_data);
+		return axienet_get_schedule(dev, data);
 #endif
 #ifdef CONFIG_AXIENET_HAS_TADMA
 	case SIOC_TADMA_OFF:
-		return axienet_tadma_off(dev, rq->ifr_data);
+		return axienet_tadma_off(dev, data);
 	case SIOC_TADMA_STR_ADD:
-		return axienet_tadma_add_stream(dev, rq->ifr_data);
+		return axienet_tadma_add_stream(dev, data);
 	case SIOC_TADMA_PROG_ALL:
-		return axienet_tadma_program(dev, rq->ifr_data);
+		return axienet_tadma_program(dev, data);
 	case SIOC_TADMA_STR_FLUSH:
-		return axienet_tadma_flush_stream(dev, rq->ifr_data);
+		return axienet_tadma_flush_stream(dev, data);
 #endif
 	default:
 		return -EOPNOTSUPP;
@@ -303,7 +304,7 @@ static int netdev_set_mac_address(struct net_device *ndev, void *p)
 static const struct net_device_ops ep_netdev_ops = {
 	.ndo_open = tsn_ep_open,
 	.ndo_stop = tsn_ep_stop,
-	.ndo_do_ioctl = tsn_ep_ioctl,
+	.ndo_siocdevprivate = tsn_ep_ioctl,
 	.ndo_start_xmit = tsn_ep_xmit,
 	.ndo_set_mac_address = netdev_set_mac_address,
 	.ndo_select_queue = axienet_tsn_ep_select_queue,
