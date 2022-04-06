@@ -44,15 +44,6 @@ config AXIENET_HAS_MCDMA
 	help
 	  When hardware is generated with AXI Ethernet with MCDMA select this option.
 
-config AXIENET_HAS_TADMA
-	bool "AxiEthernet is configured with TADMA"
-	depends on XILINX_TSN
-	help
-	  When hardware is generated with Axi Ethernet with TADMA select this option.
-	  This driver enables Time Aware DMA to support TSN Qbv clause accurately.
-	  It is used to fetch schedule traffic.
-	  It contains one queue.
-
 config XILINX_LL_TEMAC
 	tristate "Xilinx LL TEMAC (LocalLink Tri-mode Ethernet MAC) driver"
 	depends on HAS_IOMEM
@@ -60,56 +51,5 @@ config XILINX_LL_TEMAC
 	help
 	  This driver supports the Xilinx 10/100/1000 LocalLink TEMAC
 	  core used in Xilinx Spartan and Virtex FPGAs
-
-config XILINX_TSN
-	bool "Enable Xilinx's TSN IP"
-	select XILINX_AXI_EMAC
-	help
-	  Enable Xilinx's TSN IP.
-
-config XILINX_TSN_PTP
-	bool "Generate hardware packet timestamps using Xilinx's TSN IP"
-	depends on XILINX_TSN
-	select PTP_1588_CLOCK
-	default y
-	help
-	  Generate hardware packet timestamps. This is to facilitate IEEE 1588.
-
-config XILINX_TSN_QBV
-	bool "Support Qbv protocol in TSN"
-	depends on XILINX_TSN_PTP
-	select PTP_1588_CLOCK
-	default y
-	help
-	  Enables TSN Qbv protocol.
-
-config XILINX_TSN_SWITCH
-	bool "Support TSN switch"
-	depends on XILINX_TSN
-	select NET_SWITCHDEV
-	default y
-	help
-	  Enable Xilinx's TSN Switch support.
-
-config XILINX_TSN_QCI
-	bool "Support Qci protocol in TSN"
-	depends on XILINX_TSN_SWITCH
-	default y
-	help
-	  Enable TSN QCI protocol.
-
-config XILINX_TSN_CB
-	bool "Support CB protocol in TSN"
-	depends on XILINX_TSN_SWITCH
-	default y
-	help
-	  Enable TSN CB protocol support.
-
-config XILINX_TSN_QBR
-       bool "Support QBR protocol in TSN"
-       depends on XILINX_TSN_SWITCH
-       default y
-       help
-         Enable TSN QBR protocol support.
 
 endif # NET_VENDOR_XILINX

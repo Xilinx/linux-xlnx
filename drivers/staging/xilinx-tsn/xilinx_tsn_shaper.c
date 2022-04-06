@@ -16,7 +16,7 @@
  * GNU General Public License for more details.
  */
 
-#include "xilinx_axienet.h"
+#include "xilinx_axienet_tsn.h"
 #include "xilinx_tsn_shaper.h"
 
 static inline int axienet_map_gs_to_hw(struct axienet_local *lp, u32 gs)

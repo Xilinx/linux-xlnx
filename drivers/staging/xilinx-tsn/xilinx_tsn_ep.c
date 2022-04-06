@@ -24,7 +24,7 @@
 #include <linux/of_net.h>
 #include <linux/skbuff.h>
 
-#include "xilinx_axienet.h"
+#include "xilinx_axienet_tsn.h"
 #include "xilinx_tsn_switch.h"
 
 #define TX_BD_NUM_DEFAULT	64
@@ -52,23 +52,23 @@ int tsn_data_path_open(struct net_device *ndev)
 	for_each_tx_dma_queue(lp, i) {
 		q = lp->dq[i];
 		/*MCDMA TX RESET*/
-		__axienet_device_reset(q);
+		__axienet_device_reset_tsn(q);
 	}
 
 	for_each_rx_dma_queue(lp, i) {
 		q = lp->dq[i];
 
-		ret = axienet_mcdma_rx_q_init(ndev, q);
+		ret = axienet_mcdma_rx_q_init_tsn(ndev, q);
 		/* Enable interrupts for Axi MCDMA Rx
 		 */
 		sprintf(irq_name[irq_cnt], "%s_mcdma_rx_%d", ndev->name, i + 1);
-		ret = request_irq(q->rx_irq, axienet_mcdma_rx_irq,
+		ret = request_irq(q->rx_irq, axienet_mcdma_rx_irq_tsn,
 				  IRQF_SHARED, irq_name[irq_cnt], ndev);
 		if (ret)
 			goto err_dma_rx_irq;
 
 		tasklet_init(&lp->dma_err_tasklet[i],
-			     axienet_mcdma_err_handler,
+			     axienet_mcdma_err_handler_tsn,
 			     (unsigned long)lp->dq[i]);
 		napi_enable(&lp->napi[i]);
 		irq_cnt++;
@@ -77,10 +77,10 @@ int tsn_data_path_open(struct net_device *ndev)
 	for_each_tx_dma_queue(lp, i) {
 		q = lp->dq[i];
 
-		ret = axienet_mcdma_tx_q_init(ndev, q);
+		ret = axienet_mcdma_tx_q_init_tsn(ndev, q);
 		/* Enable interrupts for Axi MCDMA Tx */
 		sprintf(irq_name[irq_cnt], "%s_mcdma_tx_%d", ndev->name, i + 1);
-		ret = request_irq(q->tx_irq, axienet_mcdma_tx_irq,
+		ret = request_irq(q->tx_irq, axienet_mcdma_tx_irq_tsn,
 				  IRQF_SHARED, irq_name[irq_cnt], ndev);
 		if (ret)
 			goto err_dma_tx_irq;
@@ -158,7 +158,7 @@ int tsn_data_path_close(struct net_device *ndev)
 #ifdef CONFIG_AXIENET_HAS_TADMA
 	axienet_tadma_stop(ndev);
 #endif
-	axienet_dma_bd_release(ndev);
+	axienet_dma_bd_release_tsn(ndev);
 
 	return 0;
 }
@@ -271,7 +271,7 @@ static int tsn_ep_xmit(struct sk_buff *skb, struct net_device *ndev)
 		return axienet_tadma_xmit(skb, ndev, map);
 #endif
 
-	return axienet_queue_xmit(skb, ndev, map);
+	return axienet_queue_xmit_tsn(skb, ndev, map);
 }
 
 static void tsn_ep_set_mac_address(struct net_device *ndev, const void *address)
@@ -300,6 +300,15 @@ static int netdev_set_mac_address(struct net_device *ndev, void *p)
 	tsn_ep_set_mac_address(ndev, addr->sa_data);
 	return 0;
 }
+
+static const struct ethtool_ops ep_ethtool_ops = {
+	.supported_coalesce_params = ETHTOOL_COALESCE_MAX_FRAMES,
+	.get_sset_count	 = axienet_sset_count_tsn,
+	.get_ethtool_stats = axienet_get_stats_tsn,
+	.get_coalesce   = axienet_ethtools_get_coalesce,
+	.set_coalesce   = axienet_ethtools_set_coalesce,
+	.get_strings = axienet_strings_tsn,
+};
 
 static const struct net_device_ops ep_netdev_ops = {
 	.ndo_open = tsn_ep_open,
@@ -380,8 +389,8 @@ int __maybe_unused tsn_mcdma_probe(struct platform_device *pdev, struct axienet_
 		return ret;
 	}
 
-	axienet_mcdma_rx_probe(pdev, lp, ndev);
-	axienet_mcdma_tx_probe(pdev, np, lp);
+	axienet_mcdma_rx_probe_tsn(pdev, np, ndev);
+	axienet_mcdma_tx_probe_tsn(pdev, np, lp);
 
 	return 0;
 }
@@ -475,6 +484,7 @@ static int tsn_ep_probe(struct platform_device *pdev)
 	ndev->flags &= ~IFF_MULTICAST;  /* clear multicast */
 	ndev->features = NETIF_F_SG;
 	ndev->netdev_ops = &ep_netdev_ops;
+	ndev->ethtool_ops = &ep_ethtool_ops;
 
 	/* MTU range: 64 - 9000 */
 	ndev->min_mtu = 64;

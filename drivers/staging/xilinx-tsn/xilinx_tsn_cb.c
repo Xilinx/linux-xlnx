@@ -79,7 +79,7 @@ void get_ingress_filter_config(struct in_fltr *data)
 }
 
 /**
- * config_stream_filter -  Configure Ingress Filter Configuration
+ * config_ingress_filter -  Configure Ingress Filter Configuration
  * @data:	Value to be programmed
  */
 void config_ingress_filter(struct cb data)
