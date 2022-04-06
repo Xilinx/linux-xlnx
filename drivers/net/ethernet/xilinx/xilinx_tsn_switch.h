@@ -170,6 +170,18 @@
 #define FRER_ROGUE_FRAMES_SEQ_OFFSET		0x7000
 #define SEQ_RECV_RESETS_OFFSET			0x7800
 
+/* endpoint extension control register */
+#define XAE_EP_EXT_CTRL_OFFSET			0x0058
+#define XAE_MGMT_QUEUING_OPTIONS_OFFSET		0x0054
+#define XAE_EX_EP_BROADCAST_PKT_SWITCH		BIT(7)
+#define XAE_EX_EP_MULTICAST_PKT_SWITCH		BIT(6)
+#define XAE_EX_EP_EXT_CTRL_DATA_TC_3		0x00135419
+#define XAE_EX_EP_EXT_CTRL_DATA_TC_2		0x000DC401
+#define XAE_EP_EXT_CTRL_DATA_TC_3		0x00400419
+#define XAE_EP_EXT_CTRL_DATA_TC_2		0x00400409
+#define XAE_EX_EP_EXT_CTRL_MASK			0xFFE00000
+#define XAE_EP_EXT_CTRL_MASK			0xFF1FF000
+
 /* 64 bit counter*/
 struct static_cntr {
 	u32 msb;
@@ -395,6 +407,8 @@ enum switch_port {
 	PORT_EP = 1,
 	PORT_MAC1 = 2,
 	PORT_MAC2 = 4,
+	PORT_EX_ONLY = 8,
+	PORT_EX_EP = 16,
 };
 
 /* Core switch structure*/

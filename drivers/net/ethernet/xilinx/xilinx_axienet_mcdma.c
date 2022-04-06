@@ -31,10 +31,14 @@ struct axienet_stat {
  * The channel numbers for managemnet frames in 5 channel mcdma on EP+Switch
  * system. These are not exposed via hdf/dtsi, so need to hardcode here
  */
-#define TSN_MAX_RX_Q_EPSWITCH 5
-#define TSN_MIN_RX_Q_EPSWITCH 4
-#define TSN_MGMT_CHAN0 2
-#define TSN_MGMT_CHAN1 3
+#define TSN_MAX_RX_Q_EX_EPSWITCH 7
+#define TSN_MIN_RX_Q_EX_EPSWITCH 5
+#define TSN_MGMT_CHAN 3
+#define TSN_MAX_EX_EP_BE_CHAN 5
+#define TSN_MAX_EX_EP_ST_CHAN 6
+#define TSN_MAX_EX_EP_RES_CHAN 7
+#define TSN_MIN_EX_EP_BE_CHAN 4
+#define TSN_MIN_EX_EP_ST_CHAN 5
 #endif
 
 static struct axienet_stat axienet_get_tx_strings_stats[] = {
@@ -305,12 +309,17 @@ int __maybe_unused axienet_mcdma_rx_q_init(struct net_device *ndev,
 
 #ifdef CONFIG_XILINX_TSN
 	/* check if this is a mgmt channel */
-	if (lp->num_rx_queues == TSN_MAX_RX_Q_EPSWITCH ||
-	    lp->num_rx_queues == TSN_MIN_RX_Q_EPSWITCH) {
-		if (q->chan_id == TSN_MGMT_CHAN0)
-			q->flags |= (MCDMA_MGMT_CHAN | MCDMA_MGMT_CHAN_PORT0);
-		else if (q->chan_id == TSN_MGMT_CHAN1)
-			q->flags |= (MCDMA_MGMT_CHAN | MCDMA_MGMT_CHAN_PORT1);
+	if (lp->num_rx_queues == TSN_MAX_RX_Q_EX_EPSWITCH &&
+	    (q->chan_id == TSN_MAX_EX_EP_BE_CHAN ||
+	     q->chan_id == TSN_MAX_EX_EP_ST_CHAN ||
+	     q->chan_id == TSN_MAX_EX_EP_RES_CHAN)) {
+		q->flags = MCDMA_EP_EX_CHAN;
+	} else if ((lp->num_rx_queues == TSN_MIN_RX_Q_EX_EPSWITCH) &&
+		   ((q->chan_id == TSN_MIN_EX_EP_BE_CHAN) ||
+		    (q->chan_id == TSN_MIN_EX_EP_ST_CHAN))) {
+		q->flags = MCDMA_EP_EX_CHAN;
+	} else if (q->chan_id == TSN_MGMT_CHAN) {
+		q->flags = MCDMA_MGMT_CHAN;
 	}
 #endif
 
