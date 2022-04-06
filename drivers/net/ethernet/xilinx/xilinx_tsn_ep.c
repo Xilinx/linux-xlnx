@@ -219,6 +219,7 @@ u16 axienet_tsn_pcp_to_queue(struct net_device *ndev, struct sk_buff *skb)
 	u16 ether_type = ntohs(hdr->h_proto);
 	u16 vlan_tci;
 	u8 pcp = 0;
+	int i;
 
 	if (unlikely(ether_type == ETH_P_8021Q)) {
 		struct vlan_ethhdr *vhdr = (struct vlan_ethhdr *)skb->data;
@@ -229,12 +230,16 @@ u16 axienet_tsn_pcp_to_queue(struct net_device *ndev, struct sk_buff *skb)
 
 		pcp = (vlan_tci & VLAN_PRIO_MASK) >> VLAN_PRIO_SHIFT;
 #ifdef CONFIG_AXIENET_HAS_TADMA
-		if (lp->st_pcp & (1 << pcp)) /* ST Traffic */
-			return ST_QUEUE_NUMBER;
+		for (i = 0; i < st_count; i++) {
+			if (st_pcp[i] == pcp)
+				return ST_QUEUE_NUMBER;
+		}
 #endif
-		if (lp->num_tc == 3 && (lp->res_pcp & (1 << pcp))) {
-			if (lp->num_tx_queues > 1)
-				return RES_QUEUE_NUMBER;
+		if (lp->num_tc == 3 && lp->num_tx_queues > 1) {
+			for (i = 0; i < res_count; i++) {
+				if (res_pcp[i] == pcp)
+					return RES_QUEUE_NUMBER;
+			}
 		}
 	}
 	return BE_QUEUE_NUMBER;
