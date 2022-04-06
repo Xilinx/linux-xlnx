@@ -493,6 +493,12 @@
 #define XMCDMA_BD_CTRL_TXEOF_MASK	0x40000000 /* Last tx packet */
 #define XMCDMA_BD_CTRL_ALL_MASK		0xC0000000 /* All control bits */
 #define XMCDMA_BD_STS_ALL_MASK		0xF0000000 /* All status bits */
+#define XMCDMA_BD_SD_STS_ALL_MASK	0x00000030 /* TUSER input port bits */
+
+#define XMCDMA_BD_SD_STS_TUSER_EP	0x00000000
+#define XMCDMA_BD_SD_STS_TUSER_MAC_1	0x00000010
+#define XMCDMA_BD_SD_STS_TUSER_MAC_2	0x00000020
+#define XMCDMA_BD_SD_STS_TUSER_EX_EP	0x00000030
 
 #define XMCDMA_COALESCE_SHIFT		16
 #define XMCDMA_DELAY_SHIFT		24
@@ -689,7 +695,7 @@ struct aximcdma_bd {
 #define DESC_DMA_MAP_PAGE 1
 
 #if defined(CONFIG_XILINX_TSN)
-#define XAE_MAX_QUEUES		5
+#define XAE_MAX_QUEUES		7
 #elif defined(CONFIG_AXIENET_HAS_MCDMA)
 #define XAE_MAX_QUEUES		16
 #else
@@ -756,6 +762,8 @@ enum axienet_tsn_ioctl {
  * @res_pcp:    pcp values mapped to reserved traffic.
  * @master:	Master endpoint
  * @slaves:	Front panel ports
+ * @ex_ep:	extended end point
+ * @packet_switch: packet switching parameter
  * @switch_prt: Switch port number
  * @timer_priv: PTP timer private data pointer
  * @ptp_tx_irq: PTP tx irq
@@ -859,6 +867,8 @@ struct axienet_local {
 	u8    res_pcp;
 	struct net_device *master; /* master endpoint */
 	struct net_device *slaves[2]; /* two front panel ports */
+	struct net_device *ex_ep; /* extended endpoint*/
+	u8	packet_switch;
 	u8      switch_prt;	/* port on the switch */
 #ifdef CONFIG_XILINX_TSN_PTP
 	void *timer_priv;
@@ -1010,8 +1020,7 @@ struct axienet_dma_q {
 	/* MCDMA fields */
 #ifdef CONFIG_XILINX_TSN
 #define MCDMA_MGMT_CHAN		BIT(0)
-#define MCDMA_MGMT_CHAN_PORT0	BIT(1)
-#define MCDMA_MGMT_CHAN_PORT1	BIT(2)
+#define MCDMA_EP_EX_CHAN	BIT(1)
 	u32 flags;
 #endif
 	u16 chan_id;

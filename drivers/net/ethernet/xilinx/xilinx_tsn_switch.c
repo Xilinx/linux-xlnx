@@ -23,7 +23,9 @@
 #include "xilinx_tsn_switch.h"
 
 static struct miscdevice switch_dev;
+static struct device_node *ep_node;
 struct axienet_local lp;
+static struct axienet_local *ep_lp;
 static u8 en_hw_addr_learning;
 static u8 sw_mac_addr[ETH_ALEN];
 
@@ -70,6 +72,8 @@ static u8 sw_mac_addr[ETH_ALEN];
 #define MAC1_PORT_STATUS_CHG_BIT               BIT(8)
 #define EP_PORT_STATUS_SHIFT                   (1)
 #define EP_PORT_STATUS_CHG_BIT                 BIT(0)
+#define EX_EP_PORT_STATUS_SHIFT			(25)
+#define EX_EP_PORT_STATUS_CHG_BIT		BIT(24)
 
 #define SDL_CAM_LEARNT_ENT_MAC2_SHIFT		(20)
 #define SDL_CAM_LEARNT_ENT_MAC1_SHIFT		(8)
@@ -470,7 +474,18 @@ int tsn_switch_cam_set(struct cam_struct data, u8 add)
 		pr_err("CAM init timed out\n");
 		return -ETIMEDOUT;
 	}
-
+	if (add && ((data.fwd_port & PORT_EX_ONLY) || (data.fwd_port & PORT_EX_EP))) {
+		if (!(ep_lp->ex_ep)) {
+			pr_err("Endpoint extension support is not present in this design\n");
+			return -EINVAL;
+		} else if ((data.fwd_port & PORT_EX_ONLY) &&
+			    (data.fwd_port & PORT_EX_EP)) {
+			if (!(ep_lp->packet_switch)) {
+				pr_err("Support for forwarding packets from endpoint to extended endpoint or vice versa is not present in this design\n");
+				return -EINVAL;
+			}
+		}
+	}
 	/* mac and vlan */
 	axienet_iow(&lp, XAS_SDL_CAM_KEY1_OFFSET,
 		    (data.dest_addr[0] << 24) | (data.dest_addr[1] << 16) |
@@ -585,7 +600,10 @@ static int read_cam_entry(struct cam_struct data, void __user *arg)
 		if ((u_value >> SDL_EN_CAM_IPV_SHIFT) & 0x1)
 			data.flags |= XAS_CAM_IPV_EN;
 		u_value = axienet_ior(&lp, XAS_SDL_CAM_PORT_ACT_OFFSET);
-		data.fwd_port = (u_value >> SDL_CAM_PORT_LIST_SHIFT) & 0x7;
+		if (ep_lp->ex_ep)
+			data.fwd_port = (u_value >> SDL_CAM_PORT_LIST_SHIFT) & 0x1F;
+		else
+			data.fwd_port = (u_value >> SDL_CAM_PORT_LIST_SHIFT) & 0x7;
 		data.ep_port_act = (u_value >> SDL_CAM_EP_ACTION_LIST_SHIFT)
 					& 0xF;
 		data.mac_port_act = (u_value >> SDL_CAM_MAC_ACTION_LIST_SHIFT)
@@ -776,6 +794,15 @@ int tsn_switch_set_stp_state(struct port_status *port)
 			en_port_sts_chg_bit = MAC2_PORT_STATUS_CHG_BIT;
 		}
 		break;
+	case PORT_EX_ONLY:
+		if (!(ep_lp->ex_ep))
+			return -EINVAL;
+		if (!(u_value & EX_EP_PORT_STATUS_CHG_BIT)) {
+			u_value &= ~(PORT_STATUS_MASK << EX_EP_PORT_STATUS_SHIFT);
+			u_value |= (port->port_status << EX_EP_PORT_STATUS_SHIFT);
+			en_port_sts_chg_bit = EX_EP_PORT_STATUS_CHG_BIT;
+		}
+		break;
 	}
 
 	u_value |= en_port_sts_chg_bit;
@@ -825,6 +852,11 @@ static int get_port_status(void __user *arg)
 	case PORT_MAC2:
 		port.port_status = (u_value >> MAC2_PORT_STATUS_SHIFT) &
 					PORT_STATUS_MASK;
+		break;
+	case PORT_EX_ONLY:
+		if (!(ep_lp->ex_ep))
+			return -EINVAL;
+		port.port_status = (u_value >> EX_EP_PORT_STATUS_SHIFT) & PORT_STATUS_MASK;
 		break;
 	}
 
@@ -1541,6 +1573,7 @@ static int tsn_switch_fdb_init(struct platform_device *pdev)
 	 * this is a pre-requisite;
 	 * we program the last nibble here per mac basis
 	 */
+	ep_node = of_parse_phandle(pdev->dev.of_node, "ports", 0);
 	for (port = 1; port < num_ports; port++) {
 		np = of_parse_phandle(pdev->dev.of_node, "ports", port);
 
@@ -1634,6 +1667,9 @@ static int tsnswitch_probe(struct platform_device *pdev)
 	struct resource *swt;
 	int ret;
 	u16 num_tc;
+	int data;
+	struct net_device *ndev;
+	int value;
 	u8 inband_mgmt_tag;
 
 	pr_info("TSN Switch probe\n");
@@ -1647,6 +1683,8 @@ static int tsnswitch_probe(struct platform_device *pdev)
 				   &num_tc);
 	if (ret || (num_tc != 2 && num_tc != 3))
 		num_tc = XAE_MAX_TSN_TC;
+
+	axienet_get_pcp_mask(pdev, &lp, num_tc);
 
 	en_hw_addr_learning = of_property_read_bool(pdev->dev.of_node,
 						    "xlnx,has-hwaddr-learning");
@@ -1668,6 +1706,99 @@ static int tsnswitch_probe(struct platform_device *pdev)
 		xlnx_switchdev_init();
 	} else {
 		pr_info("TSN IP with inband mgmt: Linux SWITCHDEV turned off\n");
+	}
+
+	/* writing into endpoint extension control register for channel mapping as follows:
+	 *
+	 *	3 traffic classes & EP + switch + Extended EP
+	 *	      +---------+
+	 *	  1   |         |
+	 *    BE-------         |
+	 *	  2   |         |   1
+	 *     ST------         |------BE
+	 *	  3   |         |   2
+	 *   mgmt------         |------RES
+	 *	  4   |         |
+	 *   RES-------         |
+	 *	  5   |         |
+	 * EX-BE-------         |
+	 *	  6   |         |
+	 * EX-ST-------         |
+	 *	  7   |         |
+	 * EX-RES------         |
+	 *	      +---------+
+	 *
+	 *	2 traffic classes & EP + switch + Extended EP
+	 *	      +---------+
+	 *	  1   |         |
+	 *    BE-------         |
+	 *	  2   |         |   1
+	 *    ST-------         |------BE
+	 *	  3   |         |
+	 *   mgmt------         |
+	 *	  4   |         |
+	 * EX-BE-------         |
+	 *	  5   |         |
+	 * EX-ST-------         |
+	 *	      |         |
+	 *	      +---------+
+	 *	3 traffic classes & EP + switch
+	 *	      +---------+
+	 *	  1   |         |
+	 *    BE-------         |
+	 *	  2   |         |   1
+	 *     ST------         |------BE
+	 *	  3   |         |   2
+	 *   mgmt------         |------RES
+	 *	  4   |         |
+	 *   RES-------         |
+	 *	      |         |
+	 *	      +---------+
+	 *
+	 *	2 traffic classes & EP + switch
+	 *	      +---------+
+	 *	  1   |         |
+	 *    BE-------         |
+	 *	  2   |         |   1
+	 *     ST------         |------BE
+	 *	  3   |         |
+	 *   mgmt------         |
+	 *	      |         |
+	 *	      +---------+
+	 */
+	data = axienet_ior(&lp, XAE_EP_EXT_CTRL_OFFSET);
+	pr_info("Data in Endpoint Extension Control Register is %x\n", data);
+	ndev = of_find_net_device_by_node(ep_node);
+	ep_lp = netdev_priv(ndev);
+	if (ep_lp->ex_ep) {
+		if (num_tc == 3) {
+			data = (data & XAE_EX_EP_EXT_CTRL_MASK) |
+					XAE_EX_EP_EXT_CTRL_DATA_TC_3;
+			axienet_iow(&lp, XAE_EP_EXT_CTRL_OFFSET, data);
+		}
+		if (num_tc == 2) {
+			data = (data & XAE_EX_EP_EXT_CTRL_MASK) |
+					XAE_EX_EP_EXT_CTRL_DATA_TC_2;
+			axienet_iow(&lp, XAE_EP_EXT_CTRL_OFFSET, data);
+		}
+		/* Enabling endpoint packet switching extension for broadcast and
+		 * multicast packets received from endpoint
+		 */
+		value = axienet_ior(&lp, XAE_MGMT_QUEUING_OPTIONS_OFFSET);
+		value |= XAE_EX_EP_BROADCAST_PKT_SWITCH;
+		value |= XAE_EX_EP_MULTICAST_PKT_SWITCH;
+		axienet_iow(&lp, XAE_MGMT_QUEUING_OPTIONS_OFFSET, value);
+	} else {
+		if (num_tc == 3) {
+			data = (data & XAE_EP_EXT_CTRL_MASK) |
+					XAE_EP_EXT_CTRL_DATA_TC_3;
+			axienet_iow(&lp, XAE_EP_EXT_CTRL_OFFSET, data);
+		}
+		if (num_tc == 2) {
+			data = (data & XAE_EP_EXT_CTRL_MASK) |
+					XAE_EP_EXT_CTRL_DATA_TC_2;
+			axienet_iow(&lp, XAE_EP_EXT_CTRL_OFFSET, data);
+		}
 	}
 
 	return ret;

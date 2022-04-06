@@ -482,6 +482,8 @@ static int tsn_ep_probe(struct platform_device *pdev)
 	 */
 	lp->slaves[0] = NULL;
 	lp->slaves[1] = NULL;
+	lp->ex_ep = NULL;
+	lp->packet_switch = 0;
 
 	lp->axienet_config = &tsn_endpoint_cfg;
 
