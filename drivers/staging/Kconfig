@@ -114,4 +114,6 @@ source "drivers/staging/xroetrafficgen/Kconfig"
 
 source "drivers/staging/uartlite-rs485/Kconfig"
 
+source "drivers/staging/xilinx-tsn/Kconfig"
+
 endif # STAGING

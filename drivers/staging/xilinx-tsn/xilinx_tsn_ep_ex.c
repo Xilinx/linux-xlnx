@@ -24,7 +24,7 @@
 #include <linux/of_net.h>
 #include <linux/skbuff.h>
 
-#include "xilinx_axienet.h"
+#include "xilinx_axienet_tsn.h"
 #include "xilinx_tsn_switch.h"
 
 static const struct of_device_id tsn_ex_ep_of_match[] = {

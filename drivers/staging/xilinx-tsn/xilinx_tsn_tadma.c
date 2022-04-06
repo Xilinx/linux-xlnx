@@ -21,7 +21,7 @@
 #include <linux/of_irq.h>
 #include <linux/list.h>
 #include <linux/hash.h>
-#include "xilinx_axienet.h"
+#include "xilinx_axienet_tsn.h"
 #include "xilinx_tsn_tadma.h"
 
 /* max packets that can be sent in a time trigger */

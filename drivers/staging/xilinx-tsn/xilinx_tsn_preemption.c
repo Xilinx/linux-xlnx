@@ -16,7 +16,7 @@
  * GNU General Public License for more details.
  */
 
-#include "xilinx_axienet.h"
+#include "xilinx_axienet_tsn.h"
 #include "xilinx_tsn_preemption.h"
 
 /**
