@@ -148,6 +148,63 @@ static void set_mac2_mngmntq(u32 config)
 	axienet_iow(&lp, XAS_MNG_Q_CTRL_OFFSET, config);
 }
 
+static int set_pmap_config(struct pmap_data pri_info)
+{
+	u32 pmap = 0;
+	u8 pmap_priority_shift = 0;
+	u8 i = 0;
+	u32 reg, err;
+	u16 num_q = lp.num_tc;
+
+	/* wait for switch init done */
+	err = readl_poll_timeout(lp.regs + XAS_STATUS_OFFSET, reg,
+				 (reg & SDL_CAM_WR_ENABLE), 10,
+				  DELAY_OF_FIVE_MILLISEC);
+	if (err) {
+		pr_err("CAM init timed out\n");
+		return -ETIMEDOUT;
+	}
+
+	if (num_q == 3) {
+		/* map pcp's to queues in accordance with device tree */
+		i = 0;
+		while (i < 8) {
+			if (pri_info.st_pcp_reg & (1 << i)) {
+				pmap_priority_shift = 4 * i;
+				pmap = pmap |
+				PMAP_EGRESS_QUEUE2_SELECT << pmap_priority_shift;
+			} else if (pri_info.res_pcp_reg & (1 << i)) {
+				pmap_priority_shift = 4 * i;
+				pmap = pmap |
+				PMAP_EGRESS_QUEUE1_SELECT << pmap_priority_shift;
+			}
+			i = i + 1;
+		}
+	} else {
+		i = 0;
+		while (i < 8) {
+			if (pri_info.st_pcp_reg & (1 << i)) {
+				pmap_priority_shift = 4 * i;
+				pmap = pmap |
+				PMAP_EGRESS_QUEUE1_SELECT << pmap_priority_shift;
+			}
+			i = i + 1;
+		}
+	}
+
+	axienet_iow(&lp, XAS_PMAP_OFFSET, pmap);
+
+	/* wait for cam init done */
+	err = readl_poll_timeout(lp.regs + XAS_SDL_CAM_STATUS_OFFSET, reg,
+				 (reg & SDL_CAM_WR_ENABLE), 10,
+				  DELAY_OF_FIVE_MILLISEC);
+	if (err) {
+		pr_err("CAM init timed out\n");
+		return -ETIMEDOUT;
+	}
+	return 0;
+}
+
 /**
  * set_switch_regs -  read the various status of switch
  * @data:	Pointer which will be writen to switch
@@ -1160,6 +1217,7 @@ static long switch_ioctl(struct file *file, unsigned int cmd,
 {
 	long retval = 0;
 	struct switch_data data;
+	struct pmap_data pri_info;
 #if IS_ENABLED(CONFIG_XILINX_TSN_QCI)
 	struct qci qci_data;
 #endif
@@ -1290,6 +1348,15 @@ static long switch_ioctl(struct file *file, unsigned int cmd,
 
 	case GET_PORT_NATIVE_VLAN:
 		retval = get_native_vlan((void __user *)arg);
+		break;
+
+	case SET_PMAP_CONFIG:
+		if (copy_from_user(&pri_info, (char __user *)arg, sizeof(pri_info))) {
+			pr_err("Copy from user failed\n");
+			retval = -EINVAL;
+			goto end;
+		}
+		retval = set_pmap_config(pri_info);
 		break;
 
 	case SET_FRAME_TYPE_FIELD:
@@ -1482,62 +1549,6 @@ static int tsn_switch_init(void)
 	return 0;
 }
 
-static int tsn_switch_cam_init(u16 num_q)
-{
-	u32 pmap = 0;
-	u32 timeout = 20000;
-	u8 pmap_priority_shift = 0;
-	u8 i = 0;
-
-	/* wait for switch init done */
-	while (!(axienet_ior(&lp, XAS_STATUS_OFFSET) &
-		SDL_CAM_WR_ENABLE) && timeout)
-		timeout--;
-
-	if (!timeout)
-		pr_warn("Switch init took longer time!!");
-
-	if (num_q == 3) {
-	/* map pcp's to queues in accordance with device tree */
-		i = 0;
-		while (i != 8) {
-			if (lp.st_pcp & (1 << i)) {
-				pmap_priority_shift = 4 * i;
-				pmap = pmap |
-				PMAP_EGRESS_QUEUE2_SELECT << pmap_priority_shift;
-			} else if (lp.res_pcp & (1 << i)) {
-				pmap_priority_shift = 4 * i;
-				pmap = pmap |
-				PMAP_EGRESS_QUEUE1_SELECT << pmap_priority_shift;
-			}
-			i = i + 1;
-		}
-	} else {
-		i = 0;
-		while (i != 8) {
-			if (lp.st_pcp & (1 << i)) {
-				pmap_priority_shift = 4 * i;
-				pmap = pmap |
-				PMAP_EGRESS_QUEUE1_SELECT << pmap_priority_shift;
-			}
-			i = i + 1;
-		}
-	}
-
-	axienet_iow(&lp, XAS_PMAP_OFFSET, pmap);
-
-	timeout = 20000;
-	/* wait for cam init done */
-	while (!(axienet_ior(&lp, XAS_SDL_CAM_STATUS_OFFSET) &
-		SDL_CAM_WR_ENABLE) && timeout)
-		timeout--;
-
-	if (!timeout)
-		pr_warn("CAM init took longer time!!");
-
-	return 0;
-}
-
 static inline void tsn_switch_set_src_mac_filter(const u8 *mac, int port)
 {
 	u32 val;
@@ -1687,6 +1698,7 @@ static int tsnswitch_probe(struct platform_device *pdev)
 	struct net_device *ndev;
 	int value;
 	u8 inband_mgmt_tag;
+	struct pmap_data pri_info;
 
 	pr_info("TSN Switch probe\n");
 	/* Map device registers */
@@ -1699,6 +1711,7 @@ static int tsnswitch_probe(struct platform_device *pdev)
 				   &num_tc);
 	if (ret || (num_tc != 2 && num_tc != 3))
 		num_tc = XAE_MAX_TSN_TC;
+	lp.num_tc = num_tc;
 
 	axienet_get_pcp_mask(&lp, num_tc);
 
@@ -1712,8 +1725,11 @@ static int tsnswitch_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 	pr_info("TSN CAM Initializing ....\n");
-	ret = tsn_switch_cam_init(num_tc);
-
+	pri_info.st_pcp_reg = lp.st_pcp;
+	pri_info.res_pcp_reg = lp.res_pcp;
+	ret = set_pmap_config(pri_info);
+	if (ret)
+		return ret;
 	inband_mgmt_tag = of_property_read_bool(pdev->dev.of_node,
 						"xlnx,has-inband-mgmt-tag");
 	/* only support switchdev in sideband management */

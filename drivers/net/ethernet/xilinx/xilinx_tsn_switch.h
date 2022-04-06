@@ -55,6 +55,7 @@
 #define GET_VLAN_MAC_ADDR_LEARN_CONFIG_VLANM	0x3C
 #define SET_PORT_NATIVE_VLAN			0x3A
 #define GET_PORT_NATIVE_VLAN			0x3B
+#define SET_PMAP_CONFIG				0x3D
 
 /* Xilinx Axi Switch Offsets*/
 #define XAS_STATUS_OFFSET			0x00000
@@ -282,6 +283,11 @@ struct cb {
 struct thershold {
 	u16 t1;
 	u16 t2;
+};
+
+struct pmap_data {
+	int st_pcp_reg;
+	int res_pcp_reg;
 };
 
 /* memory static counters */

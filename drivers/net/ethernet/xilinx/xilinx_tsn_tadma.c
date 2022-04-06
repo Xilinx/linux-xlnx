@@ -419,7 +419,7 @@ static int tadma_get_strid(struct sk_buff *skb,
 
 	vlan_tci = ntohs(vhdr->h_vlan_TCI);
 
-	mac_vlan[6] = (vlan_tci >> 8) & 0xff;
+	mac_vlan[6] = (vlan_tci >> 8) & 0x0f;
 	mac_vlan[7] = (vlan_tci & 0xff);
 
 	idx = tadma_macvlan_hash(mac_vlan);
@@ -693,7 +693,7 @@ int axienet_tadma_add_stream(struct net_device *ndev, void __user *useraddr)
 	}
 	vlan_tci = stream.vid & VLAN_VID_MASK;
 	vlan_tci |= (st_pcp_val << VLAN_PRIO_SHIFT) & VLAN_PRIO_MASK;
-	mac_vlan[6] = (vlan_tci >> 8) & 0xff;
+	mac_vlan[6] = (vlan_tci >> 8) & 0x0f;
 	mac_vlan[7] = (vlan_tci & 0xff);
 
 	idx = tadma_macvlan_hash(mac_vlan);
