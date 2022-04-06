@@ -198,6 +198,8 @@ static int tsn_ep_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 		return axienet_get_schedule(dev, rq->ifr_data);
 #endif
 #ifdef CONFIG_AXIENET_HAS_TADMA
+	case SIOC_TADMA_OFF:
+		return axienet_tadma_off(dev, rq->ifr_data);
 	case SIOC_TADMA_STR_ADD:
 		return axienet_tadma_add_stream(dev, rq->ifr_data);
 	case SIOC_TADMA_PROG_ALL:

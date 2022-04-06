@@ -2412,6 +2412,10 @@ static int axienet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 		return -EINVAL;
 #endif
 #ifdef CONFIG_AXIENET_HAS_TADMA
+	case SIOC_TADMA_OFF:
+		if (!(lp->abl_reg & TSN_BRIDGEEP_EPONLY))
+			return -ENOENT;
+		return axienet_tadma_off(dev, rq->ifr_data);
 	case SIOC_TADMA_STR_ADD:
 		if (!(lp->abl_reg & TSN_BRIDGEEP_EPONLY))
 			return -ENOENT;
