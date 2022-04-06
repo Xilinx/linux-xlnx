@@ -1,0 +1,26 @@
+Xilinx TSN (time sensitive networking) Extended EndPoint Driver (xilinx_tsn_ep_ex)
+-------------------------------------------------------------------------------
+
+Required properties:
+- compatible		: Should be "xlnx,tsn-ex-ep"
+- reg			: Physical base address and size of the TSN Endpoint
+				registers map
+- local-mac-address	: See ethernet.txt [1].
+
+Optional properties:
+- packet-switch		: set to 1 when packet switching on ex-ep is
+			  enabled in the design.
+- tsn,endpoint		: This is a handle to the endpoint node.
+			  The necessary ep resource details are obtained
+			  from this reference.
+
+[1] Documentation/devicetree/bindings/net/ethernet.txt
+
+Example:
+
+	tsn_ep_ex: tsn_ep_ex@80056000 {
+		compatible = "xlnx,tsn-ex-ep";
+		reg = <0x0 0x80056000 0x0 0xA000>;
+		local-mac-address = [00 0A 35 00 01 20];
+		tsn,endpoint = <&tsn_ep>;
+	};
