@@ -735,6 +735,7 @@ enum axienet_tsn_ioctl {
 	SIOC_TADMA_PROG_ALL,
 	SIOC_TADMA_STR_FLUSH,
 	SIOC_PREEMPTION_RECEIVE,
+	SIOC_TADMA_OFF,
 };
 
 /**
@@ -1339,6 +1340,7 @@ void __maybe_unused axienet_bd_free(struct net_device *ndev,
 #ifdef CONFIG_AXIENET_HAS_TADMA
 int axienet_tadma_add_stream(struct net_device *ndev, void __user *useraddr);
 int axienet_tadma_flush_stream(struct net_device *ndev, void __user *useraddr);
+int axienet_tadma_off(struct net_device *ndev, void __user *useraddr);
 int axienet_tadma_program(struct net_device *ndev, void __user *useraddr);
 int axienet_tadma_probe(struct platform_device *pdev, struct net_device *ndev);
 int axienet_tadma_xmit(struct sk_buff *skb, struct net_device *ndev, u16 queue_type);
