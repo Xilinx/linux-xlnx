@@ -40,18 +40,7 @@ static uint res_count;
 module_param_array(res_pcp, byte, &res_count, 0644);
 MODULE_PARM_DESC(res_pcp, "Array of pcp values mapped to RES class at the compile time");
 
-/**
- * tsn_ep_open - TSN EP driver open routine.
- * @ndev:	Pointer to net_device structure
- *
- * Return: 0, on success.
- *	    non-zero error value on failure
- *
- * This is the driver open routine. It also allocates interrupt service
- * routines, enables the interrupt lines and ISR handling. Axi Ethernet
- * core is reset through Axi DMA core. Buffer descriptors are initialized.
- */
-static int tsn_ep_open(struct net_device *ndev)
+int tsn_data_path_open(struct net_device *ndev)
 {
 	int ret, i = 0;
 	struct axienet_local *lp = netdev_priv(ndev);
@@ -123,15 +112,22 @@ err_dma_rx_irq:
 }
 
 /**
- * tsn_ep_stop - TSN EP driver stop routine.
- * @ndev:	Pointer to net_device structure
+ * tsn_ep_open - TSN EP driver open routine.
+ * @ndev:       Pointer to net_device structure
  *
  * Return: 0, on success.
+ *          non-zero error value on failure
  *
- * This is the driver stop routine. It also removes the interrupt handlers
- * and disables the interrupts. The Axi DMA Tx/Rx BDs are released.
+ * This is the driver open routine. It also allocates interrupt service
+ * routines, enables the interrupt lines and ISR handling. Axi Ethernet
+ * core is reset through Axi DMA core. Buffer descriptors are initialized.
  */
-static int tsn_ep_stop(struct net_device *ndev)
+static int tsn_ep_open(struct net_device *ndev)
+{
+	return tsn_data_path_open(ndev);
+}
+
+int tsn_data_path_close(struct net_device *ndev)
 {
 	u32 cr;
 	u32 i;
@@ -162,8 +158,23 @@ static int tsn_ep_stop(struct net_device *ndev)
 #ifdef CONFIG_AXIENET_HAS_TADMA
 	axienet_tadma_stop(ndev);
 #endif
+	axienet_dma_bd_release(ndev);
 
 	return 0;
+}
+
+/**
+ * tsn_ep_stop - TSN EP driver stop routine.
+ * @ndev:	Pointer to net_device structure
+ *
+ * Return: 0, on success.
+ *
+ * This is the driver stop routine. It also removes the interrupt handlers
+ * and disables the interrupts. The Axi DMA Tx/Rx BDs are released.
+ */
+static int tsn_ep_stop(struct net_device *ndev)
+{
+	return tsn_data_path_close(ndev);
 }
 
 /**
@@ -199,8 +210,7 @@ static int tsn_ep_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 	}
 }
 
-static u16 axienet_tsn_ep_select_queue(struct net_device *ndev, struct sk_buff *skb,
-				       struct net_device *sb_dev)
+u16 axienet_tsn_pcp_to_queue(struct net_device *ndev, struct sk_buff *skb)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct ethhdr *hdr = (struct ethhdr *)skb->data;
@@ -217,22 +227,21 @@ static u16 axienet_tsn_ep_select_queue(struct net_device *ndev, struct sk_buff *
 
 		pcp = (vlan_tci & VLAN_PRIO_MASK) >> VLAN_PRIO_SHIFT;
 #ifdef CONFIG_AXIENET_HAS_TADMA
-		if (lp->st_pcp & (1 << pcp)) { /* ST Traffic */
-			if (lp->num_tx_queues == 1) {
-				/* if number of transmit queues is 1,
-				 * reserved traffic is transmitted on BE traffic queue
-				 */
-				return ST_QUEUE_NUMBER_1;
-			}
-			return ST_QUEUE_NUMBER_2;
-		}
+		if (lp->st_pcp & (1 << pcp)) /* ST Traffic */
+			return ST_QUEUE_NUMBER;
 #endif
 		if (lp->num_tc == 3 && (lp->res_pcp & (1 << pcp))) {
-			if (lp->num_tx_queues != 1)
+			if (lp->num_tx_queues > 1)
 				return RES_QUEUE_NUMBER;
 		}
 	}
 	return BE_QUEUE_NUMBER;
+}
+
+static u16 axienet_tsn_ep_select_queue(struct net_device *ndev, struct sk_buff *skb,
+				       struct net_device *sb_dev)
+{
+	return axienet_tsn_pcp_to_queue(ndev, skb);
 }
 
 /**
@@ -247,13 +256,10 @@ static u16 axienet_tsn_ep_select_queue(struct net_device *ndev, struct sk_buff *
  */
 static int tsn_ep_xmit(struct sk_buff *skb, struct net_device *ndev)
 {
-	struct axienet_local *lp = netdev_priv(ndev);
 	u16 map = skb_get_queue_mapping(skb);
 
 #ifdef CONFIG_AXIENET_HAS_TADMA
-	if (lp->num_tx_queues == 1 && map == ST_QUEUE_NUMBER_1) /* ST Traffic */
-		return axienet_tadma_xmit(skb, ndev, map);
-	if (lp->num_tx_queues == 2 && map == ST_QUEUE_NUMBER_2) /* ST Traffic */
+	if (map == ST_QUEUE_NUMBER) /* ST Traffic */
 		return axienet_tadma_xmit(skb, ndev, map);
 #endif
 
@@ -310,9 +316,8 @@ MODULE_DEVICE_TABLE(of, tsn_ep_of_match);
  * as there is asymmetry between rx channels and tx channels
  * having unique probe for both tsn and axienet with mcdma is not possible
  */
-static int __maybe_unused tsn_mcdma_probe(struct platform_device *pdev,
-					  struct axienet_local *lp,
-					  struct net_device *ndev)
+int __maybe_unused tsn_mcdma_probe(struct platform_device *pdev, struct axienet_local *lp,
+				   struct net_device *ndev)
 {
 	int i, ret = 0;
 	struct axienet_dma_q *q;
@@ -383,14 +388,12 @@ static const struct axienet_config tsn_endpoint_cfg = {
  *axienet_get_pcp_mask - gets the compile time pcp values that
  *are mapped to ST and RES traffic from uEnv.txt and assigns them
  *to st_pcp and res_pcp fields of axienet_local structure
- *@pdev:	Pointer to platform device structure.
  *@lp:		axienet local structure
  *@num_tc:	number of traffic classes
  *
  * Return: Always returns 0
  */
-int axienet_get_pcp_mask(struct platform_device *pdev,
-			 struct axienet_local *lp, u16 num_tc)
+int axienet_get_pcp_mask(struct axienet_local *lp, u16 num_tc)
 {
 	u8 i;
 	u8 invalid_pcp = 0;
@@ -450,6 +453,7 @@ static int tsn_ep_probe(struct platform_device *pdev)
 	struct resource *ethres;
 	u16 num_queues = XAE_MAX_QUEUES;
 	u16 num_tc = 0;
+	struct device_node *np;
 	char irq_name[32];
 
 	ndev = alloc_netdev_mq(sizeof(*lp), "ep",
@@ -489,6 +493,19 @@ static int tsn_ep_probe(struct platform_device *pdev)
 
 	lp->max_frm_size = XAE_MAX_VLAN_FRAME_SIZE;
 
+	/* check if ep has dma connected
+	 * in a ep_only system dma(mcdma/tadma) is connected to temac1
+	 */
+	np = of_parse_phandle(pdev->dev.of_node, "axistream-connected-rx", 0);
+	if (!np) {
+		/* dont expose ep dev in ep_only system
+		 * all functionality handled by temac1/eth1
+		 */
+		free_netdev(ndev);
+		of_node_put(np);
+		return 0;
+	}
+
 	/* Setup checksum offload, but default to off if not specified */
 	lp->features = 0;
 
@@ -522,7 +539,7 @@ static int tsn_ep_probe(struct platform_device *pdev)
 		lp->num_tc = XAE_MAX_TSN_TC;
 	else
 		lp->num_tc = num_tc;
-	axienet_get_pcp_mask(pdev, lp, lp->num_tc);
+	axienet_get_pcp_mask(lp, lp->num_tc);
 	/* Map device registers */
 	ethres = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	lp->regs = devm_ioremap_resource(&pdev->dev, ethres);

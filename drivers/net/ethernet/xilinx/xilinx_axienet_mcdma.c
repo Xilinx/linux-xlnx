@@ -318,7 +318,7 @@ int __maybe_unused axienet_mcdma_rx_q_init(struct net_device *ndev,
 		   ((q->chan_id == TSN_MIN_EX_EP_BE_CHAN) ||
 		    (q->chan_id == TSN_MIN_EX_EP_ST_CHAN))) {
 		q->flags = MCDMA_EP_EX_CHAN;
-	} else if (q->chan_id == TSN_MGMT_CHAN) {
+	} else if (!(lp->abl_reg & TSN_BRIDGEEP_EPONLY) && q->chan_id == TSN_MGMT_CHAN) {
 		q->flags = MCDMA_MGMT_CHAN;
 	}
 #endif

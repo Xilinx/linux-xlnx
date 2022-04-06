@@ -1684,7 +1684,7 @@ static int tsnswitch_probe(struct platform_device *pdev)
 	if (ret || (num_tc != 2 && num_tc != 3))
 		num_tc = XAE_MAX_TSN_TC;
 
-	axienet_get_pcp_mask(pdev, &lp, num_tc);
+	axienet_get_pcp_mask(&lp, num_tc);
 
 	en_hw_addr_learning = of_property_read_bool(pdev->dev.of_node,
 						    "xlnx,has-hwaddr-learning");
