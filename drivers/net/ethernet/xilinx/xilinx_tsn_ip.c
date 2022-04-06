@@ -308,42 +308,6 @@ static void axienet_device_reset(struct net_device *ndev)
 }
 
 /**
- * axienet_mii_init - MII init routine
- * @ndev:	Pointer to net_device structure.
- *
- * Return: 0, on success
- *	    Non-zero error value on failure.
- *
- * This routine initializes MII.
- */
-static int axienet_mii_init(struct net_device *ndev)
-{
-	struct axienet_local *lp = netdev_priv(ndev);
-	int ret, mdio_mcreg;
-
-	mdio_mcreg = axienet_ior(lp, XAE_MDIO_MC_OFFSET);
-	ret = axienet_mdio_wait_until_ready(lp);
-	if (ret < 0)
-		return ret;
-
-	/* Disable the MDIO interface till Axi Ethernet Reset is completed.
-	 * When we do an Axi Ethernet reset, it resets the complete core
-	 * Including the MDIO. If MDIO is not disabled when the reset process is
-	 * Started, MDIO will be broken afterwards.
-	 */
-	axienet_iow(lp, XAE_MDIO_MC_OFFSET,
-		    (mdio_mcreg & (~XAE_MDIO_MC_MDIOEN_MASK)));
-	axienet_device_reset(ndev);
-	/* Enable the MDIO */
-	axienet_iow(lp, XAE_MDIO_MC_OFFSET, mdio_mcreg);
-	ret = axienet_mdio_wait_until_ready(lp);
-	if (ret < 0)
-		return ret;
-
-	return 0;
-}
-
-/**
  * axienet_tsn_open - TSN driver open routine.
  * @ndev:	Pointer to net_device structure
  *
@@ -360,9 +324,7 @@ int axienet_tsn_open(struct net_device *ndev)
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct phy_device *phydev = NULL;
 
-	ret = axienet_mii_init(ndev);
-	if (ret < 0)
-		return ret;
+	axienet_device_reset(ndev);
 
 	if (lp->phy_node) {
 		if (lp->phy_mode == XAE_PHY_TYPE_GMII) {
