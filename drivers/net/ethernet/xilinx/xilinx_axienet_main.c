@@ -1529,6 +1529,8 @@ static int axienet_recv(struct net_device *ndev, int budget,
 	dma_addr_t tail_p = 0;
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct sk_buff *skb, *new_skb;
+	u32 sband_status = 0;
+	struct net_device *temp_ndev = NULL;
 #ifdef CONFIG_AXIENET_HAS_MCDMA
 	struct aximcdma_bd *cur_p;
 #else
@@ -1540,6 +1542,7 @@ static int axienet_recv(struct net_device *ndev, int budget,
 	rmb();
 #ifdef CONFIG_AXIENET_HAS_MCDMA
 	cur_p = &q->rxq_bd_v[q->rx_bd_ci];
+	sband_status = cur_p->sband_stats;
 #else
 	cur_p = &q->rx_bd_v[q->rx_bd_ci];
 #endif
@@ -1626,17 +1629,33 @@ static int axienet_recv(struct net_device *ndev, int budget,
 		}
 #ifdef CONFIG_XILINX_TSN
 		if (unlikely(q->flags & MCDMA_MGMT_CHAN)) {
-			struct net_device *ndev = NULL;
-
 			/* received packet on mgmt channel */
-			if (q->flags & MCDMA_MGMT_CHAN_PORT0)
-				ndev = lp->slaves[0];
-			else if (q->flags & MCDMA_MGMT_CHAN_PORT1)
-				ndev = lp->slaves[1];
+			if ((sband_status & XMCDMA_BD_SD_STS_ALL_MASK)
+			    == XMCDMA_BD_SD_STS_TUSER_MAC_1) {
+				temp_ndev = lp->slaves[0];
+			} else if ((sband_status & XMCDMA_BD_SD_STS_ALL_MASK)
+				 == XMCDMA_BD_SD_STS_TUSER_MAC_2) {
+				temp_ndev = lp->slaves[1];
+			} else if ((sband_status & XMCDMA_BD_SD_STS_ALL_MASK)
+				 == XMCDMA_BD_SD_STS_TUSER_EP) {
+				temp_ndev = lp->ndev;
+			} else if (lp->ex_ep && ((sband_status &
+				XMCDMA_BD_SD_STS_ALL_MASK) ==
+				XMCDMA_BD_SD_STS_TUSER_EX_EP)) {
+				temp_ndev = lp->ex_ep;
+			}
 
 			/* send to one of the front panel port */
-			if (ndev && netif_running(ndev)) {
-				skb->dev = ndev;
+			if (temp_ndev && netif_running(temp_ndev)) {
+				skb->dev = temp_ndev;
+				netif_receive_skb(skb);
+			} else {
+				kfree(skb); /* dont send up the stack */
+			}
+		} else if (unlikely(q->flags & MCDMA_EP_EX_CHAN)) {
+			temp_ndev = lp->ex_ep;
+			if (temp_ndev && netif_running(temp_ndev)) {
+				skb->dev = temp_ndev;
 				netif_receive_skb(skb);
 			} else {
 				kfree(skb); /* dont send up the stack */
