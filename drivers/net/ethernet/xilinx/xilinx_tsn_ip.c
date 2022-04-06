@@ -92,8 +92,10 @@ u16 axienet_tsn_select_queue(struct net_device *ndev, struct sk_buff *skb,
 		return PTP_QUEUE_NUMBER;
 	}
 #endif
+	if (lp->abl_reg & TSN_BRIDGEEP_EPONLY)
+		return axienet_tsn_pcp_to_queue(ndev, skb);
 
-	return 0;
+	return BE_QUEUE_NUMBER;
 }
 
 /**
@@ -120,6 +122,13 @@ int axienet_tsn_xmit(struct sk_buff *skb, struct net_device *ndev)
 	if (map == PTP_QUEUE_NUMBER)
 		return axienet_ptp_xmit(skb, ndev);
 #endif
+	if (lp->abl_reg & TSN_BRIDGEEP_EPONLY) {
+#ifdef CONFIG_AXIENET_HAS_TADMA
+		if (map == ST_QUEUE_NUMBER) /* ST Traffic */
+			return axienet_tadma_xmit(skb, ndev, map);
+#endif
+		return axienet_queue_xmit(skb, ndev, map);
+	}
 	/* use EP to xmit non-PTP frames */
 	skb->dev = master;
 	dev_queue_xmit(skb);
@@ -147,7 +156,6 @@ int axienet_tsn_probe(struct platform_device *pdev,
 	bool slave = false;
 	u8     temac_no;
 	u32 qbv_addr, qbv_size;
-	u32 abl_reg;
 	struct device_node *ep_node;
 	struct axienet_local *ep_lp;
 
@@ -188,35 +196,62 @@ int axienet_tsn_probe(struct platform_device *pdev,
 	/* get the ep device */
 	ep_node = of_parse_phandle(pdev->dev.of_node, "tsn,endpoint", 0);
 
-	lp->master = of_find_net_device_by_node(ep_node);
+	if (ep_node)
+		lp->master = of_find_net_device_by_node(ep_node);
+
+	lp->abl_reg = axienet_ior(lp, XAE_TSN_ABL_OFFSET);
+
+	/* in ep only case tie the data path to eth1 */
+	if (lp->abl_reg & TSN_BRIDGEEP_EPONLY && temac_no == XAE_TEMAC1) {
+		axienet_get_pcp_mask(lp, lp->num_tc);
+		ret = tsn_mcdma_probe(pdev, lp, ndev);
+		if (ret) {
+			dev_err(&pdev->dev, "Getting MCDMA resource failed\n");
+			goto err_1;
+		}
+#ifdef CONFIG_AXIENET_HAS_TADMA
+		ret = axienet_tadma_probe(pdev, ndev);
+		if (ret) {
+			dev_err(&pdev->dev, "Getting TADMA resource failed\n");
+			goto err_1;
+		}
+#endif
+	}
+
 #ifdef CONFIG_XILINX_TSN_QBV
 	lp->qbv_regs = NULL;
-	abl_reg = axienet_ior(lp, XAE_TSN_ABL_OFFSET);
-	if (!(abl_reg & TSN_BRIDGEEP_EPONLY)) {
-		if (of_property_read_u32(pdev->dev.of_node,
-					 "xlnx,qbv-addr", &qbv_addr) == 0) {
-			if ((of_property_read_u32(pdev->dev.of_node,
-						  "xlnx,qbv-size", &qbv_size) ==
-			     0) && qbv_size) {
-				lp->qbv_regs = devm_ioremap(&pdev->dev,
-							    qbv_addr, qbv_size);
-				if (IS_ERR(lp->qbv_regs)) {
-					dev_err(&pdev->dev,
-						"ioremap failed for the qbv\n");
-					ret = PTR_ERR(lp->qbv_regs);
-					return ret;
-				}
-				ret = axienet_qbv_init(ndev);
-			}
-		}
+	if (!(lp->abl_reg & TSN_BRIDGEEP_EPONLY)) {
+		of_property_read_u32(pdev->dev.of_node, "xlnx,qbv-addr",
+				     &qbv_addr);
+		of_property_read_u32(pdev->dev.of_node, "xlnx,qbv-size",
+				     &qbv_size);
+	} else {
+		struct resource res;
+
+		/* get qbv info from ep_node */
+		if (of_address_to_resource(ep_node, 0, &res) < 0)
+			dev_err(&pdev->dev, "error reading reg property\n");
+		qbv_addr = res.start;
+		qbv_size = res.end - res.start;
 	}
+	lp->qbv_regs = devm_ioremap(&pdev->dev, qbv_addr, qbv_size);
+	if (IS_ERR(lp->qbv_regs)) {
+		dev_err(&pdev->dev, "ioremap failed for the qbv\n");
+		ret = PTR_ERR(lp->qbv_regs);
+		return ret;
+	}
+	ret = axienet_qbv_init(ndev);
 #endif
-	/* EP+Switch */
-	/* store the slaves to master(ep) */
-	ep_lp = netdev_priv(lp->master);
-	ep_lp->slaves[temac_no] = ndev;
+	if (!(lp->abl_reg & TSN_BRIDGEEP_EPONLY)) {
+		/* EP+Switch */
+		/* store the slaves to master(ep) */
+		ep_lp = netdev_priv(lp->master);
+		ep_lp->slaves[temac_no] = ndev;
+	}
 
 	return 0;
+err_1:
+	return -EINVAL;
 }
 
 /**
@@ -370,6 +405,9 @@ int axienet_tsn_open(struct net_device *ndev)
 	if (ret)
 		goto err_ptp_tx_irq;
 
+	if (lp->abl_reg & TSN_BRIDGEEP_EPONLY)
+		tsn_data_path_open(ndev);
+
 	netif_tx_start_all_queues(ndev);
 
 	return 0;
@@ -378,6 +416,25 @@ err_ptp_tx_irq:
 	free_irq(lp->ptp_rx_irq, ndev);
 err_ptp_rx_irq:
 	return ret;
+}
+
+int axienet_tsn_stop(struct net_device *ndev)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+
+	free_irq(lp->ptp_tx_irq, ndev);
+	free_irq(lp->ptp_rx_irq, ndev);
+
+	if (lp->axienet_config->mactype == XAXIENET_1G && !lp->eth_hasnobuf)
+		free_irq(lp->eth_irq, ndev);
+
+	if (ndev->phydev)
+		phy_disconnect(ndev->phydev);
+
+	if (lp->abl_reg & TSN_BRIDGEEP_EPONLY)
+		tsn_data_path_close(ndev);
+
+	return 0;
 }
 
 static struct platform_driver tsn_ip_driver = {

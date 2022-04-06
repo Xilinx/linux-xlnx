@@ -30,11 +30,10 @@
 
 /* Queue Numbers of BE, RES, ST and PTP */
 
-#define BE_QUEUE_NUMBER 0
+#define BE_QUEUE_NUMBER  0
 #define RES_QUEUE_NUMBER 1
-#define ST_QUEUE_NUMBER_1 1
-#define ST_QUEUE_NUMBER_2 2
-#define PTP_QUEUE_NUMBER 1
+#define ST_QUEUE_NUMBER  2
+#define PTP_QUEUE_NUMBER 3
 
 /* DMA address width min and max range */
 #define XAE_DMA_MASK_MIN	32
@@ -707,8 +706,7 @@ struct aximcdma_bd {
  * for num_tc = 3 with sideband signalling maximum queues = 5
  */
 #define XAE_MAX_TSN_TC		3
-#define XAE_TSN_MIN_QUEUES	2
-#define XAE_TOTAL_TSN_MIN_QUEUES	3
+#define XAE_TSN_MIN_QUEUES	4
 
 #define TSN_BRIDGEEP_EPONLY	BIT(29)
 
@@ -758,6 +756,7 @@ enum axienet_tsn_ioctl {
  * @phy_mode:	Phy type to identify between MII/GMII/RGMII/SGMII/1000 Base-X
  * @is_tsn:	Denotes a tsn port
  * @num_tc:	Total number of TSN Traffic classes
+ * @abl_reg:	TSN ability register
  * @st_pcp:     pcp values mapped to scheduled traffic.
  * @res_pcp:    pcp values mapped to reserved traffic.
  * @master:	Master endpoint
@@ -862,7 +861,8 @@ struct axienet_local {
 
 	bool is_tsn;
 #ifdef CONFIG_XILINX_TSN
-	u16    num_tc;
+	u16   num_tc;
+	u32   abl_reg;
 	u8    st_pcp;
 	u8    res_pcp;
 	struct net_device *master; /* master endpoint */
@@ -1294,14 +1294,19 @@ void axienet_mdio_teardown(struct axienet_local *lp);
 void axienet_adjust_link(struct net_device *ndev);
 #ifdef CONFIG_XILINX_TSN
 int axienet_tsn_open(struct net_device *ndev);
+int axienet_tsn_stop(struct net_device *ndev);
 int axienet_tsn_probe(struct platform_device *pdev,
 		      struct axienet_local *lp,
 		      struct net_device *ndev);
+int tsn_mcdma_probe(struct platform_device *pdev, struct axienet_local *lp,
+		    struct net_device *ndev);
 int axienet_tsn_xmit(struct sk_buff *skb, struct net_device *ndev);
 u16 axienet_tsn_select_queue(struct net_device *ndev, struct sk_buff *skb,
 			     struct net_device *sb_dev);
-int axienet_get_pcp_mask(struct platform_device *pdev,
-			 struct axienet_local *lp, u16 num_tc);
+u16 axienet_tsn_pcp_to_queue(struct net_device *ndev, struct sk_buff *skb);
+int axienet_get_pcp_mask(struct axienet_local *lp, u16 num_tc);
+int tsn_data_path_open(struct net_device *ndev);
+int tsn_data_path_close(struct net_device *ndev);
 #endif
 #ifdef CONFIG_XILINX_TSN_PTP
 void *axienet_ptp_timer_probe(void __iomem *base, struct platform_device *pdev);
