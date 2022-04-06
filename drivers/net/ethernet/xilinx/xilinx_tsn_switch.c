@@ -514,6 +514,11 @@ int tsn_switch_cam_set(struct cam_struct data, u8 add)
 				| (en_ipv << SDL_EN_CAM_IPV_SHIFT);
 
 	axienet_iow(&lp, XAS_SDL_CAM_TV2_OFFSET, tv2);
+	/* Force complete write to translation value registers
+	 * before writing to port action register
+	 * TODO: Check alternatives to barrier.
+	 */
+	wmb();
 
 	if (data.fwd_port & PORT_EP)
 		port_action = data.ep_port_act << SDL_CAM_EP_ACTION_LIST_SHIFT;
@@ -532,6 +537,12 @@ int tsn_switch_cam_set(struct cam_struct data, u8 add)
 
 	/* port action */
 	axienet_iow(&lp, XAS_SDL_CAM_PORT_ACT_OFFSET, port_action);
+	/* Force complete writes to port action register before initiating
+	 * CAM write by setting CAM ADD bit in control register since this value
+	 * needs to be written to the CAM.
+	 * TODO: Check alternatives to barrier.
+	 */
+	wmb();
 
 	if (add)
 		axienet_iow(&lp, XAS_SDL_CAM_CTRL_OFFSET, SDL_CAM_ADD_ENTRY);
@@ -575,6 +586,11 @@ static int read_cam_entry(struct cam_struct data, void __user *arg)
 	axienet_iow(&lp, XAS_SDL_CAM_KEY2_OFFSET,
 		    ((data.dest_addr[4] << 8) | data.dest_addr[5]) |
 		    ((data.vlanid & SDL_CAM_VLAN_MASK) << SDL_CAM_VLAN_SHIFT));
+	/* Finish writing vlan id and mac address before triggering a read
+	 * from the CAM since read depends on these parameters
+	 * TODO: Check alternatives to barrier.
+	 */
+	wmb();
 	axienet_iow(&lp, XAS_SDL_CAM_CTRL_OFFSET, SDL_CAM_READ_ENTRY);
 	err = readl_poll_timeout(lp.regs + XAS_SDL_CAM_CTRL_OFFSET, reg,
 				 (!(reg & SDL_CAM_WR_ENABLE)), 10,

@@ -20,6 +20,7 @@
 #define IN_PORTID_MASK				0x3
 #define IN_PORTID_SHIFT				24
 #define MAX_SEQID_MASK				0x0000FFFF
+#define REMAINING_TICKS_MASK			0x0000FFFF
 
 #define SEQ_REC_HIST_LEN_MASK			0x000000FF
 #define SEQ_REC_HIST_LEN_SHIFT			16
@@ -97,6 +98,10 @@ void config_ingress_filter(struct cb data)
 			SEQ_REC_HIST_LEN_MASK)
 			<< SEQ_REC_HIST_LEN_SHIFT;
 	axienet_iow(&lp, FRER_CONFIG_REG1, conf_r1);
+	conf_r1 = axienet_ior(&lp, FRER_CONFIG_REG2);
+	conf_r1 &= ~(REMAINING_TICKS_MASK);
+	conf_r1 |= data.frer_memb_config_data.rem_ticks;
+	axienet_iow(&lp, FRER_CONFIG_REG2, conf_r1);
 }
 
 /**
