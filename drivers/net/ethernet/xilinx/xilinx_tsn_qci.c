@@ -118,6 +118,8 @@ void program_meter_reg(struct meter_config data)
 
 	axienet_iow(&lp, STREAM_METER_CIR_OFFSET, data.cir);
 	axienet_iow(&lp, STREAM_METER_EIR_OFFSET, data.eir);
+	/* TODO: Check if this barrier is necessary */
+	wmb();
 	axienet_iow(&lp, STREAM_METER_CBR_OFFSET, data.cbr & SMC_CBR_MASK);
 
 	conf_r4 = (data.ebr & SMC_EBR_MASK) | (data.mode << SMC_MODE_SHIFT);
