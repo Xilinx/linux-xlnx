@@ -1478,8 +1478,10 @@ static int cdns_get_id(struct platform_device *pdev)
 	if (!alias_bitmap_initialized) {
 		ret = of_alias_get_alias_list(cdns_uart_of_match, "serial",
 					      alias_bitmap, CDNS_UART_NR_PORTS);
-		if (ret)
+		if (ret) {
+			mutex_unlock(&bitmap_lock);
 			return ret;
+		}
 
 		alias_bitmap_initialized++;
 	}
