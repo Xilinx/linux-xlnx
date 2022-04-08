@@ -57,6 +57,14 @@ ssize_t aie_tile_show_event(struct device *dev, struct device_attribute *attr,
 	     pl_buf[AIE_SYSFS_EVENT_STS_SIZE];
 	bool is_delimit_req = false;
 
+	/*
+	 * Initialize local buffers to avoid garbage data being returned to the
+	 * export buffer.
+	 */
+	core_buf[0] = '\0';
+	mem_buf[0] = '\0';
+	pl_buf[0] = '\0';
+
 	if (mutex_lock_interruptible(&apart->mlock)) {
 		dev_err(&apart->dev,
 			"Failed to acquire lock. Process was interrupted by fatal signals\n");
