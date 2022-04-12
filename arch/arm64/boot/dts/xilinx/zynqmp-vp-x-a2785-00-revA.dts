@@ -193,9 +193,9 @@
 			#size-cells = <0>;
 			reg = <0>;
 			/* On connector J325 */
-			reg_vccint: tps53681@c0 { /* u266 */
+			reg_vccint: tps53681@60 { /* u266 - 0xc0 */
 				compatible = "ti,tps53681", "ti,tps53679";
-				reg = <0xc0>;
+				reg = <0x60>;
 			};
 			reg_vcc1v1_lp4: tps544@d { /* u85 */
 				compatible = "ti,tps544b25";
