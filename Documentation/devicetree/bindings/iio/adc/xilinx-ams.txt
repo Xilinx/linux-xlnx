@@ -46,8 +46,8 @@ Following optional property only valid for PL.
 				0: VP/VN
 				1: VUSER0
 				2: VUSER1
-				3: VUSER3
-				4: VUSER4
+				3: VUSER2
+				4: VUSER3
 				5: VAUXP[0]/VAUXN[0]
 				6: VAUXP[1]/VAUXN[1]
 				...
