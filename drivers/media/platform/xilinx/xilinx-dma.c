@@ -271,7 +271,7 @@ static void xvip_dma_complete(void *param)
 	struct xvip_dma_buffer *buf = param;
 	struct xvip_dma *dma = buf->dma;
 	int i, sizeimage;
-	u32 fid;
+	u32 fid = 0;
 	int status;
 
 	spin_lock(&dma->queued_lock);
@@ -657,7 +657,7 @@ static int xvip_xdma_enum_fmt(struct xvip_dma *dma, struct v4l2_fmtdesc *f,
 {
 	const struct xvip_video_format *fmt;
 	int ret;
-	u32 i, fmt_cnt, *fmts;
+	u32 i, fmt_cnt = 0, *fmts = NULL;
 
 	ret = xilinx_xdma_get_v4l2_vid_fmts(dma->dma, &fmt_cnt, &fmts);
 	if (ret)
@@ -982,7 +982,7 @@ xvip_dma_set_format(struct file *file, void *fh, struct v4l2_format *format)
 {
 	struct v4l2_fh *vfh = file->private_data;
 	struct xvip_dma *dma = to_xvip_dma(vfh->vdev);
-	const struct xvip_video_format *info;
+	const struct xvip_video_format *info = NULL;
 
 	__xvip_dma_try_format(dma, format, &info);
 
