@@ -800,6 +800,12 @@ void axienet_tx_hwtstamp(struct axienet_local *lp,
 	if (unlikely(!(val & XAXIFIFO_TXTS_INT_RC_MASK)))
 		dev_info(lp->dev, "Did't get FIFO tx interrupt %d\n", val);
 
+	/* Ensure to read Occupany register before accessing Length register */
+	if (!axienet_txts_ior(lp, XAXIFIFO_TXTS_RFO)) {
+		netdev_err(lp->ndev, "%s: TX Timestamp FIFO is empty", __func__);
+		goto skb_exit;
+	}
+
 	/* If FIFO is configured in cut through Mode we will get Rx complete
 	 * interrupt even one byte is there in the fifo wait for the full packet
 	 */
