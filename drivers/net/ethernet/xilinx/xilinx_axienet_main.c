@@ -3160,7 +3160,7 @@ static int axienet_probe(struct platform_device *pdev)
 				   &num_queues);
 	if (ret) {
 #ifndef CONFIG_AXIENET_HAS_MCDMA
-			num_queues = 1;
+		num_queues = 1;
 #endif
 	}
 
