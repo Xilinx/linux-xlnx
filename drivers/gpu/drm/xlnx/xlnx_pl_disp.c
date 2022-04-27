@@ -30,6 +30,7 @@
 #include "xlnx_drv.h"
 
 #define XLNX_PL_DISP_MAX_NUM_PLANES	3
+#define XLNX_PL_DISP_VFMT_SIZE		4
 /*
  * Overview
  * --------
@@ -584,6 +585,7 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 	const char *vformat;
 	struct dma_chan *dma_chan;
 	struct xlnx_dma_chan *xlnx_dma_chan;
+	const struct drm_format_info *info;
 
 	xlnx_pl_disp = devm_kzalloc(dev, sizeof(*xlnx_pl_disp), GFP_KERNEL);
 	if (!xlnx_pl_disp)
@@ -607,7 +609,13 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 		goto err_dma;
 	}
 
-	strcpy((char *)&xlnx_pl_disp->fmt, vformat);
+	strncpy((char *)&xlnx_pl_disp->fmt, vformat, XLNX_PL_DISP_VFMT_SIZE);
+	info = drm_format_info(xlnx_pl_disp->fmt);
+	if (!info) {
+		dev_err(dev, "Invalid video format in dts\n");
+		ret = -EINVAL;
+		goto err_dma;
+	}
 
 	/* VTC Bridge support */
 	vtc_node = of_parse_phandle(dev->of_node, "xlnx,bridge", 0);
