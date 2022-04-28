@@ -3370,7 +3370,7 @@ static int spi_nor_set_addr_width(struct spi_nor *nor)
 		nor->addr_width = 3;
 	}
 
-	if (nor->addr_width == 3 && nor->mtd.size > 0x1000000) {
+	if (nor->addr_width == 3 && (nor->mtd.size >> nor->shift) > 0x1000000) {
 #ifdef CONFIG_OF
 		np_spi = of_get_next_parent(np);
 		if (of_property_match_string(np_spi, "compatible",
