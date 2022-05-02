@@ -230,6 +230,8 @@ static int zynqmp_sha_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	int err;
 
+	dev_info(dev, "The zynqmp-sha-deprecated driver shall be deprecated in 2022.2 and removed in 2023.1 release");
+
 	sha_dd = devm_kzalloc(&pdev->dev, sizeof(*sha_dd), GFP_KERNEL);
 	if (!sha_dd)
 		return -ENOMEM;
