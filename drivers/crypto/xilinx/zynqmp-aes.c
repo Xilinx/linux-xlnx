@@ -232,6 +232,8 @@ static int zynqmp_aes_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	int ret;
 
+	dev_info(dev, "The zynqmp-aes driver shall be deprecated in 2022.2 and removed in 2023.1");
+
 	aes_dd = devm_kzalloc(dev, sizeof(*aes_dd), GFP_KERNEL);
 	if (!aes_dd)
 		return -ENOMEM;
