@@ -48,7 +48,7 @@
 
 #define XDPRX_LINERST_DIS_REG		0x008
 #define XDPRX_DTG_REG			0x00c
-#define XDPRX_DTG_DIS_MASK		GENMASK(31, 1)
+#define XDPRX_DTG_DIS_MASK		BIT(0)
 
 #define XDPRX_PIXEL_WIDTH_REG		0x010
 #define XDPRX_INTR_MASK_REG		0x014
@@ -819,7 +819,7 @@ static int xlnx_dp_rx_gt_control_init(struct xdprxss_state *dp)
 
 static void xdprxss_dtg_disable(struct xdprxss_state *state)
 {
-	xdprxss_write(state, XDPRX_DTG_REG, XDPRX_DTG_DIS_MASK);
+	xdprxss_clr(state, XDPRX_DTG_REG, XDPRX_DTG_DIS_MASK);
 	xdprxss_soft_video_reset(state);
 }
 
@@ -871,8 +871,7 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state)
 	framerate = roundup(framerate, 5);
 	xdprxss_write(state, XDPRX_LINERST_DIS_REG, 0x1);
 	/* set pixel mode as per lane count and reset the DTG */
-	read_val = xdprxss_read(state, XDPRX_DTG_REG);
-	xdprxss_write(state, XDPRX_DTG_REG, (read_val & XDPRX_DTG_DIS_MASK));
+	xdprxss_clr(state, XDPRX_DTG_REG, XDPRX_DTG_DIS_MASK);
 	xdprxss_write(state, XDPRX_PIXEL_WIDTH_REG, pixel_width);
 	read_val = xdprxss_read(state, XDPRX_DTG_REG);
 	xdprxss_write(state, XDPRX_DTG_REG, (read_val | 0x1));
