@@ -58,7 +58,7 @@
 	num-cs = <0x1>;
 	is-dual = <0x1>;
 	spi-rx-bus-width = <4>;
-	spi-tx-bus-width = <1>;
+	spi-tx-bus-width = <4>;
 
 	flash@0 {
 		#address-cells = <1>;

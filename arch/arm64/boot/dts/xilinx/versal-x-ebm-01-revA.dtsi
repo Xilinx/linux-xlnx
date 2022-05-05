@@ -9,7 +9,7 @@
 
 status = "okay";
 num-cs = <1>;
-spi-tx-bus-width = <1>;
+spi-tx-bus-width = <4>;
 spi-rx-bus-width = <4>;
 #address-cells = <1>;
 #size-cells = <0>;
