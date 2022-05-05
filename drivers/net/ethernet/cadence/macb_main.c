@@ -3155,9 +3155,6 @@ static int macb_set_wol(struct net_device *netdev, struct ethtool_wolinfo *wol)
 	    (wol->wolopts & ~WAKE_ARP))
 		return -EOPNOTSUPP;
 
-	if (wol->wolopts & ~WAKE_MAGIC)
-		return -EINVAL;
-
 	if (wol->wolopts & WAKE_ARP)
 		bp->wol = 1;
 	else
