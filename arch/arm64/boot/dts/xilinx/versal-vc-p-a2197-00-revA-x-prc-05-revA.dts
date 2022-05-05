@@ -74,7 +74,7 @@
 &qspi {
 	status = "okay";
 	num-cs = <0x1>;
-	spi-tx-bus-width = <1>;
+	spi-tx-bus-width = <4>;
 	spi-rx-bus-width = <4>;
 
 	flash@0 { /* MX25U12835 128Mbit */
