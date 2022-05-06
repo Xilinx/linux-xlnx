@@ -40,6 +40,7 @@
 #include <linux/inetdevice.h>
 #include <linux/reset.h>
 #include <linux/firmware/xlnx-zynqmp.h>
+#include <linux/ptp_classify.h>
 #include "macb.h"
 
 /* This structure is only used for MACB on SiFive FU540 devices */
@@ -99,6 +100,9 @@ struct sifive_fu540_macb_mgmt {
 #define MACB_PM_TIMEOUT  100 /* ms */
 
 #define MACB_MDIO_TIMEOUT	1000000 /* in usecs */
+
+/* IEEE1588 PTP flag field values  */
+#define PTP_FLAG_TWOSTEP	0x2
 
 /* DMA buffer descriptor might be different size
  * depends on hardware configuration:
@@ -1202,6 +1206,36 @@ static void macb_tx_error_task(struct work_struct *work)
 	spin_unlock_irqrestore(&bp->lock, flags);
 }
 
+static inline bool ptp_oss(struct sk_buff *skb)
+{
+	struct ptp_header *hdr;
+	unsigned int ptp_class;
+	u8 msgtype;
+
+	/* No need to parse packet if PTP TS is not involved */
+	if (!(skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP))
+		goto not_oss;
+
+	/* Identify and return whether PTP one step sync is being processed */
+	ptp_class = ptp_classify_raw(skb);
+	if (ptp_class == PTP_CLASS_NONE)
+		goto not_oss;
+
+	hdr = ptp_parse_header(skb, ptp_class);
+	if (!hdr)
+		goto not_oss;
+
+	if (hdr->flag_field[0] & PTP_FLAG_TWOSTEP)
+		goto not_oss;
+
+	msgtype = ptp_get_msgtype(hdr, ptp_class);
+	if (msgtype == PTP_MSGTYPE_SYNC)
+		return true;
+
+not_oss:
+	return false;
+}
+
 static void macb_tx_interrupt(struct macb_queue *queue)
 {
 	unsigned int tail;
@@ -1246,13 +1280,14 @@ static void macb_tx_interrupt(struct macb_queue *queue)
 
 			/* First, update TX stats if needed */
 			if (skb) {
-				if (unlikely(skb_shinfo(skb)->tx_flags &
-					     SKBTX_HW_TSTAMP) &&
-				    gem_ptp_do_txstamp(queue, skb, desc) == 0) {
-					/* skb now belongs to timestamp buffer
-					 * and will be removed later
-					 */
-					tx_skb->skb = NULL;
+				if (unlikely(skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) &&
+				    !ptp_oss(skb)) {
+					if (gem_ptp_do_txstamp(queue, skb, desc) == 0) {
+						/* skb now belongs to timestamp buffer
+						 * and will be removed later
+						 */
+						tx_skb->skb = NULL;
+					}
 				}
 				netdev_vdbg(bp->dev, "skb %u (data %p) TX complete\n",
 					    macb_tx_ring_wrap(bp, tail),
@@ -2058,7 +2093,7 @@ static unsigned int macb_tx_map(struct macb *bp,
 			ctrl |= MACB_BF(TX_TCP_SEQ_SRC, seq_ctrl);
 			if ((bp->dev->features & NETIF_F_HW_CSUM) &&
 			    skb->ip_summed != CHECKSUM_PARTIAL && !lso_ctrl &&
-			    (skb->data_len == 0))
+			    (skb->data_len == 0) && !ptp_oss(skb))
 				ctrl |= MACB_BIT(TX_NOCRC);
 		} else
 			/* Only set MSS/MFS on payload descriptors
@@ -2154,11 +2189,11 @@ static int macb_pad_and_fcs(struct sk_buff **skb, struct net_device *ndev)
 	struct sk_buff *nskb;
 	u32 fcs;
 
-	/* Not available for GSO and fragments */
+	/* Not available for GSO, fragments and PTP one step sync */
 	if (!(ndev->features & NETIF_F_HW_CSUM) ||
 	    !((*skb)->ip_summed != CHECKSUM_PARTIAL) ||
 	    skb_shinfo(*skb)->gso_size ||
-	    ((*skb)->data_len > 0))
+	    ((*skb)->data_len > 0) || ptp_oss(*skb))
 		return 0;
 
 	if (padlen <= 0) {
