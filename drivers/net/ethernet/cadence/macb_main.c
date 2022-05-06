@@ -866,6 +866,22 @@ static int macb_phylink_connect(struct macb *bp)
 		return ret;
 	}
 
+	/* Figure out if MDIO bus is shared, if yes figure out MDIO
+	 * producer node parent and create device link to ensure
+	 * that supplier is active whenever and for as long as the
+	 * consumer is runtime resumed.
+	 */
+	if (bp->mii_bus != dev->phydev->mdio.bus && !bp->link) {
+		struct macb *mdio_parent = dev->phydev->mdio.bus->priv;
+
+		bp->link = device_link_add(&bp->pdev->dev, &mdio_parent->pdev->dev,
+					   DL_FLAG_PM_RUNTIME |
+					   DL_FLAG_AUTOREMOVE_CONSUMER);
+		if (!bp->link)
+			netdev_warn(dev, "device link creation from %s failed\n",
+				    dev_name(&bp->pdev->dev));
+	}
+
 	/* Since this driver uses runtime handling of clocks, initiate a phy
 	 * reset if the attached phy requires it. Check return to see if phy
 	 * was reset and then do a phy initialization.
