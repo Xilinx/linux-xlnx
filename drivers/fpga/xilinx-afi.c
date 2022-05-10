@@ -10,16 +10,19 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/reset.h>
 #include <linux/slab.h>
 
 /**
  * struct afi_fpga - AFI register description
  * @value: value to be written to the register
  * @regid: Register id for the register to be written
+ * @resets: Pointer to the reset control for ps-pl resets.
  */
 struct afi_fpga {
 	u32 value;
 	u32 regid;
+	struct reset_control *resets;
 };
 
 static int afi_fpga_probe(struct platform_device *pdev)
@@ -34,6 +37,13 @@ static int afi_fpga_probe(struct platform_device *pdev)
 	if (!afi_fpga)
 		return -ENOMEM;
 	platform_set_drvdata(pdev, afi_fpga);
+
+	/* Reset PL */
+	afi_fpga->resets = devm_reset_control_array_get_optional_exclusive(&pdev->dev);
+	if (IS_ERR(afi_fpga->resets))
+		return PTR_ERR(afi_fpga->resets);
+
+	reset_control_deassert(afi_fpga->resets);
 
 	entries = of_property_count_u32_elems(np, "config-afi");
 	if (!entries || (entries % 2)) {
@@ -62,6 +72,9 @@ static int afi_fpga_probe(struct platform_device *pdev)
 			return ret;
 		}
 	}
+
+	reset_control_assert(afi_fpga->resets);
+
 	return 0;
 }
 
