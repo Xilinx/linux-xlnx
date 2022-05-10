@@ -433,7 +433,6 @@ static int zynqmp_get_error_info(struct synps_edac_priv *priv)
 	if (!regval)
 		return 1;
 
-
 	p->ceinfo.bitpos = (regval & ECC_STAT_BITNUM_MASK);
 
 	regval = readl(base + ECC_CEADDR0_OFST);
