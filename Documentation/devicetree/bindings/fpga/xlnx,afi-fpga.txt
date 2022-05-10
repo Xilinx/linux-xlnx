@@ -54,8 +54,14 @@ The possible values of regid and values are
 					0x100: 64-bit AXI data width,
 					0x200: 128-bit AXI data
 
+Optional properties:
+- resets : Phandle and reset specifier for the ps-pl reset.
+  See ../reset/reset.txt for details.
+
 Example:
 afi0: afi0 {
 	compatible = "xlnx,afi-fpga";
 	config-afi = <0 2>, <1 1>, <2 1>;
+	resets = <&zynqmp_reset 116>, <&zynqmp_reset 117>,
+		 <&zynqmp_reset 118>, <&zynqmp_reset 119>;
 };
