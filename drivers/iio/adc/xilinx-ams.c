@@ -178,7 +178,8 @@ static void ams_enable_channel_sequence(struct ams *ams)
 	/* Run calibration of PS & PL as part of the sequence */
 	scan_mask = 1 | (1 << PS_SEQ_MAX);
 	for (i = 0; i < indio_dev->num_channels; i++)
-		scan_mask |= BIT(indio_dev->channels[i].scan_index);
+		if (indio_dev->channels[i].scan_index < PL_SEQ_MAX)
+			scan_mask |= BIT(indio_dev->channels[i].scan_index);
 
 	if (ams->ps_base) {
 		/* put sysmon in a soft reset to change the sequence */
