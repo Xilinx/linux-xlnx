@@ -193,6 +193,8 @@ enum ams_ps_pl_seq {
 #define PS_SEQ(x)           (x)
 #define PL_SEQ(x)           (PS_SEQ_MAX + x)
 
+#define PL_SEQ_MAX	((AMS_SEQ_MAX * 2) + 16U) /* PS Slot + PL Slot + 16 VAUX Channels */
+
 #define AMS_CHAN_TEMP(_scan_index, _addr, _ext) { \
 	.type = IIO_TEMP, \
 	.indexed = 1, \
