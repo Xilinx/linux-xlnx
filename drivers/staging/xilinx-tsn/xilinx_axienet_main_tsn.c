@@ -778,7 +778,7 @@ static int axienet_recv(struct net_device *ndev, int budget,
 					   DMA_FROM_DEVICE);
 		if (unlikely(dma_mapping_error(ndev->dev.parent, cur_p->phys))) {
 			cur_p->phys = 0;
-			dev_kfree_skb(skb);
+			dev_kfree_skb(new_skb);
 			dev_err(lp->dev, "RX buffer map failed\n");
 			break;
 		}
