@@ -2286,6 +2286,13 @@ static int xm2msc_parse_of(struct platform_device *pdev,
 	/* read supported video formats and update internal table */
 	hw_vid_fmt_cnt = of_property_count_strings(node, "xlnx,vid-formats");
 
+	/* Validate the number of strings returned */
+	if (hw_vid_fmt_cnt < 0)
+		return hw_vid_fmt_cnt;
+
+	if (hw_vid_fmt_cnt > ARRAY_SIZE(formats))
+		return -EINVAL;
+
 	ret = of_property_read_string_array(node, "xlnx,vid-formats",
 					    vid_fmts, hw_vid_fmt_cnt);
 	if (ret < 0) {
