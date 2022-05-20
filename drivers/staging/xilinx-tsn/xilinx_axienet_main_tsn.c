@@ -1730,7 +1730,6 @@ static int axienet_probe(struct platform_device *pdev)
 	struct resource *ethres;
 	u32 value;
 	u16 num_queues = XAE_MAX_QUEUES;
-	bool slave = false;
 
 	ret = of_property_read_u16(pdev->dev.of_node, "xlnx,num-queues",
 				   &num_queues);
@@ -1744,11 +1743,6 @@ static int axienet_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	platform_set_drvdata(pdev, ndev);
-	slave = of_property_read_bool(pdev->dev.of_node, "xlnx,tsn-slave");
-	if (slave)
-		snprintf(ndev->name, sizeof(ndev->name), "eth2");
-	else
-		snprintf(ndev->name, sizeof(ndev->name), "eth1");
 
 	SET_NETDEV_DEV(ndev, &pdev->dev);
 	ndev->flags &= ~IFF_MULTICAST;  /* clear multicast */
