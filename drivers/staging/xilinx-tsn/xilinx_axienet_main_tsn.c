@@ -1120,50 +1120,61 @@ static int axienet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 	case SIOCGHWTSTAMP:
 		return axienet_get_ts_config(lp, rq);
 #endif
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
+static int axienet_ioctl_siocdevprivate(struct net_device *dev,
+					struct ifreq *rq, void __user *data, int cmd)
+{
+	struct axienet_local *lp = netdev_priv(dev);
+
+	switch (cmd) {
 #ifdef CONFIG_XILINX_TSN_QBV
 	case SIOCCHIOCTL:
 		if (lp->qbv_regs)
-			return axienet_set_schedule(dev, rq->ifr_data);
+			return axienet_set_schedule(dev, data);
 		return -EINVAL;
 	case SIOC_GET_SCHED:
 		if (lp->qbv_regs)
-			return axienet_get_schedule(dev, rq->ifr_data);
+			return axienet_get_schedule(dev, data);
 		return -EINVAL;
 #endif
 #ifdef CONFIG_AXIENET_HAS_TADMA
 	case SIOC_TADMA_OFF:
 		if (!(lp->abl_reg & TSN_BRIDGEEP_EPONLY))
 			return -ENOENT;
-		return axienet_tadma_off(dev, rq->ifr_data);
+		return axienet_tadma_off(dev, data);
 	case SIOC_TADMA_STR_ADD:
 		if (!(lp->abl_reg & TSN_BRIDGEEP_EPONLY))
 			return -ENOENT;
-		return axienet_tadma_add_stream(dev, rq->ifr_data);
+		return axienet_tadma_add_stream(dev, data);
 	case SIOC_TADMA_PROG_ALL:
 		if (!(lp->abl_reg & TSN_BRIDGEEP_EPONLY))
 			return -ENOENT;
-		return axienet_tadma_program(dev, rq->ifr_data);
+		return axienet_tadma_program(dev, data);
 	case SIOC_TADMA_STR_FLUSH:
 		if (!(lp->abl_reg & TSN_BRIDGEEP_EPONLY))
 			return -ENOENT;
-		return axienet_tadma_flush_stream(dev, rq->ifr_data);
+		return axienet_tadma_flush_stream(dev, data);
 #endif
 #ifdef CONFIG_XILINX_TSN_QBR
 	case SIOC_PREEMPTION_CFG:
-		return axienet_preemption(dev, rq->ifr_data);
+		return axienet_preemption(dev, data);
 	case SIOC_PREEMPTION_CTRL:
-		return axienet_preemption_ctrl(dev, rq->ifr_data);
+		return axienet_preemption_ctrl(dev, data);
 	case SIOC_PREEMPTION_STS:
-		return axienet_preemption_sts(dev, rq->ifr_data);
+		return axienet_preemption_sts(dev, data);
 	case SIOC_PREEMPTION_RECEIVE:
 		return axienet_preemption_receive(dev);
 	case SIOC_PREEMPTION_COUNTER:
-		return axienet_preemption_cnt(dev, rq->ifr_data);
+		return axienet_preemption_cnt(dev, data);
 #ifdef CONFIG_XILINX_TSN_QBV
 	case SIOC_QBU_USER_OVERRIDE:
-		return axienet_qbu_user_override(dev, rq->ifr_data);
+		return axienet_qbu_user_override(dev, data);
 	case SIOC_QBU_STS:
-		return axienet_qbu_sts(dev, rq->ifr_data);
+		return axienet_qbu_sts(dev, data);
 #endif
 #endif
 
@@ -1180,6 +1191,7 @@ static const struct net_device_ops axienet_netdev_ops = {
 	.ndo_set_mac_address = netdev_set_mac_address,
 	.ndo_validate_addr = eth_validate_addr,
 	.ndo_eth_ioctl = axienet_ioctl,
+	.ndo_siocdevprivate = axienet_ioctl_siocdevprivate,
 	.ndo_set_rx_mode = axienet_set_multicast_list_tsn,
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller = axienet_poll_controller,
