@@ -393,7 +393,8 @@ static irqreturn_t xlnx_sdi_irq_handler(int irq, void *data)
 			reg & ~(XSDI_AXI4S_VID_LOCK_INTR));
 
 	reg = xlnx_sdi_readl(sdi->base, XSDI_TX_STS_SB_TDATA);
-	if (reg & XSDI_TX_TDATA_GT_RESETDONE) {
+	if (reg & XSDI_TX_TDATA_GT_RESETDONE ||
+	    !sdi->gt_rst_gpio) {
 		sdi->event_received = true;
 		wake_up_interruptible(&sdi->wait_event);
 	}
@@ -1017,7 +1018,8 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 		 * datasheet
 		 */
 		mdelay(50);
-		xlnx_sdi_gt_reset(sdi);
+		if (sdi->gt_rst_gpio)
+			xlnx_sdi_gt_reset(sdi);
 	}
 
 	/* Set timing parameters as per bridge output parameters */
