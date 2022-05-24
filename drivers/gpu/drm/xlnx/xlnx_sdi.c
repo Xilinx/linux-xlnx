@@ -506,7 +506,7 @@ static void xlnx_sdi_payload_config(struct xlnx_sdi *sdi, u32 mode)
  * @sdi:	pointer Xilinx SDI Tx structure
  * @mode:	SDI Tx display mode
  * @is_frac:	0 - integer 1 - fractional
- * @mux_ptrn:	specifiy the data stream interleaving pattern to be used
+ * @mux_ptrn:	specify the data stream interleaving pattern to be used
  * This function config the SDI st352 payload parameter.
  */
 static void xlnx_sdi_set_mode(struct xlnx_sdi *sdi, u32 mode,
