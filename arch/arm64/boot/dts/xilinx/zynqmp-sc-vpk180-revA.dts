@@ -234,6 +234,7 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		reg = <0x74>;
+		i2c-mux-idle-disconnect;
 		/* reset-gpios = <&PL_GPIO SYSCTLR_IIC_MUX1_RESET_B GPIO_ACTIVE_HIGH>; */
 		ref_clk_i2c: i2c@0 {
 			#address-cells = <1>;
@@ -330,6 +331,7 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		reg = <0x75>;
+		i2c-mux-idle-disconnect;
 		/* reset-gpios = <&PL_GPIO SYSCTLR_IIC_MUX1_RESET_B GPIO_ACTIVE_HIGH>; */
 		sfpdd1_i2c: i2c@0 {
 			#address-cells = <1>;
