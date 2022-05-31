@@ -409,11 +409,21 @@ static int dwc3_xlnx_init_zynqmp(struct dwc3_xlnx *priv_data)
 		goto err;
 	}
 
-	usb3_phy = devm_phy_get(dev, "usb3-phy");
-	if (PTR_ERR(usb3_phy) == -EPROBE_DEFER) {
-		ret = -EPROBE_DEFER;
+	usb3_phy = devm_phy_optional_get(dev, "usb3-phy");
+	if (IS_ERR(usb3_phy)) {
+		ret = PTR_ERR(usb3_phy);
+		dev_err_probe(dev, ret,
+			      "failed to get USB3 PHY\n");
 		goto err;
-	} else if (IS_ERR(usb3_phy)) {
+	}
+
+	/*
+	 * When no USB3 PHY 'usb3-phy' property is specified in the
+	 * device-tree, then zynqmp board work as a USB2.0 mode only.
+	 * USB2.0 mode only design is non-SerDes based, so we are
+	 * skipping phy initialization.
+	 */
+	if (!usb3_phy) {
 		ret = 0;
 		goto skip_usb3_phy;
 	}
