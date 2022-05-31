@@ -5,10 +5,13 @@ Required properties:
 - compatible		: Should be one of "xlnx,tsn-endpoint-ethernet-mac-1.0",
 			  "xlnx,tsn-endpoint-ethernet-mac-2.0" for TSN.
 - reg			: Physical base address and size of the TSN registers map.
-
+- ranges		: Specifies child address ranges of TSN IP subsystem including
+			  TEMACs, endpoint and switch. Leave this property as empty
+			  because parent node has the same mapping as all the child nodes.
 Example:
 
 	tsn_endpoint_ip_0: tsn_endpoint_ip_0 {
 		compatible = "xlnx,tsn-endpoint-ethernet-mac-2.0";
 		reg = <0x0 0x80040000 0x0 0x40000>;
+		ranges;
 	};
