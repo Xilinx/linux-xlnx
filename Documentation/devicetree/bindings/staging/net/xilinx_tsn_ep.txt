@@ -34,6 +34,10 @@ Optional TADMA properties:
 				  (registers and interrupts) will be used from
 				  this node.
 
+Optional MCDMA properties:
+- xlnx,num-mm2s-channels	: Number of MM2S(read) channels in MCDMA
+- xlnx,num-s2mm-channels	: Number of S2MM(write) channels in MCDMA
+
 [1] Documentation/devicetree/bindings/net/ethernet.txt
 
 Example:
