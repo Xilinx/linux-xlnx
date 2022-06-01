@@ -30,13 +30,13 @@
 #define TX_BD_NUM_DEFAULT	64
 #define RX_BD_NUM_DEFAULT	1024
 
-static u8 st_pcp[8];
-static uint st_count;
+static u8 st_pcp[8] = {4};
+static uint st_count = 1;
 module_param_array(st_pcp, byte, &st_count, 0644);
 MODULE_PARM_DESC(st_pcp, "Array of pcp values mapped to ST class at the compile time");
 
-static u8 res_pcp[8];
-static uint res_count;
+static u8 res_pcp[8] = {2, 3};
+static uint res_count = 2;
 module_param_array(res_pcp, byte, &res_count, 0644);
 MODULE_PARM_DESC(res_pcp, "Array of pcp values mapped to RES class at the compile time");
 
