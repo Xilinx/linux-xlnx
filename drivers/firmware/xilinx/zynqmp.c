@@ -245,6 +245,7 @@ int zynqmp_pm_feature(const u32 api_id)
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(zynqmp_pm_feature);
 
 /**
  * zynqmp_pm_is_function_supported() - Check whether given IOCTL/QUERY function
@@ -2078,6 +2079,7 @@ int zynqmp_pm_sec_read_reg(u32 node_id, u32 offset, u32 *ret_value)
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(zynqmp_pm_sec_read_reg);
 
 /**
  * zynqmp_pm_sec_mask_write_reg - PM call to securely write to given offset
@@ -2095,6 +2097,7 @@ int zynqmp_pm_sec_mask_write_reg(const u32 node_id, const u32 offset, u32 mask,
 	return zynqmp_pm_invoke_fn(PM_IOCTL, node_id, IOCTL_MASK_WRITE_REG,
 				   offset, mask, value, NULL);
 }
+EXPORT_SYMBOL_GPL(zynqmp_pm_sec_mask_write_reg);
 
 /**
  * zynqmp_pm_get_qos - PM call to query default and current QoS of the node
