@@ -28,7 +28,7 @@ ssize_t aie_part_show_current_freq(struct device *dev,
 	if (ret) {
 		dev_err(dev, "Failed to get partition frequency.\n");
 		mutex_unlock(&apart->mlock);
-		return ret;
+		return 0;
 	}
 
 	mutex_unlock(&apart->mlock);
