@@ -1971,6 +1971,7 @@ static int axienet_remove(struct platform_device *pdev)
 	struct axienet_local *lp = netdev_priv(ndev);
 
 #ifdef CONFIG_XILINX_TSN_PTP
+	if (lp->timer_priv)
 		axienet_ptp_timer_remove(lp->timer_priv);
 #ifdef CONFIG_XILINX_TSN_QBV
 		axienet_qbv_remove(ndev);
