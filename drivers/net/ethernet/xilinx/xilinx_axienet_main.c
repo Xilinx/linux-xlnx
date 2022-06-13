@@ -3161,6 +3161,9 @@ static int axienet_probe(struct platform_device *pdev)
 	struct resource *ethres;
 	u32 value;
 	u16 num_queues = XAE_MAX_QUEUES;
+#ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
+	struct resource txtsres, rxtsres;
+#endif
 
 	ret = of_property_read_u16(pdev->dev.of_node, "xlnx,num-queues",
 				   &num_queues);
@@ -3399,8 +3402,6 @@ static int axienet_probe(struct platform_device *pdev)
 	}
 
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
-		struct resource txtsres, rxtsres;
-
 		/* Find AXI Stream FIFO */
 		np = of_parse_phandle(pdev->dev.of_node, "axififo-connected",
 				      0);
