@@ -25,6 +25,8 @@
 #include <drm/drm_dp_helper.h>
 #include <dt-bindings/media/xilinx-vip.h>
 
+#include <media/hdr-ctrls.h>
+#include <media/v4l2-ctrls.h>
 #include <media/v4l2-dv-timings.h>
 #include <media/v4l2-event.h>
 #include <media/v4l2-subdev.h>
@@ -38,6 +40,8 @@
 #define INFO_PCKT_SIZE_WORDS		8
 #define INFO_PCKT_SIZE			(INFO_PCKT_SIZE_WORDS * 4)
 #define INFO_PCKT_TYPE_AUDIO		0x84
+/* Refer section 2.2.5.1.2 in DP spec and table 42 in CTA-861-G spec */
+#define INFO_PCKT_TYPE_DRM		0x87
 
 /* DP Rx subsysetm register map, bitmask, and offsets. */
 #define XDPRX_LINK_ENABLE_REG		0x000
@@ -49,6 +53,7 @@
 #define XDPRX_LINERST_DIS_REG		0x008
 #define XDPRX_DTG_REG			0x00c
 #define XDPRX_DTG_DIS_MASK		BIT(0)
+#define XDPRX_VSCEXT_VESA_SDP_SUPPORTED	BIT(2)
 
 #define XDPRX_PIXEL_WIDTH_REG		0x010
 #define XDPRX_INTR_MASK_REG		0x014
@@ -318,6 +323,21 @@
 #define xdprxss_enable_audio_intr(state) \
 		xdprxss_clr(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_AUDIO_MASK)
 
+union xdprxss_iframe_header {
+	u32 data;
+	u8 byte[4];
+};
+
+union xdprxss_iframe_payload {
+	u32 data[8];
+	u8 byte[32];
+};
+
+struct xdprxss_infoframe {
+	union xdprxss_iframe_header header;
+	union xdprxss_iframe_payload payload;
+};
+
 /**
  * struct xlnx_dprx_audio_data - DP Rx Subsystem audio data structure
  * @infoframe: Audio infoframe that is received
@@ -356,6 +376,9 @@ struct vidphy_cfg {
  * struct xdprxss_state - DP Rx Subsystem device structure
  * @dev: Platform structure
  * @subdev: The v4l2 subdev structure
+ * @ctrl_handler: control handler
+ * @drm_infoframe: DRM infoframe data
+ * @infoframe: IP infoframe data
  * @event: Holds the video unlock event
  * @detected_timings: Detected Video timings
  * @phy: pointer to phy instance
@@ -391,6 +414,9 @@ struct vidphy_cfg {
 struct xdprxss_state {
 	struct device *dev;
 	struct v4l2_subdev subdev;
+	struct v4l2_ctrl_handler ctrl_handler;
+	struct v4l2_hdr10_payload drm_infoframe;
+	struct xdprxss_infoframe infoframe;
 	struct v4l2_event event;
 	struct v4l2_dv_timings detected_timings;
 	struct phy *phy[XDPRX_MAX_LANE_COUNT];
@@ -975,6 +1001,7 @@ static void xdprxss_set_training_params(struct xdprxss_state *xdprxss)
 			  xdprxss->edid_base + offset);
 	}
 	xdprxss_write(xdprxss, XDPRX_LOCAL_EDID_REG, 0x1);
+	xdprxss_set(xdprxss, XDPRX_DTG_REG, XDPRX_VSCEXT_VESA_SDP_SUPPORTED);
 
 	/* Disable all the interrupts */
 	xdprxss_set(xdprxss, XDPRX_INTR_MASK_REG, XDPRX_INTR_ALL_MASK);
@@ -1174,20 +1201,82 @@ static void xdprxss_irq_valid_video(struct xdprxss_state *state)
 	}
 }
 
+/**
+ * xdprxss_parse_drmif - Parse DRM infoframe from received infoframe packet
+ * @state: pointer to driver state
+ * @drm_infoframe: DRM infoframe structure member
+ * This function parses DRM(Dynamic Range and Mastering InfoFrame) infoframe
+ * from received infoframe packet. For more information please refer to the
+ * section 6.9 in CTA-861-G
+ *
+ */
+static void xdprxss_parse_drmif(struct xdprxss_state *state,
+				struct v4l2_hdr10_payload *drm_infoframe)
+{
+	struct xdprxss_infoframe *iframe = &state->infoframe;
+
+	drm_infoframe->eotf = iframe->payload.byte[2] & 0x7;
+	drm_infoframe->metadata_type = iframe->payload.byte[3] & 0x7;
+	drm_infoframe->display_primaries[0].x =
+					(iframe->payload.byte[4] & 0xFF) |
+					(iframe->payload.byte[5] << 8);
+	drm_infoframe->display_primaries[0].y =
+					(iframe->payload.byte[6] & 0xFF) |
+					(iframe->payload.byte[7] << 8);
+	drm_infoframe->display_primaries[1].x =
+					(iframe->payload.byte[8] & 0xFF) |
+					(iframe->payload.byte[9] << 8);
+	drm_infoframe->display_primaries[1].y =
+					(iframe->payload.byte[10] & 0xFF) |
+					(iframe->payload.byte[11] << 8);
+	drm_infoframe->display_primaries[2].x =
+					(iframe->payload.byte[12] & 0xFF) |
+					(iframe->payload.byte[13] << 8);
+	drm_infoframe->display_primaries[2].y =
+					(iframe->payload.byte[14] & 0xFF) |
+					(iframe->payload.byte[15] << 8);
+	drm_infoframe->white_point.x =
+				(iframe->payload.byte[16] & 0xFF) |
+				(iframe->payload.byte[17] << 8);
+	drm_infoframe->white_point.y =
+				(iframe->payload.byte[18] & 0xFF) |
+				(iframe->payload.byte[19] << 8);
+	drm_infoframe->max_mdl = (iframe->payload.byte[20] & 0xFF) |
+				(iframe->payload.byte[21] << 8);
+	drm_infoframe->min_mdl = (iframe->payload.byte[22] & 0xFF) |
+				(iframe->payload.byte[23] << 8);
+	drm_infoframe->max_cll = (iframe->payload.byte[24] & 0xFF) |
+				(iframe->payload.byte[25] << 8);
+	drm_infoframe->max_fall = (iframe->payload.byte[26] & 0xFF) |
+				(iframe->payload.byte[27] << 8);
+}
+
 static void xdprxss_irq_audio_detected(struct xdprxss_state *state)
 {
+	struct xdprxss_infoframe *iframe = &state->infoframe;
+	struct v4l2_hdr10_payload *drm_infoframe = &state->drm_infoframe;
 	u32 buff[INFO_PCKT_SIZE_WORDS];
 	u8 *buf_ptr;
 	int i;
 
-	for (i = 0; i < INFO_PCKT_SIZE_WORDS; i++)
-		buff[i] = xdprxss_read(state, XDPRX_AUDIO_INFO_DATA);
+	iframe->header.data = xdprxss_read(state, XDPRX_AUDIO_INFO_DATA);
+	buff[0] = iframe->header.data;
+	for (i = 0; i < (INFO_PCKT_SIZE_WORDS - 1); i++) {
+		iframe->payload.data[i] = xdprxss_read(state,
+						       XDPRX_AUDIO_INFO_DATA);
+		buff[i + 1] = iframe->payload.data[i];
+	}
 
 	buf_ptr = (u8 *)buff;
 	memcpy(state->rx_audio_data->infoframe, buff, INFO_PCKT_SIZE);
 
 	if (buf_ptr[1] == INFO_PCKT_TYPE_AUDIO)
 		state->rx_audio_data->audio_detected = true;
+	if (iframe->header.byte[1] == INFO_PCKT_TYPE_DRM) {
+		memset((void *)drm_infoframe, 0,
+		       sizeof(struct v4l2_hdr10_payload));
+		xdprxss_parse_drmif(state, drm_infoframe);
+	}
 }
 
 static void xdprxss_irq_access_laneset(struct xdprxss_state *state)
@@ -1523,9 +1612,57 @@ static int xdprxss_query_dv_timings(struct v4l2_subdev *sd,
 	return 0;
 }
 
+static int xdprxss_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+{
+	int ret = 0;
+	struct xdprxss_state *state = container_of(ctrl->handler,
+						   struct xdprxss_state,
+						   ctrl_handler);
+	struct v4l2_metadata_hdr *hdr_ptr;
+
+	switch (ctrl->id) {
+	case V4L2_CID_METADATA_HDR:
+		if (!state->valid_stream) {
+			dev_err(state->dev, "Can't get values when video not locked!\n");
+			return -EINVAL;
+		}
+		hdr_ptr = (struct v4l2_metadata_hdr *)ctrl->p_new.p;
+		hdr_ptr->metadata_type = V4L2_HDR_TYPE_HDR10;
+		hdr_ptr->size = sizeof(struct v4l2_hdr10_payload);
+		memcpy(hdr_ptr->payload, &state->drm_infoframe,
+		       hdr_ptr->size);
+		break;
+	default:
+		dev_err(state->dev, "Get Invalid control id 0x%08x\n", ctrl->id);
+		ret = -EINVAL;
+	}
+
+	dev_dbg(state->dev, "Get ctrl id = 0x%08x val = 0x%08x\n",
+		ctrl->id, ctrl->val);
+	return ret;
+}
+
 /* ------------------------------------------------------------
  * Media Operations
  */
+static const struct v4l2_ctrl_ops xdprxss_ctrl_ops = {
+	.g_volatile_ctrl = xdprxss_g_volatile_ctrl,
+};
+
+static const struct v4l2_ctrl_config xdprxss_ctrls[] = {
+	{
+		.ops = &xdprxss_ctrl_ops,
+		.id = V4L2_CID_METADATA_HDR,
+		.name = "HDR Controls",
+		.type = V4L2_CTRL_TYPE_HDR,
+		.min = 0x8000000000000000,
+		.max = 0x7FFFFFFFFFFFFFFF,
+		.step = 1,
+		.def = 0,
+		.elem_size = sizeof(struct v4l2_metadata_hdr),
+		.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_HAS_PAYLOAD,
+	}
+};
 
 static const struct media_entity_operations xdprxss_media_ops = {
 	.link_validate = v4l2_subdev_link_validate
@@ -1966,6 +2103,42 @@ static int xdprxss_probe(struct platform_device *pdev)
 	ret = media_entity_pads_init(&subdev->entity, 1, &xdprxss->pad);
 	if (ret < 0)
 		goto error;
+
+	ret = v4l2_ctrl_handler_init(&xdprxss->ctrl_handler,
+				     ARRAY_SIZE(xdprxss_ctrls));
+	if (ret < 0) {
+		dev_err(xdprxss->dev, "failed to initialize V4L2 ctrl\n");
+		goto error;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(xdprxss_ctrls); i++) {
+		struct v4l2_ctrl *ctrl;
+
+		dev_dbg(xdprxss->dev, "%d ctrl = 0x%x\n", i,
+			xdprxss_ctrls[i].id);
+		ctrl = v4l2_ctrl_new_custom(&xdprxss->ctrl_handler,
+					    &xdprxss_ctrls[i], NULL);
+		if (!ctrl) {
+			dev_err(xdprxss->dev, "Failed for %s ctrl\n",
+				xdprxss_ctrls[i].name);
+			v4l2_ctrl_handler_free(&xdprxss->ctrl_handler);
+			goto error;
+		}
+	}
+
+	if (xdprxss->ctrl_handler.error) {
+		dev_err(xdprxss->dev, "failed to add controls\n");
+		ret = xdprxss->ctrl_handler.error;
+		v4l2_ctrl_handler_free(&xdprxss->ctrl_handler);
+		goto error;
+	}
+
+	subdev->ctrl_handler = &xdprxss->ctrl_handler;
+	ret = v4l2_ctrl_handler_setup(&xdprxss->ctrl_handler);
+	if (ret < 0) {
+		dev_err(xdprxss->dev, "failed to set controls\n");
+		goto error;
+	}
 
 	/* Register interrupt handler */
 	irq = irq_of_parse_and_map(node, 0);
