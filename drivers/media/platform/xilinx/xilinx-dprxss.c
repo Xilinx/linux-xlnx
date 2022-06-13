@@ -302,6 +302,8 @@
 		xdprxss_set(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_UNPLUG_MASK)
 #define xdprxss_disable_audio(state) \
 		xdprxss_clr(state, XDPRX_AUDIO_CONTROL, XDPRX_AUDIO_EN_MASK)
+#define xdprxss_enable_audio(state) \
+		xdprxss_set(state, XDPRX_AUDIO_CONTROL, XDPRX_AUDIO_EN_MASK)
 #define xdprxss_dtg_enable(state)	xdprxss_set(state, XDPRX_DTG_REG, 1)
 #define xdprxss_update_ext_rcv_cap(xdprxss, max_linkrate) \
 		xdprxss_write(xdprxss, \
@@ -1199,6 +1201,9 @@ static void xdprxss_irq_valid_video(struct xdprxss_state *state)
 		dev_err(state->dev, "Unable to get stream properties!\n");
 		state->valid_stream = false;
 	}
+
+	xdprxss_disable_audio(state);
+	xdprxss_enable_audio(state);
 }
 
 /**
