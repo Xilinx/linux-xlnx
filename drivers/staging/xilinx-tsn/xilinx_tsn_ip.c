@@ -187,7 +187,7 @@ int axienet_tsn_probe(struct platform_device *pdev,
 	spin_lock_init(&lp->ptp_tx_lock);
 
 	if (temac_no == XAE_TEMAC1)
-		axienet_ptp_timer_probe((lp->regs + XAE_RTC_OFFSET), pdev);
+		lp->timer_priv = axienet_ptp_timer_probe((lp->regs + XAE_RTC_OFFSET), pdev);
 
 	/* enable VLAN */
 	lp->options |= XAE_OPTION_VLAN;
