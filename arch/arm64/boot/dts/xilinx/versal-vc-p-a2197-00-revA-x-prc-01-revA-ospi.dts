@@ -27,7 +27,6 @@
 	status = "okay"; /* U97 MT35XU02G */
 	bus-num = <2>;
 	num-cs = <1>;
-	#stream-id-cells = <1>;
 	#address-cells = <1>;
 	#size-cells = <0>;
 	reset-gpios = <&gpio1 0xc GPIO_ACTIVE_HIGH>;
