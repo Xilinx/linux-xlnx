@@ -2213,7 +2213,7 @@ static int xlnx_mix_parse_dt_bg_video_fmt(struct device_node *node,
 		DRM_ERROR("No xlnx,vformat value for layer 0 in dts\n");
 		return -EINVAL;
 	}
-	strcpy((char *)&layer->hw_config.vid_fmt, vformat);
+	strncpy((char *)&layer->hw_config.vid_fmt, vformat, 4);
 	layer->hw_config.is_streaming =
 		of_property_read_bool(layer_node, "xlnx,layer-streaming");
 	if (of_property_read_u32(node, "xlnx,bpc", &mixer_hw->bg_layer_bpc)) {
@@ -2490,7 +2490,7 @@ static int xlnx_mix_of_init_layer(struct device *dev, struct device_node *node,
 		return ret;
 	}
 
-	strcpy((char *)&layer->hw_config.vid_fmt, vformat);
+	strncpy((char *)&layer->hw_config.vid_fmt, vformat, 4);
 	layer->hw_config.can_scale =
 		    of_property_read_bool(layer_node, "xlnx,layer-scale");
 	if (layer->hw_config.can_scale) {
