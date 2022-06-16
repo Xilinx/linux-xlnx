@@ -516,7 +516,7 @@ err:
 }
 
 /* xilinx feature support functions */
-void dwc3_xilinx_wakeup_capable(struct device *dev, bool wakeup)
+static void dwc3_xilinx_wakeup_capable(struct device *dev, bool wakeup)
 {
 	struct device_node *node = of_node_get(dev->parent->of_node);
 
