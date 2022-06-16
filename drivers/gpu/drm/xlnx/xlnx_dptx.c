@@ -22,6 +22,8 @@
 #include <linux/phy/phy-dp.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
+#include <media/hdr-ctrls.h>
+#include <uapi/linux/videodev2.h>
 
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_connector.h>
@@ -282,6 +284,15 @@
 #define DP_INFOFRAME_FIFO_SIZE		(DP_INFOFRAME_FIFO_SIZE_WORDS * 4)
 #define DP_INFOFRAME_HEADER_SIZE	4
 #define DP_AUDIO_INFOFRAME_SIZE		10
+/* infoframe SDP header byte. Please refer section 2.2.5.1.2 in DP1.4 spec */
+#define NON_AUDIOIF_PKT_ID		0x00
+#define NON_AUDIOIF_TYPE		0x07
+#define NON_AUDIOIF_LDATA_BYTECOUNT	0x1d
+#define NON_AUDIOIF_SDP_VERSION		0x4c
+#define NON_AUDIOIF_DRM_TYPE		(0x80 + NON_AUDIOIF_TYPE)
+/* DRM infoframe. Please refer section 6.9 in CTA-861G */
+#define CTA_DRMIF_VERSION_NUMBER	0x01
+#define CTA_DRMIF_LENGHT		0x1a
 
 #define DP_INFOFRAME_SIZE(type)	\
 	(DP_INFOFRAME_HEADER_SIZE + DP_ ## type ## _INFOFRAME_SIZE)
@@ -356,6 +367,21 @@ struct dp_codec_cea_spk_alloc {
  */
 struct xlnx_dptx_audio_data {
 	u32 buffer[DP_INFOFRAME_FIFO_SIZE_WORDS];
+};
+
+union xlnx_dp_iframe_header {
+	u32 data;
+	u8 byte[4];
+};
+
+union xlnx_dp_iframe_payload {
+	u32 data[8];
+	u8 byte[32];
+};
+
+struct xlnx_dp_infoframe {
+	union xlnx_dp_iframe_header header;
+	union xlnx_dp_iframe_payload payload;
 };
 
 /**
@@ -468,6 +494,7 @@ enum xlnx_dp_train_state {
  * @hpd_work: hot plug detection worker
  * @hpd_pulse_work: hot plug pulse detection worker
  * @tx_audio_data: audio data
+ * @infoframe : IP infoframe data
  * @vscpkt: VSC extended packet data
  * @phy_opts: Opaque generic phy configuration
  * @status: connection status
@@ -501,6 +528,7 @@ struct xlnx_dp {
 	struct delayed_work hpd_work;
 	struct delayed_work hpd_pulse_work;
 	struct xlnx_dptx_audio_data *tx_audio_data;
+	struct xlnx_dp_infoframe infoframe;
 	struct xlnx_dp_vscpkt vscpkt;
 	union phy_configure_opts phy_opts;
 	enum drm_connector_status status;
@@ -3118,6 +3146,8 @@ static int xlnx_dp_bind(struct device *dev, struct device *master, void *data)
 				   ret ? ret : 8);
 	xlnx_dp_update_bpp(dp);
 
+	drm_object_attach_property(&connector->base,
+				   connector->dev->mode_config.gen_hdr_output_metadata_property, 0);
 	/* This enables interrupts, so should be called after DRM init */
 	ret = xlnx_dp_init_aux(dp);
 	if (ret) {
@@ -3202,8 +3232,65 @@ retrain_link:
 	xlnx_dp_start(dp);
 }
 
+static void xlnx_dp_gen_drmif_pkt(struct xlnx_dp *dp,
+				  struct hdmi_drm_infoframe drmif)
+{
+	struct xlnx_dp_infoframe *iframe = &dp->infoframe;
+
+	memset(iframe, 0, sizeof(struct xlnx_dp_infoframe));
+
+	iframe->header.byte[0] = NON_AUDIOIF_PKT_ID;
+	iframe->header.byte[1] = NON_AUDIOIF_DRM_TYPE;
+	iframe->header.byte[2] = NON_AUDIOIF_LDATA_BYTECOUNT;
+	iframe->header.byte[3] = NON_AUDIOIF_SDP_VERSION;
+	iframe->payload.byte[0] = CTA_DRMIF_VERSION_NUMBER;
+	iframe->payload.byte[1] = CTA_DRMIF_LENGHT;
+
+	iframe->payload.byte[2] = drmif.eotf & 0x7;
+	iframe->payload.byte[3] = drmif.metadata_type & 0x7;
+
+	iframe->payload.byte[4] = drmif.display_primaries[0].x & 0xFF;
+	iframe->payload.byte[5] = drmif.display_primaries[0].x >> 8;
+
+	iframe->payload.byte[6] = drmif.display_primaries[0].y & 0xFF;
+	iframe->payload.byte[7] = drmif.display_primaries[0].y >> 8;
+
+	iframe->payload.byte[8] = drmif.display_primaries[1].x & 0xFF;
+	iframe->payload.byte[9] = drmif.display_primaries[1].x >> 8;
+
+	iframe->payload.byte[10] = drmif.display_primaries[1].y & 0xFF;
+	iframe->payload.byte[11] = drmif.display_primaries[1].y >> 8;
+
+	iframe->payload.byte[12] = drmif.display_primaries[2].x & 0xFF;
+	iframe->payload.byte[13] = drmif.display_primaries[2].x >> 8;
+
+	iframe->payload.byte[14] = drmif.display_primaries[2].y & 0xFF;
+	iframe->payload.byte[15] = drmif.display_primaries[2].y >> 8;
+
+	iframe->payload.byte[16] = drmif.white_point.x & 0xFF;
+	iframe->payload.byte[17] = drmif.white_point.x >> 8;
+
+	iframe->payload.byte[18] = drmif.white_point.y & 0xFF;
+	iframe->payload.byte[19] = drmif.white_point.y >> 8;
+
+	iframe->payload.byte[20] = drmif.max_display_mastering_luminance & 0xFF;
+	iframe->payload.byte[21] = drmif.max_display_mastering_luminance >> 8;
+
+	iframe->payload.byte[22] = drmif.min_display_mastering_luminance & 0xFF;
+	iframe->payload.byte[23] = drmif.min_display_mastering_luminance >> 8;
+
+	iframe->payload.byte[24] = drmif.max_cll & 0xFF;
+	iframe->payload.byte[25] = drmif.max_cll >> 8;
+
+	iframe->payload.byte[26] = drmif.max_fall & 0xFF;
+	iframe->payload.byte[27] = drmif.max_fall >> 8;
+}
+
 static void xlnx_dp_vsync_handler(struct xlnx_dp *dp)
 {
+	struct drm_connector_state *state = dp->connector.state;
+	struct hdmi_drm_infoframe frame;
+	struct xlnx_dp_infoframe *iframe = &dp->infoframe;
 	int i;
 	u32 fifosts = xlnx_dp_read(dp->dp_base, XDPTX_AUDIO_INFO_BUFF_STATUS);
 
@@ -3214,6 +3301,20 @@ static void xlnx_dp_vsync_handler(struct xlnx_dp *dp)
 			xlnx_dp_write(dp->dp_base,
 				      XDPTX_AUDIO_INFO_DATA_REG,
 				      dp->tx_audio_data->buffer[i]);
+		}
+
+		if (state->gen_hdr_output_metadata) {
+			drm_hdmi_infoframe_set_gen_hdr_metadata(&frame, state);
+			xlnx_dp_gen_drmif_pkt(dp, frame);
+
+			xlnx_dp_write(dp->dp_base, XDPTX_AUDIO_INFO_DATA_REG,
+				      iframe->header.data);
+			/* Write new hdr info packet */
+			for (i = 0; i < (DP_INFOFRAME_FIFO_SIZE_WORDS - 1); i++) {
+				xlnx_dp_write(dp->dp_base,
+					      XDPTX_AUDIO_INFO_DATA_REG,
+					      iframe->payload.data[i]);
+			}
 		}
 	}
 }
