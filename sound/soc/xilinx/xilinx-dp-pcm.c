@@ -40,7 +40,21 @@ static const struct snd_pcm_hardware xilinx_pcm_hw = {
 	.periods_max		= 256,
 };
 
+static int xilinx_dp_pcm_prepare_slave_config(struct snd_pcm_substream *substream,
+					      struct snd_pcm_hw_params *params,
+					      struct dma_slave_config *slave_config)
+{
+	/*
+	 * The slave_config is not required to be configured as
+	 * the Xilinx DPDMA is hardwired to DP controller. But
+	 * this is added to avoid NULL pointer dereference
+	 * while configuring DMA DAI data later.
+	 */
+	return 0;
+}
+
 static const struct snd_dmaengine_pcm_config xilinx_dmaengine_pcm_config = {
+	.prepare_slave_config = xilinx_dp_pcm_prepare_slave_config,
 	.pcm_hardware = &xilinx_pcm_hw,
 	.prealloc_buffer_size = 64 * 1024,
 };
