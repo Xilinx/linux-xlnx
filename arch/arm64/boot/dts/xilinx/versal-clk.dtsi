@@ -66,6 +66,11 @@
 				mbox-names = "tx", "rx";
 			};
 
+			versal_reset: reset-controller {
+				compatible = "xlnx,versal-reset";
+				#reset-cells = <1>;
+			};
+
 			versal_sec_cfg: versal-sec-cfg {
 				compatible = "xlnx,versal-sec-cfg";
 				#address-cells = <1>;
