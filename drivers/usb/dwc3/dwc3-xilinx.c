@@ -294,7 +294,7 @@ static int dwc3_xlnx_reg_is_enabled(struct regulator_dev *rdev)
 	return !!(priv_data->pmu_state == D0_STATE);
 }
 
-static struct regulator_ops dwc3_xlnx_reg_ops = {
+static const struct regulator_ops dwc3_xlnx_reg_ops = {
 	.enable			= dwc3_xlnx_reg_enable,
 	.disable		= dwc3_xlnx_reg_disable,
 	.is_enabled		= dwc3_xlnx_reg_is_enabled,
