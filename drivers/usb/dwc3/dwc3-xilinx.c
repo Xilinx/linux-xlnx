@@ -216,7 +216,7 @@ static int dwc3_versal_power_req(struct device *dev, bool on)
 
 	if (on) {
 		dev_dbg(dev, "%s:Trying to set power state to D0....\n",
-			 __func__);
+			__func__);
 
 		if (priv_data->pmu_state == D0_STATE)
 			return 0;
@@ -742,7 +742,7 @@ static int __maybe_unused dwc3_xlnx_resume(struct device *dev)
 static const struct dev_pm_ops dwc3_xlnx_dev_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(dwc3_xlnx_suspend, dwc3_xlnx_resume)
 	SET_RUNTIME_PM_OPS(dwc3_xlnx_runtime_suspend,
-			dwc3_xlnx_runtime_resume, dwc3_xlnx_runtime_idle)
+			   dwc3_xlnx_runtime_resume, dwc3_xlnx_runtime_idle)
 };
 
 static struct platform_driver dwc3_xlnx_driver = {
