@@ -11,7 +11,6 @@
 #include <linux/device.h>
 #include <linux/dma-mapping.h>
 #include <linux/file.h>
-#include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/fs.h>
 #include <linux/idr.h>
 #include <linux/interrupt.h>
@@ -27,8 +26,6 @@
 
 #include "ai-engine-internal.h"
 
-#define VERSAL_SILICON_REV_MASK		GENMASK(31, 28)
-
 /**
  * xilinx_ai_engine_probe_v1() - probe device tree v1.0 AI engine device
  * @pdev: AI engine platform device
@@ -42,7 +39,7 @@ int xilinx_ai_engine_probe_v1(struct platform_device *pdev)
 	struct device *dev;
 	struct device_node *nc;
 	struct resource *res;
-	u32 idcode, version, pm_reg[2], regs[4];
+	u32 pm_reg[2], regs[4];
 	int ret;
 
 	dev_info(&pdev->dev, "probing xlnx,ai-engine-v1.0 device.\n");
@@ -73,13 +70,6 @@ int xilinx_ai_engine_probe_v1(struct platform_device *pdev)
 		return ret;
 	}
 	adev->pm_node_id = pm_reg[1];
-
-	ret = zynqmp_pm_get_chipid(&idcode, &version);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "Failed to get chip ID\n");
-		return ret;
-	}
-	adev->version = FIELD_GET(VERSAL_SILICON_REV_MASK, idcode);
 
 	adev->clk = devm_clk_get(&pdev->dev, NULL);
 	if (!adev->clk) {

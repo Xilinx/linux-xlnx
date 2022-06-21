@@ -654,7 +654,6 @@ static void aie_l2_backtrack(struct aie_partition *apart)
 	struct aie_location loc;
 	u32 n, ttype, l2_bitmap_offset = 0, num_nocs;
 	int ret;
-	bool sched_work = false;
 
 	ret = mutex_lock_interruptible(&apart->mlock);
 	if (ret) {
@@ -710,25 +709,7 @@ static void aie_l2_backtrack(struct aie_partition *apart)
 		aie_aperture_enable_l2_ctrl(aperture, &loc, l2_mask);
 	}
 
-	/*
-	 * Level 2 interrupt registers are edge-triggered. As a result,
-	 * re-enabling level 2 won't trigger an interrupt for the already
-	 * latched interrupts at level 1 controller.
-	 */
-	for (loc.col = apart->range.start.col, loc.row = 0;
-	     loc.col < apart->range.start.col + apart->range.size.col;
-	     loc.col++) {
-		if (aie_get_l1_status(apart, &loc, AIE_SHIM_SWITCH_A) ||
-		    aie_get_l1_status(apart, &loc, AIE_SHIM_SWITCH_B)) {
-			mutex_unlock(&apart->mlock);
-			sched_work = true;
-			schedule_work(&apart->aperture->backtrack);
-			break;
-		}
-	}
-
-	if (!sched_work)
-		mutex_unlock(&apart->mlock);
+	mutex_unlock(&apart->mlock);
 
 	/*
 	 * If error was asserted or there are errors pending to be reported to
@@ -803,7 +784,6 @@ irqreturn_t aie_interrupt(int irq, void *data)
 {
 	struct aie_aperture *aperture = data;
 	struct aie_device *adev = aperture->adev;
-	int ret;
 	u32 l2_bitmap_offset = 0;
 	struct aie_location loc;
 	bool sched_work = false;
@@ -857,14 +837,6 @@ irqreturn_t aie_interrupt(int irq, void *data)
 						    l2_mask);
 		}
 		l2_bitmap_offset++;
-	}
-
-	/* For ES1 silicon, interrupts are latched in NPI */
-	if (aperture->adev->version == VERSAL_ES1_REV_ID) {
-		ret = zynqmp_pm_clear_aie_npi_isr(aperture->adev->pm_node_id,
-						  AIE_NPI_ERROR_ID);
-		if (ret < 0)
-			dev_err(&aperture->dev, "Failed to clear NPI ISR\n");
 	}
 
 	if (sched_work)
