@@ -11,7 +11,6 @@
 #include <linux/device.h>
 #include <linux/dma-mapping.h>
 #include <linux/file.h>
-#include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/fs.h>
 #include <linux/idr.h>
 #include <linux/interrupt.h>
@@ -29,7 +28,6 @@
 #include "ai-engine-internal.h"
 
 #define AIE_DEV_MAX			(MINORMASK + 1)
-#define VERSAL_SILICON_REV_MASK		GENMASK(31, 28)
 
 static dev_t aie_major;
 struct class *aie_class;
@@ -434,7 +432,7 @@ int xilinx_ai_engine_add_dev(struct aie_device *adev,
 static int xilinx_ai_engine_probe(struct platform_device *pdev)
 {
 	struct aie_device *adev;
-	u32 idcode, version, pm_reg[2];
+	u32 pm_reg[2];
 	int ret;
 	u8 regs_u8[2];
 	u8 aie_gen;
@@ -517,13 +515,6 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 		return ret;
 	}
 	adev->pm_node_id = pm_reg[1];
-
-	ret = zynqmp_pm_get_chipid(&idcode, &version);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "Failed to get chip ID\n");
-		return ret;
-	}
-	adev->version = FIELD_GET(VERSAL_SILICON_REV_MASK, idcode);
 
 	adev->clk = devm_clk_get(&pdev->dev, "aclk0");
 	if (!adev->clk) {

@@ -59,10 +59,6 @@ enum aie_tile_type {
 
 #define KBYTES(n)	((n) * 1024)
 
-/* Silicon Engineering Sample(ES) revision ID */
-#define VERSAL_ES1_REV_ID		0x0
-#define VERSAL_ES2_REV_ID		0x1
-
 #define AIE_NPI_ERROR_ID		BIT(1)
 
 /* Macros relevant to interrupts */
@@ -682,7 +678,6 @@ struct aie_tile {
  *	      while columns are occupied by partitions.
  * @num_kernel_regs: number of kernel only registers range
  * @num_core_regs: number of core registers range
- * @version: AI engine device version
  * @pm_node_id: AI Engine platform management node ID
  * @clock_id: AI Engine clock ID
  * @ttype_attr: tile type attributes
@@ -725,7 +720,6 @@ struct aie_device {
 	u32 dev_gen;
 	u32 num_kernel_regs;
 	u32 num_core_regs;
-	int version;
 	u32 pm_node_id;
 	u32 clock_id;
 	struct aie_tile_attr ttype_attr[AIE_TILE_TYPE_MAX];
