@@ -622,7 +622,7 @@ static void xdprxss_clrset(struct xdprxss_state *dp, u32 addr,
 
 	regval = xdprxss_read(dp, addr);
 	regval &= ~clr_mask;
-	regval |= FIELD_PREP(clr_mask, set_data);
+	regval |= set_data << __bf_shf(clr_mask);
 	xdprxss_write(dp, addr, regval);
 }
 
