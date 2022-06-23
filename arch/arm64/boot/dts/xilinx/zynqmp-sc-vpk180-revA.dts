@@ -2,7 +2,7 @@
 /*
  * dts file for Xilinx ZynqMP VPK180 revA
  *
- * (C) Copyright 2021, Xilinx, Inc.
+ * (C) Copyright 2021 - 2022, Xilinx, Inc.
  *
  * Michal Simek <michal.simek@xilinx.com>
  */
@@ -39,6 +39,108 @@
 		status = "okay";
 		compatible = "xlnx,fclk";
 		clocks = <&lpddr4_clk1>;
+	};
+
+	vc7_xin: vc7-xin {
+		compatible = "fixed-clock";
+		#clock-cells = <0x0>;
+		clock-frequency = <50000000>;
+	};
+
+	gtclk1_out0: gtclk1-out0 {
+		status = "okay";
+		compatible = "xlnx,fclk";
+		clocks = <&vc7_1 0>;
+	};
+
+	gtclk1_out1: gtclk1-out1 {
+		status = "okay";
+		compatible = "xlnx,fclk";
+		clocks = <&vc7_1 1>;
+	};
+
+	gtclk1_out2: gtclk1-out2 {
+		status = "okay";
+		compatible = "xlnx,fclk";
+		clocks = <&vc7_1 2>;
+	};
+
+	gtclk1_out3: gtclk1-out3 {
+		status = "okay";
+		compatible = "xlnx,fclk";
+		clocks = <&vc7_1 3>;
+	};
+
+	gtclk1_out4: gtclk1-out4 {
+		status = "okay";
+		compatible = "xlnx,fclk";
+		clocks = <&vc7_1 4>;
+	};
+
+	gtclk1_out5: gtclk1-out5 {
+		status = "okay";
+		compatible = "xlnx,fclk";
+		clocks = <&vc7_1 5>;
+	};
+
+	gtclk1_out6: gtclk1-out6 {
+		status = "okay";
+		compatible = "xlnx,fclk";
+		clocks = <&vc7_1 6>;
+	};
+
+	gtclk1_out7: gtclk1-out7 {
+		status = "okay";
+		compatible = "xlnx,fclk";
+		clocks = <&vc7_1 7>;
+	};
+
+	gtclk2_out0: gtclk2-out0 {
+		status = "okay";
+		compatible = "xlnx,fclk";
+		clocks = <&vc7_2 0>;
+	};
+
+	gtclk2_out1: gtclk2-out1 {
+		status = "okay";
+		compatible = "xlnx,fclk";
+		clocks = <&vc7_2 1>;
+	};
+
+	gtclk2_out2: gtclk2-out2 {
+		status = "okay";
+		compatible = "xlnx,fclk";
+		clocks = <&vc7_2 2>;
+	};
+
+	gtclk2_out3: gtclk2-out3 {
+		status = "okay";
+		compatible = "xlnx,fclk";
+		clocks = <&vc7_2 3>;
+	};
+
+	gtclk2_out4: gtclk2-out4 {
+		status = "okay";
+		compatible = "xlnx,fclk";
+		clocks = <&vc7_2 4>;
+	};
+
+	gtclk2_out5: gtclk2-out5 {
+		status = "okay";
+		compatible = "xlnx,fclk";
+		clocks = <&vc7_2 5>;
+	};
+
+	gtclk2_out6: gtclk2-out6 {
+		status = "okay";
+		compatible = "xlnx,fclk";
+		clocks = <&vc7_2 6>;
+	};
+
+	gtclk2_out7: gtclk2-out7 {
+		status = "okay";
+		compatible = "xlnx,fclk";
+		clocks = <&vc7_2 7>;
 	};
 };
 
@@ -361,6 +463,13 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <4>;
+			vc7_1: clock-generator@9 {
+				compatible = "renesas,rc21008a";
+				reg = <0x9>;
+				#clock-cells = <1>;
+				clocks = <&vc7_xin>;
+				clock-names = "xin";
+			};
 			/* u298 - rc21008a at 0x9 */
 			/* connector J370 */
 		};
@@ -368,6 +477,13 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <5>;
+			vc7_2: clock-generator@9 {
+				compatible = "renesas,rc21008a";
+				reg = <0x9>;
+				#clock-cells = <1>;
+				clocks = <&vc7_xin>;
+				clock-names = "xin";
+			};
 			/* u299 - rc21008a at 0x9 */
 			/* connector J371 */
 		};
