@@ -193,7 +193,7 @@
 		};
 
 		ocmc: ocmc@f800c000 {
-			compatible = "xlnx,zynq-ocmc-1.0";
+			compatible = "mmio-sram";
 			interrupt-parent = <&intc>;
 			interrupts = <0 3 4>;
 			reg = <0xf800c000 0x1000>;

@@ -118,7 +118,7 @@ static const struct platform_suspend_ops zynq_pm_ops = {
 static void __iomem *zynq_pm_remap_ocm(void)
 {
 	struct device_node *np;
-	const char *comp = "xlnx,zynq-ocmc-1.0";
+	const char *comp = "mmio-sram";
 	void __iomem *base = NULL;
 
 	np = of_find_compatible_node(NULL, NULL, comp);
