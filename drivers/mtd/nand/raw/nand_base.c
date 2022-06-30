@@ -1316,6 +1316,15 @@ int nand_change_read_column_op(struct nand_chip *chip,
 			       unsigned int offset_in_page, void *buf,
 			       unsigned int len, bool force_8bit)
 {
+	return nand_check_change_read_column_op(chip, offset_in_page, buf,
+						len, force_8bit, false);
+}
+
+int nand_check_change_read_column_op(struct nand_chip *chip,
+				     unsigned int offset_in_page, void *buf,
+				     unsigned int len, bool force_8bit,
+				     bool check_only)
+{
 	struct mtd_info *mtd = nand_to_mtd(chip);
 
 	if (len && !buf)
@@ -1352,8 +1361,14 @@ int nand_change_read_column_op(struct nand_chip *chip,
 
 		instrs[3].ctx.data.force_8bit = force_8bit;
 
+		if (check_only)
+			return nand_check_op(chip, &op);
+
 		return nand_exec_op(chip, &op);
 	}
+
+	if (check_only)
+		return 0;
 
 	chip->legacy.cmdfunc(chip, NAND_CMD_RNDOUT, offset_in_page, -1);
 	if (len)
