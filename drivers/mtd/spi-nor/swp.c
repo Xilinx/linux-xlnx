@@ -414,7 +414,7 @@ static int write_sr_modify_protection(struct spi_nor *nor, u8 status,
 	/* For spansion flashes */
 	if (nor->jedec_id == CFI_MFR_AMD) {
 		spi_nor_read_cr(nor, &nor->bouncebuf[1]);
-		nor->bouncebuf[0] |= status_new;
+		nor->bouncebuf[0] = status_new;
 		if (spi_nor_write_sr(nor, nor->bouncebuf, 2) < 0)
 			return 1;
 	} else {
