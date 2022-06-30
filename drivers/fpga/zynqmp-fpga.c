@@ -18,6 +18,8 @@
 
 #define READ_DMA_SIZE		0x200
 #define DUMMY_FRAMES_SIZE	0x64
+#define DUMMY_PAD_BYTE		0xFF
+#define FPGA_WORD_SIZE		4
 
 /* Error Register */
 #define IXR_FPGA_ERR_CRC_ERR		BIT(0)
@@ -134,14 +136,19 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 				 const char *buf, size_t size)
 {
 	struct zynqmp_fpga_priv *priv;
+	int word_align, ret, index;
 	dma_addr_t dma_addr = 0;
 	u32 eemi_flags = 0;
 	size_t dma_size;
 	u32 status;
 	char *kbuf;
-	int ret;
 
 	priv = mgr->priv;
+	word_align = size % FPGA_WORD_SIZE;
+	if (word_align)
+		word_align = FPGA_WORD_SIZE - word_align;
+
+	size = size + word_align;
 	priv->size = size;
 
 	if (priv->flags & FPGA_MGR_USERKEY_ENCRYPTED_BITSTREAM)
@@ -153,7 +160,10 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 	if (!kbuf)
 		return -ENOMEM;
 
-	memcpy(kbuf, buf, size);
+	for (index = 0; index < word_align; index++)
+		kbuf[index] = DUMMY_PAD_BYTE;
+
+	memcpy(&kbuf[index], buf, size - index);
 
 	if (priv->flags & FPGA_MGR_USERKEY_ENCRYPTED_BITSTREAM) {
 		eemi_flags |= XILINX_ZYNQMP_PM_FPGA_ENCRYPTION_USERKEY;
