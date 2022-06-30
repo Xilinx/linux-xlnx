@@ -244,6 +244,26 @@ static int spi_nor_sr_lock(struct spi_nor *nor, loff_t ofs, uint64_t len)
 	return spi_nor_write_sr_and_check(nor, status_new);
 }
 
+static bool spi_nor_is_lower_area(struct spi_nor *nor, loff_t ofs, uint64_t len)
+{
+	struct mtd_info *mtd = &nor->mtd;
+
+	if (nor->flags & SNOR_F_HAS_SR_TB)
+		return ((ofs + len) <= (mtd->size >> 1));
+	else
+		return false;
+}
+
+static bool spi_nor_is_upper_area(struct spi_nor *nor, loff_t ofs, uint64_t len)
+{
+	struct mtd_info *mtd = &nor->mtd;
+
+	if ((nor->flags & SNOR_F_HAS_SR_TB))
+		return (ofs >= (mtd->size >> 1));
+	else
+		return true;
+}
+
 /*
  * Unlock a region of the flash. See spi_nor_sr_lock() for more info
  *
@@ -272,12 +292,13 @@ static int spi_nor_sr_unlock(struct spi_nor *nor, loff_t ofs, uint64_t len)
 		return 0;
 
 	/* If anything below us is locked, we can't use 'top' protection */
-	if (!spi_nor_is_unlocked_sr(nor, 0, ofs, status_old))
+	if ((!spi_nor_is_unlocked_sr(nor, 0, ofs, status_old)) ||
+	    spi_nor_is_lower_area(nor, ofs, len))
 		can_be_top = false;
 
 	/* If anything above us is locked, we can't use 'bottom' protection */
 	if (!spi_nor_is_unlocked_sr(nor, ofs + len, mtd->size - (ofs + len),
-				    status_old))
+				    status_old) || spi_nor_is_upper_area(nor, ofs, len))
 		can_be_bottom = false;
 
 	if (!can_be_bottom && !can_be_top)
