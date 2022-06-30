@@ -3068,10 +3068,19 @@ static int nand_read_subpage(struct nand_chip *chip, uint32_t data_offs,
 		    (busw - 1))
 			aligned_len++;
 
-		ret = nand_change_read_column_op(chip,
-						 mtd->writesize + aligned_pos,
-						 &chip->oob_poi[aligned_pos],
-						 aligned_len, false);
+		ret = nand_check_change_read_column_op(chip,
+						       mtd->writesize + aligned_pos,
+						       &chip->oob_poi[aligned_pos],
+						       aligned_len, false, true);
+		if (!ret)
+			ret = nand_change_read_column_op(chip,
+							 mtd->writesize + aligned_pos,
+							 &chip->oob_poi[aligned_pos],
+							 aligned_len, false);
+		else
+			ret = nand_change_read_column_op(chip, mtd->writesize,
+							 chip->oob_poi,
+							 mtd->oobsize, false);
 		if (ret)
 			return ret;
 	}
