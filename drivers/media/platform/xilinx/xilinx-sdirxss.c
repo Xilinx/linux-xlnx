@@ -362,6 +362,7 @@ struct xsdirxss_state {
 	u32 edhmask;
 	u16 searchmask;
 	bool streaming;
+	bool s_stream;
 	bool vidlocked;
 	bool ts_is_interlaced;
 	bool framer_enable;
@@ -1498,6 +1499,8 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 			u32 mask = XSDIRX_RST_CTRL_RST_CRC_ERRCNT_MASK |
 				   XSDIRX_RST_CTRL_RST_EDH_ERRCNT_MASK;
 
+			u32 prev_payload = state->prev_payload;
+
 			dev_dbg(core->dev, "video lock interrupt\n");
 
 			xsdirxss_set(core, XSDIRX_RST_CTRL_REG, mask);
@@ -1511,9 +1514,25 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 
 			if (state->vidlocked) {
 				gen_event = false;
+				/* If it was came here due to interrupt of
+				 * setting gtclk, re-enabling stream control
+				 */
+				if (state->s_stream) {
+					xsdirx_streamflow_control(core, true);
+					state->streaming = true;
+				}
 			} else if (!xsdirx_get_stream_properties(state)) {
 				state->vidlocked = true;
 				xsdirxss_set_gtclk(state);
+				/* If previous payload and current payload are
+				 * same then start streaming. This is not a
+				 * correct way but a workaround
+				 */
+				if (val2 == prev_payload && state->s_stream) {
+					dev_dbg(core->dev, "Resuming as payload is same\n");
+					xsdirx_streamflow_control(core, true);
+					state->streaming = true;
+				}
 			} else {
 				dev_err_ratelimited(core->dev, "Unable to get stream properties!\n");
 				state->vidlocked = false;
@@ -1908,6 +1927,7 @@ static int xsdirxss_s_stream(struct v4l2_subdev *sd, int enable)
 
 		xsdirx_streamflow_control(core, true);
 		xsdirxss->streaming = true;
+		xsdirxss->s_stream = true;
 		dev_dbg(core->dev, "Streaming started\n");
 	} else {
 		if (!xsdirxss->streaming) {
@@ -1917,6 +1937,7 @@ static int xsdirxss_s_stream(struct v4l2_subdev *sd, int enable)
 
 		xsdirx_streamflow_control(core, false);
 		xsdirxss->streaming = false;
+		xsdirxss->s_stream = false;
 		dev_dbg(core->dev, "Streaming stopped\n");
 	}
 
@@ -2609,6 +2630,7 @@ static int xsdirxss_probe(struct platform_device *pdev)
 	}
 
 	xsdirxss->streaming = false;
+	xsdirxss->s_stream = false;
 
 	xsdirx_core_enable(core);
 
