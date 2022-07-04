@@ -571,6 +571,9 @@ static int xflex_probe(struct platform_device *pdev)
 
 	dev_set_drvdata(dev, flexpm);
 
+	/* Let the users know they are using deprecated driver */
+	dev_notice(dev, "xilinx flex pm driver is deprecated\n");
+
 	return 0;
 }
 
