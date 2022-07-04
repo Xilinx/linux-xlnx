@@ -1930,6 +1930,7 @@ static int xsdirxss_s_stream(struct v4l2_subdev *sd, int enable)
 		xsdirxss->s_stream = true;
 		dev_dbg(core->dev, "Streaming started\n");
 	} else {
+		xsdirxss->s_stream = false;
 		if (!xsdirxss->streaming) {
 			dev_dbg(core->dev, "Stopped streaming already\n");
 			return 0;
@@ -1937,7 +1938,6 @@ static int xsdirxss_s_stream(struct v4l2_subdev *sd, int enable)
 
 		xsdirx_streamflow_control(core, false);
 		xsdirxss->streaming = false;
-		xsdirxss->s_stream = false;
 		dev_dbg(core->dev, "Streaming stopped\n");
 	}
 
