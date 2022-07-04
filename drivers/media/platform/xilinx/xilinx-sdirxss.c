@@ -340,6 +340,7 @@ struct xsdirxss_core {
  * @edhmask: EDH mask set by control
  * @searchmask: Search mask set by control
  * @streaming: Flag for storing streaming state
+ * @s_stream: Flag for storing streaming state
  * @vidlocked: Flag indicating SDI Rx has locked onto video stream
  * @ts_is_interlaced: Flag indicating Transport Stream is interlaced.
  * @framer_enable: Flag for framer enabled or not set by control
@@ -1995,7 +1996,7 @@ __xsdirxss_get_pad_format(struct xsdirxss_state *xsdirxss,
 /**
  * xsdirxss_get_format - Get the pad format
  * @sd: Pointer to V4L2 Sub device structure
- * @cfg: Pointer to sub device pad information structure
+ * @sd_state: Pointer to v4l2_subdev_state structure
  * @fmt: Pointer to pad level media bus format
  *
  * This function is used to get the pad format information.
@@ -2031,7 +2032,7 @@ static int xsdirxss_get_format(struct v4l2_subdev *sd,
 /**
  * xsdirxss_set_format - This is used to set the pad format
  * @sd: Pointer to V4L2 Sub device structure
- * @cfg: Pointer to sub device pad information structure
+ * @sd_state: Pointer to v4l2_subdev_state structure
  * @fmt: Pointer to pad level media bus format
  *
  * This function is used to set the pad format.
@@ -2068,7 +2069,7 @@ static int xsdirxss_set_format(struct v4l2_subdev *sd,
 /**
  * xsdirxss_enum_mbus_code - Handle pixel format enumeration
  * @sd: pointer to v4l2 subdev structure
- * @cfg: V4L2 subdev pad configuration
+ * @sd_state: Pointer to v4l2_subdev_state structure
  * @code: pointer to v4l2_subdev_mbus_code_enum structure
  *
  * Return: -EINVAL or zero on success
