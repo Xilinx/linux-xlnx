@@ -915,6 +915,8 @@ static int xlnx_dpu_remove(struct platform_device *pdev)
 
 static const struct of_device_id dpu_of_match[] = {
 	{ .compatible = "xlnx,dpuczdx8g-3.4" },
+	{ .compatible = "xlnx,dpuczdx8g-4.0" },
+	{ .compatible = "xlnx,dpuczdx8g-4.1" },
 	{ /* end of table */ }
 };
 MODULE_DEVICE_TABLE(of, dpu_of_match);
