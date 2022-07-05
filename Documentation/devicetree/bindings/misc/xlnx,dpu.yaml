@@ -11,8 +11,8 @@ maintainers:
 
 description: |+
     The DPUCZDX8G is the deep learning processing unit (DPU) designed to
-    support the Zynq UltraScale+ MPSoC. It is a configurable computation
-    engine optimized for convolutional neural networks.
+    support the Zynq UltraScale+ MPSoC and MicroBlaze. It is a configurable
+    computation engine optimized for convolutional neural networks.
 
     The driver supports up to 4 DPU cores with 40-bit addressing and 1
     softmax core with 32-bit addressing, depending on how the user config
@@ -23,8 +23,10 @@ description: |+
 
 properties:
   compatible:
-    items:
-      - const: xlnx,dpuczdx8g-3.4
+    enum:
+      - xlnx,dpuczdx8g-3.4
+      - xlnx,dpuczdx8g-4.0
+      - xlnx,dpuczdx8g-4.1
 
   reg:
     maxItems: 1
