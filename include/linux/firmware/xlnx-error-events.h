@@ -12,17 +12,8 @@
 #define _FIRMWARE_XLNX_ERROR_EVENTS_H_
 
 /*
- * Error Event Node Ids
- */
-#define XPM_NODETYPE_EVENT_ERROR_PMC_ERR1	(0x28100000U)
-#define XPM_NODETYPE_EVENT_ERROR_PMC_ERR2	(0x28104000U)
-#define XPM_NODETYPE_EVENT_ERROR_PSM_ERR1	(0x28108000U)
-#define XPM_NODETYPE_EVENT_ERROR_PSM_ERR2	(0x2810C000U)
-#define XPM_NODETYPE_EVENT_ERROR_SW_ERR		(0x28110000U)
-
-/*
  * Error Event Mask belongs to PMC ERR2 node.
- * For which Node_Id = XPM_NODETYPE_EVENT_ERROR_PMC_ERR2
+ * For which Node_Id = EVENT_ERROR_PMC_ERR2
  */
 
 /**
@@ -198,7 +189,7 @@
 
 /*
  * Error Event Mask belongs to PMC ERR2 node,
- * For which Node_Id = XPM_NODETYPE_EVENT_ERROR_PMC_ERR2
+ * For which Node_Id = EVENT_ERROR_PMC_ERR2
  */
 
 /**
@@ -386,7 +377,7 @@
 
 /*
  * Error Event Mask belongs to PSM ERR1 node,
- * For which Node_Id = XPM_NODETYPE_EVENT_ERROR_PSM_ERR1
+ * For which Node_Id = EVENT_ERROR_PSM_ERR1
  */
 
 /**
@@ -575,7 +566,7 @@
 
 /*
  * Error Event Mask belongs to PSM ERR2 node,
- * For which Node_Id = XPM_NODETYPE_EVENT_ERROR_PSM_ERR2
+ * For which Node_Id = EVENT_ERROR_PSM_ERR2
  */
 
 /**
@@ -614,7 +605,7 @@
 
 /*
  * Error Event Mask belongs to SW ERR node,
- * For which Node_Id = XPM_NODETYPE_EVENT_ERROR_SW_ERR
+ * For which Node_Id = EVENT_ERROR_SW_ERR
  */
 
 /**

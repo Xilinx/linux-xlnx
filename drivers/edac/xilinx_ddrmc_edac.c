@@ -1198,7 +1198,7 @@ static int xddr_mc_probe(struct platform_device *pdev)
 		if (rc)
 			goto del_edac_mc;
 	} else {
-		rc = xlnx_register_event(PM_NOTIFY_CB, XPM_NODETYPE_EVENT_ERROR_PMC_ERR1,
+		rc = xlnx_register_event(PM_NOTIFY_CB, EVENT_ERROR_PMC_ERR1,
 					 XPM_EVENT_ERROR_MASK_DDRMC_CR |
 					 XPM_EVENT_ERROR_MASK_DDRMC_NCR,
 					 false, xddr_err_callback, mci);
@@ -1245,7 +1245,7 @@ static int xddr_mc_remove(struct platform_device *pdev)
 #endif
 
 	if (!disable_event)
-		xlnx_unregister_event(PM_NOTIFY_CB, XPM_NODETYPE_EVENT_ERROR_PMC_ERR1,
+		xlnx_unregister_event(PM_NOTIFY_CB, EVENT_ERROR_PMC_ERR1,
 				      XPM_EVENT_ERROR_MASK_DDRMC_CR |
 				      XPM_EVENT_ERROR_MASK_DDRMC_NCR, xddr_err_callback, mci);
 	edac_mc_del_mc(&pdev->dev);
