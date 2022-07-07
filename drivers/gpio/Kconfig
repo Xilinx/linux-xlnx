@@ -764,14 +764,14 @@ config GPIO_ZYNQ
 	  Say yes here to support Xilinx Zynq GPIO controller.
 
 config GPIO_ZYNQMP_MODEPIN
-	tristate "ZynqMP ps-mode pin gpio configuration driver"
+	tristate "ZynqMP ps-mode pin GPIO configuration driver"
 	depends on ZYNQMP_FIRMWARE
 	default ZYNQMP_FIRMWARE
 	help
-	  Say yes here to support the ZynqMP ps-mode pin gpio configuration
+	  Say yes here to support the ZynqMP ps-mode pin GPIO configuration
 	  driver.
 
-	  This ps-mode pin gpio driver is based on GPIO framework, PS_MODE
+	  This ps-mode pin GPIO driver is based on GPIO framework. PS_MODE
 	  is 4-bits boot mode pins. It sets and gets the status of
 	  the ps-mode pin. Every pin can be configured as input/output.
 
