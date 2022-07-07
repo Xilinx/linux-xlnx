@@ -192,11 +192,9 @@
 			reg = <0xf8006000 0x1000>;
 		};
 
-		ocmc: ocmc@f800c000 {
+		ocm: sram@fffc0000 {
 			compatible = "mmio-sram";
-			interrupt-parent = <&intc>;
-			interrupts = <0 3 4>;
-			reg = <0xf800c000 0x1000>;
+			reg = <0xfffc0000 0x10000>;
 		};
 
 		uart0: serial@e0000000 {
