@@ -406,6 +406,12 @@ static int write_sr_modify_protection(struct spi_nor *nor, u8 status,
 
 		if (lock_bits > 7)
 			bp_mask |= SR_BP3_BIT5;
+	/* ISSI */
+	} else if (nor->jedec_id == CFI_MFR_PMC) {
+		status_new &= ~SR_BP3_BIT5;
+
+		if (lock_bits > 7)
+			bp_mask |= SR_BP3_BIT5;
 	}
 
 	if (nor->is_lock)
@@ -435,6 +441,8 @@ static u8 bp_bits_from_sr(struct spi_nor *nor, u8 status)
 	else if ((nor->jedec_id == CFI_MFR_WINBND) &&
 		 (nor->flags & SNOR_F_HAS_4BIT_BP))
 		ret |= ((status & SR_BP3_BIT5) >> SR_BP_BIT_OFFSET);
+	else if (nor->jedec_id == CFI_MFR_PMC)	/* ISSI */
+		ret |= ((status & SR_BP3_BIT5) >> SR_BP_BIT_OFFSET);
 
 	return ret;
 }
@@ -449,7 +457,8 @@ static inline u16 min_lockable_sectors(struct spi_nor *nor,
 	 * protected area table is similar to that of spansion.
 	 */
 	lock_granularity = max(1, n_sectors / M25P_MAX_LOCKABLE_SECTORS);
-	if (nor->jedec_id == CFI_MFR_ST)	/* Micron */
+	if (nor->jedec_id == CFI_MFR_ST ||	/* Micron */
+	    nor->jedec_id == CFI_MFR_PMC)	/* ISSI */
 		lock_granularity = 1;
 
 	return lock_granularity;
@@ -491,7 +500,8 @@ static u8 min_protected_area_including_offset(struct spi_nor *nor,
 	 * Mircon has 4 block protect bits.
 	 */
 	lockbits_limit = 7;
-	if (nor->jedec_id == CFI_MFR_ST)	/* Micron */
+	if (nor->jedec_id == CFI_MFR_ST ||	/* Micron */
+	    nor->jedec_id == CFI_MFR_PMC)	/* ISSI */
 		lockbits_limit = 15;
 
 	for (lock_bits = 1; lock_bits < lockbits_limit; lock_bits++) {
