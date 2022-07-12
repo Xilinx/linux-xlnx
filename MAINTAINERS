@@ -4075,8 +4075,8 @@ CADENCE I2C DRIVER
 M:	Shubhrajyoti Datta <shubhrajyoti.datta@xilinx.com>
 R:	Venkata Visweswarachari Mallavarapu <vmallava@xilinx.com>
 L:	git@xilinx.com
-F:	drivers/i2c/busses/i2c-cadence.c
 W:	https://xilinx-wiki.atlassian.net/wiki/spaces/A/pages/18842160/Cadence+I2C+Driver
+F:	drivers/i2c/busses/i2c-cadence.c
 
 CADENCE MIPI-CSI2 BRIDGES
 M:	Maxime Ripard <mripard@kernel.org>
@@ -20644,8 +20644,8 @@ F:	include/uapi/linux/fsmap.h
 XILINX AUDIO FORMATTER (ASoC) DRIVER
 M:	Maruthi Srinivas Bayyavarapu <maruthi.srinivas.bayyavarapu@xilinx.com>
 R:	Vishal Sagar <vishal.sagar@xilinx.com>
-S:	Maintained
 L:	git@xilinx.com
+S:	Maintained
 F:	Documentation/devicetree/bindings/sound/xlnx,audio-formatter.txt
 F:	sound/soc/xilinx/xlnx_formatter_pcm.c
 
@@ -20654,55 +20654,55 @@ M:	Radhey Shyam Pandey <radhey.shyam.pandey@xilinx.com>
 R:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
 R:	Harini Katakam <harini.katakam@xilinx.com>
 S:	Maintained
-F:	drivers/dma/xilinx/xilinx_dma.c
 F:	Documentation/devicetree/bindings/dma/xilinx/xilinx_dma.txt
+F:	drivers/dma/xilinx/xilinx_dma.c
 
 XILINX AXI ETHERNET DRIVER
 M:	Radhey Shyam Pandey <radhey.shyam.pandey@xilinx.com>
 S:	Maintained
-F:	drivers/net/ethernet/xilinx/xilinx_axienet*
 F:	Documentation/devicetree/bindings/net/xilinx_axienet.txt
+F:	drivers/net/ethernet/xilinx/xilinx_axienet*
 
 XILINX AXI SPI DRIVER
 M:	Shubhrajyoti Datta <shubhrajyoti.datta@xilinx.com>
 R:	Naga Sureshkumar Relli <naga.sureshkumar.relli@xilinx.com>
 S:	Maintained
-F:	drivers/spi/spi-xilinx.c
 F:	Documentation/devicetree/bindings/spi/spi-xilinx.txt
+F:	drivers/spi/spi-xilinx.c
 
 XILINX FLEXNOC PERFORMANCE MONITOR DRIVER
 M:	Shubhrajyoti Datta <shubhrajyoti.datta@xilinx.com>
 R:	Radhey Shyam Pandey <radhey.shyam.pandey@xilinx.com>
 R:	Srinivas Goud <srinivas.goud@xilinx.com>
 S:	Maintained
-F:	drivers/misc/xilinx_flex_pm.c
 F:	Documentation/devicetree/bindings/misc/xlnx,flexnoc-pm.txt
+F:	drivers/misc/xilinx_flex_pm.c
 
 XILINX AXI USB DRIVER
 M:	Anurag Kumar Vulisha <anurag.kumar.vulisha@xilinx.com>
 S:	Maintained
-F:	drivers/usb/gadget/udc/udc-xilinx.c
 F:	Documentation/devicetree/bindings/usb/udc-xilinx.txt
+F:	drivers/usb/gadget/udc/udc-xilinx.c
 
 XILINX AXI PERFORMANCE MONITOR DRIVER
 M:	Shubhrajyoti Datta <shubhrajyoti.datta@xilinx.com>
 S:	Maintained
-F:	drivers/uio/uio_xilinx_apm.c
 F:	Documentation/devicetree/bindings/uio/xilinx_apm.txt
+F:	drivers/uio/uio_xilinx_apm.c
 
 XILINX CAN DRIVER
 M:	Shubhrajyoti Datta <shubhrajyoti.datta@xilinx.com>
 R:	Naga Sureshkumar Relli <naga.sureshkumar.relli@xilinx.com>
 R:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
 S:	Maintained
-F:	drivers/net/can/xilinx_can.c
 F:	Documentation/devicetree/bindings/net/can/xilinx_can.txt
+F:	drivers/net/can/xilinx_can.c
 
 XILINX DMA FRAMEBUFFER READ/WRITE DRIVER
 M:	Vishal Sagar <vishal.sagar@xilinx.com>
 R:	Hyun Kwon <hyun.kwon@xilinx.com>
-S:	Maintained
 L:	git@xilinx.com
+S:	Maintained
 F:	Documentation/devicetree/bindings/dma/xilinx/xilinx_frmbuf.txt
 F:	drivers/dma/xilinx/xilinx_frmbuf.c
 F:	include/linux/dma/xilinx_frmbuf.h
@@ -20712,36 +20712,36 @@ M:	Radhey Shyam Pandey <radhey.shyam.pandey@xilinx.com>
 R:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
 R:	Harini Katakam <harini.katakam@xilinx.com>
 S:	Maintained
-F:	drivers/net/ethernet/xilinx/xilinx_emaclite.c
 F:	Documentation/devicetree/bindings/net/xilinx_emaclite.txt
+F:	drivers/net/ethernet/xilinx/xilinx_emaclite.c
 
 XILINX GMII2RGMII DRIVER
 M:	Harini Katakam <harini.katakam@xilinx.com>
 R:	Radhey Shyam Pandey <radhey.shyam.pandey@xilinx.com>
 R:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
 S:	Maintained
-F:	drivers/net/phy/xilinx_gmii2rgmii.c
 W:	https://xilinx-wiki.atlassian.net/wiki/spaces/A/pages/18842246/Xilinx+GMII2RGMII+convertor
+F:	drivers/net/phy/xilinx_gmii2rgmii.c
 
 XILINX GQSPI ZYNQMP SPI DRIVER
 M:	Naga Sureshkumar Relli <naga.sureshkumar.relli@xilinx.com>
 R:	Amit Kumar Mahapatra <amit.kumar-mahapatra@xilinx.com>
-F:	drivers/spi/spi-zynqmp-gqspi.c
 W:	https://xilinx-wiki.atlassian.net/wiki/spaces/A/pages/18841754/Zynqmp+QSPI+Driver
+F:	drivers/spi/spi-zynqmp-gqspi.c
 
 XILINX I2S AUDIO (ASoC) DRIVER
 M:	Maruthi Srinivas Bayyavarapu <maruthi.srinivas.bayyavarapu@xilinx.com>
 R:	Vishal Sagar <vishal.sagar@xilinx.com>
-S:	Maintained
 L:	git@xilinx.com
+S:	Maintained
 F:	Documentation/devicetree/bindings/sound/xlnx,i2s.txt
 F:	sound/soc/xilinx/xlnx_i2s.c
 
 XILINX MEDIA AXIS SWITCH DRIVER
 M:	Vishal Sagar <vishal.sagar@xilinx.com>
 R:	Hyun Kwon <hyun.kwon@xilinx.com>
-S:	Maintained
 L:	git@xilinx.com
+S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-axi4s-switch.txt
 F:	drivers/media/platform/xilinx/xilinx-axis-switch.c
 
@@ -20773,17 +20773,17 @@ F:	drivers/media/platform/xilinx/xilinx-demosaic.c
 XILINX MEDIA GAMMA DRIVER
 M:	Vishal Sagar <vishal.sagar@xilinx.com>
 R:	Hyun Kwon <hyun.kwon@xilinx.com>
-S:	Maintained
 L:	git@xilinx.com
+S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-gamma-lut.txt
-F:	drivers/media/platform/xilinx/xilinx-gamma.c
 F:	drivers/media/platform/xilinx/xilinx-gamma-coeff.h
+F:	drivers/media/platform/xilinx/xilinx-gamma.c
 
 XILINX MEDIA SDI RX DRIVER
 M:	Vishal Sagar <vishal.sagar@xilinx.com>
 R:	Hyun Kwon <hyun.kwon@xilinx.com>
-S:	Maintained
 L:	git@xilinx.com
+S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,sdirxss.txt
 F:	drivers/media/platform/xilinx/xilinx-sdirxss.c
 F:	include/uapi/linux/xilinx-sdirxss.h
@@ -20799,23 +20799,23 @@ F:	drivers/media/platform/xilinx/xilinx-vpss-csc.c
 XILINX MEDIA VPSS SCALER DRIVER
 M:	Vishal Sagar <vishal.sagar@xilinx.com>
 R:	Hyun Kwon <hyun.kwon@xilinx.com>
-S:	Maintained
 L:	git@xilinx.com
+S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-vpss-scaler.txt
 F:	drivers/media/platform/xilinx/xilinx-vpss-scaler.c
 
 XILINX PL SOUND CARD (ASoC) DRIVER
 M:	Maruthi Srinivas Bayyavarapu <maruthi.srinivas.bayyavarapu@xilinx.com>
 R:	Vishal Sagar <vishal.sagar@xilinx.com>
-S:	Maintained
 L:	git@xilinx.com
+S:	Maintained
 F:	sound/soc/xilinx/xlnx_pl_snd_card.c
 
 XILINX QSPI ZYNQ SPI DRIVER
 M:	Naga Sureshkumar Relli <naga.sureshkumar.relli@xilinx.com>
 R:	Amit Kumar Mahapatra <amit.kumar-mahapatra@xilinx.com>
-F:	drivers/spi/spi-zynq-qspi.c
 W:	https://xilinx-wiki.atlassian.net/wiki/spaces/A/pages/18842262/Zynq+QSPI+Driver
+F:	drivers/spi/spi-zynq-qspi.c
 
 XILINX RTC ZYNQMP DRIVER
 M:	Neeli Srinivas <srinivas.neeli@xilinx.com>
@@ -20827,16 +20827,16 @@ F:	drivers/rtc/rtc-zynqmp.c
 XILINX SDI AUDIO (ASoC) DRIVER
 M:	Maruthi Srinivas Bayyavarapu <maruthi.srinivas.bayyavarapu@xilinx.com>
 R:	Vishal Sagar <vishal.sagar@xilinx.com>
-S:	Maintained
 L:	git@xilinx.com
+S:	Maintained
 F:	Documentation/devicetree/bindings/sound/xlnx,v-uhdsdi-audio.txt
 F:	sound/soc/xilinx/xlnx_sdi_audio.c
 
 XILINX SPDIF AUDIO (ASoC) DRIVER
 M:	Maruthi Srinivas Bayyavarapu <maruthi.srinivas.bayyavarapu@xilinx.com>
 R:	Vishal Sagar <vishal.sagar@xilinx.com>
-S:	Maintained
 L:	git@xilinx.com
+S:	Maintained
 F:	Documentation/devicetree/bindings/sound/xlnx,spdif.txt
 F:	sound/soc/xilinx/xlnx_spdif.c
 
@@ -20895,8 +20895,8 @@ F:	drivers/tty/serial/uartlite.c
 XILINX UARTPS DRIVER
 M:	Shubhrajyoti Datta <shubhrajyoti.datta@xilinx.com>
 S:	Maintained
-F:	drivers/tty/serial/xilinx_uartps.c
 F:	Documentation/devicetree/bindings/serial/cdns,uart.txt
+F:	drivers/tty/serial/xilinx_uartps.c
 
 XILINX VIDEO IP CORES
 M:	Hyun Kwon <hyun.kwon@xilinx.com>
@@ -20930,46 +20930,46 @@ XILINX ZYNQ FPGA MANAGER DRIVER
 M:	Nava Kishore Manne <nava.manne@xilinx.com>
 R:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
 S:	Maintained
-F:	drivers/fpga/zynq-fpga.c
 F:	Documentation/devicetree/bindings/fpga/xilinx-zynq-fpga-mgr.txt
+F:	drivers/fpga/zynq-fpga.c
 
 XILINX ZYNQMP AES DRIVER
 M:	Kalyani Akula <kalyani.akula@xilinx.com>
 M:	Nava Kishore Manne <nava.manne@xilinx.com>
 R:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
 S:	Maintained
-F:	drivers/crypto/zynqmp-aes.c
 F:	Documentation/devicetree/bindings/crypto/xlnx,zynqmp-aes.txt
+F:	drivers/crypto/zynqmp-aes.c
 
 XILINX ZYNQMP DMAENGINE DRIVER
 M:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
 R:	Radhey Shyam Pandey <radhey.shyam.pandey@xilinx.com>
 R:	Harini Katakam <harini.katakam@xilinx.com>
 S:	Maintained
-F:	drivers/dma/xilinx/zynqmp_dma.c
 F:	Documentation/devicetree/bindings/dma/xilinx/zynqmp_dma.txt
+F:	drivers/dma/xilinx/zynqmp_dma.c
 
 XILINX ZYNQMP FPGA MANAGER DRIVER
 M:	Nava Kishore Manne <nava.manne@xilinx.com>
 R:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
 S:	Maintained
-F:	drivers/fpga/zynqmp-fpga.c
 F:	Documentation/devicetree/bindings/fpga/xilinx-zynqmp-fpga-mgr.txt
+F:	drivers/fpga/zynqmp-fpga.c
 
 ZYNQMP IPI MAILBOX CONTROLLER DRIVER
 M:	Wendy Liang <wendy.liang@xilinx.com>
 S:	Maintained
+F:	Documentation/devicetree/bindings/mailbox/xlnx,zynqmp-ipi-mailbox.txt
 F:	drivers/mailbox/zynqmp-ipi-mailbox.c
 F:	include/linux/mailbox/zynqmp-ipi-message.h
-F:	Documentation/devicetree/bindings/mailbox/xlnx,zynqmp-ipi-mailbox.txt
 
 XILINX VERSAL DDRMC EDAC DRIVER
 M:	Sai Krishna Potthuri <lakshmi.sai.krishna.potthuri@xilinx.com>
 R:	Michal Simek <michal.simek@xilinx.com>
 R:	Srinivas Goud <srinivas.goud@xilinx.com>
 S:	Maintained
-F:	drivers/edac/xilinx_ddrmc_edac.c
 F:	Documentation/devicetree/bindings/edac/xlnx,versal-ddrmc-edac.yaml
+F:	drivers/edac/xilinx_ddrmc_edac.c
 
 XILINX VERSAL XILSEM EDAC DRIVER
 M:	Rama Devi Veggalam <rama.devi.veggalam@amd.com>
@@ -20980,8 +20980,8 @@ F:	drivers/edac/xilinx_xilsem_edac.c
 XILINX ZYNQMP PHY DRIVER
 M:	Anurag Kumar Vulisha <anurag.kumar.vulisha@xilinx.com>
 S:	Maintained
-F:	drivers/phy/phy-zynqmp.c
 F:	Documentation/devicetree/bindings/phy/phy-zynqmp.txt
+F:	drivers/phy/phy-zynqmp.c
 
 XILINX ZYNQMP R5 REMOTE PROCESSOR (REMOTEPROC) SUBSYSTEM
 M:	Wendy Liang <wendy.liang@xilinx.com>
@@ -20994,16 +20994,16 @@ M:	Nava Kishore Manne <nava.manne@xilinx.com>
 M:	Kalyani Akula <kalyani.akula@xilinx.com>
 R:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
 S:	Maintained
-F:	drivers/crypto/zynqmp-rsa.c
 F:	Documentation/devicetree/bindings/crypto/zynqmp-rsa.txt
+F:	drivers/crypto/zynqmp-rsa.c
 
 XILINX ZYNQMP SHA DRIVER
 M:	Nava Kishore Manne <nava.manne@xilinx.com>
 M:	Kalyani Akula <kalyani.akula@xilinx.com>
 R:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
 S:	Maintained
-F:	drivers/crypto/zynqmp-sha.c
 F:	Documentation/devicetree/bindings/crypto/zynqmp-sha.txt
+F:	drivers/crypto/zynqmp-sha.c
 
 XILINX SD-FEC IP CORES
 M:	Derek Kiernan <derek.kiernan@xilinx.com>
