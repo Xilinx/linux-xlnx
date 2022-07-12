@@ -7,6 +7,7 @@
  * Author: Jagadeesh Banisetti <jagadeesh.banisetti@xilinx.com>
  */
 
+#include <linux/bitfield.h>
 #include <linux/clk.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
