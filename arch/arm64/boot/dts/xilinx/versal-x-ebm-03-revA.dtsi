@@ -8,6 +8,7 @@
  */
 
 #include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/reset/xlnx-versal-resets.h>
 
 /* U97 MT35XU02G */
 status = "okay";
@@ -17,6 +18,8 @@ num-cs = <1>;
 #address-cells = <1>;
 #size-cells = <0>;
 reset-gpios = <&gpio1 0xc GPIO_ACTIVE_HIGH>;
+reset-names = "qspi";
+resets = <&versal_reset VERSAL_RST_OSPI>;
 
 flash@0 {
 	compatible = "mt35xu02g", "micron,m25p80", "jedec,spi-nor";
