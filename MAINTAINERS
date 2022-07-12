@@ -21005,17 +21005,6 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/crypto/zynqmp-sha.txt
 F:	drivers/crypto/zynqmp-sha.c
 
-XILINX SD-FEC IP CORES
-M:	Derek Kiernan <derek.kiernan@xilinx.com>
-M:	Dragan Cvetic <dragan.cvetic@xilinx.com>
-S:	Maintained
-F:	Documentation/devicetree/bindings/misc/xlnx,sd-fec.txt
-F:	Documentation/misc-devices/xilinx_sdfec.rst
-F:	drivers/misc/xilinx_sdfec.c
-F:	drivers/misc/Kconfig
-F:	drivers/misc/Makefile
-F:	include/uapi/misc/xilinx_sdfec.h
-
 XILINX EVENT MANAGEMENT DRIVER
 M:	Abhyuday Godhasara <abhyuday.godhasara@xilinx.com>
 S:	Maintained
