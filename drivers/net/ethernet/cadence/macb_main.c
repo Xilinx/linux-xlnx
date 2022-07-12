@@ -866,22 +866,6 @@ static int macb_phylink_connect(struct macb *bp)
 		return ret;
 	}
 
-	/* Figure out if MDIO bus is shared, if yes figure out MDIO
-	 * producer node parent and create device link to ensure
-	 * that supplier is active whenever and for as long as the
-	 * consumer is runtime resumed.
-	 */
-	if (bp->mii_bus != dev->phydev->mdio.bus && !bp->link) {
-		struct macb *mdio_parent = dev->phydev->mdio.bus->priv;
-
-		bp->link = device_link_add(&bp->pdev->dev, &mdio_parent->pdev->dev,
-					   DL_FLAG_PM_RUNTIME |
-					   DL_FLAG_AUTOREMOVE_CONSUMER);
-		if (!bp->link)
-			netdev_warn(dev, "device link creation from %s failed\n",
-				    dev_name(&bp->pdev->dev));
-	}
-
 	/* Since this driver uses runtime handling of clocks, initiate a phy
 	 * reset if the attached phy requires it. Check return to see if phy
 	 * was reset and then do a phy initialization.
@@ -929,7 +913,8 @@ static int macb_mii_probe(struct net_device *dev)
 
 static int macb_mdiobus_register(struct macb *bp)
 {
-	struct device_node *child, *np = bp->pdev->dev.of_node;
+	struct device_node *child, *np = bp->pdev->dev.of_node, *mdio_np, *dev_np;
+	struct platform_device *mdio_pdev;
 
 	if (of_phy_is_fixed_link(np))
 		return mdiobus_register(bp->mii_bus);
@@ -949,6 +934,26 @@ static int macb_mdiobus_register(struct macb *bp)
 			return of_mdiobus_register(bp->mii_bus, np);
 		}
 
+	/* For shared MDIO usecases find out MDIO producer platform
+	 * device node by traversing through phy-handle DT property.
+	 */
+	np = of_parse_phandle(np, "phy-handle", 0);
+	mdio_np = of_get_parent(np);
+	of_node_put(np);
+	dev_np = of_get_parent(mdio_np);
+	of_node_put(mdio_np);
+	mdio_pdev = of_find_device_by_node(dev_np);
+	of_node_put(dev_np);
+
+	/* Check if the MDIO producer device is probed */
+	if (mdio_pdev && !dev_get_drvdata(&mdio_pdev->dev)) {
+		platform_device_put(mdio_pdev);
+		netdev_info(bp->dev, "Defer probe as mdio producer %s is not probed\n",
+			    dev_name(&mdio_pdev->dev));
+		return -EPROBE_DEFER;
+	}
+
+	platform_device_put(mdio_pdev);
 	return mdiobus_register(bp->mii_bus);
 }
 
