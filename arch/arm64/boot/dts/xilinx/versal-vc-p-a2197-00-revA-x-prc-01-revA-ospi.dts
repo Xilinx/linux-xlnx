@@ -30,6 +30,8 @@
 	#address-cells = <1>;
 	#size-cells = <0>;
 	reset-gpios = <&gpio1 0xc GPIO_ACTIVE_HIGH>;
+	reset-names = "qspi";
+	resets = <&versal_reset VERSAL_RST_OSPI>;
 
 	flash@0 {
 		compatible = "mt35xu02g", "micron,m25p80", "jedec,spi-nor";
