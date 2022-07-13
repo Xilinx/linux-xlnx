@@ -3,7 +3,7 @@
  * Xilinx Versal Error Event Node IDs and Error Event Mask.
  * Use with Xilinx Event Management Driver
  *
- * Copyright (C) 2021 Xilinx
+ * Copyright (C) 2021-2022 Xilinx
  *
  * Abhyuday Godhasara <abhyuday.godhasara@xilinx.com>
  */
@@ -636,5 +636,26 @@
  * XPM_EVENT_ERROR_MASK_HB_MON_3: Health Boot Monitoring errors.
  */
 #define XPM_EVENT_ERROR_MASK_HB_MON_3		BIT(3)
+
+/**
+ * XPM_EVENT_ERROR_MASK_XSEM_CRAM_CE_5: Error event mask for handling
+ * correctable error in Versal Configuration RAM which is reported by
+ * Soft Error Mitigation (XilSEM).
+ */
+#define XPM_EVENT_ERROR_MASK_XSEM_CRAM_CE_5		BIT(5)
+
+/**
+ * XPM_EVENT_ERROR_MASK_XSEM_CRAM_UE_6: Error event mask for handling
+ * uncorrectable error in Versal Configuration RAM which is reported by
+ * Soft Error Mitigation (XilSEM).
+ */
+#define XPM_EVENT_ERROR_MASK_XSEM_CRAM_UE_6		BIT(6)
+
+/**
+ * XPM_EVENT_ERROR_MASK_XSEM_NPI_UE_7: Error event mask for handling
+ * uncorrectable error in Versal NoC programming interface (NPI)
+ * register which is reported by Soft Error Mitigation (XilSEM).
+ */
+#define XPM_EVENT_ERROR_MASK_XSEM_NPI_UE_7		BIT(7)
 
 #endif /* _FIRMWARE_XLNX_ERROR_EVENTS_H_ */
