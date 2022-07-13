@@ -22694,6 +22694,12 @@ S:	Maintained
 F:	drivers/edac/xilinx_ddrmc_edac.c
 F:	Documentation/devicetree/bindings/edac/xlnx,versal-ddrmc-edac.yaml
 
+XILINX VERSAL XILSEM EDAC DRIVER
+M:	Rama Devi Veggalam <rama.devi.veggalam@amd.com>
+S:	Maintained
+F:	Documentation/devicetree/bindings/edac/xlnx,versal-xilsem-edac.yaml
+F:	drivers/edac/xilinx_xilsem_edac.c
+
 XILINX EVENT MANAGEMENT DRIVER
 M:	Abhyuday Godhasara <abhyuday.godhasara@xilinx.com>
 S:	Maintained
