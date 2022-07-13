@@ -470,17 +470,6 @@ config XILINX_DPU
 
 	  If unsure, say N.
 
-config XILINX_FLEX_PM
-	tristate "Xilinx Flexnoc Performance Monitor"
-	help
-	  This option enables support for the Xilinx Flex Noc Performance Monitor driver.
-	  It monitors the read and write transactions. It has counters for the LPD and
-	  FPD domains.
-
-	  This driver is deprecated and will be removed soon.
-
-	  If unsure, say N
-
 config XILINX_TRAFGEN
 	tristate "Xilinx Traffic Generator"
 	help
@@ -543,7 +532,6 @@ config TMR_INJECT
 
 	  Say N here unless you know what you are doing.
 
-source "drivers/misc/jesd204b/Kconfig"
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"

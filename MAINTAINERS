@@ -19688,10 +19688,6 @@ F:	Documentation/driver-api/uio-howto.rst
 F:	drivers/uio/
 F:	include/linux/uio_driver.h
 
-USERSPACE I/O (UIO) DRIVER FOR XILINX AI ENGINE NPI
-S:	Maintained
-F:	Documentation/devicetree/bindings/soc/xilinx/xlnx,ai-engine-npi.txt
-
 UTIL-LINUX PACKAGE
 M:	Karel Zak <kzak@redhat.com>
 L:	util-linux@vger.kernel.org
@@ -20673,14 +20669,6 @@ R:	Sai Krishna Potthuri <lakshmi.sai.krishna.potthuri@amd.com>
 S:	Maintained
 F:	Documentation/devicetree/bindings/spi/spi-xilinx.yaml
 F:	drivers/spi/spi-xilinx.c
-
-XILINX FLEXNOC PERFORMANCE MONITOR DRIVER
-M:	Shubhrajyoti Datta <shubhrajyoti.datta@amd.com>
-R:	Radhey Shyam Pandey <radhey.shyam.pandey@amd.com>
-R:	Srinivas Goud <srinivas.goud@amd.com>
-S:	Maintained
-F:	Documentation/devicetree/bindings/perf/xlnx-flexnoc-pm.yaml
-F:	drivers/misc/xilinx_flex_pm.c
 
 XILINX AXI USB DRIVER
 M:	Mubin Usman Sayyed <mubin.usman.sayyed@amd.com>
