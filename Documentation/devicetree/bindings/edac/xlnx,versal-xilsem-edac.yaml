@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: GPL-2.0
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/edac/xlnx,versal-xilsem-edac.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx Versal Xilsem EDAC driver
+
+maintainers:
+  - Rama Devi Veggalam <rama.devi.veggalam@amd.com>
+
+description: |
+  Xilinx Versal Soft Error Mitigation (XilSEM) is part of the
+  Platform Loader and Manager (PLM) which is loaded into and runs on the
+  Platform Management Controller (PMC). XilSEM is responsible for detecting
+  and optionally correcting soft errors in Configuration Memory of Versal.
+  Whenever an error is detected, be it correctable or uncorrectable, XilSEM
+  notifies the errors to user application.
+  This driver is responsible for handling error events received from XilSEM
+  on PLM.
+
+properties:
+  compatible:
+    items:
+      - enum:
+          - xlnx,versal-xilsem-edac
+
+  reg:
+    maxItems: 1
+
+required:
+  - compatible
+  - reg
+
+additionalProperties: false
+
+examples:
+  - |
+      edac@f2014050 {
+        compatible = "xlnx,versal-xilsem-edac";
+        reg = <0xF2014050 0xC4>;
+      };
