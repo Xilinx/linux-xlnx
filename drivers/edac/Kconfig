@@ -572,4 +572,20 @@ config EDAC_XILINX_DDR
 	  Support injecting both Correctable and UnCorrectable errors for debug
 	  purpose using sysfs entries.
 
+config EDAC_XILINX_XILSEM
+	tristate "Xilinx Versal XilSEM Controller"
+	depends on ARCH_ZYNQMP
+	help
+	  Support for handling error events on the Xilinx Versal Xilsem
+	  controller.
+
+	  Xilinx Versal Soft Error Mitigation (XilSEM) is part of the
+	  Platform Loader and Manager (PLM) which is loaded into and runs on the
+	  Platform Management Controller (PMC). XilSEM is responsible for detecting
+	  and optionally correcting soft errors in Configuration Memory of Versal.
+	  Whenever an error is detected, be it correctable or uncorrectable, XilSEM
+	  reports the errors to user application.
+	  This driver is responsible for handling the reported correctable and
+	  uncorrectable errors.
+
 endif # EDAC
