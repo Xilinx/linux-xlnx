@@ -306,6 +306,10 @@
 	power-domains = <&versal_firmware PM_DEV_USB_0>;
 };
 
+&dwc3_0 {
+	clocks = <&versal_clk USB0_BUS_REF>;
+};
+
 &watchdog {
 	clocks = <&versal_clk LPD_LSBUS>;
 	power-domains = <&versal_firmware PM_DEV_SWDT_FPD>;
