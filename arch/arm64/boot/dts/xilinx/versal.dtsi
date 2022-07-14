@@ -599,7 +599,6 @@
 				snps,dis_u2_susphy_quirk;
 				snps,dis_u3_susphy_quirk;
 				snps,quirk-frame-length-adjustment = <0x20>;
-				snps,refclk_fladj;
 				clock-names = "ref";
 				/* dma-coherent; */
 			};
