@@ -2,7 +2,7 @@
 /*
  * Xilinx SYSMON for Versal
  *
- * Copyright (C) 2019 - 2021 Xilinx, Inc.
+ * Copyright (C) 2019 - 2022 Xilinx, Inc.
  *
  * Description:
  * This driver is developed for SYSMON on Versal. The driver supports INDIO Mode
@@ -10,6 +10,7 @@
  * in kernel event monitoring for some modules.
  */
 
+#include <linux/bits.h>
 #include <dt-bindings/power/xlnx-versal-power.h>
 #include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/moduleparam.h>
@@ -114,7 +115,11 @@ static inline void sysmon_secure_write_reg(struct sysmon *sysmon, u32 offset, u3
 static inline void sysmon_secure_update_reg(struct sysmon *sysmon, u32 offset,
 					    u32 mask, u32 data)
 {
-	zynqmp_pm_sec_mask_write_reg(PM_DEV_AMS_ROOT, offset, offset, data);
+	u32 val;
+
+	zynqmp_pm_sec_read_reg(PM_DEV_AMS_ROOT, offset, &val);
+	zynqmp_pm_sec_mask_write_reg(PM_DEV_AMS_ROOT, offset, GENMASK(31, 0),
+				     (val & ~mask) | (mask & data));
 }
 
 static struct sysmon_ops secure_access = {
