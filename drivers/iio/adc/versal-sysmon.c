@@ -399,6 +399,7 @@ static int sysmon_write_event_config(struct iio_dev *indio_dev,
 	struct sysmon *sysmon = iio_priv(indio_dev);
 	u32 alarm_reg_num = ALARM_REG(chan->address);
 	u32 offset = SYSMON_ALARM_REG + (4 * alarm_reg_num);
+	u32 shift = ALARM_SHIFT(chan->address);
 	u32 ier = sysmon_get_event_mask(chan->address);
 	u32 alarm_config;
 	unsigned long flags;
@@ -411,11 +412,11 @@ static int sysmon_write_event_config(struct iio_dev *indio_dev,
 
 		sysmon_read_reg(sysmon, offset, &alarm_config);
 
-		if (alarm_config)
+		if (alarm_config & BIT(shift))
 			sysmon_write_reg(sysmon, SYSMON_IER, ier);
 		else
 			sysmon_write_reg(sysmon, SYSMON_IDR, ier);
-	} else {
+	} else if (chan->type == IIO_TEMP) {
 		if (state) {
 			sysmon_write_reg(sysmon, SYSMON_IER, ier);
 			sysmon->temp_mask &= ~ier;
@@ -1066,6 +1067,8 @@ static int sysmon_probe(struct platform_device *pdev)
 	}
 
 	sysmon_write_reg(sysmon, SYSMON_NPI_LOCK, NPI_UNLOCK);
+	sysmon_write_reg(sysmon, SYSMON_IDR, 0xffffffff);
+	sysmon_write_reg(sysmon, SYSMON_ISR, 0xffffffff);
 
 	sysmon->irq = platform_get_irq_optional(pdev, 0);
 
