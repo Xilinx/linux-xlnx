@@ -80,6 +80,7 @@
 
 #define XSDIRX_MDL_CTRL_FRM_EN_MASK		BIT(4)
 #define XSDIRX_MDL_CTRL_MODE_DET_EN_MASK	BIT(5)
+#define XSDIRX_MDL_CTRL_VPID_MASK		BIT(6)
 #define XSDIRX_MDL_CTRL_MODE_HD_EN_MASK		BIT(8)
 #define XSDIRX_MDL_CTRL_MODE_SD_EN_MASK		BIT(9)
 #define XSDIRX_MDL_CTRL_MODE_3G_EN_MASK		BIT(10)
@@ -745,11 +746,15 @@ static inline void xsdirxss_set(struct xsdirxss_core *xsdirxss, u32 addr,
 
 static inline void xsdirx_core_disable(struct xsdirxss_core *core)
 {
+	/* Set VPID bit to its default */
+	xsdirxss_set(core, XSDIRX_MDL_CTRL_REG, XSDIRX_MDL_CTRL_VPID_MASK);
 	xsdirxss_clr(core, XSDIRX_RST_CTRL_REG, XSDIRX_RST_CTRL_SS_EN_MASK);
 }
 
 static inline void xsdirx_core_enable(struct xsdirxss_core *core)
 {
+	/* Ignore VPID / ST352 payload to generate Video lock interrupt */
+	xsdirxss_clr(core, XSDIRX_MDL_CTRL_REG, XSDIRX_MDL_CTRL_VPID_MASK);
 	xsdirxss_set(core, XSDIRX_RST_CTRL_REG, XSDIRX_RST_CTRL_SS_EN_MASK);
 }
 
@@ -1084,14 +1089,15 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 	u8 sampling = XST352_BYTE3_COLOR_FORMAT_422;
 	struct v4l2_mbus_framefmt *format = &state->format;
 	u32 bpc = XST352_BYTE4_BIT_DEPTH_10;
+	u8 is_3GB;
 
 	mode = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
 	mode &= XSDIRX_MODE_DET_STAT_RX_MODE_MASK;
 
 	valid = xsdirxss_read(core, XSDIRX_ST352_VALID_REG);
 
-	if (mode >= XSDIRX_MODE_3G_MASK && !valid) {
-		dev_err_ratelimited(core->dev, "No valid ST352 payload present even for 3G mode and above\n");
+	if (mode >= XSDIRX_MODE_6G_MASK && !valid) {
+		dev_err_ratelimited(core->dev, "No valid ST352 payload present even for 6G mode and above\n");
 		return -EINVAL;
 	}
 
@@ -1233,29 +1239,82 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 		}
 		break;
 	case XSDIRX_MODE_3G_MASK:
-		switch (byte1) {
-		case XST352_BYTE1_ST425_2008_750L_3GB:
-			/* Sec 4.1.6.1 SMPTE 425-2008 */
-		case XST352_BYTE1_ST372_2x720L_3GB:
-			/* Table 13 SMPTE 425-2008 */
-			format->width = 1280;
-			format->height = 720;
-			break;
-		case XST352_BYTE1_ST425_2008_1125L_3GA:
-			/* ST352 Table SMPTE 425-1 */
-		case XST352_BYTE1_ST372_DL_3GB:
-			/* Table 13 SMPTE 425-2008 */
-		case XST352_BYTE1_ST372_2x1080L_3GB:
-			/* Table 13 SMPTE 425-2008 */
-			format->height = 1080;
-			if (active_luma)
-				format->width = 2048;
-			else
-				format->width = 1920;
-			break;
-		default:
-			dev_dbg(core->dev, "Unknown 3G Mode SMPTE standard\n");
-			return -EINVAL;
+		is_3GB = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
+		is_3GB &= XSDIRX_MODE_DET_STAT_LVLB_3G_MASK;
+
+		if (!valid) {
+			/* No payload obtained */
+			dev_warn(core->dev, "No ST352 valid payload available for 3G modes, source is not 3G compliant\n\r");
+			if (is_3GB) {
+				switch (framerate) {
+				case XSDIRX_TS_DET_STAT_RATE_96HZ:
+				case XSDIRX_TS_DET_STAT_RATE_100HZ:
+				case XSDIRX_TS_DET_STAT_RATE_120HZ:
+					if (family == XSDIRX_SMPTE_ST_2048_2) {
+						format->width = 2048;
+						format->height = 1080;
+						format->field = V4L2_FIELD_ALTERNATE;
+					} else {
+						format->width = 1920;
+						format->height = 1080;
+						format->field = V4L2_FIELD_ALTERNATE;
+					}
+					break;
+				default:
+					format->width = 1920;
+					format->height = 1080;
+					format->field = V4L2_FIELD_ALTERNATE;
+					break;
+				}
+			} else {
+				/* 3GA */
+				switch (framerate) {
+				case XSDIRX_TS_DET_STAT_RATE_48HZ:
+				case XSDIRX_TS_DET_STAT_RATE_50HZ:
+				case XSDIRX_TS_DET_STAT_RATE_60HZ:
+					if (family == XSDIRX_SMPTE_ST_2048_2) {
+						format->width = 2048;
+						format->height = 1080;
+						format->field = V4L2_FIELD_NONE;
+					} else {
+						format->width = 1920;
+						format->height = 1080;
+						format->field = V4L2_FIELD_NONE;
+					}
+					break;
+				default:
+					format->width = 1920;
+					format->height = 1080;
+					format->field = V4L2_FIELD_NONE;
+					break;
+				}
+			}
+		} else {
+			dev_dbg(core->dev, "Got the payload\n");
+			switch (byte1) {
+			case XST352_BYTE1_ST425_2008_750L_3GB:
+				/* Sec 4.1.6.1 SMPTE 425-2008 */
+			case XST352_BYTE1_ST372_2x720L_3GB:
+				/* Table 13 SMPTE 425-2008 */
+				format->width = 1280;
+				format->height = 720;
+				break;
+			case XST352_BYTE1_ST425_2008_1125L_3GA:
+				/* ST352 Table SMPTE 425-1 */
+			case XST352_BYTE1_ST372_DL_3GB:
+				/* Table 13 SMPTE 425-2008 */
+			case XST352_BYTE1_ST372_2x1080L_3GB:
+				/* Table 13 SMPTE 425-2008 */
+				format->height = 1080;
+				if (active_luma)
+					format->width = 2048;
+				else
+					format->width = 1920;
+				break;
+			default:
+				dev_dbg(core->dev, "Unknown 3G Mode SMPTE standard\n");
+				return -EINVAL;
+			}
 		}
 		break;
 	case XSDIRX_MODE_6G_MASK:
