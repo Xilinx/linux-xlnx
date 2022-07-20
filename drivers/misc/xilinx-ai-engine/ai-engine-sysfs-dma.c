@@ -288,19 +288,10 @@ ssize_t aie_tile_show_dma(struct device *dev, struct device_attribute *attr,
 {
 	struct aie_tile *atile = container_of(dev, struct aie_tile, dev);
 	struct aie_partition *apart = atile->apart;
-	u32 ttype, i, num_s2mm_chan, num_mm2s_chan, fifo, fifo0_len, fifo1_len;
-	unsigned long status;
+	u32 ttype, chan, mm2s, s2mm, num_s2mm_chan, num_mm2s_chan, fifo;
 	bool is_delimit_req = false;
-	ssize_t len = 0, size = PAGE_SIZE, l0 = 0, l1 = 0, l2 = 0, l3 = 0;
+	ssize_t len = 0, size = PAGE_SIZE;
 	char **qsts_str = apart->adev->queue_status_str;
-	char ch_buf[AIE_SYSFS_CHAN_STS_SIZE],
-	     qsz_mm2s_buf[AIE_SYSFS_QUEUE_SIZE_SIZE],
-	     qsz_s2mm_buf[AIE_SYSFS_QUEUE_SIZE_SIZE],
-	     qsts_mm2s_buf[AIE_SYSFS_QUEUE_STS_SIZE],
-	     qsts_s2mm_buf[AIE_SYSFS_QUEUE_STS_SIZE],
-	     bd_mm2s_buf[AIE_SYSFS_BD_SIZE],
-	     bd_s2mm_buf[AIE_SYSFS_BD_SIZE],
-	     fifo_len_buf[AIE_SYSFS_FIFO_LEN_SIZE];
 
 	if (mutex_lock_interruptible(&apart->mlock)) {
 		dev_err(&apart->dev,
@@ -309,25 +300,22 @@ ssize_t aie_tile_show_dma(struct device *dev, struct device_attribute *attr,
 	}
 
 	if (!aie_part_check_clk_enable_loc(apart, &atile->loc)) {
-		scnprintf(ch_buf, AIE_SYSFS_CHAN_STS_SIZE,
-			  "mm2s: clock_gated%ss2mm: clock_gated",
-			  DELIMITER_LEVEL1);
-		scnprintf(qsz_mm2s_buf, AIE_SYSFS_QUEUE_SIZE_SIZE,
-			  "clock_gated");
-		scnprintf(qsts_mm2s_buf, AIE_SYSFS_QUEUE_STS_SIZE,
-			  "clock_gated");
-		scnprintf(bd_mm2s_buf, AIE_SYSFS_BD_SIZE, "clock_gated");
-		scnprintf(qsz_s2mm_buf, AIE_SYSFS_QUEUE_SIZE_SIZE,
-			  "clock_gated");
-		scnprintf(qsts_s2mm_buf, AIE_SYSFS_QUEUE_STS_SIZE,
-			  "clock_gated");
-		scnprintf(bd_s2mm_buf, AIE_SYSFS_BD_SIZE, "clock_gated");
-		scnprintf(fifo_len_buf, AIE_SYSFS_BD_SIZE, "clock_gated");
-		goto print;
+		len += scnprintf(&buffer[len], max(0L, size - len),
+				 "channel_status: mm2s: clock_gated%ss2mm: clock_gated\n",
+				 DELIMITER_LEVEL1);
+		len += scnprintf(&buffer[len], max(0L, size - len),
+				 "queue_size: mm2s: clock_gated%ss2mm: clock_gated\n",
+				 DELIMITER_LEVEL1);
+		len += scnprintf(&buffer[len], max(0L, size - len),
+				 "queue_status: mm2s: clock_gated%ss2mm: clock_gated\n",
+				 DELIMITER_LEVEL1);
+		len += scnprintf(&buffer[len], max(0L, size - len),
+				 "current_bd: mm2s: clock_gated%ss2mm: clock_gated\n",
+				 DELIMITER_LEVEL1);
+		len += scnprintf(&buffer[len], max(0L, size - len),
+				 "fifo_len: clock_gated\n");
+		goto exit;
 	}
-
-	aie_sysfs_get_dma_status(apart, &atile->loc, ch_buf,
-				 AIE_SYSFS_CHAN_STS_SIZE);
 
 	ttype = apart->adev->ops->get_tile_type(apart->adev, &atile->loc);
 	if (ttype != AIE_TILE_TYPE_TILE) {
@@ -338,89 +326,120 @@ ssize_t aie_tile_show_dma(struct device *dev, struct device_attribute *attr,
 		num_s2mm_chan = apart->adev->tile_dma->num_s2mm_chan;
 	}
 
-	/* MM2S */
-	status = aie_get_dma_mm2s_status(apart, &atile->loc);
-	for (i = 0; i < num_mm2s_chan; i++) {
-		u8 qsize = aie_get_queue_size(apart, &atile->loc, status, i);
-		u8 qsts = aie_get_queue_status(apart, &atile->loc, status, i);
-		u8 curbd = aie_get_current_bd(apart, &atile->loc, status, i);
+	len += scnprintf(&buffer[len], max(0L, size - len), "channel_status: ");
+	len += aie_sysfs_get_dma_status(apart, &atile->loc, &buffer[len],
+					max(0L, size - len));
 
+	mm2s = aie_get_dma_mm2s_status(apart, &atile->loc);
+	s2mm = aie_get_dma_s2mm_status(apart, &atile->loc);
+
+	/* Queue size */
+	len += scnprintf(&buffer[len], max(0L, size - len),
+			 "\nqueue_size: mm2s: ");
+
+	for (chan = 0; chan < num_mm2s_chan; chan++) {
 		if (is_delimit_req) {
-			l0 += scnprintf(&qsz_mm2s_buf[l0],
-					max(0L, AIE_SYSFS_QUEUE_SIZE_SIZE - l0),
-					DELIMITER_LEVEL0);
-			l1 += scnprintf(&qsts_mm2s_buf[l1],
-					max(0L, AIE_SYSFS_QUEUE_STS_SIZE - l1),
-					DELIMITER_LEVEL0);
-			l2 += scnprintf(&bd_mm2s_buf[l2],
-					max(0L, AIE_SYSFS_BD_SIZE - l2),
+			len += scnprintf(&buffer[len], max(0L, size - len),
 					DELIMITER_LEVEL0);
 		}
-		l0 += scnprintf(&qsz_mm2s_buf[l0],
-				max(0L, AIE_SYSFS_QUEUE_SIZE_SIZE - l0), "%d",
-				qsize);
-		l1 += scnprintf(&qsts_mm2s_buf[l1],
-				max(0L, AIE_SYSFS_QUEUE_STS_SIZE - l1),
-				qsts_str[qsts]);
-		l2 += scnprintf(&bd_mm2s_buf[l2],
-				max(0L, AIE_SYSFS_BD_SIZE - l2), "%d", curbd);
+
+		len += scnprintf(&buffer[len], max(0L, size - len), "%d",
+				 aie_get_queue_size(apart, &atile->loc, mm2s,
+						    chan));
 		is_delimit_req = true;
 	}
 
-	/* S2MM */
+	len += scnprintf(&buffer[len], max(0L, size - len), "%ss2mm: ",
+			 DELIMITER_LEVEL1);
+
 	is_delimit_req = false;
-	l0 = 0; l1 = 0; l2 = 0;
-	status = aie_get_dma_s2mm_status(apart, &atile->loc);
-	for (i = 0; i < num_s2mm_chan; i++) {
-		u8 qsize = aie_get_queue_size(apart, &atile->loc, status, i);
-		u8 qsts = aie_get_queue_status(apart, &atile->loc, status, i);
-		u8 curbd = aie_get_current_bd(apart, &atile->loc, status, i);
-
+	for (chan = 0; chan < num_s2mm_chan; chan++) {
 		if (is_delimit_req) {
-			l0 += scnprintf(&qsz_s2mm_buf[l0],
-					max(0L, AIE_SYSFS_QUEUE_SIZE_SIZE - l0),
-					DELIMITER_LEVEL0);
-			l1 += scnprintf(&qsts_s2mm_buf[l1],
-					max(0L, AIE_SYSFS_QUEUE_STS_SIZE - l1),
-					DELIMITER_LEVEL0);
-			l2 += scnprintf(&bd_s2mm_buf[l2],
-					max(0L, AIE_SYSFS_BD_SIZE - l2),
+			len += scnprintf(&buffer[len], max(0L, size - len),
 					DELIMITER_LEVEL0);
 		}
-		l0 += scnprintf(&qsz_s2mm_buf[l0],
-				max(0L, AIE_SYSFS_QUEUE_SIZE_SIZE - l0), "%d",
-				qsize);
-		l1 += scnprintf(&qsts_s2mm_buf[l1],
-				max(0L, AIE_SYSFS_QUEUE_STS_SIZE - l1),
-				qsts_str[qsts]);
-		l2 += scnprintf(&bd_s2mm_buf[l2],
-				max(0L, AIE_SYSFS_BD_SIZE - l2), "%d", curbd);
+
+		len += scnprintf(&buffer[len], max(0L, size - len), "%d",
+				 aie_get_queue_size(apart, &atile->loc, s2mm,
+						    chan));
 		is_delimit_req = true;
 	}
+
+	/* Queue status */
+	len += scnprintf(&buffer[len], max(0L, size - len),
+			 "\nqueue_status: mm2s: ");
+
+	is_delimit_req = false;
+	for (chan = 0; chan < num_mm2s_chan; chan++) {
+		if (is_delimit_req) {
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					DELIMITER_LEVEL0);
+		}
+
+		len += scnprintf(&buffer[len], max(0L, size - len),
+				 qsts_str[aie_get_queue_status(apart,
+				 &atile->loc, mm2s, chan)]);
+		is_delimit_req = true;
+	}
+
+	len += scnprintf(&buffer[len], max(0L, size - len), "%ss2mm: ",
+			 DELIMITER_LEVEL1);
+
+	is_delimit_req = false;
+	for (chan = 0; chan < num_s2mm_chan; chan++) {
+		if (is_delimit_req) {
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					DELIMITER_LEVEL0);
+		}
+
+		len += scnprintf(&buffer[len], max(0L, size - len),
+				 qsts_str[aie_get_queue_status(apart,
+				 &atile->loc, s2mm, chan)]);
+		is_delimit_req = true;
+	}
+
+	/* Current BD */
+	len += scnprintf(&buffer[len], max(0L, size - len),
+			 "\ncurrent_bd: mm2s: ");
+
+	is_delimit_req = false;
+	for (chan = 0; chan < num_mm2s_chan; chan++) {
+		if (is_delimit_req) {
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					DELIMITER_LEVEL0);
+		}
+
+		len += scnprintf(&buffer[len], max(0L, size - len), "%d",
+				 aie_get_current_bd(apart, &atile->loc, mm2s,
+						    chan));
+		is_delimit_req = true;
+	}
+
+	len += scnprintf(&buffer[len], max(0L, size - len), "%ss2mm: ",
+			 DELIMITER_LEVEL1);
+
+	is_delimit_req = false;
+	for (chan = 0; chan < num_s2mm_chan; chan++) {
+		if (is_delimit_req) {
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					DELIMITER_LEVEL0);
+		}
+
+		len += scnprintf(&buffer[len], max(0L, size - len), "%d",
+				 aie_get_current_bd(apart, &atile->loc, s2mm,
+						    chan));
+		is_delimit_req = true;
+	}
+
+	/* FIFO length */
+	len += scnprintf(&buffer[len], max(0L, size - len), "\nfifo_len: ");
 
 	fifo = aie_get_fifo_status(apart,  &atile->loc);
-	fifo0_len = aie_get_fifo_count(apart, fifo, 0);
-	fifo1_len = aie_get_fifo_count(apart, fifo, 1);
-
-	l3 += scnprintf(&fifo_len_buf[l3],
-			max(0L, AIE_SYSFS_QUEUE_SIZE_SIZE - l3), "%d%s%d",
-			fifo0_len, DELIMITER_LEVEL0, fifo1_len);
-
-print:
+	len += scnprintf(&buffer[len], max(0L, size - len), "%d%s%d\n",
+			 aie_get_fifo_count(apart, fifo, 0), DELIMITER_LEVEL0,
+			 aie_get_fifo_count(apart, fifo, 1));
+exit:
 	mutex_unlock(&apart->mlock);
-	len += scnprintf(&buffer[len], max(0L, size - len),
-			 "channel_status: %s\n", ch_buf);
-	len += scnprintf(&buffer[len], max(0L, size - len),
-			 "queue_size: mm2s: %s%ss2mm: %s\n", qsz_mm2s_buf,
-			 DELIMITER_LEVEL1, qsz_s2mm_buf);
-	len += scnprintf(&buffer[len], max(0L, size - len),
-			 "queue_status: mm2s: %s%ss2mm: %s\n", qsts_mm2s_buf,
-			 DELIMITER_LEVEL1, qsts_s2mm_buf);
-	len += scnprintf(&buffer[len], max(0L, size - len),
-			 "current_bd: mm2s: %s%ss2mm: %s\n", bd_mm2s_buf,
-			 DELIMITER_LEVEL1, bd_s2mm_buf);
-	len += scnprintf(&buffer[len], max(0L, size - len),
-			 "fifo_len: %s\n", fifo_len_buf);
 	return len;
 }
 

@@ -51,10 +51,7 @@ static ssize_t aie_get_errors_str(struct aie_partition *apart,
 
 	for (i = 0; i < err_attr->num_err_categories; i++) {
 		const struct aie_err_category *category;
-		char errstr[AIE_SYSFS_ERROR_SIZE];
-		bool is_delimit_req = false;
-		bool err = false;
-		ssize_t l = 0;
+		bool is_delimit_req = false, preamble = true;
 		u8 index;
 
 		category = &err_attr->err_category[i];
@@ -66,22 +63,29 @@ static ssize_t aie_get_errors_str(struct aie_partition *apart,
 			if (!aie_check_error_bitmap(apart, loc, module, event))
 				continue;
 
-			if (is_delimit_req) {
-				l += scnprintf(&errstr[l],
-					       max(0L, AIE_SYSFS_ERROR_SIZE - l),
-					       DELIMITER_LEVEL0);
+			if (preamble) {
+				len += scnprintf(&buffer[len],
+						 max(0L, size - len),
+						 "%s: %s: ", mod,
+						 aie_error_category_str[index]);
+				preamble = false;
 			}
 
-			l += scnprintf(&errstr[l],
-				       max(0L, AIE_SYSFS_ERROR_SIZE - l), str);
-			err = true;
+			if (is_delimit_req) {
+				len += scnprintf(&buffer[len],
+						 max(0L, size - len),
+						 DELIMITER_LEVEL0);
+			}
+
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					 str);
+
 			is_delimit_req = true;
 		}
 
-		if (err) {
+		if (!preamble) {
 			len += scnprintf(&buffer[len], max(0L, size - len),
-					 "%s: %s: %s\n", mod,
-					 aie_error_category_str[index], errstr);
+					 "\n");
 		}
 	}
 	return len;
