@@ -30,10 +30,6 @@ ssize_t aie_part_read_cb_status(struct kobject *kobj, char *buffer,
 	struct aie_partition *apart = dev_to_aiepart(dev);
 	struct aie_tile *atile = apart->atiles;
 	ssize_t len = 0;
-	size_t temp_size = AIE_SYSFS_CORE_STS_SIZE + AIE_SYSFS_CHAN_STS_SIZE +
-			   AIE_SYSFS_ERROR_CATEGORY_SIZE +
-			   AIE_SYSFS_LOCK_STS_SIZE;
-	char *cs_buf, *ds_buf, *es_buf, *ls_buf;
 	u32 index;
 
 	if (mutex_lock_interruptible(&apart->mlock)) {
@@ -42,62 +38,83 @@ ssize_t aie_part_read_cb_status(struct kobject *kobj, char *buffer,
 		return len;
 	}
 
-	cs_buf = kmalloc(temp_size, GFP_KERNEL);
-	if (!cs_buf) {
-		mutex_unlock(&apart->mlock);
-		return len;
-	}
-
-	ds_buf = cs_buf + AIE_SYSFS_CORE_STS_SIZE;
-	es_buf = ds_buf + AIE_SYSFS_CHAN_STS_SIZE;
-	ls_buf = es_buf + AIE_SYSFS_ERROR_CATEGORY_SIZE;
-
 	for (index = 0; index < apart->range.size.col * apart->range.size.row;
 	     index++, atile++) {
-		u32 cs = 0, ds = 0, es = 0, ls = 0;
+		struct aie_location loc = atile->loc;
+		bool preamble = true;
+		u32 ttype;
 
-		cs = aie_sysfs_get_core_status(apart, &atile->loc, cs_buf,
-					       AIE_SYSFS_CORE_STS_SIZE);
-		ds = aie_sysfs_get_dma_status(apart, &atile->loc, ds_buf,
-					      AIE_SYSFS_CHAN_STS_SIZE);
-		es = aie_sysfs_get_errors(apart, &atile->loc, es_buf,
-					  AIE_SYSFS_ERROR_CATEGORY_SIZE);
-		ls = aie_sysfs_get_lock_status(apart, &atile->loc, ls_buf,
-					       AIE_SYSFS_LOCK_STS_SIZE);
+		ttype = apart->adev->ops->get_tile_type(apart->adev, &loc);
 
-		if (!(cs || ds || es || ls))
-			continue;
+		if (ttype == AIE_TILE_TYPE_TILE) {
+			if (preamble) {
+				len += scnprintf(&buffer[len],
+						 max(0L, size - len),
+						 "%d_%d: cs: ", loc.col,
+						 loc.row);
+				preamble = false;
+			}
 
-		len += scnprintf(&buffer[len], max(0L, size - len), "%d_%d: ",
-				 atile->loc.col, atile->loc.row);
-
-		if (cs) {
-			len += scnprintf(&buffer[len], max(0L, size - len),
-					 "cs: %s", cs_buf);
+			len += aie_sysfs_get_core_status(apart, &loc,
+							 &buffer[len], size);
 		}
 
-		if (ds) {
-			len += scnprintf(&buffer[len], max(0L, size - len),
-					 "%sds: %s", cs ?
-					 DELIMITER_LEVEL2 : "", ds_buf);
+		if (ttype == AIE_TILE_TYPE_TILE ||
+		    ttype == AIE_TILE_TYPE_SHIMNOC) {
+			if (preamble) {
+				len += scnprintf(&buffer[len],
+						 max(0L, size - len),
+						 "%d_%d: ds: ", loc.col,
+						 loc.row);
+				preamble = false;
+			} else {
+				len += scnprintf(&buffer[len],
+						 max(0L, size - len),
+						 "%sds: ", DELIMITER_LEVEL2);
+			}
+
+			len += aie_sysfs_get_dma_status(apart, &loc,
+							&buffer[len], size);
+
+			if (preamble) {
+				len += scnprintf(&buffer[len],
+						 max(0L, size - len),
+						 "%d_%d: ls: ", loc.col,
+						 loc.row);
+				preamble = false;
+			} else {
+				len += scnprintf(&buffer[len],
+						 max(0L, size - len),
+						 "%sls: ", DELIMITER_LEVEL2);
+			}
+
+			len += aie_sysfs_get_lock_status(apart, &loc,
+							 &buffer[len], size);
 		}
 
-		if (es) {
-			len += scnprintf(&buffer[len], max(0L, size - len),
-					 "%ses: %s", (cs || ds) ?
-					 DELIMITER_LEVEL2 : "", es_buf);
+		if (aie_check_tile_error(apart, loc)) {
+			if (preamble) {
+				len += scnprintf(&buffer[len],
+						 max(0L, size - len),
+						 "%d_%d: es: ", loc.col,
+						 loc.row);
+				preamble = false;
+			} else {
+				len += scnprintf(&buffer[len],
+						 max(0L, size - len),
+						 "%ses: ", DELIMITER_LEVEL2);
+			}
+
+			len += aie_sysfs_get_errors(apart, &loc, &buffer[len],
+						    size);
 		}
 
-		if (ls) {
+		if (!preamble) {
 			len += scnprintf(&buffer[len], max(0L, size - len),
-					 "%sls: %s", (cs || ds || es) ?
-					 DELIMITER_LEVEL2 : "", ls_buf);
+					 "\n");
 		}
-
-		len += scnprintf(&buffer[len], max(0L, size - len), "\n");
 	}
 
 	mutex_unlock(&apart->mlock);
-	kfree(cs_buf);
 	return len;
 }

@@ -90,18 +90,6 @@ enum aie_tile_type {
 #define DELIMITER_LEVEL1 ", "
 #define DELIMITER_LEVEL2 "; "
 
-/* Macros to define size of temporary string buffers */
-#define AIE_SYSFS_CORE_STS_SIZE		100U
-#define AIE_SYSFS_CHAN_STS_SIZE		150U
-#define AIE_SYSFS_QUEUE_SIZE_SIZE	40U
-#define AIE_SYSFS_QUEUE_STS_SIZE	60U
-#define AIE_SYSFS_BD_SIZE		40U
-#define AIE_SYSFS_FIFO_LEN_SIZE		40U
-#define AIE_SYSFS_ERROR_SIZE		300U
-#define AIE_SYSFS_ERROR_CATEGORY_SIZE	500U
-#define AIE_SYSFS_LOCK_STS_SIZE		400U
-#define AIE_SYSFS_EVENT_STS_SIZE	550U
-
 /* Helper macros to dynamically create sysfs device attribute */
 #define AIE_PART_DEV_ATTR_RO(_name) {				\
 	.name		= __stringify(_name),			\
@@ -1139,6 +1127,7 @@ u32 aie_get_module_error_count(struct aie_partition *apart,
 			       struct aie_location loc,
 			       enum aie_module_type module,
 			       const struct aie_error_attr *err_attr);
+bool aie_check_tile_error(struct aie_partition *apart, struct aie_location loc);
 bool aie_check_error_bitmap(struct aie_partition *apart,
 			    struct aie_location loc,
 			    enum aie_module_type module, u8 event);
