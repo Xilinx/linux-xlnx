@@ -123,7 +123,6 @@ ssize_t aie_tile_show_core(struct device *dev, struct device_attribute *attr,
 	struct aie_partition *apart = atile->apart;
 	ssize_t len = 0, size = PAGE_SIZE;
 	u32 pc = 0, lr = 0, sp = 0;
-	char sts_buf[AIE_SYSFS_CORE_STS_SIZE];
 
 	if (mutex_lock_interruptible(&apart->mlock)) {
 		dev_err(&apart->dev,
@@ -131,25 +130,22 @@ ssize_t aie_tile_show_core(struct device *dev, struct device_attribute *attr,
 		return len;
 	}
 
-	if (!aie_part_check_clk_enable_loc(apart, &atile->loc)) {
-		scnprintf(sts_buf, AIE_SYSFS_CORE_STS_SIZE, "clock_gated");
-		goto out;
+	len += scnprintf(&buffer[len], max(0L, size - len), "status: ");
+	len += aie_sysfs_get_core_status(apart, &atile->loc, &buffer[len],
+					 size - len);
+	len += scnprintf(&buffer[len], max(0L, size - len), "\n");
+
+	if (aie_part_check_clk_enable_loc(apart, &atile->loc)) {
+		pc = aie_get_core_pc(apart, &atile->loc);
+		lr = aie_get_core_lr(apart, &atile->loc);
+		sp = aie_get_core_sp(apart, &atile->loc);
 	}
 
-	aie_sysfs_get_core_status(apart, &atile->loc, sts_buf,
-				  AIE_SYSFS_CORE_STS_SIZE);
-	pc = aie_get_core_pc(apart, &atile->loc);
-	lr = aie_get_core_lr(apart, &atile->loc);
-	sp = aie_get_core_sp(apart, &atile->loc);
-
-out:
-	mutex_unlock(&apart->mlock);
-
-	len += scnprintf(&buffer[len], max(0L, size - len), "status: %s\n",
-			 sts_buf);
 	len += scnprintf(&buffer[len], max(0L, size - len), "pc: %#.8x\n", pc);
 	len += scnprintf(&buffer[len], max(0L, size - len), "lr: %#.8x\n", lr);
 	len += scnprintf(&buffer[len], max(0L, size - len), "sp: %#.8x\n", sp);
+
+	mutex_unlock(&apart->mlock);
 	return len;
 }
 

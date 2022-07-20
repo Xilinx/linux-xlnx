@@ -948,6 +948,58 @@ u32 aie_get_module_error_count(struct aie_partition *apart,
 }
 
 /**
+ * aie_check_module_error() - check if a given module has an active error.
+ * @apart: AIE partition pointer.
+ * @loc: tile location.
+ * @module: module type.
+ * @err_attr: error attribute for given module type.
+ * @return: true if tile has active errors.
+ */
+static bool aie_check_module_error(struct aie_partition *apart,
+				   struct aie_location loc,
+				   enum aie_module_type module,
+				   const struct aie_error_attr *err_attr)
+{
+	u8 i, j;
+
+	for (i = 0; i < err_attr->num_err_categories; i++) {
+		for (j = 0; j < err_attr->err_category[i].num_events; j++) {
+			u8 event = err_attr->err_category[i].prop[j].event;
+
+			if (aie_check_error_bitmap(apart, loc, module, event))
+				return true;
+		}
+	}
+	return false;
+}
+
+/**
+ * aie_check_tile_error() - check if a given tile location has an active error.
+ * @apart: AIE partition pointer.
+ * @loc: tile location.
+ * @return: true if tile has active errors.
+ */
+bool aie_check_tile_error(struct aie_partition *apart, struct aie_location loc)
+{
+	const struct aie_error_attr *core_errs = apart->adev->core_errors;
+	const struct aie_error_attr *mem_errs = apart->adev->mem_errors;
+	const struct aie_error_attr *shim_errs = apart->adev->shim_errors;
+	u32 ttype = apart->adev->ops->get_tile_type(apart->adev, &loc);
+
+	if (ttype == AIE_TILE_TYPE_TILE) {
+		if (aie_check_module_error(apart, loc, AIE_CORE_MOD, core_errs))
+			return true;
+
+		if (aie_check_module_error(apart, loc, AIE_MEM_MOD, mem_errs))
+			return true;
+	} else {
+		if (aie_check_module_error(apart, loc, AIE_PL_MOD, shim_errs))
+			return true;
+	}
+	return false;
+}
+
+/**
  * aie_get_error_count() - get the total count of errors in a partition from
  *			   local bitmap.
  * @apart: AIE partition pointer.
