@@ -55,6 +55,12 @@ properties:
       - const: dp-phy2
       - const: dp-phy3
 
+  xlnx,vtc-offset:
+    description: This denotes register offset address of VTC sub-core of
+                 DisplayPort Transmitter Subsystem.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+
   xlnx,max-lanes:
     description: Max number of lanes that IP configured with.
                  Possible values are 1, 2, 4.
@@ -143,6 +149,16 @@ required:
 
 additionalProperties: false
 
+if:
+  properties:
+    compatible:
+      contains:
+        const: xlnx,v-dp-txss-3.1
+
+then:
+  required:
+    - xlnx,vtc-offset
+
 examples:
   - |
    bus {
@@ -156,6 +172,7 @@ examples:
            clock-names = "s_axi_aclk", "tx_vid_clk";
            clocks = <&zynqmp_clk 71>, <&si570_1>;
            interrupts = <0 92 4>;
+           xlnx,vtc-offset = <0x8000>;
            xlnx,max-lanes = <4>;
            xlnx,max-link-rate = <810000>;
            xlnx,bpc = <8>;
