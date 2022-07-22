@@ -1,7 +1,12 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-License-Identifier: GPL-2.0 OR Apache-2.0 */
 /*
- * Copyright (C) 2022 Xilinx, Inc.
+ * Xilinx Vivado Flow Deep learning Processing Unit (DPU) Driver
  *
+ * Copyright (C) 2022 Xilinx, Inc.
+ * Copyright (C) 2022 Advanced Micro Devices, Inc. All rights reserved.
+ *
+ * Authors:
+ *    Ye Yang <ye.yang@amd.com>
  */
 
 #ifndef _DPU_UAPI_H_
