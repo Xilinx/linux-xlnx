@@ -42,6 +42,7 @@
 #define XSDI_TX_ST352_DATA_DS2		0x70
 
 /* MODULE_CTRL register masks */
+#define XSDI_TX_CTRL_HFR		BIT(3)
 #define XSDI_TX_CTRL_M			BIT(7)
 #define XSDI_TX_CTRL_INS_CRC		BIT(12)
 #define XSDI_TX_CTRL_INS_ST352		BIT(13)
@@ -123,6 +124,8 @@
 #define SDI_TIMING_PARAMS_SIZE		48
 #define CLK_RATE			148500000UL
 
+#define XSDI_HFR_MIN_FPS		90
+
 /**
  * enum payload_line_1 - Payload Ids Line 1 number
  * @PAYLD_LN1_HD_3_6_12G:	line 1 HD,3G,6G or 12G mode value
@@ -200,6 +203,7 @@ enum payload_line_2 {
  * @qpll1_enabled: indicates qpll1 presence
  * @picxo_enabled: indicates picxo core presence
  * @prev_eotf: previous end of transfer function
+ * @is_hfr: Indicates HFR video streaming
  */
 struct xlnx_sdi {
 	struct drm_encoder encoder;
@@ -246,6 +250,7 @@ struct xlnx_sdi {
 	bool qpll1_enabled;
 	bool picxo_enabled;
 	u8 prev_eotf;
+	u8 is_hfr;
 };
 
 #define connector_to_sdi(c) container_of(c, struct xlnx_sdi, connector)
@@ -538,6 +543,11 @@ static void xlnx_sdi_set_mode(struct xlnx_sdi *sdi, u32 mode,
 		data |= XSDI_TX_CTRL_420_BIT;
 	else if (sdi->sdi_444_out_val)
 		data |= XSDI_TX_CTRL_444_BIT;
+
+	if (sdi->is_hfr) {
+		data |= XSDI_TX_CTRL_HFR;
+		dev_dbg(sdi->dev, "HFR enabled\n\r");
+	}
 
 	xlnx_sdi_writel(sdi->base, XSDI_TX_MDL_CTRL, data);
 }
@@ -1068,6 +1078,10 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 			}
 		}
 	}
+
+	/* If HFR video is streaming */
+	if (drm_mode_vrefresh(adjusted_mode) >= XSDI_HFR_MIN_FPS)
+		sdi->is_hfr = 1;
 
 	xlnx_sdi_setup(sdi);
 	xlnx_sdi_set_config_parameters(sdi);
