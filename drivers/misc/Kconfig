@@ -491,6 +491,8 @@ config XILINX_TRAFGEN
 	  allow the user to generate a wide variety of traffic based on their
 	  their requirements.
 
+	  This driver is deprecated and will be removed soon.
+
 	  If unsure, say N
 
 config XILINX_AIE
