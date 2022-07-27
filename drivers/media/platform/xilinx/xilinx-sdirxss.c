@@ -217,6 +217,7 @@
 #define XST352_BYTE1_ST2081_10_2_1080L_6G	0xC1
 #define XST352_BYTE1_ST2081_10_DL_2160L_6G	0xC2
 #define XST352_BYTE1_ST2082_10_2160L_12G	0xCE
+#define XST352_BYTE1_ST2082_10_2_1080L_12G	0xCF
 
 #define XST352_BYTE2_TS_TYPE_MASK		BIT(15)
 #define XST352_BYTE2_TS_TYPE_OFFSET		15
@@ -1351,6 +1352,14 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 				format->width = 4096;
 			else
 				format->width = 3840;
+			break;
+		case XST352_BYTE1_ST2082_10_2_1080L_12G:
+			/* Section 5.8.1 SMPTE ST 2082-10 */
+			format->height = 1080;
+			if (active_luma)
+				format->width = 2048;
+			else
+				format->width = 1920;
 			break;
 		default:
 			dev_dbg(core->dev, "Unknown 12G Mode SMPTE standard\n");
