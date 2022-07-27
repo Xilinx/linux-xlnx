@@ -1604,6 +1604,8 @@ static int xtg_probe(struct platform_device *pdev)
 	if (var == XTG_INIT_VERSION)
 		tg->xtg_mram_offset = XTG_MASTER_RAM_INIT_OFFSET;
 
+	/* Let the users know they are using deprecated driver */
+	dev_notice(&pdev->dev, "xilinx trafgen driver is deprecated\n");
 	dev_info(&pdev->dev, "Probing xilinx traffic generator success\n");
 
 	return 0;
