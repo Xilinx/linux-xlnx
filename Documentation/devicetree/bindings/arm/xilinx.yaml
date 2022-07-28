@@ -10,7 +10,7 @@ maintainers:
   - Michal Simek <michal.simek@xilinx.com>
 
 description: |
-  Xilinx boards with Zynq-7000 SOC or Zynq UltraScale+ MPSoC
+  Xilinx boards with Zynq-7000 SOC or Zynq UltraScale+ MPSoC or Versal or Versal NET
 
 properties:
   $nodename:
@@ -157,6 +157,12 @@ properties:
           - const: xlnx,zynqmp-smk-k26-revA
           - const: xlnx,zynqmp-smk-k26
           - const: xlnx,zynqmp
+
+      - description: Xilinx Versal NET b2197 (Tenzing2)
+        items:
+          - const: xlnx,versal-net-vn-p-b2197-00-revA
+          - const: xlnx,versal-net-vn-p-b2197-00
+          - const: xlnx,versal-net
 
 additionalProperties: true
 
