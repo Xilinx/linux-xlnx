@@ -563,6 +563,11 @@ static int xvip_dma_start_streaming(struct vb2_queue *vq, unsigned int count)
 	 */
 	if (!dma->low_latency_cap) {
 		dma_async_issue_pending(dma->dma);
+
+		/* Start the pipeline. */
+		ret = xvip_pipeline_set_stream(pipe, true);
+		if (ret < 0)
+			goto error_stop;
 	} else {
 		/* For low latency capture, return the first buffer early
 		 * so that consumer can initialize until we start DMA.
@@ -572,11 +577,6 @@ static int xvip_dma_start_streaming(struct vb2_queue *vq, unsigned int count)
 		xvip_dma_complete(buf);
 		buf->desc->callback = NULL;
 	}
-
-	/* Start the pipeline. */
-	ret = xvip_pipeline_set_stream(pipe, true);
-	if (ret < 0)
-		goto error_stop;
 
 	return 0;
 
@@ -1149,6 +1149,9 @@ static int xvip_dma_s_ctrl(struct v4l2_ctrl *ctl)
 	struct xvip_dma *dma = container_of(ctl->handler, struct xvip_dma,
 					    ctrl_handler);
 	int ret = 0;
+	struct xvip_pipeline *pipe = dma->video.entity.pipe ?
+		to_xvip_pipeline(&dma->video.entity) : &dma->pipe;
+	struct xvip_dma_buffer *buf, *nbuf;
 
 	switch (ctl->id)  {
 	case V4L2_CID_XILINX_LOW_LATENCY:
@@ -1170,16 +1173,35 @@ static int xvip_dma_s_ctrl(struct v4l2_ctrl *ctl)
 			dma->low_latency_cap = false;
 			xilinx_xdma_set_mode(dma->dma, AUTO_RESTART);
 		} else if (ctl->val == XVIP_START_DMA) {
-			/*
-			 * In low latency capture, the driver allows application
-			 * to start dma when queue has buffers. That's why we
-			 * don't check for vb2_is_busy().
-			 */
 			if (dma->low_latency_cap &&
-			    vb2_is_streaming(&dma->queue))
+			    vb2_is_streaming(&dma->queue)) {
+				/*
+				 * In low latency capture, the driver allows application
+				 * to start dma when queue has buffers. That's why we
+				 * don't check for vb2_is_busy().
+				 */
 				dma_async_issue_pending(dma->dma);
-			else
+
+				/* Start the pipeline. */
+				ret = xvip_pipeline_set_stream(pipe, true);
+				if (ret < 0) {
+					dev_err(dma->xdev->dev, "Failed to set stream\n");
+					media_pipeline_stop(&dma->video.entity);
+					dmaengine_terminate_all(dma->dma);
+
+					/* Give back all queued buffers to videobuf2. */
+					spin_lock_irq(&dma->queued_lock);
+					list_for_each_entry_safe(buf, nbuf,
+								 &dma->queued_bufs, queue) {
+						vb2_buffer_done(&buf->buf.vb2_buf,
+								VB2_BUF_STATE_QUEUED);
+						list_del(&buf->queue);
+					}
+					spin_unlock_irq(&dma->queued_lock);
+				}
+			} else {
 				ret = -EINVAL;
+			}
 		} else {
 			ret = -EINVAL;
 		}
