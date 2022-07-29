@@ -95,77 +95,77 @@
  * @encoder: DRM encoder structure
  * @dsi_host: DSI host device
  * @connector: DRM connector structure
+ * @panel: DRM panel structure
  * @panel_node: MIPI DSI device panel node
- * @panel:  DRM panel structure
  * @dev: device structure
  * @iomem: Base address of DSI subsystem
- * @lanes: number of active data lanes supported by DSI controller
- * @cmdmode: command mode support
- * @mode_flags: DSI operation mode related flags
- * @format: pixel format for video mode of DSI controller
  * @vm: videomode data structure
- * @mul_factor: multiplication factor for HACT timing parameter
  * @eotp_prop: configurable EoTP DSI parameter
  * @bllp_mode_prop: configurable BLLP mode DSI parameter
  * @bllp_type_prop: configurable BLLP type DSI parameter
  * @video_mode_prop: configurable Video mode DSI parameter
  * @bllp_burst_time_prop: Configurable BLLP time for burst mode
  * @cmd_queue_prop: configurable command queue
- * @eotp_prop_val: configurable EoTP DSI parameter value
- * @bllp_mode_prop_val: configurable BLLP mode DSI parameter value
- * @bllp_type_prop_val: configurable BLLP type DSI parameter value
+ * @height_out: configurable bridge output height parameter
+ * @width_out: configurable bridge output width parameter
+ * @in_fmt: configurable bridge input media format
+ * @out_fmt: configurable bridge output media format
+ * @bridge: bridge structure
  * @video_mode_prop_val: configurable Video mode DSI parameter value
  * @bllp_burst_time_prop_val: Configurable BLLP time for burst mode value
  * @cmd_queue_prop_val: configurable command queue value
- * @bridge: bridge structure
- * @height_out: configurable bridge output height parameter
  * @height_out_prop_val: configurable bridge output height parameter value
- * @width_out: configurable bridge output width parameter
  * @width_out_prop_val: configurable bridge output width parameter value
- * @in_fmt: configurable bridge input media format
  * @in_fmt_prop_val: configurable media bus format value
- * @out_fmt: configurable bridge output media format
  * @out_fmt_prop_val: configurable media bus format value
+ * @lanes: number of active data lanes supported by DSI controller
+ * @mode_flags: DSI operation mode related flags
+ * @mul_factor: multiplication factor for HACT timing parameter
  * @video_aclk: Video clock
  * @dphy_clk_200M: 200MHz DPHY clock and AXI Lite clock
+ * @format: pixel format for video mode of DSI controller
+ * @cmdmode: command mode support
+ * @eotp_prop_val: configurable EoTP DSI parameter value
+ * @bllp_mode_prop_val: configurable BLLP mode DSI parameter value
+ * @bllp_type_prop_val: configurable BLLP type DSI parameter value
  */
 struct xlnx_dsi {
 	struct drm_encoder encoder;
 	struct mipi_dsi_host dsi_host;
 	struct drm_connector connector;
-	struct device_node *panel_node;
 	struct drm_panel *panel;
+	struct device_node *panel_node;
 	struct device *dev;
 	void __iomem *iomem;
-	u32 lanes;
-	bool cmdmode;
-	u32 mode_flags;
-	enum mipi_dsi_pixel_format format;
 	struct videomode vm;
-	u32 mul_factor;
 	struct drm_property *eotp_prop;
 	struct drm_property *bllp_mode_prop;
 	struct drm_property *bllp_type_prop;
 	struct drm_property *video_mode_prop;
 	struct drm_property *bllp_burst_time_prop;
 	struct drm_property *cmd_queue_prop;
-	bool eotp_prop_val;
-	bool bllp_mode_prop_val;
-	bool bllp_type_prop_val;
+	struct drm_property *height_out;
+	struct drm_property *width_out;
+	struct drm_property *in_fmt;
+	struct drm_property *out_fmt;
+	struct xlnx_bridge *bridge;
 	u32 video_mode_prop_val;
 	u32 bllp_burst_time_prop_val;
 	u32 cmd_queue_prop_val;
-	struct xlnx_bridge *bridge;
-	struct drm_property *height_out;
 	u32 height_out_prop_val;
-	struct drm_property *width_out;
 	u32 width_out_prop_val;
-	struct drm_property *in_fmt;
 	u32 in_fmt_prop_val;
-	struct drm_property *out_fmt;
 	u32 out_fmt_prop_val;
+	u32 lanes;
+	u32 mode_flags;
+	u32 mul_factor;
 	struct clk *video_aclk;
 	struct clk *dphy_clk_200M;
+	enum mipi_dsi_pixel_format format;
+	bool cmdmode;
+	bool eotp_prop_val;
+	bool bllp_mode_prop_val;
+	bool bllp_type_prop_val;
 };
 
 #define host_to_dsi(host) container_of(host, struct xlnx_dsi, dsi_host)
