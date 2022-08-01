@@ -631,9 +631,9 @@ static irqreturn_t xilinx_spi_irq(int irq, void *dev_id)
 	}
 
 	if (!xspi->bytes_to_receive && !xspi->bytes_to_transfer) {
-		spi_finalize_current_transfer(master);
 		/* Disable the interrupts here. */
 		xspi->write_fn(0x0, xspi->regs + XIPIF_V123B_DGIER_OFFSET);
+		spi_finalize_current_transfer(master);
 	}
 
 	return status;
