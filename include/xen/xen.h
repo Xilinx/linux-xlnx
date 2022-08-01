@@ -91,4 +91,9 @@ static inline bool xen_processor_present(uint32_t acpi_id)
 }
 #endif
 
+static inline int xen_vring_use_dma(void)
+{
+	return xen_pv_domain();
+}
+
 #endif	/* _XEN_XEN_H */
