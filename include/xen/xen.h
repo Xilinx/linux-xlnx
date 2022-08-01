@@ -71,4 +71,9 @@ static inline void xen_free_unpopulated_pages(unsigned int nr_pages,
 }
 #endif
 
+static inline int xen_vring_use_dma(void)
+{
+	return xen_pv_domain();
+}
+
 #endif	/* _XEN_XEN_H */
