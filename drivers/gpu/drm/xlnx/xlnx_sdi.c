@@ -534,7 +534,7 @@ static void xlnx_sdi_set_mode(struct xlnx_sdi *sdi, u32 mode,
 	data &= ~XSDI_TX_CTRL_420_BIT;
 
 	data |= (((mode & XSDI_TX_CTRL_MODE) << XSDI_TX_CTRL_MODE_SHIFT) |
-		(is_frac  << XSDI_TX_CTRL_M_SHIFT) |
+		(is_frac << XSDI_TX_CTRL_M_SHIFT) |
 		((mux_ptrn & XSDI_TX_CTRL_MUX) << XSDI_TX_CTRL_MUX_SHIFT));
 
 	dev_dbg(sdi->dev, "sdi_420_out_val = %d\n sdi_444_out_val = %d\n\r",
