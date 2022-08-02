@@ -51,6 +51,7 @@
 		sw1 {
 			label = "sw1";
 			gpios = <&gpio 22 GPIO_ACTIVE_HIGH>;
+			linux,code = <BTN_MISC>;
 			wakeup-source;
 			autorepeat;
 		};
