@@ -36,7 +36,6 @@ int xilinx_ai_engine_probe_v1(struct platform_device *pdev)
 	struct aie_device *adev;
 	struct aie_aperture *aperture;
 	struct aie_range *range;
-	struct device *dev;
 	struct device_node *nc;
 	struct resource *res;
 	u32 pm_reg[2], regs[4];
@@ -88,13 +87,13 @@ int xilinx_ai_engine_probe_v1(struct platform_device *pdev)
 	if (!nc) {
 		dev_err(&pdev->dev,
 			"device tree node v1.0, no child node.\n");
-		put_device(dev);
+		put_device(&pdev->dev);
 		return -EINVAL;
 	}
 
 	aperture = kzalloc(sizeof(*aperture), GFP_KERNEL);
 	if (!aperture) {
-		put_device(dev);
+		put_device(&pdev->dev);
 		return -ENOMEM;
 	}
 
@@ -109,7 +108,7 @@ int xilinx_ai_engine_probe_v1(struct platform_device *pdev)
 			"probe %pOF failed, no tiles range information.\n",
 			nc);
 		kfree(aperture);
-		put_device(dev);
+		put_device(&pdev->dev);
 		return ret;
 	}
 	range = &aperture->range;
@@ -125,7 +124,7 @@ int xilinx_ai_engine_probe_v1(struct platform_device *pdev)
 		dev_err(&pdev->dev,
 			"failed to add AI engine aperture device\n");
 		kfree(aperture);
-		put_device(dev);
+		put_device(&pdev->dev);
 		return ret;
 	}
 
@@ -136,8 +135,8 @@ int xilinx_ai_engine_probe_v1(struct platform_device *pdev)
 	ret = aie_resource_initialize(&aperture->cols_res,
 				      aperture->range.size.col);
 	if (ret) {
-		dev_err(dev, "failed to initialize columns resource.\n");
-		put_device(dev);
+		dev_err(&pdev->dev, "failed to initialize columns resource.\n");
+		put_device(&pdev->dev);
 		return ret;
 	}
 
@@ -145,7 +144,7 @@ int xilinx_ai_engine_probe_v1(struct platform_device *pdev)
 	if (!res) {
 		dev_err(&pdev->dev, "No memory resource.\n");
 		put_device(&aperture->dev);
-		put_device(dev);
+		put_device(&pdev->dev);
 		return -EINVAL;
 	}
 	/* resource information will be used by ready only register mmap */
@@ -155,7 +154,7 @@ int xilinx_ai_engine_probe_v1(struct platform_device *pdev)
 		dev_err(&pdev->dev, "no io memory resource.\n");
 		ret = PTR_ERR(aperture->base);
 		put_device(&aperture->dev);
-		put_device(dev);
+		put_device(&pdev->dev);
 		return ret;
 	}
 
@@ -172,14 +171,14 @@ int xilinx_ai_engine_probe_v1(struct platform_device *pdev)
 		dev_err(&aperture->dev,
 			"failed to initialize l2 mask resource.\n");
 		put_device(&aperture->dev);
-		put_device(dev);
+		put_device(&pdev->dev);
 		return ret;
 	}
 
 	ret = platform_get_irq_byname(pdev, "interrupt1");
 	if (ret < 0) {
 		put_device(&aperture->dev);
-		put_device(dev);
+		put_device(&pdev->dev);
 		return ret;
 	}
 	aperture->irq = ret;
@@ -190,7 +189,7 @@ int xilinx_ai_engine_probe_v1(struct platform_device *pdev)
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to request AIE IRQ.\n");
 		put_device(&aperture->dev);
-		put_device(dev);
+		put_device(&pdev->dev);
 		return ret;
 	}
 
