@@ -281,7 +281,7 @@
 		};
 
 		gem0: ethernet@ff0c0000 {
-			compatible = "cdns,versal-gem", "cdns,gem";
+			compatible = "xlnx,versal-gem", "cdns,versal-gem", "cdns,gem";
 			status = "disabled";
 			reg = <0 0xff0c0000 0 0x1000>;
 			interrupts = <0 56 4>, <0 56 4>;
@@ -293,7 +293,7 @@
 		};
 
 		gem1: ethernet@ff0d0000 {
-			compatible = "cdns,versal-gem", "cdns,gem";
+			compatible = "xlnx,versal-gem", "cdns,versal-gem", "cdns,gem";
 			status = "disabled";
 			reg = <0 0xff0d0000 0 0x1000>;
 			interrupts = <0 58 4>, <0 58 4>;
