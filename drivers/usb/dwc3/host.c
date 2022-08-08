@@ -60,7 +60,7 @@ out:
 
 int dwc3_host_init(struct dwc3 *dwc)
 {
-	struct property_entry	props[5];
+	struct property_entry	props[6];
 	struct platform_device	*xhci;
 	int			ret, irq;
 	struct resource		*res;
@@ -114,6 +114,10 @@ int dwc3_host_init(struct dwc3 *dwc)
 	if (device_property_read_bool(&dwc3_pdev->dev,
 					"snps,xhci-stream-quirk"))
 		props[prop_idx++] = PROPERTY_ENTRY_BOOL("xhci-stream-quirk");
+
+	if (device_property_read_bool(&dwc3_pdev->dev,
+				      "snps,xhci-reset-on-resume"))
+		props[prop_idx++] = PROPERTY_ENTRY_BOOL("xhci-reset-on-resume");
 
 	/**
 	 * WORKAROUND: dwc3 revisions <=3.00a have a limitation
