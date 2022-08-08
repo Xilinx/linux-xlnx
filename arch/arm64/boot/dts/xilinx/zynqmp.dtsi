@@ -1001,6 +1001,7 @@
 				clock-names = "ref";
 				snps,enable_guctl1_resume_quirk;
 				snps,enable_guctl1_ipd_quirk;
+				snps,xhci-reset-on-resume;
 				snps,xhci-stream-quirk;
 				/* dma-coherent; */
 			};
@@ -1033,6 +1034,7 @@
 				clock-names = "ref";
 				snps,enable_guctl1_resume_quirk;
 				snps,enable_guctl1_ipd_quirk;
+				snps,xhci-reset-on-resume;
 				snps,xhci-stream-quirk;
 				/* dma-coherent; */
 			};
