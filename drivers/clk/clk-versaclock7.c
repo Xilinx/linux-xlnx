@@ -1079,7 +1079,7 @@ static int vc7_probe(struct i2c_client *client)
 	struct vc7_bank_src_map bank_src_map;
 	const char *apll_name;
 	const char *parent_names[1];
-	unsigned int i, val, bank_idx;
+	unsigned int i, val, bank_idx, out_num;
 	unsigned long apll_rate;
 	int ret;
 
@@ -1151,12 +1151,14 @@ static int vc7_probe(struct i2c_client *client)
 
 	/* Register outputs */
 	for (i = 0; i < vc7->chip_info->num_outputs; i++) {
+		out_num = vc7_map_index_to_output(vc7->chip_info->model, i);
+
 		/*
 		 * This driver does not support remapping FOD/IOD to banks.
 		 * The device state is read and the driver is setup to match
 		 * the device's existing mapping.
 		 */
-		bank_idx = output_bank_mapping[i];
+		bank_idx = output_bank_mapping[out_num];
 
 		regmap_read(vc7->regmap, VC7_REG_OUT_BANK_CNFG(bank_idx), &val);
 		val &= VC7_REG_OUTPUT_BANK_SRC_MASK;
