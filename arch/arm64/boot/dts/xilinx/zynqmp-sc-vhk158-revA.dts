@@ -82,19 +82,19 @@
 		clocks = <&vc7_2 2>;
 	};
 
-	gtclk2_out6_ddr1: gtclk2-out6 {
+	gtclk2_out6_ddr1: gtclk2-out6-ddr1 {
 		status = "okay";
 		compatible = "xlnx,fclk";
 		clocks = <&vc7_2 3>;
 	};
 
-	gtclk2_out7_ddr2: gtclk2-out7 {
+	gtclk2_out7_ddr2: gtclk2-out7-ddr2 {
 		status = "okay";
 		compatible = "xlnx,fclk";
 		clocks = <&vc7_2 4>;
 	};
 
-	gtclk2_ref_clk: gtclk2-out8 {
+	gtclk2_ref_clk: gtclk2-ref-clk {
 		status = "okay";
 		compatible = "xlnx,fclk";
 		clocks = <&vc7_2 5>;
@@ -312,6 +312,7 @@
 			reg = <5>;
 			vc7_1: clock-generator@9 {
 				compatible = "renesas,rc21008a";
+				clock-output-names = "rc21008a-0";
 				reg = <0x9>;
 				#clock-cells = <1>;
 				clocks = <&vc7_xin>;
@@ -325,6 +326,7 @@
 			reg = <6>;
 			vc7_2: clock-generator@9 {
 				compatible = "renesas,rc21008a";
+				clock-output-names = "rc21008a-1";
 				reg = <0x9>;
 				#clock-cells = <1>;
 				clocks = <&vc7_xin>;
