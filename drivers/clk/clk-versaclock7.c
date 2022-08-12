@@ -1077,7 +1077,7 @@ static int vc7_probe(struct i2c_client *client)
 	struct vc7_driver_data *vc7;
 	struct clk_init_data clk_init;
 	struct vc7_bank_src_map bank_src_map;
-	const char *apll_name;
+	const char *node_name, *apll_name;
 	const char *parent_names[1];
 	unsigned int i, val, bank_idx, out_num;
 	unsigned long apll_rate;
@@ -1103,9 +1103,13 @@ static int vc7_probe(struct i2c_client *client)
 				     "failed to allocate register map\n");
 	}
 
+	if (of_property_read_string(client->dev.of_node, "clock-output-names",
+				    &node_name))
+		node_name = client->dev.of_node->name;
+
 	/* Register APLL */
 	apll_rate = vc7_get_apll_rate(vc7);
-	apll_name = kasprintf(GFP_KERNEL, "%pOFn_apll", client->dev.of_node);
+	apll_name = kasprintf(GFP_KERNEL, "%s_apll", node_name);
 	vc7->clk_apll.clk = clk_register_fixed_rate(&client->dev, apll_name,
 						    __clk_get_name(vc7->pin_xin),
 						    0, apll_rate);
@@ -1118,7 +1122,7 @@ static int vc7_probe(struct i2c_client *client)
 	/* Register FODs */
 	for (i = 0; i < VC7_NUM_FOD; i++) {
 		memset(&clk_init, 0, sizeof(clk_init));
-		clk_init.name = kasprintf(GFP_KERNEL, "%pOFn_fod%d", client->dev.of_node, i);
+		clk_init.name = kasprintf(GFP_KERNEL, "%s_fod%d", node_name, i);
 		clk_init.ops = &vc7_fod_ops;
 		clk_init.parent_names = parent_names;
 		parent_names[0] = __clk_get_name(vc7->clk_apll.clk);
@@ -1135,7 +1139,7 @@ static int vc7_probe(struct i2c_client *client)
 	/* Register IODs */
 	for (i = 0; i < VC7_NUM_IOD; i++) {
 		memset(&clk_init, 0, sizeof(clk_init));
-		clk_init.name = kasprintf(GFP_KERNEL, "%pOFn_iod%d", client->dev.of_node, i);
+		clk_init.name = kasprintf(GFP_KERNEL, "%s_iod%d", node_name, i);
 		clk_init.ops = &vc7_iod_ops;
 		clk_init.parent_names = parent_names;
 		parent_names[0] = __clk_get_name(vc7->clk_apll.clk);
@@ -1181,8 +1185,7 @@ static int vc7_probe(struct i2c_client *client)
 		}
 
 		memset(&clk_init, 0, sizeof(clk_init));
-		clk_init.name = kasprintf(GFP_KERNEL, "%pOFn_out%d",
-					  client->dev.of_node, i);
+		clk_init.name = kasprintf(GFP_KERNEL, "%s_out%d", node_name, i);
 		clk_init.ops = &vc7_clk_out_ops;
 		clk_init.flags = CLK_SET_RATE_PARENT;
 		clk_init.parent_names = parent_names;
