@@ -125,18 +125,18 @@ static int zynqmp_rsa_xcrypt(struct skcipher_request *req, unsigned int flags)
 	}
 	memcpy(kbuf + nbytes, op->key, op->keylen);
 
-	if (nbytes != XSECURE_RSA_512_KEY_SIZE ||
-	    nbytes != XSECURE_RSA_576_KEY_SIZE ||
-	    nbytes != XSECURE_RSA_704_KEY_SIZE ||
-	    nbytes != XSECURE_RSA_768_KEY_SIZE ||
-	    nbytes != XSECURE_RSA_992_KEY_SIZE ||
-	    nbytes != XSECURE_RSA_1024_KEY_SIZE ||
-	    nbytes != XSECURE_RSA_1152_KEY_SIZE ||
-	    nbytes != XSECURE_RSA_1408_KEY_SIZE ||
-	    nbytes != XSECURE_RSA_1536_KEY_SIZE ||
-	    nbytes != XSECURE_RSA_1984_KEY_SIZE ||
-	    nbytes != XSECURE_RSA_2048_KEY_SIZE ||
-	    nbytes != XSECURE_RSA_3072_KEY_SIZE ||
+	if (nbytes != XSECURE_RSA_512_KEY_SIZE &&
+	    nbytes != XSECURE_RSA_576_KEY_SIZE &&
+	    nbytes != XSECURE_RSA_704_KEY_SIZE &&
+	    nbytes != XSECURE_RSA_768_KEY_SIZE &&
+	    nbytes != XSECURE_RSA_992_KEY_SIZE &&
+	    nbytes != XSECURE_RSA_1024_KEY_SIZE &&
+	    nbytes != XSECURE_RSA_1152_KEY_SIZE &&
+	    nbytes != XSECURE_RSA_1408_KEY_SIZE &&
+	    nbytes != XSECURE_RSA_1536_KEY_SIZE &&
+	    nbytes != XSECURE_RSA_1984_KEY_SIZE &&
+	    nbytes != XSECURE_RSA_2048_KEY_SIZE &&
+	    nbytes != XSECURE_RSA_3072_KEY_SIZE &&
 	    nbytes != XSECURE_RSA_4096_KEY_SIZE) {
 		return -EOPNOTSUPP;
 	}
