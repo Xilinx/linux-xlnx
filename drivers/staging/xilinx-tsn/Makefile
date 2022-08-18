@@ -3,7 +3,7 @@
 # Makefile for the Xilinx network device drivers.
 #
 
-xilinx_emac_tsn-objs := xilinx_axienet_main_tsn.o xilinx_axienet_mcdma_tsn.o
+xilinx_emac_tsn-objs := xilinx_axienet_main_tsn.o xilinx_axienet_mcdma_tsn.o xilinx_axienet_mdio_tsn.o
 obj-$(CONFIG_XILINX_TSN) += xilinx_tsn_ep.o xilinx_tsn_ep_ex.o xilinx_tsn_ip.o xilinx_emac_tsn.o
 obj-$(CONFIG_XILINX_TSN_PTP) += xilinx_tsn_ptp_xmit.o xilinx_tsn_ptp_clock.o
 obj-$(CONFIG_XILINX_TSN_QBV) += xilinx_tsn_shaper.o
