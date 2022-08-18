@@ -16,6 +16,7 @@ config AXIENET_HAS_TADMA
 
 config XILINX_TSN
 	bool "Enable Xilinx's TSN IP"
+	select PHYLIB
 	help
 	  Enable Xilinx's TSN IP.
 
