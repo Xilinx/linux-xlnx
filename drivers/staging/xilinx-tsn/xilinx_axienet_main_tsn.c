@@ -1930,7 +1930,7 @@ static int axienet_probe(struct platform_device *pdev)
 
 	lp->phy_node = of_parse_phandle(pdev->dev.of_node, "phy-handle", 0);
 	if (lp->phy_node) {
-		ret = axienet_mdio_setup(lp);
+		ret = axienet_mdio_setup_tsn(lp);
 		if (ret)
 			dev_warn(&pdev->dev,
 				 "error registering MDIO bus: %d\n", ret);
@@ -1946,7 +1946,7 @@ static int axienet_probe(struct platform_device *pdev)
 	ret = register_netdev(lp->ndev);
 	if (ret) {
 		dev_err(lp->dev, "register_netdev() error (%i)\n", ret);
-		axienet_mdio_teardown(lp);
+		axienet_mdio_teardown_tsn(lp);
 		goto cleanup_clk;
 	}
 
@@ -1981,7 +1981,7 @@ static int axienet_remove(struct platform_device *pdev)
 	axienet_clk_disable(pdev);
 
 	if (lp->mii_bus)
-		axienet_mdio_teardown(lp);
+		axienet_mdio_teardown_tsn(lp);
 
 	clk_bulk_disable_unprepare(XAE_NUM_MISC_CLOCKS, lp->misc_clks);
 	clk_disable_unprepare(lp->axi_clk);
