@@ -1220,10 +1220,10 @@ static inline void axienet_qbv_iow(struct axienet_local *lp, off_t offset,
 #endif
 
 /* Function prototypes visible in xilinx_axienet_mdio.c for other files */
-int axienet_mdio_enable(struct axienet_local *lp);
-void axienet_mdio_disable(struct axienet_local *lp);
-int axienet_mdio_setup(struct axienet_local *lp);
-void axienet_mdio_teardown(struct axienet_local *lp);
+int axienet_mdio_enable_tsn(struct axienet_local *lp);
+void axienet_mdio_disable_tsn(struct axienet_local *lp);
+int axienet_mdio_setup_tsn(struct axienet_local *lp);
+void axienet_mdio_teardown_tsn(struct axienet_local *lp);
 void axienet_adjust_link_tsn(struct net_device *ndev);
 int axienet_tsn_open(struct net_device *ndev);
 int axienet_tsn_stop(struct net_device *ndev);
@@ -1263,7 +1263,7 @@ int axienet_qbu_sts(struct net_device *ndev, void __user *useraddr);
 #endif
 #endif
 
-int axienet_mdio_wait_until_ready(struct axienet_local *lp);
+int axienet_mdio_wait_until_ready_tsn(struct axienet_local *lp);
 void __maybe_unused axienet_bd_free(struct net_device *ndev,
 				    struct axienet_dma_q *q);
 
