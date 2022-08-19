@@ -465,6 +465,7 @@
 			reg = <4>;
 			vc7_1: clock-generator@9 {
 				compatible = "renesas,rc21008a";
+				clock-output-names = "rc21008a-0";
 				reg = <0x9>;
 				#clock-cells = <1>;
 				clocks = <&vc7_xin>;
@@ -479,6 +480,7 @@
 			reg = <5>;
 			vc7_2: clock-generator@9 {
 				compatible = "renesas,rc21008a";
+				clock-output-names = "rc21008a-1";
 				reg = <0x9>;
 				#clock-cells = <1>;
 				clocks = <&vc7_xin>;
