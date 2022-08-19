@@ -212,7 +212,7 @@ static const struct aie_single_reg_field aieml_col_clkbuf = {
 
 static const struct aie_dma_attr aieml_shimdma = {
 	.laddr = {
-		.mask = 0xfffffffcU,
+		.mask = 0xffffffffU,
 		.regoff = 0x4U,
 	},
 	.haddr = {
