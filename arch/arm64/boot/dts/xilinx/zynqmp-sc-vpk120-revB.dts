@@ -57,7 +57,7 @@
 		reg = <0x20>;
 		gpio-controller; /* interrupt not connected */
 		#gpio-cells = <2>;
-		gpio-line-names = "", "", "QSFPDD1_MODSELL", "QSFPDD1_MODSELL", /* 0 - 3 */
+		gpio-line-names = "", "", "QSFPDD1_MODSELL", "QSFPDD2_MODSELL", /* 0 - 3 */
 				"PMBUS2_INA226_ALERT", "", "", "", /* 4 - 7 */
 				"FMCP1_FMC_PRSNT_M2C_B", "", "FMCP1_FMCP_PRSNT_M2C_B", "", /* 10 - 13 */
 				"VCCINT_VRHOT_B", "8A34001_EXP_RST_B", "PMBUS_ALERT", "PMBUS1_INA226_ALERT"; /* 14 - 17 */
