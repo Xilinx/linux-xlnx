@@ -26,6 +26,7 @@ properties:
     enum:
       - xlnx,xps-timebase-wdt-1.01.a
       - xlnx,xps-timebase-wdt-1.00.a
+      - xlnx,versal-wwdt-1.0
 
   reg:
     maxItems: 1
