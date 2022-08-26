@@ -407,7 +407,9 @@ static int write_sr_modify_protection(struct spi_nor *nor, u8 status,
 		if (lock_bits > 7)
 			bp_mask |= SR_BP3_BIT5;
 	/* ISSI */
-	} else if (nor->jedec_id == CFI_MFR_PMC) {
+	/* Macronix */
+	} else if (nor->jedec_id == CFI_MFR_PMC ||
+		   nor->jedec_id == CFI_MFR_MACRONIX) {
 		status_new &= ~SR_BP3_BIT5;
 
 		if (lock_bits > 7)
@@ -441,7 +443,8 @@ static u8 bp_bits_from_sr(struct spi_nor *nor, u8 status)
 	else if ((nor->jedec_id == CFI_MFR_WINBND) &&
 		 (nor->flags & SNOR_F_HAS_4BIT_BP))
 		ret |= ((status & SR_BP3_BIT5) >> SR_BP_BIT_OFFSET);
-	else if (nor->jedec_id == CFI_MFR_PMC)	/* ISSI */
+	else if (nor->jedec_id == CFI_MFR_PMC ||	/* ISSI */
+		 nor->jedec_id == CFI_MFR_MACRONIX)	/* Macronix */
 		ret |= ((status & SR_BP3_BIT5) >> SR_BP_BIT_OFFSET);
 
 	return ret;
@@ -458,7 +461,8 @@ static inline u16 min_lockable_sectors(struct spi_nor *nor,
 	 */
 	lock_granularity = max(1, n_sectors / M25P_MAX_LOCKABLE_SECTORS);
 	if (nor->jedec_id == CFI_MFR_ST ||	/* Micron */
-	    nor->jedec_id == CFI_MFR_PMC)	/* ISSI */
+	    nor->jedec_id == CFI_MFR_PMC ||	/* ISSI */
+	    nor->jedec_id == CFI_MFR_MACRONIX)	/* Macronix */
 		lock_granularity = 1;
 
 	return lock_granularity;
@@ -501,7 +505,8 @@ static u8 min_protected_area_including_offset(struct spi_nor *nor,
 	 */
 	lockbits_limit = 7;
 	if (nor->jedec_id == CFI_MFR_ST ||	/* Micron */
-	    nor->jedec_id == CFI_MFR_PMC)	/* ISSI */
+	    nor->jedec_id == CFI_MFR_PMC ||	/* ISSI */
+	    nor->jedec_id == CFI_MFR_MACRONIX)	/* Macronix */
 		lockbits_limit = 15;
 
 	for (lock_bits = 1; lock_bits < lockbits_limit; lock_bits++) {
