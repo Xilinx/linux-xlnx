@@ -325,6 +325,10 @@ struct cqspi_driver_platdata {
 #define CQSPI_CS_LOWER			0
 #define CQSPI_CS_UPPER			1
 
+static unsigned int read_timeout_ms = CQSPI_READ_TIMEOUT_MS;
+module_param(read_timeout_ms, uint, 0644);
+MODULE_PARM_DESC(read_timeout_ms, "Read transfer timeout in msec");
+
 static int cqspi_wait_for_bit(void __iomem *reg, const u32 mask, bool clr)
 {
 	u32 val;
@@ -1138,7 +1142,7 @@ static int cqspi_indirect_read_execute(struct cqspi_flash_pdata *f_pdata,
 
 	while (remaining > 0) {
 		if (!wait_for_completion_timeout(&cqspi->transfer_complete,
-						 msecs_to_jiffies(CQSPI_READ_TIMEOUT_MS)))
+						 msecs_to_jiffies(read_timeout_ms)))
 			ret = -ETIMEDOUT;
 
 		if (req_bytes > (threshold_val + cqspi->fifo_width))
@@ -1400,7 +1404,7 @@ static int cqspi_versal_indirect_read_dma(struct cqspi_flash_pdata *f_pdata,
 	reinit_completion(&cqspi->transfer_complete);
 
 	if (!wait_for_completion_timeout(&cqspi->transfer_complete,
-					 msecs_to_jiffies(CQSPI_READ_TIMEOUT_MS))) {
+					 msecs_to_jiffies(read_timeout_ms))) {
 		ret = -ETIMEDOUT;
 		goto failrd;
 	}
