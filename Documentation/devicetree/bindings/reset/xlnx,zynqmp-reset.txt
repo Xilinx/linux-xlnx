@@ -12,6 +12,7 @@ controller binding usage.
 Required Properties:
 - compatible:	"xlnx,zynqmp-reset" for Zynq UltraScale+ MPSoC platform
 		"xlnx,versal-reset" for Versal platform
+		"xlnx,versal-net-reset" for Versal NET platform
 - #reset-cells:	Specifies the number of cells needed to encode reset
 		line, should be 1
 
