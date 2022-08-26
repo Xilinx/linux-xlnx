@@ -2830,10 +2830,13 @@ static int zynqmp_firmware_probe(struct platform_device *pdev)
 	np = of_find_compatible_node(NULL, NULL, "xlnx,zynqmp");
 	if (!np) {
 		np = of_find_compatible_node(NULL, NULL, "xlnx,versal");
-		if (!np)
-			return 0;
-
-		feature_check_enabled = true;
+		if (np) {
+			feature_check_enabled = true;
+		} else {
+			np = of_find_compatible_node(NULL, NULL, "xlnx,versal-net");
+			if (!np)
+				return 0;
+		}
 	}
 
 	if (!feature_check_enabled) {
@@ -2942,6 +2945,7 @@ static int zynqmp_firmware_remove(struct platform_device *pdev)
 static const struct of_device_id zynqmp_firmware_of_match[] = {
 	{.compatible = "xlnx,zynqmp-firmware"},
 	{.compatible = "xlnx,versal-firmware"},
+	{.compatible = "xlnx,versal-net-firmware"},
 	{},
 };
 MODULE_DEVICE_TABLE(of, zynqmp_firmware_of_match);
