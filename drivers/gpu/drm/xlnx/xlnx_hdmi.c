@@ -319,6 +319,7 @@
 
 #define HDMI_TX_MAX_FRL_RATE	6
 #define HDMI_TX_SCDC_MASK	0xFF
+#define HDMI_TX_DEF_TMDS_CLK	148500000
 
 /**
  * enum hdmi_state - Stream state
@@ -2062,11 +2063,17 @@ static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 				}
 			}
 
-			phy_cfg.hdmi.config_hdmi20 = 1;
+			hdmi->tmds_clk = HDMI_TX_DEF_TMDS_CLK;
+			xlnx_hdmi_stream_start(hdmi);
+			phy_cfg.hdmi.tx_params = 1;
+			phy_cfg.hdmi.ppc = hdmi->config.ppc;
+			phy_cfg.hdmi.bpc = hdmi->config.bpc;
+			phy_cfg.hdmi.fmt = HDMI_TX_CSF_RGB;
+			phy_cfg.hdmi.tx_tmdsclk = hdmi->tmds_clk;
 			for (i = 0; i < HDMI_MAX_LANES; i++) {
 				ret = phy_configure(hdmi->phy[i], &phy_cfg);
 				if (ret) {
-					dev_err(hdmi->dev, "phy_cfg: hdmi20 err\n");
+					dev_err(hdmi->dev, "phy_cfg: txparams error %d\n", ret);
 					return;
 				}
 			}
@@ -2076,7 +2083,16 @@ static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 			for (i = 0; i < HDMI_MAX_LANES; i++) {
 				ret = phy_configure(hdmi->phy[i], &phy_cfg);
 				if (ret) {
-					dev_err(hdmi->dev, "phy_cfg:obuftds_en err\n");
+					dev_err(hdmi->dev, "phy_cfg: obuftds_en err\n");
+					return;
+				}
+			}
+
+			phy_cfg.hdmi.config_hdmi20 = 1;
+			for (i = 0; i < HDMI_MAX_LANES; i++) {
+				ret = phy_configure(hdmi->phy[i], &phy_cfg);
+				if (ret) {
+					dev_err(hdmi->dev, "phy_cfg: hdmi20 err\n");
 					return;
 				}
 			}
