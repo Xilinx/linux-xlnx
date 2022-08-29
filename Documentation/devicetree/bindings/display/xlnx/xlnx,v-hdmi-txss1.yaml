@@ -19,6 +19,7 @@ properties:
     items:
       - enum:
           - xlnx,v-hdmi-txss1-1.1
+          - xlnx,v-hdmi-txss1-1.2
 
   reg:
     maxItems: 1
