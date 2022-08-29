@@ -440,12 +440,14 @@ struct xlnx_hdmi_frl_config {
  * @ppc: Pixels per component
  * @vid_interface: AXI_stream or Native interface
  * @max_frl_rate: maximum frl rate supported by hardware
+ * @htiming_div_fact: factor used in calculating htimings
  */
 struct xlnx_hdmi_config {
 	enum color_depths bpc;
 	enum config_ppc ppc;
 	enum vid_interface vid_interface;
 	u8 max_frl_rate;
+	u8 htiming_div_fact;
 };
 
 /**
@@ -810,10 +812,13 @@ static void xlnx_hdmi_vtc_set_timing(struct xlnx_hdmi *hdmi,
 	reg = xlnx_hdmi_vtc_readl(hdmi, HDMI_TX_VTC_CTL);
 	xlnx_hdmi_vtc_writel(hdmi, HDMI_TX_VTC_CTL, reg | HDMI_TX_VTC_CTL_RU);
 
-	hactive = mode->hdisplay / hdmi->config.ppc;
-	hfront_porch = (mode->hsync_start - mode->hdisplay) / hdmi->config.ppc;
-	hback_porch = (mode->htotal - mode->hsync_end) / hdmi->config.ppc;
-	hsync_len = (mode->hsync_end - mode->hsync_start) / hdmi->config.ppc;
+	hactive = mode->hdisplay / hdmi->config.htiming_div_fact;
+	hfront_porch = (mode->hsync_start - mode->hdisplay) /
+		hdmi->config.htiming_div_fact;
+	hback_porch = (mode->htotal - mode->hsync_end) /
+		hdmi->config.htiming_div_fact;
+	hsync_len = (mode->hsync_end - mode->hsync_start) /
+		hdmi->config.htiming_div_fact;
 	htotal = hactive + hfront_porch + hsync_len + hback_porch;
 	hsync_start = hactive + hfront_porch;
 	hbackporch_start = hsync_start + hsync_len;
@@ -2932,6 +2937,15 @@ static int xlnx_hdmi_parse_of(struct xlnx_hdmi *hdmi)
 	}
 	config->max_frl_rate = frl_rate;
 
+	if (of_device_is_compatible(node, "xlnx,v-hdmi-txss1-1.1")) {
+		config->htiming_div_fact = config->ppc;
+	} else {
+		/* VTC core updated to support arbitrary resolutions */
+		config->htiming_div_fact = 1;
+		/* Remapper in subsystem will generate 4 ppc */
+		config->ppc = HDMI_TX_PPC_4;
+	}
+
 	return 0;
 }
 
@@ -3048,6 +3062,7 @@ static int xlnx_hdmi_remove(struct platform_device *pdev)
 
 static const struct of_device_id xlnx_hdmi_of_match[] = {
 	{ .compatible = "xlnx,v-hdmi-txss1-1.1" },
+	{ .compatible = "xlnx,v-hdmi-txss1-1.2" },
 	{ /* end of table */ },
 };
 
