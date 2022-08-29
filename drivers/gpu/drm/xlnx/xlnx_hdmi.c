@@ -845,8 +845,8 @@ static void xlnx_hdmi_vtc_set_timing(struct xlnx_hdmi *hdmi,
 		HDMI_TX_VTC_GHSYNC_END_MASK;
 	xlnx_hdmi_vtc_writel(hdmi, HDMI_TX_VTC_GHSYNC, reg);
 
-	reg = vsync_start & HDMI_TX_VTC_F0_VSYNC_VSTART_MASK;
-	reg |= (vbackporch_start << HDMI_TX_VTC_FIELD1_VSIZE_SHIFT) &
+	reg = (vsync_start - 1) & HDMI_TX_VTC_F0_VSYNC_VSTART_MASK;
+	reg |= ((vbackporch_start - 1) << HDMI_TX_VTC_FIELD1_VSIZE_SHIFT) &
 		HDMI_TX_VTC_F0_VSYNC_VEND_MASK;
 	xlnx_hdmi_vtc_writel(hdmi, HDMI_TX_VTC_GVSYNC, reg);
 	xlnx_hdmi_clr(hdmi, HDMI_TX_VTC_BASE + HDMI_TX_VTC_GFENC,
