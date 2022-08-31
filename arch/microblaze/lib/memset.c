@@ -74,7 +74,7 @@ void *memset(void *v_src, int c, __kernel_size_t n)
 	}
 
 	/* Simple, byte oriented memset or the rest of count. */
-	switch(n) {
+	switch (n) {
 	case 3:
 		*src++ = c;
 		fallthrough;
