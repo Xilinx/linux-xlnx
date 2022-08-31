@@ -543,7 +543,7 @@ static SIMPLE_DEV_PM_OPS(clk_wzrd_dev_pm_ops, clk_wzrd_suspend,
 
 static int clk_wzrd_probe(struct platform_device *pdev)
 {
-	int i, ret;
+	int i = 0, ret;
 	u32 regl, regh, edge, mult;
 	u32 regld, reghd, edged, div;
 	unsigned long rate;
