@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- *  Copyright (C) 2019 - 2021 Xilinx, Inc.
+ *  Copyright (C) 2019 - 2022 Xilinx, Inc.
  */
 
 #ifndef _DT_BINDINGS_VERSAL_POWER_H
@@ -48,7 +48,6 @@
 #define PM_DEV_ADMA_5				(0x1822403aU)
 #define PM_DEV_ADMA_6				(0x1822403bU)
 #define PM_DEV_ADMA_7				(0x1822403cU)
-#define PM_DEV_AMS_ROOT				(0x18224055U)
 #define PM_DEV_AI				(0x18224072U)
 
 #endif

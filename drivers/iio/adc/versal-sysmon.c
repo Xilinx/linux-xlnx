@@ -11,7 +11,7 @@
  */
 
 #include <linux/bits.h>
-#include <dt-bindings/power/xlnx-versal-power.h>
+#include <dt-bindings/power/xlnx-versal-regnode.h>
 #include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/moduleparam.h>
 #include "versal-sysmon.h"
@@ -104,12 +104,12 @@ static struct sysmon_ops direct_access = {
 
 static inline void sysmon_secure_read_reg(struct sysmon *sysmon, u32 offset, u32 *data)
 {
-	zynqmp_pm_sec_read_reg(PM_DEV_AMS_ROOT, offset, data);
+	zynqmp_pm_sec_read_reg(sysmon->pm_info, offset, data);
 }
 
 static inline void sysmon_secure_write_reg(struct sysmon *sysmon, u32 offset, u32 data)
 {
-	zynqmp_pm_sec_mask_write_reg(PM_DEV_AMS_ROOT, offset, GENMASK(31, 0), data);
+	zynqmp_pm_sec_mask_write_reg(sysmon->pm_info, offset, GENMASK(31, 0), data);
 }
 
 static inline void sysmon_secure_update_reg(struct sysmon *sysmon, u32 offset,
@@ -117,8 +117,8 @@ static inline void sysmon_secure_update_reg(struct sysmon *sysmon, u32 offset,
 {
 	u32 val;
 
-	zynqmp_pm_sec_read_reg(PM_DEV_AMS_ROOT, offset, &val);
-	zynqmp_pm_sec_mask_write_reg(PM_DEV_AMS_ROOT, offset, GENMASK(31, 0),
+	zynqmp_pm_sec_read_reg(sysmon->pm_info, offset, &val);
+	zynqmp_pm_sec_mask_write_reg(sysmon->pm_info, offset, GENMASK(31, 0),
 				     (val & ~mask) | (mask & data));
 }
 
@@ -1051,6 +1051,13 @@ static int sysmon_probe(struct platform_device *pdev)
 		return PTR_ERR(sysmon->base);
 
 	if (secure_mode) {
+		ret = of_property_read_u32(pdev->dev.of_node,
+					   "xlnx,nodeid", &sysmon->pm_info);
+		if (ret < 0) {
+			dev_err(&pdev->dev, "Failed to read SLR node id\n");
+			return ret;
+		}
+
 		ret = zynqmp_pm_feature(PM_IOCTL);
 		if (ret < 0) {
 			dev_err(&pdev->dev, "Feature check failed with %d\n", ret);
