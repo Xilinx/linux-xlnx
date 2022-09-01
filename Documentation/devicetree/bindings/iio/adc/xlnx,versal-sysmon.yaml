@@ -50,6 +50,12 @@ properties:
       Possible values 0 - 160. Based on this value, child supply nodes will
       be created
 
+  xlnx,nodeid:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    maxItems: 1
+    description: |
+      PLM specified sysmon node id.
+
 patternProperties:
   "^supply@([0-9]{1,2}|1[0-5][0-9])$":
     type: object
@@ -87,6 +93,7 @@ additionalProperties: false
 
 examples:
   - |
+    #include <dt-bindings/power/xlnx-versal-regnode.h>
     bus {
         #address-cells = <2>;
         #size-cells = <2>;
@@ -96,6 +103,7 @@ examples:
             reg = <0 0xf1270000 0 0x4000>;
             interrupts = <0 0x90 0x4>;
             xlnx,numchannels = /bits/8 <8>;
+            xlnx,nodeid = <PM_REGNODE_SYSMON_ROOT_0>;
             #address-cells = <1>;
             #size-cells = <0>;
             supply@0 {
