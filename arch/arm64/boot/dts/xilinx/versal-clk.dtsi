@@ -2,12 +2,13 @@
 /*
  * dts file for Xilinx Versal with PM
  *
- * (C) Copyright 2017 - 2021, Xilinx, Inc.
+ * (C) Copyright 2017 - 2022, Xilinx, Inc.
  *
  * Michal Simek <michal.simek@xilinx.com>
  */
 
 #include <dt-bindings/power/xlnx-versal-power.h>
+#include <dt-bindings/power/xlnx-versal-regnode.h>
 #include <dt-bindings/clock/xlnx-versal-clk.h>
 #include <dt-bindings/reset/xlnx-versal-resets.h>
 
@@ -320,4 +321,20 @@
 &watchdog {
 	clocks = <&versal_clk LPD_LSBUS>;
 	power-domains = <&versal_firmware PM_DEV_SWDT_FPD>;
+};
+
+&sysmon0 {
+	xlnx,nodeid = <PM_REGNODE_SYSMON_ROOT_0>;
+};
+
+&sysmon1 {
+	xlnx,nodeid = <PM_REGNODE_SYSMON_ROOT_1>;
+};
+
+&sysmon2 {
+	xlnx,nodeid = <PM_REGNODE_SYSMON_ROOT_2>;
+};
+
+&sysmon3 {
+	xlnx,nodeid = <PM_REGNODE_SYSMON_ROOT_3>;
 };
