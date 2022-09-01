@@ -2,7 +2,7 @@
 /*
  * Xilinx SYSMON for Versal
  *
- * Copyright (C) 2019 - 2021 Xilinx, Inc.
+ * Copyright (C) 2019 - 2022 Xilinx, Inc.
  *
  * Description:
  * This driver is developed for SYSMON on Versal. The driver supports INDIO Mode
@@ -167,6 +167,7 @@ struct sysmon {
 	struct delayed_work sysmon_unmask_work;
 	struct delayed_work sysmon_events_work;
 	struct sysmon_ops *ops;
+	u32 pm_info;
 };
 
 struct sysmon_ops {
