@@ -14,6 +14,7 @@ obj-$(CONFIG_VIDEO_XILINX_CSI2RXSS) += xilinx-csi2rxss.o
 obj-$(CONFIG_VIDEO_XILINX_DEMOSAIC) += xilinx-demosaic.o
 obj-$(CONFIG_VIDEO_XILINX_DPRXSS) += xilinx-dprxss.o
 obj-$(CONFIG_VIDEO_XILINX_GAMMA) += xilinx-gamma.o
+obj-$(CONFIG_VIDEO_XILINX_HDCP1X_RX) += xilinx-hdcp1x-rx.o
 obj-$(CONFIG_VIDEO_XILINX_HDMI21RXSS) += xilinx-hdmirxss.o
 obj-$(CONFIG_VIDEO_XILINX_HLS) += xilinx-hls.o
 obj-$(CONFIG_VIDEO_XILINX_M2M) += xilinx-m2m.o
