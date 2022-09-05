@@ -161,6 +161,7 @@ config VIDEO_XILINX_VTC
 config VIDEO_XILINX_DPRXSS
 	tristate "Xilinx DP Rx Subsystem"
 	depends on VIDEO_XILINX
+	select VIDEO_XILINX_HDCP1X_RX
 	help
 	  Driver for Xilinx DisplayPort Rx Subsystem. This is a V4L sub-device
 	  based driver for the DisplayPort receiver subsystem IP. It captures

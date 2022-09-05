@@ -11,6 +11,7 @@
 #include <linux/clk.h>
 #include <linux/device.h>
 #include <linux/interrupt.h>
+#include <linux/mfd/syscon.h>
 #include <linux/module.h>
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
@@ -21,6 +22,7 @@
 #include <linux/types.h>
 #include <linux/v4l2-dv-timings.h>
 #include <linux/v4l2-subdev.h>
+#include <linux/xilinx-dprxss.h>
 
 #include <drm/drm_dp_helper.h>
 #include <dt-bindings/media/xilinx-vip.h>
@@ -33,6 +35,7 @@
 
 #include <sound/soc.h>
 
+#include "xilinx-hdcp1x-rx.h"
 #include "xilinx-vip.h"
 
 #define XV_AES_ENABLE			0x8
@@ -68,6 +71,18 @@
 #define XDPRX_INTR_TP1_MASK		BIT(16)
 #define XDPRX_INTR_TP2_MASK		BIT(17)
 #define XDPRX_INTR_TP3_MASK		BIT(18)
+#define XDPRX_INTR_HDCP1X_DBG_WRITE_MASK	BIT(19)
+#define XDPRX_INTR_HDCP1X_AKSV_WRITE_MASK	BIT(20)
+#define XDPRX_INTR_HDCP1X_AN_WRITE_MASK		BIT(21)
+#define XDPRX_INTR_HDCP1X_AINFO_WRITE_MASK	BIT(22)
+#define XDPRX_INTR_HDCP1X_RO_READ_MASK		BIT(23)
+#define XDPRX_INTR_HDCP1X_BINFO_READ_MASK	BIT(24)
+#define XDPRX_INTR_HDCP1X_MASK_ALL	(XDPRX_INTR_HDCP1X_DBG_WRITE_MASK | \
+					 XDPRX_INTR_HDCP1X_AKSV_WRITE_MASK | \
+					 XDPRX_INTR_HDCP1X_AN_WRITE_MASK | \
+					 XDPRX_INTR_HDCP1X_AINFO_WRITE_MASK | \
+					 XDPRX_INTR_HDCP1X_RO_READ_MASK | \
+					 XDPRX_INTR_HDCP1X_BINFO_READ_MASK)
 #define XDPRX_INTR_LINKQUAL_MASK	BIT(29)
 #define XDPRX_INTR_UNPLUG_MASK		BIT(31)
 #define XDPRX_INTR_CRCTST_MASK		BIT(30)
@@ -294,6 +309,40 @@
 #define MMCM_M_VAL_HIGHTIME_DIVIDER	2
 #define MMCM_MDO_VAL_HIGHTIME_SHIFT	8
 
+#define XDPRX_HDCP1X_REG_OFFSET			0x4000
+#define BYTES_PER_RDWR				4
+#define ALIGN_FOR_RDWR				0x3
+
+#define XDPRX_DPCD_HDCP1X_PORT_REG_LENGTH	0x100
+#define XDPRX_DPCD_HDCP1X_PORT_OFST		0x900
+#define XDPRX_DPCD_HDCP1X_PORT_KSVFIFO		0x02c
+
+#define HDCP1X_KEYMGMT_REG_VERSION		0x0000
+#define HDCP1X_KEYMGMT_REG_TYPE			0x0004
+#define HDCP1X_KEYMGMT_REG_SCRATCH		0x0008
+#define HDCP1X_KEYMGMT_REG_CTRL			0x000C
+#define HDCP1X_KEYMGMT_REG_STATUS		0x0010
+#define HDCP1X_KEYMGMT_REG_TBL_CTRL		0x0020
+#define HDCP1X_KEYMGMT_REG_TBL_STATUS		0x0024
+#define HDCP1X_KEYMGMT_REG_TBL_ADDR		0x0028
+#define HDCP1X_KEYMGMT_REG_TBL_DAT_H		0x002C
+#define HDCP1X_KEYMGMT_REG_TBL_DAT_L		0x0030
+#define HDCP1X_KEYMGMT_REG_MAX			0x0040
+
+#define HDCP1X_KEYMGMT_REG_CTRL_RST_MASK	BIT(31)
+#define HDCP1X_KEYMGMT_REG_CTRL_DISABLE_MASK	GENMASK(31, 1)
+#define HDCP1X_KEYMGMT_REG_CTRL_ENABLE_MASK	BIT(0)
+#define HDCP1X_KEYMGMT_REG_TBL_STATUS_RETRY	0x400
+#define HDCP1X_KEYMGMT_TBLID_0			0
+#define HDCP1X_KEYS_SIZE			336
+#define HDCP1X_KEYMGMT_REG_TBL_CTRL_WR_MASK	BIT(0)
+#define HDCP1X_KEYMGMT_REG_TBL_CTRL_RD_MASK	BIT(1)
+#define HDCP1X_KEYMGMT_REG_TBL_CTRL_EN_MASK	BIT(31)
+#define HDCP1X_KEYMGMT_REG_TBL_STATUS_DONE_MASK	BIT(0)
+#define HDCP1X_KEYMGMT_MAX_TBLS			8
+#define HDCP1X_KEYMGMT_MAX_ROWS_PER_TBL		41
+#define XDPRX_LINK_ENABLE_DELAY_MS		20
+
 #define xdprxss_generate_hpd_intr(state, duration) \
 		xdprxss_write(state, XDPRX_HPD_INTR_REG, \
 			      FIELD_PREP(XDPRX_HPD_PULSE_MASK, duration) |\
@@ -324,6 +373,10 @@
 		xdprxss_set(state, XDPRX_INTR_MASK_1_REG, XDPRX_INTR_ALL_MASK_1)
 #define xdprxss_enable_audio_intr(state) \
 		xdprxss_clr(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_AUDIO_MASK)
+#define xdprxss_enable_hdcp1x_interrupts(state) \
+		xdprxss_clr(state, XDPRX_INTR_MASK_REG, \
+				XDPRX_INTR_HDCP1X_MASK_ALL)
+#define ntohll(x) be64_to_cpu(x)
 
 union xdprxss_iframe_header {
 	u32 data;
@@ -391,7 +444,10 @@ struct vidphy_cfg {
  * @rx_dec_clk: DP Rx Decode clock
  * @dp_base: Base address of DP Rx Subsystem
  * @edid_base: Bare Address of EDID block
+ * @hdcp1x_keymgmt_base: regmap of HDCP1X Key Management block
  * @prvdata: Pointer to device private data
+ * @hdcp1x: Pointer to hdcp1x data
+ * @hdcp1x_key: Pointer to hdcp1x key data
  * @retimer_prvdata: Pointer to retimer private data structure
  * @vidphy_prvdata: Pointer to video phy private data structure
  * @tp1_work: training pattern 1 worker
@@ -403,6 +459,7 @@ struct vidphy_cfg {
  * @max_lanecount: Maximux supported lane count
  * @bpc: Bits per component
  * @ce_req_val: Variable for storing channel status
+ * @hdcp1x_key_available: flag to indicate hdcp1x key availability
  * @versal_gt_present: flag to indicate versal-gt property in device tree
  * @hdcp_enable: To indicate hdcp enabled or not
  * @audio_enable: To indicate audio enabled or not
@@ -428,7 +485,10 @@ struct xdprxss_state {
 	struct clk *rx_vid_clk;
 	void __iomem *dp_base;
 	void __iomem *edid_base;
+	struct regmap *hdcp1x_keymgmt_base;
 	void *prvdata;
+	void *hdcp1x;
+	u8 *hdcp1x_key;
 	struct retimer_cfg *retimer_prvdata;
 	struct vidphy_cfg *vidphy_prvdata;
 	struct delayed_work tp1_work;
@@ -441,6 +501,7 @@ struct xdprxss_state {
 	u32 max_lanecount;
 	u32 bpc;
 	u32 ce_req_val;
+	bool hdcp1x_key_available;
 	bool versal_gt_present;
 	bool hdcp_enable;
 	bool audio_enable;
@@ -449,6 +510,11 @@ struct xdprxss_state {
 	unsigned int valid_stream : 1;
 	unsigned int streaming : 1;
 	unsigned int ltstate : 2;
+};
+
+union hdcp1x_key_table {
+	u8 data_u8[HDCP1X_KEYS_SIZE];
+	u64 data_u64[HDCP1X_KEYS_SIZE / (sizeof(u64))];
 };
 
 /*
@@ -581,6 +647,54 @@ to_xdprxssstate(struct v4l2_subdev *subdev)
 }
 
 /* Register related operations */
+static inline void xdprxss_hdcp1x_keymgmt_reset(struct xdprxss_state *state)
+{
+	u32 data;
+
+	if (regmap_read(state->hdcp1x_keymgmt_base,
+			HDCP1X_KEYMGMT_REG_CTRL, &data))
+		return;
+	data |= HDCP1X_KEYMGMT_REG_CTRL_RST_MASK;
+	if (regmap_write(state->hdcp1x_keymgmt_base,
+			 HDCP1X_KEYMGMT_REG_CTRL, data))
+		return;
+	if (regmap_read(state->hdcp1x_keymgmt_base,
+			HDCP1X_KEYMGMT_REG_CTRL, &data))
+		return;
+	data &= ~HDCP1X_KEYMGMT_REG_CTRL_RST_MASK;
+	regmap_write(state->hdcp1x_keymgmt_base, HDCP1X_KEYMGMT_REG_CTRL, data);
+}
+
+static inline void xdprxss_hdcp1x_keymgmt_enable(struct xdprxss_state *state)
+{
+	u32 data;
+
+	if (regmap_read(state->hdcp1x_keymgmt_base,
+			HDCP1X_KEYMGMT_REG_CTRL, &data))
+		return;
+	data |= HDCP1X_KEYMGMT_REG_CTRL_ENABLE_MASK;
+	if (regmap_write(state->hdcp1x_keymgmt_base,
+			 HDCP1X_KEYMGMT_REG_CTRL, data))
+		return;
+
+	if (regmap_read(state->hdcp1x_keymgmt_base,
+			HDCP1X_KEYMGMT_REG_TBL_CTRL, &data))
+		return;
+	data |= HDCP1X_KEYMGMT_REG_TBL_CTRL_EN_MASK;
+	regmap_write(state->hdcp1x_keymgmt_base, HDCP1X_KEYMGMT_REG_TBL_CTRL, data);
+}
+
+static inline void xdprxss_hdcp1x_keymgmt_disable(struct xdprxss_state *state)
+{
+	u32 data;
+
+	if (regmap_read(state->hdcp1x_keymgmt_base,
+			HDCP1X_KEYMGMT_REG_CTRL, &data))
+		return;
+	data &= HDCP1X_KEYMGMT_REG_CTRL_DISABLE_MASK;
+	regmap_write(state->hdcp1x_keymgmt_base, HDCP1X_KEYMGMT_REG_CTRL, data);
+}
+
 static inline u32 xdprxss_mmcm_read(struct xdprxss_state *xdprxss, u32 addr)
 {
 	return ioread32(xdprxss->dp_base + XDPRXSS_MMCM_OFFSET + addr);
@@ -1064,6 +1178,9 @@ static void xdprxss_irq_unplug(struct xdprxss_state *state)
 {
 	dev_dbg(state->dev, "Asserted cable unplug interrupt\n");
 
+	if (state->hdcp_enable)
+		xhdcp1x_rx_disable(state->hdcp1x);
+
 	xdprxss_set(state, XDPRX_SOFT_RST_REG, XDPRX_SOFT_VIDRST_MASK);
 	xdprxss_clr(state, XDPRX_SOFT_RST_REG, XDPRX_SOFT_VIDRST_MASK);
 
@@ -1153,6 +1270,9 @@ static void xdprxss_training_failure(struct xdprxss_state *state)
 {
 	dev_dbg(state->dev, "Traning Lost !!\n");
 	state->valid_stream = false;
+
+	if (state->hdcp_enable)
+		xhdcp1x_rx_disable(state->hdcp1x);
 
 	xdprxss_write(state, XDPRX_HPD_INTR_REG,
 		      FIELD_PREP(XDPRX_HPD_PULSE_MASK, XDPRX_HPD_PULSE_750) |
@@ -1326,6 +1446,7 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 {
 	struct xdprxss_state *state = (struct xdprxss_state *)dev_id;
 	u32 status, status1;
+	u32 lane_count;
 
 	status = xdprxss_read(state, XDPRX_INTR_CAUSE_REG);
 	status &= ~xdprxss_read(state, XDPRX_INTR_MASK_REG);
@@ -1354,10 +1475,17 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 		xdprxss_irq_valid_video(state);
 	if (status & XDPRX_INTR_AUDIO_MASK)
 		xdprxss_irq_audio_detected(state);
-#ifdef DEBUG
-	if (status & XDPRX_INTR_TRDONE_MASK)
+	if (status & XDPRX_INTR_TRDONE_MASK) {
+		lane_count = xdprxss_read(state, XDPRX_LANE_COUNT_REG);
+		if (state->hdcp_enable && state->hdcp1x_key_available)
+			xhdcp1x_rx_enable(state->hdcp1x, lane_count);
 		dev_dbg(state->dev, "DP Link training is done !!\n");
-#endif
+	}
+	if (status & XDPRX_INTR_HDCP1X_AKSV_WRITE_MASK)
+		xhdcp1x_rx_push_events(state->hdcp1x, XHDCP1X_RX_AKSV_RCVD);
+	if (status & XDPRX_INTR_HDCP1X_RO_READ_MASK)
+		xhdcp1x_rx_push_events(state->hdcp1x,
+				       XHDCP1X_RX_RO_PRIME_READ_DONE);
 
 	return IRQ_HANDLED;
 }
@@ -1673,9 +1801,264 @@ static const struct media_entity_operations xdprxss_media_ops = {
 	.link_validate = v4l2_subdev_link_validate
 };
 
+static int xdprxss_hdcp1x_keymgmt_is_table_config_done(struct xdprxss_state *state)
+{
+	int retry = HDCP1X_KEYMGMT_REG_TBL_STATUS_RETRY;
+	u32 data;
+
+	while (retry) {
+		if (regmap_read(state->hdcp1x_keymgmt_base,
+				HDCP1X_KEYMGMT_REG_TBL_STATUS, &data))
+			return 0;
+		if (!(data & HDCP1X_KEYMGMT_REG_TBL_STATUS_DONE_MASK))
+			break;
+		retry--;
+	}
+
+	return retry;
+}
+
+static int xdprxss_hdcp1x_keymgmt_table_read(struct xdprxss_state *state,
+					     u8 table_id, u8 row_id, u64 *read_val)
+{
+	u64 temp;
+	u32 addr, data;
+
+	addr = table_id;
+	addr <<= BITS_PER_BYTE;
+	addr |= row_id;
+
+	if (regmap_read(state->hdcp1x_keymgmt_base,
+			HDCP1X_KEYMGMT_REG_TBL_CTRL, &data))
+		return -EIO;
+	data &= ~HDCP1X_KEYMGMT_REG_TBL_CTRL_WR_MASK;
+	data |= HDCP1X_KEYMGMT_REG_TBL_CTRL_RD_MASK;
+	if (regmap_write(state->hdcp1x_keymgmt_base,
+			 HDCP1X_KEYMGMT_REG_TBL_CTRL, data))
+		return -EIO;
+	if (regmap_write(state->hdcp1x_keymgmt_base,
+			 HDCP1X_KEYMGMT_REG_TBL_ADDR, addr))
+		return -EIO;
+	if (!xdprxss_hdcp1x_keymgmt_is_table_config_done(state))
+		return -EIO;
+
+	if (regmap_read(state->hdcp1x_keymgmt_base,
+			HDCP1X_KEYMGMT_REG_TBL_DAT_H, &data))
+		return -EIO;
+	temp = data;
+	temp <<= BITS_PER_BYTE * sizeof(u32);
+	if (regmap_read(state->hdcp1x_keymgmt_base,
+			HDCP1X_KEYMGMT_REG_TBL_DAT_L, &data))
+		return -EIO;
+	temp |= data;
+	*read_val = temp;
+
+	return 0;
+}
+
+static int xdprxss_hdcp1x_keymgmt_table_write(struct xdprxss_state *state,
+					      u8 table_id, u8 row_id, u64 write_val)
+{
+	u32 addr, data;
+
+	if (regmap_write(state->hdcp1x_keymgmt_base,
+			 HDCP1X_KEYMGMT_REG_TBL_DAT_L,
+			 lower_32_bits(write_val)))
+		return -EIO;
+	if (regmap_write(state->hdcp1x_keymgmt_base,
+			 HDCP1X_KEYMGMT_REG_TBL_DAT_H,
+			 upper_32_bits(write_val)))
+		return -EIO;
+
+	if (regmap_read(state->hdcp1x_keymgmt_base,
+			HDCP1X_KEYMGMT_REG_TBL_CTRL, &data))
+		return -EIO;
+	data &= ~HDCP1X_KEYMGMT_REG_TBL_CTRL_RD_MASK;
+	data |= HDCP1X_KEYMGMT_REG_TBL_CTRL_WR_MASK;
+	if (regmap_write(state->hdcp1x_keymgmt_base,
+			 HDCP1X_KEYMGMT_REG_TBL_CTRL, data))
+		return -EIO;
+
+	addr = table_id;
+	addr <<= BITS_PER_BYTE;
+	addr |= row_id;
+	if (regmap_write(state->hdcp1x_keymgmt_base,
+			 HDCP1X_KEYMGMT_REG_TBL_ADDR, addr))
+		return -EIO;
+	if (!xdprxss_hdcp1x_keymgmt_is_table_config_done(state))
+		return -EIO;
+
+	return 0;
+}
+
+static void xdprxss_hdcp1x_keymgmt_get_num_of_tables_rows(struct xdprxss_state *state,
+							  u8 *num_tables,
+							  u8 *num_rows_per_table)
+{
+	u32 data;
+
+	if (regmap_read(state->hdcp1x_keymgmt_base,
+			HDCP1X_KEYMGMT_REG_TYPE, &data))
+		return;
+
+	if (data) {
+		*num_tables = (data >> 8) & 0xFF;
+		*num_rows_per_table = data & 0xFF;
+	} else {
+		*num_tables = HDCP1X_KEYMGMT_MAX_TBLS;
+		*num_rows_per_table = HDCP1X_KEYMGMT_MAX_ROWS_PER_TBL;
+	}
+}
+
+static int xdprxss_hdcp1x_keymgmt_init_tables(struct xdprxss_state *state)
+{
+	int ret = 0;
+	u8 num_tables, num_rows_per_table, table_id, row_id;
+
+	xdprxss_hdcp1x_keymgmt_get_num_of_tables_rows(state, &num_tables,
+						      &num_rows_per_table);
+	for (table_id = 0; table_id < num_tables; table_id++)
+		for (row_id = 0; row_id < num_rows_per_table; row_id++)
+			if (xdprxss_hdcp1x_keymgmt_table_write(state, table_id,
+							       row_id, 0))
+				return -EIO;
+	return ret;
+}
+
+static int xdprxss_hdcp1x_keymgmt_load_keys(struct xdprxss_state *state,
+					    union hdcp1x_key_table *key_table,
+					    u32 key_table_size)
+{
+	int ret = 0;
+	u8 row_id;
+
+	for (row_id = 0; row_id < (key_table_size / sizeof(u64)); row_id++)
+		if (xdprxss_hdcp1x_keymgmt_table_write(state, HDCP1X_KEYMGMT_TBLID_0,
+						       row_id, key_table->data_u64[row_id]))
+			ret = -EIO;
+
+	return ret;
+}
+
+static int xdprxss_hdcp1x_keymgmt_verify_keys(struct xdprxss_state *state,
+					      union hdcp1x_key_table *key_table,
+					      u32 key_table_size)
+{
+	u64 data;
+	int ret = 0;
+	u8 row_id;
+
+	for (row_id = 0; row_id < (key_table_size / sizeof(u64)); row_id++) {
+		data = 0;
+		xdprxss_hdcp1x_keymgmt_table_read(state, HDCP1X_KEYMGMT_TBLID_0,
+						  row_id, &data);
+		if (data != key_table->data_u64[row_id])
+			ret = -EIO;
+	}
+
+	return ret;
+}
+
+static int xdprxss_hdcp1x_keymgmt_set_key(struct xdprxss_state *state)
+{
+	union hdcp1x_key_table key_table;
+	int ret;
+	u32 version, type;
+	u8 index;
+
+	if (regmap_read(state->hdcp1x_keymgmt_base,
+			HDCP1X_KEYMGMT_REG_VERSION, &version))
+		return -EIO;
+	if (regmap_read(state->hdcp1x_keymgmt_base,
+			HDCP1X_KEYMGMT_REG_TYPE, &type))
+		return -EIO;
+	if (!version && !type) {
+		dev_err(state->dev, "hdcp1x keymgmt core is not present\n");
+		return -ENODEV;
+	}
+
+	xdprxss_hdcp1x_keymgmt_reset(state);
+	ret = xdprxss_hdcp1x_keymgmt_init_tables(state);
+	if (ret)
+		return ret;
+	xdprxss_hdcp1x_keymgmt_disable(state);
+	memcpy(key_table.data_u8, state->hdcp1x_key, HDCP1X_KEYS_SIZE);
+	/* adjust the endian-ness to host order */
+	for (index = 0; index < HDCP1X_KEYS_SIZE / sizeof(u64); index++)
+		key_table.data_u64[index] = ntohll(key_table.data_u64[index]);
+	ret = xdprxss_hdcp1x_keymgmt_load_keys(state, &key_table,
+					       HDCP1X_KEYS_SIZE);
+	if (ret)
+		return ret;
+	ret = xdprxss_hdcp1x_keymgmt_verify_keys(state, &key_table,
+						 HDCP1X_KEYS_SIZE);
+	if (ret)
+		return ret;
+	xdprxss_hdcp1x_keymgmt_enable(state);
+
+	return ret;
+}
+
+static int xdprxss_hdcp1x_key_write(struct xdprxss_state *xdprxss,
+				    struct xdprxss_hdcp1x_keys_ioctl *hdcp_keys)
+{
+	int ret = 0;
+
+	if (hdcp_keys->size != HDCP1X_KEYS_SIZE)
+		return -EINVAL;
+
+	if (copy_from_user(xdprxss->hdcp1x_key, hdcp_keys->keys,
+			   hdcp_keys->size))
+		return -EFAULT;
+
+	xdprxss->hdcp1x_key_available = true;
+	ret = xdprxss_hdcp1x_keymgmt_set_key(xdprxss);
+	if (ret < 0)
+		return ret;
+
+	xhdcp1x_rx_set_keyselect(xdprxss->hdcp1x, 0);
+	xhdcp1x_rx_load_bksv(xdprxss->hdcp1x);
+
+	/* give a HPD to let the upstream do a new link training */
+	xdprxss_generate_hpd_intr(xdprxss, XDPRX_HPD_PULSE_5000);
+	xdprxss_write(xdprxss, XDPRX_LINK_ENABLE_REG, 0x0);
+
+	/*
+	 * TODO: without below sleep the DP Rx IP is not giving the HPD to
+	 * upstream, this needs to be removed once the issue fixed in IP
+	 */
+	msleep(XDPRX_LINK_ENABLE_DELAY_MS);
+	xdprxss_write(xdprxss, XDPRX_LINK_ENABLE_REG, 0x1);
+
+	return ret;
+}
+
+static long xdprxss_ioctl(struct v4l2_subdev *sd, u32 cmd, void *arg)
+{
+	struct xdprxss_state *xdprxss = to_xdprxssstate(sd);
+
+	if (!xdprxss->hdcp_enable) {
+		dev_err(xdprxss->dev, "hdcp is not enabled in the system");
+		return -ENODEV;
+	}
+
+	if (xdprxss->hdcp1x_key_available) {
+		dev_info(xdprxss->dev, "hdcp1x keys are already loaded");
+		return -EPERM;
+	}
+
+	switch (cmd) {
+	case XILINX_DPRXSS_HDCP_KEY_WRITE:
+		return xdprxss_hdcp1x_key_write(xdprxss, arg);
+	}
+
+	return -EINVAL;
+}
+
 static const struct v4l2_subdev_core_ops xdprxss_core_ops = {
 	.subscribe_event	= xdprxss_subscribe_event,
 	.unsubscribe_event	= v4l2_event_subdev_unsubscribe,
+	.ioctl			= xdprxss_ioctl,
 };
 
 static const struct v4l2_subdev_video_ops xdprxss_video_ops = {
@@ -1843,11 +2226,8 @@ static int xdprxss_parse_of(struct xdprxss_state *xdprxss)
 	}
 
 	xdprxss->hdcp_enable = of_property_read_bool(node, "xlnx,hdcp-enable");
-	/* TODO : This driver does not support HDCP feature */
-	if (xdprxss->hdcp_enable) {
-		dev_err(xdprxss->dev, "hdcp unsupported\n");
-		return -EINVAL;
-	}
+	if (!xdprxss->hdcp_enable)
+		dev_info(xdprxss->dev, "hdcp is not enabled\n");
 
 	xdprxss->audio_enable = of_property_read_bool(node,
 						      "xlnx,audio-enable");
@@ -1940,6 +2320,165 @@ static int xlnx_find_device(struct platform_device *pdev,
 		}
 		of_node_put(fnode);
 	}
+
+	return 0;
+}
+
+static irqreturn_t xdprxss_hdcp1x_irq_handler(int irq, void *dev_id)
+{
+	struct xdprxss_state *state = (struct xdprxss_state *)dev_id;
+
+	xhdcp1x_rx_handle_intr(state->hdcp1x);
+
+	return IRQ_HANDLED;
+}
+
+static int dprx_hdcp1x_dpcd_rd_handler(void *ref, u32 offset, u8 *buff,
+				       u32 buff_size)
+{
+	struct xdprxss_state *xdprxss = (struct xdprxss_state *)ref;
+	u32 value, alignment, num_this_time, idx, reg_offset, num_read = 0;
+	u8 *read_buf = buff;
+
+	/* Truncate if necessary */
+	if ((buff_size + offset) > XDPRX_DPCD_HDCP1X_PORT_REG_LENGTH)
+		buff_size = XDPRX_DPCD_HDCP1X_PORT_REG_LENGTH - offset;
+
+	/* Determine reg_offset */
+	reg_offset = XDPRX_DPCD_HDCP1X_PORT_OFST;
+	reg_offset += offset;
+
+	/* Iterate through the reads */
+	do {
+		alignment = reg_offset & ALIGN_FOR_RDWR;
+		num_this_time = BYTES_PER_RDWR;
+		if (alignment)
+			num_this_time = BYTES_PER_RDWR - alignment;
+		if (num_this_time > buff_size)
+			num_this_time = buff_size;
+
+		value = xdprxss_read(xdprxss, (reg_offset & ~ALIGN_FOR_RDWR));
+		if (alignment)
+			value >>= (BITS_PER_BYTE * alignment);
+
+		for (idx = 0; idx < num_this_time; idx++) {
+			read_buf[idx] = (u8)(value & 0xFF);
+			value >>= BITS_PER_BYTE;
+		}
+
+		read_buf += num_this_time;
+		buff_size -= num_this_time;
+		reg_offset += num_this_time;
+		num_read += num_this_time;
+	} while (buff_size > 0);
+
+	return num_read;
+}
+
+static int dprx_hdcp1x_dpcd_wr_handler(void *ref, u32 offset, u8 *buff,
+				       u32 buff_size)
+{
+	struct xdprxss_state *xdprxss = (struct xdprxss_state *)ref;
+	u32 mask, temp, reg_offset, value = 0, alignment, num_written = 0;
+	int num_this_time, idx;
+	u8 *write_buf = buff;
+
+	if ((buff_size + offset) > XDPRX_DPCD_HDCP1X_PORT_REG_LENGTH)
+		buff_size = XDPRX_DPCD_HDCP1X_PORT_REG_LENGTH - offset;
+	reg_offset = XDPRX_DPCD_HDCP1X_PORT_OFST;
+	reg_offset += offset;
+
+	/* Iterate through the writes */
+	do {
+		alignment = reg_offset & ALIGN_FOR_RDWR;
+		num_this_time = BYTES_PER_RDWR;
+		if (alignment)
+			num_this_time = BYTES_PER_RDWR - alignment;
+
+		if (num_this_time > (int)buff_size)
+			num_this_time = buff_size;
+
+		/* Check for simple case */
+		if (num_this_time == BYTES_PER_RDWR) {
+			for (idx = ALIGN_FOR_RDWR; idx >= 0; idx--) {
+				value <<= BITS_PER_BYTE;
+				value |= write_buf[idx];
+			}
+		} else {
+			/* Otherwise - must read and modify existing memory */
+			if (offset == XDPRX_DPCD_HDCP1X_PORT_KSVFIFO) {
+				for (idx = num_this_time - 1; idx >= 0; idx--) {
+					value <<= BITS_PER_BYTE;
+					value |= write_buf[idx];
+				}
+			} else {
+				temp = 0;
+				mask = 0xFF;
+				if (alignment)
+					mask <<= (BITS_PER_BYTE * alignment);
+				value = xdprxss_read(xdprxss, (reg_offset & ~ALIGN_FOR_RDWR));
+				for (idx = 0; idx < num_this_time; idx++) {
+					temp = write_buf[idx];
+					temp <<= (BITS_PER_BYTE * (alignment + idx));
+					value &= ~mask;
+					value |= temp;
+					mask <<= BITS_PER_BYTE;
+				}
+			}
+		}
+
+		xdprxss_write(xdprxss, (reg_offset & ~ALIGN_FOR_RDWR), value);
+
+		write_buf += num_this_time;
+		buff_size -= num_this_time;
+		if (offset != XDPRX_DPCD_HDCP1X_PORT_KSVFIFO)
+			reg_offset += num_this_time;
+		num_written += num_this_time;
+	} while (buff_size > 0);
+
+	return num_written;
+}
+
+static void dprx_hdcp1x_notification_handler(void *ref, u32 notification)
+{
+	struct xdprxss_state *xdprxss = (struct xdprxss_state *)ref;
+
+	switch (notification) {
+	case XHDCP1X_RX_NOTIFY_AUTHENTICATED:
+		dev_info(xdprxss->dev, "HDCP1X Rx Authenticated\n");
+		break;
+	case XHDCP1X_RX_NOTIFY_UN_AUTHENTICATED:
+		dev_info(xdprxss->dev, "HDCP1X Rx Un-Authenticated\n");
+		break;
+	case XHDCP1X_RX_NOTIFY_SET_CP_IRQ:
+		dev_dbg(xdprxss->dev,
+			"HDCP1X Rx Requested for CP_IRQ generation\n");
+		break;
+	}
+}
+
+static int dprx_register_hdcp1x_dev(struct xdprxss_state *xdprxss)
+{
+	xdprxss->hdcp1x = xhdcp1x_rx_init(xdprxss->dev, xdprxss,
+					  xdprxss->dp_base + XDPRX_HDCP1X_REG_OFFSET,
+					  0);
+	if (IS_ERR(xdprxss->hdcp1x)) {
+		dev_err(xdprxss->dev, "failed to initialize hdcp1x\n");
+		return PTR_ERR(xdprxss->hdcp1x);
+	}
+
+	xdprxss->hdcp1x_key = devm_kzalloc(xdprxss->dev, HDCP1X_KEYS_SIZE,
+					   GFP_KERNEL);
+	if (!xdprxss->hdcp1x_key)
+		return -ENOMEM;
+
+	xhdcp1x_rx_set_callback(xdprxss->hdcp1x, XHDCP1X_RX_RD_HANDLER,
+				dprx_hdcp1x_dpcd_rd_handler);
+	xhdcp1x_rx_set_callback(xdprxss->hdcp1x, XHDCP1X_RX_WR_HANDLER,
+				dprx_hdcp1x_dpcd_wr_handler);
+	xhdcp1x_rx_set_callback(xdprxss->hdcp1x,
+				XHDCP1X_RX_NOTIFICATION_HANDLER,
+				dprx_hdcp1x_notification_handler);
 
 	return 0;
 }
@@ -2174,6 +2713,33 @@ static int xdprxss_probe(struct platform_device *pdev)
 			init_waitqueue_head(&adata->audio_update_q);
 			dev_info(xdprxss->dev, "dp rx audio initialized\n");
 		}
+	}
+
+	if (xdprxss->hdcp_enable) {
+		xdprxss->hdcp1x_keymgmt_base = syscon_regmap_lookup_by_phandle(node,
+									       "xlnx,hdcp1x_keymgmt");
+		if (IS_ERR(xdprxss->hdcp1x_keymgmt_base)) {
+			dev_err(dev, "couldn't map hdcp1x Keymgmt registers\n");
+			return -ENODEV;
+		}
+
+		ret = dprx_register_hdcp1x_dev(xdprxss);
+		if (ret < 0) {
+			dev_err(xdprxss->dev, "dp rx hdcp1x init failed\n");
+			goto error;
+		}
+
+		irq = irq_of_parse_and_map(node, 2);
+		ret = devm_request_irq(xdprxss->dev, irq,
+				       xdprxss_hdcp1x_irq_handler,
+				       IRQF_SHARED, "dprxss_hdcp1x", xdprxss);
+		if (ret) {
+			dev_err(dev, "err: hdcp1x interrupt registration failed!\n");
+			goto error;
+		}
+
+		/* Enable HDCP1x Interrupts */
+		xdprxss_enable_hdcp1x_interrupts(xdprxss);
 	}
 
 	INIT_DELAYED_WORK(&xdprxss->tp1_work, xlnx_dp_tp1_work_func);
