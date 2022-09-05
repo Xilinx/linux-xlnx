@@ -1966,6 +1966,7 @@ int zynqmp_dp_probe(struct platform_device *pdev)
 	dpsub = platform_get_drvdata(pdev);
 	dpsub->dp = dp;
 	dp->dpsub = dpsub;
+	pdev->dev.platform_data = dp->iomem;
 
 	for_each_child_of_node(pdev->dev.of_node, port) {
 		if (!port->name || of_node_cmp(port->name, "port"))
