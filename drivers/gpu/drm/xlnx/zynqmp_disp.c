@@ -2129,9 +2129,9 @@ bool zynqmp_disp_aud_enabled(struct zynqmp_disp *disp)
  */
 unsigned int zynqmp_disp_get_aud_clk_rate(struct zynqmp_disp *disp)
 {
-	if (zynqmp_disp_aud_enabled(disp))
+	if (!zynqmp_disp_aud_enabled(disp))
 		return 0;
-	return clk_get_rate(disp->aclk);
+	return clk_get_rate(disp->audclk);
 }
 
 /**
