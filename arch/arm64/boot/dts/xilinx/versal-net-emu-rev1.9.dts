@@ -1,0 +1,167 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * dts file for Xilinx Versal NET
+ *
+ * (C) Copyright 2021 - 2022, Xilinx, Inc.
+ *
+ * Michal Simek <michal.simek@amd.com>
+ */
+
+/dts-v1/;
+
+/ {
+	compatible = "xlnx,versal-net-emu-1.9", "xlnx,versal-net-emu";
+	model = "Xilinx Versal NET EMU 1.9";
+	#address-cells = <2>;
+	#size-cells = <2>;
+	interrupt-parent = <&gic>;
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		cpu-map {
+			cluster0 {
+				core0 {
+					cpu = <&cpu0>;
+				};
+				core1 {
+					cpu = <&cpu100>;
+				};
+				core2 {
+					cpu = <&cpu200>;
+				};
+				core3 {
+					cpu = <&cpu300>;
+				};
+			};
+
+			cluster1 {
+				core0 {
+					cpu = <&cpu10000>;
+				};
+
+				core1 {
+					cpu = <&cpu10100>;
+				};
+
+				core2 {
+					cpu = <&cpu10200>;
+				};
+
+				core3 {
+					cpu = <&cpu10300>;
+				};
+			};
+		};
+
+		cpu0: cpu@0 {
+			compatible = "arm,cortex-a78";
+			device_type = "cpu";
+			enable-method = "psci";
+			reg = <0>;
+		};
+		cpu100: cpu@100 {
+			compatible = "arm,cortex-a78";
+			device_type = "cpu";
+			enable-method = "psci";
+			reg = <0x100>;
+		};
+		cpu200: cpu@200 {
+			compatible = "arm,cortex-a78";
+			device_type = "cpu";
+			enable-method = "psci";
+			reg = <0x200>;
+		};
+		cpu300: cpu@300 {
+			compatible = "arm,cortex-a78";
+			device_type = "cpu";
+			enable-method = "psci";
+			reg = <0x300>;
+		};
+		cpu10000: cpu@10000 {
+			compatible = "arm,cortex-a78";
+			device_type = "cpu";
+			enable-method = "psci";
+			reg = <0x10000>;
+		};
+		cpu10100: cpu@10100 {
+			compatible = "arm,cortex-a78";
+			device_type = "cpu";
+			enable-method = "psci";
+			reg = <0x10100>;
+		};
+		cpu10200: cpu@10200 {
+			compatible = "arm,cortex-a78";
+			device_type = "cpu";
+			enable-method = "psci";
+			reg = <0x10200>;
+		};
+		cpu10300: cpu@10300 {
+			compatible = "arm,cortex-a78";
+			device_type = "cpu";
+			enable-method = "psci";
+			reg = <0x10300>;
+		};
+	};
+
+	memory: memory@0 {
+		reg = <0 0 0 0x10000000>;
+		device_type = "memory";
+	};
+
+	aliases {
+		serial0 = &serial0;
+	};
+
+	chosen {
+		bootargs = "earlycon=pl011,mmio32,0xf1920000 console=ttyAMA0,115200 rdinit=/bin/sh maxcpus=4";
+		stdout-path = "serial0:115200";
+	};
+
+	firmware {
+		psci {
+			compatible = "arm,psci-1.0";
+			method = "smc";
+		};
+	};
+
+	clk1: clk1 {
+		u-boot,dm-pre-reloc;
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <1000000>; /* it doesn't matter on EMU */
+	};
+
+	timer: timer {
+		compatible = "arm,armv8-timer";
+		interrupts = <1 13 4>, <1 14 4>, <1 11 4>, <1 10 4>; /* FIXME 3rd cell */
+	};
+
+	amba: axi {
+		compatible = "simple-bus";
+		u-boot,dm-pre-reloc;
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		gic: interrupt-controller@e2000000 {
+			compatible = "arm,gic-v3";
+			#interrupt-cells = <3>;
+			reg = <0 0xe2000000 0 0x10000>, <0 0xe2060000 0 0x200000>;
+			interrupt-controller;
+			interrupts = <1 9 4>;
+		};
+
+		serial0: serial@f1920000 {
+			u-boot,dm-pre-reloc;
+			compatible = "arm,pl011", "arm,sbsa-uart";
+			reg = <0 0xf1920000 0 0x1000>;
+			interrupts = <0 25 4>;
+			clock-names = "uartclk", "apb_pclk";
+			clocks = <&clk1>, <&clk1>;
+			clock = <1000000>;
+			current-speed = <115200>;
+			skip-init;
+		};
+	};
+};
