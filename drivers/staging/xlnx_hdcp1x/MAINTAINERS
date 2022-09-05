@@ -1,0 +1,4 @@
+XILINX HDCP1X CIPHER DRIVER
+M:	Jagadeesh Banisetti <jagadeesh.banisetti@amd.com>
+S:	Maintained
+F:	drivers/staging/xlnx_hdcp1x
