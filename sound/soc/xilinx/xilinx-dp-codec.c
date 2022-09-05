@@ -31,14 +31,18 @@
 #define ZYNQMP_DISP_AUD_SMPL_RATE_48K		48000
 #define ZYNQMP_DISP_AUD_SMPL_RATE_TO_CLK	512
 
+#define ZYNQMP_DP_TX_AUDIO_M_AUD		0x328
+
 /**
  * struct xilinx_dp_codec - DisplayPort codec
  * @aud_clk: audio clock
+ * @dp_iomem: base address for DP
  * @aud_base: base address for DP audio
  * @dev: DP audio device
  */
 struct xilinx_dp_codec {
 	struct clk *aud_clk;
+	void __iomem *dp_iomem;
 	struct regmap *aud_base;
 	struct device *dev;
 };
@@ -82,6 +86,8 @@ static int dp_codec_hw_params(struct snd_pcm_substream *substream,
 		ret = -EINVAL;
 		goto err_clk;
 	}
+
+	writel(rate / 1000, codec->dp_iomem + ZYNQMP_DP_TX_AUDIO_M_AUD);
 
 	if (sample_rate == ZYNQMP_DISP_AUD_SMPL_RATE_48K)
 		regmap_write(codec->aud_base, ZYNQMP_DISP_AUD_CH_STATUS,
@@ -160,6 +166,7 @@ static int xilinx_dp_codec_probe(struct platform_device *pdev)
 		return PTR_ERR(codec->aud_base);
 
 	codec->dev = &pdev->dev;
+	codec->dp_iomem = (void __iomem *)codec->dev->parent->platform_data;
 
 	for (i = 0; i < ARRAY_SIZE(rates); i++) {
 		clk_disable_unprepare(codec->aud_clk);
