@@ -61,6 +61,14 @@ config VIDEO_XILINX_GAMMA
 
 	  Say M to modularize. Say N if unsure.
 
+config VIDEO_XILINX_HDCP1X_RX
+	bool
+	select XLNX_HDCP1X_CIPHER
+	help
+	  Functionality of HDCP1X Rx for DP and HDMI. It handles the hdcp1x rx
+	  authentication. Choose this config in a platform where the DP/HDMI Rx
+	  subsystem enabled with HDCP1X.
+
 config VIDEO_XILINX_HDMI21RXSS
 	tristate "Xilinx HDMI 2.1 Rx Subsystem"
 	depends on VIDEO_XILINX
