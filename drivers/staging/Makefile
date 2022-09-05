@@ -22,6 +22,7 @@ obj-$(CONFIG_BCM2835_VCHIQ)	+= vc04_services/
 obj-$(CONFIG_XIL_AXIS_FIFO)	+= axis-fifo/
 obj-$(CONFIG_FIELDBUS_DEV)     += fieldbus/
 obj-$(CONFIG_XILINX_FCLK)	+= fclk/
+obj-$(CONFIG_XLNX_HDCP1X_CIPHER)	+= xlnx_hdcp1x/
 obj-$(CONFIG_XLNX_SYNC)		+= xlnxsync/
 obj-$(CONFIG_XROE_FRAMER)	+= xroeframer/
 obj-$(CONFIG_SERIAL_UARTLITE_RS485)	+= uartlite-rs485/
