@@ -116,4 +116,6 @@ source "drivers/staging/uartlite-rs485/Kconfig"
 
 source "drivers/staging/xilinx-tsn/Kconfig"
 
+source "drivers/staging/xlnx_hdcp1x/Kconfig"
+
 endif # STAGING
