@@ -94,6 +94,7 @@ dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vmk180-revA-x-ebm-02-revA.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vmk180-revA-x-ebm-03-revA.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vmk180-revA.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vp-x-a2785-00-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vhk158-revA.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vpk120-revA.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vpk120-revB.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vpk180-revA.dtb
