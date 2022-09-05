@@ -1,0 +1,191 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * dts file for Xilinx Versal VHK158 revA
+ *
+ * (C) Copyright 2022, Xilinx, Inc.
+ *
+ * Michal Simek <michal.simek@xilinx.com>
+ */
+
+#include <dt-bindings/net/ti-dp83867.h>
+#include <dt-bindings/gpio/gpio.h>
+#include "versal.dtsi"
+#include "versal-clk.dtsi"
+
+/ {
+	compatible = "xlnx,versal-vhk158-revA", "xlnx,versal-vhk158",
+		     "xlnx,versal";
+	model = "Xilinx Versal vhk158 Eval board revA";
+
+	memory: memory@0 {
+		device_type = "memory";
+		reg = <0 0 0 0x80000000>, <0x8 0x0 0x7 0x80000000>; /* 32GB */
+	};
+
+	chosen {
+		bootargs = "console=ttyAMA0 earlycon=pl011,mmio32,0xFF000000,115200n8 clk_ignore_unused";
+		stdout-path = "serial0:115200";
+	};
+
+	aliases {
+		serial0 = &serial0;
+		i2c0 = &i2c0;
+		i2c1 = &i2c1;
+		mmc0 = &sdhci1;
+		spi0 = &ospi;
+		usb0 = &usb0;
+		rtc0 = &rtc;
+	};
+};
+
+/* ZU4_TRIGGER - PMC MIO37 */
+/* PCIE_PWRBRK - PMC MIO38 */
+/* I2C SYSMON - PMC MIO39 - 41 */
+/* VCCPSLP_EN - PMC MIO49 */
+/* PCIE_WAKE - PMC MIO50 */
+/* SOC_EN - LPD MIO13 */
+/* PSFP_EN - LPD MIO15 */
+/* AUX_1V2_EN - LPD MIO16 */
+/* HBM_EN - LPD MIO17 */
+/* PCIE_PERST - LPD MIO18/19 */
+/* VCC_PL_EN - LPD MIO20 */
+/* FAN - LPD MIO21/22 */
+/* VADJ_FMC_EN - LPD MIO23 */
+
+&ospi { /* PMC MIO0 - 12, U297 MT35XU02G */
+	status = "okay";
+	compatible = "xlnx,versal-ospi-1.0", "cadence,qspi", "cdns,qspi-nor";
+	bus-num = <2>;
+	num-cs = <1>;
+	#address-cells = <1>;
+	#size-cells = <0>;
+	reset-gpios = <&gpio1 12 GPIO_ACTIVE_HIGH>;
+
+	flash@0 {
+		compatible = "mt35xu02g", "micron,m25p80", "jedec,spi-nor";
+		reg = <0>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		cdns,read-delay = <0>;
+		cdns,tshsl-ns = <0>;
+		cdns,tsd2d-ns = <0>;
+		cdns,tchsh-ns = <1>;
+		cdns,tslch-ns = <1>;
+		spi-tx-bus-width = <8>;
+		spi-rx-bus-width = <8>;
+		spi-max-frequency = <20000000>;
+		partition@0 {
+			label = "spi0-flash0";
+			reg = <0 0x8000000>;
+		};
+	};
+};
+
+&usb0 { /* PMC_MIO13_500 - PMC_MIO25 USB 2.0 */
+	status = "okay";
+	xlnx,usb-polarity = <0>;
+	xlnx,usb-reset-mode = <0>;
+};
+
+&dwc3_0 { /* USB 2.0 host */
+	status = "okay";
+	dr_mode = "host";
+	maximum-speed = "high-speed";
+	snps,dis_u2_susphy_quirk;
+	snps,dis_u3_susphy_quirk;
+	snps,usb3_lpm_capable;
+};
+
+&sdhci1 { /* PMC_MIO26-36/51 */
+	status = "okay";
+	xlnx,mio-bank = <1>;
+	no-1-8-v;
+};
+
+&serial0 { /* PMC_MIO42/43 */
+	status = "okay";
+};
+
+&i2c0 { /* PMC_MIO46/47 */
+	status = "okay";
+	clock-frequency = <400000>;
+};
+
+&i2c1 { /* PMC_MIO44/45 */
+	status = "okay";
+	clock-frequency = <400000>;
+};
+
+&dcc {
+	status = "okay";
+};
+
+&rtc {
+	status = "okay";
+};
+
+&gpio0 {
+	status = "okay";
+};
+
+&gpio1 {
+	status = "okay";
+};
+
+&watchdog {
+	status = "okay";
+};
+
+&gem0 { /* PMC_MIO_48, LPD_MIO0-11/24/25 */
+	status = "okay";
+	phy-handle = <&phy1>;
+	phy-mode = "rgmii-id";
+	mdio: mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		phy1: ethernet-phy@1 { /* u198 */
+			#phy-cells = <1>;
+			compatible = "ethernet-phy-id2000.a231";
+			reg = <1>;
+			ti,rx-internal-delay = <DP83867_RGMIIDCTL_3_00_NS>;
+			ti,tx-internal-delay = <DP83867_RGMIIDCTL_2_75_NS>;
+			ti,fifo-depth = <1>;
+			ti,dp83867-rxctrl-strap-quirk;
+			reset-assert-us = <100>;
+			reset-deassert-us = <280>;
+			reset-gpios = <&gpio1 48 GPIO_ACTIVE_LOW>;
+		};
+	};
+};
+
+&lpd_dma_chan0 {
+	status = "okay";
+};
+
+&lpd_dma_chan1 {
+	status = "okay";
+};
+
+&lpd_dma_chan2 {
+	status = "okay";
+};
+
+&lpd_dma_chan3 {
+	status = "okay";
+};
+
+&lpd_dma_chan4 {
+	status = "okay";
+};
+
+&lpd_dma_chan5 {
+	status = "okay";
+};
+
+&lpd_dma_chan6 {
+	status = "okay";
+};
+
+&lpd_dma_chan7 {
+	status = "okay";
+};
