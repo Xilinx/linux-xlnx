@@ -1,0 +1,8 @@
+config XLNX_HDCP1X_CIPHER
+	bool
+	help
+	  This code is developed for hdcp1x cipher functionality of
+	  xilinx hdcp1x IP.
+
+	  This code will be compiled by selection from the interface
+	  drivers (DP/HDMI) of xilinx.
