@@ -19,6 +19,7 @@ dtb-$(CONFIG_ARCH_ZYNQMP) += zynqmp-zcu111-revA.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += zynqmp-a2197-revA.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += zynqmp-dlc21-revA.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += zynqmp-e-a2197-00-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += zynqmp-e-a2197-00-revB.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += zynqmp-g-a2197-00-revA.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += zynqmp-m-a2197-01-revA.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += zynqmp-m-a2197-02-revA.dtb
