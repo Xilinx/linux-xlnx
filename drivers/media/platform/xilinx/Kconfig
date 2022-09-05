@@ -163,6 +163,7 @@ config VIDEO_XILINX_VTC
 config VIDEO_XILINX_DPRXSS
 	tristate "Xilinx DP Rx Subsystem"
 	depends on VIDEO_XILINX
+	select VIDEO_XILINX_HDCP1X_RX
 	select DRM_DISPLAY_HELPER
 	select DRM_DISPLAY_DP_HELPER
 	help
