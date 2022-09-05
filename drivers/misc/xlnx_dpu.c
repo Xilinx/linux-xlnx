@@ -21,6 +21,7 @@
 #include <linux/clk.h>
 #include <linux/dma-mapping.h>
 #include <linux/nospec.h>
+#include <linux/slab.h>
 #ifdef CONFIG_DEBUG_FS
 #include <linux/debugfs.h>
 #endif
@@ -58,20 +59,20 @@ struct cu {
  * struct xdpu_dev - Driver data for DPU
  * @dev: pointer to device struct
  * @regs: virtual base address for the dpu regmap
- * @head: indicates dma memory pool list
  * @cu: indicates computer unit struct
  * @axi_clk: AXI Lite clock
  * @dpu_clk: DPU clock used for DPUCZDX8G general logic
  * @dsp_clk: DSP clock used for DSP blocks
  * @miscdev: misc device handle
  * @root: debugfs dentry
+ * @client_list_lock: protect client_list
+ * @client_list: indicates how many dpu clients link to xdpu
  * @dpu_cnt: indicates how many dpu core/cu enabled in IP, up to 4
  * @sfm_cnt: indicates softmax core enabled or not
  */
 struct xdpu_dev {
 	struct device	*dev;
 	void __iomem	*regs;
-	struct list_head	head;
 	struct cu	cu[MAX_CU_NUM];
 	struct clk	*axi_clk;
 	struct clk	*dpu_clk;
@@ -79,9 +80,23 @@ struct xdpu_dev {
 	struct miscdevice	miscdev;
 #ifdef CONFIG_DEBUG_FS
 	struct dentry	*root;
+	spinlock_t	client_list_lock; /* guards client_list */
+	struct list_head	client_list;
 #endif
 	u8	dpu_cnt;
 	u8	sfm_cnt;
+};
+
+/**
+ * struct xdpu_client - DPU client
+ * @dev: pointer to dpu device struct
+ * @head: indicates dma memory pool list head
+ * @node: client node
+ */
+struct xdpu_client {
+	struct xdpu_dev	*dev;
+	struct list_head	head;
+	struct list_head	node;
 };
 
 /**
@@ -374,16 +389,17 @@ err_out:
 
 /**
  * xlnx_dpu_alloc_bo - alloc contiguous physical memory for dpu
- * @xdpu:	dpu structure
+ * @client:	dpu client
  * @req:	dpcma_req_alloc struct, contains the request info
  *
  * Return:	0 if successful; otherwise -errno
  */
-static long xlnx_dpu_alloc_bo(struct xdpu_dev *xdpu,
+static long xlnx_dpu_alloc_bo(struct xdpu_client *client,
 			      struct dpcma_req_alloc __user *req)
 {
 	struct dpu_buffer_block *pb;
 	size_t size;
+	struct xdpu_dev *xdpu = client->dev;
 
 	pb = kzalloc(sizeof(*pb), GFP_KERNEL);
 	if (!pb)
@@ -408,7 +424,7 @@ static long xlnx_dpu_alloc_bo(struct xdpu_dev *xdpu,
 	if (put_user(pb->dma_addr, &req->phy_addr))
 		goto err_out;
 
-	list_add(&pb->head, &xdpu->head);
+	list_add(&pb->head, &client->head);
 
 	return 0;
 
@@ -421,27 +437,26 @@ err_pb:
 
 /**
  * xlnx_dpu_free_bo - free contiguous physical memory allocated
- * @xdpu:	dpu structure
+ * @client:	dpu client
  * @req:	dpcma_req_free struct, contains the request info
  *
  * Return:	0 if successful; otherwise -errno
  */
-static long xlnx_dpu_free_bo(struct xdpu_dev *xdpu,
+static long xlnx_dpu_free_bo(struct xdpu_client *client,
 			     struct dpcma_req_free __user *req)
 {
-	struct list_head *pos = NULL, *next = NULL;
 	u64 phy_addr = 0;
-	struct dpu_buffer_block *h;
+	struct xdpu_dev *xdpu = client->dev;
+	struct dpu_buffer_block *h, *n;
 
 	if (get_user(phy_addr, &req->phy_addr))
 		return -EFAULT;
 
-	list_for_each_safe(pos, next, &xdpu->head) {
-		h = list_entry(pos, struct dpu_buffer_block, head);
+	list_for_each_entry_safe(h, n, &client->head, head) {
 		if (phy_addr == h->dma_addr) {
 			dma_free_coherent(xdpu->dev, h->capacity, h->vaddr,
 					  h->dma_addr);
-			list_del(pos);
+			list_del(&h->head);
 			kfree(h);
 		}
 	}
@@ -451,19 +466,19 @@ static long xlnx_dpu_free_bo(struct xdpu_dev *xdpu,
 
 /**
  * xlnx_dpu_sync_bo - flush/invalidate cache for allocated memory
- * @xdpu:	dpu structure
+ * @client:	dpu client
  * @req:	dpcma_req_sync struct, contains the request info
  *
  * Return:	0 if successful; otherwise -errno
  */
-static long xlnx_dpu_sync_bo(struct xdpu_dev *xdpu,
+static long xlnx_dpu_sync_bo(struct xdpu_client *client,
 			     struct dpcma_req_sync __user *req)
 {
-	struct list_head *pos = NULL;
 	long phy_addr;
 	int dir;
 	size_t size, offset;
 	struct dpu_buffer_block *h;
+	struct xdpu_dev *xdpu = client->dev;
 
 	if (get_user(phy_addr, &req->phy_addr) ||
 	    get_user(size, &req->size) || get_user(dir, &req->direction))
@@ -474,8 +489,7 @@ static long xlnx_dpu_sync_bo(struct xdpu_dev *xdpu,
 		return -EINVAL;
 	}
 
-	list_for_each(pos, &xdpu->head) {
-		h = list_entry(pos, struct dpu_buffer_block, head);
+	list_for_each_entry(h, &client->head, head) {
 		if (phy_addr >= h->dma_addr &&
 		    phy_addr < h->dma_addr + h->capacity) {
 			offset = phy_addr;
@@ -506,10 +520,9 @@ static long xlnx_dpu_ioctl(struct file *file, unsigned int cmd,
 			   unsigned long arg)
 {
 	int ret = 0;
-	struct xdpu_dev *xdpu;
+	struct xdpu_client *client = file->private_data;
+	struct xdpu_dev *xdpu = client->dev;
 	void __user *data = NULL;
-
-	xdpu = container_of(file->private_data, struct xdpu_dev, miscdev);
 
 	if (_IOC_TYPE(cmd) != DPU_IOC_MAGIC)
 		return -ENOTTY;
@@ -555,13 +568,13 @@ static long xlnx_dpu_ioctl(struct file *file, unsigned int cmd,
 		break;
 	}
 	case DPUIOC_CREATE_BO:
-		return xlnx_dpu_alloc_bo(xdpu,
+		return xlnx_dpu_alloc_bo(client,
 					 (struct dpcma_req_alloc __user *)arg);
 	case DPUIOC_FREE_BO:
-		return xlnx_dpu_free_bo(xdpu,
+		return xlnx_dpu_free_bo(client,
 					(struct dpcma_req_free __user *)arg);
 	case DPUIOC_SYNC_BO:
-		return xlnx_dpu_sync_bo(xdpu,
+		return xlnx_dpu_sync_bo(client,
 					(struct dpcma_req_sync __user *)arg);
 	case DPUIOC_G_INFO:
 	{
@@ -681,10 +694,81 @@ static int xlnx_dpu_mmap(struct file *file, struct vm_area_struct *vma)
 	return 0;
 }
 
+/**
+ * xlnx_dpu_open - open dpu device
+ * @inode:	inode object
+ * @filp:	file object
+ * Return:	0 if successful; otherwise -errno
+ */
+static int xlnx_dpu_open(struct inode *inode, struct file *filp)
+{
+	struct xdpu_dev *xdpu;
+	struct xdpu_client *client;
+
+	client = kzalloc(sizeof(*client), GFP_KERNEL);
+	if (!client)
+		return -ENOMEM;
+
+	xdpu = container_of(filp->private_data, struct xdpu_dev, miscdev);
+	client->dev = xdpu;
+	INIT_LIST_HEAD(&client->head);
+
+	filp->private_data = client;
+
+#ifdef CONFIG_DEBUG_FS
+	spin_lock_irq(&xdpu->client_list_lock);
+	list_add_tail(&client->node, &xdpu->client_list);
+	spin_unlock_irq(&xdpu->client_list_lock);
+#endif
+	return 0;
+}
+
+/**
+ * xlnx_dpu_release - release dpu resources
+ * @inode:	inode object
+ * @filp:	file object
+ *
+ * Return:	0 if successful; otherwise -errno
+ */
+static int xlnx_dpu_release(struct inode *inode, struct file *filp)
+{
+	struct xdpu_client *client = filp->private_data;
+	struct xdpu_dev *xdpu = client->dev;
+	struct dpu_buffer_block *h = NULL, *n = NULL;
+#ifdef CONFIG_DEBUG_FS
+	struct xdpu_client *p = NULL, *t = NULL;
+
+	spin_lock_irq(&xdpu->client_list_lock);
+	list_for_each_entry_safe(p, t, &xdpu->client_list, node) {
+		if (p == client) {
+			list_del(&p->node);
+			kfree(p);
+			break;
+		};
+	};
+	spin_unlock_irq(&xdpu->client_list_lock);
+#endif
+	/* Drain the remaining buffer entries when abnormal close */
+	if (!list_empty(&client->head)) {
+		list_for_each_entry_safe(h, n, &client->head, head) {
+			dma_free_coherent(xdpu->dev,
+					  h->capacity,
+					  h->vaddr,
+					  h->dma_addr);
+			list_del(&h->head);
+			kfree(h);
+		};
+	}
+
+	return 0;
+}
+
 static const struct file_operations dev_fops = {
 	.owner = THIS_MODULE,
-	.unlocked_ioctl = xlnx_dpu_ioctl,
+	.open = xlnx_dpu_open,
 	.mmap = xlnx_dpu_mmap,
+	.unlocked_ioctl = xlnx_dpu_ioctl,
+	.release = xlnx_dpu_release,
 };
 
 /**
@@ -848,8 +932,6 @@ static int xlnx_dpu_probe(struct platform_device *pdev)
 		mutex_init(&xdpu->cu[i].mutex);
 	}
 
-	INIT_LIST_HEAD(&xdpu->head);
-
 	xdpu->miscdev.minor = MISC_DYNAMIC_MINOR;
 	xdpu->miscdev.name = DEVICE_NAME;
 	xdpu->miscdev.fops = &dev_fops;
@@ -861,6 +943,9 @@ static int xlnx_dpu_probe(struct platform_device *pdev)
 	xlnx_dpu_regs_init(xdpu);
 
 #ifdef CONFIG_DEBUG_FS
+	spin_lock_init(&xdpu->client_list_lock);
+	INIT_LIST_HEAD(&xdpu->client_list);
+
 	ret = dpu_debugfs_init(xdpu);
 	if (ret) {
 		dev_err(xdpu->dev, "failed to init dpu_debugfs)\n");
@@ -1128,27 +1213,36 @@ static const struct debugfs_reg32 sfm_regs[] = {
 
 static int dump_show(struct seq_file *seq, void *v)
 {
+	struct xdpu_client *client;
 	struct xdpu_dev *xdpu = seq->private;
 	struct dpu_buffer_block *h;
 	static const char units[] = "KMG";
 	const char *unit = units;
 	unsigned long delta = 0;
 
-	seq_puts(seq,
-		 "Virtual Address\t\t\t\tRequest Mem\t\tPhysical Address\n");
-	list_for_each_entry(h, &xdpu->head, head) {
-		delta = (h->capacity) >> 10;
-		while (!(delta & 1023) && unit[1]) {
-			delta >>= 10;
-			unit++;
-		}
-		seq_printf(seq, "%p-%p   %9lu%c         %016llx-%016llx\n",
-			   h->vaddr, h->vaddr + h->capacity,
-			   delta, *unit,
-			   (u64)h->dma_addr, (u64)(h->dma_addr + h->capacity));
-		delta = 0;
-		unit = units;
-	}
+	list_for_each_entry(client, &xdpu->client_list, node) {
+		if (!list_empty(&client->head)) {
+			seq_printf(seq, "Client: %p\n", client);
+			seq_puts(seq, "Virtual Address\t\t\t\t");
+			seq_puts(seq, "Request Mem\t\tPhysical Address\n");
+			list_for_each_entry(h, &client->head, head) {
+				delta = (h->capacity) >> 10;
+				while (!(delta & 1023) && unit[1]) {
+					delta >>= 10;
+					unit++;
+				}
+				seq_printf(seq, "%p-%p   %9lu%c         ",
+					   h->vaddr,
+					   h->vaddr + h->capacity,
+					   delta, *unit);
+				seq_printf(seq, "%016llx-%016llx\n",
+					   (u64)h->dma_addr,
+					   (u64)(h->dma_addr + h->capacity));
+				delta = 0;
+				unit = units;
+			};
+		};
+	};
 
 	return 0;
 }
