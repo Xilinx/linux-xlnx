@@ -97,6 +97,11 @@ properties:
       - $ref: /schemas/types.yaml#/definitions/uint32
       - enum: [2, 3, 4, 5, 6, 7, 8]
 
+  xlnx,hdcp1x-keymgmt:
+    description:
+      A phandle to a syscon device, used to access
+      hdcp1x keymgmt registers.
+
   ports:
     type: object
 
@@ -158,6 +163,7 @@ examples:
        xlnx,bpc = <10>;
        xlnx,hdcp22-enable;
        xlnx,hdcp-enable;
+       xlnx,hdcp1x-keymgmt = <&hdcp_keymngmt_blk_0>;
        xlnx,lane-count = <4>;
        phy-names = "dp-phy0", "dp-phy1", "dp-phy2", "dp-phy3";
        phys = <&vphy_lane0 0 1 1 0>, <&vphy_lane1 0 1 1 0>,
@@ -174,5 +180,9 @@ examples:
                };
            };
        };
+   };
+   hdcp_keymngmt_blk_0: hdcp_keymngmt_blk@a00c0000 {
+       compatible = "xlnx,hdcp-keymngmt-blk-1.0", "syscon";
+       reg = <0x0 0xa00c0000 0x0 0x10000>;
    };
 ...
