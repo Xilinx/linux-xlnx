@@ -20,6 +20,7 @@ properties:
     items:
       - enum:
           - xlnx,v-hdmi-phy1-1.0
+          - xlnx,v-hdmi-gt-controller-1.0
 
   reg:
     maxItems: 1
@@ -51,9 +52,10 @@ properties:
       5  - GTHE4
       6  - GTYE4
       7  - GTYE5
+      8  - GTYP
     allOf:
       - $ref: /schemas/types.yaml#/definitions/uint32
-      - enum: [5, 6, 7]
+      - enum: [5, 6, 7, 8]
 
   xlnx,tx-no-of-channels:
     description: Max number of channels that Tx configured with.
@@ -138,6 +140,17 @@ properties:
       - $ref: /schemas/types.yaml#/definitions/uint32
       - enum: [2, 4]
 
+  xlnx,gt-direction:
+    description: |
+      Gigabit transceiver direction that IP configured with. Possible values
+      are as below
+      1 - SIMPLE_TX
+      2 - SIMPLE_RX
+      3 - DUPLEX
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [1, 2, 3]
+
   xlnx,input-pixels-per-clock:
     description: |
       Input number of pixel per clock that IP configured with.
@@ -195,6 +208,16 @@ required:
 
 additionalProperties: false
 
+if:
+  properties:
+    compatible:
+      contains:
+        const: xlnx,v-hdmi-gt-controller-1.0
+
+then:
+  required:
+    - xlnx,gt-direction
+
 examples:
   - |
    v_hdmi_phy1@80040000 {
@@ -219,6 +242,35 @@ examples:
            xlnx,nidru = <1>;
            xlnx,nidru-refclk-sel = <4>;
            xlnx,transceiver-width = <4>;
+           xlnx,input-pixels-per-clock = <4>;
+           xlnx,use-gt-ch4-hdmi = <1>;
+           xlnx,rx-max-gt-line-rate = <0xc>;
+           xlnx,tx-max-gt-line-rate = <0xc>;
+           #phy-cells = <0>;
+   };
+   v_hdmi_gt@80050000 {
+           clock-names = "axi4lite_aclk", "drpclk";
+           clocks =  <&zynqmp_clk 71>, <&zynqmp_clk 71>;
+           compatible = "xlnx,v-hdmi-gt-controller-1.0";
+           interrupt-parent = <&gic>;
+           interrupts = <0 89 4>;
+           reg = <0x80050000 0x10000>;
+           rxch4-sel-gpios = <&foo_gpio1 18 1>;
+           xlnx,transceiver-type = <5>;
+           xlnx,tx-no-of-channels = <4>;
+           xlnx,rx-no-of-channels = <4>;
+           xlnx,rx-protocol = <2>;
+           xlnx,tx-protocol = <2>;
+           xlnx,tx-refclk-sel = <2>;
+           xlnx,rx-refclk-sel = <0>;
+           xlnx,tx-frl-refclk-sel = <2>;
+           xlnx,rx-frl-refclk-sel = <0>;
+           xlnx,tx-pll-selection = <6>;
+           xlnx,rx-pll-selection = <0>;
+           xlnx,nidru = <1>;
+           xlnx,nidru-refclk-sel = <4>;
+           xlnx,transceiver-width = <4>;
+           xlnx,gt-direction = <3>;
            xlnx,input-pixels-per-clock = <4>;
            xlnx,use-gt-ch4-hdmi = <1>;
            xlnx,rx-max-gt-line-rate = <0xc>;
