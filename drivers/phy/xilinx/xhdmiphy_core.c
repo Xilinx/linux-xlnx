@@ -266,10 +266,12 @@ void xhdmiphy_cfg_init(struct xhdmiphy_dev *inst)
 
 	if (inst->conf.gt_type == XHDMIPHY_GTHE4)
 		inst->gt_adp = &gthe4_conf;
-	else if (inst->conf.gt_type == XHDMIPHY_GTYE5)
+	else if (inst->conf.gt_type == XHDMIPHY_GTYE5 ||
+		 inst->conf.gt_type == XHDMIPHY_GTYP)
 		inst->gt_adp = &gtye5_conf;
 
-	if (inst->conf.gt_type != XHDMIPHY_GTYE5) {
+	if (inst->conf.gt_type != XHDMIPHY_GTYE5 &&
+	    inst->conf.gt_type != XHDMIPHY_GTYP) {
 		const enum sysclk_data_sel sysclk[7][2] = {
 			{0, XHDMIPHY_SYSCLKSELDATA_CPLL_OUTCLK},
 			{1, XHDMIPHY_SYSCLKSELDATA_QPLL0_OUTCLK},
@@ -498,7 +500,8 @@ u32 xhdmiphy_get_pll_type(struct xhdmiphy_dev *inst, enum dir dir,
 	enum sysclk_data_sel sysclk_data_sel;
 	enum sysclk_outsel sysclk_out_sel;
 
-	if (inst->conf.gt_type != XHDMIPHY_GTYE5) {
+	if (inst->conf.gt_type != XHDMIPHY_GTYE5 &&
+	    inst->conf.gt_type != XHDMIPHY_GTYP) {
 		sysclk_data_sel = xhdmiphy_get_sysclk_datasel(inst, dir, chid);
 		sysclk_out_sel = xhdmiphy_get_sysclk_outsel(inst, dir, chid);
 
@@ -744,7 +747,8 @@ void xhdmiphy_ibufds_en(struct xhdmiphy_dev *inst, enum dir dir, u8 enable)
 	dru_type_dummy = XHDMIPHY_PLL_REFCLKSEL_GTGREFCLK;
 	dru_typ_ptr = &dru_type_dummy;
 
-	if (inst->conf.gt_type != XHDMIPHY_GTYE5) {
+	if (inst->conf.gt_type != XHDMIPHY_GTYE5 &&
+	    inst->conf.gt_type != XHDMIPHY_GTYP) {
 		if (dir == XHDMIPHY_DIR_TX) {
 			type_ptr = &inst->conf.tx_refclk_sel;
 		} else {
@@ -772,7 +776,8 @@ void xhdmiphy_ibufds_en(struct xhdmiphy_dev *inst, enum dir dir, u8 enable)
 	mask_val = XHDMIPHY_MISC_XXUSRCLK_REFCLK_CEB_MASK;
 	reg_val = xhdmiphy_read(inst, reg_addr);
 
-	if (inst->conf.gt_type != XHDMIPHY_GTYE5)
+	if (inst->conf.gt_type != XHDMIPHY_GTYE5 &&
+	    inst->conf.gt_type != XHDMIPHY_GTYP)
 		xhdmiphy_set_clr(inst, reg_addr, reg_val, mask_val, !enable);
 	else
 		xhdmiphy_set_clr(inst, reg_addr, reg_val, mask_val, enable);

@@ -104,7 +104,9 @@ static u16 mmcme4_lockreg3_enc[11] = {0x7fe9, 0x1be9, 0x1be9, 0x23e9, 0x2fe9,
 
 static struct xhdmiphy_mmcm *get_mmcm_conf(struct xhdmiphy_dev *inst)
 {
-	if (inst->conf.gt_type != XHDMIPHY_GTYE5)
+	if (inst->conf.gt_type != XHDMIPHY_GTYE5 &&
+	    inst->conf.gt_type != XHDMIPHY_GTYP)
+
 		return gthe4_gtye4_mmcm;
 
 	return gtye5_mmcm;
@@ -116,7 +118,8 @@ static const struct gthdmi_chars *get_gthdmi_ptr(struct xhdmiphy_dev *inst)
 		return &gthe4hdmi_chars;
 	else if (inst->conf.gt_type == XHDMIPHY_GTYE4)
 		return &gtye4hdmi_chars;
-	else if (inst->conf.gt_type == XHDMIPHY_GTYE5)
+	else if (inst->conf.gt_type == XHDMIPHY_GTYE5 ||
+		 inst->conf.gt_type == XHDMIPHY_GTYP)
 		return &gtye5hdmi_chars;
 
 	return NULL;
@@ -346,6 +349,9 @@ static u32 xhdmiphy_mmcme5_cpres_enc(u16 mult)
 	case 326 ... 432:
 		cp = 15; res = 8;
 		break;
+	case 433 ... 512:
+		cp = 15; res = 8;
+		break;
 	default:
 		cp = 13; res = 8;
 		break;
@@ -512,6 +518,11 @@ static u32 xhdmiphy_mmcme5_lockreg12_enc(u16 mult)
 		lock_fb_dly = 16;
 		lock_cnt = 925;
 		break;
+	case 433 ... 512:
+		lock_ref_dly = 16;
+		lock_fb_dly = 16;
+		lock_cnt = 925;
+		break;
 	default:
 		lock_ref_dly = 16;
 		lock_fb_dly = 16;
@@ -584,7 +595,6 @@ static u16 xhdmiphy_mmcme4_filtreg1_enc(u8 mult)
 		break;
 	case 15:
 		drp_enc = 0x1000;
-		break;
 		break;
 	case 17: case 19: case 20:
 	case 29: case 30: case 31:
@@ -927,7 +937,8 @@ void xhdmiphy_mmcm_start(struct xhdmiphy_dev *inst, enum dir dir)
 		mmcm_ptr = &inst->quad.tx_mmcm;
 
 	/* check values if valid */
-	if (inst->conf.gt_type != XHDMIPHY_GTYE5) {
+	if (inst->conf.gt_type != XHDMIPHY_GTYE5 &&
+	    inst->conf.gt_type != XHDMIPHY_GTYP) {
 		if (!(mmcm_ptr->clkout0_div > 0 &&
 		      mmcm_ptr->clkout0_div <= 128 &&
 		      mmcm_ptr->clkout1_div > 0 &&
@@ -937,17 +948,18 @@ void xhdmiphy_mmcm_start(struct xhdmiphy_dev *inst, enum dir dir)
 			return;
 	} else {
 		if (!(mmcm_ptr->clkout0_div > 0 &&
-		      mmcm_ptr->clkout0_div <= 432 &&
+		      mmcm_ptr->clkout0_div <= 512 &&
 		      mmcm_ptr->clkout1_div > 0 &&
-		      mmcm_ptr->clkout1_div <= 432 &&
+		      mmcm_ptr->clkout1_div <= 512 &&
 		      mmcm_ptr->clkout2_div > 0 &&
-		      mmcm_ptr->clkout2_div <= 432))
+		      mmcm_ptr->clkout2_div <= 512))
 			return;
 	}
 
 	xhdmiphy_mmcm_reset(inst, dir, true);
 
-	if (inst->conf.gt_type != XHDMIPHY_GTYE5)
+	if (inst->conf.gt_type != XHDMIPHY_GTYE5 &&
+	    inst->conf.gt_type != XHDMIPHY_GTYP)
 		xhdmiphy_wr_mmcm4_params(inst, dir);
 	else
 		xhdmiphy_wr_mmcm5_params(inst, dir);
@@ -1086,7 +1098,8 @@ static void xhdmiphy_set_clkout2_div(struct xhdmiphy_dev *inst, enum dir dir,
 				 * loop with a lower multiply
 				 * value
 				 */
-					if (inst->conf.gt_type != XHDMIPHY_GTYE5)
+					if (inst->conf.gt_type != XHDMIPHY_GTYE5 &&
+					    inst->conf.gt_type != XHDMIPHY_GTYP)
 						mmcm_ptr->clkout2_div = 255;
 					else
 						mmcm_ptr->clkout2_div = 65535;
@@ -1105,7 +1118,8 @@ static void xhdmiphy_set_clkout2_div(struct xhdmiphy_dev *inst, enum dir dir,
 			 * Not divisible by 4: repeat loop with
 			 * a lower multiply value
 			 */
-				if (inst->conf.gt_type != XHDMIPHY_GTYE5)
+				if (inst->conf.gt_type != XHDMIPHY_GTYE5 &&
+				    inst->conf.gt_type != XHDMIPHY_GTYP)
 					mmcm_ptr->clkout2_div = 255;
 				else
 					mmcm_ptr->clkout2_div = 65535;
@@ -1338,7 +1352,8 @@ u32 xhdmiphy_cal_mmcm_param(struct xhdmiphy_dev *inst, enum chid chid,
 			xhdmiphy_set_clkout2_div(inst, dir, linerate, mmcm_ptr);
 
 			/* Check values */
-			if (inst->conf.gt_type != XHDMIPHY_GTYE5) {
+			if (inst->conf.gt_type != XHDMIPHY_GTYE5 &&
+			    inst->conf.gt_type != XHDMIPHY_GTYP) {
 				if (mmcm_ptr->clkout0_div > 0 &&
 				    mmcm_ptr->clkout0_div <= 128 &&
 				    mmcm_ptr->clkout1_div > 0 &&
