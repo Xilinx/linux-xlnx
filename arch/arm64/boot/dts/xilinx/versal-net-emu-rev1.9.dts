@@ -114,7 +114,7 @@
 	};
 
 	chosen {
-		bootargs = "earlycon=pl011,mmio32,0xf1920000 console=ttyAMA0,115200 rdinit=/bin/sh maxcpus=4";
+		bootargs = "earlycon=pl011,mmio32,0xf1920000 console=ttyAMA0,115200 rdinit=/bin/sh";
 		stdout-path = "serial0:115200";
 	};
 
