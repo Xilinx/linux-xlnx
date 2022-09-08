@@ -788,6 +788,13 @@ irqreturn_t aie_interrupt(int irq, void *data)
 	struct aie_location loc;
 	bool sched_work = false;
 
+	if (adev->dev_gen != AIE_DEVICE_GEN_AIE) {
+		dev_info_ratelimited(&adev->dev,
+				     "Error interrupt backtacking is not supported for %d hw generation.\n",
+				     adev->dev_gen);
+		return IRQ_NONE;
+	}
+
 	for (loc.col = aperture->range.start.col, loc.row = 0;
 	     loc.col < aperture->range.start.col + aperture->range.size.col;
 	     loc.col++) {
