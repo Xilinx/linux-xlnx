@@ -532,9 +532,10 @@
 
 		serial0: serial@f1920000 {
 			u-boot,dm-pre-reloc;
-			compatible = "arm,pl011", "arm,sbsa-uart";
+			compatible = "arm,pl011", "arm,primecell";
 			reg = <0 0xf1920000 0 0x1000>;
 			interrupts = <0 25 4>;
+			reg-io-width = <4>;
 			clock-names = "uartclk", "apb_pclk";
 			clocks = <&clk1>, <&clk1>;
 			clock = <1000000>;

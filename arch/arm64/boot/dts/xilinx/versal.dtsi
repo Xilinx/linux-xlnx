@@ -432,21 +432,23 @@
 		};
 
 		serial0: serial@ff000000 {
-			compatible = "arm,pl011", "arm,sbsa-uart";
+			compatible = "arm,pl011", "arm,primecell";
 			status = "disabled";
 			reg = <0 0xff000000 0 0x1000>;
 			interrupts = <0 18 4>;
-			clock-names = "uart_clk", "apb_clk";
+			reg-io-width = <4>;
+			clock-names = "uartclk", "apb_pclk";
 			current-speed = <115200>;
 			u-boot,dm-pre-reloc;
 		};
 
 		serial1: serial@ff010000 {
-			compatible = "arm,pl011", "arm,sbsa-uart";
+			compatible = "arm,pl011", "arm,primecell";
 			status = "disabled";
 			reg = <0 0xff010000 0 0x1000>;
 			interrupts = <0 19 4>;
-			clock-names = "uart_clk", "apb_clk";
+			reg-io-width = <4>;
+			clock-names = "uartclk", "apb_pclk";
 			current-speed = <115200>;
 			u-boot,dm-pre-reloc;
 		};
