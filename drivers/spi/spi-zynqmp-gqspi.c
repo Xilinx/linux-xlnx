@@ -1021,8 +1021,8 @@ static int zynqmp_qspi_read_op(struct zynqmp_qspi *xqspi, u8 rx_nbits,
  */
 static int __maybe_unused zynqmp_qspi_suspend(struct device *dev)
 {
-	struct zynqmp_qspi *xqspi = dev_get_drvdata(dev);
-	struct spi_controller *ctlr = xqspi->ctlr;
+	struct spi_controller *ctlr = dev_get_drvdata(dev);
+	struct zynqmp_qspi *xqspi = spi_controller_get_devdata(ctlr);
 	int ret;
 
 	ret = spi_controller_suspend(ctlr);
