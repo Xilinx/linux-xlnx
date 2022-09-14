@@ -541,6 +541,9 @@ bool drm_edid_block_valid(u8 *raw_edid, int block, bool print_bad_edid,
 bool drm_edid_is_valid(struct edid *edid);
 void drm_edid_get_monitor_name(struct edid *edid, char *name,
 			       int buflen);
+struct drm_display_mode *drm_mode_find_cea(struct drm_device *dev,
+					   int hsize, int vsize, int fresh,
+					   bool interlaced);
 struct drm_display_mode *drm_mode_find_dmt(struct drm_device *dev,
 					   int hsize, int vsize, int fresh,
 					   bool rb);

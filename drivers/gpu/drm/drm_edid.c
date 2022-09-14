@@ -2214,6 +2214,57 @@ mode_is_rb(const struct drm_display_mode *mode)
 	       (mode->vsync_start - mode->vdisplay == 3);
 }
 
+/**
+ * drm_mode_find_cea - Create a copy of a mode if present in CEA
+ * @dev: Device to duplicate against
+ * @hsize: Mode width
+ * @vsize: Mode height
+ * @fresh: Mode refresh rate
+ * @interlaced: Mode interlace support
+ *
+ * Walk the CEA mode list looking for a match for the given parameters.
+ *
+ * Return: A newly allocated copy of the mode, or NULL if not found.
+ */
+struct drm_display_mode *drm_mode_find_cea(struct drm_device *dev, int hsize,
+					   int vsize, int fresh, bool interlaced)
+{
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(edid_cea_modes_1); i++) {
+		const struct drm_display_mode *ptr = &edid_cea_modes_1[i];
+
+		if (hsize != ptr->hdisplay)
+			continue;
+		if (vsize != ptr->vdisplay)
+			continue;
+		if (fresh != drm_mode_vrefresh(ptr))
+			continue;
+		if (interlaced != (ptr->flags & DRM_MODE_FLAG_INTERLACE))
+			continue;
+
+		return drm_mode_duplicate(dev, ptr);
+	}
+
+	for (i = 0; i < ARRAY_SIZE(edid_cea_modes_193); i++) {
+		const struct drm_display_mode *ptr = &edid_cea_modes_193[i];
+
+		if (hsize != ptr->hdisplay)
+			continue;
+		if (vsize != ptr->vdisplay)
+			continue;
+		if (fresh != drm_mode_vrefresh(ptr))
+			continue;
+		if (interlaced != (ptr->flags & DRM_MODE_FLAG_INTERLACE))
+			continue;
+
+		return drm_mode_duplicate(dev, ptr);
+	}
+
+	return NULL;
+}
+EXPORT_SYMBOL(drm_mode_find_cea);
+
 /*
  * drm_mode_find_dmt - Create a copy of a mode if present in DMT
  * @dev: Device to duplicate against
