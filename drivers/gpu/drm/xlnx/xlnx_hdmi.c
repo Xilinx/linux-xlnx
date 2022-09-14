@@ -11,6 +11,7 @@
 #include <linux/clk.h>
 #include <linux/component.h>
 #include <linux/delay.h>
+#include <linux/hdmi.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/of_device.h>
@@ -30,6 +31,8 @@
 #include <drm/drm_of.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_sysfs.h>
+
+#include "xlnx_bridge.h"
 
 /* Parallel Interface registers */
 #define HDMI_TX_PIO_ID				0x40
@@ -321,6 +324,11 @@
 #define HDMI_TX_SCDC_MASK	0xFF
 #define HDMI_TX_DEF_TMDS_CLK	148500000
 
+#define HDMI_MIN_WIDTH	640
+#define HDMI_MIN_HEIGHT	480
+#define HDMI_MAX_WIDTH	10240
+#define HDMI_MAX_HEIGHT	4320
+
 /**
  * enum hdmi_state - Stream state
  * @HDMI_TX_STATE_STREAM_DOWN: stream down
@@ -495,6 +503,15 @@ struct xlnx_hdmi_stream {
  * @wait_for_streamup: Flag for stream up
  * @tmds_clk: TMDS clock
  * @wait_event: Wait event
+ * @bridge: bridge structure
+ * @height_out: configurable bridge output height parameter
+ * @height_out_prop_val: configurable bridge output height parameter value
+ * @width_out: configurable bridge output width parameter
+ * @width_out_prop_val: configurable bridge output width parameter value
+ * @in_fmt: configurable bridge input media format
+ * @in_fmt_prop_val: configurable media bus format value
+ * @out_fmt: configurable bridge output media format
+ * @out_fmt_prop_val: configurable media bus format value
  */
 struct xlnx_hdmi {
 	struct device *dev;
@@ -520,6 +537,15 @@ struct xlnx_hdmi {
 	u32 wait_for_streamup:1;
 	u32 tmds_clk;
 	wait_queue_head_t wait_event;
+	struct xlnx_bridge *bridge;
+	struct drm_property *height_out;
+	u32 height_out_prop_val;
+	struct drm_property *width_out;
+	u32 width_out_prop_val;
+	struct drm_property *in_fmt;
+	u32 in_fmt_prop_val;
+	struct drm_property *out_fmt;
+	u32 out_fmt_prop_val;
 };
 
 enum xlnx_hdmitx_clks {
@@ -2306,6 +2332,48 @@ static void xlnx_hdmi_connector_destroy(struct drm_connector *connector)
 	connector->dev = NULL;
 }
 
+static int xlnx_hdmi_set_property(struct drm_connector *connector,
+				  struct drm_connector_state *state,
+				  struct drm_property *property,
+				  uint64_t val)
+{
+	struct xlnx_hdmi *hdmi = connector_to_hdmi(connector);
+
+	if (property == hdmi->height_out)
+		hdmi->height_out_prop_val = (u32)val;
+	else if (property == hdmi->width_out)
+		hdmi->width_out_prop_val = (u32)val;
+	else if (property == hdmi->in_fmt)
+		hdmi->in_fmt_prop_val = (u32)val;
+	else if (property == hdmi->out_fmt)
+		hdmi->out_fmt_prop_val = (u32)val;
+	else
+		return -EINVAL;
+
+	return 0;
+}
+
+static int xlnx_hdmi_get_property(struct drm_connector *connector,
+				  const struct drm_connector_state *state,
+				  struct drm_property *property,
+				  uint64_t *val)
+{
+	struct xlnx_hdmi *hdmi = connector_to_hdmi(connector);
+
+	if (property == hdmi->height_out)
+		*val = hdmi->height_out_prop_val;
+	else if (property == hdmi->width_out)
+		*val = hdmi->width_out_prop_val;
+	else if (property == hdmi->in_fmt)
+		*val = hdmi->in_fmt_prop_val;
+	else if (property == hdmi->out_fmt)
+		*val = hdmi->out_fmt_prop_val;
+	else
+		return -EINVAL;
+
+	return 0;
+}
+
 static const struct drm_connector_funcs xlnx_hdmi_connector_funcs = {
 	.dpms			= drm_helper_connector_dpms,
 	.detect			= xlnx_hdmi_connector_detect,
@@ -2314,6 +2382,8 @@ static const struct drm_connector_funcs xlnx_hdmi_connector_funcs = {
 	.atomic_duplicate_state	= drm_atomic_helper_connector_duplicate_state,
 	.atomic_destroy_state	= drm_atomic_helper_connector_destroy_state,
 	.reset			= drm_atomic_helper_connector_reset,
+	.atomic_set_property	= xlnx_hdmi_set_property,
+	.atomic_get_property	= xlnx_hdmi_get_property,
 };
 
 /* DRM connector helper functions */
@@ -2475,6 +2545,9 @@ static void xlnx_hdmi_encoder_disable(struct drm_encoder *encoder)
 	struct xlnx_hdmi *hdmi = encoder_to_hdmi(encoder);
 	struct xlnx_hdmi_config *config = &hdmi->config;
 
+	if (hdmi->bridge)
+		xlnx_bridge_disable(hdmi->bridge);
+
 	xlnx_hdmi_encoder_dpms(encoder, DRM_MODE_DPMS_OFF);
 
 	/* Disable the EXT VRST which actually starts the bridge */
@@ -2501,6 +2574,7 @@ color_formats xlnx_hdmi_find_media_bus(struct xlnx_hdmi *hdmi,
 	case DRM_FORMAT_RGB888:
 	case DRM_FORMAT_ARGB8888:
 	case DRM_FORMAT_ABGR8888:
+	case MEDIA_BUS_FMT_RGB888_1X24:
 		hdmi->xvidc_colordepth = HDMI_TX_BPC_8;
 		return HDMI_TX_CSF_RGB;
 	case DRM_FORMAT_XBGR2101010:
@@ -2509,6 +2583,7 @@ color_formats xlnx_hdmi_find_media_bus(struct xlnx_hdmi *hdmi,
 	case DRM_FORMAT_VUY888:
 	case DRM_FORMAT_XVUY8888:
 	case DRM_FORMAT_Y8:
+	case MEDIA_BUS_FMT_VUY8_1X24:
 		hdmi->xvidc_colordepth = HDMI_TX_BPC_8;
 		return HDMI_TX_CSF_YCRCB_444;
 	case DRM_FORMAT_XVUY2101010:
@@ -2518,12 +2593,14 @@ color_formats xlnx_hdmi_find_media_bus(struct xlnx_hdmi *hdmi,
 	case DRM_FORMAT_YUYV:
 	case DRM_FORMAT_UYVY:
 	case DRM_FORMAT_NV16:
+	case MEDIA_BUS_FMT_UYVY8_1X16:
 		hdmi->xvidc_colordepth = HDMI_TX_BPC_8;
 		return HDMI_TX_CSF_YCRCB_422;
 	case DRM_FORMAT_XV20:
 		hdmi->xvidc_colordepth = HDMI_TX_BPC_10;
 		return HDMI_TX_CSF_YCRCB_422;
 	case DRM_FORMAT_NV12:
+	case MEDIA_BUS_FMT_VYYUYY8_1X24:
 		hdmi->xvidc_colordepth = HDMI_TX_BPC_8;
 		return HDMI_TX_CSF_YCRCB_420;
 	case DRM_FORMAT_XV15:
@@ -2592,6 +2669,33 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	}
 
 	drm_fourcc = encoder->crtc->primary->state->fb->format->format;
+
+	if (hdmi->bridge) {
+		/*
+		 * TODO: Add a check for valid values of width_out,
+		 * height_out and out_fmt values based on sink
+		 * capabilities.
+		 */
+		xlnx_bridge_set_input(hdmi->bridge, adjusted_mode->hdisplay,
+				      adjusted_mode->vdisplay,
+				      hdmi->in_fmt_prop_val);
+		xlnx_bridge_set_output(hdmi->bridge, hdmi->width_out_prop_val,
+				       hdmi->height_out_prop_val,
+				       hdmi->out_fmt_prop_val);
+		xlnx_bridge_enable(hdmi->bridge);
+
+		drm_fourcc = hdmi->out_fmt_prop_val;
+		adjusted_mode = drm_mode_find_cea(connector->dev,
+						  hdmi->width_out_prop_val,
+						  hdmi->height_out_prop_val,
+						  drm_mode_vrefresh(adjusted_mode),
+						  adjusted_mode->flags & DRM_MODE_FLAG_INTERLACE);
+		if (!adjusted_mode) {
+			dev_err(hdmi->dev, "Invalid CEA mode\n");
+			return;
+		}
+	}
+
 	hdmi->xvidc_colorfmt = xlnx_hdmi_find_media_bus(hdmi, drm_fourcc);
 	dev_dbg(hdmi->dev, "xvidc_colorfmt = %d\n", hdmi->xvidc_colorfmt);
 	dev_dbg(hdmi->dev, "xvidc_colordepth = %d\n", hdmi->xvidc_colordepth);
@@ -2697,6 +2801,42 @@ drm_encoder_helper_funcs xlnx_hdmi_encoder_helper_funcs = {
 	.atomic_mode_set = xlnx_hdmi_encoder_atomic_mode_set,
 };
 
+static void
+xlnx_hdmi_create_connector_property(struct drm_connector *connector)
+{
+	struct drm_device *dev = connector->dev;
+	struct xlnx_hdmi *hdmi = connector_to_hdmi(connector);
+
+	hdmi->height_out = drm_property_create_range(dev, 0, "height_out",
+						     HDMI_MIN_HEIGHT,
+						     HDMI_MAX_HEIGHT);
+	hdmi->width_out = drm_property_create_range(dev, 0, "width_out",
+						    HDMI_MIN_WIDTH,
+						    HDMI_MAX_WIDTH);
+	hdmi->in_fmt = drm_property_create_range(dev, 0, "in_fmt",
+						 MEDIA_BUS_FMT_RGB888_1X24,
+						 MEDIA_BUS_FMT_VYYUYY8_1X24);
+	hdmi->out_fmt = drm_property_create_range(dev, 0, "out_fmt",
+						  MEDIA_BUS_FMT_RGB888_1X24,
+						  MEDIA_BUS_FMT_VYYUYY8_1X24);
+}
+
+static void
+xlnx_hdmi_attach_connector_property(struct drm_connector *connector)
+{
+	struct xlnx_hdmi *hdmi = connector_to_hdmi(connector);
+	struct drm_mode_object *obj = &connector->base;
+
+	if (hdmi->height_out)
+		drm_object_attach_property(obj, hdmi->height_out, 0);
+	if (hdmi->width_out)
+		drm_object_attach_property(obj, hdmi->width_out, 0);
+	if (hdmi->in_fmt)
+		drm_object_attach_property(obj, hdmi->in_fmt, 0);
+	if (hdmi->out_fmt)
+		drm_object_attach_property(obj, hdmi->out_fmt, 0);
+}
+
 static int xlnx_hdmi_create_connector(struct drm_encoder *encoder)
 {
 	struct xlnx_hdmi *hdmi = encoder_to_hdmi(encoder);
@@ -2727,6 +2867,9 @@ static int xlnx_hdmi_create_connector(struct drm_encoder *encoder)
 			"Failed to attach connector (ret=%d)\n", ret);
 		return ret;
 	}
+
+	xlnx_hdmi_create_connector_property(connector);
+	xlnx_hdmi_attach_connector_property(connector);
 
 	return 0;
 }
@@ -2759,6 +2902,9 @@ static void xlnx_hdmi_unbind(struct device *dev, struct device *master,
 			     void *data)
 {
 	struct xlnx_hdmi *hdmi = dev_get_drvdata(dev);
+
+	if (hdmi->bridge)
+		xlnx_bridge_disable(hdmi->bridge);
 
 	xlnx_hdmi_encoder_dpms(&hdmi->encoder, DRM_MODE_DPMS_OFF);
 	drm_encoder_cleanup(&hdmi->encoder);
@@ -2953,6 +3099,7 @@ static int xlnx_hdmi_probe(struct platform_device *pdev)
 {
 	struct xlnx_hdmi *hdmi;
 	struct resource *res;
+	struct device_node *vpss_node;
 	unsigned int index;
 	int ret, num_clks = ARRAY_SIZE(hdmitx_clks);
 
@@ -2971,6 +3118,16 @@ static int xlnx_hdmi_probe(struct platform_device *pdev)
 	ret = xlnx_hdmi_parse_of(hdmi);
 	if (ret < 0)
 		return ret;
+
+	/* VPSS bridge support */
+	vpss_node = of_parse_phandle(hdmi->dev->of_node, "xlnx,vpss", 0);
+	if (vpss_node) {
+		hdmi->bridge = of_xlnx_bridge_get(vpss_node);
+		if (!hdmi->bridge) {
+			dev_info(hdmi->dev, "Didn't get bridge instance\n");
+			return -EPROBE_DEFER;
+		}
+	}
 
 	ret = clk_bulk_get(&pdev->dev, num_clks, hdmitx_clks);
 	if (ret)
@@ -3051,6 +3208,9 @@ static int xlnx_hdmi_remove(struct platform_device *pdev)
 {
 	struct xlnx_hdmi *hdmi = platform_get_drvdata(pdev);
 	int num_clks = ARRAY_SIZE(hdmitx_clks);
+
+	if (hdmi->bridge)
+		xlnx_bridge_disable(hdmi->bridge);
 
 	xlnx_hdmi_exit_phy(hdmi);
 	component_del(&pdev->dev, &xlnx_hdmi_component_ops);
