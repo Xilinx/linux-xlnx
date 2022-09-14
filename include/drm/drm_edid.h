@@ -443,6 +443,9 @@ int drm_edid_header_is_valid(const void *edid);
 bool drm_edid_is_valid(struct edid *edid);
 void drm_edid_get_monitor_name(const struct edid *edid, char *name,
 			       int buflen);
+struct drm_display_mode *drm_mode_find_cea(struct drm_device *dev,
+					   int hsize, int vsize, int fresh,
+					   bool interlaced);
 struct drm_display_mode *drm_mode_find_dmt(struct drm_device *dev,
 					   int hsize, int vsize, int fresh,
 					   bool rb);
