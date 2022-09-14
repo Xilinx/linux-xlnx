@@ -922,20 +922,6 @@ int zynqmp_pm_set_boot_health_status(u32 value)
 }
 
 /**
- * zynqmp_pm_clear_aie_npi_isr - Clear AI engine NPI interrupt status register
- * @node:	AI engine node id
- * @irq_mask:	Mask of AI engine NPI interrupt bit to clear
- *
- * Return: Returns status, either success or error+reason
- */
-int zynqmp_pm_clear_aie_npi_isr(u32 node, u32 irq_mask)
-{
-	return zynqmp_pm_invoke_fn(PM_IOCTL, node, IOCTL_AIE_ISR_CLEAR,
-				   irq_mask, 0, 0, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_clear_aie_npi_isr);
-
-/**
  * zynqmp_pm_aie_operation - AI engine run time operations
  * @node:	AI engine node id
  * @start_col:	Starting column of AI partition

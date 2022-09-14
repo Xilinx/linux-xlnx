@@ -744,7 +744,6 @@ int zynqmp_pm_request_wake(const u32 node,
 int zynqmp_pm_get_rpu_mode(u32 node_id, enum rpu_oper_mode *rpu_mode);
 int zynqmp_pm_set_rpu_mode(u32 node_id, u32 arg1);
 int zynqmp_pm_set_tcm_config(u32 node_id, u32 arg1);
-int zynqmp_pm_clear_aie_npi_isr(u32 node, u32 irq_mask);
 int zynqmp_pm_pinctrl_request(const u32 pin);
 int zynqmp_pm_pinctrl_release(const u32 pin);
 int zynqmp_pm_pinctrl_get_function(const u32 pin, u32 *id);
@@ -1021,11 +1020,6 @@ static inline int zynqmp_pm_set_rpu_mode(u32 node_id, u32 arg1)
 }
 
 static inline int zynqmp_pm_set_tcm_config(u32 node_id, u32 arg1)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_clear_aie_npi_isr(u32 node, u32 irq_mask)
 {
 	return -ENODEV;
 }
