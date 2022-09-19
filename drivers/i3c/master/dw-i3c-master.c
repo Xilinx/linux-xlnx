@@ -218,6 +218,10 @@
 
 #define XFER_TIMEOUT (msecs_to_jiffies(1000))
 
+static unsigned int scl_timing_quirk_spp = 0;
+module_param(scl_timing_quirk_spp, uint, 0644);
+MODULE_PARM_DESC(scl_timing_quirk_spp, "Override the scl timings");
+
 struct dw_i3c_cmd {
 	u32 cmd_lo;
 	u32 cmd_hi;
@@ -542,6 +546,9 @@ static int dw_i3c_clk_cfg(struct dw_i3c_master *master)
 		lcnt = SCL_I3C_TIMING_CNT_MIN;
 
 	scl_timing = SCL_I3C_TIMING_HCNT(hcnt) | SCL_I3C_TIMING_LCNT(lcnt);
+	if (scl_timing_quirk_spp)
+		scl_timing = 0x50005;
+
 	writel(scl_timing, master->regs + SCL_I3C_PP_TIMING);
 
 	/*
@@ -554,6 +561,9 @@ static int dw_i3c_clk_cfg(struct dw_i3c_master *master)
 	lcnt = max_t(u8,
 		     DIV_ROUND_UP(I3C_BUS_TLOW_OD_MIN_NS, core_period), lcnt);
 	scl_timing = SCL_I3C_TIMING_HCNT(hcnt) | SCL_I3C_TIMING_LCNT(lcnt);
+	if (scl_timing_quirk_spp)
+		scl_timing = 0x200020;
+
 	writel(scl_timing, master->regs + SCL_I3C_OD_TIMING);
 
 	lcnt = DIV_ROUND_UP(core_rate, I3C_BUS_SDR1_SCL_RATE) - hcnt;
