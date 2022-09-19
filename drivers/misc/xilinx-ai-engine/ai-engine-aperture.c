@@ -311,6 +311,7 @@ int aie_aperture_remove(struct aie_aperture *aperture)
 	}
 	mutex_unlock(&aperture->mlock);
 
+	aie_aperture_sysfs_remove_entries(aperture);
 	of_node_clear_flag(aperture->dev.of_node, OF_POPULATED);
 	device_del(&aperture->dev);
 	put_device(&aperture->dev);
@@ -501,6 +502,12 @@ of_aie_aperture_probe(struct aie_device *adev, struct device_node *nc)
 	}
 
 	of_node_get(nc);
+
+	ret = aie_aperture_sysfs_create_entries(aperture);
+	if (ret) {
+		dev_err(dev, "Failed to create aperture sysfs: %d\n", ret);
+		goto put_aperture_dev;
+	}
 
 	dev_info(dev,
 		 "AI engine aperture %s, id 0x%x, cols(%u, %u) aie_tile_rows(%u, %u) memory_tile_rows(%u, %u) is probed successfully.\n",

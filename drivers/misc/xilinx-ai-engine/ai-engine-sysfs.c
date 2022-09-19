@@ -283,6 +283,119 @@ static int aie_part_sysfs_create(struct aie_partition *apart)
 }
 
 /**
+ * aie_aperture_sysfs_create() - creates sysfs nodes at the aperture level.
+ * @aperture: AI engine aperture.
+ * @return: 0 for success, error code for failure.
+ */
+static int aie_aperture_sysfs_create(struct aie_aperture *aperture)
+{
+	const struct aie_sysfs_attr *attr;
+	struct attribute_group *attr_grp;
+	struct bin_attribute **bin_attrs;
+	struct attribute **dev_attrs;
+	int ret = 0;
+	u32 index;
+
+	attr = aperture->adev->aperture_sysfs_attr;
+
+	if (attr->num_dev_attrs) {
+		dev_attrs = devm_kzalloc(&aperture->dev, sizeof(*dev_attrs) *
+					 (attr->num_dev_attrs + 1), GFP_KERNEL);
+		if (!dev_attrs)
+			return -ENOMEM;
+
+		for (index = 0; index < attr->num_dev_attrs; index++) {
+			struct device_attribute *node;
+			const struct aie_dev_attr *dev_attr;
+
+			dev_attr = &attr->dev_attr[index];
+
+			node = aie_sysfs_create_dev_attr(&aperture->dev,
+							 dev_attr);
+			if (IS_ERR_VALUE(node))
+				return PTR_ERR(node);
+
+			dev_attrs[index] = &node->attr;
+		}
+	}
+
+	if (attr->num_bin_attrs) {
+		bin_attrs = devm_kzalloc(&aperture->dev, sizeof(*bin_attrs) *
+					 (attr->num_bin_attrs + 1), GFP_KERNEL);
+		if (!bin_attrs)
+			return -ENOMEM;
+
+		for (index = 0; index < attr->num_bin_attrs; index++) {
+			struct bin_attribute *node;
+			const struct aie_bin_attr *bin_attr;
+
+			bin_attr = &attr->bin_attr[index];
+
+			node = aie_sysfs_create_bin_attr(&aperture->dev,
+							 bin_attr);
+			if (IS_ERR_VALUE(node))
+				return PTR_ERR(node);
+
+			bin_attrs[index] = node;
+		}
+	}
+
+	if (attr->num_dev_attrs || attr->num_bin_attrs) {
+		attr_grp = devm_kzalloc(&aperture->dev,
+					sizeof(struct attribute_group),
+					GFP_KERNEL);
+		if (!attr_grp)
+			return -ENOMEM;
+
+		aperture->attr_grp = attr_grp;
+
+		if (attr->num_dev_attrs)
+			attr_grp->attrs = dev_attrs;
+
+		if (attr->num_bin_attrs)
+			attr_grp->bin_attrs = bin_attrs;
+
+		/* TODO - use the non managed api to create sysfs group.
+		 * This workaround solves an issue where the device_del()
+		 * removes the SYSFS files before the managed create group.
+		 * This results in an error where files cannot be found.
+		 */
+		ret = sysfs_create_group(&aperture->dev.kobj, attr_grp);
+		if (ret) {
+			dev_err(&aperture->dev,
+				"Failed to add sysfs attributes group\n");
+		}
+	}
+	return ret;
+}
+
+/**
+ * aie_aperture_sysfs_create_entries() - creates sysfs group for aperture.
+ * @aperture: AI engine aperture.
+ * @return: 0 for success, error code for failure.
+ */
+int aie_aperture_sysfs_create_entries(struct aie_aperture *aperture)
+{
+	int ret;
+
+	/*
+	 * TODO: hardware monitoring and dump using sysfs is not supported for
+	 * AIEML as of now.
+	 */
+	if (aperture->adev->dev_gen == AIE_DEVICE_GEN_AIEML) {
+		dev_dbg(&aperture->dev, "Not creating sysfs entries..\n");
+		return 0;
+	}
+
+	ret = aie_aperture_sysfs_create(aperture);
+	if (ret < 0) {
+		dev_err(&aperture->dev, "Failed to create aperture sysfs\n");
+		return ret;
+	}
+	return ret;
+}
+
+/**
  * aie_part_sysfs_create_entries() - creates sysfs group for partition device.
  * @apart: AI engine partition.
  * @return: 0 for success, error code for failure.
@@ -323,6 +436,15 @@ int aie_tile_sysfs_create_entries(struct aie_tile *atile)
 		return ret;
 	}
 	return ret;
+}
+
+/**
+ * aie_aperture_sysfs_remove_entries() - removes sysfs group from aperture.
+ * @aperture: AI engine aperture.
+ */
+void aie_aperture_sysfs_remove_entries(struct aie_aperture *aperture)
+{
+	sysfs_remove_group(&aperture->dev.kobj, aperture->attr_grp);
 }
 
 /**

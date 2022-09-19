@@ -876,6 +876,10 @@ static const struct aie_dev_attr aie_tile_dev_attr[] = {
 			     AIE_TILE_TYPE_MASK_SHIMNOC),
 };
 
+static const struct aie_dev_attr aie_aperture_dev_attr[] = {
+	AIE_APERTURE_ATTR_RO(hardware_info),
+};
+
 static const struct aie_dev_attr aie_part_dev_attr[] = {
 	AIE_PART_DEV_ATTR_RO(error_stat),
 	AIE_PART_DEV_ATTR_RO(current_freq),
@@ -887,6 +891,13 @@ static const struct aie_bin_attr aie_part_bin_attr[] = {
 	AIE_PART_BIN_ATTR_RO(error, AIE_PART_SYSFS_ERROR_BINA_SIZE),
 	AIE_PART_BIN_ATTR_RO(lock, AIE_PART_SYSFS_LOCK_BINA_SIZE),
 	AIE_PART_BIN_ATTR_RO(status, AIE_PART_SYSFS_STATUS_BINA_SIZE),
+};
+
+static const struct aie_sysfs_attr aie_aperture_sysfs_attr = {
+	.dev_attr = aie_aperture_dev_attr,
+	.bin_attr = NULL,
+	.num_dev_attrs = ARRAY_SIZE(aie_aperture_dev_attr),
+	.num_bin_attrs = 0U,
 };
 
 static const struct aie_sysfs_attr aie_part_sysfs_attr = {
@@ -1366,6 +1377,7 @@ int aie_device_init(struct aie_device *adev)
 	adev->core_errors = &aie_core_error;
 	adev->mem_errors = &aie_mem_error;
 	adev->shim_errors = &aie_shim_error;
+	adev->aperture_sysfs_attr = &aie_aperture_sysfs_attr;
 	adev->part_sysfs_attr = &aie_part_sysfs_attr;
 	adev->tile_sysfs_attr = &aie_tile_sysfs_attr;
 	adev->core_status_str = aie_core_status_str;

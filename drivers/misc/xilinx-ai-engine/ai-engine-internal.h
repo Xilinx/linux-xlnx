@@ -91,6 +91,12 @@ enum aie_tile_type {
 #define DELIMITER_LEVEL2 "; "
 
 /* Helper macros to dynamically create sysfs device attribute */
+#define AIE_APERTURE_ATTR_RO(_name) {				\
+	.name		= __stringify(_name),			\
+	.mode		= 0444,					\
+	.show		= aie_aperture_show_##_name,		\
+}
+
 #define AIE_PART_DEV_ATTR_RO(_name) {				\
 	.name		= __stringify(_name),			\
 	.mode		= 0444,					\
@@ -669,6 +675,7 @@ struct aie_tile {
  * @pm_node_id: AI Engine platform management node ID
  * @clock_id: AI Engine clock ID
  * @ttype_attr: tile type attributes
+ * @aperture_sysfs_attr: aperture level sysfs attributes
  * @part_sysfs_attr: partition level sysfs attributes
  * @tile_sysfs_attr: tile level sysfs attributes
  * @core_status_str: core status in string format
@@ -711,6 +718,7 @@ struct aie_device {
 	u32 pm_node_id;
 	u32 clock_id;
 	struct aie_tile_attr ttype_attr[AIE_TILE_TYPE_MAX];
+	const struct aie_sysfs_attr *aperture_sysfs_attr;
 	const struct aie_sysfs_attr *part_sysfs_attr;
 	const struct aie_sysfs_attr *tile_sysfs_attr;
 	char **core_status_str;
@@ -741,6 +749,7 @@ struct aie_device {
  * @range: range of aperture
  * @backtrack: workqueue to backtrack interrupt
  * @l2_mask: level 2 interrupt controller mask bitmap
+ * @attr_grp: attribute group for sysfs
  */
 struct aie_aperture {
 	struct list_head node;
@@ -756,6 +765,7 @@ struct aie_aperture {
 	struct aie_range range;
 	struct work_struct backtrack;
 	struct aie_resource l2_mask;
+	struct attribute_group *attr_grp;
 };
 
 /**
@@ -837,6 +847,7 @@ extern const struct file_operations aie_part_fops;
 
 #define cdev_to_aiedev(i_cdev) container_of((i_cdev), struct aie_device, cdev)
 #define dev_to_aiedev(_dev) container_of((_dev), struct aie_device, dev)
+#define dev_to_aieaperture(_dev) container_of((_dev), struct aie_aperture, dev)
 #define dev_to_aiepart(_dev) container_of((_dev), struct aie_partition, dev)
 #define dev_to_aietile(_dev) container_of((_dev), struct aie_tile, dev)
 
@@ -1097,6 +1108,8 @@ int aie_part_rscmgr_set_tile_broadcast(struct aie_partition *apart,
 				       struct aie_location loc,
 				       enum aie_module_type mod, uint32_t id);
 
+int aie_aperture_sysfs_create_entries(struct aie_aperture *aperture);
+void aie_aperture_sysfs_remove_entries(struct aie_aperture *aperture);
 int aie_part_sysfs_create_entries(struct aie_partition *apart);
 void aie_part_sysfs_remove_entries(struct aie_partition *apart);
 int aie_tile_sysfs_create_entries(struct aie_tile *atile);
@@ -1137,6 +1150,9 @@ ssize_t aie_sysfs_get_errors(struct aie_partition *apart,
 			     ssize_t size);
 ssize_t aie_tile_show_error(struct device *dev, struct device_attribute *attr,
 			    char *buffer);
+ssize_t aie_aperture_show_hardware_info(struct device *dev,
+					struct device_attribute *attr,
+					char *buffer);
 ssize_t aie_part_show_error_stat(struct device *dev,
 				 struct device_attribute *attr, char *buffer);
 ssize_t aie_part_show_current_freq(struct device *dev,
