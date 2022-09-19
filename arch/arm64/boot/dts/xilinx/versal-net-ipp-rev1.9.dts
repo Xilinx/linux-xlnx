@@ -120,7 +120,7 @@
 	};
 
 	chosen {
-		bootargs = "earlycon=pl011,mmio32,0xf1920000 console=ttyAMA0,115200 spi-cadence-quadspi.read_timeout_ms=30";
+		bootargs = "earlycon=pl011,mmio32,0xf1920000 console=ttyAMA0,115200 spi-cadence-quadspi.read_timeout_ms=30 dw-i3c-master.scl_timing_quirk_spp=1";
 		stdout-path = "serial0:115200";
 	};
 
