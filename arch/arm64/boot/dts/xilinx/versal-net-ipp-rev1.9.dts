@@ -115,8 +115,8 @@
 
 	aliases {
 		serial0 = &serial0;
-		mmc0 = &sdhci1;
-		mmc1 = &sdhci0;
+		mmc0 = &sdhci0;
+		mmc1 = &sdhci1;
 	};
 
 	chosen {
