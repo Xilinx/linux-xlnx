@@ -14,7 +14,9 @@ allOf:
 
 properties:
   compatible:
-    const: xlnx,xps-iic-2.00.a
+    enum:
+      - xlnx,xps-iic-2.00.a
+      - xlnx,axi-iic-2.1
 
   reg:
     maxItems: 1
@@ -35,6 +37,9 @@ required:
   - reg
   - interrupts
   - clocks
+
+optional:
+  - clock-frequency
 
 unevaluatedProperties: false
 
