@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/clock/renesas,proxo.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Renesas ProXO Oscillator Device Tree Bindings
+
+maintainers:
+  - Alex Helms <alexander.helms.jy@renesas.com>
+
+description:
+  Renesas ProXO is a family of programmable ultra-low phase noise
+  quartz-based oscillators.
+
+properties:
+  '#clock-cells':
+    const: 0
+
+  compatible:
+    enum:
+      - renesas,proxo-xp
+
+  reg:
+    maxItems: 1
+
+  renesas,crystal-frequency:
+    description: Internal crystal frequency, default is 50000000 (50MHz)
+    $ref: /schemas/types.yaml#/definitions/uint32
+
+required:
+  - '#clock-cells'
+  - compatible
+  - reg
+
+additionalProperties: false
+
+examples:
+  - |
+    i2c {
+      #address-cells = <1>;
+      #size-cells = <0>;
+
+      proxo: clock-controller@55 {
+        compatible = "renesas,proxo-xp";
+        reg = <0x55>;
+        #clock-cells = <0>;
+      };
+    };
