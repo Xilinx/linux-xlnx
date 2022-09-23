@@ -477,6 +477,13 @@ config COMMON_CLK_SP7021
 	  Not all features of the PLL are currently supported
 	  by the driver.
 
+config COMMON_CLK_PROXO
+	bool "Clock driver for Renesas ProXO"
+	depends on I2C && OF
+	select REGMAP_I2C
+	help
+	  Support for the Renesas ProXO oscillator clock.
+
 source "drivers/clk/actions/Kconfig"
 source "drivers/clk/analogbits/Kconfig"
 source "drivers/clk/baikal-t1/Kconfig"
