@@ -19753,6 +19753,12 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/clock/renesas,versaclock7.yaml
 F:	drivers/clk/clk-versaclock7.c
 
+RENESAS PROXO CLOCK DRIVER
+M:	Alex Helms <alexander.helms.jy@renesas.com>
+S:	Maintained
+F:	Documentation/devicetree/bindings/clock/renesas,proxo.yaml
+F:	drivers/clk/clk-proxo.c
+
 RENESAS X9250 DIGITAL POTENTIOMETERS DRIVER
 M:	Herve Codina <herve.codina@bootlin.com>
 L:	linux-iio@vger.kernel.org
