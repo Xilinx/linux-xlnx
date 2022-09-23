@@ -446,6 +446,13 @@ config COMMON_CLK_XLNX_CLKWZRD_V
 	  This driver supports the Xilinx clocking wizard programmable clock
 	  synthesizer. The number of output is configurable in the design.
 
+config COMMON_CLK_PROXO
+	bool "Clock driver for Renesas ProXO"
+	depends on I2C && OF
+	select REGMAP_I2C
+	help
+	  Support for the Renesas ProXO oscillator clock.
+
 source "drivers/clk/actions/Kconfig"
 source "drivers/clk/analogbits/Kconfig"
 source "drivers/clk/baikal-t1/Kconfig"
