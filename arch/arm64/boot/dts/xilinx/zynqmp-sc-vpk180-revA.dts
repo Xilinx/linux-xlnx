@@ -3,6 +3,7 @@
  * dts file for Xilinx ZynqMP VPK180 revA
  *
  * (C) Copyright 2021 - 2022, Xilinx, Inc.
+ * (C) Copyright 2022, Advanced Micro Devices, Inc.
  *
  * Michal Simek <michal.simek@xilinx.com>
  */
@@ -378,6 +379,7 @@
 				factory-fout = <200000000>;
 				clock-frequency = <200000000>;
 				clock-output-names = "lpddr4_clk3";
+				silabs,skip-recall;
 			};
 			/* alternative option DNP - u305 at 0x50 */
 		};
@@ -393,6 +395,7 @@
 				factory-fout = <200000000>;
 				clock-frequency = <200000000>;
 				clock-output-names = "lpddr4_clk2";
+				silabs,skip-recall;
 			};
 			/* alternative option DNP - u303 at 0x50 */
 		};
@@ -408,6 +411,7 @@
 				factory-fout = <200000000>;
 				clock-frequency = <200000000>;
 				clock-output-names = "lpddr4_clk1";
+				silabs,skip-recall;
 			};
 			/* alternative option DNP - u301 at 0x50 */
 		};
