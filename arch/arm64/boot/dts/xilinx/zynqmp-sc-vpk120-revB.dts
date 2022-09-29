@@ -2,7 +2,8 @@
 /*
  * dts file for Xilinx ZynqMP VPK120 revB
  *
- * (C) Copyright 2021, Xilinx, Inc.
+ * (C) Copyright 2021 - 2022, Xilinx, Inc.
+ * (C) Copyright 2022, Advanced Micro Devices, Inc.
  *
  * Michal Simek <michal.simek@xilinx.com>
  */
@@ -245,6 +246,7 @@
 				factory-fout = <100000000>;
 				clock-frequency = <100000000>;
 				clock-output-names = "fmc_si570";
+				silabs,skip-recall;
 			};
 
 		};
@@ -301,6 +303,7 @@
 				factory-fout = <200000000>;
 				clock-frequency = <200000000>;
 				clock-output-names = "lpddr4_clk3";
+				silabs,skip-recall;
 			};
 		};
 		lpddr4_si570_clk2_i2c: i2c@4 {
@@ -315,6 +318,7 @@
 				factory-fout = <200000000>;
 				clock-frequency = <200000000>;
 				clock-output-names = "lpddr4_clk2";
+				silabs,skip-recall;
 			};
 		};
 		lpddr4_si570_clk1_i2c: i2c@5 {
@@ -329,6 +333,7 @@
 				factory-fout = <200000000>;
 				clock-frequency = <200000000>;
 				clock-output-names = "lpddr4_clk1";
+				silabs,skip-recall;
 			};
 		};
 		qsfpdd_i2c: i2c@6 {
