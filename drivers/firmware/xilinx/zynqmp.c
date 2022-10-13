@@ -3,6 +3,7 @@
  * Xilinx Zynq MPSoC Firmware layer
  *
  *  Copyright (C) 2014-2021 Xilinx, Inc.
+ *  Copyright (C) 2022 Advanced Micro Devices, Inc.
  *
  *  Michal Simek <michal.simek@xilinx.com>
  *  Davorin Mista <davorin.mista@aggios.com>
@@ -1468,41 +1469,6 @@ int zynqmp_pm_request_suspend(const u32 node,
 				   latency, state, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_request_suspend);
-
-/**
- * zynqmp_pm_force_powerdown - PM call to request for another PU or subsystem to
- *				be powered down forcefully
- * @target:	Node ID of the targeted PU or subsystem
- * @ack:	Flag to specify whether acknowledge is requested
- *
- * Return:	Returns status, either success or error+reason
- */
-int zynqmp_pm_force_powerdown(const u32 target,
-			      const enum zynqmp_pm_request_ack ack)
-{
-	return zynqmp_pm_invoke_fn(PM_FORCE_POWERDOWN, target, ack, 0, 0,
-				   0, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_force_powerdown);
-
-/**
- * zynqmp_pm_request_wakeup - PM call to wake up selected master or subsystem
- * @node:	Node ID of the master or subsystem
- * @set_addr:	Specifies whether the address argument is relevant
- * @address:	Address from which to resume when woken up
- * @ack:	Flag to specify whether acknowledge requested
- *
- * Return:	Returns status, either success or error+reason
- */
-int zynqmp_pm_request_wakeup(const u32 node, const bool set_addr,
-			     const u64 address,
-			     const enum zynqmp_pm_request_ack ack)
-{
-	/* set_addr flag is encoded into 1st bit of address */
-	return zynqmp_pm_invoke_fn(PM_REQUEST_WAKEUP, node, address | set_addr,
-				   address >> 32, ack, 0, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_request_wakeup);
 
 /**
  * zynqmp_pm_set_wakeup_source - PM call to specify the wakeup source

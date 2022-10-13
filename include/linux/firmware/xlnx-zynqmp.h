@@ -723,9 +723,6 @@ int zynqmp_pm_get_node_status(const u32 node, u32 *const status,
 int zynqmp_pm_get_operating_characteristic(const u32 node,
 					   const enum zynqmp_pm_opchar_type type,
 					   u32 *const result);
-int zynqmp_pm_force_powerdown(const u32 target, const enum zynqmp_pm_request_ack ack);
-int zynqmp_pm_request_wakeup(const u32 node, const bool set_addr,
-			     const u64 address, const enum zynqmp_pm_request_ack ack);
 int zynqmp_pm_set_wakeup_source(const u32 target, const u32 wakeup_node, const u32 enable);
 int zynqmp_pm_fpga_load(const u64 address, const u32 size,
 			const u32 flags, u32 *status);
@@ -1136,19 +1133,6 @@ static inline int zynqmp_pm_get_node_status(const u32 node, u32 *const status,
 static inline int zynqmp_pm_get_operating_characteristic(const u32 node,
 							 const enum zynqmp_pm_opchar_type type,
 							 u32 *const result)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_force_powerdown(const u32 target,
-					    const enum zynqmp_pm_request_ack ack)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_request_wakeup(const u32 node, const bool set_addr,
-					   const u64 address,
-					   const enum zynqmp_pm_request_ack ack)
 {
 	return -ENODEV;
 }
