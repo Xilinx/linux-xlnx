@@ -631,8 +631,6 @@
 			clocks = <&clk60>, <&clk60>;
 			power-domains = <&versal_net_firmware PM_DEV_USB_0>;
 			resets = <&versal_net_reset VERSAL_RST_USB_0>;
-			xlnx,usb-polarity = <0>;
-			xlnx,usb-reset-mode = <0>;
 
 			dwc3_0: dwc3@f1b00000  {
 				compatible = "snps,dwc3";
@@ -644,7 +642,6 @@
 				snps,dis_u3_susphy_quirk;
 				snps,quirk-frame-length-adjustment = <0x20>;
 				snps,refclk_fladj;
-				snps,mask_phy_reset;
 				dr_mode = "peripheral";
 				maximum-speed = "high-speed";
 				snps,usb3_lpm_capable;
@@ -663,8 +660,6 @@
 			clocks = <&clk60 &clk60>;
 			power-domains = <&versal_net_firmware PM_DEV_USB_1>;
 			resets = <&versal_net_reset VERSAL_RST_USB_1>;
-			xlnx,usb-polarity = <0x00>;
-			xlnx,usb-reset-mode = <0x00>;
 
 			dwc3_1: dwc3@f1c00000  {
 				compatible = "snps,dwc3";
@@ -676,7 +671,6 @@
 				snps,dis_u3_susphy_quirk;
 				snps,quirk-frame-length-adjustment = <0x20>;
 				snps,refclk_fladj;
-				snps,mask_phy_reset;
 				dr_mode = "host";
 				maximum-speed = "high-speed";
 				snps,usb3_lpm_capable;

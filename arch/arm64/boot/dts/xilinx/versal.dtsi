@@ -602,7 +602,6 @@
 				snps,quirk-frame-length-adjustment = <0x20>;
 				snps,refclk_fladj;
 				clock-names = "ref";
-				snps,mask_phy_reset;
 				/* dma-coherent; */
 			};
 		};

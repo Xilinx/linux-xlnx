@@ -61,8 +61,6 @@
 
 &usb0 {
 	status = "okay";
-	xlnx,usb-polarity = <0>;
-	xlnx,usb-reset-mode = <0>;
 };
 
 &dwc3_0 { /* U4 */

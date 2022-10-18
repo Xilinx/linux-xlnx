@@ -514,8 +514,6 @@
 
 &usb0 { /* MIO52 - MIO63 */
 	status = "okay";
-	xlnx,usb-polarity = <0>;
-	xlnx,usb-reset-mode = <0>;
 	phy-names = "usb3-phy";
 	phys = <&psgtr 1 PHY_TYPE_USB3 0 1>;
 };
