@@ -207,19 +207,13 @@ static int zynqmp_sha_probe(struct platform_device *pdev)
 		return err;
 	}
 
-	err = crypto_register_shash(&sha3_drv_ctx.sha3_384);
-	if (err < 0) {
-		dev_err(dev, "Failed to register shash alg.\n");
-		return err;
-	}
-
 	sha3_drv_ctx.dev = dev;
 	platform_set_drvdata(pdev, &sha3_drv_ctx);
 
 	ubuf = dma_alloc_coherent(dev, ZYNQMP_DMA_ALLOC_FIXED_SIZE, &update_dma_addr, GFP_KERNEL);
 	if (!ubuf) {
 		err = -ENOMEM;
-		goto err_shash;
+		return err;
 	}
 
 	fbuf = dma_alloc_coherent(dev, SHA3_384_DIGEST_SIZE, &final_dma_addr, GFP_KERNEL);
@@ -228,13 +222,19 @@ static int zynqmp_sha_probe(struct platform_device *pdev)
 		goto err_mem;
 	}
 
+	err = crypto_register_shash(&sha3_drv_ctx.sha3_384);
+	if (err < 0) {
+		dev_err(dev, "Failed to register shash alg.\n");
+		goto err_mem1;
+	}
+
 	return 0;
+
+err_mem1:
+	dma_free_coherent(sha3_drv_ctx.dev, SHA3_384_DIGEST_SIZE, fbuf, final_dma_addr);
 
 err_mem:
 	dma_free_coherent(sha3_drv_ctx.dev, ZYNQMP_DMA_ALLOC_FIXED_SIZE, ubuf, update_dma_addr);
-
-err_shash:
-	crypto_unregister_shash(&sha3_drv_ctx.sha3_384);
 
 	return err;
 }
@@ -258,7 +258,32 @@ static struct platform_driver zynqmp_sha_driver = {
 	},
 };
 
-module_platform_driver(zynqmp_sha_driver);
+static int __init sha_driver_init(void)
+{
+	struct platform_device *pdev;
+	int ret;
+
+	ret = platform_driver_register(&zynqmp_sha_driver);
+	if (ret)
+		return ret;
+
+	pdev = platform_device_register_simple(zynqmp_sha_driver.driver.name,
+			0, NULL, 0);
+	if (IS_ERR(pdev)) {
+		ret = PTR_ERR(pdev);
+		platform_driver_unregister(&zynqmp_sha_driver);
+	}
+
+	return ret;
+}
+
+static void __exit sha_driver_exit(void)
+{
+	platform_driver_unregister(&zynqmp_sha_driver);
+}
+
+device_initcall(sha_driver_init);
+
 MODULE_DESCRIPTION("ZynqMP SHA3 hardware acceleration support.");
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Harsha <harsha.harsha@xilinx.com>");
