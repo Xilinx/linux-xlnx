@@ -240,10 +240,6 @@
 				status = "disabled";
 			};
 
-			xlnx_keccak_384: sha384 {
-				compatible = "xlnx,zynqmp-keccak-384";
-			};
-
 			xlnx_rsa: zynqmp-rsa {
 				compatible = "xlnx,zynqmp-rsa";
 			};
