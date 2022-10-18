@@ -15,8 +15,10 @@
 #define GEM1_REF_TX                             0xA1
 #define CAN0_REF_2X                             0x9E
 #define CAN1_REF_2X                             0xAC
+#define FPD_WWDT                                0x96
 #define I3C0_REF                                0x9D
 #define I3C1_REF                                0x9F
+#define USB1_BUS_REF                            0xAE
 
 /* Remove Versal specific node IDs */
 #undef APU_PLL
@@ -39,19 +41,9 @@
 #undef RCLK_PMC
 #undef RCLK_LPD
 #undef WDT
-#undef TTC0
-#undef TTC1
-#undef TTC2
-#undef TTC3
-#undef GEM_TSU
-#undef GEM_TSU_LB
 #undef MUXED_IRO_DIV2
 #undef MUXED_IRO_DIV4
 #undef PSM_REF
-#undef GEM0_RX
-#undef GEM0_TX
-#undef GEM1_RX
-#undef GEM1_TX
 #undef CPM_CORE_REF
 #undef CPM_LSBUS_REF
 #undef CPM_DBG_REF

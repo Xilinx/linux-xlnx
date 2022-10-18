@@ -8,7 +8,7 @@
 
 #include <dt-bindings/reset/xlnx-versal-resets.h>
 
-#define VERSAL_RST_USB_1			(0xc4100c6U)
+#define VERSAL_RST_USB_1			(0xC1040C6U)
 
 /* Remove Versal specific reset IDs */
 #undef VERSAL_RST_ACPU_0_POR

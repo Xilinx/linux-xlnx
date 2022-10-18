@@ -9,6 +9,10 @@
 #include <dt-bindings/power/xlnx-versal-power.h>
 
 #define PM_DEV_USB_1				(0x182240D7U)
+#define PM_DEV_FPD_SWDT_0			(0x182240DBU)
+#define PM_DEV_FPD_SWDT_1			(0x182240DCU)
+#define PM_DEV_FPD_SWDT_2			(0x182240DDU)
+#define PM_DEV_FPD_SWDT_3			(0x182240DEU)
 
 /* Remove Versal specific node IDs */
 #undef PM_DEV_RPU0_0
@@ -22,14 +26,6 @@
 #undef PM_DEV_TCM_0_B
 #undef PM_DEV_TCM_1_B
 #undef PM_DEV_SWDT_FPD
-#undef PM_DEV_ADMA_0
-#undef PM_DEV_ADMA_1
-#undef PM_DEV_ADMA_2
-#undef PM_DEV_ADMA_3
-#undef PM_DEV_ADMA_4
-#undef PM_DEV_ADMA_5
-#undef PM_DEV_ADMA_6
-#undef PM_DEV_ADMA_7
 #undef PM_DEV_AI
 
 #endif

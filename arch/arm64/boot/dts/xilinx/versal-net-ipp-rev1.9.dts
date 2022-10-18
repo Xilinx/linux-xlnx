@@ -10,6 +10,7 @@
 /dts-v1/;
 
 #include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/clock/xlnx-versal-net-clk.h>
 #include <dt-bindings/power/xlnx-versal-net-power.h>
 #include <dt-bindings/reset/xlnx-versal-net-resets.h>
 
@@ -124,6 +125,13 @@
 		stdout-path = "serial0:115200";
 	};
 
+	ref_clk: ref_clk {
+		compatible = "fixed-clock";
+		u-boot,dm-pre-reloc;
+		#clock-cells = <0>;
+		clock-frequency = <33333333>;
+	};
+
 	firmware {
 		versal_net_firmware: versal-net-firmware {
 			compatible = "xlnx,versal-net-firmware";
@@ -131,60 +139,53 @@
 			u-boot,dm-pre-reloc;
 			method = "smc";
 			#power-domain-cells = <0x01>;
+
+			versal_net_clk: clock-controller {
+				u-boot,dm-pre-reloc;
+				#clock-cells = <1>;
+				compatible = "xlnx,versal-net-clk";
+				clocks = <&ref_clk>, <&ref_clk>;
+				clock-names = "ref_clk", "pl_alt_ref_clk";
+			};
+
+			zynqmp_power: zynqmp-power {
+				compatible = "xlnx,zynqmp-power";
+				interrupts = <0 57 4>;
+				mboxes = <&ipi_mailbox_pmu1 0>,
+					<&ipi_mailbox_pmu1 1>;
+				mbox-names = "tx", "rx";
+			};
+
+			versal_net_reset: reset-controller {
+				compatible = "xlnx,versal-net-reset";
+				#reset-cells = <1>;
+			};
 		};
+
 		psci {
 			compatible = "arm,psci-1.0";
 			method = "smc";
 		};
-		versal_net_reset: reset-controller {
-			compatible = "xlnx,versal-net-reset";
-			#reset-cells = <1>;
+	};
+
+	zynqmp_ipi {
+		compatible = "xlnx,zynqmp-ipi-mailbox";
+		interrupts = <0 57 4>;
+		xlnx,ipi-id = <2>;
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		ipi_mailbox_pmu1: mailbox@eb3f0440 {
+			reg = <0 0xeb3f0440 0 0x20>,
+			      <0 0xeb3f0460 0 0x20>,
+			      <0 0xeb3f0280 0 0x20>,
+			      <0 0xeb3f02a0 0 0x20>;
+			reg-names = "local_request_region", "local_response_region",
+				    "remote_request_region", "remote_response_region";
+			#mbox-cells = <1>;
+			xlnx,ipi-id = <1>;
 		};
-	};
-
-	clk1: clk1 {
-		u-boot,dm-pre-reloc;
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <1000000>;
-	};
-
-	clk2_6: clk2_6 {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <2670000>;
-	};
-
-	clk20: clk20 {
-		u-boot,dm-pre-reloc;
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <20000000>;
-	};
-
-	clk25: clk25 {
-		u-boot,dm-pre-reloc;
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <25000000>;
-	};
-
-	clk100: clk100 {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <100000000>;
-	};
-
-	clk125: clk125 {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <125000000>;
-	};
-
-	clk60: clk60 {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <60000000>;
 	};
 
 	timer: timer {
@@ -207,7 +208,8 @@
 			clock-names = "clk_main", "clk_apb";
 			#dma-cells = <1>;
 			xlnx,bus-width = <64>;
-			clocks = <&clk100>, <&clk100>;
+			clocks = <&versal_net_clk ADMA>, <&versal_net_clk LPD_LSBUS>;
+			power-domains = <&versal_net_firmware PM_DEV_ADMA_0>;
 		};
 
 		adma1: dma-controller@ebd10000 {
@@ -218,7 +220,8 @@
 			clock-names = "clk_main", "clk_apb";
 			#dma-cells = <1>;
 			xlnx,bus-width = <64>;
-			clocks = <&clk100>, <&clk100>;
+			clocks = <&versal_net_clk ADMA>, <&versal_net_clk LPD_LSBUS>;
+			power-domains = <&versal_net_firmware PM_DEV_ADMA_1>;
 		};
 
 		adma2: dma-controller@ebd20000 {
@@ -229,7 +232,8 @@
 			clock-names = "clk_main", "clk_apb";
 			#dma-cells = <1>;
 			xlnx,bus-width = <64>;
-			clocks = <&clk100>, <&clk100>;
+			clocks = <&versal_net_clk ADMA>, <&versal_net_clk LPD_LSBUS>;
+			power-domains = <&versal_net_firmware PM_DEV_ADMA_2>;
 		};
 
 		adma3: dma-controller@ebd30000 {
@@ -240,7 +244,8 @@
 			clock-names = "clk_main", "clk_apb";
 			#dma-cells = <1>;
 			xlnx,bus-width = <64>;
-			clocks = <&clk100>, <&clk100>;
+			clocks = <&versal_net_clk ADMA>, <&versal_net_clk LPD_LSBUS>;
+			power-domains = <&versal_net_firmware PM_DEV_ADMA_3>;
 		};
 
 		adma4: dma-controller@ebd40000 {
@@ -251,7 +256,8 @@
 			clock-names = "clk_main", "clk_apb";
 			#dma-cells = <1>;
 			xlnx,bus-width = <64>;
-			clocks = <&clk100>, <&clk100>;
+			clocks = <&versal_net_clk ADMA>, <&versal_net_clk LPD_LSBUS>;
+			power-domains = <&versal_net_firmware PM_DEV_ADMA_4>;
 		};
 
 		adma5: dma-controller@ebd50000 {
@@ -262,7 +268,8 @@
 			clock-names = "clk_main", "clk_apb";
 			#dma-cells = <1>;
 			xlnx,bus-width = <64>;
-			clocks = <&clk100>, <&clk100>;
+			clocks = <&versal_net_clk ADMA>, <&versal_net_clk LPD_LSBUS>;
+			power-domains = <&versal_net_firmware PM_DEV_ADMA_5>;
 		};
 
 		adma6: dma-controller@ebd60000 {
@@ -273,7 +280,8 @@
 			clock-names = "clk_main", "clk_apb";
 			#dma-cells = <1>;
 			xlnx,bus-width = <64>;
-			clocks = <&clk100>, <&clk100>;
+			clocks = <&versal_net_clk ADMA>, <&versal_net_clk LPD_LSBUS>;
+			power-domains = <&versal_net_firmware PM_DEV_ADMA_6>;
 		};
 
 		adma7: dma-controller@ebd70000 {
@@ -284,7 +292,8 @@
 			clock-names = "clk_main", "clk_apb";
 			#dma-cells = <1>;
 			xlnx,bus-width = <64>;
-			clocks = <&clk100>, <&clk100>;
+			clocks = <&versal_net_clk ADMA>, <&versal_net_clk LPD_LSBUS>;
+			power-domains = <&versal_net_firmware PM_DEV_ADMA_7>;
 		};
 
 		can0: can@f1980000 {
@@ -295,7 +304,8 @@
 			clock-names = "can_clk", "s_axi_aclk";
 			rx-fifo-depth = <64>;
 			tx-mailbox-count = <32>;
-			clocks = <&clk25>, <&clk25>;
+			clocks = <&versal_net_clk CAN0_REF_2X>, <&versal_net_clk LPD_LSBUS>;
+			power-domains = <&versal_net_firmware PM_DEV_CAN_FD_0>;
 		};
 
 		can1: can@f1990000 {
@@ -306,7 +316,8 @@
 			clock-names = "can_clk", "s_axi_aclk";
 			rx-fifo-depth = <64>;
 			tx-mailbox-count = <32>;
-			clocks = <&clk25>, <&clk25>;
+			clocks = <&versal_net_clk CAN1_REF_2X>, <&versal_net_clk LPD_LSBUS>;
+			power-domains = <&versal_net_firmware PM_DEV_CAN_FD_1>;
 		};
 
 		gem0: ethernet@f19e0000 {
@@ -319,14 +330,23 @@
 			#size-cells = <0>;
 			phy-handle = <&phy1>;
 			phy-mode = "rgmii-id";
-			clocks = <&clk2_6>, <&clk25>, <&clk25>, <&clk25>, <&clk25>;
-			phy1: ethernet-phy@1 {
-				reg = <1>;
-				max-speed = <100>;
-				ti,rx-internal-delay = <11>;
-				ti,tx-internal-delay = <10>;
-				ti,fifo-depth = <1>;
-				ti,dp83867-rxctrl-strap-quirk;
+			clocks = <&versal_net_clk LPD_LSBUS>,
+				 <&versal_net_clk GEM0_REF>, <&versal_net_clk GEM0_REF_TX>,
+				 <&versal_net_clk GEM0_REF_RX>, <&versal_net_clk GEM_TSU_REF>;
+			power-domains = <&versal_net_firmware PM_DEV_GEM_0>;
+			mdio0: mdio {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				phy1: ethernet-phy@1 {
+					#phy-cells = <1>;
+					compatible = "ethernet-phy-id2000.a231";
+					reg = <1>;
+					max-speed = <100>;
+					ti,rx-internal-delay = <11>;
+					ti,tx-internal-delay = <10>;
+					ti,fifo-depth = <1>;
+					ti,dp83867-rxctrl-strap-quirk;
+				};
 			};
 		};
 
@@ -340,10 +360,19 @@
 			#size-cells = <0>;
 			phy-handle = <&phy2>;
 			phy-mode = "rmii";
-			clocks = <&clk2_6>, <&clk25>, <&clk25>, <&clk25>, <&clk25>;
-			phy2: ethernet-phy@2 {
-				reg = <2>;
-				max-speed = <100>;
+			clocks = <&versal_net_clk LPD_LSBUS>,
+				 <&versal_net_clk GEM1_REF>, <&versal_net_clk GEM1_REF_TX>,
+				 <&versal_net_clk GEM1_REF_RX>, <&versal_net_clk GEM_TSU_REF>;
+			power-domains = <&versal_net_firmware PM_DEV_GEM_1>;
+			mdio1: mdio {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				phy2: ethernet-phy@2 {
+					compatible = "ethernet-phy-id0007.0762"; /* Vitesse VSC8540 */
+					reg = <2>;
+					max-speed = <100>;
+				};
 			};
 		};
 
@@ -364,7 +393,8 @@
 			gpio-controller;
 			#interrupt-cells = <2>;
 			interrupt-controller;
-			clocks = <&clk25>;
+			clocks = <&versal_net_clk LPD_LSBUS>;
+			power-domains = <&versal_net_firmware PM_DEV_GPIO>;
 		};
 
 		gpio1: gpio@f1020000 {
@@ -376,7 +406,8 @@
 			gpio-controller;
 			#interrupt-cells = <2>;
 			interrupt-controller;
-			clocks = <&clk25>;
+			clocks = <&versal_net_clk PMC_LSBUS_REF>;
+			power-domains = <&versal_net_firmware PM_DEV_GPIO_PMC>;
 		};
 
 		i2c0: i2c@f1940000 {
@@ -387,7 +418,8 @@
 			clock-frequency = <400000>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-			clocks = <&clk25>;
+			clocks = <&versal_net_clk I3C0_REF>;
+			power-domains = <&versal_net_firmware PM_DEV_I2C_0>;
 		};
 
 		i2c1: i2c@f1950000 {
@@ -398,7 +430,8 @@
 			clock-frequency = <400000>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-			clocks = <&clk25>;
+			clocks = <&versal_net_clk I3C1_REF>;
+			power-domains = <&versal_net_firmware PM_DEV_I2C_1>;
 		};
 
 		i3c: i3c-master@f1948000 {
@@ -408,7 +441,8 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			interrupts = <0 21 4>;
-			clocks = <&clk20>;
+			clocks = <&versal_net_clk I2C_REF>;
+			power-domains = <&versal_net_firmware PM_DEV_I2C_PMC>;
 		};
 
 		ospi: spi@f1010000 {
@@ -422,7 +456,7 @@
 			cdns,trigger-address = <0xc0000000>;
 			is-dual = <0>;
 			is-stacked = <0>;
-			clocks = <&clk20>;
+			clocks = <&versal_net_clk OSPI_REF>;
 			#address-cells = <1>;
 			#size-cells = <0>;
 			power-domains = <&versal_net_firmware PM_DEV_OSPI>;
@@ -470,7 +504,8 @@
 			is-dual = <1>;
 			spi-rx-bus-width = <4>;
 			spi-tx-bus-width = <4>;
-			clocks = <&clk25>, <&clk25>;
+			clocks = <&versal_net_clk QSPI_REF>, <&versal_net_clk LPD_LSBUS>;
+			power-domains = <&versal_net_firmware PM_DEV_QSPI>;
 			#address-cells = <1>;
 			#size-cells = <0>;
 
@@ -516,7 +551,8 @@
 			interrupts = <0 184 4>;
 			clock-names = "clk_xin", "clk_ahb";
 			no-1-8-v;
-			clocks = <&clk20>, <&clk20>;
+			clocks = <&versal_net_clk SDIO0_REF>, <&versal_net_clk LPD_LSBUS>;
+			power-domains = <&versal_net_firmware PM_DEV_SDIO_0>;
 		};
 
 		sdhci1: mmc@f1050000 {
@@ -526,7 +562,8 @@
 			interrupts = <0 186 4>;
 			clock-names = "clk_xin", "clk_ahb";
 			no-1-8-v;
-			clocks = <&clk20>, <&clk20>;
+			clocks = <&versal_net_clk SDIO1_REF>, <&versal_net_clk LPD_LSBUS>;
+			power-domains = <&versal_net_firmware PM_DEV_SDIO_1>;
 		};
 
 		serial0: serial@f1920000 {
@@ -536,7 +573,8 @@
 			interrupts = <0 25 4>;
 			reg-io-width = <4>;
 			clock-names = "uartclk", "apb_pclk";
-			clocks = <&clk1>, <&clk1>;
+			clocks = <&versal_net_clk UART0_REF>, <&versal_net_clk LPD_LSBUS>;
+			power-domains = <&versal_net_firmware PM_DEV_UART_0>;
 			clock = <1000000>;
 			current-speed = <115200>;
 			skip-init;
@@ -559,7 +597,8 @@
 			clock-names = "ref_clk", "pclk";
 			#address-cells = <1>;
 			#size-cells = <0>;
-			clocks = <&clk25>, <&clk25>;
+			clocks = <&versal_net_clk SPI0_REF>, <&versal_net_clk LPD_LSBUS>;
+			power-domains = <&versal_net_firmware PM_DEV_SPI_0>;
 			num-cs = <1>;
 
 			flash@0 {
@@ -588,7 +627,8 @@
 			clock-names = "ref_clk", "pclk";
 			#address-cells = <1>;
 			#size-cells = <0>;
-			clocks = <&clk25>, <&clk25>;
+			clocks = <&versal_net_clk SPI1_REF>, <&versal_net_clk LPD_LSBUS>;
+			power-domains = <&versal_net_firmware PM_DEV_SPI_1>;
 			num-cs = <1>;
 
 			flash@0 {
@@ -615,7 +655,8 @@
 			interrupts = <0 43 4>, <0 44 4>, <0 45 4>;
 			timer-width = <32>;
 			reg = <0x0 0xf1dc0000 0x0 0x1000>;
-			clocks = <&clk1>, <&clk1>;
+			clocks = <&versal_net_clk TTC0>, <&versal_net_clk LPD_LSBUS>;
+			power-domains = <&versal_net_firmware PM_DEV_TTC_0>;
 		};
 
 		usb0: usb@f1e00000 {
@@ -626,7 +667,8 @@
 			ranges;
 			#address-cells = <2>;
 			#size-cells = <2>;
-			clocks = <&clk60>, <&clk60>;
+			/* clocks = <&clk60>, <&clk60>; */
+			clocks = <&versal_net_clk USB0_BUS_REF>, <&versal_net_clk USB0_BUS_REF>;
 			power-domains = <&versal_net_firmware PM_DEV_USB_0>;
 			resets = <&versal_net_reset VERSAL_RST_USB_0>;
 
@@ -655,7 +697,7 @@
 			ranges;
 			#address-cells = <2>;
 			#size-cells = <2>;
-			clocks = <&clk60 &clk60>;
+			clocks = <&versal_net_clk USB1_BUS_REF>, <&versal_net_clk USB1_BUS_REF>;
 			power-domains = <&versal_net_firmware PM_DEV_USB_1>;
 			resets = <&versal_net_reset VERSAL_RST_USB_1>;
 
@@ -684,7 +726,8 @@
 			interrupts = <0 139 1>, <0 140 1>;
 			timeout-sec = <30>;
 			pretimeout-sec = <25>;
-			clocks = <&clk25>;
+			clocks = <&versal_net_clk FPD_WWDT>;
+			power-domains = <&versal_net_firmware PM_DEV_FPD_SWDT_0>;
 		};
 
 		wwdt1: watchdog@ecd10000 {
@@ -695,7 +738,8 @@
 			interrupts = <0 143 1>, <0 144 1>;
 			timeout-sec = <30>;
 			pretimeout-sec = <25>;
-			clocks = <&clk25>;
+			clocks = <&versal_net_clk FPD_WWDT>;
+			power-domains = <&versal_net_firmware PM_DEV_FPD_SWDT_1>;
 		};
 
 		wwdt2: watchdog@ece10000 {
@@ -706,7 +750,8 @@
 			interrupts = <0 147 1>,  <0 148 1>;
 			timeout-sec = <30>;
 			pretimeout-sec = <25>;
-			clocks = <&clk25>;
+			clocks = <&versal_net_clk FPD_WWDT>;
+			power-domains = <&versal_net_firmware PM_DEV_FPD_SWDT_2>;
 		};
 
 		wwdt3: watchdog@ecf10000 {
@@ -717,7 +762,8 @@
 			interrupts = <0 164 1>, <0 165 1>;
 			timeout-sec = <30>;
 			pretimeout-sec = <25>;
-			clocks = <&clk25>;
+			clocks = <&versal_net_clk FPD_WWDT>;
+			power-domains = <&versal_net_firmware PM_DEV_FPD_SWDT_3>;
 		};
 	};
 };
