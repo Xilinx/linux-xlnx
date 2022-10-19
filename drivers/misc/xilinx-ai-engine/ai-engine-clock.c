@@ -22,8 +22,9 @@
 static int aie_part_get_clk_state_bit(struct aie_partition *apart,
 				      struct aie_location *loc)
 {
-	if (apart->adev->ops->get_tile_type(apart->adev, loc) !=
-			AIE_TILE_TYPE_TILE)
+	u32 ttype = apart->adev->ops->get_tile_type(apart->adev, loc);
+
+	if (ttype != AIE_TILE_TYPE_TILE && ttype != AIE_TILE_TYPE_MEMORY)
 		return -EINVAL;
 
 	return (loc->col - apart->range.start.col) *
@@ -54,9 +55,9 @@ bool aie_part_check_clk_enable_loc(struct aie_partition *apart,
 				   struct aie_location *loc)
 {
 	int bit;
+	u32 ttype = apart->adev->ops->get_tile_type(apart->adev, loc);
 
-	if (apart->adev->ops->get_tile_type(apart->adev, loc) !=
-			AIE_TILE_TYPE_TILE)
+	if (ttype != AIE_TILE_TYPE_TILE && ttype != AIE_TILE_TYPE_MEMORY)
 		return true;
 
 	bit = aie_part_get_clk_state_bit(apart, loc);

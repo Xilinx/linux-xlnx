@@ -311,7 +311,7 @@ static int aieml_init_part_clk_state(struct aie_partition *apart)
 {
 	int ret, num_tiles;
 
-	num_tiles = apart->range.size.col * apart->range.size.row - 1;
+	num_tiles = apart->range.size.col * (apart->range.size.row - 1);
 
 	ret = aie_resource_initialize(&apart->cores_clk_state, num_tiles);
 	if (ret) {
@@ -384,10 +384,13 @@ static int aieml_set_part_clocks(struct aie_partition *apart)
 	ret = zynqmp_pm_aie_operation(node_id, range->start.col,
 				      range->size.col,
 				      XILINX_AIE_OPS_ENB_COL_CLK_BUFF);
-	if (ret < 0)
+	if (ret < 0) {
 		dev_err(&apart->dev, "failed to enable clocks for partition\n");
+		return ret;
+	}
 
-	return ret;
+	return aie_resource_set(&apart->cores_clk_state, 0,
+				apart->cores_clk_state.total);
 }
 
 static int aieml_part_clear_mems(struct aie_partition *apart)
