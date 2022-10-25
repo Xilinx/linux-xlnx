@@ -489,8 +489,7 @@ static int zynqmp_dma_alloc_chan_resources(struct dma_chan *dchan)
 	}
 
 	chan->desc_pool_v = dma_alloc_coherent(chan->dev,
-					       ((size_t)(2 * chan->desc_size) *
-						ZYNQMP_DMA_NUM_DESCS),
+					       (2 * chan->desc_size * ZYNQMP_DMA_NUM_DESCS),
 					       &chan->desc_pool_p, GFP_KERNEL);
 	if (!chan->desc_pool_v)
 		return -ENOMEM;
@@ -677,8 +676,7 @@ static void zynqmp_dma_free_chan_resources(struct dma_chan *dchan)
 	zynqmp_dma_free_descriptors(chan);
 	spin_unlock_irqrestore(&chan->lock, irqflags);
 	dma_free_coherent(chan->dev,
-		((size_t)(2 * ZYNQMP_DMA_DESC_SIZE(chan)) *
-		 ZYNQMP_DMA_NUM_DESCS),
+		(2 * ZYNQMP_DMA_DESC_SIZE(chan) * ZYNQMP_DMA_NUM_DESCS),
 		chan->desc_pool_v, chan->desc_pool_p);
 	kfree(chan->sw_desc_pool);
 	pm_runtime_mark_last_busy(chan->dev);
