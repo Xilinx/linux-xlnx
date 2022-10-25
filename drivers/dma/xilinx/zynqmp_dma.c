@@ -501,8 +501,7 @@ static int zynqmp_dma_alloc_chan_resources(struct dma_chan *dchan)
 					(i * ZYNQMP_DMA_DESC_SIZE(chan) * 2));
 		desc->dst_v = (struct zynqmp_dma_desc_ll *) (desc->src_v + 1);
 		desc->src_p = chan->desc_pool_p +
-				((dma_addr_t)i * ZYNQMP_DMA_DESC_SIZE(chan)
-				 * 2);
+				(i * ZYNQMP_DMA_DESC_SIZE(chan) * 2);
 		desc->dst_p = desc->src_p + ZYNQMP_DMA_DESC_SIZE(chan);
 	}
 
