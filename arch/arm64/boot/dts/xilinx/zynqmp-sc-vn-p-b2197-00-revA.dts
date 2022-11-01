@@ -23,6 +23,42 @@
 		nvmem1 = &x_prc_eeprom;
 	};
 
+	sys_clk_0 {
+		status = "okay";
+		compatible = "xlnx,fclk";
+		clocks = <&qsfp56g_0_clk 0>;
+	};
+	sys_clk_1 {
+		status = "okay";
+		compatible = "xlnx,fclk";
+		clocks = <&qsfp56g_1_clk 0>;
+	};
+	sys_clk_2 {
+		status = "okay";
+		compatible = "xlnx,fclk";
+		clocks = <&lpddr5_c0_clk 0>;
+	};
+	sys_clk_3 {
+		status = "okay";
+		compatible = "xlnx,fclk";
+		clocks = <&lpddr5_c2_clk 0>;
+	};
+	sys_clk_4 {
+		status = "okay";
+		compatible = "xlnx,fclk";
+		clocks = <&ddr5_udimm_clk 0>;
+	};
+	sys_clk_5 {
+		status = "okay";
+		compatible = "xlnx,fclk";
+		clocks = <&ps_refclk 0>;
+	};
+	sys_clk_6 {
+		status = "okay";
+		compatible = "xlnx,fclk";
+		clocks = <&ddr4_clk 0>;
+	};
+
 	ina226-u1700 {
 		compatible = "iio-hwmon";
 		io-channels = <&vcc_ram_ina 0>, <&vcc_ram_ina 1>, <&vcc_ram_ina 2>;
