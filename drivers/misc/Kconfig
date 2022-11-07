@@ -470,20 +470,6 @@ config XILINX_DPU
 
 	  If unsure, say N.
 
-config XILINX_TRAFGEN
-	tristate "Xilinx Traffic Generator"
-	help
-	  This option enables support for the Xilinx Traffic Generator driver.
-	  It is designed to generate AXI4 traffic which can be used to stress
-	  different modules/interconnect connected in the system. Different
-	  configurable options which are provided through sysfs entries allow
-	  allow the user to generate a wide variety of traffic based on their
-	  their requirements.
-
-	  This driver is deprecated and will be removed soon.
-
-	  If unsure, say N
-
 config XILINX_AIE
 	tristate "Xilinx AI engine"
 	depends on ARM64 || COMPILE_TEST

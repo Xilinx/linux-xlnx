@@ -59,7 +59,6 @@ obj-$(CONFIG_UACCE)		+= uacce/
 obj-$(CONFIG_XILINX_SDFEC)	+= xilinx_sdfec.o
 obj-$(CONFIG_XILINX_DPU)	+= xlnx_dpu.o
 obj-$(CONFIG_HISI_HIKEY_USB)	+= hisi_hikey_usb.o
-obj-$(CONFIG_XILINX_TRAFGEN)	+= xilinx_trafgen.o
 obj-$(CONFIG_XILINX_AIE)	+= xilinx-ai-engine/
 obj-$(CONFIG_HI6421V600_IRQ)	+= hi6421v600-irq.o
 obj-$(CONFIG_TMR_MANAGER)	+= xilinx_tmr_manager.o
