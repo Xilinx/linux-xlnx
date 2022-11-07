@@ -48,7 +48,6 @@ properties:
       Should be either a value of 0 (LockStep mode) or 1 (Split mode),
       default is LockStep mode if omitted.
 
-
 #R5F Processor Child Nodes:
 # ==========================
 
@@ -130,6 +129,20 @@ patternProperties:
           should be defined as per the generic bindings in,
           Documentation/devicetree/bindings/sram/sram.yaml
 
+      xlnx,rsc-tbl:
+        $ref: /schemas/types.yaml#/definitions/phandle-array
+        items:
+          - items:
+              - description: Phandle of carveout
+              - description: The location of the resource table. It is expected
+                             that the address is within the carveout. If not, then
+                             the resource table physical address will not be stored
+                             and attach will not work.
+        description: |
+          Reference to the carveout that has the resource table. The second
+          argument is the address within the carveout where the resource table
+          is located.
+
     required:
       - compatible
       - power-domain
@@ -205,6 +218,7 @@ examples:
                mboxes = <&ipi_mailbox_rpu0 0x0 &ipi_mailbox_rpu0 0x1>;
                mbox-names = "tx", "rx";
                power-domain = <0x7>;
+               xlnx,rsc-tbl  = <&rproc_0_reserved 0x3ed20000>;
           };
           r5f_1 {
                compatible = "xilinx,r5f";
