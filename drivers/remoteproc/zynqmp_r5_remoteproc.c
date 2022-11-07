@@ -27,6 +27,7 @@
 #define BANK_LIST_PROP	"sram"
 #define DDR_LIST_PROP	"memory-region"
 #define PD_PROP		"power-domain"
+#define	RSCTBL_PROP	"xlnx,rsc-tbl"
 
 /* IPI buffer MAX length */
 #define IPI_BUF_LEN_MAX	32U
@@ -34,6 +35,13 @@
 #define RX_MBOX_CLIENT_BUF_MAX	(IPI_BUF_LEN_MAX + \
 				 sizeof(struct zynqmp_ipi_message))
 #define MAX_BANKS 4U
+
+/*
+ * NOTE: The resource table size is currently hard-coded to a maximum
+ * of 1024 bytes. The most common resource table usage for R5 firmwares
+ * is to only have the vdev resource entry and an optional trace entry.
+ */
+#define RSC_TBL_SIZE	0x400
 
 /**
  * struct xlnx_r5_data - match data to handle SoC variations
@@ -63,7 +71,9 @@ struct sram_addr_data {
  * @rproc: rproc handle
  * @tx_chan: tx mailbox channel
  * @rx_chan: rx mailbox channel
+ * @rsc_va: virtual address of resource table
  * @pnode_id: RPU CPU power domain id
+ * @rsc_pa: device address of resource table
  * @elem: linked list item
  * @versal: flag that if on, denotes this driver is for Versal SoC.
  */
@@ -77,6 +87,8 @@ struct zynqmp_r5_rproc {
 	struct rproc *rproc;
 	struct mbox_chan *tx_chan;
 	struct mbox_chan *rx_chan;
+	void __iomem *rsc_va;
+	phys_addr_t rsc_pa;
 	u32 pnode_id;
 	struct list_head elem;
 	bool versal;
@@ -545,12 +557,20 @@ static int parse_tcm_banks(struct rproc *rproc)
 				return -ENOMEM;
 			}
 
-			ret = zynqmp_r5_pm_request_sram(dev, dt_node,
-							z_rproc->versal,
-							sram_banks);
-			if (ret < 0) {
-				of_node_put(dt_node);
-				goto error;
+			/*
+			 * Only request SRAM if the remote processor is
+			 * not powered on. Detached implies that the
+			 * remote processor is already up and running so
+			 * this is not needed.
+			 */
+			if (rproc->state == RPROC_OFFLINE) {
+				ret = zynqmp_r5_pm_request_sram(dev, dt_node,
+								z_rproc->versal,
+								sram_banks);
+				if (ret < 0) {
+					of_node_put(dt_node);
+					goto error;
+				}
 			}
 
 			/* add carveout */
@@ -585,13 +605,6 @@ static int zynqmp_r5_parse_fw(struct rproc *rproc, const struct firmware *fw)
 {
 	int ret;
 
-	ret = parse_tcm_banks(rproc);
-	if (ret)
-		return ret;
-
-	ret = parse_mem_regions(rproc);
-	if (ret)
-		return ret;
 
 	ret = rproc_elf_load_rsc_table(rproc, fw);
 	if (ret == -EINVAL) {
@@ -605,6 +618,72 @@ static int zynqmp_r5_parse_fw(struct rproc *rproc, const struct firmware *fw)
 		ret = 0;
 	}
 	return ret;
+}
+
+static int zynqmp_r5_prepare(struct rproc *rproc)
+{
+	struct zynqmp_r5_rproc *z_rproc = rproc->priv;
+	struct device *dev = rproc->dev.parent;
+	int ret;
+
+	/*
+	 * In Versal SoC, the Xilinx platform management firmware will power
+	 * off the R5 cores if they are not requested. In this case, this call
+	 * notifies Xilinx platform management firmware that the R5 core will
+	 * be used and should be powered on.
+	 *
+	 * On ZynqMP platform this is not needed as the R5 cores are not
+	 * powered off by default.
+	 *
+	 * Only power on R5 core if not doing attach/detach flow. I.e.
+	 * Only request node if its not on.
+	 */
+	if (z_rproc->versal && rproc->state == RPROC_OFFLINE) {
+		ret = zynqmp_pm_request_node(z_rproc->pnode_id,
+					     ZYNQMP_PM_CAPABILITY_ACCESS, 0,
+					     ZYNQMP_PM_REQUEST_ACK_BLOCKING);
+		if (ret < 0) {
+			dev_err(dev, "Unable to request R5 core\n");
+			return ret;
+		}
+	}
+
+	ret = parse_tcm_banks(rproc);
+	if (ret) {
+		dev_err(dev, "Unable to parse TCM banks\n");
+		return ret;
+	}
+
+	ret = parse_mem_regions(rproc);
+	if (ret)
+		dev_err(dev, "Unable to parse DDR banks\n");
+
+	return ret;
+}
+
+static struct resource_table *
+zynqmp_r5_rproc_get_loaded_rsc_table(struct rproc *rproc, size_t *table_sz)
+{
+	struct zynqmp_r5_rproc *z_rproc = rproc->priv;
+	struct device *dev = rproc->dev.parent;
+
+	z_rproc->rsc_va = devm_ioremap_wc(dev, z_rproc->rsc_pa, RSC_TBL_SIZE);
+	if (IS_ERR_OR_NULL(z_rproc->rsc_va)) {
+		dev_err(dev, "Unable to map memory region: %pa+%x\n",
+			&z_rproc->rsc_pa, RSC_TBL_SIZE);
+		z_rproc->rsc_va = NULL;
+		return ERR_PTR(-ENOMEM);
+	}
+
+	*table_sz = RSC_TBL_SIZE;
+	return (struct resource_table *)z_rproc->rsc_va;
+}
+
+static int zynqmp_r5_rproc_detach(struct rproc *rproc)
+{
+	/* Remoteproc core sets the state to detached so don't do so here. */
+	(void)rproc;
+	return 0;
 }
 
 /*
@@ -653,7 +732,10 @@ static struct rproc_ops zynqmp_r5_rproc_ops = {
 	.stop		= zynqmp_r5_rproc_stop,
 	.load		= rproc_elf_load_segments,
 	.parse_fw	= zynqmp_r5_parse_fw,
+	.prepare	= zynqmp_r5_prepare,
 	.find_loaded_rsc_table = rproc_elf_find_loaded_rsc_table,
+	.get_loaded_rsc_table = zynqmp_r5_rproc_get_loaded_rsc_table,
+	.detach		= zynqmp_r5_rproc_detach,
 	.sanity_check	= rproc_elf_sanity_check,
 	.get_boot_addr	= rproc_elf_get_boot_addr,
 	.kick		= zynqmp_r5_rproc_kick,
@@ -820,21 +902,25 @@ static int zynqmp_r5_probe(struct platform_device *pdev,
 			   const struct xlnx_r5_data *data,
 			   struct zynqmp_r5_rproc **z_rproc)
 {
-	int ret, r5_entries, pnode_id;
 	struct device *dev = &pdev->dev;
-	struct rproc *rproc_ptr;
+	struct device_node *rsctbl_node;
+	int ret, r5_entries, pnode_id;
+	resource_size_t size;
+	struct rproc *rproc;
+	struct resource rsc;
+	u32 rsctbl_base;
 
 	/* Allocate remoteproc instance */
-	rproc_ptr = devm_rproc_alloc(dev, dev_name(dev), &zynqmp_r5_rproc_ops,
-				     NULL, sizeof(struct zynqmp_r5_rproc));
-	if (!rproc_ptr) {
+	rproc = devm_rproc_alloc(dev, dev_name(dev), &zynqmp_r5_rproc_ops,
+				 NULL, sizeof(struct zynqmp_r5_rproc));
+	if (!rproc) {
 		ret = -ENOMEM;
 		goto error;
 	}
 
-	rproc_ptr->auto_boot = false;
-	*z_rproc = rproc_ptr->priv;
-	(*z_rproc)->rproc = rproc_ptr;
+	rproc->auto_boot = false;
+	*z_rproc = rproc->priv;
+	(*z_rproc)->rproc = rproc;
 	(*z_rproc)->dev = dev;
 	/* Set up DMA mask */
 	ret = dma_set_coherent_mask(dev, DMA_BIT_MASK(32));
@@ -874,25 +960,62 @@ static int zynqmp_r5_probe(struct platform_device *pdev,
 	}
 
 	/* Add R5 remoteproc */
-	ret = devm_rproc_add(dev, rproc_ptr);
+	ret = devm_rproc_add(dev, rproc);
 	if (ret)
 		goto error;
 
 	/*
-	 * In Versal SoC, the Xilinx platform management firmware will power
-	 * off the R5 cores if they are not requested. In this case, this call
-	 * notifies Xilinx platform management firmware that the R5 core will
-	 * be used and should be powered on.
-	 *
-	 * On ZynqMP platform this is not needed as the R5 cores are not
-	 * powered off by default.
+	 * For attach to work, the resource table must be present.
+	 * The resource table is located via resource table DT property.
+	 * Below is setup using the DT property.
 	 */
-	if ((*z_rproc)->versal) {
-		ret = zynqmp_pm_request_node((*z_rproc)->pnode_id,
-					     ZYNQMP_PM_CAPABILITY_ACCESS, 0,
-					     ZYNQMP_PM_REQUEST_ACK_BLOCKING);
-		if (ret < 0)
-			goto error;
+	rsctbl_node = of_parse_phandle(node, RSCTBL_PROP, 0);
+	if (rsctbl_node) {
+		ret = of_address_to_resource(rsctbl_node, 0, &rsc);
+		if (ret) {
+			of_node_put(rsctbl_node);
+			return ret;
+		}
+
+		size = resource_size(&rsc);
+
+		/* read in base of resource table */
+		ret = of_property_read_u32_index(node, RSCTBL_PROP, 1, &rsctbl_base);
+		if (ret) {
+			of_node_put(rsctbl_node);
+			return ret;
+		}
+
+		/* Check resource table fits within carveout. */
+		if (rsctbl_base < rsc.start ||
+		    rsctbl_base > (rsc.start + size) ||
+		    (rsctbl_base + RSC_TBL_SIZE >= rsc.end)) {
+			of_node_put(rsctbl_node);
+			return -EINVAL;
+		}
+
+		/* This is used in get_loaded_rsc_table() for attach */
+		(*z_rproc)->rsc_pa = rsctbl_base;
+
+		/*
+		 * By default the state is set to RPROC_OFFLINE in the call to
+		 * rproc_alloc().
+		 *
+		 * FIXME If the status from the EEMI call to
+		 * zynqmp_pm_get_node_status() accurately reflected RPU state
+		 * then use this as basis for rproc->state. Right now the
+		 * EEMI call does not reflect this so for now just use
+		 * presence of the DT property.
+		 */
+		rproc->state = RPROC_DETACHED;
+		of_node_put(rsctbl_node);
+	} else {
+		/*
+		 * If we are here then we are using the rproc state that is
+		 * set by rproc_alloc (OFFLINE).
+		 */
+		dev_warn(dev, "rsc tbl property not provided\n");
+		(*z_rproc)->rsc_pa = 0;
 	}
 
 	return 0;
