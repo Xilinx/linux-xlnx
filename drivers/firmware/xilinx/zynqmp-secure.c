@@ -61,13 +61,14 @@ static ssize_t secure_load_store(struct device *dev,
 	/* To ensure cache coherency */
 	caches_clean_inval_user_pou((unsigned long)kbuf,
 				    (unsigned long)kbuf + dma_size);
-	release_firmware(fw);
 
 	if (keyptr)
 		ret = zynqmp_pm_secure_load(dma_addr, dma_addr + fw->size,
 					    &dst);
 	else
 		ret = zynqmp_pm_secure_load(dma_addr, 0, &dst);
+
+	release_firmware(fw);
 
 	if (ret) {
 		dev_info(dev, "Failed to load secure image \r\n");
