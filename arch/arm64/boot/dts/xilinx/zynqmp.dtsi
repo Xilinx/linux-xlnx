@@ -992,7 +992,7 @@
 				snps,quirk-frame-length-adjustment = <0x20>;
 				snps,refclk_fladj;
 				clock-names = "ref";
-				snps,enable_guctl1_resume_quirk;
+				snps,resume-hs-terminations;
 				snps,enable_guctl1_ipd_quirk;
 				snps,xhci-reset-on-resume;
 				snps,xhci-stream-quirk;
@@ -1025,7 +1025,7 @@
 				snps,quirk-frame-length-adjustment = <0x20>;
 				snps,refclk_fladj;
 				clock-names = "ref";
-				snps,enable_guctl1_resume_quirk;
+				snps,resume-hs-terminations;
 				snps,enable_guctl1_ipd_quirk;
 				snps,xhci-reset-on-resume;
 				snps,xhci-stream-quirk;
