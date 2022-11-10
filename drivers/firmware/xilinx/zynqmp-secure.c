@@ -48,8 +48,10 @@ static ssize_t secure_load_store(struct device *dev,
 
 	kbuf = dma_alloc_coherent(dev, dma_size,
 				  &dma_addr, GFP_KERNEL);
-	if (!kbuf)
+	if (!kbuf) {
+		release_firmware(fw);
 		return -ENOMEM;
+	}
 
 	memcpy(kbuf, fw->data, fw->size);
 
