@@ -1797,6 +1797,10 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 	u32 read_len = 0;
 	u32 rem_bank_len = 0;
 	u8 bank;
+	u8 cur_bank;
+	u8 nxt_bank;
+	u32 bank_size;
+	loff_t addr;
 
 	dev_dbg(nor->dev, "from 0x%08x, len %zd\n", (u32)from, len);
 
@@ -1805,8 +1809,6 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 		return ret;
 
 	while (len) {
-		loff_t addr = from;
-
 		if (nor->addr_nbytes == 3) {
 			bank = (u32)from / OFFSET_16_MB;
 			rem_bank_len = (OFFSET_16_MB * (bank + 1)) - from;
@@ -1815,6 +1817,34 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 		if (ret)
 			goto read_err;
 
+		addr = from;
+		if (nor->addr_nbytes == 4) {
+			/*
+			 * Some flash devices like N25Q512 have multiple dies
+			 * in it. Read operation in these devices is bounded
+			 * by its die segment. In a continuous read, across
+			 * multiple dies, when the last byte of the selected
+			 * die segment is read, the next byte read is the
+			 * first byte of the same die segment. This is Die
+			 * cross over issue. So to handle this issue, split
+			 * a read transaction, that spans across multiple
+			 * banks, into one read per bank. Bank size is 16MB
+			 * for single and dual stacked mode and 32MB for dual
+			 * parallel mode.
+			 */
+			if (nor->spi && nor->spi->multi_die) {
+				bank_size = OFFSET_16_MB;
+				cur_bank = addr / bank_size;
+				nxt_bank = (addr + len) / bank_size;
+				if (cur_bank != nxt_bank)
+					rem_bank_len = ((bank_size *
+							(cur_bank + 1)) - addr);
+				else
+					rem_bank_len = mtd->size - addr;
+			} else {
+				rem_bank_len = mtd->size - addr;
+			}
+		}
 		if (nor->addr_nbytes == 3) {
 			ret = spi_nor_write_ear(nor, addr);
 			if (ret) {
@@ -1822,7 +1852,6 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 				goto read_err;
 			}
 		}
-
 		ret = spi_nor_wait_till_ready(nor);
 		if (ret)
 			goto read_err;
@@ -1831,6 +1860,7 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 			read_len = len;
 		else
 			read_len = rem_bank_len;
+
 		addr = spi_nor_convert_addr(nor, addr);
 
 		ret = spi_nor_read_data(nor, addr, read_len, buf);
@@ -1869,6 +1899,7 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 	u32 page_size = nor->params->page_size;
 	u8 bank = 0;
 	u32 rem_bank_len = 0;
+	loff_t addr;
 
 	dev_dbg(nor->dev, "to 0x%08x, len %zd\n", (u32)to, len);
 
@@ -1878,7 +1909,6 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 
 	for (i = 0; i < len; ) {
 		ssize_t written;
-		loff_t addr = to + i;
 
 		if (nor->addr_nbytes == 3) {
 			bank = (u32)to / OFFSET_16_MB;
@@ -1902,6 +1932,10 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 		if (ret)
 			goto write_err;
 
+		addr = to + i;
+		/* Die cross over issue is not handled */
+		if (nor->addr_nbytes == 4)
+			rem_bank_len = mtd->size - addr;
 		if (nor->addr_nbytes == 3) {
 			ret = spi_nor_write_ear(nor, addr);
 			if (ret) {
@@ -1909,6 +1943,8 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 				goto write_err;
 			}
 		}
+
+		page_remain = min_t(size_t, page_offset, len - i);
 
 		ret = spi_nor_wait_till_ready(nor);
 		if (ret)
@@ -1930,8 +1966,14 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 			goto write_err;
 		*retlen += written;
 		i += written;
+		if (written != page_remain) {
+			dev_err(nor->dev,
+				"While writing %zu bytes written %zd bytes\n",
+				page_remain, written);
+			ret = -EIO;
+			goto write_err;
+		}
 	}
-
 write_err:
 	spi_nor_unlock_and_unprep(nor);
 	return ret;
@@ -3309,6 +3351,7 @@ static int spi_nor_probe(struct spi_mem *spimem)
 
 	spi_mem_set_drvdata(spimem, nor);
 
+	nor->spi = spi;
 	if (data && data->name)
 		nor->mtd.name = data->name;
 
