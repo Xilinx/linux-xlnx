@@ -45,6 +45,13 @@ properties:
       to enable this mode, is-dual should be 0
       and is-stacked should be 1.
 
+  has-io-mode:
+    $ref: /schemas/types.yaml#/definitions/flag
+    description:
+      Describes the controller operating mode.
+      If exists controller will operate in IO
+      mode else DMA mode.
+
 required:
   - compatible
   - reg
@@ -71,5 +78,6 @@ examples:
               <0x0 0xc0000000 0x0 0x8000000>;
         is-dual = <0x00>;
         is-stacked = <0x01>;
+        has-io-mode;
       };
     };
