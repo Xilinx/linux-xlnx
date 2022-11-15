@@ -43,6 +43,8 @@
 #define SPI_NOR_SRST_SLEEP_MIN 200
 #define SPI_NOR_SRST_SLEEP_MAX 400
 
+#define JEDEC_MFR(info)	((info)->id[0])
+
 /**
  * spi_nor_get_cmd_ext() - Get the command opcode extension based on the
  *			   extension type.
@@ -568,6 +570,106 @@ static int spansion_set_4byte_addr_mode(struct spi_nor *nor, bool enable)
 		dev_dbg(nor->dev, "error %d setting 4-byte mode\n", ret);
 
 	return ret;
+}
+
+/**
+ * spi_nor_write_ear() - Write Extended Address Register.
+ * @nor:	pointer to 'struct spi_nor'.
+ * @addr:	value to write to the Extended Address Register.
+ *
+ * Return: 0 on success, -errno otherwise.
+ */
+int spi_nor_write_ear(struct spi_nor *nor, u32 addr)
+{
+	u8 code = SPINOR_OP_WREAR;
+	u32 ear;
+	int ret;
+	struct mtd_info *mtd = &nor->mtd;
+
+	/* Wait until finished previous write command. */
+	if (spi_nor_wait_till_ready(nor))
+		return 1;
+
+	if (mtd->size <= 0x1000000)
+		return 0;
+
+	addr = addr % (u32)mtd->size;
+	ear = addr >> 24;
+
+	if (ear == nor->curbank)
+		return 0;
+
+	if (JEDEC_MFR(nor->info) == CFI_MFR_AMD)
+		code = SPINOR_OP_BRWR;
+	if (JEDEC_MFR(nor->info) == CFI_MFR_ST ||
+	    JEDEC_MFR(nor->info) == CFI_MFR_MACRONIX ||
+	    JEDEC_MFR(nor->info) == CFI_MFR_PMC) {
+		spi_nor_write_enable(nor);
+		code = SPINOR_OP_WREAR;
+	}
+	nor->bouncebuf[0] = ear;
+
+	if (nor->spimem) {
+		struct spi_mem_op op =
+			SPI_MEM_OP(SPI_MEM_OP_CMD(code, 0),
+				   SPI_MEM_OP_NO_ADDR,
+				   SPI_MEM_OP_NO_DUMMY,
+				   SPI_MEM_OP_DATA_OUT(1, nor->bouncebuf, 0));
+
+		spi_nor_spimem_setup_op(nor, &op, nor->reg_proto);
+
+		ret = spi_mem_exec_op(nor->spimem, &op);
+	} else {
+		ret = spi_nor_controller_ops_write_reg(nor, code, nor->bouncebuf, 1);
+		if (ret < 0)
+			return ret;
+	}
+
+	nor->curbank = ear;
+
+	return ret;
+}
+
+/**
+ * read_ear - Get the extended/bank address register value
+ * @nor:	Pointer to the flash control structure
+ *
+ * This routine reads the Extended/bank address register value
+ *
+ * Return:	Negative if error occurred.
+ */
+static int read_ear(struct spi_nor *nor, struct flash_info *info)
+{
+	int ret;
+	u8 code;
+
+	/* This is actually Spansion */
+	if (JEDEC_MFR(nor->info) == CFI_MFR_AMD)
+		code = SPINOR_OP_BRRD;
+	/* This is actually Micron */
+	else if (JEDEC_MFR(nor->info) == CFI_MFR_ST ||
+		 JEDEC_MFR(nor->info) == CFI_MFR_MACRONIX ||
+		 JEDEC_MFR(nor->info) == CFI_MFR_PMC)
+		code = SPINOR_OP_RDEAR;
+	else
+		return -EINVAL;
+	if (nor->spimem) {
+		struct spi_mem_op op =
+			SPI_MEM_OP(SPI_MEM_OP_CMD(code, 1),
+				   SPI_MEM_OP_NO_ADDR,
+				   SPI_MEM_OP_NO_DUMMY,
+				   SPI_MEM_OP_DATA_IN(1, nor->bouncebuf, 1));
+
+		ret = spi_mem_exec_op(nor->spimem, &op);
+	} else {
+		ret = nor->controller_ops->read_reg(nor, code, nor->bouncebuf, 1);
+	}
+	if (ret < 0) {
+		pr_err("error %d reading EAR\n", ret);
+		return ret;
+	}
+
+	return nor->bouncebuf[0];
 }
 
 /**
@@ -1485,6 +1587,19 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
 			if (ret)
 				goto erase_err;
 
+			if (nor->addr_nbytes == 3) {
+				/* Update Extended Address Register */
+				ret = spi_nor_write_ear(nor, addr);
+				if (ret)
+					goto erase_err;
+			}
+			ret = spi_nor_wait_till_ready(nor);
+			if (ret)
+				goto erase_err;
+
+			ret = spi_nor_write_enable(nor);
+			if (ret)
+				goto erase_err;
 			ret = spi_nor_erase_sector(nor, addr);
 			if (ret)
 				goto erase_err;
@@ -1673,11 +1788,15 @@ static const struct flash_info *spi_nor_detect(struct spi_nor *nor)
 	return info;
 }
 
+#define OFFSET_16_MB 0x1000000
 static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 			size_t *retlen, u_char *buf)
 {
 	struct spi_nor *nor = mtd_to_spi_nor(mtd);
 	ssize_t ret;
+	u32 read_len = 0;
+	u32 rem_bank_len = 0;
+	u8 bank;
 
 	dev_dbg(nor->dev, "from 0x%08x, len %zd\n", (u32)from, len);
 
@@ -1688,9 +1807,33 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 	while (len) {
 		loff_t addr = from;
 
+		if (nor->addr_nbytes == 3) {
+			bank = (u32)from / OFFSET_16_MB;
+			rem_bank_len = (OFFSET_16_MB * (bank + 1)) - from;
+		}
+		ret = spi_nor_write_enable(nor);
+		if (ret)
+			goto read_err;
+
+		if (nor->addr_nbytes == 3) {
+			ret = spi_nor_write_ear(nor, addr);
+			if (ret) {
+				dev_err(nor->dev, "While writing ear register\n");
+				goto read_err;
+			}
+		}
+
+		ret = spi_nor_wait_till_ready(nor);
+		if (ret)
+			goto read_err;
+
+		if (len < rem_bank_len)
+			read_len = len;
+		else
+			read_len = rem_bank_len;
 		addr = spi_nor_convert_addr(nor, addr);
 
-		ret = spi_nor_read_data(nor, addr, len, buf);
+		ret = spi_nor_read_data(nor, addr, read_len, buf);
 		if (ret == 0) {
 			/* We shouldn't see 0-length reads */
 			ret = -EIO;
@@ -1724,6 +1867,8 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 	size_t page_offset, page_remain, i;
 	ssize_t ret;
 	u32 page_size = nor->params->page_size;
+	u8 bank = 0;
+	u32 rem_bank_len = 0;
 
 	dev_dbg(nor->dev, "to 0x%08x, len %zd\n", (u32)to, len);
 
@@ -1735,6 +1880,10 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 		ssize_t written;
 		loff_t addr = to + i;
 
+		if (nor->addr_nbytes == 3) {
+			bank = (u32)to / OFFSET_16_MB;
+			rem_bank_len = (OFFSET_16_MB * (bank + 1)) - to;
+		}
 		/*
 		 * If page_size is a power of two, the offset can be quickly
 		 * calculated with an AND operation. On the other cases we
@@ -1749,6 +1898,21 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 		}
 		/* the size of data remaining on the first page */
 		page_remain = min_t(size_t, page_size - page_offset, len - i);
+		ret = spi_nor_write_enable(nor);
+		if (ret)
+			goto write_err;
+
+		if (nor->addr_nbytes == 3) {
+			ret = spi_nor_write_ear(nor, addr);
+			if (ret) {
+				dev_err(nor->dev, "While writing ear register\n");
+				goto write_err;
+			}
+		}
+
+		ret = spi_nor_wait_till_ready(nor);
+		if (ret)
+			goto write_err;
 
 		addr = spi_nor_convert_addr(nor, addr);
 
@@ -2251,6 +2415,9 @@ static int spi_nor_default_setup(struct spi_nor *nor,
 
 static int spi_nor_set_addr_nbytes(struct spi_nor *nor)
 {
+	struct device_node *np = spi_nor_get_flash_node(nor);
+	struct device_node *np_spi;
+
 	if (nor->params->addr_nbytes) {
 		nor->addr_nbytes = nor->params->addr_nbytes;
 	} else if (nor->read_proto == SNOR_PROTO_8_8_8_DTR) {
@@ -2274,8 +2441,45 @@ static int spi_nor_set_addr_nbytes(struct spi_nor *nor)
 	}
 
 	if (nor->addr_nbytes == 3 && nor->params->size > 0x1000000) {
-		/* enable 4-byte addressing if the device exceeds 16MiB */
-		nor->addr_nbytes = 4;
+#ifdef CONFIG_OF
+		np_spi = of_get_next_parent(np);
+		if (of_property_match_string(np_spi, "compatible",
+					     "xlnx,zynq-qspi-1.0") >= 0) {
+			int status;
+
+			nor->addr_nbytes = 3;
+			nor->params->set_4byte_addr_mode(nor, false);
+
+			status = read_ear(nor, (struct flash_info *)nor->info);
+			if (status < 0)
+				dev_warn(nor->dev, "failed to read ear reg\n");
+			else
+				nor->curbank = status & EAR_SEGMENT_MASK;
+		} else {
+#endif
+			/*
+			 * enable 4-byte addressing if the
+			 * device exceeds 16MiB
+			 */
+			nor->addr_nbytes = 4;
+			if (JEDEC_MFR(nor->info) == CFI_MFR_AMD ||
+			    nor->info->flags & SPI_NOR_4B_OPCODES) {
+				spi_nor_set_4byte_opcodes(nor);
+				nor->params->set_4byte_addr_mode(nor, true);
+			} else {
+				np_spi = of_get_next_parent(np);
+				if (of_property_match_string(np_spi,
+							     "compatible",
+							     "xlnx,xps-spi-2.00.a") >= 0) {
+					nor->addr_nbytes = 3;
+					nor->params->set_4byte_addr_mode(nor, false);
+				} else {
+					nor->params->set_4byte_addr_mode(nor, true);
+				}
+			}
+#ifdef CONFIG_OF
+		}
+#endif
 	}
 
 	if (nor->addr_nbytes > SPI_NOR_MAX_ADDR_NBYTES) {
@@ -3170,6 +3374,9 @@ static int spi_nor_remove(struct spi_mem *spimem)
 static void spi_nor_shutdown(struct spi_mem *spimem)
 {
 	struct spi_nor *nor = spi_mem_get_drvdata(spimem);
+
+	if (nor->addr_nbytes == 3 && nor->mtd.size  > 0x1000000)
+		spi_nor_write_ear(nor, 0);
 
 	spi_nor_restore(nor);
 }
