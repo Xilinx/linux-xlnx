@@ -186,7 +186,14 @@ static int restore_eps(struct dwc3 *dwc)
 				cmd = DWC3_DEPCMD_STARTTRANSFER |
 					DWC3_DEPCMD_PARAM(0);
 
-				dwc3_send_gadget_ep_cmd(dep, cmd, &params);
+				ret = dwc3_send_gadget_ep_cmd(dep, cmd,
+							      &params);
+				if (ret < 0) {
+					dev_err(dwc->dev,
+						"%s: restart transfer failed\n",
+						dep->name);
+					return ret;
+				}
 			} else {
 				ret = __dwc3_gadget_kick_transfer(dep);
 				if (ret) {
@@ -416,7 +423,11 @@ void dwc3_gadget_exit_hibernation(void *_dwc)
 	restore_regs(dwc);
 
 	/* Initialize the core and restore the saved registers */
-	dwc3_core_init(dwc);
+	ret = dwc3_core_init(dwc);
+	if (ret) {
+		dev_err(dwc->dev, "failed to initialize core\n");
+		goto err;
+	}
 
 	/* ask controller to save the non-sticky registers */
 	reg = dwc3_readl(dwc->regs, DWC3_DCTL);
