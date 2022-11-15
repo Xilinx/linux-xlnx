@@ -456,7 +456,8 @@ struct spi_nor_fixups {
  *   SPI_NOR_SWP_IS_VOLATILE: flash has volatile software write protection bits.
  *                            Usually these will power-up in a write-protected
  *                            state.
- *   SPI_NOR_BP3_SR_BIT5      BP3 is bit 5 of status register,
+ *   SST_GLOBAL_PROT_UNLK:    Unlock the Global protection for sst flashes.
+ *   SPI_NOR_BP3_SR_BIT5:     BP3 is bit 5 of status register,
  *                            must be used with SPI_NOR_4BIT_BP
  *   SPI_NOR_NO_ERASE:        no erase command needed.
  *   NO_CHIP_ERASE:           chip does not support chip erase.
@@ -511,6 +512,7 @@ struct flash_info {
 #define NO_CHIP_ERASE			BIT(7)
 #define SPI_NOR_NO_FR			BIT(8)
 #define	SPI_NOR_BP3_SR_BIT5		BIT(9)
+#define	SST_GLOBAL_PROT_UNLK		BIT(10)
 
 	u8 no_sfdp_flags;
 #define SPI_NOR_SKIP_SFDP		BIT(0)

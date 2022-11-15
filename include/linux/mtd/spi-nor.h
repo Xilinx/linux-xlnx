@@ -84,6 +84,7 @@
 #define SPINOR_OP_BP		0x02	/* Byte program */
 #define SPINOR_OP_AAI_WP	0xad	/* Auto address increment word program */
 
+#define GLOBAL_BLKPROT_UNLK	0x98	/* Clear global write protection bits */
 /* Used for Macronix and Winbond flashes. */
 #define SPINOR_OP_EN4B		0xb7	/* Enter 4-byte mode */
 #define SPINOR_OP_EX4B		0xe9	/* Exit 4-byte mode */
@@ -108,11 +109,17 @@
 #define SR_BP0			BIT(2)	/* Block protect 0 */
 #define SR_BP1			BIT(3)	/* Block protect 1 */
 #define SR_BP2			BIT(4)	/* Block protect 2 */
-#define SR_BP3			BIT(5)	/* Block protect 3 */
+#define SR_BP_BIT_OFFSET	2	/* Offset to Block protect 0 */
+#define SR_BP_BIT_MASK		(SR_BP2 | SR_BP1 | SR_BP0)
+#define SR_BP3			BIT(6)	/* Block protect 3 */
 #define SR_TB_BIT5		BIT(5)	/* Top/Bottom protect */
 #define SR_BP3_BIT6		BIT(6)	/* Block protect 3 */
+#define SR_BP3_BIT5		BIT(5)	/* Block protect 3 */
 #define SR_TB_BIT6		BIT(6)	/* Top/Bottom protect */
 #define SR_SRWD			BIT(7)	/* SR write protect */
+/* Bit to determine whether protection starts from top or bottom */
+#define SR_BP_TB		0x20
+#define M25P_MAX_LOCKABLE_SECTORS	64
 /* Spansion/Cypress specific status bits */
 #define SR_E_ERR		BIT(5)
 #define SR_P_ERR		BIT(6)
@@ -396,6 +403,8 @@ struct spi_nor {
 	u8			program_opcode;
 	u32			jedec_id;
 	u16			curbank;
+	u16			n_sectors;
+	u32			sector_size;
 	enum spi_nor_protocol	read_proto;
 	enum spi_nor_protocol	write_proto;
 	enum spi_nor_protocol	reg_proto;
@@ -404,6 +413,7 @@ struct spi_nor {
 	bool			shift;
 	bool			isparallel;
 	bool                    isstacked;
+	bool			is_lock;
 	enum spi_nor_cmd_ext	cmd_ext_type;
 	struct sfdp		*sfdp;
 	struct dentry		*debugfs_root;
