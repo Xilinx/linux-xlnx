@@ -356,6 +356,7 @@ struct spi_nor_flash_parameter;
  * @bouncebuf_size:	size of the bounce buffer
  * @info:		SPI NOR part JEDEC MFR ID and other info
  * @manufacturer:	SPI NOR manufacturer
+ * @page_size:		the page size of the SPI NOR
  * @addr_nbytes:	number of address bytes
  * @erase_opcode:	the opcode for erasing a sector
  * @read_opcode:	the read opcode
@@ -387,6 +388,7 @@ struct spi_nor {
 	struct spi_device       *spi;
 	const struct flash_info	*info;
 	const struct spi_nor_manufacturer *manufacturer;
+	u32			page_size;
 	u8			addr_nbytes;
 	u8			erase_opcode;
 	u8			read_opcode;
@@ -399,6 +401,9 @@ struct spi_nor {
 	enum spi_nor_protocol	reg_proto;
 	bool			sst_write_second;
 	u32			flags;
+	bool			shift;
+	bool			isparallel;
+	bool                    isstacked;
 	enum spi_nor_cmd_ext	cmd_ext_type;
 	struct sfdp		*sfdp;
 	struct dentry		*debugfs_root;

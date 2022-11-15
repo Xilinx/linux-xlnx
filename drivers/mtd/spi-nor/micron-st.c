@@ -331,9 +331,13 @@ static int micron_st_nor_set_4byte_addr_mode(struct spi_nor *nor, bool enable)
 static int micron_st_nor_read_fsr(struct spi_nor *nor, u8 *fsr)
 {
 	int ret;
+	int len;
 
+	nor->isparallel ? (len = 2) : (len = 1);
 	if (nor->spimem) {
 		struct spi_mem_op op = MICRON_ST_RDFSR_OP(fsr);
+
+		op.data.nbytes = len;
 
 		if (nor->reg_proto == SNOR_PROTO_8_8_8_DTR) {
 			op.addr.nbytes = nor->params->rdsr_addr_nbytes;
@@ -350,11 +354,14 @@ static int micron_st_nor_read_fsr(struct spi_nor *nor, u8 *fsr)
 		ret = spi_mem_exec_op(nor->spimem, &op);
 	} else {
 		ret = spi_nor_controller_ops_read_reg(nor, SPINOR_OP_RDFSR, fsr,
-						      1);
+						      len);
 	}
 
 	if (ret)
 		dev_dbg(nor->dev, "error %d reading FSR\n", ret);
+
+	if (nor->isparallel)
+		fsr[0] &= fsr[1];
 
 	return ret;
 }
