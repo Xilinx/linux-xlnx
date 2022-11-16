@@ -520,6 +520,8 @@ config EDAC_CORTEX_ARM64
 	  Support for error detection and correction on the
 	  ARM Cortex A57 and A53.
 
+	  This driver is deprecated and will be removed soon.
+
 config EDAC_TI
 	tristate "Texas Instruments DDR3 ECC Controller"
 	depends on ARCH_KEYSTONE || SOC_DRA7XX
