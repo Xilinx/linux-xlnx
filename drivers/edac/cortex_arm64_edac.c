@@ -433,6 +433,9 @@ static int cortex_arm64_edac_probe(struct platform_device *pdev)
 	if (rc)
 		edac_device_free_ctl_info(drv->edac_ctl);
 
+	/* Let the users know they are using deprecated driver */
+	dev_notice(&pdev->dev, "cortex l1/l2 driver is deprecated\n");
+
 	return rc;
 }
 
