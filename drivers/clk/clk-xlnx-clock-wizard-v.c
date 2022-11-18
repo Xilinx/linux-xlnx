@@ -340,8 +340,7 @@ static unsigned long clk_wzrd_recalc_rate(struct clk_hw *hw,
 					  unsigned long parent_rate)
 {
 	struct clk_wzrd_divider *divider = to_clk_wzrd_divider(hw);
-	void __iomem *div_addr =
-			(void __iomem *)((u64)divider->base + divider->offset);
+	void __iomem *div_addr = divider->base + divider->offset;
 	unsigned int vall, valh;
 	u32 div;
 	u32 p5en, edge, prediv2;
@@ -373,8 +372,8 @@ static int clk_wzrd_dynamic_reconfig(struct clk_hw *hw, unsigned long rate,
 	u32 p5en, p5fedge;
 	u32 regval, regval1;
 	struct clk_wzrd_divider *divider = to_clk_wzrd_divider(hw);
-	void __iomem *div_addr =
-			(void __iomem *)((u64)divider->base + divider->offset);
+	void __iomem *div_addr = divider->base + divider->offset;
+
 	if (divider->lock)
 		spin_lock_irqsave(divider->lock, flags);
 	else
