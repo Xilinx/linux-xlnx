@@ -10,6 +10,7 @@
 #include <linux/bitfield.h>
 #include <linux/delay.h>
 #include <linux/firmware.h>
+#include <linux/math64.h>
 #include <linux/of.h>
 #include <linux/phy/phy.h>
 #include <linux/platform_device.h>
@@ -2554,7 +2555,7 @@ static void xhdmirx_vtdint_handler(struct xhdmirx_state *xhdmi)
 
 					vidclk = activepixfrlratio *
 						 DIV_ROUND_CLOSEST(xhdmi->frlclkfreqkhz, 100);
-					vidclk = DIV_ROUND_CLOSEST(vidclk, totalpixfrlratio);
+					vidclk = DIV_ROUND_CLOSEST_ULL(vidclk, totalpixfrlratio);
 					xhdmi->stream.refclk = vidclk * 100000;
 					if (xhdmirx1_get_video_properties(xhdmi))
 						dev_err_ratelimited(xhdmi->dev, "Failed get video properties!");
@@ -2566,9 +2567,8 @@ static void xhdmirx_vtdint_handler(struct xhdmirx_state *xhdmi)
 					u32 remainder;
 
 					vidclk = (xhdmi->stream.pixelclk / 100000) / COREPIXPERCLK;
-					vidclk = xhdmi->vidclkfreqkhz / vidclk;
-					remainder = vidclk % 100;
-					vidclk = vidclk / 100;
+					vidclk = div64_u64(xhdmi->vidclkfreqkhz, vidclk);
+					vidclk = div_u64_rem(vidclk, 100, &remainder);
 					if (remainder >= 50)
 						vidclk++;
 
