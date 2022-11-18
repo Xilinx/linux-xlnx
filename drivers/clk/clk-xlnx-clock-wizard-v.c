@@ -14,6 +14,7 @@
 #include <linux/slab.h>
 #include <linux/io.h>
 #include <linux/of.h>
+#include <linux/math64.h>
 #include <linux/module.h>
 #include <linux/err.h>
 #include <linux/iopoll.h>
@@ -229,7 +230,7 @@ static int clk_wzrd_get_divisors(struct clk_hw *hw, unsigned long rate,
 			vco_freq = DIV_ROUND_CLOSEST((parent_rate * m), d);
 			if (vco_freq >= WZRD_VCO_MIN && vco_freq <= WZRD_VCO_MAX) {
 				for (o = WZRD_O_MIN; o <= WZRD_O_MAX; o++) {
-					freq = DIV_ROUND_CLOSEST(vco_freq, o);
+					freq = DIV_ROUND_CLOSEST_ULL(vco_freq, o);
 					diff = abs(freq - rate);
 
 					if (diff < WZRD_MIN_ERR) {
