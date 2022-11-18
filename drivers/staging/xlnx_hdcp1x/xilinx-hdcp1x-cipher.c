@@ -7,6 +7,7 @@
  * Author: Jagadeesh Banisetti <jagadeesh.banisetti@xilinx.com>
  */
 
+#include <linux/bitfield.h>
 #include <linux/xilinx-hdcp1x-cipher.h>
 
 /* HDCP Cipher register offsets */
