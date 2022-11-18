@@ -15,6 +15,7 @@
 #include <linux/slab.h>
 #include <linux/io.h>
 #include <linux/of.h>
+#include <linux/math64.h>
 #include <linux/module.h>
 #include <linux/err.h>
 #include <linux/iopoll.h>
@@ -235,7 +236,7 @@ static int clk_wzrd_get_divisors(struct clk_hw *hw, unsigned long rate,
 			vco_freq = DIV_ROUND_CLOSEST((parent_rate * m), d);
 			if (vco_freq >= WZRD_VCO_MIN && vco_freq <= WZRD_VCO_MAX) {
 				for (o = WZRD_O_MIN; o <= WZRD_O_MAX; o++) {
-					freq = DIV_ROUND_CLOSEST(vco_freq, o);
+					freq = DIV_ROUND_CLOSEST_ULL(vco_freq, o);
 					diff = abs(freq - rate);
 
 					if (diff < WZRD_MIN_ERR) {
@@ -270,11 +271,11 @@ static int clk_wzrd_dynamic_all_nolock(struct clk_hw *hw, unsigned long rate,
 		return err;
 
 	vco_freq = DIV_ROUND_CLOSEST((parent_rate * divider->valuem), divider->valued);
-	rate_div = DIV_ROUND_CLOSEST((vco_freq * WZRD_FRAC_POINTS), rate);
+	rate_div = DIV_ROUND_CLOSEST_ULL((vco_freq * WZRD_FRAC_POINTS), rate);
 
-	clockout0_div = rate_div / WZRD_FRAC_POINTS;
+	clockout0_div = div_u64(rate_div,  WZRD_FRAC_POINTS);
 
-	pre = DIV_ROUND_CLOSEST((vco_freq * WZRD_FRAC_POINTS), rate);
+	pre = DIV_ROUND_CLOSEST_ULL((vco_freq * WZRD_FRAC_POINTS), rate);
 	f = (u32)(pre - (clockout0_div * WZRD_FRAC_POINTS));
 	f = f & WZRD_CLKOUT_FRAC_MASK;
 
