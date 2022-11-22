@@ -331,7 +331,7 @@
 			status = "disabled";
 			reg = <0 0xff020000 0 0x1000>;
 			interrupts = <0 14 4>;
-			clock-frequency = <400000>;
+			clock-frequency = <100000>;
 			#address-cells = <1>;
 			#size-cells = <0>;
 		};
@@ -341,7 +341,7 @@
 			status = "disabled";
 			reg = <0 0xff030000 0 0x1000>;
 			interrupts = <0 15 4>;
-			clock-frequency = <400000>;
+			clock-frequency = <100000>;
 			#address-cells = <1>;
 			#size-cells = <0>;
 		};
@@ -351,7 +351,7 @@
 			status = "disabled";
 			reg = <0 0xf1000000 0 0x1000>;
 			interrupts = <0 123 4>;
-			clock-frequency = <400000>;
+			clock-frequency = <100000>;
 			#address-cells = <1>;
 			#size-cells = <0>;
 		};
