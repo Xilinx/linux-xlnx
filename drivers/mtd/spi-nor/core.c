@@ -2052,7 +2052,7 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 		if (nor->isstacked == 1) {
 			if ((len - i) <= rem_bank_len) {
 				page_remain = min_t(size_t,
-						    nor->page_size -
+						    page_size -
 						    page_offset, len - i);
 			} else {
 				/*
@@ -2060,12 +2060,12 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 				 * on the first page
 				 */
 				page_remain = min_t(size_t,
-						    nor->page_size -
+						    page_size -
 						    page_offset, rem_bank_len);
 			}
 		} else {
 			page_remain = min_t(size_t,
-					    nor->page_size -
+					    page_size -
 					    page_offset, len - i);
 		}
 		ret = spi_nor_wait_till_ready(nor);
