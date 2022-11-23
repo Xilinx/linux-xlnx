@@ -203,121 +203,6 @@
 
 	/* FIXME Fan control via u1702 - max6643 and mux via J1703 - not SW controllable - via EMIO */
 
-
-	/* Teensy i2c connection is ignored */
-	/* When SYSCTLR_I2C_MAIN_EN is read and there is 1 means that J79 is shorted */
-	/* SYSCTLR_TEENSY_I2C_MUX_RST_B should be handled via gpio hog */
-	/* FIXME this i2c-mux-gpio which is full model but won't work with SC design - simply J79 must be used */
-	i2c-mux-u21 { /* u21 with J79 for overwriting - i2c main bus */
-		compatible = "i2c-mux-gpio";
-		#address-cells = <1>;
-		#size-cells = <0>;
-		mux-gpios = <&axi_gpio_0 10 GPIO_ACTIVE_HIGH>; /* SYSCTLR_I2C_MAIN_EN */
-		i2c-parent = <&i2c1>;
-		idle-state = <0>; /* Disabled if unused */
-		i2c_main: i2c-mux@1 {
-			reg = <1>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-			/* u97 eeprom at 0x54 described in sc-revB - WP protection via BOARD_EEPROM_WP - J1801 */
-			/* DC/SE eeprom at 0x52 */
-			x_prc_eeprom: eeprom@52 { /* u4 - DC card identification - possible WP */
-				compatible = "atmel,24c02";
-				reg = <0x52>;
-			};
-
-			x_prc_tca9534: gpio@22 { /* u5 */
-				compatible = "nxp,pca9534";
-				reg = <0x22>;
-				gpio-controller; /* IRQ not connected */
-				#gpio-cells = <2>;
-				gpio-line-names = "xprc_sw_1", "xprc_sw_2", "xprc_sw_3", "xprc_sw_4",
-						  "", "", "", "";
-				gtr_sel0 {
-					gpio-hog;
-					gpios = <0 0>;
-					input; /* FIXME add meaning */
-					line-name = "xprc_sw_1";
-				};
-				gtr_sel1 {
-					gpio-hog;
-					gpios = <1 0>;
-					input; /* FIXME add meaning */
-					line-name = "xprc_sw_1";
-				};
-				gtr_sel2 {
-					gpio-hog;
-					gpios = <2 0>;
-					input; /* FIXME add meaning */
-					line-name = "xprc_sw_1";
-				};
-				gtr_sel3 {
-					gpio-hog;
-					gpios = <3 0>;
-					input; /* FIXME add meaning */
-					line-name = "xprc_sw_1";
-				};
-			};
-
-			/* FMC eeproms at 0x50/0x51 */
-			/* via j3/j5 to 0x68 to u32/9FGV1006C
-
-			/* i2c_main_1 - u147 - j157 - disable translation, add 8 */
-			/* J1 - OE for u43@55 + 8 - 161,132813MHz - QSFP56G_0 */
-			qsfp56g_0_clk: clock-controller@5d {
-				compatible = "renesas,proxo-xp";
-				reg = <0x5d>;
-				#clock-cells = <0>;
-			};
-
-			/* J2 - OE for u41@57 + 8 - 322,265625MHz - QSFP56G_1 */
-			qsfp56g_1_clk: clock-controller@5f {
-				compatible = "renesas,proxo-xp";
-				reg = <0x5f>;
-				#clock-cells = <0>;
-			};
-
-			/* J81 - OE for u115@50 + 8 - 320MHz - LPDDR5_C0 */
-			lpddr5_c0_clk: clock-controller@58 {
-				compatible = "renesas,proxo-xp";
-				reg = <0x58>;
-				#clock-cells = <0>;
-			};
-
-			/* i2c_main_2 - u148 - j122 - disable translation, add 9 */
-			/* J112 - OE for u63@50 + 9 - 320MHz - LPDDR5_C2 */
-			lpddr5_c2_clk: clock-controller@59 {
-				compatible = "renesas,proxo-xp";
-				reg = <0x59>;
-				#clock-cells = <0>;
-			};
-
-			/* i2c_main_3 - u149 - j154 - disable translation, add 6 */
-			/* J78 - OE for u116@50 + 6  - 320MHz - DDR5_UDIMM */
-			ddr5_udimm_clk: clock-controller@56 {
-				compatible = "renesas,proxo-xp";
-				reg = <0x56>;
-				#clock-cells = <0>;
-			};
-
-			/* i2c_main_4 - u150 - j146 - disable translation, add 5 */
-			/* J107 - OE for u39@50 + 5 - 33,3333MHz - PS_REFCLK */
-			ps_refclk: clock-controller@55 {
-				compatible = "renesas,proxo-xp";
-				reg = <0x55>;
-				#clock-cells = <0>;
-			};
-
-			/* i2c_main_5 - u1782 - j1798 - disable translation, add 7 */
-			/* J77 - OE for u1783@50 + 7 - 320MHz - DDR4 */
-			ddr4_clk: clock-controller@57 {
-				compatible = "renesas,proxo-xp";
-				reg = <0x57>;
-				#clock-cells = <0>;
-			};
-		};
-	};
-
 	i2c-mux-u24 { /* u24 with j72 for overwriting - i2c pmc bus */
 		compatible = "i2c-mux-gpio";
 		#address-cells = <1>;
@@ -572,6 +457,104 @@
 	#address-cells = <1>;
 	#size-cells = <0>;
 
+	/* u97 eeprom at 0x54 described in sc-revB - WP protection via BOARD_EEPROM_WP - J1801 */
+	/* DC/SE eeprom at 0x52 */
+	x_prc_eeprom: eeprom@52 { /* u4 - DC card identification - possible WP */
+		compatible = "atmel,24c02";
+		reg = <0x52>;
+		u-boot,dm-pre-reloc;
+	};
+
+	x_prc_tca9534: gpio@22 { /* u5 */
+		compatible = "nxp,pca9534";
+		reg = <0x22>;
+		gpio-controller; /* IRQ not connected */
+		#gpio-cells = <2>;
+		gpio-line-names = "xprc_sw_1", "xprc_sw_2", "xprc_sw_3", "xprc_sw_4",
+					"", "", "", "";
+		gtr_sel0 {
+			gpio-hog;
+			gpios = <0 0>;
+			input; /* FIXME add meaning */
+			line-name = "xprc_sw_1";
+		};
+		gtr_sel1 {
+			gpio-hog;
+			gpios = <1 0>;
+			input; /* FIXME add meaning */
+			line-name = "xprc_sw_1";
+		};
+		gtr_sel2 {
+			gpio-hog;
+			gpios = <2 0>;
+			input; /* FIXME add meaning */
+			line-name = "xprc_sw_1";
+		};
+		gtr_sel3 {
+			gpio-hog;
+			gpios = <3 0>;
+			input; /* FIXME add meaning */
+			line-name = "xprc_sw_1";
+		};
+	};
+
+	/* FMC eeproms at 0x50/0x51 */
+	/* via j3/j5 to 0x68 to u32/9FGV1006C
+
+	/* i2c_main_1 - u147 - j157 - disable translation, add 8 */
+	/* J1 - OE for u43@55 + 8 - 161,132813MHz - QSFP56G_0 */
+	qsfp56g_0_clk: clock-controller@5d {
+		compatible = "renesas,proxo-xp";
+		reg = <0x5d>;
+		#clock-cells = <0>;
+	};
+
+	/* J2 - OE for u41@57 + 8 - 322,265625MHz - QSFP56G_1 */
+	qsfp56g_1_clk: clock-controller@5f {
+		compatible = "renesas,proxo-xp";
+		reg = <0x5f>;
+		#clock-cells = <0>;
+	};
+
+	/* J81 - OE for u115@50 + 8 - 320MHz - LPDDR5_C0 */
+	lpddr5_c0_clk: clock-controller@58 {
+		compatible = "renesas,proxo-xp";
+		reg = <0x58>;
+		#clock-cells = <0>;
+	};
+
+	/* i2c_main_2 - u148 - j122 - disable translation, add 9 */
+	/* J112 - OE for u63@50 + 9 - 320MHz - LPDDR5_C2 */
+	lpddr5_c2_clk: clock-controller@59 {
+		compatible = "renesas,proxo-xp";
+		reg = <0x59>;
+		#clock-cells = <0>;
+	};
+
+	/* i2c_main_3 - u149 - j154 - disable translation, add 6 */
+	/* J78 - OE for u116@50 + 6  - 320MHz - DDR5_UDIMM */
+	ddr5_udimm_clk: clock-controller@56 {
+		compatible = "renesas,proxo-xp";
+		reg = <0x56>;
+		#clock-cells = <0>;
+	};
+
+	/* i2c_main_4 - u150 - j146 - disable translation, add 5 */
+	/* J107 - OE for u39@50 + 5 - 33,3333MHz - PS_REFCLK */
+	ps_refclk: clock-controller@55 {
+		compatible = "renesas,proxo-xp";
+		reg = <0x55>;
+		#clock-cells = <0>;
+	};
+
+	/* i2c_main_5 - u1782 - j1798 - disable translation, add 7 */
+	/* J77 - OE for u1783@50 + 7 - 320MHz - DDR4 */
+	ddr4_clk: clock-controller@57 {
+		compatible = "renesas,proxo-xp";
+		reg = <0x57>;
+		#clock-cells = <0>;
+	};
+
 	/* LTC4316 - not wired XORH/XORL - FIXME */
 	/* J3 gate - FIXME should be connected for SW handling */
 	/* i2c_main_1 bus */
@@ -583,13 +566,6 @@
 	i2c1_u49: clock-controller@5 { /* FIXME address is not known */
 		compatible = "renesas,9fgv1006";
 		reg = <5>; /* FIXME */
-	};
-
-	/* DC eeprom - Use for storing information about SE card - fix name in schematics */
-	eeprom: eeprom@52 { /* m24128 16kB */
-		compatible = "st,24c128", "atmel,24c128";
-		reg = <0x52>; /* & 0x5a */
-		u-boot,dm-pre-reloc;
 	};
 
 	/* J71 - selection to LP_I2C_SCL_J or LP_I2C_PMC_SCL_J */
