@@ -124,21 +124,6 @@
 		io-channels = <&gtm_avccaux_ina 0>, <&gtm_avccaux_ina 1>, <&gtm_avccaux_ina 2>;
 	};
 
-	/* FIXME regulators can be used for _EN signal description but likely not needed */
-	/* regulators: regulators {
-		compatible = "simple-bus";
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		gpio-regulator {
-			compatible = "regulator-fixed";
-			regulator-name = "util_2v5";
-			enable-gpios = <&axi_gpio0 23 0x4>;
-			startup-delay-us = <100000>;
-			enable-active-high;
-		};
-	};*/
-
 	amba_pl: axi {
 		compatible = "simple-bus";
 		#address-cells = <2>;
