@@ -492,9 +492,9 @@
 		reg = <0xb>;
 	};
 
-	vccaux: regulator@c { /* u1734 */
+	vccaux: regulator@1a { /* u1734 */
 		compatible = "ti,tps544b25";
-		reg = <0xc>;
+		reg = <0x1a>;
 	};
 
 	vcco_503: regulator@12 { /* u1744 */
