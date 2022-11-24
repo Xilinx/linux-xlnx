@@ -279,6 +279,7 @@
 		compatible = "renesas,proxo-xp";
 		reg = <0x5d>;
 		#clock-cells = <0>;
+		clock-output-names = "qsfp56g_0_clk";
 	};
 
 	/* J2 - OE for u41@57 + 8 - 322,265625MHz - QSFP56G_1 */
@@ -286,6 +287,7 @@
 		compatible = "renesas,proxo-xp";
 		reg = <0x5f>;
 		#clock-cells = <0>;
+		clock-output-names = "qsfp56g_1_clk";
 	};
 
 	/* J81 - OE for u115@50 + 8 - 320MHz - LPDDR5_C0 */
@@ -293,6 +295,7 @@
 		compatible = "renesas,proxo-xp";
 		reg = <0x58>;
 		#clock-cells = <0>;
+		clock-output-names = "lpddr5_c0_clk";
 	};
 
 	/* i2c_main_2 - u148 - j122 - disable translation, add 9 */
@@ -301,6 +304,7 @@
 		compatible = "renesas,proxo-xp";
 		reg = <0x59>;
 		#clock-cells = <0>;
+		clock-output-names = "lpddr5_c2_clk";
 	};
 
 	/* i2c_main_3 - u149 - j154 - disable translation, add 6 */
@@ -309,6 +313,7 @@
 		compatible = "renesas,proxo-xp";
 		reg = <0x56>;
 		#clock-cells = <0>;
+		clock-output-names = "ddr5_udimm_clk";
 	};
 
 	/* i2c_main_4 - u150 - j146 - disable translation, add 5 */
@@ -317,6 +322,7 @@
 		compatible = "renesas,proxo-xp";
 		reg = <0x55>;
 		#clock-cells = <0>;
+		clock-output-names = "ps_refclk";
 	};
 
 	/* i2c_main_5 - u1782 - j1798 - disable translation, add 7 */
@@ -325,6 +331,7 @@
 		compatible = "renesas,proxo-xp";
 		reg = <0x57>;
 		#clock-cells = <0>;
+		clock-output-names = "ddr4_clk";
 	};
 
 	/* LTC4316 - not wired XORH/XORL - FIXME */
