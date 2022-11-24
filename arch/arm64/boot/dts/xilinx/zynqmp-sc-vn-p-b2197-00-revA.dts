@@ -337,14 +337,9 @@
 	/* LTC4316 - not wired XORH/XORL - FIXME */
 	/* J3 gate - FIXME should be connected for SW handling */
 	/* i2c_main_1 bus */
-	i2c1_u160: clock-controller@15 { /* FIXME address is not known */
+	i2c1_u32: clock-controller@68 {
 		compatible = "renesas,9fgv1006";
-		reg = <15>; /* FIXME */
-	};
-
-	i2c1_u49: clock-controller@5 { /* FIXME address is not known */
-		compatible = "renesas,9fgv1006";
-		reg = <5>; /* FIXME */
+		reg = <0x68>;
 	};
 
 	/* J71 - selection to LP_I2C_SCL_J or LP_I2C_PMC_SCL_J */
