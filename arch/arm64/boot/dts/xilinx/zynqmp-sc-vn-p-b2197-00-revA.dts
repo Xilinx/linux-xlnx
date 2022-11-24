@@ -519,9 +519,9 @@
 		reg = <0x15>;
 	};
 
-	ucd90320: power-sequencer@77 { /* u1768 */
+	ucd90320: power-sequencer@73 { /* u1768 */
 		compatible = "ti,ucd90320";
-		reg = <0x77>;
+		reg = <0x73>;
 	};
 
 	/* EXT_PMBUS main - J10 - disable extended PMBUS */
