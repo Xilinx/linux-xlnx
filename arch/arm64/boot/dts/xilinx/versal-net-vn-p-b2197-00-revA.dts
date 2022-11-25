@@ -23,12 +23,14 @@
 
 &i2c0 {
 	/* Access via J70/J71 or J82/J83 */
+	clock-frequency = <100000>;
 };
 
 &i2c1 {
 	/* Access via J70/J71 or J82/J83 */
 	/* By default this bus should have eeprom for board identification at 0x54 */
 	/* SE/X-PRC card identification is also on this bus at 0x52 */
+	clock-frequency = <100000>;
 };
 
 &adma0 {
