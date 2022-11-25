@@ -1,0 +1,180 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * dts file for Xilinx ZynqMP VN-P-B2197 (Tenzing2) X-PRC-07 RevA
+ *
+ * (C) Copyright 2022, Advanced Micro Devices, Inc.
+ *
+ * Michal Simek <michal.simek@xilinx.com>
+ */
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+
+&{/} {
+	model = "X-PRC-07 revA";
+
+	aliases {
+		nvmem2 = &eeprom0;
+		nvmem3 = &eeprom1;
+	};
+};
+
+&gem1 {
+	status = "okay";
+	phy-handle = <&phy0>;
+	phy-mode = "rmii-id";
+	mdio1: mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		/* u393 DP83867 - DNP */
+		/*
+		phy0: ethernet-phy@1 {
+			#phy-cells = <1>;
+			compatible = "ethernet-phy-id2000.a231";
+			reg = <1>;
+			ti,rx-internal-delay = <0x8>;
+			ti,tx-internal-delay = <0xa>;
+			ti,fifo-depth = <0x1>;
+			ti,dp83867-rxctrl-strap-quirk;
+			reset-gpios = <&gpio1 22 GPIO_ACTIVE_LOW>;
+		};
+		*/
+		/* phy also respond on broadcast address 0 */
+		phy0: ethernet-phy@1 { /* u396 RTL8201F */
+			#phy-cells = <1>;
+			compatible = "ethernet-phy-id001c.c816";
+			reg = <1>;
+			reset-gpios = <&gpio1 22 GPIO_ACTIVE_LOW>;
+		};
+	};
+};
+
+&ospi {
+	status = "okay";
+	is-dual = <0>;
+	is-stacked = <0>;
+	reset-gpios = <&gpio1 0xc GPIO_ACTIVE_HIGH>;
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	mt35xu02g: flash@0 { /* u97/u390 mt35xu02gcba */
+		compatible = "micron,m25p80", "jedec,spi-nor";
+		reg = <0>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		cdns,read-delay = <0>;
+		cdns,tshsl-ns = <0>;
+		cdns,tsd2d-ns = <0>;
+		cdns,tchsh-ns = <1>;
+		cdns,tslch-ns = <1>;
+		spi-tx-bus-width = <8>;
+		spi-rx-bus-width = <8>;
+		spi-max-frequency = <5000000>;
+		broken-flash-reset;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "ospi-flash0";
+				reg = <0 0x200000>;
+			};
+			partition@1 {
+				label = "ospi-flash1";
+				reg = <0x200000 0x7E00000>;
+			};
+		};
+	};
+};
+
+&spi0 {
+	status = "okay";
+	num-cs = <1>;
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	flash@0 { /* u397 MX25U3232 - FIXME not supported in U-Boot/Linux */
+		compatible = "m25p80";
+		spi-max-frequency = <5000000>;
+		reg = <0>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+			partition@0 {
+				label = "spi0-flash0";
+				reg = <0 0x80000>;
+			};
+		};
+	};
+};
+
+&i2c0 {
+	status = "okay";
+	u-boot,dm-pre-reloc;
+	clock-frequency = <400000>;
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	eeprom0: eeprom@51 { /* u45 WP not used */
+		compatible = "st,24c128", "atmel,24c128";
+		reg = <0x51>;
+		u-boot,dm-pre-reloc;
+	};
+};
+
+&i2c1 {
+	status = "okay";
+	u-boot,dm-pre-reloc;
+	clock-frequency = <400000>;
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	eeprom1: eeprom@51 { /* u46 WP not used */
+		compatible = "st,24c128", "atmel,24c128";
+		reg = <0x51>;
+		u-boot,dm-pre-reloc;
+	};
+};
+
+&i3c0 {
+	status = "okay";
+	#address-cells = <3>;
+	#size-cells = <0>;
+
+	/* check maximum frequency from datasheet */
+	imu@6b { /* u120 */
+		compatible = "st,lsm6dso";
+		reg = <0 0 0x6b>;
+	};
+};
+
+&serial0 {
+	status = "okay";
+};
+
+&serial1 {
+	status = "okay";
+};
+
+&sdhci0 {
+	status = "okay";
+	xlnx,mio-bank = <0>;
+	non-removable;
+	disable-wp;
+	bus-width = <8>;
+};
+
+&usb0 {
+	status = "okay";
+};
+
+&dwc3_0 {
+	status = "okay";
+};
