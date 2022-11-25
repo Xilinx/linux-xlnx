@@ -335,8 +335,6 @@
 			interrupts = <0 39 4>, <0 39 4>;
 			clock-names = "pclk", "hclk", "tx_clk", "rx_clk",
 			              "tsu_clk";
-			#address-cells = <1>;
-			#size-cells = <0>;
 		};
 
 		gem1: ethernet@f19f0000 {
@@ -346,8 +344,6 @@
 			interrupts = <0 41 4>, <0 41 4>;
 			clock-names = "pclk", "hclk", "tx_clk", "rx_clk",
 				      "tsu_clk";
-			#address-cells = <1>;
-			#size-cells = <0>;
 		};
 
 		gic: interrupt-controller@e2000000 {
@@ -430,8 +426,6 @@
 			cdns,is-dma = <1>; /* u-boot specific */
 			/* cdns,is-stig-pgm = <1>; - unused - checking with Sai */
 			cdns,trigger-address = <0xc0000000>;
-			#address-cells = <1>;
-			#size-cells = <0>;
 		};
 
 		qspi: spi@f1030000 {
@@ -440,8 +434,6 @@
 			reg = <0 0xf1030000 0 0x1000>; /* missing one more reg range - checking with Sai */
 			interrupts = <0 183 4>;
 			clock-names = "ref_clk", "pclk";
-			#address-cells = <1>;
-			#size-cells = <0>;
 		};
 
 		rtc: rtc@f12a0000 {
@@ -506,8 +498,6 @@
 			interrupts = <0 23 4>;
 			reg = <0 0xf1960000 0 0x1000>;
 			clock-names = "ref_clk", "pclk";
-			#address-cells = <1>;
-			#size-cells = <0>;
 		};
 
 		spi1: spi@f1970000 {
@@ -516,8 +506,6 @@
 			interrupts = <0 24 4>;
 			reg = <0 0xf1970000 0 0x1000>;
 			clock-names = "ref_clk", "pclk";
-			#address-cells = <1>;
-			#size-cells = <0>;
 		};
 
 		ttc0: timer@f1dc0000 {
