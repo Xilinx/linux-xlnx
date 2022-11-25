@@ -54,7 +54,7 @@
 	#address-cells = <1>;
 	#size-cells = <0>;
 
-	eeprom0: eeprom@54 { /* u45 WP not used */
+	eeprom0: eeprom@51 { /* u45 WP not used */
 		compatible = "st,24c128", "atmel,24c128";
 		reg = <0x51>;
 		u-boot,dm-pre-reloc;
