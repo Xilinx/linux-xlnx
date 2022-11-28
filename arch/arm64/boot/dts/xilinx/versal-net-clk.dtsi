@@ -8,31 +8,10 @@
  */
  
 / {
-	clk1: clk1 {
-		u-boot,dm-pre-reloc;
+	clk60: clk60 {
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
-		clock-frequency = <1000000>;
-	};
-
-	clk2_6: clk2_6 {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <2670000>;
-	};
-
-	clk20: clk20 {
-		u-boot,dm-pre-reloc;
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <20000000>;
-	};
-
-	clk25: clk25 {
-		u-boot,dm-pre-reloc;
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <25000000>;
+		clock-frequency = <60000000>;
 	};
 
 	clk100: clk100 {
@@ -47,92 +26,122 @@
 		clock-frequency = <125000000>;
 	};
 
-	clk60: clk60 {
+	clk150: clk150 {
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
-		clock-frequency = <60000000>;
+		clock-frequency = <150000000>;
+	};
+
+	clk160: clk160 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <160000000>;
+	};
+
+	clk200: clk200 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <200000000>;
+	};
+
+	clk250: clk250 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <250000000>;
+	};
+
+	clk300: clk300 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <300000000>;
+	};
+
+	clk450: clk450 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <450000000>;
 	};
 };
 
 &adma0 {
-	clocks = <&clk100>, <&clk100>;
+	clocks = <&clk450>, <&clk450>;
 };
 
 &adma1 {
-	clocks = <&clk100>, <&clk100>;
+	clocks = <&clk450>, <&clk450>;
 };
 
 &adma2 {
-	clocks = <&clk100>, <&clk100>;
+	clocks = <&clk450>, <&clk450>;
 };
 
 &adma3 {
-	clocks = <&clk100>, <&clk100>;
+	clocks = <&clk450>, <&clk450>;
 };
 
 &adma4 {
-	clocks = <&clk100>, <&clk100>;
+	clocks = <&clk450>, <&clk450>;
 };
 
 &adma5 {
-	clocks = <&clk100>, <&clk100>;
+	clocks = <&clk450>, <&clk450>;
 };
 
 &adma6 {
-	clocks = <&clk100>, <&clk100>;
+	clocks = <&clk450>, <&clk450>;
 };
 
 &adma7 {
-	clocks = <&clk100>, <&clk100>;
+	clocks = <&clk450>, <&clk450>;
 };
 
 &can0 {
-	clocks = <&clk25>, <&clk25>;
+	clocks = <&clk160>, <&clk160>;
 };
 
 &can1 {
-	clocks = <&clk25>, <&clk25>;
+	clocks = <&clk160>, <&clk160>;
 };
 
 &gem0 {
-	clocks = <&clk2_6>, <&clk25>, <&clk25>, <&clk25>, <&clk25>;
+	clocks = <&clk125>, <&clk125>, <&clk125>, <&clk125>, <&clk250>;
 };
 
 &gem1 {
-	clocks = <&clk2_6>, <&clk25>, <&clk25>, <&clk25>, <&clk25>;
+	clocks = <&clk125>, <&clk125>, <&clk125>, <&clk125>, <&clk250>;
 };
 
 
 &gpio0 {
-	clocks = <&clk25>;
+	clocks = <&clk100>;
 };
 
 &gpio1 {
-	clocks = <&clk25>;
+	clocks = <&clk100>;
 };
 
 &i2c0 {
-	clocks = <&clk25>;
+	clocks = <&clk100>;
 };
 
 &i2c1 {
-	clocks = <&clk25>;
+	clocks = <&clk100>;
 };
 
 &i3c0 {
-	clocks = <&clk20>;
+	clocks = <&clk100>;
 };
 
 &i3c1 {
-	clocks = <&clk20>;
+	clocks = <&clk100>;
 };
 
 &ospi {
-	clocks = <&clk20>;
+	clocks = <&clk200>;
 };
 
 &qspi {
-	clocks = <&clk25>, <&clk25>;
+	clocks = <&clk300>, <&clk300>;
 };
 
 &rtc {
@@ -140,33 +149,33 @@
 };
 
 &sdhci0 {
-	clocks = <&clk20>, <&clk20>;
+	clocks = <&clk200>, <&clk200>;
 };
 
 &sdhci1 {
-	clocks = <&clk20>, <&clk20>;
+	clocks = <&clk200>, <&clk200>;
 };
 
 &serial0 {
-	clocks = <&clk1>, <&clk1>;
+	clocks = <&clk100>, <&clk100>;
 	clock = <1000000>;
 };
 
 &serial1 {
-	clocks = <&clk1>, <&clk1>;
-	clock = <1000000>;
+	clocks = <&clk100>, <&clk100>;
+	clock = <100000000>;
 };
 
 &spi0 {
-	clocks = <&clk25>, <&clk25>;
+	clocks = <&clk200>, <&clk200>;
 };
 
 &spi1 {
-	clocks = <&clk25>, <&clk25>;
+	clocks = <&clk200>, <&clk200>;
 };
 
 &ttc0 {
-	clocks = <&clk1>;
+	clocks = <&clk150>;
 };
 
 &usb0 {
@@ -186,17 +195,17 @@
 };
 
 &wwdt0 {
-	clocks = <&clk25>;
+	clocks = <&clk150>;
 };
 
 &wwdt1 {
-	clocks = <&clk25>;
+	clocks = <&clk150>;
 };
 
 &wwdt2 {
-	clocks = <&clk25>;
+	clocks = <&clk150>;
 };
 
 &wwdt3 {
-	clocks = <&clk25>;
+	clocks = <&clk150>;
 };
