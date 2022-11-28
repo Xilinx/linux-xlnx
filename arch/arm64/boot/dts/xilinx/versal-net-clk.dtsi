@@ -6,7 +6,9 @@
  *
  * Michal Simek <michal.simek@amd.com>
  */
- 
+
+#include <dt-bindings/reset/xlnx-versal-resets.h>
+
 / {
 	clk60: clk60 {
 		compatible = "fixed-clock";
@@ -60,6 +62,19 @@
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
 		clock-frequency = <450000000>;
+	};
+
+	firmware {
+		versal_net_firmware: versal-net-firmware {
+			compatible = "xlnx,versal-net-firmware";
+			u-boot,dm-pre-reloc;
+			method = "smc";
+
+			versal_net_reset: reset-controller {
+				compatible = "xlnx,versal-net-reset";
+				#reset-cells = <1>;
+			};
+		};
 	};
 };
 
@@ -138,6 +153,7 @@
 
 &ospi {
 	clocks = <&clk200>;
+	resets = <&versal_net_reset VERSAL_RST_OSPI>;
 };
 
 &qspi {
