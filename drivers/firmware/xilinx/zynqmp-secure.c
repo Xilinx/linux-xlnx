@@ -31,10 +31,13 @@ static ssize_t secure_load_store(struct device *dev,
 	u64 dst, ret;
 	int len;
 
-	strncpy(image_name, buf, NAME_MAX);
-	len = strlen(image_name);
-	if (image_name[len - 1] == '\n')
-		image_name[len - 1] = 0;
+	len = strscpy(image_name, buf, NAME_MAX - 1);
+	if (len > 0) {
+		if (image_name[len - 1] == '\n')
+			image_name[len - 1] = 0;
+	} else {
+		return -E2BIG;
+	}
 
 	ret = request_firmware(&fw, image_name, dev);
 	if (ret) {
