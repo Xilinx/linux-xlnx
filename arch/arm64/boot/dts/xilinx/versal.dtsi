@@ -413,7 +413,6 @@
 			reg = <0 0xf1040000 0 0x10000>;
 			interrupts = <0 126 4>;
 			clock-names = "clk_xin", "clk_ahb";
-			xlnx,device_id = <0>;
 			#clock-cells = <1>;
 			clock-output-names = "clk_out_sd0", "clk_in_sd0";
 			/* iommus = <&smmu 0x242>; */
@@ -426,7 +425,6 @@
 			reg = <0 0xf1050000 0 0x10000>;
 			interrupts = <0 128 4>;
 			clock-names = "clk_xin", "clk_ahb";
-			xlnx,device_id = <1>;
 			#clock-cells = <1>;
 			clock-output-names = "clk_out_sd1", "clk_in_sd1";
 			/* iommus = <&smmu 0x243>; */
