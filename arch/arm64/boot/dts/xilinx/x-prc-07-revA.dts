@@ -171,10 +171,10 @@
 	bus-width = <8>;
 };
 
-&usb0 {
+&usb1 {
 	status = "okay";
 };
 
-&dwc3_0 {
+&dwc3_1 {
 	status = "okay";
 };
