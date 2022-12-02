@@ -1,0 +1,2 @@
+cflags="-D_GNU_SOURCE -D_DEFAULT_SOURCE"
+libs="-lncurses -ltinfo"
