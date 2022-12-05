@@ -65,8 +65,8 @@ struct cu {
  * @dpu_clk: DPU clock used for DPUCZDX8G general logic
  * @dsp_clk: DSP clock used for DSP blocks
  * @miscdev: misc device handle
+ * @mutex: protect client
  * @root: debugfs dentry
- * @client_list_lock: protect client_list
  * @client_list: indicates how many dpu clients link to xdpu
  * @dpu_cnt: indicates how many dpu core/cu enabled in IP, up to 4
  * @sfm_cnt: indicates softmax core enabled or not
@@ -79,9 +79,9 @@ struct xdpu_dev {
 	struct clk	*dpu_clk;
 	struct clk	*dsp_clk;
 	struct miscdevice	miscdev;
+	struct mutex	mutex; /* guards client */
 #ifdef CONFIG_DEBUG_FS
 	struct dentry	*root;
-	spinlock_t	client_list_lock; /* guards client_list */
 	struct list_head	client_list;
 #endif
 	u8	dpu_cnt;
@@ -431,7 +431,9 @@ static long xlnx_dpu_alloc_bo(struct xdpu_client *client,
 	if (put_user(pb->dma_addr, &req->dma_addr))
 		goto err_out;
 
+	mutex_lock(&xdpu->mutex);
 	list_add(&pb->head, &client->head);
+	mutex_unlock(&xdpu->mutex);
 
 	return 0;
 err_out:
@@ -459,6 +461,7 @@ static long xlnx_dpu_free_bo(struct xdpu_client *client,
 	if (get_user(dma_addr, &req->dma_addr))
 		return -EFAULT;
 
+	mutex_lock(&xdpu->mutex);
 	list_for_each_entry_safe(h, n, &client->head, head) {
 		if (in_range(dma_addr, h->dma_addr, h->size)) {
 			dma_free_attrs(xdpu->dev, h->size, h->cpu_addr,
@@ -467,6 +470,7 @@ static long xlnx_dpu_free_bo(struct xdpu_client *client,
 			kfree(h);
 		}
 	}
+	mutex_unlock(&xdpu->mutex);
 
 	return 0;
 }
@@ -496,6 +500,7 @@ static inline long xlnx_dpu_sync_bo(struct xdpu_client *client,
 		return -EINVAL;
 	}
 
+	mutex_lock(&xdpu->mutex);
 	list_for_each_entry_safe(h, n, &client->head, head) {
 		if (in_range(dma_addr, h->dma_addr, h->size)) {
 			if (dir == DPU_TO_CPU)
@@ -510,6 +515,8 @@ static inline long xlnx_dpu_sync_bo(struct xdpu_client *client,
 							   DMA_TO_DEVICE);
 		}
 	}
+	mutex_unlock(&xdpu->mutex);
+
 	return 0;
 }
 
@@ -692,12 +699,15 @@ static int xlnx_dpu_mmap(struct file *file, struct vm_area_struct *vma)
 	if (!((vma->vm_pgoff + size) <= __pa(high_memory)))
 		return -EINVAL;
 
+	mutex_lock(&xdpu->mutex);
 	list_for_each_entry_safe(h, n, &client->head, head) {
 		if (in_range(offset, h->dma_addr, h->size)) {
 			found = 1;
 			break;
 		}
 	}
+	mutex_unlock(&xdpu->mutex);
+
 	if (!found)
 		return -EINVAL;
 
@@ -730,9 +740,9 @@ static int xlnx_dpu_open(struct inode *inode, struct file *filp)
 	filp->private_data = client;
 
 #ifdef CONFIG_DEBUG_FS
-	spin_lock_irq(&xdpu->client_list_lock);
+	mutex_lock(&xdpu->mutex);
 	list_add_tail(&client->node, &xdpu->client_list);
-	spin_unlock_irq(&xdpu->client_list_lock);
+	mutex_unlock(&xdpu->mutex);
 #endif
 	return 0;
 }
@@ -753,6 +763,7 @@ static int xlnx_dpu_release(struct inode *inode, struct file *filp)
 	struct xdpu_client *p = NULL, *t = NULL;
 #endif
 
+	mutex_lock(&xdpu->mutex);
 	/* Drain the remaining buffer entries when abnormal close */
 	if (!list_empty(&client->head)) {
 		list_for_each_entry_safe(h, n, &client->head, head) {
@@ -767,7 +778,6 @@ static int xlnx_dpu_release(struct inode *inode, struct file *filp)
 	}
 
 #ifdef CONFIG_DEBUG_FS
-	spin_lock_irq(&xdpu->client_list_lock);
 	list_for_each_entry_safe(p, t, &xdpu->client_list, node) {
 		if (p == client) {
 			list_del(&p->node);
@@ -775,8 +785,9 @@ static int xlnx_dpu_release(struct inode *inode, struct file *filp)
 			break;
 		};
 	};
-	spin_unlock_irq(&xdpu->client_list_lock);
 #endif
+	mutex_unlock(&xdpu->mutex);
+
 	return 0;
 }
 
@@ -943,6 +954,8 @@ static int xlnx_dpu_probe(struct platform_device *pdev)
 		if (dma_set_mask_and_coherent(dev, DMA_BIT_MASK(32)))
 			goto err_out;
 
+	mutex_init(&xdpu->mutex);
+
 	for (i = 0; i < xdpu->dpu_cnt + xdpu->sfm_cnt; i++) {
 		init_completion(&xdpu->cu[i].done);
 		mutex_init(&xdpu->cu[i].mutex);
@@ -959,7 +972,6 @@ static int xlnx_dpu_probe(struct platform_device *pdev)
 	xlnx_dpu_regs_init(xdpu);
 
 #ifdef CONFIG_DEBUG_FS
-	spin_lock_init(&xdpu->client_list_lock);
 	INIT_LIST_HEAD(&xdpu->client_list);
 
 	ret = dpu_debugfs_init(xdpu);
@@ -1247,6 +1259,7 @@ static int dump_show(struct seq_file *seq, void *v)
 	const char *unit = units;
 	unsigned long delta = 0;
 
+	mutex_lock(&xdpu->mutex);
 	list_for_each_entry(client, &xdpu->client_list, node) {
 		if (!list_empty(&client->head)) {
 			seq_printf(seq, "Client: %px\n", client);
@@ -1274,6 +1287,7 @@ static int dump_show(struct seq_file *seq, void *v)
 			};
 		};
 	};
+	mutex_unlock(&xdpu->mutex);
 
 	return 0;
 }
