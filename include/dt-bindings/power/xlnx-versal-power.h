@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- *  Copyright (C) 2019 - 2022 Xilinx, Inc.
+ *  Copyright (C) 2019 - 2021 Xilinx, Inc.
  */
 
 #ifndef _DT_BINDINGS_VERSAL_POWER_H
