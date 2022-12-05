@@ -77,6 +77,7 @@ dtb-$(CONFIG_ARCH_ZYNQMP) += zynqmp-smk-k26-revA-sck-kr-g-revB.dtb
 # Versal boards
 dtb-$(CONFIG_ARCH_ZYNQMP) += versal-v350-revA.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vek280-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vek280-revB.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vc-p-a2197-00-revA-x-prc-01-revA-ospi.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vc-p-a2197-00-revA-x-prc-01-revA.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vc-p-a2197-00-revA-x-prc-02-revA.dtb
