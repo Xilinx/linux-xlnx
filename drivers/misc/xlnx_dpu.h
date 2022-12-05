@@ -18,6 +18,14 @@
 #define TIMEOUT_US		(timeout * 1000000)
 #define POLL_PERIOD_US		(2000)
 
+#define in_range(b, start, len) (		\
+{						\
+typeof(b) b_ = (b);				\
+typeof(start) start_ = (start);			\
+((b_) >= (start_) && (b_) < (start_) + (len));	\
+}						\
+)
+
 /* DPU fingerprint, target info */
 #define DPU_PMU_IP_RST		(0x004)
 #define DPU_IPVER_INFO		(0x1E0)
@@ -95,18 +103,18 @@ enum DPU_DMA_DIR {
 };
 
 struct dpcma_req_free {
-	u64 phy_addr;
+	u64 dma_addr;
 	size_t capacity;
 };
 
 struct dpcma_req_alloc {
 	size_t size;
-	u64 phy_addr;
+	u64 dma_addr;
 	size_t capacity;
 };
 
 struct dpcma_req_sync {
-	u64 phy_addr;
+	u64 dma_addr;
 	size_t size;
 	int direction;
 };
