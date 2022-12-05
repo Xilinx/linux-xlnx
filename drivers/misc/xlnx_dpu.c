@@ -213,7 +213,9 @@ static void xlnx_dpu_dump_regs(struct xdpu_dev *p)
 		DUMPREG(CMD_XLEN);
 		DUMPREG(CMD_YLEN);
 		DUMPREG(SRC_ADDR);
+		DUMPREG(SRC_ADDR_H);
 		DUMPREG(DST_ADDR);
+		DUMPREG(DST_ADDR_H);
 		DUMPREG(CMD_SCAL);
 		DUMPREG(CMD_OFF);
 		DUMPREG(INT_CLR);
@@ -263,7 +265,11 @@ static int xlnx_dpu_softmax(struct xdpu_dev *xdpu, struct ioc_softmax_t *p)
 	iowrite32(p->height, xdpu->regs + DPU_SFM_CMD_YLEN);
 
 	iowrite32(p->input, xdpu->regs + DPU_SFM_SRC_ADDR);
+	iowrite32(p->input >> 32, xdpu->regs + DPU_SFM_SRC_ADDR_H);
+
 	iowrite32(p->output, xdpu->regs + DPU_SFM_DST_ADDR);
+	iowrite32(p->output >> 32, xdpu->regs + DPU_SFM_DST_ADDR_H);
+
 	iowrite32(p->scale, xdpu->regs + DPU_SFM_CMD_SCAL);
 	iowrite32(p->offset, xdpu->regs + DPU_SFM_CMD_OFF);
 	iowrite32(1, xdpu->regs + DPU_SFM_RESET);
@@ -931,20 +937,11 @@ static int xlnx_dpu_probe(struct platform_device *pdev)
 	if (ret && ret != -ENODEV)
 		goto err_out;
 
-	/*
-	 * Vivado flow DPU IP:
-	 * The DMA of DPU is capable of 40-bit physical addresses,
-	 * but the DMA of softmax supports up to 32-bit addressing only
-	 */
-	if (xdpu->sfm_cnt) {
+	/* The DMA of the DPU is capable of 40-bit physical addresses */
+	if (dma_set_mask_and_coherent(dev, DMA_BIT_MASK(40)))
+		/* fall back to 32-bit DMA mask */
 		if (dma_set_mask_and_coherent(dev, DMA_BIT_MASK(32)))
 			goto err_out;
-	} else {
-		if (dma_set_mask_and_coherent(dev, DMA_BIT_MASK(40)))
-			/* fall back to 32-bit DMA mask */
-			if (dma_set_mask_and_coherent(dev, DMA_BIT_MASK(32)))
-				goto err_out;
-	}
 
 	for (i = 0; i < xdpu->dpu_cnt + xdpu->sfm_cnt; i++) {
 		init_completion(&xdpu->cu[i].done);
@@ -1217,7 +1214,9 @@ static const struct debugfs_reg32 sfm_regs[] = {
 	dump_register(SFM_CMD_XLEN),
 	dump_register(SFM_CMD_YLEN),
 	dump_register(SFM_SRC_ADDR),
+	dump_register(SFM_SRC_ADDR_H),
 	dump_register(SFM_DST_ADDR),
+	dump_register(SFM_DST_ADDR_H),
 	dump_register(SFM_CMD_SCAL),
 	dump_register(SFM_CMD_OFF),
 	dump_register(SFM_INT_CLR),
