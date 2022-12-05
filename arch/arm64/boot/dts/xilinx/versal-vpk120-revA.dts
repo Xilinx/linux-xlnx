@@ -87,12 +87,10 @@
 
 &i2c0 { /* PMC_MIO46/47 */
 	status = "okay";
-	clock-frequency = <400000>;
 };
 
 &i2c1 { /* PMC_MIO44/45 */
 	status = "okay";
-	clock-frequency = <400000>;
 };
 
 /* PCIe at MIO 38/39/40/50 */
