@@ -2,6 +2,7 @@
 /*
  * Xilinx ZynqMP SHA Driver.
  * Copyright (c) 2022 Xilinx Inc.
+ * Copyright (C) 2022-2023, Advanced Micro Devices, Inc.
  */
 #include <linux/cacheflush.h>
 #include <crypto/hash.h>
@@ -200,6 +201,11 @@ static int zynqmp_sha_probe(struct platform_device *pdev)
 	if (err)
 		return err;
 
+	err = zynqmp_pm_feature(PM_SECURE_SHA);
+	if (err < 0) {
+		dev_err(dev, "SHA is not supported on the platform\n");
+		return err;
+	}
 
 	err = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(ZYNQMP_DMA_BIT_MASK));
 	if (err < 0) {
