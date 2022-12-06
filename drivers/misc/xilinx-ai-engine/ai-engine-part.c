@@ -637,6 +637,10 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 	long ret;
 
 	switch (cmd) {
+	case AIE_PARTITION_INIT_IOCTL:
+		return aie_part_initialize(apart, argp);
+	case AIE_PARTITION_TEAR_IOCTL:
+		return aie_part_teardown(apart);
 	case AIE_REG_IOCTL:
 	{
 		struct aie_reg_args raccess;

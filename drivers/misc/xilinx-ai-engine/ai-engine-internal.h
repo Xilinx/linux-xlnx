@@ -45,6 +45,12 @@ enum aie_tile_type {
 #define AIE_TILE_TYPE_MASK_SHIMNOC	BIT(AIE_TILE_TYPE_SHIMNOC)
 #define AIE_TILE_TYPE_MASK_MEMORY	BIT(AIE_TILE_TYPE_MEMORY)
 
+#define AIE_ISOLATE_EAST_MASK		BIT(3)
+#define AIE_ISOLATE_NORTH_MASK		BIT(2)
+#define AIE_ISOLATE_WEST_MASK		BIT(1)
+#define AIE_ISOLATE_SOUTH_MASK		BIT(0)
+#define AIE_ISOLATE_ALL_MASK		GENMASK(3, 0)
+
 /*
  * Macros for attribute property of AI engine registers accessed by kernel
  * 0 - 7 bits: tile type bits
@@ -322,6 +328,7 @@ struct aie_aperture;
  *		     caller to apply partition lock before calling this
  *		     function. The caller function will need to set the bitmap
  *		     on which tiles are required to be clocked on.
+ * @set_tile_isolation: set tile isolation boundary for input direction.
  * @mem_clear: clear data memory banks of the partition.
  *
  * Different AI engine device version has its own device
@@ -339,6 +346,8 @@ struct aie_tile_operations {
 	int (*init_part_clk_state)(struct aie_partition *apart);
 	int (*scan_part_clocks)(struct aie_partition *apart);
 	int (*set_part_clocks)(struct aie_partition *apart);
+	int (*set_tile_isolation)(struct aie_partition *apart,
+				  struct aie_location *loc, u8 dir);
 	int (*mem_clear)(struct aie_partition *apart);
 };
 
@@ -1028,6 +1037,8 @@ int xilinx_ai_engine_probe_v1(struct platform_device *pdev);
 void aie_part_remove(struct aie_partition *apart);
 int aie_part_clean(struct aie_partition *apart);
 int aie_part_open(struct aie_partition *apart, void *rsc_metadata);
+int aie_part_initialize(struct aie_partition *apart, void __user *user_args);
+int aie_part_teardown(struct aie_partition *apart);
 
 int aie_mem_get_info(struct aie_partition *apart, unsigned long arg);
 
@@ -1047,6 +1058,10 @@ bool aie_part_check_clk_enable_loc(struct aie_partition *apart,
 int aie_part_set_freq(struct aie_partition *apart, u64 freq);
 int aie_part_get_freq(struct aie_partition *apart, u64 *freq);
 
+int aie_part_request_tiles(struct aie_partition *apart, int num_tiles,
+			   struct aie_location *locs);
+int aie_part_release_tiles(struct aie_partition *apart, int num_tiles,
+			   struct aie_location *locs);
 int aie_part_request_tiles_from_user(struct aie_partition *apart,
 				     void __user *user_args);
 int aie_part_release_tiles_from_user(struct aie_partition *apart,
@@ -1062,6 +1077,7 @@ int aie_part_get_tile_rows(struct aie_partition *apart,
 
 int aie_part_reset(struct aie_partition *apart);
 int aie_part_post_reinit(struct aie_partition *apart);
+int aie_part_init_isolation(struct aie_partition *apart);
 struct aie_partition *aie_create_partition(struct aie_aperture *aperture,
 					   u32 partition_id);
 

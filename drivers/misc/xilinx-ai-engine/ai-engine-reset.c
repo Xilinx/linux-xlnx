@@ -232,3 +232,213 @@ int aie_part_post_reinit(struct aie_partition *apart)
 
 	return 0;
 }
+
+/**
+ * aie_part_init_isolation() - Set isolation boundary of AI engine partition
+ * @apart: AI engine partition
+ * @return: return 0 if success negative value for failure.
+ */
+int aie_part_init_isolation(struct aie_partition *apart)
+{
+	struct aie_range *range = &apart->range;
+	int ret;
+	u32 c, r;
+	u8 dir;
+
+	for (c = range->start.col;
+	     c < range->start.col + range->size.col; c++) {
+		if (c == range->start.col)
+			dir = AIE_ISOLATE_WEST_MASK;
+		else if (c == (range->start.col + range->size.col - 1))
+			dir = AIE_ISOLATE_EAST_MASK;
+		else
+			dir = 0;
+
+		for (r = range->start.row;
+		     r < range->start.row + range->size.row; r++) {
+			struct aie_location loc;
+
+			loc.col = c;
+			loc.row = r;
+			ret = apart->adev->ops->set_tile_isolation(apart, &loc,
+								   dir);
+			if (ret < 0) {
+				dev_err(&apart->dev,
+					"failed to set partition isolation\n");
+				return ret;
+			}
+		}
+	}
+	return ret;
+}
+
+/**
+ * aie_part_initialize() - AI engine partition initialization
+ * @apart: AI engine partition
+ * @user_args: User initialization options
+ * @return: 0 for success and negative value for failure
+ *
+ * This function will:
+ * - gate all columns
+ * - enable column reset
+ * - ungate all columns
+ * - disable column reset
+ * - reset shim tiles
+ * - setup axi mm to raise events
+ * - setup partition isolation
+ * - zeroize memory
+ */
+int aie_part_initialize(struct aie_partition *apart, void __user *user_args)
+{
+	u32 node_id = apart->adev->pm_node_id;
+	struct aie_partition_init_args args;
+	struct aie_location *locs = NULL;
+	int ret;
+
+	if (copy_from_user(&args, user_args, sizeof(args)))
+		return -EFAULT;
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return ret;
+
+	/* Clear resources */
+	aie_part_clear_cached_events(apart);
+	aie_part_rscmgr_reset(apart);
+	aie_resource_clear_all(&apart->tiles_inuse);
+	aie_resource_clear_all(&apart->cores_clk_state);
+
+	/* This operation will do first 4 steps of sequence */
+	if (args.init_opts & AIE_PART_INIT_OPT_COLUMN_RST) {
+		ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
+					      apart->range.size.col,
+					      XILINX_AIE_OPS_COL_RST);
+		if (ret < 0)
+			goto exit;
+	}
+
+	/* Reset Shims */
+	if (args.init_opts & AIE_PART_INIT_OPT_SHIM_RST) {
+		ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
+					      apart->range.size.col,
+					      XILINX_AIE_OPS_SHIM_RST);
+		if (ret < 0)
+			goto exit;
+	}
+
+	/* Setup AXIMM events */
+	if (args.init_opts & AIE_PART_INIT_OPT_BLOCK_NOCAXIMMERR) {
+		ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
+					      apart->range.size.col,
+					      XILINX_AIE_OPS_ENB_AXI_MM_ERR_EVENT);
+		if (ret < 0)
+			goto exit;
+	}
+
+	/* Setup partition isolation */
+	if (args.init_opts & AIE_PART_INIT_OPT_ISOLATE) {
+		ret = aie_part_init_isolation(apart);
+		if (ret < 0)
+			goto exit;
+	}
+
+	/* Zeroize memory */
+	if (args.init_opts & AIE_PART_INIT_OPT_ZEROIZEMEM) {
+		ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
+					      apart->range.size.col,
+					      XILINX_AIE_OPS_ZEROISATION);
+		if (ret < 0)
+			goto exit;
+	}
+
+	/* Set L2 interrupt */
+	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
+				      apart->range.size.col,
+				      XILINX_AIE_OPS_SET_L2_CTRL_NPI_INTR);
+	if (ret < 0)
+		goto exit;
+
+	/* Request tile locations */
+	if (args.num_tiles) {
+		locs = kmalloc_array(args.num_tiles, sizeof(*locs),
+				     GFP_KERNEL);
+		if (!locs) {
+			ret = -ENOMEM;
+			goto exit;
+		}
+
+		if (copy_from_user(locs, (void __user *)args.locs,
+				   args.num_tiles * sizeof(*locs))) {
+			kfree(locs);
+			ret = -EFAULT;
+			goto exit;
+		}
+	}
+	ret = aie_part_request_tiles(apart, args.num_tiles, locs);
+	kfree(locs);
+
+exit:
+	mutex_unlock(&apart->mlock);
+	return ret;
+}
+
+/**
+ * aie_part_teardown() - AI engine partition teardown
+ * @apart: AI engine partition
+ * @return: 0 for success and negative value for failure
+ *
+ * This function will:
+ * - gate all columns
+ * - enable column reset
+ * - ungate all columns
+ * - disable column reset
+ * - reset shim tiles
+ * - zeroize memory
+ * - gate all columns
+ */
+int aie_part_teardown(struct aie_partition *apart)
+{
+	u32 node_id = apart->adev->pm_node_id;
+	int ret;
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return ret;
+
+	/* This operation will do first 4 steps of sequence */
+	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
+				      apart->range.size.col,
+				      XILINX_AIE_OPS_COL_RST);
+	if (ret < 0)
+		goto exit;
+
+	/* Reset shims */
+	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
+				      apart->range.size.col,
+				      XILINX_AIE_OPS_SHIM_RST);
+	if (ret < 0)
+		goto exit;
+
+	/* Zeroize mem */
+	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
+				      apart->range.size.col,
+				      XILINX_AIE_OPS_ZEROISATION);
+	if (ret < 0)
+		goto exit;
+
+	/* Gate all columns */
+	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
+				      apart->range.size.col,
+				      XILINX_AIE_OPS_DIS_COL_CLK_BUFF);
+	if (ret < 0)
+		goto exit;
+
+	/* Clear resources */
+	aie_resource_clear_all(&apart->tiles_inuse);
+	aie_resource_clear_all(&apart->cores_clk_state);
+	aie_part_clear_cached_events(apart);
+	aie_part_rscmgr_reset(apart);
+exit:
+	mutex_unlock(&apart->mlock);
+	return ret;
+}

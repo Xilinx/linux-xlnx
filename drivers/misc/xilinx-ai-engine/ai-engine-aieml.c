@@ -33,17 +33,20 @@
 #define AIEML_SHIMPL_GROUPERROR_REGOFF			0x0003450cU
 #define AIEML_SHIMPL_L1INTR_MASK_A_REGOFF		0x00035000U
 #define AIEML_SHIMPL_L1INTR_BLOCK_NORTH_B_REGOFF	0x00035050U
+#define AIEML_SHIMPL_TILECTRL_REGOFF			0x00036030U
 #define AIEML_SHIMPL_MODCLOCK_CTRL_0_REGOFF		0x000fff00U
 #define AIEML_SHIMPL_MODCLOCK_CTRL_1_REGOFF		0x000fff04U
 #define AIEML_SHIMPL_MODRESET_CTRL_0_REGOFF		0x000fff10U
 #define AIEML_SHIMPL_MODRESET_CTRL_1_REGOFF		0x000fff14U
 #define AIEML_MEMORY_GROUPERROR_REGOFF			0x00094518U
+#define AIEML_MEMORY_TILECTRL_REGOFF			0x00096030U
 #define AIEML_MEMORY_MEMCTRL_REGOFF			0x00096048U
 #define AIEML_MEMORY_MODCLOCKCTRL_REGOFF		0x000fff00U
 #define AIEML_MEMORY_MODRESETCTRL_REGOFF		0x000fff10U
 #define AIEML_TILE_COREMOD_AMLL0_PART1_REGOFF		0x00030000U
 #define AIEML_TILE_COREMOD_AMHH8_PART2_REGOFF		0x00030470U
 #define AIEML_TILE_COREMOD_GROUPERROR_REGOFF		0x00034510U
+#define AIEML_TILE_COREMOD_TILECTRL_REGOFF		0x00036030U
 #define AIEML_TILE_COREMOD_MEMCTRL_REGOFF		0x00036070U
 #define AIEML_TILE_COREMOD_MODCLOCKCTRL_REGOFF		0x00060000U
 #define AIEML_TILE_COREMOD_MODRESETCTRL_REGOFF		0x00060010U
@@ -94,6 +97,12 @@ static const struct aie_tile_regs aieml_kernel_regs[] = {
 	 .soff = AIEML_SHIMPL_COLRESET_CTRL_REGOFF,
 	 .eoff = AIEML_SHIMPL_COLRESET_CTRL_REGOFF,
 	},
+	/* SHIM tile control */
+	{.attribute = (AIE_TILE_TYPE_MASK_SHIMPL | AIE_TILE_TYPE_MASK_SHIMNOC) <<
+		AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	 .soff = AIEML_SHIMPL_TILECTRL_REGOFF,
+	 .eoff = AIEML_SHIMPL_TILECTRL_REGOFF,
+	},
 	/* SHIM group error enable */
 	{.attribute = (AIE_TILE_TYPE_MASK_SHIMPL | AIE_TILE_TYPE_MASK_SHIMNOC) <<
 		      AIE_REGS_ATTR_TILE_TYPE_SHIFT,
@@ -123,6 +132,11 @@ static const struct aie_tile_regs aieml_kernel_regs[] = {
 	 .soff = AIEML_MEMORY_GROUPERROR_REGOFF,
 	 .eoff = AIEML_MEMORY_GROUPERROR_REGOFF,
 	},
+	/* MEMORY mem tile control */
+	{.attribute = AIE_TILE_TYPE_MASK_MEMORY << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	 .soff = AIEML_MEMORY_TILECTRL_REGOFF,
+	 .eoff = AIEML_MEMORY_TILECTRL_REGOFF,
+	},
 	/* MEMORY tile mem control */
 	{.attribute = AIE_TILE_TYPE_MASK_MEMORY << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
 	 .soff = AIEML_MEMORY_MEMCTRL_REGOFF,
@@ -142,6 +156,11 @@ static const struct aie_tile_regs aieml_kernel_regs[] = {
 	{.attribute = AIE_TILE_TYPE_MASK_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
 	 .soff = AIEML_TILE_COREMOD_GROUPERROR_REGOFF,
 	 .eoff = AIEML_TILE_COREMOD_GROUPERROR_REGOFF,
+	},
+	/* TILE tile control */
+	{.attribute = AIE_TILE_TYPE_MASK_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	 .soff = AIEML_TILE_COREMOD_TILECTRL_REGOFF,
+	 .eoff = AIEML_TILE_COREMOD_TILECTRL_REGOFF,
 	},
 	/* TILE memory control */
 	{.attribute = AIE_TILE_TYPE_MASK_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
@@ -408,6 +427,47 @@ static int aieml_part_clear_mems(struct aie_partition *apart)
 	return ret;
 }
 
+/**
+ * aieml_set_tile_isolation() - Set isolation boundary of AI engile tile
+ * @apart: AI engine partition
+ * @loc: Location of tile
+ * @dir: Direction to block
+ * @return: return 0 if success negative value for failure.
+ *
+ * Possible direction values are:
+ *	- AIE_ISOLATE_EAST_MASK
+ *	- AIE_ISOLATE_NORTH_MASK
+ *	- AIE_ISOLATE_WEST_MASK
+ *	- AIE_ISOLATE_SOUTH_MASK
+ *	- AIE_ISOLATE_ALL_MASK
+ *	- or "OR" of multiple values
+ */
+static int aieml_set_tile_isolation(struct aie_partition *apart,
+				    struct aie_location *loc, u8 dir)
+{
+	struct aie_device *adev = apart->adev;
+	struct aie_aperture *aperture = apart->aperture;
+	void __iomem *va;
+	u32 ttype, val;
+
+	/* For AIEML device, dir input will match register mask */
+	val = (u32)dir;
+	ttype = aieml_get_tile_type(adev, loc);
+	if (ttype == AIE_TILE_TYPE_TILE) {
+		va = aperture->base +
+		     aie_cal_regoff(adev, *loc,
+				    AIEML_TILE_COREMOD_TILECTRL_REGOFF);
+	} else if (ttype == AIE_TILE_TYPE_MEMORY) {
+		va = aperture->base +
+		     aie_cal_regoff(adev, *loc, AIEML_MEMORY_TILECTRL_REGOFF);
+	} else {
+		va = aperture->base +
+		     aie_cal_regoff(adev, *loc, AIEML_SHIMPL_TILECTRL_REGOFF);
+	}
+	iowrite32(val, va);
+	return 0;
+}
+
 static const struct aie_tile_operations aieml_ops = {
 	.get_tile_type = aieml_get_tile_type,
 	.get_mem_info = aieml_get_mem_info,
@@ -415,6 +475,7 @@ static const struct aie_tile_operations aieml_ops = {
 	.init_part_clk_state = aieml_init_part_clk_state,
 	.scan_part_clocks = aieml_scan_part_clocks,
 	.set_part_clocks = aieml_set_part_clocks,
+	.set_tile_isolation = aieml_set_tile_isolation,
 	.mem_clear = aieml_part_clear_mems,
 };
 

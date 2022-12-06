@@ -73,8 +73,8 @@ bool aie_part_check_clk_enable_loc(struct aie_partition *apart,
  *
  * This function will enable clocks of the specified tiles.
  */
-static int aie_part_request_tiles(struct aie_partition *apart, int num_tiles,
-				  struct aie_location *locs)
+int aie_part_request_tiles(struct aie_partition *apart, int num_tiles,
+			   struct aie_location *locs)
 {
 	if (num_tiles == 0) {
 		aie_resource_set(&apart->tiles_inuse, 0,
@@ -105,8 +105,8 @@ static int aie_part_request_tiles(struct aie_partition *apart, int num_tiles,
  *
  * This function will disable clocks of the specified tiles.
  */
-static int aie_part_release_tiles(struct aie_partition *apart, int num_tiles,
-				  struct aie_location *locs)
+int aie_part_release_tiles(struct aie_partition *apart, int num_tiles,
+			   struct aie_location *locs)
 {
 	if (num_tiles == 0) {
 		aie_resource_clear(&apart->tiles_inuse, 0,

@@ -63,10 +63,12 @@
 #define AIE_SHIMPL_BISR_CACHE_CTRL_REGOFF	0x00036000U
 #define AIE_SHIMPL_L1INTR_MASK_A_REGOFF		0x00035000U
 #define AIE_SHIMPL_L1INTR_BLOCK_NORTH_B_REGOFF	0x00035050U
+#define AIE_SHIMPL_TILECTRL_REGOFF		0x00036030U
 #define AIE_SHIMPL_CLKCNTR_REGOFF		0x00036040U
 #define AIE_SHIMPL_COLRESET_REGOFF		0x00036048U
 #define AIE_SHIMPL_RESET_REGOFF			0x0003604cU
 #define AIE_SHIMPL_GROUP_ERROR_REGOFF		0x0003450cU
+#define AIE_TILE_CORE_TILECTRL_REGOFF		0x00036030U
 #define AIE_TILE_CORE_CLKCNTR_REGOFF		0x00036040U
 #define AIE_TILE_CORE_GROUP_ERROR_REGOFF	0x00034510U
 #define AIE_TILE_MEM_GROUP_ERROR_REGOFF		0x00014514U
@@ -134,6 +136,12 @@ static const struct aie_tile_regs aie_kernel_regs[] = {
 	 .soff = AIE_SHIMPL_RESET_REGOFF,
 	 .eoff = AIE_SHIMPL_RESET_REGOFF,
 	},
+	/* SHIM tile control */
+	{.attribute = (AIE_TILE_TYPE_MASK_SHIMPL | AIE_TILE_TYPE_MASK_SHIMNOC) <<
+		      AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	 .soff = AIE_SHIMPL_TILECTRL_REGOFF,
+	 .eoff = AIE_SHIMPL_TILECTRL_REGOFF,
+	},
 	/* SHIM clock control */
 	{.attribute = (AIE_TILE_TYPE_MASK_SHIMPL | AIE_TILE_TYPE_MASK_SHIMNOC) <<
 		      AIE_REGS_ATTR_TILE_TYPE_SHIFT,
@@ -151,6 +159,11 @@ static const struct aie_tile_regs aie_kernel_regs[] = {
 		      AIE_REGS_ATTR_TILE_TYPE_SHIFT,
 	 .soff = AIE_SHIMPL_GROUP_ERROR_REGOFF,
 	 .eoff = AIE_SHIMPL_GROUP_ERROR_REGOFF,
+	},
+	/* Core tile control */
+	{.attribute = AIE_TILE_TYPE_MASK_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	 .soff = AIE_TILE_CORE_TILECTRL_REGOFF,
+	 .eoff = AIE_TILE_CORE_TILECTRL_REGOFF,
 	},
 	/* Tile clock control */
 	{.attribute = AIE_TILE_TYPE_MASK_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
@@ -1304,6 +1317,43 @@ static int aie_part_clear_mems(struct aie_partition *apart)
 	return 0;
 }
 
+/**
+ * aie_set_tile_isolation() - Set isolation boundary of AI engine tile
+ * @apart: AI engine partition
+ * @loc: Location of tile
+ * @dir: Direction to block
+ * @return: return 0 if success negative value for failure.
+ *
+ * Possible direction values are:
+ *	- AIE_ISOLATE_EAST_MASK
+ *	- AIE_ISOLATE_NORTH_MASK
+ *	- AIE_ISOLATE_WEST_MASK
+ *	- AIE_ISOLATE_SOUTH_MASK
+ *	- AIE_ISOLATE_ALL_MASK
+ *	- or "OR" of multiple values
+ */
+static int aie_set_tile_isolation(struct aie_partition *apart,
+				  struct aie_location *loc, u8 dir)
+{
+	struct aie_device *adev = apart->adev;
+	struct aie_aperture *aperture = apart->aperture;
+	void __iomem *va;
+	u32 ttype, val;
+
+	/* For AIE device, dir input will match register masks */
+	val = (u32)dir;
+	ttype = aie_get_tile_type(adev, loc);
+	if (ttype == AIE_TILE_TYPE_TILE) {
+		va = aperture->base +
+		     aie_cal_regoff(adev, *loc, AIE_TILE_CORE_TILECTRL_REGOFF);
+	} else {
+		va = aperture->base +
+		     aie_cal_regoff(adev, *loc, AIE_SHIMPL_TILECTRL_REGOFF);
+	}
+	iowrite32(val, va);
+	return 0;
+}
+
 static const struct aie_tile_operations aie_ops = {
 	.get_tile_type = aie_get_tile_type,
 	.get_mem_info = aie_get_mem_info,
@@ -1312,6 +1362,7 @@ static const struct aie_tile_operations aie_ops = {
 	.init_part_clk_state = aie_init_part_clk_state,
 	.scan_part_clocks = aie_scan_part_clocks,
 	.set_part_clocks = aie_set_part_clocks,
+	.set_tile_isolation = aie_set_tile_isolation,
 	.mem_clear = aie_part_clear_mems,
 };
 
