@@ -202,7 +202,7 @@ static int zynqmp_sha_probe(struct platform_device *pdev)
 		return err;
 
 	err = zynqmp_pm_feature(PM_SECURE_SHA);
-	if (err) {
+	if (err < 0) {
 		dev_err(dev, "SHA is not supported on the platform\n");
 		return err;
 	}
