@@ -20,7 +20,12 @@ select: false
 
 properties:
   compatible:
-    const: xlnx,versal-clk
+    oneOf:
+      - description: For implementations complying for Versal.
+        const: xlnx,versal-clk
+
+      - description: For implementations complying for Versal NET.
+        const: xlnx,versal-net-clk
 
   "#clock-cells":
     const: 1
