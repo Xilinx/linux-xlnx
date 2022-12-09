@@ -2209,6 +2209,15 @@ static int dwc3_resume_common(struct dwc3 *dwc, pm_message_t msg)
 	int		ret;
 	u32		reg;
 
+	/* Bring core to D0 state */
+	if (dwc->dwc3_pmu) {
+		ret = regulator_enable(dwc->dwc3_pmu);
+		if (ret) {
+			dev_err(dwc->dev, "Failed to enable dwc3_pmu supply\n");
+			return ret;
+		}
+	}
+
 	switch (dwc->current_dr_role) {
 	case DWC3_GCTL_PRTCAP_DEVICE:
 		ret = dwc3_core_init_for_resume(dwc);
