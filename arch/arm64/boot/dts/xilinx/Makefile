@@ -149,3 +149,19 @@ versal-vck190-revB-x-ebm-03-revA-dtbs := versal-vck190-revA.dtb versal-x-ebm-03-
 dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vck190-revB-x-ebm-01-revA.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vck190-revB-x-ebm-02-revA.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vck190-revB-x-ebm-03-revA.dtb
+
+# Versal NET platforms
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-net-vn-p-b2197-00-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-net-vn-x-b2197-01-revA.dtb
+
+versal-net-vn-p-b2197-00-revA-x-prc-07-revA-dtbs := versal-net-vn-p-b2197-00-revA.dtb x-prc-07-revA.dtbo
+versal-net-vn-p-b2197-00-revA-x-prc-07-i3c-revA-dtbs := versal-net-vn-p-b2197-00-revA.dtb x-prc-07-i3c-revA.dtbo
+versal-net-vn-p-b2197-00-revA-x-prc-08-revA-dtbs := versal-net-vn-p-b2197-00-revA.dtb x-prc-08-revA.dtbo
+versal-net-vn-p-b2197-00-revA-x-prc-09-revA-dtbs := versal-net-vn-p-b2197-00-revA.dtb x-prc-09-revA.dtbo
+versal-net-vn-p-b2197-00-revA-x-prc-09-i3c-revA-dtbs := versal-net-vn-p-b2197-00-revA.dtb x-prc-09-i3c-revA.dtbo
+
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-net-vn-p-b2197-00-revA-x-prc-07-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-net-vn-p-b2197-00-revA-x-prc-07-i3c-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-net-vn-p-b2197-00-revA-x-prc-08-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-net-vn-p-b2197-00-revA-x-prc-09-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-net-vn-p-b2197-00-revA-x-prc-09-i3c-revA.dtb

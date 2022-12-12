@@ -1,0 +1,140 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * dts file for Xilinx ZynqMP VN-P-B2197 (Tenzing2) X-PRC-09 RevA
+ *
+ * (C) Copyright 2022, Advanced Micro Devices, Inc.
+ *
+ * Michal Simek <michal.simek@amd.com>
+ */
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+
+&{/} {
+	model = "X-PRC-09 revA";
+
+	aliases {
+		nvmem2 = &eeprom0;
+		nvmem3 = &eeprom1;
+	};
+};
+
+&can0 {
+	status = "okay";
+};
+
+&can1 {
+	status = "okay";
+};
+
+&gpio1 {
+	status = "okay";
+};
+
+&gem0 {
+	status = "okay";
+	phy-handle = <&phy0>;
+	phy-mode = "rgmii-id";
+	mdio: mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		phy0: ethernet-phy@1 { /* u128 DP83867 */
+			#phy-cells = <1>;
+			compatible = "ethernet-phy-id2000.a231";
+			reg = <1>;
+			ti,rx-internal-delay = <0x8>;
+			ti,tx-internal-delay = <0xa>;
+			ti,fifo-depth = <0x1>;
+			ti,dp83867-rxctrl-strap-quirk;
+			ti,min-output-impedance;
+			reset-assert-us = <0x96>;
+			reset-deassert-us = <0x118>;
+			reset-gpios = <&gpio1 48 GPIO_ACTIVE_LOW>;
+		};
+	};
+};
+
+&i2c0 {
+	status = "okay";
+	bootph-all;
+	clock-frequency = <400000>;
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	eeprom0: eeprom@51 { /* u45 WP not used */
+		compatible = "st,24c128", "atmel,24c128";
+		reg = <0x51>;
+		bootph-all;
+	};
+};
+
+&i2c1 {
+	status = "okay";
+	bootph-all;
+	clock-frequency = <400000>;
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	eeprom1: eeprom@55 { /* u46 WP not used */
+		compatible = "st,24c128", "atmel,24c128";
+		reg = <0x55>;
+		bootph-all;
+	};
+};
+
+&serial0 {
+	status = "okay";
+};
+
+&serial1 {
+	status = "okay";
+};
+
+&sdhci0 {
+	status = "okay";
+	xlnx,mio-bank = <0>;
+	no-1-8-v;
+};
+
+&qspi {
+	status = "okay"; /* u93 and u92 */
+	num-cs = <2>;
+	spi-rx-bus-width = <4>;
+	spi-tx-bus-width = <4>;
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	flash@0 {
+		compatible = "micron,m25p80", "jedec,spi-nor";
+		reg = <0>, <1>;
+		parallel-memories = /bits/ 64 <0x8000000 0x8000000>; /* 128MB */
+		spi-tx-bus-width = <4>;
+		spi-rx-bus-width = <4>;
+		spi-max-frequency = <150000000>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "qspi0-flash0";
+				reg = <0 0x200000>;
+			};
+			partition@1 {
+				label = "qspi0-flash1";
+				reg = <0x200000 0x7E00000>;
+			};
+		};
+	};
+};
+
+&usb1 {
+	status = "okay";
+};
+
+&dwc3_1 {
+	status = "okay";
+};
