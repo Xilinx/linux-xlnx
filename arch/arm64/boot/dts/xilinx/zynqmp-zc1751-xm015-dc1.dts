@@ -448,19 +448,3 @@
 	phys = <&psgtr 1 PHY_TYPE_DP 0 0>,
 	       <&psgtr 0 PHY_TYPE_DP 1 1>;
 };
-
-&zynqmp_dp_snd_pcm0 {
-	status = "okay";
-};
-
-&zynqmp_dp_snd_pcm1 {
-	status = "okay";
-};
-
-&zynqmp_dp_snd_card0 {
-	status = "okay";
-};
-
-&zynqmp_dp_snd_codec0 {
-	status = "okay";
-};
