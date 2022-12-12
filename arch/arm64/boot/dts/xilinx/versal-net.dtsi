@@ -461,6 +461,8 @@
 			status = "disabled";
 			reg = <0 0xf1050000 0 0x10000>;
 			interrupts = <0 186 4>;
+			sdhci-caps-mask = <0x80000000 0>;
+			sdhci-caps = <0 0>;
 			clock-names = "clk_xin", "clk_ahb";
 			#clock-cells = <1>;
 			clock-output-names = "clk_out_sd1", "clk_in_sd1";
