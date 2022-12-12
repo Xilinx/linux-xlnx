@@ -366,7 +366,9 @@ static void xhci_handle_stopped_cmd_ring(struct xhci_hcd *xhci,
 /* Must be called with xhci->lock held, releases and aquires lock back */
 static int xhci_abort_cmd_ring(struct xhci_hcd *xhci, unsigned long flags)
 {
-	u32 temp_32;
+	struct xhci_segment *new_seg	= xhci->cmd_ring->deq_seg;
+	union xhci_trb *new_deq		= xhci->cmd_ring->dequeue;
+	u64 crcr;
 	int ret;
 
 	xhci_dbg(xhci, "Abort command ring\n");
@@ -375,13 +377,18 @@ static int xhci_abort_cmd_ring(struct xhci_hcd *xhci, unsigned long flags)
 
 	/*
 	 * The control bits like command stop, abort are located in lower
-	 * dword of the command ring control register. Limit the write
-	 * to the lower dword to avoid corrupting the command ring pointer
-	 * in case if the command ring is stopped by the time upper dword
-	 * is written.
+	 * dword of the command ring control register.
+	 * Some controllers require all 64 bits to be written to abort the ring.
+	 * Make sure the upper dword is valid, pointing to the next command,
+	 * avoiding corrupting the command ring pointer in case the command ring
+	 * is stopped by the time the upper dword is written.
 	 */
-	temp_32 = readl(&xhci->op_regs->cmd_ring);
-	writel(temp_32 | CMD_RING_ABORT, &xhci->op_regs->cmd_ring);
+	next_trb(xhci, NULL, &new_seg, &new_deq);
+	if (trb_is_link(new_deq))
+		next_trb(xhci, NULL, &new_seg, &new_deq);
+
+	crcr = xhci_trb_virt_to_dma(new_seg, new_deq);
+	xhci_write_64(xhci, crcr | CMD_RING_ABORT, &xhci->op_regs->cmd_ring);
 
 	/* Section 4.6.1.2 of xHCI 1.0 spec says software should also time the
 	 * completion of the Command Abort operation. If CRR is not negated in 5
@@ -731,14 +738,6 @@ static void td_to_noop(struct xhci_hcd *xhci, struct xhci_ring *ep_ring,
 
 		next_trb(xhci, ep_ring, &seg, &trb);
 	}
-}
-
-static void xhci_stop_watchdog_timer_in_irq(struct xhci_hcd *xhci,
-		struct xhci_virt_ep *ep)
-{
-	ep->ep_state &= ~EP_STOP_CMD_PENDING;
-	/* Can't del_timer_sync in interrupt */
-	del_timer(&ep->stop_cmd_timer);
 }
 
 /*
@@ -1124,18 +1123,17 @@ static void xhci_handle_cmd_stop_ep(struct xhci_hcd *xhci, int slot_id,
 							  reset_type);
 			if (err)
 				break;
-			xhci_stop_watchdog_timer_in_irq(xhci, ep);
+			ep->ep_state &= ~EP_STOP_CMD_PENDING;
 			return;
 		case EP_STATE_RUNNING:
 			/* Race, HW handled stop ep cmd before ep was running */
 			xhci_dbg(xhci, "Stop ep completion ctx error, ep is running\n");
 
 			command = xhci_alloc_command(xhci, false, GFP_ATOMIC);
-			if (!command)
-				xhci_stop_watchdog_timer_in_irq(xhci, ep);
-
-			mod_timer(&ep->stop_cmd_timer,
-				  jiffies + XHCI_STOP_EP_CMD_TIMEOUT * HZ);
+			if (!command) {
+				ep->ep_state &= ~EP_STOP_CMD_PENDING;
+				return;
+			}
 			xhci_queue_stop_endpoint(xhci, command, slot_id, ep_index, 0);
 			xhci_ring_cmd_db(xhci);
 
@@ -1144,9 +1142,10 @@ static void xhci_handle_cmd_stop_ep(struct xhci_hcd *xhci, int slot_id,
 			break;
 		}
 	}
+
 	/* will queue a set TR deq if stopped on a cancelled, uncleared TD */
 	xhci_invalidate_cancelled_tds(ep);
-	xhci_stop_watchdog_timer_in_irq(xhci, ep);
+	ep->ep_state &= ~EP_STOP_CMD_PENDING;
 
 	/* Otherwise ring the doorbell(s) to restart queued transfers */
 	xhci_giveback_invalidated_tds(ep);
@@ -1569,8 +1568,6 @@ static void xhci_handle_cmd_reset_ep(struct xhci_hcd *xhci, int slot_id,
 	/* Cleanup cancelled TDs as ep is stopped. May queue a Set TR Deq cmd */
 	xhci_invalidate_cancelled_tds(ep);
 
-	if (xhci->quirks & XHCI_RESET_EP_QUIRK)
-		xhci_dbg(xhci, "Note: Removed workaround to queue config ep for this hw");
 	/* Clear our internal halted state */
 	ep->ep_state &= ~EP_HALTED;
 
@@ -1605,7 +1602,6 @@ static void xhci_handle_cmd_disable_slot(struct xhci_hcd *xhci, int slot_id)
 	if (xhci->quirks & XHCI_EP_LIMIT_QUIRK)
 		/* Delete default control endpoint resources */
 		xhci_free_device_endpoint_resources(xhci, virt_dev, true);
-	xhci_free_virt_device(xhci, slot_id);
 }
 
 static void xhci_handle_cmd_config_ep(struct xhci_hcd *xhci, int slot_id,
@@ -1615,17 +1611,13 @@ static void xhci_handle_cmd_config_ep(struct xhci_hcd *xhci, int slot_id,
 	struct xhci_input_control_ctx *ctrl_ctx;
 	struct xhci_ep_ctx *ep_ctx;
 	unsigned int ep_index;
-	unsigned int ep_state;
-	u32 add_flags, drop_flags;
+	u32 add_flags;
 
 	/*
-	 * Configure endpoint commands can come from the USB core
-	 * configuration or alt setting changes, or because the HW
-	 * needed an extra configure endpoint command after a reset
-	 * endpoint command or streams were being configured.
-	 * If the command was for a halted endpoint, the xHCI driver
-	 * is not waiting on the configure endpoint command.
+	 * Configure endpoint commands can come from the USB core configuration
+	 * or alt setting changes, or when streams were being configured.
 	 */
+
 	virt_dev = xhci->devs[slot_id];
 	if (!virt_dev)
 		return;
@@ -1636,34 +1628,13 @@ static void xhci_handle_cmd_config_ep(struct xhci_hcd *xhci, int slot_id,
 	}
 
 	add_flags = le32_to_cpu(ctrl_ctx->add_flags);
-	drop_flags = le32_to_cpu(ctrl_ctx->drop_flags);
+
 	/* Input ctx add_flags are the endpoint index plus one */
 	ep_index = xhci_last_valid_endpoint(add_flags) - 1;
 
 	ep_ctx = xhci_get_ep_ctx(xhci, virt_dev->out_ctx, ep_index);
 	trace_xhci_handle_cmd_config_ep(ep_ctx);
 
-	/* A usb_set_interface() call directly after clearing a halted
-	 * condition may race on this quirky hardware.  Not worth
-	 * worrying about, since this is prototype hardware.  Not sure
-	 * if this will work for streams, but streams support was
-	 * untested on this prototype.
-	 */
-	if (xhci->quirks & XHCI_RESET_EP_QUIRK &&
-			ep_index != (unsigned int) -1 &&
-			add_flags - SLOT_FLAG == drop_flags) {
-		ep_state = virt_dev->eps[ep_index].ep_state;
-		if (!(ep_state & EP_HALTED))
-			return;
-		xhci_dbg_trace(xhci, trace_xhci_dbg_quirks,
-				"Completed config ep cmd - "
-				"last ep index = %d, state = %d",
-				ep_index, ep_state);
-		/* Clear internal halted state and restart ring(s) */
-		virt_dev->eps[ep_index].ep_state &= ~EP_HALTED;
-		ring_doorbell_for_active_rings(xhci, slot_id, ep_index);
-		return;
-	}
 	return;
 }
 
@@ -1731,9 +1702,12 @@ void xhci_cleanup_command_queue(struct xhci_hcd *xhci)
 
 void xhci_handle_command_timeout(struct work_struct *work)
 {
-	struct xhci_hcd *xhci;
-	unsigned long flags;
-	u64 hw_ring_state;
+	struct xhci_hcd	*xhci;
+	unsigned long	flags;
+	char		str[XHCI_MSG_MAX];
+	u64		hw_ring_state;
+	u32		cmd_field3;
+	u32		usbsts;
 
 	xhci = container_of(to_delayed_work(work), struct xhci_hcd, cmd_timer);
 
@@ -1747,6 +1721,27 @@ void xhci_handle_command_timeout(struct work_struct *work)
 		spin_unlock_irqrestore(&xhci->lock, flags);
 		return;
 	}
+
+	cmd_field3 = le32_to_cpu(xhci->current_cmd->command_trb->generic.field[3]);
+	usbsts = readl(&xhci->op_regs->status);
+	xhci_dbg(xhci, "Command timeout, USBSTS:%s\n", xhci_decode_usbsts(str, usbsts));
+
+	/* Bail out and tear down xhci if a stop endpoint command failed */
+	if (TRB_FIELD_TO_TYPE(cmd_field3) == TRB_STOP_RING) {
+		struct xhci_virt_ep	*ep;
+
+		xhci_warn(xhci, "xHCI host not responding to stop endpoint command\n");
+
+		ep = xhci_get_virt_ep(xhci, TRB_TO_SLOT_ID(cmd_field3),
+				      TRB_TO_EP_INDEX(cmd_field3));
+		if (ep)
+			ep->ep_state &= ~EP_STOP_CMD_PENDING;
+
+		xhci_halt(xhci);
+		xhci_hc_died(xhci);
+		goto time_out_completed;
+	}
+
 	/* mark this command to be cancelled */
 	xhci->current_cmd->status = COMP_COMMAND_ABORTED;
 
@@ -2111,7 +2106,7 @@ static void handle_port_status(struct xhci_hcd *xhci,
 
 	/*
 	 * Check to see if xhci-hub.c is waiting on RExit to U0 transition (or
-	 * RExit to a disconnect state).  If so, let the the driver know it's
+	 * RExit to a disconnect state).  If so, let the driver know it's
 	 * out of the RExit state.
 	 */
 	if (!DEV_SUPERSPEED_ANY(portsc) && hcd->speed < HCD_USB3 &&
@@ -3226,6 +3221,7 @@ irqreturn_t xhci_irq(struct usb_hcd *hcd)
 		if (event_loop++ < TRBS_PER_SEGMENT / 2)
 			continue;
 		xhci_update_erst_dequeue(xhci, event_ring_deq);
+		event_ring_deq = xhci->event_ring->dequeue;
 
 		/* ring is half-full, force isoc trbs to interrupt more often */
 		if (xhci->isoc_bei_interval > AVOID_BEI_INTERVAL_MIN)

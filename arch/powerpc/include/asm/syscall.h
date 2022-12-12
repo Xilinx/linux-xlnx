@@ -14,9 +14,16 @@
 #include <linux/sched.h>
 #include <linux/thread_info.h>
 
+#ifdef CONFIG_ARCH_HAS_SYSCALL_WRAPPER
+typedef long (*syscall_fn)(const struct pt_regs *);
+#else
+typedef long (*syscall_fn)(unsigned long, unsigned long, unsigned long,
+			   unsigned long, unsigned long, unsigned long);
+#endif
+
 /* ftrace syscalls requires exporting the sys_call_table */
-extern const unsigned long sys_call_table[];
-extern const unsigned long compat_sys_call_table[];
+extern const syscall_fn sys_call_table[];
+extern const syscall_fn compat_sys_call_table[];
 
 static inline int syscall_get_nr(struct task_struct *task, struct pt_regs *regs)
 {
@@ -90,7 +97,7 @@ static inline void syscall_get_arguments(struct task_struct *task,
 	unsigned long val, mask = -1UL;
 	unsigned int n = 6;
 
-	if (is_32bit_task())
+	if (is_tsk_32bit_task(task))
 		mask = 0xffffffff;
 
 	while (n--) {
@@ -103,19 +110,9 @@ static inline void syscall_get_arguments(struct task_struct *task,
 	}
 }
 
-static inline void syscall_set_arguments(struct task_struct *task,
-					 struct pt_regs *regs,
-					 const unsigned long *args)
-{
-	memcpy(&regs->gpr[3], args, 6 * sizeof(args[0]));
-
-	/* Also copy the first argument into orig_gpr3 */
-	regs->orig_gpr3 = args[0];
-}
-
 static inline int syscall_get_arch(struct task_struct *task)
 {
-	if (is_32bit_task())
+	if (is_tsk_32bit_task(task))
 		return AUDIT_ARCH_PPC;
 	else if (IS_ENABLED(CONFIG_CPU_LITTLE_ENDIAN))
 		return AUDIT_ARCH_PPC64LE;

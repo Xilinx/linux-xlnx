@@ -127,9 +127,6 @@ struct task_struct;
 
 extern void start_thread(struct pt_regs *regs, unsigned long new_pc, unsigned long new_sp);
 
-/* Free all resources held by a thread. */
-extern void release_thread(struct task_struct *);
-
 /*
  * FPU lazy state save handling.
  */
@@ -180,7 +177,7 @@ static inline void show_code(struct pt_regs *regs)
 }
 #endif
 
-extern unsigned long get_wchan(struct task_struct *p);
+extern unsigned long __get_wchan(struct task_struct *p);
 
 #define KSTK_EIP(tsk)  (task_pt_regs(tsk)->pc)
 #define KSTK_ESP(tsk)  (task_pt_regs(tsk)->regs[15])

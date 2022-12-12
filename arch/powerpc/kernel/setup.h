@@ -23,13 +23,13 @@ void check_smt_enabled(void);
 static inline void check_smt_enabled(void) { }
 #endif
 
-#if defined(CONFIG_PPC_BOOK3E) && defined(CONFIG_SMP)
+#if defined(CONFIG_PPC_BOOK3E_64) && defined(CONFIG_SMP)
 void setup_tlb_core_data(void);
 #else
 static inline void setup_tlb_core_data(void) { }
 #endif
 
-#if defined(CONFIG_PPC_BOOK3E) || defined(CONFIG_BOOKE) || defined(CONFIG_40x)
+#ifdef CONFIG_BOOKE_OR_40x
 void exc_lvl_early_init(void);
 #else
 static inline void exc_lvl_early_init(void) { }

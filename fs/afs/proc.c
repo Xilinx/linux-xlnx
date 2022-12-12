@@ -47,7 +47,7 @@ static int afs_proc_cells_show(struct seq_file *m, void *v)
 
 	/* display one cell per line on subsequent lines */
 	seq_printf(m, "%3u %3u %6lld %2u %2u %s\n",
-		   atomic_read(&cell->ref),
+		   refcount_read(&cell->ref),
 		   atomic_read(&cell->active),
 		   cell->dns_expiry - ktime_get_real_seconds(),
 		   vllist ? vllist->nr_servers : 0,
@@ -217,7 +217,7 @@ static int afs_proc_cell_volumes_show(struct seq_file *m, void *v)
 	}
 
 	seq_printf(m, "%3d %08llx %s %s\n",
-		   atomic_read(&vol->usage), vol->vid,
+		   refcount_read(&vol->ref), vol->vid,
 		   afs_vol_types[vol->type],
 		   vol->name);
 
@@ -227,7 +227,7 @@ static int afs_proc_cell_volumes_show(struct seq_file *m, void *v)
 static void *afs_proc_cell_volumes_start(struct seq_file *m, loff_t *_pos)
 	__acquires(cell->proc_lock)
 {
-	struct afs_cell *cell = PDE_DATA(file_inode(m->file));
+	struct afs_cell *cell = pde_data(file_inode(m->file));
 
 	rcu_read_lock();
 	return seq_hlist_start_head_rcu(&cell->proc_volumes, *_pos);
@@ -236,7 +236,7 @@ static void *afs_proc_cell_volumes_start(struct seq_file *m, loff_t *_pos)
 static void *afs_proc_cell_volumes_next(struct seq_file *m, void *v,
 					loff_t *_pos)
 {
-	struct afs_cell *cell = PDE_DATA(file_inode(m->file));
+	struct afs_cell *cell = pde_data(file_inode(m->file));
 
 	return seq_hlist_next_rcu(v, &cell->proc_volumes, _pos);
 }
@@ -322,7 +322,7 @@ static void *afs_proc_cell_vlservers_start(struct seq_file *m, loff_t *_pos)
 {
 	struct afs_vl_seq_net_private *priv = m->private;
 	struct afs_vlserver_list *vllist;
-	struct afs_cell *cell = PDE_DATA(file_inode(m->file));
+	struct afs_cell *cell = pde_data(file_inode(m->file));
 	loff_t pos = *_pos;
 
 	rcu_read_lock();
@@ -388,7 +388,7 @@ static int afs_proc_servers_show(struct seq_file *m, void *v)
 	alist = rcu_dereference(server->addresses);
 	seq_printf(m, "%pU %3d %3d\n",
 		   &server->uuid,
-		   atomic_read(&server->ref),
+		   refcount_read(&server->ref),
 		   atomic_read(&server->active));
 	seq_printf(m, "  - info: fl=%lx rtt=%u brk=%x\n",
 		   server->flags, server->rtt, server->cb_s_break);

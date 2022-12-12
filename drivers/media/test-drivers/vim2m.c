@@ -2,7 +2,7 @@
 /*
  * A virtual v4l2-mem2mem example device.
  *
- * This is a virtual device driver for testing mem-to-mem videobuf framework.
+ * This is a virtual device driver for testing mem-to-mem vb2 framework.
  * It simulates a device that uses memory buffers for both source and
  * destination, processes the data and issues an "irq" (simulated by a delayed
  * workqueue).
@@ -12,11 +12,6 @@
  * Copyright (c) 2009-2010 Samsung Electronics Co., Ltd.
  * Pawel Osciak, <pawel@osciak.com>
  * Marek Szyprowski, <m.szyprowski@samsung.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by the
- * Free Software Foundation; either version 2 of the
- * License, or (at your option) any later version
  */
 #include <linux/module.h>
 #include <linux/delay.h>

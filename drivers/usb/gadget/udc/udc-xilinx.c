@@ -1136,17 +1136,20 @@ static int xudc_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 static int xudc_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 {
 	struct xusb_ep *ep	= to_xusb_ep(_ep);
-	struct xusb_req *req	= to_xusb_req(_req);
+	struct xusb_req *req	= NULL;
+	struct xusb_req *iter;
 	struct xusb_udc *udc	= ep->udc;
 	unsigned long flags;
 
 	spin_lock_irqsave(&udc->lock, flags);
 	/* Make sure it's actually queued on this endpoint */
-	list_for_each_entry(req, &ep->queue, queue) {
-		if (&req->usb_req == _req)
-			break;
+	list_for_each_entry(iter, &ep->queue, queue) {
+		if (&iter->usb_req != _req)
+			continue;
+		req = iter;
+		break;
 	}
-	if (&req->usb_req != _req) {
+	if (!req) {
 		spin_unlock_irqrestore(&udc->lock, flags);
 		return -EINVAL;
 	}
@@ -2112,6 +2115,7 @@ static int xudc_probe(struct platform_device *pdev)
 		 * Clock framework support is optional, continue on,
 		 * anyways if we don't find a matching clock
 		 */
+		dev_warn(&pdev->dev, "s_axi_aclk clock property is not found\n");
 		udc->clk = NULL;
 	}
 
@@ -2141,7 +2145,7 @@ static int xudc_probe(struct platform_device *pdev)
 
 	ret = usb_add_gadget_udc(&pdev->dev, &udc->gadget);
 	if (ret)
-		goto fail;
+		goto err_disable_unprepare_clk;
 
 	udc->dev = &udc->gadget.dev;
 
@@ -2160,6 +2164,9 @@ static int xudc_probe(struct platform_device *pdev)
 		 udc->dma_enabled ? "with DMA" : "without DMA");
 
 	return 0;
+
+err_disable_unprepare_clk:
+	clk_disable_unprepare(udc->clk);
 fail:
 	dev_err(&pdev->dev, "probe failed, %d\n", ret);
 	return ret;
@@ -2198,8 +2205,8 @@ static int xudc_suspend(struct device *dev)
 	udc->write_fn(udc->addr, XUSB_CONTROL_OFFSET, crtlreg);
 
 	spin_unlock_irqrestore(&udc->lock, flags);
-	if (udc->driver && udc->driver->disconnect)
-		udc->driver->disconnect(&udc->gadget);
+	if (udc->driver && udc->driver->suspend)
+		udc->driver->suspend(&udc->gadget);
 
 	clk_disable(udc->clk);
 

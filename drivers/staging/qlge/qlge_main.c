@@ -321,8 +321,8 @@ int qlge_get_mac_addr_reg(struct qlge_adapter *qdev, u32 type, u16 index,
 /* Set up a MAC, multicast or VLAN address for the
  * inbound frame matching.
  */
-static int qlge_set_mac_addr_reg(struct qlge_adapter *qdev, u8 *addr, u32 type,
-				 u16 index)
+static int qlge_set_mac_addr_reg(struct qlge_adapter *qdev, const u8 *addr,
+				 u32 type, u16 index)
 {
 	u32 offset = 0;
 	int status = 0;
@@ -441,7 +441,7 @@ static int qlge_set_mac_addr(struct qlge_adapter *qdev, int set)
 	status = qlge_sem_spinlock(qdev, SEM_MAC_ADDR_MASK);
 	if (status)
 		return status;
-	status = qlge_set_mac_addr_reg(qdev, (u8 *)addr,
+	status = qlge_set_mac_addr_reg(qdev, (const u8 *)addr,
 				       MAC_ADDR_TYPE_CAM_MAC,
 				       qdev->func * MAX_CQ);
 	qlge_sem_unlock(qdev, SEM_MAC_ADDR_MASK);
@@ -724,9 +724,7 @@ static int qlge_get_8000_flash_params(struct qlge_adapter *qdev)
 		goto exit;
 	}
 
-	memcpy(qdev->ndev->dev_addr,
-	       mac_addr,
-	       qdev->ndev->addr_len);
+	eth_hw_addr_set(qdev->ndev, mac_addr);
 
 exit:
 	qlge_sem_unlock(qdev, SEM_FLASH_MASK);
@@ -774,9 +772,7 @@ static int qlge_get_8012_flash_params(struct qlge_adapter *qdev)
 		goto exit;
 	}
 
-	memcpy(qdev->ndev->dev_addr,
-	       qdev->flash.flash_params_8012.mac_addr,
-	       qdev->ndev->addr_len);
+	eth_hw_addr_set(qdev->ndev, qdev->flash.flash_params_8012.mac_addr);
 
 exit:
 	qlge_sem_unlock(qdev, SEM_FLASH_MASK);
@@ -1980,7 +1976,7 @@ static unsigned long qlge_process_mac_rx_intr(struct qlge_adapter *qdev,
 					 vlan_id);
 	} else {
 		/* Non-TCP/UDP large frames that span multiple buffers
-		 * can be processed corrrectly by the split frame logic.
+		 * can be processed correctly by the split frame logic.
 		 */
 		qlge_process_mac_split_rx_intr(qdev, rx_ring, ib_mac_rsp,
 					       vlan_id);
@@ -2465,7 +2461,7 @@ static int qlge_tso(struct sk_buff *skb, struct qlge_ob_mac_tso_iocb_req *mac_io
 		mac_iocb_ptr->flags3 |= OB_MAC_TSO_IOCB_IC;
 		mac_iocb_ptr->frame_len = cpu_to_le32((u32)skb->len);
 		mac_iocb_ptr->total_hdrs_len =
-			cpu_to_le16(skb_transport_offset(skb) + tcp_hdrlen(skb));
+			cpu_to_le16(skb_tcp_all_headers(skb));
 		mac_iocb_ptr->net_trans_offset =
 			cpu_to_le16(skb_network_offset(skb) |
 				    skb_transport_offset(skb)
@@ -2959,7 +2955,7 @@ static int qlge_start_rx_ring(struct qlge_adapter *qdev, struct rx_ring *rx_ring
 	void __iomem *doorbell_area =
 		qdev->doorbell_area + (DB_PAGE_SIZE * (128 + rx_ring->cq_id));
 	int err = 0;
-	u64 tmp;
+	u64 dma;
 	__le64 *base_indirect_ptr;
 	int page_entries;
 
@@ -3008,15 +3004,15 @@ static int qlge_start_rx_ring(struct qlge_adapter *qdev, struct rx_ring *rx_ring
 		FLAGS_LI;		/* Load irq delay values */
 	if (rx_ring->cq_id < qdev->rss_ring_count) {
 		cqicb->flags |= FLAGS_LL;	/* Load lbq values */
-		tmp = (u64)rx_ring->lbq.base_dma;
+		dma = (u64)rx_ring->lbq.base_dma;
 		base_indirect_ptr = rx_ring->lbq.base_indirect;
-		page_entries = 0;
-		do {
-			*base_indirect_ptr = cpu_to_le64(tmp);
-			tmp += DB_PAGE_SIZE;
-			base_indirect_ptr++;
-			page_entries++;
-		} while (page_entries < MAX_DB_PAGES_PER_BQ(QLGE_BQ_LEN));
+
+		for (page_entries = 0;
+		     page_entries < MAX_DB_PAGES_PER_BQ(QLGE_BQ_LEN);
+		     page_entries++) {
+			base_indirect_ptr[page_entries] = cpu_to_le64(dma);
+			dma += DB_PAGE_SIZE;
+		}
 		cqicb->lbq_addr = cpu_to_le64(rx_ring->lbq.base_indirect_dma);
 		cqicb->lbq_buf_size =
 			cpu_to_le16(QLGE_FIT16(qdev->lbq_buf_size));
@@ -3025,15 +3021,15 @@ static int qlge_start_rx_ring(struct qlge_adapter *qdev, struct rx_ring *rx_ring
 		rx_ring->lbq.next_to_clean = 0;
 
 		cqicb->flags |= FLAGS_LS;	/* Load sbq values */
-		tmp = (u64)rx_ring->sbq.base_dma;
+		dma = (u64)rx_ring->sbq.base_dma;
 		base_indirect_ptr = rx_ring->sbq.base_indirect;
-		page_entries = 0;
-		do {
-			*base_indirect_ptr = cpu_to_le64(tmp);
-			tmp += DB_PAGE_SIZE;
-			base_indirect_ptr++;
-			page_entries++;
-		} while (page_entries < MAX_DB_PAGES_PER_BQ(QLGE_BQ_LEN));
+
+		for (page_entries = 0;
+		     page_entries < MAX_DB_PAGES_PER_BQ(QLGE_BQ_LEN);
+		     page_entries++) {
+			base_indirect_ptr[page_entries] = cpu_to_le64(dma);
+			dma += DB_PAGE_SIZE;
+		}
 		cqicb->sbq_addr =
 			cpu_to_le64(rx_ring->sbq.base_indirect_dma);
 		cqicb->sbq_buf_size = cpu_to_le16(SMALL_BUFFER_SIZE);
@@ -3045,8 +3041,8 @@ static int qlge_start_rx_ring(struct qlge_adapter *qdev, struct rx_ring *rx_ring
 		/* Inbound completion handling rx_rings run in
 		 * separate NAPI contexts.
 		 */
-		netif_napi_add(qdev->ndev, &rx_ring->napi, qlge_napi_poll_msix,
-			       64);
+		netif_napi_add(qdev->ndev, &rx_ring->napi,
+			       qlge_napi_poll_msix);
 		cqicb->irq_delay = cpu_to_le16(qdev->rx_coalesce_usecs);
 		cqicb->pkt_delay = cpu_to_le16(qdev->rx_max_coalesced_frames);
 	} else {
@@ -4214,14 +4210,14 @@ static int qlge_set_mac_address(struct net_device *ndev, void *p)
 
 	if (!is_valid_ether_addr(addr->sa_data))
 		return -EADDRNOTAVAIL;
-	memcpy(ndev->dev_addr, addr->sa_data, ndev->addr_len);
+	eth_hw_addr_set(ndev, addr->sa_data);
 	/* Update local copy of current mac address. */
 	memcpy(qdev->current_mac_addr, ndev->dev_addr, ndev->addr_len);
 
 	status = qlge_sem_spinlock(qdev, SEM_MAC_ADDR_MASK);
 	if (status)
 		return status;
-	status = qlge_set_mac_addr_reg(qdev, (u8 *)ndev->dev_addr,
+	status = qlge_set_mac_addr_reg(qdev, (const u8 *)ndev->dev_addr,
 				       MAC_ADDR_TYPE_CAM_MAC,
 				       qdev->func * MAX_CQ);
 	if (status)
@@ -4609,19 +4605,12 @@ static int qlge_probe(struct pci_dev *pdev,
 	err = register_netdev(ndev);
 	if (err) {
 		dev_err(&pdev->dev, "net device registration failed.\n");
-		qlge_release_all(pdev);
-		pci_disable_device(pdev);
-		goto netdev_free;
+		goto cleanup_pdev;
 	}
 
-	err = devlink_register(devlink);
-	if (err)
-		goto netdev_free;
-
 	err = qlge_health_create_reporters(qdev);
-
 	if (err)
-		goto devlink_unregister;
+		goto unregister_netdev;
 
 	/* Start up the timer to trigger EEH if
 	 * the bus goes dead
@@ -4632,10 +4621,14 @@ static int qlge_probe(struct pci_dev *pdev,
 	qlge_display_dev_info(ndev);
 	atomic_set(&qdev->lb_count, 0);
 	cards_found++;
+	devlink_register(devlink);
 	return 0;
 
-devlink_unregister:
-	devlink_unregister(devlink);
+unregister_netdev:
+	unregister_netdev(ndev);
+cleanup_pdev:
+	qlge_release_all(pdev);
+	pci_disable_device(pdev);
 netdev_free:
 	free_netdev(ndev);
 devlink_free:
@@ -4660,13 +4653,13 @@ static void qlge_remove(struct pci_dev *pdev)
 	struct net_device *ndev = qdev->ndev;
 	struct devlink *devlink = priv_to_devlink(qdev);
 
+	devlink_unregister(devlink);
 	del_timer_sync(&qdev->timer);
 	qlge_cancel_all_work_sync(qdev);
 	unregister_netdev(ndev);
 	qlge_release_all(pdev);
 	pci_disable_device(pdev);
 	devlink_health_reporter_destroy(qdev->reporter);
-	devlink_unregister(devlink);
 	devlink_free(devlink);
 	free_netdev(ndev);
 }

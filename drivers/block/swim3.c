@@ -27,6 +27,7 @@
 #include <linux/module.h>
 #include <linux/spinlock.h>
 #include <linux/wait.h>
+#include <linux/major.h>
 #include <asm/io.h>
 #include <asm/dbdma.h>
 #include <asm/prom.h>
@@ -1226,16 +1227,18 @@ static int swim3_attach(struct macio_dev *mdev,
 	disk->fops = &floppy_fops;
 	disk->private_data = fs;
 	disk->events = DISK_EVENT_MEDIA_CHANGE;
-	disk->flags |= GENHD_FL_REMOVABLE;
+	disk->flags |= GENHD_FL_REMOVABLE | GENHD_FL_NO_PART;
 	sprintf(disk->disk_name, "fd%d", floppy_count);
 	set_capacity(disk, 2880);
-	add_disk(disk);
+	rc = add_disk(disk);
+	if (rc)
+		goto out_cleanup_disk;
 
 	disks[floppy_count++] = disk;
 	return 0;
 
 out_cleanup_disk:
-	blk_cleanup_disk(disk);
+	put_disk(disk);
 out_free_tag_set:
 	blk_mq_free_tag_set(&fs->tag_set);
 out_unregister:

@@ -162,38 +162,6 @@ static int init_sdei_scs(void)
 	return err;
 }
 
-static bool on_sdei_normal_stack(unsigned long sp, unsigned long size,
-				 struct stack_info *info)
-{
-	unsigned long low = (unsigned long)raw_cpu_read(sdei_stack_normal_ptr);
-	unsigned long high = low + SDEI_STACK_SIZE;
-
-	return on_stack(sp, size, low, high, STACK_TYPE_SDEI_NORMAL, info);
-}
-
-static bool on_sdei_critical_stack(unsigned long sp, unsigned long size,
-				   struct stack_info *info)
-{
-	unsigned long low = (unsigned long)raw_cpu_read(sdei_stack_critical_ptr);
-	unsigned long high = low + SDEI_STACK_SIZE;
-
-	return on_stack(sp, size, low, high, STACK_TYPE_SDEI_CRITICAL, info);
-}
-
-bool _on_sdei_stack(unsigned long sp, unsigned long size, struct stack_info *info)
-{
-	if (!IS_ENABLED(CONFIG_VMAP_STACK))
-		return false;
-
-	if (on_sdei_critical_stack(sp, size, info))
-		return true;
-
-	if (on_sdei_normal_stack(sp, size, info))
-		return true;
-
-	return false;
-}
-
 unsigned long sdei_arch_get_entry_point(int conduit)
 {
 	/*
@@ -202,7 +170,7 @@ unsigned long sdei_arch_get_entry_point(int conduit)
 	 * dropped to EL1 because we don't support VHE, then we can't support
 	 * SDEI.
 	 */
-	if (is_hyp_mode_available() && !is_kernel_in_hyp_mode()) {
+	if (is_hyp_nvhe()) {
 		pr_err("Not supported on this hardware/boot configuration\n");
 		goto out_err;
 	}

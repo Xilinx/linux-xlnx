@@ -36,15 +36,14 @@ static ssize_t store_bridge_parm(struct device *d,
 	struct net_bridge *br = to_bridge(d);
 	struct netlink_ext_ack extack = {0};
 	unsigned long val;
-	char *endp;
 	int err;
 
 	if (!ns_capable(dev_net(br->dev)->user_ns, CAP_NET_ADMIN))
 		return -EPERM;
 
-	val = simple_strtoul(buf, &endp, 0);
-	if (endp == buf)
-		return -EINVAL;
+	err = kstrtoul(buf, 0, &val);
+	if (err != 0)
+		return err;
 
 	if (!rtnl_trylock())
 		return restart_syscall();
@@ -345,7 +344,11 @@ static DEVICE_ATTR_RW(group_addr);
 static int set_flush(struct net_bridge *br, unsigned long val,
 		     struct netlink_ext_ack *extack)
 {
-	br_fdb_flush(br);
+	struct net_bridge_fdb_flush_desc desc = {
+		.flags_mask = BIT(BR_FDB_STATIC)
+	};
+
+	br_fdb_flush(br, &desc);
 	return 0;
 }
 
@@ -658,7 +661,7 @@ static ssize_t multicast_query_interval_show(struct device *d,
 static int set_query_interval(struct net_bridge *br, unsigned long val,
 			      struct netlink_ext_ack *extack)
 {
-	br->multicast_ctx.multicast_query_interval = clock_t_to_jiffies(val);
+	br_multicast_set_query_intvl(&br->multicast_ctx, val);
 	return 0;
 }
 
@@ -706,7 +709,7 @@ static ssize_t multicast_startup_query_interval_show(
 static int set_startup_query_interval(struct net_bridge *br, unsigned long val,
 				      struct netlink_ext_ack *extack)
 {
-	br->multicast_ctx.multicast_startup_query_interval = clock_t_to_jiffies(val);
+	br_multicast_set_startup_query_intvl(&br->multicast_ctx, val);
 	return 0;
 }
 

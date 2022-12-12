@@ -221,7 +221,7 @@ struct kaweth_device
 	dma_addr_t rxbufferhandle;
 	__u8 *rx_buf;
 
-	
+
 	struct sk_buff *tx_skb;
 
 	__u8 *firmware_buf;
@@ -1044,8 +1044,7 @@ err_fw:
 		goto err_all_but_rxbuf;
 
 	memcpy(netdev->broadcast, &bcast_addr, sizeof(bcast_addr));
-	memcpy(netdev->dev_addr, &kaweth->configuration.hw_addr,
-               sizeof(kaweth->configuration.hw_addr));
+	eth_hw_addr_set(netdev, (u8 *)&kaweth->configuration.hw_addr);
 
 	netdev->netdev_ops = &kaweth_netdev_ops;
 	netdev->watchdog_timeo = KAWETH_TX_TIMEOUT;

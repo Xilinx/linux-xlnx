@@ -42,14 +42,16 @@ void arch_send_call_function_ipi_mask(struct cpumask *mask);
 /* Hook for the generic smp_call_function_single() routine. */
 void arch_send_call_function_single_ipi(int cpu);
 
-int riscv_hartid_to_cpuid(int hartid);
-void riscv_cpuid_to_hartid_mask(const struct cpumask *in, struct cpumask *out);
+int riscv_hartid_to_cpuid(unsigned long hartid);
 
 /* Set custom IPI operations */
 void riscv_set_ipi_ops(const struct riscv_ipi_ops *ops);
 
 /* Clear IPI for current CPU */
 void riscv_clear_ipi(void);
+
+/* Check other CPUs stop or not */
+bool smp_crash_stop_failed(void);
 
 /* Secondary hart entry */
 asmlinkage void smp_callin(void);
@@ -63,8 +65,6 @@ asmlinkage void smp_callin(void);
 #if defined CONFIG_HOTPLUG_CPU
 int __cpu_disable(void);
 void __cpu_die(unsigned int cpu);
-void cpu_stop(void);
-#else
 #endif /* CONFIG_HOTPLUG_CPU */
 
 #else
@@ -73,7 +73,7 @@ static inline void show_ipi_stats(struct seq_file *p, int prec)
 {
 }
 
-static inline int riscv_hartid_to_cpuid(int hartid)
+static inline int riscv_hartid_to_cpuid(unsigned long hartid)
 {
 	if (hartid == boot_cpu_hartid)
 		return 0;
@@ -83,13 +83,6 @@ static inline int riscv_hartid_to_cpuid(int hartid)
 static inline unsigned long cpuid_to_hartid_map(int cpu)
 {
 	return boot_cpu_hartid;
-}
-
-static inline void riscv_cpuid_to_hartid_mask(const struct cpumask *in,
-					      struct cpumask *out)
-{
-	cpumask_clear(out);
-	cpumask_set_cpu(boot_cpu_hartid, out);
 }
 
 static inline void riscv_set_ipi_ops(const struct riscv_ipi_ops *ops)

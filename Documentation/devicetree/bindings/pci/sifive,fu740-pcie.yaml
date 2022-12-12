@@ -32,6 +32,8 @@ properties:
       - const: config
       - const: mgmt
 
+  dma-coherent: true
+
   num-lanes:
     const: 8
 
@@ -49,6 +51,12 @@ properties:
     description: A phandle to the PCIe power up reset line.
     maxItems: 1
 
+  clocks:
+    maxItems: 1
+
+  clock-names:
+    const: pcie_aux
+
   pwren-gpios:
     description: Should specify the GPIO for controlling the PCI bus device power on.
     maxItems: 1
@@ -61,11 +69,10 @@ required:
   - num-lanes
   - interrupts
   - interrupt-names
-  - interrupt-parent
   - interrupt-map-mask
   - interrupt-map
-  - clock-names
   - clocks
+  - clock-names
   - resets
   - pwren-gpios
   - reset-gpios
@@ -105,7 +112,7 @@ examples:
                             <0x0 0x0 0x0 0x3 &plic0 59>,
                             <0x0 0x0 0x0 0x4 &plic0 60>;
             clock-names = "pcie_aux";
-            clocks = <&prci PRCI_CLK_PCIE_AUX>;
+            clocks = <&prci FU740_PRCI_CLK_PCIE_AUX>;
             resets = <&prci 4>;
             pwren-gpios = <&gpio 5 0>;
             reset-gpios = <&gpio 8 0>;

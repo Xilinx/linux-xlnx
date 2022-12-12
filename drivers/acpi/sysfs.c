@@ -415,19 +415,30 @@ static ssize_t acpi_data_show(struct file *filp, struct kobject *kobj,
 			      loff_t offset, size_t count)
 {
 	struct acpi_data_attr *data_attr;
-	void *base;
-	ssize_t rc;
+	void __iomem *base;
+	ssize_t size;
 
 	data_attr = container_of(bin_attr, struct acpi_data_attr, attr);
+	size = data_attr->attr.size;
 
-	base = acpi_os_map_memory(data_attr->addr, data_attr->attr.size);
+	if (offset < 0)
+		return -EINVAL;
+
+	if (offset >= size)
+		return 0;
+
+	if (count > size - offset)
+		count = size - offset;
+
+	base = acpi_os_map_iomem(data_attr->addr, size);
 	if (!base)
 		return -ENOMEM;
-	rc = memory_read_from_buffer(buf, count, &offset, base,
-				     data_attr->attr.size);
-	acpi_os_unmap_memory(base, data_attr->attr.size);
 
-	return rc;
+	memcpy_fromio(buf, base + offset, count);
+
+	acpi_os_unmap_iomem(base, size);
+
+	return count;
 }
 
 static int acpi_bert_data_init(void *th, struct acpi_data_attr *data_attr)
@@ -939,10 +950,11 @@ static struct attribute *hotplug_profile_attrs[] = {
 	&hotplug_enabled_attr.attr,
 	NULL
 };
+ATTRIBUTE_GROUPS(hotplug_profile);
 
 static struct kobj_type acpi_hotplug_profile_ktype = {
 	.sysfs_ops = &kobj_sysfs_ops,
-	.default_attrs = hotplug_profile_attrs,
+	.default_groups = hotplug_profile_groups,
 };
 
 void acpi_sysfs_add_hotplug_profile(struct acpi_hotplug_profile *hotplug,

@@ -29,7 +29,7 @@
 struct pt_regs;
 struct kprobe;
 
-typedef ppc_opcode_t kprobe_opcode_t;
+typedef u32 kprobe_opcode_t;
 
 extern kprobe_opcode_t optinsn_slot;
 
@@ -51,7 +51,7 @@ extern kprobe_opcode_t optprobe_template_end[];
 #define flush_insn_slot(p)	do { } while (0)
 #define kretprobe_blacklist_size 0
 
-void kretprobe_trampoline(void);
+void __kretprobe_trampoline(void);
 extern void arch_remove_kprobe(struct kprobe *p);
 
 /* Architecture specific copy of original instruction */

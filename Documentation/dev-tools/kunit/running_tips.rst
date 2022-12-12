@@ -15,7 +15,7 @@ It can be handy to create a bash function like:
 .. code-block:: bash
 
 	function run_kunit() {
-	  ( cd "$(git rev-parse --show-toplevel)" && ./tools/testing/kunit/kunit.py run $@ )
+	  ( cd "$(git rev-parse --show-toplevel)" && ./tools/testing/kunit/kunit.py run "$@" )
 	}
 
 .. note::
@@ -25,8 +25,8 @@ It can be handy to create a bash function like:
 Running a subset of tests
 -------------------------
 
-``kunit.py run`` accepts an optional glob argument to filter tests. Currently
-this only matches against suite names, but this may change in the future.
+``kunit.py run`` accepts an optional glob argument to filter tests. The format
+is ``"<suite_glob>[.test_glob]"``.
 
 Say that we wanted to run the sysctl tests, we could do so via:
 
@@ -34,6 +34,13 @@ Say that we wanted to run the sysctl tests, we could do so via:
 
 	$ echo -e 'CONFIG_KUNIT=y\nCONFIG_KUNIT_ALL_TESTS=y' > .kunit/.kunitconfig
 	$ ./tools/testing/kunit/kunit.py run 'sysctl*'
+
+We can filter down to just the "write" tests via:
+
+.. code-block:: bash
+
+	$ echo -e 'CONFIG_KUNIT=y\nCONFIG_KUNIT_ALL_TESTS=y' > .kunit/.kunitconfig
+	$ ./tools/testing/kunit/kunit.py run 'sysctl*.*write*'
 
 We're paying the cost of building more tests than we need this way, but it's
 easier than fiddling with ``.kunitconfig`` files or commenting out
@@ -107,6 +114,7 @@ Instead of enabling ``CONFIG_GCOV_KERNEL=y``, we can set these options:
 
 	CONFIG_DEBUG_KERNEL=y
 	CONFIG_DEBUG_INFO=y
+	CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT=y
 	CONFIG_GCOV=y
 
 
@@ -115,8 +123,7 @@ Putting it together into a copy-pastable sequence of commands:
 .. code-block:: bash
 
 	# Append coverage options to the current config
-	$ echo -e "CONFIG_DEBUG_KERNEL=y\nCONFIG_DEBUG_INFO=y\nCONFIG_GCOV=y" >> .kunit/.kunitconfig
-	$ ./tools/testing/kunit/kunit.py run
+	$ ./tools/testing/kunit/kunit.py run --kunitconfig=.kunit/ --kunitconfig=tools/testing/kunit/configs/coverage_uml.config
 	# Extract the coverage information from the build dir (.kunit/)
 	$ lcov -t "my_kunit_tests" -o coverage.info -c -d .kunit/
 

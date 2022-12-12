@@ -19,12 +19,21 @@
 #define DRV_NAME "xlnx_i2s"
 
 #define I2S_CORE_CTRL_OFFSET		0x08
+#define I2S_CORE_CTRL_32BIT_LRCLK	BIT(3)
+#define I2S_CORE_CTRL_ENABLE		BIT(0)
 #define I2S_I2STIM_OFFSET		0x20
 #define I2S_CH0_OFFSET			0x30
 #define I2S_I2STIM_VALID_MASK		GENMASK(7, 0)
 
-struct xlnx_i2s_dev_data {
+struct xlnx_i2s_drv_data {
+	struct snd_soc_dai_driver dai_drv;
 	void __iomem *base;
+	unsigned int sysclk;
+	u32 data_width;
+	u32 channels;
+	bool is_32bit_lrclk;
+	struct snd_ratnum ratnum;
+	struct snd_pcm_hw_constraint_ratnums rate_constraints;
 	struct clk *axi_clk;
 	struct clk *axis_clk;
 	struct clk *aud_mclk;
@@ -33,12 +42,51 @@ struct xlnx_i2s_dev_data {
 static int xlnx_i2s_set_sclkout_div(struct snd_soc_dai *cpu_dai,
 				    int div_id, int div)
 {
-	struct xlnx_i2s_dev_data *dev_data = snd_soc_dai_get_drvdata(cpu_dai);
+	struct xlnx_i2s_drv_data *drv_data = snd_soc_dai_get_drvdata(cpu_dai);
 
 	if (!div || (div & ~I2S_I2STIM_VALID_MASK))
 		return -EINVAL;
 
-	writel(div, dev_data->base + I2S_I2STIM_OFFSET);
+	drv_data->sysclk = 0;
+
+	writel(div, drv_data->base + I2S_I2STIM_OFFSET);
+
+	return 0;
+}
+
+static int xlnx_i2s_set_sysclk(struct snd_soc_dai *dai,
+			       int clk_id, unsigned int freq, int dir)
+{
+	struct xlnx_i2s_drv_data *drv_data = snd_soc_dai_get_drvdata(dai);
+
+	drv_data->sysclk = freq;
+	if (freq) {
+		unsigned int bits_per_sample;
+
+		if (drv_data->is_32bit_lrclk)
+			bits_per_sample = 32;
+		else
+			bits_per_sample = drv_data->data_width;
+
+		drv_data->ratnum.num = freq / (bits_per_sample * drv_data->channels) / 2;
+		drv_data->ratnum.den_step = 1;
+		drv_data->ratnum.den_min = 1;
+		drv_data->ratnum.den_max = 255;
+		drv_data->rate_constraints.rats = &drv_data->ratnum;
+		drv_data->rate_constraints.nrats = 1;
+	}
+	return 0;
+}
+
+static int xlnx_i2s_startup(struct snd_pcm_substream *substream,
+			    struct snd_soc_dai *dai)
+{
+	struct xlnx_i2s_drv_data *drv_data = snd_soc_dai_get_drvdata(dai);
+
+	if (drv_data->sysclk)
+		return snd_pcm_hw_constraint_ratnums(substream->runtime, 0,
+						     SNDRV_PCM_HW_PARAM_RATE,
+						     &drv_data->rate_constraints);
 
 	return 0;
 }
@@ -48,13 +96,33 @@ static int xlnx_i2s_hw_params(struct snd_pcm_substream *substream,
 			      struct snd_soc_dai *i2s_dai)
 {
 	u32 reg_off, chan_id;
-	struct xlnx_i2s_dev_data *dev_data = snd_soc_dai_get_drvdata(i2s_dai);
+	struct xlnx_i2s_drv_data *drv_data = snd_soc_dai_get_drvdata(i2s_dai);
+
+	if (drv_data->sysclk) {
+		unsigned int bits_per_sample, sclk, sclk_div;
+
+		if (drv_data->is_32bit_lrclk)
+			bits_per_sample = 32;
+		else
+			bits_per_sample = drv_data->data_width;
+
+		sclk = params_rate(params) * bits_per_sample * params_channels(params);
+		sclk_div = drv_data->sysclk / sclk / 2;
+
+		if ((drv_data->sysclk % sclk != 0) ||
+		    !sclk_div || (sclk_div & ~I2S_I2STIM_VALID_MASK)) {
+			dev_warn(i2s_dai->dev, "invalid SCLK divisor for sysclk %u and sclk %u\n",
+				 drv_data->sysclk, sclk);
+			return -EINVAL;
+		}
+		writel(sclk_div, drv_data->base + I2S_I2STIM_OFFSET);
+	}
 
 	chan_id = params_channels(params) / 2;
 
 	while (chan_id > 0) {
 		reg_off = I2S_CH0_OFFSET + ((chan_id - 1) * 4);
-		writel(chan_id, dev_data->base + reg_off);
+		writel(chan_id, drv_data->base + reg_off);
 		chan_id--;
 	}
 
@@ -64,18 +132,18 @@ static int xlnx_i2s_hw_params(struct snd_pcm_substream *substream,
 static int xlnx_i2s_trigger(struct snd_pcm_substream *substream, int cmd,
 			    struct snd_soc_dai *i2s_dai)
 {
-	struct xlnx_i2s_dev_data *dev_data = snd_soc_dai_get_drvdata(i2s_dai);
+	struct xlnx_i2s_drv_data *drv_data = snd_soc_dai_get_drvdata(i2s_dai);
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
-		writel(1, dev_data->base + I2S_CORE_CTRL_OFFSET);
+		writel(I2S_CORE_CTRL_ENABLE, drv_data->base + I2S_CORE_CTRL_OFFSET);
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
-		writel(0, dev_data->base + I2S_CORE_CTRL_OFFSET);
+		writel(0, drv_data->base + I2S_CORE_CTRL_OFFSET);
 		break;
 	default:
 		return -EINVAL;
@@ -86,12 +154,15 @@ static int xlnx_i2s_trigger(struct snd_pcm_substream *substream, int cmd,
 
 static const struct snd_soc_dai_ops xlnx_i2s_dai_ops = {
 	.trigger = xlnx_i2s_trigger,
+	.set_sysclk = xlnx_i2s_set_sysclk,
 	.set_clkdiv = xlnx_i2s_set_sclkout_div,
+	.startup = xlnx_i2s_startup,
 	.hw_params = xlnx_i2s_hw_params
 };
 
 static const struct snd_soc_component_driver xlnx_i2s_component = {
 	.name = DRV_NAME,
+	.legacy_dai_naming = 1,
 };
 
 static const struct of_device_id xlnx_i2s_of_match[] = {
@@ -103,41 +174,40 @@ MODULE_DEVICE_TABLE(of, xlnx_i2s_of_match);
 
 static int xlnx_i2s_probe(struct platform_device *pdev)
 {
-	struct snd_soc_dai_driver *dai_drv;
-	struct xlnx_i2s_dev_data *dev_data;
+	struct xlnx_i2s_drv_data *drv_data;
 	int ret;
-	u32 ch = 0, format, data_width = 0;
+	u32 format;
 	struct device *dev = &pdev->dev;
 	struct device_node *node = dev->of_node;
 
-	dai_drv = devm_kzalloc(&pdev->dev, sizeof(*dai_drv), GFP_KERNEL);
-	if (!dai_drv)
+	drv_data = devm_kzalloc(&pdev->dev, sizeof(*drv_data), GFP_KERNEL);
+	if (!drv_data)
 		return -ENOMEM;
 
-	dev_data = devm_kzalloc(&pdev->dev, sizeof(*dev_data), GFP_KERNEL);
-	if (!dev_data)
-		return -ENOMEM;
+	drv_data->base = devm_platform_ioremap_resource(pdev, 0);
+	if (IS_ERR(drv_data->base))
+		return PTR_ERR(drv_data->base);
 
-	dev_data->axi_clk = devm_clk_get(&pdev->dev, "s_axi_ctrl_aclk");
-	if (IS_ERR(dev_data->axi_clk)) {
-		ret = PTR_ERR(dev_data->axi_clk);
+	drv_data->axi_clk = devm_clk_get(&pdev->dev, "s_axi_ctrl_aclk");
+	if (IS_ERR(drv_data->axi_clk)) {
+		ret = PTR_ERR(drv_data->axi_clk);
 		dev_err(&pdev->dev, "failed to get s_axi_ctrl_aclk(%d)\n", ret);
 		return ret;
 	}
 
-	ret = of_property_read_u32(node, "xlnx,num-channels", &ch);
+	ret = of_property_read_u32(node, "xlnx,num-channels", &drv_data->channels);
 	if (ret < 0) {
 		dev_err(dev, "cannot get supported channels\n");
 		return ret;
 	}
-	ch = ch * 2;
+	drv_data->channels *= 2;
 
-	ret = of_property_read_u32(node, "xlnx,dwidth", &data_width);
+	ret = of_property_read_u32(node, "xlnx,dwidth", &drv_data->data_width);
 	if (ret < 0) {
 		dev_err(dev, "cannot get data width\n");
 		return ret;
 	}
-	switch (data_width) {
+	switch (drv_data->data_width) {
 	case 16:
 		format = SNDRV_PCM_FMTBIT_S16_LE;
 		break;
@@ -149,35 +219,35 @@ static int xlnx_i2s_probe(struct platform_device *pdev)
 	}
 
 	if (of_device_is_compatible(node, "xlnx,i2s-transmitter-1.0")) {
-		dai_drv->name = "xlnx_i2s_playback";
-		dai_drv->playback.stream_name = "Playback";
-		dai_drv->playback.formats = format;
-		dai_drv->playback.channels_min = ch;
-		dai_drv->playback.channels_max = ch;
-		dai_drv->playback.rates	= SNDRV_PCM_RATE_8000_192000;
-		dai_drv->ops = &xlnx_i2s_dai_ops;
+		drv_data->dai_drv.name = "xlnx_i2s_playback";
+		drv_data->dai_drv.playback.stream_name = "Playback";
+		drv_data->dai_drv.playback.formats = format;
+		drv_data->dai_drv.playback.channels_min = drv_data->channels;
+		drv_data->dai_drv.playback.channels_max = drv_data->channels;
+		drv_data->dai_drv.playback.rates	= SNDRV_PCM_RATE_8000_192000;
+		drv_data->dai_drv.ops = &xlnx_i2s_dai_ops;
 
-		dev_data->axis_clk = devm_clk_get(&pdev->dev,
+		drv_data->axis_clk = devm_clk_get(&pdev->dev,
 						  "s_axis_aud_aclk");
-		if (IS_ERR(dev_data->axis_clk)) {
-			ret = PTR_ERR(dev_data->axis_clk);
+		if (IS_ERR(drv_data->axis_clk)) {
+			ret = PTR_ERR(drv_data->axis_clk);
 			dev_err(&pdev->dev,
 				"failed to get s_axis_aud_aclk(%d)\n", ret);
 			return ret;
 		}
 	} else if (of_device_is_compatible(node, "xlnx,i2s-receiver-1.0")) {
-		dai_drv->name = "xlnx_i2s_capture";
-		dai_drv->capture.stream_name = "Capture";
-		dai_drv->capture.formats = format;
-		dai_drv->capture.channels_min = ch;
-		dai_drv->capture.channels_max = ch;
-		dai_drv->capture.rates = SNDRV_PCM_RATE_8000_192000;
-		dai_drv->ops = &xlnx_i2s_dai_ops;
+		drv_data->dai_drv.name = "xlnx_i2s_capture";
+		drv_data->dai_drv.capture.stream_name = "Capture";
+		drv_data->dai_drv.capture.formats = format;
+		drv_data->dai_drv.capture.channels_min = drv_data->channels;
+		drv_data->dai_drv.capture.channels_max = drv_data->channels;
+		drv_data->dai_drv.capture.rates = SNDRV_PCM_RATE_8000_192000;
+		drv_data->dai_drv.ops = &xlnx_i2s_dai_ops;
 
-		dev_data->axis_clk = devm_clk_get(&pdev->dev,
+		drv_data->axis_clk = devm_clk_get(&pdev->dev,
 						  "m_axis_aud_aclk");
-		if (IS_ERR(dev_data->axis_clk)) {
-			ret = PTR_ERR(dev_data->axis_clk);
+		if (IS_ERR(drv_data->axis_clk)) {
+			ret = PTR_ERR(drv_data->axis_clk);
 			dev_err(&pdev->dev,
 				"failed to get m_axis_aud_aclk(%d)\n", ret);
 			return ret;
@@ -185,70 +255,74 @@ static int xlnx_i2s_probe(struct platform_device *pdev)
 	} else {
 		return -ENODEV;
 	}
+	drv_data->is_32bit_lrclk = readl(drv_data->base + I2S_CORE_CTRL_OFFSET) &
+				   I2S_CORE_CTRL_32BIT_LRCLK;
 
-	dev_data->aud_mclk = devm_clk_get(&pdev->dev, "aud_mclk");
-	if (IS_ERR(dev_data->aud_mclk)) {
-		ret = PTR_ERR(dev_data->aud_mclk);
+	dev_set_drvdata(&pdev->dev, drv_data);
+
+	drv_data->aud_mclk = devm_clk_get(&pdev->dev, "aud_mclk");
+	if (IS_ERR(drv_data->aud_mclk)) {
+		ret = PTR_ERR(drv_data->aud_mclk);
 		dev_err(&pdev->dev, "failed to get aud_mclk(%d)\n", ret);
 		return ret;
 	}
 
-	ret = clk_prepare_enable(dev_data->axi_clk);
+	ret = clk_prepare_enable(drv_data->axi_clk);
 	if (ret) {
 		dev_err(&pdev->dev,
 			"failed to enable s_axi_ctrl_aclk(%d)\n", ret);
 		return ret;
 	}
 
-	ret = clk_prepare_enable(dev_data->axis_clk);
+	ret = clk_prepare_enable(drv_data->axis_clk);
 	if (ret) {
 		dev_err(&pdev->dev,
 			"failed to enable axis_aud_aclk(%d)\n", ret);
 		goto err_axis_clk;
 	}
 
-	ret = clk_prepare_enable(dev_data->aud_mclk);
+	ret = clk_prepare_enable(drv_data->aud_mclk);
 	if (ret) {
 		dev_err(&pdev->dev,
 			"failed to enable aud_mclk(%d)\n", ret);
 		goto err_aud_mclk;
 	}
 
-	dev_data->base = devm_platform_ioremap_resource(pdev, 0);
-	if (IS_ERR(dev_data->base)) {
-		ret = PTR_ERR(dev_data->base);
+	drv_data->base = devm_platform_ioremap_resource(pdev, 0);
+	if (IS_ERR(drv_data->base)) {
+		ret = PTR_ERR(drv_data->base);
 		goto clk_err;
 	}
 
-	dev_set_drvdata(&pdev->dev, dev_data);
+	dev_set_drvdata(&pdev->dev, drv_data);
 
 	ret = devm_snd_soc_register_component(&pdev->dev, &xlnx_i2s_component,
-					      dai_drv, 1);
+					      &drv_data->dai_drv, 1);
 	if (ret) {
 		dev_err(&pdev->dev, "i2s component registration failed\n");
 		goto clk_err;
 	}
 
-	dev_info(&pdev->dev, "%s DAI registered\n", dai_drv->name);
+	dev_info(&pdev->dev, "%s DAI registered\n", drv_data->dai_drv.name);
 
 	return 0;
 clk_err:
-	clk_disable_unprepare(dev_data->aud_mclk);
+	clk_disable_unprepare(drv_data->aud_mclk);
 err_aud_mclk:
-	clk_disable_unprepare(dev_data->axis_clk);
+	clk_disable_unprepare(drv_data->axis_clk);
 err_axis_clk:
-	clk_disable_unprepare(dev_data->axi_clk);
+	clk_disable_unprepare(drv_data->axi_clk);
 
 	return ret;
 }
 
 static int xlnx_i2s_remove(struct platform_device *pdev)
 {
-	struct xlnx_i2s_dev_data *dev_data = dev_get_drvdata(&pdev->dev);
+	struct xlnx_i2s_drv_data *drv_data = dev_get_drvdata(&pdev->dev);
 
-	clk_disable_unprepare(dev_data->aud_mclk);
-	clk_disable_unprepare(dev_data->axis_clk);
-	clk_disable_unprepare(dev_data->axi_clk);
+	clk_disable_unprepare(drv_data->aud_mclk);
+	clk_disable_unprepare(drv_data->axis_clk);
+	clk_disable_unprepare(drv_data->axi_clk);
 
 	return 0;
 }

@@ -15,7 +15,7 @@ struct mlx5_vdpa_direct_mr {
 	u64 start;
 	u64 end;
 	u32 perm;
-	struct mlx5_core_mkey mr;
+	u32 mr;
 	struct sg_table sg_head;
 	int log_size;
 	int nsg;
@@ -25,7 +25,7 @@ struct mlx5_vdpa_direct_mr {
 };
 
 struct mlx5_vdpa_mr {
-	struct mlx5_core_mkey mkey;
+	u32 mkey;
 
 	/* list of direct MRs descendants of this indirect mr */
 	struct list_head head;
@@ -61,11 +61,23 @@ struct mlx5_control_vq {
 	struct vringh_kiov riov;
 	struct vringh_kiov wiov;
 	unsigned short head;
+	unsigned int received_desc;
+	unsigned int completed_desc;
 };
 
-struct mlx5_ctrl_wq_ent {
+struct mlx5_vdpa_wq_ent {
 	struct work_struct work;
 	struct mlx5_vdpa_dev *mvdev;
+};
+
+enum {
+	MLX5_VDPA_DATAVQ_GROUP,
+	MLX5_VDPA_CVQ_GROUP,
+	MLX5_VDPA_NUMVQ_GROUPS
+};
+
+enum {
+	MLX5_VDPA_NUM_AS = MLX5_VDPA_NUMVQ_GROUPS
 };
 
 struct mlx5_vdpa_dev {
@@ -83,6 +95,7 @@ struct mlx5_vdpa_dev {
 	struct mlx5_vdpa_mr mr;
 	struct mlx5_control_vq cvq;
 	struct workqueue_struct *wq;
+	unsigned int group2asid[MLX5_VDPA_NUMVQ_GROUPS];
 };
 
 int mlx5_vdpa_alloc_pd(struct mlx5_vdpa_dev *dev, u32 *pdn, u16 uid);
@@ -99,9 +112,9 @@ int mlx5_vdpa_alloc_transport_domain(struct mlx5_vdpa_dev *mvdev, u32 *tdn);
 void mlx5_vdpa_dealloc_transport_domain(struct mlx5_vdpa_dev *mvdev, u32 tdn);
 int mlx5_vdpa_alloc_resources(struct mlx5_vdpa_dev *mvdev);
 void mlx5_vdpa_free_resources(struct mlx5_vdpa_dev *mvdev);
-int mlx5_vdpa_create_mkey(struct mlx5_vdpa_dev *mvdev, struct mlx5_core_mkey *mkey, u32 *in,
+int mlx5_vdpa_create_mkey(struct mlx5_vdpa_dev *mvdev, u32 *mkey, u32 *in,
 			  int inlen);
-int mlx5_vdpa_destroy_mkey(struct mlx5_vdpa_dev *mvdev, struct mlx5_core_mkey *mkey);
+int mlx5_vdpa_destroy_mkey(struct mlx5_vdpa_dev *mvdev, u32 mkey);
 int mlx5_vdpa_handle_set_map(struct mlx5_vdpa_dev *mvdev, struct vhost_iotlb *iotlb,
 			     bool *change_map);
 int mlx5_vdpa_create_mr(struct mlx5_vdpa_dev *mvdev, struct vhost_iotlb *iotlb);

@@ -618,7 +618,7 @@ static int nt36672a_panel_add(struct nt36672a_panel *pinfo)
 		ret = regulator_set_load(pinfo->supplies[i].consumer,
 					 nt36672a_regulator_enable_loads[i]);
 		if (ret)
-			return  dev_err_probe(dev, ret, "failed to set regulator enable loads\n");
+			return dev_err_probe(dev, ret, "failed to set regulator enable loads\n");
 	}
 
 	pinfo->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_LOW);
@@ -627,6 +627,10 @@ static int nt36672a_panel_add(struct nt36672a_panel *pinfo)
 				     "failed to get reset gpio from DT\n");
 
 	drm_panel_init(&pinfo->base, dev, &panel_funcs, DRM_MODE_CONNECTOR_DSI);
+
+	ret = drm_panel_of_backlight(&pinfo->base);
+	if (ret)
+		return dev_err_probe(dev, ret, "Failed to get backlight\n");
 
 	drm_panel_add(&pinfo->base);
 
@@ -656,10 +660,16 @@ static int nt36672a_panel_probe(struct mipi_dsi_device *dsi)
 	if (err < 0)
 		return err;
 
-	return mipi_dsi_attach(dsi);
+	err = mipi_dsi_attach(dsi);
+	if (err < 0) {
+		drm_panel_remove(&pinfo->base);
+		return err;
+	}
+
+	return 0;
 }
 
-static int nt36672a_panel_remove(struct mipi_dsi_device *dsi)
+static void nt36672a_panel_remove(struct mipi_dsi_device *dsi)
 {
 	struct nt36672a_panel *pinfo = mipi_dsi_get_drvdata(dsi);
 	int err;
@@ -677,8 +687,6 @@ static int nt36672a_panel_remove(struct mipi_dsi_device *dsi)
 		dev_err(&dsi->dev, "failed to detach from DSI host: %d\n", err);
 
 	drm_panel_remove(&pinfo->base);
-
-	return 0;
 }
 
 static void nt36672a_panel_shutdown(struct mipi_dsi_device *dsi)

@@ -13,7 +13,7 @@
 #define pr_fmt(fmt) "GICv2m: " fmt
 
 #include <linux/acpi.h>
-#include <linux/dma-iommu.h>
+#include <linux/iommu.h>
 #include <linux/irq.h>
 #include <linux/irqdomain.h>
 #include <linux/kernel.h>
@@ -88,7 +88,6 @@ static struct irq_chip gicv2m_msi_irq_chip = {
 	.irq_mask		= gicv2m_mask_msi_irq,
 	.irq_unmask		= gicv2m_unmask_msi_irq,
 	.irq_eoi		= irq_chip_eoi_parent,
-	.irq_write_msi_msg	= pci_msi_domain_write_msg,
 };
 
 static struct msi_domain_info gicv2m_msi_domain_info = {
@@ -405,7 +404,7 @@ err_free_v2m:
 	return ret;
 }
 
-static struct of_device_id gicv2m_device_id[] = {
+static const struct of_device_id gicv2m_device_id[] = {
 	{	.compatible	= "arm,gic-v2m-frame",	},
 	{},
 };

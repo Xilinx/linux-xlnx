@@ -34,6 +34,7 @@
 #include "arm-spe-decoder/arm-spe-decoder.h"
 #include "arm-spe-decoder/arm-spe-pkt-decoder.h"
 
+#include "../../arch/arm64/include/asm/cputype.h"
 #define MAX_TIMESTAMP (~0ULL)
 
 struct arm_spe {
@@ -45,18 +46,22 @@ struct arm_spe {
 	struct perf_session		*session;
 	struct machine			*machine;
 	u32				pmu_type;
+	u64				midr;
 
 	struct perf_tsc_conversion	tc;
 
 	u8				timeless_decoding;
 	u8				data_queued;
 
+	u64				sample_type;
 	u8				sample_flc;
 	u8				sample_llc;
 	u8				sample_tlb;
 	u8				sample_branch;
 	u8				sample_remote_access;
 	u8				sample_memory;
+	u8				sample_instructions;
+	u64				instructions_sample_period;
 
 	u64				l1d_miss_id;
 	u64				l1d_access_id;
@@ -67,10 +72,12 @@ struct arm_spe {
 	u64				branch_miss_id;
 	u64				remote_access_id;
 	u64				memory_id;
+	u64				instructions_id;
 
 	u64				kernel_start;
 
 	unsigned long			num_events;
+	u8				use_ctx_pkt_for_pid;
 };
 
 struct arm_spe_queue {
@@ -88,6 +95,7 @@ struct arm_spe_queue {
 	u64				time;
 	u64				timestamp;
 	struct thread			*thread;
+	u64				period_instructions;
 };
 
 static void arm_spe_dump(struct arm_spe *spe __maybe_unused,
@@ -100,7 +108,7 @@ static void arm_spe_dump(struct arm_spe *spe __maybe_unused,
 	const char *color = PERF_COLOR_BLUE;
 
 	color_fprintf(stdout, color,
-		      ". ... ARM SPE data: size %zu bytes\n",
+		      ". ... ARM SPE data: size %#zx bytes\n",
 		      len);
 
 	while (len) {
@@ -200,6 +208,7 @@ static struct arm_spe_queue *arm_spe__alloc_queue(struct arm_spe *spe,
 	speq->pid = -1;
 	speq->tid = -1;
 	speq->cpu = -1;
+	speq->period_instructions = 0;
 
 	/* params set */
 	params.get_trace = arm_spe_get_trace;
@@ -226,6 +235,44 @@ static inline u8 arm_spe_cpumode(struct arm_spe *spe, u64 ip)
 		PERF_RECORD_MISC_USER;
 }
 
+static void arm_spe_set_pid_tid_cpu(struct arm_spe *spe,
+				    struct auxtrace_queue *queue)
+{
+	struct arm_spe_queue *speq = queue->priv;
+	pid_t tid;
+
+	tid = machine__get_current_tid(spe->machine, speq->cpu);
+	if (tid != -1) {
+		speq->tid = tid;
+		thread__zput(speq->thread);
+	} else
+		speq->tid = queue->tid;
+
+	if ((!speq->thread) && (speq->tid != -1)) {
+		speq->thread = machine__find_thread(spe->machine, -1,
+						    speq->tid);
+	}
+
+	if (speq->thread) {
+		speq->pid = speq->thread->pid_;
+		if (queue->cpu == -1)
+			speq->cpu = speq->thread->cpu;
+	}
+}
+
+static int arm_spe_set_tid(struct arm_spe_queue *speq, pid_t tid)
+{
+	struct arm_spe *spe = speq->spe;
+	int err = machine__set_current_tid(spe->machine, speq->cpu, -1, tid);
+
+	if (err)
+		return err;
+
+	arm_spe_set_pid_tid_cpu(spe, &spe->queues.queue_array[speq->queue_nr]);
+
+	return 0;
+}
+
 static void arm_spe_prep_sample(struct arm_spe *spe,
 				struct arm_spe_queue *speq,
 				union perf_event *event,
@@ -248,6 +295,12 @@ static void arm_spe_prep_sample(struct arm_spe *spe,
 	event->sample.header.size = sizeof(struct perf_event_header);
 }
 
+static int arm_spe__inject_event(union perf_event *event, struct perf_sample *sample, u64 type)
+{
+	event->header.size = perf_event__sample_event_size(sample, type, 0);
+	return perf_event__synthesize_sample(event, type, 0, sample);
+}
+
 static inline int
 arm_spe_deliver_synth_event(struct arm_spe *spe,
 			    struct arm_spe_queue *speq __maybe_unused,
@@ -255,6 +308,12 @@ arm_spe_deliver_synth_event(struct arm_spe *spe,
 			    struct perf_sample *sample)
 {
 	int ret;
+
+	if (spe->synth_opts.inject) {
+		ret = arm_spe__inject_event(event, sample, spe->sample_type);
+		if (ret)
+			return ret;
+	}
 
 	ret = perf_session__deliver_synth_event(spe->session, event, sample);
 	if (ret)
@@ -278,6 +337,7 @@ static int arm_spe__synth_mem_sample(struct arm_spe_queue *speq,
 	sample.addr = record->virt_addr;
 	sample.phys_addr = record->phys_addr;
 	sample.data_src = data_src;
+	sample.weight = record->latency;
 
 	return arm_spe_deliver_synth_event(spe, speq, event, &sample);
 }
@@ -295,49 +355,162 @@ static int arm_spe__synth_branch_sample(struct arm_spe_queue *speq,
 	sample.id = spe_events_id;
 	sample.stream_id = spe_events_id;
 	sample.addr = record->to_ip;
+	sample.weight = record->latency;
 
 	return arm_spe_deliver_synth_event(spe, speq, event, &sample);
 }
 
-#define SPE_MEM_TYPE	(ARM_SPE_L1D_ACCESS | ARM_SPE_L1D_MISS | \
-			 ARM_SPE_LLC_ACCESS | ARM_SPE_LLC_MISS | \
-			 ARM_SPE_REMOTE_ACCESS)
-
-static bool arm_spe__is_memory_event(enum arm_spe_sample_type type)
+static int arm_spe__synth_instruction_sample(struct arm_spe_queue *speq,
+					     u64 spe_events_id, u64 data_src)
 {
-	if (type & SPE_MEM_TYPE)
-		return true;
+	struct arm_spe *spe = speq->spe;
+	struct arm_spe_record *record = &speq->decoder->record;
+	union perf_event *event = speq->event_buf;
+	struct perf_sample sample = { .ip = 0, };
 
-	return false;
+	/*
+	 * Handles perf instruction sampling period.
+	 */
+	speq->period_instructions++;
+	if (speq->period_instructions < spe->instructions_sample_period)
+		return 0;
+	speq->period_instructions = 0;
+
+	arm_spe_prep_sample(spe, speq, event, &sample);
+
+	sample.id = spe_events_id;
+	sample.stream_id = spe_events_id;
+	sample.addr = record->virt_addr;
+	sample.phys_addr = record->phys_addr;
+	sample.data_src = data_src;
+	sample.period = spe->instructions_sample_period;
+	sample.weight = record->latency;
+
+	return arm_spe_deliver_synth_event(spe, speq, event, &sample);
 }
 
-static u64 arm_spe__synth_data_source(const struct arm_spe_record *record)
+static const struct midr_range neoverse_spe[] = {
+	MIDR_ALL_VERSIONS(MIDR_NEOVERSE_N1),
+	MIDR_ALL_VERSIONS(MIDR_NEOVERSE_N2),
+	MIDR_ALL_VERSIONS(MIDR_NEOVERSE_V1),
+	{},
+};
+
+static void arm_spe__synth_data_source_neoverse(const struct arm_spe_record *record,
+						union perf_mem_data_src *data_src)
 {
-	union perf_mem_data_src	data_src = { 0 };
+	/*
+	 * Even though four levels of cache hierarchy are possible, no known
+	 * production Neoverse systems currently include more than three levels
+	 * so for the time being we assume three exist. If a production system
+	 * is built with four the this function would have to be changed to
+	 * detect the number of levels for reporting.
+	 */
 
-	if (record->op == ARM_SPE_LD)
-		data_src.mem_op = PERF_MEM_OP_LOAD;
-	else
-		data_src.mem_op = PERF_MEM_OP_STORE;
+	/*
+	 * We have no data on the hit level or data source for stores in the
+	 * Neoverse SPE records.
+	 */
+	if (record->op & ARM_SPE_ST) {
+		data_src->mem_lvl = PERF_MEM_LVL_NA;
+		data_src->mem_lvl_num = PERF_MEM_LVLNUM_NA;
+		data_src->mem_snoop = PERF_MEM_SNOOP_NA;
+		return;
+	}
 
+	switch (record->source) {
+	case ARM_SPE_NV_L1D:
+		data_src->mem_lvl = PERF_MEM_LVL_L1 | PERF_MEM_LVL_HIT;
+		data_src->mem_lvl_num = PERF_MEM_LVLNUM_L1;
+		data_src->mem_snoop = PERF_MEM_SNOOP_NONE;
+		break;
+	case ARM_SPE_NV_L2:
+		data_src->mem_lvl = PERF_MEM_LVL_L2 | PERF_MEM_LVL_HIT;
+		data_src->mem_lvl_num = PERF_MEM_LVLNUM_L2;
+		data_src->mem_snoop = PERF_MEM_SNOOP_NONE;
+		break;
+	case ARM_SPE_NV_PEER_CORE:
+		data_src->mem_lvl = PERF_MEM_LVL_L2 | PERF_MEM_LVL_HIT;
+		data_src->mem_lvl_num = PERF_MEM_LVLNUM_L2;
+		data_src->mem_snoopx = PERF_MEM_SNOOPX_PEER;
+		break;
+	/*
+	 * We don't know if this is L1, L2 but we do know it was a cache-2-cache
+	 * transfer, so set SNOOPX_PEER
+	 */
+	case ARM_SPE_NV_LOCAL_CLUSTER:
+	case ARM_SPE_NV_PEER_CLUSTER:
+		data_src->mem_lvl = PERF_MEM_LVL_L3 | PERF_MEM_LVL_HIT;
+		data_src->mem_lvl_num = PERF_MEM_LVLNUM_L3;
+		data_src->mem_snoopx = PERF_MEM_SNOOPX_PEER;
+		break;
+	/*
+	 * System cache is assumed to be L3
+	 */
+	case ARM_SPE_NV_SYS_CACHE:
+		data_src->mem_lvl = PERF_MEM_LVL_L3 | PERF_MEM_LVL_HIT;
+		data_src->mem_lvl_num = PERF_MEM_LVLNUM_L3;
+		data_src->mem_snoop = PERF_MEM_SNOOP_HIT;
+		break;
+	/*
+	 * We don't know what level it hit in, except it came from the other
+	 * socket
+	 */
+	case ARM_SPE_NV_REMOTE:
+		data_src->mem_lvl = PERF_MEM_LVL_REM_CCE1;
+		data_src->mem_lvl_num = PERF_MEM_LVLNUM_ANY_CACHE;
+		data_src->mem_remote = PERF_MEM_REMOTE_REMOTE;
+		data_src->mem_snoopx = PERF_MEM_SNOOPX_PEER;
+		break;
+	case ARM_SPE_NV_DRAM:
+		data_src->mem_lvl = PERF_MEM_LVL_LOC_RAM | PERF_MEM_LVL_HIT;
+		data_src->mem_lvl_num = PERF_MEM_LVLNUM_RAM;
+		data_src->mem_snoop = PERF_MEM_SNOOP_NONE;
+		break;
+	default:
+		break;
+	}
+}
+
+static void arm_spe__synth_data_source_generic(const struct arm_spe_record *record,
+					       union perf_mem_data_src *data_src)
+{
 	if (record->type & (ARM_SPE_LLC_ACCESS | ARM_SPE_LLC_MISS)) {
-		data_src.mem_lvl = PERF_MEM_LVL_L3;
+		data_src->mem_lvl = PERF_MEM_LVL_L3;
 
 		if (record->type & ARM_SPE_LLC_MISS)
-			data_src.mem_lvl |= PERF_MEM_LVL_MISS;
+			data_src->mem_lvl |= PERF_MEM_LVL_MISS;
 		else
-			data_src.mem_lvl |= PERF_MEM_LVL_HIT;
+			data_src->mem_lvl |= PERF_MEM_LVL_HIT;
 	} else if (record->type & (ARM_SPE_L1D_ACCESS | ARM_SPE_L1D_MISS)) {
-		data_src.mem_lvl = PERF_MEM_LVL_L1;
+		data_src->mem_lvl = PERF_MEM_LVL_L1;
 
 		if (record->type & ARM_SPE_L1D_MISS)
-			data_src.mem_lvl |= PERF_MEM_LVL_MISS;
+			data_src->mem_lvl |= PERF_MEM_LVL_MISS;
 		else
-			data_src.mem_lvl |= PERF_MEM_LVL_HIT;
+			data_src->mem_lvl |= PERF_MEM_LVL_HIT;
 	}
 
 	if (record->type & ARM_SPE_REMOTE_ACCESS)
-		data_src.mem_lvl |= PERF_MEM_LVL_REM_CCE1;
+		data_src->mem_lvl |= PERF_MEM_LVL_REM_CCE1;
+}
+
+static u64 arm_spe__synth_data_source(const struct arm_spe_record *record, u64 midr)
+{
+	union perf_mem_data_src	data_src = { 0 };
+	bool is_neoverse = is_midr_in_range_list(midr, neoverse_spe);
+
+	if (record->op == ARM_SPE_LD)
+		data_src.mem_op = PERF_MEM_OP_LOAD;
+	else if (record->op == ARM_SPE_ST)
+		data_src.mem_op = PERF_MEM_OP_STORE;
+	else
+		return 0;
+
+	if (is_neoverse)
+		arm_spe__synth_data_source_neoverse(record, &data_src);
+	else
+		arm_spe__synth_data_source_generic(record, &data_src);
 
 	if (record->type & (ARM_SPE_TLB_ACCESS | ARM_SPE_TLB_MISS)) {
 		data_src.mem_dtlb = PERF_MEM_TLB_WK;
@@ -358,7 +531,7 @@ static int arm_spe_sample(struct arm_spe_queue *speq)
 	u64 data_src;
 	int err;
 
-	data_src = arm_spe__synth_data_source(record);
+	data_src = arm_spe__synth_data_source(record, spe->midr);
 
 	if (spe->sample_flc) {
 		if (record->type & ARM_SPE_L1D_MISS) {
@@ -422,8 +595,18 @@ static int arm_spe_sample(struct arm_spe_queue *speq)
 			return err;
 	}
 
-	if (spe->sample_memory && arm_spe__is_memory_event(record->type)) {
+	/*
+	 * When data_src is zero it means the record is not a memory operation,
+	 * skip to synthesize memory sample for this case.
+	 */
+	if (spe->sample_memory && data_src) {
 		err = arm_spe__synth_mem_sample(speq, spe->memory_id, data_src);
+		if (err)
+			return err;
+	}
+
+	if (spe->sample_instructions) {
+		err = arm_spe__synth_instruction_sample(speq, spe->instructions_id, data_src);
 		if (err)
 			return err;
 	}
@@ -460,6 +643,19 @@ static int arm_spe_run_decoder(struct arm_spe_queue *speq, u64 *timestamp)
 		 * can correlate samples between Arm SPE trace data and other
 		 * perf events with correct time ordering.
 		 */
+
+		/*
+		 * Update pid/tid info.
+		 */
+		record = &speq->decoder->record;
+		if (!spe->timeless_decoding && record->context_id != (u64)-1) {
+			ret = arm_spe_set_tid(speq, record->context_id);
+			if (ret)
+				return ret;
+
+			spe->use_ctx_pkt_for_pid = true;
+		}
+
 		ret = arm_spe_sample(speq);
 		if (ret)
 			return ret;
@@ -586,31 +782,6 @@ static bool arm_spe__is_timeless_decoding(struct arm_spe *spe)
 	return timeless_decoding;
 }
 
-static void arm_spe_set_pid_tid_cpu(struct arm_spe *spe,
-				    struct auxtrace_queue *queue)
-{
-	struct arm_spe_queue *speq = queue->priv;
-	pid_t tid;
-
-	tid = machine__get_current_tid(spe->machine, speq->cpu);
-	if (tid != -1) {
-		speq->tid = tid;
-		thread__zput(speq->thread);
-	} else
-		speq->tid = queue->tid;
-
-	if ((!speq->thread) && (speq->tid != -1)) {
-		speq->thread = machine__find_thread(spe->machine, -1,
-						    speq->tid);
-	}
-
-	if (speq->thread) {
-		speq->pid = speq->thread->pid_;
-		if (queue->cpu == -1)
-			speq->cpu = speq->thread->cpu;
-	}
-}
-
 static int arm_spe_process_queues(struct arm_spe *spe, u64 timestamp)
 {
 	unsigned int queue_nr;
@@ -641,7 +812,12 @@ static int arm_spe_process_queues(struct arm_spe *spe, u64 timestamp)
 			ts = timestamp;
 		}
 
-		arm_spe_set_pid_tid_cpu(spe, queue);
+		/*
+		 * A previous context-switch event has set pid/tid in the machine's context, so
+		 * here we need to update the pid/tid in the thread and SPE queue.
+		 */
+		if (!spe->use_ctx_pkt_for_pid)
+			arm_spe_set_pid_tid_cpu(spe, queue);
 
 		ret = arm_spe_run_decoder(speq, &ts);
 		if (ret < 0) {
@@ -681,6 +857,25 @@ static int arm_spe_process_timeless_queues(struct arm_spe *spe, pid_t tid,
 	return 0;
 }
 
+static int arm_spe_context_switch(struct arm_spe *spe, union perf_event *event,
+				  struct perf_sample *sample)
+{
+	pid_t pid, tid;
+	int cpu;
+
+	if (!(event->header.misc & PERF_RECORD_MISC_SWITCH_OUT))
+		return 0;
+
+	pid = event->context_switch.next_prev_pid;
+	tid = event->context_switch.next_prev_tid;
+	cpu = sample->cpu;
+
+	if (tid == -1)
+		pr_warning("context_switch event has no tid\n");
+
+	return machine__set_current_tid(spe->machine, cpu, pid, tid);
+}
+
 static int arm_spe_process_event(struct perf_session *session,
 				 union perf_event *event,
 				 struct perf_sample *sample,
@@ -718,6 +913,13 @@ static int arm_spe_process_event(struct perf_session *session,
 		}
 	} else if (timestamp) {
 		err = arm_spe_process_queues(spe, timestamp);
+		if (err)
+			return err;
+
+		if (!spe->use_ctx_pkt_for_pid &&
+		    (event->header.type == PERF_RECORD_SWITCH_CPU_WIDE ||
+		    event->header.type == PERF_RECORD_SWITCH))
+			err = arm_spe_context_switch(spe, event, sample);
 	}
 
 	return err;
@@ -783,7 +985,15 @@ static int arm_spe_flush(struct perf_session *session __maybe_unused,
 		return arm_spe_process_timeless_queues(spe, -1,
 				MAX_TIMESTAMP - 1);
 
-	return arm_spe_process_queues(spe, MAX_TIMESTAMP);
+	ret = arm_spe_process_queues(spe, MAX_TIMESTAMP);
+	if (ret)
+		return ret;
+
+	if (!spe->use_ctx_pkt_for_pid)
+		ui__warning("Arm SPE CONTEXT packets not found in the traces.\n"
+			    "Matching of TIDs to SPE events could be inaccurate.\n");
+
+	return 0;
 }
 
 static void arm_spe_free_queue(void *priv)
@@ -912,13 +1122,17 @@ arm_spe_synth_events(struct arm_spe *spe, struct perf_session *session)
 	memset(&attr, 0, sizeof(struct perf_event_attr));
 	attr.size = sizeof(struct perf_event_attr);
 	attr.type = PERF_TYPE_HARDWARE;
-	attr.sample_type = evsel->core.attr.sample_type & PERF_SAMPLE_MASK;
+	attr.sample_type = evsel->core.attr.sample_type &
+				(PERF_SAMPLE_MASK | PERF_SAMPLE_PHYS_ADDR);
 	attr.sample_type |= PERF_SAMPLE_IP | PERF_SAMPLE_TID |
-			    PERF_SAMPLE_PERIOD | PERF_SAMPLE_DATA_SRC;
+			    PERF_SAMPLE_PERIOD | PERF_SAMPLE_DATA_SRC |
+			    PERF_SAMPLE_WEIGHT | PERF_SAMPLE_ADDR;
 	if (spe->timeless_decoding)
 		attr.sample_type &= ~(u64)PERF_SAMPLE_TIME;
 	else
 		attr.sample_type |= PERF_SAMPLE_TIME;
+
+	spe->sample_type = attr.sample_type;
 
 	attr.exclude_user = evsel->core.attr.exclude_user;
 	attr.exclude_kernel = evsel->core.attr.exclude_kernel;
@@ -1026,7 +1240,29 @@ arm_spe_synth_events(struct arm_spe *spe, struct perf_session *session)
 			return err;
 		spe->memory_id = id;
 		arm_spe_set_event_name(evlist, id, "memory");
+		id += 1;
 	}
+
+	if (spe->synth_opts.instructions) {
+		if (spe->synth_opts.period_type != PERF_ITRACE_PERIOD_INSTRUCTIONS) {
+			pr_warning("Only instruction-based sampling period is currently supported by Arm SPE.\n");
+			goto synth_instructions_out;
+		}
+		if (spe->synth_opts.period > 1)
+			pr_warning("Arm SPE has a hardware-based sample period.\n"
+				   "Additional instruction events will be discarded by --itrace\n");
+
+		spe->sample_instructions = true;
+		attr.config = PERF_COUNT_HW_INSTRUCTIONS;
+		attr.sample_period = spe->synth_opts.period;
+		spe->instructions_sample_period = attr.sample_period;
+		err = arm_spe_synth_event(session, &attr, id);
+		if (err)
+			return err;
+		spe->instructions_id = id;
+		arm_spe_set_event_name(evlist, id, "instructions");
+	}
+synth_instructions_out:
 
 	return 0;
 }
@@ -1037,6 +1273,8 @@ int arm_spe_process_auxtrace_info(union perf_event *event,
 	struct perf_record_auxtrace_info *auxtrace_info = &event->auxtrace_info;
 	size_t min_sz = sizeof(u64) * ARM_SPE_AUXTRACE_PRIV_MAX;
 	struct perf_record_time_conv *tc = &session->time_conv;
+	const char *cpuid = perf_env__cpuid(session->evlist->env);
+	u64 midr = strtol(cpuid, NULL, 16);
 	struct arm_spe *spe;
 	int err;
 
@@ -1056,6 +1294,7 @@ int arm_spe_process_auxtrace_info(union perf_event *event,
 	spe->machine = &session->machines.host; /* No kvm support */
 	spe->auxtrace_type = auxtrace_info->type;
 	spe->pmu_type = auxtrace_info->priv[ARM_SPE_PMU_TYPE];
+	spe->midr = midr;
 
 	spe->timeless_decoding = arm_spe__is_timeless_decoding(spe);
 

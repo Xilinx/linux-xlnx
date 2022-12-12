@@ -58,7 +58,7 @@ struct max1668_data {
 	enum chips type;
 
 	struct mutex update_lock;
-	char valid;		/* !=0 if following fields are valid */
+	bool valid;		/* true if following fields are valid */
 	unsigned long last_updated;	/* In jiffies */
 
 	/* 1x local and 4x remote */
@@ -120,7 +120,7 @@ static struct max1668_data *max1668_update_device(struct device *dev)
 	data->alarms |= val;
 
 	data->last_updated = jiffies;
-	data->valid = 1;
+	data->valid = true;
 abort:
 	mutex_unlock(&data->update_lock);
 
@@ -386,7 +386,7 @@ static int max1668_detect(struct i2c_client *client,
 	if (!type_name)
 		return -ENODEV;
 
-	strlcpy(info->type, type_name, I2C_NAME_SIZE);
+	strscpy(info->type, type_name, I2C_NAME_SIZE);
 
 	return 0;
 }

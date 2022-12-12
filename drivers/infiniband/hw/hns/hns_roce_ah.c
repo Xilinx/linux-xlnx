@@ -30,7 +30,6 @@
  * SOFTWARE.
  */
 
-#include <linux/platform_device.h>
 #include <linux/pci.h>
 #include <rdma/ib_addr.h>
 #include <rdma/ib_cache.h>
@@ -42,9 +41,8 @@ static inline u16 get_ah_udp_sport(const struct rdma_ah_attr *ah_attr)
 	u16 sport;
 
 	if (!fl)
-		sport = get_random_u32() %
-			(IB_ROCE_UDP_ENCAP_VALID_PORT_MAX + 1 -
-			 IB_ROCE_UDP_ENCAP_VALID_PORT_MIN) +
+		sport = prandom_u32_max(IB_ROCE_UDP_ENCAP_VALID_PORT_MAX + 1 -
+					IB_ROCE_UDP_ENCAP_VALID_PORT_MIN) +
 			IB_ROCE_UDP_ENCAP_VALID_PORT_MIN;
 	else
 		sport = rdma_flow_label_to_udp_sport(fl);
@@ -61,7 +59,7 @@ int hns_roce_create_ah(struct ib_ah *ibah, struct rdma_ah_init_attr *init_attr,
 	struct hns_roce_ah *ah = to_hr_ah(ibah);
 	int ret = 0;
 
-	if (hr_dev->pci_dev->revision <= PCI_REVISION_ID_HIP08 && udata)
+	if (hr_dev->pci_dev->revision == PCI_REVISION_ID_HIP08 && udata)
 		return -EOPNOTSUPP;
 
 	ah->av.port = rdma_ah_get_port_num(ah_attr);
@@ -80,7 +78,7 @@ int hns_roce_create_ah(struct ib_ah *ibah, struct rdma_ah_init_attr *init_attr,
 	memcpy(ah->av.mac, ah_attr->roce.dmac, ETH_ALEN);
 
 	/* HIP08 needs to record vlan info in Address Vector */
-	if (hr_dev->pci_dev->revision <= PCI_REVISION_ID_HIP08) {
+	if (hr_dev->pci_dev->revision == PCI_REVISION_ID_HIP08) {
 		ret = rdma_read_gid_l2_fields(ah_attr->grh.sgid_attr,
 					      &ah->av.vlan_id, NULL);
 		if (ret)

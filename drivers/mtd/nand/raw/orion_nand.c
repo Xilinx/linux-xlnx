@@ -85,9 +85,8 @@ static void orion_nand_read_buf(struct nand_chip *chip, uint8_t *buf, int len)
 
 static int orion_nand_attach_chip(struct nand_chip *chip)
 {
-	chip->ecc.engine_type = NAND_ECC_ENGINE_TYPE_SOFT;
-
-	if (chip->ecc.algo == NAND_ECC_ALGO_UNKNOWN)
+	if (chip->ecc.engine_type == NAND_ECC_ENGINE_TYPE_SOFT &&
+	    chip->ecc.algo == NAND_ECC_ALGO_UNKNOWN)
 		chip->ecc.algo = NAND_ECC_ALGO_HAMMING;
 
 	return 0;
@@ -171,24 +170,24 @@ static int __init orion_nand_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, info);
 
-	/* Not all platforms can gate the clock, so it is not
-	   an error if the clock does not exists. */
-	info->clk = devm_clk_get(&pdev->dev, NULL);
-	if (IS_ERR(info->clk)) {
-		ret = PTR_ERR(info->clk);
-		if (ret == -ENOENT) {
-			info->clk = NULL;
-		} else {
-			dev_err(&pdev->dev, "failed to get clock!\n");
-			return ret;
-		}
-	}
+	/* Not all platforms can gate the clock, so it is optional. */
+	info->clk = devm_clk_get_optional(&pdev->dev, NULL);
+	if (IS_ERR(info->clk))
+		return dev_err_probe(&pdev->dev, PTR_ERR(info->clk),
+				     "failed to get clock!\n");
 
 	ret = clk_prepare_enable(info->clk);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to prepare clock!\n");
 		return ret;
 	}
+
+	/*
+	 * This driver assumes that the default ECC engine should be TYPE_SOFT.
+	 * Set ->engine_type before registering the NAND devices in order to
+	 * provide a driver specific default value.
+	 */
+	nc->ecc.engine_type = NAND_ECC_ENGINE_TYPE_SOFT;
 
 	ret = nand_scan(nc, 1);
 	if (ret)

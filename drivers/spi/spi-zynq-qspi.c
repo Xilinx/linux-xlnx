@@ -135,7 +135,7 @@
  * @data_completion:	completion structure
  * @is_dual:		Flag to indicate whether dual flash memories are used
  * @is_stripe:		Flag to indicate if data needs to be split between flashes
- *			(Used in dual parallel configuration)
+ *					(Used in dual parallel configuration)
  */
 struct zynq_qspi {
 	struct device *dev;
@@ -195,7 +195,6 @@ static void zynq_qspi_init_hw(struct zynq_qspi *xqspi, unsigned int num_cs)
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_IDIS_OFFSET, ZYNQ_QSPI_IXR_ALL_MASK);
 
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_LINEAR_CFG_OFFSET, 0);
-
 	/* Clear the RX FIFO */
 	while (zynq_qspi_read(xqspi, ZYNQ_QSPI_STATUS_OFFSET) &
 			      ZYNQ_QSPI_IXR_RXNEMTY_MASK)
@@ -241,6 +240,7 @@ static bool zynq_qspi_supports_op(struct spi_mem *mem,
 {
 	if (!spi_mem_default_supports_op(mem, op))
 		return false;
+
 	return true;
 }
 
@@ -313,7 +313,6 @@ static void zynq_qspi_chipselect(struct spi_device *spi, bool assert)
 #endif
 
 	config_reg = zynq_qspi_read(xqspi, ZYNQ_QSPI_CONFIG_OFFSET);
-
 #ifdef CONFIG_SPI_ZYNQ_QSPI_DUAL_STACKED
 	lqspi_cfg_reg = zynq_qspi_read(xqspi, ZYNQ_QSPI_LINEAR_CFG_OFFSET);
 		if (spi->master->flags & SPI_MASTER_U_PAGE)
@@ -538,8 +537,7 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
  *
  * This function first selects the chip and starts the memory operation.
  *
- * Return: 0 in case of success, -EINVAL if address size greater than
- * ZYNQ_QSPI_MAX_ADDR_WIDTH.
+ * Return: 0 in case of success, a negative error code otherwise.
  */
 static int zynq_qspi_exec_mem_op(struct spi_mem *mem,
 				 const struct spi_mem_op *op)

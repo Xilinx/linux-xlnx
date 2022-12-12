@@ -122,8 +122,8 @@ int xfs_rmap_free(struct xfs_trans *tp, struct xfs_buf *agbp,
 		  const struct xfs_owner_info *oinfo);
 
 int xfs_rmap_lookup_le(struct xfs_btree_cur *cur, xfs_agblock_t bno,
-		xfs_extlen_t len, uint64_t owner, uint64_t offset,
-		unsigned int flags, int *stat);
+		uint64_t owner, uint64_t offset, unsigned int flags,
+		struct xfs_rmap_irec *irec, int *stat);
 int xfs_rmap_lookup_eq(struct xfs_btree_cur *cur, xfs_agblock_t bno,
 		xfs_extlen_t len, uint64_t owner, uint64_t offset,
 		unsigned int flags, int *stat);
@@ -159,8 +159,8 @@ enum xfs_rmap_intent_type {
 struct xfs_rmap_intent {
 	struct list_head			ri_list;
 	enum xfs_rmap_intent_type		ri_type;
-	uint64_t				ri_owner;
 	int					ri_whichfork;
+	uint64_t				ri_owner;
 	struct xfs_bmbt_irec			ri_bmap;
 };
 
@@ -184,9 +184,6 @@ int xfs_rmap_finish_one(struct xfs_trans *tp, enum xfs_rmap_intent_type type,
 		xfs_fsblock_t startblock, xfs_filblks_t blockcount,
 		xfs_exntst_t state, struct xfs_btree_cur **pcur);
 
-int xfs_rmap_find_left_neighbor(struct xfs_btree_cur *cur, xfs_agblock_t bno,
-		uint64_t owner, uint64_t offset, unsigned int flags,
-		struct xfs_rmap_irec *irec, int	*stat);
 int xfs_rmap_lookup_le_range(struct xfs_btree_cur *cur, xfs_agblock_t bno,
 		uint64_t owner, uint64_t offset, unsigned int flags,
 		struct xfs_rmap_irec *irec, int	*stat);
@@ -214,5 +211,10 @@ extern const struct xfs_owner_info XFS_RMAP_OINFO_INOBT;
 extern const struct xfs_owner_info XFS_RMAP_OINFO_INODES;
 extern const struct xfs_owner_info XFS_RMAP_OINFO_REFC;
 extern const struct xfs_owner_info XFS_RMAP_OINFO_COW;
+
+extern struct kmem_cache	*xfs_rmap_intent_cache;
+
+int __init xfs_rmap_intent_init_cache(void);
+void xfs_rmap_intent_destroy_cache(void);
 
 #endif	/* __XFS_RMAP_H__ */

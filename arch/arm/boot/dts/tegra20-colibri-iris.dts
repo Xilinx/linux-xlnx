@@ -70,11 +70,11 @@
 				nvidia,tristate = <TEGRA_PIN_DISABLE>;
 			};
 
-			pwm-a-b {
+			sdc {
 				nvidia,tristate = <TEGRA_PIN_DISABLE>;
 			};
 
-			pwm-c-d {
+			sdb_sdd {
 				nvidia,tristate = <TEGRA_PIN_DISABLE>;
 			};
 
@@ -191,7 +191,7 @@
 	gpio-keys {
 		compatible = "gpio-keys";
 
-		wakeup {
+		key-wakeup {
 			label = "SODIMM pin 45 wakeup";
 			gpios = <&gpio TEGRA_GPIO(V, 3) GPIO_ACTIVE_HIGH>;
 			linux,code = <KEY_WAKEUP>;

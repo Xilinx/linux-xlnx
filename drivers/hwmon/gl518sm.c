@@ -107,7 +107,7 @@ struct gl518_data {
 	enum chips type;
 
 	struct mutex update_lock;
-	char valid;		/* !=0 if following fields are valid */
+	bool valid;		/* true if following fields are valid */
 	unsigned long last_updated;	/* In jiffies */
 
 	u8 voltage_in[4];	/* Register values; [0] = VDD */
@@ -211,7 +211,7 @@ static struct gl518_data *gl518_update_device(struct device *dev)
 		    gl518_read_value(client, GL518_REG_VIN3);
 
 		data->last_updated = jiffies;
-		data->valid = 1;
+		data->valid = true;
 	}
 
 	mutex_unlock(&data->update_lock);
@@ -586,7 +586,7 @@ static int gl518_detect(struct i2c_client *client, struct i2c_board_info *info)
 	if (rev != 0x00 && rev != 0x80)
 		return -ENODEV;
 
-	strlcpy(info->type, "gl518sm", I2C_NAME_SIZE);
+	strscpy(info->type, "gl518sm", I2C_NAME_SIZE);
 
 	return 0;
 }

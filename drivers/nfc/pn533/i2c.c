@@ -128,7 +128,6 @@ static int pn533_i2c_read(struct pn533_i2c_phy *phy, struct sk_buff **skb)
 static irqreturn_t pn533_i2c_irq_thread_fn(int irq, void *data)
 {
 	struct pn533_i2c_phy *phy = data;
-	struct i2c_client *client;
 	struct sk_buff *skb = NULL;
 	int r;
 
@@ -136,9 +135,6 @@ static irqreturn_t pn533_i2c_irq_thread_fn(int irq, void *data)
 		WARN_ON_ONCE(1);
 		return IRQ_NONE;
 	}
-
-	client = phy->i2c_dev;
-	dev_dbg(&client->dev, "IRQ\n");
 
 	if (phy->hard_fault != 0)
 		return IRQ_HANDLED;
@@ -160,7 +156,7 @@ static irqreturn_t pn533_i2c_irq_thread_fn(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static struct pn533_phy_ops i2c_phy_ops = {
+static const struct pn533_phy_ops i2c_phy_ops = {
 	.send_frame = pn533_i2c_send_frame,
 	.send_ack = pn533_i2c_send_ack,
 	.abort_cmd = pn533_i2c_abort_cmd,
@@ -231,7 +227,7 @@ nfc_alloc_err:
 	return r;
 }
 
-static int pn533_i2c_remove(struct i2c_client *client)
+static void pn533_i2c_remove(struct i2c_client *client)
 {
 	struct pn533_i2c_phy *phy = i2c_get_clientdata(client);
 
@@ -239,8 +235,6 @@ static int pn533_i2c_remove(struct i2c_client *client)
 
 	pn53x_unregister_nfc(phy->priv);
 	pn53x_common_clean(phy->priv);
-
-	return 0;
 }
 
 static const struct of_device_id of_pn533_i2c_match[] __maybe_unused = {

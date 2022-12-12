@@ -81,9 +81,6 @@ static struct page *maybe_pte_to_page(pte_t pte)
 
 static pte_t set_pte_filter_hash(pte_t pte)
 {
-	if (radix_enabled())
-		return pte;
-
 	pte = __pte(pte_val(pte) & ~_PAGE_HPTEFLAGS);
 	if (pte_looks_normal(pte) && !(cpu_has_feature(CPU_FTR_COHERENT_ICACHE) ||
 				       cpu_has_feature(CPU_FTR_NOEXECUTE))) {
@@ -111,6 +108,9 @@ static pte_t set_pte_filter_hash(pte_t pte) { return pte; }
 static inline pte_t set_pte_filter(pte_t pte)
 {
 	struct page *pg;
+
+	if (radix_enabled())
+		return pte;
 
 	if (mmu_has_feature(MMU_FTR_HPTE_TABLE))
 		return set_pte_filter_hash(pte);
@@ -143,6 +143,9 @@ static pte_t set_access_flags_filter(pte_t pte, struct vm_area_struct *vma,
 				     int dirty)
 {
 	struct page *pg;
+
+	if (IS_ENABLED(CONFIG_PPC_BOOK3S_64))
+		return pte;
 
 	if (mmu_has_feature(MMU_FTR_HPTE_TABLE))
 		return pte;
@@ -201,6 +204,15 @@ void set_pte_at(struct mm_struct *mm, unsigned long addr, pte_t *ptep,
 
 	/* Perform the setting of the PTE */
 	__set_pte_at(mm, addr, ptep, pte, 0);
+}
+
+void unmap_kernel_page(unsigned long va)
+{
+	pmd_t *pmdp = pmd_off_k(va);
+	pte_t *ptep = pte_offset_kernel(pmdp, va);
+
+	pte_clear(&init_mm, va, ptep);
+	flush_tlb_kernel_range(va, va + PAGE_SIZE);
 }
 
 /*
@@ -271,7 +283,7 @@ void set_huge_pte_at(struct mm_struct *mm, unsigned long addr, pte_t *ptep, pte_
 {
 	pmd_t *pmd = pmd_off(mm, addr);
 	pte_basic_t val;
-	pte_basic_t *entry = &ptep->pte;
+	pte_basic_t *entry = (pte_basic_t *)ptep;
 	int num, i;
 
 	/*
@@ -339,7 +351,7 @@ EXPORT_SYMBOL_GPL(vmalloc_to_phys);
  * (4) hugepd pointer, _PAGE_PTE = 0 and bits [2..6] indicate size of table
  *
  * So long as we atomically load page table pointers we are safe against teardown,
- * we can follow the address down to the the page and take a ref on it.
+ * we can follow the address down to the page and take a ref on it.
  * This function need to be called with interrupts disabled. We use this variant
  * when we have MSR[EE] = 0 but the paca->irq_soft_mask = IRQS_ENABLED
  */
@@ -460,3 +472,27 @@ out:
 	return ret_pte;
 }
 EXPORT_SYMBOL_GPL(__find_linux_pte);
+
+/* Note due to the way vm flags are laid out, the bits are XWR */
+const pgprot_t protection_map[16] = {
+	[VM_NONE]					= PAGE_NONE,
+	[VM_READ]					= PAGE_READONLY,
+	[VM_WRITE]					= PAGE_COPY,
+	[VM_WRITE | VM_READ]				= PAGE_COPY,
+	[VM_EXEC]					= PAGE_READONLY_X,
+	[VM_EXEC | VM_READ]				= PAGE_READONLY_X,
+	[VM_EXEC | VM_WRITE]				= PAGE_COPY_X,
+	[VM_EXEC | VM_WRITE | VM_READ]			= PAGE_COPY_X,
+	[VM_SHARED]					= PAGE_NONE,
+	[VM_SHARED | VM_READ]				= PAGE_READONLY,
+	[VM_SHARED | VM_WRITE]				= PAGE_SHARED,
+	[VM_SHARED | VM_WRITE | VM_READ]		= PAGE_SHARED,
+	[VM_SHARED | VM_EXEC]				= PAGE_READONLY_X,
+	[VM_SHARED | VM_EXEC | VM_READ]			= PAGE_READONLY_X,
+	[VM_SHARED | VM_EXEC | VM_WRITE]		= PAGE_SHARED_X,
+	[VM_SHARED | VM_EXEC | VM_WRITE | VM_READ]	= PAGE_SHARED_X
+};
+
+#ifndef CONFIG_PPC_BOOK3S_64
+DECLARE_VM_GET_PAGE_PROT
+#endif

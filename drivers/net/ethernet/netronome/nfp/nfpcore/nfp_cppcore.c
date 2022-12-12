@@ -803,8 +803,10 @@ int nfp_cpp_area_cache_add(struct nfp_cpp *cpp, size_t size)
 		return -ENOMEM;
 
 	cache = kzalloc(sizeof(*cache), GFP_KERNEL);
-	if (!cache)
+	if (!cache) {
+		nfp_cpp_area_free(area);
 		return -ENOMEM;
+	}
 
 	cache->id = 0;
 	cache->addr = 0;
@@ -872,7 +874,6 @@ area_cache_get(struct nfp_cpp *cpp, u32 id,
 	}
 
 	/* Adjust the start address to be cache size aligned */
-	cache->id = id;
 	cache->addr = addr & ~(u64)(cache->size - 1);
 
 	/* Re-init to the new ID and address */
@@ -891,6 +892,8 @@ area_cache_get(struct nfp_cpp *cpp, u32 id,
 		mutex_unlock(&cpp->area_cache_mutex);
 		return NULL;
 	}
+
+	cache->id = id;
 
 exit:
 	/* Adjust offset */

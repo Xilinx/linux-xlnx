@@ -271,8 +271,8 @@ static void xil_intc_handle_irq(struct pt_regs *regs)
 				xintc_write(irqc, IAR, 1 << hwirq);
 				continue;
 			} else {
-				ret = handle_domain_irq(irqc->domain,
-							hwirq, regs);
+				ret = generic_handle_domain_irq(irqc->domain,
+								hwirq);
 				WARN_ONCE(ret, "cpu %d: Unhandled HWIRQ %d\n",
 					  cpu_id, hwirq);
 				continue;

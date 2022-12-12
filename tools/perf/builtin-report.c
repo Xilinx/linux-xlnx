@@ -71,7 +71,13 @@ struct report {
 	struct perf_tool	tool;
 	struct perf_session	*session;
 	struct evswitch		evswitch;
-	bool			use_tui, use_gtk, use_stdio;
+#ifdef HAVE_SLANG_SUPPORT
+	bool			use_tui;
+#endif
+#ifdef HAVE_GTK2_SUPPORT
+	bool			use_gtk;
+#endif
+	bool			use_stdio;
 	bool			show_full_info;
 	bool			show_threads;
 	bool			inverted_callchain;
@@ -349,6 +355,7 @@ static int report__setup_sample_type(struct report *rep)
 	struct perf_session *session = rep->session;
 	u64 sample_type = evlist__combined_sample_type(session->evlist);
 	bool is_pipe = perf_data__is_pipe(session->data);
+	struct evsel *evsel;
 
 	if (session->itrace_synth_opts->callchain ||
 	    session->itrace_synth_opts->add_callchain ||
@@ -403,6 +410,19 @@ static int report__setup_sample_type(struct report *rep)
 	}
 
 	if (sort__mode == SORT_MODE__MEMORY) {
+		/*
+		 * FIXUP: prior to kernel 5.18, Arm SPE missed to set
+		 * PERF_SAMPLE_DATA_SRC bit in sample type.  For backward
+		 * compatibility, set the bit if it's an old perf data file.
+		 */
+		evlist__for_each_entry(session->evlist, evsel) {
+			if (strstr(evsel->name, "arm_spe") &&
+				!(sample_type & PERF_SAMPLE_DATA_SRC)) {
+				evsel->core.attr.sample_type |= PERF_SAMPLE_DATA_SRC;
+				sample_type |= PERF_SAMPLE_DATA_SRC;
+			}
+		}
+
 		if (!is_pipe && !(sample_type & PERF_SAMPLE_DATA_SRC)) {
 			ui__error("Selected --mem-mode but no mem data. "
 				  "Did you call perf record without -d?\n");
@@ -410,7 +430,7 @@ static int report__setup_sample_type(struct report *rep)
 		}
 	}
 
-	callchain_param_setup(sample_type);
+	callchain_param_setup(sample_type, perf_env__arch(&rep->session->header.env));
 
 	if (rep->stitch_lbr && (callchain_param.record_mode != CALLCHAIN_LBR)) {
 		ui__warning("Can't find LBR callchain. Switch off --stitch-lbr.\n"
@@ -619,14 +639,17 @@ static int report__browse_hists(struct report *rep)
 	int ret;
 	struct perf_session *session = rep->session;
 	struct evlist *evlist = session->evlist;
-	const char *help = perf_tip(system_path(TIPDIR));
+	char *help = NULL, *path = NULL;
 
-	if (help == NULL) {
+	path = system_path(TIPDIR);
+	if (perf_tip(&help, path) || help == NULL) {
 		/* fallback for people who don't install perf ;-) */
-		help = perf_tip(DOCDIR);
-		if (help == NULL)
-			help = "Cannot load tips.txt file, please install perf!";
+		free(path);
+		path = system_path(DOCDIR);
+		if (perf_tip(&help, path) || help == NULL)
+			help = strdup("Cannot load tips.txt file, please install perf!");
 	}
+	free(path);
 
 	switch (use_browser) {
 	case 1:
@@ -651,7 +674,7 @@ static int report__browse_hists(struct report *rep)
 		ret = evlist__tty_browse_hists(evlist, rep, help);
 		break;
 	}
-
+	free(help);
 	return ret;
 }
 
@@ -729,6 +752,22 @@ static int count_sample_event(struct perf_tool *tool __maybe_unused,
 	return 0;
 }
 
+static int count_lost_samples_event(struct perf_tool *tool,
+				    union perf_event *event,
+				    struct perf_sample *sample,
+				    struct machine *machine __maybe_unused)
+{
+	struct report *rep = container_of(tool, struct report, tool);
+	struct evsel *evsel;
+
+	evsel = evlist__id2evsel(rep->session->evlist, sample->id);
+	if (evsel) {
+		hists__inc_nr_lost_samples(evsel__hists(evsel),
+					   event->lost_samples.lost);
+	}
+	return 0;
+}
+
 static int process_attr(struct perf_tool *tool __maybe_unused,
 			union perf_event *event,
 			struct evlist **pevlist);
@@ -738,6 +777,7 @@ static void stats_setup(struct report *rep)
 	memset(&rep->tool, 0, sizeof(rep->tool));
 	rep->tool.attr = process_attr;
 	rep->tool.sample = count_sample_event;
+	rep->tool.lost_samples = count_lost_samples_event;
 	rep->tool.no_warn = true;
 }
 
@@ -1124,7 +1164,7 @@ static int process_attr(struct perf_tool *tool __maybe_unused,
 	 * on events sample_type.
 	 */
 	sample_type = evlist__combined_sample_type(*pevlist);
-	callchain_param_setup(sample_type);
+	callchain_param_setup(sample_type, perf_env__arch((*pevlist)->env));
 	return 0;
 }
 
@@ -1203,8 +1243,12 @@ int cmd_report(int argc, const char **argv)
 		    "Show per-thread event counters"),
 	OPT_STRING(0, "pretty", &report.pretty_printing_style, "key",
 		   "pretty printing style key: normal raw"),
+#ifdef HAVE_SLANG_SUPPORT
 	OPT_BOOLEAN(0, "tui", &report.use_tui, "Use the TUI interface"),
+#endif
+#ifdef HAVE_GTK2_SUPPORT
 	OPT_BOOLEAN(0, "gtk", &report.use_gtk, "Use the GTK2 interface"),
+#endif
 	OPT_BOOLEAN(0, "stdio", &report.use_stdio,
 		    "Use the stdio interface"),
 	OPT_BOOLEAN(0, "header", &report.header, "Show data header."),
@@ -1378,18 +1422,9 @@ int cmd_report(int argc, const char **argv)
 	if (quiet)
 		perf_quiet_option();
 
-	if (symbol_conf.vmlinux_name &&
-	    access(symbol_conf.vmlinux_name, R_OK)) {
-		pr_err("Invalid file: %s\n", symbol_conf.vmlinux_name);
-		ret = -EINVAL;
+	ret = symbol__validate_sym_arguments();
+	if (ret)
 		goto exit;
-	}
-	if (symbol_conf.kallsyms_name &&
-	    access(symbol_conf.kallsyms_name, R_OK)) {
-		pr_err("Invalid file: %s\n", symbol_conf.kallsyms_name);
-		ret = -EINVAL;
-		goto exit;
-	}
 
 	if (report.inverted_callchain)
 		callchain_param.order = ORDER_CALLER;
@@ -1498,10 +1533,14 @@ repeat:
 
 	if (report.use_stdio)
 		use_browser = 0;
+#ifdef HAVE_SLANG_SUPPORT
 	else if (report.use_tui)
 		use_browser = 1;
+#endif
+#ifdef HAVE_GTK2_SUPPORT
 	else if (report.use_gtk)
 		use_browser = 2;
+#endif
 
 	/* Force tty output for header output and per-thread stat. */
 	if (report.header || report.header_only || report.show_threads)

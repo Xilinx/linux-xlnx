@@ -25,7 +25,8 @@
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_fb_helper.h>
-#include <drm/drm_gem_cma_helper.h>
+#include <drm/drm_framebuffer.h>
+#include <drm/drm_gem_dma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
 
 #include "xlnx_crtc.h"
@@ -178,7 +179,7 @@ static int xlnx_fbdev_create(struct drm_fb_helper *fb_helper,
 {
 	struct xlnx_fbdev *fbdev = to_fbdev(fb_helper);
 	struct drm_device *drm = fb_helper->dev;
-	struct drm_gem_cma_object *obj;
+	struct drm_gem_dma_object *obj;
 	struct drm_framebuffer *fb;
 	unsigned int bytes_per_pixel;
 	unsigned long offset;
@@ -197,7 +198,7 @@ static int xlnx_fbdev_create(struct drm_fb_helper *fb_helper,
 		      fbdev->align);
 	bytes *= size->surface_height;
 
-	obj = drm_gem_cma_create(drm, bytes);
+	obj = drm_gem_dma_create(drm, bytes);
 	if (IS_ERR(obj))
 		return PTR_ERR(obj);
 
@@ -240,9 +241,9 @@ static int xlnx_fbdev_create(struct drm_fb_helper *fb_helper,
 	offset = (unsigned long)fbi->var.xoffset * bytes_per_pixel;
 	offset += fbi->var.yoffset * fb->pitches[0];
 
-	drm->mode_config.fb_base = (resource_size_t)obj->paddr;
+	drm->mode_config.fb_base = (resource_size_t)obj->dma_addr;
 	fbi->screen_base = (char __iomem *)(obj->vaddr + offset);
-	fbi->fix.smem_start = (unsigned long)(obj->paddr + offset);
+	fbi->fix.smem_start = (unsigned long)(obj->dma_addr + offset);
 	fbi->screen_size = bytes;
 	fbi->fix.smem_len = bytes;
 
@@ -254,7 +255,7 @@ err_fb_destroy:
 err_framebuffer_release:
 	framebuffer_release(fbi);
 err_drm_gem_cma_free_object:
-	drm_gem_cma_free_object(&obj->base);
+	drm_gem_dma_free(obj);
 	return ret;
 }
 

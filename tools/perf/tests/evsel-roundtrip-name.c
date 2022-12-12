@@ -27,7 +27,7 @@ static int perf_evsel__roundtrip_cache_name_test(void)
 
 			for (i = 0; i < PERF_COUNT_HW_CACHE_RESULT_MAX; i++) {
 				__evsel__hw_cache_type_op_res_name(type, op, i, name, sizeof(name));
-				err = parse_events(evlist, name, NULL);
+				err = parse_event(evlist, name);
 				if (err)
 					ret = err;
 			}
@@ -64,7 +64,7 @@ static int perf_evsel__roundtrip_cache_name_test(void)
 	return ret;
 }
 
-static int __perf_evsel__name_array_test(const char *names[], int nr_names,
+static int __perf_evsel__name_array_test(const char *const names[], int nr_names,
 					 int distance)
 {
 	int i, err;
@@ -75,7 +75,7 @@ static int __perf_evsel__name_array_test(const char *names[], int nr_names,
                 return -ENOMEM;
 
 	for (i = 0; i < nr_names; ++i) {
-		err = parse_events(evlist, names[i], NULL);
+		err = parse_event(evlist, names[i]);
 		if (err) {
 			pr_debug("failed to parse event '%s', err %d\n",
 				 names[i], err);
@@ -99,7 +99,8 @@ out_delete_evlist:
 #define perf_evsel__name_array_test(names, distance) \
 	__perf_evsel__name_array_test(names, ARRAY_SIZE(names), distance)
 
-int test__perf_evsel__roundtrip_name_test(struct test *test __maybe_unused, int subtest __maybe_unused)
+static int test__perf_evsel__roundtrip_name_test(struct test_suite *test __maybe_unused,
+						 int subtest __maybe_unused)
 {
 	int err = 0, ret = 0;
 
@@ -120,3 +121,5 @@ int test__perf_evsel__roundtrip_name_test(struct test *test __maybe_unused, int 
 
 	return ret;
 }
+
+DEFINE_SUITE("Roundtrip evsel->name", perf_evsel__roundtrip_name_test);

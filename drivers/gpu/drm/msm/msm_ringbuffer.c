@@ -11,34 +11,31 @@ static uint num_hw_submissions = 8;
 MODULE_PARM_DESC(num_hw_submissions, "The max # of jobs to write into ringbuffer (default 8)");
 module_param(num_hw_submissions, uint, 0600);
 
-static struct dma_fence *msm_job_dependency(struct drm_sched_job *job,
-		struct drm_sched_entity *s_entity)
-{
-	struct msm_gem_submit *submit = to_msm_submit(job);
-
-	if (!xa_empty(&submit->deps))
-		return xa_erase(&submit->deps, submit->last_dep++);
-
-	return NULL;
-}
-
 static struct dma_fence *msm_job_run(struct drm_sched_job *job)
 {
 	struct msm_gem_submit *submit = to_msm_submit(job);
+	struct msm_fence_context *fctx = submit->ring->fctx;
 	struct msm_gpu *gpu = submit->gpu;
+	int i;
 
-	submit->hw_fence = msm_fence_alloc(submit->ring->fctx);
+	submit->hw_fence = msm_fence_alloc(fctx);
 
-	pm_runtime_get_sync(&gpu->pdev->dev);
+	for (i = 0; i < submit->nr_bos; i++) {
+		struct drm_gem_object *obj = &submit->bos[i].obj->base;
+
+		msm_gem_lock(obj);
+		msm_gem_unpin_vma_fenced(submit->bos[i].vma, fctx);
+		msm_gem_unpin_locked(obj);
+		submit->bos[i].flags &= ~(BO_VMA_PINNED | BO_OBJ_PINNED);
+		msm_gem_unlock(obj);
+	}
 
 	/* TODO move submit path over to using a per-ring lock.. */
-	mutex_lock(&gpu->dev->struct_mutex);
+	mutex_lock(&gpu->lock);
 
 	msm_gpu_submit(gpu, submit);
 
-	mutex_unlock(&gpu->dev->struct_mutex);
-
-	pm_runtime_put(&gpu->pdev->dev);
+	mutex_unlock(&gpu->lock);
 
 	return dma_fence_get(submit->hw_fence);
 }
@@ -51,8 +48,7 @@ static void msm_job_free(struct drm_sched_job *job)
 	msm_gem_submit_put(submit);
 }
 
-const struct drm_sched_backend_ops msm_sched_ops = {
-	.dependency = msm_job_dependency,
+static const struct drm_sched_backend_ops msm_sched_ops = {
 	.run_job = msm_job_run,
 	.free_job = msm_job_free
 };
@@ -101,7 +97,7 @@ struct msm_ringbuffer *msm_ringbuffer_new(struct msm_gpu *gpu, int id,
 
 	ret = drm_sched_init(&ring->sched, &msm_sched_ops,
 			num_hw_submissions, 0, sched_timeout,
-			NULL, NULL, to_msm_bo(ring->bo)->name);
+			NULL, NULL, to_msm_bo(ring->bo)->name, gpu->dev->dev);
 	if (ret) {
 		goto fail;
 	}

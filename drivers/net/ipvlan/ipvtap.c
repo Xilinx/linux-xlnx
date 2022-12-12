@@ -162,7 +162,7 @@ static int ipvtap_device_event(struct notifier_block *unused,
 
 		devt = MKDEV(MAJOR(ipvtap_major), vlantap->tap.minor);
 		classdev = device_create(&ipvtap_class, &dev->dev, devt,
-					 dev, tap_name);
+					 dev, "%s", tap_name);
 		if (IS_ERR(classdev)) {
 			tap_free_minor(ipvtap_major, &vlantap->tap);
 			return notifier_from_errno(PTR_ERR(classdev));
@@ -194,7 +194,7 @@ static struct notifier_block ipvtap_notifier_block __read_mostly = {
 	.notifier_call	= ipvtap_device_event,
 };
 
-static int ipvtap_init(void)
+static int __init ipvtap_init(void)
 {
 	int err;
 
@@ -228,7 +228,7 @@ out1:
 }
 module_init(ipvtap_init);
 
-static void ipvtap_exit(void)
+static void __exit ipvtap_exit(void)
 {
 	rtnl_link_unregister(&ipvtap_link_ops);
 	unregister_netdevice_notifier(&ipvtap_notifier_block);

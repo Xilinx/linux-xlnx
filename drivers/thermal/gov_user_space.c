@@ -15,6 +15,13 @@
 
 #include "thermal_core.h"
 
+static int user_space_bind(struct thermal_zone_device *tz)
+{
+	pr_info_once("Consider using thermal netlink events interface\n");
+
+	return 0;
+}
+
 /**
  * notify_user_space - Notifies user space about thermal events
  * @tz: thermal_zone_device
@@ -27,7 +34,8 @@ static int notify_user_space(struct thermal_zone_device *tz, int trip)
 	char *thermal_prop[5];
 	int i;
 
-	mutex_lock(&tz->lock);
+	lockdep_assert_held(&tz->lock);
+
 	thermal_prop[0] = kasprintf(GFP_KERNEL, "NAME=%s", tz->type);
 	thermal_prop[1] = kasprintf(GFP_KERNEL, "TEMP=%d", tz->temperature);
 	thermal_prop[2] = kasprintf(GFP_KERNEL, "TRIP=%d", trip);
@@ -36,12 +44,13 @@ static int notify_user_space(struct thermal_zone_device *tz, int trip)
 	kobject_uevent_env(&tz->device.kobj, KOBJ_CHANGE, thermal_prop);
 	for (i = 0; i < 4; ++i)
 		kfree(thermal_prop[i]);
-	mutex_unlock(&tz->lock);
+
 	return 0;
 }
 
 static struct thermal_governor thermal_gov_user_space = {
 	.name		= "user_space",
 	.throttle	= notify_user_space,
+	.bind_to_tz	= user_space_bind,
 };
 THERMAL_GOVERNOR_DECLARE(thermal_gov_user_space);

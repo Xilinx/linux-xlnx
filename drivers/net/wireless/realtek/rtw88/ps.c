@@ -19,14 +19,14 @@ static int rtw_ips_pwr_up(struct rtw_dev *rtwdev)
 		rtw_err(rtwdev, "leave idle state failed\n");
 
 	rtw_set_channel(rtwdev);
-	clear_bit(RTW_FLAG_INACTIVE_PS, rtwdev->flags);
 
 	return ret;
 }
 
 int rtw_enter_ips(struct rtw_dev *rtwdev)
 {
-	set_bit(RTW_FLAG_INACTIVE_PS, rtwdev->flags);
+	if (test_and_set_bit(RTW_FLAG_INACTIVE_PS, rtwdev->flags))
+		return 0;
 
 	rtw_coex_ips_notify(rtwdev, COEX_IPS_ENTER);
 
@@ -49,6 +49,9 @@ static void rtw_restore_port_cfg_iter(void *data, u8 *mac,
 int rtw_leave_ips(struct rtw_dev *rtwdev)
 {
 	int ret;
+
+	if (!test_and_clear_bit(RTW_FLAG_INACTIVE_PS, rtwdev->flags))
+		return 0;
 
 	rtw_hci_link_ps(rtwdev, false);
 
@@ -82,6 +85,9 @@ void rtw_power_mode_change(struct rtw_dev *rtwdev, bool enter)
 	}
 	/* Each request require an ack from firmware */
 	request |= POWER_MODE_ACK;
+
+	if (rtw_fw_feature_check(&rtwdev->fw, FW_FEATURE_TX_WAKE))
+		request |= POWER_TX_WAKE;
 
 	rtw_write8(rtwdev, rtwdev->hci.rpwm_addr, request);
 

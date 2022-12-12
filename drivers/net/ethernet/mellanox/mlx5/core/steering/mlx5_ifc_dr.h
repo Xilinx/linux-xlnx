@@ -447,6 +447,14 @@ struct mlx5_ifc_ste_flex_parser_1_bits {
 	u8         flex_parser_4[0x20];
 };
 
+struct mlx5_ifc_ste_flex_parser_ok_bits {
+	u8         flex_parser_3[0x20];
+	u8         flex_parser_2[0x20];
+	u8         flex_parsers_ok[0x8];
+	u8         reserved_at_48[0x18];
+	u8         flex_parser_0[0x20];
+};
+
 struct mlx5_ifc_ste_flex_parser_tnl_bits {
 	u8         flex_parser_tunneling_header_63_32[0x20];
 
@@ -486,6 +494,14 @@ struct mlx5_ifc_ste_flex_parser_tnl_gtpu_bits {
 	u8	   reserved_at_10[0x10];
 
 	u8	   gtpu_teid[0x20];
+
+	u8	   reserved_at_40[0x40];
+};
+
+struct mlx5_ifc_ste_tunnel_header_bits {
+	u8	   tunnel_header_0[0x20];
+
+	u8	   tunnel_header_1[0x20];
 
 	u8	   reserved_at_40[0x40];
 };
@@ -556,6 +572,32 @@ struct mlx5_ifc_dr_action_hw_copy_bits {
 	u8         reserved_at_30[0x2];
 	u8         source_left_shifter[0x6];
 	u8         reserved_at_38[0x8];
+};
+
+enum {
+	MLX5DR_ASO_FLOW_METER_NUM_PER_OBJ = 2,
+};
+
+struct mlx5_ifc_ste_aso_flow_meter_action_bits {
+	u8         reserved_at_0[0xc];
+	u8         action[0x1];
+	u8         initial_color[0x2];
+	u8         line_id[0x1];
+};
+
+struct mlx5_ifc_ste_double_action_aso_v1_bits {
+	u8         action_id[0x8];
+	u8         aso_context_number[0x18];
+
+	u8         dest_reg_id[0x2];
+	u8         change_ordering_tag[0x1];
+	u8         aso_check_ordering[0x1];
+	u8         aso_context_type[0x4];
+	u8         reserved_at_28[0x8];
+	union {
+		u8 aso_fields[0x10];
+		struct mlx5_ifc_ste_aso_flow_meter_action_bits flow_meter;
+	};
 };
 
 #endif /* MLX5_IFC_DR_H */

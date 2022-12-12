@@ -9,6 +9,8 @@
 #include <linux/device.h>
 #include <linux/module.h>
 #include <linux/pci.h>
+#include <linux/hrtimer.h>
+#include <linux/ktime.h>
 
 #include "ptp.h"
 #include "mbox.h"
@@ -25,54 +27,175 @@
 #define PCI_SUBSYS_DEVID_OCTX2_95XXO_PTP	0xB600
 #define PCI_DEVID_OCTEONTX2_RST			0xA085
 #define PCI_DEVID_CN10K_PTP			0xA09E
+#define PCI_SUBSYS_DEVID_CN10K_A_PTP		0xB900
+#define PCI_SUBSYS_DEVID_CNF10K_A_PTP		0xBA00
+#define PCI_SUBSYS_DEVID_CNF10K_B_PTP		0xBC00
 
 #define PCI_PTP_BAR_NO				0
-#define PCI_RST_BAR_NO				0
 
 #define PTP_CLOCK_CFG				0xF00ULL
 #define PTP_CLOCK_CFG_PTP_EN			BIT_ULL(0)
+#define PTP_CLOCK_CFG_EXT_CLK_EN		BIT_ULL(1)
+#define PTP_CLOCK_CFG_EXT_CLK_IN_MASK		GENMASK_ULL(7, 2)
+#define PTP_CLOCK_CFG_TSTMP_EDGE		BIT_ULL(9)
+#define PTP_CLOCK_CFG_TSTMP_EN			BIT_ULL(8)
+#define PTP_CLOCK_CFG_TSTMP_IN_MASK		GENMASK_ULL(15, 10)
+#define PTP_CLOCK_CFG_PPS_EN			BIT_ULL(30)
+#define PTP_CLOCK_CFG_PPS_INV			BIT_ULL(31)
+
+#define PTP_PPS_HI_INCR				0xF60ULL
+#define PTP_PPS_LO_INCR				0xF68ULL
+#define PTP_PPS_THRESH_HI			0xF58ULL
+
 #define PTP_CLOCK_LO				0xF08ULL
 #define PTP_CLOCK_HI				0xF10ULL
 #define PTP_CLOCK_COMP				0xF18ULL
+#define PTP_TIMESTAMP				0xF20ULL
+#define PTP_CLOCK_SEC				0xFD0ULL
+#define PTP_SEC_ROLLOVER			0xFD8ULL
 
-#define RST_BOOT				0x1600ULL
-#define RST_MUL_BITS				GENMASK_ULL(38, 33)
-#define CLOCK_BASE_RATE				50000000ULL
+#define CYCLE_MULT				1000
 
 static struct ptp *first_ptp_block;
 static const struct pci_device_id ptp_id_table[];
 
-static u64 get_clock_rate(void)
+static bool is_ptp_dev_cnf10kb(struct ptp *ptp)
 {
-	u64 cfg, ret = CLOCK_BASE_RATE * 16;
-	struct pci_dev *pdev;
-	void __iomem *base;
+	return (ptp->pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_B_PTP) ? true : false;
+}
 
-	/* To get the input clock frequency with which PTP co-processor
-	 * block is running the base frequency(50 MHz) needs to be multiplied
-	 * with multiplier bits present in RST_BOOT register of RESET block.
-	 * Hence below code gets the multiplier bits from the RESET PCI
-	 * device present in the system.
+static bool is_ptp_dev_cn10k(struct ptp *ptp)
+{
+	return (ptp->pdev->device == PCI_DEVID_CN10K_PTP) ? true : false;
+}
+
+static bool cn10k_ptp_errata(struct ptp *ptp)
+{
+	if (ptp->pdev->subsystem_device == PCI_SUBSYS_DEVID_CN10K_A_PTP ||
+	    ptp->pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_A_PTP)
+		return true;
+	return false;
+}
+
+static bool is_ptp_tsfmt_sec_nsec(struct ptp *ptp)
+{
+	if (ptp->pdev->subsystem_device == PCI_SUBSYS_DEVID_CN10K_A_PTP ||
+	    ptp->pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_A_PTP)
+		return true;
+	return false;
+}
+
+static enum hrtimer_restart ptp_reset_thresh(struct hrtimer *hrtimer)
+{
+	struct ptp *ptp = container_of(hrtimer, struct ptp, hrtimer);
+	ktime_t curr_ts = ktime_get();
+	ktime_t delta_ns, period_ns;
+	u64 ptp_clock_hi;
+
+	/* calculate the elapsed time since last restart */
+	delta_ns = ktime_to_ns(ktime_sub(curr_ts, ptp->last_ts));
+
+	/* if the ptp clock value has crossed 0.5 seconds,
+	 * its too late to update pps threshold value, so
+	 * update threshold after 1 second.
 	 */
-	pdev = pci_get_device(PCI_VENDOR_ID_CAVIUM,
-			      PCI_DEVID_OCTEONTX2_RST, NULL);
-	if (!pdev)
-		goto error;
+	ptp_clock_hi = readq(ptp->reg_base + PTP_CLOCK_HI);
+	if (ptp_clock_hi > 500000000) {
+		period_ns = ktime_set(0, (NSEC_PER_SEC + 100 - ptp_clock_hi));
+	} else {
+		writeq(500000000, ptp->reg_base + PTP_PPS_THRESH_HI);
+		period_ns = ktime_set(0, (NSEC_PER_SEC + 100 - delta_ns));
+	}
 
-	base = pci_ioremap_bar(pdev, PCI_RST_BAR_NO);
-	if (!base)
-		goto error_put_pdev;
+	hrtimer_forward_now(hrtimer, period_ns);
+	ptp->last_ts = curr_ts;
 
-	cfg = readq(base + RST_BOOT);
-	ret = CLOCK_BASE_RATE * FIELD_GET(RST_MUL_BITS, cfg);
+	return HRTIMER_RESTART;
+}
 
-	iounmap(base);
+static void ptp_hrtimer_start(struct ptp *ptp, ktime_t start_ns)
+{
+	ktime_t period_ns;
 
-error_put_pdev:
-	pci_dev_put(pdev);
+	period_ns = ktime_set(0, (NSEC_PER_SEC + 100 - start_ns));
+	hrtimer_start(&ptp->hrtimer, period_ns, HRTIMER_MODE_REL);
+	ptp->last_ts = ktime_get();
+}
 
-error:
-	return ret;
+static u64 read_ptp_tstmp_sec_nsec(struct ptp *ptp)
+{
+	u64 sec, sec1, nsec;
+	unsigned long flags;
+
+	spin_lock_irqsave(&ptp->ptp_lock, flags);
+	sec = readq(ptp->reg_base + PTP_CLOCK_SEC) & 0xFFFFFFFFUL;
+	nsec = readq(ptp->reg_base + PTP_CLOCK_HI);
+	sec1 = readq(ptp->reg_base + PTP_CLOCK_SEC) & 0xFFFFFFFFUL;
+	/* check nsec rollover */
+	if (sec1 > sec) {
+		nsec = readq(ptp->reg_base + PTP_CLOCK_HI);
+		sec = sec1;
+	}
+	spin_unlock_irqrestore(&ptp->ptp_lock, flags);
+
+	return sec * NSEC_PER_SEC + nsec;
+}
+
+static u64 read_ptp_tstmp_nsec(struct ptp *ptp)
+{
+	return readq(ptp->reg_base + PTP_CLOCK_HI);
+}
+
+static u64 ptp_calc_adjusted_comp(u64 ptp_clock_freq)
+{
+	u64 comp, adj = 0, cycles_per_sec, ns_drift = 0;
+	u32 ptp_clock_nsec, cycle_time;
+	int cycle;
+
+	/* Errata:
+	 * Issue #1: At the time of 1 sec rollover of the nano-second counter,
+	 * the nano-second counter is set to 0. However, it should be set to
+	 * (existing counter_value - 10^9).
+	 *
+	 * Issue #2: The nano-second counter rolls over at 0x3B9A_C9FF.
+	 * It should roll over at 0x3B9A_CA00.
+	 */
+
+	/* calculate ptp_clock_comp value */
+	comp = ((u64)1000000000ULL << 32) / ptp_clock_freq;
+	/* use CYCLE_MULT to avoid accuracy loss due to integer arithmetic */
+	cycle_time = NSEC_PER_SEC * CYCLE_MULT / ptp_clock_freq;
+	/* cycles per sec */
+	cycles_per_sec = ptp_clock_freq;
+
+	/* check whether ptp nanosecond counter rolls over early */
+	cycle = cycles_per_sec - 1;
+	ptp_clock_nsec = (cycle * comp) >> 32;
+	while (ptp_clock_nsec < NSEC_PER_SEC) {
+		if (ptp_clock_nsec == 0x3B9AC9FF)
+			goto calc_adj_comp;
+		cycle++;
+		ptp_clock_nsec = (cycle * comp) >> 32;
+	}
+	/* compute nanoseconds lost per second when nsec counter rolls over */
+	ns_drift = ptp_clock_nsec - NSEC_PER_SEC;
+	/* calculate ptp_clock_comp adjustment */
+	if (ns_drift > 0) {
+		adj = comp * ns_drift;
+		adj = adj / 1000000000ULL;
+	}
+	/* speed up the ptp clock to account for nanoseconds lost */
+	comp += adj;
+	return comp;
+
+calc_adj_comp:
+	/* slow down the ptp clock to not rollover early */
+	adj = comp * cycle_time;
+	adj = adj / 1000000000ULL;
+	adj = adj / CYCLE_MULT;
+	comp -= adj;
+
+	return comp;
 }
 
 struct ptp *ptp_get(void)
@@ -85,6 +208,8 @@ struct ptp *ptp_get(void)
 	/* Check driver is bound to PTP block */
 	if (!ptp)
 		ptp = ERR_PTR(-EPROBE_DEFER);
+	else
+		pci_dev_get(ptp->pdev);
 
 	return ptp;
 }
@@ -100,8 +225,8 @@ void ptp_put(struct ptp *ptp)
 static int ptp_adjfine(struct ptp *ptp, long scaled_ppm)
 {
 	bool neg_adj = false;
-	u64 comp;
-	u64 adj;
+	u32 freq, freq_adj;
+	u64 comp, adj;
 	s64 ppb;
 
 	if (scaled_ppm < 0) {
@@ -123,15 +248,22 @@ static int ptp_adjfine(struct ptp *ptp, long scaled_ppm)
 	 * where tbase is the basic compensation value calculated
 	 * initialy in the probe function.
 	 */
-	comp = ((u64)1000000000ull << 32) / ptp->clock_rate;
 	/* convert scaled_ppm to ppb */
 	ppb = 1 + scaled_ppm;
 	ppb *= 125;
 	ppb >>= 13;
-	adj = comp * ppb;
-	adj = div_u64(adj, 1000000000ull);
-	comp = neg_adj ? comp - adj : comp + adj;
 
+	if (cn10k_ptp_errata(ptp)) {
+		/* calculate the new frequency based on ppb */
+		freq_adj = (ptp->clock_rate * ppb) / 1000000000ULL;
+		freq = neg_adj ? ptp->clock_rate + freq_adj : ptp->clock_rate - freq_adj;
+		comp = ptp_calc_adjusted_comp(freq);
+	} else {
+		comp = ((u64)1000000000ull << 32) / ptp->clock_rate;
+		adj = comp * ppb;
+		adj = div_u64(adj, 1000000000ull);
+		comp = neg_adj ? comp - adj : comp + adj;
+	}
 	writeq(comp, ptp->reg_base + PTP_CLOCK_COMP);
 
 	return 0;
@@ -140,7 +272,115 @@ static int ptp_adjfine(struct ptp *ptp, long scaled_ppm)
 static int ptp_get_clock(struct ptp *ptp, u64 *clk)
 {
 	/* Return the current PTP clock */
-	*clk = readq(ptp->reg_base + PTP_CLOCK_HI);
+	*clk = ptp->read_ptp_tstmp(ptp);
+
+	return 0;
+}
+
+void ptp_start(struct ptp *ptp, u64 sclk, u32 ext_clk_freq, u32 extts)
+{
+	struct pci_dev *pdev;
+	u64 clock_comp;
+	u64 clock_cfg;
+
+	if (!ptp)
+		return;
+
+	pdev = ptp->pdev;
+
+	if (!sclk) {
+		dev_err(&pdev->dev, "PTP input clock cannot be zero\n");
+		return;
+	}
+
+	/* sclk is in MHz */
+	ptp->clock_rate = sclk * 1000000;
+
+	/* Program the seconds rollover value to 1 second */
+	if (is_ptp_dev_cnf10kb(ptp))
+		writeq(0x3b9aca00, ptp->reg_base + PTP_SEC_ROLLOVER);
+
+	/* Enable PTP clock */
+	clock_cfg = readq(ptp->reg_base + PTP_CLOCK_CFG);
+
+	if (ext_clk_freq) {
+		ptp->clock_rate = ext_clk_freq;
+		/* Set GPIO as PTP clock source */
+		clock_cfg &= ~PTP_CLOCK_CFG_EXT_CLK_IN_MASK;
+		clock_cfg |= PTP_CLOCK_CFG_EXT_CLK_EN;
+	}
+
+	if (extts) {
+		clock_cfg |= PTP_CLOCK_CFG_TSTMP_EDGE;
+		/* Set GPIO as timestamping source */
+		clock_cfg &= ~PTP_CLOCK_CFG_TSTMP_IN_MASK;
+		clock_cfg |= PTP_CLOCK_CFG_TSTMP_EN;
+	}
+
+	clock_cfg |= PTP_CLOCK_CFG_PTP_EN;
+	clock_cfg |= PTP_CLOCK_CFG_PPS_EN | PTP_CLOCK_CFG_PPS_INV;
+	writeq(clock_cfg, ptp->reg_base + PTP_CLOCK_CFG);
+
+	/* Set 50% duty cycle for 1Hz output */
+	writeq(0x1dcd650000000000, ptp->reg_base + PTP_PPS_HI_INCR);
+	writeq(0x1dcd650000000000, ptp->reg_base + PTP_PPS_LO_INCR);
+	if (cn10k_ptp_errata(ptp)) {
+		/* The ptp_clock_hi rollsover to zero once clock cycle before it
+		 * reaches one second boundary. so, program the pps_lo_incr in
+		 * such a way that the pps threshold value comparison at one
+		 * second boundary will succeed and pps edge changes. After each
+		 * one second boundary, the hrtimer handler will be invoked and
+		 * reprograms the pps threshold value.
+		 */
+		ptp->clock_period = NSEC_PER_SEC / ptp->clock_rate;
+		writeq((0x1dcd6500ULL - ptp->clock_period) << 32,
+		       ptp->reg_base + PTP_PPS_LO_INCR);
+	}
+
+	if (cn10k_ptp_errata(ptp))
+		clock_comp = ptp_calc_adjusted_comp(ptp->clock_rate);
+	else
+		clock_comp = ((u64)1000000000ull << 32) / ptp->clock_rate;
+
+	/* Initial compensation value to start the nanosecs counter */
+	writeq(clock_comp, ptp->reg_base + PTP_CLOCK_COMP);
+}
+
+static int ptp_get_tstmp(struct ptp *ptp, u64 *clk)
+{
+	u64 timestamp;
+
+	if (is_ptp_dev_cn10k(ptp)) {
+		timestamp = readq(ptp->reg_base + PTP_TIMESTAMP);
+		*clk = (timestamp >> 32) * NSEC_PER_SEC + (timestamp & 0xFFFFFFFF);
+	} else {
+		*clk = readq(ptp->reg_base + PTP_TIMESTAMP);
+	}
+
+	return 0;
+}
+
+static int ptp_set_thresh(struct ptp *ptp, u64 thresh)
+{
+	if (!cn10k_ptp_errata(ptp))
+		writeq(thresh, ptp->reg_base + PTP_PPS_THRESH_HI);
+
+	return 0;
+}
+
+static int ptp_extts_on(struct ptp *ptp, int on)
+{
+	u64 ptp_clock_hi;
+
+	if (cn10k_ptp_errata(ptp)) {
+		if (on) {
+			ptp_clock_hi = readq(ptp->reg_base + PTP_CLOCK_HI);
+			ptp_hrtimer_start(ptp, (ktime_t)ptp_clock_hi);
+		} else {
+			if (hrtimer_active(&ptp->hrtimer))
+				hrtimer_cancel(&ptp->hrtimer);
+		}
+	}
 
 	return 0;
 }
@@ -150,8 +390,6 @@ static int ptp_probe(struct pci_dev *pdev,
 {
 	struct device *dev = &pdev->dev;
 	struct ptp *ptp;
-	u64 clock_comp;
-	u64 clock_cfg;
 	int err;
 
 	ptp = devm_kzalloc(dev, sizeof(*ptp), GFP_KERNEL);
@@ -172,20 +410,20 @@ static int ptp_probe(struct pci_dev *pdev,
 
 	ptp->reg_base = pcim_iomap_table(pdev)[PCI_PTP_BAR_NO];
 
-	ptp->clock_rate = get_clock_rate();
-
-	/* Enable PTP clock */
-	clock_cfg = readq(ptp->reg_base + PTP_CLOCK_CFG);
-	clock_cfg |= PTP_CLOCK_CFG_PTP_EN;
-	writeq(clock_cfg, ptp->reg_base + PTP_CLOCK_CFG);
-
-	clock_comp = ((u64)1000000000ull << 32) / ptp->clock_rate;
-	/* Initial compensation value to start the nanosecs counter */
-	writeq(clock_comp, ptp->reg_base + PTP_CLOCK_COMP);
-
 	pci_set_drvdata(pdev, ptp);
 	if (!first_ptp_block)
 		first_ptp_block = ptp;
+
+	spin_lock_init(&ptp->ptp_lock);
+	if (is_ptp_tsfmt_sec_nsec(ptp))
+		ptp->read_ptp_tstmp = &read_ptp_tstmp_sec_nsec;
+	else
+		ptp->read_ptp_tstmp = &read_ptp_tstmp_nsec;
+
+	if (cn10k_ptp_errata(ptp)) {
+		hrtimer_init(&ptp->hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+		ptp->hrtimer.function = ptp_reset_thresh;
+	}
 
 	return 0;
 
@@ -210,6 +448,9 @@ static void ptp_remove(struct pci_dev *pdev)
 {
 	struct ptp *ptp = pci_get_drvdata(pdev);
 	u64 clock_cfg;
+
+	if (cn10k_ptp_errata(ptp) && hrtimer_active(&ptp->hrtimer))
+		hrtimer_cancel(&ptp->hrtimer);
 
 	if (IS_ERR_OR_NULL(ptp))
 		return;
@@ -271,6 +512,15 @@ int rvu_mbox_handler_ptp_op(struct rvu *rvu, struct ptp_req *req,
 		break;
 	case PTP_OP_GET_CLOCK:
 		err = ptp_get_clock(rvu->ptp, &rsp->clk);
+		break;
+	case PTP_OP_GET_TSTMP:
+		err = ptp_get_tstmp(rvu->ptp, &rsp->clk);
+		break;
+	case PTP_OP_SET_THRESH:
+		err = ptp_set_thresh(rvu->ptp, req->thresh);
+		break;
+	case PTP_OP_EXTTS_ON:
+		err = ptp_extts_on(rvu->ptp, req->extts_on);
 		break;
 	default:
 		err = -EINVAL;

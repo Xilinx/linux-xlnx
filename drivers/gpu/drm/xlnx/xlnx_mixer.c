@@ -13,9 +13,10 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_atomic_uapi.h>
 #include <drm/drm_crtc.h>
-#include <drm/drm_fb_cma_helper.h>
+#include <drm/drm_fb_dma_helper.h>
 #include <drm/drm_fourcc.h>
-#include <drm/drm_gem_cma_helper.h>
+#include <drm/drm_gem_dma_helper.h>
+#include <drm/drm_framebuffer.h>
 #include <drm/drm_modeset_helper_vtables.h>
 #include <linux/clk.h>
 #include <linux/delay.h>
@@ -31,6 +32,7 @@
 #include <linux/dmaengine.h>
 #include <linux/dma-mapping.h>
 #include <video/videomode.h>
+#include <linux/media-bus-format.h>
 #include "xlnx_bridge.h"
 #include "xlnx_crtc.h"
 #include "xlnx_drv.h"
@@ -1750,7 +1752,7 @@ static int xlnx_mix_logo_load(struct xlnx_mix_hw *mixer, u32 logo_w, u32 logo_h,
 }
 
 static int xlnx_mix_update_logo_img(struct xlnx_mix_plane *plane,
-				    struct drm_gem_cma_object *buffer,
+				    struct drm_gem_dma_object *buffer,
 				     u32 src_w, u32 src_h)
 {
 	struct xlnx_mix_layer_data *logo_layer = plane->mixer_layer;
@@ -1857,7 +1859,7 @@ static int xlnx_mix_set_plane(struct xlnx_mix_plane *plane,
 {
 	struct xlnx_mix_hw *mixer_hw;
 	struct xlnx_mix *mixer;
-	struct drm_gem_cma_object *luma_buffer;
+	struct drm_gem_dma_object *luma_buffer;
 	u32 luma_stride = fb->pitches[0];
 	dma_addr_t luma_addr, chroma_addr = 0;
 	u32 active_area_width;
@@ -1874,15 +1876,15 @@ static int xlnx_mix_set_plane(struct xlnx_mix_plane *plane,
 	active_area_height =
 		mixer->drm_primary_layer->mixer_layer->layer_regs.height;
 	/* compute memory data */
-	luma_buffer = drm_fb_cma_get_gem_obj(fb, 0);
-	luma_addr = drm_fb_cma_get_gem_addr(fb, plane->base.state, 0);
+	luma_buffer = drm_fb_dma_get_gem_obj(fb, 0);
+	luma_addr = drm_fb_dma_get_gem_addr(fb, plane->base.state, 0);
 	if (!luma_addr) {
 		DRM_ERROR("%s failed to get luma paddr\n", __func__);
 		return -EINVAL;
 	}
 
 	if (info->num_planes > 1) {
-		chroma_addr = drm_fb_cma_get_gem_addr(fb, plane->base.state, 1);
+		chroma_addr = drm_fb_dma_get_gem_addr(fb, plane->base.state, 1);
 		if (!chroma_addr) {
 			DRM_ERROR("failed to get chroma paddr\n");
 			return -EINVAL;
@@ -1953,7 +1955,7 @@ static int xlnx_mix_plane_mode_set(struct drm_plane *base_plane,
 		unsigned int width = src_w / (i ? info->hsub : 1);
 		unsigned int height = src_h / (i ? info->vsub : 1);
 
-		luma_paddr = drm_fb_cma_get_gem_addr(fb, base_plane->state, i);
+		luma_paddr = drm_fb_dma_get_gem_addr(fb, base_plane->state, i);
 		if (!luma_paddr) {
 			DRM_ERROR("%s failed to get luma paddr\n", __func__);
 			return -EINVAL;

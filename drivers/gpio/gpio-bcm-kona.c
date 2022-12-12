@@ -1,17 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Broadcom Kona GPIO Driver
  *
  * Author: Broadcom Corporation <bcm-kernel-feedback-list@broadcom.com>
  * Copyright (C) 2012-2014 Broadcom Corporation
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License as
- * published by the Free Software Foundation version 2.
- *
- * This program is distributed "as is" WITHOUT ANY WARRANTY of any
- * kind, whether express or implied; without even the implied warranty
- * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <linux/bitops.h>
@@ -606,7 +598,7 @@ static int bcm_kona_gpio_probe(struct platform_device *pdev)
 
 	kona_gpio->pdev = pdev;
 	platform_set_drvdata(pdev, kona_gpio);
-	chip->of_node = dev->of_node;
+	chip->parent = dev;
 	chip->ngpio = kona_gpio->num_bank * GPIO_PER_BANK;
 
 	kona_gpio->irq_domain = irq_domain_add_linear(dev->of_node,

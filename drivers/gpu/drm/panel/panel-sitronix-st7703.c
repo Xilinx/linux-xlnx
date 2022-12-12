@@ -453,6 +453,10 @@ disable_vcc:
 	return ret;
 }
 
+static const u32 mantix_bus_formats[] = {
+	MEDIA_BUS_FMT_RGB888_1X24,
+};
+
 static int st7703_get_modes(struct drm_panel *panel,
 			    struct drm_connector *connector)
 {
@@ -473,6 +477,10 @@ static int st7703_get_modes(struct drm_panel *panel,
 	connector->display_info.width_mm = mode->width_mm;
 	connector->display_info.height_mm = mode->height_mm;
 	drm_mode_probed_add(connector, mode);
+
+	drm_display_info_set_bus_formats(&connector->display_info,
+					 mantix_bus_formats,
+					 ARRAY_SIZE(mantix_bus_formats));
 
 	return 1;
 }
@@ -590,7 +598,7 @@ static void st7703_shutdown(struct mipi_dsi_device *dsi)
 		dev_err(&dsi->dev, "Failed to disable panel: %d\n", ret);
 }
 
-static int st7703_remove(struct mipi_dsi_device *dsi)
+static void st7703_remove(struct mipi_dsi_device *dsi)
 {
 	struct st7703 *ctx = mipi_dsi_get_drvdata(dsi);
 	int ret;
@@ -604,8 +612,6 @@ static int st7703_remove(struct mipi_dsi_device *dsi)
 	drm_panel_remove(&ctx->panel);
 
 	st7703_debugfs_remove(ctx);
-
-	return 0;
 }
 
 static const struct of_device_id st7703_of_match[] = {

@@ -249,36 +249,94 @@ static inline const char *kbasename(const char *path)
 	return tail ? tail + 1 : path;
 }
 
-#define __FORTIFY_INLINE extern __always_inline __attribute__((gnu_inline))
-#define __RENAME(x) __asm__(#x)
-
-void fortify_panic(const char *name) __noreturn __cold;
-void __read_overflow(void) __compiletime_error("detected read beyond size of object passed as 1st parameter");
-void __read_overflow2(void) __compiletime_error("detected read beyond size of object passed as 2nd parameter");
-void __read_overflow3(void) __compiletime_error("detected read beyond size of object passed as 3rd parameter");
-void __write_overflow(void) __compiletime_error("detected write beyond size of object passed as 1st parameter");
-
 #if !defined(__NO_FORTIFY) && defined(__OPTIMIZE__) && defined(CONFIG_FORTIFY_SOURCE)
 #include <linux/fortify-string.h>
 #endif
+#ifndef unsafe_memcpy
+#define unsafe_memcpy(dst, src, bytes, justification)		\
+	memcpy(dst, src, bytes)
+#endif
+
+void memcpy_and_pad(void *dest, size_t dest_len, const void *src, size_t count,
+		    int pad);
 
 /**
- * memcpy_and_pad - Copy one buffer to another with padding
- * @dest: Where to copy to
- * @dest_len: The destination buffer size
- * @src: Where to copy from
- * @count: The number of bytes to copy
- * @pad: Character to use for padding if space is left in destination.
+ * strtomem_pad - Copy NUL-terminated string to non-NUL-terminated buffer
+ *
+ * @dest: Pointer of destination character array (marked as __nonstring)
+ * @src: Pointer to NUL-terminated string
+ * @pad: Padding character to fill any remaining bytes of @dest after copy
+ *
+ * This is a replacement for strncpy() uses where the destination is not
+ * a NUL-terminated string, but with bounds checking on the source size, and
+ * an explicit padding character. If padding is not required, use strtomem().
+ *
+ * Note that the size of @dest is not an argument, as the length of @dest
+ * must be discoverable by the compiler.
  */
-static inline void memcpy_and_pad(void *dest, size_t dest_len,
-				  const void *src, size_t count, int pad)
-{
-	if (dest_len > count) {
-		memcpy(dest, src, count);
-		memset(dest + count, pad,  dest_len - count);
-	} else
-		memcpy(dest, src, dest_len);
-}
+#define strtomem_pad(dest, src, pad)	do {				\
+	const size_t _dest_len = __builtin_object_size(dest, 1);	\
+									\
+	BUILD_BUG_ON(!__builtin_constant_p(_dest_len) ||		\
+		     _dest_len == (size_t)-1);				\
+	memcpy_and_pad(dest, _dest_len, src, strnlen(src, _dest_len), pad); \
+} while (0)
+
+/**
+ * strtomem - Copy NUL-terminated string to non-NUL-terminated buffer
+ *
+ * @dest: Pointer of destination character array (marked as __nonstring)
+ * @src: Pointer to NUL-terminated string
+ *
+ * This is a replacement for strncpy() uses where the destination is not
+ * a NUL-terminated string, but with bounds checking on the source size, and
+ * without trailing padding. If padding is required, use strtomem_pad().
+ *
+ * Note that the size of @dest is not an argument, as the length of @dest
+ * must be discoverable by the compiler.
+ */
+#define strtomem(dest, src)	do {					\
+	const size_t _dest_len = __builtin_object_size(dest, 1);	\
+									\
+	BUILD_BUG_ON(!__builtin_constant_p(_dest_len) ||		\
+		     _dest_len == (size_t)-1);				\
+	memcpy(dest, src, min(_dest_len, strnlen(src, _dest_len)));	\
+} while (0)
+
+/**
+ * memset_after - Set a value after a struct member to the end of a struct
+ *
+ * @obj: Address of target struct instance
+ * @v: Byte value to repeatedly write
+ * @member: after which struct member to start writing bytes
+ *
+ * This is good for clearing padding following the given member.
+ */
+#define memset_after(obj, v, member)					\
+({									\
+	u8 *__ptr = (u8 *)(obj);					\
+	typeof(v) __val = (v);						\
+	memset(__ptr + offsetofend(typeof(*(obj)), member), __val,	\
+	       sizeof(*(obj)) - offsetofend(typeof(*(obj)), member));	\
+})
+
+/**
+ * memset_startat - Set a value starting at a member to the end of a struct
+ *
+ * @obj: Address of target struct instance
+ * @v: Byte value to repeatedly write
+ * @member: struct member to start writing at
+ *
+ * Note that if there is padding between the prior member and the target
+ * member, memset_after() should be used to clear the prior padding.
+ */
+#define memset_startat(obj, v, member)					\
+({									\
+	u8 *__ptr = (u8 *)(obj);					\
+	typeof(v) __val = (v);						\
+	memset(__ptr + offsetof(typeof(*(obj)), member), __val,		\
+	       sizeof(*(obj)) - offsetof(typeof(*(obj)), member));	\
+})
 
 /**
  * str_has_prefix - Test if a string has a given prefix

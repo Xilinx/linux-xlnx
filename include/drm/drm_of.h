@@ -49,6 +49,13 @@ int drm_of_find_panel_or_bridge(const struct device_node *np,
 				struct drm_bridge **bridge);
 int drm_of_lvds_get_dual_link_pixel_order(const struct device_node *port1,
 					  const struct device_node *port2);
+int drm_of_lvds_get_data_mapping(const struct device_node *port);
+int drm_of_get_data_lanes_count(const struct device_node *endpoint,
+				const unsigned int min, const unsigned int max);
+int drm_of_get_data_lanes_count_ep(const struct device_node *port,
+				   int port_reg, int reg,
+				   const unsigned int min,
+				   const unsigned int max);
 #else
 static inline uint32_t drm_of_crtc_port_mask(struct drm_device *dev,
 					  struct device_node *port)
@@ -95,6 +102,28 @@ static inline int drm_of_find_panel_or_bridge(const struct device_node *np,
 static inline int
 drm_of_lvds_get_dual_link_pixel_order(const struct device_node *port1,
 				      const struct device_node *port2)
+{
+	return -EINVAL;
+}
+
+static inline int
+drm_of_lvds_get_data_mapping(const struct device_node *port)
+{
+	return -EINVAL;
+}
+
+static inline int
+drm_of_get_data_lanes_count(const struct device_node *endpoint,
+			    const unsigned int min, const unsigned int max)
+{
+	return -EINVAL;
+}
+
+static inline int
+drm_of_get_data_lanes_count_ep(const struct device_node *port,
+			       int port_reg, int reg,
+			       const unsigned int min,
+			       const unsigned int max)
 {
 	return -EINVAL;
 }

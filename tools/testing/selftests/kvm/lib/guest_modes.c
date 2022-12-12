@@ -4,22 +4,59 @@
  */
 #include "guest_modes.h"
 
+#ifdef __aarch64__
+#include "processor.h"
+enum vm_guest_mode vm_mode_default;
+#endif
+
 struct guest_mode guest_modes[NUM_VM_MODES];
 
 void guest_modes_append_default(void)
 {
+#ifndef __aarch64__
 	guest_mode_append(VM_MODE_DEFAULT, true, true);
-
-#ifdef __aarch64__
-	guest_mode_append(VM_MODE_P40V48_64K, true, true);
+#else
 	{
 		unsigned int limit = kvm_check_cap(KVM_CAP_ARM_VM_IPA_SIZE);
+		bool ps4k, ps16k, ps64k;
+		int i;
+
+		aarch64_get_supported_page_sizes(limit, &ps4k, &ps16k, &ps64k);
+
+		vm_mode_default = NUM_VM_MODES;
+
 		if (limit >= 52)
-			guest_mode_append(VM_MODE_P52V48_64K, true, true);
+			guest_mode_append(VM_MODE_P52V48_64K, ps64k, ps64k);
 		if (limit >= 48) {
-			guest_mode_append(VM_MODE_P48V48_4K, true, true);
-			guest_mode_append(VM_MODE_P48V48_64K, true, true);
+			guest_mode_append(VM_MODE_P48V48_4K, ps4k, ps4k);
+			guest_mode_append(VM_MODE_P48V48_16K, ps16k, ps16k);
+			guest_mode_append(VM_MODE_P48V48_64K, ps64k, ps64k);
 		}
+		if (limit >= 40) {
+			guest_mode_append(VM_MODE_P40V48_4K, ps4k, ps4k);
+			guest_mode_append(VM_MODE_P40V48_16K, ps16k, ps16k);
+			guest_mode_append(VM_MODE_P40V48_64K, ps64k, ps64k);
+			if (ps4k)
+				vm_mode_default = VM_MODE_P40V48_4K;
+		}
+		if (limit >= 36) {
+			guest_mode_append(VM_MODE_P36V48_4K, ps4k, ps4k);
+			guest_mode_append(VM_MODE_P36V48_16K, ps16k, ps16k);
+			guest_mode_append(VM_MODE_P36V48_64K, ps64k, ps64k);
+			guest_mode_append(VM_MODE_P36V47_16K, ps16k, ps16k);
+		}
+
+		/*
+		 * Pick the first supported IPA size if the default
+		 * isn't available.
+		 */
+		for (i = 0; vm_mode_default == NUM_VM_MODES && i < NUM_VM_MODES; i++) {
+			if (guest_modes[i].supported && guest_modes[i].enabled)
+				vm_mode_default = i;
+		}
+
+		TEST_ASSERT(vm_mode_default != NUM_VM_MODES,
+			    "No supported mode!");
 	}
 #endif
 #ifdef __s390x__
@@ -28,14 +65,24 @@ void guest_modes_append_default(void)
 		struct kvm_s390_vm_cpu_processor info;
 
 		kvm_fd = open_kvm_dev_path_or_exit();
-		vm_fd = ioctl(kvm_fd, KVM_CREATE_VM, 0);
-		kvm_device_access(vm_fd, KVM_S390_VM_CPU_MODEL,
-				  KVM_S390_VM_CPU_PROCESSOR, &info, false);
+		vm_fd = __kvm_ioctl(kvm_fd, KVM_CREATE_VM, NULL);
+		kvm_device_attr_get(vm_fd, KVM_S390_VM_CPU_MODEL,
+				    KVM_S390_VM_CPU_PROCESSOR, &info);
 		close(vm_fd);
 		close(kvm_fd);
 		/* Starting with z13 we have 47bits of physical address */
 		if (info.ibc >= 0x30)
 			guest_mode_append(VM_MODE_P47V64_4K, true, true);
+	}
+#endif
+#ifdef __riscv
+	{
+		unsigned int sz = kvm_check_cap(KVM_CAP_VM_GPA_BITS);
+
+		if (sz >= 52)
+			guest_mode_append(VM_MODE_P52V48_4K, true, true);
+		if (sz >= 48)
+			guest_mode_append(VM_MODE_P48V48_4K, true, true);
 	}
 #endif
 }

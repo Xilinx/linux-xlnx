@@ -320,7 +320,7 @@ struct w83627ehf_data {
 	const u16 *scale_in;
 
 	struct mutex update_lock;
-	char valid;		/* !=0 if following fields are valid */
+	bool valid;		/* true if following fields are valid */
 	unsigned long last_updated;	/* In jiffies */
 
 	/* Register values */
@@ -688,7 +688,7 @@ static struct w83627ehf_data *w83627ehf_update_device(struct device *dev)
 						W83627EHF_REG_CASEOPEN_DET);
 
 		data->last_updated = jiffies;
-		data->valid = 1;
+		data->valid = true;
 	}
 
 	mutex_unlock(&data->update_lock);
@@ -1099,7 +1099,7 @@ clear_caseopen(struct device *dev, struct w83627ehf_data *data, int channel,
 	reg = w83627ehf_read_value(data, W83627EHF_REG_CASEOPEN_CLR);
 	w83627ehf_write_value(data, W83627EHF_REG_CASEOPEN_CLR, reg | mask);
 	w83627ehf_write_value(data, W83627EHF_REG_CASEOPEN_CLR, reg & ~mask);
-	data->valid = 0;	/* Force cache refresh */
+	data->valid = false;	/* Force cache refresh */
 	mutex_unlock(&data->update_lock);
 
 	return 0;
@@ -1944,7 +1944,7 @@ static int __init w83627ehf_probe(struct platform_device *pdev)
 	return PTR_ERR_OR_ZERO(hwmon_dev);
 }
 
-static int __maybe_unused w83627ehf_suspend(struct device *dev)
+static int w83627ehf_suspend(struct device *dev)
 {
 	struct w83627ehf_data *data = w83627ehf_update_device(dev);
 
@@ -1955,7 +1955,7 @@ static int __maybe_unused w83627ehf_suspend(struct device *dev)
 	return 0;
 }
 
-static int __maybe_unused w83627ehf_resume(struct device *dev)
+static int w83627ehf_resume(struct device *dev)
 {
 	struct w83627ehf_data *data = dev_get_drvdata(dev);
 	int i;
@@ -2004,18 +2004,18 @@ static int __maybe_unused w83627ehf_resume(struct device *dev)
 	w83627ehf_write_value(data, W83627EHF_REG_VBAT, data->vbat);
 
 	/* Force re-reading all values */
-	data->valid = 0;
+	data->valid = false;
 	mutex_unlock(&data->update_lock);
 
 	return 0;
 }
 
-static SIMPLE_DEV_PM_OPS(w83627ehf_dev_pm_ops, w83627ehf_suspend, w83627ehf_resume);
+static DEFINE_SIMPLE_DEV_PM_OPS(w83627ehf_dev_pm_ops, w83627ehf_suspend, w83627ehf_resume);
 
 static struct platform_driver w83627ehf_driver = {
 	.driver = {
 		.name	= DRVNAME,
-		.pm	= &w83627ehf_dev_pm_ops,
+		.pm	= pm_sleep_ptr(&w83627ehf_dev_pm_ops),
 	},
 };
 

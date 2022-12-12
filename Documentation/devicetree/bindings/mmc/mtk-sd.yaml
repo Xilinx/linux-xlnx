@@ -20,6 +20,7 @@ properties:
           - mediatek,mt2701-mmc
           - mediatek,mt2712-mmc
           - mediatek,mt6779-mmc
+          - mediatek,mt6795-mmc
           - mediatek,mt7620-mmc
           - mediatek,mt7622-mmc
           - mediatek,mt8135-mmc
@@ -30,11 +31,18 @@ properties:
           - const: mediatek,mt7623-mmc
           - const: mediatek,mt2701-mmc
       - items:
-          - const: mediatek,mt8192-mmc
+          - enum:
+              - mediatek,mt8186-mmc
+              - mediatek,mt8188-mmc
+              - mediatek,mt8192-mmc
+              - mediatek,mt8195-mmc
           - const: mediatek,mt8183-mmc
-      - items:
-          - const: mediatek,mt8195-mmc
-          - const: mediatek,mt8183-mmc
+
+  reg:
+    minItems: 1
+    items:
+      - description: base register (required).
+      - description: top base register (required for MT8183).
 
   clocks:
     description:
@@ -62,10 +70,28 @@ properties:
       - const: axi_cg
       - const: ahb_cg
 
+  interrupts:
+    description:
+      Should at least contain MSDC GIC interrupt. To support SDIO in-band wakeup, an extended
+      interrupt is required and be configured as wakeup source irq.
+    minItems: 1
+    maxItems: 2
+
+  interrupt-names:
+    items:
+      - const: msdc
+      - const: sdio_wakeup
+
   pinctrl-names:
+    description:
+      Should at least contain default and state_uhs. To support SDIO in-band wakeup, dat1 pin
+      will be switched between GPIO mode and SDIO DAT1 mode, state_eint is mandatory in this
+      scenario.
+    minItems: 2
     items:
       - const: default
       - const: state_uhs
+      - const: state_eint
 
   pinctrl-0:
     description:
@@ -75,6 +101,11 @@ properties:
   pinctrl-1:
     description:
       should contain uhs mode pin ctrl.
+    maxItems: 1
+
+  pinctrl-2:
+    description:
+      should switch dat1 pin to GPIO mode.
     maxItems: 1
 
   assigned-clocks:
@@ -119,6 +150,18 @@ properties:
       If present, HS400 command responses are sampled on rising edges.
       If not present, HS400 command responses are sampled on falling edges.
 
+  mediatek,hs400-ds-dly3:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    description:
+      Gear of the third delay line for DS for input data latch in data
+      pad macro, there are 32 stages from 0 to 31.
+      For different corner IC, the time is different about one step, it is
+      about 100ps.
+      The value is confirmed by doing scan and calibration to find a best
+      value with corner IC and it is valid only for HS400 mode.
+    minimum: 0
+    maximum: 31
+
   mediatek,latch-ck:
     $ref: /schemas/types.yaml#/definitions/uint32
     description:
@@ -147,6 +190,16 @@ required:
   - vmmc-supply
   - vqmmc-supply
 
+if:
+  properties:
+    compatible:
+      contains:
+        const: mediatek,mt8183-mmc
+then:
+  properties:
+    reg:
+      minItems: 2
+
 unevaluatedProperties: false
 
 examples:
@@ -172,6 +225,34 @@ examples:
         mediatek,hs200-cmd-int-delay = <26>;
         mediatek,hs400-cmd-int-delay = <14>;
         mediatek,hs400-cmd-resp-sel-rising;
+    };
+
+    mmc3: mmc@11260000 {
+        compatible = "mediatek,mt8173-mmc";
+        reg = <0x11260000 0x1000>;
+        clock-names = "source", "hclk";
+        clocks = <&pericfg CLK_PERI_MSDC30_3>,
+                 <&topckgen CLK_TOP_MSDC50_2_H_SEL>;
+        interrupt-names = "msdc", "sdio_wakeup";
+        interrupts-extended = <&gic GIC_SPI 74 IRQ_TYPE_LEVEL_LOW 0>,
+                     <&pio 23 IRQ_TYPE_LEVEL_LOW>;
+        pinctrl-names = "default", "state_uhs", "state_eint";
+        pinctrl-0 = <&mmc2_pins_default>;
+        pinctrl-1 = <&mmc2_pins_uhs>;
+        pinctrl-2 = <&mmc2_pins_eint>;
+        bus-width = <4>;
+        max-frequency = <200000000>;
+        cap-sd-highspeed;
+        sd-uhs-sdr104;
+        keep-power-in-suspend;
+        wakeup-source;
+        cap-sdio-irq;
+        no-mmc;
+        no-sd;
+        non-removable;
+        vmmc-supply = <&sdio_fixed_3v3>;
+        vqmmc-supply = <&mt6397_vgp3_reg>;
+        mmc-pwrseq = <&wifi_pwrseq>;
     };
 
 ...

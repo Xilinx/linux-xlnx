@@ -85,18 +85,16 @@ static void gve_tx_clean_pending_packets(struct gve_tx_ring *tx)
 		int j;
 
 		for (j = 0; j < cur_state->num_bufs; j++) {
-			struct gve_tx_dma_buf *buf = &cur_state->bufs[j];
-
 			if (j == 0) {
 				dma_unmap_single(tx->dev,
-						 dma_unmap_addr(buf, dma),
-						 dma_unmap_len(buf, len),
-						 DMA_TO_DEVICE);
+					dma_unmap_addr(cur_state, dma[j]),
+					dma_unmap_len(cur_state, len[j]),
+					DMA_TO_DEVICE);
 			} else {
 				dma_unmap_page(tx->dev,
-					       dma_unmap_addr(buf, dma),
-					       dma_unmap_len(buf, len),
-					       DMA_TO_DEVICE);
+					dma_unmap_addr(cur_state, dma[j]),
+					dma_unmap_len(cur_state, len[j]),
+					DMA_TO_DEVICE);
 			}
 		}
 		if (cur_state->skb) {
@@ -388,7 +386,7 @@ static int gve_prep_tso(struct sk_buff *skb)
 				     (__force __wsum)htonl(paylen));
 
 		/* Compute length of segmentation header. */
-		header_len = skb_transport_offset(skb) + tcp_hdrlen(skb);
+		header_len = skb_tcp_all_headers(skb);
 		break;
 	default:
 		return -EINVAL;
@@ -457,15 +455,15 @@ static int gve_tx_add_skb_no_copy_dqo(struct gve_tx_ring *tx,
 	const bool is_gso = skb_is_gso(skb);
 	u32 desc_idx = tx->dqo_tx.tail;
 
-	struct gve_tx_pending_packet_dqo *pending_packet;
+	struct gve_tx_pending_packet_dqo *pkt;
 	struct gve_tx_metadata_dqo metadata;
 	s16 completion_tag;
 	int i;
 
-	pending_packet = gve_alloc_pending_packet(tx);
-	pending_packet->skb = skb;
-	pending_packet->num_bufs = 0;
-	completion_tag = pending_packet - tx->dqo.pending_packets;
+	pkt = gve_alloc_pending_packet(tx);
+	pkt->skb = skb;
+	pkt->num_bufs = 0;
+	completion_tag = pkt - tx->dqo.pending_packets;
 
 	gve_extract_tx_metadata_dqo(skb, &metadata);
 	if (is_gso) {
@@ -493,8 +491,6 @@ static int gve_tx_add_skb_no_copy_dqo(struct gve_tx_ring *tx,
 
 	/* Map the linear portion of skb */
 	{
-		struct gve_tx_dma_buf *buf =
-			&pending_packet->bufs[pending_packet->num_bufs];
 		u32 len = skb_headlen(skb);
 		dma_addr_t addr;
 
@@ -502,9 +498,9 @@ static int gve_tx_add_skb_no_copy_dqo(struct gve_tx_ring *tx,
 		if (unlikely(dma_mapping_error(tx->dev, addr)))
 			goto err;
 
-		dma_unmap_len_set(buf, len, len);
-		dma_unmap_addr_set(buf, dma, addr);
-		++pending_packet->num_bufs;
+		dma_unmap_len_set(pkt, len[pkt->num_bufs], len);
+		dma_unmap_addr_set(pkt, dma[pkt->num_bufs], addr);
+		++pkt->num_bufs;
 
 		gve_tx_fill_pkt_desc_dqo(tx, &desc_idx, skb, len, addr,
 					 completion_tag,
@@ -512,8 +508,6 @@ static int gve_tx_add_skb_no_copy_dqo(struct gve_tx_ring *tx,
 	}
 
 	for (i = 0; i < shinfo->nr_frags; i++) {
-		struct gve_tx_dma_buf *buf =
-			&pending_packet->bufs[pending_packet->num_bufs];
 		const skb_frag_t *frag = &shinfo->frags[i];
 		bool is_eop = i == (shinfo->nr_frags - 1);
 		u32 len = skb_frag_size(frag);
@@ -523,9 +517,9 @@ static int gve_tx_add_skb_no_copy_dqo(struct gve_tx_ring *tx,
 		if (unlikely(dma_mapping_error(tx->dev, addr)))
 			goto err;
 
-		dma_unmap_len_set(buf, len, len);
-		dma_unmap_addr_set(buf, dma, addr);
-		++pending_packet->num_bufs;
+		dma_unmap_len_set(pkt, len[pkt->num_bufs], len);
+		dma_unmap_addr_set(pkt, dma[pkt->num_bufs], addr);
+		++pkt->num_bufs;
 
 		gve_tx_fill_pkt_desc_dqo(tx, &desc_idx, skb, len, addr,
 					 completion_tag, is_eop, is_gso);
@@ -552,22 +546,23 @@ static int gve_tx_add_skb_no_copy_dqo(struct gve_tx_ring *tx,
 	return 0;
 
 err:
-	for (i = 0; i < pending_packet->num_bufs; i++) {
-		struct gve_tx_dma_buf *buf = &pending_packet->bufs[i];
-
+	for (i = 0; i < pkt->num_bufs; i++) {
 		if (i == 0) {
-			dma_unmap_single(tx->dev, dma_unmap_addr(buf, dma),
-					 dma_unmap_len(buf, len),
+			dma_unmap_single(tx->dev,
+					 dma_unmap_addr(pkt, dma[i]),
+					 dma_unmap_len(pkt, len[i]),
 					 DMA_TO_DEVICE);
 		} else {
-			dma_unmap_page(tx->dev, dma_unmap_addr(buf, dma),
-				       dma_unmap_len(buf, len), DMA_TO_DEVICE);
+			dma_unmap_page(tx->dev,
+				       dma_unmap_addr(pkt, dma[i]),
+				       dma_unmap_len(pkt, len[i]),
+				       DMA_TO_DEVICE);
 		}
 	}
 
-	pending_packet->skb = NULL;
-	pending_packet->num_bufs = 0;
-	gve_free_pending_packet(tx, pending_packet);
+	pkt->skb = NULL;
+	pkt->num_bufs = 0;
+	gve_free_pending_packet(tx, pkt);
 
 	return -1;
 }
@@ -603,9 +598,9 @@ static int gve_num_buffer_descs_needed(const struct sk_buff *skb)
  */
 static bool gve_can_send_tso(const struct sk_buff *skb)
 {
-	const int header_len = skb_checksum_start_offset(skb) + tcp_hdrlen(skb);
 	const int max_bufs_per_seg = GVE_TX_MAX_DATA_DESCS - 1;
 	const struct skb_shared_info *shinfo = skb_shinfo(skb);
+	const int header_len = skb_tcp_all_headers(skb);
 	const int gso_size = shinfo->gso_size;
 	int cur_seg_num_bufs;
 	int cur_seg_size;
@@ -725,12 +720,12 @@ static void add_to_list(struct gve_tx_ring *tx, struct gve_index_list *list,
 
 static void remove_from_list(struct gve_tx_ring *tx,
 			     struct gve_index_list *list,
-			     struct gve_tx_pending_packet_dqo *pending_packet)
+			     struct gve_tx_pending_packet_dqo *pkt)
 {
 	s16 prev_index, next_index;
 
-	prev_index = pending_packet->prev;
-	next_index = pending_packet->next;
+	prev_index = pkt->prev;
+	next_index = pkt->next;
 
 	if (prev_index == -1) {
 		/* Node is head */
@@ -747,21 +742,18 @@ static void remove_from_list(struct gve_tx_ring *tx,
 }
 
 static void gve_unmap_packet(struct device *dev,
-			     struct gve_tx_pending_packet_dqo *pending_packet)
+			     struct gve_tx_pending_packet_dqo *pkt)
 {
-	struct gve_tx_dma_buf *buf;
 	int i;
 
 	/* SKB linear portion is guaranteed to be mapped */
-	buf = &pending_packet->bufs[0];
-	dma_unmap_single(dev, dma_unmap_addr(buf, dma),
-			 dma_unmap_len(buf, len), DMA_TO_DEVICE);
-	for (i = 1; i < pending_packet->num_bufs; i++) {
-		buf = &pending_packet->bufs[i];
-		dma_unmap_page(dev, dma_unmap_addr(buf, dma),
-			       dma_unmap_len(buf, len), DMA_TO_DEVICE);
+	dma_unmap_single(dev, dma_unmap_addr(pkt, dma[0]),
+			 dma_unmap_len(pkt, len[0]), DMA_TO_DEVICE);
+	for (i = 1; i < pkt->num_bufs; i++) {
+		dma_unmap_page(dev, dma_unmap_addr(pkt, dma[i]),
+			       dma_unmap_len(pkt, len[i]), DMA_TO_DEVICE);
 	}
-	pending_packet->num_bufs = 0;
+	pkt->num_bufs = 0;
 }
 
 /* Completion types and expected behavior:
@@ -803,7 +795,7 @@ static void gve_handle_packet_completion(struct gve_priv *priv,
 			     GVE_PACKET_STATE_PENDING_REINJECT_COMPL)) {
 			/* No outstanding miss completion but packet allocated
 			 * implies packet receives a re-injection completion
-			 * without a a prior miss completion. Return without
+			 * without a prior miss completion. Return without
 			 * completing the packet.
 			 */
 			net_err_ratelimited("%s: Re-injection completion received without corresponding miss completion: %d\n",

@@ -16,15 +16,27 @@
 
 #define sev()		asm volatile("sev" : : : "memory")
 #define wfe()		asm volatile("wfe" : : : "memory")
+#define wfet(val)	asm volatile("msr s0_3_c1_c0_0, %0"	\
+				     : : "r" (val) : "memory")
 #define wfi()		asm volatile("wfi" : : : "memory")
+#define wfit(val)	asm volatile("msr s0_3_c1_c0_1, %0"	\
+				     : : "r" (val) : "memory")
 
 #define isb()		asm volatile("isb" : : : "memory")
 #define dmb(opt)	asm volatile("dmb " #opt : : : "memory")
 #define dsb(opt)	asm volatile("dsb " #opt : : : "memory")
 
 #define psb_csync()	asm volatile("hint #17" : : : "memory")
-#define tsb_csync()	asm volatile("hint #18" : : : "memory")
+#define __tsb_csync()	asm volatile("hint #18" : : : "memory")
 #define csdb()		asm volatile("hint #20" : : : "memory")
+
+/*
+ * Data Gathering Hint:
+ * This instruction prevents merging memory accesses with Normal-NC or
+ * Device-GRE attributes before the hint instruction with any memory accesses
+ * appearing after the hint instruction.
+ */
+#define dgh()		asm volatile("hint #6" : : : "memory")
 
 #ifdef CONFIG_ARM64_PSEUDO_NMI
 #define pmr_sync()						\
@@ -38,13 +50,28 @@
 #define pmr_sync()	do {} while (0)
 #endif
 
-#define mb()		dsb(sy)
-#define rmb()		dsb(ld)
-#define wmb()		dsb(st)
+#define __mb()		dsb(sy)
+#define __rmb()		dsb(ld)
+#define __wmb()		dsb(st)
 
-#define dma_mb()	dmb(osh)
-#define dma_rmb()	dmb(oshld)
-#define dma_wmb()	dmb(oshst)
+#define __dma_mb()	dmb(osh)
+#define __dma_rmb()	dmb(oshld)
+#define __dma_wmb()	dmb(oshst)
+
+#define io_stop_wc()	dgh()
+
+#define tsb_csync()								\
+	do {									\
+		/*								\
+		 * CPUs affected by Arm Erratum 2054223 or 2067961 needs	\
+		 * another TSB to ensure the trace is flushed. The barriers	\
+		 * don't have to be strictly back to back, as long as the	\
+		 * CPU is in trace prohibited state.				\
+		 */								\
+		if (cpus_have_final_cap(ARM64_WORKAROUND_TSB_FLUSH_FAILURE))	\
+			__tsb_csync();						\
+		__tsb_csync();							\
+	} while (0)
 
 /*
  * Generate a mask for array_index__nospec() that is ~0UL when 0 <= idx < sz

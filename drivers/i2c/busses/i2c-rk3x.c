@@ -423,8 +423,8 @@ static void rk3x_i2c_handle_read(struct rk3x_i2c *i2c, unsigned int ipd)
 	if (!(ipd & REG_INT_MBRF))
 		return;
 
-	/* ack interrupt */
-	i2c_writel(i2c, REG_INT_MBRF, REG_IPD);
+	/* ack interrupt (read also produces a spurious START flag, clear it too) */
+	i2c_writel(i2c, REG_INT_MBRF | REG_INT_START, REG_IPD);
 
 	/* Can only handle a maximum of 32 bytes at a time */
 	if (len > 32)
@@ -1165,6 +1165,11 @@ static const struct rk3x_i2c_soc_data rv1108_soc_data = {
 	.calc_timings = rk3x_i2c_v1_calc_timings,
 };
 
+static const struct rk3x_i2c_soc_data rv1126_soc_data = {
+	.grf_offset = 0x118,
+	.calc_timings = rk3x_i2c_v1_calc_timings,
+};
+
 static const struct rk3x_i2c_soc_data rk3066_soc_data = {
 	.grf_offset = 0x154,
 	.calc_timings = rk3x_i2c_v0_calc_timings,
@@ -1194,6 +1199,10 @@ static const struct of_device_id rk3x_i2c_match[] = {
 	{
 		.compatible = "rockchip,rv1108-i2c",
 		.data = &rv1108_soc_data
+	},
+	{
+		.compatible = "rockchip,rv1126-i2c",
+		.data = &rv1126_soc_data
 	},
 	{
 		.compatible = "rockchip,rk3066-i2c",
@@ -1240,7 +1249,7 @@ static int rk3x_i2c_probe(struct platform_device *pdev)
 	/* use common interface to get I2C timing properties */
 	i2c_parse_fw_timings(&pdev->dev, &i2c->t, true);
 
-	strlcpy(i2c->adap.name, "rk3x-i2c", sizeof(i2c->adap.name));
+	strscpy(i2c->adap.name, "rk3x-i2c", sizeof(i2c->adap.name));
 	i2c->adap.owner = THIS_MODULE;
 	i2c->adap.algo = &rk3x_i2c_algorithm;
 	i2c->adap.retries = 3;
@@ -1338,8 +1347,15 @@ static int rk3x_i2c_probe(struct platform_device *pdev)
 		goto err_pclk;
 	}
 
+	ret = clk_enable(i2c->clk);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "Can't enable bus clk: %d\n", ret);
+		goto err_clk_notifier;
+	}
+
 	clk_rate = clk_get_rate(i2c->clk);
 	rk3x_i2c_adapt_div(i2c, clk_rate);
+	clk_disable(i2c->clk);
 
 	ret = i2c_add_adapter(&i2c->adap);
 	if (ret < 0)

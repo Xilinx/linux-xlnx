@@ -191,7 +191,7 @@ static netdev_tx_t mscan_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	int i, rtr, buf_id;
 	u32 can_id;
 
-	if (can_dropped_invalid_skb(dev, skb))
+	if (can_dev_dropped_skb(dev, skb))
 		return NETDEV_TX_OK;
 
 	out_8(&regs->cantier, 0);
@@ -401,13 +401,15 @@ static int mscan_rx_poll(struct napi_struct *napi, int quota)
 			continue;
 		}
 
-		if (canrflg & MSCAN_RXF)
+		if (canrflg & MSCAN_RXF) {
 			mscan_get_rx_frame(dev, frame);
-		else if (canrflg & MSCAN_ERR_IF)
+			stats->rx_packets++;
+			if (!(frame->can_id & CAN_RTR_FLAG))
+				stats->rx_bytes += frame->len;
+		} else if (canrflg & MSCAN_ERR_IF) {
 			mscan_get_err_frame(dev, frame, canrflg);
+		}
 
-		stats->rx_packets++;
-		stats->rx_bytes += frame->len;
 		work_done++;
 		netif_receive_skb(skb);
 	}
@@ -446,9 +448,9 @@ static irqreturn_t mscan_isr(int irq, void *dev_id)
 				continue;
 
 			out_8(&regs->cantbsel, mask);
-			stats->tx_bytes += in_8(&regs->tx.dlr);
+			stats->tx_bytes += can_get_echo_skb(dev, entry->id,
+							    NULL);
 			stats->tx_packets++;
-			can_get_echo_skb(dev, entry->id, NULL);
 			priv->tx_active &= ~mask;
 			list_del(pos);
 		}
@@ -614,6 +616,10 @@ static const struct net_device_ops mscan_netdev_ops = {
 	.ndo_change_mtu	= can_change_mtu,
 };
 
+static const struct ethtool_ops mscan_ethtool_ops = {
+	.get_ts_info = ethtool_op_get_ts_info,
+};
+
 int register_mscandev(struct net_device *dev, int mscan_clksrc)
 {
 	struct mscan_priv *priv = netdev_priv(dev);
@@ -674,10 +680,11 @@ struct net_device *alloc_mscandev(void)
 	priv = netdev_priv(dev);
 
 	dev->netdev_ops = &mscan_netdev_ops;
+	dev->ethtool_ops = &mscan_ethtool_ops;
 
 	dev->flags |= IFF_ECHO;	/* we support local echo */
 
-	netif_napi_add(dev, &priv->napi, mscan_rx_poll, 8);
+	netif_napi_add_weight(dev, &priv->napi, mscan_rx_poll, 8);
 
 	priv->can.bittiming_const = &mscan_bittiming_const;
 	priv->can.do_set_bittiming = mscan_do_set_bittiming;

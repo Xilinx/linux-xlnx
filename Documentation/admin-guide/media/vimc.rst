@@ -53,6 +53,25 @@ vimc-sensor:
 
 	* 1 Pad source
 
+vimc-lens:
+	Ancillary lens for a sensor. Supports auto focus control. Linked to
+	a vimc-sensor using an ancillary link. The lens supports FOCUS_ABSOLUTE
+	control.
+
+.. code-block:: bash
+
+	media-ctl -p
+	...
+	- entity 28: Lens A (0 pad, 0 link)
+			type V4L2 subdev subtype Lens flags 0
+			device node name /dev/v4l-subdev6
+	- entity 29: Lens B (0 pad, 0 link)
+			type V4L2 subdev subtype Lens flags 0
+			device node name /dev/v4l-subdev7
+	v4l2-ctl -d /dev/v4l-subdev7 -C focus_absolute
+	focus_absolute: 0
+
+
 vimc-debayer:
 	Transforms images in bayer format into a non-bayer format.
 	Exposes:
@@ -61,9 +80,10 @@ vimc-debayer:
 	* 1 Pad source
 
 vimc-scaler:
-	Scale up the image by a factor of 3. E.g.: a 640x480 image becomes a
-        1920x1440 image. (this value can be configured, see at
-        `Module options`_).
+	Re-size the image to meet the source pad resolution. E.g.: if the sync
+	pad is configured to 360x480 and the source to 1280x720, the image will
+	be stretched to fit the source resolution. Works for any resolution
+	within the vimc limitations (even shrinking the image if necessary).
 	Exposes:
 
 	* 1 Pad sink
@@ -76,15 +96,15 @@ vimc-capture:
 	* 1 Pad sink
 	* 1 Pad source
 
-
 Module options
 --------------
 
 Vimc has a module parameter to configure the driver.
 
-* ``sca_mult=<unsigned int>``
+* ``allocator=<unsigned int>``
 
-        Image size multiplier factor to be used to multiply both width and
-        height, so the image size will be ``sca_mult^2`` bigger than the
-        original one. Currently, only supports scaling up (the default value
-        is 3).
+	memory allocator selection, default is 0. It specifies the way buffers
+	will be allocated.
+
+		- 0: vmalloc
+		- 1: dma-contig

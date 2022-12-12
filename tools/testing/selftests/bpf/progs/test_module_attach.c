@@ -27,6 +27,20 @@ int BPF_PROG(handle_raw_tp_bare,
 	return 0;
 }
 
+int raw_tp_writable_bare_in_val = 0;
+int raw_tp_writable_bare_early_ret = 0;
+int raw_tp_writable_bare_out_val = 0;
+
+SEC("raw_tp.w/bpf_testmod_test_writable_bare")
+int BPF_PROG(handle_raw_tp_writable_bare,
+	     struct bpf_testmod_test_writable_ctx *writable)
+{
+	raw_tp_writable_bare_in_val = writable->val;
+	writable->early_ret = raw_tp_writable_bare_early_ret;
+	writable->val = raw_tp_writable_bare_out_val;
+	return 0;
+}
+
 __u32 tp_btf_read_sz = 0;
 
 SEC("tp_btf/bpf_testmod_test_read")
@@ -50,7 +64,7 @@ int BPF_PROG(handle_fentry,
 
 __u32 fentry_manual_read_sz = 0;
 
-SEC("fentry/placeholder")
+SEC("fentry")
 int BPF_PROG(handle_fentry_manual,
 	     struct file *file, struct kobject *kobj,
 	     struct bin_attribute *bin_attr, char *buf, loff_t off, size_t len)
@@ -70,6 +84,18 @@ int BPF_PROG(handle_fexit,
 {
 	fexit_read_sz = len;
 	fexit_ret = ret;
+	return 0;
+}
+
+SEC("fexit/bpf_testmod_return_ptr")
+int BPF_PROG(handle_fexit_ret, int arg, struct file *ret)
+{
+	long buf = 0;
+
+	bpf_probe_read_kernel(&buf, 8, ret);
+	bpf_probe_read_kernel(&buf, 8, (char *)ret + 256);
+	*(volatile long long *)ret;
+	*(volatile int *)&ret->f_mode;
 	return 0;
 }
 

@@ -34,6 +34,13 @@ static inline int _no_printf(const char *format, ...) { return 0; }
 #endif
 
 void print_skip(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+#define __TEST_REQUIRE(f, fmt, ...)				\
+do {								\
+	if (!(f))						\
+		ksft_exit_skip("- " fmt "\n", ##__VA_ARGS__);	\
+} while (0)
+
+#define TEST_REQUIRE(f) __TEST_REQUIRE(f, "Requirement not met: %s", #f)
 
 ssize_t test_write(int fd, const void *buf, size_t count);
 ssize_t test_read(int fd, void *buf, size_t count);
@@ -56,8 +63,10 @@ void test_assert(bool exp, const char *exp_str,
 		    #a, #b, #a, (unsigned long) __a, #b, (unsigned long) __b); \
 } while (0)
 
-#define TEST_FAIL(fmt, ...) \
-	TEST_ASSERT(false, fmt, ##__VA_ARGS__)
+#define TEST_FAIL(fmt, ...) do { \
+	TEST_ASSERT(false, fmt, ##__VA_ARGS__); \
+	__builtin_unreachable(); \
+} while (0)
 
 size_t parse_size(const char *size);
 
@@ -104,6 +113,7 @@ size_t get_trans_hugepagesz(void);
 size_t get_def_hugetlb_pagesz(void);
 const struct vm_mem_backing_src_alias *vm_mem_backing_src_alias(uint32_t i);
 size_t get_backing_src_pagesz(uint32_t i);
+bool is_backing_src_hugetlb(uint32_t i);
 void backing_src_help(const char *flag);
 enum vm_mem_backing_src_type parse_backing_src_type(const char *type_name);
 long get_run_delay(void);
@@ -115,6 +125,31 @@ long get_run_delay(void);
 static inline bool backing_src_is_shared(enum vm_mem_backing_src_type t)
 {
 	return vm_mem_backing_src_alias(t)->flag & MAP_SHARED;
+}
+
+/* Aligns x up to the next multiple of size. Size must be a power of 2. */
+static inline uint64_t align_up(uint64_t x, uint64_t size)
+{
+	uint64_t mask = size - 1;
+
+	TEST_ASSERT(size != 0 && !(size & (size - 1)),
+		    "size not a power of 2: %lu", size);
+	return ((x + mask) & ~mask);
+}
+
+static inline uint64_t align_down(uint64_t x, uint64_t size)
+{
+	uint64_t x_aligned_up = align_up(x, size);
+
+	if (x == x_aligned_up)
+		return x;
+	else
+		return x_aligned_up - size;
+}
+
+static inline void *align_ptr_up(void *x, size_t size)
+{
+	return (void *)align_up((unsigned long)x, size);
 }
 
 #endif /* SELFTEST_KVM_TEST_UTIL_H */

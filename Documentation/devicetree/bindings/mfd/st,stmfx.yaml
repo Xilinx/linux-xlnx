@@ -12,7 +12,7 @@ description: ST Multi-Function eXpander (STMFX) is a slave controller using I2C 
                through VDD) and resistive touchscreen controller.
 
 maintainers:
-  - Amelie Delaunay <amelie.delaunay@st.com>
+  - Amelie Delaunay <amelie.delaunay@foss.st.com>
 
 properties:
   compatible:
@@ -57,6 +57,7 @@ properties:
     patternProperties:
       "^[a-zA-Z]*-pins$":
         type: object
+        additionalProperties: false
 
         allOf:
           - $ref: ../pinctrl/pinmux-node.yaml

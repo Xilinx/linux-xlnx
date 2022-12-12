@@ -7,8 +7,12 @@
 #include <linux/dim.h>
 #include <linux/if_vlan.h>
 #include <net/page_pool.h>
+#include <asm/barrier.h>
 
 #include "hnae3.h"
+
+struct iphdr;
+struct ipv6hdr;
 
 enum hns3_nic_state {
 	HNS3_NIC_STATE_TESTING,
@@ -22,8 +26,11 @@ enum hns3_nic_state {
 	HNS3_NIC_STATE2_RESET_REQUESTED,
 	HNS3_NIC_STATE_HW_TX_CSUM_ENABLE,
 	HNS3_NIC_STATE_RXD_ADV_LAYOUT_ENABLE,
+	HNS3_NIC_STATE_TX_PUSH_ENABLE,
 	HNS3_NIC_STATE_MAX
 };
+
+#define HNS3_MAX_PUSH_BD_NUM		2
 
 #define HNS3_RING_RX_RING_BASEADDR_L_REG	0x00000
 #define HNS3_RING_RX_RING_BASEADDR_H_REG	0x00004
@@ -189,12 +196,13 @@ enum hns3_nic_state {
 #define HNS3_MAX_TSO_SIZE			1048576U
 #define HNS3_MAX_NON_TSO_SIZE			9728U
 
-
+#define HNS3_VECTOR_GL_MASK			GENMASK(11, 0)
 #define HNS3_VECTOR_GL0_OFFSET			0x100
 #define HNS3_VECTOR_GL1_OFFSET			0x200
 #define HNS3_VECTOR_GL2_OFFSET			0x300
 #define HNS3_VECTOR_RL_OFFSET			0x900
 #define HNS3_VECTOR_RL_EN_B			6
+#define HNS3_VECTOR_QL_MASK			GENMASK(9, 0)
 #define HNS3_VECTOR_TX_QL_OFFSET		0xe00
 #define HNS3_VECTOR_RX_QL_OFFSET		0xf00
 
@@ -396,6 +404,7 @@ struct hns3_rx_ptype {
 	u32 ip_summed : 2;
 	u32 l3_type : 4;
 	u32 valid : 1;
+	u32 hash_type: 3;
 };
 
 struct ring_stats {
@@ -406,6 +415,8 @@ struct ring_stats {
 			u64 tx_pkts;
 			u64 tx_bytes;
 			u64 tx_more;
+			u64 tx_push;
+			u64 tx_mem_doorbell;
 			u64 restart_queue;
 			u64 tx_busy;
 			u64 tx_copy;
@@ -620,6 +631,11 @@ static inline int ring_space(struct hns3_enet_ring *ring)
 			(begin - end)) - 1;
 }
 
+static inline u32 hns3_tqp_read_reg(struct hns3_enet_ring *ring, u32 reg)
+{
+	return readl_relaxed(ring->tqp->io_base + reg);
+}
+
 static inline u32 hns3_read_reg(void __iomem *base, u32 reg)
 {
 	return readl(base + reg);
@@ -653,6 +669,13 @@ static inline bool hns3_nic_resetting(struct net_device *netdev)
 	DMA_TO_DEVICE : DMA_FROM_DEVICE)
 
 #define hns3_buf_size(_ring) ((_ring)->buf_size)
+
+#define hns3_ring_stats_update(ring, cnt) do { \
+	typeof(ring) (tmp) = (ring); \
+	u64_stats_update_begin(&(tmp)->syncp); \
+	((tmp)->stats.cnt)++; \
+	u64_stats_update_end(&(tmp)->syncp); \
+} while (0) \
 
 static inline unsigned int hns3_page_order(struct hns3_enet_ring *ring)
 {
@@ -704,6 +727,8 @@ void hns3_set_vector_coalesce_tx_ql(struct hns3_enet_tqp_vector *tqp_vector,
 				    u32 ql_value);
 
 void hns3_request_update_promisc_mode(struct hnae3_handle *handle);
+int hns3_reset_notify(struct hnae3_handle *handle,
+		      enum hnae3_reset_notify_type type);
 
 #ifdef CONFIG_HNS3_DCB
 void hns3_dcbnl_setup(struct hnae3_handle *handle);
@@ -720,4 +745,7 @@ u16 hns3_get_max_available_channels(struct hnae3_handle *h);
 void hns3_cq_period_mode_init(struct hns3_nic_priv *priv,
 			      enum dim_cq_period_mode tx_mode,
 			      enum dim_cq_period_mode rx_mode);
+
+void hns3_external_lb_prepare(struct net_device *ndev, bool if_running);
+void hns3_external_lb_restore(struct net_device *ndev, bool if_running);
 #endif

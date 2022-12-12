@@ -32,6 +32,7 @@
 #include <net/netfilter/nf_conntrack_helper.h>
 #include <net/netfilter/nf_conntrack_acct.h>
 #include <net/netfilter/ipv6/nf_defrag_ipv6.h>
+#include <net/netfilter/nf_conntrack_act_ct.h>
 #include <uapi/linux/netfilter/nf_nat.h>
 
 static struct workqueue_struct *act_ct_wq;
@@ -177,7 +178,7 @@ static void tcf_ct_flow_table_add_action_meta(struct nf_conn *ct,
 	entry = tcf_ct_flow_table_flow_action_get_next(action);
 	entry->id = FLOW_ACTION_CT_METADATA;
 #if IS_ENABLED(CONFIG_NF_CONNTRACK_MARK)
-	entry->ct_metadata.mark = ct->mark;
+	entry->ct_metadata.mark = READ_ONCE(ct->mark);
 #endif
 	ctinfo = dir == IP_CT_DIR_ORIGINAL ? IP_CT_ESTABLISHED :
 					     IP_CT_ESTABLISHED_REPLY;
@@ -276,7 +277,7 @@ static struct nf_flowtable_type flowtable_ct = {
 	.owner		= THIS_MODULE,
 };
 
-static int tcf_ct_flow_table_get(struct tcf_ct_params *params)
+static int tcf_ct_flow_table_get(struct net *net, struct tcf_ct_params *params)
 {
 	struct tcf_ct_flow_table *ct_ft;
 	int err = -ENOMEM;
@@ -302,6 +303,7 @@ static int tcf_ct_flow_table_get(struct tcf_ct_params *params)
 	err = nf_flow_table_init(&ct_ft->nf_ft);
 	if (err)
 		goto err_init;
+	write_pnet(&ct_ft->nf_ft.net, net);
 
 	__module_get(THIS_MODULE);
 out_unlock:
@@ -354,10 +356,18 @@ static void tcf_ct_flow_table_put(struct tcf_ct_params *params)
 	}
 }
 
+static void tcf_ct_flow_tc_ifidx(struct flow_offload *entry,
+				 struct nf_conn_act_ct_ext *act_ct_ext, u8 dir)
+{
+	entry->tuplehash[dir].tuple.xmit_type = FLOW_OFFLOAD_XMIT_TC;
+	entry->tuplehash[dir].tuple.tc.iifidx = act_ct_ext->ifindex[dir];
+}
+
 static void tcf_ct_flow_table_add(struct tcf_ct_flow_table *ct_ft,
 				  struct nf_conn *ct,
 				  bool tcp)
 {
+	struct nf_conn_act_ct_ext *act_ct_ext;
 	struct flow_offload *entry;
 	int err;
 
@@ -373,6 +383,12 @@ static void tcf_ct_flow_table_add(struct tcf_ct_flow_table *ct_ft,
 	if (tcp) {
 		ct->proto.tcp.seen[0].flags |= IP_CT_TCP_FLAG_BE_LIBERAL;
 		ct->proto.tcp.seen[1].flags |= IP_CT_TCP_FLAG_BE_LIBERAL;
+	}
+
+	act_ct_ext = nf_conn_act_ct_ext_find(ct);
+	if (act_ct_ext) {
+		tcf_ct_flow_tc_ifidx(entry, act_ct_ext, FLOW_OFFLOAD_DIR_ORIGINAL);
+		tcf_ct_flow_tc_ifidx(entry, act_ct_ext, FLOW_OFFLOAD_DIR_REPLY);
 	}
 
 	err = flow_offload_add(&ct_ft->nf_ft, entry);
@@ -393,7 +409,8 @@ static void tcf_ct_flow_table_process_conn(struct tcf_ct_flow_table *ct_ft,
 {
 	bool tcp = false;
 
-	if (ctinfo != IP_CT_ESTABLISHED && ctinfo != IP_CT_ESTABLISHED_REPLY)
+	if ((ctinfo != IP_CT_ESTABLISHED && ctinfo != IP_CT_ESTABLISHED_REPLY) ||
+	    !test_bit(IPS_ASSURED_BIT, &ct->status))
 		return;
 
 	switch (nf_ct_protonum(ct)) {
@@ -404,6 +421,19 @@ static void tcf_ct_flow_table_process_conn(struct tcf_ct_flow_table *ct_ft,
 		break;
 	case IPPROTO_UDP:
 		break;
+#ifdef CONFIG_NF_CT_PROTO_GRE
+	case IPPROTO_GRE: {
+		struct nf_conntrack_tuple *tuple;
+
+		if (ct->status & IPS_NAT_MASK)
+			return;
+		tuple = &ct->tuplehash[IP_CT_DIR_ORIGINAL].tuple;
+		/* No support for GRE v1 */
+		if (tuple->src.u.gre.key || tuple->dst.u.gre.key)
+			return;
+		break;
+	}
+#endif
 	default:
 		return;
 	}
@@ -423,6 +453,8 @@ tcf_ct_flow_table_fill_tuple_ipv4(struct sk_buff *skb,
 	struct flow_ports *ports;
 	unsigned int thoff;
 	struct iphdr *iph;
+	size_t hdrsize;
+	u8 ipproto;
 
 	if (!pskb_network_may_pull(skb, sizeof(*iph)))
 		return false;
@@ -434,29 +466,54 @@ tcf_ct_flow_table_fill_tuple_ipv4(struct sk_buff *skb,
 	    unlikely(thoff != sizeof(struct iphdr)))
 		return false;
 
-	if (iph->protocol != IPPROTO_TCP &&
-	    iph->protocol != IPPROTO_UDP)
+	ipproto = iph->protocol;
+	switch (ipproto) {
+	case IPPROTO_TCP:
+		hdrsize = sizeof(struct tcphdr);
+		break;
+	case IPPROTO_UDP:
+		hdrsize = sizeof(*ports);
+		break;
+#ifdef CONFIG_NF_CT_PROTO_GRE
+	case IPPROTO_GRE:
+		hdrsize = sizeof(struct gre_base_hdr);
+		break;
+#endif
+	default:
 		return false;
+	}
 
 	if (iph->ttl <= 1)
 		return false;
 
-	if (!pskb_network_may_pull(skb, iph->protocol == IPPROTO_TCP ?
-					thoff + sizeof(struct tcphdr) :
-					thoff + sizeof(*ports)))
+	if (!pskb_network_may_pull(skb, thoff + hdrsize))
 		return false;
 
-	iph = ip_hdr(skb);
-	if (iph->protocol == IPPROTO_TCP)
+	switch (ipproto) {
+	case IPPROTO_TCP:
 		*tcph = (void *)(skb_network_header(skb) + thoff);
+		fallthrough;
+	case IPPROTO_UDP:
+		ports = (struct flow_ports *)(skb_network_header(skb) + thoff);
+		tuple->src_port = ports->source;
+		tuple->dst_port = ports->dest;
+		break;
+	case IPPROTO_GRE: {
+		struct gre_base_hdr *greh;
 
-	ports = (struct flow_ports *)(skb_network_header(skb) + thoff);
+		greh = (struct gre_base_hdr *)(skb_network_header(skb) + thoff);
+		if ((greh->flags & GRE_VERSION) != GRE_VERSION_0)
+			return false;
+		break;
+	}
+	}
+
+	iph = ip_hdr(skb);
+
 	tuple->src_v4.s_addr = iph->saddr;
 	tuple->dst_v4.s_addr = iph->daddr;
-	tuple->src_port = ports->source;
-	tuple->dst_port = ports->dest;
 	tuple->l3proto = AF_INET;
-	tuple->l4proto = iph->protocol;
+	tuple->l4proto = ipproto;
 
 	return true;
 }
@@ -469,36 +526,63 @@ tcf_ct_flow_table_fill_tuple_ipv6(struct sk_buff *skb,
 	struct flow_ports *ports;
 	struct ipv6hdr *ip6h;
 	unsigned int thoff;
+	size_t hdrsize;
+	u8 nexthdr;
 
 	if (!pskb_network_may_pull(skb, sizeof(*ip6h)))
 		return false;
 
 	ip6h = ipv6_hdr(skb);
+	thoff = sizeof(*ip6h);
 
-	if (ip6h->nexthdr != IPPROTO_TCP &&
-	    ip6h->nexthdr != IPPROTO_UDP)
+	nexthdr = ip6h->nexthdr;
+	switch (nexthdr) {
+	case IPPROTO_TCP:
+		hdrsize = sizeof(struct tcphdr);
+		break;
+	case IPPROTO_UDP:
+		hdrsize = sizeof(*ports);
+		break;
+#ifdef CONFIG_NF_CT_PROTO_GRE
+	case IPPROTO_GRE:
+		hdrsize = sizeof(struct gre_base_hdr);
+		break;
+#endif
+	default:
 		return false;
+	}
 
 	if (ip6h->hop_limit <= 1)
 		return false;
 
-	thoff = sizeof(*ip6h);
-	if (!pskb_network_may_pull(skb, ip6h->nexthdr == IPPROTO_TCP ?
-					thoff + sizeof(struct tcphdr) :
-					thoff + sizeof(*ports)))
+	if (!pskb_network_may_pull(skb, thoff + hdrsize))
 		return false;
 
-	ip6h = ipv6_hdr(skb);
-	if (ip6h->nexthdr == IPPROTO_TCP)
+	switch (nexthdr) {
+	case IPPROTO_TCP:
 		*tcph = (void *)(skb_network_header(skb) + thoff);
+		fallthrough;
+	case IPPROTO_UDP:
+		ports = (struct flow_ports *)(skb_network_header(skb) + thoff);
+		tuple->src_port = ports->source;
+		tuple->dst_port = ports->dest;
+		break;
+	case IPPROTO_GRE: {
+		struct gre_base_hdr *greh;
 
-	ports = (struct flow_ports *)(skb_network_header(skb) + thoff);
+		greh = (struct gre_base_hdr *)(skb_network_header(skb) + thoff);
+		if ((greh->flags & GRE_VERSION) != GRE_VERSION_0)
+			return false;
+		break;
+	}
+	}
+
+	ip6h = ipv6_hdr(skb);
+
 	tuple->src_v6 = ip6h->saddr;
 	tuple->dst_v6 = ip6h->daddr;
-	tuple->src_port = ports->source;
-	tuple->dst_port = ports->dest;
 	tuple->l3proto = AF_INET6;
-	tuple->l4proto = ip6h->nexthdr;
+	tuple->l4proto = nexthdr;
 
 	return true;
 }
@@ -515,11 +599,6 @@ static bool tcf_ct_flow_table_lookup(struct tcf_ct_params *p,
 	struct flow_offload *flow;
 	struct nf_conn *ct;
 	u8 dir;
-
-	/* Previously seen or loopback */
-	ct = nf_ct_get(skb, &ctinfo);
-	if ((ct && !nf_ct_is_template(ct)) || ctinfo == IP_CT_UNTRACKED)
-		return false;
 
 	switch (family) {
 	case NFPROTO_IPV4:
@@ -570,7 +649,6 @@ static void tcf_ct_flow_tables_uninit(void)
 }
 
 static struct tc_action_ops act_ct_ops;
-static unsigned int ct_net_id;
 
 struct tc_ct_action_net {
 	struct tc_action_net tn; /* Must be first */
@@ -588,22 +666,25 @@ static bool tcf_ct_skb_nfct_cached(struct net *net, struct sk_buff *skb,
 	if (!ct)
 		return false;
 	if (!net_eq(net, read_pnet(&ct->ct_net)))
-		return false;
+		goto drop_ct;
 	if (nf_ct_zone(ct)->id != zone_id)
-		return false;
+		goto drop_ct;
 
 	/* Force conntrack entry direction. */
 	if (force && CTINFO2DIR(ctinfo) != IP_CT_DIR_ORIGINAL) {
 		if (nf_ct_is_confirmed(ct))
 			nf_ct_kill(ct);
 
-		nf_conntrack_put(&ct->ct_general);
-		nf_ct_set(skb, NULL, IP_CT_UNTRACKED);
-
-		return false;
+		goto drop_ct;
 	}
 
 	return true;
+
+drop_ct:
+	nf_ct_put(ct);
+	nf_ct_set(skb, NULL, IP_CT_UNTRACKED);
+
+	return false;
 }
 
 /* Trim the skb to the length specified by the IP/IPv6 header,
@@ -615,7 +696,6 @@ static bool tcf_ct_skb_nfct_cached(struct net *net, struct sk_buff *skb,
 static int tcf_ct_skb_network_trim(struct sk_buff *skb, int family)
 {
 	unsigned int len;
-	int err;
 
 	switch (family) {
 	case NFPROTO_IPV4:
@@ -629,9 +709,7 @@ static int tcf_ct_skb_network_trim(struct sk_buff *skb, int family)
 		len = skb->len;
 	}
 
-	err = pskb_trim_rcsum(skb, len);
-
-	return err;
+	return pskb_trim_rcsum(skb, len);
 }
 
 static u8 tcf_ct_skb_nf_family(struct sk_buff *skb)
@@ -690,10 +768,10 @@ static int tcf_ct_handle_fragments(struct net *net, struct sk_buff *skb,
 				   u8 family, u16 zone, bool *defrag)
 {
 	enum ip_conntrack_info ctinfo;
-	struct qdisc_skb_cb cb;
 	struct nf_conn *ct;
 	int err = 0;
 	bool frag;
+	u16 mru;
 
 	/* Previously seen (loopback)? Ignore. */
 	ct = nf_ct_get(skb, &ctinfo);
@@ -708,7 +786,7 @@ static int tcf_ct_handle_fragments(struct net *net, struct sk_buff *skb,
 		return err;
 
 	skb_get(skb);
-	cb = *qdisc_skb_cb(skb);
+	mru = tc_skb_cb(skb)->mru;
 
 	if (family == NFPROTO_IPV4) {
 		enum ip_defrag_users user = IP_DEFRAG_CONNTRACK_IN + zone;
@@ -722,7 +800,7 @@ static int tcf_ct_handle_fragments(struct net *net, struct sk_buff *skb,
 
 		if (!err) {
 			*defrag = true;
-			cb.mru = IPCB(skb)->frag_max_size;
+			mru = IPCB(skb)->frag_max_size;
 		}
 	} else { /* NFPROTO_IPV6 */
 #if IS_ENABLED(CONFIG_NF_DEFRAG_IPV6)
@@ -735,7 +813,7 @@ static int tcf_ct_handle_fragments(struct net *net, struct sk_buff *skb,
 
 		if (!err) {
 			*defrag = true;
-			cb.mru = IP6CB(skb)->frag_max_size;
+			mru = IP6CB(skb)->frag_max_size;
 		}
 #else
 		err = -EOPNOTSUPP;
@@ -744,7 +822,7 @@ static int tcf_ct_handle_fragments(struct net *net, struct sk_buff *skb,
 	}
 
 	if (err != -EINPROGRESS)
-		*qdisc_skb_cb(skb) = cb;
+		tc_skb_cb(skb)->mru = mru;
 	skb_clear_hash(skb);
 	skb->ignore_df = 1;
 	return err;
@@ -762,7 +840,7 @@ static void tcf_ct_params_free(struct rcu_head *head)
 	tcf_ct_flow_table_put(params);
 
 	if (params->tmpl)
-		nf_conntrack_put(&params->tmpl->ct_general);
+		nf_ct_put(params->tmpl);
 	kfree(params);
 }
 
@@ -839,6 +917,12 @@ static int ct_nat_execute(struct sk_buff *skb, struct nf_conn *ct,
 	}
 
 	err = nf_nat_packet(ct, ctinfo, hooknum, skb);
+	if (err == NF_ACCEPT) {
+		if (maniptype == NF_NAT_MANIP_SRC)
+			tc_skb_cb(skb)->post_ct_snat = 1;
+		if (maniptype == NF_NAT_MANIP_DST)
+			tc_skb_cb(skb)->post_ct_dnat = 1;
+	}
 out:
 	return err;
 }
@@ -852,9 +936,9 @@ static void tcf_ct_act_set_mark(struct nf_conn *ct, u32 mark, u32 mask)
 	if (!mask)
 		return;
 
-	new_mark = mark | (ct->mark & ~(mask));
-	if (ct->mark != new_mark) {
-		ct->mark = new_mark;
+	new_mark = mark | (READ_ONCE(ct->mark) & ~(mask));
+	if (READ_ONCE(ct->mark) != new_mark) {
+		WRITE_ONCE(ct->mark, new_mark);
 		if (nf_ct_is_confirmed(ct))
 			nf_conntrack_event_cache(IPCT_MARK, ct);
 	}
@@ -963,10 +1047,10 @@ static int tcf_ct_act(struct sk_buff *skb, const struct tc_action *a,
 	tcf_action_update_bstats(&c->common, skb);
 
 	if (clear) {
-		qdisc_skb_cb(skb)->post_ct = false;
+		tc_skb_cb(skb)->post_ct = false;
 		ct = nf_ct_get(skb, &ctinfo);
 		if (ct) {
-			nf_conntrack_put(&ct->ct_general);
+			nf_ct_put(ct);
 			nf_ct_set(skb, NULL, IP_CT_UNTRACKED);
 		}
 
@@ -1026,6 +1110,7 @@ do_nat:
 	if (!ct)
 		goto out_push;
 	nf_ct_deliver_cached_events(ct);
+	nf_conn_act_ct_ext_fill(skb, ct, ctinfo);
 
 	err = tcf_ct_act_nat(skb, ct, ctinfo, p->ct_action, &p->range, commit);
 	if (err != NF_ACCEPT)
@@ -1034,6 +1119,9 @@ do_nat:
 	if (commit) {
 		tcf_ct_act_set_mark(ct, p->mark, p->mark_mask);
 		tcf_ct_act_set_labels(ct, p->labels, p->labels_mask);
+
+		if (!nf_ct_is_confirmed(ct))
+			nf_conn_act_ct_ext_add(ct);
 
 		/* This will take care of sending queued events
 		 * even if the connection is already confirmed.
@@ -1048,7 +1136,8 @@ do_nat:
 out_push:
 	skb_push_rcsum(skb, nh_ofs);
 
-	qdisc_skb_cb(skb)->post_ct = true;
+	tc_skb_cb(skb)->post_ct = true;
+	tc_skb_cb(skb)->zone = p->zone;
 out_clear:
 	if (defrag)
 		qdisc_skb_cb(skb)->pkt_len = skb->len;
@@ -1162,7 +1251,7 @@ static int tcf_ct_fill_params(struct net *net,
 			      struct nlattr **tb,
 			      struct netlink_ext_ack *extack)
 {
-	struct tc_ct_action_net *tn = net_generic(net, ct_net_id);
+	struct tc_ct_action_net *tn = net_generic(net, act_ct_ops.net_id);
 	struct nf_conntrack_zone zone;
 	struct nf_conn *tmpl;
 	int err;
@@ -1227,7 +1316,6 @@ static int tcf_ct_fill_params(struct net *net,
 		return -ENOMEM;
 	}
 	__set_bit(IPS_CONFIRMED_BIT, &tmpl->status);
-	nf_conntrack_get(&tmpl->ct_general);
 	p->tmpl = tmpl;
 
 	return 0;
@@ -1238,7 +1326,7 @@ static int tcf_ct_init(struct net *net, struct nlattr *nla,
 		       struct tcf_proto *tp, u32 flags,
 		       struct netlink_ext_ack *extack)
 {
-	struct tc_action_net *tn = net_generic(net, ct_net_id);
+	struct tc_action_net *tn = net_generic(net, act_ct_ops.net_id);
 	bool bind = flags & TCA_ACT_FLAGS_BIND;
 	struct tcf_ct_params *params = NULL;
 	struct nlattr *tb[TCA_CT_MAX + 1];
@@ -1300,9 +1388,9 @@ static int tcf_ct_init(struct net *net, struct nlattr *nla,
 	if (err)
 		goto cleanup;
 
-	err = tcf_ct_flow_table_get(params);
+	err = tcf_ct_flow_table_get(net, params);
 	if (err)
-		goto cleanup;
+		goto cleanup_params;
 
 	spin_lock_bh(&c->tcf_lock);
 	goto_ch = tcf_action_set_ctrlact(*a, parm->action, goto_ch);
@@ -1317,6 +1405,9 @@ static int tcf_ct_init(struct net *net, struct nlattr *nla,
 
 	return res;
 
+cleanup_params:
+	if (params->tmpl)
+		nf_ct_put(params->tmpl);
 cleanup:
 	if (goto_ch)
 		tcf_chain_put_by_act(goto_ch);
@@ -1466,23 +1557,6 @@ nla_put_failure:
 	return -1;
 }
 
-static int tcf_ct_walker(struct net *net, struct sk_buff *skb,
-			 struct netlink_callback *cb, int type,
-			 const struct tc_action_ops *ops,
-			 struct netlink_ext_ack *extack)
-{
-	struct tc_action_net *tn = net_generic(net, ct_net_id);
-
-	return tcf_generic_walker(tn, skb, cb, type, ops, extack);
-}
-
-static int tcf_ct_search(struct net *net, struct tc_action **a, u32 index)
-{
-	struct tc_action_net *tn = net_generic(net, ct_net_id);
-
-	return tcf_idr_search(tn, a, index);
-}
-
 static void tcf_stats_update(struct tc_action *a, u64 bytes, u64 packets,
 			     u64 drops, u64 lastuse, bool hw)
 {
@@ -1490,6 +1564,27 @@ static void tcf_stats_update(struct tc_action *a, u64 bytes, u64 packets,
 
 	tcf_action_update_stats(a, bytes, packets, drops, hw);
 	c->tcf_tm.lastuse = max_t(u64, c->tcf_tm.lastuse, lastuse);
+}
+
+static int tcf_ct_offload_act_setup(struct tc_action *act, void *entry_data,
+				    u32 *index_inc, bool bind,
+				    struct netlink_ext_ack *extack)
+{
+	if (bind) {
+		struct flow_action_entry *entry = entry_data;
+
+		entry->id = FLOW_ACTION_CT;
+		entry->ct.action = tcf_ct_action(act);
+		entry->ct.zone = tcf_ct_zone(act);
+		entry->ct.flow_table = tcf_ct_ft(act);
+		*index_inc = 1;
+	} else {
+		struct flow_offload_action *fl_action = entry_data;
+
+		fl_action->id = FLOW_ACTION_CT;
+	}
+
+	return 0;
 }
 
 static struct tc_action_ops act_ct_ops = {
@@ -1500,16 +1595,15 @@ static struct tc_action_ops act_ct_ops = {
 	.dump		=	tcf_ct_dump,
 	.init		=	tcf_ct_init,
 	.cleanup	=	tcf_ct_cleanup,
-	.walk		=	tcf_ct_walker,
-	.lookup		=	tcf_ct_search,
 	.stats_update	=	tcf_stats_update,
+	.offload_act_setup =	tcf_ct_offload_act_setup,
 	.size		=	sizeof(struct tcf_ct),
 };
 
 static __net_init int ct_init_net(struct net *net)
 {
 	unsigned int n_bits = sizeof_field(struct tcf_ct_params, labels) * 8;
-	struct tc_ct_action_net *tn = net_generic(net, ct_net_id);
+	struct tc_ct_action_net *tn = net_generic(net, act_ct_ops.net_id);
 
 	if (nf_connlabels_get(net, n_bits - 1)) {
 		tn->labels = false;
@@ -1527,20 +1621,20 @@ static void __net_exit ct_exit_net(struct list_head *net_list)
 
 	rtnl_lock();
 	list_for_each_entry(net, net_list, exit_list) {
-		struct tc_ct_action_net *tn = net_generic(net, ct_net_id);
+		struct tc_ct_action_net *tn = net_generic(net, act_ct_ops.net_id);
 
 		if (tn->labels)
 			nf_connlabels_put(net);
 	}
 	rtnl_unlock();
 
-	tc_action_net_exit(net_list, ct_net_id);
+	tc_action_net_exit(net_list, act_ct_ops.net_id);
 }
 
 static struct pernet_operations ct_net_ops = {
 	.init = ct_init_net,
 	.exit_batch = ct_exit_net,
-	.id   = &ct_net_id,
+	.id   = &act_ct_ops.net_id,
 	.size = sizeof(struct tc_ct_action_net),
 };
 

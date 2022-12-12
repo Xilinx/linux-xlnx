@@ -5,12 +5,12 @@
 
 #include <linux/module.h>
 #include <crypto/internal/akcipher.h>
+#include <crypto/internal/ecc.h>
 #include <crypto/akcipher.h>
 #include <crypto/ecdh.h>
 #include <linux/asn1_decoder.h>
 #include <linux/scatterlist.h>
 
-#include "ecc.h"
 #include "ecdsasignature.asn1.h"
 
 struct ecc_ctx {
@@ -332,7 +332,7 @@ static struct akcipher_alg ecdsa_nist_p192 = {
 };
 static bool ecdsa_nist_p192_registered;
 
-static int ecdsa_init(void)
+static int __init ecdsa_init(void)
 {
 	int ret;
 
@@ -359,7 +359,7 @@ nist_p256_error:
 	return ret;
 }
 
-static void ecdsa_exit(void)
+static void __exit ecdsa_exit(void)
 {
 	if (ecdsa_nist_p192_registered)
 		crypto_unregister_akcipher(&ecdsa_nist_p192);

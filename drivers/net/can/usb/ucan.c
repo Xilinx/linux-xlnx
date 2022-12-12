@@ -28,6 +28,7 @@
 #include <linux/can.h>
 #include <linux/can/dev.h>
 #include <linux/can/error.h>
+#include <linux/ethtool.h>
 #include <linux/module.h>
 #include <linux/netdevice.h>
 #include <linux/signal.h>
@@ -259,7 +260,6 @@ struct ucan_priv;
 /* Context Information for transmission URBs */
 struct ucan_urb_context {
 	struct ucan_priv *up;
-	u8 dlc;
 	bool allocated;
 };
 
@@ -621,8 +621,11 @@ static void ucan_rx_can_msg(struct ucan_priv *up, struct ucan_message_in *m)
 		memcpy(cf->data, m->msg.can_msg.data, cf->len);
 
 	/* don't count error frames as real packets */
-	stats->rx_packets++;
-	stats->rx_bytes += cf->len;
+	if (!(cf->can_id & CAN_ERR_FLAG)) {
+		stats->rx_packets++;
+		if (!(cf->can_id & CAN_RTR_FLAG))
+			stats->rx_bytes += cf->len;
+	}
 
 	/* pass it to Linux */
 	netif_rx(skb);
@@ -634,7 +637,7 @@ static void ucan_tx_complete_msg(struct ucan_priv *up,
 {
 	unsigned long flags;
 	u16 count, i;
-	u8 echo_index, dlc;
+	u8 echo_index;
 	u16 len = le16_to_cpu(m->len);
 
 	struct ucan_urb_context *context;
@@ -658,7 +661,6 @@ static void ucan_tx_complete_msg(struct ucan_priv *up,
 
 		/* gather information from the context */
 		context = &up->context_array[echo_index];
-		dlc = READ_ONCE(context->dlc);
 
 		/* Release context and restart queue if necessary.
 		 * Also check if the context was allocated
@@ -671,8 +673,8 @@ static void ucan_tx_complete_msg(struct ucan_priv *up,
 		    UCAN_TX_COMPLETE_SUCCESS) {
 			/* update statistics */
 			up->netdev->stats.tx_packets++;
-			up->netdev->stats.tx_bytes += dlc;
-			can_get_echo_skb(up->netdev, echo_index, NULL);
+			up->netdev->stats.tx_bytes +=
+				can_get_echo_skb(up->netdev, echo_index, NULL);
 		} else {
 			up->netdev->stats.tx_dropped++;
 			can_free_echo_skb(up->netdev, echo_index, NULL);
@@ -1086,8 +1088,6 @@ static struct urb *ucan_prepare_tx_urb(struct ucan_priv *up,
 	}
 	m->len = cpu_to_le16(mlen);
 
-	context->dlc = cf->len;
-
 	m->subtype = echo_index;
 
 	/* build the urb */
@@ -1120,7 +1120,7 @@ static netdev_tx_t ucan_start_xmit(struct sk_buff *skb,
 	struct can_frame *cf = (struct can_frame *)skb->data;
 
 	/* check skb */
-	if (can_dropped_invalid_skb(netdev, skb))
+	if (can_dev_dropped_skb(netdev, skb))
 		return NETDEV_TX_OK;
 
 	/* allocate a context and slow down tx path, if fifo state is low */
@@ -1232,6 +1232,10 @@ static const struct net_device_ops ucan_netdev_ops = {
 	.ndo_stop = ucan_close,
 	.ndo_start_xmit = ucan_start_xmit,
 	.ndo_change_mtu = can_change_mtu,
+};
+
+static const struct ethtool_ops ucan_ethtool_ops = {
+	.get_ts_info = ethtool_op_get_ts_info,
 };
 
 /* Request to set bittiming
@@ -1393,7 +1397,7 @@ static int ucan_probe(struct usb_interface *intf,
 	 * Stage 3 for the final driver initialisation.
 	 */
 
-	/* Prepare Memory for control transferes */
+	/* Prepare Memory for control transfers */
 	ctl_msg_buffer = devm_kzalloc(&udev->dev,
 				      sizeof(union ucan_ctl_payload),
 				      GFP_KERNEL);
@@ -1513,6 +1517,7 @@ static int ucan_probe(struct usb_interface *intf,
 	spin_lock_init(&up->context_lock);
 	spin_lock_init(&up->echo_skb_lock);
 	netdev->netdev_ops = &ucan_netdev_ops;
+	netdev->ethtool_ops = &ucan_ethtool_ops;
 
 	usb_set_intfdata(intf, up);
 	SET_NETDEV_DEV(netdev, &intf->dev);
@@ -1527,7 +1532,7 @@ static int ucan_probe(struct usb_interface *intf,
 	ret = ucan_device_request_in(up, UCAN_DEVICE_GET_FW_STRING, 0,
 				     sizeof(union ucan_ctl_payload));
 	if (ret > 0) {
-		/* copy string while ensuring zero terminiation */
+		/* copy string while ensuring zero termination */
 		strncpy(firmware_str, up->ctl_msg_buffer->raw,
 			sizeof(union ucan_ctl_payload));
 		firmware_str[sizeof(union ucan_ctl_payload)] = '\0';

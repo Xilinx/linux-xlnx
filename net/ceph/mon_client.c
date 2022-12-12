@@ -222,7 +222,7 @@ static void pick_new_mon(struct ceph_mon_client *monc)
 				max--;
 		}
 
-		n = prandom_u32() % max;
+		n = prandom_u32_max(max);
 		if (o >= 0 && n >= o)
 			n++;
 
@@ -1153,12 +1153,11 @@ static int build_initial_monmap(struct ceph_mon_client *monc)
 
 int ceph_monc_init(struct ceph_mon_client *monc, struct ceph_client *cl)
 {
-	int err = 0;
+	int err;
 
 	dout("init\n");
 	memset(monc, 0, sizeof(*monc));
 	monc->client = cl;
-	monc->monmap = NULL;
 	mutex_init(&monc->mutex);
 
 	err = build_initial_monmap(monc);

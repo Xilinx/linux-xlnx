@@ -548,7 +548,7 @@ struct octeon_mgmt_cam_state {
 };
 
 static void octeon_mgmt_cam_state_add(struct octeon_mgmt_cam_state *cs,
-				      unsigned char *addr)
+				      const unsigned char *addr)
 {
 	int i;
 
@@ -701,9 +701,6 @@ static int octeon_mgmt_ioctl_hwtstamp(struct net_device *netdev,
 
 	if (copy_from_user(&config, rq->ifr_data, sizeof(config)))
 		return -EFAULT;
-
-	if (config.flags) /* reserved for future extensions */
-		return -EINVAL;
 
 	/* Check the status of hardware for tiemstamps */
 	if (OCTEON_IS_MODEL(OCTEON_CN6XXX)) {
@@ -1345,7 +1342,7 @@ static void octeon_mgmt_poll_controller(struct net_device *netdev)
 static void octeon_mgmt_get_drvinfo(struct net_device *netdev,
 				    struct ethtool_drvinfo *info)
 {
-	strlcpy(info->driver, DRV_NAME, sizeof(info->driver));
+	strscpy(info->driver, DRV_NAME, sizeof(info->driver));
 }
 
 static int octeon_mgmt_nway_reset(struct net_device *dev)
@@ -1399,8 +1396,8 @@ static int octeon_mgmt_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, netdev);
 	p = netdev_priv(netdev);
-	netif_napi_add(netdev, &p->napi, octeon_mgmt_napi_poll,
-		       OCTEON_MGMT_NAPI_WEIGHT);
+	netif_napi_add_weight(netdev, &p->napi, octeon_mgmt_napi_poll,
+			      OCTEON_MGMT_NAPI_WEIGHT);
 
 	p->netdev = netdev;
 	p->dev = &pdev->dev;
@@ -1501,7 +1498,7 @@ static int octeon_mgmt_probe(struct platform_device *pdev)
 	netdev->min_mtu = 64 - OCTEON_MGMT_RX_HEADROOM;
 	netdev->max_mtu = 16383 - OCTEON_MGMT_RX_HEADROOM - VLAN_HLEN;
 
-	result = of_get_mac_address(pdev->dev.of_node, netdev->dev_addr);
+	result = of_get_ethdev_address(pdev->dev.of_node, netdev);
 	if (result)
 		eth_hw_addr_random(netdev);
 

@@ -7,19 +7,10 @@
 
 #include <linux/device.h>
 #include <linux/list.h>
-#include <linux/platform_device.h>
-#include <linux/slab.h>
 #include <linux/module.h>
-#include <linux/notifier.h>
-#include <linux/of.h>
-#include <linux/of_mdio.h>
-#include <linux/of_platform.h>
-#include <linux/of_net.h>
 #include <linux/netdevice.h>
 #include <linux/sysfs.h>
-#include <linux/phy_fixed.h>
 #include <linux/ptp_classify.h>
-#include <linux/etherdevice.h>
 
 #include "dsa_priv.h"
 
@@ -280,23 +271,22 @@ static int dsa_switch_rcv(struct sk_buff *skb, struct net_device *dev,
 }
 
 #ifdef CONFIG_PM_SLEEP
-static bool dsa_is_port_initialized(struct dsa_switch *ds, int p)
+static bool dsa_port_is_initialized(const struct dsa_port *dp)
 {
-	const struct dsa_port *dp = dsa_to_port(ds, p);
-
 	return dp->type == DSA_PORT_TYPE_USER && dp->slave;
 }
 
 int dsa_switch_suspend(struct dsa_switch *ds)
 {
-	int i, ret = 0;
+	struct dsa_port *dp;
+	int ret = 0;
 
 	/* Suspend slave network devices */
-	for (i = 0; i < ds->num_ports; i++) {
-		if (!dsa_is_port_initialized(ds, i))
+	dsa_switch_for_each_port(dp, ds) {
+		if (!dsa_port_is_initialized(dp))
 			continue;
 
-		ret = dsa_slave_suspend(dsa_to_port(ds, i)->slave);
+		ret = dsa_slave_suspend(dp->slave);
 		if (ret)
 			return ret;
 	}
@@ -310,7 +300,8 @@ EXPORT_SYMBOL_GPL(dsa_switch_suspend);
 
 int dsa_switch_resume(struct dsa_switch *ds)
 {
-	int i, ret = 0;
+	struct dsa_port *dp;
+	int ret = 0;
 
 	if (ds->ops->resume)
 		ret = ds->ops->resume(ds);
@@ -319,11 +310,11 @@ int dsa_switch_resume(struct dsa_switch *ds)
 		return ret;
 
 	/* Resume slave network devices */
-	for (i = 0; i < ds->num_ports; i++) {
-		if (!dsa_is_port_initialized(ds, i))
+	dsa_switch_for_each_port(dp, ds) {
+		if (!dsa_port_is_initialized(dp))
 			continue;
 
-		ret = dsa_slave_resume(dsa_to_port(ds, i)->slave);
+		ret = dsa_slave_resume(dp->slave);
 		if (ret)
 			return ret;
 	}
@@ -349,6 +340,7 @@ void dsa_flush_workqueue(void)
 {
 	flush_workqueue(dsa_owq);
 }
+EXPORT_SYMBOL_GPL(dsa_flush_workqueue);
 
 int dsa_devlink_param_get(struct devlink *dl, u32 id,
 			  struct devlink_param_gset_ctx *ctx)
@@ -406,7 +398,7 @@ EXPORT_SYMBOL_GPL(dsa_devlink_resource_register);
 
 void dsa_devlink_resources_unregister(struct dsa_switch *ds)
 {
-	devlink_resources_unregister(ds->devlink, NULL);
+	devlink_resources_unregister(ds->devlink);
 }
 EXPORT_SYMBOL_GPL(dsa_devlink_resources_unregister);
 
@@ -466,6 +458,66 @@ struct dsa_port *dsa_port_from_netdev(struct net_device *netdev)
 }
 EXPORT_SYMBOL_GPL(dsa_port_from_netdev);
 
+bool dsa_db_equal(const struct dsa_db *a, const struct dsa_db *b)
+{
+	if (a->type != b->type)
+		return false;
+
+	switch (a->type) {
+	case DSA_DB_PORT:
+		return a->dp == b->dp;
+	case DSA_DB_LAG:
+		return a->lag.dev == b->lag.dev;
+	case DSA_DB_BRIDGE:
+		return a->bridge.num == b->bridge.num;
+	default:
+		WARN_ON(1);
+		return false;
+	}
+}
+
+bool dsa_fdb_present_in_other_db(struct dsa_switch *ds, int port,
+				 const unsigned char *addr, u16 vid,
+				 struct dsa_db db)
+{
+	struct dsa_port *dp = dsa_to_port(ds, port);
+	struct dsa_mac_addr *a;
+
+	lockdep_assert_held(&dp->addr_lists_lock);
+
+	list_for_each_entry(a, &dp->fdbs, list) {
+		if (!ether_addr_equal(a->addr, addr) || a->vid != vid)
+			continue;
+
+		if (a->db.type == db.type && !dsa_db_equal(&a->db, &db))
+			return true;
+	}
+
+	return false;
+}
+EXPORT_SYMBOL_GPL(dsa_fdb_present_in_other_db);
+
+bool dsa_mdb_present_in_other_db(struct dsa_switch *ds, int port,
+				 const struct switchdev_obj_port_mdb *mdb,
+				 struct dsa_db db)
+{
+	struct dsa_port *dp = dsa_to_port(ds, port);
+	struct dsa_mac_addr *a;
+
+	lockdep_assert_held(&dp->addr_lists_lock);
+
+	list_for_each_entry(a, &dp->mdbs, list) {
+		if (!ether_addr_equal(a->addr, mdb->addr) || a->vid != mdb->vid)
+			continue;
+
+		if (a->db.type == db.type && !dsa_db_equal(&a->db, &db))
+			return true;
+	}
+
+	return false;
+}
+EXPORT_SYMBOL_GPL(dsa_mdb_present_in_other_db);
+
 static int __init dsa_init_module(void)
 {
 	int rc;
@@ -484,8 +536,16 @@ static int __init dsa_init_module(void)
 	dsa_tag_driver_register(&DSA_TAG_DRIVER_NAME(none_ops),
 				THIS_MODULE);
 
+	rc = rtnl_link_register(&dsa_link_ops);
+	if (rc)
+		goto netlink_register_fail;
+
 	return 0;
 
+netlink_register_fail:
+	dsa_tag_driver_unregister(&DSA_TAG_DRIVER_NAME(none_ops));
+	dsa_slave_unregister_notifier();
+	dev_remove_pack(&dsa_pack_type);
 register_notifier_fail:
 	destroy_workqueue(dsa_owq);
 
@@ -495,6 +555,7 @@ module_init(dsa_init_module);
 
 static void __exit dsa_cleanup_module(void)
 {
+	rtnl_link_unregister(&dsa_link_ops);
 	dsa_tag_driver_unregister(&DSA_TAG_DRIVER_NAME(none_ops));
 
 	dsa_slave_unregister_notifier();

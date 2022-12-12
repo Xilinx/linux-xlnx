@@ -6,6 +6,8 @@
 #ifndef DRIVERS_NET_ETHERNET_TI_CPSW_PRIV_H_
 #define DRIVERS_NET_ETHERNET_TI_CPSW_PRIV_H_
 
+#include <uapi/linux/bpf.h>
+
 #include "davinci_cpdma.h"
 
 #define CPSW_DEBUG	(NETIF_MSG_HW		| NETIF_MSG_WOL		| \
@@ -87,7 +89,6 @@ do {								\
 #define CPDMA_TXCP		0x40
 #define CPDMA_RXCP		0x60
 
-#define CPSW_POLL_WEIGHT	64
 #define CPSW_RX_VLAN_ENCAP_HDR_SIZE		4
 #define CPSW_MIN_PACKET_SIZE_VLAN	(VLAN_ETH_ZLEN)
 #define CPSW_MIN_PACKET_SIZE	(ETH_ZLEN)
@@ -362,6 +363,11 @@ struct cpsw_common {
 	u8 base_mac[ETH_ALEN];
 };
 
+struct cpsw_ale_ratelimit {
+	unsigned long cookie;
+	u64 rate_packet_ps;
+};
+
 struct cpsw_priv {
 	struct net_device		*ndev;
 	struct device			*dev;
@@ -382,6 +388,8 @@ struct cpsw_priv {
 	struct cpsw_common *cpsw;
 	int offload_fwd_mark;
 	u32 tx_packet_min;
+	struct cpsw_ale_ratelimit ale_bc_ratelimit;
+	struct cpsw_ale_ratelimit ale_mc_ratelimit;
 };
 
 #define ndev_to_cpsw(ndev) (((struct cpsw_priv *)netdev_priv(ndev))->cpsw)
@@ -409,7 +417,6 @@ struct __aligned(sizeof(long)) cpsw_meta_xdp {
 
 /* The buf includes headroom compatible with both skb and xdpf */
 #define CPSW_HEADROOM_NA (max(XDP_PACKET_HEADROOM, NET_SKB_PAD) + NET_IP_ALIGN)
-#define CPSW_HEADROOM  ALIGN(CPSW_HEADROOM_NA, sizeof(long))
 
 static inline int cpsw_is_xdpf_handle(void *handle)
 {
@@ -460,6 +467,7 @@ int cpsw_ndo_setup_tc(struct net_device *ndev, enum tc_setup_type type,
 bool cpsw_shp_is_off(struct cpsw_priv *priv);
 void cpsw_cbs_resume(struct cpsw_slave *slave, struct cpsw_priv *priv);
 void cpsw_mqprio_resume(struct cpsw_slave *slave, struct cpsw_priv *priv);
+void cpsw_qos_clsflower_resume(struct cpsw_priv *priv);
 
 /* ethtool */
 u32 cpsw_get_msglevel(struct net_device *ndev);
@@ -491,9 +499,13 @@ int cpsw_get_eee(struct net_device *ndev, struct ethtool_eee *edata);
 int cpsw_set_eee(struct net_device *ndev, struct ethtool_eee *edata);
 int cpsw_nway_reset(struct net_device *ndev);
 void cpsw_get_ringparam(struct net_device *ndev,
-			struct ethtool_ringparam *ering);
+			struct ethtool_ringparam *ering,
+			struct kernel_ethtool_ringparam *kernel_ering,
+			struct netlink_ext_ack *extack);
 int cpsw_set_ringparam(struct net_device *ndev,
-		       struct ethtool_ringparam *ering);
+		       struct ethtool_ringparam *ering,
+		       struct kernel_ethtool_ringparam *kernel_ering,
+		       struct netlink_ext_ack *extack);
 int cpsw_set_channels_common(struct net_device *ndev,
 			     struct ethtool_channels *chs,
 			     cpdma_handler_fn rx_handler);

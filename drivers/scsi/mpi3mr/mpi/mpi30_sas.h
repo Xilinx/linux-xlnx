@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
- *  Copyright 2016-2021 Broadcom Inc. All rights reserved.
- *
+ *  Copyright 2016-2022 Broadcom Inc. All rights reserved.
  */
 #ifndef MPI30_SAS_H
 #define MPI30_SAS_H     1
@@ -29,5 +28,19 @@ struct mpi3_smp_passthrough_request {
 	__le64                     sas_address;
 	struct mpi3_sge_common         request_sge;
 	struct mpi3_sge_common         response_sge;
+};
+
+struct mpi3_smp_passthrough_reply {
+	__le16                     host_tag;
+	u8                         ioc_use_only02;
+	u8                         function;
+	__le16                     ioc_use_only04;
+	u8                         ioc_use_only06;
+	u8                         msg_flags;
+	__le16                     ioc_use_only08;
+	__le16                     ioc_status;
+	__le32                     ioc_log_info;
+	__le16                     response_data_length;
+	__le16                     reserved12;
 };
 #endif

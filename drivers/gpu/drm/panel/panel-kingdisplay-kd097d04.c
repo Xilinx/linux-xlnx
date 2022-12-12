@@ -406,10 +406,16 @@ static int kingdisplay_panel_probe(struct mipi_dsi_device *dsi)
 	if (err < 0)
 		return err;
 
-	return mipi_dsi_attach(dsi);
+	err = mipi_dsi_attach(dsi);
+	if (err < 0) {
+		kingdisplay_panel_del(kingdisplay);
+		return err;
+	}
+
+	return 0;
 }
 
-static int kingdisplay_panel_remove(struct mipi_dsi_device *dsi)
+static void kingdisplay_panel_remove(struct mipi_dsi_device *dsi)
 {
 	struct kingdisplay_panel *kingdisplay = mipi_dsi_get_drvdata(dsi);
 	int err;
@@ -427,8 +433,6 @@ static int kingdisplay_panel_remove(struct mipi_dsi_device *dsi)
 		dev_err(&dsi->dev, "failed to detach from DSI host: %d\n", err);
 
 	kingdisplay_panel_del(kingdisplay);
-
-	return 0;
 }
 
 static void kingdisplay_panel_shutdown(struct mipi_dsi_device *dsi)

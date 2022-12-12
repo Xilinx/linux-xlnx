@@ -12,9 +12,10 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
-#include <drm/drm_fb_cma_helper.h>
+#include <drm/drm_fb_dma_helper.h>
 #include <drm/drm_fourcc.h>
-#include <drm/drm_gem_cma_helper.h>
+#include <drm/drm_framebuffer.h>
+#include <drm/drm_gem_dma_helper.h>
 #include <drm/drm_vblank.h>
 #include <linux/component.h>
 #include <linux/delay.h>
@@ -257,7 +258,7 @@ static int xlnx_pl_disp_plane_mode_set(struct drm_plane *plane,
 		dev_err(xlnx_pl_disp->dev, "Color format not supported\n");
 		return -EINVAL;
 	}
-	luma_paddr = drm_fb_cma_get_gem_addr(fb, plane->state, 0);
+	luma_paddr = drm_fb_dma_get_gem_addr(fb, plane->state, 0);
 	if (!luma_paddr) {
 		dev_err(xlnx_pl_disp->dev, "failed to get luma paddr\n");
 		return -EINVAL;
@@ -279,7 +280,7 @@ static int xlnx_pl_disp_plane_mode_set(struct drm_plane *plane,
 	 * we have a multi-plane format but only one dma channel
 	 */
 	if (info->num_planes > 1) {
-		chroma_paddr = drm_fb_cma_get_gem_addr(fb, plane->state, 1);
+		chroma_paddr = drm_fb_dma_get_gem_addr(fb, plane->state, 1);
 		if (!chroma_paddr) {
 			dev_err(xlnx_pl_disp->dev,
 				"failed to get chroma paddr\n");

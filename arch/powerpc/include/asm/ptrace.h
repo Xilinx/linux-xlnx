@@ -99,6 +99,13 @@ struct pt_regs
 
 #define STACK_FRAME_WITH_PT_REGS (STACK_FRAME_OVERHEAD + sizeof(struct pt_regs))
 
+// Always displays as "REGS" in memory dumps
+#ifdef CONFIG_CPU_BIG_ENDIAN
+#define STACK_FRAME_REGS_MARKER	ASM_CONST(0x52454753)
+#else
+#define STACK_FRAME_REGS_MARKER	ASM_CONST(0x53474552)
+#endif
+
 #ifdef __powerpc64__
 
 /*
@@ -115,12 +122,11 @@ struct pt_regs
 
 #define STACK_FRAME_OVERHEAD	112	/* size of minimum stack frame */
 #define STACK_FRAME_LR_SAVE	2	/* Location of LR in stack frame */
-#define STACK_FRAME_REGS_MARKER	ASM_CONST(0x7265677368657265)
 #define STACK_INT_FRAME_SIZE	(sizeof(struct pt_regs) + \
 				 STACK_FRAME_OVERHEAD + KERNEL_REDZONE_SIZE)
 #define STACK_FRAME_MARKER	12
 
-#ifdef PPC64_ELF_ABI_v2
+#ifdef CONFIG_PPC64_ELF_ABI_V2
 #define STACK_FRAME_MIN_SIZE	32
 #else
 #define STACK_FRAME_MIN_SIZE	STACK_FRAME_OVERHEAD
@@ -136,7 +142,6 @@ struct pt_regs
 #define KERNEL_REDZONE_SIZE	0
 #define STACK_FRAME_OVERHEAD	16	/* size of minimum stack frame */
 #define STACK_FRAME_LR_SAVE	1	/* Location of LR in stack frame */
-#define STACK_FRAME_REGS_MARKER	ASM_CONST(0x72656773)
 #define STACK_INT_FRAME_SIZE	(sizeof(struct pt_regs) + STACK_FRAME_OVERHEAD)
 #define STACK_FRAME_MARKER	2
 #define STACK_FRAME_MIN_SIZE	STACK_FRAME_OVERHEAD
@@ -291,7 +296,7 @@ static inline void regs_set_return_value(struct pt_regs *regs, unsigned long rc)
 
 static inline bool cpu_has_msr_ri(void)
 {
-	return !IS_ENABLED(CONFIG_BOOKE) && !IS_ENABLED(CONFIG_40x);
+	return !IS_ENABLED(CONFIG_BOOKE_OR_40x);
 }
 
 static inline bool regs_is_unrecoverable(struct pt_regs *regs)

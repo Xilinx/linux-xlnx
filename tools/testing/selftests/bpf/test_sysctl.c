@@ -14,9 +14,9 @@
 #include <bpf/libbpf.h>
 
 #include <bpf/bpf_endian.h>
-#include "bpf_rlimit.h"
 #include "bpf_util.h"
 #include "cgroup_helpers.h"
+#include "testing_helpers.h"
 
 #define CG_PATH			"/foo"
 #define MAX_INSNS		512
@@ -124,7 +124,7 @@ static struct sysctl_test tests[] = {
 		.descr = "ctx:write sysctl:write read ok narrow",
 		.insns = {
 			/* u64 w = (u16)write & 1; */
-#if __BYTE_ORDER == __LITTLE_ENDIAN
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 			BPF_LDX_MEM(BPF_H, BPF_REG_7, BPF_REG_1,
 				    offsetof(struct bpf_sysctl, write)),
 #else
@@ -184,7 +184,7 @@ static struct sysctl_test tests[] = {
 		.descr = "ctx:file_pos sysctl:read read ok narrow",
 		.insns = {
 			/* If (file_pos == X) */
-#if __BYTE_ORDER == __LITTLE_ENDIAN
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 			BPF_LDX_MEM(BPF_B, BPF_REG_7, BPF_REG_1,
 				    offsetof(struct bpf_sysctl, file_pos)),
 #else
@@ -1372,7 +1372,7 @@ static struct sysctl_test tests[] = {
 	},
 	{
 		"C prog: deny all writes",
-		.prog_file = "./test_sysctl_prog.o",
+		.prog_file = "./test_sysctl_prog.bpf.o",
 		.attach_type = BPF_CGROUP_SYSCTL,
 		.sysctl = "net/ipv4/tcp_mem",
 		.open_flags = O_WRONLY,
@@ -1381,7 +1381,7 @@ static struct sysctl_test tests[] = {
 	},
 	{
 		"C prog: deny access by name",
-		.prog_file = "./test_sysctl_prog.o",
+		.prog_file = "./test_sysctl_prog.bpf.o",
 		.attach_type = BPF_CGROUP_SYSCTL,
 		.sysctl = "net/ipv4/route/mtu_expires",
 		.open_flags = O_RDONLY,
@@ -1389,7 +1389,7 @@ static struct sysctl_test tests[] = {
 	},
 	{
 		"C prog: read tcp_mem",
-		.prog_file = "./test_sysctl_prog.o",
+		.prog_file = "./test_sysctl_prog.bpf.o",
 		.attach_type = BPF_CGROUP_SYSCTL,
 		.sysctl = "net/ipv4/tcp_mem",
 		.open_flags = O_RDONLY,
@@ -1435,14 +1435,10 @@ static int load_sysctl_prog_insns(struct sysctl_test *test,
 				  const char *sysctl_path)
 {
 	struct bpf_insn *prog = test->insns;
-	struct bpf_load_program_attr attr;
-	int ret;
+	LIBBPF_OPTS(bpf_prog_load_opts, opts);
+	int ret, insn_cnt;
 
-	memset(&attr, 0, sizeof(struct bpf_load_program_attr));
-	attr.prog_type = BPF_PROG_TYPE_CGROUP_SYSCTL;
-	attr.insns = prog;
-	attr.insns_cnt = probe_prog_length(attr.insns);
-	attr.license = "GPL";
+	insn_cnt = probe_prog_length(prog);
 
 	if (test->fixup_value_insn) {
 		char buf[128];
@@ -1465,7 +1461,10 @@ static int load_sysctl_prog_insns(struct sysctl_test *test,
 			return -1;
 	}
 
-	ret = bpf_load_program_xattr(&attr, bpf_log_buf, BPF_LOG_BUF_SIZE);
+	opts.log_buf = bpf_log_buf;
+	opts.log_size = BPF_LOG_BUF_SIZE;
+
+	ret = bpf_prog_load(BPF_PROG_TYPE_CGROUP_SYSCTL, NULL, "GPL", prog, insn_cnt, &opts);
 	if (ret < 0 && test->result != LOAD_REJECT) {
 		log_err(">>> Loading program error.\n"
 			">>> Verifier output:\n%s\n-------\n", bpf_log_buf);
@@ -1476,15 +1475,10 @@ static int load_sysctl_prog_insns(struct sysctl_test *test,
 
 static int load_sysctl_prog_file(struct sysctl_test *test)
 {
-	struct bpf_prog_load_attr attr;
 	struct bpf_object *obj;
 	int prog_fd;
 
-	memset(&attr, 0, sizeof(struct bpf_prog_load_attr));
-	attr.file = test->prog_file;
-	attr.prog_type = BPF_PROG_TYPE_CGROUP_SYSCTL;
-
-	if (bpf_prog_load_xattr(&attr, &obj, &prog_fd)) {
+	if (bpf_prog_test_load(test->prog_file, BPF_PROG_TYPE_CGROUP_SYSCTL, &obj, &prog_fd)) {
 		if (test->result != LOAD_REJECT)
 			log_err(">>> Loading program (%s) error.\n",
 				test->prog_file);
@@ -1566,7 +1560,7 @@ static int run_test_case(int cgfd, struct sysctl_test *test)
 			goto err;
 	}
 
-	if (bpf_prog_attach(progfd, cgfd, atype, BPF_F_ALLOW_OVERRIDE) == -1) {
+	if (bpf_prog_attach(progfd, cgfd, atype, BPF_F_ALLOW_OVERRIDE) < 0) {
 		if (test->result == ATTACH_REJECT)
 			goto out;
 		else
@@ -1622,6 +1616,9 @@ int main(int argc, char **argv)
 	cgfd = cgroup_setup_and_join(CG_PATH);
 	if (cgfd < 0)
 		goto err;
+
+	/* Use libbpf 1.0 API mode */
+	libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
 
 	if (run_tests(cgfd))
 		goto err;

@@ -2,7 +2,7 @@
 config PPC_POWERNV
 	depends on PPC64 && PPC_BOOK3S
 	bool "IBM PowerNV (Non-Virtualized) platform support"
-	select PPC_NATIVE
+	select PPC_HASH_MMU_NATIVE if PPC_64S_HASH_MMU
 	select PPC_XICS
 	select PPC_ICP_NATIVE
 	select PPC_XIVE_NATIVE
@@ -12,7 +12,6 @@ config PPC_POWERNV
 	select EPAPR_BOOT
 	select PPC_INDIRECT_PIO
 	select PPC_UDBG_16550
-	select ARCH_RANDOM
 	select CPU_FREQ
 	select PPC_DOORBELL
 	select MMU_NOTIFIER
@@ -20,7 +19,7 @@ config PPC_POWERNV
 	default y
 
 config OPAL_PRD
-	tristate 'OPAL PRD driver'
+	tristate "OPAL PRD driver"
 	depends on PPC_POWERNV
 	help
 	  This enables the opal-prd driver, a facility to run processor

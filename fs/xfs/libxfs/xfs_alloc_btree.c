@@ -20,6 +20,7 @@
 #include "xfs_trans.h"
 #include "xfs_ag.h"
 
+static struct kmem_cache	*xfs_allocbt_cur_cache;
 
 STATIC struct xfs_btree_cur *
 xfs_allocbt_dup_cursor(
@@ -59,8 +60,8 @@ xfs_allocbt_alloc_block(
 	xfs_agblock_t		bno;
 
 	/* Allocate the new block from the freelist. If we can't, give up.  */
-	error = xfs_alloc_get_freelist(cur->bc_tp, cur->bc_ag.agbp,
-				       &bno, 1);
+	error = xfs_alloc_get_freelist(cur->bc_ag.pag, cur->bc_tp,
+			cur->bc_ag.agbp, &bno, 1);
 	if (error)
 		return error;
 
@@ -70,7 +71,7 @@ xfs_allocbt_alloc_block(
 	}
 
 	atomic64_inc(&cur->bc_mp->m_allocbt_blks);
-	xfs_extent_busy_reuse(cur->bc_mp, cur->bc_ag.agbp->b_pag, bno, 1, false);
+	xfs_extent_busy_reuse(cur->bc_mp, cur->bc_ag.pag, bno, 1, false);
 
 	new->s = cpu_to_be32(bno);
 
@@ -88,7 +89,8 @@ xfs_allocbt_free_block(
 	int			error;
 
 	bno = xfs_daddr_to_agbno(cur->bc_mp, xfs_buf_daddr(bp));
-	error = xfs_alloc_put_freelist(cur->bc_tp, agbp, NULL, bno, 1);
+	error = xfs_alloc_put_freelist(cur->bc_ag.pag, cur->bc_tp, agbp, NULL,
+			bno, 1);
 	if (error)
 		return error;
 
@@ -316,7 +318,7 @@ xfs_allocbt_verify(
 	if (pag && pag->pagf_init) {
 		if (level >= pag->pagf_levels[btnum])
 			return __this_address;
-	} else if (level >= mp->m_ag_maxlevels)
+	} else if (level >= mp->m_alloc_maxlevels)
 		return __this_address;
 
 	return xfs_btree_sblock_verify(bp, mp->m_alloc_mxr[level != 0]);
@@ -477,12 +479,8 @@ xfs_allocbt_init_common(
 
 	ASSERT(btnum == XFS_BTNUM_BNO || btnum == XFS_BTNUM_CNT);
 
-	cur = kmem_cache_zalloc(xfs_btree_cur_zone, GFP_NOFS | __GFP_NOFAIL);
-
-	cur->bc_tp = tp;
-	cur->bc_mp = mp;
-	cur->bc_btnum = btnum;
-	cur->bc_blocklog = mp->m_sb.sb_blocklog;
+	cur = xfs_btree_alloc_cursor(mp, tp, btnum, mp->m_alloc_maxlevels,
+			xfs_allocbt_cur_cache);
 	cur->bc_ag.abt.active = false;
 
 	if (btnum == XFS_BTNUM_CNT) {
@@ -571,6 +569,17 @@ xfs_allocbt_commit_staged_btree(
 	}
 }
 
+/* Calculate number of records in an alloc btree block. */
+static inline unsigned int
+xfs_allocbt_block_maxrecs(
+	unsigned int		blocklen,
+	bool			leaf)
+{
+	if (leaf)
+		return blocklen / sizeof(xfs_alloc_rec_t);
+	return blocklen / (sizeof(xfs_alloc_key_t) + sizeof(xfs_alloc_ptr_t));
+}
+
 /*
  * Calculate number of records in an alloc btree block.
  */
@@ -581,10 +590,26 @@ xfs_allocbt_maxrecs(
 	int			leaf)
 {
 	blocklen -= XFS_ALLOC_BLOCK_LEN(mp);
+	return xfs_allocbt_block_maxrecs(blocklen, leaf);
+}
 
-	if (leaf)
-		return blocklen / sizeof(xfs_alloc_rec_t);
-	return blocklen / (sizeof(xfs_alloc_key_t) + sizeof(xfs_alloc_ptr_t));
+/* Free space btrees are at their largest when every other block is free. */
+#define XFS_MAX_FREESP_RECORDS	((XFS_MAX_AG_BLOCKS + 1) / 2)
+
+/* Compute the max possible height for free space btrees. */
+unsigned int
+xfs_allocbt_maxlevels_ondisk(void)
+{
+	unsigned int		minrecs[2];
+	unsigned int		blocklen;
+
+	blocklen = min(XFS_MIN_BLOCKSIZE - XFS_BTREE_SBLOCK_LEN,
+		       XFS_MIN_CRC_BLOCKSIZE - XFS_BTREE_SBLOCK_CRC_LEN);
+
+	minrecs[0] = xfs_allocbt_block_maxrecs(blocklen, true) / 2;
+	minrecs[1] = xfs_allocbt_block_maxrecs(blocklen, false) / 2;
+
+	return xfs_btree_compute_maxlevels(minrecs, XFS_MAX_FREESP_RECORDS);
 }
 
 /* Calculate the freespace btree size for some records. */
@@ -594,4 +619,23 @@ xfs_allocbt_calc_size(
 	unsigned long long	len)
 {
 	return xfs_btree_calc_size(mp->m_alloc_mnr, len);
+}
+
+int __init
+xfs_allocbt_init_cur_cache(void)
+{
+	xfs_allocbt_cur_cache = kmem_cache_create("xfs_bnobt_cur",
+			xfs_btree_cur_sizeof(xfs_allocbt_maxlevels_ondisk()),
+			0, 0, NULL);
+
+	if (!xfs_allocbt_cur_cache)
+		return -ENOMEM;
+	return 0;
+}
+
+void
+xfs_allocbt_destroy_cur_cache(void)
+{
+	kmem_cache_destroy(xfs_allocbt_cur_cache);
+	xfs_allocbt_cur_cache = NULL;
 }

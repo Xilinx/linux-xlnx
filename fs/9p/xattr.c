@@ -1,15 +1,7 @@
+// SPDX-License-Identifier: LGPL-2.1
 /*
  * Copyright IBM Corporation, 2010
  * Author Aneesh Kumar K.V <aneesh.kumar@linux.vnet.ibm.com>
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of version 2.1 of the GNU Lesser General Public License
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it would be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- *
  */
 
 #include <linux/module.h>
@@ -52,7 +44,7 @@ ssize_t v9fs_fid_xattr_get(struct p9_fid *fid, const char *name,
 		if (err)
 			retval = err;
 	}
-	p9_client_clunk(attr_fid);
+	p9_fid_put(attr_fid);
 	return retval;
 }
 
@@ -79,7 +71,7 @@ ssize_t v9fs_xattr_get(struct dentry *dentry, const char *name,
 	if (IS_ERR(fid))
 		return PTR_ERR(fid);
 	ret = v9fs_fid_xattr_get(fid, name, buffer, buffer_size);
-	p9_client_clunk(fid);
+	p9_fid_put(fid);
 
 	return ret;
 }
@@ -106,7 +98,7 @@ int v9fs_xattr_set(struct dentry *dentry, const char *name,
 	if (IS_ERR(fid))
 		return PTR_ERR(fid);
 	ret = v9fs_fid_xattr_set(fid, name, value, value_len, flags);
-	p9_client_clunk(fid);
+	p9_fid_put(fid);
 	return ret;
 }
 
@@ -136,7 +128,7 @@ int v9fs_fid_xattr_set(struct p9_fid *fid, const char *name,
 			 retval);
 	else
 		p9_client_write(fid, 0, &from, &retval);
-	err = p9_client_clunk(fid);
+	err = p9_fid_put(fid);
 	if (!retval && err)
 		retval = err;
 	return retval;

@@ -896,10 +896,7 @@ map_and_check_smb_error(struct mid_q_entry *mid, bool logErr)
 		if (class == ERRSRV && code == ERRbaduid) {
 			cifs_dbg(FYI, "Server returned 0x%x, reconnecting session...\n",
 				code);
-			spin_lock(&GlobalMid_Lock);
-			if (mid->server->tcpStatus != CifsExiting)
-				mid->server->tcpStatus = CifsNeedReconnect;
-			spin_unlock(&GlobalMid_Lock);
+			cifs_signal_cifsd_for_reconnect(mid->server, false);
 		}
 	}
 
@@ -912,9 +909,9 @@ map_and_check_smb_error(struct mid_q_entry *mid, bool logErr)
  * portion, the number of word parameters and the data portion of the message
  */
 unsigned int
-smbCalcSize(void *buf, struct TCP_Server_Info *server)
+smbCalcSize(void *buf)
 {
-	struct smb_hdr *ptr = (struct smb_hdr *)buf;
+	struct smb_hdr *ptr = buf;
 	return (sizeof(struct smb_hdr) + (2 * ptr->WordCount) +
 		2 /* size of the bcc field */ + get_bcc(ptr));
 }

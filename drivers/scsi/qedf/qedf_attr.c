@@ -60,10 +60,19 @@ static ssize_t fka_period_show(struct device *dev,
 static DEVICE_ATTR_RO(fcoe_mac);
 static DEVICE_ATTR_RO(fka_period);
 
-struct device_attribute *qedf_host_attrs[] = {
-	&dev_attr_fcoe_mac,
-	&dev_attr_fka_period,
+static struct attribute *qedf_host_attrs[] = {
+	&dev_attr_fcoe_mac.attr,
+	&dev_attr_fka_period.attr,
 	NULL,
+};
+
+static const struct attribute_group qedf_host_attr_group = {
+	.attrs = qedf_host_attrs
+};
+
+const struct attribute_group *qedf_host_groups[] = {
+	&qedf_host_attr_group,
+	NULL
 };
 
 extern const struct qed_fcoe_ops *qed_ops;
@@ -122,7 +131,6 @@ qedf_sysfs_write_grcdump(struct file *filep, struct kobject *kobj,
 	struct qedf_ctx *qedf = NULL;
 	long reading;
 	int ret = 0;
-	char msg[40];
 
 	if (off != 0)
 		return ret;
@@ -139,7 +147,6 @@ qedf_sysfs_write_grcdump(struct file *filep, struct kobject *kobj,
 		return ret;
 	}
 
-	memset(msg, 0, sizeof(msg));
 	switch (reading) {
 	case 0:
 		memset(qedf->grcdump, 0, qedf->grcdump_size);

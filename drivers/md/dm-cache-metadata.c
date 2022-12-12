@@ -334,7 +334,7 @@ static int __write_initial_superblock(struct dm_cache_metadata *cmd)
 	int r;
 	struct dm_block *sblock;
 	struct cache_disk_superblock *disk_super;
-	sector_t bdev_size = i_size_read(cmd->bdev->bd_inode) >> SECTOR_SHIFT;
+	sector_t bdev_size = bdev_nr_sectors(cmd->bdev);
 
 	/* FIXME: see if we can lose the max sectors limit */
 	if (bdev_size > DM_CACHE_METADATA_MAX_SECTORS)
@@ -1509,7 +1509,6 @@ int dm_cache_load_mappings(struct dm_cache_metadata *cmd,
 
 static int __dump_mapping(void *context, uint64_t cblock, void *leaf)
 {
-	int r = 0;
 	__le64 value;
 	dm_oblock_t oblock;
 	unsigned flags;
@@ -1517,7 +1516,7 @@ static int __dump_mapping(void *context, uint64_t cblock, void *leaf)
 	memcpy(&value, leaf, sizeof(value));
 	unpack_value(value, &oblock, &flags);
 
-	return r;
+	return 0;
 }
 
 static int __dump_mappings(struct dm_cache_metadata *cmd)

@@ -121,13 +121,20 @@ def markup_refs(docname, app, node):
     return repl
 
 #
+# Keep track of cross-reference lookups that failed so we don't have to
+# do them again.
+#
+failed_lookups = { }
+def failure_seen(target):
+    return (target) in failed_lookups
+def note_failure(target):
+    failed_lookups[target] = True
+
+#
 # In sphinx3 we can cross-reference to C macro and function, each one with its
 # own C role, but both match the same regex, so we try both.
 #
 def markup_func_ref_sphinx3(docname, app, match):
-    class_str = ['c-func', 'c-macro']
-    reftype_str = ['function', 'macro']
-
     cdom = app.env.domains['c']
     #
     # Go through the dance of getting an xref out of the C domain
@@ -143,27 +150,28 @@ def markup_func_ref_sphinx3(docname, app, match):
 
     if base_target not in Skipnames:
         for target in possible_targets:
-            if target not in Skipfuncs:
-                for class_s, reftype_s in zip(class_str, reftype_str):
-                    lit_text = nodes.literal(classes=['xref', 'c', class_s])
-                    lit_text += target_text
-                    pxref = addnodes.pending_xref('', refdomain = 'c',
-                                                  reftype = reftype_s,
-                                                  reftarget = target, modname = None,
-                                                  classname = None)
-                    #
-                    # XXX The Latex builder will throw NoUri exceptions here,
-                    # work around that by ignoring them.
-                    #
-                    try:
-                        xref = cdom.resolve_xref(app.env, docname, app.builder,
-                                                 reftype_s, target, pxref,
-                                                 lit_text)
-                    except NoUri:
-                        xref = None
+            if (target not in Skipfuncs) and not failure_seen(target):
+                lit_text = nodes.literal(classes=['xref', 'c', 'c-func'])
+                lit_text += target_text
+                pxref = addnodes.pending_xref('', refdomain = 'c',
+                                              reftype = 'function',
+                                              reftarget = target,
+                                              modname = None,
+                                              classname = None)
+                #
+                # XXX The Latex builder will throw NoUri exceptions here,
+                # work around that by ignoring them.
+                #
+                try:
+                    xref = cdom.resolve_xref(app.env, docname, app.builder,
+                                             'function', target, pxref,
+                                             lit_text)
+                except NoUri:
+                    xref = None
 
-                    if xref:
-                        return xref
+                if xref:
+                    return xref
+                note_failure(target)
 
     return target_text
 
@@ -271,19 +279,30 @@ def get_c_namespace(app, docname):
 def auto_markup(app, doctree, name):
     global c_namespace
     c_namespace = get_c_namespace(app, name)
+    def text_but_not_a_reference(node):
+        # The nodes.literal test catches ``literal text``, its purpose is to
+        # avoid adding cross-references to functions that have been explicitly
+        # marked with cc:func:.
+        if not isinstance(node, nodes.Text) or isinstance(node.parent, nodes.literal):
+            return False
+
+        child_of_reference = False
+        parent = node.parent
+        while parent:
+            if isinstance(parent, nodes.Referential):
+                child_of_reference = True
+                break
+            parent = parent.parent
+        return not child_of_reference
+
     #
     # This loop could eventually be improved on.  Someday maybe we
     # want a proper tree traversal with a lot of awareness of which
     # kinds of nodes to prune.  But this works well for now.
     #
-    # The nodes.literal test catches ``literal text``, its purpose is to
-    # avoid adding cross-references to functions that have been explicitly
-    # marked with cc:func:.
-    #
     for para in doctree.traverse(nodes.paragraph):
-        for node in para.traverse(nodes.Text):
-            if not isinstance(node.parent, nodes.literal):
-                node.parent.replace(node, markup_refs(name, app, node))
+        for node in para.traverse(condition=text_but_not_a_reference):
+            node.parent.replace(node, markup_refs(name, app, node))
 
 def setup(app):
     app.connect('doctree-resolved', auto_markup)

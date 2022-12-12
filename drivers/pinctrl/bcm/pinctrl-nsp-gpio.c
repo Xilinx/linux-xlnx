@@ -1,15 +1,5 @@
-/*
- * Copyright (C) 2014-2017 Broadcom
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License as
- * published by the Free Software Foundation version 2.
- *
- * This program is distributed "as is" WITHOUT ANY WARRANTY of any
- * kind, whether express or implied; without even the implied warranty
- * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- */
+// SPDX-License-Identifier: GPL-2.0-only
+// Copyright (C) 2014-2017 Broadcom
 
 /*
  * This file contains the Broadcom Northstar Plus (NSP) GPIO driver that
@@ -648,7 +638,6 @@ static int nsp_gpio_probe(struct platform_device *pdev)
 	gc->ngpio = val;
 	gc->label = dev_name(dev);
 	gc->parent = dev;
-	gc->of_node = dev->of_node;
 	gc->request = gpiochip_generic_request;
 	gc->free = gpiochip_generic_free;
 	gc->direction_input = nsp_gpio_direction_input;

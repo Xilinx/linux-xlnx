@@ -21,22 +21,18 @@ int host1x_channel_list_init(struct host1x_channel_list *chlist,
 	if (!chlist->channels)
 		return -ENOMEM;
 
-	chlist->allocated_channels =
-		kcalloc(BITS_TO_LONGS(num_channels), sizeof(unsigned long),
-			GFP_KERNEL);
+	chlist->allocated_channels = bitmap_zalloc(num_channels, GFP_KERNEL);
 	if (!chlist->allocated_channels) {
 		kfree(chlist->channels);
 		return -ENOMEM;
 	}
-
-	bitmap_zero(chlist->allocated_channels, num_channels);
 
 	return 0;
 }
 
 void host1x_channel_list_free(struct host1x_channel_list *chlist)
 {
-	kfree(chlist->allocated_channels);
+	bitmap_free(chlist->allocated_channels);
 	kfree(chlist->channels);
 }
 
@@ -74,6 +70,14 @@ struct host1x_channel *host1x_channel_get_index(struct host1x *host,
 
 	return ch;
 }
+
+void host1x_channel_stop(struct host1x_channel *channel)
+{
+	struct host1x *host = dev_get_drvdata(channel->dev->parent);
+
+	host1x_hw_cdma_stop(host, &channel->cdma);
+}
+EXPORT_SYMBOL(host1x_channel_stop);
 
 static void release_channel(struct kref *kref)
 {

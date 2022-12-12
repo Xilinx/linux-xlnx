@@ -1,6 +1,7 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-2.0
 
+BPF_FILE="../bpf/xdp_dummy.bpf.o"
 readonly BASE="ns-$(mktemp -u XXXXXX)"
 readonly SRC=2
 readonly DST=1
@@ -46,7 +47,7 @@ create_ns() {
 		ip -n $BASE$ns addr add dev veth$ns $BM_NET_V4$ns/24
 		ip -n $BASE$ns addr add dev veth$ns $BM_NET_V6$ns/64 nodad
 	done
-	ip -n $NS_DST link set veth$DST xdp object ../bpf/xdp_dummy.o section xdp_dummy 2>/dev/null
+	ip -n $NS_DST link set veth$DST xdp object ${BPF_FILE} section xdp 2>/dev/null
 }
 
 create_vxlan_endpoint() {
@@ -132,7 +133,7 @@ run_test() {
 	local rcv=`ip netns exec $NS_DST $ipt"-save" -c | grep 'dport 8000' | \
 							  sed -e 's/\[//' -e 's/:.*//'`
 	if [ $rcv != $pkts ]; then
-		echo " fail - received $rvs packets, expected $pkts"
+		echo " fail - received $rcv packets, expected $pkts"
 		ret=1
 		return
 	fi
@@ -185,6 +186,7 @@ for family in 4 6; do
 	IPT=iptables
 	SUFFIX=24
 	VXDEV=vxlan
+	PING=ping
 
 	if [ $family = 6 ]; then
 		BM_NET=$BM_NET_V6
@@ -192,6 +194,8 @@ for family in 4 6; do
 		SUFFIX="64 nodad"
 		VXDEV=vxlan6
 		IPT=ip6tables
+		# Use ping6 on systems where ping doesn't handle IPv6
+		ping -w 1 -c 1 ::1 > /dev/null 2>&1 || PING="ping6"
 	fi
 
 	echo "IPv$family"
@@ -237,7 +241,7 @@ for family in 4 6; do
 
 	# load arp cache before running the test to reduce the amount of
 	# stray traffic on top of the UDP tunnel
-	ip netns exec $NS_SRC ping -q -c 1 $OL_NET$DST_NAT >/dev/null
+	ip netns exec $NS_SRC $PING -q -c 1 $OL_NET$DST_NAT >/dev/null
 	run_test "GRO fwd over UDP tunnel" $OL_NET$DST_NAT 1 1 $OL_NET$DST
 	cleanup
 

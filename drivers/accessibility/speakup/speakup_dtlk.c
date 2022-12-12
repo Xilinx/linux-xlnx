@@ -6,7 +6,7 @@
  * Copyright (C) 1998-99  Kirk Reiser.
  * Copyright (C) 2003 David Borowski.
  *
- * specificly written as a driver for the speakup screenreview
+ * specifically written as a driver for the speakup screenreview
  * package it's not a general device driver.
  * This driver is for the RC Systems DoubleTalk PC internal synthesizer.
  */
@@ -316,7 +316,7 @@ static struct synth_settings *synth_interrogate(struct spk_synth *synth)
 static int synth_probe(struct spk_synth *synth)
 {
 	unsigned int port_val = 0;
-	int i = 0;
+	int i;
 	struct synth_settings *sp;
 
 	pr_info("Probing for DoubleTalk.\n");

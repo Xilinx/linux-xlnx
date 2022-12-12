@@ -373,8 +373,7 @@ static int __maybe_unused xgpio_resume(struct device *dev)
 
 static int __maybe_unused xgpio_runtime_suspend(struct device *dev)
 {
-	struct platform_device *pdev = to_platform_device(dev);
-	struct xgpio_instance *gpio = platform_get_drvdata(pdev);
+	struct xgpio_instance *gpio = dev_get_drvdata(dev);
 
 	clk_disable(gpio->clk);
 
@@ -383,8 +382,7 @@ static int __maybe_unused xgpio_runtime_suspend(struct device *dev)
 
 static int __maybe_unused xgpio_runtime_resume(struct device *dev)
 {
-	struct platform_device *pdev = to_platform_device(dev);
-	struct xgpio_instance *gpio = platform_get_drvdata(pdev);
+	struct xgpio_instance *gpio = dev_get_drvdata(dev);
 
 	return clk_enable(gpio->clk);
 }

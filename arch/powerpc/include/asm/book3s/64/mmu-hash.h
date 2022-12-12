@@ -18,6 +18,7 @@
  * complete pgtable.h but only a portion of it.
  */
 #include <asm/book3s/64/pgtable.h>
+#include <asm/book3s/64/slice.h>
 #include <asm/task_size_64.h>
 #include <asm/cpu_has_feature.h>
 
@@ -523,8 +524,14 @@ void slb_save_contents(struct slb_entry *slb_ptr);
 void slb_dump_contents(struct slb_entry *slb_ptr);
 
 extern void slb_vmalloc_update(void);
-extern void slb_set_size(u16 size);
 void preload_new_slb_context(unsigned long start, unsigned long sp);
+
+#ifdef CONFIG_PPC_64S_HASH_MMU
+void slb_set_size(u16 size);
+#else
+static inline void slb_set_size(u16 size) { }
+#endif
+
 #endif /* __ASSEMBLY__ */
 
 /*

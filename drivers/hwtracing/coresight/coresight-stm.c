@@ -634,22 +634,6 @@ static ssize_t traceid_store(struct device *dev,
 }
 static DEVICE_ATTR_RW(traceid);
 
-#define coresight_stm_reg(name, offset)	\
-	coresight_simple_reg32(struct stm_drvdata, name, offset)
-
-coresight_stm_reg(tcsr, STMTCSR);
-coresight_stm_reg(tsfreqr, STMTSFREQR);
-coresight_stm_reg(syncr, STMSYNCR);
-coresight_stm_reg(sper, STMSPER);
-coresight_stm_reg(spter, STMSPTER);
-coresight_stm_reg(privmaskr, STMPRIVMASKR);
-coresight_stm_reg(spscr, STMSPSCR);
-coresight_stm_reg(spmscr, STMSPMSCR);
-coresight_stm_reg(spfeat1r, STMSPFEAT1R);
-coresight_stm_reg(spfeat2r, STMSPFEAT2R);
-coresight_stm_reg(spfeat3r, STMSPFEAT3R);
-coresight_stm_reg(devid, CORESIGHT_DEVID);
-
 static struct attribute *coresight_stm_attrs[] = {
 	&dev_attr_hwevent_enable.attr,
 	&dev_attr_hwevent_select.attr,
@@ -660,18 +644,18 @@ static struct attribute *coresight_stm_attrs[] = {
 };
 
 static struct attribute *coresight_stm_mgmt_attrs[] = {
-	&dev_attr_tcsr.attr,
-	&dev_attr_tsfreqr.attr,
-	&dev_attr_syncr.attr,
-	&dev_attr_sper.attr,
-	&dev_attr_spter.attr,
-	&dev_attr_privmaskr.attr,
-	&dev_attr_spscr.attr,
-	&dev_attr_spmscr.attr,
-	&dev_attr_spfeat1r.attr,
-	&dev_attr_spfeat2r.attr,
-	&dev_attr_spfeat3r.attr,
-	&dev_attr_devid.attr,
+	coresight_simple_reg32(tcsr, STMTCSR),
+	coresight_simple_reg32(tsfreqr, STMTSFREQR),
+	coresight_simple_reg32(syncr, STMSYNCR),
+	coresight_simple_reg32(sper, STMSPER),
+	coresight_simple_reg32(spter, STMSPTER),
+	coresight_simple_reg32(privmaskr, STMPRIVMASKR),
+	coresight_simple_reg32(spscr, STMSPSCR),
+	coresight_simple_reg32(spmscr, STMSPMSCR),
+	coresight_simple_reg32(spfeat1r, STMSPFEAT1R),
+	coresight_simple_reg32(spfeat2r, STMSPFEAT2R),
+	coresight_simple_reg32(spfeat3r, STMSPFEAT3R),
+	coresight_simple_reg32(devid, CORESIGHT_DEVID),
 	NULL,
 };
 
@@ -856,13 +840,11 @@ static int stm_probe(struct amba_device *adev, const struct amba_id *id)
 {
 	int ret;
 	void __iomem *base;
-	unsigned long *guaranteed;
 	struct device *dev = &adev->dev;
 	struct coresight_platform_data *pdata = NULL;
 	struct stm_drvdata *drvdata;
 	struct resource *res = &adev->res;
 	struct resource ch_res;
-	size_t bitmap_size;
 	struct coresight_desc desc = { 0 };
 
 	desc.name = coresight_alloc_device_name(&stm_devs, dev);
@@ -904,12 +886,10 @@ static int stm_probe(struct amba_device *adev, const struct amba_id *id)
 	else
 		drvdata->numsp = stm_num_stimulus_port(drvdata);
 
-	bitmap_size = BITS_TO_LONGS(drvdata->numsp) * sizeof(long);
-
-	guaranteed = devm_kzalloc(dev, bitmap_size, GFP_KERNEL);
-	if (!guaranteed)
+	drvdata->chs.guaranteed = devm_bitmap_zalloc(dev, drvdata->numsp,
+						     GFP_KERNEL);
+	if (!drvdata->chs.guaranteed)
 		return -ENOMEM;
-	drvdata->chs.guaranteed = guaranteed;
 
 	spin_lock_init(&drvdata->spinlock);
 

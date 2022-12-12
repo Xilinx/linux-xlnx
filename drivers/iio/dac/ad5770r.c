@@ -140,7 +140,7 @@ struct ad5770r_state {
 	bool				ch_pwr_down[AD5770R_MAX_CHANNELS];
 	bool				internal_ref;
 	bool				external_res;
-	u8				transf_buf[2] ____cacheline_aligned;
+	u8				transf_buf[2] __aligned(IIO_DMA_MINALIGN);
 };
 
 static const struct regmap_config ad5770r_spi_regmap_config = {
@@ -522,7 +522,7 @@ static int ad5770r_channel_config(struct ad5770r_state *st)
 		return -EINVAL;
 
 	device_for_each_child_node(&st->spi->dev, child) {
-		ret = fwnode_property_read_u32(child, "num", &num);
+		ret = fwnode_property_read_u32(child, "reg", &num);
 		if (ret)
 			goto err_child_out;
 		if (num >= AD5770R_MAX_CHANNELS) {

@@ -26,6 +26,7 @@
 #include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/pm_runtime.h>
+#include <linux/property.h>
 #include <linux/random.h>
 #include <linux/slab.h>
 
@@ -471,13 +472,10 @@ static irqreturn_t mpu3050_trigger_handler(int irq, void *p)
 	struct iio_dev *indio_dev = pf->indio_dev;
 	struct mpu3050 *mpu3050 = iio_priv(indio_dev);
 	int ret;
-	/*
-	 * Temperature 1*16 bits
-	 * Three axes 3*16 bits
-	 * Timestamp 64 bits (4*16 bits)
-	 * Sum total 8*16 bits
-	 */
-	__be16 hw_values[8];
+	struct {
+		__be16 chans[4];
+		s64 timestamp __aligned(8);
+	} scan;
 	s64 timestamp;
 	unsigned int datums_from_fifo = 0;
 
@@ -572,9 +570,10 @@ static irqreturn_t mpu3050_trigger_handler(int irq, void *p)
 				fifo_values[4]);
 
 			/* Index past the footer (fifo_values[0]) and push */
-			iio_push_to_buffers_with_timestamp(indio_dev,
-							   &fifo_values[1],
-							   timestamp);
+			iio_push_to_buffers_with_ts_unaligned(indio_dev,
+							      &fifo_values[1],
+							      sizeof(__be16) * 4,
+							      timestamp);
 
 			fifocnt -= toread;
 			datums_from_fifo++;
@@ -632,15 +631,15 @@ static irqreturn_t mpu3050_trigger_handler(int irq, void *p)
 		goto out_trigger_unlock;
 	}
 
-	ret = regmap_bulk_read(mpu3050->map, MPU3050_TEMP_H, &hw_values,
-			       sizeof(hw_values));
+	ret = regmap_bulk_read(mpu3050->map, MPU3050_TEMP_H, scan.chans,
+			       sizeof(scan.chans));
 	if (ret) {
 		dev_err(mpu3050->dev,
 			"error reading axis data\n");
 		goto out_trigger_unlock;
 	}
 
-	iio_push_to_buffers_with_timestamp(indio_dev, hw_values, timestamp);
+	iio_push_to_buffers_with_timestamp(indio_dev, &scan, timestamp);
 
 out_trigger_unlock:
 	mutex_unlock(&mpu3050->lock);
@@ -876,6 +875,7 @@ static int mpu3050_power_up(struct mpu3050 *mpu3050)
 	ret = regmap_update_bits(mpu3050->map, MPU3050_PWR_MGM,
 				 MPU3050_PWR_MGM_SLEEP, 0);
 	if (ret) {
+		regulator_bulk_disable(ARRAY_SIZE(mpu3050->regs), mpu3050->regs);
 		dev_err(mpu3050->dev, "error setting power mode\n");
 		return ret;
 	}
@@ -1052,6 +1052,7 @@ static const struct iio_trigger_ops mpu3050_trigger_ops = {
 static int mpu3050_trigger_probe(struct iio_dev *indio_dev, int irq)
 {
 	struct mpu3050 *mpu3050 = iio_priv(indio_dev);
+	struct device *dev = mpu3050->dev;
 	unsigned long irq_trig;
 	int ret;
 
@@ -1063,8 +1064,7 @@ static int mpu3050_trigger_probe(struct iio_dev *indio_dev, int irq)
 		return -ENOMEM;
 
 	/* Check if IRQ is open drain */
-	if (of_property_read_bool(mpu3050->dev->of_node, "drive-open-drain"))
-		mpu3050->irq_opendrain = true;
+	mpu3050->irq_opendrain = device_property_read_bool(dev, "drive-open-drain");
 
 	irq_trig = irqd_get_trigger_type(irq_get_irq_data(irq));
 	/*
@@ -1120,13 +1120,12 @@ static int mpu3050_trigger_probe(struct iio_dev *indio_dev, int irq)
 				   mpu3050->trig->name,
 				   mpu3050->trig);
 	if (ret) {
-		dev_err(mpu3050->dev,
-			"can't get IRQ %d, error %d\n", irq, ret);
+		dev_err(dev, "can't get IRQ %d, error %d\n", irq, ret);
 		return ret;
 	}
 
 	mpu3050->irq = irq;
-	mpu3050->trig->dev.parent = mpu3050->dev;
+	mpu3050->trig->dev.parent = dev;
 	mpu3050->trig->ops = &mpu3050_trigger_ops;
 	iio_trigger_set_drvdata(mpu3050->trig, indio_dev);
 
@@ -1263,9 +1262,8 @@ err_power_down:
 
 	return ret;
 }
-EXPORT_SYMBOL(mpu3050_common_probe);
 
-int mpu3050_common_remove(struct device *dev)
+void mpu3050_common_remove(struct device *dev)
 {
 	struct iio_dev *indio_dev = dev_get_drvdata(dev);
 	struct mpu3050 *mpu3050 = iio_priv(indio_dev);
@@ -1278,12 +1276,8 @@ int mpu3050_common_remove(struct device *dev)
 		free_irq(mpu3050->irq, mpu3050);
 	iio_device_unregister(indio_dev);
 	mpu3050_power_down(mpu3050);
-
-	return 0;
 }
-EXPORT_SYMBOL(mpu3050_common_remove);
 
-#ifdef CONFIG_PM
 static int mpu3050_runtime_suspend(struct device *dev)
 {
 	return mpu3050_power_down(iio_priv(dev_get_drvdata(dev)));
@@ -1293,16 +1287,9 @@ static int mpu3050_runtime_resume(struct device *dev)
 {
 	return mpu3050_power_up(iio_priv(dev_get_drvdata(dev)));
 }
-#endif /* CONFIG_PM */
 
-const struct dev_pm_ops mpu3050_dev_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
-				pm_runtime_force_resume)
-	SET_RUNTIME_PM_OPS(mpu3050_runtime_suspend,
-			   mpu3050_runtime_resume, NULL)
-};
-EXPORT_SYMBOL(mpu3050_dev_pm_ops);
-
+DEFINE_RUNTIME_DEV_PM_OPS(mpu3050_dev_pm_ops, mpu3050_runtime_suspend,
+			  mpu3050_runtime_resume, NULL);
 MODULE_AUTHOR("Linus Walleij");
 MODULE_DESCRIPTION("MPU3050 gyroscope driver");
 MODULE_LICENSE("GPL");

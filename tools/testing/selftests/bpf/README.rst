@@ -32,11 +32,19 @@ For more information on about using the script, run:
 
   $ tools/testing/selftests/bpf/vmtest.sh -h
 
+In case of linker errors when running selftests, try using static linking:
+
+.. code-block:: console
+
+  $ LDLIBS=-static vmtest.sh
+
+.. note:: Some distros may not support static linking.
+
 .. note:: The script uses pahole and clang based on host environment setting.
           If you want to change pahole and llvm, you can change `PATH` environment
           variable in the beginning of script.
 
-.. note:: The script currently only supports x86_64.
+.. note:: The script currently only supports x86_64 and s390x architectures.
 
 Additional information about selftest failures are
 documented here.
@@ -118,11 +126,11 @@ available in 10.0.1. The patch is available in llvm 11.0.0 trunk.
 
 __  https://reviews.llvm.org/D78466
 
-bpf_verif_scale/loop6.o test failure with Clang 12
-==================================================
+bpf_verif_scale/loop6.bpf.o test failure with Clang 12
+======================================================
 
 With Clang 12, the following bpf_verif_scale test failed:
-  * ``bpf_verif_scale/loop6.o``
+  * ``bpf_verif_scale/loop6.bpf.o``
 
 The verifier output looks like
 
@@ -201,6 +209,23 @@ Without it, the error from compiling bpf selftests looks like:
 
 __ https://reviews.llvm.org/D93563
 
+btf_tag test and Clang version
+==============================
+
+The btf_tag selftest requires LLVM support to recognize the btf_decl_tag and
+btf_type_tag attributes. They are introduced in `Clang 14` [0_, 1_].
+The subtests ``btf_type_tag_user_{mod1, mod2, vmlinux}`` also requires
+pahole version ``1.23``.
+
+Without them, the btf_tag selftest will be skipped and you will observe:
+
+.. code-block:: console
+
+  #<test_num> btf_tag:SKIP
+
+.. _0: https://reviews.llvm.org/D111588
+.. _1: https://reviews.llvm.org/D111199
+
 Clang dependencies for static linking tests
 ===========================================
 
@@ -220,7 +245,7 @@ See `kernel llvm reloc`_ for more explanation and some examples.
 Using clang 13 to compile old libbpf which has static linker support,
 there will be a compilation failure::
 
-  libbpf: ELF relo #0 in section #6 has unexpected type 2 in .../bpf_tcp_nogpl.o
+  libbpf: ELF relo #0 in section #6 has unexpected type 2 in .../bpf_tcp_nogpl.bpf.o
 
 Here, ``type 2`` refers to new relocation type ``R_BPF_64_ABS64``.
 To fix this issue, user newer libbpf.
@@ -228,3 +253,16 @@ To fix this issue, user newer libbpf.
 .. Links
 .. _clang reloc patch: https://reviews.llvm.org/D102712
 .. _kernel llvm reloc: /Documentation/bpf/llvm_reloc.rst
+
+Clang dependencies for the u32 spill test (xdpwall)
+===================================================
+The xdpwall selftest requires a change in `Clang 14`__.
+
+Without it, the xdpwall selftest will fail and the error message
+from running test_progs will look like:
+
+.. code-block:: console
+
+  test_xdpwall:FAIL:Does LLVM have https://reviews.llvm.org/D109073? unexpected error: -4007
+
+__ https://reviews.llvm.org/D109073

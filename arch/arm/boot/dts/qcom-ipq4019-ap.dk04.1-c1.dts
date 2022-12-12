@@ -5,10 +5,10 @@
 
 / {
 	model = "Qualcomm Technologies, Inc. IPQ4019/AP-DK04.1-C1";
-	compatible = "qcom,ipq4019-dk04.1-c1";
+	compatible = "qcom,ipq4019-dk04.1-c1", "qcom,ipq4019";
 
 	soc {
-		dma@7984000 {
+		dma-controller@7984000 {
 			status = "okay";
 		};
 

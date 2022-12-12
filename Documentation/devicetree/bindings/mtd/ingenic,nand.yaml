@@ -11,6 +11,7 @@ maintainers:
 
 allOf:
   - $ref: nand-controller.yaml#
+  - $ref: /schemas/memory-controllers/ingenic,nemc-peripherals.yaml#
 
 properties:
   compatible:
@@ -55,7 +56,7 @@ unevaluatedProperties: false
 
 examples:
   - |
-    #include <dt-bindings/clock/jz4780-cgu.h>
+    #include <dt-bindings/clock/ingenic,jz4780-cgu.h>
     memory-controller@13410000 {
       compatible = "ingenic,jz4780-nemc";
       reg = <0x13410000 0x10000>;

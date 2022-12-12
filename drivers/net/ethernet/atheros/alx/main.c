@@ -607,7 +607,7 @@ static int alx_set_mac_address(struct net_device *netdev, void *data)
 	if (netdev->addr_assign_type & NET_ADDR_RANDOM)
 		netdev->addr_assign_type ^= NET_ADDR_RANDOM;
 
-	memcpy(netdev->dev_addr, addr->sa_data, netdev->addr_len);
+	eth_hw_addr_set(netdev, addr->sa_data);
 	memcpy(hw->mac_addr, addr->sa_data, netdev->addr_len);
 	alx_set_macaddr(hw, hw->mac_addr);
 
@@ -752,7 +752,7 @@ static int alx_alloc_napis(struct alx_priv *alx)
 			goto err_out;
 
 		np->alx = alx;
-		netif_napi_add(alx->dev, &np->napi, alx_poll, 64);
+		netif_napi_add(alx->dev, &np->napi, alx_poll);
 		alx->qnapi[i] = np;
 	}
 
@@ -1181,8 +1181,11 @@ static int alx_change_mtu(struct net_device *netdev, int mtu)
 	alx->hw.mtu = mtu;
 	alx->rxbuf_size = max(max_frame, ALX_DEF_RXBUF_SIZE);
 	netdev_update_features(netdev);
-	if (netif_running(netdev))
+	if (netif_running(netdev)) {
+		mutex_lock(&alx->mtx);
 		alx_reinit(alx);
+		mutex_unlock(&alx->mtx);
+	}
 	return 0;
 }
 
@@ -1832,7 +1835,7 @@ static int alx_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	}
 
 	memcpy(hw->mac_addr, hw->perm_addr, ETH_ALEN);
-	memcpy(netdev->dev_addr, hw->mac_addr, ETH_ALEN);
+	eth_hw_addr_set(netdev, hw->mac_addr);
 	memcpy(netdev->perm_addr, hw->perm_addr, ETH_ALEN);
 
 	hw->mdio.prtad = 0;
@@ -1909,11 +1912,14 @@ static int alx_suspend(struct device *dev)
 
 	if (!netif_running(alx->dev))
 		return 0;
+
+	rtnl_lock();
 	netif_device_detach(alx->dev);
 
 	mutex_lock(&alx->mtx);
 	__alx_stop(alx);
 	mutex_unlock(&alx->mtx);
+	rtnl_unlock();
 
 	return 0;
 }
@@ -1924,6 +1930,7 @@ static int alx_resume(struct device *dev)
 	struct alx_hw *hw = &alx->hw;
 	int err;
 
+	rtnl_lock();
 	mutex_lock(&alx->mtx);
 	alx_reset_phy(hw);
 
@@ -1940,6 +1947,7 @@ static int alx_resume(struct device *dev)
 
 unlock:
 	mutex_unlock(&alx->mtx);
+	rtnl_unlock();
 	return err;
 }
 

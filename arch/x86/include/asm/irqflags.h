@@ -114,8 +114,6 @@ static __always_inline unsigned long arch_local_irq_save(void)
 #define SAVE_FLAGS		pushfq; popq %rax
 #endif
 
-#define INTERRUPT_RETURN	jmp native_iret
-
 #endif
 
 #endif /* __ASSEMBLY__ */
@@ -139,14 +137,6 @@ static __always_inline void arch_local_irq_restore(unsigned long flags)
 	if (!arch_irqs_disabled_flags(flags))
 		arch_local_irq_enable();
 }
-#else
-#ifdef CONFIG_X86_64
-#ifdef CONFIG_XEN_PV
-#define SWAPGS	ALTERNATIVE "swapgs", "", X86_FEATURE_XENPV
-#else
-#define SWAPGS	swapgs
-#endif
-#endif
 #endif /* !__ASSEMBLY__ */
 
 #endif

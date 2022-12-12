@@ -7,12 +7,9 @@ NUM_NETIFS=6
 source $lib_dir/lib.sh
 source $lib_dir/tc_common.sh
 source $lib_dir/devlink_lib.sh
+source ../mlxsw_lib.sh
 
-if [[ "$DEVLINK_VIDDID" != "15b3:cf6c" && \
-	"$DEVLINK_VIDDID" != "15b3:cf70" ]]; then
-	echo "SKIP: test is tailored for Mellanox Spectrum-2 and Spectrum-3"
-	exit 1
-fi
+mlxsw_only_on_spectrum 2+ || exit 1
 
 current_test=""
 
@@ -28,7 +25,16 @@ cleanup()
 
 trap cleanup EXIT
 
-ALL_TESTS="router tc_flower mirror_gre tc_police port"
+ALL_TESTS="
+	router
+	tc_flower
+	mirror_gre
+	tc_police
+	port
+	rif_mac_profile
+	rif_counter
+"
+
 for current_test in ${TESTS:-$ALL_TESTS}; do
 	RET_FIN=0
 	source ${current_test}_scale.sh
@@ -39,16 +45,32 @@ for current_test in ${TESTS:-$ALL_TESTS}; do
 	for should_fail in 0 1; do
 		RET=0
 		target=$(${current_test}_get_target "$should_fail")
+		if ((target == 0)); then
+			log_test_skip "'$current_test' should_fail=$should_fail test"
+			continue
+		fi
+
 		${current_test}_setup_prepare
 		setup_wait $num_netifs
+		# Update target in case occupancy of a certain resource changed
+		# following the test setup.
+		target=$(${current_test}_get_target "$should_fail")
 		${current_test}_test "$target" "$should_fail"
-		${current_test}_cleanup
-		devlink_reload
 		if [[ "$should_fail" -eq 0 ]]; then
 			log_test "'$current_test' $target"
+
+			if ((!RET)); then
+				tt=${current_test}_traffic_test
+				if [[ $(type -t $tt) == "function" ]]; then
+					$tt "$target"
+					log_test "'$current_test' $target traffic test"
+				fi
+			fi
 		else
 			log_test "'$current_test' overflow $target"
 		fi
+		${current_test}_cleanup $target
+		devlink_reload
 		RET_FIN=$(( RET_FIN || RET ))
 	done
 done

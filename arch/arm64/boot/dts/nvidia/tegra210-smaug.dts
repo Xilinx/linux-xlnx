@@ -17,6 +17,7 @@
 
 	aliases {
 		serial0 = &uarta;
+		serial3 = &uartd;
 	};
 
 	chosen {
@@ -1309,6 +1310,22 @@
 		status = "okay";
 	};
 
+	uartd: serial@70006300 {
+		compatible = "nvidia,tegra30-hsuart";
+		status = "okay";
+
+		bluetooth {
+			compatible = "brcm,bcm43540-bt";
+			max-speed = <4000000>;
+			brcm,bt-pcm-int-params = [01 02 00 01 01];
+			device-wakeup-gpios = <&gpio TEGRA_GPIO(H, 3) GPIO_ACTIVE_HIGH>;
+			shutdown-gpios = <&gpio TEGRA_GPIO(H, 4) GPIO_ACTIVE_HIGH>;
+			interrupt-parent = <&gpio>;
+			interrupts = <TEGRA_GPIO(H, 5) IRQ_TYPE_LEVEL_LOW>;
+			interrupt-names = "host-wakeup";
+		};
+	};
+
 	i2c@7000c400 {
 		status = "okay";
 		clock-frequency = <1000000>;
@@ -1642,10 +1659,6 @@
 		dvddio-pex-supply = <&avddio_1v05>;
 		hvddio-pex-supply = <&pp1800>;
 		avdd-usb-supply = <&pp3300>;
-		avdd-pll-utmip-supply = <&pp1800>;
-		avdd-pll-uerefe-supply = <&pp1050_avdd>;
-		dvdd-pex-pll-supply = <&avddio_1v05>;
-		hvdd-pex-pll-e-supply = <&pp1800>;
 
 		status = "okay";
 	};
@@ -1696,6 +1709,25 @@
 		};
 	};
 
+	mmc@700b0200 {
+		power-gpios = <&gpio TEGRA_GPIO(H, 1) GPIO_ACTIVE_HIGH>;
+		bus-width = <4>;
+		non-removable;
+		vqmmc-supply = <&pp1800>;
+		vmmc-supply = <&pp3300>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		status = "okay";
+
+		wifi@1 {
+			compatible = "brcm,bcm4354-fmac", "brcm,bcm4329-fmac";
+			reg = <1>;
+			interrupt-parent = <&gpio>;
+			interrupts = <TEGRA_GPIO(H, 2) IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "host-wake";
+		};
+	};
+
 	mmc@700b0600 {
 		bus-width = <8>;
 		non-removable;
@@ -1726,7 +1758,7 @@
 		};
 	};
 
-	clk32k_in: clock@0 {
+	clk32k_in: clock-32k {
 		compatible = "fixed-clock";
 		clock-frequency = <32768>;
 		#clock-cells = <0>;
@@ -1760,7 +1792,7 @@
 	gpio-keys {
 		compatible = "gpio-keys";
 
-		power {
+		key-power {
 			label = "Power";
 			gpios = <&gpio TEGRA_GPIO(X, 5) GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_POWER>;
@@ -1768,7 +1800,7 @@
 			wakeup-source;
 		};
 
-		lid {
+		switch-lid {
 			label = "Lid";
 			gpios = <&gpio TEGRA_GPIO(B, 4) GPIO_ACTIVE_LOW>;
 			linux,input-type = <EV_SW>;
@@ -1776,7 +1808,7 @@
 			wakeup-source;
 		};
 
-		tablet_mode {
+		switch-tablet-mode {
 			label = "Tablet Mode";
 			gpios = <&gpio TEGRA_GPIO(Z, 2) GPIO_ACTIVE_HIGH>;
 			linux,input-type = <EV_SW>;
@@ -1784,13 +1816,13 @@
 			wakeup-source;
 		};
 
-		volume_down {
+		key-volume-down {
 			label = "Volume Down";
 			gpios = <&gpio TEGRA_GPIO(X, 7) GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_VOLUMEDOWN>;
 		};
 
-		volume_up {
+		key-volume-up {
 			label = "Volume Up";
 			gpios = <&gpio TEGRA_GPIO(M, 4) GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_VOLUMEUP>;
@@ -1807,7 +1839,7 @@
 		method = "smc";
 	};
 
-	ppvar_sys: regulator@0 {
+	ppvar_sys: regulator-ppvar-sys {
 		compatible = "regulator-fixed";
 		regulator-name = "PPVAR_SYS";
 		regulator-min-microvolt = <4400000>;
@@ -1815,7 +1847,7 @@
 		regulator-always-on;
 	};
 
-	pplcd_vdd: regulator@1 {
+	pplcd_vdd: regulator-pplcd-vdd {
 		compatible = "regulator-fixed";
 		regulator-name = "PPLCD_VDD";
 		regulator-min-microvolt = <4400000>;
@@ -1825,7 +1857,7 @@
 		regulator-boot-on;
 	};
 
-	pp3000_always: regulator@2 {
+	pp3000_always: regulator-pp3000-always {
 		compatible = "regulator-fixed";
 		regulator-name = "PP3000_ALWAYS";
 		regulator-min-microvolt = <3000000>;
@@ -1833,7 +1865,7 @@
 		regulator-always-on;
 	};
 
-	pp3300: regulator@3 {
+	pp3300: regulator-pp3000 {
 		compatible = "regulator-fixed";
 		regulator-name = "PP3300";
 		regulator-min-microvolt = <3300000>;
@@ -1843,7 +1875,7 @@
 		enable-active-high;
 	};
 
-	pp5000: regulator@4 {
+	pp5000: regulator-pp5000 {
 		compatible = "regulator-fixed";
 		regulator-name = "PP5000";
 		regulator-min-microvolt = <5000000>;
@@ -1851,7 +1883,7 @@
 		regulator-always-on;
 	};
 
-	pp1800_lcdio: regulator@5 {
+	pp1800_lcdio: regulator-pp1800-lcdio {
 		compatible = "regulator-fixed";
 		regulator-name = "PP1800_LCDIO";
 		regulator-min-microvolt = <1800000>;
@@ -1861,7 +1893,7 @@
 		regulator-boot-on;
 	};
 
-	pp1800_cam: regulator@6 {
+	pp1800_cam: regulator-pp1800-cam {
 		compatible = "regulator-fixed";
 		regulator-name = "PP1800_CAM";
 		regulator-min-microvolt = <1800000>;
@@ -1870,7 +1902,7 @@
 		enable-active-high;
 	};
 
-	usbc_vbus: regulator@7 {
+	usbc_vbus: regulator-usbc-vbus {
 		compatible = "regulator-fixed";
 		regulator-name = "USBC_VBUS";
 		regulator-min-microvolt = <5000000>;

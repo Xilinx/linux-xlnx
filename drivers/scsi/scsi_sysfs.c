@@ -424,11 +424,11 @@ static struct attribute *scsi_sysfs_shost_attrs[] = {
 	NULL
 };
 
-static struct attribute_group scsi_shost_attr_group = {
+static const struct attribute_group scsi_shost_attr_group = {
 	.attrs =	scsi_sysfs_shost_attrs,
 };
 
-const struct attribute_group *scsi_sysfs_shost_attr_groups[] = {
+const struct attribute_group *scsi_shost_groups[] = {
 	&scsi_shost_attr_group,
 	NULL
 };
@@ -448,6 +448,7 @@ static void scsi_device_dev_release_usercontext(struct work_struct *work)
 	struct list_head *this, *tmp;
 	struct scsi_vpd *vpd_pg80 = NULL, *vpd_pg83 = NULL;
 	struct scsi_vpd *vpd_pg0 = NULL, *vpd_pg89 = NULL;
+	struct scsi_vpd *vpd_pgb0 = NULL, *vpd_pgb1 = NULL, *vpd_pgb2 = NULL;
 	unsigned long flags;
 	struct module *mod;
 
@@ -490,6 +491,12 @@ static void scsi_device_dev_release_usercontext(struct work_struct *work)
 				       lockdep_is_held(&sdev->inquiry_mutex));
 	vpd_pg89 = rcu_replace_pointer(sdev->vpd_pg89, vpd_pg89,
 				       lockdep_is_held(&sdev->inquiry_mutex));
+	vpd_pgb0 = rcu_replace_pointer(sdev->vpd_pgb0, vpd_pgb0,
+				       lockdep_is_held(&sdev->inquiry_mutex));
+	vpd_pgb1 = rcu_replace_pointer(sdev->vpd_pgb1, vpd_pgb1,
+				       lockdep_is_held(&sdev->inquiry_mutex));
+	vpd_pgb2 = rcu_replace_pointer(sdev->vpd_pgb2, vpd_pgb2,
+				       lockdep_is_held(&sdev->inquiry_mutex));
 	mutex_unlock(&sdev->inquiry_mutex);
 
 	if (vpd_pg0)
@@ -500,6 +507,12 @@ static void scsi_device_dev_release_usercontext(struct work_struct *work)
 		kfree_rcu(vpd_pg80, rcu);
 	if (vpd_pg89)
 		kfree_rcu(vpd_pg89, rcu);
+	if (vpd_pgb0)
+		kfree_rcu(vpd_pgb0, rcu);
+	if (vpd_pgb1)
+		kfree_rcu(vpd_pgb1, rcu);
+	if (vpd_pgb2)
+		kfree_rcu(vpd_pgb2, rcu);
 	kfree(sdev->inquiry);
 	kfree(sdev);
 
@@ -560,7 +573,6 @@ struct bus_type scsi_bus_type = {
 	.pm		= &scsi_bus_pm_ops,
 #endif
 };
-EXPORT_SYMBOL_GPL(scsi_bus_type);
 
 int scsi_sysfs_register(void)
 {
@@ -797,6 +809,7 @@ store_state_field(struct device *dev, struct device_attribute *attr,
 	int i, ret;
 	struct scsi_device *sdev = to_scsi_device(dev);
 	enum scsi_device_state state = 0;
+	bool rescan_dev = false;
 
 	for (i = 0; i < ARRAY_SIZE(sdev_states); i++) {
 		const int len = strlen(sdev_states[i].name);
@@ -815,20 +828,35 @@ store_state_field(struct device *dev, struct device_attribute *attr,
 	}
 
 	mutex_lock(&sdev->state_mutex);
-	ret = scsi_device_set_state(sdev, state);
-	/*
-	 * If the device state changes to SDEV_RUNNING, we need to
-	 * run the queue to avoid I/O hang, and rescan the device
-	 * to revalidate it. Running the queue first is necessary
-	 * because another thread may be waiting inside
-	 * blk_mq_freeze_queue_wait() and because that call may be
-	 * waiting for pending I/O to finish.
-	 */
-	if (ret == 0 && state == SDEV_RUNNING) {
+	switch (sdev->sdev_state) {
+	case SDEV_RUNNING:
+	case SDEV_OFFLINE:
+		break;
+	default:
+		mutex_unlock(&sdev->state_mutex);
+		return -EINVAL;
+	}
+	if (sdev->sdev_state == SDEV_RUNNING && state == SDEV_RUNNING) {
+		ret = 0;
+	} else {
+		ret = scsi_device_set_state(sdev, state);
+		if (ret == 0 && state == SDEV_RUNNING)
+			rescan_dev = true;
+	}
+	mutex_unlock(&sdev->state_mutex);
+
+	if (rescan_dev) {
+		/*
+		 * If the device state changes to SDEV_RUNNING, we need to
+		 * run the queue to avoid I/O hang, and rescan the device
+		 * to revalidate it. Running the queue first is necessary
+		 * because another thread may be waiting inside
+		 * blk_mq_freeze_queue_wait() and because that call may be
+		 * waiting for pending I/O to finish.
+		 */
 		blk_mq_run_hw_queues(sdev->request_queue, true);
 		scsi_rescan_device(dev);
 	}
-	mutex_unlock(&sdev->state_mutex);
 
 	return ret == 0 ? count : -EINVAL;
 }
@@ -905,6 +933,9 @@ static struct bin_attribute dev_attr_vpd_##_page = {		\
 sdev_vpd_pg_attr(pg83);
 sdev_vpd_pg_attr(pg80);
 sdev_vpd_pg_attr(pg89);
+sdev_vpd_pg_attr(pgb0);
+sdev_vpd_pg_attr(pgb1);
+sdev_vpd_pg_attr(pgb2);
 sdev_vpd_pg_attr(pg0);
 
 static ssize_t show_inquiry(struct file *filep, struct kobject *kobj,
@@ -953,6 +984,7 @@ static DEVICE_ATTR(field, S_IRUGO, show_iostat_##field, NULL)
 show_sdev_iostat(iorequest_cnt);
 show_sdev_iostat(iodone_cnt);
 show_sdev_iostat(ioerr_cnt);
+show_sdev_iostat(iotmo_cnt);
 
 static ssize_t
 sdev_show_modalias(struct device *dev, struct device_attribute *attr, char *buf)
@@ -1220,14 +1252,6 @@ static umode_t scsi_sdev_attr_is_visible(struct kobject *kobj,
 	    !sdev->host->hostt->change_queue_depth)
 		return 0;
 
-#ifdef CONFIG_SCSI_DH
-	if (attr == &dev_attr_access_state.attr &&
-	    !sdev->handler)
-		return 0;
-	if (attr == &dev_attr_preferred_path.attr &&
-	    !sdev->handler)
-		return 0;
-#endif
 	return attr->mode;
 }
 
@@ -1248,6 +1272,15 @@ static umode_t scsi_sdev_bin_attr_is_visible(struct kobject *kobj,
 		return 0;
 
 	if (attr == &dev_attr_vpd_pg89 && !sdev->vpd_pg89)
+		return 0;
+
+	if (attr == &dev_attr_vpd_pgb0 && !sdev->vpd_pgb0)
+		return 0;
+
+	if (attr == &dev_attr_vpd_pgb1 && !sdev->vpd_pgb1)
+		return 0;
+
+	if (attr == &dev_attr_vpd_pgb2 && !sdev->vpd_pgb2)
 		return 0;
 
 	return S_IRUGO;
@@ -1271,6 +1304,7 @@ static struct attribute *scsi_sdev_attrs[] = {
 	&dev_attr_iorequest_cnt.attr,
 	&dev_attr_iodone_cnt.attr,
 	&dev_attr_ioerr_cnt.attr,
+	&dev_attr_iotmo_cnt.attr,
 	&dev_attr_modalias.attr,
 	&dev_attr_queue_depth.attr,
 	&dev_attr_queue_type.attr,
@@ -1296,6 +1330,9 @@ static struct bin_attribute *scsi_sdev_bin_attrs[] = {
 	&dev_attr_vpd_pg83,
 	&dev_attr_vpd_pg80,
 	&dev_attr_vpd_pg89,
+	&dev_attr_vpd_pgb0,
+	&dev_attr_vpd_pgb1,
+	&dev_attr_vpd_pgb2,
 	&dev_attr_inquiry,
 	NULL
 };
@@ -1342,7 +1379,7 @@ static int scsi_target_add(struct scsi_target *starget)
  **/
 int scsi_sysfs_add_sdev(struct scsi_device *sdev)
 {
-	int error, i;
+	int error;
 	struct scsi_target *starget = sdev->sdev_target;
 
 	error = scsi_target_add(starget);
@@ -1384,32 +1421,12 @@ int scsi_sysfs_add_sdev(struct scsi_device *sdev)
 	if (IS_ENABLED(CONFIG_BLK_DEV_BSG)) {
 		sdev->bsg_dev = scsi_bsg_register_queue(sdev);
 		if (IS_ERR(sdev->bsg_dev)) {
-			/*
-			 * We're treating error on bsg register as non-fatal, so
-			 * pretend nothing went wrong.
-			 */
+			error = PTR_ERR(sdev->bsg_dev);
 			sdev_printk(KERN_INFO, sdev,
 				    "Failed to register bsg queue, errno=%d\n",
 				    error);
 			sdev->bsg_dev = NULL;
 		}
-	}
-
-	/* add additional host specific attributes */
-	if (sdev->host->hostt->sdev_attrs) {
-		for (i = 0; sdev->host->hostt->sdev_attrs[i]; i++) {
-			error = device_create_file(&sdev->sdev_gendev,
-					sdev->host->hostt->sdev_attrs[i]);
-			if (error)
-				return error;
-		}
-	}
-
-	if (sdev->host->hostt->sdev_groups) {
-		error = sysfs_create_groups(&sdev->sdev_gendev.kobj,
-				sdev->host->hostt->sdev_groups);
-		if (error)
-			return error;
 	}
 
 	scsi_autopm_put_device(sdev);
@@ -1451,10 +1468,6 @@ void __scsi_remove_device(struct scsi_device *sdev)
 		if (res != 0)
 			return;
 
-		if (sdev->host->hostt->sdev_groups)
-			sysfs_remove_groups(&sdev->sdev_gendev.kobj,
-					sdev->host->hostt->sdev_groups);
-
 		if (IS_ENABLED(CONFIG_BLK_DEV_BSG) && sdev->bsg_dev)
 			bsg_unregister_queue(sdev->bsg_dev);
 		device_unregister(&sdev->sdev_dev);
@@ -1472,7 +1485,8 @@ void __scsi_remove_device(struct scsi_device *sdev)
 	scsi_device_set_state(sdev, SDEV_DEL);
 	mutex_unlock(&sdev->state_mutex);
 
-	blk_cleanup_queue(sdev->request_queue);
+	blk_mq_destroy_queue(sdev->request_queue);
+	kref_put(&sdev->host->tagset_refcnt, scsi_mq_free_tags);
 	cancel_work_sync(&sdev->requeue_work);
 
 	if (sdev->host->hostt->slave_destroy)
@@ -1593,18 +1607,6 @@ EXPORT_SYMBOL(scsi_register_interface);
  **/
 int scsi_sysfs_add_host(struct Scsi_Host *shost)
 {
-	int error, i;
-
-	/* add host specific attributes */
-	if (shost->hostt->shost_attrs) {
-		for (i = 0; shost->hostt->shost_attrs[i]; i++) {
-			error = device_create_file(&shost->shost_dev,
-					shost->hostt->shost_attrs[i]);
-			if (error)
-				return error;
-		}
-	}
-
 	transport_register_device(&shost->shost_gendev);
 	transport_configure_device(&shost->shost_gendev);
 	return 0;
@@ -1620,13 +1622,16 @@ void scsi_sysfs_device_initialize(struct scsi_device *sdev)
 {
 	unsigned long flags;
 	struct Scsi_Host *shost = sdev->host;
+	struct scsi_host_template *hostt = shost->hostt;
 	struct scsi_target  *starget = sdev->sdev_target;
 
 	device_initialize(&sdev->sdev_gendev);
 	sdev->sdev_gendev.bus = &scsi_bus_type;
 	sdev->sdev_gendev.type = &scsi_dev_type;
+	scsi_enable_async_suspend(&sdev->sdev_gendev);
 	dev_set_name(&sdev->sdev_gendev, "%d:%d:%d:%llu",
 		     sdev->host->host_no, sdev->channel, sdev->id, sdev->lun);
+	sdev->sdev_gendev.groups = hostt->sdev_groups;
 
 	device_initialize(&sdev->sdev_dev);
 	sdev->sdev_dev.parent = get_device(&sdev->sdev_gendev);

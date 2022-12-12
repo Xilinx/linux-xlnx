@@ -46,31 +46,34 @@ config SPARC
 	select LOCKDEP_SMALL if LOCKDEP
 	select NEED_DMA_MAP_STATE
 	select NEED_SG_DMA_LENGTH
-	select SET_FS
 	select TRACE_IRQFLAGS_SUPPORT
 
 config SPARC32
 	def_bool !64BIT
 	select ARCH_32BIT_OFF_T
 	select ARCH_HAS_SYNC_DMA_FOR_CPU
-	select GENERIC_ATOMIC64
 	select CLZ_TAB
+	select DMA_DIRECT_REMAP
+	select GENERIC_ATOMIC64
 	select HAVE_UID16
 	select OLD_SIGACTION
 	select ZONE_DMA
 
 config SPARC64
 	def_bool 64BIT
+	select ALTERNATE_USER_ADDRESS_SPACE
 	select HAVE_FUNCTION_TRACER
 	select HAVE_FUNCTION_GRAPH_TRACER
 	select HAVE_KRETPROBES
 	select HAVE_KPROBES
 	select MMU_GATHER_RCU_TABLE_FREE if SMP
+	select MMU_GATHER_MERGE_VMAS
+	select MMU_GATHER_NO_FLUSH_CACHE
 	select HAVE_ARCH_TRANSPARENT_HUGEPAGE
 	select HAVE_DYNAMIC_FTRACE
 	select HAVE_FTRACE_MCOUNT_RECORD
 	select HAVE_SYSCALL_TRACEPOINTS
-	select HAVE_CONTEXT_TRACKING
+	select HAVE_CONTEXT_TRACKING_USER
 	select HAVE_TIF_NOHZ
 	select HAVE_DEBUG_KMEMLEAK
 	select IOMMU_HELPER
@@ -96,6 +99,9 @@ config SPARC64
 	select PCI_DOMAINS if PCI
 	select ARCH_HAS_GIGANTIC_PAGE
 	select HAVE_SOFTIRQ_ON_OWN_STACK
+	select HAVE_SETUP_PER_CPU_AREA
+	select NEED_PER_CPU_EMBED_FIRST_CHUNK
+	select NEED_PER_CPU_PAGE_FIRST_CHUNK
 
 config ARCH_PROC_KCORE_TEXT
 	def_bool y
@@ -121,15 +127,6 @@ config ARCH_HIBERNATION_POSSIBLE
 config AUDIT_ARCH
 	bool
 	default y
-
-config HAVE_SETUP_PER_CPU_AREA
-	def_bool y if SPARC64
-
-config NEED_PER_CPU_EMBED_FIRST_CHUNK
-	def_bool y if SPARC64
-
-config NEED_PER_CPU_PAGE_FIRST_CHUNK
-	def_bool y if SPARC64
 
 config MMU
 	bool
@@ -272,7 +269,7 @@ config ARCH_SPARSEMEM_ENABLE
 config ARCH_SPARSEMEM_DEFAULT
 	def_bool y if SPARC64
 
-config FORCE_MAX_ZONEORDER
+config ARCH_FORCE_MAX_ORDER
 	int "Maximum zone order"
 	default "13"
 	help
@@ -492,10 +489,5 @@ config COMPAT
 	select HAVE_UID16
 	select ARCH_WANT_OLD_COMPAT_IPC
 	select COMPAT_OLD_SIGACTION
-
-config SYSVIPC_COMPAT
-	bool
-	depends on COMPAT && SYSVIPC
-	default y
 
 source "drivers/sbus/char/Kconfig"

@@ -453,7 +453,7 @@ static void r6040_down(struct net_device *dev)
 {
 	struct r6040_private *lp = netdev_priv(dev);
 	void __iomem *ioaddr = lp->base;
-	u16 *adrp;
+	const u16 *adrp;
 
 	/* Stop MAC */
 	iowrite16(MSK_INT, ioaddr + MIER);	/* Mask Off Interrupt */
@@ -462,7 +462,7 @@ static void r6040_down(struct net_device *dev)
 	r6040_reset_mac(lp);
 
 	/* Restore MAC Address to MIDx */
-	adrp = (u16 *) dev->dev_addr;
+	adrp = (const u16 *) dev->dev_addr;
 	iowrite16(adrp[0], ioaddr + MID_0L);
 	iowrite16(adrp[1], ioaddr + MID_0M);
 	iowrite16(adrp[2], ioaddr + MID_0H);
@@ -731,13 +731,13 @@ static void r6040_mac_address(struct net_device *dev)
 {
 	struct r6040_private *lp = netdev_priv(dev);
 	void __iomem *ioaddr = lp->base;
-	u16 *adrp;
+	const u16 *adrp;
 
 	/* Reset MAC */
 	r6040_reset_mac(lp);
 
 	/* Restore MAC Address */
-	adrp = (u16 *) dev->dev_addr;
+	adrp = (const u16 *) dev->dev_addr;
 	iowrite16(adrp[0], ioaddr + MID_0L);
 	iowrite16(adrp[1], ioaddr + MID_0M);
 	iowrite16(adrp[2], ioaddr + MID_0H);
@@ -849,13 +849,13 @@ static void r6040_multicast_list(struct net_device *dev)
 	unsigned long flags;
 	struct netdev_hw_addr *ha;
 	int i;
-	u16 *adrp;
+	const u16 *adrp;
 	u16 hash_table[4] = { 0 };
 
 	spin_lock_irqsave(&lp->lock, flags);
 
 	/* Keep our MAC Address */
-	adrp = (u16 *)dev->dev_addr;
+	adrp = (const u16 *)dev->dev_addr;
 	iowrite16(adrp[0], ioaddr + MID_0L);
 	iowrite16(adrp[1], ioaddr + MID_0M);
 	iowrite16(adrp[2], ioaddr + MID_0H);
@@ -939,9 +939,9 @@ static void netdev_get_drvinfo(struct net_device *dev,
 {
 	struct r6040_private *rp = netdev_priv(dev);
 
-	strlcpy(info->driver, DRV_NAME, sizeof(info->driver));
-	strlcpy(info->version, DRV_VERSION, sizeof(info->version));
-	strlcpy(info->bus_info, pci_name(rp->pdev), sizeof(info->bus_info));
+	strscpy(info->driver, DRV_NAME, sizeof(info->driver));
+	strscpy(info->version, DRV_VERSION, sizeof(info->version));
+	strscpy(info->bus_info, pci_name(rp->pdev), sizeof(info->bus_info));
 }
 
 static const struct ethtool_ops netdev_ethtool_ops = {
@@ -1031,8 +1031,8 @@ static int r6040_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	void __iomem *ioaddr;
 	int err, io_size = R6040_IO_SIZE;
 	static int card_idx = -1;
+	u16 addr[ETH_ALEN / 2];
 	int bar = 0;
-	u16 *adrp;
 
 	pr_info("%s\n", version);
 
@@ -1102,14 +1102,14 @@ static int r6040_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	/* Set MAC address */
 	card_idx++;
 
-	adrp = (u16 *)dev->dev_addr;
-	adrp[0] = ioread16(ioaddr + MID_0L);
-	adrp[1] = ioread16(ioaddr + MID_0M);
-	adrp[2] = ioread16(ioaddr + MID_0H);
+	addr[0] = ioread16(ioaddr + MID_0L);
+	addr[1] = ioread16(ioaddr + MID_0M);
+	addr[2] = ioread16(ioaddr + MID_0H);
+	eth_hw_addr_set(dev, (u8 *)addr);
 
 	/* Some bootloader/BIOSes do not initialize
 	 * MAC address, warn about that */
-	if (!(adrp[0] || adrp[1] || adrp[2])) {
+	if (!(addr[0] || addr[1] || addr[2])) {
 		netdev_warn(dev, "MAC address not initialized, "
 					"generating random\n");
 		eth_hw_addr_random(dev);
@@ -1127,7 +1127,7 @@ static int r6040_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	dev->ethtool_ops = &netdev_ethtool_ops;
 	dev->watchdog_timeo = TX_TIMEOUT;
 
-	netif_napi_add(dev, &lp->napi, r6040_poll, 64);
+	netif_napi_add(dev, &lp->napi, r6040_poll);
 
 	lp->mii_bus = mdiobus_alloc();
 	if (!lp->mii_bus) {

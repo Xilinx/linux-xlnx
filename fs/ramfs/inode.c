@@ -38,6 +38,7 @@
 #include <linux/uaccess.h>
 #include <linux/fs_context.h>
 #include <linux/fs_parser.h>
+#include <linux/seq_file.h>
 #include "internal.h"
 
 struct ramfs_mount_opts {
@@ -145,15 +146,15 @@ static int ramfs_symlink(struct user_namespace *mnt_userns, struct inode *dir,
 }
 
 static int ramfs_tmpfile(struct user_namespace *mnt_userns,
-			 struct inode *dir, struct dentry *dentry, umode_t mode)
+			 struct inode *dir, struct file *file, umode_t mode)
 {
 	struct inode *inode;
 
 	inode = ramfs_get_inode(dir->i_sb, dir, mode, 0);
 	if (!inode)
 		return -ENOSPC;
-	d_tmpfile(dentry, inode);
-	return 0;
+	d_tmpfile(file, inode);
+	return finish_open_simple(file, 0);
 }
 
 static const struct inode_operations ramfs_dir_inode_operations = {
@@ -203,17 +204,20 @@ static int ramfs_parse_param(struct fs_context *fc, struct fs_parameter *param)
 	int opt;
 
 	opt = fs_parse(fc, ramfs_fs_parameters, param, &result);
-	if (opt < 0) {
+	if (opt == -ENOPARAM) {
+		opt = vfs_parse_fs_param_source(fc, param);
+		if (opt != -ENOPARAM)
+			return opt;
 		/*
 		 * We might like to report bad mount options here;
 		 * but traditionally ramfs has ignored all mount options,
 		 * and as it is used as a !CONFIG_SHMEM simple substitute
 		 * for tmpfs, better continue to ignore other mount options.
 		 */
-		if (opt == -ENOPARAM)
-			opt = 0;
-		return opt;
+		return 0;
 	}
+	if (opt < 0)
+		return opt;
 
 	switch (opt) {
 	case Opt_mode:

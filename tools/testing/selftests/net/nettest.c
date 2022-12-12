@@ -85,6 +85,7 @@ struct sock_args {
 	int version;   /* AF_INET/AF_INET6 */
 
 	int use_setsockopt;
+	int use_freebind;
 	int use_cmsg;
 	const char *dev;
 	const char *server_dev;
@@ -126,6 +127,9 @@ struct sock_args {
 
 	/* ESP in UDP encap test */
 	int use_xfrm;
+
+	/* use send() and connect() instead of sendto */
+	int datagram_connect;
 };
 
 static int server_mode;
@@ -512,6 +516,29 @@ static int set_membership(int sd, uint32_t grp, uint32_t addr, int ifindex)
 	}
 
 	return 0;
+}
+
+static int set_freebind(int sd, int version)
+{
+	unsigned int one = 1;
+	int rc = 0;
+
+	switch (version) {
+	case AF_INET:
+		if (setsockopt(sd, SOL_IP, IP_FREEBIND, &one, sizeof(one))) {
+			log_err_errno("setsockopt(IP_FREEBIND)");
+			rc = -1;
+		}
+		break;
+	case AF_INET6:
+		if (setsockopt(sd, SOL_IPV6, IPV6_FREEBIND, &one, sizeof(one))) {
+			log_err_errno("setsockopt(IPV6_FREEBIND");
+			rc = -1;
+		}
+		break;
+	}
+
+	return rc;
 }
 
 static int set_broadcast(int sd)
@@ -953,6 +980,11 @@ static int send_msg(int sd, void *addr, socklen_t alen, struct sock_args *args)
 	if (args->type == SOCK_STREAM) {
 		if (write(sd, msg, msglen) < 0) {
 			log_err_errno("write failed sending msg to peer");
+			return 1;
+		}
+	} else if (args->datagram_connect) {
+		if (send(sd, msg, msglen, 0) < 0) {
+			log_err_errno("send failed sending msg to peer");
 			return 1;
 		}
 	} else if (args->ifindex && args->use_cmsg) {
@@ -1419,6 +1451,9 @@ static int lsock_init(struct sock_args *args)
 		 set_unicast_if(sd, args->ifindex, args->version))
 		goto err;
 
+	if (args->use_freebind && set_freebind(sd, args->version))
+		goto err;
+
 	if (bind_socket(sd, args))
 		goto err;
 
@@ -1632,7 +1667,7 @@ static int connectsock(void *addr, socklen_t alen, struct sock_args *args)
 	if (args->has_local_ip && bind_socket(sd, args))
 		goto err;
 
-	if (args->type != SOCK_STREAM)
+	if (args->type != SOCK_STREAM && !args->datagram_connect)
 		goto out;
 
 	if (args->password && tcp_md5sig(sd, addr, alen, args))
@@ -1827,7 +1862,7 @@ static int ipc_parent(int cpid, int fd, struct sock_args *args)
 	return client_status;
 }
 
-#define GETOPT_STR  "sr:l:c:p:t:g:P:DRn:M:X:m:d:I:BN:O:SCi6xL:0:1:2:3:Fbq"
+#define GETOPT_STR  "sr:l:c:p:t:g:P:DRn:M:X:m:d:I:BN:O:SUCi6xL:0:1:2:3:Fbqf"
 #define OPT_FORCE_BIND_KEY_IFINDEX 1001
 #define OPT_NO_BIND_KEY_IFINDEX 1002
 
@@ -1864,6 +1899,8 @@ static void print_usage(char *prog)
 	"    -I dev        bind socket to given device name - server mode\n"
 	"    -S            use setsockopt (IP_UNICAST_IF or IP_MULTICAST_IF)\n"
 	"                  to set device binding\n"
+	"    -U            Use connect() and send() for datagram sockets\n"
+	"    -f            bind socket with the IP[V6]_FREEBIND option\n"
 	"    -C            use cmsg and IP_PKTINFO to specify device binding\n"
 	"\n"
 	"    -L len        send random message of given length\n"
@@ -1999,6 +2036,9 @@ int main(int argc, char *argv[])
 		case 'S':
 			args.use_setsockopt = 1;
 			break;
+		case 'f':
+			args.use_freebind = 1;
+			break;
 		case 'C':
 			args.use_cmsg = 1;
 			break;
@@ -2042,6 +2082,9 @@ int main(int argc, char *argv[])
 			break;
 		case 'x':
 			args.use_xfrm = 1;
+			break;
+		case 'U':
+			args.datagram_connect = 1;
 			break;
 		default:
 			print_usage(argv[0]);

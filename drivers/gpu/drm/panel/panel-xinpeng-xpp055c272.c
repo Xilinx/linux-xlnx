@@ -283,26 +283,19 @@ static int xpp055c272_probe(struct mipi_dsi_device *dsi)
 		return -ENOMEM;
 
 	ctx->reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW);
-	if (IS_ERR(ctx->reset_gpio)) {
-		dev_err(dev, "cannot get reset gpio\n");
-		return PTR_ERR(ctx->reset_gpio);
-	}
+	if (IS_ERR(ctx->reset_gpio))
+		return dev_err_probe(dev, PTR_ERR(ctx->reset_gpio),
+				     "cannot get reset gpio\n");
 
 	ctx->vci = devm_regulator_get(dev, "vci");
-	if (IS_ERR(ctx->vci)) {
-		ret = PTR_ERR(ctx->vci);
-		if (ret != -EPROBE_DEFER)
-			dev_err(dev, "Failed to request vci regulator: %d\n", ret);
-		return ret;
-	}
+	if (IS_ERR(ctx->vci))
+		return dev_err_probe(dev, PTR_ERR(ctx->vci),
+				     "Failed to request vci regulator\n");
 
 	ctx->iovcc = devm_regulator_get(dev, "iovcc");
-	if (IS_ERR(ctx->iovcc)) {
-		ret = PTR_ERR(ctx->iovcc);
-		if (ret != -EPROBE_DEFER)
-			dev_err(dev, "Failed to request iovcc regulator: %d\n", ret);
-		return ret;
-	}
+	if (IS_ERR(ctx->iovcc))
+		return dev_err_probe(dev, PTR_ERR(ctx->iovcc),
+				     "Failed to request iovcc regulator\n");
 
 	mipi_dsi_set_drvdata(dsi, ctx);
 
@@ -346,7 +339,7 @@ static void xpp055c272_shutdown(struct mipi_dsi_device *dsi)
 		dev_err(&dsi->dev, "Failed to disable panel: %d\n", ret);
 }
 
-static int xpp055c272_remove(struct mipi_dsi_device *dsi)
+static void xpp055c272_remove(struct mipi_dsi_device *dsi)
 {
 	struct xpp055c272 *ctx = mipi_dsi_get_drvdata(dsi);
 	int ret;
@@ -358,8 +351,6 @@ static int xpp055c272_remove(struct mipi_dsi_device *dsi)
 		dev_err(&dsi->dev, "Failed to detach from DSI host: %d\n", ret);
 
 	drm_panel_remove(&ctx->panel);
-
-	return 0;
 }
 
 static const struct of_device_id xpp055c272_of_match[] = {

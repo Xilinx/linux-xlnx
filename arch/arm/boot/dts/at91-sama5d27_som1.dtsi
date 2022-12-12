@@ -8,13 +8,14 @@
  */
 #include "sama5d2.dtsi"
 #include "sama5d2-pinfunc.h"
+#include <dt-bindings/gpio/gpio.h>
 
 / {
 	model = "Atmel SAMA5D27 SoM1";
 	compatible = "atmel,sama5d27-som1", "atmel,sama5d27", "atmel,sama5d2", "atmel,sama5";
 
 	aliases {
-		i2c0	= &i2c0;
+		i2c0 = &i2c0;
 	};
 
 	clocks {
@@ -82,6 +83,8 @@
 			macb0: ethernet@f8008000 {
 				pinctrl-names = "default";
 				pinctrl-0 = <&pinctrl_macb0_default>;
+				#address-cells = <1>;
+				#size-cells = <0>;
 				phy-mode = "rmii";
 
 				ethernet-phy@7 {
@@ -95,8 +98,11 @@
 
 			i2c0: i2c@f8028000 {
 				dmas = <0>, <0>;
-				pinctrl-names = "default";
+				pinctrl-names = "default", "gpio";
 				pinctrl-0 = <&pinctrl_i2c0_default>;
+				pinctrl-1 = <&pinctrl_i2c0_gpio>;
+				sda-gpios = <&pioA PIN_PD21 GPIO_ACTIVE_HIGH>;
+				scl-gpios = <&pioA PIN_PD22 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
 				status = "okay";
 
 				at24@50 {
@@ -110,6 +116,12 @@
 				pinctrl_i2c0_default: i2c0_default {
 					pinmux = <PIN_PD21__TWD0>,
 						 <PIN_PD22__TWCK0>;
+					bias-disable;
+				};
+
+				pinctrl_i2c0_gpio: i2c0_gpio {
+					pinmux = <PIN_PD21__GPIO>,
+						 <PIN_PD22__GPIO>;
 					bias-disable;
 				};
 

@@ -60,8 +60,8 @@ static struct vio_version vnet_versions[] = {
 static void vnet_get_drvinfo(struct net_device *dev,
 			     struct ethtool_drvinfo *info)
 {
-	strlcpy(info->driver, DRV_MODULE_NAME, sizeof(info->driver));
-	strlcpy(info->version, DRV_MODULE_VERSION, sizeof(info->version));
+	strscpy(info->driver, DRV_MODULE_NAME, sizeof(info->driver));
+	strscpy(info->version, DRV_MODULE_VERSION, sizeof(info->version));
 }
 
 static u32 vnet_get_msglevel(struct net_device *dev)
@@ -285,6 +285,7 @@ static struct vnet *vnet_new(const u64 *local_mac,
 			     struct vio_dev *vdev)
 {
 	struct net_device *dev;
+	u8 addr[ETH_ALEN];
 	struct vnet *vp;
 	int err, i;
 
@@ -295,7 +296,8 @@ static struct vnet *vnet_new(const u64 *local_mac,
 	dev->needed_tailroom = 8;
 
 	for (i = 0; i < ETH_ALEN; i++)
-		dev->dev_addr[i] = (*local_mac >> (5 - i) * 8) & 0xff;
+		addr[i] = (*local_mac >> (5 - i) * 8) & 0xff;
+	eth_hw_addr_set(dev, addr);
 
 	vp = netdev_priv(dev);
 
@@ -465,8 +467,7 @@ static int vnet_port_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	if (err)
 		goto err_out_free_port;
 
-	netif_napi_add(port->vp->dev, &port->napi, sunvnet_poll_common,
-		       NAPI_POLL_WEIGHT);
+	netif_napi_add(port->vp->dev, &port->napi, sunvnet_poll_common);
 
 	INIT_HLIST_NODE(&port->hash);
 	INIT_LIST_HEAD(&port->list);

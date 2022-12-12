@@ -59,6 +59,9 @@ struct mmc_fixup {
 	/* for MMC cards */
 	unsigned int ext_csd_rev;
 
+	/* Match against functions declared in device tree */
+	const char *of_compatible;
+
 	void (*vendor_fixup)(struct mmc_card *card, int data);
 	int data;
 };
@@ -70,6 +73,7 @@ struct mmc_fixup {
 #define EXT_CSD_REV_ANY (-1u)
 
 #define CID_MANFID_SANDISK      0x2
+#define CID_MANFID_SANDISK_SD   0x3
 #define CID_MANFID_ATP          0x9
 #define CID_MANFID_TOSHIBA      0x11
 #define CID_MANFID_MICRON       0x13
@@ -119,6 +123,21 @@ struct mmc_fixup {
 		   _vendor, _device,					\
 		   _fixup, _data, EXT_CSD_REV_ANY)			\
 
+#define SDIO_FIXUP_COMPATIBLE(_compatible, _fixup, _data)		\
+	{						\
+		.name = CID_NAME_ANY,			\
+		.manfid = CID_MANFID_ANY,		\
+		.oemid = CID_OEMID_ANY,			\
+		.rev_start = 0,				\
+		.rev_end = -1ull,			\
+		.cis_vendor = SDIO_ANY_ID,		\
+		.cis_device = SDIO_ANY_ID,		\
+		.vendor_fixup = (_fixup),		\
+		.data = (_data),			\
+		.ext_csd_rev = EXT_CSD_REV_ANY,		\
+		.of_compatible = _compatible,	\
+	}
+
 #define cid_rev(hwrev, fwrev, year, month)	\
 	(((u64) hwrev) << 40 |			\
 	 ((u64) fwrev) << 32 |			\
@@ -148,6 +167,24 @@ static inline void __maybe_unused add_limit_rate_quirk(struct mmc_card *card,
 						       int data)
 {
 	card->quirk_max_rate = data;
+}
+
+static inline void __maybe_unused wl1251_quirk(struct mmc_card *card,
+					       int data)
+{
+	/*
+	 * We have TI wl1251 attached to this mmc. Pass this
+	 * information to the SDIO core because it can't be
+	 * probed by normal methods.
+	 */
+
+	dev_info(card->host->parent, "found wl1251\n");
+	card->quirks |= MMC_QUIRK_NONSTD_SDIO;
+	card->cccr.wide_bus = 1;
+	card->cis.vendor = 0x104c;
+	card->cis.device = 0x9066;
+	card->cis.blksize = 512;
+	card->cis.max_dtr = 24000000;
 }
 
 /*
@@ -220,6 +257,11 @@ static inline int mmc_card_broken_irq_polling(const struct mmc_card *c)
 static inline int mmc_card_broken_hpi(const struct mmc_card *c)
 {
 	return c->quirks & MMC_QUIRK_BROKEN_HPI;
+}
+
+static inline int mmc_card_broken_sd_discard(const struct mmc_card *c)
+{
+	return c->quirks & MMC_QUIRK_BROKEN_SD_DISCARD;
 }
 
 #endif

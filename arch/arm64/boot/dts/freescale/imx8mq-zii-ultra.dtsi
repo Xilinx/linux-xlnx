@@ -443,7 +443,7 @@
 	status = "okay";
 
 	usbhub: usbhub@2c {
-		compatible ="microchip,usb2513b";
+		compatible = "microchip,usb2513b";
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_usbhub>;
 		reg = <0x2c>;
@@ -555,6 +555,7 @@
 	         <&clk IMX8MQ_CLK_PCIE1_PHY>,
 	         <&pcie0_refclk>;
 	clock-names = "pcie", "pcie_aux", "pcie_phy", "pcie_bus";
+	vph-supply = <&vgen5_reg>;
 	status = "okay";
 };
 
@@ -567,6 +568,7 @@
 	         <&clk IMX8MQ_CLK_PCIE2_PHY>,
 	         <&pcie1_refclk>;
 	clock-names = "pcie", "pcie_aux", "pcie_phy", "pcie_bus";
+	vph-supply = <&vgen5_reg>;
 	status = "okay";
 };
 

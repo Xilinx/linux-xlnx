@@ -230,15 +230,19 @@ static inline u32 hv_get_avail_to_write_percent(
  * two 16 bit quantities: major_number. minor_number.
  *
  * 0 . 13 (Windows Server 2008)
- * 1 . 1  (Windows 7)
- * 2 . 4  (Windows 8)
- * 3 . 0  (Windows 8 R2)
+ * 1 . 1  (Windows 7, WS2008 R2)
+ * 2 . 4  (Windows 8, WS2012)
+ * 3 . 0  (Windows 8.1, WS2012 R2)
  * 4 . 0  (Windows 10)
  * 4 . 1  (Windows 10 RS3)
  * 5 . 0  (Newer Windows 10)
  * 5 . 1  (Windows 10 RS4)
  * 5 . 2  (Windows Server 2019, RS5)
  * 5 . 3  (Windows Server 2022)
+ *
+ * The WS2008 and WIN7 versions are listed here for
+ * completeness but are no longer supported in the
+ * Linux kernel.
  */
 
 #define VERSION_WS2008  ((0 << 16) | (13))
@@ -788,6 +792,7 @@ struct vmbus_requestor {
 
 #define VMBUS_NO_RQSTOR U64_MAX
 #define VMBUS_RQST_ERROR (U64_MAX - 1)
+#define VMBUS_RQST_ADDR_ANY U64_MAX
 /* NetVSC-specific */
 #define VMBUS_RQST_ID_NO_RESPONSE (U64_MAX - 2)
 /* StorVSC-specific */
@@ -802,6 +807,12 @@ struct vmbus_device {
 };
 
 #define VMBUS_DEFAULT_MAX_PKT_SIZE 4096
+
+struct vmbus_gpadl {
+	u32 gpadl_handle;
+	u32 size;
+	void *buffer;
+};
 
 struct vmbus_channel {
 	struct list_head listentry;
@@ -822,7 +833,7 @@ struct vmbus_channel {
 	bool rescind_ref; /* got rescind msg, got channel reference */
 	struct completion rescind_event;
 
-	u32 ringbuffer_gpadlhandle;
+	struct vmbus_gpadl ringbuffer_gpadlhandle;
 
 	/* Allocated memory for ring buffer */
 	struct page *ringbuffer_page;
@@ -1035,13 +1046,36 @@ struct vmbus_channel {
 	u32 max_pkt_size;
 };
 
+#define lock_requestor(channel, flags)					\
+do {									\
+	struct vmbus_requestor *rqstor = &(channel)->requestor;		\
+									\
+	spin_lock_irqsave(&rqstor->req_lock, flags);			\
+} while (0)
+
+static __always_inline void unlock_requestor(struct vmbus_channel *channel,
+					     unsigned long flags)
+{
+	struct vmbus_requestor *rqstor = &channel->requestor;
+
+	spin_unlock_irqrestore(&rqstor->req_lock, flags);
+}
+
 u64 vmbus_next_request_id(struct vmbus_channel *channel, u64 rqst_addr);
+u64 __vmbus_request_addr_match(struct vmbus_channel *channel, u64 trans_id,
+			       u64 rqst_addr);
+u64 vmbus_request_addr_match(struct vmbus_channel *channel, u64 trans_id,
+			     u64 rqst_addr);
 u64 vmbus_request_addr(struct vmbus_channel *channel, u64 trans_id);
+
+static inline bool is_hvsock_offer(const struct vmbus_channel_offer_channel *o)
+{
+	return !!(o->offer.chn_flags & VMBUS_CHANNEL_TLNPI_PROVIDER_OFFER);
+}
 
 static inline bool is_hvsock_channel(const struct vmbus_channel *c)
 {
-	return !!(c->offermsg.offer.chn_flags &
-		  VMBUS_CHANNEL_TLNPI_PROVIDER_OFFER);
+	return is_hvsock_offer(&c->offermsg);
 }
 
 static inline bool is_sub_channel(const struct vmbus_channel *c)
@@ -1100,19 +1134,6 @@ void vmbus_set_sc_create_callback(struct vmbus_channel *primary_channel,
 void vmbus_set_chn_rescind_callback(struct vmbus_channel *channel,
 		void (*chn_rescind_cb)(struct vmbus_channel *));
 
-/*
- * Check if sub-channels have already been offerred. This API will be useful
- * when the driver is unloaded after establishing sub-channels. In this case,
- * when the driver is re-loaded, the driver would have to check if the
- * subchannels have already been established before attempting to request
- * the creation of sub-channels.
- * This function returns TRUE to indicate that subchannels have already been
- * created.
- * This function should be invoked after setting the callback function for
- * sub-channel creation.
- */
-bool vmbus_are_subchannels_present(struct vmbus_channel *primary);
-
 /* The format must be the same as struct vmdata_gpa_direct */
 struct vmbus_channel_packet_page_buffer {
 	u16 type;
@@ -1168,6 +1189,13 @@ extern int vmbus_open(struct vmbus_channel *channel,
 
 extern void vmbus_close(struct vmbus_channel *channel);
 
+extern int vmbus_sendpacket_getid(struct vmbus_channel *channel,
+				  void *buffer,
+				  u32 bufferLen,
+				  u64 requestid,
+				  u64 *trans_id,
+				  enum vmbus_packet_type type,
+				  u32 flags);
 extern int vmbus_sendpacket(struct vmbus_channel *channel,
 				  void *buffer,
 				  u32 bufferLen,
@@ -1192,10 +1220,10 @@ extern int vmbus_sendpacket_mpb_desc(struct vmbus_channel *channel,
 extern int vmbus_establish_gpadl(struct vmbus_channel *channel,
 				      void *kbuffer,
 				      u32 size,
-				      u32 *gpadl_handle);
+				      struct vmbus_gpadl *gpadl);
 
 extern int vmbus_teardown_gpadl(struct vmbus_channel *channel,
-				     u32 gpadl_handle);
+				     struct vmbus_gpadl *gpadl);
 
 void vmbus_reset_channel_cb(struct vmbus_channel *channel);
 
@@ -1264,10 +1292,16 @@ struct hv_device {
 	u16 device_id;
 
 	struct device device;
-	char *driver_override; /* Driver name to force a match */
+	/*
+	 * Driver name to force a match.  Do not set directly, because core
+	 * frees it.  Use driver_set_override() to set or clear it.
+	 */
+	const char *driver_override;
 
 	struct vmbus_channel *channel;
 	struct kset	     *channels_kset;
+	struct device_dma_parameters dma_parms;
+	u64 dma_mask;
 
 	/* place holder to keep track of the dir for hv device in debugfs */
 	struct dentry *debug_dir;
@@ -1456,12 +1490,14 @@ void vmbus_free_mmio(resource_size_t start, resource_size_t size);
 			  0x80, 0x2e, 0x27, 0xed, 0xe1, 0x9f)
 
 /*
- * Linux doesn't support the 3 devices: the first two are for
- * Automatic Virtual Machine Activation, and the third is for
- * Remote Desktop Virtualization.
+ * Linux doesn't support these 4 devices: the first two are for
+ * Automatic Virtual Machine Activation, the third is for
+ * Remote Desktop Virtualization, and the fourth is Initial
+ * Machine Configuration (IMC) used only by Windows guests.
  * {f8e65716-3cb3-4a06-9a60-1889c5cccab5}
  * {3375baf4-9e15-4b30-b765-67acb10d607b}
  * {276aacf4-ac15-426c-98dd-7521ad3f01fe}
+ * {c376c1c3-d276-48d2-90a9-c04748072c60}
  */
 
 #define HV_AVMA1_GUID \
@@ -1475,6 +1511,10 @@ void vmbus_free_mmio(resource_size_t start, resource_size_t size);
 #define HV_RDV_GUID \
 	.guid = GUID_INIT(0x276aacf4, 0xac15, 0x426c, 0x98, 0xdd, \
 			  0x75, 0x21, 0xad, 0x3f, 0x01, 0xfe)
+
+#define HV_IMC_GUID \
+	.guid = GUID_INIT(0xc376c1c3, 0xd276, 0x48d2, 0x90, 0xa9, \
+			  0xc0, 0x47, 0x48, 0x07, 0x2c, 0x60)
 
 /*
  * Common header for Hyper-V ICs
@@ -1590,6 +1630,11 @@ struct hyperv_service_callback {
 	void (*callback)(void *context);
 };
 
+struct hv_dma_range {
+	dma_addr_t dma;
+	u32 mapping_size;
+};
+
 #define MAX_SRV_VER	0x7ffffff
 extern bool vmbus_prep_negotiate_resp(struct icmsg_hdr *icmsghdrp, u8 *buf, u32 buflen,
 				const int *fw_version, int fw_vercnt,
@@ -1663,54 +1708,32 @@ static inline u32 hv_pkt_datalen(const struct vmpacket_descriptor *desc)
 	return (desc->len8 << 3) - (desc->offset8 << 3);
 }
 
-
-struct vmpacket_descriptor *
-hv_pkt_iter_first_raw(struct vmbus_channel *channel);
+/* Get packet length associated with descriptor */
+static inline u32 hv_pkt_len(const struct vmpacket_descriptor *desc)
+{
+	return desc->len8 << 3;
+}
 
 struct vmpacket_descriptor *
 hv_pkt_iter_first(struct vmbus_channel *channel);
 
 struct vmpacket_descriptor *
 __hv_pkt_iter_next(struct vmbus_channel *channel,
-		   const struct vmpacket_descriptor *pkt,
-		   bool copy);
+		   const struct vmpacket_descriptor *pkt);
 
 void hv_pkt_iter_close(struct vmbus_channel *channel);
 
 static inline struct vmpacket_descriptor *
-hv_pkt_iter_next_pkt(struct vmbus_channel *channel,
-		     const struct vmpacket_descriptor *pkt,
-		     bool copy)
+hv_pkt_iter_next(struct vmbus_channel *channel,
+		 const struct vmpacket_descriptor *pkt)
 {
 	struct vmpacket_descriptor *nxt;
 
-	nxt = __hv_pkt_iter_next(channel, pkt, copy);
+	nxt = __hv_pkt_iter_next(channel, pkt);
 	if (!nxt)
 		hv_pkt_iter_close(channel);
 
 	return nxt;
-}
-
-/*
- * Get next packet descriptor without copying it out of the ring buffer
- * If at end of list, return NULL and update host.
- */
-static inline struct vmpacket_descriptor *
-hv_pkt_iter_next_raw(struct vmbus_channel *channel,
-		     const struct vmpacket_descriptor *pkt)
-{
-	return hv_pkt_iter_next_pkt(channel, pkt, false);
-}
-
-/*
- * Get next packet descriptor from iterator
- * If at end of list, return NULL and update host.
- */
-static inline struct vmpacket_descriptor *
-hv_pkt_iter_next(struct vmbus_channel *channel,
-		 const struct vmpacket_descriptor *pkt)
-{
-	return hv_pkt_iter_next_pkt(channel, pkt, true);
 }
 
 #define foreach_vmbus_pkt(pkt, channel) \

@@ -76,8 +76,8 @@ static void otx2_get_drvinfo(struct net_device *netdev,
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
 
-	strlcpy(info->driver, DRV_NAME, sizeof(info->driver));
-	strlcpy(info->bus_info, pci_name(pfvf->pdev), sizeof(info->bus_info));
+	strscpy(info->driver, DRV_NAME, sizeof(info->driver));
+	strscpy(info->bus_info, pci_name(pfvf->pdev), sizeof(info->bus_info));
 }
 
 static void otx2_get_qset_strings(struct otx2_nic *pfvf, u8 **data, int qset)
@@ -121,14 +121,16 @@ static void otx2_get_strings(struct net_device *netdev, u32 sset, u8 *data)
 
 	otx2_get_qset_strings(pfvf, &data, 0);
 
-	for (stats = 0; stats < CGX_RX_STATS_COUNT; stats++) {
-		sprintf(data, "cgx_rxstat%d: ", stats);
-		data += ETH_GSTRING_LEN;
-	}
+	if (!test_bit(CN10K_RPM, &pfvf->hw.cap_flag)) {
+		for (stats = 0; stats < CGX_RX_STATS_COUNT; stats++) {
+			sprintf(data, "cgx_rxstat%d: ", stats);
+			data += ETH_GSTRING_LEN;
+		}
 
-	for (stats = 0; stats < CGX_TX_STATS_COUNT; stats++) {
-		sprintf(data, "cgx_txstat%d: ", stats);
-		data += ETH_GSTRING_LEN;
+		for (stats = 0; stats < CGX_TX_STATS_COUNT; stats++) {
+			sprintf(data, "cgx_txstat%d: ", stats);
+			data += ETH_GSTRING_LEN;
+		}
 	}
 
 	strcpy(data, "reset_count");
@@ -205,11 +207,15 @@ static void otx2_get_ethtool_stats(struct net_device *netdev,
 						[otx2_drv_stats[stat].index]);
 
 	otx2_get_qset_stats(pfvf, stats, &data);
-	otx2_update_lmac_stats(pfvf);
-	for (stat = 0; stat < CGX_RX_STATS_COUNT; stat++)
-		*(data++) = pfvf->hw.cgx_rx_stats[stat];
-	for (stat = 0; stat < CGX_TX_STATS_COUNT; stat++)
-		*(data++) = pfvf->hw.cgx_tx_stats[stat];
+
+	if (!test_bit(CN10K_RPM, &pfvf->hw.cap_flag)) {
+		otx2_update_lmac_stats(pfvf);
+		for (stat = 0; stat < CGX_RX_STATS_COUNT; stat++)
+			*(data++) = pfvf->hw.cgx_rx_stats[stat];
+		for (stat = 0; stat < CGX_TX_STATS_COUNT; stat++)
+			*(data++) = pfvf->hw.cgx_tx_stats[stat];
+	}
+
 	*(data++) = pfvf->reset_count;
 
 	fec_corr_blks = pfvf->hw.cgx_fec_corr_blks;
@@ -242,18 +248,19 @@ static void otx2_get_ethtool_stats(struct net_device *netdev,
 static int otx2_get_sset_count(struct net_device *netdev, int sset)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
-	int qstats_count;
+	int qstats_count, mac_stats = 0;
 
 	if (sset != ETH_SS_STATS)
 		return -EINVAL;
 
 	qstats_count = otx2_n_queue_stats *
 		       (pfvf->hw.rx_queues + pfvf->hw.tx_queues);
+	if (!test_bit(CN10K_RPM, &pfvf->hw.cap_flag))
+		mac_stats = CGX_RX_STATS_COUNT + CGX_TX_STATS_COUNT;
 	otx2_update_lmac_fec_stats(pfvf);
 
 	return otx2_n_dev_stats + otx2_n_drv_stats + qstats_count +
-	       CGX_RX_STATS_COUNT + CGX_TX_STATS_COUNT + OTX2_FEC_STATS_CNT
-	       + 1;
+	       mac_stats + OTX2_FEC_STATS_CNT + 1;
 }
 
 /* Get no of queues device supports and current queue count */
@@ -353,7 +360,9 @@ static int otx2_set_pauseparam(struct net_device *netdev,
 }
 
 static void otx2_get_ringparam(struct net_device *netdev,
-			       struct ethtool_ringparam *ring)
+			       struct ethtool_ringparam *ring,
+			       struct kernel_ethtool_ringparam *kernel_ring,
+			       struct netlink_ext_ack *extack)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
 	struct otx2_qset *qs = &pfvf->qset;
@@ -362,18 +371,40 @@ static void otx2_get_ringparam(struct net_device *netdev,
 	ring->rx_pending = qs->rqe_cnt ? qs->rqe_cnt : Q_COUNT(Q_SIZE_256);
 	ring->tx_max_pending = Q_COUNT(Q_SIZE_MAX);
 	ring->tx_pending = qs->sqe_cnt ? qs->sqe_cnt : Q_COUNT(Q_SIZE_4K);
+	kernel_ring->rx_buf_len = pfvf->hw.rbuf_len;
+	kernel_ring->cqe_size = pfvf->hw.xqe_size;
 }
 
 static int otx2_set_ringparam(struct net_device *netdev,
-			      struct ethtool_ringparam *ring)
+			      struct ethtool_ringparam *ring,
+			      struct kernel_ethtool_ringparam *kernel_ring,
+			      struct netlink_ext_ack *extack)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
+	u32 rx_buf_len = kernel_ring->rx_buf_len;
+	u32 old_rx_buf_len = pfvf->hw.rbuf_len;
+	u32 xqe_size = kernel_ring->cqe_size;
 	bool if_up = netif_running(netdev);
 	struct otx2_qset *qs = &pfvf->qset;
 	u32 rx_count, tx_count;
 
 	if (ring->rx_mini_pending || ring->rx_jumbo_pending)
 		return -EINVAL;
+
+	/* Hardware supports max size of 32k for a receive buffer
+	 * and 1536 is typical ethernet frame size.
+	 */
+	if (rx_buf_len && (rx_buf_len < 1536 || rx_buf_len > 32768)) {
+		netdev_err(netdev,
+			   "Receive buffer range is 1536 - 32768");
+		return -EINVAL;
+	}
+
+	if (xqe_size != 128 && xqe_size != 512) {
+		netdev_err(netdev,
+			   "Completion event size must be 128 or 512");
+		return -EINVAL;
+	}
 
 	/* Permitted lengths are 16 64 256 1K 4K 16K 64K 256K 1M  */
 	rx_count = ring->rx_pending;
@@ -392,7 +423,8 @@ static int otx2_set_ringparam(struct net_device *netdev,
 			   Q_COUNT(Q_SIZE_4K), Q_COUNT(Q_SIZE_MAX));
 	tx_count = Q_COUNT(Q_SIZE(tx_count, 3));
 
-	if (tx_count == qs->sqe_cnt && rx_count == qs->rqe_cnt)
+	if (tx_count == qs->sqe_cnt && rx_count == qs->rqe_cnt &&
+	    rx_buf_len == old_rx_buf_len && xqe_size == pfvf->hw.xqe_size)
 		return 0;
 
 	if (if_up)
@@ -401,6 +433,9 @@ static int otx2_set_ringparam(struct net_device *netdev,
 	/* Assigned to the nearest possible exponent. */
 	qs->sqe_cnt = tx_count;
 	qs->rqe_cnt = rx_count;
+
+	pfvf->hw.rbuf_len = rx_buf_len;
+	pfvf->hw.xqe_size = xqe_size;
 
 	if (if_up)
 		return netdev->netdev_ops->ndo_open(netdev);
@@ -420,6 +455,14 @@ static int otx2_get_coalesce(struct net_device *netdev,
 	cmd->rx_max_coalesced_frames = hw->cq_ecount_wait;
 	cmd->tx_coalesce_usecs = hw->cq_time_wait;
 	cmd->tx_max_coalesced_frames = hw->cq_ecount_wait;
+	if ((pfvf->flags & OTX2_FLAG_ADPTV_INT_COAL_ENABLED) ==
+			OTX2_FLAG_ADPTV_INT_COAL_ENABLED) {
+		cmd->use_adaptive_rx_coalesce = 1;
+		cmd->use_adaptive_tx_coalesce = 1;
+	} else {
+		cmd->use_adaptive_rx_coalesce = 0;
+		cmd->use_adaptive_tx_coalesce = 0;
+	}
 
 	return 0;
 }
@@ -431,10 +474,29 @@ static int otx2_set_coalesce(struct net_device *netdev,
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
 	struct otx2_hw *hw = &pfvf->hw;
+	u8 priv_coalesce_status;
 	int qidx;
 
 	if (!ec->rx_max_coalesced_frames || !ec->tx_max_coalesced_frames)
 		return 0;
+
+	if (ec->use_adaptive_rx_coalesce != ec->use_adaptive_tx_coalesce) {
+		netdev_err(netdev,
+			   "adaptive-rx should be same as adaptive-tx");
+		return -EINVAL;
+	}
+
+	/* Check and update coalesce status */
+	if ((pfvf->flags & OTX2_FLAG_ADPTV_INT_COAL_ENABLED) ==
+			OTX2_FLAG_ADPTV_INT_COAL_ENABLED) {
+		priv_coalesce_status = 1;
+		if (!ec->use_adaptive_rx_coalesce)
+			pfvf->flags &= ~OTX2_FLAG_ADPTV_INT_COAL_ENABLED;
+	} else {
+		priv_coalesce_status = 0;
+		if (ec->use_adaptive_rx_coalesce)
+			pfvf->flags |= OTX2_FLAG_ADPTV_INT_COAL_ENABLED;
+	}
 
 	/* 'cq_time_wait' is 8bit and is in multiple of 100ns,
 	 * so clamp the user given value to the range of 1 to 25usec.
@@ -459,9 +521,9 @@ static int otx2_set_coalesce(struct net_device *netdev,
 	 * so clamp the user given value to the range of 1 to 64k.
 	 */
 	ec->rx_max_coalesced_frames = clamp_t(u32, ec->rx_max_coalesced_frames,
-					      1, U16_MAX);
+					      1, NAPI_POLL_WEIGHT);
 	ec->tx_max_coalesced_frames = clamp_t(u32, ec->tx_max_coalesced_frames,
-					      1, U16_MAX);
+					      1, NAPI_POLL_WEIGHT);
 
 	/* Rx and Tx are mapped to same CQ, check which one
 	 * is changed, if both then choose the min.
@@ -473,6 +535,17 @@ static int otx2_set_coalesce(struct net_device *netdev,
 	else
 		hw->cq_ecount_wait = min_t(u16, ec->rx_max_coalesced_frames,
 					   ec->tx_max_coalesced_frames);
+
+	/* Reset 'cq_time_wait' and 'cq_ecount_wait' to
+	 * default values if coalesce status changed from
+	 * 'on' to 'off'.
+	 */
+	if (priv_coalesce_status &&
+	    ((pfvf->flags & OTX2_FLAG_ADPTV_INT_COAL_ENABLED) !=
+	     OTX2_FLAG_ADPTV_INT_COAL_ENABLED)) {
+		hw->cq_time_wait = CQ_TIMER_THRESH_DEFAULT;
+		hw->cq_ecount_wait = CQ_CQE_THRESH_DEFAULT;
+	}
 
 	if (netif_running(netdev)) {
 		for (qidx = 0; qidx < pfvf->hw.cint_cnt; qidx++)
@@ -890,10 +963,12 @@ static int otx2_get_ts_info(struct net_device *netdev,
 
 	info->phc_index = otx2_ptp_clock_index(pfvf);
 
-	info->tx_types = (1 << HWTSTAMP_TX_OFF) | (1 << HWTSTAMP_TX_ON);
+	info->tx_types = BIT(HWTSTAMP_TX_OFF) | BIT(HWTSTAMP_TX_ON);
+	if (test_bit(CN10K_PTP_ONESTEP, &pfvf->hw.cap_flag))
+		info->tx_types |= BIT(HWTSTAMP_TX_ONESTEP_SYNC);
 
-	info->rx_filters = (1 << HWTSTAMP_FILTER_NONE) |
-			   (1 << HWTSTAMP_FILTER_ALL);
+	info->rx_filters = BIT(HWTSTAMP_FILTER_NONE) |
+			   BIT(HWTSTAMP_FILTER_ALL);
 
 	return 0;
 }
@@ -1168,9 +1243,8 @@ static int otx2_set_link_ksettings(struct net_device *netdev,
 	otx2_get_link_ksettings(netdev, &cur_ks);
 
 	/* Check requested modes against supported modes by hardware */
-	if (!bitmap_subset(cmd->link_modes.advertising,
-			   cur_ks.link_modes.supported,
-			   __ETHTOOL_LINK_MODE_MASK_NBITS))
+	if (!linkmode_subset(cmd->link_modes.advertising,
+			     cur_ks.link_modes.supported))
 		return -EINVAL;
 
 	mutex_lock(&mbox->lock);
@@ -1196,7 +1270,10 @@ end:
 
 static const struct ethtool_ops otx2_ethtool_ops = {
 	.supported_coalesce_params = ETHTOOL_COALESCE_USECS |
-				     ETHTOOL_COALESCE_MAX_FRAMES,
+				     ETHTOOL_COALESCE_MAX_FRAMES |
+				     ETHTOOL_COALESCE_USE_ADAPTIVE,
+	.supported_ring_params  = ETHTOOL_RING_USE_RX_BUF_LEN |
+				  ETHTOOL_RING_USE_CQE_SIZE,
 	.get_link		= otx2_get_link,
 	.get_drvinfo		= otx2_get_drvinfo,
 	.get_strings		= otx2_get_strings,
@@ -1238,8 +1315,8 @@ static void otx2vf_get_drvinfo(struct net_device *netdev,
 {
 	struct otx2_nic *vf = netdev_priv(netdev);
 
-	strlcpy(info->driver, DRV_VF_NAME, sizeof(info->driver));
-	strlcpy(info->bus_info, pci_name(vf->pdev), sizeof(info->bus_info));
+	strscpy(info->driver, DRV_VF_NAME, sizeof(info->driver));
+	strscpy(info->bus_info, pci_name(vf->pdev), sizeof(info->bus_info));
 }
 
 static void otx2vf_get_strings(struct net_device *netdev, u32 sset, u8 *data)
@@ -1315,7 +1392,10 @@ static int otx2vf_get_link_ksettings(struct net_device *netdev,
 
 static const struct ethtool_ops otx2vf_ethtool_ops = {
 	.supported_coalesce_params = ETHTOOL_COALESCE_USECS |
-				     ETHTOOL_COALESCE_MAX_FRAMES,
+				     ETHTOOL_COALESCE_MAX_FRAMES |
+				     ETHTOOL_COALESCE_USE_ADAPTIVE,
+	.supported_ring_params  = ETHTOOL_RING_USE_RX_BUF_LEN |
+				  ETHTOOL_RING_USE_CQE_SIZE,
 	.get_link		= otx2_get_link,
 	.get_drvinfo		= otx2vf_get_drvinfo,
 	.get_strings		= otx2vf_get_strings,
@@ -1340,6 +1420,7 @@ static const struct ethtool_ops otx2vf_ethtool_ops = {
 	.get_pauseparam		= otx2_get_pauseparam,
 	.set_pauseparam		= otx2_set_pauseparam,
 	.get_link_ksettings     = otx2vf_get_link_ksettings,
+	.get_ts_info		= otx2_get_ts_info,
 };
 
 void otx2vf_set_ethtool_ops(struct net_device *netdev)

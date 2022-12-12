@@ -30,11 +30,11 @@ void rtw_bf_disassoc(struct rtw_dev *rtwdev, struct ieee80211_vif *vif,
 void rtw_bf_assoc(struct rtw_dev *rtwdev, struct ieee80211_vif *vif,
 		  struct ieee80211_bss_conf *bss_conf)
 {
+	const struct rtw_chip_info *chip = rtwdev->chip;
 	struct ieee80211_hw *hw = rtwdev->hw;
 	struct rtw_vif *rtwvif = (struct rtw_vif *)vif->drv_priv;
 	struct rtw_bfee *bfee = &rtwvif->bfee;
 	struct rtw_bf_info *bfinfo = &rtwdev->bf_info;
-	struct rtw_chip_info *chip = rtwdev->chip;
 	struct ieee80211_sta *sta;
 	struct ieee80211_sta_vht_cap *vht_cap;
 	struct ieee80211_sta_vht_cap *ic_vht_cap;
@@ -55,7 +55,7 @@ void rtw_bf_assoc(struct rtw_dev *rtwdev, struct ieee80211_vif *vif,
 	}
 
 	ic_vht_cap = &hw->wiphy->bands[NL80211_BAND_5GHZ]->vht_cap;
-	vht_cap = &sta->vht_cap;
+	vht_cap = &sta->deflink.vht_cap;
 
 	if ((ic_vht_cap->cap & IEEE80211_VHT_CAP_MU_BEAMFORMEE_CAPABLE) &&
 	    (vht_cap->cap & IEEE80211_VHT_CAP_MU_BEAMFORMER_CAPABLE)) {
@@ -67,7 +67,7 @@ void rtw_bf_assoc(struct rtw_dev *rtwdev, struct ieee80211_vif *vif,
 		ether_addr_copy(bfee->mac_addr, bssid);
 		bfee->role = RTW_BFEE_MU;
 		bfee->p_aid = (bssid[5] << 1) | (bssid[4] >> 7);
-		bfee->aid = bss_conf->aid;
+		bfee->aid = vif->cfg.aid;
 		bfinfo->bfer_mu_cnt++;
 
 		rtw_chip_config_bfee(rtwdev, rtwvif, bfee, true);
@@ -130,7 +130,8 @@ void rtw_bf_cfg_sounding(struct rtw_dev *rtwdev, struct rtw_vif *vif,
 		  BIT_WMAC_USE_NDPARATE |
 		  (csi_rsc << 13);
 
-	rtw_write8(rtwdev, REG_SND_PTCL_CTRL, RTW_SND_CTRL_SOUNDING);
+	rtw_write8_mask(rtwdev, REG_SND_PTCL_CTRL, BIT_MASK_BEAMFORM,
+			RTW_SND_CTRL_SOUNDING);
 	rtw_write8(rtwdev, REG_SND_PTCL_CTRL + 3, 0x26);
 	rtw_write8_clr(rtwdev, REG_RXFLTMAP1, BIT_RXFLTMAP1_BF_REPORT_POLL);
 	rtw_write8_clr(rtwdev, REG_RXFLTMAP4, BIT_RXFLTMAP4_BF_REPORT_POLL);
@@ -177,7 +178,7 @@ void rtw_bf_del_bfer_entry_mu(struct rtw_dev *rtwdev)
 
 void rtw_bf_del_sounding(struct rtw_dev *rtwdev)
 {
-	rtw_write8(rtwdev, REG_SND_PTCL_CTRL, 0);
+	rtw_write8_mask(rtwdev, REG_SND_PTCL_CTRL, BIT_MASK_BEAMFORM, 0);
 }
 
 void rtw_bf_enable_bfee_su(struct rtw_dev *rtwdev, struct rtw_vif *vif,
@@ -204,7 +205,8 @@ void rtw_bf_enable_bfee_su(struct rtw_dev *rtwdev, struct rtw_vif *vif,
 	}
 
 	/* Sounding protocol control */
-	rtw_write8(rtwdev, REG_SND_PTCL_CTRL, RTW_SND_CTRL_SOUNDING);
+	rtw_write8_mask(rtwdev, REG_SND_PTCL_CTRL, BIT_MASK_BEAMFORM,
+			RTW_SND_CTRL_SOUNDING);
 
 	/* MAC address/Partial AID of Beamformer */
 	for (i = 0; i < ETH_ALEN; i++)
@@ -273,7 +275,8 @@ void rtw_bf_remove_bfee_su(struct rtw_dev *rtwdev,
 	struct rtw_bf_info *bfinfo = &rtwdev->bf_info;
 
 	rtw_dbg(rtwdev, RTW_DBG_BF, "remove as a su bfee\n");
-	rtw_write8(rtwdev, REG_SND_PTCL_CTRL, RTW_SND_CTRL_REMOVE);
+	rtw_write8_mask(rtwdev, REG_SND_PTCL_CTRL, BIT_MASK_BEAMFORM,
+			RTW_SND_CTRL_REMOVE);
 
 	switch (bfee->su_reg_index) {
 	case 0:
@@ -298,7 +301,8 @@ void rtw_bf_remove_bfee_mu(struct rtw_dev *rtwdev,
 {
 	struct rtw_bf_info *bfinfo = &rtwdev->bf_info;
 
-	rtw_write8(rtwdev, REG_SND_PTCL_CTRL, RTW_SND_CTRL_REMOVE);
+	rtw_write8_mask(rtwdev, REG_SND_PTCL_CTRL, BIT_MASK_BEAMFORM,
+			RTW_SND_CTRL_REMOVE);
 
 	rtw_bf_del_bfer_entry_mu(rtwdev);
 

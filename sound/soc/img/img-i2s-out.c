@@ -302,10 +302,10 @@ static int img_i2s_out_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 	if (force_clk_active)
 		control_set |= IMG_I2S_OUT_CTL_CLK_EN_MASK;
 
-	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
-	case SND_SOC_DAIFMT_CBM_CFM:
+	switch (fmt & SND_SOC_DAIFMT_CLOCK_PROVIDER_MASK) {
+	case SND_SOC_DAIFMT_BC_FC:
 		break;
-	case SND_SOC_DAIFMT_CBS_CFS:
+	case SND_SOC_DAIFMT_BP_FP:
 		control_set |= IMG_I2S_OUT_CTL_MASTER_MASK;
 		break;
 	default:
@@ -346,11 +346,9 @@ static int img_i2s_out_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 
 	chan_control_mask = IMG_I2S_OUT_CHAN_CTL_CLKT_MASK;
 
-	ret = pm_runtime_get_sync(i2s->dev);
-	if (ret < 0) {
-		pm_runtime_put_noidle(i2s->dev);
+	ret = pm_runtime_resume_and_get(i2s->dev);
+	if (ret < 0)
 		return ret;
-	}
 
 	img_i2s_out_disable(i2s);
 
@@ -394,7 +392,8 @@ static int img_i2s_out_dai_probe(struct snd_soc_dai *dai)
 }
 
 static const struct snd_soc_component_driver img_i2s_out_component = {
-	.name = "img-i2s-out"
+	.name = "img-i2s-out",
+	.legacy_dai_naming = 1,
 };
 
 static int img_i2s_out_dma_prepare_slave_config(struct snd_pcm_substream *st,
@@ -457,25 +456,19 @@ static int img_i2s_out_probe(struct platform_device *pdev)
 	i2s->channel_base = base + (max_i2s_chan_pow_2 * 0x20);
 
 	i2s->rst = devm_reset_control_get_exclusive(&pdev->dev, "rst");
-	if (IS_ERR(i2s->rst)) {
-		if (PTR_ERR(i2s->rst) != -EPROBE_DEFER)
-			dev_err(&pdev->dev, "No top level reset found\n");
-		return PTR_ERR(i2s->rst);
-	}
+	if (IS_ERR(i2s->rst))
+		return dev_err_probe(&pdev->dev, PTR_ERR(i2s->rst),
+				     "No top level reset found\n");
 
 	i2s->clk_sys = devm_clk_get(&pdev->dev, "sys");
-	if (IS_ERR(i2s->clk_sys)) {
-		if (PTR_ERR(i2s->clk_sys) != -EPROBE_DEFER)
-			dev_err(dev, "Failed to acquire clock 'sys'\n");
-		return PTR_ERR(i2s->clk_sys);
-	}
+	if (IS_ERR(i2s->clk_sys))
+		return dev_err_probe(dev, PTR_ERR(i2s->clk_sys),
+				     "Failed to acquire clock 'sys'\n");
 
 	i2s->clk_ref = devm_clk_get(&pdev->dev, "ref");
-	if (IS_ERR(i2s->clk_ref)) {
-		if (PTR_ERR(i2s->clk_ref) != -EPROBE_DEFER)
-			dev_err(dev, "Failed to acquire clock 'ref'\n");
-		return PTR_ERR(i2s->clk_ref);
-	}
+	if (IS_ERR(i2s->clk_ref))
+		return dev_err_probe(dev, PTR_ERR(i2s->clk_ref),
+				     "Failed to acquire clock 'ref'\n");
 
 	i2s->suspend_ch_ctl = devm_kcalloc(dev,
 		i2s->max_i2s_chan, sizeof(*i2s->suspend_ch_ctl), GFP_KERNEL);
@@ -488,11 +481,9 @@ static int img_i2s_out_probe(struct platform_device *pdev)
 		if (ret)
 			goto err_pm_disable;
 	}
-	ret = pm_runtime_get_sync(&pdev->dev);
-	if (ret < 0) {
-		pm_runtime_put_noidle(&pdev->dev);
+	ret = pm_runtime_resume_and_get(&pdev->dev);
+	if (ret < 0)
 		goto err_suspend;
-	}
 
 	reg = IMG_I2S_OUT_CTL_FRM_SIZE_MASK;
 	img_i2s_out_writel(i2s, reg, IMG_I2S_OUT_CTL);

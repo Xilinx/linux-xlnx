@@ -484,7 +484,7 @@ struct bcm_rsb {
 
 /* Number of Receive hardware descriptor words */
 #define SP_NUM_HW_RX_DESC_WORDS		1024
-#define SP_LT_NUM_HW_RX_DESC_WORDS	256
+#define SP_LT_NUM_HW_RX_DESC_WORDS	512
 
 /* Internal linked-list RAM size */
 #define SP_NUM_TX_DESC			1536
@@ -711,6 +711,7 @@ struct bcm_sysport_priv {
 	int			wol_irq;
 
 	/* Transmit rings */
+	spinlock_t		desc_lock;
 	struct bcm_sysport_tx_ring *tx_rings;
 
 	/* Receive queue */

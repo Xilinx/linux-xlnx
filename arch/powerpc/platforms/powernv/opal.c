@@ -73,7 +73,7 @@ static struct task_struct *kopald_tsk;
 static struct opal_msg *opal_msg;
 static u32 opal_msg_size __ro_after_init;
 
-void opal_configure_cores(void)
+void __init opal_configure_cores(void)
 {
 	u64 reinit_flags = 0;
 
@@ -779,7 +779,7 @@ out:
 	return !!recover_addr;
 }
 
-static int opal_sysfs_init(void)
+static int __init opal_sysfs_init(void)
 {
 	opal_kobj = kobject_create_and_add("opal", firmware_kobj);
 	if (!opal_kobj) {
@@ -892,6 +892,7 @@ static void opal_export_attrs(void)
 	kobj = kobject_create_and_add("exports", opal_kobj);
 	if (!kobj) {
 		pr_warn("kobject_create_and_add() of exports failed\n");
+		of_node_put(np);
 		return;
 	}
 
@@ -937,7 +938,7 @@ static void __init opal_dump_region_init(void)
 			"rc = %d\n", rc);
 }
 
-static void opal_pdev_init(const char *compatible)
+static void __init opal_pdev_init(const char *compatible)
 {
 	struct device_node *np;
 
@@ -952,6 +953,8 @@ static void __init opal_imc_init_dev(void)
 	np = of_find_compatible_node(NULL, NULL, IMC_DTB_COMPAT);
 	if (np)
 		of_platform_device_create(np, NULL, NULL);
+
+	of_node_put(np);
 }
 
 static int kopald(void *unused)
@@ -981,7 +984,7 @@ void opal_wake_poller(void)
 		wake_up_process(kopald_tsk);
 }
 
-static void opal_init_heartbeat(void)
+static void __init opal_init_heartbeat(void)
 {
 	/* Old firwmware, we assume the HVC heartbeat is sufficient */
 	if (of_property_read_u32(opal_node, "ibm,heartbeat-ms",

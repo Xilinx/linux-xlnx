@@ -1,12 +1,14 @@
 .. SPDX-License-Identifier: GPL-2.0
 
 =================================
-NETWORK FILESYSTEM HELPER LIBRARY
+Network Filesystem Helper Library
 =================================
 
 .. Contents:
 
  - Overview.
+ - Per-inode context.
+   - Inode context helper functions.
  - Buffered read helpers.
    - Read helper functions.
    - Read helper structures.
@@ -28,31 +30,93 @@ Note that the library module doesn't link against local caching directly, so
 access must be provided by the netfs.
 
 
+Per-Inode Context
+=================
+
+The network filesystem helper library needs a place to store a bit of state for
+its use on each netfs inode it is helping to manage.  To this end, a context
+structure is defined::
+
+	struct netfs_inode {
+		struct inode inode;
+		const struct netfs_request_ops *ops;
+		struct fscache_cookie *cache;
+	};
+
+A network filesystem that wants to use netfs lib must place one of these in its
+inode wrapper struct instead of the VFS ``struct inode``.  This can be done in
+a way similar to the following::
+
+	struct my_inode {
+		struct netfs_inode netfs; /* Netfslib context and vfs inode */
+		...
+	};
+
+This allows netfslib to find its state by using ``container_of()`` from the
+inode pointer, thereby allowing the netfslib helper functions to be pointed to
+directly by the VFS/VM operation tables.
+
+The structure contains the following fields:
+
+ * ``inode``
+
+   The VFS inode structure.
+
+ * ``ops``
+
+   The set of operations provided by the network filesystem to netfslib.
+
+ * ``cache``
+
+   Local caching cookie, or NULL if no caching is enabled.  This field does not
+   exist if fscache is disabled.
+
+
+Inode Context Helper Functions
+------------------------------
+
+To help deal with the per-inode context, a number helper functions are
+provided.  Firstly, a function to perform basic initialisation on a context and
+set the operations table pointer::
+
+	void netfs_inode_init(struct netfs_inode *ctx,
+			      const struct netfs_request_ops *ops);
+
+then a function to cast from the VFS inode structure to the netfs context::
+
+	struct netfs_inode *netfs_node(struct inode *inode);
+
+and finally, a function to get the cache cookie pointer from the context
+attached to an inode (or NULL if fscache is disabled)::
+
+	struct fscache_cookie *netfs_i_cookie(struct netfs_inode *ctx);
+
+
 Buffered Read Helpers
 =====================
 
-The library provides a set of read helpers that handle the ->readpage(),
+The library provides a set of read helpers that handle the ->read_folio(),
 ->readahead() and much of the ->write_begin() VM operations and translate them
 into a common call framework.
 
 The following services are provided:
 
- * Handles transparent huge pages (THPs).
+ * Handle folios that span multiple pages.
 
- * Insulates the netfs from VM interface changes.
+ * Insulate the netfs from VM interface changes.
 
- * Allows the netfs to arbitrarily split reads up into pieces, even ones that
-   don't match page sizes or page alignments and that may cross pages.
+ * Allow the netfs to arbitrarily split reads up into pieces, even ones that
+   don't match folio sizes or folio alignments and that may cross folios.
 
- * Allows the netfs to expand a readahead request in both directions to meet
-   its needs.
+ * Allow the netfs to expand a readahead request in both directions to meet its
+   needs.
 
- * Allows the netfs to partially fulfil a read, which will then be resubmitted.
+ * Allow the netfs to partially fulfil a read, which will then be resubmitted.
 
- * Handles local caching, allowing cached data and server-read data to be
+ * Handle local caching, allowing cached data and server-read data to be
    interleaved for a single request.
 
- * Handles clearing of bufferage that aren't on the server.
+ * Handle clearing of bufferage that aren't on the server.
 
  * Handle retrying of reads that failed, switching reads from the cache to the
    server as necessary.
@@ -70,53 +134,38 @@ Read Helper Functions
 
 Three read helpers are provided::
 
- * void netfs_readahead(struct readahead_control *ractl,
-			const struct netfs_read_request_ops *ops,
-			void *netfs_priv);``
- * int netfs_readpage(struct file *file,
-		      struct page *page,
-		      const struct netfs_read_request_ops *ops,
-		      void *netfs_priv);
- * int netfs_write_begin(struct file *file,
-			 struct address_space *mapping,
-			 loff_t pos,
-			 unsigned int len,
-			 unsigned int flags,
-			 struct page **_page,
-			 void **_fsdata,
-			 const struct netfs_read_request_ops *ops,
-			 void *netfs_priv);
+	void netfs_readahead(struct readahead_control *ractl);
+	int netfs_read_folio(struct file *file,
+			     struct folio *folio);
+	int netfs_write_begin(struct netfs_inode *ctx,
+			      struct file *file,
+			      struct address_space *mapping,
+			      loff_t pos,
+			      unsigned int len,
+			      struct folio **_folio,
+			      void **_fsdata);
 
-Each corresponds to a VM operation, with the addition of a couple of parameters
-for the use of the read helpers:
+Each corresponds to a VM address space operation.  These operations use the
+state in the per-inode context.
 
- * ``ops``
-
-   A table of operations through which the helpers can talk to the filesystem.
-
- * ``netfs_priv``
-
-   Filesystem private data (can be NULL).
-
-Both of these values will be stored into the read request structure.
-
-For ->readahead() and ->readpage(), the network filesystem should just jump
-into the corresponding read helper; whereas for ->write_begin(), it may be a
+For ->readahead() and ->read_folio(), the network filesystem just point directly
+at the corresponding read helper; whereas for ->write_begin(), it may be a
 little more complicated as the network filesystem might want to flush
-conflicting writes or track dirty data and needs to put the acquired page if an
-error occurs after calling the helper.
+conflicting writes or track dirty data and needs to put the acquired folio if
+an error occurs after calling the helper.
 
 The helpers manage the read request, calling back into the network filesystem
 through the suppplied table of operations.  Waits will be performed as
 necessary before returning for helpers that are meant to be synchronous.
 
-If an error occurs and netfs_priv is non-NULL, ops->cleanup() will be called to
-deal with it.  If some parts of the request are in progress when an error
-occurs, the request will get partially completed if sufficient data is read.
+If an error occurs, the ->free_request() will be called to clean up the
+netfs_io_request struct allocated.  If some parts of the request are in
+progress when an error occurs, the request will get partially completed if
+sufficient data is read.
 
 Additionally, there is::
 
-  * void netfs_subreq_terminated(struct netfs_read_subrequest *subreq,
+  * void netfs_subreq_terminated(struct netfs_io_subrequest *subreq,
 				 ssize_t transferred_or_error,
 				 bool was_async);
 
@@ -132,7 +181,7 @@ Read Helper Structures
 The read helpers make use of a couple of structures to maintain the state of
 the read.  The first is a structure that manages a read request as a whole::
 
-	struct netfs_read_request {
+	struct netfs_io_request {
 		struct inode		*inode;
 		struct address_space	*mapping;
 		struct netfs_cache_resources cache_resources;
@@ -140,7 +189,7 @@ the read.  The first is a structure that manages a read request as a whole::
 		loff_t			start;
 		size_t			len;
 		loff_t			i_size;
-		const struct netfs_read_request_ops *netfs_ops;
+		const struct netfs_request_ops *netfs_ops;
 		unsigned int		debug_id;
 		...
 	};
@@ -160,8 +209,7 @@ The above fields are the ones the netfs can use.  They are:
  * ``netfs_priv``
 
    The network filesystem's private data.  The value for this can be passed in
-   to the helper functions or set during the request.  The ->cleanup() op will
-   be called if this is non-NULL at the end.
+   to the helper functions or set during the request.
 
  * ``start``
  * ``len``
@@ -187,8 +235,8 @@ The above fields are the ones the netfs can use.  They are:
 The second structure is used to manage individual slices of the overall read
 request::
 
-	struct netfs_read_subrequest {
-		struct netfs_read_request *rreq;
+	struct netfs_io_subrequest {
+		struct netfs_io_request *rreq;
 		loff_t			start;
 		size_t			len;
 		size_t			transferred;
@@ -244,31 +292,30 @@ Read Helper Operations
 The network filesystem must provide the read helpers with a table of operations
 through which it can issue requests and negotiate::
 
-	struct netfs_read_request_ops {
-		void (*init_rreq)(struct netfs_read_request *rreq, struct file *file);
-		bool (*is_cache_enabled)(struct inode *inode);
-		int (*begin_cache_operation)(struct netfs_read_request *rreq);
-		void (*expand_readahead)(struct netfs_read_request *rreq);
-		bool (*clamp_length)(struct netfs_read_subrequest *subreq);
-		void (*issue_op)(struct netfs_read_subrequest *subreq);
-		bool (*is_still_valid)(struct netfs_read_request *rreq);
+	struct netfs_request_ops {
+		void (*init_request)(struct netfs_io_request *rreq, struct file *file);
+		void (*free_request)(struct netfs_io_request *rreq);
+		int (*begin_cache_operation)(struct netfs_io_request *rreq);
+		void (*expand_readahead)(struct netfs_io_request *rreq);
+		bool (*clamp_length)(struct netfs_io_subrequest *subreq);
+		void (*issue_read)(struct netfs_io_subrequest *subreq);
+		bool (*is_still_valid)(struct netfs_io_request *rreq);
 		int (*check_write_begin)(struct file *file, loff_t pos, unsigned len,
-					 struct page *page, void **_fsdata);
-		void (*done)(struct netfs_read_request *rreq);
-		void (*cleanup)(struct address_space *mapping, void *netfs_priv);
+					 struct folio **foliop, void **_fsdata);
+		void (*done)(struct netfs_io_request *rreq);
 	};
 
 The operations are as follows:
 
- * ``init_rreq()``
+ * ``init_request()``
 
    [Optional] This is called to initialise the request structure.  It is given
-   the file for reference and can modify the ->netfs_priv value.
+   the file for reference.
 
- * ``is_cache_enabled()``
+ * ``free_request()``
 
-   [Required] This is called by netfs_write_begin() to ask if the file is being
-   cached.  It should return true if it is being cached and false otherwise.
+   [Optional] This is called as the request is being deallocated so that the
+   filesystem can clean up any state it has attached there.
 
  * ``begin_cache_operation()``
 
@@ -305,7 +352,7 @@ The operations are as follows:
 
    This should return 0 on success and an error code on error.
 
- * ``issue_op()``
+ * ``issue_read()``
 
    [Required] The helpers use this to dispatch a subrequest to the server for
    reading.  In the subrequest, ->start, ->len and ->transferred indicate what
@@ -313,13 +360,14 @@ The operations are as follows:
 
    There is no return value; the netfs_subreq_terminated() function should be
    called to indicate whether or not the operation succeeded and how much data
-   it transferred.  The filesystem also should not deal with setting pages
+   it transferred.  The filesystem also should not deal with setting folios
    uptodate, unlocking them or dropping their refs - the helpers need to deal
    with this as they have to coordinate with copying to the local cache.
 
-   Note that the helpers have the pages locked, but not pinned.  It is possible
-   to use the ITER_XARRAY iov iterator to refer to the range of the inode that
-   is being operated upon without the need to allocate large bvec tables.
+   Note that the helpers have the folios locked, but not pinned.  It is
+   possible to use the ITER_XARRAY iov iterator to refer to the range of the
+   inode that is being operated upon without the need to allocate large bvec
+   tables.
 
  * ``is_still_valid()``
 
@@ -330,21 +378,18 @@ The operations are as follows:
  * ``check_write_begin()``
 
    [Optional] This is called from the netfs_write_begin() helper once it has
-   allocated/grabbed the page to be modified to allow the filesystem to flush
+   allocated/grabbed the folio to be modified to allow the filesystem to flush
    conflicting state before allowing it to be modified.
 
-   It should return 0 if everything is now fine, -EAGAIN if the page should be
-   regrabbed and any other error code to abort the operation.
+   It may unlock and discard the folio it was given and set the caller's folio
+   pointer to NULL.  It should return 0 if everything is now fine (``*foliop``
+   left set) or the op should be retried (``*foliop`` cleared) and any other
+   error code to abort the operation.
 
  * ``done``
 
-   [Optional] This is called after the pages in the request have all been
+   [Optional] This is called after the folios in the request have all been
    unlocked (and marked uptodate if applicable).
-
- * ``cleanup``
-
-   [Optional] This is called as the request is being deallocated so that the
-   filesystem can clean up ->netfs_priv.
 
 
 
@@ -390,7 +435,7 @@ The read helpers work by the following general procedure:
      * If NETFS_SREQ_CLEAR_TAIL was set, a short read will be cleared to the
        end of the slice instead of reissuing.
 
- * Once the data is read, the pages that have been fully read/cleared:
+ * Once the data is read, the folios that have been fully read/cleared:
 
    * Will be marked uptodate.
 
@@ -398,11 +443,11 @@ The read helpers work by the following general procedure:
 
    * Unlocked
 
- * Any pages that need writing to the cache will then have DIO writes issued.
+ * Any folios that need writing to the cache will then have DIO writes issued.
 
  * Synchronous operations will wait for reading to be complete.
 
- * Writes to the cache will proceed asynchronously and the pages will have the
+ * Writes to the cache will proceed asynchronously and the folios will have the
    PG_fscache mark removed when that completes.
 
  * The request structures will be cleaned up when everything has completed.
@@ -419,12 +464,12 @@ The network filesystem's ->begin_cache_operation() method is called to set up a
 cache and this must call into the cache to do the work.  If using fscache, for
 example, the cache would call::
 
-	int fscache_begin_read_operation(struct netfs_read_request *rreq,
+	int fscache_begin_read_operation(struct netfs_io_request *rreq,
 					 struct fscache_cookie *cookie);
 
 passing in the request pointer and the cookie corresponding to the file.
 
-The netfs_read_request object contains a place for the cache to hang its
+The netfs_io_request object contains a place for the cache to hang its
 state::
 
 	struct netfs_cache_resources {
@@ -442,7 +487,7 @@ operation table looks like the following::
 		void (*expand_readahead)(struct netfs_cache_resources *cres,
 					 loff_t *_start, size_t *_len, loff_t i_size);
 
-		enum netfs_read_source (*prepare_read)(struct netfs_read_subrequest *subreq,
+		enum netfs_io_source (*prepare_read)(struct netfs_io_subrequest *subreq,
 						       loff_t i_size);
 
 		int (*read)(struct netfs_cache_resources *cres,
@@ -452,11 +497,19 @@ operation table looks like the following::
 			    netfs_io_terminated_t term_func,
 			    void *term_func_priv);
 
+		int (*prepare_write)(struct netfs_cache_resources *cres,
+				     loff_t *_start, size_t *_len, loff_t i_size,
+				     bool no_space_allocated_yet);
+
 		int (*write)(struct netfs_cache_resources *cres,
 			     loff_t start_pos,
 			     struct iov_iter *iter,
 			     netfs_io_terminated_t term_func,
 			     void *term_func_priv);
+
+		int (*query_occupancy)(struct netfs_cache_resources *cres,
+				       loff_t start, size_t len, size_t granularity,
+				       loff_t *_data_start, size_t *_data_len);
 	};
 
 With a termination handler function pointer::
@@ -509,6 +562,17 @@ The methods defined in the table are:
    indicating whether the termination is definitely happening in the caller's
    context.
 
+ * ``prepare_write()``
+
+   [Required] Called to prepare a write to the cache to take place.  This
+   involves checking to see whether the cache has sufficient space to honour
+   the write.  ``*_start`` and ``*_len`` indicate the region to be written; the
+   region can be shrunk or it can be expanded to a page boundary either way as
+   necessary to align for direct I/O.  i_size holds the size of the object and
+   is provided for reference.  no_space_allocated_yet is set to true if the
+   caller is certain that no data has been written to that region - for example
+   if it tried to do a read from there already.
+
  * ``write()``
 
    [Required] Called to write to the cache.  The start file offset is given
@@ -520,7 +584,27 @@ The methods defined in the table are:
    indicating whether the termination is definitely happening in the caller's
    context.
 
+ * ``query_occupancy()``
+
+   [Required] Called to find out where the next piece of data is within a
+   particular region of the cache.  The start and length of the region to be
+   queried are passed in, along with the granularity to which the answer needs
+   to be aligned.  The function passes back the start and length of the data,
+   if any, available within that region.  Note that there may be a hole at the
+   front.
+
+   It returns 0 if some data was found, -ENODATA if there was no usable data
+   within the region or -ENOBUFS if there is no caching on this file.
+
 Note that these methods are passed a pointer to the cache resource structure,
 not the read request structure as they could be used in other situations where
 there isn't a read request structure as well, such as writing dirty data to the
 cache.
+
+
+API Function Reference
+======================
+
+.. kernel-doc:: include/linux/netfs.h
+.. kernel-doc:: fs/netfs/buffered_read.c
+.. kernel-doc:: fs/netfs/io.c

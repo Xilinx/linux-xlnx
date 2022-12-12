@@ -243,7 +243,7 @@ static int ioc3_set_mac_address(struct net_device *dev, void *addr)
 	struct ioc3_private *ip = netdev_priv(dev);
 	struct sockaddr *sa = addr;
 
-	memcpy(dev->dev_addr, sa->sa_data, dev->addr_len);
+	eth_hw_addr_set(dev, sa->sa_data);
 
 	spin_lock_irq(&ip->ioc3_lock);
 	__ioc3_set_mac_address(dev);
@@ -920,7 +920,7 @@ static int ioc3eth_probe(struct platform_device *pdev)
 
 	ioc3_mii_start(ip);
 	ioc3_ssram_disc(ip);
-	memcpy(dev->dev_addr, mac_addr, ETH_ALEN);
+	eth_hw_addr_set(dev, mac_addr);
 
 	/* The IOC3-specific entries in the device structure. */
 	dev->watchdog_timeo	= 5 * HZ;
@@ -1158,9 +1158,9 @@ static inline unsigned int ioc3_hash(const unsigned char *addr)
 static void ioc3_get_drvinfo(struct net_device *dev,
 			     struct ethtool_drvinfo *info)
 {
-	strlcpy(info->driver, IOC3_NAME, sizeof(info->driver));
-	strlcpy(info->version, IOC3_VERSION, sizeof(info->version));
-	strlcpy(info->bus_info, pci_name(to_pci_dev(dev->dev.parent)),
+	strscpy(info->driver, IOC3_NAME, sizeof(info->driver));
+	strscpy(info->version, IOC3_VERSION, sizeof(info->version));
+	strscpy(info->bus_info, pci_name(to_pci_dev(dev->dev.parent)),
 		sizeof(info->bus_info));
 }
 

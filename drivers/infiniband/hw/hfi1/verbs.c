@@ -1300,8 +1300,8 @@ static void hfi1_fill_device_attr(struct hfi1_devdata *dd)
 			IB_DEVICE_BAD_QKEY_CNTR | IB_DEVICE_SHUTDOWN_PORT |
 			IB_DEVICE_SYS_IMAGE_GUID | IB_DEVICE_RC_RNR_NAK_GEN |
 			IB_DEVICE_PORT_ACTIVE_EVENT | IB_DEVICE_SRQ_RESIZE |
-			IB_DEVICE_MEM_MGT_EXTENSIONS |
-			IB_DEVICE_RDMA_NETDEV_OPA;
+			IB_DEVICE_MEM_MGT_EXTENSIONS;
+	rdi->dparms.props.kernel_cap_flags = IBK_RDMA_NETDEV_OPA;
 	rdi->dparms.props.page_size_cap = PAGE_SIZE;
 	rdi->dparms.props.vendor_id = dd->oui1 << 16 | dd->oui2 << 8 | dd->oui3;
 	rdi->dparms.props.vendor_part_id = dd->pcidev->device;
@@ -1397,8 +1397,7 @@ static int query_port(struct rvt_dev_info *rdi, u32 port_num,
 				      4096 : hfi1_max_mtu), IB_MTU_4096);
 	props->active_mtu = !valid_ib_mtu(ppd->ibmtu) ? props->max_mtu :
 		mtu_to_enum(ppd->ibmtu, IB_MTU_4096);
-	props->phys_mtu = HFI1_CAP_IS_KSET(AIP) ? hfi1_max_mtu :
-				ib_mtu_enum_to_int(props->max_mtu);
+	props->phys_mtu = hfi1_max_mtu;
 
 	return 0;
 }
@@ -1448,12 +1447,10 @@ static int shut_down_port(struct rvt_dev_info *rdi, u32 port_num)
 	struct hfi1_ibdev *verbs_dev = dev_from_rdi(rdi);
 	struct hfi1_devdata *dd = dd_from_dev(verbs_dev);
 	struct hfi1_pportdata *ppd = &dd->pport[port_num - 1];
-	int ret;
 
 	set_link_down_reason(ppd, OPA_LINKDOWN_REASON_UNKNOWN, 0,
 			     OPA_LINKDOWN_REASON_UNKNOWN);
-	ret = set_link_state(ppd, HLS_DN_DOWNDEF);
-	return ret;
+	return set_link_state(ppd, HLS_DN_DOWNDEF);
 }
 
 static int hfi1_get_guid_be(struct rvt_dev_info *rdi, struct rvt_ibport *rvp,
@@ -1602,8 +1599,8 @@ static const char * const driver_cntr_names[] = {
 };
 
 static DEFINE_MUTEX(cntr_names_lock); /* protects the *_cntr_names bufers */
-static const char **dev_cntr_names;
-static const char **port_cntr_names;
+static struct rdma_stat_desc *dev_cntr_descs;
+static struct rdma_stat_desc *port_cntr_descs;
 int num_driver_cntrs = ARRAY_SIZE(driver_cntr_names);
 static int num_dev_cntrs;
 static int num_port_cntrs;
@@ -1614,13 +1611,12 @@ static int cntr_names_initialized;
  * strings. Optionally some entries can be reserved in the array to hold extra
  * external strings.
  */
-static int init_cntr_names(const char *names_in,
-			   const size_t names_len,
-			   int num_extra_names,
-			   int *num_cntrs,
-			   const char ***cntr_names)
+static int init_cntr_names(const char *names_in, const size_t names_len,
+			   int num_extra_names, int *num_cntrs,
+			   struct rdma_stat_desc **cntr_descs)
 {
-	char *names_out, *p, **q;
+	struct rdma_stat_desc *q;
+	char *names_out, *p;
 	int i, n;
 
 	n = 0;
@@ -1628,26 +1624,27 @@ static int init_cntr_names(const char *names_in,
 		if (names_in[i] == '\n')
 			n++;
 
-	names_out = kmalloc((n + num_extra_names) * sizeof(char *) + names_len,
-			    GFP_KERNEL);
+	names_out =
+		kzalloc((n + num_extra_names) * sizeof(*q) + names_len,
+			GFP_KERNEL);
 	if (!names_out) {
 		*num_cntrs = 0;
-		*cntr_names = NULL;
+		*cntr_descs = NULL;
 		return -ENOMEM;
 	}
 
-	p = names_out + (n + num_extra_names) * sizeof(char *);
+	p = names_out + (n + num_extra_names) * sizeof(*q);
 	memcpy(p, names_in, names_len);
 
-	q = (char **)names_out;
+	q = (struct rdma_stat_desc *)names_out;
 	for (i = 0; i < n; i++) {
-		q[i] = p;
+		q[i].name = p;
 		p = strchr(p, '\n');
 		*p++ = '\0';
 	}
 
 	*num_cntrs = n;
-	*cntr_names = (const char **)names_out;
+	*cntr_descs = (struct rdma_stat_desc *)names_out;
 	return 0;
 }
 
@@ -1661,18 +1658,18 @@ static int init_counters(struct ib_device *ibdev)
 		goto out_unlock;
 
 	err = init_cntr_names(dd->cntrnames, dd->cntrnameslen, num_driver_cntrs,
-			      &num_dev_cntrs, &dev_cntr_names);
+			      &num_dev_cntrs, &dev_cntr_descs);
 	if (err)
 		goto out_unlock;
 
 	for (i = 0; i < num_driver_cntrs; i++)
-		dev_cntr_names[num_dev_cntrs + i] = driver_cntr_names[i];
+		dev_cntr_descs[num_dev_cntrs + i].name = driver_cntr_names[i];
 
 	err = init_cntr_names(dd->portcntrnames, dd->portcntrnameslen, 0,
-			      &num_port_cntrs, &port_cntr_names);
+			      &num_port_cntrs, &port_cntr_descs);
 	if (err) {
-		kfree(dev_cntr_names);
-		dev_cntr_names = NULL;
+		kfree(dev_cntr_descs);
+		dev_cntr_descs = NULL;
 		goto out_unlock;
 	}
 	cntr_names_initialized = 1;
@@ -1686,7 +1683,7 @@ static struct rdma_hw_stats *hfi1_alloc_hw_device_stats(struct ib_device *ibdev)
 {
 	if (init_counters(ibdev))
 		return NULL;
-	return rdma_alloc_hw_stats_struct(dev_cntr_names,
+	return rdma_alloc_hw_stats_struct(dev_cntr_descs,
 					  num_dev_cntrs + num_driver_cntrs,
 					  RDMA_HW_STATS_DEFAULT_LIFESPAN);
 }
@@ -1696,7 +1693,7 @@ static struct rdma_hw_stats *hfi_alloc_hw_port_stats(struct ib_device *ibdev,
 {
 	if (init_counters(ibdev))
 		return NULL;
-	return rdma_alloc_hw_stats_struct(port_cntr_names, num_port_cntrs,
+	return rdma_alloc_hw_stats_struct(port_cntr_descs, num_port_cntrs,
 					  RDMA_HW_STATS_DEFAULT_LIFESPAN);
 }
 
@@ -1802,7 +1799,7 @@ int hfi1_register_ib_device(struct hfi1_devdata *dd)
 
 	ib_set_device_ops(ibdev, &hfi1_dev_ops);
 
-	strlcpy(ibdev->node_desc, init_utsname()->nodename,
+	strscpy(ibdev->node_desc, init_utsname()->nodename,
 		sizeof(ibdev->node_desc));
 
 	/*
@@ -1921,10 +1918,10 @@ void hfi1_unregister_ib_device(struct hfi1_devdata *dd)
 	verbs_txreq_exit(dev);
 
 	mutex_lock(&cntr_names_lock);
-	kfree(dev_cntr_names);
-	kfree(port_cntr_names);
-	dev_cntr_names = NULL;
-	port_cntr_names = NULL;
+	kfree(dev_cntr_descs);
+	kfree(port_cntr_descs);
+	dev_cntr_descs = NULL;
+	port_cntr_descs = NULL;
 	cntr_names_initialized = 0;
 	mutex_unlock(&cntr_names_lock);
 }

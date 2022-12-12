@@ -38,7 +38,7 @@ struct cedrus_h264_sram_ref_pic {
 
 #define CEDRUS_H264_FRAME_NUM		18
 
-#define CEDRUS_NEIGHBOR_INFO_BUF_SIZE	(16 * SZ_1K)
+#define CEDRUS_NEIGHBOR_INFO_BUF_SIZE	(32 * SZ_1K)
 #define CEDRUS_MIN_PIC_INFO_BUF_SIZE       (130 * SZ_1K)
 
 static void cedrus_h264_write_sram(struct cedrus_dev *dev,
@@ -111,16 +111,16 @@ static void cedrus_write_frame_list(struct cedrus_ctx *ctx,
 	for (i = 0; i < ARRAY_SIZE(decode->dpb); i++) {
 		const struct v4l2_h264_dpb_entry *dpb = &decode->dpb[i];
 		struct cedrus_buffer *cedrus_buf;
-		int buf_idx;
+		struct vb2_buffer *buf;
 
 		if (!(dpb->flags & V4L2_H264_DPB_ENTRY_FLAG_VALID))
 			continue;
 
-		buf_idx = vb2_find_timestamp(cap_q, dpb->reference_ts, 0);
-		if (buf_idx < 0)
+		buf = vb2_find_buffer(cap_q, dpb->reference_ts);
+		if (!buf)
 			continue;
 
-		cedrus_buf = vb2_to_cedrus_buffer(cap_q->bufs[buf_idx]);
+		cedrus_buf = vb2_to_cedrus_buffer(buf);
 		position = cedrus_buf->codec.h264.position;
 		used_dpbs |= BIT(position);
 
@@ -186,7 +186,7 @@ static void _cedrus_write_ref_list(struct cedrus_ctx *ctx,
 		const struct v4l2_h264_dpb_entry *dpb;
 		const struct cedrus_buffer *cedrus_buf;
 		unsigned int position;
-		int buf_idx;
+		struct vb2_buffer *buf;
 		u8 dpb_idx;
 
 		dpb_idx = ref_list[i].index;
@@ -195,11 +195,11 @@ static void _cedrus_write_ref_list(struct cedrus_ctx *ctx,
 		if (!(dpb->flags & V4L2_H264_DPB_ENTRY_FLAG_ACTIVE))
 			continue;
 
-		buf_idx = vb2_find_timestamp(cap_q, dpb->reference_ts, 0);
-		if (buf_idx < 0)
+		buf = vb2_find_buffer(cap_q, dpb->reference_ts);
+		if (!buf)
 			continue;
 
-		cedrus_buf = vb2_to_cedrus_buffer(cap_q->bufs[buf_idx]);
+		cedrus_buf = vb2_to_cedrus_buffer(buf);
 		position = cedrus_buf->codec.h264.position;
 
 		sram_array[i] |= position << 1;
@@ -493,8 +493,7 @@ static void cedrus_h264_irq_disable(struct cedrus_ctx *ctx)
 		     reg & ~VE_H264_CTRL_INT_MASK);
 }
 
-static void cedrus_h264_setup(struct cedrus_ctx *ctx,
-			      struct cedrus_run *run)
+static int cedrus_h264_setup(struct cedrus_ctx *ctx, struct cedrus_run *run)
 {
 	struct cedrus_dev *dev = ctx->dev;
 
@@ -510,6 +509,8 @@ static void cedrus_h264_setup(struct cedrus_ctx *ctx,
 	cedrus_write_frame_list(ctx, run);
 
 	cedrus_set_params(ctx, run);
+
+	return 0;
 }
 
 static int cedrus_h264_start(struct cedrus_ctx *ctx)
@@ -519,6 +520,11 @@ static int cedrus_h264_start(struct cedrus_ctx *ctx)
 	unsigned int field_size;
 	unsigned int mv_col_size;
 	int ret;
+
+	/*
+	 * NOTE: All buffers allocated here are only used by HW, so we
+	 * can add DMA_ATTR_NO_KERNEL_MAPPING flag when allocating them.
+	 */
 
 	/* Formula for picture buffer size is taken from CedarX source. */
 
@@ -538,23 +544,23 @@ static int cedrus_h264_start(struct cedrus_ctx *ctx)
 
 	ctx->codec.h264.pic_info_buf_size = pic_info_size;
 	ctx->codec.h264.pic_info_buf =
-		dma_alloc_coherent(dev->dev, ctx->codec.h264.pic_info_buf_size,
-				   &ctx->codec.h264.pic_info_buf_dma,
-				   GFP_KERNEL);
+		dma_alloc_attrs(dev->dev, ctx->codec.h264.pic_info_buf_size,
+				&ctx->codec.h264.pic_info_buf_dma,
+				GFP_KERNEL, DMA_ATTR_NO_KERNEL_MAPPING);
 	if (!ctx->codec.h264.pic_info_buf)
 		return -ENOMEM;
 
 	/*
 	 * That buffer is supposed to be 16kiB in size, and be aligned
-	 * on 16kiB as well. However, dma_alloc_coherent provides the
-	 * guarantee that we'll have a CPU and DMA address aligned on
-	 * the smallest page order that is greater to the requested
-	 * size, so we don't have to overallocate.
+	 * on 16kiB as well. However, dma_alloc_attrs provides the
+	 * guarantee that we'll have a DMA address aligned on the
+	 * smallest page order that is greater to the requested size,
+	 * so we don't have to overallocate.
 	 */
 	ctx->codec.h264.neighbor_info_buf =
-		dma_alloc_coherent(dev->dev, CEDRUS_NEIGHBOR_INFO_BUF_SIZE,
-				   &ctx->codec.h264.neighbor_info_buf_dma,
-				   GFP_KERNEL);
+		dma_alloc_attrs(dev->dev, CEDRUS_NEIGHBOR_INFO_BUF_SIZE,
+				&ctx->codec.h264.neighbor_info_buf_dma,
+				GFP_KERNEL, DMA_ATTR_NO_KERNEL_MAPPING);
 	if (!ctx->codec.h264.neighbor_info_buf) {
 		ret = -ENOMEM;
 		goto err_pic_buf;
@@ -582,10 +588,11 @@ static int cedrus_h264_start(struct cedrus_ctx *ctx)
 
 	mv_col_size = field_size * 2 * CEDRUS_H264_FRAME_NUM;
 	ctx->codec.h264.mv_col_buf_size = mv_col_size;
-	ctx->codec.h264.mv_col_buf = dma_alloc_coherent(dev->dev,
-							ctx->codec.h264.mv_col_buf_size,
-							&ctx->codec.h264.mv_col_buf_dma,
-							GFP_KERNEL);
+	ctx->codec.h264.mv_col_buf =
+		dma_alloc_attrs(dev->dev,
+				ctx->codec.h264.mv_col_buf_size,
+				&ctx->codec.h264.mv_col_buf_dma,
+				GFP_KERNEL, DMA_ATTR_NO_KERNEL_MAPPING);
 	if (!ctx->codec.h264.mv_col_buf) {
 		ret = -ENOMEM;
 		goto err_neighbor_buf;
@@ -600,10 +607,10 @@ static int cedrus_h264_start(struct cedrus_ctx *ctx)
 		ctx->codec.h264.deblk_buf_size =
 			ALIGN(ctx->src_fmt.width, 32) * 12;
 		ctx->codec.h264.deblk_buf =
-			dma_alloc_coherent(dev->dev,
-					   ctx->codec.h264.deblk_buf_size,
-					   &ctx->codec.h264.deblk_buf_dma,
-					   GFP_KERNEL);
+			dma_alloc_attrs(dev->dev,
+					ctx->codec.h264.deblk_buf_size,
+					&ctx->codec.h264.deblk_buf_dma,
+					GFP_KERNEL, DMA_ATTR_NO_KERNEL_MAPPING);
 		if (!ctx->codec.h264.deblk_buf) {
 			ret = -ENOMEM;
 			goto err_mv_col_buf;
@@ -616,10 +623,10 @@ static int cedrus_h264_start(struct cedrus_ctx *ctx)
 		ctx->codec.h264.intra_pred_buf_size =
 			ALIGN(ctx->src_fmt.width, 64) * 5 * 2;
 		ctx->codec.h264.intra_pred_buf =
-			dma_alloc_coherent(dev->dev,
-					   ctx->codec.h264.intra_pred_buf_size,
-					   &ctx->codec.h264.intra_pred_buf_dma,
-					   GFP_KERNEL);
+			dma_alloc_attrs(dev->dev,
+					ctx->codec.h264.intra_pred_buf_size,
+					&ctx->codec.h264.intra_pred_buf_dma,
+					GFP_KERNEL, DMA_ATTR_NO_KERNEL_MAPPING);
 		if (!ctx->codec.h264.intra_pred_buf) {
 			ret = -ENOMEM;
 			goto err_deblk_buf;
@@ -629,24 +636,28 @@ static int cedrus_h264_start(struct cedrus_ctx *ctx)
 	return 0;
 
 err_deblk_buf:
-	dma_free_coherent(dev->dev, ctx->codec.h264.deblk_buf_size,
-			  ctx->codec.h264.deblk_buf,
-			  ctx->codec.h264.deblk_buf_dma);
+	dma_free_attrs(dev->dev, ctx->codec.h264.deblk_buf_size,
+		       ctx->codec.h264.deblk_buf,
+		       ctx->codec.h264.deblk_buf_dma,
+		       DMA_ATTR_NO_KERNEL_MAPPING);
 
 err_mv_col_buf:
-	dma_free_coherent(dev->dev, ctx->codec.h264.mv_col_buf_size,
-			  ctx->codec.h264.mv_col_buf,
-			  ctx->codec.h264.mv_col_buf_dma);
+	dma_free_attrs(dev->dev, ctx->codec.h264.mv_col_buf_size,
+		       ctx->codec.h264.mv_col_buf,
+		       ctx->codec.h264.mv_col_buf_dma,
+		       DMA_ATTR_NO_KERNEL_MAPPING);
 
 err_neighbor_buf:
-	dma_free_coherent(dev->dev, CEDRUS_NEIGHBOR_INFO_BUF_SIZE,
-			  ctx->codec.h264.neighbor_info_buf,
-			  ctx->codec.h264.neighbor_info_buf_dma);
+	dma_free_attrs(dev->dev, CEDRUS_NEIGHBOR_INFO_BUF_SIZE,
+		       ctx->codec.h264.neighbor_info_buf,
+		       ctx->codec.h264.neighbor_info_buf_dma,
+		       DMA_ATTR_NO_KERNEL_MAPPING);
 
 err_pic_buf:
-	dma_free_coherent(dev->dev, ctx->codec.h264.pic_info_buf_size,
-			  ctx->codec.h264.pic_info_buf,
-			  ctx->codec.h264.pic_info_buf_dma);
+	dma_free_attrs(dev->dev, ctx->codec.h264.pic_info_buf_size,
+		       ctx->codec.h264.pic_info_buf,
+		       ctx->codec.h264.pic_info_buf_dma,
+		       DMA_ATTR_NO_KERNEL_MAPPING);
 	return ret;
 }
 
@@ -654,23 +665,28 @@ static void cedrus_h264_stop(struct cedrus_ctx *ctx)
 {
 	struct cedrus_dev *dev = ctx->dev;
 
-	dma_free_coherent(dev->dev, ctx->codec.h264.mv_col_buf_size,
-			  ctx->codec.h264.mv_col_buf,
-			  ctx->codec.h264.mv_col_buf_dma);
-	dma_free_coherent(dev->dev, CEDRUS_NEIGHBOR_INFO_BUF_SIZE,
-			  ctx->codec.h264.neighbor_info_buf,
-			  ctx->codec.h264.neighbor_info_buf_dma);
-	dma_free_coherent(dev->dev, ctx->codec.h264.pic_info_buf_size,
-			  ctx->codec.h264.pic_info_buf,
-			  ctx->codec.h264.pic_info_buf_dma);
+	dma_free_attrs(dev->dev, ctx->codec.h264.mv_col_buf_size,
+		       ctx->codec.h264.mv_col_buf,
+		       ctx->codec.h264.mv_col_buf_dma,
+		       DMA_ATTR_NO_KERNEL_MAPPING);
+	dma_free_attrs(dev->dev, CEDRUS_NEIGHBOR_INFO_BUF_SIZE,
+		       ctx->codec.h264.neighbor_info_buf,
+		       ctx->codec.h264.neighbor_info_buf_dma,
+		       DMA_ATTR_NO_KERNEL_MAPPING);
+	dma_free_attrs(dev->dev, ctx->codec.h264.pic_info_buf_size,
+		       ctx->codec.h264.pic_info_buf,
+		       ctx->codec.h264.pic_info_buf_dma,
+		       DMA_ATTR_NO_KERNEL_MAPPING);
 	if (ctx->codec.h264.deblk_buf_size)
-		dma_free_coherent(dev->dev, ctx->codec.h264.deblk_buf_size,
-				  ctx->codec.h264.deblk_buf,
-				  ctx->codec.h264.deblk_buf_dma);
+		dma_free_attrs(dev->dev, ctx->codec.h264.deblk_buf_size,
+			       ctx->codec.h264.deblk_buf,
+			       ctx->codec.h264.deblk_buf_dma,
+			       DMA_ATTR_NO_KERNEL_MAPPING);
 	if (ctx->codec.h264.intra_pred_buf_size)
-		dma_free_coherent(dev->dev, ctx->codec.h264.intra_pred_buf_size,
-				  ctx->codec.h264.intra_pred_buf,
-				  ctx->codec.h264.intra_pred_buf_dma);
+		dma_free_attrs(dev->dev, ctx->codec.h264.intra_pred_buf_size,
+			       ctx->codec.h264.intra_pred_buf,
+			       ctx->codec.h264.intra_pred_buf_dma,
+			       DMA_ATTR_NO_KERNEL_MAPPING);
 }
 
 static void cedrus_h264_trigger(struct cedrus_ctx *ctx)

@@ -368,7 +368,7 @@
 
 	bus-width = <4>;
 
-	cd-gpios = <&tlmm 38 0x1>;
+	cd-gpios = <&tlmm 38 GPIO_ACTIVE_LOW>;
 
 	vmmc-supply = <&vreg_l21a_2p95>;
 	vqmmc-supply = <&vreg_l13a_2p95>;
@@ -395,9 +395,6 @@
 
 	vdda-phy-supply = <&vreg_l28a_0p925>;
 	vdda-pll-supply = <&vreg_l12a_1p8>;
-
-	vdda-phy-max-microamp = <18380>;
-	vdda-pll-max-microamp = <9440>;
 };
 
 &venus {

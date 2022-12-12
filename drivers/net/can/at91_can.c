@@ -8,6 +8,7 @@
 
 #include <linux/clk.h>
 #include <linux/errno.h>
+#include <linux/ethtool.h>
 #include <linux/if_arp.h>
 #include <linux/interrupt.h>
 #include <linux/kernel.h>
@@ -23,7 +24,6 @@
 
 #include <linux/can/dev.h>
 #include <linux/can/error.h>
-#include <linux/can/led.h>
 
 #define AT91_MB_MASK(i)		((1 << (i)) - 1)
 
@@ -448,12 +448,11 @@ static void at91_chip_stop(struct net_device *dev, enum can_state state)
 static netdev_tx_t at91_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct at91_priv *priv = netdev_priv(dev);
-	struct net_device_stats *stats = &dev->stats;
 	struct can_frame *cf = (struct can_frame *)skb->data;
 	unsigned int mb, prio;
 	u32 reg_mid, reg_mcr;
 
-	if (can_dropped_invalid_skb(dev, skb))
+	if (can_dev_dropped_skb(dev, skb))
 		return NETDEV_TX_OK;
 
 	mb = get_tx_next_mb(priv);
@@ -479,8 +478,6 @@ static netdev_tx_t at91_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	/* This triggers transmission */
 	at91_write(priv, AT91_MCR(mb), reg_mcr);
-
-	stats->tx_bytes += cf->len;
 
 	/* _NOTE_: subtract AT91_MB_TX_FIRST offset from mb! */
 	can_put_echo_skb(skb, dev, mb - get_mb_tx_first(priv), 0);
@@ -553,8 +550,6 @@ static void at91_rx_overflow_err(struct net_device *dev)
 	cf->can_id |= CAN_ERR_CRTL;
 	cf->data[1] = CAN_ERR_CRTL_RX_OVERFLOW;
 
-	stats->rx_packets++;
-	stats->rx_bytes += cf->len;
 	netif_receive_skb(skb);
 }
 
@@ -619,10 +614,10 @@ static void at91_read_msg(struct net_device *dev, unsigned int mb)
 	at91_read_mb(dev, mb, cf);
 
 	stats->rx_packets++;
-	stats->rx_bytes += cf->len;
-	netif_receive_skb(skb);
+	if (!(cf->can_id & CAN_RTR_FLAG))
+		stats->rx_bytes += cf->len;
 
-	can_led_event(dev, CAN_LED_EVENT_RX);
+	netif_receive_skb(skb);
 }
 
 /**
@@ -779,8 +774,6 @@ static int at91_poll_err(struct net_device *dev, int quota, u32 reg_sr)
 
 	at91_poll_err_frame(dev, cf, reg_sr);
 
-	dev->stats.rx_packets++;
-	dev->stats.rx_bytes += cf->len;
 	netif_receive_skb(skb);
 
 	return 1;
@@ -854,9 +847,11 @@ static void at91_irq_tx(struct net_device *dev, u32 reg_sr)
 		if (likely(reg_msr & AT91_MSR_MRDY &&
 			   ~reg_msr & AT91_MSR_MABT)) {
 			/* _NOTE_: subtract AT91_MB_TX_FIRST offset from mb! */
-			can_get_echo_skb(dev, mb - get_mb_tx_first(priv), NULL);
+			dev->stats.tx_bytes +=
+				can_get_echo_skb(dev,
+						 mb - get_mb_tx_first(priv),
+						 NULL);
 			dev->stats.tx_packets++;
-			can_led_event(dev, CAN_LED_EVENT_TX);
 		}
 	}
 
@@ -1037,8 +1032,6 @@ static void at91_irq_err(struct net_device *dev)
 
 	at91_irq_err_state(dev, cf, new_state);
 
-	dev->stats.rx_packets++;
-	dev->stats.rx_bytes += cf->len;
 	netif_rx(skb);
 
 	priv->can.state = new_state;
@@ -1105,8 +1098,6 @@ static int at91_open(struct net_device *dev)
 		goto out_close;
 	}
 
-	can_led_event(dev, CAN_LED_EVENT_OPEN);
-
 	/* start chip and queuing */
 	at91_chip_start(dev);
 	napi_enable(&priv->napi);
@@ -1137,8 +1128,6 @@ static int at91_close(struct net_device *dev)
 
 	close_candev(dev);
 
-	can_led_event(dev, CAN_LED_EVENT_STOP);
-
 	return 0;
 }
 
@@ -1164,15 +1153,19 @@ static const struct net_device_ops at91_netdev_ops = {
 	.ndo_change_mtu = can_change_mtu,
 };
 
+static const struct ethtool_ops at91_ethtool_ops = {
+	.get_ts_info = ethtool_op_get_ts_info,
+};
+
 static ssize_t mb0_id_show(struct device *dev,
 			   struct device_attribute *attr, char *buf)
 {
 	struct at91_priv *priv = netdev_priv(to_net_dev(dev));
 
 	if (priv->mb0_id & CAN_EFF_FLAG)
-		return snprintf(buf, PAGE_SIZE, "0x%08x\n", priv->mb0_id);
+		return sysfs_emit(buf, "0x%08x\n", priv->mb0_id);
 	else
-		return snprintf(buf, PAGE_SIZE, "0x%03x\n", priv->mb0_id);
+		return sysfs_emit(buf, "0x%03x\n", priv->mb0_id);
 }
 
 static ssize_t mb0_id_store(struct device *dev,
@@ -1305,6 +1298,7 @@ static int at91_can_probe(struct platform_device *pdev)
 	}
 
 	dev->netdev_ops	= &at91_netdev_ops;
+	dev->ethtool_ops = &at91_ethtool_ops;
 	dev->irq = irq;
 	dev->flags |= IFF_ECHO;
 
@@ -1321,7 +1315,7 @@ static int at91_can_probe(struct platform_device *pdev)
 	priv->pdata = dev_get_platdata(&pdev->dev);
 	priv->mb0_id = 0x7ff;
 
-	netif_napi_add(dev, &priv->napi, at91_poll, get_mb_rx_num(priv));
+	netif_napi_add_weight(dev, &priv->napi, at91_poll, get_mb_rx_num(priv));
 
 	if (at91_is_sam9263(priv))
 		dev->sysfs_groups[0] = &at91_sysfs_attr_group;
@@ -1334,8 +1328,6 @@ static int at91_can_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "registering netdev failed\n");
 		goto exit_free;
 	}
-
-	devm_can_led_init(dev);
 
 	dev_info(&pdev->dev, "device registered (reg_base=%p, irq=%d)\n",
 		 priv->reg_base, dev->irq);

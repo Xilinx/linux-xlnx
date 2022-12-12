@@ -1400,7 +1400,7 @@ static void start_worker(struct era *era)
 static void stop_worker(struct era *era)
 {
 	atomic_set(&era->suspended, 1);
-	flush_workqueue(era->wq);
+	drain_workqueue(era->wq);
 }
 
 /*----------------------------------------------------------------
@@ -1570,6 +1570,12 @@ static void era_postsuspend(struct dm_target *ti)
 	}
 
 	stop_worker(era);
+
+	r = metadata_commit(era->md);
+	if (r) {
+		DMERR("%s: metadata_commit failed", __func__);
+		/* FIXME: fail mode */
+	}
 }
 
 static int era_preresume(struct dm_target *ti)
@@ -1681,7 +1687,7 @@ static int era_message(struct dm_target *ti, unsigned argc, char **argv,
 
 static sector_t get_dev_size(struct dm_dev *dev)
 {
-	return i_size_read(dev->bdev->bd_inode) >> SECTOR_SHIFT;
+	return bdev_nr_sectors(dev->bdev);
 }
 
 static int era_iterate_devices(struct dm_target *ti,

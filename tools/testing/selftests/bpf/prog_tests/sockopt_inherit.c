@@ -76,20 +76,16 @@ static void *server_thread(void *arg)
 	pthread_cond_signal(&server_started);
 	pthread_mutex_unlock(&server_started_mtx);
 
-	if (CHECK_FAIL(err < 0)) {
-		perror("Failed to listed on socket");
+	if (!ASSERT_GE(err, 0, "listed on socket"))
 		return NULL;
-	}
 
 	err += verify_sockopt(fd, CUSTOM_INHERIT1, "listen", 1);
 	err += verify_sockopt(fd, CUSTOM_INHERIT2, "listen", 1);
 	err += verify_sockopt(fd, CUSTOM_LISTENER, "listen", 1);
 
 	client_fd = accept(fd, (struct sockaddr *)&addr, &len);
-	if (CHECK_FAIL(client_fd < 0)) {
-		perror("Failed to accept client");
+	if (!ASSERT_GE(client_fd, 0, "accept client"))
 		return NULL;
-	}
 
 	err += verify_sockopt(client_fd, CUSTOM_INHERIT1, "accept", 1);
 	err += verify_sockopt(client_fd, CUSTOM_INHERIT2, "accept", 1);
@@ -136,7 +132,8 @@ static int start_server(void)
 	return fd;
 }
 
-static int prog_attach(struct bpf_object *obj, int cgroup_fd, const char *title)
+static int prog_attach(struct bpf_object *obj, int cgroup_fd, const char *title,
+		       const char *prog_name)
 {
 	enum bpf_attach_type attach_type;
 	enum bpf_prog_type prog_type;
@@ -145,20 +142,20 @@ static int prog_attach(struct bpf_object *obj, int cgroup_fd, const char *title)
 
 	err = libbpf_prog_type_by_name(title, &prog_type, &attach_type);
 	if (err) {
-		log_err("Failed to deduct types for %s BPF program", title);
+		log_err("Failed to deduct types for %s BPF program", prog_name);
 		return -1;
 	}
 
-	prog = bpf_object__find_program_by_title(obj, title);
+	prog = bpf_object__find_program_by_name(obj, prog_name);
 	if (!prog) {
-		log_err("Failed to find %s BPF program", title);
+		log_err("Failed to find %s BPF program", prog_name);
 		return -1;
 	}
 
 	err = bpf_prog_attach(bpf_program__fd(prog), cgroup_fd,
 			      attach_type, 0);
 	if (err) {
-		log_err("Failed to attach %s BPF program", title);
+		log_err("Failed to attach %s BPF program", prog_name);
 		return -1;
 	}
 
@@ -167,35 +164,35 @@ static int prog_attach(struct bpf_object *obj, int cgroup_fd, const char *title)
 
 static void run_test(int cgroup_fd)
 {
-	struct bpf_prog_load_attr attr = {
-		.file = "./sockopt_inherit.o",
-	};
 	int server_fd = -1, client_fd;
 	struct bpf_object *obj;
 	void *server_err;
 	pthread_t tid;
-	int ignored;
 	int err;
 
-	err = bpf_prog_load_xattr(&attr, &obj, &ignored);
-	if (CHECK_FAIL(err))
+	obj = bpf_object__open_file("sockopt_inherit.bpf.o", NULL);
+	if (!ASSERT_OK_PTR(obj, "obj_open"))
 		return;
 
-	err = prog_attach(obj, cgroup_fd, "cgroup/getsockopt");
-	if (CHECK_FAIL(err))
+	err = bpf_object__load(obj);
+	if (!ASSERT_OK(err, "obj_load"))
 		goto close_bpf_object;
 
-	err = prog_attach(obj, cgroup_fd, "cgroup/setsockopt");
-	if (CHECK_FAIL(err))
+	err = prog_attach(obj, cgroup_fd, "cgroup/getsockopt", "_getsockopt");
+	if (!ASSERT_OK(err, "prog_attach _getsockopt"))
+		goto close_bpf_object;
+
+	err = prog_attach(obj, cgroup_fd, "cgroup/setsockopt", "_setsockopt");
+	if (!ASSERT_OK(err, "prog_attach _setsockopt"))
 		goto close_bpf_object;
 
 	server_fd = start_server();
-	if (CHECK_FAIL(server_fd < 0))
+	if (!ASSERT_GE(server_fd, 0, "start_server"))
 		goto close_bpf_object;
 
 	pthread_mutex_lock(&server_started_mtx);
-	if (CHECK_FAIL(pthread_create(&tid, NULL, server_thread,
-				      (void *)&server_fd))) {
+	if (!ASSERT_OK(pthread_create(&tid, NULL, server_thread,
+				      (void *)&server_fd), "pthread_create")) {
 		pthread_mutex_unlock(&server_started_mtx);
 		goto close_server_fd;
 	}
@@ -203,17 +200,17 @@ static void run_test(int cgroup_fd)
 	pthread_mutex_unlock(&server_started_mtx);
 
 	client_fd = connect_to_server(server_fd);
-	if (CHECK_FAIL(client_fd < 0))
+	if (!ASSERT_GE(client_fd, 0, "connect_to_server"))
 		goto close_server_fd;
 
-	CHECK_FAIL(verify_sockopt(client_fd, CUSTOM_INHERIT1, "connect", 0));
-	CHECK_FAIL(verify_sockopt(client_fd, CUSTOM_INHERIT2, "connect", 0));
-	CHECK_FAIL(verify_sockopt(client_fd, CUSTOM_LISTENER, "connect", 0));
+	ASSERT_OK(verify_sockopt(client_fd, CUSTOM_INHERIT1, "connect", 0), "verify_sockopt1");
+	ASSERT_OK(verify_sockopt(client_fd, CUSTOM_INHERIT2, "connect", 0), "verify_sockopt2");
+	ASSERT_OK(verify_sockopt(client_fd, CUSTOM_LISTENER, "connect", 0), "verify_sockopt ener");
 
 	pthread_join(tid, &server_err);
 
 	err = (int)(long)server_err;
-	CHECK_FAIL(err);
+	ASSERT_OK(err, "pthread_join retval");
 
 	close(client_fd);
 
@@ -228,7 +225,7 @@ void test_sockopt_inherit(void)
 	int cgroup_fd;
 
 	cgroup_fd = test__join_cgroup("/sockopt_inherit");
-	if (CHECK_FAIL(cgroup_fd < 0))
+	if (!ASSERT_GE(cgroup_fd, 0, "join_cgroup"))
 		return;
 
 	run_test(cgroup_fd);

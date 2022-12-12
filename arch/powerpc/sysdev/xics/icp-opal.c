@@ -184,7 +184,7 @@ static const struct icp_ops icp_opal_ops = {
 #endif
 };
 
-int icp_opal_init(void)
+int __init icp_opal_init(void)
 {
 	struct device_node *np;
 
@@ -196,6 +196,7 @@ int icp_opal_init(void)
 
 	printk("XICS: Using OPAL ICP fallbacks\n");
 
+	of_node_put(np);
 	return 0;
 }
 

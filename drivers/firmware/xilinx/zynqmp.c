@@ -58,6 +58,16 @@ static struct platform_device *em_dev;
 static char image_name[NAME_MAX];
 
 /**
+ * struct zynqmp_devinfo - Structure for Zynqmp device instance
+ * @dev:		Device Pointer
+ * @feature_conf_id:	Feature conf id
+ */
+struct zynqmp_devinfo {
+	struct device *dev;
+	u32 feature_conf_id;
+};
+
+/**
  * struct pm_api_feature_data - PM API Feature data
  * @pm_api_id:		PM API Id, used as key to index into hashmap
  * @feature_status:	status of PM API feature: valid, invalid
@@ -851,6 +861,13 @@ int zynqmp_pm_read_pggs(u32 index, u32 *value)
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_read_pggs);
 
+int zynqmp_pm_set_tapdelay_bypass(u32 index, u32 value)
+{
+	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_SET_TAPDELAY_BYPASS,
+				   index, value, 0, NULL);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_set_tapdelay_bypass);
+
 int zynqmp_pm_usb_set_state(u32 node, u32 state, u32 value)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, node, IOCTL_USB_SET_STATE, state,
@@ -878,13 +895,6 @@ int zynqmp_pm_set_sgmii_mode(u32 enable)
 				   0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_sgmii_mode);
-
-int zynqmp_pm_set_tapdelay_bypass(u32 index, u32 value)
-{
-	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_SET_TAPDELAY_BYPASS,
-				   index, value, 0, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_set_tapdelay_bypass);
 
 int zynqmp_pm_probe_counter_read(u32 deviceid, u32 reg, u32 *value)
 {
@@ -1201,6 +1211,46 @@ int zynqmp_pm_pinctrl_set_config(const u32 pin, const u32 param,
 EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_set_config);
 
 /**
+ * zynqmp_pm_bootmode_read() - PM Config API for read bootpin status
+ * @ps_mode: Returned output value of ps_mode
+ *
+ * This API function is to be used for notify the power management controller
+ * to read bootpin status.
+ *
+ * Return: status, either success or error+reason
+ */
+unsigned int zynqmp_pm_bootmode_read(u32 *ps_mode)
+{
+	unsigned int ret;
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+
+	ret = zynqmp_pm_invoke_fn(PM_MMIO_READ, CRL_APB_BOOT_PIN_CTRL, 0,
+				  0, 0, 0, ret_payload);
+
+	*ps_mode = ret_payload[1];
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_bootmode_read);
+
+/**
+ * zynqmp_pm_bootmode_write() - PM Config API for Configure bootpin
+ * @ps_mode: Value to be written to the bootpin ctrl register
+ *
+ * This API function is to be used for notify the power management controller
+ * to configure bootpin.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+int zynqmp_pm_bootmode_write(u32 ps_mode)
+{
+	return zynqmp_pm_invoke_fn(PM_MMIO_WRITE, CRL_APB_BOOT_PIN_CTRL,
+				   CRL_APB_BOOTPIN_CTRL_MASK, ps_mode, 0,
+				   0,  NULL);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_bootmode_write);
+
+/**
  * zynqmp_pm_init_finalize() - PM call to inform firmware that the caller
  *			       master has initialized its own power management
  *
@@ -1405,53 +1455,6 @@ int zynqmp_pm_fpga_read(const u32 reg_numframes, const u64 phys_address,
 EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_read);
 
 /**
- * zynqmp_pm_sha_hash - Access the SHA engine to calculate the hash
- * @address:	Address of the data/ Address of output buffer where
- *		hash should be stored.
- * @size:	Size of the data.
- * @flags:
- *	BIT(0) - for initializing csudma driver and SHA3(Here address
- *		 and size inputs can be NULL).
- *	BIT(1) - to call Sha3_Update API which can be called multiple
- *		 times when data is not contiguous.
- *	BIT(2) - to get final hash of the whole updated data.
- *		 Hash will be overwritten at provided address with
- *		 48 bytes.
- *
- * Return:	Returns status, either success or error code.
- */
-int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags)
-{
-	u32 lower_addr = lower_32_bits(address);
-	u32 upper_addr = upper_32_bits(address);
-
-	return zynqmp_pm_invoke_fn(PM_SECURE_SHA, upper_addr, lower_addr,
-				   size, flags, 0, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_sha_hash);
-
-/**
- * zynqmp_pm_rsa - Access RSA hardware to encrypt/decrypt the data with RSA.
- * @address:	Address of the data
- * @size:	Size of the data.
- * @flags:
- *		BIT(0) - Encryption/Decryption
- *			 0 - RSA decryption with private key
- *			 1 - RSA encryption with public key.
- *
- * Return:	Returns status, either success or error code.
- */
-int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags)
-{
-	u32 lower_32_bits = (u32)address;
-	u32 upper_32_bits = (u32)(address >> 32);
-
-	return zynqmp_pm_invoke_fn(PM_SECURE_RSA, upper_32_bits, lower_32_bits,
-				   size, flags, 0, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_rsa);
-
-/**
  * zynqmp_pm_request_suspend - PM call to request for another PU or subsystem to
  *					be suspended gracefully.
  * @node:	Node ID of the targeted PU or subsystem
@@ -1644,46 +1647,6 @@ int zynqmp_pm_mmio_write(u32 address, u32 mask, u32 value)
 				   value, 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_mmio_write);
-
-/**
- * zynqmp_pm_bootmode_read() - PM Config API for read bootpin status
- * @ps_mode: Returned output value of ps_mode
- *
- * This API function is to be used for notify the power management controller
- * to read bootpin status.
- *
- * Return: status, either success or error+reason
- */
-unsigned int zynqmp_pm_bootmode_read(u32 *ps_mode)
-{
-	unsigned int ret;
-	u32 ret_payload[PAYLOAD_ARG_CNT];
-
-	ret = zynqmp_pm_invoke_fn(PM_MMIO_READ, CRL_APB_BOOT_PIN_CTRL, 0,
-				  0, 0, 0, ret_payload);
-
-	*ps_mode = ret_payload[1];
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_bootmode_read);
-
-/**
- * zynqmp_pm_bootmode_write() - PM Config API for Configure bootpin
- * @ps_mode: Value to be written to the bootpin ctrl register
- *
- * This API function is to be used for notify the power management controller
- * to configure bootpin.
- *
- * Return: Returns status, either success or error+reason
- */
-int zynqmp_pm_bootmode_write(u32 ps_mode)
-{
-	return zynqmp_pm_invoke_fn(PM_MMIO_WRITE, CRL_APB_BOOT_PIN_CTRL,
-				   CRL_APB_BOOTPIN_CTRL_MASK, ps_mode, 0,
-				   0, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_bootmode_write);
 
 /**
  * zynqmp_pm_set_suspend_mode()	- Set system suspend mode
@@ -1943,6 +1906,53 @@ int zynqmp_pm_secure_load(const u64 src_addr, u64 key_addr, u64 *dst)
 EXPORT_SYMBOL_GPL(zynqmp_pm_secure_load);
 
 /**
+ * zynqmp_pm_sha_hash - Access the SHA engine to calculate the hash
+ * @address:	Address of the data/ Address of output buffer where
+ *		hash should be stored.
+ * @size:	Size of the data.
+ * @flags:
+ *	BIT(0) - for initializing csudma driver and SHA3(Here address
+ *		 and size inputs can be NULL).
+ *	BIT(1) - to call Sha3_Update API which can be called multiple
+ *		 times when data is not contiguous.
+ *	BIT(2) - to get final hash of the whole updated data.
+ *		 Hash will be overwritten at provided address with
+ *		 48 bytes.
+ *
+ * Return:	Returns status, either success or error code.
+ */
+int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags)
+{
+	u32 lower_addr = lower_32_bits(address);
+	u32 upper_addr = upper_32_bits(address);
+
+	return zynqmp_pm_invoke_fn(PM_SECURE_SHA, upper_addr, lower_addr,
+				   size, flags, 0, NULL);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_sha_hash);
+
+/**
+ * zynqmp_pm_rsa - Access RSA hardware to encrypt/decrypt the data with RSA.
+ * @address:	Address of the data
+ * @size:	Size of the data.
+ * @flags:
+ *		BIT(0) - Encryption/Decryption
+ *			 0 - RSA decryption with private key
+ *			 1 - RSA encryption with public key.
+ *
+ * Return:	Returns status, either success or error code.
+ */
+int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags)
+{
+	u32 lower_32_bits = lower_32_bits(address);
+	u32 upper_32_bits = upper_32_bits(address);
+
+	return zynqmp_pm_invoke_fn(PM_SECURE_RSA, upper_32_bits, lower_32_bits,
+				   size, flags, 0, NULL);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_rsa);
+
+/**
  * zynqmp_pm_register_notifier() - PM API for register a subsystem
  *                                to be notified about specific
  *                                event/error.
@@ -2084,7 +2094,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_get_qos);
  * @config:	The config type of SD registers
  * @value:	Value to be set
  *
- * Return:      Returns 0 on success or error value on failure.
+ * Return:	Returns 0 on success or error value on failure.
  */
 int zynqmp_pm_set_sd_config(u32 node, enum pm_sd_config_type config, u32 value)
 {
@@ -2099,7 +2109,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_sd_config);
  * @config:	The config type of GEM registers
  * @value:	Value to be set
  *
- * Return:      Returns 0 on success or error value on failure.
+ * Return:	Returns 0 on success or error value on failure.
  */
 int zynqmp_pm_set_gem_config(u32 node, enum pm_gem_config_type config,
 			     u32 value)
@@ -2426,13 +2436,13 @@ static ssize_t last_reset_reason_show(struct device *device,
 }
 static DEVICE_ATTR_RO(last_reset_reason);
 
-static atomic_t feature_conf_id;
-
 static ssize_t feature_config_id_show(struct device *device,
 				      struct device_attribute *attr,
 				      char *buf)
 {
-	return sysfs_emit(buf, "%d\n", atomic_read(&feature_conf_id));
+	struct zynqmp_devinfo *devinfo = dev_get_drvdata(device);
+
+	return sysfs_emit(buf, "%d\n", devinfo->feature_conf_id);
 }
 
 static ssize_t feature_config_id_store(struct device *device,
@@ -2441,6 +2451,7 @@ static ssize_t feature_config_id_store(struct device *device,
 {
 	u32 config_id;
 	int ret;
+	struct zynqmp_devinfo *devinfo = dev_get_drvdata(device);
 
 	if (!buf)
 		return -EINVAL;
@@ -2449,7 +2460,7 @@ static ssize_t feature_config_id_store(struct device *device,
 	if (ret)
 		return ret;
 
-	atomic_set(&feature_conf_id, config_id);
+	devinfo->feature_conf_id = config_id;
 
 	return count;
 }
@@ -2462,8 +2473,9 @@ static ssize_t feature_config_value_show(struct device *device,
 {
 	int ret;
 	u32 ret_payload[PAYLOAD_ARG_CNT];
+	struct zynqmp_devinfo *devinfo = dev_get_drvdata(device);
 
-	ret = zynqmp_pm_get_feature_config(atomic_read(&feature_conf_id),
+	ret = zynqmp_pm_get_feature_config(devinfo->feature_conf_id,
 					   ret_payload);
 	if (ret)
 		return ret;
@@ -2477,6 +2489,7 @@ static ssize_t feature_config_value_store(struct device *device,
 {
 	u32 value;
 	int ret;
+	struct zynqmp_devinfo *devinfo = dev_get_drvdata(device);
 
 	if (!buf)
 		return -EINVAL;
@@ -2485,7 +2498,7 @@ static ssize_t feature_config_value_store(struct device *device,
 	if (ret)
 		return ret;
 
-	ret = zynqmp_pm_set_feature_config(atomic_read(&feature_conf_id),
+	ret = zynqmp_pm_set_feature_config(devinfo->feature_conf_id,
 					   value);
 	if (ret)
 		return ret;
@@ -2773,6 +2786,7 @@ static int zynqmp_firmware_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct device_node *np;
+	struct zynqmp_devinfo *devinfo;
 	int ret;
 
 	ret = get_set_conduit_method(dev->of_node);
@@ -2798,6 +2812,14 @@ static int zynqmp_firmware_probe(struct platform_device *pdev)
 	}
 
 	of_node_put(np);
+
+	devinfo = devm_kzalloc(dev, sizeof(*devinfo), GFP_KERNEL);
+	if (!devinfo)
+		return -ENOMEM;
+
+	devinfo->dev = dev;
+
+	platform_set_drvdata(pdev, devinfo);
 
 	/* Check PM API version number */
 	ret = zynqmp_pm_get_api_version(&pm_api_version);

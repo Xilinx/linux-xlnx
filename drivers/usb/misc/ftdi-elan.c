@@ -202,6 +202,7 @@ static void ftdi_elan_delete(struct kref *kref)
 	mutex_unlock(&ftdi_module_lock);
 	kfree(ftdi->bulk_in_buffer);
 	ftdi->bulk_in_buffer = NULL;
+	kfree(ftdi);
 }
 
 static void ftdi_elan_put_kref(struct usb_ftdi *ftdi)
@@ -1448,8 +1449,7 @@ wait:if (ftdi->disconnected > 0) {
 			command->length = 0x8007;
 			command->address = (toggle_bits << 6) | (ep_number << 2)
 				| (address << 0);
-			command->width = usb_maxpacket(urb->dev, urb->pipe,
-						       usb_pipeout(urb->pipe));
+			command->width = usb_maxpacket(urb->dev, urb->pipe);
 			command->follows = 8;
 			command->value = 0;
 			command->buffer = urb->setup_packet;
@@ -1513,8 +1513,7 @@ wait:if (ftdi->disconnected > 0) {
 							    1);
 			command->address = (toggle_bits << 6) | (ep_number << 2)
 				| (address << 0);
-			command->width = usb_maxpacket(urb->dev, urb->pipe,
-						       usb_pipeout(urb->pipe));
+			command->width = usb_maxpacket(urb->dev, urb->pipe);
 			command->follows = 0;
 			command->value = 0;
 			command->buffer = NULL;
@@ -1570,8 +1569,7 @@ wait:if (ftdi->disconnected > 0) {
 			command->length = 0x0000;
 			command->address = (toggle_bits << 6) | (ep_number << 2)
 				| (address << 0);
-			command->width = usb_maxpacket(urb->dev, urb->pipe,
-						       usb_pipeout(urb->pipe));
+			command->width = usb_maxpacket(urb->dev, urb->pipe);
 			command->follows = 0;
 			command->value = 0;
 			command->buffer = NULL;
@@ -1633,8 +1631,7 @@ wait:if (ftdi->disconnected > 0) {
 			command->header = 0x81 | (ed << 5);
 			command->address = (toggle_bits << 6) | (ep_number << 2)
 				| (address << 0);
-			command->width = usb_maxpacket(urb->dev, urb->pipe,
-						       usb_pipeout(urb->pipe));
+			command->width = usb_maxpacket(urb->dev, urb->pipe);
 			command->follows = min_t(u32, 1024,
 						 urb->transfer_buffer_length -
 						 urb->actual_length);
@@ -1714,8 +1711,7 @@ wait:if (ftdi->disconnected > 0) {
 							    1);
 			command->address = (toggle_bits << 6) | (ep_number << 2)
 				| (address << 0);
-			command->width = usb_maxpacket(urb->dev, urb->pipe,
-						       usb_pipeout(urb->pipe));
+			command->width = usb_maxpacket(urb->dev, urb->pipe);
 			command->follows = 0;
 			command->value = 0;
 			command->buffer = NULL;

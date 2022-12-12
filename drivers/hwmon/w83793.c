@@ -204,7 +204,7 @@ static inline s8 TEMP_TO_REG(long val, s8 min, s8 max)
 struct w83793_data {
 	struct device *hwmon_dev;
 	struct mutex update_lock;
-	char valid;			/* !=0 if following fields are valid */
+	bool valid;			/* true if following fields are valid */
 	unsigned long last_updated;	/* In jiffies */
 	unsigned long last_nonvolatile;	/* In jiffies, last time we update the
 					 * nonvolatile registers
@@ -285,7 +285,7 @@ static int w83793_write_value(struct i2c_client *client, u16 reg, u8 value);
 static int w83793_probe(struct i2c_client *client);
 static int w83793_detect(struct i2c_client *client,
 			 struct i2c_board_info *info);
-static int w83793_remove(struct i2c_client *client);
+static void w83793_remove(struct i2c_client *client);
 static void w83793_init_client(struct i2c_client *client);
 static void w83793_update_nonvolatile(struct device *dev);
 static struct w83793_data *w83793_update_device(struct device *dev);
@@ -452,7 +452,7 @@ store_chassis_clear(struct device *dev,
 	mutex_lock(&data->update_lock);
 	reg = w83793_read_value(client, W83793_REG_CLR_CHASSIS);
 	w83793_write_value(client, W83793_REG_CLR_CHASSIS, reg | 0x80);
-	data->valid = 0;		/* Force cache refresh */
+	data->valid = false;		/* Force cache refresh */
 	mutex_unlock(&data->update_lock);
 	return count;
 }
@@ -1495,7 +1495,7 @@ static struct notifier_block watchdog_notifier = {
  * Init / remove routines
  */
 
-static int w83793_remove(struct i2c_client *client)
+static void w83793_remove(struct i2c_client *client)
 {
 	struct w83793_data *data = i2c_get_clientdata(client);
 	struct device *dev = &client->dev;
@@ -1554,8 +1554,6 @@ static int w83793_remove(struct i2c_client *client)
 	mutex_lock(&watchdog_data_mutex);
 	kref_put(&data->kref, w83793_release_resources);
 	mutex_unlock(&watchdog_data_mutex);
-
-	return 0;
 }
 
 static int
@@ -1636,7 +1634,7 @@ static int w83793_detect(struct i2c_client *client,
 	if (chip_id != 0x7b)
 		return -ENODEV;
 
-	strlcpy(info->type, "w83793", I2C_NAME_SIZE);
+	strscpy(info->type, "w83793", I2C_NAME_SIZE);
 
 	return 0;
 }
@@ -2077,7 +2075,7 @@ static struct w83793_data *w83793_update_device(struct device *dev)
 		data->vid[1] = w83793_read_value(client, W83793_REG_VID_INB);
 	w83793_update_nonvolatile(dev);
 	data->last_updated = jiffies;
-	data->valid = 1;
+	data->valid = true;
 
 END:
 	mutex_unlock(&data->update_lock);

@@ -101,6 +101,17 @@ static const struct snd_soc_dapm_widget skylake_widgets[] = {
 			SND_SOC_DAPM_POST_PMD),
 };
 
+static struct snd_soc_jack_pin jack_pins[] = {
+	{
+		.pin    = "Headphone Jack",
+		.mask   = SND_JACK_HEADPHONE,
+	},
+	{
+		.pin    = "Headset Mic",
+		.mask   = SND_JACK_MICROPHONE,
+	},
+};
+
 static const struct snd_soc_dapm_route skylake_map[] = {
 	/* HP jack connectors - unknown if we have jack detection */
 	{"Headphone Jack", NULL, "HPOL"},
@@ -182,10 +193,11 @@ static int skylake_nau8825_codec_init(struct snd_soc_pcm_runtime *rtd)
 	 * 4 buttons here map to the google Reference headset
 	 * The use of these buttons can be decided by the user space.
 	 */
-	ret = snd_soc_card_jack_new(&skylake_audio_card, "Headset Jack",
-		SND_JACK_HEADSET | SND_JACK_BTN_0 | SND_JACK_BTN_1 |
-		SND_JACK_BTN_2 | SND_JACK_BTN_3, &skylake_headset,
-		NULL, 0);
+	ret = snd_soc_card_jack_new_pins(&skylake_audio_card, "Headset Jack",
+					 SND_JACK_HEADSET | SND_JACK_BTN_0 | SND_JACK_BTN_1 |
+					 SND_JACK_BTN_2 | SND_JACK_BTN_3, &skylake_headset,
+					 jack_pins,
+					 ARRAY_SIZE(jack_pins));
 	if (ret) {
 		dev_err(rtd->dev, "Headset Jack creation failed %d\n", ret);
 		return ret;
@@ -578,7 +590,7 @@ static struct snd_soc_dai_link skylake_dais[] = {
 		.no_pcm = 1,
 		.dai_fmt = SND_SOC_DAIFMT_DSP_A |
 			SND_SOC_DAIFMT_IB_NF |
-			SND_SOC_DAIFMT_CBS_CFS,
+			SND_SOC_DAIFMT_CBC_CFC,
 		.init = skylake_ssm4567_codec_init,
 		.ignore_pmdown_time = 1,
 		.be_hw_params_fixup = skylake_ssp_fixup,
@@ -593,7 +605,7 @@ static struct snd_soc_dai_link skylake_dais[] = {
 		.no_pcm = 1,
 		.init = skylake_nau8825_codec_init,
 		.dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
-			SND_SOC_DAIFMT_CBS_CFS,
+			SND_SOC_DAIFMT_CBC_CFC,
 		.ignore_pmdown_time = 1,
 		.be_hw_params_fixup = skylake_ssp_fixup,
 		.ops = &skylake_nau8825_ops,
@@ -651,8 +663,7 @@ static int skylake_card_late_probe(struct snd_soc_card *card)
 			"HDMI/DP, pcm=%d Jack", pcm->device);
 		err = snd_soc_card_jack_new(card, jack_name,
 					SND_JACK_AVOUT,
-					&skylake_hdmi[i],
-					NULL, 0);
+					&skylake_hdmi[i]);
 
 		if (err)
 			return err;

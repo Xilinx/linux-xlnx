@@ -23,13 +23,23 @@
 #include <linux/bio.h>
 #include <linux/pagemap.h>
 #include <linux/mempool.h>
-#include <linux/blkdev.h>
 #include <linux/init.h>
 #include <linux/hash.h>
 #include <linux/highmem.h>
 #include <linux/kgdb.h>
 #include <asm/tlbflush.h>
 #include <linux/vmalloc.h>
+
+#ifdef CONFIG_KMAP_LOCAL
+static inline int kmap_local_calc_idx(int idx)
+{
+	return idx + KM_MAX_IDX * smp_processor_id();
+}
+
+#ifndef arch_kmap_local_map_idx
+#define arch_kmap_local_map_idx(idx, pfn)	kmap_local_calc_idx(idx)
+#endif
+#endif /* CONFIG_KMAP_LOCAL */
 
 /*
  * Virtual_count is not a pure "count".
@@ -143,15 +153,32 @@ pte_t *pkmap_page_table;
 
 struct page *__kmap_to_page(void *vaddr)
 {
+	unsigned long base = (unsigned long) vaddr & PAGE_MASK;
+	struct kmap_ctrl *kctrl = &current->kmap_ctrl;
 	unsigned long addr = (unsigned long)vaddr;
+	int i;
 
-	if (addr >= PKMAP_ADDR(0) && addr < PKMAP_ADDR(LAST_PKMAP)) {
-		int i = PKMAP_NR(addr);
+	/* kmap() mappings */
+	if (WARN_ON_ONCE(addr >= PKMAP_ADDR(0) &&
+			 addr < PKMAP_ADDR(LAST_PKMAP)))
+		return pte_page(pkmap_page_table[PKMAP_NR(addr)]);
 
-		return pte_page(pkmap_page_table[i]);
+	/* kmap_local_page() mappings */
+	if (WARN_ON_ONCE(base >= __fix_to_virt(FIX_KMAP_END) &&
+			 base < __fix_to_virt(FIX_KMAP_BEGIN))) {
+		for (i = 0; i < kctrl->idx; i++) {
+			unsigned long base_addr;
+			int idx;
+
+			idx = arch_kmap_local_map_idx(i, pte_pfn(pteval));
+			base_addr = __fix_to_virt(FIX_KMAP_BEGIN + idx);
+
+			if (base_addr == base)
+				return pte_page(kctrl->pteval[i]);
+		}
 	}
 
-	return virt_to_page(addr);
+	return virt_to_page(vaddr);
 }
 EXPORT_SYMBOL(__kmap_to_page);
 
@@ -360,7 +387,6 @@ void kunmap_high(struct page *page)
 }
 EXPORT_SYMBOL(kunmap_high);
 
-#ifdef CONFIG_TRANSPARENT_HUGEPAGE
 void zero_user_segments(struct page *page, unsigned start1, unsigned end1,
 		unsigned start2, unsigned end2)
 {
@@ -383,7 +409,7 @@ void zero_user_segments(struct page *page, unsigned start1, unsigned end1,
 			unsigned this_end = min_t(unsigned, end1, PAGE_SIZE);
 
 			if (end1 > start1) {
-				kaddr = kmap_atomic(page + i);
+				kaddr = kmap_local_page(page + i);
 				memset(kaddr + start1, 0, this_end - start1);
 			}
 			end1 -= this_end;
@@ -398,7 +424,7 @@ void zero_user_segments(struct page *page, unsigned start1, unsigned end1,
 
 			if (end2 > start2) {
 				if (!kaddr)
-					kaddr = kmap_atomic(page + i);
+					kaddr = kmap_local_page(page + i);
 				memset(kaddr + start2, 0, this_end - start2);
 			}
 			end2 -= this_end;
@@ -406,7 +432,7 @@ void zero_user_segments(struct page *page, unsigned start1, unsigned end1,
 		}
 
 		if (kaddr) {
-			kunmap_atomic(kaddr);
+			kunmap_local(kaddr);
 			flush_dcache_page(page + i);
 		}
 
@@ -417,7 +443,6 @@ void zero_user_segments(struct page *page, unsigned start1, unsigned end1,
 	BUG_ON((start1 | start2 | end1 | end2) != 0);
 }
 EXPORT_SYMBOL(zero_user_segments);
-#endif /* CONFIG_TRANSPARENT_HUGEPAGE */
 #endif /* CONFIG_HIGHMEM */
 
 #ifdef CONFIG_KMAP_LOCAL
@@ -465,10 +490,6 @@ static inline void kmap_local_idx_pop(void)
 # define arch_kmap_local_post_unmap(vaddr)		do { } while (0)
 #endif
 
-#ifndef arch_kmap_local_map_idx
-#define arch_kmap_local_map_idx(idx, pfn)	kmap_local_calc_idx(idx)
-#endif
-
 #ifndef arch_kmap_local_unmap_idx
 #define arch_kmap_local_unmap_idx(idx, vaddr)	kmap_local_calc_idx(idx)
 #endif
@@ -497,23 +518,24 @@ static inline bool kmap_high_unmap_local(unsigned long vaddr)
 	return false;
 }
 
-static inline int kmap_local_calc_idx(int idx)
-{
-	return idx + KM_MAX_IDX * smp_processor_id();
-}
-
 static pte_t *__kmap_pte;
 
-static pte_t *kmap_get_pte(void)
+static pte_t *kmap_get_pte(unsigned long vaddr, int idx)
 {
+	if (IS_ENABLED(CONFIG_KMAP_LOCAL_NON_LINEAR_PTE_ARRAY))
+		/*
+		 * Set by the arch if __kmap_pte[-idx] does not produce
+		 * the correct entry.
+		 */
+		return virt_to_kpte(vaddr);
 	if (!__kmap_pte)
 		__kmap_pte = virt_to_kpte(__fix_to_virt(FIX_KMAP_BEGIN));
-	return __kmap_pte;
+	return &__kmap_pte[-idx];
 }
 
 void *__kmap_local_pfn_prot(unsigned long pfn, pgprot_t prot)
 {
-	pte_t pteval, *kmap_pte = kmap_get_pte();
+	pte_t pteval, *kmap_pte;
 	unsigned long vaddr;
 	int idx;
 
@@ -525,9 +547,10 @@ void *__kmap_local_pfn_prot(unsigned long pfn, pgprot_t prot)
 	preempt_disable();
 	idx = arch_kmap_local_map_idx(kmap_local_idx_push(), pfn);
 	vaddr = __fix_to_virt(FIX_KMAP_BEGIN + idx);
-	BUG_ON(!pte_none(*(kmap_pte - idx)));
+	kmap_pte = kmap_get_pte(vaddr, idx);
+	BUG_ON(!pte_none(*kmap_pte));
 	pteval = pfn_pte(pfn, prot);
-	arch_kmap_local_set_pte(&init_mm, vaddr, kmap_pte - idx, pteval);
+	arch_kmap_local_set_pte(&init_mm, vaddr, kmap_pte, pteval);
 	arch_kmap_local_post_map(vaddr, pteval);
 	current->kmap_ctrl.pteval[kmap_local_idx()] = pteval;
 	preempt_enable();
@@ -557,10 +580,10 @@ void *__kmap_local_page_prot(struct page *page, pgprot_t prot)
 }
 EXPORT_SYMBOL(__kmap_local_page_prot);
 
-void kunmap_local_indexed(void *vaddr)
+void kunmap_local_indexed(const void *vaddr)
 {
 	unsigned long addr = (unsigned long) vaddr & PAGE_MASK;
-	pte_t *kmap_pte = kmap_get_pte();
+	pte_t *kmap_pte;
 	int idx;
 
 	if (addr < __fix_to_virt(FIX_KMAP_END) ||
@@ -585,8 +608,9 @@ void kunmap_local_indexed(void *vaddr)
 	idx = arch_kmap_local_unmap_idx(kmap_local_idx(), addr);
 	WARN_ON_ONCE(addr != __fix_to_virt(FIX_KMAP_BEGIN + idx));
 
+	kmap_pte = kmap_get_pte(addr, idx);
 	arch_kmap_local_pre_unmap(addr);
-	pte_clear(&init_mm, addr, kmap_pte - idx);
+	pte_clear(&init_mm, addr, kmap_pte);
 	arch_kmap_local_post_unmap(addr);
 	current->kmap_ctrl.pteval[kmap_local_idx()] = __pte(0);
 	kmap_local_idx_pop();
@@ -608,7 +632,7 @@ EXPORT_SYMBOL(kunmap_local_indexed);
 void __kmap_local_sched_out(void)
 {
 	struct task_struct *tsk = current;
-	pte_t *kmap_pte = kmap_get_pte();
+	pte_t *kmap_pte;
 	int i;
 
 	/* Clear kmaps */
@@ -619,7 +643,7 @@ void __kmap_local_sched_out(void)
 
 		/* With debug all even slots are unmapped and act as guard */
 		if (IS_ENABLED(CONFIG_DEBUG_KMAP_LOCAL) && !(i & 0x01)) {
-			WARN_ON_ONCE(!pte_none(pteval));
+			WARN_ON_ONCE(pte_val(pteval) != 0);
 			continue;
 		}
 		if (WARN_ON_ONCE(pte_none(pteval)))
@@ -635,8 +659,9 @@ void __kmap_local_sched_out(void)
 		idx = arch_kmap_local_map_idx(i, pte_pfn(pteval));
 
 		addr = __fix_to_virt(FIX_KMAP_BEGIN + idx);
+		kmap_pte = kmap_get_pte(addr, idx);
 		arch_kmap_local_pre_unmap(addr);
-		pte_clear(&init_mm, addr, kmap_pte - idx);
+		pte_clear(&init_mm, addr, kmap_pte);
 		arch_kmap_local_post_unmap(addr);
 	}
 }
@@ -644,7 +669,7 @@ void __kmap_local_sched_out(void)
 void __kmap_local_sched_in(void)
 {
 	struct task_struct *tsk = current;
-	pte_t *kmap_pte = kmap_get_pte();
+	pte_t *kmap_pte;
 	int i;
 
 	/* Restore kmaps */
@@ -655,7 +680,7 @@ void __kmap_local_sched_in(void)
 
 		/* With debug all even slots are unmapped and act as guard */
 		if (IS_ENABLED(CONFIG_DEBUG_KMAP_LOCAL) && !(i & 0x01)) {
-			WARN_ON_ONCE(!pte_none(pteval));
+			WARN_ON_ONCE(pte_val(pteval) != 0);
 			continue;
 		}
 		if (WARN_ON_ONCE(pte_none(pteval)))
@@ -664,7 +689,8 @@ void __kmap_local_sched_in(void)
 		/* See comment in __kmap_local_sched_out() */
 		idx = arch_kmap_local_map_idx(i, pte_pfn(pteval));
 		addr = __fix_to_virt(FIX_KMAP_BEGIN + idx);
-		set_pte_at(&init_mm, addr, kmap_pte - idx, pteval);
+		kmap_pte = kmap_get_pte(addr, idx);
+		set_pte_at(&init_mm, addr, kmap_pte, pteval);
 		arch_kmap_local_post_map(addr, pteval);
 	}
 }
@@ -729,11 +755,11 @@ void *page_address(const struct page *page)
 		list_for_each_entry(pam, &pas->lh, list) {
 			if (pam->page == page) {
 				ret = pam->virtual;
-				goto done;
+				break;
 			}
 		}
 	}
-done:
+
 	spin_unlock_irqrestore(&pas->lock, flags);
 	return ret;
 }
@@ -766,13 +792,12 @@ void set_page_address(struct page *page, void *virtual)
 		list_for_each_entry(pam, &pas->lh, list) {
 			if (pam->page == page) {
 				list_del(&pam->list);
-				spin_unlock_irqrestore(&pas->lock, flags);
-				goto done;
+				break;
 			}
 		}
 		spin_unlock_irqrestore(&pas->lock, flags);
 	}
-done:
+
 	return;
 }
 

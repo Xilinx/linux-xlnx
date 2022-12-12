@@ -319,7 +319,7 @@ static int tps544_probe(struct i2c_client *client)
 	return pmbus_do_probe(client, info);
 }
 
-static int tps544_remove(struct i2c_client *client)
+static void tps544_remove(struct i2c_client *client)
 {
 #if IS_ENABLED(CONFIG_SENSORS_TPS544_REGULATOR)
 	struct device *dev = &client->dev;
@@ -328,7 +328,6 @@ static int tps544_remove(struct i2c_client *client)
 	sysfs_remove_groups(&rdev->dev.kobj, reg_groups);
 #endif
 
-	return 0;
 }
 
 #ifdef CONFIG_OF

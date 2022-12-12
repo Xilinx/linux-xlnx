@@ -54,16 +54,19 @@ static int virtual_nci_send(struct nci_dev *ndev, struct sk_buff *skb)
 	mutex_lock(&nci_mutex);
 	if (state != virtual_ncidev_enabled) {
 		mutex_unlock(&nci_mutex);
+		kfree_skb(skb);
 		return 0;
 	}
 
 	if (send_buff) {
 		mutex_unlock(&nci_mutex);
+		kfree_skb(skb);
 		return -1;
 	}
 	send_buff = skb_copy(skb, GFP_KERNEL);
 	mutex_unlock(&nci_mutex);
 	wake_up_interruptible(&wq);
+	consume_skb(skb);
 
 	return 0;
 }
@@ -202,7 +205,7 @@ static int __init virtual_ncidev_init(void)
 	miscdev.minor = MISC_DYNAMIC_MINOR;
 	miscdev.name = "virtual_nci";
 	miscdev.fops = &virtual_ncidev_fops;
-	miscdev.mode = S_IALLUGO;
+	miscdev.mode = 0600;
 
 	return misc_register(&miscdev);
 }

@@ -26,13 +26,18 @@
 	status = "disabled";
 };
 
-&pp3300_hub {
-	/* pp3300_l7c is used to power the USB hub */
-	/delete-property/regulator-always-on;
-	/delete-property/regulator-boot-on;
+&pm6150_adc {
+	/delete-node/ charger-thermistor@4f;
 };
 
-&pp3300_l7c {
-	regulator-always-on;
-	regulator-boot-on;
+&pm6150_adc_tm {
+	/delete-node/ charger-thermistor@0;
+};
+
+&usb_hub_2_x {
+	 vdd-supply = <&pp3300_l7c>;
+};
+
+&usb_hub_3_x {
+	 vdd-supply = <&pp3300_l7c>;
 };

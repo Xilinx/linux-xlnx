@@ -18,6 +18,7 @@
 #include <linux/scmi_protocol.h>
 #include <linux/time.h>
 #include <linux/types.h>
+#include <linux/units.h>
 
 #define SCMI_IIO_NUM_OF_AXIS 3
 
@@ -130,7 +131,6 @@ static const struct iio_buffer_setup_ops scmi_iio_buffer_ops = {
 static int scmi_iio_set_odr_val(struct iio_dev *iio_dev, int val, int val2)
 {
 	struct scmi_iio_priv *sensor = iio_priv(iio_dev);
-	const unsigned long UHZ_PER_HZ = 1000000UL;
 	u64 sec, mult, uHz, sf;
 	u32 sensor_config;
 	char buf[32];
@@ -145,7 +145,7 @@ static int scmi_iio_set_odr_val(struct iio_dev *iio_dev, int val, int val2)
 		return err;
 	}
 
-	uHz = val * UHZ_PER_HZ + val2;
+	uHz = val * MICROHZ_PER_HZ + val2;
 
 	/*
 	 * The seconds field in the sensor interval in SCMI is 16 bits long
@@ -156,10 +156,10 @@ static int scmi_iio_set_odr_val(struct iio_dev *iio_dev, int val, int val2)
 	 * count the number of characters
 	 */
 	sf = (u64)uHz * 0xFFFF;
-	do_div(sf,  UHZ_PER_HZ);
+	do_div(sf,  MICROHZ_PER_HZ);
 	mult = scnprintf(buf, sizeof(buf), "%llu", sf) - 1;
 
-	sec = int_pow(10, mult) * UHZ_PER_HZ;
+	sec = int_pow(10, mult) * MICROHZ_PER_HZ;
 	do_div(sec, uHz);
 	if (sec == 0) {
 		dev_err(&iio_dev->dev,
@@ -279,6 +279,52 @@ static int scmi_iio_get_odr_val(struct iio_dev *iio_dev, int *val, int *val2)
 	return 0;
 }
 
+static int scmi_iio_read_channel_data(struct iio_dev *iio_dev,
+			     struct iio_chan_spec const *ch, int *val, int *val2)
+{
+	struct scmi_iio_priv *sensor = iio_priv(iio_dev);
+	u32 sensor_config;
+	struct scmi_sensor_reading readings[SCMI_IIO_NUM_OF_AXIS];
+	int err;
+
+	sensor_config = FIELD_PREP(SCMI_SENS_CFG_SENSOR_ENABLED_MASK,
+					SCMI_SENS_CFG_SENSOR_ENABLE);
+	err = sensor->sensor_ops->config_set(
+		sensor->ph, sensor->sensor_info->id, sensor_config);
+	if (err) {
+		dev_err(&iio_dev->dev,
+			"Error in enabling sensor %s err %d",
+			sensor->sensor_info->name, err);
+		return err;
+	}
+
+	err = sensor->sensor_ops->reading_get_timestamped(
+		sensor->ph, sensor->sensor_info->id,
+		sensor->sensor_info->num_axis, readings);
+	if (err) {
+		dev_err(&iio_dev->dev,
+			"Error in reading raw attribute for sensor %s err %d",
+			sensor->sensor_info->name, err);
+		return err;
+	}
+
+	sensor_config = FIELD_PREP(SCMI_SENS_CFG_SENSOR_ENABLED_MASK,
+					SCMI_SENS_CFG_SENSOR_DISABLE);
+	err = sensor->sensor_ops->config_set(
+		sensor->ph, sensor->sensor_info->id, sensor_config);
+	if (err) {
+		dev_err(&iio_dev->dev,
+			"Error in disabling sensor %s err %d",
+			sensor->sensor_info->name, err);
+		return err;
+	}
+
+	*val = lower_32_bits(readings[ch->scan_index].value);
+	*val2 = upper_32_bits(readings[ch->scan_index].value);
+
+	return IIO_VAL_INT_64;
+}
+
 static int scmi_iio_read_raw(struct iio_dev *iio_dev,
 			     struct iio_chan_spec const *ch, int *val,
 			     int *val2, long mask)
@@ -300,6 +346,14 @@ static int scmi_iio_read_raw(struct iio_dev *iio_dev,
 	case IIO_CHAN_INFO_SAMP_FREQ:
 		ret = scmi_iio_get_odr_val(iio_dev, val, val2);
 		return ret ? ret : IIO_VAL_INT_PLUS_MICRO;
+	case IIO_CHAN_INFO_RAW:
+		ret = iio_device_claim_direct_mode(iio_dev);
+		if (ret)
+			return ret;
+
+		ret = scmi_iio_read_channel_data(iio_dev, ch, val, val2);
+		iio_device_release_direct_mode(iio_dev);
+		return ret;
 	default:
 		return -EINVAL;
 	}
@@ -381,7 +435,8 @@ static void scmi_iio_set_data_channel(struct iio_chan_spec *iio_chan,
 	iio_chan->type = type;
 	iio_chan->modified = 1;
 	iio_chan->channel2 = mod;
-	iio_chan->info_mask_separate = BIT(IIO_CHAN_INFO_SCALE);
+	iio_chan->info_mask_separate =
+		BIT(IIO_CHAN_INFO_SCALE) | BIT(IIO_CHAN_INFO_RAW);
 	iio_chan->info_mask_shared_by_type = BIT(IIO_CHAN_INFO_SAMP_FREQ);
 	iio_chan->info_mask_shared_by_type_available =
 		BIT(IIO_CHAN_INFO_SAMP_FREQ);
@@ -631,7 +686,6 @@ static int scmi_iio_dev_probe(struct scmi_device *sdev)
 
 		err = devm_iio_kfifo_buffer_setup(&scmi_iio_dev->dev,
 						  scmi_iio_dev,
-						  INDIO_BUFFER_SOFTWARE,
 						  &scmi_iio_buffer_ops);
 		if (err < 0) {
 			dev_err(dev,

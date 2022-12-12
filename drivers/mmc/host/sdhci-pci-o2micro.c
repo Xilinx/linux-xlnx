@@ -12,6 +12,7 @@
 #include <linux/mmc/mmc.h>
 #include <linux/delay.h>
 #include <linux/iopoll.h>
+#include <linux/bitfield.h>
 
 #include "sdhci.h"
 #include "sdhci-pci.h"
@@ -31,6 +32,7 @@
 #define O2_SD_CAPS		0xE0
 #define O2_SD_ADMA1		0xE2
 #define O2_SD_ADMA2		0xE7
+#define O2_SD_MISC_CTRL2	0xF0
 #define O2_SD_INF_MOD		0xF1
 #define O2_SD_MISC_CTRL4	0xFC
 #define O2_SD_MISC_CTRL		0x1C0
@@ -43,12 +45,16 @@
 #define O2_SD_CAP_REG0		0x334
 #define O2_SD_UHS1_CAP_SETTING	0x33C
 #define O2_SD_DELAY_CTRL	0x350
+#define O2_SD_OUTPUT_CLK_SOURCE_SWITCH	0x354
 #define O2_SD_UHS2_L1_CTRL	0x35C
 #define O2_SD_FUNC_REG3		0x3E0
 #define O2_SD_FUNC_REG4		0x3E4
 #define O2_SD_LED_ENABLE	BIT(6)
 #define O2_SD_FREG0_LEDOFF	BIT(13)
+#define O2_SD_SEL_DLL		BIT(16)
 #define O2_SD_FREG4_ENABLE_CLK_SET	BIT(22)
+#define O2_SD_PHASE_MASK	GENMASK(23, 20)
+#define O2_SD_FIX_PHASE		FIELD_PREP(O2_SD_PHASE_MASK, 0x9)
 
 #define O2_SD_VENDOR_SETTING	0x110
 #define O2_SD_VENDOR_SETTING2	0x1C8
@@ -147,6 +153,8 @@ static int sdhci_o2_get_cd(struct mmc_host *mmc)
 
 	if (!(sdhci_readw(host, O2_PLL_DLL_WDT_CONTROL1) & O2_PLL_LOCK_STATUS))
 		sdhci_o2_enable_internal_clock(host);
+	else
+		sdhci_o2_wait_card_detect_stable(host);
 
 	return !!(sdhci_readl(host, SDHCI_PRESENT_STATE) & SDHCI_CARD_PRESENT);
 }
@@ -301,16 +309,21 @@ static int sdhci_o2_dll_recovery(struct sdhci_host *host)
 static int sdhci_o2_execute_tuning(struct mmc_host *mmc, u32 opcode)
 {
 	struct sdhci_host *host = mmc_priv(mmc);
+	struct sdhci_pci_slot *slot = sdhci_priv(host);
+	struct sdhci_pci_chip *chip = slot->chip;
 	int current_bus_width = 0;
 	u32 scratch32 = 0;
 	u16 scratch = 0;
+	u8  scratch_8 = 0;
+	u32 reg_val;
 
 	/*
-	 * This handler only implements the eMMC tuning that is specific to
+	 * This handler implements the hardware tuning that is specific to
 	 * this controller.  Fall back to the standard method for other TIMING.
 	 */
 	if ((host->timing != MMC_TIMING_MMC_HS200) &&
-		(host->timing != MMC_TIMING_UHS_SDR104))
+		(host->timing != MMC_TIMING_UHS_SDR104) &&
+		(host->timing != MMC_TIMING_UHS_SDR50))
 		return sdhci_execute_tuning(mmc, opcode);
 
 	if (WARN_ON((opcode != MMC_SEND_TUNING_BLOCK_HS200) &&
@@ -321,6 +334,32 @@ static int sdhci_o2_execute_tuning(struct mmc_host *mmc, u32 opcode)
 	scratch = sdhci_readw(host, O2_SD_MISC_CTRL);
 	scratch |= O2_SD_PWR_FORCE_L0;
 	sdhci_writew(host, scratch, O2_SD_MISC_CTRL);
+
+	/* Stop clk */
+	reg_val = sdhci_readw(host, SDHCI_CLOCK_CONTROL);
+	reg_val &= ~SDHCI_CLOCK_CARD_EN;
+	sdhci_writew(host, reg_val, SDHCI_CLOCK_CONTROL);
+
+	/* UnLock WP */
+	pci_read_config_byte(chip->pdev, O2_SD_LOCK_WP, &scratch_8);
+	scratch_8 &= 0x7f;
+	pci_write_config_byte(chip->pdev, O2_SD_LOCK_WP, scratch_8);
+
+	/* Set pcr 0x354[16] to choose dll clock, and set the default phase */
+	pci_read_config_dword(chip->pdev, O2_SD_OUTPUT_CLK_SOURCE_SWITCH, &reg_val);
+	reg_val &= ~(O2_SD_SEL_DLL | O2_SD_PHASE_MASK);
+	reg_val |= (O2_SD_SEL_DLL | O2_SD_FIX_PHASE);
+	pci_write_config_dword(chip->pdev, O2_SD_OUTPUT_CLK_SOURCE_SWITCH, reg_val);
+
+	/* Lock WP */
+	pci_read_config_byte(chip->pdev, O2_SD_LOCK_WP, &scratch_8);
+	scratch_8 |= 0x80;
+	pci_write_config_byte(chip->pdev, O2_SD_LOCK_WP, scratch_8);
+
+	/* Start clk */
+	reg_val = sdhci_readw(host, SDHCI_CLOCK_CONTROL);
+	reg_val |= SDHCI_CLOCK_CARD_EN;
+	sdhci_writew(host, reg_val, SDHCI_CLOCK_CONTROL);
 
 	/* wait DLL lock, timeout value 5ms */
 	if (readx_poll_timeout(sdhci_o2_pll_dll_wdt_control, host,
@@ -489,7 +528,7 @@ static void sdhci_pci_o2_enable_msi(struct sdhci_pci_chip *chip,
 
 	ret = pci_find_capability(chip->pdev, PCI_CAP_ID_MSI);
 	if (!ret) {
-		pr_info("%s: unsupport msi, use INTx irq\n",
+		pr_info("%s: unsupported MSI, use INTx irq\n",
 			mmc_hostname(host->mmc));
 		return;
 	}
@@ -533,22 +572,31 @@ static void sdhci_pci_o2_set_clock(struct sdhci_host *host, unsigned int clock)
 	if (clock == 0)
 		return;
 
+	/* UnLock WP */
+	pci_read_config_byte(chip->pdev, O2_SD_LOCK_WP, &scratch);
+	scratch &= 0x7f;
+	pci_write_config_byte(chip->pdev, O2_SD_LOCK_WP, scratch);
+
 	if ((host->timing == MMC_TIMING_UHS_SDR104) && (clock == 200000000)) {
-		pci_read_config_byte(chip->pdev, O2_SD_LOCK_WP, &scratch);
-
-		scratch &= 0x7f;
-		pci_write_config_byte(chip->pdev, O2_SD_LOCK_WP, scratch);
-
 		pci_read_config_dword(chip->pdev, O2_SD_PLL_SETTING, &scratch_32);
 
 		if ((scratch_32 & 0xFFFF0000) != 0x2c280000)
 			o2_pci_set_baseclk(chip, 0x2c280000);
+	} else {
+		pci_read_config_dword(chip->pdev, O2_SD_PLL_SETTING, &scratch_32);
 
-		pci_read_config_byte(chip->pdev, O2_SD_LOCK_WP, &scratch);
-
-		scratch |= 0x80;
-		pci_write_config_byte(chip->pdev, O2_SD_LOCK_WP, scratch);
+		if ((scratch_32 & 0xFFFF0000) != 0x25100000)
+			o2_pci_set_baseclk(chip, 0x25100000);
 	}
+
+	pci_read_config_dword(chip->pdev, O2_SD_OUTPUT_CLK_SOURCE_SWITCH, &scratch_32);
+	scratch_32 &= ~(O2_SD_SEL_DLL | O2_SD_PHASE_MASK);
+	pci_write_config_dword(chip->pdev, O2_SD_OUTPUT_CLK_SOURCE_SWITCH, scratch_32);
+
+	/* Lock WP */
+	pci_read_config_byte(chip->pdev, O2_SD_LOCK_WP, &scratch);
+	scratch |= 0x80;
+	pci_write_config_byte(chip->pdev, O2_SD_LOCK_WP, scratch);
 
 	clk = sdhci_calc_clk(host, clock, &host->mmc->actual_clock);
 	sdhci_o2_enable_clk(host, clk);
@@ -584,6 +632,8 @@ static int sdhci_pci_o2_probe_slot(struct sdhci_pci_slot *slot)
 		reg = sdhci_readl(host, O2_SD_VENDOR_SETTING);
 		if (reg & 0x1)
 			host->quirks |= SDHCI_QUIRK_MULTIBLOCK_READ_ACMD12;
+
+		host->quirks2 |= SDHCI_QUIRK2_BROKEN_DDR50;
 
 		sdhci_pci_o2_enable_msi(chip, host);
 
@@ -828,6 +878,12 @@ static int sdhci_pci_o2_probe(struct sdhci_pci_chip *chip)
 		/* Set Tuning Windows to 5 */
 		pci_write_config_byte(chip->pdev,
 				O2_SD_TUNING_CTRL, 0x55);
+		//Adjust 1st and 2nd CD debounce time
+		pci_read_config_dword(chip->pdev, O2_SD_MISC_CTRL2, &scratch_32);
+		scratch_32 &= 0xFFE7FFFF;
+		scratch_32 |= 0x00180000;
+		pci_write_config_dword(chip->pdev, O2_SD_MISC_CTRL2, scratch_32);
+		pci_write_config_dword(chip->pdev, O2_SD_DETECT_SETTING, 1);
 		/* Lock WP */
 		ret = pci_read_config_byte(chip->pdev,
 					   O2_SD_LOCK_WP, &scratch);

@@ -218,7 +218,6 @@ current *struct* is::
 		int (*tray_move)(struct cdrom_device_info *, int);
 		int (*lock_door)(struct cdrom_device_info *, int);
 		int (*select_speed)(struct cdrom_device_info *, int);
-		int (*select_disc)(struct cdrom_device_info *, int);
 		int (*get_last_session) (struct cdrom_device_info *,
 					 struct cdrom_multisession *);
 		int (*get_mcn)(struct cdrom_device_info *, struct cdrom_mcn *);
@@ -418,15 +417,6 @@ maximum data-rate or real-time audio rate. If the drive doesn't have
 this `auto-selection` capability, the decision should be made on the
 current disc loaded and the return value should be positive. A negative
 return value indicates an error.
-
-::
-
-	int select_disc(struct cdrom_device_info *cdi, int number)
-
-If the drive can store multiple discs (a juke-box) this function
-will perform disc selection. It should return the number of the
-selected disc on success, a negative value on error. Currently, only
-the ide-cd driver supports this functionality.
 
 ::
 
@@ -907,6 +897,17 @@ commands can be identified by the underscores in their names.
 	specifies the slot for which the information is given. The special
 	value *CDSL_CURRENT* requests that information about the currently
 	selected slot be returned.
+`CDROM_TIMED_MEDIA_CHANGE`
+	Checks whether the disc has been changed since a user supplied time
+	and returns the time of the last disc change.
+
+	*arg* is a pointer to a *cdrom_timed_media_change_info* struct.
+	*arg->last_media_change* may be set by calling code to signal
+	the timestamp of the last known media change (by the caller).
+	Upon successful return, this ioctl call will set
+	*arg->last_media_change* to the latest media change timestamp (in ms)
+	known by the kernel/driver and set *arg->has_changed* to 1 if
+	that timestamp is more recent than the timestamp set by the caller.
 `CDROM_DRIVE_STATUS`
 	Returns the status of the drive by a call to
 	*drive_status()*. Return values are defined in cdrom_drive_status_.

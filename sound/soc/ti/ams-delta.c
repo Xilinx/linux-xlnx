@@ -330,10 +330,9 @@ static void cx81801_close(struct tty_struct *tty)
 }
 
 /* Line discipline .hangup() */
-static int cx81801_hangup(struct tty_struct *tty)
+static void cx81801_hangup(struct tty_struct *tty)
 {
 	cx81801_close(tty);
-	return 0;
 }
 
 /* Line discipline .receive_buf() */
@@ -472,8 +471,8 @@ static int ams_delta_cx20442_init(struct snd_soc_pcm_runtime *rtd)
 
 	/* Add hook switch - can be used to control the codec from userspace
 	 * even if line discipline fails */
-	ret = snd_soc_card_jack_new(card, "hook_switch", SND_JACK_HEADSET,
-				    &ams_delta_hook_switch, NULL, 0);
+	ret = snd_soc_card_jack_new_pins(card, "hook_switch", SND_JACK_HEADSET,
+					 &ams_delta_hook_switch, NULL, 0);
 	if (ret)
 		dev_warn(card->dev,
 				"Failed to allocate resources for hook switch, "

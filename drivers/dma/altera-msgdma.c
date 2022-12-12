@@ -585,16 +585,14 @@ static void msgdma_chan_desc_cleanup(struct msgdma_device *mdev)
 	struct msgdma_sw_desc *desc, *next;
 
 	list_for_each_entry_safe(desc, next, &mdev->done_list, node) {
-		dma_async_tx_callback callback;
-		void *callback_param;
+		struct dmaengine_desc_callback cb;
 
 		list_del(&desc->node);
 
-		callback = desc->async_tx.callback;
-		callback_param = desc->async_tx.callback_param;
-		if (callback) {
+		dmaengine_desc_get_callback(&desc->async_tx, &cb);
+		if (dmaengine_desc_callback_valid(&cb)) {
 			spin_unlock(&mdev->lock);
-			callback(callback_param);
+			dmaengine_desc_callback_invoke(&cb, NULL);
 			spin_lock(&mdev->lock);
 		}
 
@@ -751,7 +749,7 @@ static irqreturn_t msgdma_irq_handler(int irq, void *data)
 }
 
 /**
- * msgdma_chan_remove - Channel remove function
+ * msgdma_dev_remove() - Device remove function
  * @mdev: Pointer to the Altera mSGDMA device structure
  */
 static void msgdma_dev_remove(struct msgdma_device *mdev)
@@ -893,9 +891,7 @@ static int msgdma_probe(struct platform_device *pdev)
 	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64));
 	if (ret) {
 		dev_warn(&pdev->dev, "unable to set coherent mask to 64");
-		ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
-		if (ret)
-			goto fail;
+		goto fail;
 	}
 
 	msgdma_reset(mdev);
@@ -922,7 +918,7 @@ fail:
 }
 
 /**
- * msgdma_dma_remove - Driver remove function
+ * msgdma_remove() - Driver remove function
  * @pdev: Pointer to the platform_device structure
  *
  * Return: Always '0'

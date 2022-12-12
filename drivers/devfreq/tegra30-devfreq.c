@@ -178,7 +178,6 @@ struct tegra_devfreq_soc_data {
 
 struct tegra_devfreq {
 	struct devfreq		*devfreq;
-	struct opp_table	*opp_table;
 
 	struct reset_control	*reset;
 	struct clk		*clock;
@@ -789,6 +788,48 @@ static struct devfreq_governor tegra_devfreq_governor = {
 	.event_handler = tegra_governor_event_handler,
 };
 
+static void devm_tegra_devfreq_deinit_hw(void *data)
+{
+	struct tegra_devfreq *tegra = data;
+
+	reset_control_reset(tegra->reset);
+	clk_disable_unprepare(tegra->clock);
+}
+
+static int devm_tegra_devfreq_init_hw(struct device *dev,
+				      struct tegra_devfreq *tegra)
+{
+	int err;
+
+	err = clk_prepare_enable(tegra->clock);
+	if (err) {
+		dev_err(dev, "Failed to prepare and enable ACTMON clock\n");
+		return err;
+	}
+
+	err = devm_add_action_or_reset(dev, devm_tegra_devfreq_deinit_hw,
+				       tegra);
+	if (err)
+		return err;
+
+	err = reset_control_reset(tegra->reset);
+	if (err) {
+		dev_err(dev, "Failed to reset hardware: %d\n", err);
+		return err;
+	}
+
+	return err;
+}
+
+static int tegra_devfreq_config_clks_nop(struct device *dev,
+					 struct opp_table *opp_table,
+					 struct dev_pm_opp *opp, void *data,
+					 bool scaling_down)
+{
+	/* We want to skip clk configuration via dev_pm_opp_set_opp() */
+	return 0;
+}
+
 static int tegra_devfreq_probe(struct platform_device *pdev)
 {
 	u32 hw_version = BIT(tegra_sku_info.soc_speedo_id);
@@ -798,6 +839,13 @@ static int tegra_devfreq_probe(struct platform_device *pdev)
 	unsigned int i;
 	long rate;
 	int err;
+	const char *clk_names[] = { "actmon", NULL };
+	struct dev_pm_opp_config config = {
+		.supported_hw = &hw_version,
+		.supported_hw_count = 1,
+		.clk_names = clk_names,
+		.config_clks = tegra_devfreq_config_clks_nop,
+	};
 
 	tegra = devm_kzalloc(&pdev->dev, sizeof(*tegra), GFP_KERNEL);
 	if (!tegra)
@@ -842,38 +890,26 @@ static int tegra_devfreq_probe(struct platform_device *pdev)
 		return err;
 	}
 
-	tegra->opp_table = dev_pm_opp_set_supported_hw(&pdev->dev,
-						       &hw_version, 1);
-	err = PTR_ERR_OR_ZERO(tegra->opp_table);
+	err = devm_pm_opp_set_config(&pdev->dev, &config);
 	if (err) {
-		dev_err(&pdev->dev, "Failed to set supported HW: %d\n", err);
+		dev_err(&pdev->dev, "Failed to set OPP config: %d\n", err);
 		return err;
 	}
 
-	err = dev_pm_opp_of_add_table_noclk(&pdev->dev, 0);
+	err = devm_pm_opp_of_add_table_indexed(&pdev->dev, 0);
 	if (err) {
 		dev_err(&pdev->dev, "Failed to add OPP table: %d\n", err);
-		goto put_hw;
+		return err;
 	}
 
-	err = clk_prepare_enable(tegra->clock);
-	if (err) {
-		dev_err(&pdev->dev,
-			"Failed to prepare and enable ACTMON clock\n");
-		goto remove_table;
-	}
-
-	err = reset_control_reset(tegra->reset);
-	if (err) {
-		dev_err(&pdev->dev, "Failed to reset hardware: %d\n", err);
-		goto disable_clk;
-	}
+	err = devm_tegra_devfreq_init_hw(&pdev->dev, tegra);
+	if (err)
+		return err;
 
 	rate = clk_round_rate(tegra->emc_clock, ULONG_MAX);
-	if (rate < 0) {
+	if (rate <= 0) {
 		dev_err(&pdev->dev, "Failed to round clock rate: %ld\n", rate);
-		err = rate;
-		goto disable_clk;
+		return rate ?: -EINVAL;
 	}
 
 	tegra->max_freq = rate / KHZ;
@@ -892,52 +928,20 @@ static int tegra_devfreq_probe(struct platform_device *pdev)
 	INIT_DELAYED_WORK(&tegra->cpufreq_update_work,
 			  tegra_actmon_delayed_update);
 
-	err = devfreq_add_governor(&tegra_devfreq_governor);
+	err = devm_devfreq_add_governor(&pdev->dev, &tegra_devfreq_governor);
 	if (err) {
 		dev_err(&pdev->dev, "Failed to add governor: %d\n", err);
-		goto remove_opps;
+		return err;
 	}
 
 	tegra_devfreq_profile.initial_freq = clk_get_rate(tegra->emc_clock);
 
-	devfreq = devfreq_add_device(&pdev->dev, &tegra_devfreq_profile,
-				     "tegra_actmon", NULL);
+	devfreq = devm_devfreq_add_device(&pdev->dev, &tegra_devfreq_profile,
+					  "tegra_actmon", NULL);
 	if (IS_ERR(devfreq)) {
-		err = PTR_ERR(devfreq);
-		goto remove_governor;
+		dev_err(&pdev->dev, "Failed to add device: %pe\n", devfreq);
+		return PTR_ERR(devfreq);
 	}
-
-	return 0;
-
-remove_governor:
-	devfreq_remove_governor(&tegra_devfreq_governor);
-
-remove_opps:
-	dev_pm_opp_remove_all_dynamic(&pdev->dev);
-
-	reset_control_reset(tegra->reset);
-disable_clk:
-	clk_disable_unprepare(tegra->clock);
-remove_table:
-	dev_pm_opp_of_remove_table(&pdev->dev);
-put_hw:
-	dev_pm_opp_put_supported_hw(tegra->opp_table);
-
-	return err;
-}
-
-static int tegra_devfreq_remove(struct platform_device *pdev)
-{
-	struct tegra_devfreq *tegra = platform_get_drvdata(pdev);
-
-	devfreq_remove_device(tegra->devfreq);
-	devfreq_remove_governor(&tegra_devfreq_governor);
-
-	reset_control_reset(tegra->reset);
-	clk_disable_unprepare(tegra->clock);
-
-	dev_pm_opp_of_remove_table(&pdev->dev);
-	dev_pm_opp_put_supported_hw(tegra->opp_table);
 
 	return 0;
 }
@@ -967,7 +971,6 @@ MODULE_DEVICE_TABLE(of, tegra_devfreq_of_match);
 
 static struct platform_driver tegra_devfreq_driver = {
 	.probe	= tegra_devfreq_probe,
-	.remove	= tegra_devfreq_remove,
 	.driver = {
 		.name = "tegra-devfreq",
 		.of_match_table = tegra_devfreq_of_match,

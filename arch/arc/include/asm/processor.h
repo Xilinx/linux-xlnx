@@ -43,9 +43,6 @@ struct task_struct;
 #define task_pt_regs(p) \
 	((struct pt_regs *)(THREAD_SIZE + (void *)task_stack_page(p)) - 1)
 
-/* Free all resources held by a thread */
-#define release_thread(thread) do { } while (0)
-
 /*
  * A lot of busy-wait loops in SMP are based off of non-volatile data otherwise
  * get optimised away by gcc
@@ -70,7 +67,7 @@ struct task_struct;
 extern void start_thread(struct pt_regs * regs, unsigned long pc,
 			 unsigned long usp);
 
-extern unsigned int get_wchan(struct task_struct *p);
+extern unsigned int __get_wchan(struct task_struct *p);
 
 #endif /* !__ASSEMBLY__ */
 

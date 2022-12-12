@@ -108,7 +108,7 @@ static int alt_pr_fpga_write(struct fpga_manager *mgr, const char *buf,
 	u32 *buffer_32 = (u32 *)buf;
 	size_t i = 0;
 
-	if (count <= 0)
+	if (!count)
 		return -EINVAL;
 
 	/* Write out the complete 32-bit chunks */
@@ -191,11 +191,8 @@ int alt_pr_register(struct device *dev, void __iomem *reg_base)
 		(val & ALT_PR_CSR_STATUS_MSK) >> ALT_PR_CSR_STATUS_SFT,
 		(int)(val & ALT_PR_CSR_PR_START));
 
-	mgr = devm_fpga_mgr_create(dev, dev_name(dev), &alt_pr_ops, priv);
-	if (!mgr)
-		return -ENOMEM;
-
-	return devm_fpga_mgr_register(dev, mgr);
+	mgr = devm_fpga_mgr_register(dev, dev_name(dev), &alt_pr_ops, priv);
+	return PTR_ERR_OR_ZERO(mgr);
 }
 EXPORT_SYMBOL_GPL(alt_pr_register);
 

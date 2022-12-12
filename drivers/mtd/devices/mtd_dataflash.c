@@ -96,6 +96,13 @@ struct dataflash {
 	struct mtd_info		mtd;
 };
 
+static const struct spi_device_id dataflash_dev_ids[] = {
+	{ "at45" },
+	{ "dataflash" },
+	{ },
+};
+MODULE_DEVICE_TABLE(spi, dataflash_dev_ids);
+
 #ifdef CONFIG_OF
 static const struct of_device_id dataflash_dt_ids[] = {
 	{ .compatible = "atmel,at45", },
@@ -104,6 +111,13 @@ static const struct of_device_id dataflash_dt_ids[] = {
 };
 MODULE_DEVICE_TABLE(of, dataflash_dt_ids);
 #endif
+
+static const struct spi_device_id dataflash_spi_ids[] = {
+	{ .name = "at45", },
+	{ .name = "dataflash", },
+	{ /* sentinel */ }
+};
+MODULE_DEVICE_TABLE(spi, dataflash_spi_ids);
 
 /* ......................................................................... */
 
@@ -909,17 +923,15 @@ static int dataflash_probe(struct spi_device *spi)
 	return status;
 }
 
-static int dataflash_remove(struct spi_device *spi)
+static void dataflash_remove(struct spi_device *spi)
 {
 	struct dataflash	*flash = spi_get_drvdata(spi);
-	int			status;
 
 	dev_dbg(&spi->dev, "remove\n");
 
-	status = mtd_device_unregister(&flash->mtd);
-	if (status == 0)
-		kfree(flash);
-	return status;
+	WARN_ON(mtd_device_unregister(&flash->mtd));
+
+	kfree(flash);
 }
 
 static struct spi_driver dataflash_driver = {
@@ -927,9 +939,11 @@ static struct spi_driver dataflash_driver = {
 		.name		= "mtd_dataflash",
 		.of_match_table = of_match_ptr(dataflash_dt_ids),
 	},
+	.id_table = dataflash_dev_ids,
 
 	.probe		= dataflash_probe,
 	.remove		= dataflash_remove,
+	.id_table	= dataflash_spi_ids,
 
 	/* FIXME:  investigate suspend and resume... */
 };

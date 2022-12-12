@@ -508,10 +508,12 @@ static void eeprom_readword(struct ql3_adapter *qdev,
 
 static void ql_set_mac_addr(struct net_device *ndev, u16 *addr)
 {
-	__le16 *p = (__le16 *)ndev->dev_addr;
-	p[0] = cpu_to_le16(addr[0]);
-	p[1] = cpu_to_le16(addr[1]);
-	p[2] = cpu_to_le16(addr[2]);
+	__le16 buf[ETH_ALEN / 2];
+
+	buf[0] = cpu_to_le16(addr[0]);
+	buf[1] = cpu_to_le16(addr[1]);
+	buf[2] = cpu_to_le16(addr[2]);
+	eth_hw_addr_set(ndev, (u8 *)buf);
 }
 
 static int ql_get_nvram_params(struct ql3_adapter *qdev)
@@ -1734,10 +1736,10 @@ static void ql_get_drvinfo(struct net_device *ndev,
 			   struct ethtool_drvinfo *drvinfo)
 {
 	struct ql3_adapter *qdev = netdev_priv(ndev);
-	strlcpy(drvinfo->driver, ql3xxx_driver_name, sizeof(drvinfo->driver));
-	strlcpy(drvinfo->version, ql3xxx_driver_version,
+	strscpy(drvinfo->driver, ql3xxx_driver_name, sizeof(drvinfo->driver));
+	strscpy(drvinfo->version, ql3xxx_driver_version,
 		sizeof(drvinfo->version));
-	strlcpy(drvinfo->bus_info, pci_name(qdev->pdev),
+	strscpy(drvinfo->bus_info, pci_name(qdev->pdev),
 		sizeof(drvinfo->bus_info));
 }
 
@@ -2469,6 +2471,7 @@ static netdev_tx_t ql3xxx_send(struct sk_buff *skb,
 					     skb_shinfo(skb)->nr_frags);
 	if (tx_cb->seg_count == -1) {
 		netdev_err(ndev, "%s: invalid segment count!\n", __func__);
+		dev_kfree_skb_any(skb);
 		return NETDEV_TX_OK;
 	}
 
@@ -3478,19 +3481,18 @@ static int ql_adapter_up(struct ql3_adapter *qdev)
 
 	spin_lock_irqsave(&qdev->hw_lock, hw_flags);
 
-	err = ql_wait_for_drvr_lock(qdev);
-	if (err) {
-		err = ql_adapter_initialize(qdev);
-		if (err) {
-			netdev_err(ndev, "Unable to initialize adapter\n");
-			goto err_init;
-		}
-		netdev_err(ndev, "Releasing driver lock\n");
-		ql_sem_unlock(qdev, QL_DRVR_SEM_MASK);
-	} else {
+	if (!ql_wait_for_drvr_lock(qdev)) {
 		netdev_err(ndev, "Could not acquire driver lock\n");
+		err = -ENODEV;
 		goto err_lock;
 	}
+
+	err = ql_adapter_initialize(qdev);
+	if (err) {
+		netdev_err(ndev, "Unable to initialize adapter\n");
+		goto err_init;
+	}
+	ql_sem_unlock(qdev, QL_DRVR_SEM_MASK);
 
 	spin_unlock_irqrestore(&qdev->hw_lock, hw_flags);
 
@@ -3564,7 +3566,7 @@ static int ql3xxx_set_mac_address(struct net_device *ndev, void *p)
 	if (!is_valid_ether_addr(addr->sa_data))
 		return -EADDRNOTAVAIL;
 
-	memcpy(ndev->dev_addr, addr->sa_data, ndev->addr_len);
+	eth_hw_addr_set(ndev, addr->sa_data);
 
 	spin_lock_irqsave(&qdev->hw_lock, hw_flags);
 	/* Program lower 32 bits of the MAC address */
@@ -3613,7 +3615,8 @@ static void ql_reset_work(struct work_struct *work)
 		qdev->mem_map_registers;
 	unsigned long hw_flags;
 
-	if (test_bit((QL_RESET_PER_SCSI | QL_RESET_START), &qdev->flags)) {
+	if (test_bit(QL_RESET_PER_SCSI, &qdev->flags) ||
+	    test_bit(QL_RESET_START, &qdev->flags)) {
 		clear_bit(QL_LINK_MASTER, &qdev->flags);
 
 		/*
@@ -3749,7 +3752,7 @@ static int ql3xxx_probe(struct pci_dev *pdev,
 	struct net_device *ndev = NULL;
 	struct ql3_adapter *qdev = NULL;
 	static int cards_found;
-	int pci_using_dac, err;
+	int err;
 
 	err = pci_enable_device(pdev);
 	if (err) {
@@ -3765,11 +3768,7 @@ static int ql3xxx_probe(struct pci_dev *pdev,
 
 	pci_set_master(pdev);
 
-	if (!dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64)))
-		pci_using_dac = 1;
-	else if (!(err = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32))))
-		pci_using_dac = 0;
-
+	err = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64));
 	if (err) {
 		pr_err("%s no usable DMA configuration\n", pci_name(pdev));
 		goto err_out_free_regions;
@@ -3796,8 +3795,7 @@ static int ql3xxx_probe(struct pci_dev *pdev,
 
 	qdev->msg_enable = netif_msg_init(debug, default_msg);
 
-	if (pci_using_dac)
-		ndev->features |= NETIF_F_HIGHDMA;
+	ndev->features |= NETIF_F_HIGHDMA;
 	if (qdev->device_id == QL3032_DEVICE_ID)
 		ndev->features |= NETIF_F_IP_CSUM | NETIF_F_SG;
 
@@ -3816,7 +3814,7 @@ static int ql3xxx_probe(struct pci_dev *pdev,
 	ndev->ethtool_ops = &ql3xxx_ethtool_ops;
 	ndev->watchdog_timeo = 5 * HZ;
 
-	netif_napi_add(ndev, &qdev->napi, ql_poll, 64);
+	netif_napi_add(ndev, &qdev->napi, ql_poll);
 
 	ndev->irq = pdev->irq;
 

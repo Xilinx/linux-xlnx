@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * KVM dirty ring implementation
  *
@@ -9,7 +9,7 @@
 #include <linux/vmalloc.h>
 #include <linux/kvm_dirty_ring.h>
 #include <trace/events/kvm.h>
-#include "mmu_lock.h"
+#include "kvm_mm.h"
 
 int __weak kvm_cpu_dirty_log_size(void)
 {
@@ -34,15 +34,6 @@ bool kvm_dirty_ring_soft_full(struct kvm_dirty_ring *ring)
 static bool kvm_dirty_ring_full(struct kvm_dirty_ring *ring)
 {
 	return kvm_dirty_ring_used(ring) >= ring->size;
-}
-
-struct kvm_dirty_ring *kvm_dirty_ring_get(struct kvm *kvm)
-{
-	struct kvm_vcpu *vcpu = kvm_get_running_vcpu();
-
-	WARN_ON_ONCE(vcpu->kvm != kvm);
-
-	return &vcpu->dirty_ring;
 }
 
 static void kvm_reset_dirty_gfn(struct kvm *kvm, u32 slot, u64 offset, u64 mask)
@@ -83,7 +74,7 @@ int kvm_dirty_ring_alloc(struct kvm_dirty_ring *ring, int index, u32 size)
 
 static inline void kvm_dirty_gfn_set_invalid(struct kvm_dirty_gfn *gfn)
 {
-	gfn->flags = 0;
+	smp_store_release(&gfn->flags, 0);
 }
 
 static inline void kvm_dirty_gfn_set_dirtied(struct kvm_dirty_gfn *gfn)
@@ -93,7 +84,7 @@ static inline void kvm_dirty_gfn_set_dirtied(struct kvm_dirty_gfn *gfn)
 
 static inline bool kvm_dirty_gfn_harvested(struct kvm_dirty_gfn *gfn)
 {
-	return gfn->flags & KVM_DIRTY_GFN_F_RESET;
+	return smp_load_acquire(&gfn->flags) & KVM_DIRTY_GFN_F_RESET;
 }
 
 int kvm_dirty_ring_reset(struct kvm *kvm, struct kvm_dirty_ring *ring)

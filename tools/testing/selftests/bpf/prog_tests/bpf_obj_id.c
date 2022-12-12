@@ -3,11 +3,11 @@
 
 #define nr_iters 2
 
-void test_bpf_obj_id(void)
+void serial_test_bpf_obj_id(void)
 {
 	const __u64 array_magic_value = 0xfaceb00c;
 	const __u32 array_key = 0;
-	const char *file = "./test_obj_id.o";
+	const char *file = "./test_obj_id.bpf.o";
 	const char *expected_prog_name = "test_obj_id";
 	const char *expected_map_name = "test_map_id";
 	const __u64 nsec_per_sec = 1000000000;
@@ -48,7 +48,7 @@ void test_bpf_obj_id(void)
 	bzero(zeros, sizeof(zeros));
 	for (i = 0; i < nr_iters; i++) {
 		now = time(NULL);
-		err = bpf_prog_load(file, BPF_PROG_TYPE_RAW_TRACEPOINT,
+		err = bpf_prog_test_load(file, BPF_PROG_TYPE_RAW_TRACEPOINT,
 				    &objs[i], &prog_fds[i]);
 		/* test_obj_id.o is a dumb prog. It should never fail
 		 * to load.
@@ -65,8 +65,8 @@ void test_bpf_obj_id(void)
 		if (CHECK_FAIL(err))
 			goto done;
 
-		prog = bpf_object__find_program_by_title(objs[i],
-							 "raw_tp/sys_enter");
+		prog = bpf_object__find_program_by_name(objs[i],
+							"test_obj_id");
 		if (CHECK_FAIL(!prog))
 			goto done;
 		links[i] = bpf_program__attach(prog);

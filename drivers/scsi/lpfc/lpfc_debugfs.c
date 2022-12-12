@@ -1,7 +1,7 @@
 /*******************************************************************
  * This file is part of the Emulex Linux Device Driver for         *
  * Fibre Channel Host Bus Adapters.                                *
- * Copyright (C) 2017-2021 Broadcom. All Rights Reserved. The term *
+ * Copyright (C) 2017-2022 Broadcom. All Rights Reserved. The term *
  * “Broadcom” refers to Broadcom Inc. and/or its subsidiaries.  *
  * Copyright (C) 2007-2015 Emulex.  All rights reserved.           *
  * EMULEX and SLI are trademarks of Emulex.                        *
@@ -2607,8 +2607,8 @@ lpfc_debugfs_multixripools_write(struct file *file, const char __user *buf,
 	struct lpfc_sli4_hdw_queue *qp;
 	struct lpfc_multixri_pool *multixri_pool;
 
-	if (nbytes > 64)
-		nbytes = 64;
+	if (nbytes > sizeof(mybuf) - 1)
+		nbytes = sizeof(mybuf) - 1;
 
 	memset(mybuf, 0, sizeof(mybuf));
 
@@ -2688,8 +2688,8 @@ lpfc_debugfs_nvmestat_write(struct file *file, const char __user *buf,
 	if (!phba->targetport)
 		return -ENXIO;
 
-	if (nbytes > 64)
-		nbytes = 64;
+	if (nbytes > sizeof(mybuf) - 1)
+		nbytes = sizeof(mybuf) - 1;
 
 	memset(mybuf, 0, sizeof(mybuf));
 
@@ -2826,8 +2826,8 @@ lpfc_debugfs_ioktime_write(struct file *file, const char __user *buf,
 	char mybuf[64];
 	char *pbuf;
 
-	if (nbytes > 64)
-		nbytes = 64;
+	if (nbytes > sizeof(mybuf) - 1)
+		nbytes = sizeof(mybuf) - 1;
 
 	memset(mybuf, 0, sizeof(mybuf));
 
@@ -2954,8 +2954,8 @@ lpfc_debugfs_nvmeio_trc_write(struct file *file, const char __user *buf,
 	char mybuf[64];
 	char *pbuf;
 
-	if (nbytes > 64)
-		nbytes = 64;
+	if (nbytes > sizeof(mybuf) - 1)
+		nbytes = sizeof(mybuf) - 1;
 
 	memset(mybuf, 0, sizeof(mybuf));
 
@@ -3060,8 +3060,8 @@ lpfc_debugfs_hdwqstat_write(struct file *file, const char __user *buf,
 	char *pbuf;
 	int i;
 
-	if (nbytes > 64)
-		nbytes = 64;
+	if (nbytes > sizeof(mybuf) - 1)
+		nbytes = sizeof(mybuf) - 1;
 
 	memset(mybuf, 0, sizeof(mybuf));
 
@@ -5156,7 +5156,7 @@ error_out:
 static int
 lpfc_idiag_extacc_avail_get(struct lpfc_hba *phba, char *pbuffer, int len)
 {
-	uint16_t ext_cnt, ext_size;
+	uint16_t ext_cnt = 0, ext_size = 0;
 
 	len += scnprintf(pbuffer+len, LPFC_EXT_ACC_BUF_SIZE-len,
 			"\nAvailable Extents Information:\n");
@@ -5484,7 +5484,7 @@ lpfc_cgn_buffer_read(struct file *file, char __user *buf, size_t nbytes,
 		if (len > (LPFC_CGN_BUF_SIZE - LPFC_DEBUG_OUT_LINE_SZ)) {
 			len += scnprintf(buffer + len, LPFC_CGN_BUF_SIZE - len,
 					 "Truncated . . .\n");
-			break;
+			goto out;
 		}
 		len += scnprintf(buffer + len, LPFC_CGN_BUF_SIZE - len,
 				 "%03x: %08x %08x %08x %08x "
@@ -5495,6 +5495,17 @@ lpfc_cgn_buffer_read(struct file *file, char __user *buf, size_t nbytes,
 		cnt += 32;
 		ptr += 8;
 	}
+	if (len > (LPFC_CGN_BUF_SIZE - LPFC_DEBUG_OUT_LINE_SZ)) {
+		len += scnprintf(buffer + len, LPFC_CGN_BUF_SIZE - len,
+				 "Truncated . . .\n");
+		goto out;
+	}
+	len += scnprintf(buffer + len, LPFC_CGN_BUF_SIZE - len,
+			 "Parameter Data\n");
+	ptr = (uint32_t *)&phba->cgn_p;
+	len += scnprintf(buffer + len, LPFC_CGN_BUF_SIZE - len,
+			 "%08x %08x %08x %08x\n",
+			 *ptr, *(ptr + 1), *(ptr + 2), *(ptr + 3));
 out:
 	return simple_read_from_buffer(buf, nbytes, ppos, buffer, len);
 }
@@ -5520,7 +5531,7 @@ lpfc_rx_monitor_open(struct inode *inode, struct file *file)
 	if (!debug)
 		goto out;
 
-	debug->buffer = vmalloc(MAX_DEBUGFS_RX_TABLE_SIZE);
+	debug->buffer = vmalloc(MAX_DEBUGFS_RX_INFO_SIZE);
 	if (!debug->buffer) {
 		kfree(debug);
 		goto out;
@@ -5541,55 +5552,18 @@ lpfc_rx_monitor_read(struct file *file, char __user *buf, size_t nbytes,
 	struct lpfc_rx_monitor_debug *debug = file->private_data;
 	struct lpfc_hba *phba = (struct lpfc_hba *)debug->i_private;
 	char *buffer = debug->buffer;
-	struct rxtable_entry *entry;
-	int i, len = 0, head, tail, last, start;
 
-	head = atomic_read(&phba->rxtable_idx_head);
-	while (head == LPFC_RXMONITOR_TABLE_IN_USE) {
-		/* Table is getting updated */
-		msleep(20);
-		head = atomic_read(&phba->rxtable_idx_head);
+	if (!phba->rx_monitor) {
+		scnprintf(buffer, MAX_DEBUGFS_RX_INFO_SIZE,
+			  "Rx Monitor Info is empty.\n");
+	} else {
+		lpfc_rx_monitor_report(phba, phba->rx_monitor, buffer,
+				       MAX_DEBUGFS_RX_INFO_SIZE,
+				       LPFC_MAX_RXMONITOR_ENTRY);
 	}
 
-	tail = atomic_xchg(&phba->rxtable_idx_tail, head);
-	if (!phba->rxtable || head == tail) {
-		len += scnprintf(buffer + len, MAX_DEBUGFS_RX_TABLE_SIZE - len,
-				"Rxtable is empty\n");
-		goto out;
-	}
-	last = (head > tail) ?  head : LPFC_MAX_RXMONITOR_ENTRY;
-	start = tail;
-
-	len += scnprintf(buffer + len, MAX_DEBUGFS_RX_TABLE_SIZE - len,
-			"        MaxBPI\t Total Data Cmd  Total Data Cmpl "
-			"  Latency(us)    Avg IO Size\tMax IO Size   IO cnt "
-			"Info BWutil(ms)\n");
-get_table:
-	for (i = start; i < last; i++) {
-		entry = &phba->rxtable[i];
-		len += scnprintf(buffer + len, MAX_DEBUGFS_RX_TABLE_SIZE - len,
-				"%3d:%12lld  %12lld\t%12lld\t"
-				"%8lldus\t%8lld\t%10lld "
-				"%8d   %2d %2d(%2d)\n",
-				i, entry->max_bytes_per_interval,
-				entry->total_bytes,
-				entry->rcv_bytes,
-				entry->avg_io_latency,
-				entry->avg_io_size,
-				entry->max_read_cnt,
-				entry->io_cnt,
-				entry->cmf_info,
-				entry->timer_utilization,
-				entry->timer_interval);
-	}
-
-	if (head != last) {
-		start = 0;
-		last = head;
-		goto get_table;
-	}
-out:
-	return simple_read_from_buffer(buf, nbytes, ppos, buffer, len);
+	return simple_read_from_buffer(buf, nbytes, ppos, buffer,
+				       strlen(buffer));
 }
 
 static int
@@ -6259,9 +6233,9 @@ lpfc_debugfs_initialize(struct lpfc_vport *vport)
 				 phba->hba_debugfs_root,
 				 phba, &lpfc_debugfs_op_slow_ring_trc);
 		if (!phba->slow_ring_trc) {
-			phba->slow_ring_trc = kmalloc(
-				(sizeof(struct lpfc_debugfs_trc) *
-				lpfc_debugfs_max_slow_ring_trc),
+			phba->slow_ring_trc = kcalloc(
+				lpfc_debugfs_max_slow_ring_trc,
+				sizeof(struct lpfc_debugfs_trc),
 				GFP_KERNEL);
 			if (!phba->slow_ring_trc) {
 				lpfc_printf_vlog(vport, KERN_ERR, LOG_INIT,
@@ -6270,9 +6244,6 @@ lpfc_debugfs_initialize(struct lpfc_vport *vport)
 				goto debug_failed;
 			}
 			atomic_set(&phba->slow_ring_trc_cnt, 0);
-			memset(phba->slow_ring_trc, 0,
-				(sizeof(struct lpfc_debugfs_trc) *
-				lpfc_debugfs_max_slow_ring_trc));
 		}
 
 		snprintf(name, sizeof(name), "nvmeio_trc");

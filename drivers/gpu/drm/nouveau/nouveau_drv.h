@@ -102,7 +102,6 @@ struct nouveau_cli {
 	struct list_head head;
 	void *abi16;
 	struct list_head objects;
-	struct list_head notifys;
 	char name[32];
 
 	struct work_struct work;
@@ -138,6 +137,11 @@ struct nouveau_drm {
 	struct drm_device *dev;
 
 	struct list_head clients;
+
+	/**
+	 * @clients_lock: Protects access to the @clients list of &struct nouveau_cli.
+	 */
+	struct mutex clients_lock;
 
 	u8 old_pm_cap;
 

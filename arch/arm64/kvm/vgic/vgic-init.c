@@ -70,8 +70,9 @@ void kvm_vgic_early_init(struct kvm *kvm)
  */
 int kvm_vgic_create(struct kvm *kvm, u32 type)
 {
-	int i, ret;
 	struct kvm_vcpu *vcpu;
+	unsigned long i;
+	int ret;
 
 	if (irqchip_in_kernel(kvm))
 		return -EEXIST;
@@ -91,17 +92,17 @@ int kvm_vgic_create(struct kvm *kvm, u32 type)
 		return ret;
 
 	kvm_for_each_vcpu(i, vcpu, kvm) {
-		if (vcpu->arch.has_run_once)
+		if (vcpu_has_run_once(vcpu))
 			goto out_unlock;
 	}
 	ret = 0;
 
 	if (type == KVM_DEV_TYPE_ARM_VGIC_V2)
-		kvm->arch.max_vcpus = VGIC_V2_MAX_CPUS;
+		kvm->max_vcpus = VGIC_V2_MAX_CPUS;
 	else
-		kvm->arch.max_vcpus = VGIC_V3_MAX_CPUS;
+		kvm->max_vcpus = VGIC_V3_MAX_CPUS;
 
-	if (atomic_read(&kvm->online_vcpus) > kvm->arch.max_vcpus) {
+	if (atomic_read(&kvm->online_vcpus) > kvm->max_vcpus) {
 		ret = -E2BIG;
 		goto out_unlock;
 	}
@@ -134,7 +135,7 @@ static int kvm_vgic_dist_init(struct kvm *kvm, unsigned int nr_spis)
 	struct kvm_vcpu *vcpu0 = kvm_get_vcpu(kvm, 0);
 	int i;
 
-	dist->spis = kcalloc(nr_spis, sizeof(struct vgic_irq), GFP_KERNEL);
+	dist->spis = kcalloc(nr_spis, sizeof(struct vgic_irq), GFP_KERNEL_ACCOUNT);
 	if (!dist->spis)
 		return  -ENOMEM;
 
@@ -255,7 +256,8 @@ int vgic_init(struct kvm *kvm)
 {
 	struct vgic_dist *dist = &kvm->arch.vgic;
 	struct kvm_vcpu *vcpu;
-	int ret = 0, i, idx;
+	int ret = 0, i;
+	unsigned long idx;
 
 	if (vgic_initialized(kvm))
 		return 0;
@@ -308,7 +310,7 @@ int vgic_init(struct kvm *kvm)
 			goto out;
 	}
 
-	kvm_for_each_vcpu(i, vcpu, kvm)
+	kvm_for_each_vcpu(idx, vcpu, kvm)
 		kvm_vgic_vcpu_enable(vcpu);
 
 	ret = kvm_vgic_setup_default_irq_routing(kvm);
@@ -317,7 +319,12 @@ int vgic_init(struct kvm *kvm)
 
 	vgic_debug_init(kvm);
 
-	dist->implementation_rev = 2;
+	/*
+	 * If userspace didn't set the GIC implementation revision,
+	 * default to the latest and greatest. You know want it.
+	 */
+	if (!dist->implementation_rev)
+		dist->implementation_rev = KVM_VGIC_IMP_REV_LATEST;
 	dist->initialized = true;
 
 out:
@@ -370,7 +377,7 @@ void kvm_vgic_vcpu_destroy(struct kvm_vcpu *vcpu)
 static void __kvm_vgic_destroy(struct kvm *kvm)
 {
 	struct kvm_vcpu *vcpu;
-	int i;
+	unsigned long i;
 
 	vgic_debug_destroy(kvm);
 

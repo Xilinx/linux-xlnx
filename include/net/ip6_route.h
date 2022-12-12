@@ -2,6 +2,16 @@
 #ifndef _NET_IP6_ROUTE_H
 #define _NET_IP6_ROUTE_H
 
+#include <net/addrconf.h>
+#include <net/flow.h>
+#include <net/ip6_fib.h>
+#include <net/sock.h>
+#include <net/lwtunnel.h>
+#include <linux/ip.h>
+#include <linux/ipv6.h>
+#include <linux/route.h>
+#include <net/nexthop.h>
+
 struct route_info {
 	__u8			type;
 	__u8			length;
@@ -18,16 +28,6 @@ struct route_info {
 	__be32			lifetime;
 	__u8			prefix[];	/* 0,8 or 16 */
 };
-
-#include <net/addrconf.h>
-#include <net/flow.h>
-#include <net/ip6_fib.h>
-#include <net/sock.h>
-#include <net/lwtunnel.h>
-#include <linux/ip.h>
-#include <linux/ipv6.h>
-#include <linux/route.h>
-#include <net/nexthop.h>
 
 #define RT6_LOOKUP_F_IFACE		0x00000001
 #define RT6_LOOKUP_F_REACHABLE		0x00000002
@@ -263,19 +263,19 @@ static inline bool ipv6_anycast_destination(const struct dst_entry *dst,
 int ip6_fragment(struct net *net, struct sock *sk, struct sk_buff *skb,
 		 int (*output)(struct net *, struct sock *, struct sk_buff *));
 
-static inline unsigned int ip6_skb_dst_mtu(struct sk_buff *skb)
+static inline unsigned int ip6_skb_dst_mtu(const struct sk_buff *skb)
 {
+	const struct ipv6_pinfo *np = skb->sk && !dev_recursion_level() ?
+				inet6_sk(skb->sk) : NULL;
+	const struct dst_entry *dst = skb_dst(skb);
 	unsigned int mtu;
 
-	struct ipv6_pinfo *np = skb->sk && !dev_recursion_level() ?
-				inet6_sk(skb->sk) : NULL;
-
 	if (np && np->pmtudisc >= IPV6_PMTUDISC_PROBE) {
-		mtu = READ_ONCE(skb_dst(skb)->dev->mtu);
-		mtu -= lwtunnel_headroom(skb_dst(skb)->lwtstate, mtu);
-	} else
-		mtu = dst_mtu(skb_dst(skb));
-
+		mtu = READ_ONCE(dst->dev->mtu);
+		mtu -= lwtunnel_headroom(dst->lwtstate, mtu);
+	} else {
+		mtu = dst_mtu(dst);
+	}
 	return mtu;
 }
 

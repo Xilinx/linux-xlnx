@@ -1260,18 +1260,18 @@ static int imx258_probe(struct i2c_client *client)
 		return -ENOMEM;
 
 	imx258->clk = devm_clk_get_optional(&client->dev, NULL);
+	if (IS_ERR(imx258->clk))
+		return dev_err_probe(&client->dev, PTR_ERR(imx258->clk),
+				     "error getting clock\n");
 	if (!imx258->clk) {
 		dev_dbg(&client->dev,
 			"no clock provided, using clock-frequency property\n");
 
 		device_property_read_u32(&client->dev, "clock-frequency", &val);
-		if (val != IMX258_INPUT_CLOCK_FREQ)
-			return -EINVAL;
-	} else if (IS_ERR(imx258->clk)) {
-		return dev_err_probe(&client->dev, PTR_ERR(imx258->clk),
-				     "error getting clock\n");
+	} else {
+		val = clk_get_rate(imx258->clk);
 	}
-	if (clk_get_rate(imx258->clk) != IMX258_INPUT_CLOCK_FREQ) {
+	if (val != IMX258_INPUT_CLOCK_FREQ) {
 		dev_err(&client->dev, "input clock frequency not supported\n");
 		return -EINVAL;
 	}
@@ -1338,7 +1338,7 @@ error_identify:
 	return ret;
 }
 
-static int imx258_remove(struct i2c_client *client)
+static void imx258_remove(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct imx258 *imx258 = to_imx258(sd);
@@ -1351,8 +1351,6 @@ static int imx258_remove(struct i2c_client *client)
 	if (!pm_runtime_status_suspended(&client->dev))
 		imx258_power_off(&client->dev);
 	pm_runtime_set_suspended(&client->dev);
-
-	return 0;
 }
 
 static const struct dev_pm_ops imx258_pm_ops = {

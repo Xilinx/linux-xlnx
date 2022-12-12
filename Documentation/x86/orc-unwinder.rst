@@ -140,7 +140,7 @@ Unwinder implementation details
 
 Objtool generates the ORC data by integrating with the compile-time
 stack metadata validation feature, which is described in detail in
-tools/objtool/Documentation/stack-validation.txt.  After analyzing all
+tools/objtool/Documentation/objtool.txt.  After analyzing all
 the code paths of a .o file, it creates an array of orc_entry structs,
 and a parallel array of instruction addresses associated with those
 structs, and writes them to the .orc_unwind and .orc_unwind_ip sections
@@ -177,6 +177,6 @@ brutal, unyielding efficiency.
 ORC stands for Oops Rewind Capability.
 
 
-.. [1] https://lkml.kernel.org/r/20170602104048.jkkzssljsompjdwy@suse.de
-.. [2] https://lkml.kernel.org/r/d2ca5435-6386-29b8-db87-7f227c2b713a@suse.cz
+.. [1] https://lore.kernel.org/r/20170602104048.jkkzssljsompjdwy@suse.de
+.. [2] https://lore.kernel.org/r/d2ca5435-6386-29b8-db87-7f227c2b713a@suse.cz
 .. [3] http://dustin.wikidot.com/half-orcs-and-orcs

@@ -197,7 +197,7 @@ static ssize_t lpc_debug_read(struct file *filp, char __user *ubuf,
 
 		/*
 		 * Select access size based on count and alignment and
-		 * access type. IO and MEM only support byte acceses,
+		 * access type. IO and MEM only support byte accesses,
 		 * FW supports all 3.
 		 */
 		len = 1;
@@ -396,6 +396,7 @@ void __init opal_lpc_init(void)
 		if (!of_get_property(np, "primary", NULL))
 			continue;
 		opal_lpc_chip_id = of_get_ibm_chip_id(np);
+		of_node_put(np);
 		break;
 	}
 	if (opal_lpc_chip_id < 0)

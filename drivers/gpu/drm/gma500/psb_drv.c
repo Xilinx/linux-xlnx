@@ -19,6 +19,7 @@
 #include <acpi/video.h>
 
 #include <drm/drm.h>
+#include <drm/drm_aperture.h>
 #include <drm/drm_drv.h>
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_file.h>
@@ -27,6 +28,7 @@
 #include <drm/drm_vblank.h>
 
 #include "framebuffer.h"
+#include "gem.h"
 #include "intel_bios.h"
 #include "mid_bios.h"
 #include "power.h"
@@ -98,7 +100,7 @@ static const struct drm_ioctl_desc psb_ioctls[] = {
  *
  *	Soft reset the graphics engine and then reload the necessary registers.
  */
-void psb_spank(struct drm_psb_private *dev_priv)
+static void psb_spank(struct drm_psb_private *dev_priv)
 {
 	PSB_WSGX32(_PSB_CS_RESET_BIF_RESET | _PSB_CS_RESET_DPM_RESET |
 		_PSB_CS_RESET_TA_RESET | _PSB_CS_RESET_USE_RESET |
@@ -124,7 +126,7 @@ void psb_spank(struct drm_psb_private *dev_priv)
 
 static int psb_do_init(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct drm_psb_private *dev_priv = to_drm_psb_private(dev);
 	struct psb_gtt *pg = &dev_priv->gtt;
 
 	uint32_t stolen_gtt;
@@ -163,86 +165,85 @@ static int psb_do_init(struct drm_device *dev)
 
 static void psb_driver_unload(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct drm_psb_private *dev_priv = to_drm_psb_private(dev);
 
 	/* TODO: Kill vblank etc here */
 
-	if (dev_priv) {
-		if (dev_priv->backlight_device)
-			gma_backlight_exit(dev);
-		psb_modeset_cleanup(dev);
+	gma_backlight_exit(dev);
+	psb_modeset_cleanup(dev);
 
-		if (dev_priv->ops->chip_teardown)
-			dev_priv->ops->chip_teardown(dev);
+	gma_irq_uninstall(dev);
 
-		psb_intel_opregion_fini(dev);
+	if (dev_priv->ops->chip_teardown)
+		dev_priv->ops->chip_teardown(dev);
 
-		if (dev_priv->pf_pd) {
-			psb_mmu_free_pagedir(dev_priv->pf_pd);
-			dev_priv->pf_pd = NULL;
-		}
-		if (dev_priv->mmu) {
-			struct psb_gtt *pg = &dev_priv->gtt;
+	psb_intel_opregion_fini(dev);
 
-			down_read(&pg->sem);
-			psb_mmu_remove_pfn_sequence(
-				psb_mmu_get_default_pd
-				(dev_priv->mmu),
-				pg->mmu_gatt_start,
-				dev_priv->vram_stolen_size >> PAGE_SHIFT);
-			up_read(&pg->sem);
-			psb_mmu_driver_takedown(dev_priv->mmu);
-			dev_priv->mmu = NULL;
-		}
-		psb_gtt_takedown(dev);
-		if (dev_priv->scratch_page) {
-			set_pages_wb(dev_priv->scratch_page, 1);
-			__free_page(dev_priv->scratch_page);
-			dev_priv->scratch_page = NULL;
-		}
-		if (dev_priv->vdc_reg) {
-			iounmap(dev_priv->vdc_reg);
-			dev_priv->vdc_reg = NULL;
-		}
-		if (dev_priv->sgx_reg) {
-			iounmap(dev_priv->sgx_reg);
-			dev_priv->sgx_reg = NULL;
-		}
-		if (dev_priv->aux_reg) {
-			iounmap(dev_priv->aux_reg);
-			dev_priv->aux_reg = NULL;
-		}
-		pci_dev_put(dev_priv->aux_pdev);
-		pci_dev_put(dev_priv->lpc_pdev);
-
-		/* Destroy VBT data */
-		psb_intel_destroy_bios(dev);
-
-		kfree(dev_priv);
-		dev->dev_private = NULL;
+	if (dev_priv->pf_pd) {
+		psb_mmu_free_pagedir(dev_priv->pf_pd);
+		dev_priv->pf_pd = NULL;
 	}
+	if (dev_priv->mmu) {
+		struct psb_gtt *pg = &dev_priv->gtt;
+
+		psb_mmu_remove_pfn_sequence(
+			psb_mmu_get_default_pd
+			(dev_priv->mmu),
+			pg->mmu_gatt_start,
+			dev_priv->vram_stolen_size >> PAGE_SHIFT);
+		psb_mmu_driver_takedown(dev_priv->mmu);
+		dev_priv->mmu = NULL;
+	}
+	psb_gem_mm_fini(dev);
+	psb_gtt_fini(dev);
+	if (dev_priv->scratch_page) {
+		set_pages_wb(dev_priv->scratch_page, 1);
+		__free_page(dev_priv->scratch_page);
+		dev_priv->scratch_page = NULL;
+	}
+	if (dev_priv->vdc_reg) {
+		iounmap(dev_priv->vdc_reg);
+		dev_priv->vdc_reg = NULL;
+	}
+	if (dev_priv->sgx_reg) {
+		iounmap(dev_priv->sgx_reg);
+		dev_priv->sgx_reg = NULL;
+	}
+	if (dev_priv->aux_reg) {
+		iounmap(dev_priv->aux_reg);
+		dev_priv->aux_reg = NULL;
+	}
+	pci_dev_put(dev_priv->aux_pdev);
+	pci_dev_put(dev_priv->lpc_pdev);
+
+	/* Destroy VBT data */
+	psb_intel_destroy_bios(dev);
+
 	gma_power_uninit(dev);
+}
+
+static void psb_device_release(void *data)
+{
+	struct drm_device *dev = data;
+
+	psb_driver_unload(dev);
 }
 
 static int psb_driver_load(struct drm_device *dev, unsigned long flags)
 {
 	struct pci_dev *pdev = to_pci_dev(dev->dev);
-	struct drm_psb_private *dev_priv;
+	struct drm_psb_private *dev_priv = to_drm_psb_private(dev);
 	unsigned long resource_start, resource_len;
 	unsigned long irqflags;
-	int ret = -ENOMEM;
+	struct drm_connector_list_iter conn_iter;
 	struct drm_connector *connector;
 	struct gma_encoder *gma_encoder;
 	struct psb_gtt *pg;
+	int ret = -ENOMEM;
 
-	/* allocating and initializing driver private data */
-	dev_priv = kzalloc(sizeof(*dev_priv), GFP_KERNEL);
-	if (dev_priv == NULL)
-		return -ENOMEM;
+	/* initializing driver private data */
 
 	dev_priv->ops = (struct psb_ops *)flags;
-	dev_priv->dev = dev;
-	dev->dev_private = (void *) dev_priv;
 
 	pg = &dev_priv->gtt;
 
@@ -327,7 +328,10 @@ static int psb_driver_load(struct drm_device *dev, unsigned long flags)
 
 	set_pages_uc(dev_priv->scratch_page, 1);
 
-	ret = psb_gtt_init(dev, 0);
+	ret = psb_gtt_init(dev);
+	if (ret)
+		goto out_err;
+	ret = psb_gem_mm_init(dev);
 	if (ret)
 		goto out_err;
 
@@ -346,12 +350,10 @@ static int psb_driver_load(struct drm_device *dev, unsigned long flags)
 		return ret;
 
 	/* Add stolen memory to SGX MMU */
-	down_read(&pg->sem);
 	ret = psb_mmu_insert_pfn_sequence(psb_mmu_get_default_pd(dev_priv->mmu),
 					  dev_priv->stolen_base >> PAGE_SHIFT,
 					  pg->gatt_start,
 					  pg->stolen_size >> PAGE_SHIFT, 0);
-	up_read(&pg->sem);
 
 	psb_mmu_set_pd_context(psb_mmu_get_default_pd(dev_priv->mmu), 0);
 	psb_mmu_set_pd_context(dev_priv->pf_pd, 1);
@@ -380,7 +382,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long flags)
 	PSB_WVDC32(0xFFFFFFFF, PSB_INT_MASK_R);
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 
-	psb_irq_install(dev, pdev->irq);
+	gma_irq_install(dev);
 
 	dev->max_vblank_count = 0xffffff; /* only 24 bits of frame count */
 
@@ -388,95 +390,69 @@ static int psb_driver_load(struct drm_device *dev, unsigned long flags)
 	psb_fbdev_init(dev);
 	drm_kms_helper_poll_init(dev);
 
-	/* Only add backlight support if we have LVDS output */
-	list_for_each_entry(connector, &dev->mode_config.connector_list,
-			    head) {
+	/* Only add backlight support if we have LVDS or MIPI output */
+	drm_connector_list_iter_begin(dev, &conn_iter);
+	drm_for_each_connector_iter(connector, &conn_iter) {
 		gma_encoder = gma_attached_encoder(connector);
 
-		switch (gma_encoder->type) {
-		case INTEL_OUTPUT_LVDS:
-		case INTEL_OUTPUT_MIPI:
+		if (gma_encoder->type == INTEL_OUTPUT_LVDS ||
+		    gma_encoder->type == INTEL_OUTPUT_MIPI) {
 			ret = gma_backlight_init(dev);
+			if (ret == 0)
+				acpi_video_register_backlight();
 			break;
 		}
 	}
+	drm_connector_list_iter_end(&conn_iter);
 
 	if (ret)
 		return ret;
 	psb_intel_opregion_enable_asle(dev);
-#if 0
-	/* Enable runtime pm at last */
-	pm_runtime_enable(dev->dev);
-	pm_runtime_set_active(dev->dev);
-#endif
-	/* Intel drm driver load is done, continue doing pvr load */
-	return 0;
+
+	return devm_add_action_or_reset(dev->dev, psb_device_release, dev);
+
 out_err:
 	psb_driver_unload(dev);
 	return ret;
 }
 
-static inline void get_brightness(struct backlight_device *bd)
-{
-#ifdef CONFIG_BACKLIGHT_CLASS_DEVICE
-	if (bd) {
-		bd->props.brightness = bd->ops->get_brightness(bd);
-		backlight_update_status(bd);
-	}
-#endif
-}
-
-static long psb_unlocked_ioctl(struct file *filp, unsigned int cmd,
-			       unsigned long arg)
-{
-	struct drm_file *file_priv = filp->private_data;
-	struct drm_device *dev = file_priv->minor->dev;
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	static unsigned int runtime_allowed;
-
-	if (runtime_allowed == 1 && dev_priv->is_lvds_on) {
-		runtime_allowed++;
-		pm_runtime_allow(dev->dev);
-		dev_priv->rpm_enabled = 1;
-	}
-	return drm_ioctl(filp, cmd, arg);
-	/* FIXME: do we need to wrap the other side of this */
-}
-
 static int psb_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
+	struct drm_psb_private *dev_priv;
 	struct drm_device *dev;
 	int ret;
 
-	ret = pci_enable_device(pdev);
+	/*
+	 * We cannot yet easily find the framebuffer's location in memory. So
+	 * remove all framebuffers here.
+	 *
+	 * TODO: Refactor psb_driver_load() to map vdc_reg earlier. Then we
+	 *       might be able to read the framebuffer range from the device.
+	 */
+	ret = drm_aperture_remove_framebuffers(true, &driver);
 	if (ret)
 		return ret;
 
-	dev = drm_dev_alloc(&driver, &pdev->dev);
-	if (IS_ERR(dev)) {
-		ret = PTR_ERR(dev);
-		goto err_pci_disable_device;
-	}
+	ret = pcim_enable_device(pdev);
+	if (ret)
+		return ret;
+
+	dev_priv = devm_drm_dev_alloc(&pdev->dev, &driver, struct drm_psb_private, dev);
+	if (IS_ERR(dev_priv))
+		return PTR_ERR(dev_priv);
+	dev = &dev_priv->dev;
 
 	pci_set_drvdata(pdev, dev);
 
 	ret = psb_driver_load(dev, ent->driver_data);
 	if (ret)
-		goto err_drm_dev_put;
+		return ret;
 
 	ret = drm_dev_register(dev, ent->driver_data);
 	if (ret)
-		goto err_psb_driver_unload;
+		return ret;
 
 	return 0;
-
-err_psb_driver_unload:
-	psb_driver_unload(dev);
-err_drm_dev_put:
-	drm_dev_put(dev);
-err_pci_disable_device:
-	pci_disable_device(pdev);
-	return ret;
 }
 
 static void psb_pci_remove(struct pci_dev *pdev)
@@ -484,26 +460,15 @@ static void psb_pci_remove(struct pci_dev *pdev)
 	struct drm_device *dev = pci_get_drvdata(pdev);
 
 	drm_dev_unregister(dev);
-	psb_driver_unload(dev);
-	drm_dev_put(dev);
 }
 
-static const struct dev_pm_ops psb_pm_ops = {
-	.resume = gma_power_resume,
-	.suspend = gma_power_suspend,
-	.thaw = gma_power_thaw,
-	.freeze = gma_power_freeze,
-	.restore = gma_power_restore,
-	.runtime_suspend = psb_runtime_suspend,
-	.runtime_resume = psb_runtime_resume,
-	.runtime_idle = psb_runtime_idle,
-};
+static DEFINE_RUNTIME_DEV_PM_OPS(psb_pm_ops, gma_power_suspend, gma_power_resume, NULL);
 
 static const struct file_operations psb_gem_fops = {
 	.owner = THIS_MODULE,
 	.open = drm_open,
 	.release = drm_release,
-	.unlocked_ioctl = psb_unlocked_ioctl,
+	.unlocked_ioctl = drm_ioctl,
 	.compat_ioctl = drm_compat_ioctl,
 	.mmap = drm_gem_mmap,
 	.poll = drm_poll,
@@ -537,6 +502,9 @@ static struct pci_driver psb_pci_driver = {
 
 static int __init psb_init(void)
 {
+	if (drm_firmware_drivers_only())
+		return -ENODEV;
+
 	return pci_register_driver(&psb_pci_driver);
 }
 

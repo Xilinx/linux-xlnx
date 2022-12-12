@@ -151,7 +151,7 @@ static void _fusb302_log(struct fusb302_chip *chip, const char *fmt,
 
 	if (fusb302_log_full(chip)) {
 		chip->logbuffer_head = max(chip->logbuffer_head - 1, 0);
-		strlcpy(tmpbuffer, "overflow", sizeof(tmpbuffer));
+		strscpy(tmpbuffer, "overflow", sizeof(tmpbuffer));
 	}
 
 	if (chip->logbuffer_head < 0 ||
@@ -669,25 +669,27 @@ static int tcpm_set_cc(struct tcpc_dev *dev, enum typec_cc_status cc)
 		ret = fusb302_i2c_mask_write(chip, FUSB_REG_MASK,
 					     FUSB_REG_MASK_BC_LVL |
 					     FUSB_REG_MASK_COMP_CHNG,
-					     FUSB_REG_MASK_COMP_CHNG);
-		if (ret < 0) {
-			fusb302_log(chip, "cannot set SRC interrupt, ret=%d",
-				    ret);
-			goto done;
-		}
-		chip->intr_comp_chng = true;
-		break;
-	case TYPEC_CC_RD:
-		ret = fusb302_i2c_mask_write(chip, FUSB_REG_MASK,
-					     FUSB_REG_MASK_BC_LVL |
-					     FUSB_REG_MASK_COMP_CHNG,
 					     FUSB_REG_MASK_BC_LVL);
 		if (ret < 0) {
 			fusb302_log(chip, "cannot set SRC interrupt, ret=%d",
 				    ret);
 			goto done;
 		}
+		chip->intr_comp_chng = true;
+		chip->intr_bc_lvl = false;
+		break;
+	case TYPEC_CC_RD:
+		ret = fusb302_i2c_mask_write(chip, FUSB_REG_MASK,
+					     FUSB_REG_MASK_BC_LVL |
+					     FUSB_REG_MASK_COMP_CHNG,
+					     FUSB_REG_MASK_COMP_CHNG);
+		if (ret < 0) {
+			fusb302_log(chip, "cannot set SRC interrupt, ret=%d",
+				    ret);
+			goto done;
+		}
 		chip->intr_bc_lvl = true;
+		chip->intr_comp_chng = false;
 		break;
 	default:
 		break;
@@ -1706,8 +1708,8 @@ static int fusb302_probe(struct i2c_client *client,
 	 */
 	if (device_property_read_string(dev, "linux,extcon-name", &name) == 0) {
 		chip->extcon = extcon_get_extcon_dev(name);
-		if (!chip->extcon)
-			return -EPROBE_DEFER;
+		if (IS_ERR(chip->extcon))
+			return PTR_ERR(chip->extcon);
 	}
 
 	chip->vbus = devm_regulator_get(chip->dev, "vbus");
@@ -1741,9 +1743,8 @@ static int fusb302_probe(struct i2c_client *client,
 	chip->tcpm_port = tcpm_register_port(&client->dev, &chip->tcpc_dev);
 	if (IS_ERR(chip->tcpm_port)) {
 		fwnode_handle_put(chip->tcpc_dev.fwnode);
-		ret = PTR_ERR(chip->tcpm_port);
-		if (ret != -EPROBE_DEFER)
-			dev_err(dev, "cannot register tcpm port, ret=%d", ret);
+		ret = dev_err_probe(dev, PTR_ERR(chip->tcpm_port),
+				    "cannot register tcpm port\n");
 		goto destroy_workqueue;
 	}
 
@@ -1769,7 +1770,7 @@ destroy_workqueue:
 	return ret;
 }
 
-static int fusb302_remove(struct i2c_client *client)
+static void fusb302_remove(struct i2c_client *client)
 {
 	struct fusb302_chip *chip = i2c_get_clientdata(client);
 
@@ -1781,8 +1782,6 @@ static int fusb302_remove(struct i2c_client *client)
 	fwnode_handle_put(chip->tcpc_dev.fwnode);
 	destroy_workqueue(chip->wq);
 	fusb302_debugfs_exit(chip);
-
-	return 0;
 }
 
 static int fusb302_pm_suspend(struct device *dev)

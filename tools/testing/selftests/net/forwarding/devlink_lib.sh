@@ -563,12 +563,6 @@ devlink_trap_group_policer_get()
 		| jq '.[][][]["policer"]'
 }
 
-devlink_trap_policer_ids_get()
-{
-	devlink -j -p trap policer show \
-		| jq '.[]["'$DEVLINK_DEV'"][]["policer"]'
-}
-
 devlink_port_by_netdev()
 {
 	local if_name=$1
@@ -589,4 +583,9 @@ devlink_cell_size_get()
 {
 	devlink sb pool show "$DEVLINK_DEV" pool 0 -j \
 	    | jq '.pool[][].cell_size'
+}
+
+devlink_pool_size_get()
+{
+	devlink sb show "$DEVLINK_DEV" -j | jq '.[][][]["size"]'
 }

@@ -103,7 +103,8 @@ MODULE_DEVICE_TABLE(of, arm_ccree_dev_of_match);
 static void init_cc_cache_params(struct cc_drvdata *drvdata)
 {
 	struct device *dev = drvdata_to_dev(drvdata);
-	u32 cache_params, ace_const, val, mask;
+	u32 cache_params, ace_const, val;
+	u64 mask;
 
 	/* compute CC_AXIM_CACHE_PARAMS */
 	cache_params = cc_ioread(drvdata, CC_REG(AXIM_CACHE_PARAMS));
@@ -371,17 +372,10 @@ static int init_cc_resources(struct platform_device *plat_dev)
 		dev->dma_mask = &dev->coherent_dma_mask;
 
 	dma_mask = DMA_BIT_MASK(DMA_BIT_MASK_LEN);
-	while (dma_mask > 0x7fffffffUL) {
-		if (dma_supported(dev, dma_mask)) {
-			rc = dma_set_coherent_mask(dev, dma_mask);
-			if (!rc)
-				break;
-		}
-		dma_mask >>= 1;
-	}
-
+	rc = dma_set_coherent_mask(dev, dma_mask);
 	if (rc) {
-		dev_err(dev, "Failed in dma_set_mask, mask=%llx\n", dma_mask);
+		dev_err(dev, "Failed in dma_set_coherent_mask, mask=%llx\n",
+			dma_mask);
 		return rc;
 	}
 
@@ -528,24 +522,26 @@ static int init_cc_resources(struct platform_device *plat_dev)
 		goto post_req_mgr_err;
 	}
 
+	/* hash must be allocated first due to use of send_request_init()
+	 * and dependency of AEAD on it
+	 */
+	rc = cc_hash_alloc(new_drvdata);
+	if (rc) {
+		dev_err(dev, "cc_hash_alloc failed\n");
+		goto post_buf_mgr_err;
+	}
+
 	/* Allocate crypto algs */
 	rc = cc_cipher_alloc(new_drvdata);
 	if (rc) {
 		dev_err(dev, "cc_cipher_alloc failed\n");
-		goto post_buf_mgr_err;
-	}
-
-	/* hash must be allocated before aead since hash exports APIs */
-	rc = cc_hash_alloc(new_drvdata);
-	if (rc) {
-		dev_err(dev, "cc_hash_alloc failed\n");
-		goto post_cipher_err;
+		goto post_hash_err;
 	}
 
 	rc = cc_aead_alloc(new_drvdata);
 	if (rc) {
 		dev_err(dev, "cc_aead_alloc failed\n");
-		goto post_hash_err;
+		goto post_cipher_err;
 	}
 
 	/* If we got here and FIPS mode is enabled
@@ -557,10 +553,10 @@ static int init_cc_resources(struct platform_device *plat_dev)
 	pm_runtime_put(dev);
 	return 0;
 
-post_hash_err:
-	cc_hash_free(new_drvdata);
 post_cipher_err:
 	cc_cipher_free(new_drvdata);
+post_hash_err:
+	cc_hash_free(new_drvdata);
 post_buf_mgr_err:
 	 cc_buffer_mgr_fini(new_drvdata);
 post_req_mgr_err:
@@ -592,8 +588,8 @@ static void cleanup_cc_resources(struct platform_device *plat_dev)
 		(struct cc_drvdata *)platform_get_drvdata(plat_dev);
 
 	cc_aead_free(drvdata);
-	cc_hash_free(drvdata);
 	cc_cipher_free(drvdata);
+	cc_hash_free(drvdata);
 	cc_buffer_mgr_fini(drvdata);
 	cc_req_mgr_fini(drvdata);
 	cc_fips_fini(drvdata);

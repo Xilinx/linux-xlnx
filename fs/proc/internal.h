@@ -79,6 +79,11 @@ static inline bool pde_is_permanent(const struct proc_dir_entry *pde)
 	return pde->flags & PROC_ENTRY_PERMANENT;
 }
 
+static inline void pde_make_permanent(struct proc_dir_entry *pde)
+{
+	pde->flags |= PROC_ENTRY_PERMANENT;
+}
+
 extern struct kmem_cache *proc_dir_entry_cache;
 void pde_free(struct proc_dir_entry *pde);
 
@@ -113,11 +118,6 @@ static inline struct proc_inode *PROC_I(const struct inode *inode)
 static inline struct proc_dir_entry *PDE(const struct inode *inode)
 {
 	return PROC_I(inode)->pde;
-}
-
-static inline void *__PDE_DATA(const struct inode *inode)
-{
-	return PDE(inode)->data;
 }
 
 static inline struct pid *proc_pid(const struct inode *inode)
@@ -290,7 +290,7 @@ struct proc_maps_private {
 	struct task_struct *task;
 	struct mm_struct *mm;
 #ifdef CONFIG_MMU
-	struct vm_area_struct *tail_vma;
+	struct vma_iterator iter;
 #endif
 #ifdef CONFIG_NUMA
 	struct mempolicy *task_mempolicy;

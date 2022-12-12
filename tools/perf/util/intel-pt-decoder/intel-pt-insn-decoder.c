@@ -32,6 +32,7 @@ static void intel_pt_insn_decoder(struct insn *insn,
 	int ext;
 
 	intel_pt_insn->rel = 0;
+	intel_pt_insn->emulated_ptwrite = false;
 
 	if (insn_is_avx(insn)) {
 		intel_pt_insn->op = INTEL_PT_OP_OTHER;
@@ -143,7 +144,7 @@ static void intel_pt_insn_decoder(struct insn *insn,
 
 	if (branch == INTEL_PT_BR_CONDITIONAL ||
 	    branch == INTEL_PT_BR_UNCONDITIONAL) {
-#if __BYTE_ORDER == __BIG_ENDIAN
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
 		switch (insn->immediate.nbytes) {
 		case 1:
 			intel_pt_insn->rel = insn->immediate.value;

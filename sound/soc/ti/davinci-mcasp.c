@@ -492,8 +492,8 @@ static int davinci_mcasp_set_dai_fmt(struct snd_soc_dai *cpu_dai,
 	mcasp_mod_bits(mcasp, DAVINCI_MCASP_RXFMT_REG, FSRDLY(data_delay),
 		       FSRDLY(3));
 
-	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
-	case SND_SOC_DAIFMT_CBS_CFS:
+	switch (fmt & SND_SOC_DAIFMT_CLOCK_PROVIDER_MASK) {
+	case SND_SOC_DAIFMT_BP_FP:
 		/* codec is clock and frame slave */
 		mcasp_set_bits(mcasp, DAVINCI_MCASP_ACLKXCTL_REG, ACLKXE);
 		mcasp_set_bits(mcasp, DAVINCI_MCASP_TXFMCTL_REG, AFSXE);
@@ -510,7 +510,7 @@ static int davinci_mcasp_set_dai_fmt(struct snd_soc_dai *cpu_dai,
 
 		mcasp->bclk_master = 1;
 		break;
-	case SND_SOC_DAIFMT_CBS_CFM:
+	case SND_SOC_DAIFMT_BP_FC:
 		/* codec is clock slave and frame master */
 		mcasp_set_bits(mcasp, DAVINCI_MCASP_ACLKXCTL_REG, ACLKXE);
 		mcasp_clr_bits(mcasp, DAVINCI_MCASP_TXFMCTL_REG, AFSXE);
@@ -527,7 +527,7 @@ static int davinci_mcasp_set_dai_fmt(struct snd_soc_dai *cpu_dai,
 
 		mcasp->bclk_master = 1;
 		break;
-	case SND_SOC_DAIFMT_CBM_CFS:
+	case SND_SOC_DAIFMT_BC_FP:
 		/* codec is clock master and frame slave */
 		mcasp_clr_bits(mcasp, DAVINCI_MCASP_ACLKXCTL_REG, ACLKXE);
 		mcasp_set_bits(mcasp, DAVINCI_MCASP_TXFMCTL_REG, AFSXE);
@@ -544,7 +544,7 @@ static int davinci_mcasp_set_dai_fmt(struct snd_soc_dai *cpu_dai,
 
 		mcasp->bclk_master = 0;
 		break;
-	case SND_SOC_DAIFMT_CBM_CFM:
+	case SND_SOC_DAIFMT_BC_FC:
 		/* codec is clock and frame master */
 		mcasp_clr_bits(mcasp, DAVINCI_MCASP_ACLKXCTL_REG, ACLKXE);
 		mcasp_clr_bits(mcasp, DAVINCI_MCASP_TXFMCTL_REG, AFSXE);
@@ -1765,7 +1765,8 @@ static struct snd_soc_dai_driver davinci_mcasp_dai[] = {
 };
 
 static const struct snd_soc_component_driver davinci_mcasp_component = {
-	.name		= "davinci-mcasp",
+	.name			= "davinci-mcasp",
+	.legacy_dai_naming	= 1,
 };
 
 /* Some HW specific values and defaults. The rest is filled in from DT. */
@@ -1870,12 +1871,10 @@ err1:
 static bool davinci_mcasp_have_gpiochip(struct davinci_mcasp *mcasp)
 {
 #ifdef CONFIG_OF_GPIO
-	if (mcasp->dev->of_node &&
-	    of_property_read_bool(mcasp->dev->of_node, "gpio-controller"))
-		return true;
-#endif
-
+	return of_property_read_bool(mcasp->dev->of_node, "gpio-controller");
+#else
 	return false;
+#endif
 }
 
 static int davinci_mcasp_get_config(struct davinci_mcasp *mcasp,
@@ -2026,13 +2025,9 @@ static int davinci_mcasp_get_dma_type(struct davinci_mcasp *mcasp)
 
 	tmp = mcasp->dma_data[SNDRV_PCM_STREAM_PLAYBACK].filter_data;
 	chan = dma_request_chan(mcasp->dev, tmp);
-	if (IS_ERR(chan)) {
-		if (PTR_ERR(chan) != -EPROBE_DEFER)
-			dev_err(mcasp->dev,
-				"Can't verify DMA configuration (%ld)\n",
-				PTR_ERR(chan));
-		return PTR_ERR(chan);
-	}
+	if (IS_ERR(chan))
+		return dev_err_probe(mcasp->dev, PTR_ERR(chan),
+				     "Can't verify DMA configuration\n");
 	if (WARN_ON(!chan->device || !chan->device->dev)) {
 		dma_release_channel(chan);
 		return -EINVAL;
@@ -2052,6 +2047,8 @@ static int davinci_mcasp_get_dma_type(struct davinci_mcasp *mcasp)
 	if (!strncmp(tmp, sdma_prefix, strlen(sdma_prefix)))
 		return PCM_SDMA;
 	else if (strstr(tmp, "udmap"))
+		return PCM_UDMA;
+	else if (strstr(tmp, "bcdma"))
 		return PCM_UDMA;
 
 	return PCM_EDMA;
@@ -2115,8 +2112,7 @@ static int davinci_mcasp_gpio_request(struct gpio_chip *chip, unsigned offset)
 	}
 
 	/* Do not change the PIN yet */
-
-	return pm_runtime_get_sync(mcasp->dev);
+	return pm_runtime_resume_and_get(mcasp->dev);
 }
 
 static void davinci_mcasp_gpio_free(struct gpio_chip *chip, unsigned offset)
@@ -2230,9 +2226,6 @@ static int davinci_mcasp_init_gpiochip(struct davinci_mcasp *mcasp)
 	mcasp->gpio_chip = davinci_mcasp_template_chip;
 	mcasp->gpio_chip.label = dev_name(mcasp->dev);
 	mcasp->gpio_chip.parent = mcasp->dev;
-#ifdef CONFIG_OF_GPIO
-	mcasp->gpio_chip.of_node = mcasp->dev->of_node;
-#endif
 
 	return devm_gpiochip_add_data(mcasp->dev, &mcasp->gpio_chip, mcasp);
 }

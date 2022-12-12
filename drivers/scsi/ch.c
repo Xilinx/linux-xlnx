@@ -63,7 +63,7 @@ static int verbose = 1;
 module_param(verbose, int, 0644);
 MODULE_PARM_DESC(verbose,"be verbose (default: on)");
 
-static int debug = 0;
+static int debug;
 module_param(debug, int, 0644);
 MODULE_PARM_DESC(debug,"enable/disable debug messages, also prints more "
 		 "detailed sense codes on scsi errors (default: off)");
@@ -239,7 +239,7 @@ ch_read_element_status(scsi_changer *ch, u_int elem, char *data)
 	u_char  *buffer;
 	int     result;
 
-	buffer = kmalloc(512, GFP_KERNEL | GFP_DMA);
+	buffer = kmalloc(512, GFP_KERNEL);
 	if(!buffer)
 		return -ENOMEM;
 
@@ -297,7 +297,7 @@ ch_readconfig(scsi_changer *ch)
 	int     result,id,lun,i;
 	u_int   elem;
 
-	buffer = kzalloc(512, GFP_KERNEL | GFP_DMA);
+	buffer = kzalloc(512, GFP_KERNEL);
 	if (!buffer)
 		return -ENOMEM;
 
@@ -783,7 +783,7 @@ static long ch_ioctl(struct file *file,
 			return -EINVAL;
 		elem = ch->firsts[cge.cge_type] + cge.cge_unit;
 
-		buffer = kmalloc(512, GFP_KERNEL | GFP_DMA);
+		buffer = kmalloc(512, GFP_KERNEL);
 		if (!buffer)
 			return -ENOMEM;
 		mutex_lock(&ch->lock);
@@ -877,7 +877,7 @@ static long ch_ioctl(struct file *file,
 	}
 
 	default:
-		return scsi_ioctl(ch->device, NULL, file->f_mode, cmd, argp);
+		return scsi_ioctl(ch->device, file->f_mode, cmd, argp);
 
 	}
 }

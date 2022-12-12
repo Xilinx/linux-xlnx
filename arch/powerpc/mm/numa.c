@@ -26,7 +26,6 @@
 #include <linux/slab.h>
 #include <asm/cputhreads.h>
 #include <asm/sparsemem.h>
-#include <asm/prom.h>
 #include <asm/smp.h>
 #include <asm/topology.h>
 #include <asm/firmware.h>
@@ -134,7 +133,7 @@ static int __init fake_numa_create_new_node(unsigned long end_pfn,
 	return 0;
 }
 
-static void reset_numa_cpu_lookup_table(void)
+static void __init reset_numa_cpu_lookup_table(void)
 {
 	unsigned int cpu;
 
@@ -372,13 +371,13 @@ void update_numa_distance(struct device_node *node)
  * ibm,numa-lookup-index-table= {N, domainid1, domainid2, ..... domainidN}
  * ibm,numa-distance-table = { N, 1, 2, 4, 5, 1, 6, .... N elements}
  */
-static void initialize_form2_numa_distance_lookup_table(void)
+static void __init initialize_form2_numa_distance_lookup_table(void)
 {
 	int i, j;
 	struct device_node *root;
-	const __u8 *numa_dist_table;
+	const __u8 *form2_distances;
 	const __be32 *numa_lookup_index;
-	int numa_dist_table_length;
+	int form2_distances_length;
 	int max_numa_index, distance_index;
 
 	if (firmware_has_feature(FW_FEATURE_OPAL))
@@ -392,45 +391,41 @@ static void initialize_form2_numa_distance_lookup_table(void)
 	max_numa_index = of_read_number(&numa_lookup_index[0], 1);
 
 	/* first element of the array is the size and is encode-int */
-	numa_dist_table = of_get_property(root, "ibm,numa-distance-table", NULL);
-	numa_dist_table_length = of_read_number((const __be32 *)&numa_dist_table[0], 1);
+	form2_distances = of_get_property(root, "ibm,numa-distance-table", NULL);
+	form2_distances_length = of_read_number((const __be32 *)&form2_distances[0], 1);
 	/* Skip the size which is encoded int */
-	numa_dist_table += sizeof(__be32);
+	form2_distances += sizeof(__be32);
 
-	pr_debug("numa_dist_table_len = %d, numa_dist_indexes_len = %d\n",
-		 numa_dist_table_length, max_numa_index);
+	pr_debug("form2_distances_len = %d, numa_dist_indexes_len = %d\n",
+		 form2_distances_length, max_numa_index);
 
 	for (i = 0; i < max_numa_index; i++)
 		/* +1 skip the max_numa_index in the property */
 		numa_id_index_table[i] = of_read_number(&numa_lookup_index[i + 1], 1);
 
 
-	if (numa_dist_table_length != max_numa_index * max_numa_index) {
+	if (form2_distances_length != max_numa_index * max_numa_index) {
 		WARN(1, "Wrong NUMA distance information\n");
-		/* consider everybody else just remote. */
-		for (i = 0;  i < max_numa_index; i++) {
-			for (j = 0; j < max_numa_index; j++) {
-				int nodeA = numa_id_index_table[i];
-				int nodeB = numa_id_index_table[j];
-
-				if (nodeA == nodeB)
-					numa_distance_table[nodeA][nodeB] = LOCAL_DISTANCE;
-				else
-					numa_distance_table[nodeA][nodeB] = REMOTE_DISTANCE;
-			}
-		}
+		form2_distances = NULL; // don't use it
 	}
-
 	distance_index = 0;
 	for (i = 0;  i < max_numa_index; i++) {
 		for (j = 0; j < max_numa_index; j++) {
 			int nodeA = numa_id_index_table[i];
 			int nodeB = numa_id_index_table[j];
+			int dist;
 
-			numa_distance_table[nodeA][nodeB] = numa_dist_table[distance_index++];
-			pr_debug("dist[%d][%d]=%d ", nodeA, nodeB, numa_distance_table[nodeA][nodeB]);
+			if (form2_distances)
+				dist = form2_distances[distance_index++];
+			else if (nodeA == nodeB)
+				dist = LOCAL_DISTANCE;
+			else
+				dist = REMOTE_DISTANCE;
+			numa_distance_table[nodeA][nodeB] = dist;
+			pr_debug("dist[%d][%d]=%d ", nodeA, nodeB, dist);
 		}
 	}
+
 	of_node_put(root);
 }
 
@@ -585,7 +580,7 @@ static int of_get_assoc_arrays(struct assoc_arrays *aa)
 	return 0;
 }
 
-static int get_nid_and_numa_distance(struct drmem_lmb *lmb)
+static int __init get_nid_and_numa_distance(struct drmem_lmb *lmb)
 {
 	struct assoc_arrays aa = { .arrays = NULL };
 	int default_nid = NUMA_NO_NODE;
@@ -960,7 +955,9 @@ static int __init parse_numa_properties(void)
 			of_node_put(cpu);
 		}
 
-		node_set_online(nid);
+		/* node_set_online() is an UB if 'nid' is negative */
+		if (likely(nid >= 0))
+			node_set_online(nid);
 	}
 
 	get_n_mem_cells(&n_mem_addr_cells, &n_mem_size_cells);
@@ -1163,6 +1160,9 @@ void __init mem_topology_setup(void)
 {
 	int cpu;
 
+	max_low_pfn = max_pfn = memblock_end_of_DRAM() >> PAGE_SHIFT;
+	min_low_pfn = MEMORY_START >> PAGE_SHIFT;
+
 	/*
 	 * Linux/mm assumes node 0 to be online at boot. However this is not
 	 * true on PowerPC, where node 0 is similar to any other node, it
@@ -1206,9 +1206,6 @@ void __init mem_topology_setup(void)
 void __init initmem_init(void)
 {
 	int nid;
-
-	max_low_pfn = memblock_end_of_DRAM() >> PAGE_SHIFT;
-	max_pfn = max_low_pfn;
 
 	memblock_dump_all();
 
@@ -1425,43 +1422,26 @@ out:
 	return rc;
 }
 
-int find_and_online_cpu_nid(int cpu)
+void find_and_update_cpu_nid(int cpu)
 {
 	__be32 associativity[VPHN_ASSOC_BUFSIZE] = {0};
 	int new_nid;
 
 	/* Use associativity from first thread for all siblings */
 	if (vphn_get_associativity(cpu, associativity))
-		return cpu_to_node(cpu);
+		return;
 
+	/* Do not have previous associativity, so find it now. */
 	new_nid = associativity_to_nid(associativity);
+
 	if (new_nid < 0 || !node_possible(new_nid))
 		new_nid = first_online_node;
+	else
+		// Associate node <-> cpu, so cpu_up() calls
+		// try_online_node() on the right node.
+		set_cpu_numa_node(cpu, new_nid);
 
-	if (NODE_DATA(new_nid) == NULL) {
-#ifdef CONFIG_MEMORY_HOTPLUG
-		/*
-		 * Need to ensure that NODE_DATA is initialized for a node from
-		 * available memory (see memblock_alloc_try_nid). If unable to
-		 * init the node, then default to nearest node that has memory
-		 * installed. Skip onlining a node if the subsystems are not
-		 * yet initialized.
-		 */
-		if (!topology_inited || try_online_node(new_nid))
-			new_nid = first_online_node;
-#else
-		/*
-		 * Default to using the nearest node that has memory installed.
-		 * Otherwise, it would be necessary to patch the kernel MM code
-		 * to deal with more memoryless-node error conditions.
-		 */
-		new_nid = first_online_node;
-#endif
-	}
-
-	pr_debug("%s:%d cpu %d nid %d\n", __FUNCTION__, __LINE__,
-		cpu, new_nid);
-	return new_nid;
+	pr_debug("%s:%d cpu %d nid %d\n", __func__, __LINE__, cpu, new_nid);
 }
 
 int cpu_to_coregroup_id(int cpu)

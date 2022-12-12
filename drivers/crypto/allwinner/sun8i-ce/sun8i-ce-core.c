@@ -106,6 +106,24 @@ static const struct ce_variant ce_a64_variant = {
 	.trng = CE_ID_NOTSUPP,
 };
 
+static const struct ce_variant ce_d1_variant = {
+	.alg_cipher = { CE_ALG_AES, CE_ALG_DES, CE_ALG_3DES,
+	},
+	.alg_hash = { CE_ALG_MD5, CE_ALG_SHA1, CE_ALG_SHA224, CE_ALG_SHA256,
+		CE_ALG_SHA384, CE_ALG_SHA512
+	},
+	.op_mode = { CE_OP_ECB, CE_OP_CBC
+	},
+	.ce_clks = {
+		{ "bus", 0, 200000000 },
+		{ "mod", 300000000, 0 },
+		{ "ram", 0, 400000000 },
+		},
+	.esr = ESR_D1,
+	.prng = CE_ALG_PRNG,
+	.trng = CE_ALG_TRNG,
+};
+
 static const struct ce_variant ce_r40_variant = {
 	.alg_cipher = { CE_ALG_AES, CE_ALG_DES, CE_ALG_3DES,
 	},
@@ -192,6 +210,7 @@ int sun8i_ce_run_task(struct sun8i_ce_dev *ce, int flow, const char *name)
 			dev_err(ce->dev, "CE ERROR: keysram access error for AES\n");
 		break;
 	case ESR_A64:
+	case ESR_D1:
 	case ESR_H5:
 	case ESR_R40:
 		v >>= (flow * 4);
@@ -264,7 +283,7 @@ static struct sun8i_ce_alg_template ce_algs[] = {
 			.cra_priority = 400,
 			.cra_blocksize = AES_BLOCK_SIZE,
 			.cra_flags = CRYPTO_ALG_TYPE_SKCIPHER |
-				CRYPTO_ALG_ASYNC | CRYPTO_ALG_ALLOCATES_MEMORY |
+				CRYPTO_ALG_ASYNC |
 				CRYPTO_ALG_NEED_FALLBACK,
 			.cra_ctxsize = sizeof(struct sun8i_cipher_tfm_ctx),
 			.cra_module = THIS_MODULE,
@@ -291,7 +310,7 @@ static struct sun8i_ce_alg_template ce_algs[] = {
 			.cra_priority = 400,
 			.cra_blocksize = AES_BLOCK_SIZE,
 			.cra_flags = CRYPTO_ALG_TYPE_SKCIPHER |
-				CRYPTO_ALG_ASYNC | CRYPTO_ALG_ALLOCATES_MEMORY |
+				CRYPTO_ALG_ASYNC |
 				CRYPTO_ALG_NEED_FALLBACK,
 			.cra_ctxsize = sizeof(struct sun8i_cipher_tfm_ctx),
 			.cra_module = THIS_MODULE,
@@ -317,7 +336,7 @@ static struct sun8i_ce_alg_template ce_algs[] = {
 			.cra_priority = 400,
 			.cra_blocksize = DES3_EDE_BLOCK_SIZE,
 			.cra_flags = CRYPTO_ALG_TYPE_SKCIPHER |
-				CRYPTO_ALG_ASYNC | CRYPTO_ALG_ALLOCATES_MEMORY |
+				CRYPTO_ALG_ASYNC |
 				CRYPTO_ALG_NEED_FALLBACK,
 			.cra_ctxsize = sizeof(struct sun8i_cipher_tfm_ctx),
 			.cra_module = THIS_MODULE,
@@ -344,7 +363,7 @@ static struct sun8i_ce_alg_template ce_algs[] = {
 			.cra_priority = 400,
 			.cra_blocksize = DES3_EDE_BLOCK_SIZE,
 			.cra_flags = CRYPTO_ALG_TYPE_SKCIPHER |
-				CRYPTO_ALG_ASYNC | CRYPTO_ALG_ALLOCATES_MEMORY |
+				CRYPTO_ALG_ASYNC |
 				CRYPTO_ALG_NEED_FALLBACK,
 			.cra_ctxsize = sizeof(struct sun8i_cipher_tfm_ctx),
 			.cra_module = THIS_MODULE,
@@ -576,19 +595,47 @@ static int sun8i_ce_debugfs_show(struct seq_file *seq, void *v)
 			continue;
 		switch (ce_algs[i].type) {
 		case CRYPTO_ALG_TYPE_SKCIPHER:
-			seq_printf(seq, "%s %s %lu %lu\n",
+			seq_printf(seq, "%s %s reqs=%lu fallback=%lu\n",
 				   ce_algs[i].alg.skcipher.base.cra_driver_name,
 				   ce_algs[i].alg.skcipher.base.cra_name,
 				   ce_algs[i].stat_req, ce_algs[i].stat_fb);
+			seq_printf(seq, "\tLast fallback is: %s\n",
+				   ce_algs[i].fbname);
+			seq_printf(seq, "\tFallback due to 0 length: %lu\n",
+				   ce_algs[i].stat_fb_len0);
+			seq_printf(seq, "\tFallback due to length !mod16: %lu\n",
+				   ce_algs[i].stat_fb_mod16);
+			seq_printf(seq, "\tFallback due to length < IV: %lu\n",
+				   ce_algs[i].stat_fb_leniv);
+			seq_printf(seq, "\tFallback due to source alignment: %lu\n",
+				   ce_algs[i].stat_fb_srcali);
+			seq_printf(seq, "\tFallback due to dest alignment: %lu\n",
+				   ce_algs[i].stat_fb_dstali);
+			seq_printf(seq, "\tFallback due to source length: %lu\n",
+				   ce_algs[i].stat_fb_srclen);
+			seq_printf(seq, "\tFallback due to dest length: %lu\n",
+				   ce_algs[i].stat_fb_dstlen);
+			seq_printf(seq, "\tFallback due to SG numbers: %lu\n",
+				   ce_algs[i].stat_fb_maxsg);
 			break;
 		case CRYPTO_ALG_TYPE_AHASH:
-			seq_printf(seq, "%s %s %lu %lu\n",
+			seq_printf(seq, "%s %s reqs=%lu fallback=%lu\n",
 				   ce_algs[i].alg.hash.halg.base.cra_driver_name,
 				   ce_algs[i].alg.hash.halg.base.cra_name,
 				   ce_algs[i].stat_req, ce_algs[i].stat_fb);
+			seq_printf(seq, "\tLast fallback is: %s\n",
+				   ce_algs[i].fbname);
+			seq_printf(seq, "\tFallback due to 0 length: %lu\n",
+				   ce_algs[i].stat_fb_len0);
+			seq_printf(seq, "\tFallback due to length: %lu\n",
+				   ce_algs[i].stat_fb_srclen);
+			seq_printf(seq, "\tFallback due to alignment: %lu\n",
+				   ce_algs[i].stat_fb_srcali);
+			seq_printf(seq, "\tFallback due to SG numbers: %lu\n",
+				   ce_algs[i].stat_fb_maxsg);
 			break;
 		case CRYPTO_ALG_TYPE_RNG:
-			seq_printf(seq, "%s %s %lu %lu\n",
+			seq_printf(seq, "%s %s reqs=%lu bytes=%lu\n",
 				   ce_algs[i].alg.rng.base.cra_driver_name,
 				   ce_algs[i].alg.rng.base.cra_name,
 				   ce_algs[i].stat_req, ce_algs[i].stat_bytes);
@@ -651,6 +698,18 @@ static int sun8i_ce_allocate_chanlist(struct sun8i_ce_dev *ce)
 		if (!ce->chanlist[i].tl) {
 			dev_err(ce->dev, "Cannot get DMA memory for task %d\n",
 				i);
+			err = -ENOMEM;
+			goto error_engine;
+		}
+		ce->chanlist[i].bounce_iv = devm_kmalloc(ce->dev, AES_BLOCK_SIZE,
+							 GFP_KERNEL | GFP_DMA);
+		if (!ce->chanlist[i].bounce_iv) {
+			err = -ENOMEM;
+			goto error_engine;
+		}
+		ce->chanlist[i].backup_iv = devm_kmalloc(ce->dev, AES_BLOCK_SIZE,
+							 GFP_KERNEL);
+		if (!ce->chanlist[i].backup_iv) {
 			err = -ENOMEM;
 			goto error_engine;
 		}
@@ -990,6 +1049,8 @@ static const struct of_device_id sun8i_ce_crypto_of_match_table[] = {
 	  .data = &ce_h3_variant },
 	{ .compatible = "allwinner,sun8i-r40-crypto",
 	  .data = &ce_r40_variant },
+	{ .compatible = "allwinner,sun20i-d1-crypto",
+	  .data = &ce_d1_variant },
 	{ .compatible = "allwinner,sun50i-a64-crypto",
 	  .data = &ce_a64_variant },
 	{ .compatible = "allwinner,sun50i-h5-crypto",

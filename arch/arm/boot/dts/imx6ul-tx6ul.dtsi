@@ -212,7 +212,7 @@
 		enable-active-high;
 	};
 
-	spi_gpio: spi-gpio {
+	spi_gpio: spi {
 		#address-cells = <1>;
 		#size-cells = <0>;
 		compatible = "spi-gpio";
@@ -227,18 +227,6 @@
 			&gpio1 10 GPIO_ACTIVE_HIGH
 		>;
 		status = "disabled";
-
-		spi@0 {
-			compatible = "spidev";
-			reg = <0>;
-			spi-max-frequency = <660000>;
-		};
-
-		spi@1 {
-			compatible = "spidev";
-			reg = <1>;
-			spi-max-frequency = <660000>;
-		};
 	};
 
 	sound {
@@ -290,18 +278,6 @@
 		&gpio1 10 GPIO_ACTIVE_HIGH
 	>;
 	status = "disabled";
-
-	spidev0: spi@0 {
-		compatible = "spidev";
-		reg = <0>;
-		spi-max-frequency = <60000000>;
-	};
-
-	spidev1: spi@1 {
-		compatible = "spidev";
-		reg = <1>;
-		spi-max-frequency = <60000000>;
-	};
 };
 
 &fec1 {

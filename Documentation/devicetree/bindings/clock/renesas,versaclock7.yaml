@@ -43,7 +43,7 @@ additionalProperties: false
 
 examples:
   - |
-    vc7_xin: vc7_xin {
+    vc7_xin: clock {
         compatible = "fixed-clock";
         #clock-cells = <0>;
         clock-frequency = <49152000>;
@@ -54,7 +54,7 @@ examples:
         #address-cells = <1>;
         #size-cells = <0>;
 
-        vc7: vc7@9 {
+        vc7: clock-controller@9 {
             compatible = "renesas,rc21008a";
             reg = <0x9>;
             #clock-cells = <1>;

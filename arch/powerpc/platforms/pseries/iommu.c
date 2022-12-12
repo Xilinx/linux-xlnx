@@ -666,8 +666,7 @@ static void pci_dma_bus_setup_pSeries(struct pci_bus *bus)
 
 #ifdef CONFIG_IOMMU_API
 static int tce_exchange_pseries(struct iommu_table *tbl, long index, unsigned
-				long *tce, enum dma_data_direction *direction,
-				bool realmode)
+				long *tce, enum dma_data_direction *direction)
 {
 	long rc;
 	unsigned long ioba = (unsigned long) index << tbl->it_page_shift;
@@ -701,6 +700,33 @@ struct iommu_table_ops iommu_table_lpar_multi_ops = {
 	.get = tce_get_pSeriesLP
 };
 
+/*
+ * Find nearest ibm,dma-window (default DMA window) or direct DMA window or
+ * dynamic 64bit DMA window, walking up the device tree.
+ */
+static struct device_node *pci_dma_find(struct device_node *dn,
+					const __be32 **dma_window)
+{
+	const __be32 *dw = NULL;
+
+	for ( ; dn && PCI_DN(dn); dn = dn->parent) {
+		dw = of_get_property(dn, "ibm,dma-window", NULL);
+		if (dw) {
+			if (dma_window)
+				*dma_window = dw;
+			return dn;
+		}
+		dw = of_get_property(dn, DIRECT64_PROPNAME, NULL);
+		if (dw)
+			return dn;
+		dw = of_get_property(dn, DMA64_PROPNAME, NULL);
+		if (dw)
+			return dn;
+	}
+
+	return NULL;
+}
+
 static void pci_dma_bus_setup_pSeriesLP(struct pci_bus *bus)
 {
 	struct iommu_table *tbl;
@@ -713,20 +739,10 @@ static void pci_dma_bus_setup_pSeriesLP(struct pci_bus *bus)
 	pr_debug("pci_dma_bus_setup_pSeriesLP: setting up bus %pOF\n",
 		 dn);
 
-	/*
-	 * Find nearest ibm,dma-window (default DMA window), walking up the
-	 * device tree
-	 */
-	for (pdn = dn; pdn != NULL; pdn = pdn->parent) {
-		dma_window = of_get_property(pdn, "ibm,dma-window", NULL);
-		if (dma_window != NULL)
-			break;
-	}
+	pdn = pci_dma_find(dn, &dma_window);
 
-	if (dma_window == NULL) {
+	if (dma_window == NULL)
 		pr_debug("  no ibm,dma-window property !\n");
-		return;
-	}
 
 	ppci = PCI_DN(pdn);
 
@@ -736,11 +752,13 @@ static void pci_dma_bus_setup_pSeriesLP(struct pci_bus *bus)
 	if (!ppci->table_group) {
 		ppci->table_group = iommu_pseries_alloc_group(ppci->phb->node);
 		tbl = ppci->table_group->tables[0];
-		iommu_table_setparms_lpar(ppci->phb, pdn, tbl,
-				ppci->table_group, dma_window);
+		if (dma_window) {
+			iommu_table_setparms_lpar(ppci->phb, pdn, tbl,
+						  ppci->table_group, dma_window);
 
-		if (!iommu_init_table(tbl, ppci->phb->node, 0, 0))
-			panic("Failed to initialize iommu table");
+			if (!iommu_init_table(tbl, ppci->phb->node, 0, 0))
+				panic("Failed to initialize iommu table");
+		}
 		iommu_register_group(ppci->table_group,
 				pci_domain_nr(bus), 0);
 		pr_debug("  created table: %p\n", ppci->table_group);
@@ -929,8 +947,10 @@ static void find_existing_ddw_windows_named(const char *name)
 		}
 
 		window = ddw_list_new_entry(pdn, dma64);
-		if (!window)
+		if (!window) {
+			of_node_put(pdn);
 			break;
+		}
 
 		spin_lock(&dma_win_list_lock);
 		list_add(&window->list, &dma_win_list);
@@ -1020,9 +1040,6 @@ static int query_ddw(struct pci_dev *dev, const u32 *ddw_avail,
 
 	ret = rtas_call(ddw_avail[DDW_QUERY_PE_DMA_WIN], 3, out_sz, query_out,
 			cfg_addr, BUID_HI(buid), BUID_LO(buid));
-	dev_info(&dev->dev, "ibm,query-pe-dma-windows(%x) %x %x %x returned %d\n",
-		 ddw_avail[DDW_QUERY_PE_DMA_WIN], cfg_addr, BUID_HI(buid),
-		 BUID_LO(buid), ret);
 
 	switch (out_sz) {
 	case 5:
@@ -1039,6 +1056,11 @@ static int query_ddw(struct pci_dev *dev, const u32 *ddw_avail,
 		query->migration_capable = query_out[4];
 		break;
 	}
+
+	dev_info(&dev->dev, "ibm,query-pe-dma-windows(%x) %x %x %x returned %d, lb=%llx ps=%x wn=%d\n",
+		 ddw_avail[DDW_QUERY_PE_DMA_WIN], cfg_addr, BUID_HI(buid),
+		 BUID_LO(buid), ret, query->largest_available_block,
+		 query->page_size, query->windows_available);
 
 	return ret;
 }
@@ -1091,15 +1113,6 @@ static phys_addr_t ddw_memory_hotplug_max(void)
 {
 	phys_addr_t max_addr = memory_hotplug_max();
 	struct device_node *memory;
-
-	/*
-	 * The "ibm,pmemory" can appear anywhere in the address space.
-	 * Assuming it is still backed by page structs, set the upper limit
-	 * for the huge DMA window as MAX_PHYSMEM_BITS.
-	 */
-	if (of_find_node_by_type(NULL, "ibm,pmemory"))
-		return (sizeof(phys_addr_t) * 8 <= MAX_PHYSMEM_BITS) ?
-			(phys_addr_t) -1 : (1ULL << MAX_PHYSMEM_BITS);
 
 	for_each_node_by_type(memory, "memory") {
 		unsigned long start, size;
@@ -1159,14 +1172,15 @@ static void reset_dma_window(struct pci_dev *dev, struct device_node *par_dn)
 /* Return largest page shift based on "IO Page Sizes" output of ibm,query-pe-dma-window. */
 static int iommu_get_page_shift(u32 query_page_size)
 {
-	/* Supported IO page-sizes according to LoPAR */
+	/* Supported IO page-sizes according to LoPAR, note that 2M is out of order */
 	const int shift[] = {
 		__builtin_ctzll(SZ_4K),   __builtin_ctzll(SZ_64K), __builtin_ctzll(SZ_16M),
 		__builtin_ctzll(SZ_32M),  __builtin_ctzll(SZ_64M), __builtin_ctzll(SZ_128M),
-		__builtin_ctzll(SZ_256M), __builtin_ctzll(SZ_16G)
+		__builtin_ctzll(SZ_256M), __builtin_ctzll(SZ_16G), __builtin_ctzll(SZ_2M)
 	};
 
 	int i = ARRAY_SIZE(shift) - 1;
+	int ret = 0;
 
 	/*
 	 * On LoPAR, ibm,query-pe-dma-window outputs "IO Page Sizes" using a bit field:
@@ -1176,11 +1190,10 @@ static int iommu_get_page_shift(u32 query_page_size)
 	 */
 	for (; i >= 0 ; i--) {
 		if (query_page_size & (1 << i))
-			return shift[i];
+			ret = max(ret, shift[i]);
 	}
 
-	/* No valid page size found. */
-	return 0;
+	return ret;
 }
 
 static struct property *ddw_property_create(const char *propname, u32 liobn, u64 dma_addr,
@@ -1236,12 +1249,11 @@ static bool enable_ddw(struct pci_dev *dev, struct device_node *pdn)
 	u32 ddw_avail[DDW_APPLICABLE_SIZE];
 	struct dma_win *window;
 	struct property *win64;
-	bool ddw_enabled = false;
 	struct failed_ddw_pdn *fpdn;
 	bool default_win_removed = false, direct_mapping = false;
 	bool pmem_present;
 	struct pci_dn *pci = PCI_DN(pdn);
-	struct iommu_table *tbl = pci->table_group->tables[0];
+	struct property *default_win = NULL;
 
 	dn = of_find_node_by_type(NULL, "ibm,pmemory");
 	pmem_present = dn != NULL;
@@ -1251,7 +1263,6 @@ static bool enable_ddw(struct pci_dev *dev, struct device_node *pdn)
 
 	if (find_existing_ddw(pdn, &dev->dev.archdata.dma_offset, &len)) {
 		direct_mapping = (len >= max_ram_len);
-		ddw_enabled = true;
 		goto out_unlock;
 	}
 
@@ -1299,11 +1310,10 @@ static bool enable_ddw(struct pci_dev *dev, struct device_node *pdn)
 	 * for extensions presence.
 	 */
 	if (query.windows_available == 0) {
-		struct property *default_win;
 		int reset_win_ext;
 
 		/* DDW + IOMMU on single window may fail if there is any allocation */
-		if (iommu_table_in_use(tbl)) {
+		if (iommu_table_in_use(pci->table_group->tables[0])) {
 			dev_warn(&dev->dev, "current IOMMU table in use, can't be replaced.\n");
 			goto out_failed;
 		}
@@ -1365,8 +1375,10 @@ static bool enable_ddw(struct pci_dev *dev, struct device_node *pdn)
 		len = order_base_2(query.largest_available_block << page_shift);
 		win_name = DMA64_PROPNAME;
 	} else {
-		direct_mapping = true;
-		win_name = DIRECT64_PROPNAME;
+		direct_mapping = !default_win_removed ||
+			(len == MAX_PHYSMEM_BITS) ||
+			(!pmem_present && (len == max_ram_len));
+		win_name = direct_mapping ? DIRECT64_PROPNAME : DMA64_PROPNAME;
 	}
 
 	ret = create_ddw(dev, ddw_avail, &create, page_shift, len);
@@ -1404,8 +1416,8 @@ static bool enable_ddw(struct pci_dev *dev, struct device_node *pdn)
 			dev_info(&dev->dev, "failed to map DMA window for %pOF: %d\n",
 				 dn, ret);
 
-		/* Make sure to clean DDW if any TCE was set*/
-		clean_dma_window(pdn, win64->value);
+			/* Make sure to clean DDW if any TCE was set*/
+			clean_dma_window(pdn, win64->value);
 			goto out_del_list;
 		}
 	} else {
@@ -1437,14 +1449,16 @@ static bool enable_ddw(struct pci_dev *dev, struct device_node *pdn)
 
 		pci->table_group->tables[1] = newtbl;
 
-		/* Keep default DMA window stuct if removed */
-		if (default_win_removed) {
-			tbl->it_size = 0;
-			vfree(tbl->it_map);
-			tbl->it_map = NULL;
-		}
-
 		set_iommu_table_base(&dev->dev, newtbl);
+	}
+
+	if (default_win_removed) {
+		iommu_tce_table_put(pci->table_group->tables[0]);
+		pci->table_group->tables[0] = NULL;
+
+		/* default_win is valid here because default_win_removed == true */
+		of_remove_property(pdn, default_win);
+		dev_info(&dev->dev, "Removed default DMA window for %pOF\n", pdn);
 	}
 
 	spin_lock(&dma_win_list_lock);
@@ -1452,7 +1466,6 @@ static bool enable_ddw(struct pci_dev *dev, struct device_node *pdn)
 	spin_unlock(&dma_win_list_lock);
 
 	dev->dev.archdata.dma_offset = win_addr;
-	ddw_enabled = true;
 	goto out_unlock;
 
 out_del_list:
@@ -1488,10 +1501,10 @@ out_unlock:
 	 * as RAM, then we failed to create a window to cover persistent
 	 * memory and need to set the DMA limit.
 	 */
-	if (pmem_present && ddw_enabled && direct_mapping && len == max_ram_len)
+	if (pmem_present && direct_mapping && len == max_ram_len)
 		dev->dev.bus_dma_limit = dev->dev.archdata.dma_offset + (1ULL << len);
 
-    return ddw_enabled && direct_mapping;
+	return direct_mapping;
 }
 
 static void pci_dma_dev_setup_pSeriesLP(struct pci_dev *dev)
@@ -1512,13 +1525,7 @@ static void pci_dma_dev_setup_pSeriesLP(struct pci_dev *dev)
 	dn = pci_device_to_OF_node(dev);
 	pr_debug("  node is %pOF\n", dn);
 
-	for (pdn = dn; pdn && PCI_DN(pdn) && !PCI_DN(pdn)->table_group;
-	     pdn = pdn->parent) {
-		dma_window = of_get_property(pdn, "ibm,dma-window", NULL);
-		if (dma_window)
-			break;
-	}
-
+	pdn = pci_dma_find(dn, &dma_window);
 	if (!pdn || !PCI_DN(pdn)) {
 		printk(KERN_WARNING "pci_dma_dev_setup_pSeriesLP: "
 		       "no DMA window found for pci dev=%s dn=%pOF\n",
@@ -1549,7 +1556,6 @@ static void pci_dma_dev_setup_pSeriesLP(struct pci_dev *dev)
 static bool iommu_bypass_supported_pSeriesLP(struct pci_dev *pdev, u64 dma_mask)
 {
 	struct device_node *dn = pci_device_to_OF_node(pdev), *pdn;
-	const __be32 *dma_window = NULL;
 
 	/* only attempt to use a new window if 64-bit DMA is requested */
 	if (dma_mask < DMA_BIT_MASK(64))
@@ -1563,13 +1569,7 @@ static bool iommu_bypass_supported_pSeriesLP(struct pci_dev *pdev, u64 dma_mask)
 	 * search upwards in the tree until we either hit a dma-window
 	 * property, OR find a parent with a table already allocated.
 	 */
-	for (pdn = dn; pdn && PCI_DN(pdn) && !PCI_DN(pdn)->table_group;
-			pdn = pdn->parent) {
-		dma_window = of_get_property(pdn, "ibm,dma-window", NULL);
-		if (dma_window)
-			break;
-	}
-
+	pdn = pci_dma_find(dn, NULL);
 	if (pdn && PCI_DN(pdn))
 		return enable_ddw(pdev, pdn);
 
@@ -1662,7 +1662,7 @@ static struct notifier_block iommu_reconfig_nb = {
 };
 
 /* These are called very early. */
-void iommu_init_early_pSeries(void)
+void __init iommu_init_early_pSeries(void)
 {
 	if (of_chosen && of_get_property(of_chosen, "linux,iommu-off", NULL))
 		return;

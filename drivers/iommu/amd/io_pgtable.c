@@ -74,87 +74,61 @@ static u64 *first_pte_l7(u64 *pte, unsigned long *page_size,
  *
  ****************************************************************************/
 
-static void free_page_list(struct page *freelist)
+static void free_pt_page(u64 *pt, struct list_head *freelist)
 {
-	while (freelist != NULL) {
-		unsigned long p = (unsigned long)page_address(freelist);
+	struct page *p = virt_to_page(pt);
 
-		freelist = freelist->freelist;
-		free_page(p);
+	list_add_tail(&p->lru, freelist);
+}
+
+static void free_pt_lvl(u64 *pt, struct list_head *freelist, int lvl)
+{
+	u64 *p;
+	int i;
+
+	for (i = 0; i < 512; ++i) {
+		/* PTE present? */
+		if (!IOMMU_PTE_PRESENT(pt[i]))
+			continue;
+
+		/* Large PTE? */
+		if (PM_PTE_LEVEL(pt[i]) == 0 ||
+		    PM_PTE_LEVEL(pt[i]) == 7)
+			continue;
+
+		/*
+		 * Free the next level. No need to look at l1 tables here since
+		 * they can only contain leaf PTEs; just free them directly.
+		 */
+		p = IOMMU_PTE_PAGE(pt[i]);
+		if (lvl > 2)
+			free_pt_lvl(p, freelist, lvl - 1);
+		else
+			free_pt_page(p, freelist);
 	}
+
+	free_pt_page(pt, freelist);
 }
 
-static struct page *free_pt_page(unsigned long pt, struct page *freelist)
-{
-	struct page *p = virt_to_page((void *)pt);
-
-	p->freelist = freelist;
-
-	return p;
-}
-
-#define DEFINE_FREE_PT_FN(LVL, FN)						\
-static struct page *free_pt_##LVL (unsigned long __pt, struct page *freelist)	\
-{										\
-	unsigned long p;							\
-	u64 *pt;								\
-	int i;									\
-										\
-	pt = (u64 *)__pt;							\
-										\
-	for (i = 0; i < 512; ++i) {						\
-		/* PTE present? */						\
-		if (!IOMMU_PTE_PRESENT(pt[i]))					\
-			continue;						\
-										\
-		/* Large PTE? */						\
-		if (PM_PTE_LEVEL(pt[i]) == 0 ||					\
-		    PM_PTE_LEVEL(pt[i]) == 7)					\
-			continue;						\
-										\
-		p = (unsigned long)IOMMU_PTE_PAGE(pt[i]);			\
-		freelist = FN(p, freelist);					\
-	}									\
-										\
-	return free_pt_page((unsigned long)pt, freelist);			\
-}
-
-DEFINE_FREE_PT_FN(l2, free_pt_page)
-DEFINE_FREE_PT_FN(l3, free_pt_l2)
-DEFINE_FREE_PT_FN(l4, free_pt_l3)
-DEFINE_FREE_PT_FN(l5, free_pt_l4)
-DEFINE_FREE_PT_FN(l6, free_pt_l5)
-
-static struct page *free_sub_pt(unsigned long root, int mode,
-				struct page *freelist)
+static void free_sub_pt(u64 *root, int mode, struct list_head *freelist)
 {
 	switch (mode) {
 	case PAGE_MODE_NONE:
 	case PAGE_MODE_7_LEVEL:
 		break;
 	case PAGE_MODE_1_LEVEL:
-		freelist = free_pt_page(root, freelist);
+		free_pt_page(root, freelist);
 		break;
 	case PAGE_MODE_2_LEVEL:
-		freelist = free_pt_l2(root, freelist);
-		break;
 	case PAGE_MODE_3_LEVEL:
-		freelist = free_pt_l3(root, freelist);
-		break;
 	case PAGE_MODE_4_LEVEL:
-		freelist = free_pt_l4(root, freelist);
-		break;
 	case PAGE_MODE_5_LEVEL:
-		freelist = free_pt_l5(root, freelist);
-		break;
 	case PAGE_MODE_6_LEVEL:
-		freelist = free_pt_l6(root, freelist);
+		free_pt_lvl(root, freelist, mode);
 		break;
 	default:
 		BUG();
 	}
-
-	return freelist;
 }
 
 void amd_iommu_domain_set_pgtable(struct protection_domain *domain,
@@ -284,7 +258,7 @@ static u64 *alloc_pte(struct protection_domain *domain,
 			__npte = PM_LEVEL_PDE(level, iommu_virt_to_phys(page));
 
 			/* pte could have been changed somewhere. */
-			if (cmpxchg64(pte, __pte, __npte) != __pte)
+			if (!try_cmpxchg64(pte, &__pte, __npte))
 				free_page((unsigned long)page);
 			else if (IOMMU_PTE_PRESENT(__pte))
 				*updated = true;
@@ -362,23 +336,21 @@ static u64 *fetch_pte(struct amd_io_pgtable *pgtable,
 	return pte;
 }
 
-static struct page *free_clear_pte(u64 *pte, u64 pteval, struct page *freelist)
+static void free_clear_pte(u64 *pte, u64 pteval, struct list_head *freelist)
 {
-	unsigned long pt;
+	u64 *pt;
 	int mode;
 
-	while (cmpxchg64(pte, pteval, 0) != pteval) {
+	while (!try_cmpxchg64(pte, &pteval, 0))
 		pr_warn("AMD-Vi: IOMMU pte changed since we read it\n");
-		pteval = *pte;
-	}
 
 	if (!IOMMU_PTE_PRESENT(pteval))
-		return freelist;
+		return;
 
-	pt   = (unsigned long)IOMMU_PTE_PAGE(pteval);
+	pt   = IOMMU_PTE_PAGE(pteval);
 	mode = IOMMU_PTE_MODE(pteval);
 
-	return free_sub_pt(pt, mode, freelist);
+	free_sub_pt(pt, mode, freelist);
 }
 
 /*
@@ -388,48 +360,57 @@ static struct page *free_clear_pte(u64 *pte, u64 pteval, struct page *freelist)
  * supporting all features of AMD IOMMU page tables like level skipping
  * and full 64 bit address spaces.
  */
-static int iommu_v1_map_page(struct io_pgtable_ops *ops, unsigned long iova,
-			  phys_addr_t paddr, size_t size, int prot, gfp_t gfp)
+static int iommu_v1_map_pages(struct io_pgtable_ops *ops, unsigned long iova,
+			      phys_addr_t paddr, size_t pgsize, size_t pgcount,
+			      int prot, gfp_t gfp, size_t *mapped)
 {
 	struct protection_domain *dom = io_pgtable_ops_to_domain(ops);
-	struct page *freelist = NULL;
+	LIST_HEAD(freelist);
 	bool updated = false;
 	u64 __pte, *pte;
 	int ret, i, count;
 
-	BUG_ON(!IS_ALIGNED(iova, size));
-	BUG_ON(!IS_ALIGNED(paddr, size));
+	BUG_ON(!IS_ALIGNED(iova, pgsize));
+	BUG_ON(!IS_ALIGNED(paddr, pgsize));
 
 	ret = -EINVAL;
 	if (!(prot & IOMMU_PROT_MASK))
 		goto out;
 
-	count = PAGE_SIZE_PTE_COUNT(size);
-	pte   = alloc_pte(dom, iova, size, NULL, gfp, &updated);
+	while (pgcount > 0) {
+		count = PAGE_SIZE_PTE_COUNT(pgsize);
+		pte   = alloc_pte(dom, iova, pgsize, NULL, gfp, &updated);
 
-	ret = -ENOMEM;
-	if (!pte)
-		goto out;
+		ret = -ENOMEM;
+		if (!pte)
+			goto out;
 
-	for (i = 0; i < count; ++i)
-		freelist = free_clear_pte(&pte[i], pte[i], freelist);
+		for (i = 0; i < count; ++i)
+			free_clear_pte(&pte[i], pte[i], &freelist);
 
-	if (freelist != NULL)
-		updated = true;
+		if (!list_empty(&freelist))
+			updated = true;
 
-	if (count > 1) {
-		__pte = PAGE_SIZE_PTE(__sme_set(paddr), size);
-		__pte |= PM_LEVEL_ENC(7) | IOMMU_PTE_PR | IOMMU_PTE_FC;
-	} else
-		__pte = __sme_set(paddr) | IOMMU_PTE_PR | IOMMU_PTE_FC;
+		if (count > 1) {
+			__pte = PAGE_SIZE_PTE(__sme_set(paddr), pgsize);
+			__pte |= PM_LEVEL_ENC(7) | IOMMU_PTE_PR | IOMMU_PTE_FC;
+		} else
+			__pte = __sme_set(paddr) | IOMMU_PTE_PR | IOMMU_PTE_FC;
 
-	if (prot & IOMMU_PROT_IR)
-		__pte |= IOMMU_PTE_IR;
-	if (prot & IOMMU_PROT_IW)
-		__pte |= IOMMU_PTE_IW;
+		if (prot & IOMMU_PROT_IR)
+			__pte |= IOMMU_PTE_IR;
+		if (prot & IOMMU_PROT_IW)
+			__pte |= IOMMU_PTE_IW;
 
-	for (i = 0; i < count; ++i)
-		pte[i] = __pte;
+		for (i = 0; i < count; ++i)
+			pte[i] = __pte;
+
+		iova  += pgsize;
+		paddr += pgsize;
+		pgcount--;
+		if (mapped)
+			*mapped += pgsize;
+	}
 
 	ret = 0;
 
@@ -449,22 +430,23 @@ out:
 	}
 
 	/* Everything flushed out, free pages now */
-	free_page_list(freelist);
+	put_pages_list(&freelist);
 
 	return ret;
 }
 
-static unsigned long iommu_v1_unmap_page(struct io_pgtable_ops *ops,
-				      unsigned long iova,
-				      size_t size,
-				      struct iommu_iotlb_gather *gather)
+static unsigned long iommu_v1_unmap_pages(struct io_pgtable_ops *ops,
+					  unsigned long iova,
+					  size_t pgsize, size_t pgcount,
+					  struct iommu_iotlb_gather *gather)
 {
 	struct amd_io_pgtable *pgtable = io_pgtable_ops_to_data(ops);
 	unsigned long long unmapped;
 	unsigned long unmap_size;
 	u64 *pte;
+	size_t size = pgcount << __ffs(pgsize);
 
-	BUG_ON(!is_power_of_2(size));
+	BUG_ON(!is_power_of_2(pgsize));
 
 	unmapped = 0;
 
@@ -476,13 +458,13 @@ static unsigned long iommu_v1_unmap_page(struct io_pgtable_ops *ops,
 			count = PAGE_SIZE_PTE_COUNT(unmap_size);
 			for (i = 0; i < count; i++)
 				pte[i] = 0ULL;
+		} else {
+			return unmapped;
 		}
 
 		iova = (iova & ~(unmap_size - 1)) + unmap_size;
 		unmapped += unmap_size;
 	}
-
-	BUG_ON(unmapped && !is_power_of_2(unmapped));
 
 	return unmapped;
 }
@@ -511,13 +493,18 @@ static void v1_free_pgtable(struct io_pgtable *iop)
 {
 	struct amd_io_pgtable *pgtable = container_of(iop, struct amd_io_pgtable, iop);
 	struct protection_domain *dom;
-	struct page *freelist = NULL;
-	unsigned long root;
+	LIST_HEAD(freelist);
 
 	if (pgtable->mode == PAGE_MODE_NONE)
 		return;
 
 	dom = container_of(pgtable, struct protection_domain, iop);
+
+	/* Page-table is not visible to IOMMU anymore, so free it */
+	BUG_ON(pgtable->mode < PAGE_MODE_NONE ||
+	       pgtable->mode > PAGE_MODE_6_LEVEL);
+
+	free_sub_pt(pgtable->root, pgtable->mode, &freelist);
 
 	/* Update data structure */
 	amd_iommu_domain_clr_pt_root(dom);
@@ -525,14 +512,7 @@ static void v1_free_pgtable(struct io_pgtable *iop)
 	/* Make changes visible to IOMMUs */
 	amd_iommu_domain_update(dom);
 
-	/* Page-table is not visible to IOMMU anymore, so free it */
-	BUG_ON(pgtable->mode < PAGE_MODE_NONE ||
-	       pgtable->mode > PAGE_MODE_6_LEVEL);
-
-	root = (unsigned long)pgtable->root;
-	freelist = free_sub_pt(root, pgtable->mode, freelist);
-
-	free_page_list(freelist);
+	put_pages_list(&freelist);
 }
 
 static struct io_pgtable *v1_alloc_pgtable(struct io_pgtable_cfg *cfg, void *cookie)
@@ -544,8 +524,8 @@ static struct io_pgtable *v1_alloc_pgtable(struct io_pgtable_cfg *cfg, void *coo
 	cfg->oas            = IOMMU_OUT_ADDR_BIT_SIZE,
 	cfg->tlb            = &v1_flush_ops;
 
-	pgtable->iop.ops.map          = iommu_v1_map_page;
-	pgtable->iop.ops.unmap        = iommu_v1_unmap_page;
+	pgtable->iop.ops.map_pages    = iommu_v1_map_pages;
+	pgtable->iop.ops.unmap_pages  = iommu_v1_unmap_pages;
 	pgtable->iop.ops.iova_to_phys = iommu_v1_iova_to_phys;
 
 	return &pgtable->iop;

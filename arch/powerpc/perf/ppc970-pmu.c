@@ -489,11 +489,12 @@ static struct power_pmu ppc970_pmu = {
 	.flags			= PPMU_NO_SIPR | PPMU_NO_CONT_SAMPLING,
 };
 
-int init_ppc970_pmu(void)
+int __init init_ppc970_pmu(void)
 {
-	if (!cur_cpu_spec->oprofile_cpu_type ||
-	    (strcmp(cur_cpu_spec->oprofile_cpu_type, "ppc64/970")
-	     && strcmp(cur_cpu_spec->oprofile_cpu_type, "ppc64/970MP")))
+	unsigned int pvr = mfspr(SPRN_PVR);
+
+	if (PVR_VER(pvr) != PVR_970 && PVR_VER(pvr) != PVR_970MP &&
+	    PVR_VER(pvr) != PVR_970FX && PVR_VER(pvr) != PVR_970GX)
 		return -ENODEV;
 
 	return register_power_pmu(&ppc970_pmu);

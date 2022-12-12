@@ -373,6 +373,13 @@ static void gpio_mockup_debugfs_setup(struct device *dev,
 	}
 }
 
+static void gpio_mockup_debugfs_cleanup(void *data)
+{
+	struct gpio_mockup_chip *chip = data;
+
+	debugfs_remove_recursive(chip->dbg_dir);
+}
+
 static void gpio_mockup_dispose_mappings(void *data)
 {
 	struct gpio_mockup_chip *chip = data;
@@ -455,7 +462,7 @@ static int gpio_mockup_probe(struct platform_device *pdev)
 
 	gpio_mockup_debugfs_setup(dev, chip);
 
-	return 0;
+	return devm_add_action_or_reset(dev, gpio_mockup_debugfs_cleanup, chip);
 }
 
 static const struct of_device_id gpio_mockup_of_match[] = {
@@ -491,27 +498,6 @@ static void gpio_mockup_unregister_pdevs(void)
 	}
 }
 
-static __init char **gpio_mockup_make_line_names(const char *label,
-						 unsigned int num_lines)
-{
-	unsigned int i;
-	char **names;
-
-	names = kcalloc(num_lines + 1, sizeof(char *), GFP_KERNEL);
-	if (!names)
-		return NULL;
-
-	for (i = 0; i < num_lines; i++) {
-		names[i] = kasprintf(GFP_KERNEL, "%s-%u", label, i);
-		if (!names[i]) {
-			kfree_strarray(names, i);
-			return NULL;
-		}
-	}
-
-	return names;
-}
-
 static int __init gpio_mockup_register_chip(int idx)
 {
 	struct property_entry properties[GPIO_MOCKUP_MAX_PROP];
@@ -538,7 +524,7 @@ static int __init gpio_mockup_register_chip(int idx)
 	properties[prop++] = PROPERTY_ENTRY_U16("nr-gpios", ngpio);
 
 	if (gpio_mockup_named_lines) {
-		line_names = gpio_mockup_make_line_names(chip_label, ngpio);
+		line_names = kasprintf_strarray(GFP_KERNEL, chip_label, ngpio);
 		if (!line_names)
 			return -ENOMEM;
 
@@ -547,8 +533,10 @@ static int __init gpio_mockup_register_chip(int idx)
 	}
 
 	fwnode = fwnode_create_software_node(properties, NULL);
-	if (IS_ERR(fwnode))
+	if (IS_ERR(fwnode)) {
+		kfree_strarray(line_names, ngpio);
 		return PTR_ERR(fwnode);
+	}
 
 	pdevinfo.name = "gpio-mockup";
 	pdevinfo.id = idx;
@@ -611,9 +599,9 @@ static int __init gpio_mockup_init(void)
 
 static void __exit gpio_mockup_exit(void)
 {
+	gpio_mockup_unregister_pdevs();
 	debugfs_remove_recursive(gpio_mockup_dbg_dir);
 	platform_driver_unregister(&gpio_mockup_driver);
-	gpio_mockup_unregister_pdevs();
 }
 
 module_init(gpio_mockup_init);

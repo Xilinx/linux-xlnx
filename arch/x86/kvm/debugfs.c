@@ -48,7 +48,7 @@ DEFINE_SIMPLE_ATTRIBUTE(vcpu_tsc_scaling_fops, vcpu_get_tsc_scaling_ratio, NULL,
 
 static int vcpu_get_tsc_scaling_frac_bits(void *data, u64 *val)
 {
-	*val = kvm_tsc_scaling_ratio_frac_bits;
+	*val = kvm_caps.tsc_scaling_ratio_frac_bits;
 	return 0;
 }
 
@@ -66,7 +66,7 @@ void kvm_arch_create_vcpu_debugfs(struct kvm_vcpu *vcpu, struct dentry *debugfs_
 				    debugfs_dentry, vcpu,
 				    &vcpu_timer_advance_ns_fops);
 
-	if (kvm_has_tsc_control) {
+	if (kvm_caps.has_tsc_control) {
 		debugfs_create_file("tsc-scaling-ratio", 0444,
 				    debugfs_dentry, vcpu,
 				    &vcpu_tsc_scaling_fops);
@@ -95,6 +95,9 @@ static int kvm_mmu_rmaps_stat_show(struct seq_file *m, void *v)
 	unsigned int *log[KVM_NR_PAGE_SIZES], *cur;
 	int i, j, k, l, ret;
 
+	if (!kvm_memslots_have_rmaps(kvm))
+		return 0;
+
 	ret = -ENOMEM;
 	memset(log, 0, sizeof(log));
 	for (i = 0; i < KVM_NR_PAGE_SIZES; i++) {
@@ -107,9 +110,10 @@ static int kvm_mmu_rmaps_stat_show(struct seq_file *m, void *v)
 	write_lock(&kvm->mmu_lock);
 
 	for (i = 0; i < KVM_ADDRESS_SPACE_NUM; i++) {
+		int bkt;
+
 		slots = __kvm_memslots(kvm, i);
-		for (j = 0; j < slots->used_slots; j++) {
-			slot = &slots->memslots[j];
+		kvm_for_each_memslot(slot, bkt, slots)
 			for (k = 0; k < KVM_NR_PAGE_SIZES; k++) {
 				rmap = slot->arch.rmap[k];
 				lpage_size = kvm_mmu_slot_lpages(slot, k + 1);
@@ -121,7 +125,6 @@ static int kvm_mmu_rmaps_stat_show(struct seq_file *m, void *v)
 					cur[index]++;
 				}
 			}
-		}
 	}
 
 	write_unlock(&kvm->mmu_lock);
@@ -155,11 +158,16 @@ out:
 static int kvm_mmu_rmaps_stat_open(struct inode *inode, struct file *file)
 {
 	struct kvm *kvm = inode->i_private;
+	int r;
 
 	if (!kvm_get_kvm_safe(kvm))
 		return -ENOENT;
 
-	return single_open(file, kvm_mmu_rmaps_stat_show, kvm);
+	r = single_open(file, kvm_mmu_rmaps_stat_show, kvm);
+	if (r < 0)
+		kvm_put_kvm(kvm);
+
+	return r;
 }
 
 static int kvm_mmu_rmaps_stat_release(struct inode *inode, struct file *file)

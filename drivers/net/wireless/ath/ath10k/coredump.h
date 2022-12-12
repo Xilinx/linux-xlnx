@@ -125,7 +125,7 @@ enum ath10k_mem_region_type {
  * To minimize the size of the array, the list must obey the format:
  * '{start0,stop0},{start1,stop1},{start2,stop2}....' The values below must
  * also obey to 'start0 < stop0 < start1 < stop1 < start2 < ...', otherwise
- * we may encouter error in the dump processing.
+ * we may encounter error in the dump processing.
  */
 struct ath10k_mem_section {
 	u32 start;
@@ -176,6 +176,7 @@ int ath10k_coredump_register(struct ath10k *ar);
 void ath10k_coredump_unregister(struct ath10k *ar);
 void ath10k_coredump_destroy(struct ath10k *ar);
 
+const struct ath10k_hw_mem_layout *_ath10k_coredump_get_mem_layout(struct ath10k *ar);
 const struct ath10k_hw_mem_layout *ath10k_coredump_get_mem_layout(struct ath10k *ar);
 
 #else /* CONFIG_DEV_COREDUMP */
@@ -210,6 +211,12 @@ static inline void ath10k_coredump_destroy(struct ath10k *ar)
 
 static inline const struct ath10k_hw_mem_layout *
 ath10k_coredump_get_mem_layout(struct ath10k *ar)
+{
+	return NULL;
+}
+
+static inline const struct ath10k_hw_mem_layout *
+_ath10k_coredump_get_mem_layout(struct ath10k *ar)
 {
 	return NULL;
 }

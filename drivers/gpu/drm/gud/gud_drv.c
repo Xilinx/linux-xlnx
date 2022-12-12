@@ -14,6 +14,7 @@
 #include <linux/workqueue.h>
 
 #include <drm/drm_atomic_helper.h>
+#include <drm/drm_blend.h>
 #include <drm/drm_damage_helper.h>
 #include <drm/drm_debugfs.h>
 #include <drm/drm_drv.h>
@@ -523,7 +524,13 @@ static int gud_probe(struct usb_interface *intf, const struct usb_device_id *id)
 		switch (format) {
 		case GUD_DRM_FORMAT_R1:
 			fallthrough;
+		case DRM_FORMAT_R8:
+			fallthrough;
 		case GUD_DRM_FORMAT_XRGB1111:
+			fallthrough;
+		case DRM_FORMAT_RGB332:
+			fallthrough;
+		case DRM_FORMAT_RGB888:
 			if (!xrgb8888_emulation_format)
 				xrgb8888_emulation_format = info;
 			break;

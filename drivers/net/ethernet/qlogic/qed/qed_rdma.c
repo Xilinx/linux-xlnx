@@ -19,9 +19,11 @@
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/string.h>
+#include <net/addrconf.h>
 #include "qed.h"
 #include "qed_cxt.h"
 #include "qed_hsi.h"
+#include "qed_iro_hsi.h"
 #include "qed_hw.h"
 #include "qed_init_ops.h"
 #include "qed_int.h"
@@ -33,7 +35,6 @@
 #include "qed_roce.h"
 #include "qed_sp.h"
 
-
 int qed_rdma_bmap_alloc(struct qed_hwfn *p_hwfn,
 			struct qed_bmap *bmap, u32 max_count, char *name)
 {
@@ -41,8 +42,7 @@ int qed_rdma_bmap_alloc(struct qed_hwfn *p_hwfn,
 
 	bmap->max_count = max_count;
 
-	bmap->bitmap = kcalloc(BITS_TO_LONGS(max_count), sizeof(long),
-			       GFP_KERNEL);
+	bmap->bitmap = bitmap_zalloc(max_count, GFP_KERNEL);
 	if (!bmap->bitmap)
 		return -ENOMEM;
 
@@ -106,7 +106,7 @@ int qed_bmap_test_id(struct qed_hwfn *p_hwfn,
 
 static bool qed_bmap_is_empty(struct qed_bmap *bmap)
 {
-	return bmap->max_count == find_first_bit(bmap->bitmap, bmap->max_count);
+	return bitmap_empty(bmap->bitmap, bmap->max_count);
 }
 
 static u32 qed_rdma_get_sb_id(void *p_hwfn, u32 rel_sb_id)
@@ -318,48 +318,31 @@ free_rdma_dev:
 void qed_rdma_bmap_free(struct qed_hwfn *p_hwfn,
 			struct qed_bmap *bmap, bool check)
 {
-	int weight = bitmap_weight(bmap->bitmap, bmap->max_count);
-	int last_line = bmap->max_count / (64 * 8);
-	int last_item = last_line * 8 +
-	    DIV_ROUND_UP(bmap->max_count % (64 * 8), 64);
-	u64 *pmap = (u64 *)bmap->bitmap;
-	int line, item, offset;
-	u8 str_last_line[200] = { 0 };
+	unsigned int bit, weight, nbits;
+	unsigned long *b;
 
-	if (!weight || !check)
+	if (!check)
+		goto end;
+
+	weight = bitmap_weight(bmap->bitmap, bmap->max_count);
+	if (!weight)
 		goto end;
 
 	DP_NOTICE(p_hwfn,
 		  "%s bitmap not free - size=%d, weight=%d, 512 bits per line\n",
 		  bmap->name, bmap->max_count, weight);
 
-	/* print aligned non-zero lines, if any */
-	for (item = 0, line = 0; line < last_line; line++, item += 8)
-		if (bitmap_weight((unsigned long *)&pmap[item], 64 * 8))
-			DP_NOTICE(p_hwfn,
-				  "line 0x%04x: 0x%016llx 0x%016llx 0x%016llx 0x%016llx 0x%016llx 0x%016llx 0x%016llx 0x%016llx\n",
-				  line,
-				  pmap[item],
-				  pmap[item + 1],
-				  pmap[item + 2],
-				  pmap[item + 3],
-				  pmap[item + 4],
-				  pmap[item + 5],
-				  pmap[item + 6], pmap[item + 7]);
+	for (bit = 0; bit < bmap->max_count; bit += 512) {
+		b =  bmap->bitmap + BITS_TO_LONGS(bit);
+		nbits = min(bmap->max_count - bit, 512U);
 
-	/* print last unaligned non-zero line, if any */
-	if ((bmap->max_count % (64 * 8)) &&
-	    (bitmap_weight((unsigned long *)&pmap[item],
-			   bmap->max_count - item * 64))) {
-		offset = sprintf(str_last_line, "line 0x%04x: ", line);
-		for (; item < last_item; item++)
-			offset += sprintf(str_last_line + offset,
-					  "0x%016llx ", pmap[item]);
-		DP_NOTICE(p_hwfn, "%s\n", str_last_line);
+		if (!bitmap_empty(b, nbits))
+			DP_NOTICE(p_hwfn,
+				  "line 0x%04x: %*pb\n", bit / 512, nbits, b);
 	}
 
 end:
-	kfree(bmap->bitmap);
+	bitmap_free(bmap->bitmap);
 	bmap->bitmap = NULL;
 }
 
@@ -410,18 +393,6 @@ static void qed_rdma_free(struct qed_hwfn *p_hwfn)
 	qed_rdma_resc_free(p_hwfn);
 }
 
-static void qed_rdma_get_guid(struct qed_hwfn *p_hwfn, u8 *guid)
-{
-	guid[0] = p_hwfn->hw_info.hw_mac_addr[0] ^ 2;
-	guid[1] = p_hwfn->hw_info.hw_mac_addr[1];
-	guid[2] = p_hwfn->hw_info.hw_mac_addr[2];
-	guid[3] = 0xff;
-	guid[4] = 0xfe;
-	guid[5] = p_hwfn->hw_info.hw_mac_addr[3];
-	guid[6] = p_hwfn->hw_info.hw_mac_addr[4];
-	guid[7] = p_hwfn->hw_info.hw_mac_addr[5];
-}
-
 static void qed_rdma_init_events(struct qed_hwfn *p_hwfn,
 				 struct qed_rdma_start_in_params *params)
 {
@@ -449,7 +420,9 @@ static void qed_rdma_init_devinfo(struct qed_hwfn *p_hwfn,
 	dev->fw_ver = (FW_MAJOR_VERSION << 24) | (FW_MINOR_VERSION << 16) |
 		      (FW_REVISION_VERSION << 8) | (FW_ENGINEERING_VERSION);
 
-	qed_rdma_get_guid(p_hwfn, (u8 *)&dev->sys_image_guid);
+	addrconf_addr_eui48((u8 *)&dev->sys_image_guid,
+			    p_hwfn->hw_info.hw_mac_addr);
+
 	dev->node_guid = dev->sys_image_guid;
 
 	dev->max_sge = min_t(u32, RDMA_MAX_SGE_PER_SQ_WQE,
@@ -865,8 +838,8 @@ static void qed_rdma_cnq_prod_update(void *rdma_cxt, u8 qz_offset, u16 prod)
 	}
 
 	qz_num = p_hwfn->p_rdma_info->queue_zone_base + qz_offset;
-	addr = GTT_BAR0_MAP_REG_USDM_RAM +
-	       USTORM_COMMON_QUEUE_CONS_OFFSET(qz_num);
+	addr = GET_GTT_REG_ADDR(GTT_BAR0_MAP_REG_USDM_RAM,
+				USTORM_COMMON_QUEUE_CONS, qz_num);
 
 	REG_WR16(p_hwfn, addr, prod);
 
@@ -1903,7 +1876,6 @@ void qed_rdma_dpm_conf(struct qed_hwfn *p_hwfn, struct qed_ptt *p_ptt)
 		   val, p_hwfn->dcbx_no_edpm, p_hwfn->db_bar_no_edpm);
 }
 
-
 void qed_rdma_dpm_bar(struct qed_hwfn *p_hwfn, struct qed_ptt *p_ptt)
 {
 	p_hwfn->db_bar_no_edpm = true;
@@ -1966,7 +1938,7 @@ static void qed_rdma_remove_user(void *rdma_cxt, u16 dpi)
 
 static int qed_roce_ll2_set_mac_filter(struct qed_dev *cdev,
 				       u8 *old_mac_address,
-				       u8 *new_mac_address)
+				       const u8 *new_mac_address)
 {
 	int rc = 0;
 

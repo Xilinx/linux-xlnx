@@ -97,6 +97,8 @@
 #define WILC_SPI_WAKEUP_REG		0x1
 #define WILC_SPI_WAKEUP_BIT		BIT(1)
 
+#define WILC_SPI_CLK_STATUS_REG        0x0f
+#define WILC_SPI_CLK_STATUS_BIT        BIT(2)
 #define WILC_SPI_HOST_TO_FW_REG		0x0b
 #define WILC_SPI_HOST_TO_FW_BIT		BIT(0)
 
@@ -211,8 +213,6 @@
 #define WILC_RX_BUFF_SIZE	(96 * 1024)
 #define WILC_TX_BUFF_SIZE	(64 * 1024)
 
-#define MODALIAS		"WILC_SPI"
-
 #define NQUEUES			4
 #define AC_BUFFER_SIZE		1000
 
@@ -300,11 +300,12 @@
 #define ENABLE_RX_VMM		(SEL_VMM_TBL1 | EN_VMM)
 #define ENABLE_TX_VMM		(SEL_VMM_TBL0 | EN_VMM)
 /* time for expiring the completion of cfg packets */
-#define WILC_CFG_PKTS_TIMEOUT	msecs_to_jiffies(2000)
+#define WILC_CFG_PKTS_TIMEOUT	msecs_to_jiffies(3000)
 
 #define IS_MANAGMEMENT		0x100
 #define IS_MANAGMEMENT_CALLBACK	0x080
 #define IS_MGMT_STATUS_SUCCES	0x040
+#define IS_MGMT_AUTH_PKT       0x010
 
 #define WILC_WID_TYPE		GENMASK(15, 12)
 #define WILC_VMM_ENTRY_FULL_RETRY	1
@@ -371,6 +372,8 @@ struct wilc_hif_func {
 	int (*hif_sync_ext)(struct wilc *wilc, int nint);
 	int (*enable_interrupt)(struct wilc *nic);
 	void (*disable_interrupt)(struct wilc *nic);
+	int (*hif_reset)(struct wilc *wilc);
+	bool (*hif_is_init)(struct wilc *wilc);
 };
 
 #define WILC_MAX_CFG_FRAME_SIZE		1468
@@ -422,6 +425,7 @@ int wilc_wlan_get_num_conn_ifcs(struct wilc *wilc);
 netdev_tx_t wilc_mac_xmit(struct sk_buff *skb, struct net_device *dev);
 
 void wilc_wfi_p2p_rx(struct wilc_vif *vif, u8 *buff, u32 size);
+bool wilc_wfi_mgmt_frame_rx(struct wilc_vif *vif, u8 *buff, u32 size);
 void host_wakeup_notify(struct wilc *wilc);
 void host_sleep_notify(struct wilc *wilc);
 void chip_allow_sleep(struct wilc *wilc);

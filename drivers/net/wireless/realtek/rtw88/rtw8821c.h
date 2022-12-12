@@ -84,6 +84,8 @@ _rtw_write32s_mask(struct rtw_dev *rtwdev, u32 addr, u32 mask, u32 data)
 	rtw_write32_mask(rtwdev, addr + 0x200, mask, data);
 }
 
+extern const struct rtw_chip_info rtw8821c_hw_spec;
+
 #define rtw_write32s_mask(rtwdev, addr, mask, data)			       \
 	do {								       \
 		BUILD_BUG_ON((addr) < 0xC00 || (addr) >= 0xD00);	       \
@@ -131,7 +133,7 @@ _rtw_write32s_mask(struct rtw_dev *rtwdev, u32 addr, u32 mask, u32 data)
 #define WLAN_TX_FUNC_CFG2		0x30
 #define WLAN_MAC_OPT_NORM_FUNC1		0x98
 #define WLAN_MAC_OPT_LB_FUNC1		0x80
-#define WLAN_MAC_OPT_FUNC2		0x30810041
+#define WLAN_MAC_OPT_FUNC2		0xb0810041
 
 #define WLAN_SIFS_CFG	(WLAN_SIFS_CCK_CONT_TX | \
 			(WLAN_SIFS_OFDM_CONT_TX << BIT_SHIFT_SIFS_OFDM_CTX) | \

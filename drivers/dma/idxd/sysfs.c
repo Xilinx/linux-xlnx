@@ -99,31 +99,39 @@ struct device_type idxd_engine_device_type = {
 
 /* Group attributes */
 
-static void idxd_set_free_tokens(struct idxd_device *idxd)
+static void idxd_set_free_rdbufs(struct idxd_device *idxd)
 {
-	int i, tokens;
+	int i, rdbufs;
 
-	for (i = 0, tokens = 0; i < idxd->max_groups; i++) {
+	for (i = 0, rdbufs = 0; i < idxd->max_groups; i++) {
 		struct idxd_group *g = idxd->groups[i];
 
-		tokens += g->tokens_reserved;
+		rdbufs += g->rdbufs_reserved;
 	}
 
-	idxd->nr_tokens = idxd->max_tokens - tokens;
+	idxd->nr_rdbufs = idxd->max_rdbufs - rdbufs;
+}
+
+static ssize_t group_read_buffers_reserved_show(struct device *dev,
+						struct device_attribute *attr,
+						char *buf)
+{
+	struct idxd_group *group = confdev_to_group(dev);
+
+	return sysfs_emit(buf, "%u\n", group->rdbufs_reserved);
 }
 
 static ssize_t group_tokens_reserved_show(struct device *dev,
 					  struct device_attribute *attr,
 					  char *buf)
 {
-	struct idxd_group *group = confdev_to_group(dev);
-
-	return sysfs_emit(buf, "%u\n", group->tokens_reserved);
+	dev_warn_once(dev, "attribute deprecated, see read_buffers_reserved.\n");
+	return group_read_buffers_reserved_show(dev, attr, buf);
 }
 
-static ssize_t group_tokens_reserved_store(struct device *dev,
-					   struct device_attribute *attr,
-					   const char *buf, size_t count)
+static ssize_t group_read_buffers_reserved_store(struct device *dev,
+						 struct device_attribute *attr,
+						 const char *buf, size_t count)
 {
 	struct idxd_group *group = confdev_to_group(dev);
 	struct idxd_device *idxd = group->idxd;
@@ -143,33 +151,53 @@ static ssize_t group_tokens_reserved_store(struct device *dev,
 	if (idxd->state == IDXD_DEV_ENABLED)
 		return -EPERM;
 
-	if (val > idxd->max_tokens)
+	if (val > idxd->max_rdbufs)
 		return -EINVAL;
 
-	if (val > idxd->nr_tokens + group->tokens_reserved)
+	if (val > idxd->nr_rdbufs + group->rdbufs_reserved)
 		return -EINVAL;
 
-	group->tokens_reserved = val;
-	idxd_set_free_tokens(idxd);
+	group->rdbufs_reserved = val;
+	idxd_set_free_rdbufs(idxd);
 	return count;
+}
+
+static ssize_t group_tokens_reserved_store(struct device *dev,
+					   struct device_attribute *attr,
+					   const char *buf, size_t count)
+{
+	dev_warn_once(dev, "attribute deprecated, see read_buffers_reserved.\n");
+	return group_read_buffers_reserved_store(dev, attr, buf, count);
 }
 
 static struct device_attribute dev_attr_group_tokens_reserved =
 		__ATTR(tokens_reserved, 0644, group_tokens_reserved_show,
 		       group_tokens_reserved_store);
 
+static struct device_attribute dev_attr_group_read_buffers_reserved =
+		__ATTR(read_buffers_reserved, 0644, group_read_buffers_reserved_show,
+		       group_read_buffers_reserved_store);
+
+static ssize_t group_read_buffers_allowed_show(struct device *dev,
+					       struct device_attribute *attr,
+					       char *buf)
+{
+	struct idxd_group *group = confdev_to_group(dev);
+
+	return sysfs_emit(buf, "%u\n", group->rdbufs_allowed);
+}
+
 static ssize_t group_tokens_allowed_show(struct device *dev,
 					 struct device_attribute *attr,
 					 char *buf)
 {
-	struct idxd_group *group = confdev_to_group(dev);
-
-	return sysfs_emit(buf, "%u\n", group->tokens_allowed);
+	dev_warn_once(dev, "attribute deprecated, see read_buffers_allowed.\n");
+	return group_read_buffers_allowed_show(dev, attr, buf);
 }
 
-static ssize_t group_tokens_allowed_store(struct device *dev,
-					  struct device_attribute *attr,
-					  const char *buf, size_t count)
+static ssize_t group_read_buffers_allowed_store(struct device *dev,
+						struct device_attribute *attr,
+						const char *buf, size_t count)
 {
 	struct idxd_group *group = confdev_to_group(dev);
 	struct idxd_device *idxd = group->idxd;
@@ -190,29 +218,49 @@ static ssize_t group_tokens_allowed_store(struct device *dev,
 		return -EPERM;
 
 	if (val < 4 * group->num_engines ||
-	    val > group->tokens_reserved + idxd->nr_tokens)
+	    val > group->rdbufs_reserved + idxd->nr_rdbufs)
 		return -EINVAL;
 
-	group->tokens_allowed = val;
+	group->rdbufs_allowed = val;
 	return count;
+}
+
+static ssize_t group_tokens_allowed_store(struct device *dev,
+					  struct device_attribute *attr,
+					  const char *buf, size_t count)
+{
+	dev_warn_once(dev, "attribute deprecated, see read_buffers_allowed.\n");
+	return group_read_buffers_allowed_store(dev, attr, buf, count);
 }
 
 static struct device_attribute dev_attr_group_tokens_allowed =
 		__ATTR(tokens_allowed, 0644, group_tokens_allowed_show,
 		       group_tokens_allowed_store);
 
+static struct device_attribute dev_attr_group_read_buffers_allowed =
+		__ATTR(read_buffers_allowed, 0644, group_read_buffers_allowed_show,
+		       group_read_buffers_allowed_store);
+
+static ssize_t group_use_read_buffer_limit_show(struct device *dev,
+						struct device_attribute *attr,
+						char *buf)
+{
+	struct idxd_group *group = confdev_to_group(dev);
+
+	return sysfs_emit(buf, "%u\n", group->use_rdbuf_limit);
+}
+
 static ssize_t group_use_token_limit_show(struct device *dev,
 					  struct device_attribute *attr,
 					  char *buf)
 {
-	struct idxd_group *group = confdev_to_group(dev);
-
-	return sysfs_emit(buf, "%u\n", group->use_token_limit);
+	dev_warn_once(dev, "attribute deprecated, see use_read_buffer_limit.\n");
+	return group_use_read_buffer_limit_show(dev, attr, buf);
 }
 
-static ssize_t group_use_token_limit_store(struct device *dev,
-					   struct device_attribute *attr,
-					   const char *buf, size_t count)
+static ssize_t group_use_read_buffer_limit_store(struct device *dev,
+						 struct device_attribute *attr,
+						 const char *buf, size_t count)
 {
 	struct idxd_group *group = confdev_to_group(dev);
 	struct idxd_device *idxd = group->idxd;
@@ -232,16 +280,28 @@ static ssize_t group_use_token_limit_store(struct device *dev,
 	if (idxd->state == IDXD_DEV_ENABLED)
 		return -EPERM;
 
-	if (idxd->token_limit == 0)
+	if (idxd->rdbuf_limit == 0)
 		return -EPERM;
 
-	group->use_token_limit = !!val;
+	group->use_rdbuf_limit = !!val;
 	return count;
+}
+
+static ssize_t group_use_token_limit_store(struct device *dev,
+					   struct device_attribute *attr,
+					   const char *buf, size_t count)
+{
+	dev_warn_once(dev, "attribute deprecated, see use_read_buffer_limit.\n");
+	return group_use_read_buffer_limit_store(dev, attr, buf, count);
 }
 
 static struct device_attribute dev_attr_group_use_token_limit =
 		__ATTR(use_token_limit, 0644, group_use_token_limit_show,
 		       group_use_token_limit_store);
+
+static struct device_attribute dev_attr_group_use_read_buffer_limit =
+		__ATTR(use_read_buffer_limit, 0644, group_use_read_buffer_limit_show,
+		       group_use_read_buffer_limit_store);
 
 static ssize_t group_engines_show(struct device *dev,
 				  struct device_attribute *attr, char *buf)
@@ -383,19 +443,107 @@ static struct device_attribute dev_attr_group_traffic_class_b =
 		__ATTR(traffic_class_b, 0644, group_traffic_class_b_show,
 		       group_traffic_class_b_store);
 
+static ssize_t group_desc_progress_limit_show(struct device *dev,
+					      struct device_attribute *attr,
+					      char *buf)
+{
+	struct idxd_group *group = confdev_to_group(dev);
+
+	return sysfs_emit(buf, "%d\n", group->desc_progress_limit);
+}
+
+static ssize_t group_desc_progress_limit_store(struct device *dev,
+					       struct device_attribute *attr,
+					       const char *buf, size_t count)
+{
+	struct idxd_group *group = confdev_to_group(dev);
+	int val, rc;
+
+	rc = kstrtoint(buf, 10, &val);
+	if (rc < 0)
+		return -EINVAL;
+
+	if (val & ~GENMASK(1, 0))
+		return -EINVAL;
+
+	group->desc_progress_limit = val;
+	return count;
+}
+
+static struct device_attribute dev_attr_group_desc_progress_limit =
+		__ATTR(desc_progress_limit, 0644, group_desc_progress_limit_show,
+		       group_desc_progress_limit_store);
+
+static ssize_t group_batch_progress_limit_show(struct device *dev,
+					       struct device_attribute *attr,
+					       char *buf)
+{
+	struct idxd_group *group = confdev_to_group(dev);
+
+	return sysfs_emit(buf, "%d\n", group->batch_progress_limit);
+}
+
+static ssize_t group_batch_progress_limit_store(struct device *dev,
+						struct device_attribute *attr,
+						const char *buf, size_t count)
+{
+	struct idxd_group *group = confdev_to_group(dev);
+	int val, rc;
+
+	rc = kstrtoint(buf, 10, &val);
+	if (rc < 0)
+		return -EINVAL;
+
+	if (val & ~GENMASK(1, 0))
+		return -EINVAL;
+
+	group->batch_progress_limit = val;
+	return count;
+}
+
+static struct device_attribute dev_attr_group_batch_progress_limit =
+		__ATTR(batch_progress_limit, 0644, group_batch_progress_limit_show,
+		       group_batch_progress_limit_store);
 static struct attribute *idxd_group_attributes[] = {
 	&dev_attr_group_work_queues.attr,
 	&dev_attr_group_engines.attr,
 	&dev_attr_group_use_token_limit.attr,
+	&dev_attr_group_use_read_buffer_limit.attr,
 	&dev_attr_group_tokens_allowed.attr,
+	&dev_attr_group_read_buffers_allowed.attr,
 	&dev_attr_group_tokens_reserved.attr,
+	&dev_attr_group_read_buffers_reserved.attr,
 	&dev_attr_group_traffic_class_a.attr,
 	&dev_attr_group_traffic_class_b.attr,
+	&dev_attr_group_desc_progress_limit.attr,
+	&dev_attr_group_batch_progress_limit.attr,
 	NULL,
 };
 
+static bool idxd_group_attr_progress_limit_invisible(struct attribute *attr,
+						     struct idxd_device *idxd)
+{
+	return (attr == &dev_attr_group_desc_progress_limit.attr ||
+		attr == &dev_attr_group_batch_progress_limit.attr) &&
+		!idxd->hw.group_cap.progress_limit;
+}
+
+static umode_t idxd_group_attr_visible(struct kobject *kobj,
+				       struct attribute *attr, int n)
+{
+	struct device *dev = container_of(kobj, struct device, kobj);
+	struct idxd_group *group = confdev_to_group(dev);
+	struct idxd_device *idxd = group->idxd;
+
+	if (idxd_group_attr_progress_limit_invisible(attr, idxd))
+		return 0;
+
+	return attr->mode;
+}
+
 static const struct attribute_group idxd_group_attribute_group = {
 	.attrs = idxd_group_attributes,
+	.is_visible = idxd_group_attr_visible,
 };
 
 static const struct attribute_group *idxd_group_attribute_groups[] = {
@@ -525,7 +673,7 @@ static ssize_t wq_mode_store(struct device *dev,
 	if (sysfs_streq(buf, "dedicated")) {
 		set_bit(WQ_FLAG_DEDICATED, &wq->flags);
 		wq->threshold = 0;
-	} else if (sysfs_streq(buf, "shared") && device_swq_supported(idxd)) {
+	} else if (sysfs_streq(buf, "shared")) {
 		clear_bit(WQ_FLAG_DEDICATED, &wq->flags);
 	} else {
 		return -EINVAL;
@@ -769,6 +917,7 @@ static ssize_t wq_name_store(struct device *dev,
 			     size_t count)
 {
 	struct idxd_wq *wq = confdev_to_wq(dev);
+	char *input, *pos;
 
 	if (wq->state != IDXD_WQ_DISABLED)
 		return -EPERM;
@@ -783,9 +932,14 @@ static ssize_t wq_name_store(struct device *dev,
 	if (wq->type == IDXD_WQT_KERNEL && device_pasid_enabled(wq->idxd))
 		return -EOPNOTSUPP;
 
+	input = kstrndup(buf, count, GFP_KERNEL);
+	if (!input)
+		return -ENOMEM;
+
+	pos = strim(input);
 	memset(wq->name, 0, WQ_NAME_SIZE + 1);
-	strncpy(wq->name, buf, WQ_NAME_SIZE);
-	strreplace(wq->name, '\n', '\0');
+	sprintf(wq->name, "%s", pos);
+	kfree(input);
 	return count;
 }
 
@@ -842,6 +996,9 @@ static ssize_t wq_max_transfer_size_store(struct device *dev, struct device_attr
 	u64 xfer_size;
 	int rc;
 
+	if (!test_bit(IDXD_FLAG_CONFIGURABLE, &idxd->flags))
+		return -EPERM;
+
 	if (wq->state != IDXD_WQ_DISABLED)
 		return -EPERM;
 
@@ -876,6 +1033,9 @@ static ssize_t wq_max_batch_size_store(struct device *dev, struct device_attribu
 	u64 batch_size;
 	int rc;
 
+	if (!test_bit(IDXD_FLAG_CONFIGURABLE, &idxd->flags))
+		return -EPERM;
+
 	if (wq->state != IDXD_WQ_DISABLED)
 		return -EPERM;
 
@@ -886,7 +1046,7 @@ static ssize_t wq_max_batch_size_store(struct device *dev, struct device_attribu
 	if (batch_size > idxd->max_batch_size)
 		return -EINVAL;
 
-	wq->max_batch_size = (u32)batch_size;
+	idxd_wq_set_max_batch_size(idxd->data->type, wq, (u32)batch_size);
 
 	return count;
 }
@@ -898,7 +1058,7 @@ static ssize_t wq_ats_disable_show(struct device *dev, struct device_attribute *
 {
 	struct idxd_wq *wq = confdev_to_wq(dev);
 
-	return sysfs_emit(buf, "%u\n", wq->ats_dis);
+	return sysfs_emit(buf, "%u\n", test_bit(WQ_FLAG_ATS_DISABLE, &wq->flags));
 }
 
 static ssize_t wq_ats_disable_store(struct device *dev, struct device_attribute *attr,
@@ -919,7 +1079,10 @@ static ssize_t wq_ats_disable_store(struct device *dev, struct device_attribute 
 	if (rc < 0)
 		return rc;
 
-	wq->ats_dis = ats_dis;
+	if (ats_dis)
+		set_bit(WQ_FLAG_ATS_DISABLE, &wq->flags);
+	else
+		clear_bit(WQ_FLAG_ATS_DISABLE, &wq->flags);
 
 	return count;
 }
@@ -945,6 +1108,103 @@ static ssize_t wq_occupancy_show(struct device *dev, struct device_attribute *at
 static struct device_attribute dev_attr_wq_occupancy =
 		__ATTR(occupancy, 0444, wq_occupancy_show, NULL);
 
+static ssize_t wq_enqcmds_retries_show(struct device *dev,
+				       struct device_attribute *attr, char *buf)
+{
+	struct idxd_wq *wq = confdev_to_wq(dev);
+
+	if (wq_dedicated(wq))
+		return -EOPNOTSUPP;
+
+	return sysfs_emit(buf, "%u\n", wq->enqcmds_retries);
+}
+
+static ssize_t wq_enqcmds_retries_store(struct device *dev, struct device_attribute *attr,
+					const char *buf, size_t count)
+{
+	struct idxd_wq *wq = confdev_to_wq(dev);
+	int rc;
+	unsigned int retries;
+
+	if (wq_dedicated(wq))
+		return -EOPNOTSUPP;
+
+	rc = kstrtouint(buf, 10, &retries);
+	if (rc < 0)
+		return rc;
+
+	if (retries > IDXD_ENQCMDS_MAX_RETRIES)
+		retries = IDXD_ENQCMDS_MAX_RETRIES;
+
+	wq->enqcmds_retries = retries;
+	return count;
+}
+
+static struct device_attribute dev_attr_wq_enqcmds_retries =
+		__ATTR(enqcmds_retries, 0644, wq_enqcmds_retries_show, wq_enqcmds_retries_store);
+
+static ssize_t wq_op_config_show(struct device *dev,
+				 struct device_attribute *attr, char *buf)
+{
+	struct idxd_wq *wq = confdev_to_wq(dev);
+
+	return sysfs_emit(buf, "%*pb\n", IDXD_MAX_OPCAP_BITS, wq->opcap_bmap);
+}
+
+static int idxd_verify_supported_opcap(struct idxd_device *idxd, unsigned long *opmask)
+{
+	int bit;
+
+	/*
+	 * The OPCAP is defined as 256 bits that represents each operation the device
+	 * supports per bit. Iterate through all the bits and check if the input mask
+	 * is set for bits that are not set in the OPCAP for the device. If no OPCAP
+	 * bit is set and input mask has the bit set, then return error.
+	 */
+	for_each_set_bit(bit, opmask, IDXD_MAX_OPCAP_BITS) {
+		if (!test_bit(bit, idxd->opcap_bmap))
+			return -EINVAL;
+	}
+
+	return 0;
+}
+
+static ssize_t wq_op_config_store(struct device *dev, struct device_attribute *attr,
+				  const char *buf, size_t count)
+{
+	struct idxd_wq *wq = confdev_to_wq(dev);
+	struct idxd_device *idxd = wq->idxd;
+	unsigned long *opmask;
+	int rc;
+
+	if (wq->state != IDXD_WQ_DISABLED)
+		return -EPERM;
+
+	opmask = bitmap_zalloc(IDXD_MAX_OPCAP_BITS, GFP_KERNEL);
+	if (!opmask)
+		return -ENOMEM;
+
+	rc = bitmap_parse(buf, count, opmask, IDXD_MAX_OPCAP_BITS);
+	if (rc < 0)
+		goto err;
+
+	rc = idxd_verify_supported_opcap(idxd, opmask);
+	if (rc < 0)
+		goto err;
+
+	bitmap_copy(wq->opcap_bmap, opmask, IDXD_MAX_OPCAP_BITS);
+
+	bitmap_free(opmask);
+	return count;
+
+err:
+	bitmap_free(opmask);
+	return rc;
+}
+
+static struct device_attribute dev_attr_wq_op_config =
+		__ATTR(op_config, 0644, wq_op_config_show, wq_op_config_store);
+
 static struct attribute *idxd_wq_attributes[] = {
 	&dev_attr_wq_clients.attr,
 	&dev_attr_wq_state.attr,
@@ -961,11 +1221,34 @@ static struct attribute *idxd_wq_attributes[] = {
 	&dev_attr_wq_max_batch_size.attr,
 	&dev_attr_wq_ats_disable.attr,
 	&dev_attr_wq_occupancy.attr,
+	&dev_attr_wq_enqcmds_retries.attr,
+	&dev_attr_wq_op_config.attr,
 	NULL,
 };
 
+static bool idxd_wq_attr_op_config_invisible(struct attribute *attr,
+					     struct idxd_device *idxd)
+{
+	return attr == &dev_attr_wq_op_config.attr &&
+	       !idxd->hw.wq_cap.op_config;
+}
+
+static umode_t idxd_wq_attr_visible(struct kobject *kobj,
+				    struct attribute *attr, int n)
+{
+	struct device *dev = container_of(kobj, struct device, kobj);
+	struct idxd_wq *wq = confdev_to_wq(dev);
+	struct idxd_device *idxd = wq->idxd;
+
+	if (idxd_wq_attr_op_config_invisible(attr, idxd))
+		return 0;
+
+	return attr->mode;
+}
+
 static const struct attribute_group idxd_wq_attribute_group = {
 	.attrs = idxd_wq_attributes,
+	.is_visible = idxd_wq_attr_visible,
 };
 
 static const struct attribute_group *idxd_wq_attribute_groups[] = {
@@ -977,6 +1260,7 @@ static void idxd_conf_wq_release(struct device *dev)
 {
 	struct idxd_wq *wq = confdev_to_wq(dev);
 
+	bitmap_free(wq->opcap_bmap);
 	kfree(wq->wqcfg);
 	kfree(wq);
 }
@@ -1066,14 +1350,8 @@ static ssize_t op_cap_show(struct device *dev,
 			   struct device_attribute *attr, char *buf)
 {
 	struct idxd_device *idxd = confdev_to_idxd(dev);
-	int i, rc = 0;
 
-	for (i = 0; i < 4; i++)
-		rc += sysfs_emit_at(buf, rc, "%#llx ", idxd->hw.opcap.bits[i]);
-
-	rc--;
-	rc += sysfs_emit_at(buf, rc, "\n");
-	return rc;
+	return sysfs_emit(buf, "%*pb\n", IDXD_MAX_OPCAP_BITS, idxd->opcap_bmap);
 }
 static DEVICE_ATTR_RO(op_cap);
 
@@ -1156,26 +1434,42 @@ static ssize_t errors_show(struct device *dev,
 }
 static DEVICE_ATTR_RO(errors);
 
-static ssize_t max_tokens_show(struct device *dev,
-			       struct device_attribute *attr, char *buf)
+static ssize_t max_read_buffers_show(struct device *dev,
+				     struct device_attribute *attr, char *buf)
 {
 	struct idxd_device *idxd = confdev_to_idxd(dev);
 
-	return sysfs_emit(buf, "%u\n", idxd->max_tokens);
+	return sysfs_emit(buf, "%u\n", idxd->max_rdbufs);
 }
-static DEVICE_ATTR_RO(max_tokens);
+
+static ssize_t max_tokens_show(struct device *dev,
+			       struct device_attribute *attr, char *buf)
+{
+	dev_warn_once(dev, "attribute deprecated, see max_read_buffers.\n");
+	return max_read_buffers_show(dev, attr, buf);
+}
+
+static DEVICE_ATTR_RO(max_tokens);	/* deprecated */
+static DEVICE_ATTR_RO(max_read_buffers);
+
+static ssize_t read_buffer_limit_show(struct device *dev,
+				      struct device_attribute *attr, char *buf)
+{
+	struct idxd_device *idxd = confdev_to_idxd(dev);
+
+	return sysfs_emit(buf, "%u\n", idxd->rdbuf_limit);
+}
 
 static ssize_t token_limit_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
-	struct idxd_device *idxd = confdev_to_idxd(dev);
-
-	return sysfs_emit(buf, "%u\n", idxd->token_limit);
+	dev_warn_once(dev, "attribute deprecated, see read_buffer_limit.\n");
+	return read_buffer_limit_show(dev, attr, buf);
 }
 
-static ssize_t token_limit_store(struct device *dev,
-				 struct device_attribute *attr,
-				 const char *buf, size_t count)
+static ssize_t read_buffer_limit_store(struct device *dev,
+				       struct device_attribute *attr,
+				       const char *buf, size_t count)
 {
 	struct idxd_device *idxd = confdev_to_idxd(dev);
 	unsigned long val;
@@ -1191,16 +1485,26 @@ static ssize_t token_limit_store(struct device *dev,
 	if (!test_bit(IDXD_FLAG_CONFIGURABLE, &idxd->flags))
 		return -EPERM;
 
-	if (!idxd->hw.group_cap.token_limit)
+	if (!idxd->hw.group_cap.rdbuf_limit)
 		return -EPERM;
 
-	if (val > idxd->hw.group_cap.total_tokens)
+	if (val > idxd->hw.group_cap.total_rdbufs)
 		return -EINVAL;
 
-	idxd->token_limit = val;
+	idxd->rdbuf_limit = val;
 	return count;
 }
-static DEVICE_ATTR_RW(token_limit);
+
+static ssize_t token_limit_store(struct device *dev,
+				 struct device_attribute *attr,
+				 const char *buf, size_t count)
+{
+	dev_warn_once(dev, "attribute deprecated, see read_buffer_limit\n");
+	return read_buffer_limit_store(dev, attr, buf, count);
+}
+
+static DEVICE_ATTR_RW(token_limit);	/* deprecated */
+static DEVICE_ATTR_RW(read_buffer_limit);
 
 static ssize_t cdev_major_show(struct device *dev,
 			       struct device_attribute *attr, char *buf)
@@ -1246,7 +1550,9 @@ static struct attribute *idxd_device_attributes[] = {
 	&dev_attr_state.attr,
 	&dev_attr_errors.attr,
 	&dev_attr_max_tokens.attr,
+	&dev_attr_max_read_buffers.attr,
 	&dev_attr_token_limit.attr,
+	&dev_attr_read_buffer_limit.attr,
 	&dev_attr_cdev_major.attr,
 	&dev_attr_cmd_status.attr,
 	NULL,
@@ -1266,11 +1572,11 @@ static void idxd_conf_device_release(struct device *dev)
 	struct idxd_device *idxd = confdev_to_idxd(dev);
 
 	kfree(idxd->groups);
+	bitmap_free(idxd->wq_enable_map);
 	kfree(idxd->wqs);
 	kfree(idxd->engines);
-	kfree(idxd->irq_entries);
-	kfree(idxd->int_handles);
 	ida_free(&idxd_ida, idxd->id);
+	bitmap_free(idxd->opcap_bmap);
 	kfree(idxd);
 }
 

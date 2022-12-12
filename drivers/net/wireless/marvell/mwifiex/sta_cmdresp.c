@@ -1,20 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * NXP Wireless LAN device driver: station command response handling
  *
  * Copyright 2011-2020 NXP
- *
- * This software file (the "File") is distributed by NXP
- * under the terms of the GNU General Public License Version 2, June 1991
- * (the "License").  You may use, redistribute and/or modify this File in
- * accordance with the terms and conditions of the License, a copy of which
- * is available by writing to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
- * worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
- *
- * THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
- * ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
- * this warranty disclaimer.
  */
 
 #include "decl.h"
@@ -708,11 +696,35 @@ static int mwifiex_ret_ver_ext(struct mwifiex_private *priv,
 {
 	struct host_cmd_ds_version_ext *ver_ext = &resp->params.verext;
 
+	if (test_and_clear_bit(MWIFIEX_IS_REQUESTING_FW_VEREXT, &priv->adapter->work_flags)) {
+		if (strncmp(ver_ext->version_str, "ChipRev:20, BB:9b(10.00), RF:40(21)",
+			    MWIFIEX_VERSION_STR_LENGTH) == 0) {
+			struct mwifiex_ds_auto_ds auto_ds = {
+				.auto_ds = DEEP_SLEEP_OFF,
+			};
+
+			mwifiex_dbg(priv->adapter, MSG,
+				    "Bad HW revision detected, disabling deep sleep\n");
+
+			if (mwifiex_send_cmd(priv, HostCmd_CMD_802_11_PS_MODE_ENH,
+					     DIS_AUTO_PS, BITMAP_AUTO_DS, &auto_ds, false)) {
+				mwifiex_dbg(priv->adapter, MSG,
+					    "Disabling deep sleep failed.\n");
+			}
+		}
+
+		return 0;
+	}
+
 	if (version_ext) {
 		version_ext->version_str_sel = ver_ext->version_str_sel;
 		memcpy(version_ext->version_str, ver_ext->version_str,
-		       sizeof(char) * 128);
-		memcpy(priv->version_str, ver_ext->version_str, 128);
+		       MWIFIEX_VERSION_STR_LENGTH);
+		memcpy(priv->version_str, ver_ext->version_str,
+		       MWIFIEX_VERSION_STR_LENGTH);
+
+		/* Ensure the version string from the firmware is 0-terminated */
+		priv->version_str[MWIFIEX_VERSION_STR_LENGTH - 1] = '\0';
 	}
 	return 0;
 }

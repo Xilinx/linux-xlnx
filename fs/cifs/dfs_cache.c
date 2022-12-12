@@ -98,7 +98,7 @@ static struct cifs_ses *find_ipc_from_server_path(struct cifs_ses **ses, const c
 
 	get_ipc_unc(path, unc, sizeof(unc));
 	for (; *ses; ses++) {
-		if (!strcasecmp(unc, (*ses)->tcon_ipc->treeName))
+		if (!strcasecmp(unc, (*ses)->tcon_ipc->tree_name))
 			return *ses;
 	}
 	return ERR_PTR(-ENOENT);
@@ -283,7 +283,7 @@ static int dfscache_proc_show(struct seq_file *m, void *v)
 			seq_printf(m,
 				   "cache entry: path=%s,type=%s,ttl=%d,etime=%ld,hdr_flags=0x%x,ref_flags=0x%x,interlink=%s,path_consumed=%d,expired=%s\n",
 				   ce->path, ce->srvtype == DFS_TYPE_ROOT ? "root" : "link",
-				   ce->ttl, ce->etime.tv_nsec, ce->ref_flags, ce->hdr_flags,
+				   ce->ttl, ce->etime.tv_nsec, ce->hdr_flags, ce->ref_flags,
 				   IS_DFS_INTERLINK(ce->hdr_flags) ? "yes" : "no",
 				   ce->path_consumed, cache_entry_expired(ce) ? "yes" : "no");
 
@@ -654,7 +654,7 @@ static struct cache_entry *__lookup_cache_entry(const char *path, unsigned int h
 			return ce;
 		}
 	}
-	return ERR_PTR(-EEXIST);
+	return ERR_PTR(-ENOENT);
 }
 
 /*
@@ -662,7 +662,7 @@ static struct cache_entry *__lookup_cache_entry(const char *path, unsigned int h
  *
  * Use whole path components in the match.  Must be called with htable_rw_lock held.
  *
- * Return ERR_PTR(-EEXIST) if the entry is not found.
+ * Return ERR_PTR(-ENOENT) if the entry is not found.
  */
 static struct cache_entry *lookup_cache_entry(const char *path)
 {
@@ -710,7 +710,7 @@ static struct cache_entry *lookup_cache_entry(const char *path)
 		while (e > s && *e != sep)
 			e--;
 	}
-	return ERR_PTR(-EEXIST);
+	return ERR_PTR(-ENOENT);
 }
 
 /**
@@ -1229,6 +1229,30 @@ void dfs_cache_put_refsrv_sessions(const uuid_t *mount_id)
 	kref_put(&mg->refcount, mount_group_release);
 }
 
+/* Extract share from DFS target and return a pointer to prefix path or NULL */
+static const char *parse_target_share(const char *target, char **share)
+{
+	const char *s, *seps = "/\\";
+	size_t len;
+
+	s = strpbrk(target + 1, seps);
+	if (!s)
+		return ERR_PTR(-EINVAL);
+
+	len = strcspn(s + 1, seps);
+	if (!len)
+		return ERR_PTR(-EINVAL);
+	s += len;
+
+	len = s - target + 1;
+	*share = kstrndup(target, len, GFP_KERNEL);
+	if (!*share)
+		return ERR_PTR(-ENOMEM);
+
+	s = target + len;
+	return s + strspn(s, seps);
+}
+
 /**
  * dfs_cache_get_tgt_share - parse a DFS target
  *
@@ -1242,56 +1266,46 @@ void dfs_cache_put_refsrv_sessions(const uuid_t *mount_id)
 int dfs_cache_get_tgt_share(char *path, const struct dfs_cache_tgt_iterator *it, char **share,
 			    char **prefix)
 {
-	char *s, sep, *p;
-	size_t len;
-	size_t plen1, plen2;
+	char sep;
+	char *target_share;
+	char *ppath = NULL;
+	const char *target_ppath, *dfsref_ppath;
+	size_t target_pplen, dfsref_pplen;
+	size_t len, c;
 
 	if (!it || !path || !share || !prefix || strlen(path) < it->it_path_consumed)
 		return -EINVAL;
-
-	*share = NULL;
-	*prefix = NULL;
 
 	sep = it->it_name[0];
 	if (sep != '\\' && sep != '/')
 		return -EINVAL;
 
-	s = strchr(it->it_name + 1, sep);
-	if (!s)
-		return -EINVAL;
+	target_ppath = parse_target_share(it->it_name, &target_share);
+	if (IS_ERR(target_ppath))
+		return PTR_ERR(target_ppath);
 
-	/* point to prefix in target node */
-	s = strchrnul(s + 1, sep);
+	/* point to prefix in DFS referral path */
+	dfsref_ppath = path + it->it_path_consumed;
+	dfsref_ppath += strspn(dfsref_ppath, "/\\");
 
-	/* extract target share */
-	*share = kstrndup(it->it_name, s - it->it_name, GFP_KERNEL);
-	if (!*share)
-		return -ENOMEM;
+	target_pplen = strlen(target_ppath);
+	dfsref_pplen = strlen(dfsref_ppath);
 
-	/* skip separator */
-	if (*s)
-		s++;
-	/* point to prefix in DFS path */
-	p = path + it->it_path_consumed;
-	if (*p == sep)
-		p++;
-
-	/* merge prefix paths from DFS path and target node */
-	plen1 = it->it_name + strlen(it->it_name) - s;
-	plen2 = path + strlen(path) - p;
-	if (plen1 || plen2) {
-		len = plen1 + plen2 + 2;
-		*prefix = kmalloc(len, GFP_KERNEL);
-		if (!*prefix) {
-			kfree(*share);
-			*share = NULL;
+	/* merge prefix paths from DFS referral path and target node */
+	if (target_pplen || dfsref_pplen) {
+		len = target_pplen + dfsref_pplen + 2;
+		ppath = kzalloc(len, GFP_KERNEL);
+		if (!ppath) {
+			kfree(target_share);
 			return -ENOMEM;
 		}
-		if (plen1)
-			scnprintf(*prefix, len, "%.*s%c%.*s", (int)plen1, s, sep, (int)plen2, p);
-		else
-			strscpy(*prefix, p, len);
+		c = strscpy(ppath, target_ppath, len);
+		if (c && dfsref_pplen)
+			ppath[c] = sep;
+		strlcat(ppath, dfsref_ppath, len);
 	}
+	*share = target_share;
+	*prefix = ppath;
 	return 0;
 }
 
@@ -1327,9 +1341,9 @@ static bool target_share_equal(struct TCP_Server_Info *server, const char *s1, c
 		cifs_dbg(VFS, "%s: failed to convert address \'%s\'. skip address matching.\n",
 			 __func__, ip);
 	} else {
-		mutex_lock(&server->srv_mutex);
+		cifs_server_lock(server);
 		match = cifs_match_ipaddr((struct sockaddr *)&server->dstaddr, &sa);
-		mutex_unlock(&server->srv_mutex);
+		cifs_server_unlock(server);
 	}
 
 	kfree(ip);
@@ -1355,18 +1369,13 @@ static void mark_for_reconnect_if_needed(struct cifs_tcon *tcon, struct dfs_cach
 	}
 
 	cifs_dbg(FYI, "%s: no cached or matched targets. mark dfs share for reconnect.\n", __func__);
-	for (i = 0; i < tcon->ses->chan_count; i++) {
-		spin_lock(&GlobalMid_Lock);
-		if (tcon->ses->chans[i].server->tcpStatus != CifsExiting)
-			tcon->ses->chans[i].server->tcpStatus = CifsNeedReconnect;
-		spin_unlock(&GlobalMid_Lock);
-	}
+	cifs_signal_cifsd_for_reconnect(tcon->ses->server, true);
 }
 
 /* Refresh dfs referral of tcon and mark it for reconnect if needed */
-static int refresh_tcon(struct cifs_ses **sessions, struct cifs_tcon *tcon, bool force_refresh)
+static int __refresh_tcon(const char *path, struct cifs_ses **sessions, struct cifs_tcon *tcon,
+			  bool force_refresh)
 {
-	const char *path = tcon->dfs_path + 1;
 	struct cifs_ses *ses;
 	struct cache_entry *ce;
 	struct dfs_info3_param *refs = NULL;
@@ -1422,6 +1431,22 @@ out:
 	return rc;
 }
 
+static int refresh_tcon(struct cifs_ses **sessions, struct cifs_tcon *tcon, bool force_refresh)
+{
+	struct TCP_Server_Info *server = tcon->ses->server;
+
+	mutex_lock(&server->refpath_lock);
+	if (server->origin_fullpath) {
+		if (server->leaf_fullpath && strcasecmp(server->leaf_fullpath,
+							server->origin_fullpath))
+			__refresh_tcon(server->leaf_fullpath + 1, sessions, tcon, force_refresh);
+		__refresh_tcon(server->origin_fullpath + 1, sessions, tcon, force_refresh);
+	}
+	mutex_unlock(&server->refpath_lock);
+
+	return 0;
+}
+
 /**
  * dfs_cache_remount_fs - remount a DFS share
  *
@@ -1435,6 +1460,7 @@ out:
 int dfs_cache_remount_fs(struct cifs_sb_info *cifs_sb)
 {
 	struct cifs_tcon *tcon;
+	struct TCP_Server_Info *server;
 	struct mount_group *mg;
 	struct cifs_ses *sessions[CACHE_MAX_ENTRIES + 1] = {NULL};
 	int rc;
@@ -1443,13 +1469,15 @@ int dfs_cache_remount_fs(struct cifs_sb_info *cifs_sb)
 		return -EINVAL;
 
 	tcon = cifs_sb_master_tcon(cifs_sb);
-	if (!tcon->dfs_path) {
-		cifs_dbg(FYI, "%s: not a dfs tcon\n", __func__);
+	server = tcon->ses->server;
+
+	if (!server->origin_fullpath) {
+		cifs_dbg(FYI, "%s: not a dfs mount\n", __func__);
 		return 0;
 	}
 
 	if (uuid_is_null(&cifs_sb->dfs_mount_id)) {
-		cifs_dbg(FYI, "%s: tcon has no dfs mount group id\n", __func__);
+		cifs_dbg(FYI, "%s: no dfs mount group id\n", __func__);
 		return -EINVAL;
 	}
 
@@ -1457,7 +1485,7 @@ int dfs_cache_remount_fs(struct cifs_sb_info *cifs_sb)
 	mg = find_mount_group_locked(&cifs_sb->dfs_mount_id);
 	if (IS_ERR(mg)) {
 		mutex_unlock(&mount_group_list_lock);
-		cifs_dbg(FYI, "%s: tcon has ipc session to refresh referral\n", __func__);
+		cifs_dbg(FYI, "%s: no ipc session for refreshing referral\n", __func__);
 		return PTR_ERR(mg);
 	}
 	kref_get(&mg->refcount);
@@ -1498,20 +1526,40 @@ static void refresh_mounts(struct cifs_ses **sessions)
 
 	spin_lock(&cifs_tcp_ses_lock);
 	list_for_each_entry(server, &cifs_tcp_ses_list, tcp_ses_list) {
+		spin_lock(&server->srv_lock);
+		if (!server->is_dfs_conn) {
+			spin_unlock(&server->srv_lock);
+			continue;
+		}
+		spin_unlock(&server->srv_lock);
+
 		list_for_each_entry(ses, &server->smb_ses_list, smb_ses_list) {
 			list_for_each_entry(tcon, &ses->tcon_list, tcon_list) {
-				if (tcon->dfs_path) {
+				spin_lock(&tcon->tc_lock);
+				if (!tcon->ipc && !tcon->need_reconnect) {
 					tcon->tc_count++;
 					list_add_tail(&tcon->ulist, &tcons);
 				}
+				spin_unlock(&tcon->tc_lock);
 			}
 		}
 	}
 	spin_unlock(&cifs_tcp_ses_lock);
 
 	list_for_each_entry_safe(tcon, ntcon, &tcons, ulist) {
+		struct TCP_Server_Info *server = tcon->ses->server;
+
 		list_del_init(&tcon->ulist);
-		refresh_tcon(sessions, tcon, false);
+
+		mutex_lock(&server->refpath_lock);
+		if (server->origin_fullpath) {
+			if (server->leaf_fullpath && strcasecmp(server->leaf_fullpath,
+								server->origin_fullpath))
+				__refresh_tcon(server->leaf_fullpath + 1, sessions, tcon, false);
+			__refresh_tcon(server->origin_fullpath + 1, sessions, tcon, false);
+		}
+		mutex_unlock(&server->refpath_lock);
+
 		cifs_put_tcon(tcon);
 	}
 }

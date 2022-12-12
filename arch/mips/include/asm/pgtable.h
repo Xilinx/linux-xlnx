@@ -41,28 +41,6 @@ struct vm_area_struct;
  * by reasonable means..
  */
 
-/*
- * Dummy values to fill the table in mmap.c
- * The real values will be generated at runtime
- */
-#define __P000 __pgprot(0)
-#define __P001 __pgprot(0)
-#define __P010 __pgprot(0)
-#define __P011 __pgprot(0)
-#define __P100 __pgprot(0)
-#define __P101 __pgprot(0)
-#define __P110 __pgprot(0)
-#define __P111 __pgprot(0)
-
-#define __S000 __pgprot(0)
-#define __S001 __pgprot(0)
-#define __S010 __pgprot(0)
-#define __S011 __pgprot(0)
-#define __S100 __pgprot(0)
-#define __S101 __pgprot(0)
-#define __S110 __pgprot(0)
-#define __S111 __pgprot(0)
-
 extern unsigned long _page_cachable_default;
 extern void __update_cache(unsigned long address, pte_t pte);
 
@@ -86,10 +64,14 @@ extern void paging_init(void);
  */
 #define pmd_phys(pmd)		virt_to_phys((void *)pmd_val(pmd))
 
-#define __pmd_page(pmd)		(pfn_to_page(pmd_phys(pmd) >> PAGE_SHIFT))
-#ifndef CONFIG_TRANSPARENT_HUGEPAGE
-#define pmd_page(pmd)		__pmd_page(pmd)
-#endif /* CONFIG_TRANSPARENT_HUGEPAGE  */
+static inline unsigned long pmd_pfn(pmd_t pmd)
+{
+	return pmd_val(pmd) >> _PFN_SHIFT;
+}
+
+#ifndef CONFIG_MIPS_HUGE_TLB_SUPPORT
+#define pmd_page(pmd)		(pfn_to_page(pmd_phys(pmd) >> PAGE_SHIFT))
+#endif /* CONFIG_MIPS_HUGE_TLB_SUPPORT */
 
 #define pmd_page_vaddr(pmd)	pmd_val(pmd)
 
@@ -416,6 +398,20 @@ static inline pte_t pte_mkhuge(pte_t pte)
 	pte_val(pte) |= _PAGE_HUGE;
 	return pte;
 }
+
+#define pmd_write pmd_write
+static inline int pmd_write(pmd_t pmd)
+{
+	return !!(pmd_val(pmd) & _PAGE_WRITE);
+}
+
+static inline struct page *pmd_page(pmd_t pmd)
+{
+	if (pmd_val(pmd) & _PAGE_HUGE)
+		return pfn_to_page(pmd_pfn(pmd));
+
+	return pfn_to_page(pmd_phys(pmd) >> PAGE_SHIFT);
+}
 #endif /* CONFIG_MIPS_HUGE_TLB_SUPPORT */
 
 #ifdef CONFIG_HAVE_ARCH_SOFT_DIRTY
@@ -591,12 +587,6 @@ static inline pmd_t pmd_mkhuge(pmd_t pmd)
 extern void set_pmd_at(struct mm_struct *mm, unsigned long addr,
 		       pmd_t *pmdp, pmd_t pmd);
 
-#define pmd_write pmd_write
-static inline int pmd_write(pmd_t pmd)
-{
-	return !!(pmd_val(pmd) & _PAGE_WRITE);
-}
-
 static inline pmd_t pmd_wrprotect(pmd_t pmd)
 {
 	pmd_val(pmd) &= ~(_PAGE_WRITE | _PAGE_SILENT_WRITE);
@@ -632,6 +622,7 @@ static inline pmd_t pmd_mkdirty(pmd_t pmd)
 	return pmd;
 }
 
+#define pmd_young pmd_young
 static inline int pmd_young(pmd_t pmd)
 {
 	return !!(pmd_val(pmd) & _PAGE_ACCESSED);
@@ -676,19 +667,6 @@ static inline pmd_t pmd_clear_soft_dirty(pmd_t pmd)
 
 /* Extern to avoid header file madness */
 extern pmd_t mk_pmd(struct page *page, pgprot_t prot);
-
-static inline unsigned long pmd_pfn(pmd_t pmd)
-{
-	return pmd_val(pmd) >> _PFN_SHIFT;
-}
-
-static inline struct page *pmd_page(pmd_t pmd)
-{
-	if (pmd_trans_huge(pmd))
-		return pfn_to_page(pmd_pfn(pmd));
-
-	return pfn_to_page(pmd_phys(pmd) >> PAGE_SHIFT);
-}
 
 static inline pmd_t pmd_modify(pmd_t pmd, pgprot_t newprot)
 {

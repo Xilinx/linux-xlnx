@@ -5,13 +5,16 @@
 #include <linux/mm_types_task.h>
 
 #include <linux/auxvec.h>
+#include <linux/kref.h>
 #include <linux/list.h>
 #include <linux/spinlock.h>
 #include <linux/rbtree.h>
+#include <linux/maple_tree.h>
 #include <linux/rwsem.h>
 #include <linux/completion.h>
 #include <linux/cpumask.h>
 #include <linux/uprobes.h>
+#include <linux/rcupdate.h>
 #include <linux/page-flags-layout.h>
 #include <linux/workqueue.h>
 #include <linux/seqlock.h>
@@ -55,11 +58,11 @@ struct mem_cgroup;
  * in each subpage, but you may need to restore some of their values
  * afterwards.
  *
- * SLUB uses cmpxchg_double() to atomically update its freelist and
- * counters.  That requires that freelist & counters be adjacent and
- * double-word aligned.  We align all struct pages to double-word
- * boundaries, and ensure that 'freelist' is aligned within the
- * struct.
+ * SLUB uses cmpxchg_double() to atomically update its freelist and counters.
+ * That requires that freelist & counters in struct slab be adjacent and
+ * double-word aligned. Because struct slab currently just reinterprets the
+ * bits of struct page, we align all struct pages to double-word boundaries,
+ * and ensure that 'freelist' is aligned within struct slab.
  */
 #ifdef CONFIG_HAVE_ALIGNED_STRUCT_PAGE
 #define _struct_page_alignment	__aligned(2 * sizeof(unsigned long))
@@ -83,7 +86,21 @@ struct page {
 			 * lruvec->lru_lock.  Sometimes used as a generic list
 			 * by the page owner.
 			 */
-			struct list_head lru;
+			union {
+				struct list_head lru;
+
+				/* Or, for the Unevictable "LRU list" slot */
+				struct {
+					/* Always even, to negate PageTail */
+					void *__filler;
+					/* Count page's or folio's mlocks */
+					unsigned int mlock_count;
+				};
+
+				/* Or, free page */
+				struct list_head buddy_list;
+				struct list_head pcp_list;
+			};
 			/* See page-flags.h for PAGE_MAPPING_FLAGS */
 			struct address_space *mapping;
 			pgoff_t index;		/* Our offset within mapping. */
@@ -117,33 +134,6 @@ struct page {
 				atomic_long_t pp_frag_count;
 			};
 		};
-		struct {	/* slab, slob and slub */
-			union {
-				struct list_head slab_list;
-				struct {	/* Partial pages */
-					struct page *next;
-#ifdef CONFIG_64BIT
-					int pages;	/* Nr of pages left */
-					int pobjects;	/* Approximate count */
-#else
-					short int pages;
-					short int pobjects;
-#endif
-				};
-			};
-			struct kmem_cache *slab_cache; /* not slob */
-			/* Double-word boundary */
-			void *freelist;		/* first free object */
-			union {
-				void *s_mem;	/* slab: first object */
-				unsigned long counters;		/* SLUB */
-				struct {			/* SLUB */
-					unsigned inuse:16;
-					unsigned objects:15;
-					unsigned frozen:1;
-				};
-			};
-		};
 		struct {	/* Tail pages of compound page */
 			unsigned long compound_head;	/* Bit zero is set */
 
@@ -151,11 +141,14 @@ struct page {
 			unsigned char compound_dtor;
 			unsigned char compound_order;
 			atomic_t compound_mapcount;
+			atomic_t compound_pincount;
+#ifdef CONFIG_64BIT
 			unsigned int compound_nr; /* 1 << compound_order */
+#endif
 		};
 		struct {	/* Second tail page of compound page */
 			unsigned long _compound_pad_1;	/* compound_head */
-			atomic_t hpage_pinned_refcount;
+			unsigned long _compound_pad_2;
 			/* For both global and memcg */
 			struct list_head deferred_list;
 		};
@@ -207,9 +200,6 @@ struct page {
 		 * which are currently stored here.
 		 */
 		unsigned int page_type;
-
-		unsigned int active;		/* SLAB */
-		int units;			/* SLOB */
 	};
 
 	/* Usage count. *DO NOT USE DIRECTLY*. See page_ref.h */
@@ -234,10 +224,128 @@ struct page {
 					   not kmapped, ie. highmem) */
 #endif /* WANT_PAGE_VIRTUAL */
 
+#ifdef CONFIG_KMSAN
+	/*
+	 * KMSAN metadata for this page:
+	 *  - shadow page: every bit indicates whether the corresponding
+	 *    bit of the original page is initialized (0) or not (1);
+	 *  - origin page: every 4 bytes contain an id of the stack trace
+	 *    where the uninitialized value was created.
+	 */
+	struct page *kmsan_shadow;
+	struct page *kmsan_origin;
+#endif
+
 #ifdef LAST_CPUPID_NOT_IN_PAGE_FLAGS
 	int _last_cpupid;
 #endif
 } _struct_page_alignment;
+
+/**
+ * struct folio - Represents a contiguous set of bytes.
+ * @flags: Identical to the page flags.
+ * @lru: Least Recently Used list; tracks how recently this folio was used.
+ * @mlock_count: Number of times this folio has been pinned by mlock().
+ * @mapping: The file this page belongs to, or refers to the anon_vma for
+ *    anonymous memory.
+ * @index: Offset within the file, in units of pages.  For anonymous memory,
+ *    this is the index from the beginning of the mmap.
+ * @private: Filesystem per-folio data (see folio_attach_private()).
+ *    Used for swp_entry_t if folio_test_swapcache().
+ * @_mapcount: Do not access this member directly.  Use folio_mapcount() to
+ *    find out how many times this folio is mapped by userspace.
+ * @_refcount: Do not access this member directly.  Use folio_ref_count()
+ *    to find how many references there are to this folio.
+ * @memcg_data: Memory Control Group data.
+ * @_flags_1: For large folios, additional page flags.
+ * @__head: Points to the folio.  Do not use.
+ * @_folio_dtor: Which destructor to use for this folio.
+ * @_folio_order: Do not use directly, call folio_order().
+ * @_total_mapcount: Do not use directly, call folio_entire_mapcount().
+ * @_pincount: Do not use directly, call folio_maybe_dma_pinned().
+ * @_folio_nr_pages: Do not use directly, call folio_nr_pages().
+ *
+ * A folio is a physically, virtually and logically contiguous set
+ * of bytes.  It is a power-of-two in size, and it is aligned to that
+ * same power-of-two.  It is at least as large as %PAGE_SIZE.  If it is
+ * in the page cache, it is at a file offset which is a multiple of that
+ * power-of-two.  It may be mapped into userspace at an address which is
+ * at an arbitrary page offset, but its kernel virtual address is aligned
+ * to its size.
+ */
+struct folio {
+	/* private: don't document the anon union */
+	union {
+		struct {
+	/* public: */
+			unsigned long flags;
+			union {
+				struct list_head lru;
+	/* private: avoid cluttering the output */
+				struct {
+					void *__filler;
+	/* public: */
+					unsigned int mlock_count;
+	/* private: */
+				};
+	/* public: */
+			};
+			struct address_space *mapping;
+			pgoff_t index;
+			void *private;
+			atomic_t _mapcount;
+			atomic_t _refcount;
+#ifdef CONFIG_MEMCG
+			unsigned long memcg_data;
+#endif
+	/* private: the union with struct page is transitional */
+		};
+		struct page page;
+	};
+	unsigned long _flags_1;
+	unsigned long __head;
+	unsigned char _folio_dtor;
+	unsigned char _folio_order;
+	atomic_t _total_mapcount;
+	atomic_t _pincount;
+#ifdef CONFIG_64BIT
+	unsigned int _folio_nr_pages;
+#endif
+};
+
+#define FOLIO_MATCH(pg, fl)						\
+	static_assert(offsetof(struct page, pg) == offsetof(struct folio, fl))
+FOLIO_MATCH(flags, flags);
+FOLIO_MATCH(lru, lru);
+FOLIO_MATCH(mapping, mapping);
+FOLIO_MATCH(compound_head, lru);
+FOLIO_MATCH(index, index);
+FOLIO_MATCH(private, private);
+FOLIO_MATCH(_mapcount, _mapcount);
+FOLIO_MATCH(_refcount, _refcount);
+#ifdef CONFIG_MEMCG
+FOLIO_MATCH(memcg_data, memcg_data);
+#endif
+#undef FOLIO_MATCH
+#define FOLIO_MATCH(pg, fl)						\
+	static_assert(offsetof(struct folio, fl) ==			\
+			offsetof(struct page, pg) + sizeof(struct page))
+FOLIO_MATCH(flags, _flags_1);
+FOLIO_MATCH(compound_head, __head);
+FOLIO_MATCH(compound_dtor, _folio_dtor);
+FOLIO_MATCH(compound_order, _folio_order);
+FOLIO_MATCH(compound_mapcount, _total_mapcount);
+FOLIO_MATCH(compound_pincount, _pincount);
+#ifdef CONFIG_64BIT
+FOLIO_MATCH(compound_nr, _folio_nr_pages);
+#endif
+#undef FOLIO_MATCH
+
+static inline atomic_t *folio_mapcount_ptr(struct folio *folio)
+{
+	struct page *tail = &folio->page + 1;
+	return &tail->compound_mapcount;
+}
 
 static inline atomic_t *compound_mapcount_ptr(struct page *page)
 {
@@ -246,7 +354,7 @@ static inline atomic_t *compound_mapcount_ptr(struct page *page)
 
 static inline atomic_t *compound_pincount_ptr(struct page *page)
 {
-	return &page[2].hpage_pinned_refcount;
+	return &page[1].compound_pincount;
 }
 
 /*
@@ -257,11 +365,22 @@ static inline atomic_t *compound_pincount_ptr(struct page *page)
 #define PAGE_FRAG_CACHE_MAX_SIZE	__ALIGN_MASK(32768, ~PAGE_MASK)
 #define PAGE_FRAG_CACHE_MAX_ORDER	get_order(PAGE_FRAG_CACHE_MAX_SIZE)
 
+/*
+ * page_private can be used on tail pages.  However, PagePrivate is only
+ * checked by the VM on the head page.  So page_private on the tail pages
+ * should be used for data that's ancillary to the head page (eg attaching
+ * buffer heads to tail pages after attaching buffer heads to the head page)
+ */
 #define page_private(page)		((page)->private)
 
 static inline void set_page_private(struct page *page, unsigned long private)
 {
 	page->private = private;
+}
+
+static inline void *folio_get_private(struct folio *folio)
+{
+	return folio->private;
 }
 
 struct page_frag_cache {
@@ -310,6 +429,12 @@ struct vm_userfaultfd_ctx {
 struct vm_userfaultfd_ctx {};
 #endif /* CONFIG_USERFAULTFD */
 
+struct anon_vma_name {
+	struct kref kref;
+	/* The name needs to be at the end because it is dynamically sized. */
+	char name[];
+};
+
 /*
  * This struct describes a virtual memory area. There is one of these
  * per VM-area/task. A VM area is any part of the process virtual memory
@@ -323,21 +448,6 @@ struct vm_area_struct {
 	unsigned long vm_end;		/* The first byte after our end address
 					   within vm_mm. */
 
-	/* linked list of VM areas per task, sorted by address */
-	struct vm_area_struct *vm_next, *vm_prev;
-
-	struct rb_node vm_rb;
-
-	/*
-	 * Largest free memory gap in bytes to the left of this VMA.
-	 * Either between this VMA and vma->vm_prev, or between one of the
-	 * VMAs below us in the VMA rbtree and its ->vm_prev. This helps
-	 * get_unmapped_area find a free area of the right size.
-	 */
-	unsigned long rb_subtree_gap;
-
-	/* Second cache line starts here. */
-
 	struct mm_struct *vm_mm;	/* The address space we belong to. */
 
 	/*
@@ -350,11 +460,22 @@ struct vm_area_struct {
 	/*
 	 * For areas with an address space and backing store,
 	 * linkage into the address_space->i_mmap interval tree.
+	 *
+	 * For private anonymous mappings, a pointer to a null terminated string
+	 * containing the name given to the vma, or NULL if unnamed.
 	 */
-	struct {
-		struct rb_node rb;
-		unsigned long rb_subtree_last;
-	} shared;
+
+	union {
+		struct {
+			struct rb_node rb;
+			unsigned long rb_subtree_last;
+		} shared;
+		/*
+		 * Serialized by mmap_sem. Never use directly because it is
+		 * valid only when vm_file is NULL. Use anon_vma_name instead.
+		 */
+		struct anon_vma_name *anon_name;
+	};
 
 	/*
 	 * A file's MAP_PRIVATE vma can be in both i_mmap tree and anon_vma
@@ -387,23 +508,10 @@ struct vm_area_struct {
 	struct vm_userfaultfd_ctx vm_userfaultfd_ctx;
 } __randomize_layout;
 
-struct core_thread {
-	struct task_struct *task;
-	struct core_thread *next;
-};
-
-struct core_state {
-	atomic_t nr_threads;
-	struct core_thread dumper;
-	struct completion startup;
-};
-
 struct kioctx_table;
 struct mm_struct {
 	struct {
-		struct vm_area_struct *mmap;		/* list of VMAs */
-		struct rb_root mm_rb;
-		u64 vmacache_seqnum;                   /* per-thread vmacache */
+		struct maple_tree mm_mt;
 #ifdef CONFIG_MMU
 		unsigned long (*get_unmapped_area) (struct file *filp,
 				unsigned long addr, unsigned long len,
@@ -417,7 +525,6 @@ struct mm_struct {
 		unsigned long mmap_compat_legacy_base;
 #endif
 		unsigned long task_size;	/* size of task vm space */
-		unsigned long highest_vm_end;	/* highest vma end address */
 		pgd_t * pgd;
 
 #ifdef CONFIG_MEMBARRIER
@@ -518,8 +625,6 @@ struct mm_struct {
 
 		unsigned long flags; /* Must use atomic bitops to access */
 
-		struct core_state *core_state; /* coredumping support */
-
 #ifdef CONFIG_AIO
 		spinlock_t			ioctx_lock;
 		struct kioctx_table __rcu	*ioctx_table;
@@ -549,37 +654,68 @@ struct mm_struct {
 #endif
 #ifdef CONFIG_NUMA_BALANCING
 		/*
-		 * numa_next_scan is the next time that the PTEs will be marked
-		 * pte_numa. NUMA hinting faults will gather statistics and
-		 * migrate pages to new nodes if necessary.
+		 * numa_next_scan is the next time that PTEs will be remapped
+		 * PROT_NONE to trigger NUMA hinting faults; such faults gather
+		 * statistics and migrate pages to new nodes if necessary.
 		 */
 		unsigned long numa_next_scan;
 
-		/* Restart point for scanning and setting pte_numa */
+		/* Restart point for scanning and remapping PTEs. */
 		unsigned long numa_scan_offset;
 
-		/* numa_scan_seq prevents two threads setting pte_numa */
+		/* numa_scan_seq prevents two threads remapping PTEs. */
 		int numa_scan_seq;
 #endif
 		/*
 		 * An operation with batched TLB flushing is going on. Anything
 		 * that can move process memory needs to flush the TLB when
-		 * moving a PROT_NONE or PROT_NUMA mapped page.
+		 * moving a PROT_NONE mapped page.
 		 */
 		atomic_t tlb_flush_pending;
 #ifdef CONFIG_ARCH_WANT_BATCHED_UNMAP_TLB_FLUSH
 		/* See flush_tlb_batched_pending() */
-		bool tlb_flush_batched;
+		atomic_t tlb_flush_batched;
 #endif
 		struct uprobes_state uprobes_state;
+#ifdef CONFIG_PREEMPT_RT
+		struct rcu_head delayed_drop;
+#endif
 #ifdef CONFIG_HUGETLB_PAGE
 		atomic_long_t hugetlb_usage;
 #endif
 		struct work_struct async_put_work;
 
-#ifdef CONFIG_IOMMU_SUPPORT
+#ifdef CONFIG_IOMMU_SVA
 		u32 pasid;
 #endif
+#ifdef CONFIG_KSM
+		/*
+		 * Represent how many pages of this process are involved in KSM
+		 * merging.
+		 */
+		unsigned long ksm_merging_pages;
+		/*
+		 * Represent how many pages are checked for ksm merging
+		 * including merged and not merged.
+		 */
+		unsigned long ksm_rmap_items;
+#endif
+#ifdef CONFIG_LRU_GEN
+		struct {
+			/* this mm_struct is on lru_gen_mm_list */
+			struct list_head list;
+			/*
+			 * Set when switching to this mm_struct, as a hint of
+			 * whether it has been used since the last time per-node
+			 * page table walkers cleared the corresponding bits.
+			 */
+			unsigned long bitmap;
+#ifdef CONFIG_MEMCG
+			/* points to the memcg of "owner" above */
+			struct mem_cgroup *memcg;
+#endif
+		} lru_gen;
+#endif /* CONFIG_LRU_GEN */
 	} __randomize_layout;
 
 	/*
@@ -589,6 +725,7 @@ struct mm_struct {
 	unsigned long cpu_bitmap[];
 };
 
+#define MM_MT_FLAGS	(MT_FLAGS_ALLOC_RANGE | MT_FLAGS_LOCK_EXTERN)
 extern struct mm_struct init_mm;
 
 /* Pointer magic because the dynamic array size confuses some compilers. */
@@ -606,94 +743,91 @@ static inline cpumask_t *mm_cpumask(struct mm_struct *mm)
 	return (struct cpumask *)&mm->cpu_bitmap;
 }
 
+#ifdef CONFIG_LRU_GEN
+
+struct lru_gen_mm_list {
+	/* mm_struct list for page table walkers */
+	struct list_head fifo;
+	/* protects the list above */
+	spinlock_t lock;
+};
+
+void lru_gen_add_mm(struct mm_struct *mm);
+void lru_gen_del_mm(struct mm_struct *mm);
+#ifdef CONFIG_MEMCG
+void lru_gen_migrate_mm(struct mm_struct *mm);
+#endif
+
+static inline void lru_gen_init_mm(struct mm_struct *mm)
+{
+	INIT_LIST_HEAD(&mm->lru_gen.list);
+	mm->lru_gen.bitmap = 0;
+#ifdef CONFIG_MEMCG
+	mm->lru_gen.memcg = NULL;
+#endif
+}
+
+static inline void lru_gen_use_mm(struct mm_struct *mm)
+{
+	/*
+	 * When the bitmap is set, page reclaim knows this mm_struct has been
+	 * used since the last time it cleared the bitmap. So it might be worth
+	 * walking the page tables of this mm_struct to clear the accessed bit.
+	 */
+	WRITE_ONCE(mm->lru_gen.bitmap, -1);
+}
+
+#else /* !CONFIG_LRU_GEN */
+
+static inline void lru_gen_add_mm(struct mm_struct *mm)
+{
+}
+
+static inline void lru_gen_del_mm(struct mm_struct *mm)
+{
+}
+
+#ifdef CONFIG_MEMCG
+static inline void lru_gen_migrate_mm(struct mm_struct *mm)
+{
+}
+#endif
+
+static inline void lru_gen_init_mm(struct mm_struct *mm)
+{
+}
+
+static inline void lru_gen_use_mm(struct mm_struct *mm)
+{
+}
+
+#endif /* CONFIG_LRU_GEN */
+
+struct vma_iterator {
+	struct ma_state mas;
+};
+
+#define VMA_ITERATOR(name, __mm, __addr)				\
+	struct vma_iterator name = {					\
+		.mas = {						\
+			.tree = &(__mm)->mm_mt,				\
+			.index = __addr,				\
+			.node = MAS_START,				\
+		},							\
+	}
+
+static inline void vma_iter_init(struct vma_iterator *vmi,
+		struct mm_struct *mm, unsigned long addr)
+{
+	vmi->mas.tree = &mm->mm_mt;
+	vmi->mas.index = addr;
+	vmi->mas.node = MAS_START;
+}
+
 struct mmu_gather;
 extern void tlb_gather_mmu(struct mmu_gather *tlb, struct mm_struct *mm);
 extern void tlb_gather_mmu_fullmm(struct mmu_gather *tlb, struct mm_struct *mm);
 extern void tlb_finish_mmu(struct mmu_gather *tlb);
-
-static inline void init_tlb_flush_pending(struct mm_struct *mm)
-{
-	atomic_set(&mm->tlb_flush_pending, 0);
-}
-
-static inline void inc_tlb_flush_pending(struct mm_struct *mm)
-{
-	atomic_inc(&mm->tlb_flush_pending);
-	/*
-	 * The only time this value is relevant is when there are indeed pages
-	 * to flush. And we'll only flush pages after changing them, which
-	 * requires the PTL.
-	 *
-	 * So the ordering here is:
-	 *
-	 *	atomic_inc(&mm->tlb_flush_pending);
-	 *	spin_lock(&ptl);
-	 *	...
-	 *	set_pte_at();
-	 *	spin_unlock(&ptl);
-	 *
-	 *				spin_lock(&ptl)
-	 *				mm_tlb_flush_pending();
-	 *				....
-	 *				spin_unlock(&ptl);
-	 *
-	 *	flush_tlb_range();
-	 *	atomic_dec(&mm->tlb_flush_pending);
-	 *
-	 * Where the increment if constrained by the PTL unlock, it thus
-	 * ensures that the increment is visible if the PTE modification is
-	 * visible. After all, if there is no PTE modification, nobody cares
-	 * about TLB flushes either.
-	 *
-	 * This very much relies on users (mm_tlb_flush_pending() and
-	 * mm_tlb_flush_nested()) only caring about _specific_ PTEs (and
-	 * therefore specific PTLs), because with SPLIT_PTE_PTLOCKS and RCpc
-	 * locks (PPC) the unlock of one doesn't order against the lock of
-	 * another PTL.
-	 *
-	 * The decrement is ordered by the flush_tlb_range(), such that
-	 * mm_tlb_flush_pending() will not return false unless all flushes have
-	 * completed.
-	 */
-}
-
-static inline void dec_tlb_flush_pending(struct mm_struct *mm)
-{
-	/*
-	 * See inc_tlb_flush_pending().
-	 *
-	 * This cannot be smp_mb__before_atomic() because smp_mb() simply does
-	 * not order against TLB invalidate completion, which is what we need.
-	 *
-	 * Therefore we must rely on tlb_flush_*() to guarantee order.
-	 */
-	atomic_dec(&mm->tlb_flush_pending);
-}
-
-static inline bool mm_tlb_flush_pending(struct mm_struct *mm)
-{
-	/*
-	 * Must be called after having acquired the PTL; orders against that
-	 * PTLs release and therefore ensures that if we observe the modified
-	 * PTE we must also observe the increment from inc_tlb_flush_pending().
-	 *
-	 * That is, it only guarantees to return true if there is a flush
-	 * pending for _this_ PTL.
-	 */
-	return atomic_read(&mm->tlb_flush_pending);
-}
-
-static inline bool mm_tlb_flush_nested(struct mm_struct *mm)
-{
-	/*
-	 * Similar to mm_tlb_flush_pending(), we must have acquired the PTL
-	 * for which there is a TLB flush pending in order to guarantee
-	 * we've seen both that PTE modification and the increment.
-	 *
-	 * (no requirement on actually still holding the PTL, that is irrelevant)
-	 */
-	return atomic_read(&mm->tlb_flush_pending) > 1;
-}
 
 struct vm_fault;
 
@@ -726,6 +860,7 @@ typedef __bitwise unsigned int vm_fault_t;
  * @VM_FAULT_NEEDDSYNC:		->fault did not modify page tables and needs
  *				fsync() to complete (for synchronous page faults
  *				in DAX)
+ * @VM_FAULT_COMPLETED:		->fault completed, meanwhile mmap lock released
  * @VM_FAULT_HINDEX_MASK:	mask HINDEX value
  *
  */
@@ -743,6 +878,7 @@ enum vm_fault_reason {
 	VM_FAULT_FALLBACK       = (__force vm_fault_t)0x000800,
 	VM_FAULT_DONE_COW       = (__force vm_fault_t)0x001000,
 	VM_FAULT_NEEDDSYNC      = (__force vm_fault_t)0x002000,
+	VM_FAULT_COMPLETED      = (__force vm_fault_t)0x004000,
 	VM_FAULT_HINDEX_MASK    = (__force vm_fault_t)0x0f0000,
 };
 
@@ -808,5 +944,63 @@ enum tlb_flush_reason {
 typedef struct {
 	unsigned long val;
 } swp_entry_t;
+
+/**
+ * enum fault_flag - Fault flag definitions.
+ * @FAULT_FLAG_WRITE: Fault was a write fault.
+ * @FAULT_FLAG_MKWRITE: Fault was mkwrite of existing PTE.
+ * @FAULT_FLAG_ALLOW_RETRY: Allow to retry the fault if blocked.
+ * @FAULT_FLAG_RETRY_NOWAIT: Don't drop mmap_lock and wait when retrying.
+ * @FAULT_FLAG_KILLABLE: The fault task is in SIGKILL killable region.
+ * @FAULT_FLAG_TRIED: The fault has been tried once.
+ * @FAULT_FLAG_USER: The fault originated in userspace.
+ * @FAULT_FLAG_REMOTE: The fault is not for current task/mm.
+ * @FAULT_FLAG_INSTRUCTION: The fault was during an instruction fetch.
+ * @FAULT_FLAG_INTERRUPTIBLE: The fault can be interrupted by non-fatal signals.
+ * @FAULT_FLAG_UNSHARE: The fault is an unsharing request to unshare (and mark
+ *                      exclusive) a possibly shared anonymous page that is
+ *                      mapped R/O.
+ * @FAULT_FLAG_ORIG_PTE_VALID: whether the fault has vmf->orig_pte cached.
+ *                        We should only access orig_pte if this flag set.
+ *
+ * About @FAULT_FLAG_ALLOW_RETRY and @FAULT_FLAG_TRIED: we can specify
+ * whether we would allow page faults to retry by specifying these two
+ * fault flags correctly.  Currently there can be three legal combinations:
+ *
+ * (a) ALLOW_RETRY and !TRIED:  this means the page fault allows retry, and
+ *                              this is the first try
+ *
+ * (b) ALLOW_RETRY and TRIED:   this means the page fault allows retry, and
+ *                              we've already tried at least once
+ *
+ * (c) !ALLOW_RETRY and !TRIED: this means the page fault does not allow retry
+ *
+ * The unlisted combination (!ALLOW_RETRY && TRIED) is illegal and should never
+ * be used.  Note that page faults can be allowed to retry for multiple times,
+ * in which case we'll have an initial fault with flags (a) then later on
+ * continuous faults with flags (b).  We should always try to detect pending
+ * signals before a retry to make sure the continuous page faults can still be
+ * interrupted if necessary.
+ *
+ * The combination FAULT_FLAG_WRITE|FAULT_FLAG_UNSHARE is illegal.
+ * FAULT_FLAG_UNSHARE is ignored and treated like an ordinary read fault when
+ * no existing R/O-mapped anonymous page is encountered.
+ */
+enum fault_flag {
+	FAULT_FLAG_WRITE =		1 << 0,
+	FAULT_FLAG_MKWRITE =		1 << 1,
+	FAULT_FLAG_ALLOW_RETRY =	1 << 2,
+	FAULT_FLAG_RETRY_NOWAIT = 	1 << 3,
+	FAULT_FLAG_KILLABLE =		1 << 4,
+	FAULT_FLAG_TRIED = 		1 << 5,
+	FAULT_FLAG_USER =		1 << 6,
+	FAULT_FLAG_REMOTE =		1 << 7,
+	FAULT_FLAG_INSTRUCTION =	1 << 8,
+	FAULT_FLAG_INTERRUPTIBLE =	1 << 9,
+	FAULT_FLAG_UNSHARE =		1 << 10,
+	FAULT_FLAG_ORIG_PTE_VALID =	1 << 11,
+};
+
+typedef unsigned int __bitwise zap_flags_t;
 
 #endif /* _LINUX_MM_TYPES_H */

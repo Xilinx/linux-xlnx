@@ -46,8 +46,7 @@ void mlx5e_mkey_set_relaxed_ordering(struct mlx5_core_dev *mdev, void *mkc)
 	MLX5_SET(mkc, mkc, relaxed_ordering_write, ro_pci_enable && ro_write);
 }
 
-static int mlx5e_create_mkey(struct mlx5_core_dev *mdev, u32 pdn,
-			     struct mlx5_core_mkey *mkey)
+int mlx5e_create_mkey(struct mlx5_core_dev *mdev, u32 pdn, u32 *mkey)
 {
 	int inlen = MLX5_ST_SZ_BYTES(create_mkey_in);
 	void *mkc;
@@ -108,7 +107,7 @@ int mlx5e_create_mdev_resources(struct mlx5_core_dev *mdev)
 	return 0;
 
 err_destroy_mkey:
-	mlx5_core_destroy_mkey(mdev, &res->mkey);
+	mlx5_core_destroy_mkey(mdev, res->mkey);
 err_dealloc_transport_domain:
 	mlx5_core_dealloc_transport_domain(mdev, res->td.tdn);
 err_dealloc_pd:
@@ -121,7 +120,7 @@ void mlx5e_destroy_mdev_resources(struct mlx5_core_dev *mdev)
 	struct mlx5e_hw_objs *res = &mdev->mlx5e_res.hw_objs;
 
 	mlx5_free_bfreg(mdev, &res->bfreg);
-	mlx5_core_destroy_mkey(mdev, &res->mkey);
+	mlx5_core_destroy_mkey(mdev, res->mkey);
 	mlx5_core_dealloc_transport_domain(mdev, res->td.tdn);
 	mlx5_core_dealloc_pd(mdev, res->pdn);
 	memset(res, 0, sizeof(*res));

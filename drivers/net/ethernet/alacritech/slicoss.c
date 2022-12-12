@@ -1008,7 +1008,7 @@ static void slic_set_link_autoneg(struct slic_device *sdev)
 
 static void slic_set_mac_address(struct slic_device *sdev)
 {
-	u8 *addr = sdev->netdev->dev_addr;
+	const u8 *addr = sdev->netdev->dev_addr;
 	u32 val;
 
 	val = addr[5] | addr[4] << 8 | addr[3] << 16 | addr[2] << 24;
@@ -1531,8 +1531,8 @@ static void slic_get_drvinfo(struct net_device *dev,
 {
 	struct slic_device *sdev = netdev_priv(dev);
 
-	strlcpy(info->driver, DRV_NAME, sizeof(info->driver));
-	strlcpy(info->bus_info, pci_name(sdev->pdev), sizeof(info->bus_info));
+	strscpy(info->driver, DRV_NAME, sizeof(info->driver));
+	strscpy(info->bus_info, pci_name(sdev->pdev), sizeof(info->bus_info));
 }
 
 static const struct ethtool_ops slic_ethtool_ops = {
@@ -1660,7 +1660,7 @@ static int slic_read_eeprom(struct slic_device *sdev)
 		goto free_eeprom;
 	}
 	/* set mac address */
-	ether_addr_copy(sdev->netdev->dev_addr, mac[devfn]);
+	eth_hw_addr_set(sdev->netdev, mac[devfn]);
 free_eeprom:
 	dma_free_coherent(&sdev->pdev->dev, SLIC_EEPROM_SIZE, eeprom, paddr);
 
@@ -1803,7 +1803,7 @@ static int slic_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto unmap;
 	}
 
-	netif_napi_add(dev, &sdev->napi, slic_poll, SLIC_NAPI_WEIGHT);
+	netif_napi_add(dev, &sdev->napi, slic_poll);
 	netif_carrier_off(dev);
 
 	err = register_netdev(dev);

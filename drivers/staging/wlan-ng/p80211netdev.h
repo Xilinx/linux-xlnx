@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: (GPL-2.0 OR MPL-1.1) */
-/* p80211netdev.h
+/*
  *
  * WLAN net device structure and functions
  *
@@ -137,8 +137,6 @@ struct p80211_frmrx {
 
 /* called by /proc/net/wireless */
 struct iw_statistics *p80211wext_get_wireless_stats(struct net_device *dev);
-/* wireless extensions' ioctls */
-extern struct iw_handler_def p80211wext_handler_def;
 
 /* WEP stuff */
 #define NUM_WEPKEYS 4

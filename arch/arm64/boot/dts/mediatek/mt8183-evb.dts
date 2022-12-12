@@ -36,6 +36,14 @@
 			no-map;
 		};
 	};
+
+	ntc@0 {
+		compatible = "murata,ncp03wf104";
+		pullup-uv = <1800000>;
+		pullup-ohm = <390000>;
+		pulldown-ohm = <0>;
+		io-channels = <&auxadc 0>;
+	};
 };
 
 &auxadc {
@@ -126,7 +134,7 @@
 	vmmc-supply = <&mt6358_vmch_reg>;
 	vqmmc-supply = <&mt6358_vmc_reg>;
 	keep-power-in-suspend;
-	enable-sdio-wakeup;
+	wakeup-source;
 	non-removable;
 };
 
@@ -402,6 +410,42 @@
 	mediatek,pad-select = <0>;
 	status = "okay";
 
+};
+
+&cci {
+	proc-supply = <&mt6358_vproc12_reg>;
+};
+
+&cpu0 {
+	proc-supply = <&mt6358_vproc12_reg>;
+};
+
+&cpu1 {
+	proc-supply = <&mt6358_vproc12_reg>;
+};
+
+&cpu2 {
+	proc-supply = <&mt6358_vproc12_reg>;
+};
+
+&cpu3 {
+	proc-supply = <&mt6358_vproc12_reg>;
+};
+
+&cpu4 {
+	proc-supply = <&mt6358_vproc11_reg>;
+};
+
+&cpu5 {
+	proc-supply = <&mt6358_vproc11_reg>;
+};
+
+&cpu6 {
+	proc-supply = <&mt6358_vproc11_reg>;
+};
+
+&cpu7 {
+	proc-supply = <&mt6358_vproc11_reg>;
 };
 
 &uart0 {

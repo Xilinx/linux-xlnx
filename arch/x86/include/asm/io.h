@@ -40,9 +40,11 @@
 
 #include <linux/string.h>
 #include <linux/compiler.h>
+#include <linux/cc_platform.h>
 #include <asm/page.h>
 #include <asm/early_ioremap.h>
 #include <asm/pgtable_types.h>
+#include <asm/shared/io.h>
 
 #define build_mmio_read(name, size, type, reg, barrier) \
 static inline type name(const volatile void __iomem *addr) \
@@ -168,15 +170,6 @@ static inline unsigned int isa_virt_to_bus(volatile void *address)
 #define isa_bus_to_virt		phys_to_virt
 
 /*
- * However PCI ones are not necessarily 1:1 and therefore these interfaces
- * are forbidden in portable PCI drivers.
- *
- * Allow them on x86 for legacy drivers, though.
- */
-#define virt_to_bus virt_to_phys
-#define bus_to_virt phys_to_virt
-
-/*
  * The default ioremap() behavior is non-cached; if you need something
  * else, you probably want one of the following.
  */
@@ -208,8 +201,6 @@ void __iomem *ioremap(resource_size_t offset, unsigned long size);
 
 extern void iounmap(volatile void __iomem *addr);
 #define iounmap iounmap
-
-extern void set_iounmap_nonlazy(void);
 
 #ifdef __KERNEL__
 
@@ -256,53 +247,24 @@ static inline void slow_down_io(void)
 
 #endif
 
-#ifdef CONFIG_AMD_MEM_ENCRYPT
-#include <linux/jump_label.h>
-
-extern struct static_key_false sev_enable_key;
-static inline bool sev_key_active(void)
-{
-	return static_branch_unlikely(&sev_enable_key);
-}
-
-#else /* !CONFIG_AMD_MEM_ENCRYPT */
-
-static inline bool sev_key_active(void) { return false; }
-
-#endif /* CONFIG_AMD_MEM_ENCRYPT */
-
 #define BUILDIO(bwl, bw, type)						\
-static inline void out##bwl(unsigned type value, int port)		\
-{									\
-	asm volatile("out" #bwl " %" #bw "0, %w1"			\
-		     : : "a"(value), "Nd"(port));			\
-}									\
-									\
-static inline unsigned type in##bwl(int port)				\
-{									\
-	unsigned type value;						\
-	asm volatile("in" #bwl " %w1, %" #bw "0"			\
-		     : "=a"(value) : "Nd"(port));			\
-	return value;							\
-}									\
-									\
-static inline void out##bwl##_p(unsigned type value, int port)		\
+static inline void out##bwl##_p(type value, u16 port)			\
 {									\
 	out##bwl(value, port);						\
 	slow_down_io();							\
 }									\
 									\
-static inline unsigned type in##bwl##_p(int port)			\
+static inline type in##bwl##_p(u16 port)				\
 {									\
-	unsigned type value = in##bwl(port);				\
+	type value = in##bwl(port);					\
 	slow_down_io();							\
 	return value;							\
 }									\
 									\
-static inline void outs##bwl(int port, const void *addr, unsigned long count) \
+static inline void outs##bwl(u16 port, const void *addr, unsigned long count) \
 {									\
-	if (sev_key_active()) {						\
-		unsigned type *value = (unsigned type *)addr;		\
+	if (cc_platform_has(CC_ATTR_GUEST_UNROLL_STRING_IO)) {		\
+		type *value = (type *)addr;				\
 		while (count) {						\
 			out##bwl(*value, port);				\
 			value++;					\
@@ -315,10 +277,10 @@ static inline void outs##bwl(int port, const void *addr, unsigned long count) \
 	}								\
 }									\
 									\
-static inline void ins##bwl(int port, void *addr, unsigned long count)	\
+static inline void ins##bwl(u16 port, void *addr, unsigned long count)	\
 {									\
-	if (sev_key_active()) {						\
-		unsigned type *value = (unsigned type *)addr;		\
+	if (cc_platform_has(CC_ATTR_GUEST_UNROLL_STRING_IO)) {		\
+		type *value = (type *)addr;				\
 		while (count) {						\
 			*value = in##bwl(port);				\
 			value++;					\
@@ -331,13 +293,11 @@ static inline void ins##bwl(int port, void *addr, unsigned long count)	\
 	}								\
 }
 
-BUILDIO(b, b, char)
-BUILDIO(w, w, short)
-BUILDIO(l, , int)
+BUILDIO(b, b, u8)
+BUILDIO(w, w, u16)
+BUILDIO(l,  , u32)
+#undef BUILDIO
 
-#define inb inb
-#define inw inw
-#define inl inl
 #define inb_p inb_p
 #define inw_p inw_p
 #define inl_p inl_p
@@ -345,9 +305,6 @@ BUILDIO(l, , int)
 #define insw insw
 #define insl insl
 
-#define outb outb
-#define outw outw
-#define outl outl
 #define outb_p outb_p
 #define outw_p outw_p
 #define outl_p outl_p
@@ -391,6 +348,7 @@ extern void arch_io_free_memtype_wc(resource_size_t start, resource_size_t size)
 #define arch_io_reserve_memtype_wc arch_io_reserve_memtype_wc
 #endif
 
+#ifdef CONFIG_AMD_MEM_ENCRYPT
 extern bool arch_memremap_can_ram_remap(resource_size_t offset,
 					unsigned long size,
 					unsigned long flags);
@@ -398,6 +356,13 @@ extern bool arch_memremap_can_ram_remap(resource_size_t offset,
 
 extern bool phys_mem_access_encrypted(unsigned long phys_addr,
 				      unsigned long size);
+#else
+static inline bool phys_mem_access_encrypted(unsigned long phys_addr,
+					     unsigned long size)
+{
+	return true;
+}
+#endif
 
 /**
  * iosubmit_cmds512 - copy data to single MMIO location, in 512-bit units

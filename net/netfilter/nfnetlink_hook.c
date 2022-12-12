@@ -6,6 +6,7 @@
  */
 
 #include <linux/module.h>
+#include <linux/kallsyms.h>
 #include <linux/kernel.h>
 #include <linux/types.h>
 #include <linux/skbuff.h>
@@ -185,7 +186,7 @@ static const struct nf_hook_entries *
 nfnl_hook_entries_head(u8 pf, unsigned int hook, struct net *net, const char *dev)
 {
 	const struct nf_hook_entries *hook_head = NULL;
-#ifdef CONFIG_NETFILTER_INGRESS
+#if defined(CONFIG_NETFILTER_INGRESS) || defined(CONFIG_NETFILTER_EGRESS)
 	struct net_device *netdev;
 #endif
 
@@ -214,16 +215,9 @@ nfnl_hook_entries_head(u8 pf, unsigned int hook, struct net *net, const char *de
 		hook_head = rcu_dereference(net->nf.hooks_bridge[hook]);
 #endif
 		break;
-#if IS_ENABLED(CONFIG_DECNET)
-	case NFPROTO_DECNET:
-		if (hook >= ARRAY_SIZE(net->nf.hooks_decnet))
-			return ERR_PTR(-EINVAL);
-		hook_head = rcu_dereference(net->nf.hooks_decnet[hook]);
-		break;
-#endif
-#ifdef CONFIG_NETFILTER_INGRESS
+#if defined(CONFIG_NETFILTER_INGRESS) || defined(CONFIG_NETFILTER_EGRESS)
 	case NFPROTO_NETDEV:
-		if (hook != NF_NETDEV_INGRESS)
+		if (hook >= NF_NETDEV_NUMHOOKS)
 			return ERR_PTR(-EOPNOTSUPP);
 
 		if (!dev)
@@ -233,7 +227,15 @@ nfnl_hook_entries_head(u8 pf, unsigned int hook, struct net *net, const char *de
 		if (!netdev)
 			return ERR_PTR(-ENODEV);
 
-		return rcu_dereference(netdev->nf_hooks_ingress);
+#ifdef CONFIG_NETFILTER_INGRESS
+		if (hook == NF_NETDEV_INGRESS)
+			return rcu_dereference(netdev->nf_hooks_ingress);
+#endif
+#ifdef CONFIG_NETFILTER_EGRESS
+		if (hook == NF_NETDEV_EGRESS)
+			return rcu_dereference(netdev->nf_hooks_egress);
+#endif
+		fallthrough;
 #endif
 	default:
 		return ERR_PTR(-EPROTONOSUPPORT);

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0
 #include <test_progs.h>
 
-void test_tp_attach_query(void)
+void serial_test_tp_attach_query(void)
 {
 	const int num_progs = 3;
 	int i, j, bytes, efd, err, prog_fd[num_progs], pmu_fd[num_progs];
 	__u32 duration = 0, info_len, saved_prog_ids[num_progs];
-	const char *file = "./test_tracepoint.o";
+	const char *file = "./test_tracepoint.bpf.o";
 	struct perf_event_query_bpf *query;
 	struct perf_event_attr attr = {};
 	struct bpf_object *obj[num_progs];
@@ -35,7 +35,7 @@ void test_tp_attach_query(void)
 
 	query = malloc(sizeof(*query) + sizeof(__u32) * num_progs);
 	for (i = 0; i < num_progs; i++) {
-		err = bpf_prog_load(file, BPF_PROG_TYPE_TRACEPOINT, &obj[i],
+		err = bpf_prog_test_load(file, BPF_PROG_TYPE_TRACEPOINT, &obj[i],
 				    &prog_fd[i]);
 		if (CHECK(err, "prog_load", "err %d errno %d\n", err, errno))
 			goto cleanup1;

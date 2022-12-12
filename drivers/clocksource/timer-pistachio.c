@@ -1,11 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Pistachio clocksource based on general-purpose timers
  *
  * Copyright (C) 2015 Imagination Technologies
- *
- * This file is subject to the terms and conditions of the GNU General Public
- * License. See the file "COPYING" in the main directory of this archive
- * for more details.
  */
 
 #define pr_fmt(fmt) "%s: " fmt, __func__
@@ -71,7 +68,8 @@ static u64 notrace
 pistachio_clocksource_read_cycles(struct clocksource *cs)
 {
 	struct pistachio_clocksource *pcs = to_pistachio_clocksource(cs);
-	u32 counter, overflow;
+	__maybe_unused u32 overflow;
+	u32 counter;
 	unsigned long flags;
 
 	/*

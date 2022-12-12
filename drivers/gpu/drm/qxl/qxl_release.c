@@ -36,10 +36,10 @@
 /* manage releaseables */
 /* stack them 16 high for now -drawable object is 191 */
 #define RELEASE_SIZE 256
-#define RELEASES_PER_BO (4096 / RELEASE_SIZE)
+#define RELEASES_PER_BO (PAGE_SIZE / RELEASE_SIZE)
 /* put an alloc/dealloc surface cmd into one bo and round up to 128 */
 #define SURFACE_RELEASE_SIZE 128
-#define SURFACE_RELEASES_PER_BO (4096 / SURFACE_RELEASE_SIZE)
+#define SURFACE_RELEASES_PER_BO (PAGE_SIZE / SURFACE_RELEASE_SIZE)
 
 static const int release_size_per_bo[] = { RELEASE_SIZE, SURFACE_RELEASE_SIZE, RELEASE_SIZE };
 static const int releases_per_bo[] = { RELEASES_PER_BO, SURFACE_RELEASES_PER_BO, RELEASES_PER_BO };
@@ -200,7 +200,7 @@ static int qxl_release_validate_bo(struct qxl_bo *bo)
 			return ret;
 	}
 
-	ret = dma_resv_reserve_shared(bo->tbo.base.resv, 1);
+	ret = dma_resv_reserve_fences(bo->tbo.base.resv, 1);
 	if (ret)
 		return ret;
 
@@ -429,7 +429,8 @@ void qxl_release_fence_buffer_objects(struct qxl_release *release)
 	list_for_each_entry(entry, &release->bos, head) {
 		bo = entry->bo;
 
-		dma_resv_add_shared_fence(bo->base.resv, &release->base);
+		dma_resv_add_fence(bo->base.resv, &release->base,
+				   DMA_RESV_USAGE_READ);
 		ttm_bo_move_to_lru_tail_unlocked(bo);
 		dma_resv_unlock(bo->base.resv);
 	}

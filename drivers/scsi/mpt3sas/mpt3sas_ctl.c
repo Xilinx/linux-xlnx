@@ -578,7 +578,7 @@ static int
 _ctl_set_task_mid(struct MPT3SAS_ADAPTER *ioc, struct mpt3_ioctl_command *karg,
 	Mpi2SCSITaskManagementRequest_t *tm_request)
 {
-	u8 found = 0;
+	bool found = false;
 	u16 smid;
 	u16 handle;
 	struct scsi_cmnd *scmd;
@@ -600,6 +600,7 @@ _ctl_set_task_mid(struct MPT3SAS_ADAPTER *ioc, struct mpt3_ioctl_command *karg,
 	handle = le16_to_cpu(tm_request->DevHandle);
 	for (smid = ioc->scsiio_depth; smid && !found; smid--) {
 		struct scsiio_tracker *st;
+		__le16 task_mid;
 
 		scmd = mpt3sas_scsih_scsi_lookup_get(ioc, smid);
 		if (!scmd)
@@ -618,10 +619,10 @@ _ctl_set_task_mid(struct MPT3SAS_ADAPTER *ioc, struct mpt3_ioctl_command *karg,
 		 * first outstanding smid will be picked up.  Otherwise,
 		 * targeted smid will be the one.
 		 */
-		if (!tm_request->TaskMID || tm_request->TaskMID == st->smid) {
-			tm_request->TaskMID = cpu_to_le16(st->smid);
-			found = 1;
-		}
+		task_mid = cpu_to_le16(st->smid);
+		if (!tm_request->TaskMID)
+			tm_request->TaskMID = task_mid;
+		found = tm_request->TaskMID == task_mid;
 	}
 
 	if (!found) {
@@ -947,6 +948,14 @@ _ctl_do_mpt_command(struct MPT3SAS_ADAPTER *ioc, struct mpt3_ioctl_command karg,
 		break;
 	}
 	case MPI2_FUNCTION_FW_DOWNLOAD:
+	{
+		if (ioc->pdev->vendor == MPI2_MFGPAGE_VENDORID_ATTO) {
+			ioc_info(ioc, "Firmware download not supported for ATTO HBA.\n");
+			ret = -EPERM;
+			break;
+		}
+		fallthrough;
+	}
 	case MPI2_FUNCTION_FW_UPLOAD:
 	{
 		ioc->build_sg(ioc, psge, data_out_dma, data_out_sz, data_in_dma,
@@ -1685,6 +1694,7 @@ _ctl_diag_register_2(struct MPT3SAS_ADAPTER *ioc,
 	ioc->ctl_cmds.status = MPT3_CMD_PENDING;
 	memset(ioc->ctl_cmds.reply, 0, ioc->reply_sz);
 	mpi_request = mpt3sas_base_get_msg_frame(ioc, smid);
+	memset(mpi_request, 0, ioc->request_sz);
 	ioc->ctl_cmds.smid = smid;
 
 	request_data = ioc->diag_buffer[buffer_type];
@@ -1786,6 +1796,7 @@ _ctl_diag_register_2(struct MPT3SAS_ADAPTER *ioc,
 	if (rc && request_data) {
 		dma_free_coherent(&ioc->pdev->dev, request_data_sz,
 		    request_data, request_data_dma);
+		ioc->diag_buffer[buffer_type] = NULL;
 		ioc->diag_buffer_status[buffer_type] &=
 		    ~MPT3_DIAG_BUFFER_IS_DRIVER_ALLOCATED;
 	}
@@ -2162,6 +2173,7 @@ mpt3sas_send_diag_release(struct MPT3SAS_ADAPTER *ioc, u8 buffer_type,
 	ioc->ctl_cmds.status = MPT3_CMD_PENDING;
 	memset(ioc->ctl_cmds.reply, 0, ioc->reply_sz);
 	mpi_request = mpt3sas_base_get_msg_frame(ioc, smid);
+	memset(mpi_request, 0, ioc->request_sz);
 	ioc->ctl_cmds.smid = smid;
 
 	mpi_request->Function = MPI2_FUNCTION_DIAG_RELEASE;
@@ -2416,6 +2428,7 @@ _ctl_diag_read_buffer(struct MPT3SAS_ADAPTER *ioc, void __user *arg)
 	ioc->ctl_cmds.status = MPT3_CMD_PENDING;
 	memset(ioc->ctl_cmds.reply, 0, ioc->reply_sz);
 	mpi_request = mpt3sas_base_get_msg_frame(ioc, smid);
+	memset(mpi_request, 0, ioc->request_sz);
 	ioc->ctl_cmds.smid = smid;
 
 	mpi_request->Function = MPI2_FUNCTION_DIAG_BUFFER_POST;
@@ -3533,11 +3546,31 @@ diag_trigger_master_store(struct device *cdev,
 {
 	struct Scsi_Host *shost = class_to_shost(cdev);
 	struct MPT3SAS_ADAPTER *ioc = shost_priv(shost);
+	struct SL_WH_MASTER_TRIGGER_T *master_tg;
 	unsigned long flags;
 	ssize_t rc;
+	bool set = 1;
+
+	rc = min(sizeof(struct SL_WH_MASTER_TRIGGER_T), count);
+
+	if (ioc->supports_trigger_pages) {
+		master_tg = kzalloc(sizeof(struct SL_WH_MASTER_TRIGGER_T),
+		    GFP_KERNEL);
+		if (!master_tg)
+			return -ENOMEM;
+
+		memcpy(master_tg, buf, rc);
+		if (!master_tg->MasterData)
+			set = 0;
+		if (mpt3sas_config_update_driver_trigger_pg1(ioc, master_tg,
+		    set)) {
+			kfree(master_tg);
+			return -EFAULT;
+		}
+		kfree(master_tg);
+	}
 
 	spin_lock_irqsave(&ioc->diag_trigger_lock, flags);
-	rc = min(sizeof(struct SL_WH_MASTER_TRIGGER_T), count);
 	memset(&ioc->diag_trigger_master, 0,
 	    sizeof(struct SL_WH_MASTER_TRIGGER_T));
 	memcpy(&ioc->diag_trigger_master, buf, rc);
@@ -3589,11 +3622,31 @@ diag_trigger_event_store(struct device *cdev,
 {
 	struct Scsi_Host *shost = class_to_shost(cdev);
 	struct MPT3SAS_ADAPTER *ioc = shost_priv(shost);
+	struct SL_WH_EVENT_TRIGGERS_T *event_tg;
 	unsigned long flags;
 	ssize_t sz;
+	bool set = 1;
+
+	sz = min(sizeof(struct SL_WH_EVENT_TRIGGERS_T), count);
+	if (ioc->supports_trigger_pages) {
+		event_tg = kzalloc(sizeof(struct SL_WH_EVENT_TRIGGERS_T),
+		    GFP_KERNEL);
+		if (!event_tg)
+			return -ENOMEM;
+
+		memcpy(event_tg, buf, sz);
+		if (!event_tg->ValidEntries)
+			set = 0;
+		if (mpt3sas_config_update_driver_trigger_pg2(ioc, event_tg,
+		    set)) {
+			kfree(event_tg);
+			return -EFAULT;
+		}
+		kfree(event_tg);
+	}
 
 	spin_lock_irqsave(&ioc->diag_trigger_lock, flags);
-	sz = min(sizeof(struct SL_WH_EVENT_TRIGGERS_T), count);
+
 	memset(&ioc->diag_trigger_event, 0,
 	    sizeof(struct SL_WH_EVENT_TRIGGERS_T));
 	memcpy(&ioc->diag_trigger_event, buf, sz);
@@ -3644,11 +3697,31 @@ diag_trigger_scsi_store(struct device *cdev,
 {
 	struct Scsi_Host *shost = class_to_shost(cdev);
 	struct MPT3SAS_ADAPTER *ioc = shost_priv(shost);
+	struct SL_WH_SCSI_TRIGGERS_T *scsi_tg;
 	unsigned long flags;
 	ssize_t sz;
+	bool set = 1;
+
+	sz = min(sizeof(struct SL_WH_SCSI_TRIGGERS_T), count);
+	if (ioc->supports_trigger_pages) {
+		scsi_tg = kzalloc(sizeof(struct SL_WH_SCSI_TRIGGERS_T),
+		    GFP_KERNEL);
+		if (!scsi_tg)
+			return -ENOMEM;
+
+		memcpy(scsi_tg, buf, sz);
+		if (!scsi_tg->ValidEntries)
+			set = 0;
+		if (mpt3sas_config_update_driver_trigger_pg3(ioc, scsi_tg,
+		    set)) {
+			kfree(scsi_tg);
+			return -EFAULT;
+		}
+		kfree(scsi_tg);
+	}
 
 	spin_lock_irqsave(&ioc->diag_trigger_lock, flags);
-	sz = min(sizeof(ioc->diag_trigger_scsi), count);
+
 	memset(&ioc->diag_trigger_scsi, 0, sizeof(ioc->diag_trigger_scsi));
 	memcpy(&ioc->diag_trigger_scsi, buf, sz);
 	if (ioc->diag_trigger_scsi.ValidEntries > NUM_VALID_ENTRIES)
@@ -3698,11 +3771,30 @@ diag_trigger_mpi_store(struct device *cdev,
 {
 	struct Scsi_Host *shost = class_to_shost(cdev);
 	struct MPT3SAS_ADAPTER *ioc = shost_priv(shost);
+	struct SL_WH_MPI_TRIGGERS_T *mpi_tg;
 	unsigned long flags;
 	ssize_t sz;
+	bool set = 1;
+
+	sz = min(sizeof(struct SL_WH_MPI_TRIGGERS_T), count);
+	if (ioc->supports_trigger_pages) {
+		mpi_tg = kzalloc(sizeof(struct SL_WH_MPI_TRIGGERS_T),
+		    GFP_KERNEL);
+		if (!mpi_tg)
+			return -ENOMEM;
+
+		memcpy(mpi_tg, buf, sz);
+		if (!mpi_tg->ValidEntries)
+			set = 0;
+		if (mpt3sas_config_update_driver_trigger_pg4(ioc, mpi_tg,
+		    set)) {
+			kfree(mpi_tg);
+			return -EFAULT;
+		}
+		kfree(mpi_tg);
+	}
 
 	spin_lock_irqsave(&ioc->diag_trigger_lock, flags);
-	sz = min(sizeof(struct SL_WH_MPI_TRIGGERS_T), count);
 	memset(&ioc->diag_trigger_mpi, 0,
 	    sizeof(ioc->diag_trigger_mpi));
 	memcpy(&ioc->diag_trigger_mpi, buf, sz);
@@ -3842,35 +3934,44 @@ enable_sdev_max_qd_store(struct device *cdev,
 }
 static DEVICE_ATTR_RW(enable_sdev_max_qd);
 
-struct device_attribute *mpt3sas_host_attrs[] = {
-	&dev_attr_version_fw,
-	&dev_attr_version_bios,
-	&dev_attr_version_mpi,
-	&dev_attr_version_product,
-	&dev_attr_version_nvdata_persistent,
-	&dev_attr_version_nvdata_default,
-	&dev_attr_board_name,
-	&dev_attr_board_assembly,
-	&dev_attr_board_tracer,
-	&dev_attr_io_delay,
-	&dev_attr_device_delay,
-	&dev_attr_logging_level,
-	&dev_attr_fwfault_debug,
-	&dev_attr_fw_queue_depth,
-	&dev_attr_host_sas_address,
-	&dev_attr_ioc_reset_count,
-	&dev_attr_host_trace_buffer_size,
-	&dev_attr_host_trace_buffer,
-	&dev_attr_host_trace_buffer_enable,
-	&dev_attr_reply_queue_count,
-	&dev_attr_diag_trigger_master,
-	&dev_attr_diag_trigger_event,
-	&dev_attr_diag_trigger_scsi,
-	&dev_attr_diag_trigger_mpi,
-	&dev_attr_drv_support_bitmap,
-	&dev_attr_BRM_status,
-	&dev_attr_enable_sdev_max_qd,
+static struct attribute *mpt3sas_host_attrs[] = {
+	&dev_attr_version_fw.attr,
+	&dev_attr_version_bios.attr,
+	&dev_attr_version_mpi.attr,
+	&dev_attr_version_product.attr,
+	&dev_attr_version_nvdata_persistent.attr,
+	&dev_attr_version_nvdata_default.attr,
+	&dev_attr_board_name.attr,
+	&dev_attr_board_assembly.attr,
+	&dev_attr_board_tracer.attr,
+	&dev_attr_io_delay.attr,
+	&dev_attr_device_delay.attr,
+	&dev_attr_logging_level.attr,
+	&dev_attr_fwfault_debug.attr,
+	&dev_attr_fw_queue_depth.attr,
+	&dev_attr_host_sas_address.attr,
+	&dev_attr_ioc_reset_count.attr,
+	&dev_attr_host_trace_buffer_size.attr,
+	&dev_attr_host_trace_buffer.attr,
+	&dev_attr_host_trace_buffer_enable.attr,
+	&dev_attr_reply_queue_count.attr,
+	&dev_attr_diag_trigger_master.attr,
+	&dev_attr_diag_trigger_event.attr,
+	&dev_attr_diag_trigger_scsi.attr,
+	&dev_attr_diag_trigger_mpi.attr,
+	&dev_attr_drv_support_bitmap.attr,
+	&dev_attr_BRM_status.attr,
+	&dev_attr_enable_sdev_max_qd.attr,
 	NULL,
+};
+
+static const struct attribute_group mpt3sas_host_attr_group = {
+	.attrs = mpt3sas_host_attrs
+};
+
+const struct attribute_group *mpt3sas_host_groups[] = {
+	&mpt3sas_host_attr_group,
+	NULL
 };
 
 /* device attributes */
@@ -3976,12 +4077,21 @@ sas_ncq_prio_enable_store(struct device *dev,
 }
 static DEVICE_ATTR_RW(sas_ncq_prio_enable);
 
-struct device_attribute *mpt3sas_dev_attrs[] = {
-	&dev_attr_sas_address,
-	&dev_attr_sas_device_handle,
-	&dev_attr_sas_ncq_prio_supported,
-	&dev_attr_sas_ncq_prio_enable,
+static struct attribute *mpt3sas_dev_attrs[] = {
+	&dev_attr_sas_address.attr,
+	&dev_attr_sas_device_handle.attr,
+	&dev_attr_sas_ncq_prio_supported.attr,
+	&dev_attr_sas_ncq_prio_enable.attr,
 	NULL,
+};
+
+static const struct attribute_group mpt3sas_dev_attr_group = {
+	.attrs = mpt3sas_dev_attrs
+};
+
+const struct attribute_group *mpt3sas_dev_groups[] = {
+	&mpt3sas_dev_attr_group,
+	NULL
 };
 
 /* file operations table for mpt3ctl device */

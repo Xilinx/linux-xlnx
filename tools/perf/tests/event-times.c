@@ -174,7 +174,7 @@ static int test_times(int (attach)(struct evlist *),
 		goto out_err;
 	}
 
-	err = parse_events(evlist, "cpu-clock:u", NULL);
+	err = parse_event(evlist, "cpu-clock:u");
 	if (err) {
 		pr_debug("failed to parse event cpu-clock:u\n");
 		goto out_err;
@@ -216,7 +216,7 @@ out_err:
  * and checks that enabled and running times
  * match.
  */
-int test__event_times(struct test *test __maybe_unused, int subtest __maybe_unused)
+static int test__event_times(struct test_suite *test __maybe_unused, int subtest __maybe_unused)
 {
 	int err, ret = 0;
 
@@ -239,3 +239,5 @@ int test__event_times(struct test *test __maybe_unused, int subtest __maybe_unus
 #undef _T
 	return ret;
 }
+
+DEFINE_SUITE("Event times", event_times);

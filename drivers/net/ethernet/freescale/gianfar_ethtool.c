@@ -163,7 +163,7 @@ static int gfar_sset_count(struct net_device *dev, int sset)
 static void gfar_gdrvinfo(struct net_device *dev,
 			  struct ethtool_drvinfo *drvinfo)
 {
-	strlcpy(drvinfo->driver, DRV_NAME, sizeof(drvinfo->driver));
+	strscpy(drvinfo->driver, DRV_NAME, sizeof(drvinfo->driver));
 }
 
 /* Return the length of the register structure */
@@ -372,7 +372,9 @@ static int gfar_scoalesce(struct net_device *dev,
  * rx, rx_mini, and rx_jumbo rings are the same size, as mini and
  * jumbo are ignored by the driver */
 static void gfar_gringparam(struct net_device *dev,
-			    struct ethtool_ringparam *rvals)
+			    struct ethtool_ringparam *rvals,
+			    struct kernel_ethtool_ringparam *kernel_rvals,
+			    struct netlink_ext_ack *extack)
 {
 	struct gfar_private *priv = netdev_priv(dev);
 	struct gfar_priv_tx_q *tx_queue = NULL;
@@ -399,7 +401,9 @@ static void gfar_gringparam(struct net_device *dev,
  * necessary so that we don't mess things up while we're in motion.
  */
 static int gfar_sringparam(struct net_device *dev,
-			   struct ethtool_ringparam *rvals)
+			   struct ethtool_ringparam *rvals,
+			   struct kernel_ethtool_ringparam *kernel_rvals,
+			   struct netlink_ext_ack *extack)
 {
 	struct gfar_private *priv = netdev_priv(dev);
 	int err = 0, i;
@@ -1453,6 +1457,7 @@ static int gfar_get_ts_info(struct net_device *dev,
 
 	if (!(priv->device_flags & FSL_GIANFAR_DEV_HAS_TIMER)) {
 		info->so_timestamping = SOF_TIMESTAMPING_RX_SOFTWARE |
+					SOF_TIMESTAMPING_TX_SOFTWARE |
 					SOF_TIMESTAMPING_SOFTWARE;
 		return 0;
 	}
@@ -1460,6 +1465,7 @@ static int gfar_get_ts_info(struct net_device *dev,
 	ptp_node = of_find_compatible_node(NULL, NULL, "fsl,etsec-ptp");
 	if (ptp_node) {
 		ptp_dev = of_find_device_by_node(ptp_node);
+		of_node_put(ptp_node);
 		if (ptp_dev)
 			ptp = platform_get_drvdata(ptp_dev);
 	}
@@ -1469,7 +1475,10 @@ static int gfar_get_ts_info(struct net_device *dev,
 
 	info->so_timestamping = SOF_TIMESTAMPING_TX_HARDWARE |
 				SOF_TIMESTAMPING_RX_HARDWARE |
-				SOF_TIMESTAMPING_RAW_HARDWARE;
+				SOF_TIMESTAMPING_RAW_HARDWARE |
+				SOF_TIMESTAMPING_RX_SOFTWARE |
+				SOF_TIMESTAMPING_TX_SOFTWARE |
+				SOF_TIMESTAMPING_SOFTWARE;
 	info->tx_types = (1 << HWTSTAMP_TX_OFF) |
 			 (1 << HWTSTAMP_TX_ON);
 	info->rx_filters = (1 << HWTSTAMP_FILTER_NONE) |

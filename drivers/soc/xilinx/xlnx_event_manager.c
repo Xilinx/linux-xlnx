@@ -8,7 +8,6 @@
  */
 
 #include <linux/cpuhotplug.h>
-#include <linux/firmware/xlnx-error-events.h>
 #include <linux/firmware/xlnx-event-manager.h>
 #include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/hashtable.h>
@@ -80,8 +79,7 @@ static bool xlnx_is_error_event(const u32 node_id)
 	if (node_id == EVENT_ERROR_PMC_ERR1 ||
 	    node_id == EVENT_ERROR_PMC_ERR2 ||
 	    node_id == EVENT_ERROR_PSM_ERR1 ||
-	    node_id == EVENT_ERROR_PSM_ERR2 ||
-	    node_id == EVENT_ERROR_SW_ERR)
+	    node_id == EVENT_ERROR_PSM_ERR2)
 		return true;
 
 	return false;
@@ -117,8 +115,10 @@ static int xlnx_add_cb_for_notify_event(const u32 node_id, const u32 event, cons
 		INIT_LIST_HEAD(&eve_data->cb_list_head);
 
 		cb_data = kmalloc(sizeof(*cb_data), GFP_KERNEL);
-		if (!cb_data)
+		if (!cb_data) {
+			kfree(eve_data);
 			return -ENOMEM;
+		}
 		cb_data->eve_cb = cb_fun;
 		cb_data->agent_data = data;
 
@@ -665,7 +665,7 @@ static int xlnx_event_manager_probe(struct platform_device *pdev)
 
 	event_manager_availability = 0;
 
-	dev_info(&pdev->dev, "SGI %d Registered over ATF\n", sgi_num);
+	dev_info(&pdev->dev, "SGI %d Registered over TF-A\n", sgi_num);
 	dev_info(&pdev->dev, "Xilinx Event Management driver probed\n");
 
 	return ret;
@@ -691,7 +691,7 @@ static int xlnx_event_manager_remove(struct platform_device *pdev)
 
 	ret = zynqmp_pm_register_sgi(0, 1);
 	if (ret)
-		dev_err(&pdev->dev, "SGI unregistration over ATF failed with %d\n", ret);
+		dev_err(&pdev->dev, "SGI unregistration over TF-A failed with %d\n", ret);
 
 	xlnx_event_cleanup_sgi(pdev);
 

@@ -25,6 +25,8 @@ properties:
       - fsl,imx6qp-pcie
       - fsl,imx7d-pcie
       - fsl,imx8mq-pcie
+      - fsl,imx8mm-pcie
+      - fsl,imx8mp-pcie
 
   reg:
     items:
@@ -127,6 +129,12 @@ properties:
     enum: [1, 2, 3, 4]
     default: 1
 
+  phys:
+    maxItems: 1
+
+  phy-names:
+    const: pcie-phy
+
   reset-gpio:
     description: Should specify the GPIO for controlling the PCI bus device
       reset signal. It's not polarity aware and defaults to active-low reset
@@ -136,6 +144,7 @@ properties:
     description: If present then the reset sequence using the GPIO
       specified in the "reset-gpio" property is reversed (H=reset state,
       L=operation state) (optional required).
+    type: boolean
 
   vpcie-supply:
     description: Should specify the regulator in charge of PCIe port power.

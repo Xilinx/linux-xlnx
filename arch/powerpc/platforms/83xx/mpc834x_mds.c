@@ -19,6 +19,7 @@
 #include <linux/delay.h>
 #include <linux/seq_file.h>
 #include <linux/root_dev.h>
+#include <linux/of_address.h>
 #include <linux/of_platform.h>
 
 #include <linux/atomic.h>
@@ -27,7 +28,6 @@
 #include <asm/machdep.h>
 #include <asm/ipic.h>
 #include <asm/irq.h>
-#include <asm/prom.h>
 #include <asm/udbg.h>
 #include <sysdev/fsl_soc.h>
 #include <sysdev/fsl_pci.h>
@@ -35,7 +35,7 @@
 #include "mpc83xx.h"
 
 #define BCSR5_INT_USB		0x02
-static int mpc834xemds_usb_cfg(void)
+static int __init mpc834xemds_usb_cfg(void)
 {
 	struct device_node *np;
 	void __iomem *bcsr_regs = NULL;

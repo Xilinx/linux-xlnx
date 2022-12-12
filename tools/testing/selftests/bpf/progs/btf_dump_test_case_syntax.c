@@ -94,7 +94,7 @@ typedef void (* (*signal_t)(int, void (*)(int)))(int);
 
 typedef char * (*fn_ptr_arr1_t[10])(int **);
 
-typedef char * (* const (* const fn_ptr_arr2_t[5])())(char * (*)(int));
+typedef char * (* (* const fn_ptr_arr2_t[5])())(char * (*)(int));
 
 struct struct_w_typedefs {
 	int_t a;
@@ -189,7 +189,7 @@ struct struct_with_embedded_stuff {
 			const char *d;
 		} e;
 		union {
-			volatile long int f;
+			volatile long f;
 			void * restrict g;
 		};
 	};

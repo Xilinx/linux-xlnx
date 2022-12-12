@@ -11,16 +11,16 @@
 #include <linux/kernel.h>
 #include <linux/errno.h>
 #include <linux/of.h>
+#include <linux/of_address.h>
 
 #include <asm/io.h>
-#include <asm/prom.h>
 #include <sysdev/fsl_soc.h>
 
 #include "mpc83xx.h"
 
 
 #ifdef CONFIG_PPC_MPC834x
-int mpc834x_usb_cfg(void)
+int __init mpc834x_usb_cfg(void)
 {
 	unsigned long sccr, sicrl, sicrh;
 	void __iomem *immap;
@@ -96,7 +96,7 @@ int mpc834x_usb_cfg(void)
 #endif /* CONFIG_PPC_MPC834x */
 
 #ifdef CONFIG_PPC_MPC831x
-int mpc831x_usb_cfg(void)
+int __init mpc831x_usb_cfg(void)
 {
 	u32 temp;
 	void __iomem *immap, *usb_regs;
@@ -209,7 +209,7 @@ out:
 #endif /* CONFIG_PPC_MPC831x */
 
 #ifdef CONFIG_PPC_MPC837x
-int mpc837x_usb_cfg(void)
+int __init mpc837x_usb_cfg(void)
 {
 	void __iomem *immap;
 	struct device_node *np = NULL;

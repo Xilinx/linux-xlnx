@@ -9,6 +9,10 @@ config 64BIT
 	bool
 	default y if PPC64
 
+config LIVEPATCH_64
+	def_bool PPC64
+	depends on LIVEPATCH
+
 config MMU
 	bool
 	default y
@@ -54,15 +58,6 @@ config ARCH_MMAP_RND_COMPAT_BITS_MIN
 	default 7 if PPC_64K_PAGES	#  7 = 23 (8MB) - 16 (64K)
 	default 9 if PPC_16K_PAGES	#  9 = 23 (8MB) - 14 (16K)
 	default 11			# 11 = 23 (8MB) - 12 (4K)
-
-config HAVE_SETUP_PER_CPU_AREA
-	def_bool PPC64
-
-config NEED_PER_CPU_EMBED_FIRST_CHUNK
-	def_bool y if PPC64
-
-config NEED_PER_CPU_PAGE_FIRST_CHUNK
-	def_bool y if PPC64
 
 config NR_IRQS
 	int "Number of virtual interrupt numbers"
@@ -114,22 +109,23 @@ config PPC
 	# Please keep this list sorted alphabetically.
 	#
 	select ARCH_32BIT_OFF_T if PPC32
+	select ARCH_DISABLE_KASAN_INLINE	if PPC_RADIX_MMU
 	select ARCH_ENABLE_MEMORY_HOTPLUG
 	select ARCH_ENABLE_MEMORY_HOTREMOVE
 	select ARCH_HAS_COPY_MC			if PPC64
+	select ARCH_HAS_CURRENT_STACK_POINTER
 	select ARCH_HAS_DEBUG_VIRTUAL
 	select ARCH_HAS_DEBUG_VM_PGTABLE
 	select ARCH_HAS_DEBUG_WX		if STRICT_KERNEL_RWX
 	select ARCH_HAS_DEVMEM_IS_ALLOWED
 	select ARCH_HAS_DMA_MAP_DIRECT 		if PPC_PSERIES
-	select ARCH_HAS_ELF_RANDOMIZE
 	select ARCH_HAS_FORTIFY_SOURCE
 	select ARCH_HAS_GCOV_PROFILE_ALL
 	select ARCH_HAS_HUGEPD			if HUGETLB_PAGE
 	select ARCH_HAS_KCOV
 	select ARCH_HAS_MEMBARRIER_CALLBACKS
 	select ARCH_HAS_MEMBARRIER_SYNC_CORE
-	select ARCH_HAS_MEMREMAP_COMPAT_ALIGN
+	select ARCH_HAS_MEMREMAP_COMPAT_ALIGN	if PPC_64S_HASH_MMU
 	select ARCH_HAS_MMIOWB			if PPC64
 	select ARCH_HAS_NON_OVERLAPPING_ADDRESS_SPACE
 	select ARCH_HAS_PHYS_TO_DMA
@@ -138,8 +134,10 @@ config PPC
 	select ARCH_HAS_PTE_SPECIAL
 	select ARCH_HAS_SCALED_CPUTIME		if VIRT_CPU_ACCOUNTING_NATIVE && PPC_BOOK3S_64
 	select ARCH_HAS_SET_MEMORY
-	select ARCH_HAS_STRICT_KERNEL_RWX	if ((PPC_BOOK3S_64 || PPC32) && !HIBERNATION)
-	select ARCH_HAS_STRICT_MODULE_RWX	if ARCH_HAS_STRICT_KERNEL_RWX && !PPC_BOOK3S_32
+	select ARCH_HAS_STRICT_KERNEL_RWX	if (PPC_BOOK3S || PPC_8xx || 40x) && !HIBERNATION
+	select ARCH_HAS_STRICT_KERNEL_RWX	if PPC_85xx && !HIBERNATION && !RANDOMIZE_BASE
+	select ARCH_HAS_STRICT_MODULE_RWX	if ARCH_HAS_STRICT_KERNEL_RWX
+	select ARCH_HAS_SYSCALL_WRAPPER		if !SPU_BASE && !COMPAT
 	select ARCH_HAS_TICK_BROADCAST		if GENERIC_CLOCKEVENTS_BROADCAST
 	select ARCH_HAS_UACCESS_FLUSHCACHE
 	select ARCH_HAS_UBSAN_SANITIZE_ALL
@@ -148,21 +146,27 @@ config PPC
 	select ARCH_MIGHT_HAVE_PC_PARPORT
 	select ARCH_MIGHT_HAVE_PC_SERIO
 	select ARCH_OPTIONAL_KERNEL_RWX		if ARCH_HAS_STRICT_KERNEL_RWX
+	select ARCH_OPTIONAL_KERNEL_RWX_DEFAULT
+	select ARCH_SPLIT_ARG64			if PPC32
 	select ARCH_STACKWALK
 	select ARCH_SUPPORTS_ATOMIC_RMW
-	select ARCH_SUPPORTS_DEBUG_PAGEALLOC	if PPC32 || PPC_BOOK3S_64
+	select ARCH_SUPPORTS_DEBUG_PAGEALLOC	if PPC_BOOK3S || PPC_8xx || 40x
 	select ARCH_USE_BUILTIN_BSWAP
 	select ARCH_USE_CMPXCHG_LOCKREF		if PPC64
 	select ARCH_USE_MEMTEST
 	select ARCH_USE_QUEUED_RWLOCKS		if PPC_QUEUED_SPINLOCKS
 	select ARCH_USE_QUEUED_SPINLOCKS	if PPC_QUEUED_SPINLOCKS
+	select ARCH_WANT_DEFAULT_TOPDOWN_MMAP_LAYOUT
 	select ARCH_WANT_IPC_PARSE_VERSION
 	select ARCH_WANT_IRQS_OFF_ACTIVATE_MM
 	select ARCH_WANT_LD_ORPHAN_WARN
+	select ARCH_WANTS_MODULES_DATA_IN_VMALLOC	if PPC_BOOK3S_32 || PPC_8xx
+	select ARCH_WANTS_NO_INSTR
 	select ARCH_WEAK_RELEASE_ACQUIRE
 	select BINFMT_ELF
 	select BUILDTIME_TABLE_SORT
 	select CLONE_BACKWARDS
+	select CPUMASK_OFFSTACK			if NR_CPUS >= 8192
 	select DCACHE_WORD_ACCESS		if PPC64 && CPU_LITTLE_ENDIAN
 	select DMA_OPS_BYPASS			if PPC64
 	select DMA_OPS				if PPC64
@@ -189,8 +193,11 @@ config PPC
 	select HAVE_ARCH_JUMP_LABEL
 	select HAVE_ARCH_JUMP_LABEL_RELATIVE
 	select HAVE_ARCH_KASAN			if PPC32 && PPC_PAGE_SHIFT <= 14
-	select HAVE_ARCH_KASAN_VMALLOC		if PPC32 && PPC_PAGE_SHIFT <= 14
-	select HAVE_ARCH_KFENCE			if PPC32
+	select HAVE_ARCH_KASAN			if PPC_RADIX_MMU
+	select HAVE_ARCH_KASAN			if PPC_BOOK3E_64
+	select HAVE_ARCH_KASAN_VMALLOC		if HAVE_ARCH_KASAN
+	select HAVE_ARCH_KFENCE			if ARCH_SUPPORTS_DEBUG_PAGEALLOC
+	select HAVE_ARCH_RANDOMIZE_KSTACK_OFFSET
 	select HAVE_ARCH_KGDB
 	select HAVE_ARCH_MMAP_RND_BITS
 	select HAVE_ARCH_MMAP_RND_COMPAT_BITS	if COMPAT
@@ -198,16 +205,18 @@ config PPC
 	select HAVE_ARCH_SECCOMP_FILTER
 	select HAVE_ARCH_TRACEHOOK
 	select HAVE_ASM_MODVERSIONS
-	select HAVE_CONTEXT_TRACKING		if PPC64
+	select HAVE_CONTEXT_TRACKING_USER		if PPC64
 	select HAVE_C_RECORDMCOUNT
 	select HAVE_DEBUG_KMEMLEAK
 	select HAVE_DEBUG_STACKOVERFLOW
 	select HAVE_DYNAMIC_FTRACE
-	select HAVE_DYNAMIC_FTRACE_WITH_REGS	if MPROFILE_KERNEL
+	select HAVE_DYNAMIC_FTRACE_WITH_ARGS	if MPROFILE_KERNEL || PPC32
+	select HAVE_DYNAMIC_FTRACE_WITH_REGS	if MPROFILE_KERNEL || PPC32
 	select HAVE_EBPF_JIT
-	select HAVE_EFFICIENT_UNALIGNED_ACCESS	if !(CPU_LITTLE_ENDIAN && POWER7_CPU)
+	select HAVE_EFFICIENT_UNALIGNED_ACCESS
 	select HAVE_FAST_GUP
 	select HAVE_FTRACE_MCOUNT_RECORD
+	select HAVE_FUNCTION_DESCRIPTORS	if PPC64_ELF_ABI_V1
 	select HAVE_FUNCTION_ERROR_INJECTION
 	select HAVE_FUNCTION_GRAPH_TRACER
 	select HAVE_FUNCTION_TRACER
@@ -217,7 +226,6 @@ config PPC
 	select HAVE_HARDLOCKUP_DETECTOR_PERF	if PERF_EVENTS && HAVE_PERF_EVENTS_NMI && !HAVE_HARDLOCKUP_DETECTOR_ARCH
 	select HAVE_HW_BREAKPOINT		if PERF_EVENTS && (PPC_BOOK3S || PPC_8xx)
 	select HAVE_IOREMAP_PROT
-	select HAVE_IRQ_EXIT_ON_IRQ_STACK
 	select HAVE_IRQ_TIME_ACCOUNTING
 	select HAVE_KERNEL_GZIP
 	select HAVE_KERNEL_LZMA			if DEFAULT_UIMAGE
@@ -238,19 +246,25 @@ config PPC
 	select HAVE_REGS_AND_STACK_ACCESS_API
 	select HAVE_RELIABLE_STACKTRACE
 	select HAVE_RSEQ
+	select HAVE_SETUP_PER_CPU_AREA		if PPC64
 	select HAVE_SOFTIRQ_ON_OWN_STACK
 	select HAVE_STACKPROTECTOR		if PPC32 && $(cc-option,-mstack-protector-guard=tls -mstack-protector-guard-reg=r2)
 	select HAVE_STACKPROTECTOR		if PPC64 && $(cc-option,-mstack-protector-guard=tls -mstack-protector-guard-reg=r13)
+	select HAVE_STATIC_CALL			if PPC32
 	select HAVE_SYSCALL_TRACEPOINTS
 	select HAVE_VIRT_CPU_ACCOUNTING
 	select HUGETLB_PAGE_SIZE_VARIABLE	if PPC_BOOK3S_64 && HUGETLB_PAGE
 	select IOMMU_HELPER			if PPC64
 	select IRQ_DOMAIN
 	select IRQ_FORCED_THREADING
+	select KASAN_VMALLOC			if KASAN && MODULES
 	select MMU_GATHER_PAGE_SIZE
 	select MMU_GATHER_RCU_TABLE_FREE
+	select MMU_GATHER_MERGE_VMAS
 	select MODULES_USE_ELF_RELA
 	select NEED_DMA_MAP_STATE		if PPC64 || NOT_COHERENT_CACHE
+	select NEED_PER_CPU_EMBED_FIRST_CHUNK	if PPC64
+	select NEED_PER_CPU_PAGE_FIRST_CHUNK	if PPC64
 	select NEED_SG_DMA_LENGTH
 	select OF
 	select OF_DMA_DEFAULT_COHERENT		if !NOT_COHERENT_CACHE
@@ -267,15 +281,18 @@ config PPC
 	select SYSCTL_EXCEPTION_TRACE
 	select THREAD_INFO_IN_TASK
 	select TRACE_IRQFLAGS_SUPPORT
-	select VIRT_TO_BUS			if !PPC64
 	#
 	# Please keep this list sorted alphabetically.
 	#
 
+config PPC_LONG_DOUBLE_128
+	depends on PPC64 && ALTIVEC
+	def_bool $(success,test "$(shell,echo __LONG_DOUBLE_128__ | $(CC) -E -P -)" = 1)
+
 config PPC_BARRIER_NOSPEC
 	bool
 	default y
-	depends on PPC_BOOK3S_64 || PPC_FSL_BOOK3E
+	depends on PPC_BOOK3S_64 || PPC_E500
 
 config EARLY_PRINTK
 	bool
@@ -292,11 +309,6 @@ config COMPAT
 	default y if !CPU_LITTLE_ENDIAN
 	select ARCH_WANT_OLD_COMPAT_IPC
 	select COMPAT_OLD_SIGACTION
-
-config SYSVIPC_COMPAT
-	bool
-	depends on COMPAT && SYSVIPC
-	default y
 
 config SCHED_OMIT_FRAME_POINTER
 	bool
@@ -354,6 +366,10 @@ config ARCH_SUSPEND_NONZERO_CPU
 	def_bool y
 	depends on PPC_POWERNV || PPC_PSERIES
 
+config ARCH_HAS_ADD_PAGES
+	def_bool y
+	depends on ARCH_ENABLE_MEMORY_HOTPLUG
+
 config PPC_DCR_NATIVE
 	bool
 
@@ -364,6 +380,17 @@ config PPC_DCR
 	bool
 	depends on PPC_DCR_NATIVE || PPC_DCR_MMIO
 	default y
+
+config PPC_PCI_BUS_NUM_DOMAIN_DEPENDENT
+	depends on PPC32
+	depends on !PPC_PMAC && !PPC_CHRP
+	bool "Assign PCI bus numbers from zero individually for each PCI domain"
+	help
+	  By default on PPC32 were PCI bus numbers unique across all PCI domains.
+	  So system could have only 256 PCI buses independently of available
+	  PCI domains. When this option is enabled then PCI bus numbers are
+	  PCI domain dependent and each PCI controller on own domain can have
+	  256 PCI buses, like it is on other Linux architectures.
 
 config PPC_OF_PLATFORM_PCI
 	bool
@@ -441,7 +468,7 @@ choice
 	default MATH_EMULATION_FULL
 	depends on MATH_EMULATION
 
-config	MATH_EMULATION_FULL
+config MATH_EMULATION_FULL
 	bool "Emulate all the floating point instructions"
 	help
 	  Select this option will enable the kernel to support to emulate
@@ -523,7 +550,7 @@ config PPC64_SUPPORTS_MEMORY_FAILURE
 
 config KEXEC
 	bool "kexec system call"
-	depends on (PPC_BOOK3S || FSL_BOOKE || (44x && !SMP)) || PPC_BOOK3E
+	depends on PPC_BOOK3S || PPC_E500 || (44x && !SMP)
 	select KEXEC_CORE
 	help
 	  kexec is a system call that implements the ability to shutdown your
@@ -543,7 +570,6 @@ config KEXEC_FILE
 	bool "kexec file based system call"
 	select KEXEC_CORE
 	select HAVE_IMA_KEXEC if IMA
-	select BUILD_BIN2C
 	select KEXEC_ELF
 	depends on PPC64
 	depends on CRYPTO=y
@@ -559,9 +585,8 @@ config ARCH_HAS_KEXEC_PURGATORY
 
 config RELOCATABLE
 	bool "Build a relocatable kernel"
-	depends on PPC64 || (FLATMEM && (44x || FSL_BOOKE))
+	depends on PPC64 || (FLATMEM && (44x || PPC_85xx))
 	select NONSTATIC_KERNEL
-	select MODULE_REL_CRCS if MODVERSIONS
 	help
 	  This builds a kernel image that is capable of running at the
 	  location the kernel is loaded at. For ppc32, there is no any
@@ -583,7 +608,7 @@ config RELOCATABLE
 
 config RANDOMIZE_BASE
 	bool "Randomize the address of the kernel image"
-	depends on (FSL_BOOKE && FLATMEM && PPC32)
+	depends on PPC_85xx && FLATMEM
 	depends on RELOCATABLE
 	help
 	  Randomizes the virtual address at which the kernel image is
@@ -602,8 +627,8 @@ config RELOCATABLE_TEST
 
 config CRASH_DUMP
 	bool "Build a dump capture kernel"
-	depends on PPC64 || PPC_BOOK3S_32 || FSL_BOOKE || (44x && !SMP)
-	select RELOCATABLE if PPC64 || 44x || FSL_BOOKE
+	depends on PPC64 || PPC_BOOK3S_32 || PPC_85xx || (44x && !SMP)
+	select RELOCATABLE if PPC64 || 44x || PPC_85xx
 	help
 	  Build a kernel suitable for use as a dump capture kernel.
 	  The same kernel binary can be used as production kernel and dump
@@ -656,6 +681,7 @@ config NUMA
 	bool "NUMA Memory Allocation and Scheduler Support"
 	depends on PPC64 && SMP
 	default y if PPC_PSERIES || PPC_POWERNV
+	select USE_PERCPU_NUMA_NODE_ID
 	help
 	  Enable NUMA (Non-Uniform Memory Access) support.
 
@@ -667,10 +693,6 @@ config NODES_SHIFT
 	int
 	default "8" if PPC64
 	default "4"
-	depends on NUMA
-
-config USE_PERCPU_NUMA_NODE_ID
-	def_bool y
 	depends on NUMA
 
 config HAVE_MEMORYLESS_NODES
@@ -707,6 +729,7 @@ config ARCH_MEMORY_PROBE
 
 choice
 	prompt "Page size"
+	default PPC_64K_PAGES if PPC_BOOK3S_64
 	default PPC_4K_PAGES
 	help
 	  Select the kernel logical page size. Increasing the page size
@@ -756,6 +779,22 @@ config PPC_256K_PAGES
 
 endchoice
 
+config PAGE_SIZE_4KB
+	def_bool y
+	depends on PPC_4K_PAGES
+
+config PAGE_SIZE_16KB
+	def_bool y
+	depends on PPC_16K_PAGES
+
+config PAGE_SIZE_64KB
+	def_bool y
+	depends on PPC_64K_PAGES
+
+config PAGE_SIZE_256KB
+	def_bool y
+	depends on PPC_256K_PAGES
+
 config PPC_PAGE_SHIFT
 	int
 	default 18 if PPC_256K_PAGES
@@ -768,7 +807,6 @@ config THREAD_SHIFT
 	range 13 15
 	default "15" if PPC_256K_PAGES
 	default "14" if PPC64
-	default "14" if KASAN
 	default "13"
 	help
 	  Used to define the stack size. The default is almost always what you
@@ -778,7 +816,8 @@ config DATA_SHIFT_BOOL
 	bool "Set custom data alignment"
 	depends on ADVANCED_OPTIONS
 	depends on STRICT_KERNEL_RWX || DEBUG_PAGEALLOC || KFENCE
-	depends on PPC_BOOK3S_32 || (PPC_8xx && !PIN_TLB_DATA && !STRICT_KERNEL_RWX)
+	depends on PPC_BOOK3S_32 || (PPC_8xx && !PIN_TLB_DATA && !STRICT_KERNEL_RWX) || \
+		   PPC_85xx
 	help
 	  This option allows you to set the kernel data alignment. When
 	  RAM is mapped by blocks, the alignment needs to fit the size and
@@ -791,11 +830,13 @@ config DATA_SHIFT
 	default 24 if STRICT_KERNEL_RWX && PPC64
 	range 17 28 if (STRICT_KERNEL_RWX || DEBUG_PAGEALLOC || KFENCE) && PPC_BOOK3S_32
 	range 19 23 if (STRICT_KERNEL_RWX || DEBUG_PAGEALLOC || KFENCE) && PPC_8xx
+	range 20 24 if (STRICT_KERNEL_RWX || DEBUG_PAGEALLOC || KFENCE) && PPC_85xx
 	default 22 if STRICT_KERNEL_RWX && PPC_BOOK3S_32
 	default 18 if (DEBUG_PAGEALLOC || KFENCE) && PPC_BOOK3S_32
 	default 23 if STRICT_KERNEL_RWX && PPC_8xx
 	default 23 if (DEBUG_PAGEALLOC || KFENCE) && PPC_8xx && PIN_TLB_DATA
 	default 19 if (DEBUG_PAGEALLOC || KFENCE) && PPC_8xx
+	default 24 if STRICT_KERNEL_RWX && PPC_85xx
 	default PPC_PAGE_SHIFT
 	help
 	  On Book3S 32 (603+), DBATs are used to map kernel text and rodata RO.
@@ -806,7 +847,7 @@ config DATA_SHIFT
 	  in that case. If PIN_TLB is selected, it must be aligned to 8M as
 	  8M pages will be pinned.
 
-config FORCE_MAX_ZONEORDER
+config ARCH_FORCE_MAX_ORDER
 	int "Maximum zone order"
 	range 8 9 if PPC64 && PPC_64K_PAGES
 	default "9" if PPC64 && PPC_64K_PAGES
@@ -838,7 +879,7 @@ config FORCE_MAX_ZONEORDER
 config PPC_SUBPAGE_PROT
 	bool "Support setting protections for 4k subpages (subpage_prot syscall)"
 	default n
-	depends on PPC_BOOK3S_64 && PPC_64K_PAGES
+	depends on PPC_64S_HASH_MMU && PPC_64K_PAGES
 	help
 	  This option adds support for system call to allow user programs
 	  to set access permissions (read/write, readonly, or no access)
@@ -936,6 +977,7 @@ config PPC_MEM_KEYS
 	prompt "PowerPC Memory Protection Keys"
 	def_bool y
 	depends on PPC_BOOK3S_64
+	depends on PPC_64S_HASH_MMU
 	select ARCH_USES_HIGH_VMA_FLAGS
 	select ARCH_HAS_PKEYS
 	help
@@ -1110,7 +1152,7 @@ config LOWMEM_SIZE
 
 config LOWMEM_CAM_NUM_BOOL
 	bool "Set number of CAMs to use to map low memory"
-	depends on ADVANCED_OPTIONS && FSL_BOOKE
+	depends on ADVANCED_OPTIONS && PPC_85xx
 	help
 	  This option allows you to set the maximum number of CAM slots that
 	  will be used to map low memory.  There are a limited number of slots
@@ -1121,13 +1163,16 @@ config LOWMEM_CAM_NUM_BOOL
 	  Say N here unless you know what you are doing.
 
 config LOWMEM_CAM_NUM
-	depends on FSL_BOOKE
+	depends on PPC_85xx
 	int "Number of CAMs to use to map low memory" if LOWMEM_CAM_NUM_BOOL
-	default 3
+	default 3 if !STRICT_KERNEL_RWX
+	default 9 if DATA_SHIFT >= 24
+	default 12 if DATA_SHIFT >= 22
+	default 15
 
 config DYNAMIC_MEMSTART
 	bool "Enable page aligned dynamic load address for kernel"
-	depends on ADVANCED_OPTIONS && FLATMEM && (FSL_BOOKE || 44x)
+	depends on ADVANCED_OPTIONS && FLATMEM && (PPC_85xx || 44x)
 	select NONSTATIC_KERNEL
 	help
 	  This option enables the kernel to be loaded at any page aligned
@@ -1176,7 +1221,7 @@ config KERNEL_START
 
 config PHYSICAL_START_BOOL
 	bool "Set physical address where the kernel is loaded"
-	depends on ADVANCED_OPTIONS && FLATMEM && FSL_BOOKE
+	depends on ADVANCED_OPTIONS && FLATMEM && PPC_85xx
 	help
 	  This gives the physical address where the kernel is loaded.
 
@@ -1189,7 +1234,7 @@ config PHYSICAL_START
 
 config PHYSICAL_ALIGN
 	hex
-	default "0x04000000" if FSL_BOOKE
+	default "0x04000000" if PPC_85xx
 	help
 	  This value puts the alignment restrictions on physical address
 	  where kernel is loaded and run from. Kernel is compiled for an
@@ -1224,9 +1269,6 @@ config PHYSICAL_START
 	hex
 	default "0x00000000"
 endif
-
-config	ARCH_RANDOM
-	def_bool n
 
 config PPC_LIB_RHEAP
 	bool

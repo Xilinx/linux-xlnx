@@ -31,6 +31,7 @@
 #include "callchain.h"
 #include "branch.h"
 #include "symbol.h"
+#include "util.h"
 #include "../perf.h"
 
 #define CALLCHAIN_PARAM_DEFAULT			\
@@ -266,12 +267,17 @@ int parse_callchain_record(const char *arg, struct callchain_param *param)
 	do {
 		/* Framepointer style */
 		if (!strncmp(name, "fp", sizeof("fp"))) {
-			if (!strtok_r(NULL, ",", &saveptr)) {
-				param->record_mode = CALLCHAIN_FP;
-				ret = 0;
-			} else
-				pr_err("callchain: No more arguments "
-				       "needed for --call-graph fp\n");
+			ret = 0;
+			param->record_mode = CALLCHAIN_FP;
+
+			tok = strtok_r(NULL, ",", &saveptr);
+			if (tok) {
+				unsigned long size;
+
+				size = strtoul(tok, &name, 0);
+				if (size < (unsigned) sysctl__max_stack())
+					param->max_stack = size;
+			}
 			break;
 
 		/* Dwarf style */
@@ -1119,7 +1125,7 @@ int fill_callchain_info(struct addr_location *al, struct callchain_cursor_node *
 			goto out;
 	}
 
-	if (al->maps == &al->maps->machine->kmaps) {
+	if (al->maps == machine__kernel_maps(al->maps->machine)) {
 		if (machine__is_host(al->maps->machine)) {
 			al->cpumode = PERF_RECORD_MISC_KERNEL;
 			al->level = 'k';
@@ -1301,24 +1307,16 @@ int callchain_branch_counts(struct callchain_root *root,
 
 static int count_pri64_printf(int idx, const char *str, u64 value, char *bf, int bfsize)
 {
-	int printed;
-
-	printed = scnprintf(bf, bfsize, "%s%s:%" PRId64 "", (idx) ? " " : " (", str, value);
-
-	return printed;
+	return scnprintf(bf, bfsize, "%s%s:%" PRId64 "", (idx) ? " " : " (", str, value);
 }
 
 static int count_float_printf(int idx, const char *str, float value,
 			      char *bf, int bfsize, float threshold)
 {
-	int printed;
-
 	if (threshold != 0.0 && value < threshold)
 		return 0;
 
-	printed = scnprintf(bf, bfsize, "%s%s:%.1f%%", (idx) ? " " : " (", str, value);
-
-	return printed;
+	return scnprintf(bf, bfsize, "%s%s:%.1f%%", (idx) ? " " : " (", str, value);
 }
 
 static int branch_to_str(char *bf, int bfsize,
@@ -1600,7 +1598,7 @@ void callchain_cursor_reset(struct callchain_cursor *cursor)
 		map__zput(node->ms.map);
 }
 
-void callchain_param_setup(u64 sample_type)
+void callchain_param_setup(u64 sample_type, const char *arch)
 {
 	if (symbol_conf.use_callchain || symbol_conf.cumulate_callchain) {
 		if ((sample_type & PERF_SAMPLE_REGS_USER) &&
@@ -1612,6 +1610,18 @@ void callchain_param_setup(u64 sample_type)
 		else
 			callchain_param.record_mode = CALLCHAIN_FP;
 	}
+
+	/*
+	 * It's necessary to use libunwind to reliably determine the caller of
+	 * a leaf function on aarch64, as otherwise we cannot know whether to
+	 * start from the LR or FP.
+	 *
+	 * Always starting from the LR can result in duplicate or entirely
+	 * erroneous entries. Always skipping the LR and starting from the FP
+	 * can result in missing entries.
+	 */
+	if (callchain_param.record_mode == CALLCHAIN_FP && !strcmp(arch, "arm64"))
+		dwarf_callchain_users = true;
 }
 
 static bool chain_match(struct callchain_list *base_chain,

@@ -12,6 +12,9 @@
 #include <dt-bindings/phy/phy.h>
 
 / {
+	compatible = "ti,j7200-evm", "ti,j7200";
+	model = "Texas Instruments J7200 EVM";
+
 	chosen {
 		stdout-path = "serial2:115200n8";
 		bootargs = "console=ttyS2,115200n8 earlycon=ns16550a,mmio32,0x02800000";
@@ -131,15 +134,17 @@
 		>;
 	};
 
-	main_usbss0_pins_default: main-usbss0-pins-default {
-		pinctrl-single,pins = <
-			J721E_IOPAD(0x120, PIN_OUTPUT, 0) /* (T4) USB0_DRVVBUS */
-		>;
-	};
-
 	vdd_sd_dv_pins_default: vdd-sd-dv-pins-default {
 		pinctrl-single,pins = <
 			J721E_IOPAD(0xd0, PIN_OUTPUT, 7) /* (T5) SPI0_D1.GPIO0_55 */
+		>;
+	};
+};
+
+&main_pmx1 {
+	main_usbss0_pins_default: main-usbss0-pins-default {
+		pinctrl-single,pins = <
+			J721E_IOPAD(0x04, PIN_OUTPUT, 0) /* (T4) USB0_DRVVBUS */
 		>;
 	};
 };

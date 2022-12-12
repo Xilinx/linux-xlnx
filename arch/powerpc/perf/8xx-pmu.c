@@ -153,11 +153,11 @@ static void mpc8xx_pmu_read(struct perf_event *event)
 
 static void mpc8xx_pmu_del(struct perf_event *event, int flags)
 {
-	struct ppc_inst insn = ppc_inst(PPC_RAW_MFSPR(10, SPRN_SPRG_SCRATCH2));
+	ppc_inst_t insn = ppc_inst(PPC_RAW_MFSPR(10, SPRN_SPRG_SCRATCH2));
 
 	mpc8xx_pmu_read(event);
 
-	/* If it was the last user, stop counting to avoid useles overhead */
+	/* If it was the last user, stop counting to avoid useless overhead */
 	switch (event_type(event)) {
 	case PERF_8xx_ID_CPU_CYCLES:
 		break;

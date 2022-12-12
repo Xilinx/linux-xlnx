@@ -148,7 +148,7 @@ static int max6642_detect(struct i2c_client *client,
 	if ((reg_status & 0x2b) != 0x00)
 		return -ENODEV;
 
-	strlcpy(info->type, "max6642", I2C_NAME_SIZE);
+	strscpy(info->type, "max6642", I2C_NAME_SIZE);
 
 	return 0;
 }
@@ -181,7 +181,7 @@ static struct max6642_data *max6642_update_device(struct device *dev)
 					MAX6642_REG_R_STATUS);
 
 		data->last_updated = jiffies;
-		data->valid = 1;
+		data->valid = true;
 	}
 
 	mutex_unlock(&data->update_lock);

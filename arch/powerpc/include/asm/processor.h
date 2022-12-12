@@ -75,7 +75,6 @@ extern int _chrp_type;
 
 struct task_struct;
 void start_thread(struct pt_regs *regs, unsigned long fdptr, unsigned long sp);
-void release_thread(struct task_struct *);
 
 #define TS_FPR(i) fp_state.fpr[i][TS_FPROFFSET]
 #define TS_CKFPR(i) ckfp_state.fpr[i][TS_FPROFFSET]
@@ -157,8 +156,12 @@ struct thread_struct {
 #ifdef CONFIG_PPC_BOOK3S_32
 	unsigned long	r0, r3, r4, r5, r6, r8, r9, r11;
 	unsigned long	lr, ctr;
+	unsigned long	sr0;
 #endif
 #endif /* CONFIG_PPC32 */
+#if defined(CONFIG_BOOKE_OR_40x) && defined(CONFIG_PPC_KUAP)
+	unsigned long	pid;	/* value written in PID reg. at interrupt exit */
+#endif
 	/* Debug Registers */
 	struct debug_reg debug;
 #ifdef CONFIG_PPC_FPU_REGS
@@ -191,8 +194,10 @@ struct thread_struct {
 	int		used_vsr;	/* set if process has used VSX */
 #endif /* CONFIG_VSX */
 #ifdef CONFIG_SPE
-	unsigned long	evr[32];	/* upper 32-bits of SPE regs */
-	u64		acc;		/* Accumulator */
+	struct_group(spe,
+		unsigned long	evr[32];	/* upper 32-bits of SPE regs */
+		u64		acc;		/* Accumulator */
+	);
 	unsigned long	spefscr;	/* SPE & eFP status */
 	unsigned long	spefscr_last;	/* SPEFSCR value on last prctl
 					   call or trap return */
@@ -276,6 +281,12 @@ struct thread_struct {
 #define SPEFSCR_INIT
 #endif
 
+#ifdef CONFIG_PPC_BOOK3S_32
+#define SR0_INIT	.sr0 = IS_ENABLED(CONFIG_PPC_KUEP) ? SR_NX : 0,
+#else
+#define SR0_INIT
+#endif
+
 #if defined(CONFIG_PPC_BOOK3S_32) && defined(CONFIG_PPC_KUAP)
 #define INIT_THREAD { \
 	.ksp = INIT_SP, \
@@ -283,6 +294,7 @@ struct thread_struct {
 	.kuap = ~0UL, /* KUAP_NONE */ \
 	.fpexc_mode = MSR_FE0 | MSR_FE1, \
 	SPEFSCR_INIT \
+	SR0_INIT \
 }
 #elif defined(CONFIG_PPC32)
 #define INIT_THREAD { \
@@ -290,6 +302,7 @@ struct thread_struct {
 	.pgdir = swapper_pg_dir, \
 	.fpexc_mode = MSR_FE0 | MSR_FE1, \
 	SPEFSCR_INIT \
+	SR0_INIT \
 }
 #else
 #define INIT_THREAD  { \
@@ -300,7 +313,7 @@ struct thread_struct {
 
 #define task_pt_regs(tsk)	((tsk)->thread.regs)
 
-unsigned long get_wchan(struct task_struct *p);
+unsigned long __get_wchan(struct task_struct *p);
 
 #define KSTK_EIP(tsk)  ((tsk)->thread.regs? (tsk)->thread.regs->nip: 0)
 #define KSTK_ESP(tsk)  ((tsk)->thread.regs? (tsk)->thread.regs->gpr[1]: 0)
@@ -341,11 +354,23 @@ static inline unsigned long __pack_fe01(unsigned int fpmode)
 
 #ifdef CONFIG_PPC64
 
-#define spin_begin()	HMT_low()
+#define spin_begin()							\
+	asm volatile(ASM_FTR_IFCLR(					\
+		"or 1,1,1", /* HMT_LOW */				\
+		"nop", /* v3.1 uses pause_short in cpu_relax instead */	\
+		%0) :: "i" (CPU_FTR_ARCH_31) : "memory")
 
-#define spin_cpu_relax()	barrier()
+#define spin_cpu_relax()						\
+	asm volatile(ASM_FTR_IFCLR(					\
+		"nop", /* Before v3.1 use priority nops in spin_begin/end */ \
+		PPC_WAIT(2, 0),	/* aka pause_short */			\
+		%0) :: "i" (CPU_FTR_ARCH_31) : "memory")
 
-#define spin_end()	HMT_medium()
+#define spin_end()							\
+	asm volatile(ASM_FTR_IFCLR(					\
+		"or 2,2,2", /* HMT_MEDIUM */				\
+		"nop",							\
+		%0) :: "i" (CPU_FTR_ARCH_31) : "memory")
 
 #endif
 
@@ -378,8 +403,6 @@ static inline void prefetchw(const void *x)
 
 #define spin_lock_prefetch(x)	prefetchw(x)
 
-#define HAVE_ARCH_PICK_MMAP_LAYOUT
-
 /* asm stubs */
 extern unsigned long isa300_idle_stop_noloss(unsigned long psscr_val);
 extern unsigned long isa300_idle_stop_mayloss(unsigned long psscr_val);
@@ -397,6 +420,8 @@ extern int powersave_nap;	/* set if nap mode can be used in idle loop */
 extern void power7_idle_type(unsigned long type);
 extern void arch300_idle_type(unsigned long stop_psscr_val,
 			      unsigned long stop_psscr_mask);
+void pnv_power9_force_smt4_catch(void);
+void pnv_power9_force_smt4_release(void);
 
 extern int fix_alignment(struct pt_regs *);
 
@@ -412,6 +437,14 @@ extern int fix_alignment(struct pt_regs *);
 #endif
 
 int do_mathemu(struct pt_regs *regs);
+int do_spe_mathemu(struct pt_regs *regs);
+int speround_handler(struct pt_regs *regs);
+
+/* VMX copying */
+int enter_vmx_usercopy(void);
+int exit_vmx_usercopy(void);
+int enter_vmx_ops(void);
+void *exit_vmx_ops(void *dest);
 
 #endif /* __KERNEL__ */
 #endif /* __ASSEMBLY__ */

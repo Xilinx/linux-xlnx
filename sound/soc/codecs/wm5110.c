@@ -45,35 +45,35 @@ struct wm5110_priv {
 	unsigned int in_pga_cache[6];
 };
 
-static const struct wm_adsp_region wm5110_dsp1_regions[] = {
+static const struct cs_dsp_region wm5110_dsp1_regions[] = {
 	{ .type = WMFW_ADSP2_PM, .base = 0x100000 },
 	{ .type = WMFW_ADSP2_ZM, .base = 0x180000 },
 	{ .type = WMFW_ADSP2_XM, .base = 0x190000 },
 	{ .type = WMFW_ADSP2_YM, .base = 0x1a8000 },
 };
 
-static const struct wm_adsp_region wm5110_dsp2_regions[] = {
+static const struct cs_dsp_region wm5110_dsp2_regions[] = {
 	{ .type = WMFW_ADSP2_PM, .base = 0x200000 },
 	{ .type = WMFW_ADSP2_ZM, .base = 0x280000 },
 	{ .type = WMFW_ADSP2_XM, .base = 0x290000 },
 	{ .type = WMFW_ADSP2_YM, .base = 0x2a8000 },
 };
 
-static const struct wm_adsp_region wm5110_dsp3_regions[] = {
+static const struct cs_dsp_region wm5110_dsp3_regions[] = {
 	{ .type = WMFW_ADSP2_PM, .base = 0x300000 },
 	{ .type = WMFW_ADSP2_ZM, .base = 0x380000 },
 	{ .type = WMFW_ADSP2_XM, .base = 0x390000 },
 	{ .type = WMFW_ADSP2_YM, .base = 0x3a8000 },
 };
 
-static const struct wm_adsp_region wm5110_dsp4_regions[] = {
+static const struct cs_dsp_region wm5110_dsp4_regions[] = {
 	{ .type = WMFW_ADSP2_PM, .base = 0x400000 },
 	{ .type = WMFW_ADSP2_ZM, .base = 0x480000 },
 	{ .type = WMFW_ADSP2_XM, .base = 0x490000 },
 	{ .type = WMFW_ADSP2_YM, .base = 0x4a8000 },
 };
 
-static const struct wm_adsp_region *wm5110_dsp_regions[] = {
+static const struct cs_dsp_region *wm5110_dsp_regions[] = {
 	wm5110_dsp1_regions,
 	wm5110_dsp2_regions,
 	wm5110_dsp3_regions,
@@ -413,6 +413,7 @@ static int wm5110_put_dre(struct snd_kcontrol *kcontrol,
 	unsigned int rnew = (!!ucontrol->value.integer.value[1]) << mc->rshift;
 	unsigned int lold, rold;
 	unsigned int lena, rena;
+	bool change = false;
 	int ret;
 
 	snd_soc_dapm_mutex_lock(dapm);
@@ -440,8 +441,8 @@ static int wm5110_put_dre(struct snd_kcontrol *kcontrol,
 		goto err;
 	}
 
-	ret = regmap_update_bits(arizona->regmap, ARIZONA_DRE_ENABLE,
-				 mask, lnew | rnew);
+	ret = regmap_update_bits_check(arizona->regmap, ARIZONA_DRE_ENABLE,
+				       mask, lnew | rnew, &change);
 	if (ret) {
 		dev_err(arizona->dev, "Failed to set DRE: %d\n", ret);
 		goto err;
@@ -453,6 +454,9 @@ static int wm5110_put_dre(struct snd_kcontrol *kcontrol,
 
 	if (!rnew && rold)
 		wm5110_clear_pga_volume(arizona, mc->rshift);
+
+	if (change)
+		ret = 1;
 
 err:
 	snd_soc_dapm_mutex_unlock(dapm);
@@ -2381,7 +2385,6 @@ static const struct snd_soc_component_driver soc_component_dev_wm5110 = {
 	.num_dapm_routes	= ARRAY_SIZE(wm5110_dapm_routes),
 	.use_pmdown_time	= 1,
 	.endianness		= 1,
-	.non_legacy_dai_naming	= 1,
 };
 
 static int wm5110_probe(struct platform_device *pdev)
@@ -2409,15 +2412,15 @@ static int wm5110_probe(struct platform_device *pdev)
 
 	for (i = 0; i < WM5110_NUM_ADSP; i++) {
 		wm5110->core.adsp[i].part = "wm5110";
-		wm5110->core.adsp[i].num = i + 1;
-		wm5110->core.adsp[i].type = WMFW_ADSP2;
-		wm5110->core.adsp[i].dev = arizona->dev;
-		wm5110->core.adsp[i].regmap = arizona->regmap;
+		wm5110->core.adsp[i].cs_dsp.num = i + 1;
+		wm5110->core.adsp[i].cs_dsp.type = WMFW_ADSP2;
+		wm5110->core.adsp[i].cs_dsp.dev = arizona->dev;
+		wm5110->core.adsp[i].cs_dsp.regmap = arizona->regmap;
 
-		wm5110->core.adsp[i].base = ARIZONA_DSP1_CONTROL_1
+		wm5110->core.adsp[i].cs_dsp.base = ARIZONA_DSP1_CONTROL_1
 			+ (0x100 * i);
-		wm5110->core.adsp[i].mem = wm5110_dsp_regions[i];
-		wm5110->core.adsp[i].num_mems
+		wm5110->core.adsp[i].cs_dsp.mem = wm5110_dsp_regions[i];
+		wm5110->core.adsp[i].cs_dsp.num_mems
 			= ARRAY_SIZE(wm5110_dsp1_regions);
 
 		ret = wm_adsp2_init(&wm5110->core.adsp[i]);
@@ -2497,6 +2500,7 @@ err_dsp_irq:
 	arizona_set_irq_wake(arizona, ARIZONA_IRQ_DSP_IRQ1, 0);
 	arizona_free_irq(arizona, ARIZONA_IRQ_DSP_IRQ1, wm5110);
 err_jack_codec_dev:
+	pm_runtime_disable(&pdev->dev);
 	arizona_jack_codec_dev_remove(&wm5110->core);
 
 	return ret;

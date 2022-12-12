@@ -1984,6 +1984,20 @@
 #define RT5640_M_MONO_ADC_R_SFT			12
 #define RT5640_MCLK_DET				(0x1 << 11)
 
+/* General Control 1 (0xfb) */
+#define RT5640_IRQ_JD2_MASK			(0x1 << 12)
+#define RT5640_IRQ_JD2_SFT			12
+#define RT5640_IRQ_JD2_BP			(0x0 << 12)
+#define RT5640_IRQ_JD2_NOR			(0x1 << 12)
+#define RT5640_JD2_P_MASK			(0x1 << 10)
+#define RT5640_JD2_P_SFT			10
+#define RT5640_JD2_P_NOR			(0x0 << 10)
+#define RT5640_JD2_P_INV			(0x1 << 10)
+#define RT5640_JD2_MASK				(0x1 << 8)
+#define RT5640_JD2_SFT				8
+#define RT5640_JD2_DIS				(0x0 << 8)
+#define RT5640_JD2_EN				(0x1 << 8)
+
 /* Codec Private Register definition */
 
 /* MIC Over current threshold scale factor (0x15) */
@@ -2124,6 +2138,7 @@ struct rt5640_priv {
 
 	int ldo1_en; /* GPIO for LDO1_EN */
 	int irq;
+	int jd_gpio_irq;
 	int sysclk;
 	int sysclk_src;
 	int lrck[RT5640_AIFS];
@@ -2136,6 +2151,8 @@ struct rt5640_priv {
 
 	bool hp_mute;
 	bool asrc_en;
+	bool irq_requested;
+	bool jd_gpio_irq_requested;
 
 	/* Jack and button detect data */
 	bool ovcd_irq_enabled;
@@ -2145,12 +2162,20 @@ struct rt5640_priv {
 	int release_count;
 	int poll_count;
 	struct delayed_work bp_work;
-	struct work_struct jack_work;
+	struct delayed_work jack_work;
 	struct snd_soc_jack *jack;
+	struct gpio_desc *jd_gpio;
 	unsigned int jd_src;
 	bool jd_inverted;
 	unsigned int ovcd_th;
 	unsigned int ovcd_sf;
+	bool use_platform_clock;
+};
+
+struct rt5640_set_jack_data {
+	int codec_irq_override;
+	struct gpio_desc *jd_gpio;
+	bool use_platform_clock;
 };
 
 int rt5640_dmic_enable(struct snd_soc_component *component,

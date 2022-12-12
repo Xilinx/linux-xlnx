@@ -197,10 +197,30 @@ fault_type=%d		 Support configuring fault injection type, should be
 			 FAULT_DISCARD		  0x000002000
 			 FAULT_WRITE_IO		  0x000004000
 			 FAULT_SLAB_ALLOC	  0x000008000
+			 FAULT_DQUOT_INIT	  0x000010000
+			 FAULT_LOCK_OP		  0x000020000
 			 ===================	  ===========
 mode=%s			 Control block allocation mode which supports "adaptive"
 			 and "lfs". In "lfs" mode, there should be no random
 			 writes towards main area.
+			 "fragment:segment" and "fragment:block" are newly added here.
+			 These are developer options for experiments to simulate filesystem
+			 fragmentation/after-GC situation itself. The developers use these
+			 modes to understand filesystem fragmentation/after-GC condition well,
+			 and eventually get some insights to handle them better.
+			 In "fragment:segment", f2fs allocates a new segment in ramdom
+			 position. With this, we can simulate the after-GC condition.
+			 In "fragment:block", we can scatter block allocation with
+			 "max_fragment_chunk" and "max_fragment_hole" sysfs nodes.
+			 We added some randomness to both chunk and hole size to make
+			 it close to realistic IO pattern. So, in this mode, f2fs will allocate
+			 1..<max_fragment_chunk> blocks in a chunk and make a hole in the
+			 length of 1..<max_fragment_hole> by turns. With this, the newly
+			 allocated blocks will be scattered throughout the whole partition.
+			 Note that "fragment:block" implicitly enables "fragment:segment"
+			 option for more randomness.
+			 Please, use these options for your experiments and we strongly
+			 recommend to re-format the filesystem after using these options.
 io_bits=%u		 Set the bit size of write IO requests. It should be set
 			 with "mode=lfs".
 usrquota		 Enable plain user disk quota accounting.
@@ -215,12 +235,6 @@ offgrpjquota		 Turn off group journalled quota.
 offprjjquota		 Turn off project journalled quota.
 quota			 Enable plain user disk quota accounting.
 noquota			 Disable all plain disk quota option.
-whint_mode=%s		 Control which write hints are passed down to block
-			 layer. This supports "off", "user-based", and
-			 "fs-based".  In "off" mode (default), f2fs does not pass
-			 down hints. In "user-based" mode, f2fs tries to pass
-			 down hints given by users. And in "fs-based" mode, f2fs
-			 passes down hints with its policy.
 alloc_mode=%s		 Adjust block allocation policy, which supports "reuse"
 			 and "default".
 fsync_mode=%s		 Control the policy of fsync. Currently supports "posix",
@@ -272,9 +286,8 @@ compress_algorithm=%s:%d Control compress algorithm and its compress level, now,
 			 algorithm	level range
 			 lz4		3 - 16
 			 zstd		1 - 22
-compress_log_size=%u	 Support configuring compress cluster size, the size will
-			 be 4KB * (1 << %u), 16KB is minimum size, also it's
-			 default size.
+compress_log_size=%u	 Support configuring compress cluster size. The size will
+			 be 4KB * (1 << %u). The default and minimum sizes are 16KB.
 compress_extension=%s	 Support adding specified extension, so that f2fs can enable
 			 compression on those corresponding files, e.g. if all files
 			 with '.ext' has high compression rate, we can set the '.ext'
@@ -283,7 +296,7 @@ compress_extension=%s	 Support adding specified extension, so that f2fs can enab
 			 For other files, we can still enable compression via ioctl.
 			 Note that, there is one reserved special extension '*', it
 			 can be set to enable compression for all files.
-nocompress_extension=%s	   Support adding specified extension, so that f2fs can disable
+nocompress_extension=%s	 Support adding specified extension, so that f2fs can disable
 			 compression on those corresponding files, just contrary to compression extension.
 			 If you know exactly which files cannot be compressed, you can use this.
 			 The same extension name can't appear in both compress and nocompress
@@ -322,6 +335,11 @@ discard_unit=%s		 Control discard unit, the argument can be "block", "segment"
 			 default, it is helpful for large sized SMR or ZNS devices to
 			 reduce memory cost by getting rid of fs metadata supports small
 			 discard.
+memory=%s		 Control memory mode. This supports "normal" and "low" modes.
+			 "low" mode is introduced to support low memory devices.
+			 Because of the nature of low memory devices, in this mode, f2fs
+			 will try to save memory sometimes by sacrificing performance.
+			 "normal" mode is the default mode and same as before.
 ======================== ============================================================
 
 Debugfs Entries
@@ -731,70 +749,6 @@ In order to identify whether the data in the victim segment are valid or not,
 F2FS manages a bitmap. Each bit represents the validity of a block, and the
 bitmap is composed of a bit stream covering whole blocks in main area.
 
-Write-hint Policy
------------------
-
-1) whint_mode=off. F2FS only passes down WRITE_LIFE_NOT_SET.
-
-2) whint_mode=user-based. F2FS tries to pass down hints given by
-users.
-
-===================== ======================== ===================
-User                  F2FS                     Block
-===================== ======================== ===================
-N/A                   META                     WRITE_LIFE_NOT_SET
-N/A                   HOT_NODE                 "
-N/A                   WARM_NODE                "
-N/A                   COLD_NODE                "
-ioctl(COLD)           COLD_DATA                WRITE_LIFE_EXTREME
-extension list        "                        "
-
--- buffered io
-WRITE_LIFE_EXTREME    COLD_DATA                WRITE_LIFE_EXTREME
-WRITE_LIFE_SHORT      HOT_DATA                 WRITE_LIFE_SHORT
-WRITE_LIFE_NOT_SET    WARM_DATA                WRITE_LIFE_NOT_SET
-WRITE_LIFE_NONE       "                        "
-WRITE_LIFE_MEDIUM     "                        "
-WRITE_LIFE_LONG       "                        "
-
--- direct io
-WRITE_LIFE_EXTREME    COLD_DATA                WRITE_LIFE_EXTREME
-WRITE_LIFE_SHORT      HOT_DATA                 WRITE_LIFE_SHORT
-WRITE_LIFE_NOT_SET    WARM_DATA                WRITE_LIFE_NOT_SET
-WRITE_LIFE_NONE       "                        WRITE_LIFE_NONE
-WRITE_LIFE_MEDIUM     "                        WRITE_LIFE_MEDIUM
-WRITE_LIFE_LONG       "                        WRITE_LIFE_LONG
-===================== ======================== ===================
-
-3) whint_mode=fs-based. F2FS passes down hints with its policy.
-
-===================== ======================== ===================
-User                  F2FS                     Block
-===================== ======================== ===================
-N/A                   META                     WRITE_LIFE_MEDIUM;
-N/A                   HOT_NODE                 WRITE_LIFE_NOT_SET
-N/A                   WARM_NODE                "
-N/A                   COLD_NODE                WRITE_LIFE_NONE
-ioctl(COLD)           COLD_DATA                WRITE_LIFE_EXTREME
-extension list        "                        "
-
--- buffered io
-WRITE_LIFE_EXTREME    COLD_DATA                WRITE_LIFE_EXTREME
-WRITE_LIFE_SHORT      HOT_DATA                 WRITE_LIFE_SHORT
-WRITE_LIFE_NOT_SET    WARM_DATA                WRITE_LIFE_LONG
-WRITE_LIFE_NONE       "                        "
-WRITE_LIFE_MEDIUM     "                        "
-WRITE_LIFE_LONG       "                        "
-
--- direct io
-WRITE_LIFE_EXTREME    COLD_DATA                WRITE_LIFE_EXTREME
-WRITE_LIFE_SHORT      HOT_DATA                 WRITE_LIFE_SHORT
-WRITE_LIFE_NOT_SET    WARM_DATA                WRITE_LIFE_NOT_SET
-WRITE_LIFE_NONE       "                        WRITE_LIFE_NONE
-WRITE_LIFE_MEDIUM     "                        WRITE_LIFE_MEDIUM
-WRITE_LIFE_LONG       "                        WRITE_LIFE_LONG
-===================== ======================== ===================
-
 Fallocate(2) Policy
 -------------------
 
@@ -868,10 +822,11 @@ Compression implementation
   Instead, the main goal is to reduce data writes to flash disk as much as
   possible, resulting in extending disk life time as well as relaxing IO
   congestion. Alternatively, we've added ioctl(F2FS_IOC_RELEASE_COMPRESS_BLOCKS)
-  interface to reclaim compressed space and show it to user after putting the
-  immutable bit. Immutable bit, after release, it doesn't allow writing/mmaping
-  on the file, until reserving compressed space via
-  ioctl(F2FS_IOC_RESERVE_COMPRESS_BLOCKS) or truncating filesize to zero.
+  interface to reclaim compressed space and show it to user after setting a
+  special flag to the inode. Once the compressed space is released, the flag
+  will block writing data to the file until either the compressed space is
+  reserved via ioctl(F2FS_IOC_RESERVE_COMPRESS_BLOCKS) or the file size is
+  truncated to zero.
 
 Compress metadata layout::
 
@@ -880,12 +835,12 @@ Compress metadata layout::
 		| cluster 1 | cluster 2 | ......... | cluster N |
 		+-----------------------------------------------+
 		.           .                       .           .
-	.                       .                .                      .
+	  .                      .                .                      .
     .         Compressed Cluster       .        .        Normal Cluster            .
     +----------+---------+---------+---------+  +---------+---------+---------+---------+
     |compr flag| block 1 | block 2 | block 3 |  | block 1 | block 2 | block 3 | block 4 |
     +----------+---------+---------+---------+  +---------+---------+---------+---------+
-	    .                             .
+	       .                             .
 	    .                                           .
 	.                                                           .
 	+-------------+-------------+----------+----------------------------+

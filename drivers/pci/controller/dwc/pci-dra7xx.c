@@ -7,6 +7,7 @@
  * Authors: Kishon Vijay Abraham I <kishon@ti.com>
  */
 
+#include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/err.h>
@@ -14,7 +15,7 @@
 #include <linux/irq.h>
 #include <linux/irqdomain.h>
 #include <linux/kernel.h>
-#include <linux/init.h>
+#include <linux/module.h>
 #include <linux/of_device.h>
 #include <linux/of_gpio.h>
 #include <linux/of_pci.h>
@@ -90,6 +91,7 @@ struct dra7xx_pcie {
 	int			phy_count;	/* DT phy-names count */
 	struct phy		**phy;
 	struct irq_domain	*irq_domain;
+	struct clk              *clk;
 	enum dw_pcie_device_mode mode;
 };
 
@@ -176,7 +178,7 @@ static void dra7xx_pcie_enable_interrupts(struct dra7xx_pcie *dra7xx)
 	dra7xx_pcie_enable_msi_interrupts(dra7xx);
 }
 
-static int dra7xx_pcie_host_init(struct pcie_port *pp)
+static int dra7xx_pcie_host_init(struct dw_pcie_rp *pp)
 {
 	struct dw_pcie *pci = to_dw_pcie_from_pp(pp);
 	struct dra7xx_pcie *dra7xx = to_dra7xx_pcie(pci);
@@ -200,7 +202,7 @@ static const struct irq_domain_ops intx_domain_ops = {
 	.xlate = pci_irqd_intx_xlate,
 };
 
-static int dra7xx_pcie_handle_msi(struct pcie_port *pp, int index)
+static int dra7xx_pcie_handle_msi(struct dw_pcie_rp *pp, int index)
 {
 	struct dw_pcie *pci = to_dw_pcie_from_pp(pp);
 	unsigned long val;
@@ -211,7 +213,7 @@ static int dra7xx_pcie_handle_msi(struct pcie_port *pp, int index)
 	if (!val)
 		return 0;
 
-	pos = find_next_bit(&val, MAX_MSI_IRQS_PER_CTRL, 0);
+	pos = find_first_bit(&val, MAX_MSI_IRQS_PER_CTRL);
 	while (pos != MAX_MSI_IRQS_PER_CTRL) {
 		generic_handle_domain_irq(pp->irq_domain,
 					  (index * MAX_MSI_IRQS_PER_CTRL) + pos);
@@ -222,7 +224,7 @@ static int dra7xx_pcie_handle_msi(struct pcie_port *pp, int index)
 	return 1;
 }
 
-static void dra7xx_pcie_handle_msi_irq(struct pcie_port *pp)
+static void dra7xx_pcie_handle_msi_irq(struct dw_pcie_rp *pp)
 {
 	struct dw_pcie *pci = to_dw_pcie_from_pp(pp);
 	int ret, i, count, num_ctrls;
@@ -253,8 +255,8 @@ static void dra7xx_pcie_msi_irq_handler(struct irq_desc *desc)
 {
 	struct irq_chip *chip = irq_desc_get_chip(desc);
 	struct dra7xx_pcie *dra7xx;
+	struct dw_pcie_rp *pp;
 	struct dw_pcie *pci;
-	struct pcie_port *pp;
 	unsigned long reg;
 	u32 bit;
 
@@ -342,7 +344,7 @@ static irqreturn_t dra7xx_pcie_irq_handler(int irq, void *arg)
 	return IRQ_HANDLED;
 }
 
-static int dra7xx_pcie_init_irq_domain(struct pcie_port *pp)
+static int dra7xx_pcie_init_irq_domain(struct dw_pcie_rp *pp)
 {
 	struct dw_pcie *pci = to_dw_pcie_from_pp(pp);
 	struct device *dev = pci->dev;
@@ -473,7 +475,7 @@ static int dra7xx_add_pcie_port(struct dra7xx_pcie *dra7xx,
 {
 	int ret;
 	struct dw_pcie *pci = dra7xx->pci;
-	struct pcie_port *pp = &pci->pp;
+	struct dw_pcie_rp *pp = &pci->pp;
 	struct device *dev = pci->dev;
 
 	pp->irq = platform_get_irq(pdev, 1);
@@ -481,7 +483,7 @@ static int dra7xx_add_pcie_port(struct dra7xx_pcie *dra7xx,
 		return pp->irq;
 
 	/* MSI IRQ is muxed */
-	pp->msi_irq = -ENODEV;
+	pp->msi_irq[0] = -ENODEV;
 
 	ret = dra7xx_pcie_init_irq_domain(pp);
 	if (ret < 0)
@@ -607,6 +609,7 @@ static const struct of_device_id of_dra7xx_pcie_match[] = {
 	},
 	{},
 };
+MODULE_DEVICE_TABLE(of, of_dra7xx_pcie_match);
 
 /*
  * dra7xx_pcie_unaligned_memaccess: workaround for AM572x/AM571x Errata i870
@@ -694,16 +697,14 @@ static int dra7xx_pcie_probe(struct platform_device *pdev)
 	struct device_node *np = dev->of_node;
 	char name[10];
 	struct gpio_desc *reset;
-	const struct of_device_id *match;
 	const struct dra7xx_pcie_of_data *data;
 	enum dw_pcie_device_mode mode;
 	u32 b1co_mode_sel_mask;
 
-	match = of_match_device(of_match_ptr(of_dra7xx_pcie_match), dev);
-	if (!match)
+	data = of_device_get_match_data(dev);
+	if (!data)
 		return -EINVAL;
 
-	data = (struct dra7xx_pcie_of_data *)match->data;
 	mode = (enum dw_pcie_device_mode)data->mode;
 	b1co_mode_sel_mask = data->b1co_mode_sel_mask;
 
@@ -739,6 +740,15 @@ static int dra7xx_pcie_probe(struct platform_device *pdev)
 	link = devm_kcalloc(dev, phy_count, sizeof(*link), GFP_KERNEL);
 	if (!link)
 		return -ENOMEM;
+
+	dra7xx->clk = devm_clk_get_optional(dev, NULL);
+	if (IS_ERR(dra7xx->clk))
+		return dev_err_probe(dev, PTR_ERR(dra7xx->clk),
+				     "clock request failed");
+
+	ret = clk_prepare_enable(dra7xx->clk);
+	if (ret)
+		return ret;
 
 	for (i = 0; i < phy_count; i++) {
 		snprintf(name, sizeof(name), "pcie-phy%d", i);
@@ -852,7 +862,6 @@ err_link:
 	return ret;
 }
 
-#ifdef CONFIG_PM_SLEEP
 static int dra7xx_pcie_suspend(struct device *dev)
 {
 	struct dra7xx_pcie *dra7xx = dev_get_drvdata(dev);
@@ -909,7 +918,6 @@ static int dra7xx_pcie_resume_noirq(struct device *dev)
 
 	return 0;
 }
-#endif
 
 static void dra7xx_pcie_shutdown(struct platform_device *pdev)
 {
@@ -925,12 +933,14 @@ static void dra7xx_pcie_shutdown(struct platform_device *pdev)
 
 	pm_runtime_disable(dev);
 	dra7xx_pcie_disable_phy(dra7xx);
+
+	clk_disable_unprepare(dra7xx->clk);
 }
 
 static const struct dev_pm_ops dra7xx_pcie_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(dra7xx_pcie_suspend, dra7xx_pcie_resume)
-	SET_NOIRQ_SYSTEM_SLEEP_PM_OPS(dra7xx_pcie_suspend_noirq,
-				      dra7xx_pcie_resume_noirq)
+	SYSTEM_SLEEP_PM_OPS(dra7xx_pcie_suspend, dra7xx_pcie_resume)
+	NOIRQ_SYSTEM_SLEEP_PM_OPS(dra7xx_pcie_suspend_noirq,
+				  dra7xx_pcie_resume_noirq)
 };
 
 static struct platform_driver dra7xx_pcie_driver = {
@@ -943,4 +953,8 @@ static struct platform_driver dra7xx_pcie_driver = {
 	},
 	.shutdown = dra7xx_pcie_shutdown,
 };
-builtin_platform_driver(dra7xx_pcie_driver);
+module_platform_driver(dra7xx_pcie_driver);
+
+MODULE_AUTHOR("Kishon Vijay Abraham I <kishon@ti.com>");
+MODULE_DESCRIPTION("PCIe controller driver for TI DRA7xx SoCs");
+MODULE_LICENSE("GPL v2");

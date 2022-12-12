@@ -177,6 +177,15 @@ MODULE_PARM_DESC(cache_hints, " user-space cache hints, default is 0.\n"
 			     "\t\t    0 == forbid\n"
 			     "\t\t    1 == allow");
 
+static unsigned int supports_requests[VIVID_MAX_DEVS] = {
+	[0 ... (VIVID_MAX_DEVS - 1)] = 1
+};
+module_param_array(supports_requests, uint, NULL, 0444);
+MODULE_PARM_DESC(supports_requests, " support for requests, default is 1.\n"
+			     "\t\t    0 == no support\n"
+			     "\t\t    1 == supports requests\n"
+			     "\t\t    2 == requires requests");
+
 static struct vivid_dev *vivid_devs[VIVID_MAX_DEVS];
 
 const struct v4l2_rect vivid_min_rect = {
@@ -328,6 +337,28 @@ static int vidioc_g_fbuf(struct file *file, void *fh, struct v4l2_framebuffer *a
 	if (vdev->vfl_dir == VFL_DIR_RX)
 		return vivid_vid_cap_g_fbuf(file, fh, a);
 	return vivid_vid_out_g_fbuf(file, fh, a);
+}
+
+/*
+ * Only support the framebuffer of one of the vivid instances.
+ * Anything else is rejected.
+ */
+bool vivid_validate_fb(const struct v4l2_framebuffer *a)
+{
+	struct vivid_dev *dev;
+	int i;
+
+	for (i = 0; i < n_devs; i++) {
+		dev = vivid_devs[i];
+		if (!dev || !dev->video_pbase)
+			continue;
+		if ((unsigned long)a->base == dev->video_pbase &&
+		    a->fmt.width <= dev->display_width &&
+		    a->fmt.height <= dev->display_height &&
+		    a->fmt.bytesperline <= dev->display_byte_stride)
+			return true;
+	}
+	return false;
 }
 
 static int vidioc_s_fbuf(struct file *file, void *fh, const struct v4l2_framebuffer *a)
@@ -883,10 +914,11 @@ static int vivid_create_queue(struct vivid_dev *dev,
 	q->mem_ops = allocators[dev->inst] == 1 ? &vb2_dma_contig_memops :
 						  &vb2_vmalloc_memops;
 	q->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
-	q->min_buffers_needed = min_buffers_needed;
+	q->min_buffers_needed = supports_requests[dev->inst] ? 0 : min_buffers_needed;
 	q->lock = &dev->mutex;
 	q->dev = dev->v4l2_dev.dev;
-	q->supports_requests = true;
+	q->supports_requests = supports_requests[dev->inst];
+	q->requires_requests = supports_requests[dev->inst] >= 2;
 	q->allow_cache_hints = (cache_hints[dev->inst] == 1);
 
 	return vb2_queue_init(q);
@@ -910,8 +942,12 @@ static int vivid_detect_feature_set(struct vivid_dev *dev, int inst,
 
 	/* how many inputs do we have and of what type? */
 	dev->num_inputs = num_inputs[inst];
-	if (dev->num_inputs < 1)
-		dev->num_inputs = 1;
+	if (node_type & 0x20007) {
+		if (dev->num_inputs < 1)
+			dev->num_inputs = 1;
+	} else {
+		dev->num_inputs = 0;
+	}
 	if (dev->num_inputs >= MAX_INPUTS)
 		dev->num_inputs = MAX_INPUTS;
 	for (i = 0; i < dev->num_inputs; i++) {
@@ -928,8 +964,12 @@ static int vivid_detect_feature_set(struct vivid_dev *dev, int inst,
 
 	/* how many outputs do we have and of what type? */
 	dev->num_outputs = num_outputs[inst];
-	if (dev->num_outputs < 1)
-		dev->num_outputs = 1;
+	if (node_type & 0x40300) {
+		if (dev->num_outputs < 1)
+			dev->num_outputs = 1;
+	} else {
+		dev->num_outputs = 0;
+	}
 	if (dev->num_outputs >= MAX_OUTPUTS)
 		dev->num_outputs = MAX_OUTPUTS;
 	for (i = 0; i < dev->num_outputs; i++) {
@@ -1878,18 +1918,7 @@ static int vivid_create_instance(struct platform_device *pdev, int inst)
 	INIT_LIST_HEAD(&dev->meta_out_active);
 	INIT_LIST_HEAD(&dev->touch_cap_active);
 
-	INIT_LIST_HEAD(&dev->cec_work_list);
-	spin_lock_init(&dev->cec_slock);
-	/*
-	 * Same as create_singlethread_workqueue, but now I can use the
-	 * string formatting of alloc_ordered_workqueue.
-	 */
-	dev->cec_workqueue = alloc_ordered_workqueue("vivid-%03d-cec",
-						     WQ_MEM_RECLAIM, inst);
-	if (!dev->cec_workqueue) {
-		ret = -ENOMEM;
-		goto unreg_dev;
-	}
+	spin_lock_init(&dev->cec_xfers_slock);
 
 	if (allocators[inst] == 1)
 		dma_coerce_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
@@ -1929,6 +1958,19 @@ static int vivid_create_instance(struct platform_device *pdev, int inst)
 			cec_tx_bus_cnt++;
 		}
 	}
+
+	if (dev->cec_rx_adap || cec_tx_bus_cnt) {
+		init_waitqueue_head(&dev->kthread_waitq_cec);
+		dev->kthread_cec = kthread_run(vivid_cec_bus_thread, dev,
+					       "vivid_cec-%s", dev->v4l2_dev.name);
+		if (IS_ERR(dev->kthread_cec)) {
+			ret = PTR_ERR(dev->kthread_cec);
+			dev->kthread_cec = NULL;
+			v4l2_err(&dev->v4l2_dev, "kernel_thread() failed\n");
+			goto unreg_dev;
+		}
+	}
+
 #endif
 
 	v4l2_ctrl_handler_setup(&dev->ctrl_hdl_vid_cap);
@@ -1968,10 +2010,8 @@ unreg_dev:
 	cec_unregister_adapter(dev->cec_rx_adap);
 	for (i = 0; i < MAX_OUTPUTS; i++)
 		cec_unregister_adapter(dev->cec_tx_adap[i]);
-	if (dev->cec_workqueue) {
-		vivid_cec_bus_free_work(dev);
-		destroy_workqueue(dev->cec_workqueue);
-	}
+	if (dev->kthread_cec)
+		kthread_stop(dev->kthread_cec);
 free_dev:
 	v4l2_device_put(&dev->v4l2_dev);
 	return ret;
@@ -2093,10 +2133,8 @@ static int vivid_remove(struct platform_device *pdev)
 		cec_unregister_adapter(dev->cec_rx_adap);
 		for (j = 0; j < MAX_OUTPUTS; j++)
 			cec_unregister_adapter(dev->cec_tx_adap[j]);
-		if (dev->cec_workqueue) {
-			vivid_cec_bus_free_work(dev);
-			destroy_workqueue(dev->cec_workqueue);
-		}
+		if (dev->kthread_cec)
+			kthread_stop(dev->kthread_cec);
 		v4l2_device_put(&dev->v4l2_dev);
 		vivid_devs[i] = NULL;
 	}

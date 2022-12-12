@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2013-2020, Intel Corporation. All rights reserved.
+ * Copyright (c) 2013-2022, Intel Corporation. All rights reserved.
  * Intel Management Engine Interface (Intel MEI) Linux driver
  */
 
@@ -176,7 +176,7 @@ static bool mei_txe_aliveness_set(struct mei_device *dev, u32 req)
  * @dev: the device structure
  *
  * Extract HICR_HOST_ALIVENESS_RESP_ACK bit from
- * from HICR_HOST_ALIVENESS_REQ register value
+ * HICR_HOST_ALIVENESS_REQ register value
  *
  * Return: SICR_HOST_ALIVENESS_REQ_REQUESTED bit value
  */
@@ -994,11 +994,7 @@ static bool mei_txe_check_and_ack_intrs(struct mei_device *dev, bool do_ack)
 		hhisr &= ~IPC_HHIER_SEC;
 	}
 
-	generated = generated ||
-		(hisr & HISR_INT_STS_MSK) ||
-		(ipc_isr & SEC_IPC_HOST_INT_STATUS_PENDING);
-
-	if (generated && do_ack) {
+	if (do_ack) {
 		/* Save the interrupt causes */
 		hw->intr_cause |= hisr & HISR_INT_STS_MSK;
 		if (ipc_isr & SEC_IPC_HOST_INT_STATUS_IN_RDY)
@@ -1205,7 +1201,7 @@ struct mei_device *mei_txe_dev_init(struct pci_dev *pdev)
 	if (!dev)
 		return NULL;
 
-	mei_device_init(dev, &pdev->dev, &mei_txe_hw_ops);
+	mei_device_init(dev, &pdev->dev, false, &mei_txe_hw_ops);
 
 	hw = to_txe_hw(dev);
 

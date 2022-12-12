@@ -38,6 +38,7 @@ static void sdw_mockup_component_remove(struct snd_soc_component *component)
 static const struct snd_soc_component_driver snd_soc_sdw_mockup_component = {
 	.probe = sdw_mockup_component_probe,
 	.remove = sdw_mockup_component_remove,
+	.endianness = 1,
 };
 
 static int sdw_mockup_set_sdw_stream(struct snd_soc_dai *dai, void *sdw_stream,
@@ -138,7 +139,7 @@ static int sdw_mockup_pcm_hw_free(struct snd_pcm_substream *substream,
 static const struct snd_soc_dai_ops sdw_mockup_ops = {
 	.hw_params	= sdw_mockup_pcm_hw_params,
 	.hw_free	= sdw_mockup_pcm_hw_free,
-	.set_sdw_stream	= sdw_mockup_set_sdw_stream,
+	.set_stream	= sdw_mockup_set_sdw_stream,
 	.shutdown	= sdw_mockup_shutdown,
 };
 

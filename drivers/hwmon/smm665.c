@@ -265,7 +265,7 @@ static struct smm665_data *smm665_update_device(struct device *dev)
 			data->adc[i] = val;
 		}
 		data->last_updated = jiffies;
-		data->valid = 1;
+		data->valid = true;
 	}
 abort:
 	mutex_unlock(&data->update_lock);
@@ -671,12 +671,11 @@ out_unregister:
 	return ret;
 }
 
-static int smm665_remove(struct i2c_client *client)
+static void smm665_remove(struct i2c_client *client)
 {
 	struct smm665_data *data = i2c_get_clientdata(client);
 
 	i2c_unregister_device(data->cmdreg);
-	return 0;
 }
 
 static const struct i2c_device_id smm665_id[] = {

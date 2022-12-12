@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /* Nehalem/SandBridge/Haswell/Broadwell/Skylake uncore support */
 #include "uncore.h"
+#include "uncore_discovery.h"
 
 /* Uncore IMC PCI IDs */
 #define PCI_DEVICE_ID_INTEL_SNB_IMC		0x0100
@@ -64,6 +65,57 @@
 #define PCI_DEVICE_ID_INTEL_RKL_2_IMC		0x4c53
 #define PCI_DEVICE_ID_INTEL_ADL_1_IMC		0x4660
 #define PCI_DEVICE_ID_INTEL_ADL_2_IMC		0x4641
+#define PCI_DEVICE_ID_INTEL_ADL_3_IMC		0x4601
+#define PCI_DEVICE_ID_INTEL_ADL_4_IMC		0x4602
+#define PCI_DEVICE_ID_INTEL_ADL_5_IMC		0x4609
+#define PCI_DEVICE_ID_INTEL_ADL_6_IMC		0x460a
+#define PCI_DEVICE_ID_INTEL_ADL_7_IMC		0x4621
+#define PCI_DEVICE_ID_INTEL_ADL_8_IMC		0x4623
+#define PCI_DEVICE_ID_INTEL_ADL_9_IMC		0x4629
+#define PCI_DEVICE_ID_INTEL_ADL_10_IMC		0x4637
+#define PCI_DEVICE_ID_INTEL_ADL_11_IMC		0x463b
+#define PCI_DEVICE_ID_INTEL_ADL_12_IMC		0x4648
+#define PCI_DEVICE_ID_INTEL_ADL_13_IMC		0x4649
+#define PCI_DEVICE_ID_INTEL_ADL_14_IMC		0x4650
+#define PCI_DEVICE_ID_INTEL_ADL_15_IMC		0x4668
+#define PCI_DEVICE_ID_INTEL_ADL_16_IMC		0x4670
+#define PCI_DEVICE_ID_INTEL_ADL_17_IMC		0x4614
+#define PCI_DEVICE_ID_INTEL_ADL_18_IMC		0x4617
+#define PCI_DEVICE_ID_INTEL_ADL_19_IMC		0x4618
+#define PCI_DEVICE_ID_INTEL_ADL_20_IMC		0x461B
+#define PCI_DEVICE_ID_INTEL_ADL_21_IMC		0x461C
+#define PCI_DEVICE_ID_INTEL_RPL_1_IMC		0xA700
+#define PCI_DEVICE_ID_INTEL_RPL_2_IMC		0xA702
+#define PCI_DEVICE_ID_INTEL_RPL_3_IMC		0xA706
+#define PCI_DEVICE_ID_INTEL_RPL_4_IMC		0xA709
+#define PCI_DEVICE_ID_INTEL_RPL_5_IMC		0xA701
+#define PCI_DEVICE_ID_INTEL_RPL_6_IMC		0xA703
+#define PCI_DEVICE_ID_INTEL_RPL_7_IMC		0xA704
+#define PCI_DEVICE_ID_INTEL_RPL_8_IMC		0xA705
+#define PCI_DEVICE_ID_INTEL_RPL_9_IMC		0xA706
+#define PCI_DEVICE_ID_INTEL_RPL_10_IMC		0xA707
+#define PCI_DEVICE_ID_INTEL_RPL_11_IMC		0xA708
+#define PCI_DEVICE_ID_INTEL_RPL_12_IMC		0xA709
+#define PCI_DEVICE_ID_INTEL_RPL_13_IMC		0xA70a
+#define PCI_DEVICE_ID_INTEL_RPL_14_IMC		0xA70b
+#define PCI_DEVICE_ID_INTEL_RPL_15_IMC		0xA715
+#define PCI_DEVICE_ID_INTEL_RPL_16_IMC		0xA716
+#define PCI_DEVICE_ID_INTEL_RPL_17_IMC		0xA717
+#define PCI_DEVICE_ID_INTEL_RPL_18_IMC		0xA718
+#define PCI_DEVICE_ID_INTEL_RPL_19_IMC		0xA719
+#define PCI_DEVICE_ID_INTEL_RPL_20_IMC		0xA71A
+#define PCI_DEVICE_ID_INTEL_RPL_21_IMC		0xA71B
+#define PCI_DEVICE_ID_INTEL_RPL_22_IMC		0xA71C
+#define PCI_DEVICE_ID_INTEL_RPL_23_IMC		0xA728
+#define PCI_DEVICE_ID_INTEL_RPL_24_IMC		0xA729
+#define PCI_DEVICE_ID_INTEL_RPL_25_IMC		0xA72A
+
+
+#define IMC_UNCORE_DEV(a)						\
+{									\
+	PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_##a##_IMC),	\
+	.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),	\
+}
 
 /* SNB event control */
 #define SNB_UNC_CTL_EV_SEL_MASK			0x000000ff
@@ -155,6 +207,7 @@
 
 DEFINE_UNCORE_FORMAT_ATTR(event, event, "config:0-7");
 DEFINE_UNCORE_FORMAT_ATTR(umask, umask, "config:8-15");
+DEFINE_UNCORE_FORMAT_ATTR(chmask, chmask, "config:8-11");
 DEFINE_UNCORE_FORMAT_ATTR(edge, edge, "config:18");
 DEFINE_UNCORE_FORMAT_ATTR(inv, inv, "config:23");
 DEFINE_UNCORE_FORMAT_ATTR(cmask5, cmask, "config:24-28");
@@ -788,6 +841,22 @@ int snb_pci2phy_map_init(int devid)
 	return 0;
 }
 
+static u64 snb_uncore_imc_read_counter(struct intel_uncore_box *box, struct perf_event *event)
+{
+	struct hw_perf_event *hwc = &event->hw;
+
+	/*
+	 * SNB IMC counters are 32-bit and are laid out back to back
+	 * in MMIO space. Therefore we must use a 32-bit accessor function
+	 * using readq() from uncore_mmio_read_counter() causes problems
+	 * because it is reading 64-bit at a time. This is okay for the
+	 * uncore_perf_event_update() function because it drops the upper
+	 * 32-bits but not okay for plain uncore_read_counter() as invoked
+	 * in uncore_pmu_event_start().
+	 */
+	return (u64)readl(box->io_addr + hwc->event_base);
+}
+
 static struct pmu snb_uncore_imc_pmu = {
 	.task_ctx_nr	= perf_invalid_context,
 	.event_init	= snb_uncore_imc_event_init,
@@ -807,7 +876,7 @@ static struct intel_uncore_ops snb_uncore_imc_ops = {
 	.disable_event	= snb_uncore_imc_disable_event,
 	.enable_event	= snb_uncore_imc_enable_event,
 	.hw_config	= snb_uncore_imc_hw_config,
-	.read_counter	= uncore_mmio_read_counter,
+	.read_counter	= snb_uncore_imc_read_counter,
 };
 
 static struct intel_uncore_type snb_uncore_imc = {
@@ -829,242 +898,80 @@ static struct intel_uncore_type *snb_pci_uncores[] = {
 };
 
 static const struct pci_device_id snb_uncore_pci_ids[] = {
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_SNB_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
+	IMC_UNCORE_DEV(SNB),
 	{ /* end: all zeroes */ },
 };
 
 static const struct pci_device_id ivb_uncore_pci_ids[] = {
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_IVB_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_IVB_E3_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
+	IMC_UNCORE_DEV(IVB),
+	IMC_UNCORE_DEV(IVB_E3),
 	{ /* end: all zeroes */ },
 };
 
 static const struct pci_device_id hsw_uncore_pci_ids[] = {
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_HSW_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_HSW_U_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
+	IMC_UNCORE_DEV(HSW),
+	IMC_UNCORE_DEV(HSW_U),
 	{ /* end: all zeroes */ },
 };
 
 static const struct pci_device_id bdw_uncore_pci_ids[] = {
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_BDW_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
+	IMC_UNCORE_DEV(BDW),
 	{ /* end: all zeroes */ },
 };
 
 static const struct pci_device_id skl_uncore_pci_ids[] = {
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_SKL_Y_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_SKL_U_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_SKL_HD_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_SKL_HQ_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_SKL_SD_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_SKL_SQ_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_SKL_E3_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_KBL_Y_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_KBL_U_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_KBL_UQ_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_KBL_SD_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_KBL_SQ_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_KBL_HQ_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_KBL_WQ_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CFL_2U_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CFL_4U_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CFL_4H_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CFL_6H_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CFL_2S_D_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CFL_4S_D_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CFL_6S_D_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CFL_8S_D_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CFL_4S_W_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CFL_6S_W_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CFL_8S_W_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CFL_4S_S_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CFL_6S_S_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CFL_8S_S_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_AML_YD_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_AML_YQ_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_WHL_UQ_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_WHL_4_UQ_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_WHL_UD_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CML_H1_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CML_H2_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CML_H3_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CML_U1_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CML_U2_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CML_U3_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CML_S1_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CML_S2_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CML_S3_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CML_S4_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CML_S5_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
+	IMC_UNCORE_DEV(SKL_Y),
+	IMC_UNCORE_DEV(SKL_U),
+	IMC_UNCORE_DEV(SKL_HD),
+	IMC_UNCORE_DEV(SKL_HQ),
+	IMC_UNCORE_DEV(SKL_SD),
+	IMC_UNCORE_DEV(SKL_SQ),
+	IMC_UNCORE_DEV(SKL_E3),
+	IMC_UNCORE_DEV(KBL_Y),
+	IMC_UNCORE_DEV(KBL_U),
+	IMC_UNCORE_DEV(KBL_UQ),
+	IMC_UNCORE_DEV(KBL_SD),
+	IMC_UNCORE_DEV(KBL_SQ),
+	IMC_UNCORE_DEV(KBL_HQ),
+	IMC_UNCORE_DEV(KBL_WQ),
+	IMC_UNCORE_DEV(CFL_2U),
+	IMC_UNCORE_DEV(CFL_4U),
+	IMC_UNCORE_DEV(CFL_4H),
+	IMC_UNCORE_DEV(CFL_6H),
+	IMC_UNCORE_DEV(CFL_2S_D),
+	IMC_UNCORE_DEV(CFL_4S_D),
+	IMC_UNCORE_DEV(CFL_6S_D),
+	IMC_UNCORE_DEV(CFL_8S_D),
+	IMC_UNCORE_DEV(CFL_4S_W),
+	IMC_UNCORE_DEV(CFL_6S_W),
+	IMC_UNCORE_DEV(CFL_8S_W),
+	IMC_UNCORE_DEV(CFL_4S_S),
+	IMC_UNCORE_DEV(CFL_6S_S),
+	IMC_UNCORE_DEV(CFL_8S_S),
+	IMC_UNCORE_DEV(AML_YD),
+	IMC_UNCORE_DEV(AML_YQ),
+	IMC_UNCORE_DEV(WHL_UQ),
+	IMC_UNCORE_DEV(WHL_4_UQ),
+	IMC_UNCORE_DEV(WHL_UD),
+	IMC_UNCORE_DEV(CML_H1),
+	IMC_UNCORE_DEV(CML_H2),
+	IMC_UNCORE_DEV(CML_H3),
+	IMC_UNCORE_DEV(CML_U1),
+	IMC_UNCORE_DEV(CML_U2),
+	IMC_UNCORE_DEV(CML_U3),
+	IMC_UNCORE_DEV(CML_S1),
+	IMC_UNCORE_DEV(CML_S2),
+	IMC_UNCORE_DEV(CML_S3),
+	IMC_UNCORE_DEV(CML_S4),
+	IMC_UNCORE_DEV(CML_S5),
 	{ /* end: all zeroes */ },
 };
 
 static const struct pci_device_id icl_uncore_pci_ids[] = {
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_ICL_U_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_ICL_U2_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_RKL_1_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_RKL_2_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
+	IMC_UNCORE_DEV(ICL_U),
+	IMC_UNCORE_DEV(ICL_U2),
+	IMC_UNCORE_DEV(RKL_1),
+	IMC_UNCORE_DEV(RKL_2),
 	{ /* end: all zeroes */ },
 };
 
@@ -1306,34 +1213,57 @@ void nhm_uncore_cpu_init(void)
 /* Tiger Lake MMIO uncore support */
 
 static const struct pci_device_id tgl_uncore_pci_ids[] = {
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_TGL_U1_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_TGL_U2_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_TGL_U3_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_TGL_U4_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_TGL_H_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_ADL_1_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
-	{ /* IMC */
-		PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_ADL_2_IMC),
-		.driver_data = UNCORE_PCI_DEV_DATA(SNB_PCI_UNCORE_IMC, 0),
-	},
+	IMC_UNCORE_DEV(TGL_U1),
+	IMC_UNCORE_DEV(TGL_U2),
+	IMC_UNCORE_DEV(TGL_U3),
+	IMC_UNCORE_DEV(TGL_U4),
+	IMC_UNCORE_DEV(TGL_H),
+	IMC_UNCORE_DEV(ADL_1),
+	IMC_UNCORE_DEV(ADL_2),
+	IMC_UNCORE_DEV(ADL_3),
+	IMC_UNCORE_DEV(ADL_4),
+	IMC_UNCORE_DEV(ADL_5),
+	IMC_UNCORE_DEV(ADL_6),
+	IMC_UNCORE_DEV(ADL_7),
+	IMC_UNCORE_DEV(ADL_8),
+	IMC_UNCORE_DEV(ADL_9),
+	IMC_UNCORE_DEV(ADL_10),
+	IMC_UNCORE_DEV(ADL_11),
+	IMC_UNCORE_DEV(ADL_12),
+	IMC_UNCORE_DEV(ADL_13),
+	IMC_UNCORE_DEV(ADL_14),
+	IMC_UNCORE_DEV(ADL_15),
+	IMC_UNCORE_DEV(ADL_16),
+	IMC_UNCORE_DEV(ADL_17),
+	IMC_UNCORE_DEV(ADL_18),
+	IMC_UNCORE_DEV(ADL_19),
+	IMC_UNCORE_DEV(ADL_20),
+	IMC_UNCORE_DEV(ADL_21),
+	IMC_UNCORE_DEV(RPL_1),
+	IMC_UNCORE_DEV(RPL_2),
+	IMC_UNCORE_DEV(RPL_3),
+	IMC_UNCORE_DEV(RPL_4),
+	IMC_UNCORE_DEV(RPL_5),
+	IMC_UNCORE_DEV(RPL_6),
+	IMC_UNCORE_DEV(RPL_7),
+	IMC_UNCORE_DEV(RPL_8),
+	IMC_UNCORE_DEV(RPL_9),
+	IMC_UNCORE_DEV(RPL_10),
+	IMC_UNCORE_DEV(RPL_11),
+	IMC_UNCORE_DEV(RPL_12),
+	IMC_UNCORE_DEV(RPL_13),
+	IMC_UNCORE_DEV(RPL_14),
+	IMC_UNCORE_DEV(RPL_15),
+	IMC_UNCORE_DEV(RPL_16),
+	IMC_UNCORE_DEV(RPL_17),
+	IMC_UNCORE_DEV(RPL_18),
+	IMC_UNCORE_DEV(RPL_19),
+	IMC_UNCORE_DEV(RPL_20),
+	IMC_UNCORE_DEV(RPL_21),
+	IMC_UNCORE_DEV(RPL_22),
+	IMC_UNCORE_DEV(RPL_23),
+	IMC_UNCORE_DEV(RPL_24),
+	IMC_UNCORE_DEV(RPL_25),
 	{ /* end: all zeroes */ }
 };
 
@@ -1390,7 +1320,8 @@ static struct pci_dev *tgl_uncore_get_mc_dev(void)
 #define TGL_UNCORE_MMIO_IMC_MEM_OFFSET		0x10000
 #define TGL_UNCORE_PCI_IMC_MAP_SIZE		0xe000
 
-static void tgl_uncore_imc_freerunning_init_box(struct intel_uncore_box *box)
+static void __uncore_imc_init_box(struct intel_uncore_box *box,
+				  unsigned int base_offset)
 {
 	struct pci_dev *pdev = tgl_uncore_get_mc_dev();
 	struct intel_uncore_pmu *pmu = box->pmu;
@@ -1417,9 +1348,15 @@ static void tgl_uncore_imc_freerunning_init_box(struct intel_uncore_box *box)
 	addr |= ((resource_size_t)mch_bar << 32);
 #endif
 
+	addr += base_offset;
 	box->io_addr = ioremap(addr, type->mmio_map_size);
 	if (!box->io_addr)
 		pr_warn("perf uncore: Failed to ioremap for %s.\n", type->name);
+}
+
+static void tgl_uncore_imc_freerunning_init_box(struct intel_uncore_box *box)
+{
+	__uncore_imc_init_box(box, 0);
 }
 
 static struct intel_uncore_ops tgl_uncore_imc_freerunning_ops = {
@@ -1469,3 +1406,136 @@ void tgl_uncore_mmio_init(void)
 }
 
 /* end of Tiger Lake MMIO uncore support */
+
+/* Alder Lake MMIO uncore support */
+#define ADL_UNCORE_IMC_BASE			0xd900
+#define ADL_UNCORE_IMC_MAP_SIZE			0x200
+#define ADL_UNCORE_IMC_CTR			0xe8
+#define ADL_UNCORE_IMC_CTRL			0xd0
+#define ADL_UNCORE_IMC_GLOBAL_CTL		0xc0
+#define ADL_UNCORE_IMC_BOX_CTL			0xc4
+#define ADL_UNCORE_IMC_FREERUNNING_BASE		0xd800
+#define ADL_UNCORE_IMC_FREERUNNING_MAP_SIZE	0x100
+
+#define ADL_UNCORE_IMC_CTL_FRZ			(1 << 0)
+#define ADL_UNCORE_IMC_CTL_RST_CTRL		(1 << 1)
+#define ADL_UNCORE_IMC_CTL_RST_CTRS		(1 << 2)
+#define ADL_UNCORE_IMC_CTL_INT			(ADL_UNCORE_IMC_CTL_RST_CTRL | \
+						ADL_UNCORE_IMC_CTL_RST_CTRS)
+
+static void adl_uncore_imc_init_box(struct intel_uncore_box *box)
+{
+	__uncore_imc_init_box(box, ADL_UNCORE_IMC_BASE);
+
+	/* The global control in MC1 can control both MCs. */
+	if (box->io_addr && (box->pmu->pmu_idx == 1))
+		writel(ADL_UNCORE_IMC_CTL_INT, box->io_addr + ADL_UNCORE_IMC_GLOBAL_CTL);
+}
+
+static void adl_uncore_mmio_disable_box(struct intel_uncore_box *box)
+{
+	if (!box->io_addr)
+		return;
+
+	writel(ADL_UNCORE_IMC_CTL_FRZ, box->io_addr + uncore_mmio_box_ctl(box));
+}
+
+static void adl_uncore_mmio_enable_box(struct intel_uncore_box *box)
+{
+	if (!box->io_addr)
+		return;
+
+	writel(0, box->io_addr + uncore_mmio_box_ctl(box));
+}
+
+static struct intel_uncore_ops adl_uncore_mmio_ops = {
+	.init_box	= adl_uncore_imc_init_box,
+	.exit_box	= uncore_mmio_exit_box,
+	.disable_box	= adl_uncore_mmio_disable_box,
+	.enable_box	= adl_uncore_mmio_enable_box,
+	.disable_event	= intel_generic_uncore_mmio_disable_event,
+	.enable_event	= intel_generic_uncore_mmio_enable_event,
+	.read_counter	= uncore_mmio_read_counter,
+};
+
+#define ADL_UNC_CTL_CHMASK_MASK			0x00000f00
+#define ADL_UNC_IMC_EVENT_MASK			(SNB_UNC_CTL_EV_SEL_MASK | \
+						 ADL_UNC_CTL_CHMASK_MASK | \
+						 SNB_UNC_CTL_EDGE_DET)
+
+static struct attribute *adl_uncore_imc_formats_attr[] = {
+	&format_attr_event.attr,
+	&format_attr_chmask.attr,
+	&format_attr_edge.attr,
+	NULL,
+};
+
+static const struct attribute_group adl_uncore_imc_format_group = {
+	.name		= "format",
+	.attrs		= adl_uncore_imc_formats_attr,
+};
+
+static struct intel_uncore_type adl_uncore_imc = {
+	.name		= "imc",
+	.num_counters   = 5,
+	.num_boxes	= 2,
+	.perf_ctr_bits	= 64,
+	.perf_ctr	= ADL_UNCORE_IMC_CTR,
+	.event_ctl	= ADL_UNCORE_IMC_CTRL,
+	.event_mask	= ADL_UNC_IMC_EVENT_MASK,
+	.box_ctl	= ADL_UNCORE_IMC_BOX_CTL,
+	.mmio_offset	= 0,
+	.mmio_map_size	= ADL_UNCORE_IMC_MAP_SIZE,
+	.ops		= &adl_uncore_mmio_ops,
+	.format_group	= &adl_uncore_imc_format_group,
+};
+
+enum perf_adl_uncore_imc_freerunning_types {
+	ADL_MMIO_UNCORE_IMC_DATA_TOTAL,
+	ADL_MMIO_UNCORE_IMC_DATA_READ,
+	ADL_MMIO_UNCORE_IMC_DATA_WRITE,
+	ADL_MMIO_UNCORE_IMC_FREERUNNING_TYPE_MAX
+};
+
+static struct freerunning_counters adl_uncore_imc_freerunning[] = {
+	[ADL_MMIO_UNCORE_IMC_DATA_TOTAL]	= { 0x40, 0x0, 0x0, 1, 64 },
+	[ADL_MMIO_UNCORE_IMC_DATA_READ]		= { 0x58, 0x0, 0x0, 1, 64 },
+	[ADL_MMIO_UNCORE_IMC_DATA_WRITE]	= { 0xA0, 0x0, 0x0, 1, 64 },
+};
+
+static void adl_uncore_imc_freerunning_init_box(struct intel_uncore_box *box)
+{
+	__uncore_imc_init_box(box, ADL_UNCORE_IMC_FREERUNNING_BASE);
+}
+
+static struct intel_uncore_ops adl_uncore_imc_freerunning_ops = {
+	.init_box	= adl_uncore_imc_freerunning_init_box,
+	.exit_box	= uncore_mmio_exit_box,
+	.read_counter	= uncore_mmio_read_counter,
+	.hw_config	= uncore_freerunning_hw_config,
+};
+
+static struct intel_uncore_type adl_uncore_imc_free_running = {
+	.name			= "imc_free_running",
+	.num_counters		= 3,
+	.num_boxes		= 2,
+	.num_freerunning_types	= ADL_MMIO_UNCORE_IMC_FREERUNNING_TYPE_MAX,
+	.mmio_map_size		= ADL_UNCORE_IMC_FREERUNNING_MAP_SIZE,
+	.freerunning		= adl_uncore_imc_freerunning,
+	.ops			= &adl_uncore_imc_freerunning_ops,
+	.event_descs		= tgl_uncore_imc_events,
+	.format_group		= &tgl_uncore_imc_format_group,
+};
+
+static struct intel_uncore_type *adl_mmio_uncores[] = {
+	&adl_uncore_imc,
+	&adl_uncore_imc_free_running,
+	NULL
+};
+
+void adl_uncore_mmio_init(void)
+{
+	uncore_mmio_uncores = adl_mmio_uncores;
+}
+
+/* end of Alder Lake MMIO uncore support */

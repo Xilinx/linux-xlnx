@@ -27,7 +27,7 @@
  * Inode locking rules:
  *
  * inode->i_lock protects:
- *   inode->i_state, inode->i_hash, __iget()
+ *   inode->i_state, inode->i_hash, __iget(), inode->i_io_list
  * Inode LRU list locks protect:
  *   inode->i_sb->s_inode_lru, inode->i_lru
  * inode->i_sb->s_inode_list_lock protects:
@@ -67,11 +67,6 @@ const struct address_space_operations empty_aops = {
 };
 EXPORT_SYMBOL(empty_aops);
 
-/*
- * Statistics gathering..
- */
-struct inodes_stat_t inodes_stat;
-
 static DEFINE_PER_CPU(unsigned long, nr_inodes);
 static DEFINE_PER_CPU(unsigned long, nr_unused);
 
@@ -106,13 +101,43 @@ long get_nr_dirty_inodes(void)
  * Handle nr_inode sysctl
  */
 #ifdef CONFIG_SYSCTL
-int proc_nr_inodes(struct ctl_table *table, int write,
-		   void *buffer, size_t *lenp, loff_t *ppos)
+/*
+ * Statistics gathering..
+ */
+static struct inodes_stat_t inodes_stat;
+
+static int proc_nr_inodes(struct ctl_table *table, int write, void *buffer,
+			  size_t *lenp, loff_t *ppos)
 {
 	inodes_stat.nr_inodes = get_nr_inodes();
 	inodes_stat.nr_unused = get_nr_inodes_unused();
 	return proc_doulongvec_minmax(table, write, buffer, lenp, ppos);
 }
+
+static struct ctl_table inodes_sysctls[] = {
+	{
+		.procname	= "inode-nr",
+		.data		= &inodes_stat,
+		.maxlen		= 2*sizeof(long),
+		.mode		= 0444,
+		.proc_handler	= proc_nr_inodes,
+	},
+	{
+		.procname	= "inode-state",
+		.data		= &inodes_stat,
+		.maxlen		= 7*sizeof(long),
+		.mode		= 0444,
+		.proc_handler	= proc_nr_inodes,
+	},
+	{ }
+};
+
+static int __init init_fs_inode_sysctls(void)
+{
+	register_sysctl_init("fs", inodes_sysctls);
+	return 0;
+}
+early_initcall(init_fs_inode_sysctls);
 #endif
 
 static int no_open(struct inode *inode, struct file *file)
@@ -167,8 +192,6 @@ int inode_init_always(struct super_block *sb, struct inode *inode)
 	inode->i_wb_frn_history = 0;
 #endif
 
-	if (security_inode_alloc(inode))
-		goto out;
 	spin_lock_init(&inode->i_lock);
 	lockdep_set_class(&inode->i_lock, &sb->s_type->i_lock_key);
 
@@ -180,8 +203,6 @@ int inode_init_always(struct super_block *sb, struct inode *inode)
 	mapping->a_ops = &empty_aops;
 	mapping->host = inode;
 	mapping->flags = 0;
-	if (sb->s_type->fs_flags & FS_THP_SUPPORT)
-		__set_bit(AS_THP_SUPPORT, &mapping->flags);
 	mapping->wb_err = 0;
 	atomic_set(&mapping->i_mmap_writable, 0);
 #ifdef CONFIG_READ_ONLY_THP_FOR_FS
@@ -205,11 +226,12 @@ int inode_init_always(struct super_block *sb, struct inode *inode)
 	inode->i_fsnotify_mask = 0;
 #endif
 	inode->i_flctx = NULL;
+
+	if (unlikely(security_inode_alloc(inode)))
+		return -ENOMEM;
 	this_cpu_inc(nr_inodes);
 
 	return 0;
-out:
-	return -ENOMEM;
 }
 EXPORT_SYMBOL(inode_init_always);
 
@@ -236,7 +258,7 @@ static struct inode *alloc_inode(struct super_block *sb)
 	if (ops->alloc_inode)
 		inode = ops->alloc_inode(sb);
 	else
-		inode = kmem_cache_alloc(inode_cachep, GFP_KERNEL);
+		inode = alloc_inode_sb(sb, inode_cachep, GFP_KERNEL);
 
 	if (!inode)
 		return NULL;
@@ -399,6 +421,7 @@ void inode_init_once(struct inode *inode)
 	INIT_LIST_HEAD(&inode->i_io_list);
 	INIT_LIST_HEAD(&inode->i_wb_list);
 	INIT_LIST_HEAD(&inode->i_lru);
+	INIT_LIST_HEAD(&inode->i_sb_list);
 	__address_space_init_once(&inode->i_data);
 	i_size_ordered_init(inode);
 }
@@ -428,11 +451,20 @@ void ihold(struct inode *inode)
 }
 EXPORT_SYMBOL(ihold);
 
-static void inode_lru_list_add(struct inode *inode)
+static void __inode_add_lru(struct inode *inode, bool rotate)
 {
+	if (inode->i_state & (I_DIRTY_ALL | I_SYNC | I_FREEING | I_WILL_FREE))
+		return;
+	if (atomic_read(&inode->i_count))
+		return;
+	if (!(inode->i_sb->s_flags & SB_ACTIVE))
+		return;
+	if (!mapping_shrinkable(&inode->i_data))
+		return;
+
 	if (list_lru_add(&inode->i_sb->s_inode_lru, &inode->i_lru))
 		this_cpu_inc(nr_unused);
-	else
+	else if (rotate)
 		inode->i_state |= I_REFERENCED;
 }
 
@@ -443,16 +475,11 @@ static void inode_lru_list_add(struct inode *inode)
  */
 void inode_add_lru(struct inode *inode)
 {
-	if (!(inode->i_state & (I_DIRTY_ALL | I_SYNC |
-				I_FREEING | I_WILL_FREE)) &&
-	    !atomic_read(&inode->i_count) && inode->i_sb->s_flags & SB_ACTIVE)
-		inode_lru_list_add(inode);
+	__inode_add_lru(inode, false);
 }
-
 
 static void inode_lru_list_del(struct inode *inode)
 {
-
 	if (list_lru_del(&inode->i_sb->s_inode_lru, &inode->i_lru))
 		this_cpu_dec(nr_unused);
 }
@@ -524,11 +551,60 @@ void __remove_inode_hash(struct inode *inode)
 }
 EXPORT_SYMBOL(__remove_inode_hash);
 
+void dump_mapping(const struct address_space *mapping)
+{
+	struct inode *host;
+	const struct address_space_operations *a_ops;
+	struct hlist_node *dentry_first;
+	struct dentry *dentry_ptr;
+	struct dentry dentry;
+	unsigned long ino;
+
+	/*
+	 * If mapping is an invalid pointer, we don't want to crash
+	 * accessing it, so probe everything depending on it carefully.
+	 */
+	if (get_kernel_nofault(host, &mapping->host) ||
+	    get_kernel_nofault(a_ops, &mapping->a_ops)) {
+		pr_warn("invalid mapping:%px\n", mapping);
+		return;
+	}
+
+	if (!host) {
+		pr_warn("aops:%ps\n", a_ops);
+		return;
+	}
+
+	if (get_kernel_nofault(dentry_first, &host->i_dentry.first) ||
+	    get_kernel_nofault(ino, &host->i_ino)) {
+		pr_warn("aops:%ps invalid inode:%px\n", a_ops, host);
+		return;
+	}
+
+	if (!dentry_first) {
+		pr_warn("aops:%ps ino:%lx\n", a_ops, ino);
+		return;
+	}
+
+	dentry_ptr = container_of(dentry_first, struct dentry, d_u.d_alias);
+	if (get_kernel_nofault(dentry, dentry_ptr)) {
+		pr_warn("aops:%ps ino:%lx invalid dentry:%px\n",
+				a_ops, ino, dentry_ptr);
+		return;
+	}
+
+	/*
+	 * if dentry is corrupted, the %pd handler may still crash,
+	 * but it's unlikely that we reach here with a corrupt mapping
+	 */
+	pr_warn("aops:%ps ino:%lx dentry name:\"%pd\"\n", a_ops, ino, &dentry);
+}
+
 void clear_inode(struct inode *inode)
 {
 	/*
 	 * We have to cycle the i_pages lock here because reclaim can be in the
-	 * process of removing the last page (in __delete_from_page_cache())
+	 * process of removing the last page (in __filemap_remove_folio())
 	 * and we must not free the mapping under it.
 	 */
 	xa_lock_irq(&inode->i_data.i_pages);
@@ -728,10 +804,6 @@ again:
 /*
  * Isolate the inode from the LRU in preparation for freeing it.
  *
- * Any inodes which are pinned purely because of attached pagecache have their
- * pagecache removed.  If the inode has metadata buffers attached to
- * mapping->private_list then try to remove them.
- *
  * If the inode has the I_REFERENCED flag set, then it means that it has been
  * used recently - the flag is set in iput_final(). When we encounter such an
  * inode, clear the flag and move it to the back of the LRU so it gets another
@@ -747,31 +819,39 @@ static enum lru_status inode_lru_isolate(struct list_head *item,
 	struct inode	*inode = container_of(item, struct inode, i_lru);
 
 	/*
-	 * we are inverting the lru lock/inode->i_lock here, so use a trylock.
-	 * If we fail to get the lock, just skip it.
+	 * We are inverting the lru lock/inode->i_lock here, so use a
+	 * trylock. If we fail to get the lock, just skip it.
 	 */
 	if (!spin_trylock(&inode->i_lock))
 		return LRU_SKIP;
 
 	/*
-	 * Referenced or dirty inodes are still in use. Give them another pass
-	 * through the LRU as we canot reclaim them now.
+	 * Inodes can get referenced, redirtied, or repopulated while
+	 * they're already on the LRU, and this can make them
+	 * unreclaimable for a while. Remove them lazily here; iput,
+	 * sync, or the last page cache deletion will requeue them.
 	 */
 	if (atomic_read(&inode->i_count) ||
-	    (inode->i_state & ~I_REFERENCED)) {
+	    (inode->i_state & ~I_REFERENCED) ||
+	    !mapping_shrinkable(&inode->i_data)) {
 		list_lru_isolate(lru, &inode->i_lru);
 		spin_unlock(&inode->i_lock);
 		this_cpu_dec(nr_unused);
 		return LRU_REMOVED;
 	}
 
-	/* recently referenced inodes get one more pass */
+	/* Recently referenced inodes get one more pass */
 	if (inode->i_state & I_REFERENCED) {
 		inode->i_state &= ~I_REFERENCED;
 		spin_unlock(&inode->i_lock);
 		return LRU_ROTATE;
 	}
 
+	/*
+	 * On highmem systems, mapping_shrinkable() permits dropping
+	 * page cache in order to free up struct inodes: lowmem might
+	 * be under pressure before the cache inside the highmem zone.
+	 */
 	if (inode_has_buffers(inode) || !mapping_empty(&inode->i_data)) {
 		__iget(inode);
 		spin_unlock(&inode->i_lock);
@@ -941,7 +1021,6 @@ struct inode *new_inode_pseudo(struct super_block *sb)
 		spin_lock(&inode->i_lock);
 		inode->i_state = 0;
 		spin_unlock(&inode->i_lock);
-		INIT_LIST_HEAD(&inode->i_sb_list);
 	}
 	return inode;
 }
@@ -1085,7 +1164,6 @@ struct inode *inode_insert5(struct inode *inode, unsigned long hashval,
 {
 	struct hlist_head *head = inode_hashtable + hash(inode->i_sb, hashval);
 	struct inode *old;
-	bool creating = inode->i_state & I_CREATING;
 
 again:
 	spin_lock(&inode_hash_lock);
@@ -1119,7 +1197,12 @@ again:
 	inode->i_state |= I_NEW;
 	hlist_add_head_rcu(&inode->i_hash, head);
 	spin_unlock(&inode->i_lock);
-	if (!creating)
+
+	/*
+	 * Add inode to the sb list if it's not already. It has I_NEW at this
+	 * point, so it should be safe to test i_sb_list locklessly.
+	 */
+	if (list_empty(&inode->i_sb_list))
 		inode_sb_list_add(inode);
 unlock:
 	spin_unlock(&inode_hash_lock);
@@ -1638,7 +1721,7 @@ static void iput_final(struct inode *inode)
 	if (!drop &&
 	    !(inode->i_state & I_DONTCACHE) &&
 	    (sb->s_flags & SB_ACTIVE)) {
-		inode_add_lru(inode);
+		__inode_add_lru(inode, true);
 		spin_unlock(&inode->i_lock);
 		return;
 	}
@@ -1782,12 +1865,13 @@ EXPORT_SYMBOL(generic_update_time);
  * This does the actual work of updating an inodes time or version.  Must have
  * had called mnt_want_write() before calling this.
  */
-static int update_time(struct inode *inode, struct timespec64 *time, int flags)
+int inode_update_time(struct inode *inode, struct timespec64 *time, int flags)
 {
 	if (inode->i_op->update_time)
 		return inode->i_op->update_time(inode, time, flags);
 	return generic_update_time(inode, time, flags);
 }
+EXPORT_SYMBOL(inode_update_time);
 
 /**
  *	atime_needs_update	-	update the access time
@@ -1857,7 +1941,7 @@ void touch_atime(const struct path *path)
 	 * of the fs read only, e.g. subvolumes in Btrfs.
 	 */
 	now = current_time(inode);
-	update_time(inode, &now, S_ATIME);
+	inode_update_time(inode, &now, S_ATIME);
 	__mnt_drop_write(mnt);
 skip_update:
 	sb_end_write(inode->i_sb);
@@ -1929,67 +2013,59 @@ static int __remove_privs(struct user_namespace *mnt_userns,
 	return notify_change(mnt_userns, dentry, &newattrs, NULL);
 }
 
-/*
- * Remove special file priviledges (suid, capabilities) when file is written
- * to or truncated.
- */
-int file_remove_privs(struct file *file)
+static int __file_remove_privs(struct file *file, unsigned int flags)
 {
 	struct dentry *dentry = file_dentry(file);
 	struct inode *inode = file_inode(file);
-	int kill;
 	int error = 0;
+	int kill;
 
-	/*
-	 * Fast path for nothing security related.
-	 * As well for non-regular files, e.g. blkdev inodes.
-	 * For example, blkdev_write_iter() might get here
-	 * trying to remove privs which it is not allowed to.
-	 */
 	if (IS_NOSEC(inode) || !S_ISREG(inode->i_mode))
 		return 0;
 
 	kill = dentry_needs_remove_privs(dentry);
 	if (kill < 0)
 		return kill;
-	if (kill)
+
+	if (kill) {
+		if (flags & IOCB_NOWAIT)
+			return -EAGAIN;
+
 		error = __remove_privs(file_mnt_user_ns(file), dentry, kill);
+	}
+
 	if (!error)
 		inode_has_no_xattr(inode);
-
 	return error;
+}
+
+/**
+ * file_remove_privs - remove special file privileges (suid, capabilities)
+ * @file: file to remove privileges from
+ *
+ * When file is modified by a write or truncation ensure that special
+ * file privileges are removed.
+ *
+ * Return: 0 on success, negative errno on failure.
+ */
+int file_remove_privs(struct file *file)
+{
+	return __file_remove_privs(file, 0);
 }
 EXPORT_SYMBOL(file_remove_privs);
 
-/**
- *	file_update_time	-	update mtime and ctime time
- *	@file: file accessed
- *
- *	Update the mtime and ctime members of an inode and mark the inode
- *	for writeback.  Note that this function is meant exclusively for
- *	usage in the file write path of filesystems, and filesystems may
- *	choose to explicitly ignore update via this function with the
- *	S_NOCMTIME inode flag, e.g. for network filesystem where these
- *	timestamps are handled by the server.  This can return an error for
- *	file systems who need to allocate space in order to update an inode.
- */
-
-int file_update_time(struct file *file)
+static int inode_needs_update_time(struct inode *inode, struct timespec64 *now)
 {
-	struct inode *inode = file_inode(file);
-	struct timespec64 now;
 	int sync_it = 0;
-	int ret;
 
 	/* First try to exhaust all avenues to not sync */
 	if (IS_NOCMTIME(inode))
 		return 0;
 
-	now = current_time(inode);
-	if (!timespec64_equal(&inode->i_mtime, &now))
+	if (!timespec64_equal(&inode->i_mtime, now))
 		sync_it = S_MTIME;
 
-	if (!timespec64_equal(&inode->i_ctime, &now))
+	if (!timespec64_equal(&inode->i_ctime, now))
 		sync_it |= S_CTIME;
 
 	if (IS_I_VERSION(inode) && inode_iversion_need_inc(inode))
@@ -1998,36 +2074,126 @@ int file_update_time(struct file *file)
 	if (!sync_it)
 		return 0;
 
-	/* Finally allowed to write? Takes lock. */
-	if (__mnt_want_write_file(file))
-		return 0;
+	return sync_it;
+}
 
-	ret = update_time(inode, &now, sync_it);
-	__mnt_drop_write_file(file);
+static int __file_update_time(struct file *file, struct timespec64 *now,
+			int sync_mode)
+{
+	int ret = 0;
+	struct inode *inode = file_inode(file);
+
+	/* try to update time settings */
+	if (!__mnt_want_write_file(file)) {
+		ret = inode_update_time(inode, now, sync_mode);
+		__mnt_drop_write_file(file);
+	}
 
 	return ret;
 }
+
+/**
+ * file_update_time - update mtime and ctime time
+ * @file: file accessed
+ *
+ * Update the mtime and ctime members of an inode and mark the inode for
+ * writeback. Note that this function is meant exclusively for usage in
+ * the file write path of filesystems, and filesystems may choose to
+ * explicitly ignore updates via this function with the _NOCMTIME inode
+ * flag, e.g. for network filesystem where these imestamps are handled
+ * by the server. This can return an error for file systems who need to
+ * allocate space in order to update an inode.
+ *
+ * Return: 0 on success, negative errno on failure.
+ */
+int file_update_time(struct file *file)
+{
+	int ret;
+	struct inode *inode = file_inode(file);
+	struct timespec64 now = current_time(inode);
+
+	ret = inode_needs_update_time(inode, &now);
+	if (ret <= 0)
+		return ret;
+
+	return __file_update_time(file, &now, ret);
+}
 EXPORT_SYMBOL(file_update_time);
 
-/* Caller must hold the file's inode lock */
-int file_modified(struct file *file)
+/**
+ * file_modified_flags - handle mandated vfs changes when modifying a file
+ * @file: file that was modified
+ * @flags: kiocb flags
+ *
+ * When file has been modified ensure that special
+ * file privileges are removed and time settings are updated.
+ *
+ * If IOCB_NOWAIT is set, special file privileges will not be removed and
+ * time settings will not be updated. It will return -EAGAIN.
+ *
+ * Context: Caller must hold the file's inode lock.
+ *
+ * Return: 0 on success, negative errno on failure.
+ */
+static int file_modified_flags(struct file *file, int flags)
 {
-	int err;
+	int ret;
+	struct inode *inode = file_inode(file);
+	struct timespec64 now = current_time(inode);
 
 	/*
 	 * Clear the security bits if the process is not being run by root.
 	 * This keeps people from modifying setuid and setgid binaries.
 	 */
-	err = file_remove_privs(file);
-	if (err)
-		return err;
+	ret = __file_remove_privs(file, flags);
+	if (ret)
+		return ret;
 
 	if (unlikely(file->f_mode & FMODE_NOCMTIME))
 		return 0;
 
-	return file_update_time(file);
+	ret = inode_needs_update_time(inode, &now);
+	if (ret <= 0)
+		return ret;
+	if (flags & IOCB_NOWAIT)
+		return -EAGAIN;
+
+	return __file_update_time(file, &now, ret);
+}
+
+/**
+ * file_modified - handle mandated vfs changes when modifying a file
+ * @file: file that was modified
+ *
+ * When file has been modified ensure that special
+ * file privileges are removed and time settings are updated.
+ *
+ * Context: Caller must hold the file's inode lock.
+ *
+ * Return: 0 on success, negative errno on failure.
+ */
+int file_modified(struct file *file)
+{
+	return file_modified_flags(file, 0);
 }
 EXPORT_SYMBOL(file_modified);
+
+/**
+ * kiocb_modified - handle mandated vfs changes when modifying a file
+ * @iocb: iocb that was modified
+ *
+ * When file has been modified ensure that special
+ * file privileges are removed and time settings are updated.
+ *
+ * Context: Caller must hold the file's inode lock.
+ *
+ * Return: 0 on success, negative errno on failure.
+ */
+int kiocb_modified(struct kiocb *iocb)
+{
+	return file_modified_flags(iocb->ki_filp, iocb->ki_flags);
+}
+EXPORT_SYMBOL_GPL(kiocb_modified);
 
 int inode_needs_sync(struct inode *inode)
 {
@@ -2165,10 +2331,6 @@ void inode_init_owner(struct user_namespace *mnt_userns, struct inode *inode,
 		/* Directories are special, and always inherit S_ISGID */
 		if (S_ISDIR(mode))
 			mode |= S_ISGID;
-		else if ((mode & (S_ISGID | S_IXGRP)) == (S_ISGID | S_IXGRP) &&
-			 !in_group_p(i_gid_into_mnt(mnt_userns, dir)) &&
-			 !capable_wrt_inode_uidgid(mnt_userns, dir, CAP_FSETID))
-			mode &= ~S_ISGID;
 	} else
 		inode_fsgid_set(inode, mnt_userns);
 	inode->i_mode = mode;
@@ -2324,3 +2486,33 @@ struct timespec64 current_time(struct inode *inode)
 	return timestamp_truncate(now, inode);
 }
 EXPORT_SYMBOL(current_time);
+
+/**
+ * mode_strip_sgid - handle the sgid bit for non-directories
+ * @mnt_userns: User namespace of the mount the inode was created from
+ * @dir: parent directory inode
+ * @mode: mode of the file to be created in @dir
+ *
+ * If the @mode of the new file has both the S_ISGID and S_IXGRP bit
+ * raised and @dir has the S_ISGID bit raised ensure that the caller is
+ * either in the group of the parent directory or they have CAP_FSETID
+ * in their user namespace and are privileged over the parent directory.
+ * In all other cases, strip the S_ISGID bit from @mode.
+ *
+ * Return: the new mode to use for the file
+ */
+umode_t mode_strip_sgid(struct user_namespace *mnt_userns,
+			const struct inode *dir, umode_t mode)
+{
+	if ((mode & (S_ISGID | S_IXGRP)) != (S_ISGID | S_IXGRP))
+		return mode;
+	if (S_ISDIR(mode) || !dir || !(dir->i_mode & S_ISGID))
+		return mode;
+	if (in_group_p(i_gid_into_mnt(mnt_userns, dir)))
+		return mode;
+	if (capable_wrt_inode_uidgid(mnt_userns, dir, CAP_FSETID))
+		return mode;
+
+	return mode & ~S_ISGID;
+}
+EXPORT_SYMBOL(mode_strip_sgid);

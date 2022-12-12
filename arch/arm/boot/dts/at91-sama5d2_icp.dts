@@ -24,8 +24,8 @@
 		serial1 = &uart1;	/* mikro BUS 3 */
 		serial3 = &uart3;	/* mikro BUS 2 */
 		serial5 = &uart7;	/* flx2 */
-		i2c0	= &i2c0;
-		i2c1	= &i2c1;
+		i2c0 = &i2c0;
+		i2c1 = &i2c1;
 	};
 
 	chosen {
@@ -42,14 +42,13 @@
 		};
 	};
 
-	gpio_keys {
+	gpio-keys {
 		compatible = "gpio-keys";
 
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_key_gpio_default>;
-		status = "okay";
 
-		sw4 {
+		button-1 {
 			label = "USER_PB1";
 			gpios = <&pioA PIN_PD0 GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_PROG1>;
@@ -197,8 +196,8 @@
 			regulators {
 				vdd_io_reg: VDD_IO {
 					regulator-name = "VDD_IO";
-					regulator-min-microvolt = <1200000>;
-					regulator-max-microvolt = <3700000>;
+					regulator-min-microvolt = <3300000>;
+					regulator-max-microvolt = <3300000>;
 					regulator-initial-mode = <2>;
 					regulator-allowed-modes = <2>, <4>;
 					regulator-always-on;
@@ -216,8 +215,8 @@
 
 				VDD_DDR {
 					regulator-name = "VDD_DDR";
-					regulator-min-microvolt = <600000>;
-					regulator-max-microvolt = <1850000>;
+					regulator-min-microvolt = <1350000>;
+					regulator-max-microvolt = <1350000>;
 					regulator-initial-mode = <2>;
 					regulator-allowed-modes = <2>, <4>;
 					regulator-always-on;
@@ -235,8 +234,8 @@
 
 				VDD_CORE {
 					regulator-name = "VDD_CORE";
-					regulator-min-microvolt = <600000>;
-					regulator-max-microvolt = <1850000>;
+					regulator-min-microvolt = <1250000>;
+					regulator-max-microvolt = <1250000>;
 					regulator-initial-mode = <2>;
 					regulator-allowed-modes = <2>, <4>;
 					regulator-always-on;
@@ -258,7 +257,6 @@
 					regulator-max-microvolt = <1850000>;
 					regulator-initial-mode = <2>;
 					regulator-allowed-modes = <2>, <4>;
-					regulator-always-on;
 
 					regulator-state-standby {
 						regulator-on-in-suspend;
@@ -273,8 +271,8 @@
 
 				LDO1 {
 					regulator-name = "LDO1";
-					regulator-min-microvolt = <1200000>;
-					regulator-max-microvolt = <3700000>;
+					regulator-min-microvolt = <2500000>;
+					regulator-max-microvolt = <2500000>;
 					regulator-always-on;
 
 					regulator-state-standby {
@@ -288,8 +286,8 @@
 
 				LDO2 {
 					regulator-name = "LDO2";
-					regulator-min-microvolt = <1200000>;
-					regulator-max-microvolt = <3700000>;
+					regulator-min-microvolt = <3300000>;
+					regulator-max-microvolt = <3300000>;
 					regulator-always-on;
 
 					regulator-state-standby {
@@ -307,8 +305,11 @@
 };
 
 &i2c0 { /* mikrobus i2c */
-	pinctrl-names = "default";
+	pinctrl-names = "default", "gpio";
 	pinctrl-0 = <&pinctrl_mikrobus_i2c>;
+	pinctrl-1 = <&pinctrl_i2c0_gpio>;
+	sda-gpios = <&pioA PIN_PD21 GPIO_ACTIVE_HIGH>;
+	scl-gpios = <&pioA PIN_PD22 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
 	i2c-digital-filter;
 	i2c-digital-filter-width-ns = <35>;
 	status = "okay";
@@ -316,28 +317,31 @@
 
 &i2c1 {
 	dmas = <0>, <0>;
-	pinctrl-names = "default";
+	pinctrl-names = "default", "gpio";
 	pinctrl-0 = <&pinctrl_i2c1_default>;
+	pinctrl-1 = <&pinctrl_i2c1_gpio>;
+	sda-gpios = <&pioA PIN_PD19 GPIO_ACTIVE_HIGH>;
+	scl-gpios = <&pioA PIN_PD20 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
 	i2c-digital-filter;
 	i2c-digital-filter-width-ns = <35>;
 	status = "okay";
 
 	eeprom@50 {
-		compatible = "atmel,24c32";
+		compatible = "atmel,24c02";
 		reg = <0x50>;
 		pagesize = <16>;
 		status = "okay";
 	};
 
 	eeprom@52 {
-		compatible = "atmel,24c32";
+		compatible = "atmel,24c02";
 		reg = <0x52>;
 		pagesize = <16>;
 		status = "disabled";
 	};
 
 	eeprom@53 {
-		compatible = "atmel,24c32";
+		compatible = "atmel,24c02";
 		reg = <0x53>;
 		pagesize = <16>;
 		status = "disabled";
@@ -402,6 +406,12 @@
 		bias-disable;
 	};
 
+	pinctrl_i2c1_gpio: i2c1_gpio {
+                pinmux = <PIN_PD19__GPIO>,
+                         <PIN_PD20__GPIO>;
+                bias-disable;
+        };
+
 	pinctrl_key_gpio_default: key_gpio_default {
 		pinmux = <PIN_PD0__GPIO>;
 		bias-pull-up;
@@ -460,6 +470,12 @@
 	pinctrl_mikrobus_i2c: mikrobus_i2c {
 		pinmux = <PIN_PD22__TWCK0>,
 			 <PIN_PD21__TWD0>;
+		bias-disable;
+	};
+
+	pinctrl_i2c0_gpio: i2c0_gpio {
+		pinmux = <PIN_PD21__GPIO>,
+			 <PIN_PD22__GPIO>;
 		bias-disable;
 	};
 

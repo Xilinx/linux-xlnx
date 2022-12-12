@@ -36,8 +36,7 @@ union gen_cap_reg {
 		u64 max_batch_shift:4;
 		u64 max_ims_mult:6;
 		u64 config_en:1;
-		u64 max_descs_per_engine:8;
-		u64 rsvd3:24;
+		u64 rsvd3:32;
 	};
 	u64 bits;
 } __packed;
@@ -55,7 +54,8 @@ union wq_cap_reg {
 		u64 priority:1;
 		u64 occupancy:1;
 		u64 occupancy_int:1;
-		u64 rsvd3:10;
+		u64 op_config:1;
+		u64 rsvd3:9;
 	};
 	u64 bits;
 } __packed;
@@ -65,10 +65,11 @@ union wq_cap_reg {
 union group_cap_reg {
 	struct {
 		u64 num_groups:8;
-		u64 total_tokens:8;
-		u64 token_en:1;
-		u64 token_limit:1;
-		u64 rsvd:46;
+		u64 total_rdbufs:8;	/* formerly total_tokens */
+		u64 rdbuf_ctrl:1;	/* formerly token_en */
+		u64 rdbuf_limit:1;	/* formerly token_limit */
+		u64 progress_limit:1;	/* descriptor and batch descriptor */
+		u64 rsvd:45;
 	};
 	u64 bits;
 } __packed;
@@ -91,6 +92,8 @@ struct opcap {
 	u64 bits[4];
 };
 
+#define IDXD_MAX_OPCAP_BITS		256U
+
 #define IDXD_OPCAP_OFFSET		0x40
 
 #define IDXD_TABLE_OFFSET		0x60
@@ -111,7 +114,7 @@ union offsets_reg {
 #define IDXD_GENCFG_OFFSET		0x80
 union gencfg_reg {
 	struct {
-		u32 token_limit:8;
+		u32 rdbuf_limit:8;
 		u32 rsvd:4;
 		u32 user_int_en:1;
 		u32 rsvd2:19;
@@ -158,6 +161,8 @@ enum idxd_device_reset_type {
 #define IDXD_INTC_CMD			0x02
 #define IDXD_INTC_OCCUPY			0x04
 #define IDXD_INTC_PERFMON_OVFL		0x08
+#define IDXD_INTC_HALT_STATE		0x10
+#define IDXD_INTC_INT_HANDLE_REVOKED	0x80000000
 
 #define IDXD_CMD_OFFSET			0xa0
 union idxd_command_reg {
@@ -284,16 +289,20 @@ union msix_perm {
 
 union group_flags {
 	struct {
-		u32 tc_a:3;
-		u32 tc_b:3;
-		u32 rsvd:1;
-		u32 use_token_limit:1;
-		u32 tokens_reserved:8;
-		u32 rsvd2:4;
-		u32 tokens_allowed:8;
-		u32 rsvd3:4;
+		u64 tc_a:3;
+		u64 tc_b:3;
+		u64 rsvd:1;
+		u64 use_rdbuf_limit:1;
+		u64 rdbufs_reserved:8;
+		u64 rsvd2:4;
+		u64 rdbufs_allowed:8;
+		u64 rsvd3:4;
+		u64 desc_progress_limit:2;
+		u64 rsvd4:2;
+		u64 batch_progress_limit:2;
+		u64 rsvd5:26;
 	};
-	u32 bits;
+	u64 bits;
 } __packed;
 
 struct grpcfg {
@@ -347,11 +356,15 @@ union wqcfg {
 
 		/* bytes 28-31 */
 		u32 rsvd8;
+
+		/* bytes 32-63 */
+		u64 op_config[4];
 	};
-	u32 bits[8];
+	u32 bits[16];
 } __packed;
 
 #define WQCFG_PASID_IDX                2
+#define WQCFG_PRIVL_IDX		2
 #define WQCFG_OCCUP_IDX		6
 
 #define WQCFG_OCCUP_MASK	0xffff

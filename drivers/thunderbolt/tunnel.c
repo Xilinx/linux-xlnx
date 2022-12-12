@@ -102,8 +102,11 @@ static unsigned int tb_available_credits(const struct tb_port *port,
 		 * Maximum number of DP streams possible through the
 		 * lane adapter.
 		 */
-		ndp = (credits - (usb3 + pcie + spare)) /
-		      (sw->min_dp_aux_credits + sw->min_dp_main_credits);
+		if (sw->min_dp_aux_credits + sw->min_dp_main_credits)
+			ndp = (credits - (usb3 + pcie + spare)) /
+			      (sw->min_dp_aux_credits + sw->min_dp_main_credits);
+		else
+			ndp = 0;
 	} else {
 		ndp = 0;
 	}
@@ -207,12 +210,14 @@ static int tb_pci_init_path(struct tb_path *path)
  * tb_tunnel_discover_pci() - Discover existing PCIe tunnels
  * @tb: Pointer to the domain structure
  * @down: PCIe downstream adapter
+ * @alloc_hopid: Allocate HopIDs from visited ports
  *
  * If @down adapter is active, follows the tunnel to the PCIe upstream
  * adapter and back. Returns the discovered tunnel or %NULL if there was
  * no tunnel.
  */
-struct tb_tunnel *tb_tunnel_discover_pci(struct tb *tb, struct tb_port *down)
+struct tb_tunnel *tb_tunnel_discover_pci(struct tb *tb, struct tb_port *down,
+					 bool alloc_hopid)
 {
 	struct tb_tunnel *tunnel;
 	struct tb_path *path;
@@ -233,7 +238,7 @@ struct tb_tunnel *tb_tunnel_discover_pci(struct tb *tb, struct tb_port *down)
 	 * case.
 	 */
 	path = tb_path_discover(down, TB_PCI_HOPID, NULL, -1,
-				&tunnel->dst_port, "PCIe Up");
+				&tunnel->dst_port, "PCIe Up", alloc_hopid);
 	if (!path) {
 		/* Just disable the downstream port */
 		tb_pci_port_enable(down, false);
@@ -244,7 +249,7 @@ struct tb_tunnel *tb_tunnel_discover_pci(struct tb *tb, struct tb_port *down)
 		goto err_free;
 
 	path = tb_path_discover(tunnel->dst_port, -1, down, TB_PCI_HOPID, NULL,
-				"PCIe Down");
+				"PCIe Down", alloc_hopid);
 	if (!path)
 		goto err_deactivate;
 	tunnel->paths[TB_PCI_PATH_DOWN] = path;
@@ -578,6 +583,16 @@ static int tb_dp_xchg_caps(struct tb_tunnel *tunnel)
 		out_dp_cap = tb_dp_cap_set_lanes(out_dp_cap, new_lanes);
 	}
 
+	/*
+	 * Titan Ridge does not disable AUX timers when it gets
+	 * SET_CONFIG with SET_LTTPR_MODE set. This causes problems with
+	 * DP tunneling.
+	 */
+	if (tb_route(out->sw) && tb_switch_is_titan_ridge(out->sw)) {
+		out_dp_cap |= DP_COMMON_CAP_LTTPR_NS;
+		tb_port_dbg(out, "disabling LTTPR\n");
+	}
+
 	return tb_port_write(in, &out_dp_cap, TB_CFG_PORT,
 			     in->cap_adap + DP_REMOTE_CAP, 1);
 }
@@ -761,6 +776,7 @@ static int tb_dp_init_video_path(struct tb_path *path)
  * tb_tunnel_discover_dp() - Discover existing Display Port tunnels
  * @tb: Pointer to the domain structure
  * @in: DP in adapter
+ * @alloc_hopid: Allocate HopIDs from visited ports
  *
  * If @in adapter is active, follows the tunnel to the DP out adapter
  * and back. Returns the discovered tunnel or %NULL if there was no
@@ -768,7 +784,8 @@ static int tb_dp_init_video_path(struct tb_path *path)
  *
  * Return: DP tunnel or %NULL if no tunnel found.
  */
-struct tb_tunnel *tb_tunnel_discover_dp(struct tb *tb, struct tb_port *in)
+struct tb_tunnel *tb_tunnel_discover_dp(struct tb *tb, struct tb_port *in,
+					bool alloc_hopid)
 {
 	struct tb_tunnel *tunnel;
 	struct tb_port *port;
@@ -787,7 +804,7 @@ struct tb_tunnel *tb_tunnel_discover_dp(struct tb *tb, struct tb_port *in)
 	tunnel->src_port = in;
 
 	path = tb_path_discover(in, TB_DP_VIDEO_HOPID, NULL, -1,
-				&tunnel->dst_port, "Video");
+				&tunnel->dst_port, "Video", alloc_hopid);
 	if (!path) {
 		/* Just disable the DP IN port */
 		tb_dp_port_enable(in, false);
@@ -797,14 +814,15 @@ struct tb_tunnel *tb_tunnel_discover_dp(struct tb *tb, struct tb_port *in)
 	if (tb_dp_init_video_path(tunnel->paths[TB_DP_VIDEO_PATH_OUT]))
 		goto err_free;
 
-	path = tb_path_discover(in, TB_DP_AUX_TX_HOPID, NULL, -1, NULL, "AUX TX");
+	path = tb_path_discover(in, TB_DP_AUX_TX_HOPID, NULL, -1, NULL, "AUX TX",
+				alloc_hopid);
 	if (!path)
 		goto err_deactivate;
 	tunnel->paths[TB_DP_AUX_PATH_OUT] = path;
 	tb_dp_init_aux_path(tunnel->paths[TB_DP_AUX_PATH_OUT]);
 
 	path = tb_path_discover(tunnel->dst_port, -1, in, TB_DP_AUX_RX_HOPID,
-				&port, "AUX RX");
+				&port, "AUX RX", alloc_hopid);
 	if (!path)
 		goto err_deactivate;
 	tunnel->paths[TB_DP_AUX_PATH_IN] = path;
@@ -843,6 +861,7 @@ err_free:
  * @tb: Pointer to the domain structure
  * @in: DP in adapter port
  * @out: DP out adapter port
+ * @link_nr: Preferred lane adapter when the link is not bonded
  * @max_up: Maximum available upstream bandwidth for the DP tunnel (%0
  *	    if not limited)
  * @max_down: Maximum available downstream bandwidth for the DP tunnel
@@ -854,8 +873,8 @@ err_free:
  * Return: Returns a tb_tunnel on success or NULL on failure.
  */
 struct tb_tunnel *tb_tunnel_alloc_dp(struct tb *tb, struct tb_port *in,
-				     struct tb_port *out, int max_up,
-				     int max_down)
+				     struct tb_port *out, int link_nr,
+				     int max_up, int max_down)
 {
 	struct tb_tunnel *tunnel;
 	struct tb_path **paths;
@@ -879,21 +898,21 @@ struct tb_tunnel *tb_tunnel_alloc_dp(struct tb *tb, struct tb_port *in,
 	paths = tunnel->paths;
 
 	path = tb_path_alloc(tb, in, TB_DP_VIDEO_HOPID, out, TB_DP_VIDEO_HOPID,
-			     1, "Video");
+			     link_nr, "Video");
 	if (!path)
 		goto err_free;
 	tb_dp_init_video_path(path);
 	paths[TB_DP_VIDEO_PATH_OUT] = path;
 
 	path = tb_path_alloc(tb, in, TB_DP_AUX_TX_HOPID, out,
-			     TB_DP_AUX_TX_HOPID, 1, "AUX TX");
+			     TB_DP_AUX_TX_HOPID, link_nr, "AUX TX");
 	if (!path)
 		goto err_free;
 	tb_dp_init_aux_path(path);
 	paths[TB_DP_AUX_PATH_OUT] = path;
 
 	path = tb_path_alloc(tb, out, TB_DP_AUX_RX_HOPID, in,
-			     TB_DP_AUX_RX_HOPID, 1, "AUX RX");
+			     TB_DP_AUX_RX_HOPID, link_nr, "AUX RX");
 	if (!path)
 		goto err_free;
 	tb_dp_init_aux_path(path);
@@ -1343,12 +1362,14 @@ static void tb_usb3_init_path(struct tb_path *path)
  * tb_tunnel_discover_usb3() - Discover existing USB3 tunnels
  * @tb: Pointer to the domain structure
  * @down: USB3 downstream adapter
+ * @alloc_hopid: Allocate HopIDs from visited ports
  *
  * If @down adapter is active, follows the tunnel to the USB3 upstream
  * adapter and back. Returns the discovered tunnel or %NULL if there was
  * no tunnel.
  */
-struct tb_tunnel *tb_tunnel_discover_usb3(struct tb *tb, struct tb_port *down)
+struct tb_tunnel *tb_tunnel_discover_usb3(struct tb *tb, struct tb_port *down,
+					  bool alloc_hopid)
 {
 	struct tb_tunnel *tunnel;
 	struct tb_path *path;
@@ -1369,7 +1390,7 @@ struct tb_tunnel *tb_tunnel_discover_usb3(struct tb *tb, struct tb_port *down)
 	 * case.
 	 */
 	path = tb_path_discover(down, TB_USB3_HOPID, NULL, -1,
-				&tunnel->dst_port, "USB3 Down");
+				&tunnel->dst_port, "USB3 Down", alloc_hopid);
 	if (!path) {
 		/* Just disable the downstream port */
 		tb_usb3_port_enable(down, false);
@@ -1379,7 +1400,7 @@ struct tb_tunnel *tb_tunnel_discover_usb3(struct tb *tb, struct tb_port *down)
 	tb_usb3_init_path(tunnel->paths[TB_USB3_PATH_DOWN]);
 
 	path = tb_path_discover(tunnel->dst_port, -1, down, TB_USB3_HOPID, NULL,
-				"USB3 Up");
+				"USB3 Up", alloc_hopid);
 	if (!path)
 		goto err_deactivate;
 	tunnel->paths[TB_USB3_PATH_UP] = path;

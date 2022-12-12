@@ -59,10 +59,6 @@ properties:
       - const: usb_hibrst
       - const: usb_apbrst
 
-  reset-gpio:
-    description: Specifies a mode-pin GPIO for reset
-    maxItems: 1
-
   phys:
     minItems: 1
     maxItems: 2
@@ -74,6 +70,10 @@ properties:
       enum:
         - usb2-phy
         - usb3-phy
+
+  reset-gpios:
+    description: GPIO used for the reset ulpi-phy
+    maxItems: 1
 
 # Required child node:
 
@@ -97,35 +97,39 @@ additionalProperties: false
 
 examples:
   - |
+    #include <dt-bindings/dma/xlnx-zynqmp-dpdma.h>
     #include <dt-bindings/power/xlnx-zynqmp-power.h>
     #include <dt-bindings/reset/xlnx-zynqmp-resets.h>
     #include <dt-bindings/clock/xlnx-zynqmp-clk.h>
     #include <dt-bindings/reset/xlnx-zynqmp-resets.h>
-    #include <dt-bindings/gpio/gpio.h>
     #include <dt-bindings/phy/phy.h>
+    axi {
+        #address-cells = <2>;
+        #size-cells = <2>;
 
-    usb@ff9d0000 {
-        #address-cells = <0x1>;
-        #size-cells = <0x1>;
-        compatible = "xlnx,zynqmp-dwc3";
-        reg = <0xff9d0000 0x100>;
-        clocks = <&zynqmp_clk USB0_BUS_REF>, <&zynqmp_clk USB3_DUAL_REF>;
-        clock-names = "bus_clk", "ref_clk";
-        power-domains = <&zynqmp_firmware PD_USB_0>;
-        resets = <&zynqmp_reset ZYNQMP_RESET_USB1_CORERESET>,
-                 <&zynqmp_reset ZYNQMP_RESET_USB1_HIBERRESET>,
-                 <&zynqmp_reset ZYNQMP_RESET_USB1_APB>;
-        reset-names = "usb_crst", "usb_hibrst", "usb_apbrst";
-        reset-gpio = <&modepin_gpio 1 GPIO_ACTIVE_LOW>;
-        phys = <&psgtr 2 PHY_TYPE_USB3 0 2>;
-        phy-names = "usb3-phy";
-        ranges;
+        usb@0 {
+            #address-cells = <0x2>;
+            #size-cells = <0x2>;
+            compatible = "xlnx,zynqmp-dwc3";
+            reg = <0x0 0xff9d0000 0x0 0x100>;
+            clocks = <&zynqmp_clk USB0_BUS_REF>, <&zynqmp_clk USB3_DUAL_REF>;
+            clock-names = "bus_clk", "ref_clk";
+            power-domains = <&zynqmp_firmware PD_USB_0>;
+            resets = <&zynqmp_reset ZYNQMP_RESET_USB1_CORERESET>,
+                     <&zynqmp_reset ZYNQMP_RESET_USB1_HIBERRESET>,
+                     <&zynqmp_reset ZYNQMP_RESET_USB1_APB>;
+            reset-names = "usb_crst", "usb_hibrst", "usb_apbrst";
+            phys = <&psgtr 2 PHY_TYPE_USB3 0 2>;
+            phy-names = "usb3-phy";
+            ranges;
 
-        usb@fe200000 {
-            compatible = "snps,dwc3";
-            reg = <0xfe200000 0x40000>;
-            interrupt-names = "dwc_usb3", "otg", "hiber";
-            interrupts = <0 65 4>, <0 69 4>, <0 75 4>;
-            dr_mode = "host";
+            usb@fe200000 {
+                compatible = "snps,dwc3";
+                reg = <0x0 0xfe200000 0x0 0x40000>;
+                interrupt-names = "host", "otg";
+                interrupts = <0 65 4>, <0 69 4>;
+                dr_mode = "host";
+                dma-coherent;
+            };
         };
     };

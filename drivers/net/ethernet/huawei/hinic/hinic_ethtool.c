@@ -55,7 +55,6 @@
 #define COALESCE_ALL_QUEUE		0xFFFF
 #define COALESCE_MAX_PENDING_LIMIT	(255 * COALESCE_PENDING_LIMIT_UNIT)
 #define COALESCE_MAX_TIMER_CFG		(255 * COALESCE_TIMER_CFG_UNIT)
-#define OBJ_STR_MAX_LEN			32
 
 struct hw2ethtool_link_mode {
 	enum ethtool_link_mode_bit_indices link_mode_bit;
@@ -322,12 +321,10 @@ static int hinic_get_link_ksettings(struct net_device *netdev,
 		}
 	}
 
-	bitmap_copy(link_ksettings->link_modes.supported,
-		    (unsigned long *)&settings.supported,
-		    __ETHTOOL_LINK_MODE_MASK_NBITS);
-	bitmap_copy(link_ksettings->link_modes.advertising,
-		    (unsigned long *)&settings.advertising,
-		    __ETHTOOL_LINK_MODE_MASK_NBITS);
+	linkmode_copy(link_ksettings->link_modes.supported,
+		      (unsigned long *)&settings.supported);
+	linkmode_copy(link_ksettings->link_modes.advertising,
+		      (unsigned long *)&settings.advertising);
 
 	return 0;
 }
@@ -549,7 +546,9 @@ static void hinic_get_drvinfo(struct net_device *netdev,
 }
 
 static void hinic_get_ringparam(struct net_device *netdev,
-				struct ethtool_ringparam *ring)
+				struct ethtool_ringparam *ring,
+				struct kernel_ethtool_ringparam *kernel_ring,
+				struct netlink_ext_ack *extack)
 {
 	struct hinic_dev *nic_dev = netdev_priv(netdev);
 
@@ -582,7 +581,9 @@ static int check_ringparam_valid(struct hinic_dev *nic_dev,
 }
 
 static int hinic_set_ringparam(struct net_device *netdev,
-			       struct ethtool_ringparam *ring)
+			       struct ethtool_ringparam *ring,
+			       struct kernel_ethtool_ringparam *kernel_ring,
+			       struct netlink_ext_ack *extack)
 {
 	struct hinic_dev *nic_dev = netdev_priv(netdev);
 	u16 new_sq_depth, new_rq_depth;
@@ -1207,8 +1208,6 @@ static u32 hinic_get_rxfh_indir_size(struct net_device *netdev)
 	return HINIC_RSS_INDIR_SIZE;
 }
 
-#define ARRAY_LEN(arr) ((int)((int)sizeof(arr) / (int)sizeof(arr[0])))
-
 #define HINIC_FUNC_STAT(_stat_item) {	\
 	.name = #_stat_item, \
 	.size = sizeof_field(struct hinic_vport_stats, _stat_item), \
@@ -1376,7 +1375,7 @@ static void get_drv_queue_stats(struct hinic_dev *nic_dev, u64 *data)
 			break;
 
 		hinic_txq_get_stats(&nic_dev->txqs[qid], &txq_stats);
-		for (j = 0; j < ARRAY_LEN(hinic_tx_queue_stats); j++, i++) {
+		for (j = 0; j < ARRAY_SIZE(hinic_tx_queue_stats); j++, i++) {
 			p = (char *)&txq_stats +
 				hinic_tx_queue_stats[j].offset;
 			data[i] = (hinic_tx_queue_stats[j].size ==
@@ -1389,7 +1388,7 @@ static void get_drv_queue_stats(struct hinic_dev *nic_dev, u64 *data)
 			break;
 
 		hinic_rxq_get_stats(&nic_dev->rxqs[qid], &rxq_stats);
-		for (j = 0; j < ARRAY_LEN(hinic_rx_queue_stats); j++, i++) {
+		for (j = 0; j < ARRAY_SIZE(hinic_rx_queue_stats); j++, i++) {
 			p = (char *)&rxq_stats +
 				hinic_rx_queue_stats[j].offset;
 			data[i] = (hinic_rx_queue_stats[j].size ==
@@ -1413,7 +1412,7 @@ static void hinic_get_ethtool_stats(struct net_device *netdev,
 		netif_err(nic_dev, drv, netdev,
 			  "Failed to get vport stats from firmware\n");
 
-	for (j = 0; j < ARRAY_LEN(hinic_function_stats); j++, i++) {
+	for (j = 0; j < ARRAY_SIZE(hinic_function_stats); j++, i++) {
 		p = (char *)&vport_stats + hinic_function_stats[j].offset;
 		data[i] = (hinic_function_stats[j].size ==
 				sizeof(u64)) ? *(u64 *)p : *(u32 *)p;
@@ -1422,8 +1421,8 @@ static void hinic_get_ethtool_stats(struct net_device *netdev,
 	port_stats = kzalloc(sizeof(*port_stats), GFP_KERNEL);
 	if (!port_stats) {
 		memset(&data[i], 0,
-		       ARRAY_LEN(hinic_port_stats) * sizeof(*data));
-		i += ARRAY_LEN(hinic_port_stats);
+		       ARRAY_SIZE(hinic_port_stats) * sizeof(*data));
+		i += ARRAY_SIZE(hinic_port_stats);
 		goto get_drv_stats;
 	}
 
@@ -1432,7 +1431,7 @@ static void hinic_get_ethtool_stats(struct net_device *netdev,
 		netif_err(nic_dev, drv, netdev,
 			  "Failed to get port stats from firmware\n");
 
-	for (j = 0; j < ARRAY_LEN(hinic_port_stats); j++, i++) {
+	for (j = 0; j < ARRAY_SIZE(hinic_port_stats); j++, i++) {
 		p = (char *)port_stats + hinic_port_stats[j].offset;
 		data[i] = (hinic_port_stats[j].size ==
 				sizeof(u64)) ? *(u64 *)p : *(u32 *)p;
@@ -1451,14 +1450,14 @@ static int hinic_get_sset_count(struct net_device *netdev, int sset)
 
 	switch (sset) {
 	case ETH_SS_TEST:
-		return ARRAY_LEN(hinic_test_strings);
+		return ARRAY_SIZE(hinic_test_strings);
 	case ETH_SS_STATS:
 		q_num = nic_dev->num_qps;
-		count = ARRAY_LEN(hinic_function_stats) +
-			(ARRAY_LEN(hinic_tx_queue_stats) +
-			ARRAY_LEN(hinic_rx_queue_stats)) * q_num;
+		count = ARRAY_SIZE(hinic_function_stats) +
+			(ARRAY_SIZE(hinic_tx_queue_stats) +
+			ARRAY_SIZE(hinic_rx_queue_stats)) * q_num;
 
-		count += ARRAY_LEN(hinic_port_stats);
+		count += ARRAY_SIZE(hinic_port_stats);
 
 		return count;
 	default:
@@ -1478,27 +1477,27 @@ static void hinic_get_strings(struct net_device *netdev,
 		memcpy(data, *hinic_test_strings, sizeof(hinic_test_strings));
 		return;
 	case ETH_SS_STATS:
-		for (i = 0; i < ARRAY_LEN(hinic_function_stats); i++) {
+		for (i = 0; i < ARRAY_SIZE(hinic_function_stats); i++) {
 			memcpy(p, hinic_function_stats[i].name,
 			       ETH_GSTRING_LEN);
 			p += ETH_GSTRING_LEN;
 		}
 
-		for (i = 0; i < ARRAY_LEN(hinic_port_stats); i++) {
+		for (i = 0; i < ARRAY_SIZE(hinic_port_stats); i++) {
 			memcpy(p, hinic_port_stats[i].name,
 			       ETH_GSTRING_LEN);
 			p += ETH_GSTRING_LEN;
 		}
 
 		for (i = 0; i < nic_dev->num_qps; i++) {
-			for (j = 0; j < ARRAY_LEN(hinic_tx_queue_stats); j++) {
+			for (j = 0; j < ARRAY_SIZE(hinic_tx_queue_stats); j++) {
 				sprintf(p, hinic_tx_queue_stats[j].name, i);
 				p += ETH_GSTRING_LEN;
 			}
 		}
 
 		for (i = 0; i < nic_dev->num_qps; i++) {
-			for (j = 0; j < ARRAY_LEN(hinic_rx_queue_stats); j++) {
+			for (j = 0; j < ARRAY_SIZE(hinic_rx_queue_stats); j++) {
 				sprintf(p, hinic_rx_queue_stats[j].name, i);
 				p += ETH_GSTRING_LEN;
 			}

@@ -162,6 +162,8 @@ int __ext4_journal_ensure_credits(handle_t *handle, int check_cred,
 {
 	if (!ext4_handle_valid(handle))
 		return 0;
+	if (is_handle_aborted(handle))
+		return -EROFS;
 	if (jbd2_handle_buffer_credits(handle) >= check_cred &&
 	    handle->h_revoke_credits >= revoke_cred)
 		return 0;
@@ -265,8 +267,7 @@ int __ext4_forget(const char *where, unsigned int line, handle_t *handle,
 	trace_ext4_forget(inode, is_metadata, blocknr);
 	BUFFER_TRACE(bh, "enter");
 
-	jbd_debug(4, "forgetting bh %p: is_metadata = %d, mode %o, "
-		  "data mode %x\n",
+	ext4_debug("forgetting bh %p: is_metadata=%d, mode %o, data mode %x\n",
 		  bh, is_metadata, inode->i_mode,
 		  test_opt(inode->i_sb, DATA_FLAGS));
 

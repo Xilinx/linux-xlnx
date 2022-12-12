@@ -8,6 +8,7 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/ftrace.h>
+#include <linux/kprobes.h>
 #include <linux/sched/clock.h>
 #include <linux/sched/mm.h>
 
@@ -346,22 +347,12 @@ int trace_output_call(struct trace_iterator *iter, char *name, char *fmt, ...)
 }
 EXPORT_SYMBOL_GPL(trace_output_call);
 
-#ifdef CONFIG_KRETPROBES
-static inline const char *kretprobed(const char *name)
+static inline const char *kretprobed(const char *name, unsigned long addr)
 {
-	static const char tramp_name[] = "kretprobe_trampoline";
-	int size = sizeof(tramp_name);
-
-	if (strncmp(tramp_name, name, size) == 0)
+	if (is_kretprobe_trampoline(addr))
 		return "[unknown/kretprobe'd]";
 	return name;
 }
-#else
-static inline const char *kretprobed(const char *name)
-{
-	return name;
-}
-#endif /* CONFIG_KRETPROBES */
 
 void
 trace_seq_print_sym(struct trace_seq *s, unsigned long address, bool offset)
@@ -374,7 +365,7 @@ trace_seq_print_sym(struct trace_seq *s, unsigned long address, bool offset)
 		sprint_symbol(str, address);
 	else
 		kallsyms_lookup(address, NULL, NULL, NULL, str);
-	name = kretprobed(str);
+	name = kretprobed(str, address);
 
 	if (name && strlen(name)) {
 		trace_seq_puts(s, name);
@@ -454,14 +445,18 @@ int trace_print_lat_fmt(struct trace_seq *s, struct trace_entry *entry)
 	char irqs_off;
 	int hardirq;
 	int softirq;
+	int bh_off;
 	int nmi;
 
 	nmi = entry->flags & TRACE_FLAG_NMI;
 	hardirq = entry->flags & TRACE_FLAG_HARDIRQ;
 	softirq = entry->flags & TRACE_FLAG_SOFTIRQ;
+	bh_off = entry->flags & TRACE_FLAG_BH_OFF;
 
 	irqs_off =
+		(entry->flags & TRACE_FLAG_IRQS_OFF && bh_off) ? 'D' :
 		(entry->flags & TRACE_FLAG_IRQS_OFF) ? 'd' :
+		bh_off ? 'b' :
 		(entry->flags & TRACE_FLAG_IRQS_NOSUPPORT) ? 'X' :
 		'.';
 
@@ -697,7 +692,7 @@ static LIST_HEAD(ftrace_event_list);
 
 static int trace_search_list(struct list_head **list)
 {
-	struct trace_event *e;
+	struct trace_event *e = NULL, *iter;
 	int next = __TRACE_LAST_TYPE;
 
 	if (list_empty(&ftrace_event_list)) {
@@ -709,9 +704,11 @@ static int trace_search_list(struct list_head **list)
 	 * We used up all possible max events,
 	 * lets see if somebody freed one.
 	 */
-	list_for_each_entry(e, &ftrace_event_list, list) {
-		if (e->type != next)
+	list_for_each_entry(iter, &ftrace_event_list, list) {
+		if (iter->type != next) {
+			e = iter;
 			break;
+		}
 		next++;
 	}
 
@@ -719,7 +716,10 @@ static int trace_search_list(struct list_head **list)
 	if (next > TRACE_EVENT_TYPE_MAX)
 		return 0;
 
-	*list = &e->list;
+	if (e)
+		*list = &e->list;
+	else
+		*list = &ftrace_event_list;
 	return next;
 }
 
@@ -783,9 +783,8 @@ int register_trace_event(struct trace_event *event)
 
 		list_add_tail(&event->list, list);
 
-	} else if (event->type > __TRACE_LAST_TYPE) {
-		printk(KERN_WARNING "Need to add type to trace.h\n");
-		WARN_ON(1);
+	} else if (WARN(event->type > __TRACE_LAST_TYPE,
+			"Need to add type to trace.h")) {
 		goto out;
 	} else {
 		/* Is this event already used */
@@ -1576,13 +1575,8 @@ __init static int init_events(void)
 
 	for (i = 0; events[i]; i++) {
 		event = events[i];
-
 		ret = register_trace_event(event);
-		if (!ret) {
-			printk(KERN_WARNING "event %d failed to register\n",
-			       event->type);
-			WARN_ON_ONCE(1);
-		}
+		WARN_ONCE(!ret, "event %d failed to register", event->type);
 	}
 
 	return 0;

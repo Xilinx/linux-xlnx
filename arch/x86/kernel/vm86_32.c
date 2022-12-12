@@ -106,10 +106,8 @@ void save_v86_state(struct kernel_vm86_regs *regs, int retval)
 	 */
 	local_irq_enable();
 
-	if (!vm86 || !vm86->user_vm86) {
-		pr_alert("no user_vm86: BAD\n");
-		do_exit(SIGSEGV);
-	}
+	BUG_ON(!vm86);
+
 	set_flags(regs->pt.flags, VEFLAGS, X86_EFLAGS_VIF | vm86->veflags_mask);
 	user = vm86->user_vm86;
 
@@ -142,6 +140,7 @@ void save_v86_state(struct kernel_vm86_regs *regs, int retval)
 
 	user_access_end();
 
+exit_vm86:
 	preempt_disable();
 	tsk->thread.sp0 = vm86->saved_sp0;
 	tsk->thread.sysenter_cs = __KERNEL_CS;
@@ -152,7 +151,7 @@ void save_v86_state(struct kernel_vm86_regs *regs, int retval)
 
 	memcpy(&regs->pt, &vm86->regs32, sizeof(struct pt_regs));
 
-	lazy_load_gs(vm86->regs32.gs);
+	loadsegment(gs, vm86->regs32.gs);
 
 	regs->pt.ax = retval;
 	return;
@@ -161,7 +160,8 @@ Efault_end:
 	user_access_end();
 Efault:
 	pr_alert("could not access userspace vm86 info\n");
-	do_exit(SIGSEGV);
+	force_exit_sig(SIGSEGV);
+	goto exit_vm86;
 }
 
 static int do_vm86_irq_handling(int subfunction, int irqnumber);
@@ -325,7 +325,7 @@ static long do_sys_vm86(struct vm86plus_struct __user *user_vm86, bool plus)
  * Save old state
  */
 	vm86->saved_sp0 = tsk->thread.sp0;
-	lazy_save_gs(vm86->regs32.gs);
+	savesegment(gs, vm86->regs32.gs);
 
 	/* make room for real-mode segments */
 	preempt_disable();

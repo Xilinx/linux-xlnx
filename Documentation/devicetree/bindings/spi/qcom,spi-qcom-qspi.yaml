@@ -8,20 +8,23 @@ $schema: "http://devicetree.org/meta-schemas/core.yaml#"
 title: Qualcomm Quad Serial Peripheral Interface (QSPI)
 
 maintainers:
-  - Mukesh Savaliya <msavaliy@codeaurora.org>
-  - Akash Asthana <akashast@codeaurora.org>
+  - Bjorn Andersson <bjorn.andersson@linaro.org>
 
 description: The QSPI controller allows SPI protocol communication in single,
   dual, or quad wire transmission modes for read/write access to slaves such
   as NOR flash.
 
 allOf:
-  - $ref: /spi/spi-controller.yaml#
+  - $ref: /schemas/spi/spi-controller.yaml#
 
 properties:
   compatible:
     items:
-      - const: qcom,sdm845-qspi
+      - enum:
+          - qcom,sc7180-qspi
+          - qcom,sc7280-qspi
+          - qcom,sdm845-qspi
+
       - const: qcom,qspi-v1
 
   reg:
@@ -45,6 +48,7 @@ properties:
     maxItems: 2
 
   interconnect-names:
+    minItems: 1
     items:
       - const: qspi-config
       - const: qspi-memory

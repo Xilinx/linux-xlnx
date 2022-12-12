@@ -203,7 +203,7 @@ static ssize_t nxp_spifi_write(struct spi_nor *nor, loff_t to, size_t len,
 	      SPIFI_CMD_DATALEN(len) |
 	      SPIFI_CMD_FIELDFORM_ALL_SERIAL |
 	      SPIFI_CMD_OPCODE(nor->program_opcode) |
-	      SPIFI_CMD_FRAMEFORM(spifi->nor.addr_width + 1);
+	      SPIFI_CMD_FRAMEFORM(spifi->nor.addr_nbytes + 1);
 	writel(cmd, spifi->io_base + SPIFI_CMD);
 
 	for (i = 0; i < len; i++)
@@ -230,7 +230,7 @@ static int nxp_spifi_erase(struct spi_nor *nor, loff_t offs)
 
 	cmd = SPIFI_CMD_FIELDFORM_ALL_SERIAL |
 	      SPIFI_CMD_OPCODE(nor->erase_opcode) |
-	      SPIFI_CMD_FRAMEFORM(spifi->nor.addr_width + 1);
+	      SPIFI_CMD_FRAMEFORM(spifi->nor.addr_nbytes + 1);
 	writel(cmd, spifi->io_base + SPIFI_CMD);
 
 	return nxp_spifi_wait_for_cmd(spifi);
@@ -252,12 +252,12 @@ static int nxp_spifi_setup_memory_cmd(struct nxp_spifi *spifi)
 	}
 
 	/* Memory mode supports address length between 1 and 4 */
-	if (spifi->nor.addr_width < 1 || spifi->nor.addr_width > 4)
+	if (spifi->nor.addr_nbytes < 1 || spifi->nor.addr_nbytes > 4)
 		return -EINVAL;
 
 	spifi->mcmd |= SPIFI_CMD_OPCODE(spifi->nor.read_opcode) |
 		       SPIFI_CMD_INTLEN(spifi->nor.read_dummy / 8) |
-		       SPIFI_CMD_FRAMEFORM(spifi->nor.addr_width + 1);
+		       SPIFI_CMD_FRAMEFORM(spifi->nor.addr_nbytes + 1);
 
 	return 0;
 }
@@ -381,20 +381,17 @@ static int nxp_spifi_probe(struct platform_device *pdev)
 {
 	struct device_node *flash_np;
 	struct nxp_spifi *spifi;
-	struct resource *res;
 	int ret;
 
 	spifi = devm_kzalloc(&pdev->dev, sizeof(*spifi), GFP_KERNEL);
 	if (!spifi)
 		return -ENOMEM;
 
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "spifi");
-	spifi->io_base = devm_ioremap_resource(&pdev->dev, res);
+	spifi->io_base = devm_platform_ioremap_resource_byname(pdev, "spifi");
 	if (IS_ERR(spifi->io_base))
 		return PTR_ERR(spifi->io_base);
 
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "flash");
-	spifi->flash_base = devm_ioremap_resource(&pdev->dev, res);
+	spifi->flash_base = devm_platform_ioremap_resource_byname(pdev, "flash");
 	if (IS_ERR(spifi->flash_base))
 		return PTR_ERR(spifi->flash_base);
 

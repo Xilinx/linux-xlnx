@@ -186,7 +186,7 @@ struct asb100_data {
 	/* array of 2 pointers to subclients */
 	struct i2c_client *lm75[2];
 
-	char valid;		/* !=0 if following fields are valid */
+	bool valid;		/* true if following fields are valid */
 	u8 in[7];		/* Register value */
 	u8 in_max[7];		/* Register value */
 	u8 in_min[7];		/* Register value */
@@ -208,7 +208,7 @@ static void asb100_write_value(struct i2c_client *client, u16 reg, u16 val);
 static int asb100_probe(struct i2c_client *client);
 static int asb100_detect(struct i2c_client *client,
 			 struct i2c_board_info *info);
-static int asb100_remove(struct i2c_client *client);
+static void asb100_remove(struct i2c_client *client);
 static struct asb100_data *asb100_update_device(struct device *dev);
 static void asb100_init_client(struct i2c_client *client);
 
@@ -769,7 +769,7 @@ static int asb100_detect(struct i2c_client *client,
 	if (val1 != 0x31 || val2 != 0x06)
 		return -ENODEV;
 
-	strlcpy(info->type, "asb100", I2C_NAME_SIZE);
+	strscpy(info->type, "asb100", I2C_NAME_SIZE);
 
 	return 0;
 }
@@ -822,7 +822,7 @@ ERROR3:
 	return err;
 }
 
-static int asb100_remove(struct i2c_client *client)
+static void asb100_remove(struct i2c_client *client)
 {
 	struct asb100_data *data = i2c_get_clientdata(client);
 
@@ -831,8 +831,6 @@ static int asb100_remove(struct i2c_client *client)
 
 	i2c_unregister_device(data->lm75[1]);
 	i2c_unregister_device(data->lm75[0]);
-
-	return 0;
 }
 
 /*
@@ -993,7 +991,7 @@ static struct asb100_data *asb100_update_device(struct device *dev)
 			(asb100_read_value(client, ASB100_REG_ALARM2) << 8);
 
 		data->last_updated = jiffies;
-		data->valid = 1;
+		data->valid = true;
 
 		dev_dbg(&client->dev, "... device update complete\n");
 	}

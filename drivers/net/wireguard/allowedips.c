@@ -6,6 +6,8 @@
 #include "allowedips.h"
 #include "peer.h"
 
+enum { MAX_ALLOWEDIPS_BITS = 128 };
+
 static struct kmem_cache *node_cache;
 
 static void swap_endian(u8 *dst, const u8 *src, u8 bits)
@@ -40,7 +42,8 @@ static void push_rcu(struct allowedips_node **stack,
 		     struct allowedips_node __rcu *p, unsigned int *len)
 {
 	if (rcu_access_pointer(p)) {
-		WARN_ON(IS_ENABLED(DEBUG) && *len >= 128);
+		if (WARN_ON(IS_ENABLED(DEBUG) && *len >= MAX_ALLOWEDIPS_BITS))
+			return;
 		stack[(*len)++] = rcu_dereference_raw(p);
 	}
 }
@@ -52,7 +55,7 @@ static void node_free_rcu(struct rcu_head *rcu)
 
 static void root_free_rcu(struct rcu_head *rcu)
 {
-	struct allowedips_node *node, *stack[128] = {
+	struct allowedips_node *node, *stack[MAX_ALLOWEDIPS_BITS] = {
 		container_of(rcu, struct allowedips_node, rcu) };
 	unsigned int len = 1;
 
@@ -65,7 +68,7 @@ static void root_free_rcu(struct rcu_head *rcu)
 
 static void root_remove_peer_lists(struct allowedips_node *root)
 {
-	struct allowedips_node *node, *stack[128] = { root };
+	struct allowedips_node *node, *stack[MAX_ALLOWEDIPS_BITS] = { root };
 	unsigned int len = 1;
 
 	while (len > 0 && (node = stack[--len])) {
@@ -163,7 +166,7 @@ static bool node_placement(struct allowedips_node __rcu *trie, const u8 *key,
 	return exact;
 }
 
-static inline void connect_node(struct allowedips_node **parent, u8 bit, struct allowedips_node *node)
+static inline void connect_node(struct allowedips_node __rcu **parent, u8 bit, struct allowedips_node *node)
 {
 	node->parent_bit_packed = (unsigned long)parent | bit;
 	rcu_assign_pointer(*parent, node);

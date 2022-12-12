@@ -22,7 +22,6 @@
 #include <linux/uaccess.h>
 #include <asm/io.h>
 #include <asm/rtas.h>
-#include <asm/prom.h>
 #include <asm/nvram.h>
 #include <linux/atomic.h>
 #include <asm/machdep.h>
@@ -455,7 +454,7 @@ static void rtas_event_scan(struct work_struct *w)
 }
 
 #ifdef CONFIG_PPC64
-static void retrieve_nvram_error_log(void)
+static void __init retrieve_nvram_error_log(void)
 {
 	unsigned int err_type ;
 	int rc ;
@@ -473,12 +472,12 @@ static void retrieve_nvram_error_log(void)
 	}
 }
 #else /* CONFIG_PPC64 */
-static void retrieve_nvram_error_log(void)
+static void __init retrieve_nvram_error_log(void)
 {
 }
 #endif /* CONFIG_PPC64 */
 
-static void start_event_scan(void)
+static void __init start_event_scan(void)
 {
 	printk(KERN_DEBUG "RTAS daemon started\n");
 	pr_debug("rtasd: will sleep for %d milliseconds\n",

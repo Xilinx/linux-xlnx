@@ -247,11 +247,13 @@
 #define MACB_NCR_TPF_SIZE	1
 #define MACB_TZQ_OFFSET		12 /* Transmit zero quantum pause frame */
 #define MACB_TZQ_SIZE		1
-#define MACB_SRTSM_OFFSET	15
+#define MACB_SRTSM_OFFSET	15 /* Store Receive Timestamp to Memory */
+#define MACB_OSSMODE_OFFSET	24 /* Enable One Step Synchro Mode */
 #define MACB_PTPUNI_OFFSET			20
 #define MACB_PTPUNI_SIZE			1
-#define MACB_OSSMODE_OFFSET 24 /* Enable One Step Synchro Mode */
 #define MACB_OSSMODE_SIZE	1
+#define MACB_MIIONRGMII_OFFSET	28 /* MII Usage on RGMII Interface */
+#define MACB_MIIONRGMII_SIZE	1
 
 /* Bitfields in NCFGR */
 #define MACB_SPD_OFFSET		0 /* Speed */
@@ -727,18 +729,19 @@
 #define MACB_CAPS_GEM_HAS_PTP			0x00000040
 #define MACB_CAPS_BD_RD_PREFETCH		0x00000080
 #define MACB_CAPS_NEEDS_RSTONUBR		0x00000100
+#define MACB_CAPS_MIIONRGMII			0x00000200
+#define MACB_CAPS_NEED_TSUCLK			0x00000400
+#define MACB_CAPS_PCS				0x01000000
+#define MACB_CAPS_HIGH_SPEED			0x02000000
 #define MACB_CAPS_PARTIAL_STORE_FORWARD		0x00000800
 #define MACB_CAPS_WOL				0x00000200
 #define MACB_CAPS_CLK_HW_CHG			0x04000000
 #define MACB_CAPS_MACB_IS_EMAC			0x08000000
-#define MACB_CAPS_NEED_TSUCLK			0x00001000
 #define MACB_CAPS_QUEUE_DISABLE			0x00002000
 #define MACB_CAPS_FIFO_MODE			0x10000000
 #define MACB_CAPS_GIGABIT_MODE_AVAILABLE	0x20000000
 #define MACB_CAPS_SG_DISABLED			0x40000000
 #define MACB_CAPS_MACB_IS_GEM			0x80000000
-#define MACB_CAPS_PCS				0x01000000
-#define MACB_CAPS_HIGH_SPEED			0x02000000
 
 /* LSO settings */
 #define MACB_LSO_UFO_ENABLE			0x01
@@ -1218,11 +1221,15 @@ struct macb_queue {
 	unsigned int		RBQP;
 	unsigned int		RBQPH;
 
+	/* Lock to protect tx_head and tx_tail */
+	spinlock_t		tx_ptr_lock;
 	unsigned int		tx_head, tx_tail;
 	struct macb_dma_desc	*tx_ring;
 	struct macb_tx_skb	*tx_skb;
 	dma_addr_t		tx_ring_dma;
 	struct work_struct	tx_error_task;
+	bool			txubr_pending;
+	struct napi_struct	napi_tx;
 
 	dma_addr_t		rx_ring_dma;
 	dma_addr_t		rx_buffers_dma;
@@ -1231,7 +1238,7 @@ struct macb_queue {
 	struct macb_dma_desc	*rx_ring;
 	struct sk_buff		**rx_skbuff;
 	void			*rx_buffers;
-	struct napi_struct	napi;
+	struct napi_struct	napi_rx;
 	struct queue_stats stats;
 
 #ifdef CONFIG_MACB_USE_HWSTAMP
@@ -1289,7 +1296,8 @@ struct macb {
 	struct mii_bus		*mii_bus;
 	struct phylink		*phylink;
 	struct phylink_config	phylink_config;
-	struct phylink_pcs	phylink_pcs;
+	struct phylink_pcs	phylink_usx_pcs;
+	struct phylink_pcs	phylink_sgmii_pcs;
 
 	u32			caps;
 	unsigned int		dma_burst_length;

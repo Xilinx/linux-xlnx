@@ -19,9 +19,10 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
 
-int _version SEC("version") = 1;
 #define PROG(F) PROG_(F, _##F)
-#define PROG_(NUM, NAME) SEC("flow_dissector/"#NUM) int bpf_func##NAME
+#define PROG_(NUM, NAME) SEC("flow_dissector") int flow_dissector_##NUM
+
+#define FLOW_CONTINUE_SADDR 0x7f00007f /* 127.0.0.127 */
 
 /* These are the identifiers of the BPF programs that will be used in tail
  * calls. Name is limited to 16 characters, with the terminating character and
@@ -143,6 +144,19 @@ SEC("flow_dissector")
 int _dissect(struct __sk_buff *skb)
 {
 	struct bpf_flow_keys *keys = skb->flow_keys;
+
+	if (keys->n_proto == bpf_htons(ETH_P_IP)) {
+		/* IP traffic from FLOW_CONTINUE_SADDR falls-back to
+		 * standard dissector
+		 */
+		struct iphdr *iph, _iph;
+
+		iph = bpf_flow_dissect_get_header(skb, sizeof(*iph), &_iph);
+		if (iph && iph->ihl == 5 &&
+		    iph->saddr == bpf_htonl(FLOW_CONTINUE_SADDR)) {
+			return BPF_FLOW_DISSECTOR_CONTINUE;
+		}
+	}
 
 	return parse_eth_proto(skb, keys->n_proto);
 }

@@ -11,8 +11,8 @@ typedef __u64 stack_trace_t[PERF_MAX_STACK_DEPTH];
 struct {
 	__uint(type, BPF_MAP_TYPE_STACK_TRACE);
 	__uint(max_entries, 16384);
-	__uint(key_size, sizeof(__u32));
-	__uint(value_size, sizeof(stack_trace_t));
+	__type(key, __u32);
+	__type(value, stack_trace_t);
 } stackmap SEC(".maps");
 
 struct {
@@ -35,10 +35,10 @@ int oncpu(void *ctx)
 	long val;
 
 	val = bpf_get_stackid(ctx, &stackmap, 0);
-	if (val > 0)
+	if (val >= 0)
 		stackid_kernel = 2;
 	val = bpf_get_stackid(ctx, &stackmap, BPF_F_USER_STACK);
-	if (val > 0)
+	if (val >= 0)
 		stackid_user = 2;
 
 	trace = bpf_map_lookup_elem(&stackdata_map, &key);

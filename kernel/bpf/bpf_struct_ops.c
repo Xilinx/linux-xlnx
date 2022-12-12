@@ -10,6 +10,7 @@
 #include <linux/seq_file.h>
 #include <linux/refcount.h>
 #include <linux/mutex.h>
+#include <linux/btf_ids.h>
 
 enum bpf_struct_ops_state {
 	BPF_STRUCT_OPS_STATE_INIT,
@@ -32,15 +33,15 @@ struct bpf_struct_ops_map {
 	const struct bpf_struct_ops *st_ops;
 	/* protect map_update */
 	struct mutex lock;
-	/* progs has all the bpf_prog that is populated
+	/* link has all the bpf_links that is populated
 	 * to the func ptr of the kernel's struct
 	 * (in kvalue.data).
 	 */
-	struct bpf_prog **progs;
+	struct bpf_link **links;
 	/* image is a page that has all the trampolines
 	 * that stores the func args before calling the bpf_prog.
 	 * A PAGE_SIZE "image" is enough to store all trampoline for
-	 * "progs[]".
+	 * "links[]".
 	 */
 	void *image;
 	/* uvalue->data stores the kernel struct
@@ -93,6 +94,9 @@ const struct bpf_verifier_ops bpf_struct_ops_verifier_ops = {
 };
 
 const struct bpf_prog_ops bpf_struct_ops_prog_ops = {
+#ifdef CONFIG_NET
+	.test_run = bpf_struct_ops_test_run,
+#endif
 };
 
 static const struct btf_type *module_type;
@@ -162,7 +166,7 @@ void bpf_struct_ops_init(struct btf *btf, struct bpf_verifier_log *log)
 				break;
 			}
 
-			if (btf_member_bitfield_size(t, member)) {
+			if (__btf_member_bitfield_size(t, member)) {
 				pr_warn("bit field member %s in struct %s is not supported\n",
 					mname, st_ops->name);
 				break;
@@ -260,7 +264,7 @@ int bpf_struct_ops_map_sys_lookup_elem(struct bpf_map *map, void *key,
 	/* No lock is needed.  state and refcnt do not need
 	 * to be updated together under atomic context.
 	 */
-	uvalue = (struct bpf_struct_ops_value *)value;
+	uvalue = value;
 	memcpy(uvalue, st_map->uvalue, map->value_size);
 	uvalue->state = state;
 	refcount_set(&uvalue->refcnt, refcount_read(&kvalue->refcnt));
@@ -279,9 +283,9 @@ static void bpf_struct_ops_map_put_progs(struct bpf_struct_ops_map *st_map)
 	u32 i;
 
 	for (i = 0; i < btf_type_vlen(t); i++) {
-		if (st_map->progs[i]) {
-			bpf_prog_put(st_map->progs[i]);
-			st_map->progs[i] = NULL;
+		if (st_map->links[i]) {
+			bpf_link_put(st_map->links[i]);
+			st_map->links[i] = NULL;
 		}
 	}
 }
@@ -293,7 +297,7 @@ static int check_zero_holes(const struct btf_type *t, void *data)
 	const struct btf_type *mtype;
 
 	for_each_member(i, t, member) {
-		moff = btf_member_bit_offset(t, member) / 8;
+		moff = __btf_member_bit_offset(t, member) / 8;
 		if (moff > prev_mend &&
 		    memchr_inv(data + prev_mend, 0, moff - prev_mend))
 			return -EINVAL;
@@ -312,6 +316,39 @@ static int check_zero_holes(const struct btf_type *t, void *data)
 	return 0;
 }
 
+static void bpf_struct_ops_link_release(struct bpf_link *link)
+{
+}
+
+static void bpf_struct_ops_link_dealloc(struct bpf_link *link)
+{
+	struct bpf_tramp_link *tlink = container_of(link, struct bpf_tramp_link, link);
+
+	kfree(tlink);
+}
+
+const struct bpf_link_ops bpf_struct_ops_link_lops = {
+	.release = bpf_struct_ops_link_release,
+	.dealloc = bpf_struct_ops_link_dealloc,
+};
+
+int bpf_struct_ops_prepare_trampoline(struct bpf_tramp_links *tlinks,
+				      struct bpf_tramp_link *link,
+				      const struct btf_func_model *model,
+				      void *image, void *image_end)
+{
+	u32 flags;
+
+	tlinks[BPF_TRAMP_FENTRY].links[0] = link;
+	tlinks[BPF_TRAMP_FENTRY].nr_links = 1;
+	/* BPF_TRAMP_F_RET_FENTRY_RET is only used by bpf_struct_ops,
+	 * and it must be used alone.
+	 */
+	flags = model->ret_size > 0 ? BPF_TRAMP_F_RET_FENTRY_RET : 0;
+	return arch_prepare_bpf_trampoline(NULL, image, image_end,
+					   model, flags, tlinks, NULL);
+}
+
 static int bpf_struct_ops_map_update_elem(struct bpf_map *map, void *key,
 					  void *value, u64 flags)
 {
@@ -320,10 +357,10 @@ static int bpf_struct_ops_map_update_elem(struct bpf_map *map, void *key,
 	struct bpf_struct_ops_value *uvalue, *kvalue;
 	const struct btf_member *member;
 	const struct btf_type *t = st_ops->type;
-	struct bpf_tramp_progs *tprogs = NULL;
+	struct bpf_tramp_links *tlinks = NULL;
 	void *udata, *kdata;
 	int prog_fd, err = 0;
-	void *image;
+	void *image, *image_end;
 	u32 i;
 
 	if (flags)
@@ -336,7 +373,7 @@ static int bpf_struct_ops_map_update_elem(struct bpf_map *map, void *key,
 	if (err)
 		return err;
 
-	uvalue = (struct bpf_struct_ops_value *)value;
+	uvalue = value;
 	err = check_zero_holes(t, uvalue->data);
 	if (err)
 		return err;
@@ -344,8 +381,8 @@ static int bpf_struct_ops_map_update_elem(struct bpf_map *map, void *key,
 	if (uvalue->state || refcount_read(&uvalue->refcnt))
 		return -EINVAL;
 
-	tprogs = kcalloc(BPF_TRAMP_MAX, sizeof(*tprogs), GFP_KERNEL);
-	if (!tprogs)
+	tlinks = kcalloc(BPF_TRAMP_MAX, sizeof(*tlinks), GFP_KERNEL);
+	if (!tlinks)
 		return -ENOMEM;
 
 	uvalue = (struct bpf_struct_ops_value *)st_map->uvalue;
@@ -363,14 +400,15 @@ static int bpf_struct_ops_map_update_elem(struct bpf_map *map, void *key,
 	udata = &uvalue->data;
 	kdata = &kvalue->data;
 	image = st_map->image;
+	image_end = st_map->image + PAGE_SIZE;
 
 	for_each_member(i, t, member) {
 		const struct btf_type *mtype, *ptype;
 		struct bpf_prog *prog;
+		struct bpf_tramp_link *link;
 		u32 moff;
-		u32 flags;
 
-		moff = btf_member_bit_offset(t, member) / 8;
+		moff = __btf_member_bit_offset(t, member) / 8;
 		ptype = btf_type_resolve_ptr(btf_vmlinux, member->type, NULL);
 		if (ptype == module_type) {
 			if (*(void **)(udata + moff))
@@ -421,23 +459,28 @@ static int bpf_struct_ops_map_update_elem(struct bpf_map *map, void *key,
 			err = PTR_ERR(prog);
 			goto reset_unlock;
 		}
-		st_map->progs[i] = prog;
 
 		if (prog->type != BPF_PROG_TYPE_STRUCT_OPS ||
 		    prog->aux->attach_btf_id != st_ops->type_id ||
 		    prog->expected_attach_type != i) {
+			bpf_prog_put(prog);
 			err = -EINVAL;
 			goto reset_unlock;
 		}
 
-		tprogs[BPF_TRAMP_FENTRY].progs[0] = prog;
-		tprogs[BPF_TRAMP_FENTRY].nr_progs = 1;
-		flags = st_ops->func_models[i].ret_size > 0 ?
-			BPF_TRAMP_F_RET_FENTRY_RET : 0;
-		err = arch_prepare_bpf_trampoline(NULL, image,
-						  st_map->image + PAGE_SIZE,
-						  &st_ops->func_models[i],
-						  flags, tprogs, NULL);
+		link = kzalloc(sizeof(*link), GFP_USER);
+		if (!link) {
+			bpf_prog_put(prog);
+			err = -ENOMEM;
+			goto reset_unlock;
+		}
+		bpf_link_init(&link->link, BPF_LINK_TYPE_STRUCT_OPS,
+			      &bpf_struct_ops_link_lops, prog);
+		st_map->links[i] = &link->link;
+
+		err = bpf_struct_ops_prepare_trampoline(tlinks, link,
+							&st_ops->func_models[i],
+							image, image_end);
 		if (err < 0)
 			goto reset_unlock;
 
@@ -463,10 +506,9 @@ static int bpf_struct_ops_map_update_elem(struct bpf_map *map, void *key,
 		goto unlock;
 	}
 
-	/* Error during st_ops->reg().  It is very unlikely since
-	 * the above init_member() should have caught it earlier
-	 * before reg().  The only possibility is if there was a race
-	 * in registering the struct_ops (under the same name) to
+	/* Error during st_ops->reg(). Can happen if this struct_ops needs to be
+	 * verified as a whole, after all init_member() calls. Can also happen if
+	 * there was a race in registering the struct_ops (under the same name) to
 	 * a sub-system through different struct_ops's maps.
 	 */
 	set_memory_nx((long)st_map->image, 1);
@@ -478,7 +520,7 @@ reset_unlock:
 	memset(uvalue, 0, map->value_size);
 	memset(kvalue, 0, map->value_size);
 unlock:
-	kfree(tprogs);
+	kfree(tlinks);
 	mutex_unlock(&st_map->lock);
 	return err;
 }
@@ -533,9 +575,9 @@ static void bpf_struct_ops_map_free(struct bpf_map *map)
 {
 	struct bpf_struct_ops_map *st_map = (struct bpf_struct_ops_map *)map;
 
-	if (st_map->progs)
+	if (st_map->links)
 		bpf_struct_ops_map_put_progs(st_map);
-	bpf_map_area_free(st_map->progs);
+	bpf_map_area_free(st_map->links);
 	bpf_jit_free_exec(st_map->image);
 	bpf_map_area_free(st_map->uvalue);
 	bpf_map_area_free(st_map);
@@ -584,11 +626,11 @@ static struct bpf_map *bpf_struct_ops_map_alloc(union bpf_attr *attr)
 	map = &st_map->map;
 
 	st_map->uvalue = bpf_map_area_alloc(vt->size, NUMA_NO_NODE);
-	st_map->progs =
-		bpf_map_area_alloc(btf_type_vlen(t) * sizeof(struct bpf_prog *),
+	st_map->links =
+		bpf_map_area_alloc(btf_type_vlen(t) * sizeof(struct bpf_links *),
 				   NUMA_NO_NODE);
 	st_map->image = bpf_jit_alloc_exec(PAGE_SIZE);
-	if (!st_map->uvalue || !st_map->progs || !st_map->image) {
+	if (!st_map->uvalue || !st_map->links || !st_map->image) {
 		bpf_struct_ops_map_free(map);
 		return ERR_PTR(-ENOMEM);
 	}
@@ -600,7 +642,7 @@ static struct bpf_map *bpf_struct_ops_map_alloc(union bpf_attr *attr)
 	return map;
 }
 
-static int bpf_struct_ops_map_btf_id;
+BTF_ID_LIST_SINGLE(bpf_struct_ops_map_btf_ids, struct, bpf_struct_ops_map)
 const struct bpf_map_ops bpf_struct_ops_map_ops = {
 	.map_alloc_check = bpf_struct_ops_map_alloc_check,
 	.map_alloc = bpf_struct_ops_map_alloc,
@@ -610,8 +652,7 @@ const struct bpf_map_ops bpf_struct_ops_map_ops = {
 	.map_delete_elem = bpf_struct_ops_map_delete_elem,
 	.map_update_elem = bpf_struct_ops_map_update_elem,
 	.map_seq_show_elem = bpf_struct_ops_map_seq_show_elem,
-	.map_btf_name = "bpf_struct_ops_map",
-	.map_btf_id = &bpf_struct_ops_map_btf_id,
+	.map_btf_id = &bpf_struct_ops_map_btf_ids[0],
 };
 
 /* "const void *" because some subsystem is

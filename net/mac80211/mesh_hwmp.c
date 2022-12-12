@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2008, 2009 open80211s Ltd.
- * Copyright (C) 2019 Intel Corporation
+ * Copyright (C) 2019, 2021-2022 Intel Corporation
  * Author:     Luis Carlos Cobo <luisca@cozybit.com>
  */
 
@@ -247,13 +247,13 @@ int mesh_path_error_tx(struct ieee80211_sub_if_data *sdata,
 		return -EAGAIN;
 
 	skb = dev_alloc_skb(local->tx_headroom +
-			    sdata->encrypt_headroom +
+			    IEEE80211_ENCRYPT_HEADROOM +
 			    IEEE80211_ENCRYPT_TAILROOM +
 			    hdr_len +
 			    2 + 15 /* PERR IE */);
 	if (!skb)
 		return -1;
-	skb_reserve(skb, local->tx_headroom + sdata->encrypt_headroom);
+	skb_reserve(skb, local->tx_headroom + IEEE80211_ENCRYPT_HEADROOM);
 	mgmt = skb_put_zero(skb, hdr_len);
 	mgmt->frame_control = cpu_to_le16(IEEE80211_FTYPE_MGMT |
 					  IEEE80211_STYPE_ACTION);
@@ -310,7 +310,12 @@ void ieee80211s_update_metric(struct ieee80211_local *local,
 			LINK_FAIL_THRESH)
 		mesh_plink_broken(sta);
 
-	sta_set_rate_info_tx(sta, &sta->tx_stats.last_rate, &rinfo);
+	/* use rate info set by the driver directly if present */
+	if (st->n_rates)
+		rinfo = sta->deflink.tx_stats.last_rate_info;
+	else
+		sta_set_rate_info_tx(sta, &sta->deflink.tx_stats.last_rate, &rinfo);
+
 	ewma_mesh_tx_rate_avg_add(&sta->mesh->tx_rate_avg,
 				  cfg80211_calculate_bitrate(&rinfo));
 }
@@ -908,7 +913,7 @@ static void hwmp_rann_frame_process(struct ieee80211_sub_if_data *sdata,
 void mesh_rx_path_sel_frame(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211_mgmt *mgmt, size_t len)
 {
-	struct ieee802_11_elems elems;
+	struct ieee802_11_elems *elems;
 	size_t baselen;
 	u32 path_metric;
 	struct sta_info *sta;
@@ -926,37 +931,41 @@ void mesh_rx_path_sel_frame(struct ieee80211_sub_if_data *sdata,
 	rcu_read_unlock();
 
 	baselen = (u8 *) mgmt->u.action.u.mesh_action.variable - (u8 *) mgmt;
-	ieee802_11_parse_elems(mgmt->u.action.u.mesh_action.variable,
-			       len - baselen, false, &elems, mgmt->bssid, NULL);
+	elems = ieee802_11_parse_elems(mgmt->u.action.u.mesh_action.variable,
+				       len - baselen, false, NULL);
+	if (!elems)
+		return;
 
-	if (elems.preq) {
-		if (elems.preq_len != 37)
+	if (elems->preq) {
+		if (elems->preq_len != 37)
 			/* Right now we support just 1 destination and no AE */
-			return;
-		path_metric = hwmp_route_info_get(sdata, mgmt, elems.preq,
+			goto free;
+		path_metric = hwmp_route_info_get(sdata, mgmt, elems->preq,
 						  MPATH_PREQ);
 		if (path_metric)
-			hwmp_preq_frame_process(sdata, mgmt, elems.preq,
+			hwmp_preq_frame_process(sdata, mgmt, elems->preq,
 						path_metric);
 	}
-	if (elems.prep) {
-		if (elems.prep_len != 31)
+	if (elems->prep) {
+		if (elems->prep_len != 31)
 			/* Right now we support no AE */
-			return;
-		path_metric = hwmp_route_info_get(sdata, mgmt, elems.prep,
+			goto free;
+		path_metric = hwmp_route_info_get(sdata, mgmt, elems->prep,
 						  MPATH_PREP);
 		if (path_metric)
-			hwmp_prep_frame_process(sdata, mgmt, elems.prep,
+			hwmp_prep_frame_process(sdata, mgmt, elems->prep,
 						path_metric);
 	}
-	if (elems.perr) {
-		if (elems.perr_len != 15)
+	if (elems->perr) {
+		if (elems->perr_len != 15)
 			/* Right now we support only one destination per PERR */
-			return;
-		hwmp_perr_frame_process(sdata, mgmt, elems.perr);
+			goto free;
+		hwmp_perr_frame_process(sdata, mgmt, elems->perr);
 	}
-	if (elems.rann)
-		hwmp_rann_frame_process(sdata, mgmt, elems.rann);
+	if (elems->rann)
+		hwmp_rann_frame_process(sdata, mgmt, elems->rann);
+free:
+	kfree(elems);
 }
 
 /**

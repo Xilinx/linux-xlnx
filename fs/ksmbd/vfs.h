@@ -12,6 +12,7 @@
 #include <linux/namei.h>
 #include <uapi/linux/xattr.h>
 #include <linux/posix_acl.h>
+#include <linux/unicode.h>
 
 #include "smbacl.h"
 #include "xattr.h"
@@ -25,48 +26,9 @@ enum {
 };
 
 /* CreateOptions */
-/* Flag is set, it must not be a file , valid for directory only */
-#define FILE_DIRECTORY_FILE_LE			cpu_to_le32(0x00000001)
-#define FILE_WRITE_THROUGH_LE			cpu_to_le32(0x00000002)
-#define FILE_SEQUENTIAL_ONLY_LE			cpu_to_le32(0x00000004)
-
-/* Should not buffer on server*/
-#define FILE_NO_INTERMEDIATE_BUFFERING_LE	cpu_to_le32(0x00000008)
-/* MBZ */
-#define FILE_SYNCHRONOUS_IO_ALERT_LE		cpu_to_le32(0x00000010)
-/* MBZ */
-#define FILE_SYNCHRONOUS_IO_NONALERT_LE		cpu_to_le32(0x00000020)
-
-/* Flaf must not be set for directory */
-#define FILE_NON_DIRECTORY_FILE_LE		cpu_to_le32(0x00000040)
-
-/* Should be zero */
 #define CREATE_TREE_CONNECTION			cpu_to_le32(0x00000080)
-#define FILE_COMPLETE_IF_OPLOCKED_LE		cpu_to_le32(0x00000100)
-#define FILE_NO_EA_KNOWLEDGE_LE			cpu_to_le32(0x00000200)
-#define FILE_OPEN_REMOTE_INSTANCE		cpu_to_le32(0x00000400)
-
-/**
- * Doc says this is obsolete "open for recovery" flag should be zero
- * in any case.
- */
-#define CREATE_OPEN_FOR_RECOVERY		cpu_to_le32(0x00000400)
-#define FILE_RANDOM_ACCESS_LE			cpu_to_le32(0x00000800)
-#define FILE_DELETE_ON_CLOSE_LE			cpu_to_le32(0x00001000)
-#define FILE_OPEN_BY_FILE_ID_LE			cpu_to_le32(0x00002000)
-#define FILE_OPEN_FOR_BACKUP_INTENT_LE		cpu_to_le32(0x00004000)
-#define FILE_NO_COMPRESSION_LE			cpu_to_le32(0x00008000)
-
-/* Should be zero*/
-#define FILE_OPEN_REQUIRING_OPLOCK		cpu_to_le32(0x00010000)
-#define FILE_DISALLOW_EXCLUSIVE			cpu_to_le32(0x00020000)
 #define FILE_RESERVE_OPFILTER_LE		cpu_to_le32(0x00100000)
-#define FILE_OPEN_REPARSE_POINT_LE		cpu_to_le32(0x00200000)
-#define FILE_OPEN_NO_RECALL_LE			cpu_to_le32(0x00400000)
 
-/* Should be zero */
-#define FILE_OPEN_FOR_FREE_SPACE_QUERY_LE	cpu_to_le32(0x00800000)
-#define CREATE_OPTIONS_MASK			cpu_to_le32(0x00FFFFFF)
 #define CREATE_OPTION_READONLY			0x10000000
 /* system. NB not sent over wire */
 #define CREATE_OPTION_SPECIAL			0x20000000
@@ -86,6 +48,7 @@ struct ksmbd_dir_info {
 	int		last_entry_offset;
 	bool		hide_dot_file;
 	int		flags;
+	int		last_entry_off_align;
 };
 
 struct ksmbd_readdir_data {
@@ -98,6 +61,7 @@ struct ksmbd_readdir_data {
 	unsigned int		used;
 	unsigned int		dirent_count;
 	unsigned int		file_attr;
+	struct unicode_map	*um;
 };
 
 /* ksmbd kstat wrapper to get valid create time when reading dir entry */
@@ -123,7 +87,7 @@ int ksmbd_vfs_fsync(struct ksmbd_work *work, u64 fid, u64 p_id);
 int ksmbd_vfs_remove_file(struct ksmbd_work *work, char *name);
 int ksmbd_vfs_link(struct ksmbd_work *work,
 		   const char *oldname, const char *newname);
-int ksmbd_vfs_getattr(struct path *path, struct kstat *stat);
+int ksmbd_vfs_getattr(const struct path *path, struct kstat *stat);
 int ksmbd_vfs_fp_rename(struct ksmbd_work *work, struct ksmbd_file *fp,
 			char *newname);
 int ksmbd_vfs_truncate(struct ksmbd_work *work,
@@ -147,7 +111,7 @@ ssize_t ksmbd_vfs_casexattr_len(struct user_namespace *user_ns,
 				int attr_name_len);
 int ksmbd_vfs_setxattr(struct user_namespace *user_ns,
 		       struct dentry *dentry, const char *attr_name,
-		       const void *attr_value, size_t attr_size, int flags);
+		       void *attr_value, size_t attr_size, int flags);
 int ksmbd_vfs_xattr_stream_name(char *stream_name, char **xattr_stream_name,
 				size_t *xattr_stream_name_size, int s_type);
 int ksmbd_vfs_remove_xattr(struct user_namespace *user_ns,

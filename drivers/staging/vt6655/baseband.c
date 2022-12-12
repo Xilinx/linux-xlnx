@@ -29,7 +29,6 @@
  *
  */
 
-#include "tmacro.h"
 #include "mac.h"
 #include "baseband.h"
 #include "srom.h"
@@ -1691,7 +1690,7 @@ static const unsigned short awc_frame_time[MAX_RATE] = {
  *
  * Parameters:
  *  In:
- *      by_preamble_type  - Preamble Type
+ *      preamble_type     - Preamble Type
  *      by_pkt_type        - PK_TYPE_11A, PK_TYPE_11B, PK_TYPE_11GB, PK_TYPE_11GA
  *      cb_frame_length   - Baseband Type
  *      tx_rate           - Tx Rate
@@ -1700,7 +1699,7 @@ static const unsigned short awc_frame_time[MAX_RATE] = {
  * Return Value: FrameTime
  *
  */
-unsigned int bb_get_frame_time(unsigned char by_preamble_type,
+unsigned int bb_get_frame_time(unsigned char preamble_type,
 			       unsigned char by_pkt_type,
 			       unsigned int cb_frame_length,
 			       unsigned short tx_rate)
@@ -1717,7 +1716,7 @@ unsigned int bb_get_frame_time(unsigned char by_preamble_type,
 	rate = (unsigned int)awc_frame_time[rate_idx];
 
 	if (rate_idx <= 3) {		    /* CCK mode */
-		if (by_preamble_type == 1) /* Short */
+		if (preamble_type == PREAMBLE_SHORT)
 			preamble = 96;
 		else
 			preamble = 192;
@@ -1764,7 +1763,7 @@ void vnt_get_phy_field(struct vnt_private *priv, u32 frame_length,
 	u32 count = 0;
 	u32 tmp;
 	int ext_bit;
-	u8 preamble_type = priv->byPreambleType;
+	u8 preamble_type = priv->preamble_type;
 
 	bit_count = frame_length * 8;
 	ext_bit = false;
@@ -1779,7 +1778,7 @@ void vnt_get_phy_field(struct vnt_private *priv, u32 frame_length,
 	case RATE_2M:
 		count = bit_count / 2;
 
-		if (preamble_type == 1)
+		if (preamble_type == PREAMBLE_SHORT)
 			phy->signal = 0x09;
 		else
 			phy->signal = 0x01;
@@ -1792,7 +1791,7 @@ void vnt_get_phy_field(struct vnt_private *priv, u32 frame_length,
 		if (tmp != bit_count)
 			count++;
 
-		if (preamble_type == 1)
+		if (preamble_type == PREAMBLE_SHORT)
 			phy->signal = 0x0a;
 		else
 			phy->signal = 0x02;
@@ -1809,7 +1808,7 @@ void vnt_get_phy_field(struct vnt_private *priv, u32 frame_length,
 				ext_bit = true;
 		}
 
-		if (preamble_type == 1)
+		if (preamble_type == PREAMBLE_SHORT)
 			phy->signal = 0x0b;
 		else
 			phy->signal = 0x03;
@@ -1905,24 +1904,24 @@ void vnt_get_phy_field(struct vnt_private *priv, u32 frame_length,
 bool bb_read_embedded(struct vnt_private *priv, unsigned char by_bb_addr,
 		      unsigned char *pby_data)
 {
-	void __iomem *iobase = priv->PortOffset;
+	void __iomem *iobase = priv->port_offset;
 	unsigned short ww;
 	unsigned char by_value;
 
 	/* BB reg offset */
-	VNSvOutPortB(iobase + MAC_REG_BBREGADR, by_bb_addr);
+	iowrite8(by_bb_addr, iobase + MAC_REG_BBREGADR);
 
 	/* turn on REGR */
-	MACvRegBitsOn(iobase, MAC_REG_BBREGCTL, BBREGCTL_REGR);
+	vt6655_mac_reg_bits_on(iobase, MAC_REG_BBREGCTL, BBREGCTL_REGR);
 	/* W_MAX_TIMEOUT is the timeout period */
 	for (ww = 0; ww < W_MAX_TIMEOUT; ww++) {
-		VNSvInPortB(iobase + MAC_REG_BBREGCTL, &by_value);
+		by_value = ioread8(iobase + MAC_REG_BBREGCTL);
 		if (by_value & BBREGCTL_DONE)
 			break;
 	}
 
 	/* get BB data */
-	VNSvInPortB(iobase + MAC_REG_BBREGDATA, pby_data);
+	*pby_data = ioread8(iobase + MAC_REG_BBREGDATA);
 
 	if (ww == W_MAX_TIMEOUT) {
 		pr_debug(" DBG_PORT80(0x30)\n");
@@ -1948,20 +1947,20 @@ bool bb_read_embedded(struct vnt_private *priv, unsigned char by_bb_addr,
 bool bb_write_embedded(struct vnt_private *priv, unsigned char by_bb_addr,
 		       unsigned char by_data)
 {
-	void __iomem *iobase = priv->PortOffset;
+	void __iomem *iobase = priv->port_offset;
 	unsigned short ww;
 	unsigned char by_value;
 
 	/* BB reg offset */
-	VNSvOutPortB(iobase + MAC_REG_BBREGADR, by_bb_addr);
+	iowrite8(by_bb_addr, iobase + MAC_REG_BBREGADR);
 	/* set BB data */
-	VNSvOutPortB(iobase + MAC_REG_BBREGDATA, by_data);
+	iowrite8(by_data, iobase + MAC_REG_BBREGDATA);
 
 	/* turn on BBREGCTL_REGW */
-	MACvRegBitsOn(iobase, MAC_REG_BBREGCTL, BBREGCTL_REGW);
+	vt6655_mac_reg_bits_on(iobase, MAC_REG_BBREGCTL, BBREGCTL_REGW);
 	/* W_MAX_TIMEOUT is the timeout period */
 	for (ww = 0; ww < W_MAX_TIMEOUT; ww++) {
-		VNSvInPortB(iobase + MAC_REG_BBREGCTL, &by_value);
+		by_value = ioread8(iobase + MAC_REG_BBREGCTL);
 		if (by_value & BBREGCTL_DONE)
 			break;
 	}
@@ -1992,9 +1991,9 @@ bool bb_vt3253_init(struct vnt_private *priv)
 {
 	bool result = true;
 	int        ii;
-	void __iomem *iobase = priv->PortOffset;
+	void __iomem *iobase = priv->port_offset;
 	unsigned char by_rf_type = priv->byRFType;
-	unsigned char by_local_id = priv->byLocalID;
+	unsigned char by_local_id = priv->local_id;
 
 	if (by_rf_type == RF_RFMD2959) {
 		if (by_local_id <= REV_ID_VT3253_A1) {
@@ -2014,17 +2013,17 @@ bool bb_vt3253_init(struct vnt_private *priv)
 					byVT3253B0_AGC4_RFMD2959[ii][0],
 					byVT3253B0_AGC4_RFMD2959[ii][1]);
 
-			VNSvOutPortD(iobase + MAC_REG_ITRTMSET, 0x23);
-			MACvRegBitsOn(iobase, MAC_REG_PAPEDELAY, BIT(0));
+			iowrite32(0x23, iobase + MAC_REG_ITRTMSET);
+			vt6655_mac_reg_bits_on(iobase, MAC_REG_PAPEDELAY, BIT(0));
 		}
 		priv->abyBBVGA[0] = 0x18;
 		priv->abyBBVGA[1] = 0x0A;
 		priv->abyBBVGA[2] = 0x0;
 		priv->abyBBVGA[3] = 0x0;
-		priv->ldBmThreshold[0] = -70;
-		priv->ldBmThreshold[1] = -50;
-		priv->ldBmThreshold[2] = 0;
-		priv->ldBmThreshold[3] = 0;
+		priv->dbm_threshold[0] = -70;
+		priv->dbm_threshold[1] = -50;
+		priv->dbm_threshold[2] = 0;
+		priv->dbm_threshold[3] = 0;
 	} else if ((by_rf_type == RF_AIROHA) || (by_rf_type == RF_AL2230S)) {
 		for (ii = 0; ii < CB_VT3253B0_INIT_FOR_AIROHA2230; ii++)
 			result &= bb_write_embedded(priv,
@@ -2039,10 +2038,10 @@ bool bb_vt3253_init(struct vnt_private *priv)
 		priv->abyBBVGA[1] = 0x10;
 		priv->abyBBVGA[2] = 0x0;
 		priv->abyBBVGA[3] = 0x0;
-		priv->ldBmThreshold[0] = -70;
-		priv->ldBmThreshold[1] = -48;
-		priv->ldBmThreshold[2] = 0;
-		priv->ldBmThreshold[3] = 0;
+		priv->dbm_threshold[0] = -70;
+		priv->dbm_threshold[1] = -48;
+		priv->dbm_threshold[2] = 0;
+		priv->dbm_threshold[3] = 0;
 	} else if (by_rf_type == RF_UW2451) {
 		for (ii = 0; ii < CB_VT3253B0_INIT_FOR_UW2451; ii++)
 			result &= bb_write_embedded(priv,
@@ -2054,65 +2053,17 @@ bool bb_vt3253_init(struct vnt_private *priv)
 				byVT3253B0_AGC[ii][0],
 				byVT3253B0_AGC[ii][1]);
 
-		VNSvOutPortB(iobase + MAC_REG_ITRTMSET, 0x23);
-		MACvRegBitsOn(iobase, MAC_REG_PAPEDELAY, BIT(0));
+		iowrite8(0x23, iobase + MAC_REG_ITRTMSET);
+		vt6655_mac_reg_bits_on(iobase, MAC_REG_PAPEDELAY, BIT(0));
 
 		priv->abyBBVGA[0] = 0x14;
 		priv->abyBBVGA[1] = 0x0A;
 		priv->abyBBVGA[2] = 0x0;
 		priv->abyBBVGA[3] = 0x0;
-		priv->ldBmThreshold[0] = -60;
-		priv->ldBmThreshold[1] = -50;
-		priv->ldBmThreshold[2] = 0;
-		priv->ldBmThreshold[3] = 0;
-	} else if (by_rf_type == RF_UW2452) {
-		for (ii = 0; ii < CB_VT3253B0_INIT_FOR_UW2451; ii++)
-			result &= bb_write_embedded(priv,
-				byVT3253B0_UW2451[ii][0],
-				byVT3253B0_UW2451[ii][1]);
-
-		/* Init ANT B select,
-		 * TX Config CR09 = 0x61->0x45,
-		 * 0x45->0x41(VC1/VC2 define, make the ANT_A, ANT_B inverted)
-		 */
-
-		/*bResult &= bb_write_embedded(iobase,0x09,0x41);*/
-
-		/* Init ANT B select,
-		 * RX Config CR10 = 0x28->0x2A,
-		 * 0x2A->0x28(VC1/VC2 define,
-		 * make the ANT_A, ANT_B inverted)
-		 */
-
-		/*bResult &= bb_write_embedded(iobase,0x0a,0x28);*/
-		/* Select VC1/VC2, CR215 = 0x02->0x06 */
-		result &= bb_write_embedded(priv, 0xd7, 0x06);
-
-		/* {{RobertYu:20050125, request by Jack */
-		result &= bb_write_embedded(priv, 0x90, 0x20);
-		result &= bb_write_embedded(priv, 0x97, 0xeb);
-		/* }} */
-
-		/* {{RobertYu:20050221, request by Jack */
-		result &= bb_write_embedded(priv, 0xa6, 0x00);
-		result &= bb_write_embedded(priv, 0xa8, 0x30);
-		/* }} */
-		result &= bb_write_embedded(priv, 0xb0, 0x58);
-
-		for (ii = 0; ii < CB_VT3253B0_AGC; ii++)
-			result &= bb_write_embedded(priv,
-				byVT3253B0_AGC[ii][0], byVT3253B0_AGC[ii][1]);
-
-		priv->abyBBVGA[0] = 0x14;
-		priv->abyBBVGA[1] = 0x0A;
-		priv->abyBBVGA[2] = 0x0;
-		priv->abyBBVGA[3] = 0x0;
-		priv->ldBmThreshold[0] = -60;
-		priv->ldBmThreshold[1] = -50;
-		priv->ldBmThreshold[2] = 0;
-		priv->ldBmThreshold[3] = 0;
-		/* }} RobertYu */
-
+		priv->dbm_threshold[0] = -60;
+		priv->dbm_threshold[1] = -50;
+		priv->dbm_threshold[2] = 0;
+		priv->dbm_threshold[3] = 0;
 	} else if (by_rf_type == RF_VT3226) {
 		for (ii = 0; ii < CB_VT3253B0_INIT_FOR_AIROHA2230; ii++)
 			result &= bb_write_embedded(priv,
@@ -2127,45 +2078,13 @@ bool bb_vt3253_init(struct vnt_private *priv)
 		priv->abyBBVGA[1] = 0x10;
 		priv->abyBBVGA[2] = 0x0;
 		priv->abyBBVGA[3] = 0x0;
-		priv->ldBmThreshold[0] = -70;
-		priv->ldBmThreshold[1] = -48;
-		priv->ldBmThreshold[2] = 0;
-		priv->ldBmThreshold[3] = 0;
+		priv->dbm_threshold[0] = -70;
+		priv->dbm_threshold[1] = -48;
+		priv->dbm_threshold[2] = 0;
+		priv->dbm_threshold[3] = 0;
 		/* Fix VT3226 DFC system timing issue */
-		MACvSetRFLE_LatchBase(iobase);
+		vt6655_mac_word_reg_bits_on(iobase, MAC_REG_SOFTPWRCTL, SOFTPWRCTL_RFLEOPT);
 		/* {{ RobertYu: 20050104 */
-	} else if (by_rf_type == RF_AIROHA7230) {
-		for (ii = 0; ii < CB_VT3253B0_INIT_FOR_AIROHA2230; ii++)
-			result &= bb_write_embedded(priv,
-				byVT3253B0_AIROHA2230[ii][0],
-				byVT3253B0_AIROHA2230[ii][1]);
-
-		/* {{ RobertYu:20050223, request by JerryChung */
-		/* Init ANT B select,TX Config CR09 = 0x61->0x45,
-		 * 0x45->0x41(VC1/VC2 define, make the ANT_A, ANT_B inverted)
-		 */
-		/* bResult &= bb_write_embedded(iobase,0x09,0x41);*/
-		/* Init ANT B select,RX Config CR10 = 0x28->0x2A,
-		 * 0x2A->0x28(VC1/VC2 define, make the ANT_A, ANT_B inverted)
-		 */
-		/* bResult &= BBbWriteEmbedded(iobase,0x0a,0x28);*/
-		/* Select VC1/VC2, CR215 = 0x02->0x06 */
-		result &= bb_write_embedded(priv, 0xd7, 0x06);
-		/* }} */
-
-		for (ii = 0; ii < CB_VT3253B0_AGC; ii++)
-			result &= bb_write_embedded(priv,
-				byVT3253B0_AGC[ii][0], byVT3253B0_AGC[ii][1]);
-
-		priv->abyBBVGA[0] = 0x1C;
-		priv->abyBBVGA[1] = 0x10;
-		priv->abyBBVGA[2] = 0x0;
-		priv->abyBBVGA[3] = 0x0;
-		priv->ldBmThreshold[0] = -70;
-		priv->ldBmThreshold[1] = -48;
-		priv->ldBmThreshold[2] = 0;
-		priv->ldBmThreshold[3] = 0;
-		/* }} RobertYu */
 	} else {
 		/* No VGA Table now */
 		priv->bUpdateBBVGA = false;
@@ -2200,7 +2119,7 @@ bb_set_short_slot_time(struct vnt_private *priv)
 
 	bb_read_embedded(priv, 0x0A, &by_bb_rx_conf); /* CR10 */
 
-	if (priv->bShortSlotTime)
+	if (priv->short_slot_time)
 		by_bb_rx_conf &= 0xDF; /* 1101 1111 */
 	else
 		by_bb_rx_conf |= 0x20; /* 0010 0000 */
@@ -2223,7 +2142,7 @@ void bb_set_vga_gain_offset(struct vnt_private *priv, unsigned char by_data)
 	/* patch for 3253B0 Baseband with Cardbus module */
 	if (by_data == priv->abyBBVGA[0])
 		by_bb_rx_conf |= 0x20; /* 0010 0000 */
-	else if (priv->bShortSlotTime)
+	else if (priv->short_slot_time)
 		by_bb_rx_conf &= 0xDF; /* 1101 1111 */
 	else
 		by_bb_rx_conf |= 0x20; /* 0010 0000 */

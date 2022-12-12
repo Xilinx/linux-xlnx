@@ -1093,7 +1093,7 @@ static struct attribute *omap_aes_attrs[] = {
 	NULL,
 };
 
-static struct attribute_group omap_aes_attr_group = {
+static const struct attribute_group omap_aes_attr_group = {
 	.attrs = omap_aes_attrs,
 };
 
@@ -1261,9 +1261,6 @@ static int omap_aes_remove(struct platform_device *pdev)
 	struct aead_alg *aalg;
 	int i, j;
 
-	if (!dd)
-		return -ENODEV;
-
 	spin_lock_bh(&list_lock);
 	list_del(&dd->list);
 	spin_unlock_bh(&list_lock);
@@ -1279,7 +1276,6 @@ static int omap_aes_remove(struct platform_device *pdev)
 		aalg = &dd->pdata->aead_algs_info->algs_list[i];
 		crypto_unregister_aead(aalg);
 		dd->pdata->aead_algs_info->registered--;
-
 	}
 
 	crypto_engine_exit(dd->engine);
@@ -1302,7 +1298,7 @@ static int omap_aes_suspend(struct device *dev)
 
 static int omap_aes_resume(struct device *dev)
 {
-	pm_runtime_resume_and_get(dev);
+	pm_runtime_get_sync(dev);
 	return 0;
 }
 #endif

@@ -167,8 +167,8 @@ struct sca3000_state {
 	int				mo_det_use_count;
 	struct mutex			lock;
 	/* Can these share a cacheline ? */
-	u8				rx[384] ____cacheline_aligned;
-	u8				tx[6] ____cacheline_aligned;
+	u8				rx[384] __aligned(IIO_DMA_MINALIGN);
+	u8				tx[6] __aligned(IIO_DMA_MINALIGN);
 };
 
 /**
@@ -424,7 +424,7 @@ error_ret:
  * sca3000_print_rev() - sysfs interface to read the chip revision number
  * @indio_dev: Device instance specific generic IIO data.
  * Driver specific device instance data can be obtained via
- * via iio_priv(indio_dev)
+ * iio_priv(indio_dev)
  */
 static int sca3000_print_rev(struct iio_dev *indio_dev)
 {
@@ -534,6 +534,13 @@ static const struct iio_chan_spec sca3000_channels_with_temp[] = {
 			BIT(IIO_CHAN_INFO_OFFSET),
 		/* No buffer support */
 		.scan_index = -1,
+		.scan_type = {
+			.sign = 'u',
+			.realbits = 9,
+			.storagebits = 16,
+			.shift = 5,
+			.endianness = IIO_BE,
+		},
 	},
 	{
 		.type = IIO_ACCEL,
@@ -730,9 +737,9 @@ static int sca3000_read_raw(struct iio_dev *indio_dev,
 				mutex_unlock(&st->lock);
 				return ret;
 			}
-			*val = (be16_to_cpup((__be16 *)st->rx) >> 3) & 0x1FFF;
-			*val = ((*val) << (sizeof(*val) * 8 - 13)) >>
-				(sizeof(*val) * 8 - 13);
+			*val = sign_extend32(be16_to_cpup((__be16 *)st->rx) >>
+					     chan->scan_type.shift,
+					     chan->scan_type.realbits - 1);
 		} else {
 			/* get the temperature when available */
 			ret = sca3000_read_data_short(st,
@@ -742,8 +749,9 @@ static int sca3000_read_raw(struct iio_dev *indio_dev,
 				mutex_unlock(&st->lock);
 				return ret;
 			}
-			*val = ((st->rx[0] & 0x3F) << 3) |
-			       ((st->rx[1] & 0xE0) >> 5);
+			*val = (be16_to_cpup((__be16 *)st->rx) >>
+				chan->scan_type.shift) &
+				GENMASK(chan->scan_type.realbits - 1, 0);
 		}
 		mutex_unlock(&st->lock);
 		return IIO_VAL_INT;
@@ -1466,7 +1474,6 @@ static int sca3000_probe(struct spi_device *spi)
 	indio_dev->modes = INDIO_DIRECT_MODE;
 
 	ret = devm_iio_kfifo_buffer_setup(&spi->dev, indio_dev,
-					  INDIO_BUFFER_SOFTWARE,
 					  &sca3000_ring_setup_ops);
 	if (ret)
 		return ret;
@@ -1516,7 +1523,7 @@ error_ret:
 	return ret;
 }
 
-static int sca3000_remove(struct spi_device *spi)
+static void sca3000_remove(struct spi_device *spi)
 {
 	struct iio_dev *indio_dev = spi_get_drvdata(spi);
 	struct sca3000_state *st = iio_priv(indio_dev);
@@ -1527,8 +1534,6 @@ static int sca3000_remove(struct spi_device *spi)
 	sca3000_stop_all_interrupts(st);
 	if (spi->irq)
 		free_irq(spi->irq, indio_dev);
-
-	return 0;
 }
 
 static const struct spi_device_id sca3000_id[] = {

@@ -63,12 +63,11 @@ static int ehci_ci_portpower(struct usb_hcd *hcd, int portnum, bool enable)
 		priv->enabled = enable;
 	}
 
-	if (ci->platdata->flags & CI_HDRC_PHY_VBUS_CONTROL &&
-			ci->usb_phy && ci->usb_phy->set_vbus) {
+	if (ci->platdata->flags & CI_HDRC_PHY_VBUS_CONTROL) {
 		if (enable)
-			ci->usb_phy->set_vbus(ci->usb_phy, 1);
+			usb_phy_vbus_on(ci->usb_phy);
 		else
-			ci->usb_phy->set_vbus(ci->usb_phy, 0);
+			usb_phy_vbus_off(ci->usb_phy);
 	}
 
 	if (enable && (ci->platdata->phy_mode == USBPHY_INTERFACE_MODE_HSIC)) {
@@ -79,7 +78,6 @@ static int ehci_ci_portpower(struct usb_hcd *hcd, int portnum, bool enable)
 		hw_port_test_set(ci, 5);
 		hw_port_test_set(ci, 0);
 	}
-
 	return 0;
 };
 

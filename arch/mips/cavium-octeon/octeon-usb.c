@@ -419,7 +419,7 @@ static int dwc3_octeon_clocks_start(struct device *dev, u64 base)
 	/* Step 5c: Enable SuperSpeed. */
 	uctl_ctl.s.ref_ssp_en = 1;
 
-	/* Step 5d: Cofngiure PHYs. SKIP */
+	/* Step 5d: Configure PHYs. SKIP */
 
 	/* Step 6a & 6b: Power up PHYs. */
 	uctl_ctl.s.hs_power_en = 1;
@@ -537,6 +537,7 @@ static int __init dwc3_octeon_device_init(void)
 			devm_iounmap(&pdev->dev, base);
 			devm_release_mem_region(&pdev->dev, res->start,
 						resource_size(res));
+			put_device(&pdev->dev);
 		}
 	} while (node != NULL);
 

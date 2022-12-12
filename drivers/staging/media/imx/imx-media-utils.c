@@ -569,48 +569,6 @@ int imx_media_mbus_fmt_to_pix_fmt(struct v4l2_pix_format *pix,
 }
 EXPORT_SYMBOL_GPL(imx_media_mbus_fmt_to_pix_fmt);
 
-int imx_media_mbus_fmt_to_ipu_image(struct ipu_image *image,
-				    const struct v4l2_mbus_framefmt *mbus)
-{
-	int ret;
-
-	memset(image, 0, sizeof(*image));
-
-	ret = imx_media_mbus_fmt_to_pix_fmt(&image->pix, mbus, NULL);
-	if (ret)
-		return ret;
-
-	image->rect.width = mbus->width;
-	image->rect.height = mbus->height;
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(imx_media_mbus_fmt_to_ipu_image);
-
-int imx_media_ipu_image_to_mbus_fmt(struct v4l2_mbus_framefmt *mbus,
-				    const struct ipu_image *image)
-{
-	const struct imx_media_pixfmt *fmt;
-
-	fmt = imx_media_find_pixel_format(image->pix.pixelformat,
-					  PIXFMT_SEL_ANY);
-	if (!fmt || !fmt->codes || !fmt->codes[0])
-		return -EINVAL;
-
-	memset(mbus, 0, sizeof(*mbus));
-	mbus->width = image->pix.width;
-	mbus->height = image->pix.height;
-	mbus->code = fmt->codes[0];
-	mbus->field = image->pix.field;
-	mbus->colorspace = image->pix.colorspace;
-	mbus->xfer_func = image->pix.xfer_func;
-	mbus->ycbcr_enc = image->pix.ycbcr_enc;
-	mbus->quantization = image->pix.quantization;
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(imx_media_ipu_image_to_mbus_fmt);
-
 void imx_media_free_dma_buf(struct device *dev,
 			    struct imx_media_dma_buf *buf)
 {
@@ -740,7 +698,7 @@ imx_media_pipeline_pad(struct media_entity *start_entity, u32 grp_id,
 		    (!upstream && !(spad->flags & MEDIA_PAD_FL_SOURCE)))
 			continue;
 
-		pad = media_entity_remote_pad(spad);
+		pad = media_pad_remote_pad_first(spad);
 		if (!pad)
 			continue;
 
@@ -905,16 +863,16 @@ int imx_media_pipeline_set_stream(struct imx_media_dev *imxmd,
 	mutex_lock(&imxmd->md.graph_mutex);
 
 	if (on) {
-		ret = __media_pipeline_start(entity, &imxmd->pipe);
+		ret = __media_pipeline_start(entity->pads, &imxmd->pipe);
 		if (ret)
 			goto out;
 		ret = v4l2_subdev_call(sd, video, s_stream, 1);
 		if (ret)
-			__media_pipeline_stop(entity);
+			__media_pipeline_stop(entity->pads);
 	} else {
 		v4l2_subdev_call(sd, video, s_stream, 0);
-		if (entity->pipe)
-			__media_pipeline_stop(entity);
+		if (media_pad_pipeline(entity->pads))
+			__media_pipeline_stop(entity->pads);
 	}
 
 out:

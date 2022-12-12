@@ -555,7 +555,7 @@ qla2x00_sysfs_read_vpd(struct file *filp, struct kobject *kobj,
 	if (!capable(CAP_SYS_ADMIN))
 		return -EINVAL;
 
-	if (IS_NOCACHE_VPD_TYPE(ha))
+	if (!IS_NOCACHE_VPD_TYPE(ha))
 		goto skip;
 
 	faddr = ha->flt_region_vpd << 2;
@@ -745,7 +745,7 @@ qla2x00_sysfs_write_reset(struct file *filp, struct kobject *kobj,
 		ql_log(ql_log_info, vha, 0x706f,
 		    "Issuing MPI reset.\n");
 
-		if (IS_QLA83XX(ha) || IS_QLA27XX(ha) || IS_QLA28XX(ha)) {
+		if (IS_QLA83XX(ha)) {
 			uint32_t idc_control;
 
 			qla83xx_idc_lock(vha, 0);
@@ -951,9 +951,9 @@ qla2x00_sysfs_read_dcbx_tlv(struct file *filp, struct kobject *kobj,
 	if (!capable(CAP_SYS_ADMIN) || off != 0 || count > DCBX_TLV_DATA_SIZE)
 		return 0;
 
+	mutex_lock(&vha->hw->optrom_mutex);
 	if (ha->dcbx_tlv)
 		goto do_read;
-	mutex_lock(&vha->hw->optrom_mutex);
 	if (qla2x00_chip_is_down(vha)) {
 		mutex_unlock(&vha->hw->optrom_mutex);
 		return 0;
@@ -1055,9 +1055,6 @@ qla2x00_free_sysfs_attr(scsi_qla_host_t *vha, bool stop_beacon)
 		if (iter->type == 2 && !IS_QLA25XX(ha))
 			continue;
 		if (iter->type == 3 && !(IS_CNA_CAPABLE(ha)))
-			continue;
-		if (iter->type == 0x27 &&
-		    (!IS_QLA27XX(ha) || !IS_QLA28XX(ha)))
 			continue;
 
 		sysfs_remove_bin_file(&host->shost_gendev.kobj,
@@ -1868,6 +1865,18 @@ qla2x00_port_speed_store(struct device *dev, struct device_attribute *attr,
 	return strlen(buf);
 }
 
+static const struct {
+	u16 rate;
+	char *str;
+} port_speed_str[] = {
+	{ PORT_SPEED_4GB, "4" },
+	{ PORT_SPEED_8GB, "8" },
+	{ PORT_SPEED_16GB, "16" },
+	{ PORT_SPEED_32GB, "32" },
+	{ PORT_SPEED_64GB, "64" },
+	{ PORT_SPEED_10GB, "10" },
+};
+
 static ssize_t
 qla2x00_port_speed_show(struct device *dev, struct device_attribute *attr,
     char *buf)
@@ -1875,7 +1884,8 @@ qla2x00_port_speed_show(struct device *dev, struct device_attribute *attr,
 	struct scsi_qla_host *vha = shost_priv(dev_to_shost(dev));
 	struct qla_hw_data *ha = vha->hw;
 	ssize_t rval;
-	char *spd[7] = {"0", "0", "0", "4", "8", "16", "32"};
+	u16 i;
+	char *speed = "Unknown";
 
 	rval = qla2x00_get_data_rate(vha);
 	if (rval != QLA_SUCCESS) {
@@ -1884,7 +1894,14 @@ qla2x00_port_speed_show(struct device *dev, struct device_attribute *attr,
 		return -EINVAL;
 	}
 
-	return scnprintf(buf, PAGE_SIZE, "%s\n", spd[ha->link_data_rate]);
+	for (i = 0; i < ARRAY_SIZE(port_speed_str); i++) {
+		if (port_speed_str[i].rate != ha->link_data_rate)
+			continue;
+		speed = port_speed_str[i].str;
+		break;
+	}
+
+	return scnprintf(buf, PAGE_SIZE, "%s\n", speed);
 }
 
 static ssize_t
@@ -2459,74 +2476,77 @@ static DEVICE_ATTR(port_speed, 0644, qla2x00_port_speed_show,
     qla2x00_port_speed_store);
 static DEVICE_ATTR(port_no, 0444, qla2x00_port_no_show, NULL);
 static DEVICE_ATTR(fw_attr, 0444, qla2x00_fw_attr_show, NULL);
-static DEVICE_ATTR_RO(edif_doorbell);
 
-
-struct device_attribute *qla2x00_host_attrs[] = {
-	&dev_attr_driver_version,
-	&dev_attr_fw_version,
-	&dev_attr_serial_num,
-	&dev_attr_isp_name,
-	&dev_attr_isp_id,
-	&dev_attr_model_name,
-	&dev_attr_model_desc,
-	&dev_attr_pci_info,
-	&dev_attr_link_state,
-	&dev_attr_zio,
-	&dev_attr_zio_timer,
-	&dev_attr_beacon,
-	&dev_attr_beacon_config,
-	&dev_attr_optrom_bios_version,
-	&dev_attr_optrom_efi_version,
-	&dev_attr_optrom_fcode_version,
-	&dev_attr_optrom_fw_version,
-	&dev_attr_84xx_fw_version,
-	&dev_attr_total_isp_aborts,
-	&dev_attr_serdes_version,
-	&dev_attr_mpi_version,
-	&dev_attr_phy_version,
-	&dev_attr_flash_block_size,
-	&dev_attr_vlan_id,
-	&dev_attr_vn_port_mac_address,
-	&dev_attr_fabric_param,
-	&dev_attr_fw_state,
-	&dev_attr_optrom_gold_fw_version,
-	&dev_attr_thermal_temp,
-	&dev_attr_diag_requests,
-	&dev_attr_diag_megabytes,
-	&dev_attr_fw_dump_size,
-	&dev_attr_allow_cna_fw_dump,
-	&dev_attr_pep_version,
-	&dev_attr_min_supported_speed,
-	&dev_attr_max_supported_speed,
-	&dev_attr_zio_threshold,
-	&dev_attr_dif_bundle_statistics,
-	&dev_attr_port_speed,
-	&dev_attr_port_no,
-	&dev_attr_fw_attr,
-	&dev_attr_dport_diagnostics,
-	&dev_attr_edif_doorbell,
-	&dev_attr_mpi_pause,
-	NULL, /* reserve for qlini_mode */
-	NULL, /* reserve for ql2xiniexchg */
-	NULL, /* reserve for ql2xexchoffld */
+static struct attribute *qla2x00_host_attrs[] = {
+	&dev_attr_driver_version.attr,
+	&dev_attr_fw_version.attr,
+	&dev_attr_serial_num.attr,
+	&dev_attr_isp_name.attr,
+	&dev_attr_isp_id.attr,
+	&dev_attr_model_name.attr,
+	&dev_attr_model_desc.attr,
+	&dev_attr_pci_info.attr,
+	&dev_attr_link_state.attr,
+	&dev_attr_zio.attr,
+	&dev_attr_zio_timer.attr,
+	&dev_attr_beacon.attr,
+	&dev_attr_beacon_config.attr,
+	&dev_attr_optrom_bios_version.attr,
+	&dev_attr_optrom_efi_version.attr,
+	&dev_attr_optrom_fcode_version.attr,
+	&dev_attr_optrom_fw_version.attr,
+	&dev_attr_84xx_fw_version.attr,
+	&dev_attr_total_isp_aborts.attr,
+	&dev_attr_serdes_version.attr,
+	&dev_attr_mpi_version.attr,
+	&dev_attr_phy_version.attr,
+	&dev_attr_flash_block_size.attr,
+	&dev_attr_vlan_id.attr,
+	&dev_attr_vn_port_mac_address.attr,
+	&dev_attr_fabric_param.attr,
+	&dev_attr_fw_state.attr,
+	&dev_attr_optrom_gold_fw_version.attr,
+	&dev_attr_thermal_temp.attr,
+	&dev_attr_diag_requests.attr,
+	&dev_attr_diag_megabytes.attr,
+	&dev_attr_fw_dump_size.attr,
+	&dev_attr_allow_cna_fw_dump.attr,
+	&dev_attr_pep_version.attr,
+	&dev_attr_min_supported_speed.attr,
+	&dev_attr_max_supported_speed.attr,
+	&dev_attr_zio_threshold.attr,
+	&dev_attr_dif_bundle_statistics.attr,
+	&dev_attr_port_speed.attr,
+	&dev_attr_port_no.attr,
+	&dev_attr_fw_attr.attr,
+	&dev_attr_dport_diagnostics.attr,
+	&dev_attr_mpi_pause.attr,
+	&dev_attr_qlini_mode.attr,
+	&dev_attr_ql2xiniexchg.attr,
+	&dev_attr_ql2xexchoffld.attr,
 	NULL,
 };
 
-void qla_insert_tgt_attrs(void)
+static umode_t qla_host_attr_is_visible(struct kobject *kobj,
+					struct attribute *attr, int i)
 {
-	struct device_attribute **attr;
-
-	/* advance to empty slot */
-	for (attr = &qla2x00_host_attrs[0]; *attr; ++attr)
-		continue;
-
-	*attr = &dev_attr_qlini_mode;
-	attr++;
-	*attr = &dev_attr_ql2xiniexchg;
-	attr++;
-	*attr = &dev_attr_ql2xexchoffld;
+	if (ql2x_ini_mode != QLA2XXX_INI_MODE_DUAL &&
+	    (attr == &dev_attr_qlini_mode.attr ||
+	     attr == &dev_attr_ql2xiniexchg.attr ||
+	     attr == &dev_attr_ql2xexchoffld.attr))
+		return 0;
+	return attr->mode;
 }
+
+static const struct attribute_group qla2x00_host_attr_group = {
+	.is_visible = qla_host_attr_is_visible,
+	.attrs = qla2x00_host_attrs
+};
+
+const struct attribute_group *qla2x00_host_groups[] = {
+	&qla2x00_host_attr_group,
+	NULL
+};
 
 /* Host attributes. */
 
@@ -2675,7 +2695,13 @@ qla2x00_get_starget_port_id(struct scsi_target *starget)
 static inline void
 qla2x00_set_rport_loss_tmo(struct fc_rport *rport, uint32_t timeout)
 {
+	fc_port_t *fcport = *(fc_port_t **)rport->dd_data;
+
 	rport->dev_loss_tmo = timeout ? timeout : 1;
+
+	if (IS_ENABLED(CONFIG_NVME_FC) && fcport && fcport->nvme_remote_port)
+		nvme_fc_set_remoteport_devloss(fcport->nvme_remote_port,
+					       rport->dev_loss_tmo);
 }
 
 static void
@@ -2688,17 +2714,27 @@ qla2x00_dev_loss_tmo_callbk(struct fc_rport *rport)
 	if (!fcport)
 		return;
 
-	/* Now that the rport has been deleted, set the fcport state to
-	   FCS_DEVICE_DEAD */
-	qla2x00_set_fcport_state(fcport, FCS_DEVICE_DEAD);
+	ql_dbg(ql_dbg_async, fcport->vha, 0x5101,
+	       DBG_FCPORT_PRFMT(fcport, "dev_loss_tmo expiry, rport_state=%d",
+				rport->port_state));
+
+	/*
+	 * Now that the rport has been deleted, set the fcport state to
+	 * FCS_DEVICE_DEAD, if the fcport is still lost.
+	 */
+	if (fcport->scan_state != QLA_FCPORT_FOUND)
+		qla2x00_set_fcport_state(fcport, FCS_DEVICE_DEAD);
 
 	/*
 	 * Transport has effectively 'deleted' the rport, clear
 	 * all local references.
 	 */
 	spin_lock_irqsave(host->host_lock, flags);
-	fcport->rport = fcport->drport = NULL;
-	*((fc_port_t **)rport->dd_data) = NULL;
+	/* Confirm port has not reappeared before clearing pointers. */
+	if (rport->port_state != FC_PORTSTATE_ONLINE) {
+		fcport->rport = fcport->drport = NULL;
+		*((fc_port_t **)rport->dd_data) = NULL;
+	}
 	spin_unlock_irqrestore(host->host_lock, flags);
 
 	if (test_bit(ABORT_ISP_ACTIVE, &fcport->vha->dpc_flags))
@@ -2731,14 +2767,22 @@ qla2x00_terminate_rport_io(struct fc_rport *rport)
 	/*
 	 * At this point all fcport's software-states are cleared.  Perform any
 	 * final cleanup of firmware resources (PCBs and XCBs).
+	 *
+	 * Attempt to cleanup only lost devices.
 	 */
 	if (fcport->loop_id != FC_NO_LOOP_ID) {
-		if (IS_FWI2_CAPABLE(fcport->vha->hw)) {
+		if (IS_FWI2_CAPABLE(fcport->vha->hw) &&
+		    fcport->scan_state != QLA_FCPORT_FOUND) {
 			if (fcport->loop_id != FC_NO_LOOP_ID)
 				fcport->logout_on_delete = 1;
 
-			qlt_schedule_sess_for_deletion(fcport);
-		} else {
+			if (!EDIF_NEGOTIATION_PENDING(fcport)) {
+				ql_dbg(ql_dbg_disc, fcport->vha, 0x911e,
+				       "%s %d schedule session deletion\n", __func__,
+				       __LINE__);
+				qlt_schedule_sess_for_deletion(fcport);
+			}
+		} else if (!IS_FWI2_CAPABLE(fcport->vha->hw)) {
 			qla2x00_port_logout(fcport->vha, fcport);
 		}
 	}
@@ -3286,11 +3330,34 @@ struct fc_function_template qla2xxx_transport_vport_functions = {
 	.bsg_timeout = qla24xx_bsg_timeout,
 };
 
+static uint
+qla2x00_get_host_supported_speeds(scsi_qla_host_t *vha, uint speeds)
+{
+	uint supported_speeds = FC_PORTSPEED_UNKNOWN;
+
+	if (speeds & FDMI_PORT_SPEED_64GB)
+		supported_speeds |= FC_PORTSPEED_64GBIT;
+	if (speeds & FDMI_PORT_SPEED_32GB)
+		supported_speeds |= FC_PORTSPEED_32GBIT;
+	if (speeds & FDMI_PORT_SPEED_16GB)
+		supported_speeds |= FC_PORTSPEED_16GBIT;
+	if (speeds & FDMI_PORT_SPEED_8GB)
+		supported_speeds |= FC_PORTSPEED_8GBIT;
+	if (speeds & FDMI_PORT_SPEED_4GB)
+		supported_speeds |= FC_PORTSPEED_4GBIT;
+	if (speeds & FDMI_PORT_SPEED_2GB)
+		supported_speeds |= FC_PORTSPEED_2GBIT;
+	if (speeds & FDMI_PORT_SPEED_1GB)
+		supported_speeds |= FC_PORTSPEED_1GBIT;
+
+	return supported_speeds;
+}
+
 void
 qla2x00_init_host_attr(scsi_qla_host_t *vha)
 {
 	struct qla_hw_data *ha = vha->hw;
-	u32 speeds = FC_PORTSPEED_UNKNOWN;
+	u32 speeds = 0, fdmi_speed = 0;
 
 	fc_host_dev_loss_tmo(vha->host) = ha->port_down_retry_count;
 	fc_host_node_name(vha->host) = wwn_to_u64(vha->node_name);
@@ -3300,7 +3367,8 @@ qla2x00_init_host_attr(scsi_qla_host_t *vha)
 	fc_host_max_npiv_vports(vha->host) = ha->max_npiv_vports;
 	fc_host_npiv_vports_inuse(vha->host) = ha->cur_vport_count;
 
-	speeds = qla25xx_fdmi_port_speed_capability(ha);
+	fdmi_speed = qla25xx_fdmi_port_speed_capability(ha);
+	speeds = qla2x00_get_host_supported_speeds(vha, fdmi_speed);
 
 	fc_host_supported_speeds(vha->host) = speeds;
 }

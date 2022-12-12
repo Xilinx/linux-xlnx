@@ -2,7 +2,7 @@
 /*
  * Energy Model of devices
  *
- * Copyright (c) 2018-2020, Arm ltd.
+ * Copyright (c) 2018-2021, Arm ltd.
  * Written by: Quentin Perret, Arm ltd.
  * Improvements provided by: Lukasz Luba, Arm ltd.
  */
@@ -10,6 +10,7 @@
 #define pr_fmt(fmt) "energy_model: " fmt
 
 #include <linux/cpu.h>
+#include <linux/cpufreq.h>
 #include <linux/cpumask.h>
 #include <linux/debugfs.h>
 #include <linux/energy_model.h>
@@ -42,6 +43,7 @@ static void em_debug_create_ps(struct em_perf_state *ps, struct dentry *pd)
 	debugfs_create_ulong("frequency", 0444, d, &ps->frequency);
 	debugfs_create_ulong("power", 0444, d, &ps->power);
 	debugfs_create_ulong("cost", 0444, d, &ps->cost);
+	debugfs_create_ulong("inefficient", 0444, d, &ps->flags);
 }
 
 static int em_debug_cpus_show(struct seq_file *s, void *unused)
@@ -52,16 +54,15 @@ static int em_debug_cpus_show(struct seq_file *s, void *unused)
 }
 DEFINE_SHOW_ATTRIBUTE(em_debug_cpus);
 
-static int em_debug_units_show(struct seq_file *s, void *unused)
+static int em_debug_flags_show(struct seq_file *s, void *unused)
 {
 	struct em_perf_domain *pd = s->private;
-	char *units = pd->milliwatts ? "milliWatts" : "bogoWatts";
 
-	seq_printf(s, "%s\n", units);
+	seq_printf(s, "%#lx\n", pd->flags);
 
 	return 0;
 }
-DEFINE_SHOW_ATTRIBUTE(em_debug_units);
+DEFINE_SHOW_ATTRIBUTE(em_debug_flags);
 
 static void em_debug_create_pd(struct device *dev)
 {
@@ -75,7 +76,8 @@ static void em_debug_create_pd(struct device *dev)
 		debugfs_create_file("cpus", 0444, d, dev->em_pd->cpus,
 				    &em_debug_cpus_fops);
 
-	debugfs_create_file("units", 0444, d, dev->em_pd, &em_debug_units_fops);
+	debugfs_create_file("flags", 0444, d, dev->em_pd,
+			    &em_debug_flags_fops);
 
 	/* Create a sub-directory for each performance state */
 	for (i = 0; i < dev->em_pd->nr_perf_states; i++)
@@ -105,10 +107,10 @@ static void em_debug_remove_pd(struct device *dev) {}
 #endif
 
 static int em_create_perf_table(struct device *dev, struct em_perf_domain *pd,
-				int nr_states, struct em_data_callback *cb)
+				int nr_states, struct em_data_callback *cb,
+				unsigned long flags)
 {
-	unsigned long opp_eff, prev_opp_eff = ULONG_MAX;
-	unsigned long power, freq, prev_freq = 0;
+	unsigned long power, freq, prev_freq = 0, prev_cost = ULONG_MAX;
 	struct em_perf_state *table;
 	int i, ret;
 	u64 fmax;
@@ -124,7 +126,7 @@ static int em_create_perf_table(struct device *dev, struct em_perf_domain *pd,
 		 * lowest performance state of 'dev' above 'freq' and updates
 		 * 'power' and 'freq' accordingly.
 		 */
-		ret = cb->active_power(&power, &freq, dev);
+		ret = cb->active_power(dev, &power, &freq);
 		if (ret) {
 			dev_err(dev, "EM: invalid perf. state: %d\n",
 				ret);
@@ -143,7 +145,7 @@ static int em_create_perf_table(struct device *dev, struct em_perf_domain *pd,
 
 		/*
 		 * The power returned by active_state() is expected to be
-		 * positive and to fit into 16 bits.
+		 * positive and be in range.
 		 */
 		if (!power || power > EM_MAX_POWER) {
 			dev_err(dev, "EM: invalid power: %lu\n",
@@ -153,27 +155,34 @@ static int em_create_perf_table(struct device *dev, struct em_perf_domain *pd,
 
 		table[i].power = power;
 		table[i].frequency = prev_freq = freq;
-
-		/*
-		 * The hertz/watts efficiency ratio should decrease as the
-		 * frequency grows on sane platforms. But this isn't always
-		 * true in practice so warn the user if a higher OPP is more
-		 * power efficient than a lower one.
-		 */
-		opp_eff = freq / power;
-		if (opp_eff >= prev_opp_eff)
-			dev_dbg(dev, "EM: hertz/watts ratio non-monotonically decreasing: em_perf_state %d >= em_perf_state%d\n",
-					i, i - 1);
-		prev_opp_eff = opp_eff;
 	}
 
 	/* Compute the cost of each performance state. */
 	fmax = (u64) table[nr_states - 1].frequency;
-	for (i = 0; i < nr_states; i++) {
-		unsigned long power_res = em_scale_power(table[i].power);
+	for (i = nr_states - 1; i >= 0; i--) {
+		unsigned long power_res, cost;
 
-		table[i].cost = div64_u64(fmax * power_res,
-					  table[i].frequency);
+		if (flags & EM_PERF_DOMAIN_ARTIFICIAL) {
+			ret = cb->get_cost(dev, table[i].frequency, &cost);
+			if (ret || !cost || cost > EM_MAX_POWER) {
+				dev_err(dev, "EM: invalid cost %lu %d\n",
+					cost, ret);
+				goto free_ps_table;
+			}
+		} else {
+			power_res = table[i].power;
+			cost = div64_u64(fmax * power_res, table[i].frequency);
+		}
+
+		table[i].cost = cost;
+
+		if (table[i].cost >= prev_cost) {
+			table[i].flags = EM_PERF_STATE_INEFFICIENT;
+			dev_dbg(dev, "EM: OPP:%lu is inefficient\n",
+				table[i].frequency);
+		} else {
+			prev_cost = table[i].cost;
+		}
 	}
 
 	pd->table = table;
@@ -187,13 +196,22 @@ free_ps_table:
 }
 
 static int em_create_pd(struct device *dev, int nr_states,
-			struct em_data_callback *cb, cpumask_t *cpus)
+			struct em_data_callback *cb, cpumask_t *cpus,
+			unsigned long flags)
 {
 	struct em_perf_domain *pd;
 	struct device *cpu_dev;
-	int cpu, ret;
+	int cpu, ret, num_cpus;
 
 	if (_is_cpu_device(dev)) {
+		num_cpus = cpumask_weight(cpus);
+
+		/* Prevent max possible energy calculation to not overflow */
+		if (num_cpus > EM_MAX_NUM_CPUS) {
+			dev_err(dev, "EM: too many CPUs, overflow possible\n");
+			return -EINVAL;
+		}
+
 		pd = kzalloc(sizeof(*pd) + cpumask_size(), GFP_KERNEL);
 		if (!pd)
 			return -ENOMEM;
@@ -205,7 +223,7 @@ static int em_create_pd(struct device *dev, int nr_states,
 			return -ENOMEM;
 	}
 
-	ret = em_create_perf_table(dev, pd, nr_states, cb);
+	ret = em_create_perf_table(dev, pd, nr_states, cb, flags);
 	if (ret) {
 		kfree(pd);
 		return ret;
@@ -220,6 +238,45 @@ static int em_create_pd(struct device *dev, int nr_states,
 	dev->em_pd = pd;
 
 	return 0;
+}
+
+static void em_cpufreq_update_efficiencies(struct device *dev)
+{
+	struct em_perf_domain *pd = dev->em_pd;
+	struct em_perf_state *table;
+	struct cpufreq_policy *policy;
+	int found = 0;
+	int i;
+
+	if (!_is_cpu_device(dev) || !pd)
+		return;
+
+	policy = cpufreq_cpu_get(cpumask_first(em_span_cpus(pd)));
+	if (!policy) {
+		dev_warn(dev, "EM: Access to CPUFreq policy failed");
+		return;
+	}
+
+	table = pd->table;
+
+	for (i = 0; i < pd->nr_perf_states; i++) {
+		if (!(table[i].flags & EM_PERF_STATE_INEFFICIENT))
+			continue;
+
+		if (!cpufreq_table_set_inefficient(policy, table[i].frequency))
+			found++;
+	}
+
+	cpufreq_cpu_put(policy);
+
+	if (!found)
+		return;
+
+	/*
+	 * Efficiencies have been installed in CPUFreq, inefficient frequencies
+	 * will be skipped. The EM can do the same.
+	 */
+	pd->flags |= EM_PERF_DOMAIN_SKIP_INEFFICIENCIES;
 }
 
 /**
@@ -265,13 +322,13 @@ EXPORT_SYMBOL_GPL(em_cpu_get);
  * @cpus	: Pointer to cpumask_t, which in case of a CPU device is
  *		obligatory. It can be taken from i.e. 'policy->cpus'. For other
  *		type of devices this should be set to NULL.
- * @milliwatts	: Flag indicating that the power values are in milliWatts or
+ * @microwatts	: Flag indicating that the power values are in micro-Watts or
  *		in some other scale. It must be set properly.
  *
  * Create Energy Model tables for a performance domain using the callbacks
  * defined in cb.
  *
- * The @milliwatts is important to set with correct value. Some kernel
+ * The @microwatts is important to set with correct value. Some kernel
  * sub-systems might rely on this flag and check if all devices in the EM are
  * using the same scale.
  *
@@ -282,9 +339,10 @@ EXPORT_SYMBOL_GPL(em_cpu_get);
  */
 int em_dev_register_perf_domain(struct device *dev, unsigned int nr_states,
 				struct em_data_callback *cb, cpumask_t *cpus,
-				bool milliwatts)
+				bool microwatts)
 {
 	unsigned long cap, prev_cap = 0;
+	unsigned long flags = 0;
 	int cpu, ret;
 
 	if (!dev || !nr_states || !cb)
@@ -331,11 +389,18 @@ int em_dev_register_perf_domain(struct device *dev, unsigned int nr_states,
 		}
 	}
 
-	ret = em_create_pd(dev, nr_states, cb, cpus);
+	if (microwatts)
+		flags |= EM_PERF_DOMAIN_MICROWATTS;
+	else if (cb->get_cost)
+		flags |= EM_PERF_DOMAIN_ARTIFICIAL;
+
+	ret = em_create_pd(dev, nr_states, cb, cpus, flags);
 	if (ret)
 		goto unlock;
 
-	dev->em_pd->milliwatts = milliwatts;
+	dev->em_pd->flags |= flags;
+
+	em_cpufreq_update_efficiencies(dev);
 
 	em_debug_create_pd(dev);
 	dev_info(dev, "EM: created perf domain\n");

@@ -21,6 +21,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/of_device.h>
 #include <linux/pm_runtime.h>
+#include <linux/reset.h>
 #include <linux/sh_dma.h>
 #include <linux/spi/spi.h>
 #include <linux/spi/rspi.h>
@@ -612,6 +613,10 @@ static int rspi_dma_transfer(struct rspi_data *rspi, struct sg_table *tx,
 					       rspi->dma_callbacked, HZ);
 	if (ret > 0 && rspi->dma_callbacked) {
 		ret = 0;
+		if (tx)
+			dmaengine_synchronize(rspi->ctlr->dma_tx);
+		if (rx)
+			dmaengine_synchronize(rspi->ctlr->dma_rx);
 	} else {
 		if (!ret) {
 			dev_err(&rspi->ctlr->dev, "DMA timeout\n");
@@ -834,7 +839,7 @@ static int qspi_transfer_in(struct rspi_data *rspi, struct spi_transfer *xfer)
 	int ret;
 
 	if (rspi->ctlr->can_dma && __rspi_can_dma(rspi, xfer)) {
-		int ret = rspi_dma_transfer(rspi, NULL, &xfer->rx_sg);
+		ret = rspi_dma_transfer(rspi, NULL, &xfer->rx_sg);
 		if (ret != -EAGAIN)
 			return ret;
 	}
@@ -1107,14 +1112,11 @@ static struct dma_chan *rspi_request_dma_chan(struct device *dev,
 	}
 
 	memset(&cfg, 0, sizeof(cfg));
+	cfg.dst_addr = port_addr + RSPI_SPDR;
+	cfg.src_addr = port_addr + RSPI_SPDR;
+	cfg.dst_addr_width = DMA_SLAVE_BUSWIDTH_1_BYTE;
+	cfg.src_addr_width = DMA_SLAVE_BUSWIDTH_1_BYTE;
 	cfg.direction = dir;
-	if (dir == DMA_MEM_TO_DEV) {
-		cfg.dst_addr = port_addr;
-		cfg.dst_addr_width = DMA_SLAVE_BUSWIDTH_1_BYTE;
-	} else {
-		cfg.src_addr = port_addr;
-		cfg.src_addr_width = DMA_SLAVE_BUSWIDTH_1_BYTE;
-	}
 
 	ret = dmaengine_slave_config(chan, &cfg);
 	if (ret) {
@@ -1145,12 +1147,12 @@ static int rspi_request_dma(struct device *dev, struct spi_controller *ctlr,
 	}
 
 	ctlr->dma_tx = rspi_request_dma_chan(dev, DMA_MEM_TO_DEV, dma_tx_id,
-					     res->start + RSPI_SPDR);
+					     res->start);
 	if (!ctlr->dma_tx)
 		return -ENODEV;
 
 	ctlr->dma_rx = rspi_request_dma_chan(dev, DMA_DEV_TO_MEM, dma_rx_id,
-					     res->start + RSPI_SPDR);
+					     res->start);
 	if (!ctlr->dma_rx) {
 		dma_release_channel(ctlr->dma_tx);
 		ctlr->dma_tx = NULL;
@@ -1225,8 +1227,14 @@ static const struct of_device_id rspi_of_match[] = {
 
 MODULE_DEVICE_TABLE(of, rspi_of_match);
 
+static void rspi_reset_control_assert(void *data)
+{
+	reset_control_assert(data);
+}
+
 static int rspi_parse_dt(struct device *dev, struct spi_controller *ctlr)
 {
+	struct reset_control *rstc;
 	u32 num_cs;
 	int error;
 
@@ -1238,6 +1246,24 @@ static int rspi_parse_dt(struct device *dev, struct spi_controller *ctlr)
 	}
 
 	ctlr->num_chipselect = num_cs;
+
+	rstc = devm_reset_control_get_optional_exclusive(dev, NULL);
+	if (IS_ERR(rstc))
+		return dev_err_probe(dev, PTR_ERR(rstc),
+					     "failed to get reset ctrl\n");
+
+	error = reset_control_deassert(rstc);
+	if (error) {
+		dev_err(dev, "failed to deassert reset %d\n", error);
+		return error;
+	}
+
+	error = devm_add_action_or_reset(dev, rspi_reset_control_assert, rstc);
+	if (error) {
+		dev_err(dev, "failed to register assert devm action, %d\n", error);
+		return error;
+	}
+
 	return 0;
 }
 #else
@@ -1427,4 +1453,3 @@ module_platform_driver(rspi_driver);
 MODULE_DESCRIPTION("Renesas RSPI bus driver");
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Yoshihiro Shimoda");
-MODULE_ALIAS("platform:rspi");

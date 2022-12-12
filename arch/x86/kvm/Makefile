@@ -7,12 +7,7 @@ ifeq ($(CONFIG_FRAME_POINTER),y)
 OBJECT_FILES_NON_STANDARD_vmenter.o := y
 endif
 
-KVM := ../../../virt/kvm
-
-kvm-y			+= $(KVM)/kvm_main.o $(KVM)/coalesced_mmio.o \
-				$(KVM)/eventfd.o $(KVM)/irqchip.o $(KVM)/vfio.o \
-				$(KVM)/dirty_ring.o $(KVM)/binary_stats.o
-kvm-$(CONFIG_KVM_ASYNC_PF)	+= $(KVM)/async_pf.o
+include $(srctree)/virt/kvm/Makefile.kvm
 
 kvm-y			+= x86.o emulate.o i8259.o irq.o lapic.o \
 			   i8254.o ioapic.o irq_comm.o cpuid.o pmu.o mtrr.o \
@@ -39,3 +34,15 @@ endif
 obj-$(CONFIG_KVM)	+= kvm.o
 obj-$(CONFIG_KVM_INTEL)	+= kvm-intel.o
 obj-$(CONFIG_KVM_AMD)	+= kvm-amd.o
+
+AFLAGS_svm/vmenter.o    := -iquote $(obj)
+$(obj)/svm/vmenter.o: $(obj)/kvm-asm-offsets.h
+
+AFLAGS_vmx/vmenter.o    := -iquote $(obj)
+$(obj)/vmx/vmenter.o: $(obj)/kvm-asm-offsets.h
+
+$(obj)/kvm-asm-offsets.h: $(obj)/kvm-asm-offsets.s FORCE
+	$(call filechk,offsets,__KVM_ASM_OFFSETS_H__)
+
+targets += kvm-asm-offsets.s
+clean-files += kvm-asm-offsets.h

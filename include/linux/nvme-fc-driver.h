@@ -7,6 +7,7 @@
 #define _NVME_FC_DRIVER_H 1
 
 #include <linux/scatterlist.h>
+#include <linux/blk-mq.h>
 
 
 /*
@@ -497,6 +498,8 @@ struct nvme_fc_port_template {
 	int	(*xmt_ls_rsp)(struct nvme_fc_local_port *localport,
 				struct nvme_fc_remote_port *rport,
 				struct nvmefc_ls_rsp *ls_rsp);
+	void	(*map_queues)(struct nvme_fc_local_port *localport,
+			      struct blk_mq_queue_map *map);
 
 	u32	max_hw_queues;
 	u16	max_sgl_segments;
@@ -561,6 +564,15 @@ int nvme_fc_rcv_ls_req(struct nvme_fc_remote_port *remoteport,
 			void *lsreqbuf, u32 lsreqbuf_len);
 
 
+/*
+ * Routine called to get the appid field associated with request by the lldd
+ *
+ * If the return value is NULL : the user/libvirt has not set the appid to VM
+ * If the return value is non-zero: Returns the appid associated with VM
+ *
+ * @req: IO request from nvme fc to driver
+ */
+char *nvme_fc_io_getuuid(struct nvmefc_fcp_req *req);
 
 /*
  * ***************  LLDD FC-NVME Target/Subsystem API ***************
@@ -718,7 +730,7 @@ enum {
  *
  * Fields with static values for the port. Initialized by the
  * port_info struct supplied to the registration call.
- * @port_num:  NVME-FC transport subsytem port number
+ * @port_num:  NVME-FC transport subsystem port number
  * @node_name: FC WWNN for the port
  * @port_name: FC WWPN for the port
  * @private:   pointer to memory allocated alongside the local port
@@ -778,6 +790,10 @@ struct nvmet_fc_target_port {
  *       The transport will always call the xmt_ls_rsp() routine for any
  *       LS received.
  *       Entrypoint is Mandatory.
+ *
+ * @map_queues: This functions lets the driver expose the queue mapping
+ *	 to the block layer.
+ *       Entrypoint is Optional.
  *
  * @fcp_op:  Called to perform a data transfer or transmit a response.
  *       The nvmefc_tgt_fcp_req structure is the same LLDD-supplied
@@ -1041,5 +1057,10 @@ int nvmet_fc_rcv_fcp_req(struct nvmet_fc_target_port *tgtport,
 
 void nvmet_fc_rcv_fcp_abort(struct nvmet_fc_target_port *tgtport,
 			struct nvmefc_tgt_fcp_req *fcpreq);
+/*
+ * add a define, visible to the compiler, that indicates support
+ * for feature. Allows for conditional compilation in LLDDs.
+ */
+#define NVME_FC_FEAT_UUID	0x0001
 
 #endif /* _NVME_FC_DRIVER_H */

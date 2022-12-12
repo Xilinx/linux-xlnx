@@ -5,6 +5,7 @@
 
 #include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
+#include <dt-bindings/reset/stericsson,db8500-prcc-reset.h>
 #include <dt-bindings/mfd/dbx500-prcmu.h>
 #include <dt-bindings/arm/ux500_pm_domains.h>
 #include <dt-bindings/gpio/gpio.h>
@@ -298,6 +299,10 @@
 
 			prcc_kclk: prcc-kernel-clock {
 				#clock-cells = <2>;
+			};
+
+			prcc_reset: prcc-reset-controller {
+				#reset-cells = <2>;
 			};
 
 			rtc_clk: rtc32k-clock {
@@ -656,12 +661,12 @@
 
 			#address-cells = <1>;
 			#size-cells = <0>;
-			v-i2c-supply = <&db8500_vape_reg>;
 
 			clock-frequency = <400000>;
 			clocks = <&prcc_kclk 3 3>, <&prcc_pclk 3 3>;
 			clock-names = "i2cclk", "apb_pclk";
 			power-domains = <&pm_domains DOMAIN_VAPE>;
+			resets = <&prcc_reset DB8500_PRCC_3 DB8500_PRCC_3_RESET_I2C0>;
 
 			status = "disabled";
 		};
@@ -673,13 +678,13 @@
 
 			#address-cells = <1>;
 			#size-cells = <0>;
-			v-i2c-supply = <&db8500_vape_reg>;
 
 			clock-frequency = <400000>;
 
 			clocks = <&prcc_kclk 1 2>, <&prcc_pclk 1 2>;
 			clock-names = "i2cclk", "apb_pclk";
 			power-domains = <&pm_domains DOMAIN_VAPE>;
+			resets = <&prcc_reset DB8500_PRCC_1 DB8500_PRCC_1_RESET_I2C1>;
 
 			status = "disabled";
 		};
@@ -691,13 +696,13 @@
 
 			#address-cells = <1>;
 			#size-cells = <0>;
-			v-i2c-supply = <&db8500_vape_reg>;
 
 			clock-frequency = <400000>;
 
 			clocks = <&prcc_kclk 1 6>, <&prcc_pclk 1 6>;
 			clock-names = "i2cclk", "apb_pclk";
 			power-domains = <&pm_domains DOMAIN_VAPE>;
+			resets = <&prcc_reset DB8500_PRCC_1 DB8500_PRCC_1_RESET_I2C2>;
 
 			status = "disabled";
 		};
@@ -709,13 +714,13 @@
 
 			#address-cells = <1>;
 			#size-cells = <0>;
-			v-i2c-supply = <&db8500_vape_reg>;
 
 			clock-frequency = <400000>;
 
 			clocks = <&prcc_kclk 2 0>, <&prcc_pclk 2 0>;
 			clock-names = "i2cclk", "apb_pclk";
 			power-domains = <&pm_domains DOMAIN_VAPE>;
+			resets = <&prcc_reset DB8500_PRCC_2 DB8500_PRCC_2_RESET_I2C3>;
 
 			status = "disabled";
 		};
@@ -727,13 +732,13 @@
 
 			#address-cells = <1>;
 			#size-cells = <0>;
-			v-i2c-supply = <&db8500_vape_reg>;
 
 			clock-frequency = <400000>;
 
 			clocks = <&prcc_kclk 1 9>, <&prcc_pclk 1 10>;
 			clock-names = "i2cclk", "apb_pclk";
 			power-domains = <&pm_domains DOMAIN_VAPE>;
+			resets = <&prcc_reset DB8500_PRCC_1 DB8500_PRCC_1_RESET_I2C4>;
 
 			status = "disabled";
 		};
@@ -745,11 +750,12 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			clocks = <&prcc_kclk 3 1>, <&prcc_pclk 3 1>;
-			clock-names = "SSPCLK", "apb_pclk";
+			clock-names = "sspclk", "apb_pclk";
 			dmas = <&dma 8 0 0x2>, /* Logical - DevToMem */
 			       <&dma 8 0 0x0>; /* Logical - MemToDev */
 			dma-names = "rx", "tx";
 			power-domains = <&pm_domains DOMAIN_VAPE>;
+			resets = <&prcc_reset DB8500_PRCC_3 DB8500_PRCC_3_RESET_SSP0>;
 
 			status = "disabled";
 		};
@@ -761,11 +767,12 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			clocks = <&prcc_kclk 3 2>, <&prcc_pclk 3 2>;
-			clock-names = "SSPCLK", "apb_pclk";
+			clock-names = "sspclk", "apb_pclk";
 			dmas = <&dma 9 0 0x2>, /* Logical - DevToMem */
 			       <&dma 9 0 0x0>; /* Logical - MemToDev */
 			dma-names = "rx", "tx";
 			power-domains = <&pm_domains DOMAIN_VAPE>;
+			resets = <&prcc_reset DB8500_PRCC_3 DB8500_PRCC_3_RESET_SSP1>;
 
 			status = "disabled";
 		};
@@ -778,7 +785,7 @@
 			#size-cells = <0>;
 			/* Same clock wired to kernel and pclk */
 			clocks = <&prcc_pclk 2 8>, <&prcc_pclk 2 8>;
-			clock-names = "SSPCLK", "apb_pclk";
+			clock-names = "sspclk", "apb_pclk";
 			dmas = <&dma 0 0 0x2>, /* Logical - DevToMem */
 			       <&dma 0 0 0x0>; /* Logical - MemToDev */
 			dma-names = "rx", "tx";
@@ -795,7 +802,7 @@
 			#size-cells = <0>;
 			/* Same clock wired to kernel and pclk */
 			clocks = <&prcc_pclk 2 2>, <&prcc_pclk 2 2>;
-			clock-names = "SSPCLK", "apb_pclk";
+			clock-names = "sspclk", "apb_pclk";
 			dmas = <&dma 35 0 0x2>, /* Logical - DevToMem */
 			       <&dma 35 0 0x0>; /* Logical - MemToDev */
 			dma-names = "rx", "tx";
@@ -812,7 +819,7 @@
 			#size-cells = <0>;
 			/* Same clock wired to kernel and pclk */
 			clocks = <&prcc_pclk 2 1>, <&prcc_pclk 2 1>;
-			clock-names = "SSPCLK", "apb_pclk";
+			clock-names = "sspclk", "apb_pclk";
 			dmas = <&dma 33 0 0x2>, /* Logical - DevToMem */
 			       <&dma 33 0 0x0>; /* Logical - MemToDev */
 			dma-names = "rx", "tx";
@@ -829,11 +836,12 @@
 			#size-cells = <0>;
 			/* Same clock wired to kernel and pclk */
 			clocks = <&prcc_pclk 1 7>, <&prcc_pclk 1 7>;
-			clock-names = "SSPCLK", "apb_pclk";
+			clock-names = "sspclk", "apb_pclk";
 			dmas = <&dma 40 0 0x2>, /* Logical - DevToMem */
 			       <&dma 40 0 0x0>; /* Logical - MemToDev */
 			dma-names = "rx", "tx";
 			power-domains = <&pm_domains DOMAIN_VAPE>;
+			resets = <&prcc_reset DB8500_PRCC_1 DB8500_PRCC_1_RESET_SPI3>;
 
 			status = "disabled";
 		};
@@ -849,6 +857,7 @@
 
 			clocks = <&prcc_kclk 1 0>, <&prcc_pclk 1 0>;
 			clock-names = "uart", "apb_pclk";
+			resets = <&prcc_reset DB8500_PRCC_1 DB8500_PRCC_1_RESET_UART0>;
 
 			status = "disabled";
 		};
@@ -864,6 +873,7 @@
 
 			clocks = <&prcc_kclk 1 1>, <&prcc_pclk 1 1>;
 			clock-names = "uart", "apb_pclk";
+			resets = <&prcc_reset DB8500_PRCC_1 DB8500_PRCC_1_RESET_UART1>;
 
 			status = "disabled";
 		};
@@ -879,6 +889,7 @@
 
 			clocks = <&prcc_kclk 3 6>, <&prcc_pclk 3 6>;
 			clock-names = "uart", "apb_pclk";
+			resets = <&prcc_reset DB8500_PRCC_3 DB8500_PRCC_3_RESET_UART2>;
 
 			status = "disabled";
 		};
@@ -895,6 +906,7 @@
 			clocks = <&prcc_kclk 1 5>, <&prcc_pclk 1 5>;
 			clock-names = "sdi", "apb_pclk";
 			power-domains = <&pm_domains DOMAIN_VAPE>;
+			resets = <&prcc_reset DB8500_PRCC_1 DB8500_PRCC_1_RESET_SDI0>;
 
 			status = "disabled";
 		};
@@ -911,6 +923,7 @@
 			clocks = <&prcc_kclk 2 4>, <&prcc_pclk 2 6>;
 			clock-names = "sdi", "apb_pclk";
 			power-domains = <&pm_domains DOMAIN_VAPE>;
+			resets = <&prcc_reset DB8500_PRCC_2 DB8500_PRCC_2_RESET_SDI1>;
 
 			status = "disabled";
 		};
@@ -927,6 +940,7 @@
 			clocks = <&prcc_kclk 3 4>, <&prcc_pclk 3 4>;
 			clock-names = "sdi", "apb_pclk";
 			power-domains = <&pm_domains DOMAIN_VAPE>;
+			resets = <&prcc_reset DB8500_PRCC_3 DB8500_PRCC_3_RESET_SDI2>;
 
 			status = "disabled";
 		};
@@ -943,6 +957,7 @@
 			clocks = <&prcc_kclk 2 5>, <&prcc_pclk 2 7>;
 			clock-names = "sdi", "apb_pclk";
 			power-domains = <&pm_domains DOMAIN_VAPE>;
+			resets = <&prcc_reset DB8500_PRCC_2 DB8500_PRCC_2_RESET_SDI3>;
 
 			status = "disabled";
 		};
@@ -959,6 +974,7 @@
 			clocks = <&prcc_kclk 2 2>, <&prcc_pclk 2 4>;
 			clock-names = "sdi", "apb_pclk";
 			power-domains = <&pm_domains DOMAIN_VAPE>;
+			resets = <&prcc_reset DB8500_PRCC_2 DB8500_PRCC_2_RESET_SDI4>;
 
 			status = "disabled";
 		};
@@ -975,6 +991,7 @@
 			clocks = <&prcc_kclk 3 7>, <&prcc_pclk 3 7>;
 			clock-names = "sdi", "apb_pclk";
 			power-domains = <&pm_domains DOMAIN_VAPE>;
+			resets = <&prcc_reset DB8500_PRCC_3 DB8500_PRCC_3_RESET_SDI5>;
 
 			status = "disabled";
 		};
@@ -996,6 +1013,7 @@
 
 			clocks = <&prcc_kclk 1 3>, <&prcc_pclk 1 3>;
 			clock-names = "msp", "apb_pclk";
+			resets = <&prcc_reset DB8500_PRCC_1 DB8500_PRCC_1_RESET_MSP0>;
 
 			status = "disabled";
 		};
@@ -1012,6 +1030,7 @@
 
 			clocks = <&prcc_kclk 1 4>, <&prcc_pclk 1 4>;
 			clock-names = "msp", "apb_pclk";
+			resets = <&prcc_reset DB8500_PRCC_1 DB8500_PRCC_1_RESET_MSP1>;
 
 			status = "disabled";
 		};
@@ -1030,6 +1049,7 @@
 
 			clocks = <&prcc_kclk 2 3>, <&prcc_pclk 2 5>;
 			clock-names = "msp", "apb_pclk";
+			resets = <&prcc_reset DB8500_PRCC_2 DB8500_PRCC_2_RESET_MSP2>;
 
 			status = "disabled";
 		};
@@ -1046,6 +1066,7 @@
 
 			clocks = <&prcc_kclk 1 10>, <&prcc_pclk 1 11>;
 			clock-names = "msp", "apb_pclk";
+			resets = <&prcc_reset DB8500_PRCC_1 DB8500_PRCC_1_RESET_MSP3>;
 
 			status = "disabled";
 		};

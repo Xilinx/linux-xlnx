@@ -16,13 +16,13 @@
 #include <linux/delay.h>
 #include <linux/seq_file.h>
 #include <linux/interrupt.h>
+#include <linux/of_address.h>
 #include <linux/of_platform.h>
 
 #include <asm/time.h>
 #include <asm/machdep.h>
 #include <asm/pci-bridge.h>
 #include <mm/mmu_decl.h>
-#include <asm/prom.h>
 #include <asm/udbg.h>
 #include <asm/mpic.h>
 
@@ -45,7 +45,7 @@ void __init xes_mpc85xx_pic_init(void)
 	mpic_init(mpic);
 }
 
-static void xes_mpc85xx_configure_l2(void __iomem *l2_base)
+static void __init xes_mpc85xx_configure_l2(void __iomem *l2_base)
 {
 	volatile uint32_t ctl, tmp;
 
@@ -72,7 +72,7 @@ static void xes_mpc85xx_configure_l2(void __iomem *l2_base)
 	asm volatile("msync; isync");
 }
 
-static void xes_mpc85xx_fixups(void)
+static void __init xes_mpc85xx_fixups(void)
 {
 	struct device_node *np;
 	int err;

@@ -6,93 +6,100 @@
 #include <linux/of_gpio.h>
 #include <linux/phy/phy.h>
 
+#include <drm/drm_of.h>
 #include <drm/drm_print.h>
+#include <drm/drm_bridge.h>
 
 #include "dp_parser.h"
 #include "dp_reg.h"
 
-static const struct dp_regulator_cfg sdm845_dp_reg_cfg = {
-	.num = 2,
-	.regs = {
-		{"vdda-1p2", 21800, 4 },	/* 1.2 V */
-		{"vdda-0p9", 36000, 32 },	/* 0.9 V */
-	},
-};
+#define DP_DEFAULT_AHB_OFFSET	0x0000
+#define DP_DEFAULT_AHB_SIZE	0x0200
+#define DP_DEFAULT_AUX_OFFSET	0x0200
+#define DP_DEFAULT_AUX_SIZE	0x0200
+#define DP_DEFAULT_LINK_OFFSET	0x0400
+#define DP_DEFAULT_LINK_SIZE	0x0C00
+#define DP_DEFAULT_P0_OFFSET	0x1000
+#define DP_DEFAULT_P0_SIZE	0x0400
 
-static int msm_dss_ioremap(struct platform_device *pdev,
-				struct dss_io_data *io_data)
+static void __iomem *dp_ioremap(struct platform_device *pdev, int idx, size_t *len)
 {
-	struct resource *res = NULL;
+	struct resource *res;
+	void __iomem *base;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res) {
-		DRM_ERROR("%pS->%s: msm_dss_get_res failed\n",
-			__builtin_return_address(0), __func__);
-		return -ENODEV;
-	}
+	base = devm_platform_get_and_ioremap_resource(pdev, idx, &res);
+	if (!IS_ERR(base))
+		*len = resource_size(res);
 
-	io_data->len = (u32)resource_size(res);
-	io_data->base = ioremap(res->start, io_data->len);
-	if (!io_data->base) {
-		DRM_ERROR("%pS->%s: ioremap failed\n",
-			__builtin_return_address(0), __func__);
-		return -EIO;
-	}
-
-	return 0;
-}
-
-static void msm_dss_iounmap(struct dss_io_data *io_data)
-{
-	if (io_data->base) {
-		iounmap(io_data->base);
-		io_data->base = NULL;
-	}
-	io_data->len = 0;
-}
-
-static void dp_parser_unmap_io_resources(struct dp_parser *parser)
-{
-	struct dp_io *io = &parser->io;
-
-	msm_dss_iounmap(&io->dp_controller);
+	return base;
 }
 
 static int dp_parser_ctrl_res(struct dp_parser *parser)
 {
-	int rc = 0;
 	struct platform_device *pdev = parser->pdev;
 	struct dp_io *io = &parser->io;
+	struct dss_io_data *dss = &io->dp_controller;
 
-	rc = msm_dss_ioremap(pdev, &io->dp_controller);
-	if (rc) {
-		DRM_ERROR("unable to remap dp io resources, rc=%d\n", rc);
-		goto err;
+	dss->ahb.base = dp_ioremap(pdev, 0, &dss->ahb.len);
+	if (IS_ERR(dss->ahb.base))
+		return PTR_ERR(dss->ahb.base);
+
+	dss->aux.base = dp_ioremap(pdev, 1, &dss->aux.len);
+	if (IS_ERR(dss->aux.base)) {
+		/*
+		 * The initial binding had a single reg, but in order to
+		 * support variation in the sub-region sizes this was split.
+		 * dp_ioremap() will fail with -EINVAL here if only a single
+		 * reg is specified, so fill in the sub-region offsets and
+		 * lengths based on this single region.
+		 */
+		if (PTR_ERR(dss->aux.base) == -EINVAL) {
+			if (dss->ahb.len < DP_DEFAULT_P0_OFFSET + DP_DEFAULT_P0_SIZE) {
+				DRM_ERROR("legacy memory region not large enough\n");
+				return -EINVAL;
+			}
+
+			dss->ahb.len = DP_DEFAULT_AHB_SIZE;
+			dss->aux.base = dss->ahb.base + DP_DEFAULT_AUX_OFFSET;
+			dss->aux.len = DP_DEFAULT_AUX_SIZE;
+			dss->link.base = dss->ahb.base + DP_DEFAULT_LINK_OFFSET;
+			dss->link.len = DP_DEFAULT_LINK_SIZE;
+			dss->p0.base = dss->ahb.base + DP_DEFAULT_P0_OFFSET;
+			dss->p0.len = DP_DEFAULT_P0_SIZE;
+		} else {
+			DRM_ERROR("unable to remap aux region: %pe\n", dss->aux.base);
+			return PTR_ERR(dss->aux.base);
+		}
+	} else {
+		dss->link.base = dp_ioremap(pdev, 2, &dss->link.len);
+		if (IS_ERR(dss->link.base)) {
+			DRM_ERROR("unable to remap link region: %pe\n", dss->link.base);
+			return PTR_ERR(dss->link.base);
+		}
+
+		dss->p0.base = dp_ioremap(pdev, 3, &dss->p0.len);
+		if (IS_ERR(dss->p0.base)) {
+			DRM_ERROR("unable to remap p0 region: %pe\n", dss->p0.base);
+			return PTR_ERR(dss->p0.base);
+		}
 	}
 
 	io->phy = devm_phy_get(&pdev->dev, "dp");
-	if (IS_ERR(io->phy)) {
-		rc = PTR_ERR(io->phy);
-		goto err;
-	}
+	if (IS_ERR(io->phy))
+		return PTR_ERR(io->phy);
 
 	return 0;
-err:
-	dp_parser_unmap_io_resources(parser);
-	return rc;
 }
 
 static int dp_parser_misc(struct dp_parser *parser)
 {
 	struct device_node *of_node = parser->pdev->dev.of_node;
-	int len = 0;
-	const char *data_lane_property = "data-lanes";
+	int len;
 
-	len = of_property_count_elems_of_size(of_node,
-			 data_lane_property, sizeof(u32));
+	len = drm_of_get_data_lanes_count(of_node, 1, DP_MAX_NUM_DP_LANES);
 	if (len < 0) {
-		DRM_WARN("Invalid property %s, default max DP lanes = %d\n",
-				data_lane_property, DP_MAX_NUM_DP_LANES);
+		DRM_WARN("Invalid property \"data-lanes\", default max DP lanes = %d\n",
+			 DP_MAX_NUM_DP_LANES);
 		len = DP_MAX_NUM_DP_LANES;
 	}
 
@@ -145,11 +152,11 @@ static int dp_parser_init_clk_data(struct dp_parser *parser)
 	}
 
 	core_power->num_clk = core_clk_count;
-	core_power->clk_config = devm_kzalloc(dev,
-			sizeof(struct dss_clk) * core_power->num_clk,
+	core_power->clocks = devm_kcalloc(dev,
+			core_power->num_clk, sizeof(struct clk_bulk_data),
 			GFP_KERNEL);
-	if (!core_power->clk_config)
-		return -EINVAL;
+	if (!core_power->clocks)
+		return -ENOMEM;
 
 	/* Initialize the CTRL power module */
 	if (ctrl_clk_count == 0) {
@@ -158,12 +165,12 @@ static int dp_parser_init_clk_data(struct dp_parser *parser)
 	}
 
 	ctrl_power->num_clk = ctrl_clk_count;
-	ctrl_power->clk_config = devm_kzalloc(dev,
-			sizeof(struct dss_clk) * ctrl_power->num_clk,
+	ctrl_power->clocks = devm_kcalloc(dev,
+			ctrl_power->num_clk, sizeof(struct clk_bulk_data),
 			GFP_KERNEL);
-	if (!ctrl_power->clk_config) {
+	if (!ctrl_power->clocks) {
 		ctrl_power->num_clk = 0;
-		return -EINVAL;
+		return -ENOMEM;
 	}
 
 	/* Initialize the STREAM power module */
@@ -173,12 +180,12 @@ static int dp_parser_init_clk_data(struct dp_parser *parser)
 	}
 
 	stream_power->num_clk = stream_clk_count;
-	stream_power->clk_config = devm_kzalloc(dev,
-			sizeof(struct dss_clk) * stream_power->num_clk,
+	stream_power->clocks = devm_kcalloc(dev,
+			stream_power->num_clk, sizeof(struct clk_bulk_data),
 			GFP_KERNEL);
-	if (!stream_power->clk_config) {
+	if (!stream_power->clocks) {
 		stream_power->num_clk = 0;
-		return -EINVAL;
+		return -ENOMEM;
 	}
 
 	return 0;
@@ -217,33 +224,32 @@ static int dp_parser_clock(struct dp_parser *parser)
 		}
 		if (dp_parser_check_prefix("core", clk_name) &&
 				core_clk_index < core_clk_count) {
-			struct dss_clk *clk =
-				&core_power->clk_config[core_clk_index];
-			strlcpy(clk->clk_name, clk_name, sizeof(clk->clk_name));
-			clk->type = DSS_CLK_AHB;
+			core_power->clocks[core_clk_index].id = devm_kstrdup(dev, clk_name, GFP_KERNEL);
 			core_clk_index++;
 		} else if (dp_parser_check_prefix("stream", clk_name) &&
 				stream_clk_index < stream_clk_count) {
-			struct dss_clk *clk =
-				&stream_power->clk_config[stream_clk_index];
-			strlcpy(clk->clk_name, clk_name, sizeof(clk->clk_name));
-			clk->type = DSS_CLK_PCLK;
+			stream_power->clocks[stream_clk_index].id = devm_kstrdup(dev, clk_name, GFP_KERNEL);
 			stream_clk_index++;
 		} else if (dp_parser_check_prefix("ctrl", clk_name) &&
 			   ctrl_clk_index < ctrl_clk_count) {
-			struct dss_clk *clk =
-				&ctrl_power->clk_config[ctrl_clk_index];
-			strlcpy(clk->clk_name, clk_name, sizeof(clk->clk_name));
+			ctrl_power->clocks[ctrl_clk_index].id = devm_kstrdup(dev, clk_name, GFP_KERNEL);
 			ctrl_clk_index++;
-			if (dp_parser_check_prefix("ctrl_link", clk_name) ||
-			    dp_parser_check_prefix("stream_pixel", clk_name))
-				clk->type = DSS_CLK_PCLK;
-			else
-				clk->type = DSS_CLK_AHB;
 		}
 	}
 
-	DRM_DEBUG_DP("clock parsing successful\n");
+	return 0;
+}
+
+int devm_dp_parser_find_next_bridge(struct device *dev, struct dp_parser *parser)
+{
+	struct platform_device *pdev = parser->pdev;
+	struct drm_bridge *bridge;
+
+	bridge = devm_drm_of_get_bridge(dev, pdev->dev.of_node, 1, 0);
+	if (IS_ERR(bridge))
+		return PTR_ERR(bridge);
+
+	parser->next_bridge = bridge;
 
 	return 0;
 }
@@ -268,12 +274,6 @@ static int dp_parser_parse(struct dp_parser *parser)
 	rc = dp_parser_clock(parser);
 	if (rc)
 		return rc;
-
-	/* Map the corresponding regulator information according to
-	 * version. Currently, since we only have one supported platform,
-	 * mapping the regulator directly.
-	 */
-	parser->regulator_cfg = &sdm845_dp_reg_cfg;
 
 	return 0;
 }

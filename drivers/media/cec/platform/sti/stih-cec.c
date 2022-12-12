@@ -256,8 +256,8 @@ static void stih_rx_done(struct stih_cec *cec, u32 status)
 	if (!msg.len)
 		return;
 
-	if (msg.len > 16)
-		msg.len = 16;
+	if (msg.len > CEC_MAX_MSG_SIZE)
+		msg.len = CEC_MAX_MSG_SIZE;
 
 	for (i = 0; i < msg.len; i++)
 		msg.msg[i] = readl(cec->regs + CEC_RX_DATA_BASE + i);
@@ -299,7 +299,6 @@ static const struct cec_adap_ops sti_cec_adap_ops = {
 static int stih_cec_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct resource *res;
 	struct stih_cec *cec;
 	struct device *hdmi_dev;
 	int ret;
@@ -315,8 +314,7 @@ static int stih_cec_probe(struct platform_device *pdev)
 
 	cec->dev = dev;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	cec->regs = devm_ioremap_resource(dev, res);
+	cec->regs = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(cec->regs))
 		return PTR_ERR(cec->regs);
 

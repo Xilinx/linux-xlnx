@@ -261,6 +261,7 @@ int inet_sk_diag_fill(struct sock *sk, struct inet_connection_sock *icsk,
 	r->idiag_state = sk->sk_state;
 	r->idiag_timer = 0;
 	r->idiag_retrans = 0;
+	r->idiag_expires = 0;
 
 	if (inet_diag_msg_attrs_fill(sk, skb, r, ext,
 				     sk_user_ns(NETLINK_CB(cb->skb).sk),
@@ -271,7 +272,7 @@ int inet_sk_diag_fill(struct sock *sk, struct inet_connection_sock *icsk,
 		struct inet_diag_meminfo minfo = {
 			.idiag_rmem = sk_rmem_alloc_get(sk),
 			.idiag_wmem = READ_ONCE(sk->sk_wmem_queued),
-			.idiag_fmem = sk->sk_forward_alloc,
+			.idiag_fmem = sk_forward_alloc_get(sk),
 			.idiag_tmem = sk_wmem_alloc_get(sk),
 		};
 
@@ -314,9 +315,6 @@ int inet_sk_diag_fill(struct sock *sk, struct inet_connection_sock *icsk,
 		r->idiag_retrans = icsk->icsk_probes_out;
 		r->idiag_expires =
 			jiffies_delta_to_msecs(sk->sk_timer.expires - jiffies);
-	} else {
-		r->idiag_timer = 0;
-		r->idiag_expires = 0;
 	}
 
 	if ((ext & (1 << (INET_DIAG_INFO - 1))) && handler->idiag_info_size) {
@@ -1030,12 +1028,13 @@ void inet_diag_dump_icsk(struct inet_hashinfo *hashinfo, struct sk_buff *skb,
 		if (!(idiag_states & TCPF_LISTEN) || r->id.idiag_dport)
 			goto skip_listen_ht;
 
-		for (i = s_i; i < INET_LHTABLE_SIZE; i++) {
+		for (i = s_i; i <= hashinfo->lhash2_mask; i++) {
 			struct inet_listen_hashbucket *ilb;
 			struct hlist_nulls_node *node;
 
 			num = 0;
-			ilb = &hashinfo->listening_hash[i];
+			ilb = &hashinfo->lhash2[i];
+
 			spin_lock(&ilb->lock);
 			sk_nulls_for_each(sk, node, &ilb->nulls_head) {
 				struct inet_sock *inet = inet_sk(sk);

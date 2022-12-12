@@ -13,14 +13,14 @@
 #include <dt-bindings/leds/common.h>
 
 / {
-	compatible = "meraki,mr32", "brcm,brcm53016", "brcm,bcm4708";
+	compatible = "meraki,mr32", "brcm,bcm53016", "brcm,bcm4708";
 	model = "Meraki MR32";
 
 	chosen {
 		bootargs = " console=ttyS0,115200n8 earlycon";
 	};
 
-	memory {
+	memory@0 {
 		reg = <0x00000000 0x08000000>;
 		device_type = "memory";
 	};
@@ -47,10 +47,8 @@
 
 	keys {
 		compatible = "gpio-keys";
-		#address-cells = <1>;
-		#size-cells = <0>;
 
-		restart {
+		button-restart {
 			label = "Reset";
 			linux,code = <KEY_RESTART>;
 			gpios = <&chipcommon 21 GPIO_ACTIVE_LOW>;
@@ -84,34 +82,6 @@
 			max-brightness = <255>;
 		};
 	};
-
-	i2c {
-		/*
-		 * The platform provided I2C does not budge.
-		 * This is a replacement until I can figure
-		 * out what are the missing bits...
-		 */
-
-		compatible = "i2c-gpio";
-		sda-gpios = <&chipcommon 5 GPIO_ACTIVE_HIGH>;
-		scl-gpios = <&chipcommon 4 GPIO_ACTIVE_HIGH>;
-		i2c-gpio,delay-us = <10>; /* close to 100 kHz */
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		current_sense: ina219@45 {
-			compatible = "ti,ina219";
-			reg = <0x45>;
-			shunt-resistor = <60000>; /* = 60 mOhms */
-		};
-
-		eeprom: eeprom@50 {
-			compatible = "atmel,24c64";
-			reg = <0x50>;
-			pagesize = <32>;
-			read-only;
-		};
-	};
 };
 
 &uart0 {
@@ -131,6 +101,11 @@
 	 *	enable-gpios = <&chipcommon 20 GPIO_ACTIVE_HIGH>;
 	 *};
 	 */
+};
+
+&gmac0 {
+	nvmem-cell-names = "mac-address";
+	nvmem-cells = <&mac_address>;
 };
 
 &gmac1 {
@@ -192,6 +167,56 @@
 		partition4@800000 {
 			label = "ubi";
 			reg = <0x800000 0x7780000>;
+		};
+	};
+};
+
+&srab {
+	status = "okay";
+
+	ports {
+		port@0 {
+			reg = <0>;
+			label = "poe";
+		};
+
+		port@5 {
+			reg = <5>;
+			label = "cpu";
+			ethernet = <&gmac0>;
+
+			fixed-link {
+				speed = <1000>;
+				duplex-full;
+			};
+		};
+	};
+};
+
+&i2c0 {
+	status = "okay";
+
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinmux_i2c>;
+
+	clock-frequency = <100000>;
+
+	current_sense: ina219@45 {
+		compatible = "ti,ina219";
+		reg = <0x45>;
+		shunt-resistor = <60000>; /* = 60 mOhms */
+	};
+
+	eeprom: eeprom@50 {
+		compatible = "atmel,24c64";
+		reg = <0x50>;
+		pagesize = <32>;
+		read-only;
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		mac_address: mac-address@66 {
+			reg = <0x66 0x6>;
 		};
 	};
 };

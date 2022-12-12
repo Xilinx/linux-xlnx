@@ -83,7 +83,6 @@ static int mx25um51345g_set_4byte(struct spi_nor *nor, bool enable)
 static void mx25um51345g_default_init_fixups(struct spi_nor *nor)
 {
 	u8 id_byte1, id_byte2;
-	u32 sector_size = nor->info->sector_size;
 
 	nor->params->set_4byte_addr_mode = mx25um51345g_set_4byte;
 
@@ -100,11 +99,8 @@ static void mx25um51345g_default_init_fixups(struct spi_nor *nor)
 	nor->spimem->device_id[4] = id_byte2;
 	nor->spimem->device_id[5] = id_byte2;
 
-	if (nor->isparallel)
-		sector_size <<= 1;
-
 	spi_nor_set_erase_type(&nor->params->erase_map.erase_type[1],
-			       sector_size, SPINOR_OP_BE_4K_4B);
+			       nor->info->sector_size, SPINOR_OP_BE_4K_4B);
 	nor->params->page_programs[SNOR_CMD_PP_8_8_8_DTR].opcode =
 				SPINOR_OP_PP_4B;
 
@@ -156,95 +152,108 @@ mx25l25635_post_bfpt_fixups(struct spi_nor *nor,
 	return 0;
 }
 
-static struct spi_nor_fixups mx25l25635_fixups = {
+static const struct spi_nor_fixups mx25l25635_fixups = {
 	.post_bfpt = mx25l25635_post_bfpt_fixups,
 };
 
-static const struct flash_info macronix_parts[] = {
+static const struct flash_info macronix_nor_parts[] = {
 	/* Macronix */
-	{ "mx25l512e",   INFO(0xc22010, 0, 64 * 1024,   1, SECT_4K) },
-	{ "mx25l2005a",  INFO(0xc22012, 0, 64 * 1024,   4, SECT_4K) },
-	{ "mx25l4005a",  INFO(0xc22013, 0, 64 * 1024,   8, SECT_4K) },
-	{ "mx25l8005",   INFO(0xc22014, 0, 64 * 1024,  16, 0) },
-	{ "mx25l1606e",  INFO(0xc22015, 0, 64 * 1024,  32, SECT_4K) },
-	{ "mx25l3205d",  INFO(0xc22016, 0, 64 * 1024,  64, SECT_4K) },
-	{ "mx25l3255e",  INFO(0xc29e16, 0, 64 * 1024,  64, SECT_4K) },
-	{ "mx25l6405d",  INFO(0xc22017, 0, 64 * 1024, 128, SECT_4K) },
-	{ "mx25u2033e",  INFO(0xc22532, 0, 64 * 1024,   4, SECT_4K) },
-	{ "mx25u3235f",	 INFO(0xc22536, 0, 64 * 1024,  64,
-			      SECT_4K | SPI_NOR_DUAL_READ |
+	{ "mx25l512e",   INFO(0xc22010, 0, 64 * 1024,   1)
+		NO_SFDP_FLAGS(SECT_4K) },
+	{ "mx25l2005a",  INFO(0xc22012, 0, 64 * 1024,   4)
+		NO_SFDP_FLAGS(SECT_4K) },
+	{ "mx25l4005a",  INFO(0xc22013, 0, 64 * 1024,   8)
+		NO_SFDP_FLAGS(SECT_4K) },
+	{ "mx25l8005",   INFO(0xc22014, 0, 64 * 1024,  16) },
+	{ "mx25l1606e",  INFO(0xc22015, 0, 64 * 1024,  32)
+		NO_SFDP_FLAGS(SECT_4K) },
+	{ "mx25l3205d",  INFO(0xc22016, 0, 64 * 1024,  64)
+		NO_SFDP_FLAGS(SECT_4K) },
+	{ "mx25l3255e",  INFO(0xc29e16, 0, 64 * 1024,  64)
+		NO_SFDP_FLAGS(SECT_4K) },
+	{ "mx25l6405d",  INFO(0xc22017, 0, 64 * 1024, 128)
+		NO_SFDP_FLAGS(SECT_4K) },
+	{ "mx25u2033e",  INFO(0xc22532, 0, 64 * 1024,   4)
+		NO_SFDP_FLAGS(SECT_4K) },
+	{ "mx25u3235f",	 INFO(0xc22536, 0, 64 * 1024,  64)
+		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ |
 			      SPI_NOR_QUAD_READ) },
-	{ "mx25u4035",   INFO(0xc22533, 0, 64 * 1024,   8, SECT_4K) },
-	{ "mx25u8035",   INFO(0xc22534, 0, 64 * 1024,  16, SECT_4K) },
-	{ "mx25u6435f",  INFO(0xc22537, 0, 64 * 1024, 128, SECT_4K) },
-	{ "mx25l12805d", INFO(0xc22018, 0, 64 * 1024, 256, SECT_4K |
-			      SPI_NOR_HAS_LOCK | SPI_NOR_4BIT_BP) },
-	{ "mx25l12855e", INFO(0xc22618, 0, 64 * 1024, 256, 0) },
-	{ "mx25r1635f",  INFO(0xc22815, 0, 64 * 1024,  32,
-			      SECT_4K | SPI_NOR_DUAL_READ |
+	{ "mx25u4035",   INFO(0xc22533, 0, 64 * 1024,   8)
+		NO_SFDP_FLAGS(SECT_4K) },
+	{ "mx25u8035",   INFO(0xc22534, 0, 64 * 1024,  16)
+		NO_SFDP_FLAGS(SECT_4K) },
+	{ "mx25u6435f",  INFO(0xc22537, 0, 64 * 1024, 128)
+		NO_SFDP_FLAGS(SECT_4K) },
+	{ "mx25l12805d", INFO(0xc22018, 0, 64 * 1024, 256)
+		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_4BIT_BP)
+		NO_SFDP_FLAGS(SECT_4K) },
+	{ "mx25l12855e", INFO(0xc22618, 0, 64 * 1024, 256) },
+	{ "mx25r1635f",  INFO(0xc22815, 0, 64 * 1024,  32)
+		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ |
 			      SPI_NOR_QUAD_READ) },
-	{ "mx25r3235f",  INFO(0xc22816, 0, 64 * 1024,  64,
-			      SECT_4K | SPI_NOR_DUAL_READ |
+	{ "mx25r3235f",  INFO(0xc22816, 0, 64 * 1024,  64)
+		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ |
 			      SPI_NOR_QUAD_READ) },
-	{ "mx25u12835f", INFO(0xc22538, 0, 64 * 1024, 256,
-			      SECT_4K | SPI_NOR_DUAL_READ |
+	{ "mx25u12835f", INFO(0xc22538, 0, 64 * 1024, 256)
+		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ |
 			      SPI_NOR_QUAD_READ) },
-	{ "mx25l25635e", INFO(0xc22019, 0, 64 * 1024, 512,
-			      SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ)
+	{ "mx25l25635e", INFO(0xc22019, 0, 64 * 1024, 512)
+		NO_SFDP_FLAGS(SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ)
 		.fixups = &mx25l25635_fixups },
-	{ "mx25u25635f", INFO(0xc22539, 0, 64 * 1024, 512,
-			      SECT_4K | SPI_NOR_4B_OPCODES) },
-	{ "mx25u51245g", INFO(0xc2253a, 0, 64 * 1024, 1024,
-			      SECT_4K | SPI_NOR_DUAL_READ |
-			      SPI_NOR_QUAD_READ | SPI_NOR_4B_OPCODES) },
-	{ "mx25v8035f",  INFO(0xc22314, 0, 64 * 1024,  16,
-			      SECT_4K | SPI_NOR_DUAL_READ |
+	{ "mx25u25635f", INFO(0xc22539, 0, 64 * 1024, 512)
+		NO_SFDP_FLAGS(SECT_4K)
+		FIXUP_FLAGS(SPI_NOR_4B_OPCODES) },
+	{ "mx25u51245g", INFO(0xc2253a, 0, 64 * 1024, 1024)
+		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ)
+		FIXUP_FLAGS(SPI_NOR_4B_OPCODES) },
+	{ "mx25v8035f",  INFO(0xc22314, 0, 64 * 1024,  16)
+		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ |
 			      SPI_NOR_QUAD_READ) },
-	{ "mx25l25655e", INFO(0xc22619, 0, 64 * 1024, 512, 0) },
-	{ "mx66l51235f", INFO(0xc2201a, 0, 64 * 1024, 1024,
-			      SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ |
-			      SPI_NOR_4B_OPCODES) },
-	{ "mx66u51235f", INFO(0xc2253a, 0, 64 * 1024, 1024,
-			      SECT_4K | SPI_NOR_DUAL_READ |
-			      SPI_NOR_QUAD_READ | SPI_NOR_4B_OPCODES) },
-	{ "mx66l1g45g",  INFO(0xc2201b, 0, 64 * 1024, 2048,
-			      SECT_4K | SPI_NOR_DUAL_READ |
-			      SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK |
-			      SPI_NOR_4BIT_BP) },
-	{ "mx66u1g45g",  INFO(0xc2253b, 0, 64 * 1024, 2048,
-			SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ |
-			SPI_NOR_HAS_LOCK | SPI_NOR_4BIT_BP) },
-	{ "mx66l1g55g",  INFO(0xc2261b, 0, 64 * 1024, 2048,
-			      SPI_NOR_QUAD_READ) },
-	{ "mx66l2g45g",	 INFO(0xc2201c, 0, 64 * 1024, 4096,
-			      SECT_4K | SPI_NOR_DUAL_READ |
-			      SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK |
-			      SPI_NOR_4BIT_BP) },
-	{ "mx66u2g45g",	 INFO(0xc2253c, 0, 64 * 1024, 4096,
-			      SECT_4K | SPI_NOR_DUAL_READ |
-			      SPI_NOR_QUAD_READ | SPI_NOR_4B_OPCODES |
-			      SPI_NOR_HAS_LOCK | SPI_NOR_4BIT_BP) },
-	{ "mx25um51345g",  INFO(0xc2813a, 0, 4 * 1024, 16384,
-				SECT_4K | SPI_NOR_OCTAL_READ |
-				SPI_NOR_4B_OPCODES | SPI_NOR_OCTAL_DTR_READ |
-				SPI_NOR_OCTAL_DTR_PP |
-				SPI_NOR_IO_MODE_EN_VOLATILE)
+	{ "mx25l25655e", INFO(0xc22619, 0, 64 * 1024, 512) },
+	{ "mx66l51235f", INFO(0xc2201a, 0, 64 * 1024, 1024)
+		NO_SFDP_FLAGS(SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ)
+		FIXUP_FLAGS(SPI_NOR_4B_OPCODES) },
+	{ "mx66u51235f", INFO(0xc2253a, 0, 64 * 1024, 1024)
+		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ)
+		FIXUP_FLAGS(SPI_NOR_4B_OPCODES) },
+	{ "mx66l1g45g",  INFO(0xc2201b, 0, 64 * 1024, 2048)
+		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ |
+			      SPI_NOR_QUAD_READ)
+		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_4BIT_BP)},
+	{ "mx66u1g45g",  INFO(0xc2253b, 0, 64 * 1024, 2048)
+		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_4BIT_BP)
+		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ)
+		FIXUP_FLAGS(SPI_NOR_4B_OPCODES) },
+	{ "mx66l1g55g",  INFO(0xc2261b, 0, 64 * 1024, 2048)
+		NO_SFDP_FLAGS(SPI_NOR_QUAD_READ) },
+	{ "mx66l2g45g",	 INFO(0xc2201c, 0, 64 * 1024, 4096)
+		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_4BIT_BP)
+		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ)
+		FIXUP_FLAGS(SPI_NOR_4B_OPCODES) },
+	{ "mx66u2g45g",	 INFO(0xc2253c, 0, 64 * 1024, 4096)
+		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_4BIT_BP)
+		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ)
+		FIXUP_FLAGS(SPI_NOR_4B_OPCODES) },
+	{ "mx25um51345g",  INFO(0xc2813a, 0, 4 * 1024, 16384)
+		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_OCTAL_READ |
+			   SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP)
+		FIXUP_FLAGS(SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE)
 		.fixups = &mx25um51345g_fixups },
 };
 
-static void macronix_default_init(struct spi_nor *nor)
+static void macronix_nor_default_init(struct spi_nor *nor)
 {
 	nor->params->quad_enable = spi_nor_sr1_bit6_quad_enable;
 	nor->params->set_4byte_addr_mode = spi_nor_set_4byte_addr_mode;
 }
 
-static const struct spi_nor_fixups macronix_fixups = {
-	.default_init = macronix_default_init,
+static const struct spi_nor_fixups macronix_nor_fixups = {
+	.default_init = macronix_nor_default_init,
 };
 
 const struct spi_nor_manufacturer spi_nor_macronix = {
 	.name = "macronix",
-	.parts = macronix_parts,
-	.nparts = ARRAY_SIZE(macronix_parts),
-	.fixups = &macronix_fixups,
+	.parts = macronix_nor_parts,
+	.nparts = ARRAY_SIZE(macronix_nor_parts),
+	.fixups = &macronix_nor_fixups,
 };

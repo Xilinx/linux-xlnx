@@ -810,20 +810,48 @@ void ocfs2_set_journal_params(struct ocfs2_super *osb)
 	write_unlock(&journal->j_state_lock);
 }
 
-int ocfs2_journal_init(struct ocfs2_journal *journal, int *dirty)
+/*
+ * alloc & initialize skeleton for journal structure.
+ * ocfs2_journal_init() will make fs have journal ability.
+ */
+int ocfs2_journal_alloc(struct ocfs2_super *osb)
+{
+	int status = 0;
+	struct ocfs2_journal *journal;
+
+	journal = kzalloc(sizeof(struct ocfs2_journal), GFP_KERNEL);
+	if (!journal) {
+		mlog(ML_ERROR, "unable to alloc journal\n");
+		status = -ENOMEM;
+		goto bail;
+	}
+	osb->journal = journal;
+	journal->j_osb = osb;
+
+	atomic_set(&journal->j_num_trans, 0);
+	init_rwsem(&journal->j_trans_barrier);
+	init_waitqueue_head(&journal->j_checkpointed);
+	spin_lock_init(&journal->j_lock);
+	journal->j_trans_id = 1UL;
+	INIT_LIST_HEAD(&journal->j_la_cleanups);
+	INIT_WORK(&journal->j_recovery_work, ocfs2_complete_recovery);
+	journal->j_state = OCFS2_JOURNAL_FREE;
+
+bail:
+	return status;
+}
+
+int ocfs2_journal_init(struct ocfs2_super *osb, int *dirty)
 {
 	int status = -1;
 	struct inode *inode = NULL; /* the journal inode */
 	journal_t *j_journal = NULL;
+	struct ocfs2_journal *journal = osb->journal;
 	struct ocfs2_dinode *di = NULL;
 	struct buffer_head *bh = NULL;
-	struct ocfs2_super *osb;
 	int inode_lock = 0;
 
 	BUG_ON(!journal);
-
-	osb = journal->j_osb;
-
 	/* already have the inode for our journal */
 	inode = ocfs2_get_system_file_inode(osb, JOURNAL_SYSTEM_INODE,
 					    osb->slot_num);
@@ -1028,9 +1056,10 @@ void ocfs2_journal_shutdown(struct ocfs2_super *osb)
 
 	journal->j_state = OCFS2_JOURNAL_FREE;
 
-//	up_write(&journal->j_trans_barrier);
 done:
 	iput(inode);
+	kfree(journal);
+	osb->journal = NULL;
 }
 
 static void ocfs2_clear_journal_error(struct super_block *sb,
@@ -1497,10 +1526,7 @@ bail:
 	if (quota_enabled)
 		kfree(rm_quota);
 
-	/* no one is callint kthread_stop() for us so the kthread() api
-	 * requires that we call do_exit().  And it isn't exported, but
-	 * complete_and_exit() seems to be a minimal wrapper around it. */
-	complete_and_exit(NULL, status);
+	return status;
 }
 
 void ocfs2_recovery_thread(struct ocfs2_super *osb, int node_num)
@@ -1656,8 +1682,7 @@ static int ocfs2_replay_journal(struct ocfs2_super *osb,
 	status = jbd2_journal_load(journal);
 	if (status < 0) {
 		mlog_errno(status);
-		if (!igrab(inode))
-			BUG();
+		BUG_ON(!igrab(inode));
 		jbd2_journal_destroy(journal);
 		goto done;
 	}
@@ -1686,8 +1711,7 @@ static int ocfs2_replay_journal(struct ocfs2_super *osb,
 	if (status < 0)
 		mlog_errno(status);
 
-	if (!igrab(inode))
-		BUG();
+	BUG_ON(!igrab(inode));
 
 	jbd2_journal_destroy(journal);
 
@@ -2033,7 +2057,7 @@ struct ocfs2_orphan_filldir_priv {
 	enum ocfs2_orphan_reco_type orphan_reco_type;
 };
 
-static int ocfs2_orphan_filldir(struct dir_context *ctx, const char *name,
+static bool ocfs2_orphan_filldir(struct dir_context *ctx, const char *name,
 				int name_len, loff_t pos, u64 ino,
 				unsigned type)
 {
@@ -2042,21 +2066,21 @@ static int ocfs2_orphan_filldir(struct dir_context *ctx, const char *name,
 	struct inode *iter;
 
 	if (name_len == 1 && !strncmp(".", name, 1))
-		return 0;
+		return true;
 	if (name_len == 2 && !strncmp("..", name, 2))
-		return 0;
+		return true;
 
 	/* do not include dio entry in case of orphan scan */
 	if ((p->orphan_reco_type == ORPHAN_NO_NEED_TRUNCATE) &&
 			(!strncmp(name, OCFS2_DIO_ORPHAN_PREFIX,
 			OCFS2_DIO_ORPHAN_PREFIX_LEN)))
-		return 0;
+		return true;
 
 	/* Skip bad inodes so that recovery can continue */
 	iter = ocfs2_iget(p->osb, ino,
 			  OCFS2_FI_FLAG_ORPHAN_RECOVERY, 0);
 	if (IS_ERR(iter))
-		return 0;
+		return true;
 
 	if (!strncmp(name, OCFS2_DIO_ORPHAN_PREFIX,
 			OCFS2_DIO_ORPHAN_PREFIX_LEN))
@@ -2066,7 +2090,7 @@ static int ocfs2_orphan_filldir(struct dir_context *ctx, const char *name,
 	 * happen concurrently with unlink/rename */
 	if (OCFS2_I(iter)->ip_next_orphan) {
 		iput(iter);
-		return 0;
+		return true;
 	}
 
 	trace_ocfs2_orphan_filldir((unsigned long long)OCFS2_I(iter)->ip_blkno);
@@ -2075,7 +2099,7 @@ static int ocfs2_orphan_filldir(struct dir_context *ctx, const char *name,
 	OCFS2_I(iter)->ip_next_orphan = p->head;
 	p->head = iter;
 
-	return 0;
+	return true;
 }
 
 static int ocfs2_queue_orphans(struct ocfs2_super *osb,

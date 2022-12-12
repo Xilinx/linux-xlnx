@@ -6,9 +6,6 @@
 #ifndef _UAPI_AI_ENGINE_H_
 #define _UAPI_AI_ENGINE_H_
 
-#ifndef __KERNEL__
-#include <stdlib.h>
-#endif
 
 #include <linux/ioctl.h>
 #include <linux/types.h>
@@ -156,8 +153,8 @@ struct aie_range {
  */
 struct aie_mem {
 	struct aie_range range;
-	size_t offset;
-	size_t size;
+	__kernel_size_t offset;
+	__kernel_size_t size;
 	int fd;
 };
 

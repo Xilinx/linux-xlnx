@@ -3,36 +3,6 @@
  * core.h - DesignWare HS OTG Controller common declarations
  *
  * Copyright (C) 2004-2013 Synopsys, Inc.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions, and the following disclaimer,
- *    without modification.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. The names of the above-listed copyright holders may not be used
- *    to endorse or promote products derived from this software without
- *    specific prior written permission.
- *
- * ALTERNATIVELY, this software may be distributed under the terms of the
- * GNU General Public License ("GPL") as published by the Free Software
- * Foundation; either version 2 of the License, or (at your option) any
- * later version.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
- * IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
- * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #ifndef __DWC2_CORE_H__
@@ -238,11 +208,14 @@ enum dwc2_ep0_state {
 /**
  * struct dwc2_core_params - Parameters for configuring the core
  *
- * @otg_cap:            Specifies the OTG capabilities.
- *                       0 - HNP and SRP capable
- *                       1 - SRP Only capable
- *                       2 - No HNP/SRP capable (always available)
- *                      Defaults to best available option (0, 1, then 2)
+ * @otg_caps:           Specifies the OTG capabilities. OTG caps from the platform parameters,
+ *                      used to setup the:
+ *                       - HNP and SRP capable
+ *                       - SRP Only capable
+ *                       - No HNP/SRP capable (always available)
+ *                       Defaults to best available option
+ *                       - OTG revision number the device is compliant with, in binary-coded
+ *                         decimal (i.e. 2.0 is 0200H). (see struct usb_otg_caps)
  * @host_dma:           Specifies whether to use slave or DMA mode for accessing
  *                      the data FIFOs. The driver will automatically detect the
  *                      value for this parameter if none is specified.
@@ -423,6 +396,10 @@ enum dwc2_ep0_state {
  *			detection using GGPIO register.
  *			0 - Deactivate the external level detection (default)
  *			1 - Activate the external level detection
+ * @activate_ingenic_overcurrent_detection: Activate Ingenic overcurrent
+ *			detection.
+ *			0 - Deactivate the overcurrent detection
+ *			1 - Activate the overcurrent detection (default)
  * @g_dma:              Enables gadget dma usage (default: autodetect).
  * @g_dma_desc:         Enables gadget descriptor DMA (default: autodetect).
  * @g_rx_fifo_size:	The periodic rx fifo size for the device, in
@@ -453,11 +430,7 @@ enum dwc2_ep0_state {
  * default described above.
  */
 struct dwc2_core_params {
-	u8 otg_cap;
-#define DWC2_CAP_PARAM_HNP_SRP_CAPABLE		0
-#define DWC2_CAP_PARAM_SRP_ONLY_CAPABLE		1
-#define DWC2_CAP_PARAM_NO_HNP_SRP_CAPABLE	2
-
+	struct usb_otg_caps otg_caps;
 	u8 phy_type;
 #define DWC2_PHY_TYPE_PARAM_FS		0
 #define DWC2_PHY_TYPE_PARAM_UTMI	1
@@ -495,6 +468,7 @@ struct dwc2_core_params {
 	u8 hird_threshold;
 	bool activate_stm_fs_transceiver;
 	bool activate_stm_id_vb_detection;
+	bool activate_ingenic_overcurrent_detection;
 	bool ipg_isoc_en;
 	u16 max_packet_count;
 	u32 max_transfer_size;
@@ -870,6 +844,8 @@ struct dwc2_hregs_backup {
  *                      - USB_DR_MODE_HOST
  *                      - USB_DR_MODE_OTG
  * @role_sw:		usb_role_switch handle
+ * @role_sw_default_mode: default operation mode of controller while usb role
+ *			is USB_ROLE_NONE
  * @hcd_enabled:	Host mode sub-driver initialization indicator.
  * @gadget_enabled:	Peripheral mode sub-driver initialization indicator.
  * @ll_hw_enabled:	Status of low-level hardware resources.
@@ -1066,6 +1042,7 @@ struct dwc2_hsotg {
 	enum usb_otg_state op_state;
 	enum usb_dr_mode dr_mode;
 	struct usb_role_switch *role_sw;
+	enum usb_dr_mode role_sw_default_mode;
 	unsigned int hcd_enabled:1;
 	unsigned int gadget_enabled:1;
 	unsigned int ll_hw_enabled:1;
@@ -1152,8 +1129,7 @@ struct dwc2_hsotg {
 	struct list_head periodic_sched_queued;
 	struct list_head split_order;
 	u16 periodic_usecs;
-	unsigned long hs_periodic_bitmap[
-		DIV_ROUND_UP(DWC2_HS_SCHEDULE_US, BITS_PER_LONG)];
+	DECLARE_BITMAP(hs_periodic_bitmap, DWC2_HS_SCHEDULE_US);
 	u16 periodic_qh_count;
 	bool new_connection;
 
@@ -1417,6 +1393,7 @@ void dwc2_hsotg_core_connect(struct dwc2_hsotg *hsotg);
 void dwc2_hsotg_disconnect(struct dwc2_hsotg *dwc2);
 int dwc2_hsotg_set_test_mode(struct dwc2_hsotg *hsotg, int testmode);
 #define dwc2_is_device_connected(hsotg) (hsotg->connected)
+#define dwc2_is_device_enabled(hsotg) (hsotg->enabled)
 int dwc2_backup_device_registers(struct dwc2_hsotg *hsotg);
 int dwc2_restore_device_registers(struct dwc2_hsotg *hsotg, int remote_wakeup);
 int dwc2_gadget_enter_hibernation(struct dwc2_hsotg *hsotg);
@@ -1453,6 +1430,7 @@ static inline int dwc2_hsotg_set_test_mode(struct dwc2_hsotg *hsotg,
 					   int testmode)
 { return 0; }
 #define dwc2_is_device_connected(hsotg) (0)
+#define dwc2_is_device_enabled(hsotg) (0)
 static inline int dwc2_backup_device_registers(struct dwc2_hsotg *hsotg)
 { return 0; }
 static inline int dwc2_restore_device_registers(struct dwc2_hsotg *hsotg,

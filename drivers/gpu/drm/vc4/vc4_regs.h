@@ -264,7 +264,7 @@
  * output line.
  */
 # define SCALER_DISPSTAT_ESLINE(x)		BIT(10 + ((x) * 8))
-/* Set when the the downstream tries to read from the display FIFO
+/* Set when the downstream tries to read from the display FIFO
  * while it's empty.
  */
 # define SCALER_DISPSTAT_EUFLOW(x)		BIT(9 + ((x) * 8))
@@ -379,8 +379,6 @@
 # define SCALER_DISPSTATX_MODE_EOF		3
 # define SCALER_DISPSTATX_FULL			BIT(29)
 # define SCALER_DISPSTATX_EMPTY			BIT(28)
-# define SCALER_DISPSTATX_FRAME_COUNT_MASK	VC4_MASK(17, 12)
-# define SCALER_DISPSTATX_FRAME_COUNT_SHIFT	12
 # define SCALER_DISPSTATX_LINE_MASK		VC4_MASK(11, 0)
 # define SCALER_DISPSTATX_LINE_SHIFT		0
 
@@ -403,9 +401,15 @@
 						 (x) * (SCALER_DISPBKGND1 - \
 							SCALER_DISPBKGND0))
 #define SCALER_DISPSTAT1                        0x00000058
+# define SCALER_DISPSTAT1_FRCNT0_MASK		VC4_MASK(23, 18)
+# define SCALER_DISPSTAT1_FRCNT0_SHIFT		18
+# define SCALER_DISPSTAT1_FRCNT1_MASK		VC4_MASK(17, 12)
+# define SCALER_DISPSTAT1_FRCNT1_SHIFT		12
+
 #define SCALER_DISPSTATX(x)			(SCALER_DISPSTAT0 +        \
 						 (x) * (SCALER_DISPSTAT1 - \
 							SCALER_DISPSTAT0))
+
 #define SCALER_DISPBASE1                        0x0000005c
 #define SCALER_DISPBASEX(x)			(SCALER_DISPBASE0 +        \
 						 (x) * (SCALER_DISPBASE1 - \
@@ -415,7 +419,11 @@
 						 (x) * (SCALER_DISPCTRL1 - \
 							SCALER_DISPCTRL0))
 #define SCALER_DISPBKGND2                       0x00000064
+
 #define SCALER_DISPSTAT2                        0x00000068
+# define SCALER_DISPSTAT2_FRCNT2_MASK		VC4_MASK(17, 12)
+# define SCALER_DISPSTAT2_FRCNT2_SHIFT		12
+
 #define SCALER_DISPBASE2                        0x0000006c
 #define SCALER_DISPALPHA2                       0x00000070
 #define SCALER_GAMADDR                          0x00000078
@@ -774,7 +782,26 @@ enum {
 # define VC4_HD_CSC_CTL_RGB2YCC			BIT(1)
 # define VC4_HD_CSC_CTL_ENABLE			BIT(0)
 
+# define VC5_MT_CP_CSC_CTL_USE_444_TO_422	BIT(6)
+# define VC5_MT_CP_CSC_CTL_FILTER_MODE_444_TO_422_MASK \
+						VC4_MASK(5, 4)
+# define VC5_MT_CP_CSC_CTL_FILTER_MODE_444_TO_422_STANDARD \
+						3
+# define VC5_MT_CP_CSC_CTL_USE_RNG_SUPPRESSION	BIT(3)
+# define VC5_MT_CP_CSC_CTL_ENABLE		BIT(2)
+# define VC5_MT_CP_CSC_CTL_MODE_MASK		VC4_MASK(1, 0)
+
+# define VC5_MT_CP_CHANNEL_CTL_OUTPUT_REMAP_MASK \
+						VC4_MASK(7, 6)
+# define VC5_MT_CP_CHANNEL_CTL_OUTPUT_REMAP_LEGACY_STYLE \
+						2
+
 # define VC4_DVP_HT_CLOCK_STOP_PIXEL		BIT(1)
+
+# define VC5_DVP_HT_VEC_INTERFACE_CFG_SEL_422_MASK \
+						VC4_MASK(3, 2)
+# define VC5_DVP_HT_VEC_INTERFACE_CFG_SEL_422_FORMAT_422_LEGACY \
+						2
 
 /* HVS display list information. */
 #define HVS_BOOTLOADER_DLIST_END                32
@@ -975,7 +1002,10 @@ enum hvs_pixel_format {
 #define SCALER_CSC0_COEF_CR_OFS_SHIFT		0
 #define SCALER_CSC0_ITR_R_601_5			0x00f00000
 #define SCALER_CSC0_ITR_R_709_3			0x00f00000
+#define SCALER_CSC0_ITR_R_2020			0x00f00000
 #define SCALER_CSC0_JPEG_JFIF			0x00000000
+#define SCALER_CSC0_ITR_R_709_3_FR		0x00000000
+#define SCALER_CSC0_ITR_R_2020_FR		0x00000000
 
 /* S2.8 contribution of Cb to Green */
 #define SCALER_CSC1_COEF_CB_GRN_MASK		VC4_MASK(31, 22)
@@ -990,8 +1020,11 @@ enum hvs_pixel_format {
 #define SCALER_CSC1_COEF_CR_BLU_MASK		VC4_MASK(1, 0)
 #define SCALER_CSC1_COEF_CR_BLU_SHIFT		0
 #define SCALER_CSC1_ITR_R_601_5			0xe73304a8
-#define SCALER_CSC1_ITR_R_709_3			0xf2b784a8
-#define SCALER_CSC1_JPEG_JFIF			0xea34a400
+#define SCALER_CSC1_ITR_R_709_3			0xf27784a8
+#define SCALER_CSC1_ITR_R_2020			0xf43594a8
+#define SCALER_CSC1_JPEG_JFIF			0xea349400
+#define SCALER_CSC1_ITR_R_709_3_FR		0xf4388400
+#define SCALER_CSC1_ITR_R_2020_FR		0xf5b6d400
 
 /* S2.8 contribution of Cb to Red */
 #define SCALER_CSC2_COEF_CB_RED_MASK		VC4_MASK(29, 20)
@@ -1002,9 +1035,12 @@ enum hvs_pixel_format {
 /* S2.8 contribution of Cb to Blue */
 #define SCALER_CSC2_COEF_CB_BLU_MASK		VC4_MASK(19, 10)
 #define SCALER_CSC2_COEF_CB_BLU_SHIFT		10
-#define SCALER_CSC2_ITR_R_601_5			0x00066204
-#define SCALER_CSC2_ITR_R_709_3			0x00072a1c
-#define SCALER_CSC2_JPEG_JFIF			0x000599c5
+#define SCALER_CSC2_ITR_R_601_5			0x00066604
+#define SCALER_CSC2_ITR_R_709_3			0x00072e1d
+#define SCALER_CSC2_ITR_R_2020			0x0006b624
+#define SCALER_CSC2_JPEG_JFIF			0x00059dc6
+#define SCALER_CSC2_ITR_R_709_3_FR		0x00064ddb
+#define SCALER_CSC2_ITR_R_2020_FR		0x0005e5e2
 
 #define SCALER_TPZ0_VERT_RECALC			BIT(31)
 #define SCALER_TPZ0_SCALE_MASK			VC4_MASK(28, 8)

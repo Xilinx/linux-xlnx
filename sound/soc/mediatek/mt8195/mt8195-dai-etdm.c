@@ -1316,7 +1316,7 @@ static int mt8195_afe_disable_etdm(struct mtk_base_afe *afe, int dai_id)
 	}
 out:
 	spin_unlock_irqrestore(&afe_priv->afe_ctrl_lock, flags);
-	return 0;
+	return ret;
 }
 
 static int etdm_cowork_slv_sel(int id, int slave_mode)
@@ -2094,7 +2094,7 @@ static int mtk_dai_etdm_set_sysclk(struct snd_soc_dai *dai,
 {
 	struct mtk_base_afe *afe = snd_soc_dai_get_drvdata(dai);
 	struct mt8195_afe_private *afe_priv = afe->platform_priv;
-	struct mtk_dai_etdm_priv *etdm_data = afe_priv->dai_priv[dai->id];
+	struct mtk_dai_etdm_priv *etdm_data;
 	int dai_id;
 
 	dev_dbg(dai->dev, "%s id %d freq %u, dir %d\n",
@@ -2172,11 +2172,11 @@ static int mtk_dai_etdm_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 		return -EINVAL;
 	}
 
-	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
-	case SND_SOC_DAIFMT_CBM_CFM:
+	switch (fmt & SND_SOC_DAIFMT_CLOCK_PROVIDER_MASK) {
+	case SND_SOC_DAIFMT_BC_FC:
 		etdm_data->slave_mode = true;
 		break;
-	case SND_SOC_DAIFMT_CBS_CFS:
+	case SND_SOC_DAIFMT_BP_FP:
 		etdm_data->slave_mode = false;
 		break;
 	default:

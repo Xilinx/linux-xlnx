@@ -14,6 +14,7 @@
 / {
 	model = "Olimex A64 Teres-I";
 	compatible = "olimex,a64-teres-i", "allwinner,sun50i-a64";
+	chassis-type = "laptop";
 
 	aliases {
 		serial0 = &uart0;
@@ -139,6 +140,8 @@
 			#size-cells = <0>;
 
 			port@0 {
+				reg = <0>;
+
 				anx6345_in: endpoint {
 					remote-endpoint = <&tcon0_out_anx6345>;
 				};
@@ -194,6 +197,14 @@
 	status = "okay";
 };
 
+&pio {
+	vcc-pc-supply = <&reg_dcdc1>;
+	vcc-pd-supply = <&reg_dldo2>;
+	vcc-pe-supply = <&reg_aldo1>;
+	vcc-pf-supply = <&reg_dcdc1>;  /* No dedicated supply-pin for this */
+	vcc-pg-supply = <&reg_aldo2>;
+};
+
 &pwm {
 	status = "okay";
 };
@@ -206,7 +217,6 @@
 		reg = <0x3a3>;
 		interrupt-parent = <&r_intc>;
 		interrupts = <GIC_SPI 32 IRQ_TYPE_LEVEL_LOW>;
-		wakeup-source;
 	};
 };
 

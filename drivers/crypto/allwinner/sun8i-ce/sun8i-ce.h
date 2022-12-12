@@ -94,6 +94,7 @@
 #define ESR_R40	2
 #define ESR_H5	3
 #define ESR_H6	4
+#define ESR_D1	5
 
 #define PRNG_DATA_SIZE (160 / 8)
 #define PRNG_SEED_SIZE DIV_ROUND_UP(175, 8)
@@ -185,6 +186,8 @@ struct ce_task {
  * @status:	set to 1 by interrupt if task is done
  * @t_phy:	Physical address of task
  * @tl:		pointer to the current ce_task for this flow
+ * @backup_iv:		buffer which contain the next IV to store
+ * @bounce_iv:		buffer which contain the IV
  * @stat_req:	number of request done by this flow
  */
 struct sun8i_ce_flow {
@@ -194,6 +197,8 @@ struct sun8i_ce_flow {
 	dma_addr_t t_phy;
 	int timeout;
 	struct ce_task *tl;
+	void *backup_iv;
+	void *bounce_iv;
 #ifdef CONFIG_CRYPTO_DEV_SUN8I_CE_DEBUG
 	unsigned long stat_req;
 #endif
@@ -240,8 +245,6 @@ struct sun8i_ce_dev {
  * struct sun8i_cipher_req_ctx - context for a skcipher request
  * @op_dir:		direction (encrypt vs decrypt) for this request
  * @flow:		the flow to use for this request
- * @backup_iv:		buffer which contain the next IV to store
- * @bounce_iv:		buffer which contain the IV
  * @ivlen:		size of bounce_iv
  * @nr_sgs:		The number of source SG (as given by dma_map_sg())
  * @nr_sgd:		The number of destination SG (as given by dma_map_sg())
@@ -252,8 +255,6 @@ struct sun8i_ce_dev {
 struct sun8i_cipher_req_ctx {
 	u32 op_dir;
 	int flow;
-	void *backup_iv;
-	void *bounce_iv;
 	unsigned int ivlen;
 	int nr_sgs;
 	int nr_sgd;
@@ -332,11 +333,18 @@ struct sun8i_ce_alg_template {
 		struct ahash_alg hash;
 		struct rng_alg rng;
 	} alg;
-#ifdef CONFIG_CRYPTO_DEV_SUN8I_CE_DEBUG
 	unsigned long stat_req;
 	unsigned long stat_fb;
 	unsigned long stat_bytes;
-#endif
+	unsigned long stat_fb_maxsg;
+	unsigned long stat_fb_leniv;
+	unsigned long stat_fb_len0;
+	unsigned long stat_fb_mod16;
+	unsigned long stat_fb_srcali;
+	unsigned long stat_fb_srclen;
+	unsigned long stat_fb_dstali;
+	unsigned long stat_fb_dstlen;
+	char fbname[CRYPTO_MAX_ALG_NAME];
 };
 
 int sun8i_ce_enqueue(struct crypto_async_request *areq, u32 type);

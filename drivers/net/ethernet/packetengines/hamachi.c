@@ -592,6 +592,7 @@ static int hamachi_init_one(struct pci_dev *pdev,
 	void *ring_space;
 	dma_addr_t ring_dma;
 	int ret = -ENOMEM;
+	u8 addr[ETH_ALEN];
 
 /* when built into the kernel, we only print version if device is found */
 #ifndef MODULE
@@ -628,8 +629,8 @@ static int hamachi_init_one(struct pci_dev *pdev,
 	SET_NETDEV_DEV(dev, &pdev->dev);
 
 	for (i = 0; i < 6; i++)
-		dev->dev_addr[i] = 1 ? read_eeprom(ioaddr, 4 + i)
-			: readb(ioaddr + StationAddr + i);
+		addr[i] = read_eeprom(ioaddr, 4 + i);
+	eth_hw_addr_set(dev, addr);
 
 #if ! defined(final_version)
 	if (hamachi_debug > 4)
@@ -1818,9 +1819,9 @@ static void hamachi_get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *
 {
 	struct hamachi_private *np = netdev_priv(dev);
 
-	strlcpy(info->driver, DRV_NAME, sizeof(info->driver));
-	strlcpy(info->version, DRV_VERSION, sizeof(info->version));
-	strlcpy(info->bus_info, pci_name(np->pci_dev), sizeof(info->bus_info));
+	strscpy(info->driver, DRV_NAME, sizeof(info->driver));
+	strscpy(info->version, DRV_VERSION, sizeof(info->version));
+	strscpy(info->bus_info, pci_name(np->pci_dev), sizeof(info->bus_info));
 }
 
 static int hamachi_get_link_ksettings(struct net_device *dev,

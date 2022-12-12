@@ -530,7 +530,7 @@ static void lance_rx_dvma(struct net_device *dev)
 			len = (rd->mblength & 0xfff) - 4;
 			skb = netdev_alloc_skb(dev, len + 2);
 
-			if (skb == NULL) {
+			if (!skb) {
 				dev->stats.rx_dropped++;
 				rd->mblength = 0;
 				rd->rmd1_bits = LE_R1_OWN;
@@ -700,7 +700,7 @@ static void lance_rx_pio(struct net_device *dev)
 			len = (sbus_readw(&rd->mblength) & 0xfff) - 4;
 			skb = netdev_alloc_skb(dev, len + 2);
 
-			if (skb == NULL) {
+			if (!skb) {
 				dev->stats.rx_dropped++;
 				sbus_writew(0, &rd->mblength);
 				sbus_writeb(LE_R1_OWN, &rd->rmd1_bits);
@@ -1276,7 +1276,7 @@ static void lance_free_hwresources(struct lance_private *lp)
 /* Ethtool support... */
 static void sparc_lance_get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *info)
 {
-	strlcpy(info->driver, "sunlance", sizeof(info->driver));
+	strscpy(info->driver, "sunlance", sizeof(info->driver));
 }
 
 static const struct ethtool_ops sparc_lance_ethtool_ops = {
@@ -1301,7 +1301,6 @@ static int sparc_lance_probe_one(struct platform_device *op,
 	struct device_node *dp = op->dev.of_node;
 	struct lance_private *lp;
 	struct net_device *dev;
-	int    i;
 
 	dev = alloc_etherdev(sizeof(struct lance_private) + 8);
 	if (!dev)
@@ -1315,8 +1314,7 @@ static int sparc_lance_probe_one(struct platform_device *op,
 	 * will copy the address in the device structure to the lance
 	 * initialization block.
 	 */
-	for (i = 0; i < 6; i++)
-		dev->dev_addr[i] = idprom->id_ethaddr[i];
+	eth_hw_addr_set(dev, idprom->id_ethaddr);
 
 	/* Get the IO region */
 	lp->lregs = of_ioremap(&op->resource[0], 0,

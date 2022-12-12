@@ -191,8 +191,8 @@ static void nicvf_get_drvinfo(struct net_device *netdev,
 {
 	struct nicvf *nic = netdev_priv(netdev);
 
-	strlcpy(info->driver, DRV_NAME, sizeof(info->driver));
-	strlcpy(info->bus_info, pci_name(nic->pdev), sizeof(info->bus_info));
+	strscpy(info->driver, DRV_NAME, sizeof(info->driver));
+	strscpy(info->bus_info, pci_name(nic->pdev), sizeof(info->bus_info));
 }
 
 static u32 nicvf_get_msglevel(struct net_device *netdev)
@@ -467,7 +467,9 @@ static int nicvf_get_coalesce(struct net_device *netdev,
 }
 
 static void nicvf_get_ringparam(struct net_device *netdev,
-				struct ethtool_ringparam *ring)
+				struct ethtool_ringparam *ring,
+				struct kernel_ethtool_ringparam *kernel_ring,
+				struct netlink_ext_ack *extack)
 {
 	struct nicvf *nic = netdev_priv(netdev);
 	struct queue_set *qs = nic->qs;
@@ -479,7 +481,9 @@ static void nicvf_get_ringparam(struct net_device *netdev,
 }
 
 static int nicvf_set_ringparam(struct net_device *netdev,
-			       struct ethtool_ringparam *ring)
+			       struct ethtool_ringparam *ring,
+			       struct kernel_ethtool_ringparam *kernel_ring,
+			       struct netlink_ext_ack *extack)
 {
 	struct nicvf *nic = netdev_priv(netdev);
 	struct queue_set *qs = nic->qs;

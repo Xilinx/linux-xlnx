@@ -22,7 +22,6 @@ properties:
           - enum:
               - cdns,zynq-gem         # Xilinx Zynq-7xxx SoC
               - cdns,zynqmp-gem       # Xilinx Zynq Ultrascale+ MPSoC
-              - cdns,versal-gem       # Xilinx Versal
           - const: cdns,gem           # Generic
         deprecated: true
 
@@ -37,6 +36,7 @@ properties:
           - enum:
               - cdns,at91sam9260-macb # Atmel at91sam9 SoCs
               - cdns,sam9x60-macb     # Microchip sam9x60 SoC
+              - microchip,mpfs-macb   # Microchip PolarFire SoC
           - const: cdns,macb          # Generic
 
       - items:
@@ -51,7 +51,6 @@ properties:
           - atmel,sama5d2-gem         # GEM IP (10/100) on Atmel sama5d2 SoCs
           - atmel,sama5d3-gem         # Gigabit IP on Atmel sama5d3 SoCs
           - atmel,sama5d4-gem         # GEM IP (10/100) on Atmel sama5d4 SoCs
-          - cdns,at32ap7000-macb      # Other 10/100 usage or use the generic form
           - cdns,np4-macb             # NP4 SoC devices
           - microchip,sama7g5-emac    # Microchip SAMA7G5 ethernet interface
           - microchip,sama7g5-gem     # Microchip SAMA7G5 gigabit ethernet interface
@@ -119,7 +118,7 @@ properties:
   rx-watermark:
     description:
       Set watermark value for pbuf_rxcutthru reg and enable rx partial store
-      and forward, only when compatible = "cdns,zynqmp-gem"
+      and forward, only when compatible = "cdns,zynqmp-gem","xlnx,zynqmp-gem".
     maximum: 0xFF
   mdio:
     type: object
@@ -136,6 +135,7 @@ patternProperties:
       reset-gpios: true
 
       magic-packet:
+        type: boolean
         description:
           Indicates that the hardware supports waking up via magic packet.
 
@@ -168,7 +168,7 @@ unevaluatedProperties: false
 examples:
   - |
     macb0: ethernet@fffc4000 {
-            compatible = "cdns,at32ap7000-macb";
+            compatible = "cdns,macb";
             reg = <0xfffc4000 0x4000>;
             interrupts = <21>;
             phy-mode = "rmii";

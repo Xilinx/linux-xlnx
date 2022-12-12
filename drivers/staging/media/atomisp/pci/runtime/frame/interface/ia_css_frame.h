@@ -109,16 +109,13 @@ void ia_css_frame_free_multiple(unsigned int num_frames,
  *
  * @param	frame	The allocated frame.
  * @param[in]	size_bytes	The frame size in bytes.
- * @param[in]	contiguous	Allocate memory physically contiguously or not.
  * @return	The error code.
  *
  * Allocate a frame using the given size in bytes.
  * The frame structure is partially null initialized.
  */
-int ia_css_frame_allocate_with_buffer_size(
-    struct ia_css_frame **frame,
-    const unsigned int size_bytes,
-    const bool contiguous);
+int ia_css_frame_allocate_with_buffer_size(struct ia_css_frame **frame,
+					   const unsigned int size_bytes);
 
 /* @brief Check whether 2 frames are same type
  *
@@ -138,27 +135,7 @@ bool ia_css_frame_is_same_type(
  * @param[in]	info           The frame info
  * @return
  */
-void ia_css_dma_configure_from_info(
-    struct dma_port_config *config,
-    const struct ia_css_frame_info *info);
-
-/* ISP2401 */
-/* @brief Finds the cropping resolution
- * This function finds the maximum cropping resolution in an input image keeping
- * the aspect ratio for the given output resolution.Calculates the coordinates
- * for cropping from the center and returns the starting pixel location of the
- * region in the input image. Also returns the dimension of the cropping
- * resolution.
- *
- * @param
- * @param[in]	in_res		Resolution of input image
- * @param[in]	out_res		Resolution of output image
- * @param[out]	crop_res	Crop resolution of input image
- * @return	Returns 0 or -EINVAL on error
- */
-int
-ia_css_frame_find_crop_resolution(const struct ia_css_resolution *in_res,
-				  const struct ia_css_resolution *out_res,
-				  struct ia_css_resolution *crop_res);
+int ia_css_dma_configure_from_info(struct dma_port_config *config,
+				   const struct ia_css_frame_info *info);
 
 #endif /* __IA_CSS_FRAME_H__ */

@@ -150,7 +150,7 @@ static u8 serverworks_is_csb(struct pci_dev *pdev)
  *	bug we hit.
  */
 
-static unsigned long serverworks_osb4_filter(struct ata_device *adev, unsigned long mask)
+static unsigned int serverworks_osb4_filter(struct ata_device *adev, unsigned int mask)
 {
 	if (adev->class == ATA_DEV_ATA)
 		mask &= ~ATA_MASK_UDMA;
@@ -166,7 +166,7 @@ static unsigned long serverworks_osb4_filter(struct ata_device *adev, unsigned l
  *	Check the blacklist and disable UDMA5 if matched
  */
 
-static unsigned long serverworks_csb_filter(struct ata_device *adev, unsigned long mask)
+static unsigned int serverworks_csb_filter(struct ata_device *adev, unsigned int mask)
 {
 	const char *p;
 	char model_num[ATA_ID_PROD_LEN + 1];
@@ -286,13 +286,13 @@ static int serverworks_fixup_osb4(struct pci_dev *pdev)
 		pci_read_config_dword(isa_dev, 0x64, &reg);
 		reg &= ~0x00002000; /* disable 600ns interrupt mask */
 		if (!(reg & 0x00004000))
-			printk(KERN_DEBUG DRV_NAME ": UDMA not BIOS enabled.\n");
+			dev_info(&pdev->dev, "UDMA not BIOS enabled.\n");
 		reg |=  0x00004000; /* enable UDMA/33 support */
 		pci_write_config_dword(isa_dev, 0x64, reg);
 		pci_dev_put(isa_dev);
 		return 0;
 	}
-	printk(KERN_WARNING DRV_NAME ": Unable to find bridge.\n");
+	dev_warn(&pdev->dev, "Unable to find bridge.\n");
 	return -ENODEV;
 }
 

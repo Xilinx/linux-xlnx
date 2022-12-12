@@ -756,24 +756,23 @@ static struct rbd_client *__rbd_get_client(struct rbd_client *rbdc)
  */
 static struct rbd_client *rbd_client_find(struct ceph_options *ceph_opts)
 {
-	struct rbd_client *client_node;
-	bool found = false;
+	struct rbd_client *rbdc = NULL, *iter;
 
 	if (ceph_opts->flags & CEPH_OPT_NOSHARE)
 		return NULL;
 
 	spin_lock(&rbd_client_list_lock);
-	list_for_each_entry(client_node, &rbd_client_list, node) {
-		if (!ceph_compare_options(ceph_opts, client_node->client)) {
-			__rbd_get_client(client_node);
+	list_for_each_entry(iter, &rbd_client_list, node) {
+		if (!ceph_compare_options(ceph_opts, iter->client)) {
+			__rbd_get_client(iter);
 
-			found = true;
+			rbdc = iter;
 			break;
 		}
 	}
 	spin_unlock(&rbd_client_list_lock);
 
-	return found ? client_node : NULL;
+	return rbdc;
 }
 
 /*
@@ -836,7 +835,7 @@ struct rbd_options {
 	u32 alloc_hint_flags;  /* CEPH_OSD_OP_ALLOC_HINT_FLAG_* */
 };
 
-#define RBD_QUEUE_DEPTH_DEFAULT	BLKDEV_MAX_RQ
+#define RBD_QUEUE_DEPTH_DEFAULT	BLKDEV_DEFAULT_RQ
 #define RBD_ALLOC_SIZE_DEFAULT	(64 * 1024)
 #define RBD_LOCK_TIMEOUT_DEFAULT 0  /* no timeout */
 #define RBD_READ_ONLY_DEFAULT	false
@@ -1298,7 +1297,7 @@ static void rbd_osd_submit(struct ceph_osd_request *osd_req)
 	dout("%s osd_req %p for obj_req %p objno %llu %llu~%llu\n",
 	     __func__, osd_req, obj_req, obj_req->ex.oe_objno,
 	     obj_req->ex.oe_off, obj_req->ex.oe_len);
-	ceph_osdc_start_request(osd_req->r_osdc, osd_req, false);
+	ceph_osdc_start_request(osd_req->r_osdc, osd_req);
 }
 
 /*
@@ -2082,7 +2081,7 @@ static int rbd_object_map_update(struct rbd_obj_request *obj_req, u64 snap_id,
 	if (ret)
 		return ret;
 
-	ceph_osdc_start_request(osdc, req, false);
+	ceph_osdc_start_request(osdc, req);
 	return 0;
 }
 
@@ -4730,7 +4729,7 @@ static blk_status_t rbd_queue_rq(struct blk_mq_hw_ctx *hctx,
 
 static void rbd_free_disk(struct rbd_device *rbd_dev)
 {
-	blk_cleanup_disk(rbd_dev->disk);
+	put_disk(rbd_dev->disk);
 	blk_mq_free_tag_set(&rbd_dev->tag_set);
 	rbd_dev->disk = NULL;
 }
@@ -4769,7 +4768,7 @@ static int rbd_obj_read_sync(struct rbd_device *rbd_dev,
 	if (ret)
 		goto out_req;
 
-	ceph_osdc_start_request(osdc, req, false);
+	ceph_osdc_start_request(osdc, req);
 	ret = ceph_osdc_wait_request(osdc, req);
 	if (ret >= 0)
 		ceph_copy_from_page_vector(pages, buf, 0, ret);
@@ -4924,12 +4923,10 @@ static int rbd_init_disk(struct rbd_device *rbd_dev)
 		 rbd_dev->dev_id);
 	disk->major = rbd_dev->major;
 	disk->first_minor = rbd_dev->minor;
-	if (single_major) {
+	if (single_major)
 		disk->minors = (1 << RBD_SINGLE_MAJOR_PART_SHIFT);
-		disk->flags |= GENHD_FL_EXT_DEVT;
-	} else {
+	else
 		disk->minors = RBD_MINORS_PER_MAJOR;
-	}
 	disk->fops = &rbd_bd_ops;
 	disk->private_data = rbd_dev;
 
@@ -4944,7 +4941,6 @@ static int rbd_init_disk(struct rbd_device *rbd_dev)
 	blk_queue_io_opt(q, rbd_dev->opts->alloc_size);
 
 	if (rbd_dev->opts->trim) {
-		blk_queue_flag_set(QUEUE_FLAG_DISCARD, q);
 		q->limits.discard_granularity = rbd_dev->opts->alloc_size;
 		blk_queue_max_discard_sectors(q, objset_bytes >> SECTOR_SHIFT);
 		blk_queue_max_write_zeroes_sectors(q, objset_bytes >> SECTOR_SHIFT);
@@ -6191,7 +6187,7 @@ static inline size_t next_token(const char **buf)
         * These are the characters that produce nonzero for
         * isspace() in the "C" and "POSIX" locales.
         */
-        const char *spaces = " \f\n\r\t\v";
+	static const char spaces[] = " \f\n\r\t\v";
 
         *buf += strspn(*buf, spaces);	/* Find start of token */
 
@@ -6497,7 +6493,8 @@ static int rbd_add_parse_args(const char *buf,
 	pctx.opts->exclusive = RBD_EXCLUSIVE_DEFAULT;
 	pctx.opts->trim = RBD_TRIM_DEFAULT;
 
-	ret = ceph_parse_mon_ips(mon_addrs, mon_addrs_size, pctx.copts, NULL);
+	ret = ceph_parse_mon_ips(mon_addrs, mon_addrs_size, pctx.copts, NULL,
+				 ',');
 	if (ret)
 		goto out_err;
 
@@ -7054,7 +7051,9 @@ static ssize_t do_rbd_add(struct bus_type *bus,
 	if (rc)
 		goto err_out_image_lock;
 
-	device_add_disk(&rbd_dev->dev, rbd_dev->disk, NULL);
+	rc = device_add_disk(&rbd_dev->dev, rbd_dev->disk, NULL);
+	if (rc)
+		goto err_out_cleanup_disk;
 
 	spin_lock(&rbd_dev_list_lock);
 	list_add_tail(&rbd_dev->node, &rbd_dev_list);
@@ -7068,6 +7067,8 @@ out:
 	module_put(THIS_MODULE);
 	return rc;
 
+err_out_cleanup_disk:
+	rbd_free_disk(rbd_dev);
 err_out_image_lock:
 	rbd_dev_image_unlock(rbd_dev);
 	rbd_dev_device_release(rbd_dev);
@@ -7182,7 +7183,7 @@ static ssize_t do_rbd_remove(struct bus_type *bus,
 		 * IO to complete/fail.
 		 */
 		blk_mq_freeze_queue(rbd_dev->disk->queue);
-		blk_set_queue_dying(rbd_dev->disk->queue);
+		blk_mark_disk_dead(rbd_dev->disk);
 	}
 
 	del_gendisk(rbd_dev->disk);
@@ -7221,8 +7222,10 @@ static int __init rbd_sysfs_init(void)
 	int ret;
 
 	ret = device_register(&rbd_root_dev);
-	if (ret < 0)
+	if (ret < 0) {
+		put_device(&rbd_root_dev);
 		return ret;
+	}
 
 	ret = bus_register(&rbd_bus_type);
 	if (ret < 0)

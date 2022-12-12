@@ -37,6 +37,11 @@ struct pch_regs {
 	u32	reset;
 };
 
+#define PCI_DEVICE_ID_INTEL_EG20T_PCH		0x8803
+#define PCI_DEVICE_ID_ROHM_ML7223m_IOH		0x8014
+#define PCI_DEVICE_ID_ROHM_ML7223n_IOH		0x8043
+#define PCI_DEVICE_ID_ROHM_EG20T_PCH		0x8803
+
 enum pch_type_t {
 	INTEL_EG20T_PCH,
 	OKISEMI_ML7223m_IOH, /* LAPIS Semiconductor ML7223 IOH PCIe Bus-m */
@@ -346,51 +351,39 @@ static int pch_gpio_alloc_generic_chip(struct pch_gpio *chip,
 static int pch_gpio_probe(struct pci_dev *pdev,
 				    const struct pci_device_id *id)
 {
+	struct device *dev = &pdev->dev;
 	s32 ret;
 	struct pch_gpio *chip;
 	int irq_base;
 
-	chip = devm_kzalloc(&pdev->dev, sizeof(*chip), GFP_KERNEL);
+	chip = devm_kzalloc(dev, sizeof(*chip), GFP_KERNEL);
 	if (chip == NULL)
 		return -ENOMEM;
 
-	chip->dev = &pdev->dev;
+	chip->dev = dev;
 	ret = pcim_enable_device(pdev);
-	if (ret) {
-		dev_err(&pdev->dev, "pci_enable_device FAILED");
-		return ret;
-	}
+	if (ret)
+		return dev_err_probe(dev, ret, "Failed to enable PCI device\n");
 
 	ret = pcim_iomap_regions(pdev, BIT(1), KBUILD_MODNAME);
-	if (ret) {
-		dev_err(&pdev->dev, "pci_request_regions FAILED-%d", ret);
-		return ret;
-	}
+	if (ret)
+		return dev_err_probe(dev, ret, "Failed to request and map PCI regions\n");
 
 	chip->base = pcim_iomap_table(pdev)[1];
-
-	if (pdev->device == 0x8803)
-		chip->ioh = INTEL_EG20T_PCH;
-	else if (pdev->device == 0x8014)
-		chip->ioh = OKISEMI_ML7223m_IOH;
-	else if (pdev->device == 0x8043)
-		chip->ioh = OKISEMI_ML7223n_IOH;
-
+	chip->ioh = id->driver_data;
 	chip->reg = chip->base;
 	pci_set_drvdata(pdev, chip);
 	spin_lock_init(&chip->spinlock);
 	pch_gpio_setup(chip);
 
-	ret = devm_gpiochip_add_data(&pdev->dev, &chip->gpio, chip);
-	if (ret) {
-		dev_err(&pdev->dev, "PCH gpio: Failed to register GPIO\n");
-		return ret;
-	}
+	ret = devm_gpiochip_add_data(dev, &chip->gpio, chip);
+	if (ret)
+		return dev_err_probe(dev, ret, "Failed to register GPIO\n");
 
-	irq_base = devm_irq_alloc_descs(&pdev->dev, -1, 0,
+	irq_base = devm_irq_alloc_descs(dev, -1, 0,
 					gpio_pins[chip->ioh], NUMA_NO_NODE);
 	if (irq_base < 0) {
-		dev_warn(&pdev->dev, "PCH gpio: Failed to get IRQ base num\n");
+		dev_warn(dev, "PCH gpio: Failed to get IRQ base num\n");
 		chip->irq_base = -1;
 		return 0;
 	}
@@ -400,12 +393,10 @@ static int pch_gpio_probe(struct pci_dev *pdev,
 	iowrite32(BIT(gpio_pins[chip->ioh]) - 1, &chip->reg->imask);
 	iowrite32(BIT(gpio_pins[chip->ioh]) - 1, &chip->reg->ien);
 
-	ret = devm_request_irq(&pdev->dev, pdev->irq, pch_gpio_handler,
+	ret = devm_request_irq(dev, pdev->irq, pch_gpio_handler,
 			       IRQF_SHARED, KBUILD_MODNAME, chip);
-	if (ret) {
-		dev_err(&pdev->dev, "request_irq failed\n");
-		return ret;
-	}
+	if (ret)
+		return dev_err_probe(dev, ret, "Failed to request IRQ\n");
 
 	return pch_gpio_alloc_generic_chip(chip, irq_base, gpio_pins[chip->ioh]);
 }
@@ -439,11 +430,11 @@ static int __maybe_unused pch_gpio_resume(struct device *dev)
 static SIMPLE_DEV_PM_OPS(pch_gpio_pm_ops, pch_gpio_suspend, pch_gpio_resume);
 
 static const struct pci_device_id pch_gpio_pcidev_id[] = {
-	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x8803) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ROHM, 0x8014) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ROHM, 0x8043) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ROHM, 0x8803) },
-	{ 0, }
+	{ PCI_DEVICE_DATA(INTEL, EG20T_PCH, INTEL_EG20T_PCH) },
+	{ PCI_DEVICE_DATA(ROHM, ML7223m_IOH, OKISEMI_ML7223m_IOH) },
+	{ PCI_DEVICE_DATA(ROHM, ML7223n_IOH, OKISEMI_ML7223n_IOH) },
+	{ PCI_DEVICE_DATA(ROHM, EG20T_PCH, INTEL_EG20T_PCH) },
+	{ }
 };
 MODULE_DEVICE_TABLE(pci, pch_gpio_pcidev_id);
 

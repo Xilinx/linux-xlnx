@@ -331,8 +331,8 @@
 			phy-handle = <&phy1>;
 			phy-mode = "rgmii-id";
 			clocks = <&versal_net_clk LPD_LSBUS>,
-				 <&versal_net_clk GEM0_REF>, <&versal_net_clk GEM0_REF_TX>,
-				 <&versal_net_clk GEM0_REF_RX>, <&versal_net_clk GEM_TSU_REF>;
+				 <&versal_net_clk GEM0_REF>, <&versal_net_clk GEM0_TX>,
+				 <&versal_net_clk GEM0_RX>, <&versal_net_clk GEM_TSU>;
 			power-domains = <&versal_net_firmware PM_DEV_GEM_0>;
 			mdio0: mdio {
 				#address-cells = <1>;
@@ -361,8 +361,8 @@
 			phy-handle = <&phy2>;
 			phy-mode = "rmii";
 			clocks = <&versal_net_clk LPD_LSBUS>,
-				 <&versal_net_clk GEM1_REF>, <&versal_net_clk GEM1_REF_TX>,
-				 <&versal_net_clk GEM1_REF_RX>, <&versal_net_clk GEM_TSU_REF>;
+				 <&versal_net_clk GEM1_REF>, <&versal_net_clk GEM1_TX>,
+				 <&versal_net_clk GEM1_RX>, <&versal_net_clk GEM_TSU>;
 			power-domains = <&versal_net_firmware PM_DEV_GEM_1>;
 			mdio1: mdio {
 				#address-cells = <1>;

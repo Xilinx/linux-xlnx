@@ -162,9 +162,9 @@ static void ef4_ethtool_get_drvinfo(struct net_device *net_dev,
 {
 	struct ef4_nic *efx = netdev_priv(net_dev);
 
-	strlcpy(info->driver, KBUILD_MODNAME, sizeof(info->driver));
-	strlcpy(info->version, EF4_DRIVER_VERSION, sizeof(info->version));
-	strlcpy(info->bus_info, pci_name(efx->pci_dev), sizeof(info->bus_info));
+	strscpy(info->driver, KBUILD_MODNAME, sizeof(info->driver));
+	strscpy(info->version, EF4_DRIVER_VERSION, sizeof(info->version));
+	strscpy(info->bus_info, pci_name(efx->pci_dev), sizeof(info->bus_info));
 }
 
 static int ef4_ethtool_get_regs_len(struct net_device *net_dev)
@@ -412,7 +412,7 @@ static void ef4_ethtool_get_strings(struct net_device *net_dev,
 		strings += (efx->type->describe_stats(efx, strings) *
 			    ETH_GSTRING_LEN);
 		for (i = 0; i < EF4_ETHTOOL_SW_STAT_COUNT; i++)
-			strlcpy(strings + i * ETH_GSTRING_LEN,
+			strscpy(strings + i * ETH_GSTRING_LEN,
 				ef4_sw_stat_desc[i].name, ETH_GSTRING_LEN);
 		strings += EF4_ETHTOOL_SW_STAT_COUNT * ETH_GSTRING_LEN;
 		strings += (ef4_describe_per_queue_stats(efx, strings) *
@@ -637,8 +637,11 @@ static int ef4_ethtool_set_coalesce(struct net_device *net_dev,
 	return 0;
 }
 
-static void ef4_ethtool_get_ringparam(struct net_device *net_dev,
-				      struct ethtool_ringparam *ring)
+static void
+ef4_ethtool_get_ringparam(struct net_device *net_dev,
+			  struct ethtool_ringparam *ring,
+			  struct kernel_ethtool_ringparam *kernel_ring,
+			  struct netlink_ext_ack *extack)
 {
 	struct ef4_nic *efx = netdev_priv(net_dev);
 
@@ -648,8 +651,11 @@ static void ef4_ethtool_get_ringparam(struct net_device *net_dev,
 	ring->tx_pending = efx->txq_entries;
 }
 
-static int ef4_ethtool_set_ringparam(struct net_device *net_dev,
-				     struct ethtool_ringparam *ring)
+static int
+ef4_ethtool_set_ringparam(struct net_device *net_dev,
+			  struct ethtool_ringparam *ring,
+			  struct kernel_ethtool_ringparam *kernel_ring,
+			  struct netlink_ext_ack *extack)
 {
 	struct ef4_nic *efx = netdev_priv(net_dev);
 	u32 txq_entries;

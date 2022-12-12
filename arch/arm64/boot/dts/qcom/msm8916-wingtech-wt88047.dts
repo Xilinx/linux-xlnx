@@ -11,6 +11,7 @@
 / {
 	model = "Xiaomi Redmi 2 (Wingtech WT88047)";
 	compatible = "wingtech,wt88047", "qcom,msm8916";
+	chassis-type = "handset";
 
 	aliases {
 		serial0 = &blsp1_uart2;
@@ -28,7 +29,7 @@
 
 		label = "GPIO Buttons";
 
-		volume-up {
+		button-volume-up {
 			label = "Volume Up";
 			gpios = <&msmgpio 107 GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_VOLUMEUP>;

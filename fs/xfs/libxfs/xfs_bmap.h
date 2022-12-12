@@ -13,8 +13,6 @@ struct xfs_inode;
 struct xfs_mount;
 struct xfs_trans;
 
-extern kmem_zone_t	*xfs_bmap_free_item_zone;
-
 /*
  * Argument structure for xfs_bmap_alloc.
  */
@@ -41,20 +39,7 @@ struct xfs_bmalloca {
 	bool			aeof;	/* allocated space at eof */
 	bool			conv;	/* overwriting unwritten extents */
 	int			datatype;/* data type being allocated */
-	int			flags;
-};
-
-/*
- * List of extents to be free "later".
- * The list is kept sorted on xbf_startblock.
- */
-struct xfs_extent_free_item
-{
-	xfs_fsblock_t		xefi_startblock;/* starting fs block number */
-	xfs_extlen_t		xefi_blockcount;/* number of blocks in extent */
-	bool			xefi_skip_discard;
-	struct list_head	xefi_list;
-	struct xfs_owner_info	xefi_oinfo;	/* extent owner */
+	uint32_t		flags;
 };
 
 #define	XFS_BMAP_MAX_NMAP	4
@@ -62,17 +47,17 @@ struct xfs_extent_free_item
 /*
  * Flags for xfs_bmapi_*
  */
-#define XFS_BMAPI_ENTIRE	0x001	/* return entire extent, not trimmed */
-#define XFS_BMAPI_METADATA	0x002	/* mapping metadata not user data */
-#define XFS_BMAPI_ATTRFORK	0x004	/* use attribute fork not data */
-#define XFS_BMAPI_PREALLOC	0x008	/* preallocation op: unwritten space */
-#define XFS_BMAPI_CONTIG	0x020	/* must allocate only one extent */
+#define XFS_BMAPI_ENTIRE	(1u << 0) /* return entire extent untrimmed */
+#define XFS_BMAPI_METADATA	(1u << 1) /* mapping metadata not user data */
+#define XFS_BMAPI_ATTRFORK	(1u << 2) /* use attribute fork not data */
+#define XFS_BMAPI_PREALLOC	(1u << 3) /* preallocating unwritten space */
+#define XFS_BMAPI_CONTIG	(1u << 4) /* must allocate only one extent */
 /*
  * unwritten extent conversion - this needs write cache flushing and no additional
  * allocation alignments. When specified with XFS_BMAPI_PREALLOC it converts
  * from written to unwritten, otherwise convert from unwritten to written.
  */
-#define XFS_BMAPI_CONVERT	0x040
+#define XFS_BMAPI_CONVERT	(1u << 5)
 
 /*
  * allocate zeroed extents - this requires all newly allocated user data extents
@@ -80,7 +65,7 @@ struct xfs_extent_free_item
  * Use in conjunction with XFS_BMAPI_CONVERT to convert unwritten extents found
  * during the allocation range to zeroed written extents.
  */
-#define XFS_BMAPI_ZERO		0x080
+#define XFS_BMAPI_ZERO		(1u << 6)
 
 /*
  * Map the inode offset to the block given in ap->firstblock.  Primarily
@@ -90,16 +75,16 @@ struct xfs_extent_free_item
  * For bunmapi, this flag unmaps the range without adjusting quota, reducing
  * refcount, or freeing the blocks.
  */
-#define XFS_BMAPI_REMAP		0x100
+#define XFS_BMAPI_REMAP		(1u << 7)
 
 /* Map something in the CoW fork. */
-#define XFS_BMAPI_COWFORK	0x200
+#define XFS_BMAPI_COWFORK	(1u << 8)
 
 /* Skip online discard of freed extents */
-#define XFS_BMAPI_NODISCARD	0x1000
+#define XFS_BMAPI_NODISCARD	(1u << 9)
 
 /* Do not update the rmap btree.  Used for reconstructing bmbt from rmapbt. */
-#define XFS_BMAPI_NORMAP	0x2000
+#define XFS_BMAPI_NORMAP	(1u << 10)
 
 #define XFS_BMAPI_FLAGS \
 	{ XFS_BMAPI_ENTIRE,	"ENTIRE" }, \
@@ -121,7 +106,7 @@ static inline int xfs_bmapi_aflag(int w)
 	       (w == XFS_COW_FORK ? XFS_BMAPI_COWFORK : 0));
 }
 
-static inline int xfs_bmapi_whichfork(int bmapi_flags)
+static inline int xfs_bmapi_whichfork(uint32_t bmapi_flags)
 {
 	if (bmapi_flags & XFS_BMAPI_COWFORK)
 		return XFS_COW_FORK;
@@ -139,16 +124,16 @@ static inline int xfs_bmapi_whichfork(int bmapi_flags)
 /*
  * Flags for xfs_bmap_add_extent*.
  */
-#define BMAP_LEFT_CONTIG	(1 << 0)
-#define BMAP_RIGHT_CONTIG	(1 << 1)
-#define BMAP_LEFT_FILLING	(1 << 2)
-#define BMAP_RIGHT_FILLING	(1 << 3)
-#define BMAP_LEFT_DELAY		(1 << 4)
-#define BMAP_RIGHT_DELAY	(1 << 5)
-#define BMAP_LEFT_VALID		(1 << 6)
-#define BMAP_RIGHT_VALID	(1 << 7)
-#define BMAP_ATTRFORK		(1 << 8)
-#define BMAP_COWFORK		(1 << 9)
+#define BMAP_LEFT_CONTIG	(1u << 0)
+#define BMAP_RIGHT_CONTIG	(1u << 1)
+#define BMAP_LEFT_FILLING	(1u << 2)
+#define BMAP_RIGHT_FILLING	(1u << 3)
+#define BMAP_LEFT_DELAY		(1u << 4)
+#define BMAP_RIGHT_DELAY	(1u << 5)
+#define BMAP_LEFT_VALID		(1u << 6)
+#define BMAP_RIGHT_VALID	(1u << 7)
+#define BMAP_ATTRFORK		(1u << 8)
+#define BMAP_COWFORK		(1u << 9)
 
 #define XFS_BMAP_EXT_FLAGS \
 	{ BMAP_LEFT_CONTIG,	"LC" }, \
@@ -189,9 +174,6 @@ unsigned int xfs_bmap_compute_attr_offset(struct xfs_mount *mp);
 int	xfs_bmap_add_attrfork(struct xfs_inode *ip, int size, int rsvd);
 void	xfs_bmap_local_to_extents_empty(struct xfs_trans *tp,
 		struct xfs_inode *ip, int whichfork);
-void	__xfs_bmap_add_free(struct xfs_trans *tp, xfs_fsblock_t bno,
-		xfs_filblks_t len, const struct xfs_owner_info *oinfo,
-		bool skip_discard);
 void	xfs_bmap_compute_maxlevels(struct xfs_mount *mp, int whichfork);
 int	xfs_bmap_first_unused(struct xfs_trans *tp, struct xfs_inode *ip,
 		xfs_extlen_t len, xfs_fileoff_t *unused, int whichfork);
@@ -201,15 +183,15 @@ int	xfs_bmap_last_offset(struct xfs_inode *ip, xfs_fileoff_t *unused,
 		int whichfork);
 int	xfs_bmapi_read(struct xfs_inode *ip, xfs_fileoff_t bno,
 		xfs_filblks_t len, struct xfs_bmbt_irec *mval,
-		int *nmap, int flags);
+		int *nmap, uint32_t flags);
 int	xfs_bmapi_write(struct xfs_trans *tp, struct xfs_inode *ip,
-		xfs_fileoff_t bno, xfs_filblks_t len, int flags,
+		xfs_fileoff_t bno, xfs_filblks_t len, uint32_t flags,
 		xfs_extlen_t total, struct xfs_bmbt_irec *mval, int *nmap);
 int	__xfs_bunmapi(struct xfs_trans *tp, struct xfs_inode *ip,
-		xfs_fileoff_t bno, xfs_filblks_t *rlen, int flags,
+		xfs_fileoff_t bno, xfs_filblks_t *rlen, uint32_t flags,
 		xfs_extnum_t nexts);
 int	xfs_bunmapi(struct xfs_trans *tp, struct xfs_inode *ip,
-		xfs_fileoff_t bno, xfs_filblks_t len, int flags,
+		xfs_fileoff_t bno, xfs_filblks_t len, uint32_t flags,
 		xfs_extnum_t nexts, int *done);
 int	xfs_bmap_del_extent_delay(struct xfs_inode *ip, int whichfork,
 		struct xfs_iext_cursor *cur, struct xfs_bmbt_irec *got,
@@ -239,16 +221,6 @@ int	xfs_bmap_add_extent_unwritten_real(struct xfs_trans *tp,
 		struct xfs_iext_cursor *icur, struct xfs_btree_cur **curp,
 		struct xfs_bmbt_irec *new, int *logflagsp);
 
-static inline void
-xfs_bmap_add_free(
-	struct xfs_trans		*tp,
-	xfs_fsblock_t			bno,
-	xfs_filblks_t			len,
-	const struct xfs_owner_info	*oinfo)
-{
-	__xfs_bmap_add_free(tp, bno, len, oinfo, false);
-}
-
 enum xfs_bmap_intent_type {
 	XFS_BMAP_MAP = 1,
 	XFS_BMAP_UNMAP,
@@ -257,8 +229,8 @@ enum xfs_bmap_intent_type {
 struct xfs_bmap_intent {
 	struct list_head			bi_list;
 	enum xfs_bmap_intent_type		bi_type;
-	struct xfs_inode			*bi_owner;
 	int					bi_whichfork;
+	struct xfs_inode			*bi_owner;
 	struct xfs_bmbt_irec			bi_bmap;
 };
 
@@ -271,7 +243,7 @@ void	xfs_bmap_map_extent(struct xfs_trans *tp, struct xfs_inode *ip,
 void	xfs_bmap_unmap_extent(struct xfs_trans *tp, struct xfs_inode *ip,
 		struct xfs_bmbt_irec *imap);
 
-static inline int xfs_bmap_fork_to_state(int whichfork)
+static inline uint32_t xfs_bmap_fork_to_state(int whichfork)
 {
 	switch (whichfork) {
 	case XFS_ATTR_FORK:
@@ -288,6 +260,11 @@ xfs_failaddr_t xfs_bmap_validate_extent(struct xfs_inode *ip, int whichfork,
 
 int	xfs_bmapi_remap(struct xfs_trans *tp, struct xfs_inode *ip,
 		xfs_fileoff_t bno, xfs_filblks_t len, xfs_fsblock_t startblock,
-		int flags);
+		uint32_t flags);
+
+extern struct kmem_cache	*xfs_bmap_intent_cache;
+
+int __init xfs_bmap_intent_init_cache(void);
+void xfs_bmap_intent_destroy_cache(void);
 
 #endif	/* __XFS_BMAP_H__ */

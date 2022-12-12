@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 
 /* Copyright (c) 2012-2018, The Linux Foundation. All rights reserved.
- * Copyright (C) 2019-2020 Linaro Ltd.
+ * Copyright (C) 2019-2022 Linaro Ltd.
  */
 #ifndef _IPA_SMP2P_H_
 #define _IPA_SMP2P_H_
@@ -27,13 +27,12 @@ int ipa_smp2p_init(struct ipa *ipa, bool modem_init);
 void ipa_smp2p_exit(struct ipa *ipa);
 
 /**
- * ipa_smp2p_disable() - Prevent "ipa-setup-ready" interrupt handling
+ * ipa_smp2p_irq_disable_setup() - Disable the "setup ready" interrupt
  * @ipa:	IPA pointer
  *
- * Prevent handling of the "setup ready" interrupt from the modem.
- * This is used before initiating shutdown of the driver.
+ * Disable the "ipa-setup-ready" interrupt from the modem.
  */
-void ipa_smp2p_disable(struct ipa *ipa);
+void ipa_smp2p_irq_disable_setup(struct ipa *ipa);
 
 /**
  * ipa_smp2p_notify_reset() - Reset modem notification state

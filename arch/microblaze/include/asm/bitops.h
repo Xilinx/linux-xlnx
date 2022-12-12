@@ -176,7 +176,6 @@ static inline void __clear_bit_unlock(int nr, volatile unsigned long *addr)
 #include <asm-generic/bitops/fls.h>
 #include <asm-generic/bitops/ffs.h>
 #include <asm-generic/bitops/hweight.h>
-#include <asm-generic/bitops/find.h>
 #include <asm-generic/bitops/fls64.h>
 
 /* Little-endian versions */

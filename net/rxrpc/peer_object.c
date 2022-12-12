@@ -121,7 +121,7 @@ static struct rxrpc_peer *__rxrpc_lookup_peer_rcu(
 
 	hash_for_each_possible_rcu(rxnet->peer_hash, peer, hash_link, hash_key) {
 		if (rxrpc_peer_cmp_key(peer, local, srx, hash_key) == 0 &&
-		    atomic_read(&peer->usage) > 0)
+		    refcount_read(&peer->ref) > 0)
 			return peer;
 	}
 
@@ -140,7 +140,7 @@ struct rxrpc_peer *rxrpc_lookup_peer_rcu(struct rxrpc_local *local,
 	peer = __rxrpc_lookup_peer_rcu(local, srx, hash_key);
 	if (peer) {
 		_net("PEER %d {%pISp}", peer->debug_id, &peer->srx.transport);
-		_leave(" = %p {u=%d}", peer, atomic_read(&peer->usage));
+		_leave(" = %p {u=%d}", peer, refcount_read(&peer->ref));
 	}
 	return peer;
 }
@@ -216,7 +216,7 @@ struct rxrpc_peer *rxrpc_alloc_peer(struct rxrpc_local *local, gfp_t gfp)
 
 	peer = kzalloc(sizeof(struct rxrpc_peer), gfp);
 	if (peer) {
-		atomic_set(&peer->usage, 1);
+		refcount_set(&peer->ref, 1);
 		peer->local = rxrpc_get_local(local);
 		INIT_HLIST_HEAD(&peer->error_targets);
 		peer->service_conns = RB_ROOT;
@@ -299,6 +299,12 @@ static struct rxrpc_peer *rxrpc_create_peer(struct rxrpc_sock *rx,
 	return peer;
 }
 
+static void rxrpc_free_peer(struct rxrpc_peer *peer)
+{
+	rxrpc_put_local(peer->local);
+	kfree_rcu(peer, rcu);
+}
+
 /*
  * Set up a new incoming peer.  There shouldn't be any other matching peers
  * since we've already done a search in the list from the non-reentrant context
@@ -365,14 +371,14 @@ struct rxrpc_peer *rxrpc_lookup_peer(struct rxrpc_sock *rx,
 		spin_unlock_bh(&rxnet->peer_hash_lock);
 
 		if (peer)
-			kfree(candidate);
+			rxrpc_free_peer(candidate);
 		else
 			peer = candidate;
 	}
 
 	_net("PEER %d {%pISp}", peer->debug_id, &peer->srx.transport);
 
-	_leave(" = %p {u=%d}", peer, atomic_read(&peer->usage));
+	_leave(" = %p {u=%d}", peer, refcount_read(&peer->ref));
 	return peer;
 }
 
@@ -382,10 +388,10 @@ struct rxrpc_peer *rxrpc_lookup_peer(struct rxrpc_sock *rx,
 struct rxrpc_peer *rxrpc_get_peer(struct rxrpc_peer *peer)
 {
 	const void *here = __builtin_return_address(0);
-	int n;
+	int r;
 
-	n = atomic_inc_return(&peer->usage);
-	trace_rxrpc_peer(peer->debug_id, rxrpc_peer_got, n, here);
+	__refcount_inc(&peer->ref, &r);
+	trace_rxrpc_peer(peer->debug_id, rxrpc_peer_got, r + 1, here);
 	return peer;
 }
 
@@ -395,11 +401,11 @@ struct rxrpc_peer *rxrpc_get_peer(struct rxrpc_peer *peer)
 struct rxrpc_peer *rxrpc_get_peer_maybe(struct rxrpc_peer *peer)
 {
 	const void *here = __builtin_return_address(0);
+	int r;
 
 	if (peer) {
-		int n = atomic_fetch_add_unless(&peer->usage, 1, 0);
-		if (n > 0)
-			trace_rxrpc_peer(peer->debug_id, rxrpc_peer_got, n + 1, here);
+		if (__refcount_inc_not_zero(&peer->ref, &r))
+			trace_rxrpc_peer(peer->debug_id, rxrpc_peer_got, r + 1, here);
 		else
 			peer = NULL;
 	}
@@ -420,8 +426,7 @@ static void __rxrpc_put_peer(struct rxrpc_peer *peer)
 	list_del_init(&peer->keepalive_link);
 	spin_unlock_bh(&rxnet->peer_hash_lock);
 
-	rxrpc_put_local(peer->local);
-	kfree_rcu(peer, rcu);
+	rxrpc_free_peer(peer);
 }
 
 /*
@@ -431,13 +436,14 @@ void rxrpc_put_peer(struct rxrpc_peer *peer)
 {
 	const void *here = __builtin_return_address(0);
 	unsigned int debug_id;
-	int n;
+	bool dead;
+	int r;
 
 	if (peer) {
 		debug_id = peer->debug_id;
-		n = atomic_dec_return(&peer->usage);
-		trace_rxrpc_peer(debug_id, rxrpc_peer_put, n, here);
-		if (n == 0)
+		dead = __refcount_dec_and_test(&peer->ref, &r);
+		trace_rxrpc_peer(debug_id, rxrpc_peer_put, r - 1, here);
+		if (dead)
 			__rxrpc_put_peer(peer);
 	}
 }
@@ -450,15 +456,15 @@ void rxrpc_put_peer_locked(struct rxrpc_peer *peer)
 {
 	const void *here = __builtin_return_address(0);
 	unsigned int debug_id = peer->debug_id;
-	int n;
+	bool dead;
+	int r;
 
-	n = atomic_dec_return(&peer->usage);
-	trace_rxrpc_peer(debug_id, rxrpc_peer_put, n, here);
-	if (n == 0) {
+	dead = __refcount_dec_and_test(&peer->ref, &r);
+	trace_rxrpc_peer(debug_id, rxrpc_peer_put, r - 1, here);
+	if (dead) {
 		hash_del_rcu(&peer->hash_link);
 		list_del_init(&peer->keepalive_link);
-		rxrpc_put_local(peer->local);
-		kfree_rcu(peer, rcu);
+		rxrpc_free_peer(peer);
 	}
 }
 
@@ -477,7 +483,7 @@ void rxrpc_destroy_all_peers(struct rxrpc_net *rxnet)
 		hlist_for_each_entry(peer, &rxnet->peer_hash[i], hash_link) {
 			pr_err("Leaked peer %u {%u} %pISp\n",
 			       peer->debug_id,
-			       atomic_read(&peer->usage),
+			       refcount_read(&peer->ref),
 			       &peer->srx.transport);
 		}
 	}

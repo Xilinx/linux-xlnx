@@ -22,14 +22,14 @@
 	gpio_keys: gpio-keys {
 		compatible = "gpio-keys";
 
-		power {
+		key-power {
 			label = "Power";
 			gpios = <&gpio5 8 GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_POWER>;
 			wakeup-source;
 		};
 
-		cover {
+		key-cover {
 			label = "Cover";
 			gpios = <&gpio5 12 GPIO_ACTIVE_LOW>;
 			linux,code = <SW_LID>;
@@ -41,7 +41,7 @@
 	leds: leds {
 		compatible = "gpio-leds";
 
-		on {
+		led {
 			label = "e60k02:white:on";
 			gpios = <&gpio5 7 GPIO_ACTIVE_LOW>;
 			linux,default-trigger = "timer";

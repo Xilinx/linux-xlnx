@@ -8,11 +8,9 @@
 #include <linux/slab.h>
 #include <linux/delay.h>
 #include <linux/dma-mapping.h>
-#include <asm/dma.h>
-
-#include "../comedidev.h"
-
-#include "comedi_isadma.h"
+#include <linux/isa-dma.h>
+#include <linux/comedi/comedidev.h>
+#include <linux/comedi/comedi_isadma.h>
 
 /**
  * comedi_isadma_program - program and enable an ISA DMA transfer

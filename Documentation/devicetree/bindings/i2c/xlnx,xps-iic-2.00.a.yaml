@@ -4,7 +4,7 @@
 $id: "http://devicetree.org/schemas/i2c/xlnx,xps-iic-2.00.a.yaml#"
 $schema: "http://devicetree.org/meta-schemas/core.yaml#"
 
-title: Xilinx IIC controller Device Tree Bindings
+title: Xilinx IIC controller
 
 maintainers:
   - info@mocean-labs.com
@@ -32,18 +32,14 @@ properties:
     description: |
       Input clock name.
 
-  clock-frequency:
-    description: Desired operating frequency, in Hz, of the bus.
-                 If not specified, driver doesn't configure frequency,
-                 relies only on Vivado design IP configuration.
-
-    enum: [100000, 400000, 1000000]
-
 required:
   - compatible
   - reg
   - interrupts
   - clocks
+
+optional:
+  - clock-frequency
 
 unevaluatedProperties: false
 
@@ -57,5 +53,4 @@ examples:
 
       #size-cells = <0>;
       #address-cells = <1>;
-      clock-frequency = <400000>;
     };

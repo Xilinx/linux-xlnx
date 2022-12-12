@@ -25,12 +25,9 @@ struct alg_type_list {
 	struct list_head list;
 };
 
-static atomic_long_t alg_memory_allocated;
-
 static struct proto alg_proto = {
 	.name			= "ALG",
 	.owner			= THIS_MODULE,
-	.memory_allocated	= &alg_memory_allocated,
 	.obj_size		= sizeof(struct alg_sock),
 };
 
@@ -407,7 +404,7 @@ int af_alg_make_sg(struct af_alg_sgl *sgl, struct iov_iter *iter, int len)
 	ssize_t n;
 	int npages, i;
 
-	n = iov_iter_get_pages(iter, sgl->pages, len, ALG_MAX_PAGES, &off);
+	n = iov_iter_get_pages2(iter, sgl->pages, len, ALG_MAX_PAGES, &off);
 	if (n < 0)
 		return n;
 
@@ -931,15 +928,18 @@ int af_alg_sendmsg(struct socket *sock, struct msghdr *msg, size_t size,
 			sg_unmark_end(sg + sgl->cur - 1);
 
 		do {
+			struct page *pg;
 			unsigned int i = sgl->cur;
 
 			plen = min_t(size_t, len, PAGE_SIZE);
 
-			sg_assign_page(sg + i, alloc_page(GFP_KERNEL));
-			if (!sg_page(sg + i)) {
+			pg = alloc_page(GFP_KERNEL);
+			if (!pg) {
 				err = -ENOMEM;
 				goto unlock;
 			}
+
+			sg_assign_page(sg + i, pg);
 
 			err = memcpy_from_msg(page_address(sg_page(sg + i)),
 					      msg, plen);
@@ -1076,7 +1076,7 @@ void af_alg_async_cb(struct crypto_async_request *_req, int err)
 	af_alg_free_resources(areq);
 	sock_put(sk);
 
-	iocb->ki_complete(iocb, err ? err : (int)resultlen, 0);
+	iocb->ki_complete(iocb, err ? err : (int)resultlen);
 }
 EXPORT_SYMBOL_GPL(af_alg_async_cb);
 
@@ -1191,7 +1191,6 @@ int af_alg_get_rsgl(struct sock *sk, struct msghdr *msg, int flags,
 		len += err;
 		atomic_add(err, &ctx->rcvused);
 		rsgl->sg_num_bytes = err;
-		iov_iter_advance(&msg->msg_iter, err);
 	}
 
 	*outlen = len;

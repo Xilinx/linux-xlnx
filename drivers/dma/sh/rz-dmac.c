@@ -12,12 +12,14 @@
 #include <linux/dma-mapping.h>
 #include <linux/dmaengine.h>
 #include <linux/interrupt.h>
+#include <linux/iopoll.h>
 #include <linux/list.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_dma.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
+#include <linux/pm_runtime.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 
@@ -573,7 +575,7 @@ static void rz_dmac_issue_pending(struct dma_chan *chan)
 static u8 rz_dmac_ds_to_val_mapping(enum dma_slave_buswidth ds)
 {
 	u8 i;
-	const enum dma_slave_buswidth ds_lut[] = {
+	static const enum dma_slave_buswidth ds_lut[] = {
 		DMA_SLAVE_BUSWIDTH_1_BYTE,
 		DMA_SLAVE_BUSWIDTH_2_BYTES,
 		DMA_SLAVE_BUSWIDTH_4_BYTES,
@@ -627,6 +629,21 @@ static void rz_dmac_virt_desc_free(struct virt_dma_desc *vd)
 	 * list is used to manage the descriptors and avoid any memory
 	 * allocation/free during DMA read/write.
 	 */
+}
+
+static void rz_dmac_device_synchronize(struct dma_chan *chan)
+{
+	struct rz_dmac_chan *channel = to_rz_dmac_chan(chan);
+	struct rz_dmac *dmac = to_rz_dmac(chan->device);
+	u32 chstat;
+	int ret;
+
+	ret = read_poll_timeout(rz_dmac_ch_readl, chstat, !(chstat & CHSTAT_EN),
+				100, 100000, false, channel, CHSTAT, 1);
+	if (ret < 0)
+		dev_warn(dmac->dev, "DMA Timeout");
+
+	rz_dmac_set_dmars_register(dmac, channel->index, 0);
 }
 
 /*
@@ -872,6 +889,13 @@ static int rz_dmac_probe(struct platform_device *pdev)
 	/* Initialize the channels. */
 	INIT_LIST_HEAD(&dmac->engine.channels);
 
+	pm_runtime_enable(&pdev->dev);
+	ret = pm_runtime_resume_and_get(&pdev->dev);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "pm_runtime_resume_and_get failed\n");
+		goto err_pm_disable;
+	}
+
 	for (i = 0; i < dmac->n_channels; i++) {
 		ret = rz_dmac_chan_probe(dmac, &dmac->channels[i], i);
 		if (ret < 0)
@@ -901,6 +925,7 @@ static int rz_dmac_probe(struct platform_device *pdev)
 	engine->device_config = rz_dmac_config;
 	engine->device_terminate_all = rz_dmac_terminate_all;
 	engine->device_issue_pending = rz_dmac_issue_pending;
+	engine->device_synchronize = rz_dmac_device_synchronize;
 
 	engine->copy_align = DMAENGINE_ALIGN_1_BYTE;
 	dma_set_max_seg_size(engine->dev, U32_MAX);
@@ -925,6 +950,10 @@ err:
 				  channel->lmdesc.base_dma);
 	}
 
+	pm_runtime_put(&pdev->dev);
+err_pm_disable:
+	pm_runtime_disable(&pdev->dev);
+
 	return ret;
 }
 
@@ -943,6 +972,8 @@ static int rz_dmac_remove(struct platform_device *pdev)
 	}
 	of_dma_controller_free(pdev->dev.of_node);
 	dma_async_device_unregister(&dmac->engine);
+	pm_runtime_put(&pdev->dev);
+	pm_runtime_disable(&pdev->dev);
 
 	return 0;
 }

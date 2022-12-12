@@ -25,8 +25,6 @@
 #include <kvm_util.h>
 #include <processor.h>
 
-#define VCPU_ID 0
-
 #define MEM_SIZE		((512U << 20) + 4096)
 #define MEM_SIZE_PAGES		(MEM_SIZE / 4096)
 #define MEM_GPA		0x10000000UL
@@ -90,6 +88,7 @@ static_assert(MEM_TEST_MOVE_SIZE <= MEM_TEST_SIZE,
 
 struct vm_data {
 	struct kvm_vm *vm;
+	struct kvm_vcpu *vcpu;
 	pthread_t vcpu_thread;
 	uint32_t nslots;
 	uint64_t npages;
@@ -127,43 +126,52 @@ static bool verbose;
 			pr_info(__VA_ARGS__);	\
 	} while (0)
 
-static void *vcpu_worker(void *data)
+static void check_mmio_access(struct vm_data *data, struct kvm_run *run)
 {
-	struct vm_data *vm = data;
-	struct kvm_run *run;
+	TEST_ASSERT(data->mmio_ok, "Unexpected mmio exit");
+	TEST_ASSERT(run->mmio.is_write, "Unexpected mmio read");
+	TEST_ASSERT(run->mmio.len == 8,
+		    "Unexpected exit mmio size = %u", run->mmio.len);
+	TEST_ASSERT(run->mmio.phys_addr >= data->mmio_gpa_min &&
+		    run->mmio.phys_addr <= data->mmio_gpa_max,
+		    "Unexpected exit mmio address = 0x%llx",
+		    run->mmio.phys_addr);
+}
+
+static void *vcpu_worker(void *__data)
+{
+	struct vm_data *data = __data;
+	struct kvm_vcpu *vcpu = data->vcpu;
+	struct kvm_run *run = vcpu->run;
 	struct ucall uc;
-	uint64_t cmd;
 
-	run = vcpu_state(vm->vm, VCPU_ID);
 	while (1) {
-		vcpu_run(vm->vm, VCPU_ID);
+		vcpu_run(vcpu);
 
-		if (run->exit_reason == KVM_EXIT_IO) {
-			cmd = get_ucall(vm->vm, VCPU_ID, &uc);
-			if (cmd != UCALL_SYNC)
-				break;
-
+		switch (get_ucall(vcpu, &uc)) {
+		case UCALL_SYNC:
+			TEST_ASSERT(uc.args[1] == 0,
+				"Unexpected sync ucall, got %lx",
+				(ulong)uc.args[1]);
 			sem_post(&vcpu_ready);
 			continue;
-		}
-
-		if (run->exit_reason != KVM_EXIT_MMIO)
+		case UCALL_NONE:
+			if (run->exit_reason == KVM_EXIT_MMIO)
+				check_mmio_access(data, run);
+			else
+				goto done;
 			break;
-
-		TEST_ASSERT(vm->mmio_ok, "Unexpected mmio exit");
-		TEST_ASSERT(run->mmio.is_write, "Unexpected mmio read");
-		TEST_ASSERT(run->mmio.len == 8,
-			    "Unexpected exit mmio size = %u", run->mmio.len);
-		TEST_ASSERT(run->mmio.phys_addr >= vm->mmio_gpa_min &&
-			    run->mmio.phys_addr <= vm->mmio_gpa_max,
-			    "Unexpected exit mmio address = 0x%llx",
-			    run->mmio.phys_addr);
+		case UCALL_ABORT:
+			REPORT_GUEST_ASSERT_1(uc, "val = %lu");
+			break;
+		case UCALL_DONE:
+			goto done;
+		default:
+			TEST_FAIL("Unknown ucall %lu", uc.cmd);
+		}
 	}
 
-	if (run->exit_reason == KVM_EXIT_IO && cmd == UCALL_ABORT)
-		TEST_FAIL("%s at %s:%ld, val = %lu", (const char *)uc.args[0],
-			  __FILE__, uc.args[1], uc.args[2]);
-
+done:
 	return NULL;
 }
 
@@ -227,6 +235,7 @@ static struct vm_data *alloc_vm(void)
 	TEST_ASSERT(data, "malloc(vmdata) failed");
 
 	data->vm = NULL;
+	data->vcpu = NULL;
 	data->hva_slots = NULL;
 
 	return data;
@@ -267,7 +276,8 @@ static bool prepare_vm(struct vm_data *data, int nslots, uint64_t *maxslots,
 	data->hva_slots = malloc(sizeof(*data->hva_slots) * data->nslots);
 	TEST_ASSERT(data->hva_slots, "malloc() fail");
 
-	data->vm = vm_create_default(VCPU_ID, mempages, guest_code);
+	data->vm = __vm_create_with_one_vcpu(&data->vcpu, mempages, guest_code);
+	ucall_init(data->vm, NULL);
 
 	pr_info_v("Adding slots 1..%i, each slot with %"PRIu64" pages + %"PRIu64" extra pages last\n",
 		max_mem_slots - 1, data->pages_per_slot, rempages);

@@ -40,6 +40,7 @@
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
+#include <linux/dma/imx-dma.h>
 
 #include <sound/core.h>
 #include <sound/pcm.h>
@@ -92,7 +93,7 @@
  */
 #define FSLSSI_AC97_DAIFMT \
 	(SND_SOC_DAIFMT_AC97 | \
-	 SND_SOC_DAIFMT_CBM_CFS | \
+	 SND_SOC_DAIFMT_BC_FP | \
 	 SND_SOC_DAIFMT_NB_NF)
 
 #define FSLSSI_SIER_DBG_RX_FLAGS \
@@ -214,6 +215,7 @@ struct fsl_ssi_soc_data {
  * @synchronous: Use synchronous mode - both of TX and RX use STCK and SFCK
  * @use_dma: DMA is used or FIQ with stream filter
  * @use_dual_fifo: DMA with support for dual FIFO mode
+ * @use_dyna_fifo: DMA with support for multi FIFO script
  * @has_ipg_clk_name: If "ipg" is in the clock name list of device tree
  * @fifo_depth: Depth of the SSI FIFOs
  * @slot_width: Width of each DAI slot
@@ -243,6 +245,7 @@ struct fsl_ssi_soc_data {
  * @dma_maxburst: Max number of words to transfer in one go. So far,
  *                this is always the same as fifo_watermark.
  * @ac97_reg_lock: Mutex lock to serialize AC97 register access operations
+ * @audio_config: configure for dma multi fifo script
  */
 struct fsl_ssi {
 	struct regmap *regs;
@@ -255,6 +258,7 @@ struct fsl_ssi {
 	bool synchronous;
 	bool use_dma;
 	bool use_dual_fifo;
+	bool use_dyna_fifo;
 	bool has_ipg_clk_name;
 	unsigned int fifo_depth;
 	unsigned int slot_width;
@@ -287,6 +291,7 @@ struct fsl_ssi {
 	u32 dma_maxburst;
 
 	struct mutex ac97_reg_lock;
+	struct sdma_peripheral_config audio_config[2];
 };
 
 /*
@@ -350,16 +355,16 @@ static bool fsl_ssi_is_ac97(struct fsl_ssi *ssi)
 		SND_SOC_DAIFMT_AC97;
 }
 
-static bool fsl_ssi_is_i2s_master(struct fsl_ssi *ssi)
+static bool fsl_ssi_is_i2s_clock_provider(struct fsl_ssi *ssi)
 {
-	return (ssi->dai_fmt & SND_SOC_DAIFMT_MASTER_MASK) ==
-		SND_SOC_DAIFMT_CBS_CFS;
+	return (ssi->dai_fmt & SND_SOC_DAIFMT_CLOCK_PROVIDER_MASK) ==
+		SND_SOC_DAIFMT_BP_FP;
 }
 
-static bool fsl_ssi_is_i2s_cbm_cfs(struct fsl_ssi *ssi)
+static bool fsl_ssi_is_i2s_bc_fp(struct fsl_ssi *ssi)
 {
-	return (ssi->dai_fmt & SND_SOC_DAIFMT_MASTER_MASK) ==
-		SND_SOC_DAIFMT_CBM_CFS;
+	return (ssi->dai_fmt & SND_SOC_DAIFMT_CLOCK_PROVIDER_MASK) ==
+		SND_SOC_DAIFMT_BC_FP;
 }
 
 /**
@@ -643,7 +648,7 @@ static int fsl_ssi_startup(struct snd_pcm_substream *substream,
 	 * task from fifo0, fifo1 would be neglected at the end of each
 	 * period. But SSI would still access fifo1 with an invalid data.
 	 */
-	if (ssi->use_dual_fifo)
+	if (ssi->use_dual_fifo || ssi->use_dyna_fifo)
 		snd_pcm_hw_constraint_step(substream->runtime, 0,
 					   SNDRV_PCM_HW_PARAM_PERIOD_SIZE, 2);
 
@@ -802,13 +807,14 @@ static int fsl_ssi_hw_params(struct snd_pcm_substream *substream,
 {
 	bool tx2, tx = substream->stream == SNDRV_PCM_STREAM_PLAYBACK;
 	struct fsl_ssi *ssi = snd_soc_dai_get_drvdata(dai);
+	struct fsl_ssi_regvals *vals = ssi->regvals;
 	struct regmap *regs = ssi->regs;
 	unsigned int channels = params_channels(hw_params);
 	unsigned int sample_size = params_width(hw_params);
 	u32 wl = SSI_SxCCR_WL(sample_size);
 	int ret;
 
-	if (fsl_ssi_is_i2s_master(ssi)) {
+	if (fsl_ssi_is_i2s_clock_provider(ssi)) {
 		ret = fsl_ssi_set_bclk(substream, dai, hw_params);
 		if (ret)
 			return ret;
@@ -841,7 +847,7 @@ static int fsl_ssi_hw_params(struct snd_pcm_substream *substream,
 		u8 i2s_net = ssi->i2s_net;
 
 		/* Normal + Network mode to send 16-bit data in 32-bit frames */
-		if (fsl_ssi_is_i2s_cbm_cfs(ssi) && sample_size == 16)
+		if (fsl_ssi_is_i2s_bc_fp(ssi) && sample_size == 16)
 			i2s_net = SSI_SCR_I2S_MODE_NORMAL | SSI_SCR_NET;
 
 		/* Use Normal mode to send mono data at 1st slot of 2 slots */
@@ -856,6 +862,28 @@ static int fsl_ssi_hw_params(struct snd_pcm_substream *substream,
 	tx2 = tx || ssi->synchronous;
 	regmap_update_bits(regs, REG_SSI_SxCCR(tx2), SSI_SxCCR_WL_MASK, wl);
 
+	if (ssi->use_dyna_fifo) {
+		if (channels == 1) {
+			ssi->audio_config[0].n_fifos_dst = 1;
+			ssi->audio_config[1].n_fifos_src = 1;
+			vals[RX].srcr &= ~SSI_SRCR_RFEN1;
+			vals[TX].stcr &= ~SSI_STCR_TFEN1;
+			vals[RX].scr  &= ~SSI_SCR_TCH_EN;
+			vals[TX].scr  &= ~SSI_SCR_TCH_EN;
+		} else {
+			ssi->audio_config[0].n_fifos_dst = 2;
+			ssi->audio_config[1].n_fifos_src = 2;
+			vals[RX].srcr |= SSI_SRCR_RFEN1;
+			vals[TX].stcr |= SSI_STCR_TFEN1;
+			vals[RX].scr  |= SSI_SCR_TCH_EN;
+			vals[TX].scr  |= SSI_SCR_TCH_EN;
+		}
+		ssi->dma_params_tx.peripheral_config = &ssi->audio_config[0];
+		ssi->dma_params_tx.peripheral_size = sizeof(ssi->audio_config[0]);
+		ssi->dma_params_rx.peripheral_config = &ssi->audio_config[1];
+		ssi->dma_params_rx.peripheral_size = sizeof(ssi->audio_config[1]);
+	}
+
 	return 0;
 }
 
@@ -865,7 +893,7 @@ static int fsl_ssi_hw_free(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream);
 	struct fsl_ssi *ssi = snd_soc_dai_get_drvdata(asoc_rtd_to_cpu(rtd, 0));
 
-	if (fsl_ssi_is_i2s_master(ssi) &&
+	if (fsl_ssi_is_i2s_clock_provider(ssi) &&
 	    ssi->baudclk_streams & BIT(substream->stream)) {
 		clk_disable_unprepare(ssi->baudclk);
 		ssi->baudclk_streams &= ~BIT(substream->stream);
@@ -891,18 +919,18 @@ static int _fsl_ssi_set_dai_fmt(struct fsl_ssi *ssi, unsigned int fmt)
 	ssi->i2s_net = SSI_SCR_NET;
 	switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
 	case SND_SOC_DAIFMT_I2S:
-		switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
-		case SND_SOC_DAIFMT_CBS_CFS:
+		switch (fmt & SND_SOC_DAIFMT_CLOCK_PROVIDER_MASK) {
+		case SND_SOC_DAIFMT_BP_FP:
 			if (IS_ERR(ssi->baudclk)) {
 				dev_err(ssi->dev,
 					"missing baudclk for master mode\n");
 				return -EINVAL;
 			}
 			fallthrough;
-		case SND_SOC_DAIFMT_CBM_CFS:
+		case SND_SOC_DAIFMT_BC_FP:
 			ssi->i2s_net |= SSI_SCR_I2S_MODE_MASTER;
 			break;
-		case SND_SOC_DAIFMT_CBM_CFM:
+		case SND_SOC_DAIFMT_BC_FC:
 			ssi->i2s_net |= SSI_SCR_I2S_MODE_SLAVE;
 			break;
 		default:
@@ -962,17 +990,17 @@ static int _fsl_ssi_set_dai_fmt(struct fsl_ssi *ssi, unsigned int fmt)
 		return -EINVAL;
 	}
 
-	/* DAI clock master masks */
-	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
-	case SND_SOC_DAIFMT_CBS_CFS:
+	/* DAI clock provider masks */
+	switch (fmt & SND_SOC_DAIFMT_CLOCK_PROVIDER_MASK) {
+	case SND_SOC_DAIFMT_BP_FP:
 		/* Output bit and frame sync clocks */
 		strcr |= SSI_STCR_TFDIR | SSI_STCR_TXDIR;
 		scr |= SSI_SCR_SYS_CLK_EN;
 		break;
-	case SND_SOC_DAIFMT_CBM_CFM:
+	case SND_SOC_DAIFMT_BC_FC:
 		/* Input bit or frame sync clocks */
 		break;
-	case SND_SOC_DAIFMT_CBM_CFS:
+	case SND_SOC_DAIFMT_BC_FP:
 		/* Input bit clock but output frame sync clock */
 		strcr |= SSI_STCR_TFDIR;
 		break;
@@ -1154,6 +1182,7 @@ static struct snd_soc_dai_driver fsl_ssi_dai_template = {
 
 static const struct snd_soc_component_driver fsl_ssi_component = {
 	.name = "fsl-ssi",
+	.legacy_dai_naming = 1,
 };
 
 static struct snd_soc_dai_driver fsl_ssi_ac97_dai = {
@@ -1341,7 +1370,7 @@ static int fsl_ssi_imx_probe(struct platform_device *pdev,
 		}
 	}
 
-	/* Do not error out for slave cases that live without a baud clock */
+	/* Do not error out for consumer cases that live without a baud clock */
 	ssi->baudclk = devm_clk_get(dev, "baud");
 	if (IS_ERR(ssi->baudclk))
 		dev_dbg(dev, "failed to get baud clock: %ld\n",
@@ -1353,7 +1382,7 @@ static int fsl_ssi_imx_probe(struct platform_device *pdev,
 	ssi->dma_params_rx.addr = ssi->ssi_phys + REG_SSI_SRX0;
 
 	/* Use even numbers to avoid channel swap due to SDMA script design */
-	if (ssi->use_dual_fifo) {
+	if (ssi->use_dual_fifo || ssi->use_dyna_fifo) {
 		ssi->dma_params_tx.maxburst &= ~0x1;
 		ssi->dma_params_rx.maxburst &= ~0x1;
 	}
@@ -1372,7 +1401,7 @@ static int fsl_ssi_imx_probe(struct platform_device *pdev,
 		if (ret)
 			goto error_pcm;
 	} else {
-		ret = imx_pcm_dma_init(pdev, IMX_SSI_DMABUF_SIZE);
+		ret = imx_pcm_dma_init(pdev);
 		if (ret)
 			goto error_pcm;
 	}
@@ -1446,6 +1475,8 @@ static int fsl_ssi_probe_from_dt(struct fsl_ssi *ssi)
 	if (ssi->use_dma && !ret && dmas[2] == IMX_DMATYPE_SSI_DUAL)
 		ssi->use_dual_fifo = true;
 
+	if (ssi->use_dma && !ret && dmas[2] == IMX_DMATYPE_MULTI_SAI)
+		ssi->use_dyna_fifo = true;
 	/*
 	 * Backward compatible for older bindings by manually triggering the
 	 * machine driver's probe(). Use /compatible property, including the

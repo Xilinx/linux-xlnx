@@ -6,7 +6,7 @@
  * Copyright (C) 1998-99  Kirk Reiser.
  * Copyright (C) 2003 David Borowski.
  *
- * this code is specificly written as a driver for the speakup screenreview
+ * this code is specifically written as a driver for the speakup screenreview
  * package and is not a general device driver.
  * This driver is for the Aicom Acent PC internal synthesizer.
  */
@@ -247,7 +247,7 @@ static void synth_flush(struct spk_synth *synth)
 static int synth_probe(struct spk_synth *synth)
 {
 	unsigned int port_val = 0;
-	int i = 0;
+	int i;
 
 	pr_info("Probing for %s.\n", synth->long_name);
 	if (port_forced) {

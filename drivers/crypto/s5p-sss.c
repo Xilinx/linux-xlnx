@@ -2171,6 +2171,8 @@ static int s5p_aes_probe(struct platform_device *pdev)
 
 	variant = find_s5p_sss_version(pdev);
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!res)
+		return -EINVAL;
 
 	/*
 	 * Note: HASH and PRNG uses the same registers in secss, avoid
@@ -2318,9 +2320,6 @@ static int s5p_aes_remove(struct platform_device *pdev)
 {
 	struct s5p_aes_dev *pdata = platform_get_drvdata(pdev);
 	int i;
-
-	if (!pdata)
-		return -ENODEV;
 
 	for (i = 0; i < ARRAY_SIZE(algs); i++)
 		crypto_unregister_skcipher(&algs[i]);

@@ -36,6 +36,9 @@
 #define TPM_CR50_FW_VER(l)			(0x0f90 | ((l) << 12))
 #define TPM_CR50_MAX_FW_VER_LEN			64
 
+/* Default quality for hwrng. */
+#define TPM_CR50_DEFAULT_RNG_QUALITY		700
+
 struct cr50_spi_phy {
 	struct tpm_tis_spi_phy spi_phy;
 
@@ -182,6 +185,19 @@ static int cr50_spi_flow_control(struct tpm_tis_spi_phy *phy,
 	return 0;
 }
 
+static bool tpm_cr50_spi_is_firmware_power_managed(struct device *dev)
+{
+	u8 val;
+	int ret;
+
+	/* This flag should default true when the device property is not present */
+	ret = device_property_read_u8(dev, "firmware-power-managed", &val);
+	if (ret)
+		return true;
+
+	return val;
+}
+
 static int tpm_tis_spi_cr50_transfer(struct tpm_tis_data *data, u32 addr, u16 len,
 				     u8 *in, const u8 *out)
 {
@@ -206,13 +222,13 @@ static int tpm_tis_spi_cr50_transfer(struct tpm_tis_data *data, u32 addr, u16 le
 }
 
 static int tpm_tis_spi_cr50_read_bytes(struct tpm_tis_data *data, u32 addr,
-				       u16 len, u8 *result)
+				       u16 len, u8 *result, enum tpm_tis_io_mode io_mode)
 {
 	return tpm_tis_spi_cr50_transfer(data, addr, len, result, NULL);
 }
 
 static int tpm_tis_spi_cr50_write_bytes(struct tpm_tis_data *data, u32 addr,
-					u16 len, const u8 *value)
+					u16 len, const u8 *value, enum tpm_tis_io_mode io_mode)
 {
 	return tpm_tis_spi_cr50_transfer(data, addr, len, NULL, value);
 }
@@ -220,9 +236,6 @@ static int tpm_tis_spi_cr50_write_bytes(struct tpm_tis_data *data, u32 addr,
 static const struct tpm_tis_phy_ops tpm_spi_cr50_phy_ops = {
 	.read_bytes = tpm_tis_spi_cr50_read_bytes,
 	.write_bytes = tpm_tis_spi_cr50_write_bytes,
-	.read16 = tpm_tis_spi_read16,
-	.read32 = tpm_tis_spi_read32,
-	.write32 = tpm_tis_spi_write32,
 };
 
 static void cr50_print_fw_version(struct tpm_tis_data *data)
@@ -264,6 +277,7 @@ int cr50_spi_probe(struct spi_device *spi)
 	phy = &cr50_phy->spi_phy;
 	phy->flow_control = cr50_spi_flow_control;
 	phy->wake_after = jiffies;
+	phy->priv.rng_quality = TPM_CR50_DEFAULT_RNG_QUALITY;
 	init_completion(&phy->ready);
 
 	cr50_phy->access_delay = CR50_NOIRQ_ACCESS_DELAY;
@@ -305,7 +319,8 @@ int cr50_spi_probe(struct spi_device *spi)
 	cr50_print_fw_version(&phy->priv);
 
 	chip = dev_get_drvdata(&spi->dev);
-	chip->flags |= TPM_CHIP_FLAG_FIRMWARE_POWER_MANAGED;
+	if (tpm_cr50_spi_is_firmware_power_managed(&spi->dev))
+		chip->flags |= TPM_CHIP_FLAG_FIRMWARE_POWER_MANAGED;
 
 	return 0;
 }

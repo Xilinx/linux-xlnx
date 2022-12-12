@@ -689,7 +689,7 @@ static int ep93xx_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 
 static void ep93xx_get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *info)
 {
-	strlcpy(info->driver, DRV_MODULE_NAME, sizeof(info->driver));
+	strscpy(info->driver, DRV_MODULE_NAME, sizeof(info->driver));
 }
 
 static int ep93xx_get_link_ksettings(struct net_device *dev,
@@ -746,7 +746,7 @@ static struct net_device *ep93xx_dev_alloc(struct ep93xx_eth_data *data)
 	if (dev == NULL)
 		return NULL;
 
-	memcpy(dev->dev_addr, data->dev_addr, ETH_ALEN);
+	eth_hw_addr_set(dev, data->dev_addr);
 
 	dev->ethtool_ops = &ep93xx_ethtool_ops;
 	dev->netdev_ops = &ep93xx_netdev_ops;
@@ -812,7 +812,7 @@ static int ep93xx_eth_probe(struct platform_device *pdev)
 	ep = netdev_priv(dev);
 	ep->dev = dev;
 	SET_NETDEV_DEV(dev, &pdev->dev);
-	netif_napi_add(dev, &ep->napi, ep93xx_poll, 64);
+	netif_napi_add(dev, &ep->napi, ep93xx_poll);
 
 	platform_set_drvdata(pdev, dev);
 

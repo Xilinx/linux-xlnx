@@ -26,7 +26,6 @@ obj-$(CONFIG_LEDS_COBALT_RAQ)		+= leds-cobalt-raq.o
 obj-$(CONFIG_LEDS_CPCAP)		+= leds-cpcap.o
 obj-$(CONFIG_LEDS_DA903X)		+= leds-da903x.o
 obj-$(CONFIG_LEDS_DA9052)		+= leds-da9052.o
-obj-$(CONFIG_LEDS_FSG)			+= leds-fsg.o
 obj-$(CONFIG_LEDS_GPIO)			+= leds-gpio.o
 obj-$(CONFIG_LEDS_GPIO_REGISTER)	+= leds-gpio-register.o
 obj-$(CONFIG_LEDS_HP6XX)		+= leds-hp6xx.o
@@ -100,8 +99,14 @@ obj-$(CONFIG_LEDS_USER)			+= uleds.o
 # Flash and Torch LED Drivers
 obj-$(CONFIG_LEDS_CLASS_FLASH)		+= flash/
 
+# RGB LED Drivers
+obj-$(CONFIG_LEDS_CLASS_MULTICOLOR)	+= rgb/
+
 # LED Triggers
 obj-$(CONFIG_LEDS_TRIGGERS)		+= trigger/
 
 # LED Blink
 obj-y					+= blink/
+
+# Simple LED drivers
+obj-y					+= simple/

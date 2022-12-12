@@ -17,6 +17,7 @@
 #include <uapi/linux/input-event-codes.h>
 
 #include "../codecs/rt5682.h"
+#include "../codecs/rt5682s.h"
 #include "common.h"
 #include "lpass.h"
 
@@ -56,7 +57,7 @@ static int sc7180_headset_init(struct snd_soc_pcm_runtime *rtd)
 			SND_JACK_HEADPHONE |
 			SND_JACK_BTN_0 | SND_JACK_BTN_1 |
 			SND_JACK_BTN_2 | SND_JACK_BTN_3,
-			&pdata->hs_jack, NULL, 0);
+			&pdata->hs_jack);
 
 	if (rval < 0) {
 		dev_err(card->dev, "Unable to add Headset Jack\n");
@@ -88,7 +89,7 @@ static int sc7180_hdmi_init(struct snd_soc_pcm_runtime *rtd)
 	rval = snd_soc_card_jack_new(
 			card, "HDMI Jack",
 			SND_JACK_LINEOUT,
-			&pdata->hdmi_jack, NULL, 0);
+			&pdata->hdmi_jack);
 
 	if (rval < 0) {
 		dev_err(card->dev, "Unable to add HDMI Jack\n");
@@ -128,7 +129,21 @@ static int sc7180_snd_startup(struct snd_pcm_substream *substream)
 	struct sc7180_snd_data *data = snd_soc_card_get_drvdata(card);
 	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
 	struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);
-	int ret;
+	int pll_id, pll_source, pll_in, pll_out, clk_id, ret;
+
+	if (!strcmp(codec_dai->name, "rt5682-aif1")) {
+		pll_source = RT5682_PLL1_S_MCLK;
+		pll_id = 0;
+		clk_id = RT5682_SCLK_S_PLL1;
+		pll_out = RT5682_PLL1_FREQ;
+		pll_in = DEFAULT_MCLK_RATE;
+	} else if (!strcmp(codec_dai->name, "rt5682s-aif1")) {
+		pll_source = RT5682S_PLL_S_MCLK;
+		pll_id = RT5682S_PLL2;
+		clk_id = RT5682S_SCLK_S_PLL2;
+		pll_out = RT5682_PLL1_FREQ;
+		pll_in = DEFAULT_MCLK_RATE;
+	}
 
 	switch (cpu_dai->id) {
 	case MI2S_PRIMARY:
@@ -140,21 +155,20 @@ static int sc7180_snd_startup(struct snd_pcm_substream *substream)
 		}
 
 		snd_soc_dai_set_fmt(codec_dai,
-				    SND_SOC_DAIFMT_CBS_CFS |
+				    SND_SOC_DAIFMT_BC_FC |
 				    SND_SOC_DAIFMT_NB_NF |
 				    SND_SOC_DAIFMT_I2S);
 
 		/* Configure PLL1 for codec */
-		ret = snd_soc_dai_set_pll(codec_dai, 0, RT5682_PLL1_S_MCLK,
-					  DEFAULT_MCLK_RATE, RT5682_PLL1_FREQ);
+		ret = snd_soc_dai_set_pll(codec_dai, pll_id, pll_source,
+					  pll_in, pll_out);
 		if (ret) {
 			dev_err(rtd->dev, "can't set codec pll: %d\n", ret);
 			return ret;
 		}
 
 		/* Configure sysclk for codec */
-		ret = snd_soc_dai_set_sysclk(codec_dai, RT5682_SCLK_S_PLL1,
-					     RT5682_PLL1_FREQ,
+		ret = snd_soc_dai_set_sysclk(codec_dai, clk_id, pll_out,
 					     SND_SOC_CLOCK_IN);
 		if (ret)
 			dev_err(rtd->dev, "snd_soc_dai_set_sysclk err = %d\n",

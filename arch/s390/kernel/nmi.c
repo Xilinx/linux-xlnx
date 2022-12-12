@@ -6,12 +6,12 @@
  *    Author(s): Ingo Adlung <adlung@de.ibm.com>,
  *		 Martin Schwidefsky <schwidefsky@de.ibm.com>,
  *		 Cornelia Huck <cornelia.huck@de.ibm.com>,
- *		 Heiko Carstens <heiko.carstens@de.ibm.com>,
  */
 
 #include <linux/kernel_stat.h>
 #include <linux/init.h>
 #include <linux/errno.h>
+#include <linux/entry-common.h>
 #include <linux/hardirq.h>
 #include <linux/log2.h>
 #include <linux/kprobes.h>
@@ -30,6 +30,8 @@
 #include <asm/switch_to.h>
 #include <asm/ctl_reg.h>
 #include <asm/asm-offsets.h>
+#include <asm/pai.h>
+
 #include <linux/kvm_host.h>
 
 struct mcck_struct {
@@ -58,27 +60,27 @@ static inline unsigned long nmi_get_mcesa_size(void)
 
 /*
  * The initial machine check extended save area for the boot CPU.
- * It will be replaced by nmi_init() with an allocated structure.
- * The structure is required for machine check happening early in
- * the boot process.
+ * It will be replaced on the boot CPU reinit with an allocated
+ * structure. The structure is required for machine check happening
+ * early in the boot process.
  */
-static struct mcesa boot_mcesa __initdata __aligned(MCESA_MAX_SIZE);
+static struct mcesa boot_mcesa __aligned(MCESA_MAX_SIZE);
 
-void __init nmi_alloc_boot_cpu(struct lowcore *lc)
+void __init nmi_alloc_mcesa_early(u64 *mcesad)
 {
 	if (!nmi_needs_mcesa())
 		return;
-	lc->mcesad = (unsigned long) &boot_mcesa;
+	*mcesad = __pa(&boot_mcesa);
 	if (MACHINE_HAS_GS)
-		lc->mcesad |= ilog2(MCESA_MAX_SIZE);
+		*mcesad |= ilog2(MCESA_MAX_SIZE);
 }
 
-static int __init nmi_init(void)
+static void __init nmi_alloc_cache(void)
 {
-	unsigned long origin, cr0, size;
+	unsigned long size;
 
 	if (!nmi_needs_mcesa())
-		return 0;
+		return;
 	size = nmi_get_mcesa_size();
 	if (size > MCESA_MIN_SIZE)
 		mcesa_origin_lc = ilog2(size);
@@ -86,40 +88,31 @@ static int __init nmi_init(void)
 	mcesa_cache = kmem_cache_create("nmi_save_areas", size, size, 0, NULL);
 	if (!mcesa_cache)
 		panic("Couldn't create nmi save area cache");
-	origin = (unsigned long) kmem_cache_alloc(mcesa_cache, GFP_KERNEL);
-	if (!origin)
-		panic("Couldn't allocate nmi save area");
-	/* The pointer is stored with mcesa_bits ORed in */
-	kmemleak_not_leak((void *) origin);
-	__ctl_store(cr0, 0, 0);
-	__ctl_clear_bit(0, 28); /* disable lowcore protection */
-	/* Replace boot_mcesa on the boot CPU */
-	S390_lowcore.mcesad = origin | mcesa_origin_lc;
-	__ctl_load(cr0, 0, 0);
-	return 0;
 }
-early_initcall(nmi_init);
 
-int nmi_alloc_per_cpu(struct lowcore *lc)
+int __ref nmi_alloc_mcesa(u64 *mcesad)
 {
 	unsigned long origin;
 
+	*mcesad = 0;
 	if (!nmi_needs_mcesa())
 		return 0;
+	if (!mcesa_cache)
+		nmi_alloc_cache();
 	origin = (unsigned long) kmem_cache_alloc(mcesa_cache, GFP_KERNEL);
 	if (!origin)
 		return -ENOMEM;
 	/* The pointer is stored with mcesa_bits ORed in */
 	kmemleak_not_leak((void *) origin);
-	lc->mcesad = origin | mcesa_origin_lc;
+	*mcesad = __pa(origin) | mcesa_origin_lc;
 	return 0;
 }
 
-void nmi_free_per_cpu(struct lowcore *lc)
+void nmi_free_mcesa(u64 *mcesad)
 {
 	if (!nmi_needs_mcesa())
 		return;
-	kmem_cache_free(mcesa_cache, (void *)(lc->mcesad & MCESA_ORIGIN_MASK));
+	kmem_cache_free(mcesa_cache, __va(*mcesad & MCESA_ORIGIN_MASK));
 }
 
 static notrace void s390_handle_damage(void)
@@ -175,14 +168,16 @@ void __s390_handle_mcck(void)
 		       "malfunction (code 0x%016lx).\n", mcck.mcck_code);
 		printk(KERN_EMERG "mcck: task: %s, pid: %d.\n",
 		       current->comm, current->pid);
-		do_exit(SIGSEGV);
+		make_task_dead(SIGSEGV);
 	}
 }
 
-void noinstr s390_handle_mcck(void)
+void noinstr s390_handle_mcck(struct pt_regs *regs)
 {
 	trace_hardirqs_off();
+	pai_kernel_enter(regs);
 	__s390_handle_mcck();
+	pai_kernel_exit(regs);
 	trace_hardirqs_on();
 }
 /*
@@ -246,7 +241,7 @@ static int notrace s390_validate_registers(union mci mci, int umode)
 			: "Q" (S390_lowcore.fpt_creg_save_area));
 	}
 
-	mcesa = (struct mcesa *)(S390_lowcore.mcesad & MCESA_ORIGIN_MASK);
+	mcesa = __va(S390_lowcore.mcesad & MCESA_ORIGIN_MASK);
 	if (!MACHINE_HAS_VX) {
 		/* Validate floating point registers */
 		asm volatile(
@@ -273,7 +268,14 @@ static int notrace s390_validate_registers(union mci mci, int umode)
 		/* Validate vector registers */
 		union ctlreg0 cr0;
 
-		if (!mci.vr) {
+		/*
+		 * The vector validity must only be checked if not running a
+		 * KVM guest. For KVM guests the machine check is forwarded by
+		 * KVM and it is the responsibility of the guest to take
+		 * appropriate actions. The host vector or FPU values have been
+		 * saved by KVM and will be restored by KVM.
+		 */
+		if (!mci.vr && !test_cpu_flag(CIF_MCCK_GUEST)) {
 			/*
 			 * Vector registers can't be restored. If the kernel
 			 * currently uses vector registers the system is
@@ -316,11 +318,21 @@ static int notrace s390_validate_registers(union mci mci, int umode)
 	if (cr2.gse) {
 		if (!mci.gs) {
 			/*
-			 * Guarded storage register can't be restored and
-			 * the current processes uses guarded storage.
-			 * It has to be terminated.
+			 * 2 cases:
+			 * - machine check in kernel or userspace
+			 * - machine check while running SIE (KVM guest)
+			 * For kernel or userspace the userspace values of
+			 * guarded storage control can not be recreated, the
+			 * process must be terminated.
+			 * For SIE the guest values of guarded storage can not
+			 * be recreated. This is either due to a bug or due to
+			 * GS being disabled in the guest. The guest will be
+			 * notified by KVM code and the guests machine check
+			 * handling must take care of this.  The host values
+			 * are saved by KVM and are not affected.
 			 */
-			kill_task = 1;
+			if (!test_cpu_flag(CIF_MCCK_GUEST))
+				kill_task = 1;
 		} else {
 			load_gs_cb((struct gs_cb *)mcesa->guarded_storage_save_area);
 		}
@@ -386,11 +398,12 @@ int notrace s390_do_machine_check(struct pt_regs *regs)
 	static unsigned long long last_ipd;
 	struct mcck_struct *mcck;
 	unsigned long long tmp;
+	irqentry_state_t irq_state;
 	union mci mci;
 	unsigned long mcck_dam_code;
 	int mcck_pending = 0;
 
-	nmi_enter();
+	irq_state = irqentry_nmi_enter(regs);
 
 	if (user_mode(regs))
 		update_timer_mcck();
@@ -493,14 +506,14 @@ int notrace s390_do_machine_check(struct pt_regs *regs)
 	clear_cpu_flag(CIF_MCCK_GUEST);
 
 	if (user_mode(regs) && mcck_pending) {
-		nmi_exit();
+		irqentry_nmi_exit(regs, irq_state);
 		return 1;
 	}
 
 	if (mcck_pending)
 		schedule_mcck_handler();
 
-	nmi_exit();
+	irqentry_nmi_exit(regs, irq_state);
 	return 0;
 }
 NOKPROBE_SYMBOL(s390_do_machine_check);

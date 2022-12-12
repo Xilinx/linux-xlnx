@@ -34,14 +34,13 @@ static const struct usb_device_id usb_prism_tbl[] = {
 	PRISM_DEV(0x04f1, 0x3009, "JVC MP-XP7250 Builtin USB WLAN Adapter"),
 	PRISM_DEV(0x0846, 0x4110, "NetGear MA111"),
 	PRISM_DEV(0x03f3, 0x0020, "Adaptec AWN-8020 USB WLAN Adapter"),
-	PRISM_DEV(0x2821, 0x3300, "ASUS-WL140 Wireless USB Adapter"),
+	PRISM_DEV(0x2821, 0x3300, "ASUS-WL140 / Hawking HighDB Wireless USB Adapter"),
 	PRISM_DEV(0x2001, 0x3700, "DWL-122 Wireless USB Adapter"),
 	PRISM_DEV(0x2001, 0x3702, "DWL-120 Rev F Wireless USB Adapter"),
 	PRISM_DEV(0x50c2, 0x4013, "Averatec USB WLAN Adapter"),
 	PRISM_DEV(0x2c02, 0x14ea, "Planex GW-US11H WLAN USB Adapter"),
 	PRISM_DEV(0x124a, 0x168b, "Airvast PRISM3 WLAN USB Adapter"),
 	PRISM_DEV(0x083a, 0x3503, "T-Sinus 111 USB WLAN Adapter"),
-	PRISM_DEV(0x2821, 0x3300, "Hawking HighDB USB Adapter"),
 	PRISM_DEV(0x0411, 0x0044, "Melco WLI-USB-KB11 11Mbps WLAN Adapter"),
 	PRISM_DEV(0x1668, 0x6106, "ROPEX FreeLan 802.11b USB Adapter"),
 	PRISM_DEV(0x124a, 0x4017, "Pheenet WL-503IA 802.11b USB Adapter"),
@@ -166,8 +165,8 @@ static void prism2sta_disconnect_usb(struct usb_interface *interface)
 		spin_unlock_irqrestore(&hw->ctlxq.lock, flags);
 
 		/* There's no hardware to shutdown, but the driver
-		 * might have some tasks or tasklets that must be
-		 * stopped before we can tear everything down.
+		 * might have some tasks that must be stopped before
+		 * we can tear everything down.
 		 */
 		prism2sta_ifstate(wlandev, P80211ENUM_ifstate_disable);
 
@@ -182,8 +181,8 @@ static void prism2sta_disconnect_usb(struct usb_interface *interface)
 		usb_kill_urb(&hw->tx_urb);
 		usb_kill_urb(&hw->ctlx_urb);
 
-		tasklet_kill(&hw->completion_bh);
-		tasklet_kill(&hw->reaper_bh);
+		cancel_work_sync(&hw->completion_bh);
+		cancel_work_sync(&hw->reaper_bh);
 
 		cancel_work_sync(&hw->link_bh);
 		cancel_work_sync(&hw->commsqual_bh);

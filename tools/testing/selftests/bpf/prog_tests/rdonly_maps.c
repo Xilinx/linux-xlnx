@@ -16,7 +16,7 @@ struct rdonly_map_subtest {
 
 void test_rdonly_maps(void)
 {
-	const char *file = "test_rdonly_maps.o";
+	const char *file = "test_rdonly_maps.bpf.o";
 	struct rdonly_map_subtest subtests[] = {
 		{ "skip loop", "skip_loop", 0, 0 },
 		{ "part loop", "part_loop", 3, 2 + 3 + 4 },
@@ -37,7 +37,7 @@ void test_rdonly_maps(void)
 	if (CHECK(err, "obj_load", "err %d errno %d\n", err, errno))
 		goto cleanup;
 
-	bss_map = bpf_object__find_map_by_name(obj, "test_rdo.bss");
+	bss_map = bpf_object__find_map_by_name(obj, ".bss");
 	if (CHECK(!bss_map, "find_bss_map", "failed\n"))
 		goto cleanup;
 

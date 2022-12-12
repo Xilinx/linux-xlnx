@@ -308,8 +308,8 @@ static const struct bcm_sysport_stats bcm_sysport_gstrings_stats[] = {
 static void bcm_sysport_get_drvinfo(struct net_device *dev,
 				    struct ethtool_drvinfo *info)
 {
-	strlcpy(info->driver, KBUILD_MODNAME, sizeof(info->driver));
-	strlcpy(info->bus_info, "platform", sizeof(info->bus_info));
+	strscpy(info->driver, KBUILD_MODNAME, sizeof(info->driver));
+	strscpy(info->bus_info, "platform", sizeof(info->bus_info));
 }
 
 static u32 bcm_sysport_get_msglvl(struct net_device *dev)
@@ -1309,11 +1309,11 @@ static netdev_tx_t bcm_sysport_xmit(struct sk_buff *skb,
 	struct bcm_sysport_priv *priv = netdev_priv(dev);
 	struct device *kdev = &priv->pdev->dev;
 	struct bcm_sysport_tx_ring *ring;
+	unsigned long flags, desc_flags;
 	struct bcm_sysport_cb *cb;
 	struct netdev_queue *txq;
 	u32 len_status, addr_lo;
 	unsigned int skb_len;
-	unsigned long flags;
 	dma_addr_t mapping;
 	u16 queue;
 	int ret;
@@ -1373,8 +1373,10 @@ static netdev_tx_t bcm_sysport_xmit(struct sk_buff *skb,
 	ring->desc_count--;
 
 	/* Ports are latched, so write upper address first */
+	spin_lock_irqsave(&priv->desc_lock, desc_flags);
 	tdma_writel(priv, len_status, TDMA_WRITE_PORT_HI(ring->index));
 	tdma_writel(priv, addr_lo, TDMA_WRITE_PORT_LO(ring->index));
+	spin_unlock_irqrestore(&priv->desc_lock, desc_flags);
 
 	/* Check ring space and update SW control flow */
 	if (ring->desc_count == 0)
@@ -1515,7 +1517,7 @@ static int bcm_sysport_init_tx_ring(struct bcm_sysport_priv *priv,
 	/* Initialize SW view of the ring */
 	spin_lock_init(&ring->lock);
 	ring->priv = priv;
-	netif_tx_napi_add(priv->netdev, &ring->napi, bcm_sysport_tx_poll, 64);
+	netif_napi_add_tx(priv->netdev, &ring->napi, bcm_sysport_tx_poll);
 	ring->index = index;
 	ring->size = size;
 	ring->clean_index = 0;
@@ -1818,7 +1820,7 @@ static inline void umac_reset(struct bcm_sysport_priv *priv)
 }
 
 static void umac_set_hw_addr(struct bcm_sysport_priv *priv,
-			     unsigned char *addr)
+			     const unsigned char *addr)
 {
 	u32 mac0 = (addr[0] << 24) | (addr[1] << 16) | (addr[2] << 8) |
 		    addr[3];
@@ -1850,7 +1852,7 @@ static int bcm_sysport_change_mac(struct net_device *dev, void *p)
 	if (!is_valid_ether_addr(addr->sa_data))
 		return -EINVAL;
 
-	memcpy(dev->dev_addr, addr->sa_data, dev->addr_len);
+	eth_hw_addr_set(dev, addr->sa_data);
 
 	/* interface is disabled, changes to MAC will be reflected on next
 	 * open call
@@ -1989,6 +1991,9 @@ static int bcm_sysport_open(struct net_device *dev)
 		goto out_clk_disable;
 	}
 
+	/* Indicate that the MAC is responsible for PHY PM */
+	phydev->mac_managed_pm = true;
+
 	/* Reset house keeping link status */
 	priv->old_duplex = -1;
 	priv->old_link = -1;
@@ -2013,6 +2018,7 @@ static int bcm_sysport_open(struct net_device *dev)
 	}
 
 	/* Initialize both hardware and software ring */
+	spin_lock_init(&priv->desc_lock);
 	for (i = 0; i < dev->num_tx_queues; i++) {
 		ret = bcm_sysport_init_tx_ring(priv, i);
 		if (ret) {
@@ -2177,13 +2183,9 @@ static int bcm_sysport_rule_set(struct bcm_sysport_priv *priv,
 	if (nfc->fs.ring_cookie != RX_CLS_FLOW_WAKE)
 		return -EOPNOTSUPP;
 
-	/* All filters are already in use, we cannot match more rules */
-	if (bitmap_weight(priv->filters, RXCHK_BRCM_TAG_MAX) ==
-	    RXCHK_BRCM_TAG_MAX)
-		return -ENOSPC;
-
 	index = find_first_zero_bit(priv->filters, RXCHK_BRCM_TAG_MAX);
 	if (index >= RXCHK_BRCM_TAG_MAX)
+		/* All filters are already in use, we cannot match more rules */
 		return -ENOSPC;
 
 	/* Location is the classification ID, and index is the position
@@ -2555,7 +2557,7 @@ static int bcm_sysport_probe(struct platform_device *pdev)
 	}
 
 	/* Initialize netdevice members */
-	ret = of_get_mac_address(dn, dev->dev_addr);
+	ret = of_get_ethdev_address(dn, dev);
 	if (ret) {
 		dev_warn(&pdev->dev, "using random Ethernet MAC\n");
 		eth_hw_addr_random(dev);
@@ -2565,7 +2567,7 @@ static int bcm_sysport_probe(struct platform_device *pdev)
 	dev_set_drvdata(&pdev->dev, dev);
 	dev->ethtool_ops = &bcm_sysport_ethtool_ops;
 	dev->netdev_ops = &bcm_sysport_netdev_ops;
-	netif_napi_add(dev, &priv->napi, bcm_sysport_poll, 64);
+	netif_napi_add(dev, &priv->napi, bcm_sysport_poll);
 
 	dev->features |= NETIF_F_RXCSUM | NETIF_F_HIGHDMA |
 			 NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM |
@@ -2582,8 +2584,10 @@ static int bcm_sysport_probe(struct platform_device *pdev)
 		device_set_wakeup_capable(&pdev->dev, 1);
 
 	priv->wol_clk = devm_clk_get_optional(&pdev->dev, "sw_sysportwol");
-	if (IS_ERR(priv->wol_clk))
-		return PTR_ERR(priv->wol_clk);
+	if (IS_ERR(priv->wol_clk)) {
+		ret = PTR_ERR(priv->wol_clk);
+		goto err_deregister_fixed_link;
+	}
 
 	/* Set the needed headroom once and for all */
 	BUILD_BUG_ON(sizeof(struct bcm_tsb) != 8);

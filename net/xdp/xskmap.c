@@ -4,10 +4,12 @@
  */
 
 #include <linux/bpf.h>
+#include <linux/filter.h>
 #include <linux/capability.h>
 #include <net/xdp_sock.h>
 #include <linux/slab.h>
 #include <linux/sched.h>
+#include <linux/btf_ids.h>
 
 #include "xsk.h"
 
@@ -253,7 +255,7 @@ static bool xsk_map_meta_equal(const struct bpf_map *meta0,
 		bpf_map_meta_equal(meta0, meta1);
 }
 
-static int xsk_map_btf_id;
+BTF_ID_LIST_SINGLE(xsk_map_btf_ids, struct, xsk_map)
 const struct bpf_map_ops xsk_map_ops = {
 	.map_meta_equal = xsk_map_meta_equal,
 	.map_alloc = xsk_map_alloc,
@@ -265,7 +267,6 @@ const struct bpf_map_ops xsk_map_ops = {
 	.map_update_elem = xsk_map_update_elem,
 	.map_delete_elem = xsk_map_delete_elem,
 	.map_check_btf = map_check_no_btf,
-	.map_btf_name = "xsk_map",
-	.map_btf_id = &xsk_map_btf_id,
+	.map_btf_id = &xsk_map_btf_ids[0],
 	.map_redirect = xsk_map_redirect,
 };

@@ -327,7 +327,7 @@ C_ENTRY(mb_flush_dcache):
 	addik	r1, r1, -PT_SIZE
 	SAVE_REGS
 
-	addik	r3, r0, cpu_info
+	LOAD_PER_CPU(r3, cpu_info)
 	lwi	r7, r3, CI_DCS
 	lwi	r8, r3, CI_DCL
 	sub	r9, r7, r8
@@ -345,7 +345,7 @@ C_ENTRY(mb_invalidate_icache):
 	addik	r1, r1, -PT_SIZE
 	SAVE_REGS
 
-	addik	r3, r0, cpu_info
+	LOAD_PER_CPU(r3, cpu_info)
 	lwi	r7, r3, CI_ICS
 	lwi	r8, r3, CI_ICL
 	sub	r9, r7, r8
@@ -528,7 +528,7 @@ TRAP_return:		/* Make global symbol for debugging */
 
 
 /* This the initial entry point for a new child thread, with an appropriate
-   stack in place that makes it look the the child is in the middle of an
+   stack in place that makes it look like the child is in the middle of a
    syscall.  This function is actually `returned to' from switch_thread
    (copy_thread makes ret_from_fork the return address in each new thread's
    saved context).  */
@@ -834,7 +834,7 @@ IRQ_return: /* MS: Make global symbol for debugging */
 #define	PT_TLBH0	PT_SIZE + 16
 
 C_ENTRY(_xtmr_manager_reset):
-	lwi	r1, r0, TOPHYS(xmb_manager_stackpointer)
+	lwi	r1, r0, xmb_manager_stackpointer
 
 	/* Restore MSR */
 	lwi	r2, r1, PT_MSR
@@ -874,7 +874,6 @@ restore_tlb:
 
 	lwi  	r5, r0, TOPHYS(xmb_manager_dev)
 	lwi	r8, r0, TOPHYS(xmb_manager_reset_callback)
-	tovirt(r1, r1)
 	set_vms
 	/* return from reset need -8 to adjust for rtsd r15, 8 */
 	addik   r15, r0, ret_from_reset - 8
@@ -884,25 +883,28 @@ restore_tlb:
 ret_from_reset:
 	set_bip /* Ints masked for state restore */
 	VM_OFF
-	tophys(r1, r1)
 	/* MS: Restore all regs */
 	RESTORE_REGS
 	lwi	r14, r1, PT_R14
 	lwi	r16, r1, PT_PC
 	addik	r1, r1, PT_SIZE + 36
-	tovirt(r1,r1)
 	rtbd	r16, 0
 	nop
 
+/*
+ * Break handler for MB Manager. Enter to _xmb_manager_break by
+ * injecting fault in one of the TMR Microblaze core.
+ * FIXME: This break handler supports getting
+ * called from kernel space only.
+ */
 C_ENTRY(_xmb_manager_break):
 	/*
 	 * Reserve memory in the stack for context store/restore
 	 * (which includes memory for storing tlbs (max two tlbs))
 	 */
-	addik	r1, r1, CONFIG_KERNEL_BASE_ADDR - CONFIG_KERNEL_START - PT_SIZE - 36
-	swi	r1, r0, TOPHYS(xmb_manager_stackpointer)
+	addik	r1, r1, -PT_SIZE - 36
+	swi	r1, r0, xmb_manager_stackpointer
 	SAVE_REGS
-	swi	r0, r1, PT_R0;	/* R0 must be saved too */
 	swi	r14, r1, PT_R14	/* rewrite saved R14 value */
 	swi	r16, r1, PT_PC; /* PC and r16 are the same */
 
@@ -951,7 +953,6 @@ save_tlb:
 
 	lwi  	r5, r0, TOPHYS(xmb_manager_dev)
 	lwi	r8, r0, TOPHYS(xmb_manager_callback)
-	tovirt(r1, r1)
 	/* return from break need -8 to adjust for rtsd r15, 8 */
 	addik   r15, r0, ret_from_break - 8
 	rtbd	r8, 0
@@ -971,7 +972,6 @@ ret_from_break:
 
 	set_bip; /* Ints masked for state restore */
 	VM_OFF;
-	tophys(r1,r1)
 	mbar	1
 	mbar	2
 	bri	4
@@ -1206,6 +1206,10 @@ xmb_inject_err:
 	/* barrier for instructions and data accesses */
 	mbar	1
 	mbar	2
+	/*
+	 * Enable Interrupts, Virtual Protected Mode, equalize
+	 * initial state for all possible entries.
+	 */
 	rtbd    r0, 1f
 	nop;
 1:

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier:	GPL-2.0
+// SPDX-License-Identifier: GPL-2.0
 /* Copyright 2019 Linaro, Ltd, Rob Herring <robh@kernel.org> */
 
 #include <drm/panfrost_drm.h>
@@ -58,21 +58,37 @@ static int write_cmd(struct panfrost_device *pfdev, u32 as_nr, u32 cmd)
 }
 
 static void lock_region(struct panfrost_device *pfdev, u32 as_nr,
-			u64 iova, u64 size)
+			u64 region_start, u64 size)
 {
 	u8 region_width;
-	u64 region = iova & PAGE_MASK;
+	u64 region;
+	u64 region_end = region_start + size;
 
-	/* The size is encoded as ceil(log2) minus(1), which may be calculated
-	 * with fls. The size must be clamped to hardware bounds.
+	if (!size)
+		return;
+
+	/*
+	 * The locked region is a naturally aligned power of 2 block encoded as
+	 * log2 minus(1).
+	 * Calculate the desired start/end and look for the highest bit which
+	 * differs. The smallest naturally aligned block must include this bit
+	 * change, the desired region starts with this bit (and subsequent bits)
+	 * zeroed and ends with the bit (and subsequent bits) set to one.
 	 */
-	size = max_t(u64, size, AS_LOCK_REGION_MIN_SIZE);
-	region_width = fls64(size - 1) - 1;
-	region |= region_width;
+	region_width = max(fls64(region_start ^ (region_end - 1)),
+			   const_ilog2(AS_LOCK_REGION_MIN_SIZE)) - 1;
+
+	/*
+	 * Mask off the low bits of region_start (which would be ignored by
+	 * the hardware anyway)
+	 */
+	region_start &= GENMASK_ULL(63, region_width);
+
+	region = region_width | region_start;
 
 	/* Lock the region that needs to be updated */
-	mmu_write(pfdev, AS_LOCKADDR_LO(as_nr), region & 0xFFFFFFFFUL);
-	mmu_write(pfdev, AS_LOCKADDR_HI(as_nr), (region >> 32) & 0xFFFFFFFFUL);
+	mmu_write(pfdev, AS_LOCKADDR_LO(as_nr), lower_32_bits(region));
+	mmu_write(pfdev, AS_LOCKADDR_HI(as_nr), upper_32_bits(region));
 	write_cmd(pfdev, as_nr, AS_COMMAND_LOCK);
 }
 
@@ -114,14 +130,14 @@ static void panfrost_mmu_enable(struct panfrost_device *pfdev, struct panfrost_m
 
 	mmu_hw_do_operation_locked(pfdev, as_nr, 0, ~0ULL, AS_COMMAND_FLUSH_MEM);
 
-	mmu_write(pfdev, AS_TRANSTAB_LO(as_nr), transtab & 0xffffffffUL);
-	mmu_write(pfdev, AS_TRANSTAB_HI(as_nr), transtab >> 32);
+	mmu_write(pfdev, AS_TRANSTAB_LO(as_nr), lower_32_bits(transtab));
+	mmu_write(pfdev, AS_TRANSTAB_HI(as_nr), upper_32_bits(transtab));
 
 	/* Need to revisit mem attrs.
 	 * NC is the default, Mali driver is inner WT.
 	 */
-	mmu_write(pfdev, AS_MEMATTR_LO(as_nr), memattr & 0xffffffffUL);
-	mmu_write(pfdev, AS_MEMATTR_HI(as_nr), memattr >> 32);
+	mmu_write(pfdev, AS_MEMATTR_LO(as_nr), lower_32_bits(memattr));
+	mmu_write(pfdev, AS_MEMATTR_HI(as_nr), upper_32_bits(memattr));
 
 	write_cmd(pfdev, as_nr, AS_COMMAND_UPDATE);
 }
@@ -232,11 +248,24 @@ void panfrost_mmu_reset(struct panfrost_device *pfdev)
 	mmu_write(pfdev, MMU_INT_MASK, ~0);
 }
 
-static size_t get_pgsize(u64 addr, size_t size)
+static size_t get_pgsize(u64 addr, size_t size, size_t *count)
 {
-	if (addr & (SZ_2M - 1) || size < SZ_2M)
-		return SZ_4K;
+	/*
+	 * io-pgtable only operates on multiple pages within a single table
+	 * entry, so we need to split at boundaries of the table size, i.e.
+	 * the next block size up. The distance from address A to the next
+	 * boundary of block size B is logically B - A % B, but in unsigned
+	 * two's complement where B is a power of two we get the equivalence
+	 * B - A % B == (B - A) % B == (n * B - A) % B, and choose n = 0 :)
+	 */
+	size_t blk_offset = -addr % SZ_2M;
 
+	if (blk_offset || size < SZ_2M) {
+		*count = min_not_zero(blk_offset, size) / SZ_4K;
+		return SZ_4K;
+	}
+	blk_offset = -addr % SZ_1G ?: SZ_1G;
+	*count = min(blk_offset, size) / SZ_2M;
 	return SZ_2M;
 }
 
@@ -271,12 +300,16 @@ static int mmu_map_sg(struct panfrost_device *pfdev, struct panfrost_mmu *mmu,
 		dev_dbg(pfdev->dev, "map: as=%d, iova=%llx, paddr=%lx, len=%zx", mmu->as, iova, paddr, len);
 
 		while (len) {
-			size_t pgsize = get_pgsize(iova | paddr, len);
+			size_t pgcount, mapped = 0;
+			size_t pgsize = get_pgsize(iova | paddr, len, &pgcount);
 
-			ops->map(ops, iova, paddr, pgsize, prot, GFP_KERNEL);
-			iova += pgsize;
-			paddr += pgsize;
-			len -= pgsize;
+			ops->map_pages(ops, iova, paddr, pgsize, pgcount, prot,
+				       GFP_KERNEL, &mapped);
+			/* Don't get stuck if things have gone wrong */
+			mapped = max(mapped, pgsize);
+			iova += mapped;
+			paddr += mapped;
+			len -= mapped;
 		}
 	}
 
@@ -288,7 +321,8 @@ static int mmu_map_sg(struct panfrost_device *pfdev, struct panfrost_mmu *mmu,
 int panfrost_mmu_map(struct panfrost_gem_mapping *mapping)
 {
 	struct panfrost_gem_object *bo = mapping->obj;
-	struct drm_gem_object *obj = &bo->base.base;
+	struct drm_gem_shmem_object *shmem = &bo->base;
+	struct drm_gem_object *obj = &shmem->base;
 	struct panfrost_device *pfdev = to_panfrost_device(obj->dev);
 	struct sg_table *sgt;
 	int prot = IOMMU_READ | IOMMU_WRITE;
@@ -299,7 +333,7 @@ int panfrost_mmu_map(struct panfrost_gem_mapping *mapping)
 	if (bo->noexec)
 		prot |= IOMMU_NOEXEC;
 
-	sgt = drm_gem_shmem_get_pages_sgt(obj);
+	sgt = drm_gem_shmem_get_pages_sgt(shmem);
 	if (WARN_ON(IS_ERR(sgt)))
 		return PTR_ERR(sgt);
 
@@ -327,15 +361,17 @@ void panfrost_mmu_unmap(struct panfrost_gem_mapping *mapping)
 		mapping->mmu->as, iova, len);
 
 	while (unmapped_len < len) {
-		size_t unmapped_page;
-		size_t pgsize = get_pgsize(iova, len - unmapped_len);
+		size_t unmapped_page, pgcount;
+		size_t pgsize = get_pgsize(iova, len - unmapped_len, &pgcount);
 
-		if (ops->iova_to_phys(ops, iova)) {
-			unmapped_page = ops->unmap(ops, iova, pgsize, NULL);
-			WARN_ON(unmapped_page != pgsize);
+		if (bo->is_heap)
+			pgcount = 1;
+		if (!bo->is_heap || ops->iova_to_phys(ops, iova)) {
+			unmapped_page = ops->unmap_pages(ops, iova, pgsize, pgcount, NULL);
+			WARN_ON(unmapped_page != pgsize * pgcount);
 		}
-		iova += pgsize;
-		unmapped_len += pgsize;
+		iova += pgsize * pgcount;
+		unmapped_len += pgsize * pgcount;
 	}
 
 	panfrost_mmu_flush_range(pfdev, mapping->mmu,
@@ -501,7 +537,7 @@ err_map:
 err_pages:
 	drm_gem_shmem_put_pages(&bo->base);
 err_bo:
-	drm_gem_object_put(&bo->base.base);
+	panfrost_gem_mapping_put(bomapping);
 	return ret;
 }
 

@@ -168,14 +168,14 @@ static int led_proc_show(struct seq_file *m, void *v)
 
 static int led_proc_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, led_proc_show, PDE_DATA(inode));
+	return single_open(file, led_proc_show, pde_data(inode));
 }
 
 
 static ssize_t led_proc_write(struct file *file, const char __user *buf,
 	size_t count, loff_t *pos)
 {
-	void *data = PDE_DATA(file_inode(file));
+	void *data = pde_data(file_inode(file));
 	char *cur, lbuf[32];
 	int d;
 
@@ -646,7 +646,7 @@ int lcd_print( const char *str )
 		cancel_delayed_work_sync(&led_task);
 
 	/* copy display string to buffer for procfs */
-	strlcpy(lcd_text, str, sizeof(lcd_text));
+	strscpy(lcd_text, str, sizeof(lcd_text));
 
 	/* Set LCD Cursor to 1st character */
 	gsc_writeb(lcd_info.reset_cmd1, LCD_CMD_REG);

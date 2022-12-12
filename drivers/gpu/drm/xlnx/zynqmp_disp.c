@@ -14,7 +14,8 @@
 #include <drm/drm_atomic_uapi.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
-#include <drm/drm_fb_cma_helper.h>
+#include <drm/drm_fb_dma_helper.h>
+#include <drm/drm_framebuffer.h>
 #include <drm/drm_fourcc.h>
 #include <drm/drm_plane_helper.h>
 #include <drm/drm_vblank.h>
@@ -27,6 +28,7 @@
 #include <linux/interrupt.h>
 #include <linux/irqreturn.h>
 #include <linux/list.h>
+#include <linux/media-bus-format.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/of.h>
@@ -2215,7 +2217,7 @@ static int zynqmp_disp_plane_mode_set(struct drm_plane *plane,
 		unsigned int height = src_h / (i ? info->vsub : 1);
 		int width_bytes;
 
-		paddr = drm_fb_cma_get_gem_addr(fb, plane->state, i);
+		paddr = drm_fb_dma_get_gem_addr(fb, plane->state, i);
 		if (!paddr) {
 			dev_err(dev, "failed to get a paddr\n");
 			return -EINVAL;

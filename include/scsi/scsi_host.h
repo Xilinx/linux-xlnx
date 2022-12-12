@@ -16,7 +16,6 @@ struct completion;
 struct module;
 struct scsi_cmnd;
 struct scsi_device;
-struct scsi_host_cmd_pool;
 struct scsi_target;
 struct Scsi_Host;
 struct scsi_transport_template;
@@ -277,7 +276,7 @@ struct scsi_host_template {
 	 *
 	 * Status: OPTIONAL
 	 */
-	int (* map_queues)(struct Scsi_Host *shost);
+	void (* map_queues)(struct Scsi_Host *shost);
 
 	/*
 	 * SCSI interface of blk_poll - poll for IO completions.
@@ -474,14 +473,9 @@ struct scsi_host_template {
 #define SCSI_DEFAULT_HOST_BLOCKED	7
 
 	/*
-	 * Pointer to the sysfs class properties for this host, NULL terminated.
+	 * Pointer to the SCSI host sysfs attribute groups, NULL terminated.
 	 */
-	struct device_attribute **shost_attrs;
-
-	/*
-	 * Pointer to the SCSI device properties for this host, NULL terminated.
-	 */
-	struct device_attribute **sdev_attrs;
+	const struct attribute_group **shost_groups;
 
 	/*
 	 * Pointer to the SCSI device attribute groups for this host,
@@ -497,8 +491,6 @@ struct scsi_host_template {
 	 *   scsi_netlink.h
 	 */
 	u64 vendor_id;
-
-	struct scsi_host_cmd_pool *cmd_pool;
 
 	/* Delay for runtime autosuspend */
 	int rpm_autosuspend_delay;
@@ -516,7 +508,7 @@ struct scsi_host_template {
 		unsigned long irq_flags;				\
 		int rc;							\
 		spin_lock_irqsave(shost->host_lock, irq_flags);		\
-		rc = func_name##_lck (cmd, cmd->scsi_done);			\
+		rc = func_name##_lck(cmd);				\
 		spin_unlock_irqrestore(shost->host_lock, irq_flags);	\
 		return rc;						\
 	}
@@ -556,6 +548,7 @@ struct Scsi_Host {
 
 	struct mutex		scan_mutex;/* serialize scanning activity */
 
+	struct list_head	eh_abort_list;
 	struct list_head	eh_cmd_q;
 	struct task_struct    * ehandler;  /* Error recovery thread. */
 	struct completion     * eh_action; /* Wait for specific actions on the
@@ -564,6 +557,8 @@ struct Scsi_Host {
 	struct scsi_host_template *hostt;
 	struct scsi_transport_template *transportt;
 
+	struct kref		tagset_refcnt;
+	struct completion	tagset_freed;
 	/* Area to keep a shared tag map */
 	struct blk_mq_tag_set	tag_set;
 
@@ -614,6 +609,7 @@ struct Scsi_Host {
 	short unsigned int sg_tablesize;
 	short unsigned int sg_prot_tablesize;
 	unsigned int max_sectors;
+	unsigned int opt_sectors;
 	unsigned int max_segment_size;
 	unsigned long dma_boundary;
 	unsigned long virt_boundary_mask;
@@ -793,19 +789,9 @@ extern int scsi_host_block(struct Scsi_Host *shost);
 extern int scsi_host_unblock(struct Scsi_Host *shost, int new_state);
 
 void scsi_host_busy_iter(struct Scsi_Host *,
-			 bool (*fn)(struct scsi_cmnd *, void *, bool), void *priv);
+			 bool (*fn)(struct scsi_cmnd *, void *), void *priv);
 
 struct class_container;
-
-/*
- * These two functions are used to allocate and free a pseudo device
- * which will connect to the host adapter itself rather than any
- * physical device.  You must deallocate when you are done with the
- * thing.  This physical pseudo-device isn't real and won't be available
- * from any high-level drivers.
- */
-extern void scsi_free_host_dev(struct scsi_device *);
-extern struct scsi_device *scsi_get_host_dev(struct Scsi_Host *);
 
 /*
  * DIF defines the exchange of protection information between

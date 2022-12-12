@@ -239,14 +239,14 @@ static unsigned long mmap_rnd(void)
 	unsigned long rnd = 0;
 
 	if (current->flags & PF_RANDOMIZE)
-		rnd = get_random_int() & MMAP_RND_MASK;
+		rnd = get_random_u32() & MMAP_RND_MASK;
 
 	return rnd << PAGE_SHIFT;
 }
 
 unsigned long arch_mmap_rnd(void)
 {
-	return (get_random_int() & MMAP_RND_MASK) << PAGE_SHIFT;
+	return (get_random_u32() & MMAP_RND_MASK) << PAGE_SHIFT;
 }
 
 static unsigned long mmap_legacy_base(void)
@@ -409,10 +409,12 @@ long parisc_personality(unsigned long personality)
 
 static int FIX_O_NONBLOCK(int flags)
 {
-	if (flags & O_NONBLOCK_MASK_OUT) {
-		struct task_struct *tsk = current;
-		pr_warn_once("%s(%d) uses a deprecated O_NONBLOCK value.\n",
-			tsk->comm, tsk->pid);
+	if ((flags & O_NONBLOCK_MASK_OUT) &&
+			!test_thread_flag(TIF_NONBLOCK_WARNING)) {
+		set_thread_flag(TIF_NONBLOCK_WARNING);
+		pr_warn("%s(%d) uses a deprecated O_NONBLOCK value."
+			" Please recompile with newer glibc.\n",
+			current->comm, current->pid);
 	}
 	return flags & ~O_NONBLOCK_MASK_OUT;
 }

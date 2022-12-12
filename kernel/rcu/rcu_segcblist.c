@@ -261,16 +261,14 @@ void rcu_segcblist_disable(struct rcu_segcblist *rsclp)
 }
 
 /*
- * Mark the specified rcu_segcblist structure as offloaded.
+ * Mark the specified rcu_segcblist structure as offloaded (or not)
  */
 void rcu_segcblist_offload(struct rcu_segcblist *rsclp, bool offload)
 {
-	if (offload) {
-		rcu_segcblist_clear_flags(rsclp, SEGCBLIST_SOFTIRQ_ONLY);
-		rcu_segcblist_set_flags(rsclp, SEGCBLIST_OFFLOADED);
-	} else {
+	if (offload)
+		rcu_segcblist_set_flags(rsclp, SEGCBLIST_LOCKING | SEGCBLIST_OFFLOADED);
+	else
 		rcu_segcblist_clear_flags(rsclp, SEGCBLIST_OFFLOADED);
-	}
 }
 
 /*
@@ -507,10 +505,10 @@ void rcu_segcblist_advance(struct rcu_segcblist *rsclp, unsigned long seq)
 		WRITE_ONCE(rsclp->tails[j], rsclp->tails[RCU_DONE_TAIL]);
 
 	/*
-	 * Callbacks moved, so clean up the misordered ->tails[] pointers
-	 * that now point into the middle of the list of ready-to-invoke
-	 * callbacks.  The overall effect is to copy down the later pointers
-	 * into the gap that was created by the now-ready segments.
+	 * Callbacks moved, so there might be an empty RCU_WAIT_TAIL
+	 * and a non-empty RCU_NEXT_READY_TAIL.  If so, copy the
+	 * RCU_NEXT_READY_TAIL segment to fill the RCU_WAIT_TAIL gap
+	 * created by the now-ready-to-invoke segments.
 	 */
 	for (j = RCU_WAIT_TAIL; i < RCU_NEXT_TAIL; i++, j++) {
 		if (rsclp->tails[j] == rsclp->tails[RCU_NEXT_TAIL])

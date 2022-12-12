@@ -52,22 +52,20 @@ static bool battery_driver_registered;
 static int battery_bix_broken_package;
 static int battery_notification_delay_ms;
 static int battery_ac_is_broken;
-static int battery_check_pmic = 1;
 static unsigned int cache_time = 1000;
 module_param(cache_time, uint, 0644);
 MODULE_PARM_DESC(cache_time, "cache time in milliseconds");
 
 static const struct acpi_device_id battery_device_ids[] = {
 	{"PNP0C0A", 0},
+
+	/* Microsoft Surface Go 3 */
+	{"MSHW0146", 0},
+
 	{"", 0},
 };
 
 MODULE_DEVICE_TABLE(acpi, battery_device_ids);
-
-/* Lists of PMIC ACPI HIDs with an (often better) native battery driver */
-static const char * const acpi_battery_blacklist[] = {
-	"INT33F4", /* X-Powers AXP288 PMIC */
-};
 
 enum {
 	ACPI_BATTERY_ALARM_PRESENT,
@@ -169,7 +167,7 @@ static int acpi_battery_is_charged(struct acpi_battery *battery)
 		return 1;
 
 	/* fallback to using design values for broken batteries */
-	if (battery->design_capacity == battery->capacity_now)
+	if (battery->design_capacity <= battery->capacity_now)
 		return 1;
 
 	/* we don't do any sort of metric based on percentages */
@@ -218,7 +216,7 @@ static int acpi_battery_get_property(struct power_supply *psy,
 		else if (acpi_battery_is_charged(battery))
 			val->intval = POWER_SUPPLY_STATUS_FULL;
 		else
-			val->intval = POWER_SUPPLY_STATUS_UNKNOWN;
+			val->intval = POWER_SUPPLY_STATUS_NOT_CHARGING;
 		break;
 	case POWER_SUPPLY_PROP_PRESENT:
 		val->intval = acpi_battery_present(battery);
@@ -1104,13 +1102,6 @@ battery_ac_is_broken_quirk(const struct dmi_system_id *d)
 	return 0;
 }
 
-static int __init
-battery_do_not_check_pmic_quirk(const struct dmi_system_id *d)
-{
-	battery_check_pmic = 0;
-	return 0;
-}
-
 static const struct dmi_system_id bat_dmi_table[] __initconst = {
 	{
 		/* NEC LZ750/LS */
@@ -1140,19 +1131,11 @@ static const struct dmi_system_id bat_dmi_table[] __initconst = {
 		},
 	},
 	{
-		/* ECS EF20EA, AXP288 PMIC but uses separate fuel-gauge */
-		.callback = battery_do_not_check_pmic_quirk,
+		/* Microsoft Surface Go 3 */
+		.callback = battery_notification_delay_quirk,
 		.matches = {
-			DMI_MATCH(DMI_PRODUCT_NAME, "EF20EA"),
-		},
-	},
-	{
-		/* Lenovo Ideapad Miix 320, AXP288 PMIC, separate fuel-gauge */
-		.callback = battery_do_not_check_pmic_quirk,
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
-			DMI_MATCH(DMI_PRODUCT_NAME, "80XF"),
-			DMI_MATCH(DMI_PRODUCT_VERSION, "Lenovo MIIX 320-10ICR"),
+			DMI_MATCH(DMI_SYS_VENDOR, "Microsoft Corporation"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "Surface Go 3"),
 		},
 	},
 	{},
@@ -1279,19 +1262,12 @@ static struct acpi_driver acpi_battery_driver = {
 
 static void __init acpi_battery_init_async(void *unused, async_cookie_t cookie)
 {
-	unsigned int i;
 	int result;
 
-	dmi_check_system(bat_dmi_table);
+	if (acpi_quirk_skip_acpi_ac_and_battery())
+		return;
 
-	if (battery_check_pmic) {
-		for (i = 0; i < ARRAY_SIZE(acpi_battery_blacklist); i++)
-			if (acpi_dev_present(acpi_battery_blacklist[i], "1", -1)) {
-				pr_info("found native %s PMIC, not loading\n",
-					acpi_battery_blacklist[i]);
-				return;
-			}
-	}
+	dmi_check_system(bat_dmi_table);
 
 	result = acpi_bus_register_driver(&acpi_battery_driver);
 	battery_driver_registered = (result == 0);

@@ -26,7 +26,7 @@ found in V4L2 drivers into a few common RGB and YUY formats.
 
 It currently accepts the following V4L2 driver formats:
 :ref:`V4L2_PIX_FMT_BGR24 <V4L2-PIX-FMT-BGR24>`,
-:ref:`V4L2_PIX_FMT_HM12 <V4L2-PIX-FMT-HM12>`,
+:ref:`V4L2_PIX_FMT_NV12_16L16 <V4L2-PIX-FMT-NV12-16L16>`,
 :ref:`V4L2_PIX_FMT_JPEG <V4L2-PIX-FMT-JPEG>`,
 :ref:`V4L2_PIX_FMT_MJPEG <V4L2-PIX-FMT-MJPEG>`,
 :ref:`V4L2_PIX_FMT_MR97310A <V4L2-PIX-FMT-MR97310A>`,
@@ -136,9 +136,9 @@ V4L2 functions
 
    operates like the :c:func:`read()` function.
 
-.. c:function:: void v4l2_mmap(void *start, size_t length, int prot, int flags, int fd, int64_t offset);
+.. c:function:: void *v4l2_mmap(void *start, size_t length, int prot, int flags, int fd, int64_t offset);
 
-   operates like the :c:func:`munmap()` function.
+   operates like the :c:func:`mmap()` function.
 
 .. c:function:: int v4l2_munmap(void *_start, size_t length);
 

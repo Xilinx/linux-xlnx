@@ -24,17 +24,22 @@ u8 rxe_get_next_key(u32 last_key)
 
 int mr_check_range(struct rxe_mr *mr, u64 iova, size_t length)
 {
+
+
 	switch (mr->type) {
-	case RXE_MR_TYPE_DMA:
+	case IB_MR_TYPE_DMA:
 		return 0;
 
-	case RXE_MR_TYPE_MR:
-		if (iova < mr->iova || length > mr->length ||
-		    iova > mr->iova + mr->length - length)
+	case IB_MR_TYPE_USER:
+	case IB_MR_TYPE_MEM_REG:
+		if (iova < mr->ibmr.iova || length > mr->ibmr.length ||
+		    iova > mr->ibmr.iova + mr->ibmr.length - length)
 			return -EFAULT;
 		return 0;
 
 	default:
+		pr_warn("%s: mr type (%d) not supported\n",
+			__func__, mr->type);
 		return -EFAULT;
 	}
 }
@@ -45,13 +50,18 @@ int mr_check_range(struct rxe_mr *mr, u64 iova, size_t length)
 
 static void rxe_mr_init(int access, struct rxe_mr *mr)
 {
-	u32 lkey = mr->pelem.index << 8 | rxe_get_next_key(-1);
+	u32 lkey = mr->elem.index << 8 | rxe_get_next_key(-1);
 	u32 rkey = (access & IB_ACCESS_REMOTE) ? lkey : 0;
 
-	mr->ibmr.lkey = lkey;
-	mr->ibmr.rkey = rkey;
+	/* set ibmr->l/rkey and also copy into private l/rkey
+	 * for user MRs these will always be the same
+	 * for cases where caller 'owns' the key portion
+	 * they may be different until REG_MR WQE is executed.
+	 */
+	mr->lkey = mr->ibmr.lkey = lkey;
+	mr->rkey = mr->ibmr.rkey = rkey;
+
 	mr->state = RXE_MR_STATE_INVALID;
-	mr->type = RXE_MR_TYPE_NONE;
 	mr->map_shift = ilog2(RXE_BUF_PER_MAP);
 }
 
@@ -93,17 +103,16 @@ err1:
 	return -ENOMEM;
 }
 
-void rxe_mr_init_dma(struct rxe_pd *pd, int access, struct rxe_mr *mr)
+void rxe_mr_init_dma(int access, struct rxe_mr *mr)
 {
 	rxe_mr_init(access, mr);
 
-	mr->ibmr.pd = &pd->ibpd;
 	mr->access = access;
 	mr->state = RXE_MR_STATE_VALID;
-	mr->type = RXE_MR_TYPE_DMA;
+	mr->type = IB_MR_TYPE_DMA;
 }
 
-int rxe_mr_init_user(struct rxe_pd *pd, u64 start, u64 length, u64 iova,
+int rxe_mr_init_user(struct rxe_dev *rxe, u64 start, u64 length, u64 iova,
 		     int access, struct rxe_mr *mr)
 {
 	struct rxe_map		**map;
@@ -115,7 +124,7 @@ int rxe_mr_init_user(struct rxe_pd *pd, u64 start, u64 length, u64 iova,
 	int err;
 	int i;
 
-	umem = ib_umem_get(pd->ibpd.device, start, length, access);
+	umem = ib_umem_get(&rxe->ib_dev, start, length, access);
 	if (IS_ERR(umem)) {
 		pr_warn("%s: Unable to pin memory region err = %d\n",
 			__func__, (int)PTR_ERR(umem));
@@ -165,15 +174,11 @@ int rxe_mr_init_user(struct rxe_pd *pd, u64 start, u64 length, u64 iova,
 		}
 	}
 
-	mr->ibmr.pd = &pd->ibpd;
 	mr->umem = umem;
 	mr->access = access;
-	mr->length = length;
-	mr->iova = iova;
-	mr->va = start;
 	mr->offset = ib_umem_offset(umem);
 	mr->state = RXE_MR_STATE_VALID;
-	mr->type = RXE_MR_TYPE_MR;
+	mr->type = IB_MR_TYPE_USER;
 
 	return 0;
 
@@ -187,23 +192,20 @@ err_out:
 	return err;
 }
 
-int rxe_mr_init_fast(struct rxe_pd *pd, int max_pages, struct rxe_mr *mr)
+int rxe_mr_init_fast(int max_pages, struct rxe_mr *mr)
 {
 	int err;
 
-	rxe_mr_init(0, mr);
-
-	/* In fastreg, we also set the rkey */
-	mr->ibmr.rkey = mr->ibmr.lkey;
+	/* always allow remote access for FMRs */
+	rxe_mr_init(IB_ACCESS_REMOTE, mr);
 
 	err = rxe_mr_alloc(mr, max_pages);
 	if (err)
 		goto err1;
 
-	mr->ibmr.pd = &pd->ibpd;
 	mr->max_buf = max_pages;
 	mr->state = RXE_MR_STATE_FREE;
-	mr->type = RXE_MR_TYPE_MR;
+	mr->type = IB_MR_TYPE_MEM_REG;
 
 	return 0;
 
@@ -214,7 +216,7 @@ err1:
 static void lookup_iova(struct rxe_mr *mr, u64 iova, int *m_out, int *n_out,
 			size_t *offset_out)
 {
-	size_t offset = iova - mr->iova + mr->offset;
+	size_t offset = iova - mr->ibmr.iova + mr->offset;
 	int			map_index;
 	int			buf_index;
 	u64			length;
@@ -302,7 +304,7 @@ int rxe_mr_copy(struct rxe_mr *mr, u64 iova, void *addr, int length,
 	if (length == 0)
 		return 0;
 
-	if (mr->type == RXE_MR_TYPE_DMA) {
+	if (mr->type == IB_MR_TYPE_DMA) {
 		u8 *src, *dest;
 
 		src = (dir == RXE_TO_MR_OBJ) ? addr : ((void *)(uintptr_t)iova);
@@ -401,7 +403,7 @@ int copy_data(
 
 		if (offset >= sge->length) {
 			if (mr) {
-				rxe_drop_ref(mr);
+				rxe_put(mr);
 				mr = NULL;
 			}
 			sge++;
@@ -446,13 +448,13 @@ int copy_data(
 	dma->resid	= resid;
 
 	if (mr)
-		rxe_drop_ref(mr);
+		rxe_put(mr);
 
 	return 0;
 
 err2:
 	if (mr)
-		rxe_drop_ref(mr);
+		rxe_put(mr);
 err1:
 	return err;
 }
@@ -507,33 +509,33 @@ struct rxe_mr *lookup_mr(struct rxe_pd *pd, int access, u32 key,
 	if (!mr)
 		return NULL;
 
-	if (unlikely((type == RXE_LOOKUP_LOCAL && mr_lkey(mr) != key) ||
-		     (type == RXE_LOOKUP_REMOTE && mr_rkey(mr) != key) ||
+	if (unlikely((type == RXE_LOOKUP_LOCAL && mr->lkey != key) ||
+		     (type == RXE_LOOKUP_REMOTE && mr->rkey != key) ||
 		     mr_pd(mr) != pd || (access && !(access & mr->access)) ||
 		     mr->state != RXE_MR_STATE_VALID)) {
-		rxe_drop_ref(mr);
+		rxe_put(mr);
 		mr = NULL;
 	}
 
 	return mr;
 }
 
-int rxe_invalidate_mr(struct rxe_qp *qp, u32 rkey)
+int rxe_invalidate_mr(struct rxe_qp *qp, u32 key)
 {
 	struct rxe_dev *rxe = to_rdev(qp->ibqp.device);
 	struct rxe_mr *mr;
 	int ret;
 
-	mr = rxe_pool_get_index(&rxe->mr_pool, rkey >> 8);
+	mr = rxe_pool_get_index(&rxe->mr_pool, key >> 8);
 	if (!mr) {
-		pr_err("%s: No MR for rkey %#x\n", __func__, rkey);
+		pr_err("%s: No MR for key %#x\n", __func__, key);
 		ret = -EINVAL;
 		goto err;
 	}
 
-	if (rkey != mr->ibmr.rkey) {
-		pr_err("%s: rkey (%#x) doesn't match mr->ibmr.rkey (%#x)\n",
-			__func__, rkey, mr->ibmr.rkey);
+	if (mr->rkey ? (key != mr->rkey) : (key != mr->lkey)) {
+		pr_err("%s: wr key (%#x) doesn't match mr key (%#x)\n",
+			__func__, key, (mr->rkey ? mr->rkey : mr->lkey));
 		ret = -EINVAL;
 		goto err_drop_ref;
 	}
@@ -545,38 +547,83 @@ int rxe_invalidate_mr(struct rxe_qp *qp, u32 rkey)
 		goto err_drop_ref;
 	}
 
+	if (unlikely(mr->type != IB_MR_TYPE_MEM_REG)) {
+		pr_warn("%s: mr->type (%d) is wrong type\n", __func__, mr->type);
+		ret = -EINVAL;
+		goto err_drop_ref;
+	}
+
 	mr->state = RXE_MR_STATE_FREE;
 	ret = 0;
 
 err_drop_ref:
-	rxe_drop_ref(mr);
+	rxe_put(mr);
 err:
 	return ret;
+}
+
+/* user can (re)register fast MR by executing a REG_MR WQE.
+ * user is expected to hold a reference on the ib mr until the
+ * WQE completes.
+ * Once a fast MR is created this is the only way to change the
+ * private keys. It is the responsibility of the user to maintain
+ * the ib mr keys in sync with rxe mr keys.
+ */
+int rxe_reg_fast_mr(struct rxe_qp *qp, struct rxe_send_wqe *wqe)
+{
+	struct rxe_mr *mr = to_rmr(wqe->wr.wr.reg.mr);
+	u32 key = wqe->wr.wr.reg.key;
+	u32 access = wqe->wr.wr.reg.access;
+
+	/* user can only register MR in free state */
+	if (unlikely(mr->state != RXE_MR_STATE_FREE)) {
+		pr_warn("%s: mr->lkey = 0x%x not free\n",
+			__func__, mr->lkey);
+		return -EINVAL;
+	}
+
+	/* user can only register mr with qp in same protection domain */
+	if (unlikely(qp->ibqp.pd != mr->ibmr.pd)) {
+		pr_warn("%s: qp->pd and mr->pd don't match\n",
+			__func__);
+		return -EINVAL;
+	}
+
+	/* user is only allowed to change key portion of l/rkey */
+	if (unlikely((mr->lkey & ~0xff) != (key & ~0xff))) {
+		pr_warn("%s: key = 0x%x has wrong index mr->lkey = 0x%x\n",
+			__func__, key, mr->lkey);
+		return -EINVAL;
+	}
+
+	mr->access = access;
+	mr->lkey = key;
+	mr->rkey = (access & IB_ACCESS_REMOTE) ? key : 0;
+	mr->ibmr.iova = wqe->wr.wr.reg.mr->iova;
+	mr->state = RXE_MR_STATE_VALID;
+
+	return 0;
 }
 
 int rxe_dereg_mr(struct ib_mr *ibmr, struct ib_udata *udata)
 {
 	struct rxe_mr *mr = to_rmr(ibmr);
 
-	if (atomic_read(&mr->num_mw) > 0) {
-		pr_warn("%s: Attempt to deregister an MR while bound to MWs\n",
-			__func__);
+	/* See IBA 10.6.7.2.6 */
+	if (atomic_read(&mr->num_mw) > 0)
 		return -EINVAL;
-	}
 
-	mr->state = RXE_MR_STATE_ZOMBIE;
-	rxe_drop_ref(mr_pd(mr));
-	rxe_drop_index(mr);
-	rxe_drop_ref(mr);
+	rxe_cleanup(mr);
 
 	return 0;
 }
 
-void rxe_mr_cleanup(struct rxe_pool_entry *arg)
+void rxe_mr_cleanup(struct rxe_pool_elem *elem)
 {
-	struct rxe_mr *mr = container_of(arg, typeof(*mr), pelem);
+	struct rxe_mr *mr = container_of(elem, typeof(*mr), elem);
 	int i;
 
+	rxe_put(mr_pd(mr));
 	ib_umem_release(mr->umem);
 
 	if (mr->map) {

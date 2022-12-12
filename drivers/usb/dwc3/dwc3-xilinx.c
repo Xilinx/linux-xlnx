@@ -386,9 +386,29 @@ static int dwc3_xlnx_init_zynqmp(struct dwc3_xlnx *priv_data)
 {
 	struct device		*dev = priv_data->dev;
 	struct reset_control	*crst, *hibrst, *apbrst;
-	int			ret;
+	struct gpio_desc	*reset_gpio;
+	int			ret = 0;
 	u32			reg;
-	struct gpio_desc	*reset_gpio = NULL;
+
+	priv_data->usb3_phy = devm_phy_optional_get(dev, "usb3-phy");
+	if (IS_ERR(priv_data->usb3_phy)) {
+		ret = PTR_ERR(priv_data->usb3_phy);
+		dev_err_probe(dev, ret,
+			      "failed to get USB3 PHY\n");
+		goto err;
+	}
+
+	/*
+	 * The following core resets are not required unless a USB3 PHY
+	 * is used, and the subsequent register settings are not required
+	 * unless a core reset is performed (they should be set properly
+	 * by the first-stage boot loader, but may be reverted by a core
+	 * reset). They may also break the configuration if USB3 is actually
+	 * in use but the usb3-phy entry is missing from the device tree.
+	 * Therefore, skip these operations in this case.
+	 */
+	if (!priv_data->usb3_phy)
+		goto skip_usb3_phy;
 
 	crst = devm_reset_control_get_exclusive(dev, "usb_crst");
 	if (IS_ERR(crst)) {
@@ -397,6 +417,7 @@ static int dwc3_xlnx_init_zynqmp(struct dwc3_xlnx *priv_data)
 			      "failed to get core reset signal\n");
 		goto err;
 	}
+
 	priv_data->crst = crst;
 
 	hibrst = devm_reset_control_get_exclusive(dev, "usb_hibrst");
@@ -413,25 +434,6 @@ static int dwc3_xlnx_init_zynqmp(struct dwc3_xlnx *priv_data)
 		dev_err_probe(dev, ret,
 			      "failed to get APB reset signal\n");
 		goto err;
-	}
-
-	priv_data->usb3_phy = devm_phy_optional_get(dev, "usb3-phy");
-	if (IS_ERR(priv_data->usb3_phy)) {
-		ret = PTR_ERR(priv_data->usb3_phy);
-		dev_err_probe(dev, ret,
-			      "failed to get USB3 PHY\n");
-		goto err;
-	}
-
-	/*
-	 * When no USB3 PHY 'usb3-phy' property is specified in the
-	 * device-tree, then zynqmp board work as a USB2.0 mode only.
-	 * USB2.0 mode only design is non-SerDes based, so we are
-	 * skipping phy initialization.
-	 */
-	if (!priv_data->usb3_phy) {
-		ret = 0;
-		goto skip_usb3_phy;
 	}
 
 	ret = reset_control_assert(crst);
@@ -492,18 +494,16 @@ skip_usb3_phy:
 	/* ulpi reset via gpio-modepin or gpio-framework driver */
 	reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW);
 	if (IS_ERR(reset_gpio)) {
-		ret = PTR_ERR(reset_gpio);
-		dev_err_probe(dev, ret,
-			      "Failed to bind reset gpio %d,errcode\n", ret);
-		goto err;
+		return dev_err_probe(dev, PTR_ERR(reset_gpio),
+				     "Failed to request reset GPIO\n");
 	}
 
 	if (reset_gpio) {
 		/* Toggle ulpi to reset the phy. */
 		gpiod_set_value_cansleep(reset_gpio, 1);
-		usleep_range(5000, 10000); /* delay */
+		usleep_range(5000, 10000);
 		gpiod_set_value_cansleep(reset_gpio, 0);
-		usleep_range(5000, 10000); /* delay */
+		usleep_range(5000, 10000);
 	}
 
 	/*
@@ -621,6 +621,8 @@ static int dwc3_xlnx_probe(struct platform_device *pdev)
 	/* Register the dwc3-xilinx wakeup function to dwc3 host */
 	dwc3_host_wakeup_register(dwc3_xilinx_wakeup_capable);
 
+	platform_set_drvdata(pdev, priv_data);
+
 	ret = devm_clk_bulk_get_all(priv_data->dev, &priv_data->clks);
 	if (ret < 0)
 		return ret;
@@ -709,6 +711,7 @@ static int __maybe_unused dwc3_xlnx_suspend(struct device *dev)
 			/* Put the core into D3 */
 			dwc3_set_usb_core_power(dev, false);
 #endif
+
 		phy_exit(priv_data->usb3_phy);
 
 		/* Disable the clocks */
@@ -731,7 +734,6 @@ static int __maybe_unused dwc3_xlnx_resume(struct device *dev)
 		dwc3_set_usb_core_power(dev, true);
 #endif
 
-	/* Enabled the clocks */
 	ret = clk_bulk_enable(priv_data->num_clocks, priv_data->clks);
 	if (ret)
 		return ret;

@@ -91,7 +91,8 @@ xfs_ag_resv_critical(
 	trace_xfs_ag_resv_critical(pag, type, avail);
 
 	/* Critically low if less than 10% or max btree height remains. */
-	return XFS_TEST_ERROR(avail < orig / 10 || avail < XFS_BTREE_MAXLEVELS,
+	return XFS_TEST_ERROR(avail < orig / 10 ||
+			      avail < pag->pag_mount->m_agbtree_maxlevels,
 			pag->pag_mount, XFS_ERRTAG_AG_RESV_CRITICAL);
 }
 
@@ -321,7 +322,7 @@ out:
 	 * address.
 	 */
 	if (has_resv) {
-		error2 = xfs_alloc_pagf_init(mp, tp, pag->pag_agno, 0);
+		error2 = xfs_alloc_read_agf(pag, tp, 0, NULL);
 		if (error2)
 			return error2;
 

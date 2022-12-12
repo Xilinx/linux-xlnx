@@ -11,6 +11,7 @@
 / {
 	model = "OnePlus 5";
 	compatible = "oneplus,cheeseburger", "qcom,msm8998";
+	chassis-type = "handset";
 	/* Required for bootloader to select correct board */
 	qcom,board-id = <8 0 16859 23>;
 
@@ -31,7 +32,7 @@
 };
 
 &pmi8998_gpio {
-	button_backlight_default: button-backlight-default {
+	button_backlight_default: button-backlight-state {
 		pinconf {
 			pins = "gpio5";
 			function = "normal";

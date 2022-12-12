@@ -598,7 +598,7 @@ static int idt24x_probe(struct i2c_client *client,
 	return 0;
 }
 
-static int idt24x_remove(struct i2c_client *client)
+static void idt24x_remove(struct i2c_client *client)
 {
 	struct clk_idt24x_chip *chip = to_clk_idt24x_from_client(&client);
 
@@ -609,7 +609,6 @@ static int idt24x_remove(struct i2c_client *client)
 	if (!chip->input_clk)
 		clk_notifier_unregister(
 			chip->input_clk, &chip->input_clk_nb);
-	return 0;
 }
 
 static const struct i2c_device_id idt24x_id[] = {

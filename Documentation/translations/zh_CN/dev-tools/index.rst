@@ -22,19 +22,19 @@ Documentation/translations/zh_CN/dev-tools/testing-overview.rst
    :maxdepth: 2
 
    testing-overview
+   sparse
    gcov
    kasan
+   gdb-kernel-debugging
 
 Todolist:
 
  - coccinelle
- - sparse
  - kcov
  - ubsan
  - kmemleak
  - kcsan
  - kfence
- - gdb-kernel-debugging
  - kgdb
  - kselftest
  - kunit/index

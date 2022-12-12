@@ -5,7 +5,6 @@
 #define __RTW_MLME_H_
 
 #include "osdep_service.h"
-#include "mlme_osdep.h"
 #include "drv_types.h"
 #include "wlan_bssdef.h"
 
@@ -62,17 +61,6 @@ enum rt_scan_type {
 	SCAN_PASSIVE,
 	SCAN_ACTIVE,
 	SCAN_MIX,
-};
-
-enum SCAN_RESULT_TYPE {
-	SCAN_RESULT_P2P_ONLY = 0,	/* Will return all the P2P devices. */
-	SCAN_RESULT_ALL = 1,		/* Will return all the scanned device,
-					 * include AP. */
-	SCAN_RESULT_WFD_TYPE = 2	/* Will just return the correct WFD
-					 * device. */
-					/* If this device is Miracast sink
-					 * device, it will just return all the
-					 * Miracast source devices. */
 };
 
 /*
@@ -243,18 +231,6 @@ struct wifidirect_info {
 	 * by using the sta_preset CAPI. */
 	/*	0: disable */
 	/*	1: enable */
-	u8 wfd_tdls_enable; /* Flag to enable or disable the TDLS by WFD Sigma*/
-			    /* 0: disable */
-			    /*	1: enable */
-	u8 wfd_tdls_weaksec; /* Flag to enable or disable the weak security
-			      * function for TDLS by WFD Sigma */
-			     /* 0: disable */
-			     /* In this case, the driver can't issue the tdsl
-			      * setup request frame. */
-			     /*	1: enable */
-			     /* In this case, the driver can issue the tdls
-			      * setup request frame */
-			     /*	even the current security is weak security. */
 
 	/* This field will store the WPS value (PIN value or PBC) that UI had
 	 * got from the user. */
@@ -322,13 +298,12 @@ struct qos_priv {
 struct mlme_priv {
 	spinlock_t lock;
 	int fw_state;	/* shall we protect this variable? maybe not necessarily... */
-	u8 bScanInProcess;
+	bool bScanInProcess;
 	u8 to_join; /* flag */
 	u8 to_roaming; /*  roaming trying times */
 
 	u8 *nic_hdl;
 
-	u8 not_indic_disco;
 	struct list_head *pscanned;
 	struct __queue free_bss_pool;
 	struct __queue scanned_queue;
@@ -376,10 +351,7 @@ struct mlme_priv {
 
 	u8 *assoc_req;
 	u32 assoc_req_len;
-	u8 *assoc_rsp;
-	u32 assoc_rsp_len;
 
-#if defined (CONFIG_88EU_AP_MODE)
 	/* Number of associated Non-ERP stations (i.e., stations using 802.11b
 	 * in 802.11g BSS) */
 	int num_sta_non_erp;
@@ -428,18 +400,10 @@ struct mlme_priv {
 	u32 p2p_assoc_req_ie_len;
 	spinlock_t bcn_update_lock;
 	u8		update_bcn;
-#endif /* if defined (CONFIG_88EU_AP_MODE) */
-};
-
-#ifdef CONFIG_88EU_AP_MODE
-
-struct hostapd_priv {
-	struct adapter *padapter;
 };
 
 int hostapd_mode_init(struct adapter *padapter);
 void hostapd_mode_unload(struct adapter *padapter);
-#endif
 
 extern unsigned char WPA_TKIP_CIPHER[4];
 extern unsigned char RSN_TKIP_CIPHER[4];
@@ -457,8 +421,6 @@ void indicate_wx_scan_complete_event(struct adapter *padapter);
 void rtw_indicate_wx_assoc_event(struct adapter *padapter);
 void rtw_indicate_wx_disassoc_event(struct adapter *padapter);
 int event_thread(void *context);
-void rtw_join_timeout_handler (struct timer_list *t);
-void _rtw_scan_timeout_handler (struct timer_list *t);
 void rtw_free_network_queue(struct adapter *adapter, u8 isfreeall);
 int rtw_init_mlme_priv(struct adapter *adapter);
 void rtw_free_mlme_priv (struct mlme_priv *pmlmepriv);
@@ -473,7 +435,7 @@ static inline u8 *get_bssid(struct mlme_priv *pmlmepriv)
 	return pmlmepriv->cur_network.network.MacAddress;
 }
 
-static inline int check_fwstate(struct mlme_priv *pmlmepriv, int state)
+static inline bool check_fwstate(struct mlme_priv *pmlmepriv, int state)
 {
 	if (pmlmepriv->fw_state & state)
 		return true;
@@ -561,8 +523,7 @@ struct wlan_network *rtw_get_oldest_wlan_network(struct __queue *scanned_queue);
 void rtw_free_assoc_resources(struct adapter *adapter, int lock_scanned_queue);
 void rtw_indicate_disconnect(struct adapter *adapter);
 void rtw_indicate_connect(struct adapter *adapter);
-void rtw_indicate_scan_done( struct adapter *padapter, bool aborted);
-void rtw_scan_abort(struct adapter *adapter);
+void rtw_indicate_scan_done(struct adapter *padapter);
 
 int rtw_restruct_sec_ie(struct adapter *adapter, u8 *in_ie, u8 *out_ie,
 			uint in_len);
@@ -572,28 +533,14 @@ void rtw_init_registrypriv_dev_network(struct adapter *adapter);
 
 void rtw_update_registrypriv_dev_network(struct adapter *adapter);
 
-void rtw_get_encrypt_decrypt_from_registrypriv(struct adapter *adapter);
-
 void _rtw_join_timeout_handler(struct adapter *adapter);
 void rtw_scan_timeout_handler(struct adapter *adapter);
 
  void rtw_dynamic_check_timer_handlder(struct adapter *adapter);
-#define rtw_is_scan_deny(adapter) false
-#define rtw_clear_scan_deny(adapter) do {} while (0)
-#define rtw_set_scan_deny_timer_hdl(adapter) do {} while (0)
-#define rtw_set_scan_deny(adapter, ms) do {} while (0)
-
-int _rtw_init_mlme_priv(struct adapter *padapter);
 
 void rtw_free_mlme_priv_ie_data(struct mlme_priv *pmlmepriv);
 
-void _rtw_free_mlme_priv(struct mlme_priv *pmlmepriv);
-
-int _rtw_enqueue_network(struct __queue *queue, struct wlan_network *pnetwork);
-
-struct wlan_network *_rtw_dequeue_network(struct __queue *queue);
-
- struct wlan_network *_rtw_alloc_network(struct mlme_priv *pmlmepriv);
+struct wlan_network *rtw_alloc_network(struct mlme_priv *pmlmepriv);
 
 void _rtw_free_network(struct mlme_priv *pmlmepriv,
 		       struct wlan_network *pnetwork, u8 isfreeall);
@@ -607,7 +554,6 @@ void _rtw_free_network_queue(struct adapter *padapter, u8 isfreeall);
 int rtw_if_up(struct adapter *padapter);
 
 u8 *rtw_get_capability_from_ie(u8 *ie);
-u8 *rtw_get_timestampe_from_ie(u8 *ie);
 u8 *rtw_get_beacon_interval_from_ie(u8 *ie);
 
 void rtw_joinbss_reset(struct adapter *padapter);
@@ -626,7 +572,10 @@ void _rtw_roaming(struct adapter *padapter, struct wlan_network *tgt_network);
 void rtw_set_roaming(struct adapter *adapter, u8 to_roaming);
 u8 rtw_to_roaming(struct adapter *adapter);
 
+void rtw_set_max_rpt_macid(struct adapter *adapter, u8 macid);
 void rtw_sta_media_status_rpt(struct adapter *adapter, struct sta_info *psta,
 			      u32 mstatus);
+
+u8 rtw_current_antenna(struct adapter *adapter);
 
 #endif /* __RTL871X_MLME_H_ */

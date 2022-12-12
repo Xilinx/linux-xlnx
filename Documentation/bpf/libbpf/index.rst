@@ -3,11 +3,10 @@
 libbpf
 ======
 
-For API documentation see the `versioned API documentation site <https://libbpf.readthedocs.io/en/latest/api.html>`_.
-
 .. toctree::
    :maxdepth: 1
 
+   API Documentation <https://libbpf.readthedocs.io/en/latest/api.html>
    libbpf_naming_convention
    libbpf_build
 

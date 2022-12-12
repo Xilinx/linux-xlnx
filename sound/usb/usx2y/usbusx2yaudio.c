@@ -421,7 +421,7 @@ static int usx2y_urbs_allocate(struct snd_usx2y_substream *subs)
 
 	pipe = is_playback ? usb_sndisocpipe(dev, subs->endpoint) :
 			usb_rcvisocpipe(dev, subs->endpoint);
-	subs->maxpacksize = usb_maxpacket(dev, pipe, is_playback);
+	subs->maxpacksize = usb_maxpacket(dev, pipe);
 	if (!subs->maxpacksize)
 		return -EINVAL;
 
@@ -668,14 +668,15 @@ static void i_usx2y_04int(struct urb *urb)
 
 static int usx2y_rate_set(struct usx2ydev *usx2y, int rate)
 {
-	int			err = 0, i;
-	struct snd_usx2y_urb_seq	*us = NULL;
-	int			*usbdata = NULL;
-	const struct s_c2	*ra = rate == 48000 ? setrate_48000 : setrate_44100;
+	int err = 0, i;
+	struct snd_usx2y_urb_seq *us = NULL;
+	int *usbdata = NULL;
+	const struct s_c2 *ra = rate == 48000 ? setrate_48000 : setrate_44100;
 	struct urb *urb;
 
 	if (usx2y->rate != rate) {
-		us = kzalloc(sizeof(*us) + sizeof(struct urb *) * NOOF_SETRATE_URBS, GFP_KERNEL);
+		us = kzalloc(struct_size(us, urb, NOOF_SETRATE_URBS),
+			     GFP_KERNEL);
 		if (!us) {
 			err = -ENOMEM;
 			goto cleanup;
@@ -821,8 +822,7 @@ static int snd_usx2y_pcm_hw_free(struct snd_pcm_substream *substream)
 		usx2y_urbs_release(subs);
 		if (!cap_subs->pcm_substream ||
 		    !cap_subs->pcm_substream->runtime ||
-		    !cap_subs->pcm_substream->runtime->status ||
-		    cap_subs->pcm_substream->runtime->status->state < SNDRV_PCM_STATE_PREPARED) {
+		    cap_subs->pcm_substream->runtime->state < SNDRV_PCM_STATE_PREPARED) {
 			atomic_set(&cap_subs->state, STATE_STOPPED);
 			usx2y_urbs_release(cap_subs);
 		}

@@ -796,7 +796,6 @@ static void ssip_rx_strans(struct hsi_client *cl, u32 cmd)
 		dev_err(&cl->device, "No memory for rx skb\n");
 		goto out1;
 	}
-	skb->dev = ssi->netdev;
 	skb_put(skb, len * 4);
 	msg = ssip_alloc_data(ssi, skb, GFP_ATOMIC);
 	if (unlikely(!msg)) {
@@ -931,6 +930,7 @@ static int ssip_pn_open(struct net_device *dev)
 	if (err < 0) {
 		dev_err(&cl->device, "Register HSI port event failed (%d)\n",
 			err);
+		hsi_release_port(cl);
 		return err;
 	}
 	dev_dbg(&cl->device, "Configuring SSI port\n");
@@ -1055,14 +1055,16 @@ static const struct net_device_ops ssip_pn_ops = {
 
 static void ssip_pn_setup(struct net_device *dev)
 {
+	static const u8 addr = PN_MEDIA_SOS;
+
 	dev->features		= 0;
 	dev->netdev_ops		= &ssip_pn_ops;
 	dev->type		= ARPHRD_PHONET;
 	dev->flags		= IFF_POINTOPOINT | IFF_NOARP;
 	dev->mtu		= SSIP_DEFAULT_MTU;
 	dev->hard_header_len	= 1;
-	dev->dev_addr[0]	= PN_MEDIA_SOS;
 	dev->addr_len		= 1;
+	dev_addr_set(dev, &addr);
 	dev->tx_queue_len	= SSIP_TXQUEUE_LEN;
 
 	dev->needs_free_netdev	= true;

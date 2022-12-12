@@ -766,7 +766,7 @@ void xt_compat_match_from_user(struct xt_entry_match *m, void **dstptr,
 
 	msize += off;
 	m->u.user.match_size = msize;
-	strlcpy(name, match->name, sizeof(name));
+	strscpy(name, match->name, sizeof(name));
 	module_put(match->me);
 	strncpy(m->u.user.name, name, sizeof(m->u.user.name));
 
@@ -1146,7 +1146,7 @@ void xt_compat_target_from_user(struct xt_entry_target *t, void **dstptr,
 
 	tsize += off;
 	t->u.user.target_size = tsize;
-	strlcpy(name, target->name, sizeof(name));
+	strscpy(name, target->name, sizeof(name));
 	module_put(target->me);
 	strncpy(t->u.user.name, name, sizeof(t->u.user.name));
 
@@ -1517,7 +1517,7 @@ EXPORT_SYMBOL_GPL(xt_unregister_table);
 #ifdef CONFIG_PROC_FS
 static void *xt_table_seq_start(struct seq_file *seq, loff_t *pos)
 {
-	u8 af = (unsigned long)PDE_DATA(file_inode(seq->file));
+	u8 af = (unsigned long)pde_data(file_inode(seq->file));
 	struct net *net = seq_file_net(seq);
 	struct xt_pernet *xt_net;
 
@@ -1529,7 +1529,7 @@ static void *xt_table_seq_start(struct seq_file *seq, loff_t *pos)
 
 static void *xt_table_seq_next(struct seq_file *seq, void *v, loff_t *pos)
 {
-	u8 af = (unsigned long)PDE_DATA(file_inode(seq->file));
+	u8 af = (unsigned long)pde_data(file_inode(seq->file));
 	struct net *net = seq_file_net(seq);
 	struct xt_pernet *xt_net;
 
@@ -1540,7 +1540,7 @@ static void *xt_table_seq_next(struct seq_file *seq, void *v, loff_t *pos)
 
 static void xt_table_seq_stop(struct seq_file *seq, void *v)
 {
-	u_int8_t af = (unsigned long)PDE_DATA(file_inode(seq->file));
+	u_int8_t af = (unsigned long)pde_data(file_inode(seq->file));
 
 	mutex_unlock(&xt[af].mutex);
 }
@@ -1584,7 +1584,7 @@ static void *xt_mttg_seq_next(struct seq_file *seq, void *v, loff_t *ppos,
 		[MTTG_TRAV_NFP_UNSPEC] = MTTG_TRAV_NFP_SPEC,
 		[MTTG_TRAV_NFP_SPEC]   = MTTG_TRAV_DONE,
 	};
-	uint8_t nfproto = (unsigned long)PDE_DATA(file_inode(seq->file));
+	uint8_t nfproto = (unsigned long)pde_data(file_inode(seq->file));
 	struct nf_mttg_trav *trav = seq->private;
 
 	if (ppos != NULL)
@@ -1633,7 +1633,7 @@ static void *xt_mttg_seq_start(struct seq_file *seq, loff_t *pos,
 
 static void xt_mttg_seq_stop(struct seq_file *seq, void *v)
 {
-	uint8_t nfproto = (unsigned long)PDE_DATA(file_inode(seq->file));
+	uint8_t nfproto = (unsigned long)pde_data(file_inode(seq->file));
 	struct nf_mttg_trav *trav = seq->private;
 
 	switch (trav->class) {
@@ -1827,7 +1827,7 @@ int xt_proto_init(struct net *net, u_int8_t af)
 	root_uid = make_kuid(net->user_ns, 0);
 	root_gid = make_kgid(net->user_ns, 0);
 
-	strlcpy(buf, xt_prefix[af], sizeof(buf));
+	strscpy(buf, xt_prefix[af], sizeof(buf));
 	strlcat(buf, FORMAT_TABLES, sizeof(buf));
 	proc = proc_create_net_data(buf, 0440, net->proc_net, &xt_table_seq_ops,
 			sizeof(struct seq_net_private),
@@ -1837,7 +1837,7 @@ int xt_proto_init(struct net *net, u_int8_t af)
 	if (uid_valid(root_uid) && gid_valid(root_gid))
 		proc_set_user(proc, root_uid, root_gid);
 
-	strlcpy(buf, xt_prefix[af], sizeof(buf));
+	strscpy(buf, xt_prefix[af], sizeof(buf));
 	strlcat(buf, FORMAT_MATCHES, sizeof(buf));
 	proc = proc_create_seq_private(buf, 0440, net->proc_net,
 			&xt_match_seq_ops, sizeof(struct nf_mttg_trav),
@@ -1847,7 +1847,7 @@ int xt_proto_init(struct net *net, u_int8_t af)
 	if (uid_valid(root_uid) && gid_valid(root_gid))
 		proc_set_user(proc, root_uid, root_gid);
 
-	strlcpy(buf, xt_prefix[af], sizeof(buf));
+	strscpy(buf, xt_prefix[af], sizeof(buf));
 	strlcat(buf, FORMAT_TARGETS, sizeof(buf));
 	proc = proc_create_seq_private(buf, 0440, net->proc_net,
 			 &xt_target_seq_ops, sizeof(struct nf_mttg_trav),
@@ -1862,12 +1862,12 @@ int xt_proto_init(struct net *net, u_int8_t af)
 
 #ifdef CONFIG_PROC_FS
 out_remove_matches:
-	strlcpy(buf, xt_prefix[af], sizeof(buf));
+	strscpy(buf, xt_prefix[af], sizeof(buf));
 	strlcat(buf, FORMAT_MATCHES, sizeof(buf));
 	remove_proc_entry(buf, net->proc_net);
 
 out_remove_tables:
-	strlcpy(buf, xt_prefix[af], sizeof(buf));
+	strscpy(buf, xt_prefix[af], sizeof(buf));
 	strlcat(buf, FORMAT_TABLES, sizeof(buf));
 	remove_proc_entry(buf, net->proc_net);
 out:
@@ -1881,15 +1881,15 @@ void xt_proto_fini(struct net *net, u_int8_t af)
 #ifdef CONFIG_PROC_FS
 	char buf[XT_FUNCTION_MAXNAMELEN];
 
-	strlcpy(buf, xt_prefix[af], sizeof(buf));
+	strscpy(buf, xt_prefix[af], sizeof(buf));
 	strlcat(buf, FORMAT_TABLES, sizeof(buf));
 	remove_proc_entry(buf, net->proc_net);
 
-	strlcpy(buf, xt_prefix[af], sizeof(buf));
+	strscpy(buf, xt_prefix[af], sizeof(buf));
 	strlcat(buf, FORMAT_TARGETS, sizeof(buf));
 	remove_proc_entry(buf, net->proc_net);
 
-	strlcpy(buf, xt_prefix[af], sizeof(buf));
+	strscpy(buf, xt_prefix[af], sizeof(buf));
 	strlcat(buf, FORMAT_MATCHES, sizeof(buf));
 	remove_proc_entry(buf, net->proc_net);
 #endif /*CONFIG_PROC_FS*/

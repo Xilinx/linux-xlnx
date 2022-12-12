@@ -126,85 +126,9 @@ void ath11k_debugfs_sta_add_tx_stats(struct ath11k_sta *arsta,
 }
 
 void ath11k_debugfs_sta_update_txcompl(struct ath11k *ar,
-				       struct sk_buff *msdu,
 				       struct hal_tx_status *ts)
 {
-	struct ath11k_base *ab = ar->ab;
-	struct ath11k_per_peer_tx_stats *peer_stats = &ar->cached_stats;
-	enum hal_tx_rate_stats_pkt_type pkt_type;
-	enum hal_tx_rate_stats_sgi sgi;
-	enum hal_tx_rate_stats_bw bw;
-	struct ath11k_peer *peer;
-	struct ath11k_sta *arsta;
-	struct ieee80211_sta *sta;
-	u16 rate;
-	u8 rate_idx = 0;
-	int ret;
-	u8 mcs;
-
-	rcu_read_lock();
-	spin_lock_bh(&ab->base_lock);
-	peer = ath11k_peer_find_by_id(ab, ts->peer_id);
-	if (!peer || !peer->sta) {
-		ath11k_warn(ab, "failed to find the peer\n");
-		spin_unlock_bh(&ab->base_lock);
-		rcu_read_unlock();
-		return;
-	}
-
-	sta = peer->sta;
-	arsta = (struct ath11k_sta *)sta->drv_priv;
-
-	memset(&arsta->txrate, 0, sizeof(arsta->txrate));
-	pkt_type = FIELD_GET(HAL_TX_RATE_STATS_INFO0_PKT_TYPE,
-			     ts->rate_stats);
-	mcs = FIELD_GET(HAL_TX_RATE_STATS_INFO0_MCS,
-			ts->rate_stats);
-	sgi = FIELD_GET(HAL_TX_RATE_STATS_INFO0_SGI,
-			ts->rate_stats);
-	bw = FIELD_GET(HAL_TX_RATE_STATS_INFO0_BW, ts->rate_stats);
-
-	if (pkt_type == HAL_TX_RATE_STATS_PKT_TYPE_11A ||
-	    pkt_type == HAL_TX_RATE_STATS_PKT_TYPE_11B) {
-		ret = ath11k_mac_hw_ratecode_to_legacy_rate(mcs,
-							    pkt_type,
-							    &rate_idx,
-							    &rate);
-		if (ret < 0)
-			goto err_out;
-		arsta->txrate.legacy = rate;
-	} else if (pkt_type == HAL_TX_RATE_STATS_PKT_TYPE_11N) {
-		if (mcs > 7) {
-			ath11k_warn(ab, "Invalid HT mcs index %d\n", mcs);
-			goto err_out;
-		}
-
-		arsta->txrate.mcs = mcs + 8 * (arsta->last_txrate.nss - 1);
-		arsta->txrate.flags = RATE_INFO_FLAGS_MCS;
-		if (sgi)
-			arsta->txrate.flags |= RATE_INFO_FLAGS_SHORT_GI;
-	} else if (pkt_type == HAL_TX_RATE_STATS_PKT_TYPE_11AC) {
-		if (mcs > 9) {
-			ath11k_warn(ab, "Invalid VHT mcs index %d\n", mcs);
-			goto err_out;
-		}
-
-		arsta->txrate.mcs = mcs;
-		arsta->txrate.flags = RATE_INFO_FLAGS_VHT_MCS;
-		if (sgi)
-			arsta->txrate.flags |= RATE_INFO_FLAGS_SHORT_GI;
-	} else if (pkt_type == HAL_TX_RATE_STATS_PKT_TYPE_11AX) {
-		/* TODO */
-	}
-
-	arsta->txrate.nss = arsta->last_txrate.nss;
-	arsta->txrate.bw = ath11k_mac_bw_to_mac80211_bw(bw);
-
-	ath11k_debugfs_sta_add_tx_stats(arsta, peer_stats, rate_idx);
-
-err_out:
-	spin_unlock_bh(&ab->base_lock);
-	rcu_read_unlock();
+	ath11k_dp_tx_update_txcompl(ar, ts);
 }
 
 static ssize_t ath11k_dbg_sta_dump_tx_stats(struct file *file,
@@ -419,7 +343,13 @@ ath11k_dbg_sta_open_htt_peer_stats(struct inode *inode, struct file *file)
 	struct ath11k_sta *arsta = (struct ath11k_sta *)sta->drv_priv;
 	struct ath11k *ar = arsta->arvif->ar;
 	struct debug_htt_stats_req *stats_req;
+	int type = ar->debug.htt_stats.type;
 	int ret;
+
+	if ((type != ATH11K_DBG_HTT_EXT_STATS_PEER_INFO &&
+	     type != ATH11K_DBG_HTT_EXT_STATS_PEER_CTRL_PATH_TXRX_STATS) ||
+	    type == ATH11K_DBG_HTT_EXT_STATS_RESET)
+		return -EPERM;
 
 	stats_req = vzalloc(sizeof(*stats_req) + ATH11K_HTT_STATS_BUF_SIZE);
 	if (!stats_req)
@@ -427,7 +357,7 @@ ath11k_dbg_sta_open_htt_peer_stats(struct inode *inode, struct file *file)
 
 	mutex_lock(&ar->conf_mutex);
 	ar->debug.htt_stats.stats_req = stats_req;
-	stats_req->type = ATH11K_DBG_HTT_EXT_STATS_PEER_INFO;
+	stats_req->type = type;
 	memcpy(stats_req->peer_addr, sta->addr, ETH_ALEN);
 	ret = ath11k_debugfs_htt_stats_req(ar);
 	mutex_unlock(&ar->conf_mutex);
@@ -821,6 +751,102 @@ static const struct file_operations fops_htt_peer_stats_reset = {
 	.llseek = default_llseek,
 };
 
+static ssize_t ath11k_dbg_sta_read_peer_ps_state(struct file *file,
+						 char __user *user_buf,
+						 size_t count, loff_t *ppos)
+{
+	struct ieee80211_sta *sta = file->private_data;
+	struct ath11k_sta *arsta = (struct ath11k_sta *)sta->drv_priv;
+	struct ath11k *ar = arsta->arvif->ar;
+	char buf[20];
+	int len;
+
+	spin_lock_bh(&ar->data_lock);
+
+	len = scnprintf(buf, sizeof(buf), "%d\n", arsta->peer_ps_state);
+
+	spin_unlock_bh(&ar->data_lock);
+
+	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+}
+
+static const struct file_operations fops_peer_ps_state = {
+	.open = simple_open,
+	.read = ath11k_dbg_sta_read_peer_ps_state,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static ssize_t ath11k_dbg_sta_read_current_ps_duration(struct file *file,
+						       char __user *user_buf,
+						       size_t count,
+						       loff_t *ppos)
+{
+	struct ieee80211_sta *sta = file->private_data;
+	struct ath11k_sta *arsta = (struct ath11k_sta *)sta->drv_priv;
+	struct ath11k *ar = arsta->arvif->ar;
+	u64 time_since_station_in_power_save;
+	char buf[20];
+	int len;
+
+	spin_lock_bh(&ar->data_lock);
+
+	if (arsta->peer_ps_state == WMI_PEER_PS_STATE_ON &&
+	    arsta->peer_current_ps_valid)
+		time_since_station_in_power_save = jiffies_to_msecs(jiffies
+						- arsta->ps_start_jiffies);
+	else
+		time_since_station_in_power_save = 0;
+
+	len = scnprintf(buf, sizeof(buf), "%llu\n",
+			time_since_station_in_power_save);
+	spin_unlock_bh(&ar->data_lock);
+
+	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+}
+
+static const struct file_operations fops_current_ps_duration = {
+	.open = simple_open,
+	.read = ath11k_dbg_sta_read_current_ps_duration,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static ssize_t ath11k_dbg_sta_read_total_ps_duration(struct file *file,
+						     char __user *user_buf,
+						     size_t count, loff_t *ppos)
+{
+	struct ieee80211_sta *sta = file->private_data;
+	struct ath11k_sta *arsta = (struct ath11k_sta *)sta->drv_priv;
+	struct ath11k *ar = arsta->arvif->ar;
+	char buf[20];
+	u64 power_save_duration;
+	int len;
+
+	spin_lock_bh(&ar->data_lock);
+
+	if (arsta->peer_ps_state == WMI_PEER_PS_STATE_ON &&
+	    arsta->peer_current_ps_valid)
+		power_save_duration = jiffies_to_msecs(jiffies
+						- arsta->ps_start_jiffies)
+						+ arsta->ps_total_duration;
+	else
+		power_save_duration = arsta->ps_total_duration;
+
+	len = scnprintf(buf, sizeof(buf), "%llu\n", power_save_duration);
+
+	spin_unlock_bh(&ar->data_lock);
+
+	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+}
+
+static const struct file_operations fops_total_ps_duration = {
+	.open = simple_open,
+	.read = ath11k_dbg_sta_read_total_ps_duration,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
 void ath11k_debugfs_sta_op_add(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 			       struct ieee80211_sta *sta, struct dentry *dir)
 {
@@ -848,4 +874,15 @@ void ath11k_debugfs_sta_op_add(struct ieee80211_hw *hw, struct ieee80211_vif *vi
 		     ar->ab->wmi_ab.svc_map))
 		debugfs_create_file("htt_peer_stats_reset", 0600, dir, sta,
 				    &fops_htt_peer_stats_reset);
+
+	debugfs_create_file("peer_ps_state", 0400, dir, sta,
+			    &fops_peer_ps_state);
+
+	if (test_bit(WMI_TLV_SERVICE_PEER_POWER_SAVE_DURATION_SUPPORT,
+		     ar->ab->wmi_ab.svc_map)) {
+		debugfs_create_file("current_ps_duration", 0440, dir, sta,
+				    &fops_current_ps_duration);
+		debugfs_create_file("total_ps_duration", 0440, dir, sta,
+				    &fops_total_ps_duration);
+	}
 }

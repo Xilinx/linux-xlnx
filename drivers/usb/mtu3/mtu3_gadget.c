@@ -77,7 +77,7 @@ static int mtu3_ep_enable(struct mtu3_ep *mep)
 		if (usb_endpoint_xfer_int(desc) ||
 				usb_endpoint_xfer_isoc(desc)) {
 			interval = desc->bInterval;
-			interval = clamp_val(interval, 1, 16) - 1;
+			interval = clamp_val(interval, 1, 16);
 			if (usb_endpoint_xfer_isoc(desc) && comp_desc)
 				mult = comp_desc->bmAttributes;
 		}
@@ -89,9 +89,16 @@ static int mtu3_ep_enable(struct mtu3_ep *mep)
 		if (usb_endpoint_xfer_isoc(desc) ||
 				usb_endpoint_xfer_int(desc)) {
 			interval = desc->bInterval;
-			interval = clamp_val(interval, 1, 16) - 1;
+			interval = clamp_val(interval, 1, 16);
 			mult = usb_endpoint_maxp_mult(desc) - 1;
 		}
+		break;
+	case USB_SPEED_FULL:
+		if (usb_endpoint_xfer_isoc(desc))
+			interval = clamp_val(desc->bInterval, 1, 16);
+		else if (usb_endpoint_xfer_int(desc))
+			interval = clamp_val(desc->bInterval, 1, 255);
+
 		break;
 	default:
 		break; /*others are ignored */
@@ -235,6 +242,7 @@ struct usb_request *mtu3_alloc_request(struct usb_ep *ep, gfp_t gfp_flags)
 	mreq->request.dma = DMA_ADDR_INVALID;
 	mreq->epnum = mep->epnum;
 	mreq->mep = mep;
+	INIT_LIST_HEAD(&mreq->list);
 	trace_mtu3_alloc_request(mreq);
 
 	return &mreq->request;
@@ -425,6 +433,13 @@ static int mtu3_gadget_get_frame(struct usb_gadget *gadget)
 	return (int)mtu3_readl(mtu->mac_base, U3D_USB20_FRAME_NUM);
 }
 
+static void function_wake_notif(struct mtu3 *mtu, u8 intf)
+{
+	mtu3_writel(mtu->mac_base, U3D_DEV_NOTIF_0,
+		    TYPE_FUNCTION_WAKE | DEV_NOTIF_VAL_FW(intf));
+	mtu3_setbits(mtu->mac_base, U3D_DEV_NOTIF_0, SEND_DEV_NOTIF);
+}
+
 static int mtu3_gadget_wakeup(struct usb_gadget *gadget)
 {
 	struct mtu3 *mtu = gadget_to_mtu3(gadget);
@@ -438,7 +453,18 @@ static int mtu3_gadget_wakeup(struct usb_gadget *gadget)
 
 	spin_lock_irqsave(&mtu->lock, flags);
 	if (mtu->g.speed >= USB_SPEED_SUPER) {
+		/*
+		 * class driver may do function wakeup even UFP is in U0,
+		 * and UX_EXIT only takes effect in U1/U2/U3;
+		 */
 		mtu3_setbits(mtu->mac_base, U3D_LINK_POWER_CONTROL, UX_EXIT);
+		/*
+		 * Assume there's only one function on the composite device
+		 * and enable remote wake for the first interface.
+		 * FIXME if the IAD (interface association descriptor) shows
+		 * there is more than one function.
+		 */
+		function_wake_notif(mtu, 0);
 	} else {
 		mtu3_setbits(mtu->mac_base, U3D_POWER_MANAGEMENT, RESUME);
 		spin_unlock_irqrestore(&mtu->lock, flags);
@@ -584,6 +610,18 @@ mtu3_gadget_set_speed(struct usb_gadget *g, enum usb_device_speed speed)
 	spin_unlock_irqrestore(&mtu->lock, flags);
 }
 
+static void mtu3_gadget_async_callbacks(struct usb_gadget *g, bool enable)
+{
+	struct mtu3 *mtu = gadget_to_mtu3(g);
+	unsigned long flags;
+
+	dev_dbg(mtu->dev, "%s %s\n", __func__, enable ? "en" : "dis");
+
+	spin_lock_irqsave(&mtu->lock, flags);
+	mtu->async_callbacks = enable;
+	spin_unlock_irqrestore(&mtu->lock, flags);
+}
+
 static const struct usb_gadget_ops mtu3_gadget_ops = {
 	.get_frame = mtu3_gadget_get_frame,
 	.wakeup = mtu3_gadget_wakeup,
@@ -592,6 +630,7 @@ static const struct usb_gadget_ops mtu3_gadget_ops = {
 	.udc_start = mtu3_gadget_start,
 	.udc_stop = mtu3_gadget_stop,
 	.udc_set_speed = mtu3_gadget_set_speed,
+	.udc_async_callbacks = mtu3_gadget_async_callbacks,
 };
 
 static void mtu3_state_reset(struct mtu3 *mtu)
@@ -672,6 +711,7 @@ int mtu3_gadget_setup(struct mtu3 *mtu)
 	mtu->g.speed = USB_SPEED_UNKNOWN;
 	mtu->g.sg_supported = 0;
 	mtu->g.name = MTU3_DRIVER_NAME;
+	mtu->g.irq = mtu->irq;
 	mtu->is_active = 0;
 	mtu->delayed_status = false;
 
@@ -688,7 +728,7 @@ void mtu3_gadget_cleanup(struct mtu3 *mtu)
 void mtu3_gadget_resume(struct mtu3 *mtu)
 {
 	dev_dbg(mtu->dev, "gadget RESUME\n");
-	if (mtu->gadget_driver && mtu->gadget_driver->resume) {
+	if (mtu->async_callbacks && mtu->gadget_driver && mtu->gadget_driver->resume) {
 		spin_unlock(&mtu->lock);
 		mtu->gadget_driver->resume(&mtu->g);
 		spin_lock(&mtu->lock);
@@ -699,7 +739,7 @@ void mtu3_gadget_resume(struct mtu3 *mtu)
 void mtu3_gadget_suspend(struct mtu3 *mtu)
 {
 	dev_dbg(mtu->dev, "gadget SUSPEND\n");
-	if (mtu->gadget_driver && mtu->gadget_driver->suspend) {
+	if (mtu->async_callbacks && mtu->gadget_driver && mtu->gadget_driver->suspend) {
 		spin_unlock(&mtu->lock);
 		mtu->gadget_driver->suspend(&mtu->g);
 		spin_lock(&mtu->lock);
@@ -710,7 +750,7 @@ void mtu3_gadget_suspend(struct mtu3 *mtu)
 void mtu3_gadget_disconnect(struct mtu3 *mtu)
 {
 	dev_dbg(mtu->dev, "gadget DISCONNECT\n");
-	if (mtu->gadget_driver && mtu->gadget_driver->disconnect) {
+	if (mtu->async_callbacks && mtu->gadget_driver && mtu->gadget_driver->disconnect) {
 		spin_unlock(&mtu->lock);
 		mtu->gadget_driver->disconnect(&mtu->g);
 		spin_lock(&mtu->lock);

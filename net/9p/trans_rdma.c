@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * linux/fs/9p/trans_rdma.c
- *
  * RDMA transport layer based on the trans_fd.c implementation.
  *
  *  Copyright (C) 2008 by Tom Tucker <tom@opengridcomputing.com>
@@ -352,7 +350,7 @@ send_done(struct ib_cq *cq, struct ib_wc *wc)
 			    c->busa, c->req->tc.size,
 			    DMA_TO_DEVICE);
 	up(&rdma->sq_sem);
-	p9_req_put(c->req);
+	p9_req_put(client, c->req);
 	kfree(c);
 }
 
@@ -741,6 +739,7 @@ error:
 static struct p9_trans_module p9_rdma_trans = {
 	.name = "rdma",
 	.maxsize = P9_RDMA_MAXSIZE,
+	.pooled_rbuffers = true,
 	.def = 0,
 	.owner = THIS_MODULE,
 	.create = rdma_create_trans,
@@ -767,6 +766,7 @@ static void __exit p9_trans_rdma_exit(void)
 
 module_init(p9_trans_rdma_init);
 module_exit(p9_trans_rdma_exit);
+MODULE_ALIAS_9P("rdma");
 
 MODULE_AUTHOR("Tom Tucker <tom@opengridcomputing.com>");
 MODULE_DESCRIPTION("RDMA Transport for 9P");

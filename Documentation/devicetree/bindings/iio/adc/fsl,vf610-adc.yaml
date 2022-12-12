@@ -7,14 +7,21 @@ $schema: http://devicetree.org/meta-schemas/core.yaml#
 title: ADC found on Freescale vf610 and similar SoCs
 
 maintainers:
-  - Fugang Duan <fugang.duan@nxp.com>
+  - Haibo Chen <haibo.chen@nxp.com>
 
 description:
   ADCs found on vf610/i.MX6slx and upward SoCs from Freescale.
 
 properties:
   compatible:
-    const: fsl,vf610-adc
+    oneOf:
+      - items:
+          - enum:
+              - fsl,imx6sx-adc
+              - fsl,imx6ul-adc
+          - const: fsl,vf610-adc
+      - items:
+          - const: fsl,vf610-adc
 
   reg:
     maxItems: 1

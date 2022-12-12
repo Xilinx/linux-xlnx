@@ -1994,21 +1994,16 @@ static void mlx4_allocate_port_vpps(struct mlx4_dev *dev, int port)
 
 static int mlx4_master_activate_admin_state(struct mlx4_priv *priv, int slave)
 {
-	int port, err;
+	int p, port, err;
 	struct mlx4_vport_state *vp_admin;
 	struct mlx4_vport_oper_state *vp_oper;
 	struct mlx4_slave_state *slave_state =
 		&priv->mfunc.master.slave_state[slave];
 	struct mlx4_active_ports actv_ports = mlx4_get_active_ports(
 			&priv->dev, slave);
-	int min_port = find_first_bit(actv_ports.ports,
-				      priv->dev.caps.num_ports) + 1;
-	int max_port = min_port - 1 +
-		bitmap_weight(actv_ports.ports, priv->dev.caps.num_ports);
 
-	for (port = min_port; port <= max_port; port++) {
-		if (!test_bit(port - 1, actv_ports.ports))
-			continue;
+	for_each_set_bit(p, actv_ports.ports, priv->dev.caps.num_ports) {
+		port = p + 1;
 		priv->mfunc.master.vf_oper[slave].smi_enabled[port] =
 			priv->mfunc.master.vf_admin[slave].enable_smi[port];
 		vp_oper = &priv->mfunc.master.vf_oper[slave].vport[port];
@@ -2063,19 +2058,13 @@ static int mlx4_master_activate_admin_state(struct mlx4_priv *priv, int slave)
 
 static void mlx4_master_deactivate_admin_state(struct mlx4_priv *priv, int slave)
 {
-	int port;
+	int p, port;
 	struct mlx4_vport_oper_state *vp_oper;
 	struct mlx4_active_ports actv_ports = mlx4_get_active_ports(
 			&priv->dev, slave);
-	int min_port = find_first_bit(actv_ports.ports,
-				      priv->dev.caps.num_ports) + 1;
-	int max_port = min_port - 1 +
-		bitmap_weight(actv_ports.ports, priv->dev.caps.num_ports);
 
-
-	for (port = min_port; port <= max_port; port++) {
-		if (!test_bit(port - 1, actv_ports.ports))
-			continue;
+	for_each_set_bit(p, actv_ports.ports, priv->dev.caps.num_ports) {
+		port = p + 1;
 		priv->mfunc.master.vf_oper[slave].smi_enabled[port] =
 			MLX4_VF_SMI_DISABLED;
 		vp_oper = &priv->mfunc.master.vf_oper[slave].vport[port];
@@ -2480,7 +2469,6 @@ int mlx4_multi_func_init(struct mlx4_dev *dev)
 	return 0;
 
 err_thread:
-	flush_workqueue(priv->mfunc.master.comm_wq);
 	destroy_workqueue(priv->mfunc.master.comm_wq);
 err_slaves:
 	while (i--) {
@@ -2587,7 +2575,6 @@ void mlx4_multi_func_cleanup(struct mlx4_dev *dev)
 	int i, port;
 
 	if (mlx4_is_master(dev)) {
-		flush_workqueue(priv->mfunc.master.comm_wq);
 		destroy_workqueue(priv->mfunc.master.comm_wq);
 		for (i = 0; i < dev->num_slaves; i++) {
 			for (port = 1; port <= MLX4_MAX_PORTS; port++)
@@ -3009,7 +2996,7 @@ int mlx4_set_vf_mac(struct mlx4_dev *dev, int port, int vf, u8 *mac)
 		return -EPERM;
 	}
 
-	s_info->mac = mlx4_mac_to_u64(mac);
+	s_info->mac = ether_addr_to_u64(mac);
 	mlx4_info(dev, "default mac on vf %d port %d to %llX will take effect only after vf restart\n",
 		  vf, port, s_info->mac);
 	return 0;
@@ -3195,7 +3182,7 @@ int mlx4_set_vf_spoofchk(struct mlx4_dev *dev, int port, int vf, bool setting)
 	port = mlx4_slaves_closest_port(dev, slave, port);
 	s_info = &priv->mfunc.master.vf_admin[slave].vport[port];
 
-	mlx4_u64_to_mac(mac, s_info->mac);
+	u64_to_ether_addr(s_info->mac, mac);
 	if (setting && !is_valid_ether_addr(mac)) {
 		mlx4_info(dev, "Illegal MAC with spoofchk\n");
 		return -EPERM;

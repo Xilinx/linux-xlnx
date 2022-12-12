@@ -51,10 +51,11 @@ static int lowland_wm5100_init(struct snd_soc_pcm_runtime *rtd)
 		return ret;
 	}
 
-	ret = snd_soc_card_jack_new(rtd->card, "Headset", SND_JACK_LINEOUT |
-				    SND_JACK_HEADSET | SND_JACK_BTN_0,
-				    &lowland_headset, lowland_headset_pins,
-				    ARRAY_SIZE(lowland_headset_pins));
+	ret = snd_soc_card_jack_new_pins(rtd->card, "Headset",
+					 SND_JACK_LINEOUT | SND_JACK_HEADSET |
+					 SND_JACK_BTN_0,
+					 &lowland_headset, lowland_headset_pins,
+					 ARRAY_SIZE(lowland_headset_pins));
 	if (ret)
 		return ret;
 
@@ -140,7 +141,7 @@ static const struct snd_kcontrol_new controls[] = {
 	SOC_DAPM_PIN_SWITCH("Headphone"),
 };
 
-static struct snd_soc_dapm_widget widgets[] = {
+static const struct snd_soc_dapm_widget widgets[] = {
 	SND_SOC_DAPM_HP("Headphone", NULL),
 	SND_SOC_DAPM_MIC("Headset Mic", NULL),
 
@@ -150,7 +151,7 @@ static struct snd_soc_dapm_widget widgets[] = {
 	SND_SOC_DAPM_MIC("Main DMIC", NULL),
 };
 
-static struct snd_soc_dapm_route audio_paths[] = {
+static const struct snd_soc_dapm_route audio_paths[] = {
 	{ "Sub IN1", NULL, "HPOUT2L" },
 	{ "Sub IN2", NULL, "HPOUT2R" },
 
@@ -183,9 +184,8 @@ static int lowland_probe(struct platform_device *pdev)
 	card->dev = &pdev->dev;
 
 	ret = devm_snd_soc_register_card(&pdev->dev, card);
-	if (ret && ret != -EPROBE_DEFER)
-		dev_err(&pdev->dev, "snd_soc_register_card() failed: %d\n",
-			ret);
+	if (ret)
+		dev_err_probe(&pdev->dev, ret, "snd_soc_register_card() failed\n");
 
 	return ret;
 }

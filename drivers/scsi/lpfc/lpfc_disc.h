@@ -1,7 +1,7 @@
 /*******************************************************************
  * This file is part of the Emulex Linux Device Driver for         *
  * Fibre Channel Host Bus Adapters.                                *
- * Copyright (C) 2017-2021 Broadcom. All Rights Reserved. The term *
+ * Copyright (C) 2017-2022 Broadcom. All Rights Reserved. The term *
  * “Broadcom” refers to Broadcom Inc. and/or its subsidiaries.     *
  * Copyright (C) 2004-2013 Emulex.  All rights reserved.           *
  * EMULEX and SLI are trademarks of Emulex.                        *
@@ -85,6 +85,13 @@ enum lpfc_fc4_xpt_flags {
 	NLP_XPT_HAS_HH		= 0x10
 };
 
+enum lpfc_nlp_save_flags {
+	/* devloss occurred during recovery */
+	NLP_IN_RECOV_POST_DEV_LOSS	= 0x1,
+	/* wait for outstanding LOGO to cmpl */
+	NLP_WAIT_FOR_LOGO		= 0x2,
+};
+
 struct lpfc_nodelist {
 	struct list_head nlp_listp;
 	struct serv_parm fc_sparam;		/* buffer for service params */
@@ -142,10 +149,10 @@ struct lpfc_nodelist {
 	uint32_t cmd_qdepth;
 	unsigned long last_change_time;
 	unsigned long *active_rrqs_xri_bitmap;
-	struct lpfc_scsicmd_bkt *lat_data;	/* Latency data */
 	uint32_t fc4_prli_sent;
-	u32 upcall_flags;
-#define	NLP_WAIT_FOR_LOGO 0x2
+
+	/* flags to keep ndlp alive until special conditions are met */
+	enum lpfc_nlp_save_flags save_flags;
 
 	enum lpfc_fc4_xpt_flags fc4_xpt_flags;
 
@@ -180,7 +187,6 @@ struct lpfc_node_rrq {
 #define NLP_RNID_SND       0x00000400	/* sent RNID request for this entry */
 #define NLP_ELS_SND_MASK   0x000007e0	/* sent ELS request for this entry */
 #define NLP_NVMET_RECOV    0x00001000   /* NVMET auditing node for recovery. */
-#define NLP_FCP_PRLI_RJT   0x00002000   /* Rport does not support FCP PRLI. */
 #define NLP_UNREG_INP      0x00008000	/* UNREG_RPI cmd is in progress */
 #define NLP_DROPPED        0x00010000	/* Init ref count has been dropped */
 #define NLP_DELAY_TMO      0x00020000	/* delay timeout is running for node */

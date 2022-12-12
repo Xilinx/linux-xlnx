@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
 config QCOM_TSENS
 	tristate "Qualcomm TSENS Temperature Alarm"
-	depends on QCOM_QFPROM
+	depends on NVMEM_QCOM_QFPROM
 	depends on ARCH_QCOM || COMPILE_TEST
 	help
 	  This enables the thermal sysfs driver for the TSENS device. It shows
@@ -34,7 +34,7 @@ config QCOM_SPMI_TEMP_ALARM
 
 config QCOM_LMH
 	tristate "Qualcomm Limits Management Hardware"
-	depends on ARCH_QCOM
+	depends on ARCH_QCOM && QCOM_SCM
 	help
 	  This enables initialization of Qualcomm limits management
 	  hardware(LMh). LMh allows for hardware-enforced mitigation for cpus based on

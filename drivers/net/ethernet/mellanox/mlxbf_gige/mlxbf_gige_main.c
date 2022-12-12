@@ -19,8 +19,6 @@
 #include "mlxbf_gige.h"
 #include "mlxbf_gige_regs.h"
 
-#define DRV_NAME    "mlxbf_gige"
-
 /* Allocate SKB whose payload pointer aligns with the Bluefield
  * hardware DMA limitation, i.e. DMA operation can't cross
  * a 4KB boundary.  A maximum packet size of 2KB is assumed in the
@@ -69,13 +67,13 @@ static void mlxbf_gige_initial_mac(struct mlxbf_gige *priv)
 	u8 mac[ETH_ALEN];
 	u64 local_mac;
 
-	memset(mac, 0, ETH_ALEN);
+	eth_zero_addr(mac);
 	mlxbf_gige_get_mac_rx_filter(priv, MLXBF_GIGE_LOCAL_MAC_FILTER_IDX,
 				     &local_mac);
 	u64_to_ether_addr(local_mac, mac);
 
 	if (is_valid_ether_addr(mac)) {
-		ether_addr_copy(priv->netdev->dev_addr, mac);
+		eth_hw_addr_set(priv->netdev, mac);
 	} else {
 		/* Provide a random MAC if for some reason the device has
 		 * not been configured with a valid MAC address already.
@@ -158,7 +156,7 @@ static int mlxbf_gige_open(struct net_device *netdev)
 
 	phy_start(phydev);
 
-	netif_napi_add(netdev, &priv->napi, mlxbf_gige_poll, NAPI_POLL_WEIGHT);
+	netif_napi_add(netdev, &priv->napi, mlxbf_gige_poll);
 	napi_enable(&priv->napi);
 	netif_start_queue(netdev);
 
@@ -280,8 +278,8 @@ static int mlxbf_gige_probe(struct platform_device *pdev)
 	void __iomem *llu_base;
 	void __iomem *plu_base;
 	void __iomem *base;
+	int addr, phy_irq;
 	u64 control;
-	int addr;
 	int err;
 
 	base = devm_platform_ioremap_resource(pdev, MLXBF_GIGE_RES_MAC);
@@ -316,19 +314,11 @@ static int mlxbf_gige_probe(struct platform_device *pdev)
 	priv->pdev = pdev;
 
 	spin_lock_init(&priv->lock);
-	spin_lock_init(&priv->gpio_lock);
 
 	/* Attach MDIO device */
 	err = mlxbf_gige_mdio_probe(pdev, priv);
 	if (err)
 		return err;
-
-	err = mlxbf_gige_gpio_init(pdev, priv);
-	if (err) {
-		dev_err(&pdev->dev, "PHY IRQ initialization failed\n");
-		mlxbf_gige_mdio_remove(priv);
-		return -ENODEV;
-	}
 
 	priv->base = base;
 	priv->llu_base = llu_base;
@@ -350,6 +340,12 @@ static int mlxbf_gige_probe(struct platform_device *pdev)
 	priv->rx_irq = platform_get_irq(pdev, MLXBF_GIGE_RECEIVE_PKT_INTR_IDX);
 	priv->llu_plu_irq = platform_get_irq(pdev, MLXBF_GIGE_LLU_PLU_INTR_IDX);
 
+	phy_irq = acpi_dev_gpio_irq_get_by(ACPI_COMPANION(&pdev->dev), "phy-gpios", 0);
+	if (phy_irq < 0) {
+		dev_err(&pdev->dev, "Error getting PHY irq. Use polling instead");
+		phy_irq = PHY_POLL;
+	}
+
 	phydev = phy_find_first(priv->mdiobus);
 	if (!phydev) {
 		err = -ENODEV;
@@ -357,8 +353,8 @@ static int mlxbf_gige_probe(struct platform_device *pdev)
 	}
 
 	addr = phydev->mdio.addr;
-	priv->mdiobus->irq[addr] = priv->phy_irq;
-	phydev->irq = priv->phy_irq;
+	priv->mdiobus->irq[addr] = phy_irq;
+	phydev->irq = phy_irq;
 
 	err = phy_connect_direct(netdev, phydev,
 				 mlxbf_gige_adjust_link,
@@ -394,7 +390,6 @@ static int mlxbf_gige_probe(struct platform_device *pdev)
 	return 0;
 
 out:
-	mlxbf_gige_gpio_free(priv);
 	mlxbf_gige_mdio_remove(priv);
 	return err;
 }
@@ -405,7 +400,6 @@ static int mlxbf_gige_remove(struct platform_device *pdev)
 
 	unregister_netdev(priv->netdev);
 	phy_disconnect(priv->netdev->phydev);
-	mlxbf_gige_gpio_free(priv);
 	mlxbf_gige_mdio_remove(priv);
 	platform_set_drvdata(pdev, NULL);
 
@@ -431,7 +425,7 @@ static struct platform_driver mlxbf_gige_driver = {
 	.remove = mlxbf_gige_remove,
 	.shutdown = mlxbf_gige_shutdown,
 	.driver = {
-		.name = DRV_NAME,
+		.name = KBUILD_MODNAME,
 		.acpi_match_table = ACPI_PTR(mlxbf_gige_acpi_match),
 	},
 };

@@ -17,6 +17,7 @@
 #include <linux/ptrace.h>
 #include <linux/string.h>
 #include <linux/errno.h>
+#include <linux/ethtool.h>
 #include <linux/netdevice.h>
 #include <linux/if_arp.h>
 #include <linux/if_ether.h>
@@ -428,7 +429,7 @@ static netdev_tx_t cc770_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct cc770_priv *priv = netdev_priv(dev);
 	unsigned int mo = obj2msgobj(CC770_OBJ_TX);
 
-	if (can_dropped_invalid_skb(dev, skb))
+	if (can_dev_dropped_skb(dev, skb))
 		return NETDEV_TX_OK;
 
 	netif_stop_queue(dev);
@@ -489,17 +490,17 @@ static void cc770_rx(struct net_device *dev, unsigned int mo, u8 ctrl1)
 		cf->len = can_cc_dlc2len((config & 0xf0) >> 4);
 		for (i = 0; i < cf->len; i++)
 			cf->data[i] = cc770_read_reg(priv, msgobj[mo].data[i]);
-	}
 
+		stats->rx_bytes += cf->len;
+	}
 	stats->rx_packets++;
-	stats->rx_bytes += cf->len;
+
 	netif_rx(skb);
 }
 
 static int cc770_err(struct net_device *dev, u8 status)
 {
 	struct cc770_priv *priv = netdev_priv(dev);
-	struct net_device_stats *stats = &dev->stats;
 	struct can_frame *cf;
 	struct sk_buff *skb;
 	u8 lec;
@@ -512,6 +513,7 @@ static int cc770_err(struct net_device *dev, u8 status)
 
 	/* Use extended functions of the CC770 */
 	if (priv->control_normal_mode & CTRL_EAF) {
+		cf->can_id |= CAN_ERR_CNT;
 		cf->data[6] = cc770_read_reg(priv, tx_error_counter);
 		cf->data[7] = cc770_read_reg(priv, rx_error_counter);
 	}
@@ -571,8 +573,6 @@ static int cc770_err(struct net_device *dev, u8 status)
 	}
 
 
-	stats->rx_packets++;
-	stats->rx_bytes += cf->len;
 	netif_rx(skb);
 
 	return 0;
@@ -666,7 +666,6 @@ static void cc770_tx_interrupt(struct net_device *dev, unsigned int o)
 	struct cc770_priv *priv = netdev_priv(dev);
 	struct net_device_stats *stats = &dev->stats;
 	unsigned int mo = obj2msgobj(o);
-	struct can_frame *cf;
 	u8 ctrl1;
 
 	ctrl1 = cc770_read_reg(priv, msgobj[mo].ctrl1);
@@ -698,12 +697,9 @@ static void cc770_tx_interrupt(struct net_device *dev, unsigned int o)
 		return;
 	}
 
-	cf = (struct can_frame *)priv->tx_skb->data;
-	stats->tx_bytes += cf->len;
-	stats->tx_packets++;
-
 	can_put_echo_skb(priv->tx_skb, dev, 0, 0);
-	can_get_echo_skb(dev, 0, NULL);
+	stats->tx_bytes += can_get_echo_skb(dev, 0, NULL);
+	stats->tx_packets++;
 	priv->tx_skb = NULL;
 
 	netif_wake_queue(dev);
@@ -841,6 +837,10 @@ static const struct net_device_ops cc770_netdev_ops = {
 	.ndo_change_mtu = can_change_mtu,
 };
 
+static const struct ethtool_ops cc770_ethtool_ops = {
+	.get_ts_info = ethtool_op_get_ts_info,
+};
+
 int register_cc770dev(struct net_device *dev)
 {
 	struct cc770_priv *priv = netdev_priv(dev);
@@ -851,6 +851,7 @@ int register_cc770dev(struct net_device *dev)
 		return err;
 
 	dev->netdev_ops = &cc770_netdev_ops;
+	dev->ethtool_ops = &cc770_ethtool_ops;
 
 	dev->flags |= IFF_ECHO;	/* we support local echo */
 

@@ -95,7 +95,7 @@ static acpi_status acpi_pci_link_check_possible(struct acpi_resource *resource,
 	case ACPI_RESOURCE_TYPE_IRQ:
 		{
 			struct acpi_resource_irq *p = &resource->data.irq;
-			if (!p || !p->interrupt_count) {
+			if (!p->interrupt_count) {
 				acpi_handle_debug(handle,
 						  "Blank _PRS IRQ resource\n");
 				return AE_OK;
@@ -121,7 +121,7 @@ static acpi_status acpi_pci_link_check_possible(struct acpi_resource *resource,
 		{
 			struct acpi_resource_extended_irq *p =
 			    &resource->data.extended_irq;
-			if (!p || !p->interrupt_count) {
+			if (!p->interrupt_count) {
 				acpi_handle_debug(handle,
 						  "Blank _PRS EXT IRQ resource\n");
 				return AE_OK;
@@ -182,10 +182,10 @@ static acpi_status acpi_pci_link_check_current(struct acpi_resource *resource,
 	case ACPI_RESOURCE_TYPE_IRQ:
 		{
 			struct acpi_resource_irq *p = &resource->data.irq;
-			if (!p || !p->interrupt_count) {
+			if (!p->interrupt_count) {
 				/*
 				 * IRQ descriptors may have no IRQ# bits set,
-				 * particularly those those w/ _STA disabled
+				 * particularly those w/ _STA disabled
 				 */
 				pr_debug("Blank _CRS IRQ resource\n");
 				return AE_OK;
@@ -197,7 +197,7 @@ static acpi_status acpi_pci_link_check_current(struct acpi_resource *resource,
 		{
 			struct acpi_resource_extended_irq *p =
 			    &resource->data.extended_irq;
-			if (!p || !p->interrupt_count) {
+			if (!p->interrupt_count) {
 				/*
 				 * extended IRQ descriptors must
 				 * return at least 1 IRQ
@@ -606,12 +606,10 @@ static int acpi_pci_link_allocate(struct acpi_pci_link *link)
 int acpi_pci_link_allocate_irq(acpi_handle handle, int index, int *triggering,
 			       int *polarity, char **name)
 {
-	int result;
-	struct acpi_device *device;
+	struct acpi_device *device = acpi_fetch_acpi_dev(handle);
 	struct acpi_pci_link *link;
 
-	result = acpi_bus_get_device(handle, &device);
-	if (result) {
+	if (!device) {
 		acpi_handle_err(handle, "Invalid link device\n");
 		return -1;
 	}
@@ -658,12 +656,10 @@ int acpi_pci_link_allocate_irq(acpi_handle handle, int index, int *triggering,
  */
 int acpi_pci_link_free_irq(acpi_handle handle)
 {
-	struct acpi_device *device;
+	struct acpi_device *device = acpi_fetch_acpi_dev(handle);
 	struct acpi_pci_link *link;
-	acpi_status result;
 
-	result = acpi_bus_get_device(handle, &device);
-	if (result) {
+	if (!device) {
 		acpi_handle_err(handle, "Invalid link device\n");
 		return -1;
 	}

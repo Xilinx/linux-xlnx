@@ -36,8 +36,7 @@
  * @channel_template:	channel specification template
  * @num_channels:	number of channels
  * @int_vref:		internal vref in uV
-*/
-
+ */
 struct ad5380_chip_info {
 	struct iio_chan_spec	channel_template;
 	unsigned int		num_channels;
@@ -53,7 +52,6 @@ struct ad5380_chip_info {
  * @pwr_down:		whether the chip is currently in power down mode
  * @lock:		lock to protect the data buffer during regmap ops
  */
-
 struct ad5380_state {
 	struct regmap			*regmap;
 	const struct ad5380_chip_info	*chip_info;
@@ -96,7 +94,7 @@ static ssize_t ad5380_write_dac_powerdown(struct iio_dev *indio_dev,
 	bool pwr_down;
 	int ret;
 
-	ret = strtobool(buf, &pwr_down);
+	ret = kstrtobool(buf, &pwr_down);
 	if (ret)
 		return ret;
 
@@ -249,7 +247,7 @@ static const struct iio_chan_spec_ext_info ad5380_ext_info[] = {
 	},
 	IIO_ENUM("powerdown_mode", IIO_SHARED_BY_TYPE,
 		 &ad5380_powerdown_mode_enum),
-	IIO_ENUM_AVAILABLE("powerdown_mode", &ad5380_powerdown_mode_enum),
+	IIO_ENUM_AVAILABLE("powerdown_mode", IIO_SHARED_BY_TYPE, &ad5380_powerdown_mode_enum),
 	{ },
 };
 
@@ -444,7 +442,7 @@ error_free_reg:
 	return ret;
 }
 
-static int ad5380_remove(struct device *dev)
+static void ad5380_remove(struct device *dev)
 {
 	struct iio_dev *indio_dev = dev_get_drvdata(dev);
 	struct ad5380_state *st = iio_priv(indio_dev);
@@ -453,11 +451,8 @@ static int ad5380_remove(struct device *dev)
 
 	kfree(indio_dev->channels);
 
-	if (!IS_ERR(st->vref_reg)) {
+	if (!IS_ERR(st->vref_reg))
 		regulator_disable(st->vref_reg);
-	}
-
-	return 0;
 }
 
 static bool ad5380_reg_false(struct device *dev, unsigned int reg)
@@ -491,9 +486,9 @@ static int ad5380_spi_probe(struct spi_device *spi)
 	return ad5380_probe(&spi->dev, regmap, id->driver_data, id->name);
 }
 
-static int ad5380_spi_remove(struct spi_device *spi)
+static void ad5380_spi_remove(struct spi_device *spi)
 {
-	return ad5380_remove(&spi->dev);
+	ad5380_remove(&spi->dev);
 }
 
 static const struct spi_device_id ad5380_spi_ids[] = {
@@ -564,9 +559,9 @@ static int ad5380_i2c_probe(struct i2c_client *i2c,
 	return ad5380_probe(&i2c->dev, regmap, id->driver_data, id->name);
 }
 
-static int ad5380_i2c_remove(struct i2c_client *i2c)
+static void ad5380_i2c_remove(struct i2c_client *i2c)
 {
-	return ad5380_remove(&i2c->dev);
+	ad5380_remove(&i2c->dev);
 }
 
 static const struct i2c_device_id ad5380_i2c_ids[] = {

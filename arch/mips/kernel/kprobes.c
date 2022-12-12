@@ -11,6 +11,8 @@
  *   Copyright (C) IBM Corporation, 2002, 2004
  */
 
+#define pr_fmt(fmt) "kprobes: " fmt
+
 #include <linux/kprobes.h>
 #include <linux/preempt.h>
 #include <linux/uaccess.h>
@@ -42,10 +44,11 @@ static const union mips_instruction breakpoint2_insn = {
 DEFINE_PER_CPU(struct kprobe *, current_kprobe);
 DEFINE_PER_CPU(struct kprobe_ctlblk, kprobe_ctlblk);
 
-static int __kprobes insn_has_delayslot(union mips_instruction insn)
+static int insn_has_delayslot(union mips_instruction insn)
 {
 	return __insn_has_delay_slot(insn);
 }
+NOKPROBE_SYMBOL(insn_has_delayslot);
 
 /*
  * insn_has_ll_or_sc function checks whether instruction is ll or sc
@@ -54,7 +57,7 @@ static int __kprobes insn_has_delayslot(union mips_instruction insn)
  * instructions; cannot do much about breakpoint in the middle of
  * ll/sc pair; it is upto user to avoid those places
  */
-static int __kprobes insn_has_ll_or_sc(union mips_instruction insn)
+static int insn_has_ll_or_sc(union mips_instruction insn)
 {
 	int ret = 0;
 
@@ -70,8 +73,9 @@ static int __kprobes insn_has_ll_or_sc(union mips_instruction insn)
 	}
 	return ret;
 }
+NOKPROBE_SYMBOL(insn_has_ll_or_sc);
 
-int __kprobes arch_prepare_kprobe(struct kprobe *p)
+int arch_prepare_kprobe(struct kprobe *p)
 {
 	union mips_instruction insn;
 	union mips_instruction prev_insn;
@@ -80,8 +84,7 @@ int __kprobes arch_prepare_kprobe(struct kprobe *p)
 	insn = p->addr[0];
 
 	if (insn_has_ll_or_sc(insn)) {
-		pr_notice("Kprobes for ll and sc instructions are not"
-			  "supported\n");
+		pr_notice("Kprobes for ll and sc instructions are not supported\n");
 		ret = -EINVAL;
 		goto out;
 	}
@@ -131,26 +134,30 @@ int __kprobes arch_prepare_kprobe(struct kprobe *p)
 out:
 	return ret;
 }
+NOKPROBE_SYMBOL(arch_prepare_kprobe);
 
-void __kprobes arch_arm_kprobe(struct kprobe *p)
+void arch_arm_kprobe(struct kprobe *p)
 {
 	*p->addr = breakpoint_insn;
 	flush_insn_slot(p);
 }
+NOKPROBE_SYMBOL(arch_arm_kprobe);
 
-void __kprobes arch_disarm_kprobe(struct kprobe *p)
+void arch_disarm_kprobe(struct kprobe *p)
 {
 	*p->addr = p->opcode;
 	flush_insn_slot(p);
 }
+NOKPROBE_SYMBOL(arch_disarm_kprobe);
 
-void __kprobes arch_remove_kprobe(struct kprobe *p)
+void arch_remove_kprobe(struct kprobe *p)
 {
 	if (p->ainsn.insn) {
 		free_insn_slot(p->ainsn.insn, 0);
 		p->ainsn.insn = NULL;
 	}
 }
+NOKPROBE_SYMBOL(arch_remove_kprobe);
 
 static void save_previous_kprobe(struct kprobe_ctlblk *kcb)
 {
@@ -219,7 +226,7 @@ static int evaluate_branch_instruction(struct kprobe *p, struct pt_regs *regs,
 	return 0;
 
 unaligned:
-	pr_notice("%s: unaligned epc - sending SIGBUS.\n", current->comm);
+	pr_notice("Failed to emulate branch instruction because of unaligned epc - sending SIGBUS to %s.\n", current->comm);
 	force_sig(SIGBUS);
 	return -EFAULT;
 
@@ -238,10 +245,8 @@ static void prepare_singlestep(struct kprobe *p, struct pt_regs *regs,
 		regs->cp0_epc = (unsigned long)p->addr;
 	else if (insn_has_delayslot(p->opcode)) {
 		ret = evaluate_branch_instruction(p, regs, kcb);
-		if (ret < 0) {
-			pr_notice("Kprobes: Error in evaluating branch\n");
+		if (ret < 0)
 			return;
-		}
 	}
 	regs->cp0_epc = (unsigned long)&p->ainsn.insn[0];
 }
@@ -258,7 +263,7 @@ static void prepare_singlestep(struct kprobe *p, struct pt_regs *regs,
  * breakpoint trap. In case of branch instructions, the target
  * epc to be restored.
  */
-static void __kprobes resume_execution(struct kprobe *p,
+static void resume_execution(struct kprobe *p,
 				       struct pt_regs *regs,
 				       struct kprobe_ctlblk *kcb)
 {
@@ -269,8 +274,9 @@ static void __kprobes resume_execution(struct kprobe *p,
 		regs->cp0_epc = orig_epc + 4;
 	}
 }
+NOKPROBE_SYMBOL(resume_execution);
 
-static int __kprobes kprobe_handler(struct pt_regs *regs)
+static int kprobe_handler(struct pt_regs *regs)
 {
 	struct kprobe *p;
 	int ret = 0;
@@ -368,6 +374,7 @@ no_kprobe:
 	return ret;
 
 }
+NOKPROBE_SYMBOL(kprobe_handler);
 
 static inline int post_kprobe_handler(struct pt_regs *regs)
 {
@@ -416,7 +423,7 @@ int kprobe_fault_handler(struct pt_regs *regs, int trapnr)
 /*
  * Wrapper routine for handling exceptions.
  */
-int __kprobes kprobe_exceptions_notify(struct notifier_block *self,
+int kprobe_exceptions_notify(struct notifier_block *self,
 				       unsigned long val, void *data)
 {
 
@@ -447,6 +454,7 @@ int __kprobes kprobe_exceptions_notify(struct notifier_block *self,
 	}
 	return ret;
 }
+NOKPROBE_SYMBOL(kprobe_exceptions_notify);
 
 /*
  * Function return probe trampoline:
@@ -461,33 +469,33 @@ static void __used kretprobe_trampoline_holder(void)
 		/* Keep the assembler from reordering and placing JR here. */
 		".set noreorder\n\t"
 		"nop\n\t"
-		".global kretprobe_trampoline\n"
-		"kretprobe_trampoline:\n\t"
+		".global __kretprobe_trampoline\n"
+		"__kretprobe_trampoline:\n\t"
 		"nop\n\t"
 		".set pop"
 		: : : "memory");
 }
 
-void kretprobe_trampoline(void);
+void __kretprobe_trampoline(void);
 
-void __kprobes arch_prepare_kretprobe(struct kretprobe_instance *ri,
+void arch_prepare_kretprobe(struct kretprobe_instance *ri,
 				      struct pt_regs *regs)
 {
 	ri->ret_addr = (kprobe_opcode_t *) regs->regs[31];
 	ri->fp = NULL;
 
 	/* Replace the return addr with trampoline addr */
-	regs->regs[31] = (unsigned long)kretprobe_trampoline;
+	regs->regs[31] = (unsigned long)__kretprobe_trampoline;
 }
+NOKPROBE_SYMBOL(arch_prepare_kretprobe);
 
 /*
  * Called when the probe at kretprobe trampoline is hit
  */
-static int __kprobes trampoline_probe_handler(struct kprobe *p,
+static int trampoline_probe_handler(struct kprobe *p,
 						struct pt_regs *regs)
 {
-	instruction_pointer(regs) = __kretprobe_trampoline_handler(regs,
-						kretprobe_trampoline, NULL);
+	instruction_pointer(regs) = __kretprobe_trampoline_handler(regs, NULL);
 	/*
 	 * By returning a non-zero value, we are telling
 	 * kprobe_handler() that we don't want the post_handler
@@ -495,17 +503,19 @@ static int __kprobes trampoline_probe_handler(struct kprobe *p,
 	 */
 	return 1;
 }
+NOKPROBE_SYMBOL(trampoline_probe_handler);
 
-int __kprobes arch_trampoline_kprobe(struct kprobe *p)
+int arch_trampoline_kprobe(struct kprobe *p)
 {
-	if (p->addr == (kprobe_opcode_t *)kretprobe_trampoline)
+	if (p->addr == (kprobe_opcode_t *)__kretprobe_trampoline)
 		return 1;
 
 	return 0;
 }
+NOKPROBE_SYMBOL(arch_trampoline_kprobe);
 
 static struct kprobe trampoline_p = {
-	.addr = (kprobe_opcode_t *)kretprobe_trampoline,
+	.addr = (kprobe_opcode_t *)__kretprobe_trampoline,
 	.pre_handler = trampoline_probe_handler
 };
 

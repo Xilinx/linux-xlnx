@@ -10,6 +10,7 @@
  * Inspired by stm32-dma.c and dma-jz4780.c
  */
 
+#include <linux/bitfield.h>
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/dmaengine.h>
@@ -32,15 +33,7 @@
 
 #include "virt-dma.h"
 
-/*  MDMA Generic getter/setter */
-#define STM32_MDMA_SHIFT(n)		(ffs(n) - 1)
-#define STM32_MDMA_SET(n, mask)		(((n) << STM32_MDMA_SHIFT(mask)) & \
-					 (mask))
-#define STM32_MDMA_GET(n, mask)		(((n) & (mask)) >> \
-					 STM32_MDMA_SHIFT(mask))
-
 #define STM32_MDMA_GISR0		0x0000 /* MDMA Int Status Reg 1 */
-#define STM32_MDMA_GISR1		0x0004 /* MDMA Int Status Reg 2 */
 
 /* MDMA Channel x interrupt/status register */
 #define STM32_MDMA_CISR(x)		(0x40 + 0x40 * (x)) /* x = 0..62 */
@@ -79,9 +72,9 @@
 #define STM32_MDMA_CCR_WEX		BIT(14)
 #define STM32_MDMA_CCR_HEX		BIT(13)
 #define STM32_MDMA_CCR_BEX		BIT(12)
+#define STM32_MDMA_CCR_SM		BIT(8)
 #define STM32_MDMA_CCR_PL_MASK		GENMASK(7, 6)
-#define STM32_MDMA_CCR_PL(n)		STM32_MDMA_SET(n, \
-						       STM32_MDMA_CCR_PL_MASK)
+#define STM32_MDMA_CCR_PL(n)		FIELD_PREP(STM32_MDMA_CCR_PL_MASK, (n))
 #define STM32_MDMA_CCR_TCIE		BIT(5)
 #define STM32_MDMA_CCR_BTIE		BIT(4)
 #define STM32_MDMA_CCR_BRTIE		BIT(3)
@@ -99,48 +92,33 @@
 #define STM32_MDMA_CTCR_BWM		BIT(31)
 #define STM32_MDMA_CTCR_SWRM		BIT(30)
 #define STM32_MDMA_CTCR_TRGM_MSK	GENMASK(29, 28)
-#define STM32_MDMA_CTCR_TRGM(n)		STM32_MDMA_SET((n), \
-						       STM32_MDMA_CTCR_TRGM_MSK)
-#define STM32_MDMA_CTCR_TRGM_GET(n)	STM32_MDMA_GET((n), \
-						       STM32_MDMA_CTCR_TRGM_MSK)
+#define STM32_MDMA_CTCR_TRGM(n)		FIELD_PREP(STM32_MDMA_CTCR_TRGM_MSK, (n))
+#define STM32_MDMA_CTCR_TRGM_GET(n)	FIELD_GET(STM32_MDMA_CTCR_TRGM_MSK, (n))
 #define STM32_MDMA_CTCR_PAM_MASK	GENMASK(27, 26)
-#define STM32_MDMA_CTCR_PAM(n)		STM32_MDMA_SET(n, \
-						       STM32_MDMA_CTCR_PAM_MASK)
+#define STM32_MDMA_CTCR_PAM(n)		FIELD_PREP(STM32_MDMA_CTCR_PAM_MASK, (n))
 #define STM32_MDMA_CTCR_PKE		BIT(25)
 #define STM32_MDMA_CTCR_TLEN_MSK	GENMASK(24, 18)
-#define STM32_MDMA_CTCR_TLEN(n)		STM32_MDMA_SET((n), \
-						       STM32_MDMA_CTCR_TLEN_MSK)
-#define STM32_MDMA_CTCR_TLEN_GET(n)	STM32_MDMA_GET((n), \
-						       STM32_MDMA_CTCR_TLEN_MSK)
+#define STM32_MDMA_CTCR_TLEN(n)		FIELD_PREP(STM32_MDMA_CTCR_TLEN_MSK, (n))
+#define STM32_MDMA_CTCR_TLEN_GET(n)	FIELD_GET(STM32_MDMA_CTCR_TLEN_MSK, (n))
 #define STM32_MDMA_CTCR_LEN2_MSK	GENMASK(25, 18)
-#define STM32_MDMA_CTCR_LEN2(n)		STM32_MDMA_SET((n), \
-						       STM32_MDMA_CTCR_LEN2_MSK)
-#define STM32_MDMA_CTCR_LEN2_GET(n)	STM32_MDMA_GET((n), \
-						       STM32_MDMA_CTCR_LEN2_MSK)
+#define STM32_MDMA_CTCR_LEN2(n)		FIELD_PREP(STM32_MDMA_CTCR_LEN2_MSK, (n))
+#define STM32_MDMA_CTCR_LEN2_GET(n)	FIELD_GET(STM32_MDMA_CTCR_LEN2_MSK, (n))
 #define STM32_MDMA_CTCR_DBURST_MASK	GENMASK(17, 15)
-#define STM32_MDMA_CTCR_DBURST(n)	STM32_MDMA_SET(n, \
-						    STM32_MDMA_CTCR_DBURST_MASK)
+#define STM32_MDMA_CTCR_DBURST(n)	FIELD_PREP(STM32_MDMA_CTCR_DBURST_MASK, (n))
 #define STM32_MDMA_CTCR_SBURST_MASK	GENMASK(14, 12)
-#define STM32_MDMA_CTCR_SBURST(n)	STM32_MDMA_SET(n, \
-						    STM32_MDMA_CTCR_SBURST_MASK)
+#define STM32_MDMA_CTCR_SBURST(n)	FIELD_PREP(STM32_MDMA_CTCR_SBURST_MASK, (n))
 #define STM32_MDMA_CTCR_DINCOS_MASK	GENMASK(11, 10)
-#define STM32_MDMA_CTCR_DINCOS(n)	STM32_MDMA_SET((n), \
-						    STM32_MDMA_CTCR_DINCOS_MASK)
+#define STM32_MDMA_CTCR_DINCOS(n)	FIELD_PREP(STM32_MDMA_CTCR_DINCOS_MASK, (n))
 #define STM32_MDMA_CTCR_SINCOS_MASK	GENMASK(9, 8)
-#define STM32_MDMA_CTCR_SINCOS(n)	STM32_MDMA_SET((n), \
-						    STM32_MDMA_CTCR_SINCOS_MASK)
+#define STM32_MDMA_CTCR_SINCOS(n)	FIELD_PREP(STM32_MDMA_CTCR_SINCOS_MASK, (n))
 #define STM32_MDMA_CTCR_DSIZE_MASK	GENMASK(7, 6)
-#define STM32_MDMA_CTCR_DSIZE(n)	STM32_MDMA_SET(n, \
-						     STM32_MDMA_CTCR_DSIZE_MASK)
+#define STM32_MDMA_CTCR_DSIZE(n)	FIELD_PREP(STM32_MDMA_CTCR_DSIZE_MASK, (n))
 #define STM32_MDMA_CTCR_SSIZE_MASK	GENMASK(5, 4)
-#define STM32_MDMA_CTCR_SSIZE(n)	STM32_MDMA_SET(n, \
-						     STM32_MDMA_CTCR_SSIZE_MASK)
+#define STM32_MDMA_CTCR_SSIZE(n)	FIELD_PREP(STM32_MDMA_CTCR_SSIZE_MASK, (n))
 #define STM32_MDMA_CTCR_DINC_MASK	GENMASK(3, 2)
-#define STM32_MDMA_CTCR_DINC(n)		STM32_MDMA_SET((n), \
-						      STM32_MDMA_CTCR_DINC_MASK)
+#define STM32_MDMA_CTCR_DINC(n)		FIELD_PREP(STM32_MDMA_CTCR_DINC_MASK, (n))
 #define STM32_MDMA_CTCR_SINC_MASK	GENMASK(1, 0)
-#define STM32_MDMA_CTCR_SINC(n)		STM32_MDMA_SET((n), \
-						      STM32_MDMA_CTCR_SINC_MASK)
+#define STM32_MDMA_CTCR_SINC(n)		FIELD_PREP(STM32_MDMA_CTCR_SINC_MASK, (n))
 #define STM32_MDMA_CTCR_CFG_MASK	(STM32_MDMA_CTCR_SINC_MASK \
 					| STM32_MDMA_CTCR_DINC_MASK \
 					| STM32_MDMA_CTCR_SINCOS_MASK \
@@ -151,16 +129,13 @@
 /* MDMA Channel x block number of data register */
 #define STM32_MDMA_CBNDTR(x)		(0x54 + 0x40 * (x))
 #define STM32_MDMA_CBNDTR_BRC_MK	GENMASK(31, 20)
-#define STM32_MDMA_CBNDTR_BRC(n)	STM32_MDMA_SET(n, \
-						       STM32_MDMA_CBNDTR_BRC_MK)
-#define STM32_MDMA_CBNDTR_BRC_GET(n)	STM32_MDMA_GET((n), \
-						       STM32_MDMA_CBNDTR_BRC_MK)
+#define STM32_MDMA_CBNDTR_BRC(n)	FIELD_PREP(STM32_MDMA_CBNDTR_BRC_MK, (n))
+#define STM32_MDMA_CBNDTR_BRC_GET(n)	FIELD_GET(STM32_MDMA_CBNDTR_BRC_MK, (n))
 
 #define STM32_MDMA_CBNDTR_BRDUM		BIT(19)
 #define STM32_MDMA_CBNDTR_BRSUM		BIT(18)
 #define STM32_MDMA_CBNDTR_BNDT_MASK	GENMASK(16, 0)
-#define STM32_MDMA_CBNDTR_BNDT(n)	STM32_MDMA_SET(n, \
-						    STM32_MDMA_CBNDTR_BNDT_MASK)
+#define STM32_MDMA_CBNDTR_BNDT(n)	FIELD_PREP(STM32_MDMA_CBNDTR_BNDT_MASK, (n))
 
 /* MDMA Channel x source address register */
 #define STM32_MDMA_CSAR(x)		(0x58 + 0x40 * (x))
@@ -171,11 +146,9 @@
 /* MDMA Channel x block repeat address update register */
 #define STM32_MDMA_CBRUR(x)		(0x60 + 0x40 * (x))
 #define STM32_MDMA_CBRUR_DUV_MASK	GENMASK(31, 16)
-#define STM32_MDMA_CBRUR_DUV(n)		STM32_MDMA_SET(n, \
-						      STM32_MDMA_CBRUR_DUV_MASK)
+#define STM32_MDMA_CBRUR_DUV(n)		FIELD_PREP(STM32_MDMA_CBRUR_DUV_MASK, (n))
 #define STM32_MDMA_CBRUR_SUV_MASK	GENMASK(15, 0)
-#define STM32_MDMA_CBRUR_SUV(n)		STM32_MDMA_SET(n, \
-						      STM32_MDMA_CBRUR_SUV_MASK)
+#define STM32_MDMA_CBRUR_SUV(n)		FIELD_PREP(STM32_MDMA_CBRUR_SUV_MASK, (n))
 
 /* MDMA Channel x link address register */
 #define STM32_MDMA_CLAR(x)		(0x64 + 0x40 * (x))
@@ -184,9 +157,8 @@
 #define STM32_MDMA_CTBR(x)		(0x68 + 0x40 * (x))
 #define STM32_MDMA_CTBR_DBUS		BIT(17)
 #define STM32_MDMA_CTBR_SBUS		BIT(16)
-#define STM32_MDMA_CTBR_TSEL_MASK	GENMASK(7, 0)
-#define STM32_MDMA_CTBR_TSEL(n)		STM32_MDMA_SET(n, \
-						      STM32_MDMA_CTBR_TSEL_MASK)
+#define STM32_MDMA_CTBR_TSEL_MASK	GENMASK(5, 0)
+#define STM32_MDMA_CTBR_TSEL(n)		FIELD_PREP(STM32_MDMA_CTBR_TSEL_MASK, (n))
 
 /* MDMA Channel x mask address register */
 #define STM32_MDMA_CMAR(x)		(0x70 + 0x40 * (x))
@@ -196,7 +168,7 @@
 
 #define STM32_MDMA_MAX_BUF_LEN		128
 #define STM32_MDMA_MAX_BLOCK_LEN	65536
-#define STM32_MDMA_MAX_CHANNELS		63
+#define STM32_MDMA_MAX_CHANNELS		32
 #define STM32_MDMA_MAX_REQUESTS		256
 #define STM32_MDMA_MAX_BURST		128
 #define STM32_MDMA_VERY_HIGH_PRIORITY	0x3
@@ -227,6 +199,7 @@ struct stm32_mdma_chan_config {
 	u32 transfer_config;
 	u32 mask_addr;
 	u32 mask_data;
+	bool m2m_hw; /* True when MDMA is triggered by STM32 DMA */
 };
 
 struct stm32_mdma_hwdesc {
@@ -255,6 +228,12 @@ struct stm32_mdma_desc {
 	struct stm32_mdma_desc_node node[];
 };
 
+struct stm32_mdma_dma_config {
+	u32 request;	/* STM32 DMA channel stream id, triggering MDMA */
+	u32 cmar;	/* STM32 DMA interrupt flag clear register address */
+	u32 cmdr;	/* STM32 DMA Transfer Complete flag */
+};
+
 struct stm32_mdma_chan {
 	struct virt_dma_chan vchan;
 	struct dma_pool *desc_pool;
@@ -276,6 +255,7 @@ struct stm32_mdma_device {
 	u32 nr_channels;
 	u32 nr_requests;
 	u32 nr_ahb_addr_masks;
+	u32 chan_reserved;
 	struct stm32_mdma_chan chan[STM32_MDMA_MAX_CHANNELS];
 	u32 ahb_addr_masks[];
 };
@@ -566,13 +546,23 @@ static int stm32_mdma_set_xfer_param(struct stm32_mdma_chan *chan,
 		dst_addr = chan->dma_config.dst_addr;
 
 		/* Set device data size */
+		if (chan_config->m2m_hw)
+			dst_addr_width = stm32_mdma_get_max_width(dst_addr, buf_len,
+								  STM32_MDMA_MAX_BUF_LEN);
 		dst_bus_width = stm32_mdma_get_width(chan, dst_addr_width);
 		if (dst_bus_width < 0)
 			return dst_bus_width;
 		ctcr &= ~STM32_MDMA_CTCR_DSIZE_MASK;
 		ctcr |= STM32_MDMA_CTCR_DSIZE(dst_bus_width);
+		if (chan_config->m2m_hw) {
+			ctcr &= ~STM32_MDMA_CTCR_DINCOS_MASK;
+			ctcr |= STM32_MDMA_CTCR_DINCOS(dst_bus_width);
+		}
 
 		/* Set device burst value */
+		if (chan_config->m2m_hw)
+			dst_maxburst = STM32_MDMA_MAX_BUF_LEN / dst_addr_width;
+
 		dst_best_burst = stm32_mdma_get_best_burst(buf_len, tlen,
 							   dst_maxburst,
 							   dst_addr_width);
@@ -615,13 +605,24 @@ static int stm32_mdma_set_xfer_param(struct stm32_mdma_chan *chan,
 		src_addr = chan->dma_config.src_addr;
 
 		/* Set device data size */
+		if (chan_config->m2m_hw)
+			src_addr_width = stm32_mdma_get_max_width(src_addr, buf_len,
+								  STM32_MDMA_MAX_BUF_LEN);
+
 		src_bus_width = stm32_mdma_get_width(chan, src_addr_width);
 		if (src_bus_width < 0)
 			return src_bus_width;
 		ctcr &= ~STM32_MDMA_CTCR_SSIZE_MASK;
 		ctcr |= STM32_MDMA_CTCR_SSIZE(src_bus_width);
+		if (chan_config->m2m_hw) {
+			ctcr &= ~STM32_MDMA_CTCR_SINCOS_MASK;
+			ctcr |= STM32_MDMA_CTCR_SINCOS(src_bus_width);
+		}
 
 		/* Set device burst value */
+		if (chan_config->m2m_hw)
+			src_maxburst = STM32_MDMA_MAX_BUF_LEN / src_addr_width;
+
 		src_best_burst = stm32_mdma_get_best_burst(buf_len, tlen,
 							   src_maxburst,
 							   src_addr_width);
@@ -729,10 +730,14 @@ static int stm32_mdma_setup_xfer(struct stm32_mdma_chan *chan,
 {
 	struct stm32_mdma_device *dmadev = stm32_mdma_get_dev(chan);
 	struct dma_slave_config *dma_config = &chan->dma_config;
+	struct stm32_mdma_chan_config *chan_config = &chan->chan_config;
 	struct scatterlist *sg;
 	dma_addr_t src_addr, dst_addr;
-	u32 ccr, ctcr, ctbr;
+	u32 m2m_hw_period, ccr, ctcr, ctbr;
 	int i, ret = 0;
+
+	if (chan_config->m2m_hw)
+		m2m_hw_period = sg_dma_len(sgl);
 
 	for_each_sg(sgl, sg, sg_len, i) {
 		if (sg_dma_len(sg) > STM32_MDMA_MAX_BLOCK_LEN) {
@@ -743,6 +748,8 @@ static int stm32_mdma_setup_xfer(struct stm32_mdma_chan *chan,
 		if (direction == DMA_MEM_TO_DEV) {
 			src_addr = sg_dma_address(sg);
 			dst_addr = dma_config->dst_addr;
+			if (chan_config->m2m_hw && (i & 1))
+				dst_addr += m2m_hw_period;
 			ret = stm32_mdma_set_xfer_param(chan, direction, &ccr,
 							&ctcr, &ctbr, src_addr,
 							sg_dma_len(sg));
@@ -750,6 +757,8 @@ static int stm32_mdma_setup_xfer(struct stm32_mdma_chan *chan,
 					   src_addr);
 		} else {
 			src_addr = dma_config->src_addr;
+			if (chan_config->m2m_hw && (i & 1))
+				src_addr += m2m_hw_period;
 			dst_addr = sg_dma_address(sg);
 			ret = stm32_mdma_set_xfer_param(chan, direction, &ccr,
 							&ctcr, &ctbr, dst_addr,
@@ -782,6 +791,7 @@ stm32_mdma_prep_slave_sg(struct dma_chan *c, struct scatterlist *sgl,
 			 unsigned long flags, void *context)
 {
 	struct stm32_mdma_chan *chan = to_stm32_mdma_chan(c);
+	struct stm32_mdma_chan_config *chan_config = &chan->chan_config;
 	struct stm32_mdma_desc *desc;
 	int i, ret;
 
@@ -804,6 +814,21 @@ stm32_mdma_prep_slave_sg(struct dma_chan *c, struct scatterlist *sgl,
 	if (ret < 0)
 		goto xfer_setup_err;
 
+	/*
+	 * In case of M2M HW transfer triggered by STM32 DMA, we do not have to clear the
+	 * transfer complete flag by hardware in order to let the CPU rearm the STM32 DMA
+	 * with the next sg element and update some data in dmaengine framework.
+	 */
+	if (chan_config->m2m_hw && direction == DMA_MEM_TO_DEV) {
+		struct stm32_mdma_hwdesc *hwdesc;
+
+		for (i = 0; i < sg_len; i++) {
+			hwdesc = desc->node[i].hwdesc;
+			hwdesc->cmar = 0;
+			hwdesc->cmdr = 0;
+		}
+	}
+
 	desc->cyclic = false;
 
 	return vchan_tx_prep(&chan->vchan, &desc->vdesc, flags);
@@ -825,6 +850,7 @@ stm32_mdma_prep_dma_cyclic(struct dma_chan *c, dma_addr_t buf_addr,
 	struct stm32_mdma_chan *chan = to_stm32_mdma_chan(c);
 	struct stm32_mdma_device *dmadev = stm32_mdma_get_dev(chan);
 	struct dma_slave_config *dma_config = &chan->dma_config;
+	struct stm32_mdma_chan_config *chan_config = &chan->chan_config;
 	struct stm32_mdma_desc *desc;
 	dma_addr_t src_addr, dst_addr;
 	u32 ccr, ctcr, ctbr, count;
@@ -885,8 +911,12 @@ stm32_mdma_prep_dma_cyclic(struct dma_chan *c, dma_addr_t buf_addr,
 		if (direction == DMA_MEM_TO_DEV) {
 			src_addr = buf_addr + i * period_len;
 			dst_addr = dma_config->dst_addr;
+			if (chan_config->m2m_hw && (i & 1))
+				dst_addr += period_len;
 		} else {
 			src_addr = dma_config->src_addr;
+			if (chan_config->m2m_hw && (i & 1))
+				src_addr += period_len;
 			dst_addr = buf_addr + i * period_len;
 		}
 
@@ -1271,6 +1301,17 @@ static int stm32_mdma_slave_config(struct dma_chan *c,
 
 	memcpy(&chan->dma_config, config, sizeof(*config));
 
+	/* Check if user is requesting STM32 DMA to trigger MDMA */
+	if (config->peripheral_size) {
+		struct stm32_mdma_dma_config *mdma_config;
+
+		mdma_config = (struct stm32_mdma_dma_config *)chan->dma_config.peripheral_config;
+		chan->chan_config.request = mdma_config->request;
+		chan->chan_config.mask_addr = mdma_config->cmar;
+		chan->chan_config.mask_data = mdma_config->cmdr;
+		chan->chan_config.m2m_hw = true;
+	}
+
 	return 0;
 }
 
@@ -1279,7 +1320,7 @@ static size_t stm32_mdma_desc_residue(struct stm32_mdma_chan *chan,
 				      u32 curr_hwdesc)
 {
 	struct stm32_mdma_device *dmadev = stm32_mdma_get_dev(chan);
-	struct stm32_mdma_hwdesc *hwdesc = desc->node[0].hwdesc;
+	struct stm32_mdma_hwdesc *hwdesc;
 	u32 cbndtr, residue, modulo, burst_size;
 	int i;
 
@@ -1345,32 +1386,17 @@ static void stm32_mdma_xfer_end(struct stm32_mdma_chan *chan)
 static irqreturn_t stm32_mdma_irq_handler(int irq, void *devid)
 {
 	struct stm32_mdma_device *dmadev = devid;
-	struct stm32_mdma_chan *chan = devid;
+	struct stm32_mdma_chan *chan;
 	u32 reg, id, ccr, ien, status;
 
 	/* Find out which channel generates the interrupt */
 	status = readl_relaxed(dmadev->base + STM32_MDMA_GISR0);
-	if (status) {
-		id = __ffs(status);
-	} else {
-		status = readl_relaxed(dmadev->base + STM32_MDMA_GISR1);
-		if (!status) {
-			dev_dbg(mdma2dev(dmadev), "spurious it\n");
-			return IRQ_NONE;
-		}
-		id = __ffs(status);
-		/*
-		 * As GISR0 provides status for channel id from 0 to 31,
-		 * so GISR1 provides status for channel id from 32 to 62
-		 */
-		id += 32;
-	}
-
-	chan = &dmadev->chan[id];
-	if (!chan) {
-		dev_warn(mdma2dev(dmadev), "MDMA channel not initialized\n");
+	if (!status) {
+		dev_dbg(mdma2dev(dmadev), "spurious it\n");
 		return IRQ_NONE;
 	}
+	id = __ffs(status);
+	chan = &dmadev->chan[id];
 
 	/* Handle interrupt for the channel */
 	spin_lock(&chan->vchan.lock);
@@ -1382,9 +1408,12 @@ static irqreturn_t stm32_mdma_irq_handler(int irq, void *devid)
 
 	if (!(status & ien)) {
 		spin_unlock(&chan->vchan.lock);
-		dev_warn(chan2dev(chan),
-			 "spurious it (status=0x%04x, ien=0x%04x)\n",
-			 status, ien);
+		if (chan->busy)
+			dev_warn(chan2dev(chan),
+				 "spurious it (status=0x%04x, ien=0x%04x)\n", status, ien);
+		else
+			dev_dbg(chan2dev(chan),
+				"spurious it (status=0x%04x, ien=0x%04x)\n", status, ien);
 		return IRQ_NONE;
 	}
 
@@ -1484,10 +1513,23 @@ static void stm32_mdma_free_chan_resources(struct dma_chan *c)
 	chan->desc_pool = NULL;
 }
 
+static bool stm32_mdma_filter_fn(struct dma_chan *c, void *fn_param)
+{
+	struct stm32_mdma_chan *chan = to_stm32_mdma_chan(c);
+	struct stm32_mdma_device *dmadev = stm32_mdma_get_dev(chan);
+
+	/* Check if chan is marked Secure */
+	if (dmadev->chan_reserved & BIT(chan->id))
+		return false;
+
+	return true;
+}
+
 static struct dma_chan *stm32_mdma_of_xlate(struct of_phandle_args *dma_spec,
 					    struct of_dma *ofdma)
 {
 	struct stm32_mdma_device *dmadev = ofdma->of_dma_data;
+	dma_cap_mask_t mask = dmadev->ddev.cap_mask;
 	struct stm32_mdma_chan *chan;
 	struct dma_chan *c;
 	struct stm32_mdma_chan_config config;
@@ -1497,6 +1539,7 @@ static struct dma_chan *stm32_mdma_of_xlate(struct of_phandle_args *dma_spec,
 		return NULL;
 	}
 
+	memset(&config, 0, sizeof(config));
 	config.request = dma_spec->args[0];
 	config.priority_level = dma_spec->args[1];
 	config.transfer_config = dma_spec->args[2];
@@ -1513,7 +1556,7 @@ static struct dma_chan *stm32_mdma_of_xlate(struct of_phandle_args *dma_spec,
 		return NULL;
 	}
 
-	c = dma_get_any_slave_channel(&dmadev->ddev);
+	c = __dma_request_channel(&mask, stm32_mdma_filter_fn, &config, ofdma->of_node);
 	if (!c) {
 		dev_err(mdma2dev(dmadev), "No more channels available\n");
 		return NULL;
@@ -1566,7 +1609,8 @@ static int stm32_mdma_probe(struct platform_device *pdev)
 	if (count < 0)
 		count = 0;
 
-	dmadev = devm_kzalloc(&pdev->dev, sizeof(*dmadev) + sizeof(u32) * count,
+	dmadev = devm_kzalloc(&pdev->dev,
+			      struct_size(dmadev, ahb_addr_masks, count),
 			      GFP_KERNEL);
 	if (!dmadev)
 		return -ENOMEM;
@@ -1642,6 +1686,10 @@ static int stm32_mdma_probe(struct platform_device *pdev)
 	for (i = 0; i < dmadev->nr_channels; i++) {
 		chan = &dmadev->chan[i];
 		chan->id = i;
+
+		if (stm32_mdma_read(dmadev, STM32_MDMA_CCR(i)) & STM32_MDMA_CCR_SM)
+			dmadev->chan_reserved |= BIT(i);
+
 		chan->vchan.desc_free = stm32_mdma_desc_free;
 		vchan_init(&chan->vchan, dd);
 	}

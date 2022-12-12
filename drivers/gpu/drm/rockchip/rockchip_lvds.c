@@ -17,9 +17,10 @@
 #include <linux/regmap.h>
 #include <linux/reset.h>
 
+#include <drm/display/drm_dp_helper.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_bridge.h>
-#include <drm/drm_dp_helper.h>
+#include <drm/drm_bridge_connector.h>
 #include <drm/drm_of.h>
 #include <drm/drm_panel.h>
 #include <drm/drm_probe_helper.h>
@@ -34,12 +35,6 @@
 #define DISPLAY_OUTPUT_DUAL_LVDS	2
 
 struct rockchip_lvds;
-
-#define connector_to_lvds(c) \
-		container_of(c, struct rockchip_lvds, connector)
-
-#define encoder_to_lvds(c) \
-		container_of(c, struct rockchip_lvds, encoder)
 
 /**
  * struct rockchip_lvds_soc_data - rockchip lvds Soc private data
@@ -64,9 +59,21 @@ struct rockchip_lvds {
 	struct drm_panel *panel;
 	struct drm_bridge *bridge;
 	struct drm_connector connector;
-	struct drm_encoder encoder;
+	struct rockchip_encoder encoder;
 	struct dev_pin_info *pins;
 };
+
+static inline struct rockchip_lvds *connector_to_lvds(struct drm_connector *connector)
+{
+	return container_of(connector, struct rockchip_lvds, connector);
+}
+
+static inline struct rockchip_lvds *encoder_to_lvds(struct drm_encoder *encoder)
+{
+	struct rockchip_encoder *rkencoder = to_rockchip_encoder(encoder);
+
+	return container_of(rkencoder, struct rockchip_lvds, encoder);
+}
 
 static inline void rk3288_writel(struct rockchip_lvds *lvds, u32 offset,
 				 u32 val)
@@ -439,11 +446,9 @@ struct drm_encoder_helper_funcs px30_lvds_encoder_helper_funcs = {
 static int rk3288_lvds_probe(struct platform_device *pdev,
 			     struct rockchip_lvds *lvds)
 {
-	struct resource *res;
 	int ret;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	lvds->regs = devm_ioremap_resource(lvds->dev, res);
+	lvds->regs = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(lvds->regs))
 		return PTR_ERR(lvds->regs);
 
@@ -600,7 +605,7 @@ static int rockchip_lvds_bind(struct device *dev, struct device *master,
 		goto err_put_remote;
 	}
 
-	encoder = &lvds->encoder;
+	encoder = &lvds->encoder.encoder;
 	encoder->possible_crtcs = drm_of_find_possible_crtcs(drm_dev,
 							     dev->of_node);
 
@@ -612,9 +617,9 @@ static int rockchip_lvds_bind(struct device *dev, struct device *master,
 	}
 
 	drm_encoder_helper_add(encoder, lvds->soc_data->helper_funcs);
+	connector = &lvds->connector;
 
 	if (lvds->panel) {
-		connector = &lvds->connector;
 		connector->dpms = DRM_MODE_DPMS_OFF;
 		ret = drm_connector_init(drm_dev, connector,
 					 &rockchip_lvds_connector_funcs,
@@ -627,17 +632,27 @@ static int rockchip_lvds_bind(struct device *dev, struct device *master,
 
 		drm_connector_helper_add(connector,
 					 &rockchip_lvds_connector_helper_funcs);
-
-		ret = drm_connector_attach_encoder(connector, encoder);
-		if (ret < 0) {
-			DRM_DEV_ERROR(drm_dev->dev,
-				      "failed to attach encoder: %d\n", ret);
-			goto err_free_connector;
-		}
 	} else {
-		ret = drm_bridge_attach(encoder, lvds->bridge, NULL, 0);
+		ret = drm_bridge_attach(encoder, lvds->bridge, NULL,
+					DRM_BRIDGE_ATTACH_NO_CONNECTOR);
 		if (ret)
 			goto err_free_encoder;
+
+		connector = drm_bridge_connector_init(lvds->drm_dev, encoder);
+		if (IS_ERR(connector)) {
+			DRM_DEV_ERROR(drm_dev->dev,
+				      "failed to initialize bridge connector: %pe\n",
+				      connector);
+			ret = PTR_ERR(connector);
+			goto err_free_encoder;
+		}
+	}
+
+	ret = drm_connector_attach_encoder(connector, encoder);
+	if (ret < 0) {
+		DRM_DEV_ERROR(drm_dev->dev,
+			      "failed to attach encoder: %d\n", ret);
+		goto err_free_connector;
 	}
 
 	pm_runtime_enable(dev);
@@ -665,10 +680,10 @@ static void rockchip_lvds_unbind(struct device *dev, struct device *master,
 	const struct drm_encoder_helper_funcs *encoder_funcs;
 
 	encoder_funcs = lvds->soc_data->helper_funcs;
-	encoder_funcs->disable(&lvds->encoder);
+	encoder_funcs->disable(&lvds->encoder.encoder);
 	pm_runtime_disable(dev);
 	drm_connector_cleanup(&lvds->connector);
-	drm_encoder_cleanup(&lvds->encoder);
+	drm_encoder_cleanup(&lvds->encoder.encoder);
 }
 
 static const struct component_ops rockchip_lvds_component_ops = {

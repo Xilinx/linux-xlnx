@@ -25,6 +25,34 @@ int sysctl_max_rcu_stall_to_panic __read_mostly;
 #define RCU_STALL_MIGHT_DIV		8
 #define RCU_STALL_MIGHT_MIN		(2 * HZ)
 
+int rcu_exp_jiffies_till_stall_check(void)
+{
+	int cpu_stall_timeout = READ_ONCE(rcu_exp_cpu_stall_timeout);
+	int exp_stall_delay_delta = 0;
+	int till_stall_check;
+
+	// Zero says to use rcu_cpu_stall_timeout, but in milliseconds.
+	if (!cpu_stall_timeout)
+		cpu_stall_timeout = jiffies_to_msecs(rcu_jiffies_till_stall_check());
+
+	// Limit check must be consistent with the Kconfig limits for
+	// CONFIG_RCU_EXP_CPU_STALL_TIMEOUT, so check the allowed range.
+	// The minimum clamped value is "2UL", because at least one full
+	// tick has to be guaranteed.
+	till_stall_check = clamp(msecs_to_jiffies(cpu_stall_timeout), 2UL, 21UL * HZ);
+
+	if (cpu_stall_timeout && jiffies_to_msecs(till_stall_check) != cpu_stall_timeout)
+		WRITE_ONCE(rcu_exp_cpu_stall_timeout, jiffies_to_msecs(till_stall_check));
+
+#ifdef CONFIG_PROVE_RCU
+	/* Add extra ~25% out of till_stall_check. */
+	exp_stall_delay_delta = ((till_stall_check * 25) / 100) + 1;
+#endif
+
+	return till_stall_check + exp_stall_delay_delta;
+}
+EXPORT_SYMBOL_GPL(rcu_exp_jiffies_till_stall_check);
+
 /* Limit-check stall timeouts specified at boottime and runtime. */
 int rcu_jiffies_till_stall_check(void)
 {
@@ -240,16 +268,16 @@ struct rcu_stall_chk_rdr {
  * Report out the state of a not-running task that is stalling the
  * current RCU grace period.
  */
-static bool check_slow_task(struct task_struct *t, void *arg)
+static int check_slow_task(struct task_struct *t, void *arg)
 {
 	struct rcu_stall_chk_rdr *rscrp = arg;
 
 	if (task_curr(t))
-		return false; // It is running, so decline to inspect it.
+		return -EBUSY; // It is running, so decline to inspect it.
 	rscrp->nesting = t->rcu_read_lock_nesting;
 	rscrp->rs = t->rcu_read_unlock_special;
 	rscrp->on_blkd_list = !list_empty(&t->rcu_node_entry);
-	return true;
+	return 0;
 }
 
 /*
@@ -283,7 +311,7 @@ static int rcu_print_task_stall(struct rcu_node *rnp, unsigned long flags)
 	raw_spin_unlock_irqrestore_rcu_node(rnp, flags);
 	while (i) {
 		t = ts[--i];
-		if (!try_invoke_on_locked_down_task(t, check_slow_task, &rscr))
+		if (task_call_func(t, check_slow_task, &rscr))
 			pr_cont(" P%d", t->pid);
 		else
 			pr_cont(" P%d/%d:%c%c%c%c",
@@ -340,32 +368,12 @@ static void rcu_dump_cpu_stacks(void)
 			if (rnp->qsmask & leaf_node_cpu_bit(rnp, cpu)) {
 				if (cpu_is_offline(cpu))
 					pr_err("Offline CPU %d blocking current GP.\n", cpu);
-				else if (!trigger_single_cpu_backtrace(cpu))
+				else
 					dump_cpu_task(cpu);
 			}
 		raw_spin_unlock_irqrestore_rcu_node(rnp, flags);
 	}
 }
-
-#ifdef CONFIG_RCU_FAST_NO_HZ
-
-static void print_cpu_stall_fast_no_hz(char *cp, int cpu)
-{
-	struct rcu_data *rdp = per_cpu_ptr(&rcu_data, cpu);
-
-	sprintf(cp, "last_accelerate: %04lx/%04lx dyntick_enabled: %d",
-		rdp->last_accelerate & 0xffff, jiffies & 0xffff,
-		!!rdp->tick_nohz_enabled_snap);
-}
-
-#else /* #ifdef CONFIG_RCU_FAST_NO_HZ */
-
-static void print_cpu_stall_fast_no_hz(char *cp, int cpu)
-{
-	*cp = '\0';
-}
-
-#endif /* #else #ifdef CONFIG_RCU_FAST_NO_HZ */
 
 static const char * const gp_state_names[] = {
 	[RCU_GP_IDLE] = "RCU_GP_IDLE",
@@ -399,6 +407,27 @@ static bool rcu_is_gp_kthread_starving(unsigned long *jp)
 	return j > 2 * HZ;
 }
 
+static bool rcu_is_rcuc_kthread_starving(struct rcu_data *rdp, unsigned long *jp)
+{
+	int cpu;
+	struct task_struct *rcuc;
+	unsigned long j;
+
+	rcuc = rdp->rcu_cpu_kthread_task;
+	if (!rcuc)
+		return false;
+
+	cpu = task_cpu(rcuc);
+	if (cpu_is_offline(cpu) || idle_cpu(cpu))
+		return false;
+
+	j = jiffies - READ_ONCE(rdp->rcuc_activity);
+
+	if (jp)
+		*jp = j;
+	return j > 2 * HZ;
+}
+
 /*
  * Print out diagnostic information for the specified stalled CPU.
  *
@@ -408,16 +437,18 @@ static bool rcu_is_gp_kthread_starving(unsigned long *jp)
  * of RCU grace periods that this CPU is ignorant of, for example, "1"
  * if the CPU was aware of the previous grace period.
  *
- * Also print out idle and (if CONFIG_RCU_FAST_NO_HZ) idle-entry info.
+ * Also print out idle info.
  */
 static void print_cpu_stall_info(int cpu)
 {
 	unsigned long delta;
 	bool falsepositive;
-	char fast_no_hz[72];
 	struct rcu_data *rdp = per_cpu_ptr(&rcu_data, cpu);
 	char *ticks_title;
 	unsigned long ticks_value;
+	bool rcuc_starved;
+	unsigned long j;
+	char buf[32];
 
 	/*
 	 * We could be printing a lot while holding a spinlock.  Avoid
@@ -432,11 +463,13 @@ static void print_cpu_stall_info(int cpu)
 		ticks_title = "ticks this GP";
 		ticks_value = rdp->ticks_this_gp;
 	}
-	print_cpu_stall_fast_no_hz(fast_no_hz, cpu);
 	delta = rcu_seq_ctr(rdp->mynode->gp_seq - rdp->rcu_iw_gp_seq);
 	falsepositive = rcu_is_gp_kthread_starving(NULL) &&
-			rcu_dynticks_in_eqs(rcu_dynticks_snap(rdp));
-	pr_err("\t%d-%c%c%c%c: (%lu %s) idle=%03x/%ld/%#lx softirq=%u/%u fqs=%ld %s%s\n",
+			rcu_dynticks_in_eqs(rcu_dynticks_snap(cpu));
+	rcuc_starved = rcu_is_rcuc_kthread_starving(rdp, &j);
+	if (rcuc_starved)
+		sprintf(buf, " rcuc=%ld jiffies(starved)", j);
+	pr_err("\t%d-%c%c%c%c: (%lu %s) idle=%04x/%ld/%#lx softirq=%u/%u fqs=%ld%s%s\n",
 	       cpu,
 	       "O."[!!cpu_online(cpu)],
 	       "o."[!!(rdp->grpmask & rdp->mynode->qsmaskinit)],
@@ -445,11 +478,11 @@ static void print_cpu_stall_info(int cpu)
 			rdp->rcu_iw_pending ? (int)min(delta, 9UL) + '0' :
 				"!."[!delta],
 	       ticks_value, ticks_title,
-	       rcu_dynticks_snap(rdp) & 0xfff,
-	       rdp->dynticks_nesting, rdp->dynticks_nmi_nesting,
+	       rcu_dynticks_snap(cpu) & 0xffff,
+	       ct_dynticks_nesting_cpu(cpu), ct_dynticks_nmi_nesting_cpu(cpu),
 	       rdp->softirq_snap, kstat_softirqs_cpu(RCU_SOFTIRQ, cpu),
 	       data_race(rcu_state.n_force_qs) - rcu_state.n_force_qs_gpstart,
-	       fast_no_hz,
+	       rcuc_starved ? buf : "",
 	       falsepositive ? " (false positive?)" : "");
 }
 
@@ -478,8 +511,7 @@ static void rcu_check_gp_kthread_starvation(void)
 					pr_err("RCU GP kthread last ran on offline CPU %d.\n", cpu);
 				} else  {
 					pr_err("Stack dump where RCU GP kthread last ran:\n");
-					if (!trigger_single_cpu_backtrace(cpu))
-						dump_cpu_task(cpu);
+					dump_cpu_task(cpu);
 				}
 			}
 			wake_up_process(gpk);
@@ -556,9 +588,9 @@ static void print_other_cpu_stall(unsigned long gp_seq, unsigned long gps)
 
 	for_each_possible_cpu(cpu)
 		totqlen += rcu_get_n_cbs_cpu(cpu);
-	pr_cont("\t(detected by %d, t=%ld jiffies, g=%ld, q=%lu)\n",
+	pr_cont("\t(detected by %d, t=%ld jiffies, g=%ld, q=%lu ncpus=%d)\n",
 	       smp_processor_id(), (long)(jiffies - gps),
-	       (long)rcu_seq_current(&rcu_state.gp_seq), totqlen);
+	       (long)rcu_seq_current(&rcu_state.gp_seq), totqlen, rcu_state.n_online_cpus);
 	if (ndetected) {
 		rcu_dump_cpu_stacks();
 
@@ -617,9 +649,9 @@ static void print_cpu_stall(unsigned long gps)
 	raw_spin_unlock_irqrestore_rcu_node(rdp->mynode, flags);
 	for_each_possible_cpu(cpu)
 		totqlen += rcu_get_n_cbs_cpu(cpu);
-	pr_cont("\t(t=%lu jiffies g=%ld q=%lu)\n",
+	pr_cont("\t(t=%lu jiffies g=%ld q=%lu ncpus=%d)\n",
 		jiffies - gps,
-		(long)rcu_seq_current(&rcu_state.gp_seq), totqlen);
+		(long)rcu_seq_current(&rcu_state.gp_seq), totqlen, rcu_state.n_online_cpus);
 
 	rcu_check_gp_kthread_expired_fqs_timer();
 	rcu_check_gp_kthread_starvation();

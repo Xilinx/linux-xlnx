@@ -17,7 +17,7 @@
  */
 
 #include <drm/drm_drv.h>
-#include <drm/drm_gem_cma_helper.h>
+#include <drm/drm_gem_dma_helper.h>
 
 #include "xlnx_drv.h"
 #include "xlnx_gem.h"
@@ -29,10 +29,10 @@
  * @args: info for dumb scanout buffer creation
  *
  * This function is for dumb_create callback of drm_driver struct. Simply
- * it wraps around drm_gem_cma_dumb_create() and sets the pitch value
+ * it wraps around drm_gem_dma_dumb_create() and sets the pitch value
  * by retrieving the value from the device.
  *
- * Return: The return value from drm_gem_cma_dumb_create()
+ * Return: The return value from drm_gem_dma_dumb_create()
  */
 int xlnx_gem_cma_dumb_create(struct drm_file *file_priv, struct drm_device *drm,
 			     struct drm_mode_create_dumb *args)
@@ -43,5 +43,5 @@ int xlnx_gem_cma_dumb_create(struct drm_file *file_priv, struct drm_device *drm,
 	if (!args->pitch || !IS_ALIGNED(args->pitch, align))
 		args->pitch = ALIGN(pitch, align);
 
-	return drm_gem_cma_dumb_create_internal(file_priv, drm, args);
+	return drm_gem_dma_dumb_create_internal(file_priv, drm, args);
 }

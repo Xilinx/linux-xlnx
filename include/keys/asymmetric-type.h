@@ -53,7 +53,7 @@ struct asymmetric_key_id {
 };
 
 struct asymmetric_key_ids {
-	void		*id[2];
+	void		*id[3];
 };
 
 extern bool asymmetric_key_id_same(const struct asymmetric_key_id *kid1,
@@ -81,7 +81,11 @@ const struct public_key *asymmetric_key_public_key(const struct key *key)
 extern struct key *find_asymmetric_key(struct key *keyring,
 				       const struct asymmetric_key_id *id_0,
 				       const struct asymmetric_key_id *id_1,
+				       const struct asymmetric_key_id *id_2,
 				       bool partial);
+
+int x509_load_certificate_list(const u8 cert_list[], const unsigned long list_size,
+			       const struct key *keyring);
 
 /*
  * The payload is at the discretion of the subtype.

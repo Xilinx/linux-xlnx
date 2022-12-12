@@ -1091,6 +1091,7 @@ static int vortex_probe1(struct device *gendev, void __iomem *ioaddr, int irq,
 	struct vortex_private *vp;
 	int option;
 	unsigned int eeprom[0x40], checksum = 0;		/* EEPROM contents */
+	__be16 addr[ETH_ALEN / 2];
 	int i, step;
 	struct net_device *dev;
 	static int printed_version;
@@ -1284,7 +1285,8 @@ static int vortex_probe1(struct device *gendev, void __iomem *ioaddr, int irq,
 	if ((checksum != 0x00) && !(vci->drv_flags & IS_TORNADO))
 		pr_cont(" ***INVALID CHECKSUM %4.4x*** ", checksum);
 	for (i = 0; i < 3; i++)
-		((__be16 *)dev->dev_addr)[i] = htons(eeprom[i + 10]);
+		addr[i] = htons(eeprom[i + 10]);
+	eth_hw_addr_set(dev, (u8 *)addr);
 	if (print_info)
 		pr_cont(" %pM", dev->dev_addr);
 	/* Unfortunately an all zero eeprom passes the checksum and this
@@ -2957,13 +2959,13 @@ static void vortex_get_drvinfo(struct net_device *dev,
 {
 	struct vortex_private *vp = netdev_priv(dev);
 
-	strlcpy(info->driver, DRV_NAME, sizeof(info->driver));
+	strscpy(info->driver, DRV_NAME, sizeof(info->driver));
 	if (VORTEX_PCI(vp)) {
-		strlcpy(info->bus_info, pci_name(VORTEX_PCI(vp)),
+		strscpy(info->bus_info, pci_name(VORTEX_PCI(vp)),
 			sizeof(info->bus_info));
 	} else {
 		if (VORTEX_EISA(vp))
-			strlcpy(info->bus_info, dev_name(vp->gendev),
+			strscpy(info->bus_info, dev_name(vp->gendev),
 				sizeof(info->bus_info));
 		else
 			snprintf(info->bus_info, sizeof(info->bus_info),

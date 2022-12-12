@@ -152,7 +152,8 @@ static int liteeth_stop(struct net_device *netdev)
 	return 0;
 }
 
-static int liteeth_start_xmit(struct sk_buff *skb, struct net_device *netdev)
+static netdev_tx_t liteeth_start_xmit(struct sk_buff *skb,
+				      struct net_device *netdev)
 {
 	struct liteeth *priv = netdev_priv(netdev);
 	void __iomem *txbuffer;
@@ -242,10 +243,8 @@ static int liteeth_probe(struct platform_device *pdev)
 	priv->dev = &pdev->dev;
 
 	irq = platform_get_irq(pdev, 0);
-	if (irq < 0) {
-		dev_err(&pdev->dev, "Failed to get IRQ %d\n", irq);
+	if (irq < 0)
 		return irq;
-	}
 	netdev->irq = irq;
 
 	priv->base = devm_platform_ioremap_resource_byname(pdev, "mac");
@@ -266,7 +265,7 @@ static int liteeth_probe(struct platform_device *pdev)
 	priv->tx_base = buf_base + priv->num_rx_slots * priv->slot_size;
 	priv->tx_slot = 0;
 
-	err = of_get_mac_address(pdev->dev.of_node, netdev->dev_addr);
+	err = of_get_ethdev_address(pdev->dev.of_node, netdev);
 	if (err)
 		eth_hw_addr_random(netdev);
 
@@ -289,7 +288,6 @@ static int liteeth_remove(struct platform_device *pdev)
 	struct net_device *netdev = platform_get_drvdata(pdev);
 
 	unregister_netdev(netdev);
-	free_netdev(netdev);
 
 	return 0;
 }

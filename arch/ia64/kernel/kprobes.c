@@ -29,38 +29,38 @@ struct kretprobe_blackpoint kretprobe_blacklist[] = {{NULL, NULL}};
 
 enum instruction_type {A, I, M, F, B, L, X, u};
 static enum instruction_type bundle_encoding[32][3] = {
-  { M, I, I },				/* 00 */
-  { M, I, I },				/* 01 */
-  { M, I, I },				/* 02 */
-  { M, I, I },				/* 03 */
-  { M, L, X },				/* 04 */
-  { M, L, X },				/* 05 */
-  { u, u, u },  			/* 06 */
-  { u, u, u },  			/* 07 */
-  { M, M, I },				/* 08 */
-  { M, M, I },				/* 09 */
-  { M, M, I },				/* 0A */
-  { M, M, I },				/* 0B */
-  { M, F, I },				/* 0C */
-  { M, F, I },				/* 0D */
-  { M, M, F },				/* 0E */
-  { M, M, F },				/* 0F */
-  { M, I, B },				/* 10 */
-  { M, I, B },				/* 11 */
-  { M, B, B },				/* 12 */
-  { M, B, B },				/* 13 */
-  { u, u, u },  			/* 14 */
-  { u, u, u },  			/* 15 */
-  { B, B, B },				/* 16 */
-  { B, B, B },				/* 17 */
-  { M, M, B },				/* 18 */
-  { M, M, B },				/* 19 */
-  { u, u, u },  			/* 1A */
-  { u, u, u },  			/* 1B */
-  { M, F, B },				/* 1C */
-  { M, F, B },				/* 1D */
-  { u, u, u },  			/* 1E */
-  { u, u, u },  			/* 1F */
+	[0x00] = { M, I, I },
+	[0x01] = { M, I, I },
+	[0x02] = { M, I, I },
+	[0x03] = { M, I, I },
+	[0x04] = { M, L, X },
+	[0x05] = { M, L, X },
+	[0x06] = { u, u, u },
+	[0x07] = { u, u, u },
+	[0x08] = { M, M, I },
+	[0x09] = { M, M, I },
+	[0x0A] = { M, M, I },
+	[0x0B] = { M, M, I },
+	[0x0C] = { M, F, I },
+	[0x0D] = { M, F, I },
+	[0x0E] = { M, M, F },
+	[0x0F] = { M, M, F },
+	[0x10] = { M, I, B },
+	[0x11] = { M, I, B },
+	[0x12] = { M, B, B },
+	[0x13] = { M, B, B },
+	[0x14] = { u, u, u },
+	[0x15] = { u, u, u },
+	[0x16] = { B, B, B },
+	[0x17] = { B, B, B },
+	[0x18] = { M, M, B },
+	[0x19] = { M, M, B },
+	[0x1A] = { u, u, u },
+	[0x1B] = { u, u, u },
+	[0x1C] = { M, F, B },
+	[0x1D] = { M, F, B },
+	[0x1E] = { u, u, u },
+	[0x1F] = { u, u, u },
 };
 
 /* Insert a long branch code */
@@ -392,13 +392,13 @@ static void __kprobes set_current_kprobe(struct kprobe *p,
 	__this_cpu_write(current_kprobe, p);
 }
 
-static void kretprobe_trampoline(void)
+void __kretprobe_trampoline(void)
 {
 }
 
 int __kprobes trampoline_probe_handler(struct kprobe *p, struct pt_regs *regs)
 {
-	regs->cr_iip = __kretprobe_trampoline_handler(regs, kretprobe_trampoline, NULL);
+	regs->cr_iip = __kretprobe_trampoline_handler(regs, NULL);
 	/*
 	 * By returning a non-zero value, we are telling
 	 * kprobe_handler() that we don't want the post_handler
@@ -414,7 +414,7 @@ void __kprobes arch_prepare_kretprobe(struct kretprobe_instance *ri,
 	ri->fp = NULL;
 
 	/* Replace the return addr with trampoline addr */
-	regs->b0 = ((struct fnptr *)kretprobe_trampoline)->ip;
+	regs->b0 = (unsigned long)dereference_function_descriptor(__kretprobe_trampoline);
 }
 
 /* Check the instruction in the slot is break */
@@ -890,11 +890,6 @@ int __kprobes kprobe_exceptions_notify(struct notifier_block *self,
 	return ret;
 }
 
-unsigned long arch_deref_entry_point(void *entry)
-{
-	return ((struct fnptr *)entry)->ip;
-}
-
 static struct kprobe trampoline_p = {
 	.pre_handler = trampoline_probe_handler
 };
@@ -902,14 +897,14 @@ static struct kprobe trampoline_p = {
 int __init arch_init_kprobes(void)
 {
 	trampoline_p.addr =
-		(kprobe_opcode_t *)((struct fnptr *)kretprobe_trampoline)->ip;
+		dereference_function_descriptor(__kretprobe_trampoline);
 	return register_kprobe(&trampoline_p);
 }
 
 int __kprobes arch_trampoline_kprobe(struct kprobe *p)
 {
 	if (p->addr ==
-		(kprobe_opcode_t *)((struct fnptr *)kretprobe_trampoline)->ip)
+		dereference_function_descriptor(__kretprobe_trampoline))
 		return 1;
 
 	return 0;

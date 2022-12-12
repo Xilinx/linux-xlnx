@@ -49,13 +49,6 @@ inline int _rtw_netif_rx(struct net_device *ndev, struct sk_buff *skb)
 	return netif_rx(skb);
 }
 
-void _rtw_init_queue(struct __queue *pqueue)
-{
-	INIT_LIST_HEAD(&(pqueue->queue));
-
-	spin_lock_init(&(pqueue->lock));
-}
-
 struct net_device *rtw_alloc_etherdev_with_old_priv(int sizeof_priv, void *old_priv)
 {
 	struct net_device *pnetdev;
@@ -113,56 +106,6 @@ void rtw_free_netdev(struct net_device *netdev)
 
 RETURN:
 	return;
-}
-
-int rtw_change_ifname(struct adapter *padapter, const char *ifname)
-{
-	struct net_device *pnetdev;
-	struct net_device *cur_pnetdev;
-	struct rereg_nd_name_data *rereg_priv;
-	int ret;
-
-	if (!padapter)
-		goto error;
-
-	cur_pnetdev = padapter->pnetdev;
-	rereg_priv = &padapter->rereg_nd_name_priv;
-
-	/* free the old_pnetdev */
-	if (rereg_priv->old_pnetdev) {
-		free_netdev(rereg_priv->old_pnetdev);
-		rereg_priv->old_pnetdev = NULL;
-	}
-
-	if (!rtnl_is_locked())
-		unregister_netdev(cur_pnetdev);
-	else
-		unregister_netdevice(cur_pnetdev);
-
-	rereg_priv->old_pnetdev = cur_pnetdev;
-
-	pnetdev = rtw_init_netdev(padapter);
-	if (!pnetdev)
-		goto error;
-
-	SET_NETDEV_DEV(pnetdev, dvobj_to_dev(adapter_to_dvobj(padapter)));
-
-	rtw_init_netdev_name(pnetdev, ifname);
-
-	memcpy(pnetdev->dev_addr, padapter->eeprompriv.mac_addr, ETH_ALEN);
-
-	if (!rtnl_is_locked())
-		ret = register_netdev(pnetdev);
-	else
-		ret = register_netdevice(pnetdev);
-
-	if (ret != 0)
-		goto error;
-
-	return 0;
-
-error:
-	return -1;
 }
 
 void rtw_buf_free(u8 **buf, u32 *buf_len)
@@ -281,7 +224,7 @@ struct rtw_cbuf *rtw_cbuf_alloc(u32 size)
 {
 	struct rtw_cbuf *cbuf;
 
-	cbuf = rtw_malloc(sizeof(*cbuf) + sizeof(void *) * size);
+	cbuf = rtw_malloc(struct_size(cbuf, bufs, size));
 
 	if (cbuf) {
 		cbuf->write = cbuf->read = 0;

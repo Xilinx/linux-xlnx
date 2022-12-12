@@ -47,13 +47,12 @@ static int mt6660_reg_write(void *context, unsigned int reg, unsigned int val)
 	struct mt6660_chip *chip = context;
 	int size = mt6660_get_reg_size(reg);
 	u8 reg_data[4];
-	int i, ret;
+	int i;
 
 	for (i = 0; i < size; i++)
 		reg_data[size - i - 1] = (val >> (8 * i)) & 0xff;
 
-	ret = i2c_smbus_write_i2c_block_data(chip->i2c, reg, size, reg_data);
-	return ret;
+	return i2c_smbus_write_i2c_block_data(chip->i2c, reg, size, reg_data);
 }
 
 static int mt6660_reg_read(void *context, unsigned int reg, unsigned int *val)
@@ -324,6 +323,7 @@ static const struct snd_soc_component_driver mt6660_component_driver = {
 	.num_dapm_routes = ARRAY_SIZE(mt6660_component_dapm_routes),
 
 	.idle_bias_on = false, /* idle_bias_off = true */
+	.endianness = 1,
 };
 
 static int mt6660_component_aif_hw_params(struct snd_pcm_substream *substream,
@@ -457,8 +457,7 @@ static int _mt6660_read_chip_revision(struct mt6660_chip *chip)
 	return 0;
 }
 
-static int mt6660_i2c_probe(struct i2c_client *client,
-			    const struct i2c_device_id *id)
+static int mt6660_i2c_probe(struct i2c_client *client)
 {
 	struct mt6660_chip *chip = NULL;
 	int ret;
@@ -510,21 +509,24 @@ static int mt6660_i2c_probe(struct i2c_client *client,
 	ret = devm_snd_soc_register_component(chip->dev,
 					       &mt6660_component_driver,
 					       &mt6660_codec_dai, 1);
+	if (ret)
+		pm_runtime_disable(chip->dev);
+
 	return ret;
+
 probe_fail:
 	_mt6660_chip_power_on(chip, 0);
 	mutex_destroy(&chip->io_lock);
 	return ret;
 }
 
-static int mt6660_i2c_remove(struct i2c_client *client)
+static void mt6660_i2c_remove(struct i2c_client *client)
 {
 	struct mt6660_chip *chip = i2c_get_clientdata(client);
 
 	pm_runtime_disable(chip->dev);
 	pm_runtime_set_suspended(chip->dev);
 	mutex_destroy(&chip->io_lock);
-	return 0;
 }
 
 static int __maybe_unused mt6660_i2c_runtime_suspend(struct device *dev)
@@ -568,7 +570,7 @@ static struct i2c_driver mt6660_i2c_driver = {
 		.of_match_table = of_match_ptr(mt6660_of_id),
 		.pm = &mt6660_dev_pm_ops,
 	},
-	.probe = mt6660_i2c_probe,
+	.probe_new = mt6660_i2c_probe,
 	.remove = mt6660_i2c_remove,
 	.id_table = mt6660_i2c_id,
 };

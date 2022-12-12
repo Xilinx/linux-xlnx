@@ -10,6 +10,7 @@
 #include "rvu.h"
 #include "rvu_reg.h"
 #include "rvu_struct.h"
+#include "rvu_npc_hash.h"
 
 #define DRV_NAME "octeontx2-af"
 
@@ -41,7 +42,7 @@ static bool rvu_common_request_irq(struct rvu *rvu, int offset,
 	struct rvu_devlink *rvu_dl = rvu->rvu_dl;
 	int rc;
 
-	sprintf(&rvu->irq_name[offset * NAME_SIZE], name);
+	sprintf(&rvu->irq_name[offset * NAME_SIZE], "%s", name);
 	rc = request_irq(pci_irq_vector(rvu->pdev, offset), fn, 0,
 			 &rvu->irq_name[offset * NAME_SIZE], rvu_dl);
 	if (rc)
@@ -1436,7 +1437,62 @@ static int rvu_af_dl_dwrr_mtu_get(struct devlink *devlink, u32 id,
 enum rvu_af_dl_param_id {
 	RVU_AF_DEVLINK_PARAM_ID_BASE = DEVLINK_PARAM_GENERIC_ID_MAX,
 	RVU_AF_DEVLINK_PARAM_ID_DWRR_MTU,
+	RVU_AF_DEVLINK_PARAM_ID_NPC_EXACT_FEATURE_DISABLE,
 };
+
+static int rvu_af_npc_exact_feature_get(struct devlink *devlink, u32 id,
+					struct devlink_param_gset_ctx *ctx)
+{
+	struct rvu_devlink *rvu_dl = devlink_priv(devlink);
+	struct rvu *rvu = rvu_dl->rvu;
+	bool enabled;
+
+	enabled = rvu_npc_exact_has_match_table(rvu);
+
+	snprintf(ctx->val.vstr, sizeof(ctx->val.vstr), "%s",
+		 enabled ? "enabled" : "disabled");
+
+	return 0;
+}
+
+static int rvu_af_npc_exact_feature_disable(struct devlink *devlink, u32 id,
+					    struct devlink_param_gset_ctx *ctx)
+{
+	struct rvu_devlink *rvu_dl = devlink_priv(devlink);
+	struct rvu *rvu = rvu_dl->rvu;
+
+	rvu_npc_exact_disable_feature(rvu);
+
+	return 0;
+}
+
+static int rvu_af_npc_exact_feature_validate(struct devlink *devlink, u32 id,
+					     union devlink_param_value val,
+					     struct netlink_ext_ack *extack)
+{
+	struct rvu_devlink *rvu_dl = devlink_priv(devlink);
+	struct rvu *rvu = rvu_dl->rvu;
+	u64 enable;
+
+	if (kstrtoull(val.vstr, 10, &enable)) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "Only 1 value is supported");
+		return -EINVAL;
+	}
+
+	if (enable != 1) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "Only disabling exact match feature is supported");
+		return -EINVAL;
+	}
+
+	if (rvu_npc_exact_can_disable_feature(rvu))
+		return 0;
+
+	NL_SET_ERR_MSG_MOD(extack,
+			   "Can't disable exact match feature; Please try before any configuration");
+	return -EFAULT;
+}
 
 static const struct devlink_param rvu_af_dl_params[] = {
 	DEVLINK_PARAM_DRIVER(RVU_AF_DEVLINK_PARAM_ID_DWRR_MTU,
@@ -1444,6 +1500,12 @@ static const struct devlink_param rvu_af_dl_params[] = {
 			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
 			     rvu_af_dl_dwrr_mtu_get, rvu_af_dl_dwrr_mtu_set,
 			     rvu_af_dl_dwrr_mtu_validate),
+	DEVLINK_PARAM_DRIVER(RVU_AF_DEVLINK_PARAM_ID_NPC_EXACT_FEATURE_DISABLE,
+			     "npc_exact_feature_disable", DEVLINK_PARAM_TYPE_STRING,
+			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
+			     rvu_af_npc_exact_feature_get,
+			     rvu_af_npc_exact_feature_disable,
+			     rvu_af_npc_exact_feature_validate),
 };
 
 /* Devlink switch mode */
@@ -1501,6 +1563,7 @@ int rvu_register_dl(struct rvu *rvu)
 {
 	struct rvu_devlink *rvu_dl;
 	struct devlink *dl;
+	size_t size;
 	int err;
 
 	dl = devlink_alloc(&rvu_devlink_ops, sizeof(struct rvu_devlink),
@@ -1508,13 +1571,6 @@ int rvu_register_dl(struct rvu *rvu)
 	if (!dl) {
 		dev_warn(rvu->dev, "devlink_alloc failed\n");
 		return -ENOMEM;
-	}
-
-	err = devlink_register(dl);
-	if (err) {
-		dev_err(rvu->dev, "devlink register failed with error %d\n", err);
-		devlink_free(dl);
-		return err;
 	}
 
 	rvu_dl = devlink_priv(dl);
@@ -1529,21 +1585,23 @@ int rvu_register_dl(struct rvu *rvu)
 		goto err_dl_health;
 	}
 
-	err = devlink_params_register(dl, rvu_af_dl_params,
-				      ARRAY_SIZE(rvu_af_dl_params));
+	/* Register exact match devlink only for CN10K-B */
+	size = ARRAY_SIZE(rvu_af_dl_params);
+	if (!rvu_npc_exact_has_match_table(rvu))
+		size -= 1;
+
+	err = devlink_params_register(dl, rvu_af_dl_params, size);
 	if (err) {
 		dev_err(rvu->dev,
 			"devlink params register failed with error %d", err);
 		goto err_dl_health;
 	}
 
-	devlink_params_publish(dl);
-
+	devlink_register(dl);
 	return 0;
 
 err_dl_health:
 	rvu_health_reporters_destroy(rvu);
-	devlink_unregister(dl);
 	devlink_free(dl);
 	return err;
 }
@@ -1553,12 +1611,9 @@ void rvu_unregister_dl(struct rvu *rvu)
 	struct rvu_devlink *rvu_dl = rvu->rvu_dl;
 	struct devlink *dl = rvu_dl->dl;
 
-	if (!dl)
-		return;
-
+	devlink_unregister(dl);
 	devlink_params_unregister(dl, rvu_af_dl_params,
 				  ARRAY_SIZE(rvu_af_dl_params));
 	rvu_health_reporters_destroy(rvu);
-	devlink_unregister(dl);
 	devlink_free(dl);
 }

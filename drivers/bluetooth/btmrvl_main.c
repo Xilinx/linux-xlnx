@@ -1,21 +1,8 @@
-/**
+// SPDX-License-Identifier: GPL-2.0-only
+/*
  * Marvell Bluetooth driver
  *
  * Copyright (C) 2009, Marvell International Ltd.
- *
- * This software file (the "File") is distributed by Marvell International
- * Ltd. under the terms of the GNU General Public License Version 2, June 1991
- * (the "License").  You may use, redistribute and/or modify this File in
- * accordance with the terms and conditions of the License, a copy of which
- * is available by writing to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
- * worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
- *
- *
- * THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
- * ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
- * this warranty disclaimer.
  **/
 
 #include <linux/module.h>
@@ -587,12 +574,12 @@ static int btmrvl_set_bdaddr(struct hci_dev *hdev, const bdaddr_t *bdaddr)
 	return 0;
 }
 
-static bool btmrvl_prevent_wake(struct hci_dev *hdev)
+static bool btmrvl_wakeup(struct hci_dev *hdev)
 {
 	struct btmrvl_private *priv = hci_get_drvdata(hdev);
 	struct btmrvl_sdio_card *card = priv->btmrvl_dev.card;
 
-	return !device_may_wakeup(&card->func->dev);
+	return device_may_wakeup(&card->func->dev);
 }
 
 /*
@@ -696,7 +683,7 @@ int btmrvl_register_hdev(struct btmrvl_private *priv)
 	hdev->send  = btmrvl_send_frame;
 	hdev->setup = btmrvl_setup;
 	hdev->set_bdaddr = btmrvl_set_bdaddr;
-	hdev->prevent_wake = btmrvl_prevent_wake;
+	hdev->wakeup = btmrvl_wakeup;
 	SET_HCIDEV_DEV(hdev, &card->func->dev);
 
 	hdev->dev_type = priv->btmrvl_dev.dev_type;

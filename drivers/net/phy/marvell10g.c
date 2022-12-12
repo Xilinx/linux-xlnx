@@ -22,6 +22,7 @@
  * If both the fiber and copper ports are connected, the first to gain
  * link takes priority and the other port is completely locked out.
  */
+#include <linux/bitfield.h>
 #include <linux/ctype.h>
 #include <linux/delay.h>
 #include <linux/hwmon.h>
@@ -32,6 +33,8 @@
 
 #define MV_PHY_ALASKA_NBT_QUIRK_MASK	0xfffffffe
 #define MV_PHY_ALASKA_NBT_QUIRK_REV	(MARVELL_PHY_ID_88X3310 | 0xa)
+
+#define MV_VERSION(a,b,c,d) ((a) << 24 | (b) << 16 | (c) << 8 | (d))
 
 enum {
 	MV_PMA_FW_VER0		= 0xc011,
@@ -62,6 +65,15 @@ enum {
 	MV_PCS_CSCR1_MDIX_MDIX	= 0x0020,
 	MV_PCS_CSCR1_MDIX_AUTO	= 0x0060,
 
+	MV_PCS_DSC1		= 0x8003,
+	MV_PCS_DSC1_ENABLE	= BIT(9),
+	MV_PCS_DSC1_10GBT	= 0x01c0,
+	MV_PCS_DSC1_1GBR	= 0x0038,
+	MV_PCS_DSC1_100BTX	= 0x0007,
+	MV_PCS_DSC2		= 0x8004,
+	MV_PCS_DSC2_2P5G	= 0xf000,
+	MV_PCS_DSC2_5G		= 0x0f00,
+
 	MV_PCS_CSSR1		= 0x8008,
 	MV_PCS_CSSR1_SPD1_MASK	= 0xc000,
 	MV_PCS_CSSR1_SPD1_SPD2	= 0xc000,
@@ -84,6 +96,11 @@ enum {
 	MV_PCS_PORT_INFO_NPORTS_MASK	= 0x0380,
 	MV_PCS_PORT_INFO_NPORTS_SHIFT	= 7,
 
+	/* SerDes reinitialization 88E21X0 */
+	MV_AN_21X0_SERDES_CTRL2	= 0x800f,
+	MV_AN_21X0_SERDES_CTRL2_AUTO_INIT_DIS	= BIT(13),
+	MV_AN_21X0_SERDES_CTRL2_RUN_INIT	= BIT(15),
+
 	/* These registers appear at 0x800X and 0xa00X - the 0xa00X control
 	 * registers appear to set themselves to the 0x800X when AN is
 	 * restarted, but status registers appear readable from either.
@@ -105,16 +122,16 @@ enum {
 	MV_V2_33X0_PORT_CTRL_MACTYPE_10GBASER_NO_SGMII_AN	= 0x5,
 	MV_V2_33X0_PORT_CTRL_MACTYPE_10GBASER_RATE_MATCH	= 0x6,
 	MV_V2_33X0_PORT_CTRL_MACTYPE_USXGMII			= 0x7,
-	MV_V2_PORT_INTR_STS     = 0xf040,
-	MV_V2_PORT_INTR_MASK    = 0xf043,
-	MV_V2_PORT_INTR_STS_WOL_EN      = BIT(8),
-	MV_V2_MAGIC_PKT_WORD0   = 0xf06b,
-	MV_V2_MAGIC_PKT_WORD1   = 0xf06c,
-	MV_V2_MAGIC_PKT_WORD2   = 0xf06d,
+	MV_V2_PORT_INTR_STS		= 0xf040,
+	MV_V2_PORT_INTR_MASK		= 0xf043,
+	MV_V2_PORT_INTR_STS_WOL_EN	= BIT(8),
+	MV_V2_MAGIC_PKT_WORD0		= 0xf06b,
+	MV_V2_MAGIC_PKT_WORD1		= 0xf06c,
+	MV_V2_MAGIC_PKT_WORD2		= 0xf06d,
 	/* Wake on LAN registers */
-	MV_V2_WOL_CTRL          = 0xf06e,
-	MV_V2_WOL_CTRL_CLEAR_STS        = BIT(15),
-	MV_V2_WOL_CTRL_MAGIC_PKT_EN     = BIT(0),
+	MV_V2_WOL_CTRL			= 0xf06e,
+	MV_V2_WOL_CTRL_CLEAR_STS	= BIT(15),
+	MV_V2_WOL_CTRL_MAGIC_PKT_EN	= BIT(0),
 	/* Temperature control/read registers (88X3310 only) */
 	MV_V2_TEMP_CTRL		= 0xf08a,
 	MV_V2_TEMP_CTRL_MASK	= 0xc000,
@@ -125,8 +142,11 @@ enum {
 };
 
 struct mv3310_chip {
+	bool (*has_downshift)(struct phy_device *phydev);
 	void (*init_supported_interfaces)(unsigned long *mask);
 	int (*get_mactype)(struct phy_device *phydev);
+	int (*set_mactype)(struct phy_device *phydev, int mactype);
+	int (*select_mactype)(unsigned long *interfaces);
 	int (*init_interface)(struct phy_device *phydev, int mactype);
 
 #ifdef CONFIG_HWMON
@@ -138,6 +158,7 @@ struct mv3310_priv {
 	DECLARE_BITMAP(supported_interfaces, PHY_INTERFACE_MODE_MAX);
 
 	u32 firmware_ver;
+	bool has_downshift;
 	bool rate_match;
 	phy_interface_t const_interface;
 
@@ -330,6 +351,71 @@ static int mv3310_reset(struct phy_device *phydev, u32 unit)
 					 5000, 100000, true);
 }
 
+static int mv3310_get_downshift(struct phy_device *phydev, u8 *ds)
+{
+	struct mv3310_priv *priv = dev_get_drvdata(&phydev->mdio.dev);
+	int val;
+
+	if (!priv->has_downshift)
+		return -EOPNOTSUPP;
+
+	val = phy_read_mmd(phydev, MDIO_MMD_PCS, MV_PCS_DSC1);
+	if (val < 0)
+		return val;
+
+	if (val & MV_PCS_DSC1_ENABLE)
+		/* assume that all fields are the same */
+		*ds = 1 + FIELD_GET(MV_PCS_DSC1_10GBT, (u16)val);
+	else
+		*ds = DOWNSHIFT_DEV_DISABLE;
+
+	return 0;
+}
+
+static int mv3310_set_downshift(struct phy_device *phydev, u8 ds)
+{
+	struct mv3310_priv *priv = dev_get_drvdata(&phydev->mdio.dev);
+	u16 val;
+	int err;
+
+	if (!priv->has_downshift)
+		return -EOPNOTSUPP;
+
+	if (ds == DOWNSHIFT_DEV_DISABLE)
+		return phy_clear_bits_mmd(phydev, MDIO_MMD_PCS, MV_PCS_DSC1,
+					  MV_PCS_DSC1_ENABLE);
+
+	/* DOWNSHIFT_DEV_DEFAULT_COUNT is confusing. It looks like it should
+	 * set the default settings for the PHY. However, it is used for
+	 * "ethtool --set-phy-tunable ethN downshift on". The intention is
+	 * to enable downshift at a default number of retries. The default
+	 * settings for 88x3310 are for two retries with downshift disabled.
+	 * So let's use two retries with downshift enabled.
+	 */
+	if (ds == DOWNSHIFT_DEV_DEFAULT_COUNT)
+		ds = 2;
+
+	if (ds > 8)
+		return -E2BIG;
+
+	ds -= 1;
+	val = FIELD_PREP(MV_PCS_DSC2_2P5G, ds);
+	val |= FIELD_PREP(MV_PCS_DSC2_5G, ds);
+	err = phy_modify_mmd(phydev, MDIO_MMD_PCS, MV_PCS_DSC2,
+			     MV_PCS_DSC2_2P5G | MV_PCS_DSC2_5G, val);
+	if (err < 0)
+		return err;
+
+	val = MV_PCS_DSC1_ENABLE;
+	val |= FIELD_PREP(MV_PCS_DSC1_10GBT, ds);
+	val |= FIELD_PREP(MV_PCS_DSC1_1GBR, ds);
+	val |= FIELD_PREP(MV_PCS_DSC1_100BTX, ds);
+
+	return phy_modify_mmd(phydev, MDIO_MMD_PCS, MV_PCS_DSC1,
+			      MV_PCS_DSC1_ENABLE | MV_PCS_DSC1_10GBT |
+			      MV_PCS_DSC1_1GBR | MV_PCS_DSC1_100BTX, val);
+}
+
 static int mv3310_get_edpd(struct phy_device *phydev, u16 *edpd)
 {
 	int val;
@@ -387,9 +473,10 @@ static int mv3310_sfp_insert(void *upstream, const struct sfp_eeprom_id *id)
 {
 	struct phy_device *phydev = upstream;
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(support) = { 0, };
+	DECLARE_PHY_INTERFACE_MASK(interfaces);
 	phy_interface_t iface;
 
-	sfp_parse_support(phydev->sfp_bus, id, support);
+	sfp_parse_support(phydev->sfp_bus, id, support, interfaces);
 	iface = sfp_select_interface(phydev->sfp_bus, support);
 
 	if (iface != PHY_INTERFACE_MODE_10GBASER) {
@@ -447,6 +534,9 @@ static int mv3310_probe(struct phy_device *phydev)
 	phydev_info(phydev, "Firmware version %u.%u.%u.%u\n",
 		    priv->firmware_ver >> 24, (priv->firmware_ver >> 16) & 255,
 		    (priv->firmware_ver >> 8) & 255, priv->firmware_ver & 255);
+
+	if (chip->has_downshift)
+		priv->has_downshift = chip->has_downshift(phydev);
 
 	/* Powering down the port when not in use saves about 600mW */
 	ret = mv3310_power_down(phydev);
@@ -511,6 +601,49 @@ static int mv2110_get_mactype(struct phy_device *phydev)
 	return mactype & MV_PMA_21X0_PORT_CTRL_MACTYPE_MASK;
 }
 
+static int mv2110_set_mactype(struct phy_device *phydev, int mactype)
+{
+	int err, val;
+
+	mactype &= MV_PMA_21X0_PORT_CTRL_MACTYPE_MASK;
+	err = phy_modify_mmd(phydev, MDIO_MMD_PMAPMD, MV_PMA_21X0_PORT_CTRL,
+			     MV_PMA_21X0_PORT_CTRL_SWRST |
+			     MV_PMA_21X0_PORT_CTRL_MACTYPE_MASK,
+			     MV_PMA_21X0_PORT_CTRL_SWRST | mactype);
+	if (err)
+		return err;
+
+	err = phy_set_bits_mmd(phydev, MDIO_MMD_AN, MV_AN_21X0_SERDES_CTRL2,
+			       MV_AN_21X0_SERDES_CTRL2_AUTO_INIT_DIS |
+			       MV_AN_21X0_SERDES_CTRL2_RUN_INIT);
+	if (err)
+		return err;
+
+	err = phy_read_mmd_poll_timeout(phydev, MDIO_MMD_AN,
+					MV_AN_21X0_SERDES_CTRL2, val,
+					!(val &
+					  MV_AN_21X0_SERDES_CTRL2_RUN_INIT),
+					5000, 100000, true);
+	if (err)
+		return err;
+
+	return phy_clear_bits_mmd(phydev, MDIO_MMD_AN, MV_AN_21X0_SERDES_CTRL2,
+				  MV_AN_21X0_SERDES_CTRL2_AUTO_INIT_DIS);
+}
+
+static int mv2110_select_mactype(unsigned long *interfaces)
+{
+	if (test_bit(PHY_INTERFACE_MODE_USXGMII, interfaces))
+		return MV_PMA_21X0_PORT_CTRL_MACTYPE_USXGMII;
+	else if (test_bit(PHY_INTERFACE_MODE_SGMII, interfaces) &&
+		 !test_bit(PHY_INTERFACE_MODE_10GBASER, interfaces))
+		return MV_PMA_21X0_PORT_CTRL_MACTYPE_5GBASER;
+	else if (test_bit(PHY_INTERFACE_MODE_10GBASER, interfaces))
+		return MV_PMA_21X0_PORT_CTRL_MACTYPE_10GBASER_RATE_MATCH;
+	else
+		return -1;
+}
+
 static int mv3310_get_mactype(struct phy_device *phydev)
 {
 	int mactype;
@@ -520,6 +653,46 @@ static int mv3310_get_mactype(struct phy_device *phydev)
 		return mactype;
 
 	return mactype & MV_V2_33X0_PORT_CTRL_MACTYPE_MASK;
+}
+
+static int mv3310_set_mactype(struct phy_device *phydev, int mactype)
+{
+	int ret;
+
+	mactype &= MV_V2_33X0_PORT_CTRL_MACTYPE_MASK;
+	ret = phy_modify_mmd_changed(phydev, MDIO_MMD_VEND2, MV_V2_PORT_CTRL,
+				     MV_V2_33X0_PORT_CTRL_MACTYPE_MASK,
+				     mactype);
+	if (ret <= 0)
+		return ret;
+
+	return phy_set_bits_mmd(phydev, MDIO_MMD_VEND2, MV_V2_PORT_CTRL,
+				MV_V2_33X0_PORT_CTRL_SWRST);
+}
+
+static int mv3310_select_mactype(unsigned long *interfaces)
+{
+	if (test_bit(PHY_INTERFACE_MODE_USXGMII, interfaces))
+		return MV_V2_33X0_PORT_CTRL_MACTYPE_USXGMII;
+	else if (test_bit(PHY_INTERFACE_MODE_SGMII, interfaces) &&
+		 test_bit(PHY_INTERFACE_MODE_10GBASER, interfaces))
+		return MV_V2_33X0_PORT_CTRL_MACTYPE_10GBASER;
+	else if (test_bit(PHY_INTERFACE_MODE_SGMII, interfaces) &&
+		 test_bit(PHY_INTERFACE_MODE_RXAUI, interfaces))
+		return MV_V2_33X0_PORT_CTRL_MACTYPE_RXAUI;
+	else if (test_bit(PHY_INTERFACE_MODE_SGMII, interfaces) &&
+		 test_bit(PHY_INTERFACE_MODE_XAUI, interfaces))
+		return MV_V2_3310_PORT_CTRL_MACTYPE_XAUI;
+	else if (test_bit(PHY_INTERFACE_MODE_10GBASER, interfaces))
+		return MV_V2_33X0_PORT_CTRL_MACTYPE_10GBASER_RATE_MATCH;
+	else if (test_bit(PHY_INTERFACE_MODE_RXAUI, interfaces))
+		return MV_V2_33X0_PORT_CTRL_MACTYPE_RXAUI_RATE_MATCH;
+	else if (test_bit(PHY_INTERFACE_MODE_XAUI, interfaces))
+		return MV_V2_3310_PORT_CTRL_MACTYPE_XAUI_RATE_MATCH;
+	else if (test_bit(PHY_INTERFACE_MODE_SGMII, interfaces))
+		return MV_V2_33X0_PORT_CTRL_MACTYPE_10GBASER;
+	else
+		return -1;
 }
 
 static int mv2110_init_interface(struct phy_device *phydev, int mactype)
@@ -605,6 +778,20 @@ static int mv3310_config_init(struct phy_device *phydev)
 	if (err)
 		return err;
 
+	/* If host provided host supported interface modes, try to select the
+	 * best one
+	 */
+	if (!phy_interface_empty(phydev->host_interfaces)) {
+		mactype = chip->select_mactype(phydev->host_interfaces);
+		if (mactype >= 0) {
+			phydev_info(phydev, "Changing MACTYPE to %i\n",
+				    mactype);
+			err = chip->set_mactype(phydev, mactype);
+			if (err)
+				return err;
+		}
+	}
+
 	mactype = chip->get_mactype(phydev);
 	if (mactype < 0)
 		return mactype;
@@ -616,7 +803,16 @@ static int mv3310_config_init(struct phy_device *phydev)
 	}
 
 	/* Enable EDPD mode - saving 600mW */
-	return mv3310_set_edpd(phydev, ETHTOOL_PHY_EDPD_DFLT_TX_MSECS);
+	err = mv3310_set_edpd(phydev, ETHTOOL_PHY_EDPD_DFLT_TX_MSECS);
+	if (err)
+		return err;
+
+	/* Allow downshift */
+	err = mv3310_set_downshift(phydev, DOWNSHIFT_DEV_DEFAULT_COUNT);
+	if (err && err != -EOPNOTSUPP)
+		return err;
+
+	return 0;
 }
 
 static int mv3310_get_features(struct phy_device *phydev)
@@ -789,7 +985,7 @@ static int mv3310_read_status_copper(struct phy_device *phydev)
 
 	cssr1 = phy_read_mmd(phydev, MDIO_MMD_PCS, MV_PCS_CSSR1);
 	if (cssr1 < 0)
-		return val;
+		return cssr1;
 
 	/* If the link settings are not resolved, mark the link down */
 	if (!(cssr1 & MV_PCS_CSSR1_RESOLVED)) {
@@ -886,6 +1082,8 @@ static int mv3310_get_tunable(struct phy_device *phydev,
 			      struct ethtool_tunable *tuna, void *data)
 {
 	switch (tuna->id) {
+	case ETHTOOL_PHY_DOWNSHIFT:
+		return mv3310_get_downshift(phydev, data);
 	case ETHTOOL_PHY_EDPD:
 		return mv3310_get_edpd(phydev, data);
 	default:
@@ -897,11 +1095,21 @@ static int mv3310_set_tunable(struct phy_device *phydev,
 			      struct ethtool_tunable *tuna, const void *data)
 {
 	switch (tuna->id) {
+	case ETHTOOL_PHY_DOWNSHIFT:
+		return mv3310_set_downshift(phydev, *(u8 *)data);
 	case ETHTOOL_PHY_EDPD:
 		return mv3310_set_edpd(phydev, *(u16 *)data);
 	default:
 		return -EOPNOTSUPP;
 	}
+}
+
+static bool mv3310_has_downshift(struct phy_device *phydev)
+{
+	struct mv3310_priv *priv = dev_get_drvdata(&phydev->mdio.dev);
+
+	/* Fails to downshift with firmware older than v0.3.5.0 */
+	return priv->firmware_ver >= MV_VERSION(0,3,5,0);
 }
 
 static void mv3310_init_supported_interfaces(unsigned long *mask)
@@ -943,8 +1151,11 @@ static void mv2111_init_supported_interfaces(unsigned long *mask)
 }
 
 static const struct mv3310_chip mv3310_type = {
+	.has_downshift = mv3310_has_downshift,
 	.init_supported_interfaces = mv3310_init_supported_interfaces,
 	.get_mactype = mv3310_get_mactype,
+	.set_mactype = mv3310_set_mactype,
+	.select_mactype = mv3310_select_mactype,
 	.init_interface = mv3310_init_interface,
 
 #ifdef CONFIG_HWMON
@@ -953,8 +1164,11 @@ static const struct mv3310_chip mv3310_type = {
 };
 
 static const struct mv3310_chip mv3340_type = {
+	.has_downshift = mv3310_has_downshift,
 	.init_supported_interfaces = mv3340_init_supported_interfaces,
 	.get_mactype = mv3310_get_mactype,
+	.set_mactype = mv3310_set_mactype,
+	.select_mactype = mv3310_select_mactype,
 	.init_interface = mv3340_init_interface,
 
 #ifdef CONFIG_HWMON
@@ -965,6 +1179,8 @@ static const struct mv3310_chip mv3340_type = {
 static const struct mv3310_chip mv2110_type = {
 	.init_supported_interfaces = mv2110_init_supported_interfaces,
 	.get_mactype = mv2110_get_mactype,
+	.set_mactype = mv2110_set_mactype,
+	.select_mactype = mv2110_select_mactype,
 	.init_interface = mv2110_init_interface,
 
 #ifdef CONFIG_HWMON
@@ -975,6 +1191,8 @@ static const struct mv3310_chip mv2110_type = {
 static const struct mv3310_chip mv2111_type = {
 	.init_supported_interfaces = mv2111_init_supported_interfaces,
 	.get_mactype = mv2110_get_mactype,
+	.set_mactype = mv2110_set_mactype,
+	.select_mactype = mv2110_select_mactype,
 	.init_interface = mv2110_init_interface,
 
 #ifdef CONFIG_HWMON

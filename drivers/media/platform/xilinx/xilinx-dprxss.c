@@ -24,7 +24,7 @@
 #include <linux/v4l2-subdev.h>
 #include <linux/xilinx-dprxss.h>
 
-#include <drm/drm_dp_helper.h>
+#include <drm/display/drm_dp_helper.h>
 #include <dt-bindings/media/xilinx-vip.h>
 
 #include <media/hdr-ctrls.h>

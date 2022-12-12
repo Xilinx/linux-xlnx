@@ -58,6 +58,11 @@ stack_protector_prepare: prepare0
 					include/generated/asm-offsets.h))
 endif
 
+ifeq ($(CONFIG_AS_HAS_ARMV8_2), y)
+# make sure to pass the newest target architecture to -march.
+asm-arch := armv8.2-a
+endif
+
 # Ensure that if the compiler supports branch protection we default it
 # off, this will be overridden if we are using branch protection.
 branch-prot-flags-y += $(call cc-option,-mbranch-protection=none)
@@ -128,9 +133,6 @@ ifeq ($(CONFIG_DYNAMIC_FTRACE_WITH_REGS),y)
   CC_FLAGS_FTRACE := -fpatchable-function-entry=2
 endif
 
-# Default value
-head-y		:= arch/arm64/kernel/head.o
-
 ifeq ($(CONFIG_KASAN_SW_TAGS), y)
 KASAN_SHADOW_SCALE_SHIFT := 4
 else ifeq ($(CONFIG_KASAN_GENERIC), y)
@@ -146,22 +148,25 @@ libs-$(CONFIG_EFI_STUB) += $(objtree)/drivers/firmware/efi/libstub/lib.a
 
 # Default target when executing plain make
 boot		:= arch/arm64/boot
+
+ifeq ($(CONFIG_EFI_ZBOOT),)
 KBUILD_IMAGE	:= $(boot)/Image.gz
+else
+KBUILD_IMAGE	:= $(boot)/vmlinuz.efi
+endif
 
-all:	Image.gz
+all:	$(notdir $(KBUILD_IMAGE))
 
 
-Image: vmlinux
+Image vmlinuz.efi: vmlinux
 	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
 
 Image.%: Image
 	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
 
-install: install-image := Image
-zinstall: install-image := Image.gz
+install: KBUILD_IMAGE := $(boot)/Image
 install zinstall:
-	$(CONFIG_SHELL) $(srctree)/$(boot)/install.sh $(KERNELRELEASE) \
-	$(boot)/$(install-image) System.map "$(INSTALL_PATH)"
+	$(call cmd,install)
 
 PHONY += vdso_install
 vdso_install:
@@ -181,13 +186,6 @@ ifeq ($(CONFIG_ARM64_USE_LSE_ATOMICS),y)
 	@echo "warning: LSE atomics not supported by binutils" >&2
   endif
 endif
-
-
-# We use MRPROPER_FILES and CLEAN_FILES now
-archclean:
-	$(Q)$(MAKE) $(clean)=$(boot)
-	$(Q)$(MAKE) $(clean)=arch/arm64/kernel/vdso
-	$(Q)$(MAKE) $(clean)=arch/arm64/kernel/vdso32
 
 ifeq ($(KBUILD_EXTMOD),)
 # We need to generate vdso-offsets.h before compiling certain files in kernel/.

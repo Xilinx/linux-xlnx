@@ -114,7 +114,7 @@ static const char *bnad_net_stats_strings[] = {
 	"mac_tx_deferral",
 	"mac_tx_excessive_deferral",
 	"mac_tx_single_collision",
-	"mac_tx_muliple_collision",
+	"mac_tx_multiple_collision",
 	"mac_tx_late_collision",
 	"mac_tx_excessive_collision",
 	"mac_tx_total_collision",
@@ -235,13 +235,18 @@ static int
 bnad_get_link_ksettings(struct net_device *netdev,
 			struct ethtool_link_ksettings *cmd)
 {
-	u32 supported, advertising;
+	ethtool_link_ksettings_zero_link_mode(cmd, supported);
+	ethtool_link_ksettings_zero_link_mode(cmd, advertising);
 
-	supported = SUPPORTED_10000baseT_Full;
-	advertising = ADVERTISED_10000baseT_Full;
+	ethtool_link_ksettings_add_link_mode(cmd, supported, 10000baseCR_Full);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, 10000baseSR_Full);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, 10000baseLR_Full);
+	ethtool_link_ksettings_add_link_mode(cmd, advertising, 10000baseCR_Full);
+	ethtool_link_ksettings_add_link_mode(cmd, advertising, 10000baseSR_Full);
+	ethtool_link_ksettings_add_link_mode(cmd, advertising, 10000baseLR_Full);
 	cmd->base.autoneg = AUTONEG_DISABLE;
-	supported |= SUPPORTED_FIBRE;
-	advertising |= ADVERTISED_FIBRE;
+	ethtool_link_ksettings_add_link_mode(cmd, supported, FIBRE);
+	ethtool_link_ksettings_add_link_mode(cmd, advertising, FIBRE);
 	cmd->base.port = PORT_FIBRE;
 	cmd->base.phy_address = 0;
 
@@ -252,11 +257,6 @@ bnad_get_link_ksettings(struct net_device *netdev,
 		cmd->base.speed = SPEED_UNKNOWN;
 		cmd->base.duplex = DUPLEX_UNKNOWN;
 	}
-
-	ethtool_convert_legacy_u32_to_link_mode(cmd->link_modes.supported,
-						supported);
-	ethtool_convert_legacy_u32_to_link_mode(cmd->link_modes.advertising,
-						advertising);
 
 	return 0;
 }
@@ -283,7 +283,7 @@ bnad_get_drvinfo(struct net_device *netdev, struct ethtool_drvinfo *drvinfo)
 	struct bfa_ioc_attr *ioc_attr;
 	unsigned long flags;
 
-	strlcpy(drvinfo->driver, BNAD_NAME, sizeof(drvinfo->driver));
+	strscpy(drvinfo->driver, BNAD_NAME, sizeof(drvinfo->driver));
 
 	ioc_attr = kzalloc(sizeof(*ioc_attr), GFP_KERNEL);
 	if (ioc_attr) {
@@ -291,12 +291,12 @@ bnad_get_drvinfo(struct net_device *netdev, struct ethtool_drvinfo *drvinfo)
 		bfa_nw_ioc_get_attr(&bnad->bna.ioceth.ioc, ioc_attr);
 		spin_unlock_irqrestore(&bnad->bna_lock, flags);
 
-		strlcpy(drvinfo->fw_version, ioc_attr->adapter_attr.fw_ver,
+		strscpy(drvinfo->fw_version, ioc_attr->adapter_attr.fw_ver,
 			sizeof(drvinfo->fw_version));
 		kfree(ioc_attr);
 	}
 
-	strlcpy(drvinfo->bus_info, pci_name(bnad->pcidev),
+	strscpy(drvinfo->bus_info, pci_name(bnad->pcidev),
 		sizeof(drvinfo->bus_info));
 }
 
@@ -405,7 +405,9 @@ static int bnad_set_coalesce(struct net_device *netdev,
 
 static void
 bnad_get_ringparam(struct net_device *netdev,
-		   struct ethtool_ringparam *ringparam)
+		   struct ethtool_ringparam *ringparam,
+		   struct kernel_ethtool_ringparam *kernel_ringparam,
+		   struct netlink_ext_ack *extack)
 {
 	struct bnad *bnad = netdev_priv(netdev);
 
@@ -418,7 +420,9 @@ bnad_get_ringparam(struct net_device *netdev,
 
 static int
 bnad_set_ringparam(struct net_device *netdev,
-		   struct ethtool_ringparam *ringparam)
+		   struct ethtool_ringparam *ringparam,
+		   struct kernel_ethtool_ringparam *kernel_ringparam,
+		   struct netlink_ext_ack *extack)
 {
 	int i, current_err, err = 0;
 	struct bnad *bnad = netdev_priv(netdev);

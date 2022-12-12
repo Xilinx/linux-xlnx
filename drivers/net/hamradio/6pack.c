@@ -99,6 +99,7 @@ struct sixpack {
 
 	unsigned int		rx_count;
 	unsigned int		rx_count_cooked;
+	spinlock_t		rxlock;
 
 	int			mtu;		/* Our mtu (to spot changes!) */
 	int			buffsize;       /* Max buffers sizes */
@@ -288,7 +289,7 @@ static int sp_set_mac_address(struct net_device *dev, void *addr)
 
 	netif_tx_lock_bh(dev);
 	netif_addr_lock(dev);
-	memcpy(dev->dev_addr, &sa->sax25_call, AX25_ADDR_LEN);
+	__dev_addr_set(dev, &sa->sax25_call, AX25_ADDR_LEN);
 	netif_addr_unlock(dev);
 	netif_tx_unlock_bh(dev);
 
@@ -306,7 +307,6 @@ static void sp_setup(struct net_device *dev)
 {
 	/* Finish setting up the DEVICE info. */
 	dev->netdev_ops		= &sp_netdev_ops;
-	dev->needs_free_netdev	= true;
 	dev->mtu		= SIXP_MTU;
 	dev->hard_header_len	= AX25_MAX_HEADER_LEN;
 	dev->header_ops 	= &ax25_header_ops;
@@ -317,7 +317,7 @@ static void sp_setup(struct net_device *dev)
 
 	/* Only activated in AX.25 mode */
 	memcpy(dev->broadcast, &ax25_bcast, AX25_ADDR_LEN);
-	memcpy(dev->dev_addr, &ax25_defaddr, AX25_ADDR_LEN);
+	dev_addr_set(dev, (u8 *)&ax25_defaddr);
 
 	dev->flags		= 0;
 }
@@ -566,6 +566,7 @@ static int sixpack_open(struct tty_struct *tty)
 	sp->dev = dev;
 
 	spin_lock_init(&sp->lock);
+	spin_lock_init(&sp->rxlock);
 	refcount_set(&sp->refcnt, 1);
 	init_completion(&sp->dead);
 
@@ -669,19 +670,21 @@ static void sixpack_close(struct tty_struct *tty)
 	 */
 	netif_stop_queue(sp->dev);
 
+	unregister_netdev(sp->dev);
+
 	del_timer_sync(&sp->tx_t);
 	del_timer_sync(&sp->resync_t);
 
-	/* Free all 6pack frame buffers. */
+	/* Free all 6pack frame buffers after unreg. */
 	kfree(sp->rbuff);
 	kfree(sp->xbuff);
 
-	unregister_netdev(sp->dev);
+	free_netdev(sp->dev);
 }
 
 /* Perform I/O control on an active 6pack channel. */
-static int sixpack_ioctl(struct tty_struct *tty, struct file *file,
-	unsigned int cmd, unsigned long arg)
+static int sixpack_ioctl(struct tty_struct *tty, unsigned int cmd,
+		unsigned long arg)
 {
 	struct sixpack *sp = sp_get(tty);
 	struct net_device *dev;
@@ -726,13 +729,13 @@ static int sixpack_ioctl(struct tty_struct *tty, struct file *file,
 			}
 
 			netif_tx_lock_bh(dev);
-			memcpy(dev->dev_addr, &addr, AX25_ADDR_LEN);
+			__dev_addr_set(dev, &addr, AX25_ADDR_LEN);
 			netif_tx_unlock_bh(dev);
 			err = 0;
 			break;
 		}
 	default:
-		err = tty_mode_ioctl(tty, file, cmd, arg);
+		err = tty_mode_ioctl(tty, cmd, arg);
 	}
 
 	sp_put(sp);
@@ -912,6 +915,7 @@ static void decode_std_command(struct sixpack *sp, unsigned char cmd)
 			sp->led_state = 0x60;
 			/* fill trailing bytes with zeroes */
 			sp->tty->ops->write(sp->tty, &sp->led_state, 1);
+			spin_lock_bh(&sp->rxlock);
 			rest = sp->rx_count;
 			if (rest != 0)
 				 for (i = rest; i <= 3; i++)
@@ -929,6 +933,7 @@ static void decode_std_command(struct sixpack *sp, unsigned char cmd)
 				sp_bump(sp, 0);
 			}
 			sp->rx_count_cooked = 0;
+			spin_unlock_bh(&sp->rxlock);
 		}
 		break;
 	case SIXP_TX_URUN: printk(KERN_DEBUG "6pack: TX underrun\n");
@@ -958,8 +963,11 @@ sixpack_decode(struct sixpack *sp, const unsigned char *pre_rbuff, int count)
 			decode_prio_command(sp, inbyte);
 		else if ((inbyte & SIXP_STD_CMD_MASK) != 0)
 			decode_std_command(sp, inbyte);
-		else if ((sp->status & SIXP_RX_DCD_MASK) == SIXP_RX_DCD_MASK)
+		else if ((sp->status & SIXP_RX_DCD_MASK) == SIXP_RX_DCD_MASK) {
+			spin_lock_bh(&sp->rxlock);
 			decode_data(sp, inbyte);
+			spin_unlock_bh(&sp->rxlock);
+		}
 	}
 }
 

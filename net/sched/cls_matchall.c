@@ -97,21 +97,18 @@ static int mall_replace_hw_filter(struct tcf_proto *tp,
 	cls_mall.command = TC_CLSMATCHALL_REPLACE;
 	cls_mall.cookie = cookie;
 
-	err = tc_setup_flow_action(&cls_mall.rule->action, &head->exts);
+	err = tc_setup_offload_action(&cls_mall.rule->action, &head->exts,
+				      cls_mall.common.extack);
 	if (err) {
 		kfree(cls_mall.rule);
 		mall_destroy_hw_filter(tp, head, cookie, NULL);
-		if (skip_sw)
-			NL_SET_ERR_MSG_MOD(extack, "Failed to setup flow action");
-		else
-			err = 0;
 
-		return err;
+		return skip_sw ? err : 0;
 	}
 
 	err = tc_setup_cb_add(block, tp, TC_SETUP_CLSMATCHALL, &cls_mall,
 			      skip_sw, &head->flags, &head->in_hw_count, true);
-	tc_cleanup_flow_action(&cls_mall.rule->action);
+	tc_cleanup_offload_action(&cls_mall.rule->action);
 	kfree(cls_mall.rule);
 
 	if (err) {
@@ -163,12 +160,13 @@ static const struct nla_policy mall_policy[TCA_MATCHALL_MAX + 1] = {
 static int mall_set_parms(struct net *net, struct tcf_proto *tp,
 			  struct cls_mall_head *head,
 			  unsigned long base, struct nlattr **tb,
-			  struct nlattr *est, u32 flags,
+			  struct nlattr *est, u32 flags, u32 fl_flags,
 			  struct netlink_ext_ack *extack)
 {
 	int err;
 
-	err = tcf_exts_validate(net, tp, tb, est, &head->exts, flags, extack);
+	err = tcf_exts_validate_ex(net, tp, tb, est, &head->exts, flags,
+				   fl_flags, extack);
 	if (err < 0)
 		return err;
 
@@ -226,8 +224,8 @@ static int mall_change(struct net *net, struct sk_buff *in_skb,
 		goto err_alloc_percpu;
 	}
 
-	err = mall_set_parms(net, tp, new, base, tb, tca[TCA_RATE], flags,
-			     extack);
+	err = mall_set_parms(net, tp, new, base, tb, tca[TCA_RATE],
+			     flags, new->flags, extack);
 	if (err)
 		goto err_set_parms;
 
@@ -301,26 +299,21 @@ static int mall_reoffload(struct tcf_proto *tp, bool add, flow_setup_cb_t *cb,
 		TC_CLSMATCHALL_REPLACE : TC_CLSMATCHALL_DESTROY;
 	cls_mall.cookie = (unsigned long)head;
 
-	err = tc_setup_flow_action(&cls_mall.rule->action, &head->exts);
+	err = tc_setup_offload_action(&cls_mall.rule->action, &head->exts,
+				      cls_mall.common.extack);
 	if (err) {
 		kfree(cls_mall.rule);
-		if (add && tc_skip_sw(head->flags)) {
-			NL_SET_ERR_MSG_MOD(extack, "Failed to setup flow action");
-			return err;
-		}
-		return 0;
+
+		return add && tc_skip_sw(head->flags) ? err : 0;
 	}
 
 	err = tc_setup_cb_reoffload(block, tp, add, cb, TC_SETUP_CLSMATCHALL,
 				    &cls_mall, cb_priv, &head->flags,
 				    &head->in_hw_count);
-	tc_cleanup_flow_action(&cls_mall.rule->action);
+	tc_cleanup_offload_action(&cls_mall.rule->action);
 	kfree(cls_mall.rule);
 
-	if (err)
-		return err;
-
-	return 0;
+	return err;
 }
 
 static void mall_stats_hw_filter(struct tcf_proto *tp,
@@ -336,11 +329,11 @@ static void mall_stats_hw_filter(struct tcf_proto *tp,
 
 	tc_setup_cb_call(block, TC_SETUP_CLSMATCHALL, &cls_mall, false, true);
 
-	tcf_exts_stats_update(&head->exts, cls_mall.stats.bytes,
-			      cls_mall.stats.pkts, cls_mall.stats.drops,
-			      cls_mall.stats.lastused,
-			      cls_mall.stats.used_hw_stats,
-			      cls_mall.stats.used_hw_stats_valid);
+	tcf_exts_hw_stats_update(&head->exts, cls_mall.stats.bytes,
+				 cls_mall.stats.pkts, cls_mall.stats.drops,
+				 cls_mall.stats.lastused,
+				 cls_mall.stats.used_hw_stats,
+				 cls_mall.stats.used_hw_stats_valid);
 }
 
 static int mall_dump(struct net *net, struct tcf_proto *tp, void *fh,
@@ -401,12 +394,7 @@ static void mall_bind_class(void *fh, u32 classid, unsigned long cl, void *q,
 {
 	struct cls_mall_head *head = fh;
 
-	if (head && head->res.classid == classid) {
-		if (cl)
-			__tcf_bind_filter(q, &head->res, base);
-		else
-			__tcf_unbind_filter(q, &head->res);
-	}
+	tc_cls_bind_class(classid, cl, q, &head->res, base);
 }
 
 static struct tcf_proto_ops cls_mall_ops __read_mostly = {

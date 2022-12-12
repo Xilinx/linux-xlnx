@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * recovery.c - NILFS recovery logic
+ * NILFS recovery logic
  *
  * Copyright (C) 2005-2008 Nippon Telegraph and Telephone Corporation.
  *
@@ -511,7 +511,7 @@ static int nilfs_recover_dsync_blocks(struct the_nilfs *nilfs,
 
 		pos = rb->blkoff << inode->i_blkbits;
 		err = block_write_begin(inode->i_mapping, pos, blocksize,
-					0, &page, nilfs_get_block);
+					&page, nilfs_get_block);
 		if (unlikely(err)) {
 			loff_t isize = inode->i_size;
 

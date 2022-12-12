@@ -12,6 +12,7 @@
 #include <linux/cpu_pm.h>
 #include <linux/irq.h>
 #include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/init.h>
 #include <linux/err.h>
 #include <linux/clk.h>
@@ -237,6 +238,7 @@ struct gpmc_device {
 	struct omap3_gpmc_regs context;
 	int nirqs;
 	unsigned int is_suspended:1;
+	struct resource *data;
 };
 
 static struct irq_domain *gpmc_irq_domain;
@@ -1456,12 +1458,18 @@ static void gpmc_mem_exit(void)
 	}
 }
 
-static void gpmc_mem_init(void)
+static void gpmc_mem_init(struct gpmc_device *gpmc)
 {
 	int cs;
 
-	gpmc_mem_root.start = GPMC_MEM_START;
-	gpmc_mem_root.end = GPMC_MEM_END;
+	if (!gpmc->data) {
+		/* All legacy devices have same data IO window */
+		gpmc_mem_root.start = GPMC_MEM_START;
+		gpmc_mem_root.end = GPMC_MEM_END;
+	} else {
+		gpmc_mem_root.start = gpmc->data->start;
+		gpmc_mem_root.end = gpmc->data->end;
+	}
 
 	/* Reserve all regions that has been set up by bootloader */
 	for (cs = 0; cs < gpmc_cs_num; cs++) {
@@ -1882,15 +1890,6 @@ int gpmc_cs_program_settings(int cs, struct gpmc_settings *p)
 }
 
 #ifdef CONFIG_OF
-static const struct of_device_id gpmc_dt_ids[] = {
-	{ .compatible = "ti,omap2420-gpmc" },
-	{ .compatible = "ti,omap2430-gpmc" },
-	{ .compatible = "ti,omap3430-gpmc" },	/* omap3430 & omap3630 */
-	{ .compatible = "ti,omap4430-gpmc" },	/* omap4430 & omap4460 & omap543x */
-	{ .compatible = "ti,am3352-gpmc" },	/* am335x devices */
-	{ }
-};
-
 static void gpmc_cs_set_name(int cs, const char *name)
 {
 	struct gpmc_cs_data *gpmc = &gpmc_cs[cs];
@@ -2175,7 +2174,7 @@ static int gpmc_probe_generic_child(struct platform_device *pdev,
 		}
 	}
 
-	if (of_device_is_compatible(child, "ti,omap2-nand")) {
+	if (of_match_node(omap_nand_ids, child)) {
 		/* NAND specific setup */
 		val = 8;
 		of_property_read_u32(child, "nand-bus-width", &val);
@@ -2249,11 +2248,9 @@ no_timings:
 	if (!of_platform_device_create(child, NULL, &pdev->dev))
 		goto err_child_fail;
 
-	/* is child a common bus? */
-	if (of_match_node(of_default_bus_match_table, child))
-		/* create children and other common bus children */
-		if (of_platform_default_populate(child, NULL, &pdev->dev))
-			goto err_child_fail;
+	/* create children and other common bus children */
+	if (of_platform_default_populate(child, NULL, &pdev->dev))
+		goto err_child_fail;
 
 	return 0;
 
@@ -2269,6 +2266,8 @@ err:
 
 	return ret;
 }
+
+static const struct of_device_id gpmc_dt_ids[];
 
 static int gpmc_probe_dt(struct platform_device *pdev)
 {
@@ -2502,21 +2501,29 @@ static int gpmc_probe(struct platform_device *pdev)
 	gpmc->dev = &pdev->dev;
 	platform_set_drvdata(pdev, gpmc);
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res)
-		return -ENOENT;
-
-	gpmc_base = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(gpmc_base))
-		return PTR_ERR(gpmc_base);
-
-	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "cfg");
 	if (!res) {
-		dev_err(&pdev->dev, "Failed to get resource: irq\n");
-		return -ENOENT;
+		/* legacy DT */
+		gpmc_base = devm_platform_ioremap_resource(pdev, 0);
+		if (IS_ERR(gpmc_base))
+			return PTR_ERR(gpmc_base);
+	} else {
+		gpmc_base = devm_ioremap_resource(&pdev->dev, res);
+		if (IS_ERR(gpmc_base))
+			return PTR_ERR(gpmc_base);
+
+		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "data");
+		if (!res) {
+			dev_err(&pdev->dev, "couldn't get data reg resource\n");
+			return -ENOENT;
+		}
+
+		gpmc->data = res;
 	}
 
-	gpmc->irq = res->start;
+	gpmc->irq = platform_get_irq(pdev, 0);
+	if (gpmc->irq < 0)
+		return gpmc->irq;
 
 	gpmc_l3_clk = devm_clk_get(&pdev->dev, "fck");
 	if (IS_ERR(gpmc_l3_clk)) {
@@ -2562,7 +2569,7 @@ static int gpmc_probe(struct platform_device *pdev)
 	dev_info(gpmc->dev, "GPMC revision %d.%d\n", GPMC_REVISION_MAJOR(l),
 		 GPMC_REVISION_MINOR(l));
 
-	gpmc_mem_init();
+	gpmc_mem_init(gpmc);
 	rc = gpmc_gpio_init(gpmc);
 	if (rc)
 		goto gpio_init_failed;
@@ -2628,6 +2635,19 @@ static int gpmc_resume(struct device *dev)
 
 static SIMPLE_DEV_PM_OPS(gpmc_pm_ops, gpmc_suspend, gpmc_resume);
 
+#ifdef CONFIG_OF
+static const struct of_device_id gpmc_dt_ids[] = {
+	{ .compatible = "ti,omap2420-gpmc" },
+	{ .compatible = "ti,omap2430-gpmc" },
+	{ .compatible = "ti,omap3430-gpmc" },	/* omap3430 & omap3630 */
+	{ .compatible = "ti,omap4430-gpmc" },	/* omap4430 & omap4460 & omap543x */
+	{ .compatible = "ti,am3352-gpmc" },	/* am335x devices */
+	{ .compatible = "ti,am64-gpmc" },
+	{ }
+};
+MODULE_DEVICE_TABLE(of, gpmc_dt_ids);
+#endif
+
 static struct platform_driver gpmc_driver = {
 	.probe		= gpmc_probe,
 	.remove		= gpmc_remove,
@@ -2638,8 +2658,7 @@ static struct platform_driver gpmc_driver = {
 	},
 };
 
-static __init int gpmc_init(void)
-{
-	return platform_driver_register(&gpmc_driver);
-}
-postcore_initcall(gpmc_init);
+module_platform_driver(gpmc_driver);
+
+MODULE_DESCRIPTION("Texas Instruments GPMC driver");
+MODULE_LICENSE("GPL");

@@ -43,13 +43,41 @@ static int virtgpu_virtio_get_uuid(struct dma_buf *buf,
 	return 0;
 }
 
+static struct sg_table *
+virtgpu_gem_map_dma_buf(struct dma_buf_attachment *attach,
+			enum dma_data_direction dir)
+{
+	struct drm_gem_object *obj = attach->dmabuf->priv;
+	struct virtio_gpu_object *bo = gem_to_virtio_gpu_obj(obj);
+
+	if (virtio_gpu_is_vram(bo))
+		return virtio_gpu_vram_map_dma_buf(bo, attach->dev, dir);
+
+	return drm_gem_map_dma_buf(attach, dir);
+}
+
+static void virtgpu_gem_unmap_dma_buf(struct dma_buf_attachment *attach,
+				      struct sg_table *sgt,
+				      enum dma_data_direction dir)
+{
+	struct drm_gem_object *obj = attach->dmabuf->priv;
+	struct virtio_gpu_object *bo = gem_to_virtio_gpu_obj(obj);
+
+	if (virtio_gpu_is_vram(bo)) {
+		virtio_gpu_vram_unmap_dma_buf(attach->dev, sgt, dir);
+		return;
+	}
+
+	drm_gem_unmap_dma_buf(attach, sgt, dir);
+}
+
 static const struct virtio_dma_buf_ops virtgpu_dmabuf_ops =  {
 	.ops = {
 		.cache_sgt_mapping = true,
 		.attach = virtio_dma_buf_attach,
 		.detach = drm_gem_map_detach,
-		.map_dma_buf = drm_gem_map_dma_buf,
-		.unmap_dma_buf = drm_gem_unmap_dma_buf,
+		.map_dma_buf = virtgpu_gem_map_dma_buf,
+		.unmap_dma_buf = virtgpu_gem_unmap_dma_buf,
 		.release = drm_gem_dmabuf_release,
 		.mmap = drm_gem_dmabuf_mmap,
 		.vmap = drm_gem_dmabuf_vmap,
@@ -62,7 +90,6 @@ static const struct virtio_dma_buf_ops virtgpu_dmabuf_ops =  {
 int virtio_gpu_resource_assign_uuid(struct virtio_gpu_device *vgdev,
 				    struct virtio_gpu_object *bo)
 {
-	int ret;
 	struct virtio_gpu_object_array *objs;
 
 	objs = virtio_gpu_array_alloc(1);
@@ -70,11 +97,8 @@ int virtio_gpu_resource_assign_uuid(struct virtio_gpu_device *vgdev,
 		return -ENOMEM;
 
 	virtio_gpu_array_add_obj(objs, &bo->base.base);
-	ret = virtio_gpu_cmd_resource_assign_uuid(vgdev, objs);
-	if (ret)
-		return ret;
 
-	return 0;
+	return virtio_gpu_cmd_resource_assign_uuid(vgdev, objs);
 }
 
 struct dma_buf *virtgpu_gem_prime_export(struct drm_gem_object *obj,

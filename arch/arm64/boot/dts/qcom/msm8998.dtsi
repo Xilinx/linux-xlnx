@@ -4,6 +4,7 @@
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/clock/qcom,gcc-msm8998.h>
 #include <dt-bindings/clock/qcom,gpucc-msm8998.h>
+#include <dt-bindings/clock/qcom,mmcc-msm8998.h>
 #include <dt-bindings/clock/qcom,rpmcc.h>
 #include <dt-bindings/power/qcom-rpmpd.h>
 #include <dt-bindings/gpio/gpio.h>
@@ -117,7 +118,7 @@
 			clock-output-names = "xo_board";
 		};
 
-		sleep_clk {
+		sleep_clk: sleep-clk {
 			compatible = "fixed-clock";
 			#clock-cells = <0>;
 			clock-frequency = <32764>;
@@ -137,14 +138,8 @@
 			cpu-idle-states = <&LITTLE_CPU_SLEEP_0 &LITTLE_CPU_SLEEP_1>;
 			next-level-cache = <&L2_0>;
 			L2_0: l2-cache {
-				compatible = "arm,arch-cache";
+				compatible = "cache";
 				cache-level = <2>;
-			};
-			L1_I_0: l1-icache {
-				compatible = "arm,arch-cache";
-			};
-			L1_D_0: l1-dcache {
-				compatible = "arm,arch-cache";
 			};
 		};
 
@@ -156,12 +151,6 @@
 			capacity-dmips-mhz = <1024>;
 			cpu-idle-states = <&LITTLE_CPU_SLEEP_0 &LITTLE_CPU_SLEEP_1>;
 			next-level-cache = <&L2_0>;
-			L1_I_1: l1-icache {
-				compatible = "arm,arch-cache";
-			};
-			L1_D_1: l1-dcache {
-				compatible = "arm,arch-cache";
-			};
 		};
 
 		CPU2: cpu@2 {
@@ -172,12 +161,6 @@
 			capacity-dmips-mhz = <1024>;
 			cpu-idle-states = <&LITTLE_CPU_SLEEP_0 &LITTLE_CPU_SLEEP_1>;
 			next-level-cache = <&L2_0>;
-			L1_I_2: l1-icache {
-				compatible = "arm,arch-cache";
-			};
-			L1_D_2: l1-dcache {
-				compatible = "arm,arch-cache";
-			};
 		};
 
 		CPU3: cpu@3 {
@@ -188,12 +171,6 @@
 			capacity-dmips-mhz = <1024>;
 			cpu-idle-states = <&LITTLE_CPU_SLEEP_0 &LITTLE_CPU_SLEEP_1>;
 			next-level-cache = <&L2_0>;
-			L1_I_3: l1-icache {
-				compatible = "arm,arch-cache";
-			};
-			L1_D_3: l1-dcache {
-				compatible = "arm,arch-cache";
-			};
 		};
 
 		CPU4: cpu@100 {
@@ -205,14 +182,8 @@
 			cpu-idle-states = <&BIG_CPU_SLEEP_0 &BIG_CPU_SLEEP_1>;
 			next-level-cache = <&L2_1>;
 			L2_1: l2-cache {
-				compatible = "arm,arch-cache";
+				compatible = "cache";
 				cache-level = <2>;
-			};
-			L1_I_100: l1-icache {
-				compatible = "arm,arch-cache";
-			};
-			L1_D_100: l1-dcache {
-				compatible = "arm,arch-cache";
 			};
 		};
 
@@ -224,12 +195,6 @@
 			capacity-dmips-mhz = <1536>;
 			cpu-idle-states = <&BIG_CPU_SLEEP_0 &BIG_CPU_SLEEP_1>;
 			next-level-cache = <&L2_1>;
-			L1_I_101: l1-icache {
-				compatible = "arm,arch-cache";
-			};
-			L1_D_101: l1-dcache {
-				compatible = "arm,arch-cache";
-			};
 		};
 
 		CPU6: cpu@102 {
@@ -240,12 +205,6 @@
 			capacity-dmips-mhz = <1536>;
 			cpu-idle-states = <&BIG_CPU_SLEEP_0 &BIG_CPU_SLEEP_1>;
 			next-level-cache = <&L2_1>;
-			L1_I_102: l1-icache {
-				compatible = "arm,arch-cache";
-			};
-			L1_D_102: l1-dcache {
-				compatible = "arm,arch-cache";
-			};
 		};
 
 		CPU7: cpu@103 {
@@ -256,12 +215,6 @@
 			capacity-dmips-mhz = <1536>;
 			cpu-idle-states = <&BIG_CPU_SLEEP_0 &BIG_CPU_SLEEP_1>;
 			next-level-cache = <&L2_1>;
-			L1_I_103: l1-icache {
-				compatible = "arm,arch-cache";
-			};
-			L1_D_103: l1-dcache {
-				compatible = "arm,arch-cache";
-			};
 		};
 
 		cpu-map {
@@ -308,38 +261,42 @@
 			LITTLE_CPU_SLEEP_0: cpu-sleep-0-0 {
 				compatible = "arm,idle-state";
 				idle-state-name = "little-retention";
+				/* CPU Retention (C2D), L2 Active */
 				arm,psci-suspend-param = <0x00000002>;
 				entry-latency-us = <81>;
 				exit-latency-us = <86>;
-				min-residency-us = <200>;
+				min-residency-us = <504>;
 			};
 
 			LITTLE_CPU_SLEEP_1: cpu-sleep-0-1 {
 				compatible = "arm,idle-state";
 				idle-state-name = "little-power-collapse";
+				/* CPU + L2 Power Collapse (C3, D4) */
 				arm,psci-suspend-param = <0x40000003>;
-				entry-latency-us = <273>;
-				exit-latency-us = <612>;
-				min-residency-us = <1000>;
+				entry-latency-us = <814>;
+				exit-latency-us = <4562>;
+				min-residency-us = <9183>;
 				local-timer-stop;
 			};
 
 			BIG_CPU_SLEEP_0: cpu-sleep-1-0 {
 				compatible = "arm,idle-state";
 				idle-state-name = "big-retention";
+				/* CPU Retention (C2D), L2 Active */
 				arm,psci-suspend-param = <0x00000002>;
 				entry-latency-us = <79>;
 				exit-latency-us = <82>;
-				min-residency-us = <200>;
+				min-residency-us = <1302>;
 			};
 
 			BIG_CPU_SLEEP_1: cpu-sleep-1-1 {
 				compatible = "arm,idle-state";
 				idle-state-name = "big-power-collapse";
+				/* CPU + L2 Power Collapse (C3, D4) */
 				arm,psci-suspend-param = <0x40000003>;
-				entry-latency-us = <336>;
-				exit-latency-us = <525>;
-				min-residency-us = <1000>;
+				entry-latency-us = <724>;
+				exit-latency-us = <2027>;
+				min-residency-us = <9419>;
 				local-timer-stop;
 			};
 		};
@@ -349,12 +306,6 @@
 		scm {
 			compatible = "qcom,scm-msm8998", "qcom,scm";
 		};
-	};
-
-	tcsr_mutex: hwlock {
-		compatible = "qcom,tcsr-mutex";
-		syscon = <&tcsr_mutex_regs 0 0x1000>;
-		#hwlock-cells = <1>;
 	};
 
 	psci {
@@ -669,7 +620,7 @@
 			};
 		};
 
-		gpu-thermal-bottom {
+		gpu-bottom-thermal {
 			polling-delay-passive = <250>;
 			polling-delay = <1000>;
 
@@ -684,7 +635,7 @@
 			};
 		};
 
-		gpu-thermal-top {
+		gpu-top-thermal {
 			polling-delay-passive = <250>;
 			polling-delay = <1000>;
 
@@ -855,21 +806,39 @@
 			#reset-cells = <1>;
 			#power-domain-cells = <1>;
 			reg = <0x00100000 0xb0000>;
+
+			clock-names = "xo", "sleep_clk";
+			clocks = <&xo>, <&sleep_clk>;
+
+			/*
+			 * The hypervisor typically configures the memory region where these clocks
+			 * reside as read-only for the HLOS. If the HLOS tried to enable or disable
+			 * these clocks on a device with such configuration (e.g. because they are
+			 * enabled but unused during boot-up), the device will most likely decide
+			 * to reboot.
+			 * In light of that, we are conservative here and we list all such clocks
+			 * as protected. The board dts (or a user-supplied dts) can override the
+			 * list of protected clocks if it differs from the norm, and it is in fact
+			 * desired for the HLOS to manage these clocks
+			 */
+			protected-clocks = <AGGRE2_SNOC_NORTH_AXI>,
+					   <SSC_XO>,
+					   <SSC_CNOC_AHBS_CLK>;
 		};
 
-		rpm_msg_ram: memory@778000 {
+		rpm_msg_ram: sram@778000 {
 			compatible = "qcom,rpm-msg-ram";
 			reg = <0x00778000 0x7000>;
 		};
 
-		qfprom: qfprom@780000 {
-			compatible = "qcom,qfprom";
-			reg = <0x00780000 0x621c>;
+		qfprom: qfprom@784000 {
+			compatible = "qcom,msm8998-qfprom", "qcom,qfprom";
+			reg = <0x00784000 0x621c>;
 			#address-cells = <1>;
 			#size-cells = <1>;
 
-			qusb2_hstx_trim: hstx-trim@423a {
-				reg = <0x423a 0x1>;
+			qusb2_hstx_trim: hstx-trim@23a {
+				reg = <0x23a 0x1>;
 				bits = <0 4>;
 			};
 		};
@@ -954,10 +923,10 @@
 			interrupts = <GIC_SPI 405 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-names = "msi";
 			interrupt-map-mask = <0 0 0 0x7>;
-			interrupt-map =	<0 0 0 1 &intc 0 135 IRQ_TYPE_LEVEL_HIGH>,
-					<0 0 0 2 &intc 0 136 IRQ_TYPE_LEVEL_HIGH>,
-					<0 0 0 3 &intc 0 138 IRQ_TYPE_LEVEL_HIGH>,
-					<0 0 0 4 &intc 0 139 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-map = <0 0 0 1 &intc 0 0 135 IRQ_TYPE_LEVEL_HIGH>,
+					<0 0 0 2 &intc 0 0 136 IRQ_TYPE_LEVEL_HIGH>,
+					<0 0 0 3 &intc 0 0 138 IRQ_TYPE_LEVEL_HIGH>,
+					<0 0 0 4 &intc 0 0 139 IRQ_TYPE_LEVEL_HIGH>;
 
 			clocks = <&gcc GCC_PCIE_0_PIPE_CLK>,
 				 <&gcc GCC_PCIE_0_MSTR_AXI_CLK>,
@@ -990,7 +959,7 @@
 			vdda-phy-supply = <&vreg_l1a_0p875>;
 			vdda-pll-supply = <&vreg_l2a_1p2>;
 
-			pciephy: lane@1c06800 {
+			pciephy: phy@1c06800 {
 				reg = <0x01c06200 0x128>, <0x01c06400 0x1fc>, <0x01c06800 0x20c>;
 				#phy-cells = <0>;
 
@@ -1062,7 +1031,7 @@
 			reset-names = "ufsphy";
 			resets = <&ufshc 0>;
 
-			ufsphy_lanes: lanes@1da7400 {
+			ufsphy_lanes: phy@1da7400 {
 				reg = <0x01da7400 0x128>,
 				      <0x01da7600 0x1fc>,
 				      <0x01da7c00 0x1dc>,
@@ -1072,9 +1041,15 @@
 			};
 		};
 
-		tcsr_mutex_regs: syscon@1f40000 {
-			compatible = "syscon";
-			reg = <0x01f40000 0x40000>;
+		tcsr_mutex: hwlock@1f40000 {
+			compatible = "qcom,tcsr-mutex";
+			reg = <0x01f40000 0x20000>;
+			#hwlock-cells = <1>;
+		};
+
+		tcsr_regs_1: syscon@1f60000 {
+			compatible = "qcom,msm8998-tcsr", "syscon";
+			reg = <0x01f60000 0x20000>;
 		};
 
 		tlmm: pinctrl@3400000 {
@@ -1082,85 +1057,58 @@
 			reg = <0x03400000 0xc00000>;
 			interrupts = <GIC_SPI 208 IRQ_TYPE_LEVEL_HIGH>;
 			gpio-controller;
-			#gpio-cells = <0x2>;
+			#gpio-cells = <2>;
 			interrupt-controller;
-			#interrupt-cells = <0x2>;
+			#interrupt-cells = <2>;
 
-			sdc2_clk_on: sdc2_clk_on {
-				config {
+			sdc2_on: sdc2-on {
+				clk {
 					pins = "sdc2_clk";
-					bias-disable;
 					drive-strength = <16>;
-				};
-			};
-
-			sdc2_clk_off: sdc2_clk_off {
-				config {
-					pins = "sdc2_clk";
 					bias-disable;
-					drive-strength = <2>;
 				};
-			};
 
-			sdc2_cmd_on: sdc2_cmd_on {
-				config {
+				cmd {
 					pins = "sdc2_cmd";
-					bias-pull-up;
 					drive-strength = <10>;
+					bias-pull-up;
+				};
+
+				data {
+					pins = "sdc2_data";
+					drive-strength = <10>;
+					bias-pull-up;
 				};
 			};
 
-			sdc2_cmd_off: sdc2_cmd_off {
-				config {
+			sdc2_off: sdc2-off {
+				clk {
+					pins = "sdc2_clk";
+					drive-strength = <2>;
+					bias-disable;
+				};
+
+				cmd {
 					pins = "sdc2_cmd";
-					bias-pull-up;
 					drive-strength = <2>;
+					bias-pull-up;
 				};
-			};
 
-			sdc2_data_on: sdc2_data_on {
-				config {
+				data {
 					pins = "sdc2_data";
-					bias-pull-up;
-					drive-strength = <10>;
-				};
-			};
-
-			sdc2_data_off: sdc2_data_off {
-				config {
-					pins = "sdc2_data";
-					bias-pull-up;
 					drive-strength = <2>;
-				};
-			};
-
-			sdc2_cd_on: sdc2_cd_on {
-				mux {
-					pins = "gpio95";
-					function = "gpio";
-				};
-
-				config {
-					pins = "gpio95";
 					bias-pull-up;
-					drive-strength = <2>;
 				};
 			};
 
-			sdc2_cd_off: sdc2_cd_off {
-				mux {
-					pins = "gpio95";
-					function = "gpio";
-				};
-
-				config {
-					pins = "gpio95";
-					bias-pull-up;
-					drive-strength = <2>;
-				};
+			sdc2_cd: sdc2-cd {
+				pins = "gpio95";
+				function = "gpio";
+				bias-pull-up;
+				drive-strength = <2>;
 			};
 
-			blsp1_uart3_on: blsp1_uart3_on {
+			blsp1_uart3_on: blsp1-uart3-on {
 				tx {
 					pins = "gpio45";
 					function = "blsp_uart3_a";
@@ -1392,7 +1340,7 @@
 			resets = <&gcc GCC_MSS_RESTART>;
 			reset-names = "mss_restart";
 
-			qcom,halt-regs = <&tcsr_mutex_regs 0x23000 0x25000 0x24000>;
+			qcom,halt-regs = <&tcsr_regs_1 0x3000 0x5000 0x4000>;
 
 			power-domains = <&rpmpd MSM8998_VDDCX>,
 					<&rpmpd MSM8998_VDDMX>;
@@ -1414,6 +1362,102 @@
 				qcom,remote-pid = <1>;
 				mboxes = <&apcs_glb 15>;
 			};
+		};
+
+		adreno_gpu: gpu@5000000 {
+			compatible = "qcom,adreno-540.1", "qcom,adreno";
+			reg = <0x05000000 0x40000>;
+			reg-names = "kgsl_3d0_reg_memory";
+
+			clocks = <&gcc GCC_GPU_CFG_AHB_CLK>,
+				<&gpucc RBBMTIMER_CLK>,
+				<&gcc GCC_BIMC_GFX_CLK>,
+				<&gcc GCC_GPU_BIMC_GFX_CLK>,
+				<&gpucc RBCPR_CLK>,
+				<&gpucc GFX3D_CLK>;
+			clock-names = "iface",
+				"rbbmtimer",
+				"mem",
+				"mem_iface",
+				"rbcpr",
+				"core";
+
+			interrupts = <0 300 IRQ_TYPE_LEVEL_HIGH>;
+			iommus = <&adreno_smmu 0>;
+			operating-points-v2 = <&gpu_opp_table>;
+			power-domains = <&rpmpd MSM8998_VDDMX>;
+			status = "disabled";
+
+			gpu_opp_table: opp-table {
+				compatible = "operating-points-v2";
+				opp-710000097 {
+					opp-hz = /bits/ 64 <710000097>;
+					opp-level = <RPM_SMD_LEVEL_TURBO>;
+					opp-supported-hw = <0xFF>;
+				};
+
+				opp-670000048 {
+					opp-hz = /bits/ 64 <670000048>;
+					opp-level = <RPM_SMD_LEVEL_NOM_PLUS>;
+					opp-supported-hw = <0xFF>;
+				};
+
+				opp-596000097 {
+					opp-hz = /bits/ 64 <596000097>;
+					opp-level = <RPM_SMD_LEVEL_NOM>;
+					opp-supported-hw = <0xFF>;
+				};
+
+				opp-515000097 {
+					opp-hz = /bits/ 64 <515000097>;
+					opp-level = <RPM_SMD_LEVEL_SVS_PLUS>;
+					opp-supported-hw = <0xFF>;
+				};
+
+				opp-414000000 {
+					opp-hz = /bits/ 64 <414000000>;
+					opp-level = <RPM_SMD_LEVEL_SVS>;
+					opp-supported-hw = <0xFF>;
+				};
+
+				opp-342000000 {
+					opp-hz = /bits/ 64 <342000000>;
+					opp-level = <RPM_SMD_LEVEL_LOW_SVS>;
+					opp-supported-hw = <0xFF>;
+				};
+
+				opp-257000000 {
+					opp-hz = /bits/ 64 <257000000>;
+					opp-level = <RPM_SMD_LEVEL_MIN_SVS>;
+					opp-supported-hw = <0xFF>;
+				};
+			};
+		};
+
+		adreno_smmu: iommu@5040000 {
+			compatible = "qcom,msm8998-smmu-v2", "qcom,smmu-v2";
+			reg = <0x05040000 0x10000>;
+			clocks = <&gcc GCC_GPU_CFG_AHB_CLK>,
+				 <&gcc GCC_BIMC_GFX_CLK>,
+				 <&gcc GCC_GPU_BIMC_GFX_CLK>;
+			clock-names = "iface", "mem", "mem_iface";
+
+			#global-interrupts = <0>;
+			#iommu-cells = <1>;
+			interrupts =
+				<GIC_SPI 329 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 330 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 331 IRQ_TYPE_LEVEL_HIGH>;
+			/*
+			 * GPU-GX GDSC's parent is GPU-CX. We need to bring up the
+			 * GPU-CX for SMMU but we need both of them up for Adreno.
+			 * Contemporarily, we also need to manage the VDDMX rpmpd
+			 * domain in the Adreno driver.
+			 * Enable GPU CX/GX GDSCs here so that we can manage the
+			 * SoC VDDMX RPM Power Domain in the Adreno driver.
+			 */
+			power-domains = <&gpucc GPU_GX_GDSC>;
+			status = "disabled";
 		};
 
 		gpucc: clock-controller@5065000 {
@@ -1917,6 +1961,11 @@
 			};
 		};
 
+		sram@290000 {
+			compatible = "qcom,rpm-stats";
+			reg = <0x00290000 0x10000>;
+		};
+
 		spmi_bus: spmi@800f000 {
 			compatible = "qcom,spmi-pmic-arb";
 			reg =	<0x0800f000 0x1000>,
@@ -1947,10 +1996,13 @@
 			clocks = <&gcc GCC_CFG_NOC_USB3_AXI_CLK>,
 				 <&gcc GCC_USB30_MASTER_CLK>,
 				 <&gcc GCC_AGGRE1_USB3_AXI_CLK>,
-				 <&gcc GCC_USB30_MOCK_UTMI_CLK>,
-				 <&gcc GCC_USB30_SLEEP_CLK>;
-			clock-names = "cfg_noc", "core", "iface", "mock_utmi",
-				      "sleep";
+				 <&gcc GCC_USB30_SLEEP_CLK>,
+				 <&gcc GCC_USB30_MOCK_UTMI_CLK>;
+			clock-names = "cfg_noc",
+				      "core",
+				      "iface",
+				      "sleep",
+				      "mock_utmi";
 
 			assigned-clocks = <&gcc GCC_USB30_MOCK_UTMI_CLK>,
 					  <&gcc GCC_USB30_MASTER_CLK>;
@@ -1964,7 +2016,7 @@
 
 			resets = <&gcc GCC_USB_30_BCR>;
 
-			usb3_dwc3: dwc3@a800000 {
+			usb3_dwc3: usb@a800000 {
 				compatible = "snps,dwc3";
 				reg = <0x0a800000 0xcd00>;
 				interrupts = <GIC_SPI 131 IRQ_TYPE_LEVEL_HIGH>;
@@ -1981,7 +2033,6 @@
 			compatible = "qcom,msm8998-qmp-usb3-phy";
 			reg = <0x0c010000 0x18c>;
 			status = "disabled";
-			#clock-cells = <1>;
 			#address-cells = <1>;
 			#size-cells = <1>;
 			ranges;
@@ -1995,13 +2046,14 @@
 				 <&gcc GCC_USB3PHY_PHY_BCR>;
 			reset-names = "phy", "common";
 
-			usb1_ssphy: lane@c010200 {
+			usb1_ssphy: phy@c010200 {
 				reg = <0xc010200 0x128>,
 				      <0xc010400 0x200>,
 				      <0xc010c00 0x20c>,
 				      <0xc010600 0x128>,
 				      <0xc010800 0x200>;
 				#phy-cells = <0>;
+				#clock-cells = <0>;
 				clocks = <&gcc GCC_USB3_PHY_PIPE_CLK>;
 				clock-names = "pipe0";
 				clock-output-names = "usb3_phy_pipe_clk_src";
@@ -2023,10 +2075,10 @@
 			nvmem-cells = <&qusb2_hstx_trim>;
 		};
 
-		sdhc2: sdhci@c0a4900 {
-			compatible = "qcom,sdhci-msm-v4";
+		sdhc2: mmc@c0a4900 {
+			compatible = "qcom,msm8998-sdhci", "qcom,sdhci-msm-v4";
 			reg = <0x0c0a4900 0x314>, <0x0c0a4000 0x800>;
-			reg-names = "hc_mem", "core_mem";
+			reg-names = "hc", "core";
 
 			interrupts = <GIC_SPI 125 IRQ_TYPE_LEVEL_HIGH>,
 				     <GIC_SPI 221 IRQ_TYPE_LEVEL_HIGH>;
@@ -2187,7 +2239,7 @@
 			#size-cells = <0>;
 		};
 
-		blsp2_dma: dma@c184000 {
+		blsp2_dma: dma-controller@c184000 {
 			compatible = "qcom,bam-v1.7.0";
 			reg = <0x0c184000 0x25000>;
 			interrupts = <GIC_SPI 239 IRQ_TYPE_LEVEL_HIGH>;
@@ -2328,6 +2380,71 @@
 			status = "disabled";
 			#address-cells = <1>;
 			#size-cells = <0>;
+		};
+
+		mmcc: clock-controller@c8c0000 {
+			compatible = "qcom,mmcc-msm8998";
+			#clock-cells = <1>;
+			#reset-cells = <1>;
+			#power-domain-cells = <1>;
+			reg = <0xc8c0000 0x40000>;
+
+			clock-names = "xo",
+				      "gpll0",
+				      "dsi0dsi",
+				      "dsi0byte",
+				      "dsi1dsi",
+				      "dsi1byte",
+				      "hdmipll",
+				      "dplink",
+				      "dpvco",
+				      "core_bi_pll_test_se";
+			clocks = <&rpmcc RPM_SMD_XO_CLK_SRC>,
+				 <&gcc GCC_MMSS_GPLL0_CLK>,
+				 <0>,
+				 <0>,
+				 <0>,
+				 <0>,
+				 <0>,
+				 <0>,
+				 <0>,
+				 <0>;
+		};
+
+		mmss_smmu: iommu@cd00000 {
+			compatible = "qcom,msm8998-smmu-v2", "qcom,smmu-v2";
+			reg = <0x0cd00000 0x40000>;
+			#iommu-cells = <1>;
+
+			clocks = <&mmcc MNOC_AHB_CLK>,
+				 <&mmcc BIMC_SMMU_AHB_CLK>,
+				 <&rpmcc RPM_SMD_MMAXI_CLK>,
+				 <&mmcc BIMC_SMMU_AXI_CLK>;
+			clock-names = "iface-mm", "iface-smmu",
+				      "bus-mm", "bus-smmu";
+
+			#global-interrupts = <0>;
+			interrupts =
+				<GIC_SPI 263 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 266 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 267 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 268 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 244 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 245 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 247 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 248 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 249 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 250 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 251 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 252 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 253 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 254 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 255 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 256 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 260 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 261 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 262 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 272 IRQ_TYPE_LEVEL_HIGH>;
 		};
 
 		remoteproc_adsp: remoteproc@17300000 {

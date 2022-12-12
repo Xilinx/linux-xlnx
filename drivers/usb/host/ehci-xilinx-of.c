@@ -48,9 +48,9 @@ static int ehci_xilinx_port_handed_over(struct usb_hcd *hcd, int portnum)
 		dev_warn(hcd->self.controller,
 			"Maybe your device is not a high speed device?\n");
 		dev_warn(hcd->self.controller,
-			"USB host controller doesn't support FS/LS devices\n");
+			"The USB host controller does not support full speed nor low speed devices\n");
 		dev_warn(hcd->self.controller,
-			"You can reconfigure host controller to support FS\n");
+			"You can reconfigure the host controller to have full speed support\n");
 	}
 
 	return 0;
@@ -113,7 +113,7 @@ static const struct hc_driver ehci_xilinx_of_hc_driver = {
  * as HS only or HS/FS only, it checks the configuration in the device tree
  * entry, and sets an appropriate value for hcd->has_tt.
  *
- * Return: zero on success, 'rv' value on failure
+ * Return: zero on success, negative error code otherwise
  */
 static int ehci_hcd_xilinx_of_probe(struct platform_device *op)
 {

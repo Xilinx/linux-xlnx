@@ -8,7 +8,6 @@
 
 #include <linux/blktrace_api.h>
 #include <linux/hrtimer.h>
-#include <linux/blk-cgroup.h>
 
 #include "blk-cgroup-rwstat.h"
 
@@ -25,7 +24,7 @@
 #define BFQ_DEFAULT_GRP_IOPRIO	0
 #define BFQ_DEFAULT_GRP_CLASS	IOPRIO_CLASS_BE
 
-#define MAX_PID_STR_LENGTH 12
+#define MAX_BFQQ_NAME_LENGTH 16
 
 /*
  * Soft real-time applications are extremely more latency sensitive
@@ -170,6 +169,9 @@ struct bfq_entity {
 	/* budget, used also to calculate F_i: F_i = S_i + @budget / @weight */
 	int budget;
 
+	/* Number of requests allocated in the subtree of this entity */
+	int allocated;
+
 	/* device weight, if non-zero, it overrides the default weight of
 	 * bfq_group_data */
 	int dev_weight;
@@ -266,8 +268,6 @@ struct bfq_queue {
 	struct request *next_rq;
 	/* number of sync and async requests queued */
 	int queued[2];
-	/* number of requests currently allocated */
-	int allocated;
 	/* number of pending metadata requests */
 	int meta_pending;
 	/* fifo list of requests in sort_list */
@@ -369,11 +369,7 @@ struct bfq_queue {
 	unsigned long split_time; /* time of last split */
 
 	unsigned long first_IO_time; /* time of first I/O for this queue */
-
 	unsigned long creation_time; /* when this queue is created */
-
-	/* max service rate measured so far */
-	u32 max_service_rate;
 
 	/*
 	 * Pointer to the waker queue for this queue, i.e., to the
@@ -387,6 +383,8 @@ struct bfq_queue {
 	struct bfq_queue *tentative_waker_bfqq;
 	/* number of times the same tentative waker has been detected */
 	unsigned int num_waker_detections;
+	/* time when we started considering this waker */
+	u64 waker_detection_started;
 
 	/* node for woken_list, see below */
 	struct hlist_node woken_list_node;
@@ -466,6 +464,7 @@ struct bfq_io_cq {
 	struct bfq_queue *stable_merge_bfqq;
 
 	bool stably_merged;	/* non splittable if true */
+	unsigned int requests;	/* Number of requests this process has in flight */
 };
 
 /**
@@ -768,6 +767,7 @@ struct bfq_data {
 	 * function)
 	 */
 	unsigned int word_depths[2][2];
+	unsigned int full_depth_shift;
 };
 
 enum bfqq_state_flags {
@@ -925,6 +925,8 @@ struct bfq_group {
 
 	/* reference counter (see comments in bfq_bic_update_cgroup) */
 	int ref;
+	/* Is bfq_group still online? */
+	bool online;
 
 	struct bfq_entity entity;
 	struct bfq_sched_data sched_data;
@@ -976,6 +978,7 @@ void bfq_weights_tree_remove(struct bfq_data *bfqd,
 void bfq_bfqq_expire(struct bfq_data *bfqd, struct bfq_queue *bfqq,
 		     bool compensate, enum bfqq_expiration reason);
 void bfq_put_queue(struct bfq_queue *bfqq);
+void bfq_put_cooperator(struct bfq_queue *bfqq);
 void bfq_end_wr_async_queues(struct bfq_data *bfqd, struct bfq_group *bfqg);
 void bfq_release_process_ref(struct bfq_data *bfqd, struct bfq_queue *bfqq);
 void bfq_schedule_dispatch(struct bfq_data *bfqd);
@@ -986,25 +989,27 @@ void bfq_put_async_queues(struct bfq_data *bfqd, struct bfq_group *bfqg);
 /* ---------------- cgroups-support interface ---------------- */
 
 void bfqg_stats_update_legacy_io(struct request_queue *q, struct request *rq);
-void bfqg_stats_update_io_add(struct bfq_group *bfqg, struct bfq_queue *bfqq,
-			      unsigned int op);
-void bfqg_stats_update_io_remove(struct bfq_group *bfqg, unsigned int op);
-void bfqg_stats_update_io_merged(struct bfq_group *bfqg, unsigned int op);
+void bfqg_stats_update_io_remove(struct bfq_group *bfqg, blk_opf_t opf);
+void bfqg_stats_update_io_merged(struct bfq_group *bfqg, blk_opf_t opf);
 void bfqg_stats_update_completion(struct bfq_group *bfqg, u64 start_time_ns,
-				  u64 io_start_time_ns, unsigned int op);
+				  u64 io_start_time_ns, blk_opf_t opf);
 void bfqg_stats_update_dequeue(struct bfq_group *bfqg);
-void bfqg_stats_set_start_empty_time(struct bfq_group *bfqg);
-void bfqg_stats_update_idle_time(struct bfq_group *bfqg);
 void bfqg_stats_set_start_idle_time(struct bfq_group *bfqg);
-void bfqg_stats_update_avg_queue_size(struct bfq_group *bfqg);
 void bfq_bfqq_move(struct bfq_data *bfqd, struct bfq_queue *bfqq,
 		   struct bfq_group *bfqg);
+
+#ifdef CONFIG_BFQ_CGROUP_DEBUG
+void bfqg_stats_update_io_add(struct bfq_group *bfqg, struct bfq_queue *bfqq,
+			      blk_opf_t opf);
+void bfqg_stats_set_start_empty_time(struct bfq_group *bfqg);
+void bfqg_stats_update_idle_time(struct bfq_group *bfqg);
+void bfqg_stats_update_avg_queue_size(struct bfq_group *bfqg);
+#endif
 
 void bfq_init_entity(struct bfq_entity *entity, struct bfq_group *bfqg);
 void bfq_bic_update_cgroup(struct bfq_io_cq *bic, struct bio *bio);
 void bfq_end_wr_async(struct bfq_data *bfqd);
-struct bfq_group *bfq_find_set_group(struct bfq_data *bfqd,
-				     struct blkcg *blkcg);
+struct bfq_group *bfq_bio_bfqg(struct bfq_data *bfqd, struct bio *bio);
 struct blkcg_gq *bfqg_to_blkg(struct bfq_group *bfqg);
 struct bfq_group *bfqq_group(struct bfq_queue *bfqq);
 struct bfq_group *bfq_create_group_hierarchy(struct bfq_data *bfqd, int node);
@@ -1047,7 +1052,6 @@ extern struct blkcg_policy blkcg_policy_bfq;
 	for (parent = NULL; entity ; entity = parent)
 #endif /* CONFIG_BFQ_GROUP_IOSCHED */
 
-struct bfq_group *bfq_bfqq_to_bfqg(struct bfq_queue *bfqq);
 struct bfq_queue *bfq_entity_to_bfqq(struct bfq_entity *entity);
 unsigned int bfq_tot_busy_queues(struct bfq_data *bfqd);
 struct bfq_service_tree *bfq_entity_service_tree(struct bfq_entity *entity);
@@ -1072,50 +1076,48 @@ void bfq_deactivate_bfqq(struct bfq_data *bfqd, struct bfq_queue *bfqq,
 void bfq_activate_bfqq(struct bfq_data *bfqd, struct bfq_queue *bfqq);
 void bfq_requeue_bfqq(struct bfq_data *bfqd, struct bfq_queue *bfqq,
 		      bool expiration);
-void bfq_del_bfqq_busy(struct bfq_data *bfqd, struct bfq_queue *bfqq,
-		       bool expiration);
-void bfq_add_bfqq_busy(struct bfq_data *bfqd, struct bfq_queue *bfqq);
+void bfq_del_bfqq_busy(struct bfq_queue *bfqq, bool expiration);
+void bfq_add_bfqq_busy(struct bfq_queue *bfqq);
 
 /* --------------- end of interface of B-WF2Q+ ---------------- */
 
 /* Logging facilities. */
-static inline void bfq_pid_to_str(int pid, char *str, int len)
+static inline void bfq_bfqq_name(struct bfq_queue *bfqq, char *str, int len)
 {
-	if (pid != -1)
-		snprintf(str, len, "%d", pid);
+	char type = bfq_bfqq_sync(bfqq) ? 'S' : 'A';
+
+	if (bfqq->pid != -1)
+		snprintf(str, len, "bfq%d%c", bfqq->pid, type);
 	else
-		snprintf(str, len, "SHARED-");
+		snprintf(str, len, "bfqSHARED-%c", type);
 }
 
 #ifdef CONFIG_BFQ_GROUP_IOSCHED
 struct bfq_group *bfqq_group(struct bfq_queue *bfqq);
 
 #define bfq_log_bfqq(bfqd, bfqq, fmt, args...)	do {			\
-	char pid_str[MAX_PID_STR_LENGTH];	\
+	char pid_str[MAX_BFQQ_NAME_LENGTH];				\
 	if (likely(!blk_trace_note_message_enabled((bfqd)->queue)))	\
 		break;							\
-	bfq_pid_to_str((bfqq)->pid, pid_str, MAX_PID_STR_LENGTH);	\
+	bfq_bfqq_name((bfqq), pid_str, MAX_BFQQ_NAME_LENGTH);		\
 	blk_add_cgroup_trace_msg((bfqd)->queue,				\
-			bfqg_to_blkg(bfqq_group(bfqq))->blkcg,		\
-			"bfq%s%c " fmt, pid_str,			\
-			bfq_bfqq_sync((bfqq)) ? 'S' : 'A', ##args);	\
+			&bfqg_to_blkg(bfqq_group(bfqq))->blkcg->css,	\
+			"%s " fmt, pid_str, ##args);			\
 } while (0)
 
 #define bfq_log_bfqg(bfqd, bfqg, fmt, args...)	do {			\
 	blk_add_cgroup_trace_msg((bfqd)->queue,				\
-		bfqg_to_blkg(bfqg)->blkcg, fmt, ##args);		\
+		&bfqg_to_blkg(bfqg)->blkcg->css, fmt, ##args);		\
 } while (0)
 
 #else /* CONFIG_BFQ_GROUP_IOSCHED */
 
 #define bfq_log_bfqq(bfqd, bfqq, fmt, args...) do {	\
-	char pid_str[MAX_PID_STR_LENGTH];	\
+	char pid_str[MAX_BFQQ_NAME_LENGTH];				\
 	if (likely(!blk_trace_note_message_enabled((bfqd)->queue)))	\
 		break;							\
-	bfq_pid_to_str((bfqq)->pid, pid_str, MAX_PID_STR_LENGTH);	\
-	blk_add_trace_msg((bfqd)->queue, "bfq%s%c " fmt, pid_str,	\
-			bfq_bfqq_sync((bfqq)) ? 'S' : 'A',		\
-				##args);	\
+	bfq_bfqq_name((bfqq), pid_str, MAX_BFQQ_NAME_LENGTH);		\
+	blk_add_trace_msg((bfqd)->queue, "%s " fmt, pid_str, ##args);	\
 } while (0)
 #define bfq_log_bfqg(bfqd, bfqg, fmt, args...)		do {} while (0)
 

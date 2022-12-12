@@ -40,7 +40,7 @@ struct resync_info {
 
 /* Lock the send communication. This is done through
  * bit manipulation as opposed to a mutex in order to
- * accomodate lock and hold. See next comment.
+ * accommodate lock and hold. See next comment.
  */
 #define		MD_CLUSTER_SEND_LOCK			4
 /* If cluster operations (such as adding a disk) must lock the
@@ -201,7 +201,7 @@ static struct dlm_lock_resource *lockres_init(struct mddev *mddev,
 		pr_err("md-cluster: Unable to allocate resource name for resource %s\n", name);
 		goto out_err;
 	}
-	strlcpy(res->name, name, namelen + 1);
+	strscpy(res->name, name, namelen + 1);
 	if (with_lvb) {
 		res->lksb.sb_lvbptr = kzalloc(LVB_SIZE, GFP_KERNEL);
 		if (!res->lksb.sb_lvbptr) {
@@ -574,7 +574,7 @@ static int process_recvd_msg(struct mddev *mddev, struct cluster_msg *msg)
 	int ret = 0;
 
 	if (WARN(mddev->cluster_info->slot_number - 1 == le32_to_cpu(msg->slot),
-		"node %d received it's own msg\n", le32_to_cpu(msg->slot)))
+		"node %d received its own msg\n", le32_to_cpu(msg->slot)))
 		return -1;
 	switch (le32_to_cpu(msg->type)) {
 	case METADATA_UPDATED:
@@ -689,7 +689,7 @@ static int lock_comm(struct md_cluster_info *cinfo, bool mddev_locked)
 	/*
 	 * If resync thread run after raid1d thread, then process_metadata_update
 	 * could not continue if raid1d held reconfig_mutex (and raid1d is blocked
-	 * since another node already got EX on Token and waitting the EX of Ack),
+	 * since another node already got EX on Token and waiting the EX of Ack),
 	 * so let resync wake up thread in case flag is set.
 	 */
 	if (mddev_locked && !test_bit(MD_CLUSTER_HOLDING_MUTEX_FOR_RECVD,
@@ -876,8 +876,8 @@ static int join(struct mddev *mddev, int nodes)
 	memset(str, 0, 64);
 	sprintf(str, "%pU", mddev->uuid);
 	ret = dlm_new_lockspace(str, mddev->bitmap_info.cluster_name,
-				DLM_LSFL_FS, LVB_SIZE,
-				&md_ls_ops, mddev, &ops_rv, &cinfo->lockspace);
+				0, LVB_SIZE, &md_ls_ops, mddev,
+				&ops_rv, &cinfo->lockspace);
 	if (ret)
 		goto err;
 	wait_for_completion(&cinfo->completion);

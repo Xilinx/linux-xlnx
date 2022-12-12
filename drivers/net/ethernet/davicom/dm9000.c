@@ -28,8 +28,7 @@
 #include <linux/irq.h>
 #include <linux/slab.h>
 #include <linux/regulator/consumer.h>
-#include <linux/gpio.h>
-#include <linux/of_gpio.h>
+#include <linux/gpio/consumer.h>
 
 #include <asm/delay.h>
 #include <asm/irq.h>
@@ -540,8 +539,8 @@ static void dm9000_get_drvinfo(struct net_device *dev,
 {
 	struct board_info *dm = to_dm9000_board(dev);
 
-	strlcpy(info->driver, CARDNAME, sizeof(info->driver));
-	strlcpy(info->bus_info, to_platform_device(dm->dev)->name,
+	strscpy(info->driver, CARDNAME, sizeof(info->driver));
+	strscpy(info->bus_info, to_platform_device(dm->dev)->name,
 		sizeof(info->bus_info));
 }
 
@@ -1012,7 +1011,7 @@ static void dm9000_send_packet(struct net_device *dev,
  *  Hardware start transmission.
  *  Send a packet to media from the upper layer.
  */
-static int
+static netdev_tx_t
 dm9000_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	unsigned long flags;
@@ -1421,10 +1420,10 @@ dm9000_probe(struct platform_device *pdev)
 	int iosize;
 	int i;
 	u32 id_val;
-	int reset_gpios;
-	enum of_gpio_flags flags;
+	struct gpio_desc *reset_gpio;
 	struct regulator *power;
 	bool inv_mac_addr = false;
+	u8 addr[ETH_ALEN];
 
 	power = devm_regulator_get(dev, "vcc");
 	if (IS_ERR(power)) {
@@ -1441,20 +1440,24 @@ dm9000_probe(struct platform_device *pdev)
 		dev_dbg(dev, "regulator enabled\n");
 	}
 
-	reset_gpios = of_get_named_gpio_flags(dev->of_node, "reset-gpios", 0,
-					      &flags);
-	if (gpio_is_valid(reset_gpios)) {
-		ret = devm_gpio_request_one(dev, reset_gpios, flags,
-					    "dm9000_reset");
+	reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_HIGH);
+	ret = PTR_ERR_OR_ZERO(reset_gpio);
+	if (ret) {
+		dev_err(dev, "failed to request reset gpio: %d\n", ret);
+		goto out_regulator_disable;
+	}
+
+	if (reset_gpio) {
+		ret = gpiod_set_consumer_name(reset_gpio, "dm9000_reset");
 		if (ret) {
-			dev_err(dev, "failed to request reset gpio %d: %d\n",
-				reset_gpios, ret);
+			dev_err(dev, "failed to set reset gpio name: %d\n",
+				ret);
 			goto out_regulator_disable;
 		}
 
 		/* According to manual PWRST# Low Period Min 1ms */
 		msleep(2);
-		gpio_set_value(reset_gpios, 1);
+		gpiod_set_value_cansleep(reset_gpio, 0);
 		/* Needs 3ms to read eeprom when PWRST is deasserted */
 		msleep(4);
 	}
@@ -1666,11 +1669,12 @@ dm9000_probe(struct platform_device *pdev)
 
 	/* try reading the node address from the attached EEPROM */
 	for (i = 0; i < 6; i += 2)
-		dm9000_read_eeprom(db, i / 2, ndev->dev_addr+i);
+		dm9000_read_eeprom(db, i / 2, addr + i);
+	eth_hw_addr_set(ndev, addr);
 
 	if (!is_valid_ether_addr(ndev->dev_addr) && pdata != NULL) {
 		mac_src = "platform data";
-		memcpy(ndev->dev_addr, pdata->dev_addr, ETH_ALEN);
+		eth_hw_addr_set(ndev, pdata->dev_addr);
 	}
 
 	if (!is_valid_ether_addr(ndev->dev_addr)) {
@@ -1678,7 +1682,8 @@ dm9000_probe(struct platform_device *pdev)
 
 		mac_src = "chip";
 		for (i = 0; i < 6; i++)
-			ndev->dev_addr[i] = ior(db, i+DM9000_PAR);
+			addr[i] = ior(db, i + DM9000_PAR);
+		eth_hw_addr_set(ndev, pdata->dev_addr);
 	}
 
 	if (!is_valid_ether_addr(ndev->dev_addr)) {

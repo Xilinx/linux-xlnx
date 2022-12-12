@@ -6,6 +6,7 @@
  *
  */
 
+#include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/io.h>
@@ -36,23 +37,23 @@
 #define RTC_OSC_EN		BIT(24)
 #define RTC_BATT_EN		BIT(31)
 
-#define RTC_CALIB_DEF		0x198233
+#define RTC_CALIB_DEF		0x7FFF
 #define RTC_CALIB_MASK		0x1FFFFF
 #define RTC_ALRM_MASK          BIT(1)
 #define RTC_MSEC               1000
 #define RTC_FR_MASK		0xF0000
-#define RTC_SEC_MAX_VAL		0xFFFFFFFF
 #define RTC_FR_MAX_TICKS	16
-#define RTC_OFFSET_MAX		150000
-#define RTC_OFFSET_MIN		-150000
 #define RTC_PPB			1000000000LL
+#define RTC_MIN_OFFSET		-32768000
+#define RTC_MAX_OFFSET		32767000
 
 struct xlnx_rtc_dev {
 	struct rtc_device	*rtc;
 	void __iomem		*reg_base;
 	int			alarm_irq;
 	int			sec_irq;
-	unsigned int		calibval;
+	struct clk		*rtc_clk;
+	unsigned int		freq;
 };
 
 static int xlnx_rtc_set_time(struct device *dev, struct rtc_time *tm)
@@ -66,13 +67,6 @@ static int xlnx_rtc_set_time(struct device *dev, struct rtc_time *tm)
 	 * to get the correct time on read.
 	 */
 	new_time = rtc_tm_to_time64(tm) + 1;
-
-	/*
-	 * Writing into calibration register will clear the Tick Counter and
-	 * force the next second to be signaled exactly in 1 second period
-	 */
-	xrtcdev->calibval &= RTC_CALIB_MASK;
-	writel(xrtcdev->calibval, (xrtcdev->reg_base + RTC_CALIB_WR));
 
 	writel(new_time, xrtcdev->reg_base + RTC_SET_TM_WR);
 
@@ -179,35 +173,25 @@ static void xlnx_init_rtc(struct xlnx_rtc_dev *xrtcdev)
 	rtc_ctrl = readl(xrtcdev->reg_base + RTC_CTRL);
 	rtc_ctrl |= RTC_BATT_EN;
 	writel(rtc_ctrl, xrtcdev->reg_base + RTC_CTRL);
-
-	/*
-	 * Based on crystal freq of 33.330 KHz
-	 * set the seconds counter and enable, set fractions counter
-	 * to default value suggested as per design spec
-	 * to correct RTC delay in frequency over period of time.
-	 */
-	xrtcdev->calibval &= RTC_CALIB_MASK;
-	writel(xrtcdev->calibval, (xrtcdev->reg_base + RTC_CALIB_WR));
 }
 
 static int xlnx_rtc_read_offset(struct device *dev, long *offset)
 {
 	struct xlnx_rtc_dev *xrtcdev = dev_get_drvdata(dev);
 	unsigned long long rtc_ppb = RTC_PPB;
+	unsigned int tick_mult = do_div(rtc_ppb, xrtcdev->freq);
+	unsigned int calibval;
 	long offset_val;
-	unsigned int reg;
-	unsigned int tick_mult = do_div(rtc_ppb, xrtcdev->calibval);
 
-	reg = readl(xrtcdev->reg_base + RTC_CALIB_RD);
-
+	calibval = readl(xrtcdev->reg_base + RTC_CALIB_RD);
 	/* Offset with seconds ticks */
-	offset_val = reg & RTC_TICK_MASK;
-	offset_val = offset_val - xrtcdev->calibval;
+	offset_val = calibval & RTC_TICK_MASK;
+	offset_val = offset_val - RTC_CALIB_DEF;
 	offset_val = offset_val * tick_mult;
 
 	/* Offset with fractional ticks */
-	if (reg & RTC_FR_EN)
-		offset_val += ((reg & RTC_FR_MASK) >> RTC_FR_DATSHIFT)
+	if (calibval & RTC_FR_EN)
+		offset_val += ((calibval & RTC_FR_MASK) >> RTC_FR_DATSHIFT)
 			* (tick_mult / RTC_FR_MAX_TICKS);
 	*offset = offset_val;
 
@@ -218,14 +202,13 @@ static int xlnx_rtc_set_offset(struct device *dev, long offset)
 {
 	struct xlnx_rtc_dev *xrtcdev = dev_get_drvdata(dev);
 	unsigned long long rtc_ppb = RTC_PPB;
-	short int  max_tick;
+	unsigned int tick_mult = do_div(rtc_ppb, xrtcdev->freq);
 	unsigned char fract_tick = 0;
 	unsigned int calibval;
+	short int  max_tick;
 	int fract_offset;
-	unsigned int tick_mult = do_div(rtc_ppb, xrtcdev->calibval);
 
-	/* Make sure offset value is within supported range */
-	if (offset < RTC_OFFSET_MIN || offset > RTC_OFFSET_MAX)
+	if (offset < RTC_MIN_OFFSET || offset > RTC_MAX_OFFSET)
 		return -ERANGE;
 
 	/* Number ticks for given offset */
@@ -250,7 +233,7 @@ static int xlnx_rtc_set_offset(struct device *dev, long offset)
 	/* Zynqmp RTC uses second and fractional tick
 	 * counters for compensation
 	 */
-	calibval = max_tick + xrtcdev->calibval;
+	calibval = max_tick + RTC_CALIB_DEF;
 
 	if (fract_tick)
 		calibval |= RTC_FR_EN;
@@ -335,10 +318,22 @@ static int xlnx_rtc_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	ret = of_property_read_u32(pdev->dev.of_node, "calibration",
-				   &xrtcdev->calibval);
-	if (ret)
-		xrtcdev->calibval = RTC_CALIB_DEF;
+	/* Getting the rtc_clk info */
+	xrtcdev->rtc_clk = devm_clk_get_optional(&pdev->dev, "rtc_clk");
+	if (IS_ERR(xrtcdev->rtc_clk)) {
+		if (PTR_ERR(xrtcdev->rtc_clk) != -EPROBE_DEFER)
+			dev_warn(&pdev->dev, "Device clock not found.\n");
+	}
+	xrtcdev->freq = clk_get_rate(xrtcdev->rtc_clk);
+	if (!xrtcdev->freq) {
+		ret = of_property_read_u32(pdev->dev.of_node, "calibration",
+					   &xrtcdev->freq);
+		if (ret)
+			xrtcdev->freq = RTC_CALIB_DEF;
+	}
+	ret = readl(xrtcdev->reg_base + RTC_CALIB_RD);
+	if (!ret)
+		writel(xrtcdev->freq, (xrtcdev->reg_base + RTC_CALIB_WR));
 
 	xlnx_init_rtc(xrtcdev);
 

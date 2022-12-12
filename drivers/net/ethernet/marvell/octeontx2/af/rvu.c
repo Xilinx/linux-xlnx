@@ -16,13 +16,13 @@
 #include "rvu.h"
 #include "rvu_reg.h"
 #include "ptp.h"
+#include "mcs.h"
 
 #include "rvu_trace.h"
+#include "rvu_npc_hash.h"
 
 #define DRV_NAME	"rvu_af"
 #define DRV_STRING      "Marvell OcteonTX2 RVU Admin Function Driver"
-
-static int rvu_get_hwvf(struct rvu *rvu, int pcifunc);
 
 static void rvu_set_msix_offset(struct rvu *rvu, struct rvu_pfvf *pfvf,
 				struct rvu_block *block, int lf);
@@ -68,6 +68,8 @@ static void rvu_setup_hw_capabilities(struct rvu *rvu)
 	hw->cap.nix_tx_link_bp = true;
 	hw->cap.nix_rx_multicast = true;
 	hw->cap.nix_shaper_toggle_wait = false;
+	hw->cap.npc_hash_extract = false;
+	hw->cap.npc_exact_match_enabled = false;
 	hw->rvu = rvu;
 
 	if (is_rvu_pre_96xx_C0(rvu)) {
@@ -85,6 +87,9 @@ static void rvu_setup_hw_capabilities(struct rvu *rvu)
 
 	if (!is_rvu_otx2(rvu))
 		hw->cap.per_pf_mbox_regs = true;
+
+	if (is_rvu_npc_hash_extract_en(rvu))
+		hw->cap.npc_hash_extract = true;
 }
 
 /* Poll a RVU block's register 'offset', for a 'zero'
@@ -412,7 +417,7 @@ void rvu_get_pf_numvfs(struct rvu *rvu, int pf, int *numvfs, int *hwvf)
 		*hwvf = cfg & 0xFFF;
 }
 
-static int rvu_get_hwvf(struct rvu *rvu, int pcifunc)
+int rvu_get_hwvf(struct rvu *rvu, int pcifunc)
 {
 	int pf, func;
 	u64 cfg;
@@ -520,8 +525,11 @@ static void rvu_block_reset(struct rvu *rvu, int blkaddr, u64 rst_reg)
 
 	rvu_write64(rvu, blkaddr, rst_reg, BIT_ULL(0));
 	err = rvu_poll_reg(rvu, blkaddr, rst_reg, BIT_ULL(63), true);
-	if (err)
-		dev_err(rvu->dev, "HW block:%d reset failed\n", blkaddr);
+	if (err) {
+		dev_err(rvu->dev, "HW block:%d reset timeout retrying again\n", blkaddr);
+		while (rvu_poll_reg(rvu, blkaddr, rst_reg, BIT_ULL(63), true) == -EBUSY)
+			;
+	}
 }
 
 static void rvu_reset_all_blocks(struct rvu *rvu)
@@ -854,6 +862,7 @@ static int rvu_setup_nix_hw_resource(struct rvu *rvu, int blkaddr)
 	block->lfcfg_reg = NIX_PRIV_LFX_CFG;
 	block->msixcfg_reg = NIX_PRIV_LFX_INT_CFG;
 	block->lfreset_reg = NIX_AF_LF_RST;
+	block->rvu = rvu;
 	sprintf(block->name, "NIX%d", blkid);
 	rvu->nix_blkaddr[blkid] = blkaddr;
 	return rvu_alloc_bitmap(&block->lf);
@@ -883,6 +892,7 @@ static int rvu_setup_cpt_hw_resource(struct rvu *rvu, int blkaddr)
 	block->lfcfg_reg = CPT_PRIV_LFX_CFG;
 	block->msixcfg_reg = CPT_PRIV_LFX_INT_CFG;
 	block->lfreset_reg = CPT_AF_LF_RST;
+	block->rvu = rvu;
 	sprintf(block->name, "CPT%d", blkid);
 	return rvu_alloc_bitmap(&block->lf);
 }
@@ -940,6 +950,7 @@ static int rvu_setup_hw_resources(struct rvu *rvu)
 	block->lfcfg_reg = NPA_PRIV_LFX_CFG;
 	block->msixcfg_reg = NPA_PRIV_LFX_INT_CFG;
 	block->lfreset_reg = NPA_AF_LF_RST;
+	block->rvu = rvu;
 	sprintf(block->name, "NPA");
 	err = rvu_alloc_bitmap(&block->lf);
 	if (err) {
@@ -979,6 +990,7 @@ nix:
 	block->lfcfg_reg = SSO_PRIV_LFX_HWGRP_CFG;
 	block->msixcfg_reg = SSO_PRIV_LFX_HWGRP_INT_CFG;
 	block->lfreset_reg = SSO_AF_LF_HWGRP_RST;
+	block->rvu = rvu;
 	sprintf(block->name, "SSO GROUP");
 	err = rvu_alloc_bitmap(&block->lf);
 	if (err) {
@@ -1003,6 +1015,7 @@ ssow:
 	block->lfcfg_reg = SSOW_PRIV_LFX_HWS_CFG;
 	block->msixcfg_reg = SSOW_PRIV_LFX_HWS_INT_CFG;
 	block->lfreset_reg = SSOW_AF_LF_HWS_RST;
+	block->rvu = rvu;
 	sprintf(block->name, "SSOWS");
 	err = rvu_alloc_bitmap(&block->lf);
 	if (err) {
@@ -1028,6 +1041,7 @@ tim:
 	block->lfcfg_reg = TIM_PRIV_LFX_CFG;
 	block->msixcfg_reg = TIM_PRIV_LFX_INT_CFG;
 	block->lfreset_reg = TIM_AF_LF_RST;
+	block->rvu = rvu;
 	sprintf(block->name, "TIM");
 	err = rvu_alloc_bitmap(&block->lf);
 	if (err) {
@@ -1113,6 +1127,12 @@ cpt:
 		goto cgx_err;
 	}
 
+	err = rvu_npc_exact_init(rvu);
+	if (err) {
+		dev_err(rvu->dev, "failed to initialize exact match table\n");
+		return err;
+	}
+
 	/* Assign MACs for CGX mapped functions */
 	rvu_setup_pfvf_macaddress(rvu);
 
@@ -1137,6 +1157,12 @@ cpt:
 	}
 
 	rvu_program_channels(rvu);
+
+	err = rvu_mcs_init(rvu);
+	if (err) {
+		dev_err(rvu->dev, "%s: Failed to initialize mcs\n", __func__);
+		goto nix_err;
+	}
 
 	return 0;
 
@@ -1285,6 +1311,60 @@ static int rvu_lookup_rsrc(struct rvu *rvu, struct rvu_block *block,
 		return -1;
 
 	return (val & 0xFFF);
+}
+
+int rvu_get_blkaddr_from_slot(struct rvu *rvu, int blktype, u16 pcifunc,
+			      u16 global_slot, u16 *slot_in_block)
+{
+	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
+	int numlfs, total_lfs = 0, nr_blocks = 0;
+	int i, num_blkaddr[BLK_COUNT] = { 0 };
+	struct rvu_block *block;
+	int blkaddr;
+	u16 start_slot;
+
+	if (!is_blktype_attached(pfvf, blktype))
+		return -ENODEV;
+
+	/* Get all the block addresses from which LFs are attached to
+	 * the given pcifunc in num_blkaddr[].
+	 */
+	for (blkaddr = BLKADDR_RVUM; blkaddr < BLK_COUNT; blkaddr++) {
+		block = &rvu->hw->block[blkaddr];
+		if (block->type != blktype)
+			continue;
+		if (!is_block_implemented(rvu->hw, blkaddr))
+			continue;
+
+		numlfs = rvu_get_rsrc_mapcount(pfvf, blkaddr);
+		if (numlfs) {
+			total_lfs += numlfs;
+			num_blkaddr[nr_blocks] = blkaddr;
+			nr_blocks++;
+		}
+	}
+
+	if (global_slot >= total_lfs)
+		return -ENODEV;
+
+	/* Based on the given global slot number retrieve the
+	 * correct block address out of all attached block
+	 * addresses and slot number in that block.
+	 */
+	total_lfs = 0;
+	blkaddr = -ENODEV;
+	for (i = 0; i < nr_blocks; i++) {
+		numlfs = rvu_get_rsrc_mapcount(pfvf, num_blkaddr[i]);
+		total_lfs += numlfs;
+		if (global_slot < total_lfs) {
+			blkaddr = num_blkaddr[i];
+			start_slot = total_lfs - numlfs;
+			*slot_in_block = global_slot - start_slot;
+			break;
+		}
+	}
+
+	return blkaddr;
 }
 
 static void rvu_detach_block(struct rvu *rvu, int pcifunc, int blktype)
@@ -1928,6 +2008,7 @@ int rvu_mbox_handler_get_hw_cap(struct rvu *rvu, struct msg_req *req,
 
 	rsp->nix_fixed_txschq_mapping = hw->cap.nix_fixed_txschq_mapping;
 	rsp->nix_shaping = hw->cap.nix_shaping;
+	rsp->npc_hash_extract = hw->cap.npc_hash_extract;
 
 	return 0;
 }
@@ -2281,7 +2362,7 @@ static int rvu_mbox_init(struct rvu *rvu, struct mbox_wq_info *mw,
 			goto free_regions;
 		break;
 	default:
-		return err;
+		goto free_regions;
 	}
 
 	mw->mbox_wq = alloc_workqueue(name,
@@ -2345,7 +2426,6 @@ static void rvu_mbox_destroy(struct mbox_wq_info *mw)
 	int devid;
 
 	if (mw->mbox_wq) {
-		flush_workqueue(mw->mbox_wq);
 		destroy_workqueue(mw->mbox_wq);
 		mw->mbox_wq = NULL;
 	}
@@ -2473,7 +2553,8 @@ static void rvu_blklf_teardown(struct rvu *rvu, u16 pcifunc, u8 blkaddr)
 			rvu_npa_lf_teardown(rvu, pcifunc, lf);
 		else if ((block->addr == BLKADDR_CPT0) ||
 			 (block->addr == BLKADDR_CPT1))
-			rvu_cpt_lf_teardown(rvu, pcifunc, lf, slot);
+			rvu_cpt_lf_teardown(rvu, pcifunc, block->addr, lf,
+					    slot);
 
 		err = rvu_lf_reset(rvu, block, lf);
 		if (err) {
@@ -2485,6 +2566,9 @@ static void rvu_blklf_teardown(struct rvu *rvu, u16 pcifunc, u8 blkaddr)
 
 static void __rvu_flr_handler(struct rvu *rvu, u16 pcifunc)
 {
+	if (rvu_npc_exact_has_match_table(rvu))
+		rvu_npc_exact_reset(rvu, pcifunc);
+
 	mutex_lock(&rvu->flr_lock);
 	/* Reset order should reflect inter-block dependencies:
 	 * 1. Reset any packet/work sources (NIX, CPT, TIM)
@@ -2501,6 +2585,12 @@ static void __rvu_flr_handler(struct rvu *rvu, u16 pcifunc)
 	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_NPA);
 	rvu_reset_lmt_map_tbl(rvu, pcifunc);
 	rvu_detach_rsrcs(rvu, NULL, pcifunc);
+	/* In scenarios where PF/VF drivers detach NIXLF without freeing MCAM
+	 * entries, check and free the MCAM entries explicitly to avoid leak.
+	 * Since LF is detached use LF number as -1.
+	 */
+	rvu_npc_free_mcam_entries(rvu, pcifunc, -1);
+
 	mutex_unlock(&rvu->flr_lock);
 }
 
@@ -2670,6 +2760,8 @@ static irqreturn_t rvu_me_pf_intr_handler(int irq, void *rvu_irq)
 static void rvu_unregister_interrupts(struct rvu *rvu)
 {
 	int irq;
+
+	rvu_cpt_unregister_interrupts(rvu);
 
 	/* Disable the Mbox interrupt */
 	rvu_write64(rvu, BLKADDR_RVUM, RVU_AF_PFAF_MBOX_INT_ENA_W1C,
@@ -2880,6 +2972,11 @@ static int rvu_register_interrupts(struct rvu *rvu)
 		goto fail;
 	}
 	rvu->irq_allocated[offset] = true;
+
+	ret = rvu_cpt_register_interrupts(rvu);
+	if (ret)
+		goto fail;
+
 	return 0;
 
 fail:
@@ -2890,7 +2987,6 @@ fail:
 static void rvu_flr_wq_destroy(struct rvu *rvu)
 {
 	if (rvu->flr_wq) {
-		flush_workqueue(rvu->flr_wq);
 		destroy_workqueue(rvu->flr_wq);
 		rvu->flr_wq = NULL;
 	}
@@ -3186,6 +3282,10 @@ static int rvu_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	mutex_init(&rvu->rswitch.switch_lock);
 
+	if (rvu->fwdata)
+		ptp_start(rvu->ptp, rvu->fwdata->sclk, rvu->fwdata->ptp_ext_clk_rate,
+			  rvu->fwdata->ptp_ext_tstamp);
+
 	return 0;
 err_dl:
 	rvu_unregister_dl(rvu);
@@ -3198,6 +3298,7 @@ err_mbox:
 err_hwsetup:
 	rvu_cgx_exit(rvu);
 	rvu_fwdata_exit(rvu);
+	rvu_mcs_exit(rvu);
 	rvu_reset_all_blocks(rvu);
 	rvu_free_hw_resources(rvu);
 	rvu_clear_rvum_blk_revid(rvu);
@@ -3224,6 +3325,7 @@ static void rvu_remove(struct pci_dev *pdev)
 	rvu_flr_wq_destroy(rvu);
 	rvu_cgx_exit(rvu);
 	rvu_fwdata_exit(rvu);
+	rvu_mcs_exit(rvu);
 	rvu_mbox_destroy(&rvu->afpf_wq_info);
 	rvu_disable_sriov(rvu);
 	rvu_reset_all_blocks(rvu);
@@ -3259,12 +3361,18 @@ static int __init rvu_init_module(void)
 	if (err < 0)
 		goto ptp_err;
 
+	err = pci_register_driver(&mcs_driver);
+	if (err < 0)
+		goto mcs_err;
+
 	err =  pci_register_driver(&rvu_driver);
 	if (err < 0)
 		goto rvu_err;
 
 	return 0;
 rvu_err:
+	pci_unregister_driver(&mcs_driver);
+mcs_err:
 	pci_unregister_driver(&ptp_driver);
 ptp_err:
 	pci_unregister_driver(&cgx_driver);
@@ -3275,6 +3383,7 @@ ptp_err:
 static void __exit rvu_cleanup_module(void)
 {
 	pci_unregister_driver(&rvu_driver);
+	pci_unregister_driver(&mcs_driver);
 	pci_unregister_driver(&ptp_driver);
 	pci_unregister_driver(&cgx_driver);
 }

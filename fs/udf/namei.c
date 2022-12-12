@@ -30,6 +30,7 @@
 #include <linux/sched.h>
 #include <linux/crc-itu-t.h>
 #include <linux/exportfs.h>
+#include <linux/iversion.h>
 
 static inline int udf_match(int len1, const unsigned char *name1, int len2,
 			    const unsigned char *name2)
@@ -74,11 +75,11 @@ int udf_write_fi(struct inode *inode, struct fileIdentDesc *cfi,
 
 	if (fileident) {
 		if (adinicb || (offset + lfi < 0)) {
-			memcpy(udf_get_fi_ident(sfi), fileident, lfi);
+			memcpy(sfi->impUse + liu, fileident, lfi);
 		} else if (offset >= 0) {
 			memcpy(fibh->ebh->b_data + offset, fileident, lfi);
 		} else {
-			memcpy(udf_get_fi_ident(sfi), fileident, -offset);
+			memcpy(sfi->impUse + liu, fileident, -offset);
 			memcpy(fibh->ebh->b_data, fileident - offset,
 				lfi + offset);
 		}
@@ -87,11 +88,11 @@ int udf_write_fi(struct inode *inode, struct fileIdentDesc *cfi,
 	offset += lfi;
 
 	if (adinicb || (offset + padlen < 0)) {
-		memset(udf_get_fi_ident(sfi) + lfi, 0x00, padlen);
+		memset(sfi->impUse + liu + lfi, 0x00, padlen);
 	} else if (offset >= 0) {
 		memset(fibh->ebh->b_data + offset, 0x00, padlen);
 	} else {
-		memset(udf_get_fi_ident(sfi) + lfi, 0x00, -offset);
+		memset(sfi->impUse + liu + lfi, 0x00, -offset);
 		memset(fibh->ebh->b_data, 0x00, padlen + offset);
 	}
 
@@ -134,6 +135,8 @@ int udf_write_fi(struct inode *inode, struct fileIdentDesc *cfi,
 			mark_buffer_dirty_inode(fibh->ebh, inode);
 		mark_buffer_dirty_inode(fibh->sbh, inode);
 	}
+	inode_inc_iversion(inode);
+
 	return 0;
 }
 
@@ -237,7 +240,7 @@ static struct fileIdentDesc *udf_find_entry(struct inode *dir,
 						      poffset - lfi);
 			else {
 				if (!copy_name) {
-					copy_name = kmalloc(UDF_NAME_LEN,
+					copy_name = kmalloc(UDF_NAME_LEN_CS0,
 							    GFP_NOFS);
 					if (!copy_name) {
 						fi = ERR_PTR(-ENOMEM);
@@ -623,7 +626,7 @@ static int udf_create(struct user_namespace *mnt_userns, struct inode *dir,
 }
 
 static int udf_tmpfile(struct user_namespace *mnt_userns, struct inode *dir,
-		       struct dentry *dentry, umode_t mode)
+		       struct file *file, umode_t mode)
 {
 	struct inode *inode = udf_new_inode(dir, mode);
 
@@ -637,9 +640,9 @@ static int udf_tmpfile(struct user_namespace *mnt_userns, struct inode *dir,
 	inode->i_op = &udf_file_inode_operations;
 	inode->i_fop = &udf_file_operations;
 	mark_inode_dirty(inode);
-	d_tmpfile(dentry, inode);
+	d_tmpfile(file, inode);
 	unlock_new_inode(inode);
-	return 0;
+	return finish_open_simple(file, 0);
 }
 
 static int udf_mknod(struct user_namespace *mnt_userns, struct inode *dir,

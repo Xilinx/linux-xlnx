@@ -233,6 +233,14 @@ still cause this situation.
       - ``p_mpeg2_quantisation``
       - A pointer to a struct :c:type:`v4l2_ctrl_mpeg2_quantisation`. Valid if this control is
         of type ``V4L2_CTRL_TYPE_MPEG2_QUANTISATION``.
+    * - struct :c:type:`v4l2_ctrl_vp9_compressed_hdr` *
+      - ``p_vp9_compressed_hdr_probs``
+      - A pointer to a struct :c:type:`v4l2_ctrl_vp9_compressed_hdr`. Valid if this
+        control is of type ``V4L2_CTRL_TYPE_VP9_COMPRESSED_HDR``.
+    * - struct :c:type:`v4l2_ctrl_vp9_frame` *
+      - ``p_vp9_frame``
+      - A pointer to a struct :c:type:`v4l2_ctrl_vp9_frame`. Valid if this
+        control is of type ``V4L2_CTRL_TYPE_VP9_FRAME``.
     * - struct :c:type:`v4l2_ctrl_hdr10_cll_info` *
       - ``p_hdr10_cll``
       - A pointer to a struct :c:type:`v4l2_ctrl_hdr10_cll_info`. Valid if this control is
@@ -241,6 +249,26 @@ still cause this situation.
       - ``p_hdr10_mastering``
       - A pointer to a struct :c:type:`v4l2_ctrl_hdr10_mastering_display`. Valid if this control is
         of type ``V4L2_CTRL_TYPE_HDR10_MASTERING_DISPLAY``.
+    * - struct :c:type:`v4l2_ctrl_hevc_sps` *
+      - ``p_hevc_sps``
+      - A pointer to a struct :c:type:`v4l2_ctrl_hevc_sps`. Valid if this
+        control is of type ``V4L2_CTRL_TYPE_HEVC_SPS``.
+    * - struct :c:type:`v4l2_ctrl_hevc_pps` *
+      - ``p_hevc_pps``
+      - A pointer to a struct :c:type:`v4l2_ctrl_hevc_pps`. Valid if this
+        control is of type ``V4L2_CTRL_TYPE_HEVC_PPS``.
+    * - struct :c:type:`v4l2_ctrl_hevc_slice_params` *
+      - ``p_hevc_slice_params``
+      - A pointer to a struct :c:type:`v4l2_ctrl_hevc_slice_params`. Valid if this
+        control is of type ``V4L2_CTRL_TYPE_HEVC_SLICE_PARAMS``.
+    * - struct :c:type:`v4l2_ctrl_hevc_scaling_matrix` *
+      - ``p_hevc_scaling_matrix``
+      - A pointer to a struct :c:type:`v4l2_ctrl_hevc_scaling_matrix`. Valid if this
+        control is of type ``V4L2_CTRL_TYPE_HEVC_SCALING_MATRIX``.
+    * - struct :c:type:`v4l2_ctrl_hevc_decode_params` *
+      - ``p_hevc_decode_params``
+      - A pointer to a struct :c:type:`v4l2_ctrl_hevc_decode_params`. Valid if this
+        control is of type ``V4L2_CTRL_TYPE_HEVC_DECODE_PARAMS``.
     * - void *
       - ``ptr``
       - A pointer to a compound type which can be an N-dimensional array
@@ -470,3 +498,6 @@ EACCES
 
     Or the ``which`` field was set to ``V4L2_CTRL_WHICH_REQUEST_VAL`` but the
     device does not support requests.
+
+    Or if there is an attempt to set an inactive control and the driver is
+    not capable of caching the new value until the control is active again.

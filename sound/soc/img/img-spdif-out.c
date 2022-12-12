@@ -316,7 +316,8 @@ static struct snd_soc_dai_driver img_spdif_out_dai = {
 };
 
 static const struct snd_soc_component_driver img_spdif_out_component = {
-	.name = "img-spdif-out"
+	.name = "img-spdif-out",
+	.legacy_dai_naming = 1,
 };
 
 static int img_spdif_out_probe(struct platform_device *pdev)
@@ -342,25 +343,19 @@ static int img_spdif_out_probe(struct platform_device *pdev)
 	spdif->base = base;
 
 	spdif->rst = devm_reset_control_get_exclusive(&pdev->dev, "rst");
-	if (IS_ERR(spdif->rst)) {
-		if (PTR_ERR(spdif->rst) != -EPROBE_DEFER)
-			dev_err(&pdev->dev, "No top level reset found\n");
-		return PTR_ERR(spdif->rst);
-	}
+	if (IS_ERR(spdif->rst))
+		return dev_err_probe(&pdev->dev, PTR_ERR(spdif->rst),
+				     "No top level reset found\n");
 
 	spdif->clk_sys = devm_clk_get(&pdev->dev, "sys");
-	if (IS_ERR(spdif->clk_sys)) {
-		if (PTR_ERR(spdif->clk_sys) != -EPROBE_DEFER)
-			dev_err(dev, "Failed to acquire clock 'sys'\n");
-		return PTR_ERR(spdif->clk_sys);
-	}
+	if (IS_ERR(spdif->clk_sys))
+		return dev_err_probe(dev, PTR_ERR(spdif->clk_sys),
+				     "Failed to acquire clock 'sys'\n");
 
 	spdif->clk_ref = devm_clk_get(&pdev->dev, "ref");
-	if (IS_ERR(spdif->clk_ref)) {
-		if (PTR_ERR(spdif->clk_ref) != -EPROBE_DEFER)
-			dev_err(dev, "Failed to acquire clock 'ref'\n");
-		return PTR_ERR(spdif->clk_ref);
-	}
+	if (IS_ERR(spdif->clk_ref))
+		return dev_err_probe(dev, PTR_ERR(spdif->clk_ref),
+				     "Failed to acquire clock 'ref'\n");
 
 	pm_runtime_enable(&pdev->dev);
 	if (!pm_runtime_enabled(&pdev->dev)) {
@@ -368,11 +363,9 @@ static int img_spdif_out_probe(struct platform_device *pdev)
 		if (ret)
 			goto err_pm_disable;
 	}
-	ret = pm_runtime_get_sync(&pdev->dev);
-	if (ret < 0) {
-		pm_runtime_put_noidle(&pdev->dev);
+	ret = pm_runtime_resume_and_get(&pdev->dev);
+	if (ret < 0)
 		goto err_suspend;
-	}
 
 	img_spdif_out_writel(spdif, IMG_SPDIF_OUT_CTL_FS_MASK,
 			     IMG_SPDIF_OUT_CTL);

@@ -52,14 +52,16 @@ struct kthread_create_info
 struct kthread {
 	unsigned long flags;
 	unsigned int cpu;
+	int result;
 	int (*threadfn)(void *);
 	void *data;
-	mm_segment_t oldfs;
 	struct completion parked;
 	struct completion exited;
 #ifdef CONFIG_BLK_CGROUP
 	struct cgroup_subsys_state *blkcg_css;
 #endif
+	/* To store the full name if task comm is truncated. */
+	char *full_name;
 };
 
 enum KTHREAD_BITS {
@@ -71,7 +73,7 @@ enum KTHREAD_BITS {
 static inline struct kthread *to_kthread(struct task_struct *k)
 {
 	WARN_ON(!(k->flags & PF_KTHREAD));
-	return (__force void *)k->set_child_tid;
+	return k->worker_private;
 }
 
 /*
@@ -79,7 +81,7 @@ static inline struct kthread *to_kthread(struct task_struct *k)
  *
  * Per construction; when:
  *
- *   (p->flags & PF_KTHREAD) && p->set_child_tid
+ *   (p->flags & PF_KTHREAD) && p->worker_private
  *
  * the task is both a kthread and struct kthread is persistent. However
  * PF_KTHREAD on it's own is not, kernel_thread() can exec() (See umh.c and
@@ -87,26 +89,41 @@ static inline struct kthread *to_kthread(struct task_struct *k)
  */
 static inline struct kthread *__to_kthread(struct task_struct *p)
 {
-	void *kthread = (__force void *)p->set_child_tid;
+	void *kthread = p->worker_private;
 	if (kthread && !(p->flags & PF_KTHREAD))
 		kthread = NULL;
 	return kthread;
 }
 
-void set_kthread_struct(struct task_struct *p)
+void get_kthread_comm(char *buf, size_t buf_size, struct task_struct *tsk)
+{
+	struct kthread *kthread = to_kthread(tsk);
+
+	if (!kthread || !kthread->full_name) {
+		__get_task_comm(buf, buf_size, tsk);
+		return;
+	}
+
+	strscpy_pad(buf, kthread->full_name, buf_size);
+}
+
+bool set_kthread_struct(struct task_struct *p)
 {
 	struct kthread *kthread;
 
-	if (__to_kthread(p))
-		return;
+	if (WARN_ON_ONCE(to_kthread(p)))
+		return false;
 
 	kthread = kzalloc(sizeof(*kthread), GFP_KERNEL);
-	/*
-	 * We abuse ->set_child_tid to avoid the new member and because it
-	 * can't be wrongly copied by copy_process(). We also rely on fact
-	 * that the caller can't exec, so PF_KTHREAD can't be cleared.
-	 */
-	p->set_child_tid = (__force void __user *)kthread;
+	if (!kthread)
+		return false;
+
+	init_completion(&kthread->exited);
+	init_completion(&kthread->parked);
+	p->vfork_done = &kthread->exited;
+
+	p->worker_private = kthread;
+	return true;
 }
 
 void free_kthread_struct(struct task_struct *k)
@@ -114,13 +131,17 @@ void free_kthread_struct(struct task_struct *k)
 	struct kthread *kthread;
 
 	/*
-	 * Can be NULL if this kthread was created by kernel_thread()
-	 * or if kmalloc() in kthread() failed.
+	 * Can be NULL if kmalloc() in set_kthread_struct() failed.
 	 */
 	kthread = to_kthread(k);
+	if (!kthread)
+		return;
+
 #ifdef CONFIG_BLK_CGROUP
-	WARN_ON_ONCE(kthread && kthread->blkcg_css);
+	WARN_ON_ONCE(kthread->blkcg_css);
 #endif
+	k->worker_private = NULL;
+	kfree(kthread->full_name);
 	kfree(kthread);
 }
 
@@ -268,8 +289,47 @@ void kthread_parkme(void)
 }
 EXPORT_SYMBOL_GPL(kthread_parkme);
 
+/**
+ * kthread_exit - Cause the current kthread return @result to kthread_stop().
+ * @result: The integer value to return to kthread_stop().
+ *
+ * While kthread_exit can be called directly, it exists so that
+ * functions which do some additional work in non-modular code such as
+ * module_put_and_kthread_exit can be implemented.
+ *
+ * Does not return.
+ */
+void __noreturn kthread_exit(long result)
+{
+	struct kthread *kthread = to_kthread(current);
+	kthread->result = result;
+	do_exit(0);
+}
+
+/**
+ * kthread_complete_and_exit - Exit the current kthread.
+ * @comp: Completion to complete
+ * @code: The integer value to return to kthread_stop().
+ *
+ * If present complete @comp and the reuturn code to kthread_stop().
+ *
+ * A kernel thread whose module may be removed after the completion of
+ * @comp can use this function exit safely.
+ *
+ * Does not return.
+ */
+void __noreturn kthread_complete_and_exit(struct completion *comp, long code)
+{
+	if (comp)
+		complete(comp);
+
+	kthread_exit(code);
+}
+EXPORT_SYMBOL(kthread_complete_and_exit);
+
 static int kthread(void *_create)
 {
+	static const struct sched_param param = { .sched_priority = 0 };
 	/* Copy data: it's on kthread's stack */
 	struct kthread_create_info *create = _create;
 	int (*threadfn)(void *data) = create->threadfn;
@@ -278,27 +338,24 @@ static int kthread(void *_create)
 	struct kthread *self;
 	int ret;
 
-	set_kthread_struct(current);
 	self = to_kthread(current);
 
-	/* If user was SIGKILLed, I release the structure. */
+	/* Release the structure when caller killed by a fatal signal. */
 	done = xchg(&create->done, NULL);
 	if (!done) {
 		kfree(create);
-		do_exit(-EINTR);
-	}
-
-	if (!self) {
-		create->result = ERR_PTR(-ENOMEM);
-		complete(done);
-		do_exit(-ENOMEM);
+		kthread_exit(-EINTR);
 	}
 
 	self->threadfn = threadfn;
 	self->data = data;
-	init_completion(&self->exited);
-	init_completion(&self->parked);
-	current->vfork_done = &self->exited;
+
+	/*
+	 * The new thread inherited kthreadd's priority and CPU mask. Reset
+	 * back to default in case they have been changed.
+	 */
+	sched_setscheduler_nocheck(current, SCHED_NORMAL, &param);
+	set_cpus_allowed_ptr(current, housekeeping_cpumask(HK_TYPE_KTHREAD));
 
 	/* OK, tell user we're spawned, wait for stop or wakeup */
 	__set_current_state(TASK_UNINTERRUPTIBLE);
@@ -318,7 +375,7 @@ static int kthread(void *_create)
 		__kthread_parkme(self);
 		ret = threadfn(data);
 	}
-	do_exit(ret);
+	kthread_exit(ret);
 }
 
 /* called from kernel_clone() to get node information for about to be created task */
@@ -341,7 +398,7 @@ static void create_kthread(struct kthread_create_info *create)
 	/* We want our own signal handler (we take no signals by default). */
 	pid = kernel_thread(kthread, create, CLONE_FS | CLONE_FILES | SIGCHLD);
 	if (pid < 0) {
-		/* If user was SIGKILLed, I release the structure. */
+		/* Release the structure when caller killed by a fatal signal. */
 		struct completion *done = xchg(&create->done, NULL);
 
 		if (!done) {
@@ -383,9 +440,9 @@ struct task_struct *__kthread_create_on_node(int (*threadfn)(void *data),
 	 */
 	if (unlikely(wait_for_completion_killable(&done))) {
 		/*
-		 * If I was SIGKILLed before kthreadd (or new kernel thread)
-		 * calls complete(), leave the cleanup of this structure to
-		 * that thread.
+		 * If I was killed by a fatal signal before kthreadd (or new
+		 * kernel thread) calls complete(), leave the cleanup of this
+		 * structure to that thread.
 		 */
 		if (xchg(&create->done, NULL))
 			return ERR_PTR(-EINTR);
@@ -397,22 +454,24 @@ struct task_struct *__kthread_create_on_node(int (*threadfn)(void *data),
 	}
 	task = create->result;
 	if (!IS_ERR(task)) {
-		static const struct sched_param param = { .sched_priority = 0 };
 		char name[TASK_COMM_LEN];
+		va_list aq;
+		int len;
 
 		/*
 		 * task is already visible to other tasks, so updating
 		 * COMM must be protected.
 		 */
-		vsnprintf(name, sizeof(name), namefmt, args);
+		va_copy(aq, args);
+		len = vsnprintf(name, sizeof(name), namefmt, aq);
+		va_end(aq);
+		if (len >= TASK_COMM_LEN) {
+			struct kthread *kthread = to_kthread(task);
+
+			/* leave it truncated when out of memory. */
+			kthread->full_name = kvasprintf(GFP_KERNEL, namefmt, args);
+		}
 		set_task_comm(task, name);
-		/*
-		 * root may have changed our (kthreadd's) priority or CPU mask.
-		 * The kernel thread should not inherit these properties.
-		 */
-		sched_setscheduler_nocheck(task, SCHED_NORMAL, &param);
-		set_cpus_allowed_ptr(task,
-				     housekeeping_cpumask(HK_FLAG_KTHREAD));
 	}
 	kfree(create);
 	return task;
@@ -433,7 +492,7 @@ struct task_struct *__kthread_create_on_node(int (*threadfn)(void *data),
  * If thread is going to be bound on a particular cpu, give its node
  * in @node, to get NUMA affinity for kthread stack, or else give NUMA_NO_NODE.
  * When woken, the thread will run @threadfn() with @data as its
- * argument. @threadfn() can either call do_exit() directly if it is a
+ * argument. @threadfn() can either return directly if it is a
  * standalone thread for which no one will call kthread_stop(), or
  * return when 'kthread_should_stop()' is true (which means
  * kthread_stop() has been called).  The return value should be zero
@@ -523,6 +582,7 @@ struct task_struct *kthread_create_on_cpu(int (*threadfn)(void *data),
 	to_kthread(p)->cpu = cpu;
 	return p;
 }
+EXPORT_SYMBOL(kthread_create_on_cpu);
 
 void kthread_set_per_cpu(struct task_struct *k, int cpu)
 {
@@ -627,7 +687,7 @@ EXPORT_SYMBOL_GPL(kthread_park);
  * instead of calling wake_up_process(): the thread will exit without
  * calling threadfn().
  *
- * If threadfn() may call do_exit() itself, the caller must ensure
+ * If threadfn() may call kthread_exit() itself, the caller must ensure
  * task_struct can't go away.
  *
  * Returns the result of threadfn(), or %-EINTR if wake_up_process()
@@ -644,9 +704,10 @@ int kthread_stop(struct task_struct *k)
 	kthread = to_kthread(k);
 	set_bit(KTHREAD_SHOULD_STOP, &kthread->flags);
 	kthread_unpark(k);
+	set_tsk_thread_flag(k, TIF_NOTIFY_SIGNAL);
 	wake_up_process(k);
 	wait_for_completion(&kthread->exited);
-	ret = k->exit_code;
+	ret = kthread->result;
 	put_task_struct(k);
 
 	trace_sched_kthread_stop_ret(ret);
@@ -661,7 +722,7 @@ int kthreadd(void *unused)
 	/* Setup a clean context for our children to inherit. */
 	set_task_comm(tsk, "kthreadd");
 	ignore_signals(tsk);
-	set_cpus_allowed_ptr(tsk, housekeeping_cpumask(HK_FLAG_KTHREAD));
+	set_cpus_allowed_ptr(tsk, housekeeping_cpumask(HK_TYPE_KTHREAD));
 	set_mems_allowed(node_states[N_MEMORY]);
 
 	current->flags |= PF_NOFREEZE;
@@ -816,7 +877,7 @@ fail_task:
  *
  * Returns a pointer to the allocated worker on success, ERR_PTR(-ENOMEM)
  * when the needed structures could not get allocated, and ERR_PTR(-EINTR)
- * when the worker was SIGKILLed.
+ * when the caller was killed by a fatal signal.
  */
 struct kthread_worker *
 kthread_create_worker(unsigned int flags, const char namefmt[], ...)
@@ -865,7 +926,7 @@ EXPORT_SYMBOL(kthread_create_worker);
  * Return:
  * The pointer to the allocated worker on success, ERR_PTR(-ENOMEM)
  * when the needed structures could not get allocated, and ERR_PTR(-EINTR)
- * when the worker was SIGKILLed.
+ * when the caller was killed by a fatal signal.
  */
 struct kthread_worker *
 kthread_create_worker_on_cpu(int cpu, unsigned int flags,
@@ -990,8 +1051,7 @@ static void __kthread_queue_delayed_work(struct kthread_worker *worker,
 	struct timer_list *timer = &dwork->timer;
 	struct kthread_work *work = &dwork->work;
 
-	WARN_ON_FUNCTION_MISMATCH(timer->function,
-				  kthread_delayed_work_timer_fn);
+	WARN_ON_ONCE(timer->function != kthread_delayed_work_timer_fn);
 
 	/*
 	 * If @delay is 0, queue @dwork->work immediately.  This is for
@@ -1380,8 +1440,6 @@ void kthread_use_mm(struct mm_struct *mm)
 		mmdrop(active_mm);
 	else
 		smp_mb();
-
-	to_kthread(tsk)->oldfs = force_uaccess_begin();
 }
 EXPORT_SYMBOL_GPL(kthread_use_mm);
 
@@ -1395,8 +1453,6 @@ void kthread_unuse_mm(struct mm_struct *mm)
 
 	WARN_ON_ONCE(!(tsk->flags & PF_KTHREAD));
 	WARN_ON_ONCE(!tsk->mm);
-
-	force_uaccess_end(to_kthread(tsk)->oldfs);
 
 	task_lock(tsk);
 	/*
@@ -1466,5 +1522,4 @@ struct cgroup_subsys_state *kthread_blkcg(void)
 	}
 	return NULL;
 }
-EXPORT_SYMBOL(kthread_blkcg);
 #endif

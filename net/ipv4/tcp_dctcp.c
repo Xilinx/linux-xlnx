@@ -36,6 +36,8 @@
  *	Glenn Judd <glenn.judd@morganstanley.com>
  */
 
+#include <linux/btf.h>
+#include <linux/btf_ids.h>
 #include <linux/module.h>
 #include <linux/mm.h>
 #include <net/tcp.h>
@@ -104,8 +106,8 @@ static u32 dctcp_ssthresh(struct sock *sk)
 	struct dctcp *ca = inet_csk_ca(sk);
 	struct tcp_sock *tp = tcp_sk(sk);
 
-	ca->loss_cwnd = tp->snd_cwnd;
-	return max(tp->snd_cwnd - ((tp->snd_cwnd * ca->dctcp_alpha) >> 11U), 2U);
+	ca->loss_cwnd = tcp_snd_cwnd(tp);
+	return max(tcp_snd_cwnd(tp) - ((tcp_snd_cwnd(tp) * ca->dctcp_alpha) >> 11U), 2U);
 }
 
 static void dctcp_update_alpha(struct sock *sk, u32 flags)
@@ -146,8 +148,8 @@ static void dctcp_react_to_loss(struct sock *sk)
 	struct dctcp *ca = inet_csk_ca(sk);
 	struct tcp_sock *tp = tcp_sk(sk);
 
-	ca->loss_cwnd = tp->snd_cwnd;
-	tp->snd_ssthresh = max(tp->snd_cwnd >> 1U, 2U);
+	ca->loss_cwnd = tcp_snd_cwnd(tp);
+	tp->snd_ssthresh = max(tcp_snd_cwnd(tp) >> 1U, 2U);
 }
 
 static void dctcp_state(struct sock *sk, u8 new_state)
@@ -209,8 +211,9 @@ static size_t dctcp_get_info(struct sock *sk, u32 ext, int *attr,
 static u32 dctcp_cwnd_undo(struct sock *sk)
 {
 	const struct dctcp *ca = inet_csk_ca(sk);
+	struct tcp_sock *tp = tcp_sk(sk);
 
-	return max(tcp_sk(sk)->snd_cwnd, ca->loss_cwnd);
+	return max(tcp_snd_cwnd(tp), ca->loss_cwnd);
 }
 
 static struct tcp_congestion_ops dctcp __read_mostly = {
@@ -236,9 +239,33 @@ static struct tcp_congestion_ops dctcp_reno __read_mostly = {
 	.name		= "dctcp-reno",
 };
 
+BTF_SET8_START(tcp_dctcp_check_kfunc_ids)
+#ifdef CONFIG_X86
+#ifdef CONFIG_DYNAMIC_FTRACE
+BTF_ID_FLAGS(func, dctcp_init)
+BTF_ID_FLAGS(func, dctcp_update_alpha)
+BTF_ID_FLAGS(func, dctcp_cwnd_event)
+BTF_ID_FLAGS(func, dctcp_ssthresh)
+BTF_ID_FLAGS(func, dctcp_cwnd_undo)
+BTF_ID_FLAGS(func, dctcp_state)
+#endif
+#endif
+BTF_SET8_END(tcp_dctcp_check_kfunc_ids)
+
+static const struct btf_kfunc_id_set tcp_dctcp_kfunc_set = {
+	.owner = THIS_MODULE,
+	.set   = &tcp_dctcp_check_kfunc_ids,
+};
+
 static int __init dctcp_register(void)
 {
+	int ret;
+
 	BUILD_BUG_ON(sizeof(struct dctcp) > ICSK_CA_PRIV_SIZE);
+
+	ret = register_btf_kfunc_id_set(BPF_PROG_TYPE_STRUCT_OPS, &tcp_dctcp_kfunc_set);
+	if (ret < 0)
+		return ret;
 	return tcp_register_congestion_control(&dctcp);
 }
 

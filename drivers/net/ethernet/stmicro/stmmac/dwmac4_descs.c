@@ -32,6 +32,8 @@ static int dwmac4_wrback_get_tx_status(void *data, struct stmmac_extra_stats *x,
 		return tx_not_ls;
 
 	if (unlikely(tdes3 & TDES3_ERROR_SUMMARY)) {
+		ret = tx_err;
+
 		if (unlikely(tdes3 & TDES3_JABBER_TIMEOUT))
 			x->tx_jabber++;
 		if (unlikely(tdes3 & TDES3_PACKET_FLUSHED))
@@ -53,16 +55,16 @@ static int dwmac4_wrback_get_tx_status(void *data, struct stmmac_extra_stats *x,
 		if (unlikely(tdes3 & TDES3_EXCESSIVE_DEFERRAL))
 			x->tx_deferred++;
 
-		if (unlikely(tdes3 & TDES3_UNDERFLOW_ERROR))
+		if (unlikely(tdes3 & TDES3_UNDERFLOW_ERROR)) {
 			x->tx_underflow++;
+			ret |= tx_err_bump_tc;
+		}
 
 		if (unlikely(tdes3 & TDES3_IP_HDR_ERROR))
 			x->tx_ip_header_error++;
 
 		if (unlikely(tdes3 & TDES3_PAYLOAD_ERROR))
 			x->tx_payload_error++;
-
-		ret = tx_err;
 	}
 
 	if (unlikely(tdes3 & TDES3_DEFERRED))
@@ -460,11 +462,6 @@ static void dwmac4_set_mss_ctxt(struct dma_desc *p, unsigned int mss)
 	p->des3 = cpu_to_le32(TDES3_CONTEXT_TYPE | TDES3_CTXT_TCMSSV);
 }
 
-static void dwmac4_get_addr(struct dma_desc *p, unsigned int *addr)
-{
-	*addr = le32_to_cpu(p->des0);
-}
-
 static void dwmac4_set_addr(struct dma_desc *p, dma_addr_t addr)
 {
 	p->des0 = cpu_to_le32(lower_32_bits(addr));
@@ -573,7 +570,6 @@ const struct stmmac_desc_ops dwmac4_desc_ops = {
 	.init_tx_desc = dwmac4_rd_init_tx_desc,
 	.display_ring = dwmac4_display_ring,
 	.set_mss = dwmac4_set_mss_ctxt,
-	.get_addr = dwmac4_get_addr,
 	.set_addr = dwmac4_set_addr,
 	.clear = dwmac4_clear,
 	.set_sarc = dwmac4_set_sarc,

@@ -51,8 +51,8 @@ unsigned int aie_aperture_get_num_parts(struct aie_aperture *aperture)
 		num_parts++;
 	}
 
-	bitmap_for_each_clear_region(aperture->cols_res.bitmap, rs, re, 0,
-				     (aperture->range.size.col - 1)) {
+	for_each_clear_bitrange(rs, re, aperture->cols_res.bitmap,
+				(aperture->range.size.col - 1)) {
 		num_parts++;
 	}
 
@@ -123,8 +123,8 @@ int aie_aperture_enquire_parts(struct aie_aperture *aperture,
 		num_queries_left--;
 	}
 
-	bitmap_for_each_clear_region(aperture->cols_res.bitmap, rs, re, 0,
-				     (aperture->range.size.col - 1)) {
+	for_each_clear_bitrange(rs, re, aperture->cols_res.bitmap,
+				(aperture->range.size.col - 1)) {
 		struct aie_range_args query;
 
 		if (!num_queries_left) {

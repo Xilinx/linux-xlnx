@@ -37,6 +37,9 @@
 #include <linux/cpu.h>
 #include <linux/pgtable.h>
 #include <linux/debugfs.h>
+#include <linux/random.h>
+#include <linux/elf-randomize.h>
+#include <linux/of_fdt.h>
 
 #include <asm/interrupt.h>
 #include <asm/processor.h>
@@ -46,7 +49,6 @@
 #include <asm/types.h>
 #include <linux/uaccess.h>
 #include <asm/machdep.h>
-#include <asm/prom.h>
 #include <asm/io.h>
 #include <asm/eeh.h>
 #include <asm/tlb.h>
@@ -99,8 +101,6 @@
  */
 
 static unsigned long _SDR1;
-struct mmu_psize_def mmu_psize_defs[MMU_PAGE_COUNT];
-EXPORT_SYMBOL_GPL(mmu_psize_defs);
 
 u8 hpte_page_sizes[1 << LP_BITS];
 EXPORT_SYMBOL_GPL(hpte_page_sizes);
@@ -114,9 +114,6 @@ EXPORT_SYMBOL_GPL(mmu_linear_psize);
 int mmu_virtual_psize = MMU_PAGE_4K;
 int mmu_vmalloc_psize = MMU_PAGE_4K;
 EXPORT_SYMBOL_GPL(mmu_vmalloc_psize);
-#ifdef CONFIG_SPARSEMEM_VMEMMAP
-int mmu_vmemmap_psize = MMU_PAGE_4K;
-#endif
 int mmu_io_psize = MMU_PAGE_4K;
 int mmu_kernel_ssize = MMU_SEGSIZE_256M;
 EXPORT_SYMBOL_GPL(mmu_kernel_ssize);
@@ -126,11 +123,8 @@ EXPORT_SYMBOL_GPL(mmu_slb_size);
 #ifdef CONFIG_PPC_64K_PAGES
 int mmu_ci_restrictions;
 #endif
-#ifdef CONFIG_DEBUG_PAGEALLOC
 static u8 *linear_map_hash_slots;
 static unsigned long linear_map_hash_count;
-static DEFINE_SPINLOCK(linear_map_hash_lock);
-#endif /* CONFIG_DEBUG_PAGEALLOC */
 struct mmu_hash_ops mmu_hash_ops;
 EXPORT_SYMBOL(mmu_hash_ops);
 
@@ -174,6 +168,110 @@ static struct mmu_psize_def mmu_psize_defaults_gp[] = {
 		.tlbiel = 0,
 	},
 };
+
+static inline void tlbiel_hash_set_isa206(unsigned int set, unsigned int is)
+{
+	unsigned long rb;
+
+	rb = (set << PPC_BITLSHIFT(51)) | (is << PPC_BITLSHIFT(53));
+
+	asm volatile("tlbiel %0" : : "r" (rb));
+}
+
+/*
+ * tlbiel instruction for hash, set invalidation
+ * i.e., r=1 and is=01 or is=10 or is=11
+ */
+static __always_inline void tlbiel_hash_set_isa300(unsigned int set, unsigned int is,
+					unsigned int pid,
+					unsigned int ric, unsigned int prs)
+{
+	unsigned long rb;
+	unsigned long rs;
+	unsigned int r = 0; /* hash format */
+
+	rb = (set << PPC_BITLSHIFT(51)) | (is << PPC_BITLSHIFT(53));
+	rs = ((unsigned long)pid << PPC_BITLSHIFT(31));
+
+	asm volatile(PPC_TLBIEL(%0, %1, %2, %3, %4)
+		     : : "r"(rb), "r"(rs), "i"(ric), "i"(prs), "i"(r)
+		     : "memory");
+}
+
+
+static void tlbiel_all_isa206(unsigned int num_sets, unsigned int is)
+{
+	unsigned int set;
+
+	asm volatile("ptesync": : :"memory");
+
+	for (set = 0; set < num_sets; set++)
+		tlbiel_hash_set_isa206(set, is);
+
+	ppc_after_tlbiel_barrier();
+}
+
+static void tlbiel_all_isa300(unsigned int num_sets, unsigned int is)
+{
+	unsigned int set;
+
+	asm volatile("ptesync": : :"memory");
+
+	/*
+	 * Flush the partition table cache if this is HV mode.
+	 */
+	if (early_cpu_has_feature(CPU_FTR_HVMODE))
+		tlbiel_hash_set_isa300(0, is, 0, 2, 0);
+
+	/*
+	 * Now invalidate the process table cache. UPRT=0 HPT modes (what
+	 * current hardware implements) do not use the process table, but
+	 * add the flushes anyway.
+	 *
+	 * From ISA v3.0B p. 1078:
+	 *     The following forms are invalid.
+	 *      * PRS=1, R=0, and RIC!=2 (The only process-scoped
+	 *        HPT caching is of the Process Table.)
+	 */
+	tlbiel_hash_set_isa300(0, is, 0, 2, 1);
+
+	/*
+	 * Then flush the sets of the TLB proper. Hash mode uses
+	 * partition scoped TLB translations, which may be flushed
+	 * in !HV mode.
+	 */
+	for (set = 0; set < num_sets; set++)
+		tlbiel_hash_set_isa300(set, is, 0, 0, 0);
+
+	ppc_after_tlbiel_barrier();
+
+	asm volatile(PPC_ISA_3_0_INVALIDATE_ERAT "; isync" : : :"memory");
+}
+
+void hash__tlbiel_all(unsigned int action)
+{
+	unsigned int is;
+
+	switch (action) {
+	case TLB_INVAL_SCOPE_GLOBAL:
+		is = 3;
+		break;
+	case TLB_INVAL_SCOPE_LPID:
+		is = 2;
+		break;
+	default:
+		BUG();
+	}
+
+	if (early_cpu_has_feature(CPU_FTR_ARCH_300))
+		tlbiel_all_isa300(POWER9_TLB_SETS_HASH, is);
+	else if (early_cpu_has_feature(CPU_FTR_ARCH_207S))
+		tlbiel_all_isa206(POWER8_TLB_SETS, is);
+	else if (early_cpu_has_feature(CPU_FTR_ARCH_206))
+		tlbiel_all_isa206(POWER7_TLB_SETS, is);
+	else
+		WARN(1, "%s called on pre-POWER7 CPU\n", __func__);
+}
 
 /*
  * 'R' and 'C' update notes:
@@ -307,7 +405,7 @@ repeat:
 					       ssize);
 		if (ret == -1) {
 			/*
-			 * Try to to keep bolted entries in primary.
+			 * Try to keep bolted entries in primary.
 			 * Remove non bolted entries and try insert again
 			 */
 			ret = mmu_hash_ops.hpte_remove(hpteg);
@@ -326,11 +424,9 @@ repeat:
 			break;
 
 		cond_resched();
-#ifdef CONFIG_DEBUG_PAGEALLOC
-		if (debug_pagealloc_enabled() &&
+		if (debug_pagealloc_enabled_or_kfence() &&
 			(paddr >> PAGE_SHIFT) < linear_map_hash_count)
 			linear_map_hash_slots[paddr >> PAGE_SHIFT] = ret | 0x80;
-#endif /* CONFIG_DEBUG_PAGEALLOC */
 	}
 	return ret < 0 ? ret : 0;
 }
@@ -563,7 +659,7 @@ static int __init htab_dt_scan_hugepage_blocks(unsigned long node,
 }
 #endif /* CONFIG_HUGETLB_PAGE */
 
-static void mmu_psize_set_default_penc(void)
+static void __init mmu_psize_set_default_penc(void)
 {
 	int bpsize, apsize;
 	for (bpsize = 0; bpsize < MMU_PAGE_COUNT; bpsize++)
@@ -573,7 +669,7 @@ static void mmu_psize_set_default_penc(void)
 
 #ifdef CONFIG_PPC_64K_PAGES
 
-static bool might_have_hea(void)
+static bool __init might_have_hea(void)
 {
 	/*
 	 * The HEA ethernet adapter requires awareness of the
@@ -644,7 +740,7 @@ static void __init htab_scan_page_sizes(void)
  * low-order N bits as the encoding for the 2^(12+N) byte page size
  * (if it exists).
  */
-static void init_hpte_page_sizes(void)
+static void __init init_hpte_page_sizes(void)
 {
 	long int ap, bp;
 	long int shift, penc;
@@ -677,7 +773,7 @@ static void __init htab_init_page_sizes(void)
 	bool aligned = true;
 	init_hpte_page_sizes();
 
-	if (!debug_pagealloc_enabled()) {
+	if (!debug_pagealloc_enabled_or_kfence()) {
 		/*
 		 * Pick a size for the linear mapping. Currently, we only
 		 * support 16M, 1M and 4K which is the default
@@ -965,8 +1061,7 @@ static void __init htab_initialize(void)
 
 	prot = pgprot_val(PAGE_KERNEL);
 
-#ifdef CONFIG_DEBUG_PAGEALLOC
-	if (debug_pagealloc_enabled()) {
+	if (debug_pagealloc_enabled_or_kfence()) {
 		linear_map_hash_count = memblock_end_of_DRAM() >> PAGE_SHIFT;
 		linear_map_hash_slots = memblock_alloc_try_nid(
 				linear_map_hash_count, 1, MEMBLOCK_LOW_LIMIT,
@@ -975,7 +1070,6 @@ static void __init htab_initialize(void)
 			panic("%s: Failed to allocate %lu bytes max_addr=%pa\n",
 			      __func__, linear_map_hash_count, &ppc64_rma_size);
 	}
-#endif /* CONFIG_DEBUG_PAGEALLOC */
 
 	/* create bolted the linear mapping in the hash table */
 	for_each_mem_range(i, &base, &end) {
@@ -1091,7 +1185,7 @@ void __init hash__early_init_mmu(void)
 		ps3_early_mm_init();
 	else if (firmware_has_feature(FW_FEATURE_LPAR))
 		hpte_init_pseries();
-	else if (IS_ENABLED(CONFIG_PPC_NATIVE))
+	else if (IS_ENABLED(CONFIG_PPC_HASH_MMU_NATIVE))
 		hpte_init_native();
 
 	if (!mmu_hash_ops.hpte_insert)
@@ -1165,7 +1259,6 @@ unsigned int hash_page_do_lazy_icache(unsigned int pp, pte_t pte, int trap)
 	return pp;
 }
 
-#ifdef CONFIG_PPC_MM_SLICES
 static unsigned int get_paca_psize(unsigned long addr)
 {
 	unsigned char *psizes;
@@ -1182,12 +1275,6 @@ static unsigned int get_paca_psize(unsigned long addr)
 	return (psizes[index >> 1] >> (mask_index * 4)) & 0xF;
 }
 
-#else
-unsigned int get_paca_psize(unsigned long addr)
-{
-	return get_paca()->mm_ctx_user_psize;
-}
-#endif
 
 /*
  * Demote a segment to using 4k pages.
@@ -1244,7 +1331,7 @@ static int subpage_protection(struct mm_struct *mm, unsigned long ea)
 	spp >>= 30 - 2 * ((ea >> 12) & 0xf);
 
 	/*
-	 * 0 -> full premission
+	 * 0 -> full permission
 	 * 1 -> Read only
 	 * 2 -> no access.
 	 * We return the flag that need to be cleared.
@@ -1522,8 +1609,7 @@ int hash_page(unsigned long ea, unsigned long access, unsigned long trap,
 }
 EXPORT_SYMBOL_GPL(hash_page);
 
-DECLARE_INTERRUPT_HANDLER(__do_hash_fault);
-DEFINE_INTERRUPT_HANDLER(__do_hash_fault)
+DEFINE_INTERRUPT_HANDLER(do_hash_fault)
 {
 	unsigned long ea = regs->dar;
 	unsigned long dsisr = regs->dsisr;
@@ -1566,7 +1652,7 @@ DEFINE_INTERRUPT_HANDLER(__do_hash_fault)
 
 	err = hash_page_mm(mm, ea, access, TRAP(regs), flags);
 	if (unlikely(err < 0)) {
-		// failed to instert a hash PTE due to an hypervisor error
+		// failed to insert a hash PTE due to an hypervisor error
 		if (user_mode(regs)) {
 			if (IS_ENABLED(CONFIG_PPC_SUBPAGE_PROT) && err == -2)
 				_exception(SIGSEGV, regs, SEGV_ACCERR, ea);
@@ -1582,36 +1668,6 @@ DEFINE_INTERRUPT_HANDLER(__do_hash_fault)
 	}
 }
 
-/*
- * The _RAW interrupt entry checks for the in_nmi() case before
- * running the full handler.
- */
-DEFINE_INTERRUPT_HANDLER_RAW(do_hash_fault)
-{
-	/*
-	 * If we are in an "NMI" (e.g., an interrupt when soft-disabled), then
-	 * don't call hash_page, just fail the fault. This is required to
-	 * prevent re-entrancy problems in the hash code, namely perf
-	 * interrupts hitting while something holds H_PAGE_BUSY, and taking a
-	 * hash fault. See the comment in hash_preload().
-	 *
-	 * We come here as a result of a DSI at a point where we don't want
-	 * to call hash_page, such as when we are accessing memory (possibly
-	 * user memory) inside a PMU interrupt that occurred while interrupts
-	 * were soft-disabled.  We want to invoke the exception handler for
-	 * the access, or panic if there isn't a handler.
-	 */
-	if (unlikely(in_nmi())) {
-		do_bad_page_fault_segv(regs);
-		return 0;
-	}
-
-	__do_hash_fault(regs);
-
-	return 0;
-}
-
-#ifdef CONFIG_PPC_MM_SLICES
 static bool should_hash_preload(struct mm_struct *mm, unsigned long ea)
 {
 	int psize = get_slice_psize(mm, ea);
@@ -1628,12 +1684,6 @@ static bool should_hash_preload(struct mm_struct *mm, unsigned long ea)
 
 	return true;
 }
-#else
-static bool should_hash_preload(struct mm_struct *mm, unsigned long ea)
-{
-	return true;
-}
-#endif
 
 static void hash_preload(struct mm_struct *mm, pte_t *ptep, unsigned long ea,
 			 bool is_exec, unsigned long trap)
@@ -1677,26 +1727,18 @@ static void hash_preload(struct mm_struct *mm, pte_t *ptep, unsigned long ea,
 #endif /* CONFIG_PPC_64K_PAGES */
 
 	/*
-	 * __hash_page_* must run with interrupts off, as it sets the
-	 * H_PAGE_BUSY bit. It's possible for perf interrupts to hit at any
-	 * time and may take a hash fault reading the user stack, see
-	 * read_user_stack_slow() in the powerpc/perf code.
+	 * __hash_page_* must run with interrupts off, including PMI interrupts
+	 * off, as it sets the H_PAGE_BUSY bit.
 	 *
-	 * If that takes a hash fault on the same page as we lock here, it
-	 * will bail out when seeing H_PAGE_BUSY set, and retry the access
-	 * leading to an infinite loop.
-	 *
-	 * Disabling interrupts here does not prevent perf interrupts, but it
-	 * will prevent them taking hash faults (see the NMI test in
-	 * do_hash_page), then read_user_stack's copy_from_user_nofault will
-	 * fail and perf will fall back to read_user_stack_slow(), which
-	 * walks the Linux page tables.
+	 * It's otherwise possible for perf interrupts to hit at any time and
+	 * may take a hash fault reading the user stack, which could take a
+	 * hash miss and deadlock on the same H_PAGE_BUSY bit.
 	 *
 	 * Interrupts must also be off for the duration of the
 	 * mm_is_thread_local test and update, to prevent preempt running the
 	 * mm on another CPU (XXX: this may be racy vs kthread_use_mm).
 	 */
-	local_irq_save(flags);
+	powerpc_local_irq_pmu_save(flags);
 
 	/* Is that local to this CPU ? */
 	if (mm_is_thread_local(mm))
@@ -1721,7 +1763,7 @@ static void hash_preload(struct mm_struct *mm, pte_t *ptep, unsigned long ea,
 				   mm_ctx_user_psize(&mm->context),
 				   pte_val(*ptep));
 
-	local_irq_restore(flags);
+	powerpc_local_irq_pmu_restore(flags);
 }
 
 /*
@@ -1732,7 +1774,7 @@ static void hash_preload(struct mm_struct *mm, pte_t *ptep, unsigned long ea,
  *
  * This must always be called with the pte lock held.
  */
-void update_mmu_cache(struct vm_area_struct *vma, unsigned long address,
+void __update_mmu_cache(struct vm_area_struct *vma, unsigned long address,
 		      pte_t *ptep)
 {
 	/*
@@ -1741,9 +1783,6 @@ void update_mmu_cache(struct vm_area_struct *vma, unsigned long address,
 	 */
 	unsigned long trap;
 	bool is_exec;
-
-	if (radix_enabled())
-		return;
 
 	/* We only want HPTEs for linux PTEs that have _PAGE_ACCESSED set */
 	if (!pte_young(*ptep) || address >= TASK_SIZE)
@@ -1941,7 +1980,9 @@ repeat:
 	return slot;
 }
 
-#ifdef CONFIG_DEBUG_PAGEALLOC
+#if defined(CONFIG_DEBUG_PAGEALLOC) || defined(CONFIG_KFENCE)
+static DEFINE_RAW_SPINLOCK(linear_map_hash_lock);
+
 static void kernel_map_linear_page(unsigned long vaddr, unsigned long lmi)
 {
 	unsigned long hash;
@@ -1956,15 +1997,18 @@ static void kernel_map_linear_page(unsigned long vaddr, unsigned long lmi)
 	if (!vsid)
 		return;
 
+	if (linear_map_hash_slots[lmi] & 0x80)
+		return;
+
 	ret = hpte_insert_repeating(hash, vpn, __pa(vaddr), mode,
 				    HPTE_V_BOLTED,
 				    mmu_linear_psize, mmu_kernel_ssize);
 
 	BUG_ON (ret < 0);
-	spin_lock(&linear_map_hash_lock);
+	raw_spin_lock(&linear_map_hash_lock);
 	BUG_ON(linear_map_hash_slots[lmi] & 0x80);
 	linear_map_hash_slots[lmi] = ret | 0x80;
-	spin_unlock(&linear_map_hash_lock);
+	raw_spin_unlock(&linear_map_hash_lock);
 }
 
 static void kernel_unmap_linear_page(unsigned long vaddr, unsigned long lmi)
@@ -1974,11 +2018,14 @@ static void kernel_unmap_linear_page(unsigned long vaddr, unsigned long lmi)
 	unsigned long vpn = hpt_vpn(vaddr, vsid, mmu_kernel_ssize);
 
 	hash = hpt_hash(vpn, PAGE_SHIFT, mmu_kernel_ssize);
-	spin_lock(&linear_map_hash_lock);
-	BUG_ON(!(linear_map_hash_slots[lmi] & 0x80));
+	raw_spin_lock(&linear_map_hash_lock);
+	if (!(linear_map_hash_slots[lmi] & 0x80)) {
+		raw_spin_unlock(&linear_map_hash_lock);
+		return;
+	}
 	hidx = linear_map_hash_slots[lmi] & 0x7f;
 	linear_map_hash_slots[lmi] = 0;
-	spin_unlock(&linear_map_hash_lock);
+	raw_spin_unlock(&linear_map_hash_lock);
 	if (hidx & _PTEIDX_SECONDARY)
 		hash = ~hash;
 	slot = (hash & htab_hash_mask) * HPTES_PER_GROUP;
@@ -1988,7 +2035,7 @@ static void kernel_unmap_linear_page(unsigned long vaddr, unsigned long lmi)
 				     mmu_kernel_ssize, 0);
 }
 
-void __kernel_map_pages(struct page *page, int numpages, int enable)
+void hash__kernel_map_pages(struct page *page, int numpages, int enable)
 {
 	unsigned long flags, vaddr, lmi;
 	int i;
@@ -2006,7 +2053,7 @@ void __kernel_map_pages(struct page *page, int numpages, int enable)
 	}
 	local_irq_restore(flags);
 }
-#endif /* CONFIG_DEBUG_PAGEALLOC */
+#endif /* CONFIG_DEBUG_PAGEALLOC || CONFIG_KFENCE */
 
 void hash__setup_initial_memory_limit(phys_addr_t first_memblock_base,
 				phys_addr_t first_memblock_size)
@@ -2085,4 +2132,21 @@ void __init print_system_hash_info(void)
 
 	if (htab_hash_mask)
 		pr_info("htab_hash_mask    = 0x%lx\n", htab_hash_mask);
+}
+
+unsigned long arch_randomize_brk(struct mm_struct *mm)
+{
+	/*
+	 * If we are using 1TB segments and we are allowed to randomise
+	 * the heap, we can put it above 1TB so it is backed by a 1TB
+	 * segment. Otherwise the heap will be in the bottom 1TB
+	 * which always uses 256MB segments and this may result in a
+	 * performance penalty.
+	 */
+	if (is_32bit_task())
+		return randomize_page(mm->brk, SZ_32M);
+	else if (!radix_enabled() && mmu_highuser_ssize == MMU_SEGSIZE_1T)
+		return randomize_page(max_t(unsigned long, mm->brk, SZ_1T), SZ_1G);
+	else
+		return randomize_page(mm->brk, SZ_1G);
 }

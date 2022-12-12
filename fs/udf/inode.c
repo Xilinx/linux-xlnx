@@ -193,9 +193,9 @@ static int udf_writepages(struct address_space *mapping,
 	return mpage_writepages(mapping, wbc, udf_get_block);
 }
 
-static int udf_readpage(struct file *file, struct page *page)
+static int udf_read_folio(struct file *file, struct folio *folio)
 {
-	return mpage_readpage(page, udf_get_block);
+	return mpage_read_folio(folio, udf_get_block);
 }
 
 static void udf_readahead(struct readahead_control *rac)
@@ -204,12 +204,12 @@ static void udf_readahead(struct readahead_control *rac)
 }
 
 static int udf_write_begin(struct file *file, struct address_space *mapping,
-			loff_t pos, unsigned len, unsigned flags,
+			loff_t pos, unsigned len,
 			struct page **pagep, void **fsdata)
 {
 	int ret;
 
-	ret = block_write_begin(mapping, pos, len, flags, pagep, udf_get_block);
+	ret = block_write_begin(mapping, pos, len, pagep, udf_get_block);
 	if (unlikely(ret))
 		udf_write_failed(mapping, pos + len);
 	return ret;
@@ -235,8 +235,9 @@ static sector_t udf_bmap(struct address_space *mapping, sector_t block)
 }
 
 const struct address_space_operations udf_aops = {
-	.set_page_dirty	= __set_page_dirty_buffers,
-	.readpage	= udf_readpage,
+	.dirty_folio	= block_dirty_folio,
+	.invalidate_folio = block_invalidate_folio,
+	.read_folio	= udf_read_folio,
 	.readahead	= udf_readahead,
 	.writepage	= udf_writepage,
 	.writepages	= udf_writepages,
@@ -258,10 +259,6 @@ int udf_expand_file_adinicb(struct inode *inode)
 	char *kaddr;
 	struct udf_inode_info *iinfo = UDF_I(inode);
 	int err;
-	struct writeback_control udf_wbc = {
-		.sync_mode = WB_SYNC_NONE,
-		.nr_to_write = 1,
-	};
 
 	WARN_ON_ONCE(!inode_is_locked(inode));
 	if (!iinfo->i_lenAlloc) {
@@ -305,8 +302,10 @@ int udf_expand_file_adinicb(struct inode *inode)
 		iinfo->i_alloc_type = ICBTAG_FLAG_AD_LONG;
 	/* from now on we have normal address_space methods */
 	inode->i_data.a_ops = &udf_aops;
+	set_page_dirty(page);
+	unlock_page(page);
 	up_write(&iinfo->i_data_sem);
-	err = inode->i_data.a_ops->writepage(page, &udf_wbc);
+	err = filemap_fdatawrite(inode->i_mapping);
 	if (err) {
 		/* Restore everything back so that we don't lose data... */
 		lock_page(page);
@@ -317,6 +316,7 @@ int udf_expand_file_adinicb(struct inode *inode)
 		unlock_page(page);
 		iinfo->i_alloc_type = ICBTAG_FLAG_AD_IN_ICB;
 		inode->i_data.a_ops = &udf_adinicb_aops;
+		iinfo->i_lenAlloc = inode->i_size;
 		up_write(&iinfo->i_data_sem);
 	}
 	put_page(page);
@@ -1211,13 +1211,7 @@ struct buffer_head *udf_bread(struct inode *inode, udf_pblk_t block,
 	if (!bh)
 		return NULL;
 
-	if (buffer_uptodate(bh))
-		return bh;
-
-	ll_rw_block(REQ_OP_READ, 0, 1, &bh);
-
-	wait_on_buffer(bh);
-	if (buffer_uptodate(bh))
+	if (bh_read(bh, 0) >= 0)
 		return bh;
 
 	brelse(bh);

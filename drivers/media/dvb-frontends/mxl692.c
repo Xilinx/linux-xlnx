@@ -7,15 +7,6 @@
  * based on code:
  * Copyright (c) 2016 MaxLinear, Inc. All rights reserved
  * which was released under GPL V2
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <linux/mutex.h>
@@ -1346,15 +1337,13 @@ err:
 	return -ENODEV;
 }
 
-static int mxl692_remove(struct i2c_client *client)
+static void mxl692_remove(struct i2c_client *client)
 {
 	struct mxl692_dev *dev = i2c_get_clientdata(client);
 
 	dev->fe.demodulator_priv = NULL;
 	i2c_set_clientdata(client, NULL);
 	kfree(dev);
-
-	return 0;
 }
 
 static const struct i2c_device_id mxl692_id_table[] = {

@@ -138,10 +138,60 @@ static void iio_kfifo_buffer_release(struct iio_buffer *buffer)
 	kfree(kf);
 }
 
+static size_t iio_kfifo_buf_space_available(struct iio_buffer *r)
+{
+	struct iio_kfifo *kf = iio_to_kfifo(r);
+	size_t avail;
+
+	mutex_lock(&kf->user_lock);
+	avail = kfifo_avail(&kf->kf);
+	mutex_unlock(&kf->user_lock);
+
+	return avail;
+}
+
+static int iio_kfifo_remove_from(struct iio_buffer *r, void *data)
+{
+	int ret;
+	struct iio_kfifo *kf = iio_to_kfifo(r);
+
+	if (kfifo_size(&kf->kf) < 1)
+		return -EBUSY;
+
+	ret = kfifo_out(&kf->kf, data, 1);
+	if (ret != 1)
+		return -EBUSY;
+
+	wake_up_interruptible_poll(&r->pollq, EPOLLOUT | EPOLLWRNORM);
+
+	return 0;
+}
+
+static int iio_kfifo_write(struct iio_buffer *r, size_t n,
+	const char __user *buf)
+{
+	struct iio_kfifo *kf = iio_to_kfifo(r);
+	int ret, copied;
+
+	mutex_lock(&kf->user_lock);
+	if (!kfifo_initialized(&kf->kf) || n < kfifo_esize(&kf->kf))
+		ret = -EINVAL;
+	else
+		ret = kfifo_from_user(&kf->kf, buf, n, &copied);
+	mutex_unlock(&kf->user_lock);
+	if (ret)
+		return ret;
+
+	return copied;
+}
+
 static const struct iio_buffer_access_funcs kfifo_access_funcs = {
 	.store_to = &iio_store_to_kfifo,
 	.read = &iio_read_kfifo,
 	.data_available = iio_kfifo_buf_data_available,
+	.remove_from = &iio_kfifo_remove_from,
+	.write = &iio_kfifo_write,
+	.space_available = &iio_kfifo_buf_space_available,
 	.request_update = &iio_request_update_kfifo,
 	.set_bytes_per_datum = &iio_set_bytes_per_datum_kfifo,
 	.set_length = &iio_set_length_kfifo,
@@ -209,8 +259,6 @@ static struct iio_buffer *devm_iio_kfifo_allocate(struct device *dev)
  * devm_iio_kfifo_buffer_setup_ext - Allocate a kfifo buffer & attach it to an IIO device
  * @dev: Device object to which to attach the life-time of this kfifo buffer
  * @indio_dev: The device the buffer should be attached to
- * @mode_flags: The mode flags for this buffer (INDIO_BUFFER_SOFTWARE and/or
- *		INDIO_BUFFER_TRIGGERED).
  * @setup_ops: The setup_ops required to configure the HW part of the buffer (optional)
  * @buffer_attrs: Extra sysfs buffer attributes for this IIO buffer
  *
@@ -221,22 +269,16 @@ static struct iio_buffer *devm_iio_kfifo_allocate(struct device *dev)
  */
 int devm_iio_kfifo_buffer_setup_ext(struct device *dev,
 				    struct iio_dev *indio_dev,
-				    int mode_flags,
 				    const struct iio_buffer_setup_ops *setup_ops,
 				    const struct attribute **buffer_attrs)
 {
 	struct iio_buffer *buffer;
 
-	if (!mode_flags)
-		return -EINVAL;
-
 	buffer = devm_iio_kfifo_allocate(dev);
 	if (!buffer)
 		return -ENOMEM;
 
-	mode_flags &= kfifo_access_funcs.modes;
-
-	indio_dev->modes |= mode_flags;
+	indio_dev->modes |= INDIO_BUFFER_SOFTWARE;
 	indio_dev->setup_ops = setup_ops;
 
 	buffer->attrs = buffer_attrs;

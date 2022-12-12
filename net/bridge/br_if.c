@@ -40,12 +40,21 @@ static int port_cost(struct net_device *dev)
 		switch (ecmd.base.speed) {
 		case SPEED_10000:
 			return 2;
-		case SPEED_1000:
+		case SPEED_5000:
+			return 3;
+		case SPEED_2500:
 			return 4;
+		case SPEED_1000:
+			return 5;
 		case SPEED_100:
 			return 19;
 		case SPEED_10:
 			return 100;
+		case SPEED_UNKNOWN:
+			return 100;
+		default:
+			if (ecmd.base.speed > SPEED_10000)
+				return 1;
 		}
 	}
 
@@ -274,7 +283,7 @@ static void destroy_nbp(struct net_bridge_port *p)
 
 	p->br = NULL;
 	p->dev = NULL;
-	dev_put(dev);
+	netdev_put(dev, &p->dev_tracker);
 
 	kobject_put(&p->kobj);
 }
@@ -397,10 +406,10 @@ static int find_portno(struct net_bridge *br)
 	if (!inuse)
 		return -ENOMEM;
 
-	set_bit(0, inuse);	/* zero is reserved */
-	list_for_each_entry(p, &br->port_list, list) {
-		set_bit(p->port_no, inuse);
-	}
+	__set_bit(0, inuse);	/* zero is reserved */
+	list_for_each_entry(p, &br->port_list, list)
+		__set_bit(p->port_no, inuse);
+
 	index = find_first_zero_bit(inuse, BR_MAX_PORTS);
 	bitmap_free(inuse);
 
@@ -423,7 +432,7 @@ static struct net_bridge_port *new_nbp(struct net_bridge *br,
 		return ERR_PTR(-ENOMEM);
 
 	p->br = br;
-	dev_hold(dev);
+	netdev_hold(dev, &p->dev_tracker, GFP_KERNEL);
 	p->dev = dev;
 	p->path_cost = port_cost(dev);
 	p->priority = 0x8000 >> BR_PORT_BITS;
@@ -434,7 +443,7 @@ static struct net_bridge_port *new_nbp(struct net_bridge *br,
 	br_stp_port_timer_init(p);
 	err = br_multicast_add_port(p);
 	if (err) {
-		dev_put(dev);
+		netdev_put(dev, &p->dev_tracker);
 		kfree(p);
 		p = ERR_PTR(err);
 	}
@@ -471,7 +480,7 @@ int br_del_bridge(struct net *net, const char *name)
 	if (dev == NULL)
 		ret =  -ENXIO; 	/* Could not find device */
 
-	else if (!(dev->priv_flags & IFF_EBRIDGE)) {
+	else if (!netif_is_bridge_master(dev)) {
 		/* Attempt to delete non bridge device! */
 		ret = -EPERM;
 	}
@@ -517,16 +526,16 @@ void br_mtu_auto_adjust(struct net_bridge *br)
 
 static void br_set_gso_limits(struct net_bridge *br)
 {
-	unsigned int gso_max_size = GSO_MAX_SIZE;
-	u16 gso_max_segs = GSO_MAX_SEGS;
+	unsigned int tso_max_size = TSO_MAX_SIZE;
 	const struct net_bridge_port *p;
+	u16 tso_max_segs = TSO_MAX_SEGS;
 
 	list_for_each_entry(p, &br->port_list, list) {
-		gso_max_size = min(gso_max_size, p->dev->gso_max_size);
-		gso_max_segs = min(gso_max_segs, p->dev->gso_max_segs);
+		tso_max_size = min(tso_max_size, p->dev->tso_max_size);
+		tso_max_segs = min(tso_max_segs, p->dev->tso_max_segs);
 	}
-	br->dev->gso_max_size = gso_max_size;
-	br->dev->gso_max_segs = gso_max_segs;
+	netif_set_tso_max_size(br->dev, tso_max_size);
+	netif_set_tso_max_segs(br->dev, tso_max_segs);
 }
 
 /*
@@ -568,26 +577,6 @@ int br_add_if(struct net_bridge *br, struct net_device *dev,
 	    !is_valid_ether_addr(dev->dev_addr))
 		return -EINVAL;
 
-	/* Also don't allow bridging of net devices that are DSA masters, since
-	 * the bridge layer rx_handler prevents the DSA fake ethertype handler
-	 * to be invoked, so we don't get the chance to strip off and parse the
-	 * DSA switch tag protocol header (the bridge layer just returns
-	 * RX_HANDLER_CONSUMED, stopping RX processing for these frames).
-	 * The only case where that would not be an issue is when bridging can
-	 * already be offloaded, such as when the DSA master is itself a DSA
-	 * or plain switchdev port, and is bridged only with other ports from
-	 * the same hardware device.
-	 */
-	if (netdev_uses_dsa(dev)) {
-		list_for_each_entry(p, &br->port_list, list) {
-			if (!netdev_port_same_parent_id(dev, p->dev)) {
-				NL_SET_ERR_MSG(extack,
-					       "Cannot do software bridging with a DSA master");
-				return -EINVAL;
-			}
-		}
-	}
-
 	/* No bridging of bridges */
 	if (dev->netdev_ops->ndo_start_xmit == br_dev_xmit) {
 		NL_SET_ERR_MSG(extack,
@@ -615,6 +604,7 @@ int br_add_if(struct net_bridge *br, struct net_device *dev,
 	err = dev_set_allmulti(dev, 1);
 	if (err) {
 		br_multicast_del_port(p);
+		netdev_put(dev, &p->dev_tracker);
 		kfree(p);	/* kobject not yet init'd, manually free */
 		goto err1;
 	}
@@ -670,7 +660,7 @@ int br_add_if(struct net_bridge *br, struct net_device *dev,
 	else
 		netdev_set_rx_headroom(dev, br_hr);
 
-	if (br_fdb_insert(br, p, dev->dev_addr, 0))
+	if (br_fdb_add_local(br, p, dev->dev_addr, 0))
 		netdev_err(dev, "failed insert local address bridge forwarding table\n");
 
 	if (br->dev->addr_assign_type != NET_ADDR_SET) {
@@ -724,10 +714,10 @@ err3:
 	sysfs_remove_link(br->ifobj, p->dev->name);
 err2:
 	br_multicast_del_port(p);
+	netdev_put(dev, &p->dev_tracker);
 	kobject_put(&p->kobj);
 	dev_set_allmulti(dev, -1);
 err1:
-	dev_put(dev);
 	return err;
 }
 

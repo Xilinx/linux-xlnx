@@ -12,6 +12,7 @@
 struct masq_dev_work {
 	struct work_struct work;
 	struct net *net;
+	netns_tracker ns_tracker;
 	union nf_inet_addr addr;
 	int ifindex;
 	int (*iter)(struct nf_conn *i, void *data);
@@ -76,13 +77,16 @@ EXPORT_SYMBOL_GPL(nf_nat_masquerade_ipv4);
 
 static void iterate_cleanup_work(struct work_struct *work)
 {
+	struct nf_ct_iter_data iter_data = {};
 	struct masq_dev_work *w;
 
 	w = container_of(work, struct masq_dev_work, work);
 
-	nf_ct_iterate_cleanup_net(w->net, w->iter, (void *)w, 0, 0);
+	iter_data.net = w->net;
+	iter_data.data = (void *)w;
+	nf_ct_iterate_cleanup_net(w->iter, &iter_data);
 
-	put_net(w->net);
+	put_net_track(w->net, &w->ns_tracker);
 	kfree(w);
 	atomic_dec(&masq_worker_count);
 	module_put(THIS_MODULE);
@@ -119,6 +123,7 @@ static void nf_nat_masq_schedule(struct net *net, union nf_inet_addr *addr,
 		INIT_WORK(&w->work, iterate_cleanup_work);
 		w->ifindex = ifindex;
 		w->net = net;
+		netns_tracker_alloc(net, &w->ns_tracker, gfp_flags);
 		w->iter = iter;
 		if (addr)
 			w->addr = *addr;

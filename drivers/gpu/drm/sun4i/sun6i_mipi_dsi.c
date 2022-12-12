@@ -531,7 +531,7 @@ static void sun6i_dsi_setup_timings(struct sun6i_dsi *dsi,
 				    struct drm_display_mode *mode)
 {
 	struct mipi_dsi_device *device = dsi->device;
-	unsigned int Bpp = mipi_dsi_pixel_format_to_bpp(device->format) / 8;
+	int Bpp = mipi_dsi_pixel_format_to_bpp(device->format) / 8;
 	u16 hbp = 0, hfp = 0, hsa = 0, hblk = 0, vblk = 0;
 	u32 basic_ctl = 0;
 	size_t bytes;
@@ -555,7 +555,7 @@ static void sun6i_dsi_setup_timings(struct sun6i_dsi *dsi,
 		 * (4 bytes). Its minimal size is therefore 10 bytes
 		 */
 #define HSA_PACKET_OVERHEAD	10
-		hsa = max((unsigned int)HSA_PACKET_OVERHEAD,
+		hsa = max(HSA_PACKET_OVERHEAD,
 			  (mode->hsync_end - mode->hsync_start) * Bpp - HSA_PACKET_OVERHEAD);
 
 		/*
@@ -564,7 +564,7 @@ static void sun6i_dsi_setup_timings(struct sun6i_dsi *dsi,
 		 * therefore 6 bytes
 		 */
 #define HBP_PACKET_OVERHEAD	6
-		hbp = max((unsigned int)HBP_PACKET_OVERHEAD,
+		hbp = max(HBP_PACKET_OVERHEAD,
 			  (mode->htotal - mode->hsync_end) * Bpp - HBP_PACKET_OVERHEAD);
 
 		/*
@@ -574,7 +574,7 @@ static void sun6i_dsi_setup_timings(struct sun6i_dsi *dsi,
 		 * 16 bytes
 		 */
 #define HFP_PACKET_OVERHEAD	16
-		hfp = max((unsigned int)HFP_PACKET_OVERHEAD,
+		hfp = max(HFP_PACKET_OVERHEAD,
 			  (mode->hsync_start - mode->hdisplay) * Bpp - HFP_PACKET_OVERHEAD);
 
 		/*
@@ -583,7 +583,7 @@ static void sun6i_dsi_setup_timings(struct sun6i_dsi *dsi,
 		 * bytes). Its minimal size is therefore 10 bytes.
 		 */
 #define HBLK_PACKET_OVERHEAD	10
-		hblk = max((unsigned int)HBLK_PACKET_OVERHEAD,
+		hblk = max(HBLK_PACKET_OVERHEAD,
 			   (mode->htotal - (mode->hsync_end - mode->hsync_start)) * Bpp -
 			   HBLK_PACKET_OVERHEAD);
 
@@ -1104,7 +1104,6 @@ static int sun6i_dsi_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	const char *bus_clk_name = NULL;
 	struct sun6i_dsi *dsi;
-	struct resource *res;
 	void __iomem *base;
 	int ret;
 
@@ -1120,18 +1119,16 @@ static int sun6i_dsi_probe(struct platform_device *pdev)
 				    "allwinner,sun6i-a31-mipi-dsi"))
 		bus_clk_name = "bus";
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	base = devm_ioremap_resource(dev, res);
+	base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(base)) {
 		dev_err(dev, "Couldn't map the DSI encoder registers\n");
 		return PTR_ERR(base);
 	}
 
 	dsi->regulator = devm_regulator_get(dev, "vcc-dsi");
-	if (IS_ERR(dsi->regulator)) {
-		dev_err(dev, "Couldn't get VCC-DSI supply\n");
-		return PTR_ERR(dsi->regulator);
-	}
+	if (IS_ERR(dsi->regulator))
+		return dev_err_probe(dev, PTR_ERR(dsi->regulator),
+				     "Couldn't get VCC-DSI supply\n");
 
 	dsi->reset = devm_reset_control_get_shared(dev, NULL);
 	if (IS_ERR(dsi->reset)) {
@@ -1146,10 +1143,9 @@ static int sun6i_dsi_probe(struct platform_device *pdev)
 	}
 
 	dsi->bus_clk = devm_clk_get(dev, bus_clk_name);
-	if (IS_ERR(dsi->bus_clk)) {
-		dev_err(dev, "Couldn't get the DSI bus clock\n");
-		return PTR_ERR(dsi->bus_clk);
-	}
+	if (IS_ERR(dsi->bus_clk))
+		return dev_err_probe(dev, PTR_ERR(dsi->bus_clk),
+				     "Couldn't get the DSI bus clock\n");
 
 	ret = regmap_mmio_attach_clk(dsi->regs, dsi->bus_clk);
 	if (ret)
@@ -1197,8 +1193,8 @@ err_remove_dsi_host:
 err_unprotect_clk:
 	clk_rate_exclusive_put(dsi->mod_clk);
 err_attach_clk:
-	if (!IS_ERR(dsi->bus_clk))
-		regmap_mmio_detach_clk(dsi->regs);
+	regmap_mmio_detach_clk(dsi->regs);
+
 	return ret;
 }
 
@@ -1211,8 +1207,7 @@ static int sun6i_dsi_remove(struct platform_device *pdev)
 	mipi_dsi_host_unregister(&dsi->host);
 	clk_rate_exclusive_put(dsi->mod_clk);
 
-	if (!IS_ERR(dsi->bus_clk))
-		regmap_mmio_detach_clk(dsi->regs);
+	regmap_mmio_detach_clk(dsi->regs);
 
 	return 0;
 }

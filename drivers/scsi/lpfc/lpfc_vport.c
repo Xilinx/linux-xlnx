@@ -1,7 +1,7 @@
 /*******************************************************************
  * This file is part of the Emulex Linux Device Driver for         *
  * Fibre Channel Host Bus Adapters.                                *
- * Copyright (C) 2017-2021 Broadcom. All Rights Reserved. The term *
+ * Copyright (C) 2017-2022 Broadcom. All Rights Reserved. The term *
  * “Broadcom” refers to Broadcom Inc. and/or its subsidiaries.     *
  * Copyright (C) 2004-2016 Emulex.  All rights reserved.           *
  * EMULEX and SLI are trademarks of Emulex.                        *
@@ -135,12 +135,14 @@ lpfc_vport_sparm(struct lpfc_hba *phba, struct lpfc_vport *vport)
 	}
 
 	/*
-	 * Grab buffer pointer and clear context1 so we can use
-	 * lpfc_sli_issue_box_wait
+	 * Wait for the read_sparams mailbox to complete.  Driver needs
+	 * this per vport to start the FDISC.  If the mailbox fails,
+	 * just cleanup and return an error unless the failure is a
+	 * mailbox timeout.  For MBX_TIMEOUT, allow the default
+	 * mbox completion handler to take care of the cleanup.  This
+	 * is safe as the mailbox command isn't one that triggers
+	 * another mailbox.
 	 */
-	mp = (struct lpfc_dmabuf *)pmb->ctx_buf;
-	pmb->ctx_buf = NULL;
-
 	pmb->vport = vport;
 	rc = lpfc_sli_issue_mbox_wait(phba, pmb, phba->fc_ratov * 2);
 	if (rc != MBX_SUCCESS) {
@@ -148,34 +150,29 @@ lpfc_vport_sparm(struct lpfc_hba *phba, struct lpfc_vport *vport)
 			lpfc_printf_vlog(vport, KERN_ERR, LOG_TRACE_EVENT,
 					 "1830 Signal aborted mbxCmd x%x\n",
 					 mb->mbxCommand);
-			lpfc_mbuf_free(phba, mp->virt, mp->phys);
-			kfree(mp);
 			if (rc != MBX_TIMEOUT)
-				mempool_free(pmb, phba->mbox_mem_pool);
+				lpfc_mbox_rsrc_cleanup(phba, pmb,
+						       MBOX_THD_UNLOCKED);
 			return -EINTR;
 		} else {
 			lpfc_printf_vlog(vport, KERN_ERR, LOG_TRACE_EVENT,
 					 "1818 VPort failed init, mbxCmd x%x "
 					 "READ_SPARM mbxStatus x%x, rc = x%x\n",
 					 mb->mbxCommand, mb->mbxStatus, rc);
-			lpfc_mbuf_free(phba, mp->virt, mp->phys);
-			kfree(mp);
 			if (rc != MBX_TIMEOUT)
-				mempool_free(pmb, phba->mbox_mem_pool);
+				lpfc_mbox_rsrc_cleanup(phba, pmb,
+						       MBOX_THD_UNLOCKED);
 			return -EIO;
 		}
 	}
 
+	mp = (struct lpfc_dmabuf *)pmb->ctx_buf;
 	memcpy(&vport->fc_sparam, mp->virt, sizeof (struct serv_parm));
 	memcpy(&vport->fc_nodename, &vport->fc_sparam.nodeName,
 	       sizeof (struct lpfc_name));
 	memcpy(&vport->fc_portname, &vport->fc_sparam.portName,
 	       sizeof (struct lpfc_name));
-
-	lpfc_mbuf_free(phba, mp->virt, mp->phys);
-	kfree(mp);
-	mempool_free(pmb, phba->mbox_mem_pool);
-
+	lpfc_mbox_rsrc_cleanup(phba, pmb, MBOX_THD_UNLOCKED);
 	return 0;
 }
 
@@ -486,22 +483,67 @@ error_out:
 }
 
 static int
+lpfc_send_npiv_logo(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp)
+{
+	int rc;
+	struct lpfc_hba *phba = vport->phba;
+
+	DECLARE_WAIT_QUEUE_HEAD_ONSTACK(waitq);
+
+	spin_lock_irq(&ndlp->lock);
+	if (!(ndlp->save_flags & NLP_WAIT_FOR_LOGO) &&
+	    !ndlp->logo_waitq) {
+		ndlp->logo_waitq = &waitq;
+		ndlp->nlp_fcp_info &= ~NLP_FCP_2_DEVICE;
+		ndlp->nlp_flag |= NLP_ISSUE_LOGO;
+		ndlp->save_flags |= NLP_WAIT_FOR_LOGO;
+	}
+	spin_unlock_irq(&ndlp->lock);
+	rc = lpfc_issue_els_npiv_logo(vport, ndlp);
+	if (!rc) {
+		wait_event_timeout(waitq,
+				   (!(ndlp->save_flags & NLP_WAIT_FOR_LOGO)),
+				   msecs_to_jiffies(phba->fc_ratov * 2000));
+
+		if (!(ndlp->save_flags & NLP_WAIT_FOR_LOGO))
+			goto logo_cmpl;
+		/* LOGO wait failed.  Correct status. */
+		rc = -EINTR;
+	} else {
+		rc = -EIO;
+	}
+
+	/* Error - clean up node flags. */
+	spin_lock_irq(&ndlp->lock);
+	ndlp->nlp_flag &= ~NLP_ISSUE_LOGO;
+	ndlp->save_flags &= ~NLP_WAIT_FOR_LOGO;
+	spin_unlock_irq(&ndlp->lock);
+
+ logo_cmpl:
+	lpfc_printf_vlog(vport, KERN_INFO, LOG_VPORT,
+			 "1824 Issue LOGO completes with status %d\n",
+			 rc);
+	spin_lock_irq(&ndlp->lock);
+	ndlp->logo_waitq = NULL;
+	spin_unlock_irq(&ndlp->lock);
+	return rc;
+}
+
+static int
 disable_vport(struct fc_vport *fc_vport)
 {
 	struct lpfc_vport *vport = *(struct lpfc_vport **)fc_vport->dd_data;
 	struct lpfc_hba   *phba = vport->phba;
 	struct lpfc_nodelist *ndlp = NULL, *next_ndlp = NULL;
-	long timeout;
 	struct Scsi_Host *shost = lpfc_shost_from_vport(vport);
 
+	/* Can't disable during an outstanding delete. */
+	if (vport->load_flag & FC_UNLOADING)
+		return 0;
+
 	ndlp = lpfc_findnode_did(vport, Fabric_DID);
-	if (ndlp && phba->link_state >= LPFC_LINK_UP) {
-		vport->unreg_vpi_cmpl = VPORT_INVAL;
-		timeout = msecs_to_jiffies(phba->fc_ratov * 2000);
-		if (!lpfc_issue_els_npiv_logo(vport, ndlp))
-			while (vport->unreg_vpi_cmpl == VPORT_INVAL && timeout)
-				timeout = schedule_timeout(timeout);
-	}
+	if (ndlp && phba->link_state >= LPFC_LINK_UP)
+		(void)lpfc_send_npiv_logo(vport, ndlp);
 
 	lpfc_sli_host_down(vport);
 
@@ -600,7 +642,7 @@ lpfc_vport_delete(struct fc_vport *fc_vport)
 	struct lpfc_vport *vport = *(struct lpfc_vport **)fc_vport->dd_data;
 	struct Scsi_Host *shost = lpfc_shost_from_vport(vport);
 	struct lpfc_hba  *phba = vport->phba;
-	long timeout;
+	int rc;
 
 	if (vport->port_type == LPFC_PHYSICAL_PORT) {
 		lpfc_printf_vlog(vport, KERN_ERR, LOG_TRACE_EVENT,
@@ -665,15 +707,14 @@ lpfc_vport_delete(struct fc_vport *fc_vport)
 	    phba->fc_topology != LPFC_TOPOLOGY_LOOP) {
 		if (vport->cfg_enable_da_id) {
 			/* Send DA_ID and wait for a completion. */
-			timeout = msecs_to_jiffies(phba->fc_ratov * 2000);
-			if (!lpfc_ns_cmd(vport, SLI_CTNS_DA_ID, 0, 0))
-				while (vport->ct_flags && timeout)
-					timeout = schedule_timeout(timeout);
-			else
+			rc = lpfc_ns_cmd(vport, SLI_CTNS_DA_ID, 0, 0);
+			if (rc) {
 				lpfc_printf_log(vport->phba, KERN_WARNING,
 						LOG_VPORT,
 						"1829 CT command failed to "
-						"delete objects on fabric\n");
+						"delete objects on fabric, "
+						"rc %d\n", rc);
+			}
 		}
 
 		/*
@@ -688,11 +729,10 @@ lpfc_vport_delete(struct fc_vport *fc_vport)
 		ndlp = lpfc_findnode_did(vport, Fabric_DID);
 		if (!ndlp)
 			goto skip_logo;
-		vport->unreg_vpi_cmpl = VPORT_INVAL;
-		timeout = msecs_to_jiffies(phba->fc_ratov * 2000);
-		if (!lpfc_issue_els_npiv_logo(vport, ndlp))
-			while (vport->unreg_vpi_cmpl == VPORT_INVAL && timeout)
-				timeout = schedule_timeout(timeout);
+
+		rc = lpfc_send_npiv_logo(vport, ndlp);
+		if (rc)
+			goto skip_logo;
 	}
 
 	if (!(phba->pport->load_flag & FC_UNLOADING))
@@ -769,74 +809,3 @@ lpfc_destroy_vport_work_array(struct lpfc_hba *phba, struct lpfc_vport **vports)
 	kfree(vports);
 }
 
-
-/**
- * lpfc_vport_reset_stat_data - Reset the statistical data for the vport
- * @vport: Pointer to vport object.
- *
- * This function resets the statistical data for the vport. This function
- * is called with the host_lock held
- **/
-void
-lpfc_vport_reset_stat_data(struct lpfc_vport *vport)
-{
-	struct lpfc_nodelist *ndlp = NULL, *next_ndlp = NULL;
-
-	list_for_each_entry_safe(ndlp, next_ndlp, &vport->fc_nodes, nlp_listp) {
-		if (ndlp->lat_data)
-			memset(ndlp->lat_data, 0, LPFC_MAX_BUCKET_COUNT *
-				sizeof(struct lpfc_scsicmd_bkt));
-	}
-}
-
-
-/**
- * lpfc_alloc_bucket - Allocate data buffer required for statistical data
- * @vport: Pointer to vport object.
- *
- * This function allocates data buffer required for all the FC
- * nodes of the vport to collect statistical data.
- **/
-void
-lpfc_alloc_bucket(struct lpfc_vport *vport)
-{
-	struct lpfc_nodelist *ndlp = NULL, *next_ndlp = NULL;
-
-	list_for_each_entry_safe(ndlp, next_ndlp, &vport->fc_nodes, nlp_listp) {
-
-		kfree(ndlp->lat_data);
-		ndlp->lat_data = NULL;
-
-		if (ndlp->nlp_state == NLP_STE_MAPPED_NODE) {
-			ndlp->lat_data = kcalloc(LPFC_MAX_BUCKET_COUNT,
-					 sizeof(struct lpfc_scsicmd_bkt),
-					 GFP_ATOMIC);
-
-			if (!ndlp->lat_data)
-				lpfc_printf_vlog(vport, KERN_ERR,
-					LOG_TRACE_EVENT,
-					"0287 lpfc_alloc_bucket failed to "
-					"allocate statistical data buffer DID "
-					"0x%x\n", ndlp->nlp_DID);
-		}
-	}
-}
-
-/**
- * lpfc_free_bucket - Free data buffer required for statistical data
- * @vport: Pointer to vport object.
- *
- * Th function frees statistical data buffer of all the FC
- * nodes of the vport.
- **/
-void
-lpfc_free_bucket(struct lpfc_vport *vport)
-{
-	struct lpfc_nodelist *ndlp = NULL, *next_ndlp = NULL;
-
-	list_for_each_entry_safe(ndlp, next_ndlp, &vport->fc_nodes, nlp_listp) {
-
-		kfree(ndlp->lat_data);
-		ndlp->lat_data = NULL;
-	}
-}

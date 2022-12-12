@@ -12,16 +12,14 @@
 #include <asm/patch.h>
 
 #ifdef CONFIG_DYNAMIC_FTRACE
-int ftrace_arch_code_modify_prepare(void) __acquires(&text_mutex)
+void ftrace_arch_code_modify_prepare(void) __acquires(&text_mutex)
 {
 	mutex_lock(&text_mutex);
-	return 0;
 }
 
-int ftrace_arch_code_modify_post_process(void) __releases(&text_mutex)
+void ftrace_arch_code_modify_post_process(void) __releases(&text_mutex)
 {
 	mutex_unlock(&text_mutex);
-	return 0;
 }
 
 static int ftrace_check_current_call(unsigned long hook_pos,
@@ -153,11 +151,6 @@ int ftrace_update_ftrace_func(ftrace_func_t func)
 	}
 
 	return ret;
-}
-
-int __init ftrace_dyn_arch_init(void)
-{
-	return 0;
 }
 #endif
 

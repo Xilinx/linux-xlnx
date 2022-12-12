@@ -1,13 +1,4 @@
-/*
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License as
- * published by the Free Software Foundation version 2.
- *
- * This program is distributed "as is" WITHOUT ANY WARRANTY of any
- * kind, whether express or implied; without even the implied warranty
- * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
+// SPDX-License-Identifier: GPL-2.0-only
 
 #include <linux/clk.h>
 #include <linux/clkdev.h>
@@ -807,7 +798,7 @@ static int ti_adpll_init_registers(struct ti_adpll_data *d)
 
 static int ti_adpll_init_inputs(struct ti_adpll_data *d)
 {
-	const char *error = "need at least %i inputs";
+	static const char error[] = "need at least %i inputs";
 	struct clk *clock;
 	int nr_inputs;
 

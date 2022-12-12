@@ -141,7 +141,7 @@ static void falcon_gpe_enable(void)
 	unsigned int freq;
 	unsigned int status;
 
-	/* if if the clock is already enabled */
+	/* if the clock is already enabled */
 	status = sysctl_r32(SYSCTL_SYS1, SYS1_INFRAC);
 	if (status & (1 << (GPPC_OFFSET + 1)))
 		return;
@@ -167,6 +167,8 @@ static inline void clkdev_add_sys(const char *dev, unsigned int module,
 {
 	struct clk *clk = kzalloc(sizeof(struct clk), GFP_KERNEL);
 
+	if (!clk)
+		return;
 	clk->cl.dev_id = dev;
 	clk->cl.con_id = NULL;
 	clk->cl.clk = clk;
@@ -205,6 +207,12 @@ void __init ltq_soc_init(void)
 			of_address_to_resource(np_syseth, 0, &res_sys[1]) ||
 			of_address_to_resource(np_sysgpe, 0, &res_sys[2]))
 		panic("Failed to get core resources");
+
+	of_node_put(np_status);
+	of_node_put(np_ebu);
+	of_node_put(np_sys1);
+	of_node_put(np_syseth);
+	of_node_put(np_sysgpe);
 
 	if ((request_mem_region(res_status.start, resource_size(&res_status),
 				res_status.name) < 0) ||

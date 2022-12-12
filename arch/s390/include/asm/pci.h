@@ -6,9 +6,9 @@
 #include <linux/mutex.h>
 #include <linux/iommu.h>
 #include <linux/pci_hotplug.h>
-#include <asm-generic/pci.h>
 #include <asm/pci_clp.h>
 #include <asm/pci_debug.h>
+#include <asm/pci_insn.h>
 #include <asm/sclp.h>
 
 #define PCIBIOS_MIN_IO		0x1000
@@ -97,6 +97,7 @@ struct zpci_bar_struct {
 };
 
 struct s390_domain;
+struct kvm_zdev;
 
 #define ZPCI_FUNCTIONS_PER_BUS 256
 struct zpci_bus {
@@ -116,18 +117,20 @@ struct zpci_bus {
 struct zpci_dev {
 	struct zpci_bus *zbus;
 	struct list_head entry;		/* list of all zpci_devices, needed for hotplug, etc. */
-	struct list_head bus_next;
 	struct kref kref;
 	struct hotplug_slot hotplug_slot;
 
 	enum zpci_state state;
 	u32		fid;		/* function ID, used by sclp */
 	u32		fh;		/* function handle, used by insn's */
+	u32		gisa;		/* GISA designation for passthrough */
 	u16		vfn;		/* virtual function number */
 	u16		pchid;		/* physical channel ID */
+	u16		maxstbl;	/* Maximum store block size */
 	u8		pfgid;		/* function group ID */
 	u8		pft;		/* pci function type */
 	u8		port;
+	u8		dtsm;		/* Supported DT mask */
 	u8		rid_available	: 1;
 	u8		has_hp_slot	: 1;
 	u8		has_resources	: 1;
@@ -186,7 +189,10 @@ struct zpci_dev {
 
 	struct dentry	*debugfs_dev;
 
+	/* IOMMU and passthrough */
 	struct s390_domain *s390_domain; /* s390 IOMMU domain data */
+	struct kvm_zdev *kzdev;
+	struct mutex kzdev_lock;
 };
 
 static inline bool zdev_enabled(struct zpci_dev *zdev)
@@ -197,6 +203,9 @@ static inline bool zdev_enabled(struct zpci_dev *zdev)
 extern const struct attribute_group *zpci_attr_groups[];
 extern unsigned int s390_pci_force_floating __initdata;
 extern unsigned int s390_pci_no_rid;
+
+extern union zpci_sic_iib *zpci_aipb;
+extern struct airq_iv *zpci_aif_sbv;
 
 /* -----------------------------------------------------------------------------
   Prototypes
@@ -210,9 +219,11 @@ int zpci_deconfigure_device(struct zpci_dev *zdev);
 void zpci_device_reserved(struct zpci_dev *zdev);
 bool zpci_is_device_configured(struct zpci_dev *zdev);
 
+int zpci_hot_reset_device(struct zpci_dev *zdev);
 int zpci_register_ioat(struct zpci_dev *, u8, u64, u64, u64);
 int zpci_unregister_ioat(struct zpci_dev *, u8);
 void zpci_remove_reserved_devices(void);
+void zpci_update_fh(struct zpci_dev *zdev, u32 fh);
 
 /* CLP */
 int clp_setup_writeback_mio(void);
@@ -281,9 +292,6 @@ int zpci_dma_exit_device(struct zpci_dev *zdev);
 int __init zpci_irq_init(void);
 void __init zpci_irq_exit(void);
 
-int zpci_set_irq(struct zpci_dev *zdev);
-int zpci_clear_irq(struct zpci_dev *zdev);
-
 /* FMB */
 int zpci_fmb_enable_device(struct zpci_dev *);
 int zpci_fmb_disable_device(struct zpci_dev *);
@@ -294,8 +302,10 @@ void zpci_debug_exit(void);
 void zpci_debug_init_device(struct zpci_dev *, const char *);
 void zpci_debug_exit_device(struct zpci_dev *);
 
-/* Error reporting */
+/* Error handling */
 int zpci_report_error(struct pci_dev *, struct zpci_report_error_header *);
+int zpci_clear_error_state(struct zpci_dev *zdev);
+int zpci_reset_load_store_blocked(struct zpci_dev *zdev);
 
 #ifdef CONFIG_NUMA
 

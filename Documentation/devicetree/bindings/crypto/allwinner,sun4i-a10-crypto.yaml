@@ -4,7 +4,7 @@
 $id: http://devicetree.org/schemas/crypto/allwinner,sun4i-a10-crypto.yaml#
 $schema: http://devicetree.org/meta-schemas/core.yaml#
 
-title: Allwinner A10 Security System Device Tree Bindings
+title: Allwinner A10 Security System
 
 maintainers:
   - Chen-Yu Tsai <wens@csie.org>
@@ -43,6 +43,16 @@ properties:
     items:
       - const: ahb
       - const: mod
+
+  dmas:
+    items:
+      - description: RX DMA Channel
+      - description: TX DMA Channel
+
+  dma-names:
+    items:
+      - const: rx
+      - const: tx
 
   resets:
     maxItems: 1

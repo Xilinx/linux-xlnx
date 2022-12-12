@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Broadcom BM2835 V4L2 driver
+ * Broadcom BCM2835 V4L2 driver
  *
  * Copyright © 2013 Raspberry Pi (Trading) Ltd.
  *
@@ -13,6 +13,8 @@
 
 #ifndef MMAL_MSG_FORMAT_H
 #define MMAL_MSG_FORMAT_H
+
+#include <linux/math.h>
 
 #include "mmal-msg-common.h"
 
@@ -30,8 +32,8 @@ struct mmal_video_format {
 	u32 width;		/* Width of frame in pixels */
 	u32 height;		/* Height of frame in rows of pixels */
 	struct mmal_rect crop;	/* Visible region of the frame */
-	struct mmal_rational frame_rate;	/* Frame rate */
-	struct mmal_rational par;		/* Pixel aspect ratio */
+	struct s32_fract frame_rate;	/* Frame rate */
+	struct s32_fract par;		/* Pixel aspect ratio */
 
 	/*
 	 * FourCC specifying the color space of the video stream. See the

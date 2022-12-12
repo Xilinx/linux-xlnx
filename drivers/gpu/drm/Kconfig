@@ -8,6 +8,7 @@
 menuconfig DRM
 	tristate "Direct Rendering Manager (XFree86 4.1.0 and higher DRI support)"
 	depends on (AGP || AGP=n) && !EMULATED_CMPXCHG && HAS_DMA
+	select DRM_NOMODESET
 	select DRM_PANEL_ORIENTATION_QUIRKS
 	select HDMI
 	select FB_CMDLINE
@@ -30,23 +31,11 @@ menuconfig DRM
 config DRM_MIPI_DBI
 	tristate
 	depends on DRM
+	select DRM_KMS_HELPER
 
 config DRM_MIPI_DSI
 	bool
 	depends on DRM
-
-config DRM_DP_AUX_BUS
-	tristate
-	depends on DRM
-	depends on OF
-
-config DRM_DP_AUX_CHARDEV
-	bool "DRM DP AUX Interface"
-	depends on DRM
-	help
-	  Choose this option to enable a /dev/drm_dp_auxN node that allows to
-	  read and write values to arbitrary DPCD registers on the DP aux
-	  channel.
 
 config DRM_DEBUG_MM
 	bool "Insert extra checks and debug info into the DRM range managers"
@@ -62,20 +51,37 @@ config DRM_DEBUG_MM
 
 	  If in doubt, say "N".
 
-config DRM_DEBUG_SELFTEST
-	tristate "kselftests for DRM"
+config DRM_USE_DYNAMIC_DEBUG
+	bool "use dynamic debug to implement drm.debug"
+	default y
 	depends on DRM
-	depends on DEBUG_KERNEL
+	depends on DYNAMIC_DEBUG || DYNAMIC_DEBUG_CORE
+	depends on JUMP_LABEL
+	help
+	  Use dynamic-debug to avoid drm_debug_enabled() runtime overheads.
+	  Due to callsite counts in DRM drivers (~4k in amdgpu) and 56
+	  bytes per callsite, the .data costs can be substantial, and
+	  are therefore configurable.
+
+config DRM_KUNIT_TEST
+	tristate "KUnit tests for DRM" if !KUNIT_ALL_TESTS
+	depends on DRM && KUNIT
 	select PRIME_NUMBERS
+	select DRM_DISPLAY_DP_HELPER
+	select DRM_DISPLAY_HELPER
 	select DRM_LIB_RANDOM
 	select DRM_KMS_HELPER
+	select DRM_BUDDY
 	select DRM_EXPORT_FOR_TESTS if m
-	default n
+	default KUNIT_ALL_TESTS
 	help
-	  This option provides kernel modules that can be used to run
-	  various selftests on parts of the DRM api. This option is not
-	  useful for distributions or general kernels, but only for kernel
+	  This builds unit tests for DRM. This option is not useful for
+	  distributions or general kernels, but only for kernel
 	  developers working on DRM and associated drivers.
+
+	  For more information on KUnit and unit tests in general,
+	  please refer to the KUnit documentation in
+	  Documentation/dev-tools/kunit/.
 
 	  If in doubt, say "N".
 
@@ -100,11 +106,25 @@ config DRM_DEBUG_DP_MST_TOPOLOGY_REFS
           This has the potential to use a lot of memory and print some very
           large kernel messages. If in doubt, say "N".
 
+config DRM_DEBUG_MODESET_LOCK
+	bool "Enable backtrace history for lock contention"
+	depends on STACKTRACE_SUPPORT
+	depends on DEBUG_KERNEL
+	depends on EXPERT
+	select STACKDEPOT
+	default y if DEBUG_WW_MUTEX_SLOWPATH
+	help
+	  Enable debug tracing of failures to gracefully handle drm modeset lock
+	  contention. A history of each drm modeset lock path hitting -EDEADLK
+	  will be saved until gracefully handled, and the backtrace will be
+	  printed when attempting to lock a contended lock.
+
+	  If in doubt, say "N".
+
 config DRM_FBDEV_EMULATION
 	bool "Enable legacy fbdev support for your modesetting driver"
-	depends on DRM
-	depends on FB
-	select DRM_KMS_HELPER
+	depends on DRM_KMS_HELPER
+	depends on FB=y || FB=DRM_KMS_HELPER
 	select FB_CFB_FILLRECT
 	select FB_CFB_COPYAREA
 	select FB_CFB_IMAGEBLIT
@@ -164,16 +184,7 @@ config DRM_LOAD_EDID_FIRMWARE
 	  default case is N. Details and instructions how to build your own
 	  EDID data are given in Documentation/admin-guide/edid.rst.
 
-config DRM_DP_CEC
-	bool "Enable DisplayPort CEC-Tunneling-over-AUX HDMI support"
-	depends on DRM
-	select CEC_CORE
-	help
-	  Choose this option if you want to enable HDMI CEC support for
-	  DisplayPort/USB-C to HDMI adapters.
-
-	  Note: not all adapters support this feature, and even for those
-	  that do support this they often do not hook up the CEC pin.
+source "drivers/gpu/drm/display/Kconfig"
 
 config DRM_TTM
 	tristate
@@ -182,6 +193,12 @@ config DRM_TTM
 	  GPU memory management subsystem for devices with multiple
 	  GPU memory types. Will be enabled automatically if a device driver
 	  uses it.
+
+config DRM_BUDDY
+	tristate
+	depends on DRM
+	help
+	  A page based buddy allocator
 
 config DRM_VRAM_HELPER
 	tristate
@@ -196,22 +213,15 @@ config DRM_TTM_HELPER
 	help
 	  Helpers for ttm-based gem objects
 
-config DRM_GEM_CMA_HELPER
-	bool
+config DRM_GEM_DMA_HELPER
+	tristate
 	depends on DRM
 	help
-	  Choose this if you need the GEM CMA helper functions
-
-config DRM_KMS_CMA_HELPER
-	bool
-	depends on DRM
-	select DRM_GEM_CMA_HELPER
-	help
-	  Choose this if you need the KMS CMA helper functions
+	  Choose this if you need the GEM DMA helper functions
 
 config DRM_GEM_SHMEM_HELPER
-	bool
-	depends on DRM
+	tristate
+	depends on DRM && MMU
 	help
 	  Choose this if you need the GEM shmem helper functions
 
@@ -228,6 +238,8 @@ config DRM_RADEON
 	depends on DRM && PCI && MMU
 	depends on AGP || !AGP
 	select FW_LOADER
+	select DRM_DISPLAY_DP_HELPER
+	select DRM_DISPLAY_HELPER
         select DRM_KMS_HELPER
         select DRM_TTM
 	select DRM_TTM_HELPER
@@ -235,6 +247,13 @@ config DRM_RADEON
 	select HWMON
 	select BACKLIGHT_CLASS_DEVICE
 	select INTERVAL_TREE
+	# radeon depends on ACPI_VIDEO when ACPI is enabled, for select to work
+	# ACPI_VIDEO's dependencies must also be selected.
+	select INPUT if ACPI
+	select ACPI_VIDEO if ACPI
+	# On x86 ACPI_VIDEO also needs ACPI_WMI
+	select X86_PLATFORM_DEVICES if ACPI && X86
+	select ACPI_WMI if ACPI && X86
 	help
 	  Choose this option if you have an ATI Radeon graphics card.  There
 	  are both PCI and AGP versions.  You don't need to choose this to
@@ -248,6 +267,9 @@ config DRM_AMDGPU
 	tristate "AMD GPU"
 	depends on DRM && PCI && MMU
 	select FW_LOADER
+	select DRM_DISPLAY_DP_HELPER
+	select DRM_DISPLAY_HDMI_HELPER
+	select DRM_DISPLAY_HELPER
 	select DRM_KMS_HELPER
 	select DRM_SCHED
 	select DRM_TTM
@@ -256,6 +278,14 @@ config DRM_AMDGPU
 	select HWMON
 	select BACKLIGHT_CLASS_DEVICE
 	select INTERVAL_TREE
+	select DRM_BUDDY
+	# amdgpu depends on ACPI_VIDEO when ACPI is enabled, for select to work
+	# ACPI_VIDEO's dependencies must also be selected.
+	select INPUT if ACPI
+	select ACPI_VIDEO if ACPI
+	# On x86 ACPI_VIDEO also needs ACPI_WMI
+	select X86_PLATFORM_DEVICES if ACPI && X86
+	select ACPI_WMI if ACPI && X86
 	help
 	  Choose this option if you have a recent AMD Radeon graphics card.
 
@@ -271,7 +301,8 @@ source "drivers/gpu/drm/kmb/Kconfig"
 
 config DRM_VGEM
 	tristate "Virtual GEM provider"
-	depends on DRM
+	depends on DRM && MMU
+	select DRM_GEM_SHMEM_HELPER
 	help
 	  Choose this option to get a virtual graphics memory manager,
 	  as used by Mesa's software renderer for enhanced performance.
@@ -279,7 +310,7 @@ config DRM_VGEM
 
 config DRM_VKMS
 	tristate "Virtual KMS (EXPERIMENTAL)"
-	depends on DRM
+	depends on DRM && MMU
 	select DRM_KMS_HELPER
 	select DRM_GEM_SHMEM_HELPER
 	select CRC32
@@ -349,9 +380,9 @@ source "drivers/gpu/drm/etnaviv/Kconfig"
 
 source "drivers/gpu/drm/hisilicon/Kconfig"
 
-source "drivers/gpu/drm/mediatek/Kconfig"
+source "drivers/gpu/drm/logicvc/Kconfig"
 
-source "drivers/gpu/drm/zte/Kconfig"
+source "drivers/gpu/drm/mediatek/Kconfig"
 
 source "drivers/gpu/drm/mxsfb/Kconfig"
 
@@ -380,6 +411,10 @@ source "drivers/gpu/drm/tidss/Kconfig"
 source "drivers/gpu/drm/xlnx/Kconfig"
 
 source "drivers/gpu/drm/gud/Kconfig"
+
+source "drivers/gpu/drm/solomon/Kconfig"
+
+source "drivers/gpu/drm/sprd/Kconfig"
 
 config DRM_HYPERV
 	tristate "DRM Support for Hyper-V synthetic video device"
@@ -479,6 +514,15 @@ config DRM_EXPORT_FOR_TESTS
 config DRM_PANEL_ORIENTATION_QUIRKS
 	tristate
 
+# Separate option because nomodeset parameter is global and expected built-in
+config DRM_NOMODESET
+	bool
+	default n
+
 config DRM_LIB_RANDOM
+	bool
+	default n
+
+config DRM_PRIVACY_SCREEN
 	bool
 	default n

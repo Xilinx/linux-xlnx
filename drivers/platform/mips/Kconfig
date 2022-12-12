@@ -17,7 +17,7 @@ menuconfig MIPS_PLATFORM_DEVICES
 if MIPS_PLATFORM_DEVICES
 
 config CPU_HWMON
-	tristate "Loongson-3 CPU HWMon Driver"
+	bool "Loongson-3 CPU HWMon Driver"
 	depends on MACH_LOONGSON64
 	select HWMON
 	default y
@@ -29,5 +29,11 @@ config RS780E_ACPI
 	depends on MACH_LOONGSON64 || COMPILE_TEST
 	help
 	  Loongson RS780E PCH ACPI Controller driver.
+
+config LS2K_RESET
+	bool "Loongson-2K1000 Reset Controller"
+	depends on MACH_LOONGSON64 || COMPILE_TEST
+	help
+	  Loongson-2K1000 Reset Controller driver.
 
 endif # MIPS_PLATFORM_DEVICES

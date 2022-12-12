@@ -26,7 +26,9 @@
 #include <linux/slab.h>
 #include <linux/vgaarb.h>
 #include <linux/pm_runtime.h>
+#include <linux/msi.h>
 #include <linux/of.h>
+#include <linux/aperture.h>
 #include "pci.h"
 
 static int sysfs_initialized;	/* = 0 */
@@ -49,7 +51,25 @@ pci_config_attr(subsystem_vendor, "0x%04x\n");
 pci_config_attr(subsystem_device, "0x%04x\n");
 pci_config_attr(revision, "0x%02x\n");
 pci_config_attr(class, "0x%06x\n");
-pci_config_attr(irq, "%u\n");
+
+static ssize_t irq_show(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	struct pci_dev *pdev = to_pci_dev(dev);
+
+#ifdef CONFIG_PCI_MSI
+	/*
+	 * For MSI, show the first MSI IRQ; for all other cases including
+	 * MSI-X, show the legacy INTx IRQ.
+	 */
+	if (pdev->msi_enabled)
+		return sysfs_emit(buf, "%u\n", pci_irq_vector(pdev, 0));
+#endif
+
+	return sysfs_emit(buf, "%u\n", pdev->irq);
+}
+static DEVICE_ATTR_RO(irq);
 
 static ssize_t broken_parity_status_show(struct device *dev,
 					 struct device_attribute *attr,
@@ -81,8 +101,10 @@ static ssize_t pci_dev_show_local_cpu(struct device *dev, bool list,
 	const struct cpumask *mask;
 
 #ifdef CONFIG_NUMA
-	mask = (dev_to_node(dev) == -1) ? cpu_online_mask :
-					  cpumask_of_node(dev_to_node(dev));
+	if (dev_to_node(dev) == NUMA_NO_NODE)
+		mask = cpu_online_mask;
+	else
+		mask = cpumask_of_node(dev_to_node(dev));
 #else
 	mask = cpumask_of_pcibus(to_pci_dev(dev)->bus);
 #endif
@@ -273,14 +295,14 @@ static ssize_t enable_store(struct device *dev, struct device_attribute *attr,
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
 	unsigned long val;
-	ssize_t result = kstrtoul(buf, 0, &val);
-
-	if (result < 0)
-		return result;
+	ssize_t result = 0;
 
 	/* this can crash the machine when done on the "wrong" device */
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
+
+	if (kstrtoul(buf, 0, &val) < 0)
+		return -EINVAL;
 
 	device_lock(dev);
 	if (dev->driver)
@@ -312,14 +334,13 @@ static ssize_t numa_node_store(struct device *dev,
 			       size_t count)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
-	int node, ret;
+	int node;
 
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
 
-	ret = kstrtoint(buf, 0, &node);
-	if (ret)
-		return ret;
+	if (kstrtoint(buf, 0, &node) < 0)
+		return -EINVAL;
 
 	if ((node < 0 && node != NUMA_NO_NODE) || node >= MAX_NUMNODES)
 		return -EINVAL;
@@ -378,11 +399,11 @@ static ssize_t msi_bus_store(struct device *dev, struct device_attribute *attr,
 	struct pci_bus *subordinate = pdev->subordinate;
 	unsigned long val;
 
-	if (kstrtoul(buf, 0, &val) < 0)
-		return -EINVAL;
-
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
+
+	if (kstrtoul(buf, 0, &val) < 0)
+		return -EINVAL;
 
 	/*
 	 * "no_msi" and "bus_flags" only affect what happens when a driver
@@ -547,31 +568,11 @@ static ssize_t driver_override_store(struct device *dev,
 				     const char *buf, size_t count)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
-	char *driver_override, *old, *cp;
+	int ret;
 
-	/* We need to keep extra room for a newline */
-	if (count >= (PAGE_SIZE - 1))
-		return -EINVAL;
-
-	driver_override = kstrndup(buf, count, GFP_KERNEL);
-	if (!driver_override)
-		return -ENOMEM;
-
-	cp = strchr(driver_override, '\n');
-	if (cp)
-		*cp = '\0';
-
-	device_lock(dev);
-	old = pdev->driver_override;
-	if (strlen(driver_override)) {
-		pdev->driver_override = driver_override;
-	} else {
-		kfree(driver_override);
-		pdev->driver_override = NULL;
-	}
-	device_unlock(dev);
-
-	kfree(old);
+	ret = driver_set_override(dev, &pdev->driver_override, buf, count);
+	if (ret)
+		return ret;
 
 	return count;
 }
@@ -734,8 +735,6 @@ static ssize_t pci_read_config(struct file *filp, struct kobject *kobj,
 		u8 val;
 		pci_user_read_config_byte(dev, off, &val);
 		data[off - init_off] = val;
-		off++;
-		--size;
 	}
 
 	pci_config_pm_runtime_put(dev);
@@ -798,11 +797,8 @@ static ssize_t pci_write_config(struct file *filp, struct kobject *kobj,
 		size -= 2;
 	}
 
-	if (size) {
+	if (size)
 		pci_user_write_config_byte(dev, off, data[off - init_off]);
-		off++;
-		--size;
-	}
 
 	pci_config_pm_runtime_put(dev);
 
@@ -1339,10 +1335,10 @@ static ssize_t reset_store(struct device *dev, struct device_attribute *attr,
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
 	unsigned long val;
-	ssize_t result = kstrtoul(buf, 0, &val);
+	ssize_t result;
 
-	if (result < 0)
-		return result;
+	if (kstrtoul(buf, 0, &val) < 0)
+		return -EINVAL;
 
 	if (val != 1)
 		return -EINVAL;
@@ -1376,6 +1372,112 @@ static umode_t pci_dev_reset_attr_is_visible(struct kobject *kobj,
 static const struct attribute_group pci_dev_reset_attr_group = {
 	.attrs = pci_dev_reset_attrs,
 	.is_visible = pci_dev_reset_attr_is_visible,
+};
+
+#define pci_dev_resource_resize_attr(n)					\
+static ssize_t resource##n##_resize_show(struct device *dev,		\
+					 struct device_attribute *attr,	\
+					 char * buf)			\
+{									\
+	struct pci_dev *pdev = to_pci_dev(dev);				\
+	ssize_t ret;							\
+									\
+	pci_config_pm_runtime_get(pdev);				\
+									\
+	ret = sysfs_emit(buf, "%016llx\n",				\
+			 (u64)pci_rebar_get_possible_sizes(pdev, n));	\
+									\
+	pci_config_pm_runtime_put(pdev);				\
+									\
+	return ret;							\
+}									\
+									\
+static ssize_t resource##n##_resize_store(struct device *dev,		\
+					  struct device_attribute *attr,\
+					  const char *buf, size_t count)\
+{									\
+	struct pci_dev *pdev = to_pci_dev(dev);				\
+	unsigned long size, flags;					\
+	int ret, i;							\
+	u16 cmd;							\
+									\
+	if (kstrtoul(buf, 0, &size) < 0)				\
+		return -EINVAL;						\
+									\
+	device_lock(dev);						\
+	if (dev->driver) {						\
+		ret = -EBUSY;						\
+		goto unlock;						\
+	}								\
+									\
+	pci_config_pm_runtime_get(pdev);				\
+									\
+	if ((pdev->class >> 8) == PCI_CLASS_DISPLAY_VGA) {		\
+		ret = aperture_remove_conflicting_pci_devices(pdev,	\
+						"resourceN_resize");	\
+		if (ret)						\
+			goto pm_put;					\
+	}								\
+									\
+	pci_read_config_word(pdev, PCI_COMMAND, &cmd);			\
+	pci_write_config_word(pdev, PCI_COMMAND,			\
+			      cmd & ~PCI_COMMAND_MEMORY);		\
+									\
+	flags = pci_resource_flags(pdev, n);				\
+									\
+	pci_remove_resource_files(pdev);				\
+									\
+	for (i = 0; i < PCI_STD_NUM_BARS; i++) {			\
+		if (pci_resource_len(pdev, i) &&			\
+		    pci_resource_flags(pdev, i) == flags)		\
+			pci_release_resource(pdev, i);			\
+	}								\
+									\
+	ret = pci_resize_resource(pdev, n, size);			\
+									\
+	pci_assign_unassigned_bus_resources(pdev->bus);			\
+									\
+	if (pci_create_resource_files(pdev))				\
+		pci_warn(pdev, "Failed to recreate resource files after BAR resizing\n");\
+									\
+	pci_write_config_word(pdev, PCI_COMMAND, cmd);			\
+pm_put:									\
+	pci_config_pm_runtime_put(pdev);				\
+unlock:									\
+	device_unlock(dev);						\
+									\
+	return ret ? ret : count;					\
+}									\
+static DEVICE_ATTR_RW(resource##n##_resize)
+
+pci_dev_resource_resize_attr(0);
+pci_dev_resource_resize_attr(1);
+pci_dev_resource_resize_attr(2);
+pci_dev_resource_resize_attr(3);
+pci_dev_resource_resize_attr(4);
+pci_dev_resource_resize_attr(5);
+
+static struct attribute *resource_resize_attrs[] = {
+	&dev_attr_resource0_resize.attr,
+	&dev_attr_resource1_resize.attr,
+	&dev_attr_resource2_resize.attr,
+	&dev_attr_resource3_resize.attr,
+	&dev_attr_resource4_resize.attr,
+	&dev_attr_resource5_resize.attr,
+	NULL,
+};
+
+static umode_t resource_resize_is_visible(struct kobject *kobj,
+					  struct attribute *a, int n)
+{
+	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
+
+	return pci_rebar_get_current_size(pdev, n) < 0 ? 0 : a->mode;
+}
+
+static const struct attribute_group pci_dev_resource_resize_group = {
+	.attrs = resource_resize_attrs,
+	.is_visible = resource_resize_is_visible,
 };
 
 int __must_check pci_create_sysfs_dev_files(struct pci_dev *pdev)
@@ -1499,6 +1601,7 @@ const struct attribute_group *pci_dev_groups[] = {
 #ifdef CONFIG_ACPI
 	&pci_dev_acpi_attr_group,
 #endif
+	&pci_dev_resource_resize_group,
 	NULL,
 };
 

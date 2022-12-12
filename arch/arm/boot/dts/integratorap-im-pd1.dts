@@ -28,9 +28,13 @@
 	syscon@0 {
 		compatible = "arm,im-pd1-syscon", "syscon";
 		reg = <0x00000000 0x1000>;
+		ranges;
+		#address-cells = <1>;
+		#size-cells = <1>;
 
-		vco1: vco1-clock {
+		vco1: clock-controller@0 {
 			compatible = "arm,impd1-vco1";
+			reg = <0x00 0x04>;
 			#clock-cells = <0>;
 			lock-offset = <0x08>;
 			vco-offset = <0x00>;
@@ -38,8 +42,9 @@
 			clock-output-names = "IM-PD1-VCO1";
 		};
 
-		vco2: vco2-clock {
+		vco2: clock-controller@4 {
 			compatible = "arm,impd1-vco2";
+			reg = <0x04 0x04>;
 			#clock-cells = <0>;
 			lock-offset = <0x08>;
 			vco-offset = <0x04>;
@@ -173,12 +178,12 @@
 		clock-names = "uartclk", "apb_pclk";
 	};
 
-	ssp@300000 {
+	spi@300000 {
 		compatible = "arm,pl022", "arm,primecell";
 		reg = <0x00300000 0x1000>;
 		interrupts-extended = <&impd1_vic 3>;
 		clocks = <&impd1_sspclk>, <&sysclk>;
-		clock-names = "spiclk", "apb_pclk";
+		clock-names = "sspclk", "apb_pclk";
 	};
 
 	impd1_gpio0: gpio@400000 {
@@ -244,6 +249,7 @@
 		/* 640x480 16bpp @ 25.175MHz is 36827428 bytes/s */
 		max-memory-bandwidth = <40000000>;
 		memory-region = <&impd1_ram>;
+		dma-ranges;
 
 		port@0 {
 			#address-cells = <1>;

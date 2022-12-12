@@ -82,8 +82,6 @@ struct stmmac_desc_ops {
 			     dma_addr_t dma_rx_phy, unsigned int desc_size);
 	/* set MSS via context descriptor */
 	void (*set_mss)(struct dma_desc *p, unsigned int mss);
-	/* get descriptor skbuff address */
-	void (*get_addr)(struct dma_desc *p, unsigned int *addr);
 	/* set descriptor skbuff address */
 	void (*set_addr)(struct dma_desc *p, dma_addr_t addr);
 	/* clear descriptor */
@@ -142,8 +140,6 @@ struct stmmac_desc_ops {
 	stmmac_do_void_callback(__priv, desc, display_ring, __args)
 #define stmmac_set_mss(__priv, __args...) \
 	stmmac_do_void_callback(__priv, desc, set_mss, __args)
-#define stmmac_get_desc_addr(__priv, __args...) \
-	stmmac_do_void_callback(__priv, desc, get_addr, __args)
 #define stmmac_set_desc_addr(__priv, __args...) \
 	stmmac_do_void_callback(__priv, desc, set_addr, __args)
 #define stmmac_clear_desc(__priv, __args...) \
@@ -330,7 +326,8 @@ struct stmmac_ops {
 	/* Set power management mode (e.g. magic frame) */
 	void (*pmt)(struct mac_device_info *hw, unsigned long mode);
 	/* Set/Get Unicast MAC addresses */
-	void (*set_umac_addr)(struct mac_device_info *hw, unsigned char *addr,
+	void (*set_umac_addr)(struct mac_device_info *hw,
+			      const unsigned char *addr,
 			      unsigned int reg_n);
 	void (*get_umac_addr)(struct mac_device_info *hw, unsigned char *addr,
 			      unsigned int reg_n);

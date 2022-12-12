@@ -136,6 +136,7 @@ struct ideapad_private {
 		bool dytc                 : 1;
 		bool fan_mode             : 1;
 		bool fn_lock              : 1;
+		bool set_fn_lock_led      : 1;
 		bool hw_rfkill_switch     : 1;
 		bool kbd_bl               : 1;
 		bool touchpad_ctrl_via_ec : 1;
@@ -151,6 +152,24 @@ struct ideapad_private {
 static bool no_bt_rfkill;
 module_param(no_bt_rfkill, bool, 0444);
 MODULE_PARM_DESC(no_bt_rfkill, "No rfkill for bluetooth.");
+
+static bool allow_v4_dytc;
+module_param(allow_v4_dytc, bool, 0444);
+MODULE_PARM_DESC(allow_v4_dytc,
+	"Enable DYTC version 4 platform-profile support. "
+	"If you need this please report this to: platform-driver-x86@vger.kernel.org");
+
+static bool hw_rfkill_switch;
+module_param(hw_rfkill_switch, bool, 0444);
+MODULE_PARM_DESC(hw_rfkill_switch,
+	"Enable rfkill support for laptops with a hw on/off wifi switch/slider. "
+	"If you need this please report this to: platform-driver-x86@vger.kernel.org");
+
+static bool set_fn_lock_led;
+module_param(set_fn_lock_led, bool, 0444);
+MODULE_PARM_DESC(set_fn_lock_led,
+	"Enable driver based updates of the fn-lock LED on fn-lock changes. "
+	"If you need this please report this to: platform-driver-x86@vger.kernel.org");
 
 /*
  * ACPI Helpers
@@ -868,6 +887,24 @@ static void dytc_profile_refresh(struct ideapad_private *priv)
 	}
 }
 
+static const struct dmi_system_id ideapad_dytc_v4_allow_table[] = {
+	{
+		/* Ideapad 5 Pro 16ACH6 */
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "82L5")
+		}
+	},
+	{
+		/* Ideapad 5 15ITL05 */
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+			DMI_MATCH(DMI_PRODUCT_VERSION, "IdeaPad 5 15ITL05")
+		}
+	},
+	{}
+};
+
 static int ideapad_dytc_profile_init(struct ideapad_private *priv)
 {
 	int err, dytc_version;
@@ -882,12 +919,24 @@ static int ideapad_dytc_profile_init(struct ideapad_private *priv)
 		return err;
 
 	/* Check DYTC is enabled and supports mode setting */
-	if (!test_bit(DYTC_QUERY_ENABLE_BIT, &output))
+	if (!test_bit(DYTC_QUERY_ENABLE_BIT, &output)) {
+		dev_info(&priv->platform_device->dev, "DYTC_QUERY_ENABLE_BIT returned false\n");
 		return -ENODEV;
+	}
 
 	dytc_version = (output >> DYTC_QUERY_REV_BIT) & 0xF;
-	if (dytc_version < 5)
+
+	if (dytc_version < 4) {
+		dev_info(&priv->platform_device->dev, "DYTC_VERSION < 4 is not supported\n");
 		return -ENODEV;
+	}
+
+	if (dytc_version < 5 &&
+	    !(allow_v4_dytc || dmi_check_system(ideapad_dytc_v4_allow_table))) {
+		dev_info(&priv->platform_device->dev,
+			 "DYTC_VERSION 4 support may not work. Pass ideapad_laptop.allow_v4_dytc=Y on the kernel commandline to enable\n");
+		return -ENODEV;
+	}
 
 	priv->dytc = kzalloc(sizeof(*priv->dytc), GFP_KERNEL);
 	if (!priv->dytc)
@@ -1467,6 +1516,9 @@ static void ideapad_wmi_notify(u32 value, void *context)
 		ideapad_input_report(priv, value);
 		break;
 	case 208:
+		if (!priv->features.set_fn_lock_led)
+			break;
+
 		if (!eval_hals(priv->adev->handle, &result)) {
 			bool state = test_bit(HALS_FNLOCK_STATE_BIT, &result);
 
@@ -1479,6 +1531,18 @@ static void ideapad_wmi_notify(u32 value, void *context)
 	}
 }
 #endif
+
+/* On some models we need to call exec_sals(SALS_FNLOCK_ON/OFF) to set the LED */
+static const struct dmi_system_id set_fn_lock_led_list[] = {
+	{
+		/* https://bugzilla.kernel.org/show_bug.cgi?id=212671 */
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+			DMI_MATCH(DMI_PRODUCT_VERSION, "Lenovo Legion R7000P2020H"),
+		}
+	},
+	{}
+};
 
 /*
  * Some ideapads have a hardware rfkill switch, but most do not have one.
@@ -1499,15 +1563,41 @@ static const struct dmi_system_id hw_rfkill_list[] = {
 	{}
 };
 
+static const struct dmi_system_id no_touchpad_switch_list[] = {
+	{
+	.ident = "Lenovo Yoga 3 Pro 1370",
+	.matches = {
+		DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+		DMI_MATCH(DMI_PRODUCT_VERSION, "Lenovo YOGA 3"),
+		},
+	},
+	{
+	.ident = "ZhaoYang K4e-IML",
+	.matches = {
+		DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+		DMI_MATCH(DMI_PRODUCT_VERSION, "ZhaoYang K4e-IML"),
+		},
+	},
+	{}
+};
+
 static void ideapad_check_features(struct ideapad_private *priv)
 {
 	acpi_handle handle = priv->adev->handle;
 	unsigned long val;
 
-	priv->features.hw_rfkill_switch = dmi_check_system(hw_rfkill_list);
+	priv->features.set_fn_lock_led =
+		set_fn_lock_led || dmi_check_system(set_fn_lock_led_list);
+	priv->features.hw_rfkill_switch =
+		hw_rfkill_switch || dmi_check_system(hw_rfkill_list);
 
 	/* Most ideapads with ELAN0634 touchpad don't use EC touchpad switch */
-	priv->features.touchpad_ctrl_via_ec = !acpi_dev_present("ELAN0634", NULL, -1);
+	if (acpi_dev_present("ELAN0634", NULL, -1))
+		priv->features.touchpad_ctrl_via_ec = 0;
+	else if (dmi_check_system(no_touchpad_switch_list))
+		priv->features.touchpad_ctrl_via_ec = 0;
+	else
+		priv->features.touchpad_ctrl_via_ec = 1;
 
 	if (!read_ec_data(handle, VPCCMD_R_FAN, &val))
 		priv->features.fan_mode = true;
@@ -1534,17 +1624,13 @@ static void ideapad_check_features(struct ideapad_private *priv)
 
 static int ideapad_acpi_add(struct platform_device *pdev)
 {
+	struct acpi_device *adev = ACPI_COMPANION(&pdev->dev);
 	struct ideapad_private *priv;
-	struct acpi_device *adev;
 	acpi_status status;
 	unsigned long cfg;
 	int err, i;
 
-	err = acpi_bus_get_device(ACPI_HANDLE(&pdev->dev), &adev);
-	if (err)
-		return -ENODEV;
-
-	if (eval_int(adev->handle, "_CFG", &cfg))
+	if (!adev || eval_int(adev->handle, "_CFG", &cfg))
 		return -ENODEV;
 
 	priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL);

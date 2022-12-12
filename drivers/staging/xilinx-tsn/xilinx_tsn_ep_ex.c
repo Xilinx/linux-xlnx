@@ -57,7 +57,7 @@ static int tsn_ex_ep_xmit(struct sk_buff *skb, struct net_device *ndev)
 static void tsn_ex_ep_set_mac_address(struct net_device *ndev, const void *address)
 {
 	if (address)
-		ether_addr_copy(ndev->dev_addr, address);
+		eth_hw_addr_set(ndev, address);
 	if (!is_valid_ether_addr(ndev->dev_addr))
 		eth_hw_addr_random(ndev);
 }

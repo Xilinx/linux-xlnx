@@ -355,6 +355,7 @@ static int w840_probe1(struct pci_dev *pdev, const struct pci_device_id *ent)
 	int chip_idx = ent->driver_data;
 	int irq;
 	int i, option = find_cnt < MAX_UNITS ? options[find_cnt] : 0;
+	__le16 addr[ETH_ALEN / 2];
 	void __iomem *ioaddr;
 
 	i = pcim_enable_device(pdev);
@@ -382,7 +383,8 @@ static int w840_probe1(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto err_out_netdev;
 
 	for (i = 0; i < 3; i++)
-		((__le16 *)dev->dev_addr)[i] = cpu_to_le16(eeprom_read(ioaddr, i));
+		addr[i] = cpu_to_le16(eeprom_read(ioaddr, i));
+	eth_hw_addr_set(dev, (u8 *)addr);
 
 	/* Reset the chip to erase previous misconfiguration.
 	   No hold time required! */
@@ -472,8 +474,6 @@ err_out_netdev:
    No extra delay is needed with 33Mhz PCI, but future 66Mhz access may need
    a delay.  Note that pre-2.0.34 kernels had a cache-alignment bug that
    made udelay() unreliable.
-   The old method of using an ISA access as a delay, __SLOW_DOWN_IO__, is
-   deprecated.
 */
 #define eeprom_delay(ee_addr)	ioread32(ee_addr)
 
@@ -877,7 +877,7 @@ static void init_registers(struct net_device *dev)
 		8000	16 longwords		0200 2 longwords	2000 32 longwords
 		C000	32  longwords		0400 4 longwords */
 
-#if defined (__i386__) && !defined(MODULE)
+#if defined (__i386__) && !defined(MODULE) && !defined(CONFIG_UML)
 	/* When not a module we can work around broken '486 PCI boards. */
 	if (boot_cpu_data.x86 <= 4) {
 		i |= 0x4800;
@@ -1374,8 +1374,8 @@ static void netdev_get_drvinfo (struct net_device *dev, struct ethtool_drvinfo *
 {
 	struct netdev_private *np = netdev_priv(dev);
 
-	strlcpy(info->driver, DRV_NAME, sizeof(info->driver));
-	strlcpy(info->bus_info, pci_name(np->pci_dev), sizeof(info->bus_info));
+	strscpy(info->driver, DRV_NAME, sizeof(info->driver));
+	strscpy(info->bus_info, pci_name(np->pci_dev), sizeof(info->bus_info));
 }
 
 static int netdev_get_link_ksettings(struct net_device *dev,

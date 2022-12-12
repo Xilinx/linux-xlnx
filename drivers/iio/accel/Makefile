@@ -6,9 +6,18 @@
 # When adding new entries keep the list in alphabetical order
 obj-$(CONFIG_ADIS16201) += adis16201.o
 obj-$(CONFIG_ADIS16209) += adis16209.o
+obj-$(CONFIG_ADXL313) += adxl313_core.o
+obj-$(CONFIG_ADXL313_I2C) += adxl313_i2c.o
+obj-$(CONFIG_ADXL313_SPI) += adxl313_spi.o
 obj-$(CONFIG_ADXL345) += adxl345_core.o
 obj-$(CONFIG_ADXL345_I2C) += adxl345_i2c.o
 obj-$(CONFIG_ADXL345_SPI) += adxl345_spi.o
+obj-$(CONFIG_ADXL355) += adxl355_core.o
+obj-$(CONFIG_ADXL355_I2C) += adxl355_i2c.o
+obj-$(CONFIG_ADXL355_SPI) += adxl355_spi.o
+obj-$(CONFIG_ADXL367) += adxl367.o
+obj-$(CONFIG_ADXL367_I2C) += adxl367_i2c.o
+obj-$(CONFIG_ADXL367_SPI) += adxl367_spi.o
 obj-$(CONFIG_ADXL372) += adxl372.o
 obj-$(CONFIG_ADXL372_I2C) += adxl372_i2c.o
 obj-$(CONFIG_ADXL372_SPI) += adxl372_spi.o
@@ -48,6 +57,8 @@ obj-$(CONFIG_MMA8452)	+= mma8452.o
 obj-$(CONFIG_MMA9551_CORE)	+= mma9551_core.o
 obj-$(CONFIG_MMA9551)		+= mma9551.o
 obj-$(CONFIG_MMA9553)		+= mma9553.o
+
+obj-$(CONFIG_MSA311)		+= msa311.o
 
 obj-$(CONFIG_MXC4005)		+= mxc4005.o
 obj-$(CONFIG_MXC6255)		+= mxc6255.o

@@ -26,10 +26,10 @@
 #ifndef __AMDGPU_DM_H__
 #define __AMDGPU_DM_H__
 
+#include <drm/display/drm_dp_mst_helper.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_connector.h>
 #include <drm/drm_crtc.h>
-#include <drm/drm_dp_mst_helper.h>
 #include <drm/drm_plane.h>
 
 /*
@@ -47,6 +47,9 @@
 #define AMDGPU_DM_MAX_CRTC 6
 
 #define AMDGPU_DM_MAX_NUM_EDP 2
+
+#define AMDGPU_DMUB_NOTIFICATION_MAX 5
+
 /*
 #include "include/amdgpu_dal_power_if.h"
 #include "amdgpu_dm_irq.h"
@@ -84,6 +87,21 @@ struct dm_compressor_info {
 	void *cpu_addr;
 	struct amdgpu_bo *bo_ptr;
 	uint64_t gpu_addr;
+};
+
+typedef void (*dmub_notify_interrupt_callback_t)(struct amdgpu_device *adev, struct dmub_notification *notify);
+
+/**
+ * struct dmub_hpd_work - Handle time consuming work in low priority outbox IRQ
+ *
+ * @handle_hpd_work: Work to be executed in a separate thread to handle hpd_low_irq
+ * @dmub_notify:  notification for callback function
+ * @adev: amdgpu_device pointer
+ */
+struct dmub_hpd_work {
+	struct work_struct handle_hpd_work;
+	struct dmub_notification *dmub_notify;
+	struct amdgpu_device *adev;
 };
 
 /**
@@ -155,6 +173,48 @@ struct dal_allocation {
 };
 
 /**
+ * struct hpd_rx_irq_offload_work_queue - Work queue to handle hpd_rx_irq
+ * offload work
+ */
+struct hpd_rx_irq_offload_work_queue {
+	/**
+	 * @wq: workqueue structure to queue offload work.
+	 */
+	struct workqueue_struct *wq;
+	/**
+	 * @offload_lock: To protect fields of offload work queue.
+	 */
+	spinlock_t offload_lock;
+	/**
+	 * @is_handling_link_loss: Used to prevent inserting link loss event when
+	 * we're handling link loss
+	 */
+	bool is_handling_link_loss;
+	/**
+	 * @aconnector: The aconnector that this work queue is attached to
+	 */
+	struct amdgpu_dm_connector *aconnector;
+};
+
+/**
+ * struct hpd_rx_irq_offload_work - hpd_rx_irq offload work structure
+ */
+struct hpd_rx_irq_offload_work {
+	/**
+	 * @work: offload work
+	 */
+	struct work_struct work;
+	/**
+	 * @data: reference irq data which is used while handling offload work
+	 */
+	union hpd_irq_data data;
+	/**
+	 * @offload_wq: offload work queue that this work is queued to
+	 */
+	struct hpd_rx_irq_offload_work_queue *offload_wq;
+};
+
+/**
  * struct amdgpu_display_manager - Central amdgpu display manager device
  *
  * @dc: Display Core control structure
@@ -176,6 +236,13 @@ struct dal_allocation {
  * @force_timing_sync: set via debugfs. When set, indicates that all connected
  *		       displays will be forced to synchronize.
  * @dmcub_trace_event_en: enable dmcub trace events
+ * @dmub_outbox_params: DMUB Outbox parameters
+ * @num_of_edps: number of backlight eDPs
+ * @disable_hpd_irq: disables all HPD and HPD RX interrupt handling in the
+ *		     driver when true
+ * @dmub_aux_transfer_done: struct completion used to indicate when DMUB
+ * 			    transfers are done
+ * @delayed_hpd_wq: work queue used to delay DMUB HPD work
  */
 struct amdgpu_display_manager {
 
@@ -190,7 +257,29 @@ struct amdgpu_display_manager {
 	 */
 	struct dmub_srv *dmub_srv;
 
+	/**
+	 * @dmub_notify:
+	 *
+	 * Notification from DMUB.
+	 */
+
 	struct dmub_notification *dmub_notify;
+
+	/**
+	 * @dmub_callback:
+	 *
+	 * Callback functions to handle notification from DMUB.
+	 */
+
+	dmub_notify_interrupt_callback_t dmub_callback[AMDGPU_DMUB_NOTIFICATION_MAX];
+
+	/**
+	 * @dmub_thread_offload:
+	 *
+	 * Flag to indicate if callback is offload.
+	 */
+
+	bool dmub_thread_offload[AMDGPU_DMUB_NOTIFICATION_MAX];
 
 	/**
 	 * @dmub_fb_info:
@@ -270,14 +359,12 @@ struct amdgpu_display_manager {
 	 */
 	struct mutex audio_lock;
 
-#if defined(CONFIG_DRM_AMD_DC_DCN)
 	/**
 	 * @vblank_lock:
 	 *
 	 * Guards access to deferred vblank work state.
 	 */
 	spinlock_t vblank_lock;
-#endif
 
 	/**
 	 * @audio_component:
@@ -381,14 +468,12 @@ struct amdgpu_display_manager {
 	struct hdcp_workqueue *hdcp_workqueue;
 #endif
 
-#if defined(CONFIG_DRM_AMD_DC_DCN)
 	/**
 	 * @vblank_control_workqueue:
 	 *
 	 * Deferred work for vblank control events.
 	 */
 	struct workqueue_struct *vblank_control_workqueue;
-#endif
 
 	struct drm_atomic_state *cached_state;
 	struct dc_state *cached_dc_state;
@@ -405,14 +490,12 @@ struct amdgpu_display_manager {
 	 */
 	const struct gpu_info_soc_bounding_box_v1_0 *soc_bounding_box;
 
-#if defined(CONFIG_DRM_AMD_DC_DCN)
 	/**
 	 * @active_vblank_irq_count:
 	 *
 	 * number of currently active vblank irqs
 	 */
 	uint32_t active_vblank_irq_count;
-#endif
 
 #if defined(CONFIG_DRM_AMD_SECURE_DISPLAY)
 	/**
@@ -422,7 +505,12 @@ struct amdgpu_display_manager {
 	 */
 	struct crc_rd_work *crc_rd_wrk;
 #endif
-
+	/**
+	 * @hpd_rx_offload_wq:
+	 *
+	 * Work queue to offload works of hpd_rx_irq
+	 */
+	struct hpd_rx_irq_offload_work_queue *hpd_rx_offload_wq;
 	/**
 	 * @mst_encoders:
 	 *
@@ -439,6 +527,7 @@ struct amdgpu_display_manager {
 	 */
 	struct list_head da_list;
 	struct completion dmub_aux_transfer_done;
+	struct workqueue_struct *delayed_hpd_wq;
 
 	/**
 	 * @brightness:
@@ -446,6 +535,20 @@ struct amdgpu_display_manager {
 	 * cached backlight values.
 	 */
 	u32 brightness[AMDGPU_DM_MAX_NUM_EDP];
+	/**
+	 * @actual_brightness:
+	 *
+	 * last successfully applied backlight values.
+	 */
+	u32 actual_brightness[AMDGPU_DM_MAX_NUM_EDP];
+
+	/**
+	 * @aux_hpd_discon_quirk:
+	 *
+	 * quirk for hpd discon while aux is on-going.
+	 * occurred on certain intel platform
+	 */
+	bool aux_hpd_discon_quirk;
 };
 
 enum dsc_clock_force_state {
@@ -460,6 +563,14 @@ struct dsc_preferred_settings {
 	uint32_t dsc_num_slices_h;
 	uint32_t dsc_bits_per_pixel;
 	bool dsc_force_disable_passthrough;
+};
+
+enum mst_progress_status {
+	MST_STATUS_DEFAULT = 0,
+	MST_PROBE = BIT(0),
+	MST_REMOTE_EDID = BIT(1),
+	MST_ALLOCATE_NEW_PAYLOAD = BIT(2),
+	MST_CLEAR_ALLOCATED_PAYLOAD = BIT(3),
 };
 
 struct amdgpu_dm_connector {
@@ -481,6 +592,10 @@ struct amdgpu_dm_connector {
 	 * The 'current' sink is in dc_link->sink. */
 	struct dc_sink *dc_sink;
 	struct dc_link *dc_link;
+
+	/**
+	 * @dc_em_sink: Reference to the emulated (virtual) sink.
+	 */
 	struct dc_sink *dc_em_sink;
 
 	/* DM only */
@@ -489,12 +604,20 @@ struct amdgpu_dm_connector {
 	struct drm_dp_mst_port *port;
 	struct amdgpu_dm_connector *mst_port;
 	struct drm_dp_aux *dsc_aux;
-
 	/* TODO see if we can merge with ddc_bus or make a dm_connector */
 	struct amdgpu_i2c_adapter *i2c;
 
 	/* Monitor range limits */
-	int min_vfreq ;
+	/**
+	 * @min_vfreq: Minimal frequency supported by the display in Hz. This
+	 * value is set to zero when there is no FreeSync support.
+	 */
+	int min_vfreq;
+
+	/**
+	 * @max_vfreq: Maximum frequency supported by the display in Hz. This
+	 * value is set to zero when there is no FreeSync support.
+	 */
 	int max_vfreq ;
 	int pixel_clock_mhz;
 
@@ -510,11 +633,24 @@ struct amdgpu_dm_connector {
 #endif
 	bool force_yuv420_output;
 	struct dsc_preferred_settings dsc_settings;
+	union dp_downstream_port_present mst_downstream_port_present;
 	/* Cached display modes */
 	struct drm_display_mode freesync_vid_base;
 
 	int psr_skip_count;
+
+	/* Record progress status of mst*/
+	uint8_t mst_status;
 };
+
+static inline void amdgpu_dm_set_mst_status(uint8_t *status,
+		uint8_t flags, bool set)
+{
+	if (set)
+		*status |= flags;
+	else
+		*status &= ~flags;
+}
 
 #define to_amdgpu_dm_connector(x) container_of(x, struct amdgpu_dm_connector, base)
 
@@ -532,12 +668,13 @@ struct dm_crtc_state {
 	bool cm_has_degamma;
 	bool cm_is_degamma_srgb;
 
+	bool mpo_requested;
+
 	int update_type;
 	int active_planes;
 
 	int crc_skip_count;
 
-	bool freesync_timing_changed;
 	bool freesync_vrr_info_changed;
 
 	bool dsc_force_changed;
@@ -574,11 +711,34 @@ struct dm_connector_state {
 	uint64_t pbn;
 };
 
+/**
+ * struct amdgpu_hdmi_vsdb_info - Keep track of the VSDB info
+ *
+ * AMDGPU supports FreeSync over HDMI by using the VSDB section, and this
+ * struct is useful to keep track of the display-specific information about
+ * FreeSync.
+ */
 struct amdgpu_hdmi_vsdb_info {
-	unsigned int amd_vsdb_version;		/* VSDB version, should be used to determine which VSIF to send */
-	bool freesync_supported;		/* FreeSync Supported */
-	unsigned int min_refresh_rate_hz;	/* FreeSync Minimum Refresh Rate in Hz */
-	unsigned int max_refresh_rate_hz;	/* FreeSync Maximum Refresh Rate in Hz */
+	/**
+	 * @amd_vsdb_version: Vendor Specific Data Block Version, should be
+	 * used to determine which Vendor Specific InfoFrame (VSIF) to send.
+	 */
+	unsigned int amd_vsdb_version;
+
+	/**
+	 * @freesync_supported: FreeSync Supported.
+	 */
+	bool freesync_supported;
+
+	/**
+	 * @min_refresh_rate_hz: FreeSync Minimum Refresh Rate in Hz.
+	 */
+	unsigned int min_refresh_rate_hz;
+
+	/**
+	 * @max_refresh_rate_hz: FreeSync Maximum Refresh Rate in Hz
+	 */
+	unsigned int max_refresh_rate_hz;
 };
 
 
@@ -632,6 +792,24 @@ void amdgpu_dm_update_connector_after_detect(
 
 extern const struct drm_encoder_helper_funcs amdgpu_dm_encoder_helper_funcs;
 
-int amdgpu_dm_process_dmub_aux_transfer_sync(struct dc_context *ctx, unsigned int linkIndex,
-					struct aux_payload *payload, enum aux_return_code_type *operation_result);
+int amdgpu_dm_process_dmub_aux_transfer_sync(bool is_cmd_aux,
+					struct dc_context *ctx, unsigned int link_index,
+					void *payload, void *operation_result);
+
+bool check_seamless_boot_capability(struct amdgpu_device *adev);
+
+struct dc_stream_state *
+	create_validate_stream_for_sink(struct amdgpu_dm_connector *aconnector,
+					const struct drm_display_mode *drm_mode,
+					const struct dm_connector_state *dm_state,
+					const struct dc_stream_state *old_stream);
+
+int dm_atomic_get_state(struct drm_atomic_state *state,
+			struct dm_atomic_state **dm_state);
+
+struct amdgpu_dm_connector *
+amdgpu_dm_find_first_crtc_matching_connector(struct drm_atomic_state *state,
+					     struct drm_crtc *crtc);
+
+int convert_dc_color_depth_into_bpc(enum dc_color_depth display_color_depth);
 #endif /* __AMDGPU_DM_H__ */

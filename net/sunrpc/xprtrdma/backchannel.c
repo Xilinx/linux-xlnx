@@ -13,10 +13,6 @@
 #include "xprt_rdma.h"
 #include <trace/events/rpcrdma.h>
 
-#if IS_ENABLED(CONFIG_SUNRPC_DEBUG)
-# define RPCDBG_FACILITY	RPCDBG_TRANS
-#endif
-
 #undef RPCRDMA_BACKCHANNEL_DEBUG
 
 /**
@@ -193,7 +189,7 @@ create_req:
 		return NULL;
 
 	size = min_t(size_t, r_xprt->rx_ep->re_inline_recv, PAGE_SIZE);
-	req = rpcrdma_req_create(r_xprt, size, GFP_KERNEL);
+	req = rpcrdma_req_create(r_xprt, size);
 	if (!req)
 		return NULL;
 	if (rpcrdma_req_setup(r_xprt, req)) {

@@ -15,20 +15,6 @@
 
 #define RTL_IOCTL_WPA_SUPPLICANT	(SIOCIWFIRSTPRIV+30)
 
-#define SCAN_ITEM_SIZE 768
-#define MAX_CUSTOM_LEN 64
-#define RATE_COUNT 4
-
-/*  combo scan */
-#define WEXT_CSCAN_HEADER		"CSCAN S\x01\x00\x00S\x00"
-#define WEXT_CSCAN_HEADER_SIZE		12
-#define WEXT_CSCAN_SSID_SECTION		'S'
-#define WEXT_CSCAN_CHANNEL_SECTION	'C'
-#define WEXT_CSCAN_ACTV_DWELL_SECTION	'A'
-#define WEXT_CSCAN_PASV_DWELL_SECTION	'P'
-#define WEXT_CSCAN_HOME_DWELL_SECTION	'H'
-#define WEXT_CSCAN_TYPE_SECTION		'T'
-
 static int wpa_set_auth_algs(struct net_device *dev, u32 value)
 {
 	struct adapter *padapter = rtw_netdev_priv(dev);
@@ -104,7 +90,8 @@ static int wpa_set_encryption(struct net_device *dev, struct ieee_param *param, 
 		if (wep_key_len > 0) {
 			wep_key_len = wep_key_len <= 5 ? 5 : 13;
 			wep_total_len = wep_key_len + FIELD_OFFSET(struct ndis_802_11_wep, key_material);
-			pwep = kzalloc(wep_total_len, GFP_KERNEL);
+			/* Allocate a full structure to avoid potentially running off the end. */
+			pwep = kzalloc(sizeof(*pwep), GFP_KERNEL);
 			if (!pwep) {
 				ret = -ENOMEM;
 				goto exit;
@@ -153,7 +140,7 @@ static int wpa_set_encryption(struct net_device *dev, struct ieee_param *param, 
 
 		if (check_fwstate(pmlmepriv, WIFI_STATION_STATE | WIFI_MP_STATE) == true) { /* sta mode */
 			psta = rtw_get_stainfo(pstapriv, get_bssid(pmlmepriv));
-			if (psta == NULL) {
+			if (!psta) {
 				/* DEBUG_ERR(("Set wpa_set_encryption: Obtain Sta_info fail\n")); */
 			} else {
 				/* Jeff: don't disable ieee8021x_blocked while clearing key */
@@ -206,7 +193,7 @@ static int wpa_set_encryption(struct net_device *dev, struct ieee_param *param, 
 			}
 
 			pbcmc_sta = rtw_get_bcmc_stainfo(padapter);
-			if (pbcmc_sta == NULL) {
+			if (!pbcmc_sta) {
 				/* DEBUG_ERR(("Set OID_802_11_ADD_KEY: bcmc stainfo is null\n")); */
 			} else {
 				/* Jeff: don't disable ieee8021x_blocked while clearing key */
@@ -236,9 +223,9 @@ static int rtw_set_wpa_ie(struct adapter *padapter, char *pie, unsigned short ie
 	int ret = 0;
 	u8 null_addr[] = {0, 0, 0, 0, 0, 0};
 
-	if ((ielen > MAX_WPA_IE_LEN) || (pie == NULL)) {
+	if (ielen > MAX_WPA_IE_LEN || !pie) {
 		_clr_fwstate_(&padapter->mlmepriv, WIFI_UNDER_WPS);
-		if (pie == NULL)
+		if (!pie)
 			return ret;
 		else
 			return -EINVAL;
@@ -246,7 +233,7 @@ static int rtw_set_wpa_ie(struct adapter *padapter, char *pie, unsigned short ie
 
 	if (ielen) {
 		buf = rtw_zmalloc(ielen);
-		if (buf == NULL) {
+		if (!buf) {
 			ret =  -ENOMEM;
 			goto exit;
 		}
@@ -491,7 +478,7 @@ static int wpa_supplicant_ioctl(struct net_device *dev, struct iw_point *p)
 		return -EINVAL;
 
 	param = rtw_malloc(p->length);
-	if (param == NULL)
+	if (!param)
 		return -ENOMEM;
 
 	if (copy_from_user(param, p->pointer, p->length)) {
@@ -571,7 +558,7 @@ static int rtw_set_encryption(struct net_device *dev, struct ieee_param *param, 
 			goto exit;
 	}
 
-	if (strcmp(param->u.crypt.alg, "none") == 0 && (psta == NULL)) {
+	if (strcmp(param->u.crypt.alg, "none") == 0 && !psta) {
 		/* todo:clear default encryption keys */
 
 		psecuritypriv->dot11AuthAlgrthm = dot11AuthAlgrthm_Open;
@@ -583,7 +570,7 @@ static int rtw_set_encryption(struct net_device *dev, struct ieee_param *param, 
 	}
 
 
-	if (strcmp(param->u.crypt.alg, "WEP") == 0 && (psta == NULL)) {
+	if (strcmp(param->u.crypt.alg, "WEP") == 0 && !psta) {
 		wep_key_idx = param->u.crypt.idx;
 		wep_key_len = param->u.crypt.key_len;
 
@@ -596,7 +583,8 @@ static int rtw_set_encryption(struct net_device *dev, struct ieee_param *param, 
 		if (wep_key_len > 0) {
 			wep_key_len = wep_key_len <= 5 ? 5 : 13;
 			wep_total_len = wep_key_len + FIELD_OFFSET(struct ndis_802_11_wep, key_material);
-			pwep = kzalloc(wep_total_len, GFP_KERNEL);
+			/* Allocate a full structure to avoid potentially running off the end. */
+			pwep = kzalloc(sizeof(*pwep), GFP_KERNEL);
 			if (!pwep)
 				goto exit;
 
@@ -835,9 +823,7 @@ static int rtw_add_sta(struct net_device *dev, struct ieee_param *param)
 	psta = rtw_get_stainfo(pstapriv, param->sta_addr);
 	if (psta)
 	{
-		spin_lock_bh(&(pstapriv->sta_hash_lock));
 		rtw_free_stainfo(padapter,  psta);
-		spin_unlock_bh(&(pstapriv->sta_hash_lock));
 
 		psta = NULL;
 	}
@@ -1229,7 +1215,7 @@ static int rtw_hostapd_ioctl(struct net_device *dev, struct iw_point *p)
 		return -EINVAL;
 
 	param = rtw_malloc(p->length);
-	if (param == NULL)
+	if (!param)
 		return -ENOMEM;
 
 	if (copy_from_user(param, p->pointer, p->length)) {

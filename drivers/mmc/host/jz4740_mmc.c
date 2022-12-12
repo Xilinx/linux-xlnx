@@ -217,11 +217,23 @@ static void jz4740_mmc_release_dma_channels(struct jz4740_mmc_host *host)
 		return;
 
 	dma_release_channel(host->dma_tx);
-	dma_release_channel(host->dma_rx);
+	if (host->dma_rx)
+		dma_release_channel(host->dma_rx);
 }
 
 static int jz4740_mmc_acquire_dma_channels(struct jz4740_mmc_host *host)
 {
+	struct device *dev = mmc_dev(host->mmc);
+
+	host->dma_tx = dma_request_chan(dev, "tx-rx");
+	if (!IS_ERR(host->dma_tx))
+		return 0;
+
+	if (PTR_ERR(host->dma_tx) != -ENODEV) {
+		dev_err(dev, "Failed to get dma tx-rx channel\n");
+		return PTR_ERR(host->dma_tx);
+	}
+
 	host->dma_tx = dma_request_chan(mmc_dev(host->mmc), "tx");
 	if (IS_ERR(host->dma_tx)) {
 		dev_err(mmc_dev(host->mmc), "Failed to get dma_tx channel\n");
@@ -235,13 +247,36 @@ static int jz4740_mmc_acquire_dma_channels(struct jz4740_mmc_host *host)
 		return PTR_ERR(host->dma_rx);
 	}
 
+	/*
+	 * Limit the maximum segment size in any SG entry according to
+	 * the parameters of the DMA engine device.
+	 */
+	if (host->dma_tx) {
+		struct device *dev = host->dma_tx->device->dev;
+		unsigned int max_seg_size = dma_get_max_seg_size(dev);
+
+		if (max_seg_size < host->mmc->max_seg_size)
+			host->mmc->max_seg_size = max_seg_size;
+	}
+
+	if (host->dma_rx) {
+		struct device *dev = host->dma_rx->device->dev;
+		unsigned int max_seg_size = dma_get_max_seg_size(dev);
+
+		if (max_seg_size < host->mmc->max_seg_size)
+			host->mmc->max_seg_size = max_seg_size;
+	}
+
 	return 0;
 }
 
 static inline struct dma_chan *jz4740_mmc_get_dma_chan(struct jz4740_mmc_host *host,
 						       struct mmc_data *data)
 {
-	return (data->flags & MMC_DATA_READ) ? host->dma_rx : host->dma_tx;
+	if ((data->flags & MMC_DATA_READ) && host->dma_rx)
+		return host->dma_rx;
+	else
+		return host->dma_tx;
 }
 
 static void jz4740_mmc_dma_unmap(struct jz4740_mmc_host *host,
@@ -263,7 +298,7 @@ static int jz4740_mmc_prepare_dma_data(struct jz4740_mmc_host *host,
 {
 	struct dma_chan *chan = jz4740_mmc_get_dma_chan(host, data);
 	enum dma_data_direction dir = mmc_get_dma_dir(data);
-	int sg_count;
+	unsigned int sg_count;
 
 	if (data->host_cookie == COOKIE_PREMAPPED)
 		return data->sg_count;
@@ -273,7 +308,7 @@ static int jz4740_mmc_prepare_dma_data(struct jz4740_mmc_host *host,
 			data->sg_len,
 			dir);
 
-	if (sg_count <= 0) {
+	if (!sg_count) {
 		dev_err(mmc_dev(host->mmc),
 			"Failed to map scatterlist for DMA operation\n");
 		return -EINVAL;
@@ -1103,18 +1138,18 @@ static int jz4740_mmc_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static int __maybe_unused jz4740_mmc_suspend(struct device *dev)
+static int jz4740_mmc_suspend(struct device *dev)
 {
 	return pinctrl_pm_select_sleep_state(dev);
 }
 
-static int __maybe_unused jz4740_mmc_resume(struct device *dev)
+static int jz4740_mmc_resume(struct device *dev)
 {
 	return pinctrl_select_default_state(dev);
 }
 
-static SIMPLE_DEV_PM_OPS(jz4740_mmc_pm_ops, jz4740_mmc_suspend,
-	jz4740_mmc_resume);
+static DEFINE_SIMPLE_DEV_PM_OPS(jz4740_mmc_pm_ops, jz4740_mmc_suspend,
+				jz4740_mmc_resume);
 
 static struct platform_driver jz4740_mmc_driver = {
 	.probe = jz4740_mmc_probe,
@@ -1123,7 +1158,7 @@ static struct platform_driver jz4740_mmc_driver = {
 		.name = "jz4740-mmc",
 		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 		.of_match_table = of_match_ptr(jz4740_mmc_of_match),
-		.pm = pm_ptr(&jz4740_mmc_pm_ops),
+		.pm = pm_sleep_ptr(&jz4740_mmc_pm_ops),
 	},
 };
 

@@ -379,7 +379,7 @@ struct w83795_data {
 	u8 enable_beep;
 	u8 beeps[6];		/* Register value */
 
-	char valid;
+	bool valid;
 	char valid_limits;
 	char valid_pwm_config;
 };
@@ -684,7 +684,7 @@ static struct w83795_data *w83795_update_device(struct device *dev)
 			     tmp & ~ALARM_CTRL_RTSACS);
 
 	data->last_updated = jiffies;
-	data->valid = 1;
+	data->valid = true;
 
 END:
 	mutex_unlock(&data->update_lock);
@@ -764,7 +764,7 @@ store_chassis_clear(struct device *dev,
 
 	/* Clear status and force cache refresh */
 	w83795_read(client, W83795_REG_ALARM(5));
-	data->valid = 0;
+	data->valid = false;
 	mutex_unlock(&data->update_lock);
 	return count;
 }
@@ -1967,7 +1967,7 @@ static int w83795_detect(struct i2c_client *client,
 	else
 		chip_name = "w83795g";
 
-	strlcpy(info->type, chip_name, I2C_NAME_SIZE);
+	strscpy(info->type, chip_name, I2C_NAME_SIZE);
 	dev_info(&adapter->dev, "Found %s rev. %c at 0x%02hx\n", chip_name,
 		 'A' + (device_id & 0xf), address);
 
@@ -2235,14 +2235,12 @@ exit_remove:
 	return err;
 }
 
-static int w83795_remove(struct i2c_client *client)
+static void w83795_remove(struct i2c_client *client)
 {
 	struct w83795_data *data = i2c_get_clientdata(client);
 
 	hwmon_device_unregister(data->hwmon_dev);
 	w83795_handle_files(&client->dev, device_remove_file_wrapper);
-
-	return 0;
 }
 
 

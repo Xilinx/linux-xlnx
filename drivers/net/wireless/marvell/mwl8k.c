@@ -1880,7 +1880,7 @@ static inline void mwl8k_tx_count_packet(struct ieee80211_sta *sta, u8 tid)
 	 * packets ever exceeds the ampdu_min_traffic threshold, we will allow
 	 * an ampdu stream to be started.
 	 */
-	if (jiffies - tx_stats->start_time > HZ) {
+	if (time_after(jiffies, (unsigned long)tx_stats->start_time + HZ)) {
 		tx_stats->pkts = 0;
 		tx_stats->start_time = 0;
 	} else
@@ -1985,7 +1985,7 @@ mwl8k_txq_xmit(struct ieee80211_hw *hw,
 
 	txpriority = index;
 
-	if (priv->ap_fw && sta && sta->ht_cap.ht_supported && !eapol_frame &&
+	if (priv->ap_fw && sta && sta->deflink.ht_cap.ht_supported && !eapol_frame &&
 	    ieee80211_is_data_qos(wh->frame_control)) {
 		tid = qos & 0xf;
 		mwl8k_tx_count_packet(sta, tid);
@@ -3250,7 +3250,7 @@ mwl8k_cmd_set_aid(struct ieee80211_hw *hw,
 
 	cmd->header.code = cpu_to_le16(MWL8K_CMD_SET_AID);
 	cmd->header.length = cpu_to_le16(sizeof(*cmd));
-	cmd->aid = cpu_to_le16(vif->bss_conf.aid);
+	cmd->aid = cpu_to_le16(vif->cfg.aid);
 	memcpy(cmd->bssid, vif->bss_conf.bssid, ETH_ALEN);
 
 	if (vif->bss_conf.use_cts_prot) {
@@ -4027,9 +4027,9 @@ mwl8k_create_ba(struct ieee80211_hw *hw, struct mwl8k_ampdu_stream *stream,
 	cmd->create_params.reset_seq_no_flag = 1;
 
 	cmd->create_params.param_info =
-		(stream->sta->ht_cap.ampdu_factor &
+		(stream->sta->deflink.ht_cap.ampdu_factor &
 		 IEEE80211_HT_AMPDU_PARM_FACTOR) |
-		((stream->sta->ht_cap.ampdu_density << 2) &
+		((stream->sta->deflink.ht_cap.ampdu_density << 2) &
 		 IEEE80211_HT_AMPDU_PARM_DENSITY);
 
 	cmd->create_params.flags =
@@ -4113,18 +4113,18 @@ static int mwl8k_cmd_set_new_stn_add(struct ieee80211_hw *hw,
 	cmd->stn_id = cpu_to_le16(sta->aid);
 	cmd->action = cpu_to_le16(MWL8K_STA_ACTION_ADD);
 	if (hw->conf.chandef.chan->band == NL80211_BAND_2GHZ)
-		rates = sta->supp_rates[NL80211_BAND_2GHZ];
+		rates = sta->deflink.supp_rates[NL80211_BAND_2GHZ];
 	else
-		rates = sta->supp_rates[NL80211_BAND_5GHZ] << 5;
+		rates = sta->deflink.supp_rates[NL80211_BAND_5GHZ] << 5;
 	cmd->legacy_rates = cpu_to_le32(rates);
-	if (sta->ht_cap.ht_supported) {
-		cmd->ht_rates[0] = sta->ht_cap.mcs.rx_mask[0];
-		cmd->ht_rates[1] = sta->ht_cap.mcs.rx_mask[1];
-		cmd->ht_rates[2] = sta->ht_cap.mcs.rx_mask[2];
-		cmd->ht_rates[3] = sta->ht_cap.mcs.rx_mask[3];
-		cmd->ht_capabilities_info = cpu_to_le16(sta->ht_cap.cap);
-		cmd->mac_ht_param_info = (sta->ht_cap.ampdu_factor & 3) |
-			((sta->ht_cap.ampdu_density & 7) << 2);
+	if (sta->deflink.ht_cap.ht_supported) {
+		cmd->ht_rates[0] = sta->deflink.ht_cap.mcs.rx_mask[0];
+		cmd->ht_rates[1] = sta->deflink.ht_cap.mcs.rx_mask[1];
+		cmd->ht_rates[2] = sta->deflink.ht_cap.mcs.rx_mask[2];
+		cmd->ht_rates[3] = sta->deflink.ht_cap.mcs.rx_mask[3];
+		cmd->ht_capabilities_info = cpu_to_le16(sta->deflink.ht_cap.cap);
+		cmd->mac_ht_param_info = (sta->deflink.ht_cap.ampdu_factor & 3) |
+			((sta->deflink.ht_cap.ampdu_density & 7) << 2);
 		cmd->is_qos_sta = 1;
 	}
 
@@ -4225,9 +4225,11 @@ struct mwl8k_cmd_set_key {
 	__le32 key_info;
 	__le32 key_id;
 	__le16 key_len;
-	__u8 key_material[MAX_ENCR_KEY_LENGTH];
-	__u8 tkip_tx_mic_key[MIC_KEY_LENGTH];
-	__u8 tkip_rx_mic_key[MIC_KEY_LENGTH];
+	struct {
+		__u8 key_material[MAX_ENCR_KEY_LENGTH];
+		__u8 tkip_tx_mic_key[MIC_KEY_LENGTH];
+		__u8 tkip_rx_mic_key[MIC_KEY_LENGTH];
+	} tkip;
 	__le16 tkip_rsc_low;
 	__le32 tkip_rsc_high;
 	__le16 tkip_tsc_low;
@@ -4375,7 +4377,7 @@ static int mwl8k_cmd_encryption_set_key(struct ieee80211_hw *hw,
 		goto done;
 	}
 
-	memcpy(cmd->key_material, key->key, keymlen);
+	memcpy(&cmd->tkip, key->key, keymlen);
 	cmd->action = cpu_to_le32(action);
 
 	rc = mwl8k_post_pervif_cmd(hw, vif, &cmd->header);
@@ -4543,16 +4545,16 @@ static int mwl8k_cmd_update_stadb_add(struct ieee80211_hw *hw,
 	p = &cmd->peer_info;
 	p->peer_type = MWL8K_PEER_TYPE_ACCESSPOINT;
 	p->basic_caps = cpu_to_le16(vif->bss_conf.assoc_capability);
-	p->ht_support = sta->ht_cap.ht_supported;
-	p->ht_caps = cpu_to_le16(sta->ht_cap.cap);
-	p->extended_ht_caps = (sta->ht_cap.ampdu_factor & 3) |
-		((sta->ht_cap.ampdu_density & 7) << 2);
+	p->ht_support = sta->deflink.ht_cap.ht_supported;
+	p->ht_caps = cpu_to_le16(sta->deflink.ht_cap.cap);
+	p->extended_ht_caps = (sta->deflink.ht_cap.ampdu_factor & 3) |
+		((sta->deflink.ht_cap.ampdu_density & 7) << 2);
 	if (hw->conf.chandef.chan->band == NL80211_BAND_2GHZ)
-		rates = sta->supp_rates[NL80211_BAND_2GHZ];
+		rates = sta->deflink.supp_rates[NL80211_BAND_2GHZ];
 	else
-		rates = sta->supp_rates[NL80211_BAND_5GHZ] << 5;
+		rates = sta->deflink.supp_rates[NL80211_BAND_5GHZ] << 5;
 	legacy_rate_mask_to_array(p->legacy_rates, rates);
-	memcpy(p->ht_rates, &sta->ht_cap.mcs, 16);
+	memcpy(p->ht_rates, &sta->deflink.ht_cap.mcs, 16);
 	p->interop = 1;
 	p->amsdu_enabled = 0;
 
@@ -5011,13 +5013,13 @@ mwl8k_bss_info_changed_sta(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	/*
 	 * No need to capture a beacon if we're no longer associated.
 	 */
-	if ((changed & BSS_CHANGED_ASSOC) && !vif->bss_conf.assoc)
+	if ((changed & BSS_CHANGED_ASSOC) && !vif->cfg.assoc)
 		priv->capture_beacon = false;
 
 	/*
 	 * Get the AP's legacy and MCS rates.
 	 */
-	if (vif->bss_conf.assoc) {
+	if (vif->cfg.assoc) {
 		struct ieee80211_sta *ap;
 
 		rcu_read_lock();
@@ -5029,12 +5031,12 @@ mwl8k_bss_info_changed_sta(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 		}
 
 		if (hw->conf.chandef.chan->band == NL80211_BAND_2GHZ) {
-			ap_legacy_rates = ap->supp_rates[NL80211_BAND_2GHZ];
+			ap_legacy_rates = ap->deflink.supp_rates[NL80211_BAND_2GHZ];
 		} else {
 			ap_legacy_rates =
-				ap->supp_rates[NL80211_BAND_5GHZ] << 5;
+				ap->deflink.supp_rates[NL80211_BAND_5GHZ] << 5;
 		}
-		memcpy(ap_mcs_rates, &ap->ht_cap.mcs, 16);
+		memcpy(ap_mcs_rates, &ap->deflink.ht_cap.mcs, 16);
 
 		rcu_read_unlock();
 
@@ -5083,7 +5085,7 @@ mwl8k_bss_info_changed_sta(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 			goto out;
 	}
 
-	if (vif->bss_conf.assoc && !priv->ap_fw &&
+	if (vif->cfg.assoc && !priv->ap_fw &&
 	    (changed & (BSS_CHANGED_ASSOC | BSS_CHANGED_ERP_CTS_PROT |
 			BSS_CHANGED_HT))) {
 		rc = mwl8k_cmd_set_aid(hw, vif, ap_legacy_rates);
@@ -5091,7 +5093,7 @@ mwl8k_bss_info_changed_sta(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 			goto out;
 	}
 
-	if (vif->bss_conf.assoc &&
+	if (vif->cfg.assoc &&
 	    (changed & (BSS_CHANGED_ASSOC | BSS_CHANGED_BEACON_INT))) {
 		/*
 		 * Finalize the join.  Tell rx handler to process
@@ -5145,7 +5147,7 @@ mwl8k_bss_info_changed_ap(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	if (changed & (BSS_CHANGED_BEACON_INT | BSS_CHANGED_BEACON)) {
 		struct sk_buff *skb;
 
-		skb = ieee80211_beacon_get(hw, vif);
+		skb = ieee80211_beacon_get(hw, vif, 0);
 		if (skb != NULL) {
 			mwl8k_cmd_set_beacon(hw, vif, skb->data, skb->len);
 			kfree_skb(skb);
@@ -5161,7 +5163,7 @@ out:
 
 static void
 mwl8k_bss_info_changed(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
-		       struct ieee80211_bss_conf *info, u32 changed)
+		       struct ieee80211_bss_conf *info, u64 changed)
 {
 	if (vif->type == NL80211_IFTYPE_STATION)
 		mwl8k_bss_info_changed_sta(hw, vif, info, changed);
@@ -5345,7 +5347,7 @@ static int mwl8k_sta_add(struct ieee80211_hw *hw,
 		ret = mwl8k_cmd_update_stadb_add(hw, vif, sta);
 		if (ret >= 0) {
 			MWL8K_STA(sta)->peer_id = ret;
-			if (sta->ht_cap.ht_supported)
+			if (sta->deflink.ht_cap.ht_supported)
 				MWL8K_STA(sta)->is_ampdu_allowed = true;
 			ret = 0;
 		}
@@ -5363,7 +5365,8 @@ static int mwl8k_sta_add(struct ieee80211_hw *hw,
 }
 
 static int mwl8k_conf_tx(struct ieee80211_hw *hw,
-			 struct ieee80211_vif *vif, u16 queue,
+			 struct ieee80211_vif *vif,
+			 unsigned int link_id, u16 queue,
 			 const struct ieee80211_tx_queue_params *params)
 {
 	struct mwl8k_priv *priv = hw->priv;
@@ -5800,8 +5803,8 @@ static void mwl8k_fw_state_machine(const struct firmware *fw, void *context)
 fail:
 	priv->fw_state = FW_STATE_ERROR;
 	complete(&priv->firmware_loading_complete);
-	device_release_driver(&priv->pdev->dev);
 	mwl8k_release_firmware(priv);
+	device_release_driver(&priv->pdev->dev);
 }
 
 #define MAX_RESTART_ATTEMPTS 1
@@ -6048,7 +6051,7 @@ static int mwl8k_reload_firmware(struct ieee80211_hw *hw, char *fw_image)
 		goto fail;
 
 	for (i = 0; i < MWL8K_TX_WMM_QUEUES; i++) {
-		rc = mwl8k_conf_tx(hw, NULL, i, &priv->wmm_params[i]);
+		rc = mwl8k_conf_tx(hw, NULL, 0, i, &priv->wmm_params[i]);
 		if (rc)
 			goto fail;
 	}

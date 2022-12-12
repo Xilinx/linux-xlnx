@@ -55,8 +55,8 @@ config ATMEL_EBI
 	  SRAMs, ATA devices, etc.
 
 config BRCMSTB_DPFE
-	bool "Broadcom STB DPFE driver" if COMPILE_TEST
-	default y if ARCH_BRCMSTB
+	tristate "Broadcom STB DPFE driver"
+	default ARCH_BRCMSTB
 	depends on ARCH_BRCMSTB || COMPILE_TEST
 	help
 	  This driver provides access to the DPFE interface of Broadcom
@@ -65,6 +65,15 @@ config BRCMSTB_DPFE
 	  the DRAM refresh rate. This can be used as an indirect indicator
 	  for the DRAM's temperature. Slower refresh rate means cooler RAM,
 	  higher refresh rate means hotter RAM.
+
+config BRCMSTB_MEMC
+	tristate "Broadcom STB MEMC driver"
+	default ARCH_BRCMSTB
+	depends on ARCH_BRCMSTB || COMPILE_TEST
+	help
+	  This driver provides a way to configure the Broadcom STB memory
+	  controller and specifically control the Self Refresh Power Down
+	  (SRPD) inactivity timeout.
 
 config BT1_L2_CTL
 	bool "Baikal-T1 CM2 L2-RAM Cache Control Block"
@@ -103,8 +112,9 @@ config TI_EMIF
 	  temperature changes
 
 config OMAP_GPMC
-	bool "Texas Instruments OMAP SoC GPMC driver" if COMPILE_TEST
+	tristate "Texas Instruments OMAP SoC GPMC driver"
 	depends on OF_ADDRESS
+	depends on ARCH_OMAP2PLUS || ARCH_KEYSTONE || ARCH_K3 || COMPILE_TEST
 	select GPIOLIB
 	help
 	  This driver is for the General Purpose Memory Controller (GPMC)
@@ -210,6 +220,7 @@ config RENESAS_RPCIF
 	tristate "Renesas RPC-IF driver"
 	depends on ARCH_RENESAS || COMPILE_TEST
 	select REGMAP_MMIO
+	select RESET_CONTROLLER
 	help
 	  This supports Renesas R-Car Gen3 or RZ/G2 RPC-IF which provides
 	  either SPI host or HyperFlash. You'll have to select individual

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Broadcom BM2835 V4L2 driver
+ * Broadcom BCM2835 V4L2 driver
  *
  * Copyright © 2013 Raspberry Pi (Trading) Ltd.
  *
@@ -13,6 +13,8 @@
 
 #ifndef MMAL_MSG_COMMON_H
 #define MMAL_MSG_COMMON_H
+
+#include <linux/types.h>
 
 enum mmal_msg_status {
 	MMAL_MSG_STATUS_SUCCESS = 0, /**< Success */
@@ -38,11 +40,6 @@ struct mmal_rect {
 	s32 y;      /**< y coordinate (from top) */
 	s32 width;  /**< width */
 	s32 height; /**< height */
-};
-
-struct mmal_rational {
-	s32 num;    /**< Numerator */
-	s32 den;    /**< Denominator */
 };
 
 #endif /* MMAL_MSG_COMMON_H */

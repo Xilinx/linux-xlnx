@@ -3,10 +3,6 @@
  *
  * Copyright(c) 2008 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2018        Intel Corporation
- *
- * Contact Information:
- *  Intel Linux Wireless <linuxwifi@intel.com>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
  *****************************************************************************/
 #include <linux/slab.h>
 #include <linux/types.h>
@@ -630,7 +626,7 @@ static int iwlagn_request_scan(struct iwl_priv *priv, struct ieee80211_vif *vif)
 	u8 active_chains;
 	u8 scan_tx_antennas = priv->nvm_data->valid_tx_ant;
 	int ret;
-	int scan_cmd_size = sizeof(struct iwl_scan_cmd) +
+	size_t scan_cmd_size = sizeof(struct iwl_scan_cmd) +
 			    MAX_SCAN_CHANNEL * sizeof(struct iwl_scan_channel) +
 			    priv->fw->ucode_capa.max_probe_length;
 	const u8 *ssid = NULL;
@@ -653,9 +649,15 @@ static int iwlagn_request_scan(struct iwl_priv *priv, struct ieee80211_vif *vif)
 				       "fail to allocate memory for scan\n");
 			return -ENOMEM;
 		}
+		priv->scan_cmd_size = scan_cmd_size;
+	}
+	if (priv->scan_cmd_size < scan_cmd_size) {
+		IWL_DEBUG_SCAN(priv,
+			       "memory needed for scan grew unexpectedly\n");
+		return -ENOMEM;
 	}
 	scan = priv->scan_cmd;
-	memset(scan, 0, scan_cmd_size);
+	memset(scan, 0, priv->scan_cmd_size);
 
 	scan->quiet_plcp_th = IWL_PLCP_QUIET_THRESH;
 	scan->quiet_time = IWL_ACTIVE_QUIET_TIME;

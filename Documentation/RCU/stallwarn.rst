@@ -96,6 +96,16 @@ warnings:
 	the ``rcu_.*timer wakeup didn't happen for`` console-log message,
 	which will include additional debugging information.
 
+-	A low-level kernel issue that either fails to invoke one of the
+	variants of rcu_eqs_enter(true), rcu_eqs_exit(true), ct_idle_enter(),
+	ct_idle_exit(), ct_irq_enter(), or ct_irq_exit() on the one
+	hand, or that invokes one of them too many times on the other.
+	Historically, the most frequent issue has been an omission
+	of either irq_enter() or irq_exit(), which in turn invoke
+	ct_irq_enter() or ct_irq_exit(), respectively.  Building your
+	kernel with CONFIG_RCU_EQS_DEBUG=y can help track down these types
+	of issues, which sometimes arise in architecture-specific code.
+
 -	A bug in the RCU implementation.
 
 -	A hardware failure.  This is quite unlikely, but has occurred
@@ -148,6 +158,26 @@ CONFIG_RCU_CPU_STALL_TIMEOUT
 	*next* stall, or the following warning for the current stall
 	(assuming the stall lasts long enough).  It will not affect the
 	timing of the next warning for the current stall.
+
+	Stall-warning messages may be enabled and disabled completely via
+	/sys/module/rcupdate/parameters/rcu_cpu_stall_suppress.
+
+CONFIG_RCU_EXP_CPU_STALL_TIMEOUT
+--------------------------------
+
+	Same as the CONFIG_RCU_CPU_STALL_TIMEOUT parameter but only for
+	the expedited grace period. This parameter defines the period
+	of time that RCU will wait from the beginning of an expedited
+	grace period until it issues an RCU CPU stall warning. This time
+	period is normally 20 milliseconds on Android devices.	A zero
+	value causes the CONFIG_RCU_CPU_STALL_TIMEOUT value to be used,
+	after conversion to milliseconds.
+
+	This configuration parameter may be changed at runtime via the
+	/sys/module/rcupdate/parameters/rcu_exp_cpu_stall_timeout, however
+	this parameter is checked only at the beginning of a cycle. If you
+	are in a current stall cycle, setting it to a new value will change
+	the timeout for the -next- stall.
 
 	Stall-warning messages may be enabled and disabled completely via
 	/sys/module/rcupdate/parameters/rcu_cpu_stall_suppress.
@@ -243,17 +273,6 @@ case, CPU 32), how many jiffies have elapsed since the start of the grace
 period (in this case 2603), the grace-period sequence number (7075), and
 an estimate of the total number of RCU callbacks queued across all CPUs
 (625 in this case).
-
-In kernels with CONFIG_RCU_FAST_NO_HZ, more information is printed
-for each CPU::
-
-	0: (64628 ticks this GP) idle=dd5/3fffffffffffffff/0 softirq=82/543 last_accelerate: a345/d342 dyntick_enabled: 1
-
-The "last_accelerate:" prints the low-order 16 bits (in hex) of the
-jiffies counter when this CPU last invoked rcu_try_advance_all_cbs()
-from rcu_needs_cpu() or last invoked rcu_accelerate_cbs() from
-rcu_prepare_for_idle(). "dyntick_enabled: 1" indicates that dyntick-idle
-processing is enabled.
 
 If the grace period ends just as the stall warning starts printing,
 there will be a spurious stall-warning message, which will include

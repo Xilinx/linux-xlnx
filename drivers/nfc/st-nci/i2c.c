@@ -157,7 +157,6 @@ static int st_nci_i2c_read(struct st_nci_i2c_phy *phy,
 static irqreturn_t st_nci_irq_thread_fn(int irq, void *phy_id)
 {
 	struct st_nci_i2c_phy *phy = phy_id;
-	struct i2c_client *client;
 	struct sk_buff *skb = NULL;
 	int r;
 
@@ -165,9 +164,6 @@ static irqreturn_t st_nci_irq_thread_fn(int irq, void *phy_id)
 		WARN_ON_ONCE(1);
 		return IRQ_NONE;
 	}
-
-	client = phy->i2c_dev;
-	dev_dbg(&client->dev, "IRQ\n");
 
 	if (phy->ndlc->hard_fault)
 		return IRQ_HANDLED;
@@ -254,13 +250,11 @@ static int st_nci_i2c_probe(struct i2c_client *client,
 	return r;
 }
 
-static int st_nci_i2c_remove(struct i2c_client *client)
+static void st_nci_i2c_remove(struct i2c_client *client)
 {
 	struct st_nci_i2c_phy *phy = i2c_get_clientdata(client);
 
 	ndlc_remove(phy->ndlc);
-
-	return 0;
 }
 
 static const struct i2c_device_id st_nci_i2c_id_table[] = {

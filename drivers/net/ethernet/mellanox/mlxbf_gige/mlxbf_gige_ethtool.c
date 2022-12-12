@@ -24,17 +24,18 @@ static void mlxbf_gige_get_regs(struct net_device *netdev,
 	regs->version = MLXBF_GIGE_REGS_VERSION;
 
 	/* Read entire MMIO register space and store results
-	 * into the provided buffer. Each 64-bit word is converted
-	 * to big-endian to make the output more readable.
-	 *
-	 * NOTE: by design, a read to an offset without an existing
-	 *       register will be acknowledged and return zero.
+	 * into the provided buffer. By design, a read to an
+	 * offset without an existing register will be
+	 * acknowledged and return zero.
 	 */
 	memcpy_fromio(p, priv->base, MLXBF_GIGE_MMIO_REG_SZ);
 }
 
-static void mlxbf_gige_get_ringparam(struct net_device *netdev,
-				     struct ethtool_ringparam *ering)
+static void
+mlxbf_gige_get_ringparam(struct net_device *netdev,
+			 struct ethtool_ringparam *ering,
+			 struct kernel_ethtool_ringparam *kernel_ering,
+			 struct netlink_ext_ack *extack)
 {
 	struct mlxbf_gige *priv = netdev_priv(netdev);
 

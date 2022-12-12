@@ -2,7 +2,7 @@
 /*
  * Surface System Aggregator Module bus and device integration.
  *
- * Copyright (C) 2019-2021 Maximilian Luz <luzmaximilian@gmail.com>
+ * Copyright (C) 2019-2022 Maximilian Luz <luzmaximilian@gmail.com>
  */
 
 #ifndef _SURFACE_AGGREGATOR_BUS_H
@@ -12,14 +12,11 @@
 
 #ifdef CONFIG_SURFACE_AGGREGATOR_BUS
 
-void ssam_controller_remove_clients(struct ssam_controller *ctrl);
-
 int ssam_bus_register(void);
 void ssam_bus_unregister(void);
 
 #else /* CONFIG_SURFACE_AGGREGATOR_BUS */
 
-static inline void ssam_controller_remove_clients(struct ssam_controller *ctrl) {}
 static inline int ssam_bus_register(void) { return 0; }
 static inline void ssam_bus_unregister(void) {}
 

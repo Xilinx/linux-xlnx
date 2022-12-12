@@ -753,7 +753,7 @@ static int gfar_of_init(struct platform_device *ofdev, struct net_device **pdev)
 	if (stash_len || stash_idx)
 		priv->device_flags |= FSL_GIANFAR_DEV_HAS_BUF_STASHING;
 
-	err = of_get_mac_address(np, dev->dev_addr);
+	err = of_get_ethdev_address(np, dev);
 	if (err) {
 		eth_hw_addr_random(dev);
 		dev_info(&ofdev->dev, "Using random MAC address: %pM\n", dev->dev_addr);
@@ -1944,6 +1944,7 @@ static netdev_tx_t gfar_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		lstatus |= BD_LFLAG(TXBD_CRC | TXBD_READY) | skb_headlen(skb);
 	}
 
+	skb_tx_timestamp(skb);
 	netdev_tx_sent_queue(txq, bytes_sent);
 
 	gfar_wmb();
@@ -2075,10 +2076,6 @@ static int gfar_hwtstamp_set(struct net_device *netdev, struct ifreq *ifr)
 
 	if (copy_from_user(&config, ifr->ifr_data, sizeof(config)))
 		return -EFAULT;
-
-	/* reserved for future extensions */
-	if (config.flags)
-		return -EINVAL;
 
 	switch (config.tx_type) {
 	case HWTSTAMP_TX_OFF:
@@ -3236,9 +3233,9 @@ static int gfar_probe(struct platform_device *ofdev)
 	/* Register for napi ...We are registering NAPI for each grp */
 	for (i = 0; i < priv->num_grps; i++) {
 		netif_napi_add(dev, &priv->gfargrp[i].napi_rx,
-			       gfar_poll_rx_sq, GFAR_DEV_WEIGHT);
-		netif_tx_napi_add(dev, &priv->gfargrp[i].napi_tx,
-				  gfar_poll_tx_sq, 2);
+			       gfar_poll_rx_sq);
+		netif_napi_add_tx_weight(dev, &priv->gfargrp[i].napi_tx,
+					 gfar_poll_tx_sq, 2);
 	}
 
 	if (priv->device_flags & FSL_GIANFAR_DEV_HAS_CSUM) {

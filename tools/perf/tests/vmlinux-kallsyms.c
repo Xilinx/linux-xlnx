@@ -3,6 +3,7 @@
 #include <linux/rbtree.h>
 #include <inttypes.h>
 #include <string.h>
+#include <ctype.h>
 #include <stdlib.h>
 #include "dso.h"
 #include "map.h"
@@ -14,14 +15,112 @@
 
 #define UM(x) kallsyms_map->unmap_ip(kallsyms_map, (x))
 
-int test__vmlinux_matches_kallsyms(struct test *test __maybe_unused, int subtest __maybe_unused)
+static bool is_ignored_symbol(const char *name, char type)
 {
-	int err = -1;
+	/* Symbol names that exactly match to the following are ignored.*/
+	static const char * const ignored_symbols[] = {
+		/*
+		 * Symbols which vary between passes. Passes 1 and 2 must have
+		 * identical symbol lists. The kallsyms_* symbols below are
+		 * only added after pass 1, they would be included in pass 2
+		 * when --all-symbols is specified so exclude them to get a
+		 * stable symbol list.
+		 */
+		"kallsyms_addresses",
+		"kallsyms_offsets",
+		"kallsyms_relative_base",
+		"kallsyms_num_syms",
+		"kallsyms_names",
+		"kallsyms_markers",
+		"kallsyms_token_table",
+		"kallsyms_token_index",
+		/* Exclude linker generated symbols which vary between passes */
+		"_SDA_BASE_",		/* ppc */
+		"_SDA2_BASE_",		/* ppc */
+		NULL
+	};
+
+	/* Symbol names that begin with the following are ignored.*/
+	static const char * const ignored_prefixes[] = {
+		"$",			/* local symbols for ARM, MIPS, etc. */
+		".L",			/* local labels, .LBB,.Ltmpxxx,.L__unnamed_xx,.LASANPC, etc. */
+		"__crc_",		/* modversions */
+		"__efistub_",		/* arm64 EFI stub namespace */
+		"__kvm_nvhe_$",		/* arm64 local symbols in non-VHE KVM namespace */
+		"__kvm_nvhe_.L",	/* arm64 local symbols in non-VHE KVM namespace */
+		"__AArch64ADRPThunk_",	/* arm64 lld */
+		"__ARMV5PILongThunk_",	/* arm lld */
+		"__ARMV7PILongThunk_",
+		"__ThumbV7PILongThunk_",
+		"__LA25Thunk_",		/* mips lld */
+		"__microLA25Thunk_",
+		NULL
+	};
+
+	/* Symbol names that end with the following are ignored.*/
+	static const char * const ignored_suffixes[] = {
+		"_from_arm",		/* arm */
+		"_from_thumb",		/* arm */
+		"_veneer",		/* arm */
+		NULL
+	};
+
+	/* Symbol names that contain the following are ignored.*/
+	static const char * const ignored_matches[] = {
+		".long_branch.",	/* ppc stub */
+		".plt_branch.",		/* ppc stub */
+		NULL
+	};
+
+	const char * const *p;
+
+	for (p = ignored_symbols; *p; p++)
+		if (!strcmp(name, *p))
+			return true;
+
+	for (p = ignored_prefixes; *p; p++)
+		if (!strncmp(name, *p, strlen(*p)))
+			return true;
+
+	for (p = ignored_suffixes; *p; p++) {
+		int l = strlen(name) - strlen(*p);
+
+		if (l >= 0 && !strcmp(name + l, *p))
+			return true;
+	}
+
+	for (p = ignored_matches; *p; p++) {
+		if (strstr(name, *p))
+			return true;
+	}
+
+	if (type == 'U' || type == 'u')
+		return true;
+	/* exclude debugging symbols */
+	if (type == 'N' || type == 'n')
+		return true;
+
+	if (toupper(type) == 'A') {
+		/* Keep these useful absolute symbols */
+		if (strcmp(name, "__kernel_syscall_via_break") &&
+		    strcmp(name, "__kernel_syscall_via_epc") &&
+		    strcmp(name, "__kernel_sigtramp") &&
+		    strcmp(name, "__gp"))
+			return true;
+	}
+
+	return false;
+}
+
+static int test__vmlinux_matches_kallsyms(struct test_suite *test __maybe_unused,
+					int subtest __maybe_unused)
+{
+	int err = TEST_FAIL;
 	struct rb_node *nd;
 	struct symbol *sym;
 	struct map *kallsyms_map, *vmlinux_map, *map;
 	struct machine kallsyms, vmlinux;
-	struct maps *maps = machine__kernel_maps(&vmlinux);
+	struct maps *maps;
 	u64 mem_start, mem_end;
 	bool header_printed;
 
@@ -34,6 +133,8 @@ int test__vmlinux_matches_kallsyms(struct test *test __maybe_unused, int subtest
 	machine__init(&kallsyms, "", HOST_KERNEL_ID);
 	machine__init(&vmlinux, "", HOST_KERNEL_ID);
 
+	maps = machine__kernel_maps(&vmlinux);
+
 	/*
 	 * Step 2:
 	 *
@@ -42,7 +143,8 @@ int test__vmlinux_matches_kallsyms(struct test *test __maybe_unused, int subtest
 	 * and find the .ko files that match them in /lib/modules/`uname -r`/.
 	 */
 	if (machine__create_kernel_maps(&kallsyms) < 0) {
-		pr_debug("machine__create_kernel_maps ");
+		pr_debug("machine__create_kernel_maps failed");
+		err = TEST_SKIP;
 		goto out;
 	}
 
@@ -58,7 +160,8 @@ int test__vmlinux_matches_kallsyms(struct test *test __maybe_unused, int subtest
 	 * code and with the one got from /proc/modules from the "kallsyms" code.
 	 */
 	if (machine__load_kallsyms(&kallsyms, "/proc/kallsyms") <= 0) {
-		pr_debug("dso__load_kallsyms ");
+		pr_debug("machine__load_kallsyms failed");
+		err = TEST_SKIP;
 		goto out;
 	}
 
@@ -78,7 +181,7 @@ int test__vmlinux_matches_kallsyms(struct test *test __maybe_unused, int subtest
 	 * Now repeat step 2, this time for the vmlinux file we'll auto-locate.
 	 */
 	if (machine__create_kernel_maps(&vmlinux) < 0) {
-		pr_debug("machine__create_kernel_maps ");
+		pr_info("machine__create_kernel_maps failed");
 		goto out;
 	}
 
@@ -96,7 +199,7 @@ int test__vmlinux_matches_kallsyms(struct test *test __maybe_unused, int subtest
 	 * to fixup the symbols.
 	 */
 	if (machine__load_vmlinux_path(&vmlinux) <= 0) {
-		pr_debug("Couldn't find a vmlinux that matches the kernel running on this machine, skipping test\n");
+		pr_info("Couldn't find a vmlinux that matches the kernel running on this machine, skipping test\n");
 		err = TEST_SKIP;
 		goto out;
 	}
@@ -169,6 +272,11 @@ next_pair:
 			 * such as __indirect_thunk_end.
 			 */
 			continue;
+		} else if (is_ignored_symbol(sym->name, sym->type)) {
+			/*
+			 * Ignore hidden symbols, see scripts/kallsyms.c for the details
+			 */
+			continue;
 		} else {
 			pr_debug("ERR : %#" PRIx64 ": %s not on kallsyms\n",
 				 mem_start, sym->name);
@@ -190,7 +298,7 @@ next_pair:
 		 * so use the short name, less descriptive but the same ("[kernel]" in
 		 * both cases.
 		 */
-		pair = maps__find_by_name(&kallsyms.kmaps, (map->dso->kernel ?
+		pair = maps__find_by_name(kallsyms.kmaps, (map->dso->kernel ?
 								map->dso->short_name :
 								map->dso->name));
 		if (pair) {
@@ -212,7 +320,7 @@ next_pair:
 		mem_start = vmlinux_map->unmap_ip(vmlinux_map, map->start);
 		mem_end = vmlinux_map->unmap_ip(vmlinux_map, map->end);
 
-		pair = maps__find(&kallsyms.kmaps, mem_start);
+		pair = maps__find(kallsyms.kmaps, mem_start);
 		if (pair == NULL || pair->priv)
 			continue;
 
@@ -250,3 +358,5 @@ out:
 	machine__exit(&vmlinux);
 	return err;
 }
+
+DEFINE_SUITE("vmlinux symtab matches kallsyms", vmlinux_matches_kallsyms);

@@ -480,6 +480,7 @@ static int __init lance_probe1(struct net_device *dev, int ioaddr, int irq, int 
 	unsigned long flags;
 	int err = -ENOMEM;
 	void __iomem *bios;
+	u8 addr[ETH_ALEN];
 
 	/* First we look for special cases.
 	   Check for HP's on-board ethernet by looking for 'HP' in the BIOS.
@@ -541,7 +542,8 @@ static int __init lance_probe1(struct net_device *dev, int ioaddr, int irq, int 
 	/* There is a 16 byte station address PROM at the base address.
 	   The first six bytes are the station address. */
 	for (i = 0; i < 6; i++)
-		dev->dev_addr[i] = inb(ioaddr + i);
+		addr[i] = inb(ioaddr + i);
+	eth_hw_addr_set(dev, addr);
 	printk("%pM", dev->dev_addr);
 
 	dev->base_addr = ioaddr;
@@ -878,7 +880,7 @@ lance_init_ring(struct net_device *dev, gfp_t gfp)
 			rx_buff = skb->data;
 		else
 			rx_buff = kmalloc(PKT_BUF_SZ, GFP_DMA | gfp);
-		if (rx_buff == NULL)
+		if (!rx_buff)
 			lp->rx_ring[i].base = 0;
 		else
 			lp->rx_ring[i].base = (u32)isa_virt_to_bus(rx_buff) | 0x80000000;
@@ -1184,7 +1186,7 @@ lance_rx(struct net_device *dev)
 			else
 			{
 				skb = dev_alloc_skb(pkt_len+2);
-				if (skb == NULL)
+				if (!skb)
 				{
 					printk("%s: Memory squeeze, deferring packet.\n", dev->name);
 					for (i=0; i < RX_RING_SIZE; i++)

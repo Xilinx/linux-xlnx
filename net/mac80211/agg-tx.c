@@ -9,7 +9,7 @@
  * Copyright 2007, Michael Wu <flamingice@sourmilk.net>
  * Copyright 2007-2010, Intel Corporation
  * Copyright(c) 2015-2017 Intel Deutschland GmbH
- * Copyright (C) 2018 - 2020 Intel Corporation
+ * Copyright (C) 2018 - 2022 Intel Corporation
  */
 
 #include <linux/ieee80211.h>
@@ -82,7 +82,7 @@ static void ieee80211_send_addba_request(struct ieee80211_sub_if_data *sdata,
 	    sdata->vif.type == NL80211_IFTYPE_MESH_POINT)
 		memcpy(mgmt->bssid, sdata->vif.addr, ETH_ALEN);
 	else if (sdata->vif.type == NL80211_IFTYPE_STATION)
-		memcpy(mgmt->bssid, sdata->u.mgd.bssid, ETH_ALEN);
+		memcpy(mgmt->bssid, sdata->deflink.u.mgd.bssid, ETH_ALEN);
 	else if (sdata->vif.type == NL80211_IFTYPE_ADHOC)
 		memcpy(mgmt->bssid, sdata->u.ibss.bssid, ETH_ALEN);
 
@@ -106,7 +106,7 @@ static void ieee80211_send_addba_request(struct ieee80211_sub_if_data *sdata,
 	mgmt->u.action.u.addba_req.start_seq_num =
 					cpu_to_le16(start_seq_num << 4);
 
-	ieee80211_tx_skb(sdata, skb);
+	ieee80211_tx_skb_tid(sdata, skb, tid, -1);
 }
 
 void ieee80211_send_bar(struct ieee80211_vif *vif, u8 *ra, u16 tid, u16 ssn)
@@ -135,7 +135,7 @@ void ieee80211_send_bar(struct ieee80211_vif *vif, u8 *ra, u16 tid, u16 ssn)
 
 	IEEE80211_SKB_CB(skb)->flags |= IEEE80211_TX_INTFL_DONT_ENCRYPT |
 					IEEE80211_TX_CTL_REQ_TX_STATUS;
-	ieee80211_tx_skb_tid(sdata, skb, tid);
+	ieee80211_tx_skb_tid(sdata, skb, tid, -1);
 }
 EXPORT_SYMBOL(ieee80211_send_bar);
 
@@ -212,6 +212,8 @@ ieee80211_agg_start_txq(struct sta_info *sta, int tid, bool enable)
 {
 	struct ieee80211_txq *txq = sta->sta.txq[tid];
 	struct txq_info *txqi;
+
+	lockdep_assert_held(&sta->ampdu_mlme.mtx);
 
 	if (!txq)
 		return;
@@ -290,7 +292,6 @@ static void ieee80211_remove_tid_tx(struct sta_info *sta, int tid)
 	ieee80211_assign_tid_tx(sta, tid, NULL);
 
 	ieee80211_agg_splice_finish(sta->sdata, tid);
-	ieee80211_agg_start_txq(sta, tid, false);
 
 	kfree_rcu(tid_tx, rcu_head);
 }
@@ -466,7 +467,7 @@ static void ieee80211_send_addba_with_timeout(struct sta_info *sta,
 	sta->ampdu_mlme.addba_req_num[tid]++;
 	spin_unlock_bh(&sta->lock);
 
-	if (sta->sta.he_cap.has_he) {
+	if (sta->sta.deflink.he_cap.has_he) {
 		buf_size = local->hw.max_tx_aggregation_subframes;
 	} else {
 		/*
@@ -480,8 +481,7 @@ static void ieee80211_send_addba_with_timeout(struct sta_info *sta,
 
 	/* send AddBA request */
 	ieee80211_send_addba_request(sdata, sta->sta.addr, tid,
-				     tid_tx->dialog_token,
-				     sta->tid_seq[tid] >> 4,
+				     tid_tx->dialog_token, tid_tx->ssn,
 				     buf_size, tid_tx->timeout);
 
 	WARN_ON(test_and_set_bit(HT_AGG_STATE_SENT_ADDBA, &tid_tx->state));
@@ -523,6 +523,7 @@ void ieee80211_tx_ba_session_handle_start(struct sta_info *sta, int tid)
 
 	params.ssn = sta->tid_seq[tid] >> 4;
 	ret = drv_ampdu_action(local, sdata, &params);
+	tid_tx->ssn = params.ssn;
 	if (ret == IEEE80211_AMPDU_TX_START_DELAY_ADDBA) {
 		return;
 	} else if (ret == IEEE80211_AMPDU_TX_START_IMMEDIATE) {
@@ -593,7 +594,7 @@ int ieee80211_start_tx_ba_session(struct ieee80211_sta *pubsta, u16 tid,
 		 "Requested to start BA session on reserved tid=%d", tid))
 		return -EINVAL;
 
-	if (!pubsta->ht_cap.ht_supported &&
+	if (!pubsta->deflink.ht_cap.ht_supported &&
 	    sta->sdata->vif.bss_conf.chandef.chan->band != NL80211_BAND_6GHZ)
 		return -EINVAL;
 
@@ -625,6 +626,14 @@ int ieee80211_start_tx_ba_session(struct ieee80211_sta *pubsta, u16 tid,
 		return -EINVAL;
 	}
 
+	if (test_sta_flag(sta, WLAN_STA_MFP) &&
+	    !test_sta_flag(sta, WLAN_STA_AUTHORIZED)) {
+		ht_dbg(sdata,
+		       "MFP STA not authorized - deny BA session request %pM tid %d\n",
+		       sta->sta.addr, tid);
+		return -EINVAL;
+	}
+
 	/*
 	 * 802.11n-2009 11.5.1.1: If the initiating STA is an HT STA, is a
 	 * member of an IBSS, and has no other existing Block Ack agreement
@@ -638,7 +647,7 @@ int ieee80211_start_tx_ba_session(struct ieee80211_sta *pubsta, u16 tid,
 	 * is set when we receive a bss info from a probe response or a beacon.
 	 */
 	if (sta->sdata->vif.type == NL80211_IFTYPE_ADHOC &&
-	    !sta->sta.ht_cap.ht_supported) {
+	    !sta->sta.deflink.ht_cap.ht_supported) {
 		ht_dbg(sdata,
 		       "BA request denied - IBSS STA %pM does not advertise HT support\n",
 		       pubsta->addr);
@@ -889,6 +898,7 @@ void ieee80211_stop_tx_ba_cb(struct sta_info *sta, int tid,
 {
 	struct ieee80211_sub_if_data *sdata = sta->sdata;
 	bool send_delba = false;
+	bool start_txq = false;
 
 	ht_dbg(sdata, "Stopping Tx BA session for %pM tid %d\n",
 	       sta->sta.addr, tid);
@@ -906,9 +916,13 @@ void ieee80211_stop_tx_ba_cb(struct sta_info *sta, int tid,
 		send_delba = true;
 
 	ieee80211_remove_tid_tx(sta, tid);
+	start_txq = true;
 
  unlock_sta:
 	spin_unlock_bh(&sta->lock);
+
+	if (start_txq)
+		ieee80211_agg_start_txq(sta, tid, false);
 
 	if (send_delba)
 		ieee80211_send_delba(sdata, sta->sta.addr, tid,

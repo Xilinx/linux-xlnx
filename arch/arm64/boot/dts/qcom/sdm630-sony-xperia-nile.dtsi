@@ -10,6 +10,7 @@
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/input/gpio-keys.h>
+#include <dt-bindings/leds/common.h>
 
 / {
 	/* required for bootloader to select correct board */
@@ -34,7 +35,7 @@
 			height = <1920>;
 			stride = <(1080 * 4)>;
 			format = "a8r8g8b8";
-			status= "okay";
+			status = "okay";
 		};
 	};
 
@@ -87,14 +88,10 @@
 		pinctrl-0 = <&imx300_vana_default>;
 	};
 
-	gpio_keys {
-		status = "okay";
+	gpio-keys {
 		compatible = "gpio-keys";
-		input-name = "gpio-keys";
-		#address-cells = <1>;
-		#size-cells = <0>;
 
-		camera_focus {
+		key-camera-focus {
 			label = "Camera Focus";
 			gpios = <&tlmm 64 GPIO_ACTIVE_LOW>;
 			linux,input-type = <1>;
@@ -102,7 +99,7 @@
 			debounce-interval = <15>;
 		};
 
-		camera_snapshot {
+		key-camera-snapshot {
 			label = "Camera Snapshot";
 			gpios = <&tlmm 113 GPIO_ACTIVE_LOW>;
 			linux,input-type = <1>;
@@ -110,7 +107,7 @@
 			debounce-interval = <15>;
 		};
 
-		vol_down {
+		key-vol-down {
 			label = "Volume Down";
 			gpios = <&pm660l_gpios 7 GPIO_ACTIVE_LOW>;
 			linux,input-type = <1>;
@@ -215,17 +212,46 @@
 	/* HCI Bluetooth */
 };
 
-&pon {
-	volup {
-		compatible = "qcom,pm8941-resin";
-		interrupts = <0x0 0x8 1 IRQ_TYPE_EDGE_BOTH>;
-		debounce = <15625>;
-		bias-pull-up;
-		linux,code = <KEY_VOLUMEUP>;
+&pm660l_lpg {
+	qcom,power-source = <1>;
+
+	status = "okay";
+
+	multi-led {
+		color = <LED_COLOR_ID_RGB>;
+		function = LED_FUNCTION_STATUS;
+
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		led@1 {
+			reg = <1>;
+			color = <LED_COLOR_ID_BLUE>;
+		};
+
+		led@2 {
+			reg = <2>;
+			color = <LED_COLOR_ID_GREEN>;
+		};
+
+		led@3 {
+			reg = <3>;
+			color = <LED_COLOR_ID_RED>;
+		};
 	};
 };
 
-&qusb2phy {
+&pon_pwrkey {
+	status = "okay";
+};
+
+&pon_resin {
+	status = "okay";
+
+	linux,code = <KEY_VOLUMEUP>;
+};
+
+&qusb2phy0 {
 	status = "okay";
 
 	vdd-supply = <&vreg_l1b_0p925>;
@@ -308,7 +334,7 @@
 			regulator-allow-set-load;
 		};
 
-		vreg_l4b_29p5: l4 {
+		vreg_l4b_2p95: l4 {
 			regulator-min-microvolt = <2944000>;
 			regulator-max-microvolt = <2952000>;
 			regulator-enable-ramp-delay = <250>;
@@ -327,7 +353,7 @@
 		 * Tighten the range to 1.8-3.328 (closest to 3.3) to
 		 * make the mmc driver happy.
 		 */
-		vreg_l5b_29p5: l5 {
+		vreg_l5b_2p95: l5 {
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <3328000>;
 			regulator-enable-ramp-delay = <250>;
@@ -550,6 +576,22 @@
 	};
 };
 
+&sdc2_state_on {
+	sd-cd {
+		pins = "gpio54";
+		bias-pull-up;
+		drive-strength = <2>;
+	};
+};
+
+&sdc2_state_off {
+	sd-cd {
+		pins = "gpio54";
+		bias-disable;
+		drive-strength = <2>;
+	};
+};
+
 &sdhc_1 {
 	status = "okay";
 	supports-cqe;
@@ -559,14 +601,14 @@
 	mmc-hs400-1_8v;
 	mmc-hs400-enhanced-strobe;
 
-	vmmc-supply = <&vreg_l4b_29p5>;
+	vmmc-supply = <&vreg_l4b_2p95>;
 	vqmmc-supply = <&vreg_l8a_1p8>;
 };
 
 &sdhc_2 {
 	status = "okay";
 
-	vmmc-supply = <&vreg_l5b_29p5>;
+	vmmc-supply = <&vreg_l5b_2p95>;
 	vqmmc-supply = <&vreg_l2b_2p95>;
 };
 

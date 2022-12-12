@@ -31,11 +31,13 @@
 #include <linux/memory.h>
 #include <linux/nmi.h>
 #include <linux/pgtable.h>
+#include <linux/of.h>
+#include <linux/of_fdt.h>
 
+#include <asm/asm-prototypes.h>
 #include <asm/kvm_guest.h>
 #include <asm/io.h>
 #include <asm/kdump.h>
-#include <asm/prom.h>
 #include <asm/processor.h>
 #include <asm/smp.h>
 #include <asm/elf.h>
@@ -59,7 +61,7 @@
 #include <asm/udbg.h>
 #include <asm/kexec.h>
 #include <asm/code-patching.h>
-#include <asm/livepatch.h>
+#include <asm/ftrace.h>
 #include <asm/opal.h>
 #include <asm/cputhreads.h>
 #include <asm/hw_irq.h>
@@ -67,7 +69,6 @@
 #include <asm/kup.h>
 #include <asm/early_ioremap.h>
 #include <asm/pgalloc.h>
-#include <asm/asm-prototypes.h>
 
 #include "setup.h"
 
@@ -86,7 +87,7 @@ struct ppc64_caches ppc64_caches = {
 };
 EXPORT_SYMBOL_GPL(ppc64_caches);
 
-#if defined(CONFIG_PPC_BOOK3E) && defined(CONFIG_SMP)
+#if defined(CONFIG_PPC_BOOK3E_64) && defined(CONFIG_SMP)
 void __init setup_tlb_core_data(void)
 {
 	int cpu;
@@ -113,7 +114,6 @@ void __init setup_tlb_core_data(void)
 		 * Should we panic instead?
 		 */
 		WARN_ONCE(smt_enabled_at_boot >= 2 &&
-			  !mmu_has_feature(MMU_FTR_USE_TLBRSRV) &&
 			  book3e_htw_mode != PPC_HTW_E6500,
 			  "%s: unsupported MMU configuration\n", __func__);
 	}
@@ -177,14 +177,26 @@ early_param("smt-enabled", early_smt_enabled);
 #endif /* CONFIG_SMP */
 
 /** Fix up paca fields required for the boot cpu */
-static void __init fixup_boot_paca(void)
+static void __init fixup_boot_paca(struct paca_struct *boot_paca)
 {
 	/* The boot cpu is started */
-	get_paca()->cpu_start = 1;
+	boot_paca->cpu_start = 1;
+#ifdef CONFIG_PPC_BOOK3S_64
+	/*
+	 * Give the early boot machine check stack somewhere to use, use
+	 * half of the init stack. This is a bit hacky but there should not be
+	 * deep stack usage in early init so shouldn't overflow it or overwrite
+	 * things.
+	 */
+	boot_paca->mc_emergency_sp = (void *)&init_thread_union +
+		(THREAD_SIZE/2);
+#endif
 	/* Allow percpu accesses to work until we setup percpu data */
-	get_paca()->data_offset = 0;
-	/* Mark interrupts disabled in PACA */
-	irq_soft_mask_set(IRQS_DISABLED);
+	boot_paca->data_offset = 0;
+	/* Mark interrupts soft and hard disabled in PACA */
+	boot_paca->irq_soft_mask = IRQS_DISABLED;
+	boot_paca->irq_happened = PACA_IRQ_HARD_DIS;
+	WARN_ON(mfmsr() & MSR_EE);
 }
 
 static void __init configure_exceptions(void)
@@ -197,6 +209,34 @@ static void __init configure_exceptions(void)
 
 	/* Under a PAPR hypervisor, we need hypercalls */
 	if (firmware_has_feature(FW_FEATURE_SET_MODE)) {
+		/*
+		 * - PR KVM does not support AIL mode interrupts in the host
+		 *   while a PR guest is running.
+		 *
+		 * - SCV system call interrupt vectors are only implemented for
+		 *   AIL mode interrupts.
+		 *
+		 * - On pseries, AIL mode can only be enabled and disabled
+		 *   system-wide so when a PR VM is created on a pseries host,
+		 *   all CPUs of the host are set to AIL=0 mode.
+		 *
+		 * - Therefore host CPUs must not execute scv while a PR VM
+		 *   exists.
+		 *
+		 * - SCV support can not be disabled dynamically because the
+		 *   feature is advertised to host userspace. Disabling the
+		 *   facility and emulating it would be possible but is not
+		 *   implemented.
+		 *
+		 * - So SCV support is blanket disabled if PR KVM could possibly
+		 *   run. That is, PR support compiled in, booting on pseries
+		 *   with hash MMU.
+		 */
+		if (IS_ENABLED(CONFIG_KVM_BOOK3S_PR_POSSIBLE) && !radix_enabled()) {
+			init_task.thread.fscr &= ~FSCR_SCV;
+			cur_cpu_spec->cpu_user_features2 &= ~PPC_FEATURE2_SCV;
+		}
+
 		/* Enable AIL if possible */
 		if (!pseries_enable_reloc_on_exc()) {
 			init_task.thread.fscr &= ~FSCR_SCV;
@@ -323,10 +363,14 @@ void __init early_setup(unsigned long dt_ptr)
 	 * what CPU we are on.
 	 */
 	initialise_paca(&boot_paca, 0);
-	setup_paca(&boot_paca);
-	fixup_boot_paca();
+	fixup_boot_paca(&boot_paca);
+	WARN_ON(local_paca != 0);
+	setup_paca(&boot_paca); /* install the paca into registers */
 
 	/* -------- printk is now safe to use ------- */
+
+	if (IS_ENABLED(CONFIG_PPC_BOOK3S_64) && (mfmsr() & MSR_HV))
+		enable_machine_check();
 
 	/* Try new device tree based feature discovery ... */
 	if (!dt_cpu_ftrs_init(__va(dt_ptr)))
@@ -350,8 +394,8 @@ void __init early_setup(unsigned long dt_ptr)
 		/* Poison paca_ptrs[0] again if it's not the boot cpu */
 		memset(&paca_ptrs[0], 0x88, sizeof(paca_ptrs[0]));
 	}
-	setup_paca(paca_ptrs[boot_cpuid]);
-	fixup_boot_paca();
+	fixup_boot_paca(paca_ptrs[boot_cpuid]);
+	setup_paca(paca_ptrs[boot_cpuid]); /* install the paca into registers */
 
 	/*
 	 * Configure exception handlers. This include setting up trampolines
@@ -499,7 +543,7 @@ void smp_release_cpus(void)
  * routines and/or provided to userland
  */
 
-static void init_cache_info(struct ppc_cache_info *info, u32 size, u32 lsize,
+static void __init init_cache_info(struct ppc_cache_info *info, u32 size, u32 lsize,
 			    u32 bsize, u32 sets)
 {
 	info->size = size;
@@ -646,7 +690,7 @@ void __init initialize_cache_info(void)
  */
 __init u64 ppc64_bolted_size(void)
 {
-#ifdef CONFIG_PPC_BOOK3E
+#ifdef CONFIG_PPC_BOOK3E_64
 	/* Freescale BookE bolts the entire linear mapping */
 	/* XXX: BookE ppc64_rma_limit setup seems to disagree? */
 	if (early_mmu_has_feature(MMU_FTR_TYPE_FSL_E))
@@ -696,7 +740,7 @@ void __init irqstack_early_init(void)
 	}
 }
 
-#ifdef CONFIG_PPC_BOOK3E
+#ifdef CONFIG_PPC_BOOK3E_64
 void __init exc_lvl_early_init(void)
 {
 	unsigned int i;
@@ -771,50 +815,6 @@ void __init emergency_stack_init(void)
 }
 
 #ifdef CONFIG_SMP
-/**
- * pcpu_alloc_bootmem - NUMA friendly alloc_bootmem wrapper for percpu
- * @cpu: cpu to allocate for
- * @size: size allocation in bytes
- * @align: alignment
- *
- * Allocate @size bytes aligned at @align for cpu @cpu.  This wrapper
- * does the right thing for NUMA regardless of the current
- * configuration.
- *
- * RETURNS:
- * Pointer to the allocated area on success, NULL on failure.
- */
-static void * __init pcpu_alloc_bootmem(unsigned int cpu, size_t size,
-					size_t align)
-{
-	const unsigned long goal = __pa(MAX_DMA_ADDRESS);
-#ifdef CONFIG_NUMA
-	int node = early_cpu_to_node(cpu);
-	void *ptr;
-
-	if (!node_online(node) || !NODE_DATA(node)) {
-		ptr = memblock_alloc_from(size, align, goal);
-		pr_info("cpu %d has no node %d or node-local memory\n",
-			cpu, node);
-		pr_debug("per cpu data for cpu%d %lu bytes at %016lx\n",
-			 cpu, size, __pa(ptr));
-	} else {
-		ptr = memblock_alloc_try_nid(size, align, goal,
-					     MEMBLOCK_ALLOC_ACCESSIBLE, node);
-		pr_debug("per cpu data for cpu%d %lu bytes on node%d at "
-			 "%016lx\n", cpu, size, node, __pa(ptr));
-	}
-	return ptr;
-#else
-	return memblock_alloc_from(size, align, goal);
-#endif
-}
-
-static void __init pcpu_free_bootmem(void *ptr, size_t size)
-{
-	memblock_free(__pa(ptr), size);
-}
-
 static int pcpu_cpu_distance(unsigned int from, unsigned int to)
 {
 	if (early_cpu_to_node(from) == early_cpu_to_node(to))
@@ -823,53 +823,13 @@ static int pcpu_cpu_distance(unsigned int from, unsigned int to)
 		return REMOTE_DISTANCE;
 }
 
-unsigned long __per_cpu_offset[NR_CPUS] __read_mostly;
-EXPORT_SYMBOL(__per_cpu_offset);
-
-static void __init pcpu_populate_pte(unsigned long addr)
+static __init int pcpu_cpu_to_node(int cpu)
 {
-	pgd_t *pgd = pgd_offset_k(addr);
-	p4d_t *p4d;
-	pud_t *pud;
-	pmd_t *pmd;
-
-	p4d = p4d_offset(pgd, addr);
-	if (p4d_none(*p4d)) {
-		pud_t *new;
-
-		new = memblock_alloc(PUD_TABLE_SIZE, PUD_TABLE_SIZE);
-		if (!new)
-			goto err_alloc;
-		p4d_populate(&init_mm, p4d, new);
-	}
-
-	pud = pud_offset(p4d, addr);
-	if (pud_none(*pud)) {
-		pmd_t *new;
-
-		new = memblock_alloc(PMD_TABLE_SIZE, PMD_TABLE_SIZE);
-		if (!new)
-			goto err_alloc;
-		pud_populate(&init_mm, pud, new);
-	}
-
-	pmd = pmd_offset(pud, addr);
-	if (!pmd_present(*pmd)) {
-		pte_t *new;
-
-		new = memblock_alloc(PTE_TABLE_SIZE, PTE_TABLE_SIZE);
-		if (!new)
-			goto err_alloc;
-		pmd_populate_kernel(&init_mm, pmd, new);
-	}
-
-	return;
-
-err_alloc:
-	panic("%s: Failed to allocate %lu bytes align=%lx from=%lx\n",
-	      __func__, PAGE_SIZE, PAGE_SIZE, PAGE_SIZE);
+	return early_cpu_to_node(cpu);
 }
 
+unsigned long __per_cpu_offset[NR_CPUS] __read_mostly;
+EXPORT_SYMBOL(__per_cpu_offset);
 
 void __init setup_per_cpu_areas(void)
 {
@@ -880,18 +840,27 @@ void __init setup_per_cpu_areas(void)
 	int rc = -EINVAL;
 
 	/*
-	 * Linear mapping is one of 4K, 1M and 16M.  For 4K, no need
-	 * to group units.  For larger mappings, use 1M atom which
-	 * should be large enough to contain a number of units.
+	 * BookE and BookS radix are historical values and should be revisited.
 	 */
-	if (mmu_linear_psize == MMU_PAGE_4K)
+	if (IS_ENABLED(CONFIG_PPC_BOOK3E_64)) {
+		atom_size = SZ_1M;
+	} else if (radix_enabled()) {
 		atom_size = PAGE_SIZE;
-	else
-		atom_size = 1 << 20;
+	} else if (IS_ENABLED(CONFIG_PPC_64S_HASH_MMU)) {
+		/*
+		 * Linear mapping is one of 4K, 1M and 16M.  For 4K, no need
+		 * to group units.  For larger mappings, use 1M atom which
+		 * should be large enough to contain a number of units.
+		 */
+		if (mmu_linear_psize == MMU_PAGE_4K)
+			atom_size = PAGE_SIZE;
+		else
+			atom_size = SZ_1M;
+	}
 
 	if (pcpu_chosen_fc != PCPU_FC_PAGE) {
 		rc = pcpu_embed_first_chunk(0, dyn_size, atom_size, pcpu_cpu_distance,
-					    pcpu_alloc_bootmem, pcpu_free_bootmem);
+					    pcpu_cpu_to_node);
 		if (rc)
 			pr_warn("PERCPU: %s allocator failed (%d), "
 				"falling back to page size\n",
@@ -899,8 +868,7 @@ void __init setup_per_cpu_areas(void)
 	}
 
 	if (rc < 0)
-		rc = pcpu_page_first_chunk(0, pcpu_alloc_bootmem, pcpu_free_bootmem,
-					   pcpu_populate_pte);
+		rc = pcpu_page_first_chunk(0, pcpu_cpu_to_node);
 	if (rc < 0)
 		panic("cannot initialize percpu area (err=%d)", rc);
 
@@ -912,7 +880,7 @@ void __init setup_per_cpu_areas(void)
 }
 #endif
 
-#ifdef CONFIG_MEMORY_HOTPLUG_SPARSE
+#ifdef CONFIG_MEMORY_HOTPLUG
 unsigned long memory_block_size_bytes(void)
 {
 	if (ppc_md.memory_block_size)

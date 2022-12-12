@@ -7,6 +7,7 @@
  *
  */
 
+#include <dt-bindings/clock/toshiba,tmpv770x.h>
 #include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 
@@ -128,29 +129,16 @@
 			<GIC_PPI 10 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>;
 	};
 
-	uart_clk: uart-clk {
+	extclk100mhz: extclk100mhz {
 		compatible = "fixed-clock";
-		clock-frequency = <150000000>;
 		#clock-cells = <0>;
+		clock-frequency = <100000000>;
+		clock-output-names = "extclk100mhz";
 	};
 
-	clk125mhz: clk125mhz {
+	osc2_clk: osc2-clk {
 		compatible = "fixed-clock";
-		clock-frequency = <125000000>;
-		#clock-cells = <0>;
-		clock-output-names = "clk125mhz";
-	};
-
-	clk300mhz: clk300mhz {
-		compatible = "fixed-clock";
-		clock-frequency = <300000000>;
-		#clock-cells = <0>;
-		clock-output-names = "clk300mhz";
-	};
-
-	wdt_clk: wdt-clk {
-		compatible = "fixed-clock";
-		clock-frequency = <150000000>;
+		clock-frequency = <20000000>;
 		#clock-cells = <0>;
 	};
 
@@ -188,12 +176,28 @@
 			interrupt-parent = <&gic>;
 		};
 
+		pipllct: clock-controller@24220000 {
+			compatible = "toshiba,tmpv7708-pipllct";
+			reg = <0 0x24220000 0 0x820>;
+			#clock-cells = <1>;
+			clocks = <&osc2_clk>;
+		};
+
+		pismu: syscon@24200000 {
+			compatible = "toshiba,tmpv7708-pismu", "syscon";
+			reg = <0 0x24200000 0 0x2140>;
+			#clock-cells = <1>;
+			#reset-cells = <1>;
+		};
+
 		uart0: serial@28200000 {
 			compatible = "arm,pl011", "arm,primecell";
 			reg = <0 0x28200000 0 0x1000>;
 			interrupts = <GIC_SPI 133 IRQ_TYPE_LEVEL_HIGH>;
 			pinctrl-names = "default";
 			pinctrl-0 = <&uart0_pins>;
+			clocks = <&pismu TMPV770X_CLK_PIUART0>;
+			clock-names = "apb_pclk";
 			status = "disabled";
 		};
 
@@ -203,6 +207,8 @@
 			interrupts = <GIC_SPI 134 IRQ_TYPE_LEVEL_HIGH>;
 			pinctrl-names = "default";
 			pinctrl-0 = <&uart1_pins>;
+			clocks = <&pismu TMPV770X_CLK_PIUART1>;
+			clock-names = "apb_pclk";
 			status = "disabled";
 		};
 
@@ -212,6 +218,8 @@
 			interrupts = <GIC_SPI 135 IRQ_TYPE_LEVEL_HIGH>;
 			pinctrl-names = "default";
 			pinctrl-0 = <&uart2_pins>;
+			clocks = <&pismu TMPV770X_CLK_PIUART2>;
+			clock-names = "apb_pclk";
 			status = "disabled";
 		};
 
@@ -221,6 +229,8 @@
 			interrupts = <GIC_SPI 136 IRQ_TYPE_LEVEL_HIGH>;
 			pinctrl-names = "default";
 			pinctrl-0 = <&uart3_pins>;
+			clocks = <&pismu TMPV770X_CLK_PIUART2>;
+			clock-names = "apb_pclk";
 			status = "disabled";
 		};
 
@@ -233,6 +243,7 @@
 			clock-frequency = <400000>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+			clocks = <&pismu TMPV770X_CLK_PII2C0>;
 			status = "disabled";
 		};
 
@@ -245,6 +256,7 @@
 			clock-frequency = <400000>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+			clocks = <&pismu TMPV770X_CLK_PII2C1>;
 			status = "disabled";
 		};
 
@@ -257,6 +269,7 @@
 			clock-frequency = <400000>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+			clocks = <&pismu TMPV770X_CLK_PII2C2>;
 			status = "disabled";
 		};
 
@@ -269,6 +282,7 @@
 			clock-frequency = <400000>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+			clocks = <&pismu TMPV770X_CLK_PII2C3>;
 			status = "disabled";
 		};
 
@@ -281,6 +295,7 @@
 			clock-frequency = <400000>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+			clocks = <&pismu TMPV770X_CLK_PII2C4>;
 			status = "disabled";
 		};
 
@@ -293,6 +308,7 @@
 			clock-frequency = <400000>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+			clocks = <&pismu TMPV770X_CLK_PII2C5>;
 			status = "disabled";
 		};
 
@@ -305,6 +321,7 @@
 			clock-frequency = <400000>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+			clocks = <&pismu TMPV770X_CLK_PII2C6>;
 			status = "disabled";
 		};
 
@@ -317,6 +334,7 @@
 			clock-frequency = <400000>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+			clocks = <&pismu TMPV770X_CLK_PII2C7>;
 			status = "disabled";
 		};
 
@@ -329,6 +347,7 @@
 			clock-frequency = <400000>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+			clocks = <&pismu TMPV770X_CLK_PII2C8>;
 			status = "disabled";
 		};
 
@@ -341,6 +360,8 @@
 			num-cs = <1>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+			clocks = <&pismu TMPV770X_CLK_PISPI1>;
+			clock-names = "apb_pclk";
 			status = "disabled";
 		};
 
@@ -353,6 +374,8 @@
 			num-cs = <1>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+			clocks = <&pismu TMPV770X_CLK_PISPI1>;
+			clock-names = "apb_pclk";
 			status = "disabled";
 		};
 
@@ -365,6 +388,8 @@
 			num-cs = <1>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+			clocks = <&pismu TMPV770X_CLK_PISPI2>;
+			clock-names = "apb_pclk";
 			status = "disabled";
 		};
 
@@ -377,6 +402,8 @@
 			num-cs = <1>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+			clocks = <&pismu TMPV770X_CLK_PISPI3>;
+			clock-names = "apb_pclk";
 			status = "disabled";
 		};
 
@@ -389,6 +416,8 @@
 			num-cs = <1>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+			clocks = <&pismu TMPV770X_CLK_PISPI4>;
+			clock-names = "apb_pclk";
 			status = "disabled";
 		};
 
@@ -401,6 +430,8 @@
 			num-cs = <1>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+			clocks = <&pismu TMPV770X_CLK_PISPI5>;
+			clock-names = "apb_pclk";
 			status = "disabled";
 		};
 
@@ -413,6 +444,8 @@
 			num-cs = <1>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+			clocks = <&pismu TMPV770X_CLK_PISPI6>;
+			clock-names = "apb_pclk";
 			status = "disabled";
 		};
 
@@ -424,12 +457,15 @@
 			snps,txpbl = <4>;
 			snps,rxpbl = <4>;
 			snps,tso;
+			clocks = <&pismu TMPV770X_CLK_PIETHER_BUS>, <&pismu TMPV770X_CLK_PIETHER_125M>;
+			clock-names = "stmmaceth", "phy_ref_clk";
 			status = "disabled";
 		};
 
 		wdt: wdt@28330000 {
 			compatible = "toshiba,visconti-wdt";
 			reg = <0 0x28330000 0 0x1000>;
+			clocks = <&pismu TMPV770X_CLK_WDTCLK>;
 			status = "disabled";
 		};
 
@@ -439,6 +475,39 @@
 			pinctrl-names = "default";
 			pinctrl-0 = <&pwm_mux>;
 			#pwm-cells = <2>;
+			status = "disabled";
+		};
+
+		pcie: pcie@28400000 {
+			compatible = "toshiba,visconti-pcie";
+			reg = <0x0 0x28400000 0x0 0x00400000>,
+			      <0x0 0x70000000 0x0 0x10000000>,
+			      <0x0 0x28050000 0x0 0x00010000>,
+			      <0x0 0x24200000 0x0 0x00002000>,
+			      <0x0 0x24162000 0x0 0x00001000>;
+			reg-names  = "dbi", "config", "ulreg", "smu", "mpu";
+			device_type = "pci";
+			bus-range = <0x00 0xff>;
+			num-lanes = <2>;
+			num-viewport = <8>;
+
+			#address-cells = <3>;
+			#size-cells = <2>;
+			#interrupt-cells = <1>;
+			ranges = <0x81000000 0 0x40000000 0 0x40000000 0 0x00010000
+				  0x82000000 0 0x50000000 0 0x50000000 0 0x20000000>;
+			interrupts = <GIC_SPI 211 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 215 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "msi", "intr";
+			interrupt-map-mask = <0 0 0 7>;
+			interrupt-map =
+				<0 0 0 1 &gic GIC_SPI 215 IRQ_TYPE_LEVEL_HIGH
+				 0 0 0 2 &gic GIC_SPI 215 IRQ_TYPE_LEVEL_HIGH
+				 0 0 0 3 &gic GIC_SPI 215 IRQ_TYPE_LEVEL_HIGH
+				 0 0 0 4 &gic GIC_SPI 215 IRQ_TYPE_LEVEL_HIGH>;
+			max-link-speed = <2>;
+			clocks = <&extclk100mhz>, <&pismu TMPV770X_CLK_PCIE_MSTR>, <&pismu TMPV770X_CLK_PCIE_AUX>;
+			clock-names = "ref", "core", "aux";
 			status = "disabled";
 		};
 	};

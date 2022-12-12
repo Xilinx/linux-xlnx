@@ -480,13 +480,48 @@ closing function brace line.  E.g.:
 	}
 	EXPORT_SYMBOL(system_is_up);
 
+6.1) Function prototypes
+************************
+
 In function prototypes, include parameter names with their data types.
 Although this is not required by the C language, it is preferred in Linux
 because it is a simple way to add valuable information for the reader.
 
-Do not use the ``extern`` keyword with function prototypes as this makes
+Do not use the ``extern`` keyword with function declarations as this makes
 lines longer and isn't strictly necessary.
 
+When writing function prototypes, please keep the `order of elements regular
+<https://lore.kernel.org/mm-commits/CAHk-=wiOCLRny5aifWNhr621kYrJwhfURsa0vFPeUEm8mF0ufg@mail.gmail.com/>`_.
+For example, using this function declaration example::
+
+ __init void * __must_check action(enum magic value, size_t size, u8 count,
+				   char *fmt, ...) __printf(4, 5) __malloc;
+
+The preferred order of elements for a function prototype is:
+
+- storage class (below, ``static __always_inline``, noting that ``__always_inline``
+  is technically an attribute but is treated like ``inline``)
+- storage class attributes (here, ``__init`` -- i.e. section declarations, but also
+  things like ``__cold``)
+- return type (here, ``void *``)
+- return type attributes (here, ``__must_check``)
+- function name (here, ``action``)
+- function parameters (here, ``(enum magic value, size_t size, u8 count, char *fmt, ...)``,
+  noting that parameter names should always be included)
+- function parameter attributes (here, ``__printf(4, 5)``)
+- function behavior attributes (here, ``__malloc``)
+
+Note that for a function **definition** (i.e. the actual function body),
+the compiler does not allow function parameter attributes after the
+function parameters. In these cases, they should go after the storage
+class attributes (e.g. note the changed position of ``__printf(4, 5)``
+below, compared to the **declaration** example above)::
+
+ static __always_inline __init __printf(4, 5) void * __must_check action(enum magic value,
+		size_t size, u8 count, char *fmt, ...) __malloc
+ {
+	...
+ }
 
 7) Centralized exiting of functions
 -----------------------------------
@@ -855,7 +890,7 @@ Kernel messages do not have to be terminated with a period.
 
 Printing numbers in parentheses (%d) adds no value and should be avoided.
 
-There are a number of driver model diagnostic macros in <linux/device.h>
+There are a number of driver model diagnostic macros in <linux/dev_printk.h>
 which you should use to make sure messages are matched to the right device
 and driver, and are tagged with the right level:  dev_err(), dev_warn(),
 dev_info(), and so forth.  For messages that aren't associated with a
@@ -1150,6 +1185,68 @@ expression used.  For instance:
 	...
 	#endif /* CONFIG_SOMETHING */
 
+
+22) Do not crash the kernel
+---------------------------
+
+In general, the decision to crash the kernel belongs to the user, rather
+than to the kernel developer.
+
+Avoid panic()
+*************
+
+panic() should be used with care and primarily only during system boot.
+panic() is, for example, acceptable when running out of memory during boot and
+not being able to continue.
+
+Use WARN() rather than BUG()
+****************************
+
+Do not add new code that uses any of the BUG() variants, such as BUG(),
+BUG_ON(), or VM_BUG_ON(). Instead, use a WARN*() variant, preferably
+WARN_ON_ONCE(), and possibly with recovery code. Recovery code is not
+required if there is no reasonable way to at least partially recover.
+
+"I'm too lazy to do error handling" is not an excuse for using BUG(). Major
+internal corruptions with no way of continuing may still use BUG(), but need
+good justification.
+
+Use WARN_ON_ONCE() rather than WARN() or WARN_ON()
+**************************************************
+
+WARN_ON_ONCE() is generally preferred over WARN() or WARN_ON(), because it
+is common for a given warning condition, if it occurs at all, to occur
+multiple times. This can fill up and wrap the kernel log, and can even slow
+the system enough that the excessive logging turns into its own, additional
+problem.
+
+Do not WARN lightly
+*******************
+
+WARN*() is intended for unexpected, this-should-never-happen situations.
+WARN*() macros are not to be used for anything that is expected to happen
+during normal operation. These are not pre- or post-condition asserts, for
+example. Again: WARN*() must not be used for a condition that is expected
+to trigger easily, for example, by user space actions. pr_warn_once() is a
+possible alternative, if you need to notify the user of a problem.
+
+Do not worry about panic_on_warn users
+**************************************
+
+A few more words about panic_on_warn: Remember that ``panic_on_warn`` is an
+available kernel option, and that many users set this option. This is why
+there is a "Do not WARN lightly" writeup, above. However, the existence of
+panic_on_warn users is not a valid reason to avoid the judicious use
+WARN*(). That is because, whoever enables panic_on_warn has explicitly
+asked the kernel to crash if a WARN*() fires, and such users must be
+prepared to deal with the consequences of a system that is somewhat more
+likely to crash.
+
+Use BUILD_BUG_ON() for compile-time assertions
+**********************************************
+
+The use of BUILD_BUG_ON() is acceptable and encouraged, because it is a
+compile-time assertion that has no effect at runtime.
 
 Appendix I) References
 ----------------------

@@ -90,7 +90,7 @@ struct q6adm_session_map_node_v5 {
 static struct q6copp *q6adm_find_copp(struct q6adm *adm, int port_idx,
 				  int copp_idx)
 {
-	struct q6copp *c = NULL;
+	struct q6copp *c;
 	struct q6copp *ret = NULL;
 	unsigned long flags;
 
@@ -180,7 +180,7 @@ static int q6adm_callback(struct apr_device *adev, struct apr_resp_pkt *data)
 			u32 status;
 			u16 copp_id;
 			u16 reserved;
-		} __packed * open = data->payload;
+		} __packed *open = data->payload;
 
 		copp = q6adm_find_copp(adm, port_idx, copp_idx);
 		if (!copp)
@@ -217,7 +217,7 @@ static struct q6copp *q6adm_alloc_copp(struct q6adm *adm, int port_idx)
 	idx = find_first_zero_bit(&adm->copp_bitmap[port_idx],
 				  MAX_COPPS_PER_PORT);
 
-	if (idx > MAX_COPPS_PER_PORT)
+	if (idx >= MAX_COPPS_PER_PORT)
 		return ERR_PTR(-EBUSY);
 
 	c = kzalloc(sizeof(*c), GFP_ATOMIC);
@@ -299,7 +299,7 @@ static struct q6copp *q6adm_find_matching_copp(struct q6adm *adm,
 					       int channel_mode, int bit_width,
 					       int app_type)
 {
-	struct q6copp *c = NULL;
+	struct q6copp *c;
 	struct q6copp *ret = NULL;
 	unsigned long flags;
 
@@ -390,7 +390,7 @@ struct q6copp *q6adm_open(struct device *dev, int port_id, int path, int rate,
 	int ret = 0;
 
 	if (port_id < 0) {
-		dev_err(dev, "Invalid port_id 0x%x\n", port_id);
+		dev_err(dev, "Invalid port_id %d\n", port_id);
 		return ERR_PTR(-EINVAL);
 	}
 
@@ -508,7 +508,7 @@ int q6adm_matrix_map(struct device *dev, int path,
 		int port_idx = payload_map.port_id[i];
 
 		if (port_idx < 0) {
-			dev_err(dev, "Invalid port_id 0x%x\n",
+			dev_err(dev, "Invalid port_id %d\n",
 				payload_map.port_id[i]);
 			kfree(pkt);
 			return -EINVAL;

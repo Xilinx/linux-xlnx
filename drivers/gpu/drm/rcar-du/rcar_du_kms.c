@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * rcar_du_kms.c  --  R-Car Display Unit Mode Setting
+ * R-Car Display Unit Mode Setting
  *
  * Copyright (C) 2013-2015 Renesas Electronics Corporation
  *
@@ -11,14 +11,15 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_device.h>
-#include <drm/drm_fb_cma_helper.h>
-#include <drm/drm_gem_cma_helper.h>
+#include <drm/drm_framebuffer.h>
+#include <drm/drm_gem_dma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_managed.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_vblank.h>
 
 #include <linux/device.h>
+#include <linux/dma-buf.h>
 #include <linux/of_graph.h>
 #include <linux/of_platform.h>
 #include <linux/wait.h>
@@ -325,6 +326,51 @@ const struct rcar_du_format_info *rcar_du_format_info(u32 fourcc)
  * Frame buffer
  */
 
+static const struct drm_gem_object_funcs rcar_du_gem_funcs = {
+	.free = drm_gem_dma_object_free,
+	.print_info = drm_gem_dma_object_print_info,
+	.get_sg_table = drm_gem_dma_object_get_sg_table,
+	.vmap = drm_gem_dma_object_vmap,
+	.mmap = drm_gem_dma_object_mmap,
+	.vm_ops = &drm_gem_dma_vm_ops,
+};
+
+struct drm_gem_object *rcar_du_gem_prime_import_sg_table(struct drm_device *dev,
+				struct dma_buf_attachment *attach,
+				struct sg_table *sgt)
+{
+	struct rcar_du_device *rcdu = to_rcar_du_device(dev);
+	struct drm_gem_dma_object *dma_obj;
+	struct drm_gem_object *gem_obj;
+	int ret;
+
+	if (!rcar_du_has(rcdu, RCAR_DU_FEATURE_VSP1_SOURCE))
+		return drm_gem_dma_prime_import_sg_table(dev, attach, sgt);
+
+	/* Create a DMA GEM buffer. */
+	dma_obj = kzalloc(sizeof(*dma_obj), GFP_KERNEL);
+	if (!dma_obj)
+		return ERR_PTR(-ENOMEM);
+
+	gem_obj = &dma_obj->base;
+	gem_obj->funcs = &rcar_du_gem_funcs;
+
+	drm_gem_private_object_init(dev, gem_obj, attach->dmabuf->size);
+	dma_obj->map_noncoherent = false;
+
+	ret = drm_gem_create_mmap_offset(gem_obj);
+	if (ret) {
+		drm_gem_object_release(gem_obj);
+		kfree(dma_obj);
+		return ERR_PTR(ret);
+	}
+
+	dma_obj->dma_addr = 0;
+	dma_obj->sgt = sgt;
+
+	return gem_obj;
+}
+
 int rcar_du_dumb_create(struct drm_file *file, struct drm_device *dev,
 			struct drm_mode_create_dumb *args)
 {
@@ -343,7 +389,7 @@ int rcar_du_dumb_create(struct drm_file *file, struct drm_device *dev,
 
 	args->pitch = roundup(min_pitch, align);
 
-	return drm_gem_cma_dumb_create_internal(file, dev, args);
+	return drm_gem_dma_dumb_create_internal(file, dev, args);
 }
 
 static struct drm_framebuffer *
@@ -359,8 +405,8 @@ rcar_du_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 
 	format = rcar_du_format_info(mode_cmd->pixel_format);
 	if (format == NULL) {
-		dev_dbg(dev->dev, "unsupported pixel format %08x\n",
-			mode_cmd->pixel_format);
+		dev_dbg(dev->dev, "unsupported pixel format %p4cc\n",
+			&mode_cmd->pixel_format);
 		return ERR_PTR(-EINVAL);
 	}
 
@@ -513,8 +559,8 @@ static int rcar_du_encoders_init_one(struct rcar_du_device *rcdu,
 	ret = rcar_du_encoder_init(rcdu, output, entity);
 	if (ret && ret != -EPROBE_DEFER && ret != -ENOLINK)
 		dev_warn(rcdu->dev,
-			 "failed to initialize encoder %pOF on output %u (%d), skipping\n",
-			 entity, output, ret);
+			 "failed to initialize encoder %pOF on output %s (%d), skipping\n",
+			 entity, rcar_du_output_name(output), ret);
 
 	of_node_put(entity);
 

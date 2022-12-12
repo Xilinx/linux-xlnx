@@ -10,6 +10,8 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_probe_helper.h>
+#include <drm/display/drm_dp_helper.h>
+#include <drm/display/drm_hdmi_helper.h>
 #include <linux/bitfield.h>
 #include <linux/clk.h>
 #include <linux/delay.h>

@@ -52,6 +52,7 @@ static DEFINE_PER_CPU(struct coresight_device *, csdev_src);
  * The PMU formats were orignally for ETMv3.5/PTM's ETMCR 'config';
  * now take them as general formats and apply on all ETMs.
  */
+PMU_FORMAT_ATTR(branch_broadcast, "config:"__stringify(ETM_OPT_BRANCH_BROADCAST));
 PMU_FORMAT_ATTR(cycacc,		"config:" __stringify(ETM_OPT_CYCACC));
 /* contextid1 enables tracing CONTEXTIDR_EL1 for ETMv4 */
 PMU_FORMAT_ATTR(contextid1,	"config:" __stringify(ETM_OPT_CTXTID));
@@ -97,6 +98,7 @@ static struct attribute *etm_config_formats_attr[] = {
 	&format_attr_sinkid.attr,
 	&format_attr_preset.attr,
 	&format_attr_configid.attr,
+	&format_attr_branch_broadcast.attr,
 	NULL,
 };
 
@@ -452,9 +454,14 @@ static void etm_event_start(struct perf_event *event, int flags)
 	 * sink from this ETM. We can't do much in this case if
 	 * the sink was specified or hinted to the driver. For
 	 * now, simply don't record anything on this ETM.
+	 *
+	 * As such we pretend that everything is fine, and let
+	 * it continue without actually tracing. The event could
+	 * continue tracing when it moves to a CPU where it is
+	 * reachable to a sink.
 	 */
 	if (!cpumask_test_cpu(cpu, &event_data->mask))
-		goto fail_end_stop;
+		goto out;
 
 	path = etm_event_cpu_path(event_data, cpu);
 	/* We need a sink, no need to continue without one */
@@ -466,26 +473,32 @@ static void etm_event_start(struct perf_event *event, int flags)
 	if (coresight_enable_path(path, CS_MODE_PERF, handle))
 		goto fail_end_stop;
 
-	/* Tell the perf core the event is alive */
-	event->hw.state = 0;
-
 	/* Finally enable the tracer */
 	if (source_ops(csdev)->enable(csdev, event, CS_MODE_PERF))
 		goto fail_disable_path;
 
+out:
+	/* Tell the perf core the event is alive */
+	event->hw.state = 0;
 	/* Save the event_data for this ETM */
 	ctxt->event_data = event_data;
-out:
 	return;
 
 fail_disable_path:
 	coresight_disable_path(path);
 fail_end_stop:
-	perf_aux_output_flag(handle, PERF_AUX_FLAG_TRUNCATED);
-	perf_aux_output_end(handle, 0);
+	/*
+	 * Check if the handle is still associated with the event,
+	 * to handle cases where if the sink failed to start the
+	 * trace and TRUNCATED the handle already.
+	 */
+	if (READ_ONCE(handle->event)) {
+		perf_aux_output_flag(handle, PERF_AUX_FLAG_TRUNCATED);
+		perf_aux_output_end(handle, 0);
+	}
 fail:
 	event->hw.state = PERF_HES_STOPPED;
-	goto out;
+	return;
 }
 
 static void etm_event_stop(struct perf_event *event, int mode)
@@ -516,6 +529,19 @@ static void etm_event_stop(struct perf_event *event, int mode)
 	/* We must have a valid event_data for a running event */
 	if (WARN_ON(!event_data))
 		return;
+
+	/*
+	 * Check if this ETM was allowed to trace, as decided at
+	 * etm_setup_aux(). If it wasn't allowed to trace, then
+	 * nothing needs to be torn down other than outputting a
+	 * zero sized record.
+	 */
+	if (handle->event && (mode & PERF_EF_UPDATE) &&
+	    !cpumask_test_cpu(cpu, &event_data->mask)) {
+		event->hw.state = PERF_HES_STOPPED;
+		perf_aux_output_end(handle, 0);
+		return;
+	}
 
 	if (!csdev)
 		return;
@@ -550,7 +576,21 @@ static void etm_event_stop(struct perf_event *event, int mode)
 
 		size = sink_ops(sink)->update_buffer(sink, handle,
 					      event_data->snk_config);
-		perf_aux_output_end(handle, size);
+		/*
+		 * Make sure the handle is still valid as the
+		 * sink could have closed it from an IRQ.
+		 * The sink driver must handle the race with
+		 * update_buffer() and IRQ. Thus either we
+		 * should get a valid handle and valid size
+		 * (which may be 0).
+		 *
+		 * But we should never get a non-zero size with
+		 * an invalid handle.
+		 */
+		if (READ_ONCE(handle->event))
+			perf_aux_output_end(handle, size);
+		else
+			WARN_ON(size);
 	}
 
 	/* Disabling the path make its elements available to other sessions */

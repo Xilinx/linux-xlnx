@@ -461,9 +461,9 @@ static const struct regulator_ops bd7181x_led_regulator_ops = {
 			.min_uV = (min),				\
 			.uV_step = (step),				\
 			.vsel_reg = (vsel),				\
-			.vsel_mask = 0x3f,				\
+			.vsel_mask = BD71815_VOLT_MASK,			\
 			.enable_reg = (ereg),				\
-			.enable_mask = 0x04,				\
+			.enable_mask = BD71815_BUCK_RUN_ON,		\
 			.ramp_reg = (ereg),				\
 			.ramp_mask = BD71815_BUCK_RAMPRATE_MASK,	\
 			.ramp_delay_table = bd7181x_ramp_table,		\
@@ -571,11 +571,10 @@ static int bd7181x_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "No parent regmap\n");
 		return -ENODEV;
 	}
-	ldo4_en = devm_gpiod_get_from_of_node(&pdev->dev,
-					      pdev->dev.parent->of_node,
-						 "rohm,vsel-gpios", 0,
-						 GPIOD_ASIS, "ldo4-en");
 
+	ldo4_en = devm_fwnode_gpiod_get(&pdev->dev,
+					dev_fwnode(pdev->dev.parent),
+					"rohm,vsel", GPIOD_ASIS, "ldo4-en");
 	if (IS_ERR(ldo4_en)) {
 		ret = PTR_ERR(ldo4_en);
 		if (ret != -ENOENT)

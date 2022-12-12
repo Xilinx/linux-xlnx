@@ -296,7 +296,7 @@ static void ulite_shutdown(struct uart_port *port)
 }
 
 static void ulite_set_termios(struct uart_port *port, struct ktermios *termios,
-			      struct ktermios *old)
+			      const struct ktermios *old)
 {
 	unsigned long flags;
 	unsigned int baud;
@@ -398,6 +398,7 @@ static void ulite_pm(struct uart_port *port, unsigned int state,
 }
 
 static int ulite_config_rs485(struct uart_port *port,
+			      struct ktermios *termios,
 			      struct serial_rs485 *rs485conf)
 {
 	port->rs485 = *rs485conf;

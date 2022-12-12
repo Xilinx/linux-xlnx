@@ -199,7 +199,7 @@ struct kvmppc_xive_vcpu {
 static inline struct kvm_vcpu *kvmppc_xive_find_server(struct kvm *kvm, u32 nr)
 {
 	struct kvm_vcpu *vcpu = NULL;
-	int i;
+	unsigned long i;
 
 	kvm_for_each_vcpu(i, vcpu, kvm) {
 		if (vcpu->arch.xive_vcpu && nr == vcpu->arch.xive_vcpu->server_num)
@@ -240,7 +240,7 @@ static inline u32 kvmppc_xive_vp(struct kvmppc_xive *xive, u32 server)
 static inline bool kvmppc_xive_vp_in_use(struct kvm *kvm, u32 vp_id)
 {
 	struct kvm_vcpu *vcpu = NULL;
-	int i;
+	unsigned long i;
 
 	kvm_for_each_vcpu(i, vcpu, kvm) {
 		if (vcpu->arch.xive_vcpu && vp_id == vcpu->arch.xive_vcpu->vp_id)
@@ -284,13 +284,6 @@ static inline u32 __xive_read_eq(__be32 *qpage, u32 msk, u32 *idx, u32 *toggle)
 		(*toggle) ^= 1;
 	return cur & 0x7fffffff;
 }
-
-extern unsigned long xive_rm_h_xirr(struct kvm_vcpu *vcpu);
-extern unsigned long xive_rm_h_ipoll(struct kvm_vcpu *vcpu, unsigned long server);
-extern int xive_rm_h_ipi(struct kvm_vcpu *vcpu, unsigned long server,
-			 unsigned long mfrr);
-extern int xive_rm_h_cppr(struct kvm_vcpu *vcpu, unsigned long cppr);
-extern int xive_rm_h_eoi(struct kvm_vcpu *vcpu, unsigned long xirr);
 
 /*
  * Common Xive routines for XICS-over-XIVE and XIVE native

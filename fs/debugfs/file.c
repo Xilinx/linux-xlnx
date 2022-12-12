@@ -147,7 +147,7 @@ static int debugfs_locked_down(struct inode *inode,
 			       struct file *filp,
 			       const struct file_operations *real_fops)
 {
-	if ((inode->i_mode & 07777) == 0444 &&
+	if ((inode->i_mode & 07777 & ~0444) == 0 &&
 	    !(filp->f_mode & FMODE_WRITE) &&
 	    !real_fops->unlocked_ioctl &&
 	    !real_fops->compat_ioctl &&
@@ -1121,7 +1121,7 @@ void debugfs_print_regs32(struct seq_file *s, const struct debugfs_reg32 *regs,
 }
 EXPORT_SYMBOL_GPL(debugfs_print_regs32);
 
-static int debugfs_show_regset32(struct seq_file *s, void *data)
+static int debugfs_regset32_show(struct seq_file *s, void *data)
 {
 	struct debugfs_regset32 *regset = s->private;
 
@@ -1136,17 +1136,7 @@ static int debugfs_show_regset32(struct seq_file *s, void *data)
 	return 0;
 }
 
-static int debugfs_open_regset32(struct inode *inode, struct file *file)
-{
-	return single_open(file, debugfs_show_regset32, inode->i_private);
-}
-
-static const struct file_operations fops_regset32 = {
-	.open =		debugfs_open_regset32,
-	.read =		seq_read,
-	.llseek =	seq_lseek,
-	.release =	single_release,
-};
+DEFINE_SHOW_ATTRIBUTE(debugfs_regset32);
 
 /**
  * debugfs_create_regset32 - create a debugfs file that returns register values
@@ -1167,7 +1157,7 @@ void debugfs_create_regset32(const char *name, umode_t mode,
 			     struct dentry *parent,
 			     struct debugfs_regset32 *regset)
 {
-	debugfs_create_file(name, mode, parent, regset, &fops_regset32);
+	debugfs_create_file(name, mode, parent, regset, &debugfs_regset32_fops);
 }
 EXPORT_SYMBOL_GPL(debugfs_create_regset32);
 

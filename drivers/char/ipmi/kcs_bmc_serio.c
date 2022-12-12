@@ -73,10 +73,12 @@ static int kcs_bmc_serio_add_device(struct kcs_bmc_device *kcs_bmc)
 	struct serio *port;
 
 	priv = devm_kzalloc(kcs_bmc->dev, sizeof(*priv), GFP_KERNEL);
+	if (!priv)
+		return -ENOMEM;
 
 	/* Use kzalloc() as the allocation is cleaned up with kfree() via serio_unregister_port() */
 	port = kzalloc(sizeof(*port), GFP_KERNEL);
-	if (!(priv && port))
+	if (!port)
 		return -ENOMEM;
 
 	port->id.type = SERIO_8042;
@@ -138,7 +140,7 @@ static struct kcs_bmc_driver kcs_bmc_serio_driver = {
 	.ops = &kcs_bmc_serio_driver_ops,
 };
 
-static int kcs_bmc_serio_init(void)
+static int __init kcs_bmc_serio_init(void)
 {
 	kcs_bmc_register_driver(&kcs_bmc_serio_driver);
 
@@ -146,7 +148,7 @@ static int kcs_bmc_serio_init(void)
 }
 module_init(kcs_bmc_serio_init);
 
-static void kcs_bmc_serio_exit(void)
+static void __exit kcs_bmc_serio_exit(void)
 {
 	kcs_bmc_unregister_driver(&kcs_bmc_serio_driver);
 }

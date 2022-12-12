@@ -551,6 +551,9 @@ static int venus_halt_axi(struct venus_hfi_device *hdev)
 	if (IS_V6(hdev->core)) {
 		writel(0x3, cpu_cs_base + CPU_CS_X2RPMH_V6);
 
+		if (hdev->core->res->num_vpp_pipes == 1)
+			goto skip_aon_mvp_noc;
+
 		writel(0x1, aon_base + AON_WRAPPER_MVP_NOC_LPI_CONTROL);
 		ret = readl_poll_timeout(aon_base + AON_WRAPPER_MVP_NOC_LPI_STATUS,
 					 val,
@@ -560,6 +563,7 @@ static int venus_halt_axi(struct venus_hfi_device *hdev)
 		if (ret)
 			return -ETIMEDOUT;
 
+skip_aon_mvp_noc:
 		mask_val = (BIT(2) | BIT(1) | BIT(0));
 		writel(mask_val, wrapper_base + WRAPPER_DEBUG_BRIDGE_LPI_CONTROL_V6);
 
@@ -900,6 +904,24 @@ static int venus_sys_set_power_control(struct venus_hfi_device *hdev,
 	return 0;
 }
 
+static int venus_sys_set_ubwc_config(struct venus_hfi_device *hdev)
+{
+	struct hfi_sys_set_property_pkt *pkt;
+	u8 packet[IFACEQ_VAR_SMALL_PKT_SIZE];
+	const struct venus_resources *res = hdev->core->res;
+	int ret;
+
+	pkt = (struct hfi_sys_set_property_pkt *)packet;
+
+	pkt_sys_ubwc_config(pkt, res->ubwc_conf);
+
+	ret = venus_iface_cmdq_write(hdev, pkt, false);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+
 static int venus_get_queue_size(struct venus_hfi_device *hdev,
 				unsigned int index)
 {
@@ -918,6 +940,7 @@ static int venus_get_queue_size(struct venus_hfi_device *hdev,
 static int venus_sys_set_default_properties(struct venus_hfi_device *hdev)
 {
 	struct device *dev = hdev->core->dev;
+	const struct venus_resources *res = hdev->core->res;
 	int ret;
 
 	ret = venus_sys_set_debug(hdev, venus_fw_debug);
@@ -940,6 +963,13 @@ static int venus_sys_set_default_properties(struct venus_hfi_device *hdev)
 	if (ret)
 		dev_warn(dev, "setting hw power collapse ON failed (%d)\n",
 			 ret);
+
+	/* For specific venus core, it is mandatory to set the UBWC configuration */
+	if (res->ubwc_conf) {
+		ret = venus_sys_set_ubwc_config(hdev);
+		if (ret)
+			dev_warn(dev, "setting ubwc config failed (%d)\n", ret);
+	}
 
 	return ret;
 }
@@ -1579,8 +1609,10 @@ static int venus_suspend_3xx(struct venus_core *core)
 	 */
 	ret = readx_poll_timeout(venus_cpu_and_video_core_idle, hdev, val, val,
 				 1500, 100 * 1500);
-	if (ret)
+	if (ret) {
+		dev_err(dev, "wait for cpu and video core idle fail (%d)\n", ret);
 		return ret;
+	}
 
 	ret = venus_prepare_power_collapse(hdev, false);
 	if (ret) {

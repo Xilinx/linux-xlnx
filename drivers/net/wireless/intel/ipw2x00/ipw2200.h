@@ -651,7 +651,7 @@ struct ipw_rx_notification {
 		struct notif_link_deterioration link_deterioration;
 		struct notif_calibration calibration;
 		struct notif_noise noise;
-		u8 raw[0];
+		DECLARE_FLEX_ARRAY(u8, raw);
 	} u;
 } __packed;
 
@@ -1945,7 +1945,7 @@ struct host_cmd {
 	u8 cmd;
 	u8 len;
 	u16 reserved;
-	u32 *param;
+	const u32 *param;
 } __packed;	/* XXX */
 
 struct cmdlog_host_cmd {

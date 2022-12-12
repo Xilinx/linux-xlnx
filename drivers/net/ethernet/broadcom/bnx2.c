@@ -176,12 +176,12 @@ static const struct flash_spec flash_table[] =
 	{0x19000002, 0x5b808201, 0x000500db, 0x03840253, 0xaf020406,
 	 NONBUFFERED_FLAGS, ST_MICRO_FLASH_PAGE_BITS, ST_MICRO_FLASH_PAGE_SIZE,
 	 ST_MICRO_FLASH_BYTE_ADDR_MASK, ST_MICRO_FLASH_BASE_TOTAL_SIZE*2,
-	 "Entry 0101: ST M45PE10 (128kB non-bufferred)"},
+	 "Entry 0101: ST M45PE10 (128kB non-buffered)"},
 	/* Entry 0110: ST M45PE20 (non-buffered flash)*/
 	{0x15000001, 0x57808201, 0x000500db, 0x03840253, 0xaf020406,
 	 NONBUFFERED_FLAGS, ST_MICRO_FLASH_PAGE_BITS, ST_MICRO_FLASH_PAGE_SIZE,
 	 ST_MICRO_FLASH_BYTE_ADDR_MASK, ST_MICRO_FLASH_BASE_TOTAL_SIZE*4,
-	 "Entry 0110: ST M45PE20 (256kB non-bufferred)"},
+	 "Entry 0110: ST M45PE20 (256kB non-buffered)"},
 	/* Saifun SA25F005 (non-buffered flash) */
 	/* strap, cfg1, & write1 need updates */
 	{0x1d000003, 0x5f808201, 0x00050081, 0x03840253, 0xaf020406,
@@ -2704,7 +2704,7 @@ bnx2_alloc_bad_rbuf(struct bnx2 *bp)
 }
 
 static void
-bnx2_set_mac_addr(struct bnx2 *bp, u8 *mac_addr, u32 pos)
+bnx2_set_mac_addr(struct bnx2 *bp, const u8 *mac_addr, u32 pos)
 {
 	u32 val;
 
@@ -7042,9 +7042,9 @@ bnx2_get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *info)
 {
 	struct bnx2 *bp = netdev_priv(dev);
 
-	strlcpy(info->driver, DRV_MODULE_NAME, sizeof(info->driver));
-	strlcpy(info->bus_info, pci_name(bp->pdev), sizeof(info->bus_info));
-	strlcpy(info->fw_version, bp->fw_version, sizeof(info->fw_version));
+	strscpy(info->driver, DRV_MODULE_NAME, sizeof(info->driver));
+	strscpy(info->bus_info, pci_name(bp->pdev), sizeof(info->bus_info));
+	strscpy(info->fw_version, bp->fw_version, sizeof(info->fw_version));
 }
 
 #define BNX2_REGDUMP_LEN		(32 * 1024)
@@ -7318,7 +7318,9 @@ static int bnx2_set_coalesce(struct net_device *dev,
 }
 
 static void
-bnx2_get_ringparam(struct net_device *dev, struct ethtool_ringparam *ering)
+bnx2_get_ringparam(struct net_device *dev, struct ethtool_ringparam *ering,
+		   struct kernel_ethtool_ringparam *kernel_ering,
+		   struct netlink_ext_ack *extack)
 {
 	struct bnx2 *bp = netdev_priv(dev);
 
@@ -7389,7 +7391,9 @@ bnx2_change_ring_size(struct bnx2 *bp, u32 rx, u32 tx, bool reset_irq)
 }
 
 static int
-bnx2_set_ringparam(struct net_device *dev, struct ethtool_ringparam *ering)
+bnx2_set_ringparam(struct net_device *dev, struct ethtool_ringparam *ering,
+		   struct kernel_ethtool_ringparam *kernel_ering,
+		   struct netlink_ext_ack *extack)
 {
 	struct bnx2 *bp = netdev_priv(dev);
 	int rc;
@@ -7910,7 +7914,7 @@ bnx2_change_mac_addr(struct net_device *dev, void *p)
 	if (!is_valid_ether_addr(addr->sa_data))
 		return -EADDRNOTAVAIL;
 
-	memcpy(dev->dev_addr, addr->sa_data, dev->addr_len);
+	eth_hw_addr_set(dev, addr->sa_data);
 	if (netif_running(dev))
 		bnx2_set_mac_addr(bp, bp->dev->dev_addr, 0);
 
@@ -8212,7 +8216,7 @@ bnx2_init_board(struct pci_dev *pdev, struct net_device *dev)
 		rc = dma_set_coherent_mask(&pdev->dev, persist_dma_mask);
 		if (rc) {
 			dev_err(&pdev->dev,
-				"pci_set_consistent_dma_mask failed, aborting\n");
+				"dma_set_coherent_mask failed, aborting\n");
 			goto err_out_unmap;
 		}
 	} else if ((rc = dma_set_mask(&pdev->dev, DMA_BIT_MASK(32))) != 0) {
@@ -8518,7 +8522,7 @@ bnx2_init_napi(struct bnx2 *bp)
 		else
 			poll = bnx2_poll_msix;
 
-		netif_napi_add(bp->dev, &bp->bnx2_napi[i].napi, poll, 64);
+		netif_napi_add(bp->dev, &bp->bnx2_napi[i].napi, poll);
 		bnapi->bp = bp;
 	}
 }
@@ -8574,7 +8578,7 @@ bnx2_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (is_kdump_kernel())
 		bnx2_wait_dma_complete(bp);
 
-	memcpy(dev->dev_addr, bp->mac_addr, ETH_ALEN);
+	eth_hw_addr_set(dev, bp->mac_addr);
 
 	dev->hw_features = NETIF_F_IP_CSUM | NETIF_F_SG |
 		NETIF_F_TSO | NETIF_F_TSO_ECN |

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * rcar_du_encoder.c  --  R-Car Display Unit Encoder
+ * R-Car Display Unit Encoder
  *
  * Copyright (C) 2013-2014 Renesas Electronics Corporation
  *
@@ -8,18 +8,14 @@
  */
 
 #include <linux/export.h>
-#include <linux/slab.h>
+#include <linux/of.h>
 
 #include <drm/drm_bridge.h>
 #include <drm/drm_bridge_connector.h>
-#include <drm/drm_crtc.h>
-#include <drm/drm_managed.h>
-#include <drm/drm_modeset_helper_vtables.h>
 #include <drm/drm_panel.h>
 
 #include "rcar_du_drv.h"
 #include "rcar_du_encoder.h"
-#include "rcar_du_kms.h"
 #include "rcar_lvds.h"
 
 /* -----------------------------------------------------------------------------
@@ -83,6 +79,10 @@ int rcar_du_encoder_init(struct rcar_du_device *rcdu,
 		if (output == RCAR_DU_OUTPUT_LVDS0 ||
 		    output == RCAR_DU_OUTPUT_LVDS1)
 			rcdu->lvds[output - RCAR_DU_OUTPUT_LVDS0] = bridge;
+
+		if (output == RCAR_DU_OUTPUT_DSI0 ||
+		    output == RCAR_DU_OUTPUT_DSI1)
+			rcdu->dsi[output - RCAR_DU_OUTPUT_DSI0] = bridge;
 	}
 
 	/*
@@ -103,8 +103,8 @@ int rcar_du_encoder_init(struct rcar_du_device *rcdu,
 			return -ENOLINK;
 	}
 
-	dev_dbg(rcdu->dev, "initializing encoder %pOF for output %u\n",
-		enc_node, output);
+	dev_dbg(rcdu->dev, "initializing encoder %pOF for output %s\n",
+		enc_node, rcar_du_output_name(output));
 
 	renc = drmm_encoder_alloc(&rcdu->ddev, struct rcar_du_encoder, base,
 				  &rcar_du_encoder_funcs, DRM_MODE_ENCODER_NONE,
@@ -118,8 +118,9 @@ int rcar_du_encoder_init(struct rcar_du_device *rcdu,
 	ret = drm_bridge_attach(&renc->base, bridge, NULL,
 				DRM_BRIDGE_ATTACH_NO_CONNECTOR);
 	if (ret) {
-		dev_err(rcdu->dev, "failed to attach bridge for output %u\n",
-			output);
+		dev_err(rcdu->dev,
+			"failed to attach bridge %pOF for output %s (%d)\n",
+			bridge->of_node, rcar_du_output_name(output), ret);
 		return ret;
 	}
 
@@ -127,7 +128,8 @@ int rcar_du_encoder_init(struct rcar_du_device *rcdu,
 	connector = drm_bridge_connector_init(&rcdu->ddev, &renc->base);
 	if (IS_ERR(connector)) {
 		dev_err(rcdu->dev,
-			"failed to created connector for output %u\n", output);
+			"failed to created connector for output %s (%ld)\n",
+			rcar_du_output_name(output), PTR_ERR(connector));
 		return PTR_ERR(connector);
 	}
 

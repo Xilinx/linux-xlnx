@@ -6,6 +6,9 @@ config DMAR_TABLE
 config DMAR_PERF
 	bool
 
+config DMAR_DEBUG
+	bool
+
 config INTEL_IOMMU
 	bool "Support for Intel IOMMU using DMA Remapping Devices"
 	depends on PCI_MSI && ACPI && (X86 || IA64)
@@ -16,8 +19,9 @@ config INTEL_IOMMU
 	select DMAR_TABLE
 	select SWIOTLB
 	select IOASID
-	select IOMMU_DMA
 	select PCI_ATS
+	select PCI_PRI
+	select PCI_PASID
 	help
 	  DMA remapping (DMAR) devices support enables independent address
 	  translations for Direct Memory Access (DMA) from devices.
@@ -31,6 +35,7 @@ config INTEL_IOMMU_DEBUGFS
 	bool "Export Intel IOMMU internals in Debugfs"
 	depends on IOMMU_DEBUGFS
 	select DMAR_PERF
+	select DMAR_DEBUG
 	help
 	  !!!WARNING!!!
 
@@ -44,11 +49,8 @@ config INTEL_IOMMU_DEBUGFS
 config INTEL_IOMMU_SVM
 	bool "Support for Shared Virtual Memory with Intel IOMMU"
 	depends on X86_64
-	select PCI_PASID
-	select PCI_PRI
 	select MMU_NOTIFIER
-	select IOASID
-	select IOMMU_SVA_LIB
+	select IOMMU_SVA
 	help
 	  Shared Virtual Memory (SVM) provides a facility for devices
 	  to access DMA resources through process address space by

@@ -4,11 +4,8 @@
 #
 
 ccflags-y := -Ivirt/kvm -Iarch/powerpc/kvm
-KVM := ../../../virt/kvm
 
-common-objs-y = $(KVM)/kvm_main.o $(KVM)/eventfd.o $(KVM)/binary_stats.o
-common-objs-$(CONFIG_KVM_VFIO) += $(KVM)/vfio.o
-common-objs-$(CONFIG_KVM_MMIO) += $(KVM)/coalesced_mmio.o
+include $(srctree)/virt/kvm/Makefile.kvm
 
 common-objs-y += powerpc.o emulate_loadstore.o
 obj-$(CONFIG_KVM_EXIT_TIMING) += timing.o
@@ -39,9 +36,6 @@ kvm-e500mc-objs := \
 	e500_mmu_host.o \
 	e500_emulate.o
 kvm-objs-$(CONFIG_KVM_E500MC) := $(kvm-e500mc-objs)
-
-kvm-book3s_64-builtin-objs-$(CONFIG_SPAPR_TCE_IOMMU) := \
-	book3s_64_vio_hv.o
 
 kvm-pr-y := \
 	fpu.o \
@@ -79,7 +73,7 @@ kvm-hv-$(CONFIG_PPC_TRANSACTIONAL_MEM) += \
 	book3s_hv_tm.o
 
 kvm-book3s_64-builtin-xics-objs-$(CONFIG_KVM_XICS) := \
-	book3s_hv_rm_xics.o book3s_hv_rm_xive.o
+	book3s_hv_rm_xics.o
 
 kvm-book3s_64-builtin-tm-objs-$(CONFIG_PPC_TRANSACTIONAL_MEM) += \
 	book3s_hv_tm_builtin.o
@@ -92,6 +86,7 @@ kvm-book3s_64-builtin-objs-$(CONFIG_KVM_BOOK3S_64_HANDLER) += \
 	book3s_hv_rm_mmu.o \
 	book3s_hv_ras.o \
 	book3s_hv_builtin.o \
+	book3s_hv_p9_perf.o \
 	$(kvm-book3s_64-builtin-tm-objs-y) \
 	$(kvm-book3s_64-builtin-xics-objs-y)
 endif
@@ -125,9 +120,8 @@ kvm-book3s_32-objs := \
 kvm-objs-$(CONFIG_KVM_BOOK3S_32) := $(kvm-book3s_32-objs)
 
 kvm-objs-$(CONFIG_KVM_MPIC) += mpic.o
-kvm-objs-$(CONFIG_HAVE_KVM_IRQ_ROUTING) += $(KVM)/irqchip.o
 
-kvm-objs := $(kvm-objs-m) $(kvm-objs-y)
+kvm-y += $(kvm-objs-m) $(kvm-objs-y)
 
 obj-$(CONFIG_KVM_E500V2) += kvm.o
 obj-$(CONFIG_KVM_E500MC) += kvm.o
@@ -138,3 +132,8 @@ obj-$(CONFIG_KVM_BOOK3S_64_PR) += kvm-pr.o
 obj-$(CONFIG_KVM_BOOK3S_64_HV) += kvm-hv.o
 
 obj-y += $(kvm-book3s_64-builtin-objs-y)
+
+# KVM does a lot in real-mode, and 64-bit Book3S KASAN doesn't support that
+ifdef CONFIG_PPC_BOOK3S_64
+KASAN_SANITIZE := n
+endif

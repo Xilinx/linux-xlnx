@@ -969,7 +969,7 @@ static int usbatm_do_heavy_init(void *arg)
 	instance->thread = NULL;
 	mutex_unlock(&instance->serialize);
 
-	complete_and_exit(&instance->thread_exited, ret);
+	kthread_complete_and_exit(&instance->thread_exited, ret);
 }
 
 static int usbatm_heavy_init(struct usbatm_data *instance)
@@ -1015,16 +1015,18 @@ int usbatm_usb_probe(struct usb_interface *intf, const struct usb_device_id *id,
 	int error = -ENOMEM;
 	int i, length;
 	unsigned int maxpacket, num_packets;
+	size_t size;
 
 	/* instance init */
-	instance = kzalloc(sizeof(*instance) + sizeof(struct urb *) * (num_rcv_urbs + num_snd_urbs), GFP_KERNEL);
+	size = struct_size(instance, urbs, num_rcv_urbs + num_snd_urbs);
+	instance = kzalloc(size, GFP_KERNEL);
 	if (!instance)
 		return -ENOMEM;
 
 	/* public fields */
 
 	instance->driver = driver;
-	strlcpy(instance->driver_name, driver->driver_name,
+	strscpy(instance->driver_name, driver->driver_name,
 		sizeof(instance->driver_name));
 
 	instance->usb_dev = usb_dev;
@@ -1089,7 +1091,7 @@ int usbatm_usb_probe(struct usb_interface *intf, const struct usb_device_id *id,
 			snd_buf_bytes - (snd_buf_bytes % instance->tx_channel.stride));
 
 	/* rx buffer size must be a positive multiple of the endpoint maxpacket */
-	maxpacket = usb_maxpacket(usb_dev, instance->rx_channel.endpoint, 0);
+	maxpacket = usb_maxpacket(usb_dev, instance->rx_channel.endpoint);
 
 	if ((maxpacket < 1) || (maxpacket > UDSL_MAX_BUF_SIZE)) {
 		dev_err(dev, "%s: invalid endpoint %02x!\n", __func__,

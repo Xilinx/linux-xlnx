@@ -42,6 +42,11 @@
 #undef pr_info
 #undef pr_debug
 
+#define regSMUIO_GFX_MISC_CNTL  						0x00c5
+#define regSMUIO_GFX_MISC_CNTL_BASE_IDX					0
+#define SMUIO_GFX_MISC_CNTL__PWR_GFXOFF_STATUS_MASK		0x00000006L
+#define SMUIO_GFX_MISC_CNTL__PWR_GFXOFF_STATUS__SHIFT          0x1L
+
 #define FEATURE_MASK(feature) (1ULL << feature)
 #define SMC_DPM_FEATURE ( \
 	FEATURE_MASK(FEATURE_CCLK_DPM_BIT) | \
@@ -64,7 +69,6 @@ static struct cmn2asic_msg_mapping yellow_carp_message_map[SMU_MSG_MAX_COUNT] = 
 	MSG_MAP(PowerDownVcn,                   PPSMC_MSG_PowerDownVcn,			1),
 	MSG_MAP(PowerUpVcn,                     PPSMC_MSG_PowerUpVcn,			1),
 	MSG_MAP(SetHardMinVcn,                  PPSMC_MSG_SetHardMinVcn,		1),
-	MSG_MAP(ActiveProcessNotify,            PPSMC_MSG_ActiveProcessNotify,		1),
 	MSG_MAP(PrepareMp1ForUnload,            PPSMC_MSG_PrepareMp1ForUnload,      1),
 	MSG_MAP(SetDriverDramAddrHigh,          PPSMC_MSG_SetDriverDramAddrHigh,	1),
 	MSG_MAP(SetDriverDramAddrLow,           PPSMC_MSG_SetDriverDramAddrLow,		1),
@@ -135,14 +139,6 @@ static struct cmn2asic_mapping yellow_carp_table_map[SMU_TABLE_COUNT] = {
 	TAB_MAP_VALID(CUSTOM_DPM),
 	TAB_MAP_VALID(DPMCLOCKS),
 };
-
-static struct cmn2asic_mapping yellow_carp_workload_map[PP_SMC_POWER_PROFILE_COUNT] = {
-	WORKLOAD_MAP(PP_SMC_POWER_PROFILE_FULLSCREEN3D,		WORKLOAD_PPLIB_FULL_SCREEN_3D_BIT),
-	WORKLOAD_MAP(PP_SMC_POWER_PROFILE_VIDEO,		WORKLOAD_PPLIB_VIDEO_BIT),
-	WORKLOAD_MAP(PP_SMC_POWER_PROFILE_VR,			WORKLOAD_PPLIB_VR_BIT),
-	WORKLOAD_MAP(PP_SMC_POWER_PROFILE_COMPUTE,		WORKLOAD_PPLIB_COMPUTE_BIT),
-	WORKLOAD_MAP(PP_SMC_POWER_PROFILE_CUSTOM,		WORKLOAD_PPLIB_CUSTOM_BIT),
-};
 	
 static int yellow_carp_init_smc_tables(struct smu_context *smu)
 {
@@ -199,35 +195,21 @@ static int yellow_carp_fini_smc_tables(struct smu_context *smu)
 	kfree(smu_table->watermarks_table);
 	smu_table->watermarks_table = NULL;
 
+	kfree(smu_table->gpu_metrics_table);
+	smu_table->gpu_metrics_table = NULL;
+
 	return 0;
 }
 
 static int yellow_carp_system_features_control(struct smu_context *smu, bool en)
 {
-	struct smu_feature *feature = &smu->smu_feature;
 	struct amdgpu_device *adev = smu->adev;
-	uint32_t feature_mask[2];
 	int ret = 0;
 
 	if (!en && !adev->in_s0ix)
 		ret = smu_cmn_send_smc_msg(smu, SMU_MSG_PrepareMp1ForUnload, NULL);
 
-	bitmap_zero(feature->enabled, feature->feature_num);
-	bitmap_zero(feature->supported, feature->feature_num);
-
-	if (!en)
-		return ret;
-
-	ret = smu_cmn_get_enabled_32_bits_mask(smu, feature_mask, 2);
-	if (ret)
-		return ret;
-
-	bitmap_copy(feature->enabled, (unsigned long *)&feature_mask,
-		    feature->feature_num);
-	bitmap_copy(feature->supported, (unsigned long *)&feature_mask,
-		    feature->feature_num);
-
-	return 0;
+	return ret;
 }
 
 static int yellow_carp_dpm_set_vcn_enable(struct smu_context *smu, bool enable)
@@ -264,15 +246,12 @@ static int yellow_carp_dpm_set_jpeg_enable(struct smu_context *smu, bool enable)
 static bool yellow_carp_is_dpm_running(struct smu_context *smu)
 {
 	int ret = 0;
-	uint32_t feature_mask[2];
 	uint64_t feature_enabled;
 
-	ret = smu_cmn_get_enabled_32_bits_mask(smu, feature_mask, 2);
+	ret = smu_cmn_get_enabled_mask(smu, &feature_enabled);
 
 	if (ret)
 		return false;
-
-	feature_enabled = (uint64_t)feature_mask[1] << 32 | feature_mask[0];
 
 	return !!(feature_enabled & SMC_DPM_FEATURE);
 }
@@ -291,14 +270,9 @@ static int yellow_carp_post_smu_init(struct smu_context *smu)
 
 static int yellow_carp_mode_reset(struct smu_context *smu, int type)
 {
-	int ret = 0, index = 0;
+	int ret = 0;
 
-	index = smu_cmn_to_asic_specific_index(smu, CMN2ASIC_MAPPING_MSG,
-				SMU_MSG_GfxDeviceDriverReset);
-	if (index < 0)
-		return index == -EACCES ? 0 : index;
-
-	ret = smu_cmn_send_smc_msg_with_param(smu, (uint16_t)index, type, NULL);
+	ret = smu_cmn_send_smc_msg_with_param(smu, SMU_MSG_GfxDeviceDriverReset, type, NULL);
 	if (ret)
 		dev_err(smu->adev->dev, "Failed to mode reset!\n");
 
@@ -310,6 +284,42 @@ static int yellow_carp_mode2_reset(struct smu_context *smu)
 	return yellow_carp_mode_reset(smu, SMU_RESET_MODE_2);
 }
 
+
+static void yellow_carp_get_ss_power_percent(SmuMetrics_t *metrics,
+					uint32_t *apu_percent, uint32_t *dgpu_percent)
+{
+	uint32_t apu_boost = 0;
+	uint32_t dgpu_boost = 0;
+	uint16_t apu_limit = 0;
+	uint16_t dgpu_limit = 0;
+	uint16_t apu_power = 0;
+	uint16_t dgpu_power = 0;
+
+	/* APU and dGPU power values are reported in milli Watts
+	 * and STAPM power limits are in Watts */
+	apu_power = metrics->ApuPower/1000;
+	apu_limit = metrics->StapmOpnLimit;
+	if (apu_power > apu_limit && apu_limit != 0)
+		apu_boost =  ((apu_power - apu_limit) * 100) / apu_limit;
+	apu_boost = (apu_boost > 100) ? 100 : apu_boost;
+
+	dgpu_power = metrics->dGpuPower/1000;
+	if (metrics->StapmCurrentLimit > metrics->StapmOpnLimit)
+		dgpu_limit = metrics->StapmCurrentLimit - metrics->StapmOpnLimit;
+	if (dgpu_power > dgpu_limit && dgpu_limit != 0)
+		dgpu_boost = ((dgpu_power - dgpu_limit) * 100) / dgpu_limit;
+	dgpu_boost = (dgpu_boost > 100) ? 100 : dgpu_boost;
+
+	if (dgpu_boost >= apu_boost)
+		apu_boost = 0;
+	else
+		dgpu_boost = 0;
+
+	*apu_percent = apu_boost;
+	*dgpu_percent = dgpu_boost;
+
+}
+
 static int yellow_carp_get_smu_metrics_data(struct smu_context *smu,
 							MetricsMember_t member,
 							uint32_t *value)
@@ -318,14 +328,12 @@ static int yellow_carp_get_smu_metrics_data(struct smu_context *smu,
 
 	SmuMetrics_t *metrics = (SmuMetrics_t *)smu_table->metrics_table;
 	int ret = 0;
+	uint32_t apu_percent = 0;
+	uint32_t dgpu_percent = 0;
 
-	mutex_lock(&smu->metrics_lock);
-
-	ret = smu_cmn_get_metrics_table_locked(smu, NULL, false);
-	if (ret) {
-		mutex_unlock(&smu->metrics_lock);
+	ret = smu_cmn_get_metrics_table(smu, NULL, false);
+	if (ret)
 		return ret;
-	}
 
 	switch (member) {
 	case METRICS_AVERAGE_GFXCLK:
@@ -370,33 +378,23 @@ static int yellow_carp_get_smu_metrics_data(struct smu_context *smu,
 		*value = metrics->Voltage[1];
 		break;
 	case METRICS_SS_APU_SHARE:
-		/* return the percentage of APU power with respect to APU's power limit.
-		 * percentage is reported, this isn't boost value. Smartshift power
-		 * boost/shift is only when the percentage is more than 100.
+		/* return the percentage of APU power boost
+		 * with respect to APU's power limit.
 		 */
-		if (metrics->StapmOpnLimit > 0)
-			*value =  (metrics->ApuPower * 100) / metrics->StapmOpnLimit;
-		else
-			*value = 0;
+		yellow_carp_get_ss_power_percent(metrics, &apu_percent, &dgpu_percent);
+		*value = apu_percent;
 		break;
 	case METRICS_SS_DGPU_SHARE:
-		/* return the percentage of dGPU power with respect to dGPU's power limit.
-		 * percentage is reported, this isn't boost value. Smartshift power
-		 * boost/shift is only when the percentage is more than 100.
+		/* return the percentage of dGPU power boost
+		 * with respect to dGPU's power limit.
 		 */
-		if ((metrics->dGpuPower > 0) &&
-		    (metrics->StapmCurrentLimit > metrics->StapmOpnLimit))
-			*value = (metrics->dGpuPower * 100) /
-				  (metrics->StapmCurrentLimit - metrics->StapmOpnLimit);
-		else
-			*value = 0;
+		yellow_carp_get_ss_power_percent(metrics, &apu_percent, &dgpu_percent);
+		*value = dgpu_percent;
 		break;
 	default:
 		*value = UINT_MAX;
 		break;
 	}
-
-	mutex_unlock(&smu->metrics_lock);
 
 	return ret;
 }
@@ -410,7 +408,6 @@ static int yellow_carp_read_sensor(struct smu_context *smu,
 	if (!data || !size)
 		return -EINVAL;
 
-	mutex_lock(&smu->sensor_lock);
 	switch (sensor) {
 	case AMDGPU_PP_SENSOR_GPU_LOAD:
 		ret = yellow_carp_get_smu_metrics_data(smu,
@@ -478,7 +475,6 @@ static int yellow_carp_read_sensor(struct smu_context *smu,
 		ret = -EOPNOTSUPP;
 		break;
 	}
-	mutex_unlock(&smu->sensor_lock);
 
 	return ret;
 }
@@ -543,81 +539,6 @@ static int yellow_carp_set_watermarks_table(struct smu_context *smu,
 	return 0;
 }
 
-static int yellow_carp_get_power_profile_mode(struct smu_context *smu,
-						char *buf)
-{
-	static const char *profile_name[] = {
-					"BOOTUP_DEFAULT",
-					"3D_FULL_SCREEN",
-					"POWER_SAVING",
-					"VIDEO",
-					"VR",
-					"COMPUTE",
-					"CUSTOM"};
-	uint32_t i, size = 0;
-	int16_t workload_type = 0;
-
-	if (!buf)
-		return -EINVAL;
-
-	for (i = 0; i <= PP_SMC_POWER_PROFILE_CUSTOM; i++) {
-		/*
-		 * Conv PP_SMC_POWER_PROFILE* to WORKLOAD_PPLIB_*_BIT.
-		 * Not all profile modes are supported on yellow carp.
-		 */
-		workload_type = smu_cmn_to_asic_specific_index(smu,
-							       CMN2ASIC_MAPPING_WORKLOAD,
-							       i);
-
-		if (workload_type < 0)
-			continue;
-
-		size += sysfs_emit_at(buf, size, "%2d %14s%s\n",
-			i, profile_name[i], (i == smu->power_profile_mode) ? "*" : " ");
-	}
-
-	return size;
-}
-
-static int yellow_carp_set_power_profile_mode(struct smu_context *smu,
-						long *input, uint32_t size)
-{
-	int workload_type, ret;
-	uint32_t profile_mode = input[size];
-
-	if (profile_mode > PP_SMC_POWER_PROFILE_CUSTOM) {
-		dev_err(smu->adev->dev, "Invalid power profile mode %d\n", profile_mode);
-		return -EINVAL;
-	}
-
-	if (profile_mode == PP_SMC_POWER_PROFILE_BOOTUP_DEFAULT ||
-			profile_mode == PP_SMC_POWER_PROFILE_POWERSAVING)
-		return 0;
-
-	/* conv PP_SMC_POWER_PROFILE* to WORKLOAD_PPLIB_*_BIT */
-	workload_type = smu_cmn_to_asic_specific_index(smu,
-						       CMN2ASIC_MAPPING_WORKLOAD,
-						       profile_mode);
-	if (workload_type < 0) {
-		dev_dbg(smu->adev->dev, "Unsupported power profile mode %d on YELLOWCARP\n",
-					profile_mode);
-		return -EINVAL;
-	}
-
-	ret = smu_cmn_send_smc_msg_with_param(smu, SMU_MSG_ActiveProcessNotify,
-				    1 << workload_type,
-				    NULL);
-	if (ret) {
-		dev_err_once(smu->adev->dev, "Fail to set workload type %d\n",
-					workload_type);
-		return ret;
-	}
-
-	smu->power_profile_mode = profile_mode;
-
-	return 0;
-}
-
 static ssize_t yellow_carp_get_gpu_metrics(struct smu_context *smu,
 						void **table)
 {
@@ -669,6 +590,31 @@ static ssize_t yellow_carp_get_gpu_metrics(struct smu_context *smu,
 	*table = (void *)gpu_metrics;
 
 	return sizeof(struct gpu_metrics_v2_1);
+}
+
+/**
+ * yellow_carp_get_gfxoff_status - get gfxoff status
+ *
+ * @smu: smu_context pointer
+ *
+ * This function will be used to get gfxoff status
+ *
+ * Returns 0=GFXOFF(default).
+ * Returns 1=Transition out of GFX State.
+ * Returns 2=Not in GFXOFF.
+ * Returns 3=Transition into GFXOFF.
+ */
+static uint32_t yellow_carp_get_gfxoff_status(struct smu_context *smu)
+{
+	uint32_t reg;
+	uint32_t gfxoff_status = 0;
+	struct amdgpu_device *adev = smu->adev;
+
+	reg = RREG32_SOC15(SMUIO, 0, regSMUIO_GFX_MISC_CNTL);
+	gfxoff_status = (reg & SMUIO_GFX_MISC_CNTL__PWR_GFXOFF_STATUS_MASK)
+		>> SMUIO_GFX_MISC_CNTL__PWR_GFXOFF_STATUS__SHIFT;
+
+	return gfxoff_status;
 }
 
 static int yellow_carp_set_default_dpm_tables(struct smu_context *smu)
@@ -781,6 +727,11 @@ static int yellow_carp_get_current_clk_freq(struct smu_context *smu,
 	case SMU_FCLK:
 		return smu_cmn_send_smc_msg_with_param(smu,
 				SMU_MSG_GetFclkFrequency, 0, value);
+	case SMU_GFXCLK:
+	case SMU_SCLK:
+		return smu_cmn_send_smc_msg_with_param(smu,
+				SMU_MSG_GetGfxclkFrequency, 0, value);
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -1051,6 +1002,7 @@ static int yellow_carp_print_clk_levels(struct smu_context *smu,
 {
 	int i, size = 0, ret = 0;
 	uint32_t cur_value = 0, value = 0, count = 0;
+	uint32_t min, max;
 
 	smu_cmn_get_sysfs_buf(&buf, &size);
 
@@ -1088,6 +1040,27 @@ static int yellow_carp_print_clk_levels(struct smu_context *smu,
 			size += sysfs_emit_at(buf, size, "%d: %uMhz %s\n", i, value,
 					cur_value == value ? "*" : "");
 		}
+		break;
+	case SMU_GFXCLK:
+	case SMU_SCLK:
+		ret = yellow_carp_get_current_clk_freq(smu, clk_type, &cur_value);
+		if (ret)
+			goto print_clk_out;
+		min = (smu->gfx_actual_hard_min_freq > 0) ? smu->gfx_actual_hard_min_freq : smu->gfx_default_hard_min_freq;
+		max = (smu->gfx_actual_soft_max_freq > 0) ? smu->gfx_actual_soft_max_freq : smu->gfx_default_soft_max_freq;
+		if (cur_value  == max)
+			i = 2;
+		else if (cur_value == min)
+			i = 0;
+		else
+			i = 1;
+		size += sysfs_emit_at(buf, size, "0: %uMhz %s\n", min,
+				i == 0 ? "*" : "");
+		size += sysfs_emit_at(buf, size, "1: %uMhz %s\n",
+				i == 1 ? cur_value : YELLOW_CARP_UMD_PSTATE_GFXCLK,
+				i == 1 ? "*" : "");
+		size += sysfs_emit_at(buf, size, "2: %uMhz %s\n", max,
+				i == 2 ? "*" : "");
 		break;
 	default:
 		break;
@@ -1238,13 +1211,12 @@ static const struct pptable_funcs yellow_carp_ppt_funcs = {
 	.read_sensor = yellow_carp_read_sensor,
 	.is_dpm_running = yellow_carp_is_dpm_running,
 	.set_watermarks_table = yellow_carp_set_watermarks_table,
-	.get_power_profile_mode = yellow_carp_get_power_profile_mode,
-	.set_power_profile_mode = yellow_carp_set_power_profile_mode,
 	.get_gpu_metrics = yellow_carp_get_gpu_metrics,
-	.get_enabled_mask = smu_cmn_get_enabled_32_bits_mask,
+	.get_enabled_mask = smu_cmn_get_enabled_mask,
 	.get_pp_feature_mask = smu_cmn_get_pp_feature_mask,
 	.set_driver_table_location = smu_v13_0_set_driver_table_location,
 	.gfx_off_control = smu_v13_0_gfx_off_control,
+	.get_gfx_off_status = yellow_carp_get_gfxoff_status,
 	.post_init = yellow_carp_post_smu_init,
 	.mode2_reset = yellow_carp_mode2_reset,
 	.get_dpm_ultimate_freq = yellow_carp_get_dpm_ultimate_freq,
@@ -1261,6 +1233,6 @@ void yellow_carp_set_ppt_funcs(struct smu_context *smu)
 	smu->message_map = yellow_carp_message_map;
 	smu->feature_map = yellow_carp_feature_mask_map;
 	smu->table_map = yellow_carp_table_map;
-	smu->workload_map = yellow_carp_workload_map;
 	smu->is_apu = true;
+	smu_v13_0_set_smu_mailbox_registers(smu);
 }

@@ -18,12 +18,15 @@
 #include <linux/platform_device.h>
 #include <linux/usb.h>
 #include <linux/usb/hcd.h>
+#include <linux/usb/phy.h>
+#include <linux/usb/of.h>
 
 #include "ehci.h"
 
 #define DRIVER_DESC "EHCI Atmel driver"
 
-static const char hcd_name[] = "ehci-atmel";
+#define EHCI_INSNREG(index)			((index) * 4 + 0x90)
+#define EHCI_INSNREG08_HSIC_EN			BIT(2)
 
 /* interface and function clocks */
 #define hcd_to_atmel_ehci_priv(h) \
@@ -154,6 +157,9 @@ static int ehci_atmel_drv_probe(struct platform_device *pdev)
 		goto fail_add_hcd;
 	device_wakeup_enable(hcd->self.controller);
 
+	if (of_usb_get_phy_mode(pdev->dev.of_node) == USBPHY_INTERFACE_MODE_HSIC)
+		writel(EHCI_INSNREG08_HSIC_EN, hcd->regs + EHCI_INSNREG(8));
+
 	return retval;
 
 fail_add_hcd:
@@ -231,7 +237,6 @@ static int __init ehci_atmel_init(void)
 	if (usb_disabled())
 		return -ENODEV;
 
-	pr_info("%s: " DRIVER_DESC "\n", hcd_name);
 	ehci_init_driver(&ehci_atmel_hc_driver, &ehci_atmel_drv_overrides);
 	return platform_driver_register(&ehci_atmel_driver);
 }

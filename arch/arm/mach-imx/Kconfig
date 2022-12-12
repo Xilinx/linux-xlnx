@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-only
 menuconfig ARCH_MXC
 	bool "Freescale i.MX family"
-	depends on ARCH_MULTI_V4_V5 || ARCH_MULTI_V6_V7 || ARM_SINGLE_ARMV7M
-	select ARCH_SUPPORTS_BIG_ENDIAN
+	depends on ((ARCH_MULTI_V4T || ARCH_MULTI_V5) && CPU_LITTLE_ENDIAN) || \
+		ARCH_MULTI_V6_V7 || ARM_SINGLE_ARMV7M
 	select CLKSRC_IMX_GPT
 	select GENERIC_IRQ_CHIP
 	select GPIOLIB
@@ -20,18 +20,6 @@ config MXC_TZIC
 
 config MXC_AVIC
 	bool
-
-config MXC_DEBUG_BOARD
-	bool "Enable MXC debug board(for 3-stack)"
-	depends on MACH_MX27_3DS || MACH_MX31_3DS || MACH_MX35_3DS
-	help
-	  The debug board is an integral part of the MXC 3-stack(PDK)
-	  platforms, it can be attached or removed from the peripheral
-	  board. On debug board, several debug devices(ethernet, UART,
-	  buttons, LEDs and JTAG) are implemented. Between the MCU and
-	  these devices, a CPLD is added as a bridge which performs
-	  data/address de-multiplexing and decode, signal level shift,
-	  interrupt control and various board functions.
 
 config HAVE_IMX_ANATOP
 	bool
@@ -108,7 +96,7 @@ config SOC_IMX5
 	select HAVE_IMX_SRC
 	select MXC_TZIC
 
-config	SOC_IMX50
+config SOC_IMX50
 	bool "i.MX50 support"
 	select PINCTRL_IMX50
 	select SOC_IMX5
@@ -123,7 +111,7 @@ config SOC_IMX51
 	help
 	  This enables support for Freescale i.MX51 processor
 
-config	SOC_IMX53
+config SOC_IMX53
 	bool "i.MX53 support"
 	select PINCTRL_IMX53
 	select SOC_IMX5
@@ -228,7 +216,7 @@ config SOC_IMX7D
 	select SOC_IMX7D_CM4 if ARM_SINGLE_ARMV7M
 	select ARM_ERRATA_814220 if ARCH_MULTI_V7
 	help
-		This enables support for Freescale i.MX7 Dual processor.
+	  This enables support for Freescale i.MX7 Dual processor.
 
 config SOC_IMX7ULP
 	bool "i.MX7ULP support"
@@ -238,6 +226,13 @@ config SOC_IMX7ULP
 	select SOC_IMX7D_CM4 if ARM_SINGLE_ARMV7M
 	help
 	  This enables support for Freescale i.MX7 Ultra Low Power processor.
+
+config SOC_IMXRT
+	bool "i.MXRT support"
+	depends on ARM_SINGLE_ARMV7M
+	select ARMV7M_SYSTICK if ARM_SINGLE_ARMV7M
+	help
+	  This enables support for Freescale i.MXRT Crossover processor.
 
 config SOC_VF610
 	bool "Vybrid Family VF610 support"

@@ -841,7 +841,7 @@ static int rt1305_set_component_pll(struct snd_soc_component *component,
 
 	ret = rl6231_pll_calc(freq_in, freq_out, &pll_code);
 	if (ret < 0) {
-		dev_err(component->dev, "Unsupport input clock %d\n", freq_in);
+		dev_err(component->dev, "Unsupported input clock %d\n", freq_in);
 		return ret;
 	}
 
@@ -946,7 +946,6 @@ static const struct snd_soc_component_driver soc_component_dev_rt1305 = {
 	.set_pll = rt1305_set_component_pll,
 	.use_pmdown_time	= 1,
 	.endianness		= 1,
-	.non_legacy_dai_naming	= 1,
 };
 
 static const struct regmap_config rt1305_regmap = {
@@ -1117,8 +1116,7 @@ static void rt1305_calibrate(struct rt1305_priv *rt1305)
 	regcache_cache_bypass(rt1305->regmap, false);
 }
 
-static int rt1305_i2c_probe(struct i2c_client *i2c,
-		    const struct i2c_device_id *id)
+static int rt1305_i2c_probe(struct i2c_client *i2c)
 {
 	struct rt1305_priv *rt1305;
 	int ret;
@@ -1172,7 +1170,7 @@ static struct i2c_driver rt1305_i2c_driver = {
 		.acpi_match_table = ACPI_PTR(rt1305_acpi_match)
 #endif
 	},
-	.probe = rt1305_i2c_probe,
+	.probe_new = rt1305_i2c_probe,
 	.shutdown = rt1305_i2c_shutdown,
 	.id_table = rt1305_i2c_id,
 };

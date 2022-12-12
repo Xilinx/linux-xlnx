@@ -11,7 +11,7 @@
 
 struct xfs_inode;
 
-extern struct kmem_zone	*xfs_qm_dqtrxzone;
+extern struct kmem_cache	*xfs_dqtrx_cache;
 
 /*
  * Number of bmaps that we ask from bmapi when doing a quotacheck.
@@ -34,7 +34,6 @@ struct xfs_quota_limits {
 	xfs_qcnt_t		hard;	/* default hard limit */
 	xfs_qcnt_t		soft;	/* default soft limit */
 	time64_t		time;	/* limit for timers */
-	xfs_qwarncnt_t		warn;	/* limit for warnings */
 };
 
 /* Defaults for each quota type: time limits, warn limits, usage limits */
@@ -133,10 +132,6 @@ struct xfs_dquot_acct {
 #define XFS_QM_BTIMELIMIT	(7 * 24*60*60)          /* 1 week */
 #define XFS_QM_RTBTIMELIMIT	(7 * 24*60*60)          /* 1 week */
 #define XFS_QM_ITIMELIMIT	(7 * 24*60*60)          /* 1 week */
-
-#define XFS_QM_BWARNLIMIT	5
-#define XFS_QM_IWARNLIMIT	5
-#define XFS_QM_RTBWARNLIMIT	5
 
 extern void		xfs_qm_destroy_quotainfo(struct xfs_mount *);
 

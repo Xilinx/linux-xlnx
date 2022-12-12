@@ -8,6 +8,7 @@
 #include <linux/delay.h>
 #include <linux/dma-mapping.h>
 #include <linux/highmem.h>
+#include <linux/iopoll.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
@@ -38,6 +39,9 @@
 #define  SDHCI_SPRD_BIT_CMD_DLY_INV		BIT(13)
 #define  SDHCI_SPRD_BIT_POSRD_DLY_INV		BIT(21)
 #define  SDHCI_SPRD_BIT_NEGRD_DLY_INV		BIT(29)
+
+#define SDHCI_SPRD_REG_32_DLL_STS0	0x210
+#define SDHCI_SPRD_DLL_LOCKED		BIT(18)
 
 #define SDHCI_SPRD_REG_32_BUSY_POSI		0x250
 #define  SDHCI_SPRD_BIT_OUTR_CLK_AUTO_EN	BIT(25)
@@ -201,13 +205,13 @@ static inline u32 sdhci_sprd_calc_div(u32 base_clk, u32 clk)
 	if ((base_clk / div) > (clk * 2))
 		div++;
 
-	if (div > SDHCI_SPRD_CLK_MAX_DIV)
-		div = SDHCI_SPRD_CLK_MAX_DIV;
-
 	if (div % 2)
 		div = (div + 1) / 2;
 	else
 		div = div / 2;
+
+	if (div > SDHCI_SPRD_CLK_MAX_DIV)
+		div = SDHCI_SPRD_CLK_MAX_DIV;
 
 	return div;
 }
@@ -256,6 +260,15 @@ static void sdhci_sprd_enable_phy_dll(struct sdhci_host *host)
 	sdhci_writel(host, tmp, SDHCI_SPRD_REG_32_DLL_CFG);
 	/* wait 1ms */
 	usleep_range(1000, 1250);
+
+	if (read_poll_timeout(sdhci_readl, tmp, (tmp & SDHCI_SPRD_DLL_LOCKED),
+		2000, USEC_PER_SEC, false, host, SDHCI_SPRD_REG_32_DLL_STS0)) {
+		pr_err("%s: DLL locked fail!\n", mmc_hostname(host->mmc));
+		pr_info("%s: DLL_STS0 : 0x%x, DLL_CFG : 0x%x\n",
+			 mmc_hostname(host->mmc),
+			 sdhci_readl(host, SDHCI_SPRD_REG_32_DLL_STS0),
+			 sdhci_readl(host, SDHCI_SPRD_REG_32_DLL_CFG));
+	}
 }
 
 static void sdhci_sprd_set_clock(struct sdhci_host *host, unsigned int clock)
@@ -296,7 +309,7 @@ static unsigned int sdhci_sprd_get_max_clock(struct sdhci_host *host)
 
 static unsigned int sdhci_sprd_get_min_clock(struct sdhci_host *host)
 {
-	return 400000;
+	return 100000;
 }
 
 static void sdhci_sprd_set_uhs_signaling(struct sdhci_host *host,
@@ -457,7 +470,7 @@ static int sdhci_sprd_voltage_switch(struct mmc_host *mmc, struct mmc_ios *ios)
 	}
 
 	if (IS_ERR(sprd_host->pinctrl))
-		return 0;
+		goto reset;
 
 	switch (ios->signal_voltage) {
 	case MMC_SIGNAL_VOLTAGE_180:
@@ -485,6 +498,8 @@ static int sdhci_sprd_voltage_switch(struct mmc_host *mmc, struct mmc_ios *ios)
 
 	/* Wait for 300 ~ 500 us for pin state stable */
 	usleep_range(300, 500);
+
+reset:
 	sdhci_reset(host, SDHCI_RESET_CMD | SDHCI_RESET_DATA);
 
 	return 0;

@@ -36,7 +36,7 @@ static int xge_get_resources(struct xge_pdata *pdata)
 		return -ENOMEM;
 	}
 
-	if (!device_get_mac_address(dev, ndev->dev_addr, ETH_ALEN))
+	if (device_get_ethdev_address(dev, ndev))
 		eth_hw_addr_random(ndev);
 
 	memcpy(ndev->perm_addr, ndev->dev_addr, ndev->addr_len);
@@ -672,7 +672,7 @@ static int xge_probe(struct platform_device *pdev)
 	if (ret)
 		goto err;
 
-	netif_napi_add(ndev, &pdata->napi, xge_napi, NAPI_POLL_WEIGHT);
+	netif_napi_add(ndev, &pdata->napi, xge_napi);
 
 	ret = register_netdev(ndev);
 	if (ret) {

@@ -115,6 +115,17 @@ static inline void add_uuid(char *str, uuid_le uuid)
 		uuid.b[12], uuid.b[13], uuid.b[14], uuid.b[15]);
 }
 
+static inline void add_guid(char *str, guid_t guid)
+{
+	int len = strlen(str);
+
+	sprintf(str + len, "%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-%02X%02X%02X%02X%02X%02X",
+		guid.b[3], guid.b[2], guid.b[1], guid.b[0],
+		guid.b[5], guid.b[4], guid.b[7], guid.b[6],
+		guid.b[8], guid.b[9], guid.b[10], guid.b[11],
+		guid.b[12], guid.b[13], guid.b[14], guid.b[15]);
+}
+
 /**
  * Check that sizeof(device_id type) are consistent with size of section
  * in .o file. If in-consistent then userspace and kernel does not agree
@@ -722,8 +733,6 @@ static int do_vio_entry(const char *filename, void *symval,
 	add_wildcard(alias);
 	return 1;
 }
-
-#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
 static void do_input(char *alias,
 		     kernel_ulong_t *arr, unsigned int min, unsigned int max)
@@ -1380,6 +1389,27 @@ static int do_mhi_entry(const char *filename, void *symval, char *alias)
 	return 1;
 }
 
+/* Looks like: mhi_ep:S */
+static int do_mhi_ep_entry(const char *filename, void *symval, char *alias)
+{
+	DEF_FIELD_ADDR(symval, mhi_device_id, chan);
+	sprintf(alias, MHI_EP_DEVICE_MODALIAS_FMT, *chan);
+
+	return 1;
+}
+
+/* Looks like: ishtp:{guid} */
+static int do_ishtp_entry(const char *filename, void *symval, char *alias)
+{
+	DEF_FIELD(symval, ishtp_device_id, guid);
+
+	strcpy(alias, ISHTP_MODULE_PREFIX "{");
+	add_guid(alias, guid);
+	strcat(alias, "}");
+
+	return 1;
+}
+
 static int do_auxiliary_entry(const char *filename, void *symval, char *alias)
 {
 	DEF_FIELD_ADDR(symval, auxiliary_device_id, name);
@@ -1496,9 +1526,11 @@ static const struct devtable devtable[] = {
 	{"tee", SIZE_tee_client_device_id, do_tee_entry},
 	{"wmi", SIZE_wmi_device_id, do_wmi_entry},
 	{"mhi", SIZE_mhi_device_id, do_mhi_entry},
+	{"mhi_ep", SIZE_mhi_device_id, do_mhi_ep_entry},
 	{"auxiliary", SIZE_auxiliary_device_id, do_auxiliary_entry},
 	{"ssam", SIZE_ssam_device_id, do_ssam_entry},
 	{"dfl", SIZE_dfl_device_id, do_dfl_entry},
+	{"ishtp", SIZE_ishtp_device_id, do_ishtp_entry},
 };
 
 /* Create MODULE_ALIAS() statements.
@@ -1539,9 +1571,7 @@ void handle_moddevtable(struct module *mod, struct elf_info *info,
 		zeros = calloc(1, sym->st_size);
 		symval = zeros;
 	} else {
-		symval = (void *)info->hdr
-			+ info->sechdrs[get_secindex(info, sym)].sh_offset
-			+ sym->st_value;
+		symval = sym_get_data(info, sym);
 	}
 
 	/* First handle the "special" cases */

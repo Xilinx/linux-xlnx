@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * rcar_du_regs.h  --  R-Car Display Unit Registers Definitions
+ * R-Car Display Unit Registers Definitions
  *
  * Copyright (C) 2013-2015 Renesas Electronics Corporation
  *
@@ -257,10 +257,11 @@
 
 #define DIDSR			0x20028
 #define DIDSR_CODE		(0x7790 << 16)
-#define DIDSR_LCDS_DCLKIN(n)	(0 << (8 + (n) * 2))
-#define DIDSR_LCDS_LVDS0(n)	(2 << (8 + (n) * 2))
-#define DIDSR_LCDS_LVDS1(n)	(3 << (8 + (n) * 2))
-#define DIDSR_LCDS_MASK(n)	(3 << (8 + (n) * 2))
+#define DIDSR_LDCS_DCLKIN(n)	(0 << (8 + (n) * 2))
+#define DIDSR_LDCS_DSI(n)	(2 << (8 + (n) * 2))	/* V3U only */
+#define DIDSR_LDCS_LVDS0(n)	(2 << (8 + (n) * 2))
+#define DIDSR_LDCS_LVDS1(n)	(3 << (8 + (n) * 2))
+#define DIDSR_LDCS_MASK(n)	(3 << (8 + (n) * 2))
 #define DIDSR_PDCS_CLK(n, clk)	(clk << ((n) * 2))
 #define DIDSR_PDCS_MASK(n)	(3 << ((n) * 2))
 

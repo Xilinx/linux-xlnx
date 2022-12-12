@@ -163,16 +163,19 @@ DEVICE_ATTR(beiscsi_active_session_count, S_IRUGO,
 	     beiscsi_active_session_disp, NULL);
 DEVICE_ATTR(beiscsi_free_session_count, S_IRUGO,
 	     beiscsi_free_session_disp, NULL);
-static struct device_attribute *beiscsi_attrs[] = {
-	&dev_attr_beiscsi_log_enable,
-	&dev_attr_beiscsi_drvr_ver,
-	&dev_attr_beiscsi_adapter_family,
-	&dev_attr_beiscsi_fw_ver,
-	&dev_attr_beiscsi_active_session_count,
-	&dev_attr_beiscsi_free_session_count,
-	&dev_attr_beiscsi_phys_port,
+
+static struct attribute *beiscsi_attrs[] = {
+	&dev_attr_beiscsi_log_enable.attr,
+	&dev_attr_beiscsi_drvr_ver.attr,
+	&dev_attr_beiscsi_adapter_family.attr,
+	&dev_attr_beiscsi_fw_ver.attr,
+	&dev_attr_beiscsi_active_session_count.attr,
+	&dev_attr_beiscsi_free_session_count.attr,
+	&dev_attr_beiscsi_phys_port.attr,
 	NULL,
 };
+
+ATTRIBUTE_GROUPS(beiscsi);
 
 static char const *cqe_desc[] = {
 	"RESERVED_DESC",
@@ -215,7 +218,7 @@ static char const *cqe_desc[] = {
 
 static int beiscsi_eh_abort(struct scsi_cmnd *sc)
 {
-	struct iscsi_task *abrt_task = (struct iscsi_task *)sc->SCp.ptr;
+	struct iscsi_task *abrt_task = iscsi_cmd(sc)->task;
 	struct iscsi_cls_session *cls_session;
 	struct beiscsi_io_task *abrt_io_task;
 	struct beiscsi_conn *beiscsi_conn;
@@ -228,6 +231,7 @@ static int beiscsi_eh_abort(struct scsi_cmnd *sc)
 	cls_session = starget_to_session(scsi_target(sc->device));
 	session = cls_session->dd_data;
 
+completion_check:
 	/* check if we raced, task just got cleaned up under us */
 	spin_lock_bh(&session->back_lock);
 	if (!abrt_task || !abrt_task->sc) {
@@ -235,7 +239,13 @@ static int beiscsi_eh_abort(struct scsi_cmnd *sc)
 		return SUCCESS;
 	}
 	/* get a task ref till FW processes the req for the ICD used */
-	__iscsi_get_task(abrt_task);
+	if (!iscsi_get_task(abrt_task)) {
+		spin_unlock(&session->back_lock);
+		/* We are just about to call iscsi_free_task so wait for it. */
+		udelay(5);
+		goto completion_check;
+	}
+
 	abrt_io_task = abrt_task->dd_data;
 	conn = abrt_task->conn;
 	beiscsi_conn = conn->dd_data;
@@ -320,7 +330,15 @@ static int beiscsi_eh_device_reset(struct scsi_cmnd *sc)
 		}
 
 		/* get a task ref till FW processes the req for the ICD used */
-		__iscsi_get_task(task);
+		if (!iscsi_get_task(task)) {
+			/*
+			 * The task has completed in the driver and is
+			 * completing in libiscsi. Just ignore it here. When we
+			 * call iscsi_eh_device_reset, it will wait for us.
+			 */
+			continue;
+		}
+
 		io_task = task->dd_data;
 		/* mark WRB invalid which have been not processed by FW yet */
 		if (is_chip_be2_be3r(phba)) {
@@ -391,7 +409,7 @@ static struct scsi_host_template beiscsi_sht = {
 	.eh_abort_handler = beiscsi_eh_abort,
 	.eh_device_reset_handler = beiscsi_eh_device_reset,
 	.eh_target_reset_handler = iscsi_eh_session_reset,
-	.shost_attrs = beiscsi_attrs,
+	.shost_groups = beiscsi_groups,
 	.sg_tablesize = BEISCSI_SGLIST_ELEMENTS,
 	.can_queue = BE2_IO_DEPTH,
 	.this_id = -1,
@@ -400,6 +418,7 @@ static struct scsi_host_template beiscsi_sht = {
 	.cmd_per_lun = BEISCSI_CMD_PER_LUN,
 	.vendor_id = SCSI_NL_VID_TYPE_PCI | BE_VENDOR_ID,
 	.track_queue_depth = 1,
+	.cmd_size = sizeof(struct iscsi_cmd),
 };
 
 static struct scsi_transport_template *beiscsi_scsi_transport;
@@ -5741,7 +5760,7 @@ static void beiscsi_remove(struct pci_dev *pcidev)
 	cancel_work_sync(&phba->sess_work);
 
 	beiscsi_iface_destroy_default(phba);
-	iscsi_host_remove(phba->shost);
+	iscsi_host_remove(phba->shost, false);
 	beiscsi_disable_port(phba, 1);
 
 	/* after cancelling boot_work */

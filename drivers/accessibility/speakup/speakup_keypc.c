@@ -4,7 +4,7 @@
  *
  * Copyright (C) 2003 David Borowski.
  *
- * specificly written as a driver for the speakup screenreview
+ * specifically written as a driver for the speakup screenreview
  * package it's not a general device driver.
  * This driver is for the Keynote Gold internal synthesizer.
  */
@@ -254,7 +254,7 @@ static void synth_flush(struct spk_synth *synth)
 static int synth_probe(struct spk_synth *synth)
 {
 	unsigned int port_val = 0;
-	int i = 0;
+	int i;
 
 	pr_info("Probing for %s.\n", synth->long_name);
 	if (port_forced) {

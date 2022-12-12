@@ -17,6 +17,7 @@
 #include <linux/hyperv.h>
 #include <linux/uio.h>
 #include <linux/interrupt.h>
+#include <linux/set_memory.h>
 #include <asm/page.h>
 #include <asm/mshyperv.h>
 
@@ -456,7 +457,7 @@ nomem:
 static int __vmbus_establish_gpadl(struct vmbus_channel *channel,
 				   enum hv_gpadl_type type, void *kbuffer,
 				   u32 size, u32 send_offset,
-				   u32 *gpadl_handle)
+				   struct vmbus_gpadl *gpadl)
 {
 	struct vmbus_channel_gpadl_header *gpadlmsg;
 	struct vmbus_channel_gpadl_body *gpadl_body;
@@ -473,6 +474,15 @@ static int __vmbus_establish_gpadl(struct vmbus_channel *channel,
 	ret = create_gpadl_header(type, kbuffer, size, send_offset, &msginfo);
 	if (ret)
 		return ret;
+
+	ret = set_memory_decrypted((unsigned long)kbuffer,
+				   PFN_UP(size));
+	if (ret) {
+		dev_warn(&channel->device_obj->device,
+			 "Failed to set host visibility for new GPADL %d.\n",
+			 ret);
+		return ret;
+	}
 
 	init_completion(&msginfo->waitevent);
 	msginfo->waiting_channel = channel;
@@ -537,7 +547,10 @@ static int __vmbus_establish_gpadl(struct vmbus_channel *channel,
 	}
 
 	/* At this point, we received the gpadl created msg */
-	*gpadl_handle = gpadlmsg->gpadl;
+	gpadl->gpadl_handle = gpadlmsg->gpadl;
+	gpadl->buffer = kbuffer;
+	gpadl->size = size;
+
 
 cleanup:
 	spin_lock_irqsave(&vmbus_connection.channelmsg_lock, flags);
@@ -549,6 +562,11 @@ cleanup:
 	}
 
 	kfree(msginfo);
+
+	if (ret)
+		set_memory_encrypted((unsigned long)kbuffer,
+				     PFN_UP(size));
+
 	return ret;
 }
 
@@ -561,10 +579,10 @@ cleanup:
  * @gpadl_handle: some funky thing
  */
 int vmbus_establish_gpadl(struct vmbus_channel *channel, void *kbuffer,
-			  u32 size, u32 *gpadl_handle)
+			  u32 size, struct vmbus_gpadl *gpadl)
 {
 	return __vmbus_establish_gpadl(channel, HV_GPADL_BUFFER, kbuffer, size,
-				       0U, gpadl_handle);
+				       0U, gpadl);
 }
 EXPORT_SYMBOL_GPL(vmbus_establish_gpadl);
 
@@ -665,17 +683,8 @@ static int __vmbus_open(struct vmbus_channel *newchannel,
 	if (!newchannel->max_pkt_size)
 		newchannel->max_pkt_size = VMBUS_DEFAULT_MAX_PKT_SIZE;
 
-	err = hv_ringbuffer_init(&newchannel->outbound, page, send_pages, 0);
-	if (err)
-		goto error_clean_ring;
-
-	err = hv_ringbuffer_init(&newchannel->inbound, &page[send_pages],
-				 recv_pages, newchannel->max_pkt_size);
-	if (err)
-		goto error_clean_ring;
-
 	/* Establish the gpadl for the ring buffer */
-	newchannel->ringbuffer_gpadlhandle = 0;
+	newchannel->ringbuffer_gpadlhandle.gpadl_handle = 0;
 
 	err = __vmbus_establish_gpadl(newchannel, HV_GPADL_RING,
 				      page_address(newchannel->ringbuffer_page),
@@ -684,6 +693,16 @@ static int __vmbus_open(struct vmbus_channel *newchannel,
 				      &newchannel->ringbuffer_gpadlhandle);
 	if (err)
 		goto error_clean_ring;
+
+	err = hv_ringbuffer_init(&newchannel->outbound,
+				 page, send_pages, 0);
+	if (err)
+		goto error_free_gpadl;
+
+	err = hv_ringbuffer_init(&newchannel->inbound, &page[send_pages],
+				 recv_pages, newchannel->max_pkt_size);
+	if (err)
+		goto error_free_gpadl;
 
 	/* Create and init the channel open message */
 	open_info = kzalloc(sizeof(*open_info) +
@@ -701,7 +720,8 @@ static int __vmbus_open(struct vmbus_channel *newchannel,
 	open_msg->header.msgtype = CHANNELMSG_OPENCHANNEL;
 	open_msg->openid = newchannel->offermsg.child_relid;
 	open_msg->child_relid = newchannel->offermsg.child_relid;
-	open_msg->ringbuffer_gpadlhandle = newchannel->ringbuffer_gpadlhandle;
+	open_msg->ringbuffer_gpadlhandle
+		= newchannel->ringbuffer_gpadlhandle.gpadl_handle;
 	/*
 	 * The unit of ->downstream_ringbuffer_pageoffset is HV_HYP_PAGE and
 	 * the unit of ->ringbuffer_send_offset (i.e. send_pages) is PAGE, so
@@ -759,8 +779,7 @@ error_clean_msglist:
 error_free_info:
 	kfree(open_info);
 error_free_gpadl:
-	vmbus_teardown_gpadl(newchannel, newchannel->ringbuffer_gpadlhandle);
-	newchannel->ringbuffer_gpadlhandle = 0;
+	vmbus_teardown_gpadl(newchannel, &newchannel->ringbuffer_gpadlhandle);
 error_clean_ring:
 	hv_ringbuffer_cleanup(&newchannel->outbound);
 	hv_ringbuffer_cleanup(&newchannel->inbound);
@@ -806,7 +825,7 @@ EXPORT_SYMBOL_GPL(vmbus_open);
 /*
  * vmbus_teardown_gpadl -Teardown the specified GPADL handle
  */
-int vmbus_teardown_gpadl(struct vmbus_channel *channel, u32 gpadl_handle)
+int vmbus_teardown_gpadl(struct vmbus_channel *channel, struct vmbus_gpadl *gpadl)
 {
 	struct vmbus_channel_gpadl_teardown *msg;
 	struct vmbus_channel_msginfo *info;
@@ -825,7 +844,7 @@ int vmbus_teardown_gpadl(struct vmbus_channel *channel, u32 gpadl_handle)
 
 	msg->header.msgtype = CHANNELMSG_GPADL_TEARDOWN;
 	msg->child_relid = channel->offermsg.child_relid;
-	msg->gpadl = gpadl_handle;
+	msg->gpadl = gpadl->gpadl_handle;
 
 	spin_lock_irqsave(&vmbus_connection.channelmsg_lock, flags);
 	list_add_tail(&info->msglistentry,
@@ -845,6 +864,8 @@ int vmbus_teardown_gpadl(struct vmbus_channel *channel, u32 gpadl_handle)
 
 	wait_for_completion(&info->waitevent);
 
+	gpadl->gpadl_handle = 0;
+
 post_msg_err:
 	/*
 	 * If the channel has been rescinded;
@@ -859,6 +880,12 @@ post_msg_err:
 	spin_unlock_irqrestore(&vmbus_connection.channelmsg_lock, flags);
 
 	kfree(info);
+
+	ret = set_memory_encrypted((unsigned long)gpadl->buffer,
+				   PFN_UP(gpadl->size));
+	if (ret)
+		pr_warn("Fail to set mem host visibility in GPADL teardown %d.\n", ret);
+
 	return ret;
 }
 EXPORT_SYMBOL_GPL(vmbus_teardown_gpadl);
@@ -933,9 +960,8 @@ static int vmbus_close_internal(struct vmbus_channel *channel)
 	}
 
 	/* Tear down the gpadl for the channel's ring buffer */
-	else if (channel->ringbuffer_gpadlhandle) {
-		ret = vmbus_teardown_gpadl(channel,
-					   channel->ringbuffer_gpadlhandle);
+	else if (channel->ringbuffer_gpadlhandle.gpadl_handle) {
+		ret = vmbus_teardown_gpadl(channel, &channel->ringbuffer_gpadlhandle);
 		if (ret) {
 			pr_err("Close failed: teardown gpadl return %d\n", ret);
 			/*
@@ -943,8 +969,6 @@ static int vmbus_close_internal(struct vmbus_channel *channel)
 			 * it is perhaps better to leak memory.
 			 */
 		}
-
-		channel->ringbuffer_gpadlhandle = 0;
 	}
 
 	if (!ret)
@@ -998,11 +1022,13 @@ void vmbus_close(struct vmbus_channel *channel)
 EXPORT_SYMBOL_GPL(vmbus_close);
 
 /**
- * vmbus_sendpacket() - Send the specified buffer on the given channel
+ * vmbus_sendpacket_getid() - Send the specified buffer on the given channel
  * @channel: Pointer to vmbus_channel structure
  * @buffer: Pointer to the buffer you want to send the data from.
  * @bufferlen: Maximum size of what the buffer holds.
  * @requestid: Identifier of the request
+ * @trans_id: Identifier of the transaction associated to this request, if
+ *            the send is successful; undefined, otherwise.
  * @type: Type of packet that is being sent e.g. negotiate, time
  *	  packet etc.
  * @flags: 0 or VMBUS_DATA_PACKET_FLAG_COMPLETION_REQUESTED
@@ -1012,8 +1038,8 @@ EXPORT_SYMBOL_GPL(vmbus_close);
  *
  * Mainly used by Hyper-V drivers.
  */
-int vmbus_sendpacket(struct vmbus_channel *channel, void *buffer,
-			   u32 bufferlen, u64 requestid,
+int vmbus_sendpacket_getid(struct vmbus_channel *channel, void *buffer,
+			   u32 bufferlen, u64 requestid, u64 *trans_id,
 			   enum vmbus_packet_type type, u32 flags)
 {
 	struct vmpacket_descriptor desc;
@@ -1039,7 +1065,31 @@ int vmbus_sendpacket(struct vmbus_channel *channel, void *buffer,
 	bufferlist[2].iov_base = &aligned_data;
 	bufferlist[2].iov_len = (packetlen_aligned - packetlen);
 
-	return hv_ringbuffer_write(channel, bufferlist, num_vecs, requestid);
+	return hv_ringbuffer_write(channel, bufferlist, num_vecs, requestid, trans_id);
+}
+EXPORT_SYMBOL(vmbus_sendpacket_getid);
+
+/**
+ * vmbus_sendpacket() - Send the specified buffer on the given channel
+ * @channel: Pointer to vmbus_channel structure
+ * @buffer: Pointer to the buffer you want to send the data from.
+ * @bufferlen: Maximum size of what the buffer holds.
+ * @requestid: Identifier of the request
+ * @type: Type of packet that is being sent e.g. negotiate, time
+ *	  packet etc.
+ * @flags: 0 or VMBUS_DATA_PACKET_FLAG_COMPLETION_REQUESTED
+ *
+ * Sends data in @buffer directly to Hyper-V via the vmbus.
+ * This will send the data unparsed to Hyper-V.
+ *
+ * Mainly used by Hyper-V drivers.
+ */
+int vmbus_sendpacket(struct vmbus_channel *channel, void *buffer,
+		     u32 bufferlen, u64 requestid,
+		     enum vmbus_packet_type type, u32 flags)
+{
+	return vmbus_sendpacket_getid(channel, buffer, bufferlen,
+				      requestid, NULL, type, flags);
 }
 EXPORT_SYMBOL(vmbus_sendpacket);
 
@@ -1098,7 +1148,7 @@ int vmbus_sendpacket_pagebuffer(struct vmbus_channel *channel,
 	bufferlist[2].iov_base = &aligned_data;
 	bufferlist[2].iov_len = (packetlen_aligned - packetlen);
 
-	return hv_ringbuffer_write(channel, bufferlist, 3, requestid);
+	return hv_ringbuffer_write(channel, bufferlist, 3, requestid, NULL);
 }
 EXPORT_SYMBOL_GPL(vmbus_sendpacket_pagebuffer);
 
@@ -1136,7 +1186,7 @@ int vmbus_sendpacket_mpb_desc(struct vmbus_channel *channel,
 	bufferlist[2].iov_base = &aligned_data;
 	bufferlist[2].iov_len = (packetlen_aligned - packetlen);
 
-	return hv_ringbuffer_write(channel, bufferlist, 3, requestid);
+	return hv_ringbuffer_write(channel, bufferlist, 3, requestid, NULL);
 }
 EXPORT_SYMBOL_GPL(vmbus_sendpacket_mpb_desc);
 
@@ -1202,12 +1252,12 @@ u64 vmbus_next_request_id(struct vmbus_channel *channel, u64 rqst_addr)
 	if (!channel->rqstor_size)
 		return VMBUS_NO_RQSTOR;
 
-	spin_lock_irqsave(&rqstor->req_lock, flags);
+	lock_requestor(channel, flags);
 	current_id = rqstor->next_request_id;
 
 	/* Requestor array is full */
 	if (current_id >= rqstor->size) {
-		spin_unlock_irqrestore(&rqstor->req_lock, flags);
+		unlock_requestor(channel, flags);
 		return VMBUS_RQST_ERROR;
 	}
 
@@ -1217,15 +1267,76 @@ u64 vmbus_next_request_id(struct vmbus_channel *channel, u64 rqst_addr)
 	/* The already held spin lock provides atomicity */
 	bitmap_set(rqstor->req_bitmap, current_id, 1);
 
-	spin_unlock_irqrestore(&rqstor->req_lock, flags);
+	unlock_requestor(channel, flags);
 
 	/*
 	 * Cannot return an ID of 0, which is reserved for an unsolicited
-	 * message from Hyper-V.
+	 * message from Hyper-V; Hyper-V does not acknowledge (respond to)
+	 * VMBUS_DATA_PACKET_FLAG_COMPLETION_REQUESTED requests with ID of
+	 * 0 sent by the guest.
 	 */
 	return current_id + 1;
 }
 EXPORT_SYMBOL_GPL(vmbus_next_request_id);
+
+/* As in vmbus_request_addr_match() but without the requestor lock */
+u64 __vmbus_request_addr_match(struct vmbus_channel *channel, u64 trans_id,
+			       u64 rqst_addr)
+{
+	struct vmbus_requestor *rqstor = &channel->requestor;
+	u64 req_addr;
+
+	/* Check rqstor has been initialized */
+	if (!channel->rqstor_size)
+		return VMBUS_NO_RQSTOR;
+
+	/* Hyper-V can send an unsolicited message with ID of 0 */
+	if (!trans_id)
+		return VMBUS_RQST_ERROR;
+
+	/* Data corresponding to trans_id is stored at trans_id - 1 */
+	trans_id--;
+
+	/* Invalid trans_id */
+	if (trans_id >= rqstor->size || !test_bit(trans_id, rqstor->req_bitmap))
+		return VMBUS_RQST_ERROR;
+
+	req_addr = rqstor->req_arr[trans_id];
+	if (rqst_addr == VMBUS_RQST_ADDR_ANY || req_addr == rqst_addr) {
+		rqstor->req_arr[trans_id] = rqstor->next_request_id;
+		rqstor->next_request_id = trans_id;
+
+		/* The already held spin lock provides atomicity */
+		bitmap_clear(rqstor->req_bitmap, trans_id, 1);
+	}
+
+	return req_addr;
+}
+EXPORT_SYMBOL_GPL(__vmbus_request_addr_match);
+
+/*
+ * vmbus_request_addr_match - Clears/removes @trans_id from the @channel's
+ * requestor, provided the memory address stored at @trans_id equals @rqst_addr
+ * (or provided @rqst_addr matches the sentinel value VMBUS_RQST_ADDR_ANY).
+ *
+ * Returns the memory address stored at @trans_id, or VMBUS_RQST_ERROR if
+ * @trans_id is not contained in the requestor.
+ *
+ * Acquires and releases the requestor spin lock.
+ */
+u64 vmbus_request_addr_match(struct vmbus_channel *channel, u64 trans_id,
+			     u64 rqst_addr)
+{
+	unsigned long flags;
+	u64 req_addr;
+
+	lock_requestor(channel, flags);
+	req_addr = __vmbus_request_addr_match(channel, trans_id, rqst_addr);
+	unlock_requestor(channel, flags);
+
+	return req_addr;
+}
+EXPORT_SYMBOL_GPL(vmbus_request_addr_match);
 
 /*
  * vmbus_request_addr - Returns the memory address stored at @trans_id
@@ -1236,37 +1347,6 @@ EXPORT_SYMBOL_GPL(vmbus_next_request_id);
  */
 u64 vmbus_request_addr(struct vmbus_channel *channel, u64 trans_id)
 {
-	struct vmbus_requestor *rqstor = &channel->requestor;
-	unsigned long flags;
-	u64 req_addr;
-
-	/* Check rqstor has been initialized */
-	if (!channel->rqstor_size)
-		return VMBUS_NO_RQSTOR;
-
-	/* Hyper-V can send an unsolicited message with ID of 0 */
-	if (!trans_id)
-		return trans_id;
-
-	spin_lock_irqsave(&rqstor->req_lock, flags);
-
-	/* Data corresponding to trans_id is stored at trans_id - 1 */
-	trans_id--;
-
-	/* Invalid trans_id */
-	if (trans_id >= rqstor->size || !test_bit(trans_id, rqstor->req_bitmap)) {
-		spin_unlock_irqrestore(&rqstor->req_lock, flags);
-		return VMBUS_RQST_ERROR;
-	}
-
-	req_addr = rqstor->req_arr[trans_id];
-	rqstor->req_arr[trans_id] = rqstor->next_request_id;
-	rqstor->next_request_id = trans_id;
-
-	/* The already held spin lock provides atomicity */
-	bitmap_clear(rqstor->req_bitmap, trans_id, 1);
-
-	spin_unlock_irqrestore(&rqstor->req_lock, flags);
-	return req_addr;
+	return vmbus_request_addr_match(channel, trans_id, VMBUS_RQST_ADDR_ANY);
 }
 EXPORT_SYMBOL_GPL(vmbus_request_addr);

@@ -29,6 +29,16 @@
 #define GXBB_WDT_TCNT_SETUP_MASK		(BIT(16) - 1)
 #define GXBB_WDT_TCNT_CNT_SHIFT			16
 
+static bool nowayout = WATCHDOG_NOWAYOUT;
+module_param(nowayout, bool, 0);
+MODULE_PARM_DESC(nowayout, "Watchdog cannot be stopped once started default="
+		 __MODULE_STRING(WATCHDOG_NOWAYOUT) ")");
+
+static unsigned int timeout;
+module_param(timeout, uint, 0);
+MODULE_PARM_DESC(timeout, "Watchdog heartbeat in seconds="
+		 __MODULE_STRING(DEFAULT_TIMEOUT) ")");
+
 struct meson_gxbb_wdt {
 	void __iomem *reg_base;
 	struct watchdog_device wdt_dev;
@@ -146,6 +156,7 @@ static int meson_gxbb_wdt_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct meson_gxbb_wdt *data;
 	int ret;
+	u32 ctrl_reg;
 
 	data = devm_kzalloc(dev, sizeof(*data), GFP_KERNEL);
 	if (!data)
@@ -175,18 +186,32 @@ static int meson_gxbb_wdt_probe(struct platform_device *pdev)
 	data->wdt_dev.max_hw_heartbeat_ms = GXBB_WDT_TCNT_SETUP_MASK;
 	data->wdt_dev.min_timeout = 1;
 	data->wdt_dev.timeout = DEFAULT_TIMEOUT;
+	watchdog_init_timeout(&data->wdt_dev, timeout, dev);
+	watchdog_set_nowayout(&data->wdt_dev, nowayout);
 	watchdog_set_drvdata(&data->wdt_dev, data);
 
-	/* Setup with 1ms timebase */
-	writel(((clk_get_rate(data->clk) / 1000) & GXBB_WDT_CTRL_DIV_MASK) |
-		GXBB_WDT_CTRL_EE_RESET |
-		GXBB_WDT_CTRL_CLK_EN |
-		GXBB_WDT_CTRL_CLKDIV_EN,
-		data->reg_base + GXBB_WDT_CTRL_REG);
+	ctrl_reg = readl(data->reg_base + GXBB_WDT_CTRL_REG) &
+				GXBB_WDT_CTRL_EN;
 
+	if (ctrl_reg) {
+		/* Watchdog is running - keep it running but extend timeout
+		 * to the maximum while setting the timebase
+		 */
+		set_bit(WDOG_HW_RUNNING, &data->wdt_dev.status);
+		meson_gxbb_wdt_set_timeout(&data->wdt_dev,
+				GXBB_WDT_TCNT_SETUP_MASK / 1000);
+	}
+
+	/* Setup with 1ms timebase */
+	ctrl_reg |= ((clk_get_rate(data->clk) / 1000) &
+			GXBB_WDT_CTRL_DIV_MASK) |
+			GXBB_WDT_CTRL_EE_RESET |
+			GXBB_WDT_CTRL_CLK_EN |
+			GXBB_WDT_CTRL_CLKDIV_EN;
+
+	writel(ctrl_reg, data->reg_base + GXBB_WDT_CTRL_REG);
 	meson_gxbb_wdt_set_timeout(&data->wdt_dev, data->wdt_dev.timeout);
 
-	watchdog_stop_on_reboot(&data->wdt_dev);
 	return devm_watchdog_register_device(dev, &data->wdt_dev);
 }
 

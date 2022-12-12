@@ -12,6 +12,7 @@
 #include <linux/delay.h>
 #include <linux/module.h>
 #include <linux/of_platform.h>
+#include <linux/pm_runtime.h>
 #include <linux/regmap.h>
 #include <linux/reset.h>
 
@@ -405,12 +406,9 @@ static int stm32_spdifrx_dma_ctrl_register(struct device *dev,
 	int ret;
 
 	spdifrx->ctrl_chan = dma_request_chan(dev, "rx-ctrl");
-	if (IS_ERR(spdifrx->ctrl_chan)) {
-		if (PTR_ERR(spdifrx->ctrl_chan) != -EPROBE_DEFER)
-			dev_err(dev, "dma_request_slave_channel error %ld\n",
-				PTR_ERR(spdifrx->ctrl_chan));
-		return PTR_ERR(spdifrx->ctrl_chan);
-	}
+	if (IS_ERR(spdifrx->ctrl_chan))
+		return dev_err_probe(dev, PTR_ERR(spdifrx->ctrl_chan),
+				     "dma_request_slave_channel error\n");
 
 	spdifrx->dmab = devm_kzalloc(dev, sizeof(struct snd_dma_buffer),
 				     GFP_KERNEL);
@@ -890,6 +888,7 @@ static const struct snd_pcm_hardware stm32_spdifrx_pcm_hw = {
 
 static const struct snd_soc_component_driver stm32_spdifrx_component = {
 	.name = "stm32-spdifrx",
+	.legacy_dai_naming = 1,
 };
 
 static const struct snd_dmaengine_pcm_config stm32_spdifrx_pcm_config = {
@@ -929,12 +928,9 @@ static int stm32_spdifrx_parse_of(struct platform_device *pdev,
 	spdifrx->phys_addr = res->start;
 
 	spdifrx->kclk = devm_clk_get(&pdev->dev, "kclk");
-	if (IS_ERR(spdifrx->kclk)) {
-		if (PTR_ERR(spdifrx->kclk) != -EPROBE_DEFER)
-			dev_err(&pdev->dev, "Could not get kclk: %ld\n",
-				PTR_ERR(spdifrx->kclk));
-		return PTR_ERR(spdifrx->kclk);
-	}
+	if (IS_ERR(spdifrx->kclk))
+		return dev_err_probe(&pdev->dev, PTR_ERR(spdifrx->kclk),
+				     "Could not get kclk\n");
 
 	spdifrx->irq = platform_get_irq(pdev, 0);
 	if (spdifrx->irq < 0)
@@ -955,6 +951,7 @@ static int stm32_spdifrx_remove(struct platform_device *pdev)
 
 	snd_dmaengine_pcm_unregister(&pdev->dev);
 	snd_soc_unregister_component(&pdev->dev);
+	pm_runtime_disable(&pdev->dev);
 
 	return 0;
 }
@@ -985,12 +982,9 @@ static int stm32_spdifrx_probe(struct platform_device *pdev)
 	spdifrx->regmap = devm_regmap_init_mmio_clk(&pdev->dev, "kclk",
 						    spdifrx->base,
 						    spdifrx->regmap_conf);
-	if (IS_ERR(spdifrx->regmap)) {
-		if (PTR_ERR(spdifrx->regmap) != -EPROBE_DEFER)
-			dev_err(&pdev->dev, "Regmap init error %ld\n",
-				PTR_ERR(spdifrx->regmap));
-		return PTR_ERR(spdifrx->regmap);
-	}
+	if (IS_ERR(spdifrx->regmap))
+		return dev_err_probe(&pdev->dev, PTR_ERR(spdifrx->regmap),
+				     "Regmap init error\n");
 
 	ret = devm_request_irq(&pdev->dev, spdifrx->irq, stm32_spdifrx_isr, 0,
 			       dev_name(&pdev->dev), spdifrx);
@@ -1000,23 +994,18 @@ static int stm32_spdifrx_probe(struct platform_device *pdev)
 	}
 
 	rst = devm_reset_control_get_optional_exclusive(&pdev->dev, NULL);
-	if (IS_ERR(rst)) {
-		if (PTR_ERR(rst) != -EPROBE_DEFER)
-			dev_err(&pdev->dev, "Reset controller error %ld\n",
-				PTR_ERR(rst));
-		return PTR_ERR(rst);
-	}
+	if (IS_ERR(rst))
+		return dev_err_probe(&pdev->dev, PTR_ERR(rst),
+				     "Reset controller error\n");
+
 	reset_control_assert(rst);
 	udelay(2);
 	reset_control_deassert(rst);
 
 	pcm_config = &stm32_spdifrx_pcm_config;
 	ret = snd_dmaengine_pcm_register(&pdev->dev, pcm_config, 0);
-	if (ret) {
-		if (ret != -EPROBE_DEFER)
-			dev_err(&pdev->dev, "PCM DMA register error %d\n", ret);
-		return ret;
-	}
+	if (ret)
+		return dev_err_probe(&pdev->dev, ret, "PCM DMA register error\n");
 
 	ret = snd_soc_register_component(&pdev->dev,
 					 &stm32_spdifrx_component,
@@ -1044,6 +1033,8 @@ static int stm32_spdifrx_probe(struct platform_device *pdev)
 			FIELD_GET(SPDIFRX_VERR_MAJ_MASK, ver),
 			FIELD_GET(SPDIFRX_VERR_MIN_MASK, ver));
 	}
+
+	pm_runtime_enable(&pdev->dev);
 
 	return ret;
 

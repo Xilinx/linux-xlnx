@@ -203,7 +203,7 @@ struct w83781d_data {
 	int isa_addr;
 
 	struct mutex update_lock;
-	char valid;		/* !=0 if following fields are valid */
+	bool valid;		/* true if following fields are valid */
 	unsigned long last_updated;	/* In jiffies */
 
 	struct i2c_client *lm75[2];	/* for secondary I2C addresses */
@@ -1171,7 +1171,7 @@ w83781d_detect(struct i2c_client *client, struct i2c_board_info *info)
 	if (isa)
 		mutex_unlock(&isa->update_lock);
 
-	strlcpy(info->type, client_name, I2C_NAME_SIZE);
+	strscpy(info->type, client_name, I2C_NAME_SIZE);
 
 	return 0;
 
@@ -1239,7 +1239,7 @@ static int w83781d_probe(struct i2c_client *client)
 	return err;
 }
 
-static int
+static void
 w83781d_remove(struct i2c_client *client)
 {
 	struct w83781d_data *data = i2c_get_clientdata(client);
@@ -1250,8 +1250,6 @@ w83781d_remove(struct i2c_client *client)
 
 	i2c_unregister_device(data->lm75[0]);
 	i2c_unregister_device(data->lm75[1]);
-
-	return 0;
 }
 
 static int
@@ -1554,7 +1552,7 @@ static struct w83781d_data *w83781d_update_device(struct device *dev)
 					       W83781D_REG_BEEP_INTS3) << 16;
 		}
 		data->last_updated = jiffies;
-		data->valid = 1;
+		data->valid = true;
 	}
 
 	mutex_unlock(&data->update_lock);

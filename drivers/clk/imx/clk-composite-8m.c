@@ -171,14 +171,14 @@ static const struct clk_ops imx8m_clk_composite_mux_ops = {
 	.determine_rate = imx8m_clk_composite_mux_determine_rate,
 };
 
-struct clk_hw *imx8m_clk_hw_composite_flags(const char *name,
+struct clk_hw *__imx8m_clk_hw_composite(const char *name,
 					const char * const *parent_names,
 					int num_parents, void __iomem *reg,
 					u32 composite_flags,
 					unsigned long flags)
 {
 	struct clk_hw *hw = ERR_PTR(-ENOMEM), *mux_hw;
-	struct clk_hw *div_hw, *gate_hw;
+	struct clk_hw *div_hw, *gate_hw = NULL;
 	struct clk_divider *div = NULL;
 	struct clk_gate *gate = NULL;
 	struct clk_mux *mux = NULL;
@@ -223,14 +223,17 @@ struct clk_hw *imx8m_clk_hw_composite_flags(const char *name,
 	div->lock = &imx_ccm_lock;
 	div->flags = CLK_DIVIDER_ROUND_CLOSEST;
 
-	gate = kzalloc(sizeof(*gate), GFP_KERNEL);
-	if (!gate)
-		goto fail;
+	/* skip registering the gate ops if M4 is enabled */
+	if (!mcore_booted) {
+		gate = kzalloc(sizeof(*gate), GFP_KERNEL);
+		if (!gate)
+			goto fail;
 
-	gate_hw = &gate->hw;
-	gate->reg = reg;
-	gate->bit_idx = PCG_CGC_SHIFT;
-	gate->lock = &imx_ccm_lock;
+		gate_hw = &gate->hw;
+		gate->reg = reg;
+		gate->bit_idx = PCG_CGC_SHIFT;
+		gate->lock = &imx_ccm_lock;
+	}
 
 	hw = clk_hw_register_composite(NULL, name, parent_names, num_parents,
 			mux_hw, mux_ops, div_hw,
@@ -246,4 +249,4 @@ fail:
 	kfree(mux);
 	return ERR_CAST(hw);
 }
-EXPORT_SYMBOL_GPL(imx8m_clk_hw_composite_flags);
+EXPORT_SYMBOL_GPL(__imx8m_clk_hw_composite);

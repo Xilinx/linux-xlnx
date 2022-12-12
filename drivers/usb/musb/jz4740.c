@@ -105,7 +105,6 @@ static int jz4740_musb_init(struct musb *musb)
 		.driver_data = glue,
 		.fwnode = dev_fwnode(dev),
 	};
-	int err;
 
 	glue->musb = musb;
 
@@ -113,12 +112,9 @@ static int jz4740_musb_init(struct musb *musb)
 		musb->xceiv = devm_usb_get_phy_by_phandle(dev, "phys", 0);
 	else
 		musb->xceiv = devm_usb_get_phy(dev, USB_PHY_TYPE_USB2);
-	if (IS_ERR(musb->xceiv)) {
-		err = PTR_ERR(musb->xceiv);
-		if (err != -EPROBE_DEFER)
-			dev_err(dev, "No transceiver configured: %d\n", err);
-		return err;
-	}
+	if (IS_ERR(musb->xceiv))
+		return dev_err_probe(dev, PTR_ERR(musb->xceiv),
+				     "No transceiver configured\n");
 
 	glue->role_sw = usb_role_switch_register(dev, &role_sw_desc);
 	if (IS_ERR(glue->role_sw)) {
@@ -231,6 +227,7 @@ static int jz4740_probe(struct platform_device *pdev)
 	musb->dev.parent		= dev;
 	musb->dev.dma_mask		= &musb->dev.coherent_dma_mask;
 	musb->dev.coherent_dma_mask	= DMA_BIT_MASK(32);
+	device_set_of_node_from_dev(&musb->dev, dev);
 
 	glue->pdev			= musb;
 	glue->clk			= clk;

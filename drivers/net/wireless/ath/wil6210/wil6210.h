@@ -82,7 +82,6 @@ static inline u32 WIL_GET_BITS(u32 x, int b0, int b1)
 #define WIL6210_MAX_TX_RINGS	(24) /* HW limit */
 #define WIL6210_MAX_CID		(20) /* max number of stations */
 #define WIL6210_RX_DESC_MAX_CID	(8)  /* HW limit */
-#define WIL6210_NAPI_BUDGET	(16) /* arbitrary */
 #define WIL_MAX_AMPDU_SIZE	(64 * 1024) /* FW/HW limit */
 #define WIL_MAX_AGG_WSIZE	(32) /* FW/HW limit */
 #define WIL_MAX_AMPDU_SIZE_128	(128 * 1024) /* FW/HW limit */
@@ -1341,7 +1340,7 @@ struct wil6210_priv *wil_cfg80211_init(struct device *dev);
 void wil_cfg80211_deinit(struct wil6210_priv *wil);
 void wil_p2p_wdev_free(struct wil6210_priv *wil);
 
-int wmi_set_mac_address(struct wil6210_priv *wil, void *addr);
+int wmi_set_mac_address(struct wil6210_priv *wil, const void *addr);
 int wmi_pcp_start(struct wil6210_vif *vif, int bi, u8 wmi_nettype, u8 chan,
 		  u8 edmg_chan, u8 hidden_ssid, u8 is_go);
 int wmi_pcp_stop(struct wil6210_vif *vif);

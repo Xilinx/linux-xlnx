@@ -14,9 +14,6 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
 
-#define barrier() __asm__ __volatile__("": : :"memory")
-int _version SEC("version") = 1;
-
 /* llvm will optimize both subprograms into exactly the same BPF assembly
  *
  * Disassembly of section .text:
@@ -97,7 +94,7 @@ int test_pkt_write_access_subprog(struct __sk_buff *skb, __u32 off)
 	return 0;
 }
 
-SEC("classifier/test_pkt_access")
+SEC("tc")
 int test_pkt_access(struct __sk_buff *skb)
 {
 	void *data_end = (void *)(long)skb->data_end;

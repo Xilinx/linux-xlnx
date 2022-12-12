@@ -3,6 +3,7 @@
 
 #include <net/dst_metadata.h>
 #include <linux/netdevice.h>
+#include <linux/if_macvlan.h>
 #include <linux/list.h>
 #include <linux/rculist.h>
 #include <linux/rtnetlink.h>
@@ -18,10 +19,14 @@
 #include "en/tc_tun.h"
 #include "lib/port_tun.h"
 #include "en/tc/sample.h"
+#include "en_accel/ipsec_rxtx.h"
+#include "en/tc/int_port.h"
+#include "en/tc/act/act.h"
 
 struct mlx5e_rep_indr_block_priv {
 	struct net_device *netdev;
 	struct mlx5e_rep_priv *rpriv;
+	enum flow_block_binder_type binder_type;
 
 	struct list_head list;
 };
@@ -259,14 +264,14 @@ int mlx5e_rep_tc_init(struct mlx5e_rep_priv *rpriv)
 	INIT_LIST_HEAD(&uplink_priv->unready_flows);
 
 	/* init shared tc flow table */
-	err = mlx5e_tc_esw_init(&uplink_priv->tc_ht);
+	err = mlx5e_tc_esw_init(uplink_priv);
 	return err;
 }
 
 void mlx5e_rep_tc_cleanup(struct mlx5e_rep_priv *rpriv)
 {
 	/* delete shared tc flow table */
-	mlx5e_tc_esw_cleanup(&rpriv->uplink_priv.tc_ht);
+	mlx5e_tc_esw_cleanup(&rpriv->uplink_priv);
 	mutex_destroy(&rpriv->uplink_priv.unready_flows_lock);
 }
 
@@ -296,14 +301,16 @@ int mlx5e_rep_tc_event_port_affinity(struct mlx5e_priv *priv)
 
 static struct mlx5e_rep_indr_block_priv *
 mlx5e_rep_indr_block_priv_lookup(struct mlx5e_rep_priv *rpriv,
-				 struct net_device *netdev)
+				 struct net_device *netdev,
+				 enum flow_block_binder_type binder_type)
 {
 	struct mlx5e_rep_indr_block_priv *cb_priv;
 
 	list_for_each_entry(cb_priv,
 			    &rpriv->uplink_priv.tc_indr_block_priv_list,
 			    list)
-		if (cb_priv->netdev == netdev)
+		if (cb_priv->netdev == netdev &&
+		    cb_priv->binder_type == binder_type)
 			return cb_priv;
 
 	return NULL;
@@ -341,8 +348,12 @@ mlx5e_rep_indr_offload(struct net_device *netdev,
 static int mlx5e_rep_indr_setup_tc_cb(enum tc_setup_type type,
 				      void *type_data, void *indr_priv)
 {
-	unsigned long flags = MLX5_TC_FLAG(EGRESS) | MLX5_TC_FLAG(ESW_OFFLOAD);
+	unsigned long flags = MLX5_TC_FLAG(ESW_OFFLOAD);
 	struct mlx5e_rep_indr_block_priv *priv = indr_priv;
+
+	flags |= (priv->binder_type == FLOW_BLOCK_BINDER_TYPE_CLSACT_EGRESS) ?
+		MLX5_TC_FLAG(EGRESS) :
+		MLX5_TC_FLAG(INGRESS);
 
 	switch (type) {
 	case TC_SETUP_CLSFLOWER:
@@ -409,6 +420,13 @@ static void mlx5e_rep_indr_block_unbind(void *cb_priv)
 
 static LIST_HEAD(mlx5e_block_cb_list);
 
+static bool mlx5e_rep_macvlan_mode_supported(const struct net_device *dev)
+{
+	struct macvlan_dev *macvlan = netdev_priv(dev);
+
+	return macvlan->mode == MACVLAN_MODE_PASSTHRU;
+}
+
 static int
 mlx5e_rep_indr_setup_block(struct net_device *netdev, struct Qdisc *sch,
 			   struct mlx5e_rep_priv *rpriv,
@@ -418,14 +436,30 @@ mlx5e_rep_indr_setup_block(struct net_device *netdev, struct Qdisc *sch,
 			   void (*cleanup)(struct flow_block_cb *block_cb))
 {
 	struct mlx5e_priv *priv = netdev_priv(rpriv->netdev);
+	struct mlx5_eswitch *esw = priv->mdev->priv.eswitch;
+	bool is_ovs_int_port = netif_is_ovs_master(netdev);
 	struct mlx5e_rep_indr_block_priv *indr_priv;
 	struct flow_block_cb *block_cb;
 
 	if (!mlx5e_tc_tun_device_to_offload(priv, netdev) &&
-	    !(is_vlan_dev(netdev) && vlan_dev_real_dev(netdev) == rpriv->netdev))
+	    !(is_vlan_dev(netdev) && vlan_dev_real_dev(netdev) == rpriv->netdev) &&
+	    !is_ovs_int_port) {
+		if (!(netif_is_macvlan(netdev) && macvlan_dev_real_dev(netdev) == rpriv->netdev))
+			return -EOPNOTSUPP;
+		if (!mlx5e_rep_macvlan_mode_supported(netdev)) {
+			netdev_warn(netdev, "Offloading ingress filter is supported only with macvlan passthru mode");
+			return -EOPNOTSUPP;
+		}
+	}
+
+	if (f->binder_type != FLOW_BLOCK_BINDER_TYPE_CLSACT_INGRESS &&
+	    f->binder_type != FLOW_BLOCK_BINDER_TYPE_CLSACT_EGRESS)
 		return -EOPNOTSUPP;
 
-	if (f->binder_type != FLOW_BLOCK_BINDER_TYPE_CLSACT_INGRESS)
+	if (f->binder_type == FLOW_BLOCK_BINDER_TYPE_CLSACT_EGRESS && !is_ovs_int_port)
+		return -EOPNOTSUPP;
+
+	if (is_ovs_int_port && !mlx5e_tc_int_port_supported(esw))
 		return -EOPNOTSUPP;
 
 	f->unlocked_driver_cb = true;
@@ -433,7 +467,7 @@ mlx5e_rep_indr_setup_block(struct net_device *netdev, struct Qdisc *sch,
 
 	switch (f->command) {
 	case FLOW_BLOCK_BIND:
-		indr_priv = mlx5e_rep_indr_block_priv_lookup(rpriv, netdev);
+		indr_priv = mlx5e_rep_indr_block_priv_lookup(rpriv, netdev, f->binder_type);
 		if (indr_priv)
 			return -EEXIST;
 
@@ -443,6 +477,7 @@ mlx5e_rep_indr_setup_block(struct net_device *netdev, struct Qdisc *sch,
 
 		indr_priv->netdev = netdev;
 		indr_priv->rpriv = rpriv;
+		indr_priv->binder_type = f->binder_type;
 		list_add(&indr_priv->list,
 			 &rpriv->uplink_priv.tc_indr_block_priv_list);
 
@@ -460,7 +495,7 @@ mlx5e_rep_indr_setup_block(struct net_device *netdev, struct Qdisc *sch,
 
 		return 0;
 	case FLOW_BLOCK_UNBIND:
-		indr_priv = mlx5e_rep_indr_block_priv_lookup(rpriv, netdev);
+		indr_priv = mlx5e_rep_indr_block_priv_lookup(rpriv, netdev, f->binder_type);
 		if (!indr_priv)
 			return -ENOENT;
 
@@ -477,12 +512,129 @@ mlx5e_rep_indr_setup_block(struct net_device *netdev, struct Qdisc *sch,
 	return 0;
 }
 
+static int
+mlx5e_rep_indr_replace_act(struct mlx5e_rep_priv *rpriv,
+			   struct flow_offload_action *fl_act)
+
+{
+	struct mlx5e_priv *priv = netdev_priv(rpriv->netdev);
+	struct mlx5_eswitch *esw = priv->mdev->priv.eswitch;
+	enum mlx5_flow_namespace_type ns_type;
+	struct flow_action_entry *action;
+	struct mlx5e_tc_act *act;
+	bool add = false;
+	int i;
+
+	/* There is no use case currently for more than one action (e.g. pedit).
+	 * when there will be, need to handle cleaning multiple actions on err.
+	 */
+	if (!flow_offload_has_one_action(&fl_act->action))
+		return -EOPNOTSUPP;
+
+	if (esw && esw->mode == MLX5_ESWITCH_OFFLOADS)
+		ns_type = MLX5_FLOW_NAMESPACE_FDB;
+	else
+		ns_type = MLX5_FLOW_NAMESPACE_KERNEL;
+
+	flow_action_for_each(i, action, &fl_act->action) {
+		act = mlx5e_tc_act_get(action->id, ns_type);
+		if (!act)
+			continue;
+
+		if (!act->offload_action)
+			continue;
+
+		if (!act->offload_action(priv, fl_act, action))
+			add = true;
+	}
+
+	return add ? 0 : -EOPNOTSUPP;
+}
+
+static int
+mlx5e_rep_indr_destroy_act(struct mlx5e_rep_priv *rpriv,
+			   struct flow_offload_action *fl_act)
+{
+	struct mlx5e_priv *priv = netdev_priv(rpriv->netdev);
+	struct mlx5_eswitch *esw = priv->mdev->priv.eswitch;
+	enum mlx5_flow_namespace_type ns_type;
+	struct mlx5e_tc_act *act;
+
+	if (esw && esw->mode == MLX5_ESWITCH_OFFLOADS)
+		ns_type = MLX5_FLOW_NAMESPACE_FDB;
+	else
+		ns_type = MLX5_FLOW_NAMESPACE_KERNEL;
+
+	act = mlx5e_tc_act_get(fl_act->id, ns_type);
+	if (!act || !act->destroy_action)
+		return -EOPNOTSUPP;
+
+	return act->destroy_action(priv, fl_act);
+}
+
+static int
+mlx5e_rep_indr_stats_act(struct mlx5e_rep_priv *rpriv,
+			 struct flow_offload_action *fl_act)
+
+{
+	struct mlx5e_priv *priv = netdev_priv(rpriv->netdev);
+	struct mlx5_eswitch *esw = priv->mdev->priv.eswitch;
+	enum mlx5_flow_namespace_type ns_type;
+	struct mlx5e_tc_act *act;
+
+	if (esw && esw->mode == MLX5_ESWITCH_OFFLOADS)
+		ns_type = MLX5_FLOW_NAMESPACE_FDB;
+	else
+		ns_type = MLX5_FLOW_NAMESPACE_KERNEL;
+
+	act = mlx5e_tc_act_get(fl_act->id, ns_type);
+	if (!act || !act->stats_action)
+		return -EOPNOTSUPP;
+
+	return act->stats_action(priv, fl_act);
+}
+
+static int
+mlx5e_rep_indr_setup_act(struct mlx5e_rep_priv *rpriv,
+			 struct flow_offload_action *fl_act)
+{
+	switch (fl_act->command) {
+	case FLOW_ACT_REPLACE:
+		return mlx5e_rep_indr_replace_act(rpriv, fl_act);
+	case FLOW_ACT_DESTROY:
+		return mlx5e_rep_indr_destroy_act(rpriv, fl_act);
+	case FLOW_ACT_STATS:
+		return mlx5e_rep_indr_stats_act(rpriv, fl_act);
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
+static int
+mlx5e_rep_indr_no_dev_setup(struct mlx5e_rep_priv *rpriv,
+			    enum tc_setup_type type,
+			    void *data)
+{
+	if (!data)
+		return -EOPNOTSUPP;
+
+	switch (type) {
+	case TC_SETUP_ACT:
+		return mlx5e_rep_indr_setup_act(rpriv, data);
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
 static
 int mlx5e_rep_indr_setup_cb(struct net_device *netdev, struct Qdisc *sch, void *cb_priv,
 			    enum tc_setup_type type, void *type_data,
 			    void *data,
 			    void (*cleanup)(struct flow_block_cb *block_cb))
 {
+	if (!netdev)
+		return mlx5e_rep_indr_no_dev_setup(cb_priv, type, data);
+
 	switch (type) {
 	case TC_SETUP_BLOCK:
 		return mlx5e_rep_indr_setup_block(netdev, sch, cb_priv, type_data,
@@ -597,8 +749,8 @@ static bool mlx5e_restore_tunnel(struct mlx5e_priv *priv, struct sk_buff *skb,
 		return false;
 	}
 
-	/* Set tun_dev so we do dev_put() after datapath */
-	tc_priv->tun_dev = dev;
+	/* Set fwd_dev so we do dev_put() after datapath */
+	tc_priv->fwd_dev = dev;
 
 	skb->dev = dev;
 
@@ -638,6 +790,12 @@ static bool mlx5e_restore_skb_chain(struct sk_buff *skb, u32 chain, u32 reg_c1,
 	return mlx5e_restore_tunnel(priv, skb, tc_priv, tunnel_id);
 }
 
+static void mlx5_rep_tc_post_napi_receive(struct mlx5e_tc_update_priv *tc_priv)
+{
+	if (tc_priv->fwd_dev)
+		dev_put(tc_priv->fwd_dev);
+}
+
 static void mlx5e_restore_skb_sample(struct mlx5e_priv *priv, struct sk_buff *skb,
 				     struct mlx5_mapped_obj *mapped_obj,
 				     struct mlx5e_tc_update_priv *tc_priv)
@@ -647,25 +805,54 @@ static void mlx5e_restore_skb_sample(struct mlx5e_priv *priv, struct sk_buff *sk
 			   "Failed to restore tunnel info for sampled packet\n");
 		return;
 	}
-#if IS_ENABLED(CONFIG_MLX5_TC_SAMPLE)
 	mlx5e_tc_sample_skb(skb, mapped_obj);
-#endif /* CONFIG_MLX5_TC_SAMPLE */
 	mlx5_rep_tc_post_napi_receive(tc_priv);
 }
 
-bool mlx5e_rep_tc_update_skb(struct mlx5_cqe64 *cqe,
-			     struct sk_buff *skb,
-			     struct mlx5e_tc_update_priv *tc_priv)
+static bool mlx5e_restore_skb_int_port(struct mlx5e_priv *priv, struct sk_buff *skb,
+				       struct mlx5_mapped_obj *mapped_obj,
+				       struct mlx5e_tc_update_priv *tc_priv,
+				       bool *forward_tx,
+				       u32 reg_c1)
 {
+	u32 tunnel_id = (reg_c1 >> ESW_TUN_OFFSET) & TUNNEL_ID_MASK;
+	struct mlx5_eswitch *esw = priv->mdev->priv.eswitch;
+	struct mlx5_rep_uplink_priv *uplink_priv;
+	struct mlx5e_rep_priv *uplink_rpriv;
+
+	/* Tunnel restore takes precedence over int port restore */
+	if (tunnel_id)
+		return mlx5e_restore_tunnel(priv, skb, tc_priv, tunnel_id);
+
+	uplink_rpriv = mlx5_eswitch_get_uplink_priv(esw, REP_ETH);
+	uplink_priv = &uplink_rpriv->uplink_priv;
+
+	if (mlx5e_tc_int_port_dev_fwd(uplink_priv->int_port_priv, skb,
+				      mapped_obj->int_port_metadata, forward_tx)) {
+		/* Set fwd_dev for future dev_put */
+		tc_priv->fwd_dev = skb->dev;
+
+		return true;
+	}
+
+	return false;
+}
+
+void mlx5e_rep_tc_receive(struct mlx5_cqe64 *cqe, struct mlx5e_rq *rq,
+			  struct sk_buff *skb)
+{
+	u32 reg_c1 = be32_to_cpu(cqe->ft_metadata);
+	struct mlx5e_tc_update_priv tc_priv = {};
 	struct mlx5_mapped_obj mapped_obj;
 	struct mlx5_eswitch *esw;
+	bool forward_tx = false;
 	struct mlx5e_priv *priv;
 	u32 reg_c0;
 	int err;
 
 	reg_c0 = (be32_to_cpu(cqe->sop_drop_qpn) & MLX5E_TC_FLOW_ID_MASK);
 	if (!reg_c0 || reg_c0 == MLX5_FS_DEFAULT_FLOW_TAG)
-		return true;
+		goto forward;
 
 	/* If reg_c0 is not equal to the default flow tag then skb->mark
 	 * is not supported and must be reset back to 0.
@@ -679,26 +866,35 @@ bool mlx5e_rep_tc_update_skb(struct mlx5_cqe64 *cqe,
 		netdev_dbg(priv->netdev,
 			   "Couldn't find mapped object for reg_c0: %d, err: %d\n",
 			   reg_c0, err);
-		return false;
+		goto free_skb;
 	}
 
 	if (mapped_obj.type == MLX5_MAPPED_OBJ_CHAIN) {
-		u32 reg_c1 = be32_to_cpu(cqe->ft_metadata);
-
-		return mlx5e_restore_skb_chain(skb, mapped_obj.chain, reg_c1, tc_priv);
+		if (!mlx5e_restore_skb_chain(skb, mapped_obj.chain, reg_c1, &tc_priv) &&
+		    !mlx5_ipsec_is_rx_flow(cqe))
+			goto free_skb;
 	} else if (mapped_obj.type == MLX5_MAPPED_OBJ_SAMPLE) {
-		mlx5e_restore_skb_sample(priv, skb, &mapped_obj, tc_priv);
-		return false;
+		mlx5e_restore_skb_sample(priv, skb, &mapped_obj, &tc_priv);
+		goto free_skb;
+	} else if (mapped_obj.type == MLX5_MAPPED_OBJ_INT_PORT_METADATA) {
+		if (!mlx5e_restore_skb_int_port(priv, skb, &mapped_obj, &tc_priv,
+						&forward_tx, reg_c1))
+			goto free_skb;
 	} else {
 		netdev_dbg(priv->netdev, "Invalid mapped object type: %d\n", mapped_obj.type);
-		return false;
+		goto free_skb;
 	}
 
-	return true;
-}
+forward:
+	if (forward_tx)
+		dev_queue_xmit(skb);
+	else
+		napi_gro_receive(rq->cq.napi, skb);
 
-void mlx5_rep_tc_post_napi_receive(struct mlx5e_tc_update_priv *tc_priv)
-{
-	if (tc_priv->tun_dev)
-		dev_put(tc_priv->tun_dev);
+	mlx5_rep_tc_post_napi_receive(&tc_priv);
+
+	return;
+
+free_skb:
+	dev_kfree_skb_any(skb);
 }

@@ -334,10 +334,10 @@ int ocfs2_cluster_connect(const char *stack_name,
 		goto out;
 	}
 
-	strlcpy(new_conn->cc_name, group, GROUP_NAME_MAX + 1);
+	strscpy(new_conn->cc_name, group, GROUP_NAME_MAX + 1);
 	new_conn->cc_namelen = grouplen;
 	if (cluster_name_len)
-		strlcpy(new_conn->cc_cluster_name, cluster_name,
+		strscpy(new_conn->cc_cluster_name, cluster_name,
 			CLUSTER_NAME_MAX + 1);
 	new_conn->cc_cluster_name_len = cluster_name_len;
 	new_conn->cc_recovery_handler = recovery_handler;
@@ -661,41 +661,7 @@ static struct ctl_table ocfs2_nm_table[] = {
 	{ }
 };
 
-static struct ctl_table ocfs2_mod_table[] = {
-	{
-		.procname	= "nm",
-		.data		= NULL,
-		.maxlen		= 0,
-		.mode		= 0555,
-		.child		= ocfs2_nm_table
-	},
-	{ }
-};
-
-static struct ctl_table ocfs2_kern_table[] = {
-	{
-		.procname	= "ocfs2",
-		.data		= NULL,
-		.maxlen		= 0,
-		.mode		= 0555,
-		.child		= ocfs2_mod_table
-	},
-	{ }
-};
-
-static struct ctl_table ocfs2_root_table[] = {
-	{
-		.procname	= "fs",
-		.data		= NULL,
-		.maxlen		= 0,
-		.mode		= 0555,
-		.child		= ocfs2_kern_table
-	},
-	{ }
-};
-
 static struct ctl_table_header *ocfs2_table_header;
-
 
 /*
  * Initialization
@@ -705,7 +671,7 @@ static int __init ocfs2_stack_glue_init(void)
 {
 	strcpy(cluster_stack_name, OCFS2_STACK_PLUGIN_O2CB);
 
-	ocfs2_table_header = register_sysctl_table(ocfs2_root_table);
+	ocfs2_table_header = register_sysctl("fs/ocfs2/nm", ocfs2_nm_table);
 	if (!ocfs2_table_header) {
 		printk(KERN_ERR
 		       "ocfs2 stack glue: unable to register sysctl\n");

@@ -221,8 +221,7 @@ static void  nicvf_handle_mbx_intr(struct nicvf *nic)
 		nic->tns_mode = mbx.nic_cfg.tns_mode & 0x7F;
 		nic->node = mbx.nic_cfg.node_id;
 		if (!nic->set_mac_pending)
-			ether_addr_copy(nic->netdev->dev_addr,
-					mbx.nic_cfg.mac_addr);
+			eth_hw_addr_set(nic->netdev, mbx.nic_cfg.mac_addr);
 		nic->sqs_mode = mbx.nic_cfg.sqs_mode;
 		nic->loopback_supported = mbx.nic_cfg.loopback_supported;
 		nic->link_up = false;
@@ -591,7 +590,7 @@ static inline bool nicvf_xdp_rx(struct nicvf *nic, struct bpf_prog *prog,
 		nicvf_xdp_sq_append_pkt(nic, sq, (u64)xdp.data, dma_addr, len);
 		return true;
 	default:
-		bpf_warn_invalid_xdp_action(action);
+		bpf_warn_invalid_xdp_action(nic->netdev, prog, action);
 		fallthrough;
 	case XDP_ABORTED:
 		trace_xdp_exception(nic->netdev, prog, action);
@@ -1473,8 +1472,7 @@ int nicvf_open(struct net_device *netdev)
 		}
 		cq_poll->cq_idx = qidx;
 		cq_poll->nicvf = nic;
-		netif_napi_add(netdev, &cq_poll->napi, nicvf_poll,
-			       NAPI_POLL_WEIGHT);
+		netif_napi_add(netdev, &cq_poll->napi, nicvf_poll);
 		napi_enable(&cq_poll->napi);
 		nic->napi[qidx] = cq_poll;
 	}
@@ -1612,7 +1610,7 @@ static int nicvf_set_mac_address(struct net_device *netdev, void *p)
 	if (!is_valid_ether_addr(addr->sa_data))
 		return -EADDRNOTAVAIL;
 
-	memcpy(netdev->dev_addr, addr->sa_data, netdev->addr_len);
+	eth_hw_addr_set(netdev, addr->sa_data);
 
 	if (nic->pdev->msix_enabled) {
 		if (nicvf_hw_set_mac_addr(nic, netdev))
@@ -1918,10 +1916,6 @@ static int nicvf_config_hwtstamp(struct net_device *netdev, struct ifreq *ifr)
 	if (copy_from_user(&config, ifr->ifr_data, sizeof(config)))
 		return -EFAULT;
 
-	/* reserved for future extensions */
-	if (config.flags)
-		return -EINVAL;
-
 	switch (config.tx_type) {
 	case HWTSTAMP_TX_OFF:
 	case HWTSTAMP_TX_ON:
@@ -2029,9 +2023,6 @@ static void nicvf_set_rx_mode_task(struct work_struct *work_arg)
 	u8 mode;
 	struct xcast_addr_list *mc;
 
-	if (!vf_work)
-		return;
-
 	/* Save message data locally to prevent them from
 	 * being overwritten by next ndo_set_rx_mode call().
 	 */
@@ -2119,10 +2110,8 @@ static int nicvf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	}
 
 	err = pci_enable_device(pdev);
-	if (err) {
-		dev_err(dev, "Failed to enable PCI device\n");
-		return err;
-	}
+	if (err)
+		return dev_err_probe(dev, err, "Failed to enable PCI device\n");
 
 	err = pci_request_regions(pdev, DRV_NAME);
 	if (err) {
@@ -2250,7 +2239,7 @@ static int nicvf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	err = register_netdev(netdev);
 	if (err) {
 		dev_err(dev, "Failed to register netdevice\n");
-		goto err_unregister_interrupts;
+		goto err_destroy_workqueue;
 	}
 
 	nic->msg_enable = debug;
@@ -2259,6 +2248,8 @@ static int nicvf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	return 0;
 
+err_destroy_workqueue:
+	destroy_workqueue(nic->nicvf_rx_mode_wq);
 err_unregister_interrupts:
 	nicvf_unregister_interrupts(nic);
 err_free_netdev:

@@ -47,10 +47,6 @@
 
 #ifndef __ASSEMBLY__
 
-typedef struct {
-	unsigned char seg;
-} mm_segment_t;
-
 /* The Sparc processor specific thread struct. */
 /* XXX This should die, everything can go into thread_info now. */
 struct thread_struct {
@@ -180,10 +176,7 @@ do { \
 	regs->tstate &= ~TSTATE_PEF;	\
 } while (0)
 
-/* Free all resources held by a thread. */
-#define release_thread(tsk)		do { } while (0)
-
-unsigned long get_wchan(struct task_struct *task);
+unsigned long __get_wchan(struct task_struct *task);
 
 #define task_pt_regs(tsk) (task_thread_info(tsk)->kregs)
 #define KSTK_EIP(tsk)  (task_pt_regs(tsk)->tpc)

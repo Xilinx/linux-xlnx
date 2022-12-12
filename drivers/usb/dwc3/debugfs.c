@@ -971,7 +971,7 @@ void dwc3_debugfs_init(struct dwc3 *dwc)
 				&dwc3_testmode_fops);
 		debugfs_create_file("link_state", 0644, root, dwc,
 				    &dwc3_link_state_fops);
-		debugfs_create_file("hiber_enable", S_IRUGO | S_IWUSR, root,
+		debugfs_create_file("hiber_enable", 0644, root,
 				    dwc, &dwc3_hiber_enable_fops);
 	}
 }

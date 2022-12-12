@@ -48,6 +48,9 @@ static const char *lwtunnel_encap_str(enum lwtunnel_encap_types encap_type)
 		return "RPL";
 	case LWTUNNEL_ENCAP_IOAM6:
 		return "IOAM6";
+	case LWTUNNEL_ENCAP_XFRM:
+		/* module autoload not supported for encap type */
+		return NULL;
 	case LWTUNNEL_ENCAP_IP6:
 	case LWTUNNEL_ENCAP_IP:
 	case LWTUNNEL_ENCAP_NONE:
@@ -197,6 +200,10 @@ int lwtunnel_valid_encap_type_attr(struct nlattr *attr, int remaining,
 			nla_entype = nla_find(attrs, attrlen, RTA_ENCAP_TYPE);
 
 			if (nla_entype) {
+				if (nla_len(nla_entype) < sizeof(u16)) {
+					NL_SET_ERR_MSG(extack, "Invalid RTA_ENCAP_TYPE");
+					return -EINVAL;
+				}
 				encap_type = nla_get_u16(nla_entype);
 
 				if (lwtunnel_valid_encap_type(encap_type,

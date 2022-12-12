@@ -2,6 +2,8 @@
 #include <linux/component.h>
 #include <linux/export.h>
 #include <linux/list.h>
+#include <linux/media-bus-format.h>
+#include <linux/of.h>
 #include <linux/of_graph.h>
 
 #include <drm/drm_bridge.h>
@@ -17,11 +19,6 @@
  * A set of helper functions to aid DRM drivers in parsing standard DT
  * properties.
  */
-
-static void drm_release_of(struct device *dev, void *data)
-{
-	of_node_put(data);
-}
 
 /**
  * drm_of_crtc_port_mask - find the mask of a registered CRTC by port OF node
@@ -94,7 +91,7 @@ void drm_of_component_match_add(struct device *master,
 				struct device_node *node)
 {
 	of_node_get(node);
-	component_match_add_release(master, matchptr, drm_release_of,
+	component_match_add_release(master, matchptr, component_release_of,
 				    compare, node);
 }
 EXPORT_SYMBOL_GPL(drm_of_component_match_add);
@@ -230,6 +227,9 @@ EXPORT_SYMBOL_GPL(drm_of_encoder_active_endpoint);
  * Given a DT node's port and endpoint number, find the connected node and
  * return either the associated struct drm_panel or drm_bridge device. Either
  * @panel or @bridge must not be NULL.
+ *
+ * This function is deprecated and should not be used in new drivers. Use
+ * devm_drm_of_get_bridge() instead.
  *
  * Returns zero if successful, or one of the standard error codes if it fails.
  */
@@ -399,3 +399,97 @@ int drm_of_lvds_get_dual_link_pixel_order(const struct device_node *port1,
 		DRM_LVDS_DUAL_LINK_ODD_EVEN_PIXELS;
 }
 EXPORT_SYMBOL_GPL(drm_of_lvds_get_dual_link_pixel_order);
+
+/**
+ * drm_of_lvds_get_data_mapping - Get LVDS data mapping
+ * @port: DT port node of the LVDS source or sink
+ *
+ * Convert DT "data-mapping" property string value into media bus format value.
+ *
+ * Return:
+ * * MEDIA_BUS_FMT_RGB666_1X7X3_SPWG - data-mapping is "jeida-18"
+ * * MEDIA_BUS_FMT_RGB888_1X7X4_JEIDA - data-mapping is "jeida-24"
+ * * MEDIA_BUS_FMT_RGB888_1X7X4_SPWG - data-mapping is "vesa-24"
+ * * -EINVAL - the "data-mapping" property is unsupported
+ * * -ENODEV - the "data-mapping" property is missing
+ */
+int drm_of_lvds_get_data_mapping(const struct device_node *port)
+{
+	const char *mapping;
+	int ret;
+
+	ret = of_property_read_string(port, "data-mapping", &mapping);
+	if (ret < 0)
+		return -ENODEV;
+
+	if (!strcmp(mapping, "jeida-18"))
+		return MEDIA_BUS_FMT_RGB666_1X7X3_SPWG;
+	if (!strcmp(mapping, "jeida-24"))
+		return MEDIA_BUS_FMT_RGB888_1X7X4_JEIDA;
+	if (!strcmp(mapping, "vesa-24"))
+		return MEDIA_BUS_FMT_RGB888_1X7X4_SPWG;
+
+	return -EINVAL;
+}
+EXPORT_SYMBOL_GPL(drm_of_lvds_get_data_mapping);
+
+/**
+ * drm_of_get_data_lanes_count - Get DSI/(e)DP data lane count
+ * @endpoint: DT endpoint node of the DSI/(e)DP source or sink
+ * @min: minimum supported number of data lanes
+ * @max: maximum supported number of data lanes
+ *
+ * Count DT "data-lanes" property elements and check for validity.
+ *
+ * Return:
+ * * min..max - positive integer count of "data-lanes" elements
+ * * -ve - the "data-lanes" property is missing or invalid
+ * * -EINVAL - the "data-lanes" property is unsupported
+ */
+int drm_of_get_data_lanes_count(const struct device_node *endpoint,
+				const unsigned int min, const unsigned int max)
+{
+	int ret;
+
+	ret = of_property_count_u32_elems(endpoint, "data-lanes");
+	if (ret < 0)
+		return ret;
+
+	if (ret < min || ret > max)
+		return -EINVAL;
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(drm_of_get_data_lanes_count);
+
+/**
+ * drm_of_get_data_lanes_count_ep - Get DSI/(e)DP data lane count by endpoint
+ * @port: DT port node of the DSI/(e)DP source or sink
+ * @port_reg: identifier (value of reg property) of the parent port node
+ * @reg: identifier (value of reg property) of the endpoint node
+ * @min: minimum supported number of data lanes
+ * @max: maximum supported number of data lanes
+ *
+ * Count DT "data-lanes" property elements and check for validity.
+ * This variant uses endpoint specifier.
+ *
+ * Return:
+ * * min..max - positive integer count of "data-lanes" elements
+ * * -EINVAL - the "data-mapping" property is unsupported
+ * * -ENODEV - the "data-mapping" property is missing
+ */
+int drm_of_get_data_lanes_count_ep(const struct device_node *port,
+				   int port_reg, int reg,
+				   const unsigned int min,
+				   const unsigned int max)
+{
+	struct device_node *endpoint;
+	int ret;
+
+	endpoint = of_graph_get_endpoint_by_regs(port, port_reg, reg);
+	ret = drm_of_get_data_lanes_count(endpoint, min, max);
+	of_node_put(endpoint);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(drm_of_get_data_lanes_count_ep);

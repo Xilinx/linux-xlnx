@@ -557,9 +557,8 @@ static unsigned long etb_update_buffer(struct coresight_device *csdev,
 
 	/*
 	 * In snapshot mode we simply increment the head by the number of byte
-	 * that were written.  User space function  cs_etm_find_snapshot() will
-	 * figure out how many bytes to get from the AUX buffer based on the
-	 * position of the head.
+	 * that were written.  User space will figure out how many bytes to get
+	 * from the AUX buffer based on the position of the head.
 	 */
 	if (buf->snapshot)
 		handle->head += to_read;
@@ -656,27 +655,15 @@ static const struct file_operations etb_fops = {
 	.llseek		= no_llseek,
 };
 
-#define coresight_etb10_reg(name, offset)		\
-	coresight_simple_reg32(struct etb_drvdata, name, offset)
-
-coresight_etb10_reg(rdp, ETB_RAM_DEPTH_REG);
-coresight_etb10_reg(sts, ETB_STATUS_REG);
-coresight_etb10_reg(rrp, ETB_RAM_READ_POINTER);
-coresight_etb10_reg(rwp, ETB_RAM_WRITE_POINTER);
-coresight_etb10_reg(trg, ETB_TRG);
-coresight_etb10_reg(ctl, ETB_CTL_REG);
-coresight_etb10_reg(ffsr, ETB_FFSR);
-coresight_etb10_reg(ffcr, ETB_FFCR);
-
 static struct attribute *coresight_etb_mgmt_attrs[] = {
-	&dev_attr_rdp.attr,
-	&dev_attr_sts.attr,
-	&dev_attr_rrp.attr,
-	&dev_attr_rwp.attr,
-	&dev_attr_trg.attr,
-	&dev_attr_ctl.attr,
-	&dev_attr_ffsr.attr,
-	&dev_attr_ffcr.attr,
+	coresight_simple_reg32(rdp, ETB_RAM_DEPTH_REG),
+	coresight_simple_reg32(sts, ETB_STATUS_REG),
+	coresight_simple_reg32(rrp, ETB_RAM_READ_POINTER),
+	coresight_simple_reg32(rwp, ETB_RAM_WRITE_POINTER),
+	coresight_simple_reg32(trg, ETB_TRG),
+	coresight_simple_reg32(ctl, ETB_CTL_REG),
+	coresight_simple_reg32(ffsr, ETB_FFSR),
+	coresight_simple_reg32(ffcr, ETB_FFCR),
 	NULL,
 };
 

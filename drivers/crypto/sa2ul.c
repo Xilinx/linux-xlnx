@@ -8,6 +8,7 @@
  *		Vitaly Andrianov
  *		Tero Kristo
  */
+#include <linux/bitfield.h>
 #include <linux/clk.h>
 #include <linux/dma-mapping.h>
 #include <linux/dmaengine.h>
@@ -85,7 +86,6 @@ struct sa_match_data {
 	u8 priv;
 	u8 priv_id;
 	u32 supported_algos;
-	bool skip_engine_control;
 };
 
 static struct device *sa_k3_dev;
@@ -646,8 +646,8 @@ static inline void sa_update_cmdl(struct sa_req *req, u32 *cmdl,
 		cmdl[upd_info->enc_offset.index] &=
 						~SA_CMDL_SOP_BYPASS_LEN_MASK;
 		cmdl[upd_info->enc_offset.index] |=
-			((u32)req->enc_offset <<
-			 __ffs(SA_CMDL_SOP_BYPASS_LEN_MASK));
+			FIELD_PREP(SA_CMDL_SOP_BYPASS_LEN_MASK,
+				   req->enc_offset);
 
 		if (likely(upd_info->flags & SA_CMDL_UPD_ENC_IV)) {
 			__be32 *data = (__be32 *)&cmdl[upd_info->enc_iv.index];
@@ -666,8 +666,8 @@ static inline void sa_update_cmdl(struct sa_req *req, u32 *cmdl,
 		cmdl[upd_info->auth_offset.index] &=
 			~SA_CMDL_SOP_BYPASS_LEN_MASK;
 		cmdl[upd_info->auth_offset.index] |=
-			((u32)req->auth_offset <<
-			 __ffs(SA_CMDL_SOP_BYPASS_LEN_MASK));
+			FIELD_PREP(SA_CMDL_SOP_BYPASS_LEN_MASK,
+				   req->auth_offset);
 		if (upd_info->flags & SA_CMDL_UPD_AUTH_IV) {
 			sa_copy_iv((void *)&cmdl[upd_info->auth_iv.index],
 				   req->auth_iv,
@@ -689,16 +689,16 @@ void sa_set_swinfo(u8 eng_id, u16 sc_id, dma_addr_t sc_phys,
 		   u8 hash_size, u32 *swinfo)
 {
 	swinfo[0] = sc_id;
-	swinfo[0] |= (flags << __ffs(SA_SW0_FLAGS_MASK));
+	swinfo[0] |= FIELD_PREP(SA_SW0_FLAGS_MASK, flags);
 	if (likely(cmdl_present))
-		swinfo[0] |= ((cmdl_offset | SA_SW0_CMDL_PRESENT) <<
-						__ffs(SA_SW0_CMDL_INFO_MASK));
-	swinfo[0] |= (eng_id << __ffs(SA_SW0_ENG_ID_MASK));
+		swinfo[0] |= FIELD_PREP(SA_SW0_CMDL_INFO_MASK,
+					cmdl_offset | SA_SW0_CMDL_PRESENT);
+	swinfo[0] |= FIELD_PREP(SA_SW0_ENG_ID_MASK, eng_id);
 
 	swinfo[0] |= SA_SW0_DEST_INFO_PRESENT;
 	swinfo[1] = (u32)(sc_phys & 0xFFFFFFFFULL);
 	swinfo[2] = (u32)((sc_phys & 0xFFFFFFFF00000000ULL) >> 32);
-	swinfo[2] |= (hash_size << __ffs(SA_SW2_EGRESS_LENGTH));
+	swinfo[2] |= FIELD_PREP(SA_SW2_EGRESS_LENGTH, hash_size);
 }
 
 /* Dump the security context */
@@ -2360,7 +2360,15 @@ static int sa_link_child(struct device *dev, void *data)
 static struct sa_match_data am654_match_data = {
 	.priv = 1,
 	.priv_id = 1,
-	.supported_algos = GENMASK(SA_ALG_AUTHENC_SHA256_AES, 0),
+	.supported_algos = BIT(SA_ALG_CBC_AES) |
+			   BIT(SA_ALG_EBC_AES) |
+			   BIT(SA_ALG_CBC_DES3) |
+			   BIT(SA_ALG_ECB_DES3) |
+			   BIT(SA_ALG_SHA1) |
+			   BIT(SA_ALG_SHA256) |
+			   BIT(SA_ALG_SHA512) |
+			   BIT(SA_ALG_AUTHENC_SHA1_AES) |
+			   BIT(SA_ALG_AUTHENC_SHA256_AES),
 };
 
 static struct sa_match_data am64_match_data = {
@@ -2371,13 +2379,13 @@ static struct sa_match_data am64_match_data = {
 			   BIT(SA_ALG_SHA256) |
 			   BIT(SA_ALG_SHA512) |
 			   BIT(SA_ALG_AUTHENC_SHA256_AES),
-	.skip_engine_control = true,
 };
 
 static const struct of_device_id of_match[] = {
 	{ .compatible = "ti,j721e-sa2ul", .data = &am654_match_data, },
 	{ .compatible = "ti,am654-sa2ul", .data = &am654_match_data, },
 	{ .compatible = "ti,am64-sa2ul", .data = &am64_match_data, },
+	{ .compatible = "ti,am62-sa3ul", .data = &am64_match_data, },
 	{},
 };
 MODULE_DEVICE_TABLE(of, of_match);
@@ -2388,6 +2396,7 @@ static int sa_ul_probe(struct platform_device *pdev)
 	struct device_node *node = dev->of_node;
 	static void __iomem *saul_base;
 	struct sa_crypto_data *dev_data;
+	u32 status, val;
 	int ret;
 
 	dev_data = devm_kzalloc(dev, sizeof(*dev_data), GFP_KERNEL);
@@ -2412,8 +2421,7 @@ static int sa_ul_probe(struct platform_device *pdev)
 	pm_runtime_enable(dev);
 	ret = pm_runtime_resume_and_get(dev);
 	if (ret < 0) {
-		dev_err(&pdev->dev, "%s: failed to get sync: %d\n", __func__,
-			ret);
+		dev_err(dev, "%s: failed to get sync: %d\n", __func__, ret);
 		pm_runtime_disable(dev);
 		return ret;
 	}
@@ -2425,26 +2433,26 @@ static int sa_ul_probe(struct platform_device *pdev)
 
 	spin_lock_init(&dev_data->scid_lock);
 
-	if (!dev_data->match_data->skip_engine_control) {
-		u32 val = SA_EEC_ENCSS_EN | SA_EEC_AUTHSS_EN | SA_EEC_CTXCACH_EN |
-			  SA_EEC_CPPI_PORT_IN_EN | SA_EEC_CPPI_PORT_OUT_EN |
-			  SA_EEC_TRNG_EN;
-
+	val = SA_EEC_ENCSS_EN | SA_EEC_AUTHSS_EN | SA_EEC_CTXCACH_EN |
+	      SA_EEC_CPPI_PORT_IN_EN | SA_EEC_CPPI_PORT_OUT_EN |
+	      SA_EEC_TRNG_EN;
+	status = readl_relaxed(saul_base + SA_ENGINE_STATUS);
+	/* Only enable engines if all are not already enabled */
+	if (val & ~status)
 		writel_relaxed(val, saul_base + SA_ENGINE_ENABLE_CONTROL);
-	}
 
 	sa_register_algos(dev_data);
 
-	ret = of_platform_populate(node, NULL, NULL, &pdev->dev);
+	ret = of_platform_populate(node, NULL, NULL, dev);
 	if (ret)
 		goto release_dma;
 
-	device_for_each_child(&pdev->dev, &pdev->dev, sa_link_child);
+	device_for_each_child(dev, dev, sa_link_child);
 
 	return 0;
 
 release_dma:
-	sa_unregister_algos(&pdev->dev);
+	sa_unregister_algos(dev);
 
 	dma_release_channel(dev_data->dma_rx2);
 	dma_release_channel(dev_data->dma_rx1);
@@ -2453,8 +2461,8 @@ release_dma:
 destroy_dma_pool:
 	dma_pool_destroy(dev_data->sc_pool);
 
-	pm_runtime_put_sync(&pdev->dev);
-	pm_runtime_disable(&pdev->dev);
+	pm_runtime_put_sync(dev);
+	pm_runtime_disable(dev);
 
 	return ret;
 }

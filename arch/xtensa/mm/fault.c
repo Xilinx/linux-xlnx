@@ -21,9 +21,61 @@
 #include <asm/cacheflush.h>
 #include <asm/hardirq.h>
 
-DEFINE_PER_CPU(unsigned long, asid_cache) = ASID_USER_FIRST;
 void bad_page_fault(struct pt_regs*, unsigned long, int);
 
+static void vmalloc_fault(struct pt_regs *regs, unsigned int address)
+{
+#ifdef CONFIG_MMU
+	/* Synchronize this task's top level page-table
+	 * with the 'reference' page table.
+	 */
+	struct mm_struct *act_mm = current->active_mm;
+	int index = pgd_index(address);
+	pgd_t *pgd, *pgd_k;
+	p4d_t *p4d, *p4d_k;
+	pud_t *pud, *pud_k;
+	pmd_t *pmd, *pmd_k;
+	pte_t *pte_k;
+
+	if (act_mm == NULL)
+		goto bad_page_fault;
+
+	pgd = act_mm->pgd + index;
+	pgd_k = init_mm.pgd + index;
+
+	if (!pgd_present(*pgd_k))
+		goto bad_page_fault;
+
+	pgd_val(*pgd) = pgd_val(*pgd_k);
+
+	p4d = p4d_offset(pgd, address);
+	p4d_k = p4d_offset(pgd_k, address);
+	if (!p4d_present(*p4d) || !p4d_present(*p4d_k))
+		goto bad_page_fault;
+
+	pud = pud_offset(p4d, address);
+	pud_k = pud_offset(p4d_k, address);
+	if (!pud_present(*pud) || !pud_present(*pud_k))
+		goto bad_page_fault;
+
+	pmd = pmd_offset(pud, address);
+	pmd_k = pmd_offset(pud_k, address);
+	if (!pmd_present(*pmd) || !pmd_present(*pmd_k))
+		goto bad_page_fault;
+
+	pmd_val(*pmd) = pmd_val(*pmd_k);
+	pte_k = pte_offset_kernel(pmd_k, address);
+
+	if (!pte_present(*pte_k))
+		goto bad_page_fault;
+	return;
+
+bad_page_fault:
+	bad_page_fault(regs, address, SIGKILL);
+#else
+	WARN_ONCE(1, "%s in noMMU configuration\n", __func__);
+#endif
+}
 /*
  * This routine handles page faults.  It determines the address,
  * and the problem, and then passes it off to one of the appropriate
@@ -49,8 +101,10 @@ void do_page_fault(struct pt_regs *regs)
 	/* We fault-in kernel-space virtual memory on-demand. The
 	 * 'reference' page table is init_mm.pgd.
 	 */
-	if (address >= TASK_SIZE && !user_mode(regs))
-		goto vmalloc_fault;
+	if (address >= TASK_SIZE && !user_mode(regs)) {
+		vmalloc_fault(regs, address);
+		return;
+	}
 
 	/* If we're in an interrupt or have no user
 	 * context, we must not take the fault..
@@ -114,9 +168,13 @@ good_area:
 
 	if (fault_signal_pending(fault, regs)) {
 		if (!user_mode(regs))
-			goto bad_page_fault;
+			bad_page_fault(regs, address, SIGKILL);
 		return;
 	}
+
+	/* The fault is fully completed (including releasing mmap lock) */
+	if (fault & VM_FAULT_COMPLETED)
+		return;
 
 	if (unlikely(fault & VM_FAULT_ERROR)) {
 		if (fault & VM_FAULT_OOM)
@@ -127,17 +185,16 @@ good_area:
 			goto do_sigbus;
 		BUG();
 	}
-	if (flags & FAULT_FLAG_ALLOW_RETRY) {
-		if (fault & VM_FAULT_RETRY) {
-			flags |= FAULT_FLAG_TRIED;
 
-			 /* No need to mmap_read_unlock(mm) as we would
-			 * have already released it in __lock_page_or_retry
-			 * in mm/filemap.c.
-			 */
+	if (fault & VM_FAULT_RETRY) {
+		flags |= FAULT_FLAG_TRIED;
 
-			goto retry;
-		}
+		/* No need to mmap_read_unlock(mm) as we would
+		 * have already released it in __lock_page_or_retry
+		 * in mm/filemap.c.
+		 */
+
+		goto retry;
 	}
 
 	mmap_read_unlock(mm);
@@ -182,63 +239,13 @@ do_sigbus:
 	if (!user_mode(regs))
 		bad_page_fault(regs, address, SIGBUS);
 	return;
-
-vmalloc_fault:
-	{
-		/* Synchronize this task's top level page-table
-		 * with the 'reference' page table.
-		 */
-		struct mm_struct *act_mm = current->active_mm;
-		int index = pgd_index(address);
-		pgd_t *pgd, *pgd_k;
-		p4d_t *p4d, *p4d_k;
-		pud_t *pud, *pud_k;
-		pmd_t *pmd, *pmd_k;
-		pte_t *pte_k;
-
-		if (act_mm == NULL)
-			goto bad_page_fault;
-
-		pgd = act_mm->pgd + index;
-		pgd_k = init_mm.pgd + index;
-
-		if (!pgd_present(*pgd_k))
-			goto bad_page_fault;
-
-		pgd_val(*pgd) = pgd_val(*pgd_k);
-
-		p4d = p4d_offset(pgd, address);
-		p4d_k = p4d_offset(pgd_k, address);
-		if (!p4d_present(*p4d) || !p4d_present(*p4d_k))
-			goto bad_page_fault;
-
-		pud = pud_offset(p4d, address);
-		pud_k = pud_offset(p4d_k, address);
-		if (!pud_present(*pud) || !pud_present(*pud_k))
-			goto bad_page_fault;
-
-		pmd = pmd_offset(pud, address);
-		pmd_k = pmd_offset(pud_k, address);
-		if (!pmd_present(*pmd) || !pmd_present(*pmd_k))
-			goto bad_page_fault;
-
-		pmd_val(*pmd) = pmd_val(*pmd_k);
-		pte_k = pte_offset_kernel(pmd_k, address);
-
-		if (!pte_present(*pte_k))
-			goto bad_page_fault;
-		return;
-	}
-bad_page_fault:
-	bad_page_fault(regs, address, SIGKILL);
-	return;
 }
 
 
 void
 bad_page_fault(struct pt_regs *regs, unsigned long address, int sig)
 {
-	extern void die(const char*, struct pt_regs*, long);
+	extern void __noreturn die(const char*, struct pt_regs*, long);
 	const struct exception_table_entry *entry;
 
 	/* Are we prepared to handle this kernel fault?  */
@@ -257,5 +264,4 @@ bad_page_fault(struct pt_regs *regs, unsigned long address, int sig)
 		 "address %08lx\n pc = %08lx, ra = %08lx\n",
 		 address, regs->pc, regs->areg[0]);
 	die("Oops", regs, sig);
-	do_exit(sig);
 }

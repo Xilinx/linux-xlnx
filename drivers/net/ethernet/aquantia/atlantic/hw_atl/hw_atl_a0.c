@@ -322,7 +322,7 @@ static int hw_atl_a0_hw_init_rx_path(struct aq_hw_s *self)
 	return aq_hw_err_from_flags(self);
 }
 
-static int hw_atl_a0_hw_mac_addr_set(struct aq_hw_s *self, u8 *mac_addr)
+static int hw_atl_a0_hw_mac_addr_set(struct aq_hw_s *self, const u8 *mac_addr)
 {
 	unsigned int h = 0U;
 	unsigned int l = 0U;
@@ -348,7 +348,7 @@ err_exit:
 	return err;
 }
 
-static int hw_atl_a0_hw_init(struct aq_hw_s *self, u8 *mac_addr)
+static int hw_atl_a0_hw_init(struct aq_hw_s *self, const u8 *mac_addr)
 {
 	static u32 aq_hw_atl_igcr_table_[4][2] = {
 		[AQ_HW_IRQ_INVALID] = { 0x20000000U, 0x20000000U },
@@ -531,7 +531,7 @@ static int hw_atl_a0_hw_ring_rx_init(struct aq_hw_s *self,
 	hw_atl_rdm_rx_desc_len_set(self, aq_ring->size / 8U, aq_ring->idx);
 
 	hw_atl_rdm_rx_desc_data_buff_size_set(self,
-					      AQ_CFG_RX_FRAME_MAX / 1024U,
+					      aq_ring->frame_max / 1024U,
 					      aq_ring->idx);
 
 	hw_atl_rdm_rx_desc_head_buff_size_set(self, 0U, aq_ring->idx);
@@ -706,9 +706,9 @@ static int hw_atl_a0_hw_ring_rx_receive(struct aq_hw_s *self,
 
 			if (HW_ATL_A0_RXD_WB_STAT2_EOP & rxd_wb->status) {
 				buff->len = rxd_wb->pkt_len %
-					AQ_CFG_RX_FRAME_MAX;
+					    ring->frame_max;
 				buff->len = buff->len ?
-					buff->len : AQ_CFG_RX_FRAME_MAX;
+					buff->len : ring->frame_max;
 				buff->next = 0U;
 				buff->is_eop = 1U;
 			} else {

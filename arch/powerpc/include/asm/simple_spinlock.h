@@ -48,10 +48,11 @@ static inline int arch_spin_is_locked(arch_spinlock_t *lock)
 static inline unsigned long __arch_spin_trylock(arch_spinlock_t *lock)
 {
 	unsigned long tmp, token;
+	unsigned int eh = IS_ENABLED(CONFIG_PPC64);
 
 	token = LOCK_TOKEN;
 	__asm__ __volatile__(
-"1:	lwarx		%0,0,%2,1\n\
+"1:	lwarx		%0,0,%2,%[eh]\n\
 	cmpwi		0,%0,0\n\
 	bne-		2f\n\
 	stwcx.		%1,0,%2\n\
@@ -59,7 +60,7 @@ static inline unsigned long __arch_spin_trylock(arch_spinlock_t *lock)
 	PPC_ACQUIRE_BARRIER
 "2:"
 	: "=&r" (tmp)
-	: "r" (token), "r" (&lock->slock)
+	: "r" (token), "r" (&lock->slock), [eh] "n" (eh)
 	: "cr0", "memory");
 
 	return tmp;
@@ -123,27 +124,6 @@ static inline void arch_spin_lock(arch_spinlock_t *lock)
 	}
 }
 
-static inline
-void arch_spin_lock_flags(arch_spinlock_t *lock, unsigned long flags)
-{
-	unsigned long flags_dis;
-
-	while (1) {
-		if (likely(__arch_spin_trylock(lock) == 0))
-			break;
-		local_save_flags(flags_dis);
-		local_irq_restore(flags);
-		do {
-			HMT_low();
-			if (is_shared_processor())
-				splpar_spin_yield(lock);
-		} while (unlikely(lock->slock != 0));
-		HMT_medium();
-		local_irq_restore(flags_dis);
-	}
-}
-#define arch_spin_lock_flags arch_spin_lock_flags
-
 static inline void arch_spin_unlock(arch_spinlock_t *lock)
 {
 	__asm__ __volatile__("# arch_spin_unlock\n\t"
@@ -177,9 +157,10 @@ static inline void arch_spin_unlock(arch_spinlock_t *lock)
 static inline long __arch_read_trylock(arch_rwlock_t *rw)
 {
 	long tmp;
+	unsigned int eh = IS_ENABLED(CONFIG_PPC64);
 
 	__asm__ __volatile__(
-"1:	lwarx		%0,0,%1,1\n"
+"1:	lwarx		%0,0,%1,%[eh]\n"
 	__DO_SIGN_EXTEND
 "	addic.		%0,%0,1\n\
 	ble-		2f\n"
@@ -187,7 +168,7 @@ static inline long __arch_read_trylock(arch_rwlock_t *rw)
 	bne-		1b\n"
 	PPC_ACQUIRE_BARRIER
 "2:"	: "=&r" (tmp)
-	: "r" (&rw->lock)
+	: "r" (&rw->lock), [eh] "n" (eh)
 	: "cr0", "xer", "memory");
 
 	return tmp;
@@ -200,17 +181,18 @@ static inline long __arch_read_trylock(arch_rwlock_t *rw)
 static inline long __arch_write_trylock(arch_rwlock_t *rw)
 {
 	long tmp, token;
+	unsigned int eh = IS_ENABLED(CONFIG_PPC64);
 
 	token = WRLOCK_TOKEN;
 	__asm__ __volatile__(
-"1:	lwarx		%0,0,%2,1\n\
+"1:	lwarx		%0,0,%2,%[eh]\n\
 	cmpwi		0,%0,0\n\
 	bne-		2f\n"
 "	stwcx.		%1,0,%2\n\
 	bne-		1b\n"
 	PPC_ACQUIRE_BARRIER
 "2:"	: "=&r" (tmp)
-	: "r" (token), "r" (&rw->lock)
+	: "r" (token), "r" (&rw->lock), [eh] "n" (eh)
 	: "cr0", "memory");
 
 	return tmp;

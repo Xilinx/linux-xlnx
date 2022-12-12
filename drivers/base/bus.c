@@ -163,9 +163,9 @@ static struct kobj_type bus_ktype = {
 	.release	= bus_release,
 };
 
-static int bus_uevent_filter(struct kset *kset, struct kobject *kobj)
+static int bus_uevent_filter(struct kobject *kobj)
 {
-	struct kobj_type *ktype = get_ktype(kobj);
+	const struct kobj_type *ktype = get_ktype(kobj);
 
 	if (ktype == &bus_ktype)
 		return 1;
@@ -617,7 +617,7 @@ int bus_add_driver(struct device_driver *drv)
 	if (drv->bus->p->drivers_autoprobe) {
 		error = driver_attach(drv);
 		if (error)
-			goto out_unregister;
+			goto out_del_list;
 	}
 	module_add_driver(drv->owner, drv);
 
@@ -644,6 +644,8 @@ int bus_add_driver(struct device_driver *drv)
 
 	return 0;
 
+out_del_list:
+	klist_del(&priv->knode_bus);
 out_unregister:
 	kobject_put(&priv->kobj);
 	/* drv->p is freed in driver_release()  */

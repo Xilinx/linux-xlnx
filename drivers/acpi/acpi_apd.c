@@ -60,12 +60,6 @@ static int acpi_apd_setup(struct apd_private_data *pdata)
 }
 
 #ifdef CONFIG_X86_AMD_PLATFORM_DEVICE
-static int misc_check_res(struct acpi_resource *ares, void *data)
-{
-	struct resource res;
-
-	return !acpi_dev_resource_memory(ares, &res);
-}
 
 static int fch_misc_setup(struct apd_private_data *pdata)
 {
@@ -82,19 +76,27 @@ static int fch_misc_setup(struct apd_private_data *pdata)
 		return -ENOMEM;
 
 	INIT_LIST_HEAD(&resource_list);
-	ret = acpi_dev_get_resources(adev, &resource_list, misc_check_res,
-				     NULL);
+	ret = acpi_dev_get_memory_resources(adev, &resource_list);
 	if (ret < 0)
 		return -ENOENT;
 
-	if (!acpi_dev_get_property(adev, "is-rv", ACPI_TYPE_INTEGER, &obj))
-		clk_data->is_rv = obj->integer.value;
+	if (!acpi_dev_get_property(adev, "clk-name", ACPI_TYPE_STRING, &obj)) {
+		clk_data->name = devm_kzalloc(&adev->dev, obj->string.length,
+					      GFP_KERNEL);
+
+		strcpy(clk_data->name, obj->string.pointer);
+	} else {
+		/* Set default name to mclk if entry missing in firmware */
+		clk_data->name = "mclk";
+	}
 
 	list_for_each_entry(rentry, &resource_list, node) {
 		clk_data->base = devm_ioremap(&adev->dev, rentry->res->start,
 					      resource_size(rentry->res));
 		break;
 	}
+	if (!clk_data->base)
+		return -ENOMEM;
 
 	acpi_dev_free_resource_list(&resource_list);
 
@@ -223,12 +225,13 @@ static const struct acpi_device_id acpi_apd_device_ids[] = {
 	/* Generic apd devices */
 #ifdef CONFIG_X86_AMD_PLATFORM_DEVICE
 	{ "AMD0010", APD_ADDR(cz_i2c_desc) },
-	{ "AMDI0010", APD_ADDR(wt_i2c_desc) },
 	{ "AMD0020", APD_ADDR(cz_uart_desc) },
-	{ "AMDI0020", APD_ADDR(cz_uart_desc) },
-	{ "AMDI0022", APD_ADDR(cz_uart_desc) },
 	{ "AMD0030", },
 	{ "AMD0040", APD_ADDR(fch_misc_desc)},
+	{ "AMDI0010", APD_ADDR(wt_i2c_desc) },
+	{ "AMDI0019", APD_ADDR(wt_i2c_desc) },
+	{ "AMDI0020", APD_ADDR(cz_uart_desc) },
+	{ "AMDI0022", APD_ADDR(cz_uart_desc) },
 	{ "HYGO0010", APD_ADDR(wt_i2c_desc) },
 #endif
 #ifdef CONFIG_ARM64

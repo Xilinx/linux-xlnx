@@ -45,7 +45,7 @@ enum subfeature { input, min, max };
 struct emc6w201_data {
 	struct i2c_client *client;
 	struct mutex update_lock;
-	char valid; /* zero until following fields are valid */
+	bool valid; /* false until following fields are valid */
 	unsigned long last_updated; /* in jiffies */
 
 	/* registers values */
@@ -162,7 +162,7 @@ static struct emc6w201_data *emc6w201_update_device(struct device *dev)
 		}
 
 		data->last_updated = jiffies;
-		data->valid = 1;
+		data->valid = true;
 	}
 
 	mutex_unlock(&data->update_lock);
@@ -439,7 +439,7 @@ static int emc6w201_detect(struct i2c_client *client,
 		return -ENODEV;
 	}
 
-	strlcpy(info->type, "emc6w201", I2C_NAME_SIZE);
+	strscpy(info->type, "emc6w201", I2C_NAME_SIZE);
 
 	return 0;
 }

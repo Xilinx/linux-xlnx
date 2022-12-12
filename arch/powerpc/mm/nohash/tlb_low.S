@@ -186,7 +186,7 @@ _GLOBAL(_tlbivax_bcast)
 	isync
 	PPC_TLBIVAX(0, R3)
 	isync
-	eieio
+	mbar
 	tlbsync
 BEGIN_FTR_SECTION
 	b	1f
@@ -221,7 +221,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_476_DD2)
 	blr
 #endif /* CONFIG_PPC_47x */
 
-#elif defined(CONFIG_FSL_BOOKE)
+#elif defined(CONFIG_PPC_85xx)
 /*
  * FSL BookE implementations.
  *
@@ -294,7 +294,7 @@ ALT_MMU_FTR_SECTION_END_IFCLR(MMU_FTR_USE_TLBILX)
 	isync
 1:	wrtee	r10
 	blr
-#elif defined(CONFIG_PPC_BOOK3E)
+#elif defined(CONFIG_PPC_BOOK3E_64)
 /*
  * New Book3E (>= 2.06) implementation
  *
@@ -355,7 +355,7 @@ _GLOBAL(_tlbivax_bcast)
 	rlwimi	r4,r6,MAS6_SIND_SHIFT,MAS6_SIND
 1:	mtspr	SPRN_MAS6,r4		/* assume AS=0 for now */
 	PPC_TLBIVAX(0,R3)
-	eieio
+	mbar
 	tlbsync
 	sync
 	wrtee	r10
@@ -364,12 +364,12 @@ _GLOBAL(_tlbivax_bcast)
 #error Unsupported processor type !
 #endif
 
-#if defined(CONFIG_PPC_FSL_BOOK3E)
+#if defined(CONFIG_PPC_E500)
 /*
  * extern void loadcam_entry(unsigned int index)
  *
  * Load TLBCAM[index] entry in to the L2 CAM MMU
- * Must preserve r7, r8, r9, r10 and r11
+ * Must preserve r7, r8, r9, r10, r11, r12
  */
 _GLOBAL(loadcam_entry)
 	mflr	r5
@@ -401,7 +401,7 @@ END_MMU_FTR_SECTION_IFSET(MMU_FTR_BIG_PHYS)
  *
  * r3 = first entry to write
  * r4 = number of entries to write
- * r5 = temporary tlb entry
+ * r5 = temporary tlb entry (0 means no switch to AS1)
  */
 _GLOBAL(loadcam_multi)
 	mflr	r8
@@ -409,6 +409,8 @@ _GLOBAL(loadcam_multi)
 	mfmsr	r11
 	andi.	r11,r11,MSR_IS
 	bne	10f
+	mr.	r12, r5
+	beq	10f
 
 	/*
 	 * Set up temporary TLB entry that is the same as what we're
@@ -446,6 +448,8 @@ _GLOBAL(loadcam_multi)
 	/* Don't return to AS=0 if we were in AS=1 at function start */
 	andi.	r11,r11,MSR_IS
 	bne	3f
+	cmpwi	r12, 0
+	beq	3f
 
 	/* Return to AS=0 and clear the temporary entry */
 	mfmsr	r6

@@ -8,6 +8,7 @@
 #include <linux/uaccess.h>
 #include <linux/vmalloc.h>
 #include <linux/xarray.h>
+#include <net/addrconf.h>
 
 #include <rdma/iw_cm.h>
 #include <rdma/ib_verbs.h>
@@ -131,8 +132,8 @@ int siw_query_device(struct ib_device *base_dev, struct ib_device_attr *attr,
 
 	/* Revisit atomic caps if RFC 7306 gets supported */
 	attr->atomic_cap = 0;
-	attr->device_cap_flags =
-		IB_DEVICE_MEM_MGT_EXTENSIONS | IB_DEVICE_ALLOW_USER_UNREG;
+	attr->device_cap_flags = IB_DEVICE_MEM_MGT_EXTENSIONS;
+	attr->kernel_cap_flags = IBK_ALLOW_USER_UNREG;
 	attr->max_cq = sdev->attrs.max_cq;
 	attr->max_cqe = sdev->attrs.max_cqe;
 	attr->max_fast_reg_page_list_len = SIW_MAX_SGE_PBL;
@@ -155,7 +156,8 @@ int siw_query_device(struct ib_device *base_dev, struct ib_device_attr *attr,
 	attr->vendor_id = SIW_VENDOR_ID;
 	attr->vendor_part_id = sdev->vendor_part_id;
 
-	memcpy(&attr->sys_image_guid, sdev->netdev->dev_addr, 6);
+	addrconf_addr_eui48((u8 *)&attr->sys_image_guid,
+			    sdev->netdev->dev_addr);
 
 	return 0;
 }
@@ -311,7 +313,8 @@ int siw_create_qp(struct ib_qp *ibqp, struct ib_qp_init_attr *attrs,
 
 	if (atomic_inc_return(&sdev->num_qp) > SIW_MAX_QP) {
 		siw_dbg(base_dev, "too many QP's\n");
-		return -ENOMEM;
+		rv = -ENOMEM;
+		goto err_atomic;
 	}
 	if (attrs->qp_type != IB_QPT_RC) {
 		siw_dbg(base_dev, "only RC QP's supported\n");
@@ -477,6 +480,8 @@ int siw_create_qp(struct ib_qp *ibqp, struct ib_qp_init_attr *attrs,
 	list_add_tail(&qp->devq, &sdev->qp_list);
 	spin_unlock_irqrestore(&sdev->lock, flags);
 
+	init_completion(&qp->qp_free);
+
 	return 0;
 
 err_out_xa:
@@ -621,6 +626,7 @@ int siw_destroy_qp(struct ib_qp *base_qp, struct ib_udata *udata)
 	qp->scq = qp->rcq = NULL;
 
 	siw_qp_put(qp);
+	wait_for_completion(&qp->qp_free);
 
 	return 0;
 }
@@ -660,7 +666,7 @@ static int siw_copy_inline_sgl(const struct ib_send_wr *core_wr,
 		kbuf += core_sge->length;
 		core_sge++;
 	}
-	sqe->sge[0].length = bytes > 0 ? bytes : 0;
+	sqe->sge[0].length = max(bytes, 0);
 	sqe->num_sge = bytes > 0 ? 1 : 0;
 
 	return bytes;
@@ -1164,7 +1170,7 @@ int siw_create_cq(struct ib_cq *base_cq, const struct ib_cq_init_attr *attr,
 err_out:
 	siw_dbg(base_cq->device, "CQ creation failed: %d", rv);
 
-	if (cq && cq->queue) {
+	if (cq->queue) {
 		struct siw_ucontext *ctx =
 			rdma_udata_to_drv_context(udata, struct siw_ucontext,
 						  base_ucontext);

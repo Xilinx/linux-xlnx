@@ -1714,6 +1714,8 @@ static int ov5693_detect(struct i2c_client *client)
 	}
 	ret = ov5693_read_reg(client, OV5693_8BIT,
 			      OV5693_SC_CMMN_CHIP_ID_L, &low);
+	if (ret)
+		return ret;
 	id = ((((u16)high) << 8) | (u16)low);
 
 	if (id != OV5693_ID) {
@@ -1875,7 +1877,7 @@ static const struct v4l2_subdev_ops ov5693_ops = {
 	.pad = &ov5693_pad_ops,
 };
 
-static int ov5693_remove(struct i2c_client *client)
+static void ov5693_remove(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct ov5693_device *dev = to_ov5693_sensor(sd);
@@ -1891,8 +1893,6 @@ static int ov5693_remove(struct i2c_client *client)
 	media_entity_cleanup(&dev->sd.entity);
 	v4l2_ctrl_handler_free(&dev->ctrl_handler);
 	kfree(dev);
-
-	return 0;
 }
 
 static int ov5693_probe(struct i2c_client *client)

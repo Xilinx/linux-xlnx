@@ -132,6 +132,13 @@ int mlx5dr_cmd_query_device(struct mlx5_core_dev *mdev,
 
 	caps->isolate_vl_tc = MLX5_CAP_GEN(mdev, isolate_vl_tc_new);
 
+	/* geneve_tlv_option_0_exist is the indication of
+	 * STE support for lookup type flex_parser_ok
+	 */
+	caps->flex_parser_ok_bits_supp =
+		MLX5_CAP_FLOWTABLE(mdev,
+				   flow_table_properties_nic_receive.ft_field_support.geneve_tlv_option_0_exist);
+
 	if (caps->flex_protocols & MLX5_FLEX_PARSER_ICMP_V4_ENABLED) {
 		caps->flex_parser_id_icmp_dw0 = MLX5_CAP_GEN(mdev, flex_parser_id_icmp_dw0);
 		caps->flex_parser_id_icmp_dw1 = MLX5_CAP_GEN(mdev, flex_parser_id_icmp_dw1);
@@ -152,7 +159,7 @@ int mlx5dr_cmd_query_device(struct mlx5_core_dev *mdev,
 		caps->flex_parser_id_mpls_over_gre =
 			MLX5_CAP_GEN(mdev, flex_parser_id_outer_first_mpls_over_gre);
 
-	if (caps->flex_protocols & mlx5_FLEX_PARSER_MPLS_OVER_UDP_ENABLED)
+	if (caps->flex_protocols & MLX5_FLEX_PARSER_MPLS_OVER_UDP_ENABLED)
 		caps->flex_parser_id_mpls_over_udp =
 			MLX5_CAP_GEN(mdev, flex_parser_id_outer_first_mpls_over_udp_label);
 
@@ -194,6 +201,8 @@ int mlx5dr_cmd_query_device(struct mlx5_core_dev *mdev,
 		MLX5_CAP64_DEV_MEM(mdev, header_modify_sw_icm_start_address);
 
 	caps->roce_min_src_udp = MLX5_CAP_ROCE(mdev, r_roce_min_src_udp_port);
+
+	caps->is_ecpf = mlx5_core_is_ecpf_esw_manager(mdev);
 
 	return 0;
 }
@@ -272,7 +281,7 @@ int mlx5dr_cmd_set_fte_modify_and_vport(struct mlx5_core_dev *mdev,
 					u32 table_id,
 					u32 group_id,
 					u32 modify_header_id,
-					u32 vport_id)
+					u16 vport)
 {
 	u32 out[MLX5_ST_SZ_DW(set_fte_out)] = {};
 	void *in_flow_context;
@@ -302,8 +311,8 @@ int mlx5dr_cmd_set_fte_modify_and_vport(struct mlx5_core_dev *mdev,
 
 	in_dests = MLX5_ADDR_OF(flow_context, in_flow_context, destination);
 	MLX5_SET(dest_format_struct, in_dests, destination_type,
-		 MLX5_FLOW_DESTINATION_TYPE_VPORT);
-	MLX5_SET(dest_format_struct, in_dests, destination_id, vport_id);
+		 MLX5_IFC_FLOW_DESTINATION_TYPE_VPORT);
+	MLX5_SET(dest_format_struct, in_dests, destination_id, vport);
 
 	err = mlx5_cmd_exec(mdev, in, inlen, out, sizeof(out));
 	kvfree(in);
@@ -430,6 +439,7 @@ int mlx5dr_cmd_create_flow_table(struct mlx5_core_dev *mdev,
 
 	MLX5_SET(create_flow_table_in, in, opcode, MLX5_CMD_OP_CREATE_FLOW_TABLE);
 	MLX5_SET(create_flow_table_in, in, table_type, attr->table_type);
+	MLX5_SET(create_flow_table_in, in, uid, attr->uid);
 
 	ft_mdev = MLX5_ADDR_OF(create_flow_table_in, in, flow_table_context);
 	MLX5_SET(flow_table_context, ft_mdev, termination_table, attr->term_tbl);
@@ -595,9 +605,11 @@ static int mlx5dr_cmd_set_extended_dest(struct mlx5_core_dev *dev,
 	if (!(fte->action.action & MLX5_FLOW_CONTEXT_ACTION_FWD_DEST))
 		return 0;
 	for (i = 0; i < fte->dests_size; i++) {
-		if (fte->dest_arr[i].type == MLX5_FLOW_DESTINATION_TYPE_COUNTER)
+		if (fte->dest_arr[i].type == MLX5_FLOW_DESTINATION_TYPE_COUNTER ||
+		    fte->dest_arr[i].type == MLX5_FLOW_DESTINATION_TYPE_NONE)
 			continue;
-		if (fte->dest_arr[i].type == MLX5_FLOW_DESTINATION_TYPE_VPORT &&
+		if ((fte->dest_arr[i].type == MLX5_FLOW_DESTINATION_TYPE_VPORT ||
+		     fte->dest_arr[i].type == MLX5_FLOW_DESTINATION_TYPE_UPLINK) &&
 		    fte->dest_arr[i].vport.flags & MLX5_FLOW_DEST_VPORT_REFORMAT_ID)
 			num_encap++;
 		num_fwd_destinations++;
@@ -709,25 +721,40 @@ int mlx5dr_cmd_set_fte(struct mlx5_core_dev *dev,
 		int list_size = 0;
 
 		for (i = 0; i < fte->dests_size; i++) {
-			unsigned int id, type = fte->dest_arr[i].type;
+			enum mlx5_flow_destination_type type = fte->dest_arr[i].type;
+			enum mlx5_ifc_flow_destination_type ifc_type;
+			unsigned int id;
 
 			if (type == MLX5_FLOW_DESTINATION_TYPE_COUNTER)
 				continue;
 
 			switch (type) {
+			case MLX5_FLOW_DESTINATION_TYPE_NONE:
+				continue;
 			case MLX5_FLOW_DESTINATION_TYPE_FLOW_TABLE_NUM:
 				id = fte->dest_arr[i].ft_num;
-				type = MLX5_FLOW_DESTINATION_TYPE_FLOW_TABLE;
+				ifc_type = MLX5_IFC_FLOW_DESTINATION_TYPE_FLOW_TABLE;
 				break;
 			case MLX5_FLOW_DESTINATION_TYPE_FLOW_TABLE:
 				id = fte->dest_arr[i].ft_id;
+				ifc_type = MLX5_IFC_FLOW_DESTINATION_TYPE_FLOW_TABLE;
+
 				break;
+			case MLX5_FLOW_DESTINATION_TYPE_UPLINK:
 			case MLX5_FLOW_DESTINATION_TYPE_VPORT:
-				id = fte->dest_arr[i].vport.num;
-				MLX5_SET(dest_format_struct, in_dests,
-					 destination_eswitch_owner_vhca_id_valid,
-					 !!(fte->dest_arr[i].vport.flags &
-					    MLX5_FLOW_DEST_VPORT_VHCA_ID));
+				if (type == MLX5_FLOW_DESTINATION_TYPE_VPORT) {
+					id = fte->dest_arr[i].vport.num;
+					MLX5_SET(dest_format_struct, in_dests,
+						 destination_eswitch_owner_vhca_id_valid,
+						 !!(fte->dest_arr[i].vport.flags &
+						    MLX5_FLOW_DEST_VPORT_VHCA_ID));
+					ifc_type = MLX5_IFC_FLOW_DESTINATION_TYPE_VPORT;
+				} else {
+					id = 0;
+					ifc_type = MLX5_IFC_FLOW_DESTINATION_TYPE_UPLINK;
+					MLX5_SET(dest_format_struct, in_dests,
+						 destination_eswitch_owner_vhca_id_valid, 1);
+				}
 				MLX5_SET(dest_format_struct, in_dests,
 					 destination_eswitch_owner_vhca_id,
 					 fte->dest_arr[i].vport.vhca_id);
@@ -744,13 +771,15 @@ int mlx5dr_cmd_set_fte(struct mlx5_core_dev *dev,
 				break;
 			case MLX5_FLOW_DESTINATION_TYPE_FLOW_SAMPLER:
 				id = fte->dest_arr[i].sampler_id;
+				ifc_type = MLX5_IFC_FLOW_DESTINATION_TYPE_FLOW_SAMPLER;
 				break;
 			default:
 				id = fte->dest_arr[i].tir_num;
+				ifc_type = MLX5_IFC_FLOW_DESTINATION_TYPE_TIR;
 			}
 
 			MLX5_SET(dest_format_struct, in_dests, destination_type,
-				 type);
+				 ifc_type);
 			MLX5_SET(dest_format_struct, in_dests, destination_id, id);
 			in_dests += dst_cnt_size;
 			list_size++;

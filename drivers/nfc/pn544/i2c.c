@@ -188,7 +188,7 @@ do {								\
 static void pn544_hci_i2c_platform_init(struct pn544_i2c_phy *phy)
 {
 	int polarity, retry, ret;
-	char rset_cmd[] = { 0x05, 0xF9, 0x04, 0x00, 0xC3, 0xE5 };
+	static const char rset_cmd[] = { 0x05, 0xF9, 0x04, 0x00, 0xC3, 0xE5 };
 	int count = sizeof(rset_cmd);
 
 	nfc_info(&phy->i2c_dev->dev, "Detecting nfc_en polarity\n");
@@ -928,7 +928,7 @@ static int pn544_hci_i2c_probe(struct i2c_client *client,
 	return 0;
 }
 
-static int pn544_hci_i2c_remove(struct i2c_client *client)
+static void pn544_hci_i2c_remove(struct i2c_client *client)
 {
 	struct pn544_i2c_phy *phy = i2c_get_clientdata(client);
 
@@ -940,8 +940,6 @@ static int pn544_hci_i2c_remove(struct i2c_client *client)
 
 	if (phy->powered)
 		pn544_hci_i2c_disable(phy);
-
-	return 0;
 }
 
 static const struct of_device_id of_pn544_i2c_match[] __maybe_unused = {

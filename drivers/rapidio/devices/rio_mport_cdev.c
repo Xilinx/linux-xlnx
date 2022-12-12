@@ -915,7 +915,7 @@ rio_dma_transfer(struct file *filp, u32 transfer_mode,
 			goto err_req;
 		}
 
-		if (xfer->length + xfer->offset > map->size) {
+		if (xfer->length + xfer->offset > req->map->size) {
 			ret = -EINVAL;
 			goto err_req;
 		}
@@ -927,7 +927,7 @@ rio_dma_transfer(struct file *filp, u32 transfer_mode,
 		}
 
 		sg_set_buf(req->sgt.sgl,
-			   map->virt_addr + (baddr - map->phys_addr) +
+			   req->map->virt_addr + (baddr - req->map->phys_addr) +
 				xfer->offset, xfer->length);
 	}
 
@@ -965,6 +965,7 @@ static int rio_mport_transfer_ioctl(struct file *filp, void __user *arg)
 	struct rio_transfer_io *transfer;
 	enum dma_data_direction dir;
 	int i, ret = 0;
+	size_t size;
 
 	if (unlikely(copy_from_user(&transaction, arg, sizeof(transaction))))
 		return -EFAULT;
@@ -976,13 +977,14 @@ static int rio_mport_transfer_ioctl(struct file *filp, void __user *arg)
 	     priv->md->properties.transfer_mode) == 0)
 		return -ENODEV;
 
-	transfer = vmalloc(array_size(sizeof(*transfer), transaction.count));
+	size = array_size(sizeof(*transfer), transaction.count);
+	transfer = vmalloc(size);
 	if (!transfer)
 		return -ENOMEM;
 
 	if (unlikely(copy_from_user(transfer,
 				    (void __user *)(uintptr_t)transaction.block,
-				    array_size(sizeof(*transfer), transaction.count)))) {
+				    size))) {
 		ret = -EFAULT;
 		goto out_free;
 	}
@@ -994,8 +996,7 @@ static int rio_mport_transfer_ioctl(struct file *filp, void __user *arg)
 			transaction.sync, dir, &transfer[i]);
 
 	if (unlikely(copy_to_user((void __user *)(uintptr_t)transaction.block,
-				  transfer,
-				  array_size(sizeof(*transfer), transaction.count))))
+				  transfer, size)))
 		ret = -EFAULT;
 
 out_free:

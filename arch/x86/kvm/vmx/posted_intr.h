@@ -5,6 +5,8 @@
 #define POSTED_INTR_ON  0
 #define POSTED_INTR_SN  1
 
+#define PID_TABLE_ENTRY_VALID 1
+
 /* Posted-Interrupt Descriptor */
 struct pi_desc {
 	u32 pir[8];     /* Posted interrupt requested */
@@ -40,7 +42,13 @@ static inline bool pi_test_and_clear_on(struct pi_desc *pi_desc)
 			(unsigned long *)&pi_desc->control);
 }
 
-static inline int pi_test_and_set_pir(int vector, struct pi_desc *pi_desc)
+static inline bool pi_test_and_clear_sn(struct pi_desc *pi_desc)
+{
+	return test_and_clear_bit(POSTED_INTR_SN,
+			(unsigned long *)&pi_desc->control);
+}
+
+static inline bool pi_test_and_set_pir(int vector, struct pi_desc *pi_desc)
 {
 	return test_and_set_bit(vector, (unsigned long *)pi_desc->pir);
 }
@@ -74,13 +82,13 @@ static inline void pi_clear_sn(struct pi_desc *pi_desc)
 		(unsigned long *)&pi_desc->control);
 }
 
-static inline int pi_test_on(struct pi_desc *pi_desc)
+static inline bool pi_test_on(struct pi_desc *pi_desc)
 {
 	return test_bit(POSTED_INTR_ON,
 			(unsigned long *)&pi_desc->control);
 }
 
-static inline int pi_test_sn(struct pi_desc *pi_desc)
+static inline bool pi_test_sn(struct pi_desc *pi_desc)
 {
 	return test_bit(POSTED_INTR_SN,
 			(unsigned long *)&pi_desc->control);
@@ -88,13 +96,11 @@ static inline int pi_test_sn(struct pi_desc *pi_desc)
 
 void vmx_vcpu_pi_load(struct kvm_vcpu *vcpu, int cpu);
 void vmx_vcpu_pi_put(struct kvm_vcpu *vcpu);
-int pi_pre_block(struct kvm_vcpu *vcpu);
-void pi_post_block(struct kvm_vcpu *vcpu);
 void pi_wakeup_handler(void);
 void __init pi_init_cpu(int cpu);
 bool pi_has_pending_interrupt(struct kvm_vcpu *vcpu);
-int pi_update_irte(struct kvm *kvm, unsigned int host_irq, uint32_t guest_irq,
-		   bool set);
+int vmx_pi_update_irte(struct kvm *kvm, unsigned int host_irq,
+		       uint32_t guest_irq, bool set);
 void vmx_pi_start_assignment(struct kvm *kvm);
 
 #endif /* __KVM_X86_VMX_POSTED_INTR_H */

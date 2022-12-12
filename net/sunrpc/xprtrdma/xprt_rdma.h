@@ -68,13 +68,14 @@
 /*
  * RDMA Endpoint -- connection endpoint details
  */
+struct rpcrdma_mr;
 struct rpcrdma_ep {
 	struct kref		re_kref;
 	struct rdma_cm_id 	*re_id;
 	struct ib_pd		*re_pd;
 	unsigned int		re_max_rdma_segs;
 	unsigned int		re_max_fr_depth;
-	bool			re_implicit_roundup;
+	struct rpcrdma_mr	*re_write_pad_mr;
 	enum ib_mr_type		re_mrtype;
 	struct completion	re_done;
 	unsigned int		re_send_count;
@@ -97,6 +98,8 @@ struct rpcrdma_ep {
 	unsigned int		re_inline_recv;	/* negotiated */
 
 	atomic_t		re_completion_ids;
+
+	char			re_write_pad[XDR_UNIT];
 };
 
 /* Pre-allocate extra Work Requests for handling reverse-direction
@@ -146,7 +149,11 @@ static inline void *rdmab_data(const struct rpcrdma_regbuf *rb)
 	return rb->rg_data;
 }
 
-#define RPCRDMA_DEF_GFP		(GFP_NOIO | __GFP_NOWARN)
+/* Do not use emergency memory reserves, and fail quickly if memory
+ * cannot be allocated easily. These flags may be used wherever there
+ * is robust logic to handle a failure to allocate.
+ */
+#define XPRTRDMA_GFP_FLAGS  (__GFP_NOMEMALLOC | __GFP_NORETRY | __GFP_NOWARN)
 
 /* To ensure a transport can always make forward progress,
  * the number of RDMA segments allowed in header chunk lists
@@ -464,8 +471,8 @@ void rpcrdma_post_recvs(struct rpcrdma_xprt *r_xprt, int needed, bool temp);
 /*
  * Buffer calls - xprtrdma/verbs.c
  */
-struct rpcrdma_req *rpcrdma_req_create(struct rpcrdma_xprt *r_xprt, size_t size,
-				       gfp_t flags);
+struct rpcrdma_req *rpcrdma_req_create(struct rpcrdma_xprt *r_xprt,
+				       size_t size);
 int rpcrdma_req_setup(struct rpcrdma_xprt *r_xprt, struct rpcrdma_req *req);
 void rpcrdma_req_destroy(struct rpcrdma_req *req);
 int rpcrdma_buffer_create(struct rpcrdma_xprt *);
@@ -535,6 +542,7 @@ int frwr_send(struct rpcrdma_xprt *r_xprt, struct rpcrdma_req *req);
 void frwr_reminv(struct rpcrdma_rep *rep, struct list_head *mrs);
 void frwr_unmap_sync(struct rpcrdma_xprt *r_xprt, struct rpcrdma_req *req);
 void frwr_unmap_async(struct rpcrdma_xprt *r_xprt, struct rpcrdma_req *req);
+int frwr_wp_create(struct rpcrdma_xprt *r_xprt);
 
 /*
  * RPC/RDMA protocol calls - xprtrdma/rpc_rdma.c

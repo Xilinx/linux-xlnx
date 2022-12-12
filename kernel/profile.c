@@ -59,43 +59,39 @@ int profile_setup(char *str)
 	static const char schedstr[] = "schedule";
 	static const char sleepstr[] = "sleep";
 	static const char kvmstr[] = "kvm";
+	const char *select = NULL;
 	int par;
 
 	if (!strncmp(str, sleepstr, strlen(sleepstr))) {
 #ifdef CONFIG_SCHEDSTATS
 		force_schedstat_enabled();
 		prof_on = SLEEP_PROFILING;
-		if (str[strlen(sleepstr)] == ',')
-			str += strlen(sleepstr) + 1;
-		if (get_option(&str, &par))
-			prof_shift = clamp(par, 0, BITS_PER_LONG - 1);
-		pr_info("kernel sleep profiling enabled (shift: %u)\n",
-			prof_shift);
+		select = sleepstr;
 #else
 		pr_warn("kernel sleep profiling requires CONFIG_SCHEDSTATS\n");
 #endif /* CONFIG_SCHEDSTATS */
 	} else if (!strncmp(str, schedstr, strlen(schedstr))) {
 		prof_on = SCHED_PROFILING;
-		if (str[strlen(schedstr)] == ',')
-			str += strlen(schedstr) + 1;
-		if (get_option(&str, &par))
-			prof_shift = clamp(par, 0, BITS_PER_LONG - 1);
-		pr_info("kernel schedule profiling enabled (shift: %u)\n",
-			prof_shift);
+		select = schedstr;
 	} else if (!strncmp(str, kvmstr, strlen(kvmstr))) {
 		prof_on = KVM_PROFILING;
-		if (str[strlen(kvmstr)] == ',')
-			str += strlen(kvmstr) + 1;
-		if (get_option(&str, &par))
-			prof_shift = clamp(par, 0, BITS_PER_LONG - 1);
-		pr_info("kernel KVM profiling enabled (shift: %u)\n",
-			prof_shift);
+		select = kvmstr;
 	} else if (get_option(&str, &par)) {
 		prof_shift = clamp(par, 0, BITS_PER_LONG - 1);
 		prof_on = CPU_PROFILING;
 		pr_info("kernel profiling enabled (shift: %u)\n",
 			prof_shift);
 	}
+
+	if (select) {
+		if (str[strlen(select)] == ',')
+			str += strlen(select) + 1;
+		if (get_option(&str, &par))
+			prof_shift = clamp(par, 0, BITS_PER_LONG - 1);
+		pr_info("kernel %s profiling enabled (shift: %u)\n",
+			select, prof_shift);
+	}
+
 	return 1;
 }
 __setup("profile=", profile_setup);
@@ -109,6 +105,13 @@ int __ref profile_init(void)
 
 	/* only text is profiled */
 	prof_len = (_etext - _stext) >> prof_shift;
+
+	if (!prof_len) {
+		pr_warn("profiling shift: %u too large\n", prof_shift);
+		prof_on = 0;
+		return -EINVAL;
+	}
+
 	buffer_bytes = prof_len*sizeof(atomic_t);
 
 	if (!alloc_cpumask_var(&prof_cpu_mask, GFP_KERNEL))
@@ -132,79 +135,6 @@ int __ref profile_init(void)
 	free_cpumask_var(prof_cpu_mask);
 	return -ENOMEM;
 }
-
-/* Profile event notifications */
-
-static BLOCKING_NOTIFIER_HEAD(task_exit_notifier);
-static ATOMIC_NOTIFIER_HEAD(task_free_notifier);
-static BLOCKING_NOTIFIER_HEAD(munmap_notifier);
-
-void profile_task_exit(struct task_struct *task)
-{
-	blocking_notifier_call_chain(&task_exit_notifier, 0, task);
-}
-
-int profile_handoff_task(struct task_struct *task)
-{
-	int ret;
-	ret = atomic_notifier_call_chain(&task_free_notifier, 0, task);
-	return (ret == NOTIFY_OK) ? 1 : 0;
-}
-
-void profile_munmap(unsigned long addr)
-{
-	blocking_notifier_call_chain(&munmap_notifier, 0, (void *)addr);
-}
-
-int task_handoff_register(struct notifier_block *n)
-{
-	return atomic_notifier_chain_register(&task_free_notifier, n);
-}
-EXPORT_SYMBOL_GPL(task_handoff_register);
-
-int task_handoff_unregister(struct notifier_block *n)
-{
-	return atomic_notifier_chain_unregister(&task_free_notifier, n);
-}
-EXPORT_SYMBOL_GPL(task_handoff_unregister);
-
-int profile_event_register(enum profile_type type, struct notifier_block *n)
-{
-	int err = -EINVAL;
-
-	switch (type) {
-	case PROFILE_TASK_EXIT:
-		err = blocking_notifier_chain_register(
-				&task_exit_notifier, n);
-		break;
-	case PROFILE_MUNMAP:
-		err = blocking_notifier_chain_register(
-				&munmap_notifier, n);
-		break;
-	}
-
-	return err;
-}
-EXPORT_SYMBOL_GPL(profile_event_register);
-
-int profile_event_unregister(enum profile_type type, struct notifier_block *n)
-{
-	int err = -EINVAL;
-
-	switch (type) {
-	case PROFILE_TASK_EXIT:
-		err = blocking_notifier_chain_unregister(
-				&task_exit_notifier, n);
-		break;
-	case PROFILE_MUNMAP:
-		err = blocking_notifier_chain_unregister(
-				&munmap_notifier, n);
-		break;
-	}
-
-	return err;
-}
-EXPORT_SYMBOL_GPL(profile_event_unregister);
 
 #if defined(CONFIG_SMP) && defined(CONFIG_PROC_FS)
 /*
@@ -491,6 +421,12 @@ read_profile(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 	return read;
 }
 
+/* default is to not implement this call */
+int __weak setup_profiling_timer(unsigned mult)
+{
+	return -EINVAL;
+}
+
 /*
  * Writing to /proc/profile resets the counters
  *
@@ -501,8 +437,6 @@ static ssize_t write_profile(struct file *file, const char __user *buf,
 			     size_t count, loff_t *ppos)
 {
 #ifdef CONFIG_SMP
-	extern int setup_profiling_timer(unsigned int multiplier);
-
 	if (count == sizeof(int)) {
 		unsigned int multiplier;
 

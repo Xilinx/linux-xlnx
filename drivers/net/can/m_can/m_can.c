@@ -9,6 +9,7 @@
  */
 
 #include <linux/bitfield.h>
+#include <linux/ethtool.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
@@ -76,9 +77,6 @@ enum m_can_reg {
 	M_CAN_TXEFS	= 0xf4,
 	M_CAN_TXEFA	= 0xf8,
 };
-
-/* napi related */
-#define M_CAN_NAPI_WEIGHT	64
 
 /* message ram configuration data length */
 #define MRAM_CFG_LEN	8
@@ -204,16 +202,16 @@ enum m_can_reg {
 
 /* Interrupts for version 3.0.x */
 #define IR_ERR_LEC_30X	(IR_STE	| IR_FOE | IR_ACKE | IR_BE | IR_CRCE)
-#define IR_ERR_BUS_30X	(IR_ERR_LEC_30X | IR_WDI | IR_ELO | IR_BEU | \
-			 IR_BEC | IR_TOO | IR_MRAF | IR_TSW | IR_TEFL | \
-			 IR_RF1L | IR_RF0L)
+#define IR_ERR_BUS_30X	(IR_ERR_LEC_30X | IR_WDI | IR_BEU | IR_BEC | \
+			 IR_TOO | IR_MRAF | IR_TSW | IR_TEFL | IR_RF1L | \
+			 IR_RF0L)
 #define IR_ERR_ALL_30X	(IR_ERR_STATE | IR_ERR_BUS_30X)
 
 /* Interrupts for version >= 3.1.x */
 #define IR_ERR_LEC_31X	(IR_PED | IR_PEA)
-#define IR_ERR_BUS_31X      (IR_ERR_LEC_31X | IR_WDI | IR_ELO | IR_BEU | \
-			 IR_BEC | IR_TOO | IR_MRAF | IR_TSW | IR_TEFL | \
-			 IR_RF1L | IR_RF0L)
+#define IR_ERR_BUS_31X      (IR_ERR_LEC_31X | IR_WDI | IR_BEU | IR_BEC | \
+			 IR_TOO | IR_MRAF | IR_TSW | IR_TEFL | IR_RF1L | \
+			 IR_RF0L)
 #define IR_ERR_ALL_31X	(IR_ERR_STATE | IR_ERR_BUS_31X)
 
 /* Interrupt Line Select (ILS) */
@@ -336,6 +334,9 @@ m_can_fifo_read(struct m_can_classdev *cdev,
 	u32 addr_offset = cdev->mcfg[MRAM_RXF0].off + fgi * RXF0_ELEMENT_SIZE +
 		offset;
 
+	if (val_count == 0)
+		return 0;
+
 	return cdev->ops->read_fifo(cdev, addr_offset, val, val_count);
 }
 
@@ -345,6 +346,9 @@ m_can_fifo_write(struct m_can_classdev *cdev,
 {
 	u32 addr_offset = cdev->mcfg[MRAM_TXB].off + fpi * TXB_ELEMENT_SIZE +
 		offset;
+
+	if (val_count == 0)
+		return 0;
 
 	return cdev->ops->write_fifo(cdev, addr_offset, val, val_count);
 }
@@ -458,7 +462,7 @@ static void m_can_receive_skb(struct m_can_classdev *cdev,
 		struct net_device_stats *stats = &cdev->net->stats;
 		int err;
 
-		err = can_rx_offload_queue_sorted(&cdev->offload, skb,
+		err = can_rx_offload_queue_timestamp(&cdev->offload, skb,
 						  timestamp);
 		if (err)
 			stats->rx_fifo_errors++;
@@ -517,21 +521,23 @@ static int m_can_read_fifo(struct net_device *dev, u32 rxfs)
 		err = m_can_fifo_read(cdev, fgi, M_CAN_FIFO_DATA,
 				      cf->data, DIV_ROUND_UP(cf->len, 4));
 		if (err)
-			goto out_fail;
+			goto out_free_skb;
+
+		stats->rx_bytes += cf->len;
 	}
+	stats->rx_packets++;
 
 	/* acknowledge rx fifo 0 */
 	m_can_write(cdev, M_CAN_RXF0A, fgi);
 
-	stats->rx_packets++;
-	stats->rx_bytes += cf->len;
-
-	timestamp = FIELD_GET(RX_BUF_RXTS_MASK, fifo_header.dlc);
+	timestamp = FIELD_GET(RX_BUF_RXTS_MASK, fifo_header.dlc) << 16;
 
 	m_can_receive_skb(cdev, skb, timestamp);
 
 	return 0;
 
+out_free_skb:
+	kfree_skb(skb);
 out_fail:
 	netdev_err(dev, "FIFO read returned %d\n", err);
 	return err;
@@ -559,9 +565,6 @@ static int m_can_do_rx_poll(struct net_device *dev, int quota)
 		pkts++;
 		rxfs = m_can_read(cdev, M_CAN_RXF0S);
 	}
-
-	if (pkts)
-		can_led_event(dev, CAN_LED_EVENT_RX);
 
 	return pkts;
 }
@@ -645,9 +648,6 @@ static int m_can_handle_lec_err(struct net_device *dev,
 		break;
 	}
 
-	stats->rx_packets++;
-	stats->rx_bytes += cf->len;
-
 	if (cdev->is_peripheral)
 		timestamp = m_can_get_timestamp(cdev);
 
@@ -704,7 +704,6 @@ static int m_can_handle_state_change(struct net_device *dev,
 				     enum can_state new_state)
 {
 	struct m_can_classdev *cdev = netdev_priv(dev);
-	struct net_device_stats *stats = &dev->stats;
 	struct can_frame *cf;
 	struct sk_buff *skb;
 	struct can_berr_counter bec;
@@ -743,7 +742,7 @@ static int m_can_handle_state_change(struct net_device *dev,
 	switch (new_state) {
 	case CAN_STATE_ERROR_WARNING:
 		/* error warning state */
-		cf->can_id |= CAN_ERR_CRTL;
+		cf->can_id |= CAN_ERR_CRTL | CAN_ERR_CNT;
 		cf->data[1] = (bec.txerr > bec.rxerr) ?
 			CAN_ERR_CRTL_TX_WARNING :
 			CAN_ERR_CRTL_RX_WARNING;
@@ -752,7 +751,7 @@ static int m_can_handle_state_change(struct net_device *dev,
 		break;
 	case CAN_STATE_ERROR_PASSIVE:
 		/* error passive state */
-		cf->can_id |= CAN_ERR_CRTL;
+		cf->can_id |= CAN_ERR_CRTL | CAN_ERR_CNT;
 		ecr = m_can_read(cdev, M_CAN_ECR);
 		if (ecr & ECR_RP)
 			cf->data[1] |= CAN_ERR_CRTL_RX_PASSIVE;
@@ -768,9 +767,6 @@ static int m_can_handle_state_change(struct net_device *dev,
 	default:
 		break;
 	}
-
-	stats->rx_packets++;
-	stats->rx_bytes += cf->len;
 
 	if (cdev->is_peripheral)
 		timestamp = m_can_get_timestamp(cdev);
@@ -810,8 +806,6 @@ static void m_can_handle_other_err(struct net_device *dev, u32 irqstatus)
 {
 	if (irqstatus & IR_WDI)
 		netdev_err(dev, "Message RAM Watchdog event due to missing READY\n");
-	if (irqstatus & IR_ELO)
-		netdev_err(dev, "Error Logging Overflow\n");
 	if (irqstatus & IR_BEU)
 		netdev_err(dev, "Bit Error Uncorrected\n");
 	if (irqstatus & IR_BEC)
@@ -952,7 +946,7 @@ static int m_can_rx_peripheral(struct net_device *dev)
 	struct m_can_classdev *cdev = netdev_priv(dev);
 	int work_done;
 
-	work_done = m_can_rx_handler(dev, M_CAN_NAPI_WEIGHT);
+	work_done = m_can_rx_handler(dev, NAPI_POLL_WEIGHT);
 
 	/* Don't re-enable interrupts if the driver had a fatal error
 	 * (e.g., FIFO read failure).
@@ -1037,7 +1031,7 @@ static int m_can_echo_tx_event(struct net_device *dev)
 		}
 
 		msg_mark = FIELD_GET(TX_EVENT_MM_MASK, txe);
-		timestamp = FIELD_GET(TX_EVENT_TXTS_MASK, txe);
+		timestamp = FIELD_GET(TX_EVENT_TXTS_MASK, txe) << 16;
 
 		/* ack txe element */
 		m_can_write(cdev, M_CAN_TXEFA, FIELD_PREP(TXEFA_EFAI_MASK,
@@ -1091,8 +1085,6 @@ static irqreturn_t m_can_isr(int irq, void *dev_id)
 			if (cdev->is_peripheral)
 				timestamp = m_can_get_timestamp(cdev);
 			m_can_tx_update_stats(cdev, 0, timestamp);
-
-			can_led_event(dev, CAN_LED_EVENT_TX);
 			netif_wake_queue(dev);
 		}
 	} else  {
@@ -1101,7 +1093,6 @@ static irqreturn_t m_can_isr(int irq, void *dev_id)
 			if (m_can_echo_tx_event(dev) != 0)
 				goto out_fail;
 
-			can_led_event(dev, CAN_LED_EVENT_TX);
 			if (netif_queue_stopped(dev) &&
 			    !m_can_tx_fifo_full(cdev))
 				netif_wake_queue(dev);
@@ -1358,10 +1349,12 @@ static void m_can_chip_config(struct net_device *dev)
 	/* set bittiming params */
 	m_can_set_bittiming(dev);
 
-	/* enable internal timestamp generation, with a prescalar of 16. The
-	 * prescalar is applied to the nominal bit timing
+	/* enable internal timestamp generation, with a prescaler of 16. The
+	 * prescaler is applied to the nominal bit timing
 	 */
-	m_can_write(cdev, M_CAN_TSCC, FIELD_PREP(TSCC_TCP_MASK, 0xf));
+	m_can_write(cdev, M_CAN_TSCC,
+		    FIELD_PREP(TSCC_TCP_MASK, 0xf) |
+		    FIELD_PREP(TSCC_TSS_MASK, TSCC_TSS_INTERNAL));
 
 	m_can_config_endisable(cdev, false);
 
@@ -1463,7 +1456,7 @@ static bool m_can_niso_supported(struct m_can_classdev *cdev)
 static int m_can_dev_setup(struct m_can_classdev *cdev)
 {
 	struct net_device *dev = cdev->net;
-	int m_can_version;
+	int m_can_version, err;
 
 	m_can_version = m_can_check_core_release(cdev);
 	/* return if unsupported version */
@@ -1474,8 +1467,7 @@ static int m_can_dev_setup(struct m_can_classdev *cdev)
 	}
 
 	if (!cdev->is_peripheral)
-		netif_napi_add(dev, &cdev->napi,
-			       m_can_poll, M_CAN_NAPI_WEIGHT);
+		netif_napi_add(dev, &cdev->napi, m_can_poll);
 
 	/* Shared properties of all M_CAN versions */
 	cdev->version = m_can_version;
@@ -1493,13 +1485,17 @@ static int m_can_dev_setup(struct m_can_classdev *cdev)
 	switch (cdev->version) {
 	case 30:
 		/* CAN_CTRLMODE_FD_NON_ISO is fixed with M_CAN IP v3.0.x */
-		can_set_static_ctrlmode(dev, CAN_CTRLMODE_FD_NON_ISO);
+		err = can_set_static_ctrlmode(dev, CAN_CTRLMODE_FD_NON_ISO);
+		if (err)
+			return err;
 		cdev->can.bittiming_const = &m_can_bittiming_const_30X;
 		cdev->can.data_bittiming_const = &m_can_data_bittiming_const_30X;
 		break;
 	case 31:
 		/* CAN_CTRLMODE_FD_NON_ISO is fixed with M_CAN IP v3.1.x */
-		can_set_static_ctrlmode(dev, CAN_CTRLMODE_FD_NON_ISO);
+		err = can_set_static_ctrlmode(dev, CAN_CTRLMODE_FD_NON_ISO);
+		if (err)
+			return err;
 		cdev->can.bittiming_const = &m_can_bittiming_const_31X;
 		cdev->can.data_bittiming_const = &m_can_data_bittiming_const_31X;
 		break;
@@ -1562,7 +1558,6 @@ static int m_can_close(struct net_device *dev)
 		can_rx_offload_disable(&cdev->offload);
 
 	close_candev(dev);
-	can_led_event(dev, CAN_LED_EVENT_STOP);
 
 	phy_power_off(cdev->transceiver);
 
@@ -1622,8 +1617,6 @@ static netdev_tx_t m_can_tx_handler(struct m_can_classdev *cdev)
 		if (err)
 			goto out_fail;
 
-		can_put_echo_skb(skb, dev, 0, 0);
-
 		if (cdev->can.ctrlmode & CAN_CTRLMODE_FD) {
 			cccr = m_can_read(cdev, M_CAN_CCCR);
 			cccr &= ~CCCR_CMR_MASK;
@@ -1640,6 +1633,9 @@ static netdev_tx_t m_can_tx_handler(struct m_can_classdev *cdev)
 			m_can_write(cdev, M_CAN_CCCR, cccr);
 		}
 		m_can_write(cdev, M_CAN_TXBTIE, 0x1);
+
+		can_put_echo_skb(skb, dev, 0, 0);
+
 		m_can_write(cdev, M_CAN_TXBAR, 0x1);
 		/* End of xmit function for version 3.0.x */
 	} else {
@@ -1725,7 +1721,7 @@ static netdev_tx_t m_can_start_xmit(struct sk_buff *skb,
 {
 	struct m_can_classdev *cdev = netdev_priv(dev);
 
-	if (can_dropped_invalid_skb(dev, skb))
+	if (can_dev_dropped_skb(dev, skb))
 		return NETDEV_TX_OK;
 
 	if (cdev->is_peripheral) {
@@ -1805,8 +1801,6 @@ static int m_can_open(struct net_device *dev)
 	/* start the m_can controller */
 	m_can_start(dev);
 
-	can_led_event(dev, CAN_LED_EVENT_OPEN);
-
 	if (!cdev->is_peripheral)
 		napi_enable(&cdev->napi);
 
@@ -1835,10 +1829,15 @@ static const struct net_device_ops m_can_netdev_ops = {
 	.ndo_change_mtu = can_change_mtu,
 };
 
+static const struct ethtool_ops m_can_ethtool_ops = {
+	.get_ts_info = ethtool_op_get_ts_info,
+};
+
 static int register_m_can_dev(struct net_device *dev)
 {
 	dev->flags |= IFF_ECHO;	/* we support local echo */
 	dev->netdev_ops = &m_can_netdev_ops;
+	dev->ethtool_ops = &m_can_ethtool_ops;
 
 	return register_candev(dev);
 }
@@ -1910,7 +1909,7 @@ int m_can_class_get_clocks(struct m_can_classdev *cdev)
 	cdev->hclk = devm_clk_get(cdev->dev, "hclk");
 	cdev->cclk = devm_clk_get(cdev->dev, "cclk");
 
-	if (IS_ERR(cdev->cclk)) {
+	if (IS_ERR(cdev->hclk) || IS_ERR(cdev->cclk)) {
 		dev_err(cdev->dev, "no clock found\n");
 		ret = -ENODEV;
 	}
@@ -1978,7 +1977,7 @@ int m_can_class_register(struct m_can_classdev *cdev)
 
 	if (cdev->is_peripheral) {
 		ret = can_rx_offload_add_manual(cdev->net, &cdev->offload,
-						M_CAN_NAPI_WEIGHT);
+						NAPI_POLL_WEIGHT);
 		if (ret)
 			goto clk_disable;
 	}
@@ -1993,8 +1992,6 @@ int m_can_class_register(struct m_can_classdev *cdev)
 			cdev->net->name, ret);
 		goto rx_offload_del;
 	}
-
-	devm_can_led_init(cdev->net);
 
 	of_can_transceiver(cdev->net);
 

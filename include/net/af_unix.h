@@ -16,17 +16,15 @@ void wait_for_unix_gc(void);
 struct sock *unix_get_socket(struct file *filp);
 struct sock *unix_peer_get(struct sock *sk);
 
-#define UNIX_HASH_SIZE	256
+#define UNIX_HASH_MOD	(256 - 1)
+#define UNIX_HASH_SIZE	(256 * 2)
 #define UNIX_HASH_BITS	8
 
 extern unsigned int unix_tot_inflight;
-extern spinlock_t unix_table_lock;
-extern struct hlist_head unix_socket_table[2 * UNIX_HASH_SIZE];
 
 struct unix_address {
 	refcount_t	refcnt;
 	int		len;
-	unsigned int	hash;
 	struct sockaddr_un name[];
 };
 

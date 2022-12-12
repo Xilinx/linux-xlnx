@@ -5,10 +5,10 @@ UTS_SYSNAME = -DUTS_SYSNAME=\"Linux\"
 
 # What CPU version are we building for, and crack it open
 # as major.minor.rev
-CPU_VER   := $(shell echo $(CONFIG_XILINX_MICROBLAZE0_HW_VER))
-CPU_MAJOR := $(shell echo $(CPU_VER) | cut -d '.' -f 1)
-CPU_MINOR := $(shell echo $(CPU_VER) | cut -d '.' -f 2)
-CPU_REV   := $(shell echo $(CPU_VER) | cut -d '.' -f 3)
+CPU_VER   := $(CONFIG_XILINX_MICROBLAZE0_HW_VER)
+CPU_MAJOR := $(word 1, $(subst ., , $(CPU_VER)))
+CPU_MINOR := $(word 2, $(subst ., , $(CPU_VER)))
+CPU_REV   := $(word 3, $(subst ., , $(CPU_VER)))
 
 export CPU_VER CPU_MAJOR CPU_MINOR CPU_REV
 
@@ -48,7 +48,6 @@ CPUFLAGS-1 += $(call cc-option,-mcpu=v$(CPU_VER))
 # r31 holds current when in kernel mode
 KBUILD_CFLAGS += -ffixed-r31 $(CPUFLAGS-y) $(CPUFLAGS-1) $(CPUFLAGS-2)
 
-head-y := arch/microblaze/kernel/head.o
 libs-y += arch/microblaze/lib/
 
 boot := arch/microblaze/boot
@@ -60,9 +59,6 @@ export DTB
 
 all: linux.bin
 
-archclean:
-	$(Q)$(MAKE) $(clean)=$(boot)
-
 archheaders:
 	$(Q)$(MAKE) $(build)=arch/microblaze/kernel/syscalls all
 
@@ -71,12 +67,12 @@ linux.bin.ub linux.bin.gz: linux.bin
 linux.bin: vmlinux
 linux.bin linux.bin.gz linux.bin.ub:
 	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
-	@echo 'Kernel: $(boot)/$@ is ready' ' (#'`cat .version`')'
+	@echo 'Kernel: $(boot)/$@ is ready' ' (#'$(or $(KBUILD_BUILD_VERSION),`cat .version`)')'
 
 PHONY += simpleImage.$(DTB)
 simpleImage.$(DTB): vmlinux
 	$(Q)$(MAKE) $(build)=$(boot) $(addprefix $(boot)/$@., ub unstrip strip)
-	@echo 'Kernel: $(boot)/$@ is ready' ' (#'`cat .version`')'
+	@echo 'Kernel: $(boot)/$@ is ready' ' (#'$(or $(KBUILD_BUILD_VERSION),`cat .version`)')'
 
 define archhelp
   echo '* linux.bin    - Create raw binary'

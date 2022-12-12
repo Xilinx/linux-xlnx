@@ -283,9 +283,6 @@ static int fq_pie_change(struct Qdisc *sch, struct nlattr *opt,
 	unsigned int num_dropped = 0;
 	int err;
 
-	if (!opt)
-		return -EINVAL;
-
 	err = nla_parse_nested(tb, TCA_FQ_PIE_MAX, opt, fq_pie_policy, extack);
 	if (err < 0)
 		return err;
@@ -521,9 +518,6 @@ static void fq_pie_reset(struct Qdisc *sch)
 		INIT_LIST_HEAD(&flow->flowchain);
 		pie_vars_init(&flow->vars);
 	}
-
-	sch->q.qlen = 0;
-	sch->qstats.backlog = 0;
 }
 
 static void fq_pie_destroy(struct Qdisc *sch)
@@ -531,6 +525,7 @@ static void fq_pie_destroy(struct Qdisc *sch)
 	struct fq_pie_sched_data *q = qdisc_priv(sch);
 
 	tcf_block_put(q->block);
+	q->p_params.tupdate = 0;
 	del_timer_sync(&q->adapt_timer);
 	kvfree(q->flows);
 }

@@ -262,6 +262,11 @@ static int __init ic_open_devs(void)
 				 dev->name, able, d->xid);
 		}
 	}
+	/* Devices with a complex topology like SFP ethernet interfaces needs
+	 * the rtnl_lock at init. The carrier wait-loop must therefore run
+	 * without holding it.
+	 */
+	rtnl_unlock();
 
 	/* no point in waiting if we could not bring up at least one device */
 	if (!ic_first_dev)
@@ -274,9 +279,13 @@ static int __init ic_open_devs(void)
 			   msecs_to_jiffies(carrier_timeout * 1000))) {
 		int wait, elapsed;
 
+		rtnl_lock();
 		for_each_netdev(&init_net, dev)
-			if (ic_is_init_dev(dev) && netif_carrier_ok(dev))
+			if (ic_is_init_dev(dev) && netif_carrier_ok(dev)) {
+				rtnl_unlock();
 				goto have_carrier;
+			}
+		rtnl_unlock();
 
 		msleep(1);
 
@@ -289,7 +298,6 @@ static int __init ic_open_devs(void)
 		next_msg = jiffies + msecs_to_jiffies(20000);
 	}
 have_carrier:
-	rtnl_unlock();
 
 	*last = NULL;
 
@@ -1426,6 +1434,7 @@ __be32 __init root_nfs_parse_addr(char *name)
 static int __init wait_for_devices(void)
 {
 	int i;
+	bool try_init_devs = true;
 
 	for (i = 0; i < DEVICE_WAIT_MAX; i++) {
 		struct net_device *dev;
@@ -1444,6 +1453,11 @@ static int __init wait_for_devices(void)
 		rtnl_unlock();
 		if (found)
 			return 0;
+		if (try_init_devs &&
+		    (ROOT_DEV == Root_NFS || ROOT_DEV == Root_CIFS)) {
+			try_init_devs = false;
+			wait_for_init_devices_probe();
+		}
 		ssleep(1);
 	}
 	return -ENODEV;
@@ -1751,15 +1765,15 @@ static int __init ip_auto_config_setup(char *addrs)
 			case 4:
 				if ((dp = strchr(ip, '.'))) {
 					*dp++ = '\0';
-					strlcpy(utsname()->domainname, dp,
+					strscpy(utsname()->domainname, dp,
 						sizeof(utsname()->domainname));
 				}
-				strlcpy(utsname()->nodename, ip,
+				strscpy(utsname()->nodename, ip,
 					sizeof(utsname()->nodename));
 				ic_host_name_set = 1;
 				break;
 			case 5:
-				strlcpy(user_dev_name, ip, sizeof(user_dev_name));
+				strscpy(user_dev_name, ip, sizeof(user_dev_name));
 				break;
 			case 6:
 				if (ic_proto_name(ip) == 0 &&
@@ -1806,7 +1820,7 @@ __setup("nfsaddrs=", nfsaddrs_config_setup);
 
 static int __init vendor_class_identifier_setup(char *addrs)
 {
-	if (strlcpy(vendor_class_identifier, addrs,
+	if (strscpy(vendor_class_identifier, addrs,
 		    sizeof(vendor_class_identifier))
 	    >= sizeof(vendor_class_identifier))
 		pr_warn("DHCP: vendorclass too long, truncated to \"%s\"\n",

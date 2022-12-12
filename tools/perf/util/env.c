@@ -16,6 +16,7 @@ struct perf_env perf_env;
 
 #ifdef HAVE_LIBBPF_SUPPORT
 #include "bpf-event.h"
+#include "bpf-utils.h"
 #include <bpf/libbpf.h>
 
 void perf_env__insert_bpf_prog_info(struct perf_env *env,
@@ -74,12 +75,13 @@ out:
 	return node;
 }
 
-void perf_env__insert_btf(struct perf_env *env, struct btf_node *btf_node)
+bool perf_env__insert_btf(struct perf_env *env, struct btf_node *btf_node)
 {
 	struct rb_node *parent = NULL;
 	__u32 btf_id = btf_node->id;
 	struct btf_node *node;
 	struct rb_node **p;
+	bool ret = true;
 
 	down_write(&env->bpf_progs.lock);
 	p = &env->bpf_progs.btfs.rb_node;
@@ -93,6 +95,7 @@ void perf_env__insert_btf(struct perf_env *env, struct btf_node *btf_node)
 			p = &(*p)->rb_right;
 		} else {
 			pr_debug("duplicated btf %u\n", btf_id);
+			ret = false;
 			goto out;
 		}
 	}
@@ -102,6 +105,7 @@ void perf_env__insert_btf(struct perf_env *env, struct btf_node *btf_node)
 	env->bpf_progs.btfs_cnt++;
 out:
 	up_write(&env->bpf_progs.lock);
+	return ret;
 }
 
 struct btf_node *perf_env__find_btf(struct perf_env *env, __u32 btf_id)
@@ -175,7 +179,7 @@ static void perf_env__purge_bpf(struct perf_env *env __maybe_unused)
 
 void perf_env__exit(struct perf_env *env)
 {
-	int i;
+	int i, j;
 
 	perf_env__purge_bpf(env);
 	perf_env__purge_cgroups(env);
@@ -192,6 +196,8 @@ void perf_env__exit(struct perf_env *env)
 	zfree(&env->sibling_threads);
 	zfree(&env->pmu_mappings);
 	zfree(&env->cpu);
+	for (i = 0; i < env->nr_cpu_pmu_caps; i++)
+		zfree(&env->cpu_pmu_caps[i]);
 	zfree(&env->cpu_pmu_caps);
 	zfree(&env->numa_map);
 
@@ -213,11 +219,13 @@ void perf_env__exit(struct perf_env *env)
 	}
 	zfree(&env->hybrid_nodes);
 
-	for (i = 0; i < env->nr_hybrid_cpc_nodes; i++) {
-		zfree(&env->hybrid_cpc_nodes[i].cpu_pmu_caps);
-		zfree(&env->hybrid_cpc_nodes[i].pmu_name);
+	for (i = 0; i < env->nr_pmus_with_caps; i++) {
+		for (j = 0; j < env->pmu_caps[i].nr_caps; j++)
+			zfree(&env->pmu_caps[i].caps[j]);
+		zfree(&env->pmu_caps[i].caps);
+		zfree(&env->pmu_caps[i].pmu_name);
 	}
-	zfree(&env->hybrid_cpc_nodes);
+	zfree(&env->pmu_caps);
 }
 
 void perf_env__init(struct perf_env *env)
@@ -281,13 +289,13 @@ out_enomem:
 
 int perf_env__read_cpu_topology_map(struct perf_env *env)
 {
-	int cpu, nr_cpus;
+	int idx, nr_cpus;
 
 	if (env->cpu != NULL)
 		return 0;
 
 	if (env->nr_cpus_avail == 0)
-		env->nr_cpus_avail = cpu__max_present_cpu();
+		env->nr_cpus_avail = cpu__max_present_cpu().cpu;
 
 	nr_cpus = env->nr_cpus_avail;
 	if (nr_cpus == -1)
@@ -297,10 +305,12 @@ int perf_env__read_cpu_topology_map(struct perf_env *env)
 	if (env->cpu == NULL)
 		return -ENOMEM;
 
-	for (cpu = 0; cpu < nr_cpus; ++cpu) {
-		env->cpu[cpu].core_id	= cpu_map__get_core_id(cpu);
-		env->cpu[cpu].socket_id	= cpu_map__get_socket_id(cpu);
-		env->cpu[cpu].die_id	= cpu_map__get_die_id(cpu);
+	for (idx = 0; idx < nr_cpus; ++idx) {
+		struct perf_cpu cpu = { .cpu = idx };
+
+		env->cpu[idx].core_id	= cpu__get_core_id(cpu);
+		env->cpu[idx].socket_id	= cpu__get_socket_id(cpu);
+		env->cpu[idx].die_id	= cpu__get_die_id(cpu);
 	}
 
 	env->nr_cpus_avail = nr_cpus;
@@ -377,7 +387,7 @@ static int perf_env__read_arch(struct perf_env *env)
 static int perf_env__read_nr_cpus_avail(struct perf_env *env)
 {
 	if (env->nr_cpus_avail == 0)
-		env->nr_cpus_avail = cpu__max_present_cpu();
+		env->nr_cpus_avail = cpu__max_present_cpu().cpu;
 
 	return env->nr_cpus_avail ? 0 : -ENOENT;
 }
@@ -483,7 +493,7 @@ const char *perf_env__pmu_mappings(struct perf_env *env)
 	return env->pmu_mappings;
 }
 
-int perf_env__numa_node(struct perf_env *env, int cpu)
+int perf_env__numa_node(struct perf_env *env, struct perf_cpu cpu)
 {
 	if (!env->nr_numa_map) {
 		struct numa_node *nn;
@@ -491,7 +501,7 @@ int perf_env__numa_node(struct perf_env *env, int cpu)
 
 		for (i = 0; i < env->nr_numa_nodes; i++) {
 			nn = &env->numa_nodes[i];
-			nr = max(nr, perf_cpu_map__max(nn->map));
+			nr = max(nr, perf_cpu_map__max(nn->map).cpu);
 		}
 
 		nr++;
@@ -510,13 +520,62 @@ int perf_env__numa_node(struct perf_env *env, int cpu)
 		env->nr_numa_map = nr;
 
 		for (i = 0; i < env->nr_numa_nodes; i++) {
-			int tmp, j;
+			struct perf_cpu tmp;
+			int j;
 
 			nn = &env->numa_nodes[i];
-			perf_cpu_map__for_each_cpu(j, tmp, nn->map)
-				env->numa_map[j] = i;
+			perf_cpu_map__for_each_cpu(tmp, j, nn->map)
+				env->numa_map[tmp.cpu] = i;
 		}
 	}
 
-	return cpu >= 0 && cpu < env->nr_numa_map ? env->numa_map[cpu] : -1;
+	return cpu.cpu >= 0 && cpu.cpu < env->nr_numa_map ? env->numa_map[cpu.cpu] : -1;
+}
+
+char *perf_env__find_pmu_cap(struct perf_env *env, const char *pmu_name,
+			     const char *cap)
+{
+	char *cap_eq;
+	int cap_size;
+	char **ptr;
+	int i, j;
+
+	if (!pmu_name || !cap)
+		return NULL;
+
+	cap_size = strlen(cap);
+	cap_eq = zalloc(cap_size + 2);
+	if (!cap_eq)
+		return NULL;
+
+	memcpy(cap_eq, cap, cap_size);
+	cap_eq[cap_size] = '=';
+
+	if (!strcmp(pmu_name, "cpu")) {
+		for (i = 0; i < env->nr_cpu_pmu_caps; i++) {
+			if (!strncmp(env->cpu_pmu_caps[i], cap_eq, cap_size + 1)) {
+				free(cap_eq);
+				return &env->cpu_pmu_caps[i][cap_size + 1];
+			}
+		}
+		goto out;
+	}
+
+	for (i = 0; i < env->nr_pmus_with_caps; i++) {
+		if (strcmp(env->pmu_caps[i].pmu_name, pmu_name))
+			continue;
+
+		ptr = env->pmu_caps[i].caps;
+
+		for (j = 0; j < env->pmu_caps[i].nr_caps; j++) {
+			if (!strncmp(ptr[j], cap_eq, cap_size + 1)) {
+				free(cap_eq);
+				return &ptr[j][cap_size + 1];
+			}
+		}
+	}
+
+out:
+	free(cap_eq);
+	return NULL;
 }

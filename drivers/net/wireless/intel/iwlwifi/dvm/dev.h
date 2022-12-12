@@ -2,11 +2,6 @@
 /******************************************************************************
  *
  * Copyright(c) 2003 - 2014, 2020 Intel Corporation. All rights reserved.
- *
- * Contact Information:
- *  Intel Linux Wireless <linuxwifi@intel.com>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
  *****************************************************************************/
 /*
  * Please use this file (dev.h) for driver implementation definitions.
@@ -701,6 +696,7 @@ struct iwl_priv {
 	/* Scan related variables */
 	unsigned long scan_start;
 	unsigned long scan_start_tsf;
+	size_t scan_cmd_size;
 	void *scan_cmd;
 	enum nl80211_band scan_band;
 	struct cfg80211_scan_request *scan_request;

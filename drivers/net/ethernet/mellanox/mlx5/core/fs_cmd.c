@@ -50,10 +50,12 @@ static int mlx5_cmd_stub_update_root_ft(struct mlx5_flow_root_namespace *ns,
 
 static int mlx5_cmd_stub_create_flow_table(struct mlx5_flow_root_namespace *ns,
 					   struct mlx5_flow_table *ft,
-					   unsigned int size,
+					   struct mlx5_flow_table_attr *ft_attr,
 					   struct mlx5_flow_table *next_ft)
 {
-	ft->max_fte = size ? roundup_pow_of_two(size) : 1;
+	int max_fte = ft_attr->max_fte;
+
+	ft->max_fte = max_fte ? roundup_pow_of_two(max_fte) : 1;
 
 	return 0;
 }
@@ -152,6 +154,12 @@ static int mlx5_cmd_stub_destroy_ns(struct mlx5_flow_root_namespace *ns)
 	return 0;
 }
 
+static u32 mlx5_cmd_stub_get_capabilities(struct mlx5_flow_root_namespace *ns,
+					  enum fs_flow_table_type ft_type)
+{
+	return 0;
+}
+
 static int mlx5_cmd_set_slave_root_fdb(struct mlx5_core_dev *master,
 				       struct mlx5_core_dev *slave,
 				       bool ft_id_valid,
@@ -183,6 +191,20 @@ static int mlx5_cmd_set_slave_root_fdb(struct mlx5_core_dev *master,
 	}
 
 	return mlx5_cmd_exec(slave, in, sizeof(in), out, sizeof(out));
+}
+
+static int
+mlx5_cmd_stub_destroy_match_definer(struct mlx5_flow_root_namespace *ns,
+				    int definer_id)
+{
+	return 0;
+}
+
+static int
+mlx5_cmd_stub_create_match_definer(struct mlx5_flow_root_namespace *ns,
+				   u16 format_id, u32 *match_mask)
+{
+	return 0;
 }
 
 static int mlx5_cmd_update_root_ft(struct mlx5_flow_root_namespace *ns,
@@ -238,7 +260,7 @@ static int mlx5_cmd_update_root_ft(struct mlx5_flow_root_namespace *ns,
 
 static int mlx5_cmd_create_flow_table(struct mlx5_flow_root_namespace *ns,
 				      struct mlx5_flow_table *ft,
-				      unsigned int size,
+				      struct mlx5_flow_table_attr *ft_attr,
 				      struct mlx5_flow_table *next_ft)
 {
 	int en_encap = !!(ft->flags & MLX5_FLOW_TABLE_TUNNEL_EN_REFORMAT);
@@ -247,17 +269,19 @@ static int mlx5_cmd_create_flow_table(struct mlx5_flow_root_namespace *ns,
 	u32 out[MLX5_ST_SZ_DW(create_flow_table_out)] = {};
 	u32 in[MLX5_ST_SZ_DW(create_flow_table_in)] = {};
 	struct mlx5_core_dev *dev = ns->dev;
+	unsigned int size;
 	int err;
 
-	if (size != POOL_NEXT_SIZE)
-		size = roundup_pow_of_two(size);
-	size = mlx5_ft_pool_get_avail_sz(dev, ft->type, size);
+	if (ft_attr->max_fte != POOL_NEXT_SIZE)
+		size = roundup_pow_of_two(ft_attr->max_fte);
+	size = mlx5_ft_pool_get_avail_sz(dev, ft->type, ft_attr->max_fte);
 	if (!size)
 		return -ENOSPC;
 
 	MLX5_SET(create_flow_table_in, in, opcode,
 		 MLX5_CMD_OP_CREATE_FLOW_TABLE);
 
+	MLX5_SET(create_flow_table_in, in, uid, ft_attr->uid);
 	MLX5_SET(create_flow_table_in, in, table_type, ft->type);
 	MLX5_SET(create_flow_table_in, in, flow_table_context.level, ft->level);
 	MLX5_SET(create_flow_table_in, in, flow_table_context.log_size, size ? ilog2(size) : 0);
@@ -435,9 +459,11 @@ static int mlx5_set_extended_dest(struct mlx5_core_dev *dev,
 		return 0;
 
 	list_for_each_entry(dst, &fte->node.children, node.list) {
-		if (dst->dest_attr.type == MLX5_FLOW_DESTINATION_TYPE_COUNTER)
+		if (dst->dest_attr.type == MLX5_FLOW_DESTINATION_TYPE_COUNTER ||
+		    dst->dest_attr.type == MLX5_FLOW_DESTINATION_TYPE_NONE)
 			continue;
-		if (dst->dest_attr.type == MLX5_FLOW_DESTINATION_TYPE_VPORT &&
+		if ((dst->dest_attr.type == MLX5_FLOW_DESTINATION_TYPE_VPORT ||
+		     dst->dest_attr.type == MLX5_FLOW_DESTINATION_TYPE_UPLINK) &&
 		    dst->dest_attr.vport.flags & MLX5_FLOW_DEST_VPORT_REFORMAT_ID)
 			num_encap++;
 		num_fwd_destinations++;
@@ -457,6 +483,30 @@ static int mlx5_set_extended_dest(struct mlx5_core_dev *dev,
 
 	return 0;
 }
+
+static void
+mlx5_cmd_set_fte_flow_meter(struct fs_fte *fte, void *in_flow_context)
+{
+	void *exe_aso_ctrl;
+	void *execute_aso;
+
+	execute_aso = MLX5_ADDR_OF(flow_context, in_flow_context,
+				   execute_aso[0]);
+	MLX5_SET(execute_aso, execute_aso, valid, 1);
+	MLX5_SET(execute_aso, execute_aso, aso_object_id,
+		 fte->action.exe_aso.object_id);
+
+	exe_aso_ctrl = MLX5_ADDR_OF(execute_aso, execute_aso, exe_aso_ctrl);
+	MLX5_SET(exe_aso_ctrl_flow_meter, exe_aso_ctrl, return_reg_id,
+		 fte->action.exe_aso.return_reg_id);
+	MLX5_SET(exe_aso_ctrl_flow_meter, exe_aso_ctrl, aso_type,
+		 fte->action.exe_aso.type);
+	MLX5_SET(exe_aso_ctrl_flow_meter, exe_aso_ctrl, init_color,
+		 fte->action.exe_aso.flow_meter.init_color);
+	MLX5_SET(exe_aso_ctrl_flow_meter, exe_aso_ctrl, meter_id,
+		 fte->action.exe_aso.flow_meter.meter_idx);
+}
+
 static int mlx5_cmd_set_fte(struct mlx5_core_dev *dev,
 			    int opmod, int modify_mask,
 			    struct mlx5_flow_table *ft,
@@ -527,7 +577,10 @@ static int mlx5_cmd_set_fte(struct mlx5_core_dev *dev,
 		MLX5_SET(flow_context, in_flow_context, modify_header_id,
 			 fte->action.modify_hdr->id);
 
-	MLX5_SET(flow_context, in_flow_context, ipsec_obj_id, fte->action.ipsec_obj_id);
+	MLX5_SET(flow_context, in_flow_context, encrypt_decrypt_type,
+		 fte->action.crypto.type);
+	MLX5_SET(flow_context, in_flow_context, encrypt_decrypt_obj_id,
+		 fte->action.crypto.obj_id);
 
 	vlan = MLX5_ADDR_OF(flow_context, in_flow_context, push_vlan);
 
@@ -550,21 +603,26 @@ static int mlx5_cmd_set_fte(struct mlx5_core_dev *dev,
 		int list_size = 0;
 
 		list_for_each_entry(dst, &fte->node.children, node.list) {
-			unsigned int id, type = dst->dest_attr.type;
+			enum mlx5_flow_destination_type type = dst->dest_attr.type;
+			enum mlx5_ifc_flow_destination_type ifc_type;
+			unsigned int id;
 
 			if (type == MLX5_FLOW_DESTINATION_TYPE_COUNTER)
 				continue;
 
 			switch (type) {
+			case MLX5_FLOW_DESTINATION_TYPE_NONE:
+				continue;
 			case MLX5_FLOW_DESTINATION_TYPE_FLOW_TABLE_NUM:
 				id = dst->dest_attr.ft_num;
-				type = MLX5_FLOW_DESTINATION_TYPE_FLOW_TABLE;
+				ifc_type = MLX5_IFC_FLOW_DESTINATION_TYPE_FLOW_TABLE;
 				break;
 			case MLX5_FLOW_DESTINATION_TYPE_FLOW_TABLE:
 				id = dst->dest_attr.ft->id;
+				ifc_type = MLX5_IFC_FLOW_DESTINATION_TYPE_FLOW_TABLE;
 				break;
+			case MLX5_FLOW_DESTINATION_TYPE_UPLINK:
 			case MLX5_FLOW_DESTINATION_TYPE_VPORT:
-				id = dst->dest_attr.vport.num;
 				MLX5_SET(dest_format_struct, in_dests,
 					 destination_eswitch_owner_vhca_id_valid,
 					 !!(dst->dest_attr.vport.flags &
@@ -572,6 +630,14 @@ static int mlx5_cmd_set_fte(struct mlx5_core_dev *dev,
 				MLX5_SET(dest_format_struct, in_dests,
 					 destination_eswitch_owner_vhca_id,
 					 dst->dest_attr.vport.vhca_id);
+				if (type == MLX5_FLOW_DESTINATION_TYPE_UPLINK) {
+					/* destination_id is reserved */
+					id = 0;
+					ifc_type = MLX5_IFC_FLOW_DESTINATION_TYPE_UPLINK;
+					break;
+				}
+				ifc_type = MLX5_IFC_FLOW_DESTINATION_TYPE_VPORT;
+				id = dst->dest_attr.vport.num;
 				if (extended_dest &&
 				    dst->dest_attr.vport.pkt_reformat) {
 					MLX5_SET(dest_format_struct, in_dests,
@@ -585,13 +651,15 @@ static int mlx5_cmd_set_fte(struct mlx5_core_dev *dev,
 				break;
 			case MLX5_FLOW_DESTINATION_TYPE_FLOW_SAMPLER:
 				id = dst->dest_attr.sampler_id;
+				ifc_type = MLX5_IFC_FLOW_DESTINATION_TYPE_FLOW_SAMPLER;
 				break;
 			default:
 				id = dst->dest_attr.tir_num;
+				ifc_type = MLX5_IFC_FLOW_DESTINATION_TYPE_TIR;
 			}
 
 			MLX5_SET(dest_format_struct, in_dests, destination_type,
-				 type);
+				 ifc_type);
 			MLX5_SET(dest_format_struct, in_dests, destination_id, id);
 			in_dests += dst_cnt_size;
 			list_size++;
@@ -624,6 +692,15 @@ static int mlx5_cmd_set_fte(struct mlx5_core_dev *dev,
 
 		MLX5_SET(flow_context, in_flow_context, flow_counter_list_size,
 			 list_size);
+	}
+
+	if (fte->action.action & MLX5_FLOW_CONTEXT_ACTION_EXECUTE_ASO) {
+		if (fte->action.exe_aso.type == MLX5_EXE_ASO_FLOW_METER) {
+			mlx5_cmd_set_fte_flow_meter(fte, in_flow_context);
+		} else {
+			err = -EOPNOTSUPP;
+			goto err_out;
+		}
 	}
 
 	err = mlx5_cmd_exec(dev, in, inlen, out, sizeof(out));
@@ -768,7 +845,8 @@ static int mlx5_cmd_packet_reformat_alloc(struct mlx5_flow_root_namespace *ns,
 	int err;
 	u32 *in;
 
-	if (namespace == MLX5_FLOW_NAMESPACE_FDB)
+	if (namespace == MLX5_FLOW_NAMESPACE_FDB ||
+	    namespace == MLX5_FLOW_NAMESPACE_FDB_BYPASS)
 		max_encap_size = MLX5_CAP_ESW(dev, max_encap_header_size);
 	else
 		max_encap_size = MLX5_CAP_FLOWTABLE(dev, max_encap_header_size);
@@ -840,18 +918,19 @@ static int mlx5_cmd_modify_header_alloc(struct mlx5_flow_root_namespace *ns,
 
 	switch (namespace) {
 	case MLX5_FLOW_NAMESPACE_FDB:
+	case MLX5_FLOW_NAMESPACE_FDB_BYPASS:
 		max_actions = MLX5_CAP_ESW_FLOWTABLE_FDB(dev, max_modify_header_actions);
 		table_type = FS_FT_FDB;
 		break;
+	case MLX5_FLOW_NAMESPACE_KERNEL_RX_MACSEC:
 	case MLX5_FLOW_NAMESPACE_KERNEL:
 	case MLX5_FLOW_NAMESPACE_BYPASS:
 		max_actions = MLX5_CAP_FLOWTABLE_NIC_RX(dev, max_modify_header_actions);
 		table_type = FS_FT_NIC_RX;
 		break;
 	case MLX5_FLOW_NAMESPACE_EGRESS:
-#ifdef CONFIG_MLX5_IPSEC
-	case MLX5_FLOW_NAMESPACE_EGRESS_KERNEL:
-#endif
+	case MLX5_FLOW_NAMESPACE_EGRESS_IPSEC:
+	case MLX5_FLOW_NAMESPACE_EGRESS_MACSEC:
 		max_actions = MLX5_CAP_FLOWTABLE_NIC_TX(dev, max_modify_header_actions);
 		table_type = FS_FT_NIC_TX;
 		break;
@@ -909,6 +988,51 @@ static void mlx5_cmd_modify_header_dealloc(struct mlx5_flow_root_namespace *ns,
 	mlx5_cmd_exec_in(dev, dealloc_modify_header_context, in);
 }
 
+static int mlx5_cmd_destroy_match_definer(struct mlx5_flow_root_namespace *ns,
+					  int definer_id)
+{
+	u32 in[MLX5_ST_SZ_DW(general_obj_in_cmd_hdr)] = {};
+	u32 out[MLX5_ST_SZ_DW(general_obj_out_cmd_hdr)];
+
+	MLX5_SET(general_obj_in_cmd_hdr, in, opcode,
+		 MLX5_CMD_OP_DESTROY_GENERAL_OBJECT);
+	MLX5_SET(general_obj_in_cmd_hdr, in, obj_type,
+		 MLX5_OBJ_TYPE_MATCH_DEFINER);
+	MLX5_SET(general_obj_in_cmd_hdr, in, obj_id, definer_id);
+
+	return mlx5_cmd_exec(ns->dev, in, sizeof(in), out, sizeof(out));
+}
+
+static int mlx5_cmd_create_match_definer(struct mlx5_flow_root_namespace *ns,
+					 u16 format_id, u32 *match_mask)
+{
+	u32 out[MLX5_ST_SZ_DW(create_match_definer_out)] = {};
+	u32 in[MLX5_ST_SZ_DW(create_match_definer_in)] = {};
+	struct mlx5_core_dev *dev = ns->dev;
+	void *ptr;
+	int err;
+
+	MLX5_SET(create_match_definer_in, in, general_obj_in_cmd_hdr.opcode,
+		 MLX5_CMD_OP_CREATE_GENERAL_OBJECT);
+	MLX5_SET(create_match_definer_in, in, general_obj_in_cmd_hdr.obj_type,
+		 MLX5_OBJ_TYPE_MATCH_DEFINER);
+
+	ptr = MLX5_ADDR_OF(create_match_definer_in, in, obj_context);
+	MLX5_SET(match_definer, ptr, format_id, format_id);
+
+	ptr = MLX5_ADDR_OF(match_definer, ptr, match_mask);
+	memcpy(ptr, match_mask, MLX5_FLD_SZ_BYTES(match_definer, match_mask));
+
+	err = mlx5_cmd_exec_inout(dev, create_match_definer, in, out);
+	return err ? err : MLX5_GET(general_obj_out_cmd_hdr, out, obj_id);
+}
+
+static u32 mlx5_cmd_get_capabilities(struct mlx5_flow_root_namespace *ns,
+				     enum fs_flow_table_type ft_type)
+{
+	return 0;
+}
+
 static const struct mlx5_flow_cmds mlx5_flow_cmds = {
 	.create_flow_table = mlx5_cmd_create_flow_table,
 	.destroy_flow_table = mlx5_cmd_destroy_flow_table,
@@ -923,9 +1047,12 @@ static const struct mlx5_flow_cmds mlx5_flow_cmds = {
 	.packet_reformat_dealloc = mlx5_cmd_packet_reformat_dealloc,
 	.modify_header_alloc = mlx5_cmd_modify_header_alloc,
 	.modify_header_dealloc = mlx5_cmd_modify_header_dealloc,
+	.create_match_definer = mlx5_cmd_create_match_definer,
+	.destroy_match_definer = mlx5_cmd_destroy_match_definer,
 	.set_peer = mlx5_cmd_stub_set_peer,
 	.create_ns = mlx5_cmd_stub_create_ns,
 	.destroy_ns = mlx5_cmd_stub_destroy_ns,
+	.get_capabilities = mlx5_cmd_get_capabilities,
 };
 
 static const struct mlx5_flow_cmds mlx5_flow_cmd_stubs = {
@@ -942,9 +1069,12 @@ static const struct mlx5_flow_cmds mlx5_flow_cmd_stubs = {
 	.packet_reformat_dealloc = mlx5_cmd_stub_packet_reformat_dealloc,
 	.modify_header_alloc = mlx5_cmd_stub_modify_header_alloc,
 	.modify_header_dealloc = mlx5_cmd_stub_modify_header_dealloc,
+	.create_match_definer = mlx5_cmd_stub_create_match_definer,
+	.destroy_match_definer = mlx5_cmd_stub_destroy_match_definer,
 	.set_peer = mlx5_cmd_stub_set_peer,
 	.create_ns = mlx5_cmd_stub_create_ns,
 	.destroy_ns = mlx5_cmd_stub_destroy_ns,
+	.get_capabilities = mlx5_cmd_stub_get_capabilities,
 };
 
 const struct mlx5_flow_cmds *mlx5_fs_cmd_get_fw_cmds(void)
@@ -969,6 +1099,7 @@ const struct mlx5_flow_cmds *mlx5_fs_cmd_get_default(enum fs_flow_table_type typ
 	case FS_FT_NIC_TX:
 	case FS_FT_RDMA_RX:
 	case FS_FT_RDMA_TX:
+	case FS_FT_PORT_SEL:
 		return mlx5_fs_cmd_get_fw_cmds();
 	default:
 		return mlx5_fs_cmd_get_stub_cmds();

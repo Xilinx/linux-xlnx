@@ -20,7 +20,7 @@
 #include <linux/of_device.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/platform_device.h>
-#include <linux/platform_data/dma-imx.h>
+#include <linux/dma/imx-dma.h>
 #include <linux/pm_runtime.h>
 #include <linux/slab.h>
 #include <linux/spi/spi.h>
@@ -855,8 +855,7 @@ static int fsl_lpspi_probe(struct platform_device *pdev)
 
 	init_completion(&fsl_lpspi->xfer_done);
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	fsl_lpspi->base = devm_ioremap_resource(&pdev->dev, res);
+	fsl_lpspi->base = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
 	if (IS_ERR(fsl_lpspi->base)) {
 		ret = PTR_ERR(fsl_lpspi->base);
 		goto out_controller_put;
@@ -912,8 +911,8 @@ static int fsl_lpspi_probe(struct platform_device *pdev)
 
 	ret = devm_spi_register_controller(&pdev->dev, controller);
 	if (ret < 0) {
-		dev_err(&pdev->dev, "spi_register_controller error.\n");
-		goto out_pm_get;
+		dev_err_probe(&pdev->dev, ret, "spi_register_controller error\n");
+		goto free_dma;
 	}
 
 	pm_runtime_mark_last_busy(fsl_lpspi->dev);
@@ -921,6 +920,8 @@ static int fsl_lpspi_probe(struct platform_device *pdev)
 
 	return 0;
 
+free_dma:
+	fsl_lpspi_dma_exit(controller);
 out_pm_get:
 	pm_runtime_dont_use_autosuspend(fsl_lpspi->dev);
 	pm_runtime_put_sync(fsl_lpspi->dev);
@@ -937,17 +938,16 @@ static int fsl_lpspi_remove(struct platform_device *pdev)
 	struct fsl_lpspi_data *fsl_lpspi =
 				spi_controller_get_devdata(controller);
 
+	fsl_lpspi_dma_exit(controller);
+
 	pm_runtime_disable(fsl_lpspi->dev);
 	return 0;
 }
 
 static int __maybe_unused fsl_lpspi_suspend(struct device *dev)
 {
-	int ret;
-
 	pinctrl_pm_select_sleep_state(dev);
-	ret = pm_runtime_force_suspend(dev);
-	return ret;
+	return pm_runtime_force_suspend(dev);
 }
 
 static int __maybe_unused fsl_lpspi_resume(struct device *dev)

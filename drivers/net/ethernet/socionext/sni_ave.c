@@ -395,8 +395,8 @@ static void ave_ethtool_get_drvinfo(struct net_device *ndev,
 {
 	struct device *dev = ndev->dev.parent;
 
-	strlcpy(info->driver, dev->driver->name, sizeof(info->driver));
-	strlcpy(info->bus_info, dev_name(dev), sizeof(info->bus_info));
+	strscpy(info->driver, dev->driver->name, sizeof(info->driver));
+	strscpy(info->bus_info, dev_name(dev), sizeof(info->bus_info));
 	ave_hw_read_version(ndev, info->fw_version, sizeof(info->fw_version));
 }
 
@@ -1229,6 +1229,8 @@ static int ave_init(struct net_device *ndev)
 
 	phy_support_asym_pause(phydev);
 
+	phydev->mac_managed_pm = true;
+
 	phy_attached_info(phydev);
 
 	return 0;
@@ -1599,7 +1601,7 @@ static int ave_probe(struct platform_device *pdev)
 
 	ndev->max_mtu = AVE_MAX_ETHFRAME - (ETH_HLEN + ETH_FCS_LEN);
 
-	ret = of_get_mac_address(np, ndev->dev_addr);
+	ret = of_get_ethdev_address(np, ndev);
 	if (ret) {
 		/* if the mac address is invalid, use random mac address */
 		eth_hw_addr_random(ndev);
@@ -1687,10 +1689,8 @@ static int ave_probe(struct platform_device *pdev)
 		 pdev->name, pdev->id);
 
 	/* Register as a NAPI supported driver */
-	netif_napi_add(ndev, &priv->napi_rx, ave_napi_poll_rx,
-		       NAPI_POLL_WEIGHT);
-	netif_tx_napi_add(ndev, &priv->napi_tx, ave_napi_poll_tx,
-			  NAPI_POLL_WEIGHT);
+	netif_napi_add(ndev, &priv->napi_rx, ave_napi_poll_rx);
+	netif_napi_add_tx(ndev, &priv->napi_tx, ave_napi_poll_tx);
 
 	platform_set_drvdata(pdev, ndev);
 
@@ -1757,6 +1757,10 @@ static int ave_resume(struct device *dev)
 	int ret = 0;
 
 	ave_global_reset(ndev);
+
+	ret = phy_init_hw(ndev->phydev);
+	if (ret)
+		return ret;
 
 	ave_ethtool_get_wol(ndev, &wol);
 	wol.wolopts = priv->wolopts;
@@ -1935,6 +1939,17 @@ static const struct ave_soc_data ave_pxs3_data = {
 	.get_pinmode = ave_pxs3_get_pinmode,
 };
 
+static const struct ave_soc_data ave_nx1_data = {
+	.is_desc_64bit = true,
+	.clock_names = {
+		"ether",
+	},
+	.reset_names = {
+		"ether",
+	},
+	.get_pinmode = ave_pxs3_get_pinmode,
+};
+
 static const struct of_device_id of_ave_match[] = {
 	{
 		.compatible = "socionext,uniphier-pro4-ave4",
@@ -1955,6 +1970,10 @@ static const struct of_device_id of_ave_match[] = {
 	{
 		.compatible = "socionext,uniphier-pxs3-ave4",
 		.data = &ave_pxs3_data,
+	},
+	{
+		.compatible = "socionext,uniphier-nx1-ave4",
+		.data = &ave_nx1_data,
 	},
 	{ /* Sentinel */ }
 };

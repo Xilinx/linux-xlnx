@@ -44,7 +44,7 @@ void delayacct_init(void)
 }
 
 #ifdef CONFIG_PROC_SYSCTL
-int sysctl_delayacct(struct ctl_table *table, int write, void *buffer,
+static int sysctl_delayacct(struct ctl_table *table, int write, void *buffer,
 		     size_t *lenp, loff_t *ppos)
 {
 	int state = delayacct_on;
@@ -63,6 +63,26 @@ int sysctl_delayacct(struct ctl_table *table, int write, void *buffer,
 		set_delayacct(state);
 	return err;
 }
+
+static struct ctl_table kern_delayacct_table[] = {
+	{
+		.procname       = "task_delayacct",
+		.data           = NULL,
+		.maxlen         = sizeof(unsigned int),
+		.mode           = 0644,
+		.proc_handler   = sysctl_delayacct,
+		.extra1         = SYSCTL_ZERO,
+		.extra2         = SYSCTL_ONE,
+	},
+	{ }
+};
+
+static __init int kernel_delayacct_sysctls_init(void)
+{
+	register_sysctl_init("kernel", kern_delayacct_table);
+	return 0;
+}
+late_initcall(kernel_delayacct_sysctls_init);
 #endif
 
 void __delayacct_tsk_init(struct task_struct *tsk)
@@ -100,19 +120,10 @@ void __delayacct_blkio_start(void)
  */
 void __delayacct_blkio_end(struct task_struct *p)
 {
-	struct task_delay_info *delays = p->delays;
-	u64 *total;
-	u32 *count;
-
-	if (p->delays->flags & DELAYACCT_PF_SWAPIN) {
-		total = &delays->swapin_delay;
-		count = &delays->swapin_count;
-	} else {
-		total = &delays->blkio_delay;
-		count = &delays->blkio_count;
-	}
-
-	delayacct_end(&delays->lock, &delays->blkio_start, total, count);
+	delayacct_end(&p->delays->lock,
+		      &p->delays->blkio_start,
+		      &p->delays->blkio_delay,
+		      &p->delays->blkio_count);
 }
 
 int delayacct_add_tsk(struct taskstats *d, struct task_struct *tsk)
@@ -164,10 +175,16 @@ int delayacct_add_tsk(struct taskstats *d, struct task_struct *tsk)
 	d->freepages_delay_total = (tmp < d->freepages_delay_total) ? 0 : tmp;
 	tmp = d->thrashing_delay_total + tsk->delays->thrashing_delay;
 	d->thrashing_delay_total = (tmp < d->thrashing_delay_total) ? 0 : tmp;
+	tmp = d->compact_delay_total + tsk->delays->compact_delay;
+	d->compact_delay_total = (tmp < d->compact_delay_total) ? 0 : tmp;
+	tmp = d->wpcopy_delay_total + tsk->delays->wpcopy_delay;
+	d->wpcopy_delay_total = (tmp < d->wpcopy_delay_total) ? 0 : tmp;
 	d->blkio_count += tsk->delays->blkio_count;
 	d->swapin_count += tsk->delays->swapin_count;
 	d->freepages_count += tsk->delays->freepages_count;
 	d->thrashing_count += tsk->delays->thrashing_count;
+	d->compact_count += tsk->delays->compact_count;
+	d->wpcopy_count += tsk->delays->wpcopy_count;
 	raw_spin_unlock_irqrestore(&tsk->delays->lock, flags);
 
 	return 0;
@@ -179,8 +196,7 @@ __u64 __delayacct_blkio_ticks(struct task_struct *tsk)
 	unsigned long flags;
 
 	raw_spin_lock_irqsave(&tsk->delays->lock, flags);
-	ret = nsec_to_clock_t(tsk->delays->blkio_delay +
-				tsk->delays->swapin_delay);
+	ret = nsec_to_clock_t(tsk->delays->blkio_delay);
 	raw_spin_unlock_irqrestore(&tsk->delays->lock, flags);
 	return ret;
 }
@@ -198,15 +214,63 @@ void __delayacct_freepages_end(void)
 		      &current->delays->freepages_count);
 }
 
-void __delayacct_thrashing_start(void)
+void __delayacct_thrashing_start(bool *in_thrashing)
 {
+	*in_thrashing = !!current->in_thrashing;
+	if (*in_thrashing)
+		return;
+
+	current->in_thrashing = 1;
 	current->delays->thrashing_start = local_clock();
 }
 
-void __delayacct_thrashing_end(void)
+void __delayacct_thrashing_end(bool *in_thrashing)
 {
+	if (*in_thrashing)
+		return;
+
+	current->in_thrashing = 0;
 	delayacct_end(&current->delays->lock,
 		      &current->delays->thrashing_start,
 		      &current->delays->thrashing_delay,
 		      &current->delays->thrashing_count);
+}
+
+void __delayacct_swapin_start(void)
+{
+	current->delays->swapin_start = local_clock();
+}
+
+void __delayacct_swapin_end(void)
+{
+	delayacct_end(&current->delays->lock,
+		      &current->delays->swapin_start,
+		      &current->delays->swapin_delay,
+		      &current->delays->swapin_count);
+}
+
+void __delayacct_compact_start(void)
+{
+	current->delays->compact_start = local_clock();
+}
+
+void __delayacct_compact_end(void)
+{
+	delayacct_end(&current->delays->lock,
+		      &current->delays->compact_start,
+		      &current->delays->compact_delay,
+		      &current->delays->compact_count);
+}
+
+void __delayacct_wpcopy_start(void)
+{
+	current->delays->wpcopy_start = local_clock();
+}
+
+void __delayacct_wpcopy_end(void)
+{
+	delayacct_end(&current->delays->lock,
+		      &current->delays->wpcopy_start,
+		      &current->delays->wpcopy_delay,
+		      &current->delays->wpcopy_count);
 }

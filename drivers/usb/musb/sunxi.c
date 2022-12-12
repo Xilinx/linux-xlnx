@@ -440,6 +440,10 @@ static u8 sunxi_musb_readb(void __iomem *addr, u32 offset)
 				return 0xde;
 
 			return readb(addr + SUNXI_MUSB_CONFIGDATA);
+		case MUSB_ULPI_BUSCONTROL:
+			dev_warn(sunxi_musb->controller->parent,
+				"sunxi-musb does not have ULPI bus control register\n");
+			return 0;
 		/* Offset for these is fixed by sunxi_musb_busctl_offset() */
 		case SUNXI_MUSB_TXFUNCADDR:
 		case SUNXI_MUSB_TXHUBADDR:
@@ -494,6 +498,10 @@ static void sunxi_musb_writeb(void __iomem *addr, unsigned offset, u8 data)
 			return writeb(data, addr + SUNXI_MUSB_TXFIFOSZ);
 		case MUSB_RXFIFOSZ:
 			return writeb(data, addr + SUNXI_MUSB_RXFIFOSZ);
+		case MUSB_ULPI_BUSCONTROL:
+			dev_warn(sunxi_musb->controller->parent,
+				"sunxi-musb does not have ULPI bus control register\n");
+			return;
 		/* Offset for these is fixed by sunxi_musb_busctl_offset() */
 		case SUNXI_MUSB_TXFUNCADDR:
 		case SUNXI_MUSB_TXHUBADDR:
@@ -735,31 +743,20 @@ static int sunxi_musb_probe(struct platform_device *pdev)
 
 	if (test_bit(SUNXI_MUSB_FL_HAS_RESET, &glue->flags)) {
 		glue->rst = devm_reset_control_get(&pdev->dev, NULL);
-		if (IS_ERR(glue->rst)) {
-			if (PTR_ERR(glue->rst) == -EPROBE_DEFER)
-				return -EPROBE_DEFER;
-			dev_err(&pdev->dev, "Error getting reset %ld\n",
-				PTR_ERR(glue->rst));
-			return PTR_ERR(glue->rst);
-		}
+		if (IS_ERR(glue->rst))
+			return dev_err_probe(&pdev->dev, PTR_ERR(glue->rst),
+					     "Error getting reset\n");
 	}
 
 	glue->extcon = extcon_get_edev_by_phandle(&pdev->dev, 0);
-	if (IS_ERR(glue->extcon)) {
-		if (PTR_ERR(glue->extcon) == -EPROBE_DEFER)
-			return -EPROBE_DEFER;
-		dev_err(&pdev->dev, "Invalid or missing extcon\n");
-		return PTR_ERR(glue->extcon);
-	}
+	if (IS_ERR(glue->extcon))
+		return dev_err_probe(&pdev->dev, PTR_ERR(glue->extcon),
+				     "Invalid or missing extcon\n");
 
 	glue->phy = devm_phy_get(&pdev->dev, "usb");
-	if (IS_ERR(glue->phy)) {
-		if (PTR_ERR(glue->phy) == -EPROBE_DEFER)
-			return -EPROBE_DEFER;
-		dev_err(&pdev->dev, "Error getting phy %ld\n",
-			PTR_ERR(glue->phy));
-		return PTR_ERR(glue->phy);
-	}
+	if (IS_ERR(glue->phy))
+		return dev_err_probe(&pdev->dev, PTR_ERR(glue->phy),
+				     "Error getting phy\n");
 
 	glue->usb_phy = usb_phy_generic_register();
 	if (IS_ERR(glue->usb_phy)) {

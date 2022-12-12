@@ -38,7 +38,7 @@
  * elements entered into the array, during which, we're decaying all elements.
  * If, after decay, an element gets inserted again, its generation is set to 11b
  * to make sure it has higher numerical count than other, older elements and
- * thus emulate an an LRU-like behavior when deleting elements to free up space
+ * thus emulate an LRU-like behavior when deleting elements to free up space
  * in the page.
  *
  * When an element reaches it's max count of action_threshold, we try to poison
@@ -555,6 +555,14 @@ static int __init cec_init(void)
 {
 	if (ce_arr.disabled)
 		return -ENODEV;
+
+	/*
+	 * Intel systems may avoid uncorrectable errors
+	 * if pages with corrected errors are aggressively
+	 * taken offline.
+	 */
+	if (boot_cpu_data.x86_vendor == X86_VENDOR_INTEL)
+		action_threshold = 2;
 
 	ce_arr.array = (void *)get_zeroed_page(GFP_KERNEL);
 	if (!ce_arr.array) {

@@ -827,7 +827,7 @@ static int check_buf_params(struct cs_hsi_iface *hi,
 	return r;
 }
 
-/**
+/*
  * Block until pending data transfers have completed.
  */
 static int cs_hsi_data_sync(struct cs_hsi_iface *hi)
@@ -850,7 +850,7 @@ static int cs_hsi_data_sync(struct cs_hsi_iface *hi)
 			r = -ERESTARTSYS;
 			goto out;
 		}
-		/**
+		/*
 		 * prepare_to_wait must be called with hi->lock held
 		 * so that callbacks can check for waitqueue_active()
 		 */
@@ -1089,7 +1089,7 @@ static vm_fault_t cs_char_vma_fault(struct vm_fault *vmf)
 	struct cs_char *csdata = vmf->vma->vm_private_data;
 	struct page *page;
 
-	page = virt_to_page(csdata->mmap_base);
+	page = virt_to_page((void *)csdata->mmap_base);
 	get_page(page);
 	vmf->page = page;
 

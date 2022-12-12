@@ -418,6 +418,16 @@ VP8
 
 :author:    J. Bankoski et al.
 
+.. _vp9:
+
+VP9
+===
+
+
+:title:     VP9 Bitstream & Decoding Process Specification
+
+:author:    Adrian Grange (Google), Peter de Rivaz (Argon Design), Jonathan Hunt (Argon Design)
+
 .. _itu2100:
 
 ITU BT.2100

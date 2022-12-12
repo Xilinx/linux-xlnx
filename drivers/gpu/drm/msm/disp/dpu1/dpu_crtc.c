@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2014-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
  */
@@ -12,8 +13,10 @@
 #include <linux/bits.h>
 
 #include <drm/drm_atomic.h>
+#include <drm/drm_blend.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_flip_work.h>
+#include <drm/drm_framebuffer.h>
 #include <drm/drm_mode.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_rect.h>
@@ -70,17 +73,208 @@ static struct drm_encoder *get_encoder_from_crtc(struct drm_crtc *crtc)
 	return NULL;
 }
 
-static u32 dpu_crtc_get_vblank_counter(struct drm_crtc *crtc)
+static enum dpu_crtc_crc_source dpu_crtc_parse_crc_source(const char *src_name)
 {
-	struct drm_encoder *encoder;
+	if (!src_name ||
+	    !strcmp(src_name, "none"))
+		return DPU_CRTC_CRC_SOURCE_NONE;
+	if (!strcmp(src_name, "auto") ||
+	    !strcmp(src_name, "lm"))
+		return DPU_CRTC_CRC_SOURCE_LAYER_MIXER;
+	if (!strcmp(src_name, "encoder"))
+		return DPU_CRTC_CRC_SOURCE_ENCODER;
 
-	encoder = get_encoder_from_crtc(crtc);
-	if (!encoder) {
-		DRM_ERROR("no encoder found for crtc %d\n", crtc->index);
-		return false;
+	return DPU_CRTC_CRC_SOURCE_INVALID;
+}
+
+static int dpu_crtc_verify_crc_source(struct drm_crtc *crtc,
+		const char *src_name, size_t *values_cnt)
+{
+	enum dpu_crtc_crc_source source = dpu_crtc_parse_crc_source(src_name);
+	struct dpu_crtc_state *crtc_state = to_dpu_crtc_state(crtc->state);
+
+	if (source < 0) {
+		DRM_DEBUG_DRIVER("Invalid source %s for CRTC%d\n", src_name, crtc->index);
+		return -EINVAL;
 	}
 
-	return dpu_encoder_get_frame_count(encoder);
+	if (source == DPU_CRTC_CRC_SOURCE_LAYER_MIXER) {
+		*values_cnt = crtc_state->num_mixers;
+	} else if (source == DPU_CRTC_CRC_SOURCE_ENCODER) {
+		struct drm_encoder *drm_enc;
+
+		*values_cnt = 0;
+
+		drm_for_each_encoder_mask(drm_enc, crtc->dev, crtc->state->encoder_mask)
+			*values_cnt += dpu_encoder_get_crc_values_cnt(drm_enc);
+	}
+
+	return 0;
+}
+
+static void dpu_crtc_setup_lm_misr(struct dpu_crtc_state *crtc_state)
+{
+	struct dpu_crtc_mixer *m;
+	int i;
+
+	for (i = 0; i < crtc_state->num_mixers; ++i) {
+		m = &crtc_state->mixers[i];
+
+		if (!m->hw_lm || !m->hw_lm->ops.setup_misr)
+			continue;
+
+		/* Calculate MISR over 1 frame */
+		m->hw_lm->ops.setup_misr(m->hw_lm, true, 1);
+	}
+}
+
+static void dpu_crtc_setup_encoder_misr(struct drm_crtc *crtc)
+{
+	struct drm_encoder *drm_enc;
+
+	drm_for_each_encoder_mask(drm_enc, crtc->dev, crtc->state->encoder_mask)
+		dpu_encoder_setup_misr(drm_enc);
+}
+
+static int dpu_crtc_set_crc_source(struct drm_crtc *crtc, const char *src_name)
+{
+	enum dpu_crtc_crc_source source = dpu_crtc_parse_crc_source(src_name);
+	enum dpu_crtc_crc_source current_source;
+	struct dpu_crtc_state *crtc_state;
+	struct drm_device *drm_dev = crtc->dev;
+
+	bool was_enabled;
+	bool enable = false;
+	int ret = 0;
+
+	if (source < 0) {
+		DRM_DEBUG_DRIVER("Invalid CRC source %s for CRTC%d\n", src_name, crtc->index);
+		return -EINVAL;
+	}
+
+	ret = drm_modeset_lock(&crtc->mutex, NULL);
+
+	if (ret)
+		return ret;
+
+	enable = (source != DPU_CRTC_CRC_SOURCE_NONE);
+	crtc_state = to_dpu_crtc_state(crtc->state);
+
+	spin_lock_irq(&drm_dev->event_lock);
+	current_source = crtc_state->crc_source;
+	spin_unlock_irq(&drm_dev->event_lock);
+
+	was_enabled = (current_source != DPU_CRTC_CRC_SOURCE_NONE);
+
+	if (!was_enabled && enable) {
+		ret = drm_crtc_vblank_get(crtc);
+
+		if (ret)
+			goto cleanup;
+
+	} else if (was_enabled && !enable) {
+		drm_crtc_vblank_put(crtc);
+	}
+
+	spin_lock_irq(&drm_dev->event_lock);
+	crtc_state->crc_source = source;
+	spin_unlock_irq(&drm_dev->event_lock);
+
+	crtc_state->crc_frame_skip_count = 0;
+
+	if (source == DPU_CRTC_CRC_SOURCE_LAYER_MIXER)
+		dpu_crtc_setup_lm_misr(crtc_state);
+	else if (source == DPU_CRTC_CRC_SOURCE_ENCODER)
+		dpu_crtc_setup_encoder_misr(crtc);
+	else
+		ret = -EINVAL;
+
+cleanup:
+	drm_modeset_unlock(&crtc->mutex);
+
+	return ret;
+}
+
+static u32 dpu_crtc_get_vblank_counter(struct drm_crtc *crtc)
+{
+	struct drm_encoder *encoder = get_encoder_from_crtc(crtc);
+	if (!encoder) {
+		DRM_ERROR("no encoder found for crtc %d\n", crtc->index);
+		return 0;
+	}
+
+	return dpu_encoder_get_vsync_count(encoder);
+}
+
+static int dpu_crtc_get_lm_crc(struct drm_crtc *crtc,
+		struct dpu_crtc_state *crtc_state)
+{
+	struct dpu_crtc_mixer *m;
+	u32 crcs[CRTC_DUAL_MIXERS];
+
+	int rc = 0;
+	int i;
+
+	BUILD_BUG_ON(ARRAY_SIZE(crcs) != ARRAY_SIZE(crtc_state->mixers));
+
+	for (i = 0; i < crtc_state->num_mixers; ++i) {
+
+		m = &crtc_state->mixers[i];
+
+		if (!m->hw_lm || !m->hw_lm->ops.collect_misr)
+			continue;
+
+		rc = m->hw_lm->ops.collect_misr(m->hw_lm, &crcs[i]);
+
+		if (rc) {
+			if (rc != -ENODATA)
+				DRM_DEBUG_DRIVER("MISR read failed\n");
+			return rc;
+		}
+	}
+
+	return drm_crtc_add_crc_entry(crtc, true,
+			drm_crtc_accurate_vblank_count(crtc), crcs);
+}
+
+static int dpu_crtc_get_encoder_crc(struct drm_crtc *crtc)
+{
+	struct drm_encoder *drm_enc;
+	int rc, pos = 0;
+	u32 crcs[INTF_MAX];
+
+	drm_for_each_encoder_mask(drm_enc, crtc->dev, crtc->state->encoder_mask) {
+		rc = dpu_encoder_get_crc(drm_enc, crcs, pos);
+		if (rc < 0) {
+			if (rc != -ENODATA)
+				DRM_DEBUG_DRIVER("MISR read failed\n");
+
+			return rc;
+		}
+
+		pos += rc;
+	}
+
+	return drm_crtc_add_crc_entry(crtc, true,
+			drm_crtc_accurate_vblank_count(crtc), crcs);
+}
+
+static int dpu_crtc_get_crc(struct drm_crtc *crtc)
+{
+	struct dpu_crtc_state *crtc_state = to_dpu_crtc_state(crtc->state);
+
+	/* Skip first 2 frames in case of "uncooked" CRCs */
+	if (crtc_state->crc_frame_skip_count < 2) {
+		crtc_state->crc_frame_skip_count++;
+		return 0;
+	}
+
+	if (crtc_state->crc_source == DPU_CRTC_CRC_SOURCE_LAYER_MIXER)
+		return dpu_crtc_get_lm_crc(crtc, crtc_state);
+	else if (crtc_state->crc_source == DPU_CRTC_CRC_SOURCE_ENCODER)
+		return dpu_crtc_get_encoder_crc(crtc);
+
+	return -EINVAL;
 }
 
 static bool dpu_crtc_get_scanout_position(struct drm_crtc *crtc,
@@ -207,7 +401,8 @@ static void _dpu_crtc_program_lm_output_roi(struct drm_crtc *crtc)
 }
 
 static void _dpu_crtc_blend_setup_mixer(struct drm_crtc *crtc,
-	struct dpu_crtc *dpu_crtc, struct dpu_crtc_mixer *mixer)
+	struct dpu_crtc *dpu_crtc, struct dpu_crtc_mixer *mixer,
+	struct dpu_hw_stage_cfg *stage_cfg)
 {
 	struct drm_plane *plane;
 	struct drm_framebuffer *fb;
@@ -216,9 +411,7 @@ static void _dpu_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 	struct dpu_plane_state *pstate = NULL;
 	struct dpu_format *format;
 	struct dpu_hw_ctl *ctl = mixer->lm_ctl;
-	struct dpu_hw_stage_cfg *stage_cfg = &dpu_crtc->stage_cfg;
 
-	u32 flush_mask;
 	uint32_t stage_idx, lm_idx;
 	int zpos_cnt[DPU_STAGE_MAX + 1] = { 0 };
 	bool bg_alpha_enable = false;
@@ -226,21 +419,26 @@ static void _dpu_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 
 	memset(fetch_active, 0, sizeof(fetch_active));
 	drm_atomic_crtc_for_each_plane(plane, crtc) {
+		enum dpu_sspp sspp_idx;
+
 		state = plane->state;
 		if (!state)
+			continue;
+
+		if (!state->visible)
 			continue;
 
 		pstate = to_dpu_plane_state(state);
 		fb = state->fb;
 
-		dpu_plane_get_ctl_flush(plane, ctl, &flush_mask);
-		set_bit(dpu_plane_pipe(plane), fetch_active);
+		sspp_idx = dpu_plane_pipe(plane);
+		set_bit(sspp_idx, fetch_active);
 
 		DRM_DEBUG_ATOMIC("crtc %d stage:%d - plane %d sspp %d fb %d\n",
 				crtc->base.id,
 				pstate->stage,
 				plane->base.id,
-				dpu_plane_pipe(plane) - SSPP_VIG0,
+				sspp_idx - SSPP_VIG0,
 				state->fb ? state->fb->base.id : -1);
 
 		format = to_dpu_format(msm_framebuffer_format(pstate->base.fb));
@@ -250,13 +448,13 @@ static void _dpu_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 
 		stage_idx = zpos_cnt[pstate->stage]++;
 		stage_cfg->stage[pstate->stage][stage_idx] =
-					dpu_plane_pipe(plane);
+					sspp_idx;
 		stage_cfg->multirect_index[pstate->stage][stage_idx] =
 					pstate->multirect_index;
 
 		trace_dpu_crtc_setup_mixer(DRMID(crtc), DRMID(plane),
 					   state, pstate, stage_idx,
-					   dpu_plane_pipe(plane) - SSPP_VIG0,
+					   sspp_idx - SSPP_VIG0,
 					   format->base.pixel_format,
 					   fb ? fb->modifier : 0);
 
@@ -265,7 +463,8 @@ static void _dpu_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 			_dpu_crtc_setup_blend_cfg(mixer + lm_idx,
 						pstate, format);
 
-			mixer[lm_idx].flush_mask |= flush_mask;
+			mixer[lm_idx].lm_ctl->ops.update_pending_flush_sspp(mixer[lm_idx].lm_ctl,
+									    sspp_idx);
 
 			if (bg_alpha_enable && !format->alpha_enable)
 				mixer[lm_idx].mixer_op_mode = 0;
@@ -278,7 +477,7 @@ static void _dpu_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 	if (ctl->ops.set_active_pipes)
 		ctl->ops.set_active_pipes(ctl, fetch_active);
 
-	 _dpu_crtc_program_lm_output_roi(crtc);
+	_dpu_crtc_program_lm_output_roi(crtc);
 }
 
 /**
@@ -292,22 +491,22 @@ static void _dpu_crtc_blend_setup(struct drm_crtc *crtc)
 	struct dpu_crtc_mixer *mixer = cstate->mixers;
 	struct dpu_hw_ctl *ctl;
 	struct dpu_hw_mixer *lm;
+	struct dpu_hw_stage_cfg stage_cfg;
 	int i;
 
 	DRM_DEBUG_ATOMIC("%s\n", dpu_crtc->name);
 
 	for (i = 0; i < cstate->num_mixers; i++) {
 		mixer[i].mixer_op_mode = 0;
-		mixer[i].flush_mask = 0;
 		if (mixer[i].lm_ctl->ops.clear_all_blendstages)
 			mixer[i].lm_ctl->ops.clear_all_blendstages(
 					mixer[i].lm_ctl);
 	}
 
 	/* initialize stage cfg */
-	memset(&dpu_crtc->stage_cfg, 0, sizeof(struct dpu_hw_stage_cfg));
+	memset(&stage_cfg, 0, sizeof(struct dpu_hw_stage_cfg));
 
-	_dpu_crtc_blend_setup_mixer(crtc, dpu_crtc, mixer);
+	_dpu_crtc_blend_setup_mixer(crtc, dpu_crtc, mixer, &stage_cfg);
 
 	for (i = 0; i < cstate->num_mixers; i++) {
 		ctl = mixer[i].lm_ctl;
@@ -315,20 +514,17 @@ static void _dpu_crtc_blend_setup(struct drm_crtc *crtc)
 
 		lm->ops.setup_alpha_out(lm, mixer[i].mixer_op_mode);
 
-		mixer[i].flush_mask |= ctl->ops.get_bitmask_mixer(ctl,
+		/* stage config flush mask */
+		ctl->ops.update_pending_flush_mixer(ctl,
 			mixer[i].hw_lm->idx);
 
-		/* stage config flush mask */
-		ctl->ops.update_pending_flush(ctl, mixer[i].flush_mask);
-
-		DRM_DEBUG_ATOMIC("lm %d, op_mode 0x%X, ctl %d, flush mask 0x%x\n",
+		DRM_DEBUG_ATOMIC("lm %d, op_mode 0x%X, ctl %d\n",
 			mixer[i].hw_lm->idx - LM_0,
 			mixer[i].mixer_op_mode,
-			ctl->idx - CTL_0,
-			mixer[i].flush_mask);
+			ctl->idx - CTL_0);
 
 		ctl->ops.setup_blendstage(ctl, mixer[i].hw_lm->idx,
-			&dpu_crtc->stage_cfg);
+			&stage_cfg);
 	}
 }
 
@@ -389,6 +585,9 @@ void dpu_crtc_vblank_callback(struct drm_crtc *crtc)
 		dpu_crtc->vblank_cb_time = ktime_get();
 	else
 		dpu_crtc->vblank_cb_count++;
+
+	dpu_crtc_get_crc(crtc);
+
 	drm_crtc_handle_vblank(crtc);
 	trace_dpu_crtc_vblank_cb(DRMID(crtc));
 }
@@ -566,16 +765,9 @@ static void _dpu_crtc_setup_cp_blocks(struct drm_crtc *crtc)
 			dspp->ops.setup_pcc(dspp, &cfg);
 		}
 
-		mixer[i].flush_mask |= ctl->ops.get_bitmask_dspp(ctl,
-			mixer[i].hw_dspp->idx);
-
 		/* stage config flush mask */
-		ctl->ops.update_pending_flush(ctl, mixer[i].flush_mask);
-
-		DRM_DEBUG_ATOMIC("lm %d, ctl %d, flush mask 0x%x\n",
-			mixer[i].hw_lm->idx - DSPP_0,
-			ctl->idx - CTL_0,
-			mixer[i].flush_mask);
+		ctl->ops.update_pending_flush_dspp(ctl,
+			mixer[i].hw_dspp->idx);
 	}
 }
 
@@ -735,6 +927,13 @@ void dpu_crtc_commit_kickoff(struct drm_crtc *crtc)
 
 	DPU_ATRACE_BEGIN("crtc_commit");
 
+	drm_for_each_encoder_mask(encoder, crtc->dev,
+			crtc->state->encoder_mask) {
+		if (!dpu_encoder_is_valid_for_commit(encoder)) {
+			DRM_DEBUG_ATOMIC("invalid FB not kicking off crtc\n");
+			goto end;
+		}
+	}
 	/*
 	 * Encoder will flush/start now, unless it has a tx pending. If so, it
 	 * may delay and flush at an irq event (e.g. ppdone)
@@ -757,6 +956,8 @@ void dpu_crtc_commit_kickoff(struct drm_crtc *crtc)
 		dpu_encoder_kickoff(encoder);
 
 	reinit_completion(&dpu_crtc->frame_done_comp);
+
+end:
 	DPU_ATRACE_END("crtc_commit");
 }
 
@@ -788,6 +989,20 @@ static struct drm_crtc_state *dpu_crtc_duplicate_state(struct drm_crtc *crtc)
 	__drm_atomic_helper_crtc_duplicate_state(crtc, &cstate->base);
 
 	return &cstate->base;
+}
+
+static void dpu_crtc_atomic_print_state(struct drm_printer *p,
+					const struct drm_crtc_state *state)
+{
+	const struct dpu_crtc_state *cstate = to_dpu_crtc_state(state);
+	int i;
+
+	for (i = 0; i < cstate->num_mixers; i++) {
+		drm_printf(p, "\tlm[%d]=%d\n", i, cstate->mixers[i].hw_lm->idx - LM_0);
+		drm_printf(p, "\tctl[%d]=%d\n", i, cstate->mixers[i].lm_ctl->idx - CTL_0);
+		if (cstate->mixers[i].hw_dspp)
+			drm_printf(p, "\tdspp[%d]=%d\n", i, cstate->mixers[i].hw_dspp->idx - DSPP_0);
+	}
 }
 
 static void dpu_crtc_disable(struct drm_crtc *crtc,
@@ -898,6 +1113,20 @@ struct plane_state {
 	u32 pipe_id;
 };
 
+static bool dpu_crtc_needs_dirtyfb(struct drm_crtc_state *cstate)
+{
+	struct drm_crtc *crtc = cstate->crtc;
+	struct drm_encoder *encoder;
+
+	drm_for_each_encoder_mask (encoder, crtc->dev, cstate->encoder_mask) {
+		if (dpu_encoder_get_intf_mode(encoder) == INTF_MODE_CMD) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
 static int dpu_crtc_atomic_check(struct drm_crtc *crtc,
 		struct drm_atomic_state *state)
 {
@@ -918,6 +1147,7 @@ static int dpu_crtc_atomic_check(struct drm_crtc *crtc,
 	const struct drm_plane_state *pipe_staged[SSPP_MAX];
 	int left_zpos_cnt = 0, right_zpos_cnt = 0;
 	struct drm_rect crtc_rect = { 0 };
+	bool needs_dirtyfb = dpu_crtc_needs_dirtyfb(crtc_state);
 
 	pstates = kzalloc(sizeof(*pstates) * DPU_STAGE_MAX * 4, GFP_KERNEL);
 
@@ -949,6 +1179,7 @@ static int dpu_crtc_atomic_check(struct drm_crtc *crtc,
 
 	 /* get plane state for all drm planes associated with crtc state */
 	drm_atomic_crtc_state_for_each_plane_state(plane, pstate, crtc_state) {
+		struct dpu_plane_state *dpu_pstate = to_dpu_plane_state(pstate);
 		struct drm_rect dst, clip = crtc_rect;
 
 		if (IS_ERR_OR_NULL(pstate)) {
@@ -960,10 +1191,15 @@ static int dpu_crtc_atomic_check(struct drm_crtc *crtc,
 		if (cnt >= DPU_STAGE_MAX * 4)
 			continue;
 
-		pstates[cnt].dpu_pstate = to_dpu_plane_state(pstate);
+		if (!pstate->visible)
+			continue;
+
+		pstates[cnt].dpu_pstate = dpu_pstate;
 		pstates[cnt].drm_pstate = pstate;
 		pstates[cnt].stage = pstate->normalized_zpos;
 		pstates[cnt].pipe_id = dpu_plane_pipe(plane);
+
+		dpu_pstate->needs_dirtyfb = needs_dirtyfb;
 
 		if (pipe_staged[pstates[cnt].pipe_id]) {
 			multirect_plane[multirect_count].r0 =
@@ -990,17 +1226,8 @@ static int dpu_crtc_atomic_check(struct drm_crtc *crtc,
 	}
 
 	for (i = 1; i < SSPP_MAX; i++) {
-		if (pipe_staged[i]) {
+		if (pipe_staged[i])
 			dpu_plane_clear_multirect(pipe_staged[i]);
-
-			if (is_dpu_plane_virtual(pipe_staged[i]->plane)) {
-				DPU_ERROR(
-					"r1 only virt plane:%d not supported\n",
-					pipe_staged[i]->plane->base.id);
-				rc  = -EINVAL;
-				goto end;
-			}
-		}
 	}
 
 	z_pos = -1;
@@ -1290,15 +1517,16 @@ DEFINE_SHOW_ATTRIBUTE(dpu_crtc_debugfs_state);
 static int _dpu_crtc_init_debugfs(struct drm_crtc *crtc)
 {
 	struct dpu_crtc *dpu_crtc = to_dpu_crtc(crtc);
+	struct dentry *debugfs_root;
 
-	dpu_crtc->debugfs_root = debugfs_create_dir(dpu_crtc->name,
+	debugfs_root = debugfs_create_dir(dpu_crtc->name,
 			crtc->dev->primary->debugfs_root);
 
 	debugfs_create_file("status", 0400,
-			dpu_crtc->debugfs_root,
+			debugfs_root,
 			dpu_crtc, &_dpu_debugfs_status_fops);
 	debugfs_create_file("state", 0600,
-			dpu_crtc->debugfs_root,
+			debugfs_root,
 			&dpu_crtc->base,
 			&dpu_crtc_debugfs_state_fops);
 
@@ -1316,13 +1544,6 @@ static int dpu_crtc_late_register(struct drm_crtc *crtc)
 	return _dpu_crtc_init_debugfs(crtc);
 }
 
-static void dpu_crtc_early_unregister(struct drm_crtc *crtc)
-{
-	struct dpu_crtc *dpu_crtc = to_dpu_crtc(crtc);
-
-	debugfs_remove_recursive(dpu_crtc->debugfs_root);
-}
-
 static const struct drm_crtc_funcs dpu_crtc_funcs = {
 	.set_config = drm_atomic_helper_set_config,
 	.destroy = dpu_crtc_destroy,
@@ -1330,8 +1551,10 @@ static const struct drm_crtc_funcs dpu_crtc_funcs = {
 	.reset = dpu_crtc_reset,
 	.atomic_duplicate_state = dpu_crtc_duplicate_state,
 	.atomic_destroy_state = dpu_crtc_destroy_state,
+	.atomic_print_state = dpu_crtc_atomic_print_state,
 	.late_register = dpu_crtc_late_register,
-	.early_unregister = dpu_crtc_early_unregister,
+	.verify_crc_source = dpu_crtc_verify_crc_source,
+	.set_crc_source = dpu_crtc_set_crc_source,
 	.enable_vblank  = msm_crtc_enable_vblank,
 	.disable_vblank = msm_crtc_disable_vblank,
 	.get_vblank_timestamp = drm_crtc_vblank_helper_get_vblank_timestamp,

@@ -37,7 +37,7 @@ static asmlinkage void riscv_intc_irq(struct pt_regs *regs)
 		break;
 #endif
 	default:
-		handle_domain_irq(intc_domain, cause, regs);
+		generic_handle_domain_irq(intc_domain, cause);
 		break;
 	}
 }
@@ -95,10 +95,11 @@ static const struct irq_domain_ops riscv_intc_domain_ops = {
 static int __init riscv_intc_init(struct device_node *node,
 				  struct device_node *parent)
 {
-	int rc, hartid;
+	int rc;
+	unsigned long hartid;
 
-	hartid = riscv_of_parent_hartid(node);
-	if (hartid < 0) {
+	rc = riscv_of_parent_hartid(node, &hartid);
+	if (rc < 0) {
 		pr_warn("unable to find hart id for %pOF\n", node);
 		return 0;
 	}

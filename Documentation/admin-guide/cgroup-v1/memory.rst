@@ -64,6 +64,7 @@ Brief summary of control files.
 				     threads
  cgroup.procs			     show list of processes
  cgroup.event_control		     an interface for event_fd()
+				     This knob is not available on CONFIG_PREEMPT_RT systems.
  memory.usage_in_bytes		     show current usage for memory
 				     (See 5.5 for details)
  memory.memsw.usage_in_bytes	     show current usage for memory+Swap
@@ -75,6 +76,7 @@ Brief summary of control files.
  memory.max_usage_in_bytes	     show max memory usage recorded
  memory.memsw.max_usage_in_bytes     show max memory+Swap usage recorded
  memory.soft_limit_in_bytes	     set/show soft limit of memory usage
+				     This knob is not available on CONFIG_PREEMPT_RT systems.
  memory.stat			     show various statistics
  memory.use_hierarchy		     set/show hierarchical account enabled
                                      This knob is deprecated and shouldn't be
@@ -87,10 +89,8 @@ Brief summary of control files.
  memory.oom_control		     set/show oom controls.
  memory.numa_stat		     show the number of memory usage per numa
 				     node
- memory.kmem.limit_in_bytes          set/show hard limit for kernel memory
-                                     This knob is deprecated and shouldn't be
-                                     used. It is planned that this be removed in
-                                     the foreseeable future.
+ memory.kmem.limit_in_bytes          This knob is deprecated and writing to
+                                     it will return -ENOTSUPP.
  memory.kmem.usage_in_bytes          show current kernel memory allocation
  memory.kmem.failcnt                 show the number of kernel memory usage
 				     hits limits
@@ -299,7 +299,7 @@ Per-node-per-memcgroup LRU (cgroup's private LRU) is guarded by
 lruvec->lru_lock; PG_lru bit of page->flags is cleared before
 isolating a page from its LRU under lruvec->lru_lock.
 
-2.7 Kernel Memory Extension (CONFIG_MEMCG_KMEM)
+2.7 Kernel Memory Extension
 -----------------------------------------------
 
 With the Kernel memory extension, the Memory Controller is able to limit
@@ -386,8 +386,6 @@ U != 0, K >= U:
 
 a. Enable CONFIG_CGROUPS
 b. Enable CONFIG_MEMCG
-c. Enable CONFIG_MEMCG_SWAP (to use swap extension)
-d. Enable CONFIG_MEMCG_KMEM (to use kmem extension)
 
 3.1. Prepare the cgroups (see cgroups.txt, Why are cgroups needed?)
 -------------------------------------------------------------------
@@ -517,11 +515,6 @@ will be charged as a new owner of it.
   Though rmdir() offlines memcg, but the memcg may still stay there due to
   charged file caches. Some out-of-use page caches may keep charged until
   memory pressure happens. If you want to avoid that, force_empty will be useful.
-
-  Also, note that when memory.kmem.limit_in_bytes is set the charges due to
-  kernel pages will still be seen. This is not considered a failure and the
-  write will still return success. In this case, it is expected that
-  memory.kmem.usage_in_bytes == memory.usage_in_bytes.
 
 5.2 stat file
 -------------

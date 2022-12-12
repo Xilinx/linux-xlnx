@@ -17,44 +17,12 @@
 
 #include <bpf/bpf.h>
 #include <bpf/btf.h>
+#include <bpf/hashmap.h>
 
 #include "json_writer.h"
 #include "main.h"
 
-const char * const map_type_name[] = {
-	[BPF_MAP_TYPE_UNSPEC]			= "unspec",
-	[BPF_MAP_TYPE_HASH]			= "hash",
-	[BPF_MAP_TYPE_ARRAY]			= "array",
-	[BPF_MAP_TYPE_PROG_ARRAY]		= "prog_array",
-	[BPF_MAP_TYPE_PERF_EVENT_ARRAY]		= "perf_event_array",
-	[BPF_MAP_TYPE_PERCPU_HASH]		= "percpu_hash",
-	[BPF_MAP_TYPE_PERCPU_ARRAY]		= "percpu_array",
-	[BPF_MAP_TYPE_STACK_TRACE]		= "stack_trace",
-	[BPF_MAP_TYPE_CGROUP_ARRAY]		= "cgroup_array",
-	[BPF_MAP_TYPE_LRU_HASH]			= "lru_hash",
-	[BPF_MAP_TYPE_LRU_PERCPU_HASH]		= "lru_percpu_hash",
-	[BPF_MAP_TYPE_LPM_TRIE]			= "lpm_trie",
-	[BPF_MAP_TYPE_ARRAY_OF_MAPS]		= "array_of_maps",
-	[BPF_MAP_TYPE_HASH_OF_MAPS]		= "hash_of_maps",
-	[BPF_MAP_TYPE_DEVMAP]			= "devmap",
-	[BPF_MAP_TYPE_DEVMAP_HASH]		= "devmap_hash",
-	[BPF_MAP_TYPE_SOCKMAP]			= "sockmap",
-	[BPF_MAP_TYPE_CPUMAP]			= "cpumap",
-	[BPF_MAP_TYPE_XSKMAP]			= "xskmap",
-	[BPF_MAP_TYPE_SOCKHASH]			= "sockhash",
-	[BPF_MAP_TYPE_CGROUP_STORAGE]		= "cgroup_storage",
-	[BPF_MAP_TYPE_REUSEPORT_SOCKARRAY]	= "reuseport_sockarray",
-	[BPF_MAP_TYPE_PERCPU_CGROUP_STORAGE]	= "percpu_cgroup_storage",
-	[BPF_MAP_TYPE_QUEUE]			= "queue",
-	[BPF_MAP_TYPE_STACK]			= "stack",
-	[BPF_MAP_TYPE_SK_STORAGE]		= "sk_storage",
-	[BPF_MAP_TYPE_STRUCT_OPS]		= "struct_ops",
-	[BPF_MAP_TYPE_RINGBUF]			= "ringbuf",
-	[BPF_MAP_TYPE_INODE_STORAGE]		= "inode_storage",
-	[BPF_MAP_TYPE_TASK_STORAGE]		= "task_storage",
-};
-
-const size_t map_type_name_size = ARRAY_SIZE(map_type_name);
+static struct hashmap *map_table;
 
 static bool map_is_per_cpu(__u32 type)
 {
@@ -77,12 +45,18 @@ static bool map_is_map_of_progs(__u32 type)
 
 static int map_type_from_str(const char *type)
 {
+	const char *map_type_str;
 	unsigned int i;
 
-	for (i = 0; i < ARRAY_SIZE(map_type_name); i++)
+	for (i = 0; ; i++) {
+		map_type_str = libbpf_bpf_map_type_str(i);
+		if (!map_type_str)
+			break;
+
 		/* Don't allow prefixing in case of possible future shadowing */
-		if (map_type_name[i] && !strcmp(map_type_name[i], type))
+		if (!strcmp(map_type_str, type))
 			return i;
+	}
 	return -1;
 }
 
@@ -468,9 +442,12 @@ static int parse_elem(char **argv, struct bpf_map_info *info,
 
 static void show_map_header_json(struct bpf_map_info *info, json_writer_t *wtr)
 {
+	const char *map_type_str;
+
 	jsonw_uint_field(wtr, "id", info->id);
-	if (info->type < ARRAY_SIZE(map_type_name))
-		jsonw_string_field(wtr, "type", map_type_name[info->type]);
+	map_type_str = libbpf_bpf_map_type_str(info->type);
+	if (map_type_str)
+		jsonw_string_field(wtr, "type", map_type_str);
 	else
 		jsonw_uint_field(wtr, "type", info->type);
 
@@ -500,7 +477,7 @@ static int show_map_close_json(int fd, struct bpf_map_info *info)
 	jsonw_uint_field(json_wtr, "max_entries", info->max_entries);
 
 	if (memlock)
-		jsonw_int_field(json_wtr, "bytes_memlock", atoi(memlock));
+		jsonw_int_field(json_wtr, "bytes_memlock", atoll(memlock));
 	free(memlock);
 
 	if (info->type == BPF_MAP_TYPE_PROG_ARRAY) {
@@ -509,10 +486,12 @@ static int show_map_close_json(int fd, struct bpf_map_info *info)
 
 		if (owner_prog_type) {
 			unsigned int prog_type = atoi(owner_prog_type);
+			const char *prog_type_str;
 
-			if (prog_type < prog_type_name_size)
+			prog_type_str = libbpf_bpf_prog_type_str(prog_type);
+			if (prog_type_str)
 				jsonw_string_field(json_wtr, "owner_prog_type",
-						   prog_type_name[prog_type]);
+						   prog_type_str);
 			else
 				jsonw_uint_field(json_wtr, "owner_prog_type",
 						 prog_type);
@@ -535,19 +514,18 @@ static int show_map_close_json(int fd, struct bpf_map_info *info)
 	if (info->btf_id)
 		jsonw_int_field(json_wtr, "btf_id", info->btf_id);
 
-	if (!hash_empty(map_table.table)) {
-		struct pinned_obj *obj;
+	if (!hashmap__empty(map_table)) {
+		struct hashmap_entry *entry;
 
 		jsonw_name(json_wtr, "pinned");
 		jsonw_start_array(json_wtr);
-		hash_for_each_possible(map_table.table, obj, hash, info->id) {
-			if (obj->id == info->id)
-				jsonw_string(json_wtr, obj->path);
-		}
+		hashmap__for_each_key_entry(map_table, entry,
+					    u32_as_hash_field(info->id))
+			jsonw_string(json_wtr, entry->value);
 		jsonw_end_array(json_wtr);
 	}
 
-	emit_obj_refs_json(&refs_table, info->id, json_wtr);
+	emit_obj_refs_json(refs_table, info->id, json_wtr);
 
 	jsonw_end_object(json_wtr);
 
@@ -556,9 +534,13 @@ static int show_map_close_json(int fd, struct bpf_map_info *info)
 
 static void show_map_header_plain(struct bpf_map_info *info)
 {
+	const char *map_type_str;
+
 	printf("%u: ", info->id);
-	if (info->type < ARRAY_SIZE(map_type_name))
-		printf("%s  ", map_type_name[info->type]);
+
+	map_type_str = libbpf_bpf_map_type_str(info->type);
+	if (map_type_str)
+		printf("%s  ", map_type_str);
 	else
 		printf("type %u  ", info->type);
 
@@ -594,10 +576,11 @@ static int show_map_close_plain(int fd, struct bpf_map_info *info)
 			printf("\n\t");
 		if (owner_prog_type) {
 			unsigned int prog_type = atoi(owner_prog_type);
+			const char *prog_type_str;
 
-			if (prog_type < prog_type_name_size)
-				printf("owner_prog_type %s  ",
-				       prog_type_name[prog_type]);
+			prog_type_str = libbpf_bpf_prog_type_str(prog_type);
+			if (prog_type_str)
+				printf("owner_prog_type %s  ", prog_type_str);
 			else
 				printf("owner_prog_type %d  ", prog_type);
 		}
@@ -610,25 +593,21 @@ static int show_map_close_plain(int fd, struct bpf_map_info *info)
 	}
 	close(fd);
 
-	if (!hash_empty(map_table.table)) {
-		struct pinned_obj *obj;
+	if (!hashmap__empty(map_table)) {
+		struct hashmap_entry *entry;
 
-		hash_for_each_possible(map_table.table, obj, hash, info->id) {
-			if (obj->id == info->id)
-				printf("\n\tpinned %s", obj->path);
-		}
+		hashmap__for_each_key_entry(map_table, entry,
+					    u32_as_hash_field(info->id))
+			printf("\n\tpinned %s", (char *)entry->value);
 	}
-	printf("\n");
 
 	if (frozen_str) {
 		frozen = atoi(frozen_str);
 		free(frozen_str);
 	}
 
-	if (!info->btf_id && !frozen)
-		return 0;
-
-	printf("\t");
+	if (info->btf_id || frozen)
+		printf("\n\t");
 
 	if (info->btf_id)
 		printf("btf_id %d", info->btf_id);
@@ -636,7 +615,7 @@ static int show_map_close_plain(int fd, struct bpf_map_info *info)
 	if (frozen)
 		printf("%sfrozen", info->btf_id ? "  " : "");
 
-	emit_obj_refs_plain(&refs_table, info->id, "\n\tpids ");
+	emit_obj_refs_plain(refs_table, info->id, "\n\tpids ");
 
 	printf("\n");
 	return 0;
@@ -694,8 +673,15 @@ static int do_show(int argc, char **argv)
 	int err;
 	int fd;
 
-	if (show_pinned)
-		build_pinned_obj_table(&map_table, BPF_OBJ_MAP);
+	if (show_pinned) {
+		map_table = hashmap__new(hash_fn_for_key_as_id,
+					 equal_fn_for_key_as_id, NULL);
+		if (IS_ERR(map_table)) {
+			p_err("failed to create hashmap for pinned paths");
+			return -1;
+		}
+		build_pinned_obj_table(map_table, BPF_OBJ_MAP);
+	}
 	build_obj_refs_table(&refs_table, BPF_OBJ_MAP);
 
 	if (argc == 2)
@@ -740,7 +726,10 @@ static int do_show(int argc, char **argv)
 	if (json_output)
 		jsonw_end_array(json_wtr);
 
-	delete_obj_refs_table(&refs_table);
+	delete_obj_refs_table(refs_table);
+
+	if (show_pinned)
+		delete_pinned_obj_table(map_table);
 
 	return errno == ENOENT ? 0 : -1;
 }
@@ -793,40 +782,41 @@ static int maps_have_btf(int *fds, int nb_fds)
 
 static struct btf *btf_vmlinux;
 
-static struct btf *get_map_kv_btf(const struct bpf_map_info *info)
+static int get_map_kv_btf(const struct bpf_map_info *info, struct btf **btf)
 {
-	struct btf *btf = NULL;
+	int err = 0;
 
 	if (info->btf_vmlinux_value_type_id) {
 		if (!btf_vmlinux) {
 			btf_vmlinux = libbpf_find_kernel_btf();
-			if (IS_ERR(btf_vmlinux))
+			err = libbpf_get_error(btf_vmlinux);
+			if (err) {
 				p_err("failed to get kernel btf");
+				return err;
+			}
 		}
-		return btf_vmlinux;
+		*btf = btf_vmlinux;
 	} else if (info->btf_value_type_id) {
-		int err;
-
-		btf = btf__load_from_kernel_by_id(info->btf_id);
-		err = libbpf_get_error(btf);
-		if (err) {
+		*btf = btf__load_from_kernel_by_id(info->btf_id);
+		err = libbpf_get_error(*btf);
+		if (err)
 			p_err("failed to get btf");
-			btf = ERR_PTR(err);
-		}
+	} else {
+		*btf = NULL;
 	}
 
-	return btf;
+	return err;
 }
 
 static void free_map_kv_btf(struct btf *btf)
 {
-	if (!IS_ERR(btf) && btf != btf_vmlinux)
+	if (!libbpf_get_error(btf) && btf != btf_vmlinux)
 		btf__free(btf);
 }
 
 static void free_btf_vmlinux(void)
 {
-	if (!IS_ERR(btf_vmlinux))
+	if (!libbpf_get_error(btf_vmlinux))
 		btf__free(btf_vmlinux);
 }
 
@@ -850,9 +840,8 @@ map_dump(int fd, struct bpf_map_info *info, json_writer_t *wtr,
 	prev_key = NULL;
 
 	if (wtr) {
-		btf = get_map_kv_btf(info);
-		if (IS_ERR(btf)) {
-			err = PTR_ERR(btf);
+		err = get_map_kv_btf(info, &btf);
+		if (err) {
 			goto exit_free;
 		}
 
@@ -867,9 +856,13 @@ map_dump(int fd, struct bpf_map_info *info, json_writer_t *wtr,
 	}
 
 	if (info->type == BPF_MAP_TYPE_REUSEPORT_SOCKARRAY &&
-	    info->value_size != 8)
+	    info->value_size != 8) {
+		const char *map_type_str;
+
+		map_type_str = libbpf_bpf_map_type_str(info->type);
 		p_info("Warning: cannot read values from %s map with value_size != 8",
-		       map_type_name[info->type]);
+		       map_type_str);
+	}
 	while (true) {
 		err = bpf_map_get_next_key(fd, prev_key, key);
 		if (err) {
@@ -1042,11 +1035,8 @@ static void print_key_value(struct bpf_map_info *info, void *key,
 	json_writer_t *btf_wtr;
 	struct btf *btf;
 
-	btf = btf__load_from_kernel_by_id(info->btf_id);
-	if (libbpf_get_error(btf)) {
-		p_err("failed to get btf");
+	if (get_map_kv_btf(info, &btf))
 		return;
-	}
 
 	if (json_output) {
 		print_entry_json(info, key, value, btf);
@@ -1249,7 +1239,10 @@ static int do_pin(int argc, char **argv)
 
 static int do_create(int argc, char **argv)
 {
-	struct bpf_create_map_attr attr = { NULL, };
+	LIBBPF_OPTS(bpf_map_create_opts, attr);
+	enum bpf_map_type map_type = BPF_MAP_TYPE_UNSPEC;
+	__u32 key_size = 0, value_size = 0, max_entries = 0;
+	const char *map_name = NULL;
 	const char *pinfile;
 	int err = -1, fd;
 
@@ -1264,30 +1257,30 @@ static int do_create(int argc, char **argv)
 		if (is_prefix(*argv, "type")) {
 			NEXT_ARG();
 
-			if (attr.map_type) {
+			if (map_type) {
 				p_err("map type already specified");
 				goto exit;
 			}
 
-			attr.map_type = map_type_from_str(*argv);
-			if ((int)attr.map_type < 0) {
+			map_type = map_type_from_str(*argv);
+			if ((int)map_type < 0) {
 				p_err("unrecognized map type: %s", *argv);
 				goto exit;
 			}
 			NEXT_ARG();
 		} else if (is_prefix(*argv, "name")) {
 			NEXT_ARG();
-			attr.name = GET_ARG();
+			map_name = GET_ARG();
 		} else if (is_prefix(*argv, "key")) {
-			if (parse_u32_arg(&argc, &argv, &attr.key_size,
+			if (parse_u32_arg(&argc, &argv, &key_size,
 					  "key size"))
 				goto exit;
 		} else if (is_prefix(*argv, "value")) {
-			if (parse_u32_arg(&argc, &argv, &attr.value_size,
+			if (parse_u32_arg(&argc, &argv, &value_size,
 					  "value size"))
 				goto exit;
 		} else if (is_prefix(*argv, "entries")) {
-			if (parse_u32_arg(&argc, &argv, &attr.max_entries,
+			if (parse_u32_arg(&argc, &argv, &max_entries,
 					  "max entries"))
 				goto exit;
 		} else if (is_prefix(*argv, "flags")) {
@@ -1328,14 +1321,14 @@ static int do_create(int argc, char **argv)
 		}
 	}
 
-	if (!attr.name) {
+	if (!map_name) {
 		p_err("map name not specified");
 		goto exit;
 	}
 
 	set_max_rlimit();
 
-	fd = bpf_create_map_xattr(&attr);
+	fd = bpf_map_create(map_type, map_name, key_size, value_size, max_entries, &attr);
 	if (fd < 0) {
 		p_err("map create failed: %s", strerror(errno));
 		goto exit;
@@ -1466,7 +1459,7 @@ static int do_help(int argc, char **argv)
 		"                 devmap | devmap_hash | sockmap | cpumap | xskmap | sockhash |\n"
 		"                 cgroup_storage | reuseport_sockarray | percpu_cgroup_storage |\n"
 		"                 queue | stack | sk_storage | struct_ops | ringbuf | inode_storage |\n"
-		"                 task_storage }\n"
+		"                 task_storage | bloom_filter | user_ringbuf }\n"
 		"       " HELP_SPEC_OPTIONS " |\n"
 		"                    {-f|--bpffs} | {-n|--nomount} }\n"
 		"",

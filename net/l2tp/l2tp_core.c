@@ -250,15 +250,15 @@ struct l2tp_session *l2tp_tunnel_get_session(struct l2tp_tunnel *tunnel,
 
 	session_list = l2tp_session_id_hash(tunnel, session_id);
 
-	read_lock_bh(&tunnel->hlist_lock);
-	hlist_for_each_entry(session, session_list, hlist)
+	rcu_read_lock_bh();
+	hlist_for_each_entry_rcu(session, session_list, hlist)
 		if (session->session_id == session_id) {
 			l2tp_session_inc_refcount(session);
-			read_unlock_bh(&tunnel->hlist_lock);
+			rcu_read_unlock_bh();
 
 			return session;
 		}
-	read_unlock_bh(&tunnel->hlist_lock);
+	rcu_read_unlock_bh();
 
 	return NULL;
 }
@@ -291,18 +291,18 @@ struct l2tp_session *l2tp_session_get_nth(struct l2tp_tunnel *tunnel, int nth)
 	struct l2tp_session *session;
 	int count = 0;
 
-	read_lock_bh(&tunnel->hlist_lock);
+	rcu_read_lock_bh();
 	for (hash = 0; hash < L2TP_HASH_SIZE; hash++) {
-		hlist_for_each_entry(session, &tunnel->session_hlist[hash], hlist) {
+		hlist_for_each_entry_rcu(session, &tunnel->session_hlist[hash], hlist) {
 			if (++count > nth) {
 				l2tp_session_inc_refcount(session);
-				read_unlock_bh(&tunnel->hlist_lock);
+				rcu_read_unlock_bh();
 				return session;
 			}
 		}
 	}
 
-	read_unlock_bh(&tunnel->hlist_lock);
+	rcu_read_unlock_bh();
 
 	return NULL;
 }
@@ -347,7 +347,7 @@ int l2tp_session_register(struct l2tp_session *session,
 
 	head = l2tp_session_id_hash(tunnel, session->session_id);
 
-	write_lock_bh(&tunnel->hlist_lock);
+	spin_lock_bh(&tunnel->hlist_lock);
 	if (!tunnel->acpt_newsess) {
 		err = -ENODEV;
 		goto err_tlock;
@@ -384,8 +384,8 @@ int l2tp_session_register(struct l2tp_session *session,
 		l2tp_tunnel_inc_refcount(tunnel);
 	}
 
-	hlist_add_head(&session->hlist, head);
-	write_unlock_bh(&tunnel->hlist_lock);
+	hlist_add_head_rcu(&session->hlist, head);
+	spin_unlock_bh(&tunnel->hlist_lock);
 
 	trace_register_session(session);
 
@@ -394,7 +394,7 @@ int l2tp_session_register(struct l2tp_session *session,
 err_tlock_pnlock:
 	spin_unlock_bh(&pn->l2tp_session_hlist_lock);
 err_tlock:
-	write_unlock_bh(&tunnel->hlist_lock);
+	spin_unlock_bh(&tunnel->hlist_lock);
 
 	return err;
 }
@@ -1150,8 +1150,10 @@ static void l2tp_tunnel_destruct(struct sock *sk)
 	}
 
 	/* Remove hooks into tunnel socket */
+	write_lock_bh(&sk->sk_callback_lock);
 	sk->sk_destruct = tunnel->old_sk_destruct;
 	sk->sk_user_data = NULL;
+	write_unlock_bh(&sk->sk_callback_lock);
 
 	/* Call the original destructor */
 	if (sk->sk_destruct)
@@ -1170,9 +1172,9 @@ static void l2tp_session_unhash(struct l2tp_session *session)
 	/* Remove the session from core hashes */
 	if (tunnel) {
 		/* Remove from the per-tunnel hash */
-		write_lock_bh(&tunnel->hlist_lock);
-		hlist_del_init(&session->hlist);
-		write_unlock_bh(&tunnel->hlist_lock);
+		spin_lock_bh(&tunnel->hlist_lock);
+		hlist_del_init_rcu(&session->hlist);
+		spin_unlock_bh(&tunnel->hlist_lock);
 
 		/* For L2TPv3 we have a per-net hash: remove from there, too */
 		if (tunnel->version != L2TP_HDR_VER_2) {
@@ -1181,8 +1183,9 @@ static void l2tp_session_unhash(struct l2tp_session *session)
 			spin_lock_bh(&pn->l2tp_session_hlist_lock);
 			hlist_del_init_rcu(&session->global_hlist);
 			spin_unlock_bh(&pn->l2tp_session_hlist_lock);
-			synchronize_rcu();
 		}
+
+		synchronize_rcu();
 	}
 }
 
@@ -1190,22 +1193,19 @@ static void l2tp_session_unhash(struct l2tp_session *session)
  */
 static void l2tp_tunnel_closeall(struct l2tp_tunnel *tunnel)
 {
-	int hash;
-	struct hlist_node *walk;
-	struct hlist_node *tmp;
 	struct l2tp_session *session;
+	int hash;
 
-	write_lock_bh(&tunnel->hlist_lock);
+	spin_lock_bh(&tunnel->hlist_lock);
 	tunnel->acpt_newsess = false;
 	for (hash = 0; hash < L2TP_HASH_SIZE; hash++) {
 again:
-		hlist_for_each_safe(walk, tmp, &tunnel->session_hlist[hash]) {
-			session = hlist_entry(walk, struct l2tp_session, hlist);
-			hlist_del_init(&session->hlist);
+		hlist_for_each_entry_rcu(session, &tunnel->session_hlist[hash], hlist) {
+			hlist_del_init_rcu(&session->hlist);
 
-			write_unlock_bh(&tunnel->hlist_lock);
+			spin_unlock_bh(&tunnel->hlist_lock);
 			l2tp_session_delete(session);
-			write_lock_bh(&tunnel->hlist_lock);
+			spin_lock_bh(&tunnel->hlist_lock);
 
 			/* Now restart from the beginning of this hash
 			 * chain.  We always remove a session from the
@@ -1215,7 +1215,7 @@ again:
 			goto again;
 		}
 	}
-	write_unlock_bh(&tunnel->hlist_lock);
+	spin_unlock_bh(&tunnel->hlist_lock);
 }
 
 /* Tunnel socket destroy hook for UDP encapsulation */
@@ -1408,7 +1408,7 @@ int l2tp_tunnel_create(int fd, int version, u32 tunnel_id, u32 peer_tunnel_id,
 
 	tunnel->magic = L2TP_TUNNEL_MAGIC;
 	sprintf(&tunnel->name[0], "tunl %u", tunnel_id);
-	rwlock_init(&tunnel->hlist_lock);
+	spin_lock_init(&tunnel->hlist_lock);
 	tunnel->acpt_newsess = true;
 
 	tunnel->encap = encap;
@@ -1471,16 +1471,19 @@ int l2tp_tunnel_register(struct l2tp_tunnel *tunnel, struct net *net,
 		sock = sockfd_lookup(tunnel->fd, &ret);
 		if (!sock)
 			goto err;
-
-		ret = l2tp_validate_socket(sock->sk, net, tunnel->encap);
-		if (ret < 0)
-			goto err_sock;
 	}
+
+	sk = sock->sk;
+	write_lock_bh(&sk->sk_callback_lock);
+	ret = l2tp_validate_socket(sk, net, tunnel->encap);
+	if (ret < 0)
+		goto err_inval_sock;
+	rcu_assign_sk_user_data(sk, tunnel);
+	write_unlock_bh(&sk->sk_callback_lock);
 
 	tunnel->l2tp_net = net;
 	pn = l2tp_pernet(net);
 
-	sk = sock->sk;
 	sock_hold(sk);
 	tunnel->sock = sk;
 
@@ -1505,8 +1508,6 @@ int l2tp_tunnel_register(struct l2tp_tunnel *tunnel, struct net *net,
 		};
 
 		setup_udp_tunnel_sock(net, sock, &udp_cfg);
-	} else {
-		sk->sk_user_data = tunnel;
 	}
 
 	tunnel->old_sk_destruct = sk->sk_destruct;
@@ -1523,6 +1524,11 @@ int l2tp_tunnel_register(struct l2tp_tunnel *tunnel, struct net *net,
 	return 0;
 
 err_sock:
+	write_lock_bh(&sk->sk_callback_lock);
+	rcu_assign_sk_user_data(sk, NULL);
+err_inval_sock:
+	write_unlock_bh(&sk->sk_callback_lock);
+
 	if (tunnel->fd < 0)
 		sock_release(sock);
 	else

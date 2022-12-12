@@ -46,9 +46,14 @@ struct xvip_pipeline {
 	struct xvip_composite_device *xdev;
 };
 
-static inline struct xvip_pipeline *to_xvip_pipeline(struct media_entity *e)
+static inline struct xvip_pipeline *to_xvip_pipeline(struct video_device *vdev)
 {
-	return container_of(e->pipe, struct xvip_pipeline, pipe);
+	struct media_pipeline *pipe = video_device_pipeline(vdev);
+
+	if (!pipe)
+		return NULL;
+
+	return container_of(pipe, struct xvip_pipeline, pipe);
 }
 
 /**

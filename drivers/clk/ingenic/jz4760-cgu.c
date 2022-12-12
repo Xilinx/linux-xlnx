@@ -12,7 +12,7 @@
 
 #include <linux/clk.h>
 
-#include <dt-bindings/clock/jz4760-cgu.h>
+#include <dt-bindings/clock/ingenic,jz4760-cgu.h>
 
 #include "cgu.h"
 #include "pm.h"
@@ -143,6 +143,11 @@ static const struct ingenic_cgu_clk_info jz4760_cgu_clocks[] = {
 
 	[JZ4760_CLK_CCLK] = {
 		"cclk", CGU_CLK_DIV,
+		/*
+		 * Disabling the CPU clock or any parent clocks will hang the
+		 * system; mark it critical.
+		 */
+		.flags = CLK_IS_CRITICAL,
 		.parents = { JZ4760_CLK_PLL0, },
 		.div = {
 			CGU_REG_CPCCR, 0, 1, 4, 22, -1, -1, 0,
@@ -175,6 +180,11 @@ static const struct ingenic_cgu_clk_info jz4760_cgu_clocks[] = {
 	},
 	[JZ4760_CLK_MCLK] = {
 		"mclk", CGU_CLK_DIV,
+		/*
+		 * Disabling MCLK or its parents will render DRAM
+		 * inaccessible; mark it critical.
+		 */
+		.flags = CLK_IS_CRITICAL,
 		.parents = { JZ4760_CLK_PLL0, },
 		.div = {
 			CGU_REG_CPCCR, 12, 1, 4, 22, -1, -1, 0,
@@ -312,6 +322,16 @@ static const struct ingenic_cgu_clk_info jz4760_cgu_clocks[] = {
 		"dma", CGU_CLK_GATE,
 		.parents = { JZ4760_CLK_H2CLK, },
 		.gate = { CGU_REG_CLKGR0, 21 },
+	},
+	[JZ4760_CLK_MDMA] = {
+		"mdma", CGU_CLK_GATE,
+		.parents = { JZ4760_CLK_HCLK, },
+		.gate = { CGU_REG_CLKGR0, 25 },
+	},
+	[JZ4760_CLK_BDMA] = {
+		"bdma", CGU_CLK_GATE,
+		.parents = { JZ4760_CLK_HCLK, },
+		.gate = { CGU_REG_CLKGR1, 0 },
 	},
 	[JZ4760_CLK_I2C0] = {
 		"i2c0", CGU_CLK_GATE,

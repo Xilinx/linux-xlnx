@@ -133,7 +133,7 @@ struct qed_iscsi_cb_ops {
  * @fill_dev_info:	fills iSCSI specific information
  *			@param cdev
  *			@param info
- *			@return 0 on sucesss, otherwise error value.
+ *			@return 0 on success, otherwise error value.
  * @register_ops:	register iscsi operations
  *			@param cdev
  *			@param ops - specified using qed_iscsi_cb_ops
@@ -152,7 +152,7 @@ struct qed_iscsi_cb_ops {
  *				connection.
  *			@param p_doorbell - qed will fill the address of the
  *				doorbell.
- *			@return 0 on sucesss, otherwise error value.
+ *			@return 0 on success, otherwise error value.
  * @release_conn:	release a previously acquired iscsi connection
  *			@param cdev
  *			@param handle - the connection handle.
@@ -182,7 +182,7 @@ struct qed_iscsi_cb_ops {
  *			@param stats - pointer to struck that would be filled
  *				we stats
  *			@return 0 on success, error otherwise.
- * @change_mac		Change MAC of interface
+ * @change_mac:		Change MAC of interface
  *			@param cdev
  *			@param handle - the connection handle.
  *			@param mac - new MAC to configure.

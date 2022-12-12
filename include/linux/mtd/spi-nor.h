@@ -47,11 +47,8 @@
 #define SPINOR_OP_RDID		0x9f	/* Read JEDEC ID */
 #define SPINOR_OP_RDSFDP	0x5a	/* Read SFDP */
 #define SPINOR_OP_RDCR		0x35	/* Read configuration register */
-#define SPINOR_OP_RDFSR		0x70	/* Read flag status register */
-#define SPINOR_OP_CLFSR		0x50	/* Clear flag status register */
 #define SPINOR_OP_RDEAR		0xc8	/* Read Extended Address Register */
 #define SPINOR_OP_WREAR		0xc5	/* Write Extended Address Register */
-#define SPINOR_OP_WRCR		0x81	/* Write Configuration register */
 #define SPINOR_OP_SRSTEN	0x66	/* Software Reset Enable */
 #define SPINOR_OP_SRST		0x99	/* Software Reset */
 #define SPINOR_OP_GBULK		0x98    /* Global Block Unlock */
@@ -88,15 +85,6 @@
 #define SPINOR_OP_AAI_WP	0xad	/* Auto address increment word program */
 
 #define GLOBAL_BLKPROT_UNLK	0x98	/* Clear global write protection bits */
-/* Used for S3AN flashes only */
-#define SPINOR_OP_XSE		0x50	/* Sector erase */
-#define SPINOR_OP_XPP		0x82	/* Page program */
-#define SPINOR_OP_XRDSR		0xd7	/* Read status register */
-
-#define XSR_PAGESIZE		BIT(0)	/* Page size in Po2 or Linear */
-#define XSR_RDY			BIT(7)	/* Ready */
-
-
 /* Used for Macronix and Winbond flashes. */
 #define SPINOR_OP_EN4B		0xb7	/* Enter 4-byte mode */
 #define SPINOR_OP_EX4B		0xe9	/* Exit 4-byte mode */
@@ -104,7 +92,6 @@
 /* Used for Spansion flashes only. */
 #define SPINOR_OP_BRWR		0x17	/* Bank register write */
 #define SPINOR_OP_BRRD		0x16	/* Bank register read */
-#define SPINOR_OP_CLSR		0x30	/* Clear status register 1 */
 
 /* Used for Micron flashes only. */
 #define SPINOR_OP_RD_EVCR      0x65    /* Read EVCR register */
@@ -132,7 +119,6 @@
 #define SR_SRWD			BIT(7)	/* SR write protect */
 /* Bit to determine whether protection starts from top or bottom */
 #define SR_BP_TB		0x20
-#define BP_BITS_FROM_SR(sr)	(((sr) & SR_BP_BIT_MASK) >> SR_BP_BIT_OFFSET)
 #define M25P_MAX_LOCKABLE_SECTORS	64
 /* Spansion/Cypress specific status bits */
 #define SR_E_ERR		BIT(5)
@@ -144,12 +130,6 @@
 
 /* Enhanced Volatile Configuration Register bits */
 #define EVCR_QUAD_EN_MICRON	BIT(7)	/* Micron Quad I/O */
-
-/* Flag Status Register bits */
-#define FSR_READY		BIT(7)	/* Device status, 0 = Busy, 1 = Ready */
-#define FSR_E_ERR		BIT(5)	/* Erase operation status */
-#define FSR_P_ERR		BIT(4)	/* Program operation status */
-#define FSR_PT_ERR		BIT(1)	/* Protection error bit */
 
 /* Extended/Bank Address Register bits */
 #define EAR_SEGMENT_MASK	0x7 /* 128 Mb segment mask */
@@ -384,7 +364,7 @@ struct spi_nor_flash_parameter;
  * @info:		SPI NOR part JEDEC MFR ID and other info
  * @manufacturer:	SPI NOR manufacturer
  * @page_size:		the page size of the SPI NOR
- * @addr_width:		number of address bytes
+ * @addr_nbytes:	number of address bytes
  * @erase_opcode:	the opcode for erasing a sector
  * @read_opcode:	the read opcode
  * @read_dummy:		the dummy needed by the read operation
@@ -396,6 +376,7 @@ struct spi_nor_flash_parameter;
  * @write_proto:	the SPI protocol for write operations
  * @reg_proto:		the SPI protocol for read_reg/write_reg/erase operations
  * @sfdp:		the SFDP data of the flash
+ * @debugfs_root:	pointer to the debugfs directory
  * @controller_ops:	SPI NOR controller driver specific operations.
  * @params:		[FLASH-SPECIFIC] SPI NOR flash parameters and settings.
  *                      The structure includes legacy flash parameters and
@@ -415,7 +396,7 @@ struct spi_nor {
 	const struct flash_info	*info;
 	const struct spi_nor_manufacturer *manufacturer;
 	u32			page_size;
-	u8			addr_width;
+	u8			addr_nbytes;
 	u8			erase_opcode;
 	u8			read_opcode;
 	u8			read_dummy;
@@ -435,6 +416,7 @@ struct spi_nor {
 	bool			is_lock;
 	enum spi_nor_cmd_ext	cmd_ext_type;
 	struct sfdp		*sfdp;
+	struct dentry		*debugfs_root;
 
 	const struct spi_nor_controller_ops *controller_ops;
 

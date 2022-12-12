@@ -77,6 +77,7 @@ struct dst_entry {
 #ifndef CONFIG_64BIT
 	atomic_t		__refcnt;	/* 32-bit offset 64 */
 #endif
+	netdevice_tracker	dev_tracker;
 };
 
 struct dst_metrics {
@@ -236,12 +237,6 @@ static inline void dst_use_noref(struct dst_entry *dst, unsigned long time)
 		dst->__use++;
 		dst->lastuse = time;
 	}
-}
-
-static inline void dst_hold_and_use(struct dst_entry *dst, unsigned long time)
-{
-	dst_hold(dst);
-	dst_use_noref(dst, time);
 }
 
 static inline struct dst_entry *dst_clone(struct dst_entry *dst)

@@ -16,6 +16,9 @@ struct scatterlist {
 #ifdef CONFIG_NEED_SG_DMA_LENGTH
 	unsigned int	dma_length;
 #endif
+#ifdef CONFIG_PCI_P2PDMA
+	unsigned int    dma_flags;
+#endif
 };
 
 /*
@@ -69,10 +72,27 @@ struct sg_append_table {
  * a valid sg entry, or whether it points to the start of a new scatterlist.
  * Those low bits are there for everyone! (thanks mason :-)
  */
-#define sg_is_chain(sg)		((sg)->page_link & SG_CHAIN)
-#define sg_is_last(sg)		((sg)->page_link & SG_END)
-#define sg_chain_ptr(sg)	\
-	((struct scatterlist *) ((sg)->page_link & ~(SG_CHAIN | SG_END)))
+#define SG_PAGE_LINK_MASK (SG_CHAIN | SG_END)
+
+static inline unsigned int __sg_flags(struct scatterlist *sg)
+{
+	return sg->page_link & SG_PAGE_LINK_MASK;
+}
+
+static inline struct scatterlist *sg_chain_ptr(struct scatterlist *sg)
+{
+	return (struct scatterlist *)(sg->page_link & ~SG_PAGE_LINK_MASK);
+}
+
+static inline bool sg_is_chain(struct scatterlist *sg)
+{
+	return __sg_flags(sg) & SG_CHAIN;
+}
+
+static inline bool sg_is_last(struct scatterlist *sg)
+{
+	return __sg_flags(sg) & SG_END;
+}
 
 /**
  * sg_assign_page - Assign a given page to an SG entry
@@ -92,7 +112,7 @@ static inline void sg_assign_page(struct scatterlist *sg, struct page *page)
 	 * In order for the low bit stealing approach to work, pages
 	 * must be aligned at a 32-bit boundary as a minimum.
 	 */
-	BUG_ON((unsigned long) page & (SG_CHAIN | SG_END));
+	BUG_ON((unsigned long)page & SG_PAGE_LINK_MASK);
 #ifdef CONFIG_DEBUG_SG
 	BUG_ON(sg_is_chain(sg));
 #endif
@@ -126,7 +146,7 @@ static inline struct page *sg_page(struct scatterlist *sg)
 #ifdef CONFIG_DEBUG_SG
 	BUG_ON(sg_is_chain(sg));
 #endif
-	return (struct page *)((sg)->page_link & ~(SG_CHAIN | SG_END));
+	return (struct page *)((sg)->page_link & ~SG_PAGE_LINK_MASK);
 }
 
 /**
@@ -227,6 +247,72 @@ static inline void sg_unmark_end(struct scatterlist *sg)
 {
 	sg->page_link &= ~SG_END;
 }
+
+/*
+ * CONFGI_PCI_P2PDMA depends on CONFIG_64BIT which means there is 4 bytes
+ * in struct scatterlist (assuming also CONFIG_NEED_SG_DMA_LENGTH is set).
+ * Use this padding for DMA flags bits to indicate when a specific
+ * dma address is a bus address.
+ */
+#ifdef CONFIG_PCI_P2PDMA
+
+#define SG_DMA_BUS_ADDRESS (1 << 0)
+
+/**
+ * sg_dma_is_bus address - Return whether a given segment was marked
+ *			   as a bus address
+ * @sg:		 SG entry
+ *
+ * Description:
+ *   Returns true if sg_dma_mark_bus_address() has been called on
+ *   this segment.
+ **/
+static inline bool sg_is_dma_bus_address(struct scatterlist *sg)
+{
+	return sg->dma_flags & SG_DMA_BUS_ADDRESS;
+}
+
+/**
+ * sg_dma_mark_bus address - Mark the scatterlist entry as a bus address
+ * @sg:		 SG entry
+ *
+ * Description:
+ *   Marks the passed in sg entry to indicate that the dma_address is
+ *   a bus address and doesn't need to be unmapped. This should only be
+ *   used by dma_map_sg() implementations to mark bus addresses
+ *   so they can be properly cleaned up in dma_unmap_sg().
+ **/
+static inline void sg_dma_mark_bus_address(struct scatterlist *sg)
+{
+	sg->dma_flags |= SG_DMA_BUS_ADDRESS;
+}
+
+/**
+ * sg_unmark_bus_address - Unmark the scatterlist entry as a bus address
+ * @sg:		 SG entry
+ *
+ * Description:
+ *   Clears the bus address mark.
+ **/
+static inline void sg_dma_unmark_bus_address(struct scatterlist *sg)
+{
+	sg->dma_flags &= ~SG_DMA_BUS_ADDRESS;
+}
+
+#else
+
+static inline bool sg_is_dma_bus_address(struct scatterlist *sg)
+{
+	return false;
+}
+static inline void sg_dma_mark_bus_address(struct scatterlist *sg)
+{
+}
+static inline void sg_dma_unmark_bus_address(struct scatterlist *sg)
+{
+}
+
+#endif
 
 /**
  * sg_phys - Return physical address of an sg entry

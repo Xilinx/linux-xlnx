@@ -242,8 +242,17 @@ Control IDs
     * - ``V4L2_COLORFX_SET_CBCR``
       - The Cb and Cr chroma components are replaced by fixed coefficients
 	determined by ``V4L2_CID_COLORFX_CBCR`` control.
+    * - ``V4L2_COLORFX_SET_RGB``
+      - The RGB components are replaced by the fixed RGB components determined
+        by ``V4L2_CID_COLORFX_RGB`` control.
 
 
+``V4L2_CID_COLORFX_RGB`` ``(integer)``
+    Determines the Red, Green, and Blue coefficients for
+    ``V4L2_COLORFX_SET_RGB`` color effect.
+    Bits [7:0] of the supplied 32 bit value are interpreted as Blue component,
+    bits [15:8] as Green component, bits [23:16] as Red component, and
+    bits [31:24] must be zero.
 
 ``V4L2_CID_COLORFX_CBCR`` ``(integer)``
     Determines the Cb and Cr coefficients for ``V4L2_COLORFX_SET_CBCR``
@@ -452,10 +461,10 @@ Example: Changing controls
 	    perror("VIDIOC_QUERYCTRL");
 	    exit(EXIT_FAILURE);
 	} else {
-	    printf("V4L2_CID_BRIGHTNESS is not supportedn");
+	    printf("V4L2_CID_BRIGHTNESS is not supported\n");
 	}
     } else if (queryctrl.flags & V4L2_CTRL_FLAG_DISABLED) {
-	printf("V4L2_CID_BRIGHTNESS is not supportedn");
+	printf("V4L2_CID_BRIGHTNESS is not supported\n");
     } else {
 	memset(&control, 0, sizeof (control));
 	control.id = V4L2_CID_BRIGHTNESS;

@@ -465,7 +465,7 @@ static int ipoib_cm_req_handler(struct ib_cm_id *cm_id,
 		goto err_qp;
 	}
 
-	psn = prandom_u32() & 0xffffff;
+	psn = get_random_u32() & 0xffffff;
 	ret = ipoib_cm_modify_rx_qp(dev, cm_id, p->qp, psn);
 	if (ret)
 		goto err_modify;
@@ -884,8 +884,8 @@ int ipoib_cm_dev_open(struct net_device *dev)
 		goto err_cm;
 	}
 
-	ret = ib_cm_listen(priv->cm.id, cpu_to_be64(IPOIB_CM_IETF_ID | priv->qp->qp_num),
-			   0);
+	ret = ib_cm_listen(priv->cm.id,
+			   cpu_to_be64(IPOIB_CM_IETF_ID | priv->qp->qp_num));
 	if (ret) {
 		pr_warn("%s: failed to listen on ID 0x%llx\n", priv->ca->name,
 			IPOIB_CM_IETF_ID | priv->qp->qp_num);
@@ -1583,6 +1583,7 @@ int ipoib_cm_dev_init(struct net_device *dev)
 {
 	struct ipoib_dev_priv *priv = ipoib_priv(dev);
 	int max_srq_sge, i;
+	u8 addr;
 
 	INIT_LIST_HEAD(&priv->cm.passive_ids);
 	INIT_LIST_HEAD(&priv->cm.reap_list);
@@ -1636,7 +1637,8 @@ int ipoib_cm_dev_init(struct net_device *dev)
 		}
 	}
 
-	priv->dev->dev_addr[0] = IPOIB_FLAGS_RC;
+	addr = IPOIB_FLAGS_RC;
+	dev_addr_mod(dev, 0, &addr, 1);
 	return 0;
 }
 

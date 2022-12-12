@@ -275,12 +275,12 @@ static void carl9170_tx_release(struct kref *ref)
 	if (WARN_ON_ONCE(!ar))
 		return;
 
-	BUILD_BUG_ON(
-	    offsetof(struct ieee80211_tx_info, status.ack_signal) != 20);
-
-	memset(&txinfo->status.ack_signal, 0,
-	       sizeof(struct ieee80211_tx_info) -
-	       offsetof(struct ieee80211_tx_info, status.ack_signal));
+	/*
+	 * This does not call ieee80211_tx_info_clear_status() because
+	 * carl9170_tx_fill_rateinfo() has filled the rate information
+	 * before we get to this point.
+	 */
+	memset_after(&txinfo->status, 0, rates);
 
 	if (atomic_read(&ar->tx_total_queued))
 		ar->tx_schedule = true;
@@ -1044,8 +1044,9 @@ static int carl9170_tx_prepare(struct ar9170 *ar,
 		if (unlikely(!sta || !cvif))
 			goto err_out;
 
-		factor = min_t(unsigned int, 1u, sta->ht_cap.ampdu_factor);
-		density = sta->ht_cap.ampdu_density;
+		factor = min_t(unsigned int, 1u,
+			       sta->deflink.ht_cap.ampdu_factor);
+		density = sta->deflink.ht_cap.ampdu_density;
 
 		if (density) {
 			/*
@@ -1558,6 +1559,9 @@ static struct carl9170_vif_info *carl9170_pick_beaconing_vif(struct ar9170 *ar)
 					goto out;
 			}
 		} while (ar->beacon_enabled && i--);
+
+		/* no entry found in list */
+		return NULL;
 	}
 
 out:
@@ -1624,7 +1628,7 @@ int carl9170_update_beacon(struct ar9170 *ar, const bool submit)
 		goto out_unlock;
 
 	skb = ieee80211_beacon_get_tim(ar->hw, carl9170_get_vif(cvif),
-		NULL, NULL);
+				       NULL, NULL, 0);
 
 	if (!skb) {
 		err = -ENOMEM;

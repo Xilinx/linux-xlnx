@@ -25,6 +25,8 @@ struct sg_table;
  * @FPGA_MGR_STATE_RESET: FPGA in reset state
  * @FPGA_MGR_STATE_FIRMWARE_REQ: firmware request in progress
  * @FPGA_MGR_STATE_FIRMWARE_REQ_ERR: firmware request failed
+ * @FPGA_MGR_STATE_PARSE_HEADER: parse FPGA image header
+ * @FPGA_MGR_STATE_PARSE_HEADER_ERR: Error during PARSE_HEADER stage
  * @FPGA_MGR_STATE_WRITE_INIT: preparing FPGA for programming
  * @FPGA_MGR_STATE_WRITE_INIT_ERR: Error during WRITE_INIT stage
  * @FPGA_MGR_STATE_WRITE: writing image to FPGA
@@ -44,7 +46,9 @@ enum fpga_mgr_states {
 	FPGA_MGR_STATE_FIRMWARE_REQ,
 	FPGA_MGR_STATE_FIRMWARE_REQ_ERR,
 
-	/* write sequence: init, write, complete */
+	/* write sequence: parse header, init, write, complete */
+	FPGA_MGR_STATE_PARSE_HEADER,
+	FPGA_MGR_STATE_PARSE_HEADER_ERR,
 	FPGA_MGR_STATE_WRITE_INIT,
 	FPGA_MGR_STATE_WRITE_INIT_ERR,
 	FPGA_MGR_STATE_WRITE,
@@ -101,6 +105,9 @@ enum fpga_mgr_states {
  * @sgt: scatter/gather table containing FPGA image
  * @buf: contiguous buffer containing FPGA image
  * @count: size of buf
+ * @header_size: size of image header.
+ * @data_size: size of image data to be sent to the device. If not specified,
+ *	whole image will be used. Header may be skipped in either case.
  * @region_id: id of target region
  * @dev: device that owns this
  * @overlay: Device Tree overlay
@@ -115,6 +122,8 @@ struct fpga_image_info {
 	struct sg_table *sgt;
 	const char *buf;
 	size_t count;
+	size_t header_size;
+	size_t data_size;
 	int region_id;
 	struct device *dev;
 #ifdef CONFIG_OF
@@ -123,10 +132,47 @@ struct fpga_image_info {
 };
 
 /**
+ * struct fpga_compat_id - id for compatibility check
+ *
+ * @id_h: high 64bit of the compat_id
+ * @id_l: low 64bit of the compat_id
+ */
+struct fpga_compat_id {
+	u64 id_h;
+	u64 id_l;
+};
+
+/**
+ * struct fpga_manager_info - collection of parameters for an FPGA Manager
+ * @name: fpga manager name
+ * @compat_id: FPGA manager id for compatibility check.
+ * @mops: pointer to structure of fpga manager ops
+ * @priv: fpga manager private data
+ *
+ * fpga_manager_info contains parameters for the register_full function.
+ * These are separated into an info structure because they some are optional
+ * others could be added to in the future. The info structure facilitates
+ * maintaining a stable API.
+ */
+struct fpga_manager_info {
+	const char *name;
+	struct fpga_compat_id *compat_id;
+	const struct fpga_manager_ops *mops;
+	void *priv;
+};
+
+/**
  * struct fpga_manager_ops - ops for low level fpga manager drivers
- * @initial_header_size: Maximum number of bytes that should be passed into write_init
+ * @initial_header_size: minimum number of bytes that should be passed into
+ *	parse_header and write_init.
+ * @skip_header: bool flag to tell fpga-mgr core whether it should skip
+ *	info->header_size part at the beginning of the image when invoking
+ *	write callback.
  * @state: returns an enum value of the FPGA's state
  * @status: returns status of the FPGA, including reconfiguration error code
+ * @parse_header: parse FPGA image header to set info->header_size and
+ *	info->data_size. In case the input buffer is not large enough, set
+ *	required size to info->header_size and return -EAGAIN.
  * @write_init: prepare the FPGA to receive configuration data
  * @write: write count bytes of configuration data to the FPGA
  * @write_sg: write the scatter list of configuration data to the FPGA
@@ -141,8 +187,12 @@ struct fpga_image_info {
  */
 struct fpga_manager_ops {
 	size_t initial_header_size;
+	bool skip_header;
 	enum fpga_mgr_states (*state)(struct fpga_manager *mgr);
 	u64 (*status)(struct fpga_manager *mgr);
+	int (*parse_header)(struct fpga_manager *mgr,
+			    struct fpga_image_info *info,
+			    const char *buf, size_t count);
 	int (*write_init)(struct fpga_manager *mgr,
 			  struct fpga_image_info *info,
 			  const char *buf, size_t count);
@@ -167,17 +217,6 @@ struct fpga_manager_ops {
 #define FPGA_MGR_STATUS_HIGH_Z_STATE_ERR	BIT(8)
 #define FPGA_MGR_STATUS_EOS_ERR			BIT(9)
 #define FPGA_MGR_STATUS_FIRMWARE_REQ_ERR	BIT(10)
-
-/**
- * struct fpga_compat_id - id for compatibility check
- *
- * @id_h: high 64bit of the compat_id
- * @id_l: low 64bit of the compat_id
- */
-struct fpga_compat_id {
-	u64 id_h;
-	u64 id_l;
-};
 
 /**
  * struct fpga_manager - fpga manager structure
@@ -230,18 +269,19 @@ struct fpga_manager *fpga_mgr_get(struct device *dev);
 
 void fpga_mgr_put(struct fpga_manager *mgr);
 
-struct fpga_manager *fpga_mgr_create(struct device *dev, const char *name,
-				     const struct fpga_manager_ops *mops,
-				     void *priv);
-void fpga_mgr_free(struct fpga_manager *mgr);
-int fpga_mgr_register(struct fpga_manager *mgr);
+struct fpga_manager *
+fpga_mgr_register_full(struct device *parent, const struct fpga_manager_info *info);
+
+struct fpga_manager *
+fpga_mgr_register(struct device *parent, const char *name,
+		  const struct fpga_manager_ops *mops, void *priv);
 void fpga_mgr_unregister(struct fpga_manager *mgr);
 
-int devm_fpga_mgr_register(struct device *dev, struct fpga_manager *mgr);
-
-struct fpga_manager *devm_fpga_mgr_create(struct device *dev, const char *name,
-					  const struct fpga_manager_ops *mops,
-					  void *priv);
+struct fpga_manager *
+devm_fpga_mgr_register_full(struct device *parent, const struct fpga_manager_info *info);
+struct fpga_manager *
+devm_fpga_mgr_register(struct device *parent, const char *name,
+		       const struct fpga_manager_ops *mops, void *priv);
 
 #define FPGA_IOCTL_LOAD_DMA_BUFF	_IOWR('R', 1, __u32)
 

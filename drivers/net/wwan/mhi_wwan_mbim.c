@@ -385,13 +385,13 @@ static void mhi_net_rx_refill_work(struct work_struct *work)
 	int err;
 
 	while (!mhi_queue_is_full(mdev, DMA_FROM_DEVICE)) {
-		struct sk_buff *skb = alloc_skb(MHI_DEFAULT_MRU, GFP_KERNEL);
+		struct sk_buff *skb = alloc_skb(mbim->mru, GFP_KERNEL);
 
 		if (unlikely(!skb))
 			break;
 
 		err = mhi_queue_skb(mdev, DMA_FROM_DEVICE, skb,
-				    MHI_DEFAULT_MRU, MHI_EOT);
+				    mbim->mru, MHI_EOT);
 		if (unlikely(err)) {
 			kfree_skb(skb);
 			break;
@@ -582,6 +582,7 @@ static void mhi_mbim_setup(struct net_device *ndev)
 	ndev->min_mtu = ETH_MIN_MTU;
 	ndev->max_mtu = MHI_MAX_BUF_SZ - ndev->needed_headroom;
 	ndev->tx_queue_len = 1000;
+	ndev->needs_free_netdev = true;
 }
 
 static const struct wwan_ops mhi_mbim_wwan_ops = {

@@ -2427,7 +2427,7 @@ wmi_process_mgmt_tx_comp(struct ath10k *ar, struct mgmt_tx_compl_params *param)
 		info->flags |= IEEE80211_TX_STAT_ACK;
 		info->status.ack_signal = ATH10K_DEFAULT_NOISE_FLOOR +
 					  param->ack_rssi;
-		info->status.is_valid_ack_signal = true;
+		info->status.flags |= IEEE80211_TX_STATUS_ACK_SIGNAL_VALID;
 	}
 
 	ieee80211_tx_status_irqsafe(ar->hw, msdu);
@@ -2609,6 +2609,10 @@ int ath10k_wmi_event_mgmt_rx(struct ath10k *ar, struct sk_buff *skb)
 
 	if (ieee80211_is_beacon(hdr->frame_control))
 		ath10k_mac_handle_beacon(ar, skb);
+
+	if (ieee80211_is_beacon(hdr->frame_control) ||
+	    ieee80211_is_probe_resp(hdr->frame_control))
+		status->boottime_ns = ktime_get_boottime_ns();
 
 	ath10k_dbg(ar, ATH10K_DBG_MGMT,
 		   "event mgmt rx skb %pK len %d ftype %02x stype %02x\n",
@@ -3551,7 +3555,7 @@ static void ath10k_wmi_update_tim(struct ath10k *ar,
 	__le32 t;
 	u32 v, tim_len;
 
-	/* When FW reports 0 in tim_len, ensure atleast first byte
+	/* When FW reports 0 in tim_len, ensure at least first byte
 	 * in tim_bitmap is considered for pvm calculation.
 	 */
 	tim_len = tim_info->tim_len ? __le32_to_cpu(tim_info->tim_len) : 1;
@@ -3878,13 +3882,13 @@ void ath10k_wmi_event_host_swba(struct ath10k *ar, struct sk_buff *skb)
 		 * Once CSA counter is completed stop sending beacons until
 		 * actual channel switch is done
 		 */
-		if (arvif->vif->csa_active &&
+		if (arvif->vif->bss_conf.csa_active &&
 		    ieee80211_beacon_cntdwn_is_complete(arvif->vif)) {
 			ieee80211_csa_finish(arvif->vif);
 			continue;
 		}
 
-		bcn = ieee80211_beacon_get(ar->hw, arvif->vif);
+		bcn = ieee80211_beacon_get(ar->hw, arvif->vif, 0);
 		if (!bcn) {
 			ath10k_warn(ar, "could not get mac80211 beacon\n");
 			continue;

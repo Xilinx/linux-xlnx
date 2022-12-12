@@ -14,6 +14,8 @@
 #include "util.h"
 #include "wow.h"
 #include "ps.h"
+#include "phy.h"
+#include "mac.h"
 
 static void rtw_fw_c2h_cmd_handle_ext(struct rtw_dev *rtwdev,
 				      struct sk_buff *skb)
@@ -27,6 +29,12 @@ static void rtw_fw_c2h_cmd_handle_ext(struct rtw_dev *rtwdev,
 	switch (sub_cmd_id) {
 	case C2H_CCX_RPT:
 		rtw_tx_report_handle(rtwdev, skb, C2H_CCX_RPT);
+		break;
+	case C2H_SCAN_STATUS_RPT:
+		rtw_hw_scan_status_report(rtwdev, skb);
+		break;
+	case C2H_CHAN_SWITCH:
+		rtw_hw_scan_chan_switch(rtwdev, skb);
 		break;
 	default:
 		break;
@@ -110,7 +118,7 @@ legacy:
 	si->ra_report.desc_rate = rate;
 	si->ra_report.bit_rate = bit_rate;
 
-	sta->max_rc_amsdu_len = get_max_amsdu_len(bit_rate);
+	sta->deflink.agg.max_rc_amsdu_len = get_max_amsdu_len(bit_rate);
 }
 
 static void rtw_fw_ra_report_handle(struct rtw_dev *rtwdev, u8 *payload,
@@ -183,6 +191,28 @@ static void rtw_fw_scan_result(struct rtw_dev *rtwdev, u8 *payload,
 		dm_info->scan_density);
 }
 
+static void rtw_fw_adaptivity_result(struct rtw_dev *rtwdev, u8 *payload,
+				     u8 length)
+{
+	struct rtw_hw_reg_offset *edcca_th = rtwdev->chip->edcca_th;
+	struct rtw_c2h_adaptivity *result = (struct rtw_c2h_adaptivity *)payload;
+
+	rtw_dbg(rtwdev, RTW_DBG_ADAPTIVITY,
+		"Adaptivity: density %x igi %x l2h_th_init %x l2h %x h2l %x option %x\n",
+		result->density, result->igi, result->l2h_th_init, result->l2h,
+		result->h2l, result->option);
+
+	rtw_dbg(rtwdev, RTW_DBG_ADAPTIVITY, "Reg Setting: L2H %x H2L %x\n",
+		rtw_read32_mask(rtwdev, edcca_th[EDCCA_TH_L2H_IDX].hw_reg.addr,
+				edcca_th[EDCCA_TH_L2H_IDX].hw_reg.mask),
+		rtw_read32_mask(rtwdev, edcca_th[EDCCA_TH_H2L_IDX].hw_reg.addr,
+				edcca_th[EDCCA_TH_H2L_IDX].hw_reg.mask));
+
+	rtw_dbg(rtwdev, RTW_DBG_ADAPTIVITY, "EDCCA Flag %s\n",
+		rtw_read32_mask(rtwdev, REG_EDCCA_REPORT, BIT_EDCCA_FLAG) ?
+		"Set" : "Unset");
+}
+
 void rtw_fw_c2h_cmd_handle(struct rtw_dev *rtwdev, struct sk_buff *skb)
 {
 	struct rtw_c2h_cmd *c2h;
@@ -204,6 +234,9 @@ void rtw_fw_c2h_cmd_handle(struct rtw_dev *rtwdev, struct sk_buff *skb)
 		break;
 	case C2H_BT_INFO:
 		rtw_coex_bt_info_notify(rtwdev, c2h->payload, len);
+		break;
+	case C2H_BT_HID_INFO:
+		rtw_coex_bt_hid_info_notify(rtwdev, c2h->payload, len);
 		break;
 	case C2H_WLAN_INFO:
 		rtw_coex_wl_fwdbginfo_notify(rtwdev, c2h->payload, len);
@@ -250,6 +283,10 @@ void rtw_fw_c2h_cmd_rx_irqsafe(struct rtw_dev *rtwdev, u32 pkt_offset,
 	case C2H_SCAN_RESULT:
 		complete(&rtwdev->fw_scan_density);
 		rtw_fw_scan_result(rtwdev, c2h->payload, len);
+		dev_kfree_skb_any(skb);
+		break;
+	case C2H_ADAPTIVITY:
+		rtw_fw_adaptivity_result(rtwdev, c2h->payload, len);
 		dev_kfree_skb_any(skb);
 		break;
 	default:
@@ -506,6 +543,18 @@ void rtw_fw_coex_tdma_type(struct rtw_dev *rtwdev,
 	rtw_fw_send_h2c_command(rtwdev, h2c_pkt);
 }
 
+void rtw_fw_coex_query_hid_info(struct rtw_dev *rtwdev, u8 sub_id, u8 data)
+{
+	u8 h2c_pkt[H2C_PKT_SIZE] = {0};
+
+	SET_H2C_CMD_ID_CLASS(h2c_pkt, H2C_CMD_QUERY_BT_HID_INFO);
+
+	SET_COEX_QUERY_HID_INFO_SUBID(h2c_pkt, sub_id);
+	SET_COEX_QUERY_HID_INFO_DATA1(h2c_pkt, data);
+
+	rtw_fw_send_h2c_command(rtwdev, h2c_pkt);
+}
+
 void rtw_fw_bt_wifi_control(struct rtw_dev *rtwdev, u8 op_code, u8 *data)
 {
 	u8 h2c_pkt[H2C_PKT_SIZE] = {0};
@@ -538,10 +587,10 @@ void rtw_fw_send_rssi_info(struct rtw_dev *rtwdev, struct rtw_sta_info *si)
 	rtw_fw_send_h2c_command(rtwdev, h2c_pkt);
 }
 
-void rtw_fw_send_ra_info(struct rtw_dev *rtwdev, struct rtw_sta_info *si)
+void rtw_fw_send_ra_info(struct rtw_dev *rtwdev, struct rtw_sta_info *si,
+			 bool reset_ra_mask)
 {
 	u8 h2c_pkt[H2C_PKT_SIZE] = {0};
-	bool no_update = si->updated;
 	bool disable_pt = true;
 
 	SET_H2C_CMD_ID_CLASS(h2c_pkt, H2C_CMD_RA_INFO);
@@ -552,7 +601,7 @@ void rtw_fw_send_ra_info(struct rtw_dev *rtwdev, struct rtw_sta_info *si)
 	SET_RA_INFO_SGI_EN(h2c_pkt, si->sgi_enable);
 	SET_RA_INFO_BW_MODE(h2c_pkt, si->bw_mode);
 	SET_RA_INFO_LDPC(h2c_pkt, !!si->ldpc_en);
-	SET_RA_INFO_NO_UPDATE(h2c_pkt, no_update);
+	SET_RA_INFO_NO_UPDATE(h2c_pkt, !reset_ra_mask);
 	SET_RA_INFO_VHT_EN(h2c_pkt, si->vht_enable);
 	SET_RA_INFO_DIS_PT(h2c_pkt, disable_pt);
 	SET_RA_INFO_RA_MASK0(h2c_pkt, (si->ra_mask & 0xff));
@@ -561,7 +610,6 @@ void rtw_fw_send_ra_info(struct rtw_dev *rtwdev, struct rtw_sta_info *si)
 	SET_RA_INFO_RA_MASK3(h2c_pkt, (si->ra_mask & 0xff000000) >> 24);
 
 	si->init_ra_lv = 0;
-	si->updated = true;
 
 	rtw_fw_send_h2c_command(rtwdev, h2c_pkt);
 }
@@ -603,7 +651,7 @@ void rtw_fw_beacon_filter_config(struct rtw_dev *rtwdev, bool connect,
 	s32 threshold = bss_conf->cqm_rssi_thold + rssi_offset;
 	u8 h2c_pkt[H2C_PKT_SIZE] = {0};
 
-	if (!rtw_fw_feature_check(&rtwdev->fw, FW_FEATURE_BCN_FILTER) || !si)
+	if (!rtw_fw_feature_check(&rtwdev->fw, FW_FEATURE_BCN_FILTER))
 		return;
 
 	if (!connect) {
@@ -613,6 +661,10 @@ void rtw_fw_beacon_filter_config(struct rtw_dev *rtwdev, bool connect,
 
 		return;
 	}
+
+	if (!si)
+		return;
+
 	SET_H2C_CMD_ID_CLASS(h2c_pkt, H2C_CMD_BCN_FILTER_OFFLOAD_P0);
 	ether_addr_copy(&h2c_pkt[1], bss_conf->bssid);
 	rtw_fw_send_h2c_command(rtwdev, h2c_pkt);
@@ -854,7 +906,7 @@ void rtw_send_rsvd_page_h2c(struct rtw_dev *rtwdev)
 static struct sk_buff *rtw_nlo_info_get(struct ieee80211_hw *hw)
 {
 	struct rtw_dev *rtwdev = hw->priv;
-	struct rtw_chip_info *chip = rtwdev->chip;
+	const struct rtw_chip_info *chip = rtwdev->chip;
 	struct rtw_pno_request *pno_req = &rtwdev->wow.pno_req;
 	struct rtw_nlo_info_hdr *nlo_hdr;
 	struct cfg80211_ssid *ssid;
@@ -909,7 +961,7 @@ static struct sk_buff *rtw_nlo_info_get(struct ieee80211_hw *hw)
 static struct sk_buff *rtw_cs_channel_info_get(struct ieee80211_hw *hw)
 {
 	struct rtw_dev *rtwdev = hw->priv;
-	struct rtw_chip_info *chip = rtwdev->chip;
+	const struct rtw_chip_info *chip = rtwdev->chip;
 	struct rtw_pno_request *pno_req = &rtwdev->wow.pno_req;
 	struct ieee80211_channel *channels = pno_req->channels;
 	struct sk_buff *skb;
@@ -943,7 +995,7 @@ static struct sk_buff *rtw_cs_channel_info_get(struct ieee80211_hw *hw)
 static struct sk_buff *rtw_lps_pg_dpk_get(struct ieee80211_hw *hw)
 {
 	struct rtw_dev *rtwdev = hw->priv;
-	struct rtw_chip_info *chip = rtwdev->chip;
+	const struct rtw_chip_info *chip = rtwdev->chip;
 	struct rtw_dpk_info *dpk_info = &rtwdev->dm_info.dpk_info;
 	struct rtw_lps_pg_dpk_hdr *dpk_hdr;
 	struct sk_buff *skb;
@@ -968,7 +1020,7 @@ static struct sk_buff *rtw_lps_pg_dpk_get(struct ieee80211_hw *hw)
 static struct sk_buff *rtw_lps_pg_info_get(struct ieee80211_hw *hw)
 {
 	struct rtw_dev *rtwdev = hw->priv;
-	struct rtw_chip_info *chip = rtwdev->chip;
+	const struct rtw_chip_info *chip = rtwdev->chip;
 	struct rtw_lps_conf *conf = &rtwdev->lps_conf;
 	struct rtw_lps_pg_info_hdr *pg_info_hdr;
 	struct rtw_wow_param *rtw_wow = &rtwdev->wow;
@@ -1001,6 +1053,7 @@ static struct sk_buff *rtw_get_rsvd_page_skb(struct ieee80211_hw *hw,
 	struct rtw_vif *rtwvif;
 	struct sk_buff *skb_new;
 	struct cfg80211_ssid *ssid;
+	u16 tim_offset = 0;
 
 	if (rsvd_pkt->type == RSVD_DUMMY) {
 		skb_new = alloc_skb(1, GFP_KERNEL);
@@ -1019,7 +1072,8 @@ static struct sk_buff *rtw_get_rsvd_page_skb(struct ieee80211_hw *hw,
 
 	switch (rsvd_pkt->type) {
 	case RSVD_BEACON:
-		skb_new = ieee80211_beacon_get(hw, vif);
+		skb_new = ieee80211_beacon_get_tim(hw, vif, &tim_offset, NULL, 0);
+		rsvd_pkt->tim_offset = tim_offset;
 		break;
 	case RSVD_PS_POLL:
 		skb_new = ieee80211_pspoll_get(hw, vif);
@@ -1028,10 +1082,10 @@ static struct sk_buff *rtw_get_rsvd_page_skb(struct ieee80211_hw *hw,
 		skb_new = ieee80211_proberesp_get(hw, vif);
 		break;
 	case RSVD_NULL:
-		skb_new = ieee80211_nullfunc_get(hw, vif, false);
+		skb_new = ieee80211_nullfunc_get(hw, vif, -1, false);
 		break;
 	case RSVD_QOS_NULL:
-		skb_new = ieee80211_nullfunc_get(hw, vif, true);
+		skb_new = ieee80211_nullfunc_get(hw, vif, -1, true);
 		break;
 	case RSVD_LPS_PG_DPK:
 		skb_new = rtw_lps_pg_dpk_get(hw);
@@ -1070,7 +1124,7 @@ static void rtw_fill_rsvd_page_desc(struct rtw_dev *rtwdev, struct sk_buff *skb,
 				    enum rtw_rsvd_packet_type type)
 {
 	struct rtw_tx_pkt_info pkt_info = {0};
-	struct rtw_chip_info *chip = rtwdev->chip;
+	const struct rtw_chip_info *chip = rtwdev->chip;
 	u8 *pkt_desc;
 
 	rtw_tx_rsvd_page_pkt_info_update(rtwdev, &pkt_info, skb, type);
@@ -1381,7 +1435,7 @@ static int  __rtw_build_rsvd_page_from_vifs(struct rtw_dev *rtwdev)
 static u8 *rtw_build_rsvd_page(struct rtw_dev *rtwdev, u32 *size)
 {
 	struct ieee80211_hw *hw = rtwdev->hw;
-	struct rtw_chip_info *chip = rtwdev->chip;
+	const struct rtw_chip_info *chip = rtwdev->chip;
 	struct sk_buff *iter;
 	struct rtw_rsvd_page *rsvd_pkt;
 	u32 page = 0;
@@ -1550,18 +1604,26 @@ free:
 	return ret;
 }
 
+void rtw_fw_update_beacon_work(struct work_struct *work)
+{
+	struct rtw_dev *rtwdev = container_of(work, struct rtw_dev,
+					      update_beacon_work);
+
+	mutex_lock(&rtwdev->mutex);
+	rtw_fw_download_rsvd_page(rtwdev);
+	mutex_unlock(&rtwdev->mutex);
+}
+
 static void rtw_fw_read_fifo_page(struct rtw_dev *rtwdev, u32 offset, u32 size,
 				  u32 *buf, u32 residue, u16 start_pg)
 {
 	u32 i;
 	u16 idx = 0;
 	u16 ctl;
-	u8 rcr;
 
-	rcr = rtw_read8(rtwdev, REG_RCR + 2);
 	ctl = rtw_read16(rtwdev, REG_PKTBUF_DBG_CTRL) & 0xf000;
 	/* disable rx clock gate */
-	rtw_write8(rtwdev, REG_RCR, rcr | BIT(3));
+	rtw_write32_set(rtwdev, REG_RCR, BIT_DISGCLK);
 
 	do {
 		rtw_write16(rtwdev, REG_PKTBUF_DBG_CTRL, start_pg | ctl);
@@ -1580,13 +1642,14 @@ static void rtw_fw_read_fifo_page(struct rtw_dev *rtwdev, u32 offset, u32 size,
 
 out:
 	rtw_write16(rtwdev, REG_PKTBUF_DBG_CTRL, ctl);
-	rtw_write8(rtwdev, REG_RCR + 2, rcr);
+	/* restore rx clock gate */
+	rtw_write32_clr(rtwdev, REG_RCR, BIT_DISGCLK);
 }
 
 static void rtw_fw_read_fifo(struct rtw_dev *rtwdev, enum rtw_fw_fifo_sel sel,
 			     u32 offset, u32 size, u32 *buf)
 {
-	struct rtw_chip_info *chip = rtwdev->chip;
+	const struct rtw_chip_info *chip = rtwdev->chip;
 	u32 start_pg, residue;
 
 	if (sel >= RTW_FW_FIFO_MAX) {
@@ -1645,7 +1708,7 @@ int rtw_fw_dump_fifo(struct rtw_dev *rtwdev, u8 fifo_sel, u32 addr, u32 size,
 static void __rtw_fw_update_pkt(struct rtw_dev *rtwdev, u8 pkt_id, u16 size,
 				u8 location)
 {
-	struct rtw_chip_info *chip = rtwdev->chip;
+	const struct rtw_chip_info *chip = rtwdev->chip;
 	u8 h2c_pkt[H2C_PKT_SIZE] = {0};
 	u16 total_size = H2C_PKT_HDR_SIZE + H2C_PKT_UPDATE_PKT_LEN;
 
@@ -1722,6 +1785,27 @@ void rtw_fw_channel_switch(struct rtw_dev *rtwdev, bool enable)
 	rtw_fw_send_h2c_packet(rtwdev, h2c_pkt);
 }
 
+void rtw_fw_adaptivity(struct rtw_dev *rtwdev)
+{
+	struct rtw_dm_info *dm_info = &rtwdev->dm_info;
+	u8 h2c_pkt[H2C_PKT_SIZE] = {0};
+
+	if (!rtw_edcca_enabled) {
+		dm_info->edcca_mode = RTW_EDCCA_NORMAL;
+		rtw_dbg(rtwdev, RTW_DBG_ADAPTIVITY,
+			"EDCCA disabled by debugfs\n");
+	}
+
+	SET_H2C_CMD_ID_CLASS(h2c_pkt, H2C_CMD_ADAPTIVITY);
+	SET_ADAPTIVITY_MODE(h2c_pkt, dm_info->edcca_mode);
+	SET_ADAPTIVITY_OPTION(h2c_pkt, 1);
+	SET_ADAPTIVITY_IGI(h2c_pkt, dm_info->igi_history[0]);
+	SET_ADAPTIVITY_L2H(h2c_pkt, dm_info->l2h_th_ini);
+	SET_ADAPTIVITY_DENSITY(h2c_pkt, dm_info->scan_density);
+
+	rtw_fw_send_h2c_command(rtwdev, h2c_pkt);
+}
+
 void rtw_fw_scan_notify(struct rtw_dev *rtwdev, bool start)
 {
 	u8 h2c_pkt[H2C_PKT_SIZE] = {0};
@@ -1730,4 +1814,455 @@ void rtw_fw_scan_notify(struct rtw_dev *rtwdev, bool start)
 	SET_SCAN_START(h2c_pkt, start);
 
 	rtw_fw_send_h2c_command(rtwdev, h2c_pkt);
+}
+
+static int rtw_append_probe_req_ie(struct rtw_dev *rtwdev, struct sk_buff *skb,
+				   struct sk_buff_head *list, u8 *bands,
+				   struct rtw_vif *rtwvif)
+{
+	const struct rtw_chip_info *chip = rtwdev->chip;
+	struct ieee80211_scan_ies *ies = rtwvif->scan_ies;
+	struct sk_buff *new;
+	u8 idx;
+
+	for (idx = NL80211_BAND_2GHZ; idx < NUM_NL80211_BANDS; idx++) {
+		if (!(BIT(idx) & chip->band))
+			continue;
+		new = skb_copy(skb, GFP_KERNEL);
+		if (!new)
+			return -ENOMEM;
+		skb_put_data(new, ies->ies[idx], ies->len[idx]);
+		skb_put_data(new, ies->common_ies, ies->common_ie_len);
+		skb_queue_tail(list, new);
+		(*bands)++;
+	}
+
+	return 0;
+}
+
+static int _rtw_hw_scan_update_probe_req(struct rtw_dev *rtwdev, u8 num_probes,
+					 struct sk_buff_head *probe_req_list)
+{
+	const struct rtw_chip_info *chip = rtwdev->chip;
+	struct sk_buff *skb, *tmp;
+	u8 page_offset = 1, *buf, page_size = chip->page_size;
+	u16 pg_addr = rtwdev->fifo.rsvd_h2c_info_addr, loc;
+	u16 buf_offset = page_size * page_offset;
+	u8 tx_desc_sz = chip->tx_pkt_desc_sz;
+	u8 page_cnt, pages;
+	unsigned int pkt_len;
+	int ret;
+
+	if (rtw_fw_feature_ext_check(&rtwdev->fw, FW_FEATURE_EXT_OLD_PAGE_NUM))
+		page_cnt = RTW_OLD_PROBE_PG_CNT;
+	else
+		page_cnt = RTW_PROBE_PG_CNT;
+
+	pages = page_offset + num_probes * page_cnt;
+
+	buf = kzalloc(page_size * pages, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	buf_offset -= tx_desc_sz;
+	skb_queue_walk_safe(probe_req_list, skb, tmp) {
+		skb_unlink(skb, probe_req_list);
+		rtw_fill_rsvd_page_desc(rtwdev, skb, RSVD_PROBE_REQ);
+		if (skb->len > page_size * page_cnt) {
+			ret = -EINVAL;
+			goto out;
+		}
+
+		memcpy(buf + buf_offset, skb->data, skb->len);
+		pkt_len = skb->len - tx_desc_sz;
+		loc = pg_addr - rtwdev->fifo.rsvd_boundary + page_offset;
+		__rtw_fw_update_pkt(rtwdev, RTW_PACKET_PROBE_REQ, pkt_len, loc);
+
+		buf_offset += page_cnt * page_size;
+		page_offset += page_cnt;
+		kfree_skb(skb);
+	}
+
+	ret = rtw_fw_write_data_rsvd_page(rtwdev, pg_addr, buf, buf_offset);
+	if (ret) {
+		rtw_err(rtwdev, "Download probe request to firmware failed\n");
+		goto out;
+	}
+
+	rtwdev->scan_info.probe_pg_size = page_offset;
+out:
+	kfree(buf);
+	skb_queue_walk_safe(probe_req_list, skb, tmp)
+		kfree_skb(skb);
+
+	return ret;
+}
+
+static int rtw_hw_scan_update_probe_req(struct rtw_dev *rtwdev,
+					struct rtw_vif *rtwvif)
+{
+	struct cfg80211_scan_request *req = rtwvif->scan_req;
+	struct sk_buff_head list;
+	struct sk_buff *skb, *tmp;
+	u8 num = req->n_ssids, i, bands = 0;
+	int ret;
+
+	skb_queue_head_init(&list);
+	for (i = 0; i < num; i++) {
+		skb = ieee80211_probereq_get(rtwdev->hw, rtwvif->mac_addr,
+					     req->ssids[i].ssid,
+					     req->ssids[i].ssid_len,
+					     req->ie_len);
+		if (!skb) {
+			ret = -ENOMEM;
+			goto out;
+		}
+		ret = rtw_append_probe_req_ie(rtwdev, skb, &list, &bands,
+					      rtwvif);
+		if (ret)
+			goto out;
+
+		kfree_skb(skb);
+	}
+
+	return _rtw_hw_scan_update_probe_req(rtwdev, num * bands, &list);
+
+out:
+	skb_queue_walk_safe(&list, skb, tmp)
+		kfree_skb(skb);
+
+	return ret;
+}
+
+static int rtw_add_chan_info(struct rtw_dev *rtwdev, struct rtw_chan_info *info,
+			     struct rtw_chan_list *list, u8 *buf)
+{
+	u8 *chan = &buf[list->size];
+	u8 info_size = RTW_CH_INFO_SIZE;
+
+	if (list->size > list->buf_size)
+		return -ENOMEM;
+
+	CH_INFO_SET_CH(chan, info->channel);
+	CH_INFO_SET_PRI_CH_IDX(chan, info->pri_ch_idx);
+	CH_INFO_SET_BW(chan, info->bw);
+	CH_INFO_SET_TIMEOUT(chan, info->timeout);
+	CH_INFO_SET_ACTION_ID(chan, info->action_id);
+	CH_INFO_SET_EXTRA_INFO(chan, info->extra_info);
+	if (info->extra_info) {
+		EXTRA_CH_INFO_SET_ID(chan, RTW_SCAN_EXTRA_ID_DFS);
+		EXTRA_CH_INFO_SET_INFO(chan, RTW_SCAN_EXTRA_ACTION_SCAN);
+		EXTRA_CH_INFO_SET_SIZE(chan, RTW_EX_CH_INFO_SIZE -
+				       RTW_EX_CH_INFO_HDR_SIZE);
+		EXTRA_CH_INFO_SET_DFS_EXT_TIME(chan, RTW_DFS_CHAN_TIME);
+		info_size += RTW_EX_CH_INFO_SIZE;
+	}
+	list->size += info_size;
+	list->ch_num++;
+
+	return 0;
+}
+
+static int rtw_add_chan_list(struct rtw_dev *rtwdev, struct rtw_vif *rtwvif,
+			     struct rtw_chan_list *list, u8 *buf)
+{
+	struct cfg80211_scan_request *req = rtwvif->scan_req;
+	struct rtw_fifo_conf *fifo = &rtwdev->fifo;
+	struct ieee80211_channel *channel;
+	int i, ret = 0;
+
+	for (i = 0; i < req->n_channels; i++) {
+		struct rtw_chan_info ch_info = {0};
+
+		channel = req->channels[i];
+		ch_info.channel = channel->hw_value;
+		ch_info.bw = RTW_SCAN_WIDTH;
+		ch_info.pri_ch_idx = RTW_PRI_CH_IDX;
+		ch_info.timeout = req->duration_mandatory ?
+				  req->duration : RTW_CHANNEL_TIME;
+
+		if (channel->flags & (IEEE80211_CHAN_RADAR | IEEE80211_CHAN_NO_IR)) {
+			ch_info.action_id = RTW_CHANNEL_RADAR;
+			ch_info.extra_info = 1;
+			/* Overwrite duration for passive scans if necessary */
+			ch_info.timeout = ch_info.timeout > RTW_PASS_CHAN_TIME ?
+					  ch_info.timeout : RTW_PASS_CHAN_TIME;
+		} else {
+			ch_info.action_id = RTW_CHANNEL_ACTIVE;
+		}
+
+		ret = rtw_add_chan_info(rtwdev, &ch_info, list, buf);
+		if (ret)
+			return ret;
+	}
+
+	if (list->size > fifo->rsvd_pg_num << TX_PAGE_SIZE_SHIFT) {
+		rtw_err(rtwdev, "List exceeds rsvd page total size\n");
+		return -EINVAL;
+	}
+
+	list->addr = fifo->rsvd_h2c_info_addr + rtwdev->scan_info.probe_pg_size;
+	ret = rtw_fw_write_data_rsvd_page(rtwdev, list->addr, buf, list->size);
+	if (ret)
+		rtw_err(rtwdev, "Download channel list failed\n");
+
+	return ret;
+}
+
+static void rtw_fw_set_scan_offload(struct rtw_dev *rtwdev,
+				    struct rtw_ch_switch_option *opt,
+				    struct rtw_vif *rtwvif,
+				    struct rtw_chan_list *list)
+{
+	struct rtw_hw_scan_info *scan_info = &rtwdev->scan_info;
+	struct cfg80211_scan_request *req = rtwvif->scan_req;
+	struct rtw_fifo_conf *fifo = &rtwdev->fifo;
+	/* reserve one dummy page at the beginning for tx descriptor */
+	u8 pkt_loc = fifo->rsvd_h2c_info_addr - fifo->rsvd_boundary + 1;
+	bool random_seq = req->flags & NL80211_SCAN_FLAG_RANDOM_SN;
+	u8 h2c_pkt[H2C_PKT_SIZE] = {0};
+
+	rtw_h2c_pkt_set_header(h2c_pkt, H2C_PKT_SCAN_OFFLOAD);
+	SET_PKT_H2C_TOTAL_LEN(h2c_pkt, H2C_PKT_CH_SWITCH_LEN);
+
+	SCAN_OFFLOAD_SET_START(h2c_pkt, opt->switch_en);
+	SCAN_OFFLOAD_SET_BACK_OP_EN(h2c_pkt, opt->back_op_en);
+	SCAN_OFFLOAD_SET_RANDOM_SEQ_EN(h2c_pkt, random_seq);
+	SCAN_OFFLOAD_SET_NO_CCK_EN(h2c_pkt, req->no_cck);
+	SCAN_OFFLOAD_SET_CH_NUM(h2c_pkt, list->ch_num);
+	SCAN_OFFLOAD_SET_CH_INFO_SIZE(h2c_pkt, list->size);
+	SCAN_OFFLOAD_SET_CH_INFO_LOC(h2c_pkt, list->addr - fifo->rsvd_boundary);
+	SCAN_OFFLOAD_SET_OP_CH(h2c_pkt, scan_info->op_chan);
+	SCAN_OFFLOAD_SET_OP_PRI_CH_IDX(h2c_pkt, scan_info->op_pri_ch_idx);
+	SCAN_OFFLOAD_SET_OP_BW(h2c_pkt, scan_info->op_bw);
+	SCAN_OFFLOAD_SET_OP_PORT_ID(h2c_pkt, rtwvif->port);
+	SCAN_OFFLOAD_SET_OP_DWELL_TIME(h2c_pkt, req->duration_mandatory ?
+				       req->duration : RTW_CHANNEL_TIME);
+	SCAN_OFFLOAD_SET_OP_GAP_TIME(h2c_pkt, RTW_OFF_CHAN_TIME);
+	SCAN_OFFLOAD_SET_SSID_NUM(h2c_pkt, req->n_ssids);
+	SCAN_OFFLOAD_SET_PKT_LOC(h2c_pkt, pkt_loc);
+
+	rtw_fw_send_h2c_packet(rtwdev, h2c_pkt);
+}
+
+void rtw_hw_scan_start(struct rtw_dev *rtwdev, struct ieee80211_vif *vif,
+		       struct ieee80211_scan_request *scan_req)
+{
+	struct rtw_vif *rtwvif = (struct rtw_vif *)vif->drv_priv;
+	struct cfg80211_scan_request *req = &scan_req->req;
+	u8 mac_addr[ETH_ALEN];
+
+	rtwdev->scan_info.scanning_vif = vif;
+	rtwvif->scan_ies = &scan_req->ies;
+	rtwvif->scan_req = req;
+
+	ieee80211_stop_queues(rtwdev->hw);
+	rtw_leave_lps_deep(rtwdev);
+	rtw_hci_flush_all_queues(rtwdev, false);
+	rtw_mac_flush_all_queues(rtwdev, false);
+	if (req->flags & NL80211_SCAN_FLAG_RANDOM_ADDR)
+		get_random_mask_addr(mac_addr, req->mac_addr,
+				     req->mac_addr_mask);
+	else
+		ether_addr_copy(mac_addr, vif->addr);
+
+	rtw_core_scan_start(rtwdev, rtwvif, mac_addr, true);
+
+	rtwdev->hal.rcr &= ~BIT_CBSSID_BCN;
+	rtw_write32(rtwdev, REG_RCR, rtwdev->hal.rcr);
+}
+
+void rtw_hw_scan_complete(struct rtw_dev *rtwdev, struct ieee80211_vif *vif,
+			  bool aborted)
+{
+	struct cfg80211_scan_info info = {
+		.aborted = aborted,
+	};
+	struct rtw_hw_scan_info *scan_info = &rtwdev->scan_info;
+	struct rtw_hal *hal = &rtwdev->hal;
+	struct rtw_vif *rtwvif;
+	u8 chan = scan_info->op_chan;
+
+	if (!vif)
+		return;
+
+	rtwdev->hal.rcr |= BIT_CBSSID_BCN;
+	rtw_write32(rtwdev, REG_RCR, rtwdev->hal.rcr);
+
+	rtw_core_scan_complete(rtwdev, vif, true);
+
+	rtwvif = (struct rtw_vif *)vif->drv_priv;
+	if (chan)
+		rtw_store_op_chan(rtwdev, false);
+	rtw_phy_set_tx_power_level(rtwdev, hal->current_channel);
+	ieee80211_wake_queues(rtwdev->hw);
+	ieee80211_scan_completed(rtwdev->hw, &info);
+
+	rtwvif->scan_req = NULL;
+	rtwvif->scan_ies = NULL;
+	rtwdev->scan_info.scanning_vif = NULL;
+}
+
+static int rtw_hw_scan_prehandle(struct rtw_dev *rtwdev, struct rtw_vif *rtwvif,
+				 struct rtw_chan_list *list)
+{
+	struct cfg80211_scan_request *req = rtwvif->scan_req;
+	int size = req->n_channels * (RTW_CH_INFO_SIZE + RTW_EX_CH_INFO_SIZE);
+	u8 *buf;
+	int ret;
+
+	buf = kmalloc(size, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	ret = rtw_hw_scan_update_probe_req(rtwdev, rtwvif);
+	if (ret) {
+		rtw_err(rtwdev, "Update probe request failed\n");
+		goto out;
+	}
+
+	list->buf_size = size;
+	list->size = 0;
+	list->ch_num = 0;
+	ret = rtw_add_chan_list(rtwdev, rtwvif, list, buf);
+out:
+	kfree(buf);
+
+	return ret;
+}
+
+int rtw_hw_scan_offload(struct rtw_dev *rtwdev, struct ieee80211_vif *vif,
+			bool enable)
+{
+	struct rtw_vif *rtwvif = vif ? (struct rtw_vif *)vif->drv_priv : NULL;
+	struct rtw_hw_scan_info *scan_info = &rtwdev->scan_info;
+	struct rtw_ch_switch_option cs_option = {0};
+	struct rtw_chan_list chan_list = {0};
+	int ret = 0;
+
+	if (!rtwvif)
+		return -EINVAL;
+
+	cs_option.switch_en = enable;
+	cs_option.back_op_en = scan_info->op_chan != 0;
+	if (enable) {
+		ret = rtw_hw_scan_prehandle(rtwdev, rtwvif, &chan_list);
+		if (ret)
+			goto out;
+	}
+	rtw_fw_set_scan_offload(rtwdev, &cs_option, rtwvif, &chan_list);
+out:
+	return ret;
+}
+
+void rtw_hw_scan_abort(struct rtw_dev *rtwdev, struct ieee80211_vif *vif)
+{
+	if (!rtw_fw_feature_check(&rtwdev->fw, FW_FEATURE_SCAN_OFFLOAD))
+		return;
+
+	rtw_hw_scan_offload(rtwdev, vif, false);
+	rtw_hw_scan_complete(rtwdev, vif, true);
+}
+
+void rtw_hw_scan_status_report(struct rtw_dev *rtwdev, struct sk_buff *skb)
+{
+	struct ieee80211_vif *vif = rtwdev->scan_info.scanning_vif;
+	struct rtw_c2h_cmd *c2h;
+	bool aborted;
+	u8 rc;
+
+	if (!test_bit(RTW_FLAG_SCANNING, rtwdev->flags))
+		return;
+
+	c2h = get_c2h_from_skb(skb);
+	rc = GET_SCAN_REPORT_RETURN_CODE(c2h->payload);
+	aborted = rc != RTW_SCAN_REPORT_SUCCESS;
+	rtw_hw_scan_complete(rtwdev, vif, aborted);
+
+	if (aborted)
+		rtw_dbg(rtwdev, RTW_DBG_HW_SCAN, "HW scan aborted with code: %d\n", rc);
+}
+
+void rtw_store_op_chan(struct rtw_dev *rtwdev, bool backup)
+{
+	struct rtw_hw_scan_info *scan_info = &rtwdev->scan_info;
+	struct rtw_hal *hal = &rtwdev->hal;
+	u8 band;
+
+	if (backup) {
+		scan_info->op_chan = hal->current_channel;
+		scan_info->op_bw = hal->current_band_width;
+		scan_info->op_pri_ch_idx = hal->current_primary_channel_index;
+		scan_info->op_pri_ch = hal->primary_channel;
+	} else {
+		band = scan_info->op_chan > 14 ? RTW_BAND_5G : RTW_BAND_2G;
+		rtw_update_channel(rtwdev, scan_info->op_chan,
+				   scan_info->op_pri_ch,
+				   band, scan_info->op_bw);
+	}
+}
+
+void rtw_clear_op_chan(struct rtw_dev *rtwdev)
+{
+	struct rtw_hw_scan_info *scan_info = &rtwdev->scan_info;
+
+	scan_info->op_chan = 0;
+	scan_info->op_bw = 0;
+	scan_info->op_pri_ch_idx = 0;
+	scan_info->op_pri_ch = 0;
+}
+
+static bool rtw_is_op_chan(struct rtw_dev *rtwdev, u8 channel)
+{
+	struct rtw_hw_scan_info *scan_info = &rtwdev->scan_info;
+
+	return channel == scan_info->op_chan;
+}
+
+void rtw_hw_scan_chan_switch(struct rtw_dev *rtwdev, struct sk_buff *skb)
+{
+	struct rtw_hal *hal = &rtwdev->hal;
+	struct rtw_c2h_cmd *c2h;
+	enum rtw_scan_notify_id id;
+	u8 chan, band, status;
+
+	if (!test_bit(RTW_FLAG_SCANNING, rtwdev->flags))
+		return;
+
+	c2h = get_c2h_from_skb(skb);
+	chan = GET_CHAN_SWITCH_CENTRAL_CH(c2h->payload);
+	id = GET_CHAN_SWITCH_ID(c2h->payload);
+	status = GET_CHAN_SWITCH_STATUS(c2h->payload);
+
+	if (id == RTW_SCAN_NOTIFY_ID_POSTSWITCH) {
+		band = chan > 14 ? RTW_BAND_5G : RTW_BAND_2G;
+		rtw_update_channel(rtwdev, chan, chan, band,
+				   RTW_CHANNEL_WIDTH_20);
+		if (rtw_is_op_chan(rtwdev, chan)) {
+			rtw_store_op_chan(rtwdev, false);
+			ieee80211_wake_queues(rtwdev->hw);
+		}
+	} else if (id == RTW_SCAN_NOTIFY_ID_PRESWITCH) {
+		if (IS_CH_5G_BAND(chan)) {
+			rtw_coex_switchband_notify(rtwdev, COEX_SWITCH_TO_5G);
+		} else if (IS_CH_2G_BAND(chan)) {
+			u8 chan_type;
+
+			if (test_bit(RTW_FLAG_SCANNING, rtwdev->flags))
+				chan_type = COEX_SWITCH_TO_24G;
+			else
+				chan_type = COEX_SWITCH_TO_24G_NOFORSCAN;
+			rtw_coex_switchband_notify(rtwdev, chan_type);
+		}
+		/* The channel of C2H RTW_SCAN_NOTIFY_ID_PRESWITCH is next
+		 * channel that hardware will switch. We need to stop queue
+		 * if next channel is non-op channel.
+		 */
+		if (!rtw_is_op_chan(rtwdev, chan) &&
+		    rtw_is_op_chan(rtwdev, hal->current_channel))
+			ieee80211_stop_queues(rtwdev->hw);
+	}
+
+	rtw_dbg(rtwdev, RTW_DBG_HW_SCAN,
+		"Chan switch: %x, id: %x, status: %x\n", chan, id, status);
 }

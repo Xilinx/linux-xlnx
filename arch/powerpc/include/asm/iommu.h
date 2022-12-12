@@ -51,13 +51,11 @@ struct iommu_table_ops {
 	int (*xchg_no_kill)(struct iommu_table *tbl,
 			long index,
 			unsigned long *hpa,
-			enum dma_data_direction *direction,
-			bool realmode);
+			enum dma_data_direction *direction);
 
 	void (*tce_kill)(struct iommu_table *tbl,
 			unsigned long index,
-			unsigned long pages,
-			bool realmode);
+			unsigned long pages);
 
 	__be64 *(*useraddrptr)(struct iommu_table *tbl, long index, bool alloc);
 #endif
@@ -275,17 +273,11 @@ extern void iommu_unmap_page(struct iommu_table *tbl, dma_addr_t dma_handle,
 			     size_t size, enum dma_data_direction direction,
 			     unsigned long attrs);
 
-extern void iommu_init_early_pSeries(void);
+void __init iommu_init_early_pSeries(void);
 extern void iommu_init_early_dart(struct pci_controller_ops *controller_ops);
 extern void iommu_init_early_pasemi(void);
 
 #if defined(CONFIG_PPC64) && defined(CONFIG_PM)
-static inline void iommu_save(void)
-{
-	if (ppc_md.iommu_save)
-		ppc_md.iommu_save();
-}
-
 static inline void iommu_restore(void)
 {
 	if (ppc_md.iommu_restore)

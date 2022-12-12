@@ -256,19 +256,9 @@ static inline struct v4l2_subdev *to_sd(struct v4l2_ctrl *ctrl)
 	return &container_of(ctrl->handler, struct adv7842_state, hdl)->sd;
 }
 
-static inline unsigned hblanking(const struct v4l2_bt_timings *t)
-{
-	return V4L2_DV_BT_BLANKING_WIDTH(t);
-}
-
 static inline unsigned htotal(const struct v4l2_bt_timings *t)
 {
 	return V4L2_DV_BT_FRAME_WIDTH(t);
-}
-
-static inline unsigned vblanking(const struct v4l2_bt_timings *t)
-{
-	return V4L2_DV_BT_BLANKING_HEIGHT(t);
 }
 
 static inline unsigned vtotal(const struct v4l2_bt_timings *t)
@@ -2225,8 +2215,8 @@ static void adv7842_cec_isr(struct v4l2_subdev *sd, bool *handled)
 		struct cec_msg msg;
 
 		msg.len = cec_read(sd, 0x25) & 0x1f;
-		if (msg.len > 16)
-			msg.len = 16;
+		if (msg.len > CEC_MAX_MSG_SIZE)
+			msg.len = CEC_MAX_MSG_SIZE;
 
 		if (msg.len) {
 			u8 i;
@@ -2593,7 +2583,7 @@ static void log_infoframe(struct v4l2_subdev *sd, const struct adv7842_cfg_read_
 	for (i = 0; i < len; i++)
 		buffer[i + 3] = infoframe_read(sd, cri->payload_addr + i);
 
-	if (hdmi_infoframe_unpack(&frame, buffer, sizeof(buffer)) < 0) {
+	if (hdmi_infoframe_unpack(&frame, buffer, len + 3) < 0) {
 		v4l2_err(sd, "%s: unpack of %s infoframe failed\n", __func__, cri->desc);
 		return;
 	}
@@ -3603,7 +3593,7 @@ err_hdl:
 
 /* ----------------------------------------------------------------------- */
 
-static int adv7842_remove(struct i2c_client *client)
+static void adv7842_remove(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct adv7842_state *state = to_state(sd);
@@ -3614,7 +3604,6 @@ static int adv7842_remove(struct i2c_client *client)
 	media_entity_cleanup(&sd->entity);
 	adv7842_unregister_clients(sd);
 	v4l2_ctrl_handler_free(sd->ctrl_handler);
-	return 0;
 }
 
 /* ----------------------------------------------------------------------- */

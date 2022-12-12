@@ -49,8 +49,7 @@
  * other sizes not listed here.   The .ind field is only used on MMUs that have
  * indirect page table entries.
  */
-#if defined(CONFIG_PPC_BOOK3E_MMU) || defined(CONFIG_PPC_8xx)
-#ifdef CONFIG_PPC_FSL_BOOK3E
+#ifdef CONFIG_PPC_E500
 struct mmu_psize_def mmu_psize_defs[MMU_PAGE_COUNT] = {
 	[MMU_PAGE_4K] = {
 		.shift	= 12,
@@ -81,7 +80,20 @@ struct mmu_psize_def mmu_psize_defs[MMU_PAGE_COUNT] = {
 		.enc	= BOOK3E_PAGESZ_1GB,
 	},
 };
-#elif defined(CONFIG_PPC_8xx)
+
+static inline int mmu_get_tsize(int psize)
+{
+	return mmu_psize_defs[psize].enc;
+}
+#else
+static inline int mmu_get_tsize(int psize)
+{
+	/* This isn't used on !Book3E for now */
+	return 0;
+}
+#endif
+
+#ifdef CONFIG_PPC_8xx
 struct mmu_psize_def mmu_psize_defs[MMU_PAGE_COUNT] = {
 	[MMU_PAGE_4K] = {
 		.shift	= 12,
@@ -96,53 +108,7 @@ struct mmu_psize_def mmu_psize_defs[MMU_PAGE_COUNT] = {
 		.shift	= 23,
 	},
 };
-#else
-struct mmu_psize_def mmu_psize_defs[MMU_PAGE_COUNT] = {
-	[MMU_PAGE_4K] = {
-		.shift	= 12,
-		.ind	= 20,
-		.enc	= BOOK3E_PAGESZ_4K,
-	},
-	[MMU_PAGE_16K] = {
-		.shift	= 14,
-		.enc	= BOOK3E_PAGESZ_16K,
-	},
-	[MMU_PAGE_64K] = {
-		.shift	= 16,
-		.ind	= 28,
-		.enc	= BOOK3E_PAGESZ_64K,
-	},
-	[MMU_PAGE_1M] = {
-		.shift	= 20,
-		.enc	= BOOK3E_PAGESZ_1M,
-	},
-	[MMU_PAGE_16M] = {
-		.shift	= 24,
-		.ind	= 36,
-		.enc	= BOOK3E_PAGESZ_16M,
-	},
-	[MMU_PAGE_256M] = {
-		.shift	= 28,
-		.enc	= BOOK3E_PAGESZ_256M,
-	},
-	[MMU_PAGE_1G] = {
-		.shift	= 30,
-		.enc	= BOOK3E_PAGESZ_1GB,
-	},
-};
-#endif /* CONFIG_FSL_BOOKE */
-
-static inline int mmu_get_tsize(int psize)
-{
-	return mmu_psize_defs[psize].enc;
-}
-#else
-static inline int mmu_get_tsize(int psize)
-{
-	/* This isn't used on !Book3E for now */
-	return 0;
-}
-#endif /* CONFIG_PPC_BOOK3E_MMU */
+#endif
 
 /* The variables below are currently only used on 64-bit Book3E
  * though this will probably be made common with other nohash
@@ -150,7 +116,6 @@ static inline int mmu_get_tsize(int psize)
  */
 #ifdef CONFIG_PPC64
 
-int mmu_linear_psize;		/* Page size used for the linear mapping */
 int mmu_pte_psize;		/* Page size used for PTE pages */
 int mmu_vmemmap_psize;		/* Page size used for the virtual mem map */
 int book3e_htw_mode;		/* HW tablewalk?  Value is PPC_HTW_* */
@@ -167,7 +132,7 @@ int extlb_level_exc;
 
 #endif /* CONFIG_PPC64 */
 
-#ifdef CONFIG_PPC_FSL_BOOK3E
+#ifdef CONFIG_PPC_E500
 /* next_tlbcam_idx is used to round-robin tlbcam entry assignment */
 DEFINE_PER_CPU(int, next_tlbcam_idx);
 EXPORT_PER_CPU_SYMBOL(next_tlbcam_idx);
@@ -185,6 +150,7 @@ EXPORT_PER_CPU_SYMBOL(next_tlbcam_idx);
  *    processor
  */
 
+#ifndef CONFIG_PPC_8xx
 /*
  * These are the base non-SMP variants of page and mm flushing
  */
@@ -218,6 +184,7 @@ void local_flush_tlb_page(struct vm_area_struct *vma, unsigned long vmaddr)
 			       mmu_get_tsize(mmu_virtual_psize), 0);
 }
 EXPORT_SYMBOL(local_flush_tlb_page);
+#endif
 
 /*
  * And here are the SMP non-local implementations
@@ -357,6 +324,7 @@ void __init early_init_mmu_47x(void)
 /*
  * Flush kernel TLB entries in the given range
  */
+#ifndef CONFIG_PPC_8xx
 void flush_tlb_kernel_range(unsigned long start, unsigned long end)
 {
 #ifdef CONFIG_SMP
@@ -369,6 +337,7 @@ void flush_tlb_kernel_range(unsigned long start, unsigned long end)
 #endif
 }
 EXPORT_SYMBOL(flush_tlb_kernel_range);
+#endif
 
 /*
  * Currently, for range flushing, we just do a full mm flush. This should
@@ -431,14 +400,14 @@ void tlb_flush_pgtable(struct mmu_gather *tlb, unsigned long address)
 	}
 }
 
-static void setup_page_sizes(void)
+static void __init setup_page_sizes(void)
 {
 	unsigned int tlb0cfg;
 	unsigned int tlb0ps;
 	unsigned int eptcfg;
 	int i, psize;
 
-#ifdef CONFIG_PPC_FSL_BOOK3E
+#ifdef CONFIG_PPC_E500
 	unsigned int mmucfg = mfspr(SPRN_MMUCFG);
 	int fsl_mmu = mmu_has_feature(MMU_FTR_TYPE_FSL_E);
 
@@ -569,7 +538,7 @@ out:
 	}
 }
 
-static void setup_mmu_htw(void)
+static void __init setup_mmu_htw(void)
 {
 	/*
 	 * If we want to use HW tablewalk, enable it by patching the TLB miss
@@ -581,7 +550,7 @@ static void setup_mmu_htw(void)
 		patch_exception(0x1c0, exc_data_tlb_miss_htw_book3e);
 		patch_exception(0x1e0, exc_instruction_tlb_miss_htw_book3e);
 		break;
-#ifdef CONFIG_PPC_FSL_BOOK3E
+#ifdef CONFIG_PPC_E500
 	case PPC_HTW_E6500:
 		extlb_level_exc = EX_TLB_SIZE;
 		patch_exception(0x1c0, exc_data_tlb_miss_e6500_book3e);
@@ -624,7 +593,7 @@ static void early_init_this_mmu(void)
 	}
 	mtspr(SPRN_MAS4, mas4);
 
-#ifdef CONFIG_PPC_FSL_BOOK3E
+#ifdef CONFIG_PPC_E500
 	if (mmu_has_feature(MMU_FTR_TYPE_FSL_E)) {
 		unsigned int num_cams;
 		bool map = true;
@@ -643,7 +612,7 @@ static void early_init_this_mmu(void)
 
 		if (map)
 			linear_map_top = map_mem_in_cams(linear_map_top,
-							 num_cams, false);
+							 num_cams, false, true);
 	}
 #endif
 
@@ -655,14 +624,6 @@ static void early_init_this_mmu(void)
 
 static void __init early_init_mmu_global(void)
 {
-	/* XXX This will have to be decided at runtime, but right
-	 * now our boot and TLB miss code hard wires it. Ideally
-	 * we should find out a suitable page size and patch the
-	 * TLB miss code (either that or use the PACA to store
-	 * the value we want)
-	 */
-	mmu_linear_psize = MMU_PAGE_1G;
-
 	/* XXX This should be decided at runtime based on supported
 	 * page sizes in the TLB, but for now let's assume 16M is
 	 * always there and a good fit (which it probably is)
@@ -685,7 +646,7 @@ static void __init early_init_mmu_global(void)
 	/* Look for HW tablewalk support */
 	setup_mmu_htw();
 
-#ifdef CONFIG_PPC_FSL_BOOK3E
+#ifdef CONFIG_PPC_E500
 	if (mmu_has_feature(MMU_FTR_TYPE_FSL_E)) {
 		if (book3e_htw_mode == PPC_HTW_NONE) {
 			extlb_level_exc = EX_TLB_SIZE;
@@ -706,7 +667,7 @@ static void __init early_init_mmu_global(void)
 
 static void __init early_mmu_set_memory_limit(void)
 {
-#ifdef CONFIG_PPC_FSL_BOOK3E
+#ifdef CONFIG_PPC_E500
 	if (mmu_has_feature(MMU_FTR_TYPE_FSL_E)) {
 		/*
 		 * Limit memory so we dont have linear faults.
@@ -755,7 +716,7 @@ void setup_initial_memory_limit(phys_addr_t first_memblock_base,
 	 * We crop it to the size of the first MEMBLOCK to
 	 * avoid going over total available memory just in case...
 	 */
-#ifdef CONFIG_PPC_FSL_BOOK3E
+#ifdef CONFIG_PPC_E500
 	if (early_mmu_has_feature(MMU_FTR_TYPE_FSL_E)) {
 		unsigned long linear_sz;
 		unsigned int num_cams;
@@ -764,7 +725,7 @@ void setup_initial_memory_limit(phys_addr_t first_memblock_base,
 		num_cams = (mfspr(SPRN_TLB1CFG) & TLBnCFG_N_ENTRY) / 4;
 
 		linear_sz = map_mem_in_cams(first_memblock_size, num_cams,
-					    true);
+					    true, true);
 
 		ppc64_rma_size = min_t(u64, linear_sz, 0x40000000);
 	} else
@@ -779,10 +740,6 @@ void __init early_init_mmu(void)
 {
 #ifdef CONFIG_PPC_47x
 	early_init_mmu_47x();
-#endif
-
-#ifdef CONFIG_PPC_MM_SLICES
-	mm_ctx_set_slb_addr_limit(&init_mm.context, SLB_ADDR_LIMIT_DEFAULT);
 #endif
 }
 #endif /* CONFIG_PPC64 */

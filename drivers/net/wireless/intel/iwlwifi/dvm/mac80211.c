@@ -2,15 +2,10 @@
 /******************************************************************************
  *
  * Copyright(c) 2003 - 2014 Intel Corporation. All rights reserved.
- * Copyright (C) 2018 - 2019 Intel Corporation
+ * Copyright (C) 2018 - 2019, 2022 Intel Corporation
  *
  * Portions of this file are derived from the ipw3945 project, as well
  * as portions of the ieee80211 subsystem header files.
- *
- * Contact Information:
- *  Intel Linux Wireless <linuxwifi@intel.com>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
  *****************************************************************************/
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -304,7 +299,7 @@ static int iwlagn_mac_start(struct ieee80211_hw *hw)
 
 	priv->is_open = 1;
 	IWL_DEBUG_MAC80211(priv, "leave\n");
-	return 0;
+	return ret;
 }
 
 static void iwlagn_mac_stop(struct ieee80211_hw *hw)
@@ -1158,7 +1153,8 @@ static int iwlagn_mac_set_tim(struct ieee80211_hw *hw,
 }
 
 static int iwlagn_mac_conf_tx(struct ieee80211_hw *hw,
-			      struct ieee80211_vif *vif, u16 queue,
+			      struct ieee80211_vif *vif,
+			      unsigned int link_id, u16 queue,
 			      const struct ieee80211_tx_queue_params *params)
 {
 	struct iwl_priv *priv = IWL_MAC80211_GET_DVM(hw);

@@ -7,6 +7,7 @@
  * Copyright (C) 2013 Sony Mobile Communications Inc.
  */
 
+#include <linux/gpio/consumer.h>
 #include <linux/i2c.h>
 #include <linux/module.h>
 #include <linux/regmap.h>
@@ -19,6 +20,7 @@
 #define TFA989X_REVISIONNUMBER		0x03
 #define TFA989X_REVISIONNUMBER_REV_MSK	GENMASK(7, 0)	/* device revision */
 #define TFA989X_I2SREG			0x04
+#define TFA989X_I2SREG_RCV		2	/* receiver mode */
 #define TFA989X_I2SREG_CHSA		6	/* amplifier input select */
 #define TFA989X_I2SREG_CHSA_MSK		GENMASK(7, 6)
 #define TFA989X_I2SREG_I2SSR		12	/* sample rate */
@@ -38,12 +40,14 @@
 #define TFA989X_I2S_SEL_REG		0x0a
 #define TFA989X_I2S_SEL_REG_SPKR_MSK	GENMASK(10, 9)	/* speaker impedance */
 #define TFA989X_I2S_SEL_REG_DCFG_MSK	GENMASK(14, 11)	/* DCDC compensation */
+#define TFA989X_HIDE_UNHIDE_KEY	0x40
 #define TFA989X_PWM_CONTROL		0x41
 #define TFA989X_CURRENTSENSE1		0x46
 #define TFA989X_CURRENTSENSE2		0x47
 #define TFA989X_CURRENTSENSE3		0x48
 #define TFA989X_CURRENTSENSE4		0x49
 
+#define TFA9890_REVISION		0x80
 #define TFA9895_REVISION		0x12
 #define TFA9897_REVISION		0x97
 
@@ -53,7 +57,9 @@ struct tfa989x_rev {
 };
 
 struct tfa989x {
+	const struct tfa989x_rev *rev;
 	struct regulator *vddd_supply;
+	struct gpio_desc *rcv_gpiod;
 };
 
 static bool tfa989x_writeable_reg(struct device *dev, unsigned int reg)
@@ -97,14 +103,41 @@ static const struct snd_soc_dapm_route tfa989x_dapm_routes[] = {
 	{"Amp Input", "Right", "AIFINR"},
 };
 
+static int tfa989x_put_mode(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	struct tfa989x *tfa989x = snd_soc_component_get_drvdata(component);
+
+	gpiod_set_value_cansleep(tfa989x->rcv_gpiod, ucontrol->value.enumerated.item[0]);
+
+	return snd_soc_put_enum_double(kcontrol, ucontrol);
+}
+
+static const char * const mode_text[] = { "Speaker", "Receiver" };
+static SOC_ENUM_SINGLE_DECL(mode_enum, TFA989X_I2SREG, TFA989X_I2SREG_RCV, mode_text);
+static const struct snd_kcontrol_new tfa989x_mode_controls[] = {
+	SOC_ENUM_EXT("Mode", mode_enum, snd_soc_get_enum_double, tfa989x_put_mode),
+};
+
+static int tfa989x_probe(struct snd_soc_component *component)
+{
+	struct tfa989x *tfa989x = snd_soc_component_get_drvdata(component);
+
+	if (tfa989x->rev->rev == TFA9897_REVISION)
+		return snd_soc_add_component_controls(component, tfa989x_mode_controls,
+						      ARRAY_SIZE(tfa989x_mode_controls));
+
+	return 0;
+}
+
 static const struct snd_soc_component_driver tfa989x_component = {
+	.probe			= tfa989x_probe,
 	.dapm_widgets		= tfa989x_dapm_widgets,
 	.num_dapm_widgets	= ARRAY_SIZE(tfa989x_dapm_widgets),
 	.dapm_routes		= tfa989x_dapm_routes,
 	.num_dapm_routes	= ARRAY_SIZE(tfa989x_dapm_routes),
 	.use_pmdown_time	= 1,
 	.endianness		= 1,
-	.non_legacy_dai_naming	= 1,
 };
 
 static const unsigned int tfa989x_rates[] = {
@@ -154,6 +187,33 @@ static struct snd_soc_dai_driver tfa989x_dai = {
 		.channels_max	= 2,
 	},
 	.ops = &tfa989x_dai_ops,
+};
+
+static int tfa9890_init(struct regmap *regmap)
+{
+	int ret;
+
+	/* temporarily allow access to hidden registers */
+	ret = regmap_write(regmap, TFA989X_HIDE_UNHIDE_KEY, 0x5a6b);
+	if (ret)
+		return ret;
+
+	/* update PLL registers */
+	ret = regmap_set_bits(regmap, 0x59, 0x3);
+	if (ret)
+		return ret;
+
+	/* hide registers again */
+	ret = regmap_write(regmap, TFA989X_HIDE_UNHIDE_KEY, 0x0000);
+	if (ret)
+		return ret;
+
+	return regmap_write(regmap, TFA989X_CURRENTSENSE2, 0x7BE1);
+}
+
+static const struct tfa989x_rev tfa9890_rev = {
+	.rev	= TFA9890_REVISION,
+	.init	= tfa9890_init,
 };
 
 static const struct reg_sequence tfa9895_reg_init[] = {
@@ -273,12 +333,19 @@ static int tfa989x_i2c_probe(struct i2c_client *i2c)
 	if (!tfa989x)
 		return -ENOMEM;
 
+	tfa989x->rev = rev;
 	i2c_set_clientdata(i2c, tfa989x);
 
 	tfa989x->vddd_supply = devm_regulator_get(dev, "vddd");
 	if (IS_ERR(tfa989x->vddd_supply))
 		return dev_err_probe(dev, PTR_ERR(tfa989x->vddd_supply),
 				     "Failed to get vddd regulator\n");
+
+	if (tfa989x->rev->rev == TFA9897_REVISION) {
+		tfa989x->rcv_gpiod = devm_gpiod_get_optional(dev, "rcv", GPIOD_OUT_LOW);
+		if (IS_ERR(tfa989x->rcv_gpiod))
+			return PTR_ERR(tfa989x->rcv_gpiod);
+	}
 
 	regmap = devm_regmap_init_i2c(i2c, &tfa989x_regmap);
 	if (IS_ERR(regmap))
@@ -337,6 +404,7 @@ static int tfa989x_i2c_probe(struct i2c_client *i2c)
 }
 
 static const struct of_device_id tfa989x_of_match[] = {
+	{ .compatible = "nxp,tfa9890", .data = &tfa9890_rev },
 	{ .compatible = "nxp,tfa9895", .data = &tfa9895_rev },
 	{ .compatible = "nxp,tfa9897", .data = &tfa9897_rev },
 	{ }

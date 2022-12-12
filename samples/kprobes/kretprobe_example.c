@@ -23,11 +23,10 @@
 #include <linux/module.h>
 #include <linux/kprobes.h>
 #include <linux/ktime.h>
-#include <linux/limits.h>
 #include <linux/sched.h>
 
-static char func_name[NAME_MAX] = "kernel_clone";
-module_param_string(func, func_name, NAME_MAX, S_IRUGO);
+static char func_name[KSYM_NAME_LEN] = "kernel_clone";
+module_param_string(func, func_name, KSYM_NAME_LEN, 0644);
 MODULE_PARM_DESC(func, "Function to kretprobe; this module will report the"
 			" function's execution time");
 
@@ -86,7 +85,7 @@ static int __init kretprobe_init(void)
 	ret = register_kretprobe(&my_kretprobe);
 	if (ret < 0) {
 		pr_err("register_kretprobe failed, returned %d\n", ret);
-		return -1;
+		return ret;
 	}
 	pr_info("Planted return probe at %s: %p\n",
 			my_kretprobe.kp.symbol_name, my_kretprobe.kp.addr);

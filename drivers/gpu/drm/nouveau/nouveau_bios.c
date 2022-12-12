@@ -1801,6 +1801,8 @@ parse_dcb_entry(struct drm_device *dev, void *data, int idx, u8 *outp)
 			ret = parse_dcb20_entry(dev, dcb, conn, conf, entry);
 		else
 			ret = parse_dcb15_entry(dev, dcb, conn, conf, entry);
+		entry->id = idx;
+
 		if (!ret)
 			return 1; /* stop parsing */
 
@@ -2045,7 +2047,6 @@ nouveau_run_vbios_init(struct drm_device *dev)
 {
 	struct nouveau_drm *drm = nouveau_drm(dev);
 	struct nvbios *bios = &drm->vbios;
-	int ret = 0;
 
 	/* Reset the BIOS head to 0. */
 	bios->state.crtchead = 0;
@@ -2058,7 +2059,7 @@ nouveau_run_vbios_init(struct drm_device *dev)
 		bios->fp.lvds_init_run = false;
 	}
 
-	return ret;
+	return 0;
 }
 
 static bool

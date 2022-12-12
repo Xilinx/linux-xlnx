@@ -16,6 +16,7 @@
 
 /* The array of function pointers for syscalls. */
 extern void * const sys_call_table[];
+extern void * const compat_sys_call_table[];
 
 /*
  * Only the low 32 bits of orig_r0 are meaningful, so we return int.
@@ -62,15 +63,6 @@ static inline void syscall_get_arguments(struct task_struct *task,
 	args[0] = regs->orig_a0;
 	args++;
 	memcpy(args, &regs->a1, 5 * sizeof(args[0]));
-}
-
-static inline void syscall_set_arguments(struct task_struct *task,
-					 struct pt_regs *regs,
-					 const unsigned long *args)
-{
-	regs->orig_a0 = args[0];
-	args++;
-	memcpy(&regs->a1, args, 5 * sizeof(regs->a1));
 }
 
 static inline int syscall_get_arch(struct task_struct *task)

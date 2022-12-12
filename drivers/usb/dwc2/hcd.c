@@ -3,36 +3,6 @@
  * hcd.c - DesignWare HS OTG Controller host-mode routines
  *
  * Copyright (C) 2004-2013 Synopsys, Inc.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions, and the following disclaimer,
- *    without modification.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. The names of the above-listed copyright holders may not be used
- *    to endorse or promote products derived from this software without
- *    specific prior written permission.
- *
- * ALTERNATIVELY, this software may be distributed under the terms of the
- * GNU General Public License ("GPL") as published by the Free Software
- * Foundation; either version 2 of the License, or (at your option) any
- * later version.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
- * IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
- * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 /*
@@ -52,6 +22,7 @@
 
 #include <linux/usb/hcd.h>
 #include <linux/usb/ch11.h>
+#include <linux/usb/of.h>
 
 #include "core.h"
 #include "hcd.h"
@@ -138,19 +109,15 @@ static void dwc2_gusbcfg_init(struct dwc2_hsotg *hsotg)
 
 	switch (hsotg->hw_params.op_mode) {
 	case GHWCFG2_OP_MODE_HNP_SRP_CAPABLE:
-		if (hsotg->params.otg_cap ==
-				DWC2_CAP_PARAM_HNP_SRP_CAPABLE)
+		if (hsotg->params.otg_caps.hnp_support &&
+		    hsotg->params.otg_caps.srp_support)
 			usbcfg |= GUSBCFG_HNPCAP;
-		if (hsotg->params.otg_cap !=
-				DWC2_CAP_PARAM_NO_HNP_SRP_CAPABLE)
-			usbcfg |= GUSBCFG_SRPCAP;
-		break;
+		fallthrough;
 
 	case GHWCFG2_OP_MODE_SRP_ONLY_CAPABLE:
 	case GHWCFG2_OP_MODE_SRP_CAPABLE_DEVICE:
 	case GHWCFG2_OP_MODE_SRP_CAPABLE_HOST:
-		if (hsotg->params.otg_cap !=
-				DWC2_CAP_PARAM_NO_HNP_SRP_CAPABLE)
+		if (hsotg->params.otg_caps.srp_support)
 			usbcfg |= GUSBCFG_SRPCAP;
 		break;
 
@@ -1003,7 +970,7 @@ static void dwc2_hc_set_even_odd_frame(struct dwc2_hsotg *hsotg,
 
 		/*
 		 * Try to figure out if we're an even or odd frame. If we set
-		 * even and the current frame number is even the the transfer
+		 * even and the current frame number is even the transfer
 		 * will happen immediately.  Similar if both are odd. If one is
 		 * even and the other is odd then the transfer will happen when
 		 * the frame number ticks.
@@ -4403,11 +4370,12 @@ static int _dwc2_hcd_suspend(struct usb_hcd *hcd)
 		 * If not hibernation nor partial power down are supported,
 		 * clock gating is used to save power.
 		 */
-		if (!hsotg->params.no_clock_gating)
+		if (!hsotg->params.no_clock_gating) {
 			dwc2_host_enter_clock_gating(hsotg);
 
-		/* After entering suspend, hardware is not accessible */
-		clear_bit(HCD_FLAG_HW_ACCESSIBLE, &hcd->flags);
+			/* After entering suspend, hardware is not accessible */
+			clear_bit(HCD_FLAG_HW_ACCESSIBLE, &hcd->flags);
+		}
 		break;
 	default:
 		goto skip_power_saving;
@@ -5193,7 +5161,7 @@ int dwc2_hcd_init(struct dwc2_hsotg *hsotg)
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
 		retval = -EINVAL;
-		goto error1;
+		goto error2;
 	}
 	hcd->rsrc_start = res->start;
 	hcd->rsrc_len = resource_size(res);
@@ -5341,6 +5309,8 @@ int dwc2_hcd_init(struct dwc2_hsotg *hsotg)
 
 	/* Don't support SG list at this point */
 	hcd->self.sg_tablesize = 0;
+
+	hcd->tpl_support = of_usb_host_tpl_support(hsotg->dev->of_node);
 
 	if (!IS_ERR_OR_NULL(hsotg->uphy))
 		otg_set_host(hsotg->uphy->otg, &hcd->self);

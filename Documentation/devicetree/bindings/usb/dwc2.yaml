@@ -9,11 +9,22 @@ title: DesignWare HS OTG USB 2.0 controller Bindings
 maintainers:
   - Rob Herring <robh@kernel.org>
 
+allOf:
+  - $ref: usb-drd.yaml#
+  - $ref: usb-hcd.yaml#
+
 properties:
   compatible:
     oneOf:
       - const: brcm,bcm2835-usb
       - const: hisilicon,hi6220-usb
+      - const: ingenic,jz4775-otg
+      - const: ingenic,jz4780-otg
+      - const: ingenic,x1000-otg
+      - const: ingenic,x1600-otg
+      - const: ingenic,x1700-otg
+      - const: ingenic,x1830-otg
+      - const: ingenic,x2000-otg
       - items:
           - const: rockchip,rk3066-usb
           - const: snps,dwc2
@@ -21,6 +32,7 @@ properties:
           - enum:
               - rockchip,px30-usb
               - rockchip,rk3036-usb
+              - rockchip,rk3128-usb
               - rockchip,rk3188-usb
               - rockchip,rk3228-usb
               - rockchip,rk3288-usb
@@ -38,6 +50,7 @@ properties:
               - amlogic,meson8b-usb
               - amlogic,meson-gxbb-usb
               - amlogic,meson-g12a-usb
+              - intel,socfpga-agilex-hsotg
           - const: snps,dwc2
       - const: amcc,dwc-otg
       - const: apm,apm82181-dwc-otg
@@ -50,6 +63,7 @@ properties:
           - const: st,stm32mp15-hsotg
           - const: snps,dwc2
       - const: samsung,s3c6400-hsotg
+      - const: intel,socfpga-agilex-hsotg
 
   reg:
     maxItems: 1
@@ -63,6 +77,13 @@ properties:
   clock-names:
     items:
       - const: otg
+
+  disable-over-current:
+    type: boolean
+    description: whether to disable detection of over-current condition.
+
+  iommus:
+    maxItems: 1
 
   resets:
     items:
@@ -101,12 +122,17 @@ properties:
     description: reference to the VBUS and ID sensing comparators supply, in
       order to perform OTG operation, used on STM32MP15 SoCs.
 
-  dr_mode:
-    enum: [host, peripheral, otg]
+  dr_mode: true
 
-  usb-role-switch:
-    $ref: /schemas/types.yaml#/definitions/flag
-    description: Support role switch.
+  otg-rev: true
+
+  hnp-disable: true
+
+  srp-disable: true
+
+  usb-role-switch: true
+
+  role-switch-default-mode: true
 
   g-rx-fifo-size:
     $ref: /schemas/types.yaml#/definitions/uint32
@@ -122,13 +148,26 @@ properties:
 
   snps,need-phy-for-wake:
     $ref: /schemas/types.yaml#/definitions/flag
-    description: If present indicates that the phy needs to be left on for 
+    description: If present indicates that the phy needs to be left on for
       remote wakeup during suspend.
 
   snps,reset-phy-on-wake:
     $ref: /schemas/types.yaml#/definitions/flag
-    description: If present indicates that we need to reset the PHY when we 
+    description: If present indicates that we need to reset the PHY when we
       detect a wakeup. This is due to a hardware errata.
+
+  port:
+    description:
+      Any connector to the data bus of this controller should be modelled
+      using the OF graph bindings specified, if the "usb-role-switch"
+      property is used.
+    $ref: /schemas/graph.yaml#/properties/port
+
+  tpl-support: true
+
+dependencies:
+  port: [ usb-role-switch ]
+  role-switch-default-mode: [ usb-role-switch ]
 
 required:
   - compatible

@@ -56,14 +56,6 @@ struct resource_constraint {
 
 static DEFINE_RWLOCK(resource_lock);
 
-/*
- * For memory hotplug, there is no way to free resource entries allocated
- * by boot mem after the system is up. So for reusing the resource entry
- * we need to remember the resource.
- */
-static struct resource *bootmem_resource_free;
-static DEFINE_SPINLOCK(bootmem_resource_lock);
-
 static struct resource *next_resource(struct resource *p)
 {
 	if (p->child)
@@ -72,6 +64,18 @@ static struct resource *next_resource(struct resource *p)
 		p = p->parent;
 	return p->sibling;
 }
+
+static struct resource *next_resource_skip_children(struct resource *p)
+{
+	while (!p->sibling && p->parent)
+		p = p->parent;
+	return p->sibling;
+}
+
+#define for_each_resource(_root, _p, _skip_children) \
+	for ((_p) = (_root)->child; (_p); \
+	     (_p) = (_skip_children) ? next_resource_skip_children(_p) : \
+				       next_resource(_p))
 
 static void *r_next(struct seq_file *m, void *v, loff_t *pos)
 {
@@ -87,7 +91,7 @@ enum { MAX_IORES_LEVEL = 5 };
 static void *r_start(struct seq_file *m, loff_t *pos)
 	__acquires(resource_lock)
 {
-	struct resource *p = PDE_DATA(file_inode(m->file));
+	struct resource *p = pde_data(file_inode(m->file));
 	loff_t l = 0;
 	read_lock(&resource_lock);
 	for (p = p->child; p && l < *pos; p = r_next(m, p, &l))
@@ -103,7 +107,7 @@ static void r_stop(struct seq_file *m, void *v)
 
 static int r_show(struct seq_file *m, void *v)
 {
-	struct resource *root = PDE_DATA(file_inode(m->file));
+	struct resource *root = pde_data(file_inode(m->file));
 	struct resource *r = v, *p;
 	unsigned long long start, end;
 	int width = root->end < 0x10000 ? 4 : 8;
@@ -148,36 +152,19 @@ __initcall(ioresources_init);
 
 static void free_resource(struct resource *res)
 {
-	if (!res)
-		return;
-
-	if (!PageSlab(virt_to_head_page(res))) {
-		spin_lock(&bootmem_resource_lock);
-		res->sibling = bootmem_resource_free;
-		bootmem_resource_free = res;
-		spin_unlock(&bootmem_resource_lock);
-	} else {
+	/**
+	 * If the resource was allocated using memblock early during boot
+	 * we'll leak it here: we can only return full pages back to the
+	 * buddy and trying to be smart and reusing them eventually in
+	 * alloc_resource() overcomplicates resource handling.
+	 */
+	if (res && PageSlab(virt_to_head_page(res)))
 		kfree(res);
-	}
 }
 
 static struct resource *alloc_resource(gfp_t flags)
 {
-	struct resource *res = NULL;
-
-	spin_lock(&bootmem_resource_lock);
-	if (bootmem_resource_free) {
-		res = bootmem_resource_free;
-		bootmem_resource_free = res->sibling;
-	}
-	spin_unlock(&bootmem_resource_lock);
-
-	if (res)
-		memset(res, 0, sizeof(struct resource));
-	else
-		res = kzalloc(sizeof(struct resource), flags);
-
-	return res;
+	return kzalloc(sizeof(struct resource), flags);
 }
 
 /* Return the conflict entry if you can't request it */
@@ -502,8 +489,9 @@ int __weak page_is_ram(unsigned long pfn)
 }
 EXPORT_SYMBOL_GPL(page_is_ram);
 
-static int __region_intersects(resource_size_t start, size_t size,
-			unsigned long flags, unsigned long desc)
+static int __region_intersects(struct resource *parent, resource_size_t start,
+			       size_t size, unsigned long flags,
+			       unsigned long desc)
 {
 	struct resource res;
 	int type = 0; int other = 0;
@@ -512,7 +500,7 @@ static int __region_intersects(resource_size_t start, size_t size,
 	res.start = start;
 	res.end = start + size - 1;
 
-	for (p = iomem_resource.child; p ; p = p->sibling) {
+	for (p = parent->child; p ; p = p->sibling) {
 		bool is_type = (((p->flags & flags) == flags) &&
 				((desc == IORES_DESC_NONE) ||
 				 (desc == p->desc)));
@@ -556,7 +544,7 @@ int region_intersects(resource_size_t start, size_t size, unsigned long flags,
 	int ret;
 
 	read_lock(&resource_lock);
-	ret = __region_intersects(start, size, flags, desc);
+	ret = __region_intersects(&iomem_resource, start, size, flags, desc);
 	read_unlock(&resource_lock);
 
 	return ret;
@@ -904,6 +892,13 @@ void insert_resource_expand_to_fit(struct resource *root, struct resource *new)
 	}
 	write_unlock(&resource_lock);
 }
+/*
+ * Not for general consumption, only early boot memory map parsing, PCI
+ * resource discovery, and late discovery of CXL resources are expected
+ * to use this interface. The former are built-in and only the latter,
+ * CXL, is a module.
+ */
+EXPORT_SYMBOL_NS_GPL(insert_resource_expand_to_fit, CXL);
 
 /**
  * remove_resource - Remove a resource in the resource tree
@@ -1707,37 +1702,49 @@ static int strict_iomem_checks;
 #endif
 
 /*
- * check if an address is reserved in the iomem resource tree
- * returns true if reserved, false if not reserved.
+ * Check if an address is exclusive to the kernel and must not be mapped to
+ * user space, for example, via /dev/mem.
+ *
+ * Returns true if exclusive to the kernel, otherwise returns false.
  */
 bool iomem_is_exclusive(u64 addr)
 {
-	struct resource *p = &iomem_resource;
-	bool err = false;
-	loff_t l;
+	const unsigned int exclusive_system_ram = IORESOURCE_SYSTEM_RAM |
+						  IORESOURCE_EXCLUSIVE;
+	bool skip_children = false, err = false;
 	int size = PAGE_SIZE;
-
-	if (!strict_iomem_checks)
-		return false;
+	struct resource *p;
 
 	addr = addr & PAGE_MASK;
 
 	read_lock(&resource_lock);
-	for (p = p->child; p ; p = r_next(NULL, p, &l)) {
-		/*
-		 * We can probably skip the resources without
-		 * IORESOURCE_IO attribute?
-		 */
+	for_each_resource(&iomem_resource, p, skip_children) {
 		if (p->start >= addr + size)
 			break;
-		if (p->end < addr)
+		if (p->end < addr) {
+			skip_children = true;
 			continue;
+		}
+		skip_children = false;
+
+		/*
+		 * IORESOURCE_SYSTEM_RAM resources are exclusive if
+		 * IORESOURCE_EXCLUSIVE is set, even if they
+		 * are not busy and even if "iomem=relaxed" is set. The
+		 * responsible driver dynamically adds/removes system RAM within
+		 * such an area and uncontrolled access is dangerous.
+		 */
+		if ((p->flags & exclusive_system_ram) == exclusive_system_ram) {
+			err = true;
+			break;
+		}
+
 		/*
 		 * A resource is exclusive if IORESOURCE_EXCLUSIVE is set
 		 * or CONFIG_IO_STRICT_DEVMEM is enabled and the
 		 * resource is busy.
 		 */
-		if ((p->flags & IORESOURCE_BUSY) == 0)
+		if (!strict_iomem_checks || !(p->flags & IORESOURCE_BUSY))
 			continue;
 		if (IS_ENABLED(CONFIG_IO_STRICT_DEVMEM)
 				|| p->flags & IORESOURCE_EXCLUSIVE) {
@@ -1774,62 +1781,139 @@ void resource_list_free(struct list_head *head)
 }
 EXPORT_SYMBOL(resource_list_free);
 
-#ifdef CONFIG_DEVICE_PRIVATE
-static struct resource *__request_free_mem_region(struct device *dev,
-		struct resource *base, unsigned long size, const char *name)
+#ifdef CONFIG_GET_FREE_REGION
+#define GFR_DESCENDING		(1UL << 0)
+#define GFR_REQUEST_REGION	(1UL << 1)
+#define GFR_DEFAULT_ALIGN (1UL << PA_SECTION_SHIFT)
+
+static resource_size_t gfr_start(struct resource *base, resource_size_t size,
+				 resource_size_t align, unsigned long flags)
 {
-	resource_size_t end, addr;
+	if (flags & GFR_DESCENDING) {
+		resource_size_t end;
+
+		end = min_t(resource_size_t, base->end,
+			    (1ULL << MAX_PHYSMEM_BITS) - 1);
+		return end - size + 1;
+	}
+
+	return ALIGN(base->start, align);
+}
+
+static bool gfr_continue(struct resource *base, resource_size_t addr,
+			 resource_size_t size, unsigned long flags)
+{
+	if (flags & GFR_DESCENDING)
+		return addr > size && addr >= base->start;
+	/*
+	 * In the ascend case be careful that the last increment by
+	 * @size did not wrap 0.
+	 */
+	return addr > addr - size &&
+	       addr <= min_t(resource_size_t, base->end,
+			     (1ULL << MAX_PHYSMEM_BITS) - 1);
+}
+
+static resource_size_t gfr_next(resource_size_t addr, resource_size_t size,
+				unsigned long flags)
+{
+	if (flags & GFR_DESCENDING)
+		return addr - size;
+	return addr + size;
+}
+
+static void remove_free_mem_region(void *_res)
+{
+	struct resource *res = _res;
+
+	if (res->parent)
+		remove_resource(res);
+	free_resource(res);
+}
+
+static struct resource *
+get_free_mem_region(struct device *dev, struct resource *base,
+		    resource_size_t size, const unsigned long align,
+		    const char *name, const unsigned long desc,
+		    const unsigned long flags)
+{
+	resource_size_t addr;
 	struct resource *res;
 	struct region_devres *dr = NULL;
 
-	size = ALIGN(size, 1UL << PA_SECTION_SHIFT);
-	end = min_t(unsigned long, base->end, (1UL << MAX_PHYSMEM_BITS) - 1);
-	addr = end - size + 1UL;
+	size = ALIGN(size, align);
 
 	res = alloc_resource(GFP_KERNEL);
 	if (!res)
 		return ERR_PTR(-ENOMEM);
 
-	if (dev) {
+	if (dev && (flags & GFR_REQUEST_REGION)) {
 		dr = devres_alloc(devm_region_release,
 				sizeof(struct region_devres), GFP_KERNEL);
 		if (!dr) {
 			free_resource(res);
 			return ERR_PTR(-ENOMEM);
 		}
+	} else if (dev) {
+		if (devm_add_action_or_reset(dev, remove_free_mem_region, res))
+			return ERR_PTR(-ENOMEM);
 	}
 
 	write_lock(&resource_lock);
-	for (; addr > size && addr >= base->start; addr -= size) {
-		if (__region_intersects(addr, size, 0, IORES_DESC_NONE) !=
-				REGION_DISJOINT)
+	for (addr = gfr_start(base, size, align, flags);
+	     gfr_continue(base, addr, size, flags);
+	     addr = gfr_next(addr, size, flags)) {
+		if (__region_intersects(base, addr, size, 0, IORES_DESC_NONE) !=
+		    REGION_DISJOINT)
 			continue;
 
-		if (__request_region_locked(res, &iomem_resource, addr, size,
-						name, 0))
-			break;
+		if (flags & GFR_REQUEST_REGION) {
+			if (__request_region_locked(res, &iomem_resource, addr,
+						    size, name, 0))
+				break;
 
-		if (dev) {
-			dr->parent = &iomem_resource;
-			dr->start = addr;
-			dr->n = size;
-			devres_add(dev, dr);
+			if (dev) {
+				dr->parent = &iomem_resource;
+				dr->start = addr;
+				dr->n = size;
+				devres_add(dev, dr);
+			}
+
+			res->desc = desc;
+			write_unlock(&resource_lock);
+
+
+			/*
+			 * A driver is claiming this region so revoke any
+			 * mappings.
+			 */
+			revoke_iomem(res);
+		} else {
+			res->start = addr;
+			res->end = addr + size - 1;
+			res->name = name;
+			res->desc = desc;
+			res->flags = IORESOURCE_MEM;
+
+			/*
+			 * Only succeed if the resource hosts an exclusive
+			 * range after the insert
+			 */
+			if (__insert_resource(base, res) || res->child)
+				break;
+
+			write_unlock(&resource_lock);
 		}
 
-		res->desc = IORES_DESC_DEVICE_PRIVATE_MEMORY;
-		write_unlock(&resource_lock);
-
-		/*
-		 * A driver is claiming this region so revoke any mappings.
-		 */
-		revoke_iomem(res);
 		return res;
 	}
 	write_unlock(&resource_lock);
 
-	free_resource(res);
-	if (dr)
+	if (flags & GFR_REQUEST_REGION) {
+		free_resource(res);
 		devres_free(dr);
+	} else if (dev)
+		devm_release_action(dev, remove_free_mem_region, res);
 
 	return ERR_PTR(-ERANGE);
 }
@@ -1848,18 +1932,48 @@ static struct resource *__request_free_mem_region(struct device *dev,
 struct resource *devm_request_free_mem_region(struct device *dev,
 		struct resource *base, unsigned long size)
 {
-	return __request_free_mem_region(dev, base, size, dev_name(dev));
+	unsigned long flags = GFR_DESCENDING | GFR_REQUEST_REGION;
+
+	return get_free_mem_region(dev, base, size, GFR_DEFAULT_ALIGN,
+				   dev_name(dev),
+				   IORES_DESC_DEVICE_PRIVATE_MEMORY, flags);
 }
 EXPORT_SYMBOL_GPL(devm_request_free_mem_region);
 
 struct resource *request_free_mem_region(struct resource *base,
 		unsigned long size, const char *name)
 {
-	return __request_free_mem_region(NULL, base, size, name);
+	unsigned long flags = GFR_DESCENDING | GFR_REQUEST_REGION;
+
+	return get_free_mem_region(NULL, base, size, GFR_DEFAULT_ALIGN, name,
+				   IORES_DESC_DEVICE_PRIVATE_MEMORY, flags);
 }
 EXPORT_SYMBOL_GPL(request_free_mem_region);
 
-#endif /* CONFIG_DEVICE_PRIVATE */
+/**
+ * alloc_free_mem_region - find a free region relative to @base
+ * @base: resource that will parent the new resource
+ * @size: size in bytes of memory to allocate from @base
+ * @align: alignment requirements for the allocation
+ * @name: resource name
+ *
+ * Buses like CXL, that can dynamically instantiate new memory regions,
+ * need a method to allocate physical address space for those regions.
+ * Allocate and insert a new resource to cover a free, unclaimed by a
+ * descendant of @base, range in the span of @base.
+ */
+struct resource *alloc_free_mem_region(struct resource *base,
+				       unsigned long size, unsigned long align,
+				       const char *name)
+{
+	/* Default of ascending direction and insert resource */
+	unsigned long flags = 0;
+
+	return get_free_mem_region(NULL, base, size, align, name,
+				   IORES_DESC_NONE, flags);
+}
+EXPORT_SYMBOL_NS_GPL(alloc_free_mem_region, CXL);
+#endif /* CONFIG_GET_FREE_REGION */
 
 static int __init strict_iomem(char *str)
 {

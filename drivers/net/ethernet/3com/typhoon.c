@@ -138,11 +138,6 @@ MODULE_PARM_DESC(use_mmio, "Use MMIO (1) or PIO(0) to access the NIC. "
 module_param(rx_copybreak, int, 0);
 module_param(use_mmio, int, 0);
 
-#if defined(NETIF_F_TSO) && MAX_SKB_FRAGS > 32
-#warning Typhoon only supports 32 entries in its SG list for TSO, disabling TSO
-#undef NETIF_F_TSO
-#endif
-
 #if TXLO_ENTRIES <= (2 * MAX_SKB_FRAGS)
 #error TX ring too small!
 #endif
@@ -974,12 +969,12 @@ typhoon_get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *info)
 
 	smp_rmb();
 	if (tp->card_state == Sleeping) {
-		strlcpy(info->fw_version, "Sleep image",
+		strscpy(info->fw_version, "Sleep image",
 			sizeof(info->fw_version));
 	} else {
 		INIT_COMMAND_WITH_RESPONSE(&xp_cmd, TYPHOON_CMD_READ_VERSIONS);
 		if (typhoon_issue_command(tp, 1, &xp_cmd, 3, xp_resp) < 0) {
-			strlcpy(info->fw_version, "Unknown runtime",
+			strscpy(info->fw_version, "Unknown runtime",
 				sizeof(info->fw_version));
 		} else {
 			u32 sleep_ver = le32_to_cpu(xp_resp[0].parm2);
@@ -989,8 +984,8 @@ typhoon_get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *info)
 		}
 	}
 
-	strlcpy(info->driver, KBUILD_MODNAME, sizeof(info->driver));
-	strlcpy(info->bus_info, pci_name(pci_dev), sizeof(info->bus_info));
+	strscpy(info->driver, KBUILD_MODNAME, sizeof(info->driver));
+	strscpy(info->bus_info, pci_name(pci_dev), sizeof(info->bus_info));
 }
 
 static int
@@ -1138,7 +1133,9 @@ typhoon_set_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
 }
 
 static void
-typhoon_get_ringparam(struct net_device *dev, struct ethtool_ringparam *ering)
+typhoon_get_ringparam(struct net_device *dev, struct ethtool_ringparam *ering,
+		      struct kernel_ethtool_ringparam *kernel_ering,
+		      struct netlink_ext_ack *extack)
 {
 	ering->rx_max_pending = RXENT_ENTRIES;
 	ering->tx_max_pending = TXLO_ENTRIES - 1;
@@ -2259,9 +2256,28 @@ out:
 	return mode;
 }
 
+#if MAX_SKB_FRAGS > 32
+
+#include <net/vxlan.h>
+
+static netdev_features_t typhoon_features_check(struct sk_buff *skb,
+						struct net_device *dev,
+						netdev_features_t features)
+{
+	if (skb_shinfo(skb)->nr_frags > 32 && skb_is_gso(skb))
+		features &= ~NETIF_F_GSO_MASK;
+
+	features = vlan_features_check(skb, features);
+	return vxlan_features_check(skb, features);
+}
+#endif
+
 static const struct net_device_ops typhoon_netdev_ops = {
 	.ndo_open		= typhoon_open,
 	.ndo_stop		= typhoon_close,
+#if MAX_SKB_FRAGS > 32
+	.ndo_features_check	= typhoon_features_check,
+#endif
 	.ndo_start_xmit		= typhoon_start_tx,
 	.ndo_set_rx_mode	= typhoon_set_rx_mode,
 	.ndo_tx_timeout		= typhoon_tx_timeout,
@@ -2276,6 +2292,7 @@ typhoon_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	struct net_device *dev;
 	struct typhoon *tp;
 	int card_id = (int) ent->driver_data;
+	u8 addr[ETH_ALEN] __aligned(4);
 	void __iomem *ioaddr;
 	void *shared;
 	dma_addr_t shared_dma;
@@ -2407,8 +2424,9 @@ typhoon_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto error_out_reset;
 	}
 
-	*(__be16 *)&dev->dev_addr[0] = htons(le16_to_cpu(xp_resp[0].parm1));
-	*(__be32 *)&dev->dev_addr[2] = htonl(le32_to_cpu(xp_resp[0].parm2));
+	*(__be16 *)&addr[0] = htons(le16_to_cpu(xp_resp[0].parm1));
+	*(__be32 *)&addr[2] = htonl(le32_to_cpu(xp_resp[0].parm2));
+	eth_hw_addr_set(dev, addr);
 
 	if (!is_valid_ether_addr(dev->dev_addr)) {
 		err_msg = "Could not obtain valid ethernet address, aborting";
@@ -2446,7 +2464,7 @@ typhoon_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	/* The chip-specific entries in the device structure. */
 	dev->netdev_ops		= &typhoon_netdev_ops;
-	netif_napi_add(dev, &tp->napi, typhoon_poll, 16);
+	netif_napi_add_weight(dev, &tp->napi, typhoon_poll, 16);
 	dev->watchdog_timeo	= TX_TIMEOUT;
 
 	dev->ethtool_ops = &typhoon_ethtool_ops;

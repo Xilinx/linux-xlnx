@@ -17,6 +17,9 @@
 #include <linux/soc/marvell/octeontx2/asm.h>
 #include <net/pkt_cls.h>
 #include <net/devlink.h>
+#include <linux/time64.h>
+#include <linux/dim.h>
+#include <uapi/linux/if_macsec.h>
 
 #include <mbox.h>
 #include <npc.h>
@@ -31,12 +34,18 @@
 #define PCI_DEVID_OCTEONTX2_RVU_AFVF		0xA0F8
 
 #define PCI_SUBSYS_DEVID_96XX_RVU_PFVF		0xB200
+#define PCI_SUBSYS_DEVID_CN10K_B_RVU_PFVF	0xBD00
 
 /* PCI BAR nos */
 #define PCI_CFG_REG_BAR_NUM                     2
 #define PCI_MBOX_BAR_NUM                        4
 
 #define NAME_SIZE                               32
+
+#ifdef CONFIG_DCB
+/* Max priority supported for PFC */
+#define NIX_PF_PFC_PRIO_MAX			8
+#endif
 
 enum arua_mapped_qtypes {
 	AURA_NIX_RQ,
@@ -52,6 +61,11 @@ enum arua_mapped_qtypes {
 
 /* Send skid of 2000 packets required for CQ size of 4K CQEs. */
 #define SEND_CQ_SKID	2000
+
+#define OTX2_GET_RX_STATS(reg) \
+	otx2_read64(pfvf, NIX_LF_RX_STATX(reg))
+#define OTX2_GET_TX_STATS(reg) \
+	otx2_read64(pfvf, NIX_LF_TX_STATX(reg))
 
 struct otx2_lmt_info {
 	u64 lmt_addr;
@@ -171,10 +185,16 @@ struct otx2_hw {
 	struct otx2_rss_info	rss_info;
 	u16                     rx_queues;
 	u16                     tx_queues;
+	u16                     xdp_queues;
+	u16                     tot_tx_queues;
 	u16			max_queues;
 	u16			pool_cnt;
 	u16			rqpool_cnt;
 	u16			sqpool_cnt;
+
+#define OTX2_DEFAULT_RBUF_LEN	2048
+	u16			rbuf_len;
+	u32			xqe_size;
 
 	/* NPA */
 	u32			stack_pg_ptrs;  /* No of ptrs per stack page */
@@ -182,7 +202,8 @@ struct otx2_hw {
 	u16			sqb_size;
 
 	/* NIX */
-	u16		txschq_list[NIX_TXSCH_LVL_CNT][MAX_TXSCHQ_PER_FUNC];
+	u8			txschq_link_cfg_lvl;
+	u16			txschq_list[NIX_TXSCH_LVL_CNT][MAX_TXSCHQ_PER_FUNC];
 	u16			matchall_ipolicer;
 	u32			dwrr_mtu;
 
@@ -223,6 +244,9 @@ struct otx2_hw {
 #define HW_TSO			0
 #define CN10K_MBOX		1
 #define CN10K_LMTST		2
+#define CN10K_RPM		3
+#define CN10K_PTP_ONESTEP	4
+#define CN10K_HW_MACSEC		5
 	unsigned long		cap_flag;
 
 #define LMT_LINE_SIZE		128
@@ -256,6 +280,13 @@ struct refill_work {
 	struct otx2_nic *pf;
 };
 
+/* PTPv2 originTimestamp structure */
+struct ptpv2_tstamp {
+	__be16 seconds_msb; /* 16 bits + */
+	__be32 seconds_lsb; /* 32 bits = 48 bits*/
+	__be32 nanoseconds;
+} __packed;
+
 struct otx2_ptp {
 	struct ptp_clock_info ptp_info;
 	struct ptp_clock *ptp_clock;
@@ -263,6 +294,17 @@ struct otx2_ptp {
 
 	struct cyclecounter cycle_counter;
 	struct timecounter time_counter;
+
+	struct delayed_work extts_work;
+	u64 last_extts;
+	u64 thresh;
+
+	struct ptp_pin_desc extts_config;
+	u64 (*convert_rx_ptp_tstmp)(u64 timestamp);
+	u64 (*convert_tx_ptp_tstmp)(u64 timestamp);
+	struct delayed_work synctstamp_work;
+	u64 tstamp;
+	u32 base_ns;
 };
 
 #define OTX2_HW_TIMESTAMP_LEN	8
@@ -292,8 +334,8 @@ struct otx2_flow_config {
 #define OTX2_VF_VLAN_TX_INDEX	1
 	u16			max_flows;
 	u8			dmacflt_max_flows;
-	u8			*bmap_to_dmacindex;
-	unsigned long		dmacflt_bmap;
+	u32			*bmap_to_dmacindex;
+	unsigned long		*dmacflt_bmap;
 	struct list_head	flow_list;
 };
 
@@ -312,12 +354,72 @@ struct dev_hw_ops {
 	void	(*aura_freeptr)(void *dev, int aura, u64 buf);
 };
 
+#define CN10K_MCS_SA_PER_SC	4
+
+/* Stats which need to be accumulated in software because
+ * of shared counters in hardware.
+ */
+struct cn10k_txsc_stats {
+	u64 InPktsUntagged;
+	u64 InPktsNoTag;
+	u64 InPktsBadTag;
+	u64 InPktsUnknownSCI;
+	u64 InPktsNoSCI;
+	u64 InPktsOverrun;
+};
+
+struct cn10k_rxsc_stats {
+	u64 InOctetsValidated;
+	u64 InOctetsDecrypted;
+	u64 InPktsUnchecked;
+	u64 InPktsDelayed;
+	u64 InPktsOK;
+	u64 InPktsInvalid;
+	u64 InPktsLate;
+	u64 InPktsNotValid;
+	u64 InPktsNotUsingSA;
+	u64 InPktsUnusedSA;
+};
+
+struct cn10k_mcs_txsc {
+	struct macsec_secy *sw_secy;
+	struct cn10k_txsc_stats stats;
+	struct list_head entry;
+	enum macsec_validation_type last_validate_frames;
+	bool last_protect_frames;
+	u16 hw_secy_id_tx;
+	u16 hw_secy_id_rx;
+	u16 hw_flow_id;
+	u16 hw_sc_id;
+	u16 hw_sa_id[CN10K_MCS_SA_PER_SC];
+	u8 sa_bmap;
+	u8 sa_key[CN10K_MCS_SA_PER_SC][MACSEC_MAX_KEY_LEN];
+	u8 encoding_sa;
+};
+
+struct cn10k_mcs_rxsc {
+	struct macsec_secy *sw_secy;
+	struct macsec_rx_sc *sw_rxsc;
+	struct cn10k_rxsc_stats stats;
+	struct list_head entry;
+	u16 hw_flow_id;
+	u16 hw_sc_id;
+	u16 hw_sa_id[CN10K_MCS_SA_PER_SC];
+	u8 sa_bmap;
+	u8 sa_key[CN10K_MCS_SA_PER_SC][MACSEC_MAX_KEY_LEN];
+};
+
+struct cn10k_mcs_cfg {
+	struct list_head txsc_list;
+	struct list_head rxsc_list;
+};
+
 struct otx2_nic {
 	void __iomem		*reg_base;
 	struct net_device	*netdev;
 	struct dev_hw_ops	*hw_ops;
 	void			*iommu_domain;
-	u16			max_frs;
+	u16			tx_max_pktlen;
 	u16			rbsize; /* Receive buffer size */
 
 #define OTX2_FLAG_RX_TSTAMP_ENABLED		BIT_ULL(0)
@@ -335,8 +437,12 @@ struct otx2_nic {
 #define OTX2_FLAG_TC_MATCHALL_EGRESS_ENABLED	BIT_ULL(12)
 #define OTX2_FLAG_TC_MATCHALL_INGRESS_ENABLED	BIT_ULL(13)
 #define OTX2_FLAG_DMACFLTR_SUPPORT		BIT_ULL(14)
+#define OTX2_FLAG_PTP_ONESTEP_SYNC		BIT_ULL(15)
+#define OTX2_FLAG_ADPTV_INT_COAL_ENABLED BIT_ULL(16)
 	u64			flags;
+	u64			*cq_op_addr;
 
+	struct bpf_prog		*xdp_prog;
 	struct otx2_qset	qset;
 	struct otx2_hw		hw;
 	struct pci_dev		*pdev;
@@ -385,6 +491,20 @@ struct otx2_nic {
 
 	/* Devlink */
 	struct otx2_devlink	*dl;
+#ifdef CONFIG_DCB
+	/* PFC */
+	u8			pfc_en;
+	u8			*queue_to_pfc_map;
+	u16			pfc_schq_list[NIX_TXSCH_LVL_CNT][MAX_TXSCHQ_PER_FUNC];
+	bool			pfc_alloc_status[NIX_PF_PFC_PRIO_MAX];
+#endif
+
+	/* napi event count. It is needed for adaptive irq coalescing. */
+	u32 napi_events;
+
+#if IS_ENABLED(CONFIG_MACSEC)
+	struct cn10k_mcs_cfg	*macsec_cfg;
+#endif
 };
 
 static inline bool is_otx2_lbkvf(struct pci_dev *pdev)
@@ -424,6 +544,11 @@ static inline bool is_dev_otx2(struct pci_dev *pdev)
 		midr == PCI_REVISION_ID_95XXMM || midr == PCI_REVISION_ID_95XXO);
 }
 
+static inline bool is_dev_cn10kb(struct pci_dev *pdev)
+{
+	return pdev->subsystem_device == PCI_SUBSYS_DEVID_CN10K_B_RVU_PFVF;
+}
+
 static inline void otx2_setup_dev_hw_settings(struct otx2_nic *pfvf)
 {
 	struct otx2_hw *hw = &pfvf->hw;
@@ -452,7 +577,12 @@ static inline void otx2_setup_dev_hw_settings(struct otx2_nic *pfvf)
 	if (!is_dev_otx2(pfvf->pdev)) {
 		__set_bit(CN10K_MBOX, &hw->cap_flag);
 		__set_bit(CN10K_LMTST, &hw->cap_flag);
+		__set_bit(CN10K_RPM, &hw->cap_flag);
+		__set_bit(CN10K_PTP_ONESTEP, &hw->cap_flag);
 	}
+
+	if (is_dev_cn10kb(pfvf->pdev))
+		__set_bit(CN10K_HW_MACSEC, &hw->cap_flag);
 }
 
 /* Register read/write APIs */
@@ -591,6 +721,7 @@ static inline void __cn10k_aura_freeptr(struct otx2_nic *pfvf, u64 aura,
 			size++;
 		tar_addr |=  ((size - 1) & 0x7) << 4;
 	}
+	dma_wmb();
 	memcpy((u64 *)lmt_info->lmt_addr, ptrs, sizeof(u64) * num_ptrs);
 	/* Perform LMTST flush */
 	cn10k_lmt_flush(val, tar_addr);
@@ -707,6 +838,7 @@ otx2_mbox_up_handler_ ## _fn_name(struct otx2_nic *pfvf,		\
 				struct _rsp_type *rsp);			\
 
 MBOX_UP_CGX_MESSAGES
+MBOX_UP_MCS_MESSAGES
 #undef M
 
 /* Time to wait before watchdog kicks off */
@@ -749,6 +881,16 @@ static inline void otx2_dma_unmap_page(struct otx2_nic *pfvf,
 			     dir, DMA_ATTR_SKIP_CPU_SYNC);
 }
 
+static inline u16 otx2_get_smq_idx(struct otx2_nic *pfvf, u16 qidx)
+{
+#ifdef CONFIG_DCB
+	if (qidx < NIX_PF_PFC_PRIO_MAX && pfvf->pfc_alloc_status[qidx])
+		return pfvf->pfc_schq_list[NIX_TXSCH_LVL_SMQ][qidx];
+#endif
+
+	return pfvf->hw.txschq_list[NIX_TXSCH_LVL_SMQ][0];
+}
+
 /* MSI-X APIs */
 void otx2_free_cints(struct otx2_nic *pfvf, int n);
 void otx2_set_cints_affinity(struct otx2_nic *pfvf);
@@ -771,7 +913,7 @@ void otx2_free_aura_ptr(struct otx2_nic *pfvf, int type);
 void otx2_sq_free_sqbs(struct otx2_nic *pfvf);
 int otx2_config_nix(struct otx2_nic *pfvf);
 int otx2_config_nix_queues(struct otx2_nic *pfvf);
-int otx2_txschq_config(struct otx2_nic *pfvf, int lvl);
+int otx2_txschq_config(struct otx2_nic *pfvf, int lvl, int prio, bool pfc_en);
 int otx2_txsch_alloc(struct otx2_nic *pfvf);
 int otx2_txschq_stop(struct otx2_nic *pfvf);
 void otx2_sqb_flush(struct otx2_nic *pfvf);
@@ -825,6 +967,9 @@ int otx2_open(struct net_device *netdev);
 int otx2_stop(struct net_device *netdev);
 int otx2_set_real_num_queues(struct net_device *netdev,
 			     int tx_queues, int rx_queues);
+int otx2_ioctl(struct net_device *netdev, struct ifreq *req, int cmd);
+int otx2_config_hwtstamp(struct net_device *netdev, struct ifreq *ifr);
+
 /* MCAM filter related APIs */
 int otx2_mcam_flow_init(struct otx2_nic *pf);
 int otx2vf_mcam_flow_init(struct otx2_nic *pfvf);
@@ -845,7 +990,12 @@ int otx2_del_macfilter(struct net_device *netdev, const u8 *mac);
 int otx2_add_macfilter(struct net_device *netdev, const u8 *mac);
 int otx2_enable_rxvlan(struct otx2_nic *pf, bool enable);
 int otx2_install_rxvlan_offload_flow(struct otx2_nic *pfvf);
+bool otx2_xdp_sq_append_pkt(struct otx2_nic *pfvf, u64 iova, int len, u16 qidx);
 u16 otx2_get_max_mtu(struct otx2_nic *pfvf);
+int otx2_handle_ntuple_tc_features(struct net_device *netdev,
+				   netdev_features_t features);
+int otx2_smq_flush(struct otx2_nic *pfvf, int smq);
+
 /* tc support */
 int otx2_init_tc(struct otx2_nic *nic);
 void otx2_shutdown_tc(struct otx2_nic *nic);
@@ -854,9 +1004,35 @@ int otx2_setup_tc(struct net_device *netdev, enum tc_setup_type type,
 int otx2_tc_alloc_ent_bitmap(struct otx2_nic *nic);
 /* CGX/RPM DMAC filters support */
 int otx2_dmacflt_get_max_cnt(struct otx2_nic *pf);
-int otx2_dmacflt_add(struct otx2_nic *pf, const u8 *mac, u8 bit_pos);
-int otx2_dmacflt_remove(struct otx2_nic *pf, const u8 *mac, u8 bit_pos);
-int otx2_dmacflt_update(struct otx2_nic *pf, u8 *mac, u8 bit_pos);
+int otx2_dmacflt_add(struct otx2_nic *pf, const u8 *mac, u32 bit_pos);
+int otx2_dmacflt_remove(struct otx2_nic *pf, const u8 *mac, u32 bit_pos);
+int otx2_dmacflt_update(struct otx2_nic *pf, u8 *mac, u32 bit_pos);
 void otx2_dmacflt_reinstall_flows(struct otx2_nic *pf);
 void otx2_dmacflt_update_pfmac_flow(struct otx2_nic *pfvf);
+
+#ifdef CONFIG_DCB
+/* DCB support*/
+void otx2_update_bpid_in_rqctx(struct otx2_nic *pfvf, int vlan_prio, int qidx, bool pfc_enable);
+int otx2_config_priority_flow_ctrl(struct otx2_nic *pfvf);
+int otx2_dcbnl_set_ops(struct net_device *dev);
+/* PFC support */
+int otx2_pfc_txschq_config(struct otx2_nic *pfvf);
+int otx2_pfc_txschq_alloc(struct otx2_nic *pfvf);
+int otx2_pfc_txschq_update(struct otx2_nic *pfvf);
+int otx2_pfc_txschq_stop(struct otx2_nic *pfvf);
+#endif
+
+#if IS_ENABLED(CONFIG_MACSEC)
+/* MACSEC offload support */
+int cn10k_mcs_init(struct otx2_nic *pfvf);
+void cn10k_mcs_free(struct otx2_nic *pfvf);
+void cn10k_handle_mcs_event(struct otx2_nic *pfvf, struct mcs_intr_info *event);
+#else
+static inline int cn10k_mcs_init(struct otx2_nic *pfvf) { return 0; }
+static inline void cn10k_mcs_free(struct otx2_nic *pfvf) {}
+static inline void cn10k_handle_mcs_event(struct otx2_nic *pfvf,
+					  struct mcs_intr_info *event)
+{}
+#endif /* CONFIG_MACSEC */
+
 #endif /* OTX2_COMMON_H */

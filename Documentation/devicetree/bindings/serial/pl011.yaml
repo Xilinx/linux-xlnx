@@ -19,19 +19,14 @@ select:
       contains:
         enum:
           - arm,pl011
-          - arm,xlnx-sbsa-uart
   required:
     - compatible
 
 properties:
   compatible:
-    oneOf:
-      - items:
-          - const: arm,pl011
-          - const: arm,primecell
-      - items:
-          - const: arm,xlnx-sbsa-uart
-          - const: arm,primecell
+    items:
+      - const: arm,pl011
+      - const: arm,primecell
 
   reg:
     maxItems: 1
@@ -95,6 +90,15 @@ properties:
       Poll timeout when auto-poll is set, default
       3000ms.
     default: 3000
+
+  resets:
+    maxItems: 1
+
+  reg-io-width:
+    description:
+      The size (in bytes) of the IO accesses that should be performed
+      on the device.
+    enum: [1, 4]
 
 required:
   - compatible

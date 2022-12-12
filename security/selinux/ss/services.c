@@ -99,7 +99,7 @@ static void context_struct_compute_av(struct policydb *policydb,
 				      struct extended_perms *xperms);
 
 static int selinux_set_mapping(struct policydb *pol,
-			       struct security_class_mapping *map,
+			       const struct security_class_mapping *map,
 			       struct selinux_map *out_map)
 {
 	u16 i, j;
@@ -121,7 +121,7 @@ static int selinux_set_mapping(struct policydb *pol,
 	/* Store the raw class and permission values */
 	j = 0;
 	while (map[j].name) {
-		struct security_class_mapping *p_in = map + (j++);
+		const struct security_class_mapping *p_in = map + (j++);
 		struct selinux_mapping *p_out = out_map->mapping + j;
 
 		/* An empty class string skips ahead */
@@ -358,27 +358,27 @@ static int constraint_expr_eval(struct policydb *policydb,
 				l2 = &(tcontext->range.level[1]);
 				goto mls_ops;
 mls_ops:
-			switch (e->op) {
-			case CEXPR_EQ:
-				s[++sp] = mls_level_eq(l1, l2);
-				continue;
-			case CEXPR_NEQ:
-				s[++sp] = !mls_level_eq(l1, l2);
-				continue;
-			case CEXPR_DOM:
-				s[++sp] = mls_level_dom(l1, l2);
-				continue;
-			case CEXPR_DOMBY:
-				s[++sp] = mls_level_dom(l2, l1);
-				continue;
-			case CEXPR_INCOMP:
-				s[++sp] = mls_level_incomp(l2, l1);
-				continue;
-			default:
-				BUG();
-				return 0;
-			}
-			break;
+				switch (e->op) {
+				case CEXPR_EQ:
+					s[++sp] = mls_level_eq(l1, l2);
+					continue;
+				case CEXPR_NEQ:
+					s[++sp] = !mls_level_eq(l1, l2);
+					continue;
+				case CEXPR_DOM:
+					s[++sp] = mls_level_dom(l1, l2);
+					continue;
+				case CEXPR_DOMBY:
+					s[++sp] = mls_level_dom(l2, l1);
+					continue;
+				case CEXPR_INCOMP:
+					s[++sp] = mls_level_incomp(l2, l1);
+					continue;
+				default:
+					BUG();
+					return 0;
+				}
+				break;
 			default:
 				BUG();
 				return 0;
@@ -529,8 +529,6 @@ out:
 	/* release scontext/tcontext */
 	kfree(tcontext_name);
 	kfree(scontext_name);
-
-	return;
 }
 
 /*
@@ -1102,7 +1100,7 @@ allow:
  * @state: SELinux state
  * @ssid: source security identifier
  * @tsid: target security identifier
- * @tclass: target security class
+ * @orig_tclass: target security class
  * @avd: access vector decisions
  * @xperms: extended permissions
  *
@@ -1452,7 +1450,7 @@ static int string_to_context_struct(struct policydb *pol,
 	/* Parse the security context. */
 
 	rc = -EINVAL;
-	scontextp = (char *) scontext;
+	scontextp = scontext;
 
 	/* Extract the user. */
 	p = scontextp;
@@ -1626,6 +1624,7 @@ int security_context_str_to_sid(struct selinux_state *state,
  * @scontext_len: length in bytes
  * @sid: security identifier, SID
  * @def_sid: default SID to assign on error
+ * @gfp_flags: the allocator get-free-page (GFP) flags
  *
  * Obtains a SID associated with the security context that
  * has the string representation specified by @scontext.
@@ -1919,6 +1918,7 @@ out:
  * @ssid: source security identifier
  * @tsid: target security identifier
  * @tclass: target security class
+ * @qstr: object name
  * @out_sid: security identifier for new subject/object
  *
  * Compute a SID to use for labeling a new subject or object in the
@@ -1947,6 +1947,7 @@ int security_transition_sid_user(struct selinux_state *state,
 
 /**
  * security_member_sid - Compute the SID for member selection.
+ * @state: SELinux state
  * @ssid: source security identifier
  * @tsid: target security identifier
  * @tclass: target security class
@@ -2021,7 +2022,8 @@ static inline int convert_context_handle_invalid_context(
  * in `newc'.  Verify that the context is valid
  * under the new policy.
  */
-static int convert_context(struct context *oldc, struct context *newc, void *p)
+static int convert_context(struct context *oldc, struct context *newc, void *p,
+			   gfp_t gfp_flags)
 {
 	struct convert_context_args *args;
 	struct ocontext *oc;
@@ -2035,7 +2037,7 @@ static int convert_context(struct context *oldc, struct context *newc, void *p)
 	args = p;
 
 	if (oldc->str) {
-		s = kstrdup(oldc->str, GFP_KERNEL);
+		s = kstrdup(oldc->str, gfp_flags);
 		if (!s)
 			return -ENOMEM;
 
@@ -2273,6 +2275,7 @@ void selinux_policy_commit(struct selinux_state *state,
  * @state: SELinux state
  * @data: binary policy data
  * @len: length of data in bytes
+ * @load_state: policy load state
  *
  * Load a new set of security policy configuration data,
  * validate it and convert the SID table as necessary.
@@ -2377,6 +2380,43 @@ err_policy:
 }
 
 /**
+ * ocontext_to_sid - Helper to safely get sid for an ocontext
+ * @sidtab: SID table
+ * @c: ocontext structure
+ * @index: index of the context entry (0 or 1)
+ * @out_sid: pointer to the resulting SID value
+ *
+ * For all ocontexts except OCON_ISID the SID fields are populated
+ * on-demand when needed. Since updating the SID value is an SMP-sensitive
+ * operation, this helper must be used to do that safely.
+ *
+ * WARNING: This function may return -ESTALE, indicating that the caller
+ * must retry the operation after re-acquiring the policy pointer!
+ */
+static int ocontext_to_sid(struct sidtab *sidtab, struct ocontext *c,
+			   size_t index, u32 *out_sid)
+{
+	int rc;
+	u32 sid;
+
+	/* Ensure the associated sidtab entry is visible to this thread. */
+	sid = smp_load_acquire(&c->sid[index]);
+	if (!sid) {
+		rc = sidtab_context_to_sid(sidtab, &c->context[index], &sid);
+		if (rc)
+			return rc;
+
+		/*
+		 * Ensure the new sidtab entry is visible to other threads
+		 * when they see the SID.
+		 */
+		smp_store_release(&c->sid[index], sid);
+	}
+	*out_sid = sid;
+	return 0;
+}
+
+/**
  * security_port_sid - Obtain the SID for a port.
  * @state: SELinux state
  * @protocol: protocol number
@@ -2414,17 +2454,13 @@ retry:
 	}
 
 	if (c) {
-		if (!c->sid[0]) {
-			rc = sidtab_context_to_sid(sidtab, &c->context[0],
-						   &c->sid[0]);
-			if (rc == -ESTALE) {
-				rcu_read_unlock();
-				goto retry;
-			}
-			if (rc)
-				goto out;
+		rc = ocontext_to_sid(sidtab, c, 0, out_sid);
+		if (rc == -ESTALE) {
+			rcu_read_unlock();
+			goto retry;
 		}
-		*out_sid = c->sid[0];
+		if (rc)
+			goto out;
 	} else {
 		*out_sid = SECINITSID_PORT;
 	}
@@ -2473,18 +2509,13 @@ retry:
 	}
 
 	if (c) {
-		if (!c->sid[0]) {
-			rc = sidtab_context_to_sid(sidtab,
-						   &c->context[0],
-						   &c->sid[0]);
-			if (rc == -ESTALE) {
-				rcu_read_unlock();
-				goto retry;
-			}
-			if (rc)
-				goto out;
+		rc = ocontext_to_sid(sidtab, c, 0, out_sid);
+		if (rc == -ESTALE) {
+			rcu_read_unlock();
+			goto retry;
 		}
-		*out_sid = c->sid[0];
+		if (rc)
+			goto out;
 	} else
 		*out_sid = SECINITSID_UNLABELED;
 
@@ -2497,7 +2528,7 @@ out:
  * security_ib_endport_sid - Obtain the SID for a subnet management interface.
  * @state: SELinux state
  * @dev_name: device name
- * @port: port number
+ * @port_num: port number
  * @out_sid: security identifier
  */
 int security_ib_endport_sid(struct selinux_state *state,
@@ -2533,17 +2564,13 @@ retry:
 	}
 
 	if (c) {
-		if (!c->sid[0]) {
-			rc = sidtab_context_to_sid(sidtab, &c->context[0],
-						   &c->sid[0]);
-			if (rc == -ESTALE) {
-				rcu_read_unlock();
-				goto retry;
-			}
-			if (rc)
-				goto out;
+		rc = ocontext_to_sid(sidtab, c, 0, out_sid);
+		if (rc == -ESTALE) {
+			rcu_read_unlock();
+			goto retry;
 		}
-		*out_sid = c->sid[0];
+		if (rc)
+			goto out;
 	} else
 		*out_sid = SECINITSID_UNLABELED;
 
@@ -2587,25 +2614,13 @@ retry:
 	}
 
 	if (c) {
-		if (!c->sid[0] || !c->sid[1]) {
-			rc = sidtab_context_to_sid(sidtab, &c->context[0],
-						   &c->sid[0]);
-			if (rc == -ESTALE) {
-				rcu_read_unlock();
-				goto retry;
-			}
-			if (rc)
-				goto out;
-			rc = sidtab_context_to_sid(sidtab, &c->context[1],
-						   &c->sid[1]);
-			if (rc == -ESTALE) {
-				rcu_read_unlock();
-				goto retry;
-			}
-			if (rc)
-				goto out;
+		rc = ocontext_to_sid(sidtab, c, 0, if_sid);
+		if (rc == -ESTALE) {
+			rcu_read_unlock();
+			goto retry;
 		}
-		*if_sid = c->sid[0];
+		if (rc)
+			goto out;
 	} else
 		*if_sid = SECINITSID_NETIF;
 
@@ -2697,18 +2712,13 @@ retry:
 	}
 
 	if (c) {
-		if (!c->sid[0]) {
-			rc = sidtab_context_to_sid(sidtab,
-						   &c->context[0],
-						   &c->sid[0]);
-			if (rc == -ESTALE) {
-				rcu_read_unlock();
-				goto retry;
-			}
-			if (rc)
-				goto out;
+		rc = ocontext_to_sid(sidtab, c, 0, out_sid);
+		if (rc == -ESTALE) {
+			rcu_read_unlock();
+			goto retry;
 		}
-		*out_sid = c->sid[0];
+		if (rc)
+			goto out;
 	} else {
 		*out_sid = SECINITSID_NODE;
 	}
@@ -2849,9 +2859,10 @@ out_unlock:
 
 /**
  * __security_genfs_sid - Helper to obtain a SID for a file in a filesystem
+ * @policy: policy
  * @fstype: filesystem type
  * @path: path from root of mount
- * @sclass: file security class
+ * @orig_sclass: file security class
  * @sid: SID for path
  *
  * Obtain a SID to use for a file in a filesystem that
@@ -2863,7 +2874,7 @@ out_unlock:
  */
 static inline int __security_genfs_sid(struct selinux_policy *policy,
 				       const char *fstype,
-				       char *path,
+				       const char *path,
 				       u16 orig_sclass,
 				       u32 *sid)
 {
@@ -2873,7 +2884,7 @@ static inline int __security_genfs_sid(struct selinux_policy *policy,
 	u16 sclass;
 	struct genfs *genfs;
 	struct ocontext *c;
-	int rc, cmp = 0;
+	int cmp = 0;
 
 	while (path[0] == '/' && path[1] == '/')
 		path++;
@@ -2887,9 +2898,8 @@ static inline int __security_genfs_sid(struct selinux_policy *policy,
 			break;
 	}
 
-	rc = -ENOENT;
 	if (!genfs || cmp)
-		goto out;
+		return -ENOENT;
 
 	for (c = genfs->head; c; c = c->next) {
 		len = strlen(c->u.name);
@@ -2898,20 +2908,10 @@ static inline int __security_genfs_sid(struct selinux_policy *policy,
 			break;
 	}
 
-	rc = -ENOENT;
 	if (!c)
-		goto out;
+		return -ENOENT;
 
-	if (!c->sid[0]) {
-		rc = sidtab_context_to_sid(sidtab, &c->context[0], &c->sid[0]);
-		if (rc)
-			goto out;
-	}
-
-	*sid = c->sid[0];
-	rc = 0;
-out:
-	return rc;
+	return ocontext_to_sid(sidtab, c, 0, sid);
 }
 
 /**
@@ -2919,7 +2919,7 @@ out:
  * @state: SELinux state
  * @fstype: filesystem type
  * @path: path from root of mount
- * @sclass: file security class
+ * @orig_sclass: file security class
  * @sid: SID for path
  *
  * Acquire policy_rwlock before calling __security_genfs_sid() and release
@@ -2927,7 +2927,7 @@ out:
  */
 int security_genfs_sid(struct selinux_state *state,
 		       const char *fstype,
-		       char *path,
+		       const char *path,
 		       u16 orig_sclass,
 		       u32 *sid)
 {
@@ -2951,7 +2951,7 @@ int security_genfs_sid(struct selinux_state *state,
 
 int selinux_policy_genfs_sid(struct selinux_policy *policy,
 			const char *fstype,
-			char *path,
+			const char *path,
 			u16 orig_sclass,
 			u32 *sid)
 {
@@ -2981,7 +2981,6 @@ int security_fs_use(struct selinux_state *state, struct super_block *sb)
 	}
 
 retry:
-	rc = 0;
 	rcu_read_lock();
 	policy = rcu_dereference(state->policy);
 	policydb = &policy->policydb;
@@ -2996,17 +2995,13 @@ retry:
 
 	if (c) {
 		sbsec->behavior = c->v.behavior;
-		if (!c->sid[0]) {
-			rc = sidtab_context_to_sid(sidtab, &c->context[0],
-						   &c->sid[0]);
-			if (rc == -ESTALE) {
-				rcu_read_unlock();
-				goto retry;
-			}
-			if (rc)
-				goto out;
+		rc = ocontext_to_sid(sidtab, c, 0, &sbsec->sid);
+		if (rc == -ESTALE) {
+			rcu_read_unlock();
+			goto retry;
 		}
-		sbsec->sid = c->sid[0];
+		if (rc)
+			goto out;
 	} else {
 		rc = __security_genfs_sid(policy, fstype, "/",
 					SECCLASS_DIR, &sbsec->sid);
@@ -3305,6 +3300,7 @@ out_unlock:
  * @nlbl_sid: NetLabel SID
  * @nlbl_type: NetLabel labeling protocol type
  * @xfrm_sid: XFRM SID
+ * @peer_sid: network peer sid
  *
  * Description:
  * Compare the @nlbl_sid and @xfrm_sid values and if the two SIDs can be
@@ -4053,6 +4049,7 @@ int security_read_policy(struct selinux_state *state,
 int security_read_state_kernel(struct selinux_state *state,
 			       void **data, size_t *len)
 {
+	int err;
 	struct selinux_policy *policy;
 
 	policy = rcu_dereference_protected(
@@ -4065,5 +4062,11 @@ int security_read_state_kernel(struct selinux_state *state,
 	if (!*data)
 		return -ENOMEM;
 
-	return __security_read_policy(policy, *data, len);
+	err = __security_read_policy(policy, *data, len);
+	if (err) {
+		vfree(*data);
+		*data = NULL;
+		*len = 0;
+	}
+	return err;
 }

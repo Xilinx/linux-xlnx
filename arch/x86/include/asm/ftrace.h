@@ -9,6 +9,13 @@
 # define MCOUNT_ADDR		((unsigned long)(__fentry__))
 #define MCOUNT_INSN_SIZE	5 /* sizeof mcount call */
 
+/* Ignore unused weak functions which will have non zero offsets */
+#ifdef CONFIG_HAVE_FENTRY
+# include <asm/ibt.h>
+/* Add offset for endbr64 if IBT enabled */
+# define FTRACE_MCOUNT_MAX_OFFSET	ENDBR_INSN_SIZE
+#endif
+
 #ifdef CONFIG_DYNAMIC_FTRACE
 #define ARCH_SUPPORTS_FTRACE_OPS 1
 #endif
@@ -16,7 +23,6 @@
 #define HAVE_FUNCTION_GRAPH_RET_ADDR_PTR
 
 #ifndef __ASSEMBLY__
-extern atomic_t modifying_ftrace_code;
 extern void __fentry__(void);
 
 static inline unsigned long ftrace_call_adjust(unsigned long addr)
@@ -57,6 +63,13 @@ arch_ftrace_get_regs(struct ftrace_regs *fregs)
 
 #define ftrace_instruction_pointer_set(fregs, _ip)	\
 	do { (fregs)->regs.ip = (_ip); } while (0)
+
+struct ftrace_ops;
+#define ftrace_graph_func ftrace_graph_func
+void ftrace_graph_func(unsigned long ip, unsigned long parent_ip,
+		       struct ftrace_ops *op, struct ftrace_regs *fregs);
+#else
+#define FTRACE_GRAPH_TRAMP_ADDR FTRACE_GRAPH_ADDR
 #endif
 
 #ifdef CONFIG_DYNAMIC_FTRACE
@@ -64,8 +77,6 @@ arch_ftrace_get_regs(struct ftrace_regs *fregs)
 struct dyn_arch_ftrace {
 	/* No extra data needed for x86 */
 };
-
-#define FTRACE_GRAPH_TRAMP_ADDR FTRACE_GRAPH_ADDR
 
 #endif /*  CONFIG_DYNAMIC_FTRACE */
 #endif /* __ASSEMBLY__ */

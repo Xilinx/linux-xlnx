@@ -123,7 +123,7 @@ struct xvip_m2m_dev {
 
 static inline struct xvip_pipeline *to_xvip_pipeline(struct media_entity *e)
 {
-	return container_of(e->pipe, struct xvip_pipeline, pipe);
+	return container_of(media_entity_pipeline(e), struct xvip_pipeline, pipe);
 }
 
 /**
@@ -183,7 +183,7 @@ xvip_dma_remote_subdev(struct media_pad *local, u32 *pad)
 {
 	struct media_pad *remote;
 
-	remote = media_entity_remote_pad(local);
+	remote = media_pad_remote_pad_first(local);
 	if (!remote || !is_media_entity_v4l2_subdev(remote->entity))
 		return NULL;
 
@@ -666,7 +666,7 @@ static void xvip_m2m_stop_streaming(struct vb2_queue *q)
 
 		/* Cleanup the pipeline and mark it as being stopped. */
 		xvip_pipeline_cleanup(pipe);
-		media_pipeline_stop(&dma->video.entity);
+		media_pipeline_stop(dma->video.entity.pads);
 	}
 
 	for (;;) {
@@ -695,10 +695,10 @@ static int xvip_m2m_start_streaming(struct vb2_queue *q, unsigned int count)
 	if (!xdev->num_subdevs)
 		return 0;
 
-	pipe = dma->video.entity.pipe
+	pipe = media_entity_pipeline(&dma->video.entity)
 	     ? to_xvip_pipeline(&dma->video.entity) : &dma->pipe;
 
-	ret = media_pipeline_start(&dma->video.entity, &pipe->pipe);
+	ret = media_pipeline_start(dma->video.entity.pads, &pipe->pipe);
 	if (ret < 0)
 		goto error;
 
@@ -720,7 +720,7 @@ static int xvip_m2m_start_streaming(struct vb2_queue *q, unsigned int count)
 
 	return 0;
 error_stop:
-	media_pipeline_stop(&dma->video.entity);
+	media_pipeline_stop(dma->video.entity.pads);
 
 error:
 	xvip_m2m_stop_streaming(q);
@@ -2076,8 +2076,8 @@ static void xvip_graph_cleanup(struct xvip_m2m_dev *xdev)
 
 	if (xdev->dma)
 		xvip_m2m_dma_deinit(xdev->dma);
-	v4l2_async_notifier_cleanup(&xdev->notifier);
-	v4l2_async_notifier_unregister(&xdev->notifier);
+	v4l2_async_nf_cleanup(&xdev->notifier);
+	v4l2_async_nf_unregister(&xdev->notifier);
 
 	list_for_each_entry_safe(entity, entityp, &xdev->entities, list) {
 		of_node_put(entity->node);
@@ -2112,15 +2112,15 @@ static int xvip_graph_init(struct xvip_m2m_dev *xdev)
 
 	/* Register the subdevices notifier. */
 	list_for_each_entry(entity, &xdev->entities, list) {
-		ret = __v4l2_async_notifier_add_subdev(&xdev->notifier,
-						       &entity->asd);
+		ret = __v4l2_async_nf_add_subdev(&xdev->notifier,
+						 &entity->asd);
 		if (ret)
 			goto done;
 	}
 
 	xdev->notifier.ops = &xvip_graph_notify_ops;
 
-	ret = v4l2_async_notifier_register(&xdev->v4l2_dev, &xdev->notifier);
+	ret = v4l2_async_nf_register(&xdev->v4l2_dev, &xdev->notifier);
 	if (ret < 0) {
 		dev_err(xdev->dev, "notifier registration failed\n");
 		goto done;
@@ -2156,7 +2156,7 @@ static int xvip_m2m_probe(struct platform_device *pdev)
 
 	xdev->dev = &pdev->dev;
 	INIT_LIST_HEAD(&xdev->entities);
-	v4l2_async_notifier_init(&xdev->notifier);
+	v4l2_async_nf_init(&xdev->notifier);
 
 	ret = xvip_composite_v4l2_init(xdev);
 	if (ret)

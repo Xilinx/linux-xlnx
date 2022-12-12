@@ -47,7 +47,7 @@ xvip_dma_remote_subdev(struct media_pad *local, u32 *pad)
 {
 	struct media_pad *remote;
 
-	remote = media_entity_remote_pad(local);
+	remote = media_pad_remote_pad_first(local);
 	if (!remote || !is_media_entity_v4l2_subdev(remote->entity))
 		return NULL;
 
@@ -537,10 +537,9 @@ static int xvip_dma_start_streaming(struct vb2_queue *vq, unsigned int count)
 	 * streaming.
 	 */
 	mutex_lock(&dma->xdev->lock);
-	pipe = dma->video.entity.pipe
-	     ? to_xvip_pipeline(&dma->video.entity) : &dma->pipe;
+	pipe = to_xvip_pipeline(&dma->video) ? : &dma->pipe;
 
-	ret = media_pipeline_start(&dma->video.entity, &pipe->pipe);
+	ret = video_device_pipeline_start(&dma->video, &pipe->pipe);
 	mutex_unlock(&dma->xdev->lock);
 	if (ret < 0)
 		goto error;
@@ -581,7 +580,7 @@ static int xvip_dma_start_streaming(struct vb2_queue *vq, unsigned int count)
 	return 0;
 
 error_stop:
-	media_pipeline_stop(&dma->video.entity);
+	video_device_pipeline_stop(&dma->video);
 
 error:
 	dmaengine_terminate_all(dma->dma);
@@ -599,7 +598,7 @@ error:
 static void xvip_dma_stop_streaming(struct vb2_queue *vq)
 {
 	struct xvip_dma *dma = vb2_get_drv_priv(vq);
-	struct xvip_pipeline *pipe = to_xvip_pipeline(&dma->video.entity);
+	struct xvip_pipeline *pipe = to_xvip_pipeline(&dma->video);
 	struct xvip_dma_buffer *buf, *nbuf;
 
 	/* Stop the pipeline. */
@@ -610,7 +609,7 @@ static void xvip_dma_stop_streaming(struct vb2_queue *vq)
 
 	/* Cleanup the pipeline and mark it as being stopped. */
 	xvip_pipeline_cleanup(pipe);
-	media_pipeline_stop(&dma->video.entity);
+	video_device_pipeline_stop(&dma->video);
 
 	/* Give back all queued buffers to videobuf2. */
 	spin_lock_irq(&dma->queued_lock);
@@ -1149,8 +1148,8 @@ static int xvip_dma_s_ctrl(struct v4l2_ctrl *ctl)
 	struct xvip_dma *dma = container_of(ctl->handler, struct xvip_dma,
 					    ctrl_handler);
 	int ret = 0;
-	struct xvip_pipeline *pipe = dma->video.entity.pipe ?
-		to_xvip_pipeline(&dma->video.entity) : &dma->pipe;
+	struct xvip_pipeline *pipe = media_entity_pipeline(&dma->video.entity) ?
+		to_xvip_pipeline(&dma->video) : &dma->pipe;
 	struct xvip_dma_buffer *buf, *nbuf;
 
 	switch (ctl->id)  {
@@ -1186,7 +1185,7 @@ static int xvip_dma_s_ctrl(struct v4l2_ctrl *ctl)
 				ret = xvip_pipeline_set_stream(pipe, true);
 				if (ret < 0) {
 					dev_err(dma->xdev->dev, "Failed to set stream\n");
-					media_pipeline_stop(&dma->video.entity);
+					media_pipeline_stop(dma->video.entity.pads);
 					dmaengine_terminate_all(dma->dma);
 
 					/* Give back all queued buffers to videobuf2. */

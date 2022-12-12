@@ -41,12 +41,6 @@
 #include <linux/dlm.h>
 #include "config.h"
 
-/* Size of the temp buffer midcomms allocates on the stack.
-   We try to make this large enough so most messages fit.
-   FIXME: should sctp make this unnecessary? */
-
-#define DLM_INBUF_LEN		148
-
 struct dlm_ls;
 struct dlm_lkb;
 struct dlm_rsb;
@@ -151,7 +145,9 @@ struct dlm_args {
 	void			(*bastfn) (void *astparam, int mode);
 	int			mode;
 	struct dlm_lksb		*lksb;
+#ifdef CONFIG_DLM_DEPRECATED_API
 	unsigned long		timeout;
+#endif
 };
 
 
@@ -209,10 +205,20 @@ struct dlm_args {
 #define DLM_IFL_OVERLAP_UNLOCK  0x00080000
 #define DLM_IFL_OVERLAP_CANCEL  0x00100000
 #define DLM_IFL_ENDOFLIFE	0x00200000
+#ifdef CONFIG_DLM_DEPRECATED_API
 #define DLM_IFL_WATCH_TIMEWARN	0x00400000
 #define DLM_IFL_TIMEOUT_CANCEL	0x00800000
+#endif
 #define DLM_IFL_DEADLOCK_CANCEL	0x01000000
 #define DLM_IFL_STUB_MS		0x02000000 /* magic number for m_flags */
+/* least significant 2 bytes are message changed, they are full transmitted
+ * but at receive side only the 2 bytes LSB will be set.
+ *
+ * Even wireshark dlm dissector does only evaluate the lower bytes and note
+ * that they may not be used on transceiver side, we assume the higher bytes
+ * are for internal use or reserved so long they are not parsed on receiver
+ * side.
+ */
 #define DLM_IFL_USER		0x00000001
 #define DLM_IFL_ORPHAN		0x00000002
 
@@ -255,10 +261,12 @@ struct dlm_lkb {
 	struct list_head	lkb_rsb_lookup;	/* waiting for rsb lookup */
 	struct list_head	lkb_wait_reply;	/* waiting for remote reply */
 	struct list_head	lkb_ownqueue;	/* list of locks for a process */
-	struct list_head	lkb_time_list;
 	ktime_t			lkb_timestamp;
-	ktime_t			lkb_wait_time;
+
+#ifdef CONFIG_DLM_DEPRECATED_API
+	struct list_head	lkb_time_list;
 	unsigned long		lkb_timeout_cs;
+#endif
 
 	struct mutex		lkb_cb_mutex;
 	struct work_struct	lkb_cb_work;
@@ -385,15 +393,15 @@ static inline int rsb_flag(struct dlm_rsb *r, enum rsb_flags flag)
 #define DLM_FIN			5
 
 struct dlm_header {
-	uint32_t		h_version;
+	__le32			h_version;
 	union {
 		/* for DLM_MSG and DLM_RCOM */
-		uint32_t	h_lockspace;
+		__le32		h_lockspace;
 		/* for DLM_ACK and DLM_OPTS */
-		uint32_t	h_seq;
+		__le32		h_seq;
 	} u;
-	uint32_t		h_nodeid;	/* nodeid of sender */
-	uint16_t		h_length;
+	__le32			h_nodeid;	/* nodeid of sender */
+	__le16			h_length;
 	uint8_t			h_cmd;		/* DLM_MSG, DLM_RCOM */
 	uint8_t			h_pad;
 };
@@ -415,24 +423,24 @@ struct dlm_header {
 
 struct dlm_message {
 	struct dlm_header	m_header;
-	uint32_t		m_type;		/* DLM_MSG_ */
-	uint32_t		m_nodeid;
-	uint32_t		m_pid;
-	uint32_t		m_lkid;		/* lkid on sender */
-	uint32_t		m_remid;	/* lkid on receiver */
-	uint32_t		m_parent_lkid;
-	uint32_t		m_parent_remid;
-	uint32_t		m_exflags;
-	uint32_t		m_sbflags;
-	uint32_t		m_flags;
-	uint32_t		m_lvbseq;
-	uint32_t		m_hash;
-	int			m_status;
-	int			m_grmode;
-	int			m_rqmode;
-	int			m_bastmode;
-	int			m_asts;
-	int			m_result;	/* 0 or -EXXX */
+	__le32			m_type;		/* DLM_MSG_ */
+	__le32			m_nodeid;
+	__le32			m_pid;
+	__le32			m_lkid;		/* lkid on sender */
+	__le32			m_remid;	/* lkid on receiver */
+	__le32			m_parent_lkid;
+	__le32			m_parent_remid;
+	__le32			m_exflags;
+	__le32			m_sbflags;
+	__le32			m_flags;
+	__le32			m_lvbseq;
+	__le32			m_hash;
+	__le32			m_status;
+	__le32			m_grmode;
+	__le32			m_rqmode;
+	__le32			m_bastmode;
+	__le32			m_asts;
+	__le32			m_result;	/* 0 or -EXXX */
 	char			m_extra[];	/* name or lvb */
 };
 
@@ -457,18 +465,18 @@ struct dlm_message {
 
 struct dlm_rcom {
 	struct dlm_header	rc_header;
-	uint32_t		rc_type;	/* DLM_RCOM_ */
-	int			rc_result;	/* multi-purpose */
-	uint64_t		rc_id;		/* match reply with request */
-	uint64_t		rc_seq;		/* sender's ls_recover_seq */
-	uint64_t		rc_seq_reply;	/* remote ls_recover_seq */
+	__le32			rc_type;	/* DLM_RCOM_ */
+	__le32			rc_result;	/* multi-purpose */
+	__le64			rc_id;		/* match reply with request */
+	__le64			rc_seq;		/* sender's ls_recover_seq */
+	__le64			rc_seq_reply;	/* remote ls_recover_seq */
 	char			rc_buf[];
 };
 
 struct dlm_opt_header {
-	uint16_t	t_type;
-	uint16_t	t_length;
-	uint32_t	t_pad;
+	__le16		t_type;
+	__le16		t_length;
+	__le32		t_pad;
 	/* need to be 8 byte aligned */
 	char		t_value[];
 };
@@ -478,8 +486,8 @@ struct dlm_opts {
 	struct dlm_header	o_header;
 	uint8_t			o_nextcmd;
 	uint8_t			o_pad;
-	uint16_t		o_optlen;
-	uint32_t		o_pad2;
+	__le16			o_optlen;
+	__le32			o_pad2;
 	char			o_opts[];
 };
 
@@ -554,8 +562,9 @@ struct dlm_ls {
 	uint32_t		ls_generation;
 	uint32_t		ls_exflags;
 	int			ls_lvblen;
-	int			ls_count;	/* refcount of processes in
+	atomic_t		ls_count;	/* refcount of processes in
 						   the dlm using this ls */
+	wait_queue_head_t	ls_count_wait;
 	int			ls_create_count; /* create/release refcount */
 	unsigned long		ls_flags;	/* LSFL_ */
 	unsigned long		ls_scan_time;
@@ -573,14 +582,17 @@ struct dlm_ls {
 	struct mutex		ls_orphans_mutex;
 	struct list_head	ls_orphans;
 
+#ifdef CONFIG_DLM_DEPRECATED_API
 	struct mutex		ls_timeout_mutex;
 	struct list_head	ls_timeout;
+#endif
 
 	spinlock_t		ls_new_rsb_spin;
 	int			ls_new_rsb_count;
 	struct list_head	ls_new_rsb;	/* new rsb structs */
 
 	spinlock_t		ls_remove_spin;
+	wait_queue_head_t	ls_remove_wait;
 	char			ls_remove_name[DLM_RESNAME_MAXLEN+1];
 	char			*ls_remove_names[DLM_REMOVE_NAMES_MAX];
 	int			ls_remove_len;
@@ -610,8 +622,8 @@ struct dlm_ls {
 
 	wait_queue_head_t	ls_uevent_wait;	/* user part of join/leave */
 	int			ls_uevent_result;
-	struct completion	ls_members_done;
-	int			ls_members_result;
+	struct completion	ls_recovery_done;
+	int			ls_recovery_result;
 
 	struct miscdevice       ls_device;
 
@@ -632,6 +644,8 @@ struct dlm_ls {
 	struct rw_semaphore	ls_in_recovery;	/* block local requests */
 	struct rw_semaphore	ls_recv_active;	/* block dlm_recv */
 	struct list_head	ls_requestqueue;/* queue remote requests */
+	atomic_t		ls_requestqueue_cnt;
+	wait_queue_head_t	ls_requestqueue_wait;
 	struct mutex		ls_requestqueue_mutex;
 	struct dlm_rcom		*ls_recover_buf;
 	int			ls_recover_nodeid; /* for debugging */
@@ -647,7 +661,7 @@ struct dlm_ls {
 	spinlock_t		ls_recover_idr_lock;
 	wait_queue_head_t	ls_wait_general;
 	wait_queue_head_t	ls_recover_lock_wait;
-	struct mutex		ls_clear_proc_locks;
+	spinlock_t		ls_clear_proc_locks;
 
 	struct list_head	ls_root_list;	/* root resources */
 	struct rw_semaphore	ls_root_sem;	/* protect root_list */
@@ -690,7 +704,9 @@ struct dlm_ls {
 #define LSFL_RCOM_READY		5
 #define LSFL_RCOM_WAIT		6
 #define LSFL_UEVENT_WAIT	7
+#ifdef CONFIG_DLM_DEPRECATED_API
 #define LSFL_TIMEWARN		8
+#endif
 #define LSFL_CB_DELAY		9
 #define LSFL_NODIR		10
 
@@ -743,9 +759,15 @@ static inline int dlm_no_directory(struct dlm_ls *ls)
 	return test_bit(LSFL_NODIR, &ls->ls_flags);
 }
 
+#ifdef CONFIG_DLM_DEPRECATED_API
 int dlm_netlink_init(void);
 void dlm_netlink_exit(void);
 void dlm_timeout_warn(struct dlm_lkb *lkb);
+#else
+static inline int dlm_netlink_init(void) { return 0; }
+static inline void dlm_netlink_exit(void) { };
+static inline void dlm_timeout_warn(struct dlm_lkb *lkb) { };
+#endif
 int dlm_plock_init(void);
 void dlm_plock_exit(void);
 

@@ -575,7 +575,7 @@ out:
 	return err;
 }
 
-int test__hists_output(struct test *test __maybe_unused, int subtest __maybe_unused)
+static int test__hists_output(struct test_suite *test __maybe_unused, int subtest __maybe_unused)
 {
 	int err = TEST_FAIL;
 	struct machines machines;
@@ -593,7 +593,7 @@ int test__hists_output(struct test *test __maybe_unused, int subtest __maybe_unu
 
 	TEST_ASSERT_VAL("No memory", evlist);
 
-	err = parse_events(evlist, "cpu-clock", NULL);
+	err = parse_event(evlist, "cpu-clock");
 	if (err)
 		goto out;
 	err = TEST_FAIL;
@@ -623,3 +623,5 @@ out:
 
 	return err;
 }
+
+DEFINE_SUITE("Sort output of hist entries", hists_output);

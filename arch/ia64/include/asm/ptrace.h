@@ -51,6 +51,11 @@
  * the canonical representation by adding to instruction pointer.
  */
 # define instruction_pointer(regs) ((regs)->cr_iip + ia64_psr(regs)->ri)
+# define instruction_pointer_set(regs, val)	\
+({						\
+	ia64_psr(regs)->ri = (val & 0xf);	\
+	regs->cr_iip = (val & ~0xfULL);		\
+})
 
 static inline unsigned long user_stack_pointer(struct pt_regs *regs)
 {
@@ -129,14 +134,10 @@ static inline long regs_return_value(struct pt_regs *regs)
   extern void ia64_decrement_ip (struct pt_regs *pt);
 
   extern void ia64_ptrace_stop(void);
-  #define arch_ptrace_stop(code, info) \
+  #define arch_ptrace_stop() \
 	ia64_ptrace_stop()
-  #define arch_ptrace_stop_needed(code, info) \
+  #define arch_ptrace_stop_needed() \
 	(!test_thread_flag(TIF_RESTORE_RSE))
-
-  extern void ptrace_attach_sync_user_rbs (struct task_struct *);
-  #define arch_ptrace_attach(child) \
-	ptrace_attach_sync_user_rbs(child)
 
   #define arch_has_single_step()  (1)
   #define arch_has_block_step()   (1)

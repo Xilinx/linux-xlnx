@@ -85,7 +85,7 @@ struct f75375_data {
 	const char *name;
 	int kind;
 	struct mutex update_lock; /* protect register access */
-	char valid;
+	bool valid;
 	unsigned long last_updated;	/* In jiffies */
 	unsigned long last_limits;	/* In jiffies */
 
@@ -114,7 +114,7 @@ struct f75375_data {
 static int f75375_detect(struct i2c_client *client,
 			 struct i2c_board_info *info);
 static int f75375_probe(struct i2c_client *client);
-static int f75375_remove(struct i2c_client *client);
+static void f75375_remove(struct i2c_client *client);
 
 static const struct i2c_device_id f75375_id[] = {
 	{ "f75373", f75373 },
@@ -228,7 +228,7 @@ static struct f75375_data *f75375_update_device(struct device *dev)
 				f75375_read8(client, F75375_REG_VOLT(nr));
 
 		data->last_updated = jiffies;
-		data->valid = 1;
+		data->valid = true;
 	}
 
 	mutex_unlock(&data->update_lock);
@@ -864,12 +864,11 @@ exit_remove:
 	return err;
 }
 
-static int f75375_remove(struct i2c_client *client)
+static void f75375_remove(struct i2c_client *client)
 {
 	struct f75375_data *data = i2c_get_clientdata(client);
 	hwmon_device_unregister(data->hwmon_dev);
 	sysfs_remove_group(&client->dev.kobj, &f75375_group);
-	return 0;
 }
 
 /* Return 0 if detection is successful, -ENODEV otherwise */
@@ -897,7 +896,7 @@ static int f75375_detect(struct i2c_client *client,
 
 	version = f75375_read8(client, F75375_REG_VERSION);
 	dev_info(&adapter->dev, "found %s version: %02X\n", name, version);
-	strlcpy(info->type, name, I2C_NAME_SIZE);
+	strscpy(info->type, name, I2C_NAME_SIZE);
 
 	return 0;
 }

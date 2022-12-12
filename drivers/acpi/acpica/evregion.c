@@ -3,7 +3,7 @@
  *
  * Module Name: evregion - Operation Region support
  *
- * Copyright (C) 2000 - 2021, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  *
  *****************************************************************************/
 
@@ -160,6 +160,16 @@ acpi_ev_address_space_dispatch(union acpi_operand_object *region_obj,
 				    acpi_ut_get_region_name(region_obj->region.
 							    space_id)));
 			return_ACPI_STATUS(AE_NOT_EXIST);
+		}
+
+		if (region_obj->region.space_id == ACPI_ADR_SPACE_PLATFORM_COMM) {
+			struct acpi_pcc_info *ctx =
+			    handler_desc->address_space.context;
+
+			ctx->internal_buffer =
+			    field_obj->field.internal_pcc_buffer;
+			ctx->length = (u16)region_obj->region.length;
+			ctx->subspace_id = (u8)region_obj->region.address;
 		}
 
 		/*

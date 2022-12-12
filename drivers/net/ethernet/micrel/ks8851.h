@@ -403,7 +403,7 @@ struct ks8851_net {
 	struct eeprom_93cx6	eeprom;
 	struct regulator	*vdd_reg;
 	struct regulator	*vdd_io;
-	int			gpio;
+	struct gpio_desc	*gpio;
 	struct mii_bus		*mii_bus;
 
 	void			(*lock)(struct ks8851_net *ks,
@@ -427,7 +427,7 @@ struct ks8851_net {
 
 int ks8851_probe_common(struct net_device *netdev, struct device *dev,
 			int msg_en);
-int ks8851_remove_common(struct device *dev);
+void ks8851_remove_common(struct device *dev);
 int ks8851_suspend(struct device *dev);
 int ks8851_resume(struct device *dev);
 

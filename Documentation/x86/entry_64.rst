@@ -8,7 +8,7 @@ This file documents some of the kernel entries in
 arch/x86/entry/entry_64.S.  A lot of this explanation is adapted from
 an email from Ingo Molnar:
 
-http://lkml.kernel.org/r/<20110529191055.GC9835%40elte.hu>
+https://lore.kernel.org/r/20110529191055.GC9835%40elte.hu
 
 The x86 architecture has quite a few different ways to jump into
 kernel code.  Most of these entry points are registered in
@@ -33,8 +33,8 @@ Some of these entries are:
  - interrupt: An array of entries.  Every IDT vector that doesn't
    explicitly point somewhere else gets set to the corresponding
    value in interrupts.  These point to a whole array of
-   magically-generated functions that make their way to do_IRQ with
-   the interrupt number as a parameter.
+   magically-generated functions that make their way to common_interrupt()
+   with the interrupt number as a parameter.
 
  - APIC interrupts: Various special-purpose interrupts for things
    like TLB shootdown.

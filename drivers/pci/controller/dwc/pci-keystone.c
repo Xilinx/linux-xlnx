@@ -109,7 +109,7 @@ struct ks_pcie_of_data {
 	enum dw_pcie_device_mode mode;
 	const struct dw_pcie_host_ops *host_ops;
 	const struct dw_pcie_ep_ops *ep_ops;
-	unsigned int version;
+	u32 version;
 };
 
 struct keystone_pcie {
@@ -147,7 +147,7 @@ static void ks_pcie_app_writel(struct keystone_pcie *ks_pcie, u32 offset,
 
 static void ks_pcie_msi_irq_ack(struct irq_data *data)
 {
-	struct pcie_port *pp  = irq_data_get_irq_chip_data(data);
+	struct dw_pcie_rp *pp  = irq_data_get_irq_chip_data(data);
 	struct keystone_pcie *ks_pcie;
 	u32 irq = data->hwirq;
 	struct dw_pcie *pci;
@@ -167,7 +167,7 @@ static void ks_pcie_msi_irq_ack(struct irq_data *data)
 
 static void ks_pcie_compose_msi_msg(struct irq_data *data, struct msi_msg *msg)
 {
-	struct pcie_port *pp = irq_data_get_irq_chip_data(data);
+	struct dw_pcie_rp *pp = irq_data_get_irq_chip_data(data);
 	struct keystone_pcie *ks_pcie;
 	struct dw_pcie *pci;
 	u64 msi_target;
@@ -192,7 +192,7 @@ static int ks_pcie_msi_set_affinity(struct irq_data *irq_data,
 
 static void ks_pcie_msi_mask(struct irq_data *data)
 {
-	struct pcie_port *pp = irq_data_get_irq_chip_data(data);
+	struct dw_pcie_rp *pp = irq_data_get_irq_chip_data(data);
 	struct keystone_pcie *ks_pcie;
 	u32 irq = data->hwirq;
 	struct dw_pcie *pci;
@@ -216,7 +216,7 @@ static void ks_pcie_msi_mask(struct irq_data *data)
 
 static void ks_pcie_msi_unmask(struct irq_data *data)
 {
-	struct pcie_port *pp = irq_data_get_irq_chip_data(data);
+	struct dw_pcie_rp *pp = irq_data_get_irq_chip_data(data);
 	struct keystone_pcie *ks_pcie;
 	u32 irq = data->hwirq;
 	struct dw_pcie *pci;
@@ -247,7 +247,7 @@ static struct irq_chip ks_pcie_msi_irq_chip = {
 	.irq_unmask = ks_pcie_msi_unmask,
 };
 
-static int ks_pcie_msi_host_init(struct pcie_port *pp)
+static int ks_pcie_msi_host_init(struct dw_pcie_rp *pp)
 {
 	pp->msi_irq_chip = &ks_pcie_msi_irq_chip;
 	return dw_pcie_allocate_domains(pp);
@@ -390,7 +390,7 @@ static void ks_pcie_setup_rc_app_regs(struct keystone_pcie *ks_pcie)
 	u32 val;
 	u32 num_viewport = ks_pcie->num_viewport;
 	struct dw_pcie *pci = ks_pcie->pci;
-	struct pcie_port *pp = &pci->pp;
+	struct dw_pcie_rp *pp = &pci->pp;
 	u64 start, end;
 	struct resource *mem;
 	int i;
@@ -428,7 +428,7 @@ static void ks_pcie_setup_rc_app_regs(struct keystone_pcie *ks_pcie)
 static void __iomem *ks_pcie_other_map_bus(struct pci_bus *bus,
 					   unsigned int devfn, int where)
 {
-	struct pcie_port *pp = bus->sysdata;
+	struct dw_pcie_rp *pp = bus->sysdata;
 	struct dw_pcie *pci = to_dw_pcie_from_pp(pp);
 	struct keystone_pcie *ks_pcie = to_keystone_pcie(pci);
 	u32 reg;
@@ -456,7 +456,7 @@ static struct pci_ops ks_child_pcie_ops = {
  */
 static int ks_pcie_v3_65_add_bus(struct pci_bus *bus)
 {
-	struct pcie_port *pp = bus->sysdata;
+	struct dw_pcie_rp *pp = bus->sysdata;
 	struct dw_pcie *pci = to_dw_pcie_from_pp(pp);
 	struct keystone_pcie *ks_pcie = to_keystone_pcie(pci);
 
@@ -531,13 +531,13 @@ static void ks_pcie_quirk(struct pci_dev *dev)
 	struct pci_dev *bridge;
 	static const struct pci_device_id rc_pci_devids[] = {
 		{ PCI_DEVICE(PCI_VENDOR_ID_TI, PCIE_RC_K2HK),
-		 .class = PCI_CLASS_BRIDGE_PCI << 8, .class_mask = ~0, },
+		 .class = PCI_CLASS_BRIDGE_PCI_NORMAL, .class_mask = ~0, },
 		{ PCI_DEVICE(PCI_VENDOR_ID_TI, PCIE_RC_K2E),
-		 .class = PCI_CLASS_BRIDGE_PCI << 8, .class_mask = ~0, },
+		 .class = PCI_CLASS_BRIDGE_PCI_NORMAL, .class_mask = ~0, },
 		{ PCI_DEVICE(PCI_VENDOR_ID_TI, PCIE_RC_K2L),
-		 .class = PCI_CLASS_BRIDGE_PCI << 8, .class_mask = ~0, },
+		 .class = PCI_CLASS_BRIDGE_PCI_NORMAL, .class_mask = ~0, },
 		{ PCI_DEVICE(PCI_VENDOR_ID_TI, PCIE_RC_K2G),
-		 .class = PCI_CLASS_BRIDGE_PCI << 8, .class_mask = ~0, },
+		 .class = PCI_CLASS_BRIDGE_PCI_NORMAL, .class_mask = ~0, },
 		{ 0, },
 	};
 
@@ -574,7 +574,7 @@ static void ks_pcie_msi_irq_handler(struct irq_desc *desc)
 	struct keystone_pcie *ks_pcie = irq_desc_get_handler_data(desc);
 	u32 offset = irq - ks_pcie->msi_host_irq;
 	struct dw_pcie *pci = ks_pcie->pci;
-	struct pcie_port *pp = &pci->pp;
+	struct dw_pcie_rp *pp = &pci->pp;
 	struct device *dev = pci->dev;
 	struct irq_chip *chip = irq_desc_get_chip(desc);
 	u32 vector, reg, pos;
@@ -747,9 +747,9 @@ err:
 
 #ifdef CONFIG_ARM
 /*
- * When a PCI device does not exist during config cycles, keystone host gets a
- * bus error instead of returning 0xffffffff. This handler always returns 0
- * for this kind of faults.
+ * When a PCI device does not exist during config cycles, keystone host
+ * gets a bus error instead of returning 0xffffffff (PCI_ERROR_RESPONSE).
+ * This handler always returns 0 for this kind of fault.
  */
 static int ks_pcie_fault(unsigned long addr, unsigned int fsr,
 			 struct pt_regs *regs)
@@ -775,12 +775,19 @@ static int __init ks_pcie_init_id(struct keystone_pcie *ks_pcie)
 	struct dw_pcie *pci = ks_pcie->pci;
 	struct device *dev = pci->dev;
 	struct device_node *np = dev->of_node;
+	struct of_phandle_args args;
+	unsigned int offset = 0;
 
 	devctrl_regs = syscon_regmap_lookup_by_phandle(np, "ti,syscon-pcie-id");
 	if (IS_ERR(devctrl_regs))
 		return PTR_ERR(devctrl_regs);
 
-	ret = regmap_read(devctrl_regs, 0, &id);
+	/* Do not error out to maintain old DT compatibility */
+	ret = of_parse_phandle_with_fixed_args(np, "ti,syscon-pcie-id", 1, 0, &args);
+	if (!ret)
+		offset = args.args[0];
+
+	ret = regmap_read(devctrl_regs, offset, &id);
 	if (ret)
 		return ret;
 
@@ -792,7 +799,7 @@ static int __init ks_pcie_init_id(struct keystone_pcie *ks_pcie)
 	return 0;
 }
 
-static int __init ks_pcie_host_init(struct pcie_port *pp)
+static int __init ks_pcie_host_init(struct dw_pcie_rp *pp)
 {
 	struct dw_pcie *pci = to_dw_pcie_from_pp(pp);
 	struct keystone_pcie *ks_pcie = to_keystone_pcie(pci);
@@ -989,6 +996,8 @@ err_phy:
 static int ks_pcie_set_mode(struct device *dev)
 {
 	struct device_node *np = dev->of_node;
+	struct of_phandle_args args;
+	unsigned int offset = 0;
 	struct regmap *syscon;
 	u32 val;
 	u32 mask;
@@ -998,10 +1007,15 @@ static int ks_pcie_set_mode(struct device *dev)
 	if (IS_ERR(syscon))
 		return 0;
 
+	/* Do not error out to maintain old DT compatibility */
+	ret = of_parse_phandle_with_fixed_args(np, "ti,syscon-pcie-mode", 1, 0, &args);
+	if (!ret)
+		offset = args.args[0];
+
 	mask = KS_PCIE_DEV_TYPE_MASK | KS_PCIE_SYSCLOCKOUTEN;
 	val = KS_PCIE_DEV_TYPE(RC) | KS_PCIE_SYSCLOCKOUTEN;
 
-	ret = regmap_update_bits(syscon, 0, mask, val);
+	ret = regmap_update_bits(syscon, offset, mask, val);
 	if (ret) {
 		dev_err(dev, "failed to set pcie mode\n");
 		return ret;
@@ -1014,6 +1028,8 @@ static int ks_pcie_am654_set_mode(struct device *dev,
 				  enum dw_pcie_device_mode mode)
 {
 	struct device_node *np = dev->of_node;
+	struct of_phandle_args args;
+	unsigned int offset = 0;
 	struct regmap *syscon;
 	u32 val;
 	u32 mask;
@@ -1022,6 +1038,11 @@ static int ks_pcie_am654_set_mode(struct device *dev,
 	syscon = syscon_regmap_lookup_by_phandle(np, "ti,syscon-pcie-mode");
 	if (IS_ERR(syscon))
 		return 0;
+
+	/* Do not error out to maintain old DT compatibility */
+	ret = of_parse_phandle_with_fixed_args(np, "ti,syscon-pcie-mode", 1, 0, &args);
+	if (!ret)
+		offset = args.args[0];
 
 	mask = AM654_PCIE_DEV_TYPE_MASK;
 
@@ -1037,7 +1058,7 @@ static int ks_pcie_am654_set_mode(struct device *dev,
 		return -EINVAL;
 	}
 
-	ret = regmap_update_bits(syscon, 0, mask, val);
+	ret = regmap_update_bits(syscon, offset, mask, val);
 	if (ret) {
 		dev_err(dev, "failed to set pcie mode\n");
 		return ret;
@@ -1048,19 +1069,19 @@ static int ks_pcie_am654_set_mode(struct device *dev,
 
 static const struct ks_pcie_of_data ks_pcie_rc_of_data = {
 	.host_ops = &ks_pcie_host_ops,
-	.version = 0x365A,
+	.version = DW_PCIE_VER_365A,
 };
 
 static const struct ks_pcie_of_data ks_pcie_am654_rc_of_data = {
 	.host_ops = &ks_pcie_am654_host_ops,
 	.mode = DW_PCIE_RC_TYPE,
-	.version = 0x490A,
+	.version = DW_PCIE_VER_490A,
 };
 
 static const struct ks_pcie_of_data ks_pcie_am654_ep_of_data = {
 	.ep_ops = &ks_pcie_am654_ep_ops,
 	.mode = DW_PCIE_EP_TYPE,
-	.version = 0x490A,
+	.version = DW_PCIE_VER_490A,
 };
 
 static const struct of_device_id ks_pcie_of_match[] = {
@@ -1087,25 +1108,23 @@ static int __init ks_pcie_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct device_node *np = dev->of_node;
 	const struct ks_pcie_of_data *data;
-	const struct of_device_id *match;
 	enum dw_pcie_device_mode mode;
 	struct dw_pcie *pci;
 	struct keystone_pcie *ks_pcie;
 	struct device_link **link;
 	struct gpio_desc *gpiod;
 	struct resource *res;
-	unsigned int version;
 	void __iomem *base;
 	u32 num_viewport;
 	struct phy **phy;
 	u32 num_lanes;
 	char name[10];
+	u32 version;
 	int ret;
 	int irq;
 	int i;
 
-	match = of_match_device(of_match_ptr(ks_pcie_of_match), dev);
-	data = (struct ks_pcie_of_data *)match->data;
+	data = of_device_get_match_data(dev);
 	if (!data)
 		return -EINVAL;
 
@@ -1214,7 +1233,7 @@ static int __init ks_pcie_probe(struct platform_device *pdev)
 		goto err_get_sync;
 	}
 
-	if (pci->version >= 0x480A)
+	if (dw_pcie_ver_is_ge(pci, 480A))
 		ret = ks_pcie_am654_set_mode(dev, mode);
 	else
 		ret = ks_pcie_set_mode(dev);
@@ -1305,7 +1324,7 @@ static struct platform_driver ks_pcie_driver __refdata = {
 	.remove = __exit_p(ks_pcie_remove),
 	.driver = {
 		.name	= "keystone-pcie",
-		.of_match_table = of_match_ptr(ks_pcie_of_match),
+		.of_match_table = ks_pcie_of_match,
 	},
 };
 builtin_platform_driver(ks_pcie_driver);

@@ -711,7 +711,8 @@ static struct snd_soc_dai_driver img_spdif_in_dai = {
 };
 
 static const struct snd_soc_component_driver img_spdif_in_component = {
-	.name = "img-spdif-in"
+	.name = "img-spdif-in",
+	.legacy_dai_naming = 1,
 };
 
 static int img_spdif_in_probe(struct platform_device *pdev)
@@ -739,11 +740,9 @@ static int img_spdif_in_probe(struct platform_device *pdev)
 	spdif->base = base;
 
 	spdif->clk_sys = devm_clk_get(dev, "sys");
-	if (IS_ERR(spdif->clk_sys)) {
-		if (PTR_ERR(spdif->clk_sys) != -EPROBE_DEFER)
-			dev_err(dev, "Failed to acquire clock 'sys'\n");
-		return PTR_ERR(spdif->clk_sys);
-	}
+	if (IS_ERR(spdif->clk_sys))
+		return dev_err_probe(dev, PTR_ERR(spdif->clk_sys),
+				     "Failed to acquire clock 'sys'\n");
 
 	pm_runtime_enable(&pdev->dev);
 	if (!pm_runtime_enabled(&pdev->dev)) {
@@ -751,11 +750,9 @@ static int img_spdif_in_probe(struct platform_device *pdev)
 		if (ret)
 			goto err_pm_disable;
 	}
-	ret = pm_runtime_get_sync(&pdev->dev);
-	if (ret < 0) {
-		pm_runtime_put_noidle(&pdev->dev);
+	ret = pm_runtime_resume_and_get(&pdev->dev);
+	if (ret < 0)
 		goto err_suspend;
-	}
 
 	rst = devm_reset_control_get_exclusive(&pdev->dev, "rst");
 	if (IS_ERR(rst)) {

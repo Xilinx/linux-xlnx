@@ -23,13 +23,12 @@
 #include "core.h"
 #include "head.h"
 
-#include <nvif/cl507a.h>
+#include <nvif/if0014.h>
 #include <nvif/timer.h>
 
 #include <nvhw/class/cl507a.h>
 
 #include <drm/drm_atomic_helper.h>
-#include <drm/drm_plane_helper.h>
 
 bool
 curs507a_space(struct nv50_wndw *wndw)
@@ -98,19 +97,32 @@ static int
 curs507a_acquire(struct nv50_wndw *wndw, struct nv50_wndw_atom *asyw,
 		 struct nv50_head_atom *asyh)
 {
+	struct nouveau_drm *drm = nouveau_drm(wndw->plane.dev);
 	struct nv50_head *head = nv50_head(asyw->state.crtc);
 	int ret;
 
 	ret = drm_atomic_helper_check_plane_state(&asyw->state, &asyh->state,
-						  DRM_PLANE_HELPER_NO_SCALING,
-						  DRM_PLANE_HELPER_NO_SCALING,
+						  DRM_PLANE_NO_SCALING,
+						  DRM_PLANE_NO_SCALING,
 						  true, true);
 	asyh->curs.visible = asyw->state.visible;
 	if (ret || !asyh->curs.visible)
 		return ret;
 
-	if (asyw->image.w != asyw->image.h)
+	if (asyw->state.crtc_w != asyw->state.crtc_h) {
+		NV_ATOMIC(drm, "Plane width/height must be equal for cursors\n");
 		return -EINVAL;
+	}
+
+	if (asyw->image.w != asyw->state.crtc_w) {
+		NV_ATOMIC(drm, "Plane width must be equal to fb width for cursors (height can be larger though)\n");
+		return -EINVAL;
+	}
+
+	if (asyw->state.src_x || asyw->state.src_y) {
+		NV_ATOMIC(drm, "Cursor planes do not support framebuffer offsets\n");
+		return -EINVAL;
+	}
 
 	ret = head->func->curs_layout(head, asyw, asyh);
 	if (ret)
@@ -137,8 +149,8 @@ curs507a_new_(const struct nv50_wimm_func *func, struct nouveau_drm *drm,
 	      int head, s32 oclass, u32 interlock_data,
 	      struct nv50_wndw **pwndw)
 {
-	struct nv50_disp_cursor_v0 args = {
-		.head = head,
+	struct nvif_disp_chan_v0 args = {
+		.id = head,
 	};
 	struct nv50_disp *disp = nv50_disp(drm->dev);
 	struct nv50_wndw *wndw;

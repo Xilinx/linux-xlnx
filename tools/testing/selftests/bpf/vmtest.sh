@@ -4,18 +4,34 @@
 set -u
 set -e
 
-# This script currently only works for x86_64, as
-# it is based on the VM image used by the BPF CI which is
-# x86_64.
-QEMU_BINARY="${QEMU_BINARY:="qemu-system-x86_64"}"
-X86_BZIMAGE="arch/x86/boot/bzImage"
+# This script currently only works for x86_64 and s390x, as
+# it is based on the VM image used by the BPF CI, which is
+# available only for these architectures.
+ARCH="$(uname -m)"
+case "${ARCH}" in
+s390x)
+	QEMU_BINARY=qemu-system-s390x
+	QEMU_CONSOLE="ttyS1"
+	QEMU_FLAGS=(-smp 2)
+	BZIMAGE="arch/s390/boot/compressed/vmlinux"
+	;;
+x86_64)
+	QEMU_BINARY=qemu-system-x86_64
+	QEMU_CONSOLE="ttyS0,115200"
+	QEMU_FLAGS=(-cpu host -smp 8)
+	BZIMAGE="arch/x86/boot/bzImage"
+	;;
+*)
+	echo "Unsupported architecture"
+	exit 1
+	;;
+esac
 DEFAULT_COMMAND="./test_progs"
 MOUNT_DIR="mnt"
 ROOTFS_IMAGE="root.img"
 OUTPUT_DIR="$HOME/.bpf_selftests"
-KCONFIG_URL="https://raw.githubusercontent.com/libbpf/libbpf/master/travis-ci/vmtest/configs/latest.config"
-KCONFIG_API_URL="https://api.github.com/repos/libbpf/libbpf/contents/travis-ci/vmtest/configs/latest.config"
-INDEX_URL="https://raw.githubusercontent.com/libbpf/libbpf/master/travis-ci/vmtest/configs/INDEX"
+KCONFIG_REL_PATHS=("tools/testing/selftests/bpf/config" "tools/testing/selftests/bpf/config.${ARCH}")
+INDEX_URL="https://raw.githubusercontent.com/libbpf/ci/master/INDEX"
 NUM_COMPILE_JOBS="$(nproc)"
 LOG_FILE_BASE="$(date +"bpf_selftests.%Y-%m-%d_%H-%M-%S")"
 LOG_FILE="${LOG_FILE_BASE}.log"
@@ -85,7 +101,7 @@ newest_rootfs_version()
 {
 	{
 	for file in "${!URLS[@]}"; do
-		if [[ $file =~ ^libbpf-vmtest-rootfs-(.*)\.tar\.zst$ ]]; then
+		if [[ $file =~ ^"${ARCH}"/libbpf-vmtest-rootfs-(.*)\.tar\.zst$ ]]; then
 			echo "${BASH_REMATCH[1]}"
 		fi
 	done
@@ -102,7 +118,7 @@ download_rootfs()
 		exit 1
 	fi
 
-	download "libbpf-vmtest-rootfs-$rootfsversion.tar.zst" |
+	download "${ARCH}/libbpf-vmtest-rootfs-$rootfsversion.tar.zst" |
 		zstd -d | sudo tar -C "$dir" -x
 }
 
@@ -224,13 +240,12 @@ EOF
 		-nodefaults \
 		-display none \
 		-serial mon:stdio \
-		-cpu kvm64 \
+		"${QEMU_FLAGS[@]}" \
 		-enable-kvm \
-		-smp 4 \
-		-m 2G \
+		-m 4G \
 		-drive file="${rootfs_img}",format=raw,index=1,media=disk,if=virtio,cache=none \
 		-kernel "${kernel_bzimage}" \
-		-append "root=/dev/vda rw console=ttyS0,115200"
+		-append "root=/dev/vda rw console=${QEMU_CONSOLE}"
 }
 
 copy_logs()
@@ -253,27 +268,57 @@ is_rel_path()
 	[[ ${path:0:1} != "/" ]]
 }
 
+do_update_kconfig()
+{
+	local kernel_checkout="$1"
+	local kconfig_file="$2"
+
+	rm -f "$kconfig_file" 2> /dev/null
+
+	for config in "${KCONFIG_REL_PATHS[@]}"; do
+		local kconfig_src="${kernel_checkout}/${config}"
+		cat "$kconfig_src" >> "$kconfig_file"
+	done
+}
+
 update_kconfig()
 {
-	local kconfig_file="$1"
-	local update_command="curl -sLf ${KCONFIG_URL} -o ${kconfig_file}"
-	# Github does not return the "last-modified" header when retrieving the
-	# raw contents of the file. Use the API call to get the last-modified
-	# time of the kernel config and only update the config if it has been
-	# updated after the previously cached config was created. This avoids
-	# unnecessarily compiling the kernel and selftests.
-	if [[ -f "${kconfig_file}" ]]; then
-		local last_modified_date="$(curl -sL -D - "${KCONFIG_API_URL}" -o /dev/null | \
-			grep "last-modified" | awk -F ': ' '{print $2}')"
-		local remote_modified_timestamp="$(date -d "${last_modified_date}" +"%s")"
-		local local_creation_timestamp="$(stat -c %Y "${kconfig_file}")"
+	local kernel_checkout="$1"
+	local kconfig_file="$2"
 
-		if [[ "${remote_modified_timestamp}" -gt "${local_creation_timestamp}" ]]; then
-			${update_command}
-		fi
+	if [[ -f "${kconfig_file}" ]]; then
+		local local_modified="$(stat -c %Y "${kconfig_file}")"
+
+		for config in "${KCONFIG_REL_PATHS[@]}"; do
+			local kconfig_src="${kernel_checkout}/${config}"
+			local src_modified="$(stat -c %Y "${kconfig_src}")"
+			# Only update the config if it has been updated after the
+			# previously cached config was created. This avoids
+			# unnecessarily compiling the kernel and selftests.
+			if [[ "${src_modified}" -gt "${local_modified}" ]]; then
+				do_update_kconfig "$kernel_checkout" "$kconfig_file"
+				# Once we have found one outdated configuration
+				# there is no need to check other ones.
+				break
+			fi
+		done
 	else
-		${update_command}
+		do_update_kconfig "$kernel_checkout" "$kconfig_file"
 	fi
+}
+
+catch()
+{
+	local exit_code=$1
+	local exit_status_file="${OUTPUT_DIR}/${EXIT_STATUS_FILE}"
+	# This is just a cleanup and the directory may
+	# have already been unmounted. So, don't let this
+	# clobber the error code we intend to return.
+	unmount_image || true
+	if [[ -f "${exit_status_file}" ]]; then
+		exit_code="$(cat ${exit_status_file})"
+	fi
+	exit ${exit_code}
 }
 
 main()
@@ -282,13 +327,13 @@ main()
 	local kernel_checkout=$(realpath "${script_dir}"/../../../../)
 	# By default the script searches for the kernel in the checkout directory but
 	# it also obeys environment variables O= and KBUILD_OUTPUT=
-	local kernel_bzimage="${kernel_checkout}/${X86_BZIMAGE}"
+	local kernel_bzimage="${kernel_checkout}/${BZIMAGE}"
 	local command="${DEFAULT_COMMAND}"
 	local update_image="no"
 	local exit_command="poweroff -f"
 	local debug_shell="no"
 
-	while getopts 'hskid:j:' opt; do
+	while getopts ':hskid:j:' opt; do
 		case ${opt} in
 		i)
 			update_image="yes"
@@ -322,6 +367,8 @@ main()
 	done
 	shift $((OPTIND -1))
 
+	trap 'catch "$?"' EXIT
+
 	if [[ $# -eq 0  && "${debug_shell}" == "no" ]]; then
 		echo "No command specified, will run ${DEFAULT_COMMAND} in the vm"
 	else
@@ -337,13 +384,13 @@ main()
 		if is_rel_path "${O}"; then
 			O="$(realpath "${PWD}/${O}")"
 		fi
-		kernel_bzimage="${O}/${X86_BZIMAGE}"
+		kernel_bzimage="${O}/${BZIMAGE}"
 		make_command="${make_command} O=${O}"
 	elif [[ "${KBUILD_OUTPUT:=""}" != "" ]]; then
 		if is_rel_path "${KBUILD_OUTPUT}"; then
 			KBUILD_OUTPUT="$(realpath "${PWD}/${KBUILD_OUTPUT}")"
 		fi
-		kernel_bzimage="${KBUILD_OUTPUT}/${X86_BZIMAGE}"
+		kernel_bzimage="${KBUILD_OUTPUT}/${BZIMAGE}"
 		make_command="${make_command} KBUILD_OUTPUT=${KBUILD_OUTPUT}"
 	fi
 
@@ -356,7 +403,7 @@ main()
 
 	mkdir -p "${OUTPUT_DIR}"
 	mkdir -p "${mount_dir}"
-	update_kconfig "${kconfig_file}"
+	update_kconfig "${kernel_checkout}" "${kconfig_file}"
 
 	recompile_kernel "${kernel_checkout}" "${make_command}"
 
@@ -377,21 +424,5 @@ main()
 		echo "Logs saved in ${OUTPUT_DIR}/${LOG_FILE}"
 	fi
 }
-
-catch()
-{
-	local exit_code=$1
-	local exit_status_file="${OUTPUT_DIR}/${EXIT_STATUS_FILE}"
-	# This is just a cleanup and the directory may
-	# have already been unmounted. So, don't let this
-	# clobber the error code we intend to return.
-	unmount_image || true
-	if [[ -f "${exit_status_file}" ]]; then
-		exit_code="$(cat ${exit_status_file})"
-	fi
-	exit ${exit_code}
-}
-
-trap 'catch "$?"' EXIT
 
 main "$@"

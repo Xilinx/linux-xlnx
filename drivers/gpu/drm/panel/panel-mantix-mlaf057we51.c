@@ -8,6 +8,7 @@
 #include <linux/backlight.h>
 #include <linux/delay.h>
 #include <linux/gpio/consumer.h>
+#include <linux/media-bus-format.h>
 #include <linux/module.h>
 #include <linux/of_device.h>
 #include <linux/regulator/consumer.h>
@@ -220,6 +221,10 @@ static const struct drm_display_mode default_mode_ys = {
 	.height_mm   = 130,
 };
 
+static const u32 mantix_bus_formats[] = {
+	MEDIA_BUS_FMT_RGB888_1X24,
+};
+
 static int mantix_get_modes(struct drm_panel *panel,
 			    struct drm_connector *connector)
 {
@@ -240,6 +245,10 @@ static int mantix_get_modes(struct drm_panel *panel,
 	connector->display_info.width_mm = mode->width_mm;
 	connector->display_info.height_mm = mode->height_mm;
 	drm_mode_probed_add(connector, mode);
+
+	drm_display_info_set_bus_formats(&connector->display_info,
+					 mantix_bus_formats,
+					 ARRAY_SIZE(mantix_bus_formats));
 
 	return 1;
 }
@@ -327,7 +336,7 @@ static void mantix_shutdown(struct mipi_dsi_device *dsi)
 	drm_panel_disable(&ctx->panel);
 }
 
-static int mantix_remove(struct mipi_dsi_device *dsi)
+static void mantix_remove(struct mipi_dsi_device *dsi)
 {
 	struct mantix *ctx = mipi_dsi_get_drvdata(dsi);
 
@@ -335,8 +344,6 @@ static int mantix_remove(struct mipi_dsi_device *dsi)
 
 	mipi_dsi_detach(dsi);
 	drm_panel_remove(&ctx->panel);
-
-	return 0;
 }
 
 static const struct of_device_id mantix_of_match[] = {

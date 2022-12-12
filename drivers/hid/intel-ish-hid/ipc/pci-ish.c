@@ -41,6 +41,9 @@ static const struct pci_device_id ish_pci_tbl[] = {
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, TGL_H_DEVICE_ID)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, ADL_S_DEVICE_ID)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, ADL_P_DEVICE_ID)},
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, ADL_N_DEVICE_ID)},
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, RPL_S_DEVICE_ID)},
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, MTL_P_DEVICE_ID)},
 	{0, }
 };
 MODULE_DEVICE_TABLE(pci, ish_pci_tbl);
@@ -266,7 +269,8 @@ static void __maybe_unused ish_resume_handler(struct work_struct *work)
 
 	if (ish_should_leave_d0i3(pdev) && !dev->suspend_flag
 			&& IPC_IS_ISH_ILUP(fwsts)) {
-		disable_irq_wake(pdev->irq);
+		if (device_may_wakeup(&pdev->dev))
+			disable_irq_wake(pdev->irq);
 
 		ish_set_host_ready(dev);
 
@@ -337,7 +341,8 @@ static int __maybe_unused ish_suspend(struct device *device)
 			 */
 			pci_save_state(pdev);
 
-			enable_irq_wake(pdev->irq);
+			if (device_may_wakeup(&pdev->dev))
+				enable_irq_wake(pdev->irq);
 		}
 	} else {
 		/*

@@ -129,7 +129,10 @@ config QCOM_RPMHPD
 
 config QCOM_RPMPD
 	tristate "Qualcomm RPM Power domain driver"
+	depends on PM && OF
 	depends on QCOM_SMD_RPM
+	select PM_GENERIC_DOMAINS
+	select PM_GENERIC_DOMAINS_OF
 	help
 	  QCOM RPM Power domain driver to support power-domains with
 	  performance states. The driver communicates a performance state
@@ -190,6 +193,25 @@ config QCOM_SOCINFO
 	 Say yes here to support the Qualcomm socinfo driver, providing
 	 information about the SoC to user space.
 
+config QCOM_SPM
+	tristate "Qualcomm Subsystem Power Manager (SPM)"
+	depends on ARCH_QCOM || COMPILE_TEST
+	select QCOM_SCM
+	help
+	  Enable the support for the Qualcomm Subsystem Power Manager, used
+	  to manage cores, L2 low power modes and to configure the internal
+	  Adaptive Voltage Scaler parameters, where supported.
+
+config QCOM_STATS
+	tristate "Qualcomm Technologies, Inc. (QTI) Sleep stats driver"
+	depends on (ARCH_QCOM && DEBUG_FS) || COMPILE_TEST
+	depends on QCOM_SMEM
+	help
+	  Qualcomm Technologies, Inc. (QTI) Sleep stats driver to read
+	  the shared memory exported by the remote processor related to
+	  various SoC level low power modes statistics and export to debugfs
+	  interface.
+
 config QCOM_WCNSS_CTRL
 	tristate "Qualcomm WCNSS control driver"
 	depends on ARCH_QCOM || COMPILE_TEST
@@ -199,7 +221,7 @@ config QCOM_WCNSS_CTRL
 	  firmware to a newly booted WCNSS chip.
 
 config QCOM_APR
-	tristate "Qualcomm APR Bus (Asynchronous Packet Router)"
+	tristate "Qualcomm APR/GPR Bus (Asynchronous/Generic Packet Router)"
 	depends on ARCH_QCOM || COMPILE_TEST
 	depends on RPMSG
 	depends on NET
@@ -209,4 +231,19 @@ config QCOM_APR
 	  application processor and QDSP6. APR is
 	  used by audio driver to configure QDSP6
 	  ASM, ADM and AFE modules.
+
+config QCOM_ICC_BWMON
+	tristate "QCOM Interconnect Bandwidth Monitor driver"
+	depends on ARCH_QCOM || COMPILE_TEST
+	select PM_OPP
+	help
+	  Sets up driver monitoring bandwidth on various interconnects and
+	  based on that voting for interconnect bandwidth, adjusting their
+	  speed to current demand.
+	  Current implementation brings support for BWMON v4, used for example
+	  on SDM845 to measure bandwidth between CPU (gladiator_noc) and Last
+	  Level Cache (memnoc).  Usage of this BWMON allows to remove some of
+	  the fixed bandwidth votes from cpufreq (CPU nodes) thus achieve high
+	  memory throughput even with lower CPU frequencies.
+
 endmenu

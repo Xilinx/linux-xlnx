@@ -199,8 +199,8 @@ static void get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *info)
 	struct adapter *adapter = netdev2adap(dev);
 	u32 exprom_vers;
 
-	strlcpy(info->driver, cxgb4_driver_name, sizeof(info->driver));
-	strlcpy(info->bus_info, pci_name(adapter->pdev),
+	strscpy(info->driver, cxgb4_driver_name, sizeof(info->driver));
+	strscpy(info->bus_info, pci_name(adapter->pdev),
 		sizeof(info->bus_info));
 	info->regdump_len = get_regs_len(dev);
 
@@ -890,7 +890,9 @@ static int set_pauseparam(struct net_device *dev,
 	return 0;
 }
 
-static void get_sge_param(struct net_device *dev, struct ethtool_ringparam *e)
+static void get_sge_param(struct net_device *dev, struct ethtool_ringparam *e,
+			  struct kernel_ethtool_ringparam *kernel_e,
+			  struct netlink_ext_ack *extack)
 {
 	const struct port_info *pi = netdev_priv(dev);
 	const struct sge *s = &pi->adapter->sge;
@@ -906,7 +908,9 @@ static void get_sge_param(struct net_device *dev, struct ethtool_ringparam *e)
 	e->tx_pending = s->ethtxq[pi->first_qset].q.size;
 }
 
-static int set_sge_param(struct net_device *dev, struct ethtool_ringparam *e)
+static int set_sge_param(struct net_device *dev, struct ethtool_ringparam *e,
+			 struct kernel_ethtool_ringparam *kernel_e,
+			 struct netlink_ext_ack *extack)
 {
 	int i;
 	const struct port_info *pi = netdev_priv(dev);
@@ -1989,6 +1993,15 @@ static int get_dump_data(struct net_device *dev, struct ethtool_dump *eth_dump,
 	return 0;
 }
 
+static bool cxgb4_fw_mod_type_info_available(unsigned int fw_mod_type)
+{
+	/* Read port module EEPROM as long as it is plugged-in and
+	 * safe to read.
+	 */
+	return (fw_mod_type != FW_PORT_MOD_TYPE_NONE &&
+		fw_mod_type != FW_PORT_MOD_TYPE_ERROR);
+}
+
 static int cxgb4_get_module_info(struct net_device *dev,
 				 struct ethtool_modinfo *modinfo)
 {
@@ -1997,7 +2010,7 @@ static int cxgb4_get_module_info(struct net_device *dev,
 	struct adapter *adapter = pi->adapter;
 	int ret;
 
-	if (!t4_is_inserted_mod_type(pi->mod_type))
+	if (!cxgb4_fw_mod_type_info_available(pi->mod_type))
 		return -EINVAL;
 
 	switch (pi->port_type) {
@@ -2015,12 +2028,15 @@ static int cxgb4_get_module_info(struct net_device *dev,
 		if (ret)
 			return ret;
 
-		if (!sff8472_comp || (sff_diag_type & 4)) {
+		if (!sff8472_comp || (sff_diag_type & SFP_DIAG_ADDRMODE)) {
 			modinfo->type = ETH_MODULE_SFF_8079;
 			modinfo->eeprom_len = ETH_MODULE_SFF_8079_LEN;
 		} else {
 			modinfo->type = ETH_MODULE_SFF_8472;
-			modinfo->eeprom_len = ETH_MODULE_SFF_8472_LEN;
+			if (sff_diag_type & SFP_DIAG_IMPLEMENTED)
+				modinfo->eeprom_len = ETH_MODULE_SFF_8472_LEN;
+			else
+				modinfo->eeprom_len = ETH_MODULE_SFF_8472_LEN / 2;
 		}
 		break;
 
@@ -2211,7 +2227,7 @@ void cxgb4_cleanup_ethtool_filters(struct adapter *adap)
 	if (eth_filter_info) {
 		for (i = 0; i < adap->params.nports; i++) {
 			kvfree(eth_filter_info[i].loc_array);
-			kfree(eth_filter_info[i].bmap);
+			bitmap_free(eth_filter_info[i].bmap);
 		}
 		kfree(eth_filter_info);
 	}
@@ -2254,9 +2270,7 @@ int cxgb4_init_ethtool_filters(struct adapter *adap)
 			goto free_eth_finfo;
 		}
 
-		eth_filter->port[i].bmap = kcalloc(BITS_TO_LONGS(nentries),
-						   sizeof(unsigned long),
-						   GFP_KERNEL);
+		eth_filter->port[i].bmap = bitmap_zalloc(nentries, GFP_KERNEL);
 		if (!eth_filter->port[i].bmap) {
 			ret = -ENOMEM;
 			goto free_eth_finfo;
@@ -2268,7 +2282,7 @@ int cxgb4_init_ethtool_filters(struct adapter *adap)
 
 free_eth_finfo:
 	while (i-- > 0) {
-		kfree(eth_filter->port[i].bmap);
+		bitmap_free(eth_filter->port[i].bmap);
 		kvfree(eth_filter->port[i].loc_array);
 	}
 	kfree(eth_filter_info);

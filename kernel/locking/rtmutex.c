@@ -24,6 +24,8 @@
 #include <linux/sched/wake_q.h>
 #include <linux/ww_mutex.h>
 
+#include <trace/events/lock.h>
+
 #include "rtmutex_common.h"
 
 #ifndef WW_RT
@@ -446,17 +448,24 @@ static __always_inline void rt_mutex_adjust_prio(struct task_struct *p)
 }
 
 /* RT mutex specific wake_q wrappers */
+static __always_inline void rt_mutex_wake_q_add_task(struct rt_wake_q_head *wqh,
+						     struct task_struct *task,
+						     unsigned int wake_state)
+{
+	if (IS_ENABLED(CONFIG_PREEMPT_RT) && wake_state == TASK_RTLOCK_WAIT) {
+		if (IS_ENABLED(CONFIG_PROVE_LOCKING))
+			WARN_ON_ONCE(wqh->rtlock_task);
+		get_task_struct(task);
+		wqh->rtlock_task = task;
+	} else {
+		wake_q_add(&wqh->head, task);
+	}
+}
+
 static __always_inline void rt_mutex_wake_q_add(struct rt_wake_q_head *wqh,
 						struct rt_mutex_waiter *w)
 {
-	if (IS_ENABLED(CONFIG_PREEMPT_RT) && w->wake_state != TASK_NORMAL) {
-		if (IS_ENABLED(CONFIG_PROVE_LOCKING))
-			WARN_ON_ONCE(wqh->rtlock_task);
-		get_task_struct(w->task);
-		wqh->rtlock_task = w->task;
-	} else {
-		wake_q_add(&wqh->head, w->task);
-	}
+	rt_mutex_wake_q_add_task(wqh, w->task, w->wake_state);
 }
 
 static __always_inline void rt_mutex_wake_up_q(struct rt_wake_q_head *wqh)
@@ -1096,8 +1105,11 @@ static int __sched task_blocks_on_rt_mutex(struct rt_mutex_base *lock,
 	 * the other will detect the deadlock and return -EDEADLOCK,
 	 * which is wrong, as the other waiter is not in a deadlock
 	 * situation.
+	 *
+	 * Except for ww_mutex, in that case the chain walk must already deal
+	 * with spurious cycles, see the comments at [3] and [6].
 	 */
-	if (owner == task)
+	if (owner == task && !(build_ww_mutex() && ww_ctx))
 		return -EDEADLK;
 
 	raw_spin_lock(&task->pi_lock);
@@ -1372,9 +1384,8 @@ static bool rtmutex_spin_on_owner(struct rt_mutex_base *lock,
 		 *    for CONFIG_PREEMPT_RCU=y)
 		 *  - the VCPU on which owner runs is preempted
 		 */
-		if (!owner->on_cpu || need_resched() ||
-		    rt_mutex_waiter_is_top_waiter(lock, waiter) ||
-		    vcpu_is_preempted(task_cpu(owner))) {
+		if (!owner_on_cpu(owner) || need_resched() ||
+		    !rt_mutex_waiter_is_top_waiter(lock, waiter)) {
 			res = false;
 			break;
 		}
@@ -1570,6 +1581,8 @@ static int __sched __rt_mutex_slowlock(struct rt_mutex_base *lock,
 
 	set_current_state(state);
 
+	trace_contention_begin(lock, LCB_F_RT);
+
 	ret = task_blocks_on_rt_mutex(lock, waiter, current, ww_ctx, chwalk);
 	if (likely(!ret))
 		ret = rt_mutex_slowlock_block(lock, ww_ctx, state, NULL, waiter);
@@ -1592,6 +1605,9 @@ static int __sched __rt_mutex_slowlock(struct rt_mutex_base *lock,
 	 * unconditionally. We might have to fix that up.
 	 */
 	fixup_rt_mutex_waiters(lock);
+
+	trace_contention_end(lock, ret);
+
 	return ret;
 }
 
@@ -1674,6 +1690,8 @@ static void __sched rtlock_slowlock_locked(struct rt_mutex_base *lock)
 	/* Save current state and set state to TASK_RTLOCK_WAIT */
 	current_save_and_set_rtlock_wait_state();
 
+	trace_contention_begin(lock, LCB_F_RT);
+
 	task_blocks_on_rt_mutex(lock, &waiter, current, NULL, RT_MUTEX_MIN_CHAINWALK);
 
 	for (;;) {
@@ -1703,6 +1721,8 @@ static void __sched rtlock_slowlock_locked(struct rt_mutex_base *lock)
 	 */
 	fixup_rt_mutex_waiters(lock);
 	debug_rt_mutex_free_waiter(&waiter);
+
+	trace_contention_end(lock, 0);
 }
 
 static __always_inline void __sched rtlock_slowlock(struct rt_mutex_base *lock)

@@ -9,9 +9,6 @@
 
 #include "pci.h"
 
-/* for pci_dev_is_added() */
-#include "../../../../drivers/pci/pci.h"
-
 /*
  * The majority of the complexity in supporting SR-IOV on PowerNV comes from
  * the need to put the MMIO space for each VF into a separate PE. Internally
@@ -25,7 +22,7 @@
  * have the same requirement.
  *
  * For a SR-IOV BAR things are a little more awkward since size and alignment
- * are not coupled. The alignment is set based on the the per-VF BAR size, but
+ * are not coupled. The alignment is set based on the per-VF BAR size, but
  * the total BAR area is: number-of-vfs * per-vf-size. The number of VFs
  * isn't necessarily a power of two, so neither is the total size. To fix that
  * we need to finesse (read: hack) the Linux BAR allocator so that it will
@@ -54,7 +51,7 @@
  * to "new_size", calculated above. Implementing this is a convoluted process
  * which requires several hooks in the PCI core:
  *
- * 1. In pcibios_add_device() we call pnv_pci_ioda_fixup_iov().
+ * 1. In pcibios_device_add() we call pnv_pci_ioda_fixup_iov().
  *
  *    At this point the device has been probed and the device's BARs are sized,
  *    but no resource allocations have been done. The SR-IOV BARs are sized
@@ -228,9 +225,6 @@ disable_iov:
 
 void pnv_pci_ioda_fixup_iov(struct pci_dev *pdev)
 {
-	if (WARN_ON(pci_dev_is_added(pdev)))
-		return;
-
 	if (pdev->is_virtfn) {
 		struct pnv_ioda_pe *pe = pnv_ioda_get_pe(pdev);
 
@@ -705,7 +699,7 @@ static int pnv_pci_sriov_enable(struct pci_dev *pdev, u16 num_vfs)
 		return -ENOSPC;
 	}
 
-	/* allocate a contigious block of PEs for our VFs */
+	/* allocate a contiguous block of PEs for our VFs */
 	base_pe = pnv_ioda_alloc_pe(phb, num_vfs);
 	if (!base_pe) {
 		pci_err(pdev, "Unable to allocate PEs for %d VFs\n", num_vfs);

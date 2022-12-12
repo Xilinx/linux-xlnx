@@ -4,7 +4,7 @@
  * properly configuring the respective GPEs. Required for wakeup via lid on
  * newer Intel-based Microsoft Surface devices.
  *
- * Copyright (C) 2020 Maximilian Luz <luzmaximilian@gmail.com>
+ * Copyright (C) 2020-2022 Maximilian Luz <luzmaximilian@gmail.com>
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -23,6 +23,11 @@
 
 static const struct property_entry lid_device_props_l17[] = {
 	PROPERTY_ENTRY_U32("gpe", 0x17),
+	{},
+};
+
+static const struct property_entry lid_device_props_l4B[] = {
+	PROPERTY_ENTRY_U32("gpe", 0x4B),
 	{},
 };
 
@@ -95,6 +100,14 @@ static const struct dmi_system_id dmi_lid_device_table[] = {
 		.driver_data = (void *)lid_device_props_l4D,
 	},
 	{
+		.ident = "Surface Pro 8",
+		.matches = {
+			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "Microsoft Corporation"),
+			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "Surface Pro 8"),
+		},
+		.driver_data = (void *)lid_device_props_l4B,
+	},
+	{
 		.ident = "Surface Book 1",
 		.matches = {
 			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "Microsoft Corporation"),
@@ -157,6 +170,26 @@ static const struct dmi_system_id dmi_lid_device_table[] = {
 			DMI_EXACT_MATCH(DMI_PRODUCT_SKU, "Surface_Laptop_3_1872"),
 		},
 		.driver_data = (void *)lid_device_props_l4D,
+	},
+	{
+		.ident = "Surface Laptop 4 (Intel 13\")",
+		.matches = {
+			/*
+			 * We match for SKU here due to different variants: The
+			 * AMD (15") version does not rely on GPEs.
+			 */
+			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "Microsoft Corporation"),
+			DMI_EXACT_MATCH(DMI_PRODUCT_SKU, "Surface_Laptop_4_1950:1951"),
+		},
+		.driver_data = (void *)lid_device_props_l4B,
+	},
+	{
+		.ident = "Surface Laptop Studio",
+		.matches = {
+			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "Microsoft Corporation"),
+			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "Surface Laptop Studio"),
+		},
+		.driver_data = (void *)lid_device_props_l4B,
 	},
 	{ }
 };

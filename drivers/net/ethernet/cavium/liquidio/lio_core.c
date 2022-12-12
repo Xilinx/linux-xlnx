@@ -411,7 +411,7 @@ void octeon_pf_changed_vf_macaddr(struct octeon_device *oct, u8 *mac)
 
 	if (!ether_addr_equal(netdev->dev_addr, mac)) {
 		macaddr_changed = true;
-		ether_addr_copy(netdev->dev_addr, mac);
+		eth_hw_addr_set(netdev, mac);
 		ether_addr_copy(((u8 *)&lio->linfo.hw_addr) + 2, mac);
 		call_netdevice_notifiers(NETDEV_CHANGEADDR, netdev);
 	}
@@ -490,7 +490,6 @@ void cleanup_rx_oom_poll_fn(struct net_device *netdev)
 		wq = &lio->rxq_status_wq[q_no];
 		if (wq->wq) {
 			cancel_delayed_work_sync(&wq->wk.work);
-			flush_workqueue(wq->wq);
 			destroy_workqueue(wq->wq);
 			wq->wq = NULL;
 		}
@@ -852,7 +851,7 @@ int liquidio_setup_io_queues(struct octeon_device *octeon_dev, int ifidx,
 		napi = &droq->napi;
 		dev_dbg(&octeon_dev->pci_dev->dev, "netif_napi_add netdev:%llx oct:%llx\n",
 			(u64)netdev, (u64)octeon_dev);
-		netif_napi_add(netdev, napi, liquidio_napi_poll, 64);
+		netif_napi_add(netdev, napi, liquidio_napi_poll);
 
 		/* designate a CPU for this droq */
 		droq->cpu_id = cpu_id;

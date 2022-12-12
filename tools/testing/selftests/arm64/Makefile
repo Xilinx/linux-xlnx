@@ -4,7 +4,7 @@
 ARCH ?= $(shell uname -m 2>/dev/null || echo not)
 
 ifneq (,$(filter $(ARCH),aarch64 arm64))
-ARM64_SUBTARGETS ?= tags signal pauth fp mte bti
+ARM64_SUBTARGETS ?= tags signal pauth fp mte bti abi
 else
 ARM64_SUBTARGETS :=
 endif
@@ -17,16 +17,7 @@ top_srcdir = $(realpath ../../../../)
 # Additional include paths needed by kselftest.h and local headers
 CFLAGS += -I$(top_srcdir)/tools/testing/selftests/
 
-# Guessing where the Kernel headers could have been installed
-# depending on ENV config
-ifeq ($(KBUILD_OUTPUT),)
-khdr_dir = $(top_srcdir)/usr/include
-else
-# the KSFT preferred location when KBUILD_OUTPUT is set
-khdr_dir = $(KBUILD_OUTPUT)/kselftest/usr/include
-endif
-
-CFLAGS += -I$(khdr_dir)
+CFLAGS += $(KHDR_INCLUDES)
 
 export CFLAGS
 export top_srcdir

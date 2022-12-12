@@ -58,6 +58,7 @@ struct vport_portids {
 /**
  * struct vport - one port within a datapath
  * @dev: Pointer to net_device.
+ * @dev_tracker: refcount tracker for @dev reference
  * @dp: Datapath to which this port belongs.
  * @upcall_portids: RCU protected 'struct vport_portids'.
  * @port_no: Index into @dp's @ports array.
@@ -69,6 +70,7 @@ struct vport_portids {
  */
 struct vport {
 	struct net_device *dev;
+	netdevice_tracker dev_tracker;
 	struct datapath	*dp;
 	struct vport_portids __rcu *upcall_portids;
 	u16 port_no;
@@ -88,12 +90,14 @@ struct vport {
  * @type: New vport's type.
  * @options: %OVS_VPORT_ATTR_OPTIONS attribute from Netlink message, %NULL if
  * none was supplied.
+ * @desired_ifindex: New vport's ifindex.
  * @dp: New vport's datapath.
  * @port_no: New vport's port number.
  */
 struct vport_parms {
 	const char *name;
 	enum ovs_vport_type type;
+	int desired_ifindex;
 	struct nlattr *options;
 
 	/* For ovs_vport_alloc(). */
@@ -128,7 +132,7 @@ struct vport_ops {
 	int (*set_options)(struct vport *, struct nlattr *);
 	int (*get_options)(const struct vport *, struct sk_buff *);
 
-	netdev_tx_t (*send) (struct sk_buff *skb);
+	int (*send)(struct sk_buff *skb);
 	struct module *owner;
 	struct list_head list;
 };

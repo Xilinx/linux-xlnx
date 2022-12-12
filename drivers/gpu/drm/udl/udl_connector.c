@@ -8,6 +8,7 @@
  */
 
 #include <drm/drm_atomic_state_helper.h>
+#include <drm/drm_edid.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_probe_helper.h>
 
@@ -30,7 +31,7 @@ static int udl_get_edid_block(void *data, u8 *buf, unsigned int block,
 		int bval = (i + block * EDID_LENGTH) << 8;
 		ret = usb_control_msg(udev, usb_rcvctrlpipe(udev, 0),
 				      0x02, (0x80 | (0x02 << 5)), bval,
-				      0xA1, read_buff, 2, HZ);
+				      0xA1, read_buff, 2, 1000);
 		if (ret < 1) {
 			DRM_ERROR("Read EDID byte %d failed err %x\n", i, ret);
 			kfree(read_buff);
@@ -128,7 +129,7 @@ struct drm_connector *udl_connector_init(struct drm_device *dev)
 
 	connector = &udl_connector->connector;
 	drm_connector_init(dev, connector, &udl_connector_funcs,
-			   DRM_MODE_CONNECTOR_DVII);
+			   DRM_MODE_CONNECTOR_VGA);
 	drm_connector_helper_add(connector, &udl_connector_helper_funcs);
 
 	connector->polled = DRM_CONNECTOR_POLL_HPD |

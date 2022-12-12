@@ -52,7 +52,7 @@ struct atm_flow_data {
 	struct atm_qdisc_data	*parent;	/* parent qdisc */
 	struct socket		*sock;		/* for closing */
 	int			ref;		/* reference count */
-	struct gnet_stats_basic_packed	bstats;
+	struct gnet_stats_basic_sync	bstats;
 	struct gnet_stats_queue	qstats;
 	struct list_head	list;
 	struct atm_flow_data	*excess;	/* flow for excess traffic;
@@ -354,12 +354,8 @@ static void atm_tc_walk(struct Qdisc *sch, struct qdisc_walker *walker)
 	if (walker->stop)
 		return;
 	list_for_each_entry(flow, &p->flows, list) {
-		if (walker->count >= walker->skip &&
-		    walker->fn(sch, (unsigned long)flow, walker) < 0) {
-			walker->stop = 1;
+		if (!tc_qdisc_stats_dump(sch, (unsigned long)flow, walker))
 			break;
-		}
-		walker->count++;
 	}
 }
 
@@ -548,6 +544,7 @@ static int atm_tc_init(struct Qdisc *sch, struct nlattr *opt,
 	pr_debug("atm_tc_init(sch %p,[qdisc %p],opt %p)\n", sch, p, opt);
 	INIT_LIST_HEAD(&p->flows);
 	INIT_LIST_HEAD(&p->link.list);
+	gnet_stats_basic_sync_init(&p->link.bstats);
 	list_add(&p->link.list, &p->flows);
 	p->link.q = qdisc_create_dflt(sch->dev_queue,
 				      &pfifo_qdisc_ops, sch->handle, extack);
@@ -576,7 +573,6 @@ static void atm_tc_reset(struct Qdisc *sch)
 	pr_debug("atm_tc_reset(sch %p,[qdisc %p])\n", sch, p);
 	list_for_each_entry(flow, &p->flows, list)
 		qdisc_reset(flow->q);
-	sch->q.qlen = 0;
 }
 
 static void atm_tc_destroy(struct Qdisc *sch)
@@ -652,8 +648,7 @@ atm_tc_dump_class_stats(struct Qdisc *sch, unsigned long arg,
 {
 	struct atm_flow_data *flow = (struct atm_flow_data *)arg;
 
-	if (gnet_stats_copy_basic(qdisc_root_sleeping_running(sch),
-				  d, NULL, &flow->bstats) < 0 ||
+	if (gnet_stats_copy_basic(d, NULL, &flow->bstats, true) < 0 ||
 	    gnet_stats_copy_queue(d, NULL, &flow->qstats, flow->q->q.qlen) < 0)
 		return -1;
 

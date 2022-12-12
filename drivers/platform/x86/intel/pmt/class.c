@@ -9,37 +9,54 @@
  */
 
 #include <linux/kernel.h>
+#include <linux/io-64-nonatomic-lo-hi.h>
 #include <linux/module.h>
 #include <linux/mm.h>
 #include <linux/pci.h>
 
+#include "../vsec.h"
 #include "class.h"
 
 #define PMT_XA_START		0
 #define PMT_XA_MAX		INT_MAX
 #define PMT_XA_LIMIT		XA_LIMIT(PMT_XA_START, PMT_XA_MAX)
-
-/*
- * Early implementations of PMT on client platforms have some
- * differences from the server platforms (which use the Out Of Band
- * Management Services Module OOBMSM). This list tracks those
- * platforms as needed to handle those differences. Newer client
- * platforms are expected to be fully compatible with server.
- */
-static const struct pci_device_id pmt_telem_early_client_pci_ids[] = {
-	{ PCI_VDEVICE(INTEL, 0x467d) }, /* ADL */
-	{ PCI_VDEVICE(INTEL, 0x490e) }, /* DG1 */
-	{ PCI_VDEVICE(INTEL, 0x9a0d) }, /* TGL */
-	{ }
-};
+#define GUID_SPR_PUNIT		0x9956f43f
 
 bool intel_pmt_is_early_client_hw(struct device *dev)
 {
-	struct pci_dev *parent = to_pci_dev(dev->parent);
+	struct intel_vsec_device *ivdev = dev_to_ivdev(dev);
 
-	return !!pci_match_id(pmt_telem_early_client_pci_ids, parent);
+	/*
+	 * Early implementations of PMT on client platforms have some
+	 * differences from the server platforms (which use the Out Of Band
+	 * Management Services Module OOBMSM).
+	 */
+	return !!(ivdev->info->quirks & VSEC_QUIRK_EARLY_HW);
 }
 EXPORT_SYMBOL_GPL(intel_pmt_is_early_client_hw);
+
+static inline int
+pmt_memcpy64_fromio(void *to, const u64 __iomem *from, size_t count)
+{
+	int i, remain;
+	u64 *buf = to;
+
+	if (!IS_ALIGNED((unsigned long)from, 8))
+		return -EFAULT;
+
+	for (i = 0; i < count/8; i++)
+		buf[i] = readq(&from[i]);
+
+	/* Copy any remaining bytes */
+	remain = count % 8;
+	if (remain) {
+		u64 tmp = readq(&from[i]);
+
+		memcpy(&buf[i], &tmp, remain);
+	}
+
+	return count;
+}
 
 /*
  * sysfs
@@ -62,7 +79,11 @@ intel_pmt_read(struct file *filp, struct kobject *kobj,
 	if (count > entry->size - off)
 		count = entry->size - off;
 
-	memcpy_fromio(buf, entry->base + off, count);
+	if (entry->guid == GUID_SPR_PUNIT)
+		/* PUNIT on SPR only supports aligned 64-bit read */
+		count = pmt_memcpy64_fromio(buf, entry->base + off, count);
+	else
+		memcpy_fromio(buf, entry->base + off, count);
 
 	return count;
 }
@@ -281,31 +302,29 @@ fail_dev_create:
 	return ret;
 }
 
-int intel_pmt_dev_create(struct intel_pmt_entry *entry,
-			 struct intel_pmt_namespace *ns,
-			 struct platform_device *pdev, int idx)
+int intel_pmt_dev_create(struct intel_pmt_entry *entry, struct intel_pmt_namespace *ns,
+			 struct intel_vsec_device *intel_vsec_dev, int idx)
 {
+	struct device *dev = &intel_vsec_dev->auxdev.dev;
 	struct intel_pmt_header header;
 	struct resource	*disc_res;
-	int ret = -ENODEV;
+	int ret;
 
-	disc_res = platform_get_resource(pdev, IORESOURCE_MEM, idx);
-	if (!disc_res)
-		return ret;
+	disc_res = &intel_vsec_dev->resource[idx];
 
-	entry->disc_table = devm_platform_ioremap_resource(pdev, idx);
+	entry->disc_table = devm_ioremap_resource(dev, disc_res);
 	if (IS_ERR(entry->disc_table))
 		return PTR_ERR(entry->disc_table);
 
-	ret = ns->pmt_header_decode(entry, &header, &pdev->dev);
+	ret = ns->pmt_header_decode(entry, &header, dev);
 	if (ret)
 		return ret;
 
-	ret = intel_pmt_populate_entry(entry, &header, &pdev->dev, disc_res);
+	ret = intel_pmt_populate_entry(entry, &header, dev, disc_res);
 	if (ret)
 		return ret;
 
-	return intel_pmt_dev_register(entry, ns, &pdev->dev);
+	return intel_pmt_dev_register(entry, ns, dev);
 
 }
 EXPORT_SYMBOL_GPL(intel_pmt_dev_create);

@@ -9,9 +9,11 @@
 
 #include <linux/adreno-smmu-priv.h>
 #include <linux/clk.h>
+#include <linux/devfreq.h>
 #include <linux/interconnect.h>
 #include <linux/pm_opp.h>
 #include <linux/regulator/consumer.h>
+#include <linux/reset.h>
 
 #include "msm_drv.h"
 #include "msm_fence.h"
@@ -21,6 +23,7 @@
 struct msm_gem_submit;
 struct msm_gpu_perfcntr;
 struct msm_gpu_state;
+struct msm_file_private;
 
 struct msm_gpu_config {
 	const char *ioname;
@@ -42,7 +45,10 @@ struct msm_gpu_config {
  *    + z180_gpu
  */
 struct msm_gpu_funcs {
-	int (*get_param)(struct msm_gpu *gpu, uint32_t param, uint64_t *value);
+	int (*get_param)(struct msm_gpu *gpu, struct msm_file_private *ctx,
+			 uint32_t param, uint64_t *value, uint32_t *len);
+	int (*set_param)(struct msm_gpu *gpu, struct msm_file_private *ctx,
+			 uint32_t param, uint64_t value, uint32_t len);
 	int (*hw_init)(struct msm_gpu *gpu);
 	int (*pm_suspend)(struct msm_gpu *gpu);
 	int (*pm_resume)(struct msm_gpu *gpu);
@@ -59,11 +65,14 @@ struct msm_gpu_funcs {
 	/* for generation specific debugfs: */
 	void (*debugfs_init)(struct msm_gpu *gpu, struct drm_minor *minor);
 #endif
-	unsigned long (*gpu_busy)(struct msm_gpu *gpu);
+	/* note: gpu_busy() can assume that we have been pm_resumed */
+	u64 (*gpu_busy)(struct msm_gpu *gpu, unsigned long *out_sample_rate);
 	struct msm_gpu_state *(*gpu_state_get)(struct msm_gpu *gpu);
 	int (*gpu_state_put)(struct msm_gpu_state *state);
 	unsigned long (*gpu_get_freq)(struct msm_gpu *gpu);
-	void (*gpu_set_freq)(struct msm_gpu *gpu, struct dev_pm_opp *opp);
+	/* note: gpu_set_freq() can assume that we have been pm_resumed */
+	void (*gpu_set_freq)(struct msm_gpu *gpu, struct dev_pm_opp *opp,
+			     bool suspended);
 	struct msm_gem_address_space *(*create_address_space)
 		(struct msm_gpu *gpu, struct platform_device *pdev);
 	struct msm_gem_address_space *(*create_private_address_space)
@@ -87,12 +96,27 @@ struct msm_gpu_devfreq {
 	/** devfreq: devfreq instance */
 	struct devfreq *devfreq;
 
+	/** lock: lock for "suspended", "busy_cycles", and "time" */
+	struct mutex lock;
+
 	/**
-	 * busy_cycles:
+	 * idle_constraint:
 	 *
-	 * Used by implementation of gpu->gpu_busy() to track the last
-	 * busy counter value, for calculating elapsed busy cycles since
-	 * last sampling period.
+	 * A PM QoS constraint to limit max freq while the GPU is idle.
+	 */
+	struct dev_pm_qos_request idle_freq;
+
+	/**
+	 * boost_constraint:
+	 *
+	 * A PM QoS constraint to boost min freq for a period of time
+	 * until the boost expires.
+	 */
+	struct dev_pm_qos_request boost_freq;
+
+	/**
+	 * busy_cycles: Last busy counter value, for calculating elapsed busy
+	 * cycles since last sampling period.
 	 */
 	u64 busy_cycles;
 
@@ -102,16 +126,25 @@ struct msm_gpu_devfreq {
 	/** idle_time: Time of last transition to idle: */
 	ktime_t idle_time;
 
+	struct devfreq_dev_status average_status;
+
 	/**
-	 * idle_freq:
+	 * idle_work:
 	 *
-	 * Shadow frequency used while the GPU is idle.  From the PoV of
-	 * the devfreq governor, we are continuing to sample busyness and
-	 * adjust frequency while the GPU is idle, but we use this shadow
-	 * value as the GPU is actually clamped to minimum frequency while
-	 * it is inactive.
+	 * Used to delay clamping to idle freq on active->idle transition.
 	 */
-	unsigned long idle_freq;
+	struct msm_hrtimer_work idle_work;
+
+	/**
+	 * boost_work:
+	 *
+	 * Used to reset the boost_constraint after the boost period has
+	 * elapsed
+	 */
+	struct msm_hrtimer_work boost_work;
+
+	/** suspended: tracks if we're suspended */
+	bool suspended;
 };
 
 struct msm_gpu {
@@ -137,11 +170,33 @@ struct msm_gpu {
 	struct msm_ringbuffer *rb[MSM_GPU_MAX_RINGS];
 	int nr_rings;
 
-	/*
-	 * List of GEM active objects on this gpu.  Protected by
-	 * msm_drm_private::mm_lock
+	/**
+	 * sysprof_active:
+	 *
+	 * The count of contexts that have enabled system profiling.
 	 */
-	struct list_head active_list;
+	refcount_t sysprof_active;
+
+	/**
+	 * cur_ctx_seqno:
+	 *
+	 * The ctx->seqno value of the last context to submit rendering,
+	 * and the one with current pgtables installed (for generations
+	 * that support per-context pgtables).  Tracked by seqno rather
+	 * than pointer value to avoid dangling pointers, and cases where
+	 * a ctx can be freed and a new one created with the same address.
+	 */
+	int cur_ctx_seqno;
+
+	/**
+	 * lock:
+	 *
+	 * General lock for serializing all the gpu things.
+	 *
+	 * TODO move to per-ring locking where feasible (ie. submit/retire
+	 * path, etc)
+	 */
+	struct mutex lock;
 
 	/**
 	 * active_submits:
@@ -149,7 +204,7 @@ struct msm_gpu {
 	 * The number of submitted but not yet retired submits, used to
 	 * determine transitions between active and idle.
 	 *
-	 * Protected by lock
+	 * Protected by active_lock
 	 */
 	int active_submits;
 
@@ -159,7 +214,10 @@ struct msm_gpu {
 	/* does gpu need hw_init? */
 	bool needs_hw_init;
 
-	/* number of GPU hangs (for all contexts) */
+	/**
+	 * global_faults: number of GPU hangs not attributed to a particular
+	 * address space
+	 */
 	int global_faults;
 
 	void __iomem *mmio;
@@ -190,6 +248,9 @@ struct msm_gpu {
 	/* work for handling GPU recovery: */
 	struct kthread_work recover_work;
 
+	/** retire_event: notified when submits are retired: */
+	wait_queue_head_t retire_event;
+
 	/* work for handling active-list retiring: */
 	struct kthread_work retire_work;
 
@@ -211,11 +272,18 @@ struct msm_gpu {
 	bool hw_apriv;
 
 	struct thermal_cooling_device *cooling;
+
+	/* To poll for cx gdsc collapse during gpu recovery */
+	struct reset_control *cx_collapse;
 };
 
 static inline struct msm_gpu *dev_to_gpu(struct device *dev)
 {
 	struct adreno_smmu_priv *adreno_smmu = dev_get_drvdata(dev);
+
+	if (!adreno_smmu)
+		return NULL;
+
 	return container_of(adreno_smmu, struct msm_gpu, adreno_smmu);
 }
 
@@ -234,7 +302,7 @@ static inline bool msm_gpu_active(struct msm_gpu *gpu)
 	for (i = 0; i < gpu->nr_rings; i++) {
 		struct msm_ringbuffer *ring = gpu->rb[i];
 
-		if (ring->seqno > ring->memptrs->fence)
+		if (fence_after(ring->fctx->last_fence, ring->memptrs->fence))
 			return true;
 	}
 
@@ -279,6 +347,46 @@ struct msm_file_private {
 	struct msm_gem_address_space *aspace;
 	struct kref ref;
 	int seqno;
+
+	/**
+	 * sysprof:
+	 *
+	 * The value of MSM_PARAM_SYSPROF set by userspace.  This is
+	 * intended to be used by system profiling tools like Mesa's
+	 * pps-producer (perfetto), and restricted to CAP_SYS_ADMIN.
+	 *
+	 * Setting a value of 1 will preserve performance counters across
+	 * context switches.  Setting a value of 2 will in addition
+	 * suppress suspend.  (Performance counters lose state across
+	 * power collapse, which is undesirable for profiling in some
+	 * cases.)
+	 *
+	 * The value automatically reverts to zero when the drm device
+	 * file is closed.
+	 */
+	int sysprof;
+
+	/** comm: Overridden task comm, see MSM_PARAM_COMM */
+	char *comm;
+
+	/** cmdline: Overridden task cmdline, see MSM_PARAM_CMDLINE */
+	char *cmdline;
+
+	/**
+	 * elapsed:
+	 *
+	 * The total (cumulative) elapsed time GPU was busy with rendering
+	 * from this context in ns.
+	 */
+	uint64_t elapsed_ns;
+
+	/**
+	 * cycles:
+	 *
+	 * The total (cumulative) GPU cycles elapsed attributed to this
+	 * context.
+	 */
+	uint64_t cycles;
 
 	/**
 	 * entities:
@@ -352,13 +460,16 @@ static inline int msm_gpu_convert_priority(struct msm_gpu *gpu, int prio,
  * @ring_nr:   the ringbuffer used by this submitqueue, which is determined
  *             by the submitqueue's priority
  * @faults:    the number of GPU hangs associated with this submitqueue
+ * @last_fence: the sequence number of the last allocated fence (for error
+ *             checking)
  * @ctx:       the per-drm_file context associated with the submitqueue (ie.
  *             which set of pgtables do submits jobs associated with the
  *             submitqueue use)
  * @node:      node in the context's list of submitqueues
  * @fence_idr: maps fence-id to dma_fence for userspace visible fence
  *             seqno, protected by submitqueue lock
- * @lock:      submitqueue lock
+ * @idr_lock:  for serializing access to fence_idr
+ * @lock:      submitqueue lock for serializing submits on a queue
  * @ref:       reference count
  * @entity:    the submit job-queue
  */
@@ -367,9 +478,11 @@ struct msm_gpu_submitqueue {
 	u32 flags;
 	u32 ring_nr;
 	int faults;
+	uint32_t last_fence;
 	struct msm_file_private *ctx;
 	struct list_head node;
 	struct idr fence_idr;
+	struct mutex idr_lock;
 	struct mutex lock;
 	struct kref ref;
 	struct drm_sched_entity *entity;
@@ -380,6 +493,7 @@ struct msm_gpu_state_bo {
 	size_t size;
 	void *data;
 	bool encoded;
+	char name[32];
 };
 
 struct msm_gpu_state {
@@ -460,6 +574,9 @@ static inline void gpu_write64(struct msm_gpu *gpu, u32 lo, u32 hi, u64 val)
 int msm_gpu_pm_suspend(struct msm_gpu *gpu);
 int msm_gpu_pm_resume(struct msm_gpu *gpu);
 
+void msm_gpu_show_fdinfo(struct msm_gpu *gpu, struct msm_file_private *ctx,
+			 struct drm_printer *p);
+
 int msm_submitqueue_init(struct drm_device *drm, struct msm_file_private *ctx);
 struct msm_gpu_submitqueue *msm_submitqueue_get(struct msm_file_private *ctx,
 		u32 id);
@@ -473,6 +590,8 @@ void msm_submitqueue_close(struct msm_file_private *ctx);
 
 void msm_submitqueue_destroy(struct kref *kref);
 
+int msm_file_private_set_sysprof(struct msm_file_private *ctx,
+				 struct msm_gpu *gpu, int sysprof);
 void __msm_file_private_destroy(struct kref *kref);
 
 static inline void msm_file_private_put(struct msm_file_private *ctx)
@@ -491,6 +610,7 @@ void msm_devfreq_init(struct msm_gpu *gpu);
 void msm_devfreq_cleanup(struct msm_gpu *gpu);
 void msm_devfreq_resume(struct msm_gpu *gpu);
 void msm_devfreq_suspend(struct msm_gpu *gpu);
+void msm_devfreq_boost(struct msm_gpu *gpu, unsigned factor);
 void msm_devfreq_active(struct msm_gpu *gpu);
 void msm_devfreq_idle(struct msm_gpu *gpu);
 
@@ -527,28 +647,28 @@ static inline struct msm_gpu_state *msm_gpu_crashstate_get(struct msm_gpu *gpu)
 {
 	struct msm_gpu_state *state = NULL;
 
-	mutex_lock(&gpu->dev->struct_mutex);
+	mutex_lock(&gpu->lock);
 
 	if (gpu->crashstate) {
 		kref_get(&gpu->crashstate->ref);
 		state = gpu->crashstate;
 	}
 
-	mutex_unlock(&gpu->dev->struct_mutex);
+	mutex_unlock(&gpu->lock);
 
 	return state;
 }
 
 static inline void msm_gpu_crashstate_put(struct msm_gpu *gpu)
 {
-	mutex_lock(&gpu->dev->struct_mutex);
+	mutex_lock(&gpu->lock);
 
 	if (gpu->crashstate) {
 		if (gpu->funcs->gpu_state_put(gpu->crashstate))
 			gpu->crashstate = NULL;
 	}
 
-	mutex_unlock(&gpu->dev->struct_mutex);
+	mutex_unlock(&gpu->lock);
 }
 
 /*

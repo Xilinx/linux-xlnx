@@ -29,6 +29,8 @@
 #include <asm/kexec.h>
 #include <linux/mutex.h>
 #include <linux/prefetch.h>
+#include <linux/of.h>
+#include <linux/of_device.h>
 
 #include <net/ip.h>
 
@@ -1544,7 +1546,7 @@ static int ehea_init_port_res(struct ehea_port *port, struct ehea_port_res *pr,
 
 	kfree(init_attr);
 
-	netif_napi_add(pr->port->netdev, &pr->napi, ehea_poll, 64);
+	netif_napi_add(pr->port->netdev, &pr->napi, ehea_poll);
 
 	ret = 0;
 	goto out;
@@ -1615,7 +1617,7 @@ static void write_swqe2_immediate(struct sk_buff *skb, struct ehea_swqe *swqe,
 		 * For TSO packets we only copy the headers into the
 		 * immediate area.
 		 */
-		immediate_len = ETH_HLEN + ip_hdrlen(skb) + tcp_hdrlen(skb);
+		immediate_len = skb_tcp_all_headers(skb);
 	}
 
 	if (skb_is_gso(skb) || skb_data_size >= SWQE2_MAX_IMM) {
@@ -1741,7 +1743,7 @@ static int ehea_set_mac_addr(struct net_device *dev, void *sa)
 		goto out_free;
 	}
 
-	memcpy(dev->dev_addr, mac_addr->sa_data, dev->addr_len);
+	eth_hw_addr_set(dev, mac_addr->sa_data);
 
 	/* Deregister old MAC in pHYP */
 	if (port->state == EHEA_PORT_UP) {
@@ -2898,6 +2900,7 @@ static struct device *ehea_register_port(struct ehea_port *port,
 	ret = of_device_register(&port->ofdev);
 	if (ret) {
 		pr_err("failed to register device. ret=%d\n", ret);
+		put_device(&port->ofdev.dev);
 		goto out;
 	}
 
@@ -2986,7 +2989,7 @@ static struct ehea_port *ehea_setup_single_port(struct ehea_adapter *adapter,
 	SET_NETDEV_DEV(dev, port_dev);
 
 	/* initialize net_device structure */
-	memcpy(dev->dev_addr, &port->mac_addr, ETH_ALEN);
+	eth_hw_addr_set(dev, (u8 *)&port->mac_addr);
 
 	dev->netdev_ops = &ehea_netdev_ops;
 	ehea_set_ethtool_ops(dev);

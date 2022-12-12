@@ -29,15 +29,29 @@ enum arm_spe_op_type {
 	ARM_SPE_ST		= 1 << 1,
 };
 
+enum arm_spe_neoverse_data_source {
+	ARM_SPE_NV_L1D		 = 0x0,
+	ARM_SPE_NV_L2		 = 0x8,
+	ARM_SPE_NV_PEER_CORE	 = 0x9,
+	ARM_SPE_NV_LOCAL_CLUSTER = 0xa,
+	ARM_SPE_NV_SYS_CACHE	 = 0xb,
+	ARM_SPE_NV_PEER_CLUSTER	 = 0xc,
+	ARM_SPE_NV_REMOTE	 = 0xd,
+	ARM_SPE_NV_DRAM		 = 0xe,
+};
+
 struct arm_spe_record {
 	enum arm_spe_sample_type type;
 	int err;
 	u32 op;
+	u32 latency;
 	u64 from_ip;
 	u64 to_ip;
 	u64 timestamp;
 	u64 virt_addr;
 	u64 phys_addr;
+	u64 context_id;
+	u16 source;
 };
 
 struct arm_spe_insn;

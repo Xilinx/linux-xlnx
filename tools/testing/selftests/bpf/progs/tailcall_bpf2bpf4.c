@@ -19,7 +19,7 @@ struct {
 int count = 0;
 int noise = 0;
 
-__always_inline int subprog_noise(void)
+static __always_inline int subprog_noise(void)
 {
 	__u32 key = 0;
 
@@ -50,30 +50,29 @@ int subprog_tail(struct __sk_buff *skb)
 	return skb->len;
 }
 
-SEC("classifier/1")
-int bpf_func_1(struct __sk_buff *skb)
+SEC("tc")
+int classifier_1(struct __sk_buff *skb)
 {
 	return subprog_tail_2(skb);
 }
 
-SEC("classifier/2")
-int bpf_func_2(struct __sk_buff *skb)
+SEC("tc")
+int classifier_2(struct __sk_buff *skb)
 {
 	count++;
 	return subprog_tail_2(skb);
 }
 
-SEC("classifier/0")
-int bpf_func_0(struct __sk_buff *skb)
+SEC("tc")
+int classifier_0(struct __sk_buff *skb)
 {
 	return subprog_tail_1(skb);
 }
 
-SEC("classifier")
+SEC("tc")
 int entry(struct __sk_buff *skb)
 {
 	return subprog_tail(skb);
 }
 
 char __license[] SEC("license") = "GPL";
-int _version SEC("version") = 1;

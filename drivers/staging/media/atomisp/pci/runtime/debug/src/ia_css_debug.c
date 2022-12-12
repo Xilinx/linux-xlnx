@@ -1305,8 +1305,6 @@ void ia_css_debug_frame_print(const struct ia_css_frame *frame,
 	ia_css_debug_dtrace(2, "  padded width  = %d\n",
 			    frame->info.padded_width);
 	ia_css_debug_dtrace(2, "  format        = %d\n", frame->info.format);
-	ia_css_debug_dtrace(2, "  is contiguous = %s\n",
-			    frame->contiguous ? "yes" : "no");
 	switch (frame->info.format) {
 	case IA_CSS_FRAME_FORMAT_NV12:
 	case IA_CSS_FRAME_FORMAT_NV16:
@@ -2821,7 +2819,7 @@ ia_css_debug_pipe_graph_dump_stage(
 		    "in", true);
 	}
 
-	for (i = 0; i < NUM_TNR_FRAMES; i++) {
+	for (i = 0; i < NUM_VIDEO_TNR_FRAMES; i++) {
 		if (stage->args.tnr_frames[i]) {
 			ia_css_debug_pipe_graph_dump_frame(
 			    stage->args.tnr_frames[i], id,

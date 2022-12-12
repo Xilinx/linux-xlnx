@@ -157,6 +157,11 @@ static struct inode *__lookup_inode(struct super_block *sb, u64 ino)
 		ceph_mdsc_put_request(req);
 		if (!inode)
 			return err < 0 ? ERR_PTR(err) : ERR_PTR(-ESTALE);
+	} else {
+		if (ceph_inode_is_shutdown(inode)) {
+			iput(inode);
+			return ERR_PTR(-ESTALE);
+		}
 	}
 	return inode;
 }
@@ -176,6 +181,7 @@ struct inode *ceph_lookup_inode(struct super_block *sb, u64 ino)
 static struct dentry *__fh_to_dentry(struct super_block *sb, u64 ino)
 {
 	struct inode *inode = __lookup_inode(sb, ino);
+	struct ceph_inode_info *ci = ceph_inode(inode);
 	int err;
 
 	if (IS_ERR(inode))
@@ -187,7 +193,7 @@ static struct dentry *__fh_to_dentry(struct super_block *sb, u64 ino)
 		return ERR_PTR(err);
 	}
 	/* -ESTALE if inode as been unlinked and no file is open */
-	if ((inode->i_nlink == 0) && (atomic_read(&inode->i_count) == 1)) {
+	if ((inode->i_nlink == 0) && !__ceph_is_file_opened(ci)) {
 		iput(inode);
 		return ERR_PTR(-ESTALE);
 	}
@@ -223,8 +229,13 @@ static struct dentry *__snapfh_to_dentry(struct super_block *sb,
 		return ERR_PTR(-ESTALE);
 
 	inode = ceph_find_inode(sb, vino);
-	if (inode)
+	if (inode) {
+		if (ceph_inode_is_shutdown(inode)) {
+			iput(inode);
+			return ERR_PTR(-ESTALE);
+		}
 		return d_obtain_alias(inode);
+	}
 
 	req = ceph_mdsc_create_request(mdsc, CEPH_MDS_OP_LOOKUPINO,
 				       USE_ANY_MDS);

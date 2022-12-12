@@ -8,7 +8,6 @@ title: Cadence SD/SDIO/eMMC Host Controller (SD4HC)
 
 maintainers:
   - Masahiro Yamada <yamada.masahiro@socionext.com>
-  - Piotr Sroka <piotrs@cadence.com>
 
 allOf:
   - $ref: mmc-controller.yaml
@@ -17,6 +16,7 @@ properties:
   compatible:
     items:
       - enum:
+          - microchip,mpfs-sd4hc
           - socionext,uniphier-sd4hc
       - const: cdns,sd4hc
 

@@ -63,42 +63,46 @@
 static const struct isc_format sama7g5_controller_formats[] = {
 	{
 		.fourcc		= V4L2_PIX_FMT_ARGB444,
-	},
-	{
+	}, {
 		.fourcc		= V4L2_PIX_FMT_ARGB555,
-	},
-	{
+	}, {
 		.fourcc		= V4L2_PIX_FMT_RGB565,
-	},
-	{
+	}, {
 		.fourcc		= V4L2_PIX_FMT_ABGR32,
-	},
-	{
+	}, {
 		.fourcc		= V4L2_PIX_FMT_XBGR32,
-	},
-	{
+	}, {
 		.fourcc		= V4L2_PIX_FMT_YUV420,
-	},
-	{
+	}, {
 		.fourcc		= V4L2_PIX_FMT_UYVY,
-	},
-	{
+	}, {
 		.fourcc		= V4L2_PIX_FMT_VYUY,
-	},
-	{
+	}, {
 		.fourcc		= V4L2_PIX_FMT_YUYV,
-	},
-	{
+	}, {
 		.fourcc		= V4L2_PIX_FMT_YUV422P,
-	},
-	{
+	}, {
 		.fourcc		= V4L2_PIX_FMT_GREY,
-	},
-	{
+	}, {
 		.fourcc		= V4L2_PIX_FMT_Y10,
-	},
-	{
+	}, {
 		.fourcc		= V4L2_PIX_FMT_Y16,
+	}, {
+		.fourcc		= V4L2_PIX_FMT_SBGGR8,
+	}, {
+		.fourcc		= V4L2_PIX_FMT_SGBRG8,
+	}, {
+		.fourcc		= V4L2_PIX_FMT_SGRBG8,
+	}, {
+		.fourcc		= V4L2_PIX_FMT_SRGGB8,
+	}, {
+		.fourcc		= V4L2_PIX_FMT_SBGGR10,
+	}, {
+		.fourcc		= V4L2_PIX_FMT_SGBRG10,
+	}, {
+		.fourcc		= V4L2_PIX_FMT_SGRBG10,
+	}, {
+		.fourcc		= V4L2_PIX_FMT_SRGGB10,
 	},
 };
 
@@ -188,7 +192,7 @@ static struct isc_format sama7g5_formats_list[] = {
 	},
 	{
 		.fourcc		= V4L2_PIX_FMT_UYVY,
-		.mbus_code	= MEDIA_BUS_FMT_YUYV8_2X8,
+		.mbus_code	= MEDIA_BUS_FMT_UYVY8_2X8,
 		.pfe_cfg0_bps	= ISC_PFE_CFG0_BPS_EIGHT,
 	},
 	{
@@ -201,7 +205,6 @@ static struct isc_format sama7g5_formats_list[] = {
 		.mbus_code	= MEDIA_BUS_FMT_Y10_1X10,
 		.pfe_cfg0_bps	= ISC_PFG_CFG0_BPS_TEN,
 	},
-
 };
 
 static void isc_sama7g5_config_csc(struct isc_device *isc)
@@ -447,6 +450,9 @@ static int microchip_xisc_probe(struct platform_device *pdev)
 	/* sama7g5-isc RAM access port is full AXI4 - 32 bits per beat */
 	isc->dcfg = ISC_DCFG_YMBSIZE_BEATS32 | ISC_DCFG_CMBSIZE_BEATS32;
 
+	/* sama7g5-isc : ISPCK does not exist, ISC is clocked by MCK */
+	isc->ispck_required = false;
+
 	ret = isc_pipeline_init(isc);
 	if (ret)
 		return ret;
@@ -470,25 +476,10 @@ static int microchip_xisc_probe(struct platform_device *pdev)
 		goto unprepare_hclk;
 	}
 
-	isc->ispck = isc->isc_clks[ISC_ISPCK].clk;
-
-	ret = clk_prepare_enable(isc->ispck);
-	if (ret) {
-		dev_err(dev, "failed to enable ispck: %d\n", ret);
-		goto unprepare_hclk;
-	}
-
-	/* ispck should be greater or equal to hclock */
-	ret = clk_set_rate(isc->ispck, clk_get_rate(isc->hclock));
-	if (ret) {
-		dev_err(dev, "failed to set ispck rate: %d\n", ret);
-		goto unprepare_clk;
-	}
-
 	ret = v4l2_device_register(dev, &isc->v4l2_dev);
 	if (ret) {
 		dev_err(dev, "unable to register v4l2 device.\n");
-		goto unprepare_clk;
+		goto unprepare_hclk;
 	}
 
 	ret = xisc_parse_dt(dev, isc);
@@ -505,13 +496,14 @@ static int microchip_xisc_probe(struct platform_device *pdev)
 
 	list_for_each_entry(subdev_entity, &isc->subdev_entities, list) {
 		struct v4l2_async_subdev *asd;
+		struct fwnode_handle *fwnode =
+			of_fwnode_handle(subdev_entity->epn);
 
-		v4l2_async_notifier_init(&subdev_entity->notifier);
+		v4l2_async_nf_init(&subdev_entity->notifier);
 
-		asd = v4l2_async_notifier_add_fwnode_remote_subdev(
-					&subdev_entity->notifier,
-					of_fwnode_handle(subdev_entity->epn),
-					struct v4l2_async_subdev);
+		asd = v4l2_async_nf_add_fwnode_remote(&subdev_entity->notifier,
+						      fwnode,
+						      struct v4l2_async_subdev);
 
 		of_node_put(subdev_entity->epn);
 		subdev_entity->epn = NULL;
@@ -523,8 +515,8 @@ static int microchip_xisc_probe(struct platform_device *pdev)
 
 		subdev_entity->notifier.ops = &isc_async_ops;
 
-		ret = v4l2_async_notifier_register(&isc->v4l2_dev,
-						   &subdev_entity->notifier);
+		ret = v4l2_async_nf_register(&isc->v4l2_dev,
+					     &subdev_entity->notifier);
 		if (ret) {
 			dev_err(dev, "fail to register async notifier\n");
 			goto cleanup_subdev;
@@ -549,8 +541,6 @@ cleanup_subdev:
 unregister_v4l2_device:
 	v4l2_device_unregister(&isc->v4l2_dev);
 
-unprepare_clk:
-	clk_disable_unprepare(isc->ispck);
 unprepare_hclk:
 	clk_disable_unprepare(isc->hclock);
 
@@ -569,7 +559,6 @@ static int microchip_xisc_remove(struct platform_device *pdev)
 
 	v4l2_device_unregister(&isc->v4l2_dev);
 
-	clk_disable_unprepare(isc->ispck);
 	clk_disable_unprepare(isc->hclock);
 
 	isc_clk_cleanup(isc);
@@ -581,7 +570,6 @@ static int __maybe_unused xisc_runtime_suspend(struct device *dev)
 {
 	struct isc_device *isc = dev_get_drvdata(dev);
 
-	clk_disable_unprepare(isc->ispck);
 	clk_disable_unprepare(isc->hclock);
 
 	return 0;
@@ -596,10 +584,6 @@ static int __maybe_unused xisc_runtime_resume(struct device *dev)
 	if (ret)
 		return ret;
 
-	ret = clk_prepare_enable(isc->ispck);
-	if (ret)
-		clk_disable_unprepare(isc->hclock);
-
 	return ret;
 }
 
@@ -607,11 +591,13 @@ static const struct dev_pm_ops microchip_xisc_dev_pm_ops = {
 	SET_RUNTIME_PM_OPS(xisc_runtime_suspend, xisc_runtime_resume, NULL)
 };
 
+#if IS_ENABLED(CONFIG_OF)
 static const struct of_device_id microchip_xisc_of_match[] = {
 	{ .compatible = "microchip,sama7g5-isc" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, microchip_xisc_of_match);
+#endif
 
 static struct platform_driver microchip_xisc_driver = {
 	.probe	= microchip_xisc_probe,

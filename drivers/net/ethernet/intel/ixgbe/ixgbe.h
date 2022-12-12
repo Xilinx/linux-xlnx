@@ -167,21 +167,58 @@ enum ixgbe_tx_flags {
 #define IXGBE_82599_VF_DEVICE_ID        0x10ED
 #define IXGBE_X540_VF_DEVICE_ID         0x1515
 
+#define UPDATE_VF_COUNTER_32bit(reg, last_counter, counter)	\
+	{							\
+		u32 current_counter = IXGBE_READ_REG(hw, reg);	\
+		if (current_counter < last_counter)		\
+			counter += 0x100000000LL;		\
+		last_counter = current_counter;			\
+		counter &= 0xFFFFFFFF00000000LL;		\
+		counter |= current_counter;			\
+	}
+
+#define UPDATE_VF_COUNTER_36bit(reg_lsb, reg_msb, last_counter, counter) \
+	{								 \
+		u64 current_counter_lsb = IXGBE_READ_REG(hw, reg_lsb);	 \
+		u64 current_counter_msb = IXGBE_READ_REG(hw, reg_msb);	 \
+		u64 current_counter = (current_counter_msb << 32) |	 \
+			current_counter_lsb;				 \
+		if (current_counter < last_counter)			 \
+			counter += 0x1000000000LL;			 \
+		last_counter = current_counter;				 \
+		counter &= 0xFFFFFFF000000000LL;			 \
+		counter |= current_counter;				 \
+	}
+
+struct vf_stats {
+	u64 gprc;
+	u64 gorc;
+	u64 gptc;
+	u64 gotc;
+	u64 mprc;
+};
+
 struct vf_data_storage {
 	struct pci_dev *vfdev;
 	unsigned char vf_mac_addresses[ETH_ALEN];
 	u16 vf_mc_hashes[IXGBE_MAX_VF_MC_ENTRIES];
 	u16 num_vf_mc_hashes;
 	bool clear_to_send;
+	struct vf_stats vfstats;
+	struct vf_stats last_vfstats;
+	struct vf_stats saved_rst_vfstats;
 	bool pf_set_mac;
 	u16 pf_vlan; /* When set, guest VLAN config not allowed. */
 	u16 pf_qos;
 	u16 tx_rate;
+	int link_enable;
+	int link_state;
 	u8 spoofchk_enabled;
 	bool rss_query_enabled;
 	u8 trusted;
 	int xcast_mode;
 	unsigned int vf_api;
+	u8 primary_abort_count;
 };
 
 enum ixgbevf_xcast_modes {
@@ -351,6 +388,7 @@ struct ixgbe_ring {
 	};
 	u16 rx_offset;
 	struct xdp_rxq_info xdp_rxq;
+	spinlock_t tx_lock;	/* used in XDP mode */
 	struct xsk_buff_pool *xsk_pool;
 	u16 ring_idx;		/* {rx,tx,xdp}_ring back reference idx */
 	u16 rx_buf_len;
@@ -375,10 +413,12 @@ enum ixgbe_ring_f_enum {
 #define IXGBE_MAX_FCOE_INDICES		8
 #define MAX_RX_QUEUES			(IXGBE_MAX_FDIR_INDICES + 1)
 #define MAX_TX_QUEUES			(IXGBE_MAX_FDIR_INDICES + 1)
-#define MAX_XDP_QUEUES			(IXGBE_MAX_FDIR_INDICES + 1)
+#define IXGBE_MAX_XDP_QS		(IXGBE_MAX_FDIR_INDICES + 1)
 #define IXGBE_MAX_L2A_QUEUES		4
 #define IXGBE_BAD_L2A_QUEUE		3
 #define IXGBE_MAX_MACVLANS		63
+
+DECLARE_STATIC_KEY_FALSE(ixgbe_xdp_locking_key);
 
 struct ixgbe_ring_feature {
 	u16 limit;	/* upper limit on feature indices */
@@ -553,6 +593,8 @@ struct ixgbe_mac_addr {
 #define IXGBE_TRY_LINK_TIMEOUT (4 * HZ)
 #define IXGBE_SFP_POLL_JIFFIES (2 * HZ)	/* SFP poll every 2 seconds */
 
+#define IXGBE_PRIMARY_ABORT_LIMIT	5
+
 /* board specific private data structure */
 struct ixgbe_adapter {
 	unsigned long active_vlans[BITS_TO_LONGS(VLAN_N_VID)];
@@ -611,6 +653,7 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG2_RX_LEGACY			BIT(16)
 #define IXGBE_FLAG2_IPSEC_ENABLED		BIT(17)
 #define IXGBE_FLAG2_VF_IPSEC_ENABLED		BIT(18)
+#define IXGBE_FLAG2_AUTO_DISABLE_VF		BIT(19)
 
 	/* Tx fast path data */
 	int num_tx_queues;
@@ -629,7 +672,7 @@ struct ixgbe_adapter {
 
 	/* XDP */
 	int num_xdp_queues;
-	struct ixgbe_ring *xdp_ring[MAX_XDP_QUEUES];
+	struct ixgbe_ring *xdp_ring[IXGBE_MAX_XDP_QS];
 	unsigned long *af_xdp_zc_qps; /* tracks AF_XDP ZC enabled rings */
 
 	/* TX */
@@ -770,7 +813,24 @@ struct ixgbe_adapter {
 #ifdef CONFIG_IXGBE_IPSEC
 	struct ixgbe_ipsec *ipsec;
 #endif /* CONFIG_IXGBE_IPSEC */
+	spinlock_t vfs_lock;
 };
+
+static inline int ixgbe_determine_xdp_q_idx(int cpu)
+{
+	if (static_key_enabled(&ixgbe_xdp_locking_key))
+		return cpu % IXGBE_MAX_XDP_QS;
+	else
+		return cpu;
+}
+
+static inline
+struct ixgbe_ring *ixgbe_determine_xdp_ring(struct ixgbe_adapter *adapter)
+{
+	int index = ixgbe_determine_xdp_q_idx(smp_processor_id());
+
+	return adapter->xdp_ring[index];
+}
 
 static inline u8 ixgbe_max_rss_indices(struct ixgbe_adapter *adapter)
 {

@@ -23,11 +23,10 @@
  * @multirect_index: index of the rectangle of SSPP
  * @multirect_mode: parallel or time multiplex multirect mode
  * @pending:	whether the current update is still pending
- * @scaler3_cfg: configuration data for scaler3
- * @pixel_ext: configuration data for pixel extensions
- * @cdp_cfg:	CDP configuration
  * @plane_fetch_bw: calculated BW per plane
  * @plane_clk: calculated clk per plane
+ * @needs_dirtyfb: whether attached CRTC needs pixel data explicitly flushed
+ * @rotation: simplified drm rotation hint
  */
 struct dpu_plane_state {
 	struct drm_plane_state base;
@@ -38,13 +37,11 @@ struct dpu_plane_state {
 	uint32_t multirect_mode;
 	bool pending;
 
-	/* scaler configuration */
-	struct dpu_hw_scaler3_cfg scaler3_cfg;
-	struct dpu_hw_pixel_ext pixel_ext;
-
-	struct dpu_hw_pipe_cdp_cfg cdp_cfg;
 	u64 plane_fetch_bw;
 	u64 plane_clk;
+
+	bool needs_dirtyfb;
+	unsigned int rotation;
 };
 
 /**
@@ -68,23 +65,6 @@ struct dpu_multirect_plane_states {
 enum dpu_sspp dpu_plane_pipe(struct drm_plane *plane);
 
 /**
- * is_dpu_plane_virtual - check for virtual plane
- * @plane: Pointer to DRM plane object
- * returns: true - if the plane is virtual
- *          false - if the plane is primary
- */
-bool is_dpu_plane_virtual(struct drm_plane *plane);
-
-/**
- * dpu_plane_get_ctl_flush - get control flush mask
- * @plane:   Pointer to DRM plane object
- * @ctl: Pointer to control hardware
- * @flush_sspp: Pointer to sspp flush control word
- */
-void dpu_plane_get_ctl_flush(struct drm_plane *plane, struct dpu_hw_ctl *ctl,
-		u32 *flush_sspp);
-
-/**
  * dpu_plane_flush - final plane operations before commit flush
  * @plane: Pointer to drm plane structure
  */
@@ -102,14 +82,11 @@ void dpu_plane_set_error(struct drm_plane *plane, bool error);
  * @pipe:  dpu hardware pipe identifier
  * @type:  Plane type - PRIMARY/OVERLAY/CURSOR
  * @possible_crtcs: bitmask of crtc that can be attached to the given pipe
- * @master_plane_id: primary plane id of a multirect pipe. 0 value passed for
- *                   a regular plane initialization. A non-zero primary plane
- *                   id will be passed for a virtual pipe initialization.
  *
  */
 struct drm_plane *dpu_plane_init(struct drm_device *dev,
 		uint32_t pipe, enum drm_plane_type type,
-		unsigned long possible_crtcs, u32 master_plane_id);
+		unsigned long possible_crtcs);
 
 /**
  * dpu_plane_validate_multirecti_v2 - validate the multirect planes
@@ -133,5 +110,11 @@ void dpu_plane_clear_multirect(const struct drm_plane_state *drm_state);
  */
 int dpu_plane_color_fill(struct drm_plane *plane,
 		uint32_t color, uint32_t alpha);
+
+#ifdef CONFIG_DEBUG_FS
+void dpu_plane_danger_signal_ctrl(struct drm_plane *plane, bool enable);
+#else
+static inline void dpu_plane_danger_signal_ctrl(struct drm_plane *plane, bool enable) {}
+#endif
 
 #endif /* _DPU_PLANE_H_ */

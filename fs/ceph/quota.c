@@ -30,6 +30,9 @@ static inline bool ceph_has_realms_with_quotas(struct inode *inode)
 	/* if root is the real CephFS root, we don't have quota realms */
 	if (root && ceph_ino(root) == CEPH_INO_ROOT)
 		return false;
+	/* MDS stray dirs have no quota realms */
+	if (ceph_vino_is_reserved(ceph_inode(inode)->i_vino))
+		return false;
 	/* otherwise, we can't know for sure */
 	return true;
 }
@@ -192,9 +195,9 @@ void ceph_cleanup_quotarealms_inodes(struct ceph_mds_client *mdsc)
 
 /*
  * This function walks through the snaprealm for an inode and returns the
- * ceph_snap_realm for the first snaprealm that has quotas set (either max_files
- * or max_bytes).  If the root is reached, return the root ceph_snap_realm
- * instead.
+ * ceph_snap_realm for the first snaprealm that has quotas set (max_files,
+ * max_bytes, or any, depending on the 'which_quota' argument).  If the root is
+ * reached, return the root ceph_snap_realm instead.
  *
  * Note that the caller is responsible for calling ceph_put_snap_realm() on the
  * returned realm.
@@ -206,7 +209,9 @@ void ceph_cleanup_quotarealms_inodes(struct ceph_mds_client *mdsc)
  * will be restarted.
  */
 static struct ceph_snap_realm *get_quota_realm(struct ceph_mds_client *mdsc,
-					       struct inode *inode, bool retry)
+					       struct inode *inode,
+					       enum quota_get_realm which_quota,
+					       bool retry)
 {
 	struct ceph_inode_info *ci = NULL;
 	struct ceph_snap_realm *realm, *next;
@@ -245,7 +250,7 @@ restart:
 		}
 
 		ci = ceph_inode(in);
-		has_quota = __ceph_has_any_quota(ci);
+		has_quota = __ceph_has_quota(ci, which_quota);
 		iput(in);
 
 		next = realm->parent;
@@ -276,8 +281,8 @@ restart:
 	 * dropped and we can then restart the whole operation.
 	 */
 	down_read(&mdsc->snap_rwsem);
-	old_realm = get_quota_realm(mdsc, old, true);
-	new_realm = get_quota_realm(mdsc, new, false);
+	old_realm = get_quota_realm(mdsc, old, QUOTA_GET_ANY, true);
+	new_realm = get_quota_realm(mdsc, new, QUOTA_GET_ANY, false);
 	if (PTR_ERR(new_realm) == -EAGAIN) {
 		up_read(&mdsc->snap_rwsem);
 		if (old_realm)
@@ -480,7 +485,8 @@ bool ceph_quota_update_statfs(struct ceph_fs_client *fsc, struct kstatfs *buf)
 	bool is_updated = false;
 
 	down_read(&mdsc->snap_rwsem);
-	realm = get_quota_realm(mdsc, d_inode(fsc->sb->s_root), true);
+	realm = get_quota_realm(mdsc, d_inode(fsc->sb->s_root),
+				QUOTA_GET_MAX_BYTES, true);
 	up_read(&mdsc->snap_rwsem);
 	if (!realm)
 		return false;
@@ -494,10 +500,24 @@ bool ceph_quota_update_statfs(struct ceph_fs_client *fsc, struct kstatfs *buf)
 		if (ci->i_max_bytes) {
 			total = ci->i_max_bytes >> CEPH_BLOCK_SHIFT;
 			used = ci->i_rbytes >> CEPH_BLOCK_SHIFT;
+			/* For quota size less than 4MB, use 4KB block size */
+			if (!total) {
+				total = ci->i_max_bytes >> CEPH_4K_BLOCK_SHIFT;
+				used = ci->i_rbytes >> CEPH_4K_BLOCK_SHIFT;
+	                        buf->f_frsize = 1 << CEPH_4K_BLOCK_SHIFT;
+			}
 			/* It is possible for a quota to be exceeded.
 			 * Report 'zero' in that case
 			 */
 			free = total > used ? total - used : 0;
+			/* For quota size less than 4KB, report the
+			 * total=used=4KB,free=0 when quota is full
+			 * and total=free=4KB, used=0 otherwise */
+			if (!total) {
+				total = 1;
+				free = ci->i_max_bytes > ci->i_rbytes ? 1 : 0;
+	                        buf->f_frsize = 1 << CEPH_4K_BLOCK_SHIFT;
+			}
 		}
 		spin_unlock(&ci->i_ceph_lock);
 		if (total) {

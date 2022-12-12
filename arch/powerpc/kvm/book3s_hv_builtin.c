@@ -15,12 +15,11 @@
 #include <linux/cma.h>
 #include <linux/bitops.h>
 
-#include <asm/asm-prototypes.h>
 #include <asm/cputable.h>
 #include <asm/interrupt.h>
 #include <asm/kvm_ppc.h>
 #include <asm/kvm_book3s.h>
-#include <asm/archrandom.h>
+#include <asm/machdep.h>
 #include <asm/xics.h>
 #include <asm/xive.h>
 #include <asm/dbell.h>
@@ -177,13 +176,14 @@ EXPORT_SYMBOL_GPL(kvmppc_hcall_impl_hv_realmode);
 
 int kvmppc_hwrng_present(void)
 {
-	return powernv_hwrng_present();
+	return ppc_md.get_random_seed != NULL;
 }
 EXPORT_SYMBOL_GPL(kvmppc_hwrng_present);
 
 long kvmppc_rm_h_random(struct kvm_vcpu *vcpu)
 {
-	if (powernv_get_random_real_mode(&vcpu->arch.regs.gpr[4]))
+	if (ppc_md.get_random_seed &&
+	    ppc_md.get_random_seed(&vcpu->arch.regs.gpr[4]))
 		return H_SUCCESS;
 
 	return H_HARDWARE;
@@ -490,88 +490,6 @@ static long kvmppc_read_one_intr(bool *again)
 	return kvmppc_check_passthru(xisr, xirr, again);
 }
 
-#ifdef CONFIG_KVM_XICS
-unsigned long kvmppc_rm_h_xirr(struct kvm_vcpu *vcpu)
-{
-	if (!kvmppc_xics_enabled(vcpu))
-		return H_TOO_HARD;
-	if (xics_on_xive())
-		return xive_rm_h_xirr(vcpu);
-	else
-		return xics_rm_h_xirr(vcpu);
-}
-
-unsigned long kvmppc_rm_h_xirr_x(struct kvm_vcpu *vcpu)
-{
-	if (!kvmppc_xics_enabled(vcpu))
-		return H_TOO_HARD;
-	vcpu->arch.regs.gpr[5] = get_tb();
-	if (xics_on_xive())
-		return xive_rm_h_xirr(vcpu);
-	else
-		return xics_rm_h_xirr(vcpu);
-}
-
-unsigned long kvmppc_rm_h_ipoll(struct kvm_vcpu *vcpu, unsigned long server)
-{
-	if (!kvmppc_xics_enabled(vcpu))
-		return H_TOO_HARD;
-	if (xics_on_xive())
-		return xive_rm_h_ipoll(vcpu, server);
-	else
-		return H_TOO_HARD;
-}
-
-int kvmppc_rm_h_ipi(struct kvm_vcpu *vcpu, unsigned long server,
-		    unsigned long mfrr)
-{
-	if (!kvmppc_xics_enabled(vcpu))
-		return H_TOO_HARD;
-	if (xics_on_xive())
-		return xive_rm_h_ipi(vcpu, server, mfrr);
-	else
-		return xics_rm_h_ipi(vcpu, server, mfrr);
-}
-
-int kvmppc_rm_h_cppr(struct kvm_vcpu *vcpu, unsigned long cppr)
-{
-	if (!kvmppc_xics_enabled(vcpu))
-		return H_TOO_HARD;
-	if (xics_on_xive())
-		return xive_rm_h_cppr(vcpu, cppr);
-	else
-		return xics_rm_h_cppr(vcpu, cppr);
-}
-
-int kvmppc_rm_h_eoi(struct kvm_vcpu *vcpu, unsigned long xirr)
-{
-	if (!kvmppc_xics_enabled(vcpu))
-		return H_TOO_HARD;
-	if (xics_on_xive())
-		return xive_rm_h_eoi(vcpu, xirr);
-	else
-		return xics_rm_h_eoi(vcpu, xirr);
-}
-#endif /* CONFIG_KVM_XICS */
-
-void kvmppc_bad_interrupt(struct pt_regs *regs)
-{
-	/*
-	 * 100 could happen at any time, 200 can happen due to invalid real
-	 * address access for example (or any time due to a hardware problem).
-	 */
-	if (TRAP(regs) == 0x100) {
-		get_paca()->in_nmi++;
-		system_reset_exception(regs);
-		get_paca()->in_nmi--;
-	} else if (TRAP(regs) == 0x200) {
-		machine_check_exception(regs);
-	} else {
-		die("Bad interrupt in KVM entry/exit code", regs, SIGABRT);
-	}
-	panic("Bad KVM trap");
-}
-
 static void kvmppc_end_cede(struct kvm_vcpu *vcpu)
 {
 	vcpu->arch.ceded = 0;
@@ -649,6 +567,8 @@ void kvmppc_guest_entry_inject_int(struct kvm_vcpu *vcpu)
 	int ext;
 	unsigned long lpcr;
 
+	WARN_ON_ONCE(cpu_has_feature(CPU_FTR_ARCH_300));
+
 	/* Insert EXTERNAL bit into LPCR at the MER bit position */
 	ext = (vcpu->arch.pending_exceptions >> BOOK3S_IRQPRIO_EXTERNAL) & 1;
 	lpcr = mfspr(SPRN_LPCR);
@@ -682,57 +602,23 @@ static void flush_guest_tlb(struct kvm *kvm)
 	unsigned long rb, set;
 
 	rb = PPC_BIT(52);	/* IS = 2 */
-	if (kvm_is_radix(kvm)) {
-		/* R=1 PRS=1 RIC=2 */
+	for (set = 0; set < kvm->arch.tlb_sets; ++set) {
+		/* R=0 PRS=0 RIC=0 */
 		asm volatile(PPC_TLBIEL(%0, %4, %3, %2, %1)
-			     : : "r" (rb), "i" (1), "i" (1), "i" (2),
+			     : : "r" (rb), "i" (0), "i" (0), "i" (0),
 			       "r" (0) : "memory");
-		for (set = 1; set < kvm->arch.tlb_sets; ++set) {
-			rb += PPC_BIT(51);	/* increment set number */
-			/* R=1 PRS=1 RIC=0 */
-			asm volatile(PPC_TLBIEL(%0, %4, %3, %2, %1)
-				     : : "r" (rb), "i" (1), "i" (1), "i" (0),
-				       "r" (0) : "memory");
-		}
-		asm volatile("ptesync": : :"memory");
-		asm volatile(PPC_RADIX_INVALIDATE_ERAT_GUEST : : :"memory");
-	} else {
-		for (set = 0; set < kvm->arch.tlb_sets; ++set) {
-			/* R=0 PRS=0 RIC=0 */
-			asm volatile(PPC_TLBIEL(%0, %4, %3, %2, %1)
-				     : : "r" (rb), "i" (0), "i" (0), "i" (0),
-				       "r" (0) : "memory");
-			rb += PPC_BIT(51);	/* increment set number */
-		}
-		asm volatile("ptesync": : :"memory");
-		asm volatile(PPC_ISA_3_0_INVALIDATE_ERAT : : :"memory");
+		rb += PPC_BIT(51);	/* increment set number */
 	}
+	asm volatile("ptesync": : :"memory");
 }
 
-void kvmppc_check_need_tlb_flush(struct kvm *kvm, int pcpu,
-				 struct kvm_nested_guest *nested)
+void kvmppc_check_need_tlb_flush(struct kvm *kvm, int pcpu)
 {
-	cpumask_t *need_tlb_flush;
-
-	/*
-	 * On POWER9, individual threads can come in here, but the
-	 * TLB is shared between the 4 threads in a core, hence
-	 * invalidating on one thread invalidates for all.
-	 * Thus we make all 4 threads use the same bit.
-	 */
-	if (cpu_has_feature(CPU_FTR_ARCH_300))
-		pcpu = cpu_first_tlb_thread_sibling(pcpu);
-
-	if (nested)
-		need_tlb_flush = &nested->need_tlb_flush;
-	else
-		need_tlb_flush = &kvm->arch.need_tlb_flush;
-
-	if (cpumask_test_cpu(pcpu, need_tlb_flush)) {
+	if (cpumask_test_cpu(pcpu, &kvm->arch.need_tlb_flush)) {
 		flush_guest_tlb(kvm);
 
 		/* Clear the bit after the TLB flush */
-		cpumask_clear_cpu(pcpu, need_tlb_flush);
+		cpumask_clear_cpu(pcpu, &kvm->arch.need_tlb_flush);
 	}
 }
 EXPORT_SYMBOL_GPL(kvmppc_check_need_tlb_flush);

@@ -299,7 +299,11 @@ static int ad799x_read_raw(struct iio_dev *indio_dev,
 			GENMASK(chan->scan_type.realbits - 1, 0);
 		return IIO_VAL_INT;
 	case IIO_CHAN_INFO_SCALE:
-		ret = regulator_get_voltage(st->vref);
+		if (st->vref)
+			ret = regulator_get_voltage(st->vref);
+		else
+			ret = regulator_get_voltage(st->reg);
+
 		if (ret < 0)
 			return ret;
 		*val = ret / 1000;
@@ -770,6 +774,7 @@ static int ad799x_probe(struct i2c_client *client,
 				   const struct i2c_device_id *id)
 {
 	int ret;
+	int extra_config = 0;
 	struct ad799x_state *st;
 	struct iio_dev *indio_dev;
 	const struct ad799x_chip_info *chip_info =
@@ -797,14 +802,36 @@ static int ad799x_probe(struct i2c_client *client,
 	ret = regulator_enable(st->reg);
 	if (ret)
 		return ret;
-	st->vref = devm_regulator_get(&client->dev, "vref");
+
+	/* check if an external reference is supplied */
+	st->vref = devm_regulator_get_optional(&client->dev, "vref");
+
 	if (IS_ERR(st->vref)) {
-		ret = PTR_ERR(st->vref);
-		goto error_disable_reg;
+		if (PTR_ERR(st->vref) == -ENODEV) {
+			st->vref = NULL;
+			dev_info(&client->dev, "Using VCC reference voltage\n");
+		} else {
+			ret = PTR_ERR(st->vref);
+			goto error_disable_reg;
+		}
 	}
-	ret = regulator_enable(st->vref);
-	if (ret)
-		goto error_disable_reg;
+
+	if (st->vref) {
+		/*
+		 * Use external reference voltage if supported by hardware.
+		 * This is optional if voltage / regulator present, use VCC otherwise.
+		 */
+		if ((st->id == ad7991) || (st->id == ad7995) || (st->id == ad7999)) {
+			dev_info(&client->dev, "Using external reference voltage\n");
+			extra_config |= AD7991_REF_SEL;
+			ret = regulator_enable(st->vref);
+			if (ret)
+				goto error_disable_reg;
+		} else {
+			st->vref = NULL;
+			dev_warn(&client->dev, "Supplied reference not supported\n");
+		}
+	}
 
 	st->client = client;
 
@@ -815,7 +842,7 @@ static int ad799x_probe(struct i2c_client *client,
 	indio_dev->channels = st->chip_config->channel;
 	indio_dev->num_channels = chip_info->num_channels;
 
-	ret = ad799x_update_config(st, st->chip_config->default_config);
+	ret = ad799x_update_config(st, st->chip_config->default_config | extra_config);
 	if (ret)
 		goto error_disable_vref;
 
@@ -845,14 +872,15 @@ static int ad799x_probe(struct i2c_client *client,
 error_cleanup_ring:
 	iio_triggered_buffer_cleanup(indio_dev);
 error_disable_vref:
-	regulator_disable(st->vref);
+	if (st->vref)
+		regulator_disable(st->vref);
 error_disable_reg:
 	regulator_disable(st->reg);
 
 	return ret;
 }
 
-static int ad799x_remove(struct i2c_client *client)
+static void ad799x_remove(struct i2c_client *client)
 {
 	struct iio_dev *indio_dev = i2c_get_clientdata(client);
 	struct ad799x_state *st = iio_priv(indio_dev);
@@ -860,25 +888,25 @@ static int ad799x_remove(struct i2c_client *client)
 	iio_device_unregister(indio_dev);
 
 	iio_triggered_buffer_cleanup(indio_dev);
-	regulator_disable(st->vref);
+	if (st->vref)
+		regulator_disable(st->vref);
 	regulator_disable(st->reg);
 	kfree(st->rx_buf);
-
-	return 0;
 }
 
-static int __maybe_unused ad799x_suspend(struct device *dev)
+static int ad799x_suspend(struct device *dev)
 {
 	struct iio_dev *indio_dev = i2c_get_clientdata(to_i2c_client(dev));
 	struct ad799x_state *st = iio_priv(indio_dev);
 
-	regulator_disable(st->vref);
+	if (st->vref)
+		regulator_disable(st->vref);
 	regulator_disable(st->reg);
 
 	return 0;
 }
 
-static int __maybe_unused ad799x_resume(struct device *dev)
+static int ad799x_resume(struct device *dev)
 {
 	struct iio_dev *indio_dev = i2c_get_clientdata(to_i2c_client(dev));
 	struct ad799x_state *st = iio_priv(indio_dev);
@@ -889,17 +917,21 @@ static int __maybe_unused ad799x_resume(struct device *dev)
 		dev_err(dev, "Unable to enable vcc regulator\n");
 		return ret;
 	}
-	ret = regulator_enable(st->vref);
-	if (ret) {
-		regulator_disable(st->reg);
-		dev_err(dev, "Unable to enable vref regulator\n");
-		return ret;
+
+	if (st->vref) {
+		ret = regulator_enable(st->vref);
+		if (ret) {
+			regulator_disable(st->reg);
+			dev_err(dev, "Unable to enable vref regulator\n");
+			return ret;
+		}
 	}
 
 	/* resync config */
 	ret = ad799x_update_config(st, st->config);
 	if (ret) {
-		regulator_disable(st->vref);
+		if (st->vref)
+			regulator_disable(st->vref);
 		regulator_disable(st->reg);
 		return ret;
 	}
@@ -907,7 +939,7 @@ static int __maybe_unused ad799x_resume(struct device *dev)
 	return 0;
 }
 
-static SIMPLE_DEV_PM_OPS(ad799x_pm_ops, ad799x_suspend, ad799x_resume);
+static DEFINE_SIMPLE_DEV_PM_OPS(ad799x_pm_ops, ad799x_suspend, ad799x_resume);
 
 static const struct i2c_device_id ad799x_id[] = {
 	{ "ad7991", ad7991 },
@@ -926,7 +958,7 @@ MODULE_DEVICE_TABLE(i2c, ad799x_id);
 static struct i2c_driver ad799x_driver = {
 	.driver = {
 		.name = "ad799x",
-		.pm = &ad799x_pm_ops,
+		.pm = pm_sleep_ptr(&ad799x_pm_ops),
 	},
 	.probe = ad799x_probe,
 	.remove = ad799x_remove,

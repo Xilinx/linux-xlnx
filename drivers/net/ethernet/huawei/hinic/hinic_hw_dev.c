@@ -29,7 +29,6 @@
 #include "hinic_hw_io.h"
 #include "hinic_hw_dev.h"
 
-#define IO_STATUS_TIMEOUT               100
 #define OUTBOUND_STATE_TIMEOUT          100
 #define DB_STATE_TIMEOUT                100
 
@@ -40,11 +39,6 @@
 
 enum intr_type {
 	INTR_MSIX_TYPE,
-};
-
-enum io_status {
-	IO_STOPPED = 0,
-	IO_RUNNING = 1,
 };
 
 /**
@@ -162,7 +156,6 @@ static int init_msix(struct hinic_hwdev *hwdev)
 	struct hinic_hwif *hwif = hwdev->hwif;
 	struct pci_dev *pdev = hwif->pdev;
 	int nr_irqs, num_aeqs, num_ceqs;
-	size_t msix_entries_size;
 	int i, err;
 
 	num_aeqs = HINIC_HWIF_NUM_AEQS(hwif);
@@ -171,8 +164,8 @@ static int init_msix(struct hinic_hwdev *hwdev)
 	if (nr_irqs > HINIC_HWIF_NUM_IRQS(hwif))
 		nr_irqs = HINIC_HWIF_NUM_IRQS(hwif);
 
-	msix_entries_size = nr_irqs * sizeof(*hwdev->msix_entries);
-	hwdev->msix_entries = devm_kzalloc(&pdev->dev, msix_entries_size,
+	hwdev->msix_entries = devm_kcalloc(&pdev->dev, nr_irqs,
+					   sizeof(*hwdev->msix_entries),
 					   GFP_KERNEL);
 	if (!hwdev->msix_entries)
 		return -ENOMEM;
@@ -754,17 +747,9 @@ static int init_pfhwdev(struct hinic_pfhwdev *pfhwdev)
 		return err;
 	}
 
-	err = hinic_devlink_register(hwdev->devlink_dev);
-	if (err) {
-		dev_err(&hwif->pdev->dev, "Failed to register devlink\n");
-		hinic_pf_to_mgmt_free(&pfhwdev->pf_to_mgmt);
-		return err;
-	}
-
 	err = hinic_func_to_func_init(hwdev);
 	if (err) {
 		dev_err(&hwif->pdev->dev, "Failed to init mailbox\n");
-		hinic_devlink_unregister(hwdev->devlink_dev);
 		hinic_pf_to_mgmt_free(&pfhwdev->pf_to_mgmt);
 		return err;
 	}
@@ -787,7 +772,7 @@ static int init_pfhwdev(struct hinic_pfhwdev *pfhwdev)
 	}
 
 	hinic_set_pf_action(hwif, HINIC_PF_MGMT_ACTIVE);
-
+	hinic_devlink_register(hwdev->devlink_dev);
 	return 0;
 }
 
@@ -799,6 +784,7 @@ static void free_pfhwdev(struct hinic_pfhwdev *pfhwdev)
 {
 	struct hinic_hwdev *hwdev = &pfhwdev->hwdev;
 
+	hinic_devlink_unregister(hwdev->devlink_dev);
 	hinic_set_pf_action(hwdev->hwif, HINIC_PF_MGMT_INIT);
 
 	if (!HINIC_IS_VF(hwdev->hwif)) {
@@ -815,8 +801,6 @@ static void free_pfhwdev(struct hinic_pfhwdev *pfhwdev)
 	}
 
 	hinic_func_to_func_free(hwdev);
-
-	hinic_devlink_unregister(hwdev->devlink_dev);
 
 	hinic_pf_to_mgmt_free(&pfhwdev->pf_to_mgmt);
 }
@@ -847,8 +831,8 @@ static int hinic_l2nic_reset(struct hinic_hwdev *hwdev)
 	return 0;
 }
 
-int hinic_get_interrupt_cfg(struct hinic_hwdev *hwdev,
-			    struct hinic_msix_config *interrupt_info)
+static int hinic_get_interrupt_cfg(struct hinic_hwdev *hwdev,
+				   struct hinic_msix_config *interrupt_info)
 {
 	u16 out_size = sizeof(*interrupt_info);
 	struct hinic_pfhwdev *pfhwdev;
@@ -893,7 +877,7 @@ int hinic_set_interrupt_cfg(struct hinic_hwdev *hwdev,
 	if (err)
 		return -EINVAL;
 
-	interrupt_info->lli_credit_cnt = temp_info.lli_timer_cnt;
+	interrupt_info->lli_credit_cnt = temp_info.lli_credit_cnt;
 	interrupt_info->lli_timer_cnt = temp_info.lli_timer_cnt;
 
 	err = hinic_msg_to_mgmt(&pfhwdev->pf_to_mgmt, HINIC_MOD_COMM,
@@ -1049,13 +1033,6 @@ void hinic_free_hwdev(struct hinic_hwdev *hwdev)
 	disable_msix(hwdev);
 
 	hinic_free_hwif(hwdev->hwif);
-}
-
-int hinic_hwdev_max_num_qps(struct hinic_hwdev *hwdev)
-{
-	struct hinic_cap *nic_cap = &hwdev->nic_cap;
-
-	return nic_cap->max_qps;
 }
 
 /**

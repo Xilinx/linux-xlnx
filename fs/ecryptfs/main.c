@@ -105,7 +105,7 @@ static int ecryptfs_init_lower_file(struct dentry *dentry,
 				    struct file **lower_file)
 {
 	const struct cred *cred = current_cred();
-	struct path *path = ecryptfs_dentry_to_lower_path(dentry);
+	const struct path *path = ecryptfs_dentry_to_lower_path(dentry);
 	int rc;
 
 	rc = ecryptfs_privileged_open(lower_file, path->dentry, path->mnt,
@@ -537,7 +537,7 @@ static struct dentry *ecryptfs_mount(struct file_system_type *fs_type, int flags
 		goto out_free;
 	}
 
-	if (mnt_user_ns(path.mnt) != &init_user_ns) {
+	if (is_idmapped_mnt(path.mnt)) {
 		rc = -EINVAL;
 		printk(KERN_ERR "Mounting on idmapped mounts currently disallowed\n");
 		goto out_free;

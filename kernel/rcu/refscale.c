@@ -44,7 +44,10 @@
 	pr_alert("%s" SCALE_FLAG s, scale_type, ## x)
 
 #define VERBOSE_SCALEOUT(s, x...) \
-	do { if (verbose) pr_alert("%s" SCALE_FLAG s, scale_type, ## x); } while (0)
+	do { \
+		if (verbose) \
+			pr_alert("%s" SCALE_FLAG s "\n", scale_type, ## x); \
+	} while (0)
 
 static atomic_t verbose_batch_ctr;
 
@@ -54,12 +57,11 @@ do {											\
 	    (verbose_batched <= 0 ||							\
 	     !(atomic_inc_return(&verbose_batch_ctr) % verbose_batched))) {		\
 		schedule_timeout_uninterruptible(1);					\
-		pr_alert("%s" SCALE_FLAG s, scale_type, ## x);				\
+		pr_alert("%s" SCALE_FLAG s "\n", scale_type, ## x);			\
 	}										\
 } while (0)
 
-#define VERBOSE_SCALEOUT_ERRSTRING(s, x...) \
-	do { if (verbose) pr_alert("%s" SCALE_FLAG "!!! " s, scale_type, ## x); } while (0)
+#define SCALEOUT_ERRSTRING(s, x...) pr_alert("%s" SCALE_FLAG "!!! " s "\n", scale_type, ## x)
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Joel Fernandes (Google) <joel@joelfernandes.org>");
@@ -205,6 +207,8 @@ static struct ref_scale_ops srcu_ops = {
 	.name		= "srcu"
 };
 
+#ifdef CONFIG_TASKS_RCU
+
 // Definitions for RCU Tasks ref scale testing: Empty read markers.
 // These definitions also work for RCU Rude readers.
 static void rcu_tasks_ref_scale_read_section(const int nloops)
@@ -229,6 +233,16 @@ static struct ref_scale_ops rcu_tasks_ops = {
 	.delaysection	= rcu_tasks_ref_scale_delay_section,
 	.name		= "rcu-tasks"
 };
+
+#define RCU_TASKS_OPS &rcu_tasks_ops,
+
+#else // #ifdef CONFIG_TASKS_RCU
+
+#define RCU_TASKS_OPS
+
+#endif // #else // #ifdef CONFIG_TASKS_RCU
+
+#ifdef CONFIG_TASKS_TRACE_RCU
 
 // Definitions for RCU Tasks Trace ref scale testing.
 static void rcu_trace_ref_scale_read_section(const int nloops)
@@ -258,6 +272,14 @@ static struct ref_scale_ops rcu_trace_ops = {
 	.delaysection	= rcu_trace_ref_scale_delay_section,
 	.name		= "rcu-trace"
 };
+
+#define RCU_TRACE_OPS &rcu_trace_ops,
+
+#else // #ifdef CONFIG_TASKS_TRACE_RCU
+
+#define RCU_TRACE_OPS
+
+#endif // #else // #ifdef CONFIG_TASKS_TRACE_RCU
 
 // Definitions for reference count
 static atomic_t refcnt;
@@ -363,7 +385,7 @@ static struct ref_scale_ops rwsem_ops = {
 };
 
 // Definitions for global spinlock
-static DEFINE_SPINLOCK(test_lock);
+static DEFINE_RAW_SPINLOCK(test_lock);
 
 static void ref_lock_section(const int nloops)
 {
@@ -371,8 +393,8 @@ static void ref_lock_section(const int nloops)
 
 	preempt_disable();
 	for (i = nloops; i >= 0; i--) {
-		spin_lock(&test_lock);
-		spin_unlock(&test_lock);
+		raw_spin_lock(&test_lock);
+		raw_spin_unlock(&test_lock);
 	}
 	preempt_enable();
 }
@@ -383,9 +405,9 @@ static void ref_lock_delay_section(const int nloops, const int udl, const int nd
 
 	preempt_disable();
 	for (i = nloops; i >= 0; i--) {
-		spin_lock(&test_lock);
+		raw_spin_lock(&test_lock);
 		un_delay(udl, ndl);
-		spin_unlock(&test_lock);
+		raw_spin_unlock(&test_lock);
 	}
 	preempt_enable();
 }
@@ -405,8 +427,8 @@ static void ref_lock_irq_section(const int nloops)
 
 	preempt_disable();
 	for (i = nloops; i >= 0; i--) {
-		spin_lock_irqsave(&test_lock, flags);
-		spin_unlock_irqrestore(&test_lock, flags);
+		raw_spin_lock_irqsave(&test_lock, flags);
+		raw_spin_unlock_irqrestore(&test_lock, flags);
 	}
 	preempt_enable();
 }
@@ -418,9 +440,9 @@ static void ref_lock_irq_delay_section(const int nloops, const int udl, const in
 
 	preempt_disable();
 	for (i = nloops; i >= 0; i--) {
-		spin_lock_irqsave(&test_lock, flags);
+		raw_spin_lock_irqsave(&test_lock, flags);
 		un_delay(udl, ndl);
-		spin_unlock_irqrestore(&test_lock, flags);
+		raw_spin_unlock_irqrestore(&test_lock, flags);
 	}
 	preempt_enable();
 }
@@ -604,7 +626,7 @@ static u64 process_durations(int n)
 	char *buf;
 	u64 sum = 0;
 
-	buf = kmalloc(128 + nreaders * 32, GFP_KERNEL);
+	buf = kmalloc(800 + 64, GFP_KERNEL);
 	if (!buf)
 		return 0;
 	buf[0] = 0;
@@ -617,13 +639,15 @@ static u64 process_durations(int n)
 
 		if (i % 5 == 0)
 			strcat(buf, "\n");
+		if (strlen(buf) >= 800) {
+			pr_alert("%s", buf);
+			buf[0] = 0;
+		}
 		strcat(buf, buf1);
 
 		sum += rt->last_duration_ns;
 	}
-	strcat(buf, "\n");
-
-	SCALEOUT("%s\n", buf);
+	pr_alert("%s\n", buf);
 
 	kfree(buf);
 	return sum;
@@ -637,7 +661,6 @@ static u64 process_durations(int n)
 // point all the timestamps are printed.
 static int main_func(void *arg)
 {
-	bool errexit = false;
 	int exp, r;
 	char buf1[64];
 	char *buf;
@@ -648,10 +671,10 @@ static int main_func(void *arg)
 
 	VERBOSE_SCALEOUT("main_func task started");
 	result_avg = kzalloc(nruns * sizeof(*result_avg), GFP_KERNEL);
-	buf = kzalloc(64 + nruns * 32, GFP_KERNEL);
+	buf = kzalloc(800 + 64, GFP_KERNEL);
 	if (!result_avg || !buf) {
-		VERBOSE_SCALEOUT_ERRSTRING("out of memory");
-		errexit = true;
+		SCALEOUT_ERRSTRING("out of memory");
+		goto oom_exit;
 	}
 	if (holdoff)
 		schedule_timeout_interruptible(holdoff * HZ);
@@ -663,8 +686,6 @@ static int main_func(void *arg)
 
 	// Start exp readers up per experiment
 	for (exp = 0; exp < nruns && !torture_must_stop(); exp++) {
-		if (errexit)
-			break;
 		if (torture_must_stop())
 			goto end;
 
@@ -698,26 +719,23 @@ static int main_func(void *arg)
 	// Print the average of all experiments
 	SCALEOUT("END OF TEST. Calculating average duration per loop (nanoseconds)...\n");
 
-	if (!errexit) {
-		buf[0] = 0;
-		strcat(buf, "\n");
-		strcat(buf, "Runs\tTime(ns)\n");
-	}
-
+	pr_alert("Runs\tTime(ns)\n");
 	for (exp = 0; exp < nruns; exp++) {
 		u64 avg;
 		u32 rem;
 
-		if (errexit)
-			break;
 		avg = div_u64_rem(result_avg[exp], 1000, &rem);
 		sprintf(buf1, "%d\t%llu.%03u\n", exp + 1, avg, rem);
 		strcat(buf, buf1);
+		if (strlen(buf) >= 800) {
+			pr_alert("%s", buf);
+			buf[0] = 0;
+		}
 	}
 
-	if (!errexit)
-		SCALEOUT("%s", buf);
+	pr_alert("%s", buf);
 
+oom_exit:
 	// This will shutdown everything including us.
 	if (shutdown) {
 		shutdown_start = 1;
@@ -792,7 +810,7 @@ ref_scale_init(void)
 	long i;
 	int firsterr = 0;
 	static struct ref_scale_ops *scale_ops[] = {
-		&rcu_ops, &srcu_ops, &rcu_trace_ops, &rcu_tasks_ops, &refcnt_ops, &rwlock_ops,
+		&rcu_ops, &srcu_ops, RCU_TRACE_OPS RCU_TASKS_OPS &refcnt_ops, &rwlock_ops,
 		&rwsem_ops, &lock_ops, &lock_irq_ops, &acqrel_ops, &clock_ops,
 	};
 
@@ -824,7 +842,7 @@ ref_scale_init(void)
 		init_waitqueue_head(&shutdown_wq);
 		firsterr = torture_create_kthread(ref_scale_shutdown, NULL,
 						  shutdown_task);
-		if (firsterr)
+		if (torture_init_error(firsterr))
 			goto unwind;
 		schedule_timeout_uninterruptible(1);
 	}
@@ -841,17 +859,17 @@ ref_scale_init(void)
 	reader_tasks = kcalloc(nreaders, sizeof(reader_tasks[0]),
 			       GFP_KERNEL);
 	if (!reader_tasks) {
-		VERBOSE_SCALEOUT_ERRSTRING("out of memory");
+		SCALEOUT_ERRSTRING("out of memory");
 		firsterr = -ENOMEM;
 		goto unwind;
 	}
 
-	VERBOSE_SCALEOUT("Starting %d reader threads\n", nreaders);
+	VERBOSE_SCALEOUT("Starting %d reader threads", nreaders);
 
 	for (i = 0; i < nreaders; i++) {
 		firsterr = torture_create_kthread(ref_scale_reader, (void *)i,
 						  reader_tasks[i].task);
-		if (firsterr)
+		if (torture_init_error(firsterr))
 			goto unwind;
 
 		init_waitqueue_head(&(reader_tasks[i].wq));
@@ -860,7 +878,7 @@ ref_scale_init(void)
 	// Main Task
 	init_waitqueue_head(&main_wq);
 	firsterr = torture_create_kthread(main_func, NULL, main_task);
-	if (firsterr)
+	if (torture_init_error(firsterr))
 		goto unwind;
 
 	torture_init_end();

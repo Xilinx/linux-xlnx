@@ -29,9 +29,10 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 
+#include <drm/display/drm_dp_helper.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
-#include <drm/drm_dp_helper.h>
+#include <drm/drm_edid.h>
 #include <drm/drm_simple_kms_helper.h>
 
 #include "gma_display.h"
@@ -82,7 +83,6 @@ i2c_algo_dp_aux_address(struct i2c_adapter *adapter, u16 address, bool reading)
 {
 	struct i2c_algo_dp_aux_data *algo_data = adapter->algo_data;
 	int mode = MODE_I2C_START;
-	int ret;
 
 	if (reading)
 		mode |= MODE_I2C_READ;
@@ -90,8 +90,7 @@ i2c_algo_dp_aux_address(struct i2c_adapter *adapter, u16 address, bool reading)
 		mode |= MODE_I2C_WRITE;
 	algo_data->address = address;
 	algo_data->running = true;
-	ret = i2c_algo_dp_aux_transaction(adapter, mode, 0, NULL);
-	return ret;
+	return i2c_algo_dp_aux_transaction(adapter, mode, 0, NULL);
 }
 
 /*
@@ -116,19 +115,17 @@ i2c_algo_dp_aux_stop(struct i2c_adapter *adapter, bool reading)
 
 /*
  * Write a single byte to the current I2C address, the
- * the I2C link must be running or this returns -EIO
+ * I2C link must be running or this returns -EIO
  */
 static int
 i2c_algo_dp_aux_put_byte(struct i2c_adapter *adapter, u8 byte)
 {
 	struct i2c_algo_dp_aux_data *algo_data = adapter->algo_data;
-	int ret;
 
 	if (!algo_data->running)
 		return -EIO;
 
-	ret = i2c_algo_dp_aux_transaction(adapter, MODE_I2C_WRITE, byte, NULL);
-	return ret;
+	return i2c_algo_dp_aux_transaction(adapter, MODE_I2C_WRITE, byte, NULL);
 }
 
 /*
@@ -139,13 +136,11 @@ static int
 i2c_algo_dp_aux_get_byte(struct i2c_adapter *adapter, u8 *byte_ret)
 {
 	struct i2c_algo_dp_aux_data *algo_data = adapter->algo_data;
-	int ret;
 
 	if (!algo_data->running)
 		return -EIO;
 
-	ret = i2c_algo_dp_aux_transaction(adapter, MODE_I2C_READ, 0, byte_ret);
-	return ret;
+	return i2c_algo_dp_aux_transaction(adapter, MODE_I2C_READ, 0, byte_ret);
 }
 
 static int
@@ -515,7 +510,7 @@ cdv_intel_dp_mode_valid(struct drm_connector *connector,
 	struct cdv_intel_dp *intel_dp = encoder->dev_priv;
 	int max_link_clock = cdv_intel_dp_link_clock(cdv_intel_dp_max_link_bw(encoder));
 	int max_lanes = cdv_intel_dp_max_lane_count(encoder);
-	struct drm_psb_private *dev_priv = connector->dev->dev_private;
+	struct drm_psb_private *dev_priv = to_drm_psb_private(connector->dev);
 
 	if (is_edp(encoder) && intel_dp->panel_fixed_mode) {
 		if (mode->hdisplay > intel_dp->panel_fixed_mode->hdisplay)
@@ -896,7 +891,7 @@ static bool
 cdv_intel_dp_mode_fixup(struct drm_encoder *encoder, const struct drm_display_mode *mode,
 		    struct drm_display_mode *adjusted_mode)
 {
-	struct drm_psb_private *dev_priv = encoder->dev->dev_private;
+	struct drm_psb_private *dev_priv = to_drm_psb_private(encoder->dev);
 	struct gma_encoder *intel_encoder = to_gma_encoder(encoder);
 	struct cdv_intel_dp *intel_dp = intel_encoder->dev_priv;
 	int lane_count, clock;
@@ -988,7 +983,7 @@ cdv_intel_dp_set_m_n(struct drm_crtc *crtc, struct drm_display_mode *mode,
 		 struct drm_display_mode *adjusted_mode)
 {
 	struct drm_device *dev = crtc->dev;
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct drm_psb_private *dev_priv = to_drm_psb_private(dev);
 	struct drm_mode_config *mode_config = &dev->mode_config;
 	struct drm_encoder *encoder;
 	struct gma_crtc *gma_crtc = to_gma_crtc(crtc);
@@ -1744,7 +1739,7 @@ static int cdv_intel_dp_get_modes(struct drm_connector *connector)
 
 	if (is_edp(intel_encoder)) {
 		struct drm_device *dev = connector->dev;
-		struct drm_psb_private *dev_priv = dev->dev_private;
+		struct drm_psb_private *dev_priv = to_drm_psb_private(dev);
 
 		cdv_intel_edp_panel_vdd_off(intel_encoder);
 		if (ret) {
@@ -1809,7 +1804,7 @@ cdv_intel_dp_set_property(struct drm_connector *connector,
 		      struct drm_property *property,
 		      uint64_t val)
 {
-	struct drm_psb_private *dev_priv = connector->dev->dev_private;
+	struct drm_psb_private *dev_priv = to_drm_psb_private(connector->dev);
 	struct gma_encoder *encoder = gma_attached_encoder(connector);
 	struct cdv_intel_dp *intel_dp = encoder->dev_priv;
 	int ret;
@@ -1863,6 +1858,7 @@ done:
 static void
 cdv_intel_dp_destroy(struct drm_connector *connector)
 {
+	struct gma_connector *gma_connector = to_gma_connector(connector);
 	struct gma_encoder *gma_encoder = gma_attached_encoder(connector);
 	struct cdv_intel_dp *intel_dp = gma_encoder->dev_priv;
 
@@ -1872,9 +1868,8 @@ cdv_intel_dp_destroy(struct drm_connector *connector)
 		intel_dp->panel_fixed_mode = NULL;
 	}
 	i2c_del_adapter(&intel_dp->adapter);
-	drm_connector_unregister(connector);
 	drm_connector_cleanup(connector);
-	kfree(connector);
+	kfree(gma_connector);
 }
 
 static const struct drm_encoder_helper_funcs cdv_intel_dp_helper_funcs = {
@@ -1908,7 +1903,7 @@ static void cdv_intel_dp_add_properties(struct drm_connector *connector)
 /* check the VBT to see whether the eDP is on DP-D port */
 static bool cdv_intel_dpc_is_edp(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct drm_psb_private *dev_priv = to_drm_psb_private(dev);
 	struct child_device_config *p_child;
 	int i;
 
@@ -1995,8 +1990,6 @@ cdv_intel_dp_init(struct drm_device *dev, struct psb_intel_mode_device *mode_dev
 	connector->polled = DRM_CONNECTOR_POLL_HPD;
 	connector->interlace_allowed = false;
 	connector->doublescan_allowed = false;
-
-	drm_connector_register(connector);
 
 	/* Set up the DDC bus. */
 	switch (output_reg) {

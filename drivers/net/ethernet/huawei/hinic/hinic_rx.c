@@ -50,7 +50,7 @@
  * hinic_rxq_clean_stats - Clean the statistics of specific queue
  * @rxq: Logical Rx Queue
  **/
-void hinic_rxq_clean_stats(struct hinic_rxq *rxq)
+static void hinic_rxq_clean_stats(struct hinic_rxq *rxq)
 {
 	struct hinic_rxq_stats *rxq_stats = &rxq->rxq_stats;
 
@@ -73,17 +73,15 @@ void hinic_rxq_get_stats(struct hinic_rxq *rxq, struct hinic_rxq_stats *stats)
 	struct hinic_rxq_stats *rxq_stats = &rxq->rxq_stats;
 	unsigned int start;
 
-	u64_stats_update_begin(&stats->syncp);
 	do {
-		start = u64_stats_fetch_begin(&rxq_stats->syncp);
+		start = u64_stats_fetch_begin_irq(&rxq_stats->syncp);
 		stats->pkts = rxq_stats->pkts;
 		stats->bytes = rxq_stats->bytes;
 		stats->errors = rxq_stats->csum_errors +
 				rxq_stats->other_errors;
 		stats->csum_errors = rxq_stats->csum_errors;
 		stats->other_errors = rxq_stats->other_errors;
-	} while (u64_stats_fetch_retry(&rxq_stats->syncp, start));
-	u64_stats_update_end(&stats->syncp);
+	} while (u64_stats_fetch_retry_irq(&rxq_stats->syncp, start));
 }
 
 /**
@@ -481,7 +479,8 @@ static void rx_add_napi(struct hinic_rxq *rxq)
 {
 	struct hinic_dev *nic_dev = netdev_priv(rxq->netdev);
 
-	netif_napi_add(rxq->netdev, &rxq->napi, rx_poll, nic_dev->rx_weight);
+	netif_napi_add_weight(rxq->netdev, &rxq->napi, rx_poll,
+			      nic_dev->rx_weight);
 	napi_enable(&rxq->napi);
 }
 
@@ -548,7 +547,7 @@ static int rx_request_irq(struct hinic_rxq *rxq)
 		goto err_req_irq;
 
 	cpumask_set_cpu(qp->q_id % num_online_cpus(), &rq->affinity_mask);
-	err = irq_set_affinity_hint(rq->irq, &rq->affinity_mask);
+	err = irq_set_affinity_and_hint(rq->irq, &rq->affinity_mask);
 	if (err)
 		goto err_irq_affinity;
 
@@ -565,7 +564,7 @@ static void rx_free_irq(struct hinic_rxq *rxq)
 {
 	struct hinic_rq *rq = rxq->rq;
 
-	irq_set_affinity_hint(rq->irq, NULL);
+	irq_update_affinity_hint(rq->irq, NULL);
 	free_irq(rq->irq, rxq);
 	rx_del_napi(rxq);
 }

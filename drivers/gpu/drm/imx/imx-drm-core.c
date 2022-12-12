@@ -16,13 +16,11 @@
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_drv.h>
-#include <drm/drm_fb_cma_helper.h>
 #include <drm/drm_fb_helper.h>
-#include <drm/drm_gem_cma_helper.h>
+#include <drm/drm_gem_dma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_managed.h>
 #include <drm/drm_of.h>
-#include <drm/drm_plane_helper.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_vblank.h>
 
@@ -34,7 +32,7 @@
 static int legacyfb_depth = 16;
 module_param(legacyfb_depth, int, 0444);
 
-DEFINE_DRM_GEM_CMA_FOPS(imx_drm_driver_fops);
+DEFINE_DRM_GEM_DMA_FOPS(imx_drm_driver_fops);
 
 void imx_drm_connector_destroy(struct drm_connector *connector)
 {
@@ -81,7 +79,6 @@ static void imx_drm_atomic_commit_tail(struct drm_atomic_state *state)
 	struct drm_plane_state *old_plane_state, *new_plane_state;
 	bool plane_disabling = false;
 	int i;
-	bool fence_cookie = dma_fence_begin_signalling();
 
 	drm_atomic_helper_commit_modeset_disables(dev, state);
 
@@ -112,7 +109,6 @@ static void imx_drm_atomic_commit_tail(struct drm_atomic_state *state)
 	}
 
 	drm_atomic_helper_commit_hw_done(state);
-	dma_fence_end_signalling(fence_cookie);
 }
 
 static const struct drm_mode_config_helper_funcs imx_drm_mode_config_helpers = {
@@ -156,7 +152,7 @@ static int imx_drm_dumb_create(struct drm_file *file_priv,
 
 	args->width = ALIGN(width, 8);
 
-	ret = drm_gem_cma_dumb_create(file_priv, drm, args);
+	ret = drm_gem_dma_dumb_create(file_priv, drm, args);
 	if (ret)
 		return ret;
 
@@ -166,7 +162,7 @@ static int imx_drm_dumb_create(struct drm_file *file_priv,
 
 static const struct drm_driver imx_drm_driver = {
 	.driver_features	= DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC,
-	DRM_GEM_CMA_DRIVER_OPS_WITH_DUMB_CREATE(imx_drm_dumb_create),
+	DRM_GEM_DMA_DRIVER_OPS_WITH_DUMB_CREATE(imx_drm_dumb_create),
 	.ioctls			= imx_drm_ioctls,
 	.num_ioctls		= ARRAY_SIZE(imx_drm_ioctls),
 	.fops			= &imx_drm_driver_fops,
@@ -343,6 +339,9 @@ static struct platform_driver * const drivers[] = {
 
 static int __init imx_drm_init(void)
 {
+	if (drm_firmware_drivers_only())
+		return -ENODEV;
+
 	return platform_register_drivers(drivers, ARRAY_SIZE(drivers));
 }
 module_init(imx_drm_init);

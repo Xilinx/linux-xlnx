@@ -40,7 +40,7 @@ static int frontend_bus_id(char bus_id[XEN_BUS_ID_SIZE], const char *nodename)
 		return -EINVAL;
 	}
 
-	strlcpy(bus_id, nodename + 1, XEN_BUS_ID_SIZE);
+	strscpy(bus_id, nodename + 1, XEN_BUS_ID_SIZE);
 	if (!strchr(bus_id, '/')) {
 		pr_warn("bus_id %s no slash\n", bus_id);
 		return -EINVAL;
@@ -211,19 +211,11 @@ static int is_device_connecting(struct device *dev, void *data, bool ignore_none
 	if (drv && (dev->driver != drv))
 		return 0;
 
-	if (ignore_nonessential) {
-		/* With older QEMU, for PVonHVM guests the guest config files
-		 * could contain: vfb = [ 'vnc=1, vnclisten=0.0.0.0']
-		 * which is nonsensical as there is no PV FB (there can be
-		 * a PVKB) running as HVM guest. */
-
-		if ((strncmp(xendev->nodename, "device/vkbd", 11) == 0))
-			return 0;
-
-		if ((strncmp(xendev->nodename, "device/vfb", 10) == 0))
-			return 0;
-	}
 	xendrv = to_xenbus_driver(dev->driver);
+
+	if (ignore_nonessential && xendrv->not_essential)
+		return 0;
+
 	return (xendev->state < XenbusStateConnected ||
 		(xendev->state == XenbusStateConnected &&
 		 xendrv->is_ready && !xendrv->is_ready(xendev)));

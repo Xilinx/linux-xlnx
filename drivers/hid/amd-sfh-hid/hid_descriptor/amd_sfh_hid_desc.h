@@ -1,9 +1,10 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
  * HID report descriptors, structures and routines
- * Copyright 2020 Advanced Micro Devices, Inc.
+ * Copyright 2020-2021 Advanced Micro Devices, Inc.
  * Authors: Nehal Bakulchandra Shah <Nehal-bakulchandra.shah@amd.com>
  *	    Sandeep Singh <Sandeep.singh@amd.com>
+ *	    Basavaraj Natikar <Basavaraj.Natikar@amd.com>
  */
 
 #ifndef AMD_SFH_HID_DESCRIPTOR_H
@@ -110,7 +111,4 @@ struct hpd_input_report {
 	u8 human_presence;
 } __packed;
 
-int get_report_descriptor(int sensor_idx, u8 rep_desc[]);
-u32 get_descr_sz(int sensor_idx, int descriptor_name);
-u8 get_feature_report(int sensor_idx, int report_id, u8 *feature_report);
 #endif

@@ -131,7 +131,7 @@ static void gpio_keys_quiesce_key(void *data)
 
 	if (!bdata->gpiod)
 		hrtimer_cancel(&bdata->release_timer);
-	if (bdata->debounce_use_hrtimer)
+	else if (bdata->debounce_use_hrtimer)
 		hrtimer_cancel(&bdata->debounce_timer);
 	else
 		cancel_delayed_work_sync(&bdata->work);
@@ -247,7 +247,7 @@ static ssize_t gpio_keys_attr_store_helper(struct gpio_keys_drvdata *ddata,
 	ssize_t error;
 	int i;
 
-	bits = bitmap_zalloc(n_events, GFP_KERNEL);
+	bits = bitmap_alloc(n_events, GFP_KERNEL);
 	if (!bits)
 		return -ENOMEM;
 

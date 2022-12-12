@@ -6,6 +6,7 @@
  * Copyright IBM Corp. 2018
  */
 
+#include <linux/if_vlan.h>
 #include <linux/spinlock.h>
 #include <linux/mutex.h>
 #include <linux/slab.h>
@@ -23,6 +24,7 @@ struct smcd_dev_list smcd_dev_list = {
 };
 
 static bool smc_ism_v2_capable;
+static u8 smc_ism_v2_system_eid[SMC_MAX_EID_LEN];
 
 /* Test if an ISM communication is possible - same CPC */
 int smc_ism_cantalk(u64 peer_gid, unsigned short vlan_id, struct smcd_dev *smcd)
@@ -31,20 +33,12 @@ int smc_ism_cantalk(u64 peer_gid, unsigned short vlan_id, struct smcd_dev *smcd)
 					   vlan_id);
 }
 
-int smc_ism_write(struct smcd_dev *smcd, const struct smc_ism_position *pos,
-		  void *data, size_t len)
+void smc_ism_get_system_eid(u8 **eid)
 {
-	int rc;
-
-	rc = smcd->ops->move_data(smcd, pos->token, pos->index, pos->signal,
-				  pos->offset, data, len);
-
-	return rc < 0 ? rc : 0;
-}
-
-void smc_ism_get_system_eid(struct smcd_dev *smcd, u8 **eid)
-{
-	smcd->ops->get_system_eid(smcd, eid);
+	if (!smc_ism_v2_capable)
+		*eid = NULL;
+	else
+		*eid = smc_ism_v2_system_eid;
 }
 
 u16 smc_ism_get_chid(struct smcd_dev *smcd)
@@ -435,9 +429,12 @@ int smcd_register_dev(struct smcd_dev *smcd)
 	if (list_empty(&smcd_dev_list.list)) {
 		u8 *system_eid = NULL;
 
-		smc_ism_get_system_eid(smcd, &system_eid);
-		if (system_eid[24] != '0' || system_eid[28] != '0')
+		system_eid = smcd->ops->get_system_eid();
+		if (system_eid[24] != '0' || system_eid[28] != '0') {
 			smc_ism_v2_capable = true;
+			memcpy(smc_ism_v2_system_eid, system_eid,
+			       SMC_MAX_EID_LEN);
+		}
 	}
 	/* sort list: devices without pnetid before devices with pnetid */
 	if (smcd->pnetid[0])
@@ -511,13 +508,13 @@ void smcd_handle_event(struct smcd_dev *smcd, struct smcd_event *event)
 EXPORT_SYMBOL_GPL(smcd_handle_event);
 
 /* SMCD Device interrupt handler. Called from ISM device interrupt handler.
- * Parameters are smcd device pointer and DMB number. Find the connection and
- * schedule the tasklet for this connection.
+ * Parameters are smcd device pointer, DMB number, and the DMBE bitmask.
+ * Find the connection and schedule the tasklet for this connection.
  *
  * Context:
  * - Function called in IRQ context from ISM device driver IRQ handler.
  */
-void smcd_handle_irq(struct smcd_dev *smcd, unsigned int dmbno)
+void smcd_handle_irq(struct smcd_dev *smcd, unsigned int dmbno, u16 dmbemask)
 {
 	struct smc_connection *conn = NULL;
 	unsigned long flags;
@@ -533,4 +530,5 @@ EXPORT_SYMBOL_GPL(smcd_handle_irq);
 void __init smc_ism_init(void)
 {
 	smc_ism_v2_capable = false;
+	memset(smc_ism_v2_system_eid, 0, SMC_MAX_EID_LEN);
 }

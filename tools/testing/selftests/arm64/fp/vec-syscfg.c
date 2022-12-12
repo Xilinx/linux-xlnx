@@ -21,8 +21,6 @@
 #include "../../kselftest.h"
 #include "rdvl.h"
 
-#define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
-
 #define ARCH_MIN_VL SVE_VL_MIN
 
 struct vec_data {
@@ -52,6 +50,16 @@ static struct vec_data vec_data[] = {
 		.prctl_get = PR_SVE_GET_VL,
 		.prctl_set = PR_SVE_SET_VL,
 		.default_vl_file = "/proc/sys/abi/sve_default_vector_length",
+	},
+	{
+		.name = "SME",
+		.hwcap_type = AT_HWCAP2,
+		.hwcap = HWCAP2_SME,
+		.rdvl = rdvl_sme,
+		.rdvl_binary = "./rdvl-sme",
+		.prctl_get = PR_SME_GET_VL,
+		.prctl_set = PR_SME_SET_VL,
+		.default_vl_file = "/proc/sys/abi/sme_default_vector_length",
 	},
 };
 
@@ -109,7 +117,7 @@ static int get_child_rdvl(struct vec_data *data)
 
 		/* exec() a new binary which puts the VL on stdout */
 		ret = execl(data->rdvl_binary, data->rdvl_binary, NULL);
-		fprintf(stderr, "execl(%s) failed: %d\n",
+		fprintf(stderr, "execl(%s) failed: %d (%s)\n",
 			data->rdvl_binary, errno, strerror(errno));
 
 		exit(EXIT_FAILURE);
@@ -180,7 +188,6 @@ static int file_read_integer(const char *name, int *val)
 static int file_write_integer(const char *name, int val)
 {
 	FILE *f;
-	int ret;
 
 	f = fopen(name, "w");
 	if (!f) {
@@ -192,11 +199,6 @@ static int file_write_integer(const char *name, int val)
 
 	fprintf(f, "%d", val);
 	fclose(f);
-	if (ret < 0) {
-		ksft_test_result_fail("Error writing %d to %s\n",
-				      val, name);
-		return -1;
-	}
 
 	return 0;
 }
@@ -335,12 +337,9 @@ static void prctl_set_same(struct vec_data *data)
 		return;
 	}
 
-	if (cur_vl != data->rdvl())
-		ksft_test_result_pass("%s current VL is %d\n",
-				      data->name, ret);
-	else
-		ksft_test_result_fail("%s prctl() VL %d but RDVL is %d\n",
-				      data->name, ret, data->rdvl());
+	ksft_test_result(cur_vl == data->rdvl(),
+			 "%s set VL %d and have VL %d\n",
+			 data->name, cur_vl, data->rdvl());
 }
 
 /* Can we set a new VL for this process? */
@@ -549,6 +548,82 @@ static void prctl_set_onexec(struct vec_data *data)
 	file_write_integer(data->default_vl_file, data->default_vl);
 }
 
+/* For each VQ verify that setting via prctl() does the right thing */
+static void prctl_set_all_vqs(struct vec_data *data)
+{
+	int ret, vq, vl, new_vl;
+	int errors = 0;
+
+	if (!data->min_vl || !data->max_vl) {
+		ksft_test_result_skip("%s Failed to enumerate VLs, not testing VL setting\n",
+				      data->name);
+		return;
+	}
+
+	for (vq = SVE_VQ_MIN; vq <= SVE_VQ_MAX; vq++) {
+		vl = sve_vl_from_vq(vq);
+
+		/* Attempt to set the VL */
+		ret = prctl(data->prctl_set, vl);
+		if (ret < 0) {
+			errors++;
+			ksft_print_msg("%s prctl set failed for %d: %d (%s)\n",
+				       data->name, vl,
+				       errno, strerror(errno));
+			continue;
+		}
+
+		new_vl = ret & PR_SVE_VL_LEN_MASK;
+
+		/* Check that we actually have the reported new VL */
+		if (data->rdvl() != new_vl) {
+			ksft_print_msg("Set %s VL %d but RDVL reports %d\n",
+				       data->name, new_vl, data->rdvl());
+			errors++;
+		}
+
+		/* Was that the VL we asked for? */
+		if (new_vl == vl)
+			continue;
+
+		/* Should round up to the minimum VL if below it */
+		if (vl < data->min_vl) {
+			if (new_vl != data->min_vl) {
+				ksft_print_msg("%s VL %d returned %d not minimum %d\n",
+					       data->name, vl, new_vl,
+					       data->min_vl);
+				errors++;
+			}
+
+			continue;
+		}
+
+		/* Should round down to maximum VL if above it */
+		if (vl > data->max_vl) {
+			if (new_vl != data->max_vl) {
+				ksft_print_msg("%s VL %d returned %d not maximum %d\n",
+					       data->name, vl, new_vl,
+					       data->max_vl);
+				errors++;
+			}
+
+			continue;
+		}
+
+		/* Otherwise we should've rounded down */
+		if (!(new_vl < vl)) {
+			ksft_print_msg("%s VL %d returned %d, did not round down\n",
+				       data->name, vl, new_vl);
+			errors++;
+
+			continue;
+		}
+	}
+
+	ksft_test_result(errors == 0, "%s prctl() set all VLs, %d errors\n",
+			 data->name, errors);
+}
+
 typedef void (*test_type)(struct vec_data *);
 
 static const test_type tests[] = {
@@ -561,10 +636,12 @@ static const test_type tests[] = {
 	proc_write_max,
 
 	prctl_get,
+	prctl_set_same,
 	prctl_set,
 	prctl_set_no_child,
 	prctl_set_for_child,
 	prctl_set_onexec,
+	prctl_set_all_vqs,
 };
 
 int main(void)

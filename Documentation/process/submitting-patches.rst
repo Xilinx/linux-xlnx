@@ -12,14 +12,18 @@ This document contains a large number of suggestions in a relatively terse
 format.  For detailed information on how the kernel development process
 works, see Documentation/process/development-process.rst. Also, read
 Documentation/process/submit-checklist.rst
-for a list of items to check before submitting code.  If you are submitting
-a driver, also read Documentation/process/submitting-drivers.rst; for device
-tree binding patches, read Documentation/process/submitting-patches.rst.
+for a list of items to check before submitting code.
+For device tree binding patches, read
+Documentation/devicetree/bindings/submitting-patches.rst.
 
 This documentation assumes that you're using ``git`` to prepare your patches.
 If you're unfamiliar with ``git``, you would be well-advised to learn how to
 use it, it will make your life as a kernel developer and in general much
 easier.
+
+Some subsystems and maintainer trees have additional information about
+their workflow and expectations, see
+:ref:`Documentation/process/maintainer-handbooks.rst <maintainer_handbooks_main>`.
 
 Obtain a current source tree
 ----------------------------
@@ -72,7 +76,7 @@ as you intend it to.
 
 The maintainer will thank you if you write your patch description in a
 form which can be easily pulled into Linux's source code management
-system, ``git``, as a "commit log".  See :ref:`explicit_in_reply_to`.
+system, ``git``, as a "commit log".  See :ref:`the_canonical_patch_format`.
 
 Solve only one problem per patch.  If your description starts to get
 long, that's a sign that you probably need to split up your patch.
@@ -92,17 +96,6 @@ instead of "[This patch] makes xyzzy do frotz" or "[I] changed xyzzy
 to do frotz", as if you are giving orders to the codebase to change
 its behaviour.
 
-If the patch fixes a logged bug entry, refer to that bug entry by
-number and URL.  If the patch follows from a mailing list discussion,
-give a URL to the mailing list archive; use the https://lkml.kernel.org/
-redirector with a ``Message-Id``, to ensure that the links cannot become
-stale.
-
-However, try to make your explanation understandable without external
-resources.  In addition to giving a URL to a mailing list archive or
-bug, summarize the relevant points of the discussion that led to the
-patch as submitted.
-
 If you want to refer to a specific commit, don't just refer to the
 SHA-1 ID of the commit. Please also include the oneline summary of
 the commit, to make it easier for reviewers to know what it is about.
@@ -118,6 +111,28 @@ SHA-1 ID.  The kernel repository holds a *lot* of objects, making
 collisions with shorter IDs a real possibility.  Bear in mind that, even if
 there is no collision with your six-character ID now, that condition may
 change five years from now.
+
+If related discussions or any other background information behind the change
+can be found on the web, add 'Link:' tags pointing to it. In case your patch
+fixes a bug, for example, add a tag with a URL referencing the report in the
+mailing list archives or a bug tracker; if the patch is a result of some
+earlier mailing list discussion or something documented on the web, point to
+it.
+
+When linking to mailing list archives, preferably use the lore.kernel.org
+message archiver service. To create the link URL, use the contents of the
+``Message-Id`` header of the message without the surrounding angle brackets.
+For example::
+
+    Link: https://lore.kernel.org/r/30th.anniversary.repost@klaava.Helsinki.FI/
+
+Please check the link to make sure that it is actually working and points
+to the relevant message.
+
+However, try to make your explanation understandable without external
+resources. In addition to giving a URL to a mailing list archive or bug,
+summarize the relevant points of the discussion that led to the
+patch as submitted.
 
 If your patch fixes a bug in a specific commit, e.g. you found an issue using
 ``git bisect``, please use the 'Fixes:' tag with the first 12 characters of
@@ -211,9 +226,10 @@ Select the recipients for your patch
 You should always copy the appropriate subsystem maintainer(s) on any patch
 to code that they maintain; look through the MAINTAINERS file and the
 source code revision history to see who those maintainers are.  The
-script scripts/get_maintainer.pl can be very useful at this step.  If you
-cannot find a maintainer for the subsystem you are working on, Andrew
-Morton (akpm@linux-foundation.org) serves as a maintainer of last resort.
+script scripts/get_maintainer.pl can be very useful at this step (pass paths to
+your patches as arguments to scripts/get_maintainer.pl).  If you cannot find a
+maintainer for the subsystem you are working on, Andrew Morton
+(akpm@linux-foundation.org) serves as a maintainer of last resort.
 
 You should also normally choose at least one mailing list to receive a copy
 of your patch set.  linux-kernel@vger.kernel.org should be used by default
@@ -254,25 +270,6 @@ maintainer (as listed in the MAINTAINERS file) a man-pages patch, or at
 least a notification of the change, so that some information makes its way
 into the manual pages.  User-space API changes should also be copied to
 linux-api@vger.kernel.org.
-
-For small patches you may want to CC the Trivial Patch Monkey
-trivial@kernel.org which collects "trivial" patches. Have a look
-into the MAINTAINERS file for its current manager.
-
-Trivial patches must qualify for one of the following rules:
-
-- Spelling fixes in documentation
-- Spelling fixes for errors which could break :manpage:`grep(1)`
-- Warning fixes (cluttering with useless warnings is bad)
-- Compilation fixes (only if they are actually correct)
-- Runtime fixes (only if they actually fix things)
-- Removing use of deprecated functions/macros
-- Contact detail and documentation fixes
-- Non-portable code replaced by portable code (even in arch-specific,
-  since people copy, as long as it's trivial)
-- Any fix by the author/maintainer of the file (ie. patch monkey
-  in re-transmission mode)
-
 
 
 No MIME, no links, no compression, no attachments.  Just plain text
@@ -321,11 +318,15 @@ understands what is going on.
 Be sure to tell the reviewers what changes you are making and to thank them
 for their time.  Code review is a tiring and time-consuming process, and
 reviewers sometimes get grumpy.  Even in that case, though, respond
-politely and address the problems they have pointed out.
+politely and address the problems they have pointed out.  When sending a next
+version, add a ``patch changelog`` to the cover letter or to individual patches
+explaining difference aganst previous submission (see
+:ref:`the_canonical_patch_format`).
 
 See Documentation/process/email-clients.rst for recommendations on email
 clients and mailing list etiquette.
 
+.. _resend_reminders:
 
 Don't get discouraged - or impatient
 ------------------------------------
@@ -497,7 +498,8 @@ Using Reported-by:, Tested-by:, Reviewed-by:, Suggested-by: and Fixes:
 The Reported-by tag gives credit to people who find bugs and report them and it
 hopefully inspires them to help us again in the future.  Please note that if
 the bug was reported in private, then ask for permission first before using the
-Reported-by tag.
+Reported-by tag. The tag is intended for bugs; please do not use it to credit
+feature requests.
 
 A Tested-by: tag indicates that the patch has been successfully tested (in
 some environment) by the person named.  This tag informs maintainers that
@@ -711,8 +713,10 @@ patch::
 See more details on the proper patch format in the following
 references.
 
-Backtraces in commit mesages
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.. _backtraces:
+
+Backtraces in commit messages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Backtraces help document the call chain leading to a problem. However,
 not all backtraces are helpful. For example, early boot call chains are
@@ -743,7 +747,7 @@ the bug report.  However, for a multi-patch series, it is generally
 best to avoid using In-Reply-To: to link to older versions of the
 series.  This way multiple versions of the patch don't become an
 unmanageable forest of references in email clients.  If a link is
-helpful, you can use the https://lkml.kernel.org/ redirector (e.g., in
+helpful, you can use the https://lore.kernel.org/ redirector (e.g., in
 the cover email text) to link to an earlier version of the patch series.
 
 

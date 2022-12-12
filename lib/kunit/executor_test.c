@@ -10,87 +10,109 @@
 
 static void kfree_at_end(struct kunit *test, const void *to_free);
 static struct kunit_suite *alloc_fake_suite(struct kunit *test,
-					    const char *suite_name);
+					    const char *suite_name,
+					    struct kunit_case *test_cases);
 
-static void filter_subsuite_test(struct kunit *test)
+static void dummy_test(struct kunit *test) {}
+
+static struct kunit_case dummy_test_cases[] = {
+	/* .run_case is not important, just needs to be non-NULL */
+	{ .name = "test1", .run_case = dummy_test },
+	{ .name = "test2", .run_case = dummy_test },
+	{},
+};
+
+static void parse_filter_test(struct kunit *test)
 {
-	struct kunit_suite *subsuite[3] = {NULL, NULL, NULL};
-	struct kunit_suite * const *filtered;
+	struct kunit_test_filter filter = {NULL, NULL};
 
-	subsuite[0] = alloc_fake_suite(test, "suite1");
-	subsuite[1] = alloc_fake_suite(test, "suite2");
+	kunit_parse_filter_glob(&filter, "suite");
+	KUNIT_EXPECT_STREQ(test, filter.suite_glob, "suite");
+	KUNIT_EXPECT_FALSE(test, filter.test_glob);
+	kfree(filter.suite_glob);
+	kfree(filter.test_glob);
 
-	/* Want: suite1, suite2, NULL -> suite2, NULL */
-	filtered = kunit_filter_subsuite(subsuite, "suite2*");
-	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, filtered);
-	kfree_at_end(test, filtered);
-
-	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, filtered[0]);
-	KUNIT_EXPECT_STREQ(test, (const char *)filtered[0]->name, "suite2");
-
-	KUNIT_EXPECT_FALSE(test, filtered[1]);
-}
-
-static void filter_subsuite_to_empty_test(struct kunit *test)
-{
-	struct kunit_suite *subsuite[3] = {NULL, NULL, NULL};
-	struct kunit_suite * const *filtered;
-
-	subsuite[0] = alloc_fake_suite(test, "suite1");
-	subsuite[1] = alloc_fake_suite(test, "suite2");
-
-	filtered = kunit_filter_subsuite(subsuite, "not_found");
-	kfree_at_end(test, filtered); /* just in case */
-
-	KUNIT_EXPECT_FALSE_MSG(test, filtered,
-			       "should be NULL to indicate no match");
-}
-
-static void kfree_subsuites_at_end(struct kunit *test, struct suite_set *suite_set)
-{
-	struct kunit_suite * const * const *suites;
-
-	kfree_at_end(test, suite_set->start);
-	for (suites = suite_set->start; suites < suite_set->end; suites++)
-		kfree_at_end(test, *suites);
+	kunit_parse_filter_glob(&filter, "suite.test");
+	KUNIT_EXPECT_STREQ(test, filter.suite_glob, "suite");
+	KUNIT_EXPECT_STREQ(test, filter.test_glob, "test");
+	kfree(filter.suite_glob);
+	kfree(filter.test_glob);
 }
 
 static void filter_suites_test(struct kunit *test)
 {
-	/* Suites per-file are stored as a NULL terminated array */
-	struct kunit_suite *subsuites[2][2] = {
-		{NULL, NULL},
-		{NULL, NULL},
-	};
-	/* Match the memory layout of suite_set */
-	struct kunit_suite * const * const suites[2] = {
-		subsuites[0], subsuites[1],
-	};
+	struct kunit_suite *subsuite[3] = {NULL, NULL};
+	struct suite_set suite_set = {.start = subsuite, .end = &subsuite[2]};
+	struct suite_set got;
+	int err = 0;
 
-	const struct suite_set suite_set = {
-		.start = suites,
-		.end = suites + 2,
-	};
-	struct suite_set filtered = {.start = NULL, .end = NULL};
+	subsuite[0] = alloc_fake_suite(test, "suite1", dummy_test_cases);
+	subsuite[1] = alloc_fake_suite(test, "suite2", dummy_test_cases);
 
-	/* Emulate two files, each having one suite */
-	subsuites[0][0] = alloc_fake_suite(test, "suite0");
-	subsuites[1][0] = alloc_fake_suite(test, "suite1");
+	/* Want: suite1, suite2, NULL -> suite2, NULL */
+	got = kunit_filter_suites(&suite_set, "suite2", &err);
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, got.start);
+	KUNIT_ASSERT_EQ(test, err, 0);
+	kfree_at_end(test, got.start);
 
-	/* Filter out suite1 */
-	filtered = kunit_filter_suites(&suite_set, "suite0");
-	kfree_subsuites_at_end(test, &filtered); /* let us use ASSERTs without leaking */
-	KUNIT_ASSERT_EQ(test, filtered.end - filtered.start, (ptrdiff_t)1);
+	/* Validate we just have suite2 */
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, got.start[0]);
+	KUNIT_EXPECT_STREQ(test, (const char *)got.start[0]->name, "suite2");
 
-	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, filtered.start);
-	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, filtered.start[0]);
-	KUNIT_EXPECT_STREQ(test, (const char *)filtered.start[0][0]->name, "suite0");
+	/* Contains one element (end is 1 past end) */
+	KUNIT_ASSERT_EQ(test, got.end - got.start, 1);
+}
+
+static void filter_suites_test_glob_test(struct kunit *test)
+{
+	struct kunit_suite *subsuite[3] = {NULL, NULL};
+	struct suite_set suite_set = {.start = subsuite, .end = &subsuite[2]};
+	struct suite_set got;
+	int err = 0;
+
+	subsuite[0] = alloc_fake_suite(test, "suite1", dummy_test_cases);
+	subsuite[1] = alloc_fake_suite(test, "suite2", dummy_test_cases);
+
+	/* Want: suite1, suite2, NULL -> suite2 (just test1), NULL */
+	got = kunit_filter_suites(&suite_set, "suite2.test2", &err);
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, got.start);
+	KUNIT_ASSERT_EQ(test, err, 0);
+	kfree_at_end(test, got.start);
+
+	/* Validate we just have suite2 */
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, got.start[0]);
+	KUNIT_EXPECT_STREQ(test, (const char *)got.start[0]->name, "suite2");
+	KUNIT_ASSERT_EQ(test, got.end - got.start, 1);
+
+	/* Now validate we just have test2 */
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, got.start[0]->test_cases);
+	KUNIT_EXPECT_STREQ(test, (const char *)got.start[0]->test_cases[0].name, "test2");
+	KUNIT_EXPECT_FALSE(test, got.start[0]->test_cases[1].name);
+}
+
+static void filter_suites_to_empty_test(struct kunit *test)
+{
+	struct kunit_suite *subsuite[3] = {NULL, NULL};
+	struct suite_set suite_set = {.start = subsuite, .end = &subsuite[2]};
+	struct suite_set got;
+	int err = 0;
+
+	subsuite[0] = alloc_fake_suite(test, "suite1", dummy_test_cases);
+	subsuite[1] = alloc_fake_suite(test, "suite2", dummy_test_cases);
+
+	got = kunit_filter_suites(&suite_set, "not_found", &err);
+	KUNIT_ASSERT_EQ(test, err, 0);
+	kfree_at_end(test, got.start); /* just in case */
+
+	KUNIT_EXPECT_PTR_EQ_MSG(test, got.start, got.end,
+				"should be empty to indicate no match");
 }
 
 static struct kunit_case executor_test_cases[] = {
-	KUNIT_CASE(filter_subsuite_test),
-	KUNIT_CASE(filter_subsuite_to_empty_test),
+	KUNIT_CASE(parse_filter_test),
 	KUNIT_CASE(filter_suites_test),
+	KUNIT_CASE(filter_suites_test_glob_test),
+	KUNIT_CASE(filter_suites_to_empty_test),
 	{}
 };
 
@@ -121,13 +143,15 @@ static void kfree_at_end(struct kunit *test, const void *to_free)
 }
 
 static struct kunit_suite *alloc_fake_suite(struct kunit *test,
-					    const char *suite_name)
+					    const char *suite_name,
+					    struct kunit_case *test_cases)
 {
 	struct kunit_suite *suite;
 
 	/* We normally never expect to allocate suites, hence the non-const cast. */
 	suite = kunit_kzalloc(test, sizeof(*suite), GFP_KERNEL);
 	strncpy((char *)suite->name, suite_name, sizeof(suite->name) - 1);
+	suite->test_cases = test_cases;
 
 	return suite;
 }

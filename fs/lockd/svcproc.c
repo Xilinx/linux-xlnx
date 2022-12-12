@@ -116,6 +116,7 @@ __nlmsvc_proc_test(struct svc_rqst *rqstp, struct nlm_res *resp)
 	struct nlm_args *argp = rqstp->rq_argp;
 	struct nlm_host	*host;
 	struct nlm_file	*file;
+	struct nlm_lockowner *test_owner;
 	__be32 rc = rpc_success;
 
 	dprintk("lockd: TEST          called\n");
@@ -125,6 +126,8 @@ __nlmsvc_proc_test(struct svc_rqst *rqstp, struct nlm_res *resp)
 	if ((resp->status = nlmsvc_retrieve_args(rqstp, argp, &host, &file)))
 		return resp->status == nlm_drop_reply ? rpc_drop_reply :rpc_success;
 
+	test_owner = argp->lock.fl.fl_owner;
+
 	/* Now check for conflicting locks */
 	resp->status = cast_status(nlmsvc_testlock(rqstp, file, host, &argp->lock, &resp->lock, &resp->cookie));
 	if (resp->status == nlm_drop_reply)
@@ -133,7 +136,7 @@ __nlmsvc_proc_test(struct svc_rqst *rqstp, struct nlm_res *resp)
 		dprintk("lockd: TEST          status %d vers %d\n",
 			ntohl(resp->status), rqstp->rq_vers);
 
-	nlmsvc_release_lockowner(&argp->lock);
+	nlmsvc_put_lockowner(test_owner);
 	nlmsvc_release_host(host);
 	nlm_release_file(file);
 	return rc;
@@ -301,8 +304,6 @@ nlmsvc_proc_granted(struct svc_rqst *rqstp)
  */
 static void nlmsvc_callback_exit(struct rpc_task *task, void *data)
 {
-	dprintk("lockd: %5u callback returned %d\n", task->tk_pid,
-			-task->tk_status);
 }
 
 void nlmsvc_release_call(struct nlm_rqst *call)
@@ -554,6 +555,7 @@ const struct svc_procedure nlmsvc_procedures[24] = {
 		.pc_decode = nlmsvc_decode_void,
 		.pc_encode = nlmsvc_encode_void,
 		.pc_argsize = sizeof(struct nlm_void),
+		.pc_argzero = sizeof(struct nlm_void),
 		.pc_ressize = sizeof(struct nlm_void),
 		.pc_xdrressize = St,
 		.pc_name = "NULL",
@@ -563,6 +565,7 @@ const struct svc_procedure nlmsvc_procedures[24] = {
 		.pc_decode = nlmsvc_decode_testargs,
 		.pc_encode = nlmsvc_encode_testres,
 		.pc_argsize = sizeof(struct nlm_args),
+		.pc_argzero = sizeof(struct nlm_args),
 		.pc_ressize = sizeof(struct nlm_res),
 		.pc_xdrressize = Ck+St+2+No+Rg,
 		.pc_name = "TEST",
@@ -572,6 +575,7 @@ const struct svc_procedure nlmsvc_procedures[24] = {
 		.pc_decode = nlmsvc_decode_lockargs,
 		.pc_encode = nlmsvc_encode_res,
 		.pc_argsize = sizeof(struct nlm_args),
+		.pc_argzero = sizeof(struct nlm_args),
 		.pc_ressize = sizeof(struct nlm_res),
 		.pc_xdrressize = Ck+St,
 		.pc_name = "LOCK",
@@ -581,6 +585,7 @@ const struct svc_procedure nlmsvc_procedures[24] = {
 		.pc_decode = nlmsvc_decode_cancargs,
 		.pc_encode = nlmsvc_encode_res,
 		.pc_argsize = sizeof(struct nlm_args),
+		.pc_argzero = sizeof(struct nlm_args),
 		.pc_ressize = sizeof(struct nlm_res),
 		.pc_xdrressize = Ck+St,
 		.pc_name = "CANCEL",
@@ -590,6 +595,7 @@ const struct svc_procedure nlmsvc_procedures[24] = {
 		.pc_decode = nlmsvc_decode_unlockargs,
 		.pc_encode = nlmsvc_encode_res,
 		.pc_argsize = sizeof(struct nlm_args),
+		.pc_argzero = sizeof(struct nlm_args),
 		.pc_ressize = sizeof(struct nlm_res),
 		.pc_xdrressize = Ck+St,
 		.pc_name = "UNLOCK",
@@ -599,6 +605,7 @@ const struct svc_procedure nlmsvc_procedures[24] = {
 		.pc_decode = nlmsvc_decode_testargs,
 		.pc_encode = nlmsvc_encode_res,
 		.pc_argsize = sizeof(struct nlm_args),
+		.pc_argzero = sizeof(struct nlm_args),
 		.pc_ressize = sizeof(struct nlm_res),
 		.pc_xdrressize = Ck+St,
 		.pc_name = "GRANTED",
@@ -608,6 +615,7 @@ const struct svc_procedure nlmsvc_procedures[24] = {
 		.pc_decode = nlmsvc_decode_testargs,
 		.pc_encode = nlmsvc_encode_void,
 		.pc_argsize = sizeof(struct nlm_args),
+		.pc_argzero = sizeof(struct nlm_args),
 		.pc_ressize = sizeof(struct nlm_void),
 		.pc_xdrressize = St,
 		.pc_name = "TEST_MSG",
@@ -617,6 +625,7 @@ const struct svc_procedure nlmsvc_procedures[24] = {
 		.pc_decode = nlmsvc_decode_lockargs,
 		.pc_encode = nlmsvc_encode_void,
 		.pc_argsize = sizeof(struct nlm_args),
+		.pc_argzero = sizeof(struct nlm_args),
 		.pc_ressize = sizeof(struct nlm_void),
 		.pc_xdrressize = St,
 		.pc_name = "LOCK_MSG",
@@ -626,6 +635,7 @@ const struct svc_procedure nlmsvc_procedures[24] = {
 		.pc_decode = nlmsvc_decode_cancargs,
 		.pc_encode = nlmsvc_encode_void,
 		.pc_argsize = sizeof(struct nlm_args),
+		.pc_argzero = sizeof(struct nlm_args),
 		.pc_ressize = sizeof(struct nlm_void),
 		.pc_xdrressize = St,
 		.pc_name = "CANCEL_MSG",
@@ -635,6 +645,7 @@ const struct svc_procedure nlmsvc_procedures[24] = {
 		.pc_decode = nlmsvc_decode_unlockargs,
 		.pc_encode = nlmsvc_encode_void,
 		.pc_argsize = sizeof(struct nlm_args),
+		.pc_argzero = sizeof(struct nlm_args),
 		.pc_ressize = sizeof(struct nlm_void),
 		.pc_xdrressize = St,
 		.pc_name = "UNLOCK_MSG",
@@ -644,6 +655,7 @@ const struct svc_procedure nlmsvc_procedures[24] = {
 		.pc_decode = nlmsvc_decode_testargs,
 		.pc_encode = nlmsvc_encode_void,
 		.pc_argsize = sizeof(struct nlm_args),
+		.pc_argzero = sizeof(struct nlm_args),
 		.pc_ressize = sizeof(struct nlm_void),
 		.pc_xdrressize = St,
 		.pc_name = "GRANTED_MSG",
@@ -653,6 +665,7 @@ const struct svc_procedure nlmsvc_procedures[24] = {
 		.pc_decode = nlmsvc_decode_void,
 		.pc_encode = nlmsvc_encode_void,
 		.pc_argsize = sizeof(struct nlm_res),
+		.pc_argzero = sizeof(struct nlm_res),
 		.pc_ressize = sizeof(struct nlm_void),
 		.pc_xdrressize = St,
 		.pc_name = "TEST_RES",
@@ -662,6 +675,7 @@ const struct svc_procedure nlmsvc_procedures[24] = {
 		.pc_decode = nlmsvc_decode_void,
 		.pc_encode = nlmsvc_encode_void,
 		.pc_argsize = sizeof(struct nlm_res),
+		.pc_argzero = sizeof(struct nlm_res),
 		.pc_ressize = sizeof(struct nlm_void),
 		.pc_xdrressize = St,
 		.pc_name = "LOCK_RES",
@@ -671,6 +685,7 @@ const struct svc_procedure nlmsvc_procedures[24] = {
 		.pc_decode = nlmsvc_decode_void,
 		.pc_encode = nlmsvc_encode_void,
 		.pc_argsize = sizeof(struct nlm_res),
+		.pc_argzero = sizeof(struct nlm_res),
 		.pc_ressize = sizeof(struct nlm_void),
 		.pc_xdrressize = St,
 		.pc_name = "CANCEL_RES",
@@ -680,6 +695,7 @@ const struct svc_procedure nlmsvc_procedures[24] = {
 		.pc_decode = nlmsvc_decode_void,
 		.pc_encode = nlmsvc_encode_void,
 		.pc_argsize = sizeof(struct nlm_res),
+		.pc_argzero = sizeof(struct nlm_res),
 		.pc_ressize = sizeof(struct nlm_void),
 		.pc_xdrressize = St,
 		.pc_name = "UNLOCK_RES",
@@ -689,6 +705,7 @@ const struct svc_procedure nlmsvc_procedures[24] = {
 		.pc_decode = nlmsvc_decode_res,
 		.pc_encode = nlmsvc_encode_void,
 		.pc_argsize = sizeof(struct nlm_res),
+		.pc_argzero = sizeof(struct nlm_res),
 		.pc_ressize = sizeof(struct nlm_void),
 		.pc_xdrressize = St,
 		.pc_name = "GRANTED_RES",
@@ -698,6 +715,7 @@ const struct svc_procedure nlmsvc_procedures[24] = {
 		.pc_decode = nlmsvc_decode_reboot,
 		.pc_encode = nlmsvc_encode_void,
 		.pc_argsize = sizeof(struct nlm_reboot),
+		.pc_argzero = sizeof(struct nlm_reboot),
 		.pc_ressize = sizeof(struct nlm_void),
 		.pc_xdrressize = St,
 		.pc_name = "SM_NOTIFY",
@@ -707,6 +725,7 @@ const struct svc_procedure nlmsvc_procedures[24] = {
 		.pc_decode = nlmsvc_decode_void,
 		.pc_encode = nlmsvc_encode_void,
 		.pc_argsize = sizeof(struct nlm_void),
+		.pc_argzero = sizeof(struct nlm_void),
 		.pc_ressize = sizeof(struct nlm_void),
 		.pc_xdrressize = St,
 		.pc_name = "UNUSED",
@@ -716,6 +735,7 @@ const struct svc_procedure nlmsvc_procedures[24] = {
 		.pc_decode = nlmsvc_decode_void,
 		.pc_encode = nlmsvc_encode_void,
 		.pc_argsize = sizeof(struct nlm_void),
+		.pc_argzero = sizeof(struct nlm_void),
 		.pc_ressize = sizeof(struct nlm_void),
 		.pc_xdrressize = St,
 		.pc_name = "UNUSED",
@@ -725,6 +745,7 @@ const struct svc_procedure nlmsvc_procedures[24] = {
 		.pc_decode = nlmsvc_decode_void,
 		.pc_encode = nlmsvc_encode_void,
 		.pc_argsize = sizeof(struct nlm_void),
+		.pc_argzero = sizeof(struct nlm_void),
 		.pc_ressize = sizeof(struct nlm_void),
 		.pc_xdrressize = St,
 		.pc_name = "UNUSED",
@@ -734,6 +755,7 @@ const struct svc_procedure nlmsvc_procedures[24] = {
 		.pc_decode = nlmsvc_decode_shareargs,
 		.pc_encode = nlmsvc_encode_shareres,
 		.pc_argsize = sizeof(struct nlm_args),
+		.pc_argzero = sizeof(struct nlm_args),
 		.pc_ressize = sizeof(struct nlm_res),
 		.pc_xdrressize = Ck+St+1,
 		.pc_name = "SHARE",
@@ -743,6 +765,7 @@ const struct svc_procedure nlmsvc_procedures[24] = {
 		.pc_decode = nlmsvc_decode_shareargs,
 		.pc_encode = nlmsvc_encode_shareres,
 		.pc_argsize = sizeof(struct nlm_args),
+		.pc_argzero = sizeof(struct nlm_args),
 		.pc_ressize = sizeof(struct nlm_res),
 		.pc_xdrressize = Ck+St+1,
 		.pc_name = "UNSHARE",
@@ -752,6 +775,7 @@ const struct svc_procedure nlmsvc_procedures[24] = {
 		.pc_decode = nlmsvc_decode_lockargs,
 		.pc_encode = nlmsvc_encode_res,
 		.pc_argsize = sizeof(struct nlm_args),
+		.pc_argzero = sizeof(struct nlm_args),
 		.pc_ressize = sizeof(struct nlm_res),
 		.pc_xdrressize = Ck+St,
 		.pc_name = "NM_LOCK",
@@ -761,6 +785,7 @@ const struct svc_procedure nlmsvc_procedures[24] = {
 		.pc_decode = nlmsvc_decode_notify,
 		.pc_encode = nlmsvc_encode_void,
 		.pc_argsize = sizeof(struct nlm_args),
+		.pc_argzero = sizeof(struct nlm_args),
 		.pc_ressize = sizeof(struct nlm_void),
 		.pc_xdrressize = 0,
 		.pc_name = "FREE_ALL",

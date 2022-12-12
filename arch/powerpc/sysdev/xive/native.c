@@ -13,6 +13,7 @@
 #include <linux/seq_file.h>
 #include <linux/init.h>
 #include <linux/of.h>
+#include <linux/of_address.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/delay.h>
@@ -21,7 +22,6 @@
 #include <linux/kmemleak.h>
 
 #include <asm/machdep.h>
-#include <asm/prom.h>
 #include <asm/io.h>
 #include <asm/smp.h>
 #include <asm/irq.h>
@@ -41,7 +41,7 @@ static u32 xive_queue_shift;
 static u32 xive_pool_vps = XIVE_INVALID_VP;
 static struct kmem_cache *xive_provision_cache;
 static bool xive_has_single_esc;
-static bool xive_has_save_restore;
+bool xive_has_save_restore;
 
 int xive_native_populate_irq_data(u32 hw_irq, struct xive_irq_data *data)
 {
@@ -62,6 +62,8 @@ int xive_native_populate_irq_data(u32 hw_irq, struct xive_irq_data *data)
 
 	opal_flags = be64_to_cpu(flags);
 	if (opal_flags & OPAL_XIVE_IRQ_STORE_EOI)
+		data->flags |= XIVE_IRQ_FLAG_STORE_EOI;
+	if (opal_flags & OPAL_XIVE_IRQ_STORE_EOI2)
 		data->flags |= XIVE_IRQ_FLAG_STORE_EOI;
 	if (opal_flags & OPAL_XIVE_IRQ_LSI)
 		data->flags |= XIVE_IRQ_FLAG_LSI;
@@ -459,6 +461,14 @@ void xive_native_sync_queue(u32 hw_irq)
 }
 EXPORT_SYMBOL_GPL(xive_native_sync_queue);
 
+#ifdef CONFIG_DEBUG_FS
+static int xive_native_debug_create(struct dentry *xive_dir)
+{
+	debugfs_create_bool("save-restore", 0600, xive_dir, &xive_has_save_restore);
+	return 0;
+}
+#endif
+
 static const struct xive_ops xive_native_ops = {
 	.populate_irq_data	= xive_native_populate_irq_data,
 	.configure_irq		= xive_native_configure_irq,
@@ -476,10 +486,13 @@ static const struct xive_ops xive_native_ops = {
 	.get_ipi		= xive_native_get_ipi,
 	.put_ipi		= xive_native_put_ipi,
 #endif /* CONFIG_SMP */
+#ifdef CONFIG_DEBUG_FS
+	.debug_create		= xive_native_debug_create,
+#endif /* CONFIG_DEBUG_FS */
 	.name			= "native",
 };
 
-static bool xive_parse_provisioning(struct device_node *np)
+static bool __init xive_parse_provisioning(struct device_node *np)
 {
 	int rc;
 
@@ -519,7 +532,7 @@ static bool xive_parse_provisioning(struct device_node *np)
 	return true;
 }
 
-static void xive_native_setup_pools(void)
+static void __init xive_native_setup_pools(void)
 {
 	/* Allocate a pool big enough */
 	pr_debug("XIVE: Allocating VP block for pool size %u\n", nr_cpu_ids);
@@ -566,12 +579,12 @@ bool __init xive_native_init(void)
 	/* Resource 1 is HV window */
 	if (of_address_to_resource(np, 1, &r)) {
 		pr_err("Failed to get thread mgmnt area resource\n");
-		return false;
+		goto err_put;
 	}
 	tima = ioremap(r.start, resource_size(&r));
 	if (!tima) {
 		pr_err("Failed to map thread mgmnt area\n");
-		return false;
+		goto err_put;
 	}
 
 	/* Read number of priorities */
@@ -599,19 +612,19 @@ bool __init xive_native_init(void)
 	/* Resource 2 is OS window */
 	if (of_address_to_resource(np, 2, &r)) {
 		pr_err("Failed to get thread mgmnt area resource\n");
-		return false;
+		goto err_put;
 	}
 
 	xive_tima_os = r.start;
 
-	/* Grab size of provisionning pages */
+	/* Grab size of provisioning pages */
 	xive_parse_provisioning(np);
 
 	/* Switch the XIVE to exploitation mode */
 	rc = opal_xive_reset(OPAL_XIVE_MODE_EXPL);
 	if (rc) {
 		pr_err("Switch to exploitation mode failed with error %lld\n", rc);
-		return false;
+		goto err_put;
 	}
 
 	/* Setup some dummy HV pool VPs */
@@ -621,10 +634,15 @@ bool __init xive_native_init(void)
 	if (!xive_core_init(np, &xive_native_ops, tima, TM_QW3_HV_PHYS,
 			    max_prio)) {
 		opal_xive_reset(OPAL_XIVE_MODE_EMU);
-		return false;
+		goto err_put;
 	}
+	of_node_put(np);
 	pr_info("Using %dkB queues\n", 1 << (xive_queue_shift - 10));
 	return true;
+
+err_put:
+	of_node_put(np);
+	return false;
 }
 
 static bool xive_native_provision_pages(void)

@@ -1,20 +1,5 @@
-/*
- * Copyright 2013 Cisco Systems, Inc.  All rights reserved.
- *
- * This program is free software; you may redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
- * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
- * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
- *
- */
+// SPDX-License-Identifier: GPL-2.0-only
+// Copyright 2013 Cisco Systems, Inc.  All rights reserved.
 
 #include <linux/netdevice.h>
 #include <linux/ethtool.h>
@@ -139,17 +124,17 @@ static void enic_get_drvinfo(struct net_device *netdev,
 	int err;
 
 	err = enic_dev_fw_info(enic, &fw_info);
-	/* return only when pci_zalloc_consistent fails in vnic_dev_fw_info
+	/* return only when dma_alloc_coherent fails in vnic_dev_fw_info
 	 * For other failures, like devcmd failure, we return previously
 	 * recorded info.
 	 */
 	if (err == -ENOMEM)
 		return;
 
-	strlcpy(drvinfo->driver, DRV_NAME, sizeof(drvinfo->driver));
-	strlcpy(drvinfo->fw_version, fw_info->fw_version,
+	strscpy(drvinfo->driver, DRV_NAME, sizeof(drvinfo->driver));
+	strscpy(drvinfo->fw_version, fw_info->fw_version,
 		sizeof(drvinfo->fw_version));
-	strlcpy(drvinfo->bus_info, pci_name(enic->pdev),
+	strscpy(drvinfo->bus_info, pci_name(enic->pdev),
 		sizeof(drvinfo->bus_info));
 }
 
@@ -177,7 +162,9 @@ static void enic_get_strings(struct net_device *netdev, u32 stringset,
 }
 
 static void enic_get_ringparam(struct net_device *netdev,
-			       struct ethtool_ringparam *ring)
+			       struct ethtool_ringparam *ring,
+			       struct kernel_ethtool_ringparam *kernel_ring,
+			       struct netlink_ext_ack *extack)
 {
 	struct enic *enic = netdev_priv(netdev);
 	struct vnic_enet_config *c = &enic->config;
@@ -189,7 +176,9 @@ static void enic_get_ringparam(struct net_device *netdev,
 }
 
 static int enic_set_ringparam(struct net_device *netdev,
-			      struct ethtool_ringparam *ring)
+			      struct ethtool_ringparam *ring,
+			      struct kernel_ethtool_ringparam *kernel_ring,
+			      struct netlink_ext_ack *extack)
 {
 	struct enic *enic = netdev_priv(netdev);
 	struct vnic_enet_config *c = &enic->config;
@@ -270,7 +259,7 @@ static void enic_get_ethtool_stats(struct net_device *netdev,
 	int err;
 
 	err = enic_dev_stats_dump(enic, &vstats);
-	/* return only when pci_zalloc_consistent fails in vnic_dev_stats_dump
+	/* return only when dma_alloc_coherent fails in vnic_dev_stats_dump
 	 * For other failures, like devcmd failure, we return previously
 	 * recorded stats.
 	 */

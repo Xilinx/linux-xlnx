@@ -3,7 +3,9 @@
  * Copyright(c) 2015, 2016 Intel Corporation.
  */
 
-#include <linux/ctype.h>
+#include <linux/string.h>
+#include <linux/string_helpers.h>
+
 #include "efivar.h"
 
 /* GUID for HFI1 variables in EFI */
@@ -70,7 +72,7 @@ static int read_efi_var(const char *name, unsigned long *size,
 	 * is in the EFIVAR_FS code and may not be compiled in.
 	 * However, even that is insufficient since it does not cover
 	 * EFI_BUFFER_TOO_SMALL which could be an important return.
-	 * For now, just split out succces or not found.
+	 * For now, just split out success or not found.
 	 */
 	ret = status == EFI_SUCCESS   ? 0 :
 	      status == EFI_NOT_FOUND ? -ENOENT :
@@ -112,7 +114,6 @@ int read_hfi1_efi_var(struct hfi1_devdata *dd, const char *kind,
 	char prefix_name[64];
 	char name[64];
 	int result;
-	int i;
 
 	/* create a common prefix */
 	snprintf(prefix_name, sizeof(prefix_name), "%04x:%02x:%02x.%x",
@@ -128,10 +129,7 @@ int read_hfi1_efi_var(struct hfi1_devdata *dd, const char *kind,
 	 * variable.
 	 */
 	if (result) {
-		/* Converting to uppercase */
-		for (i = 0; prefix_name[i]; i++)
-			if (isalpha(prefix_name[i]))
-				prefix_name[i] = toupper(prefix_name[i]);
+		string_upper(prefix_name, prefix_name);
 		snprintf(name, sizeof(name), "%s-%s", prefix_name, kind);
 		result = read_efi_var(name, size, return_data);
 	}

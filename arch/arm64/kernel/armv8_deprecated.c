@@ -59,6 +59,7 @@ struct insn_emulation {
 static LIST_HEAD(insn_emulation);
 static int nr_insn_emulated __initdata;
 static DEFINE_RAW_SPINLOCK(insn_emulation_lock);
+static DEFINE_MUTEX(insn_emulation_mutex);
 
 static void register_emulation_hooks(struct insn_emulation_ops *ops)
 {
@@ -207,10 +208,10 @@ static int emulation_proc_handler(struct ctl_table *table, int write,
 				  loff_t *ppos)
 {
 	int ret = 0;
-	struct insn_emulation *insn = (struct insn_emulation *) table->data;
+	struct insn_emulation *insn = container_of(table->data, struct insn_emulation, current_mode);
 	enum insn_emulation_mode prev_mode = insn->current_mode;
 
-	table->data = &insn->current_mode;
+	mutex_lock(&insn_emulation_mutex);
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 
 	if (ret || !write || prev_mode == insn->current_mode)
@@ -223,7 +224,7 @@ static int emulation_proc_handler(struct ctl_table *table, int write,
 		update_insn_emulation_mode(insn, INSN_UNDEF);
 	}
 ret:
-	table->data = insn;
+	mutex_unlock(&insn_emulation_mutex);
 	return ret;
 }
 
@@ -247,7 +248,7 @@ static void __init register_insn_emulation_sysctl(void)
 		sysctl->maxlen = sizeof(int);
 
 		sysctl->procname = insn->ops->name;
-		sysctl->data = insn;
+		sysctl->data = &insn->current_mode;
 		sysctl->extra1 = &insn->min;
 		sysctl->extra2 = &insn->max;
 		sysctl->proc_handler = emulation_proc_handler;
@@ -279,7 +280,7 @@ static void __init register_insn_emulation_sysctl(void)
 do {								\
 	uaccess_enable_privileged();				\
 	__asm__ __volatile__(					\
-	"	mov		%w3, %w7\n"			\
+	"	mov		%w3, %w6\n"			\
 	"0:	ldxr"B"		%w2, [%4]\n"			\
 	"1:	stxr"B"		%w0, %w1, [%4]\n"		\
 	"	cbz		%w0, 2f\n"			\
@@ -290,16 +291,10 @@ do {								\
 	"2:\n"							\
 	"	mov		%w1, %w2\n"			\
 	"3:\n"							\
-	"	.pushsection	 .fixup,\"ax\"\n"		\
-	"	.align		2\n"				\
-	"4:	mov		%w0, %w6\n"			\
-	"	b		3b\n"				\
-	"	.popsection"					\
-	_ASM_EXTABLE(0b, 4b)					\
-	_ASM_EXTABLE(1b, 4b)					\
+	_ASM_EXTABLE_UACCESS_ERR(0b, 3b, %w0)			\
+	_ASM_EXTABLE_UACCESS_ERR(1b, 3b, %w0)			\
 	: "=&r" (res), "+r" (data), "=&r" (temp), "=&r" (temp2)	\
 	: "r" ((unsigned long)addr), "i" (-EAGAIN),		\
-	  "i" (-EFAULT),					\
 	  "i" (__SWP_LL_SC_LOOPS)				\
 	: "memory");						\
 	uaccess_disable_privileged();				\

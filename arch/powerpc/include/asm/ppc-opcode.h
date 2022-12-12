@@ -127,8 +127,53 @@
 
 
 /* opcode and xopcode for instructions */
-#define OP_TRAP 3
-#define OP_TRAP_64 2
+#define OP_PREFIX	1
+#define OP_TRAP_64	2
+#define OP_TRAP		3
+#define OP_SC		17
+#define OP_19		19
+#define OP_31		31
+#define OP_LWZ		32
+#define OP_LWZU		33
+#define OP_LBZ		34
+#define OP_LBZU		35
+#define OP_STW		36
+#define OP_STWU		37
+#define OP_STB		38
+#define OP_STBU		39
+#define OP_LHZ		40
+#define OP_LHZU		41
+#define OP_LHA		42
+#define OP_LHAU		43
+#define OP_STH		44
+#define OP_STHU		45
+#define OP_LMW		46
+#define OP_STMW		47
+#define OP_LFS		48
+#define OP_LFSU		49
+#define OP_LFD		50
+#define OP_LFDU		51
+#define OP_STFS		52
+#define OP_STFSU	53
+#define OP_STFD		54
+#define OP_STFDU	55
+#define OP_LQ		56
+#define OP_LD		58
+#define OP_STD		62
+
+#define OP_19_XOP_RFID		18
+#define OP_19_XOP_RFMCI		38
+#define OP_19_XOP_RFDI		39
+#define OP_19_XOP_RFI		50
+#define OP_19_XOP_RFCI		51
+#define OP_19_XOP_RFSCV		82
+#define OP_19_XOP_HRFID		274
+#define OP_19_XOP_URFID		306
+#define OP_19_XOP_STOP		370
+#define OP_19_XOP_DOZE		402
+#define OP_19_XOP_NAP		434
+#define OP_19_XOP_SLEEP		466
+#define OP_19_XOP_RVWINKLE	498
 
 #define OP_31_XOP_TRAP      4
 #define OP_31_XOP_LDX       21
@@ -150,6 +195,8 @@
 #define OP_31_XOP_LHZUX     311
 #define OP_31_XOP_MSGSNDP   142
 #define OP_31_XOP_MSGCLRP   174
+#define OP_31_XOP_MTMSR     146
+#define OP_31_XOP_MTMSRD    178
 #define OP_31_XOP_TLBIE     306
 #define OP_31_XOP_MFSPR     339
 #define OP_31_XOP_LWAX      341
@@ -208,47 +255,12 @@
 /* VMX Vector Store Instructions */
 #define OP_31_XOP_STVX          231
 
-/* Prefixed Instructions */
-#define OP_PREFIX		1
-
-#define OP_31   31
-#define OP_LWZ  32
-#define OP_STFS 52
-#define OP_STFSU 53
-#define OP_STFD 54
-#define OP_STFDU 55
-#define OP_LD   58
-#define OP_LWZU 33
-#define OP_LBZ  34
-#define OP_LBZU 35
-#define OP_STW  36
-#define OP_STWU 37
-#define OP_STD  62
-#define OP_STB  38
-#define OP_STBU 39
-#define OP_LHZ  40
-#define OP_LHZU 41
-#define OP_LHA  42
-#define OP_LHAU 43
-#define OP_STH  44
-#define OP_STHU 45
-#define OP_LMW  46
-#define OP_STMW 47
-#define OP_LFS  48
-#define OP_LFSU 49
-#define OP_LFD  50
-#define OP_LFDU 51
-#define OP_STFS 52
-#define OP_STFSU 53
-#define OP_STFD  54
-#define OP_STFDU 55
-#define OP_LQ    56
-
 /* sorted alphabetically */
 #define PPC_INST_BCCTR_FLUSH		0x4c400420
 #define PPC_INST_COPY			0x7c20060c
 #define PPC_INST_DCBA			0x7c0005ec
 #define PPC_INST_DCBA_MASK		0xfc0007fe
+#define PPC_INST_DSSALL			0x7e00066c
 #define PPC_INST_ISEL			0x7c00001e
 #define PPC_INST_ISEL_MASK		0xfc00003e
 #define PPC_INST_LSWI			0x7c0004aa
@@ -261,6 +273,8 @@
 #define PPC_INST_MFSPR_PVR		0x7c1f42a6
 #define PPC_INST_MFSPR_PVR_MASK		0xfc1ffffe
 #define PPC_INST_MTMSRD			0x7c000164
+#define PPC_INST_PASTE			0x7c20070d
+#define PPC_INST_PASTE_MASK		0xfc2007ff
 #define PPC_INST_POPCNTB		0x7c0000f4
 #define PPC_INST_POPCNTB_MASK		0xfc0007fe
 #define PPC_INST_RFEBB			0x4c000124
@@ -276,19 +290,11 @@
 #define PPC_INST_STRING			0x7c00042a
 #define PPC_INST_STRING_MASK		0xfc0007fe
 #define PPC_INST_STRING_GEN_MASK	0xfc00067e
-#define PPC_INST_SETB			0x7c000100
 #define PPC_INST_STSWI			0x7c0005aa
 #define PPC_INST_STSWX			0x7c00052a
 #define PPC_INST_TRECHKPT		0x7c0007dd
 #define PPC_INST_TRECLAIM		0x7c00075d
 #define PPC_INST_TSR			0x7c0005dd
-#define PPC_INST_LD			0xe8000000
-#define PPC_INST_STD			0xf8000000
-#define PPC_INST_ADDIS			0x3c000000
-#define PPC_INST_ADD			0x7c000214
-#define PPC_INST_DIVD			0x7c0003d2
-#define PPC_INST_BRANCH			0x48000000
-#define PPC_INST_BL			0x48000001
 #define PPC_INST_BRANCH_COND		0x40800000
 
 /* Prefixes */
@@ -324,6 +330,7 @@
 #define __PPC_XSP(s)	((((s) & 0x1e) | (((s) >> 5) & 0x1)) << 21)
 #define __PPC_XTP(s)	__PPC_XSP(s)
 #define __PPC_T_TLB(t)	(((t) & 0x3) << 21)
+#define __PPC_PL(p)	(((p) & 0x3) << 16)
 #define __PPC_WC(w)	(((w) & 0x3) << 21)
 #define __PPC_WS(w)	(((w) & 0x1f) << 11)
 #define __PPC_SH(s)	__PPC_WS(s)
@@ -337,6 +344,7 @@
 #define __PPC_SPR(r)	((((r) & 0x1f) << 16) | ((((r) >> 5) & 0x1f) << 11))
 #define __PPC_RC21	(0x1 << 10)
 #define __PPC_PRFX_R(r)	(((r) & 0x1) << 20)
+#define __PPC_EH(eh)	(((eh) & 0x1) << 0)
 
 /*
  * Both low and high 16 bits are added as SIGNED additions, so if low 16 bits
@@ -349,15 +357,9 @@
 #define PPC_HIGHER(v)	(((v) >> 32) & 0xffff)
 #define PPC_HIGHEST(v)	(((v) >> 48) & 0xffff)
 
-/*
- * Only use the larx hint bit on 64bit CPUs. e500v1/v2 based CPUs will treat a
- * larx with EH set as an illegal instruction.
- */
-#ifdef CONFIG_PPC64
-#define __PPC_EH(eh)	(((eh) & 0x1) << 0)
-#else
-#define __PPC_EH(eh)	0
-#endif
+/* LI Field */
+#define PPC_LI_MASK	0x03fffffc
+#define PPC_LI(v)	((v) & PPC_LI_MASK)
 
 /* Base instruction encoding */
 #define PPC_RAW_CP_ABORT		(0x7c00068c)
@@ -387,12 +389,14 @@
 #define PPC_RAW_RFDI			(0x4c00004e)
 #define PPC_RAW_RFMCI			(0x4c00004c)
 #define PPC_RAW_TLBILX(t, a, b)		(0x7c000024 | __PPC_T_TLB(t) | 	__PPC_RA0(a) | __PPC_RB(b))
-#define PPC_RAW_WAIT(w)			(0x7c00007c | __PPC_WC(w))
+#define PPC_RAW_WAIT_v203		(0x7c00007c)
+#define PPC_RAW_WAIT(w, p)		(0x7c00003c | __PPC_WC(w) | __PPC_PL(p))
 #define PPC_RAW_TLBIE(lp, a)		(0x7c000264 | ___PPC_RB(a) | ___PPC_RS(lp))
 #define PPC_RAW_TLBIE_5(rb, rs, ric, prs, r) \
 	(0x7c000264 | ___PPC_RB(rb) | ___PPC_RS(rs) | ___PPC_RIC(ric) | ___PPC_PRS(prs) | ___PPC_R(r))
 #define PPC_RAW_TLBIEL(rb, rs, ric, prs, r) \
 	(0x7c000224 | ___PPC_RB(rb) | ___PPC_RS(rs) | ___PPC_RIC(ric) | ___PPC_PRS(prs) | ___PPC_R(r))
+#define PPC_RAW_TLBIEL_v205(rb, l)	(0x7c000224 | ___PPC_RB(rb) | (l << 21))
 #define PPC_RAW_TLBSRX_DOT(a, b)	(0x7c0006a5 | __PPC_RA0(a) | __PPC_RB(b))
 #define PPC_RAW_TLBIVAX(a, b)		(0x7c000624 | __PPC_RA0(a) | __PPC_RB(b))
 #define PPC_RAW_ERATWE(s, a, w)		(0x7c0001a6 | __PPC_RS(s) | __PPC_RA(a) | __PPC_WS(w))
@@ -456,10 +460,10 @@
 	(0x100000c7 | ___PPC_RT(vrt) | ___PPC_RA(vra) | ___PPC_RB(vrb) | __PPC_RC21)
 #define PPC_RAW_VCMPEQUB_RC(vrt, vra, vrb) \
 	(0x10000006 | ___PPC_RT(vrt) | ___PPC_RA(vra) | ___PPC_RB(vrb) | __PPC_RC21)
-#define PPC_RAW_LD(r, base, i)		(PPC_INST_LD | ___PPC_RT(r) | ___PPC_RA(base) | IMM_DS(i))
+#define PPC_RAW_LD(r, base, i)		(0xe8000000 | ___PPC_RT(r) | ___PPC_RA(base) | IMM_DS(i))
 #define PPC_RAW_LWZ(r, base, i)		(0x80000000 | ___PPC_RT(r) | ___PPC_RA(base) | IMM_L(i))
 #define PPC_RAW_LWZX(t, a, b)		(0x7c00002e | ___PPC_RT(t) | ___PPC_RA(a) | ___PPC_RB(b))
-#define PPC_RAW_STD(r, base, i)		(PPC_INST_STD | ___PPC_RS(r) | ___PPC_RA(base) | IMM_DS(i))
+#define PPC_RAW_STD(r, base, i)		(0xf8000000 | ___PPC_RS(r) | ___PPC_RA(base) | IMM_DS(i))
 #define PPC_RAW_STDCX(s, a, b)		(0x7c0001ad | ___PPC_RS(s) | ___PPC_RA(a) | ___PPC_RB(b))
 #define PPC_RAW_LFSX(t, a, b)		(0x7c00042e | ___PPC_RT(t) | ___PPC_RA(a) | ___PPC_RB(b))
 #define PPC_RAW_STFSX(s, a, b)		(0x7c00052e | ___PPC_RS(s) | ___PPC_RA(a) | ___PPC_RB(b))
@@ -470,8 +474,8 @@
 #define PPC_RAW_ADDE(t, a, b)		(0x7c000114 | ___PPC_RT(t) | ___PPC_RA(a) | ___PPC_RB(b))
 #define PPC_RAW_ADDZE(t, a)		(0x7c000194 | ___PPC_RT(t) | ___PPC_RA(a))
 #define PPC_RAW_ADDME(t, a)		(0x7c0001d4 | ___PPC_RT(t) | ___PPC_RA(a))
-#define PPC_RAW_ADD(t, a, b)		(PPC_INST_ADD | ___PPC_RT(t) | ___PPC_RA(a) | ___PPC_RB(b))
-#define PPC_RAW_ADD_DOT(t, a, b)	(PPC_INST_ADD | ___PPC_RT(t) | ___PPC_RA(a) | ___PPC_RB(b) | 0x1)
+#define PPC_RAW_ADD(t, a, b)		(0x7c000214 | ___PPC_RT(t) | ___PPC_RA(a) | ___PPC_RB(b))
+#define PPC_RAW_ADD_DOT(t, a, b)	(0x7c000214 | ___PPC_RT(t) | ___PPC_RA(a) | ___PPC_RB(b) | 0x1)
 #define PPC_RAW_ADDC(t, a, b)		(0x7c000014 | ___PPC_RT(t) | ___PPC_RA(a) | ___PPC_RB(b))
 #define PPC_RAW_ADDC_DOT(t, a, b)	(0x7c000014 | ___PPC_RT(t) | ___PPC_RA(a) | ___PPC_RB(b) | 0x1)
 #define PPC_RAW_NOP()			PPC_RAW_ORI(0, 0, 0)
@@ -498,6 +502,7 @@
 #define PPC_RAW_LDX(r, base, b)		(0x7c00002a | ___PPC_RT(r) | ___PPC_RA(base) | ___PPC_RB(b))
 #define PPC_RAW_LHZ(r, base, i)		(0xa0000000 | ___PPC_RT(r) | ___PPC_RA(base) | IMM_L(i))
 #define PPC_RAW_LHBRX(r, base, b)	(0x7c00062c | ___PPC_RT(r) | ___PPC_RA(base) | ___PPC_RB(b))
+#define PPC_RAW_LWBRX(r, base, b)	(0x7c00042c | ___PPC_RT(r) | ___PPC_RA(base) | ___PPC_RB(b))
 #define PPC_RAW_LDBRX(r, base, b)	(0x7c000428 | ___PPC_RT(r) | ___PPC_RA(base) | ___PPC_RB(b))
 #define PPC_RAW_STWCX(s, a, b)		(0x7c00012d | ___PPC_RS(s) | ___PPC_RA(a) | ___PPC_RB(b))
 #define PPC_RAW_CMPWI(a, i)		(0x2c000000 | ___PPC_RA(a) | IMM_L(i))
@@ -566,6 +571,12 @@
 #define PPC_RAW_MTSPR(spr, d)		(0x7c0003a6 | ___PPC_RS(d) | __PPC_SPR(spr))
 #define PPC_RAW_EIEIO()			(0x7c0006ac)
 
+#define PPC_RAW_BRANCH(offset)		(0x48000000 | PPC_LI(offset))
+#define PPC_RAW_BL(offset)		(0x48000001 | PPC_LI(offset))
+#define PPC_RAW_TW(t0, a, b)		(0x7c000008 | ___PPC_RS(t0) | ___PPC_RA(a) | ___PPC_RB(b))
+#define PPC_RAW_TRAP()			PPC_RAW_TW(31, 0, 0)
+#define PPC_RAW_SETB(t, bfa)		(0x7c000100 | ___PPC_RT(t) | ___PPC_RA((bfa) << 2))
+
 /* Deal with instructions that older assemblers aren't aware of */
 #define	PPC_BCCTR_FLUSH		stringify_in_c(.long PPC_INST_BCCTR_FLUSH)
 #define	PPC_CP_ABORT		stringify_in_c(.long PPC_RAW_CP_ABORT)
@@ -575,6 +586,7 @@
 #define	PPC_DCBZL(a, b)		stringify_in_c(.long PPC_RAW_DCBZL(a, b))
 #define	PPC_DIVDE(t, a, b)	stringify_in_c(.long PPC_RAW_DIVDE(t, a, b))
 #define	PPC_DIVDEU(t, a, b)	stringify_in_c(.long PPC_RAW_DIVDEU(t, a, b))
+#define PPC_DSSALL		stringify_in_c(.long PPC_INST_DSSALL)
 #define PPC_LQARX(t, a, b, eh)	stringify_in_c(.long PPC_RAW_LQARX(t, a, b, eh))
 #define PPC_STQCX(t, a, b)	stringify_in_c(.long PPC_RAW_STQCX(t, a, b))
 #define PPC_MADDHD(t, a, b, c)	stringify_in_c(.long PPC_RAW_MADDHD(t, a, b, c))
@@ -596,12 +608,14 @@
 #define PPC_TLBILX_ALL(a, b)	PPC_TLBILX(0, a, b)
 #define PPC_TLBILX_PID(a, b)	PPC_TLBILX(1, a, b)
 #define PPC_TLBILX_VA(a, b)	PPC_TLBILX(3, a, b)
-#define PPC_WAIT(w)		stringify_in_c(.long PPC_RAW_WAIT(w))
+#define PPC_WAIT_v203		stringify_in_c(.long PPC_RAW_WAIT_v203)
+#define PPC_WAIT(w, p)		stringify_in_c(.long PPC_RAW_WAIT(w, p))
 #define PPC_TLBIE(lp, a) 	stringify_in_c(.long PPC_RAW_TLBIE(lp, a))
 #define	PPC_TLBIE_5(rb, rs, ric, prs, r) \
 				stringify_in_c(.long PPC_RAW_TLBIE_5(rb, rs, ric, prs, r))
 #define	PPC_TLBIEL(rb,rs,ric,prs,r) \
 				stringify_in_c(.long PPC_RAW_TLBIEL(rb, rs, ric, prs, r))
+#define PPC_TLBIEL_v205(rb, l)	stringify_in_c(.long PPC_RAW_TLBIEL_v205(rb, l))
 #define PPC_TLBSRX_DOT(a, b)	stringify_in_c(.long PPC_RAW_TLBSRX_DOT(a, b))
 #define PPC_TLBIVAX(a, b)	stringify_in_c(.long PPC_RAW_TLBIVAX(a, b))
 

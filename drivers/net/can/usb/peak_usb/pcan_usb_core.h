@@ -99,7 +99,6 @@ struct peak_time_ref {
 struct peak_tx_urb_context {
 	struct peak_usb_device *dev;
 	u32 echo_index;
-	u8 data_len;
 	struct urb *urb;
 };
 
@@ -133,7 +132,7 @@ struct peak_usb_device {
 	struct peak_usb_device *next_siblings;
 };
 
-void pcan_dump_mem(char *prompt, void *p, int l);
+void pcan_dump_mem(const char *prompt, const void *p, int l);
 
 /* common timestamp management */
 void peak_usb_init_time_ref(struct peak_time_ref *time_ref,
@@ -143,7 +142,9 @@ void peak_usb_set_ts_now(struct peak_time_ref *time_ref, u32 ts_now);
 void peak_usb_get_ts_time(struct peak_time_ref *time_ref, u32 ts, ktime_t *tv);
 int peak_usb_netif_rx(struct sk_buff *skb,
 		      struct peak_time_ref *time_ref, u32 ts_low);
+int peak_usb_netif_rx_64(struct sk_buff *skb, u32 ts_low, u32 ts_high);
 void peak_usb_async_complete(struct urb *urb);
 void peak_usb_restart_complete(struct peak_usb_device *dev);
+int pcan_get_ts_info(struct net_device *dev, struct ethtool_ts_info *info);
 
 #endif

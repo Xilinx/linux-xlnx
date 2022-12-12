@@ -1013,7 +1013,7 @@ static int emac_set_mac_address(struct net_device *ndev, void *sa)
 
 	mutex_lock(&dev->link_lock);
 
-	memcpy(ndev->dev_addr, addr->sa_data, ndev->addr_len);
+	eth_hw_addr_set(ndev, addr->sa_data);
 
 	emac_rx_disable(dev);
 	emac_tx_disable(dev);
@@ -2137,8 +2137,11 @@ emac_ethtool_set_link_ksettings(struct net_device *ndev,
 	return 0;
 }
 
-static void emac_ethtool_get_ringparam(struct net_device *ndev,
-				       struct ethtool_ringparam *rp)
+static void
+emac_ethtool_get_ringparam(struct net_device *ndev,
+			   struct ethtool_ringparam *rp,
+			   struct kernel_ethtool_ringparam *kernel_rp,
+			   struct netlink_ext_ack *extack)
 {
 	rp->rx_max_pending = rp->rx_pending = NUM_RX_BUFF;
 	rp->tx_max_pending = rp->tx_pending = NUM_TX_BUFF;
@@ -2281,8 +2284,8 @@ static void emac_ethtool_get_drvinfo(struct net_device *ndev,
 {
 	struct emac_instance *dev = netdev_priv(ndev);
 
-	strlcpy(info->driver, "ibm_emac", sizeof(info->driver));
-	strlcpy(info->version, DRV_VERSION, sizeof(info->version));
+	strscpy(info->driver, "ibm_emac", sizeof(info->driver));
+	strscpy(info->version, DRV_VERSION, sizeof(info->version));
 	snprintf(info->bus_info, sizeof(info->bus_info), "PPC 4xx EMAC-%d %pOF",
 		 dev->cell_index, dev->ofdev->dev.of_node);
 }
@@ -2848,7 +2851,6 @@ static int emac_init_phy(struct emac_instance *dev)
 static int emac_init_config(struct emac_instance *dev)
 {
 	struct device_node *np = dev->ofdev->dev.of_node;
-	const void *p;
 	int err;
 
 	/* Read config from device-tree */
@@ -2976,13 +2978,10 @@ static int emac_init_config(struct emac_instance *dev)
 	}
 
 	/* Read MAC-address */
-	p = of_get_property(np, "local-mac-address", NULL);
-	if (p == NULL) {
-		printk(KERN_ERR "%pOF: Can't find local-mac-address property\n",
-		       np);
-		return -ENXIO;
-	}
-	memcpy(dev->ndev->dev_addr, p, ETH_ALEN);
+	err = of_get_ethdev_address(np, dev->ndev);
+	if (err)
+		return dev_err_probe(&dev->ofdev->dev, err,
+				     "Can't get valid [local-]mac-address from OF !\n");
 
 	/* IAHT and GAHT filter parameterization */
 	if (emac_has_feature(dev, EMAC_FTR_EMAC4SYNC)) {

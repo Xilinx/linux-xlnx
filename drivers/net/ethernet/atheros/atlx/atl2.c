@@ -931,7 +931,7 @@ static int atl2_set_mac(struct net_device *netdev, void *p)
 	if (netif_running(netdev))
 		return -EBUSY;
 
-	memcpy(netdev->dev_addr, addr->sa_data, netdev->addr_len);
+	eth_hw_addr_set(netdev, addr->sa_data);
 	memcpy(adapter->hw.mac_addr, addr->sa_data, netdev->addr_len);
 
 	atl2_set_mac_addr(&adapter->hw);
@@ -1405,7 +1405,7 @@ static int atl2_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	/* copy the MAC address out of the EEPROM */
 	atl2_read_mac_addr(&adapter->hw);
-	memcpy(netdev->dev_addr, adapter->hw.mac_addr, netdev->addr_len);
+	eth_hw_addr_set(netdev, adapter->hw.mac_addr);
 	if (!is_valid_ether_addr(netdev->dev_addr)) {
 		err = -EIO;
 		goto err_eeprom;
@@ -1980,9 +1980,9 @@ static void atl2_get_drvinfo(struct net_device *netdev,
 {
 	struct atl2_adapter *adapter = netdev_priv(netdev);
 
-	strlcpy(drvinfo->driver,  atl2_driver_name, sizeof(drvinfo->driver));
-	strlcpy(drvinfo->fw_version, "L2", sizeof(drvinfo->fw_version));
-	strlcpy(drvinfo->bus_info, pci_name(adapter->pdev),
+	strscpy(drvinfo->driver,  atl2_driver_name, sizeof(drvinfo->driver));
+	strscpy(drvinfo->fw_version, "L2", sizeof(drvinfo->fw_version));
+	strscpy(drvinfo->bus_info, pci_name(adapter->pdev),
 		sizeof(drvinfo->bus_info));
 }
 

@@ -38,14 +38,17 @@ do {										\
 		pr_alert("%s" TORTURE_FLAG " %s\n", torture_type, s);		\
 	}									\
 } while (0)
-#define VERBOSE_TOROUT_ERRSTRING(s) \
-do {										\
-	if (verbose) {								\
-		verbose_torout_sleep();						\
-		pr_alert("%s" TORTURE_FLAG "!!! %s\n", torture_type, s);	\
-	}									\
-} while (0)
+#define TOROUT_ERRSTRING(s) \
+	pr_alert("%s" TORTURE_FLAG "!!! %s\n", torture_type, s)
 void verbose_torout_sleep(void);
+
+#define torture_init_error(firsterr)						\
+({										\
+	int ___firsterr = (firsterr);						\
+										\
+	WARN_ONCE(!IS_MODULE(CONFIG_RCU_TORTURE_TEST) && ___firsterr < 0, "Torture-test initialization failed with error code %d\n", ___firsterr); \
+	___firsterr < 0;								\
+})
 
 /* Definitions for online/offline exerciser. */
 #ifdef CONFIG_HOTPLUG_CPU
@@ -115,7 +118,7 @@ void _torture_stop_kthread(char *m, struct task_struct **tp);
 	_torture_stop_kthread("Stopping " #n " task", &(tp))
 
 #ifdef CONFIG_PREEMPTION
-#define torture_preempt_schedule() preempt_schedule()
+#define torture_preempt_schedule() __preempt_schedule()
 #else
 #define torture_preempt_schedule()	do { } while (0)
 #endif

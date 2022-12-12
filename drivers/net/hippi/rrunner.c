@@ -213,6 +213,7 @@ static int rr_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 		pci_iounmap(pdev, rrpriv->regs);
 	if (pdev)
 		pci_release_regions(pdev);
+	pci_disable_device(pdev);
  out2:
 	free_netdev(dev);
  out3:
@@ -502,6 +503,7 @@ static unsigned int write_eeprom(struct rr_private *rrpriv,
 
 static int rr_init(struct net_device *dev)
 {
+	u8 addr[HIPPI_ALEN] __aligned(4);
 	struct rr_private *rrpriv;
 	struct rr_regs __iomem *regs;
 	u32 sram_size, rev;
@@ -537,10 +539,11 @@ static int rr_init(struct net_device *dev)
 	 * other method I've seen.  -VAL
 	 */
 
-	*(__be16 *)(dev->dev_addr) =
+	*(__be16 *)(addr) =
 	  htons(rr_read_eeprom_word(rrpriv, offsetof(struct eeprom, manf.BoardULA)));
-	*(__be32 *)(dev->dev_addr+2) =
+	*(__be32 *)(addr+2) =
 	  htonl(rr_read_eeprom_word(rrpriv, offsetof(struct eeprom, manf.BoardULA[4])));
+	dev_addr_set(dev, addr);
 
 	printk("  MAC: %pM\n", dev->dev_addr);
 
@@ -1353,7 +1356,9 @@ static int rr_close(struct net_device *dev)
 
 	rrpriv->fw_running = 0;
 
+	spin_unlock_irqrestore(&rrpriv->lock, flags);
 	del_timer_sync(&rrpriv->timer);
+	spin_lock_irqsave(&rrpriv->lock, flags);
 
 	writel(0, &regs->TxPi);
 	writel(0, &regs->IpRxPi);

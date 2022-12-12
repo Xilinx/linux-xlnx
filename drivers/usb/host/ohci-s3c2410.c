@@ -39,8 +39,6 @@
 
 #define DRIVER_DESC "OHCI S3C2410 driver"
 
-static const char hcd_name[] = "ohci-s3c2410";
-
 static struct clk *clk;
 static struct clk *usb_clk;
 
@@ -356,7 +354,7 @@ static int ohci_hcd_s3c2410_probe(struct platform_device *dev)
 {
 	struct usb_hcd *hcd = NULL;
 	struct s3c2410_hcd_info *info = dev_get_platdata(&dev->dev);
-	int retval;
+	int retval, irq;
 
 	s3c2410_usb_set_power(info, 1, 1);
 	s3c2410_usb_set_power(info, 2, 1);
@@ -388,9 +386,15 @@ static int ohci_hcd_s3c2410_probe(struct platform_device *dev)
 		goto err_put;
 	}
 
+	irq = platform_get_irq(dev, 0);
+	if (irq < 0) {
+		retval = irq;
+		goto err_put;
+	}
+
 	s3c2410_start_hc(dev, hcd);
 
-	retval = usb_add_hcd(hcd, dev->resource[1].start, 0);
+	retval = usb_add_hcd(hcd, irq, 0);
 	if (retval != 0)
 		goto err_ioremap;
 
@@ -468,7 +472,6 @@ static int __init ohci_s3c2410_init(void)
 	if (usb_disabled())
 		return -ENODEV;
 
-	pr_info("%s: " DRIVER_DESC "\n", hcd_name);
 	ohci_init_driver(&ohci_s3c2410_hc_driver, NULL);
 
 	/*

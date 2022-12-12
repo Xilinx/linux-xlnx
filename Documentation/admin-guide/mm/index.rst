@@ -32,10 +32,14 @@ the Linux memory management.
    idle_page_tracking
    ksm
    memory-hotplug
+   multigen_lru
    nommu-mmap
    numa_memory_policy
    numaperf
    pagemap
+   shrinker_debugfs
    soft-dirty
+   swap_numa
    transhuge
    userfaultfd
+   zswap

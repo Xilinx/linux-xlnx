@@ -24,6 +24,7 @@
 #define IGC_DEV_ID_I225_K2			0x3101
 #define IGC_DEV_ID_I226_K			0x3102
 #define IGC_DEV_ID_I225_LMVP			0x5502
+#define IGC_DEV_ID_I226_LMVP			0x5503
 #define IGC_DEV_ID_I225_IT			0x0D9F
 #define IGC_DEV_ID_I226_LM			0x125B
 #define IGC_DEV_ID_I226_V			0x125C
@@ -52,12 +53,6 @@ enum igc_mac_type {
 	igc_num_macs  /* List is 1-based, so subtract 1 for true count. */
 };
 
-enum igc_phy_type {
-	igc_phy_unknown = 0,
-	igc_phy_none,
-	igc_phy_i225,
-};
-
 enum igc_media_type {
 	igc_media_type_unknown = 0,
 	igc_media_type_copper = 1,
@@ -67,8 +62,6 @@ enum igc_media_type {
 enum igc_nvm_type {
 	igc_nvm_unknown = 0,
 	igc_nvm_eeprom_spi,
-	igc_nvm_flash_hw,
-	igc_nvm_invm,
 };
 
 struct igc_info {
@@ -95,8 +88,6 @@ struct igc_mac_info {
 
 	u32 mta_shadow[MAX_MTA_REG];
 	u16 rar_entry_count;
-
-	u8 forced_speed_duplex;
 
 	bool asf_firmware_present;
 	bool arc_subsystem_valid;
@@ -139,8 +130,6 @@ struct igc_nvm_info {
 
 struct igc_phy_info {
 	struct igc_phy_operations ops;
-
-	enum igc_phy_type type;
 
 	u32 addr;
 	u32 id;

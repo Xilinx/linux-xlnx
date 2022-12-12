@@ -45,10 +45,6 @@
 #include "xprt_rdma.h"
 #include <trace/events/rpcrdma.h>
 
-#if IS_ENABLED(CONFIG_SUNRPC_DEBUG)
-# define RPCDBG_FACILITY	RPCDBG_TRANS
-#endif
-
 static void frwr_cid_init(struct rpcrdma_ep *ep,
 			  struct rpcrdma_mr *mr)
 {
@@ -128,15 +124,15 @@ int frwr_mr_init(struct rpcrdma_xprt *r_xprt, struct rpcrdma_mr *mr)
 	unsigned int depth = ep->re_max_fr_depth;
 	struct scatterlist *sg;
 	struct ib_mr *frmr;
-	int rc;
+
+	sg = kcalloc_node(depth, sizeof(*sg), XPRTRDMA_GFP_FLAGS,
+			  ibdev_to_node(ep->re_id->device));
+	if (!sg)
+		return -ENOMEM;
 
 	frmr = ib_alloc_mr(ep->re_pd, ep->re_mrtype, depth);
 	if (IS_ERR(frmr))
 		goto out_mr_err;
-
-	sg = kmalloc_array(depth, sizeof(*sg), GFP_NOFS);
-	if (!sg)
-		goto out_list_err;
 
 	mr->mr_xprt = r_xprt;
 	mr->mr_ibmr = frmr;
@@ -150,13 +146,9 @@ int frwr_mr_init(struct rpcrdma_xprt *r_xprt, struct rpcrdma_mr *mr)
 	return 0;
 
 out_mr_err:
-	rc = PTR_ERR(frmr);
-	trace_xprtrdma_frwr_alloc(mr, rc);
-	return rc;
-
-out_list_err:
-	ib_dereg_mr(frmr);
-	return -ENOMEM;
+	kfree(sg);
+	trace_xprtrdma_frwr_alloc(mr, PTR_ERR(frmr));
+	return PTR_ERR(frmr);
 }
 
 /**
@@ -199,7 +191,7 @@ int frwr_query_device(struct rpcrdma_ep *ep, const struct ib_device *device)
 	ep->re_attr.cap.max_recv_sge = 1;
 
 	ep->re_mrtype = IB_MR_TYPE_MEM_REG;
-	if (attrs->device_cap_flags & IB_DEVICE_SG_GAPS_REG)
+	if (attrs->kernel_cap_flags & IBK_SG_GAPS_REG)
 		ep->re_mrtype = IB_MR_TYPE_SG_GAPS;
 
 	/* Quirk: Some devices advertise a large max_fast_reg_page_list_len
@@ -515,8 +507,8 @@ void frwr_unmap_sync(struct rpcrdma_xprt *r_xprt, struct rpcrdma_req *req)
 	 * a single ib_post_send() call.
 	 */
 	prev = &first;
-	while ((mr = rpcrdma_mr_pop(&req->rl_registered))) {
-
+	mr = rpcrdma_mr_pop(&req->rl_registered);
+	do {
 		trace_xprtrdma_mr_localinv(mr);
 		r_xprt->rx_stats.local_inv_needed++;
 
@@ -533,7 +525,8 @@ void frwr_unmap_sync(struct rpcrdma_xprt *r_xprt, struct rpcrdma_req *req)
 
 		*prev = last;
 		prev = &last->next;
-	}
+	} while ((mr = rpcrdma_mr_pop(&req->rl_registered)));
+
 	mr = container_of(last, struct rpcrdma_mr, mr_invwr);
 
 	/* Strong send queue ordering guarantees that when the
@@ -617,8 +610,8 @@ void frwr_unmap_async(struct rpcrdma_xprt *r_xprt, struct rpcrdma_req *req)
 	 * a single ib_post_send() call.
 	 */
 	prev = &first;
-	while ((mr = rpcrdma_mr_pop(&req->rl_registered))) {
-
+	mr = rpcrdma_mr_pop(&req->rl_registered);
+	do {
 		trace_xprtrdma_mr_localinv(mr);
 		r_xprt->rx_stats.local_inv_needed++;
 
@@ -635,7 +628,7 @@ void frwr_unmap_async(struct rpcrdma_xprt *r_xprt, struct rpcrdma_req *req)
 
 		*prev = last;
 		prev = &last->next;
-	}
+	} while ((mr = rpcrdma_mr_pop(&req->rl_registered)));
 
 	/* Strong send queue ordering guarantees that when the
 	 * last WR in the chain completes, all WRs in the chain
@@ -665,4 +658,39 @@ void frwr_unmap_async(struct rpcrdma_xprt *r_xprt, struct rpcrdma_req *req)
 	/* Force a connection loss to ensure complete recovery.
 	 */
 	rpcrdma_force_disconnect(ep);
+}
+
+/**
+ * frwr_wp_create - Create an MR for padding Write chunks
+ * @r_xprt: transport resources to use
+ *
+ * Return 0 on success, negative errno on failure.
+ */
+int frwr_wp_create(struct rpcrdma_xprt *r_xprt)
+{
+	struct rpcrdma_ep *ep = r_xprt->rx_ep;
+	struct rpcrdma_mr_seg seg;
+	struct rpcrdma_mr *mr;
+
+	mr = rpcrdma_mr_get(r_xprt);
+	if (!mr)
+		return -EAGAIN;
+	mr->mr_req = NULL;
+	ep->re_write_pad_mr = mr;
+
+	seg.mr_len = XDR_UNIT;
+	seg.mr_page = virt_to_page(ep->re_write_pad);
+	seg.mr_offset = offset_in_page(ep->re_write_pad);
+	if (IS_ERR(frwr_map(r_xprt, &seg, 1, true, xdr_zero, mr)))
+		return -EIO;
+	trace_xprtrdma_mr_fastreg(mr);
+
+	mr->mr_cqe.done = frwr_wc_fastreg;
+	mr->mr_regwr.wr.next = NULL;
+	mr->mr_regwr.wr.wr_cqe = &mr->mr_cqe;
+	mr->mr_regwr.wr.num_sge = 0;
+	mr->mr_regwr.wr.opcode = IB_WR_REG_MR;
+	mr->mr_regwr.wr.send_flags = 0;
+
+	return ib_post_send(ep->re_id->qp, &mr->mr_regwr.wr, NULL);
 }

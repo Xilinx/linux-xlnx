@@ -264,7 +264,7 @@ static int validate_link(struct hists *leader, struct hists *other)
 	return __validate_link(leader, 0) || __validate_link(other, 1);
 }
 
-int test__hists_link(struct test *test __maybe_unused, int subtest __maybe_unused)
+static int test__hists_link(struct test_suite *test __maybe_unused, int subtest __maybe_unused)
 {
 	int err = -1;
 	struct hists *hists, *first_hists;
@@ -276,10 +276,10 @@ int test__hists_link(struct test *test __maybe_unused, int subtest __maybe_unuse
 	if (evlist == NULL)
                 return -ENOMEM;
 
-	err = parse_events(evlist, "cpu-clock", NULL);
+	err = parse_event(evlist, "cpu-clock");
 	if (err)
 		goto out;
-	err = parse_events(evlist, "task-clock", NULL);
+	err = parse_event(evlist, "task-clock");
 	if (err)
 		goto out;
 
@@ -339,3 +339,5 @@ out:
 
 	return err;
 }
+
+DEFINE_SUITE("Match and link multiple hists", hists_link);

@@ -228,7 +228,6 @@ static const struct ib_device_ops qedr_dev_ops = {
 	.query_srq = qedr_query_srq,
 	.reg_user_mr = qedr_reg_user_mr,
 	.req_notify_cq = qedr_arm_cq,
-	.resize_cq = qedr_resize_cq,
 
 	INIT_RDMA_OBJ_SIZE(ib_ah, qedr_ah, ibah),
 	INIT_RDMA_OBJ_SIZE(ib_cq, qedr_cq, ibcq),
@@ -272,7 +271,7 @@ static int qedr_register_device(struct qedr_dev *dev)
 static int qedr_alloc_mem_sb(struct qedr_dev *dev,
 			     struct qed_sb_info *sb_info, u16 sb_id)
 {
-	struct status_block_e4 *sb_virt;
+	struct status_block *sb_virt;
 	dma_addr_t sb_phys;
 	int rc;
 
@@ -345,6 +344,10 @@ static int qedr_alloc_resources(struct qedr_dev *dev)
 	if (IS_IWARP(dev)) {
 		xa_init(&dev->qps);
 		dev->iwarp_wq = create_singlethread_workqueue("qedr_iwarpq");
+		if (!dev->iwarp_wq) {
+			rc = -ENOMEM;
+			goto err1;
+		}
 	}
 
 	/* Allocate Status blocks for CNQ */
@@ -352,7 +355,7 @@ static int qedr_alloc_resources(struct qedr_dev *dev)
 				GFP_KERNEL);
 	if (!dev->sb_array) {
 		rc = -ENOMEM;
-		goto err1;
+		goto err_destroy_wq;
 	}
 
 	dev->cnq_array = kcalloc(dev->num_cnq,
@@ -403,6 +406,9 @@ err3:
 	kfree(dev->cnq_array);
 err2:
 	kfree(dev->sb_array);
+err_destroy_wq:
+	if (IS_IWARP(dev))
+		destroy_workqueue(dev->iwarp_wq);
 err1:
 	kfree(dev->sgid_tbl);
 	return rc;
@@ -501,7 +507,6 @@ static void qedr_sync_free_irqs(struct qedr_dev *dev)
 		if (dev->int_info.msix_cnt) {
 			idx = i * dev->num_hwfns + dev->affin_hwfn_idx;
 			vector = dev->int_info.msix[idx].vector;
-			synchronize_irq(vector);
 			free_irq(vector, &dev->cnq_array[i]);
 		}
 	}

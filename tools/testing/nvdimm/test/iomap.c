@@ -62,16 +62,14 @@ struct nfit_test_resource *get_nfit_res(resource_size_t resource)
 }
 EXPORT_SYMBOL(get_nfit_res);
 
-static void __iomem *__nfit_test_ioremap(resource_size_t offset, unsigned long size,
-		void __iomem *(*fallback_fn)(resource_size_t, unsigned long))
-{
-	struct nfit_test_resource *nfit_res = get_nfit_res(offset);
-
-	if (nfit_res)
-		return (void __iomem *) nfit_res->buf + offset
-			- nfit_res->res.start;
-	return fallback_fn(offset, size);
-}
+#define __nfit_test_ioremap(offset, size, fallback_fn) ({		\
+	struct nfit_test_resource *nfit_res = get_nfit_res(offset);	\
+	nfit_res ?							\
+		(void __iomem *) nfit_res->buf + (offset)		\
+			- nfit_res->res.start				\
+	:								\
+		fallback_fn((offset), (size)) ;				\
+})
 
 void __iomem *__wrap_devm_ioremap(struct device *dev,
 		resource_size_t offset, unsigned long size)
@@ -100,25 +98,17 @@ static void nfit_test_kill(void *_pgmap)
 {
 	struct dev_pagemap *pgmap = _pgmap;
 
-	WARN_ON(!pgmap || !pgmap->ref);
+	WARN_ON(!pgmap);
 
-	if (pgmap->ops && pgmap->ops->kill)
-		pgmap->ops->kill(pgmap);
-	else
-		percpu_ref_kill(pgmap->ref);
+	percpu_ref_kill(&pgmap->ref);
 
-	if (pgmap->ops && pgmap->ops->cleanup) {
-		pgmap->ops->cleanup(pgmap);
-	} else {
-		wait_for_completion(&pgmap->done);
-		percpu_ref_exit(pgmap->ref);
-	}
+	wait_for_completion(&pgmap->done);
+	percpu_ref_exit(&pgmap->ref);
 }
 
 static void dev_pagemap_percpu_release(struct percpu_ref *ref)
 {
-	struct dev_pagemap *pgmap =
-		container_of(ref, struct dev_pagemap, internal_ref);
+	struct dev_pagemap *pgmap = container_of(ref, struct dev_pagemap, ref);
 
 	complete(&pgmap->done);
 }
@@ -132,22 +122,11 @@ void *__wrap_devm_memremap_pages(struct device *dev, struct dev_pagemap *pgmap)
 	if (!nfit_res)
 		return devm_memremap_pages(dev, pgmap);
 
-	if (!pgmap->ref) {
-		if (pgmap->ops && (pgmap->ops->kill || pgmap->ops->cleanup))
-			return ERR_PTR(-EINVAL);
-
-		init_completion(&pgmap->done);
-		error = percpu_ref_init(&pgmap->internal_ref,
-				dev_pagemap_percpu_release, 0, GFP_KERNEL);
-		if (error)
-			return ERR_PTR(error);
-		pgmap->ref = &pgmap->internal_ref;
-	} else {
-		if (!pgmap->ops || !pgmap->ops->kill || !pgmap->ops->cleanup) {
-			WARN(1, "Missing reference count teardown definition\n");
-			return ERR_PTR(-EINVAL);
-		}
-	}
+	init_completion(&pgmap->done);
+	error = percpu_ref_init(&pgmap->ref, dev_pagemap_percpu_release, 0,
+				GFP_KERNEL);
+	if (error)
+		return ERR_PTR(error);
 
 	error = devm_add_action_or_reset(dev, nfit_test_kill, pgmap);
 	if (error)

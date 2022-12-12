@@ -12,6 +12,17 @@
 
 #define HAVE_FUNCTION_GRAPH_FP_TEST
 
+/*
+ * HAVE_FUNCTION_GRAPH_RET_ADDR_PTR means that the architecture can provide a
+ * "return address pointer" which can be used to uniquely identify a return
+ * address which has been overwritten.
+ *
+ * On arm64 we use the address of the caller's frame record, which remains the
+ * same for the lifetime of the instrumented function, unlike the return
+ * address in the LR.
+ */
+#define HAVE_FUNCTION_GRAPH_RET_ADDR_PTR
+
 #ifdef CONFIG_DYNAMIC_FTRACE_WITH_REGS
 #define ARCH_SUPPORTS_FTRACE_OPS 1
 #else
@@ -69,8 +80,15 @@ static inline unsigned long ftrace_call_adjust(unsigned long addr)
 
 #ifdef CONFIG_DYNAMIC_FTRACE_WITH_REGS
 struct dyn_ftrace;
+struct ftrace_ops;
+struct ftrace_regs;
+
 int ftrace_init_nop(struct module *mod, struct dyn_ftrace *rec);
 #define ftrace_init_nop ftrace_init_nop
+
+void ftrace_graph_func(unsigned long ip, unsigned long parent_ip,
+		       struct ftrace_ops *op, struct ftrace_regs *fregs);
+#define ftrace_graph_func ftrace_graph_func
 #endif
 
 #define ftrace_return_address(n) return_address(n)

@@ -10,6 +10,7 @@
  * Copyright (c) 2020, 2021 Vincent Mailhol <mailhol.vincent@wanadoo.fr>
  */
 
+#include <linux/ethtool.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/usb.h>
@@ -18,14 +19,11 @@
 
 #include "es58x_core.h"
 
-#define DRV_VERSION "1.00"
 MODULE_AUTHOR("Vincent Mailhol <mailhol.vincent@wanadoo.fr>");
 MODULE_AUTHOR("Arunachalam Santhanam <arunachalam.santhanam@in.bosch.com>");
 MODULE_DESCRIPTION("Socket CAN driver for ETAS ES58X USB adapters");
-MODULE_VERSION(DRV_VERSION);
 MODULE_LICENSE("GPL v2");
 
-#define ES58X_MODULE_NAME "etas_es58x"
 #define ES58X_VENDOR_ID 0x108C
 #define ES581_4_PRODUCT_ID 0x0159
 #define ES582_1_PRODUCT_ID 0x0168
@@ -59,11 +57,11 @@ MODULE_DEVICE_TABLE(usb, es58x_id_table);
 
 #define es58x_print_hex_dump(buf, len)					\
 	print_hex_dump(KERN_DEBUG,					\
-		       ES58X_MODULE_NAME " " __stringify(buf) ": ",	\
+		       KBUILD_MODNAME " " __stringify(buf) ": ",	\
 		       DUMP_PREFIX_NONE, 16, 1, buf, len, false)
 
 #define es58x_print_hex_dump_debug(buf, len)				 \
-	print_hex_dump_debug(ES58X_MODULE_NAME " " __stringify(buf) ": ",\
+	print_hex_dump_debug(KBUILD_MODNAME " " __stringify(buf) ": ",\
 			     DUMP_PREFIX_NONE, 16, 1, buf, len, false)
 
 /* The last two bytes of an ES58X command is a CRC16. The first two
@@ -664,7 +662,7 @@ int es58x_rx_err_msg(struct net_device *netdev, enum es58x_err error,
 	struct can_device_stats *can_stats = &can->can_stats;
 	struct can_frame *cf = NULL;
 	struct sk_buff *skb;
-	int ret;
+	int ret = 0;
 
 	if (!netif_running(netdev)) {
 		if (net_ratelimit())
@@ -823,8 +821,6 @@ int es58x_rx_err_msg(struct net_device *netdev, enum es58x_err error,
 			can->state = CAN_STATE_BUS_OFF;
 			can_bus_off(netdev);
 			ret = can->do_set_mode(netdev, CAN_MODE_STOP);
-			if (ret)
-				return ret;
 		}
 		break;
 
@@ -851,13 +847,6 @@ int es58x_rx_err_msg(struct net_device *netdev, enum es58x_err error,
 		break;
 	}
 
-	/* driver/net/can/dev.c:can_restart() takes in account error
-	 * messages in the RX stats. Doing the same here for
-	 * consistency.
-	 */
-	netdev->stats.rx_packets++;
-	netdev->stats.rx_bytes += CAN_ERR_DLC;
-
 	if (cf) {
 		if (cf->data[1])
 			cf->can_id |= CAN_ERR_CRTL;
@@ -881,7 +870,7 @@ int es58x_rx_err_msg(struct net_device *netdev, enum es58x_err error,
 					ES58X_EVENT_BUSOFF, timestamp);
 	}
 
-	return 0;
+	return ret;
 }
 
 /**
@@ -1471,10 +1460,6 @@ static void es58x_read_bulk_callback(struct urb *urb)
 	}
 
  resubmit_urb:
-	usb_fill_bulk_urb(urb, es58x_dev->udev, es58x_dev->rx_pipe,
-			  urb->transfer_buffer, urb->transfer_buffer_length,
-			  es58x_read_bulk_callback, es58x_dev);
-
 	ret = usb_submit_urb(urb, GFP_ATOMIC);
 	if (ret == -ENODEV) {
 		for (i = 0; i < es58x_dev->num_can_ch; i++)
@@ -1608,7 +1593,8 @@ static struct urb *es58x_get_tx_urb(struct es58x_device *es58x_dev)
 			return NULL;
 
 		usb_fill_bulk_urb(urb, es58x_dev->udev, es58x_dev->tx_pipe,
-				  buf, tx_buf_len, NULL, NULL);
+				  buf, tx_buf_len, es58x_write_bulk_callback,
+				  NULL);
 		return urb;
 	}
 
@@ -1641,9 +1627,7 @@ static int es58x_submit_urb(struct es58x_device *es58x_dev, struct urb *urb,
 	int ret;
 
 	es58x_set_crc(urb->transfer_buffer, urb->transfer_buffer_length);
-	usb_fill_bulk_urb(urb, es58x_dev->udev, es58x_dev->tx_pipe,
-			  urb->transfer_buffer, urb->transfer_buffer_length,
-			  es58x_write_bulk_callback, netdev);
+	urb->context = netdev;
 	usb_anchor_urb(urb, &es58x_dev->tx_urbs_busy);
 	ret = usb_submit_urb(urb, GFP_ATOMIC);
 	if (ret) {
@@ -1716,7 +1700,7 @@ static int es58x_alloc_rx_urbs(struct es58x_device *es58x_dev)
 {
 	const struct device *dev = es58x_dev->dev;
 	const struct es58x_parameters *param = es58x_dev->param;
-	size_t rx_buf_len = es58x_dev->rx_max_packet_size;
+	u16 rx_buf_len = usb_maxpacket(es58x_dev->udev, es58x_dev->rx_pipe);
 	struct urb *urb;
 	u8 *buf;
 	int i;
@@ -1748,7 +1732,7 @@ static int es58x_alloc_rx_urbs(struct es58x_device *es58x_dev)
 		dev_err(dev, "%s: Could not setup any rx URBs\n", __func__);
 		return ret;
 	}
-	dev_dbg(dev, "%s: Allocated %d rx URBs each of size %zu\n",
+	dev_dbg(dev, "%s: Allocated %d rx URBs each of size %u\n",
 		__func__, i, rx_buf_len);
 
 	return ret;
@@ -1796,7 +1780,7 @@ static int es58x_open(struct net_device *netdev)
 	struct es58x_device *es58x_dev = es58x_priv(netdev)->es58x_dev;
 	int ret;
 
-	if (atomic_inc_return(&es58x_dev->opened_channel_cnt) == 1) {
+	if (!es58x_dev->opened_channel_cnt) {
 		ret = es58x_alloc_rx_urbs(es58x_dev);
 		if (ret)
 			return ret;
@@ -1814,12 +1798,13 @@ static int es58x_open(struct net_device *netdev)
 	if (ret)
 		goto free_urbs;
 
+	es58x_dev->opened_channel_cnt++;
 	netif_start_queue(netdev);
 
 	return ret;
 
  free_urbs:
-	if (atomic_dec_and_test(&es58x_dev->opened_channel_cnt))
+	if (!es58x_dev->opened_channel_cnt)
 		es58x_free_urbs(es58x_dev);
 	netdev_err(netdev, "%s: Could not open the network device: %pe\n",
 		   __func__, ERR_PTR(ret));
@@ -1854,7 +1839,8 @@ static int es58x_stop(struct net_device *netdev)
 
 	es58x_flush_pending_tx_msg(netdev);
 
-	if (atomic_dec_and_test(&es58x_dev->opened_channel_cnt))
+	es58x_dev->opened_channel_cnt--;
+	if (!es58x_dev->opened_channel_cnt)
 		es58x_free_urbs(es58x_dev);
 
 	return 0;
@@ -1927,7 +1913,7 @@ static netdev_tx_t es58x_start_xmit(struct sk_buff *skb,
 	unsigned int frame_len;
 	int ret;
 
-	if (can_dropped_invalid_skb(netdev, skb)) {
+	if (can_dev_dropped_skb(netdev, skb)) {
 		if (priv->tx_urb)
 			goto xmit_commit;
 		return NETDEV_TX_OK;
@@ -1988,7 +1974,12 @@ static netdev_tx_t es58x_start_xmit(struct sk_buff *skb,
 static const struct net_device_ops es58x_netdev_ops = {
 	.ndo_open = es58x_open,
 	.ndo_stop = es58x_stop,
-	.ndo_start_xmit = es58x_start_xmit
+	.ndo_start_xmit = es58x_start_xmit,
+	.ndo_eth_ioctl = can_eth_ioctl_hwts,
+};
+
+static const struct ethtool_ops es58x_ethtool_ops = {
+	.get_ts_info = can_ethtool_op_get_ts_info_hwts,
 };
 
 /**
@@ -2095,11 +2086,16 @@ static int es58x_init_netdev(struct es58x_device *es58x_dev, int channel_idx)
 	es58x_init_priv(es58x_dev, es58x_priv(netdev), channel_idx);
 
 	netdev->netdev_ops = &es58x_netdev_ops;
+	netdev->ethtool_ops = &es58x_ethtool_ops;
 	netdev->flags |= IFF_ECHO;	/* We support local echo */
+	netdev->dev_port = channel_idx;
 
 	ret = register_candev(netdev);
-	if (ret)
+	if (ret) {
+		es58x_dev->netdev[channel_idx] = NULL;
+		free_candev(netdev);
 		return ret;
+	}
 
 	netdev_queue_set_dql_min_limit(netdev_get_tx_queue(netdev, 0),
 				       es58x_dev->param->dql_min_limit);
@@ -2187,9 +2183,8 @@ static struct es58x_device *es58x_init_es58x_dev(struct usb_interface *intf,
 	struct usb_endpoint_descriptor *ep_in, *ep_out;
 	int ret;
 
-	dev_info(dev,
-		 "Starting %s %s (Serial Number %s) driver version %s\n",
-		 udev->manufacturer, udev->product, udev->serial, DRV_VERSION);
+	dev_info(dev, "Starting %s %s (Serial Number %s)\n",
+		 udev->manufacturer, udev->product, udev->serial);
 
 	ret = usb_find_common_endpoints(intf->cur_altsetting, &ep_in, &ep_out,
 					NULL, NULL);
@@ -2223,14 +2218,12 @@ static struct es58x_device *es58x_init_es58x_dev(struct usb_interface *intf,
 	init_usb_anchor(&es58x_dev->tx_urbs_idle);
 	init_usb_anchor(&es58x_dev->tx_urbs_busy);
 	atomic_set(&es58x_dev->tx_urbs_idle_cnt, 0);
-	atomic_set(&es58x_dev->opened_channel_cnt, 0);
 	usb_set_intfdata(intf, es58x_dev);
 
 	es58x_dev->rx_pipe = usb_rcvbulkpipe(es58x_dev->udev,
 					     ep_in->bEndpointAddress);
 	es58x_dev->tx_pipe = usb_sndbulkpipe(es58x_dev->udev,
 					     ep_out->bEndpointAddress);
-	es58x_dev->rx_max_packet_size = le16_to_cpu(ep_in->wMaxPacketSize);
 
 	return es58x_dev;
 }
@@ -2288,7 +2281,7 @@ static void es58x_disconnect(struct usb_interface *intf)
 }
 
 static struct usb_driver es58x_driver = {
-	.name = ES58X_MODULE_NAME,
+	.name = KBUILD_MODNAME,
 	.probe = es58x_probe,
 	.disconnect = es58x_disconnect,
 	.id_table = es58x_id_table

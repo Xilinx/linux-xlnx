@@ -33,7 +33,7 @@
 
 #define EXP_NO_BUF_RET 29
 
-void test_snprintf_positive(void)
+static void test_snprintf_positive(void)
 {
 	char exp_addr_out[] = EXP_ADDR_OUT;
 	char exp_sym_out[]  = EXP_SYM_OUT;
@@ -83,8 +83,6 @@ cleanup:
 	test_snprintf__destroy(skel);
 }
 
-#define min(a, b) ((a) < (b) ? (a) : (b))
-
 /* Loads an eBPF object calling bpf_snprintf with up to 10 characters of fmt */
 static int load_single_snprintf(char *fmt)
 {
@@ -95,7 +93,7 @@ static int load_single_snprintf(char *fmt)
 	if (!skel)
 		return -EINVAL;
 
-	memcpy(skel->rodata->fmt, fmt, min(strlen(fmt) + 1, 10));
+	memcpy(skel->rodata->fmt, fmt, MIN(strlen(fmt) + 1, 10));
 
 	ret = test_snprintf_single__load(skel);
 	test_snprintf_single__destroy(skel);
@@ -103,7 +101,7 @@ static int load_single_snprintf(char *fmt)
 	return ret;
 }
 
-void test_snprintf_negative(void)
+static void test_snprintf_negative(void)
 {
 	ASSERT_OK(load_single_snprintf("valid %d"), "valid usage");
 

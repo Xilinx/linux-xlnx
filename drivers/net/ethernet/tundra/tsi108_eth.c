@@ -59,9 +59,6 @@
 /* Check the phy status every half a second. */
 #define CHECK_PHY_INTERVAL (HZ/2)
 
-static int tsi108_init_one(struct platform_device *pdev);
-static int tsi108_ether_remove(struct platform_device *pdev);
-
 struct tsi108_prv_data {
 	void  __iomem *regs;	/* Base of normal regs */
 	void  __iomem *phyregs;	/* Base of register bank used for PHY access */
@@ -142,16 +139,6 @@ struct tsi108_prv_data {
 	unsigned int init_media;
 
 	struct platform_device *pdev;
-};
-
-/* Structure for a device driver */
-
-static struct platform_driver tsi_eth_driver = {
-	.probe = tsi108_init_one,
-	.remove = tsi108_ether_remove,
-	.driver	= {
-		.name = "tsi-ethernet",
-	},
 };
 
 static void tsi108_timed_checker(struct timer_list *t);
@@ -1091,20 +1078,22 @@ static int tsi108_get_mac(struct net_device *dev)
 	struct tsi108_prv_data *data = netdev_priv(dev);
 	u32 word1 = TSI_READ(TSI108_MAC_ADDR1);
 	u32 word2 = TSI_READ(TSI108_MAC_ADDR2);
+	u8 addr[ETH_ALEN];
 
 	/* Note that the octets are reversed from what the manual says,
 	 * producing an even weirder ordering...
 	 */
 	if (word2 == 0 && word1 == 0) {
-		dev->dev_addr[0] = 0x00;
-		dev->dev_addr[1] = 0x06;
-		dev->dev_addr[2] = 0xd2;
-		dev->dev_addr[3] = 0x00;
-		dev->dev_addr[4] = 0x00;
+		addr[0] = 0x00;
+		addr[1] = 0x06;
+		addr[2] = 0xd2;
+		addr[3] = 0x00;
+		addr[4] = 0x00;
 		if (0x8 == data->phy)
-			dev->dev_addr[5] = 0x01;
+			addr[5] = 0x01;
 		else
-			dev->dev_addr[5] = 0x02;
+			addr[5] = 0x02;
+		eth_hw_addr_set(dev, addr);
 
 		word2 = (dev->dev_addr[0] << 16) | (dev->dev_addr[1] << 24);
 
@@ -1114,12 +1103,13 @@ static int tsi108_get_mac(struct net_device *dev)
 		TSI_WRITE(TSI108_MAC_ADDR1, word1);
 		TSI_WRITE(TSI108_MAC_ADDR2, word2);
 	} else {
-		dev->dev_addr[0] = (word2 >> 16) & 0xff;
-		dev->dev_addr[1] = (word2 >> 24) & 0xff;
-		dev->dev_addr[2] = (word1 >> 0) & 0xff;
-		dev->dev_addr[3] = (word1 >> 8) & 0xff;
-		dev->dev_addr[4] = (word1 >> 16) & 0xff;
-		dev->dev_addr[5] = (word1 >> 24) & 0xff;
+		addr[0] = (word2 >> 16) & 0xff;
+		addr[1] = (word2 >> 24) & 0xff;
+		addr[2] = (word1 >> 0) & 0xff;
+		addr[3] = (word1 >> 8) & 0xff;
+		addr[4] = (word1 >> 16) & 0xff;
+		addr[5] = (word1 >> 24) & 0xff;
+		eth_hw_addr_set(dev, addr);
 	}
 
 	if (!is_valid_ether_addr(dev->dev_addr)) {
@@ -1136,14 +1126,12 @@ static int tsi108_set_mac(struct net_device *dev, void *addr)
 {
 	struct tsi108_prv_data *data = netdev_priv(dev);
 	u32 word1, word2;
-	int i;
 
 	if (!is_valid_ether_addr(addr))
 		return -EADDRNOTAVAIL;
 
-	for (i = 0; i < 6; i++)
-		/* +2 is for the offset of the HW addr type */
-		dev->dev_addr[i] = ((unsigned char *)addr)[i + 2];
+	/* +2 is for the offset of the HW addr type */
+	eth_hw_addr_set(dev, ((unsigned char *)addr) + 2);
 
 	word2 = (dev->dev_addr[0] << 16) | (dev->dev_addr[1] << 24);
 
@@ -1302,12 +1290,15 @@ static int tsi108_open(struct net_device *dev)
 
 	data->rxring = dma_alloc_coherent(&data->pdev->dev, rxring_size,
 					  &data->rxdma, GFP_KERNEL);
-	if (!data->rxring)
+	if (!data->rxring) {
+		free_irq(data->irq_num, dev);
 		return -ENOMEM;
+	}
 
 	data->txring = dma_alloc_coherent(&data->pdev->dev, txring_size,
 					  &data->txdma, GFP_KERNEL);
 	if (!data->txring) {
+		free_irq(data->irq_num, dev);
 		dma_free_coherent(&data->pdev->dev, rxring_size, data->rxring,
 				    data->rxdma);
 		return -ENOMEM;
@@ -1597,7 +1588,7 @@ tsi108_init_one(struct platform_device *pdev)
 	data->phy_type = einfo->phy_type;
 	data->irq_num = einfo->irq_num;
 	data->id = pdev->id;
-	netif_napi_add(dev, &data->napi, tsi108_poll, 64);
+	netif_napi_add(dev, &data->napi, tsi108_poll);
 	dev->netdev_ops = &tsi108_netdev_ops;
 	dev->ethtool_ops = &tsi108_ethtool_ops;
 
@@ -1682,6 +1673,16 @@ static int tsi108_ether_remove(struct platform_device *pdev)
 
 	return 0;
 }
+
+/* Structure for a device driver */
+
+static struct platform_driver tsi_eth_driver = {
+	.probe = tsi108_init_one,
+	.remove = tsi108_ether_remove,
+	.driver	= {
+		.name = "tsi-ethernet",
+	},
+};
 module_platform_driver(tsi_eth_driver);
 
 MODULE_AUTHOR("Tundra Semiconductor Corporation");

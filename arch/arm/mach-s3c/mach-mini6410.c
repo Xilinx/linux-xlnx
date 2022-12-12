@@ -35,7 +35,7 @@
 #include <linux/platform_data/mmc-sdhci-s3c.h>
 #include "sdhci.h"
 #include <linux/platform_data/touchscreen-s3c2410.h>
-#include <mach/irqs.h>
+#include "irqs.h"
 
 #include <video/platform_lcd.h>
 #include <video/samsung_fimd.h>
@@ -262,7 +262,7 @@ static char mini6410_features_str[12] __initdata = "0";
 static int __init mini6410_features_setup(char *str)
 {
 	if (str)
-		strlcpy(mini6410_features_str, str,
+		strscpy(mini6410_features_str, str,
 			sizeof(mini6410_features_str));
 	return 1;
 }

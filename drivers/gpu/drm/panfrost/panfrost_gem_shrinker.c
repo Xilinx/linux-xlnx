@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /* Copyright (C) 2019 Arm Ltd.
  *
  * Based on msm_gem_freedreno.c:
@@ -52,7 +52,7 @@ static bool panfrost_gem_purge(struct drm_gem_object *obj)
 		goto unlock_mappings;
 
 	panfrost_gem_teardown_mappings_locked(bo);
-	drm_gem_shmem_purge_locked(obj);
+	drm_gem_shmem_purge_locked(&bo->base);
 	ret = true;
 
 	mutex_unlock(&shmem->pages_lock);
@@ -103,7 +103,7 @@ void panfrost_gem_shrinker_init(struct drm_device *dev)
 	pfdev->shrinker.count_objects = panfrost_gem_shrinker_count;
 	pfdev->shrinker.scan_objects = panfrost_gem_shrinker_scan;
 	pfdev->shrinker.seeks = DEFAULT_SEEKS;
-	WARN_ON(register_shrinker(&pfdev->shrinker));
+	WARN_ON(register_shrinker(&pfdev->shrinker, "drm-panfrost"));
 }
 
 /**

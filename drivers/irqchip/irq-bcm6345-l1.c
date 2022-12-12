@@ -132,16 +132,12 @@ static void bcm6345_l1_irq_handle(struct irq_desc *desc)
 		int base = idx * IRQS_PER_WORD;
 		unsigned long pending;
 		irq_hw_number_t hwirq;
-		unsigned int irq;
 
 		pending = __raw_readl(cpu->map_base + reg_status(intc, idx));
 		pending &= __raw_readl(cpu->map_base + reg_enable(intc, idx));
 
 		for_each_set_bit(hwirq, &pending, IRQS_PER_WORD) {
-			irq = irq_linear_revmap(intc->domain, base + hwirq);
-			if (irq)
-				do_IRQ(irq);
-			else
+			if (generic_handle_domain_irq(intc->domain, base + hwirq))
 				spurious_interrupt();
 		}
 	}
@@ -220,11 +216,11 @@ static int bcm6345_l1_set_affinity(struct irq_data *d,
 		enabled = intc->cpus[old_cpu]->enable_cache[word] & mask;
 		if (enabled)
 			__bcm6345_l1_mask(d);
-		cpumask_copy(irq_data_get_affinity_mask(d), dest);
+		irq_data_update_affinity(d, dest);
 		if (enabled)
 			__bcm6345_l1_unmask(d);
 	} else {
-		cpumask_copy(irq_data_get_affinity_mask(d), dest);
+		irq_data_update_affinity(d, dest);
 	}
 	raw_spin_unlock_irqrestore(&intc->lock, flags);
 
@@ -319,7 +315,7 @@ static int __init bcm6345_l1_of_init(struct device_node *dn,
 			cpumask_set_cpu(idx, &intc->cpumask);
 	}
 
-	if (!cpumask_weight(&intc->cpumask)) {
+	if (cpumask_empty(&intc->cpumask)) {
 		ret = -ENODEV;
 		goto out_free;
 	}

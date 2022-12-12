@@ -21,8 +21,6 @@
  * @profile: the profile to print profile info about  (NOT NULL)
  * @string: Returns - string containing the profile info (NOT NULL)
  *
- * Returns: length of @string on success else error on failure
- *
  * Requires: profile != NULL
  *
  * Creates a string containing the namespace_name://profile_name for
@@ -92,7 +90,7 @@ static char *split_token_from_name(const char *op, char *args, u64 *token)
 }
 
 /**
- * aa_setprocattr_chagnehat - handle procattr interface to change_hat
+ * aa_setprocattr_changehat - handle procattr interface to change_hat
  * @args: args received from writing to /proc/<pid>/attr/current (NOT NULL)
  * @size: size of the args
  * @flags: set of flags governing behavior

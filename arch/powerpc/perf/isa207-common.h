@@ -249,6 +249,7 @@
 /* Bits in MMCR2 for PowerISA v2.07 */
 #define MMCR2_FCS(pmc)			(1ull << (63 - (((pmc) - 1) * 9)))
 #define MMCR2_FCP(pmc)			(1ull << (62 - (((pmc) - 1) * 9)))
+#define MMCR2_FCWAIT(pmc)		(1ull << (58 - (((pmc) - 1) * 9)))
 #define MMCR2_FCH(pmc)			(1ull << (57 - (((pmc) - 1) * 9)))
 
 #define MAX_ALT				2
@@ -273,6 +274,8 @@
 #define P(a, b)				PERF_MEM_S(a, b)
 #define PH(a, b)			(P(LVL, HIT) | P(a, b))
 #define PM(a, b)			(P(LVL, MISS) | P(a, b))
+#define LEVEL(x)			P(LVLNUM, x)
+#define REM				P(REMOTE, REMOTE)
 
 int isa207_get_constraint(u64 event, unsigned long *maskp, unsigned long *valp, u64 event_config1);
 int isa207_compute_mmcr(u64 event[], int n_ev,

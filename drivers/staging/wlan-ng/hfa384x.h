@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: (GPL-2.0 OR MPL-1.1) */
-/* hfa384x.h
+/*
  *
  * Defines the constants and data structures for the hfa384x
  *
@@ -1227,8 +1227,8 @@ struct hfa384x {
 
 	struct timer_list throttle;
 
-	struct tasklet_struct reaper_bh;
-	struct tasklet_struct completion_bh;
+	struct work_struct reaper_bh;
+	struct work_struct completion_bh;
 
 	struct work_struct usb_work;
 

@@ -32,6 +32,17 @@ struct snd_usb_iface_ref {
 	unsigned char iface;
 	bool need_setup;
 	int opened;
+	int altset;
+	struct list_head list;
+};
+
+/* clock refcounting */
+struct snd_usb_clock_ref {
+	unsigned char clock;
+	atomic_t locked;
+	int opened;
+	int rate;
+	bool need_setup;
 	struct list_head list;
 };
 
@@ -85,12 +96,13 @@ static inline unsigned get_usb_high_speed_rate(unsigned int rate)
  */
 static void release_urb_ctx(struct snd_urb_ctx *u)
 {
-	if (u->buffer_size)
+	if (u->urb && u->buffer_size)
 		usb_free_coherent(u->ep->chip->dev, u->buffer_size,
 				  u->urb->transfer_buffer,
 				  u->urb->transfer_dma);
 	usb_free_urb(u->urb);
 	u->urb = NULL;
+	u->buffer_size = 0;
 }
 
 static const char *usb_error_string(int err)
@@ -125,7 +137,7 @@ static inline bool ep_state_running(struct snd_usb_endpoint *ep)
 
 static inline bool ep_state_update(struct snd_usb_endpoint *ep, int old, int new)
 {
-	return atomic_cmpxchg(&ep->state, old, new) == old;
+	return atomic_try_cmpxchg(&ep->state, &old, new);
 }
 
 /**
@@ -148,18 +160,23 @@ int snd_usb_endpoint_implicit_feedback_sink(struct snd_usb_endpoint *ep)
  * This won't be used for implicit feedback which takes the packet size
  * returned from the sync source
  */
-static int slave_next_packet_size(struct snd_usb_endpoint *ep)
+static int slave_next_packet_size(struct snd_usb_endpoint *ep,
+				  unsigned int avail)
 {
 	unsigned long flags;
+	unsigned int phase;
 	int ret;
 
 	if (ep->fill_max)
 		return ep->maxframesize;
 
 	spin_lock_irqsave(&ep->lock, flags);
-	ep->phase = (ep->phase & 0xffff)
-		+ (ep->freqm << ep->datainterval);
-	ret = min(ep->phase >> 16, ep->maxframesize);
+	phase = (ep->phase & 0xffff) + (ep->freqm << ep->datainterval);
+	ret = min(phase >> 16, ep->maxframesize);
+	if (avail && ret >= avail)
+		ret = -EAGAIN;
+	else
+		ep->phase = phase;
 	spin_unlock_irqrestore(&ep->lock, flags);
 
 	return ret;
@@ -169,20 +186,25 @@ static int slave_next_packet_size(struct snd_usb_endpoint *ep)
  * Return the number of samples to be sent in the next packet
  * for adaptive and synchronous endpoints
  */
-static int next_packet_size(struct snd_usb_endpoint *ep)
+static int next_packet_size(struct snd_usb_endpoint *ep, unsigned int avail)
 {
+	unsigned int sample_accum;
 	int ret;
 
 	if (ep->fill_max)
 		return ep->maxframesize;
 
-	ep->sample_accum += ep->sample_rem;
-	if (ep->sample_accum >= ep->pps) {
-		ep->sample_accum -= ep->pps;
+	sample_accum = ep->sample_accum + ep->sample_rem;
+	if (sample_accum >= ep->pps) {
+		sample_accum -= ep->pps;
 		ret = ep->packsize[1];
 	} else {
 		ret = ep->packsize[0];
 	}
+	if (avail && ret >= avail)
+		ret = -EAGAIN;
+	else
+		ep->sample_accum = sample_accum;
 
 	return ret;
 }
@@ -190,16 +212,27 @@ static int next_packet_size(struct snd_usb_endpoint *ep)
 /*
  * snd_usb_endpoint_next_packet_size: Return the number of samples to be sent
  * in the next packet
+ *
+ * If the size is equal or exceeds @avail, don't proceed but return -EAGAIN
+ * Exception: @avail = 0 for skipping the check.
  */
 int snd_usb_endpoint_next_packet_size(struct snd_usb_endpoint *ep,
-				      struct snd_urb_ctx *ctx, int idx)
+				      struct snd_urb_ctx *ctx, int idx,
+				      unsigned int avail)
 {
-	if (ctx->packet_size[idx])
-		return ctx->packet_size[idx];
-	else if (ep->sync_source)
-		return slave_next_packet_size(ep);
+	unsigned int packet;
+
+	packet = ctx->packet_size[idx];
+	if (packet) {
+		if (avail && packet >= avail)
+			return -EAGAIN;
+		return packet;
+	}
+
+	if (ep->sync_source)
+		return slave_next_packet_size(ep, avail);
 	else
-		return next_packet_size(ep);
+		return next_packet_size(ep, avail);
 }
 
 static void call_retire_callback(struct snd_usb_endpoint *ep,
@@ -263,7 +296,7 @@ static void prepare_silent_urb(struct snd_usb_endpoint *ep,
 		unsigned int length;
 		int counts;
 
-		counts = snd_usb_endpoint_next_packet_size(ep, ctx, i);
+		counts = snd_usb_endpoint_next_packet_size(ep, ctx, i, 0);
 		length = counts * ep->stride; /* number of silent bytes */
 		offset = offs * ep->stride + extra * i;
 		urb->iso_frame_desc[i].offset = offset;
@@ -286,8 +319,9 @@ static void prepare_silent_urb(struct snd_usb_endpoint *ep,
 /*
  * Prepare a PLAYBACK urb for submission to the bus.
  */
-static void prepare_outbound_urb(struct snd_usb_endpoint *ep,
-				 struct snd_urb_ctx *ctx)
+static int prepare_outbound_urb(struct snd_usb_endpoint *ep,
+				struct snd_urb_ctx *ctx,
+				bool in_stream_lock)
 {
 	struct urb *urb = ctx->urb;
 	unsigned char *cp = urb->transfer_buffer;
@@ -299,9 +333,9 @@ static void prepare_outbound_urb(struct snd_usb_endpoint *ep,
 	case SND_USB_ENDPOINT_TYPE_DATA:
 		data_subs = READ_ONCE(ep->data_subs);
 		if (data_subs && ep->prepare_data_urb)
-			ep->prepare_data_urb(data_subs, urb);
-		else /* no data provider, so send silence */
-			prepare_silent_urb(ep, ctx);
+			return ep->prepare_data_urb(data_subs, urb, in_stream_lock);
+		/* no data provider, so send silence */
+		prepare_silent_urb(ep, ctx);
 		break;
 
 	case SND_USB_ENDPOINT_TYPE_SYNC:
@@ -330,13 +364,14 @@ static void prepare_outbound_urb(struct snd_usb_endpoint *ep,
 
 		break;
 	}
+	return 0;
 }
 
 /*
  * Prepare a CAPTURE or SYNC urb for submission to the bus.
  */
-static inline void prepare_inbound_urb(struct snd_usb_endpoint *ep,
-				       struct snd_urb_ctx *urb_ctx)
+static int prepare_inbound_urb(struct snd_usb_endpoint *ep,
+			       struct snd_urb_ctx *urb_ctx)
 {
 	int i, offs;
 	struct urb *urb = urb_ctx->urb;
@@ -361,6 +396,7 @@ static inline void prepare_inbound_urb(struct snd_usb_endpoint *ep,
 		urb->iso_frame_desc[0].offset = 0;
 		break;
 	}
+	return 0;
 }
 
 /* notify an error as XRUN to the assigned PCM data substream */
@@ -396,6 +432,16 @@ next_packet_fifo_dequeue(struct snd_usb_endpoint *ep)
 	return p;
 }
 
+static void push_back_to_ready_list(struct snd_usb_endpoint *ep,
+				    struct snd_urb_ctx *ctx)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&ep->lock, flags);
+	list_add_tail(&ctx->ready_list, &ep->ready_playback_urbs);
+	spin_unlock_irqrestore(&ep->lock, flags);
+}
+
 /*
  * Send output urbs that have been prepared previously. URBs are dequeued
  * from ep->ready_playback_urbs and in case there aren't any available
@@ -406,12 +452,14 @@ next_packet_fifo_dequeue(struct snd_usb_endpoint *ep)
  * is that host controllers don't guarantee the order in which they return
  * inbound and outbound packets to their submitters.
  *
- * This function is only used for implicit feedback endpoints. For endpoints
- * driven by dedicated sync endpoints, URBs are immediately re-submitted
- * from their completion handler.
+ * This function is used both for implicit feedback endpoints and in low-
+ * latency playback mode.
  */
-static void queue_pending_output_urbs(struct snd_usb_endpoint *ep)
+void snd_usb_queue_pending_output_urbs(struct snd_usb_endpoint *ep,
+				       bool in_stream_lock)
 {
+	bool implicit_fb = snd_usb_endpoint_implicit_feedback_sink(ep);
+
 	while (ep_state_running(ep)) {
 
 		unsigned long flags;
@@ -420,14 +468,14 @@ static void queue_pending_output_urbs(struct snd_usb_endpoint *ep)
 		int err, i;
 
 		spin_lock_irqsave(&ep->lock, flags);
-		if (ep->next_packet_queued > 0 &&
+		if ((!implicit_fb || ep->next_packet_queued > 0) &&
 		    !list_empty(&ep->ready_playback_urbs)) {
 			/* take URB out of FIFO */
 			ctx = list_first_entry(&ep->ready_playback_urbs,
 					       struct snd_urb_ctx, ready_list);
 			list_del_init(&ctx->ready_list);
-
-			packet = next_packet_fifo_dequeue(ep);
+			if (implicit_fb)
+				packet = next_packet_fifo_dequeue(ep);
 		}
 		spin_unlock_irqrestore(&ep->lock, flags);
 
@@ -435,11 +483,24 @@ static void queue_pending_output_urbs(struct snd_usb_endpoint *ep)
 			return;
 
 		/* copy over the length information */
-		for (i = 0; i < packet->packets; i++)
-			ctx->packet_size[i] = packet->packet_size[i];
+		if (implicit_fb) {
+			for (i = 0; i < packet->packets; i++)
+				ctx->packet_size[i] = packet->packet_size[i];
+		}
 
 		/* call the data handler to fill in playback data */
-		prepare_outbound_urb(ep, ctx);
+		err = prepare_outbound_urb(ep, ctx, in_stream_lock);
+		/* can be stopped during prepare callback */
+		if (unlikely(!ep_state_running(ep)))
+			break;
+		if (err < 0) {
+			/* push back to ready list again for -EAGAIN */
+			if (err == -EAGAIN)
+				push_back_to_ready_list(ep, ctx);
+			else
+				notify_xrun(ep);
+			return;
+		}
 
 		err = usb_submit_urb(ctx->urb, GFP_ATOMIC);
 		if (err < 0) {
@@ -451,6 +512,7 @@ static void queue_pending_output_urbs(struct snd_usb_endpoint *ep)
 		}
 
 		set_bit(ctx->index, &ep->active_mask);
+		atomic_inc(&ep->submitted_urbs);
 	}
 }
 
@@ -461,7 +523,6 @@ static void snd_complete_urb(struct urb *urb)
 {
 	struct snd_urb_ctx *ctx = urb->context;
 	struct snd_usb_endpoint *ep = ctx->ep;
-	unsigned long flags;
 	int err;
 
 	if (unlikely(urb->status == -ENOENT ||		/* unlinked */
@@ -482,16 +543,20 @@ static void snd_complete_urb(struct urb *urb)
 		if (unlikely(!ep_state_running(ep)))
 			goto exit_clear;
 
-		if (snd_usb_endpoint_implicit_feedback_sink(ep)) {
-			spin_lock_irqsave(&ep->lock, flags);
-			list_add_tail(&ctx->ready_list, &ep->ready_playback_urbs);
+		/* in low-latency and implicit-feedback modes, push back the
+		 * URB to ready list at first, then process as much as possible
+		 */
+		if (ep->lowlatency_playback ||
+		     snd_usb_endpoint_implicit_feedback_sink(ep)) {
+			push_back_to_ready_list(ep, ctx);
 			clear_bit(ctx->index, &ep->active_mask);
-			spin_unlock_irqrestore(&ep->lock, flags);
-			queue_pending_output_urbs(ep);
+			snd_usb_queue_pending_output_urbs(ep, false);
+			atomic_dec(&ep->submitted_urbs); /* decrement at last */
 			return;
 		}
 
-		prepare_outbound_urb(ep, ctx);
+		/* in non-lowlatency mode, no error handling for prepare */
+		prepare_outbound_urb(ep, ctx, false);
 		/* can be stopped during prepare callback */
 		if (unlikely(!ep_state_running(ep)))
 			goto exit_clear;
@@ -513,6 +578,7 @@ static void snd_complete_urb(struct urb *urb)
 
 exit_clear:
 	clear_bit(ctx->index, &ep->active_mask);
+	atomic_dec(&ep->submitted_urbs);
 }
 
 /*
@@ -535,6 +601,25 @@ iface_ref_find(struct snd_usb_audio *chip, int iface)
 	ip->iface = iface;
 	list_add_tail(&ip->list, &chip->iface_ref_list);
 	return ip;
+}
+
+/* Similarly, a refcount object for clock */
+static struct snd_usb_clock_ref *
+clock_ref_find(struct snd_usb_audio *chip, int clock)
+{
+	struct snd_usb_clock_ref *ref;
+
+	list_for_each_entry(ref, &chip->clock_ref_list, list)
+		if (ref->clock == clock)
+			return ref;
+
+	ref = kzalloc(sizeof(*ref), GFP_KERNEL);
+	if (!ref)
+		return NULL;
+	ref->clock = clock;
+	atomic_set(&ref->locked, 0);
+	list_add_tail(&ref->list, &chip->clock_ref_list);
+	return ref;
 }
 
 /*
@@ -596,6 +681,7 @@ int snd_usb_add_endpoint(struct snd_usb_audio *chip, int ep_num, int type)
 	ep->type = type;
 	ep->ep_num = ep_num;
 	INIT_LIST_HEAD(&ep->ready_playback_urbs);
+	atomic_set(&ep->submitted_urbs, 0);
 
 	is_playback = ((ep_num & USB_ENDPOINT_DIR_MASK) == USB_DIR_OUT);
 	ep_num &= USB_ENDPOINT_NUMBER_MASK;
@@ -676,7 +762,8 @@ bool snd_usb_endpoint_compatible(struct snd_usb_audio *chip,
  * The endpoint needs to be closed via snd_usb_endpoint_close() later.
  *
  * Note that this function doesn't configure the endpoint.  The substream
- * needs to set it up later via snd_usb_endpoint_configure().
+ * needs to set it up later via snd_usb_endpoint_set_params() and
+ * snd_usb_endpoint_prepare().
  */
 struct snd_usb_endpoint *
 snd_usb_endpoint_open(struct snd_usb_audio *chip,
@@ -713,6 +800,15 @@ snd_usb_endpoint_open(struct snd_usb_audio *chip,
 			goto unlock;
 		}
 
+		if (fp->protocol != UAC_VERSION_1) {
+			ep->clock_ref = clock_ref_find(chip, fp->clock);
+			if (!ep->clock_ref) {
+				ep = NULL;
+				goto unlock;
+			}
+			ep->clock_ref->opened++;
+		}
+
 		ep->cur_audiofmt = fp;
 		ep->cur_channels = fp->channels;
 		ep->cur_rate = params_rate(params);
@@ -728,6 +824,7 @@ snd_usb_endpoint_open(struct snd_usb_audio *chip,
 
 		ep->implicit_fb_sync = fp->implicit_fb;
 		ep->need_setup = true;
+		ep->need_prepare = true;
 
 		usb_audio_dbg(chip, "  channels=%d, rate=%d, format=%s, period_bytes=%d, periods=%d, implicit_fb=%d\n",
 			      ep->cur_channels, ep->cur_rate,
@@ -781,14 +878,19 @@ void snd_usb_endpoint_set_sync(struct snd_usb_audio *chip,
  * Pass NULL to deactivate each callback.
  */
 void snd_usb_endpoint_set_callback(struct snd_usb_endpoint *ep,
-				   void (*prepare)(struct snd_usb_substream *subs,
-						   struct urb *urb),
+				   int (*prepare)(struct snd_usb_substream *subs,
+						  struct urb *urb,
+						  bool in_stream_lock),
 				   void (*retire)(struct snd_usb_substream *subs,
 						  struct urb *urb),
 				   struct snd_usb_substream *data_subs)
 {
 	ep->prepare_data_urb = prepare;
 	ep->retire_data_urb = retire;
+	if (data_subs)
+		ep->lowlatency_playback = data_subs->lowlatency_playback;
+	else
+		ep->lowlatency_playback = false;
 	WRITE_ONCE(ep->data_subs, data_subs);
 }
 
@@ -798,6 +900,9 @@ static int endpoint_set_interface(struct snd_usb_audio *chip,
 {
 	int altset = set ? ep->altsetting : 0;
 	int err;
+
+	if (ep->iface_ref->altset == altset)
+		return 0;
 
 	usb_audio_dbg(chip, "Setting usb interface %d:%d for EP 0x%x\n",
 		      ep->iface, altset, ep->ep_num);
@@ -810,6 +915,7 @@ static int endpoint_set_interface(struct snd_usb_audio *chip,
 
 	if (chip->quirk_flags & QUIRK_FLAG_IFACE_DELAY)
 		msleep(50);
+	ep->iface_ref->altset = altset;
 	return 0;
 }
 
@@ -825,15 +931,21 @@ void snd_usb_endpoint_close(struct snd_usb_audio *chip,
 	usb_audio_dbg(chip, "Closing EP 0x%x (count %d)\n",
 		      ep->ep_num, ep->opened);
 
-	if (!--ep->iface_ref->opened)
+	if (!--ep->iface_ref->opened &&
+		!(chip->quirk_flags & QUIRK_FLAG_IFACE_SKIP_CLOSE))
 		endpoint_set_interface(chip, ep, false);
 
 	if (!--ep->opened) {
+		if (ep->clock_ref) {
+			if (!--ep->clock_ref->opened)
+				ep->clock_ref->rate = 0;
+		}
 		ep->iface = 0;
 		ep->altsetting = 0;
 		ep->cur_audiofmt = NULL;
 		ep->cur_rate = 0;
 		ep->iface_ref = NULL;
+		ep->clock_ref = NULL;
 		usb_audio_dbg(chip, "EP 0x%x closed\n", ep->ep_num);
 	}
 	mutex_unlock(&chip->mutex);
@@ -842,9 +954,11 @@ void snd_usb_endpoint_close(struct snd_usb_audio *chip,
 /* Prepare for suspening EP, called from the main suspend handler */
 void snd_usb_endpoint_suspend(struct snd_usb_endpoint *ep)
 {
-	ep->need_setup = true;
+	ep->need_prepare = true;
 	if (ep->iface_ref)
 		ep->iface_ref->need_setup = true;
+	if (ep->clock_ref)
+		ep->clock_ref->rate = 0;
 }
 
 /*
@@ -859,7 +973,7 @@ static int wait_clear_urbs(struct snd_usb_endpoint *ep)
 		return 0;
 
 	do {
-		alive = bitmap_weight(&ep->active_mask, ep->nurbs);
+		alive = atomic_read(&ep->submitted_urbs);
 		if (!alive)
 			break;
 
@@ -893,9 +1007,10 @@ void snd_usb_endpoint_sync_pending_stop(struct snd_usb_endpoint *ep)
  *
  * This function moves the EP to STOPPING state if it's being RUNNING.
  */
-static int stop_urbs(struct snd_usb_endpoint *ep, bool force)
+static int stop_urbs(struct snd_usb_endpoint *ep, bool force, bool keep_pending)
 {
 	unsigned int i;
+	unsigned long flags;
 
 	if (!force && atomic_read(&ep->running))
 		return -EBUSY;
@@ -903,9 +1018,14 @@ static int stop_urbs(struct snd_usb_endpoint *ep, bool force)
 	if (!ep_state_update(ep, EP_STATE_RUNNING, EP_STATE_STOPPING))
 		return 0;
 
+	spin_lock_irqsave(&ep->lock, flags);
 	INIT_LIST_HEAD(&ep->ready_playback_urbs);
 	ep->next_packet_head = 0;
 	ep->next_packet_queued = 0;
+	spin_unlock_irqrestore(&ep->lock, flags);
+
+	if (keep_pending)
+		return 0;
 
 	for (i = 0; i < ep->nurbs; i++) {
 		if (test_bit(i, &ep->active_mask)) {
@@ -930,7 +1050,7 @@ static int release_urbs(struct snd_usb_endpoint *ep, bool force)
 	snd_usb_endpoint_set_callback(ep, NULL, NULL, NULL);
 
 	/* stop and unlink urbs */
-	err = stop_urbs(ep, force);
+	err = stop_urbs(ep, force, false);
 	if (err)
 		return err;
 
@@ -1132,10 +1252,6 @@ static int data_ep_set_params(struct snd_usb_endpoint *ep)
 		INIT_LIST_HEAD(&u->ready_list);
 	}
 
-	/* total buffer bytes of all URBs plus the next queue;
-	 * referred in pcm.c
-	 */
-	ep->nominal_queue_size = maxsize * urb_packs * (ep->nurbs + 1);
 	return 0;
 
 out_of_memory:
@@ -1159,6 +1275,7 @@ static int sync_ep_set_params(struct snd_usb_endpoint *ep)
 	if (!ep->syncbuf)
 		return -ENOMEM;
 
+	ep->nurbs = SYNC_URBS;
 	for (i = 0; i < SYNC_URBS; i++) {
 		struct snd_urb_ctx *u = &ep->urb[i];
 		u->index = i;
@@ -1178,8 +1295,6 @@ static int sync_ep_set_params(struct snd_usb_endpoint *ep)
 		u->urb->complete = snd_complete_urb;
 	}
 
-	ep->nurbs = SYNC_URBS;
-
 	return 0;
 
 out_of_memory:
@@ -1187,23 +1302,51 @@ out_of_memory:
 	return -ENOMEM;
 }
 
+/* update the rate of the referred clock; return the actual rate */
+static int update_clock_ref_rate(struct snd_usb_audio *chip,
+				 struct snd_usb_endpoint *ep)
+{
+	struct snd_usb_clock_ref *clock = ep->clock_ref;
+	int rate = ep->cur_rate;
+
+	if (!clock || clock->rate == rate)
+		return rate;
+	if (clock->rate) {
+		if (atomic_read(&clock->locked))
+			return clock->rate;
+		if (clock->rate != rate) {
+			usb_audio_err(chip, "Mismatched sample rate %d vs %d for EP 0x%x\n",
+				      clock->rate, rate, ep->ep_num);
+			return clock->rate;
+		}
+	}
+	clock->rate = rate;
+	clock->need_setup = true;
+	return rate;
+}
+
 /*
  * snd_usb_endpoint_set_params: configure an snd_usb_endpoint
  *
+ * It's called either from hw_params callback.
  * Determine the number of URBs to be used on this endpoint.
  * An endpoint must be configured before it can be started.
  * An endpoint that is already running can not be reconfigured.
  */
-static int snd_usb_endpoint_set_params(struct snd_usb_audio *chip,
-				       struct snd_usb_endpoint *ep)
+int snd_usb_endpoint_set_params(struct snd_usb_audio *chip,
+				struct snd_usb_endpoint *ep)
 {
 	const struct audioformat *fmt = ep->cur_audiofmt;
-	int err;
+	int err = 0;
+
+	mutex_lock(&chip->mutex);
+	if (!ep->need_setup)
+		goto unlock;
 
 	/* release old buffers, if any */
 	err = release_urbs(ep, false);
 	if (err < 0)
-		return err;
+		goto unlock;
 
 	ep->datainterval = fmt->datainterval;
 	ep->maxpacksize = fmt->maxpacksize;
@@ -1241,28 +1384,60 @@ static int snd_usb_endpoint_set_params(struct snd_usb_audio *chip,
 	usb_audio_dbg(chip, "Set up %d URBS, ret=%d\n", ep->nurbs, err);
 
 	if (err < 0)
-		return err;
+		goto unlock;
 
 	/* some unit conversions in runtime */
 	ep->maxframesize = ep->maxpacksize / ep->cur_frame_bytes;
 	ep->curframesize = ep->curpacksize / ep->cur_frame_bytes;
 
+	err = update_clock_ref_rate(chip, ep);
+	if (err >= 0) {
+		ep->need_setup = false;
+		err = 0;
+	}
+
+ unlock:
+	mutex_unlock(&chip->mutex);
+	return err;
+}
+
+static int init_sample_rate(struct snd_usb_audio *chip,
+			    struct snd_usb_endpoint *ep)
+{
+	struct snd_usb_clock_ref *clock = ep->clock_ref;
+	int rate, err;
+
+	rate = update_clock_ref_rate(chip, ep);
+	if (rate < 0)
+		return rate;
+	if (clock && !clock->need_setup)
+		return 0;
+
+	err = snd_usb_init_sample_rate(chip, ep->cur_audiofmt, rate);
+	if (err < 0) {
+		if (clock)
+			clock->rate = 0; /* reset rate */
+		return err;
+	}
+
+	if (clock)
+		clock->need_setup = false;
 	return 0;
 }
 
 /*
- * snd_usb_endpoint_configure: Configure the endpoint
+ * snd_usb_endpoint_prepare: Prepare the endpoint
  *
  * This function sets up the EP to be fully usable state.
- * It's called either from hw_params or prepare callback.
+ * It's called either from prepare callback.
  * The function checks need_setup flag, and performs nothing unless needed,
  * so it's safe to call this multiple times.
  *
  * This returns zero if unchanged, 1 if the configuration has changed,
  * or a negative error code.
  */
-int snd_usb_endpoint_configure(struct snd_usb_audio *chip,
-			       struct snd_usb_endpoint *ep)
+int snd_usb_endpoint_prepare(struct snd_usb_audio *chip,
+			     struct snd_usb_endpoint *ep)
 {
 	bool iface_first;
 	int err = 0;
@@ -1270,7 +1445,7 @@ int snd_usb_endpoint_configure(struct snd_usb_audio *chip,
 	mutex_lock(&chip->mutex);
 	if (WARN_ON(!ep->iface_ref))
 		goto unlock;
-	if (!ep->need_setup)
+	if (!ep->need_prepare)
 		goto unlock;
 
 	/* If the interface has been already set up, just set EP parameters */
@@ -1279,14 +1454,10 @@ int snd_usb_endpoint_configure(struct snd_usb_audio *chip,
 		 * to update at each EP configuration
 		 */
 		if (ep->cur_audiofmt->protocol == UAC_VERSION_1) {
-			err = snd_usb_init_sample_rate(chip, ep->cur_audiofmt,
-						       ep->cur_rate);
+			err = init_sample_rate(chip, ep);
 			if (err < 0)
 				goto unlock;
 		}
-		err = snd_usb_endpoint_set_params(chip, ep);
-		if (err < 0)
-			goto unlock;
 		goto done;
 	}
 
@@ -1310,11 +1481,7 @@ int snd_usb_endpoint_configure(struct snd_usb_audio *chip,
 	if (err < 0)
 		goto unlock;
 
-	err = snd_usb_init_sample_rate(chip, ep->cur_audiofmt, ep->cur_rate);
-	if (err < 0)
-		goto unlock;
-
-	err = snd_usb_endpoint_set_params(chip, ep);
+	err = init_sample_rate(chip, ep);
 	if (err < 0)
 		goto unlock;
 
@@ -1332,12 +1499,31 @@ int snd_usb_endpoint_configure(struct snd_usb_audio *chip,
 	ep->iface_ref->need_setup = false;
 
  done:
-	ep->need_setup = false;
+	ep->need_prepare = false;
 	err = 1;
 
 unlock:
 	mutex_unlock(&chip->mutex);
 	return err;
+}
+
+/* get the current rate set to the given clock by any endpoint */
+int snd_usb_endpoint_get_clock_rate(struct snd_usb_audio *chip, int clock)
+{
+	struct snd_usb_clock_ref *ref;
+	int rate = 0;
+
+	if (!clock)
+		return 0;
+	mutex_lock(&chip->mutex);
+	list_for_each_entry(ref, &chip->clock_ref_list, list) {
+		if (ref->clock == clock) {
+			rate = ref->rate;
+			break;
+		}
+	}
+	mutex_unlock(&chip->mutex);
+	return rate;
 }
 
 /**
@@ -1355,6 +1541,7 @@ unlock:
  */
 int snd_usb_endpoint_start(struct snd_usb_endpoint *ep)
 {
+	bool is_playback = usb_pipeout(ep->pipe);
 	int err;
 	unsigned int i;
 
@@ -1371,6 +1558,9 @@ int snd_usb_endpoint_start(struct snd_usb_endpoint *ep)
 	/* already running? */
 	if (atomic_inc_return(&ep->running) != 1)
 		return 0;
+
+	if (ep->clock_ref)
+		atomic_inc(&ep->clock_ref->locked);
 
 	ep->active_mask = 0;
 	ep->unlink_mask = 0;
@@ -1391,13 +1581,9 @@ int snd_usb_endpoint_start(struct snd_usb_endpoint *ep)
 
 	if (snd_usb_endpoint_implicit_feedback_sink(ep) &&
 	    !(ep->chip->quirk_flags & QUIRK_FLAG_PLAYBACK_FIRST)) {
-		for (i = 0; i < ep->nurbs; i++) {
-			struct snd_urb_ctx *ctx = ep->urb + i;
-			list_add_tail(&ctx->ready_list, &ep->ready_playback_urbs);
-		}
-
 		usb_audio_dbg(ep->chip, "No URB submission due to implicit fb sync\n");
-		return 0;
+		i = 0;
+		goto fill_rest;
 	}
 
 	for (i = 0; i < ep->nurbs; i++) {
@@ -1406,10 +1592,18 @@ int snd_usb_endpoint_start(struct snd_usb_endpoint *ep)
 		if (snd_BUG_ON(!urb))
 			goto __error;
 
-		if (usb_pipeout(ep->pipe)) {
-			prepare_outbound_urb(ep, urb->context);
-		} else {
-			prepare_inbound_urb(ep, urb->context);
+		if (is_playback)
+			err = prepare_outbound_urb(ep, urb->context, true);
+		else
+			err = prepare_inbound_urb(ep, urb->context);
+		if (err < 0) {
+			/* stop filling at applptr */
+			if (err == -EAGAIN)
+				break;
+			usb_audio_dbg(ep->chip,
+				      "EP 0x%x: failed to prepare urb: %d\n",
+				      ep->ep_num, err);
+			goto __error;
 		}
 
 		err = usb_submit_urb(urb, GFP_ATOMIC);
@@ -1420,14 +1614,29 @@ int snd_usb_endpoint_start(struct snd_usb_endpoint *ep)
 			goto __error;
 		}
 		set_bit(i, &ep->active_mask);
+		atomic_inc(&ep->submitted_urbs);
+	}
+
+	if (!i) {
+		usb_audio_dbg(ep->chip, "XRUN at starting EP 0x%x\n",
+			      ep->ep_num);
+		goto __error;
 	}
 
 	usb_audio_dbg(ep->chip, "%d URBs submitted for EP 0x%x\n",
-		      ep->nurbs, ep->ep_num);
+		      i, ep->ep_num);
+
+ fill_rest:
+	/* put the remaining URBs to ready list */
+	if (is_playback) {
+		for (; i < ep->nurbs; i++)
+			push_back_to_ready_list(ep, ep->urb + i);
+	}
+
 	return 0;
 
 __error:
-	snd_usb_endpoint_stop(ep);
+	snd_usb_endpoint_stop(ep, false);
 	return -EPIPE;
 }
 
@@ -1435,6 +1644,7 @@ __error:
  * snd_usb_endpoint_stop: stop an snd_usb_endpoint
  *
  * @ep: the endpoint to stop (may be NULL)
+ * @keep_pending: keep in-flight URBs
  *
  * A call to this function will decrement the running count of the endpoint.
  * In case the last user has requested the endpoint stop, the URBs will
@@ -1445,7 +1655,7 @@ __error:
  * The caller needs to synchronize the pending stop operation via
  * snd_usb_endpoint_sync_pending_stop().
  */
-void snd_usb_endpoint_stop(struct snd_usb_endpoint *ep)
+void snd_usb_endpoint_stop(struct snd_usb_endpoint *ep, bool keep_pending)
 {
 	if (!ep)
 		return;
@@ -1460,7 +1670,9 @@ void snd_usb_endpoint_stop(struct snd_usb_endpoint *ep)
 	if (!atomic_dec_return(&ep->running)) {
 		if (ep->sync_source)
 			WRITE_ONCE(ep->sync_source->sync_sink, NULL);
-		stop_urbs(ep, false);
+		stop_urbs(ep, false, keep_pending);
+		if (ep->clock_ref)
+			atomic_dec(&ep->clock_ref->locked);
 	}
 }
 
@@ -1487,12 +1699,16 @@ void snd_usb_endpoint_free_all(struct snd_usb_audio *chip)
 {
 	struct snd_usb_endpoint *ep, *en;
 	struct snd_usb_iface_ref *ip, *in;
+	struct snd_usb_clock_ref *cp, *cn;
 
 	list_for_each_entry_safe(ep, en, &chip->ep_list, list)
 		kfree(ep);
 
 	list_for_each_entry_safe(ip, in, &chip->iface_ref_list, list)
 		kfree(ip);
+
+	list_for_each_entry_safe(cp, cn, &chip->clock_ref_list, list)
+		kfree(cp);
 }
 
 /*
@@ -1575,7 +1791,7 @@ static void snd_usb_handle_sync_urb(struct snd_usb_endpoint *ep,
 		}
 
 		spin_unlock_irqrestore(&ep->lock, flags);
-		queue_pending_output_urbs(ep);
+		snd_usb_queue_pending_output_urbs(ep, false);
 
 		return;
 	}

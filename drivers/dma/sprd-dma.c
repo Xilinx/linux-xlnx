@@ -795,9 +795,6 @@ static int sprd_dma_fill_desc(struct dma_chan *chan,
 		return dst_datawidth;
 	}
 
-	if (slave_cfg->slave_id)
-		schan->dev_id = slave_cfg->slave_id;
-
 	hw->cfg = SPRD_DMA_DONOT_WAIT_BDONE << SPRD_DMA_WAIT_BDONE_OFFSET;
 
 	/*
@@ -1120,7 +1117,11 @@ static int sprd_dma_probe(struct platform_device *pdev)
 	u32 chn_count;
 	int ret, i;
 
-	ret = device_property_read_u32(&pdev->dev, "#dma-channels", &chn_count);
+	/* Parse new and deprecated dma-channels properties */
+	ret = device_property_read_u32(&pdev->dev, "dma-channels", &chn_count);
+	if (ret)
+		ret = device_property_read_u32(&pdev->dev, "#dma-channels",
+					       &chn_count);
 	if (ret) {
 		dev_err(&pdev->dev, "get dma channels count failed\n");
 		return ret;
@@ -1236,11 +1237,8 @@ static int sprd_dma_remove(struct platform_device *pdev)
 {
 	struct sprd_dma_dev *sdev = platform_get_drvdata(pdev);
 	struct sprd_dma_chn *c, *cn;
-	int ret;
 
-	ret = pm_runtime_get_sync(&pdev->dev);
-	if (ret < 0)
-		return ret;
+	pm_runtime_get_sync(&pdev->dev);
 
 	/* explicitly free the irq */
 	if (sdev->irq > 0)

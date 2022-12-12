@@ -28,6 +28,7 @@
    printk-basics
    printk-formats
    workqueue
+   watch_queue
    symbol-namespaces
 
 数据结构和低级实用程序
@@ -39,18 +40,19 @@
    :maxdepth: 1
 
    kobject
-
-Todolist:
-
    kref
    assoc_array
    xarray
+   rbtree
    idr
    circular-buffers
-   rbtree
    generic-radix-tree
    packing
-   bus-virt-phys-mapping
+
+Todolist:
+
+
+
    this_cpu_ops
    timekeeping
    errseq
@@ -99,21 +101,25 @@ Todolist:
 ========
 
 如何在内核中分配和使用内存。请注意，在
-:doc:`/vm/index` 中有更多的内存管理文档。
+:doc:`/mm/index` 中有更多的内存管理文档。
 
-Todolist:
+.. toctree::
+   :maxdepth: 1
 
    memory-allocation
    unaligned-memory-access
+   mm-api
+   genalloc
+   boot-time-mm
+   gfp_mask-from-fs-io
+
+Todolist:
+
    dma-api
    dma-api-howto
    dma-attributes
    dma-isa-lpc
-   mm-api
-   genalloc
    pin_user_pages
-   boot-time-mm
-   gfp_mask-from-fs-io
 
 内核调试的接口
 ==============

@@ -146,7 +146,7 @@ static ssize_t serial_number_show(struct device *dev,
 	struct snd_card *card = dev_to_snd_card(dev);
 	struct usb_line6_podhd *pod = card->private_data;
 
-	return sprintf(buf, "%u\n", pod->serial_number);
+	return sysfs_emit(buf, "%u\n", pod->serial_number);
 }
 
 static ssize_t firmware_version_show(struct device *dev,
@@ -155,7 +155,7 @@ static ssize_t firmware_version_show(struct device *dev,
 	struct snd_card *card = dev_to_snd_card(dev);
 	struct usb_line6_podhd *pod = card->private_data;
 
-	return sprintf(buf, "%06x\n", pod->firmware_version);
+	return sysfs_emit(buf, "%06x\n", pod->firmware_version);
 }
 
 static DEVICE_ATTR_RO(firmware_version);
@@ -190,7 +190,7 @@ static int podhd_dev_start(struct usb_line6_podhd *pod)
 	ret = usb_control_msg_send(usbdev, 0,
 					0x67, USB_TYPE_VENDOR | USB_RECIP_DEVICE | USB_DIR_OUT,
 					0x11, 0,
-					NULL, 0, LINE6_TIMEOUT * HZ, GFP_KERNEL);
+					NULL, 0, LINE6_TIMEOUT, GFP_KERNEL);
 	if (ret) {
 		dev_err(pod->line6.ifcdev, "read request failed (error %d)\n", ret);
 		goto exit;
@@ -200,7 +200,7 @@ static int podhd_dev_start(struct usb_line6_podhd *pod)
 	ret = usb_control_msg_recv(usbdev, 0, 0x67,
 					USB_TYPE_VENDOR | USB_RECIP_DEVICE | USB_DIR_IN,
 					0x11, 0x0,
-					init_bytes, 3, LINE6_TIMEOUT * HZ, GFP_KERNEL);
+					init_bytes, 3, LINE6_TIMEOUT, GFP_KERNEL);
 	if (ret) {
 		dev_err(pod->line6.ifcdev,
 			"receive length failed (error %d)\n", ret);
@@ -220,7 +220,7 @@ static int podhd_dev_start(struct usb_line6_podhd *pod)
 					USB_REQ_SET_FEATURE,
 					USB_TYPE_STANDARD | USB_RECIP_DEVICE | USB_DIR_OUT,
 					1, 0,
-					NULL, 0, LINE6_TIMEOUT * HZ, GFP_KERNEL);
+					NULL, 0, LINE6_TIMEOUT, GFP_KERNEL);
 exit:
 	return ret;
 }

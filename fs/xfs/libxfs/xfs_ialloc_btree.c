@@ -22,6 +22,8 @@
 #include "xfs_rmap.h"
 #include "xfs_ag.h"
 
+static struct kmem_cache	*xfs_inobt_cur_cache;
+
 STATIC int
 xfs_inobt_get_minrecs(
 	struct xfs_btree_cur	*cur,
@@ -432,10 +434,8 @@ xfs_inobt_init_common(
 {
 	struct xfs_btree_cur	*cur;
 
-	cur = kmem_cache_zalloc(xfs_btree_cur_zone, GFP_NOFS | __GFP_NOFAIL);
-	cur->bc_tp = tp;
-	cur->bc_mp = mp;
-	cur->bc_btnum = btnum;
+	cur = xfs_btree_alloc_cursor(mp, tp, btnum,
+			M_IGEO(mp)->inobt_maxlevels, xfs_inobt_cur_cache);
 	if (btnum == XFS_BTNUM_INO) {
 		cur->bc_statoff = XFS_STATS_CALC_INDEX(xs_ibt_2);
 		cur->bc_ops = &xfs_inobt_ops;
@@ -443,8 +443,6 @@ xfs_inobt_init_common(
 		cur->bc_statoff = XFS_STATS_CALC_INDEX(xs_fibt_2);
 		cur->bc_ops = &xfs_finobt_ops;
 	}
-
-	cur->bc_blocklog = mp->m_sb.sb_blocklog;
 
 	if (xfs_has_crc(mp))
 		cur->bc_flags |= XFS_BTREE_CRC_BLOCKS;
@@ -530,6 +528,17 @@ xfs_inobt_commit_staged_btree(
 	}
 }
 
+/* Calculate number of records in an inode btree block. */
+static inline unsigned int
+xfs_inobt_block_maxrecs(
+	unsigned int		blocklen,
+	bool			leaf)
+{
+	if (leaf)
+		return blocklen / sizeof(xfs_inobt_rec_t);
+	return blocklen / (sizeof(xfs_inobt_key_t) + sizeof(xfs_inobt_ptr_t));
+}
+
 /*
  * Calculate number of records in an inobt btree block.
  */
@@ -540,10 +549,54 @@ xfs_inobt_maxrecs(
 	int			leaf)
 {
 	blocklen -= XFS_INOBT_BLOCK_LEN(mp);
+	return xfs_inobt_block_maxrecs(blocklen, leaf);
+}
 
-	if (leaf)
-		return blocklen / sizeof(xfs_inobt_rec_t);
-	return blocklen / (sizeof(xfs_inobt_key_t) + sizeof(xfs_inobt_ptr_t));
+/*
+ * Maximum number of inode btree records per AG.  Pretend that we can fill an
+ * entire AG completely full of inodes except for the AG headers.
+ */
+#define XFS_MAX_INODE_RECORDS \
+	((XFS_MAX_AG_BYTES - (4 * BBSIZE)) / XFS_DINODE_MIN_SIZE) / \
+			XFS_INODES_PER_CHUNK
+
+/* Compute the max possible height for the inode btree. */
+static inline unsigned int
+xfs_inobt_maxlevels_ondisk(void)
+{
+	unsigned int		minrecs[2];
+	unsigned int		blocklen;
+
+	blocklen = min(XFS_MIN_BLOCKSIZE - XFS_BTREE_SBLOCK_LEN,
+		       XFS_MIN_CRC_BLOCKSIZE - XFS_BTREE_SBLOCK_CRC_LEN);
+
+	minrecs[0] = xfs_inobt_block_maxrecs(blocklen, true) / 2;
+	minrecs[1] = xfs_inobt_block_maxrecs(blocklen, false) / 2;
+
+	return xfs_btree_compute_maxlevels(minrecs, XFS_MAX_INODE_RECORDS);
+}
+
+/* Compute the max possible height for the free inode btree. */
+static inline unsigned int
+xfs_finobt_maxlevels_ondisk(void)
+{
+	unsigned int		minrecs[2];
+	unsigned int		blocklen;
+
+	blocklen = XFS_MIN_CRC_BLOCKSIZE - XFS_BTREE_SBLOCK_CRC_LEN;
+
+	minrecs[0] = xfs_inobt_block_maxrecs(blocklen, true) / 2;
+	minrecs[1] = xfs_inobt_block_maxrecs(blocklen, false) / 2;
+
+	return xfs_btree_compute_maxlevels(minrecs, XFS_MAX_INODE_RECORDS);
+}
+
+/* Compute the max possible height for either inode btree. */
+unsigned int
+xfs_iallocbt_maxlevels_ondisk(void)
+{
+	return max(xfs_inobt_maxlevels_ondisk(),
+		   xfs_finobt_maxlevels_ondisk());
 }
 
 /*
@@ -630,10 +683,10 @@ xfs_inobt_rec_check_count(
 
 static xfs_extlen_t
 xfs_inobt_max_size(
-	struct xfs_mount	*mp,
-	xfs_agnumber_t		agno)
+	struct xfs_perag	*pag)
 {
-	xfs_agblock_t		agblocks = xfs_ag_block_count(mp, agno);
+	struct xfs_mount	*mp = pag->pag_mount;
+	xfs_agblock_t		agblocks = pag->block_count;
 
 	/* Bail out if we're uninitialized, which can happen in mkfs. */
 	if (M_IGEO(mp)->inobt_mxr[0] == 0)
@@ -644,8 +697,7 @@ xfs_inobt_max_size(
 	 * never be available for the kinds of things that would require btree
 	 * expansion.  We therefore can pretend the space isn't there.
 	 */
-	if (mp->m_sb.sb_logstart &&
-	    XFS_FSB_TO_AGNO(mp, mp->m_sb.sb_logstart) == agno)
+	if (xfs_ag_contains_log(mp, pag->pag_agno))
 		agblocks -= mp->m_sb.sb_logblocks;
 
 	return xfs_btree_calc_size(M_IGEO(mp)->inobt_mnr,
@@ -669,7 +721,7 @@ xfs_inobt_cur(
 	ASSERT(*agi_bpp == NULL);
 	ASSERT(*curpp == NULL);
 
-	error = xfs_ialloc_read_agi(mp, tp, pag->pag_agno, agi_bpp);
+	error = xfs_ialloc_read_agi(pag, tp, agi_bpp);
 	if (error)
 		return error;
 
@@ -704,16 +756,15 @@ xfs_inobt_count_blocks(
 /* Read finobt block count from AGI header. */
 static int
 xfs_finobt_read_blocks(
-	struct xfs_mount	*mp,
-	struct xfs_trans	*tp,
 	struct xfs_perag	*pag,
+	struct xfs_trans	*tp,
 	xfs_extlen_t		*tree_blocks)
 {
 	struct xfs_buf		*agbp;
 	struct xfs_agi		*agi;
 	int			error;
 
-	error = xfs_ialloc_read_agi(mp, tp, pag->pag_agno, &agbp);
+	error = xfs_ialloc_read_agi(pag, tp, &agbp);
 	if (error)
 		return error;
 
@@ -741,14 +792,14 @@ xfs_finobt_calc_reserves(
 		return 0;
 
 	if (xfs_has_inobtcounts(mp))
-		error = xfs_finobt_read_blocks(mp, tp, pag, &tree_len);
+		error = xfs_finobt_read_blocks(pag, tp, &tree_len);
 	else
 		error = xfs_inobt_count_blocks(mp, tp, pag, XFS_BTNUM_FINO,
 				&tree_len);
 	if (error)
 		return error;
 
-	*ask += xfs_inobt_max_size(mp, pag->pag_agno);
+	*ask += xfs_inobt_max_size(pag);
 	*used += tree_len;
 	return 0;
 }
@@ -760,4 +811,23 @@ xfs_iallocbt_calc_size(
 	unsigned long long	len)
 {
 	return xfs_btree_calc_size(M_IGEO(mp)->inobt_mnr, len);
+}
+
+int __init
+xfs_inobt_init_cur_cache(void)
+{
+	xfs_inobt_cur_cache = kmem_cache_create("xfs_inobt_cur",
+			xfs_btree_cur_sizeof(xfs_inobt_maxlevels_ondisk()),
+			0, 0, NULL);
+
+	if (!xfs_inobt_cur_cache)
+		return -ENOMEM;
+	return 0;
+}
+
+void
+xfs_inobt_destroy_cur_cache(void)
+{
+	kmem_cache_destroy(xfs_inobt_cur_cache);
+	xfs_inobt_cur_cache = NULL;
 }

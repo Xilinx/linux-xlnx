@@ -5,6 +5,7 @@
  *
  */
 
+#include <linux/bitfield.h>
 #include <linux/bpf.h>
 #include <linux/filter.h>
 #include "bpf_jit.h"
@@ -25,6 +26,21 @@ static const int regmap[] = {
 	[BPF_REG_9] =	RV_REG_S4,
 	[BPF_REG_FP] =	RV_REG_S5,
 	[BPF_REG_AX] =	RV_REG_T0,
+};
+
+static const int pt_regmap[] = {
+	[RV_REG_A0] = offsetof(struct pt_regs, a0),
+	[RV_REG_A1] = offsetof(struct pt_regs, a1),
+	[RV_REG_A2] = offsetof(struct pt_regs, a2),
+	[RV_REG_A3] = offsetof(struct pt_regs, a3),
+	[RV_REG_A4] = offsetof(struct pt_regs, a4),
+	[RV_REG_A5] = offsetof(struct pt_regs, a5),
+	[RV_REG_S1] = offsetof(struct pt_regs, s1),
+	[RV_REG_S2] = offsetof(struct pt_regs, s2),
+	[RV_REG_S3] = offsetof(struct pt_regs, s3),
+	[RV_REG_S4] = offsetof(struct pt_regs, s4),
+	[RV_REG_S5] = offsetof(struct pt_regs, s5),
+	[RV_REG_T0] = offsetof(struct pt_regs, t0),
 };
 
 enum {
@@ -311,12 +327,12 @@ static int emit_bpf_tail_call(int insn, struct rv_jit_context *ctx)
 	off = ninsns_rvoff(tc_ninsn - (ctx->ninsns - start_insn));
 	emit_branch(BPF_JGE, RV_REG_A2, RV_REG_T1, off, ctx);
 
-	/* if (TCC-- < 0)
+	/* if (--TCC < 0)
 	 *     goto out;
 	 */
-	emit_addi(RV_REG_T1, tcc, -1, ctx);
+	emit_addi(RV_REG_TCC, tcc, -1, ctx);
 	off = ninsns_rvoff(tc_ninsn - (ctx->ninsns - start_insn));
-	emit_branch(BPF_JSLT, tcc, RV_REG_ZERO, off, ctx);
+	emit_branch(BPF_JSLT, RV_REG_TCC, RV_REG_ZERO, off, ctx);
 
 	/* prog = array->ptrs[index];
 	 * if (!prog)
@@ -336,7 +352,6 @@ static int emit_bpf_tail_call(int insn, struct rv_jit_context *ctx)
 	if (is_12b_check(off, insn))
 		return -1;
 	emit_ld(RV_REG_T3, off, RV_REG_T2, ctx);
-	emit_mv(RV_REG_TCC, RV_REG_T1, ctx);
 	__build_epilogue(true, ctx);
 	return 0;
 }
@@ -437,6 +452,154 @@ static int emit_call(bool fixed, u64 addr, struct rv_jit_context *ctx)
 		return ret;
 	rd = bpf_to_rv_reg(BPF_REG_0, ctx);
 	emit_mv(rd, RV_REG_A0, ctx);
+	return 0;
+}
+
+static void emit_atomic(u8 rd, u8 rs, s16 off, s32 imm, bool is64,
+			struct rv_jit_context *ctx)
+{
+	u8 r0;
+	int jmp_offset;
+
+	if (off) {
+		if (is_12b_int(off)) {
+			emit_addi(RV_REG_T1, rd, off, ctx);
+		} else {
+			emit_imm(RV_REG_T1, off, ctx);
+			emit_add(RV_REG_T1, RV_REG_T1, rd, ctx);
+		}
+		rd = RV_REG_T1;
+	}
+
+	switch (imm) {
+	/* lock *(u32/u64 *)(dst_reg + off16) <op>= src_reg */
+	case BPF_ADD:
+		emit(is64 ? rv_amoadd_d(RV_REG_ZERO, rs, rd, 0, 0) :
+		     rv_amoadd_w(RV_REG_ZERO, rs, rd, 0, 0), ctx);
+		break;
+	case BPF_AND:
+		emit(is64 ? rv_amoand_d(RV_REG_ZERO, rs, rd, 0, 0) :
+		     rv_amoand_w(RV_REG_ZERO, rs, rd, 0, 0), ctx);
+		break;
+	case BPF_OR:
+		emit(is64 ? rv_amoor_d(RV_REG_ZERO, rs, rd, 0, 0) :
+		     rv_amoor_w(RV_REG_ZERO, rs, rd, 0, 0), ctx);
+		break;
+	case BPF_XOR:
+		emit(is64 ? rv_amoxor_d(RV_REG_ZERO, rs, rd, 0, 0) :
+		     rv_amoxor_w(RV_REG_ZERO, rs, rd, 0, 0), ctx);
+		break;
+	/* src_reg = atomic_fetch_<op>(dst_reg + off16, src_reg) */
+	case BPF_ADD | BPF_FETCH:
+		emit(is64 ? rv_amoadd_d(rs, rs, rd, 0, 0) :
+		     rv_amoadd_w(rs, rs, rd, 0, 0), ctx);
+		if (!is64)
+			emit_zext_32(rs, ctx);
+		break;
+	case BPF_AND | BPF_FETCH:
+		emit(is64 ? rv_amoand_d(rs, rs, rd, 0, 0) :
+		     rv_amoand_w(rs, rs, rd, 0, 0), ctx);
+		if (!is64)
+			emit_zext_32(rs, ctx);
+		break;
+	case BPF_OR | BPF_FETCH:
+		emit(is64 ? rv_amoor_d(rs, rs, rd, 0, 0) :
+		     rv_amoor_w(rs, rs, rd, 0, 0), ctx);
+		if (!is64)
+			emit_zext_32(rs, ctx);
+		break;
+	case BPF_XOR | BPF_FETCH:
+		emit(is64 ? rv_amoxor_d(rs, rs, rd, 0, 0) :
+		     rv_amoxor_w(rs, rs, rd, 0, 0), ctx);
+		if (!is64)
+			emit_zext_32(rs, ctx);
+		break;
+	/* src_reg = atomic_xchg(dst_reg + off16, src_reg); */
+	case BPF_XCHG:
+		emit(is64 ? rv_amoswap_d(rs, rs, rd, 0, 0) :
+		     rv_amoswap_w(rs, rs, rd, 0, 0), ctx);
+		if (!is64)
+			emit_zext_32(rs, ctx);
+		break;
+	/* r0 = atomic_cmpxchg(dst_reg + off16, r0, src_reg); */
+	case BPF_CMPXCHG:
+		r0 = bpf_to_rv_reg(BPF_REG_0, ctx);
+		emit(is64 ? rv_addi(RV_REG_T2, r0, 0) :
+		     rv_addiw(RV_REG_T2, r0, 0), ctx);
+		emit(is64 ? rv_lr_d(r0, 0, rd, 0, 0) :
+		     rv_lr_w(r0, 0, rd, 0, 0), ctx);
+		jmp_offset = ninsns_rvoff(8);
+		emit(rv_bne(RV_REG_T2, r0, jmp_offset >> 1), ctx);
+		emit(is64 ? rv_sc_d(RV_REG_T3, rs, rd, 0, 0) :
+		     rv_sc_w(RV_REG_T3, rs, rd, 0, 0), ctx);
+		jmp_offset = ninsns_rvoff(-6);
+		emit(rv_bne(RV_REG_T3, 0, jmp_offset >> 1), ctx);
+		emit(rv_fence(0x3, 0x3), ctx);
+		break;
+	}
+}
+
+#define BPF_FIXUP_OFFSET_MASK   GENMASK(26, 0)
+#define BPF_FIXUP_REG_MASK      GENMASK(31, 27)
+
+bool ex_handler_bpf(const struct exception_table_entry *ex,
+		    struct pt_regs *regs)
+{
+	off_t offset = FIELD_GET(BPF_FIXUP_OFFSET_MASK, ex->fixup);
+	int regs_offset = FIELD_GET(BPF_FIXUP_REG_MASK, ex->fixup);
+
+	*(unsigned long *)((void *)regs + pt_regmap[regs_offset]) = 0;
+	regs->epc = (unsigned long)&ex->fixup - offset;
+
+	return true;
+}
+
+/* For accesses to BTF pointers, add an entry to the exception table */
+static int add_exception_handler(const struct bpf_insn *insn,
+				 struct rv_jit_context *ctx,
+				 int dst_reg, int insn_len)
+{
+	struct exception_table_entry *ex;
+	unsigned long pc;
+	off_t offset;
+
+	if (!ctx->insns || !ctx->prog->aux->extable || BPF_MODE(insn->code) != BPF_PROBE_MEM)
+		return 0;
+
+	if (WARN_ON_ONCE(ctx->nexentries >= ctx->prog->aux->num_exentries))
+		return -EINVAL;
+
+	if (WARN_ON_ONCE(insn_len > ctx->ninsns))
+		return -EINVAL;
+
+	if (WARN_ON_ONCE(!rvc_enabled() && insn_len == 1))
+		return -EINVAL;
+
+	ex = &ctx->prog->aux->extable[ctx->nexentries];
+	pc = (unsigned long)&ctx->insns[ctx->ninsns - insn_len];
+
+	offset = pc - (long)&ex->insn;
+	if (WARN_ON_ONCE(offset >= 0 || offset < INT_MIN))
+		return -ERANGE;
+	ex->insn = offset;
+
+	/*
+	 * Since the extable follows the program, the fixup offset is always
+	 * negative and limited to BPF_JIT_REGION_SIZE. Store a positive value
+	 * to keep things simple, and put the destination register in the upper
+	 * bits. We don't need to worry about buildtime or runtime sort
+	 * modifying the upper bits because the table is already sorted, and
+	 * isn't part of the main exception table.
+	 */
+	offset = (long)&ex->fixup - (pc + insn_len * sizeof(u16));
+	if (!FIELD_FIT(BPF_FIXUP_OFFSET_MASK, offset))
+		return -ERANGE;
+
+	ex->fixup = FIELD_PREP(BPF_FIXUP_OFFSET_MASK, offset) |
+		FIELD_PREP(BPF_FIXUP_REG_MASK, dst_reg);
+	ex->type = EX_TYPE_BPF;
+
+	ctx->nexentries++;
 	return 0;
 }
 
@@ -893,52 +1056,86 @@ out_be:
 
 	/* LDX: dst = *(size *)(src + off) */
 	case BPF_LDX | BPF_MEM | BPF_B:
-		if (is_12b_int(off)) {
-			emit(rv_lbu(rd, off, rs), ctx);
-			break;
-		}
-
-		emit_imm(RV_REG_T1, off, ctx);
-		emit_add(RV_REG_T1, RV_REG_T1, rs, ctx);
-		emit(rv_lbu(rd, 0, RV_REG_T1), ctx);
-		if (insn_is_zext(&insn[1]))
-			return 1;
-		break;
 	case BPF_LDX | BPF_MEM | BPF_H:
-		if (is_12b_int(off)) {
-			emit(rv_lhu(rd, off, rs), ctx);
-			break;
-		}
-
-		emit_imm(RV_REG_T1, off, ctx);
-		emit_add(RV_REG_T1, RV_REG_T1, rs, ctx);
-		emit(rv_lhu(rd, 0, RV_REG_T1), ctx);
-		if (insn_is_zext(&insn[1]))
-			return 1;
-		break;
 	case BPF_LDX | BPF_MEM | BPF_W:
-		if (is_12b_int(off)) {
-			emit(rv_lwu(rd, off, rs), ctx);
-			break;
-		}
-
-		emit_imm(RV_REG_T1, off, ctx);
-		emit_add(RV_REG_T1, RV_REG_T1, rs, ctx);
-		emit(rv_lwu(rd, 0, RV_REG_T1), ctx);
-		if (insn_is_zext(&insn[1]))
-			return 1;
-		break;
 	case BPF_LDX | BPF_MEM | BPF_DW:
-		if (is_12b_int(off)) {
-			emit_ld(rd, off, rs, ctx);
+	case BPF_LDX | BPF_PROBE_MEM | BPF_B:
+	case BPF_LDX | BPF_PROBE_MEM | BPF_H:
+	case BPF_LDX | BPF_PROBE_MEM | BPF_W:
+	case BPF_LDX | BPF_PROBE_MEM | BPF_DW:
+	{
+		int insn_len, insns_start;
+
+		switch (BPF_SIZE(code)) {
+		case BPF_B:
+			if (is_12b_int(off)) {
+				insns_start = ctx->ninsns;
+				emit(rv_lbu(rd, off, rs), ctx);
+				insn_len = ctx->ninsns - insns_start;
+				break;
+			}
+
+			emit_imm(RV_REG_T1, off, ctx);
+			emit_add(RV_REG_T1, RV_REG_T1, rs, ctx);
+			insns_start = ctx->ninsns;
+			emit(rv_lbu(rd, 0, RV_REG_T1), ctx);
+			insn_len = ctx->ninsns - insns_start;
+			if (insn_is_zext(&insn[1]))
+				return 1;
+			break;
+		case BPF_H:
+			if (is_12b_int(off)) {
+				insns_start = ctx->ninsns;
+				emit(rv_lhu(rd, off, rs), ctx);
+				insn_len = ctx->ninsns - insns_start;
+				break;
+			}
+
+			emit_imm(RV_REG_T1, off, ctx);
+			emit_add(RV_REG_T1, RV_REG_T1, rs, ctx);
+			insns_start = ctx->ninsns;
+			emit(rv_lhu(rd, 0, RV_REG_T1), ctx);
+			insn_len = ctx->ninsns - insns_start;
+			if (insn_is_zext(&insn[1]))
+				return 1;
+			break;
+		case BPF_W:
+			if (is_12b_int(off)) {
+				insns_start = ctx->ninsns;
+				emit(rv_lwu(rd, off, rs), ctx);
+				insn_len = ctx->ninsns - insns_start;
+				break;
+			}
+
+			emit_imm(RV_REG_T1, off, ctx);
+			emit_add(RV_REG_T1, RV_REG_T1, rs, ctx);
+			insns_start = ctx->ninsns;
+			emit(rv_lwu(rd, 0, RV_REG_T1), ctx);
+			insn_len = ctx->ninsns - insns_start;
+			if (insn_is_zext(&insn[1]))
+				return 1;
+			break;
+		case BPF_DW:
+			if (is_12b_int(off)) {
+				insns_start = ctx->ninsns;
+				emit_ld(rd, off, rs, ctx);
+				insn_len = ctx->ninsns - insns_start;
+				break;
+			}
+
+			emit_imm(RV_REG_T1, off, ctx);
+			emit_add(RV_REG_T1, RV_REG_T1, rs, ctx);
+			insns_start = ctx->ninsns;
+			emit_ld(rd, 0, RV_REG_T1, ctx);
+			insn_len = ctx->ninsns - insns_start;
 			break;
 		}
 
-		emit_imm(RV_REG_T1, off, ctx);
-		emit_add(RV_REG_T1, RV_REG_T1, rs, ctx);
-		emit_ld(rd, 0, RV_REG_T1, ctx);
+		ret = add_exception_handler(insn, ctx, rd, insn_len);
+		if (ret)
+			return ret;
 		break;
-
+	}
 	/* speculation barrier */
 	case BPF_ST | BPF_NOSPEC:
 		break;
@@ -1033,30 +1230,8 @@ out_be:
 		break;
 	case BPF_STX | BPF_ATOMIC | BPF_W:
 	case BPF_STX | BPF_ATOMIC | BPF_DW:
-		if (insn->imm != BPF_ADD) {
-			pr_err("bpf-jit: not supported: atomic operation %02x ***\n",
-			       insn->imm);
-			return -EINVAL;
-		}
-
-		/* atomic_add: lock *(u32 *)(dst + off) += src
-		 * atomic_add: lock *(u64 *)(dst + off) += src
-		 */
-
-		if (off) {
-			if (is_12b_int(off)) {
-				emit_addi(RV_REG_T1, rd, off, ctx);
-			} else {
-				emit_imm(RV_REG_T1, off, ctx);
-				emit_add(RV_REG_T1, RV_REG_T1, rd, ctx);
-			}
-
-			rd = RV_REG_T1;
-		}
-
-		emit(BPF_SIZE(code) == BPF_W ?
-		     rv_amoadd_w(RV_REG_ZERO, rs, rd, 0, 0) :
-		     rv_amoadd_d(RV_REG_ZERO, rs, rd, 0, 0), ctx);
+		emit_atomic(rd, rs, off, imm,
+			    BPF_SIZE(code) == BPF_DW, ctx);
 		break;
 	default:
 		pr_err("bpf-jit: unknown opcode %02x\n", code);

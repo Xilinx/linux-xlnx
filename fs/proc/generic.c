@@ -448,6 +448,9 @@ static struct proc_dir_entry *__proc_create(struct proc_dir_entry **parent,
 	proc_set_user(ent, (*parent)->uid, (*parent)->gid);
 
 	ent->proc_dops = &proc_misc_dentry_ops;
+	/* Revalidate everything under /proc/${pid}/net */
+	if ((*parent)->proc_dops == &proc_net_dentry_ops)
+		pde_force_lookup(ent);
 
 out:
 	return ent;
@@ -790,12 +793,6 @@ void proc_remove(struct proc_dir_entry *de)
 		remove_proc_subtree(de->name, de->parent);
 }
 EXPORT_SYMBOL(proc_remove);
-
-void *PDE_DATA(const struct inode *inode)
-{
-	return __PDE_DATA(inode);
-}
-EXPORT_SYMBOL(PDE_DATA);
 
 /*
  * Pull a user buffer into memory and pass it to the file's write handler if

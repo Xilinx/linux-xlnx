@@ -33,7 +33,7 @@
 #include <linux/reboot.h>
 #include <linux/slab.h>
 #include <linux/ucs2_string.h>
-#include <linux/mem_encrypt.h>
+#include <linux/cc_platform.h>
 #include <linux/sched/task.h>
 
 #include <asm/setup.h>
@@ -176,7 +176,8 @@ virt_to_phys_or_null_size(void *va, unsigned long size)
 
 int __init efi_setup_page_tables(unsigned long pa_memmap, unsigned num_pages)
 {
-	unsigned long pfn, text, pf, rodata;
+	extern const u8 __efi64_thunk_ret_tramp[];
+	unsigned long pfn, text, pf, rodata, tramp;
 	struct page *page;
 	unsigned npages;
 	pgd_t *pgd = efi_mm.pgd;
@@ -238,11 +239,9 @@ int __init efi_setup_page_tables(unsigned long pa_memmap, unsigned num_pages)
 
 	npages = (_etext - _text) >> PAGE_SHIFT;
 	text = __pa(_text);
-	pfn = text >> PAGE_SHIFT;
 
-	pf = _PAGE_ENC;
-	if (kernel_map_pages_in_pgd(pgd, pfn, text, npages, pf)) {
-		pr_err("Failed to map kernel text 1:1\n");
+	if (kernel_unmap_pages_in_pgd(pgd, text, npages)) {
+		pr_err("Failed to unmap kernel text 1:1 mapping\n");
 		return 1;
 	}
 
@@ -253,6 +252,15 @@ int __init efi_setup_page_tables(unsigned long pa_memmap, unsigned num_pages)
 	pf = _PAGE_NX | _PAGE_ENC;
 	if (kernel_map_pages_in_pgd(pgd, pfn, rodata, npages, pf)) {
 		pr_err("Failed to map kernel rodata 1:1\n");
+		return 1;
+	}
+
+	tramp = __pa(__efi64_thunk_ret_tramp);
+	pfn = tramp >> PAGE_SHIFT;
+
+	pf = _PAGE_ENC;
+	if (kernel_map_pages_in_pgd(pgd, pfn, tramp, 1, pf)) {
+		pr_err("Failed to map mixed mode return trampoline\n");
 		return 1;
 	}
 
@@ -284,7 +292,8 @@ static void __init __map_region(efi_memory_desc_t *md, u64 va)
 	if (!(md->attribute & EFI_MEMORY_WB))
 		flags |= _PAGE_PCD;
 
-	if (sev_active() && md->type != EFI_MEMORY_MAPPED_IO)
+	if (cc_platform_has(CC_ATTR_GUEST_MEM_ENCRYPT) &&
+	    md->type != EFI_MEMORY_MAPPED_IO)
 		flags |= _PAGE_ENC;
 
 	pfn = md->phys_addr >> PAGE_SHIFT;
@@ -390,7 +399,7 @@ static int __init efi_update_mem_attr(struct mm_struct *mm, efi_memory_desc_t *m
 	if (!(md->attribute & EFI_MEMORY_RO))
 		pf |= _PAGE_RW;
 
-	if (sev_active())
+	if (cc_platform_has(CC_ATTR_GUEST_MEM_ENCRYPT))
 		pf |= _PAGE_ENC;
 
 	return efi_update_mappings(md, pf);
@@ -438,7 +447,7 @@ void __init efi_runtime_update_mappings(void)
 			(md->type != EFI_RUNTIME_SERVICES_CODE))
 			pf |= _PAGE_RW;
 
-		if (sev_active())
+		if (cc_platform_has(CC_ATTR_GUEST_MEM_ENCRYPT))
 			pf |= _PAGE_ENC;
 
 		efi_update_mappings(md, pf);

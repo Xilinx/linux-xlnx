@@ -77,6 +77,15 @@ properties:
     description:
       Maximum PHY supported speed in Mbits / seconds.
 
+  phy-10base-t1l-2.4vpp:
+    description: |
+      tristate, request/disable 2.4 Vpp operating mode. The values are:
+      0: Disable 2.4 Vpp operating mode.
+      1: Request 2.4 Vpp operating mode from link partner.
+      Absence of this property will leave configuration to default values.
+    $ref: "/schemas/types.yaml#/definitions/uint32"
+    enum: [0, 1]
+
   broken-turn-around:
     $ref: /schemas/types.yaml#/definitions/flag
     description:
@@ -90,6 +99,14 @@ properties:
       If set, indicates the PHY will swap the TX/RX lanes to
       compensate for the board being designed with the lanes
       swapped.
+
+  enet-phy-lane-no-swap:
+    $ref: /schemas/types.yaml#/definitions/flag
+    description:
+      If set, indicates that PHY will disable swap of the
+      TX/RX lanes. This property allows the PHY to work correcly after
+      e.g. wrong bootstrap configuration caused by issues in PCB
+      layout design.
 
   eee-broken-100tx:
     $ref: /schemas/types.yaml#/definitions/flag
@@ -126,6 +143,12 @@ properties:
     description:
       Mark the corresponding energy efficient ethernet mode as
       broken and request the ethernet to stop advertising it.
+
+  pses:
+    $ref: /schemas/types.yaml#/definitions/phandle-array
+    maxItems: 1
+    description:
+      Specifies a reference to a node representing a Power Sourcing Equipment.
 
   phy-is-integrated:
     $ref: /schemas/types.yaml#/definitions/flag

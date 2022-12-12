@@ -89,7 +89,7 @@ static void sxgbe_enable_eee_mode(const struct sxgbe_priv_data *priv)
 
 void sxgbe_disable_eee_mode(struct sxgbe_priv_data * const priv)
 {
-	/* Exit and disable EEE in case of we are are in LPI state. */
+	/* Exit and disable EEE in case of we are in LPI state. */
 	priv->hw->mac->reset_eee_mode(priv->ioaddr);
 	del_timer_sync(&priv->eee_ctrl_timer);
 	priv->tx_path_in_lpi_mode = false;
@@ -127,7 +127,7 @@ bool sxgbe_eee_init(struct sxgbe_priv_data * const priv)
 	/* MAC core supports the EEE feature. */
 	if (priv->hw_cap.eee) {
 		/* Check if the PHY supports EEE */
-		if (phy_init_eee(ndev->phydev, 1))
+		if (phy_init_eee(ndev->phydev, true))
 			return false;
 
 		priv->eee_active = 1;
@@ -931,10 +931,13 @@ static int sxgbe_get_hw_features(struct sxgbe_priv_data * const priv)
 static void sxgbe_check_ether_addr(struct sxgbe_priv_data *priv)
 {
 	if (!is_valid_ether_addr(priv->dev->dev_addr)) {
+		u8 addr[ETH_ALEN];
+
 		priv->hw->mac->get_umac_addr((void __iomem *)
-					     priv->ioaddr,
-					     priv->dev->dev_addr, 0);
-		if (!is_valid_ether_addr(priv->dev->dev_addr))
+					     priv->ioaddr, addr, 0);
+		if (is_valid_ether_addr(addr))
+			eth_hw_addr_set(priv->dev, addr);
+		else
 			eth_hw_addr_random(priv->dev);
 	}
 	dev_info(priv->device, "device MAC address %pM\n",
@@ -2140,7 +2143,7 @@ struct sxgbe_priv_data *sxgbe_drv_probe(struct device *device,
 		pr_info("Enable RX Mitigation via HW Watchdog Timer\n");
 	}
 
-	netif_napi_add(ndev, &priv->napi, sxgbe_poll, 64);
+	netif_napi_add(ndev, &priv->napi, sxgbe_poll);
 
 	spin_lock_init(&priv->stats_lock);
 
@@ -2282,18 +2285,18 @@ static int __init sxgbe_cmdline_opt(char *str)
 	char *opt;
 
 	if (!str || !*str)
-		return -EINVAL;
+		return 1;
 	while ((opt = strsep(&str, ",")) != NULL) {
 		if (!strncmp(opt, "eee_timer:", 10)) {
 			if (kstrtoint(opt + 10, 0, &eee_timer))
 				goto err;
 		}
 	}
-	return 0;
+	return 1;
 
 err:
 	pr_err("%s: ERROR broken module parameter conversion\n", __func__);
-	return -EINVAL;
+	return 1;
 }
 
 __setup("sxgbeeth=", sxgbe_cmdline_opt);

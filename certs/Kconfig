@@ -17,21 +17,19 @@ config MODULE_SIG_KEY
 
 choice
 	prompt "Type of module signing key to be generated"
-	default MODULE_SIG_KEY_TYPE_RSA
+	depends on MODULE_SIG || (IMA_APPRAISE_MODSIG && MODULES)
 	help
 	 The type of module signing key type to generate. This option
 	 does not apply if a #PKCS11 URI is used.
 
 config MODULE_SIG_KEY_TYPE_RSA
 	bool "RSA"
-	depends on MODULE_SIG || (IMA_APPRAISE_MODSIG && MODULES)
 	help
 	 Use an RSA key for module signing.
 
 config MODULE_SIG_KEY_TYPE_ECDSA
 	bool "ECDSA"
 	select CRYPTO_ECDSA
-	depends on MODULE_SIG || (IMA_APPRAISE_MODSIG && MODULES)
 	help
 	 Use an elliptic curve key (NIST P384) for module signing. Consider
 	 using a strong hash like sha256 or sha384 for hashing modules.
@@ -45,6 +43,7 @@ config SYSTEM_TRUSTED_KEYRING
 	bool "Provide system-wide ring of trusted keys"
 	depends on KEYS
 	depends on ASYMMETRIC_KEY_TYPE
+	depends on X509_CERTIFICATE_PARSER = y
 	help
 	  Provide a system keyring to which trusted keys can be added.  Keys in
 	  the keyring are considered to be trusted.  Keys may be added at will
@@ -106,8 +105,11 @@ config SYSTEM_BLACKLIST_HASH_LIST
 	help
 	  If set, this option should be the filename of a list of hashes in the
 	  form "<hash>", "<hash>", ... .  This will be included into a C
-	  wrapper to incorporate the list into the kernel.  Each <hash> should
-	  be a string of hex digits.
+	  wrapper to incorporate the list into the kernel.  Each <hash> must be a
+	  string starting with a prefix ("tbs" or "bin"), then a colon (":"), and
+	  finally an even number of hexadecimal lowercase characters (up to 128).
+	  Certificate hashes can be generated with
+	  tools/certs/print-cert-tbs-hash.sh .
 
 config SYSTEM_REVOCATION_LIST
 	bool "Provide system-wide ring of revocation certificates"
@@ -125,5 +127,15 @@ config SYSTEM_REVOCATION_KEYS
 	  If set, this option should be the filename of a PEM-formatted file
 	  containing X.509 certificates to be included in the default blacklist
 	  keyring.
+
+config SYSTEM_BLACKLIST_AUTH_UPDATE
+	bool "Allow root to add signed blacklist keys"
+	depends on SYSTEM_BLACKLIST_KEYRING
+	depends on SYSTEM_DATA_VERIFICATION
+	help
+	  If set, provide the ability to load new blacklist keys at run time if
+	  they are signed and vouched by a certificate from the builtin trusted
+	  keyring.  The PKCS#7 signature of the description is set in the key
+	  payload.  Blacklist keys cannot be removed.
 
 endmenu

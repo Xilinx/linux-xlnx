@@ -153,7 +153,7 @@ static int qib_get_base_info(struct file *fp, void __user *ubase,
 		kinfo->spi_tidcnt += dd->rcvtidcnt % subctxt_cnt;
 	/*
 	 * for this use, may be cfgctxts summed over all chips that
-	 * are are configured and present
+	 * are configured and present
 	 */
 	kinfo->spi_nctxts = dd->cfgctxts;
 	/* unit (chip/board) our context is on */
@@ -851,7 +851,7 @@ static int mmap_rcvegrbufs(struct vm_area_struct *vma,
 		ret = -EPERM;
 		goto bail;
 	}
-	/* don't allow them to later change to writeable with mprotect */
+	/* don't allow them to later change to writable with mprotect */
 	vma->vm_flags &= ~VM_MAYWRITE;
 
 	start = vma->vm_start;
@@ -941,7 +941,7 @@ static int mmap_kvaddr(struct vm_area_struct *vma, u64 pgaddr,
 			goto bail;
 		}
 		/*
-		 * Don't allow permission to later change to writeable
+		 * Don't allow permission to later change to writable
 		 * with mprotect.
 		 */
 		vma->vm_flags &= ~VM_MAYWRITE;
@@ -1321,7 +1321,7 @@ static int setup_ctxt(struct qib_pportdata *ppd, int ctxt,
 	rcd->tid_pg_list = ptmp;
 	rcd->pid = current->pid;
 	init_waitqueue_head(&dd->rcd[ctxt]->wait);
-	strlcpy(rcd->comm, current->comm, sizeof(rcd->comm));
+	get_task_comm(rcd->comm, current);
 	ctxt_fp(fp) = rcd;
 	qib_stats.sps_ctxts++;
 	dd->freectxts--;

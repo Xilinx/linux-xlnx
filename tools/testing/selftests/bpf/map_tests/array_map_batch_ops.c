@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
@@ -68,13 +69,6 @@ static void map_batch_verify(int *visited, __u32 max_entries, int *keys,
 
 static void __test_map_lookup_and_update_batch(bool is_pcpu)
 {
-	struct bpf_create_map_attr xattr = {
-		.name = "array_map",
-		.map_type = is_pcpu ? BPF_MAP_TYPE_PERCPU_ARRAY :
-				      BPF_MAP_TYPE_ARRAY,
-		.key_size = sizeof(int),
-		.value_size = sizeof(__s64),
-	};
 	int map_fd, *keys, *visited;
 	__u32 count, total, total_success;
 	const __u32 max_entries = 10;
@@ -86,10 +80,10 @@ static void __test_map_lookup_and_update_batch(bool is_pcpu)
 		.flags = 0,
 	);
 
-	xattr.max_entries = max_entries;
-	map_fd = bpf_create_map_xattr(&xattr);
+	map_fd = bpf_map_create(is_pcpu ? BPF_MAP_TYPE_PERCPU_ARRAY : BPF_MAP_TYPE_ARRAY,
+				"array_map", sizeof(int), sizeof(__s64), max_entries, NULL);
 	CHECK(map_fd == -1,
-	      "bpf_create_map_xattr()", "error:%s\n", strerror(errno));
+	      "bpf_map_create()", "error:%s\n", strerror(errno));
 
 	value_size = sizeof(__s64);
 	if (is_pcpu)
@@ -144,6 +138,7 @@ static void __test_map_lookup_and_update_batch(bool is_pcpu)
 	free(keys);
 	free(values);
 	free(visited);
+	close(map_fd);
 }
 
 static void array_map_batch_ops(void)

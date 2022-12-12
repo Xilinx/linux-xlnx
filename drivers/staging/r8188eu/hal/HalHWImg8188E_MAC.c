@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /* Copyright(c) 2007 - 2011 Realtek Corporation. */
 
-#include "../include/odm_precomp.h"
 #include "../include/rtw_iol.h"
 
 static bool Checkcondition(const u32  condition, const u32  hex)
@@ -127,26 +126,26 @@ static u32 array_MAC_REG_8188E[] = {
 		0x70B, 0x00000087,
 };
 
-enum HAL_STATUS ODM_ReadAndConfig_MAC_REG_8188E(struct odm_dm_struct *dm_odm)
+static void odm_ConfigMAC_8188E(struct odm_dm_struct *pDM_Odm, u32 Addr, u8 Data)
+{
+	rtw_write8(pDM_Odm->Adapter, Addr, Data);
+}
+
+int ODM_ReadAndConfig_MAC_REG_8188E(struct odm_dm_struct *dm_odm)
 {
 	#define READ_NEXT_PAIR(v1, v2, i) do { i += 2; v1 = array[i]; v2 = array[i + 1]; } while (0)
 
 	u32     hex         = 0;
 	u32     i;
-	u8     platform    = dm_odm->SupportPlatform;
-	u8     interface_val   = dm_odm->SupportInterface;
-	u8     board       = dm_odm->BoardType;
-	u32     array_len    = sizeof(array_MAC_REG_8188E) / sizeof(u32);
+	u32     array_len    = ARRAY_SIZE(array_MAC_REG_8188E);
 	u32    *array       = array_MAC_REG_8188E;
 	bool	biol = false;
 
 	struct adapter *adapt =  dm_odm->Adapter;
 	struct xmit_frame	*pxmit_frame = NULL;
 	u8 bndy_cnt = 1;
-	enum HAL_STATUS rst = HAL_STATUS_SUCCESS;
-	hex += board;
-	hex += interface_val << 8;
-	hex += platform << 16;
+	hex += ODM_ITRF_USB << 8;
+	hex += ODM_CE << 16;
 	hex += 0xFF000000;
 
 	biol = rtw_IOL_applied(adapt);
@@ -155,7 +154,7 @@ enum HAL_STATUS ODM_ReadAndConfig_MAC_REG_8188E(struct odm_dm_struct *dm_odm)
 		pxmit_frame = rtw_IOL_accquire_xmit_frame(adapt);
 		if (!pxmit_frame) {
 			pr_info("rtw_IOL_accquire_xmit_frame failed\n");
-			return HAL_STATUS_FAILURE;
+			return -ENOMEM;
 		}
 	}
 
@@ -204,10 +203,10 @@ enum HAL_STATUS ODM_ReadAndConfig_MAC_REG_8188E(struct odm_dm_struct *dm_odm)
 		}
 	}
 	if (biol) {
-		if (!rtw_IOL_exec_cmds_sync(dm_odm->Adapter, pxmit_frame, 1000, bndy_cnt)) {
+		if (!rtl8188e_IOL_exec_cmds_sync(dm_odm->Adapter, pxmit_frame, 1000, bndy_cnt)) {
 			pr_info("~~~ MAC IOL_exec_cmds Failed !!!\n");
-			rst = HAL_STATUS_FAILURE;
+			return -1;
 		}
 	}
-	return rst;
+	return 0;
 }

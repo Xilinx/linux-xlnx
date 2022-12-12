@@ -17,6 +17,8 @@
 #include <linux/rwsem.h>
 #include <linux/acpi.h>
 #include <linux/dma-mapping.h>
+#include <linux/pci.h>
+#include <linux/pci-acpi.h>
 #include <linux/platform_device.h>
 
 #include "internal.h"
@@ -75,19 +77,29 @@ static struct acpi_bus_type *acpi_get_bus_type(struct device *dev)
 #define FIND_CHILD_MIN_SCORE	1
 #define FIND_CHILD_MAX_SCORE	2
 
+static int match_any(struct acpi_device *adev, void *not_used)
+{
+	return 1;
+}
+
+static bool acpi_dev_has_children(struct acpi_device *adev)
+{
+	return acpi_dev_for_each_child(adev, match_any, NULL) > 0;
+}
+
 static int find_child_checks(struct acpi_device *adev, bool check_children)
 {
-	bool sta_present = true;
 	unsigned long long sta;
 	acpi_status status;
 
-	status = acpi_evaluate_integer(adev->handle, "_STA", NULL, &sta);
-	if (status == AE_NOT_FOUND)
-		sta_present = false;
-	else if (ACPI_FAILURE(status) || !(sta & ACPI_STA_DEVICE_ENABLED))
+	if (check_children && !acpi_dev_has_children(adev))
 		return -ENODEV;
 
-	if (check_children && list_empty(&adev->children))
+	status = acpi_evaluate_integer(adev->handle, "_STA", NULL, &sta);
+	if (status == AE_NOT_FOUND)
+		return FIND_CHILD_MIN_SCORE;
+
+	if (ACPI_FAILURE(status) || !(sta & ACPI_STA_DEVICE_ENABLED))
 		return -ENODEV;
 
 	/*
@@ -97,60 +109,102 @@ static int find_child_checks(struct acpi_device *adev, bool check_children)
 	 * matched going forward.  [This means a second spec violation in a row,
 	 * so whatever we do here is best effort anyway.]
 	 */
-	return sta_present && !adev->pnp.type.platform_id ?
-			FIND_CHILD_MAX_SCORE : FIND_CHILD_MIN_SCORE;
+	if (adev->pnp.type.platform_id)
+		return FIND_CHILD_MIN_SCORE;
+
+	return FIND_CHILD_MAX_SCORE;
+}
+
+struct find_child_walk_data {
+	struct acpi_device *adev;
+	u64 address;
+	int score;
+	bool check_sta;
+	bool check_children;
+};
+
+static int check_one_child(struct acpi_device *adev, void *data)
+{
+	struct find_child_walk_data *wd = data;
+	int score;
+
+	if (!adev->pnp.type.bus_address || acpi_device_adr(adev) != wd->address)
+		return 0;
+
+	if (!wd->adev) {
+		/*
+		 * This is the first matching object, so save it.  If it is not
+		 * necessary to look for any other matching objects, stop the
+		 * search.
+		 */
+		wd->adev = adev;
+		return !(wd->check_sta || wd->check_children);
+	}
+
+	/*
+	 * There is more than one matching device object with the same _ADR
+	 * value.  That really is unexpected, so we are kind of beyond the scope
+	 * of the spec here.  We have to choose which one to return, though.
+	 *
+	 * First, get the score for the previously found object and terminate
+	 * the walk if it is maximum.
+	*/
+	if (!wd->score) {
+		score = find_child_checks(wd->adev, wd->check_children);
+		if (score == FIND_CHILD_MAX_SCORE)
+			return 1;
+
+		wd->score = score;
+	}
+	/*
+	 * Second, if the object that has just been found has a better score,
+	 * replace the previously found one with it and terminate the walk if
+	 * the new score is maximum.
+	 */
+	score = find_child_checks(adev, wd->check_children);
+	if (score > wd->score) {
+		wd->adev = adev;
+		if (score == FIND_CHILD_MAX_SCORE)
+			return 1;
+
+		wd->score = score;
+	}
+
+	/* Continue, because there may be better matches. */
+	return 0;
+}
+
+static struct acpi_device *acpi_find_child(struct acpi_device *parent,
+					   u64 address, bool check_children,
+					   bool check_sta)
+{
+	struct find_child_walk_data wd = {
+		.address = address,
+		.check_children = check_children,
+		.check_sta = check_sta,
+		.adev = NULL,
+		.score = 0,
+	};
+
+	if (parent)
+		acpi_dev_for_each_child(parent, check_one_child, &wd);
+
+	return wd.adev;
 }
 
 struct acpi_device *acpi_find_child_device(struct acpi_device *parent,
 					   u64 address, bool check_children)
 {
-	struct acpi_device *adev, *ret = NULL;
-	int ret_score = 0;
-
-	if (!parent)
-		return NULL;
-
-	list_for_each_entry(adev, &parent->children, node) {
-		unsigned long long addr;
-		acpi_status status;
-		int score;
-
-		status = acpi_evaluate_integer(adev->handle, METHOD_NAME__ADR,
-					       NULL, &addr);
-		if (ACPI_FAILURE(status) || addr != address)
-			continue;
-
-		if (!ret) {
-			/* This is the first matching object.  Save it. */
-			ret = adev;
-			continue;
-		}
-		/*
-		 * There is more than one matching device object with the same
-		 * _ADR value.  That really is unexpected, so we are kind of
-		 * beyond the scope of the spec here.  We have to choose which
-		 * one to return, though.
-		 *
-		 * First, check if the previously found object is good enough
-		 * and return it if so.  Second, do the same for the object that
-		 * we've just found.
-		 */
-		if (!ret_score) {
-			ret_score = find_child_checks(ret, check_children);
-			if (ret_score == FIND_CHILD_MAX_SCORE)
-				return ret;
-		}
-		score = find_child_checks(adev, check_children);
-		if (score == FIND_CHILD_MAX_SCORE) {
-			return adev;
-		} else if (score > ret_score) {
-			ret = adev;
-			ret_score = score;
-		}
-	}
-	return ret;
+	return acpi_find_child(parent, address, check_children, true);
 }
 EXPORT_SYMBOL_GPL(acpi_find_child_device);
+
+struct acpi_device *acpi_find_child_by_adr(struct acpi_device *adev,
+					   acpi_bus_address adr)
+{
+	return acpi_find_child(adev, adr, false, false);
+}
+EXPORT_SYMBOL_GPL(acpi_find_child_by_adr);
 
 static void acpi_physnode_link_name(char *buf, unsigned int node_id)
 {
@@ -287,12 +341,13 @@ EXPORT_SYMBOL_GPL(acpi_unbind_one);
 
 void acpi_device_notify(struct device *dev)
 {
-	struct acpi_bus_type *type = acpi_get_bus_type(dev);
 	struct acpi_device *adev;
 	int ret;
 
 	ret = acpi_bind_one(dev, NULL);
 	if (ret) {
+		struct acpi_bus_type *type = acpi_get_bus_type(dev);
+
 		if (!type)
 			goto err;
 
@@ -304,17 +359,26 @@ void acpi_device_notify(struct device *dev)
 		ret = acpi_bind_one(dev, adev);
 		if (ret)
 			goto err;
+
+		if (type->setup) {
+			type->setup(dev);
+			goto done;
+		}
+	} else {
+		adev = ACPI_COMPANION(dev);
+
+		if (dev_is_pci(dev)) {
+			pci_acpi_setup(dev, adev);
+			goto done;
+		} else if (dev_is_platform(dev)) {
+			acpi_configure_pmsi_domain(dev);
+		}
 	}
-	adev = ACPI_COMPANION(dev);
 
-	if (dev_is_platform(dev))
-		acpi_configure_pmsi_domain(dev);
-
-	if (type && type->setup)
-		type->setup(dev);
-	else if (adev->handler && adev->handler->bind)
+	if (adev->handler && adev->handler->bind)
 		adev->handler->bind(dev);
 
+done:
 	acpi_handle_debug(ACPI_HANDLE(dev), "Bound to device %s\n",
 			  dev_name(dev));
 
@@ -327,14 +391,12 @@ err:
 void acpi_device_notify_remove(struct device *dev)
 {
 	struct acpi_device *adev = ACPI_COMPANION(dev);
-	struct acpi_bus_type *type;
 
 	if (!adev)
 		return;
 
-	type = acpi_get_bus_type(dev);
-	if (type && type->cleanup)
-		type->cleanup(dev);
+	if (dev_is_pci(dev))
+		pci_acpi_cleanup(dev, adev);
 	else if (adev->handler && adev->handler->unbind)
 		adev->handler->unbind(dev);
 

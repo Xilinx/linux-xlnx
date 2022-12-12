@@ -607,20 +607,6 @@ static const char * const adis16475_status_error_msgs[] = {
 	[ADIS16475_DIAG_STAT_CLK] = "Clock error",
 };
 
-static int adis16475_enable_irq(struct adis *adis, bool enable)
-{
-	/*
-	 * There is no way to gate the data-ready signal internally inside the
-	 * ADIS16475. We can only control it's polarity...
-	 */
-	if (enable)
-		enable_irq(adis->spi->irq);
-	else
-		disable_irq(adis->spi->irq);
-
-	return 0;
-}
-
 #define ADIS16475_DATA(_prod_id, _timeouts)				\
 {									\
 	.msc_ctrl_reg = ADIS16475_REG_MSG_CTRL,				\
@@ -641,7 +627,7 @@ static int adis16475_enable_irq(struct adis *adis, bool enable)
 		BIT(ADIS16475_DIAG_STAT_SENSOR) |			\
 		BIT(ADIS16475_DIAG_STAT_MEMORY) |			\
 		BIT(ADIS16475_DIAG_STAT_CLK),				\
-	.enable_irq = adis16475_enable_irq,				\
+	.unmasked_drdy = true,						\
 	.timeouts = (_timeouts),					\
 	.burst_reg_cmd = ADIS16475_REG_GLOB_CMD,			\
 	.burst_len = ADIS16475_BURST_MAX_DATA,				\
@@ -1134,11 +1120,6 @@ check_burst32:
 	return IRQ_HANDLED;
 }
 
-static void adis16475_disable_clk(void *data)
-{
-	clk_disable_unprepare((struct clk *)data);
-}
-
 static int adis16475_config_sync_mode(struct adis16475 *st)
 {
 	int ret;
@@ -1164,18 +1145,10 @@ static int adis16475_config_sync_mode(struct adis16475 *st)
 
 	/* All the other modes require external input signal */
 	if (sync->sync_mode != ADIS16475_SYNC_OUTPUT) {
-		struct clk *clk = devm_clk_get(dev, NULL);
+		struct clk *clk = devm_clk_get_enabled(dev, NULL);
 
 		if (IS_ERR(clk))
 			return PTR_ERR(clk);
-
-		ret = clk_prepare_enable(clk);
-		if (ret)
-			return ret;
-
-		ret = devm_add_action_or_reset(dev, adis16475_disable_clk, clk);
-		if (ret)
-			return ret;
 
 		st->clk_freq = clk_get_rate(clk);
 		if (st->clk_freq < sync->min_rate ||
@@ -1254,9 +1227,6 @@ static int adis16475_config_irq_pin(struct adis16475 *st)
 			irq_type);
 		return -EINVAL;
 	}
-
-	/* We cannot mask the interrupt so ensure it's not enabled at request */
-	st->adis.irq_flag |= IRQF_NO_AUTOEN;
 
 	val = ADIS16475_MSG_CTRL_DR_POL(polarity);
 	ret = __adis_update_bits(&st->adis, ADIS16475_REG_MSG_CTRL,
@@ -1382,3 +1352,4 @@ module_spi_driver(adis16475_driver);
 MODULE_AUTHOR("Nuno Sa <nuno.sa@analog.com>");
 MODULE_DESCRIPTION("Analog Devices ADIS16475 IMU driver");
 MODULE_LICENSE("GPL");
+MODULE_IMPORT_NS(IIO_ADISLIB);

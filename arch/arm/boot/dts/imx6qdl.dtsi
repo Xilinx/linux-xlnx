@@ -55,19 +55,19 @@
 
 	clocks {
 		ckil {
-			compatible = "fsl,imx-ckil", "fixed-clock";
+			compatible = "fixed-clock";
 			#clock-cells = <0>;
 			clock-frequency = <32768>;
 		};
 
 		ckih1 {
-			compatible = "fsl,imx-ckih1", "fixed-clock";
+			compatible = "fixed-clock";
 			#clock-cells = <0>;
 			clock-frequency = <0>;
 		};
 
 		osc {
-			compatible = "fsl,imx-osc", "fixed-clock";
+			compatible = "fixed-clock";
 			#clock-cells = <0>;
 			clock-frequency = <24000000>;
 		};
@@ -143,7 +143,7 @@
 		#phy-cells = <0>;
 	};
 
-	soc {
+	soc: soc {
 		#address-cells = <1>;
 		#size-cells = <1>;
 		compatible = "simple-bus";
@@ -264,7 +264,7 @@
 		};
 
 		pcie: pcie@1ffc000 {
-			compatible = "fsl,imx6q-pcie", "snps,dw-pcie";
+			compatible = "fsl,imx6q-pcie";
 			reg = <0x01ffc000 0x04000>,
 			      <0x01f00000 0x80000>;
 			reg-names = "dbi", "config";
@@ -272,10 +272,9 @@
 			#size-cells = <2>;
 			device_type = "pci";
 			bus-range = <0x00 0xff>;
-			ranges = <0x81000000 0 0          0x01f80000 0 0x00010000 /* downstream I/O */
-				  0x82000000 0 0x01000000 0x01000000 0 0x00f00000>; /* non-prefetchable memory */
+			ranges = <0x81000000 0 0          0x01f80000 0 0x00010000>, /* downstream I/O */
+				 <0x82000000 0 0x01000000 0x01000000 0 0x00f00000>; /* non-prefetchable memory */
 			num-lanes = <1>;
-			num-viewport = <4>;
 			interrupts = <GIC_SPI 120 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-names = "msi";
 			#interrupt-cells = <1>;
@@ -291,7 +290,7 @@
 			status = "disabled";
 		};
 
-		bus@2000000 { /* AIPS1 */
+		aips1: bus@2000000 { /* AIPS1 */
 			compatible = "fsl,aips-bus", "simple-bus";
 			#address-cells = <1>;
 			#size-cells = <1>;
@@ -482,7 +481,7 @@
 					status = "okay";
 				};
 
-				spba@203c000 {
+				spba-bus@203c000 {
 					reg = <0x0203c000 0x4000>;
 				};
 			};
@@ -763,7 +762,7 @@
 					regulator-name = "vddpu";
 					regulator-min-microvolt = <725000>;
 					regulator-max-microvolt = <1450000>;
-					regulator-enable-ramp-delay = <150>;
+					regulator-enable-ramp-delay = <380>;
 					anatop-reg-offset = <0x140>;
 					anatop-vol-bit-shift = <9>;
 					anatop-vol-bit-width = <5>;
@@ -930,7 +929,7 @@
 				interrupts = <0 125 IRQ_TYPE_LEVEL_HIGH>;
 			};
 
-			sdma: sdma@20ec000 {
+			sdma: dma-controller@20ec000 {
 				compatible = "fsl,imx6q-sdma", "fsl,imx35-sdma";
 				reg = <0x020ec000 0x4000>;
 				interrupts = <0 2 IRQ_TYPE_LEVEL_HIGH>;
@@ -942,7 +941,7 @@
 			};
 		};
 
-		bus@2100000 { /* AIPS2 */
+		aips2: bus@2100000 { /* AIPS2 */
 			compatible = "fsl,aips-bus", "simple-bus";
 			#address-cells = <1>;
 			#size-cells = <1>;

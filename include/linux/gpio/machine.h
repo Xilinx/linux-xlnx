@@ -14,6 +14,7 @@ enum gpio_lookup_flags {
 	GPIO_TRANSITORY			= (1 << 3),
 	GPIO_PULL_UP			= (1 << 4),
 	GPIO_PULL_DOWN			= (1 << 5),
+	GPIO_PULL_DISABLE		= (1 << 6),
 
 	GPIO_LOOKUP_FLAGS_DEFAULT	= GPIO_ACTIVE_HIGH | GPIO_PERSISTENT,
 };
@@ -64,6 +65,18 @@ struct gpiod_hog {
 };
 
 /*
+ * Helper for lookup tables with just one single lookup for a device.
+ */
+#define GPIO_LOOKUP_SINGLE(_name, _dev_id, _key, _chip_hwnum, _con_id, _flags) \
+static struct gpiod_lookup_table _name = {				\
+	.dev_id = _dev_id,						\
+	.table = {							\
+		GPIO_LOOKUP(_key, _chip_hwnum, _con_id, _flags),	\
+		{},							\
+	},								\
+}
+
+/*
  * Simple definition of a single GPIO under a con_id
  */
 #define GPIO_LOOKUP(_key, _chip_hwnum, _con_id, _flags) \
@@ -100,6 +113,7 @@ void gpiod_add_lookup_table(struct gpiod_lookup_table *table);
 void gpiod_add_lookup_tables(struct gpiod_lookup_table **tables, size_t n);
 void gpiod_remove_lookup_table(struct gpiod_lookup_table *table);
 void gpiod_add_hogs(struct gpiod_hog *hogs);
+void gpiod_remove_hogs(struct gpiod_hog *hogs);
 #else /* ! CONFIG_GPIOLIB */
 static inline
 void gpiod_add_lookup_table(struct gpiod_lookup_table *table) {}
@@ -108,6 +122,7 @@ void gpiod_add_lookup_tables(struct gpiod_lookup_table **tables, size_t n) {}
 static inline
 void gpiod_remove_lookup_table(struct gpiod_lookup_table *table) {}
 static inline void gpiod_add_hogs(struct gpiod_hog *hogs) {}
+static inline void gpiod_remove_hogs(struct gpiod_hog *hogs) {}
 #endif /* CONFIG_GPIOLIB */
 
 #endif /* __LINUX_GPIO_MACHINE_H */

@@ -29,7 +29,7 @@
 				 SHA512_DIGEST_SIZE * 2)
 
 /*
- * This is a a cache of buffers, from which the users of CAAM QI driver
+ * This is a cache of buffers, from which the users of CAAM QI driver
  * can allocate short buffers. It's speedier than doing kmalloc on the hotpath.
  * NOTE: A more elegant solution would be to have some headroom in the frames
  *       being processed. This can be added by the dpaa2-eth driver. This would
@@ -5083,8 +5083,9 @@ static int __cold dpaa2_dpseci_setup(struct fsl_mc_device *ls_dev)
 
 		ppriv->net_dev.dev = *dev;
 		INIT_LIST_HEAD(&ppriv->net_dev.napi_list);
-		netif_napi_add(&ppriv->net_dev, &ppriv->napi, dpaa2_dpseci_poll,
-			       DPAA2_CAAM_NAPI_WEIGHT);
+		netif_napi_add_tx_weight(&ppriv->net_dev, &ppriv->napi,
+					 dpaa2_dpseci_poll,
+					 DPAA2_CAAM_NAPI_WEIGHT);
 	}
 
 	return 0;
@@ -5470,7 +5471,7 @@ int dpaa2_caam_enqueue(struct device *dev, struct caam_request *req)
 	dpaa2_fd_set_len(&fd, dpaa2_fl_get_len(&req->fd_flt[1]));
 	dpaa2_fd_set_flc(&fd, req->flc_dma);
 
-	ppriv = this_cpu_ptr(priv->ppriv);
+	ppriv = raw_cpu_ptr(priv->ppriv);
 	for (i = 0; i < (priv->dpseci_attr.num_tx_queues << 1); i++) {
 		err = dpaa2_io_service_enqueue_fq(ppriv->dpio, ppriv->req_fqid,
 						  &fd);

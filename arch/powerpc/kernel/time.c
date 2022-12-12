@@ -54,8 +54,10 @@
 #include <linux/of_clk.h>
 #include <linux/suspend.h>
 #include <linux/processor.h>
-#include <asm/trace.h>
+#include <linux/mc146818rtc.h>
+#include <linux/platform_device.h>
 
+#include <asm/trace.h>
 #include <asm/interrupt.h>
 #include <asm/io.h>
 #include <asm/nvram.h>
@@ -63,13 +65,12 @@
 #include <asm/machdep.h>
 #include <linux/uaccess.h>
 #include <asm/time.h>
-#include <asm/prom.h>
 #include <asm/irq.h>
 #include <asm/div64.h>
 #include <asm/smp.h>
 #include <asm/vdso_datapage.h>
 #include <asm/firmware.h>
-#include <asm/asm-prototypes.h>
+#include <asm/mce.h>
 
 /* powerpc clocksource/clockevent code */
 
@@ -88,6 +89,7 @@ static struct clocksource clocksource_timebase = {
 
 #define DECREMENTER_DEFAULT_MAX 0x7FFFFFFF
 u64 decrementer_max = DECREMENTER_DEFAULT_MAX;
+EXPORT_SYMBOL_GPL(decrementer_max); /* for KVM HDEC */
 
 static int decrementer_set_next_event(unsigned long evt,
 				      struct clock_event_device *dev);
@@ -106,7 +108,13 @@ struct clock_event_device decrementer_clockevent = {
 };
 EXPORT_SYMBOL(decrementer_clockevent);
 
-DEFINE_PER_CPU(u64, decrementers_next_tb);
+/*
+ * This always puts next_tb beyond now, so the clock event will never fire
+ * with the usual comparison, no need for a separate test for stopped.
+ */
+#define DEC_CLOCKEVENT_STOPPED ~0ULL
+DEFINE_PER_CPU(u64, decrementers_next_tb) = DEC_CLOCKEVENT_STOPPED;
+EXPORT_SYMBOL_GPL(decrementers_next_tb);
 static DEFINE_PER_CPU(struct clock_event_device, decrementers);
 
 #define XSEC_PER_SEC (1024*1024)
@@ -149,10 +157,6 @@ bool tb_invalid;
 u64 __cputime_usec_factor;
 EXPORT_SYMBOL(__cputime_usec_factor);
 
-#ifdef CONFIG_PPC_SPLPAR
-void (*dtl_consumer)(struct dtl_entry *, u64);
-#endif
-
 static void calc_cputime_factors(void)
 {
 	struct div_result res;
@@ -173,90 +177,6 @@ static inline unsigned long read_spurr(unsigned long tb)
 		return mfspr(SPRN_PURR);
 	return tb;
 }
-
-#ifdef CONFIG_PPC_SPLPAR
-
-#include <asm/dtl.h>
-
-/*
- * Scan the dispatch trace log and count up the stolen time.
- * Should be called with interrupts disabled.
- */
-static u64 scan_dispatch_log(u64 stop_tb)
-{
-	u64 i = local_paca->dtl_ridx;
-	struct dtl_entry *dtl = local_paca->dtl_curr;
-	struct dtl_entry *dtl_end = local_paca->dispatch_log_end;
-	struct lppaca *vpa = local_paca->lppaca_ptr;
-	u64 tb_delta;
-	u64 stolen = 0;
-	u64 dtb;
-
-	if (!dtl)
-		return 0;
-
-	if (i == be64_to_cpu(vpa->dtl_idx))
-		return 0;
-	while (i < be64_to_cpu(vpa->dtl_idx)) {
-		dtb = be64_to_cpu(dtl->timebase);
-		tb_delta = be32_to_cpu(dtl->enqueue_to_dispatch_time) +
-			be32_to_cpu(dtl->ready_to_enqueue_time);
-		barrier();
-		if (i + N_DISPATCH_LOG < be64_to_cpu(vpa->dtl_idx)) {
-			/* buffer has overflowed */
-			i = be64_to_cpu(vpa->dtl_idx) - N_DISPATCH_LOG;
-			dtl = local_paca->dispatch_log + (i % N_DISPATCH_LOG);
-			continue;
-		}
-		if (dtb > stop_tb)
-			break;
-		if (dtl_consumer)
-			dtl_consumer(dtl, i);
-		stolen += tb_delta;
-		++i;
-		++dtl;
-		if (dtl == dtl_end)
-			dtl = local_paca->dispatch_log;
-	}
-	local_paca->dtl_ridx = i;
-	local_paca->dtl_curr = dtl;
-	return stolen;
-}
-
-/*
- * Accumulate stolen time by scanning the dispatch trace log.
- * Called on entry from user mode.
- */
-void notrace accumulate_stolen_time(void)
-{
-	u64 sst, ust;
-	struct cpu_accounting_data *acct = &local_paca->accounting;
-
-	sst = scan_dispatch_log(acct->starttime_user);
-	ust = scan_dispatch_log(acct->starttime);
-	acct->stime -= sst;
-	acct->utime -= ust;
-	acct->steal_time += ust + sst;
-}
-
-static inline u64 calculate_stolen_time(u64 stop_tb)
-{
-	if (!firmware_has_feature(FW_FEATURE_SPLPAR))
-		return 0;
-
-	if (get_paca()->dtl_ridx != be64_to_cpu(get_lppaca()->dtl_idx))
-		return scan_dispatch_log(stop_tb);
-
-	return 0;
-}
-
-#else /* CONFIG_PPC_SPLPAR */
-static inline u64 calculate_stolen_time(u64 stop_tb)
-{
-	return 0;
-}
-
-#endif /* CONFIG_PPC_SPLPAR */
 
 /*
  * Account time for a transition between system, hard irq
@@ -316,7 +236,11 @@ static unsigned long vtime_delta(struct cpu_accounting_data *acct,
 
 	*stime_scaled = vtime_delta_scaled(acct, now, stime);
 
-	*steal_time = calculate_stolen_time(now);
+	if (IS_ENABLED(CONFIG_PPC_SPLPAR) &&
+			firmware_has_feature(FW_FEATURE_SPLPAR))
+		*steal_time = pseries_calculate_stolen_time(now);
+	else
+		*steal_time = 0;
 
 	return stime;
 }
@@ -496,6 +420,16 @@ EXPORT_SYMBOL(profile_pc);
  * 64-bit uses a byte in the PACA, 32-bit uses a per-cpu variable...
  */
 #ifdef CONFIG_PPC64
+static inline unsigned long test_irq_work_pending(void)
+{
+	unsigned long x;
+
+	asm volatile("lbz %0,%1(13)"
+		: "=r" (x)
+		: "i" (offsetof(struct paca_struct, irq_work_pending)));
+	return x;
+}
+
 static inline void set_irq_work_pending_flag(void)
 {
 	asm volatile("stb %0,%1(13)" : :
@@ -539,12 +473,44 @@ void arch_irq_work_raise(void)
 	preempt_enable();
 }
 
+static void set_dec_or_work(u64 val)
+{
+	set_dec(val);
+	/* We may have raced with new irq work */
+	if (unlikely(test_irq_work_pending()))
+		set_dec(1);
+}
+
 #else  /* CONFIG_IRQ_WORK */
 
 #define test_irq_work_pending()	0
 #define clear_irq_work_pending()
 
+static void set_dec_or_work(u64 val)
+{
+	set_dec(val);
+}
 #endif /* CONFIG_IRQ_WORK */
+
+#ifdef CONFIG_KVM_BOOK3S_HV_POSSIBLE
+void timer_rearm_host_dec(u64 now)
+{
+	u64 *next_tb = this_cpu_ptr(&decrementers_next_tb);
+
+	WARN_ON_ONCE(!arch_irqs_disabled());
+	WARN_ON_ONCE(mfmsr() & MSR_EE);
+
+	if (now >= *next_tb) {
+		local_paca->irq_happened |= PACA_IRQ_DEC;
+	} else {
+		now = *next_tb - now;
+		if (now > decrementer_max)
+			now = decrementer_max;
+		set_dec_or_work(now);
+	}
+}
+EXPORT_SYMBOL_GPL(timer_rearm_host_dec);
+#endif
 
 /*
  * timer_interrupt - gets called when the decrementer overflows,
@@ -566,22 +532,23 @@ DEFINE_INTERRUPT_HANDLER_ASYNC(timer_interrupt)
 		return;
 	}
 
-	/* Ensure a positive value is written to the decrementer, or else
-	 * some CPUs will continue to take decrementer exceptions. When the
-	 * PPC_WATCHDOG (decrementer based) is configured, keep this at most
-	 * 31 bits, which is about 4 seconds on most systems, which gives
-	 * the watchdog a chance of catching timer interrupt hard lockups.
-	 */
-	if (IS_ENABLED(CONFIG_PPC_WATCHDOG))
-		set_dec(0x7fffffff);
-	else
-		set_dec(decrementer_max);
+	/* Conditionally hard-enable interrupts. */
+	if (should_hard_irq_enable()) {
+		/*
+		 * Ensure a positive value is written to the decrementer, or
+		 * else some CPUs will continue to take decrementer exceptions.
+		 * When the PPC_WATCHDOG (decrementer based) is configured,
+		 * keep this at most 31 bits, which is about 4 seconds on most
+		 * systems, which gives the watchdog a chance of catching timer
+		 * interrupt hard lockups.
+		 */
+		if (IS_ENABLED(CONFIG_PPC_WATCHDOG))
+			set_dec(0x7fffffff);
+		else
+			set_dec(decrementer_max);
 
-	/* Conditionally hard-enable interrupts now that the DEC has been
-	 * bumped to its maximum value
-	 */
-	may_hard_irq_enable();
-
+		do_hard_irq_enable();
+	}
 
 #if defined(CONFIG_PPC32) && defined(CONFIG_PPC_PMAC)
 	if (atomic_read(&ppc_n_lost_interrupts) != 0)
@@ -594,22 +561,19 @@ DEFINE_INTERRUPT_HANDLER_ASYNC(timer_interrupt)
 
 	if (test_irq_work_pending()) {
 		clear_irq_work_pending();
+		mce_run_irq_context_handlers();
 		irq_work_run();
 	}
 
 	now = get_tb();
 	if (now >= *next_tb) {
-		*next_tb = ~(u64)0;
-		if (evt->event_handler)
-			evt->event_handler(evt);
+		evt->event_handler(evt);
 		__this_cpu_inc(irq_stat.timer_irqs_event);
 	} else {
 		now = *next_tb - now;
-		if (now <= decrementer_max)
-			set_dec(now);
-		/* We may have raced with new irq work */
-		if (test_irq_work_pending())
-			set_dec(1);
+		if (now > decrementer_max)
+			now = decrementer_max;
+		set_dec_or_work(now);
 		__this_cpu_inc(irq_stat.timer_irqs_others);
 	}
 
@@ -622,17 +586,18 @@ EXPORT_SYMBOL(timer_interrupt);
 #ifdef CONFIG_GENERIC_CLOCKEVENTS_BROADCAST
 void timer_broadcast_interrupt(void)
 {
-	u64 *next_tb = this_cpu_ptr(&decrementers_next_tb);
-
-	*next_tb = ~(u64)0;
 	tick_receive_broadcast();
 	__this_cpu_inc(irq_stat.broadcast_irqs_event);
 }
 #endif
 
 #ifdef CONFIG_SUSPEND
-static void generic_suspend_disable_irqs(void)
+/* Overrides the weak version in kernel/power/main.c */
+void arch_suspend_disable_irqs(void)
 {
+	if (ppc_md.suspend_disable_irqs)
+		ppc_md.suspend_disable_irqs();
+
 	/* Disable the decrementer, so that it doesn't interfere
 	 * with suspending.
 	 */
@@ -642,23 +607,11 @@ static void generic_suspend_disable_irqs(void)
 	set_dec(decrementer_max);
 }
 
-static void generic_suspend_enable_irqs(void)
-{
-	local_irq_enable();
-}
-
-/* Overrides the weak version in kernel/power/main.c */
-void arch_suspend_disable_irqs(void)
-{
-	if (ppc_md.suspend_disable_irqs)
-		ppc_md.suspend_disable_irqs();
-	generic_suspend_disable_irqs();
-}
-
 /* Overrides the weak version in kernel/power/main.c */
 void arch_suspend_enable_irqs(void)
 {
-	generic_suspend_enable_irqs();
+	local_irq_enable();
+
 	if (ppc_md.suspend_enable_irqs)
 		ppc_md.suspend_enable_irqs();
 }
@@ -738,7 +691,7 @@ static int __init get_freq(char *name, int cells, unsigned long *val)
 
 static void start_cpu_decrementer(void)
 {
-#if defined(CONFIG_BOOKE) || defined(CONFIG_40x)
+#ifdef CONFIG_BOOKE_OR_40x
 	unsigned int tcr;
 
 	/* Clear any pending timer interrupts */
@@ -794,7 +747,7 @@ static void __read_persistent_clock(struct timespec64 *ts)
 	static int first = 1;
 
 	ts->tv_nsec = 0;
-	/* XXX this is a litle fragile but will work okay in the short term */
+	/* XXX this is a little fragile but will work okay in the short term */
 	if (first) {
 		first = 0;
 		if (ppc_md.time_init)
@@ -851,18 +804,16 @@ static int decrementer_set_next_event(unsigned long evt,
 				      struct clock_event_device *dev)
 {
 	__this_cpu_write(decrementers_next_tb, get_tb() + evt);
-	set_dec(evt);
-
-	/* We may have raced with new irq work */
-	if (test_irq_work_pending())
-		set_dec(1);
+	set_dec_or_work(evt);
 
 	return 0;
 }
 
 static int decrementer_shutdown(struct clock_event_device *dev)
 {
-	decrementer_set_next_event(decrementer_max, dev);
+	__this_cpu_write(decrementers_next_tb, DEC_CLOCKEVENT_STOPPED);
+	set_dec_or_work(decrementer_max);
+
 	return 0;
 }
 
@@ -941,7 +892,7 @@ void secondary_cpu_time_init(void)
 	 */
 	start_cpu_decrementer();
 
-	/* FIME: Should make unrelatred change to move snapshot_timebase
+	/* FIME: Should make unrelated change to move snapshot_timebase
 	 * call here ! */
 	register_decrementer_clockevent(smp_processor_id());
 }

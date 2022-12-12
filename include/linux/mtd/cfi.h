@@ -286,6 +286,7 @@ struct cfi_private {
 	map_word sector_erase_cmd;
 	unsigned long chipshift; /* Because they're of the same type */
 	const char *im_name;	 /* inter_module name for cmdset_setup */
+	unsigned long quirks;
 	struct flchip chips[];  /* per-chip data structure for each chip */
 };
 
@@ -373,7 +374,7 @@ struct cfi_fixup {
 #define CFI_MFR_MICRON		0x002C /* Micron */
 #define CFI_MFR_TOSHIBA		0x0098
 #define CFI_MFR_WINBOND		0x00DA
-#define CFI_MFR_WINBND		0x00EF /* Winbond */
+#define CFI_MFR_WINBND		0x00EF	/* Winbond */
 
 void cfi_fixup(struct mtd_info *mtd, struct cfi_fixup* fixups);
 

@@ -32,7 +32,6 @@
  */
 
 #include <linux/pci.h>
-#include <linux/platform_device.h>
 #include <rdma/ib_addr.h>
 #include <rdma/ib_umem.h>
 #include <rdma/uverbs_ioctl.h>
@@ -57,7 +56,7 @@ static void flush_work_handle(struct work_struct *work)
 	if (test_and_clear_bit(HNS_ROCE_FLUSH_FLAG, &hr_qp->flush_flag)) {
 		ret = hns_roce_modify_qp(&hr_qp->ibqp, &attr, attr_mask, NULL);
 		if (ret)
-			dev_err(dev, "Modify QP to error state failed(%d) during CQE flush\n",
+			dev_err(dev, "modify QP to error state failed(%d) during CQE flush\n",
 				ret);
 	}
 
@@ -106,16 +105,15 @@ void hns_roce_qp_event(struct hns_roce_dev *hr_dev, u32 qpn, int event_type)
 	xa_unlock(&hr_dev->qp_table_xa);
 
 	if (!qp) {
-		dev_warn(dev, "Async event for bogus QP %08x\n", qpn);
+		dev_warn(dev, "async event for bogus QP %08x\n", qpn);
 		return;
 	}
 
-	if (hr_dev->hw_rev != HNS_ROCE_HW_VER1 &&
-	    (event_type == HNS_ROCE_EVENT_TYPE_WQ_CATAS_ERROR ||
-	     event_type == HNS_ROCE_EVENT_TYPE_INV_REQ_LOCAL_WQ_ERROR ||
-	     event_type == HNS_ROCE_EVENT_TYPE_LOCAL_WQ_ACCESS_ERROR ||
-	     event_type == HNS_ROCE_EVENT_TYPE_XRCD_VIOLATION ||
-	     event_type == HNS_ROCE_EVENT_TYPE_INVALID_XRCETH)) {
+	if (event_type == HNS_ROCE_EVENT_TYPE_WQ_CATAS_ERROR ||
+	    event_type == HNS_ROCE_EVENT_TYPE_INV_REQ_LOCAL_WQ_ERROR ||
+	    event_type == HNS_ROCE_EVENT_TYPE_LOCAL_WQ_ACCESS_ERROR ||
+	    event_type == HNS_ROCE_EVENT_TYPE_XRCD_VIOLATION ||
+	    event_type == HNS_ROCE_EVENT_TYPE_INVALID_XRCETH) {
 		qp->state = IB_QPS_ERR;
 
 		flush_cqe(hr_dev, qp);
@@ -219,14 +217,7 @@ static int alloc_qpn(struct hns_roce_dev *hr_dev, struct hns_roce_qp *hr_qp)
 	int ret;
 
 	if (hr_qp->ibqp.qp_type == IB_QPT_GSI) {
-		/* when hw version is v1, the sqpn is allocated */
-		if (hr_dev->hw_rev == HNS_ROCE_HW_VER1)
-			num = HNS_ROCE_MAX_PORTS +
-			      hr_dev->iboe.phy_port[hr_qp->port];
-		else
-			num = 1;
-
-		hr_qp->doorbell_qpn = 1;
+		num = 1;
 	} else {
 		mutex_lock(&qp_table->bank_mutex);
 		bankid = get_least_load_bankid_for_qp(qp_table->bank);
@@ -242,33 +233,11 @@ static int alloc_qpn(struct hns_roce_dev *hr_dev, struct hns_roce_qp *hr_qp)
 
 		qp_table->bank[bankid].inuse++;
 		mutex_unlock(&qp_table->bank_mutex);
-
-		hr_qp->doorbell_qpn = (u32)num;
 	}
 
 	hr_qp->qpn = num;
 
 	return 0;
-}
-
-enum hns_roce_qp_state to_hns_roce_state(enum ib_qp_state state)
-{
-	switch (state) {
-	case IB_QPS_RESET:
-		return HNS_ROCE_QP_STATE_RST;
-	case IB_QPS_INIT:
-		return HNS_ROCE_QP_STATE_INIT;
-	case IB_QPS_RTR:
-		return HNS_ROCE_QP_STATE_RTR;
-	case IB_QPS_RTS:
-		return HNS_ROCE_QP_STATE_RTS;
-	case IB_QPS_SQD:
-		return HNS_ROCE_QP_STATE_SQD;
-	case IB_QPS_ERR:
-		return HNS_ROCE_QP_STATE_ERR;
-	default:
-		return HNS_ROCE_QP_NUM_STATE;
-	}
 }
 
 static void add_qp_to_list(struct hns_roce_dev *hr_dev,
@@ -306,7 +275,7 @@ static int hns_roce_qp_store(struct hns_roce_dev *hr_dev,
 
 	ret = xa_err(xa_store_irq(xa, hr_qp->qpn, hr_qp, GFP_KERNEL));
 	if (ret)
-		dev_err(hr_dev->dev, "Failed to xa store for QPC\n");
+		dev_err(hr_dev->dev, "failed to xa store for QPC\n");
 	else
 		/* add QP to device's QP list for softwc */
 		add_qp_to_list(hr_dev, hr_qp, init_attr->send_cq,
@@ -324,22 +293,17 @@ static int alloc_qpc(struct hns_roce_dev *hr_dev, struct hns_roce_qp *hr_qp)
 	if (!hr_qp->qpn)
 		return -EINVAL;
 
-	/* In v1 engine, GSI QP context is saved in the RoCE hw's register */
-	if (hr_qp->ibqp.qp_type == IB_QPT_GSI &&
-	    hr_dev->hw_rev == HNS_ROCE_HW_VER1)
-		return 0;
-
 	/* Alloc memory for QPC */
 	ret = hns_roce_table_get(hr_dev, &qp_table->qp_table, hr_qp->qpn);
 	if (ret) {
-		dev_err(dev, "Failed to get QPC table\n");
+		dev_err(dev, "failed to get QPC table\n");
 		goto err_out;
 	}
 
 	/* Alloc memory for IRRL */
 	ret = hns_roce_table_get(hr_dev, &qp_table->irrl_table, hr_qp->qpn);
 	if (ret) {
-		dev_err(dev, "Failed to get IRRL table\n");
+		dev_err(dev, "failed to get IRRL table\n");
 		goto err_put_qp;
 	}
 
@@ -348,7 +312,7 @@ static int alloc_qpc(struct hns_roce_dev *hr_dev, struct hns_roce_qp *hr_qp)
 		ret = hns_roce_table_get(hr_dev, &qp_table->trrl_table,
 					 hr_qp->qpn);
 		if (ret) {
-			dev_err(dev, "Failed to get TRRL table\n");
+			dev_err(dev, "failed to get TRRL table\n");
 			goto err_put_irrl;
 		}
 	}
@@ -358,7 +322,7 @@ static int alloc_qpc(struct hns_roce_dev *hr_dev, struct hns_roce_qp *hr_qp)
 		ret = hns_roce_table_get(hr_dev, &qp_table->sccc_table,
 					 hr_qp->qpn);
 		if (ret) {
-			dev_err(dev, "Failed to get SCC CTX table\n");
+			dev_err(dev, "failed to get SCC CTX table\n");
 			goto err_put_trrl;
 		}
 	}
@@ -377,6 +341,11 @@ err_put_qp:
 
 err_out:
 	return ret;
+}
+
+static void qp_user_mmap_entry_remove(struct hns_roce_qp *hr_qp)
+{
+	rdma_user_mmap_entry_remove(&hr_qp->dwqe_mmap_entry->rdma_entry);
 }
 
 void hns_roce_qp_remove(struct hns_roce_dev *hr_dev, struct hns_roce_qp *hr_qp)
@@ -401,11 +370,6 @@ void hns_roce_qp_remove(struct hns_roce_dev *hr_dev, struct hns_roce_qp *hr_qp)
 static void free_qpc(struct hns_roce_dev *hr_dev, struct hns_roce_qp *hr_qp)
 {
 	struct hns_roce_qp_table *qp_table = &hr_dev->qp_table;
-
-	/* In v1 engine, GSI QP context is saved in the RoCE hw's register */
-	if (hr_qp->ibqp.qp_type == IB_QPT_GSI &&
-	    hr_dev->hw_rev == HNS_ROCE_HW_VER1)
-		return;
 
 	if (hr_dev->caps.trrl_entry_sz)
 		hns_roce_table_put(hr_dev, &qp_table->trrl_table, hr_qp->qpn);
@@ -495,11 +459,8 @@ static int set_rq_size(struct hns_roce_dev *hr_dev, struct ib_qp_cap *cap,
 	hr_qp->rq.max_gs = roundup_pow_of_two(max(1U, cap->max_recv_sge) +
 					      hr_qp->rq.rsv_sge);
 
-	if (hr_dev->caps.max_rq_sg <= HNS_ROCE_SGE_IN_WQE)
-		hr_qp->rq.wqe_shift = ilog2(hr_dev->caps.max_rq_desc_sz);
-	else
-		hr_qp->rq.wqe_shift = ilog2(hr_dev->caps.max_rq_desc_sz *
-					    hr_qp->rq.max_gs);
+	hr_qp->rq.wqe_shift = ilog2(hr_dev->caps.max_rq_desc_sz *
+				    hr_qp->rq.max_gs);
 
 	hr_qp->rq.wqe_cnt = cnt;
 	if (hr_dev->caps.flags & HNS_ROCE_CAP_FLAG_RQ_INLINE &&
@@ -534,11 +495,6 @@ static void set_ext_sge_param(struct hns_roce_dev *hr_dev, u32 sq_wqe_cnt,
 	u32 wqe_sge_cnt;
 
 	hr_qp->sge.sge_shift = HNS_ROCE_SGE_SHIFT;
-
-	if (hr_dev->hw_rev == HNS_ROCE_HW_VER1) {
-		hr_qp->sq.max_gs = HNS_ROCE_SGE_IN_WQE;
-		return;
-	}
 
 	hr_qp->sq.max_gs = max(1U, cap->max_send_sge);
 
@@ -780,7 +736,11 @@ static int alloc_qp_buf(struct hns_roce_dev *hr_dev, struct hns_roce_qp *hr_qp,
 		goto err_inline;
 	}
 
+	if (hr_dev->caps.flags & HNS_ROCE_CAP_FLAG_DIRECT_WQE)
+		hr_qp->en_flags |= HNS_ROCE_QP_CAP_DIRECT_WQE;
+
 	return 0;
+
 err_inline:
 	free_rq_inline_buf(hr_qp);
 
@@ -820,6 +780,35 @@ static inline bool kernel_qp_has_rdb(struct hns_roce_dev *hr_dev,
 {
 	return ((hr_dev->caps.flags & HNS_ROCE_CAP_FLAG_QP_RECORD_DB) &&
 		hns_roce_qp_has_rq(init_attr));
+}
+
+static int qp_mmap_entry(struct hns_roce_qp *hr_qp,
+			 struct hns_roce_dev *hr_dev,
+			 struct ib_udata *udata,
+			 struct hns_roce_ib_create_qp_resp *resp)
+{
+	struct hns_roce_ucontext *uctx =
+		rdma_udata_to_drv_context(udata,
+			struct hns_roce_ucontext, ibucontext);
+	struct rdma_user_mmap_entry *rdma_entry;
+	u64 address;
+
+	address = hr_dev->dwqe_page + hr_qp->qpn * HNS_ROCE_DWQE_SIZE;
+
+	hr_qp->dwqe_mmap_entry =
+		hns_roce_user_mmap_entry_insert(&uctx->ibucontext, address,
+						HNS_ROCE_DWQE_SIZE,
+						HNS_ROCE_MMAP_TYPE_DWQE);
+
+	if (!hr_qp->dwqe_mmap_entry) {
+		ibdev_err(&hr_dev->ib_dev, "failed to get dwqe mmap entry.\n");
+		return -ENOMEM;
+	}
+
+	rdma_entry = &hr_qp->dwqe_mmap_entry->rdma_entry;
+	resp->dwqe_mmap_key = rdma_user_mmap_get_offset(rdma_entry);
+
+	return 0;
 }
 
 static int alloc_user_qp_db(struct hns_roce_dev *hr_dev,
@@ -909,10 +898,16 @@ static int alloc_qp_db(struct hns_roce_dev *hr_dev, struct hns_roce_qp *hr_qp,
 		hr_qp->en_flags |= HNS_ROCE_QP_CAP_OWNER_DB;
 
 	if (udata) {
+		if (hr_qp->en_flags & HNS_ROCE_QP_CAP_DIRECT_WQE) {
+			ret = qp_mmap_entry(hr_qp, hr_dev, udata, resp);
+			if (ret)
+				return ret;
+		}
+
 		ret = alloc_user_qp_db(hr_dev, hr_qp, init_attr, udata, ucmd,
 				       resp);
 		if (ret)
-			return ret;
+			goto err_remove_qp;
 	} else {
 		ret = alloc_kernel_qp_db(hr_dev, hr_qp, init_attr);
 		if (ret)
@@ -920,6 +915,12 @@ static int alloc_qp_db(struct hns_roce_dev *hr_dev, struct hns_roce_qp *hr_qp,
 	}
 
 	return 0;
+
+err_remove_qp:
+	if (hr_qp->en_flags & HNS_ROCE_QP_CAP_DIRECT_WQE)
+		qp_user_mmap_entry_remove(hr_qp);
+
+	return ret;
 }
 
 static void free_qp_db(struct hns_roce_dev *hr_dev, struct hns_roce_qp *hr_qp,
@@ -933,6 +934,8 @@ static void free_qp_db(struct hns_roce_dev *hr_dev, struct hns_roce_qp *hr_qp,
 			hns_roce_db_unmap_user(uctx, &hr_qp->rdb);
 		if (hr_qp->en_flags & HNS_ROCE_QP_CAP_SQ_RECORD_DB)
 			hns_roce_db_unmap_user(uctx, &hr_qp->sdb);
+		if (hr_qp->en_flags & HNS_ROCE_QP_CAP_DIRECT_WQE)
+			qp_user_mmap_entry_remove(hr_qp);
 	} else {
 		if (hr_qp->en_flags & HNS_ROCE_QP_CAP_RQ_RECORD_DB)
 			hns_roce_free_db(hr_dev, &hr_qp->rdb);
@@ -1158,7 +1161,7 @@ static int check_qp_type(struct hns_roce_dev *hr_dev, enum ib_qp_type type,
 			goto out;
 		break;
 	case IB_QPT_UD:
-		if (hr_dev->pci_dev->revision <= PCI_REVISION_ID_HIP08 &&
+		if (hr_dev->pci_dev->revision == PCI_REVISION_ID_HIP08 &&
 		    is_user)
 			goto out;
 		break;
@@ -1200,7 +1203,7 @@ int hns_roce_create_qp(struct ib_qp *qp, struct ib_qp_init_attr *init_attr,
 
 	ret = hns_roce_create_qp_common(hr_dev, pd, init_attr, udata, hr_qp);
 	if (ret)
-		ibdev_err(ibdev, "Create QP type 0x%x failed(%d)\n",
+		ibdev_err(ibdev, "create QP type 0x%x failed(%d)\n",
 			  init_attr->qp_type, ret);
 
 	return ret;
@@ -1391,7 +1394,7 @@ void hns_roce_unlock_cqs(struct hns_roce_cq *send_cq,
 	}
 }
 
-static inline void *get_wqe(struct hns_roce_qp *hr_qp, int offset)
+static inline void *get_wqe(struct hns_roce_qp *hr_qp, u32 offset)
 {
 	return hns_roce_buf_offset(hr_qp->mtr.kmem, offset);
 }

@@ -37,7 +37,7 @@ struct cs47l92 {
 	struct madera_fll fll[2];
 };
 
-static const struct wm_adsp_region cs47l92_dsp1_regions[] = {
+static const struct cs_dsp_region cs47l92_dsp1_regions[] = {
 	{ .type = WMFW_ADSP2_PM, .base = 0x080000 },
 	{ .type = WMFW_ADSP2_ZM, .base = 0x0e0000 },
 	{ .type = WMFW_ADSP2_XM, .base = 0x0a0000 },
@@ -119,7 +119,13 @@ static int cs47l92_put_demux(struct snd_kcontrol *kcontrol,
 end:
 	snd_soc_dapm_mutex_unlock(dapm);
 
-	return snd_soc_dapm_mux_update_power(dapm, kcontrol, mux, e, NULL);
+	ret = snd_soc_dapm_mux_update_power(dapm, kcontrol, mux, e, NULL);
+	if (ret < 0) {
+		dev_err(madera->dev, "Failed to update demux power state: %d\n", ret);
+		return ret;
+	}
+
+	return change;
 }
 
 static SOC_ENUM_SINGLE_DECL(cs47l92_outdemux_enum,
@@ -1958,7 +1964,6 @@ static const struct snd_soc_component_driver soc_component_dev_cs47l92 = {
 	.num_dapm_routes	= ARRAY_SIZE(cs47l92_dapm_routes),
 	.use_pmdown_time	= 1,
 	.endianness		= 1,
-	.non_legacy_dai_naming	= 1,
 };
 
 static int cs47l92_probe(struct platform_device *pdev)
@@ -2002,17 +2007,17 @@ static int cs47l92_probe(struct platform_device *pdev)
 		dev_warn(&pdev->dev, "Failed to set DSP IRQ wake: %d\n", ret);
 
 	cs47l92->core.adsp[0].part = "cs47l92";
-	cs47l92->core.adsp[0].num = 1;
-	cs47l92->core.adsp[0].type = WMFW_ADSP2;
-	cs47l92->core.adsp[0].rev = 2;
-	cs47l92->core.adsp[0].dev = madera->dev;
-	cs47l92->core.adsp[0].regmap = madera->regmap_32bit;
+	cs47l92->core.adsp[0].cs_dsp.num = 1;
+	cs47l92->core.adsp[0].cs_dsp.type = WMFW_ADSP2;
+	cs47l92->core.adsp[0].cs_dsp.rev = 2;
+	cs47l92->core.adsp[0].cs_dsp.dev = madera->dev;
+	cs47l92->core.adsp[0].cs_dsp.regmap = madera->regmap_32bit;
 
-	cs47l92->core.adsp[0].base = MADERA_DSP1_CONFIG_1;
-	cs47l92->core.adsp[0].mem = cs47l92_dsp1_regions;
-	cs47l92->core.adsp[0].num_mems = ARRAY_SIZE(cs47l92_dsp1_regions);
+	cs47l92->core.adsp[0].cs_dsp.base = MADERA_DSP1_CONFIG_1;
+	cs47l92->core.adsp[0].cs_dsp.mem = cs47l92_dsp1_regions;
+	cs47l92->core.adsp[0].cs_dsp.num_mems = ARRAY_SIZE(cs47l92_dsp1_regions);
 
-	cs47l92->core.adsp[0].lock_regions = WM_ADSP2_REGION_1_9;
+	cs47l92->core.adsp[0].cs_dsp.lock_regions = CS_ADSP2_REGION_1_9;
 
 	ret = wm_adsp2_init(&cs47l92->core.adsp[0]);
 	if (ret != 0)

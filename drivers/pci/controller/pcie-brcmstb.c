@@ -24,6 +24,7 @@
 #include <linux/pci.h>
 #include <linux/pci-ecam.h>
 #include <linux/printk.h>
+#include <linux/regulator/consumer.h>
 #include <linux/reset.h>
 #include <linux/sizes.h>
 #include <linux/slab.h>
@@ -118,6 +119,7 @@
 #define PCIE_MISC_HARD_PCIE_HARD_DEBUG					0x4204
 #define  PCIE_MISC_HARD_PCIE_HARD_DEBUG_CLKREQ_DEBUG_ENABLE_MASK	0x2
 #define  PCIE_MISC_HARD_PCIE_HARD_DEBUG_SERDES_IDDQ_MASK		0x08000000
+#define  PCIE_BMIPS_MISC_HARD_PCIE_HARD_DEBUG_SERDES_IDDQ_MASK		0x00800000
 
 
 #define PCIE_INTR2_CPU_BASE		0x4300
@@ -144,8 +146,11 @@
 #define BRCM_INT_PCI_MSI_NR		32
 #define BRCM_INT_PCI_MSI_LEGACY_NR	8
 #define BRCM_INT_PCI_MSI_SHIFT		0
+#define BRCM_INT_PCI_MSI_MASK		GENMASK(BRCM_INT_PCI_MSI_NR - 1, 0)
+#define BRCM_INT_PCI_MSI_LEGACY_MASK	GENMASK(31, \
+						32 - BRCM_INT_PCI_MSI_LEGACY_NR)
 
-/* MSI target adresses */
+/* MSI target addresses */
 #define BRCM_MSI_TARGET_ADDR_LT_4GB	0x0fffffffcULL
 #define BRCM_MSI_TARGET_ADDR_GT_4GB	0xffffffffcULL
 
@@ -186,11 +191,6 @@
 
 /* Forward declarations */
 struct brcm_pcie;
-static inline void brcm_pcie_bridge_sw_init_set_7278(struct brcm_pcie *pcie, u32 val);
-static inline void brcm_pcie_bridge_sw_init_set_generic(struct brcm_pcie *pcie, u32 val);
-static inline void brcm_pcie_perst_set_4908(struct brcm_pcie *pcie, u32 val);
-static inline void brcm_pcie_perst_set_7278(struct brcm_pcie *pcie, u32 val);
-static inline void brcm_pcie_perst_set_generic(struct brcm_pcie *pcie, u32 val);
 
 enum {
 	RGR1_SW_INIT_1,
@@ -205,6 +205,8 @@ enum {
 
 enum pcie_type {
 	GENERIC,
+	BCM7425,
+	BCM7435,
 	BCM4908,
 	BCM7278,
 	BCM2711,
@@ -217,44 +219,9 @@ struct pcie_cfg_data {
 	void (*bridge_sw_init_set)(struct brcm_pcie *pcie, u32 val);
 };
 
-static const int pcie_offsets[] = {
-	[RGR1_SW_INIT_1] = 0x9210,
-	[EXT_CFG_INDEX]  = 0x9000,
-	[EXT_CFG_DATA]   = 0x9004,
-};
-
-static const struct pcie_cfg_data generic_cfg = {
-	.offsets	= pcie_offsets,
-	.type		= GENERIC,
-	.perst_set	= brcm_pcie_perst_set_generic,
-	.bridge_sw_init_set = brcm_pcie_bridge_sw_init_set_generic,
-};
-
-static const struct pcie_cfg_data bcm4908_cfg = {
-	.offsets	= pcie_offsets,
-	.type		= BCM4908,
-	.perst_set	= brcm_pcie_perst_set_4908,
-	.bridge_sw_init_set = brcm_pcie_bridge_sw_init_set_generic,
-};
-
-static const int pcie_offset_bcm7278[] = {
-	[RGR1_SW_INIT_1] = 0xc010,
-	[EXT_CFG_INDEX] = 0x9000,
-	[EXT_CFG_DATA] = 0x9004,
-};
-
-static const struct pcie_cfg_data bcm7278_cfg = {
-	.offsets	= pcie_offset_bcm7278,
-	.type		= BCM7278,
-	.perst_set	= brcm_pcie_perst_set_7278,
-	.bridge_sw_init_set = brcm_pcie_bridge_sw_init_set_7278,
-};
-
-static const struct pcie_cfg_data bcm2711_cfg = {
-	.offsets	= pcie_offsets,
-	.type		= BCM2711,
-	.perst_set	= brcm_pcie_perst_set_generic,
-	.bridge_sw_init_set = brcm_pcie_bridge_sw_init_set_generic,
+struct subdev_regulators {
+	unsigned int num_supplies;
+	struct regulator_bulk_data supplies[];
 };
 
 struct brcm_msi {
@@ -266,8 +233,7 @@ struct brcm_msi {
 	struct mutex		lock; /* guards the alloc/free operations */
 	u64			target_addr;
 	int			irq;
-	/* used indicates which MSI interrupts have been alloc'd */
-	unsigned long		used;
+	DECLARE_BITMAP(used, BRCM_INT_PCI_MSI_NR);
 	bool			legacy;
 	/* Some chips have MSIs in bits [31..24] of a shared register. */
 	int			legacy_shift;
@@ -295,7 +261,14 @@ struct brcm_pcie {
 	u32			hw_rev;
 	void			(*perst_set)(struct brcm_pcie *pcie, u32 val);
 	void			(*bridge_sw_init_set)(struct brcm_pcie *pcie, u32 val);
+	struct subdev_regulators *sr;
+	bool			ep_wakeup_capable;
 };
+
+static inline bool is_bmips(const struct brcm_pcie *pcie)
+{
+	return pcie->type == BCM7435 || pcie->type == BCM7425;
+}
 
 /*
  * This is to convert the size of the inbound "BAR" region to the
@@ -443,6 +416,9 @@ static void brcm_pcie_set_outbound_win(struct brcm_pcie *pcie,
 			  PCIE_MISC_CPU_2_PCIE_MEM_WIN0_BASE_LIMIT_LIMIT_MASK);
 	writel(tmp, pcie->base + PCIE_MEM_WIN0_BASE_LIMIT(win));
 
+	if (is_bmips(pcie))
+		return;
+
 	/* Write the cpu & limit addr upper bits */
 	high_addr_shift =
 		HWEIGHT32(PCIE_MISC_CPU_2_PCIE_MEM_WIN0_BASE_LIMIT_BASE_MASK);
@@ -534,7 +510,7 @@ static int brcm_msi_alloc(struct brcm_msi *msi)
 	int hwirq;
 
 	mutex_lock(&msi->lock);
-	hwirq = bitmap_find_free_region(&msi->used, msi->nr, 0);
+	hwirq = bitmap_find_free_region(msi->used, msi->nr, 0);
 	mutex_unlock(&msi->lock);
 
 	return hwirq;
@@ -543,7 +519,7 @@ static int brcm_msi_alloc(struct brcm_msi *msi)
 static void brcm_msi_free(struct brcm_msi *msi, unsigned long hwirq)
 {
 	mutex_lock(&msi->lock);
-	bitmap_release_region(&msi->used, hwirq, 0);
+	bitmap_release_region(msi->used, hwirq, 0);
 	mutex_unlock(&msi->lock);
 }
 
@@ -619,7 +595,8 @@ static void brcm_msi_remove(struct brcm_pcie *pcie)
 
 static void brcm_msi_set_regs(struct brcm_msi *msi)
 {
-	u32 val = __GENMASK(31, msi->legacy_shift);
+	u32 val = msi->legacy ? BRCM_INT_PCI_MSI_LEGACY_MASK :
+				BRCM_INT_PCI_MSI_MASK;
 
 	writel(val, msi->intr_base + MSI_INT_MASK_CLR);
 	writel(val, msi->intr_base + MSI_INT_CLR);
@@ -661,6 +638,12 @@ static int brcm_pcie_enable_msi(struct brcm_pcie *pcie)
 	msi->irq = irq;
 	msi->legacy = pcie->hw_rev < BRCM_PCIE_HW_REV_33;
 
+	/*
+	 * Sanity check to make sure that the 'used' bitmap in struct brcm_msi
+	 * is large enough.
+	 */
+	BUILD_BUG_ON(BRCM_INT_PCI_MSI_LEGACY_NR > BRCM_INT_PCI_MSI_NR);
+
 	if (msi->legacy) {
 		msi->intr_base = msi->base + PCIE_INTR2_CPU_BASE;
 		msi->nr = BRCM_INT_PCI_MSI_LEGACY_NR;
@@ -701,28 +684,47 @@ static bool brcm_pcie_link_up(struct brcm_pcie *pcie)
 	return dla && plu;
 }
 
-static void __iomem *brcm_pcie_map_conf(struct pci_bus *bus, unsigned int devfn,
-					int where)
+static void __iomem *brcm_pcie_map_bus(struct pci_bus *bus,
+				       unsigned int devfn, int where)
 {
 	struct brcm_pcie *pcie = bus->sysdata;
 	void __iomem *base = pcie->base;
 	int idx;
 
-	/* Accesses to the RC go right to the RC registers if slot==0 */
+	/* Accesses to the RC go right to the RC registers if !devfn */
 	if (pci_is_root_bus(bus))
-		return PCI_SLOT(devfn) ? NULL : base + where;
+		return devfn ? NULL : base + PCIE_ECAM_REG(where);
+
+	/* An access to our HW w/o link-up will cause a CPU Abort */
+	if (!brcm_pcie_link_up(pcie))
+		return NULL;
 
 	/* For devices, write to the config space index register */
 	idx = PCIE_ECAM_OFFSET(bus->number, devfn, 0);
 	writel(idx, pcie->base + PCIE_EXT_CFG_INDEX);
-	return base + PCIE_EXT_CFG_DATA + where;
+	return base + PCIE_EXT_CFG_DATA + PCIE_ECAM_REG(where);
 }
 
-static struct pci_ops brcm_pcie_ops = {
-	.map_bus = brcm_pcie_map_conf,
-	.read = pci_generic_config_read,
-	.write = pci_generic_config_write,
-};
+static void __iomem *brcm7425_pcie_map_bus(struct pci_bus *bus,
+					   unsigned int devfn, int where)
+{
+	struct brcm_pcie *pcie = bus->sysdata;
+	void __iomem *base = pcie->base;
+	int idx;
+
+	/* Accesses to the RC go right to the RC registers if !devfn */
+	if (pci_is_root_bus(bus))
+		return devfn ? NULL : base + PCIE_ECAM_REG(where);
+
+	/* An access to our HW w/o link-up will cause a CPU Abort */
+	if (!brcm_pcie_link_up(pcie))
+		return NULL;
+
+	/* For devices, write to the config space index register */
+	idx = PCIE_ECAM_OFFSET(bus->number, devfn, where);
+	writel(idx, base + IDX_ADDR(pcie));
+	return base + DATA_ADDR(pcie);
+}
 
 static inline void brcm_pcie_bridge_sw_init_set_generic(struct brcm_pcie *pcie, u32 val)
 {
@@ -863,17 +865,13 @@ static inline int brcm_pcie_get_rc_bar2_size_and_offset(struct brcm_pcie *pcie,
 
 static int brcm_pcie_setup(struct brcm_pcie *pcie)
 {
-	struct pci_host_bridge *bridge = pci_host_bridge_from_priv(pcie);
 	u64 rc_bar2_offset, rc_bar2_size;
 	void __iomem *base = pcie->base;
-	struct device *dev = pcie->dev;
+	struct pci_host_bridge *bridge;
 	struct resource_entry *entry;
-	bool ssc_good = false;
-	struct resource *res;
-	int num_out_wins = 0;
-	u16 nlw, cls, lnksta;
-	int i, ret, memc;
 	u32 tmp, burst, aspm_support;
+	int num_out_wins = 0;
+	int ret, memc;
 
 	/* Reset the bridge */
 	pcie->bridge_sw_init_set(pcie, 1);
@@ -883,7 +881,10 @@ static int brcm_pcie_setup(struct brcm_pcie *pcie)
 	pcie->bridge_sw_init_set(pcie, 0);
 
 	tmp = readl(base + PCIE_MISC_HARD_PCIE_HARD_DEBUG);
-	tmp &= ~PCIE_MISC_HARD_PCIE_HARD_DEBUG_SERDES_IDDQ_MASK;
+	if (is_bmips(pcie))
+		tmp &= ~PCIE_BMIPS_MISC_HARD_PCIE_HARD_DEBUG_SERDES_IDDQ_MASK;
+	else
+		tmp &= ~PCIE_MISC_HARD_PCIE_HARD_DEBUG_SERDES_IDDQ_MASK;
 	writel(tmp, base + PCIE_MISC_HARD_PCIE_HARD_DEBUG);
 	/* Wait for SerDes to be stable */
 	usleep_range(100, 200);
@@ -893,8 +894,10 @@ static int brcm_pcie_setup(struct brcm_pcie *pcie)
 	 * is encoded as 0=128, 1=256, 2=512, 3=Rsvd, for BCM7278 it
 	 * is encoded as 0=Rsvd, 1=128, 2=256, 3=512.
 	 */
-	if (pcie->type == BCM2711)
-		burst = 0x0; /* 128B */
+	if (is_bmips(pcie))
+		burst = 0x1; /* 256 bytes */
+	else if (pcie->type == BCM2711)
+		burst = 0x0; /* 128 bytes */
 	else if (pcie->type == BCM7278)
 		burst = 0x3; /* 512 bytes */
 	else
@@ -944,6 +947,11 @@ static int brcm_pcie_setup(struct brcm_pcie *pcie)
 	else
 		pcie->msi_target_addr = BRCM_MSI_TARGET_ADDR_GT_4GB;
 
+	if (!brcm_pcie_rc_mode(pcie)) {
+		dev_err(pcie->dev, "PCIe RC controller misconfigured as Endpoint\n");
+		return -EINVAL;
+	}
+
 	/* disable the PCIe->GISB memory window (RC_BAR1) */
 	tmp = readl(base + PCIE_MISC_RC_BAR1_CONFIG_LO);
 	tmp &= ~PCIE_MISC_RC_BAR1_CONFIG_LO_SIZE_MASK;
@@ -953,46 +961,6 @@ static int brcm_pcie_setup(struct brcm_pcie *pcie)
 	tmp = readl(base + PCIE_MISC_RC_BAR3_CONFIG_LO);
 	tmp &= ~PCIE_MISC_RC_BAR3_CONFIG_LO_SIZE_MASK;
 	writel(tmp, base + PCIE_MISC_RC_BAR3_CONFIG_LO);
-
-	if (pcie->gen)
-		brcm_pcie_set_gen(pcie, pcie->gen);
-
-	/* Unassert the fundamental reset */
-	pcie->perst_set(pcie, 0);
-
-	/*
-	 * Give the RC/EP time to wake up, before trying to configure RC.
-	 * Intermittently check status for link-up, up to a total of 100ms.
-	 */
-	for (i = 0; i < 100 && !brcm_pcie_link_up(pcie); i += 5)
-		msleep(5);
-
-	if (!brcm_pcie_link_up(pcie)) {
-		dev_err(dev, "link down\n");
-		return -ENODEV;
-	}
-
-	if (!brcm_pcie_rc_mode(pcie)) {
-		dev_err(dev, "PCIe misconfigured; is in EP mode\n");
-		return -EINVAL;
-	}
-
-	resource_list_for_each_entry(entry, &bridge->windows) {
-		res = entry->res;
-
-		if (resource_type(res) != IORESOURCE_MEM)
-			continue;
-
-		if (num_out_wins >= BRCM_NUM_PCIE_OUT_WINS) {
-			dev_err(pcie->dev, "too many outbound wins\n");
-			return -EINVAL;
-		}
-
-		brcm_pcie_set_outbound_win(pcie, num_out_wins, res->start,
-					   res->start - entry->offset,
-					   resource_size(res));
-		num_out_wins++;
-	}
 
 	/* Don't advertise L0s capability if 'aspm-no-l0s' */
 	aspm_support = PCIE_LINK_STATE_L1;
@@ -1012,6 +980,73 @@ static int brcm_pcie_setup(struct brcm_pcie *pcie)
 			  PCIE_RC_CFG_PRIV1_ID_VAL3_CLASS_CODE_MASK);
 	writel(tmp, base + PCIE_RC_CFG_PRIV1_ID_VAL3);
 
+	bridge = pci_host_bridge_from_priv(pcie);
+	resource_list_for_each_entry(entry, &bridge->windows) {
+		struct resource *res = entry->res;
+
+		if (resource_type(res) != IORESOURCE_MEM)
+			continue;
+
+		if (num_out_wins >= BRCM_NUM_PCIE_OUT_WINS) {
+			dev_err(pcie->dev, "too many outbound wins\n");
+			return -EINVAL;
+		}
+
+		if (is_bmips(pcie)) {
+			u64 start = res->start;
+			unsigned int j, nwins = resource_size(res) / SZ_128M;
+
+			/* bmips PCIe outbound windows have a 128MB max size */
+			if (nwins > BRCM_NUM_PCIE_OUT_WINS)
+				nwins = BRCM_NUM_PCIE_OUT_WINS;
+			for (j = 0; j < nwins; j++, start += SZ_128M)
+				brcm_pcie_set_outbound_win(pcie, j, start,
+							   start - entry->offset,
+							   SZ_128M);
+			break;
+		}
+		brcm_pcie_set_outbound_win(pcie, num_out_wins, res->start,
+					   res->start - entry->offset,
+					   resource_size(res));
+		num_out_wins++;
+	}
+
+	/* PCIe->SCB endian mode for BAR */
+	tmp = readl(base + PCIE_RC_CFG_VENDOR_VENDOR_SPECIFIC_REG1);
+	u32p_replace_bits(&tmp, PCIE_RC_CFG_VENDOR_SPCIFIC_REG1_LITTLE_ENDIAN,
+		PCIE_RC_CFG_VENDOR_VENDOR_SPECIFIC_REG1_ENDIAN_MODE_BAR2_MASK);
+	writel(tmp, base + PCIE_RC_CFG_VENDOR_VENDOR_SPECIFIC_REG1);
+
+	return 0;
+}
+
+static int brcm_pcie_start_link(struct brcm_pcie *pcie)
+{
+	struct device *dev = pcie->dev;
+	void __iomem *base = pcie->base;
+	u16 nlw, cls, lnksta;
+	bool ssc_good = false;
+	u32 tmp;
+	int ret, i;
+
+	/* Unassert the fundamental reset */
+	pcie->perst_set(pcie, 0);
+
+	/*
+	 * Give the RC/EP time to wake up, before trying to configure RC.
+	 * Intermittently check status for link-up, up to a total of 100ms.
+	 */
+	for (i = 0; i < 100 && !brcm_pcie_link_up(pcie); i += 5)
+		msleep(5);
+
+	if (!brcm_pcie_link_up(pcie)) {
+		dev_err(dev, "link down\n");
+		return -ENODEV;
+	}
+
+	if (pcie->gen)
+		brcm_pcie_set_gen(pcie, pcie->gen);
+
 	if (pcie->ssc) {
 		ret = brcm_pcie_set_ssc(pcie);
 		if (ret == 0)
@@ -1027,12 +1062,6 @@ static int brcm_pcie_setup(struct brcm_pcie *pcie)
 		 pci_speed_string(pcie_link_speed[cls]), nlw,
 		 ssc_good ? "(SSC)" : "(!SSC)");
 
-	/* PCIe->SCB endian mode for BAR */
-	tmp = readl(base + PCIE_RC_CFG_VENDOR_VENDOR_SPECIFIC_REG1);
-	u32p_replace_bits(&tmp, PCIE_RC_CFG_VENDOR_SPCIFIC_REG1_LITTLE_ENDIAN,
-		PCIE_RC_CFG_VENDOR_VENDOR_SPECIFIC_REG1_ENDIAN_MODE_BAR2_MASK);
-	writel(tmp, base + PCIE_RC_CFG_VENDOR_VENDOR_SPECIFIC_REG1);
-
 	/*
 	 * Refclk from RC should be gated with CLKREQ# input when ASPM L0s,L1
 	 * is enabled => setting the CLKREQ_DEBUG_ENABLE field to 1.
@@ -1042,6 +1071,82 @@ static int brcm_pcie_setup(struct brcm_pcie *pcie)
 	writel(tmp, base + PCIE_MISC_HARD_PCIE_HARD_DEBUG);
 
 	return 0;
+}
+
+static const char * const supplies[] = {
+	"vpcie3v3",
+	"vpcie3v3aux",
+	"vpcie12v",
+};
+
+static void *alloc_subdev_regulators(struct device *dev)
+{
+	const size_t size = sizeof(struct subdev_regulators) +
+		sizeof(struct regulator_bulk_data) * ARRAY_SIZE(supplies);
+	struct subdev_regulators *sr;
+	int i;
+
+	sr = devm_kzalloc(dev, size, GFP_KERNEL);
+	if (sr) {
+		sr->num_supplies = ARRAY_SIZE(supplies);
+		for (i = 0; i < ARRAY_SIZE(supplies); i++)
+			sr->supplies[i].supply = supplies[i];
+	}
+
+	return sr;
+}
+
+static int brcm_pcie_add_bus(struct pci_bus *bus)
+{
+	struct brcm_pcie *pcie = bus->sysdata;
+	struct device *dev = &bus->dev;
+	struct subdev_regulators *sr;
+	int ret;
+
+	if (!bus->parent || !pci_is_root_bus(bus->parent))
+		return 0;
+
+	if (dev->of_node) {
+		sr = alloc_subdev_regulators(dev);
+		if (!sr) {
+			dev_info(dev, "Can't allocate regulators for downstream device\n");
+			goto no_regulators;
+		}
+
+		pcie->sr = sr;
+
+		ret = regulator_bulk_get(dev, sr->num_supplies, sr->supplies);
+		if (ret) {
+			dev_info(dev, "No regulators for downstream device\n");
+			goto no_regulators;
+		}
+
+		ret = regulator_bulk_enable(sr->num_supplies, sr->supplies);
+		if (ret) {
+			dev_err(dev, "Can't enable regulators for downstream device\n");
+			regulator_bulk_free(sr->num_supplies, sr->supplies);
+			pcie->sr = NULL;
+		}
+	}
+
+no_regulators:
+	brcm_pcie_start_link(pcie);
+	return 0;
+}
+
+static void brcm_pcie_remove_bus(struct pci_bus *bus)
+{
+	struct brcm_pcie *pcie = bus->sysdata;
+	struct subdev_regulators *sr = pcie->sr;
+	struct device *dev = &bus->dev;
+
+	if (!sr)
+		return;
+
+	if (regulator_bulk_disable(sr->num_supplies, sr->supplies))
+		dev_err(dev, "Failed to disable regulators for downstream device\n");
+	regulator_bulk_free(sr->num_supplies, sr->supplies);
+	pcie->sr = NULL;
 }
 
 /* L23 is a low-power PCIe link state */
@@ -1140,20 +1245,63 @@ static void brcm_pcie_turn_off(struct brcm_pcie *pcie)
 	pcie->bridge_sw_init_set(pcie, 1);
 }
 
-static int brcm_pcie_suspend(struct device *dev)
+static int pci_dev_may_wakeup(struct pci_dev *dev, void *data)
+{
+	bool *ret = data;
+
+	if (device_may_wakeup(&dev->dev)) {
+		*ret = true;
+		dev_info(&dev->dev, "Possible wake-up device; regulators will not be disabled\n");
+	}
+	return (int) *ret;
+}
+
+static int brcm_pcie_suspend_noirq(struct device *dev)
 {
 	struct brcm_pcie *pcie = dev_get_drvdata(dev);
+	struct pci_host_bridge *bridge = pci_host_bridge_from_priv(pcie);
 	int ret;
 
 	brcm_pcie_turn_off(pcie);
-	ret = brcm_phy_stop(pcie);
-	reset_control_rearm(pcie->rescal);
+	/*
+	 * If brcm_phy_stop() returns an error, just dev_err(). If we
+	 * return the error it will cause the suspend to fail and this is a
+	 * forgivable offense that will probably be erased on resume.
+	 */
+	if (brcm_phy_stop(pcie))
+		dev_err(dev, "Could not stop phy for suspend\n");
+
+	ret = reset_control_rearm(pcie->rescal);
+	if (ret) {
+		dev_err(dev, "Could not rearm rescal reset\n");
+		return ret;
+	}
+
+	if (pcie->sr) {
+		/*
+		 * Now turn off the regulators, but if at least one
+		 * downstream device is enabled as a wake-up source, do not
+		 * turn off regulators.
+		 */
+		pcie->ep_wakeup_capable = false;
+		pci_walk_bus(bridge->bus, pci_dev_may_wakeup,
+			     &pcie->ep_wakeup_capable);
+		if (!pcie->ep_wakeup_capable) {
+			ret = regulator_bulk_disable(pcie->sr->num_supplies,
+						     pcie->sr->supplies);
+			if (ret) {
+				dev_err(dev, "Could not turn off regulators\n");
+				reset_control_reset(pcie->rescal);
+				return ret;
+			}
+		}
+	}
 	clk_disable_unprepare(pcie->clk);
 
-	return ret;
+	return 0;
 }
 
-static int brcm_pcie_resume(struct device *dev)
+static int brcm_pcie_resume_noirq(struct device *dev)
 {
 	struct brcm_pcie *pcie = dev_get_drvdata(dev);
 	void __iomem *base;
@@ -1161,7 +1309,9 @@ static int brcm_pcie_resume(struct device *dev)
 	int ret;
 
 	base = pcie->base;
-	clk_prepare_enable(pcie->clk);
+	ret = clk_prepare_enable(pcie->clk);
+	if (ret)
+		return ret;
 
 	ret = reset_control_reset(pcie->rescal);
 	if (ret)
@@ -1186,11 +1336,37 @@ static int brcm_pcie_resume(struct device *dev)
 	if (ret)
 		goto err_reset;
 
+	if (pcie->sr) {
+		if (pcie->ep_wakeup_capable) {
+			/*
+			 * We are resuming from a suspend.  In the suspend we
+			 * did not disable the power supplies, so there is
+			 * no need to enable them (and falsely increase their
+			 * usage count).
+			 */
+			pcie->ep_wakeup_capable = false;
+		} else {
+			ret = regulator_bulk_enable(pcie->sr->num_supplies,
+						    pcie->sr->supplies);
+			if (ret) {
+				dev_err(dev, "Could not turn on regulators\n");
+				goto err_reset;
+			}
+		}
+	}
+
+	ret = brcm_pcie_start_link(pcie);
+	if (ret)
+		goto err_regulator;
+
 	if (pcie->msi)
 		brcm_msi_set_regs(pcie->msi);
 
 	return 0;
 
+err_regulator:
+	if (pcie->sr)
+		regulator_bulk_disable(pcie->sr->num_supplies, pcie->sr->supplies);
 err_reset:
 	reset_control_rearm(pcie->rescal);
 err_disable_clk:
@@ -1202,8 +1378,10 @@ static void __brcm_pcie_remove(struct brcm_pcie *pcie)
 {
 	brcm_msi_remove(pcie);
 	brcm_pcie_turn_off(pcie);
-	brcm_phy_stop(pcie);
-	reset_control_rearm(pcie->rescal);
+	if (brcm_phy_stop(pcie))
+		dev_err(pcie->dev, "Could not stop phy\n");
+	if (reset_control_rearm(pcie->rescal))
+		dev_err(pcie->dev, "Could not rearm rescal reset\n");
 	clk_disable_unprepare(pcie->clk);
 }
 
@@ -1219,6 +1397,66 @@ static int brcm_pcie_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static const int pcie_offsets[] = {
+	[RGR1_SW_INIT_1] = 0x9210,
+	[EXT_CFG_INDEX]  = 0x9000,
+	[EXT_CFG_DATA]   = 0x9004,
+};
+
+static const int pcie_offsets_bmips_7425[] = {
+	[RGR1_SW_INIT_1] = 0x8010,
+	[EXT_CFG_INDEX]  = 0x8300,
+	[EXT_CFG_DATA]   = 0x8304,
+};
+
+static const struct pcie_cfg_data generic_cfg = {
+	.offsets	= pcie_offsets,
+	.type		= GENERIC,
+	.perst_set	= brcm_pcie_perst_set_generic,
+	.bridge_sw_init_set = brcm_pcie_bridge_sw_init_set_generic,
+};
+
+static const struct pcie_cfg_data bcm7425_cfg = {
+	.offsets	= pcie_offsets_bmips_7425,
+	.type		= BCM7425,
+	.perst_set	= brcm_pcie_perst_set_generic,
+	.bridge_sw_init_set = brcm_pcie_bridge_sw_init_set_generic,
+};
+
+static const struct pcie_cfg_data bcm7435_cfg = {
+	.offsets	= pcie_offsets,
+	.type		= BCM7435,
+	.perst_set	= brcm_pcie_perst_set_generic,
+	.bridge_sw_init_set = brcm_pcie_bridge_sw_init_set_generic,
+};
+
+static const struct pcie_cfg_data bcm4908_cfg = {
+	.offsets	= pcie_offsets,
+	.type		= BCM4908,
+	.perst_set	= brcm_pcie_perst_set_4908,
+	.bridge_sw_init_set = brcm_pcie_bridge_sw_init_set_generic,
+};
+
+static const int pcie_offset_bcm7278[] = {
+	[RGR1_SW_INIT_1] = 0xc010,
+	[EXT_CFG_INDEX] = 0x9000,
+	[EXT_CFG_DATA] = 0x9004,
+};
+
+static const struct pcie_cfg_data bcm7278_cfg = {
+	.offsets	= pcie_offset_bcm7278,
+	.type		= BCM7278,
+	.perst_set	= brcm_pcie_perst_set_7278,
+	.bridge_sw_init_set = brcm_pcie_bridge_sw_init_set_7278,
+};
+
+static const struct pcie_cfg_data bcm2711_cfg = {
+	.offsets	= pcie_offsets,
+	.type		= BCM2711,
+	.perst_set	= brcm_pcie_perst_set_generic,
+	.bridge_sw_init_set = brcm_pcie_bridge_sw_init_set_generic,
+};
+
 static const struct of_device_id brcm_pcie_match[] = {
 	{ .compatible = "brcm,bcm2711-pcie", .data = &bcm2711_cfg },
 	{ .compatible = "brcm,bcm4908-pcie", .data = &bcm4908_cfg },
@@ -1226,7 +1464,25 @@ static const struct of_device_id brcm_pcie_match[] = {
 	{ .compatible = "brcm,bcm7278-pcie", .data = &bcm7278_cfg },
 	{ .compatible = "brcm,bcm7216-pcie", .data = &bcm7278_cfg },
 	{ .compatible = "brcm,bcm7445-pcie", .data = &generic_cfg },
+	{ .compatible = "brcm,bcm7435-pcie", .data = &bcm7435_cfg },
+	{ .compatible = "brcm,bcm7425-pcie", .data = &bcm7425_cfg },
 	{},
+};
+
+static struct pci_ops brcm_pcie_ops = {
+	.map_bus = brcm_pcie_map_bus,
+	.read = pci_generic_config_read,
+	.write = pci_generic_config_write,
+	.add_bus = brcm_pcie_add_bus,
+	.remove_bus = brcm_pcie_remove_bus,
+};
+
+static struct pci_ops brcm7425_pcie_ops = {
+	.map_bus = brcm7425_pcie_map_bus,
+	.read = pci_generic_config_read32,
+	.write = pci_generic_config_write32,
+	.add_bus = brcm_pcie_add_bus,
+	.remove_bus = brcm_pcie_remove_bus,
 };
 
 static int brcm_pcie_probe(struct platform_device *pdev)
@@ -1315,12 +1571,22 @@ static int brcm_pcie_probe(struct platform_device *pdev)
 		}
 	}
 
-	bridge->ops = &brcm_pcie_ops;
+	bridge->ops = pcie->type == BCM7425 ? &brcm7425_pcie_ops : &brcm_pcie_ops;
 	bridge->sysdata = pcie;
 
 	platform_set_drvdata(pdev, pcie);
 
-	return pci_host_probe(bridge);
+	ret = pci_host_probe(bridge);
+	if (!ret && !brcm_pcie_link_up(pcie))
+		ret = -ENODEV;
+
+	if (ret) {
+		brcm_pcie_remove(pdev);
+		return ret;
+	}
+
+	return 0;
+
 fail:
 	__brcm_pcie_remove(pcie);
 	return ret;
@@ -1329,8 +1595,8 @@ fail:
 MODULE_DEVICE_TABLE(of, brcm_pcie_match);
 
 static const struct dev_pm_ops brcm_pcie_pm_ops = {
-	.suspend = brcm_pcie_suspend,
-	.resume = brcm_pcie_resume,
+	.suspend_noirq = brcm_pcie_suspend_noirq,
+	.resume_noirq = brcm_pcie_resume_noirq,
 };
 
 static struct platform_driver brcm_pcie_driver = {

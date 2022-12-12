@@ -14,7 +14,7 @@
 int early_acpi_osi_init(void);
 int acpi_osi_init(void);
 acpi_status acpi_os_initialize1(void);
-int acpi_scan_init(void);
+void acpi_scan_init(void);
 #ifdef CONFIG_PCI
 void acpi_pci_root_init(void);
 void acpi_pci_link_init(void);
@@ -96,18 +96,16 @@ void acpi_scan_table_notify(void);
 
 extern struct list_head acpi_bus_id_list;
 
-#define ACPI_MAX_DEVICE_INSTANCES	4096
-
 struct acpi_device_bus_id {
 	const char *bus_id;
 	struct ida instance_ida;
 	struct list_head node;
 };
 
-int acpi_device_add(struct acpi_device *device,
-		    void (*release)(struct device *));
 void acpi_init_device_object(struct acpi_device *device, acpi_handle handle,
-			     int type);
+			     int type, void (*release)(struct device *));
+int acpi_tie_acpi_dev(struct acpi_device *adev);
+int acpi_device_add(struct acpi_device *device);
 int acpi_device_setup_files(struct acpi_device *dev);
 void acpi_device_remove_files(struct acpi_device *dev);
 void acpi_device_add_finalize(struct acpi_device *device);
@@ -166,6 +164,13 @@ static inline void acpi_early_processor_osc(void) {}
 /* --------------------------------------------------------------------------
                                   Embedded Controller
    -------------------------------------------------------------------------- */
+
+enum acpi_ec_event_state {
+	EC_EVENT_READY = 0,	/* Event work can be submitted */
+	EC_EVENT_IN_PROGRESS,	/* Event work is pending or being processed */
+	EC_EVENT_COMPLETE,	/* Event work processing has completed */
+};
+
 struct acpi_ec {
 	acpi_handle handle;
 	int gpe;
@@ -182,7 +187,10 @@ struct acpi_ec {
 	spinlock_t lock;
 	struct work_struct work;
 	unsigned long timestamp;
-	unsigned long nr_pending_queries;
+	enum acpi_ec_event_state event_state;
+	unsigned int events_to_process;
+	unsigned int events_in_progress;
+	unsigned int queries_in_progress;
 	bool busy_polling;
 	unsigned int polling_guard;
 };

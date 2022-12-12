@@ -5,10 +5,6 @@
  * Copyright (C) 2012 Texas Instruments Inc.
  * Copyright (C) 2015 Intel Corporation.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
  * Simple file API to load FW that includes mixers, coefficients, DAPM graphs,
  * algorithms, equalisers, DAIs, widgets etc.
 */
@@ -240,8 +236,8 @@ struct snd_soc_tplg_vendor_array {
 struct snd_soc_tplg_private {
 	__le32 size;	/* in bytes of private data */
 	union {
-		char data[0];
-		struct snd_soc_tplg_vendor_array array[0];
+		__DECLARE_FLEX_ARRAY(char, data);
+		__DECLARE_FLEX_ARRAY(struct snd_soc_tplg_vendor_array, array);
 	};
 } __attribute__((packed));
 

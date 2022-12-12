@@ -37,7 +37,7 @@
 
 / {
 	model = "NorthStar Plus XMC (BCM958525xmc)";
-	compatible = "brcm,bcm58525", "brcm,nsp";
+	compatible = "brcm,bcm958525xmc", "brcm,bcm58525", "brcm,nsp";
 
 	chosen {
 		stdout-path = "serial0:115200n8";
@@ -150,8 +150,9 @@
 };
 
 &qspi {
+	status = "okay";
 	bspi-sel = <0>;
-	flash: m25p80@0 {
+	flash: flash@0 {
 		#address-cells = <1>;
 		#size-cells = <1>;
 		compatible = "m25p80";

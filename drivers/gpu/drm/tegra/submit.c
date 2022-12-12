@@ -64,33 +64,62 @@ static void gather_bo_put(struct host1x_bo *host_bo)
 	kref_put(&bo->ref, gather_bo_release);
 }
 
-static struct sg_table *
-gather_bo_pin(struct device *dev, struct host1x_bo *host_bo, dma_addr_t *phys)
+static struct host1x_bo_mapping *
+gather_bo_pin(struct device *dev, struct host1x_bo *bo, enum dma_data_direction direction)
 {
-	struct gather_bo *bo = container_of(host_bo, struct gather_bo, base);
-	struct sg_table *sgt;
+	struct gather_bo *gather = container_of(bo, struct gather_bo, base);
+	struct host1x_bo_mapping *map;
 	int err;
 
-	sgt = kzalloc(sizeof(*sgt), GFP_KERNEL);
-	if (!sgt)
+	map = kzalloc(sizeof(*map), GFP_KERNEL);
+	if (!map)
 		return ERR_PTR(-ENOMEM);
 
-	err = dma_get_sgtable(bo->dev, sgt, bo->gather_data, bo->gather_data_dma,
-			      bo->gather_data_words * 4);
-	if (err) {
-		kfree(sgt);
-		return ERR_PTR(err);
+	kref_init(&map->ref);
+	map->bo = host1x_bo_get(bo);
+	map->direction = direction;
+	map->dev = dev;
+
+	map->sgt = kzalloc(sizeof(*map->sgt), GFP_KERNEL);
+	if (!map->sgt) {
+		err = -ENOMEM;
+		goto free;
 	}
 
-	return sgt;
+	err = dma_get_sgtable(gather->dev, map->sgt, gather->gather_data, gather->gather_data_dma,
+			      gather->gather_data_words * 4);
+	if (err)
+		goto free_sgt;
+
+	err = dma_map_sgtable(dev, map->sgt, direction, 0);
+	if (err)
+		goto free_sgt;
+
+	map->phys = sg_dma_address(map->sgt->sgl);
+	map->size = gather->gather_data_words * 4;
+	map->chunks = err;
+
+	return map;
+
+free_sgt:
+	sg_free_table(map->sgt);
+	kfree(map->sgt);
+free:
+	kfree(map);
+	return ERR_PTR(err);
 }
 
-static void gather_bo_unpin(struct device *dev, struct sg_table *sgt)
+static void gather_bo_unpin(struct host1x_bo_mapping *map)
 {
-	if (sgt) {
-		sg_free_table(sgt);
-		kfree(sgt);
-	}
+	if (!map)
+		return;
+
+	dma_unmap_sgtable(map->dev, map->sgt, map->direction, 0);
+	sg_free_table(map->sgt);
+	kfree(map->sgt);
+	host1x_bo_put(map->bo);
+
+	kfree(map);
 }
 
 static void *gather_bo_mmap(struct host1x_bo *host_bo)
@@ -469,14 +498,17 @@ static void release_job(struct host1x_job *job)
 	struct tegra_drm_submit_data *job_data = job->user_data;
 	u32 i;
 
+	if (job->memory_context)
+		host1x_memory_context_put(job->memory_context);
+
 	for (i = 0; i < job_data->num_used_mappings; i++)
 		tegra_drm_mapping_put(job_data->used_mappings[i].mapping);
 
 	kfree(job_data->used_mappings);
 	kfree(job_data);
 
-	if (pm_runtime_enabled(client->base.dev))
-		pm_runtime_put_autosuspend(client->base.dev);
+	pm_runtime_mark_last_busy(client->base.dev);
+	pm_runtime_put_autosuspend(client->base.dev);
 }
 
 int tegra_drm_ioctl_channel_submit(struct drm_device *drm, void *data,
@@ -559,13 +591,51 @@ int tegra_drm_ioctl_channel_submit(struct drm_device *drm, void *data,
 		goto put_job;
 	}
 
-	/* Boot engine. */
-	if (pm_runtime_enabled(context->client->base.dev)) {
-		err = pm_runtime_resume_and_get(context->client->base.dev);
-		if (err < 0) {
-			SUBMIT_ERR(context, "could not power up engine: %d", err);
+	if (context->client->ops->get_streamid_offset) {
+		err = context->client->ops->get_streamid_offset(
+			context->client, &job->engine_streamid_offset);
+		if (err) {
+			SUBMIT_ERR(context, "failed to get streamid offset: %d", err);
 			goto unpin_job;
 		}
+	}
+
+	if (context->memory_context && context->client->ops->can_use_memory_ctx) {
+		bool supported;
+
+		err = context->client->ops->can_use_memory_ctx(context->client, &supported);
+		if (err) {
+			SUBMIT_ERR(context, "failed to detect if engine can use memory context: %d", err);
+			goto unpin_job;
+		}
+
+		if (supported) {
+			job->memory_context = context->memory_context;
+			host1x_memory_context_get(job->memory_context);
+		}
+	} else if (context->client->ops->get_streamid_offset) {
+#ifdef CONFIG_IOMMU_API
+		struct iommu_fwspec *spec;
+
+		/*
+		 * Job submission will need to temporarily change stream ID,
+		 * so need to tell it what to change it back to.
+		 */
+		spec = dev_iommu_fwspec_get(context->client->base.dev);
+		if (spec && spec->num_ids > 0)
+			job->engine_fallback_streamid = spec->ids[0] & 0xffff;
+		else
+			job->engine_fallback_streamid = 0x7f;
+#else
+		job->engine_fallback_streamid = 0x7f;
+#endif
+	}
+
+	/* Boot engine. */
+	err = pm_runtime_resume_and_get(context->client->base.dev);
+	if (err < 0) {
+		SUBMIT_ERR(context, "could not power up engine: %d", err);
+		goto put_memory_context;
 	}
 
 	job->user_data = job_data;
@@ -600,6 +670,9 @@ int tegra_drm_ioctl_channel_submit(struct drm_device *drm, void *data,
 
 	goto put_job;
 
+put_memory_context:
+	if (job->memory_context)
+		host1x_memory_context_put(job->memory_context);
 unpin_job:
 	host1x_job_unpin(job);
 put_job:

@@ -2,14 +2,13 @@
 # Copyright (C) 2020 Texas Instruments Incorporated
 %YAML 1.2
 ---
-$id: "http://devicetree.org/schemas/power/supply/bq25980.yaml#"
-$schema: "http://devicetree.org/meta-schemas/core.yaml#"
+$id: http://devicetree.org/schemas/power/supply/bq25980.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
 
 title: TI BQ25980 Flash Charger
 
 maintainers:
-  - Dan Murphy <dmurphy@ti.com>
-  - Ricardo Rivera-Matos <r-rivera-matos@ti.com>
+  - Andrew Davis <afd@ti.com>
 
 description: |
   The BQ25980, BQ25975, and BQ25960 are a series of flash chargers intended
@@ -105,7 +104,7 @@ examples:
           reg = <0x65>;
           interrupt-parent = <&gpio1>;
           interrupts = <16 IRQ_TYPE_EDGE_FALLING>;
-          ti,watchdog-timer = <0>;
+          ti,watchdog-timeout-ms = <0>;
           ti,sc-ocp-limit-microamp = <2000000>;
           ti,sc-ovp-limit-microvolt = <17800000>;
           monitored-battery = <&bat>;

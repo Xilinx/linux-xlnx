@@ -31,6 +31,9 @@ properties:
   reg:
     maxItems: 1
 
+allOf:
+  - $ref: "pinctrl.yaml#"
+
 required:
   - compatible
   - reg
@@ -38,6 +41,7 @@ required:
 patternProperties:
   "^gpio-[0-9]*$":
     type: object
+    additionalProperties: false
 
     description:
       Each port of the r7s72100 pin controller hardware is itself a GPIO

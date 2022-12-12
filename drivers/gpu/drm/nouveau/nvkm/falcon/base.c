@@ -117,8 +117,12 @@ nvkm_falcon_disable(struct nvkm_falcon *falcon)
 int
 nvkm_falcon_reset(struct nvkm_falcon *falcon)
 {
-	nvkm_falcon_disable(falcon);
-	return nvkm_falcon_enable(falcon);
+	if (!falcon->func->reset) {
+		nvkm_falcon_disable(falcon);
+		return nvkm_falcon_enable(falcon);
+	}
+
+	return falcon->func->reset(falcon);
 }
 
 int
@@ -216,14 +220,4 @@ nvkm_falcon_ctor(const struct nvkm_falcon_func *func,
 	mutex_init(&falcon->mutex);
 	mutex_init(&falcon->dmem_mutex);
 	return 0;
-}
-
-void
-nvkm_falcon_del(struct nvkm_falcon **pfalcon)
-{
-	if (*pfalcon) {
-		nvkm_falcon_dtor(*pfalcon);
-		kfree(*pfalcon);
-		*pfalcon = NULL;
-	}
 }

@@ -8,17 +8,11 @@
  */
 
 #include <linux/memblock.h>
-#include <linux/mmu_context.h>
 #include <linux/hugetlb.h>
-#include <asm/fixmap.h>
-#include <asm/code-patching.h>
-#include <asm/inst.h>
 
 #include <mm/mmu_decl.h>
 
 #define IMMR_SIZE (FIX_IMMR_SIZE << PAGE_SHIFT)
-
-extern int __map_without_ltlbs;
 
 static unsigned long block_mapped_ram;
 
@@ -32,8 +26,6 @@ phys_addr_t v_block_mapped(unsigned long va)
 
 	if (va >= VIRT_IMMR_BASE && va < VIRT_IMMR_BASE + IMMR_SIZE)
 		return p + va - VIRT_IMMR_BASE;
-	if (__map_without_ltlbs)
-		return 0;
 	if (va >= PAGE_OFFSET && va < PAGE_OFFSET + block_mapped_ram)
 		return __pa(va);
 	return 0;
@@ -49,8 +41,6 @@ unsigned long p_block_mapped(phys_addr_t pa)
 
 	if (pa >= p && pa < p + IMMR_SIZE)
 		return VIRT_IMMR_BASE + pa - p;
-	if (__map_without_ltlbs)
-		return 0;
 	if (pa < block_mapped_ram)
 		return (unsigned long)__va(pa);
 	return 0;
@@ -157,9 +147,6 @@ unsigned long __init mmu_mapin_ram(unsigned long base, unsigned long top)
 
 	mmu_mapin_immr();
 
-	if (__map_without_ltlbs)
-		return 0;
-
 	mmu_mapin_ram_chunk(0, boundary, PAGE_KERNEL_TEXT, true);
 	if (debug_pagealloc_enabled_or_kfence()) {
 		top = boundary;
@@ -183,8 +170,8 @@ void mmu_mark_initmem_nx(void)
 	unsigned long boundary = strict_kernel_rwx_enabled() ? sinittext : etext8;
 	unsigned long einittext8 = ALIGN(__pa(_einittext), SZ_8M);
 
-	mmu_mapin_ram_chunk(0, boundary, PAGE_KERNEL_TEXT, false);
-	mmu_mapin_ram_chunk(boundary, einittext8, PAGE_KERNEL, false);
+	if (!debug_pagealloc_enabled_or_kfence())
+		mmu_mapin_ram_chunk(boundary, einittext8, PAGE_KERNEL, false);
 
 	mmu_pin_tlb(block_mapped_ram, false);
 }
@@ -211,35 +198,6 @@ void __init setup_initial_memory_limit(phys_addr_t first_memblock_base,
 	/* 8xx can only access 32MB at the moment */
 	memblock_set_current_limit(min_t(u64, first_memblock_size, SZ_32M));
 }
-
-#ifdef CONFIG_PPC_KUEP
-void __init setup_kuep(bool disabled)
-{
-	if (disabled)
-		return;
-
-	pr_info("Activating Kernel Userspace Execution Prevention\n");
-
-	mtspr(SPRN_MI_AP, MI_APG_KUEP);
-}
-#endif
-
-#ifdef CONFIG_PPC_KUAP
-struct static_key_false disable_kuap_key;
-EXPORT_SYMBOL(disable_kuap_key);
-
-void __init setup_kuap(bool disabled)
-{
-	if (disabled) {
-		static_branch_enable(&disable_kuap_key);
-		return;
-	}
-
-	pr_info("Activating Kernel Userspace Access Protection\n");
-
-	mtspr(SPRN_MD_AP, MD_APG_KUAP);
-}
-#endif
 
 int pud_clear_huge(pud_t *pud)
 {

@@ -50,6 +50,7 @@ struct vmcs_controls_shadow {
 	u32 pin;
 	u32 exec;
 	u32 secondary_exec;
+	u64 tertiary_exec;
 };
 
 /*
@@ -104,6 +105,11 @@ static inline bool is_breakpoint(u32 intr_info)
 	return is_exception_n(intr_info, BP_VECTOR);
 }
 
+static inline bool is_double_fault(u32 intr_info)
+{
+	return is_exception_n(intr_info, DF_VECTOR);
+}
+
 static inline bool is_page_fault(u32 intr_info)
 {
 	return is_exception_n(intr_info, PF_VECTOR);
@@ -127,6 +133,11 @@ static inline bool is_alignment_check(u32 intr_info)
 static inline bool is_machine_check(u32 intr_info)
 {
 	return is_exception_n(intr_info, MC_VECTOR);
+}
+
+static inline bool is_nm_fault(u32 intr_info)
+{
+	return is_exception_n(intr_info, NM_VECTOR);
 }
 
 /* Undocumented: icebp/int1 */

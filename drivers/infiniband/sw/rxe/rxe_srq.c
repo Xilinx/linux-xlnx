@@ -6,64 +6,34 @@
 
 #include <linux/vmalloc.h>
 #include "rxe.h"
-#include "rxe_loc.h"
 #include "rxe_queue.h"
 
-int rxe_srq_chk_attr(struct rxe_dev *rxe, struct rxe_srq *srq,
-		     struct ib_srq_attr *attr, enum ib_srq_attr_mask mask)
+int rxe_srq_chk_init(struct rxe_dev *rxe, struct ib_srq_init_attr *init)
 {
-	if (srq && srq->error) {
-		pr_warn("srq in error state\n");
+	struct ib_srq_attr *attr = &init->attr;
+
+	if (attr->max_wr > rxe->attr.max_srq_wr) {
+		pr_warn("max_wr(%d) > max_srq_wr(%d)\n",
+			attr->max_wr, rxe->attr.max_srq_wr);
 		goto err1;
 	}
 
-	if (mask & IB_SRQ_MAX_WR) {
-		if (attr->max_wr > rxe->attr.max_srq_wr) {
-			pr_warn("max_wr(%d) > max_srq_wr(%d)\n",
-				attr->max_wr, rxe->attr.max_srq_wr);
-			goto err1;
-		}
-
-		if (attr->max_wr <= 0) {
-			pr_warn("max_wr(%d) <= 0\n", attr->max_wr);
-			goto err1;
-		}
-
-		if (srq && srq->limit && (attr->max_wr < srq->limit)) {
-			pr_warn("max_wr (%d) < srq->limit (%d)\n",
-				attr->max_wr, srq->limit);
-			goto err1;
-		}
-
-		if (attr->max_wr < RXE_MIN_SRQ_WR)
-			attr->max_wr = RXE_MIN_SRQ_WR;
+	if (attr->max_wr <= 0) {
+		pr_warn("max_wr(%d) <= 0\n", attr->max_wr);
+		goto err1;
 	}
 
-	if (mask & IB_SRQ_LIMIT) {
-		if (attr->srq_limit > rxe->attr.max_srq_wr) {
-			pr_warn("srq_limit(%d) > max_srq_wr(%d)\n",
-				attr->srq_limit, rxe->attr.max_srq_wr);
-			goto err1;
-		}
+	if (attr->max_wr < RXE_MIN_SRQ_WR)
+		attr->max_wr = RXE_MIN_SRQ_WR;
 
-		if (srq && (attr->srq_limit > srq->rq.queue->buf->index_mask)) {
-			pr_warn("srq_limit (%d) > cur limit(%d)\n",
-				attr->srq_limit,
-				 srq->rq.queue->buf->index_mask);
-			goto err1;
-		}
+	if (attr->max_sge > rxe->attr.max_srq_sge) {
+		pr_warn("max_sge(%d) > max_srq_sge(%d)\n",
+			attr->max_sge, rxe->attr.max_srq_sge);
+		goto err1;
 	}
 
-	if (mask == IB_SRQ_INIT_MASK) {
-		if (attr->max_sge > rxe->attr.max_srq_sge) {
-			pr_warn("max_sge(%d) > max_srq_sge(%d)\n",
-				attr->max_sge, rxe->attr.max_srq_sge);
-			goto err1;
-		}
-
-		if (attr->max_sge < RXE_MIN_SRQ_SGE)
-			attr->max_sge = RXE_MIN_SRQ_SGE;
-	}
+	if (attr->max_sge < RXE_MIN_SRQ_SGE)
+		attr->max_sge = RXE_MIN_SRQ_SGE;
 
 	return 0;
 
@@ -83,19 +53,17 @@ int rxe_srq_from_init(struct rxe_dev *rxe, struct rxe_srq *srq,
 	srq->ibsrq.event_handler	= init->event_handler;
 	srq->ibsrq.srq_context		= init->srq_context;
 	srq->limit		= init->attr.srq_limit;
-	srq->srq_num		= srq->pelem.index;
+	srq->srq_num		= srq->elem.index;
 	srq->rq.max_wr		= init->attr.max_wr;
 	srq->rq.max_sge		= init->attr.max_sge;
-	srq->rq.is_user		= srq->is_user;
 
 	srq_wqe_size		= rcv_wqe_size(srq->rq.max_sge);
 
 	spin_lock_init(&srq->rq.producer_lock);
 	spin_lock_init(&srq->rq.consumer_lock);
 
-	type = uresp ? QUEUE_TYPE_FROM_USER : QUEUE_TYPE_KERNEL;
-	q = rxe_queue_init(rxe, &srq->rq.max_wr,
-			srq_wqe_size, type);
+	type = QUEUE_TYPE_FROM_CLIENT;
+	q = rxe_queue_init(rxe, &srq->rq.max_wr, srq_wqe_size, type);
 	if (!q) {
 		pr_warn("unable to allocate queue for srq\n");
 		return -ENOMEM;
@@ -120,6 +88,57 @@ int rxe_srq_from_init(struct rxe_dev *rxe, struct rxe_srq *srq,
 	}
 
 	return 0;
+}
+
+int rxe_srq_chk_attr(struct rxe_dev *rxe, struct rxe_srq *srq,
+		     struct ib_srq_attr *attr, enum ib_srq_attr_mask mask)
+{
+	if (srq->error) {
+		pr_warn("srq in error state\n");
+		goto err1;
+	}
+
+	if (mask & IB_SRQ_MAX_WR) {
+		if (attr->max_wr > rxe->attr.max_srq_wr) {
+			pr_warn("max_wr(%d) > max_srq_wr(%d)\n",
+				attr->max_wr, rxe->attr.max_srq_wr);
+			goto err1;
+		}
+
+		if (attr->max_wr <= 0) {
+			pr_warn("max_wr(%d) <= 0\n", attr->max_wr);
+			goto err1;
+		}
+
+		if (srq->limit && (attr->max_wr < srq->limit)) {
+			pr_warn("max_wr (%d) < srq->limit (%d)\n",
+				attr->max_wr, srq->limit);
+			goto err1;
+		}
+
+		if (attr->max_wr < RXE_MIN_SRQ_WR)
+			attr->max_wr = RXE_MIN_SRQ_WR;
+	}
+
+	if (mask & IB_SRQ_LIMIT) {
+		if (attr->srq_limit > rxe->attr.max_srq_wr) {
+			pr_warn("srq_limit(%d) > max_srq_wr(%d)\n",
+				attr->srq_limit, rxe->attr.max_srq_wr);
+			goto err1;
+		}
+
+		if (attr->srq_limit > srq->rq.queue->buf->index_mask) {
+			pr_warn("srq_limit (%d) > cur limit(%d)\n",
+				attr->srq_limit,
+				srq->rq.queue->buf->index_mask);
+			goto err1;
+		}
+	}
+
+	return 0;
+
+err1:
+	return -EINVAL;
 }
 
 int rxe_srq_from_attr(struct rxe_dev *rxe, struct rxe_srq *srq,
@@ -154,4 +173,15 @@ err2:
 	rxe_queue_cleanup(q);
 	srq->rq.queue = NULL;
 	return err;
+}
+
+void rxe_srq_cleanup(struct rxe_pool_elem *elem)
+{
+	struct rxe_srq *srq = container_of(elem, typeof(*srq), elem);
+
+	if (srq->pd)
+		rxe_put(srq->pd);
+
+	if (srq->rq.queue)
+		rxe_queue_cleanup(srq->rq.queue);
 }

@@ -21,9 +21,9 @@
 #include <linux/iio/iio.h>
 #include <linux/iio/types.h>
 #include <linux/module.h>
+#include <linux/mod_devicetable.h>
 #include <linux/mutex.h>
-#include <linux/of.h>
-#include <linux/of_device.h>
+#include <linux/property.h>
 #include <linux/spi/spi.h>
 
 #define MCP41010_MAX_WIPERS	2
@@ -60,7 +60,7 @@ struct mcp41010_data {
 	const struct mcp41010_cfg *cfg;
 	struct mutex lock; /* Protect write sequences */
 	unsigned int value[MCP41010_MAX_WIPERS]; /* Cache wiper values */
-	u8 buf[2] ____cacheline_aligned;
+	u8 buf[2] __aligned(IIO_DMA_MINALIGN);
 };
 
 #define MCP41010_CHANNEL(ch) {					\
@@ -146,7 +146,7 @@ static int mcp41010_probe(struct spi_device *spi)
 	data = iio_priv(indio_dev);
 	spi_set_drvdata(spi, indio_dev);
 	data->spi = spi;
-	data->cfg = of_device_get_match_data(&spi->dev);
+	data->cfg = device_get_match_data(&spi->dev);
 	if (!data->cfg)
 		data->cfg = &mcp41010_cfg[spi_get_device_id(spi)->driver_data];
 

@@ -295,7 +295,7 @@ Pete Zaitcev gives the following summary:
 
 -  If you are in a process context (any syscall) and want to lock other
    process out, use a mutex. You can take a mutex and sleep
-   (``copy_from_user*(`` or ``kmalloc(x,GFP_KERNEL)``).
+   (``copy_from_user()`` or ``kmalloc(x,GFP_KERNEL)``).
 
 -  Otherwise (== data can be touched in an interrupt), use
    spin_lock_irqsave() and
@@ -941,8 +941,7 @@ lock.
 
 A classic problem here is when you provide callbacks or hooks: if you
 call these with the lock held, you risk simple deadlock, or a deadly
-embrace (who knows what the callback will do?). Remember, the other
-programmers are out to get you, so don't do this.
+embrace (who knows what the callback will do?).
 
 Overzealous Prevention Of Deadlocks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -951,8 +950,6 @@ Deadlocks are problematic, but not as bad as data corruption. Code which
 grabs a read lock, searches a list, fails to find what it wants, drops
 the read lock, grabs a write lock and inserts the object has a race
 condition.
-
-If you don't see why, please stay away from my code.
 
 Racing Timers: A Kernel Pastime
 -------------------------------
@@ -1352,7 +1349,19 @@ Mutex API reference
 Futex API reference
 ===================
 
-.. kernel-doc:: kernel/futex.c
+.. kernel-doc:: kernel/futex/core.c
+   :internal:
+
+.. kernel-doc:: kernel/futex/futex.h
+   :internal:
+
+.. kernel-doc:: kernel/futex/pi.c
+   :internal:
+
+.. kernel-doc:: kernel/futex/requeue.c
+   :internal:
+
+.. kernel-doc:: kernel/futex/waitwake.c
    :internal:
 
 Further reading

@@ -23,7 +23,7 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_fb_helper.h>
-#include <drm/drm_gem_cma_helper.h>
+#include <drm/drm_gem_dma_helper.h>
 #include <drm/drm_of.h>
 #include <drm/drm_probe_helper.h>
 
@@ -198,7 +198,7 @@ static struct drm_driver xlnx_drm_driver = {
 	.open				= xlnx_drm_open,
 	.lastclose			= xlnx_lastclose,
 
-	DRM_GEM_CMA_DRIVER_OPS_VMAP_WITH_DUMB_CREATE(xlnx_gem_cma_dumb_create),
+	DRM_GEM_DMA_DRIVER_OPS_VMAP_WITH_DUMB_CREATE(xlnx_gem_cma_dumb_create),
 
 	.fops				= &xlnx_fops,
 

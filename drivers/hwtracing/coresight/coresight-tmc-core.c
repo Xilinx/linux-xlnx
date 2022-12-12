@@ -251,41 +251,21 @@ static enum tmc_mem_intf_width tmc_get_memwidth(u32 devid)
 	return memwidth;
 }
 
-#define coresight_tmc_reg(name, offset)			\
-	coresight_simple_reg32(struct tmc_drvdata, name, offset)
-#define coresight_tmc_reg64(name, lo_off, hi_off)	\
-	coresight_simple_reg64(struct tmc_drvdata, name, lo_off, hi_off)
-
-coresight_tmc_reg(rsz, TMC_RSZ);
-coresight_tmc_reg(sts, TMC_STS);
-coresight_tmc_reg(trg, TMC_TRG);
-coresight_tmc_reg(ctl, TMC_CTL);
-coresight_tmc_reg(ffsr, TMC_FFSR);
-coresight_tmc_reg(ffcr, TMC_FFCR);
-coresight_tmc_reg(mode, TMC_MODE);
-coresight_tmc_reg(pscr, TMC_PSCR);
-coresight_tmc_reg(axictl, TMC_AXICTL);
-coresight_tmc_reg(authstatus, TMC_AUTHSTATUS);
-coresight_tmc_reg(devid, CORESIGHT_DEVID);
-coresight_tmc_reg64(rrp, TMC_RRP, TMC_RRPHI);
-coresight_tmc_reg64(rwp, TMC_RWP, TMC_RWPHI);
-coresight_tmc_reg64(dba, TMC_DBALO, TMC_DBAHI);
-
 static struct attribute *coresight_tmc_mgmt_attrs[] = {
-	&dev_attr_rsz.attr,
-	&dev_attr_sts.attr,
-	&dev_attr_rrp.attr,
-	&dev_attr_rwp.attr,
-	&dev_attr_trg.attr,
-	&dev_attr_ctl.attr,
-	&dev_attr_ffsr.attr,
-	&dev_attr_ffcr.attr,
-	&dev_attr_mode.attr,
-	&dev_attr_pscr.attr,
-	&dev_attr_devid.attr,
-	&dev_attr_dba.attr,
-	&dev_attr_axictl.attr,
-	&dev_attr_authstatus.attr,
+	coresight_simple_reg32(rsz, TMC_RSZ),
+	coresight_simple_reg32(sts, TMC_STS),
+	coresight_simple_reg64(rrp, TMC_RRP, TMC_RRPHI),
+	coresight_simple_reg64(rwp, TMC_RWP, TMC_RWPHI),
+	coresight_simple_reg32(trg, TMC_TRG),
+	coresight_simple_reg32(ctl, TMC_CTL),
+	coresight_simple_reg32(ffsr, TMC_FFSR),
+	coresight_simple_reg32(ffcr, TMC_FFCR),
+	coresight_simple_reg32(mode, TMC_MODE),
+	coresight_simple_reg32(pscr, TMC_PSCR),
+	coresight_simple_reg32(devid, CORESIGHT_DEVID),
+	coresight_simple_reg64(dba, TMC_DBALO, TMC_DBAHI),
+	coresight_simple_reg32(axictl, TMC_AXICTL),
+	coresight_simple_reg32(authstatus, TMC_AUTHSTATUS),
 	NULL,
 };
 
@@ -432,6 +412,21 @@ static u32 tmc_etr_get_default_buffer_size(struct device *dev)
 	return size;
 }
 
+static u32 tmc_etr_get_max_burst_size(struct device *dev)
+{
+	u32 burst_size;
+
+	if (fwnode_property_read_u32(dev->fwnode, "arm,max-burst-size",
+				     &burst_size))
+		return TMC_AXICTL_WR_BURST_16;
+
+	/* Only permissible values are 0 to 15 */
+	if (burst_size > 0xF)
+		burst_size = TMC_AXICTL_WR_BURST_16;
+
+	return burst_size;
+}
+
 static int tmc_probe(struct amba_device *adev, const struct amba_id *id)
 {
 	int ret = 0;
@@ -469,10 +464,12 @@ static int tmc_probe(struct amba_device *adev, const struct amba_id *id)
 	/* This device is not associated with a session */
 	drvdata->pid = -1;
 
-	if (drvdata->config_type == TMC_CONFIG_TYPE_ETR)
+	if (drvdata->config_type == TMC_CONFIG_TYPE_ETR) {
 		drvdata->size = tmc_etr_get_default_buffer_size(dev);
-	else
+		drvdata->max_burst_size = tmc_etr_get_max_burst_size(dev);
+	} else {
 		drvdata->size = readl_relaxed(drvdata->base + TMC_RSZ) * 4;
+	}
 
 	desc.dev = dev;
 	desc.groups = coresight_tmc_groups;

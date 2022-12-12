@@ -3205,7 +3205,7 @@ static int ucc_geth_set_mac_addr(struct net_device *dev, void *p)
 	if (!is_valid_ether_addr(addr->sa_data))
 		return -EADDRNOTAVAIL;
 
-	memcpy(dev->dev_addr, addr->sa_data, dev->addr_len);
+	eth_hw_addr_set(dev, addr->sa_data);
 
 	/*
 	 * If device is not running, we will set mac addr register
@@ -3712,7 +3712,7 @@ static int ucc_geth_probe(struct platform_device* ofdev)
 	dev->netdev_ops = &ucc_geth_netdev_ops;
 	dev->watchdog_timeo = TX_TIMEOUT;
 	INIT_WORK(&ugeth->timeout_work, ucc_geth_timeout_work);
-	netif_napi_add(dev, &ugeth->napi, ucc_geth_poll, 64);
+	netif_napi_add(dev, &ugeth->napi, ucc_geth_poll);
 	dev->mtu = 1500;
 	dev->max_mtu = 1518;
 
@@ -3731,7 +3731,7 @@ static int ucc_geth_probe(struct platform_device* ofdev)
 		goto err_free_netdev;
 	}
 
-	of_get_mac_address(np, dev->dev_addr);
+	of_get_ethdev_address(np, dev);
 
 	ugeth->ug_info = ug_info;
 	ugeth->dev = device;

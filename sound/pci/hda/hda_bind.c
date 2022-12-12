@@ -14,6 +14,7 @@
 #include <sound/core.h>
 #include <sound/hda_codec.h>
 #include "hda_local.h"
+#include "hda_jack.h"
 
 /*
  * find a matching codec id
@@ -156,6 +157,12 @@ static int hda_codec_driver_remove(struct device *dev)
 		return codec->bus->core.ext_ops->hdev_detach(&codec->core);
 	}
 
+	snd_hda_codec_disconnect_pcms(codec);
+	snd_hda_jack_tbl_disconnect(codec);
+	if (!refcount_dec_and_test(&codec->pcm_ref))
+		wait_event(codec->remove_sleep, !refcount_read(&codec->pcm_ref));
+	snd_power_sync_ref(codec->bus->card);
+
 	if (codec->patch_ops.free)
 		codec->patch_ops.free(codec);
 	snd_hda_codec_cleanup_for_unbind(codec);
@@ -240,6 +247,13 @@ static void codec_bind_module(struct hda_codec *codec)
 static bool is_likely_hdmi_codec(struct hda_codec *codec)
 {
 	hda_nid_t nid;
+
+	/*
+	 * For ASoC users, if snd_hda_hdmi_codec module is denylisted and any
+	 * event causes i915 enumeration to fail, ->wcaps remains uninitialized.
+	 */
+	if (!codec->wcaps)
+		return true;
 
 	for_each_hda_codec_node(nid, codec) {
 		unsigned int wcaps = get_wcaps(codec, nid);

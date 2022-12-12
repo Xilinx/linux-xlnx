@@ -118,7 +118,7 @@ static int video_mux_s_stream(struct v4l2_subdev *sd, int enable)
 		return -EINVAL;
 	}
 
-	pad = media_entity_remote_pad(&sd->entity.pads[vmux->active]);
+	pad = media_pad_remote_pad_first(&sd->entity.pads[vmux->active]);
 	if (!pad) {
 		dev_err(sd->dev, "Failed to find remote source pad\n");
 		return -ENOLINK;
@@ -360,7 +360,7 @@ static int video_mux_async_register(struct video_mux *vmux,
 	unsigned int i;
 	int ret;
 
-	v4l2_async_notifier_init(&vmux->notifier);
+	v4l2_async_nf_init(&vmux->notifier);
 
 	for (i = 0; i < num_input_pads; i++) {
 		struct v4l2_async_subdev *asd;
@@ -380,8 +380,8 @@ static int video_mux_async_register(struct video_mux *vmux,
 		}
 		fwnode_handle_put(remote_ep);
 
-		asd = v4l2_async_notifier_add_fwnode_remote_subdev(
-			&vmux->notifier, ep, struct v4l2_async_subdev);
+		asd = v4l2_async_nf_add_fwnode_remote(&vmux->notifier, ep,
+						      struct v4l2_async_subdev);
 
 		fwnode_handle_put(ep);
 
@@ -395,8 +395,7 @@ static int video_mux_async_register(struct video_mux *vmux,
 
 	vmux->notifier.ops = &video_mux_notify_ops;
 
-	ret = v4l2_async_subdev_notifier_register(&vmux->subdev,
-						  &vmux->notifier);
+	ret = v4l2_async_subdev_nf_register(&vmux->subdev, &vmux->notifier);
 	if (ret)
 		return ret;
 
@@ -443,9 +442,7 @@ static int video_mux_probe(struct platform_device *pdev)
 	vmux->mux = devm_mux_control_get(dev, NULL);
 	if (IS_ERR(vmux->mux)) {
 		ret = PTR_ERR(vmux->mux);
-		if (ret != -EPROBE_DEFER)
-			dev_err(dev, "Failed to get mux: %d\n", ret);
-		return ret;
+		return dev_err_probe(dev, ret, "Failed to get mux\n");
 	}
 
 	mutex_init(&vmux->lock);
@@ -477,8 +474,8 @@ static int video_mux_probe(struct platform_device *pdev)
 
 	ret = video_mux_async_register(vmux, num_pads - 1);
 	if (ret) {
-		v4l2_async_notifier_unregister(&vmux->notifier);
-		v4l2_async_notifier_cleanup(&vmux->notifier);
+		v4l2_async_nf_unregister(&vmux->notifier);
+		v4l2_async_nf_cleanup(&vmux->notifier);
 	}
 
 	return ret;
@@ -489,8 +486,8 @@ static int video_mux_remove(struct platform_device *pdev)
 	struct video_mux *vmux = platform_get_drvdata(pdev);
 	struct v4l2_subdev *sd = &vmux->subdev;
 
-	v4l2_async_notifier_unregister(&vmux->notifier);
-	v4l2_async_notifier_cleanup(&vmux->notifier);
+	v4l2_async_nf_unregister(&vmux->notifier);
+	v4l2_async_nf_cleanup(&vmux->notifier);
 	v4l2_async_unregister_subdev(sd);
 	media_entity_cleanup(&sd->entity);
 

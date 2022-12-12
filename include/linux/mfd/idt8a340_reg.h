@@ -407,7 +407,7 @@
 #define TOD_READ_PRIMARY_0                0xcc40
 #define TOD_READ_PRIMARY_0_V520           0xcc50
 /* 8-bit subns, 32-bit ns, 48-bit seconds */
-#define TOD_READ_PRIMARY                  0x0000
+#define TOD_READ_PRIMARY_BASE             0x0000
 /* Counter increments after TOD write is completed */
 #define TOD_READ_PRIMARY_COUNTER          0x000b
 /* Read trigger configuration */
@@ -424,6 +424,16 @@
 
 #define TOD_READ_SECONDARY_0              0xcc90
 #define TOD_READ_SECONDARY_0_V520         0xcca0
+/* 8-bit subns, 32-bit ns, 48-bit seconds */
+#define TOD_READ_SECONDARY_BASE           0x0000
+/* Counter increments after TOD write is completed */
+#define TOD_READ_SECONDARY_COUNTER        0x000b
+/* Read trigger configuration */
+#define TOD_READ_SECONDARY_SEL_CFG_0      0x000c
+/* Read trigger selection */
+#define TOD_READ_SECONDARY_CMD            0x000e
+#define TOD_READ_SECONDARY_CMD_V520       0x000f
+
 #define TOD_READ_SECONDARY_1              0xcca0
 #define TOD_READ_SECONDARY_1_V520         0xccb0
 #define TOD_READ_SECONDARY_2              0xccb0
@@ -505,6 +515,10 @@
 #define PLL_MODE_MASK                     (0x7)
 #define STATE_MODE_SHIFT                  (0)
 #define STATE_MODE_MASK                   (0x7)
+
+/* Bit definitions for the DPLL_MANU_REF_CFG register */
+#define MANUAL_REFERENCE_SHIFT            (0)
+#define MANUAL_REFERENCE_MASK             (0x1f)
 
 /* Bit definitions for the GPIO_CFG_GBL register */
 #define SUPPLY_MODE_SHIFT                 (0)
@@ -654,7 +668,7 @@
 /* Values of DPLL_N.DPLL_MODE.PLL_MODE */
 enum pll_mode {
 	PLL_MODE_MIN = 0,
-	PLL_MODE_NORMAL = PLL_MODE_MIN,
+	PLL_MODE_PLL = PLL_MODE_MIN,
 	PLL_MODE_WRITE_PHASE = 1,
 	PLL_MODE_WRITE_FREQUENCY = 2,
 	PLL_MODE_GPIO_INC_DEC = 3,
@@ -662,6 +676,31 @@ enum pll_mode {
 	PLL_MODE_PHASE_MEASUREMENT = 5,
 	PLL_MODE_DISABLED = 6,
 	PLL_MODE_MAX = PLL_MODE_DISABLED,
+};
+
+/* Values of DPLL_CTRL_n.DPLL_MANU_REF_CFG.MANUAL_REFERENCE */
+enum manual_reference {
+	MANU_REF_MIN = 0,
+	MANU_REF_CLK0 = MANU_REF_MIN,
+	MANU_REF_CLK1,
+	MANU_REF_CLK2,
+	MANU_REF_CLK3,
+	MANU_REF_CLK4,
+	MANU_REF_CLK5,
+	MANU_REF_CLK6,
+	MANU_REF_CLK7,
+	MANU_REF_CLK8,
+	MANU_REF_CLK9,
+	MANU_REF_CLK10,
+	MANU_REF_CLK11,
+	MANU_REF_CLK12,
+	MANU_REF_CLK13,
+	MANU_REF_CLK14,
+	MANU_REF_CLK15,
+	MANU_REF_WRITE_PHASE,
+	MANU_REF_WRITE_FREQUENCY,
+	MANU_REF_XO_DPLL,
+	MANU_REF_MAX = MANU_REF_XO_DPLL,
 };
 
 enum hw_tod_write_trig_sel {

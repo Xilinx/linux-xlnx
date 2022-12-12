@@ -24,11 +24,14 @@ static const char * const btf_kind_str_mapping[] = {
 	[BTF_KIND_VAR]		= "VAR",
 	[BTF_KIND_DATASEC]	= "DATASEC",
 	[BTF_KIND_FLOAT]	= "FLOAT",
+	[BTF_KIND_DECL_TAG]	= "DECL_TAG",
+	[BTF_KIND_TYPE_TAG]	= "TYPE_TAG",
+	[BTF_KIND_ENUM64]	= "ENUM64",
 };
 
 static const char *btf_kind_str(__u16 kind)
 {
-	if (kind > BTF_KIND_DATASEC)
+	if (kind > BTF_KIND_ENUM64)
 		return "UNKNOWN";
 	return btf_kind_str_mapping[kind];
 }
@@ -108,6 +111,7 @@ int fprintf_btf_type_raw(FILE *out, const struct btf *btf, __u32 id)
 	case BTF_KIND_VOLATILE:
 	case BTF_KIND_RESTRICT:
 	case BTF_KIND_TYPEDEF:
+	case BTF_KIND_TYPE_TAG:
 		fprintf(out, " type_id=%u", t->type);
 		break;
 	case BTF_KIND_ARRAY: {
@@ -136,11 +140,29 @@ int fprintf_btf_type_raw(FILE *out, const struct btf *btf, __u32 id)
 	}
 	case BTF_KIND_ENUM: {
 		const struct btf_enum *v = btf_enum(t);
+		const char *fmt_str;
 
-		fprintf(out, " size=%u vlen=%u", t->size, vlen);
+		fmt_str = btf_kflag(t) ? "\n\t'%s' val=%d" : "\n\t'%s' val=%u";
+		fprintf(out, " encoding=%s size=%u vlen=%u",
+			btf_kflag(t) ? "SIGNED" : "UNSIGNED", t->size, vlen);
 		for (i = 0; i < vlen; i++, v++) {
-			fprintf(out, "\n\t'%s' val=%u",
+			fprintf(out, fmt_str,
 				btf_str(btf, v->name_off), v->val);
+		}
+		break;
+	}
+	case BTF_KIND_ENUM64: {
+		const struct btf_enum64 *v = btf_enum64(t);
+		const char *fmt_str;
+
+		fmt_str = btf_kflag(t) ? "\n\t'%s' val=%lld" : "\n\t'%s' val=%llu";
+
+		fprintf(out, " encoding=%s size=%u vlen=%u",
+			btf_kflag(t) ? "SIGNED" : "UNSIGNED", t->size, vlen);
+		for (i = 0; i < vlen; i++, v++) {
+			fprintf(out, fmt_str,
+				btf_str(btf, v->name_off),
+				((__u64)v->val_hi32 << 32) | v->val_lo32);
 		}
 		break;
 	}
@@ -177,6 +199,10 @@ int fprintf_btf_type_raw(FILE *out, const struct btf *btf, __u32 id)
 	case BTF_KIND_FLOAT:
 		fprintf(out, " size=%u", t->size);
 		break;
+	case BTF_KIND_DECL_TAG:
+		fprintf(out, " type_id=%u component_idx=%d",
+			t->type, btf_decl_tag(t)->component_idx);
+		break;
 	default:
 		break;
 	}
@@ -210,7 +236,7 @@ int btf_validate_raw(struct btf *btf, int nr_types, const char *exp_types[])
 	int i;
 	bool ok = true;
 
-	ASSERT_EQ(btf__get_nr_types(btf), nr_types, "btf_nr_types");
+	ASSERT_EQ(btf__type_cnt(btf) - 1, nr_types, "btf_nr_types");
 
 	for (i = 1; i <= nr_types; i++) {
 		if (!ASSERT_STREQ(btf_type_raw_dump(btf, i), exp_types[i - 1], "raw_dump"))
@@ -233,7 +259,6 @@ const char *btf_type_c_dump(const struct btf *btf)
 	static char buf[16 * 1024];
 	FILE *buf_file;
 	struct btf_dump *d = NULL;
-	struct btf_dump_opts opts = {};
 	int err, i;
 
 	buf_file = fmemopen(buf, sizeof(buf) - 1, "w");
@@ -242,22 +267,26 @@ const char *btf_type_c_dump(const struct btf *btf)
 		return NULL;
 	}
 
-	opts.ctx = buf_file;
-	d = btf_dump__new(btf, NULL, &opts, btf_dump_printf);
+	d = btf_dump__new(btf, btf_dump_printf, buf_file, NULL);
 	if (libbpf_get_error(d)) {
 		fprintf(stderr, "Failed to create btf_dump instance: %ld\n", libbpf_get_error(d));
-		return NULL;
+		goto err_out;
 	}
 
-	for (i = 1; i <= btf__get_nr_types(btf); i++) {
+	for (i = 1; i < btf__type_cnt(btf); i++) {
 		err = btf_dump__dump_type(d, i);
 		if (err) {
 			fprintf(stderr, "Failed to dump type [%d]: %d\n", i, err);
-			return NULL;
+			goto err_out;
 		}
 	}
 
+	btf_dump__free(d);
 	fflush(buf_file);
 	fclose(buf_file);
 	return buf;
+err_out:
+	btf_dump__free(d);
+	fclose(buf_file);
+	return NULL;
 }

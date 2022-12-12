@@ -34,14 +34,17 @@ enum cpuid_leafs
 	CPUID_8000_001F_EAX,
 };
 
+#define X86_CAP_FMT_NUM "%d:%d"
+#define x86_cap_flag_num(flag) ((flag) >> 5), ((flag) & 31)
+
 #ifdef CONFIG_X86_FEATURE_NAMES
 extern const char * const x86_cap_flags[NCAPINTS*32];
 extern const char * const x86_power_flags[32];
 #define X86_CAP_FMT "%s"
 #define x86_cap_flag(flag) x86_cap_flags[flag]
 #else
-#define X86_CAP_FMT "%d:%d"
-#define x86_cap_flag(flag) ((flag) >> 5), ((flag) & 31)
+#define X86_CAP_FMT X86_CAP_FMT_NUM
+#define x86_cap_flag x86_cap_flag_num
 #endif
 
 /*
@@ -51,7 +54,7 @@ extern const char * const x86_power_flags[32];
 extern const char * const x86_bug_flags[NBUGINTS*32];
 
 #define test_cpu_cap(c, bit)						\
-	 test_bit(bit, (unsigned long *)((c)->x86_capability))
+	 arch_test_bit(bit, (unsigned long *)((c)->x86_capability))
 
 /*
  * There are 32 bits/features in each mask word.  The high bits
@@ -152,20 +155,6 @@ extern void clear_cpu_cap(struct cpuinfo_x86 *c, unsigned int bit);
 
 #define setup_force_cpu_bug(bit) setup_force_cpu_cap(bit)
 
-#if defined(__clang__) && !defined(CONFIG_CC_HAS_ASM_GOTO)
-
-/*
- * Workaround for the sake of BPF compilation which utilizes kernel
- * headers, but clang does not support ASM GOTO and fails the build.
- */
-#ifndef __BPF_TRACING__
-#warning "Compiler lacks ASM_GOTO support. Add -D __BPF_TRACING__ to your compiler arguments"
-#endif
-
-#define static_cpu_has(bit)            boot_cpu_has(bit)
-
-#else
-
 /*
  * Static testing of CPU features. Used the same as boot_cpu_has(). It
  * statically patches the target code for additional performance. Use
@@ -173,20 +162,25 @@ extern void clear_cpu_cap(struct cpuinfo_x86 *c, unsigned int bit);
  * means that the boot_cpu_has() variant is already fast enough for the
  * majority of cases and you should stick to using it as it is generally
  * only two instructions: a RIP-relative MOV and a TEST.
+ *
+ * Do not use an "m" constraint for [cap_byte] here: gcc doesn't know
+ * that this is only used on a fallback path and will sometimes cause
+ * it to manifest the address of boot_cpu_data in a register, fouling
+ * the mainline (post-initialization) code.
  */
 static __always_inline bool _static_cpu_has(u16 bit)
 {
 	asm_volatile_goto(
 		ALTERNATIVE_TERNARY("jmp 6f", %P[feature], "", "jmp %l[t_no]")
-		".section .altinstr_aux,\"ax\"\n"
+		".pushsection .altinstr_aux,\"ax\"\n"
 		"6:\n"
-		" testb %[bitnum],%[cap_byte]\n"
+		" testb %[bitnum]," _ASM_RIP(%P[cap_byte]) "\n"
 		" jnz %l[t_yes]\n"
 		" jmp %l[t_no]\n"
-		".previous\n"
+		".popsection\n"
 		 : : [feature]  "i" (bit),
 		     [bitnum]   "i" (1 << (bit & 7)),
-		     [cap_byte] "m" (((const char *)boot_cpu_data.x86_capability)[bit >> 3])
+		     [cap_byte] "i" (&((const char *)boot_cpu_data.x86_capability)[bit >> 3])
 		 : : t_yes, t_no);
 t_yes:
 	return true;
@@ -200,7 +194,6 @@ t_no:
 		boot_cpu_has(bit) :				\
 		_static_cpu_has(bit)				\
 )
-#endif
 
 #define cpu_has_bug(c, bit)		cpu_has(c, (bit))
 #define set_cpu_bug(c, bit)		set_cpu_cap(c, (bit))

@@ -66,20 +66,106 @@ out_nosk:
 	return err;
 }
 
+struct mptcp_diag_ctx {
+	long s_slot;
+	long s_num;
+	unsigned int l_slot;
+	unsigned int l_num;
+};
+
+static void mptcp_diag_dump_listeners(struct sk_buff *skb, struct netlink_callback *cb,
+				      const struct inet_diag_req_v2 *r,
+				      bool net_admin)
+{
+	struct inet_diag_dump_data *cb_data = cb->data;
+	struct mptcp_diag_ctx *diag_ctx = (void *)cb->ctx;
+	struct nlattr *bc = cb_data->inet_diag_nla_bc;
+	struct net *net = sock_net(skb->sk);
+	struct inet_hashinfo *hinfo;
+	int i;
+
+	hinfo = net->ipv4.tcp_death_row.hashinfo;
+
+	for (i = diag_ctx->l_slot; i <= hinfo->lhash2_mask; i++) {
+		struct inet_listen_hashbucket *ilb;
+		struct hlist_nulls_node *node;
+		struct sock *sk;
+		int num = 0;
+
+		ilb = &hinfo->lhash2[i];
+
+		rcu_read_lock();
+		spin_lock(&ilb->lock);
+		sk_nulls_for_each(sk, node, &ilb->nulls_head) {
+			const struct mptcp_subflow_context *ctx = mptcp_subflow_ctx(sk);
+			struct inet_sock *inet = inet_sk(sk);
+			int ret;
+
+			if (num < diag_ctx->l_num)
+				goto next_listen;
+
+			if (!ctx || strcmp(inet_csk(sk)->icsk_ulp_ops->name, "mptcp"))
+				goto next_listen;
+
+			sk = ctx->conn;
+			if (!sk || !net_eq(sock_net(sk), net))
+				goto next_listen;
+
+			if (r->sdiag_family != AF_UNSPEC &&
+			    sk->sk_family != r->sdiag_family)
+				goto next_listen;
+
+			if (r->id.idiag_sport != inet->inet_sport &&
+			    r->id.idiag_sport)
+				goto next_listen;
+
+			if (!refcount_inc_not_zero(&sk->sk_refcnt))
+				goto next_listen;
+
+			ret = sk_diag_dump(sk, skb, cb, r, bc, net_admin);
+
+			sock_put(sk);
+
+			if (ret < 0) {
+				spin_unlock(&ilb->lock);
+				rcu_read_unlock();
+				diag_ctx->l_slot = i;
+				diag_ctx->l_num = num;
+				return;
+			}
+			diag_ctx->l_num = num + 1;
+			num = 0;
+next_listen:
+			++num;
+		}
+		spin_unlock(&ilb->lock);
+		rcu_read_unlock();
+
+		cond_resched();
+		diag_ctx->l_num = 0;
+	}
+
+	diag_ctx->l_num = 0;
+	diag_ctx->l_slot = i;
+}
+
 static void mptcp_diag_dump(struct sk_buff *skb, struct netlink_callback *cb,
 			    const struct inet_diag_req_v2 *r)
 {
 	bool net_admin = netlink_net_capable(cb->skb, CAP_NET_ADMIN);
+	struct mptcp_diag_ctx *diag_ctx = (void *)cb->ctx;
 	struct net *net = sock_net(skb->sk);
 	struct inet_diag_dump_data *cb_data;
 	struct mptcp_sock *msk;
 	struct nlattr *bc;
 
+	BUILD_BUG_ON(sizeof(cb->ctx) < sizeof(*diag_ctx));
+
 	cb_data = cb->data;
 	bc = cb_data->inet_diag_nla_bc;
 
-	while ((msk = mptcp_token_iter_next(net, &cb->args[0], &cb->args[1])) !=
-	       NULL) {
+	while ((msk = mptcp_token_iter_next(net, &diag_ctx->s_slot,
+					    &diag_ctx->s_num)) != NULL) {
 		struct inet_sock *inet = (struct inet_sock *)msk;
 		struct sock *sk = (struct sock *)msk;
 		int ret = 0;
@@ -101,11 +187,14 @@ next:
 		sock_put(sk);
 		if (ret < 0) {
 			/* will retry on the same position */
-			cb->args[1]--;
+			diag_ctx->s_num--;
 			break;
 		}
 		cond_resched();
 	}
+
+	if ((r->idiag_states & TCPF_LISTEN) && r->id.idiag_dport == 0)
+		mptcp_diag_dump_listeners(skb, cb, r, net_admin);
 }
 
 static void mptcp_diag_get_info(struct sock *sk, struct inet_diag_msg *r,
@@ -113,37 +202,26 @@ static void mptcp_diag_get_info(struct sock *sk, struct inet_diag_msg *r,
 {
 	struct mptcp_sock *msk = mptcp_sk(sk);
 	struct mptcp_info *info = _info;
-	u32 flags = 0;
-	bool slow;
-	u8 val;
 
 	r->idiag_rqueue = sk_rmem_alloc_get(sk);
 	r->idiag_wqueue = sk_wmem_alloc_get(sk);
+
+	if (inet_sk_state_load(sk) == TCP_LISTEN) {
+		struct sock *lsk = READ_ONCE(msk->first);
+
+		if (lsk) {
+			/* override with settings from tcp listener,
+			 * so Send-Q will show accept queue.
+			 */
+			r->idiag_rqueue = READ_ONCE(lsk->sk_ack_backlog);
+			r->idiag_wqueue = READ_ONCE(lsk->sk_max_ack_backlog);
+		}
+	}
+
 	if (!info)
 		return;
 
-	slow = lock_sock_fast(sk);
-	info->mptcpi_subflows = READ_ONCE(msk->pm.subflows);
-	info->mptcpi_add_addr_signal = READ_ONCE(msk->pm.add_addr_signaled);
-	info->mptcpi_add_addr_accepted = READ_ONCE(msk->pm.add_addr_accepted);
-	info->mptcpi_local_addr_used = READ_ONCE(msk->pm.local_addr_used);
-	info->mptcpi_subflows_max = mptcp_pm_get_subflows_max(msk);
-	val = mptcp_pm_get_add_addr_signal_max(msk);
-	info->mptcpi_add_addr_signal_max = val;
-	val = mptcp_pm_get_add_addr_accept_max(msk);
-	info->mptcpi_add_addr_accepted_max = val;
-	info->mptcpi_local_addr_max = mptcp_pm_get_local_addr_max(msk);
-	if (test_bit(MPTCP_FALLBACK_DONE, &msk->flags))
-		flags |= MPTCP_INFO_FLAG_FALLBACK;
-	if (READ_ONCE(msk->can_ack))
-		flags |= MPTCP_INFO_FLAG_REMOTE_KEY_RECEIVED;
-	info->mptcpi_flags = flags;
-	info->mptcpi_token = READ_ONCE(msk->token);
-	info->mptcpi_write_seq = READ_ONCE(msk->write_seq);
-	info->mptcpi_snd_una = READ_ONCE(msk->snd_una);
-	info->mptcpi_rcv_nxt = READ_ONCE(msk->ack_seq);
-	info->mptcpi_csum_enabled = READ_ONCE(msk->csum_enabled);
-	unlock_sock_fast(sk, slow);
+	mptcp_diag_fill_info(msk, info);
 }
 
 static const struct inet_diag_handler mptcp_diag_handler = {

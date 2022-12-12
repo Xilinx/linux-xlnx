@@ -4,7 +4,7 @@
 $id: http://devicetree.org/schemas/phy/xlnx,zynqmp-psgtr.yaml#
 $schema: http://devicetree.org/meta-schemas/core.yaml#
 
-title: Xilinx ZynqMP Gigabit Transceiver PHY Device Tree Bindings
+title: Xilinx ZynqMP Gigabit Transceiver PHY
 
 maintainers:
   - Laurent Pinchart <laurent.pinchart@ideasonboard.com>
@@ -29,7 +29,7 @@ properties:
           - PHY_TYPE_PCIE
           - PHY_TYPE_SATA
           - PHY_TYPE_SGMII
-          - PHY_TYPE_USB
+          - PHY_TYPE_USB3
       - description: The PHY instance
         minimum: 0
         maximum: 1 # for DP, SATA or USB

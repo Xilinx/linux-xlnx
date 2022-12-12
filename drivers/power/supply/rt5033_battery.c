@@ -60,7 +60,7 @@ static int rt5033_battery_get_watt_prop(struct i2c_client *client,
 	regmap_read(battery->regmap, regh, &msb);
 	regmap_read(battery->regmap, regl, &lsb);
 
-	ret = ((msb << 4) + (lsb >> 4)) * 1250 / 1000;
+	ret = ((msb << 4) + (lsb >> 4)) * 1250;
 
 	return ret;
 }
@@ -149,13 +149,11 @@ static int rt5033_battery_probe(struct i2c_client *client,
 	return 0;
 }
 
-static int rt5033_battery_remove(struct i2c_client *client)
+static void rt5033_battery_remove(struct i2c_client *client)
 {
 	struct rt5033_battery *battery = i2c_get_clientdata(client);
 
 	power_supply_unregister(battery->psy);
-
-	return 0;
 }
 
 static const struct i2c_device_id rt5033_battery_id[] = {

@@ -29,6 +29,12 @@
 #define LVL_3		4
 #define LVL_TRACE	5
 
+/* Shared last level cache maps */
+DEFINE_PER_CPU_READ_MOSTLY(cpumask_var_t, cpu_llc_shared_map);
+
+/* Shared L2 cache maps */
+DEFINE_PER_CPU_READ_MOSTLY(cpumask_var_t, cpu_l2c_shared_map);
+
 struct _cache_table {
 	unsigned char descriptor;
 	char cache_type;
@@ -846,6 +852,7 @@ void init_intel_cacheinfo(struct cpuinfo_x86 *c)
 		l2 = new_l2;
 #ifdef CONFIG_SMP
 		per_cpu(cpu_llc_id, cpu) = l2_id;
+		per_cpu(cpu_l2c_id, cpu) = l2_id;
 #endif
 	}
 

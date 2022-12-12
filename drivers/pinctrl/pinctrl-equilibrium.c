@@ -11,6 +11,7 @@
 #include <linux/pinctrl/pinconf-generic.h>
 #include <linux/pinctrl/pinmux.h>
 #include <linux/platform_device.h>
+#include <linux/property.h>
 
 #include "core.h"
 #include "pinconf.h"
@@ -167,11 +168,9 @@ static int gpiochip_setup(struct device *dev, struct eqbr_gpio_ctrl *gctrl)
 
 	gc = &gctrl->chip;
 	gc->label = gctrl->name;
-#if defined(CONFIG_OF_GPIO)
-	gc->of_node = gctrl->node;
-#endif
+	gc->fwnode = gctrl->fwnode;
 
-	if (!of_property_read_bool(gctrl->node, "interrupt-controller")) {
+	if (!fwnode_property_read_bool(gctrl->fwnode, "interrupt-controller")) {
 		dev_dbg(dev, "gc %s: doesn't act as interrupt controller!\n",
 			gctrl->name);
 		return 0;
@@ -209,7 +208,7 @@ static int gpiolib_reg(struct eqbr_pinctrl_drv_data *drvdata)
 
 	for (i = 0; i < drvdata->nr_gpio_ctrls; i++) {
 		gctrl = drvdata->gpio_ctrls + i;
-		np = gctrl->node;
+		np = to_of_node(gctrl->fwnode);
 
 		gctrl->name = devm_kasprintf(dev, GFP_KERNEL, "gpiochip%d", i);
 		if (!gctrl->name)
@@ -675,6 +674,11 @@ static int eqbr_build_functions(struct eqbr_pinctrl_drv_data *drvdata)
 		return ret;
 
 	for (i = 0; i < nr_funcs; i++) {
+
+		/* Ignore the same function with multiple groups */
+		if (funcs[i].name == NULL)
+			continue;
+
 		ret = pinmux_generic_add_function(drvdata->pctl_dev,
 						  funcs[i].name,
 						  funcs[i].groups,
@@ -815,7 +819,7 @@ static int pinctrl_reg(struct eqbr_pinctrl_drv_data *drvdata)
 
 	ret = eqbr_build_functions(drvdata);
 	if (ret) {
-		dev_err(dev, "Failed to build groups\n");
+		dev_err(dev, "Failed to build functions\n");
 		return ret;
 	}
 
@@ -890,7 +894,7 @@ static int pinbank_probe(struct eqbr_pinctrl_drv_data *drvdata)
 
 		pinbank_init(np_gpio, drvdata, banks + i, i);
 
-		gctrls[i].node = np_gpio;
+		gctrls[i].fwnode = of_fwnode_handle(np_gpio);
 		gctrls[i].bank = banks + i;
 		i++;
 	}

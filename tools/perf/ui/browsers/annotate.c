@@ -8,21 +8,16 @@
 #include "../../util/hist.h"
 #include "../../util/sort.h"
 #include "../../util/map.h"
+#include "../../util/mutex.h"
 #include "../../util/symbol.h"
 #include "../../util/evsel.h"
 #include "../../util/evlist.h"
 #include <inttypes.h>
-#include <pthread.h>
 #include <linux/kernel.h>
 #include <linux/string.h>
 #include <linux/zalloc.h>
 #include <sys/ttydefaults.h>
 #include <asm/bug.h>
-
-struct disasm_line_samples {
-	double		      percent;
-	struct sym_hist_entry he;
-};
 
 struct arch;
 
@@ -319,7 +314,7 @@ static void annotate_browser__calc_percent(struct annotate_browser *browser,
 
 	browser->entries = RB_ROOT;
 
-	pthread_mutex_lock(&notes->lock);
+	mutex_lock(&notes->lock);
 
 	symbol__calc_percent(sym, evsel);
 
@@ -348,7 +343,7 @@ static void annotate_browser__calc_percent(struct annotate_browser *browser,
 		}
 		disasm_rb_tree__insert(browser, &pos->al);
 	}
-	pthread_mutex_unlock(&notes->lock);
+	mutex_unlock(&notes->lock);
 
 	browser->curr_hot = rb_last(&browser->entries);
 }
@@ -474,10 +469,10 @@ static bool annotate_browser__callq(struct annotate_browser *browser,
 	}
 
 	notes = symbol__annotation(dl->ops.target.sym);
-	pthread_mutex_lock(&notes->lock);
+	mutex_lock(&notes->lock);
 
 	if (!symbol__hists(dl->ops.target.sym, evsel->evlist->core.nr_entries)) {
-		pthread_mutex_unlock(&notes->lock);
+		mutex_unlock(&notes->lock);
 		ui__warning("Not enough memory for annotating '%s' symbol!\n",
 			    dl->ops.target.sym->name);
 		return true;
@@ -486,7 +481,7 @@ static bool annotate_browser__callq(struct annotate_browser *browser,
 	target_ms.maps = ms->maps;
 	target_ms.map = ms->map;
 	target_ms.sym = dl->ops.target.sym;
-	pthread_mutex_unlock(&notes->lock);
+	mutex_unlock(&notes->lock);
 	symbol__tui_annotate(&target_ms, evsel, hbt, browser->opts);
 	sym_title(ms->sym, ms->map, title, sizeof(title), browser->opts->percent_type);
 	ui_browser__show_title(&browser->b, title);
@@ -805,7 +800,8 @@ static int annotate_browser__run(struct annotate_browser *browser,
 		"r             Run available scripts\n"
 		"p             Toggle percent type [local/global]\n"
 		"b             Toggle percent base [period/hits]\n"
-		"?             Search string backwards\n");
+		"?             Search string backwards\n"
+		"f             Toggle showing offsets to full address\n");
 			continue;
 		case 'r':
 			script_browse(NULL, NULL);
@@ -912,6 +908,9 @@ show_sup_ins:
 			hists__scnprintf_title(hists, title, sizeof(title));
 			annotate_browser__show(&browser->b, title, help);
 			continue;
+		case 'f':
+			annotation__toggle_full_addr(notes, ms);
+			continue;
 		case K_LEFT:
 		case K_ESC:
 		case 'q':
@@ -966,6 +965,7 @@ int symbol__tui_annotate(struct map_symbol *ms, struct evsel *evsel,
 		.opts = opts,
 	};
 	int ret = -1, err;
+	int not_annotated = list_empty(&notes->src->source);
 
 	if (sym == NULL)
 		return -1;
@@ -973,13 +973,15 @@ int symbol__tui_annotate(struct map_symbol *ms, struct evsel *evsel,
 	if (ms->map->dso->annotate_warned)
 		return -1;
 
-	err = symbol__annotate2(ms, evsel, opts, &browser.arch);
-	if (err) {
-		char msg[BUFSIZ];
-		ms->map->dso->annotate_warned = true;
-		symbol__strerror_disassemble(ms, err, msg, sizeof(msg));
-		ui__error("Couldn't annotate %s:\n%s", sym->name, msg);
-		goto out_free_offsets;
+	if (not_annotated) {
+		err = symbol__annotate2(ms, evsel, opts, &browser.arch);
+		if (err) {
+			char msg[BUFSIZ];
+			ms->map->dso->annotate_warned = true;
+			symbol__strerror_disassemble(ms, err, msg, sizeof(msg));
+			ui__error("Couldn't annotate %s:\n%s", sym->name, msg);
+			goto out_free_offsets;
+		}
 	}
 
 	ui_helpline__push("Press ESC to exit");
@@ -994,9 +996,11 @@ int symbol__tui_annotate(struct map_symbol *ms, struct evsel *evsel,
 
 	ret = annotate_browser__run(&browser, evsel, hbt);
 
-	annotated_source__purge(notes->src);
+	if(not_annotated)
+		annotated_source__purge(notes->src);
 
 out_free_offsets:
-	zfree(&notes->offsets);
+	if(not_annotated)
+		zfree(&notes->offsets);
 	return ret;
 }

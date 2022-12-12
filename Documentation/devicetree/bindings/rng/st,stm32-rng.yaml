@@ -11,7 +11,7 @@ description: |
   IP and is fully separated from other crypto functions.
 
 maintainers:
-  - Lionel Debieve <lionel.debieve@st.com>
+  - Lionel Debieve <lionel.debieve@foss.st.com>
 
 properties:
   compatible:
@@ -27,6 +27,7 @@ properties:
     maxItems: 1
 
   clock-error-detect:
+    type: boolean
     description: If set enable the clock detection management
 
 required:

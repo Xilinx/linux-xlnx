@@ -232,7 +232,8 @@ static void lbtf_tx_work(struct work_struct *work)
 			     ieee80211_get_tx_rate(priv->hw, info)->hw_value);
 
 	/* copy destination address from 802.11 header */
-	memcpy(txpd->tx_dest_addr_high, skb->data + sizeof(struct txpd) + 4,
+	BUILD_BUG_ON(sizeof(txpd->tx_dest_addr) != ETH_ALEN);
+	memcpy(&txpd->tx_dest_addr, skb->data + sizeof(struct txpd) + 4,
 		ETH_ALEN);
 	txpd->tx_packet_length = cpu_to_le16(len);
 	txpd->tx_packet_location = cpu_to_le32(sizeof(struct txpd));
@@ -416,7 +417,7 @@ static void lbtf_op_configure_filter(struct ieee80211_hw *hw,
 static void lbtf_op_bss_info_changed(struct ieee80211_hw *hw,
 			struct ieee80211_vif *vif,
 			struct ieee80211_bss_conf *bss_conf,
-			u32 changes)
+			u64 changes)
 {
 	struct lbtf_private *priv = hw->priv;
 	struct sk_buff *beacon;
@@ -426,7 +427,7 @@ static void lbtf_op_bss_info_changed(struct ieee80211_hw *hw,
 		switch (priv->vif->type) {
 		case NL80211_IFTYPE_AP:
 		case NL80211_IFTYPE_MESH_POINT:
-			beacon = ieee80211_beacon_get(hw, vif);
+			beacon = ieee80211_beacon_get(hw, vif, 0);
 			if (beacon) {
 				lbtf_beacon_set(priv, beacon);
 				kfree_skb(beacon);
@@ -690,7 +691,7 @@ void lbtf_bcn_sent(struct lbtf_private *priv)
 		}
 	}
 
-	skb = ieee80211_beacon_get(priv->hw, priv->vif);
+	skb = ieee80211_beacon_get(priv->hw, priv->vif, 0);
 
 	if (skb) {
 		lbtf_beacon_set(priv, skb);

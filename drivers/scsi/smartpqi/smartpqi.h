@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  *    driver for Microchip PQI-based storage controllers
- *    Copyright (c) 2019-2021 Microchip Technology Inc. and its subsidiaries
+ *    Copyright (c) 2019-2022 Microchip Technology Inc. and its subsidiaries
  *    Copyright (c) 2016-2018 Microsemi Corporation
  *    Copyright (c) 2016 PMC-Sierra, Inc.
  *
@@ -82,9 +82,11 @@ struct pqi_ctrl_registers {
 	__le32  sis_product_identifier;			/* B4h */
 	u8	reserved5[0xbc - (0xb4 + sizeof(__le32))];
 	__le32	sis_firmware_status;			/* BCh */
-	u8	reserved6[0x1000 - (0xbc + sizeof(__le32))];
+	u8	reserved6[0xcc - (0xbc + sizeof(__le32))];
+	__le32	sis_ctrl_shutdown_reason_code;		/* CCh */
+	u8	reserved7[0x1000 - (0xcc + sizeof(__le32))];
 	__le32	sis_mailbox[8];				/* 1000h */
-	u8	reserved7[0x4000 - (0x1000 + (sizeof(__le32) * 8))];
+	u8	reserved8[0x4000 - (0x1000 + (sizeof(__le32) * 8))];
 	/*
 	 * The PQI spec states that the PQI registers should be at
 	 * offset 0 from the PCIe BAR 0.  However, we can't map
@@ -94,13 +96,22 @@ struct pqi_ctrl_registers {
 	struct pqi_device_registers pqi_registers;	/* 4000h */
 };
 
-#if ((HZ) < 1000)
-#define PQI_HZ  1000
-#else
-#define PQI_HZ  (HZ)
-#endif
-
 #define PQI_DEVICE_REGISTERS_OFFSET	0x4000
+
+/* shutdown reasons for taking the controller offline */
+enum pqi_ctrl_shutdown_reason {
+	PQI_IQ_NOT_DRAINED_TIMEOUT = 1,
+	PQI_LUN_RESET_TIMEOUT = 2,
+	PQI_IO_PENDING_POST_LUN_RESET_TIMEOUT = 3,
+	PQI_NO_HEARTBEAT = 4,
+	PQI_FIRMWARE_KERNEL_NOT_UP = 5,
+	PQI_OFA_RESPONSE_TIMEOUT = 6,
+	PQI_INVALID_REQ_ID = 7,
+	PQI_UNMATCHED_REQ_ID = 8,
+	PQI_IO_PI_OUT_OF_RANGE = 9,
+	PQI_EVENT_PI_OUT_OF_RANGE = 10,
+	PQI_UNEXPECTED_IU_TYPE = 11
+};
 
 enum pqi_io_path {
 	RAID_PATH = 0,
@@ -282,7 +293,8 @@ struct pqi_raid_path_request {
 	u8	additional_cdb_bytes_usage : 3;
 	u8	reserved5 : 3;
 	u8	cdb[16];
-	u8	reserved6[12];
+	u8	reserved6[11];
+	u8	ml_device_lun_number;
 	__le32	timeout;
 	struct pqi_sg_descriptor sg_descriptors[PQI_MAX_EMBEDDED_SG_DESCRIPTORS];
 };
@@ -456,7 +468,8 @@ struct pqi_task_management_request {
 	struct pqi_iu_header header;
 	__le16	request_id;
 	__le16	nexus_id;
-	u8	reserved[2];
+	u8	reserved;
+	u8	ml_device_lun_number;
 	__le16  timeout;
 	u8	lun_number[8];
 	__le16	protocol_specific;
@@ -697,6 +710,7 @@ typedef u32 pqi_index_t;
 #define SOP_TMF_COMPLETE		0x0
 #define SOP_TMF_REJECTED		0x4
 #define SOP_TMF_FUNCTION_SUCCEEDED	0x8
+#define SOP_RC_INCORRECT_LOGICAL_UNIT	0x9
 
 /* additional CDB bytes usage field codes */
 #define SOP_ADDITIONAL_CDB_BYTES_0	0	/* 16-byte CDB */
@@ -850,7 +864,10 @@ struct pqi_config_table_firmware_features {
 #define PQI_FIRMWARE_FEATURE_TMF_IU_TIMEOUT			14
 #define PQI_FIRMWARE_FEATURE_RAID_BYPASS_ON_ENCRYPTED_NVME	15
 #define PQI_FIRMWARE_FEATURE_UNIQUE_WWID_IN_REPORT_PHYS_LUN	16
-#define PQI_FIRMWARE_FEATURE_MAXIMUM				16
+#define PQI_FIRMWARE_FEATURE_FW_TRIAGE				17
+#define PQI_FIRMWARE_FEATURE_RPL_EXTENDED_FORMAT_4_5		18
+#define PQI_FIRMWARE_FEATURE_MULTI_LUN_DEVICE_SUPPORT           21
+#define PQI_FIRMWARE_FEATURE_MAXIMUM                            21
 
 struct pqi_config_table_debug {
 	struct pqi_config_table_section_header header;
@@ -905,7 +922,8 @@ union pqi_reset_register {
 #define PQI_MAX_TRANSFER_SIZE			(1024U * 1024U)
 #define PQI_MAX_TRANSFER_SIZE_KDUMP		(512 * 1024U)
 
-#define RAID_MAP_MAX_ENTRIES		1024
+#define RAID_MAP_MAX_ENTRIES			1024
+#define RAID_MAP_MAX_DATA_DISKS_PER_ROW		128
 
 #define PQI_PHYSICAL_DEVICE_BUS		0
 #define PQI_RAID_VOLUME_BUS		1
@@ -925,21 +943,33 @@ struct report_lun_header {
 #define CISS_REPORT_LOG_FLAG_QUEUE_DEPTH	(1 << 5)
 #define CISS_REPORT_LOG_FLAG_DRIVE_TYPE_MIX	(1 << 6)
 
-#define CISS_REPORT_PHYS_FLAG_OTHER		(1 << 1)
+#define CISS_REPORT_PHYS_FLAG_EXTENDED_FORMAT_2		0x2
+#define CISS_REPORT_PHYS_FLAG_EXTENDED_FORMAT_4		0x4
+#define CISS_REPORT_PHYS_FLAG_EXTENDED_FORMAT_MASK	0xf
 
-struct report_log_lun_extended_entry {
+struct report_log_lun {
 	u8	lunid[8];
 	u8	volume_id[16];
 };
 
-struct report_log_lun_extended {
+struct report_log_lun_list {
 	struct report_lun_header header;
-	struct report_log_lun_extended_entry lun_entries[1];
+	struct report_log_lun lun_entries[1];
 };
 
-struct report_phys_lun_extended_entry {
+struct report_phys_lun_8byte_wwid {
 	u8	lunid[8];
 	__be64	wwid;
+	u8	device_type;
+	u8	device_flags;
+	u8	lun_count;	/* number of LUNs in a multi-LUN device */
+	u8	redundant_paths;
+	u32	aio_handle;
+};
+
+struct report_phys_lun_16byte_wwid {
+	u8	lunid[8];
+	u8	wwid[16];
 	u8	device_type;
 	u8	device_flags;
 	u8	lun_count;	/* number of LUNs in a multi-LUN device */
@@ -950,9 +980,14 @@ struct report_phys_lun_extended_entry {
 /* for device_flags field of struct report_phys_lun_extended_entry */
 #define CISS_REPORT_PHYS_DEV_FLAG_AIO_ENABLED	0x8
 
-struct report_phys_lun_extended {
+struct report_phys_lun_8byte_wwid_list {
 	struct report_lun_header header;
-	struct report_phys_lun_extended_entry lun_entries[1];
+	struct report_phys_lun_8byte_wwid lun_entries[1];
+};
+
+struct report_phys_lun_16byte_wwid_list {
+	struct report_lun_header header;
+	struct report_phys_lun_16byte_wwid lun_entries[1];
 };
 
 struct raid_map_disk_data {
@@ -1050,8 +1085,10 @@ struct pqi_stream_data {
 	u32	last_accessed;
 };
 
+#define PQI_MAX_LUNS_PER_DEVICE         256
+
 struct pqi_scsi_dev {
-	int	devtype;		/* as reported by INQUIRY commmand */
+	int	devtype;		/* as reported by INQUIRY command */
 	u8	device_type;		/* as reported by */
 					/* BMIC_IDENTIFY_PHYSICAL_DEVICE */
 					/* only valid for devtype = TYPE_DISK */
@@ -1059,7 +1096,7 @@ struct pqi_scsi_dev {
 	int	target;
 	int	lun;
 	u8	scsi3addr[8];
-	__be64	wwid;
+	u8	wwid[16];
 	u8	volume_id[16];
 	u8	is_physical_device : 1;
 	u8	is_external_raid_device : 1;
@@ -1070,6 +1107,7 @@ struct pqi_scsi_dev {
 	u8	keep_device : 1;
 	u8	volume_offline : 1;
 	u8	rescan : 1;
+	u8	ignore_device : 1;
 	bool	aio_enabled;		/* only valid for physical disks */
 	bool	in_remove;
 	bool	device_offline;
@@ -1090,9 +1128,12 @@ struct pqi_scsi_dev {
 	u8	box[8];
 	u16	phys_connector[8];
 	u8	phy_id;
+	u8	ncq_prio_enable;
+	u8	ncq_prio_support;
+	u8	multi_lun_device_lun_count;
 	bool	raid_bypass_configured;	/* RAID bypass configured */
 	bool	raid_bypass_enabled;	/* RAID bypass enabled */
-	u32	next_bypass_group;
+	u32	next_bypass_group[RAID_MAP_MAX_DATA_DISKS_PER_ROW];
 	struct raid_map *raid_map;	/* RAID bypass map */
 	u32	max_transfer_encrypted;
 
@@ -1105,9 +1146,8 @@ struct pqi_scsi_dev {
 	struct list_head delete_list_entry;
 
 	struct pqi_stream_data stream_data[NUM_STREAMS_PER_LUN];
-	atomic_t scsi_cmds_outstanding;
+	atomic_t scsi_cmds_outstanding[PQI_MAX_LUNS_PER_DEVICE];
 	atomic_t raid_bypass_cnt;
-	u8	page_83_identifier[16];
 };
 
 /* VPD inquiry pages */
@@ -1229,6 +1269,12 @@ struct pqi_event {
 #define PQI_CTRL_PRODUCT_REVISION_A	0
 #define PQI_CTRL_PRODUCT_REVISION_B	1
 
+enum pqi_ctrl_removal_state {
+	PQI_CTRL_PRESENT = 0,
+	PQI_CTRL_GRACEFUL_REMOVAL,
+	PQI_CTRL_SURPRISE_REMOVAL
+};
+
 struct pqi_ctrl_info {
 	unsigned int	ctrl_id;
 	struct pci_dev	*pci_dev;
@@ -1289,6 +1335,7 @@ struct pqi_ctrl_info {
 	bool		controller_online;
 	bool		block_requests;
 	bool		scan_blocked;
+	u8		logical_volume_rescan_needed : 1;
 	u8		inbound_spanning_supported : 1;
 	u8		outbound_spanning_supported : 1;
 	u8		pqi_mode_enabled : 1;
@@ -1296,13 +1343,15 @@ struct pqi_ctrl_info {
 	u8		soft_reset_handshake_supported : 1;
 	u8		raid_iu_timeout_supported : 1;
 	u8		tmf_iu_timeout_supported : 1;
-	u8		unique_wwid_in_report_phys_lun_supported : 1;
+	u8		firmware_triage_supported : 1;
+	u8		rpl_extended_format_4_5_supported : 1;
+	u8		multi_lun_device_supported : 1;
 	u8		enable_r1_writes : 1;
 	u8		enable_r5_writes : 1;
 	u8		enable_r6_writes : 1;
 	u8		lv_drive_type_mix_valid : 1;
 	u8		enable_stream_detection : 1;
-
+	u8		disable_managed_interrupts : 1;
 	u8		ciss_report_log_flags;
 	u32		max_transfer_encrypted_sas_sata;
 	u32		max_transfer_encrypted_nvme;
@@ -1346,6 +1395,7 @@ struct pqi_ctrl_info {
 	struct work_struct ofa_quiesce_work;
 	u32		ofa_bytes_requested;
 	u16		ofa_cancel_reason;
+	enum pqi_ctrl_removal_state ctrl_removal_state;
 };
 
 enum pqi_ctrl_mode {

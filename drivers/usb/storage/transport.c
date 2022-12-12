@@ -363,7 +363,7 @@ static int usb_stor_intr_transfer(struct us_data *us, void *buf,
 	usb_stor_dbg(us, "xfer %u bytes\n", length);
 
 	/* calculate the max packet size */
-	maxp = usb_maxpacket(us->pusb_dev, pipe, usb_pipeout(pipe));
+	maxp = usb_maxpacket(us->pusb_dev, pipe);
 	if (maxp > length)
 		maxp = length;
 
@@ -551,7 +551,7 @@ static void last_sector_hacks(struct us_data *us, struct scsi_cmnd *srb)
 	/* Did this command access the last sector? */
 	sector = (srb->cmnd[2] << 24) | (srb->cmnd[3] << 16) |
 			(srb->cmnd[4] << 8) | (srb->cmnd[5]);
-	disk = scsi_cmd_to_rq(srb)->rq_disk;
+	disk = scsi_cmd_to_rq(srb)->q->disk;
 	if (!disk)
 		goto done;
 	sdkp = scsi_disk(disk);
@@ -1178,7 +1178,7 @@ int usb_stor_Bulk_transport(struct scsi_cmnd *srb, struct us_data *us)
 		/*
 		 * If the device tried to send back more data than the
 		 * amount requested, the spec requires us to transfer
-		 * the CSW anyway.  Since there's no point retrying the
+		 * the CSW anyway.  Since there's no point retrying
 		 * the command, we'll return fake sense data indicating
 		 * Illegal Request, Invalid Field in CDB.
 		 */

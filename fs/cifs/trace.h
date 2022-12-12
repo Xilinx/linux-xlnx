@@ -11,6 +11,8 @@
 #define _CIFS_TRACE_H
 
 #include <linux/tracepoint.h>
+#include <linux/net.h>
+#include <linux/inet.h>
 
 /*
  * Please use this 3-part article as a reference for writing new tracepoints:
@@ -119,6 +121,44 @@ DEFINE_SMB3_RW_DONE_EVENT(query_dir_done);
 DEFINE_SMB3_RW_DONE_EVENT(zero_done);
 DEFINE_SMB3_RW_DONE_EVENT(falloc_done);
 
+/* For logging successful set EOF (truncate) */
+DECLARE_EVENT_CLASS(smb3_eof_class,
+	TP_PROTO(unsigned int xid,
+		__u64	fid,
+		__u32	tid,
+		__u64	sesid,
+		__u64	offset),
+	TP_ARGS(xid, fid, tid, sesid, offset),
+	TP_STRUCT__entry(
+		__field(unsigned int, xid)
+		__field(__u64, fid)
+		__field(__u32, tid)
+		__field(__u64, sesid)
+		__field(__u64, offset)
+	),
+	TP_fast_assign(
+		__entry->xid = xid;
+		__entry->fid = fid;
+		__entry->tid = tid;
+		__entry->sesid = sesid;
+		__entry->offset = offset;
+	),
+	TP_printk("xid=%u sid=0x%llx tid=0x%x fid=0x%llx offset=0x%llx",
+		__entry->xid, __entry->sesid, __entry->tid, __entry->fid,
+		__entry->offset)
+)
+
+#define DEFINE_SMB3_EOF_EVENT(name)         \
+DEFINE_EVENT(smb3_eof_class, smb3_##name,   \
+	TP_PROTO(unsigned int xid,		\
+		__u64	fid,			\
+		__u32	tid,			\
+		__u64	sesid,			\
+		__u64	offset),		\
+	TP_ARGS(xid, fid, tid, sesid, offset))
+
+DEFINE_SMB3_EOF_EVENT(set_eof);
+
 /*
  * For handle based calls other than read and write, and get/set info
  */
@@ -156,6 +196,7 @@ DEFINE_SMB3_FD_EVENT(flush_enter);
 DEFINE_SMB3_FD_EVENT(flush_done);
 DEFINE_SMB3_FD_EVENT(close_enter);
 DEFINE_SMB3_FD_EVENT(close_done);
+DEFINE_SMB3_FD_EVENT(oplock_not_found);
 
 DECLARE_EVENT_CLASS(smb3_fd_err_class,
 	TP_PROTO(unsigned int xid,
@@ -331,6 +372,7 @@ DEFINE_SMB3_INF_COMPOUND_ENTER_EVENT(set_eof_enter);
 DEFINE_SMB3_INF_COMPOUND_ENTER_EVENT(set_info_compound_enter);
 DEFINE_SMB3_INF_COMPOUND_ENTER_EVENT(delete_enter);
 DEFINE_SMB3_INF_COMPOUND_ENTER_EVENT(mkdir_enter);
+DEFINE_SMB3_INF_COMPOUND_ENTER_EVENT(tdis_enter);
 
 
 DECLARE_EVENT_CLASS(smb3_inf_compound_done_class,
@@ -368,6 +410,7 @@ DEFINE_SMB3_INF_COMPOUND_DONE_EVENT(set_eof_done);
 DEFINE_SMB3_INF_COMPOUND_DONE_EVENT(set_info_compound_done);
 DEFINE_SMB3_INF_COMPOUND_DONE_EVENT(delete_done);
 DEFINE_SMB3_INF_COMPOUND_DONE_EVENT(mkdir_done);
+DEFINE_SMB3_INF_COMPOUND_DONE_EVENT(tdis_done);
 
 
 DECLARE_EVENT_CLASS(smb3_inf_compound_err_class,
@@ -410,6 +453,7 @@ DEFINE_SMB3_INF_COMPOUND_ERR_EVENT(set_eof_err);
 DEFINE_SMB3_INF_COMPOUND_ERR_EVENT(set_info_compound_err);
 DEFINE_SMB3_INF_COMPOUND_ERR_EVENT(mkdir_err);
 DEFINE_SMB3_INF_COMPOUND_ERR_EVENT(delete_err);
+DEFINE_SMB3_INF_COMPOUND_ERR_EVENT(tdis_err);
 
 /*
  * For logging SMB3 Status code and Command for responses which return errors
@@ -812,6 +856,7 @@ DEFINE_EVENT(smb3_lease_done_class, smb3_##name,  \
 	TP_ARGS(lease_state, tid, sesid, lease_key_low, lease_key_high))
 
 DEFINE_SMB3_LEASE_DONE_EVENT(lease_done);
+DEFINE_SMB3_LEASE_DONE_EVENT(lease_not_found);
 
 DECLARE_EVENT_CLASS(smb3_lease_err_class,
 	TP_PROTO(__u32	lease_state,
@@ -853,6 +898,75 @@ DEFINE_EVENT(smb3_lease_err_class, smb3_##name,  \
 	TP_ARGS(lease_state, tid, sesid, lease_key_low, lease_key_high, rc))
 
 DEFINE_SMB3_LEASE_ERR_EVENT(lease_err);
+
+DECLARE_EVENT_CLASS(smb3_connect_class,
+	TP_PROTO(char *hostname,
+		__u64 conn_id,
+		const struct __kernel_sockaddr_storage *dst_addr),
+	TP_ARGS(hostname, conn_id, dst_addr),
+	TP_STRUCT__entry(
+		__string(hostname, hostname)
+		__field(__u64, conn_id)
+		__array(__u8, dst_addr, sizeof(struct sockaddr_storage))
+	),
+	TP_fast_assign(
+		struct sockaddr_storage *pss = NULL;
+
+		__entry->conn_id = conn_id;
+		pss = (struct sockaddr_storage *)__entry->dst_addr;
+		*pss = *dst_addr;
+		__assign_str(hostname, hostname);
+	),
+	TP_printk("conn_id=0x%llx server=%s addr=%pISpsfc",
+		__entry->conn_id,
+		__get_str(hostname),
+		__entry->dst_addr)
+)
+
+#define DEFINE_SMB3_CONNECT_EVENT(name)        \
+DEFINE_EVENT(smb3_connect_class, smb3_##name,  \
+	TP_PROTO(char *hostname,		\
+		__u64 conn_id,			\
+		const struct __kernel_sockaddr_storage *addr),	\
+	TP_ARGS(hostname, conn_id, addr))
+
+DEFINE_SMB3_CONNECT_EVENT(connect_done);
+
+DECLARE_EVENT_CLASS(smb3_connect_err_class,
+	TP_PROTO(char *hostname, __u64 conn_id,
+		const struct __kernel_sockaddr_storage *dst_addr, int rc),
+	TP_ARGS(hostname, conn_id, dst_addr, rc),
+	TP_STRUCT__entry(
+		__string(hostname, hostname)
+		__field(__u64, conn_id)
+		__array(__u8, dst_addr, sizeof(struct sockaddr_storage))
+		__field(int, rc)
+	),
+	TP_fast_assign(
+		struct sockaddr_storage *pss = NULL;
+
+		__entry->conn_id = conn_id;
+		__entry->rc = rc;
+		pss = (struct sockaddr_storage *)__entry->dst_addr;
+		*pss = *dst_addr;
+		__assign_str(hostname, hostname);
+	),
+	TP_printk("rc=%d conn_id=0x%llx server=%s addr=%pISpsfc",
+		__entry->rc,
+		__entry->conn_id,
+		__get_str(hostname),
+		__entry->dst_addr)
+)
+
+#define DEFINE_SMB3_CONNECT_ERR_EVENT(name)        \
+DEFINE_EVENT(smb3_connect_err_class, smb3_##name,  \
+	TP_PROTO(char *hostname,		\
+		__u64 conn_id,			\
+		const struct __kernel_sockaddr_storage *addr,	\
+		int rc),			\
+	TP_ARGS(hostname, conn_id, addr, rc))
+
+DEFINE_SMB3_CONNECT_ERR_EVENT(connect_err);
 
 DECLARE_EVENT_CLASS(smb3_reconnect_class,
 	TP_PROTO(__u64	currmid,
@@ -935,6 +1049,13 @@ DEFINE_SMB3_CREDIT_EVENT(credit_timeout);
 DEFINE_SMB3_CREDIT_EVENT(insufficient_credits);
 DEFINE_SMB3_CREDIT_EVENT(too_many_credits);
 DEFINE_SMB3_CREDIT_EVENT(add_credits);
+DEFINE_SMB3_CREDIT_EVENT(adj_credits);
+DEFINE_SMB3_CREDIT_EVENT(hdr_credits);
+DEFINE_SMB3_CREDIT_EVENT(nblk_credits);
+DEFINE_SMB3_CREDIT_EVENT(pend_credits);
+DEFINE_SMB3_CREDIT_EVENT(wait_credits);
+DEFINE_SMB3_CREDIT_EVENT(waitff_credits);
+DEFINE_SMB3_CREDIT_EVENT(overflow_credits);
 DEFINE_SMB3_CREDIT_EVENT(set_credits);
 
 #endif /* _CIFS_TRACE_H */

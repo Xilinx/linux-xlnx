@@ -30,31 +30,31 @@
 		keyup-threshold-microvolt = <1800000>;
 		poll-interval = <100>;
 
-		esc-key {
+		button-esc {
 			label = "esc";
 			linux,code = <KEY_ESC>;
 			press-threshold-microvolt = <1310000>;
 		};
 
-		home-key {
+		button-home {
 			label = "home";
 			linux,code = <KEY_HOME>;
 			press-threshold-microvolt = <624000>;
 		};
 
-		menu-key {
+		button-menu {
 			label = "menu";
 			linux,code = <KEY_MENU>;
 			press-threshold-microvolt = <987000>;
 		};
 
-		vol-down-key {
+		button-down {
 			label = "volume down";
 			linux,code = <KEY_VOLUMEDOWN>;
 			press-threshold-microvolt = <300000>;
 		};
 
-		vol-up-key {
+		button-up {
 			label = "volume up";
 			linux,code = <KEY_VOLUMEUP>;
 			press-threshold-microvolt = <17000>;
@@ -112,6 +112,10 @@
 
 &cpu3 {
 	cpu-supply = <&vdd_arm>;
+};
+
+&csi_dphy {
+	status = "okay";
 };
 
 &display_subsystem {
@@ -428,6 +432,36 @@
 	};
 };
 
+&i2c2 {
+	status = "okay";
+
+	clock-frequency = <100000>;
+
+	/* These are relatively safe rise/fall times; TODO: measure */
+	i2c-scl-falling-time-ns = <50>;
+	i2c-scl-rising-time-ns = <300>;
+
+	ov5695: ov5695@36 {
+		compatible = "ovti,ov5695";
+		reg = <0x36>;
+		avdd-supply = <&vcc2v8_dvp>;
+		clocks = <&cru SCLK_CIF_OUT>;
+		clock-names = "xvclk";
+		dvdd-supply = <&vcc1v5_dvp>;
+		dovdd-supply = <&vcc1v8_dvp>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cif_clkout_m0 &mipi_pdn>;
+		reset-gpios = <&gpio2 RK_PB6 GPIO_ACTIVE_LOW>;
+
+		port {
+			ucam_out: endpoint {
+				remote-endpoint = <&mipi_in_ucam>;
+				data-lanes = <1 2>;
+			};
+		};
+	};
+};
+
 &i2s1_2ch {
 	status = "okay";
 };
@@ -441,6 +475,24 @@
 	vccio4-supply = <&vcc3v0_pmu>;
 	vccio5-supply = <&vcc_3v0>;
 	vccio6-supply = <&vccio_flash>;
+};
+
+&isp {
+	status = "okay";
+
+	ports {
+		port@0 {
+			mipi_in_ucam: endpoint@0 {
+				reg = <0>;
+				data-lanes = <1 2>;
+				remote-endpoint = <&ucam_out>;
+			};
+		};
+	};
+};
+
+&isp_mmu {
+	status = "okay";
 };
 
 &pinctrl {
@@ -483,6 +535,19 @@
 		wifi_enable_h: wifi-enable-h {
 			rockchip,pins =
 				<0 RK_PA2 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+	};
+
+	cif-m0 {
+		cif_clkout_m0: cif-clkout-m0 {
+			rockchip,pins =
+				<2 RK_PB3 1 &pcfg_pull_none_12ma>;
+		};
+	};
+
+	mipi {
+		mipi_pdn: mipi-pdn {
+			rockchip,pins = <2 RK_PB6 RK_FUNC_GPIO &pcfg_pull_none>;
 		};
 	};
 };

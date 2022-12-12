@@ -343,8 +343,7 @@ static int pxa_gpio_of_xlate(struct gpio_chip *gc,
 }
 #endif
 
-static int pxa_init_gpio_chip(struct pxa_gpio_chip *pchip, int ngpio,
-			      struct device_node *np, void __iomem *regbase)
+static int pxa_init_gpio_chip(struct pxa_gpio_chip *pchip, int ngpio, void __iomem *regbase)
 {
 	int i, gpio, nbanks = DIV_ROUND_UP(ngpio, 32);
 	struct pxa_gpio_bank *bank;
@@ -354,6 +353,7 @@ static int pxa_init_gpio_chip(struct pxa_gpio_chip *pchip, int ngpio,
 	if (!pchip->banks)
 		return -ENOMEM;
 
+	pchip->chip.parent = pchip->dev;
 	pchip->chip.label = "gpio-pxa";
 	pchip->chip.direction_input  = pxa_gpio_direction_input;
 	pchip->chip.direction_output = pxa_gpio_direction_output;
@@ -365,7 +365,6 @@ static int pxa_init_gpio_chip(struct pxa_gpio_chip *pchip, int ngpio,
 	pchip->chip.free = gpiochip_generic_free;
 
 #ifdef CONFIG_OF_GPIO
-	pchip->chip.of_node = np;
 	pchip->chip.of_xlate = pxa_gpio_of_xlate;
 	pchip->chip.of_gpio_n_cells = 2;
 #endif
@@ -662,25 +661,17 @@ static int pxa_gpio_probe(struct platform_device *pdev)
 	if (IS_ERR(gpio_reg_base))
 		return PTR_ERR(gpio_reg_base);
 
-	clk = clk_get(&pdev->dev, NULL);
+	clk = devm_clk_get_enabled(&pdev->dev, NULL);
 	if (IS_ERR(clk)) {
 		dev_err(&pdev->dev, "Error %ld to get gpio clock\n",
 			PTR_ERR(clk));
 		return PTR_ERR(clk);
 	}
-	ret = clk_prepare_enable(clk);
-	if (ret) {
-		clk_put(clk);
-		return ret;
-	}
 
 	/* Initialize GPIO chips */
-	ret = pxa_init_gpio_chip(pchip, pxa_last_gpio + 1, pdev->dev.of_node,
-				 gpio_reg_base);
-	if (ret) {
-		clk_put(clk);
+	ret = pxa_init_gpio_chip(pchip, pxa_last_gpio + 1, gpio_reg_base);
+	if (ret)
 		return ret;
-	}
 
 	/* clear all GPIO edge detects */
 	for_each_gpio_bank(gpio, c, pchip) {

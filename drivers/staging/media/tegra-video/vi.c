@@ -157,7 +157,7 @@ tegra_channel_get_remote_csi_subdev(struct tegra_vi_channel *chan)
 {
 	struct media_pad *pad;
 
-	pad = media_entity_remote_pad(&chan->pad);
+	pad = media_pad_remote_pad_first(&chan->pad);
 	if (!pad)
 		return NULL;
 
@@ -177,7 +177,7 @@ tegra_channel_get_remote_source_subdev(struct tegra_vi_channel *chan)
 
 	pad = &subdev->entity.pads[0];
 	while (!(pad->flags & MEDIA_PAD_FL_SOURCE)) {
-		pad = media_entity_remote_pad(pad);
+		pad = media_pad_remote_pad_first(pad);
 		if (!pad || !is_media_entity_v4l2_subdev(pad->entity))
 			break;
 		entity = pad->entity;
@@ -491,6 +491,7 @@ static int __tegra_channel_try_format(struct tegra_vi_channel *chan,
 				      struct v4l2_pix_format *pix)
 {
 	const struct tegra_video_format *fmtinfo;
+	static struct lock_class_key key;
 	struct v4l2_subdev *subdev;
 	struct v4l2_subdev_format fmt;
 	struct v4l2_subdev_state *sd_state;
@@ -507,7 +508,12 @@ static int __tegra_channel_try_format(struct tegra_vi_channel *chan,
 	if (!subdev)
 		return -ENODEV;
 
-	sd_state = v4l2_subdev_alloc_state(subdev);
+	/*
+	 * FIXME: Drop this call, drivers are not supposed to use
+	 * __v4l2_subdev_state_alloc().
+	 */
+	sd_state = __v4l2_subdev_state_alloc(subdev, "tegra:state->lock",
+					     &key);
 	if (IS_ERR(sd_state))
 		return PTR_ERR(sd_state);
 	/*
@@ -558,7 +564,7 @@ static int __tegra_channel_try_format(struct tegra_vi_channel *chan,
 	v4l2_fill_pix_format(pix, &fmt.format);
 	tegra_channel_fmt_align(chan, pix, fmtinfo->bpp);
 
-	v4l2_subdev_free_state(sd_state);
+	__v4l2_subdev_state_free(sd_state);
 
 	return 0;
 }
@@ -1272,7 +1278,7 @@ static int tegra_channel_init(struct tegra_vi_channel *chan)
 	}
 
 	if (!IS_ENABLED(CONFIG_VIDEO_TEGRA_TPG))
-		v4l2_async_notifier_init(&chan->notifier);
+		v4l2_async_nf_init(&chan->notifier);
 
 	return 0;
 
@@ -1811,8 +1817,8 @@ static int tegra_vi_graph_parse_one(struct tegra_vi_channel *chan,
 			continue;
 		}
 
-		tvge = v4l2_async_notifier_add_fwnode_subdev(&chan->notifier, remote,
-							     struct tegra_vi_graph_entity);
+		tvge = v4l2_async_nf_add_fwnode(&chan->notifier, remote,
+						struct tegra_vi_graph_entity);
 		if (IS_ERR(tvge)) {
 			ret = PTR_ERR(tvge);
 			dev_err(vi->dev,
@@ -1834,7 +1840,7 @@ static int tegra_vi_graph_parse_one(struct tegra_vi_channel *chan,
 
 cleanup:
 	dev_err(vi->dev, "failed parsing the graph: %d\n", ret);
-	v4l2_async_notifier_cleanup(&chan->notifier);
+	v4l2_async_nf_cleanup(&chan->notifier);
 	of_node_put(node);
 	return ret;
 }
@@ -1845,7 +1851,6 @@ static int tegra_vi_graph_init(struct tegra_vi *vi)
 	struct tegra_vi_channel *chan;
 	struct fwnode_handle *fwnode = dev_fwnode(vi->dev);
 	int ret;
-	struct fwnode_handle *remote = NULL;
 
 	/*
 	 * Walk the links to parse the full graph. Each channel will have
@@ -1857,10 +1862,15 @@ static int tegra_vi_graph_init(struct tegra_vi *vi)
 	 * next channels.
 	 */
 	list_for_each_entry(chan, &vi->vi_chans, list) {
-		remote = fwnode_graph_get_remote_node(fwnode, chan->portnos[0],
-						      0);
-		if (!remote)
+		struct fwnode_handle *ep, *remote;
+
+		ep = fwnode_graph_get_endpoint_by_id(fwnode,
+						     chan->portnos[0], 0, 0);
+		if (!ep)
 			continue;
+
+		remote = fwnode_graph_get_remote_port_parent(ep);
+		fwnode_handle_put(ep);
 
 		ret = tegra_vi_graph_parse_one(chan, remote);
 		fwnode_handle_put(remote);
@@ -1868,13 +1878,12 @@ static int tegra_vi_graph_init(struct tegra_vi *vi)
 			continue;
 
 		chan->notifier.ops = &tegra_vi_async_ops;
-		ret = v4l2_async_notifier_register(&vid->v4l2_dev,
-						   &chan->notifier);
+		ret = v4l2_async_nf_register(&vid->v4l2_dev, &chan->notifier);
 		if (ret < 0) {
 			dev_err(vi->dev,
 				"failed to register channel %d notifier: %d\n",
 				chan->portnos[0], ret);
-			v4l2_async_notifier_cleanup(&chan->notifier);
+			v4l2_async_nf_cleanup(&chan->notifier);
 		}
 	}
 
@@ -1887,8 +1896,8 @@ static void tegra_vi_graph_cleanup(struct tegra_vi *vi)
 
 	list_for_each_entry(chan, &vi->vi_chans, list) {
 		vb2_video_unregister_device(&chan->video);
-		v4l2_async_notifier_unregister(&chan->notifier);
-		v4l2_async_notifier_cleanup(&chan->notifier);
+		v4l2_async_nf_unregister(&chan->notifier);
+		v4l2_async_nf_cleanup(&chan->notifier);
 	}
 }
 

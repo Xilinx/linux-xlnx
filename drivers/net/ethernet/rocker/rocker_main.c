@@ -129,7 +129,7 @@ static int rocker_reg_test(const struct rocker *rocker)
 	u64 test_reg;
 	u64 rnd;
 
-	rnd = prandom_u32();
+	rnd = get_random_u32();
 	rnd >>= 1;
 	rocker_write32(rocker, TEST_REG, rnd);
 	test_reg = rocker_read32(rocker, TEST_REG);
@@ -139,9 +139,9 @@ static int rocker_reg_test(const struct rocker *rocker)
 		return -EIO;
 	}
 
-	rnd = prandom_u32();
+	rnd = get_random_u32();
 	rnd <<= 31;
-	rnd |= prandom_u32();
+	rnd |= get_random_u32();
 	rocker_write64(rocker, TEST_REG64, rnd);
 	test_reg = rocker_read64(rocker, TEST_REG64);
 	if (test_reg != rnd * 2) {
@@ -224,7 +224,7 @@ static int rocker_dma_test_offset(const struct rocker *rocker,
 	if (err)
 		goto unmap;
 
-	prandom_bytes(buf, ROCKER_TEST_DMA_BUF_SIZE);
+	get_random_bytes(buf, ROCKER_TEST_DMA_BUF_SIZE);
 	for (i = 0; i < ROCKER_TEST_DMA_BUF_SIZE; i++)
 		expect[i] = ~buf[i];
 	err = rocker_dma_test_one(rocker, wait, ROCKER_TEST_DMA_CTRL_INVERT,
@@ -1954,7 +1954,7 @@ static int rocker_port_set_mac_address(struct net_device *dev, void *p)
 	err = rocker_cmd_set_port_settings_macaddr(rocker_port, addr->sa_data);
 	if (err)
 		return err;
-	memcpy(dev->dev_addr, addr->sa_data, dev->addr_len);
+	eth_hw_addr_set(dev, addr->sa_data);
 	return 0;
 }
 
@@ -1995,17 +1995,6 @@ static int rocker_port_get_phys_port_name(struct net_device *dev,
 	return err ? -EOPNOTSUPP : 0;
 }
 
-static int rocker_port_change_proto_down(struct net_device *dev,
-					 bool proto_down)
-{
-	struct rocker_port *rocker_port = netdev_priv(dev);
-
-	if (rocker_port->dev->flags & IFF_UP)
-		rocker_port_set_enable(rocker_port, !proto_down);
-	rocker_port->dev->proto_down = proto_down;
-	return 0;
-}
-
 static void rocker_port_neigh_destroy(struct net_device *dev,
 				      struct neighbour *n)
 {
@@ -2037,7 +2026,6 @@ static const struct net_device_ops rocker_port_netdev_ops = {
 	.ndo_set_mac_address		= rocker_port_set_mac_address,
 	.ndo_change_mtu			= rocker_port_change_mtu,
 	.ndo_get_phys_port_name		= rocker_port_get_phys_port_name,
-	.ndo_change_proto_down		= rocker_port_change_proto_down,
 	.ndo_neigh_destroy		= rocker_port_neigh_destroy,
 	.ndo_get_port_parent_id		= rocker_port_get_port_parent_id,
 };
@@ -2238,8 +2226,8 @@ rocker_port_set_link_ksettings(struct net_device *dev,
 static void rocker_port_get_drvinfo(struct net_device *dev,
 				    struct ethtool_drvinfo *drvinfo)
 {
-	strlcpy(drvinfo->driver, rocker_driver_name, sizeof(drvinfo->driver));
-	strlcpy(drvinfo->version, UTS_RELEASE, sizeof(drvinfo->version));
+	strscpy(drvinfo->driver, rocker_driver_name, sizeof(drvinfo->driver));
+	strscpy(drvinfo->version, UTS_RELEASE, sizeof(drvinfo->version));
 }
 
 static struct rocker_port_stats {
@@ -2545,11 +2533,13 @@ static void rocker_port_dev_addr_init(struct rocker_port *rocker_port)
 {
 	const struct rocker *rocker = rocker_port->rocker;
 	const struct pci_dev *pdev = rocker->pdev;
+	u8 addr[ETH_ALEN];
 	int err;
 
-	err = rocker_cmd_get_port_settings_macaddr(rocker_port,
-						   rocker_port->dev->dev_addr);
-	if (err) {
+	err = rocker_cmd_get_port_settings_macaddr(rocker_port, addr);
+	if (!err) {
+		eth_hw_addr_set(rocker_port->dev, addr);
+	} else {
 		dev_warn(&pdev->dev, "failed to get mac address, using random\n");
 		eth_hw_addr_random(rocker_port->dev);
 	}
@@ -2583,10 +2573,8 @@ static int rocker_probe_port(struct rocker *rocker, unsigned int port_number)
 	rocker_port_dev_addr_init(rocker_port);
 	dev->netdev_ops = &rocker_port_netdev_ops;
 	dev->ethtool_ops = &rocker_port_ethtool_ops;
-	netif_tx_napi_add(dev, &rocker_port->napi_tx, rocker_port_poll_tx,
-			  NAPI_POLL_WEIGHT);
-	netif_napi_add(dev, &rocker_port->napi_rx, rocker_port_poll_rx,
-		       NAPI_POLL_WEIGHT);
+	netif_napi_add_tx(dev, &rocker_port->napi_tx, rocker_port_poll_tx);
+	netif_napi_add(dev, &rocker_port->napi_rx, rocker_port_poll_rx);
 	rocker_carrier_init(rocker_port);
 
 	dev->features |= NETIF_F_NETNS_LOCAL | NETIF_F_SG;
@@ -2880,19 +2868,10 @@ static int rocker_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_pci_request_regions;
 	}
 
-	err = dma_set_mask(&pdev->dev, DMA_BIT_MASK(64));
-	if (!err) {
-		err = dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(64));
-		if (err) {
-			dev_err(&pdev->dev, "dma_set_coherent_mask failed\n");
-			goto err_pci_set_dma_mask;
-		}
-	} else {
-		err = dma_set_mask(&pdev->dev, DMA_BIT_MASK(32));
-		if (err) {
-			dev_err(&pdev->dev, "dma_set_mask failed\n");
-			goto err_pci_set_dma_mask;
-		}
+	err = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64));
+	if (err) {
+		dev_err(&pdev->dev, "dma_set_mask failed\n");
+		goto err_pci_set_dma_mask;
 	}
 
 	if (pci_resource_len(pdev, 0) < ROCKER_PCI_BAR0_SIZE) {

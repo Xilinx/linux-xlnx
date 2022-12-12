@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/resource.h>
 #include <time.h>
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
@@ -88,19 +87,9 @@ int libbpf_print_fn(enum libbpf_print_level level,
 	return vfprintf(stderr, format, args);
 }
 
-static int bump_memlock_rlimit(void)
-{
-	struct rlimit rlim_new = {
-		.rlim_cur	= RLIM_INFINITY,
-		.rlim_max	= RLIM_INFINITY,
-	};
-
-	return setrlimit(RLIMIT_MEMLOCK, &rlim_new);
-}
-
 void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
 {
-	const struct event *e = data;
+	const struct runq_event *e = data;
 	struct tm *tm;
 	char ts[32];
 	time_t t;
@@ -123,7 +112,6 @@ int main(int argc, char **argv)
 		.parser = parse_arg,
 		.doc = argp_program_doc,
 	};
-	struct perf_buffer_opts pb_opts;
 	struct perf_buffer *pb = NULL;
 	struct runqslower_bpf *obj;
 	int err;
@@ -134,11 +122,8 @@ int main(int argc, char **argv)
 
 	libbpf_set_print(libbpf_print_fn);
 
-	err = bump_memlock_rlimit();
-	if (err) {
-		fprintf(stderr, "failed to increase rlimit: %d", err);
-		return 1;
-	}
+	/* Use libbpf 1.0 API mode */
+	libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
 
 	obj = runqslower_bpf__open();
 	if (!obj) {
@@ -165,9 +150,8 @@ int main(int argc, char **argv)
 	printf("Tracing run queue latency higher than %llu us\n", env.min_us);
 	printf("%-8s %-16s %-6s %14s\n", "TIME", "COMM", "PID", "LAT(us)");
 
-	pb_opts.sample_cb = handle_event;
-	pb_opts.lost_cb = handle_lost_events;
-	pb = perf_buffer__new(bpf_map__fd(obj->maps.events), 64, &pb_opts);
+	pb = perf_buffer__new(bpf_map__fd(obj->maps.events), 64,
+			      handle_event, handle_lost_events, NULL, NULL);
 	err = libbpf_get_error(pb);
 	if (err) {
 		pb = NULL;

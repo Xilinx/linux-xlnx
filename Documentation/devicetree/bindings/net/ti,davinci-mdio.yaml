@@ -34,8 +34,16 @@ properties:
     maxItems: 1
 
   bus_freq:
+    $ref: /schemas/types.yaml#/definitions/uint32
     maximum: 2500000
     description: MDIO Bus frequency
+
+  clocks:
+    maxItems: 1
+
+  clock-names:
+    items:
+      - const: fck
 
   ti,hwmods:
     description: TI hwmod name
@@ -49,6 +57,7 @@ if:
     compatible:
       contains:
         const: ti,davinci_mdio
+then:
   required:
     - bus_freq
 

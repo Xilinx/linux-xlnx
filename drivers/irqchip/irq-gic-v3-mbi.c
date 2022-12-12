@@ -6,7 +6,7 @@
 
 #define pr_fmt(fmt) "GICv3: " fmt
 
-#include <linux/dma-iommu.h>
+#include <linux/iommu.h>
 #include <linux/irq.h>
 #include <linux/irqdomain.h>
 #include <linux/kernel.h>
@@ -171,7 +171,6 @@ static struct irq_chip mbi_msi_irq_chip = {
 	.irq_unmask		= mbi_unmask_msi_irq,
 	.irq_eoi		= irq_chip_eoi_parent,
 	.irq_compose_msi_msg	= mbi_compose_msi_msg,
-	.irq_write_msi_msg	= pci_msi_domain_write_msg,
 };
 
 static struct msi_domain_info mbi_msi_domain_info = {

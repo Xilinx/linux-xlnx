@@ -21,7 +21,7 @@
 #define DEFAULT_HOST_CLOCK	150000000 /* 150 MHz */
 
 /* Wait till MDIO interface is ready to accept a new transaction.*/
-int axienet_mdio_wait_until_ready(struct axienet_local *lp)
+static int axienet_mdio_wait_until_ready(struct axienet_local *lp)
 {
 	u32 val;
 
@@ -89,8 +89,8 @@ static int axienet_mdio_read(struct mii_bus *bus, int phy_id, int reg)
 
 	rc = axienet_ior(lp, XAE_MDIO_MRD_OFFSET) & 0x0000FFFF;
 
-	dev_dbg(lp->dev, "%s (phy_id=%i, reg=%x) == %x\n",
-		__func__, phy_id, reg, rc);
+	dev_dbg(lp->dev, "axienet_mdio_read(phy_id=%i, reg=%x) == %x\n",
+		phy_id, reg, rc);
 
 	axienet_mdio_mdc_disable(lp);
 	return rc;
@@ -115,8 +115,8 @@ static int axienet_mdio_write(struct mii_bus *bus, int phy_id, int reg,
 	int ret;
 	struct axienet_local *lp = bus->priv;
 
-	dev_dbg(lp->dev, "%s (phy_id=%i, reg=%x, val=%x)\n",
-		__func__, phy_id, reg, val);
+	dev_dbg(lp->dev, "axienet_mdio_write(phy_id=%i, reg=%x, val=%x)\n",
+		phy_id, reg, val);
 
 	axienet_mdio_mdc_enable(lp);
 

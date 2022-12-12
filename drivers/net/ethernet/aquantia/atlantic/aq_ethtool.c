@@ -13,6 +13,7 @@
 #include "aq_ptp.h"
 #include "aq_filters.h"
 #include "aq_macsec.h"
+#include "aq_main.h"
 
 #include <linux/ptp_clock_kernel.h>
 
@@ -97,6 +98,15 @@ static const char * const aq_ethtool_queue_rx_stat_names[] = {
 	"%sQueue[%d] AllocFails",
 	"%sQueue[%d] SkbAllocFails",
 	"%sQueue[%d] Polls",
+	"%sQueue[%d] PageFlips",
+	"%sQueue[%d] PageReuses",
+	"%sQueue[%d] PageFrees",
+	"%sQueue[%d] XdpAbort",
+	"%sQueue[%d] XdpDrop",
+	"%sQueue[%d] XdpPass",
+	"%sQueue[%d] XdpTx",
+	"%sQueue[%d] XdpInvalid",
+	"%sQueue[%d] XdpRedirect",
 };
 
 static const char * const aq_ethtool_queue_tx_stat_names[] = {
@@ -229,7 +239,7 @@ static void aq_ethtool_get_drvinfo(struct net_device *ndev,
 		 "%u.%u.%u", firmware_version >> 24,
 		 (firmware_version >> 16) & 0xFFU, firmware_version & 0xFFFFU);
 
-	strlcpy(drvinfo->bus_info, pdev ? pci_name(pdev) : "",
+	strscpy(drvinfo->bus_info, pdev ? pci_name(pdev) : "",
 		sizeof(drvinfo->bus_info));
 	drvinfo->n_stats = aq_ethtool_n_stats(ndev);
 	drvinfo->testinfo_len = 0;
@@ -812,7 +822,9 @@ static int aq_ethtool_set_pauseparam(struct net_device *ndev,
 }
 
 static void aq_get_ringparam(struct net_device *ndev,
-			     struct ethtool_ringparam *ring)
+			     struct ethtool_ringparam *ring,
+			     struct kernel_ethtool_ringparam *kernel_ring,
+			     struct netlink_ext_ack *extack)
 {
 	struct aq_nic_s *aq_nic = netdev_priv(ndev);
 	struct aq_nic_cfg_s *cfg;
@@ -827,7 +839,9 @@ static void aq_get_ringparam(struct net_device *ndev,
 }
 
 static int aq_set_ringparam(struct net_device *ndev,
-			    struct ethtool_ringparam *ring)
+			    struct ethtool_ringparam *ring,
+			    struct kernel_ethtool_ringparam *kernel_ring,
+			    struct netlink_ext_ack *extack)
 {
 	struct aq_nic_s *aq_nic = netdev_priv(ndev);
 	const struct aq_hw_caps_s *hw_caps;
@@ -845,7 +859,7 @@ static int aq_set_ringparam(struct net_device *ndev,
 
 	if (netif_running(ndev)) {
 		ndev_running = true;
-		dev_close(ndev);
+		aq_ndev_close(ndev);
 	}
 
 	cfg->rxds = max(ring->rx_pending, hw_caps->rxds_min);
@@ -861,7 +875,7 @@ static int aq_set_ringparam(struct net_device *ndev,
 		goto err_exit;
 
 	if (ndev_running)
-		err = dev_open(ndev, NULL);
+		err = aq_ndev_open(ndev);
 
 err_exit:
 	return err;

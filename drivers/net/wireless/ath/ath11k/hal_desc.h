@@ -474,6 +474,7 @@ enum hal_tlv_tag {
 
 #define HAL_TLV_HDR_TAG		GENMASK(9, 1)
 #define HAL_TLV_HDR_LEN		GENMASK(25, 10)
+#define HAL_TLV_USR_ID		GENMASK(31, 26)
 
 #define HAL_TLV_ALIGN	4
 
@@ -495,6 +496,8 @@ struct hal_tlv_hdr {
 #define RX_MPDU_DESC_INFO0_DA_MCBC		BIT(28)
 #define RX_MPDU_DESC_INFO0_DA_IDX_TIMEOUT	BIT(29)
 #define RX_MPDU_DESC_INFO0_RAW_MPDU		BIT(30)
+
+#define RX_MPDU_DESC_META_DATA_PEER_ID		GENMASK(15, 0)
 
 struct rx_mpdu_desc {
 	u32 info0; /* %RX_MPDU_DESC_INFO */
@@ -604,7 +607,7 @@ struct rx_msdu_desc {
  *
  * msdu_continuation
  *		When set, this MSDU buffer was not able to hold the entire MSDU.
- *		The next buffer will therefor contain additional information
+ *		The next buffer will therefore contain additional information
  *		related to this MSDU.
  *
  * msdu_length
@@ -640,7 +643,7 @@ struct rx_msdu_desc {
  *
  * da_idx_timeout
  *		Indicates, an unsuccessful MAC destination address search due
- *		to the expiration of search timer fot this MSDU.
+ *		to the expiration of search timer for this MSDU.
  */
 
 enum hal_reo_dest_ring_buffer_type {
@@ -855,6 +858,25 @@ struct hal_reo_entrance_ring {
  *		Indicates the number of times the producer of entries into
  *		this ring has looped around the ring.
  */
+
+#define HAL_SW_MON_RING_INFO0_RXDMA_PUSH_REASON	GENMASK(1, 0)
+#define HAL_SW_MON_RING_INFO0_RXDMA_ERROR_CODE	GENMASK(6, 2)
+#define HAL_SW_MON_RING_INFO0_MPDU_FRAG_NUMBER	GENMASK(10, 7)
+#define HAL_SW_MON_RING_INFO0_FRAMELESS_BAR	BIT(11)
+#define HAL_SW_MON_RING_INFO0_STATUS_BUF_CNT	GENMASK(15, 12)
+#define HAL_SW_MON_RING_INFO0_END_OF_PPDU	BIT(16)
+
+#define HAL_SW_MON_RING_INFO1_PHY_PPDU_ID	GENMASK(15, 0)
+#define HAL_SW_MON_RING_INFO1_RING_ID		GENMASK(27, 20)
+#define HAL_SW_MON_RING_INFO1_LOOPING_COUNT	GENMASK(31, 28)
+
+struct hal_sw_monitor_ring {
+	struct ath11k_buffer_addr buf_addr_info;
+	struct rx_mpdu_desc rx_mpdu_info;
+	struct ath11k_buffer_addr status_buf_addr_info;
+	u32 info0;
+	u32 info1;
+} __packed;
 
 #define HAL_REO_CMD_HDR_INFO0_CMD_NUMBER	GENMASK(15, 0)
 #define HAL_REO_CMD_HDR_INFO0_STATUS_REQUIRED	BIT(16)
@@ -1656,7 +1678,7 @@ struct hal_wbm_release_ring {
  *	Producer: SW/TQM/RXDMA/REO/SWITCH
  *	Consumer: WBM/SW/FW
  *
- * HTT tx status is overlayed on wbm_release ring on 4-byte words 2, 3, 4 and 5
+ * HTT tx status is overlaid on wbm_release ring on 4-byte words 2, 3, 4 and 5
  * for software based completions.
  *
  * buf_addr_info
@@ -2137,7 +2159,7 @@ struct hal_reo_status_hdr {
  *		commands.
  *
  * execution_time (in us)
- *		The amount of time REO took to excecute the command. Note that
+ *		The amount of time REO took to execute the command. Note that
  *		this time does not include the duration of the command waiting
  *		in the command ring, before the execution started.
  *

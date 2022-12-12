@@ -429,8 +429,8 @@ static void get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *info)
 {
 	struct adapter *adapter = dev->ml_priv;
 
-	strlcpy(info->driver, DRV_NAME, sizeof(info->driver));
-	strlcpy(info->bus_info, pci_name(adapter->pdev),
+	strscpy(info->driver, DRV_NAME, sizeof(info->driver));
+	strscpy(info->bus_info, pci_name(adapter->pdev),
 		sizeof(info->bus_info));
 }
 
@@ -710,7 +710,9 @@ static int set_pauseparam(struct net_device *dev,
 	return 0;
 }
 
-static void get_sge_param(struct net_device *dev, struct ethtool_ringparam *e)
+static void get_sge_param(struct net_device *dev, struct ethtool_ringparam *e,
+			  struct kernel_ethtool_ringparam *kernel_e,
+			  struct netlink_ext_ack *extack)
 {
 	struct adapter *adapter = dev->ml_priv;
 	int jumbo_fl = t1_is_T1B(adapter) ? 1 : 0;
@@ -724,7 +726,9 @@ static void get_sge_param(struct net_device *dev, struct ethtool_ringparam *e)
 	e->tx_pending = adapter->params.sge.cmdQ_size[0];
 }
 
-static int set_sge_param(struct net_device *dev, struct ethtool_ringparam *e)
+static int set_sge_param(struct net_device *dev, struct ethtool_ringparam *e,
+			 struct kernel_ethtool_ringparam *kernel_e,
+			 struct netlink_ext_ack *extack)
 {
 	struct adapter *adapter = dev->ml_priv;
 	int jumbo_fl = t1_is_T1B(adapter) ? 1 : 0;
@@ -853,7 +857,7 @@ static int t1_set_mac_addr(struct net_device *dev, void *p)
 	if (!mac->ops->macaddress_set)
 		return -EOPNOTSUPP;
 
-	memcpy(dev->dev_addr, addr->sa_data, dev->addr_len);
+	eth_hw_addr_set(dev, addr->sa_data);
 	mac->ops->macaddress_set(mac, dev->dev_addr);
 	return 0;
 }
@@ -940,11 +944,11 @@ static const struct net_device_ops cxgb_netdev_ops = {
 
 static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
-	int i, err, pci_using_dac = 0;
 	unsigned long mmio_start, mmio_len;
 	const struct board_info *bi;
 	struct adapter *adapter = NULL;
 	struct port_info *pi;
+	int i, err;
 
 	err = pci_enable_device(pdev);
 	if (err)
@@ -957,17 +961,8 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto out_disable_pdev;
 	}
 
-	if (!dma_set_mask(&pdev->dev, DMA_BIT_MASK(64))) {
-		pci_using_dac = 1;
-
-		if (dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(64))) {
-			pr_err("%s: unable to obtain 64-bit DMA for coherent allocations\n",
-			       pci_name(pdev));
-			err = -ENODEV;
-			goto out_disable_pdev;
-		}
-
-	} else if ((err = dma_set_mask(&pdev->dev, DMA_BIT_MASK(32))) != 0) {
+	err = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64));
+	if (err) {
 		pr_err("%s: no usable DMA configuration\n", pci_name(pdev));
 		goto out_disable_pdev;
 	}
@@ -1039,10 +1034,8 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 		netdev->hw_features |= NETIF_F_SG | NETIF_F_IP_CSUM |
 			NETIF_F_RXCSUM;
 		netdev->features |= NETIF_F_SG | NETIF_F_IP_CSUM |
-			NETIF_F_RXCSUM | NETIF_F_LLTX;
+			NETIF_F_RXCSUM | NETIF_F_LLTX | NETIF_F_HIGHDMA;
 
-		if (pci_using_dac)
-			netdev->features |= NETIF_F_HIGHDMA;
 		if (vlan_tso_capable(adapter)) {
 			netdev->features |=
 				NETIF_F_HW_VLAN_CTAG_TX |
@@ -1060,7 +1053,7 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 		netdev->hard_header_len += (netdev->hw_features & NETIF_F_TSO) ?
 			sizeof(struct cpl_tx_pkt_lso) : sizeof(struct cpl_tx_pkt);
 
-		netif_napi_add(netdev, &adapter->napi, t1_poll, 64);
+		netif_napi_add(netdev, &adapter->napi, t1_poll);
 
 		netdev->ethtool_ops = &t1_ethtool_ops;
 

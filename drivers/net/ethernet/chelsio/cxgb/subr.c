@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*****************************************************************************
  *                                                                           *
  * File: subr.c                                                              *
@@ -7,16 +8,6 @@
  *  Various subroutines (intr,pio,etc.) used by Chelsio 10G Ethernet driver. *
  *  part of the Chelsio 10Gb Ethernet Driver.                                *
  *                                                                           *
- * This program is free software; you can redistribute it and/or modify      *
- * it under the terms of the GNU General Public License, version 2, as       *
- * published by the Free Software Foundation.                                *
- *                                                                           *
- * You should have received a copy of the GNU General Public License along   *
- * with this program; if not, see <http://www.gnu.org/licenses/>.            *
- *                                                                           *
- * THIS SOFTWARE IS PROVIDED ``AS IS'' AND WITHOUT ANY EXPRESS OR IMPLIED    *
- * WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF      *
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.                     *
  *                                                                           *
  * http://www.chelsio.com                                                    *
  *                                                                           *
@@ -1140,7 +1131,7 @@ int t1_init_sw_modules(adapter_t *adapter, const struct board_info *bi)
 			       adapter->port[i].dev->name);
 			goto error;
 		}
-		memcpy(adapter->port[i].dev->dev_addr, hw_addr, ETH_ALEN);
+		eth_hw_addr_set(adapter->port[i].dev, hw_addr);
 		init_link_config(&adapter->port[i].link_config, bi);
 	}
 

@@ -653,8 +653,19 @@ static snd_pcm_uframes_t sst_soc_pointer(struct snd_soc_component *component,
 		dev_err(rtd->dev, "sst: error code = %d\n", ret_val);
 		return ret_val;
 	}
-	substream->runtime->delay = str_info->pcm_delay;
 	return str_info->buffer_ptr;
+}
+
+static snd_pcm_sframes_t sst_soc_delay(struct snd_soc_component *component,
+				       struct snd_pcm_substream *substream)
+{
+	struct sst_runtime_stream *stream = substream->runtime->private_data;
+	struct pcm_stream_info *str_info = &stream->stream_info;
+
+	if (sst_get_stream_status(stream) == SST_PLATFORM_INIT)
+		return 0;
+
+	return str_info->pcm_delay;
 }
 
 static int sst_soc_pcm_new(struct snd_soc_component *component,
@@ -665,10 +676,9 @@ static int sst_soc_pcm_new(struct snd_soc_component *component,
 
 	if (dai->driver->playback.channels_min ||
 			dai->driver->capture.channels_min) {
-		snd_pcm_set_managed_buffer_all(pcm,
-			SNDRV_DMA_TYPE_CONTINUOUS,
-			snd_dma_continuous_data(GFP_DMA),
-			SST_MIN_BUFFER, SST_MAX_BUFFER);
+		snd_pcm_set_managed_buffer_all(pcm, SNDRV_DMA_TYPE_DEV,
+					       pcm->card->dev,
+					       SST_MIN_BUFFER, SST_MAX_BUFFER);
 	}
 	return 0;
 }
@@ -695,6 +705,7 @@ static const struct snd_soc_component_driver sst_soc_platform_drv  = {
 	.open		= sst_soc_open,
 	.trigger	= sst_soc_trigger,
 	.pointer	= sst_soc_pointer,
+	.delay		= sst_soc_delay,
 	.compress_ops	= &sst_platform_compress_ops,
 	.pcm_construct	= sst_soc_pcm_new,
 };

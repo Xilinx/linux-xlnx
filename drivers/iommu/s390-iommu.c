@@ -39,7 +39,7 @@ static struct s390_domain *to_s390_domain(struct iommu_domain *dom)
 	return container_of(dom, struct s390_domain, domain);
 }
 
-static bool s390_iommu_capable(enum iommu_cap cap)
+static bool s390_iommu_capable(struct device *dev, enum iommu_cap cap)
 {
 	switch (cap) {
 	case IOMMU_CAP_CACHE_COHERENCY:
@@ -99,7 +99,7 @@ static int s390_iommu_attach_device(struct iommu_domain *domain,
 	if (!domain_device)
 		return -ENOMEM;
 
-	if (zdev->dma_table) {
+	if (zdev->dma_table && !zdev->s390_domain) {
 		cc = zpci_dma_exit_device(zdev);
 		if (cc) {
 			rc = -EIO;
@@ -107,9 +107,12 @@ static int s390_iommu_attach_device(struct iommu_domain *domain,
 		}
 	}
 
+	if (zdev->s390_domain)
+		zpci_unregister_ioat(zdev, 0);
+
 	zdev->dma_table = s390_domain->dma_table;
 	cc = zpci_register_ioat(zdev, 0, zdev->start_dma, zdev->end_dma,
-				(u64) zdev->dma_table);
+				virt_to_phys(zdev->dma_table));
 	if (cc) {
 		rc = -EIO;
 		goto out_restore;
@@ -136,7 +139,13 @@ static int s390_iommu_attach_device(struct iommu_domain *domain,
 	return 0;
 
 out_restore:
-	zpci_dma_init_device(zdev);
+	if (!zdev->s390_domain) {
+		zpci_dma_init_device(zdev);
+	} else {
+		zdev->dma_table = zdev->s390_domain->dma_table;
+		zpci_register_ioat(zdev, 0, zdev->start_dma, zdev->end_dma,
+				   virt_to_phys(zdev->dma_table));
+	}
 out_free:
 	kfree(domain_device);
 
@@ -167,7 +176,7 @@ static void s390_iommu_detach_device(struct iommu_domain *domain,
 	}
 	spin_unlock_irqrestore(&s390_domain->list_lock, flags);
 
-	if (found) {
+	if (found && (zdev->s390_domain == s390_domain)) {
 		zdev->s390_domain = NULL;
 		zpci_unregister_ioat(zdev, 0);
 		zpci_dma_init_device(zdev);
@@ -176,7 +185,12 @@ static void s390_iommu_detach_device(struct iommu_domain *domain,
 
 static struct iommu_device *s390_iommu_probe_device(struct device *dev)
 {
-	struct zpci_dev *zdev = to_zpci_dev(dev);
+	struct zpci_dev *zdev;
+
+	if (!dev_is_pci(dev))
+		return ERR_PTR(-ENODEV);
+
+	zdev = to_zpci_dev(dev);
 
 	return &zdev->iommu_dev;
 }
@@ -205,11 +219,11 @@ static void s390_iommu_release_device(struct device *dev)
 }
 
 static int s390_iommu_update_trans(struct s390_domain *s390_domain,
-				   unsigned long pa, dma_addr_t dma_addr,
+				   phys_addr_t pa, dma_addr_t dma_addr,
 				   size_t size, int flags)
 {
 	struct s390_domain_device *domain_device;
-	u8 *page_addr = (u8 *) (pa & PAGE_MASK);
+	phys_addr_t page_addr = pa & PAGE_MASK;
 	dma_addr_t start_dma_addr = dma_addr;
 	unsigned long irq_flags, nr_pages, i;
 	unsigned long *entry;
@@ -274,7 +288,7 @@ static int s390_iommu_map(struct iommu_domain *domain, unsigned long iova,
 	if (!(prot & IOMMU_WRITE))
 		flags |= ZPCI_TABLE_PROTECTED;
 
-	rc = s390_iommu_update_trans(s390_domain, (unsigned long) paddr, iova,
+	rc = s390_iommu_update_trans(s390_domain, paddr, iova,
 				     size, flags);
 
 	return rc;
@@ -324,7 +338,7 @@ static size_t s390_iommu_unmap(struct iommu_domain *domain,
 	if (!paddr)
 		return 0;
 
-	rc = s390_iommu_update_trans(s390_domain, (unsigned long) paddr, iova,
+	rc = s390_iommu_update_trans(s390_domain, paddr, iova,
 				     size, flags);
 	if (rc)
 		return 0;
@@ -363,20 +377,16 @@ void zpci_destroy_iommu(struct zpci_dev *zdev)
 static const struct iommu_ops s390_iommu_ops = {
 	.capable = s390_iommu_capable,
 	.domain_alloc = s390_domain_alloc,
-	.domain_free = s390_domain_free,
-	.attach_dev = s390_iommu_attach_device,
-	.detach_dev = s390_iommu_detach_device,
-	.map = s390_iommu_map,
-	.unmap = s390_iommu_unmap,
-	.iova_to_phys = s390_iommu_iova_to_phys,
 	.probe_device = s390_iommu_probe_device,
 	.release_device = s390_iommu_release_device,
 	.device_group = generic_device_group,
 	.pgsize_bitmap = S390_IOMMU_PGSIZES,
+	.default_domain_ops = &(const struct iommu_domain_ops) {
+		.attach_dev	= s390_iommu_attach_device,
+		.detach_dev	= s390_iommu_detach_device,
+		.map		= s390_iommu_map,
+		.unmap		= s390_iommu_unmap,
+		.iova_to_phys	= s390_iommu_iova_to_phys,
+		.free		= s390_domain_free,
+	}
 };
-
-static int __init s390_iommu_init(void)
-{
-	return bus_set_iommu(&pci_bus_type, &s390_iommu_ops);
-}
-subsys_initcall(s390_iommu_init);

@@ -267,61 +267,78 @@ static void vc7_64_mul_64_to_128(u64 left, u64 right, u64 *hi, u64 *lo)
  */
 static u64 vc7_128_div_64_to_64(u64 numhi, u64 numlo, u64 den, u64 *r)
 {
-	// We work in base 2**32.
-	// A uint32 holds a single digit. A uint64 holds two digits.
-	// Our numerator is conceptually [num3, num2, num1, num0].
-	// Our denominator is [den1, den0].
+	/*
+	 * We work in base 2**32.
+	 * A uint32 holds a single digit. A uint64 holds two digits.
+	 * Our numerator is conceptually [num3, num2, num1, num0].
+	 * Our denominator is [den1, den0].
+	 */
 	const u64 b = ((u64)1 << 32);
 
-	// The high and low digits of our computed quotient.
+	/* The high and low digits of our computed quotient. */
 	u32 q1, q0;
 
-	// The normalization shift factor
+	/* The normalization shift factor */
 	int shift;
 
-	// The high and low digits of our denominator (after normalizing).
-	// Also the low 2 digits of our numerator (after normalizing).
+	/*
+	 * The high and low digits of our denominator (after normalizing).
+	 * Also the low 2 digits of our numerator (after normalizing).
+	 */
 	u32 den1, den0, num1, num0;
 
-	// A partial remainder;
+	/* A partial remainder; */
 	u64 rem;
 
-	// The estimated quotient, and its corresponding remainder (unrelated to true remainder).
+	/*
+	 * The estimated quotient, and its corresponding remainder (unrelated
+	 * to true remainder).
+	 */
 	u64 qhat, rhat;
 
-	// Variables used to correct the estimated quotient.
+	/* Variables used to correct the estimated quotient. */
 	u64 c1, c2;
 
-	// Check for overflow and divide by 0.
+	/* Check for overflow and divide by 0. */
 	if (numhi >= den) {
 		if (r)
 			*r = ~0ull;
 		return ~0ull;
 	}
 
-	// Determine the normalization factor. We multiply den by this, so that its leading digit
-	// is at least half b. In binary this means just shifting left by the number of leading
-	// zeros, so that there's a 1 in the MSB.
-	// We also shift numer by the same amount. This cannot overflow because numhi < den.
-	// The expression (-shift & 63) is the same as (64 - shift), except it avoids the UB of
-	// shifting by 64. The funny bitwise 'and' ensures that numlo does not get shifted into
-	// numhi if shift is 0. clang 11 has an x86 codegen bug here: see LLVM bug 50118.
-	// The sequence below avoids it.
+	/*
+	 * Determine the normalization factor. We multiply den by this, so that
+	 * its leading digit is at least half b. In binary this means just
+	 * shifting left by the number of leading zeros, so that there's a 1 in
+	 * the MSB.
+	 *
+	 * We also shift numer by the same amount. This cannot overflow because
+	 * numhi < den.  The expression (-shift & 63) is the same as (64 -
+	 * shift), except it avoids the UB of shifting by 64. The funny bitwise
+	 * 'and' ensures that numlo does not get shifted into numhi if shift is
+	 * 0. clang 11 has an x86 codegen bug here: see LLVM bug 50118. The
+	 * sequence below avoids it.
+	 */
 	shift = __builtin_clzll(den);
 	den <<= shift;
 	numhi <<= shift;
 	numhi |= (numlo >> (-shift & 63)) & (-(s64)shift >> 63);
 	numlo <<= shift;
 
-	// Extract the low digits of the numerator and both digits of the denominator.
+	/*
+	 * Extract the low digits of the numerator and both digits of the
+	 * denominator.
+	 */
 	num1 = (u32)(numlo >> 32);
 	num0 = (u32)(numlo & 0xFFFFFFFFu);
 	den1 = (u32)(den >> 32);
 	den0 = (u32)(den & 0xFFFFFFFFu);
 
-	// We wish to compute q1 = [n3 n2 n1] / [d1 d0].
-	// Estimate q1 as [n3 n2] / [d1], and then correct it.
-	// Note while qhat may be 2 digits, q1 is always 1 digit.
+	/*
+	 * We wish to compute q1 = [n3 n2 n1] / [d1 d0].
+	 * Estimate q1 as [n3 n2] / [d1], and then correct it.
+	 * Note while qhat may be 2 digits, q1 is always 1 digit.
+	 */
 	qhat = div64_u64_rem(numhi, den1, &rhat);
 	c1 = qhat * den0;
 	c2 = rhat * b + num1;
@@ -329,11 +346,13 @@ static u64 vc7_128_div_64_to_64(u64 numhi, u64 numlo, u64 den, u64 *r)
 		qhat -= (c1 - c2 > den) ? 2 : 1;
 	q1 = (u32)qhat;
 
-	// Compute the true (partial) remainder.
+	/* Compute the true (partial) remainder. */
 	rem = numhi * b + num1 - q1 * den;
 
-	// We wish to compute q0 = [rem1 rem0 n0] / [d1 d0].
-	// Estimate q0 as [rem1 rem0] / [d1] and correct it.
+	/*
+	 * We wish to compute q0 = [rem1 rem0 n0] / [d1 d0].
+	 * Estimate q0 as [rem1 rem0] / [d1] and correct it.
+	 */
 	qhat = div64_u64_rem(rem, den1, &rhat);
 	c1 = qhat * den0;
 	c2 = rhat * b + num0;
@@ -341,7 +360,7 @@ static u64 vc7_128_div_64_to_64(u64 numhi, u64 numlo, u64 den, u64 *r)
 		qhat -= (c1 - c2 > den) ? 2 : 1;
 	q0 = (u32)qhat;
 
-	// Return remainder if requested.
+	/* Return remainder if requested. */
 	if (r)
 		*r = (rem * b + num0 - q0 * den) >> shift;
 	return ((u64)q1 << 32) | q0;
@@ -1216,14 +1235,12 @@ err_clk:
 	return ret;
 }
 
-static int vc7_remove(struct i2c_client *client)
+static void vc7_remove(struct i2c_client *client)
 {
 	struct vc7_driver_data *vc7 = i2c_get_clientdata(client);
 
 	of_clk_del_provider(client->dev.of_node);
 	clk_unregister_fixed_rate(vc7->clk_apll.clk);
-
-	return 0;
 }
 
 static bool vc7_volatile_reg(struct device *dev, unsigned int reg)
@@ -1266,13 +1283,13 @@ static const struct regmap_config vc7_regmap_config = {
 
 static const struct i2c_device_id vc7_i2c_id[] = {
 	{ "rc21008a", VC7_RC21008A },
-	{},
+	{}
 };
 MODULE_DEVICE_TABLE(i2c, vc7_i2c_id);
 
 static const struct of_device_id vc7_of_match[] = {
 	{ .compatible = "renesas,rc21008a", .data = &vc7_rc21008a_info },
-	{},
+	{}
 };
 MODULE_DEVICE_TABLE(of, vc7_of_match);
 

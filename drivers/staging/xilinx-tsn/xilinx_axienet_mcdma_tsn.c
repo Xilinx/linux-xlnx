@@ -849,8 +849,7 @@ int __maybe_unused axienet_mcdma_rx_probe_tsn(struct platform_device *pdev,
 		q->rx_irq = of_irq_get_byname(np, dma_name);
 		spin_lock_init(&q->rx_lock);
 
-		netif_napi_add(ndev, &lp->napi[i], xaxienet_rx_poll_tsn,
-			       XAXIENET_NAPI_WEIGHT);
+		netif_napi_add(ndev, &lp->napi[i], xaxienet_rx_poll_tsn);
 	}
 
 	return 0;

@@ -1029,6 +1029,8 @@ static void cdnsp_process_ctrl_td(struct cdnsp_device *pdev,
 		return;
 	}
 
+	*status = 0;
+
 	cdnsp_finish_td(pdev, td, event, pep, status);
 }
 
@@ -1523,7 +1525,14 @@ irqreturn_t cdnsp_thread_irq_handler(int irq, void *data)
 	spin_lock_irqsave(&pdev->lock, flags);
 
 	if (pdev->cdnsp_state & (CDNSP_STATE_HALTED | CDNSP_STATE_DYING)) {
-		cdnsp_died(pdev);
+		/*
+		 * While removing or stopping driver there may still be deferred
+		 * not handled interrupt which should not be treated as error.
+		 * Driver should simply ignore it.
+		 */
+		if (pdev->gadget_driver)
+			cdnsp_died(pdev);
+
 		spin_unlock_irqrestore(&pdev->lock, flags);
 		return IRQ_HANDLED;
 	}
@@ -1754,9 +1763,14 @@ static u32 cdnsp_td_remainder(struct cdnsp_device *pdev,
 			      int trb_buff_len,
 			      unsigned int td_total_len,
 			      struct cdnsp_request *preq,
-			      bool more_trbs_coming)
+			      bool more_trbs_coming,
+			      bool zlp)
 {
 	u32 maxp, total_packet_count;
+
+	/* Before ZLP driver needs set TD_SIZE = 1. */
+	if (zlp)
+		return 1;
 
 	/* One TRB with a zero-length data packet. */
 	if (!more_trbs_coming || (transferred == 0 && trb_buff_len == 0) ||
@@ -1932,13 +1946,16 @@ int cdnsp_queue_bulk_tx(struct cdnsp_device *pdev, struct cdnsp_request *preq)
 		}
 
 		if (enqd_len + trb_buff_len >= full_len) {
-			if (need_zero_pkt)
-				zero_len_trb = !zero_len_trb;
-
-			field &= ~TRB_CHAIN;
-			field |= TRB_IOC;
-			more_trbs_coming = false;
-			preq->td.last_trb = ring->enqueue;
+			if (need_zero_pkt && !zero_len_trb) {
+				zero_len_trb = true;
+			} else {
+				zero_len_trb = false;
+				field &= ~TRB_CHAIN;
+				field |= TRB_IOC;
+				more_trbs_coming = false;
+				need_zero_pkt = false;
+				preq->td.last_trb = ring->enqueue;
+			}
 		}
 
 		/* Only set interrupt on short packet for OUT endpoints. */
@@ -1948,12 +1965,13 @@ int cdnsp_queue_bulk_tx(struct cdnsp_device *pdev, struct cdnsp_request *preq)
 		/* Set the TRB length, TD size, and interrupter fields. */
 		remainder = cdnsp_td_remainder(pdev, enqd_len, trb_buff_len,
 					       full_len, preq,
-					       more_trbs_coming);
+					       more_trbs_coming,
+					       zero_len_trb);
 
 		length_field = TRB_LEN(trb_buff_len) | TRB_TD_SIZE(remainder) |
 			TRB_INTR_TARGET(0);
 
-		cdnsp_queue_trb(pdev, ring, more_trbs_coming | zero_len_trb,
+		cdnsp_queue_trb(pdev, ring, more_trbs_coming,
 				lower_32_bits(send_addr),
 				upper_32_bits(send_addr),
 				length_field,
@@ -2013,7 +2031,7 @@ int cdnsp_queue_ctrl_tx(struct cdnsp_device *pdev, struct cdnsp_request *preq)
 
 	if (preq->request.length > 0) {
 		remainder = cdnsp_td_remainder(pdev, 0, preq->request.length,
-					       preq->request.length, preq, 1);
+					       preq->request.length, preq, 1, 0);
 
 		length_field = TRB_LEN(preq->request.length) |
 				TRB_TD_SIZE(remainder) | TRB_INTR_TARGET(0);
@@ -2064,7 +2082,8 @@ int cdnsp_cmd_stop_ep(struct cdnsp_device *pdev, struct cdnsp_ep *pep)
 	u32 ep_state = GET_EP_CTX_STATE(pep->out_ctx);
 	int ret = 0;
 
-	if (ep_state == EP_STATE_STOPPED || ep_state == EP_STATE_DISABLED) {
+	if (ep_state == EP_STATE_STOPPED || ep_state == EP_STATE_DISABLED ||
+	    ep_state == EP_STATE_HALTED) {
 		trace_cdnsp_ep_stopped_or_disabled(pep->out_ctx);
 		goto ep_stopped;
 	}
@@ -2213,7 +2232,7 @@ static int cdnsp_queue_isoc_tx(struct cdnsp_device *pdev,
 		/* Set the TRB length, TD size, & interrupter fields. */
 		remainder = cdnsp_td_remainder(pdev, running_total,
 					       trb_buff_len, td_len, preq,
-					       more_trbs_coming);
+					       more_trbs_coming, 0);
 
 		length_field = TRB_LEN(trb_buff_len) | TRB_INTR_TARGET(0);
 

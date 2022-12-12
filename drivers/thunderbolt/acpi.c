@@ -7,21 +7,22 @@
  */
 
 #include <linux/acpi.h>
+#include <linux/pm_runtime.h>
 
 #include "tb.h"
 
 static acpi_status tb_acpi_add_link(acpi_handle handle, u32 level, void *data,
 				    void **return_value)
 {
+	struct acpi_device *adev = acpi_fetch_acpi_dev(handle);
 	struct fwnode_reference_args args;
 	struct fwnode_handle *fwnode;
 	struct tb_nhi *nhi = data;
-	struct acpi_device *adev;
 	struct pci_dev *pdev;
 	struct device *dev;
 	int ret;
 
-	if (acpi_bus_get_device(handle, &adev))
+	if (!adev)
 		return AE_OK;
 
 	fwnode = acpi_fwnode_handle(adev);
@@ -31,7 +32,7 @@ static acpi_status tb_acpi_add_link(acpi_handle handle, u32 level, void *data,
 		return AE_OK;
 
 	/* It needs to reference this NHI */
-	if (nhi->pdev->dev.fwnode != args.fwnode)
+	if (dev_fwnode(&nhi->pdev->dev) != args.fwnode)
 		goto out_put;
 
 	/*
@@ -41,7 +42,7 @@ static acpi_status tb_acpi_add_link(acpi_handle handle, u32 level, void *data,
 	 */
 	dev = acpi_get_first_physical_node(adev);
 	while (!dev) {
-		adev = adev->parent;
+		adev = acpi_dev_parent(adev);
 		if (!adev)
 			break;
 		dev = acpi_get_first_physical_node(adev);
@@ -74,8 +75,18 @@ static acpi_status tb_acpi_add_link(acpi_handle handle, u32 level, void *data,
 		 pci_pcie_type(pdev) == PCI_EXP_TYPE_DOWNSTREAM))) {
 		const struct device_link *link;
 
+		/*
+		 * Make them both active first to make sure the NHI does
+		 * not runtime suspend before the consumer. The
+		 * pm_runtime_put() below then allows the consumer to
+		 * runtime suspend again (which then allows NHI runtime
+		 * suspend too now that the device link is established).
+		 */
+		pm_runtime_get_sync(&pdev->dev);
+
 		link = device_link_add(&pdev->dev, &nhi->pdev->dev,
 				       DL_FLAG_AUTOREMOVE_SUPPLIER |
+				       DL_FLAG_RPM_ACTIVE |
 				       DL_FLAG_PM_RUNTIME);
 		if (link) {
 			dev_dbg(&nhi->pdev->dev, "created link from %s\n",
@@ -84,6 +95,8 @@ static acpi_status tb_acpi_add_link(acpi_handle handle, u32 level, void *data,
 			dev_warn(&nhi->pdev->dev, "device link creation from %s failed\n",
 				 dev_name(&pdev->dev));
 		}
+
+		pm_runtime_put(&pdev->dev);
 	}
 
 out_put:
@@ -288,37 +301,22 @@ static bool tb_acpi_bus_match(struct device *dev)
 	return tb_is_switch(dev) || tb_is_usb4_port_device(dev);
 }
 
-static struct acpi_device *tb_acpi_find_port(struct acpi_device *adev,
-					     const struct tb_port *port)
-{
-	struct acpi_device *port_adev;
-
-	if (!adev)
-		return NULL;
-
-	/*
-	 * Device routers exists under the downstream facing USB4 port
-	 * of the parent router. Their _ADR is always 0.
-	 */
-	list_for_each_entry(port_adev, &adev->children, node) {
-		if (acpi_device_adr(port_adev) == port->port)
-			return port_adev;
-	}
-
-	return NULL;
-}
-
 static struct acpi_device *tb_acpi_switch_find_companion(struct tb_switch *sw)
 {
 	struct acpi_device *adev = NULL;
 	struct tb_switch *parent_sw;
 
+	/*
+	 * Device routers exists under the downstream facing USB4 port
+	 * of the parent router. Their _ADR is always 0.
+	 */
 	parent_sw = tb_switch_parent(sw);
 	if (parent_sw) {
 		struct tb_port *port = tb_port_at(tb_route(sw), parent_sw);
 		struct acpi_device *port_adev;
 
-		port_adev = tb_acpi_find_port(ACPI_COMPANION(&parent_sw->dev), port);
+		port_adev = acpi_find_child_by_adr(ACPI_COMPANION(&parent_sw->dev),
+						   port->port);
 		if (port_adev)
 			adev = acpi_find_child_device(port_adev, 0, false);
 	} else {
@@ -351,8 +349,8 @@ static struct acpi_device *tb_acpi_find_companion(struct device *dev)
 	if (tb_is_switch(dev))
 		return tb_acpi_switch_find_companion(tb_to_switch(dev));
 	else if (tb_is_usb4_port_device(dev))
-		return tb_acpi_find_port(ACPI_COMPANION(dev->parent),
-					 tb_to_usb4_port_device(dev)->port);
+		return acpi_find_child_by_adr(ACPI_COMPANION(dev->parent),
+					      tb_to_usb4_port_device(dev)->port->port);
 	return NULL;
 }
 

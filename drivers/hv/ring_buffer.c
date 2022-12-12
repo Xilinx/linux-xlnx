@@ -17,6 +17,8 @@
 #include <linux/vmalloc.h>
 #include <linux/slab.h>
 #include <linux/prefetch.h>
+#include <linux/io.h>
+#include <asm/mshyperv.h>
 
 #include "hyperv_vmbus.h"
 
@@ -183,8 +185,10 @@ void hv_ringbuffer_pre_init(struct vmbus_channel *channel)
 int hv_ringbuffer_init(struct hv_ring_buffer_info *ring_info,
 		       struct page *pages, u32 page_cnt, u32 max_pkt_size)
 {
-	int i;
 	struct page **pages_wraparound;
+	unsigned long *pfns_wraparound;
+	u64 pfn;
+	int i;
 
 	BUILD_BUG_ON((sizeof(struct hv_ring_buffer) != PAGE_SIZE));
 
@@ -192,23 +196,50 @@ int hv_ringbuffer_init(struct hv_ring_buffer_info *ring_info,
 	 * First page holds struct hv_ring_buffer, do wraparound mapping for
 	 * the rest.
 	 */
-	pages_wraparound = kcalloc(page_cnt * 2 - 1, sizeof(struct page *),
-				   GFP_KERNEL);
-	if (!pages_wraparound)
-		return -ENOMEM;
+	if (hv_isolation_type_snp()) {
+		pfn = page_to_pfn(pages) +
+			PFN_DOWN(ms_hyperv.shared_gpa_boundary);
 
-	pages_wraparound[0] = pages;
-	for (i = 0; i < 2 * (page_cnt - 1); i++)
-		pages_wraparound[i + 1] = &pages[i % (page_cnt - 1) + 1];
+		pfns_wraparound = kcalloc(page_cnt * 2 - 1,
+			sizeof(unsigned long), GFP_KERNEL);
+		if (!pfns_wraparound)
+			return -ENOMEM;
 
-	ring_info->ring_buffer = (struct hv_ring_buffer *)
-		vmap(pages_wraparound, page_cnt * 2 - 1, VM_MAP, PAGE_KERNEL);
+		pfns_wraparound[0] = pfn;
+		for (i = 0; i < 2 * (page_cnt - 1); i++)
+			pfns_wraparound[i + 1] = pfn + i % (page_cnt - 1) + 1;
 
-	kfree(pages_wraparound);
+		ring_info->ring_buffer = (struct hv_ring_buffer *)
+			vmap_pfn(pfns_wraparound, page_cnt * 2 - 1,
+				 PAGE_KERNEL);
+		kfree(pfns_wraparound);
 
+		if (!ring_info->ring_buffer)
+			return -ENOMEM;
 
-	if (!ring_info->ring_buffer)
-		return -ENOMEM;
+		/* Zero ring buffer after setting memory host visibility. */
+		memset(ring_info->ring_buffer, 0x00, PAGE_SIZE * page_cnt);
+	} else {
+		pages_wraparound = kcalloc(page_cnt * 2 - 1,
+					   sizeof(struct page *),
+					   GFP_KERNEL);
+		if (!pages_wraparound)
+			return -ENOMEM;
+
+		pages_wraparound[0] = pages;
+		for (i = 0; i < 2 * (page_cnt - 1); i++)
+			pages_wraparound[i + 1] =
+				&pages[i % (page_cnt - 1) + 1];
+
+		ring_info->ring_buffer = (struct hv_ring_buffer *)
+			vmap(pages_wraparound, page_cnt * 2 - 1, VM_MAP,
+				PAGE_KERNEL);
+
+		kfree(pages_wraparound);
+		if (!ring_info->ring_buffer)
+			return -ENOMEM;
+	}
+
 
 	ring_info->ring_buffer->read_index =
 		ring_info->ring_buffer->write_index = 0;
@@ -252,7 +283,7 @@ void hv_ringbuffer_cleanup(struct hv_ring_buffer_info *ring_info)
 /* Write to the ring buffer. */
 int hv_ringbuffer_write(struct vmbus_channel *channel,
 			const struct kvec *kv_list, u32 kv_count,
-			u64 requestid)
+			u64 requestid, u64 *trans_id)
 {
 	int i;
 	u32 bytes_avail_towrite;
@@ -263,7 +294,7 @@ int hv_ringbuffer_write(struct vmbus_channel *channel,
 	unsigned long flags;
 	struct hv_ring_buffer_info *outring_info = &channel->outbound;
 	struct vmpacket_descriptor *desc = kv_list[0].iov_base;
-	u64 rqst_id = VMBUS_NO_RQSTOR;
+	u64 __trans_id, rqst_id = VMBUS_NO_RQSTOR;
 
 	if (channel->rescind)
 		return -ENODEV;
@@ -322,7 +353,15 @@ int hv_ringbuffer_write(struct vmbus_channel *channel,
 		}
 	}
 	desc = hv_get_ring_buffer(outring_info) + old_write;
-	desc->trans_id = (rqst_id == VMBUS_NO_RQSTOR) ? requestid : rqst_id;
+	__trans_id = (rqst_id == VMBUS_NO_RQSTOR) ? requestid : rqst_id;
+	/*
+	 * Ensure the compiler doesn't generate code that reads the value of
+	 * the transaction ID from the ring buffer, which is shared with the
+	 * Hyper-V host and subject to being changed at any time.
+	 */
+	WRITE_ONCE(desc->trans_id, __trans_id);
+	if (trans_id)
+		*trans_id = __trans_id;
 
 	/* Set previous packet start */
 	prev_indices = hv_get_ring_bufferindices(outring_info);
@@ -390,7 +429,7 @@ int hv_ringbuffer_read(struct vmbus_channel *channel,
 	memcpy(buffer, (const char *)desc + offset, packetlen);
 
 	/* Advance ring index to next packet descriptor */
-	__hv_pkt_iter_next(channel, desc, true);
+	__hv_pkt_iter_next(channel, desc);
 
 	/* Notify host of update */
 	hv_pkt_iter_close(channel);
@@ -408,29 +447,22 @@ int hv_ringbuffer_read(struct vmbus_channel *channel,
 static u32 hv_pkt_iter_avail(const struct hv_ring_buffer_info *rbi)
 {
 	u32 priv_read_loc = rbi->priv_read_index;
-	u32 write_loc = READ_ONCE(rbi->ring_buffer->write_index);
+	u32 write_loc;
+
+	/*
+	 * The Hyper-V host writes the packet data, then uses
+	 * store_release() to update the write_index.  Use load_acquire()
+	 * here to prevent loads of the packet data from being re-ordered
+	 * before the read of the write_index and potentially getting
+	 * stale data.
+	 */
+	write_loc = virt_load_acquire(&rbi->ring_buffer->write_index);
 
 	if (write_loc >= priv_read_loc)
 		return write_loc - priv_read_loc;
 	else
 		return (rbi->ring_datasize - priv_read_loc) + write_loc;
 }
-
-/*
- * Get first vmbus packet without copying it out of the ring buffer
- */
-struct vmpacket_descriptor *hv_pkt_iter_first_raw(struct vmbus_channel *channel)
-{
-	struct hv_ring_buffer_info *rbi = &channel->inbound;
-
-	hv_debug_delay_test(channel, MESSAGE_DELAY);
-
-	if (hv_pkt_iter_avail(rbi) < sizeof(struct vmpacket_descriptor))
-		return NULL;
-
-	return (struct vmpacket_descriptor *)(hv_get_ring_buffer(rbi) + rbi->priv_read_index);
-}
-EXPORT_SYMBOL_GPL(hv_pkt_iter_first_raw);
 
 /*
  * Get first vmbus packet from ring buffer after read_index
@@ -443,11 +475,14 @@ struct vmpacket_descriptor *hv_pkt_iter_first(struct vmbus_channel *channel)
 	struct vmpacket_descriptor *desc, *desc_copy;
 	u32 bytes_avail, pkt_len, pkt_offset;
 
-	desc = hv_pkt_iter_first_raw(channel);
-	if (!desc)
-		return NULL;
+	hv_debug_delay_test(channel, MESSAGE_DELAY);
 
-	bytes_avail = min(rbi->pkt_buffer_size, hv_pkt_iter_avail(rbi));
+	bytes_avail = hv_pkt_iter_avail(rbi);
+	if (bytes_avail < sizeof(struct vmpacket_descriptor))
+		return NULL;
+	bytes_avail = min(rbi->pkt_buffer_size, bytes_avail);
+
+	desc = (struct vmpacket_descriptor *)(hv_get_ring_buffer(rbi) + rbi->priv_read_index);
 
 	/*
 	 * Ensure the compiler does not use references to incoming Hyper-V values (which
@@ -494,8 +529,7 @@ EXPORT_SYMBOL_GPL(hv_pkt_iter_first);
  */
 struct vmpacket_descriptor *
 __hv_pkt_iter_next(struct vmbus_channel *channel,
-		   const struct vmpacket_descriptor *desc,
-		   bool copy)
+		   const struct vmpacket_descriptor *desc)
 {
 	struct hv_ring_buffer_info *rbi = &channel->inbound;
 	u32 packetlen = desc->len8 << 3;
@@ -508,7 +542,7 @@ __hv_pkt_iter_next(struct vmbus_channel *channel,
 		rbi->priv_read_index -= dsize;
 
 	/* more data? */
-	return copy ? hv_pkt_iter_first(channel) : hv_pkt_iter_first_raw(channel);
+	return hv_pkt_iter_first(channel);
 }
 EXPORT_SYMBOL_GPL(__hv_pkt_iter_next);
 

@@ -1,22 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * NXP Wireless LAN device driver: PCIE specific handling
  *
  * Copyright 2011-2020 NXP
- *
- * This software file (the "File") is distributed by NXP
- * under the terms of the GNU General Public License Version 2, June 1991
- * (the "License").  You may use, redistribute and/or modify this File in
- * accordance with the terms and conditions of the License, a copy of which
- * is available by writing to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
- * worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
- *
- * THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
- * ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
- * this warranty disclaimer.
  */
 
+#include <linux/iopoll.h>
 #include <linux/firmware.h>
 
 #include "decl.h"
@@ -647,11 +636,15 @@ static void mwifiex_delay_for_sleep_cookie(struct mwifiex_adapter *adapter,
 			    "max count reached while accessing sleep cookie\n");
 }
 
+#define N_WAKEUP_TRIES_SHORT_INTERVAL 15
+#define N_WAKEUP_TRIES_LONG_INTERVAL 35
+
 /* This function wakes up the card by reading fw_status register. */
 static int mwifiex_pm_wakeup_card(struct mwifiex_adapter *adapter)
 {
 	struct pcie_service_card *card = adapter->card;
 	const struct mwifiex_pcie_card_reg *reg = card->pcie.reg;
+	int retval __maybe_unused;
 
 	mwifiex_dbg(adapter, EVENT,
 		    "event: Wakeup device...\n");
@@ -659,11 +652,24 @@ static int mwifiex_pm_wakeup_card(struct mwifiex_adapter *adapter)
 	if (reg->sleep_cookie)
 		mwifiex_pcie_dev_wakeup_delay(adapter);
 
-	/* Accessing fw_status register will wakeup device */
-	if (mwifiex_write_reg(adapter, reg->fw_status, FIRMWARE_READY_PCIE)) {
-		mwifiex_dbg(adapter, ERROR,
-			    "Writing fw_status register failed\n");
-		return -1;
+	/* The 88W8897 PCIe+USB firmware (latest version 15.68.19.p21) sometimes
+	 * appears to ignore or miss our wakeup request, so we continue trying
+	 * until we receive an interrupt from the card.
+	 */
+	if (read_poll_timeout(mwifiex_write_reg, retval,
+			      READ_ONCE(adapter->int_status) != 0,
+			      500, 500 * N_WAKEUP_TRIES_SHORT_INTERVAL,
+			      false,
+			      adapter, reg->fw_status, FIRMWARE_READY_PCIE)) {
+		if (read_poll_timeout(mwifiex_write_reg, retval,
+				      READ_ONCE(adapter->int_status) != 0,
+				      10000, 10000 * N_WAKEUP_TRIES_LONG_INTERVAL,
+				      false,
+				      adapter, reg->fw_status, FIRMWARE_READY_PCIE)) {
+			mwifiex_dbg(adapter, ERROR,
+				    "Firmware didn't wake up\n");
+			return -EIO;
+		}
 	}
 
 	if (reg->sleep_cookie) {
@@ -1490,6 +1496,14 @@ mwifiex_pcie_send_data(struct mwifiex_adapter *adapter, struct sk_buff *skb,
 			ret = -1;
 			goto done_unmap;
 		}
+
+		/* The firmware (latest version 15.68.19.p21) of the 88W8897 PCIe+USB card
+		 * seems to crash randomly after setting the TX ring write pointer when
+		 * ASPM powersaving is enabled. A workaround seems to be keeping the bus
+		 * busy by reading a random register afterwards.
+		 */
+		mwifiex_read_reg(adapter, PCI_VENDOR_ID, &rx_val);
+
 		if ((mwifiex_pcie_txbd_not_full(card)) &&
 		    tx_param->next_pkt_len) {
 			/* have more packets and TxBD still can hold more */
@@ -3126,6 +3140,9 @@ static int mwifiex_init_pcie(struct mwifiex_adapter *adapter)
 	if (ret)
 		goto err_alloc_buffers;
 
+	if (pdev->device == PCIE_DEVICE_ID_MARVELL_88W8897)
+		adapter->ignore_btcoex_events = true;
+
 	return 0;
 
 err_alloc_buffers:
@@ -3344,7 +3361,7 @@ static void mwifiex_unregister_dev(struct mwifiex_adapter *adapter)
 	} else {
 		mwifiex_dbg(adapter, INFO,
 			    "%s(): calling free_irq()\n", __func__);
-	       free_irq(card->dev->irq, &card->share_irq_ctx);
+		free_irq(card->dev->irq, &card->share_irq_ctx);
 
 		if (card->msi_enable)
 			pci_disable_msi(pdev);

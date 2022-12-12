@@ -8,6 +8,7 @@
  *
  * Many thanks to Klaus Hitschler <klaus.hitschler@gmx.de>
  */
+#include <asm/unaligned.h>
 #include <linux/netdevice.h>
 #include <linux/usb.h>
 #include <linux/module.h>
@@ -505,6 +506,7 @@ static int pcan_usb_decode_error(struct pcan_usb_msg_context *mc, u8 n,
 			/* Supply TX/RX error counters in case of
 			 * controller error.
 			 */
+			cf->can_id = CAN_ERR_CNT;
 			cf->data[6] = mc->pdev->bec.txerr;
 			cf->data[7] = mc->pdev->bec.rxerr;
 		}
@@ -520,8 +522,6 @@ static int pcan_usb_decode_error(struct pcan_usb_msg_context *mc, u8 n,
 				     &hwts->hwtstamp);
 	}
 
-	mc->netdev->stats.rx_packets++;
-	mc->netdev->stats.rx_bytes += cf->len;
 	netif_rx(skb);
 
 	return 0;
@@ -534,7 +534,7 @@ static int pcan_usb_handle_bus_evt(struct pcan_usb_msg_context *mc, u8 ir)
 {
 	struct pcan_usb *pdev = mc->pdev;
 
-	/* acccording to the content of the packet */
+	/* according to the content of the packet */
 	switch (ir) {
 	case PCAN_USB_ERR_CNT_DEC:
 	case PCAN_USB_ERR_CNT_INC:
@@ -678,15 +678,16 @@ static int pcan_usb_decode_data(struct pcan_usb_msg_context *mc, u8 status_len)
 		/* Ignore next byte (client private id) if SRR bit is set */
 		if (can_id_flags & PCAN_USB_TX_SRR)
 			mc->ptr++;
+
+		/* update statistics */
+		mc->netdev->stats.rx_bytes += cf->len;
 	}
+	mc->netdev->stats.rx_packets++;
 
 	/* convert timestamp into kernel time */
 	hwts = skb_hwtstamps(skb);
 	peak_usb_get_ts_time(&mc->pdev->time_ref, mc->ts16, &hwts->hwtstamp);
 
-	/* update statistics */
-	mc->netdev->stats.rx_packets++;
-	mc->netdev->stats.rx_bytes += cf->len;
 	/* push the skb */
 	netif_rx(skb);
 
@@ -841,14 +842,14 @@ static int pcan_usb_start(struct peak_usb_device *dev)
 	pdev->bec.rxerr = 0;
 	pdev->bec.txerr = 0;
 
-	/* be notified on error counter changes (if requested by user) */
-	if (dev->can.ctrlmode & CAN_CTRLMODE_BERR_REPORTING) {
-		err = pcan_usb_set_err_frame(dev, PCAN_USB_BERR_MASK);
-		if (err)
-			netdev_warn(dev->netdev,
-				    "Asking for BERR reporting error %u\n",
-				    err);
-	}
+	/* always ask the device for BERR reporting, to be able to switch from
+	 * WARNING to PASSIVE state
+	 */
+	err = pcan_usb_set_err_frame(dev, PCAN_USB_BERR_MASK);
+	if (err)
+		netdev_warn(dev->netdev,
+			    "Asking for BERR reporting error %u\n",
+			    err);
 
 	/* if revision greater than 3, can put silent mode on/off */
 	if (dev->device_rev > 3) {
@@ -883,6 +884,11 @@ static int pcan_usb_init(struct peak_usb_device *dev)
 		return err;
 	}
 
+	dev_info(dev->netdev->dev.parent,
+		 "PEAK-System %s adapter hwrev %u serial %08X (%u channel)\n",
+		 pcan_usb.name, dev->device_rev, serial_number,
+		 pcan_usb.ctrl_count);
+
 	/* Since rev 4.1, PCAN-USB is able to make single-shot as well as
 	 * looped back frames.
 	 */
@@ -895,11 +901,6 @@ static int pcan_usb_init(struct peak_usb_device *dev)
 		dev_info(dev->netdev->dev.parent,
 			 "Firmware update available. Please contact support@peak-system.com\n");
 	}
-
-	dev_info(dev->netdev->dev.parent,
-		 "PEAK-System %s adapter hwrev %u serial %08X (%u channel)\n",
-		 pcan_usb.name, dev->device_rev, serial_number,
-		 pcan_usb.ctrl_count);
 
 	return 0;
 }
@@ -964,6 +965,7 @@ static int pcan_usb_set_phys_id(struct net_device *netdev,
 
 static const struct ethtool_ops pcan_usb_ethtool_ops = {
 	.set_phys_id = pcan_usb_set_phys_id,
+	.get_ts_info = pcan_get_ts_info,
 };
 
 /*
@@ -986,7 +988,6 @@ const struct peak_usb_adapter pcan_usb = {
 	.device_id = PCAN_USB_PRODUCT_ID,
 	.ctrl_count = 1,
 	.ctrlmode_supported = CAN_CTRLMODE_3_SAMPLES | CAN_CTRLMODE_LISTENONLY |
-			      CAN_CTRLMODE_BERR_REPORTING |
 			      CAN_CTRLMODE_CC_LEN8_DLC,
 	.clock = {
 		.freq = PCAN_USB_CRYSTAL_HZ / 2,

@@ -24,7 +24,7 @@ struct erofs_map_blocks;
 #define show_mflags(flags) __print_flags(flags, "",	\
 	{ EROFS_MAP_MAPPED,	"M" },			\
 	{ EROFS_MAP_META,	"I" },			\
-	{ EROFS_MAP_ZIPPED,	"Z" })
+	{ EROFS_MAP_ENCODED,	"E" })
 
 TRACE_EVENT(erofs_lookup,
 
@@ -53,15 +53,14 @@ TRACE_EVENT(erofs_lookup,
 );
 
 TRACE_EVENT(erofs_fill_inode,
-	TP_PROTO(struct inode *inode, int isdir),
-	TP_ARGS(inode, isdir),
+	TP_PROTO(struct inode *inode),
+	TP_ARGS(inode),
 
 	TP_STRUCT__entry(
 		__field(dev_t,		dev	)
 		__field(erofs_nid_t,	nid	)
 		__field(erofs_blk_t,	blkaddr )
 		__field(unsigned int,	ofs	)
-		__field(int,		isdir	)
 	),
 
 	TP_fast_assign(
@@ -69,13 +68,11 @@ TRACE_EVENT(erofs_fill_inode,
 		__entry->nid		= EROFS_I(inode)->nid;
 		__entry->blkaddr	= erofs_blknr(iloc(EROFS_I_SB(inode), __entry->nid));
 		__entry->ofs		= erofs_blkoff(iloc(EROFS_I_SB(inode), __entry->nid));
-		__entry->isdir		= isdir;
 	),
 
-	TP_printk("dev = (%d,%d), nid = %llu, blkaddr %u ofs %u, isdir %d",
+	TP_printk("dev = (%d,%d), nid = %llu, blkaddr %u ofs %u",
 		  show_dev_nid(__entry),
-		  __entry->blkaddr, __entry->ofs,
-		  __entry->isdir)
+		  __entry->blkaddr, __entry->ofs)
 );
 
 TRACE_EVENT(erofs_readpage,
@@ -169,7 +166,7 @@ DECLARE_EVENT_CLASS(erofs__map_blocks_enter,
 		  __entry->flags ? show_map_flags(__entry->flags) : "NULL")
 );
 
-DEFINE_EVENT(erofs__map_blocks_enter, erofs_map_blocks_flatmode_enter,
+DEFINE_EVENT(erofs__map_blocks_enter, erofs_map_blocks_enter,
 	TP_PROTO(struct inode *inode, struct erofs_map_blocks *map,
 		 unsigned flags),
 
@@ -221,7 +218,7 @@ DECLARE_EVENT_CLASS(erofs__map_blocks_exit,
 		  show_mflags(__entry->mflags), __entry->ret)
 );
 
-DEFINE_EVENT(erofs__map_blocks_exit, erofs_map_blocks_flatmode_exit,
+DEFINE_EVENT(erofs__map_blocks_exit, erofs_map_blocks_exit,
 	TP_PROTO(struct inode *inode, struct erofs_map_blocks *map,
 		 unsigned flags, int ret),
 

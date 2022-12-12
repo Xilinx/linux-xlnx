@@ -73,12 +73,8 @@ static const struct cpg_core_clk r8a7796_core_clks[] __initconst = {
 	DEF_FIXED(".s2",        CLK_S2,            CLK_PLL1_DIV2,  4, 1),
 	DEF_FIXED(".s3",        CLK_S3,            CLK_PLL1_DIV2,  6, 1),
 	DEF_FIXED(".sdsrc",     CLK_SDSRC,         CLK_PLL1_DIV2,  2, 1),
-	DEF_BASE(".rpcsrc",	CLK_RPCSRC, CLK_TYPE_GEN3_RPCSRC, CLK_PLL1),
 
-	DEF_BASE("rpc",		R8A7796_CLK_RPC, CLK_TYPE_GEN3_RPC,
-		 CLK_RPCSRC),
-	DEF_BASE("rpcd2",	R8A7796_CLK_RPCD2, CLK_TYPE_GEN3_RPCD2,
-		 R8A7796_CLK_RPC),
+	DEF_BASE(".rpcsrc",     CLK_RPCSRC, CLK_TYPE_GEN3_RPCSRC, CLK_PLL1),
 
 	DEF_GEN3_OSC(".r",      CLK_RINT,          CLK_EXTAL,      32),
 
@@ -106,10 +102,17 @@ static const struct cpg_core_clk r8a7796_core_clks[] __initconst = {
 	DEF_FIXED("s3d2",       R8A7796_CLK_S3D2,  CLK_S3,         2, 1),
 	DEF_FIXED("s3d4",       R8A7796_CLK_S3D4,  CLK_S3,         4, 1),
 
-	DEF_GEN3_SD("sd0",      R8A7796_CLK_SD0,   CLK_SDSRC,     0x074),
-	DEF_GEN3_SD("sd1",      R8A7796_CLK_SD1,   CLK_SDSRC,     0x078),
-	DEF_GEN3_SD("sd2",      R8A7796_CLK_SD2,   CLK_SDSRC,     0x268),
-	DEF_GEN3_SD("sd3",      R8A7796_CLK_SD3,   CLK_SDSRC,     0x26c),
+	DEF_GEN3_SDH("sd0h",    R8A7796_CLK_SD0H,  CLK_SDSRC,        0x074),
+	DEF_GEN3_SDH("sd1h",    R8A7796_CLK_SD1H,  CLK_SDSRC,        0x078),
+	DEF_GEN3_SDH("sd2h",    R8A7796_CLK_SD2H,  CLK_SDSRC,        0x268),
+	DEF_GEN3_SDH("sd3h",    R8A7796_CLK_SD3H,  CLK_SDSRC,        0x26c),
+	DEF_GEN3_SD("sd0",      R8A7796_CLK_SD0,   R8A7796_CLK_SD0H, 0x074),
+	DEF_GEN3_SD("sd1",      R8A7796_CLK_SD1,   R8A7796_CLK_SD1H, 0x078),
+	DEF_GEN3_SD("sd2",      R8A7796_CLK_SD2,   R8A7796_CLK_SD2H, 0x268),
+	DEF_GEN3_SD("sd3",      R8A7796_CLK_SD3,   R8A7796_CLK_SD3H, 0x26c),
+
+	DEF_BASE("rpc",         R8A7796_CLK_RPC,   CLK_TYPE_GEN3_RPC,   CLK_RPCSRC),
+	DEF_BASE("rpcd2",       R8A7796_CLK_RPCD2, CLK_TYPE_GEN3_RPCD2, R8A7796_CLK_RPC),
 
 	DEF_FIXED("cl",         R8A7796_CLK_CL,    CLK_PLL1_DIV2, 48, 1),
 	DEF_FIXED("cr",         R8A7796_CLK_CR,    CLK_PLL1_DIV4,  2, 1),
@@ -207,6 +210,7 @@ static struct mssr_mod_clk r8a7796_mod_clks[] __initdata = {
 	DEF_MOD("du0",			 724,	R8A7796_CLK_S2D1),
 	DEF_MOD("lvds",			 727,	R8A7796_CLK_S2D1),
 	DEF_MOD("hdmi0",		 729,	R8A7796_CLK_HDMI),
+	DEF_MOD("mlp",			 802,	R8A7796_CLK_S2D1),
 	DEF_MOD("vin7",			 804,	R8A7796_CLK_S0D2),
 	DEF_MOD("vin6",			 805,	R8A7796_CLK_S0D2),
 	DEF_MOD("vin5",			 806,	R8A7796_CLK_S0D2),

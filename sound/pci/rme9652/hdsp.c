@@ -433,7 +433,7 @@ struct hdsp_midi {
     struct snd_rawmidi           *rmidi;
     struct snd_rawmidi_substream *input;
     struct snd_rawmidi_substream *output;
-    char                     istimer; /* timer in use */
+    signed char		     istimer; /* timer in use */
     struct timer_list	     timer;
     spinlock_t               lock;
     int			     pending;
@@ -468,8 +468,11 @@ struct hdsp {
 	unsigned char         ss_out_channels;
 	u32                   io_loopback;          /* output loopback channel states*/
 
-	struct snd_dma_buffer *capture_dma_buf;
-	struct snd_dma_buffer *playback_dma_buf;
+	/* DMA buffers; those are copied instances from the original snd_dma_buf
+	 * objects (which are managed via devres) for the address alignments
+	 */
+	struct snd_dma_buffer capture_dma_buf;
+	struct snd_dma_buffer playback_dma_buf;
 	unsigned char        *capture_buffer;	    /* suitably aligned address */
 	unsigned char        *playback_buffer;	    /* suitably aligned address */
 
@@ -477,7 +480,7 @@ struct hdsp {
 	pid_t                 playback_pid;
 	int                   running;
 	int                   system_sample_rate;
-	const char           *channel_map;
+	const signed char    *channel_map;
 	int                   dev;
 	int                   irq;
 	unsigned long         port;
@@ -499,7 +502,7 @@ struct hdsp {
    where the data for that channel can be read/written from/to.
 */
 
-static const char channel_map_df_ss[HDSP_MAX_CHANNELS] = {
+static const signed char channel_map_df_ss[HDSP_MAX_CHANNELS] = {
 	0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
 	18, 19, 20, 21, 22, 23, 24, 25
 };
@@ -514,7 +517,7 @@ static const char channel_map_mf_ss[HDSP_MAX_CHANNELS] = { /* Multiface */
 	-1, -1, -1, -1, -1, -1, -1, -1
 };
 
-static const char channel_map_ds[HDSP_MAX_CHANNELS] = {
+static const signed char channel_map_ds[HDSP_MAX_CHANNELS] = {
 	/* ADAT channels are remapped */
 	1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23,
 	/* channels 12 and 13 are S/PDIF */
@@ -523,7 +526,7 @@ static const char channel_map_ds[HDSP_MAX_CHANNELS] = {
 	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1
 };
 
-static const char channel_map_H9632_ss[HDSP_MAX_CHANNELS] = {
+static const signed char channel_map_H9632_ss[HDSP_MAX_CHANNELS] = {
 	/* ADAT channels */
 	0, 1, 2, 3, 4, 5, 6, 7,
 	/* SPDIF */
@@ -537,7 +540,7 @@ static const char channel_map_H9632_ss[HDSP_MAX_CHANNELS] = {
 	-1, -1
 };
 
-static const char channel_map_H9632_ds[HDSP_MAX_CHANNELS] = {
+static const signed char channel_map_H9632_ds[HDSP_MAX_CHANNELS] = {
 	/* ADAT */
 	1, 3, 5, 7,
 	/* SPDIF */
@@ -551,7 +554,7 @@ static const char channel_map_H9632_ds[HDSP_MAX_CHANNELS] = {
 	-1, -1, -1, -1, -1, -1
 };
 
-static const char channel_map_H9632_qs[HDSP_MAX_CHANNELS] = {
+static const signed char channel_map_H9632_qs[HDSP_MAX_CHANNELS] = {
 	/* ADAT is disabled in this mode */
 	/* SPDIF */
 	8, 9,
@@ -3311,7 +3314,7 @@ static int snd_hdsp_create_controls(struct snd_card *card, struct hdsp *hdsp)
 	if (hdsp->io_type == RPM) {
 		/* RPM Bypass, Disconnect and Input switches */
 		for (idx = 0; idx < ARRAY_SIZE(snd_hdsp_rpm_controls); idx++) {
-			err = snd_ctl_add(card, kctl = snd_ctl_new1(&snd_hdsp_rpm_controls[idx], hdsp));
+			err = snd_ctl_add(card, snd_ctl_new1(&snd_hdsp_rpm_controls[idx], hdsp));
 			if (err < 0)
 				return err;
 		}
@@ -3764,30 +3767,32 @@ static void snd_hdsp_proc_init(struct hdsp *hdsp)
 
 static int snd_hdsp_initialize_memory(struct hdsp *hdsp)
 {
-	unsigned long pb_bus, cb_bus;
+	struct snd_dma_buffer *capture_dma, *playback_dma;
 
-	hdsp->capture_dma_buf =
-		snd_hammerfall_get_buffer(hdsp->pci, HDSP_DMA_AREA_BYTES);
-	hdsp->playback_dma_buf =
-		snd_hammerfall_get_buffer(hdsp->pci, HDSP_DMA_AREA_BYTES);
-	if (!hdsp->capture_dma_buf || !hdsp->playback_dma_buf) {
+	capture_dma = snd_hammerfall_get_buffer(hdsp->pci, HDSP_DMA_AREA_BYTES);
+	playback_dma = snd_hammerfall_get_buffer(hdsp->pci, HDSP_DMA_AREA_BYTES);
+	if (!capture_dma || !playback_dma) {
 		dev_err(hdsp->card->dev,
 			"%s: no buffers available\n", hdsp->card_name);
 		return -ENOMEM;
 	}
 
-	/* Align to bus-space 64K boundary */
+	/* copy to the own data for alignment */
+	hdsp->capture_dma_buf = *capture_dma;
+	hdsp->playback_dma_buf = *playback_dma;
 
-	cb_bus = ALIGN(hdsp->capture_dma_buf->addr, 0x10000ul);
-	pb_bus = ALIGN(hdsp->playback_dma_buf->addr, 0x10000ul);
+	/* Align to bus-space 64K boundary */
+	hdsp->capture_dma_buf.addr = ALIGN(capture_dma->addr, 0x10000ul);
+	hdsp->playback_dma_buf.addr = ALIGN(playback_dma->addr, 0x10000ul);
 
 	/* Tell the card where it is */
+	hdsp_write(hdsp, HDSP_inputBufferAddress, hdsp->capture_dma_buf.addr);
+	hdsp_write(hdsp, HDSP_outputBufferAddress, hdsp->playback_dma_buf.addr);
 
-	hdsp_write(hdsp, HDSP_inputBufferAddress, cb_bus);
-	hdsp_write(hdsp, HDSP_outputBufferAddress, pb_bus);
-
-	hdsp->capture_buffer = hdsp->capture_dma_buf->area + (cb_bus - hdsp->capture_dma_buf->addr);
-	hdsp->playback_buffer = hdsp->playback_dma_buf->area + (pb_bus - hdsp->playback_dma_buf->addr);
+	hdsp->capture_dma_buf.area += hdsp->capture_dma_buf.addr - capture_dma->addr;
+	hdsp->playback_dma_buf.area += hdsp->playback_dma_buf.addr - playback_dma->addr;
+	hdsp->capture_buffer = hdsp->capture_dma_buf.area;
+	hdsp->playback_buffer = hdsp->playback_dma_buf.area;
 
 	return 0;
 }
@@ -3934,7 +3939,7 @@ static snd_pcm_uframes_t snd_hdsp_hw_pointer(struct snd_pcm_substream *substream
 	return hdsp_hw_pointer(hdsp);
 }
 
-static char *hdsp_channel_buffer_location(struct hdsp *hdsp,
+static signed char *hdsp_channel_buffer_location(struct hdsp *hdsp,
 					     int stream,
 					     int channel)
 
@@ -3959,7 +3964,7 @@ static int snd_hdsp_playback_copy(struct snd_pcm_substream *substream,
 				  void __user *src, unsigned long count)
 {
 	struct hdsp *hdsp = snd_pcm_substream_chip(substream);
-	char *channel_buf;
+	signed char *channel_buf;
 
 	if (snd_BUG_ON(pos + count > HDSP_CHANNEL_BUFFER_BYTES))
 		return -EINVAL;
@@ -3977,7 +3982,7 @@ static int snd_hdsp_playback_copy_kernel(struct snd_pcm_substream *substream,
 					 void *src, unsigned long count)
 {
 	struct hdsp *hdsp = snd_pcm_substream_chip(substream);
-	char *channel_buf;
+	signed char *channel_buf;
 
 	channel_buf = hdsp_channel_buffer_location(hdsp, substream->pstr->stream, channel);
 	if (snd_BUG_ON(!channel_buf))
@@ -3991,7 +3996,7 @@ static int snd_hdsp_capture_copy(struct snd_pcm_substream *substream,
 				 void __user *dst, unsigned long count)
 {
 	struct hdsp *hdsp = snd_pcm_substream_chip(substream);
-	char *channel_buf;
+	signed char *channel_buf;
 
 	if (snd_BUG_ON(pos + count > HDSP_CHANNEL_BUFFER_BYTES))
 		return -EINVAL;
@@ -4009,7 +4014,7 @@ static int snd_hdsp_capture_copy_kernel(struct snd_pcm_substream *substream,
 					void *dst, unsigned long count)
 {
 	struct hdsp *hdsp = snd_pcm_substream_chip(substream);
-	char *channel_buf;
+	signed char *channel_buf;
 
 	channel_buf = hdsp_channel_buffer_location(hdsp, substream->pstr->stream, channel);
 	if (snd_BUG_ON(!channel_buf))
@@ -4023,7 +4028,7 @@ static int snd_hdsp_hw_silence(struct snd_pcm_substream *substream,
 			       unsigned long count)
 {
 	struct hdsp *hdsp = snd_pcm_substream_chip(substream);
-	char *channel_buf;
+	signed char *channel_buf;
 
 	channel_buf = hdsp_channel_buffer_location (hdsp, substream->pstr->stream, channel);
 	if (snd_BUG_ON(!channel_buf))
@@ -4507,7 +4512,7 @@ static int snd_hdsp_playback_open(struct snd_pcm_substream *substream)
 	snd_pcm_set_sync(substream);
 
         runtime->hw = snd_hdsp_playback_subinfo;
-	snd_pcm_set_runtime_buffer(substream, hdsp->playback_dma_buf);
+	snd_pcm_set_runtime_buffer(substream, &hdsp->playback_dma_buf);
 
 	hdsp->playback_pid = current->pid;
 	hdsp->playback_substream = substream;
@@ -4583,7 +4588,7 @@ static int snd_hdsp_capture_open(struct snd_pcm_substream *substream)
 	snd_pcm_set_sync(substream);
 
 	runtime->hw = snd_hdsp_capture_subinfo;
-	snd_pcm_set_runtime_buffer(substream, hdsp->capture_dma_buf);
+	snd_pcm_set_runtime_buffer(substream, &hdsp->capture_dma_buf);
 
 	hdsp->capture_pid = current->pid;
 	hdsp->capture_substream = substream;
@@ -5439,17 +5444,21 @@ static int snd_hdsp_probe(struct pci_dev *pci,
 	hdsp->pci = pci;
 	err = snd_hdsp_create(card, hdsp);
 	if (err)
-		return err;
+		goto error;
 
 	strcpy(card->shortname, "Hammerfall DSP");
 	sprintf(card->longname, "%s at 0x%lx, irq %d", hdsp->card_name,
 		hdsp->port, hdsp->irq);
 	err = snd_card_register(card);
 	if (err)
-		return err;
+		goto error;
 	pci_set_drvdata(pci, card);
 	dev++;
 	return 0;
+
+ error:
+	snd_card_free(card);
+	return err;
 }
 
 static struct pci_driver hdsp_driver = {

@@ -3,11 +3,19 @@ config DRM_ZYNQMP_DPSUB
 	depends on ARCH_ZYNQMP || COMPILE_TEST
 	depends on COMMON_CLK && DRM && OF
 	depends on DMADEVICES
+	depends on PHY_XILINX_ZYNQMP
+	depends on XILINX_ZYNQMP_DPDMA
 	depends on DRM_XLNX
 	select VIDEOMODE_HELPERS
 	select XILINX_DMA_ENGINES
-	select PHY_XILINX_ZYNQMP
-	select XILINX_ZYNQMP_DPDMA
+	select DMA_ENGINE
+	select DRM_DISPLAY_DP_HELPER
+	select DRM_DISPLAY_HELPER
+	select DRM_GEM_DMA_HELPER
+	select DRM_KMS_HELPER
+	select GENERIC_PHY
+	select DRM_DISPLAY_HELPER
+	select DRM_DISPLAY_DP_HELPER
 	select MFD_SYSCON
 	help
 	  This is a DRM/KMS driver for ZynqMP DisplayPort controller. Choose
@@ -18,8 +26,8 @@ config DRM_XLNX
 	tristate "Xilinx DRM KMS Driver"
 	depends on DRM && OF
 	select DRM_KMS_HELPER
-	select DRM_KMS_CMA_HELPER
-	select DRM_GEM_CMA_HELPER
+	select DRM_KMS_DMA_HELPER
+	select DRM_GEM_DMA_HELPER
 	select SND_PCM_ELD
 	help
 	  Xilinx DRM KMS driver. Choose this option if you have
@@ -50,6 +58,9 @@ config DRM_XLNX_BRIDGE_DEBUG_FS
 config DRM_XLNX_DPTX
 	tristate "Xilinx DRM DisplayPort Subsystem Driver"
 	depends on DRM_XLNX
+	select DRM_DISPLAY_HELPER
+	select DRM_DISPLAY_HDMI_HELPER
+	select DRM_DISPLAY_DP_HELPER
 	help
 	  DRM driver for Xilinx DisplayPort Tx Subsystem for FPGA. Choose
 	  this option if you have a FPGA display pipeline that includes
@@ -95,6 +106,9 @@ config DRM_XLNX_PL_DISP
 config DRM_XLNX_SDI
 	tristate "Xilinx DRM SDI Subsystem Driver"
 	depends on DRM_XLNX
+	select DRM_DISPLAY_HELPER
+	select DRM_DISPLAY_HDMI_HELPER
+	select DRM_DISPLAY_DP_HELPER
 	help
 	  DRM driver for Xilinx SDI Tx Subsystem.
 

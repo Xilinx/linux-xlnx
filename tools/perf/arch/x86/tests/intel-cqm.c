@@ -37,7 +37,7 @@ static pid_t spawn(void)
  * the last read counter value to avoid triggering a WARN_ON_ONCE() in
  * smp_call_function_many() caused by sending IPIs from NMI context.
  */
-int test__intel_cqm_count_nmi_context(struct test *test __maybe_unused, int subtest __maybe_unused)
+int test__intel_cqm_count_nmi_context(struct test_suite *test __maybe_unused, int subtest __maybe_unused)
 {
 	struct evlist *evlist = NULL;
 	struct evsel *evsel = NULL;
@@ -56,7 +56,7 @@ int test__intel_cqm_count_nmi_context(struct test *test __maybe_unused, int subt
 		return TEST_FAIL;
 	}
 
-	ret = parse_events(evlist, "intel_cqm/llc_occupancy/", NULL);
+	ret = parse_event(evlist, "intel_cqm/llc_occupancy/");
 	if (ret) {
 		pr_debug("parse_events failed, is \"intel_cqm/llc_occupancy/\" available?\n");
 		err = TEST_SKIP;

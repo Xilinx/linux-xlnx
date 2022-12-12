@@ -12,6 +12,7 @@ maintainers:
 allOf:
   - $ref: panel-common.yaml#
   - $ref: /schemas/leds/backlight/common.yaml#
+  - $ref: /schemas/spi/spi-peripheral-props.yaml#
 
 properties:
   compatible:
@@ -22,6 +23,10 @@ properties:
   port: true
   default-brightness: true
   max-brightness: true
+
+  spi-3wire: true
+  spi-cpha: true
+  spi-cpol: true
 
   vdd3-supply:
     description: VDD regulator

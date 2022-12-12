@@ -8,7 +8,7 @@
 #include <linux/interrupt.h>
 #include <linux/hardirq.h>
 
-#include "rxe_task.h"
+#include "rxe.h"
 
 int __rxe_do_task(struct rxe_task *task)
 
@@ -32,25 +32,25 @@ void rxe_do_task(struct tasklet_struct *t)
 {
 	int cont;
 	int ret;
-	unsigned long flags;
 	struct rxe_task *task = from_tasklet(task, t, tasklet);
+	unsigned int iterations = RXE_MAX_ITERATIONS;
 
-	spin_lock_irqsave(&task->state_lock, flags);
+	spin_lock_bh(&task->state_lock);
 	switch (task->state) {
 	case TASK_STATE_START:
 		task->state = TASK_STATE_BUSY;
-		spin_unlock_irqrestore(&task->state_lock, flags);
+		spin_unlock_bh(&task->state_lock);
 		break;
 
 	case TASK_STATE_BUSY:
 		task->state = TASK_STATE_ARMED;
 		fallthrough;
 	case TASK_STATE_ARMED:
-		spin_unlock_irqrestore(&task->state_lock, flags);
+		spin_unlock_bh(&task->state_lock);
 		return;
 
 	default:
-		spin_unlock_irqrestore(&task->state_lock, flags);
+		spin_unlock_bh(&task->state_lock);
 		pr_warn("%s failed with bad state %d\n", __func__, task->state);
 		return;
 	}
@@ -59,16 +59,23 @@ void rxe_do_task(struct tasklet_struct *t)
 		cont = 0;
 		ret = task->func(task->arg);
 
-		spin_lock_irqsave(&task->state_lock, flags);
+		spin_lock_bh(&task->state_lock);
 		switch (task->state) {
 		case TASK_STATE_BUSY:
-			if (ret)
+			if (ret) {
 				task->state = TASK_STATE_START;
-			else
+			} else if (iterations--) {
 				cont = 1;
+			} else {
+				/* reschedule the tasklet and exit
+				 * the loop to give up the cpu
+				 */
+				tasklet_schedule(&task->tasklet);
+				task->state = TASK_STATE_START;
+			}
 			break;
 
-		/* soneone tried to run the task since the last time we called
+		/* someone tried to run the task since the last time we called
 		 * func, so we will call one more time regardless of the
 		 * return value
 		 */
@@ -81,16 +88,15 @@ void rxe_do_task(struct tasklet_struct *t)
 			pr_warn("%s failed with bad state %d\n", __func__,
 				task->state);
 		}
-		spin_unlock_irqrestore(&task->state_lock, flags);
+		spin_unlock_bh(&task->state_lock);
 	} while (cont);
 
 	task->ret = ret;
 }
 
-int rxe_init_task(void *obj, struct rxe_task *task,
+int rxe_init_task(struct rxe_task *task,
 		  void *arg, int (*func)(void *), char *name)
 {
-	task->obj	= obj;
 	task->arg	= arg;
 	task->func	= func;
 	snprintf(task->name, sizeof(task->name), "%s", name);
@@ -106,7 +112,6 @@ int rxe_init_task(void *obj, struct rxe_task *task,
 
 void rxe_cleanup_task(struct rxe_task *task)
 {
-	unsigned long flags;
 	bool idle;
 
 	/*
@@ -116,9 +121,9 @@ void rxe_cleanup_task(struct rxe_task *task)
 	task->destroyed = true;
 
 	do {
-		spin_lock_irqsave(&task->state_lock, flags);
+		spin_lock_bh(&task->state_lock);
 		idle = (task->state == TASK_STATE_START);
-		spin_unlock_irqrestore(&task->state_lock, flags);
+		spin_unlock_bh(&task->state_lock);
 	} while (!idle);
 
 	tasklet_kill(&task->tasklet);

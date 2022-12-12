@@ -287,6 +287,9 @@ struct ceph_osd_linger_request {
 	rados_watcherrcb_t errcb;
 	void *data;
 
+	struct ceph_pagelist *request_pl;
+	struct page **notify_id_pages;
+
 	struct page ***preply_pages;
 	size_t *preply_len;
 };
@@ -475,6 +478,14 @@ extern void osd_req_op_alloc_hint_init(struct ceph_osd_request *osd_req,
 				       u64 expected_object_size,
 				       u64 expected_write_size,
 				       u32 flags);
+extern int osd_req_op_copy_from_init(struct ceph_osd_request *req,
+				     u64 src_snapid, u64 src_version,
+				     struct ceph_object_id *src_oid,
+				     struct ceph_object_locator *src_oloc,
+				     u32 src_fadvise_flags,
+				     u32 dst_fadvise_flags,
+				     u32 truncate_seq, u64 truncate_size,
+				     u8 copy_from_flags);
 
 extern struct ceph_osd_request *ceph_osdc_alloc_request(struct ceph_osd_client *osdc,
 					       struct ceph_snap_context *snapc,
@@ -496,9 +507,8 @@ extern struct ceph_osd_request *ceph_osdc_new_request(struct ceph_osd_client *,
 extern void ceph_osdc_get_request(struct ceph_osd_request *req);
 extern void ceph_osdc_put_request(struct ceph_osd_request *req);
 
-extern int ceph_osdc_start_request(struct ceph_osd_client *osdc,
-				   struct ceph_osd_request *req,
-				   bool nofail);
+void ceph_osdc_start_request(struct ceph_osd_client *osdc,
+			     struct ceph_osd_request *req);
 extern void ceph_osdc_cancel_request(struct ceph_osd_request *req);
 extern int ceph_osdc_wait_request(struct ceph_osd_client *osdc,
 				  struct ceph_osd_request *req);
@@ -514,17 +524,6 @@ int ceph_osdc_call(struct ceph_osd_client *osdc,
 		   unsigned int flags,
 		   struct page *req_page, size_t req_len,
 		   struct page **resp_pages, size_t *resp_len);
-
-int ceph_osdc_copy_from(struct ceph_osd_client *osdc,
-			u64 src_snapid, u64 src_version,
-			struct ceph_object_id *src_oid,
-			struct ceph_object_locator *src_oloc,
-			u32 src_fadvise_flags,
-			struct ceph_object_id *dst_oid,
-			struct ceph_object_locator *dst_oloc,
-			u32 dst_fadvise_flags,
-			u32 truncate_seq, u64 truncate_size,
-			u8 copy_from_flags);
 
 /* watch/notify */
 struct ceph_osd_linger_request *

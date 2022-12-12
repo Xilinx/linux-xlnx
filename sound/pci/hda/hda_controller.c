@@ -504,7 +504,6 @@ static int azx_get_time_info(struct snd_pcm_substream *substream,
 		snd_pcm_gettime(substream->runtime, system_ts);
 
 		nsec = timecounter_read(&azx_dev->core.tc);
-		nsec = div_u64(nsec, 3); /* can be optimized */
 		if (audio_tstamp_config->report_delay)
 			nsec = azx_adjust_codec_delay(substream, nsec);
 
@@ -1034,10 +1033,8 @@ EXPORT_SYMBOL_GPL(azx_init_chip);
 void azx_stop_all_streams(struct azx *chip)
 {
 	struct hdac_bus *bus = azx_bus(chip);
-	struct hdac_stream *s;
 
-	list_for_each_entry(s, &bus->stream_list, list)
-		snd_hdac_stream_stop(s);
+	snd_hdac_stop_streams(bus);
 }
 EXPORT_SYMBOL_GPL(azx_stop_all_streams);
 

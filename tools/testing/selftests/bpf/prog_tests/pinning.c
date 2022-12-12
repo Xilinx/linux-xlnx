@@ -26,13 +26,13 @@ __u32 get_map_id(struct bpf_object *obj, const char *name)
 
 void test_pinning(void)
 {
-	const char *file_invalid = "./test_pinning_invalid.o";
+	const char *file_invalid = "./test_pinning_invalid.bpf.o";
 	const char *custpinpath = "/sys/fs/bpf/custom/pinmap";
 	const char *nopinpath = "/sys/fs/bpf/nopinmap";
 	const char *nopinpath2 = "/sys/fs/bpf/nopinmap2";
 	const char *custpath = "/sys/fs/bpf/custom";
 	const char *pinpath = "/sys/fs/bpf/pinmap";
-	const char *file = "./test_pinning.o";
+	const char *file = "./test_pinning.bpf.o";
 	__u32 map_id, map_id2, duration = 0;
 	struct stat statbuf = {};
 	struct bpf_object *obj;
@@ -241,8 +241,8 @@ void test_pinning(void)
 		goto out;
 	}
 
-	map_fd = bpf_create_map(BPF_MAP_TYPE_ARRAY, sizeof(__u32),
-				sizeof(__u64), 1, 0);
+	map_fd = bpf_map_create(BPF_MAP_TYPE_ARRAY, NULL, sizeof(__u32),
+				sizeof(__u64), 1, NULL);
 	if (CHECK(map_fd < 0, "create pinmap manually", "fd %d\n", map_fd))
 		goto out;
 

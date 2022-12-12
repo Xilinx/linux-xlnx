@@ -62,6 +62,15 @@ static inline void disable_kernel_altivec(void)
 #else
 static inline void save_altivec(struct task_struct *t) { }
 static inline void __giveup_altivec(struct task_struct *t) { }
+static inline void enable_kernel_altivec(void)
+{
+	BUILD_BUG();
+}
+
+static inline void disable_kernel_altivec(void)
+{
+	BUILD_BUG();
+}
 #endif
 
 #ifdef CONFIG_VSX
@@ -111,6 +120,9 @@ static inline void clear_task_ebb(struct task_struct *t)
     t->thread.used_ebb = 0;
 #endif
 }
+
+void kvmppc_save_user_regs(void);
+void kvmppc_save_current_sprs(void);
 
 extern int set_thread_tidr(struct task_struct *t);
 

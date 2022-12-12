@@ -339,7 +339,7 @@ static void tulip_up(struct net_device *dev)
 		}
 	} else {
 		/* This is set_rx_mode(), but without starting the transmitter. */
-		u16 *eaddrs = (u16 *)dev->dev_addr;
+		const u16 *eaddrs = (const u16 *)dev->dev_addr;
 		u16 *setup_frm = &tp->setup_frame[15*6];
 		dma_addr_t mapping;
 
@@ -858,8 +858,8 @@ static struct net_device_stats *tulip_get_stats(struct net_device *dev)
 static void tulip_get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *info)
 {
 	struct tulip_private *np = netdev_priv(dev);
-	strlcpy(info->driver, DRV_NAME, sizeof(info->driver));
-	strlcpy(info->bus_info, pci_name(np->pdev), sizeof(info->bus_info));
+	strscpy(info->driver, DRV_NAME, sizeof(info->driver));
+	strscpy(info->bus_info, pci_name(np->pdev), sizeof(info->bus_info));
 }
 
 
@@ -1001,8 +1001,8 @@ static void build_setup_frame_hash(u16 *setup_frm, struct net_device *dev)
 	struct tulip_private *tp = netdev_priv(dev);
 	u16 hash_table[32];
 	struct netdev_hw_addr *ha;
+	const u16 *eaddrs;
 	int i;
-	u16 *eaddrs;
 
 	memset(hash_table, 0, sizeof(hash_table));
 	__set_bit_le(255, hash_table);			/* Broadcast entry */
@@ -1019,7 +1019,7 @@ static void build_setup_frame_hash(u16 *setup_frm, struct net_device *dev)
 	setup_frm = &tp->setup_frame[13*6];
 
 	/* Fill the final entry with our physical address. */
-	eaddrs = (u16 *)dev->dev_addr;
+	eaddrs = (const u16 *)dev->dev_addr;
 	*setup_frm++ = eaddrs[0]; *setup_frm++ = eaddrs[0];
 	*setup_frm++ = eaddrs[1]; *setup_frm++ = eaddrs[1];
 	*setup_frm++ = eaddrs[2]; *setup_frm++ = eaddrs[2];
@@ -1029,7 +1029,7 @@ static void build_setup_frame_perfect(u16 *setup_frm, struct net_device *dev)
 {
 	struct tulip_private *tp = netdev_priv(dev);
 	struct netdev_hw_addr *ha;
-	u16 *eaddrs;
+	const u16 *eaddrs;
 
 	/* We have <= 14 addresses so we can use the wonderful
 	   16 address perfect filtering of the Tulip. */
@@ -1044,7 +1044,7 @@ static void build_setup_frame_perfect(u16 *setup_frm, struct net_device *dev)
 	setup_frm = &tp->setup_frame[15*6];
 
 	/* Fill the final entry with our physical address. */
-	eaddrs = (u16 *)dev->dev_addr;
+	eaddrs = (const u16 *)dev->dev_addr;
 	*setup_frm++ = eaddrs[0]; *setup_frm++ = eaddrs[0];
 	*setup_frm++ = eaddrs[1]; *setup_frm++ = eaddrs[1];
 	*setup_frm++ = eaddrs[2]; *setup_frm++ = eaddrs[2];
@@ -1305,6 +1305,7 @@ static int tulip_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	int chip_idx = ent->driver_data;
 	const char *chip_name = tulip_tbl[chip_idx].chip_name;
 	unsigned int eeprom_missing = 0;
+	u8 addr[ETH_ALEN] __aligned(2);
 	unsigned int force_csr0 = 0;
 
 	board_idx++;
@@ -1388,7 +1389,7 @@ static int tulip_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	 *	And back to business
 	 */
 
-	i = pci_enable_device(pdev);
+	i = pcim_enable_device(pdev);
 	if (i) {
 		pr_err("Cannot enable tulip board #%d, aborting\n", board_idx);
 		return i;
@@ -1397,7 +1398,7 @@ static int tulip_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	irq = pdev->irq;
 
 	/* alloc_etherdev ensures aligned and zeroed private structures */
-	dev = alloc_etherdev (sizeof (*tp));
+	dev = devm_alloc_etherdev(&pdev->dev, sizeof(*tp));
 	if (!dev)
 		return -ENOMEM;
 
@@ -1407,18 +1408,18 @@ static int tulip_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 		       pci_name(pdev),
 		       (unsigned long long)pci_resource_len (pdev, 0),
 		       (unsigned long long)pci_resource_start (pdev, 0));
-		goto err_out_free_netdev;
+		return -ENODEV;
 	}
 
 	/* grab all resources from both PIO and MMIO regions, as we
 	 * don't want anyone else messing around with our hardware */
-	if (pci_request_regions (pdev, DRV_NAME))
-		goto err_out_free_netdev;
+	if (pci_request_regions(pdev, DRV_NAME))
+		return -ENODEV;
 
-	ioaddr =  pci_iomap(pdev, TULIP_BAR, tulip_tbl[chip_idx].io_size);
+	ioaddr = pcim_iomap(pdev, TULIP_BAR, tulip_tbl[chip_idx].io_size);
 
 	if (!ioaddr)
-		goto err_out_free_res;
+		return -ENODEV;
 
 	/*
 	 * initialize private data structure 'tp'
@@ -1427,12 +1428,12 @@ static int tulip_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	tp = netdev_priv(dev);
 	tp->dev = dev;
 
-	tp->rx_ring = dma_alloc_coherent(&pdev->dev,
-					 sizeof(struct tulip_rx_desc) * RX_RING_SIZE +
-					 sizeof(struct tulip_tx_desc) * TX_RING_SIZE,
-					 &tp->rx_ring_dma, GFP_KERNEL);
+	tp->rx_ring = dmam_alloc_coherent(&pdev->dev,
+					  sizeof(struct tulip_rx_desc) * RX_RING_SIZE +
+					  sizeof(struct tulip_tx_desc) * TX_RING_SIZE,
+					  &tp->rx_ring_dma, GFP_KERNEL);
 	if (!tp->rx_ring)
-		goto err_out_mtable;
+		return -ENODEV;
 	tp->tx_ring = (struct tulip_tx_desc *)(tp->rx_ring + RX_RING_SIZE);
 	tp->tx_ring_dma = tp->rx_ring_dma + sizeof(struct tulip_rx_desc) * RX_RING_SIZE;
 
@@ -1506,13 +1507,15 @@ static int tulip_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 			do {
 				value = ioread32(ioaddr + CSR9);
 			} while (value < 0  && --boguscnt > 0);
-			put_unaligned_le16(value, ((__le16 *)dev->dev_addr) + i);
+			put_unaligned_le16(value, ((__le16 *)addr) + i);
 			sum += value & 0xffff;
 		}
+		eth_hw_addr_set(dev, addr);
 	} else if (chip_idx == COMET) {
 		/* No need to read the EEPROM. */
-		put_unaligned_le32(ioread32(ioaddr + 0xA4), dev->dev_addr);
-		put_unaligned_le16(ioread32(ioaddr + 0xA8), dev->dev_addr + 4);
+		put_unaligned_le32(ioread32(ioaddr + 0xA4), addr);
+		put_unaligned_le16(ioread32(ioaddr + 0xA8), addr + 4);
+		eth_hw_addr_set(dev, addr);
 		for (i = 0; i < 6; i ++)
 			sum += dev->dev_addr[i];
 	} else {
@@ -1575,20 +1578,23 @@ static int tulip_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 #endif
 
 		for (i = 0; i < 6; i ++) {
-			dev->dev_addr[i] = ee_data[i + sa_offset];
+			addr[i] = ee_data[i + sa_offset];
 			sum += ee_data[i + sa_offset];
 		}
+		eth_hw_addr_set(dev, addr);
 	}
 	/* Lite-On boards have the address byte-swapped. */
 	if ((dev->dev_addr[0] == 0xA0 ||
 	     dev->dev_addr[0] == 0xC0 ||
 	     dev->dev_addr[0] == 0x02) &&
-	    dev->dev_addr[1] == 0x00)
+	    dev->dev_addr[1] == 0x00) {
 		for (i = 0; i < 6; i+=2) {
-			char tmp = dev->dev_addr[i];
-			dev->dev_addr[i] = dev->dev_addr[i+1];
-			dev->dev_addr[i+1] = tmp;
+			addr[i] = dev->dev_addr[i+1];
+			addr[i+1] = dev->dev_addr[i];
 		}
+		eth_hw_addr_set(dev, addr);
+	}
+
 	/* On the Zynx 315 Etherarray and other multiport boards only the
 	   first Tulip has an EEPROM.
 	   On Sparc systems the mac address is held in the OBP property
@@ -1599,17 +1605,18 @@ static int tulip_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (sum == 0  || sum == 6*0xff) {
 #if defined(CONFIG_SPARC)
 		struct device_node *dp = pci_device_to_OF_node(pdev);
-		const unsigned char *addr;
+		const unsigned char *addr2;
 		int len;
 #endif
 		eeprom_missing = 1;
 		for (i = 0; i < 5; i++)
-			dev->dev_addr[i] = last_phys_addr[i];
-		dev->dev_addr[i] = last_phys_addr[i] + 1;
+			addr[i] = last_phys_addr[i];
+		addr[i] = last_phys_addr[i] + 1;
+		eth_hw_addr_set(dev, addr);
 #if defined(CONFIG_SPARC)
-		addr = of_get_property(dp, "local-mac-address", &len);
-		if (addr && len == ETH_ALEN)
-			memcpy(dev->dev_addr, addr, ETH_ALEN);
+		addr2 = of_get_property(dp, "local-mac-address", &len);
+		if (addr2 && len == ETH_ALEN)
+			eth_hw_addr_set(dev, addr2);
 #endif
 #if defined(__i386__) || defined(__x86_64__)	/* Patch up x86 BIOS bug. */
 		if (last_irq)
@@ -1682,12 +1689,13 @@ static int tulip_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	dev->netdev_ops = &tulip_netdev_ops;
 	dev->watchdog_timeo = TX_TIMEOUT;
 #ifdef CONFIG_TULIP_NAPI
-	netif_napi_add(dev, &tp->napi, tulip_poll, 16);
+	netif_napi_add_weight(dev, &tp->napi, tulip_poll, 16);
 #endif
 	dev->ethtool_ops = &ops;
 
-	if (register_netdev(dev))
-		goto err_out_free_ring;
+	i = register_netdev(dev);
+	if (i)
+		return i;
 
 	pci_set_drvdata(pdev, dev);
 
@@ -1762,23 +1770,6 @@ static int tulip_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	tulip_set_power_state (tp, 0, 1);
 
 	return 0;
-
-err_out_free_ring:
-	dma_free_coherent(&pdev->dev,
-			  sizeof(struct tulip_rx_desc) * RX_RING_SIZE +
-			  sizeof(struct tulip_tx_desc) * TX_RING_SIZE,
-			  tp->rx_ring, tp->rx_ring_dma);
-
-err_out_mtable:
-	kfree (tp->mtable);
-	pci_iounmap(pdev, ioaddr);
-
-err_out_free_res:
-	pci_release_regions (pdev);
-
-err_out_free_netdev:
-	free_netdev (dev);
-	return -ENODEV;
 }
 
 
@@ -1878,24 +1869,11 @@ static int __maybe_unused tulip_resume(struct device *dev_d)
 static void tulip_remove_one(struct pci_dev *pdev)
 {
 	struct net_device *dev = pci_get_drvdata (pdev);
-	struct tulip_private *tp;
 
 	if (!dev)
 		return;
 
-	tp = netdev_priv(dev);
 	unregister_netdev(dev);
-	dma_free_coherent(&pdev->dev,
-			  sizeof(struct tulip_rx_desc) * RX_RING_SIZE +
-			  sizeof(struct tulip_tx_desc) * TX_RING_SIZE,
-			  tp->rx_ring, tp->rx_ring_dma);
-	kfree (tp->mtable);
-	pci_iounmap(pdev, tp->base_addr);
-	free_netdev (dev);
-	pci_release_regions (pdev);
-	pci_disable_device(pdev);
-
-	/* pci_power_off (pdev, -1); */
 }
 
 #ifdef CONFIG_NET_POLL_CONTROLLER
