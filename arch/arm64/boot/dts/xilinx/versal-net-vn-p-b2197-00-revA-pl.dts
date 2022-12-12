@@ -1,0 +1,61 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * dts file for Xilinx ZynqMP VN-P-B2197 (Tenzing2)
+ *
+ * (C) Copyright 2022, Advanced Micro Devices, Inc.
+ *
+ * Michal Simek <michal.simek@amd.com>
+ */
+
+	i2c-mux@70 {
+		compatible = "nxp,pca9545";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		reg = <0x70>;
+		i2c@0 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			qsfp56g_0: gpio@20 { /* u118 */
+				compatible = "ti,tca6408";
+				reg = <0x20>;
+				gpio-controller;
+				#gpio-cells = <2>;
+				gpio-line-names = "QSFP56G_0_OC_B", "QSFP56G_0_PWR_EN", /* 0, 1 */
+						"QSFP56G_0_LED_1", "QSFP56G_0_LED_0", /* 2, 3 */
+						"QSFP56G_0_MODPRS_B", "QSFP56G_0_LPMODE", /* 4, 5 */
+						"QSFP56G_0_RESET_B", "QSFP56G_0_MODSEL_B"; /* 6, 7 */
+			};
+		};
+		i2c@1 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			qsfp56g_1: gpio@20 { /* u117 */
+				compatible = "ti,tca6408";
+				reg = <0x20>;
+				gpio-controller;
+				#gpio-cells = <2>;
+				gpio-line-names = "QSFP56G_1_OC_B", "QSFP56G_1_PWR_EN", /* 0, 1 */
+						"QSFP56G_1_LED_1", "QSFP56G_1_LED_0", /* 2, 3 */
+						"QSFP56G_1_MODPRS_B", "QSFP56G_1_LPMODE", /* 4, 5 */
+						"QSFP56G_1_RESET_B", "QSFP56G_1_MODSEL_B"; /* 6, 7 */
+			};
+		};
+		i2c@2 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			/* J48 connector */
+		};
+		i2c@3 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			/* J47 connector */
+		};
+	};
+/*
+	GPIO_DIP_SW0-1
+	GPIO_LED0-1
+	GPIO_PB0-1
+	GPIO_SMA
+*/

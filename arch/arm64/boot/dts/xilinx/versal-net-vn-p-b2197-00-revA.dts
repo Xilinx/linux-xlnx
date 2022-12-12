@@ -1,0 +1,99 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * dts file for Xilinx ZynqMP VN-P-B2197-00 (Tenzing2)
+ *
+ * (C) Copyright 2022, Advanced Micro Devices, Inc.
+ *
+ * Michal Simek <michal.simek@amd.com>
+ */
+
+#include "versal-net.dtsi"
+#include "versal-net-clk-ccf.dtsi"
+
+/ {
+	compatible = "xlnx,versal-net-vn-p-b2197-00-revA",
+		     "xlnx,versal-net-vn-p-b2197-00", "xlnx,versal-net";
+
+	memory: memory@0 {
+		reg = <0 0 0 0x80000000>;
+		device_type = "memory";
+	};
+
+	chosen {
+		bootargs = "earlycon=pl011,mmio32,0xf1920000 console=ttyAMA0,115200n8 clk_ignore_unused root=/dev/ram0 rw";
+		stdout-path = "serial0:115200n8";
+	};
+
+/*	aliases {
+		nvmem0 = &eeprom0;
+		nvmem1 = &eeprom1;
+	}; */
+};
+
+&i2c0 {
+	/* Access via J70/J71 or J82/J83 */
+	clock-frequency = <100000>;
+};
+
+&i2c1 {
+	/* Access via J70/J71 or J82/J83 */
+	/* By default this bus should have eeprom for board identification at 0x54 */
+	/* SE/X-PRC card identification is also on this bus at 0x52 */
+	clock-frequency = <100000>;
+};
+
+&adma0 {
+	status = "okay";
+};
+
+&adma1 {
+	status = "okay";
+};
+
+&adma2 {
+	status = "okay";
+};
+
+&adma3 {
+	status = "okay";
+};
+
+&adma4 {
+	status = "okay";
+};
+
+&adma5 {
+	status = "okay";
+};
+
+&adma6 {
+	status = "okay";
+};
+
+&adma7 {
+	status = "okay";
+};
+
+&gpio0 {
+	status = "okay";
+};
+
+&gpio1 {
+	status = "okay";
+};
+
+&rtc {
+	status = "okay";
+};
+
+&wwdt0 {
+	status = "okay";
+};
+
+&wwdt1 {
+	status = "okay";
+};
+
+&wwdt2 {
+	status = "okay";
+};
