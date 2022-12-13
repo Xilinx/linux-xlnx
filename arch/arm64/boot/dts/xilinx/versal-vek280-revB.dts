@@ -150,8 +150,8 @@
 			adi,tx-internal-delay-ps = <2000>;
 			adi,fifo-depth-bits = <8>;
 			reset-gpios = <&gpio1 48 GPIO_ACTIVE_LOW>;
-			reset-assert-us = <100>;
-			reset-deassert-us = <280>;
+			reset-assert-us = <10>;
+			reset-deassert-us = <5000>;
 		};
 	};
 };
