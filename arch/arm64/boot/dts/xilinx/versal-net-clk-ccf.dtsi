@@ -144,7 +144,7 @@
 };
 
 &cpu0 {
-	clocks = <&versal_net_clk ACPU>;
+	clocks = <&versal_net_clk ACPU_0>;
 };
 
 &can0 {
