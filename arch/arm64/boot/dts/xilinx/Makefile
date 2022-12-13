@@ -118,9 +118,12 @@ dtb-$(CONFIG_ARCH_ZYNQMP) += versal-net-ipp-rev1.9.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += versal-net-vn-p-b2197-00-revA.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += x-prc-07-revA.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += x-prc-09-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += x-prc-09-i3c-revA.dtb
 
 versal-net-vn-p-b2197-00-revA-x-prc-07-revA-dtbs := versal-net-vn-p-b2197-00-revA.dtb x-prc-07-revA.dtb
 versal-net-vn-p-b2197-00-revA-x-prc-09-revA-dtbs := versal-net-vn-p-b2197-00-revA.dtb x-prc-09-revA.dtb
+versal-net-vn-p-b2197-00-revA-x-prc-09-i3c-revA-dtbs := versal-net-vn-p-b2197-00-revA.dtb x-prc-09-i3c-revA.dtb
 
 dtb-$(CONFIG_ARCH_ZYNQMP) += versal-net-vn-p-b2197-00-revA-x-prc-07-revA.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += versal-net-vn-p-b2197-00-revA-x-prc-09-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += versal-net-vn-p-b2197-00-revA-x-prc-09-i3c-revA.dtb

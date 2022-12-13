@@ -77,31 +77,6 @@
 	};
 };
 
-&i3c0 {
-	status = "okay";
-	#address-cells = <3>;
-	#size-cells = <0>;
-	
-	/* check maximum frequency from datasheet */
-	imu@6b { /* u120 */
-		compatible = "st,lsm6dso";
-		reg = <0 0 0x6b>;
-	};
-};
-
-&i3c1 { /* u119 */
-	status = "okay";
-	#address-cells = <3>;
-	#size-cells = <0>;
-
-	/* icm-42605 - missing i3c driver
-	drivers/iio/imu/inv_icm42600/inv_icm42600_i2c.c */
-	icm42605@68 {
-		compatible = "invensense,icm42605";
-		reg = <0 0 0x68>;
-	};
-};
-
 &serial0 {
 	status = "okay";
 };
