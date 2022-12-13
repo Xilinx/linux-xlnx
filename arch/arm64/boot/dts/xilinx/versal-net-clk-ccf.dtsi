@@ -51,7 +51,7 @@
 			versal_net_clk: clock-controller { /* untested */
 				u-boot,dm-pre-reloc;
 				#clock-cells = <1>;
-				compatible = "xlnx,versal-clk";
+				compatible = "xlnx,versal-net-clk";
 				clocks = <&ref_clk>, <&ref_clk>;
 				clock-names = "ref_clk", "pl_alt_ref_clk";
 			};
