@@ -31,6 +31,8 @@
 #define ZYNQMP_DISP_AUD_SMPL_RATE_48K		48000
 #define ZYNQMP_DISP_AUD_SMPL_RATE_TO_CLK	512
 
+#define ZYNQMP_DP_TX_AUDIO_MAX_CHAN		2
+#define ZYNQMP_DP_TX_AUDIO_CONTROL		0x300
 #define ZYNQMP_DP_TX_AUDIO_M_AUD		0x328
 
 /**
@@ -39,12 +41,16 @@
  * @dp_iomem: base address for DP
  * @aud_base: base address for DP audio
  * @dev: DP audio device
+ * @chan_active: channel status
+ * @lock: exclusive access to audio control
  */
 struct xilinx_dp_codec {
 	struct clk *aud_clk;
 	void __iomem *dp_iomem;
 	struct regmap *aud_base;
 	struct device *dev;
+	bool chan_active[ZYNQMP_DP_TX_AUDIO_MAX_CHAN];
+	spinlock_t lock;	/* exclusive access to audio control */
 };
 
 struct xilinx_dp_codec_fmt {
@@ -103,8 +109,54 @@ err_clk:
 	return ret;
 }
 
+static int dp_codec_startup(struct snd_pcm_substream *substream,
+			    struct snd_soc_dai *socdai)
+{
+	u32 reg_val;
+	struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream);
+	struct xilinx_dp_codec *codec =
+		snd_soc_dai_get_drvdata(asoc_rtd_to_cpu(rtd, 0));
+
+	spin_lock(&codec->lock);
+	if (strncmp(substream->pcm->name, rtd->card->dai_link[0].name,
+		    strlen(rtd->card->dai_link[0].name)) == 0)
+		codec->chan_active[0] = true;
+	else if (strncmp(substream->pcm->name, rtd->card->dai_link[1].name,
+			 strlen(rtd->card->dai_link[1].name)) == 0)
+		codec->chan_active[1] = true;
+
+	reg_val = readl(codec->dp_iomem + ZYNQMP_DP_TX_AUDIO_CONTROL);
+	if (codec->aud_clk && !reg_val)
+		writel(1, codec->dp_iomem + ZYNQMP_DP_TX_AUDIO_CONTROL);
+	spin_unlock(&codec->lock);
+
+	return 0;
+}
+
+static void dp_codec_shutdown(struct snd_pcm_substream *substream,
+			      struct snd_soc_dai *socdai)
+{
+	struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream);
+	struct xilinx_dp_codec *codec =
+		snd_soc_dai_get_drvdata(asoc_rtd_to_cpu(rtd, 0));
+
+	spin_lock(&codec->lock);
+	if (strncmp(substream->pcm->name, rtd->card->dai_link[0].name,
+		    strlen(rtd->card->dai_link[0].name)) == 0)
+		codec->chan_active[0] = false;
+	else if (strncmp(substream->pcm->name, rtd->card->dai_link[1].name,
+			 strlen(rtd->card->dai_link[1].name)) == 0)
+		codec->chan_active[1] = false;
+
+	if (codec->aud_clk && !codec->chan_active[0] && !codec->chan_active[1])
+		writel(0, codec->dp_iomem + ZYNQMP_DP_TX_AUDIO_CONTROL);
+	spin_unlock(&codec->lock);
+}
+
 static const struct snd_soc_dai_ops dp_codec_dai_ops = {
 	.hw_params	= dp_codec_hw_params,
+	.shutdown	= dp_codec_shutdown,
+	.startup	= dp_codec_startup,
 };
 
 static struct snd_soc_dai_driver xilinx_dp_codec_dai = {
@@ -166,6 +218,7 @@ static int xilinx_dp_codec_probe(struct platform_device *pdev)
 
 	codec->dev = &pdev->dev;
 	codec->dp_iomem = (void __iomem *)codec->dev->parent->platform_data;
+	spin_lock_init(&codec->lock);
 
 	for (i = 0; i < ARRAY_SIZE(rates); i++) {
 		clk_disable_unprepare(codec->aud_clk);
