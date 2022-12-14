@@ -252,6 +252,8 @@
 &ospi {
 	clocks = <&versal_clk OSPI_REF>;
 	power-domains = <&versal_firmware PM_DEV_OSPI>;
+	reset-names = "qspi";
+	resets = <&versal_reset VERSAL_RST_OSPI>;
 };
 
 &rtc {
