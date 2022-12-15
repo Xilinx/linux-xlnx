@@ -1052,9 +1052,8 @@ static int xlnk_cachecontrol_ioctl(struct file *filp, unsigned int code,
 		outer_inv_range(paddr, paddr + size);
 #else
 	if (temp_args.cachecontrol.action == 1)
-		__dma_map_area(kaddr, size, DMA_FROM_DEVICE);
-	else
-		__dma_map_area(kaddr, size, DMA_TO_DEVICE);
+		dcache_clean_poc((unsigned long)kaddr,
+				 (unsigned long)kaddr + size);
 #endif
 	return 0;
 }
