@@ -495,8 +495,10 @@ static int __maybe_unused xhci_plat_suspend(struct device *dev)
 	if (device_may_wakeup(&hcd->self.root_hub->dev)) {
 		host_wakeup_capable(dev, true);
 		enable_irq_wake(hcd->irq);
+		xhci->quirks &= ~XHCI_RESET_ON_RESUME;
 	} else {
 		host_wakeup_capable(dev, false);
+		xhci->quirks |= XHCI_RESET_ON_RESUME;
 	}
 
 	/*
