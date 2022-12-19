@@ -1446,7 +1446,8 @@ static const struct sdhci_pltfm_data sdhci_arasan_versal_net_pdata = {
 	.ops = &sdhci_arasan_ops,
 	.quirks2 = SDHCI_QUIRK2_PRESET_VALUE_BROKEN |
 			SDHCI_QUIRK2_CLOCK_DIV_ZERO_BROKEN |
-			SDHCI_QUIRK2_STOP_WITH_TC,
+			SDHCI_QUIRK2_STOP_WITH_TC |
+			SDHCI_QUIRK2_CAPS_BIT63_FOR_HS400,
 };
 
 static const struct sdhci_arasan_clk_ops zynqmp_clk_ops = {
