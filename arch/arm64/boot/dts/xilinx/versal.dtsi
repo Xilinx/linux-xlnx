@@ -522,6 +522,7 @@
 			interrupts = <0 144 4>;
 			xlnx,numchannels = /bits/8 <0>;
 		};
+
 		sysmon1: sysmon@109270000 {
 			compatible = "xlnx,versal-sysmon";
 			#address-cells = <2>;
@@ -539,6 +540,7 @@
 			reg = <0x1 0x11270000 0x0 0x4000>;
 			xlnx,numchannels = /bits/8 <0>;
 		};
+
 		sysmon3: sysmon@119270000 {
 			compatible = "xlnx,versal-sysmon";
 			status = "disabled";
