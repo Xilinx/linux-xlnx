@@ -275,6 +275,45 @@ static void sysmon_supply_processedtoraw(int val, int val2, u32 reg_val,
 	*raw_data = tmp & 0xffff;
 }
 
+/**
+ * sysmon_find_extreme_temp() - Finds extreme temperature
+ * value read from each device.
+ * @offset: Register offset address of temperature channels
+ *
+ * The function takes offset address of temperature channels
+ * returns extreme value (highest/lowest) of that channel
+ *
+ * @return: - The highest/lowest temperature found from
+ * current or historic min/max temperature of all devices.
+ */
+static int sysmon_find_extreme_temp(int offset)
+{
+	struct sysmon *sysmon;
+	u32 regval;
+	u32 extreme_val = SYSMON_LOWER_SATURATION_SIGNED;
+	bool is_min_channel = false;
+
+	if (offset == SYSMON_TEMP_MIN || offset == SYSMON_TEMP_MIN_MIN) {
+		is_min_channel = true;
+		extreme_val = SYSMON_UPPER_SATURATION_SIGNED;
+	}
+
+	list_for_each_entry(sysmon, &sysmon_list_head, list) {
+		sysmon_read_reg(sysmon, offset, &regval);
+		if (!is_min_channel) {
+			/* Find the highest value */
+			if (compare(regval, extreme_val))
+				extreme_val = regval;
+		} else {
+			/* Find the lowest value */
+			if (compare(extreme_val, regval))
+				extreme_val = regval;
+		}
+	}
+
+	return extreme_val;
+}
+
 static int sysmon_read_raw(struct iio_dev *indio_dev,
 			   struct iio_chan_spec const *chan, int *val,
 			   int *val2, long mask)
@@ -289,7 +328,7 @@ static int sysmon_read_raw(struct iio_dev *indio_dev,
 		switch (chan->type) {
 		case IIO_TEMP:
 			offset = sysmon_temp_offset(chan->address);
-			sysmon_read_reg(sysmon, offset, val);
+			*val = sysmon_find_extreme_temp(offset);
 			*val2 = 0;
 			ret = IIO_VAL_INT;
 			break;
@@ -311,7 +350,7 @@ static int sysmon_read_raw(struct iio_dev *indio_dev,
 		case IIO_TEMP:
 			/* In Deg C */
 			offset = sysmon_temp_offset(chan->address);
-			sysmon_read_reg(sysmon, offset, &regval);
+			regval = sysmon_find_extreme_temp(offset);
 			sysmon_q8p7_to_celsius(regval, val, val2);
 			ret = IIO_VAL_FRACTIONAL;
 			break;
