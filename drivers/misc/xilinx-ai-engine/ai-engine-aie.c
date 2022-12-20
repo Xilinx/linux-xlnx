@@ -1319,12 +1319,12 @@ static void aie_device_init_rscs_attr(struct aie_device *adev)
 	struct aie_tile_attr *tattr;
 
 	tattr = &adev->ttype_attr[AIE_TILE_TYPE_TILE];
-	tattr->num_mods = 2;
+	tattr->num_mods = NUM_MODS_CORE_TILE;
 	tattr->rscs_attr = aie_core_tile_rscs_attr;
 	tattr->mods = aie_core_tile_module_types;
 
 	tattr = &adev->ttype_attr[AIE_TILE_TYPE_SHIMPL];
-	tattr->num_mods = 1;
+	tattr->num_mods = NUM_MODS_SHIMPL_TILE;
 	tattr->rscs_attr = aie_shimpl_tile_rscs_attr;
 	tattr->mods = aie_shimpl_tile_module_types;
 
@@ -1334,7 +1334,7 @@ static void aie_device_init_rscs_attr(struct aie_device *adev)
 	 * driver yet.
 	 */
 	tattr = &adev->ttype_attr[AIE_TILE_TYPE_SHIMNOC];
-	tattr->num_mods = 1;
+	tattr->num_mods = NUM_MODS_SHIMPL_TILE;
 	tattr->rscs_attr = aie_shimpl_tile_rscs_attr;
 	tattr->mods = aie_shimpl_tile_module_types;
 }

@@ -19,6 +19,49 @@
 
 #define NUM_TYPES_OF_MEM	3U
 
+#define NUM_MODS_CORE_TILE	2U
+#define NUM_MODS_MEM_TILE	1U
+#define NUM_MODS_SHIMPL_TILE	1U
+
+/*
+ * Number of resources per module
+ */
+#define AIEML_NUM_PERF_TILE_CORE_MOD		4U
+#define AIEML_NUM_USEREVENT_TILE_CORE_MOD	4U
+#define AIEML_NUM_TRACECONTROL_TILE_CORE_MOD	1U
+#define AIEML_NUM_PCEVENT_TILE_CORE_MOD		4U
+#define AIEML_NUM_SSSELECT_TILE_CORE_MOD	8U
+#define AIEML_NUM_BROADCAST_TILE_CORE_MOD	16U
+#define AIEML_NUM_COMBOEVENT_TILE_CORE_MOD	4U
+#define AIEML_NUM_GROUPEVENTS_TILE_CORE_MOD	9U
+
+#define AIEML_NUM_PERF_TILE_MEM_MOD		2U
+#define AIEML_NUM_USEREVENT_TILE_MEM_MOD	4U
+#define AIEML_NUM_TRACECONTROL_TILE_MEM_MOD	1U
+#define AIEML_NUM_PCEVENT_TILE_MEM_MOD		0U
+#define AIEML_NUM_SSSELECT_TILE_MEM_MOD		0U
+#define AIEML_NUM_BROADCAST_TILE_MEM_MOD	16U
+#define AIEML_NUM_COMBOEVENT_TILE_MEM_MOD	4U
+#define AIEML_NUM_GROUPEVENTS_TILE_MEM_MOD	8U
+
+#define AIEML_NUM_PERF_MEM_MOD			4U
+#define AIEML_NUM_USEREVENT_MEM_MOD		2U
+#define AIEML_NUM_TRACECONTROL_MEM_MOD		1U
+#define AIEML_NUM_PCEVENT_MEM_MOD		0U
+#define AIEML_NUM_SSSELECT_MEM_MOD		8U
+#define AIEML_NUM_BROADCAST_MEM_MOD		16U
+#define AIEML_NUM_COMBOEVENT_MEM_MOD		4U
+#define AIEML_NUM_GROUPEVENTS_MEM_MOD		9U
+
+#define AIEML_NUM_PERF_PL_MOD			2U
+#define AIEML_NUM_USEREVENT_PL_MOD		2U
+#define AIEML_NUM_TRACECONTROL_PL_MOD		1U
+#define AIEML_NUM_PCEVENT_PL_MOD		0U
+#define AIEML_NUM_SSSELECT_PL_MOD		8U
+#define AIEML_NUM_BROADCAST_PL_MOD		16U
+#define AIEML_NUM_COMBOEVENT_PL_MOD		4U
+#define AIEML_NUM_GROUPEVENTS_PL_MOD		6U
+
 /*
  * Register offsets
  */
@@ -187,6 +230,192 @@ static const struct aie_tile_regs aieml_kernel_regs[] = {
 	 .soff = AIEML_TILE_MEMMOD_MEMCTRL_REGOFF,
 	 .eoff = AIEML_TILE_MEMMOD_MEMCTRL_REGOFF,
 	},
+};
+
+/* resource attributes for core tile type */
+static const
+struct aie_tile_rsc_attr aieml_core_tile_rscs_attr[AIE_RSCTYPE_MAX] = {
+	{
+		/* perf counter */
+		.mod_attr = {
+			{.num_rscs = AIEML_NUM_PERF_TILE_MEM_MOD,},
+			{.num_rscs = AIEML_NUM_PERF_TILE_CORE_MOD,},
+		},
+	},
+	{
+		/* user event */
+		.mod_attr = {
+			{.num_rscs = AIEML_NUM_USEREVENT_TILE_MEM_MOD,},
+			{.num_rscs = AIEML_NUM_USEREVENT_TILE_CORE_MOD,},
+		},
+	},
+	{
+		/* trace control */
+		.mod_attr = {
+			{.num_rscs = AIEML_NUM_TRACECONTROL_TILE_MEM_MOD,},
+			{.num_rscs = AIEML_NUM_TRACECONTROL_TILE_CORE_MOD,},
+		},
+	},
+	{
+		/* pc event */
+		.mod_attr = {
+			{.num_rscs = AIEML_NUM_PCEVENT_TILE_MEM_MOD,},
+			{.num_rscs = AIEML_NUM_PCEVENT_TILE_CORE_MOD,},
+		},
+	},
+	{
+		/* stream switch port select */
+		.mod_attr = {
+			{.num_rscs = AIEML_NUM_SSSELECT_TILE_MEM_MOD,},
+			{.num_rscs = AIEML_NUM_SSSELECT_TILE_CORE_MOD,},
+		},
+	},
+	{
+		/* broadcast */
+		.mod_attr = {
+			{.num_rscs = AIEML_NUM_BROADCAST_TILE_MEM_MOD,},
+			{.num_rscs = AIEML_NUM_BROADCAST_TILE_CORE_MOD,},
+		},
+	},
+	{
+		/* combo events */
+		.mod_attr = {
+			{.num_rscs = AIEML_NUM_COMBOEVENT_TILE_MEM_MOD,},
+			{.num_rscs = AIEML_NUM_COMBOEVENT_TILE_CORE_MOD,},
+		},
+	},
+	{
+		/* group events */
+		.mod_attr = {
+			{.num_rscs = AIEML_NUM_GROUPEVENTS_TILE_MEM_MOD,},
+			{.num_rscs = AIEML_NUM_GROUPEVENTS_TILE_CORE_MOD,},
+		},
+	},
+};
+
+/* resource attributes for mem tile type */
+static const
+struct aie_tile_rsc_attr aieml_mem_tile_rscs_attr[AIE_RSCTYPE_MAX] = {
+	{
+		/* perf counter */
+		.mod_attr = {
+			{.num_rscs = AIEML_NUM_PERF_MEM_MOD,},
+		},
+	},
+	{
+		/* user event */
+		.mod_attr = {
+			{.num_rscs = AIEML_NUM_USEREVENT_MEM_MOD,},
+		},
+	},
+	{
+		/* trace control */
+		.mod_attr = {
+			{.num_rscs = AIEML_NUM_TRACECONTROL_MEM_MOD,},
+		},
+	},
+	{
+		/* pc event */
+		.mod_attr = {
+			{.num_rscs = AIEML_NUM_PCEVENT_MEM_MOD,},
+		},
+	},
+	{
+		/* stream switch port select */
+		.mod_attr = {
+			{.num_rscs = AIEML_NUM_SSSELECT_MEM_MOD,},
+		},
+	},
+	{
+		/* broadcast */
+		.mod_attr = {
+			{.num_rscs = AIEML_NUM_BROADCAST_MEM_MOD,},
+		},
+	},
+	{
+		/* combo events */
+		.mod_attr = {
+			{.num_rscs = AIEML_NUM_COMBOEVENT_MEM_MOD,},
+		},
+	},
+	{
+		/* group events */
+		.mod_attr = {
+			{.num_rscs = AIEML_NUM_GROUPEVENTS_MEM_MOD,},
+		},
+	},
+};
+
+/* resource attributes for shim tile type */
+static const
+struct aie_tile_rsc_attr aieml_shimpl_tile_rscs_attr[AIE_RSCTYPE_MAX] = {
+	{
+		/* perf counter */
+		.mod_attr = {
+			{.num_rscs = AIEML_NUM_PERF_PL_MOD,},
+		},
+	},
+	{
+		/* user event */
+		.mod_attr = {
+			{.num_rscs = AIEML_NUM_USEREVENT_PL_MOD,},
+		},
+	},
+	{
+		/* trace control */
+		.mod_attr = {
+			{.num_rscs = AIEML_NUM_TRACECONTROL_PL_MOD,},
+		},
+	},
+	{
+		/* pc event */
+		.mod_attr = {
+			{.num_rscs = AIEML_NUM_PCEVENT_PL_MOD,},
+		},
+	},
+	{
+		/* stream switch port select */
+		.mod_attr = {
+			{.num_rscs = AIEML_NUM_SSSELECT_PL_MOD,},
+		},
+	},
+	{
+		/* broadcast */
+		.mod_attr = {
+			{.num_rscs = AIEML_NUM_BROADCAST_PL_MOD,},
+		},
+	},
+	{
+		/* combo events */
+		.mod_attr = {
+			{.num_rscs = AIEML_NUM_COMBOEVENT_PL_MOD,},
+		},
+	},
+	{
+		/* group events */
+		.mod_attr = {
+			{.num_rscs = AIEML_NUM_GROUPEVENTS_PL_MOD,},
+		},
+	},
+};
+
+/* modules types array of CORE tile */
+static const
+enum aie_module_type aieml_core_tile_module_types[NUM_MODS_CORE_TILE] = {
+	AIE_MEM_MOD,
+	AIE_CORE_MOD,
+};
+
+/* modules types array of MEM tile */
+static const
+enum aie_module_type aieml_mem_tile_module_types[NUM_MODS_MEM_TILE] = {
+	AIE_MEM_MOD,
+};
+
+/* modules types array of SHIM PL tile */
+static const
+enum aie_module_type aieml_shimpl_tile_module_types[NUM_MODS_SHIMPL_TILE] = {
+	AIE_PL_MOD,
 };
 
 static const struct aie_tile_regs aieml_core_amxx_regs = {
@@ -461,6 +690,41 @@ static const struct aie_tile_operations aieml_ops = {
 	.mem_clear = aieml_part_clear_mems,
 };
 
+/**
+ * aieml_device_init_rscs_attr() - initialize AI engine device resources
+ *				   attributes
+ * @adev: AI engine device
+ */
+static void aieml_device_init_rscs_attr(struct aie_device *adev)
+{
+	struct aie_tile_attr *tattr;
+
+	tattr = &adev->ttype_attr[AIE_TILE_TYPE_TILE];
+	tattr->num_mods = NUM_MODS_CORE_TILE;
+	tattr->rscs_attr = aieml_core_tile_rscs_attr;
+	tattr->mods = aieml_core_tile_module_types;
+
+	tattr = &adev->ttype_attr[AIE_TILE_TYPE_MEMORY];
+	tattr->num_mods = NUM_MODS_MEM_TILE;
+	tattr->rscs_attr = aieml_mem_tile_rscs_attr;
+	tattr->mods = aieml_mem_tile_module_types;
+
+	tattr = &adev->ttype_attr[AIE_TILE_TYPE_SHIMPL];
+	tattr->num_mods = NUM_MODS_SHIMPL_TILE;
+	tattr->rscs_attr = aieml_shimpl_tile_rscs_attr;
+	tattr->mods = aieml_shimpl_tile_module_types;
+
+	/*
+	 * For now, SHIMNOC is the same as SHIMPL as there is
+	 * no SHIMNOC specific resources managed by kernel
+	 * driver yet.
+	 */
+	tattr = &adev->ttype_attr[AIE_TILE_TYPE_SHIMNOC];
+	tattr->num_mods = NUM_MODS_SHIMPL_TILE;
+	tattr->rscs_attr = aieml_shimpl_tile_rscs_attr;
+	tattr->mods = aieml_shimpl_tile_module_types;
+}
+
 int aieml_device_init(struct aie_device *adev)
 {
 	adev->array_shift = AIEML_ARRAY_SHIFT;
@@ -474,6 +738,8 @@ int aieml_device_init(struct aie_device *adev)
 	adev->col_rst = &aieml_col_rst;
 	adev->col_clkbuf = &aieml_col_clkbuf;
 	adev->shim_dma = &aieml_shimdma;
+
+	aieml_device_init_rscs_attr(adev);
 
 	return 0;
 }
