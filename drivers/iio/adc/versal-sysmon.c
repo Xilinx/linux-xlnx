@@ -3,6 +3,7 @@
  * Xilinx SYSMON for Versal
  *
  * Copyright (C) 2019 - 2022 Xilinx, Inc.
+ * Copyright (C) 2022 Advanced Micro Devices, Inc.
  *
  * Description:
  * This driver is developed for SYSMON on Versal. The driver supports INDIO Mode
@@ -23,6 +24,8 @@ static bool secure_mode;
 module_param(secure_mode, bool, 0444);
 MODULE_PARM_DESC(secure_mode,
 		 "Allow sysmon to access register space using EEMI, when direct register access is restricted (default: Direct Access mode)");
+
+static LIST_HEAD(sysmon_list_head);
 
 /* This structure describes temperature events */
 static const struct iio_event_spec sysmon_temp_events[] = {
@@ -951,9 +954,13 @@ static int sysmon_parse_dt(struct iio_dev *indio_dev,
 		get_hw_node_properties(pdev, &sysmon->region_list);
 
 	/* Initialize buffer for channel specification */
-	temp_chan_size = (sizeof(temp_channels) + sizeof(temp_events));
-
-	num_temp_chan = ARRAY_SIZE(temp_channels);
+	if (sysmon->master_slr) {
+		temp_chan_size = (sizeof(temp_channels) + sizeof(temp_events));
+		num_temp_chan = ARRAY_SIZE(temp_channels);
+	} else {
+		temp_chan_size = sizeof(temp_events);
+		num_temp_chan = 0;
+	}
 
 	sysmon_channels = devm_kzalloc(&pdev->dev,
 				       (chan_size * num_supply_chan) +
@@ -998,10 +1005,13 @@ static int sysmon_parse_dt(struct iio_dev *indio_dev,
 	}
 
 	/* Append static temperature channels to the channel list */
-	memcpy(sysmon_channels + num_supply_chan, temp_channels,
-	       sizeof(temp_channels));
-	indio_dev->num_channels = num_supply_chan + ARRAY_SIZE(temp_channels);
+	indio_dev->num_channels = num_supply_chan;
 
+	if (sysmon->master_slr) {
+		memcpy(sysmon_channels + num_supply_chan, temp_channels,
+		       sizeof(temp_channels));
+		indio_dev->num_channels += ARRAY_SIZE(temp_channels);
+	}
 	memcpy(sysmon_channels + num_supply_chan + num_temp_chan,
 	       temp_events, sizeof(temp_events));
 	indio_dev->num_channels += ARRAY_SIZE(temp_events);
@@ -1073,6 +1083,13 @@ static int sysmon_probe(struct platform_device *pdev)
 		sysmon->ops = &direct_access;
 	}
 
+	INIT_LIST_HEAD(&sysmon->list);
+
+	if (list_empty(&sysmon_list_head))
+		sysmon->master_slr = true;
+	else
+		sysmon->master_slr = false;
+
 	sysmon_write_reg(sysmon, SYSMON_NPI_LOCK, NPI_UNLOCK);
 	sysmon_write_reg(sysmon, SYSMON_IDR, 0xffffffff);
 	sysmon_write_reg(sysmon, SYSMON_ISR, 0xffffffff);
@@ -1107,6 +1124,10 @@ static int sysmon_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return ret;
 
+	mutex_lock(&sysmon->mutex);
+	list_add(&sysmon->list, &sysmon_list_head);
+	mutex_unlock(&sysmon->mutex);
+
 	dev_info(&pdev->dev, "Successfully registered Versal Sysmon");
 
 	return 0;
@@ -1123,6 +1144,9 @@ static int sysmon_remove(struct platform_device *pdev)
 
 	cancel_delayed_work_sync(&sysmon->sysmon_unmask_work);
 
+	mutex_lock(&sysmon->mutex);
+	list_del(&sysmon->list);
+	mutex_unlock(&sysmon->mutex);
 	/* Unregister the device */
 	iio_device_unregister(indio_dev);
 	return 0;

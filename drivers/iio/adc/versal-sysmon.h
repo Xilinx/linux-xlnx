@@ -3,6 +3,7 @@
  * Xilinx SYSMON for Versal
  *
  * Copyright (C) 2019 - 2022 Xilinx, Inc.
+ * Copyright (C) 2022 Advanced Micro Devices, Inc.
  *
  * Description:
  * This driver is developed for SYSMON on Versal. The driver supports INDIO Mode
@@ -144,11 +145,14 @@ enum sysmon_alarm_bit {
  * @lock: to help manage interrupt registers correctly
  * @irq: interrupt number of the sysmon
  * @region_list: list of the regions of sysmon
+ * @list: list of sysmon instances
  * @masked_temp: currently masked due to alarm
  * @temp_mask: temperature based interrupt configuration
  * @sysmon_unmask_work: re-enables event once the event condition disappears
  * @sysmon_events_work: poll for events on SSIT slices
  * @ops: read write operations for sysmon registers
+ * @pm_info: plm address of sysmon
+ * @master_slr: to keep master sysmon info
  *
  * This structure contains necessary state for Sysmon driver to operate
  */
@@ -162,12 +166,14 @@ struct sysmon {
 	spinlock_t lock;
 	int irq;
 	struct list_head region_list;
+	struct list_head list;
 	unsigned int masked_temp;
 	unsigned int temp_mask;
 	struct delayed_work sysmon_unmask_work;
 	struct delayed_work sysmon_events_work;
 	struct sysmon_ops *ops;
 	u32 pm_info;
+	bool master_slr;
 };
 
 struct sysmon_ops {
