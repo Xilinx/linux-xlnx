@@ -80,12 +80,15 @@ enum aie_tile_type {
  * Macros of AI engine module type index of a tile type
  * e.g.
  * id 0 of CORE tile is memory module, and 1 is core module
+ * id 0 of MEM tile is memory module
  * id 0 of SHIM tile is pl module, and 1 is noc module
  */
 #define AIE_TILE_MOD_START		AIE_MEM_MOD
 #define AIE_MOD_ID(T, M)		((M) - AIE_##T ## _MOD_START)
 #define AIE_TILE_MEM_MOD_ID		AIE_MOD_ID(TILE, AIE_MEM_MOD)
 #define AIE_TILE_CORE_MOD_ID		AIE_MOD_ID(TILE, AIE_CORE_MOD)
+#define AIE_MEMORY_MOD_START		AIE_MEM_MOD
+#define AIE_MEMORY_MEM_MOD_ID		AIE_MOD_ID(MEMORY, AIE_MEM_MOD)
 #define AIE_SHIMPL_MOD_START		AIE_PL_MOD
 #define AIE_SHIMNOC_MOD_START		AIE_PL_MOD
 #define AIE_SHIM_PL_MOD_ID		AIE_MOD_ID(SHIMPL, AIE_PL_MOD)
