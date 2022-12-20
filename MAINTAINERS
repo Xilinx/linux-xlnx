@@ -22652,8 +22652,8 @@ F:	drivers/pwm/pwm-xilinx.c
 F:	include/clocksource/timer-xilinx.h
 
 XILINX VERSAL SYSMON DRIVER
-M:	Anand Ashok Dumbre <anand.ashok.dumbre@xilinx.com>
-R:	Dragan Cvetic <dragan.cvetic@xilinx.com>
+M:	Salih Erim <salih.erim@amd.com>
+R:	Dragan Cvetic <dragan.cvetic@amd.com>
 L:	git@xilinx.com
 S:	Maintained
 F:	Documentation/devicetree/bindings/iio/adc/xlnx,versal-sysmon.yaml
