@@ -164,7 +164,7 @@
 	status = "okay";
 };
 
-&sdhci0 {
+&sdhci1 {
 	status = "okay";
 	xlnx,mio-bank = <0>;
 	non-removable;
