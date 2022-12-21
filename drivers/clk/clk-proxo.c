@@ -382,10 +382,9 @@ static int proxo_probe(struct i2c_client *client)
 	return ret;
 }
 
-static int proxo_remove(struct i2c_client *client)
+static void proxo_remove(struct i2c_client *client)
 {
 	of_clk_del_provider(client->dev.of_node);
-	return 0;
 }
 
 static const struct of_device_id proxo_of_match[] = {
