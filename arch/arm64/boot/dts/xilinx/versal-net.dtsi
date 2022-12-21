@@ -359,7 +359,7 @@
 			compatible = "xlnx,versal-gpio-1.0";
 			status = "disabled";
 			reg = <0 0xf19d0000 0 0x1000>;
-			interrupts = <0 13 4>;
+			interrupts = <0 20 4>;
 			#gpio-cells = <2>;
 			gpio-controller;
 			#interrupt-cells = <2>;
@@ -370,7 +370,7 @@
 			compatible = "xlnx,pmc-gpio-1.0";
 			status = "disabled";
 			reg = <0 0xf1020000 0 0x1000>;
-			interrupts = <0 122 4>;
+			interrupts = <0 180 4>;
 			#gpio-cells = <2>;
 			gpio-controller;
 			#interrupt-cells = <2>;
