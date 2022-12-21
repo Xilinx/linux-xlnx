@@ -249,6 +249,7 @@
 &ospi {
 	clocks = <&versal_net_clk OSPI_REF>;
 	power-domains = <&versal_net_firmware PM_DEV_OSPI>;
+	resets = <&versal_net_reset VERSAL_RST_OSPI>;
 };
 
 &rtc {

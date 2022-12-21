@@ -55,13 +55,14 @@
 &ospi {
 	status = "okay";
 	is-dual = <0>;
-	is-stacked = <0>;
+	is-stacked = <1>;
 	reset-gpios = <&gpio1 0xc GPIO_ACTIVE_HIGH>;
+	reset-names = "qspi";
 	#address-cells = <1>;
 	#size-cells = <0>;
 
 	mt35xu02g: flash@0 { /* u97/u390 mt35xu02gcba */
-		compatible = "micron,m25p80", "jedec,spi-nor";
+		compatible = "mt35xu02g", "micron,m25p80", "jedec,spi-nor";
 		reg = <0>;
 		#address-cells = <1>;
 		#size-cells = <1>;
