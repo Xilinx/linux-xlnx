@@ -47,7 +47,6 @@
 			#phy-cells = <1>;
 			compatible = "ethernet-phy-id001c.c816";
 			reg = <1>;
-			reset-gpios = <&gpio1 22 GPIO_ACTIVE_LOW>;
 		};
 	};
 };
