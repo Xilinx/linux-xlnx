@@ -144,18 +144,6 @@
 	};
 };
 
-&i3c0 {
-	status = "okay";
-	#address-cells = <3>;
-	#size-cells = <0>;
-
-	/* check maximum frequency from datasheet */
-	imu@6b { /* u120 */
-		compatible = "st,lsm6dso";
-		reg = <0 0 0x6b>;
-	};
-};
-
 &serial0 {
 	status = "okay";
 };
