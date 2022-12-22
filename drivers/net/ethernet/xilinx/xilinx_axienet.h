@@ -398,6 +398,7 @@ struct axidma_bd {
  * @regs:	Base address for the axienet_local device address space
  * @dma_regs:	Base address for the axidma device address space
  * @dma_err_task: Work structure to process Axi DMA errors
+ * @tx_lock:	Spin lock for tx path
  * @tx_irq:	Axidma TX IRQ number
  * @rx_irq:	Axidma RX IRQ number
  * @eth_irq:	Ethernet core IRQ number
@@ -453,6 +454,7 @@ struct axienet_local {
 
 	struct work_struct dma_err_task;
 	struct tasklet_struct dma_err_tasklet;
+	spinlock_t tx_lock;		/* Spin lock for tx */
 	spinlock_t rx_lock;		/* Spin lock */
 	struct napi_struct napi;	/* NAPI Structure */
 
