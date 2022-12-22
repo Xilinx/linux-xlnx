@@ -157,6 +157,7 @@
 
 /* AXI Tx Timestamp Stream FIFO Register Definitions */
 #define XAXIFIFO_TXTS_ISR	0x00000000 /* Interrupt Status Register */
+#define XAXIFIFO_TXTS_TDFV	0x0000000C /* Transmit Data FIFO Vacancy */
 #define XAXIFIFO_TXTS_TXFD	0x00000010 /* Tx Data Write Port */
 #define XAXIFIFO_TXTS_TLR	0x00000014 /* Transmit Length Register */
 #define XAXIFIFO_TXTS_RFO	0x0000001C /* Rx Fifo Occupancy */
@@ -760,6 +761,7 @@ struct axienet_local {
 	struct axienet_dma_q *dq[XAE_MAX_QUEUES];	/* DMA queue data*/
 
 	phy_interface_t phy_mode;
+	spinlock_t ptp_tx_lock;		/* PTP tx lock*/
 	int eth_irq;
 
 	u32 options;
