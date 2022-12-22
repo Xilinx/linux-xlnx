@@ -1887,8 +1887,22 @@ static int axienet_open(struct net_device *ndev)
 		axienet_iow(lp, MRMAC_RX_STS_OFFSET, MRMAC_STS_ALL_MASK);
 		err = readx_poll_timeout(axienet_get_mrmac_blocklock, lp, val,
 					 (val & MRMAC_RX_BLKLCK_MASK), 10, DELAY_OF_ONE_MILLISEC);
-		if (err) {
+		if (err)
 			netdev_err(ndev, "MRMAC block lock not complete! Cross-check the MAC ref clock configuration\n");
+
+		err = readx_poll_timeout(axienet_get_mrmac_rx_status, lp, val,
+					 (val & MRMAC_RX_STATUS_MASK), 10, DELAY_OF_ONE_MILLISEC);
+		if (err) {
+			netdev_err(ndev, "MRMAC Link is down!\n");
+			ret = -ENODEV;
+			goto err_eth_irq;
+		}
+
+		axienet_iow(lp, MRMAC_STATRX_VALID_CTRL_OFFSET, MRMAC_STS_ALL_MASK);
+		val = axienet_ior(lp, MRMAC_STATRX_VALID_CTRL_OFFSET);
+
+		if (!(val & MRMAC_RX_VALID_MASK)) {
+			netdev_err(ndev, "MRMAC Link is down! No recent RX Valid Control Code\n");
 			ret = -ENODEV;
 			goto err_eth_irq;
 		}
