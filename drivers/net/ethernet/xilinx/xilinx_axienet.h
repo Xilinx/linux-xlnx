@@ -366,6 +366,7 @@
 #define TX_TS_OP_TWOSTEP        0x2
 #define TX_TS_CSUM_UPDATE       0x1
 #define TX_TS_CSUM_UPDATE_MRMAC		0x4
+#define TX_TS_PDELAY_UPDATE_MRMAC	0x8
 #define TX_PTP_CSUM_OFFSET      0x28
 #define TX_PTP_TS_OFFSET        0x4C
 #define TX_PTP_CF_OFFSET        0x32
