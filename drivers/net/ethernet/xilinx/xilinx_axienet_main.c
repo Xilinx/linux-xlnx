@@ -225,56 +225,6 @@ static u32 axienet_usec_to_timer(struct axienet_local *lp, u32 coalesce_usec)
 }
 
 /**
- * axienet_dma_start - Set up DMA registers and start DMA operation
- * @lp:		Pointer to the axienet_local structure
- */
-static void axienet_dma_start(struct axienet_local *lp)
-{
-	u32 rx_cr, tx_cr;
-
-	/* Start updating the Rx channel control register */
-	rx_cr = (lp->coalesce_count_rx << XAXIDMA_COALESCE_SHIFT) |
-		XAXIDMA_IRQ_IOC_MASK | XAXIDMA_IRQ_ERROR_MASK;
-	/* Only set interrupt delay timer if not generating an interrupt on
-	 * the first RX packet. Otherwise leave at 0 to disable delay interrupt.
-	 */
-	if (lp->coalesce_count_rx > 1)
-		rx_cr |= (axienet_usec_to_timer(lp, lp->coalesce_usec_rx)
-			  << XAXIDMA_DELAY_SHIFT) |
-			  XAXIDMA_IRQ_DELAY_MASK;
-	axienet_dma_out32(lp, XAXIDMA_RX_CR_OFFSET, rx_cr);
-
-	/* Start updating the Tx channel control register */
-	tx_cr = (lp->coalesce_count_tx << XAXIDMA_COALESCE_SHIFT) |
-		XAXIDMA_IRQ_IOC_MASK | XAXIDMA_IRQ_ERROR_MASK;
-	/* Only set interrupt delay timer if not generating an interrupt on
-	 * the first TX packet. Otherwise leave at 0 to disable delay interrupt.
-	 */
-	if (lp->coalesce_count_tx > 1)
-		tx_cr |= (axienet_usec_to_timer(lp, lp->coalesce_usec_tx)
-				<< XAXIDMA_DELAY_SHIFT) |
-			 XAXIDMA_IRQ_DELAY_MASK;
-	axienet_dma_out32(lp, XAXIDMA_TX_CR_OFFSET, tx_cr);
-
-	/* Populate the tail pointer and bring the Rx Axi DMA engine out of
-	 * halted state. This will make the Rx side ready for reception.
-	 */
-	axienet_dma_out_addr(lp, XAXIDMA_RX_CDESC_OFFSET, lp->rx_bd_p);
-	rx_cr |= XAXIDMA_CR_RUNSTOP_MASK;
-	axienet_dma_out32(lp, XAXIDMA_RX_CR_OFFSET, rx_cr);
-	axienet_dma_out_addr(lp, XAXIDMA_RX_TDESC_OFFSET, lp->rx_bd_p +
-			     (sizeof(*lp->rx_bd_v) * (lp->rx_bd_num - 1)));
-
-	/* Write to the RS (Run-stop) bit in the Tx channel control register.
-	 * Tx channel is now ready to run. But only after we write to the
-	 * tail pointer register that the Tx channel will start transmitting.
-	 */
-	axienet_dma_out_addr(lp, XAXIDMA_TX_CDESC_OFFSET, lp->tx_bd_p);
-	tx_cr |= XAXIDMA_CR_RUNSTOP_MASK;
-	axienet_dma_out32(lp, XAXIDMA_TX_CR_OFFSET, tx_cr);
-}
-
-/**
  * axienet_dma_bd_init - Setup buffer descriptor rings for Axi DMA
  * @ndev:	Pointer to the net_device structure
  *
@@ -286,6 +236,7 @@ static void axienet_dma_start(struct axienet_local *lp)
  */
 static int axienet_dma_bd_init(struct net_device *ndev)
 {
+	u32 cr;
 	int i;
 	struct sk_buff *skb;
 	struct axienet_local *lp = netdev_priv(ndev);
@@ -343,7 +294,56 @@ static int axienet_dma_bd_init(struct net_device *ndev)
 		lp->rx_bd_v[i].cntrl = lp->max_frm_size;
 	}
 
-	axienet_dma_start(lp);
+	/* Start updating the Rx channel control register */
+	cr = axienet_dma_in32(lp, XAXIDMA_RX_CR_OFFSET);
+	/* Update the interrupt coalesce count */
+	cr = ((cr & ~XAXIDMA_COALESCE_MASK) |
+	      ((lp->coalesce_count_rx) << XAXIDMA_COALESCE_SHIFT));
+	/* Only set interrupt delay timer if not generating an interrupt on
+	 * the first RX packet. Otherwise leave at 0 to disable delay interrupt.
+	 */
+	if (lp->coalesce_count_rx > 1)
+		cr |= (axienet_usec_to_timer(lp, lp->coalesce_usec_rx)
+		       << XAXIDMA_DELAY_SHIFT) | XAXIDMA_IRQ_DELAY_MASK;
+	/* Enable coalesce, delay timer and error interrupts */
+	cr |= XAXIDMA_IRQ_ALL_MASK;
+	/* Write to the Rx channel control register */
+	axienet_dma_out32(lp, XAXIDMA_RX_CR_OFFSET, cr);
+
+	/* Start updating the Tx channel control register */
+	cr = axienet_dma_in32(lp, XAXIDMA_TX_CR_OFFSET);
+	/* Update the interrupt coalesce count */
+	cr = (((cr & ~XAXIDMA_COALESCE_MASK)) |
+	      ((lp->coalesce_count_tx) << XAXIDMA_COALESCE_SHIFT));
+	/* Only set interrupt delay timer if not generating an interrupt on
+	 * the first TX packet. Otherwise leave at 0 to disable delay interrupt.
+	 */
+	if (lp->coalesce_count_tx > 1)
+		cr |= (axienet_usec_to_timer(lp, lp->coalesce_usec_tx)
+		       << XAXIDMA_DELAY_SHIFT) | XAXIDMA_IRQ_DELAY_MASK;
+	/* Enable coalesce, delay timer and error interrupts */
+	cr |= XAXIDMA_IRQ_ALL_MASK;
+	/* Write to the Tx channel control register */
+	axienet_dma_out32(lp, XAXIDMA_TX_CR_OFFSET, cr);
+
+	/* Populate the tail pointer and bring the Rx Axi DMA engine out of
+	 * halted state. This will make the Rx side ready for reception.
+	 */
+	axienet_dma_out_addr(lp, XAXIDMA_RX_CDESC_OFFSET, lp->rx_bd_p);
+	cr = axienet_dma_in32(lp, XAXIDMA_RX_CR_OFFSET);
+	axienet_dma_out32(lp, XAXIDMA_RX_CR_OFFSET,
+			  cr | XAXIDMA_CR_RUNSTOP_MASK);
+	axienet_dma_out_addr(lp, XAXIDMA_RX_TDESC_OFFSET, lp->rx_bd_p +
+			     (sizeof(*lp->rx_bd_v) * (lp->rx_bd_num - 1)));
+
+	/* Write to the RS (Run-stop) bit in the Tx channel control register.
+	 * Tx channel is now ready to run. But only after we write to the
+	 * tail pointer register that the Tx channel will start transmitting.
+	 */
+	axienet_dma_out_addr(lp, XAXIDMA_TX_CDESC_OFFSET, lp->tx_bd_p);
+	cr = axienet_dma_in32(lp, XAXIDMA_TX_CR_OFFSET);
+	axienet_dma_out32(lp, XAXIDMA_TX_CR_OFFSET,
+			  cr | XAXIDMA_CR_RUNSTOP_MASK);
 
 	return 0;
 out:
@@ -532,44 +532,6 @@ static int __axienet_device_reset(struct axienet_local *lp)
 	}
 
 	return 0;
-}
-
-/**
- * axienet_dma_stop - Stop DMA operation
- * @lp:		Pointer to the axienet_local structure
- */
-static void axienet_dma_stop(struct axienet_local *lp)
-{
-	int count;
-	u32 cr, sr;
-
-	cr = axienet_dma_in32(lp, XAXIDMA_RX_CR_OFFSET);
-	cr &= ~(XAXIDMA_CR_RUNSTOP_MASK | XAXIDMA_IRQ_ALL_MASK);
-	axienet_dma_out32(lp, XAXIDMA_RX_CR_OFFSET, cr);
-	synchronize_irq(lp->rx_irq);
-
-	cr = axienet_dma_in32(lp, XAXIDMA_TX_CR_OFFSET);
-	cr &= ~(XAXIDMA_CR_RUNSTOP_MASK | XAXIDMA_IRQ_ALL_MASK);
-	axienet_dma_out32(lp, XAXIDMA_TX_CR_OFFSET, cr);
-	synchronize_irq(lp->tx_irq);
-
-	/* Give DMAs a chance to halt gracefully */
-	sr = axienet_dma_in32(lp, XAXIDMA_RX_SR_OFFSET);
-	for (count = 0; !(sr & XAXIDMA_SR_HALT_MASK) && count < 5; ++count) {
-		msleep(20);
-		sr = axienet_dma_in32(lp, XAXIDMA_RX_SR_OFFSET);
-	}
-
-	sr = axienet_dma_in32(lp, XAXIDMA_TX_SR_OFFSET);
-	for (count = 0; !(sr & XAXIDMA_SR_HALT_MASK) && count < 5; ++count) {
-		msleep(20);
-		sr = axienet_dma_in32(lp, XAXIDMA_TX_SR_OFFSET);
-	}
-
-	/* Do a reset to ensure DMA is really stopped */
-	axienet_lock_mii(lp);
-	__axienet_device_reset(lp);
-	axienet_unlock_mii(lp);
 }
 
 /**
@@ -995,27 +957,41 @@ static void axienet_recv(struct net_device *ndev)
  */
 static irqreturn_t axienet_tx_irq(int irq, void *_ndev)
 {
+	u32 cr;
 	unsigned int status;
 	struct net_device *ndev = _ndev;
 	struct axienet_local *lp = netdev_priv(ndev);
 
 	status = axienet_dma_in32(lp, XAXIDMA_TX_SR_OFFSET);
-
+	if (status & (XAXIDMA_IRQ_IOC_MASK | XAXIDMA_IRQ_DELAY_MASK)) {
+		axienet_dma_out32(lp, XAXIDMA_TX_SR_OFFSET, status);
+		axienet_start_xmit_done(lp->ndev);
+		goto out;
+	}
 	if (!(status & XAXIDMA_IRQ_ALL_MASK))
 		return IRQ_NONE;
+	if (status & XAXIDMA_IRQ_ERROR_MASK) {
+		dev_err(&ndev->dev, "DMA Tx error 0x%x\n", status);
+		dev_err(&ndev->dev, "Current BD is at: 0x%x%08x\n",
+			(lp->tx_bd_v[lp->tx_bd_ci]).phys_msb,
+			(lp->tx_bd_v[lp->tx_bd_ci]).phys);
 
-	axienet_dma_out32(lp, XAXIDMA_TX_SR_OFFSET, status);
+		cr = axienet_dma_in32(lp, XAXIDMA_TX_CR_OFFSET);
+		/* Disable coalesce, delay timer and error interrupts */
+		cr &= (~XAXIDMA_IRQ_ALL_MASK);
+		/* Write to the Tx channel control register */
+		axienet_dma_out32(lp, XAXIDMA_TX_CR_OFFSET, cr);
 
-	if (unlikely(status & XAXIDMA_IRQ_ERROR_MASK)) {
-		netdev_err(ndev, "DMA Tx error 0x%x\n", status);
-		netdev_err(ndev, "Current BD is at: 0x%x%08x\n",
-			   (lp->tx_bd_v[lp->tx_bd_ci]).phys_msb,
-			   (lp->tx_bd_v[lp->tx_bd_ci]).phys);
+		cr = axienet_dma_in32(lp, XAXIDMA_RX_CR_OFFSET);
+		/* Disable coalesce, delay timer and error interrupts */
+		cr &= (~XAXIDMA_IRQ_ALL_MASK);
+		/* Write to the Rx channel control register */
+		axienet_dma_out32(lp, XAXIDMA_RX_CR_OFFSET, cr);
+
 		schedule_work(&lp->dma_err_task);
-	} else {
-		axienet_start_xmit_done(lp->ndev);
+		axienet_dma_out32(lp, XAXIDMA_TX_SR_OFFSET, status);
 	}
-
+out:
 	return IRQ_HANDLED;
 }
 
@@ -1031,27 +1007,41 @@ static irqreturn_t axienet_tx_irq(int irq, void *_ndev)
  */
 static irqreturn_t axienet_rx_irq(int irq, void *_ndev)
 {
+	u32 cr;
 	unsigned int status;
 	struct net_device *ndev = _ndev;
 	struct axienet_local *lp = netdev_priv(ndev);
 
 	status = axienet_dma_in32(lp, XAXIDMA_RX_SR_OFFSET);
-
+	if (status & (XAXIDMA_IRQ_IOC_MASK | XAXIDMA_IRQ_DELAY_MASK)) {
+		axienet_dma_out32(lp, XAXIDMA_RX_SR_OFFSET, status);
+		axienet_recv(lp->ndev);
+		goto out;
+	}
 	if (!(status & XAXIDMA_IRQ_ALL_MASK))
 		return IRQ_NONE;
+	if (status & XAXIDMA_IRQ_ERROR_MASK) {
+		dev_err(&ndev->dev, "DMA Rx error 0x%x\n", status);
+		dev_err(&ndev->dev, "Current BD is at: 0x%x%08x\n",
+			(lp->rx_bd_v[lp->rx_bd_ci]).phys_msb,
+			(lp->rx_bd_v[lp->rx_bd_ci]).phys);
 
-	axienet_dma_out32(lp, XAXIDMA_RX_SR_OFFSET, status);
+		cr = axienet_dma_in32(lp, XAXIDMA_TX_CR_OFFSET);
+		/* Disable coalesce, delay timer and error interrupts */
+		cr &= (~XAXIDMA_IRQ_ALL_MASK);
+		/* Finally write to the Tx channel control register */
+		axienet_dma_out32(lp, XAXIDMA_TX_CR_OFFSET, cr);
 
-	if (unlikely(status & XAXIDMA_IRQ_ERROR_MASK)) {
-		netdev_err(ndev, "DMA Rx error 0x%x\n", status);
-		netdev_err(ndev, "Current BD is at: 0x%x%08x\n",
-			   (lp->rx_bd_v[lp->rx_bd_ci]).phys_msb,
-			   (lp->rx_bd_v[lp->rx_bd_ci]).phys);
+		cr = axienet_dma_in32(lp, XAXIDMA_RX_CR_OFFSET);
+		/* Disable coalesce, delay timer and error interrupts */
+		cr &= (~XAXIDMA_IRQ_ALL_MASK);
+		/* write to the Rx channel control register */
+		axienet_dma_out32(lp, XAXIDMA_RX_CR_OFFSET, cr);
+
 		schedule_work(&lp->dma_err_task);
-	} else {
-		axienet_recv(lp->ndev);
+		axienet_dma_out32(lp, XAXIDMA_RX_SR_OFFSET, status);
 	}
-
+out:
 	return IRQ_HANDLED;
 }
 
@@ -1169,6 +1159,8 @@ err_tx_irq:
  */
 static int axienet_stop(struct net_device *ndev)
 {
+	u32 cr, sr;
+	int count;
 	struct axienet_local *lp = netdev_priv(ndev);
 
 	dev_dbg(&ndev->dev, "axienet_close()\n");
@@ -1179,9 +1171,33 @@ static int axienet_stop(struct net_device *ndev)
 	axienet_setoptions(ndev, lp->options &
 			   ~(XAE_OPTION_TXEN | XAE_OPTION_RXEN));
 
-	axienet_dma_stop(lp);
+	cr = axienet_dma_in32(lp, XAXIDMA_RX_CR_OFFSET);
+	cr &= ~(XAXIDMA_CR_RUNSTOP_MASK | XAXIDMA_IRQ_ALL_MASK);
+	axienet_dma_out32(lp, XAXIDMA_RX_CR_OFFSET, cr);
+
+	cr = axienet_dma_in32(lp, XAXIDMA_TX_CR_OFFSET);
+	cr &= ~(XAXIDMA_CR_RUNSTOP_MASK | XAXIDMA_IRQ_ALL_MASK);
+	axienet_dma_out32(lp, XAXIDMA_TX_CR_OFFSET, cr);
 
 	axienet_iow(lp, XAE_IE_OFFSET, 0);
+
+	/* Give DMAs a chance to halt gracefully */
+	sr = axienet_dma_in32(lp, XAXIDMA_RX_SR_OFFSET);
+	for (count = 0; !(sr & XAXIDMA_SR_HALT_MASK) && count < 5; ++count) {
+		msleep(20);
+		sr = axienet_dma_in32(lp, XAXIDMA_RX_SR_OFFSET);
+	}
+
+	sr = axienet_dma_in32(lp, XAXIDMA_TX_SR_OFFSET);
+	for (count = 0; !(sr & XAXIDMA_SR_HALT_MASK) && count < 5; ++count) {
+		msleep(20);
+		sr = axienet_dma_in32(lp, XAXIDMA_TX_SR_OFFSET);
+	}
+
+	/* Do a reset to ensure DMA is really stopped */
+	axienet_lock_mii(lp);
+	__axienet_device_reset(lp);
+	axienet_unlock_mii(lp);
 
 	cancel_work_sync(&lp->dma_err_task);
 
@@ -1685,17 +1701,22 @@ static const struct phylink_mac_ops axienet_phylink_ops = {
  */
 static void axienet_dma_err_handler(struct work_struct *work)
 {
-	u32 i;
 	u32 axienet_status;
-	struct axidma_bd *cur_p;
+	u32 cr, i;
 	struct axienet_local *lp = container_of(work, struct axienet_local,
 						dma_err_task);
 	struct net_device *ndev = lp->ndev;
+	struct axidma_bd *cur_p;
 
 	axienet_setoptions(ndev, lp->options &
 			   ~(XAE_OPTION_TXEN | XAE_OPTION_RXEN));
-
-	axienet_dma_stop(lp);
+	/* When we do an Axi Ethernet reset, it resets the complete core
+	 * including the MDIO. MDIO must be disabled before resetting.
+	 * Hold MDIO bus lock to avoid MDIO accesses during the reset.
+	 */
+	axienet_lock_mii(lp);
+	__axienet_device_reset(lp);
+	axienet_unlock_mii(lp);
 
 	for (i = 0; i < lp->tx_bd_num; i++) {
 		cur_p = &lp->tx_bd_v[i];
@@ -1735,7 +1756,56 @@ static void axienet_dma_err_handler(struct work_struct *work)
 	lp->tx_bd_tail = 0;
 	lp->rx_bd_ci = 0;
 
-	axienet_dma_start(lp);
+	/* Start updating the Rx channel control register */
+	cr = axienet_dma_in32(lp, XAXIDMA_RX_CR_OFFSET);
+	/* Update the interrupt coalesce count */
+	cr = ((cr & ~XAXIDMA_COALESCE_MASK) |
+	      (XAXIDMA_DFT_RX_THRESHOLD << XAXIDMA_COALESCE_SHIFT));
+	/* Only set interrupt delay timer if not generating an interrupt on
+	 * the first RX packet. Otherwise leave at 0 to disable delay interrupt.
+	 */
+	if (lp->coalesce_count_rx > 1)
+		cr |= (axienet_usec_to_timer(lp, lp->coalesce_usec_rx)
+		       << XAXIDMA_DELAY_SHIFT) | XAXIDMA_IRQ_DELAY_MASK;
+	/* Enable coalesce, delay timer and error interrupts */
+	cr |= XAXIDMA_IRQ_ALL_MASK;
+	/* Finally write to the Rx channel control register */
+	axienet_dma_out32(lp, XAXIDMA_RX_CR_OFFSET, cr);
+
+	/* Start updating the Tx channel control register */
+	cr = axienet_dma_in32(lp, XAXIDMA_TX_CR_OFFSET);
+	/* Update the interrupt coalesce count */
+	cr = (((cr & ~XAXIDMA_COALESCE_MASK)) |
+	      (XAXIDMA_DFT_TX_THRESHOLD << XAXIDMA_COALESCE_SHIFT));
+	/* Only set interrupt delay timer if not generating an interrupt on
+	 * the first TX packet. Otherwise leave at 0 to disable delay interrupt.
+	 */
+	if (lp->coalesce_count_tx > 1)
+		cr |= (axienet_usec_to_timer(lp, lp->coalesce_usec_tx)
+		       << XAXIDMA_DELAY_SHIFT) | XAXIDMA_IRQ_DELAY_MASK;
+	/* Enable coalesce, delay timer and error interrupts */
+	cr |= XAXIDMA_IRQ_ALL_MASK;
+	/* Finally write to the Tx channel control register */
+	axienet_dma_out32(lp, XAXIDMA_TX_CR_OFFSET, cr);
+
+	/* Populate the tail pointer and bring the Rx Axi DMA engine out of
+	 * halted state. This will make the Rx side ready for reception.
+	 */
+	axienet_dma_out_addr(lp, XAXIDMA_RX_CDESC_OFFSET, lp->rx_bd_p);
+	cr = axienet_dma_in32(lp, XAXIDMA_RX_CR_OFFSET);
+	axienet_dma_out32(lp, XAXIDMA_RX_CR_OFFSET,
+			  cr | XAXIDMA_CR_RUNSTOP_MASK);
+	axienet_dma_out_addr(lp, XAXIDMA_RX_TDESC_OFFSET, lp->rx_bd_p +
+			     (sizeof(*lp->rx_bd_v) * (lp->rx_bd_num - 1)));
+
+	/* Write to the RS (Run-stop) bit in the Tx channel control register.
+	 * Tx channel is now ready to run. But only after we write to the
+	 * tail pointer register that the Tx channel will start transmitting
+	 */
+	axienet_dma_out_addr(lp, XAXIDMA_TX_CDESC_OFFSET, lp->tx_bd_p);
+	cr = axienet_dma_in32(lp, XAXIDMA_TX_CR_OFFSET);
+	axienet_dma_out32(lp, XAXIDMA_TX_CR_OFFSET,
+			  cr | XAXIDMA_CR_RUNSTOP_MASK);
 
 	axienet_status = axienet_ior(lp, XAE_RCW1_OFFSET);
 	axienet_status &= ~XAE_RCW1_RX_MASK;
