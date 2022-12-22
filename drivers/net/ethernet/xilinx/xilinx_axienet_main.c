@@ -64,6 +64,8 @@
 #define AXIENET_REGS_N		40
 #define AXIENET_TS_HEADER_LEN	8
 #define XXVENET_TS_HEADER_LEN	4
+#define MRMAC_TS_HEADER_LEN	16
+#define MRMAC_TS_HEADER_WORDS	(MRMAC_TS_HEADER_LEN / 4)
 #define NS_PER_SEC              1000000000ULL /* Nanoseconds per second */
 
 #define MRMAC_RESET_DELAY	1 /* Delay in msecs*/
@@ -650,6 +652,19 @@ static int axienet_device_reset(struct net_device *ndev)
 #endif
 	}
 
+#ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
+	if (lp->axienet_config->mactype == XAXIENET_MRMAC) {
+		axienet_rxts_iow(lp, XAXIFIFO_TXTS_RDFR,
+				 XAXIFIFO_TXTS_RESET_MASK);
+		axienet_rxts_iow(lp, XAXIFIFO_TXTS_SRR,
+				 XAXIFIFO_TXTS_RESET_MASK);
+		axienet_txts_iow(lp, XAXIFIFO_TXTS_RDFR,
+				 XAXIFIFO_TXTS_RESET_MASK);
+		axienet_txts_iow(lp, XAXIFIFO_TXTS_SRR,
+				 XAXIFIFO_TXTS_RESET_MASK);
+	}
+#endif
+
 	if (lp->axienet_config->mactype == XAXIENET_1G &&
 	    !lp->eth_hasnobuf) {
 		axienet_status = axienet_ior(lp, XAE_IP_OFFSET);
@@ -969,7 +984,8 @@ static void axienet_create_tsheader(u8 *buf, u8 msg_type,
 	struct axidma_bd *cur_p;
 #endif
 	u64 val;
-	u32 tmp;
+	u32 tmp[MRMAC_TS_HEADER_WORDS];
+	int i;
 
 #ifdef CONFIG_AXIENET_HAS_MCDMA
 	cur_p = &q->txq_bd_v[q->tx_bd_tail];
@@ -995,10 +1011,13 @@ static void axienet_create_tsheader(u8 *buf, u8 msg_type,
 		memcpy(&val, buf, AXIENET_TS_HEADER_LEN);
 		swab64s(&val);
 		memcpy(buf, &val, AXIENET_TS_HEADER_LEN);
-	} else if (lp->axienet_config->mactype == XAXIENET_10G_25G) {
-		memcpy(&tmp, buf, XXVENET_TS_HEADER_LEN);
-		axienet_txts_iow(lp, XAXIFIFO_TXTS_TXFD, tmp);
-		axienet_txts_iow(lp, XAXIFIFO_TXTS_TLR, XXVENET_TS_HEADER_LEN);
+	} else if (lp->axienet_config->mactype == XAXIENET_10G_25G ||
+		   lp->axienet_config->mactype == XAXIENET_MRMAC) {
+		memcpy(&tmp[0], buf, lp->axienet_config->ts_header_len);
+		for (i = 0; i < lp->axienet_config->ts_header_len / 4; i++)
+			axienet_txts_iow(lp, XAXIFIFO_TXTS_TXFD, tmp[i]);
+
+		axienet_txts_iow(lp, XAXIFIFO_TXTS_TLR, lp->axienet_config->ts_header_len);
 	}
 }
 #endif
@@ -1070,7 +1089,8 @@ static int axienet_skb_tstsmp(struct sk_buff **__skb, struct axienet_dma_q *q,
 			}
 		}
 	} else if ((skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) &&
-		   (lp->axienet_config->mactype == XAXIENET_10G_25G)) {
+		   (lp->axienet_config->mactype == XAXIENET_10G_25G ||
+		   lp->axienet_config->mactype == XAXIENET_MRMAC)) {
 		cur_p->ptp_tx_ts_tag = prandom_u32_max(XAXIFIFO_TXTS_TAG_MAX) + 1;
 			dev_dbg(lp->dev, "tx_tag:[%04x]\n",
 				cur_p->ptp_tx_ts_tag);
@@ -1083,7 +1103,8 @@ static int axienet_skb_tstsmp(struct sk_buff **__skb, struct axienet_dma_q *q,
 				skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
 				cur_p->ptp_tx_skb = (phys_addr_t)skb_get(skb);
 			}
-	} else if (lp->axienet_config->mactype == XAXIENET_10G_25G) {
+	} else if (lp->axienet_config->mactype == XAXIENET_10G_25G ||
+		   lp->axienet_config->mactype == XAXIENET_MRMAC) {
 		dev_dbg(lp->dev, "tx_tag:NOOP\n");
 			axienet_create_tsheader(lp->tx_ptpheader,
 						TX_TS_OP_NOOP, q);
@@ -1377,7 +1398,8 @@ static int axienet_recv(struct net_device *ndev, int budget,
 				time64 = sec * NS_PER_SEC + nsec;
 				shhwtstamps = skb_hwtstamps(skb);
 				shhwtstamps->hwtstamp = ns_to_ktime(time64);
-			} else if (lp->axienet_config->mactype == XAXIENET_10G_25G) {
+			} else if (lp->axienet_config->mactype == XAXIENET_10G_25G ||
+				   lp->axienet_config->mactype == XAXIENET_MRMAC) {
 				axienet_rx_hwtstamp(lp, skb);
 			}
 #endif
@@ -1947,7 +1969,8 @@ static int axienet_set_timestamp_mode(struct axienet_local *lp,
 		return -EINVAL;
 
 	/* Read the current value in the MAC TX CTRL register */
-	if (lp->axienet_config->mactype != XAXIENET_10G_25G)
+	if (lp->axienet_config->mactype != XAXIENET_10G_25G &&
+	    lp->axienet_config->mactype != XAXIENET_MRMAC)
 		regval = axienet_ior(lp, XAE_TC_OFFSET);
 
 	switch (config->tx_type) {
@@ -1966,11 +1989,13 @@ static int axienet_set_timestamp_mode(struct axienet_local *lp,
 		return -ERANGE;
 	}
 
-	if (lp->axienet_config->mactype != XAXIENET_10G_25G)
+	if (lp->axienet_config->mactype != XAXIENET_10G_25G &&
+	    lp->axienet_config->mactype != XAXIENET_MRMAC)
 		axienet_iow(lp, XAE_TC_OFFSET, regval);
 
 	/* Read the current value in the MAC RX RCW1 register */
-	if (lp->axienet_config->mactype != XAXIENET_10G_25G)
+	if (lp->axienet_config->mactype != XAXIENET_10G_25G &&
+	    lp->axienet_config->mactype != XAXIENET_MRMAC)
 		regval = axienet_ior(lp, XAE_RCW1_OFFSET);
 
 	/* On RX always timestamp everything */
@@ -1983,7 +2008,8 @@ static int axienet_set_timestamp_mode(struct axienet_local *lp,
 		regval |= XAE_RCW1_INBAND1588_MASK;
 	}
 
-	if (lp->axienet_config->mactype != XAXIENET_10G_25G)
+	if (lp->axienet_config->mactype != XAXIENET_10G_25G &&
+	    lp->axienet_config->mactype != XAXIENET_MRMAC)
 		axienet_iow(lp, XAE_RCW1_OFFSET, regval);
 
 	return 0;
@@ -2379,13 +2405,15 @@ static int axienet_ethtools_nway_reset(struct net_device *dev)
 static int axienet_ethtools_get_ts_info(struct net_device *ndev,
 					struct ethtool_ts_info *info)
 {
+	struct axienet_local *lp = netdev_priv(ndev);
+
 	info->so_timestamping = SOF_TIMESTAMPING_TX_HARDWARE |
 				SOF_TIMESTAMPING_RX_HARDWARE |
 				SOF_TIMESTAMPING_RAW_HARDWARE;
 	info->tx_types = (1 << HWTSTAMP_TX_OFF) | (1 << HWTSTAMP_TX_ON);
 	info->rx_filters = (1 << HWTSTAMP_FILTER_NONE) |
 			   (1 << HWTSTAMP_FILTER_ALL);
-	info->phc_index = 0;
+	info->phc_index = lp->phc_index;
 
 	return 0;
 }
@@ -2957,6 +2985,7 @@ static const struct axienet_config axienet_10g25g_config = {
 	.setoptions = xxvenet_setoptions,
 	.clk_init = xxvenet_clk_init,
 	.tx_ptplen = XXV_TX_PTP_LEN,
+	.ts_header_len = XXVENET_TS_HEADER_LEN,
 };
 
 static const struct axienet_config axienet_usxgmii_config = {
@@ -2971,6 +3000,7 @@ static const struct axienet_config axienet_mrmac_config = {
 	.setoptions = xxvenet_setoptions,
 	.clk_init = xxvenet_clk_init,
 	.tx_ptplen = XXV_TX_PTP_LEN,
+	.ts_header_len = MRMAC_TS_HEADER_LEN,
 };
 
 /* Match table for of_platform binding */
@@ -3278,6 +3308,12 @@ static int axienet_probe(struct platform_device *pdev)
 			mrmac_gt_ctrl = lp->gt_ctrl;
 			mrmac_pll_reg = 1;
 		}
+#ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
+		ret = of_property_read_u32(pdev->dev.of_node, "xlnx,phcindex",
+					   &lp->phc_index);
+		if (ret)
+			dev_warn(&pdev->dev, "No phc index defaulting to 0\n");
+#endif
 		ret = of_property_read_u32(pdev->dev.of_node, "xlnx,gtlane",
 					   &lp->gt_lane);
 		if (ret) {
@@ -3309,32 +3345,35 @@ static int axienet_probe(struct platform_device *pdev)
 		goto cleanup_clk;
 	}
 
-	if (lp->axienet_config->mactype == XAXIENET_10G_25G) {
-		np = of_parse_phandle(pdev->dev.of_node, "xlnx,rxtsfifo",
-				      0);
-		if (IS_ERR(np)) {
-			dev_err(&pdev->dev,
-				"couldn't find rx-timestamp FIFO\n");
-			ret = PTR_ERR(np);
-			goto cleanup_clk;
-		}
+		if (lp->axienet_config->mactype == XAXIENET_10G_25G ||
+		    lp->axienet_config->mactype == XAXIENET_MRMAC) {
+			np = of_parse_phandle(pdev->dev.of_node,
+					      "xlnx,rxtsfifo", 0);
+			if (IS_ERR(np)) {
+				dev_err(&pdev->dev,
+					"couldn't find rx-timestamp FIFO\n");
+				ret = PTR_ERR(np);
+				goto cleanup_clk;
+			}
 
-		ret = of_address_to_resource(np, 0, &rxtsres);
-		if (ret) {
-			dev_err(&pdev->dev,
-				"unable to get rx-timestamp resource\n");
-			goto cleanup_clk;
-		}
+			ret = of_address_to_resource(np, 0, &rxtsres);
+			if (ret) {
+				dev_err(&pdev->dev,
+					"unable to get rx-timestamp resource\n");
+				goto cleanup_clk;
+			}
 
-		lp->rx_ts_regs = devm_ioremap_resource(&pdev->dev, &rxtsres);
-		if (IS_ERR(lp->rx_ts_regs)) {
-			dev_err(&pdev->dev, "couldn't map rx-timestamp regs\n");
-			ret = PTR_ERR(lp->rx_ts_regs);
-			goto cleanup_clk;
-		}
-		lp->tx_ptpheader = devm_kzalloc(&pdev->dev,
-						XXVENET_TS_HEADER_LEN,
-						GFP_KERNEL);
+			lp->rx_ts_regs = devm_ioremap_resource(&pdev->dev,
+							       &rxtsres);
+			if (IS_ERR(lp->rx_ts_regs)) {
+				dev_err(&pdev->dev,
+					"couldn't map rx-timestamp regs\n");
+				ret = PTR_ERR(lp->rx_ts_regs);
+				goto cleanup_clk;
+			}
+			lp->tx_ptpheader = devm_kzalloc(&pdev->dev,
+							lp->axienet_config->ts_header_len,
+							GFP_KERNEL);
 	}
 
 	of_node_put(np);
