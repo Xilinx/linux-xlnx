@@ -456,7 +456,7 @@
 		};
 
 		sdhci1: mmc@f1050000 {
-			compatible = "xlnx,versal-net-5.1-emmc", "xlnx,versal-8.9a",
+			compatible = "xlnx,versal-net-5.1-emmc",
 				     "arasan,sdhci-8.9a";
 			status = "disabled";
 			reg = <0 0xf1050000 0 0x10000>;
