@@ -309,23 +309,6 @@ static unsigned int aieml_get_mem_info(struct aie_device *adev,
 	return NUM_TYPES_OF_MEM;
 }
 
-static int aieml_reset_shim(struct aie_aperture *aperture,
-			    struct aie_range *range)
-{
-	u32 node_id = aperture->adev->pm_node_id;
-	int ret;
-
-	ret = zynqmp_pm_aie_operation(node_id, range->start.col,
-				      range->size.col,
-				      XILINX_AIE_OPS_COL_RST |
-				      XILINX_AIE_OPS_SHIM_RST);
-	if (ret < 0)
-		dev_err(&aperture->dev,
-			"failed to perform shim and column reset.\n");
-
-	return ret;
-}
-
 static int aieml_init_part_clk_state(struct aie_partition *apart)
 {
 	int ret, num_tiles;
@@ -471,7 +454,6 @@ static int aieml_set_tile_isolation(struct aie_partition *apart,
 static const struct aie_tile_operations aieml_ops = {
 	.get_tile_type = aieml_get_tile_type,
 	.get_mem_info = aieml_get_mem_info,
-	.reset_shim = aieml_reset_shim,
 	.init_part_clk_state = aieml_init_part_clk_state,
 	.scan_part_clocks = aieml_scan_part_clocks,
 	.set_part_clocks = aieml_set_part_clocks,

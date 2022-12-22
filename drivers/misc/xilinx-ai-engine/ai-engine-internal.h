@@ -311,7 +311,6 @@ struct aie_aperture;
  * @get_tile_type: get type of tile based on tile operation
  * @get_mem_info: get different types of memories information
  * @get_core_status: get the status of AIE core.
- * @reset_shim: reset shim, it will assert and then release SHIM reset
  * @init_part_clk_state: initialize clock states software structure which is a
  *			 bitmap for the AI engine partition. The clock states
  *			 structure is the structure used to keep track of if
@@ -341,8 +340,6 @@ struct aie_tile_operations {
 				     struct aie_part_mem *pmem);
 	u32 (*get_core_status)(struct aie_partition *apart,
 			       struct aie_location *loc);
-	int (*reset_shim)(struct aie_aperture *aperture,
-			  struct aie_range *range);
 	int (*init_part_clk_state)(struct aie_partition *apart);
 	int (*scan_part_clocks)(struct aie_partition *apart);
 	int (*set_part_clocks)(struct aie_partition *apart);

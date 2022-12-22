@@ -974,62 +974,6 @@ static unsigned int aie_get_mem_info(struct aie_device *adev,
 	return NUM_MEMS_PER_TILE;
 }
 
-/**
- * aie_set_shim_reset() - Set AI engine SHIM reset
- * @aperture: AI engine aperture
- * @range: range of AI engine tiles
- * @assert: true to set reset, false to unset reset
- */
-static void aie_set_shim_reset(struct aie_aperture *aperture,
-			       struct aie_range *range, bool assert)
-{
-	u32 c;
-	u32 val;
-	struct aie_location loc;
-
-	val = FIELD_PREP(AIE_SHIMPL_SHIMRST_MASK, (assert ? 1 : 0));
-	loc.row = 0;
-	for (c = range->start.col; c < range->start.col + range->size.col;
-	     c++) {
-		u32 regoff;
-
-		loc.col = c;
-		regoff = aie_cal_regoff(aperture->adev, loc,
-					AIE_SHIMPL_RESET_REGOFF);
-		iowrite32(val, aperture->base + regoff);
-	}
-}
-
-static int aie_reset_shim(struct aie_aperture *aperture,
-			  struct aie_range *range)
-{
-	int ret;
-
-	/* Enable shim reset of each column */
-	aie_set_shim_reset(aperture, range, true);
-
-	/* Assert shim reset of AI engine array */
-	ret = zynqmp_pm_reset_assert(VERSAL_PM_RST_AIE_SHIM_ID,
-				     PM_RESET_ACTION_ASSERT);
-	if (ret < 0) {
-		dev_err(&aperture->dev, "failed to assert SHIM reset.\n");
-		return ret;
-	}
-
-	/* Release shim reset of AI engine array */
-	ret = zynqmp_pm_reset_assert(VERSAL_PM_RST_AIE_SHIM_ID,
-				     PM_RESET_ACTION_RELEASE);
-	if (ret < 0) {
-		dev_err(&aperture->dev, "failed to release SHIM reset.\n");
-		return ret;
-	}
-
-	/* Disable shim reset of each column */
-	aie_set_shim_reset(aperture, range, false);
-
-	return 0;
-}
-
 static int aie_init_part_clk_state(struct aie_partition *apart)
 {
 	int ret, num_tiles;
@@ -1358,7 +1302,6 @@ static const struct aie_tile_operations aie_ops = {
 	.get_tile_type = aie_get_tile_type,
 	.get_mem_info = aie_get_mem_info,
 	.get_core_status = aie_get_core_status,
-	.reset_shim = aie_reset_shim,
 	.init_part_clk_state = aie_init_part_clk_state,
 	.scan_part_clocks = aie_scan_part_clocks,
 	.set_part_clocks = aie_set_part_clocks,
