@@ -319,7 +319,7 @@ static int axienet_dma_bd_init(struct net_device *ndev)
 		if (lp->features & XAE_FEATURE_DMA_64BIT)
 			lp->rx_bd_v[i].next_msb = upper_32_bits(addr);
 
-		skb = netdev_alloc_skb_ip_align(ndev, lp->max_frm_size);
+		skb = netdev_alloc_skb(ndev, lp->max_frm_size);
 		if (!skb)
 			goto out;
 
@@ -1318,7 +1318,7 @@ static int axienet_recv(struct net_device *ndev, int budget)
 			packets++;
 		}
 
-		new_skb = netdev_alloc_skb_ip_align(ndev, lp->max_frm_size);
+		new_skb = netdev_alloc_skb(ndev, lp->max_frm_size);
 		if (!new_skb)
 			break;
 
