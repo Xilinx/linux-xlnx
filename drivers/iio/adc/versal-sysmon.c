@@ -1072,8 +1072,9 @@ static void sysmon_init_interrupt(struct sysmon *sysmon)
 static int sysmon_probe(struct platform_device *pdev)
 {
 	struct iio_dev *indio_dev;
-	struct sysmon *sysmon;
+	struct sysmon *sysmon, *temp_sysmon;
 	struct resource *mem;
+	bool exist = false;
 	int ret;
 
 	indio_dev = devm_iio_device_alloc(&pdev->dev, sizeof(*sysmon));
@@ -1124,10 +1125,20 @@ static int sysmon_probe(struct platform_device *pdev)
 
 	INIT_LIST_HEAD(&sysmon->list);
 
-	if (list_empty(&sysmon_list_head))
+	mutex_lock(&sysmon->mutex);
+	if (list_empty(&sysmon_list_head)) {
 		sysmon->master_slr = true;
-	else
-		sysmon->master_slr = false;
+	} else {
+		list_for_each_entry(temp_sysmon, &sysmon_list_head, list) {
+			if (temp_sysmon->master_slr)
+				exist = true;
+		}
+		if (exist)
+			sysmon->master_slr = false;
+		else
+			sysmon->master_slr = true;
+	}
+	mutex_unlock(&sysmon->mutex);
 
 	sysmon_write_reg(sysmon, SYSMON_NPI_LOCK, NPI_UNLOCK);
 	sysmon_write_reg(sysmon, SYSMON_IDR, 0xffffffff);
