@@ -474,6 +474,7 @@
 			status = "disabled";
 			reg = <0 0xf1920000 0 0x1000>;
 			interrupts = <0 25 4>;
+			reg-io-width = <4>;
 			clock-names = "uartclk", "apb_pclk";
 			current-speed = <115200>;
 		};
@@ -484,6 +485,7 @@
 			status = "disabled";
 			reg = <0 0xf1930000 0 0x1000>;
 			interrupts = <0 26 4>;
+			reg-io-width = <4>;
 			clock-names = "uartclk", "apb_pclk";
 			current-speed = <115200>;
 		};
