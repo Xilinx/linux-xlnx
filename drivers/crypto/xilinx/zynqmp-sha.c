@@ -284,7 +284,7 @@ static int __init sha_driver_init(void)
 		return ret;
 
 	pdev = platform_device_register_simple(zynqmp_sha_driver.driver.name,
-			0, NULL, 0);
+					       0, NULL, 0);
 	if (IS_ERR(pdev)) {
 		ret = PTR_ERR(pdev);
 		platform_driver_unregister(&zynqmp_sha_driver);
