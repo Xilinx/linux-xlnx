@@ -37,6 +37,12 @@
 /* Firmware feature check version mask */
 #define FIRMWARE_VERSION_MASK		0xFFFFU
 
+#define ZYNQMP_FAMILY_CODE 0x23
+#define VERSAL_FAMILY_CODE 0x26
+
+#define FAMILY_CODE_LSB	21
+#define FAMILY_CODE_MSB	27
+
 /* ATF only commands */
 #define TF_A_PM_REGISTER_SGI		0xa04
 #define PM_GET_TRUSTZONE_VERSION	0xa03

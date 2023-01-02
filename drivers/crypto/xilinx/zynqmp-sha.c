@@ -194,17 +194,27 @@ static int zynqmp_sha_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	int err;
-	u32 v;
+	u32 v, id, ver, family_code;
 
 	/* Verify the hardware is present */
 	err = zynqmp_pm_get_api_version(&v);
 	if (err)
 		return err;
 
-	err = zynqmp_pm_feature(PM_SECURE_SHA);
-	if (err < 0) {
-		dev_err(dev, "SHA is not supported on the platform\n");
+	err = zynqmp_pm_get_chipid(&id, &ver);
+	if (err < 0)
 		return err;
+
+	family_code = FIELD_GET(GENMASK(FAMILY_CODE_MSB, FAMILY_CODE_LSB), id);
+	if (family_code == ZYNQMP_FAMILY_CODE) {
+		err = zynqmp_pm_feature(PM_SECURE_SHA);
+		if (err < 0) {
+			dev_err(dev, "SHA is not supported on the platform\n");
+			return err;
+		}
+	} else {
+		dev_dbg(dev, "SHA is not supported on the platform\n");
+		return -ENODEV;
 	}
 
 	err = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(ZYNQMP_DMA_BIT_MASK));
