@@ -299,6 +299,7 @@ static void __exit sha_driver_exit(void)
 }
 
 device_initcall(sha_driver_init);
+module_exit(sha_driver_exit);
 
 MODULE_DESCRIPTION("ZynqMP SHA3 hardware acceleration support.");
 MODULE_LICENSE("GPL v2");
