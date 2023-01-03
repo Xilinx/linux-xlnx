@@ -4,7 +4,7 @@
  *
  * (C) Copyright 2022, Advanced Micro Devices, Inc.
  *
- * Jay Buddhabhatti <jay.buddhabhatti@xilinx.com>;
+ * Jay Buddhabhatti <jay.buddhabhatti@amd.com>;
  */
 
 #include "x-prc-09-revA.dts"
