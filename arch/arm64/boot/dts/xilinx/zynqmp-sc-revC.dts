@@ -26,12 +26,12 @@
 			#phy-cells = <1>;
 			compatible = "ethernet-phy-id0283.bc30";
 			reg = <1>;
-		        adi,rx-internal-delay-ps = <2000>;
-			adi,tx-internal-delay-ps = <2000>;
+			adi,rx-internal-delay-ps = <2400>;
+			adi,tx-internal-delay-ps = <2400>;
 			adi,fifo-depth-bits = <8>;
 			reset-gpios = <&gpio 77 GPIO_ACTIVE_LOW>;
-			reset-assert-us = <100>;
-			reset-deassert-us = <280>;
+			reset-assert-us = <10>;
+			reset-deassert-us = <5000>;
 		};
 	};
 };
