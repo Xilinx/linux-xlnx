@@ -40,7 +40,7 @@
 
 &qspi { /* PMC_MIO_500 0 - 12 */
 	status = "okay"; /* u93 and u92 */
-	num-cs = <1>;
+	num-cs = <2>;
 	is-dual = <1>;
 	spi-rx-bus-width = <4>;
 	spi-tx-bus-width = <4>;
@@ -49,7 +49,8 @@
 		compatible = "m25p80", "jedec,spi-nor";
 		#address-cells = <1>;
 		#size-cells = <1>;
-		reg = <0>;
+		reg = <0>, <1>;
+		parallel-memories = /bits/ 64 <0x8000000 0x8000000>; /* 128MB */
 		spi-tx-bus-width = <4>;
 		spi-rx-bus-width = <4>;
 		spi-max-frequency = <35000000>;
