@@ -22,7 +22,6 @@
 
 #define XWT_WWDT_DEFAULT_TIMEOUT	10
 #define XWT_WWDT_MIN_TIMEOUT		1
-#define XWT_WWDT_MAX_TIMEOUT		42
 
 /* Register offsets for the Wdt device */
 #define XWT_TWCSR0_OFFSET   0x0 /* Control/Status Register0 */
@@ -311,12 +310,12 @@ static int xilinx_wwdt_set_timeout(struct watchdog_device *wdd,
 		return -EINVAL;
 	}
 
-	if (new_time < XWT_WWDT_MIN_TIMEOUT ||
-	    new_time > XWT_WWDT_MAX_TIMEOUT) {
+	if (new_time < wdd->min_timeout ||
+	    new_time > wdd->max_timeout) {
 		dev_warn(xilinx_wdt_wdd->parent,
 			 "timeout value must be %d<=x<=%d, using %d\n",
-				XWT_WWDT_MIN_TIMEOUT,
-				XWT_WWDT_MAX_TIMEOUT, new_time);
+				wdd->min_timeout,
+				wdd->max_timeout, new_time);
 		return -EINVAL;
 	}
 
@@ -543,7 +542,15 @@ static int xwdt_probe(struct platform_device *pdev)
 		xilinx_wdt_wdd->pretimeout = pre_timeout;
 		xilinx_wdt_wdd->timeout = XWT_WWDT_DEFAULT_TIMEOUT;
 		xilinx_wdt_wdd->min_timeout = XWT_WWDT_MIN_TIMEOUT;
-		xilinx_wdt_wdd->max_timeout = XWT_WWDT_MAX_TIMEOUT;
+
+		/*
+		 * Calculate the allowed maximum timeout
+		 * SWDT window count register is 32 bit width
+		 * SWDT window count register value = wwdt clock preq * timeout
+		 * SWDT window count register value should be smaller than (2^32-1)
+		 */
+		xilinx_wdt_wdd->max_timeout = (u32)(U32_MAX) / pfreq;
+
 		xdev->irq = platform_get_irq_byname(pdev, "wdt");
 		if (xdev->irq > 0) {
 			if (!devm_request_irq(dev, xdev->irq, xilinx_wwdt_isr,
