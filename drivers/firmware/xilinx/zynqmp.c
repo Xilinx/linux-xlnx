@@ -1482,8 +1482,16 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_requirement);
  */
 int zynqmp_pm_load_pdi(const u32 src, const u64 address)
 {
-	return zynqmp_pm_invoke_fn(PM_LOAD_PDI, NULL, 3, src, lower_32_bits(address),
-				   upper_32_bits(address));
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	ret = zynqmp_pm_invoke_fn(PM_LOAD_PDI, ret_payload, 3, src,
+				  lower_32_bits(address),
+				  upper_32_bits(address));
+	if (ret_payload[0])
+		return ret_payload[0];
+
+	return ret;
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_load_pdi);
 
