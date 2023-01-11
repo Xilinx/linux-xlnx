@@ -161,6 +161,7 @@
 
 #define AMS_TEMP_SCALE			509314
 #define AMS_TEMP_SCALE_DIV_BIT		16
+#define AMS_TEMP_SCALE_DIV		BIT(AMS_TEMP_SCALE_DIV_BIT)
 #define AMS_TEMP_OFFSET			-((280230LL << 16) / 509314)
 
 enum ams_alarm_bit {
@@ -227,6 +228,7 @@ enum ams_ps_pl_seq {
 	.indexed = 1, \
 	.address = (_addr), \
 	.info_mask_separate = BIT(IIO_CHAN_INFO_RAW) | \
+		BIT(IIO_CHAN_INFO_PROCESSED) | \
 		BIT(IIO_CHAN_INFO_SCALE) | \
 		BIT(IIO_CHAN_INFO_OFFSET), \
 	.event_spec = ams_temp_events, \
@@ -679,9 +681,20 @@ static int ams_read_raw(struct iio_dev *indio_dev,
 			int *val, int *val2, long mask)
 {
 	struct ams *ams = iio_priv(indio_dev);
-	int ret;
+	int ret, regval;
 
 	switch (mask) {
+	case IIO_CHAN_INFO_PROCESSED:
+		mutex_lock(&ams->lock);
+		if (chan->scan_index >= AMS_PS_SEQ_MAX)
+			regval = readl(ams->pl_base + chan->address);
+		else
+			regval = readl(ams->ps_base + chan->address);
+
+		*val = ((regval + AMS_TEMP_OFFSET) * AMS_TEMP_SCALE) / AMS_TEMP_SCALE_DIV;
+		mutex_unlock(&ams->lock);
+		return IIO_VAL_INT;
+
 	case IIO_CHAN_INFO_RAW:
 		mutex_lock(&ams->lock);
 		if (chan->scan_index >= AMS_CTRL_SEQ_BASE) {
