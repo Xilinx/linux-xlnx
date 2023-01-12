@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright (C) 2017 Xilinx, Inc.
+ * Copyright (C) 2017 - 2022 Xilinx, Inc.
+ * Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc.
  */
 
 #include <linux/module.h>
@@ -46,6 +47,7 @@ struct zynqmp_rsa_dev {
 	/* the lock protects queue and dev list*/
 	spinlock_t              lock;
 	struct crypto_queue     queue;
+	struct skcipher_alg	*alg;
 };
 
 struct zynqmp_rsa_drv {
@@ -166,6 +168,16 @@ static struct skcipher_alg zynqmp_alg = {
 	.ivsize			=	1,
 };
 
+static struct xlnx_feature rsa_feature_map[] = {
+	{
+		.family = ZYNQMP_FAMILY_CODE,
+		.subfamily = ALL_SUB_FAMILY_CODE,
+		.feature_id = PM_SECURE_RSA,
+		.data = &zynqmp_alg,
+	},
+	{ /* sentinel */ }
+};
+
 static const struct of_device_id zynqmp_rsa_dt_ids[] = {
 	{ .compatible = "xlnx,zynqmp-rsa" },
 	{ /* sentinel */ }
@@ -182,6 +194,12 @@ static int zynqmp_rsa_probe(struct platform_device *pdev)
 	if (!rsa_dd)
 		return -ENOMEM;
 
+	rsa_dd->alg = xlnx_get_crypto_dev_data(rsa_feature_map);
+	if (IS_ERR(rsa_dd->alg)) {
+		dev_err(dev, "RSA is not supported on the platform\n");
+		return PTR_ERR(rsa_dd->alg);
+	}
+
 	rsa_dd->dev = dev;
 	platform_set_drvdata(pdev, rsa_dd);
 
@@ -196,7 +214,7 @@ static int zynqmp_rsa_probe(struct platform_device *pdev)
 	list_add_tail(&rsa_dd->list, &zynqmp_rsa.dev_list);
 	spin_unlock(&zynqmp_rsa.lock);
 
-	ret = crypto_register_skcipher(&zynqmp_alg);
+	ret = crypto_register_skcipher(rsa_dd->alg);
 	if (ret)
 		goto err_algs;
 
@@ -212,7 +230,12 @@ err_algs:
 
 static int zynqmp_rsa_remove(struct platform_device *pdev)
 {
-	crypto_unregister_skcipher(&zynqmp_alg);
+	struct zynqmp_rsa_dev *drv_ctx;
+
+	drv_ctx = platform_get_drvdata(pdev);
+
+	crypto_unregister_skcipher(drv_ctx->alg);
+
 	return 0;
 }
 
