@@ -483,6 +483,12 @@ void *xlnx_get_crypto_dev_data(struct xlnx_feature *feature_map)
 				ret = zynqmp_pm_feature(api_id);
 				if (ret < 0)
 					return ERR_PTR(ret);
+			} else if (feature->family == VERSAL_FAMILY_CODE) {
+				ret = zynqmp_pm_invoke_fn(XSECURE_API_FEATURES,
+							  api_id, 0, 0, 0, 0,
+							  NULL);
+				if (ret < 0)
+					return ERR_PTR(ret);
 			} else {
 				return ERR_PTR(-ENODEV);
 			}
