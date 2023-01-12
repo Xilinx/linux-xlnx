@@ -31,6 +31,8 @@
 /* SMC SIP service Call Function Identifier Prefix */
 #define PM_SIP_SVC			0xC2000000
 
+#define PM_MODULE_ID		2
+
 /* PM API versions */
 #define PM_API_VERSION_2	2
 
@@ -40,8 +42,17 @@
 #define ZYNQMP_FAMILY_CODE 0x23
 #define VERSAL_FAMILY_CODE 0x26
 
+/* When all subfamily of platform need to support */
+#define ALL_SUB_FAMILY_CODE		0x00
+#define VERSAL_SUB_FAMILY_CODE		0x01
+#define VERSALNET_SUB_FAMILY_CODE	0x03
+
 #define FAMILY_CODE_LSB	21
 #define FAMILY_CODE_MSB	27
+#define SUB_FAMILY_CODE_LSB	19
+#define SUB_FAMILY_CODE_MSB	20
+
+#define API_ID_MASK	GENMASK(7, 0)
 
 /* ATF only commands */
 #define TF_A_PM_REGISTER_SGI		0xa04
@@ -604,12 +615,27 @@ struct zynqmp_pm_query_data {
 	u32 arg3;
 };
 
+/**
+ * struct xlnx_feature - Feature data
+ * @family:	Family code of platform
+ * @subfamily:	Subfamily code of platform
+ * @feature_id:	Feature id of module
+ * @data:	Collection of all supported platform data
+ */
+struct xlnx_feature {
+	u32 family;
+	u32 subfamily;
+	u32 feature_id;
+	void *data;
+};
+
 int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 arg0, u32 arg1,
 			u32 arg2, u32 arg3, u32 arg4, u32 *ret_payload);
 
 #if IS_REACHABLE(CONFIG_ZYNQMP_FIRMWARE)
 int zynqmp_pm_get_api_version(u32 *version);
 int zynqmp_pm_get_chipid(u32 *idcode, u32 *version);
+void *xlnx_get_crypto_dev_data(struct xlnx_feature *feature_map);
 int zynqmp_pm_query_data(struct zynqmp_pm_query_data qdata, u32 *out);
 int zynqmp_pm_clock_enable(u32 clock_id);
 int zynqmp_pm_clock_disable(u32 clock_id);
@@ -733,6 +759,11 @@ static inline int zynqmp_pm_get_api_version(u32 *version)
 static inline int zynqmp_pm_get_chipid(u32 *idcode, u32 *version)
 {
 	return -ENODEV;
+}
+
+static inline void *xlnx_get_crypto_dev_data(struct xlnx_feature *feature_map)
+{
+	return ERR_PTR(-ENODEV);
 }
 
 static inline int zynqmp_pm_query_data(struct zynqmp_pm_query_data qdata,
