@@ -236,10 +236,6 @@
 				status = "disabled";
 			};
 
-			xlnx_rsa: zynqmp-rsa {
-				compatible = "xlnx,zynqmp-rsa";
-			};
-
 			modepin_gpio: gpio {
 				compatible = "xlnx,zynqmp-gpio-modepin";
 				gpio-controller;
