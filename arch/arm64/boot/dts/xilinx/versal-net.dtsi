@@ -208,7 +208,7 @@
 		status = "disabled";
 		u-boot,dm-pre-reloc;
 	};
-	
+
 	firmware {
 		psci {
 			compatible = "arm,psci-1.0";
@@ -334,7 +334,7 @@
 			reg = <0 0xf19e0000 0 0x1000>;
 			interrupts = <0 39 4>, <0 39 4>;
 			clock-names = "pclk", "hclk", "tx_clk", "rx_clk",
-			              "tsu_clk";
+				      "tsu_clk";
 		};
 
 		gem1: ethernet@f19f0000 {
