@@ -133,6 +133,8 @@ static int zynqmp_rsa_xcrypt(struct skcipher_request *req, unsigned int flags)
 		memcpy(walk.dst.virt.addr, kbuf + dst_data, datasize);
 		dst_data = dst_data + datasize;
 		err = skcipher_walk_done(&walk, 0);
+		if (err)
+			goto out;
 	}
 
 out:
