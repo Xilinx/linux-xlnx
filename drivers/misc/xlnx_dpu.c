@@ -105,6 +105,7 @@ struct xdpu_client {
  * @head: list head
  * @cpu_addr: cpu virtual address of the blocks memory
  * @dma_addr: dma address of the blocks memory
+ * @phy_addr: physical address of the blocks memory
  * @size: total size of the block in bytes
  * @attrs: dma buffer attributes
  */
@@ -112,6 +113,7 @@ struct dpu_buffer_block {
 	struct list_head	head;
 	void	*cpu_addr;
 	dma_addr_t	dma_addr;
+	phys_addr_t	phy_addr;
 	size_t	size;
 	unsigned long attrs;
 };
@@ -391,6 +393,14 @@ err_out:
 	return -ETIMEDOUT;
 }
 
+static inline phys_addr_t get_pa(void *addr)
+{
+	if (likely(is_vmalloc_addr(addr)))
+		return page_to_phys(vmalloc_to_page(addr)) +
+			offset_in_page(addr);
+	return __pa(addr);
+}
+
 /**
  * xlnx_dpu_alloc_bo - alloc contiguous physical memory for dpu
  * @client:	dpu client
@@ -415,7 +425,7 @@ static long xlnx_dpu_alloc_bo(struct xdpu_client *client,
 	if (size > SIZE_MAX - PAGE_SIZE)
 		goto err_pb;
 
-	pb->size = PAGE_ALIGN(size);
+	pb->size = size;
 
 	if (put_user(pb->size, &req->capacity))
 		goto err_pb;
@@ -430,6 +440,11 @@ static long xlnx_dpu_alloc_bo(struct xdpu_client *client,
 
 	if (put_user(pb->dma_addr, &req->dma_addr))
 		goto err_out;
+
+	if (!(iommu_present(xdpu->dev->bus)))
+		pb->phy_addr = pb->dma_addr;
+	else
+		pb->phy_addr = get_pa(pb->cpu_addr);
 
 	mutex_lock(&xdpu->mutex);
 	list_add(&pb->head, &client->head);
@@ -505,14 +520,15 @@ static inline long xlnx_dpu_sync_bo(struct xdpu_client *client,
 		if (in_range(dma_addr, h->dma_addr, h->size)) {
 			if (dir == DPU_TO_CPU)
 				dma_sync_single_for_cpu(xdpu->dev,
-							h->dma_addr,
-							h->size,
+							h->phy_addr,
+							size,
 							DMA_FROM_DEVICE);
 			else
 				dma_sync_single_for_device(xdpu->dev,
-							   h->dma_addr,
-							   h->size,
+							   h->phy_addr,
+							   size,
 							   DMA_TO_DEVICE);
+			break;
 		}
 	}
 	mutex_unlock(&xdpu->mutex);
@@ -1241,15 +1257,6 @@ static const struct debugfs_reg32 sfm_regs[] = {
 	dump_register(INT_ICR),
 };
 
-static inline phys_addr_t get_pa(void *addr)
-{
-	if (!is_vmalloc_addr(addr))
-		return __pa(addr);
-	else
-		return page_to_phys(vmalloc_to_page(addr)) +
-			   offset_in_page(addr);
-}
-
 static int dump_show(struct seq_file *seq, void *v)
 {
 	struct xdpu_client *client;
@@ -1277,8 +1284,8 @@ static int dump_show(struct seq_file *seq, void *v)
 					   h->cpu_addr + h->size,
 					   delta, *unit);
 				seq_printf(seq, "   0x%010llx-0x%010llx\t\t",
-					   get_pa(h->cpu_addr),
-					   get_pa(h->cpu_addr) + h->size);
+					   h->phy_addr,
+					   h->phy_addr + h->size);
 				seq_printf(seq, "0x%010llx-0x%010llx\n",
 					   h->dma_addr,
 					   (h->dma_addr + h->size));
