@@ -115,7 +115,7 @@ struct dpu_buffer_block {
 	dma_addr_t	dma_addr;
 	phys_addr_t	phy_addr;
 	size_t	size;
-	unsigned long attrs;
+	unsigned long	attrs;
 };
 
 #ifdef CONFIG_DEBUG_FS
