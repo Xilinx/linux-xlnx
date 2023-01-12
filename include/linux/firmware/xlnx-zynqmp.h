@@ -32,6 +32,7 @@
 #define PM_SIP_SVC			0xC2000000
 
 #define PM_MODULE_ID		2
+#define SECURE_MODULE_ID	5
 
 /* PM API versions */
 #define PM_API_VERSION_2	2
@@ -66,6 +67,9 @@
 #define PM_BBRAM_WRITE_USERDATA		0xB03
 #define PM_BBRAM_READ_USERDATA		0xB04
 #define PM_BBRAM_LOCK_USERDATA		0xB05
+
+/* xilSecure API commands  module id + api id */
+#define XSECURE_API_FEATURES		0x500
 
 /* Secure Commands */
 #define PM_WRITE_AES_KEY		0x568
