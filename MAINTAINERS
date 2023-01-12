@@ -4862,8 +4862,8 @@ X:	drivers/char/random.c
 X:	drivers/char/tpm/
 
 CHAR and MISC XILINX AI ENGINE DRIVER
-M:	Wendy Liang <wendy.liang@xilinx.com>
-M:	Hyun Kwon <hyun.kwon@xilinx.com>
+M:	Gregory Williams <gregory.williams@amd.com>
+M:	Hua Jiang <hua.jiang@amd.com>
 S:	Maintained
 F:	Documentation/devicetree/bindings/soc/xilinx/xlnx,ai-engine.yaml
 F:	drivers/misc/xilinx-ai-engine/
