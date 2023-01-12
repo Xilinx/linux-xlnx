@@ -44,6 +44,15 @@ static bool force_poll;
 module_param(force_poll, bool, 0444);
 MODULE_PARM_DESC(force_poll, "polling or interrupt mode (default interrupt)");
 
+/*
+ * This parameter is intended to be used only when IOMMU is enabled.
+ * By specifying it the allocated buffer is forced to be contiguous
+ * in physical memory.
+ */
+static bool force_contig;
+module_param(force_contig, bool, 0444);
+MODULE_PARM_DESC(force_contig, "buffer is forced to be contiguous, default 0");
+
 /**
  * struct cu - Computer Unit (cu) structure
  * @mutex: protects from simultaneous access
@@ -430,7 +439,7 @@ static long xlnx_dpu_alloc_bo(struct xdpu_client *client,
 	if (put_user(pb->size, &req->capacity))
 		goto err_pb;
 
-	if (iommu_present(xdpu->dev->bus))
+	if (iommu_present(xdpu->dev->bus) && force_contig)
 		pb->attrs = DMA_ATTR_FORCE_CONTIGUOUS;
 
 	pb->cpu_addr = dma_alloc_attrs(xdpu->dev, pb->size, &pb->dma_addr,
