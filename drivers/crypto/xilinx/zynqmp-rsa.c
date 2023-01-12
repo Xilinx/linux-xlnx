@@ -29,6 +29,12 @@
 #define XSECURE_RSA_3072_KEY_SIZE	(3072U / 8U)
 #define XSECURE_RSA_4096_KEY_SIZE	(4096U / 8U)
 
+struct versal_rsa_in_param {
+	u64 key_addr;
+	u64 data_addr;
+	u32 size;
+};
+
 static struct zynqmp_rsa_dev *rsa_dd;
 
 struct zynqmp_rsa_op {
@@ -142,6 +148,84 @@ out:
 	return err;
 }
 
+static int versal_rsa_xcrypt(struct skcipher_request *req, unsigned int flags)
+{
+	struct crypto_skcipher *tfm = crypto_skcipher_reqtfm(req);
+	struct zynqmp_rsa_op *op = crypto_skcipher_ctx(tfm);
+	struct zynqmp_rsa_dev *dd = zynqmp_rsa_find_dev(op);
+	int err, datasize, src_data = 0, dst_data = 0;
+	struct versal_rsa_in_param *para;
+	struct skcipher_walk walk = {0};
+	dma_addr_t dma_addr, dma_addr1;
+	unsigned int nbytes;
+	size_t dma_size;
+	char *kbuf;
+
+	nbytes = req->cryptlen;
+
+	if (nbytes != XSECURE_RSA_2048_KEY_SIZE &&
+	    nbytes != XSECURE_RSA_3072_KEY_SIZE &&
+	    nbytes != XSECURE_RSA_4096_KEY_SIZE) {
+		return -EOPNOTSUPP;
+	}
+
+	para = dma_alloc_coherent(dd->dev, sizeof(struct versal_rsa_in_param),
+				  &dma_addr1, GFP_KERNEL);
+	if (!para)
+		return -ENOMEM;
+
+	dma_size = nbytes + op->keylen;
+	kbuf = dma_alloc_coherent(dd->dev, dma_size, &dma_addr, GFP_KERNEL);
+	if (!kbuf) {
+		err = -ENOMEM;
+		goto out;
+	}
+
+	err = skcipher_walk_virt(&walk, req, false);
+	if (err)
+		goto out1;
+
+	while ((datasize = walk.nbytes)) {
+		op->src = walk.src.virt.addr;
+		memcpy(kbuf + src_data, op->src, datasize);
+		src_data = src_data + datasize;
+		err = skcipher_walk_done(&walk, 0);
+		if (err)
+			goto out1;
+	}
+	memcpy(kbuf + nbytes, op->key, op->keylen);
+
+	para->key_addr = (u64)(dma_addr + nbytes);
+	para->data_addr = (u64)dma_addr;
+	para->size = nbytes;
+
+	if (flags == XSECURE_API_RSA_PUBLIC_ENCRYPT)
+		err = versal_pm_rsa_encrypt(dma_addr1, dma_addr);
+	else
+		err = versal_pm_rsa_decrypt(dma_addr1, dma_addr);
+	if (err)
+		goto out1;
+
+	err = skcipher_walk_virt(&walk, req, false);
+	if (err)
+		goto out1;
+
+	while ((datasize = walk.nbytes)) {
+		memcpy(walk.dst.virt.addr, kbuf + dst_data, datasize);
+		dst_data = dst_data + datasize;
+		err = skcipher_walk_done(&walk, 0);
+		if (err)
+			goto out1;
+	}
+
+out1:
+	dma_free_coherent(dd->dev, dma_size, kbuf, dma_addr);
+out:
+	dma_free_coherent(dd->dev, sizeof(struct versal_rsa_in_param),
+			  para, dma_addr1);
+	return err;
+}
+
 static int zynqmp_rsa_decrypt(struct skcipher_request *req)
 {
 	return zynqmp_rsa_xcrypt(req, 0);
@@ -150,6 +234,16 @@ static int zynqmp_rsa_decrypt(struct skcipher_request *req)
 static int zynqmp_rsa_encrypt(struct skcipher_request *req)
 {
 	return zynqmp_rsa_xcrypt(req, 1);
+}
+
+static int versal_rsa_decrypt(struct skcipher_request *req)
+{
+	return versal_rsa_xcrypt(req, XSECURE_API_RSA_PRIVATE_DECRYPT);
+}
+
+static int versal_rsa_encrypt(struct skcipher_request *req)
+{
+	return versal_rsa_xcrypt(req, XSECURE_API_RSA_PUBLIC_ENCRYPT);
 }
 
 static struct skcipher_alg zynqmp_alg = {
@@ -170,12 +264,36 @@ static struct skcipher_alg zynqmp_alg = {
 	.ivsize			=	1,
 };
 
+static struct skcipher_alg versal_alg = {
+	.base.cra_name		=	"xilinx-versal-rsa",
+	.base.cra_driver_name	=	"versal-rsa",
+	.base.cra_priority	=	400,
+	.base.cra_flags		=	CRYPTO_ALG_TYPE_SKCIPHER |
+					CRYPTO_ALG_KERN_DRIVER_ONLY,
+	.base.cra_blocksize	=	ZYNQMP_RSA_BLOCKSIZE,
+	.base.cra_ctxsize	=	sizeof(struct zynqmp_rsa_op),
+	.base.cra_alignmask	=	15,
+	.base.cra_module	=	THIS_MODULE,
+	.min_keysize		=	0,
+	.max_keysize		=	ZYNQMP_RSA_MAX_KEY_SIZE,
+	.setkey			=	zynqmp_setkey_blk,
+	.encrypt		=	versal_rsa_encrypt,
+	.decrypt		=	versal_rsa_decrypt,
+	.ivsize			=	1,
+};
+
 static struct xlnx_feature rsa_feature_map[] = {
 	{
 		.family = ZYNQMP_FAMILY_CODE,
 		.subfamily = ALL_SUB_FAMILY_CODE,
 		.feature_id = PM_SECURE_RSA,
 		.data = &zynqmp_alg,
+	},
+	{
+		.family = VERSAL_FAMILY_CODE,
+		.subfamily = VERSAL_SUB_FAMILY_CODE,
+		.feature_id = XSECURE_API_RSA_PUBLIC_ENCRYPT,
+		.data = &versal_alg,
 	},
 	{ /* sentinel */ }
 };
