@@ -180,13 +180,6 @@ static struct xlnx_feature rsa_feature_map[] = {
 	{ /* sentinel */ }
 };
 
-static const struct of_device_id zynqmp_rsa_dt_ids[] = {
-	{ .compatible = "xlnx,zynqmp-rsa" },
-	{ /* sentinel */ }
-};
-
-MODULE_DEVICE_TABLE(of, zynqmp_rsa_dt_ids);
-
 static int zynqmp_rsa_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -246,11 +239,35 @@ static struct platform_driver xilinx_rsa_driver = {
 	.remove = zynqmp_rsa_remove,
 	.driver = {
 		.name = "zynqmp_rsa",
-		.of_match_table = of_match_ptr(zynqmp_rsa_dt_ids),
 	},
 };
 
-module_platform_driver(xilinx_rsa_driver);
+static int __init rsa_driver_init(void)
+{
+	struct platform_device *pdev;
+	int ret;
+
+	ret = platform_driver_register(&xilinx_rsa_driver);
+	if (ret)
+		return ret;
+
+	pdev = platform_device_register_simple(xilinx_rsa_driver.driver.name,
+					       0, NULL, 0);
+	if (IS_ERR(pdev)) {
+		ret = PTR_ERR(pdev);
+		platform_driver_unregister(&xilinx_rsa_driver);
+	}
+
+	return ret;
+}
+
+static void __exit rsa_driver_exit(void)
+{
+	platform_driver_unregister(&xilinx_rsa_driver);
+}
+
+device_initcall(rsa_driver_init);
+module_exit(rsa_driver_exit);
 
 MODULE_DESCRIPTION("ZynqMP RSA hw acceleration support.");
 MODULE_LICENSE("GPL");
