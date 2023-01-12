@@ -70,6 +70,7 @@
 
 /* xilSecure API commands  module id + api id */
 #define XSECURE_API_FEATURES		0x500
+#define XSECURE_API_SHA3_UPDATE		0x504
 
 /* Secure Commands */
 #define PM_WRITE_AES_KEY		0x568
@@ -754,6 +755,7 @@ int zynqmp_pm_aie_operation(u32 node, u16 start_col, u16 num_col, u32 operation)
 int zynqmp_pm_fpga_get_version(u32 *value);
 int zynqmp_pm_fpga_get_feature_list(u32 *value);
 int zynqmp_pm_get_qos(u32 node, u32 *const def_qos, u32 *const qos);
+int versal_pm_sha_hash(const u64 src, const u64 dst, const u32 size);
 #else
 static inline int zynqmp_pm_get_api_version(u32 *version)
 {
@@ -1268,6 +1270,11 @@ static int zynqmp_pm_fpga_get_version(u32 *value)
 }
 
 static int zynqmp_pm_fpga_get_feature_list(u32 *value)
+{
+	return -ENODEV;
+}
+
+static int versal_pm_sha_hash(const u64 src, const u64 dst, const u32 size)
 {
 	return -ENODEV;
 }
