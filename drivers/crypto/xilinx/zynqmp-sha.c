@@ -28,7 +28,7 @@ enum zynqmp_sha_op {
 	ZYNQMP_SHA3_FINAL = 4,
 };
 
-struct zynqmp_sha_drv_ctx {
+struct xilinx_sha_drv_ctx {
 	struct shash_alg sha3_384;
 	struct device *dev;
 };
@@ -51,9 +51,9 @@ static int zynqmp_sha_init_tfm(struct crypto_shash *hash)
 	struct zynqmp_sha_tfm_ctx *tfm_ctx = crypto_shash_ctx(hash);
 	struct shash_alg *alg = crypto_shash_alg(hash);
 	struct crypto_shash *fallback_tfm;
-	struct zynqmp_sha_drv_ctx *drv_ctx;
+	struct xilinx_sha_drv_ctx *drv_ctx;
 
-	drv_ctx = container_of(alg, struct zynqmp_sha_drv_ctx, sha3_384);
+	drv_ctx = container_of(alg, struct xilinx_sha_drv_ctx, sha3_384);
 	tfm_ctx->dev = drv_ctx->dev;
 
 	/* Allocate a fallback and abort if it failed. */
@@ -161,7 +161,7 @@ static int zynqmp_sha_digest(struct shash_desc *desc, const u8 *data, unsigned i
 	return ret;
 }
 
-static struct zynqmp_sha_drv_ctx sha3_drv_ctx = {
+static struct xilinx_sha_drv_ctx sha3_drv_ctx = {
 	.sha3_384 = {
 		.init = zynqmp_sha_init,
 		.update = zynqmp_sha_update,
