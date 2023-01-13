@@ -35,6 +35,7 @@
 #define RX_MBOX_CLIENT_BUF_MAX	(IPI_BUF_LEN_MAX + \
 				 sizeof(struct zynqmp_ipi_message))
 #define MAX_BANKS 4U
+#define MAX_BANKS_PER_CORE	3U
 
 /*
  * NOTE: The resource table size is currently hard-coded to a maximum
@@ -46,15 +47,21 @@
 enum soc_type_t {
 	SOC_ZYNQMP	= 0,
 	SOC_VERSAL	= 1,
+	SOC_VERSAL_NET	= 2,
 };
 
 /**
  * struct xlnx_rpu_soc_data - match data to handle SoC variations
  * @soc_type:	enum to denote which SOC this is running. on. Some EEMI calls
  *		behave differently on various SoC's so denote here.
+ * @tcm_bases:	collection of device addresses that SoC has for TCM banks
+ * @num_tcms:	number of entries in the tcm base collection.
+ *		for each core.
  */
 struct xlnx_rpu_soc_data {
 	enum soc_type_t soc_type;
+	unsigned int tcm_bases[MAX_BANKS_PER_CORE];
+	unsigned int num_tcms;
 };
 
 /*
@@ -206,18 +213,28 @@ static int xlnx_rpu_rproc_start(struct rproc *rproc)
 	int ret;
 	u32 status;
 
-	bootmem = (rproc->bootaddr & 0xF0000000) == 0xF0000000 ?
-		  PM_RPU_BOOTMEM_HIVEC : PM_RPU_BOOTMEM_LOVEC;
+	/*
+	 * FIXME Versal-Net does not yet support this feature.
+	 */
+	if (z_rproc->soc_data->soc_type == SOC_VERSAL_NET) {
+		bootmem = 0;
+	} else {
+		bootmem = (rproc->bootaddr & 0xF0000000) == 0xF0000000 ?
+			  PM_RPU_BOOTMEM_HIVEC : PM_RPU_BOOTMEM_LOVEC;
 
-	dev_dbg(rproc->dev.parent, "RPU boot from %s.",
-		bootmem == PM_RPU_BOOTMEM_HIVEC ? "OCM" : "TCM");
+		dev_dbg(rproc->dev.parent, "RPU boot from %s.",
+			bootmem == PM_RPU_BOOTMEM_HIVEC ? "OCM" : "TCM");
+	}
 
 	/* If core is already powered on, turn off before re-wake. */
 	ret = zynqmp_pm_get_node_status(z_rproc->pnode_id, &status, NULL, NULL);
 	if (ret)
 		return ret;
 
-	if (status) {
+	/*
+	 * FIXME Versal-Net does not yet support this feature.
+	 */
+	if (status && z_rproc->soc_data->soc_type != SOC_VERSAL_NET) {
 		ret = zynqmp_pm_force_pwrdwn(z_rproc->pnode_id,
 					     ZYNQMP_PM_REQUEST_ACK_BLOCKING);
 		if (ret)
@@ -465,8 +482,27 @@ static int xlnx_rpu_pm_request_sram(struct device *dev,
  */
 static int sram_mem_alloc(struct rproc *rproc, struct rproc_mem_entry *mem)
 {
-	void *va;
+	/*
+	 * Versal-Net has different TCM absolute addresses and CTCM banks.
+	 * Set bounds and mask here for later calculation.
+	 *
+	 * The last entry of valid_bank_bases is only used for Versal-Net
+	 * as it has a third bank at the device address 0x10000.
+	 *
+	 * ZynqMP and Versal cases only have 2 TCM banks per core to handle.
+	 */
+	unsigned int versal_net[4] = { 0xEBA00000, 0x3FFFF, 0xEBAE0000, 0x8000 };
+	unsigned int versal[4] = { 0xFFE00000, 0xFFFFF, 0xFFEB0000, 0x10000 };
+	unsigned int base, mask, high, len, bank, *sram_tbl;
+	struct xlnx_rpu_rproc *z_rproc = rproc->priv;
 	struct device *dev = rproc->dev.parent;
+	void *va;
+
+	sram_tbl = z_rproc->soc_data->soc_type == SOC_VERSAL_NET ? versal_net : versal;
+	base = sram_tbl[0]; /* low address of TCM */
+	mask = sram_tbl[1]; /* device address bits */
+	high = sram_tbl[2]; /* high address of TCM */
+	len = sram_tbl[3]; /* length of last bank of TCM per core */
 
 	va = ioremap_wc(mem->dma, mem->len);
 	if (IS_ERR_OR_NULL(va))
@@ -479,12 +515,12 @@ static int sram_mem_alloc(struct rproc *rproc, struct rproc_mem_entry *mem)
 	if (!va)
 		return -ENOMEM;
 	/*
-	 * Handle TCM translation for R5-relative addresses. Here go from
-	 * start of TM0A to end of TCM1B in mapping.
+	 * Handle TCM translation for R-series relative addresses. Check from
+	 * start to end of TCM banks in mapping.
 	 */
-	if (mem->da >= 0xffe00000UL && mem->da < 0xffeb0000UL + 0x10000UL) {
-		/* As RPU is 32 bit, wipe out extra high bits */
-		mem->da &= 0x000fffff;
+	if (mem->da >= base && mem->da < high + len) {
+		/* As R5 and R52 are 32 bit, wipe out extra high bits */
+		mem->da &= mask;
 		/*
 		 * The R5s expect their TCM banks to be at address 0x0 and 0x2000,
 		 * while on the Linux side they are at 0xffexxxxx. Zero out the high
@@ -494,13 +530,27 @@ static int sram_mem_alloc(struct rproc *rproc, struct rproc_mem_entry *mem)
 		/*
 		 * TCM Banks 1A and 1B (0xffe90000 and 0xffeb0000) still
 		 * need to be translated to 0x0 and 0x20000
+		 *
+		 * For Versal and ZynqMP The R5s expect their TCM 1A and 1B
+		 * banks to be at device addresses 0x0 and 0x2000. The Linux
+		 * addresses should be at 0xffexxxxx. Zero out the high 12
+		 * bits of the address.
 		 */
-		if (mem->da == 0x90000 || mem->da == 0xB0000)
+		if ((z_rproc->soc_data->soc_type != SOC_VERSAL_NET && mem->da == 0x90000) ||
+		    mem->da == 0xB0000)
 			mem->da -= 0x90000;
+		/*
+		 * Check if one of the valid bank base addresses. If not
+		 * report error.
+		 */
+		for (bank = 0; bank < z_rproc->soc_data->num_tcms; bank++) {
+			if (mem->da == z_rproc->soc_data->tcm_bases[bank])
+				break;
+		}
 
-		/* if translated TCM bank address is not valid report error */
-		if (mem->da != 0x0 && mem->da != 0x20000) {
-			dev_err(dev, "invalid TCM bank address: %x\n", mem->da);
+		if (bank == z_rproc->soc_data->num_tcms) {
+			dev_err(dev, "invalid TCM bank address: %x\n",
+				mem->da);
 			return -EINVAL;
 		}
 	}
@@ -639,13 +689,15 @@ static int xlnx_rpu_prepare(struct rproc *rproc)
 	 * notifies Xilinx platform management firmware that the RPU core will
 	 * be used and should be powered on.
 	 *
+	 * The same is for true for Versal-Net.
+	 *
 	 * On ZynqMP platform this is not needed as the RPU cores are not
 	 * powered off by default.
 	 *
 	 * Only power on RPU core if not doing attach/detach flow. I.e.
 	 * Only request node if its not on.
 	 */
-	if (z_rproc->soc_data->soc_type == SOC_VERSAL &&
+	if (z_rproc->soc_data->soc_type != SOC_ZYNQMP &&
 	    rproc->state == RPROC_OFFLINE) {
 		ret = zynqmp_pm_request_node(z_rproc->pnode_id,
 					     ZYNQMP_PM_CAPABILITY_ACCESS, 0,
@@ -957,9 +1009,14 @@ static int xlnx_rpu_probe(struct platform_device *pdev,
 
 	(*z_rproc)->soc_data = data;
 
-	ret = rpu_set_mode(*z_rproc, rpu_mode);
-	if (ret)
-		goto error;
+	/*
+	 * fixme versal-net does not yet support this feature.
+	 */
+	if ((*z_rproc)->soc_data->soc_type != SOC_VERSAL_NET) {
+		ret = rpu_set_mode(*z_rproc, rpu_mode);
+		if (ret)
+			goto error;
+	}
 
 	if (of_property_read_bool(node, "mboxes")) {
 		ret = xlnx_rpu_setup_mbox(*z_rproc, node);
@@ -1164,8 +1221,10 @@ static int xlnx_rpu_remoteproc_remove(struct platform_device *pdev)
 		 * For Versal platform, the Xilinx platform management
 		 * firmware needs to have a release call to match the
 		 * corresponding reque in order to power down the core.
+		 *
+		 * The same is true for Versal-Net.
 		 */
-		if (z_rproc->soc_data->soc_type == SOC_VERSAL)
+		if (z_rproc->soc_data->soc_type != SOC_ZYNQMP)
 			zynqmp_pm_release_node(z_rproc->pnode_id);
 
 		if (of_property_read_bool(z_rproc->dev->of_node, "mboxes")) {
@@ -1179,15 +1238,26 @@ static int xlnx_rpu_remoteproc_remove(struct platform_device *pdev)
 
 static const struct xlnx_rpu_soc_data zynqmp_data = {
 	.soc_type = SOC_ZYNQMP,
+	.tcm_bases = { 0x0, 0x20000 },
+	.num_tcms = 2U,
 };
 
 static const struct xlnx_rpu_soc_data versal_data = {
 	.soc_type = SOC_VERSAL,
+	.tcm_bases = { 0x0, 0x20000 },
+	.num_tcms = 2U,
+};
+
+static const struct xlnx_rpu_soc_data versal_net_data = {
+	.soc_type = SOC_VERSAL_NET,
+	.tcm_bases = { 0x0, 0x10000, 0x20000 },
+	.num_tcms = 3U,
 };
 
 static const struct of_device_id xilinx_r5_of_match[] = {
 	{ .compatible = "xlnx,zynqmp-r5-remoteproc", .data = &zynqmp_data, },
 	{ .compatible = "xlnx,versal-r5-remoteproc", .data = &versal_data, },
+	{ .compatible = "xlnx,versal-net-r52-remoteproc", .data = &versal_net_data, },
 	{ /* sentinel */ },
 };
 MODULE_DEVICE_TABLE(of, xilinx_r5_of_match);
