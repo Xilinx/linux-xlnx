@@ -570,7 +570,7 @@ static int sram_mem_alloc(struct rproc *rproc, struct rproc_mem_entry *mem)
  */
 static int parse_tcm_banks(struct rproc *rproc)
 {
-	int i, num_banks, ret = 0;
+	int i, num_banks, ret;
 	struct xlnx_rpu_rproc *z_rproc = rproc->priv;
 	struct device *dev = &rproc->dev;
 	struct device_node *r5_node = z_rproc->dev->of_node;
@@ -587,7 +587,6 @@ static int parse_tcm_banks(struct rproc *rproc)
 		resource_size_t size;
 		struct device_node *dt_node;
 		struct rproc_mem_entry *mem;
-		int ret;
 
 		dt_node = of_parse_phandle(r5_node, BANK_LIST_PROP, i);
 		if (!dt_node)
@@ -661,7 +660,6 @@ error:
 static int xlnx_rpu_parse_fw(struct rproc *rproc, const struct firmware *fw)
 {
 	int ret;
-
 
 	ret = rproc_elf_load_rsc_table(rproc, fw);
 	if (ret == -EINVAL) {
@@ -753,10 +751,10 @@ static int xlnx_rpu_rproc_detach(struct rproc *rproc)
  */
 static void xlnx_rpu_rproc_kick(struct rproc *rproc, int vqid)
 {
+	struct zynqmp_ipi_message *mb_msg = NULL;
 	struct sk_buff *skb = NULL;
 	unsigned int skb_len = 0;
-	struct zynqmp_ipi_message *mb_msg = NULL;
-	int ret = 0;
+	int ret;
 
 	struct device *dev = rproc->dev.parent;
 	struct xlnx_rpu_rproc *z_rproc = rproc->priv;
