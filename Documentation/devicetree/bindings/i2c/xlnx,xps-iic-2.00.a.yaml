@@ -32,14 +32,15 @@ properties:
     description: |
       Input clock name.
 
+  clock-frequency:
+    description:
+      Optional I2C SCL clock frequency.
+
 required:
   - compatible
   - reg
   - interrupts
   - clocks
-
-optional:
-  - clock-frequency
 
 unevaluatedProperties: false
 
