@@ -166,40 +166,6 @@ examples:
         #size-cells = <2>;
         model = "ZynqMP ZCU102 ";
 
-        zynqmp_ipi1 {
-          compatible = "xlnx,zynqmp-ipi-mailbox";
-          interrupt-parent = <&gic>;
-          interrupts = <0 33 4>;
-          xlnx,ipi-id = <5>;
-          #address-cells = <1>;
-          #size-cells = <0>;
-
-          ipi_mailbox_rpu0: mailbox@ff990600 {
-            reg = <0xff990600 0x20>,
-                  <0xff990620 0x20>,
-                  <0xff9900c0 0x20>,
-                  <0xff9900e0 0x20>;
-            reg-names = "local_request_region",
-            "local_response_region",
-            "remote_request_region",
-            "remote_response_region";
-            #mbox-cells = <1>;
-            xlnx,ipi-id = <3>;
-          };
-          ipi_mailbox_rpu1: mailbox@ff990780 {
-            reg = <0xff990780 0x20>,
-                  <0xff9907a0 0x20>,
-                  <0xff9907c0 0x20>,
-                  <0xff9905a0 0x20>;
-            reg-names = "local_request_region",
-            "local_response_region",
-            "remote_request_region",
-            "remote_response_region";
-            #mbox-cells = <1>;
-            xlnx,ipi-id = <3>;
-          };
-        };
-
         r5fss@ff9a0000 {
           compatible = "xlnx,zynqmp-r5-remoteproc";
           #address-cells = <2>;
@@ -215,8 +181,6 @@ examples:
                                <&rpu0vdev0vring1>,
                                <&rpu0vdev0buffer>;
                sram = <&tcm_0a>, <&tcm_0b>;
-               mboxes = <&ipi_mailbox_rpu0 0x0 &ipi_mailbox_rpu0 0x1>;
-               mbox-names = "tx", "rx";
                power-domain = <0x7>;
                xlnx,rsc-tbl  = <&rproc_0_reserved 0x3ed20000>;
           };
@@ -227,8 +191,6 @@ examples:
                                <&rpu1vdev0vring1>,
                                <&rpu1vdev0buffer>;
                sram = <&tcm_1a>, <&tcm_1b>;
-               mboxes = <&ipi_mailbox_rpu1 0x0 &ipi_mailbox_rpu1 0x1>;
-               mbox-names = "tx", "rx";
                power-domain = <0x8>;
           };
 
