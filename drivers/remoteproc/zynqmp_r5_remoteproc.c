@@ -43,12 +43,18 @@
  */
 #define RSC_TBL_SIZE	0x400
 
+enum soc_type_t {
+	SOC_ZYNQMP	= 0,
+	SOC_VERSAL	= 1,
+};
+
 /**
- * struct xlnx_r5_data - match data to handle SoC variations
- * @versal_soc: flag to denote if running on Versal SoC.
+ * struct xlnx_rpu_soc_data - match data to handle SoC variations
+ * @soc_type:	enum to denote which SOC this is running. on. Some EEMI calls
+ *		behave differently on various SoC's so denote here.
  */
-struct xlnx_r5_data {
-	bool versal_soc;
+struct xlnx_rpu_soc_data {
+	enum soc_type_t soc_type;
 };
 
 /*
@@ -76,6 +82,7 @@ struct sram_addr_data {
  * @rsc_pa: device address of resource table
  * @elem: linked list item
  * @versal: flag that if on, denotes this driver is for Versal SoC.
+ * @soc_data: SoC-specific feature data for a RPU core.
  */
 struct xlnx_rpu_rproc {
 	unsigned char rx_mc_buf[RX_MBOX_CLIENT_BUF_MAX];
@@ -91,7 +98,7 @@ struct xlnx_rpu_rproc {
 	phys_addr_t rsc_pa;
 	u32 pnode_id;
 	struct list_head elem;
-	bool versal;
+	const struct xlnx_rpu_soc_data *soc_data;
 };
 
 /*
@@ -163,7 +170,7 @@ static int sram_mem_release(struct rproc *rproc, struct rproc_mem_entry *mem)
 		if (!pnode_id)
 			continue;
 
-		if (z_rproc->versal) {
+		if (z_rproc->soc_data->soc_type == SOC_VERSAL) {
 			/* only request node if not already requested */
 			ret = zynqmp_pm_get_node_status(pnode_id, &status, NULL, &usage);
 			if (ret) {
@@ -173,7 +180,7 @@ static int sram_mem_release(struct rproc *rproc, struct rproc_mem_entry *mem)
 			}
 		}
 
-		if (usage || !z_rproc->versal) {
+		if (usage || z_rproc->soc_data->soc_type == SOC_ZYNQMP) {
 			ret = zynqmp_pm_release_node(pnode_id);
 			if (ret < 0)
 				dev_warn(dev, "Unable to release node %d\n",
@@ -565,7 +572,7 @@ static int parse_tcm_banks(struct rproc *rproc)
 			 */
 			if (rproc->state == RPROC_OFFLINE) {
 				ret = xlnx_rpu_pm_request_sram(dev, dt_node,
-							       z_rproc->versal,
+							       z_rproc->soc_data->soc_type,
 							       sram_banks);
 				if (ret < 0) {
 					of_node_put(dt_node);
@@ -638,7 +645,8 @@ static int xlnx_rpu_prepare(struct rproc *rproc)
 	 * Only power on RPU core if not doing attach/detach flow. I.e.
 	 * Only request node if its not on.
 	 */
-	if (z_rproc->versal && rproc->state == RPROC_OFFLINE) {
+	if (z_rproc->soc_data->soc_type == SOC_VERSAL &&
+	    rproc->state == RPROC_OFFLINE) {
 		ret = zynqmp_pm_request_node(z_rproc->pnode_id,
 					     ZYNQMP_PM_CAPABILITY_ACCESS, 0,
 					     ZYNQMP_PM_REQUEST_ACK_BLOCKING);
@@ -899,7 +907,7 @@ static int xlnx_rpu_setup_mbox(struct xlnx_rpu_rproc *z_rproc,
 static int xlnx_rpu_probe(struct platform_device *pdev,
 			  struct device_node *node,
 			  enum rpu_oper_mode rpu_mode,
-			  const struct xlnx_r5_data *data,
+			  const struct xlnx_rpu_soc_data *data,
 			  struct xlnx_rpu_rproc **z_rproc)
 {
 	struct device *dev = &pdev->dev;
@@ -947,7 +955,7 @@ static int xlnx_rpu_probe(struct platform_device *pdev,
 	of_property_read_u32_index(node, PD_PROP, 1U, &pnode_id);
 	(*z_rproc)->pnode_id = pnode_id;
 
-	(*z_rproc)->versal = data->versal_soc;
+	(*z_rproc)->soc_data = data;
 
 	ret = rpu_set_mode(*z_rproc, rpu_mode);
 	if (ret)
@@ -1044,7 +1052,7 @@ static int xlnx_rpu_remoteproc_probe(struct platform_device *pdev)
 	struct xlnx_rpu_rproc *z_rproc = NULL;
 	struct platform_device *child_pdev;
 	struct list_head *pos;
-	const struct xlnx_r5_data *data;
+	const struct xlnx_rpu_soc_data *data;
 
 	ret = of_property_read_u32(dev->of_node, "xlnx,cluster-mode", &rpu_mode);
 	if (ret < 0 || (rpu_mode != PM_RPU_MODE_LOCKSTEP &&
@@ -1083,7 +1091,7 @@ static int xlnx_rpu_remoteproc_probe(struct platform_device *pdev)
 	 * SoC specific information. For now, just flag to determine if
 	 * on versal platform for node management.
 	 */
-	data = of_device_get_match_data(&pdev->dev);
+	data = (const struct xlnx_rpu_soc_data *)of_device_get_match_data(&pdev->dev);
 	if (!data) {
 		dev_err(dev, "SoC-specific data is not defined\n");
 		return -ENODEV;
@@ -1157,7 +1165,7 @@ static int xlnx_rpu_remoteproc_remove(struct platform_device *pdev)
 		 * firmware needs to have a release call to match the
 		 * corresponding reque in order to power down the core.
 		 */
-		if (z_rproc->versal)
+		if (z_rproc->soc_data->soc_type == SOC_VERSAL)
 			zynqmp_pm_release_node(z_rproc->pnode_id);
 
 		if (of_property_read_bool(z_rproc->dev->of_node, "mboxes")) {
@@ -1169,12 +1177,12 @@ static int xlnx_rpu_remoteproc_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static const struct xlnx_r5_data versal_data = {
-	.versal_soc = true,
+static const struct xlnx_rpu_soc_data zynqmp_data = {
+	.soc_type = SOC_ZYNQMP,
 };
 
-static const struct xlnx_r5_data zynqmp_data = {
-	.versal_soc = false,
+static const struct xlnx_rpu_soc_data versal_data = {
+	.soc_type = SOC_VERSAL,
 };
 
 static const struct of_device_id xilinx_r5_of_match[] = {
