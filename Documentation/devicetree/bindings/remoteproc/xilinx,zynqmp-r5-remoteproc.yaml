@@ -14,17 +14,17 @@ description:
   so the absolute address ranges are provided in TCM reg's.
 
 maintainers:
-  - Ed Mooring <ed.mooring@xilinx.com>
-  - Ben Levinsky <ben.levinsky@xilinx.com>
+  - Ben Levinsky <ben.levinsky@amd.com>
 
 properties:
   $nodename:
-    pattern: "^r5fss(@.*)?"
+    pattern: "^r5[f|2]ss(@.*)?"
 
   compatible:
     enum:
       - xlnx,zynqmp-r5-remoteproc
       - xlnx,versal-r5-remoteproc
+      - xlnx,versal-net-r52-remoteproc
 
   reg:
     items:
@@ -52,7 +52,7 @@ properties:
 # ==========================
 
 patternProperties:
-  "^r5f_[a-f0-9]+$":
+  "^r5[f|2]_[a-f0-9]+$":
     type: object
     description: |
       The R5F Sub-System device node should define one or two R5F child nodes,
@@ -67,12 +67,16 @@ patternProperties:
       child has access to TCM Banks 0A, 0B, 1A and 1B and any of the four can
       be included in the child R5F's sram property.
 
+      This also supports arm-cortexr52 clusters on Versal-net platform with
+      the same runtime modes.
+
       The example below shows Split mode with two child nodes.
 
     properties:
       compatible:
         enum:
           - xilinx,r5f
+          - xilinx,r52
 
 # The following properties are mandatory for R5F Core0 in both LockStep and Split
 # modes, and are mandatory for R5F Core1 _only_ in Split mode.
