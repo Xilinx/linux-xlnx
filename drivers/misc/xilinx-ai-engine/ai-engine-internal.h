@@ -1046,6 +1046,7 @@ int xilinx_ai_engine_add_dev(struct aie_device *adev,
 int xilinx_ai_engine_probe_v1(struct platform_device *pdev);
 
 void aie_part_remove(struct aie_partition *apart);
+int aie_part_clear_context(struct aie_partition *apart);
 int aie_part_clean(struct aie_partition *apart);
 int aie_part_open(struct aie_partition *apart, void *rsc_metadata);
 int aie_part_initialize(struct aie_partition *apart, void __user *user_args);

@@ -66,6 +66,103 @@ static void aie_part_clear_core_regs(struct aie_partition *apart)
 }
 
 /**
+ * aie_part_clear_data_mem() - clear data memory of every tile in a partition
+ * @apart: AI engine partition
+ * @return: 0 for success and negative value for failure
+ */
+static int aie_part_clear_data_mem(struct aie_partition *apart)
+{
+	struct aie_device *adev = apart->adev;
+	struct aie_part_mem *pmems = apart->pmems;
+	struct aie_mem *mem;
+	struct aie_range *range;
+	u32 num_mems, c, r;
+
+	/* Check if memory object is present */
+	num_mems = adev->ops->get_mem_info(adev, &apart->range, NULL);
+	if (!num_mems)
+		return -EINVAL;
+
+	/* Clear data memory in the partition */
+	mem = &pmems[0].mem;
+	range = &mem->range;
+
+	for (c = range->start.col;
+		c < range->start.col + range->size.col; c++) {
+		for (r = range->start.row;
+			r < range->start.row + range->size.row; r++) {
+			struct aie_location loc;
+			u32 memoff;
+
+			loc.col = c;
+			loc.row = r;
+			memoff = aie_cal_regoff(adev, loc, mem->offset);
+			memset_io(apart->aperture->base + memoff, 0, mem->size);
+		}
+	}
+
+	return 0;
+}
+
+/**
+ * aie_part_clear_context() - clear AI engine partition context
+ * @apart: AI engine partition
+ * @return: 0 for success and negative value for failure
+ *
+ * This function will:
+ * - Gate all columns
+ * - Reset AI engine partition columns
+ * - Ungate all columns
+ * - Reset shim tiles
+ * - Setup axi mm to raise events
+ * - Setup partition isolation
+ * - Zeroize data memory
+ * - Setup L2 intrupt
+ */
+int aie_part_clear_context(struct aie_partition *apart)
+{
+	u32 node_id = apart->adev->pm_node_id;
+	int ret;
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return ret;
+
+	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
+				      apart->range.size.col,
+				      XILINX_AIE_OPS_COL_RST);
+	if (ret < 0)
+		goto exit;
+
+	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
+				      apart->range.size.col,
+				      XILINX_AIE_OPS_SHIM_RST);
+	if (ret < 0)
+		goto exit;
+
+	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
+				      apart->range.size.col,
+				      XILINX_AIE_OPS_ENB_AXI_MM_ERR_EVENT);
+	if (ret < 0)
+		goto exit;
+
+	ret = aie_part_init_isolation(apart);
+	if (ret < 0)
+		goto exit;
+
+	if (aie_part_clear_data_mem(apart))
+		dev_warn(&apart->dev, "failed to clear data memory.\n");
+
+	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
+				      apart->range.size.col,
+				      XILINX_AIE_OPS_SET_L2_CTRL_NPI_INTR);
+exit:
+	mutex_unlock(&apart->mlock);
+
+	return ret;
+}
+
+/**
  * aie_part_clean() - reset and clear AI engine partition
  * @apart: AI engine partition
  * @return: 0 for success and negative value for failure
