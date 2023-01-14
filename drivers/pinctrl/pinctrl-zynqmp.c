@@ -43,6 +43,12 @@
 #define DRIVE_STRENGTH_8MA	8
 #define DRIVE_STRENGTH_12MA	12
 
+#define VERSAL_LPD_MIO_BASE_ID		0x14104001U
+#define VERSAL_PMC_MIO_BASE_ID		0x1410801bU
+#define VERSAL_LPD_MIO_END_PIN		25
+#define VERSAL_LPD_PIN_PREFIX		"LPD_MIO"
+#define VERSAL_PMC_PIN_PREFIX		"PMC_MIO"
+
 /**
  * struct zynqmp_pmux_function - a pinmux function
  * @name:	Name of the pin mux function
@@ -806,6 +812,43 @@ static int zynqmp_pinctrl_get_num_pins(unsigned int *npins)
 	return 0;
 }
 
+static int versal_pinctrl_prepare_pin_desc(struct device *dev,
+					   const struct pinctrl_pin_desc **zynqmp_pins,
+					   unsigned int *npins)
+{
+	struct pinctrl_pin_desc *pins, *pin;
+	int ret;
+	int i;
+
+	ret = zynqmp_pinctrl_get_num_pins(npins);
+	if (ret)
+		return ret;
+
+	pins = devm_kzalloc(dev, sizeof(*pins) * *npins, GFP_KERNEL);
+	if (!pins)
+		return -ENOMEM;
+
+	for (i = 0; i < *npins; i++) {
+		pin = &pins[i];
+		if (i <= VERSAL_LPD_MIO_END_PIN) {
+			pin->number = VERSAL_LPD_MIO_BASE_ID + i;
+			pin->name = devm_kasprintf(dev, GFP_KERNEL, "%s%d",
+						   VERSAL_LPD_PIN_PREFIX, i);
+		} else {
+			pin->number = VERSAL_PMC_MIO_BASE_ID + (i - (VERSAL_LPD_MIO_END_PIN + 1));
+			pin->name = devm_kasprintf(dev, GFP_KERNEL, "%s%d", VERSAL_PMC_PIN_PREFIX,
+						   (i - VERSAL_LPD_MIO_END_PIN) - 1);
+		}
+
+		if (!pin->name)
+			return -ENOMEM;
+	}
+
+	*zynqmp_pins = pins;
+
+	return 0;
+}
+
 /**
  * zynqmp_pinctrl_prepare_pin_desc() - prepare pin description info
  * @dev:		Device pointer.
@@ -857,9 +900,18 @@ static int zynqmp_pinctrl_probe(struct platform_device *pdev)
 	if (!pctrl)
 		return -ENOMEM;
 
-	ret = zynqmp_pinctrl_prepare_pin_desc(&pdev->dev,
-					      &zynqmp_desc.pins,
-					      &zynqmp_desc.npins);
+	if (of_device_is_compatible(pdev->dev.of_node,
+				    "xlnx,versal-pinctrl")) {
+		dev_info(&pdev->dev, "This is an experimental solution(hardcoded the MIO ID\n"
+			"information) and this solution will be deprecated and use PM interface\n"
+			"to get the MIO IDs information\n");
+		ret = versal_pinctrl_prepare_pin_desc(&pdev->dev, &zynqmp_desc.pins,
+						      &zynqmp_desc.npins);
+	} else {
+		ret = zynqmp_pinctrl_prepare_pin_desc(&pdev->dev, &zynqmp_desc.pins,
+						      &zynqmp_desc.npins);
+	}
+
 	if (ret) {
 		dev_err(&pdev->dev, "pin desc prepare fail with %d\n", ret);
 		return ret;
@@ -882,6 +934,7 @@ static int zynqmp_pinctrl_probe(struct platform_device *pdev)
 
 static const struct of_device_id zynqmp_pinctrl_of_match[] = {
 	{ .compatible = "xlnx,zynqmp-pinctrl" },
+	{ .compatible = "xlnx,versal-pinctrl" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, zynqmp_pinctrl_of_match);
