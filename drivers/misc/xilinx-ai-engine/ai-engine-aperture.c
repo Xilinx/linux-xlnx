@@ -8,6 +8,8 @@
 #include <linux/bitmap.h>
 #include <linux/device.h>
 #include <linux/firmware/xlnx-zynqmp.h>
+#include <linux/firmware/xlnx-error-events.h>
+#include <linux/firmware/xlnx-event-manager.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/mutex.h>
@@ -309,6 +311,13 @@ int aie_aperture_remove(struct aie_aperture *aperture)
 		list_del(&apart->node);
 		aie_part_remove(apart);
 	}
+
+	if (aperture->device_name == AIE_DEV_GEN_S100 ||
+	    aperture->device_name == AIE_DEV_GEN_S200) {
+		xlnx_unregister_event(PM_NOTIFY_CB, XPM_NODETYPE_EVENT_ERROR_PMC_ERR1,
+				      XPM_EVENT_ERROR_MASK_AIE_CR,
+				      aie_interrupt_callback, aperture);
+	}
 	mutex_unlock(&aperture->mlock);
 
 	aie_aperture_sysfs_remove_entries(aperture);
@@ -470,26 +479,54 @@ of_aie_aperture_probe(struct aie_device *adev, struct device_node *nc)
 	if (ret)
 		dev_warn(&aperture->dev, "Failed to configure DMA.\n");
 
-	/* Initialize interrupt */
-	ret = of_irq_get_byname(nc, "interrupt1");
+	/* Get device-name from device tree */
+	ret = of_property_read_u32_index(nc, "xlnx,device-name", 0,
+					 &aperture->device_name);
 	if (ret < 0) {
-		dev_warn(dev, "no interrupt in device node.");
-	} else {
-		aperture->irq = ret;
+		aperture->device_name = AIE_DEV_GENERIC_DEVICE;
+		dev_info(&adev->dev,
+			 "probe %pOF failed, no device-name", nc);
+	}
+
+	/* Initialize interrupt */
+	if (aperture->device_name == AIE_DEV_GEN_S100 ||
+	    aperture->device_name == AIE_DEV_GEN_S200) {
 		INIT_WORK(&aperture->backtrack, aie_aperture_backtrack);
 		ret = aie_aperture_create_l2_bitmap(aperture);
 		if (ret) {
-			dev_err(dev,
-				"failed to initialize l2 mask resource.\n");
+			dev_err(dev, "failed to initialize l2 mask resource.\n");
 			goto put_aperture_dev;
 		}
 
-		ret = devm_request_threaded_irq(dev, aperture->irq, NULL,
-						aie_interrupt, IRQF_ONESHOT,
-						dev_name(dev), aperture);
+		ret = xlnx_register_event(PM_NOTIFY_CB, XPM_NODETYPE_EVENT_ERROR_PMC_ERR1,
+					  XPM_EVENT_ERROR_MASK_AIE_CR,
+					  false, aie_interrupt_callback, aperture);
+
 		if (ret) {
-			dev_err(dev, "Failed to request AIE IRQ.\n");
+			dev_err(dev, "Interrupt forwarding failed.\n");
 			goto put_aperture_dev;
+		}
+	} else {
+		ret = of_irq_get_byname(nc, "interrupt1");
+		if (ret < 0) {
+			dev_warn(&adev->dev, "no interrupt in device node.");
+		} else {
+			aperture->irq = ret;
+			INIT_WORK(&aperture->backtrack, aie_aperture_backtrack);
+
+			ret = aie_aperture_create_l2_bitmap(aperture);
+			if (ret) {
+				dev_err(dev, "failed to initialize l2 mask resource.\n");
+				goto put_aperture_dev;
+			}
+
+			ret = devm_request_threaded_irq(dev, aperture->irq, NULL,
+							aie_interrupt, IRQF_ONESHOT,
+							dev_name(dev), aperture);
+			if (ret) {
+				dev_err(dev, "Failed to request AIE IRQ.\n");
+				goto put_aperture_dev;
+			}
 		}
 	}
 

@@ -853,6 +853,20 @@ irqreturn_t aie_interrupt(int irq, void *data)
 }
 
 /**
+ * aie_interrupt_callback() - S100/S200 callback.
+ * @payload: payload data.
+ * @data: AI engine aperture structure.
+ *
+ * This function calls aie_interrupt to disables level 2 interrupt controllers
+ * and schedules a task in workqueue to backtrack the source of error interrupt.
+ * Disabled interrupts are re-enabled after successful completion of bottom half.
+ */
+void aie_interrupt_callback(const u32 *payload, void *data)
+{
+	aie_interrupt(0, data);
+}
+
+/**
  * aie_part_has_error() - check if AI engine partition has errors raised
  * @apart: AIE partition pointer
  * @return: true if AI engine partition has errors, false otherwise.
