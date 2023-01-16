@@ -1,0 +1,104 @@
+What:		/sys/devices/system/edac/versal_xilsem/xsem_scan_control
+Date:		Jan, 2023
+Contact:	rama.devi.veggalam@amd.com
+Description:
+		It is a read/write file.
+		Writing to this file causes the software to initiate a
+		request to the firmware for doing requested scan operation in
+		Configuration RAM (CRAM) or NPI of Versal devices. User needs
+		to provide scan operation id (init, start, stop) details.
+		The scan operation id values are as given below:
+		1 - Initialize the scan
+		2 - Start CRAM scan
+		3 - Stop CRAM scan
+		5 - Start NPI scan
+		6 - Stop NPI scan
+		7 - Inject NPI error in first descriptor
+
+		When read, it shows the current scan status with error code.
+		The format is <0x1030 | operation Id> <error code>.
+		The different error codes are as given below:
+		==========	=====
+		Error Code	Cause
+		==========	=====
+		0x0			Scan operation success
+		0x1			Failure in NPI scan
+		0x80		Calibration timeout
+		0x2000		Internal error
+		0x500000	CRAM initialization not yet done
+		0x600000	Start scan failed
+		0x700000	Stop scan failed
+		0xF00000	Active CRC/UE error
+		0x1000000	ECC/CRC error detected during calibration
+		==========	=====
+
+What:		/sys/devices/system/edac/versal_xilsem/xsem_cram_injecterr
+Date:		Jan, 2023
+Contact:	rama.devi.veggalam@amd.com
+Description:
+		It is a read/write file.
+		Writing to this file causes the software to initiate a
+		request to the firmware for doing error injection in
+		Configuration RAM (CRAM) of Versal devices. User needs
+		to provide the location details of CRAM
+		(frame, qword, bit number, row number) to inject the error.
+		When read, it shows the current error injection status. The
+		format is <header> <error code>.
+		Example: 0x10304 0
+		The different error codes are as given below:
+		==========	=====
+		Error Code	Cause
+		==========	=====
+		0x0			Error injection success
+		0x2000		Internal NULL pointer error
+		0x500000	CRAM initialization not yet done
+		0x800000	Invalid row
+		0x900000	Invalid qword
+		0xA00000	Invalid bit
+		0xB00000	Invalid frame address
+		0xC00000	Unexpected bits flipped
+		0xD00000	Masked bit
+		0xE00000	Invalid block type
+		0xF00000	Active CRC/UE error in CRAM
+		==========	=====
+
+What:		/sys/devices/system/edac/versal_xilsem/xsem_cram_framecc_read
+Date:		Jan, 2023
+Contact:	rama.devi.veggalam@amd.com
+Description:
+		It is a read/write file.
+		Writing to this file causes the software to initiate a
+		request to the firmware for reading frame ECC values in
+		Configuration RAM (CRAM) of Versal devices. User needs
+		to provide the location details of CRAM
+		(frame, row number) to read the ECC values.
+		When read, it shows the ECC values for the requested frame.
+		The format is <status> <header> <ECC_0> <ECC_1>
+		Example: 0 0x1030A 0x363B1A 0x8A0200
+
+What:		/sys/devices/system/edac/versal_xilsem/xsem_read_config
+Date:		Jan, 2023
+Contact:	rama.devi.veggalam@amd.com
+Description:
+		It is a read/write file.
+		Writing to this file causes the software to initiate a
+		request to the firmware for reading Xilsem configuration.
+		When read, it shows the CRAM and NPI scan configuration.
+		The format is <status> <header> <CRAM config> <NPI config>
+		Example: 0 0x1030A 0x26 0x5016
+
+What:		/sys/devices/system/edac/versal_xilsem/xsem_read_status
+Date:		Jan, 2023
+Contact:	rama.devi.veggalam@amd.com
+Description:
+		It is a read/write file.
+		Writing to this file causes the software to initiate a
+		request read the Xilsem status. User needs to provide
+		the module id for status. The module id values are as given below:
+		1 - CRAM scan
+		2 - NPI scan
+		When read, it shows the status of the requested module.
+		For CRAM: <status> <CE count>
+		Example: 0x10005 0
+		For NPI: <status> <scan count> <heartbeat count>
+		Example: 0xA01 0x10 0x1
