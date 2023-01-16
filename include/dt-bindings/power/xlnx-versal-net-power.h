@@ -14,6 +14,10 @@
 #define PM_DEV_FPD_SWDT_1			(0x182240DCU)
 #define PM_DEV_FPD_SWDT_2			(0x182240DDU)
 #define PM_DEV_FPD_SWDT_3			(0x182240DEU)
+#define PM_DEV_TCM_A_0A				(0x183180CBU)
+#define PM_DEV_TCM_A_0B				(0x183180CCU)
+#define PM_DEV_TCM_A_0C				(0x183180CDU)
+#define PM_DEV_RPU_A_0				(0x181100BFU)
 
 /* Remove Versal specific node IDs */
 #undef PM_DEV_RPU0_0
