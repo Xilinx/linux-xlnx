@@ -2,8 +2,8 @@
 /*
  * Xilinx Zynq MPSoC Firmware layer
  *
- *  Copyright (C) 2014-2021 Xilinx, Inc.
- *  Copyright (C) 2022 Advanced Micro Devices, Inc.
+ * Copyright (C), 2014 - 2022 Xilinx, Inc.
+ * Copyright (C), 2022 - 2023 Advanced Micro Devices, Inc.
  *
  *  Michal Simek <michal.simek@xilinx.com>
  *  Davorin Mista <davorin.mista@aggios.com>
@@ -2398,6 +2398,96 @@ int zynqmp_pm_set_usb_config(u32 node, enum pm_usb_config_type config,
 				   config, value, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_usb_config);
+
+/**
+ * zynqmp_pm_xilsem_cntrl_ops - PM call to perform XilSEM operations
+ * @cmd:	Command for XilSEM scan control operations
+ * @response:	Output response (command header, error code or status)
+ *
+ * Return: Returns 0 on success or error value on failure.
+ */
+int zynqmp_pm_xilsem_cntrl_ops(u32 cmd, u32 *const response)
+{
+	u32 ret_buf[PAYLOAD_ARG_CNT];
+	int ret;
+
+	ret = zynqmp_pm_invoke_fn(PM_XSEM_HEADER | cmd, 0, 0, 0, 0, 0, ret_buf);
+	response[0] = ret_buf[1];
+	response[1] = ret_buf[2];
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_xilsem_cntrl_ops);
+
+/**
+ * zynqmp_pm_xilsem_cram_errinj - PM call to perform CRAM error injection
+ * @frame:	Frame number to be used for error injection
+ * @qword:	Word number to be used for error injection
+ * @bit:	Bit location to be used for error injection
+ * @row:	CFRAME row number to be used for error injection
+ * @response:	Output response (command header, error code or status)
+ *
+ * Return: Returns 0 on success or error value on failure.
+ */
+int zynqmp_pm_xilsem_cram_errinj(u32 frame, u32 qword, u32 bit, u32 row,
+				 u32 *const response)
+{
+	u32 ret_buf[PAYLOAD_ARG_CNT];
+	int ret;
+
+	ret = zynqmp_pm_invoke_fn(PM_XSEM_CRAM_ERRINJ, frame, qword, bit,
+				  row, 0, ret_buf);
+	response[0] = ret_buf[1];
+	response[1] = ret_buf[2];
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_xilsem_cram_errinj);
+
+/**
+ * zynqmp_pm_xilsem_cram_readecc - PM call to perform CFRAME ECC read
+ * @frame:	Frame number to be used for reading ECC
+ * @row:	CFRAME row number to be used for reading ECC
+ * @response:	Output response (status, Frame ecc header, ECC values)
+ *
+ * Return: Returns 0 on success or error value on failure.
+ */
+int zynqmp_pm_xilsem_cram_readecc(u32 frame, u32 row, u32 *const response)
+{
+	u32 ret_buf[PAYLOAD_ARG_CNT];
+	int ret;
+
+	ret = zynqmp_pm_invoke_fn(PM_XSEM_CRAM_RD_ECC, frame, row, 0, 0, 0,
+				  ret_buf);
+	response[0] = ret_buf[0];
+	response[1] = ret_buf[1];
+	response[2] = ret_buf[2];
+	response[3] = ret_buf[3];
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_xilsem_cram_readecc);
+
+/**
+ * zynqmp_pm_xilsem_read_cfg - PM call to perform Xilsem configuration read
+ * @response:	Output response (status, config header, Xilsem config)
+ *
+ * Return: Returns 0 on success or error value on failure.
+ */
+int zynqmp_pm_xilsem_read_cfg(u32 *const response)
+{
+	u32 ret_buf[PAYLOAD_ARG_CNT];
+	int ret;
+
+	ret = zynqmp_pm_invoke_fn(PM_XSEM_RD_CONFIG, 0, 0, 0, 0, 0, ret_buf);
+	response[0] = ret_buf[0];
+	response[1] = ret_buf[1];
+	response[2] = ret_buf[2];
+	response[3] = ret_buf[3];
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_xilsem_read_cfg);
 
 /**
  * struct zynqmp_pm_shutdown_scope - Struct for shutdown scope
