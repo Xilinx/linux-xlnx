@@ -210,6 +210,15 @@ enum aie_shim_switch_type {
 	AIE_SHIM_SWITCH_B
 };
 
+/*
+ * enum for SSIT devices
+ */
+enum aie_device_type {
+	AIE_DEV_GENERIC_DEVICE,
+	AIE_DEV_GEN_S100 = 100,
+	AIE_DEV_GEN_S200 = 200
+};
+
 /**
  * struct aie_tile_regs - contiguous range of AI engine register
  *			  within an AI engine tile
@@ -754,6 +763,7 @@ struct aie_device {
  *	      while columns are occupied by partitions.
  * @node_id: AI engine aperture node id which is to identify
  *	     the aperture in the system in firmware
+ * @device_name: identify ssit device id
  * @irq: Linux IRQ number
  * @range: range of aperture
  * @backtrack: workqueue to backtrack interrupt
@@ -770,6 +780,7 @@ struct aie_aperture {
 	struct device dev;
 	struct aie_resource cols_res;
 	u32 node_id;
+	u32 device_name;
 	int irq;
 	struct aie_range range;
 	struct work_struct backtrack;
@@ -1083,6 +1094,7 @@ struct aie_partition *aie_create_partition(struct aie_aperture *aperture,
 
 void aie_aperture_backtrack(struct work_struct *work);
 irqreturn_t aie_interrupt(int irq, void *data);
+void aie_interrupt_callback(const u32 *payload, void *data);
 int aie_aperture_create_l2_bitmap(struct aie_aperture *aperture);
 bool aie_part_has_error(struct aie_partition *apart);
 void aie_part_clear_cached_events(struct aie_partition *apart);
