@@ -2,7 +2,8 @@
 /*
  * Xilinx Zynq MPSoC Firmware layer
  *
- *  Copyright (C) 2014-2021 Xilinx
+ * Copyright (C) 2014 - 2022, Xilinx, Inc.
+ * Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc.
  *
  *  Michal Simek <michal.simek@xilinx.com>
  *  Davorin Mista <davorin.mista@aggios.com>
@@ -84,6 +85,12 @@
 
 /* Secure Commands */
 #define PM_WRITE_AES_KEY		0x568
+
+/* XilSEM commands */
+#define PM_XSEM_HEADER			0x10300
+#define PM_XSEM_CRAM_ERRINJ		0x10304
+#define PM_XSEM_RD_CONFIG		0x10309
+#define PM_XSEM_CRAM_RD_ECC		0x1030B
 
 /* To Get UID info list */
 #define PM_GET_UID_INFO_LIST		0x705
@@ -764,6 +771,10 @@ int zynqmp_pm_set_gem_config(u32 node, enum pm_gem_config_type config,
 			     u32 value);
 int zynqmp_pm_set_usb_config(u32 node, enum pm_usb_config_type config,
 			     u32 value);
+int zynqmp_pm_xilsem_cntrl_ops(u32 cmd, u32 *const response);
+int zynqmp_pm_xilsem_cram_errinj(u32 frame, u32 qword, u32 bit, u32 row, u32 *const response);
+int zynqmp_pm_xilsem_cram_readecc(u32 frame, u32 row, u32 *const response);
+int zynqmp_pm_xilsem_read_cfg(u32 *const response);
 int zynqmp_pm_get_meta_header(const u64 src, const u64 dst,
 			      const u32 size, u32 *count);
 int zynqmp_pm_aie_operation(u32 node, u16 start_col, u16 num_col, u32 operation);
@@ -1273,6 +1284,27 @@ static inline int zynqmp_pm_set_gem_config(u32 node,
 static inline int zynqmp_pm_set_usb_config(u32 node,
 					   enum pm_usb_config_type config,
 					   u32 value)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_xilsem_cntrl_ops(u32 cmd, u32 *const response)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_xilsem_cram_readecc(u32 frame, u32 row, u32 *const response)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_xilsem_cram_errinj(u32 frame, u32 qword, u32 bit,
+					       u32 row, u32 *const response)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_xilsem_read_cfg(u32 *const response)
 {
 	return -ENODEV;
 }
