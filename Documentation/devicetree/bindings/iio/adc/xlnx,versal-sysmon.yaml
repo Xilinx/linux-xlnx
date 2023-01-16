@@ -8,7 +8,7 @@ $schema: http://devicetree.org/meta-schemas/core.yaml#
 title: Xilinx Versal Sysmon Linux Driver
 
 maintainers:
-  - Anand Ashok Dumbre <anand.ashok.dumbre@xilinx.com>
+  - Salih Erim <salih.erim@amd.com>
 
 description: |
   Sysmon Driver uses Linux IIO framework which was used to abstract the supply
@@ -44,7 +44,6 @@ properties:
 
   xlnx,numchannels:
     $ref: /schemas/types.yaml#/definitions/uint8
-    maxItems: 1
     description: |
       Number of supply channels enabled in the design.
       Possible values 0 - 160. Based on this value, child supply nodes will
@@ -52,7 +51,6 @@ properties:
 
   xlnx,nodeid:
     $ref: /schemas/types.yaml#/definitions/uint32
-    maxItems: 1
     description: |
       PLM specified sysmon node id.
 
