@@ -399,7 +399,7 @@ static struct snd_soc_dai_driver xlnx_sdi_tx_dai = {
 
 static int xlnx_sdi_audio_probe(struct platform_device *pdev)
 {
-	u32 val;
+	u32 val, irq;
 	int ret;
 	struct dev_ctx *ctx;
 	struct resource *res;
@@ -470,13 +470,13 @@ static int xlnx_sdi_audio_probe(struct platform_device *pdev)
 			goto err_axis;
 		}
 
-		res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
-		if (!res) {
+		irq = platform_get_irq(pdev, 0);
+		if (irq < 0) {
 			dev_err(&pdev->dev, "No IRQ resource found\n");
-			ret = -ENODEV;
+			ret = irq;
 			goto err_axis;
 		}
-		ret = devm_request_irq(&pdev->dev, res->start,
+		ret = devm_request_irq(&pdev->dev, irq,
 				       xtract_irq_handler,
 				       0, "XLNX_SDI_AUDIO_XTRACT", ctx);
 		if (ret) {
