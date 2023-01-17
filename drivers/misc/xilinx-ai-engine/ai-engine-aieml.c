@@ -682,6 +682,10 @@ static char *aieml_core_status_str[] = {
 	"core_processor_bus_stall",
 };
 
+static const struct aie_dev_attr aieml_aperture_dev_attr[] = {
+	AIE_APERTURE_ATTR_RO(hardware_info),
+};
+
 static const struct aie_dev_attr aieml_tile_dev_attr[] = {
 	AIE_TILE_DEV_ATTR_RO(core, AIE_TILE_TYPE_MASK_TILE),
 	AIE_TILE_DEV_ATTR_RO(event, AIE_TILE_TYPE_MASK_TILE |
@@ -700,6 +704,13 @@ static const struct aie_dev_attr aieml_part_dev_attr[] = {
 static const struct aie_bin_attr aieml_part_bin_attr[] = {
 	AIE_PART_BIN_ATTR_RO(core, AIEML_PART_SYSFS_CORE_BINA_SIZE),
 	AIE_PART_BIN_ATTR_RO(lock, AIEML_PART_SYSFS_LOCK_BINA_SIZE),
+};
+
+static const struct aie_sysfs_attr aieml_aperture_sysfs_attr = {
+	.dev_attr = aieml_aperture_dev_attr,
+	.bin_attr = NULL,
+	.num_dev_attrs = ARRAY_SIZE(aieml_aperture_dev_attr),
+	.num_bin_attrs = 0U,
 };
 
 static const struct aie_sysfs_attr aieml_part_sysfs_attr = {
@@ -1159,6 +1170,7 @@ int aieml_device_init(struct aie_device *adev)
 	adev->col_rst = &aieml_col_rst;
 	adev->col_clkbuf = &aieml_col_clkbuf;
 	adev->shim_dma = &aieml_shimdma;
+	adev->aperture_sysfs_attr = &aieml_aperture_sysfs_attr;
 	adev->part_sysfs_attr = &aieml_part_sysfs_attr;
 	adev->tile_sysfs_attr = &aieml_tile_sysfs_attr;
 	adev->core_status_str = aieml_core_status_str;
