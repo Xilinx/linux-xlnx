@@ -60,13 +60,20 @@ void aie_read_event_status(struct aie_partition *apart,
 {
 	const struct aie_event_attr *event_mod;
 	u8 offset;
+	u32 ttype;
 
-	if (module == AIE_CORE_MOD)
-		event_mod = apart->adev->core_events;
-	else if (module == AIE_MEM_MOD)
-		event_mod = apart->adev->mem_events;
-	else
+	ttype = apart->adev->ops->get_tile_type(apart->adev, loc);
+
+	if (ttype == AIE_TILE_TYPE_TILE) {
+		if (module == AIE_CORE_MOD)
+			event_mod = apart->adev->core_events;
+		else
+			event_mod = apart->adev->mem_events;
+	} else if (ttype == AIE_TILE_TYPE_MEMORY) {
+		event_mod = apart->adev->memtile_events;
+	} else {
 		event_mod = apart->adev->pl_events;
+	}
 
 	for (offset = 0; offset < (event_mod->num_events / 32); offset++) {
 		u32 status_off = event_mod->status_regoff + offset * 4U;
