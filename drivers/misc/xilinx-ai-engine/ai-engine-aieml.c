@@ -620,14 +620,18 @@ static const struct aie_dev_attr aieml_tile_dev_attr[] = {
 			     AIE_TILE_TYPE_MASK_SHIMPL),
 };
 
+static const struct aie_dev_attr aieml_part_dev_attr[] = {
+	AIE_PART_DEV_ATTR_RO(current_freq),
+};
+
 static const struct aie_bin_attr aieml_part_bin_attr[] = {
 	AIE_PART_BIN_ATTR_RO(core, AIEML_PART_SYSFS_CORE_BINA_SIZE),
 };
 
 static const struct aie_sysfs_attr aieml_part_sysfs_attr = {
-	.dev_attr = NULL,
+	.dev_attr = aieml_part_dev_attr,
 	.bin_attr = aieml_part_bin_attr,
-	.num_dev_attrs = 0U,
+	.num_dev_attrs = ARRAY_SIZE(aieml_part_dev_attr),
 	.num_bin_attrs = ARRAY_SIZE(aieml_part_bin_attr),
 };
 
