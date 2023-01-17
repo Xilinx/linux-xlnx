@@ -73,6 +73,9 @@
 #define AIEML_SHIMPL_BISRCACHE_CTRL_REGOFF		0x00036000U
 #define AIEML_SHIMPL_COLCLOCK_CTRL_REGOFF		0x000fff20U
 #define AIEML_SHIMPL_COLRESET_CTRL_REGOFF		0x000fff28U
+#define AIEML_SHIMPL_EVENT_BC0_REGOFF			0x00034010U
+#define AIEML_SHIMPL_EVENT_STATUS0_REGOFF		0x00034200U
+#define AIEML_SHIMPL_GROUP0_REGOFF			0x00034500U
 #define AIEML_SHIMPL_GROUPERROR_REGOFF			0x0003450cU
 #define AIEML_SHIMPL_L1INTR_MASK_A_REGOFF		0x00035000U
 #define AIEML_SHIMPL_L1INTR_BLOCK_NORTH_B_REGOFF	0x00035050U
@@ -81,8 +84,11 @@
 #define AIEML_SHIMPL_MODCLOCK_CTRL_1_REGOFF		0x000fff04U
 #define AIEML_SHIMPL_MODRESET_CTRL_0_REGOFF		0x000fff10U
 #define AIEML_SHIMPL_MODRESET_CTRL_1_REGOFF		0x000fff14U
+#define AIEML_MEMORY_GROUP0_REGOFF			0x00094500U
 #define AIEML_MEMORY_GROUPERROR_REGOFF			0x00094518U
 #define AIEML_MEMORY_TILECTRL_REGOFF			0x00096030U
+#define AIEML_MEMORY_EVENT_BC0_REGOFF			0x00094010U
+#define AIEML_MEMORY_EVENT_STATUS0_REGOFF		0x00094200U
 #define AIEML_MEMORY_MEMCTRL_REGOFF			0x00096048U
 #define AIEML_MEMORY_MODCLOCKCTRL_REGOFF		0x000fff00U
 #define AIEML_MEMORY_MODRESETCTRL_REGOFF		0x000fff10U
@@ -90,6 +96,9 @@
 #define AIEML_TILE_COREMOD_AMHH8_PART2_REGOFF		0x00030470U
 #define AIEML_TILE_COREMOD_GROUPERROR_REGOFF		0x00034510U
 #define AIEML_TILE_COREMOD_TILECTRL_REGOFF		0x00036030U
+#define AIEML_TILE_COREMOD_GROUP0_REGOFF		0x00034500U
+#define AIEML_TILE_COREMOD_EVENT_BC0_REGOFF		0x00034010U
+#define AIEML_TILE_COREMOD_EVENT_STATUS0_REGOFF		0x00034200U
 #define AIEML_TILE_COREMOD_MEMCTRL_REGOFF		0x00036070U
 #define AIEML_TILE_COREMOD_MODCLOCKCTRL_REGOFF		0x00060000U
 #define AIEML_TILE_COREMOD_MODRESETCTRL_REGOFF		0x00060010U
@@ -102,6 +111,9 @@
 #define AIEML_TILE_COREMOD_CORE_SP_REGOFF		0x00031120U
 #define AIEML_TILE_COREMOD_CORE_LR_REGOFF		0x00031130U
 #define AIEML_TILE_MEMMOD_GROUPERROR_REGOFF		0x00014514U
+#define AIEML_TILE_MEMMOD_GROUP0_REGOFF			0x00014500U
+#define AIEML_TILE_MEMMOD_EVENT_BC0_REGOFF		0x00014010U
+#define AIEML_TILE_MEMMOD_EVENT_STATUS0_REGOFF		0x00014200U
 #define AIEML_TILE_MEMMOD_MEMCTRL_REGOFF		0x00016010U
 
 /*
@@ -503,6 +515,78 @@ static const struct aie_dma_attr aieml_shimdma = {
 	.bd_len = 0x20U,
 };
 
+static const struct aie_event_attr aieml_pl_event = {
+	.bc_event = {
+		.mask = GENMASK(6, 0),
+		.regoff = 0U,
+	},
+	.group_error = {
+		.mask = GENMASK(11, 0),
+		.regoff = 0xcU,
+	},
+	.bc_regoff = AIEML_SHIMPL_EVENT_BC0_REGOFF,
+	.status_regoff = AIEML_SHIMPL_EVENT_STATUS0_REGOFF,
+	.group_regoff = AIEML_SHIMPL_GROUP0_REGOFF,
+	.base_error_event = 64U,
+	.num_broadcasts = 16U,
+	.base_bc_event = 110U,
+	.num_events = 128U,
+};
+
+static const struct aie_event_attr aieml_memtile_event = {
+	.bc_event = {
+		.mask = GENMASK(7, 0),
+		.regoff = 0U,
+	},
+	.group_error = {
+		.mask = GENMASK(11, 0),
+		.regoff = 0x18U,
+	},
+	.bc_regoff = AIEML_MEMORY_EVENT_BC0_REGOFF,
+	.status_regoff = AIEML_MEMORY_EVENT_STATUS0_REGOFF,
+	.group_regoff = AIEML_MEMORY_GROUP0_REGOFF,
+	.base_error_event = 129U,
+	.num_broadcasts = 16U,
+	.base_bc_event = 142U,
+	.num_events = 192U,
+};
+
+static const struct aie_event_attr aieml_mem_event = {
+	.bc_event = {
+		.mask = GENMASK(6, 0),
+		.regoff = 0U,
+	},
+	.group_error = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x14U,
+	},
+	.bc_regoff = AIEML_TILE_MEMMOD_EVENT_BC0_REGOFF,
+	.status_regoff = AIEML_TILE_MEMMOD_EVENT_STATUS0_REGOFF,
+	.group_regoff = AIEML_TILE_MEMMOD_GROUP0_REGOFF,
+	.base_error_event = 87U,
+	.num_broadcasts = 16U,
+	.base_bc_event = 107U,
+	.num_events = 128U,
+};
+
+static const struct aie_event_attr aieml_core_event = {
+	.bc_event = {
+		.mask = GENMASK(6, 0),
+		.regoff = 0U,
+	},
+	.group_error = {
+		.mask = GENMASK(24, 0),
+		.regoff = 0x10U,
+	},
+	.bc_regoff = AIEML_TILE_COREMOD_EVENT_BC0_REGOFF,
+	.status_regoff = AIEML_TILE_COREMOD_EVENT_STATUS0_REGOFF,
+	.group_regoff = AIEML_TILE_COREMOD_GROUP0_REGOFF,
+	.base_error_event = 48U,
+	.num_broadcasts = 16U,
+	.base_bc_event = 107U,
+	.num_events = 128U,
+};
+
 static char *aieml_core_status_str[] = {
 	"enable",
 	"reset",
@@ -530,6 +614,10 @@ static char *aieml_core_status_str[] = {
 
 static const struct aie_dev_attr aieml_tile_dev_attr[] = {
 	AIE_TILE_DEV_ATTR_RO(core, AIE_TILE_TYPE_MASK_TILE),
+	AIE_TILE_DEV_ATTR_RO(event, AIE_TILE_TYPE_MASK_TILE |
+			     AIE_TILE_TYPE_MASK_MEMORY |
+			     AIE_TILE_TYPE_MASK_SHIMNOC |
+			     AIE_TILE_TYPE_MASK_SHIMPL),
 };
 
 static const struct aie_bin_attr aieml_part_bin_attr[] = {
@@ -830,6 +918,10 @@ int aieml_device_init(struct aie_device *adev)
 	adev->core_pc = &aieml_core_pc;
 	adev->core_lr = &aieml_core_lr;
 	adev->core_sp = &aieml_core_sp;
+	adev->pl_events = &aieml_pl_event;
+	adev->memtile_events = &aieml_memtile_event;
+	adev->mem_events = &aieml_mem_event;
+	adev->core_events = &aieml_core_event;
 
 	aieml_device_init_rscs_attr(adev);
 
