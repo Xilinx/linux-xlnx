@@ -97,6 +97,10 @@
 #define AIEML_TILE_COREMOD_WH11_PART2_REGOFF		0x00030af0U
 #define AIEML_TILE_COREMOD_R0_REGOFF			0x00030c00U
 #define AIEML_TILE_COREMOD_R31_REGOFF			0x00030df0U
+#define AIEML_TILE_COREMOD_CORE_STATUS_REGOFF		0x00032004U
+#define AIEML_TILE_COREMOD_CORE_PC_REGOFF		0x00031100U
+#define AIEML_TILE_COREMOD_CORE_SP_REGOFF		0x00031120U
+#define AIEML_TILE_COREMOD_CORE_LR_REGOFF		0x00031130U
 #define AIEML_TILE_MEMMOD_GROUPERROR_REGOFF		0x00014514U
 #define AIEML_TILE_MEMMOD_MEMCTRL_REGOFF		0x00016010U
 
@@ -105,6 +109,9 @@
  */
 #define AIEML_SHIMPL_COLRESET_CTRL_MASK			GENMASK(1, 0)
 #define AIEML_SHIMPL_COLCLOCK_CTRL_MASK			GENMASK(1, 0)
+
+/* Macros to define size of a sysfs binary attribute */
+#define AIEML_PART_SYSFS_CORE_BINA_SIZE		0x4000		/* 16KB */
 
 static const struct aie_tile_regs aieml_kernel_regs[] = {
 	/* SHIM AXI MM Config */
@@ -458,6 +465,26 @@ static const struct aie_single_reg_field aieml_col_clkbuf = {
 	.regoff = AIEML_SHIMPL_COLCLOCK_CTRL_REGOFF,
 };
 
+static const struct aie_single_reg_field aieml_core_sts = {
+	.mask = GENMASK(21, 0),
+	.regoff = AIEML_TILE_COREMOD_CORE_STATUS_REGOFF,
+};
+
+static const struct aie_single_reg_field aieml_core_pc = {
+	.mask = GENMASK(19, 0),
+	.regoff = AIEML_TILE_COREMOD_CORE_PC_REGOFF,
+};
+
+static const struct aie_single_reg_field aieml_core_lr = {
+	.mask = GENMASK(19, 0),
+	.regoff = AIEML_TILE_COREMOD_CORE_LR_REGOFF,
+};
+
+static const struct aie_single_reg_field aieml_core_sp = {
+	.mask = GENMASK(19, 0),
+	.regoff = AIEML_TILE_COREMOD_CORE_SP_REGOFF,
+};
+
 static const struct aie_dma_attr aieml_shimdma = {
 	.laddr = {
 		.mask = 0xffffffffU,
@@ -475,6 +502,64 @@ static const struct aie_dma_attr aieml_shimdma = {
 	.num_bds = 16,
 	.bd_len = 0x20U,
 };
+
+static char *aieml_core_status_str[] = {
+	"enable",
+	"reset",
+	"south_memory_stall",
+	"west_memory_stall",
+	"north_memory_stall",
+	"east_memory_stall",
+	"south_lock_stall",
+	"west_lock_stall",
+	"north_lock_stall",
+	"east_lock_stall",
+	"stream_stall_ss0",
+	"",
+	"stream_stall_ms0",
+	"",
+	"cascade_stall_scd",
+	"cascade_stall_mcd",
+	"debug_halt",
+	"ecc_error_stall",
+	"ecc_scrubbing_stall",
+	"error_halt",
+	"core_done",
+	"core_processor_bus_stall",
+};
+
+static const struct aie_dev_attr aieml_tile_dev_attr[] = {
+	AIE_TILE_DEV_ATTR_RO(core, AIE_TILE_TYPE_MASK_TILE),
+};
+
+static const struct aie_bin_attr aieml_part_bin_attr[] = {
+	AIE_PART_BIN_ATTR_RO(core, AIEML_PART_SYSFS_CORE_BINA_SIZE),
+};
+
+static const struct aie_sysfs_attr aieml_part_sysfs_attr = {
+	.dev_attr = NULL,
+	.bin_attr = aieml_part_bin_attr,
+	.num_dev_attrs = 0U,
+	.num_bin_attrs = ARRAY_SIZE(aieml_part_bin_attr),
+};
+
+static const struct aie_sysfs_attr aieml_tile_sysfs_attr = {
+	.dev_attr = aieml_tile_dev_attr,
+	.bin_attr = NULL,
+	.num_dev_attrs = ARRAY_SIZE(aieml_tile_dev_attr),
+	.num_bin_attrs = 0U,
+};
+
+static u32 aieml_get_core_status(struct aie_partition *apart,
+				 struct aie_location *loc)
+{
+	u32 regoff, regvalue;
+
+	regoff = aie_cal_regoff(apart->adev, *loc, aieml_core_sts.regoff);
+	regvalue = ioread32(apart->aperture->base + regoff);
+
+	return aie_get_reg_field(&aieml_core_sts, regvalue);
+}
 
 static u32 aieml_get_tile_type(struct aie_device *adev,
 			       struct aie_location *loc)
@@ -683,6 +768,7 @@ static int aieml_set_tile_isolation(struct aie_partition *apart,
 static const struct aie_tile_operations aieml_ops = {
 	.get_tile_type = aieml_get_tile_type,
 	.get_mem_info = aieml_get_mem_info,
+	.get_core_status = aieml_get_core_status,
 	.init_part_clk_state = aieml_init_part_clk_state,
 	.scan_part_clocks = aieml_scan_part_clocks,
 	.set_part_clocks = aieml_set_part_clocks,
@@ -738,6 +824,12 @@ int aieml_device_init(struct aie_device *adev)
 	adev->col_rst = &aieml_col_rst;
 	adev->col_clkbuf = &aieml_col_clkbuf;
 	adev->shim_dma = &aieml_shimdma;
+	adev->part_sysfs_attr = &aieml_part_sysfs_attr;
+	adev->tile_sysfs_attr = &aieml_tile_sysfs_attr;
+	adev->core_status_str = aieml_core_status_str;
+	adev->core_pc = &aieml_core_pc;
+	adev->core_lr = &aieml_core_lr;
+	adev->core_sp = &aieml_core_sp;
 
 	aieml_device_init_rscs_attr(adev);
 
