@@ -137,6 +137,7 @@
 /* Macros to define size of a sysfs binary attribute */
 #define AIEML_PART_SYSFS_CORE_BINA_SIZE		0x4000		/* 16KB */
 #define AIEML_PART_SYSFS_LOCK_BINA_SIZE		0x28000		/* 160KB */
+#define AIEML_PART_SYSFS_ERROR_BINA_SIZE	0x4000		/* 16KB */
 
 static const struct aie_tile_regs aieml_kernel_regs[] = {
 	/* SHIM AXI MM Config */
@@ -450,6 +451,371 @@ enum aie_module_type aieml_shimpl_tile_module_types[NUM_MODS_SHIMPL_TILE] = {
 	AIE_PL_MOD,
 };
 
+static const struct aie_event_prop aieml_core_stream_error_prop[] = {
+	{
+		.event = 71U,
+		.event_str = "stream_switch_port_parity_error",
+	},
+	{
+		.event = 57U,
+		.event_str = "control_pkt_error",
+	},
+	{
+		.event = 56U,
+		.event_str = "stream_pkt_parity_error",
+	},
+};
+
+static const struct aie_event_prop aieml_core_inst_error_prop[] = {
+	{
+		.event = 59U,
+		.event_str = "instruction_decompression_error",
+	},
+	{
+		.event = 70U,
+		.event_str = "decompression_underflow",
+	},
+};
+
+static const struct aie_event_prop aieml_core_ecc_error_prop[] = {
+	{
+		.event = 64U,
+		.event_str = "pm_ecc_error_2-bit",
+	},
+	{
+		.event = 62U,
+		.event_str = "pm_ecc_error_scrub_2-bit",
+	},
+};
+
+static const struct aie_event_prop aieml_core_access_error_prop[] = {
+	{
+		.event = 55U,
+		.event_str = "pm_reg_access_failure",
+	},
+	{
+		.event = 60U,
+		.event_str = "dm_address_out_of_range",
+	},
+	{
+		.event = 65U,
+		.event_str = "pm_address_out_of_range",
+	},
+	{
+		.event = 66U,
+		.event_str = "dm_access_to_unavailable",
+	},
+};
+
+static const struct aie_event_prop aieml_core_lock_error_prop[] = {
+	{
+		.event = 67U,
+		.event_str = "lock_access_to_unavailable",
+	},
+	{
+		.event = 72U,
+		.event_str = "processor_bus_error",
+	},
+};
+
+static const struct aie_event_prop aieml_core_bus_error_prop[] = {
+	{
+		.event = 58U,
+		.event_str = "axi_mm_slave_error",
+	},
+};
+
+static const struct aie_event_prop aieml_mem_ecc_error_prop[] = {
+	{
+		.event = 88U,
+		.event_str = "dm_ecc_error_scrub_2-bit",
+	},
+	{
+		.event = 90U,
+		.event_str = "dm_ecc_error_2-bit",
+	},
+};
+
+static const struct aie_event_prop aieml_mem_parity_error_prop[] = {
+	{
+		.event = 96U,
+		.event_str = "dm_parity_error_bank_7",
+	},
+	{
+		.event = 95U,
+		.event_str = "dm_parity_error_bank_6",
+	},
+	{
+		.event = 94U,
+		.event_str = "dm_parity_error_bank_5",
+	},
+	{
+		.event = 93U,
+		.event_str = "dm_parity_error_bank_4",
+	},
+	{
+		.event = 92U,
+		.event_str = "dm_parity_error_bank_3",
+	},
+	{
+		.event = 91U,
+		.event_str = "dm_parity_error_bank_2",
+	},
+};
+
+static const struct aie_event_prop aieml_mem_dma_error_prop[] = {
+	{
+		.event = 100U,
+		.event_str = "dma_mm2s_1_error",
+	},
+	{
+		.event = 99U,
+		.event_str = "dma_mm2s_0_error",
+	},
+	{
+		.event = 98U,
+		.event_str = "dma_s2mm_1_error",
+	},
+	{
+		.event = 97U,
+		.event_str = "dma_s2mm_0_error",
+	},
+};
+
+static const struct aie_event_prop aieml_memtile_ecc_error_prop[] = {
+	{
+		.event = 132U,
+		.event_str = "dm_ecc_error_2-bit",
+	},
+	{
+		.event = 130U,
+		.event_str = "dm_ecc_error_scrub_2-bit",
+	},
+};
+
+static const struct aie_event_prop aieml_memtile_dma_error_prop[] = {
+	{
+		.event = 134U,
+		.event_str = "dma_mm2s_error",
+	},
+	{
+		.event = 133U,
+		.event_str = "dma_s2mm_error",
+	},
+};
+
+static const struct aie_event_prop aieml_memtile_stream_error_prop[] = {
+	{
+		.event = 137U,
+		.event_str = "control_pkt_error",
+	},
+	{
+		.event = 136U,
+		.event_str = "stream_pkt_parity_error",
+	},
+	{
+		.event = 135U,
+		.event_str = "stream_switch_port_parity_error",
+	},
+};
+
+static const struct aie_event_prop aieml_memtile_lock_error_prop[] = {
+	{
+		.event = 139U,
+		.event_str = "lock_error",
+	},
+};
+
+static const struct aie_event_prop aieml_memtile_bus_error_prop[] = {
+	{
+		.event = 58U,
+		.event_str = "axi_mm_slave_error",
+	},
+};
+
+static const struct aie_event_prop aieml_shim_bus_error_prop[] = {
+	{
+		.event = 71U,
+		.event_str = "axi_mm_byte_strobe_error",
+	},
+	{
+		.event = 70U,
+		.event_str = "axi_mm_unsecure_access_in_secure_mode",
+	},
+	{
+		.event = 69U,
+		.event_str = "axi_mm_unsupported_traffic",
+	},
+	{
+		.event = 68U,
+		.event_str = "axi_mm_slave_nsu_error",
+	},
+	{
+		.event = 67U,
+		.event_str = "axi_mm_decode_nsu_error",
+	},
+	{
+		.event = 64U,
+		.event_str = "axi_mm_slave_tile_error",
+	},
+};
+
+static const struct aie_event_prop aieml_shim_stream_error_prop[] = {
+	{
+		.event = 66U,
+		.event_str = "stream_switch_port_parity_error",
+	},
+	{
+		.event = 65U,
+		.event_str = "control_pkt_error",
+	},
+};
+
+static const struct aie_event_prop aieml_shim_dma_error_prop[] = {
+	{
+		.event = 73U,
+		.event_str = "dma_mm2s_error",
+	},
+	{
+		.event = 72U,
+		.event_str = "dma_s2mm_error",
+	},
+};
+
+static const struct aie_err_category aieml_core_err_category[] = {
+	{
+		/* AIE_ERROR_CATEGORY_STREAM */
+		.err_category = AIE_ERROR_CATEGORY_STREAM,
+		.num_events = ARRAY_SIZE(aieml_core_stream_error_prop),
+		.prop = aieml_core_stream_error_prop,
+	},
+	{
+		/* AIE_ERROR_CATEGORY_ACCESS */
+		.err_category = AIE_ERROR_CATEGORY_ACCESS,
+		.num_events = ARRAY_SIZE(aieml_core_access_error_prop),
+		.prop = aieml_core_access_error_prop,
+	},
+	{
+		/* AIE_ERROR_CATEGORY_BUS */
+		.err_category = AIE_ERROR_CATEGORY_BUS,
+		.num_events = ARRAY_SIZE(aieml_core_bus_error_prop),
+		.prop = aieml_core_bus_error_prop,
+	},
+	{
+		/* AIE_ERROR_CATEGORY_INSTRUCTION */
+		.err_category = AIE_ERROR_CATEGORY_INSTRUCTION,
+		.num_events = ARRAY_SIZE(aieml_core_inst_error_prop),
+		.prop = aieml_core_inst_error_prop,
+	},
+	{
+		/* AIE_ERROR_CATEGORY_ECC */
+		.err_category = AIE_ERROR_CATEGORY_ECC,
+		.num_events = ARRAY_SIZE(aieml_core_ecc_error_prop),
+		.prop = aieml_core_ecc_error_prop,
+	},
+	{
+		/* AIE_ERROR_CATEGORY_LOCK */
+		.err_category = AIE_ERROR_CATEGORY_LOCK,
+		.num_events = ARRAY_SIZE(aieml_core_lock_error_prop),
+		.prop = aieml_core_lock_error_prop,
+	},
+};
+
+static const struct aie_err_category aieml_mem_err_category[] = {
+	{
+		/* AIE_ERROR_CATEGORY_ECC */
+		.err_category = AIE_ERROR_CATEGORY_ECC,
+		.num_events = ARRAY_SIZE(aieml_mem_ecc_error_prop),
+		.prop = aieml_mem_ecc_error_prop,
+	},
+	{
+		/* AIE_ERROR_CATEGORY_MEM_PARITY */
+		.err_category = AIE_ERROR_CATEGORY_MEM_PARITY,
+		.num_events = ARRAY_SIZE(aieml_mem_parity_error_prop),
+		.prop = aieml_mem_parity_error_prop,
+	},
+	{
+		/* AIE_ERROR_CATEGORY_DMA */
+		.err_category = AIE_ERROR_CATEGORY_DMA,
+		.num_events = ARRAY_SIZE(aieml_mem_dma_error_prop),
+		.prop = aieml_mem_dma_error_prop,
+	},
+};
+
+static const struct aie_err_category aieml_memtile_err_category[] = {
+	{
+		/* AIE_ERROR_CATEGORY_ECC */
+		.err_category = AIE_ERROR_CATEGORY_ECC,
+		.num_events = ARRAY_SIZE(aieml_memtile_ecc_error_prop),
+		.prop = aieml_memtile_ecc_error_prop,
+	},
+	{
+		/* AIE_ERROR_CATEGORY_STREAM */
+		.err_category = AIE_ERROR_CATEGORY_STREAM,
+		.num_events = ARRAY_SIZE(aieml_memtile_stream_error_prop),
+		.prop = aieml_memtile_stream_error_prop,
+	},
+	{
+		/* AIE_ERROR_CATEGORY_DMA */
+		.err_category = AIE_ERROR_CATEGORY_DMA,
+		.num_events = ARRAY_SIZE(aieml_memtile_dma_error_prop),
+		.prop = aieml_memtile_dma_error_prop,
+	},
+	{
+		/* AIE_ERROR_CATEGORY_BUS */
+		.err_category = AIE_ERROR_CATEGORY_BUS,
+		.num_events = ARRAY_SIZE(aieml_memtile_bus_error_prop),
+		.prop = aieml_memtile_bus_error_prop,
+	},
+	{
+		/* AIE_ERROR_CATEGORY_LOCK */
+		.err_category = AIE_ERROR_CATEGORY_LOCK,
+		.num_events = ARRAY_SIZE(aieml_memtile_lock_error_prop),
+		.prop = aieml_memtile_lock_error_prop,
+	},
+};
+
+static const struct aie_err_category aieml_shim_err_category[] = {
+	{
+		/* AIE_ERROR_CATEGORY_BUS */
+		.err_category = AIE_ERROR_CATEGORY_BUS,
+		.num_events = ARRAY_SIZE(aieml_shim_bus_error_prop),
+		.prop = aieml_shim_bus_error_prop,
+	},
+	{
+		/* AIE_ERROR_CATEGORY_STREAM */
+		.err_category = AIE_ERROR_CATEGORY_STREAM,
+		.num_events = ARRAY_SIZE(aieml_shim_stream_error_prop),
+		.prop = aieml_shim_stream_error_prop,
+	},
+	{
+		/* AIE_ERROR_CATEGORY_DMA */
+		.err_category = AIE_ERROR_CATEGORY_DMA,
+		.num_events = ARRAY_SIZE(aieml_shim_dma_error_prop),
+		.prop = aieml_shim_dma_error_prop,
+	},
+};
+
+static const struct aie_error_attr aieml_core_error = {
+	.num_err_categories = ARRAY_SIZE(aieml_core_err_category),
+	.err_category = aieml_core_err_category,
+};
+
+static const struct aie_error_attr aieml_mem_error = {
+	.num_err_categories = ARRAY_SIZE(aieml_mem_err_category),
+	.err_category = aieml_mem_err_category,
+};
+
+static const struct aie_error_attr aieml_memtile_error = {
+	.num_err_categories = ARRAY_SIZE(aieml_memtile_err_category),
+	.err_category = aieml_memtile_err_category,
+};
+
+static const struct aie_error_attr aieml_shim_error = {
+	.num_err_categories = ARRAY_SIZE(aieml_shim_err_category),
+	.err_category = aieml_shim_err_category,
+};
+
 static const struct aie_tile_regs aieml_core_amxx_regs = {
 	.attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
 	.soff = AIEML_TILE_COREMOD_AMLL0_PART1_REGOFF,
@@ -688,6 +1054,10 @@ static const struct aie_dev_attr aieml_aperture_dev_attr[] = {
 
 static const struct aie_dev_attr aieml_tile_dev_attr[] = {
 	AIE_TILE_DEV_ATTR_RO(core, AIE_TILE_TYPE_MASK_TILE),
+	AIE_TILE_DEV_ATTR_RO(error, AIE_TILE_TYPE_MASK_TILE |
+			     AIE_TILE_TYPE_MASK_MEMORY |
+			     AIE_TILE_TYPE_MASK_SHIMNOC |
+			     AIE_TILE_TYPE_MASK_SHIMPL),
 	AIE_TILE_DEV_ATTR_RO(event, AIE_TILE_TYPE_MASK_TILE |
 			     AIE_TILE_TYPE_MASK_MEMORY |
 			     AIE_TILE_TYPE_MASK_SHIMNOC |
@@ -699,11 +1069,13 @@ static const struct aie_dev_attr aieml_tile_dev_attr[] = {
 
 static const struct aie_dev_attr aieml_part_dev_attr[] = {
 	AIE_PART_DEV_ATTR_RO(current_freq),
+	AIE_PART_DEV_ATTR_RO(error_stat),
 };
 
 static const struct aie_bin_attr aieml_part_bin_attr[] = {
 	AIE_PART_BIN_ATTR_RO(core, AIEML_PART_SYSFS_CORE_BINA_SIZE),
 	AIE_PART_BIN_ATTR_RO(lock, AIEML_PART_SYSFS_LOCK_BINA_SIZE),
+	AIE_PART_BIN_ATTR_RO(error, AIEML_PART_SYSFS_ERROR_BINA_SIZE),
 };
 
 static const struct aie_sysfs_attr aieml_aperture_sysfs_attr = {
@@ -1181,6 +1553,10 @@ int aieml_device_init(struct aie_device *adev)
 	adev->memtile_events = &aieml_memtile_event;
 	adev->mem_events = &aieml_mem_event;
 	adev->core_events = &aieml_core_event;
+	adev->core_errors = &aieml_core_error;
+	adev->mem_errors = &aieml_mem_error;
+	adev->memtile_errors = &aieml_memtile_error;
+	adev->shim_errors = &aieml_shim_error;
 
 	aieml_device_init_rscs_attr(adev);
 
