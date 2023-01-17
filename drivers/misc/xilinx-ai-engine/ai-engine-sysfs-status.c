@@ -41,10 +41,11 @@ ssize_t aie_part_read_cb_status(struct kobject *kobj, char *buffer,
 	for (index = 0; index < apart->range.size.col * apart->range.size.row;
 	     index++, atile++) {
 		struct aie_location loc = atile->loc;
+		const struct aie_tile_operations *ops = apart->adev->ops;
 		bool preamble = true;
 		u32 ttype;
 
-		ttype = apart->adev->ops->get_tile_type(apart->adev, &loc);
+		ttype = ops->get_tile_type(apart->adev, &loc);
 
 		if (ttype == AIE_TILE_TYPE_TILE) {
 			if (preamble) {
@@ -88,8 +89,9 @@ ssize_t aie_part_read_cb_status(struct kobject *kobj, char *buffer,
 						 "%sls: ", DELIMITER_LEVEL2);
 			}
 
-			len += aie_sysfs_get_lock_status(apart, &loc,
-							 &buffer[len], size);
+			len += ops->get_part_sysfs_lock_status(apart, &loc,
+							       &buffer[len],
+							       size);
 		}
 
 		if (aie_check_tile_error(apart, loc)) {
