@@ -277,7 +277,8 @@ struct aie_part_mem {
  * @laddr: low address field attributes
  * @haddr: high address field attributes
  * @buflen: buffer length field attributes
- * @sts: channel status field attributes
+ * @sts: FSM status field attributes
+ * @chansts: channel status field attributes
  * @stall: queue stall status field attributes
  * @qsize: queue size field attributes
  * @curbd: current buffer descriptor field attributes
@@ -330,6 +331,8 @@ struct aie_aperture;
  * @get_core_status: get the status of AIE core.
  * @get_part_sysfs_lock_status: get partition lock status for sysfs.
  * @get_tile_sysfs_lock_status: get tile lock status for sysfs.
+ * @get_part_sysfs_dma_status: get partition dma status for sysfs.
+ * @get_tile_sysfs_dma_status: get tile dma status for sysfs.
  * @init_part_clk_state: initialize clock states software structure which is a
  *			 bitmap for the AI engine partition. The clock states
  *			 structure is the structure used to keep track of if
@@ -365,6 +368,12 @@ struct aie_tile_operations {
 	ssize_t (*get_tile_sysfs_lock_status)(struct aie_partition *apart,
 					      struct aie_location *loc,
 					      char *buffer, ssize_t size);
+	ssize_t (*get_part_sysfs_dma_status)(struct aie_partition *apart,
+					     struct aie_location *loc,
+					     char *buffer, ssize_t size);
+	ssize_t (*get_tile_sysfs_dma_status)(struct aie_partition *apart,
+					     struct aie_location *loc,
+					     char *buffer, ssize_t size);
 	int (*init_part_clk_state)(struct aie_partition *apart);
 	int (*scan_part_clocks)(struct aie_partition *apart);
 	int (*set_part_clocks)(struct aie_partition *apart);
@@ -765,8 +774,6 @@ struct aie_device {
 	const struct aie_single_reg_field *core_pc;
 	const struct aie_single_reg_field *core_lr;
 	const struct aie_single_reg_field *core_sp;
-	char **dma_status_str;
-	char **queue_status_str;
 };
 
 /**
