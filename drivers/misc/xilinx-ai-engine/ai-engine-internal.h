@@ -356,6 +356,10 @@ struct aie_aperture;
  *		     on which tiles are required to be clocked on.
  * @set_tile_isolation: set tile isolation boundary for input direction.
  * @mem_clear: clear data memory banks of the partition.
+ * @get_dma_s2mm_status: get dma s2mm status
+ * @get_dma_mm2s_status: get dma mm2s status
+ * @get_chan_status: get dma channel status
+ * @get_lock_status: get tile, shimdma and memtile lock status
  *
  * Different AI engine device version has its own device
  * operation.
@@ -385,6 +389,18 @@ struct aie_tile_operations {
 	int (*set_tile_isolation)(struct aie_partition *apart,
 				  struct aie_location *loc, u8 dir);
 	int (*mem_clear)(struct aie_partition *apart);
+	u32 (*get_dma_s2mm_status)(struct aie_partition *apart,
+				   struct aie_location *loc,
+				   u8 chanid);
+	u32 (*get_dma_mm2s_status)(struct aie_partition *apart,
+				   struct aie_location *loc,
+				   u8 chanid);
+	u8 (*get_chan_status)(struct aie_partition *apart,
+			      struct aie_location *loc,
+			      u32 status);
+	u32 (*get_lock_status)(struct aie_partition *apart,
+			       struct aie_location *loc,
+			       u8 lock);
 };
 
 /**
@@ -709,10 +725,14 @@ struct aie_tile {
  * @col_clkbuf: column clock buffer attribute
  * @shim_dma: SHIM DMA attribute
  * @tile_dma: tile DMA attribute
+ * @memtile_dma: MEM tile DMA attribute
  * @pl_events: pl module event attribute
  * @memtile_events: memory tile event attribute
  * @mem_events: memory module event attribute
  * @core_events: core module event attribute
+ * @mem_lock: mem lock attribute
+ * @pl_lock: Shim tile lock attribute
+ * @memtile_lock: Mem Tile lock attribute
  * @l1_ctrl: level 1 interrupt controller attribute
  * @l2_ctrl: level 2 interrupt controller attribute
  * @core_errors: core module error attribute
@@ -753,10 +773,14 @@ struct aie_device {
 	const struct aie_single_reg_field *col_clkbuf;
 	const struct aie_dma_attr *shim_dma;
 	const struct aie_dma_attr *tile_dma;
+	const struct aie_dma_attr *memtile_dma;
 	const struct aie_event_attr *pl_events;
 	const struct aie_event_attr *memtile_events;
 	const struct aie_event_attr *mem_events;
 	const struct aie_event_attr *core_events;
+	const struct aie_lock_attr *mem_lock;
+	const struct aie_lock_attr *memtile_lock;
+	const struct aie_lock_attr *pl_lock;
 	const struct aie_l1_intr_ctrl_attr *l1_ctrl;
 	const struct aie_l2_intr_ctrl_attr *l2_ctrl;
 	const struct aie_error_attr *core_errors;
@@ -1231,4 +1255,11 @@ long aie_part_rscmgr_get_statistics(struct aie_partition *apart,
 
 int aie_overlay_register_notifier(void);
 void aie_overlay_unregister_notifier(void);
+u32 aie_get_core_pc(struct aie_partition *apart,
+		    struct aie_location *loc);
+u32 aie_get_core_lr(struct aie_partition *apart,
+		    struct aie_location *loc);
+u32 aie_get_core_sp(struct aie_partition *apart,
+		    struct aie_location *loc);
+
 #endif /* AIE_INTERNAL_H */
