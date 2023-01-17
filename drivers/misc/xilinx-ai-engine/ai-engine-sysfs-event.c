@@ -20,7 +20,9 @@ ssize_t aie_tile_show_event(struct device *dev, struct device_attribute *attr,
 	struct aie_tile *atile = container_of(dev, struct aie_tile, dev);
 	struct aie_partition *apart = atile->apart;
 	ssize_t len = 0, size = PAGE_SIZE;
-	unsigned long cs[4] = {0}, ms[4] = {0}, ps[4] = {0};
+	unsigned long cs[AIE_NUM_EVENT_STS_CORETILE] = {0},
+		      ms[AIE_NUM_EVENT_STS_MEMTILE] = {0},
+		      ps[AIE_NUM_EVENT_STS_SHIMTILE] = {0};
 	u32 ttype, n;
 	bool is_delimit_req = false;
 
@@ -48,7 +50,7 @@ ssize_t aie_tile_show_event(struct device *dev, struct device_attribute *attr,
 
 		len += scnprintf(&buffer[len], max(0L, size - len), "core: ");
 
-		for_each_set_bit(n, cs, 128) {
+		for_each_set_bit(n, cs, apart->adev->core_events->num_events) {
 			if (is_delimit_req) {
 				len += scnprintf(&buffer[len],
 						 max(0L, size - len),
@@ -64,7 +66,35 @@ ssize_t aie_tile_show_event(struct device *dev, struct device_attribute *attr,
 				 "\nmemory: ");
 
 		is_delimit_req = false;
-		for_each_set_bit(n, ms, 128) {
+		for_each_set_bit(n, ms, apart->adev->mem_events->num_events) {
+			if (is_delimit_req) {
+				len += scnprintf(&buffer[len],
+						 max(0L, size - len),
+						 DELIMITER_LEVEL0);
+			}
+
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					 "%d", n);
+			is_delimit_req = true;
+		}
+
+		len += scnprintf(&buffer[len], max(0L, size - len), "\n");
+	} else if (ttype == AIE_TILE_TYPE_MEMORY) {
+		if (!aie_part_check_clk_enable_loc(apart, &atile->loc)) {
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					 "memory: clock_gated\n");
+			goto exit;
+		}
+
+		aie_read_event_status(apart, &atile->loc, AIE_MEM_MOD,
+				      (u32 *)ms);
+
+		len += scnprintf(&buffer[len], max(0L, size - len),
+				 "memory_tile: ");
+
+		is_delimit_req = false;
+		for_each_set_bit(n, ms,
+				 apart->adev->memtile_events->num_events) {
 			if (is_delimit_req) {
 				len += scnprintf(&buffer[len],
 						 max(0L, size - len),
@@ -83,7 +113,7 @@ ssize_t aie_tile_show_event(struct device *dev, struct device_attribute *attr,
 
 		len += scnprintf(&buffer[len], max(0L, size - len), "pl: ");
 
-		for_each_set_bit(n, ps, 128) {
+		for_each_set_bit(n, ps, apart->adev->pl_events->num_events) {
 			if (is_delimit_req) {
 				len += scnprintf(&buffer[len],
 						 max(0L, size - len),

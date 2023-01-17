@@ -76,6 +76,11 @@ enum aie_tile_type {
 /* AIE core registers step size */
 #define AIE_CORE_REGS_STEP		0x10
 
+/* Number of event status registers */
+#define AIE_NUM_EVENT_STS_CORETILE	4U
+#define AIE_NUM_EVENT_STS_MEMTILE	6U
+#define AIE_NUM_EVENT_STS_SHIMTILE	4U
+
 /*
  * Macros of AI engine module type index of a tile type
  * e.g.
@@ -675,6 +680,7 @@ struct aie_tile {
  * @shim_dma: SHIM DMA attribute
  * @tile_dma: tile DMA attribute
  * @pl_events: pl module event attribute
+ * @memtile_events: memory tile event attribute
  * @mem_events: memory module event attribute
  * @core_events: core module event attribute
  * @l1_ctrl: level 1 interrupt controller attribute
@@ -720,6 +726,7 @@ struct aie_device {
 	const struct aie_dma_attr *shim_dma;
 	const struct aie_dma_attr *tile_dma;
 	const struct aie_event_attr *pl_events;
+	const struct aie_event_attr *memtile_events;
 	const struct aie_event_attr *mem_events;
 	const struct aie_event_attr *core_events;
 	const struct aie_l1_intr_ctrl_attr *l1_ctrl;
