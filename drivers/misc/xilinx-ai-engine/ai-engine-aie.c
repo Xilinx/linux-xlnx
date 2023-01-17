@@ -1295,13 +1295,142 @@ static int aie_set_tile_isolation(struct aie_partition *apart,
 		     aie_cal_regoff(adev, *loc, AIE_SHIMPL_TILECTRL_REGOFF);
 	}
 	iowrite32(val, va);
+
 	return 0;
+}
+
+/**
+ * aie_get_lock_status() - reads the lock status.
+ * @apart: AI engine partition.
+ * @loc: location of AI engine DMA.
+ * @return: 32-bit register value.
+ */
+static u32 aie_get_lock_status(struct aie_partition *apart,
+			       struct aie_location *loc)
+{
+	u32 ttype, stsoff, regoff;
+
+	ttype = aie_get_tile_type(apart->adev, loc);
+	if (ttype != AIE_TILE_TYPE_TILE)
+		stsoff = aie_pl_lock.sts_regoff;
+	else
+		stsoff = aie_mem_lock.sts_regoff;
+
+	regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
+
+	return ioread32(apart->aperture->base + regoff);
+}
+
+/**
+ * aie_get_lock_status_str() - returns the string value corresponding to
+ *			       lock status value.
+ * @apart: AI engine partition.
+ * @loc: location of AI engine lock.
+ * @status: status value of lock.
+ * @lock: lock ID.
+ * @buffer: location to return lock status string.
+ * @size: total size of buffer available.
+ * @return: length of string copied to buffer.
+ */
+static ssize_t aie_get_lock_status_str(struct aie_partition *apart,
+				       struct aie_location *loc, u32 status,
+				       u32 lock, char *buffer, ssize_t size)
+{
+	char **str = aie_lock_status_str;
+	u32 ttype, mask;
+	u8 value, shift;
+
+	ttype = aie_get_tile_type(apart->adev, loc);
+	if (ttype != AIE_TILE_TYPE_TILE) {
+		shift = lock * aie_pl_lock.sts.regoff;
+		mask = aie_pl_lock.sts.mask << shift;
+	} else {
+		shift = lock * aie_mem_lock.sts.regoff;
+		mask = aie_mem_lock.sts.mask << shift;
+	}
+
+	value = (status & mask) >> shift;
+
+	return scnprintf(buffer, max(0L, size), str[value]);
+}
+
+static ssize_t aie_get_tile_sysfs_lock_status(struct aie_partition *apart,
+					      struct aie_location *loc,
+					      char *buffer, ssize_t size)
+{
+	u32 i, ttype, num_locks;
+	unsigned long status;
+	ssize_t len = 0;
+
+	ttype = aie_get_tile_type(apart->adev, loc);
+	if (ttype == AIE_TILE_TYPE_SHIMPL)
+		return len;
+
+	if (ttype == AIE_TILE_TYPE_TILE)
+		num_locks = aie_mem_lock.num_locks;
+	else
+		num_locks = aie_pl_lock.num_locks;
+
+	if (!aie_part_check_clk_enable_loc(apart, loc)) {
+		for (i = 0; i < num_locks; i++) {
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					 "%d: clock_gated\n", i);
+		}
+		return len;
+	}
+
+	status = aie_get_lock_status(apart, loc);
+	for (i = 0; i < num_locks; i++) {
+		len += scnprintf(&buffer[len], max(0L, size - len), "%d: ", i);
+		len += aie_get_lock_status_str(apart, loc, status, i,
+					       &buffer[len], size - len);
+		len += scnprintf(&buffer[len], max(0L, size - len), "\n");
+	}
+
+	return len;
+}
+
+static ssize_t aie_get_part_sysfs_lock_status(struct aie_partition *apart,
+					      struct aie_location *loc,
+					      char *buffer, ssize_t size)
+{
+	u32 i, ttype, num_locks;
+	unsigned long status;
+	ssize_t len = 0;
+
+	ttype = aie_get_tile_type(apart->adev, loc);
+	if (ttype == AIE_TILE_TYPE_SHIMPL)
+		return len;
+
+	if (!aie_part_check_clk_enable_loc(apart, loc)) {
+		len += scnprintf(&buffer[len], max(0L, size - len),
+				 "clock_gated");
+		return len;
+	}
+
+	if (ttype == AIE_TILE_TYPE_TILE)
+		num_locks = aie_mem_lock.num_locks;
+	else
+		num_locks = aie_pl_lock.num_locks;
+
+	status = aie_get_lock_status(apart, loc);
+	for (i = 0; i < num_locks; i++) {
+		len += aie_get_lock_status_str(apart, loc, status, i,
+					       &buffer[len], size - len);
+		if (i < num_locks - 1) {
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					 DELIMITER_LEVEL0);
+		}
+	}
+	return len;
 }
 
 static const struct aie_tile_operations aie_ops = {
 	.get_tile_type = aie_get_tile_type,
 	.get_mem_info = aie_get_mem_info,
 	.get_core_status = aie_get_core_status,
+	.get_part_sysfs_lock_status = aie_get_part_sysfs_lock_status,
+	.get_tile_sysfs_lock_status = aie_get_tile_sysfs_lock_status,
 	.init_part_clk_state = aie_init_part_clk_state,
 	.scan_part_clocks = aie_scan_part_clocks,
 	.set_part_clocks = aie_set_part_clocks,
@@ -1380,9 +1509,6 @@ int aie_device_init(struct aie_device *adev)
 	adev->core_sp = &aie_core_sp;
 	adev->dma_status_str = aie_dma_status_str;
 	adev->queue_status_str = aie_queue_status_str;
-	adev->pl_lock = &aie_pl_lock;
-	adev->mem_lock = &aie_mem_lock;
-	adev->lock_status_str = aie_lock_status_str;
 
 	aie_device_init_rscs_attr(adev);
 
