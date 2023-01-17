@@ -145,6 +145,7 @@
 #define AIEML_PART_SYSFS_LOCK_BINA_SIZE		0x28000		/* 160KB */
 #define AIEML_PART_SYSFS_ERROR_BINA_SIZE	0x4000		/* 16KB */
 #define AIEML_PART_SYSFS_DMA_BINA_SIZE		0xC800		/* 50KB */
+#define AIEML_PART_SYSFS_STATUS_BINA_SIZE	0x3c000		/* 240KB */
 
 static const struct aie_tile_regs aieml_kernel_regs[] = {
 	/* SHIM AXI MM Config */
@@ -1163,6 +1164,7 @@ static const struct aie_bin_attr aieml_part_bin_attr[] = {
 	AIE_PART_BIN_ATTR_RO(lock, AIEML_PART_SYSFS_LOCK_BINA_SIZE),
 	AIE_PART_BIN_ATTR_RO(dma, AIEML_PART_SYSFS_DMA_BINA_SIZE),
 	AIE_PART_BIN_ATTR_RO(error, AIEML_PART_SYSFS_ERROR_BINA_SIZE),
+	AIE_PART_BIN_ATTR_RO(status, AIEML_PART_SYSFS_STATUS_BINA_SIZE),
 };
 
 static const struct aie_sysfs_attr aieml_aperture_sysfs_attr = {
