@@ -378,15 +378,6 @@ int aie_aperture_sysfs_create_entries(struct aie_aperture *aperture)
 {
 	int ret;
 
-	/*
-	 * TODO: hardware monitoring and dump using sysfs is not supported for
-	 * AIEML as of now.
-	 */
-	if (aperture->adev->dev_gen == AIE_DEVICE_GEN_AIEML) {
-		dev_dbg(&aperture->dev, "Not creating sysfs entries..\n");
-		return 0;
-	}
-
 	ret = aie_aperture_sysfs_create(aperture);
 	if (ret < 0) {
 		dev_err(&aperture->dev, "Failed to create aperture sysfs\n");
