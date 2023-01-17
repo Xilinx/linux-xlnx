@@ -70,6 +70,10 @@
 #define AIEML_SHIMNOC_BD15_7_REGOFF			0x0001d1fcU
 #define AIEML_SHIMNOC_L2INTR_MASK_REGOFF		0x00015000U
 #define AIEML_SHIMNOC_L2INTR_INTR_REGOFF		0x00015010U
+#define AIEML_SHIMNOC_LOCK_REGOFF			0x00014000U
+#define AIEML_SHIMNOC_LOCK_OVERFLOW_REGOFF		0x00014120U
+#define AIEML_SHIMNOC_LOCK_UNDERFLOW_REGOFF		0x00014128U
+
 #define AIEML_SHIMPL_BISRCACHE_CTRL_REGOFF		0x00036000U
 #define AIEML_SHIMPL_COLCLOCK_CTRL_REGOFF		0x000fff20U
 #define AIEML_SHIMPL_COLRESET_CTRL_REGOFF		0x000fff28U
@@ -84,6 +88,7 @@
 #define AIEML_SHIMPL_MODCLOCK_CTRL_1_REGOFF		0x000fff04U
 #define AIEML_SHIMPL_MODRESET_CTRL_0_REGOFF		0x000fff10U
 #define AIEML_SHIMPL_MODRESET_CTRL_1_REGOFF		0x000fff14U
+
 #define AIEML_MEMORY_GROUP0_REGOFF			0x00094500U
 #define AIEML_MEMORY_GROUPERROR_REGOFF			0x00094518U
 #define AIEML_MEMORY_TILECTRL_REGOFF			0x00096030U
@@ -92,6 +97,10 @@
 #define AIEML_MEMORY_MEMCTRL_REGOFF			0x00096048U
 #define AIEML_MEMORY_MODCLOCKCTRL_REGOFF		0x000fff00U
 #define AIEML_MEMORY_MODRESETCTRL_REGOFF		0x000fff10U
+#define AIEML_MEMORY_LOCK_REGOFF			0x000C0000U
+#define AIEML_MEMORY_LOCK_OVERFLOW_REGOFF		0x000C0420U
+#define AIEML_MEMORY_LOCK_UNDERFLOW_REGOFF		0x000C0428U
+
 #define AIEML_TILE_COREMOD_AMLL0_PART1_REGOFF		0x00030000U
 #define AIEML_TILE_COREMOD_AMHH8_PART2_REGOFF		0x00030470U
 #define AIEML_TILE_COREMOD_GROUPERROR_REGOFF		0x00034510U
@@ -115,6 +124,9 @@
 #define AIEML_TILE_MEMMOD_EVENT_BC0_REGOFF		0x00014010U
 #define AIEML_TILE_MEMMOD_EVENT_STATUS0_REGOFF		0x00014200U
 #define AIEML_TILE_MEMMOD_MEMCTRL_REGOFF		0x00016010U
+#define AIEML_TILE_MEMMOD_LOCK_REGOFF			0x0001F000U
+#define AIEML_TILE_MEMMOD_LOCK_OVERFLOW_REGOFF		0x0001F120U
+#define AIEML_TILE_MEMMOD_LOCK_UNDERFLOW_REGOFF		0x0001F128U
 
 /*
  * Register masks
@@ -124,6 +136,7 @@
 
 /* Macros to define size of a sysfs binary attribute */
 #define AIEML_PART_SYSFS_CORE_BINA_SIZE		0x4000		/* 16KB */
+#define AIEML_PART_SYSFS_LOCK_BINA_SIZE		0x28000		/* 160KB */
 
 static const struct aie_tile_regs aieml_kernel_regs[] = {
 	/* SHIM AXI MM Config */
@@ -515,6 +528,63 @@ static const struct aie_dma_attr aieml_shimdma = {
 	.bd_len = 0x20U,
 };
 
+static const struct aie_lock_attr aieml_pl_lock = {
+	.sts = {
+		.mask = GENMASK(5, 0),
+		.regoff = 0x10,
+	},
+	.sts_regoff = AIEML_SHIMNOC_LOCK_REGOFF,
+	.num_locks = 16U,
+	.overflow = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x4,
+	},
+	.overflow_regoff = AIEML_SHIMNOC_LOCK_OVERFLOW_REGOFF,
+	.underflow = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x4,
+	},
+	.underflow_regoff = AIEML_SHIMNOC_LOCK_UNDERFLOW_REGOFF,
+};
+
+static const struct aie_lock_attr aieml_mem_lock = {
+	.sts = {
+		.mask = GENMASK(5, 0),
+		.regoff = 0x10,
+	},
+	.sts_regoff = AIEML_TILE_MEMMOD_LOCK_REGOFF,
+	.num_locks = 16U,
+	.overflow = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x4,
+	},
+	.overflow_regoff = AIEML_TILE_MEMMOD_LOCK_OVERFLOW_REGOFF,
+	.underflow = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x4,
+	},
+	.underflow_regoff = AIEML_TILE_MEMMOD_LOCK_UNDERFLOW_REGOFF,
+};
+
+static const struct aie_lock_attr aieml_memtile_lock = {
+	.sts = {
+		.mask = GENMASK(5, 0),
+		.regoff = 0x10,
+	},
+	.sts_regoff = AIEML_MEMORY_LOCK_REGOFF,
+	.num_locks = 64U,
+	.overflow = {
+		.mask = GENMASK(31, 0),
+		.regoff = 0x4,
+	},
+	.overflow_regoff = AIEML_MEMORY_LOCK_OVERFLOW_REGOFF,
+	.underflow = {
+		.mask = GENMASK(31, 0),
+		.regoff = 0x4,
+	},
+	.underflow_regoff = AIEML_MEMORY_LOCK_UNDERFLOW_REGOFF,
+};
+
 static const struct aie_event_attr aieml_pl_event = {
 	.bc_event = {
 		.mask = GENMASK(6, 0),
@@ -618,6 +688,9 @@ static const struct aie_dev_attr aieml_tile_dev_attr[] = {
 			     AIE_TILE_TYPE_MASK_MEMORY |
 			     AIE_TILE_TYPE_MASK_SHIMNOC |
 			     AIE_TILE_TYPE_MASK_SHIMPL),
+	AIE_TILE_DEV_ATTR_RO(lock, AIE_TILE_TYPE_MASK_TILE |
+			     AIE_TILE_TYPE_MASK_MEMORY |
+			     AIE_TILE_TYPE_MASK_SHIMNOC),
 };
 
 static const struct aie_dev_attr aieml_part_dev_attr[] = {
@@ -626,6 +699,7 @@ static const struct aie_dev_attr aieml_part_dev_attr[] = {
 
 static const struct aie_bin_attr aieml_part_bin_attr[] = {
 	AIE_PART_BIN_ATTR_RO(core, AIEML_PART_SYSFS_CORE_BINA_SIZE),
+	AIE_PART_BIN_ATTR_RO(lock, AIEML_PART_SYSFS_LOCK_BINA_SIZE),
 };
 
 static const struct aie_sysfs_attr aieml_part_sysfs_attr = {
@@ -642,17 +716,6 @@ static const struct aie_sysfs_attr aieml_tile_sysfs_attr = {
 	.num_bin_attrs = 0U,
 };
 
-static u32 aieml_get_core_status(struct aie_partition *apart,
-				 struct aie_location *loc)
-{
-	u32 regoff, regvalue;
-
-	regoff = aie_cal_regoff(apart->adev, *loc, aieml_core_sts.regoff);
-	regvalue = ioread32(apart->aperture->base + regoff);
-
-	return aie_get_reg_field(&aieml_core_sts, regvalue);
-}
-
 static u32 aieml_get_tile_type(struct aie_device *adev,
 			       struct aie_location *loc)
 {
@@ -667,6 +730,184 @@ static u32 aieml_get_tile_type(struct aie_device *adev,
 			return AIE_TILE_TYPE_SHIMPL;
 
 	return AIE_TILE_TYPE_SHIMNOC;
+}
+
+static u32 aieml_get_lock_status(struct aie_partition *apart,
+				 struct aie_location *loc, u8 lock)
+{
+	const struct aie_lock_attr *attr;
+	u32 ttype, stsoff, regoff, value;
+
+	ttype = aieml_get_tile_type(apart->adev, loc);
+	if (ttype == AIE_TILE_TYPE_TILE)
+		attr = &aieml_mem_lock;
+	else if (ttype == AIE_TILE_TYPE_MEMORY)
+		attr = &aieml_memtile_lock;
+	else
+		attr = &aieml_pl_lock;
+
+	stsoff = attr->sts.regoff * lock + attr->sts_regoff;
+	regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
+	value = ioread32(apart->aperture->base + regoff);
+
+	return aie_get_reg_field(&attr->sts, value);
+}
+
+static u64 aieml_get_lock_overflow_status(struct aie_partition *apart,
+					  struct aie_location *loc)
+{
+	const struct aie_lock_attr *attr;
+	u32 ttype, stsoff, regoff;
+	u64 value = 0;
+
+	ttype = aieml_get_tile_type(apart->adev, loc);
+	if (ttype == AIE_TILE_TYPE_TILE)
+		attr = &aieml_mem_lock;
+	else if (ttype == AIE_TILE_TYPE_MEMORY)
+		attr = &aieml_memtile_lock;
+	else
+		attr = &aieml_pl_lock;
+
+	if (ttype != AIE_TILE_TYPE_MEMORY) {
+		stsoff = attr->overflow_regoff;
+		regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
+		value = ioread32(apart->aperture->base + regoff);
+		value = aie_get_reg_field(&attr->overflow, value);
+	} else {
+		stsoff = attr->overflow_regoff;
+		regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
+		value = ioread32(apart->aperture->base + regoff);
+
+		stsoff = attr->overflow.regoff * 1U + attr->overflow_regoff;
+		regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
+		value |= ((u64)ioread32(apart->aperture->base + regoff)) << 32;
+	}
+	return value;
+}
+
+static u64 aieml_get_lock_underflow_status(struct aie_partition *apart,
+					   struct aie_location *loc)
+{
+	const struct aie_lock_attr *attr;
+	u32 ttype, stsoff, regoff;
+	u64 value = 0;
+
+	ttype = aieml_get_tile_type(apart->adev, loc);
+	if (ttype == AIE_TILE_TYPE_TILE)
+		attr = &aieml_mem_lock;
+	else if (ttype == AIE_TILE_TYPE_MEMORY)
+		attr = &aieml_memtile_lock;
+	else
+		attr = &aieml_pl_lock;
+
+	if (ttype != AIE_TILE_TYPE_MEMORY) {
+		stsoff = attr->underflow_regoff;
+		regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
+		value = ioread32(apart->aperture->base + regoff);
+		value = aie_get_reg_field(&attr->underflow, value);
+	} else {
+		stsoff = attr->underflow_regoff;
+		regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
+		value = ioread32(apart->aperture->base + regoff);
+
+		stsoff = attr->underflow.regoff * 1U + attr->underflow_regoff;
+		regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
+		value |= ((u64)ioread32(apart->aperture->base + regoff)) << 32;
+	}
+	return value;
+}
+
+static ssize_t aieml_get_tile_sysfs_lock_status(struct aie_partition *apart,
+						struct aie_location *loc,
+						char *buffer, ssize_t size)
+{
+	unsigned long overflow, underflow;
+	u32 i, ttype, num_locks;
+	ssize_t len = 0;
+
+	ttype = aieml_get_tile_type(apart->adev, loc);
+	if (ttype == AIE_TILE_TYPE_SHIMPL)
+		return len;
+
+	if (ttype == AIE_TILE_TYPE_TILE)
+		num_locks = aieml_mem_lock.num_locks;
+	else if (ttype == AIE_TILE_TYPE_MEMORY)
+		num_locks = aieml_memtile_lock.num_locks;
+	else
+		num_locks = aieml_pl_lock.num_locks;
+
+	if (!aie_part_check_clk_enable_loc(apart, loc)) {
+		for (i = 0; i < num_locks; i++) {
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					 "%d: clock_gated\n", i);
+		}
+		return len;
+	}
+
+	overflow = aieml_get_lock_overflow_status(apart, loc);
+
+	underflow = aieml_get_lock_underflow_status(apart, loc);
+
+	for (i = 0; i < num_locks; i++) {
+		len += scnprintf(&buffer[len], max(0L, size - len), "%d: %d",
+				 i, aieml_get_lock_status(apart, loc, i));
+
+		if (test_bit(num_locks, &overflow))
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					 "|overflow");
+
+		if (test_bit(num_locks, &underflow))
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					 "|underflow");
+
+		len += scnprintf(&buffer[len], max(0L, size - len), "\n");
+	}
+
+	return len;
+}
+
+static ssize_t aieml_get_part_sysfs_lock_status(struct aie_partition *apart,
+						struct aie_location *loc,
+						char *buffer, ssize_t size)
+{
+	u32 i, ttype, num_locks;
+	ssize_t len = 0;
+
+	if (!aie_part_check_clk_enable_loc(apart, loc)) {
+		len += scnprintf(&buffer[len], max(0L, size - len),
+				 "clock_gated");
+		return len;
+	}
+
+	ttype = aieml_get_tile_type(apart->adev, loc);
+	if (ttype == AIE_TILE_TYPE_TILE)
+		num_locks = aieml_mem_lock.num_locks;
+	else if (ttype == AIE_TILE_TYPE_MEMORY)
+		num_locks = aieml_memtile_lock.num_locks;
+	else
+		num_locks = aieml_pl_lock.num_locks;
+
+	for (i = 0; i < num_locks; i++) {
+		len += scnprintf(&buffer[len], max(0L, size - len), "%d",
+				 aieml_get_lock_status(apart, loc, i));
+
+		if (i < num_locks - 1)
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					 DELIMITER_LEVEL0);
+	}
+
+	return len;
+}
+
+static u32 aieml_get_core_status(struct aie_partition *apart,
+				 struct aie_location *loc)
+{
+	u32 regoff, regvalue;
+
+	regoff = aie_cal_regoff(apart->adev, *loc, aieml_core_sts.regoff);
+	regvalue = ioread32(apart->aperture->base + regoff);
+
+	return aie_get_reg_field(&aieml_core_sts, regvalue);
 }
 
 static unsigned int aieml_get_mem_info(struct aie_device *adev,
@@ -861,6 +1102,8 @@ static const struct aie_tile_operations aieml_ops = {
 	.get_tile_type = aieml_get_tile_type,
 	.get_mem_info = aieml_get_mem_info,
 	.get_core_status = aieml_get_core_status,
+	.get_part_sysfs_lock_status = aieml_get_part_sysfs_lock_status,
+	.get_tile_sysfs_lock_status = aieml_get_tile_sysfs_lock_status,
 	.init_part_clk_state = aieml_init_part_clk_state,
 	.scan_part_clocks = aieml_scan_part_clocks,
 	.set_part_clocks = aieml_set_part_clocks,
