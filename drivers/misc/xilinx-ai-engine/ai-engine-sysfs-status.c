@@ -57,7 +57,8 @@ ssize_t aie_part_read_cb_status(struct kobject *kobj, char *buffer,
 			}
 
 			len += aie_sysfs_get_core_status(apart, &loc,
-							 &buffer[len], size);
+							 &buffer[len],
+							 size - len);
 		}
 
 		if (ttype == AIE_TILE_TYPE_TILE ||
@@ -75,7 +76,8 @@ ssize_t aie_part_read_cb_status(struct kobject *kobj, char *buffer,
 			}
 
 			len += aie_sysfs_get_dma_status(apart, &loc,
-							&buffer[len], size);
+							&buffer[len],
+							size - len);
 
 			if (preamble) {
 				len += scnprintf(&buffer[len],
@@ -91,7 +93,7 @@ ssize_t aie_part_read_cb_status(struct kobject *kobj, char *buffer,
 
 			len += ops->get_part_sysfs_lock_status(apart, &loc,
 							       &buffer[len],
-							       size);
+							       size - len);
 		}
 
 		if (aie_check_tile_error(apart, loc)) {
@@ -108,7 +110,7 @@ ssize_t aie_part_read_cb_status(struct kobject *kobj, char *buffer,
 			}
 
 			len += aie_sysfs_get_errors(apart, &loc, &buffer[len],
-						    size);
+						    size - len);
 		}
 
 		if (!preamble) {
