@@ -8,10 +8,14 @@
  * Michal Simek <michal.simek@amd.com>
  */
 
-#include "zynqmp-smk-k26-revA.dts"
+#include "zynqmp-sm-k24-revA.dts"
 
 / {
 	model = "ZynqMP SMK-K24 RevA";
 	compatible = "xlnx,zynqmp-smk-k24-revA", "xlnx,zynqmp-smk-k24",
 		     "xlnx,zynqmp";
+};
+
+&sdhci0 {
+	status = "disabled";
 };

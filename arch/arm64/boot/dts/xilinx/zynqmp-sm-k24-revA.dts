@@ -14,4 +14,9 @@
 	model = "ZynqMP SM-K24 RevA";
 	compatible = "xlnx,zynqmp-sm-k24-revA", "xlnx,zynqmp-sm-k24",
 		     "xlnx,zynqmp";
+
+	memory@0 {
+		device_type = "memory"; /* 2GB */
+		reg = <0 0 0 0x80000000>;
+	};
 };
