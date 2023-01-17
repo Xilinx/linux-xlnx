@@ -703,6 +703,7 @@ struct aie_tile {
  * @l2_ctrl: level 2 interrupt controller attribute
  * @core_errors: core module error attribute
  * @mem_errors: memory module error attribute
+ * @memtile_errors: memory tile error attribute
  * @shim_errors: shim tile error attribute
  * @array_shift: array address shift
  * @col_shift: column address shift
@@ -746,6 +747,7 @@ struct aie_device {
 	const struct aie_l2_intr_ctrl_attr *l2_ctrl;
 	const struct aie_error_attr *core_errors;
 	const struct aie_error_attr *mem_errors;
+	const struct aie_error_attr *memtile_errors;
 	const struct aie_error_attr *shim_errors;
 	u32 array_shift;
 	u32 col_shift;

@@ -1037,6 +1037,7 @@ u32 aie_get_error_count(struct aie_partition *apart)
 {
 	const struct aie_error_attr *core_errs = apart->adev->core_errors;
 	const struct aie_error_attr *mem_errs = apart->adev->mem_errors;
+	const struct aie_error_attr *memtile_errs = apart->adev->memtile_errors;
 	const struct aie_error_attr *shim_errs = apart->adev->shim_errors;
 	struct aie_location loc;
 	u32 ttype, num = 0;
@@ -1055,6 +1056,10 @@ u32 aie_get_error_count(struct aie_partition *apart)
 				num += aie_get_module_error_count(apart, loc,
 								  AIE_MEM_MOD,
 								  mem_errs);
+			} else if (ttype == AIE_TILE_TYPE_MEMORY) {
+				num += aie_get_module_error_count(apart, loc,
+								  AIE_MEM_MOD,
+								  memtile_errs);
 			} else {
 				num += aie_get_module_error_count(apart, loc,
 								  AIE_PL_MOD,
