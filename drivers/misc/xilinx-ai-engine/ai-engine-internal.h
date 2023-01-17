@@ -81,6 +81,10 @@ enum aie_tile_type {
 #define AIE_NUM_EVENT_STS_MEMTILE	6U
 #define AIE_NUM_EVENT_STS_SHIMTILE	4U
 
+/* Number of DMA channels */
+#define AIE_MAX_MM2S_CH		6U
+#define AIE_MAX_S2MM_CH		6U
+
 /*
  * Macros of AI engine module type index of a tile type
  * e.g.
@@ -298,6 +302,7 @@ struct aie_dma_attr {
 	struct aie_single_reg_field haddr;
 	struct aie_single_reg_field buflen;
 	struct aie_single_reg_field sts;
+	struct aie_single_reg_field chansts;
 	struct aie_single_reg_field stall;
 	struct aie_single_reg_field qsize;
 	struct aie_single_reg_field curbd;
