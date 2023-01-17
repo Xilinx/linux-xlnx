@@ -14,8 +14,8 @@
  * @loc: location of AI engine core.
  * @return: 32-bit register value.
  */
-static u32 aie_get_core_pc(struct aie_partition *apart,
-			   struct aie_location *loc)
+u32 aie_get_core_pc(struct aie_partition *apart,
+		    struct aie_location *loc)
 {
 	u32 regoff;
 
@@ -30,8 +30,8 @@ static u32 aie_get_core_pc(struct aie_partition *apart,
  * @loc: location of AI engine core.
  * @return: 32-bit register value.
  */
-static u32 aie_get_core_lr(struct aie_partition *apart,
-			   struct aie_location *loc)
+u32 aie_get_core_lr(struct aie_partition *apart,
+		    struct aie_location *loc)
 {
 	u32 regoff;
 
@@ -46,8 +46,8 @@ static u32 aie_get_core_lr(struct aie_partition *apart,
  * @loc: location of AI engine core.
  * @return: 32-bit register value.
  */
-static u32 aie_get_core_sp(struct aie_partition *apart,
-			   struct aie_location *loc)
+u32 aie_get_core_sp(struct aie_partition *apart,
+		    struct aie_location *loc)
 {
 	u32 regoff;
 

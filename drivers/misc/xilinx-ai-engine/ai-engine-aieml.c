@@ -1941,6 +1941,10 @@ static const struct aie_tile_operations aieml_ops = {
 	.set_part_clocks = aieml_set_part_clocks,
 	.set_tile_isolation = aieml_set_tile_isolation,
 	.mem_clear = aieml_part_clear_mems,
+	.get_dma_s2mm_status = aieml_get_dma_s2mm_status,
+	.get_dma_mm2s_status = aieml_get_dma_mm2s_status,
+	.get_chan_status = aieml_get_chan_status,
+	.get_lock_status = aieml_get_lock_status,
 };
 
 /**
@@ -1990,7 +1994,9 @@ int aieml_device_init(struct aie_device *adev)
 	adev->core_regs = aieml_core_regs;
 	adev->col_rst = &aieml_col_rst;
 	adev->col_clkbuf = &aieml_col_clkbuf;
+	adev->tile_dma = &aieml_tiledma;
 	adev->shim_dma = &aieml_shimdma;
+	adev->memtile_dma = &aieml_memtiledma;
 	adev->aperture_sysfs_attr = &aieml_aperture_sysfs_attr;
 	adev->part_sysfs_attr = &aieml_part_sysfs_attr;
 	adev->tile_sysfs_attr = &aieml_tile_sysfs_attr;
@@ -2001,6 +2007,9 @@ int aieml_device_init(struct aie_device *adev)
 	adev->pl_events = &aieml_pl_event;
 	adev->memtile_events = &aieml_memtile_event;
 	adev->mem_events = &aieml_mem_event;
+	adev->mem_lock = &aieml_mem_lock;
+	adev->pl_lock = &aieml_pl_lock;
+	adev->memtile_lock = &aieml_memtile_lock;
 	adev->core_events = &aieml_core_event;
 	adev->core_errors = &aieml_core_error;
 	adev->mem_errors = &aieml_mem_error;
