@@ -75,9 +75,9 @@ ssize_t aie_part_read_cb_status(struct kobject *kobj, char *buffer,
 						 "%sds: ", DELIMITER_LEVEL2);
 			}
 
-			len += aie_sysfs_get_dma_status(apart, &loc,
-							&buffer[len],
-							size - len);
+			len += ops->get_part_sysfs_dma_status(apart, &loc,
+							      &buffer[len],
+							      size - len);
 
 			if (preamble) {
 				len += scnprintf(&buffer[len],
