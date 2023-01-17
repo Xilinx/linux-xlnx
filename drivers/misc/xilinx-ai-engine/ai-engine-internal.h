@@ -328,6 +328,8 @@ struct aie_aperture;
  * @get_tile_type: get type of tile based on tile operation
  * @get_mem_info: get different types of memories information
  * @get_core_status: get the status of AIE core.
+ * @get_part_sysfs_lock_status: get partition lock status for sysfs.
+ * @get_tile_sysfs_lock_status: get tile lock status for sysfs.
  * @init_part_clk_state: initialize clock states software structure which is a
  *			 bitmap for the AI engine partition. The clock states
  *			 structure is the structure used to keep track of if
@@ -357,6 +359,12 @@ struct aie_tile_operations {
 				     struct aie_part_mem *pmem);
 	u32 (*get_core_status)(struct aie_partition *apart,
 			       struct aie_location *loc);
+	ssize_t (*get_part_sysfs_lock_status)(struct aie_partition *apart,
+					      struct aie_location *loc,
+					      char *buffer, ssize_t size);
+	ssize_t (*get_tile_sysfs_lock_status)(struct aie_partition *apart,
+					      struct aie_location *loc,
+					      char *buffer, ssize_t size);
 	int (*init_part_clk_state)(struct aie_partition *apart);
 	int (*scan_part_clocks)(struct aie_partition *apart);
 	int (*set_part_clocks)(struct aie_partition *apart);
@@ -708,9 +716,6 @@ struct aie_tile {
  * @core_sp: stack pointer attribute
  * @dma_status_str: DMA channel status in string format
  * @queue_status_str: DMA queue status in string format
- * @pl_lock: PL module lock attribute
- * @mem_lock: memory module lock attribute
- * @lock_status_str: lock status in string format
  */
 struct aie_device {
 	struct list_head apertures;
@@ -752,9 +757,6 @@ struct aie_device {
 	const struct aie_single_reg_field *core_sp;
 	char **dma_status_str;
 	char **queue_status_str;
-	const struct aie_lock_attr *pl_lock;
-	const struct aie_lock_attr *mem_lock;
-	char **lock_status_str;
 };
 
 /**
