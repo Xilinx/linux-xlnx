@@ -556,11 +556,19 @@ struct aie_tile_rsc_attr {
  * @sts: lock status field attributes
  * @sts_regoff: lock status register offset
  * @num_locks: number of locks
+ * @overflow: overflow status field attributes
+ * @overflow_regoff: overflow status register offset
+ * @underflow: underflow status field attributes
+ * @underflow_regoff: underflowstatus register offset
  */
 struct aie_lock_attr {
 	struct aie_single_reg_field sts;
 	u32 sts_regoff;
 	u32 num_locks;
+	struct aie_single_reg_field overflow;
+	u32 overflow_regoff;
+	struct aie_single_reg_field underflow;
+	u32 underflow_regoff;
 };
 
 /**
