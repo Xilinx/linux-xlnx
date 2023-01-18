@@ -218,4 +218,26 @@
  * User can pass percentage as an integer to tune threshold value
  */
 #define V4L2_CID_XILINX_SCD_THRESHOLD		(V4L2_CID_XILINX_SCD + 1)
+
+/*
+ * Xilinx Video ISP Pipeline IP
+ */
+
+/* Base ID */
+#define V4L2_CID_XILINX_ISP			(V4L2_CID_USER_BASE + 0xc160)
+/* Adjust Red Gain */
+#define V4L2_CID_XILINX_ISP_RED_GAIN		(V4L2_CID_XILINX_ISP + 1)
+/* Adjust Blue Gain */
+#define V4L2_CID_XILINX_ISP_BLUE_GAIN		(V4L2_CID_XILINX_ISP + 2)
+/* Adjust AWB */
+#define V4L2_CID_XILINX_ISP_AWB			(V4L2_CID_XILINX_ISP + 3)
+/* Adjust Threshold */
+#define V4L2_CID_XILINX_ISP_THRESHOLD		(V4L2_CID_XILINX_ISP + 4)
+/* Adjust Red Gamma */
+#define V4L2_CID_XILINX_ISP_RED_GAMMA		(V4L2_CID_XILINX_ISP + 5)
+/* Adjust Green Gamma */
+#define V4L2_CID_XILINX_ISP_GREEN_GAMMA		(V4L2_CID_XILINX_ISP + 6)
+/* Adjust Blue Gamma */
+#define V4L2_CID_XILINX_ISP_BLUE_GAMMA		(V4L2_CID_XILINX_ISP + 7)
+
 #endif /* __UAPI_XILINX_V4L2_CONTROLS_H__ */

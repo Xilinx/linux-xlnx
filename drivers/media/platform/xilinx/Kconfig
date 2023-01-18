@@ -87,6 +87,15 @@ config VIDEO_XILINX_HLS
 	help
 	  Driver for the Xilinx Video HLS Cores
 
+config VIDEO_XILINX_ISP
+	tristate "Xilinx Video ISP pipeline"
+	depends on VIDEO_XILINX
+	help
+	  Driver for Xilinx Video ISP pipeline. This is a V4L sub-device
+	  based driver for Video ISP pipeline that takes a bayer video
+	  stream format as input and generates an RGB video output.
+	  Say M to modularize. Say N if unsure.
+
 config VIDEO_XILINX_REMAPPER
 	tristate "Xilinx Video Remapper"
 	depends on VIDEO_XILINX
