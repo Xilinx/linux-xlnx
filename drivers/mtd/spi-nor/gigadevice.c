@@ -10,13 +10,15 @@
 
 static void gd25q256_default_init(struct spi_nor *nor)
 {
+	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
+
 	/*
 	 * Some manufacturer like GigaDevice may use different
 	 * bit to set QE on different memories, so the MFR can't
 	 * indicate the quad_enable method for this case, we need
 	 * to set it in the default_init fixup hook.
 	 */
-	nor->params->quad_enable = spi_nor_sr1_bit6_quad_enable;
+	params->quad_enable = spi_nor_sr1_bit6_quad_enable;
 }
 
 static const struct spi_nor_fixups gd25q256_fixups = {
