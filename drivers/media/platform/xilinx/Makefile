@@ -14,6 +14,7 @@ obj-$(CONFIG_VIDEO_XILINX_DPRXSS) += xilinx-dprxss.o
 obj-$(CONFIG_VIDEO_XILINX_GAMMA) += xilinx-gamma.o
 obj-$(CONFIG_VIDEO_XILINX_HDCP1X_RX) += xilinx-hdcp1x-rx.o
 obj-$(CONFIG_VIDEO_XILINX_HLS) += xilinx-hls.o
+obj-$(CONFIG_VIDEO_XILINX_ISP) += xilinx-isppipeline.o
 obj-$(CONFIG_VIDEO_XILINX_MULTISCALER) += xilinx-multi-scaler.o
 obj-$(CONFIG_VIDEO_XILINX_SCD) += xilinx-scd.o
 obj-$(CONFIG_VIDEO_XILINX_SDIRXSS) += xilinx-sdirxss.o

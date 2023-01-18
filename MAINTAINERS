@@ -25674,6 +25674,15 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/nvmem/xlnx,zynqmp-nvmem.yaml
 F:	drivers/nvmem/zynqmp_nvmem.c
 
+XILINX ISP PIPELINE DRIVER
+M:	Mounik Katikala <mounik.katikala@amd.com>
+L:	linux-media@vger.kernel.org
+S:	Maintained
+F:	Documentation/devicetree/bindings/media/xilinx/xlnx,isppipeline.yaml
+F:	drivers/media/platform/xilinx/xilinx-gamma-correction.h
+F:	drivers/media/platform/xilinx/xilinx-isp-params.h
+F:	drivers/media/platform/xilinx/xilinx-isppipeline.c
+
 XILLYBUS DRIVER
 M:	Eli Billauer <eli.billauer@gmail.com>
 L:	linux-kernel@vger.kernel.org

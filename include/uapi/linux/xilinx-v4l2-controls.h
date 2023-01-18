@@ -171,4 +171,114 @@
  * User can pass percentage as an integer to tune threshold value
  */
 #define V4L2_CID_XILINX_SCD_THRESHOLD		(V4L2_CID_XILINX_SCD + 1)
+
+/*
+ * Xilinx Video ISP Pipeline IP
+ */
+
+/* Base ID */
+#define V4L2_CID_XILINX_ISP			(V4L2_CID_USER_BASE + 0xc160)
+/* Adjust Red Gain */
+#define V4L2_CID_XILINX_ISP_RED_GAIN		(V4L2_CID_XILINX_ISP + 1)
+/* Adjust Blue Gain */
+#define V4L2_CID_XILINX_ISP_BLUE_GAIN		(V4L2_CID_XILINX_ISP + 2)
+/* Adjust AWB */
+#define V4L2_CID_XILINX_ISP_AWB			(V4L2_CID_XILINX_ISP + 3)
+/* Adjust Threshold */
+#define V4L2_CID_XILINX_ISP_THRESHOLD		(V4L2_CID_XILINX_ISP + 4)
+/* Adjust Red Gamma */
+#define V4L2_CID_XILINX_ISP_RED_GAMMA		(V4L2_CID_XILINX_ISP + 5)
+/* Adjust Green Gamma */
+#define V4L2_CID_XILINX_ISP_GREEN_GAMMA		(V4L2_CID_XILINX_ISP + 6)
+/* Adjust Blue Gamma */
+#define V4L2_CID_XILINX_ISP_BLUE_GAMMA		(V4L2_CID_XILINX_ISP + 7)
+/* Enable/Disable AEC */
+#define V4L2_CID_XILINX_ISP_AEC_EN		(V4L2_CID_XILINX_ISP + 8)
+/* Adjust Threshold */
+#define V4L2_CID_XILINX_ISP_AEC_THRESHOLD		(V4L2_CID_XILINX_ISP + 9)
+/* Enable/Disable BLC */
+#define V4L2_CID_XILINX_ISP_BLC_EN		(V4L2_CID_XILINX_ISP + 10)
+/* Adjust Multiplication Factor */
+#define V4L2_CID_XILINX_ISP_MULTI_FACTOR	(V4L2_CID_XILINX_ISP + 11)
+/* Enable/Disable AWB */
+#define V4L2_CID_XILINX_ISP_AWB_EN		(V4L2_CID_XILINX_ISP + 12)
+/* Adjust AWB */
+#define V4L2_CID_XILINX_ISP_AWB_THRESHOLD	(V4L2_CID_XILINX_ISP + 13)
+/* Enable/Disable BPC */
+#define V4L2_CID_XILINX_ISP_BPC_EN		(V4L2_CID_XILINX_ISP + 14)
+/* Enable/Disable Degamma */
+#define V4L2_CID_XILINX_ISP_DEGAMMA_EN		(V4L2_CID_XILINX_ISP + 15)
+/* Adjust Degamma values */
+#define V4L2_CID_XILINX_ISP_DEGAMMA_PARAMS		(V4L2_CID_XILINX_ISP + 16)
+/* Enable/Disable RGBIR */
+#define V4L2_CID_XILINX_ISP_RGBIR_EN		(V4L2_CID_XILINX_ISP + 17)
+/* Enable/Disable LSC */
+#define V4L2_CID_XILINX_ISP_LSC_EN		(V4L2_CID_XILINX_ISP + 18)
+/* Enable/Disable Demosaic */
+#define V4L2_CID_XILINX_ISP_DEMOSAIC_EN		(V4L2_CID_XILINX_ISP + 39)
+/* Enable/Disable CCM */
+#define V4L2_CID_XILINX_ISP_CCM_EN		(V4L2_CID_XILINX_ISP + 20)
+/* Adjust CCM values */
+#define V4L2_CID_XILINX_ISP_CCM_PARAMS		(V4L2_CID_XILINX_ISP + 21)
+/* Enable/Disable Gain Control */
+#define V4L2_CID_XILINX_ISP_GAIN_EN		(V4L2_CID_XILINX_ISP + 22)
+/* Adjust Gain control Red Gain */
+#define V4L2_CID_XILINX_ISP_GAIN_CONTROL_RED_GAIN		(V4L2_CID_XILINX_ISP + 23)
+/* Adjust Gain control Blue Gain */
+#define V4L2_CID_XILINX_ISP_GAIN_CONTROL_BLUE_GAIN		(V4L2_CID_XILINX_ISP + 24)
+/* Adjust Gain control Green Gain */
+#define V4L2_CID_XILINX_ISP_GAIN_CONTROL_GREEN_GAIN		(V4L2_CID_XILINX_ISP + 52)
+/* Adjust Luminance Gain */
+#define V4L2_CID_XILINX_ISP_LUMA_GAIN		(V4L2_CID_XILINX_ISP + 25)
+/* Enable/Disable Gamma */
+#define V4L2_CID_XILINX_ISP_GAMMA_EN		(V4L2_CID_XILINX_ISP + 26)
+/* Enable/Disable HDR */
+#define V4L2_CID_XILINX_ISP_HDR_EN			(V4L2_CID_XILINX_ISP + 27)
+/* Adjust Decompand values */
+#define V4L2_CID_XILINX_ISP_DECOMPAND_PARAMS		(V4L2_CID_XILINX_ISP + 28)
+/* Adjust HDR Merge Alpha */
+#define V4L2_CID_XILINX_ISP_ALPHA		(V4L2_CID_XILINX_ISP + 29)
+/* Adjust HDR Merge Optical Black Value */
+#define V4L2_CID_XILINX_ISP_OPTICAL_BLACK_VALUE	(V4L2_CID_XILINX_ISP + 30)
+/* Adjust HDR Merge Intersec */
+#define V4L2_CID_XILINX_ISP_INTERSEC		(V4L2_CID_XILINX_ISP + 31)
+/* Adjust HDR Merge Rho */
+#define V4L2_CID_XILINX_ISP_RHO			(V4L2_CID_XILINX_ISP + 32)
+/* Enable/Disable TM */
+#define V4L2_CID_XILINX_ISP_TM_EN		(V4L2_CID_XILINX_ISP + 33)
+/* Adjust GTM C1 */
+#define V4L2_CID_XILINX_ISP_GTM_C1		(V4L2_CID_XILINX_ISP + 34)
+/* Adjust GTM C2 */
+#define V4L2_CID_XILINX_ISP_GTM_C2		(V4L2_CID_XILINX_ISP + 35)
+/* Adjust LTM Block Rows */
+#define V4L2_CID_XILINX_ISP_BLOCK_ROWS		(V4L2_CID_XILINX_ISP + 36)
+/* Adjust LTM Block Cols */
+#define V4L2_CID_XILINX_ISP_BLOCK_COLS		(V4L2_CID_XILINX_ISP + 37)
+/* Enable/Disable 3dLut */
+#define V4L2_CID_XILINX_ISP_3DLUT_EN		(V4L2_CID_XILINX_ISP + 38)
+/* Adjust 3dLut dimension */
+#define V4L2_CID_XILINX_ISP_3DLUT_DIM		(V4L2_CID_XILINX_ISP + 40)
+/* Enable/Disable CSC */
+#define V4L2_CID_XILINX_ISP_CSC_EN		(V4L2_CID_XILINX_ISP + 41)
+/* Enable/Disable Bayer stats */
+#define V4L2_CID_XILINX_ISP_BAYER_STATS_EN		(V4L2_CID_XILINX_ISP + 42)
+/* Enable/Disable Luma stats */
+#define V4L2_CID_XILINX_ISP_LUMA_STATS_EN		(V4L2_CID_XILINX_ISP + 43)
+/* Enable/Disable RGB stats */
+#define V4L2_CID_XILINX_ISP_RGB_STATS_EN		(V4L2_CID_XILINX_ISP + 44)
+/* Enable/Disable Clahe */
+#define V4L2_CID_XILINX_ISP_CLAHE_EN		(V4L2_CID_XILINX_ISP + 45)
+/* Adjust CLAHE Clip */
+#define V4L2_CID_XILINX_ISP_CLIP		(V4L2_CID_XILINX_ISP + 46)
+/* Adjust CLAHE TilesY */
+#define V4L2_CID_XILINX_ISP_TILESY		(V4L2_CID_XILINX_ISP + 47)
+/* Adjust CLAHE TilesX */
+#define V4L2_CID_XILINX_ISP_TILESX		(V4L2_CID_XILINX_ISP + 48)
+/* Enable/Disable Median Blur */
+#define V4L2_CID_XILINX_ISP_MEDIAN_EN		(V4L2_CID_XILINX_ISP + 49)
+/* Enable/Disable Resize */
+#define V4L2_CID_XILINX_ISP_RESIZE_EN		(V4L2_CID_XILINX_ISP + 50)
+/* Enable/Disable ISP */
+#define V4L2_CID_XILINX_ISP_EN			(V4L2_CID_XILINX_ISP + 51)
+
 #endif /* __UAPI_XILINX_V4L2_CONTROLS_H__ */
