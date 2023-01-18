@@ -492,6 +492,7 @@ struct spi_nor_fixups {
  * @mfr_flags:      manufacturer private flags. Used in the manufacturer fixup
  *                  hooks to differentiate support between flashes of the same
  *                  manufacturer.
+ *   SST_WRITE                use SST byte programming
  * @otp_org:        flash's OTP organization.
  * @fixups:         part specific fixup hooks.
  */
@@ -530,6 +531,7 @@ struct flash_info {
 #define SPI_NOR_IO_MODE_EN_VOLATILE	BIT(1)
 
 	u8 mfr_flags;
+#define	SST_WRITE			BIT(0)
 
 	const struct spi_nor_otp_organization otp_org;
 	const struct spi_nor_fixups *fixups;
