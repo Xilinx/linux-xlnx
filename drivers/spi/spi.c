@@ -1421,10 +1421,10 @@ static int spi_transfer_wait(struct spi_controller *ctlr,
 		do_div(ms, speed_hz);
 
 		/*
-		 * Increase it twice and add 200 ms tolerance, use
+		 * Increase it twice and add 10000 ms tolerance, use
 		 * predefined maximum in case of overflow.
 		 */
-		ms += ms + 200;
+		ms += ms + 10000;
 		if (ms > UINT_MAX)
 			ms = UINT_MAX;
 
