@@ -11,8 +11,8 @@
 
 #include "core.h"
 
-#define spi_nor_otp_region_len(nor) ((nor)->params->otp.org->len)
-#define spi_nor_otp_n_regions(nor) ((nor)->params->otp.org->n_regions)
+#define spi_nor_otp_region_len(nor) ((nor)->params[0]->otp.org->len)
+#define spi_nor_otp_n_regions(nor) ((nor)->params[0]->otp.org->n_regions)
 
 /**
  * spi_nor_otp_read_secr() - read security register
