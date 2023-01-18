@@ -22,6 +22,7 @@
 #include <linux/log2.h>
 #include <linux/module.h>
 #include <linux/of_device.h>
+#include <linux/of_gpio.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
@@ -97,6 +98,7 @@ struct cqspi_driver_platdata {
 	int (*indirect_read_dma)(struct cqspi_flash_pdata *f_pdata,
 				 u_char *rxbuf, loff_t from_addr, size_t n_rx);
 	u32 (*get_dma_status)(struct cqspi_st *cqspi);
+	int (*device_reset)(struct cqspi_st *cqspi, u8 reset_type);
 };
 
 /* Operation timeout value */
@@ -276,6 +278,8 @@ struct cqspi_driver_platdata {
 #define CQSPI_DMA_UNALIGN		0x3
 
 #define CQSPI_REG_VERSAL_DMA_VAL		0x602
+#define CQSPI_VERSAL_MIO_NODE_ID_12	0x14108027
+#define CQSPI_RESET_TYPE_HWPIN		0
 
 static int cqspi_wait_for_bit(void __iomem *reg, const u32 mask, bool clr)
 {
@@ -769,6 +773,62 @@ failrd:
 	writel(CQSPI_REG_INDIRECTWR_CANCEL_MASK,
 	       reg_base + CQSPI_REG_INDIRECTRD);
 	return ret;
+}
+
+static int cqspi_versal_device_reset(struct cqspi_st *cqspi, u8 reset_type)
+{
+	struct platform_device *pdev = cqspi->pdev;
+	enum of_gpio_flags flags;
+	int gpio;
+	int ret;
+
+	if (reset_type != CQSPI_RESET_TYPE_HWPIN)
+		return -EINVAL;
+	gpio = of_get_named_gpio_flags(pdev->dev.of_node,
+				       "reset-gpios", 0, &flags);
+	if (!gpio_is_valid(gpio))
+		return -EIO;
+	ret = devm_gpio_request_one(&pdev->dev, gpio, flags,
+				    "flash-reset");
+	if (ret) {
+		dev_err(&pdev->dev,
+			"failed to get reset-gpios: %d\n", ret);
+		return -EIO;
+	}
+
+	/* Request for PIN */
+	ret = zynqmp_pm_pinctrl_request(CQSPI_VERSAL_MIO_NODE_ID_12);
+	if (ret)
+		return ret;
+
+	/* Enable hysteresis in cmos receiver */
+	ret = zynqmp_pm_pinctrl_set_config(CQSPI_VERSAL_MIO_NODE_ID_12,
+					   PM_PINCTRL_CONFIG_SCHMITT_CMOS,
+					   PM_PINCTRL_INPUT_TYPE_SCHMITT);
+	if (ret)
+		return ret;
+
+	/* Set the direction as output and enable the output */
+	gpio_direction_output(gpio, 1);
+
+	/* Disable Tri-state */
+	ret = zynqmp_pm_pinctrl_set_config(CQSPI_VERSAL_MIO_NODE_ID_12,
+					   PM_PINCTRL_CONFIG_TRI_STATE,
+					   PM_PINCTRL_TRI_STATE_DISABLE);
+	if (ret)
+		return ret;
+
+	udelay(1);
+
+	/* Set value 0 to pin */
+	gpio_set_value(gpio, 0);
+	udelay(1);
+
+	/* Set value 1 to pin */
+	gpio_set_value(gpio, 1);
+	udelay(1);
+
+	return 0;
 }
 
 static int cqspi_versal_indirect_read_dma(struct cqspi_flash_pdata *f_pdata,
@@ -1722,6 +1782,12 @@ static int cqspi_probe(struct platform_device *pdev)
 		goto probe_setup_failed;
 	}
 
+	if (ddata->device_reset) {
+		ret = ddata->device_reset(cqspi, CQSPI_RESET_TYPE_HWPIN);
+		if (ret)
+			goto probe_setup_failed;
+	}
+
 	if (cqspi->use_direct_mode) {
 		ret = cqspi_request_mmap_dma(cqspi);
 		if (ret == -EPROBE_DEFER)
@@ -1819,6 +1885,7 @@ static const struct cqspi_driver_platdata versal_ospi = {
 	.quirks = CQSPI_DISABLE_DAC_MODE | CQSPI_SUPPORT_EXTERNAL_DMA,
 	.indirect_read_dma = cqspi_versal_indirect_read_dma,
 	.get_dma_status = cqspi_get_versal_dma_status,
+	.device_reset = cqspi_versal_device_reset,
 };
 
 static const struct of_device_id cqspi_dt_ids[] = {
