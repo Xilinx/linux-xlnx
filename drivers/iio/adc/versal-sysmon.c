@@ -335,7 +335,8 @@ static int sysmon_read_raw(struct iio_dev *indio_dev,
 
 		case IIO_VOLTAGE:
 			offset = sysmon_supply_offset(chan->address);
-			sysmon_read_reg(sysmon, offset, val);
+			sysmon_read_reg(sysmon, offset, &regval);
+			*val = (int)regval;
 			*val2 = 0;
 			ret = IIO_VAL_INT;
 			break;
@@ -951,7 +952,7 @@ static int get_hw_node_properties(struct platform_device *pdev,
 			if (!region)
 				return -ENOMEM;
 
-			region->id = id;
+			region->id = (enum sysmon_region)id;
 			INIT_LIST_HEAD(&region->node_list);
 			list_add(&region->list, region_list);
 		}
