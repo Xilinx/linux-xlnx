@@ -22,6 +22,9 @@
 
 #define SYSMON_FRACTIONAL_DENOM		128
 
+#define SYSMON_HBM_TEMP_SHIFT	16U
+#define SYSMON_HBM_TEMP_MASK	GENMASK(6, 0)
+
 static bool secure_mode;
 module_param(secure_mode, bool, 0444);
 MODULE_PARM_DESC(secure_mode,
@@ -80,6 +83,11 @@ static const struct iio_chan_spec temp_channels[] = {
 static const struct iio_chan_spec temp_events[] = {
 	SYSMON_CHAN_TEMP_EVENT(TEMP_EVENT, "temp", sysmon_temp_events),
 	SYSMON_CHAN_TEMP_EVENT(OT_EVENT, "ot", sysmon_temp_events),
+};
+
+/* HBM temperature channel attributes */
+static const struct iio_chan_spec temp_hbm_channels[] = {
+	SYSMON_CHAN_TEMP(TEMP_HBM, "temp_hbm"),
 };
 
 static inline void sysmon_direct_read_reg(struct sysmon *sysmon, u32 offset, u32 *data)
@@ -159,6 +167,8 @@ static u32 sysmon_temp_offset(int address)
 		return SYSMON_TEMP_MAX_MAX;
 	case TEMP_MIN_MIN:
 		return SYSMON_TEMP_MIN_MIN;
+	case TEMP_HBM:
+		return SYSMON_TEMP_HBM;
 	default:
 		return -EINVAL;
 	}
@@ -194,6 +204,20 @@ static u32 sysmon_supply_thresh_offset(int address,
 		return (address * 4) + SYSMON_SUPPLY_TH_LOW;
 
 	return -EINVAL;
+}
+
+/**
+ * sysmon_hbm_to_celsius() - The raw register value to degrees C.
+ * @raw_data: Raw register value
+ * @val: The numerator of the fraction needed by IIO_VAL_PROCESSED
+ * @val2: Denominator of the fraction needed by IIO_VAL_PROCESSED
+ *
+ * The function returns a fraction which returns celsius
+ */
+static void sysmon_hbm_to_celsius(int raw_data, int *val, int *val2)
+{
+	*val = (raw_data >> SYSMON_HBM_TEMP_SHIFT) & SYSMON_HBM_TEMP_MASK;
+	*val2 = SYSMON_FRACTIONAL_DENOM;
 }
 
 /**
@@ -293,15 +317,24 @@ static int sysmon_find_extreme_temp(int offset)
 	struct sysmon *sysmon;
 	u32 regval;
 	u32 extreme_val = SYSMON_LOWER_SATURATION_SIGNED;
-	bool is_min_channel = false;
+	bool is_min_channel = false, skip_hbm = true;
 
 	if (offset == SYSMON_TEMP_MIN || offset == SYSMON_TEMP_MIN_MIN) {
 		is_min_channel = true;
 		extreme_val = SYSMON_UPPER_SATURATION_SIGNED;
+	} else if (offset == SYSMON_TEMP_HBM) {
+		skip_hbm = false;
 	}
 
 	list_for_each_entry(sysmon, &sysmon_list_head, list) {
+		if (skip_hbm && sysmon->hbm_slr)
+			continue;
+		if (!skip_hbm && !sysmon->hbm_slr)
+			continue;
 		sysmon_read_reg(sysmon, offset, &regval);
+		if (sysmon->hbm_slr)
+			return regval;
+
 		if (!is_min_channel) {
 			/* Find the highest value */
 			if (compare(regval, extreme_val))
@@ -354,7 +387,11 @@ static int sysmon_read_raw(struct iio_dev *indio_dev,
 			/* In Deg C */
 			offset = sysmon_temp_offset(chan->address);
 			regval = sysmon_find_extreme_temp(offset);
-			sysmon_q8p7_to_celsius(regval, val, val2);
+			if (!sysmon->hbm_slr)
+				sysmon_q8p7_to_celsius(regval, val, val2);
+			else
+				sysmon_hbm_to_celsius(regval, val, val2);
+
 			ret = IIO_VAL_FRACTIONAL;
 			break;
 
@@ -999,6 +1036,9 @@ static int sysmon_parse_dt(struct iio_dev *indio_dev,
 	if (sysmon->master_slr) {
 		temp_chan_size = (sizeof(temp_channels) + sizeof(temp_events));
 		num_temp_chan = ARRAY_SIZE(temp_channels);
+	} else if (sysmon->hbm_slr) {
+		temp_chan_size = (sizeof(temp_hbm_channels));
+		num_temp_chan = ARRAY_SIZE(temp_hbm_channels);
 	} else {
 		temp_chan_size = sizeof(temp_events);
 		num_temp_chan = 0;
@@ -1054,9 +1094,16 @@ static int sysmon_parse_dt(struct iio_dev *indio_dev,
 		       sizeof(temp_channels));
 		indio_dev->num_channels += ARRAY_SIZE(temp_channels);
 	}
-	memcpy(sysmon_channels + num_supply_chan + num_temp_chan,
-	       temp_events, sizeof(temp_events));
-	indio_dev->num_channels += ARRAY_SIZE(temp_events);
+
+	if (sysmon->hbm_slr) {
+		memcpy(sysmon_channels + num_supply_chan, temp_hbm_channels,
+		       sizeof(temp_hbm_channels));
+		indio_dev->num_channels += num_temp_chan;
+	} else {
+		memcpy(sysmon_channels + num_supply_chan + num_temp_chan,
+		       temp_events, sizeof(temp_events));
+		indio_dev->num_channels += ARRAY_SIZE(temp_events);
+	}
 
 	indio_dev->channels = sysmon_channels;
 
@@ -1143,11 +1190,15 @@ static int sysmon_probe(struct platform_device *pdev)
 	}
 	mutex_unlock(&sysmon->mutex);
 
-	sysmon_write_reg(sysmon, SYSMON_NPI_LOCK, NPI_UNLOCK);
-	sysmon_write_reg(sysmon, SYSMON_IDR, 0xffffffff);
-	sysmon_write_reg(sysmon, SYSMON_ISR, 0xffffffff);
+	sysmon->hbm_slr = of_property_read_bool(pdev->dev.of_node, "xlnx,hbm");
 
-	sysmon->irq = platform_get_irq_optional(pdev, 0);
+	if (!sysmon->hbm_slr) {
+		sysmon_write_reg(sysmon, SYSMON_NPI_LOCK, NPI_UNLOCK);
+		sysmon_write_reg(sysmon, SYSMON_IDR, 0xffffffff);
+		sysmon_write_reg(sysmon, SYSMON_ISR, 0xffffffff);
+
+		sysmon->irq = platform_get_irq_optional(pdev, 0);
+	}
 
 	ret = sysmon_parse_dt(indio_dev, pdev);
 	if (ret)
@@ -1155,22 +1206,24 @@ static int sysmon_probe(struct platform_device *pdev)
 
 	INIT_DELAYED_WORK(&sysmon->sysmon_unmask_work,
 			  sysmon_unmask_worker);
-	sysmon_init_interrupt(sysmon);
+	if (!sysmon->hbm_slr) {
+		sysmon_init_interrupt(sysmon);
 
-	if (sysmon->irq == -EPROBE_DEFER)
-		return -EPROBE_DEFER;
+		if (sysmon->irq == -EPROBE_DEFER)
+			return -EPROBE_DEFER;
 
-	if (sysmon->irq > 0) {
-		g_sysmon = sysmon;
-		ret = devm_request_irq(&pdev->dev, sysmon->irq, &sysmon_iio_irq,
-				       0, "sysmon-irq", indio_dev);
-		if (ret < 0)
-			return ret;
-	} else {
-		INIT_DELAYED_WORK(&sysmon->sysmon_events_work,
-				  sysmon_events_worker);
-		schedule_delayed_work(&sysmon->sysmon_events_work,
-				      msecs_to_jiffies(SYSMON_EVENT_WORK_DELAY_MS));
+		if (sysmon->irq > 0) {
+			g_sysmon = sysmon;
+			ret = devm_request_irq(&pdev->dev, sysmon->irq, &sysmon_iio_irq,
+					       0, "sysmon-irq", indio_dev);
+			if (ret < 0)
+				return ret;
+		} else {
+			INIT_DELAYED_WORK(&sysmon->sysmon_events_work,
+					  sysmon_events_worker);
+			schedule_delayed_work(&sysmon->sysmon_events_work,
+					      msecs_to_jiffies(SYSMON_EVENT_WORK_DELAY_MS));
+		}
 	}
 
 	platform_set_drvdata(pdev, indio_dev);
