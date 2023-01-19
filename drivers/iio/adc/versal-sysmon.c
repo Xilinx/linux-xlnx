@@ -2,8 +2,8 @@
 /*
  * Xilinx SYSMON for Versal
  *
- * Copyright (C) 2019 - 2022 Xilinx, Inc.
- * Copyright (C) 2022 Advanced Micro Devices, Inc.
+ * Copyright (C) 2019 - 2022, Xilinx, Inc.
+ * Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc.
  *
  * Description:
  * This driver is developed for SYSMON on Versal. The driver supports INDIO Mode
@@ -19,6 +19,8 @@
 
 #define SYSMON_EVENT_WORK_DELAY_MS	1000
 #define SYSMON_UNMASK_WORK_DELAY_MS	500
+
+#define SYSMON_FRACTIONAL_DENOM		128
 
 static bool secure_mode;
 module_param(secure_mode, bool, 0444);
@@ -205,7 +207,7 @@ static u32 sysmon_supply_thresh_offset(int address,
 static void sysmon_q8p7_to_celsius(int raw_data, int *val, int *val2)
 {
 	*val = (raw_data & 0x8000) ? -(twoscomp(raw_data)) : raw_data;
-	*val2 = 128;
+	*val2 = SYSMON_FRACTIONAL_DENOM;
 }
 
 /**
