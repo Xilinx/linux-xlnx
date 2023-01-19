@@ -37,19 +37,6 @@ properties:
       - const: ref_clk
       - const: pclk
 
-  is-dual:
-    $ref: /schemas/types.yaml#/definitions/uint32
-    description:
-      The flash devices are connected in parallel,
-      and value should be 1.
-
-  is-stacked:
-    $ref: /schemas/types.yaml#/definitions/uint32
-    description:
-      The flash devices are connected in stacked,
-      to enable this mode, is-dual should be 0
-      and is-stacked should be 1.
-
 required:
   - compatible
   - reg
@@ -69,6 +56,4 @@ examples:
         clock-names = "ref_clk", "pclk";
         clocks = <&clkc 10>, <&clkc 43>;
         num-cs = <1>;
-        is-dual = <0x00>;
-        is-stacked = <0x01>;
     };

@@ -32,26 +32,6 @@ properties:
   clocks:
     maxItems: 2
 
-  is-dual:
-    $ref: /schemas/types.yaml#/definitions/uint32
-    description:
-      The flash devices are connected in parallel,
-      and value should be 1.
-
-  is-stacked:
-    $ref: /schemas/types.yaml#/definitions/uint32
-    description:
-      The flash devices are connected in stacked,
-      to enable this mode, is-dual should be 0
-      and is-stacked should be 1.
-
-  has-io-mode:
-    $ref: /schemas/types.yaml#/definitions/flag
-    description:
-      Describes the controller operating mode.
-      If exists controller will operate in IO
-      mode else DMA mode.
-
 required:
   - compatible
   - reg
@@ -76,8 +56,5 @@ examples:
         interrupt-parent = <&gic>;
         reg = <0x0 0xff0f0000 0x0 0x1000>,
               <0x0 0xc0000000 0x0 0x8000000>;
-        is-dual = <0x00>;
-        is-stacked = <0x01>;
-        has-io-mode;
       };
     };

@@ -23,7 +23,6 @@
 #include <linux/spinlock.h>
 #include <linux/workqueue.h>
 #include <linux/spi/spi-mem.h>
-#include <linux/mtd/spi-nor.h>
 
 /* Generic QSPI register offsets */
 #define GQSPI_CONFIG_OFST		0x00000100
@@ -51,7 +50,7 @@
 #define GQSPI_QSPIDMA_DST_I_MASK_OFST	0x00000820
 #define GQSPI_QSPIDMA_DST_ADDR_OFST	0x00000800
 #define GQSPI_QSPIDMA_DST_ADDR_MSB_OFST 0x00000828
-#define GQSPI_DATA_DLY_ADJ_OFST		0x000001F8
+#define GQSPI_DATA_DLY_ADJ_OFST         0x000001F8
 
 /* GQSPI register bit masks */
 #define GQSPI_SEL_MASK				0x00000001
@@ -140,14 +139,6 @@
 
 #define GQSPI_MAX_NUM_CS	2	/* Maximum number of chip selects */
 
-#define GQSPI_RX_BUS_WIDTH_QUAD		0x4
-#define GQSPI_RX_BUS_WIDTH_DUAL		0x2
-#define GQSPI_RX_BUS_WIDTH_SINGLE	0x1
-#define GQSPI_TX_BUS_WIDTH_QUAD		0x4
-#define GQSPI_TX_BUS_WIDTH_DUAL		0x2
-#define GQSPI_TX_BUS_WIDTH_SINGLE	0x1
-#define GQSPI_LPBK_DLY_ADJ_DLY_0	0x3
-#define GQSPI_LPBK_DLY_ADJ_LPBK_SHIFT	5
 #define GQSPI_USE_DATA_DLY		0x1
 #define GQSPI_USE_DATA_DLY_SHIFT	31
 #define GQSPI_DATA_DLY_ADJ_VALUE	0x2
@@ -164,7 +155,6 @@
 #define GQSPI_FREQ_40MHZ	40000000
 #define GQSPI_FREQ_100MHZ	100000000
 #define GQSPI_FREQ_150MHZ	150000000
-#define IOU_TAPDLY_BYPASS_MASK	0x7
 
 #define SPI_AUTOSUSPEND_TIMEOUT		3000
 enum mode_type {GQSPI_MODE_IO, GQSPI_MODE_DMA};
@@ -193,11 +183,8 @@ struct qspi_platform_data {
  * @genfifobus:		Used to select the upper or lower bus
  * @dma_rx_bytes:	Remaining bytes to receive by DMA mode
  * @dma_addr:		DMA address after mapping the kernel buffer
- * @tx_bus_width:	Used to represent number of data wires for tx
- * @rx_bus_width:	Used to represent number of data wires
  * @genfifoentry:	Used for storing the genfifoentry instruction.
  * @mode:		Defines the mode in which QSPI is operating
-* @io_mode:		Defines the operating mode, either IO or dma
  * @data_completion:	completion structure
  * @op_lock:		Operational lock
  * @speed_hz:          Current SPI bus clock speed in hz
@@ -218,38 +205,13 @@ struct zynqmp_qspi {
 	u32 genfifobus;
 	u32 dma_rx_bytes;
 	dma_addr_t dma_addr;
-	u32 rx_bus_width;
-	u32 tx_bus_width;
 	u32 genfifoentry;
 	enum mode_type mode;
 	struct completion data_completion;
 	struct mutex op_lock;
 	u32 speed_hz;
-	bool io_mode;
 	bool has_tapdelay;
 };
-
-/**
- * zynqmp_get_addr_buswidth - Get address buswidth
- * @op:	The memory operation to execute
- *
- * This function gets address busswith
- *
- * Return:	buswidth
- */
-static u8 zynqmp_get_addr_buswidth(const struct spi_mem_op *op)
-{
-	if (op->cmd.opcode == SPINOR_OP_BE_4K ||
-	    op->cmd.opcode == SPINOR_OP_BE_32K ||
-	    op->cmd.opcode == SPINOR_OP_CHIP_ERASE ||
-	    op->cmd.opcode == SPINOR_OP_SE ||
-	    op->cmd.opcode == SPINOR_OP_BE_4K_4B ||
-	    op->cmd.opcode == SPINOR_OP_BE_32K_4B ||
-	    op->cmd.opcode == SPINOR_OP_SE_4B)
-		return op->cmd.buswidth;
-	else
-		return op->addr.buswidth;
-}
 
 /**
  * zynqmp_gqspi_read - For GQSPI controller read operation
@@ -367,20 +329,8 @@ static void zynqmp_qspi_set_tapdelay(struct zynqmp_qspi *xqspi, u32 baudrateval)
 		zynqmp_gqspi_write(xqspi,
 				   IOU_TAPDLY_BYPASS_OFST, tapdlybypass);
 	}
-
 	zynqmp_gqspi_write(xqspi, GQSPI_LPBK_DLY_ADJ_OFST, lpbkdlyadj);
 	zynqmp_gqspi_write(xqspi, GQSPI_DATA_DLY_ADJ_OFST, datadlyadj);
-}
-
-static u32 zynqmp_disable_intr(struct zynqmp_qspi *xqspi)
-{
-	u32 value;
-
-	zynqmp_gqspi_write(xqspi, GQSPI_IDR_OFST, GQSPI_ISR_IDR_MASK);
-	value = zynqmp_gqspi_read(xqspi, GQSPI_IMASK_OFST);
-	zynqmp_gqspi_write(xqspi, GQSPI_IDR_OFST, GQSPI_ISR_IDR_MASK);
-
-	return value;
 }
 
 /**
@@ -481,11 +431,11 @@ static void zynqmp_qspi_init_hw(struct zynqmp_qspi *xqspi)
 	zynqmp_gqspi_selectslave(xqspi,
 				 GQSPI_SELECT_FLASH_CS_LOWER,
 				 GQSPI_SELECT_FLASH_BUS_LOWER);
-	if (!xqspi->io_mode)
-		/* Initialize DMA */
-		zynqmp_gqspi_write(xqspi,
-				   GQSPI_QSPIDMA_DST_CTRL_OFST,
-				   GQSPI_QSPIDMA_DST_CTRL_RESET_VAL);
+	/* Initialize DMA */
+	zynqmp_gqspi_write(xqspi,
+			   GQSPI_QSPIDMA_DST_CTRL_OFST,
+			   GQSPI_QSPIDMA_DST_CTRL_RESET_VAL);
+
 	/* Enable the GQSPI */
 	zynqmp_gqspi_write(xqspi, GQSPI_EN_OFST, GQSPI_EN_MASK);
 }
@@ -516,25 +466,14 @@ static void zynqmp_qspi_chipselect(struct spi_device *qspi, bool is_high)
 	u32 genfifoentry = 0, statusreg;
 
 	genfifoentry |= GQSPI_GENFIFO_MODE_SPI;
+
 	if (!is_high) {
-		if (qspi->master->flags & SPI_MASTER_BOTH_CS) {
-			zynqmp_gqspi_selectslave(xqspi,
-						 GQSPI_SELECT_FLASH_CS_BOTH,
-						 GQSPI_SELECT_FLASH_BUS_BOTH);
-		} else if (qspi->master->flags & SPI_MASTER_U_PAGE) {
-			zynqmp_gqspi_selectslave(xqspi,
-						 GQSPI_SELECT_FLASH_CS_UPPER,
-						 GQSPI_SELECT_FLASH_BUS_LOWER);
+		if (!qspi->chip_select) {
+			xqspi->genfifobus = GQSPI_GENFIFO_BUS_LOWER;
+			xqspi->genfifocs = GQSPI_GENFIFO_CS_LOWER;
 		} else {
-			if (!qspi->chip_select) {
-				zynqmp_gqspi_selectslave(xqspi,
-							 GQSPI_SELECT_FLASH_CS_LOWER,
-							 GQSPI_SELECT_FLASH_BUS_LOWER);
-			} else {
-				zynqmp_gqspi_selectslave(xqspi,
-							 GQSPI_SELECT_FLASH_CS_UPPER,
-							 GQSPI_SELECT_FLASH_BUS_UPPER);
-			}
+			xqspi->genfifobus = GQSPI_GENFIFO_BUS_UPPER;
+			xqspi->genfifocs = GQSPI_GENFIFO_CS_UPPER;
 		}
 		genfifoentry |= xqspi->genfifobus;
 		genfifoentry |= xqspi->genfifocs;
@@ -556,7 +495,8 @@ static void zynqmp_qspi_chipselect(struct spi_device *qspi, bool is_high)
 	do {
 		statusreg = zynqmp_gqspi_read(xqspi, GQSPI_ISR_OFST);
 
-		if (statusreg & GQSPI_ISR_GENFIFOEMPTY_MASK)
+		if ((statusreg & GQSPI_ISR_GENFIFOEMPTY_MASK) &&
+		    (statusreg & GQSPI_ISR_TXEMPTY_MASK))
 			break;
 		cpu_relax();
 	} while (!time_after_eq(jiffies, timeout));
@@ -642,7 +582,6 @@ static int zynqmp_qspi_config_op(struct zynqmp_qspi *xqspi,
 		zynqmp_gqspi_write(xqspi, GQSPI_CONFIG_OFST, config_reg);
 		zynqmp_qspi_set_tapdelay(xqspi, baud_rate_val);
 	}
-
 	return 0;
 }
 
@@ -659,24 +598,10 @@ static int zynqmp_qspi_setup_op(struct spi_device *qspi)
 {
 	struct spi_controller *ctlr = qspi->master;
 	struct zynqmp_qspi *xqspi = spi_controller_get_devdata(ctlr);
-	struct device *dev = &ctlr->dev;
-	int ret;
 
 	if (ctlr->busy)
 		return -EBUSY;
 
-	ret = clk_enable(xqspi->refclk);
-	if (ret) {
-		dev_err(dev, "Cannot enable device clock.\n");
-		return ret;
-	}
-
-	ret = clk_enable(xqspi->pclk);
-	if (ret) {
-		dev_err(dev, "Cannot enable APB clock.\n");
-		clk_disable(xqspi->refclk);
-		return ret;
-	}
 	zynqmp_gqspi_write(xqspi, GQSPI_EN_OFST, GQSPI_EN_MASK);
 
 	return 0;
@@ -801,12 +726,6 @@ static void zynqmp_qspi_fillgenfifo(struct zynqmp_qspi *xqspi, u8 nbits,
 		if (imm_data != 0) {
 			genfifoentry &= ~GQSPI_GENFIFO_EXP;
 			genfifoentry &= ~GQSPI_GENFIFO_IMM_DATA_MASK;
-			if (imm_data % 4 != 0) {
-				if (((imm_data + 4 - (imm_data % 4)) & 0xFF) == 0x00)
-					imm_data = 0xFF;
-				else
-					imm_data = imm_data + 4 - (imm_data % 4);
-			}
 			genfifoentry |= (u8)(imm_data & 0xFF);
 			zynqmp_gqspi_write(xqspi, GQSPI_GEN_FIFO_OFST,
 					   genfifoentry);
@@ -896,34 +815,28 @@ static irqreturn_t zynqmp_qspi_irq(int irq, void *dev_id)
 		zynqmp_gqspi_write(xqspi, GQSPI_QSPIDMA_DST_I_STS_OFST,
 				   dma_status);
 	}
+
+	if (mask & GQSPI_ISR_TXNOT_FULL_MASK) {
+		zynqmp_qspi_filltxfifo(xqspi, GQSPI_TX_FIFO_FILL);
+		ret = IRQ_HANDLED;
+	}
+
 	if (dma_status & GQSPI_QSPIDMA_DST_I_STS_DONE_MASK) {
 		zynqmp_process_dma_irq(xqspi);
 		ret = IRQ_HANDLED;
-	} else if ((mask & GQSPI_IER_RXNEMPTY_MASK)) {
-		zynqmp_qspi_readrxfifo(xqspi, GQSPI_RX_FIFO_FILL);
-		ret = IRQ_HANDLED;
-	}
-	if (!(mask & GQSPI_IER_RXEMPTY_MASK) &&
-	    (mask & GQSPI_IER_GENFIFOEMPTY_MASK)) {
+	} else if (!(mask & GQSPI_IER_RXEMPTY_MASK) &&
+			(mask & GQSPI_IER_GENFIFOEMPTY_MASK)) {
 		zynqmp_qspi_readrxfifo(xqspi, GQSPI_RX_FIFO_FILL);
 		ret = IRQ_HANDLED;
 	}
 
 	if (xqspi->bytes_to_receive == 0 && xqspi->bytes_to_transfer == 0 &&
 	    ((status & GQSPI_IRQ_MASK) == GQSPI_IRQ_MASK)) {
-		goto transfer_complete;
-	}
-	if (mask & GQSPI_ISR_TXNOT_FULL_MASK) {
-		zynqmp_qspi_filltxfifo(xqspi, GQSPI_TX_FIFO_FILL);
+		zynqmp_gqspi_write(xqspi, GQSPI_IDR_OFST, GQSPI_ISR_IDR_MASK);
+		complete(&xqspi->data_completion);
 		ret = IRQ_HANDLED;
 	}
-
 	return ret;
-
-transfer_complete:
-	zynqmp_disable_intr(xqspi);
-	complete(&xqspi->data_completion);
-	return IRQ_HANDLED;
 }
 
 /**
@@ -938,9 +851,8 @@ static int zynqmp_qspi_setuprxdma(struct zynqmp_qspi *xqspi)
 	dma_addr_t addr;
 	u64 dma_align =  (u64)(uintptr_t)xqspi->rxbuf;
 
-	if ((xqspi->bytes_to_receive < 8 || xqspi->io_mode) ||
-	    ((dma_align & GQSPI_DMA_UNALIGN) != 0x0) ||
-	    is_vmalloc_addr(xqspi->rxbuf)) {
+	if (xqspi->bytes_to_receive < 8 ||
+	    ((dma_align & GQSPI_DMA_UNALIGN) != 0x0)) {
 		/* Setting to IO mode */
 		config_reg = zynqmp_gqspi_read(xqspi, GQSPI_CONFIG_OFST);
 		config_reg &= ~GQSPI_CFG_MODE_EN_MASK;
@@ -1069,26 +981,10 @@ static int __maybe_unused zynqmp_qspi_resume(struct device *dev)
 	struct zynqmp_qspi *xqspi = dev_get_drvdata(dev);
 	struct spi_controller *ctlr = xqspi->ctlr;
 
-	int ret = 0;
+	zynqmp_gqspi_write(xqspi, GQSPI_EN_OFST, GQSPI_EN_MASK);
 
-	ret = clk_enable(xqspi->pclk);
-	if (ret) {
-		dev_err(dev, "Cannot enable APB clock.\n");
-		return ret;
-	}
-
-	ret = clk_enable(xqspi->refclk);
-	if (ret) {
-		dev_err(dev, "Cannot enable device clock.\n");
-		clk_disable(xqspi->pclk);
-		return ret;
-	}
-
-	zynqmp_qspi_init_hw(xqspi);
 	spi_controller_resume(ctlr);
 
-	clk_disable(xqspi->refclk);
-	clk_disable(xqspi->pclk);
 	return 0;
 }
 
@@ -1104,8 +1000,8 @@ static int __maybe_unused zynqmp_runtime_suspend(struct device *dev)
 {
 	struct zynqmp_qspi *xqspi = dev_get_drvdata(dev);
 
-	clk_disable(xqspi->refclk);
-	clk_disable(xqspi->pclk);
+	clk_disable_unprepare(xqspi->refclk);
+	clk_disable_unprepare(xqspi->pclk);
 
 	return 0;
 }
@@ -1123,16 +1019,16 @@ static int __maybe_unused zynqmp_runtime_resume(struct device *dev)
 	struct zynqmp_qspi *xqspi = dev_get_drvdata(dev);
 	int ret;
 
-	ret = clk_enable(xqspi->pclk);
+	ret = clk_prepare_enable(xqspi->pclk);
 	if (ret) {
 		dev_err(dev, "Cannot enable APB clock.\n");
 		return ret;
 	}
 
-	ret = clk_enable(xqspi->refclk);
+	ret = clk_prepare_enable(xqspi->refclk);
 	if (ret) {
 		dev_err(dev, "Cannot enable device clock.\n");
-		clk_disable(xqspi->pclk);
+		clk_disable_unprepare(xqspi->pclk);
 		return ret;
 	}
 
@@ -1159,7 +1055,6 @@ static int zynqmp_qspi_exec_op(struct spi_mem *mem,
 	u32 genfifoentry = 0;
 	u16 opcode = op->cmd.opcode;
 	u64 opaddr;
-	u8 addrbuswidth = zynqmp_get_addr_buswidth(op);
 
 	dev_dbg(xqspi->dev, "cmd:%#x mode:%d.%d.%d.%d\n",
 		op->cmd.opcode, op->cmd.buswidth, op->addr.buswidth,
@@ -1177,12 +1072,11 @@ static int zynqmp_qspi_exec_op(struct spi_mem *mem,
 		xqspi->rxbuf = NULL;
 		xqspi->bytes_to_transfer = op->cmd.nbytes;
 		xqspi->bytes_to_receive = 0;
-		zynqmp_qspi_write_op(xqspi, GQSPI_TX_BUS_WIDTH_SINGLE, genfifoentry);
+		zynqmp_qspi_write_op(xqspi, op->cmd.buswidth, genfifoentry);
 		zynqmp_gqspi_write(xqspi, GQSPI_CONFIG_OFST,
 				   zynqmp_gqspi_read(xqspi, GQSPI_CONFIG_OFST) |
 				   GQSPI_CFG_START_GEN_FIFO_MASK);
 		zynqmp_gqspi_write(xqspi, GQSPI_IER_OFST,
-				   GQSPI_IER_TXEMPTY_MASK |
 				   GQSPI_IER_GENFIFOEMPTY_MASK |
 				   GQSPI_IER_TXNOT_FULL_MASK);
 		if (!wait_for_completion_timeout
@@ -1203,7 +1097,7 @@ static int zynqmp_qspi_exec_op(struct spi_mem *mem,
 		xqspi->rxbuf = NULL;
 		xqspi->bytes_to_transfer = op->addr.nbytes;
 		xqspi->bytes_to_receive = 0;
-		zynqmp_qspi_write_op(xqspi, addrbuswidth, genfifoentry);
+		zynqmp_qspi_write_op(xqspi, op->addr.buswidth, genfifoentry);
 		zynqmp_gqspi_write(xqspi, GQSPI_CONFIG_OFST,
 				   zynqmp_gqspi_read(xqspi,
 						     GQSPI_CONFIG_OFST) |
@@ -1240,10 +1134,6 @@ static int zynqmp_qspi_exec_op(struct spi_mem *mem,
 	}
 
 	if (op->data.nbytes) {
-		if (mem->spi->master->flags & SPI_MASTER_DATA_STRIPE) {
-			if (update_stripe(op))
-				genfifoentry |= GQSPI_GENFIFO_STRIPE;
-		}
 		reinit_completion(&xqspi->data_completion);
 		if (op->data.dir == SPI_MEM_DATA_OUT) {
 			xqspi->txbuf = (u8 *)op->data.buf.out;
@@ -1286,7 +1176,7 @@ static int zynqmp_qspi_exec_op(struct spi_mem *mem,
 			}
 		}
 		if (!wait_for_completion_timeout
-		    (&xqspi->data_completion, msecs_to_jiffies(1000000)))
+		    (&xqspi->data_completion, msecs_to_jiffies(1000)))
 			err = -ETIMEDOUT;
 	}
 
@@ -1298,20 +1188,9 @@ return_err:
 	return err;
 }
 
-static int __maybe_unused zynqmp_runtime_idle(struct device *dev)
-{
-	struct zynqmp_qspi *xqspi = dev_get_drvdata(dev);
-	u32 value;
-
-	value = zynqmp_gqspi_read(xqspi, GQSPI_EN_OFST);
-	if (value)
-		return -EBUSY;
-
-	return 0;
-}
 static const struct dev_pm_ops zynqmp_qspi_dev_pm_ops = {
 	SET_RUNTIME_PM_OPS(zynqmp_runtime_suspend,
-			   zynqmp_runtime_resume, zynqmp_runtime_idle)
+			   zynqmp_runtime_resume, NULL)
 	SET_SYSTEM_SLEEP_PM_OPS(zynqmp_qspi_suspend, zynqmp_qspi_resume)
 };
 
@@ -1343,11 +1222,8 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 	struct spi_controller *ctlr;
 	struct zynqmp_qspi *xqspi;
 	struct device *dev = &pdev->dev;
-	struct device_node *nc;
 	struct device_node *np = dev->of_node;
 	u32 num_cs;
-	u32 rx_bus_width;
-	u32 tx_bus_width;
 	const struct qspi_platform_data *p_data;
 
 	ctlr = spi_alloc_master(&pdev->dev, sizeof(*xqspi));
@@ -1404,8 +1280,6 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 	pm_runtime_set_active(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
 
-	if (of_property_read_bool(pdev->dev.of_node, "has-io-mode"))
-		xqspi->io_mode = true;
 	ret = pm_runtime_get_sync(&pdev->dev);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Failed to pm_runtime_get_sync: %d\n", ret);
@@ -1423,7 +1297,6 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 	xqspi->irq = platform_get_irq(pdev, 0);
 	if (xqspi->irq <= 0) {
 		ret = -ENXIO;
-		dev_err(dev, "irq resource not found\n");
 		goto clk_dis_all;
 	}
 	ret = devm_request_irq(&pdev->dev, xqspi->irq, zynqmp_qspi_irq,
@@ -1449,29 +1322,6 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 	} else {
 		ctlr->num_chipselect = num_cs;
 	}
-	xqspi->rx_bus_width = GQSPI_RX_BUS_WIDTH_SINGLE;
-	for_each_available_child_of_node(pdev->dev.of_node, nc) {
-		ret = of_property_read_u32(nc, "spi-rx-bus-width",
-					   &rx_bus_width);
-		if (!ret) {
-			xqspi->rx_bus_width = rx_bus_width;
-			break;
-		}
-	}
-	if (ret)
-		dev_err(dev, "rx bus width not found\n");
-
-	xqspi->tx_bus_width = GQSPI_TX_BUS_WIDTH_SINGLE;
-	for_each_available_child_of_node(pdev->dev.of_node, nc) {
-		ret = of_property_read_u32(nc, "spi-tx-bus-width",
-					   &tx_bus_width);
-		if (!ret) {
-			xqspi->tx_bus_width = tx_bus_width;
-			break;
-		}
-	}
-	if (ret)
-		dev_err(dev, "tx bus width not found\n");
 
 	ctlr->bits_per_word_mask = SPI_BPW_MASK(8);
 	ctlr->mem_ops = &zynqmp_qspi_mem_ops;
