@@ -54,6 +54,11 @@ properties:
     description: |
       PLM specified sysmon node id.
 
+  xlnx,hbm:
+    description: |
+      Exists if node refers to a HBM SLR.
+    type: boolean
+
 patternProperties:
   "^supply@([0-9]{1,2}|1[0-5][0-9])$":
     type: object
