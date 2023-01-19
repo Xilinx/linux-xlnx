@@ -2,8 +2,8 @@
 /*
  * Xilinx SYSMON for Versal
  *
- * Copyright (C) 2019 - 2022 Xilinx, Inc.
- * Copyright (C) 2022 Advanced Micro Devices, Inc.
+ * Copyright (C) 2019 - 2022, Xilinx, Inc.
+ * Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc.
  *
  * Description:
  * This driver is developed for SYSMON on Versal. The driver supports INDIO Mode
@@ -42,6 +42,7 @@
 #define TEMP_MIN_MIN	163
 #define TEMP_EVENT	164
 #define OT_EVENT	165
+#define TEMP_HBM	166
 
 /* Register Unlock Code */
 #define NPI_UNLOCK	0xF9E8D7C6
@@ -66,6 +67,7 @@
 #define SYSMON_SUPPLY_TH_UP	0x1C80
 #define SYSMON_TEMP_MAX_MAX	0x1F90
 #define SYSMON_TEMP_MIN_MIN	0x1F8C
+#define SYSMON_TEMP_HBM	0x0000
 #define SYSMON_TEMP_EV_CFG	0x1F84
 #define SYSMON_NODE_OFFSET	0x1FAC
 #define SYSMON_STATUS_RESET	0x1F94
@@ -153,6 +155,7 @@ enum sysmon_alarm_bit {
  * @ops: read write operations for sysmon registers
  * @pm_info: plm address of sysmon
  * @master_slr: to keep master sysmon info
+ * @hbm_slr: flag if HBM slr is present
  *
  * This structure contains necessary state for Sysmon driver to operate
  */
@@ -174,6 +177,7 @@ struct sysmon {
 	struct sysmon_ops *ops;
 	u32 pm_info;
 	bool master_slr;
+	bool hbm_slr;
 };
 
 struct sysmon_ops {
