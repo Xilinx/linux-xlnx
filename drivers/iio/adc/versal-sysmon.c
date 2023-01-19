@@ -1156,14 +1156,16 @@ static int sysmon_probe(struct platform_device *pdev)
 	INIT_DELAYED_WORK(&sysmon->sysmon_unmask_work,
 			  sysmon_unmask_worker);
 	sysmon_init_interrupt(sysmon);
+
+	if (sysmon->irq == -EPROBE_DEFER)
+		return -EPROBE_DEFER;
+
 	if (sysmon->irq > 0) {
 		g_sysmon = sysmon;
 		ret = devm_request_irq(&pdev->dev, sysmon->irq, &sysmon_iio_irq,
 				       0, "sysmon-irq", indio_dev);
 		if (ret < 0)
 			return ret;
-	} else if (sysmon->irq == -EPROBE_DEFER) {
-		return -EPROBE_DEFER;
 	} else {
 		INIT_DELAYED_WORK(&sysmon->sysmon_events_work,
 				  sysmon_events_worker);
