@@ -157,7 +157,6 @@ extern int spi_delay_exec(struct spi_delay *_delay, struct spi_transfer *xfer);
  *	not using a GPIO line)
  * @word_delay: delay to be inserted between consecutive
  *	words of a transfer
- * @multi_die: Flash device with multiple dies.
  * @cs_setup: delay to be introduced by the controller after CS is asserted
  * @cs_hold: delay to be introduced by the controller before CS is deasserted
  * @cs_inactive: delay to be introduced by the controller after CS is
@@ -202,7 +201,6 @@ struct spi_device {
 	const char		*driver_override;
 	struct gpio_desc	*cs_gpiod;	/* Chip select gpio desc */
 	struct spi_delay	word_delay; /* Inter-word delay */
-	bool			multi_die;	/* flash with multiple dies*/
 	/* CS delays */
 	struct spi_delay	cs_setup;
 	struct spi_delay	cs_hold;
@@ -533,21 +531,8 @@ struct spi_controller {
 #define SPI_CONTROLLER_MUST_TX		BIT(4)	/* Requires tx */
 
 #define SPI_MASTER_GPIO_SS		BIT(5)	/* GPIO CS must select slave */
-	/*
-	 * Controller may support data stripe feature when more than one
-	 * chips are present.
-	 * Setting data stripe will send data in following manner:
-	 * -> even bytes i.e. 0, 2, 4,... are transmitted on lower data bus
-	 * -> odd bytes i.e. 1, 3, 5,.. are transmitted on upper data bus
-	 */
-#define SPI_MASTER_DATA_STRIPE BIT(7)		/* support data stripe */
-	/*
-	 * Controller may support asserting more than one chip select at once.
-	 * This flag will enable that feature.
-	 */
-#define SPI_MASTER_BOTH_CS	BIT(8)		/* assert both chip selects */
-#define SPI_MASTER_U_PAGE	BIT(9)		/* select upper flash */
-	/* flag indicating if the allocation of this struct is devres-managed */
+
+	/* Flag indicating if the allocation of this struct is devres-managed */
 	bool			devm_allocated;
 
 	/* Flag indicating this is an SPI slave controller */
@@ -864,8 +849,6 @@ struct spi_res {
  * @len: size of rx and tx buffers (in bytes)
  * @speed_hz: Select a speed other than the device default for this
  *      transfer. If 0 the default (from @spi_device) is used.
- * @dummy: number of dummy cycles.
- * @stripe: true-> enable stripe, false-> disable stripe.
  * @bits_per_word: select a bits_per_word other than the device default
  *      for this transfer. If 0 the default (from @spi_device) is used.
  * @dummy_data: indicates transfer is dummy bytes transfer.
@@ -992,8 +975,6 @@ struct spi_transfer {
 	struct spi_delay	cs_change_delay;
 	struct spi_delay	word_delay;
 	u32		speed_hz;
-	u32		dummy;
-	bool		stripe;
 
 	u32		effective_speed_hz;
 

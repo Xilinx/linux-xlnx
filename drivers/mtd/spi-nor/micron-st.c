@@ -8,6 +8,9 @@
 
 #include "core.h"
 
+/* flash_info mfr_flag. Used to read proprietary FSR register. */
+#define USE_FSR		BIT(0)
+
 #define SPINOR_OP_RDFSR		0x70	/* Read flag status register */
 #define SPINOR_OP_CLFSR		0x50	/* Clear flag status register */
 #define SPINOR_OP_MT_DTR_RD	0xfd	/* Fast Read opcode in DTR mode */
@@ -64,10 +67,6 @@ static int micron_st_nor_octal_dtr_en(struct spi_nor *nor)
 	ret = spi_nor_write_any_volatile_reg(nor, &op, nor->reg_proto);
 	if (ret)
 		return ret;
-
-	if (nor->isstacked &&
-	    !(nor->spimem->spi->master->flags & SPI_MASTER_U_PAGE))
-		return 0;
 
 	/* Read flash ID to make sure the switch was successful. */
 	ret = spi_nor_read_id(nor, 0, 8, buf, SNOR_PROTO_8_8_8_DTR);
@@ -162,18 +161,10 @@ static const struct flash_info micron_nor_parts[] = {
 		.fixups = &mt35xu512aba_fixups
 	},
 	{ "mt35xu02g", INFO(0x2c5b1c, 0, 128 * 1024, 2048)
-		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_OCTAL_READ |
-			   SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP)
-		FIXUP_FLAGS(SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE)
+		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_OCTAL_READ)
+		FIXUP_FLAGS(SPI_NOR_4B_OPCODES)
 		MFR_FLAGS(USE_FSR)
-		.fixups = &mt35xu512aba_fixups
 	},
-	{ "mt35xu01g", INFO(0x2c5b1b, 0, 128 * 1024, 1024)
-		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_OCTAL_READ |
-			   SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP)
-		FIXUP_FLAGS(SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE)
-		MFR_FLAGS(USE_FSR)
-	  .fixups = &mt35xu512aba_fixups},
 };
 
 static const struct flash_info st_nor_parts[] = {
@@ -230,7 +221,6 @@ static const struct flash_info st_nor_parts[] = {
 		MFR_FLAGS(USE_FSR)
 	},
 	{ "mt25qu512a",  INFO6(0x20bb20, 0x104400, 64 * 1024, 1024)
-		FLAGS(SPI_NOR_HAS_LOCK)
 		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ)
 		FIXUP_FLAGS(SPI_NOR_4B_OPCODES)
 		MFR_FLAGS(USE_FSR)
@@ -248,7 +238,7 @@ static const struct flash_info st_nor_parts[] = {
 		MFR_FLAGS(USE_FSR)
 	},
 	{ "n25q00a",     INFO(0x20bb21, 0, 64 * 1024, 2048)
-		FLAGS(NO_CHIP_ERASE | SPI_NOR_HAS_LOCK)
+		FLAGS(NO_CHIP_ERASE)
 		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_QUAD_READ)
 		MFR_FLAGS(USE_FSR)
 	},
@@ -258,7 +248,7 @@ static const struct flash_info st_nor_parts[] = {
 		MFR_FLAGS(USE_FSR)
 	},
 	{ "mt25qu02g",   INFO(0x20bb22, 0, 64 * 1024, 4096)
-		FLAGS(NO_CHIP_ERASE | SPI_NOR_HAS_LOCK)
+		FLAGS(NO_CHIP_ERASE)
 		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ |
 			      SPI_NOR_QUAD_READ)
 		MFR_FLAGS(USE_FSR)
@@ -341,13 +331,9 @@ static int micron_st_nor_set_4byte_addr_mode(struct spi_nor *nor, bool enable)
 static int micron_st_nor_read_fsr(struct spi_nor *nor, u8 *fsr)
 {
 	int ret;
-	int len;
 
-	nor->isparallel ? (len = 2) : (len = 1);
 	if (nor->spimem) {
 		struct spi_mem_op op = MICRON_ST_RDFSR_OP(fsr);
-
-		op.data.nbytes = len;
 
 		if (nor->reg_proto == SNOR_PROTO_8_8_8_DTR) {
 			op.addr.nbytes = nor->params->rdsr_addr_nbytes;
@@ -364,14 +350,11 @@ static int micron_st_nor_read_fsr(struct spi_nor *nor, u8 *fsr)
 		ret = spi_mem_exec_op(nor->spimem, &op);
 	} else {
 		ret = spi_nor_controller_ops_read_reg(nor, SPINOR_OP_RDFSR, fsr,
-						      len);
+						      1);
 	}
 
 	if (ret)
 		dev_dbg(nor->dev, "error %d reading FSR\n", ret);
-
-	if (nor->isparallel)
-		fsr[0] &= fsr[1];
 
 	return ret;
 }
