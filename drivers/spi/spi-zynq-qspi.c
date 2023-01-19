@@ -62,7 +62,6 @@
 #define ZYNQ_QSPI_CONFIG_BAUD_DIV_MAX	GENMASK(2, 0) /* Baud rate maximum */
 #define ZYNQ_QSPI_CONFIG_BAUD_DIV_SHIFT	3 /* Baud rate divisor shift */
 #define ZYNQ_QSPI_CONFIG_PCS		BIT(10) /* Peripheral Chip Select */
-#define ZYNQ_QSPI_SS_SHIFT		10 /* Slave Select field shift in CR */
 
 /*
  * QSPI Interrupt Registers bit Masks
@@ -118,9 +117,6 @@
 /* Maximum number of chip selects */
 #define ZYNQ_QSPI_MAX_NUM_CS		2
 
-/* Maximum address width */
-#define ZYNQ_QSPI_MAX_ADDR_WIDTH	3
-
 /**
  * struct zynq_qspi - Defines qspi driver instance
  * @dev:		Pointer to the this device's information
@@ -133,9 +129,6 @@
  * @tx_bytes:		Number of bytes left to transfer
  * @rx_bytes:		Number of bytes left to receive
  * @data_completion:	completion structure
- * @is_dual:		Flag to indicate whether dual flash memories are used
- * @is_stripe:		Flag to indicate if data needs to be split between flashes
- *					(Used in dual parallel configuration)
  */
 struct zynq_qspi {
 	struct device *dev;
@@ -148,8 +141,6 @@ struct zynq_qspi {
 	int tx_bytes;
 	int rx_bytes;
 	struct completion data_completion;
-	u32 is_dual;
-	bool is_stripe;
 };
 
 /*
@@ -194,7 +185,14 @@ static void zynq_qspi_init_hw(struct zynq_qspi *xqspi, unsigned int num_cs)
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_ENABLE_OFFSET, 0);
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_IDIS_OFFSET, ZYNQ_QSPI_IXR_ALL_MASK);
 
-	zynq_qspi_write(xqspi, ZYNQ_QSPI_LINEAR_CFG_OFFSET, 0);
+	/* Disable linear mode as the boot loader may have used it */
+	config_reg = 0;
+	/* At the same time, enable dual mode if more than 1 CS is available */
+	if (num_cs > 1)
+		config_reg |= ZYNQ_QSPI_LCFG_TWO_MEM;
+
+	zynq_qspi_write(xqspi, ZYNQ_QSPI_LINEAR_CFG_OFFSET, config_reg);
+
 	/* Clear the RX FIFO */
 	while (zynq_qspi_read(xqspi, ZYNQ_QSPI_STATUS_OFFSET) &
 			      ZYNQ_QSPI_IXR_RXNEMTY_MASK)
@@ -219,26 +217,21 @@ static void zynq_qspi_init_hw(struct zynq_qspi *xqspi, unsigned int num_cs)
 			ZYNQ_QSPI_RX_THRESHOLD);
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_TX_THRESH_OFFSET,
 			ZYNQ_QSPI_TX_THRESHOLD);
-	if (xqspi->is_dual)
-		/* Enable two memories on separate buses */
-		zynq_qspi_write(xqspi, ZYNQ_QSPI_LINEAR_CFG_OFFSET,
-				(ZYNQ_QSPI_LCFG_TWO_MEM |
-				ZYNQ_QSPI_LCFG_SEP_BUS |
-				(1 << ZYNQ_QSPI_LCFG_DUMMY_SHIFT) |
-				ZYNQ_QSPI_FAST_READ_QOUT_CODE));
-#ifdef CONFIG_SPI_ZYNQ_QSPI_DUAL_STACKED
-	/* Enable two memories on shared bus */
-	zynq_qspi_write(xqspi, ZYNQ_QSPI_LINEAR_CFG_OFFSET,
-			(ZYNQ_QSPI_LCFG_TWO_MEM |
-			(1 << ZYNQ_QSPI_LCFG_DUMMY_SHIFT) |
-			ZYNQ_QSPI_FAST_READ_QOUT_CODE));
-#endif
+
+	zynq_qspi_write(xqspi, ZYNQ_QSPI_ENABLE_OFFSET,
+			ZYNQ_QSPI_ENABLE_ENABLE_MASK);
 }
 
 static bool zynq_qspi_supports_op(struct spi_mem *mem,
 				  const struct spi_mem_op *op)
 {
 	if (!spi_mem_default_supports_op(mem, op))
+		return false;
+
+	/*
+	 * The number of address bytes should be equal to or less than 3 bytes.
+	 */
+	if (op->addr.nbytes > 3)
 		return false;
 
 	return true;
@@ -252,15 +245,11 @@ static bool zynq_qspi_supports_op(struct spi_mem *mem,
 static void zynq_qspi_rxfifo_op(struct zynq_qspi *xqspi, unsigned int size)
 {
 	u32 data;
-	unsigned int xsize;
 
 	data = zynq_qspi_read(xqspi, ZYNQ_QSPI_RXD_OFFSET);
 
 	if (xqspi->rxbuf) {
-		xsize = size;
-		if (xqspi->is_dual && xqspi->is_stripe && (size % 2))
-			xsize++;
-		memcpy(xqspi->rxbuf, ((u8 *)&data) + 4 - xsize, size);
+		memcpy(xqspi->rxbuf, ((u8 *)&data) + 4 - size, size);
 		xqspi->rxbuf += size;
 	}
 
@@ -280,7 +269,6 @@ static void zynq_qspi_txfifo_op(struct zynq_qspi *xqspi, unsigned int size)
 		ZYNQ_QSPI_TXD_00_01_OFFSET, ZYNQ_QSPI_TXD_00_10_OFFSET,
 		ZYNQ_QSPI_TXD_00_11_OFFSET, ZYNQ_QSPI_TXD_00_00_OFFSET };
 	u32 data;
-	unsigned int xsize;
 
 	if (xqspi->txbuf) {
 		data = 0xffffffff;
@@ -291,11 +279,7 @@ static void zynq_qspi_txfifo_op(struct zynq_qspi *xqspi, unsigned int size)
 	}
 
 	xqspi->tx_bytes -= size;
-	xsize = size;
-	if (xqspi->is_dual && xqspi->is_stripe && (size % 2))
-		xsize++;
-
-	zynq_qspi_write(xqspi, offset[xsize - 1], data);
+	zynq_qspi_write(xqspi, offset[size - 1], data);
 }
 
 /**
@@ -308,28 +292,25 @@ static void zynq_qspi_chipselect(struct spi_device *spi, bool assert)
 	struct spi_controller *ctlr = spi->master;
 	struct zynq_qspi *xqspi = spi_controller_get_devdata(ctlr);
 	u32 config_reg;
-#ifdef CONFIG_SPI_ZYNQ_QSPI_DUAL_STACKED
-	u32 lqspi_cfg_reg;
-#endif
 
-	config_reg = zynq_qspi_read(xqspi, ZYNQ_QSPI_CONFIG_OFFSET);
-#ifdef CONFIG_SPI_ZYNQ_QSPI_DUAL_STACKED
-	lqspi_cfg_reg = zynq_qspi_read(xqspi, ZYNQ_QSPI_LINEAR_CFG_OFFSET);
-		if (spi->master->flags & SPI_MASTER_U_PAGE)
-			lqspi_cfg_reg |= ZYNQ_QSPI_LCFG_U_PAGE;
+	/* Select the lower (CS0) or upper (CS1) memory */
+	if (ctlr->num_chipselect > 1) {
+		config_reg = zynq_qspi_read(xqspi, ZYNQ_QSPI_LINEAR_CFG_OFFSET);
+		if (!spi->chip_select)
+			config_reg &= ~ZYNQ_QSPI_LCFG_U_PAGE;
 		else
-			lqspi_cfg_reg &= ~ZYNQ_QSPI_LCFG_U_PAGE;
-		zynq_qspi_write(xqspi, ZYNQ_QSPI_LINEAR_CFG_OFFSET,
-				lqspi_cfg_reg);
-#endif
-	/* Ground the line to assert the CS */
-	if (assert) {
-		config_reg &= ~ZYNQ_QSPI_CONFIG_PCS;
-		config_reg |= (((~(BIT(spi->chip_select))) <<
-			       ZYNQ_QSPI_SS_SHIFT) & ZYNQ_QSPI_CONFIG_PCS);
-	} else {
-		config_reg |= ZYNQ_QSPI_CONFIG_PCS;
+			config_reg |= ZYNQ_QSPI_LCFG_U_PAGE;
+
+		zynq_qspi_write(xqspi, ZYNQ_QSPI_LINEAR_CFG_OFFSET, config_reg);
 	}
+
+	/* Ground the line to assert the CS */
+	config_reg = zynq_qspi_read(xqspi, ZYNQ_QSPI_CONFIG_OFFSET);
+	if (assert)
+		config_reg &= ~ZYNQ_QSPI_CONFIG_PCS;
+	else
+		config_reg |= ZYNQ_QSPI_CONFIG_PCS;
+
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_CONFIG_OFFSET, config_reg);
 }
 
@@ -402,6 +383,8 @@ static int zynq_qspi_setup_op(struct spi_device *spi)
 	if (ctlr->busy)
 		return -EBUSY;
 
+	clk_enable(qspi->refclk);
+	clk_enable(qspi->pclk);
 	zynq_qspi_write(qspi, ZYNQ_QSPI_ENABLE_OFFSET,
 			ZYNQ_QSPI_ENABLE_ENABLE_MASK);
 
@@ -545,14 +528,10 @@ static int zynq_qspi_exec_mem_op(struct spi_mem *mem,
 	struct zynq_qspi *xqspi = spi_controller_get_devdata(mem->spi->master);
 	int err = 0, i;
 	u8 *tmpbuf;
-	u8 opaddr[ZYNQ_QSPI_MAX_ADDR_WIDTH];
 
 	dev_dbg(xqspi->dev, "cmd:%#x mode:%d.%d.%d.%d\n",
 		op->cmd.opcode, op->cmd.buswidth, op->addr.buswidth,
 		op->dummy.buswidth, op->data.buswidth);
-
-	if (op->addr.nbytes > ZYNQ_QSPI_MAX_ADDR_WIDTH)
-		return -EINVAL;
 
 	zynq_qspi_chipselect(mem->spi, true);
 	zynq_qspi_config_op(xqspi, mem->spi);
@@ -572,7 +551,6 @@ static int zynq_qspi_exec_mem_op(struct spi_mem *mem,
 	}
 
 	if (op->addr.nbytes) {
-		xqspi->txbuf = opaddr;
 		for (i = 0; i < op->addr.nbytes; i++) {
 			xqspi->txbuf[i] = op->addr.val >>
 					(8 * (op->addr.nbytes - i - 1));
@@ -612,8 +590,6 @@ static int zynq_qspi_exec_mem_op(struct spi_mem *mem,
 	}
 
 	if (op->data.nbytes) {
-		if (xqspi->is_dual)
-			xqspi->is_stripe = update_stripe(op);
 		reinit_completion(&xqspi->data_completion);
 		if (op->data.dir == SPI_MEM_DATA_OUT) {
 			xqspi->txbuf = (u8 *)op->data.buf.out;
@@ -634,9 +610,6 @@ static int zynq_qspi_exec_mem_op(struct spi_mem *mem,
 							       msecs_to_jiffies(1000)))
 			err = -ETIMEDOUT;
 	}
-	if (xqspi->is_stripe)
-		xqspi->is_stripe = false;
-
 	zynq_qspi_chipselect(mem->spi, false);
 
 	return err;
@@ -677,11 +650,6 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 		goto remove_master;
 	}
 
-	if (of_property_read_u32(pdev->dev.of_node, "is-dual",
-				 &xqspi->is_dual)) {
-		dev_warn(&pdev->dev, "couldn't determine configuration info");
-		dev_warn(&pdev->dev, "about dual memories. defaulting to single memory\n");
-	}
 	xqspi->pclk = devm_clk_get(&pdev->dev, "pclk");
 	if (IS_ERR(xqspi->pclk)) {
 		dev_err(&pdev->dev, "pclk clock not found.\n");
@@ -735,7 +703,7 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 		ctlr->num_chipselect = num_cs;
 	}
 
-	ctlr->mode_bits = SPI_CPOL | SPI_CPHA | SPI_RX_DUAL | SPI_RX_QUAD |
+	ctlr->mode_bits =  SPI_RX_DUAL | SPI_RX_QUAD |
 			    SPI_TX_DUAL | SPI_TX_QUAD;
 	ctlr->mem_ops = &zynq_qspi_mem_ops;
 	ctlr->setup = zynq_qspi_setup_op;

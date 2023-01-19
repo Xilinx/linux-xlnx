@@ -1352,10 +1352,10 @@ static int spi_transfer_wait(struct spi_controller *ctlr,
 		do_div(ms, speed_hz);
 
 		/*
-		 * Increase it twice and add 10000 ms tolerance, use
+		 * Increase it twice and add 200 ms tolerance, use
 		 * predefined maximum in case of overflow.
 		 */
-		ms += ms + 10000;
+		ms += ms + 200;
 		if (ms > UINT_MAX)
 			ms = UINT_MAX;
 
@@ -2297,9 +2297,6 @@ static int of_spi_parse_dt(struct spi_controller *ctlr, struct spi_device *spi,
 	if (!of_property_read_u32(nc, "spi-max-frequency", &value))
 		spi->max_speed_hz = value;
 
-	/* Multi die flash */
-	if (of_property_read_bool(nc, "multi-die"))
-		spi->multi_die = true;
 	return 0;
 }
 

@@ -55,8 +55,6 @@
 
 #define SPI_MEM_OP_NO_DATA	{ }
 
-#define SPI_MEM_DEV_MAX_ID_LEN		6
-
 /**
  * enum spi_mem_data_dir - describes the direction of a SPI memory data
  *			   transfer from the controller perspective
@@ -199,9 +197,6 @@ struct spi_mem {
 	struct spi_device *spi;
 	void *drvpriv;
 	const char *name;
-	u8 device_id[SPI_MEM_DEV_MAX_ID_LEN];
-	struct delayed_work	complete_work;
-	struct completion	request_completion;
 };
 
 /**
@@ -365,7 +360,6 @@ bool spi_mem_default_supports_op(struct spi_mem *mem,
 
 int spi_mem_adjust_op_size(struct spi_mem *mem, struct spi_mem_op *op);
 
-bool update_stripe(const struct spi_mem_op *op);
 bool spi_mem_supports_op(struct spi_mem *mem,
 			 const struct spi_mem_op *op);
 
