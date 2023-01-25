@@ -165,6 +165,36 @@
 /* Timeout values */
 #define TIMEOUT_US			1000
 
+/* Lane 0/1/2/3 offset */
+#define SERDES_TM_DIG_8_OFFSET			0x1074
+#define SERDES_TM_ILL13_OFFSET			0x1994
+#define SERDES_TM_DIG_10_OFFSET			0x107C
+#define SERDES_TM_RST_DLY_OFFSET			0x19A4
+#define SERDES_TM_ANA_BYP_15_OFFSET		0x1038
+#define SERDES_TM_ANA_BYP_12_OFFSET		0x102C
+#define SERDES_TM_MISC3_OFFSET			0x19AC
+#define SERDES_TM_EQ11_OFFSET			0x1978
+
+#define LANE_OFFSET(lane, OFFSET)		(0x4000 * (lane) + (OFFSET))
+
+#define LANE_REGS(n) \
+			LANE_OFFSET((n), SERDES_TM_DIG_8_OFFSET), \
+			LANE_OFFSET((n), SERDES_TM_ILL13_OFFSET), \
+			LANE_OFFSET((n), SERDES_TM_DIG_10_OFFSET), \
+			LANE_OFFSET((n), SERDES_TM_RST_DLY_OFFSET), \
+			LANE_OFFSET((n), SERDES_TM_ANA_BYP_15_OFFSET), \
+			LANE_OFFSET((n), SERDES_TM_ANA_BYP_12_OFFSET), \
+			LANE_OFFSET((n), SERDES_TM_MISC3_OFFSET), \
+			LANE_OFFSET((n), SERDES_TM_EQ11_OFFSET)
+
+static u32 save_reg_address[] = {
+	/* Lane 0/1/2/3 Register */
+	LANE_REGS(0),
+	LANE_REGS(1),
+	LANE_REGS(2),
+	LANE_REGS(3),
+};
+
 struct xpsgtr_dev;
 
 /**
@@ -213,6 +243,7 @@ struct xpsgtr_phy {
  * @tx_term_fix: fix for GT issue
  * @saved_icm_cfg0: stored value of ICM CFG0 register
  * @saved_icm_cfg1: stored value of ICM CFG1 register
+ * @saved_regs: registers to be saved/restored during suspend/resume
  */
 struct xpsgtr_dev {
 	struct device *dev;
@@ -225,6 +256,7 @@ struct xpsgtr_dev {
 	bool tx_term_fix;
 	unsigned int saved_icm_cfg0;
 	unsigned int saved_icm_cfg1;
+	u32 *saved_regs;
 };
 
 /*
@@ -296,6 +328,32 @@ static inline void xpsgtr_clr_set_phy(struct xpsgtr_phy *gtr_phy,
 			   + gtr_phy->lane * PHY_REG_OFFSET + reg;
 
 	writel((readl(addr) & ~clr) | set, addr);
+}
+
+/**
+ * xpsgtr_save_lane_regs - Saves registers on suspend
+ * @gtr_dev: pointer to phy controller context structure
+ */
+static void xpsgtr_save_lane_regs(struct xpsgtr_dev *gtr_dev)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(save_reg_address); i++)
+		gtr_dev->saved_regs[i] = xpsgtr_read(gtr_dev,
+						     save_reg_address[i]);
+}
+
+/**
+ * xpsgtr_restore_lane_regs - Restores registers on resume
+ * @gtr_dev: pointer to phy controller context structure
+ */
+static void xpsgtr_restore_lane_regs(struct xpsgtr_dev *gtr_dev)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(save_reg_address); i++)
+		xpsgtr_write(gtr_dev, save_reg_address[i],
+			     gtr_dev->saved_regs[i]);
 }
 
 /*
@@ -833,6 +891,8 @@ static int __maybe_unused xpsgtr_suspend(struct device *dev)
 	for (i = 0; i < ARRAY_SIZE(gtr_dev->clk); i++)
 		clk_disable_unprepare(gtr_dev->clk[i]);
 
+	xpsgtr_save_lane_regs(gtr_dev);
+
 	return 0;
 }
 
@@ -849,6 +909,8 @@ static int __maybe_unused xpsgtr_resume(struct device *dev)
 		if (err)
 			goto err_clk_put;
 	}
+
+	xpsgtr_restore_lane_regs(gtr_dev);
 
 	icm_cfg0 = xpsgtr_read(gtr_dev, ICM_CFG0);
 	icm_cfg1 = xpsgtr_read(gtr_dev, ICM_CFG1);
@@ -1006,6 +1068,13 @@ static int xpsgtr_probe(struct platform_device *pdev)
 		ret = PTR_ERR(provider);
 		goto err_clk_put;
 	}
+
+	gtr_dev->saved_regs = devm_kmalloc(gtr_dev->dev,
+					   sizeof(save_reg_address),
+					   GFP_KERNEL);
+	if (!gtr_dev->saved_regs)
+		return -ENOMEM;
+
 	return 0;
 
 err_clk_put:
