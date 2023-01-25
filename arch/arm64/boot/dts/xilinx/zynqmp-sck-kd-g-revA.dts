@@ -115,7 +115,7 @@
 			adi,fifo-depth-bits = <8>;
 			reset-assert-us = <10>;
 			reset-deassert-us = <5000>;
-			reset-gpios = <&slg7xl45106 5 GPIO_ACTIVE_LOW>;
+			reset-gpios = <&gpio 77 GPIO_ACTIVE_LOW>;
 		};
 	};
 };
