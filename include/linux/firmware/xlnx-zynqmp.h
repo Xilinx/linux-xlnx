@@ -1246,13 +1246,15 @@ static inline int zynqmp_pm_get_uid_info(const u64 address, const u32 size,
 	return -ENODEV;
 }
 
-static int zynqmp_pm_sec_read_reg(u32 node_id, u32 offset, u32 *ret_value)
+static inline int zynqmp_pm_sec_read_reg(u32 node_id, u32 offset,
+					 u32 *ret_value)
 {
 	return -ENODEV;
 }
 
-static int zynqmp_pm_sec_mask_write_reg(const u32 node_id, const u32 offset,
-					u32 mask, u32 value)
+static inline int zynqmp_pm_sec_mask_write_reg(const u32 node_id,
+					       const u32 offset,
+					       u32 mask, u32 value)
 {
 	return -ENODEV;
 }
@@ -1321,17 +1323,18 @@ static inline int zynqmp_pm_aie_operation(u32 node, u16 start_col,
 	return -ENODEV;
 }
 
-static int zynqmp_pm_fpga_get_version(u32 *value)
+static inline int zynqmp_pm_fpga_get_version(u32 *value)
 {
 	return -ENODEV;
 }
 
-static int zynqmp_pm_fpga_get_feature_list(u32 *value)
+static inline int zynqmp_pm_fpga_get_feature_list(u32 *value)
 {
 	return -ENODEV;
 }
 
-static int versal_pm_sha_hash(const u64 src, const u64 dst, const u32 size)
+static inline int versal_pm_sha_hash(const u64 src, const u64 dst,
+				     const u32 size)
 {
 	return -ENODEV;
 }
