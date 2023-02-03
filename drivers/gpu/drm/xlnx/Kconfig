@@ -61,6 +61,7 @@ config DRM_XLNX_DPTX
 	select DRM_DISPLAY_HELPER
 	select DRM_DISPLAY_HDMI_HELPER
 	select DRM_DISPLAY_DP_HELPER
+	select DRM_XLNX_HDCP
 	help
 	  DRM driver for Xilinx DisplayPort Tx Subsystem for FPGA. Choose
 	  this option if you have a FPGA display pipeline that includes
@@ -139,3 +140,15 @@ config DRM_XLNX_BRIDGE_VTC
 	  Currently the support is added to the Xilinx Video Mixer and
 	  Xilinx PL display CRTC drivers. This driver provides ability
 	  to generate timings through the bridge layer.
+
+config DRM_XLNX_HDCP
+	tristate "Xilinx DRM HDCP Driver"
+	depends on DRM_XLNX_DPTX
+	select XILINX_HDCP_COMMON
+	select CRYPTO_AES
+	help
+	  Enables the Functionality of HDCP Encryption/Decryption for
+	  Xilinx display drivers. It handles the HDCP authentication.
+	  Choose this option if you have a FPGA display pipeline using
+	  Xilinx FPGA's in IP. This driver provides the kernel mode
+	  setting functionalities for the IP.
