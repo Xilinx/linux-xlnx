@@ -94,4 +94,6 @@ source "drivers/staging/xilinx-tsn/Kconfig"
 
 source "drivers/staging/xlnx_hdcp1x/Kconfig"
 
+source "drivers/staging/xilinx_hdcp/Kconfig"
+
 endif # STAGING
