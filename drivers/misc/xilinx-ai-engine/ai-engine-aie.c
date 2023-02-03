@@ -936,6 +936,12 @@ static u32 aie_get_tile_type(struct aie_device *adev, struct aie_location *loc)
 	if ((loc->col % 4) < 2)
 		return AIE_TILE_TYPE_SHIMPL;
 
+	if (adev->device_name == AIE_DEV_GEN_S100 ||
+	    adev->device_name == AIE_DEV_GEN_S200) {
+		if (loc->col == 58)
+			return AIE_TILE_TYPE_SHIMPL;
+	}
+
 	return AIE_TILE_TYPE_SHIMNOC;
 }
 
