@@ -25535,6 +25535,12 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-tc.yaml
 F:	drivers/media/platform/xilinx/xilinx-vtc.c
 
+XILINX HDCP COMMON DRIVER
+M:	Lakshmi Prasanna Eachuri <lakshmi.prasanna.eachuri@amd.com>
+R:	Vishal Sagar <vishal.sagar@amd.com>
+S:	Maintained
+F:	drivers/staging/xilinx_hdcp/
+
 XILINX HDCP1X CIPHER DRIVER
 M:	Lakshmi Prasanna Eachuri <lakshmi.prasanna.eachuri@amd.com>
 R:	Vishal Sagar <vishal.sagar@amd.com>
