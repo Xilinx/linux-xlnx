@@ -1,0 +1,8 @@
+config XILINX_HDCP_COMMON
+	bool
+	help
+	  This driver supports HDCP 1x/2x common functionalities for
+	  Xilinx devices
+
+	  This code will be compiled by selection from the interface
+	  drivers (DisplayPort/HDMI) of Xilinx.

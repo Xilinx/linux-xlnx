@@ -1,0 +1,4 @@
+XILINX HDCP COMMON DRIVER
+M:	Lakshmi Prasanna Eachuri <lakshmi.prasanna.eachuri@xilinx.com>
+S:	Maintained
+F:	drivers/staging/xilinx_hdcp
