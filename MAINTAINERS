@@ -25493,6 +25493,12 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/display/xlnx/xlnx,dp-tx.yaml
 F:	drivers/gpu/drm/xlnx/xlnx_dptx.c
 
+XILINX DRM HDCP DRIVER
+M:	Lakshmi Prasanna Eachuri <lakshmi.prasanna.eachuri@amd.com>
+R:	Vishal Sagar <vishal.sagar@amd.com>
+S:	Maintained
+F:	drivers/gpu/drm/xlnx/hdcp/
+
 XILINX EVENT MANAGEMENT DRIVER
 M:	Michal Simek <michal.simek@amd.com>
 S:	Maintained
