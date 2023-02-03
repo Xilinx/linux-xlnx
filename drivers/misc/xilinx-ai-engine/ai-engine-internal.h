@@ -729,6 +729,7 @@ struct aie_tile {
  * @num_core_regs: number of core registers range
  * @pm_node_id: AI Engine platform management node ID
  * @clock_id: AI Engine clock ID
+ * @device_name: identify ssit device id
  * @ttype_attr: tile type attributes
  * @aperture_sysfs_attr: aperture level sysfs attributes
  * @part_sysfs_attr: partition level sysfs attributes
@@ -771,6 +772,7 @@ struct aie_device {
 	u32 num_core_regs;
 	u32 pm_node_id;
 	u32 clock_id;
+	u32 device_name;
 	struct aie_tile_attr ttype_attr[AIE_TILE_TYPE_MAX];
 	const struct aie_sysfs_attr *aperture_sysfs_attr;
 	const struct aie_sysfs_attr *part_sysfs_attr;
@@ -794,7 +796,6 @@ struct aie_device {
  *	      while columns are occupied by partitions.
  * @node_id: AI engine aperture node id which is to identify
  *	     the aperture in the system in firmware
- * @device_name: identify ssit device id
  * @irq: Linux IRQ number
  * @range: range of aperture
  * @backtrack: workqueue to backtrack interrupt
@@ -811,7 +812,6 @@ struct aie_aperture {
 	struct device dev;
 	struct aie_resource cols_res;
 	u32 node_id;
-	u32 device_name;
 	int irq;
 	struct aie_range range;
 	struct work_struct backtrack;
