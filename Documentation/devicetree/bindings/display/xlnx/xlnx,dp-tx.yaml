@@ -31,7 +31,19 @@ properties:
       - const: gt_quad_base
 
   interrupts:
-    maxItems: 1
+    minItems: 1
+    maxItems: 4
+
+  interrupt-names:
+    description: Only dptxss_dp_irq is mandatory. Others are optional.
+                 dptxss_timer_irq will be present when HDCP 1x or 2x is selected.
+                 dptxss_hdcp_irq will be present when HDCP 1x is selected.
+                 dptxss_hdcp22_cipher_irq will be present when HDCP 2x is selected.
+    items:
+      - const: dptxss_dp_irq
+      - const: dptxss_timer_irq
+      - const: dptxss_hdcp_irq
+      - const: dptxss_hdcp22_cipher_irq
 
   clocks:
     description: List of clock specifiers
@@ -95,6 +107,16 @@ properties:
     allOf:
       - $ref: /schemas/types.yaml#/definitions/uint32
       - enum: [2, 3, 4, 5, 6, 7, 8]
+
+  xlnx,hdcp22-enable:
+    type: boolean
+    description: |
+      Present when HDCP2.2 is present in design.
+
+  xlnx,hdcp-enable:
+    type: boolean
+    description: |
+      Present when HDCP1.4 is present in design.
 
   xlnx,versal-gt:
     type: boolean
@@ -171,12 +193,16 @@ examples:
            reg-names = "dp_base", "gt_quad_base";
            clock-names = "s_axi_aclk", "tx_vid_clk";
            clocks = <&zynqmp_clk 71>, <&si570_1>;
-           interrupts = <0 92 4>;
+           interrupt-names = "dptxss_dp_irq", "dptxss_timer_irq", "dptxss_hdcp_irq",
+                              "dptxss_hdcp22_cipher_irq";
+           interrupts = <0 92 4>, <0 108 4>, <0 111 4>, <0 109 4>;
            xlnx,vtc-offset = <0x8000>;
            xlnx,max-lanes = <4>;
            xlnx,max-link-rate = <810000>;
            xlnx,bpc = <8>;
            xlnx,audio-channels = <2>;
+           xlnx,hdcp22-enable;
+           xlnx,hdcp-enable;
            xlnx,versal-gt;
            xlnx,xilinx-vfmc = <&xfmc>;
            phy-names = "dp-phy0", "dp-phy1", "dp-phy2", "dp-phy3";
