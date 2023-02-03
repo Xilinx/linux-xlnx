@@ -267,9 +267,11 @@ static int xlnx_sdi_tx_hw_params(struct snd_pcm_substream *substream,
 		val |= SDI_TRANSPORT_FAMILY_2048;
 		break;
 	case 720:
-		if (ctx->video_mode->vdisplay == 486)
+		if ((ctx->video_mode->flags & DRM_MODE_FLAG_INTERLACE) &&
+		    ctx->video_mode->vdisplay == 243)
 			val |= SDI_TRANSPORT_FAMILY_NTSC;
-		else if (ctx->video_mode->vdisplay == 576)
+		else if ((ctx->video_mode->flags & DRM_MODE_FLAG_INTERLACE) &&
+			 ctx->video_mode->vdisplay == 288)
 			val |= SDI_TRANSPORT_FAMILY_PAL;
 		else
 			return -EINVAL;
