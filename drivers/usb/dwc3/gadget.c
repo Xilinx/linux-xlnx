@@ -4603,7 +4603,8 @@ static int dwc3_gadget_get_irq(struct dwc3 *dwc)
 out:
 	/* look for wakeup interrupt if hibernation is supported */
 	if (dwc->has_hibernation) {
-		irq_hiber = platform_get_irq_byname(dwc3_pdev, "hiber");
+		irq_hiber = platform_get_irq_byname_optional(dwc3_pdev,
+							     "hiber");
 		if (irq_hiber > 0) {
 			dwc->irq_wakeup = irq_hiber;
 		} else {
