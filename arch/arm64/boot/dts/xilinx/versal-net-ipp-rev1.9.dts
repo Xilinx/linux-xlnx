@@ -321,7 +321,7 @@
 		};
 
 		gem0: ethernet@f19e0000 {
-			compatible = "xlnx,versal-gem", "cdns,versal-gem", "cdns,gem";
+			compatible = "xlnx,versal-gem", "cdns,gem";
 			status = "okay";
 			reg = <0 0xf19e0000 0 0x1000>;
 			interrupts = <0 39 4>, <0 39 4>;
@@ -351,7 +351,7 @@
 		};
 
 		gem1: ethernet@f19f0000 {
-			compatible = "xlnx,versal-gem", "cdns,versal-gem", "cdns,gem";
+			compatible = "xlnx,versal-gem", "cdns,gem";
 			status = "okay";
 			reg = <0 0xf19f0000 0 0x1000>;
 			interrupts = <0 41 4>, <0 41 4>;

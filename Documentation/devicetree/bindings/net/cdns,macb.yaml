@@ -22,6 +22,7 @@ properties:
           - enum:
               - cdns,zynq-gem         # Xilinx Zynq-7xxx SoC
               - cdns,zynqmp-gem       # Xilinx Zynq Ultrascale+ MPSoC
+              - cdns,versal-gem       # Xilinx Versal
           - const: cdns,gem           # Generic
         deprecated: true
 
