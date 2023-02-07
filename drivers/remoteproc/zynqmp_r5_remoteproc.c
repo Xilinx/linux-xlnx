@@ -135,9 +135,14 @@ static int rpu_set_mode(struct xlnx_rpu_rproc *z_rproc,
 			return ret;
 	}
 
-	tcm_mode = (rpu_mode == PM_RPU_MODE_LOCKSTEP) ?
-		    PM_RPU_TCM_COMB : PM_RPU_TCM_SPLIT;
-	return zynqmp_pm_set_tcm_config(z_rproc->pnode_id, tcm_mode);
+	/* Versal-Net does not have this register. */
+	if (z_rproc->soc_data->soc_type != SOC_VERSAL_NET) {
+		tcm_mode = (rpu_mode == PM_RPU_MODE_LOCKSTEP) ?
+			    PM_RPU_TCM_COMB : PM_RPU_TCM_SPLIT;
+		ret = zynqmp_pm_set_tcm_config(z_rproc->pnode_id, tcm_mode);
+	}
+
+	return ret;
 }
 
 /*
@@ -1008,15 +1013,6 @@ static int xlnx_rpu_probe(struct platform_device *pdev,
 
 	(*z_rproc)->soc_data = data;
 
-	/*
-	 * fixme versal-net does not yet support this feature.
-	 */
-	if ((*z_rproc)->soc_data->soc_type != SOC_VERSAL_NET) {
-		ret = rpu_set_mode(*z_rproc, rpu_mode);
-		if (ret)
-			goto error;
-	}
-
 	if (of_property_read_bool(node, "mboxes")) {
 		ret = xlnx_rpu_setup_mbox(*z_rproc, node);
 		if (ret)
@@ -1078,6 +1074,10 @@ static int xlnx_rpu_probe(struct platform_device *pdev,
 		 * If we are here then we are using the rproc state that is
 		 * set by rproc_alloc (OFFLINE).
 		 */
+		ret = rpu_set_mode(*z_rproc, rpu_mode);
+		if (ret)
+			goto error;
+
 		dev_warn(dev, "rsc tbl property not provided\n");
 		(*z_rproc)->rsc_pa = 0;
 	}
