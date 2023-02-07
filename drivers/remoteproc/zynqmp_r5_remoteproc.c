@@ -177,7 +177,8 @@ static int sram_mem_release(struct rproc *rproc, struct rproc_mem_entry *mem)
 		if (!pnode_id)
 			continue;
 
-		if (z_rproc->soc_data->soc_type == SOC_VERSAL) {
+		if (z_rproc->soc_data->soc_type == SOC_VERSAL ||
+		    z_rproc->soc_data->soc_type == SOC_VERSAL_NET) {
 			/* only request node if not already requested */
 			ret = zynqmp_pm_get_node_status(pnode_id, &status, NULL, &usage);
 			if (ret) {
