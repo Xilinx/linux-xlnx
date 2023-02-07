@@ -2060,11 +2060,15 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 			 * parallel mode.
 			 */
 			if (nor->spimem->spi->multi_die) {
+				unsigned long long addr_tmp = addr;
 				bank_size = OFFSET_16_MB;
 				if (nor->flags & SNOR_F_HAS_PARALLEL)
 					bank_size <<= 1;
-				cur_bank = addr / bank_size;
-				nxt_bank = (addr + len) / bank_size;
+				ret = do_div(addr_tmp, bank_size);
+				cur_bank = addr_tmp;
+				addr_tmp = addr + len;
+				ret = do_div(addr_tmp, bank_size);
+				nxt_bank = addr_tmp;
 				if (cur_bank != nxt_bank) {
 					rem_bank_len = ((bank_size *
 							(cur_bank + 1)) - addr);
