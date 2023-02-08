@@ -147,6 +147,66 @@
 	clocks = <&versal_net_clk ACPU_0>;
 };
 
+&cpu100 {
+	clocks = <&versal_net_clk ACPU_0>;
+};
+
+&cpu200 {
+	clocks = <&versal_net_clk ACPU_0>;
+};
+
+&cpu300 {
+	clocks = <&versal_net_clk ACPU_0>;
+};
+
+&cpu10000 {
+	clocks = <&versal_net_clk ACPU_1>;
+};
+
+&cpu10100 {
+	clocks = <&versal_net_clk ACPU_1>;
+};
+
+&cpu10200 {
+	clocks = <&versal_net_clk ACPU_1>;
+};
+
+&cpu10300 {
+	clocks = <&versal_net_clk ACPU_1>;
+};
+
+&cpu20000 {
+	clocks = <&versal_net_clk ACPU_2>;
+};
+
+&cpu20100 {
+	clocks = <&versal_net_clk ACPU_2>;
+};
+
+&cpu20200 {
+	clocks = <&versal_net_clk ACPU_2>;
+};
+
+&cpu20300 {
+	clocks = <&versal_net_clk ACPU_2>;
+};
+
+&cpu30000 {
+	clocks = <&versal_net_clk ACPU_3>;
+};
+
+&cpu30100 {
+	clocks = <&versal_net_clk ACPU_3>;
+};
+
+&cpu30200 {
+	clocks = <&versal_net_clk ACPU_3>;
+};
+
+&cpu30300 {
+	clocks = <&versal_net_clk ACPU_3>;
+};
+
 &can0 {
 	clocks = <&versal_net_clk CAN0_REF_2X>, <&versal_net_clk LPD_LSBUS>;
 	power-domains = <&versal_net_firmware PM_DEV_CAN_FD_0>;
