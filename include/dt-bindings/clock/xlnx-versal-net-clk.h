@@ -17,6 +17,9 @@
 #define CAN1_REF_2X	0xAC
 #define FPD_WWDT	0x96
 #define ACPU_0		0x98
+#define ACPU_1		0x9B
+#define ACPU_2		0x9A
+#define ACPU_3		0x99
 #define I3C0_REF	0x9D
 #define I3C1_REF	0x9F
 #define USB1_BUS_REF	0xAE
