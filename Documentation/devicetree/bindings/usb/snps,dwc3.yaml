@@ -299,12 +299,6 @@ properties:
       require re-initialization.
     type: boolean
 
-  snps,xhci-stream-quirk:
-    description:
-      Enabling this flag activates the timer for every BULK IN stream ring
-      at the time of queuing TRB's into BULK IN stream ring.
-    type: boolean
-
   snps,rx-thr-num-pkt-prd:
     description:
       Periodic ESS RX packet threshold count (host mode only). Set this and
