@@ -590,7 +590,7 @@ static int spansion_set_4byte_addr_mode(struct spi_nor *nor, bool enable)
  *
  * Return: 0 on success, -errno otherwise.
  */
-int spi_nor_write_ear(struct spi_nor *nor, u32 addr)
+static int spi_nor_write_ear(struct spi_nor *nor, u32 addr)
 {
 	u8 code = SPINOR_OP_WREAR;
 	u32 ear;
