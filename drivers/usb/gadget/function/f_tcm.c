@@ -43,17 +43,14 @@ static inline struct f_uas *to_f_uas(struct usb_function *f)
 
 /* Start bot.c code */
 
-static struct usbg_cdb *acquire_cmd_request(struct f_uas *fu);
-static void release_cmd_request(struct f_uas *fu, struct usb_request *req);
 static int bot_enqueue_cmd_cbw(struct f_uas *fu)
 {
 	int ret;
-	struct usbg_cdb *cmd = acquire_cmd_request(fu);
 
 	if (fu->flags & USBG_BOT_CMD_PEND)
 		return 0;
 
-	ret = usb_ep_queue(fu->ep_out, cmd->req, GFP_ATOMIC);
+	ret = usb_ep_queue(fu->ep_out, fu->cmd.req, GFP_ATOMIC);
 	if (!ret)
 		fu->flags |= USBG_BOT_CMD_PEND;
 	return ret;
@@ -64,7 +61,6 @@ static void bot_status_complete(struct usb_ep *ep, struct usb_request *req)
 	struct usbg_cmd *cmd = req->context;
 	struct f_uas *fu = cmd->fu;
 
-	release_cmd_request(fu, req);
 	transport_generic_free_cmd(&cmd->se_cmd, 0);
 	if (req->status < 0) {
 		pr_err("ERR %s(%d)\n", __func__, __LINE__);
@@ -140,7 +136,7 @@ static void bot_send_bad_status(struct usbg_cmd *cmd)
 		}
 		req->complete = bot_err_compl;
 		req->context = cmd;
-		req->buf = fu->cmd[0]->buf;
+		req->buf = fu->cmd.buf;
 		usb_ep_queue(ep, req, GFP_KERNEL);
 	} else {
 		bot_enqueue_sense_code(fu, cmd);
@@ -249,6 +245,7 @@ static int bot_send_write_request(struct usbg_cmd *cmd)
 {
 	struct f_uas *fu = cmd->fu;
 	struct se_cmd *se_cmd = &cmd->se_cmd;
+	struct usb_gadget *gadget = fuas_to_gadget(fu);
 	int ret;
 
 	init_completion(&cmd->write_complete);
@@ -258,6 +255,22 @@ static int bot_send_write_request(struct usbg_cmd *cmd)
 		cmd->csw_code = US_BULK_STAT_PHASE;
 		return -EINVAL;
 	}
+
+	if (!gadget->sg_supported) {
+		cmd->data_buf = kmalloc(se_cmd->data_length, GFP_KERNEL);
+		if (!cmd->data_buf)
+			return -ENOMEM;
+
+		fu->bot_req_out->buf = cmd->data_buf;
+	} else {
+		fu->bot_req_out->buf = NULL;
+		fu->bot_req_out->num_sgs = se_cmd->t_data_nents;
+		fu->bot_req_out->sg = se_cmd->t_data_sg;
+	}
+
+	fu->bot_req_out->complete = usbg_data_write_cmpl;
+	fu->bot_req_out->length = se_cmd->data_length;
+	fu->bot_req_out->context = cmd;
 
 	ret = usbg_prepare_w_request(cmd, fu->bot_req_out);
 	if (ret)
@@ -284,82 +297,9 @@ static void bot_cmd_complete(struct usb_ep *ep, struct usb_request *req)
 	if (req->status < 0)
 		return;
 
-	release_cmd_request(fu, req);
 	ret = bot_submit_command(fu, req->buf, req->actual);
 	if (ret)
 		pr_err("%s(%d): %d\n", __func__, __LINE__, ret);
-}
-
-static struct usbg_cdb *acquire_cmd_request(struct f_uas *fu)
-{
-	int i;
-
-	for (i = 0; i < fu->ncmd; i++) {
-		if (!fu->cmd[i]->claimed) {
-			fu->cmd[i]->claimed = true;
-			return fu->cmd[i];
-		}
-	}
-	return NULL;
-}
-
-static void release_cmd_request(struct f_uas *fu, struct usb_request *req)
-{
-	int i;
-
-	for (i = 0; i < fu->ncmd; i++) {
-		if (fu->cmd[i]->req == req)
-			fu->cmd[i]->claimed = false;
-	}
-}
-
-static void free_cmd_resource(struct f_uas *fu, struct usb_ep *ep)
-{
-	int i;
-
-	for (i = 0; i < fu->ncmd; i++) {
-		if (fu->cmd[i]->req)
-			usb_ep_free_request(ep, fu->cmd[i]->req);
-
-		kfree(fu->cmd[i]->buf);
-		fu->cmd[i]->buf = NULL;
-
-		kfree(fu->cmd[i]);
-		fu->cmd[i] = NULL;
-	}
-}
-
-static int alloc_cmd_resource(struct f_uas *fu, int num, struct usb_ep *ep,
-			      void  (*complete)(struct usb_ep *ep,
-						struct usb_request *req))
-{
-	int i;
-
-	fu->ncmd = num;
-	for (i = 0; i < fu->ncmd; i++) {
-		fu->cmd[i] = kcalloc(fu->ncmd, sizeof(struct usbg_cdb),
-				GFP_KERNEL);
-		if (!fu->cmd[i])
-			goto err_cmd;
-
-		fu->cmd[i]->req = usb_ep_alloc_request(ep, GFP_KERNEL);
-		if (!fu->cmd[i]->req)
-			goto err_cmd;
-
-		fu->cmd[i]->buf = kmalloc(fu->ep_out->maxpacket, GFP_KERNEL);
-		if (!fu->cmd[i]->buf)
-			goto err_cmd;
-
-		fu->cmd[i]->req->complete = complete;
-		fu->cmd[i]->req->buf = fu->cmd[i]->buf;
-		fu->cmd[i]->req->length = fu->ep_out->maxpacket;
-		fu->cmd[i]->req->context = fu;
-	}
-
-	return 0;
-err_cmd:
-	free_cmd_resource(fu, ep);
-	return -ENOMEM;
 }
 
 static int bot_prepare_reqs(struct f_uas *fu)
@@ -374,6 +314,10 @@ static int bot_prepare_reqs(struct f_uas *fu)
 	if (!fu->bot_req_out)
 		goto err_out;
 
+	fu->cmd.req = usb_ep_alloc_request(fu->ep_out, GFP_KERNEL);
+	if (!fu->cmd.req)
+		goto err_cmd;
+
 	fu->bot_status.req = usb_ep_alloc_request(fu->ep_in, GFP_KERNEL);
 	if (!fu->bot_status.req)
 		goto err_sts;
@@ -383,20 +327,28 @@ static int bot_prepare_reqs(struct f_uas *fu)
 	fu->bot_status.req->complete = bot_status_complete;
 	fu->bot_status.csw.Signature = cpu_to_le32(US_BULK_CS_SIGN);
 
-	ret = alloc_cmd_resource(fu, BOT_MAX_COMMANDS, fu->ep_out,
-				 bot_cmd_complete);
-	if (ret)
-		goto err_cmd;
+	fu->cmd.buf = kmalloc(fu->ep_out->maxpacket, GFP_KERNEL);
+	if (!fu->cmd.buf)
+		goto err_buf;
+
+	fu->cmd.req->complete = bot_cmd_complete;
+	fu->cmd.req->buf = fu->cmd.buf;
+	fu->cmd.req->length = fu->ep_out->maxpacket;
+	fu->cmd.req->context = fu;
 
 	ret = bot_enqueue_cmd_cbw(fu);
 	if (ret)
 		goto err_queue;
 	return 0;
 err_queue:
-	free_cmd_resource(fu, fu->ep_out);
-err_cmd:
+	kfree(fu->cmd.buf);
+	fu->cmd.buf = NULL;
+err_buf:
 	usb_ep_free_request(fu->ep_in, fu->bot_status.req);
 err_sts:
+	usb_ep_free_request(fu->ep_out, fu->cmd.req);
+	fu->cmd.req = NULL;
+err_cmd:
 	usb_ep_free_request(fu->ep_out, fu->bot_req_out);
 	fu->bot_req_out = NULL;
 err_out:
@@ -420,13 +372,16 @@ static void bot_cleanup_old_alt(struct f_uas *fu)
 
 	usb_ep_free_request(fu->ep_in, fu->bot_req_in);
 	usb_ep_free_request(fu->ep_out, fu->bot_req_out);
+	usb_ep_free_request(fu->ep_out, fu->cmd.req);
 	usb_ep_free_request(fu->ep_in, fu->bot_status.req);
 
-	free_cmd_resource(fu, fu->ep_out);
+	kfree(fu->cmd.buf);
 
 	fu->bot_req_in = NULL;
 	fu->bot_req_out = NULL;
+	fu->cmd.req = NULL;
 	fu->bot_status.req = NULL;
+	fu->cmd.buf = NULL;
 }
 
 static void bot_set_alt(struct f_uas *fu)
@@ -525,6 +480,14 @@ static void uasp_cleanup_one_stream(struct f_uas *fu, struct uas_stream *stream)
 	stream->req_status = NULL;
 }
 
+static void uasp_free_cmdreq(struct f_uas *fu)
+{
+	usb_ep_free_request(fu->ep_cmd, fu->cmd.req);
+	kfree(fu->cmd.buf);
+	fu->cmd.req = NULL;
+	fu->cmd.buf = NULL;
+}
+
 static void uasp_cleanup_old_alt(struct f_uas *fu)
 {
 	int i;
@@ -539,7 +502,7 @@ static void uasp_cleanup_old_alt(struct f_uas *fu)
 
 	for (i = 0; i < UASP_SS_EP_COMP_NUM_STREAMS; i++)
 		uasp_cleanup_one_stream(fu, &fu->stream[i]);
-	free_cmd_resource(fu, fu->ep_cmd);
+	uasp_free_cmdreq(fu);
 }
 
 static void uasp_status_data_cmpl(struct usb_ep *ep, struct usb_request *req);
@@ -604,7 +567,6 @@ static void uasp_status_data_cmpl(struct usb_ep *ep, struct usb_request *req)
 	struct usbg_cmd *cmd = req->context;
 	struct uas_stream *stream = cmd->stream;
 	struct f_uas *fu = cmd->fu;
-	struct usbg_cdb *cmd_cdb;
 	int ret;
 
 	if (req->status < 0)
@@ -639,8 +601,7 @@ static void uasp_status_data_cmpl(struct usb_ep *ep, struct usb_request *req)
 
 	case UASP_QUEUE_COMMAND:
 		transport_generic_free_cmd(&cmd->se_cmd, 0);
-		cmd_cdb = acquire_cmd_request(fu);
-		usb_ep_queue(fu->ep_cmd, cmd_cdb->req, GFP_ATOMIC);
+		usb_ep_queue(fu->ep_cmd, fu->cmd.req, GFP_ATOMIC);
 		break;
 
 	default:
@@ -760,13 +721,11 @@ static int usbg_submit_command(struct f_uas *, void *, unsigned int);
 static void uasp_cmd_complete(struct usb_ep *ep, struct usb_request *req)
 {
 	struct f_uas *fu = req->context;
-	struct usbg_cdb *cmd;
 	int ret;
 
 	if (req->status < 0)
 		return;
 
-	release_cmd_request(fu, req);
 	ret = usbg_submit_command(fu, req->buf, req->actual);
 	/*
 	 * Once we tune for performance enqueue the command req here again so
@@ -776,8 +735,7 @@ static void uasp_cmd_complete(struct usb_ep *ep, struct usb_request *req)
 	 */
 	if (!ret)
 		return;
-	cmd = acquire_cmd_request(fu);
-	usb_ep_queue(fu->ep_cmd, cmd->req, GFP_ATOMIC);
+	usb_ep_queue(fu->ep_cmd, fu->cmd.req, GFP_ATOMIC);
 }
 
 static int uasp_alloc_stream_res(struct f_uas *fu, struct uas_stream *stream)
@@ -806,6 +764,28 @@ out:
 	return -ENOMEM;
 }
 
+static int uasp_alloc_cmd(struct f_uas *fu)
+{
+	fu->cmd.req = usb_ep_alloc_request(fu->ep_cmd, GFP_KERNEL);
+	if (!fu->cmd.req)
+		goto err;
+
+	fu->cmd.buf = kmalloc(fu->ep_cmd->maxpacket, GFP_KERNEL);
+	if (!fu->cmd.buf)
+		goto err_buf;
+
+	fu->cmd.req->complete = uasp_cmd_complete;
+	fu->cmd.req->buf = fu->cmd.buf;
+	fu->cmd.req->length = fu->ep_cmd->maxpacket;
+	fu->cmd.req->context = fu;
+	return 0;
+
+err_buf:
+	usb_ep_free_request(fu->ep_cmd, fu->cmd.req);
+err:
+	return -ENOMEM;
+}
+
 static void uasp_setup_stream_res(struct f_uas *fu, int max_streams)
 {
 	int i;
@@ -823,15 +803,12 @@ static int uasp_prepare_reqs(struct f_uas *fu)
 {
 	int ret;
 	int i;
-	int max_streams, max_commands;
+	int max_streams;
 
-	if (fu->flags & USBG_USE_STREAMS) {
-		max_commands = UASP_MAX_COMMANDS;
+	if (fu->flags & USBG_USE_STREAMS)
 		max_streams = UASP_SS_EP_COMP_NUM_STREAMS;
-	} else {
-		max_commands = 1;
+	else
 		max_streams = 1;
-	}
 
 	for (i = 0; i < max_streams; i++) {
 		ret = uasp_alloc_stream_res(fu, &fu->stream[i]);
@@ -839,25 +816,19 @@ static int uasp_prepare_reqs(struct f_uas *fu)
 			goto err_cleanup;
 	}
 
-	ret = alloc_cmd_resource(fu, max_commands, fu->ep_cmd,
-				 uasp_cmd_complete);
+	ret = uasp_alloc_cmd(fu);
 	if (ret)
 		goto err_free_stream;
 	uasp_setup_stream_res(fu, max_streams);
 
-	/* queue number of commands */
-	for (i = 0; i < fu->ncmd; i++) {
-		struct usbg_cdb *cmd = acquire_cmd_request(fu);
-
-		ret = usb_ep_queue(fu->ep_cmd, cmd->req, GFP_ATOMIC);
-		if (ret)
-			goto err_free_stream;
-	}
+	ret = usb_ep_queue(fu->ep_cmd, fu->cmd.req, GFP_ATOMIC);
+	if (ret)
+		goto err_free_stream;
 
 	return 0;
 
 err_free_stream:
-	free_cmd_resource(fu, fu->ep_cmd);
+	uasp_free_cmdreq(fu);
 
 err_cleanup:
 	if (i) {
@@ -870,28 +841,16 @@ err_cleanup:
 	return ret;
 }
 
-#define SS_BOT_INTERFACE_DESC_NO	5
 static void uasp_set_alt(struct f_uas *fu)
 {
 	struct usb_function *f = &fu->function;
 	struct usb_gadget *gadget = f->config->cdev->gadget;
-	struct usb_descriptor_header    **ss_uasp_backup = f->ss_descriptors;
 	int ret;
 
 	fu->flags = USBG_IS_UAS;
 
-	if (gadget->speed == USB_SPEED_SUPER) {
+	if (gadget->speed >= USB_SPEED_SUPER)
 		fu->flags |= USBG_USE_STREAMS;
-		/* If device connect in SS then comp_descriptor with stream
-		 * should be attached to descriptor. Since BOT and UAS using
-		 * same endpoint, config_ep_by_speed will returns first match
-		 * with comp_descriptor without stream. This is just workaround
-		 * proper fix need to be introduced. Here advancing descritor
-		 * header ss_descriptors with number of descriptor present in
-		 * BOT mode.
-		 */
-		f->ss_descriptors += SS_BOT_INTERFACE_DESC_NO;
-	}
 
 	config_ep_by_speed_and_alt(gadget, f, fu->ep_in, USB_G_ALT_INT_UAS);
 	ret = usb_ep_enable(fu->ep_in);
@@ -917,10 +876,6 @@ static void uasp_set_alt(struct f_uas *fu)
 		goto err_wq;
 	fu->flags |= USBG_ENABLED;
 
-	/* restore ss_descriptors */
-	if (gadget->speed == USB_SPEED_SUPER)
-		f->ss_descriptors = ss_uasp_backup;
-
 	pr_info("Using the UAS protocol\n");
 	return;
 err_wq:
@@ -932,9 +887,6 @@ err_cmd:
 err_b_out:
 	usb_ep_disable(fu->ep_in);
 err_b_in:
-	/* restore ss_descriptors */
-	if (gadget->speed == USB_SPEED_SUPER)
-		f->ss_descriptors = ss_uasp_backup;
 	fu->flags = 0;
 }
 
@@ -1000,56 +952,6 @@ static int get_cmd_dir(const unsigned char *cdb)
 	return ret;
 }
 
-static void recover_w_length_with_maxpacket(struct usbg_cmd *cmd,
-					    struct usb_request *req)
-{
-	struct se_cmd *se_cmd = &cmd->se_cmd;
-	struct f_uas *fu = cmd->fu;
-	struct usb_gadget *gadget = fuas_to_gadget(fu);
-	int rem;
-
-	rem = se_cmd->data_length % fu->ep_out->maxpacket;
-	if (rem) {
-		/* recover paded data length */
-		cmd->data_len -= fu->ep_out->maxpacket - rem;
-
-		if (gadget->sg_supported) {
-			struct scatterlist *s = sg_last(se_cmd->t_data_sg,
-					se_cmd->t_data_nents);
-
-			s->length -= fu->ep_out->maxpacket - rem;
-		}
-	}
-}
-
-static void adjust_w_length_with_maxpacket(struct usbg_cmd *cmd,
-					   struct usb_request *req)
-{
-	struct se_cmd *se_cmd = &cmd->se_cmd;
-	struct f_uas *fu = cmd->fu;
-	struct usb_gadget *gadget = fuas_to_gadget(fu);
-	int rem;
-
-	cmd->data_len = se_cmd->data_length;
-	rem = cmd->data_len % fu->ep_out->maxpacket;
-	if (rem) {
-		/* pad data length so that transfer size can be in multiple of
-		 * max packet size
-		 */
-		cmd->data_len += fu->ep_out->maxpacket - rem;
-
-		if (gadget->sg_supported) {
-			/* if sg is supported and data length in page also need
-			 * to be adjusted as multiple of max packet size.
-			 */
-			struct scatterlist *s = sg_last(se_cmd->t_data_sg,
-					se_cmd->t_data_nents);
-
-			s->length += fu->ep_out->maxpacket - rem;
-		}
-	}
-}
-
 static void usbg_data_write_cmpl(struct usb_ep *ep, struct usb_request *req)
 {
 	struct usbg_cmd *cmd = req->context;
@@ -1059,8 +961,6 @@ static void usbg_data_write_cmpl(struct usb_ep *ep, struct usb_request *req)
 		pr_err("%s() state %d transfer failed\n", __func__, cmd->state);
 		goto cleanup;
 	}
-
-	recover_w_length_with_maxpacket(cmd, req);
 
 	if (req->num_sgs == 0) {
 		sg_copy_from_buffer(se_cmd->t_data_sg,
@@ -1082,10 +982,8 @@ static int usbg_prepare_w_request(struct usbg_cmd *cmd, struct usb_request *req)
 	struct f_uas *fu = cmd->fu;
 	struct usb_gadget *gadget = fuas_to_gadget(fu);
 
-	adjust_w_length_with_maxpacket(cmd, req);
-
 	if (!gadget->sg_supported) {
-		cmd->data_buf = kmalloc(cmd->data_len, GFP_ATOMIC);
+		cmd->data_buf = kmalloc(se_cmd->data_length, GFP_ATOMIC);
 		if (!cmd->data_buf)
 			return -ENOMEM;
 
@@ -1098,7 +996,7 @@ static int usbg_prepare_w_request(struct usbg_cmd *cmd, struct usb_request *req)
 
 	req->is_last = 1;
 	req->complete = usbg_data_write_cmpl;
-	req->length = cmd->data_len;
+	req->length = se_cmd->data_length;
 	req->context = cmd;
 	return 0;
 }
@@ -1291,8 +1189,7 @@ static void bot_cmd_work(struct work_struct *work)
 
 	target_submit_cmd(se_cmd, tv_nexus->tvn_se_sess,
 			  cmd->cmd_buf, cmd->sense_iu.sense, cmd->unpacked_lun,
-			  cmd->data_len, cmd->prio_attr, dir,
-			  TARGET_SCF_ACK_KREF);
+			  cmd->data_len, cmd->prio_attr, dir, 0);
 	return;
 
 out:
