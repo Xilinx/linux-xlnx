@@ -656,6 +656,7 @@ static int read_ear(struct spi_nor *nor, struct flash_info *info)
 	/* This is actually Micron */
 	else if (nor->jedec_id == CFI_MFR_ST ||
 		 nor->jedec_id == CFI_MFR_MACRONIX ||
+		 nor->jedec_id == CFI_MFR_WINBND ||
 		 nor->jedec_id == CFI_MFR_PMC)
 		code = SPINOR_OP_RDEAR;
 	else
