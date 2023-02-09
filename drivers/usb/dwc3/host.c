@@ -10,7 +10,6 @@
 #include <linux/irq.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
-#include <linux/of_device.h>
 
 #include "core.h"
 
@@ -82,7 +81,7 @@ out:
 
 int dwc3_host_init(struct dwc3 *dwc)
 {
-	struct property_entry	props[6];
+	struct property_entry	props[5];
 	struct platform_device	*xhci;
 	int			ret, irq;
 	int			prop_idx = 0;
@@ -116,10 +115,6 @@ int dwc3_host_init(struct dwc3 *dwc)
 
 	if (dwc->usb2_lpm_disable)
 		props[prop_idx++] = PROPERTY_ENTRY_BOOL("usb2-lpm-disable");
-
-	if (device_property_read_bool(&dwc3_pdev->dev,
-				      "snps,xhci-stream-quirk"))
-		props[prop_idx++] = PROPERTY_ENTRY_BOOL("xhci-stream-quirk");
 
 	if (device_property_read_bool(&dwc3_pdev->dev,
 				      "snps,xhci-reset-on-resume"))
