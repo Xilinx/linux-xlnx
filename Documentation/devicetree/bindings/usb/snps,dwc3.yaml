@@ -292,6 +292,14 @@ properties:
     maximum: 62
     deprecated: true
 
+  snps,ulpi-ext-vbus-drv:
+    description:
+      Some ULPI USB PHY does not support internal VBUS supply, and driving
+      the CPEN pin, requires the configuration of the ulpi DRVVBUSEXTERNAL
+      bit. When set, the xhci host will configure the USB2 PHY drives VBUS
+      with an external supply.
+    type: boolean
+
   snps,xhci-reset-on-resume:
     description:
       When set, xhci host will reset the host controller on resume from
