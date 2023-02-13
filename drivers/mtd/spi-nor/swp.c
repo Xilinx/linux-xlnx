@@ -317,7 +317,7 @@ static int spi_nor_sr_unlock(struct spi_nor *nor, loff_t ofs, uint64_t len)
 		val = 0; /* fully unlocked */
 	} else {
 		min_prot_len = spi_nor_get_min_prot_length_sr(nor);
-		pow = ilog2(mtd->size) - ilog2(min_prot_len) + 1;
+		pow = ilog2(lock_len) - ilog2(min_prot_len) + 1;
 		val = pow << SR_BP_SHIFT;
 
 		if (nor->flags & SNOR_F_HAS_SR_BP3_BIT6 && val & SR_BP3)
@@ -382,76 +382,6 @@ void spi_nor_init_default_locking_ops(struct spi_nor *nor)
 	params->locking_ops = &spi_nor_sr_locking_ops;
 }
 
-static int write_sr_modify_protection(struct spi_nor *nor, u8 status,
-				      u8 lock_bits)
-{
-	u8 status_new, bp_mask;
-
-	status_new = status & ~SR_BP_BIT_MASK;
-	bp_mask = (lock_bits << SR_BP_SHIFT) & SR_BP_BIT_MASK;
-
-	/* Micron */
-	if (nor->jedec_id == CFI_MFR_ST) {
-		/* To support chips with more than 896 sectors (56MB) */
-		status_new &= ~SR_BP3;
-
-		/* Protected area starts from top */
-		status_new &= ~SR_BP_TB;
-
-		if (lock_bits > 7)
-			bp_mask |= SR_BP3;
-	} else if (nor->jedec_id == CFI_MFR_WINBND) { /* Winbond */
-		status_new &= ~SR_BP3_BIT5;
-
-		/* Protected area starts from top */
-		status_new &= ~SR_BP_TB;
-
-		if (lock_bits > 7)
-			bp_mask |= SR_BP3_BIT5;
-	/* ISSI */
-	/* Macronix */
-	} else if (nor->jedec_id == CFI_MFR_PMC ||
-		   nor->jedec_id == CFI_MFR_MACRONIX) {
-		status_new &= ~SR_BP3_BIT5;
-
-		if (lock_bits > 7)
-			bp_mask |= SR_BP3_BIT5;
-	}
-
-	if (nor->is_lock)
-		status_new |= bp_mask;
-
-	/* For spansion flashes */
-	if (nor->jedec_id == CFI_MFR_AMD) {
-		spi_nor_read_cr(nor, &nor->bouncebuf[1]);
-		nor->bouncebuf[0] = status_new;
-		if (spi_nor_write_sr(nor, nor->bouncebuf, 2) < 0)
-			return 1;
-	} else {
-		nor->bouncebuf[0] = status_new;
-		if (spi_nor_write_sr(nor, &nor->bouncebuf[0], 1) < 0)
-			return 1;
-	}
-	return 0;
-}
-
-static u8 bp_bits_from_sr(struct spi_nor *nor, u8 status)
-{
-	u8 ret;
-
-	ret = (((status) & SR_BP_BIT_MASK) >> SR_BP_SHIFT);
-	if (nor->jedec_id == 0x20)
-		ret |= ((status & SR_BP3) >> (SR_BP_SHIFT + 1));
-	else if ((nor->jedec_id == CFI_MFR_WINBND) &&
-		 (nor->flags & SNOR_F_HAS_4BIT_BP))
-		ret |= ((status & SR_BP3_BIT5) >> SR_BP_SHIFT);
-	else if (nor->jedec_id == CFI_MFR_PMC ||	/* ISSI */
-		 nor->jedec_id == CFI_MFR_MACRONIX)	/* Macronix */
-		ret |= ((status & SR_BP3_BIT5) >> SR_BP_SHIFT);
-
-	return ret;
-}
-
 static inline u16 min_lockable_sectors(struct spi_nor *nor,
 				       u16 n_sectors)
 {
@@ -495,35 +425,11 @@ static inline uint32_t get_protected_area_start(struct spi_nor *nor,
 		min_lockable_sectors(nor, n_sectors) * sector_size;
 }
 
-static u8 min_protected_area_including_offset(struct spi_nor *nor,
-					      uint32_t offset)
-{
-	u8 lock_bits, lockbits_limit;
-
-	/*
-	 * Revisit - SST (not used by us) has the same JEDEC ID as micron but
-	 * protected area table is similar to that of spansion.
-	 * Mircon has 4 block protect bits.
-	 */
-	lockbits_limit = 7;
-	if (nor->jedec_id == CFI_MFR_ST ||	/* Micron */
-	    nor->jedec_id == CFI_MFR_PMC ||	/* ISSI */
-	    nor->jedec_id == CFI_MFR_MACRONIX)	/* Macronix */
-		lockbits_limit = 15;
-
-	for (lock_bits = 1; lock_bits < lockbits_limit; lock_bits++) {
-		if (offset >= get_protected_area_start(nor, lock_bits))
-			break;
-	}
-	return lock_bits;
-}
-
 static int spi_nor_lock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 {
 	struct spi_nor_flash_parameter *params;
 	struct spi_nor *nor = mtd_to_spi_nor(mtd);
 	u32 cur_cs_num = 0;
-	u8 lock_bits;
 	int ret;
 	u64 sz;
 
@@ -555,18 +461,6 @@ static int spi_nor_lock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 	ret = spi_nor_wait_till_ready(nor);
 	if (ret)
 		goto err;
-
-	ret = spi_nor_read_sr(nor, nor->bouncebuf);
-
-	lock_bits = min_protected_area_including_offset(nor, ofs);
-
-	/* Only modify protection if it will not unlock other areas */
-	if (lock_bits > bp_bits_from_sr(nor, nor->bouncebuf[0])) {
-		nor->is_lock = 1;
-		ret = write_sr_modify_protection(nor, nor->bouncebuf[0], lock_bits);
-	} else {
-		dev_err(nor->dev, "trying to unlock already locked area\n");
-	}
 err:
 	spi_nor_unlock_and_unprep(nor);
 	return ret;
@@ -577,7 +471,6 @@ static int spi_nor_unlock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 	struct spi_nor_flash_parameter *params;
 	struct spi_nor *nor = mtd_to_spi_nor(mtd);
 	u32 cur_cs_num = 0;
-	u8 lock_bits;
 	int ret;
 	u64 sz;
 
@@ -609,17 +502,6 @@ static int spi_nor_unlock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 	ret = spi_nor_wait_till_ready(nor);
 	if (ret)
 		goto err;
-
-	ret = spi_nor_read_sr(nor, nor->bouncebuf);
-
-	lock_bits = min_protected_area_including_offset(nor, ofs + len) - 1;
-	/* Only modify protection if it will not lock other areas */
-	if (lock_bits < bp_bits_from_sr(nor, nor->bouncebuf[0])) {
-		nor->is_lock = 0;
-		ret = write_sr_modify_protection(nor, nor->bouncebuf[0], lock_bits);
-	} else {
-		dev_err(nor->dev, "trying to lock already unlocked area\n");
-	}
 err:
 	spi_nor_unlock_and_unprep(nor);
 	return ret;
