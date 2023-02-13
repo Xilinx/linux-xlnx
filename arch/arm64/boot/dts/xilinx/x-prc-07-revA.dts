@@ -165,4 +165,5 @@
 
 &dwc3_1 {
 	status = "okay";
+	snps,ulpi-ext-vbus-drv;
 };
