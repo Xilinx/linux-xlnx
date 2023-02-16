@@ -384,7 +384,7 @@ spidev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			struct spi_controller *ctlr = spi->controller;
 
 			if (ctlr->use_gpio_descriptors && ctlr->cs_gpiods &&
-			    ctlr->cs_gpiods[spi->chip_select])
+			    ctlr->cs_gpiods[spi_get_chipselect(spi, 0)])
 				tmp &= ~SPI_CS_HIGH;
 		}
 
