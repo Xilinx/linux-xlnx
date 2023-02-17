@@ -22,11 +22,19 @@
 struct cdx_controller;
 
 enum {
+	CDX_DEV_MSI_CONF,
 	CDX_DEV_RESET_CONF,
+};
+
+struct cdx_msi_config {
+	u16 msi_index;
+	u32 data;
+	u64 addr;
 };
 
 struct cdx_device_config {
 	u8 type;
+	struct cdx_msi_config msi;
 };
 
 typedef int (*cdx_scan_cb)(struct cdx_controller *cdx);
@@ -87,6 +95,7 @@ struct cdx_controller {
  * @dma_mask: Default DMA mask
  * @flags: CDX device flags
  * @req_id: Requestor ID associated with CDX device
+ * @num_msi: Number of MSI's supported by the device
  * @driver_override: driver name to force a match; do not set directly,
  *                   because core frees it; use driver_set_override() to
  *                   set or clear it.
@@ -103,6 +112,7 @@ struct cdx_device {
 	u64 dma_mask;
 	u16 flags;
 	u32 req_id;
+	u32 num_msi;
 	const char *driver_override;
 };
 
@@ -162,6 +172,20 @@ int __must_check __cdx_driver_register(struct cdx_driver *cdx_driver,
 void cdx_driver_unregister(struct cdx_driver *cdx_driver);
 
 extern struct bus_type cdx_bus_type;
+
+/**
+ * cdx_msi_domain_alloc_irqs - Allocate MSI's for the CDX device
+ * @dev: device pointer
+ * @irq_count: Number of MSI's to be allocated
+ *
+ * Return: 0 for success, -errno on failure
+ */
+int cdx_msi_domain_alloc_irqs(struct device *dev, unsigned int irq_count);
+
+/**
+ * cdx_msi_domain_free_irqs - Free MSI's for CDX device
+ */
+#define cdx_msi_domain_free_irqs msi_domain_free_irqs
 
 /**
  * cdx_dev_reset - Reset CDX device
