@@ -23,6 +23,8 @@ struct cdx_controller;
 
 enum {
 	CDX_DEV_MSI_CONF,
+	CDX_DEV_MSI_ENABLE,
+	CDX_DEV_BUS_MASTER_CONF,
 	CDX_DEV_RESET_CONF,
 };
 
@@ -34,7 +36,11 @@ struct cdx_msi_config {
 
 struct cdx_device_config {
 	u8 type;
-	struct cdx_msi_config msi;
+	union {
+		struct cdx_msi_config msi;
+		bool msi_enable;
+		bool bme;
+	};
 };
 
 typedef int (*cdx_bus_enable_cb)(struct cdx_controller *cdx, bool enable);
@@ -221,5 +227,33 @@ int cdx_msi_domain_alloc_irqs(struct device *dev, unsigned int irq_count);
  * Return: 0 for success, -errno on failure
  */
 int cdx_dev_reset(struct device *dev);
+
+/**
+ * cdx_enable_msi - Enable MSI for the CDX device.
+ * @cdx_dev: device pointer
+ *
+ * Return: 0 for success, -errno on failure
+ */
+int cdx_enable_msi(struct cdx_device *cdx_dev);
+
+/**
+ * cdx_disable_msi - Disable MSI for the CDX device.
+ * @cdx_dev: device pointer
+ */
+void cdx_disable_msi(struct cdx_device *cdx_dev);
+
+/**
+ * cdx_set_master - enables bus-mastering for CDX device
+ * @cdx_dev: the CDX device to enable
+ *
+ * Return: 0 for success, -errno on failure
+ */
+int cdx_set_master(struct cdx_device *cdx_dev);
+
+/**
+ * cdx_clear_master - disables bus-mastering for CDX device
+ * @cdx_dev: the CDX device to disable
+ */
+void cdx_clear_master(struct cdx_device *cdx_dev);
 
 #endif /* _CDX_BUS_H_ */
