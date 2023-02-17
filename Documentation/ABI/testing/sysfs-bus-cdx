@@ -23,6 +23,17 @@ Description:
 
 		  # echo 0 > /sys/bus/cdx/enable
 
+What:		/sys/bus/cdx/reset_all
+Date:		January 2023
+Contact:	puneet.gupta@amd.com
+Description:
+		Writing a non-zero value to this file reset all the devices
+		present on the CDX bus
+
+		For example::
+
+		  # echo 1 > /sys/bus/cdx/reset_all
+
 What:		/sys/bus/cdx/devices/.../vendor
 Date:		January 2023
 Contact:	nipun.gupta@amd.com

@@ -105,6 +105,11 @@ int cdx_dev_reset(struct device *dev)
 }
 EXPORT_SYMBOL_GPL(cdx_dev_reset);
 
+static int reset_cdx_device(struct device *dev, void *data)
+{
+	return cdx_dev_reset(dev);
+}
+
 /**
  * cdx_unregister_device - Unregister a CDX device
  * @dev: CDX device
@@ -434,9 +439,33 @@ static ssize_t rescan_store(struct bus_type *bus,
 }
 static BUS_ATTR_WO(rescan);
 
+static ssize_t reset_all_store(struct bus_type *bus,
+			       const char *buf, size_t count)
+{
+	unsigned long val = 0;
+	int ret;
+
+	if (kstrtoul(buf, 0, &val) < 0)
+		return -EINVAL;
+
+	if (!val)
+		return -EINVAL;
+
+	/* Reset all the devices attached to cdx bus */
+	ret = bus_for_each_dev(bus, NULL, NULL, reset_cdx_device);
+	if (ret) {
+		pr_err("error in CDX bus reset\n");
+		return 0;
+	}
+
+	return count;
+}
+static BUS_ATTR_WO(reset_all);
+
 static struct attribute *cdx_bus_attrs[] = {
 	&bus_attr_enable.attr,
 	&bus_attr_rescan.attr,
+	&bus_attr_reset_all.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(cdx_bus);
