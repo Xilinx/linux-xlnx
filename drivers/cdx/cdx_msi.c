@@ -78,6 +78,38 @@ int cdx_msi_domain_alloc_irqs(struct device *dev, unsigned int irq_count)
 }
 EXPORT_SYMBOL_GPL(cdx_msi_domain_alloc_irqs);
 
+int cdx_enable_msi(struct cdx_device *cdx_dev)
+{
+	struct cdx_controller *cdx = cdx_dev->cdx;
+	struct cdx_device_config dev_config;
+	int ret;
+
+	dev_config.type = CDX_DEV_MSI_ENABLE;
+	dev_config.msi_enable = true;
+	ret = cdx->ops->dev_configure(cdx, cdx_dev->bus_num, cdx_dev->dev_num,
+				      &dev_config);
+	if (ret)
+		dev_err(&cdx_dev->dev, "MSI enable failed\n");
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(cdx_enable_msi);
+
+void cdx_disable_msi(struct cdx_device *cdx_dev)
+{
+	struct cdx_controller *cdx = cdx_dev->cdx;
+	struct cdx_device_config dev_config;
+	int ret;
+
+	dev_config.type = CDX_DEV_MSI_ENABLE;
+	dev_config.msi_enable = false;
+	ret = cdx->ops->dev_configure(cdx, cdx_dev->bus_num, cdx_dev->dev_num,
+				      &dev_config);
+	if (ret)
+		dev_err(&cdx_dev->dev, "MSI disable failed\n");
+}
+EXPORT_SYMBOL_GPL(cdx_disable_msi);
+
 static struct irq_chip cdx_msi_irq_chip = {
 	.name			= "CDX-MSI",
 	.irq_mask		= irq_chip_mask_parent,

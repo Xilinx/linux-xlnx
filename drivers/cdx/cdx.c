@@ -563,6 +563,38 @@ static const struct vm_operations_struct cdx_phys_vm_ops = {
 #endif
 };
 
+int cdx_set_master(struct cdx_device *cdx_dev)
+{
+	struct cdx_controller *cdx = cdx_dev->cdx;
+	struct cdx_device_config dev_config;
+	int ret;
+
+	dev_config.type = CDX_DEV_BUS_MASTER_CONF;
+	dev_config.bme = true;
+	ret = cdx->ops->dev_configure(cdx, cdx_dev->bus_num,
+				      cdx_dev->dev_num, &dev_config);
+	if (ret)
+		dev_err(&cdx_dev->dev, "device master enable failed\n");
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(cdx_set_master);
+
+void cdx_clear_master(struct cdx_device *cdx_dev)
+{
+	struct cdx_controller *cdx = cdx_dev->cdx;
+	struct cdx_device_config dev_config;
+	int ret;
+
+	dev_config.type = CDX_DEV_BUS_MASTER_CONF;
+	dev_config.bme = false;
+	ret = cdx->ops->dev_configure(cdx, cdx_dev->bus_num,
+				      cdx_dev->dev_num, &dev_config);
+	if (ret)
+		dev_err(&cdx_dev->dev, "device master disable failed\n");
+}
+EXPORT_SYMBOL_GPL(cdx_clear_master);
+
 /**
  * cdx_mmap_resource - map a CDX resource into user memory space
  * @fp: File pointer. Not used in this function, but required where
