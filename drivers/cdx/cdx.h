@@ -21,6 +21,7 @@
  * @res: array of MMIO region entries
  * @res_count: number of valid MMIO regions
  * @req_id: Requestor ID associated with CDX device
+ * @num_msi: Number of MSI's supported by the device
  */
 struct cdx_dev_params {
 	struct cdx_controller *cdx;
@@ -31,6 +32,7 @@ struct cdx_dev_params {
 	struct resource res[MAX_CDX_DEV_RESOURCES];
 	u8 res_count;
 	u32 req_id;
+	u32 num_msi;
 };
 
 /**
@@ -58,5 +60,13 @@ void cdx_unregister_controller(struct cdx_controller *cdx);
  * Return: -errno on failure, 0 on success.
  */
 int cdx_device_add(struct cdx_dev_params *dev_params);
+
+/**
+ * cdx_msi_domain_init - Init the CDX bus MSI domain.
+ * @dev: Device of the CDX bus controller
+ *
+ * Return: CDX MSI domain, NULL on failure
+ */
+struct irq_domain *cdx_msi_domain_init(struct device *dev);
 
 #endif /* _CDX_H_ */
