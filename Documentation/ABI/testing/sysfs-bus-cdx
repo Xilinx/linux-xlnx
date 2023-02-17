@@ -10,3 +10,59 @@ Description:
 		For example::
 
 		  # echo 1 > /sys/bus/cdx/rescan
+
+What:		/sys/bus/cdx/enable
+Date:		January 2023
+Contact:	nipun.gupta@amd.com
+Description:
+		Writing a non-zero value to this file enables the CDX bus and
+		writing 0 disables the bus. Reading this provide the current
+		bus state.
+
+		For example to disable CDX bus::
+
+		  # echo 0 > /sys/bus/cdx/enable
+
+What:		/sys/bus/cdx/devices/.../vendor
+Date:		January 2023
+Contact:	nipun.gupta@amd.com
+Description:
+		Vendor ID for this CDX device. Vendor ID is 16 bit
+		identifier which is specific to the device manufacturer.
+		Combination of Vendor ID and Device ID identifies a device.
+
+What:		/sys/bus/cdx/devices/.../device
+Date:		January 2023
+Contact:	nipun.gupta@amd.com
+Description:
+		Device ID for this CDX device. Device ID is a 16 bit
+		identifier to identify a device type within the range
+		of a device manufacturer.
+		Combination of Vendor ID and Device ID identifies a device.
+
+What:		/sys/bus/cdx/devices/.../reset
+Date:		January 2023
+Contact:	nipun.gupta@amd.com
+Description:
+		Writing a non-zero value to this file resets the CDX device.
+		On resetting the device, the corresponding driver is notified
+		twice, once before the device is being reset, and again after
+		the reset has been complete.
+
+		For example::
+
+		  # echo 1 > /sys/bus/cdx/.../reset
+
+What:		/sys/bus/cdx/devices/.../remove
+Date:		January 2023
+Contact:	tarak.reddy@amd.com
+Description:
+		Writing a non-zero value to this file removes the corresponding
+		device from the CDX bus. If the device is to be reconfigured
+		reconfigured in the Hardware, the device can be removed, so
+		that the device driver does not access the device while it is
+		being reconfigured.
+
+		For example::
+
+		  # echo 1 > /sys/bus/cdx/devices/.../remove
