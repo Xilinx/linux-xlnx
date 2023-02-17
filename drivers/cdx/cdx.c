@@ -382,6 +382,30 @@ static struct attribute *cdx_dev_attrs[] = {
 };
 ATTRIBUTE_GROUPS(cdx_dev);
 
+static ssize_t enable_store(struct bus_type *bus,
+			    const char *buf, size_t count)
+{
+	struct cdx_controller *cdx;
+	unsigned long index;
+	bool enable = 0;
+	int ret = 0;
+
+	if (kstrtobool(buf, &enable) < 0)
+		return -EINVAL;
+
+	xa_for_each(&cdx_controllers, index, cdx) {
+		if (cdx->enabled == enable)
+			continue;
+
+		ret = cdx->ops->enable(cdx, enable);
+		if (ret)
+			dev_err(cdx->dev, "cdx bus enable/disable failed\n");
+	}
+
+	return count;
+}
+static BUS_ATTR_WO(enable);
+
 static ssize_t rescan_store(struct bus_type *bus,
 			    const char *buf, size_t count)
 {
@@ -411,6 +435,7 @@ static ssize_t rescan_store(struct bus_type *bus,
 static BUS_ATTR_WO(rescan);
 
 static struct attribute *cdx_bus_attrs[] = {
+	&bus_attr_enable.attr,
 	&bus_attr_rescan.attr,
 	NULL,
 };
@@ -558,6 +583,7 @@ void cdx_unregister_controller(struct cdx_controller *cdx)
 	if (cdx->id >= MAX_CDX_CONTROLLERS)
 		return;
 
+	cdx->ops->enable(cdx, false);
 	device_for_each_child(cdx->dev, NULL, cdx_unregister_device);
 	xa_erase(&cdx_controllers, cdx->id);
 }

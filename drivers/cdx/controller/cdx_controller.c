@@ -44,6 +44,21 @@ void cdx_rpmsg_pre_remove(struct cdx_controller *cdx)
 	cdx_mcdi_wait_for_quiescence(cdx->priv, MCDI_RPC_TIMEOUT);
 }
 
+static int cdx_bus_enable(struct cdx_controller *cdx, bool enable)
+{
+	int ret;
+
+	if (enable)
+		ret = cdx_mcdi_bus_enable(cdx->priv, 0);
+	else
+		ret = cdx_mcdi_bus_disable(cdx->priv, 0);
+
+	if (ret == 0)
+		cdx->enabled = enable;
+
+	return ret;
+}
+
 static int cdx_configure_device(struct cdx_controller *cdx,
 				u8 bus_num, u8 dev_num,
 				struct cdx_device_config *dev_config)
@@ -91,11 +106,22 @@ static int cdx_scan_devices(struct cdx_controller *cdx)
 	for (bus_num = 0; bus_num < num_cdx_bus; bus_num++) {
 		u8 num_cdx_dev;
 
+		ret = cdx_mcdi_bus_enable(cdx_mcdi, bus_num);
+		if (ret && ret != -EALREADY) {
+			dev_err(cdx->dev,
+				"CDX bus %d enable failed: %d\n", bus_num, ret);
+			continue;
+		}
+
 		/* MCDI FW Read: Fetch the number of devices present */
 		ret = cdx_mcdi_get_num_devs(cdx_mcdi, bus_num);
 		if (ret < 0) {
 			dev_err(cdx->dev,
 				"CDX bus %d has no devices: %d\n", bus_num, ret);
+			ret = cdx_mcdi_bus_disable(cdx_mcdi, bus_num);
+			if (ret)
+				dev_err(cdx->dev,
+					"CDX bus %d disable failed: %d\n", bus_num, ret);
 			continue;
 		}
 		num_cdx_dev = (u8)ret;
@@ -131,6 +157,7 @@ static int cdx_scan_devices(struct cdx_controller *cdx)
 }
 
 static struct cdx_ops cdx_ops = {
+	.enable		= cdx_bus_enable,
 	.scan		= cdx_scan_devices,
 	.dev_configure	= cdx_configure_device,
 };
