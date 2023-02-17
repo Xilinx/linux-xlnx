@@ -463,6 +463,7 @@ static void cdx_device_release(struct device *dev)
 int cdx_device_add(struct cdx_dev_params *dev_params)
 {
 	struct cdx_controller *cdx = dev_params->cdx;
+	struct irq_domain *cdx_msi_domain;
 	struct device *parent = cdx->dev;
 	struct cdx_device *cdx_dev;
 	int ret;
@@ -478,6 +479,7 @@ int cdx_device_add(struct cdx_dev_params *dev_params)
 
 	/* Populate CDX dev params */
 	cdx_dev->req_id = dev_params->req_id;
+	cdx_dev->num_msi = dev_params->num_msi;
 	cdx_dev->vendor = dev_params->vendor;
 	cdx_dev->device = dev_params->device;
 	cdx_dev->bus_num = dev_params->bus_num;
@@ -496,6 +498,21 @@ int cdx_device_add(struct cdx_dev_params *dev_params)
 	dev_set_name(&cdx_dev->dev, "cdx-%02x:%02x",
 		     ((cdx->id << CDX_CONTROLLER_ID_SHIFT) | (cdx_dev->bus_num & CDX_BUS_NUM_MASK)),
 		     cdx_dev->dev_num);
+
+	/* If CDX MSI domain is not created, create one. */
+	cdx_msi_domain = irq_find_host(parent->of_node);
+	if (!cdx_msi_domain) {
+		cdx_msi_domain = cdx_msi_domain_init(parent);
+		if (!cdx_msi_domain) {
+			dev_err(&cdx_dev->dev,
+				"cdx_msi_domain_init() failed");
+			ret = -ENODEV;
+			goto fail;
+		}
+	}
+
+	/* Set the MSI domain */
+	dev_set_msi_domain(&cdx_dev->dev, cdx_msi_domain);
 
 	ret = device_add(&cdx_dev->dev);
 	if (ret != 0) {
