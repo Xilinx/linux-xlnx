@@ -109,6 +109,8 @@ static void vfio_cdx_close_device(struct vfio_device *core_vdev)
 	if (WARN_ON(ret))
 		dev_warn(core_vdev->dev,
 			 "VFIO_CDX: reset device has failed (%d)\n", ret);
+
+	vfio_cdx_irqs_cleanup(vdev);
 }
 
 static long vfio_cdx_ioctl(struct vfio_device *core_vdev,
@@ -163,6 +165,57 @@ static long vfio_cdx_ioctl(struct vfio_device *core_vdev,
 		if (copy_to_user((void __user *)arg, &info, minsz))
 			return -EFAULT;
 		return 0;
+	}
+	case VFIO_DEVICE_GET_IRQ_INFO:
+	{
+		struct vfio_irq_info info;
+
+		minsz = offsetofend(struct vfio_irq_info, count);
+		if (copy_from_user(&info, (void __user *)arg, minsz))
+			return -EFAULT;
+
+		if (info.argsz < minsz)
+			return -EINVAL;
+
+		if (info.index >= 1)
+			return -EINVAL;
+
+		info.flags = VFIO_IRQ_INFO_EVENTFD;
+		info.count = cdx_dev->num_msi;
+
+		if (copy_to_user((void __user *)arg, &info, minsz))
+			return -EFAULT;
+		return 0;
+	}
+	case VFIO_DEVICE_SET_IRQS:
+	{
+		struct vfio_irq_set hdr;
+		u8 *data = NULL;
+		int ret = 0;
+		size_t data_size = 0;
+
+		minsz = offsetofend(struct vfio_irq_set, count);
+
+		if (copy_from_user(&hdr, (void __user *)arg, minsz))
+			return -EFAULT;
+
+		ret = vfio_set_irqs_validate_and_prepare(&hdr, cdx_dev->num_msi,
+							 1, &data_size);
+		if (ret)
+			return ret;
+
+		if (data_size) {
+			data = memdup_user((void __user *)(arg + minsz),
+					   data_size);
+			if (IS_ERR(data))
+				return PTR_ERR(data);
+		}
+
+		ret = vfio_cdx_set_irqs_ioctl(vdev, hdr.flags, hdr.index,
+					      hdr.start, hdr.count, data);
+		kfree(data);
+
+		return ret;
 	}
 	case VFIO_DEVICE_RESET:
 	{
@@ -262,8 +315,6 @@ static int vfio_cdx_probe(struct cdx_device *cdx_dev)
 
 out_uninit:
 	vfio_put_device(&vdev->vdev);
-	if (vdev)
-		vfio_free_device(&vdev->vdev);
 	return ret;
 }
 
