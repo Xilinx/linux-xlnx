@@ -1454,7 +1454,7 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 	status1 = xdprxss_read(state, XDPRX_INTR_CAUSE_1_REG);
 	status1 &= ~xdprxss_read(state, XDPRX_INTR_MASK_1_REG);
 
-	if (!status)
+	if (!status && !status1)
 		return IRQ_NONE;
 
 	if (status1 & XDPRX_INTR_ACCESS_LANE_SET_MASK)
