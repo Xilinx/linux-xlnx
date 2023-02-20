@@ -19,21 +19,3 @@ vdmatest_0: vdmatest@0 {
 	dma-names = "vdma0", "vdma1";
 	xlnx,num-fstores = <0x8>;
 } ;
-
-
-Xilinx Video DMA Device Node Example
-++++++++++++++++++++++++++++++++++++
-axi_vdma_0: axivdma@44A40000 {
-	compatible = "xlnx,axi-vdma-1.00.a";
-	...
-	dma-channel@44A40000 {
-		...
-		xlnx,num-fstores = <0x8>;
-		...
-	} ;
-	dma-channel@44A40030 {
-		...
-		xlnx,num-fstores = <0x8>;
-		...
-	} ;
-} ;
