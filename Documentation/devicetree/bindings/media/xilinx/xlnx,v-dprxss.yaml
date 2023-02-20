@@ -101,6 +101,7 @@ properties:
     description:
       A phandle to a syscon device, used to access
       hdcp1x keymgmt registers.
+    $ref: /schemas/types.yaml#/definitions/phandle
 
   ports:
     type: object
@@ -183,6 +184,6 @@ examples:
    };
    hdcp_keymngmt_blk_0: hdcp_keymngmt_blk@a00c0000 {
        compatible = "xlnx,hdcp-keymngmt-blk-1.0", "syscon";
-       reg = <0x0 0xa00c0000 0x0 0x10000>;
+       reg = <0xa00c0000 0x10000>;
    };
 ...
