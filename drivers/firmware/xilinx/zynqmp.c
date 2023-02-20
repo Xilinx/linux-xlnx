@@ -1343,7 +1343,7 @@ int zynqmp_pm_init_finalize(void)
 {
 	return zynqmp_pm_invoke_fn(PM_PM_INIT_FINALIZE, 0, 0, 0, 0, 0, NULL);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_init_finalize);
+late_initcall(zynqmp_pm_init_finalize);
 
 /**
  * zynqmp_pm_write_aes_key - Write AES key registers
