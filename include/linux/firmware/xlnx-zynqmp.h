@@ -87,10 +87,10 @@
 #define PM_WRITE_AES_KEY		0x568
 
 /* XilSEM commands */
-#define PM_XSEM_HEADER			0x10300
-#define PM_XSEM_CRAM_ERRINJ		0x10304
-#define PM_XSEM_RD_CONFIG		0x10309
-#define PM_XSEM_CRAM_RD_ECC		0x1030B
+#define PM_XSEM_HEADER			0x300
+#define PM_XSEM_CRAM_ERRINJ		0x304
+#define PM_XSEM_RD_CONFIG		0x309
+#define PM_XSEM_CRAM_RD_ECC		0x30B
 
 /* To Get UID info list */
 #define PM_GET_UID_INFO_LIST		0x705
