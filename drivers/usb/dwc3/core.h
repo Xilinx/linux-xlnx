@@ -28,6 +28,7 @@
 #include <linux/usb/otg.h>
 #include <linux/usb/role.h>
 #include <linux/ulpi/interface.h>
+#include <linux/ulpi/driver.h>
 
 #include <linux/phy/phy.h>
 #include <../drivers/usb/host/xhci.h>
@@ -660,6 +661,11 @@
 #define DWC3_OSTS_BSESVLD		BIT(2)
 #define DWC3_OSTS_VBUSVLD		BIT(1)
 #define DWC3_OSTS_CONIDSTS		BIT(0)
+
+/* ULPI control registers */
+#define ULPI_OTG_CTRL_SET		0xB
+#define ULPI_OTG_CTRL_CLEAR		0XC
+#define OTG_CTRL_DRVVBUS_OFFSET		BIT(5)
 
 /* Structures */
 
