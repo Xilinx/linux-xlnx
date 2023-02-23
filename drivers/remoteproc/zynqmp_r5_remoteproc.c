@@ -219,9 +219,7 @@ static int xlnx_rpu_rproc_start(struct rproc *rproc)
 	int ret;
 	u32 status;
 
-	/*
-	 * FIXME Versal-Net does not yet support this feature.
-	 */
+	/* R52's on Versal NET boot from 0x0. */
 	if (z_rproc->soc_data->soc_type == SOC_VERSAL_NET) {
 		bootmem = 0;
 	} else {
@@ -238,7 +236,11 @@ static int xlnx_rpu_rproc_start(struct rproc *rproc)
 		return ret;
 
 	/*
-	 * FIXME Versal-Net does not yet support this feature.
+	 * Versal NET does not need the power down upon first run as the
+	 * RPU state is already accurate in Management Firmware.
+	 *
+	 * That being said, firmware for Versal and ZU+ case does not
+	 * cover this so keep it for those boards.
 	 */
 	if (status && z_rproc->soc_data->soc_type != SOC_VERSAL_NET) {
 		ret = zynqmp_pm_force_pwrdwn(z_rproc->pnode_id,
