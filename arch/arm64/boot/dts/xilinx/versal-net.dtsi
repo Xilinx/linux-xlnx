@@ -636,7 +636,8 @@
 				dr_mode = "peripheral";
 				maximum-speed = "high-speed";
 				snps,usb3_lpm_capable;
-				/*phy-names = "usb3-phy";- checking with Pyiush */
+				clock-names = "ref";
+				/* phy-names = "usb3-phy";- checking with Pyiush */
 			};
 		};
 
@@ -661,6 +662,7 @@
 				dr_mode = "host";
 				maximum-speed = "high-speed";
 				snps,usb3_lpm_capable;
+				clock-names = "ref";
 				/* phy-names = "usb3-phy"; - checking with Pyiush */
 			};
 		};
