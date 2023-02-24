@@ -193,9 +193,33 @@ static int __do_feature_check_call(const u32 api_id, u32 *ret_payload)
 {
 	int ret;
 	u64 smc_arg[2];
+	u32 module_id;
+	u32 feature_check_api_id;
 
-	smc_arg[0] = PM_SIP_SVC | PM_FEATURE_CHECK;
-	smc_arg[1] = api_id;
+	module_id = FIELD_GET(MODULE_ID_MASK, api_id);
+
+	/*
+	 * Feature check of APIs belonging to PM, XSEM, and TF-A are
+	 * handled by calling PM_FEATURE_CHECK API.  For other modules,
+	 * call PM_API_FEATURES API.
+	 */
+	if (module_id == PM_MODULE_ID || module_id == XSEM_MODULE_ID ||
+	    module_id == TF_A_MODULE_ID)
+		feature_check_api_id = PM_FEATURE_CHECK;
+	else
+		feature_check_api_id = PM_API_FEATURES;
+
+	/*
+	 * Feature check of TF-A APIs is done in the TF-A layer
+	 * and it expects for MODULE_ID_MASK bits of SMC's arg[0] to
+	 * be the same as PM_MODULE_ID.
+	 */
+	if (module_id == TF_A_MODULE_ID)
+		module_id = PM_MODULE_ID;
+
+	smc_arg[0] = PM_SIP_SVC | FIELD_PREP(MODULE_ID_MASK, module_id) |
+		     feature_check_api_id;
+	smc_arg[1] = (api_id & API_ID_MASK);
 
 	ret = do_fw_call(smc_arg[0], smc_arg[1], 0, 0, ret_payload);
 	if (ret)
@@ -497,21 +521,12 @@ void *xlnx_get_crypto_dev_data(struct xlnx_feature *feature_map)
 		    (feature->subfamily == ALL_SUB_FAMILY_CODE ||
 		     feature->subfamily == pm_sub_family_code)) {
 			api_id = FIELD_GET(API_ID_MASK, feature->feature_id);
-			if (feature->family == ZYNQMP_FAMILY_CODE) {
+			if (feature->family == ZYNQMP_FAMILY_CODE ||
+			    feature->family == VERSAL_FAMILY_CODE) {
 				ret = zynqmp_pm_feature(api_id);
-				if (ret < 0)
-					return ERR_PTR(-ENODEV);
-			} else if (feature->family == VERSAL_FAMILY_CODE) {
-				ret = zynqmp_pm_invoke_fn(XSECURE_API_FEATURES,
-							  api_id, 0, 0, 0, 0,
-							  NULL);
-				if (ret < 0)
-					return ERR_PTR(-ENODEV);
-			} else {
-				return ERR_PTR(-ENODEV);
+				if (!ret)
+					return feature->data;
 			}
-
-			return feature->data;
 		}
 	}
 	return ERR_PTR(-ENODEV);
@@ -3165,25 +3180,9 @@ static int zynqmp_firmware_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	np = of_find_compatible_node(NULL, NULL, "xlnx,zynqmp");
-	if (!np) {
-		np = of_find_compatible_node(NULL, NULL, "xlnx,versal");
-		if (np) {
-			feature_check_enabled = true;
-		} else {
-			np = of_find_compatible_node(NULL, NULL, "xlnx,versal-net");
-			if (!np)
-				return 0;
-		}
-	}
-
-	if (!feature_check_enabled) {
-		ret = do_feature_check_call(PM_FEATURE_CHECK);
-		if (ret >= 0)
-			feature_check_enabled = true;
-	}
-
-	of_node_put(np);
+	ret = do_feature_check_call(PM_FEATURE_CHECK);
+	if (ret >= 0 && ((ret & FIRMWARE_VERSION_MASK) >= PM_API_VERSION_1))
+		feature_check_enabled = true;
 
 	devinfo = devm_kzalloc(dev, sizeof(*devinfo), GFP_KERNEL);
 	if (!devinfo)
