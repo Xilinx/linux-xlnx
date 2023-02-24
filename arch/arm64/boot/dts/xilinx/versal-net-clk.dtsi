@@ -64,6 +64,12 @@
 		clock-frequency = <450000000>;
 	};
 
+	clk1200: clk1200 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <1200000000>;
+	};
+
 	firmware {
 		versal_net_firmware: versal-net-firmware {
 			compatible = "xlnx,versal-net-firmware";
@@ -165,11 +171,11 @@
 };
 
 &sdhci0 {
-	clocks = <&clk200>, <&clk200>;
+	clocks = <&clk200>, <&clk200>, <&clk1200>;
 };
 
 &sdhci1 {
-	clocks = <&clk200>, <&clk200>;
+	clocks = <&clk200>, <&clk200>, <&clk1200>;
 };
 
 &serial0 {
