@@ -32,10 +32,8 @@
 /* SMC SIP service Call Function Identifier Prefix */
 #define PM_SIP_SVC			0xC2000000
 
-#define PM_MODULE_ID		2
-#define SECURE_MODULE_ID	5
-
 /* PM API versions */
+#define PM_API_VERSION_1	1
 #define PM_API_VERSION_2	2
 
 /* Firmware feature check version mask */
@@ -54,7 +52,8 @@
 #define SUB_FAMILY_CODE_LSB	19
 #define SUB_FAMILY_CODE_MSB	20
 
-#define API_ID_MASK	GENMASK(7, 0)
+#define API_ID_MASK		GENMASK(7, 0)
+#define MODULE_ID_MASK		GENMASK(11, 8)
 
 /* ATF only commands */
 #define TF_A_PM_REGISTER_SGI		0xa04
@@ -70,7 +69,6 @@
 #define PM_BBRAM_LOCK_USERDATA		0xB05
 
 /* xilSecure API commands  module id + api id */
-#define XSECURE_API_FEATURES		0x500
 #define XSECURE_API_RSA_SIGN_VERIFY	0x501
 #define XSECURE_API_RSA_PUBLIC_ENCRYPT	0x502
 #define XSECURE_API_RSA_PRIVATE_DECRYPT	0x503
@@ -157,6 +155,17 @@
 #define XILINX_AIE_OPS_ENB_AXI_MM_ERR_EVENT		BIT(5)
 #define XILINX_AIE_OPS_SET_L2_CTRL_NPI_INTR		BIT(6)
 
+enum pm_module_id {
+	PM_MODULE_ID = 0x0,
+	XPM_MODULE_ID = 0x2,
+	XSEM_MODULE_ID = 0x3,
+	XSECURE_MODULE_ID = 0x5,
+	TF_A_MODULE_ID = 0xa,
+	XNVM_MODULE_ID = 0xb,
+	XPUF_MODULE_ID = 0xc,
+	XOCP_MODULE_ID = 0xd,
+};
+
 enum xsecure_aeskeysize {
 	XSECURE_AES_KEY_SIZE_128 = 16,
 	XSECURE_AES_KEY_SIZE_256 = 32,
@@ -169,6 +178,7 @@ enum pm_api_cb_id {
 };
 
 enum pm_api_id {
+	PM_API_FEATURES = 0,
 	PM_GET_API_VERSION = 1,
 	PM_SET_CONFIGURATION = 2,
 	PM_GET_NODE_STATUS = 3,
