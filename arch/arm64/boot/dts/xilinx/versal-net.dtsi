@@ -519,7 +519,7 @@
 			status = "disabled";
 			reg = <0 0xf1040000 0 0x10000>;
 			interrupts = <0 184 4>;
-			clock-names = "clk_xin", "clk_ahb";
+			clock-names = "clk_xin", "clk_ahb", "gate";
 			#clock-cells = <1>;
 			clock-output-names = "clk_out_sd0", "clk_in_sd0";
 		};
@@ -530,7 +530,7 @@
 			status = "disabled";
 			reg = <0 0xf1050000 0 0x10000>;
 			interrupts = <0 186 4>;
-			clock-names = "clk_xin", "clk_ahb";
+			clock-names = "clk_xin", "clk_ahb", "gate";
 			#clock-cells = <1>;
 			clock-output-names = "clk_out_sd1", "clk_in_sd1";
 		};
