@@ -732,6 +732,8 @@ xlnx_rpu_rproc_get_loaded_rsc_table(struct rproc *rproc, size_t *table_sz)
 {
 	struct xlnx_rpu_rproc *z_rproc = rproc->priv;
 	struct device *dev = rproc->dev.parent;
+	struct resource_table *tbl_ptr;
+	int i;
 
 	z_rproc->rsc_va = devm_ioremap_wc(dev, z_rproc->rsc_pa, RSC_TBL_SIZE);
 	if (IS_ERR_OR_NULL(z_rproc->rsc_va)) {
@@ -739,6 +741,18 @@ xlnx_rpu_rproc_get_loaded_rsc_table(struct rproc *rproc, size_t *table_sz)
 			&z_rproc->rsc_pa, RSC_TBL_SIZE);
 		z_rproc->rsc_va = NULL;
 		return ERR_PTR(-ENOMEM);
+	}
+
+	tbl_ptr = (struct resource_table *)z_rproc->rsc_va;
+	for (i = 0; i < tbl_ptr->num; i++) {
+		u32 offset = tbl_ptr->offset[i];
+
+		if (offset > RSC_TBL_SIZE) {
+			dev_err(dev, "rsc table offset is invalid: %pa+%x\n",
+				&z_rproc->rsc_pa, RSC_TBL_SIZE);
+			z_rproc->rsc_va = NULL;
+			return ERR_PTR(-EINVAL);
+		}
 	}
 
 	*table_sz = RSC_TBL_SIZE;
