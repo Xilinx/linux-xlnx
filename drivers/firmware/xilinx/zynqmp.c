@@ -272,7 +272,7 @@ static int do_feature_check_call(const u32 api_id)
  *			 store supported IOCTL/QUERY ID mask
  * @api_id:		API ID to check
  *
- * Return: Returns status, either success or error+reason
+ * Return: Returns API version in case of success and error code in case of error
  */
 int zynqmp_pm_feature(const u32 api_id)
 {
@@ -520,11 +520,11 @@ void *xlnx_get_crypto_dev_data(struct xlnx_feature *feature_map)
 		if (feature->family == pm_family_code &&
 		    (feature->subfamily == ALL_SUB_FAMILY_CODE ||
 		     feature->subfamily == pm_sub_family_code)) {
-			api_id = FIELD_GET(API_ID_MASK, feature->feature_id);
+			api_id = feature->feature_id;
 			if (feature->family == ZYNQMP_FAMILY_CODE ||
 			    feature->family == VERSAL_FAMILY_CODE) {
 				ret = zynqmp_pm_feature(api_id);
-				if (!ret)
+				if (ret >= 0)
 					return feature->data;
 			}
 		}
