@@ -258,8 +258,6 @@ static int xlnx_i2s_probe(struct platform_device *pdev)
 	drv_data->is_32bit_lrclk = readl(drv_data->base + I2S_CORE_CTRL_OFFSET) &
 				   I2S_CORE_CTRL_32BIT_LRCLK;
 
-	dev_set_drvdata(&pdev->dev, drv_data);
-
 	drv_data->aud_mclk = devm_clk_get(&pdev->dev, "aud_mclk");
 	if (IS_ERR(drv_data->aud_mclk)) {
 		ret = PTR_ERR(drv_data->aud_mclk);
@@ -286,12 +284,6 @@ static int xlnx_i2s_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev,
 			"failed to enable aud_mclk(%d)\n", ret);
 		goto err_aud_mclk;
-	}
-
-	drv_data->base = devm_platform_ioremap_resource(pdev, 0);
-	if (IS_ERR(drv_data->base)) {
-		ret = PTR_ERR(drv_data->base);
-		goto clk_err;
 	}
 
 	dev_set_drvdata(&pdev->dev, drv_data);
