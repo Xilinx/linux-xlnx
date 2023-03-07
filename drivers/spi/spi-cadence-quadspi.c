@@ -1790,6 +1790,7 @@ static int cqspi_exec_mem_op(struct spi_mem *mem, const struct spi_mem_op *op)
 		if (ret)
 			return ret;
 	} else {
+		f_pdata->dtr = false;
 		if (cqspi->clk_tuned)
 			cqspi_setup_sdrmode(cqspi);
 	}
