@@ -370,6 +370,36 @@ static int aie_part_access_regs(struct aie_partition *apart, u32 num_reqs,
 			ret = aie_part_block_set(apart, args);
 			break;
 		}
+		case AIE_CONFIG_SHIMDMA_BD:
+		{
+			struct aie_part_pinned_region data_region;
+
+			data_region.user_addr = args->dataptr;
+			data_region.len = sizeof(struct aie_dmabuf_bd_args);
+			ret = aie_part_pin_user_region(apart, &data_region);
+			if (ret)
+				break;
+
+			ret =  aie_part_set_bd(apart,
+				(struct aie_dma_bd_args *)args->dataptr);
+			aie_part_unpin_user_region(&data_region);
+			break;
+		}
+		case AIE_CONFIG_SHIMDMA_DMABUF_BD:
+		{
+			struct aie_part_pinned_region data_region;
+
+			data_region.user_addr = args->dataptr;
+			data_region.len = sizeof(struct aie_dmabuf_bd_args);
+			ret = aie_part_pin_user_region(apart, &data_region);
+			if (ret)
+				break;
+
+			ret =  aie_part_set_dmabuf_bd(apart,
+				(struct aie_dmabuf_bd_args *)args->dataptr);
+			aie_part_unpin_user_region(&data_region);
+			break;
+		}
 		default:
 			dev_err(&apart->dev,
 				"Invalid register command type: %u.\n",
@@ -665,9 +695,9 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 	case AIE_DETACH_DMABUF_IOCTL:
 		return aie_part_detach_dmabuf_req(apart, argp);
 	case AIE_SET_SHIMDMA_BD_IOCTL:
-		return aie_part_set_bd(apart, argp);
+		return aie_part_set_bd_from_user(apart, argp);
 	case AIE_SET_SHIMDMA_DMABUF_BD_IOCTL:
-		return aie_part_set_dmabuf_bd(apart, argp);
+		return aie_part_set_dmabuf_bd_from_user(apart, argp);
 	case AIE_REQUEST_TILES_IOCTL:
 		return aie_part_request_tiles_from_user(apart, argp);
 	case AIE_RELEASE_TILES_IOCTL:
