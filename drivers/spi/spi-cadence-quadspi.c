@@ -97,6 +97,7 @@ struct cqspi_st {
 	struct completion	tuning_complete;
 	struct spi_mem_op	tuning_op;
 	int			gpio;
+	bool			tuning_scheduled;
 };
 
 struct cqspi_driver_platdata {
@@ -861,9 +862,14 @@ static int cqspi_setup_edgemode(struct spi_mem *mem,
 		return ret;
 
 	complete_all(&cqspi->tuning_complete);
+	if (cqspi->tuning_scheduled) {
+		cancel_delayed_work_sync(&mem->complete_work);
+		flush_scheduled_work();
+	}
 	INIT_DELAYED_WORK(&mem->complete_work, cqspi_periodictuning);
 	schedule_delayed_work(&mem->complete_work,
 			      msecs_to_jiffies(CQSPI_TUNING_PERIODICITY_MS));
+	cqspi->tuning_scheduled = true;
 
 	return 0;
 }
