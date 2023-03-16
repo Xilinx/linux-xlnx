@@ -308,5 +308,6 @@ static struct platform_driver zynqmp_power_domain_driver = {
 	.remove = zynqmp_gpd_remove,
 };
 module_platform_driver(zynqmp_power_domain_driver);
+late_initcall(zynqmp_pm_init_finalize);
 
 MODULE_ALIAS("platform:zynqmp_power_controller");
