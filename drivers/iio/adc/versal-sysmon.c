@@ -21,6 +21,7 @@
 #define SYSMON_UNMASK_WORK_DELAY_MS	500
 
 #define SYSMON_FRACTIONAL_DENOM		128
+#define SYSMON_HBM_FRACTIONAL_DENOM	1
 
 #define SYSMON_HBM_TEMP_SHIFT	16U
 #define SYSMON_HBM_TEMP_MASK	GENMASK(6, 0)
@@ -217,7 +218,7 @@ static u32 sysmon_supply_thresh_offset(int address,
 static void sysmon_hbm_to_celsius(int raw_data, int *val, int *val2)
 {
 	*val = (raw_data >> SYSMON_HBM_TEMP_SHIFT) & SYSMON_HBM_TEMP_MASK;
-	*val2 = SYSMON_FRACTIONAL_DENOM;
+	*val2 = SYSMON_HBM_FRACTIONAL_DENOM;
 }
 
 /**
