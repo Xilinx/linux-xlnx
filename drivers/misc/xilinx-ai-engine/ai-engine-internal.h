@@ -807,6 +807,11 @@ struct aie_device {
 	const struct aie_single_reg_field *core_sp;
 };
 
+struct aie_l2_mask {
+	u32 *val;
+	int count;
+};
+
 /**
  * struct aie_aperture - AI engine aperture structure
  * @node: list node
@@ -839,7 +844,7 @@ struct aie_aperture {
 	int irq;
 	struct aie_range range;
 	struct work_struct backtrack;
-	struct aie_resource l2_mask;
+	struct aie_l2_mask l2_mask;
 	struct attribute_group *attr_grp;
 };
 
@@ -1156,7 +1161,7 @@ struct aie_partition *aie_create_partition(struct aie_aperture *aperture,
 void aie_aperture_backtrack(struct work_struct *work);
 irqreturn_t aie_interrupt(int irq, void *data);
 void aie_interrupt_callback(const u32 *payload, void *data);
-int aie_aperture_create_l2_bitmap(struct aie_aperture *aperture);
+int aie_aperture_create_l2_mask(struct aie_aperture *aperture);
 bool aie_part_has_error(struct aie_partition *apart);
 void aie_part_clear_cached_events(struct aie_partition *apart);
 int aie_part_set_intr_rscs(struct aie_partition *apart);
