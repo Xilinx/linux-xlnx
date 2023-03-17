@@ -283,7 +283,7 @@ static void aie_aperture_release_device(struct device *dev)
 	struct aie_aperture *aperture = dev_get_drvdata(dev);
 
 	aie_resource_uninitialize(&aperture->cols_res);
-	aie_resource_uninitialize(&aperture->l2_mask);
+	kfree(aperture->l2_mask.val);
 	zynqmp_pm_release_node(aperture->node_id);
 	kfree(aperture);
 }
@@ -492,7 +492,7 @@ of_aie_aperture_probe(struct aie_device *adev, struct device_node *nc)
 	if (aperture->adev->device_name == AIE_DEV_GEN_S100 ||
 	    aperture->adev->device_name == AIE_DEV_GEN_S200) {
 		INIT_WORK(&aperture->backtrack, aie_aperture_backtrack);
-		ret = aie_aperture_create_l2_bitmap(aperture);
+		ret = aie_aperture_create_l2_mask(aperture);
 		if (ret) {
 			dev_err(dev, "failed to initialize l2 mask resource.\n");
 			goto put_aperture_dev;
@@ -514,7 +514,7 @@ of_aie_aperture_probe(struct aie_device *adev, struct device_node *nc)
 			aperture->irq = ret;
 			INIT_WORK(&aperture->backtrack, aie_aperture_backtrack);
 
-			ret = aie_aperture_create_l2_bitmap(aperture);
+			ret = aie_aperture_create_l2_mask(aperture);
 			if (ret) {
 				dev_err(dev, "failed to initialize l2 mask resource.\n");
 				goto put_aperture_dev;

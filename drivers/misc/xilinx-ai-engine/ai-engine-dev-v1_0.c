@@ -166,7 +166,7 @@ int xilinx_ai_engine_probe_v1(struct platform_device *pdev)
 		dev_warn(&aperture->dev, "Failed to configure DMA.\n");
 
 	INIT_WORK(&aperture->backtrack, aie_aperture_backtrack);
-	ret = aie_aperture_create_l2_bitmap(aperture);
+	ret = aie_aperture_create_l2_mask(aperture);
 	if (ret) {
 		dev_err(&aperture->dev,
 			"failed to initialize l2 mask resource.\n");

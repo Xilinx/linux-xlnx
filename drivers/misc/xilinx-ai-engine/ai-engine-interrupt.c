@@ -612,12 +612,12 @@ static bool aie_l1_backtrack(struct aie_partition *apart,
  * aie_range_get_num_nocs() - get number of shim NOC tiles of AI enigne range
  * @range: AI engine tiles range pointer
  * @aperture: AI engine aperture pointer
- * @l2_bitmap_off: return l2 mask bitmap start offset of the range per 32bit
+ * @l2_mask_off: return l2 mask start offset of the range
  * @return: number of shim NOC tiles of the AI engine partition.
  */
 static u32 aie_range_get_num_nocs(const struct aie_range *range,
 				  const struct aie_aperture *aperture,
-				  u32 *l2_bitmap_off)
+				  u32 *l2_mask_off)
 {
 	struct aie_location loc;
 	struct aie_device *adev = aperture->adev;
@@ -633,8 +633,8 @@ static u32 aie_range_get_num_nocs(const struct aie_range *range,
 		num_nocs++;
 	}
 
-	if (num_nocs && l2_bitmap_off) {
-		*l2_bitmap_off = 0;
+	if (num_nocs && l2_mask_off) {
+		*l2_mask_off = 0;
 		for (loc.col = aperture->range.start.col, loc.row = 0;
 		     loc.col < range->start.col; loc.col++) {
 			u32 ttype;
@@ -642,7 +642,7 @@ static u32 aie_range_get_num_nocs(const struct aie_range *range,
 			ttype = adev->ops->get_tile_type(adev, &loc);
 			if (ttype != AIE_TILE_TYPE_SHIMNOC)
 				continue;
-			*l2_bitmap_off += 1;
+			*l2_mask_off += 1;
 		}
 	}
 
@@ -658,8 +658,10 @@ static u32 aie_range_get_num_nocs(const struct aie_range *range,
 static void aie_l2_backtrack(struct aie_partition *apart)
 {
 	struct aie_aperture *aperture = apart->aperture;
+	u32 *aperture_l2_mask = aperture->l2_mask.val;
 	struct aie_location loc;
-	u32 n, ttype, l2_bitmap_offset = 0, num_nocs;
+	u32 l2_mask_index = 0;
+	u32 n, ttype, num_nocs;
 	int ret;
 
 	ret = mutex_lock_interruptible(&apart->mlock);
@@ -670,7 +672,7 @@ static void aie_l2_backtrack(struct aie_partition *apart)
 	}
 
 	num_nocs = aie_range_get_num_nocs(&apart->range, aperture,
-					  &l2_bitmap_offset);
+					  &l2_mask_index);
 	if (!num_nocs) {
 		mutex_unlock(&apart->mlock);
 		return;
@@ -680,39 +682,21 @@ static void aie_l2_backtrack(struct aie_partition *apart)
 	     loc.col < apart->range.start.col + apart->range.size.col;
 	     loc.col++) {
 		unsigned long l2_mask;
-		u32 adjust_l2_bitmap_offset = l2_bitmap_offset * 32;
 
 		ttype = apart->adev->ops->get_tile_type(apart->adev, &loc);
 		if (ttype != AIE_TILE_TYPE_SHIMNOC)
 			continue;
+		if (l2_mask_index >= aperture->l2_mask.count)
+			break;
 
-		/*
-		 * copy to arr32 function requires bitmap is unsigned long
-		 * aligned.  For every 2nd l2 mask, it needs to include
-		 * the previous l2 mask status.
-		 */
-		if (l2_bitmap_offset % 2)
-			adjust_l2_bitmap_offset -= 32;
-		aie_resource_cpy_to_arr32(&aperture->l2_mask,
-					  adjust_l2_bitmap_offset,
-					  (u32 *)&l2_mask, 64);
-		if (l2_bitmap_offset % 2)
-			l2_mask >>= 32;
+		l2_mask = aperture_l2_mask[l2_mask_index];
 		for_each_set_bit(n, &l2_mask,
 				 apart->adev->l2_ctrl->num_broadcasts) {
 			if (aie_l1_backtrack(apart, loc, n))
 				apart->error_to_report = 1;
 		}
-
-		/*
-		 * clear the l2 mask, it will be set when there is interrupt
-		 * coming from the NOC.
-		 */
-		aie_resource_clear(&aperture->l2_mask,
-				   l2_bitmap_offset *
-				   AIE_INTR_L2_CTRL_MASK_WIDTH,
-				   AIE_INTR_L2_CTRL_MASK_WIDTH);
-		l2_bitmap_offset++;
+		aperture_l2_mask[l2_mask_index] = 0;
+		l2_mask_index++;
 		aie_aperture_enable_l2_ctrl(aperture, &loc, l2_mask);
 	}
 
@@ -791,9 +775,11 @@ irqreturn_t aie_interrupt(int irq, void *data)
 {
 	struct aie_aperture *aperture = data;
 	struct aie_device *adev = aperture->adev;
-	u32 l2_bitmap_offset = 0;
 	struct aie_location loc;
 	bool sched_work = false;
+	u32 *aperture_l2_mask = aperture->l2_mask.val;
+	int l2_mask_count = aperture->l2_mask.count;
+	int l2_mask_index = 0;
 
 	if (adev->dev_gen != AIE_DEVICE_GEN_AIE) {
 		dev_info_ratelimited(&adev->dev,
@@ -805,39 +791,18 @@ irqreturn_t aie_interrupt(int irq, void *data)
 	for (loc.col = aperture->range.start.col, loc.row = 0;
 	     loc.col < aperture->range.start.col + aperture->range.size.col;
 	     loc.col++) {
-		unsigned long l2_mask_64;
-		u32 ttype, l2_status, l2_mask, nbits_cpy, adjust_l2_bitmap_off;
+		u32 ttype, l2_status, l2_mask;
 
 		ttype = adev->ops->get_tile_type(adev, &loc);
 		if (ttype != AIE_TILE_TYPE_SHIMNOC)
 			continue;
 
+		if (l2_mask_index >= l2_mask_count)
+			break;
+
 		l2_mask = aie_aperture_get_l2_mask(aperture, &loc);
 		if (l2_mask) {
-			adjust_l2_bitmap_off = l2_bitmap_offset * 32;
-			nbits_cpy = 32;
-			if (l2_bitmap_offset % 2) {
-				/*
-				 * copy from arr32 function requires
-				 * bitmap is unsigned long aligned.
-				 * for every 2nd l2 mask, it needs to include
-				 * the previous l2 mask status.
-				 */
-				aie_resource_cpy_from_arr32(&aperture->l2_mask,
-							    l2_bitmap_offset *
-							    32,
-							    (u32 *)&l2_mask_64,
-							    32);
-				l2_mask_64 |= (unsigned long)l2_mask << 32;
-				nbits_cpy = 64;
-				adjust_l2_bitmap_off -= 32;
-			} else {
-				l2_mask_64 = (unsigned long)l2_mask;
-			}
-			aie_resource_cpy_from_arr32(&aperture->l2_mask,
-						    adjust_l2_bitmap_off,
-						    (u32 *)&l2_mask_64,
-						    nbits_cpy);
+			aperture_l2_mask[l2_mask_index] = l2_mask;
 			aie_aperture_disable_l2_ctrl(aperture, &loc, l2_mask);
 		}
 
@@ -850,7 +815,7 @@ irqreturn_t aie_interrupt(int irq, void *data)
 			aie_aperture_enable_l2_ctrl(aperture, &loc,
 						    l2_mask);
 		}
-		l2_bitmap_offset++;
+		l2_mask_index++;
 	}
 
 	if (sched_work)
@@ -890,7 +855,8 @@ bool aie_part_has_error(struct aie_partition *apart)
 {
 	struct aie_aperture *aperture = apart->aperture;
 	int ret;
-	u32 l2_bitmap_off, num_nocs;
+	u32 *l2_mask = aperture->l2_mask.val;
+	int i;
 
 	/*
 	 * TODO: errors backtracking is not support for AIEML. for now, return
@@ -900,10 +866,6 @@ bool aie_part_has_error(struct aie_partition *apart)
 		dev_dbg(&apart->dev, "Skipping error backtracking.\n");
 		return false;
 	}
-	num_nocs = aie_range_get_num_nocs(&apart->range, aperture,
-					  &l2_bitmap_off);
-	if (!num_nocs)
-		return false;
 
 	ret = mutex_lock_interruptible(&aperture->mlock);
 	if (ret) {
@@ -912,39 +874,37 @@ bool aie_part_has_error(struct aie_partition *apart)
 		return false;
 	}
 
-	ret = aie_resource_check_region(&aperture->l2_mask,
-					l2_bitmap_off *
-					AIE_INTR_L2_CTRL_MASK_WIDTH,
-					num_nocs * AIE_INTR_L2_CTRL_MASK_WIDTH);
-	mutex_unlock(&aperture->mlock);
-
-	if (ret != ((int)l2_bitmap_off * AIE_INTR_L2_CTRL_MASK_WIDTH)) {
-		/* There is error from this partition */
-		return true;
+	for (i = 0; i < aperture->l2_mask.count; i++) {
+		if (l2_mask[i]) {
+			ret = true;
+			break;
+		}
 	}
 
-	return false;
+	mutex_unlock(&aperture->mlock);
+	return ret;
 }
 
 /**
- * aie_aperture_create_l2_bitmap() - create bitmaps to record mask and status
+ * aie_aperture_create_l2_mask() - create bitmaps to record mask and status
  *				     values for level 2 interrupt controllers.
  * @aperture: AI engine aperture
  * @return: 0 for success, and negative value for failure.
  */
-int aie_aperture_create_l2_bitmap(struct aie_aperture *aperture)
+int aie_aperture_create_l2_mask(struct aie_aperture *aperture)
 {
-	int ret;
 	u32 num_nocs;
 
 	num_nocs = aie_range_get_num_nocs(&aperture->range, aperture, NULL);
 	if (!num_nocs)
 		return 0;
 
-	ret = aie_resource_initialize(&aperture->l2_mask, num_nocs *
-				      AIE_INTR_L2_CTRL_MASK_WIDTH);
-
-	return ret;
+	aperture->l2_mask.val = kcalloc(num_nocs, sizeof(*aperture->l2_mask.val),
+					GFP_KERNEL);
+	aperture->l2_mask.count = num_nocs;
+	if (!aperture->l2_mask.val)
+		return -ENOMEM;
+	return 0;
 }
 
 /**
