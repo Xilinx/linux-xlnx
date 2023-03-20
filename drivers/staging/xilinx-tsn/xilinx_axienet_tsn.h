@@ -17,6 +17,7 @@
 #include <linux/phy.h>
 #include <linux/of_platform.h>
 #include <linux/clk.h>
+#include <linux/io-64-nonatomic-lo-hi.h>
 
 /* Packet size info */
 #define XAE_HDR_SIZE			14 /* Size of Ethernet header */
@@ -1092,6 +1093,22 @@ static inline u32 axienet_ior(struct axienet_local *lp, off_t offset)
 	return ioread32(lp->regs + offset);
 }
 
+/**
+ * axienet_ior64 - Memory mapped Axi Ethernet register read from two consecutive registers
+ * @lp:         Pointer to axienet local structure
+ * @offset:     Address offset from the base address of Axi Ethernet core
+ *
+ * Return: 64 bit value, where the LSB 32 bits correspond to the contents of the register
+ * at baseaddress+offset and MSB 32 bits correspond to the contents of the register at
+ * baseaddress+offset+4
+ *
+ * This function returns the 64 bit value corresponding to two consecutive registers.
+ */
+static inline u64 axienet_ior64(struct axienet_local *lp, off_t offset)
+{
+	return ioread64_lo_hi(lp->regs + offset);
+}
+
 static inline u32 axinet_ior_read_mcr(struct axienet_local *lp)
 {
 	return axienet_ior(lp, XAE_MDIO_MCR_OFFSET);
@@ -1257,6 +1274,10 @@ int axienet_preemption_ctrl(struct net_device *ndev, void __user *useraddr);
 int axienet_preemption_sts(struct net_device *ndev, void __user *useraddr);
 int axienet_preemption_receive(struct net_device *ndev);
 int axienet_preemption_cnt(struct net_device *ndev, void __user *useraddr);
+int axienet_preemption_sts_ethtool(struct net_device *ndev, struct ethtool_mm_state *state);
+void axienet_preemption_cnt_ethtool(struct net_device *ndev, struct ethtool_mm_stats *stats);
+int axienet_preemption_ctrl_ethtool(struct net_device *ndev, struct ethtool_mm_cfg *config_data,
+				    struct netlink_ext_ack *extack);
 #ifdef CONFIG_XILINX_TSN_QBV
 int axienet_qbu_user_override(struct net_device *ndev, void __user *useraddr);
 int axienet_qbu_sts(struct net_device *ndev, void __user *useraddr);
