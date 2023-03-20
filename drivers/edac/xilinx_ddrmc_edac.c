@@ -26,8 +26,10 @@
 #define XDDR_IRQ_EN_OFFSET			0x20
 #define XDDR_IRQ1_EN_OFFSET			0x2C
 #define XDDR_IRQ_DIS_OFFSET			0x24
+#define XDDR_IRQ1_DIS_OFFSET			0x30
 #define XDDR_IRQ_CE_MASK			GENMASK(18, 15)
 #define XDDR_IRQ_UE_MASK			GENMASK(14, 11)
+#define XDDR_IRQ_ALL				GENMASK(31, 0)
 
 #define XDDR_REG_CONFIG0_OFFSET			0x258
 #define XDDR_REG_CONFIG0_BUS_WIDTH_MASK		GENMASK(19, 18)
@@ -795,14 +797,15 @@ static void xddr_enable_intr(struct xddr_edac_priv *priv)
 	writel(1, priv->ddrmc_baseaddr + XDDR_PCSR_OFFSET);
 }
 
-static void xddr_disable_intr(struct xddr_edac_priv *priv)
+static void xddr_disable_all_intr(struct xddr_edac_priv *priv)
 {
 	/* Unlock the PCSR registers */
 	writel(PCSR_UNLOCK_VAL, priv->ddrmc_baseaddr + XDDR_PCSR_OFFSET);
 
-	/* Disable UE/CE Interrupts */
-	writel(XDDR_IRQ_CE_MASK | XDDR_IRQ_UE_MASK,
+	writel(XDDR_IRQ_ALL,
 	       priv->ddrmc_baseaddr + XDDR_IRQ_DIS_OFFSET);
+	writel(XDDR_IRQ_ALL,
+	       priv->ddrmc_baseaddr + XDDR_IRQ1_DIS_OFFSET);
 
 	/* Lock the PCSR registers */
 	writel(1, priv->ddrmc_baseaddr + XDDR_PCSR_OFFSET);
@@ -1205,6 +1208,8 @@ static int xddr_mc_probe(struct platform_device *pdev)
 		goto del_edac_mc;
 	}
 
+	xddr_disable_all_intr(priv);
+
 	xddr_enable_intr(priv);
 
 	return rc;
@@ -1228,7 +1233,7 @@ static int xddr_mc_remove(struct platform_device *pdev)
 	struct mem_ctl_info *mci = platform_get_drvdata(pdev);
 	struct xddr_edac_priv *priv = mci->pvt_info;
 
-	xddr_disable_intr(priv);
+	xddr_disable_all_intr(priv);
 
 #ifdef CONFIG_EDAC_DEBUG
 	edac_remove_sysfs_attributes(mci);
