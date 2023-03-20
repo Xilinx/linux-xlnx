@@ -36,7 +36,7 @@ static int xhdmiphy_init(struct phy *phy)
 
 	count++;
 
-	if (count < XHDMIPHY_MAX_LANES)
+	if (count < (XHDMIPHY_MAX_LANES - 4))
 		return 0;
 
 	/* initialize HDMI phy */
@@ -93,7 +93,7 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 
 	if (!phy_lane->direction) {
 		count_rx++;
-		if (count_rx < XHDMIPHY_MAX_LANES) {
+		if (count_rx < phy_dev->conf.rx_channels) {
 			return 0;
 		} else if (cfg->ibufds) {
 			xhdmiphy_ibufds_en(phy_dev, XHDMIPHY_DIR_RX,
@@ -174,7 +174,7 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 	if (phy_lane->direction) {
 		count_tx++;
 
-		if (count_tx < XHDMIPHY_MAX_LANES) {
+		if (count_tx < phy_dev->conf.tx_channels) {
 			return 0;
 		} else if (cfg->ibufds) {
 			xhdmiphy_ibufds_en(phy_dev, XHDMIPHY_DIR_TX,
@@ -810,9 +810,10 @@ static int xhdmiphy_probe(struct platform_device *pdev)
 	mutex_init(&priv->hdmiphy_mutex);
 
 	for_each_child_of_node(np, child) {
-		if (index >= XHDMIPHY_MAX_LANES) {
+		if (index >= priv->conf.rx_channels + priv->conf.tx_channels) {
 			dev_err(&pdev->dev,
-				"MAX 4 PHY Lanes are supported\n");
+				"MAX %d PHY Lanes are supported\n",
+				(priv->conf.rx_channels + priv->conf.tx_channels));
 			return -E2BIG;
 		}
 
