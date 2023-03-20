@@ -644,8 +644,8 @@ static int xhdmiphy_parse_of(struct xhdmiphy_dev *priv)
 	}
 	xgtphycfg->tx_frl_refclk_sel = val;
 
-	priv->rxch4_gpio = devm_gpiod_get(priv->dev,
-					  "rxch4-sel", GPIOD_OUT_LOW);
+	priv->rxch4_gpio = devm_gpiod_get_optional(priv->dev,
+						   "rxch4-sel", GPIOD_OUT_LOW);
 
 	if (IS_ERR(priv->rxch4_gpio)) {
 		if (PTR_ERR(priv->rxch4_gpio) != -EPROBE_DEFER)
