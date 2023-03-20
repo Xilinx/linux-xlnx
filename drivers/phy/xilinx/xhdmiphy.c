@@ -349,9 +349,14 @@ static irqreturn_t xhdmiphy_irq_thread(int irq, void *dev_id)
 		if (priv->conf.gt_direction == XHDMIPHY_SIMPLE_TX)
 			event_mask =	XHDMIPHY_INTR_TXTMRTIMEOUT_MASK |
 					XHDMIPHY_INTR_TXFREQCHANGE_MASK;
-		else
+		else if (priv->conf.gt_direction == XHDMIPHY_SIMPLE_RX)
 			event_mask =	XHDMIPHY_INTR_RXFREQCHANGE_MASK |
 					XHDMIPHY_INTR_RXTMRTIMEOUT_MASK;
+		else
+			event_mask =	XHDMIPHY_INTR_RXFREQCHANGE_MASK |
+					XHDMIPHY_INTR_RXTMRTIMEOUT_MASK |
+					XHDMIPHY_INTR_TXTMRTIMEOUT_MASK |
+					XHDMIPHY_INTR_TXFREQCHANGE_MASK;
 	}
 
 	event_ack = event_mask & status;
@@ -667,6 +672,7 @@ static int xhdmiphy_parse_of(struct xhdmiphy_dev *priv)
 			dev_err(priv->dev, "Invalid gt-direction %d\n", val);
 			return -EINVAL;
 		}
+		xgtphycfg->gt_direction = val;
 	}
 
 	return rc;
