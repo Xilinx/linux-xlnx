@@ -492,6 +492,9 @@ u32 xhdmiphy_init_phy(struct xhdmiphy_dev *inst)
 {
 	u8 id, id0, id1;
 
+	if (inst->phy_ready)
+		return 0;
+
 	xhdmiphy_cfg_init(inst);
 
 	xhdmiphy_ch2ids(inst, XHDMIPHY_CHID_CHA, &id0, &id1);
@@ -624,6 +627,8 @@ u32 xhdmiphy_init_phy(struct xhdmiphy_dev *inst)
 			xhdmiphy_set_tx_pc(inst, (enum chid)id, 0x5);
 		}
 	}
+	inst->phy_ready = true;
+	dev_dbg(inst->dev, "HDMI PHY is initialized and ready\n");
 
 	return 0;
 }

@@ -110,7 +110,7 @@
 					 XHDMIPHY_INTR_RXMMCMUSRCLK_LOCK_MASK)
 
 #define XHDMIPHY_DRU_REF_CLK_HZ		100000000
-#define XHDMIPHY_MAX_LANES		4
+#define XHDMIPHY_MAX_LANES		8
 #define VPHY_DEVICE_ID_BASE		256
 
 #define XHDMIPHY_GTHE4				5
@@ -1026,7 +1026,7 @@ struct xhdmiphy_dev {
 	struct hdmiphy_callback phycb[TX_READY_CB];
 	int irq;
 	struct mutex hdmiphy_mutex;	/* protecting phy operations */
-	struct xhdmiphy_lane *lanes[4];
+	struct xhdmiphy_lane *lanes[XHDMIPHY_MAX_LANES];
 	struct clk_config *data;
 	struct clk *axi_lite_clk;
 	struct clk *dru_clk;
@@ -1045,6 +1045,7 @@ struct xhdmiphy_dev {
 	u8 tx_samplerate;
 	u8 rx_dru_enabled;
 	u8 qpll_present;
+	u8 phy_ready;
 };
 
 void xhdmiphy_set_clr(struct xhdmiphy_dev *inst, u32 addr, u32 reg_val,
