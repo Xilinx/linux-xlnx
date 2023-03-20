@@ -489,7 +489,7 @@ static void handle_error(struct mem_ctl_info *mci, struct synps_ecc_status *p)
 		}
 
 		edac_mc_handle_error(HW_EVENT_ERR_CORRECTED, mci,
-				     priv->ce_cnt, 0, 0, 0, 0, 0, -1,
+				     p->ce_cnt, 0, 0, 0, 0, 0, -1,
 				     priv->message, "");
 	}
 
@@ -507,7 +507,7 @@ static void handle_error(struct mem_ctl_info *mci, struct synps_ecc_status *p)
 		}
 
 		edac_mc_handle_error(HW_EVENT_ERR_UNCORRECTED, mci,
-				     priv->ue_cnt, 0, 0, 0, 0, 0, -1,
+				     p->ue_cnt, 0, 0, 0, 0, 0, -1,
 				     priv->message, "");
 	}
 
