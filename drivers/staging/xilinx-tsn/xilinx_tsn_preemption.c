@@ -38,6 +38,53 @@ int axienet_preemption(struct net_device *ndev, void __user *useraddr)
 }
 
 /**
+ * axienet_preemption_ctrl_ethtool -  Configure Frame Preemption Control register
+ * @ndev: Pointer to the net_device structure
+ * @config_data: Pointer to the mm cfg data struct
+ * @extack: Pointer to the netlink_ext_ack struct
+ * Return: 0 on success, Non-zero error value on failure
+ */
+int axienet_preemption_ctrl_ethtool(struct net_device *ndev, struct ethtool_mm_cfg *config_data,
+				    struct netlink_ext_ack *extack)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+	bool preemption_support;
+	int add_frag_size, err;
+	u32 value;
+
+	value = axienet_ior(lp, XAE_TSN_ABL_OFFSET);
+	preemption_support = (value & PREEMPTION_SUPPORT) ? 1 : 0;
+	if (!preemption_support)
+		return -EOPNOTSUPP;
+
+	err = ethtool_mm_frag_size_min_to_add(config_data->tx_min_frag_size,
+					      &add_frag_size, extack);
+	if (err)
+		return err;
+
+	if (config_data->tx_enabled) {
+		value = axienet_ior(lp, PREEMPTION_ENABLE_REG);
+		value = value | config_data->tx_enabled;
+		axienet_iow(lp, PREEMPTION_ENABLE_REG, value);
+	}
+
+	value = axienet_ior(lp, PREEMPTION_CTRL_STS_REG);
+
+	value &= ~(VERIFY_TIMER_VALUE_MASK << VERIFY_TIMER_VALUE_SHIFT);
+	value |= (config_data->verify_time << VERIFY_TIMER_VALUE_SHIFT);
+	value &= ~(ADDITIONAL_FRAG_SIZE_MASK << ADDITIONAL_FRAG_SIZE_SHIFT);
+	value |= (add_frag_size << ADDITIONAL_FRAG_SIZE_SHIFT);
+
+	if (!config_data->verify_enabled) {
+		value &= ~(DISABLE_PREEMPTION_VERIFY);
+		value |= !(config_data->verify_enabled);
+	}
+
+	axienet_iow(lp, PREEMPTION_CTRL_STS_REG, value);
+	return 0;
+}
+
+/**
  * axienet_preemption_ctrl -  Configure Frame Preemption Control register
  * @ndev: Pointer to the net_device structure
  * @useraddr: Value to be programmed
@@ -61,6 +108,41 @@ int axienet_preemption_ctrl(struct net_device *ndev, void __user *useraddr)
 	value |= (data.disable_preemp_verify);
 
 	axienet_iow(lp, PREEMPTION_CTRL_STS_REG, value);
+	return 0;
+}
+
+/**
+ * axienet_preemption_sts_ethtool -  Get Frame Preemption Status
+ * @ndev: Pointer to the net_device structure
+ * @state: Pointer to ethtool_mm_state struct
+ * Return: 0 on success, Non-zero error value on failure
+ */
+int axienet_preemption_sts_ethtool(struct net_device *ndev, struct ethtool_mm_state *state)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+	u32 value;
+
+	value = axienet_ior(lp, XAE_TSN_ABL_OFFSET);
+	state->pmac_enabled = (value & PREEMPTION_SUPPORT) ? 1 : 0;
+	if (!state->pmac_enabled)
+		return -EOPNOTSUPP;
+
+	state->max_verify_time = MAX_VERIFY_TIME;
+	value = axienet_ior(lp, PREEMPTION_ENABLE_REG);
+	state->tx_enabled = value & PREEMPTION_ENABLE;
+
+	value = axienet_ior(lp, PREEMPTION_CTRL_STS_REG);
+	state->tx_active = (value & TX_PREEMPTION_STS) ? 1 : 0;
+	state->verify_status = ((value >> MAC_MERGE_TX_VERIFY_STS_SHIFT)
+				 & MAC_MERGE_TX_VERIFY_STS_MASK) + 1;
+	state->verify_time = (value >> VERIFY_TIMER_VALUE_SHIFT) &
+					VERIFY_TIMER_VALUE_MASK;
+	state->tx_min_frag_size = ethtool_mm_frag_size_add_to_min((value
+								   >> ADDITIONAL_FRAG_SIZE_SHIFT)
+								   & ADDITIONAL_FRAG_SIZE_MASK);
+	state->rx_min_frag_size = ETH_ZLEN;
+	state->verify_enabled = ~(value & DISABLE_PREEMPTION_VERIFY);
+
 	return 0;
 }
 
@@ -135,6 +217,26 @@ static void statistic_cnts(struct net_device *ndev, void *ptr,
 }
 
 /**
+ * axienet_preemption_cnt_ethtool -  Get Frame Preemption Statistics counter
+ * @ndev: Pointer to the net_device structure
+ * @stats: return value, containing counters value
+ * Return: 0 on success, Non-zero error value on failure
+ */
+void axienet_preemption_cnt_ethtool(struct net_device *ndev, struct ethtool_mm_stats *stats)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+
+	stats->MACMergeFrameAssErrorCount = axienet_ior64(lp,
+							  MAC_MERGE_FRAME_ASSEMBLY_ERROR_COUNT_REG);
+	stats->MACMergeFrameSmdErrorCount = axienet_ior64(lp, MAC_MERGE_FRAME_SMD_ERROR_COUNT_REG);
+	stats->MACMergeFrameAssOkCount = axienet_ior64(lp,
+						       MAC_MERGE_FRAME_ASSEMBLY_OK_COUNT_RX_REG);
+	stats->MACMergeFragCountRx = axienet_ior64(lp, MAC_MERGE_FRAG_COUNT_RX_REG);
+	stats->MACMergeFragCountTx = axienet_ior64(lp, MAC_MERGE_FRAG_COUNT_TX_REG);
+	stats->MACMergeHoldCount = axienet_ior64(lp, MAC_MERGE_HOLD_COUNT_REG);
+}
+
+/**
  * axienet_preemption_cnt -  Get Frame Preemption Statistics counter
  * @ndev: Pointer to the net_device structure
  * @useraddr: return value, containing counters value
@@ -156,7 +258,7 @@ int axienet_preemption_cnt(struct net_device *ndev, void __user *useraddr)
 			       RX_BYTES_PMAC_REG);
 		statistic_cnts(ndev, &stats.pmac.merge,
 			       sizeof(struct mac_merge_counters) / 4,
-			       TX_HOLD_REG);
+			       MAC_MERGE_HOLD_COUNT_REG);
 	}
 
 	if (copy_to_user(useraddr, &stats, sizeof(struct emac_pmac_stats)))
