@@ -1603,6 +1603,11 @@ static const struct ethtool_ops axienet_ethtool_ops = {
 #endif
 	.get_link_ksettings = phy_ethtool_get_link_ksettings,
 	.set_link_ksettings = phy_ethtool_set_link_ksettings,
+#if defined(CONFIG_XILINX_TSN_QBR)
+	.get_mm		= axienet_preemption_sts_ethtool,
+	.set_mm		= axienet_preemption_ctrl_ethtool,
+	.get_mm_stats	= axienet_preemption_cnt_ethtool,
+#endif
 };
 
 static int axienet_clk_init(struct platform_device *pdev,
