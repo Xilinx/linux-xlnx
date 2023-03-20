@@ -283,13 +283,8 @@ static irqreturn_t xhdmiphy_irq_handler(int irq, void *dev_id)
 	 */
 	if (priv->conf.gt_type == XHDMIPHY_GTYE5 ||
 	    priv->conf.gt_type == XHDMIPHY_GTYP) {
-		if (priv->conf.gt_direction == XHDMIPHY_SIMPLE_TX)
-			xhdmiphy_intr_dis(priv, XHDMIPHY_GTYE5_TX_ALL_MASK);
-		else if (priv->conf.gt_direction == XHDMIPHY_SIMPLE_RX)
-			xhdmiphy_intr_dis(priv, XHDMIPHY_GTYE5_RX_ALL_MASK);
-		else
-			xhdmiphy_intr_dis(priv, XHDMIPHY_GTYE5_TX_ALL_MASK |
-					  XHDMIPHY_GTYE5_RX_ALL_MASK);
+		xhdmiphy_intr_dis(priv, XHDMIPHY_GTYE5_TX_ALL_MASK |
+				  XHDMIPHY_GTYE5_RX_ALL_MASK);
 	} else {
 		xhdmiphy_intr_dis(priv, XHDMIPHY_INTR_ALL_MASK);
 	}
