@@ -29,7 +29,8 @@ properties:
     maxItems: 1
     description: |
       Select HDMI 2.1 PHY Rx channel as data or clock based on FRL or TMDS mode.
-      Polarity of this GPIO is GPIO_ACTIVE_LOW
+      This property is required only for the boards which has external FMC
+      card on it. Polarity of this GPIO is GPIO_ACTIVE_LOW
 
   interrupts:
     maxItems: 1
@@ -188,7 +189,6 @@ required:
   - compatible
   - interrupts
   - reg
-  - rxch4-sel-gpios
   - xlnx,transceiver-type
   - xlnx,tx-no-of-channels
   - xlnx,rx-no-of-channels
