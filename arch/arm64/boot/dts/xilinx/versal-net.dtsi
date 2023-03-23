@@ -96,6 +96,7 @@
 			enable-method = "psci";
 			reg = <0>;
 			operating-points-v2 = <&cpu_opp_table>;
+			cpu-idle-states = <&CPU_SLEEP_0>;
 		};
 		cpu100: cpu@100 {
 			compatible = "arm,cortex-a78";
@@ -103,6 +104,7 @@
 			enable-method = "psci";
 			reg = <0x100>;
 			operating-points-v2 = <&cpu_opp_table>;
+			cpu-idle-states = <&CPU_SLEEP_0>;
 		};
 		cpu200: cpu@200 {
 			compatible = "arm,cortex-a78";
@@ -110,6 +112,7 @@
 			enable-method = "psci";
 			reg = <0x200>;
 			operating-points-v2 = <&cpu_opp_table>;
+			cpu-idle-states = <&CPU_SLEEP_0>;
 		};
 		cpu300: cpu@300 {
 			compatible = "arm,cortex-a78";
@@ -117,6 +120,7 @@
 			enable-method = "psci";
 			reg = <0x300>;
 			operating-points-v2 = <&cpu_opp_table>;
+			cpu-idle-states = <&CPU_SLEEP_0>;
 		};
 		cpu10000: cpu@10000 {
 			compatible = "arm,cortex-a78";
@@ -124,6 +128,7 @@
 			enable-method = "psci";
 			reg = <0x10000>;
 			operating-points-v2 = <&cpu_opp_table>;
+			cpu-idle-states = <&CPU_SLEEP_0>;
 		};
 		cpu10100: cpu@10100 {
 			compatible = "arm,cortex-a78";
@@ -131,6 +136,7 @@
 			enable-method = "psci";
 			reg = <0x10100>;
 			operating-points-v2 = <&cpu_opp_table>;
+			cpu-idle-states = <&CPU_SLEEP_0>;
 		};
 		cpu10200: cpu@10200 {
 			compatible = "arm,cortex-a78";
@@ -138,6 +144,7 @@
 			enable-method = "psci";
 			reg = <0x10200>;
 			operating-points-v2 = <&cpu_opp_table>;
+			cpu-idle-states = <&CPU_SLEEP_0>;
 		};
 		cpu10300: cpu@10300 {
 			compatible = "arm,cortex-a78";
@@ -145,6 +152,7 @@
 			enable-method = "psci";
 			reg = <0x10300>;
 			operating-points-v2 = <&cpu_opp_table>;
+			cpu-idle-states = <&CPU_SLEEP_0>;
 		};
 		cpu20000: cpu@20000 {
 			compatible = "arm,cortex-a78";
@@ -152,6 +160,7 @@
 			enable-method = "psci";
 			reg = <0x20000>;
 			operating-points-v2 = <&cpu_opp_table>;
+			cpu-idle-states = <&CPU_SLEEP_0>;
 		};
 		cpu20100: cpu@20100 {
 			compatible = "arm,cortex-a78";
@@ -159,6 +168,7 @@
 			enable-method = "psci";
 			reg = <0x20100>;
 			operating-points-v2 = <&cpu_opp_table>;
+			cpu-idle-states = <&CPU_SLEEP_0>;
 		};
 		cpu20200: cpu@20200 {
 			compatible = "arm,cortex-a78";
@@ -166,6 +176,7 @@
 			enable-method = "psci";
 			reg = <0x20200>;
 			operating-points-v2 = <&cpu_opp_table>;
+			cpu-idle-states = <&CPU_SLEEP_0>;
 		};
 		cpu20300: cpu@20300 {
 			compatible = "arm,cortex-a78";
@@ -173,6 +184,7 @@
 			enable-method = "psci";
 			reg = <0x20300>;
 			operating-points-v2 = <&cpu_opp_table>;
+			cpu-idle-states = <&CPU_SLEEP_0>;
 		};
 		cpu30000: cpu@30000 {
 			compatible = "arm,cortex-a78";
@@ -180,6 +192,7 @@
 			enable-method = "psci";
 			reg = <0x30000>;
 			operating-points-v2 = <&cpu_opp_table>;
+			cpu-idle-states = <&CPU_SLEEP_0>;
 		};
 		cpu30100: cpu@30100 {
 			compatible = "arm,cortex-a78";
@@ -187,6 +200,7 @@
 			enable-method = "psci";
 			reg = <0x30100>;
 			operating-points-v2 = <&cpu_opp_table>;
+			cpu-idle-states = <&CPU_SLEEP_0>;
 		};
 		cpu30200: cpu@30200 {
 			compatible = "arm,cortex-a78";
@@ -194,6 +208,7 @@
 			enable-method = "psci";
 			reg = <0x30200>;
 			operating-points-v2 = <&cpu_opp_table>;
+			cpu-idle-states = <&CPU_SLEEP_0>;
 		};
 		cpu30300: cpu@30300 {
 			compatible = "arm,cortex-a78";
@@ -201,6 +216,19 @@
 			enable-method = "psci";
 			reg = <0x30300>;
 			operating-points-v2 = <&cpu_opp_table>;
+			cpu-idle-states = <&CPU_SLEEP_0>;
+		};
+		idle-states {
+			entry-method = "psci";
+
+			CPU_SLEEP_0: cpu-sleep-0 {
+				compatible = "arm,idle-state";
+				arm,psci-suspend-param = <0x40000000>;
+				local-timer-stop;
+				entry-latency-us = <300>;
+				exit-latency-us = <600>;
+				min-residency-us = <10000>;
+			};
 		};
 	};
 
