@@ -26,6 +26,7 @@
 #include <linux/virtio.h>
 #include <linux/virtio_ids.h>
 #include <linux/virtio_config.h>
+#include <uapi/linux/virtio_ring.h>
 #include <linux/wait.h>
 
 #include "rpmsg_internal.h"
@@ -556,6 +557,7 @@ static int rpmsg_send_offchannel_raw(struct rpmsg_device *rpdev,
 	struct virtio_rpmsg_channel *vch = to_virtio_rpmsg_channel(rpdev);
 	struct virtproc_info *vrp = vch->vrp;
 	struct device *dev = &rpdev->dev;
+	const struct vring *vr;
 	struct scatterlist sg;
 	struct rpmsg_hdr *msg;
 	int err;
@@ -619,6 +621,11 @@ static int rpmsg_send_offchannel_raw(struct rpmsg_device *rpdev,
 
 	dev_dbg(dev, "TX From 0x%x, To 0x%x, Len %d, Flags %d, Reserved %d\n",
 		src, dst, len, msg->flags, msg->reserved);
+
+	vr = virtqueue_get_vring(vrp->svq);
+	dev_dbg(dev, "TX vring: avail: %d used: %d\n", vr->avail->idx,
+		vr->used->idx);
+
 #if defined(CONFIG_DYNAMIC_DEBUG)
 	dynamic_hex_dump("rpmsg_virtio TX: ", DUMP_PREFIX_NONE, 16, 1,
 			 msg, sizeof(*msg) + len, true);
@@ -712,6 +719,7 @@ static int rpmsg_recv_single(struct virtproc_info *vrp, struct device *dev,
 	struct scatterlist sg;
 	bool little_endian = virtio_is_little_endian(vrp->vdev);
 	unsigned int msg_len = __rpmsg16_to_cpu(little_endian, msg->len);
+	const struct vring *vr;
 	int err;
 
 	dev_dbg(dev, "From: 0x%x, To: 0x%x, Len: %d, Flags: %d, Reserved: %d\n",
@@ -719,6 +727,11 @@ static int rpmsg_recv_single(struct virtproc_info *vrp, struct device *dev,
 		__rpmsg32_to_cpu(little_endian, msg->dst), msg_len,
 		__rpmsg16_to_cpu(little_endian, msg->flags),
 		__rpmsg32_to_cpu(little_endian, msg->reserved));
+
+	vr = virtqueue_get_vring(vrp->rvq);
+	dev_dbg(dev, "RX vring: avail: %d used: %d\n", vr->avail->idx,
+		vr->used->idx);
+
 #if defined(CONFIG_DYNAMIC_DEBUG)
 	dynamic_hex_dump("rpmsg_virtio RX: ", DUMP_PREFIX_NONE, 16, 1,
 			 msg, sizeof(*msg) + msg_len, true);
