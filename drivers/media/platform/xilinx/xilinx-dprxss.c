@@ -452,6 +452,8 @@ struct vidphy_cfg {
  * @vidphy_prvdata: Pointer to video phy private data structure
  * @tp1_work: training pattern 1 worker
  * @unplug_work: Unplug worker
+ * @lane_set_work: lane set worker
+ * @link_qual_work: link qual worker
  * @lock: Lock is used for width, height, framerate variables
  * @format: Active V4L2 format on each pad
  * @frame_interval: Captures the frame rate
@@ -493,6 +495,8 @@ struct xdprxss_state {
 	struct vidphy_cfg *vidphy_prvdata;
 	struct delayed_work tp1_work;
 	struct delayed_work unplug_work;
+	struct work_struct lane_set_work;
+	struct work_struct link_qual_work;
 	/* protects width, height, framerate variables */
 	spinlock_t lock;
 	struct v4l2_mbus_framefmt format;
@@ -1458,9 +1462,9 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 		return IRQ_NONE;
 
 	if (status1 & XDPRX_INTR_ACCESS_LANE_SET_MASK)
-		xdprxss_irq_access_laneset(state);
+		schedule_work(&state->lane_set_work);
 	if (status1 & XDPRX_INTR_LINKQUAL_MASK)
-		xdprxss_irq_access_linkqual(state);
+		schedule_work(&state->link_qual_work);
 	if (status & XDPRX_INTR_UNPLUG_MASK)
 		schedule_delayed_work(&state->unplug_work, 0);
 	if (status & XDPRX_INTR_TP1_MASK)
@@ -2275,6 +2279,24 @@ static int xdprxss_parse_of(struct xdprxss_state *xdprxss)
 	return 0;
 }
 
+static void xlnx_dp_laneset_work_func(struct work_struct *work)
+{
+	struct xdprxss_state *dp;
+
+	dp = container_of(work, struct xdprxss_state, lane_set_work);
+
+	xdprxss_irq_access_laneset(dp);
+}
+
+static void xlnx_dp_linkqual_work_func(struct work_struct *work)
+{
+	struct xdprxss_state *dp;
+
+	dp = container_of(work, struct xdprxss_state, link_qual_work);
+
+	xdprxss_irq_access_linkqual(dp);
+}
+
 static void xlnx_dp_tp1_work_func(struct work_struct *work)
 {
 	struct xdprxss_state *dp;
@@ -2744,6 +2766,8 @@ static int xdprxss_probe(struct platform_device *pdev)
 
 	INIT_DELAYED_WORK(&xdprxss->tp1_work, xlnx_dp_tp1_work_func);
 	INIT_DELAYED_WORK(&xdprxss->unplug_work, xlnx_dp_unplug_work_func);
+	INIT_WORK(&xdprxss->lane_set_work, xlnx_dp_laneset_work_func);
+	INIT_WORK(&xdprxss->link_qual_work, xlnx_dp_linkqual_work_func);
 
 	return 0;
 
@@ -2781,6 +2805,8 @@ static int xdprxss_remove(struct platform_device *pdev)
 	unsigned int i;
 
 	cancel_delayed_work_sync(&xdprxss->tp1_work);
+	cancel_work_sync(&xdprxss->lane_set_work);
+	cancel_work_sync(&xdprxss->link_qual_work);
 	v4l2_async_unregister_subdev(subdev);
 	media_entity_cleanup(&subdev->entity);
 	clk_disable_unprepare(xdprxss->rx_vid_clk);
