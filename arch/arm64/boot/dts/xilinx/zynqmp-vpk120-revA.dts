@@ -201,8 +201,8 @@
 	pinctrl-names = "default", "gpio";
 	pinctrl-0 = <&pinctrl_i2c0_default>;
 	pinctrl-1 = <&pinctrl_i2c0_gpio>;
-	scl-gpios = <&gpio 34 GPIO_ACTIVE_HIGH>;
-	sda-gpios = <&gpio 35 GPIO_ACTIVE_HIGH>;
+	scl-gpios = <&gpio 34 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
+	sda-gpios = <&gpio 35 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
 
 	tca6416_u233: gpio@20 { /* u233 */ /* FIXME - address maybe wrong */
 		compatible = "ti,tca6416";
@@ -410,8 +410,8 @@
 	pinctrl-names = "default", "gpio";
 	pinctrl-0 = <&pinctrl_i2c1_default>;
 	pinctrl-1 = <&pinctrl_i2c1_gpio>;
-	scl-gpios = <&gpio 36 GPIO_ACTIVE_HIGH>;
-	sda-gpios = <&gpio 37 GPIO_ACTIVE_HIGH>;
+	scl-gpios = <&gpio 36 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
+	sda-gpios = <&gpio 37 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
 
 	i2c-mux@74 { /* u35 */
 		compatible = "nxp,pca9548";

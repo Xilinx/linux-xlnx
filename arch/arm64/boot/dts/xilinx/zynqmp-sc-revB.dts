@@ -159,8 +159,8 @@
 	pinctrl-names = "default", "gpio";
 	pinctrl-0 = <&pinctrl_i2c0_default>;
 	pinctrl-1 = <&pinctrl_i2c0_gpio>;
-	scl-gpios = <&gpio 34 GPIO_ACTIVE_HIGH>;
-	sda-gpios = <&gpio 35 GPIO_ACTIVE_HIGH>;
+	scl-gpios = <&gpio 34 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
+	sda-gpios = <&gpio 35 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
 };
 
 &i2c1 { /* i2c1 MIO 24-25 */
@@ -170,8 +170,8 @@
 	pinctrl-names = "default", "gpio";
 	pinctrl-0 = <&pinctrl_i2c1_default>;
 	pinctrl-1 = <&pinctrl_i2c1_gpio>;
-	scl-gpios = <&gpio 24 GPIO_ACTIVE_HIGH>;
-	sda-gpios = <&gpio 25 GPIO_ACTIVE_HIGH>;
+	scl-gpios = <&gpio 24 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
+	sda-gpios = <&gpio 25 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
 
 	/* Use for storing information about SC board */
 	eeprom: eeprom@54 { /* u34 - m24128 16kB */
