@@ -1737,12 +1737,6 @@ static int axienet_open(struct net_device *ndev)
 
 	dev_dbg(&ndev->dev, "axienet_open()\n");
 
-	ret  = axienet_device_reset(ndev);
-	if (ret < 0) {
-		dev_err(lp->dev, "axienet_device_reset failed\n");
-		return ret;
-	}
-
 	/* When we do an Axi Ethernet reset, it resets the complete core
 	 * including the MDIO. MDIO must be disabled before resetting.
 	 * Hold MDIO bus lock to avoid MDIO accesses during the reset.
@@ -1750,6 +1744,10 @@ static int axienet_open(struct net_device *ndev)
 	axienet_lock_mii(lp);
 	ret = axienet_device_reset(ndev);
 	axienet_unlock_mii(lp);
+	if (ret < 0) {
+		dev_err(lp->dev, "axienet_device_reset failed\n");
+		return ret;
+	}
 
 	if (lp->phylink) {
 		ret = phylink_of_phy_connect(lp->phylink, lp->dev->of_node, 0);
