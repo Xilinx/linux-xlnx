@@ -137,7 +137,7 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 {
 	struct zynqmp_fpga_priv *priv;
 	int word_align, ret, index;
-	dma_addr_t dma_addr = 0;
+	dma_addr_t dma_addr;
 	u32 eemi_flags = 0;
 	size_t dma_size;
 	u32 status;
