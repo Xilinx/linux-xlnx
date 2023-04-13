@@ -90,7 +90,7 @@ static ssize_t enable_show(struct kobject *kobj, struct kobj_attribute *attr,
 }
 
 /**
- * version_store - Writes to the framer's enable status register
+ * enable_store - Writes to the framer's enable status register
  * @kobj:	The kernel object of the entry
  * @attr:	The attributes of the kernel object
  * @buff:	The buffer containing the enable status
@@ -535,7 +535,7 @@ void utils_sysfs_store_wrapper(u32 address, u32 offset, u32 mask, u32 value,
 }
 
 /**
- * utils_sysfs_store_wrapper - Wraps the storing function for sysfs entries
+ * utils_sysfs_show_wrapper - Wraps the storing function for sysfs entries
  * @address:	The address of the register to be read
  * @offset:	The offset from the address of the register
  * @mask:	The mask to be used on the value to be read
