@@ -28,6 +28,7 @@
 #include <linux/types.h>
 #include <linux/can/dev.h>
 #include <linux/can/error.h>
+#include <linux/phy/phy.h>
 #include <linux/pm_runtime.h>
 #include <linux/reset.h>
 
@@ -199,6 +200,7 @@ struct xcan_devtype_data {
  * @bus_clk:			Pointer to struct clk
  * @can_clk:			Pointer to struct clk
  * @devtype:			Device type specific constants
+ * @transceiver:		Optional pointer to associated CAN transceiver
  */
 struct xcan_priv {
 	struct can_priv can;
@@ -216,6 +218,7 @@ struct xcan_priv {
 	struct clk *bus_clk;
 	struct clk *can_clk;
 	struct xcan_devtype_data devtype;
+	struct phy *transceiver;
 	struct reset_control *rstc;
 };
 
@@ -1421,6 +1424,10 @@ static int xcan_open(struct net_device *ndev)
 	struct xcan_priv *priv = netdev_priv(ndev);
 	int ret;
 
+	ret = phy_power_on(priv->transceiver);
+	if (ret)
+		return ret;
+
 	ret = pm_runtime_get_sync(priv->dev);
 	if (ret < 0) {
 		netdev_err(ndev, "%s: pm_runtime_get failed(%d)\n",
@@ -1464,6 +1471,7 @@ err_irq:
 	free_irq(ndev->irq, ndev);
 err:
 	pm_runtime_put(priv->dev);
+	phy_power_off(priv->transceiver);
 
 	return ret;
 }
@@ -1485,6 +1493,7 @@ static int xcan_close(struct net_device *ndev)
 	close_candev(ndev);
 
 	pm_runtime_put(priv->dev);
+	phy_power_off(priv->transceiver);
 
 	return 0;
 }
@@ -1715,6 +1724,7 @@ static int xcan_probe(struct platform_device *pdev)
 {
 	struct net_device *ndev;
 	struct xcan_priv *priv;
+	struct phy *transceiver;
 	const struct of_device_id *of_id;
 	const struct xcan_devtype_data *devtype = &xcan_axi_data;
 	void __iomem *addr;
@@ -1856,6 +1866,14 @@ static int xcan_probe(struct platform_device *pdev)
 		goto err_reset;
 	}
 
+	transceiver = devm_phy_optional_get(&pdev->dev, NULL);
+	if (IS_ERR(transceiver)) {
+		ret = PTR_ERR(transceiver);
+		dev_err_probe(&pdev->dev, ret, "failed to get phy\n");
+		goto err_reset;
+	}
+	priv->transceiver = transceiver;
+
 	priv->write_reg = xcan_write_reg_le;
 	priv->read_reg = xcan_read_reg_le;
 
@@ -1882,6 +1900,7 @@ static int xcan_probe(struct platform_device *pdev)
 		goto err_disableclks;
 	}
 
+	of_can_transceiver(ndev);
 	pm_runtime_put(&pdev->dev);
 
 	if (priv->devtype.flags & XCAN_FLAG_CANFD_2) {
