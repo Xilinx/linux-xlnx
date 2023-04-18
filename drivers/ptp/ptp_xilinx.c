@@ -17,6 +17,7 @@
 #include <linux/ptp_clock_kernel.h>
 #include <linux/platform_device.h>
 #include <linux/of_irq.h>
+#include <linux/ptp/ptp_xilinx.h>
 
 /* Register offset definitions */
 #define XPTPTIMER_TOD_CONFIG_OFFSET	0x0000
@@ -70,17 +71,6 @@
 #define XPTPTIMER_PERIOD_SHIFT		48
 
 #define PPM_FRACTION	16
-
-struct xlnx_ptp_timer {
-	struct		device *dev;
-	void __iomem		*baseaddr;
-	struct ptp_clock	*ptp_clock;
-	struct ptp_clock_info	ptp_clock_info;
-	spinlock_t		reg_lock; /* For reg access */
-	u64			incr;
-	s64			timeoffset;
-	s32			static_delay;
-};
 
 /* I/O accessors */
 static inline u32 xlnx_ptp_ior(struct xlnx_ptp_timer *timer, off_t reg)
@@ -399,6 +389,7 @@ static int xlnx_ptp_timer_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, timer);
 
+	timer->phc_index = ptp_clock_index(timer->ptp_clock);
 	dev_info(&pdev->dev, "Xilinx PTP timer driver probed\n");
 
 	return 0;
