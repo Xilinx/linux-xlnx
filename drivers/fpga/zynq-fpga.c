@@ -248,21 +248,6 @@ static bool zynq_fpga_has_sync(const u8 *buf, size_t count)
 	return false;
 }
 
-static int zynq_fpga_ops_parse_header(struct fpga_manager *mgr,
-				      struct fpga_image_info *info,
-				      const char *buf, size_t count)
-{
-	if (!(info->flags & FPGA_MGR_PARTIAL_RECONFIG)) {
-		if (!zynq_fpga_has_sync(buf, count)) {
-			dev_err(&mgr->dev,
-				"Invalid bitstream, could not find a sync word. Bitstream must be a byte swapped .bin file\n");
-			return -EINVAL;
-		}
-	}
-
-	return 0;
-}
-
 static int zynq_fpga_ops_write_init(struct fpga_manager *mgr,
 				    struct fpga_image_info *info,
 				    const char *buf, size_t count)
@@ -290,6 +275,13 @@ static int zynq_fpga_ops_write_init(struct fpga_manager *mgr,
 
 	/* don't globally reset PL if we're doing partial reconfig */
 	if (!(info->flags & FPGA_MGR_PARTIAL_RECONFIG)) {
+		if (!zynq_fpga_has_sync((u8 *)buf, count)) {
+			dev_err(&mgr->dev,
+				"Invalid bitstream, could not find a sync word. Bitstream must be a byte swapped .bin file\n");
+			err = -EINVAL;
+			goto out_err;
+		}
+
 		/* assert AXI interface resets */
 		regmap_write(priv->slcr, SLCR_FPGA_RST_CTRL_OFFSET,
 			     FPGA_RST_ALL_MASK);
@@ -554,7 +546,6 @@ static enum fpga_mgr_states zynq_fpga_ops_state(struct fpga_manager *mgr)
 static const struct fpga_manager_ops zynq_fpga_ops = {
 	.initial_header_size = 128,
 	.state = zynq_fpga_ops_state,
-	.parse_header = zynq_fpga_ops_parse_header,
 	.write_init = zynq_fpga_ops_write_init,
 	.write_sg = zynq_fpga_ops_write,
 	.write_complete = zynq_fpga_ops_write_complete,
