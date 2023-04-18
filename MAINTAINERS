@@ -4872,7 +4872,7 @@ X:	drivers/char/tpm/
 
 CHAR and MISC XILINX AI ENGINE DRIVER
 M:	Gregory Williams <gregory.williams@amd.com>
-M:	Hua Jiang <hua.jiang@amd.com>
+M:	Govindarajulu Varadarajan <govindarajulu.varadarajan@amd.com>
 S:	Maintained
 F:	Documentation/devicetree/bindings/soc/xilinx/xlnx,ai-engine.yaml
 F:	drivers/misc/xilinx-ai-engine/
