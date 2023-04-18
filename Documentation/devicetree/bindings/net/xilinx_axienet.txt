@@ -100,9 +100,14 @@ Optional properties (When USXGMII is in use):
 			  5000 or 10000.
 
 Optional properties for MRMAC:
-- xlnx,phcindex	: Indicate the index of the physical hardware clock
-		  to be used as per PTP clock connected to the given
-		  MRMAC lane. Valid range is 0 to 3.
+- xlnx,phcindex		: Indicate the index of the physical hardware clock
+			  to be used as per PTP clock connected to the given
+			  MRMAC lane. Valid range is 0 to 3.
+			  This property is deprecated.
+
+Optional properties for MRMAC and 10G/25G:
+- ptp-hardware-clock	: Indicate the xilinx PTP device node to read PTP clock
+			  index(/dev/ptp0 etc).
 
 NOTE: Time Sensitive Networking (TSN) related DT bindings are explained in [4].
 
@@ -178,4 +183,5 @@ Example for MRMAC Ethernet subsystem with MCDMA:
 		xlnx,gtctrl = <&gt_ctrl>;
 		xlnx,gtlane = <0x0>;
 		xlnx,rxmem = <0x8000>;
+		ptp-hardware-clock = <&ptp_device>;
 	};
