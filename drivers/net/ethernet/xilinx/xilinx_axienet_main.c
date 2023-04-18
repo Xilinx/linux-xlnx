@@ -46,6 +46,7 @@
 #include <net/sock.h>
 #include <linux/xilinx_phy.h>
 #include <linux/clk.h>
+#include <linux/ptp/ptp_xilinx.h>
 
 #include "xilinx_axienet.h"
 
@@ -2574,6 +2575,28 @@ static int axienet_ethtools_get_ts_info(struct net_device *ndev,
 			   (1 << HWTSTAMP_FILTER_ALL);
 	info->phc_index = lp->phc_index;
 
+	if (lp->axienet_config->mactype == XAXIENET_MRMAC ||
+	    lp->axienet_config->mactype == XAXIENET_10G_25G) {
+		struct device_node *np;
+		struct xlnx_ptp_timer *timer = NULL;
+		struct platform_device *ptpnode;
+
+		np = of_parse_phandle(lp->dev->of_node, "ptp-hardware-clock", 0);
+
+		ptpnode = of_find_device_by_node(np);
+
+		if (ptpnode)
+			timer = platform_get_drvdata(ptpnode);
+
+		if (timer)
+			info->phc_index = timer->phc_index;
+		else if (!timer)
+			netdev_warn(ndev, "PTP timer node not found\n");
+
+		of_node_put(np);
+		platform_device_put(ptpnode);
+	}
+
 	return 0;
 }
 #endif
@@ -3542,8 +3565,8 @@ static int axienet_probe(struct platform_device *pdev)
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
 		ret = of_property_read_u32(pdev->dev.of_node, "xlnx,phcindex",
 					   &lp->phc_index);
-		if (ret)
-			dev_warn(&pdev->dev, "No phc index defaulting to 0\n");
+		if (!ret)
+			dev_warn(&pdev->dev, "xlnx,phcindex is deprecated, please use ptp-hardware-clock instead\n");
 #endif
 		ret = of_property_read_u32(pdev->dev.of_node, "xlnx,gtlane",
 					   &lp->gt_lane);
