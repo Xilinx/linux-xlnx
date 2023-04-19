@@ -138,7 +138,6 @@ dma_addr_t dwc3_trb_dma_offset(struct dwc3_ep *dep, struct dwc3_trb *trb);
 void dwc3_gadget_enter_hibernation(struct dwc3 *dwc);
 void dwc3_gadget_exit_hibernation(void *_dwc);
 void dwc3_ep0_send_delayed_status(struct dwc3 *dwc);
-void dwc3_stop_active_transfer(struct dwc3_ep *dep, bool force, bool interrupt);
 
 /**
  * dwc3_gadget_ep_get_transfer_index - Gets transfer index from HW
