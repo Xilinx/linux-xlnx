@@ -444,7 +444,7 @@
 			#address-cells = <2>;
 			#size-cells = <2>;
 			ranges;
-			its: gic-its@e2040000 {
+			its: msi-controller@e2040000 {
 				compatible = "arm,gic-v3-its";
 				msi-controller;
 				#msi-cells = <1>;
