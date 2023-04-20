@@ -111,7 +111,7 @@
 		compatible = "micron,m25p80", "jedec,spi-nor";
 		reg = <0>, <1>;
 		parallel-memories = /bits/ 64 <0x8000000 0x8000000>; /* 128MB */
-		spi-tx-bus-width = <1>;
+		spi-tx-bus-width = <4>;
 		spi-rx-bus-width = <4>;
 		spi-max-frequency = <150000000>;
 
