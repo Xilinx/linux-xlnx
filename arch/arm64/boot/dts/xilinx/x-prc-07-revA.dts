@@ -24,7 +24,7 @@
 &gem1 {
 	status = "okay";
 	phy-handle = <&phy0>;
-	phy-mode = "rmii-id";
+	phy-mode = "rmii";
 	mdio1: mdio {
 		#address-cells = <1>;
 		#size-cells = <0>;
