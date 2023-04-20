@@ -236,7 +236,6 @@
 
 			zynqmp_pcap: pcap {
 				compatible = "xlnx,zynqmp-pcap-fpga";
-				clock-names = "ref_clk";
 			};
 
 			zynqmp_reset: reset-controller {
