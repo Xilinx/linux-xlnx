@@ -103,6 +103,7 @@
 	status = "okay";
         pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_gem1_default>;
+	assigned-clock-rates = <250000000>;
 
 	phy-handle = <&phy0>;
 	phy-mode = "rgmii-id";
