@@ -146,7 +146,7 @@
 			#phy-cells = <1>;
 			compatible = "ethernet-phy-id0283.bc30";
 			reg = <1>;
-		        adi,rx-internal-delay-ps = <2000>;
+			adi,rx-internal-delay-ps = <2000>;
 			adi,tx-internal-delay-ps = <2000>;
 			adi,fifo-depth-bits = <8>;
 			reset-gpios = <&gpio1 48 GPIO_ACTIVE_LOW>;

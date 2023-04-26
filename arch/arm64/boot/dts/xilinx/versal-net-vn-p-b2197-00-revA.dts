@@ -15,13 +15,13 @@
 		     "xlnx,versal-net-vn-p-b2197-00", "xlnx,versal-net";
 
 	memory: memory@0 {
-                reg = <0 0 0 0x80000000>;
-                device_type = "memory";
-        };
+		reg = <0 0 0 0x80000000>;
+		device_type = "memory";
+	};
 
 	chosen {
-                bootargs = "earlycon=pl011,mmio32,0xf1920000 console=ttyAMA0,115200n8 clk_ignore_unused root=/dev/ram0 rw";
-                stdout-path = "serial0:115200n8";
+		bootargs = "earlycon=pl011,mmio32,0xf1920000 console=ttyAMA0,115200n8 clk_ignore_unused root=/dev/ram0 rw";
+		stdout-path = "serial0:115200n8";
 	};
 
 /*	aliases {
@@ -84,16 +84,16 @@
 
 &rtc {
 	status = "okay";
-}; 
+};
 
 &wwdt0 {
 	status = "okay";
-}; 
+};
 
 &wwdt1 {
 	status = "okay";
-}; 
+};
 
 &wwdt2 {
 	status = "okay";
-}; 
+};
