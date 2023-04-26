@@ -61,11 +61,6 @@
 
 			zynqmp_power: zynqmp-power {
 				compatible = "xlnx,zynqmp-power";
-				interrupt-parent = <&gic>;
-				interrupts = <0 30 4>;
-				mboxes = <&ipi_mailbox_pmu1 0>,
-					 <&ipi_mailbox_pmu1 1>;
-				mbox-names = "tx", "rx";
 			};
 
 			versal_reset: reset-controller {
@@ -130,27 +125,6 @@
 					reg = <0x1f0 0x20>;
 				};
 			};
-		};
-	};
-
-	zynqmp_ipi {
-		compatible = "xlnx,zynqmp-ipi-mailbox";
-		interrupt-parent = <&gic>;
-		interrupts = <0 30 4>;
-		xlnx,ipi-id = <2>;
-		#address-cells = <2>;
-		#size-cells = <2>;
-		ranges;
-
-		ipi_mailbox_pmu1: mailbox@ff3f0440 {
-			reg = <0 0xff3f0440 0 0x20>,
-			      <0 0xff3f0460 0 0x20>,
-			      <0 0xff3f0280 0 0x20>,
-			      <0 0xff3f02a0 0 0x20>;
-			reg-names = "local_request_region", "local_response_region",
-				    "remote_request_region", "remote_response_region";
-			#mbox-cells = <1>;
-			xlnx,ipi-id = <1>;
 		};
 	};
 };
