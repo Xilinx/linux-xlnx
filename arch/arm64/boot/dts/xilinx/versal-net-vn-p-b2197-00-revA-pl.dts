@@ -53,10 +53,9 @@
 			/* J47 connector */
 		};
 	};
-/*	
+/*
 	GPIO_DIP_SW0-1
 	GPIO_LED0-1
 	GPIO_PB0-1
 	GPIO_SMA
-	
 */

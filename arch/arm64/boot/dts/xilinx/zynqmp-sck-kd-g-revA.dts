@@ -101,7 +101,7 @@
 
 &gem1 { /* mdio mio50/51 */
 	status = "okay";
-        pinctrl-names = "default";
+	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_gem1_default>;
 	assigned-clock-rates = <250000000>;
 

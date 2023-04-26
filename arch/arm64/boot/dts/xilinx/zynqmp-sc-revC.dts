@@ -17,7 +17,7 @@
 
 &gem1 { /* gem1 MIO38-49, MDIO MIO50/51 */
 	/delete-node/ mdio;
-	
+
 	mdio: mdio {
 		#address-cells = <1>;
 		#size-cells = <0>;

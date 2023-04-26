@@ -14,7 +14,7 @@
 
 &{/} {
 	model = "X-PRC-09 revA";
-		     
+
 	aliases {
 		nvmem2 = &eeprom0;
 		nvmem3 = &eeprom1;
