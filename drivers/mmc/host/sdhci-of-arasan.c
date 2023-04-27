@@ -86,8 +86,6 @@
 #define VERSAL_NET_EMMC_ICLK_PHASE {0, 0, 0, 0, 0, 0, 0, 0, 39, 0, 0}
 #define VERSAL_NET_EMMC_OCLK_PHASE {0, 113, 0, 0, 0, 0, 0, 0, 113, 79, 45}
 
-#define VERSAL_NET_EMMC_ICLK_PHASE_DDR52_DLY_CHAIN	39
-#define VERSAL_NET_EMMC_ICLK_PHASE_DDR52_DLL		146
 #define VERSAL_NET_PHY_CTRL_STRB90_STRB180_VAL		0X77
 
 /*
@@ -412,13 +410,6 @@ static void sdhci_arasan_set_clock(struct sdhci_host *host, unsigned int clock)
 		 */
 		if (clock == DEFAULT_SPEED_MAX_DTR)
 			clock = (DEFAULT_SPEED_MAX_DTR * 19) / 25;
-	}
-	if (clock >= MIN_PHY_CLK_HZ) {
-		if (clk_data->clk_phase_in[MMC_TIMING_MMC_DDR52] ==
-		    VERSAL_NET_EMMC_ICLK_PHASE_DDR52_DLY_CHAIN) {
-			clk_data->clk_phase_in[MMC_TIMING_MMC_DDR52] =
-				VERSAL_NET_EMMC_ICLK_PHASE_DDR52_DLL;
-		}
 	}
 
 	/* Set the Input and Output Clock Phase Delays */
@@ -1314,7 +1305,7 @@ static void arasan_dt_parse_clk_phases(struct device *dev,
 			clk_data->clk_phase_out[i] = versal_oclk_phase[i];
 		}
 	}
-	if (of_device_is_compatible(dev->of_node, "xlnx,versal-net-5.1-emmc")) {
+	if (of_device_is_compatible(dev->of_node, "xlnx,versal-net-emmc")) {
 		u32 versal_net_iclk_phase[MMC_TIMING_MMC_HS400 + 1] =
 			VERSAL_NET_EMMC_ICLK_PHASE;
 		u32 versal_net_oclk_phase[MMC_TIMING_MMC_HS400 + 1] =
@@ -1550,7 +1541,7 @@ static const struct of_device_id sdhci_arasan_of_match[] = {
 		.data = &sdhci_arasan_versal_data,
 	},
 	{
-		.compatible = "xlnx,versal-net-5.1-emmc",
+		.compatible = "xlnx,versal-net-emmc",
 		.data = &sdhci_arasan_versal_net_data,
 	},
 	{ /* sentinel */ }
@@ -2028,7 +2019,7 @@ static int sdhci_arasan_probe(struct platform_device *pdev)
 			host->mmc->caps2 |= MMC_CAP2_CQE_DCMD;
 	}
 
-	if (of_device_is_compatible(np, "xlnx,versal-net-5.1-emmc"))
+	if (of_device_is_compatible(np, "xlnx,versal-net-emmc"))
 		sdhci_arasan->internal_phy_reg = true;
 
 	ret = sdhci_arasan_add_host(sdhci_arasan);
