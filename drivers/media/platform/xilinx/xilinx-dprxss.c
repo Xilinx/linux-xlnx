@@ -200,17 +200,20 @@
 
 #define XDPRX_MSA_MISC1_REG		0x52c
 #define XDPRX_INTERLACE_MASK		BIT(0)
-
+#define XDPRX_DPCD_MSA_TIMING_IGNORE_MASK	BIT(6)
 #define XDPRX_MSA_MVID_REG		0x530
 #define XDPRX_MSA_NVID_REG		0x534
 #define XDPRX_INTR_ERRORCNT_MASK	BIT(28)
 #define XDPRX_INTR_LANESET_MASK		BIT(30)
-
+#define XDPRX_SDP_PAYLOAD_STREAM1	0x644
+#define XDPRX_VSC_SDP_FMT_MASK		GENMASK(7, 4)
+#define XDPRX_VSC_SDP_BPC_MASK		GENMASK(11, 8)
 #define XDPRX_EXT_VRD_BWSET_REG		0x7f0
 
 #define XDPRX_COLOR_FORMAT_RGB		0x0
 #define XDPRX_COLOR_FORMAT_422		0x1
 #define XDPRX_COLOR_FORMAT_444		0x2
+#define XDPRX_COLOR_FORMAT_420		0x3
 #define MHZ				1000000
 #define XDPRX_MAX_LANE_COUNT		4
 
@@ -1021,10 +1024,26 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state)
 	xdprxss_write(state, XDPRX_PIXEL_WIDTH_REG, pixel_width);
 	read_val = xdprxss_read(state, XDPRX_DTG_REG);
 	xdprxss_write(state, XDPRX_DTG_REG, (read_val | 0x1));
-	fmt = FIELD_GET(XDPRX_MSA_FMT_MASK, rxmsa_misc);
-	state->bpc = FIELD_GET(XDPRX_MSA_BPC_MASK, rxmsa_misc);
+	read_val = FIELD_GET(XDPRX_DPCD_MSA_TIMING_IGNORE_MASK,
+			     xdprxss_read(state, XDPRX_MSA_MISC1_REG));
+	if (read_val) {
+		dev_dbg(state->dev, "Read colorimetry info from SDP packet instead of MSA\n");
+		read_val = xdprxss_read(state, XDPRX_SDP_PAYLOAD_STREAM1);
+		/* Decoding Data byte 16 */
+		fmt = FIELD_GET(XDPRX_VSC_SDP_FMT_MASK, read_val);
+		state->bpc = FIELD_GET(XDPRX_VSC_SDP_BPC_MASK, read_val);
+	} else {
+		fmt = FIELD_GET(XDPRX_MSA_FMT_MASK, rxmsa_misc);
+		state->bpc = FIELD_GET(XDPRX_MSA_BPC_MASK, rxmsa_misc);
+	}
 
 	switch (fmt) {
+	case XDPRX_COLOR_FORMAT_420:
+		if (state->bpc == 10)
+			format->code = MEDIA_BUS_FMT_VYYUYY10_4X20;
+		else
+			format->code = MEDIA_BUS_FMT_VYYUYY8_1X24;
+		break;
 	case XDPRX_COLOR_FORMAT_422:
 		if (state->bpc == 10)
 			format->code = MEDIA_BUS_FMT_UYVY10_1X20;
