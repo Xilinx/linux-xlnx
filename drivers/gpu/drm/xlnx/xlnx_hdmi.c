@@ -80,6 +80,8 @@
 #define HDMI_TX_PIO_IN_HPD_CONNECT		BIT(2)
 #define HDMI_TX_PIO_IN_VID_RDY			BIT(1)
 #define HDMI_TX_PIO_IN_LNK_RDY			BIT(0)
+#define HDMI_TX_PIO_LNK_VID_RDY_MASK		(HDMI_TX_PIO_IN_VID_RDY | \
+						HDMI_TX_PIO_IN_LNK_RDY)
 #define HDMI_TX_PIO_IN_EVT			0x68
 #define HDMI_TX_PIO_IN_EVT_RE			0x6c
 #define HDMI_TX_PIO_IN_EVT_FE			0x70
@@ -884,6 +886,18 @@ static inline
 struct xlnx_hdmi *connector_to_hdmi(struct drm_connector *connector)
 {
 	return container_of(connector, struct xlnx_hdmi, connector);
+}
+
+static bool xlnx_hdmi_is_lnk_vid_rdy(struct xlnx_hdmi *hdmi)
+{
+	u32 reg_val;
+
+	reg_val = xlnx_hdmi_readl(hdmi, HDMI_TX_PIO_IN);
+	reg_val = FIELD_GET(HDMI_TX_PIO_LNK_VID_RDY_MASK, reg_val);
+	if (reg_val == HDMI_TX_PIO_LNK_VID_RDY_MASK)
+		return true;
+
+	return false;
 }
 
 /**
@@ -2651,8 +2665,12 @@ static void xlnx_hdmi_encoder_enable(struct drm_encoder *encoder)
 	struct xlnx_hdmi_config *config = &hdmi->config;
 
 	xlnx_hdmi_encoder_dpms(encoder, DRM_MODE_DPMS_ON);
-	if (!config->vid_interface)
-		xlnx_hdmi_vtc_enable(hdmi);
+	if (xlnx_hdmi_is_lnk_vid_rdy(hdmi)) {
+		if (!config->vid_interface)
+			xlnx_hdmi_vtc_enable(hdmi);
+	} else {
+		dev_err(hdmi->dev, "No video/link clock! failed to enable vtc\n");
+	}
 
 	xlnx_hdmi_ext_sysrst_deassert(hdmi);
 }
@@ -2669,8 +2687,12 @@ static void xlnx_hdmi_encoder_disable(struct drm_encoder *encoder)
 
 	/* Disable the EXT VRST which actually starts the bridge */
 	xlnx_hdmi_ext_sysrst_assert(hdmi);
-	if (!config->vid_interface)
-		xlnx_hdmi_vtc_disable(hdmi);
+	if (xlnx_hdmi_is_lnk_vid_rdy(hdmi)) {
+		if (!config->vid_interface)
+			xlnx_hdmi_vtc_disable(hdmi);
+	} else {
+		dev_err(hdmi->dev, "No video/link clock! failed to disable vtc\n");
+	}
 }
 
 /**
@@ -2887,8 +2909,7 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	if (!hdmi->wait_for_streamup)
 		dev_err(hdmi->dev, "wait_for_streamup timeout\n");
 
-	ret = xlnx_hdmi_readl(hdmi, HDMI_TX_PIO_IN);
-	if (ret & HDMI_TX_PIO_IN_VID_RDY) {
+	if (xlnx_hdmi_is_lnk_vid_rdy(hdmi)) {
 		dev_dbg(hdmi->dev, "TX: Video ready interrupt received\n");
 		if (!config->vid_interface)
 			xlnx_hdmi_vtc_set_timing(hdmi, adjusted_mode);
@@ -2896,7 +2917,7 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 			xlnx_hdmi_vtc_writel(hdmi, HDMI_TX_VTC_CTL,
 					     HDMI_TX_VTC_CTL_GE);
 	} else {
-		dev_dbg(hdmi->dev, "video ready interrupt not received\n");
+		dev_dbg(hdmi->dev, "Video/Link clock is not ready\n");
 	}
 	if (hdmi->config.hdcp2x_enable) {
 		ret = xlnx_start_hdcp_engine(&hdmi->txhdcp,
