@@ -259,7 +259,7 @@ static enum hdcp2x_tx_state hdcp2x_tx_authenticated(struct xlnx_hdcp2x_config *x
 				handle_reauth_request = 1;
 			}
 		} else {
-			if (xhdcp2x_tx->xhdcp2x_info.dp_rx_status &
+			if (xhdcp2x_tx->xhdcp2x_info.rx_status &
 					XHDCP2X_TX_RXSTATUS_REAUTH_REQ_MASK)
 				handle_reauth_request = 1;
 		}
@@ -275,6 +275,9 @@ static enum hdcp2x_tx_state hdcp2x_tx_authenticated(struct xlnx_hdcp2x_config *x
 		xlnx_hdcp2x_tx_enable_encryption(xhdcp2x_tx);
 		xlnx_hdcp2x_tx_start_timer(xhdcp2x_tx, HDCP2X_TX_WAIT_REAUTH_CHECK_TIMEOUT,
 					   XHDCP2X_TX_TS_RX_REAUTH_CHECK);
+
+		dev_info(xhdcp2x_tx->dev, "HDCP 2X Authenticated");
+
 		return A5_HDCP2X_TX_AUTHENTICATED;
 	}
 
@@ -300,11 +303,11 @@ static enum hdcp2x_tx_state hdcp2x_tx_authenticated(struct xlnx_hdcp2x_config *x
 							XHDCP2X_RX_STATUS_RPTR_RDY)
 				handle_repeater_rdy = 1;
 		} else {
-			if (xhdcp2x_tx->xhdcp2x_info.dp_rx_status &
+			if (xhdcp2x_tx->xhdcp2x_info.rx_status &
 					XHDCP2X_TX_RXSTATUS_REAUTH_REQ_MASK)
 				handle_reauth_request = 1;
 
-			if (xhdcp2x_tx->xhdcp2x_info.dp_rx_status &
+			if (xhdcp2x_tx->xhdcp2x_info.rx_status &
 					XHDCP2X_TX_RXSTATUS_READY_MASK)
 				handle_repeater_rdy = 1;
 		}
@@ -327,8 +330,11 @@ static enum hdcp2x_tx_state hdcp2x_tx_authenticated(struct xlnx_hdcp2x_config *x
 
 static enum hdcp2x_tx_state hdcp2x_tx_rptr_check(struct xlnx_hdcp2x_config *xhdcp2x_tx)
 {
-	if (xhdcp2x_tx->xhdcp2x_info.is_rcvr_repeater)
+	if (xhdcp2x_tx->xhdcp2x_info.is_rcvr_repeater) {
+		xlnx_hdcp2x_tx_start_timer(xhdcp2x_tx, HDCP_2_2_RECVID_LIST_TIMEOUT_MS,
+					   HDCP_2_2_REP_SEND_RECVID_LIST);
 		return A6_HDCP2X_TX_WAIT_FOR_RCVID;
+	}
 
 	xlnx_hdcp2x_tx_start_timer(xhdcp2x_tx, HDCP2X_TX_WAIT_FOR_ENCRYPTION_TIMEOUT,
 				   XHDCP2X_TX_TS_WAIT_FOR_CIPHER);

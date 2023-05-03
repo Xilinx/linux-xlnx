@@ -95,7 +95,6 @@ void *xlnx_hdcp_tx_init(struct device *dev, void *protocol_ref,
 			int hw_protocol)
 {
 	struct xlnx_hdcp2x_config  *xhdcp2x;
-	void *hdcp_drv_address;
 	int ret;
 
 	if (hdcp_type == XHDCPTX_HDCP_2X) {
@@ -103,10 +102,10 @@ void *xlnx_hdcp_tx_init(struct device *dev, void *protocol_ref,
 		if (!xhdcp2x)
 			return ERR_PTR(-ENOMEM);
 
-		hdcp_drv_address = xhdcp2x;
 		xhdcp2x->xhdcp2x_hw.hdcp2xcore_address =
 					(void __iomem *)hdcp_base_address;
 
+		xhdcp2x->xhdcp2x_hw.protocol = hw_protocol;
 		xhdcp2x->dev = dev;
 		xhdcp2x->interface_ref = protocol_ref;
 		xhdcp2x->interface_base = hdcp_base_address;
@@ -122,7 +121,7 @@ void *xlnx_hdcp_tx_init(struct device *dev, void *protocol_ref,
 	mutex_init(&xtxhdcp->hdcptx_mutex);
 	INIT_DELAYED_WORK(&xtxhdcp->hdcp_task_monitor, hdcp_task_monitor_fun);
 
-	return (void *)hdcp_drv_address;
+	return (void *)xhdcp2x;
 
 hdcp2x_error:
 	devm_kfree(dev, xhdcp2x);
@@ -190,6 +189,30 @@ void xlnx_hdcp_tx_timer_exit(struct xlnx_hdcptx *xtxhdcp)
 	if (xtxhdcp->xhdcptmr)
 		devm_kfree(xtxhdcp->dev, xhdcptmr);
 }
+EXPORT_SYMBOL_GPL(xlnx_hdcp_tx_timer_exit);
+
+int xlnx_hdcp_tx_set_keys(struct xlnx_hdcptx *xtxhdcp, const u8 *data)
+{
+	int ret = 0;
+	struct xlnx_hdcp2x_config  *xhdcp2x = xtxhdcp->xhdcp2x;
+	u8 local_srm[XHDCP2X_TX_SRM_SIZE];
+	u8 local_lc128[XHDCP2X_TX_LC128_SIZE];
+
+	memcpy(local_lc128, data, XHDCP2X_TX_LC128_SIZE);
+	memcpy(local_srm,
+	       data + XHDCP2X_TX_LC128_SIZE, XHDCP2X_TX_SRM_SIZE);
+
+	if (xtxhdcp->hdcp2xenable) {
+		ret = xlnx_hdcp2x_loadkeys(xhdcp2x, local_srm, local_lc128);
+		if (ret < 0)
+			return -EINVAL;
+	}
+
+	xtxhdcp->is_enckey_available = true;
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(xlnx_hdcp_tx_set_keys);
 
 int xlnx_hdcp_tx_reset(struct xlnx_hdcptx *xtxhdcp)
 {
@@ -227,6 +250,9 @@ static void xlnx_hcdp_tx_timer_callback(void *xtxhdcptr, u8 tmrcntr_number)
 int xlnx_start_hdcp_engine(struct xlnx_hdcptx *xtxhdcp, u8 lanecount)
 {
 	if (!(xtxhdcp->hdcp2xenable || xtxhdcp->hdcp1xenable))
+		return -EINVAL;
+
+	if (!xtxhdcp->is_enckey_available)
 		return -EINVAL;
 
 	if (xtxhdcp->hdcp2xenable) {
@@ -282,3 +308,4 @@ int xlnx_hdcp_tx_set_callback(void *ref,
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(xlnx_hdcp_tx_set_callback);

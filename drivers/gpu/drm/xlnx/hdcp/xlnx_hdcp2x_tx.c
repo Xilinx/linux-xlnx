@@ -30,15 +30,6 @@
 
 #define XHDCP2X_SRM_MESSAGE_HEADER_LENGTH	0x05
 
-/*
- * TODO - Currently user adds their LC128 and SRM keys as u8 arrays
- * to respective variable statically in code and then compile the
- * driver. future versions will have a better mechanism to get keys
- * from application.
- */
-static const u8 xhdcp2x_lc128[XHDCP2X_TX_LC128_SIZE];
-static const u8 xhdcp2x_srm[XHDCP2X_TX_SRM_SIZE];
-
 /* Public transmitter DCP LLC key - n=384 bytes, e=1 byte */
 
 /*
@@ -254,9 +245,8 @@ int xlnx_hdcp2x_tx_init(struct xlnx_hdcp2x_config *xhdcp2x_tx, bool is_repeater)
 
 	int ret = 0;
 
-	xhdcp2x_tx->lc128key = (u8 *)xhdcp2x_lc128;
-	xhdcp2x_tx->srmkey = (u8 *)xhdcp2x_srm;
 	xhdcp2x_tx->txcaps = (u8 *)hdcp2x_txcaps;
+	xhdcp2x_tx->is_hdmi = xhdcp2x_tx->xhdcp2x_hw.protocol == XHDCP2X_TX_HDMI ? 1 : 0;
 
 	xhdcp2x_tx->xhdcp2x_hw.xlnxhdcp2x_cipher.cipher_coreaddress =
 			xhdcp2x_tx->xhdcp2x_hw.hdcp2xcore_address + XHDCP2X_CIPHER_OFFSET;
@@ -275,8 +265,22 @@ int xlnx_hdcp2x_tx_init(struct xlnx_hdcp2x_config *xhdcp2x_tx, bool is_repeater)
 		return -EINVAL;
 
 	xhdcp2x_tx->xhdcp2x_info.polling_value = 0;
-	xhdcp2x_tx->xhdcp2x_info.txcaps = (u8 *)xhdcp2x_tx->txcaps;
+
+	memcpy(xhdcp2x_tx->xhdcp2x_info.txcaps, (u8 *)xhdcp2x_tx->txcaps,
+	       sizeof(xhdcp2x_tx->xhdcp2x_info.txcaps));
+
 	xlnx_hdcp2x_cipher_init(&xhdcp2x_tx->xhdcp2x_hw.xlnxhdcp2x_cipher);
+
+	return ret;
+}
+
+int xlnx_hdcp2x_loadkeys(struct xlnx_hdcp2x_config *xhdcp2x_tx, u8 *srm_key, u8 *lc128_key)
+{
+	int ret;
+
+	xhdcp2x_tx->srmkey = (u8 *)srm_key;
+	xhdcp2x_tx->lc128key = (u8 *)lc128_key;
+
 	xlnx_hdcp2x_cipher_set_keys(&xhdcp2x_tx->xhdcp2x_hw.xlnxhdcp2x_cipher,
 				    xhdcp2x_tx->lc128key, XHDCP2X_CIPHER_REG_LC128_1_OFFSET,
 				    XHDCP2X_TX_LC128_SIZE);
@@ -285,7 +289,7 @@ int xlnx_hdcp2x_tx_init(struct xlnx_hdcp2x_config *xhdcp2x_tx, bool is_repeater)
 	if (ret < 0)
 		return -EINVAL;
 
-	return 0;
+	return ret;
 }
 
 u8 xlnx_hdcp2x_tx_is_device_revoked(struct xlnx_hdcp2x_config *xhdcp2x_tx,
@@ -395,7 +399,16 @@ void xlnx_hdcp2x_tx_disable_encryption(struct xlnx_hdcp2x_config *xhdcp2x_tx)
 bool xlnx_hdcp2x_downstream_capbility(struct xlnx_hdcp2x_config *xhdcp2x_tx)
 {
 	u8 rxcaps[HDCP_2_2_RXCAPS_LEN] = {0};
+	u8 hdcp2_version;
 
+	if (xhdcp2x_tx->is_hdmi) {
+		xhdcp2x_tx->handlers.rd_handler(xhdcp2x_tx->interface_ref,
+						HDCP_2_2_HDMI_REG_VER_OFFSET,
+						(void *)&hdcp2_version,
+						sizeof(hdcp2_version));
+
+		return (hdcp2_version & HDCP_2_2_HDMI_SUPPORT_MASK);
+	}
 	xhdcp2x_tx->handlers.rd_handler(xhdcp2x_tx->interface_ref,
 					HDCP2X_TX_HDCPPORT_RX_CAPS_OFFSET,
 					(void *)rxcaps,
@@ -411,11 +424,93 @@ static u32 xlnx_hdcp2x_tx_get_timer_count(struct xlnx_hdcp2x_config *xhdcp2x_tx)
 					   XHDCP2X_TX_TIMER_CNTR_0);
 }
 
+static int xlnx_hdcp2x_hdmitx_read_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx, u8 msg_id)
+{
+	struct xhdcp2x_tx_msg *tx_msg = (struct xhdcp2x_tx_msg *)xhdcp2x_tx->msg_buffer;
+	int msg_read = 0;
+	int status = -EINVAL;
+
+	tx_msg->msg = msg_id;
+
+	switch (msg_id) {
+	case HDCP_2_2_AKE_SEND_CERT:
+		msg_read =
+		xhdcp2x_tx->handlers.rd_handler(xhdcp2x_tx->interface_ref,
+						HDCP_2_2_HDMI_REG_RD_MSG_OFFSET,
+						(u8 *)&tx_msg->msg_type.msg_id,
+						sizeof(struct hdcp2x_tx_ake_sendcert));
+
+		if (msg_read == sizeof(struct hdcp2x_tx_ake_sendcert))
+			status = 0;
+		break;
+	case HDCP_2_2_AKE_SEND_HPRIME:
+		msg_read =
+		xhdcp2x_tx->handlers.rd_handler(xhdcp2x_tx->interface_ref,
+						HDCP_2_2_HDMI_REG_RD_MSG_OFFSET,
+						(u8 *)&tx_msg->msg_type.msg_id,
+						sizeof(struct hdcp2x_tx_ake_sendprime));
+
+		if (msg_read == sizeof(struct hdcp2x_tx_ake_sendprime))
+			status = 0;
+		break;
+	case HDCP_2_2_AKE_SEND_PAIRING_INFO:
+		msg_read =
+		xhdcp2x_tx->handlers.rd_handler(xhdcp2x_tx->interface_ref,
+						HDCP_2_2_HDMI_REG_RD_MSG_OFFSET,
+						(u8 *)&tx_msg->msg_type.msg_id,
+						sizeof(struct
+						hdcp2x_tx_ake_send_pairing_info));
+
+		if (msg_read == sizeof(struct hdcp2x_tx_ake_send_pairing_info))
+			status = 0;
+		break;
+	case HDCP_2_2_LC_SEND_LPRIME:
+		msg_read =
+		xhdcp2x_tx->handlers.rd_handler(xhdcp2x_tx->interface_ref,
+						HDCP_2_2_HDMI_REG_RD_MSG_OFFSET,
+						(u8 *)&tx_msg->msg_type.msg_id,
+						sizeof(struct hdcp2x_tx_lc_send_lc_prime));
+
+		if (msg_read == sizeof(struct hdcp2x_tx_lc_send_lc_prime))
+			status = 0;
+		break;
+	case HDCP_2_2_REP_SEND_RECVID_LIST:
+		msg_read =
+		xhdcp2x_tx->handlers.rd_handler(xhdcp2x_tx->interface_ref,
+						HDCP_2_2_HDMI_REG_RD_MSG_OFFSET,
+						(u8 *)&tx_msg->msg_type.msg_id,
+						sizeof(struct hdcp2x_tx_rpt_auth_send_rcvid_list));
+
+		if (msg_read == sizeof(struct hdcp2x_tx_rpt_auth_send_rcvid_list))
+			status = 0;
+		break;
+	case HDCP_2_2_REP_STREAM_READY:
+		msg_read =
+		xhdcp2x_tx->handlers.rd_handler(xhdcp2x_tx->interface_ref,
+						HDCP_2_2_HDMI_REG_RD_MSG_OFFSET,
+						(u8 *)&tx_msg->msg_type.msg_id,
+						sizeof(struct
+						hdcp2x_tx_rpt_auth_stream_ready));
+
+		if (msg_read == sizeof(struct hdcp2x_tx_rpt_auth_stream_ready))
+			status = 0;
+		break;
+	default:
+		status = -EINVAL;
+		break;
+	}
+
+	return status;
+}
+
 int xlnx_hdcp2x_tx_read_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx, u8 msg_id)
 {
 	struct xhdcp2x_tx_msg *tx_msg = (struct xhdcp2x_tx_msg *)xhdcp2x_tx->msg_buffer;
 	int msg_read = 0;
 	int status = -EINVAL;
+
+	if (xhdcp2x_tx->xhdcp2x_hw.protocol == XHDCP2X_TX_HDMI)
+		return xlnx_hdcp2x_hdmitx_read_msg(xhdcp2x_tx, msg_id);
 
 	switch (msg_id) {
 	case HDCP_2_2_AKE_SEND_CERT:
@@ -510,6 +605,106 @@ int xlnx_hdcp2x_tx_read_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx, u8 msg_id)
 	return status;
 }
 
+static int xlnx_hdmi_hdcp2x_tx_write_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx)
+{
+	struct xhdcp2x_tx_msg tx_msg;
+	int message_size = 0;
+	int status = -EINVAL;
+
+	memcpy(&tx_msg, xhdcp2x_tx->msg_buffer, sizeof(struct xhdcp2x_tx_msg));
+
+	switch (tx_msg.msg_type.msg_id) {
+	case HDCP_2_2_AKE_INIT:
+		message_size =
+			xhdcp2x_tx->handlers.wr_handler(xhdcp2x_tx->interface_ref,
+							HDCP_2_2_HDMI_REG_WR_MSG_OFFSET,
+							(u8 *)&tx_msg,
+							sizeof(struct hdcp2x_tx_ake_init) + 1);
+		if (message_size == sizeof(struct hdcp2x_tx_ake_init) + 1)
+			status = 0;
+		break;
+	case HDCP_2_2_AKE_NO_STORED_KM:
+		message_size =
+			xhdcp2x_tx->handlers.wr_handler(xhdcp2x_tx->interface_ref,
+							HDCP_2_2_HDMI_REG_WR_MSG_OFFSET,
+							(u8 *)&tx_msg,
+							sizeof(struct hdcp2x_tx_ake_no_stored_km)
+							+ 1);
+
+		if (message_size == sizeof(struct hdcp2x_tx_ake_no_stored_km) + 1)
+			status = 0;
+		break;
+	case HDCP_2_2_AKE_STORED_KM:
+		message_size =
+			xhdcp2x_tx->handlers.wr_handler(xhdcp2x_tx->interface_ref,
+							HDCP_2_2_HDMI_REG_WR_MSG_OFFSET,
+							(u8 *)&tx_msg,
+							sizeof(struct hdcp2x_tx_ake_stored_km)
+							+ 1);
+
+		if (message_size == (sizeof(struct hdcp2x_tx_ake_stored_km) + 1))
+			status = 0;
+		break;
+	case HDCP_2_2_LC_INIT:
+		message_size =
+			xhdcp2x_tx->handlers.wr_handler(xhdcp2x_tx->interface_ref,
+							HDCP_2_2_HDMI_REG_WR_MSG_OFFSET,
+							(u8 *)&tx_msg,
+							sizeof(struct hdcp2x_tx_lc_init) + 1);
+
+		if (message_size == (sizeof(struct hdcp2x_tx_lc_init) + 1))
+			status = 0;
+		break;
+	case HDCP_2_2_SKE_SEND_EKS:
+		message_size =
+			xhdcp2x_tx->handlers.wr_handler(xhdcp2x_tx->interface_ref,
+							HDCP_2_2_HDMI_REG_WR_MSG_OFFSET,
+							(u8 *)&tx_msg,
+							sizeof(struct hdcp2x_tx_ske_send_eks)
+							+ 1);
+
+		if (message_size == (sizeof(struct hdcp2x_tx_ske_send_eks) + 1))
+			status = 0;
+		break;
+	case HDCP2X_TX_TYPE_VALUE:
+		message_size =
+			xhdcp2x_tx->handlers.wr_handler(xhdcp2x_tx->interface_ref,
+							HDCP2X_TX_HDCPPORT_TYPE_VALUE_OFFSET,
+							(u8 *)&xhdcp2x_tx
+							->xhdcp2x_info.content_stream_type,
+							HDCP2X_TX_HDCPPORT_TYPE_VALUE_SIZE);
+		if (message_size == HDCP2X_TX_HDCPPORT_TYPE_VALUE_SIZE)
+			status = 0;
+		break;
+	case HDCP_2_2_REP_SEND_ACK:
+		message_size =
+			xhdcp2x_tx->handlers.wr_handler(xhdcp2x_tx->interface_ref,
+							HDCP_2_2_HDMI_REG_WR_MSG_OFFSET,
+							(u8 *)&tx_msg,
+							sizeof(struct hdcp2x_tx_rpt_auth_send_ack)
+							+ 1);
+
+		if (message_size == (sizeof(struct hdcp2x_tx_rpt_auth_send_ack) + 1))
+			status = 0;
+		break;
+	case HDCP_2_2_REP_STREAM_MANAGE:
+		message_size =
+			xhdcp2x_tx->handlers.wr_handler(xhdcp2x_tx->interface_ref,
+						HDCP_2_2_HDMI_REG_WR_MSG_OFFSET,
+						(u8 *)&tx_msg,
+						sizeof(struct hdcp2x_tx_rpt_auth_stream_manage)
+						+ 1);
+
+		if (message_size == (sizeof(struct hdcp2x_tx_rpt_auth_stream_manage) + 1))
+			status = 0;
+		break;
+	default:
+		status = -EINVAL;
+		break;
+	}
+	return status;
+}
+
 static int xlnx_hdcp2x_tx_write_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx)
 {
 	struct xhdcp2x_tx_msg buffer;
@@ -517,6 +712,9 @@ static int xlnx_hdcp2x_tx_write_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx)
 	int status = -EINVAL;
 
 	memcpy(&buffer, xhdcp2x_tx->msg_buffer, sizeof(struct xhdcp2x_tx_msg));
+
+	if (xhdcp2x_tx->is_hdmi)
+		return xlnx_hdmi_hdcp2x_tx_write_msg(xhdcp2x_tx);
 
 	switch (buffer.msg_type.msg_id) {
 	case HDCP_2_2_AKE_INIT:
@@ -702,7 +900,6 @@ void xlnx_hdcp2x_tx_timer_handler(void *callbackref, u8 tmr_cnt_number)
 		return;
 
 	xhdcp2x_tx->xhdcp2x_internal_timer.timer_expired = 1;
-
 	if (xhdcp2x_tx->xhdcp2x_info.is_enabled)
 		xlnx_hdcp2x_tx_read_rxstatus(xhdcp2x_tx);
 }
@@ -710,26 +907,13 @@ void xlnx_hdcp2x_tx_timer_handler(void *callbackref, u8 tmr_cnt_number)
 void xlnx_hdcp2x_tx_read_rxstatus(struct xlnx_hdcp2x_config *xhdcp2x_tx)
 {
 	u8 read_buffer[2];
-	int status = 0;
 
-	if (xhdcp2x_tx->xhdcp2x_hw.protocol != XHDCP2X_TX_DP) {
-		status = xhdcp2x_tx->handlers.wr_handler(xhdcp2x_tx->interface_ref,
-							 HDCP2X_TX_HDCPPORT_RXSTATUS_OFFSET,
-							 read_buffer, sizeof(read_buffer));
-		if (!status) {
-			xhdcp2x_tx->xhdcp2x_info.rx_status =
-					XHDCP2X_TX_INVALID_RXSTATUS;
-			return;
-		}
-		status =
-			xhdcp2x_tx->handlers.rd_handler(xhdcp2x_tx->interface_ref,
-							HDCP2X_TX_HDCPPORT_RXSTATUS_OFFSET,
-							read_buffer, sizeof(read_buffer));
-		if (!status) {
-			xhdcp2x_tx->xhdcp2x_info.rx_status =
-					XHDCP2X_TX_INVALID_RXSTATUS;
-			return;
-		}
+	if (xhdcp2x_tx->xhdcp2x_hw.protocol == XHDCP2X_TX_HDMI) {
+		xhdcp2x_tx->handlers.rd_handler(xhdcp2x_tx->interface_ref,
+						HDCP_2_2_HDMI_REG_RXSTATUS_OFFSET,
+						(void *)read_buffer,
+						sizeof(read_buffer));
+
 		xhdcp2x_tx->xhdcp2x_info.rx_status = read_buffer[0]
 					| (read_buffer[1] << BITS_PER_BYTE);
 	}
@@ -748,7 +932,9 @@ int xlnx_hdcp2x_tx_write_ake_init(struct xlnx_hdcp2x_config *xhdcp2x_tx)
 {
 	struct xhdcp2x_tx_msg *tx_msg = (struct xhdcp2x_tx_msg *)xhdcp2x_tx->msg_buffer;
 
-	tx_msg->msg = HDCP2X_TX_HDCPPORT_WRITE_MSG_OFFSET;
+	tx_msg->msg = (xhdcp2x_tx->xhdcp2x_hw.protocol != XHDCP2X_TX_DP) ?
+				HDCP_2_2_HDMI_REG_WR_MSG_OFFSET :
+				HDCP2X_TX_HDCPPORT_WRITE_MSG_OFFSET;
 	tx_msg->msg_type.msg_id  = HDCP_2_2_AKE_INIT;
 
 	xlnx_hdcp2x_rng_get_random_number(&xhdcp2x_tx->xhdcp2x_hw.xlnxhdcp2x_rng,
@@ -770,7 +956,9 @@ int xlnx_hdcp2x_tx_write_ske_send_eks(struct xlnx_hdcp2x_config *xhdcp2x_tx,
 {
 	struct xhdcp2x_tx_msg *tx_msg = (struct xhdcp2x_tx_msg *)xhdcp2x_tx->msg_buffer;
 
-	tx_msg->msg = HDCP2X_TX_HDCPPORT_WRITE_MSG_OFFSET;
+	tx_msg->msg = (xhdcp2x_tx->xhdcp2x_hw.protocol != XHDCP2X_TX_DP) ?
+				HDCP_2_2_HDMI_REG_WR_MSG_OFFSET :
+				HDCP2X_TX_HDCPPORT_WRITE_MSG_OFFSET;
 	tx_msg->msg_type.msg_id = HDCP_2_2_SKE_SEND_EKS;
 
 	memcpy(tx_msg->msg_type.ske_send_eks.edkeys_ks, edkey_ptr,
@@ -788,7 +976,9 @@ int xlnx_hdcp2x_tx_write_lcinit(struct xlnx_hdcp2x_config *xhdcp2x_tx, const u8 
 {
 	struct xhdcp2x_tx_msg *tx_msg =	(struct xhdcp2x_tx_msg *)xhdcp2x_tx->msg_buffer;
 
-	tx_msg->msg = HDCP2X_TX_HDCPPORT_WRITE_MSG_OFFSET;
+	tx_msg->msg = (xhdcp2x_tx->xhdcp2x_hw.protocol != XHDCP2X_TX_DP) ?
+				HDCP_2_2_HDMI_REG_WR_MSG_OFFSET :
+				HDCP2X_TX_HDCPPORT_WRITE_MSG_OFFSET;
 	tx_msg->msg_type.msg_id = HDCP_2_2_LC_INIT;
 
 	memcpy(tx_msg->msg_type.lcinit.rn, rn_ptr, sizeof(tx_msg->msg_type.lcinit.rn));
@@ -803,7 +993,9 @@ int xlnx_hdcp2x_tx_write_ake_storedkm(struct xlnx_hdcp2x_config *xhdcp2x_tx,
 {
 	struct xhdcp2x_tx_msg *tx_msg = (struct xhdcp2x_tx_msg *)xhdcp2x_tx->msg_buffer;
 
-	tx_msg->msg = HDCP2X_TX_HDCPPORT_WRITE_MSG_OFFSET;
+	tx_msg->msg = (xhdcp2x_tx->xhdcp2x_hw.protocol != XHDCP2X_TX_DP) ?
+				HDCP_2_2_HDMI_REG_WR_MSG_OFFSET :
+				HDCP2X_TX_HDCPPORT_WRITE_MSG_OFFSET;
 	tx_msg->msg_type.msg_id = HDCP_2_2_AKE_STORED_KM;
 
 	memcpy(tx_msg->msg_type.ake_stored_km.ekh_km, hdcp2x_tx_pairing_info->ekh_km,
@@ -826,7 +1018,9 @@ int xlnx_hdcp2x_tx_write_akenostored_km(struct xlnx_hdcp2x_config *xhdcp2x_tx,
 	u8 masking_seed[HDCP2X_TX_KM_MSK_SEED_SIZE];
 	u8 ek_pubkm[HDCP_2_2_E_KPUB_KM_LEN];
 
-	tx_msg->msg = HDCP2X_TX_HDCPPORT_WRITE_MSG_OFFSET;
+	tx_msg->msg = (xhdcp2x_tx->xhdcp2x_hw.protocol != XHDCP2X_TX_DP) ?
+				HDCP_2_2_HDMI_REG_WR_MSG_OFFSET :
+				HDCP2X_TX_HDCPPORT_WRITE_MSG_OFFSET;
 	tx_msg->msg_type.msg_id = HDCP_2_2_AKE_NO_STORED_KM;
 
 	xlnx_hdcp2x_rng_get_random_number(&xhdcp2x_tx->xhdcp2x_hw.xlnxhdcp2x_rng,
@@ -848,7 +1042,9 @@ int xlnx_hdcp2x_tx_write_rptr_auth_send_ack(struct xlnx_hdcp2x_config *xhdcp2x_t
 {
 	struct xhdcp2x_tx_msg *tx_msg = (struct xhdcp2x_tx_msg *)xhdcp2x_tx->msg_buffer;
 
-	tx_msg->msg = HDCP2X_TX_HDCPPORT_WRITE_MSG_OFFSET;
+	tx_msg->msg = (xhdcp2x_tx->xhdcp2x_hw.protocol != XHDCP2X_TX_DP) ?
+				HDCP_2_2_HDMI_REG_WR_MSG_OFFSET :
+				HDCP2X_TX_HDCPPORT_WRITE_MSG_OFFSET;
 	tx_msg->msg_type.msg_id = HDCP_2_2_REP_SEND_ACK;
 
 	memcpy(tx_msg->msg_type.rpt_auth_send_ack.V, v_ptr,
@@ -926,7 +1122,9 @@ int xlnx_hdcp2x_tx_rptr_auth_stream_mng(struct xlnx_hdcp2x_config *xhdcp2x_tx)
 			xhdcp2x_tx->xhdcp2x_info.state_context;
 	struct xhdcp2x_tx_msg *tx_msg = (struct xhdcp2x_tx_msg *)xhdcp2x_tx->msg_buffer;
 
-	tx_msg->msg = HDCP2X_TX_HDCPPORT_WRITE_MSG_OFFSET;
+	tx_msg->msg = (xhdcp2x_tx->xhdcp2x_hw.protocol != XHDCP2X_TX_DP) ?
+				HDCP_2_2_HDMI_REG_WR_MSG_OFFSET :
+				HDCP2X_TX_HDCPPORT_WRITE_MSG_OFFSET;
 	tx_msg->msg_type.msg_id = HDCP_2_2_REP_STREAM_MANAGE;
 
 	drm_hdcp_cpu_to_be24(tx_msg->msg_type.rpt_auth_stream_mng.seq_num_m,

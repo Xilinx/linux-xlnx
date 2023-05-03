@@ -53,6 +53,7 @@ enum xlnx_hdcptx_authstatus {
  * @auth_status: Authentication status
  * @hdcp2xenable: HDCP2X protocol is enabled
  * @hdcp1xenable: HDCP1X protocol is enabled
+ * @is_enckey_available: Availability of encryption keys
  */
 struct xlnx_hdcptx {
 	struct device *dev;
@@ -64,6 +65,7 @@ struct xlnx_hdcptx {
 	enum xlnx_hdcptx_authstatus auth_status;
 	bool hdcp2xenable;
 	bool hdcp1xenable;
+	bool is_enckey_available;
 };
 
 int xlnx_hdcp_tx_reset(struct xlnx_hdcptx *xtxhdcp);
