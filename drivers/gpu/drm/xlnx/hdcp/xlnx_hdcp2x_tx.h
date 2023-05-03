@@ -113,8 +113,8 @@ struct xhdcp2x_tx_internal_timer {
 };
 
 struct xhdcp2x_tx_msg {
-	union hdcp2x_tx_msg_type msg_type;
 	u8 msg;
+	union hdcp2x_tx_msg_type msg_type;
 };
 
 /**
@@ -158,7 +158,7 @@ struct xhdcp2x_tx_internal_info {
 	u8 r_tx[8];
 	u8 r_rx[8];
 	u8 rn[8];
-	u8 *txcaps;
+	u8 txcaps[3];
 	u32 seq_num_v;
 	u32 seq_num_m;
 	u32 prev_seq_num_m;
@@ -199,6 +199,7 @@ struct xhdcp2x_tx_callbacks {
  * @lc128key: LC128 encryption key
  * @msg_buffer: Message buffer to store HDCP input/output messages
  * @srmkey: SRM encryption key
+ * @is_hdmi: Interface type HDMI or DP
  * @txcaps: transmitter capabilities
  * @lane_count: Number of lanes data to be encrypted
  * @is_repeater: Says whether downstream is repeater or receiver
@@ -217,6 +218,7 @@ struct xlnx_hdcp2x_config {
 	u8 msg_buffer[XHDCP2X_TX_MAX_MESSAGE_SIZE];
 	u8 *lc128key;
 	u8 *srmkey;
+	u8 is_hdmi;
 	u8 *txcaps;
 	u8 lane_count;
 	bool is_repeater;
@@ -255,6 +257,7 @@ int xlnx_hdcp2x_tx_rptr_auth_stream_mng(struct xlnx_hdcp2x_config *xhdcp2x_tx);
 int hdcp2x_tx_protocol_authenticate_sm(struct xlnx_hdcp2x_config *hdcp2x_tx);
 int xlnx_hdcp2x_verify_srm(const u8 *srm, int srm_size, const u8 *dcp_cert_nvalue,
 			   int dcp_cert_nsize, const u8 *dcp_cert_evalue, int dcp_cert_esize);
+int xlnx_hdcp2x_loadkeys(struct xlnx_hdcp2x_config *xhdcp2x_tx, u8 *srm, u8 *lc128);
 void xlnx_start_hdcp2x_engine(struct xlnx_hdcp2x_config *xhdcp2x_tx);
 void xlnx_hdcp2x_tx_timer_init(struct xlnx_hdcp2x_config *xhdcp2x_tx,
 			       struct xlnx_hdcp_timer_config *tmr_cntrl);
