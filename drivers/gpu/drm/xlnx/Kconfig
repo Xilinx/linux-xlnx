@@ -81,6 +81,7 @@ config DRM_XLNX_DSI
 config DRM_XLNX_HDMITX
 	tristate "Xilinx DRM HDMI Subsystem Driver"
 	depends on DRM_XLNX
+	select DRM_XLNX_HDCP
 	help
 	  DRM driver for Xilinx HDMI Tx Subsystem for FPGA. Choose
 	  this option if you have a FPGA display pipeline that includes
@@ -143,7 +144,7 @@ config DRM_XLNX_BRIDGE_VTC
 
 config DRM_XLNX_HDCP
 	tristate "Xilinx DRM HDCP Driver"
-	depends on DRM_XLNX_DPTX
+	depends on DRM_XLNX_DPTX || DRM_XLNX_HDMITX
 	select XILINX_HDCP_COMMON
 	select CRYPTO_AES
 	help
