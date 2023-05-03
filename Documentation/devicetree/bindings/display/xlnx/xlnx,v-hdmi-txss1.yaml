@@ -25,7 +25,19 @@ properties:
     maxItems: 1
 
   interrupts:
-    maxItems: 1
+    minItems: 1
+    maxItems: 4
+
+  interrupt-names:
+    description: Only hdmitx interrupt is mandatory. Others are optional.
+                 hdcp14 and hdcp14timer will be present when HDCP 1x
+                 is selected.
+                 hdcp22timer will be present when HDCP 2x is selected.
+    items:
+      - const: hdmitx
+      - const: hdcp14
+      - const: hdcp14timer
+      - const: hdcp22timer
 
   clocks:
     description: List of clock specifiers
@@ -87,6 +99,18 @@ properties:
       - $ref: /schemas/types.yaml#/definitions/uint32
       - enum: [0, 1, 2, 3, 4, 5, 6]
 
+  xlnx,include-hdcp-1-4:
+    type: boolean
+    $ref: /schemas/types.yaml#/definitions/flag
+    description: |
+      Present when HDCP1.4 is present in design.
+
+  xlnx,include-hdcp-2-2:
+    type: boolean
+    $ref: /schemas/types.yaml#/definitions/flag
+    description: |
+      Present when HDCP2.2 is present in design.
+
   ports:
     type: object
 
@@ -129,16 +153,23 @@ additionalProperties: false
 
 examples:
   - |
+    #include <dt-bindings/interrupt-controller/arm-gic.h>
+
     v_hdmi_txss1@80020000 {
         compatible = "xlnx,v-hdmi-txss1-1.1";
         reg = <0x80020000 0x20000>;
-        interrupts = <0 91 4>;
+        interrupt-names = "hdmitx", "hdcp14", "hdcp14timer",
+                          "hdcp22timer";
+        interrupts = <GIC_SPI 91 IRQ_TYPE_LEVEL_HIGH>, <GIC_SPI 106 IRQ_TYPE_LEVEL_HIGH>,
+                     <GIC_SPI 107 IRQ_TYPE_LEVEL_HIGH>, <GIC_SPI 111 IRQ_TYPE_LEVEL_HIGH>;
         clock-names = "s_axi_cpu_aclk", "link_clk", "video_clk", "frl_clk", "s_axis_video_aclk";
         clocks = <&zynqmp_clk 71>, <&misc_clk_1>, <&misc_clk_3>, <&misc_clk_4>, <&misc_clk_5>;
         xlnx,input-pixels-per-clock = <4>;
         xlnx,max-bits-per-component = <0x8>;
         xlnx,vid-interface = <0>;
         xlnx,max-frl-rate = <0x6>;
+        xlnx,include-hdcp-1-4;
+        xlnx,include-hdcp-2-2;
         phy-names = "hdmi-phy0", "hdmi-phy1", "hdmi-phy2", "hdmi-phy3";
         phys = <&hdmiphy_lane0 0 1 1 1>, <&hdmiphy_lane1 0 1 1 1>,
                <&hdmiphy_lane2 0 1 1 1>, <&hdmiphy_lane3 0 1 1 1>;
