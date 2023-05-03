@@ -186,13 +186,13 @@
 		};
 
 		conf-rx {
-			pins = "MIO44", "MIO46", "MIO48";
-			bias-high-impedance;
+			pins = "MIO45", "MIO46", "MIO47", "MIO48";
+			bias-disable;
 			low-power-disable;
 		};
 
 		conf-bootstrap {
-			pins = "MIO45", "MIO47", "MIO49";
+			pins = "MIO44", "MIO49";
 			bias-disable;
 			low-power-disable;
 		};
