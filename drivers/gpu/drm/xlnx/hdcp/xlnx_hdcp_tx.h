@@ -69,12 +69,15 @@ struct xlnx_hdcptx {
 int xlnx_hdcp_tx_reset(struct xlnx_hdcptx *xtxhdcp);
 int xlnx_start_hdcp_engine(struct xlnx_hdcptx *xtxhdcp, u8 lanecount);
 int xlnx_hdcp_tx_exit(struct xlnx_hdcptx *xtxhdcp);
-int xlnx_dp_hdcp_tx_set_callback(void *ref,
-				 enum xlnx_hdcptx_callback_type callback_type,
-				 void *callbackfunc);
+int xlnx_hdcp_tx_set_callback(void *ref,
+			      enum xlnx_hdcptx_callback_type callback_type,
+			      void *callbackfunc);
+int xlnx_hdcp_tx_set_keys(struct xlnx_hdcptx *xtxhdcp, const u8 *data);
+
 void *xlnx_hdcp_tx_init(struct device *dev, void *protocol_ref,
 			struct xlnx_hdcptx *xtxhdcp, void __iomem *hdcp_base_address,
-			u8 is_repeater,	enum xlnx_hdcptx_protocol_type, u8 lane_count);
+			u8 is_repeater,	enum xlnx_hdcptx_protocol_type, u8 lane_count,
+			int hw_protocol);
 void *xlnx_hdcp_timer_init(struct device *dev, void __iomem *interface_base);
 void xlnx_hdcp_tx_process_cp_irq(struct xlnx_hdcptx *xhdcptx);
 void xlnx_hdcp_tx_timer_exit(struct xlnx_hdcptx *xtxhdcp);

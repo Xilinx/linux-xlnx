@@ -3664,7 +3664,8 @@ static int xlnx_hdcp_init(struct xlnx_dp *dp,
 
 		dptxhdcp->xhdcp2x = xlnx_hdcp_tx_init(&pdev->dev, dp, dptxhdcp,
 						      dp->dp_base + XDPTX_HDCP2X_OFFSET,
-						      0, XHDCPTX_HDCP_2X, dp->mode.lane_cnt);
+						      0, XHDCPTX_HDCP_2X, dp->mode.lane_cnt,
+						      XHDCP2X_TX_DP);
 
 		if (IS_ERR(dptxhdcp->xhdcp2x)) {
 			dev_err(dp->dev, "failed to initialize HDCP2X module\n");
@@ -3692,22 +3693,22 @@ static int xlnx_hdcp_init(struct xlnx_dp *dp,
 		return PTR_ERR(dptxhdcp->xhdcptmr);
 	}
 
-	ret = xlnx_dp_hdcp_tx_set_callback(dptxhdcp, XDPTX_HDCP_DPCD_WRITE,
-					   xlnx_dp_hdcp_dpcd_write);
+	ret = xlnx_hdcp_tx_set_callback(dptxhdcp, XDPTX_HDCP_DPCD_WRITE,
+					xlnx_dp_hdcp_dpcd_write);
 	if (ret < 0) {
 		dev_err(dp->dev, "failed to register HDCP DPCD Write Callback");
 		return ret;
 	}
 
-	ret = xlnx_dp_hdcp_tx_set_callback(dptxhdcp, XDPTX_HDCP_DPCD_READ,
-					   xlnx_dp_hdcp_dpcd_read);
+	ret = xlnx_hdcp_tx_set_callback(dptxhdcp, XDPTX_HDCP_DPCD_READ,
+					xlnx_dp_hdcp_dpcd_read);
 	if (ret < 0) {
 		dev_err(dp->dev, "failed to register HDCP DPCD Read Callback");
 		return ret;
 	}
 
-	ret = xlnx_dp_hdcp_tx_set_callback(dptxhdcp, XDPTX_HDCP_STATUS,
-					   xlnx_dp_hdcp_status_update);
+	ret = xlnx_hdcp_tx_set_callback(dptxhdcp, XDPTX_HDCP_STATUS,
+					xlnx_dp_hdcp_status_update);
 	if (ret < 0) {
 		dev_err(dp->dev, "failed to register HDCP Status Update Callback");
 		return ret;
