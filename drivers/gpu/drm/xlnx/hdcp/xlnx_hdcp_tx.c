@@ -85,11 +85,13 @@ void xlnx_hdcp_tx_process_cp_irq(struct xlnx_hdcptx *xtxhdcp)
  * @is_repeater: Repeater selection
  * @hdcp_type: HDCP protocol selection
  * @lane_count: Number of lanes data to be encrypted
+ * @hw_protocol: Interface type HDMI or DP
  * return: HDCP 1x/2x driver structure if success or return memory allocation error
  */
 void *xlnx_hdcp_tx_init(struct device *dev, void *protocol_ref,
 			struct xlnx_hdcptx *xtxhdcp, void __iomem *hdcp_base_address,
-			u8 is_repeater,	enum xlnx_hdcptx_protocol_type hdcp_type, u8 lane_count)
+			u8 is_repeater,	enum xlnx_hdcptx_protocol_type hdcp_type, u8 lane_count,
+			int hw_protocol)
 {
 	struct xlnx_hdcp2x_config  *xhdcp2x;
 	void *hdcp_drv_address;
@@ -245,9 +247,9 @@ int xlnx_start_hdcp_engine(struct xlnx_hdcptx *xtxhdcp, u8 lanecount)
 	return 0;
 }
 
-int xlnx_dp_hdcp_tx_set_callback(void *ref,
-				 enum xlnx_hdcptx_callback_type callback_type,
-				 void *callbackfunc)
+int xlnx_hdcp_tx_set_callback(void *ref,
+			      enum xlnx_hdcptx_callback_type callback_type,
+			      void *callbackfunc)
 {
 	int ret = 0;
 	struct xlnx_hdcptx *xtxhdcp = (struct xlnx_hdcptx *)ref;
