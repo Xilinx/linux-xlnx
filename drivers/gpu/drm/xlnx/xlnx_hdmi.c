@@ -2601,11 +2601,52 @@ xlnx_hdmi_get_edid_block(void *data, u8 *buf, unsigned int block,
 	}
 
 	memcpy(buf, buffer + block * 128, len);
-	if (buffer[HDMI_TX_DDC_EDID_SINK_BW] >> HDMI_TX_DDC_EDID_BW_SHIFT)
-		hdmi->stream.is_frl = 0;
 
 	kfree(buffer);
 	return 0;
+}
+
+/**
+ * xlnx_hdmi_set_frl_tmds_mode - Function sets the supported mode (FRL/TMDS)
+ * by the connectd sink device. Also gets the max_frl_rate supportd by sink.
+ *
+ * @hdmi: pointer to hdmi instance
+ */
+static void
+xlnx_hdmi_set_frl_tmds_mode(struct drm_connector *connector)
+{
+	struct xlnx_hdmi *hdmi = connector_to_hdmi(connector);
+
+	if (connector->display_info.hdmi.max_lanes != 0 &&
+	    connector->display_info.hdmi.max_frl_rate_per_lane != 0) {
+		hdmi->stream.is_frl = 1;
+		switch (connector->display_info.hdmi.max_frl_rate_per_lane) {
+		case 3:
+			if (connector->display_info.hdmi.max_lanes == 3)
+				hdmi->config.max_frl_rate = 1;
+			break;
+		case 6:
+			if (connector->display_info.hdmi.max_lanes == 3)
+				hdmi->config.max_frl_rate = 2;
+			else if (connector->display_info.hdmi.max_lanes == 4)
+				hdmi->config.max_frl_rate = 3;
+			break;
+		case 8:
+			if (connector->display_info.hdmi.max_lanes == 4)
+				hdmi->config.max_frl_rate = 4;
+			break;
+		case 10:
+			if (connector->display_info.hdmi.max_lanes == 4)
+				hdmi->config.max_frl_rate = 5;
+			break;
+		case 12:
+			if (connector->display_info.hdmi.max_lanes == 4)
+				hdmi->config.max_frl_rate = 6;
+			break;
+		}
+	} else {
+		hdmi->stream.is_frl = 0;
+	}
 }
 
 static int xlnx_hdmi_connector_get_modes(struct drm_connector *connector)
@@ -2618,6 +2659,9 @@ static int xlnx_hdmi_connector_get_modes(struct drm_connector *connector)
 	hdmi_mutex_lock(&hdmi->hdmi_mutex);
 
 	edid = drm_do_get_edid(connector, xlnx_hdmi_get_edid_block, hdmi);
+
+	/* Set HDMI FRL or TMDS Mode */
+	xlnx_hdmi_set_frl_tmds_mode(connector);
 
 	hdmi_mutex_unlock(&hdmi->hdmi_mutex);
 	if (!edid) {
