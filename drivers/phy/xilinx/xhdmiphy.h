@@ -1048,6 +1048,8 @@ struct xhdmiphy_dev {
 	u8 phy_ready;
 };
 
+void xhdmiphy_set(struct xhdmiphy_dev *inst, u32 addr, u32 set);
+void xhdmiphy_clr(struct xhdmiphy_dev *inst, u32 addr, u32 clr);
 void xhdmiphy_set_clr(struct xhdmiphy_dev *inst, u32 addr, u32 reg_val,
 		      u32 mask_val, u8 set_clr);
 void xhdmiphy_ch2ids(struct xhdmiphy_dev *inst, enum chid chid, u8 *id0,

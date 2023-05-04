@@ -221,6 +221,11 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 					     cfg->linerate, cfg->nchannels);
 			xhdmiphy_clkdet_freq_reset(phy_dev, XHDMIPHY_DIR_TX);
 			cfg->config_hdmi21 = 0;
+		} else if (cfg->resetgtpll) {
+			xhdmiphy_set(phy_dev, XHDMIPHY_TX_INIT_REG,
+				     XHDMIPHY_TXRX_INIT_PLLGTRESET_ALL_MASK);
+			xhdmiphy_clr(phy_dev, XHDMIPHY_TX_INIT_REG,
+				     XHDMIPHY_TXRX_INIT_PLLGTRESET_ALL_MASK);
 		}
 		count_tx = 0;
 	}
