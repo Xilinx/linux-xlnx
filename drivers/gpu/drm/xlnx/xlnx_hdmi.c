@@ -1765,6 +1765,17 @@ static int xlnx_hdmi_exec_frl_state_lts2(struct xlnx_hdmi *hdmi)
 	hdmi->stream.frl_config.timer_cnt += TIMEOUT_5MS;
 	status = xlnx_hdmi_ddc_readreg(hdmi, HDMI_TX_DDC_SLAVEADDR, 1,
 				       HDMI_TX_DDC_STCR_REG, (u8 *)&ddc_buf);
+
+	/* Reset GTPLL before starting FRL Training */
+	phy_cfg.hdmi.resetgtpll = 1;
+	for (i = 0; i < HDMI_MAX_LANES; i++) {
+		ret = phy_configure(hdmi->phy[i], &phy_cfg);
+		if (ret) {
+			dev_err(hdmi->dev, "phy_cfg: resetgtpll config failed\n");
+			return ret;
+		}
+	}
+
 	if (status)
 		return status;
 
