@@ -116,6 +116,7 @@
 
 	aliases {
 		serial0 = &serial0;
+		serial1 = &serial1;
 		mmc0 = &sdhci0;
 		mmc1 = &sdhci1;
 	};
@@ -576,6 +577,20 @@
 			clock-names = "uartclk", "apb_pclk";
 			clocks = <&versal_net_clk UART0_REF>, <&versal_net_clk LPD_LSBUS>;
 			power-domains = <&versal_net_firmware PM_DEV_UART_0>;
+			clock = <1000000>;
+			current-speed = <115200>;
+			skip-init;
+		};
+
+		serial1: serial@f1930000 {
+			u-boot,dm-pre-reloc;
+			compatible = "arm,pl011", "arm,primecell";
+			reg = <0 0xf1930000 0 0x1000>;
+			interrupts = <0 26 4>;
+			reg-io-width = <4>;
+			clock-names = "uartclk", "apb_pclk";
+			clocks = <&versal_net_clk UART1_REF>, <&versal_net_clk LPD_LSBUS>;
+			power-domains = <&versal_net_firmware PM_DEV_UART_1>;
 			clock = <1000000>;
 			current-speed = <115200>;
 			skip-init;
