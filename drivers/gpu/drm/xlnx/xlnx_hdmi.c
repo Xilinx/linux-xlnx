@@ -1858,6 +1858,8 @@ static int xlnx_hdmi_exec_frl_state_lts2_ratewr(struct xlnx_hdmi *hdmi)
 	status = xlnx_hdmi_frl_train_init(hdmi);
 	if (status) {
 		dev_err(hdmi->dev, "lts2 train init failed\n");
+		hdmi->stream.frl_config.frl_train_states =
+			HDMI_TX_FRLSTATE_LTS_L;
 		return status;
 	}
 
