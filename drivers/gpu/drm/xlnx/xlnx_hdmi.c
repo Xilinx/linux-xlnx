@@ -2286,10 +2286,21 @@ static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 	if (event & HDMI_TX_PIO_IN_BRIDGE_LOCKED) {
 		dev_dbg(hdmi->dev, "PIO IN status = 0x%x\n",
 			xlnx_hdmi_readl(hdmi, HDMI_TX_PIO_IN));
-		if (data & HDMI_TX_PIO_IN_BRIDGE_LOCKED)
+		if (data & HDMI_TX_PIO_IN_BRIDGE_LOCKED) {
 			dev_dbg(hdmi->dev, "Bridge locked\n");
-		else
+		} else {
 			dev_dbg(hdmi->dev, "Bridge unlocked\n");
+			/* Clear interrupt and FRL */
+			xlnx_hdmi_set_frl_timer(hdmi, 0);
+			xlnx_hdmi_frl_reset_assert(hdmi);
+			xlnx_hdmi_frl_reset_deassert(hdmi);
+			xlnx_hdmi_frl_mode_disable(hdmi);
+			hdmi->stream.is_frl = 0;
+			xlnx_hdmi_ddcwrite_field(hdmi,
+						 HDMI_TX_SCDC_FIELD_FLT_UPDATE,
+						 1);
+			xlnx_hdmi_piointr_clear(hdmi);
+		}
 	}
 
 	/* Bridge Overflow event has occurred */
