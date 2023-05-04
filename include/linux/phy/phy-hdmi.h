@@ -222,6 +222,12 @@ struct phy_configure_opts_hdmi {
 	 * Allowed values: 1, 2, 3, 5
 	 */
 	u8 samplerate;
+	/**
+	 * @resetgtpll
+	 * Flag to reset gtpll from PHY driver
+	 * Allowed values : 0, 1
+	 */
+	u8 resetgtpll : 1;
 };
 
 #endif /* __PHY_HDMI_H_ */
