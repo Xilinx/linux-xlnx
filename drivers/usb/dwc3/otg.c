@@ -1743,7 +1743,6 @@ static int dwc3_otg_set_periph(struct usb_otg *_otg, struct usb_gadget *gadget)
 
 	otg->otg.gadget = gadget;
 	otg->otg.gadget->hnp_polling_support = 1;
-	otg->otg.state = OTG_STATE_B_IDLE;
 
 	start_main_thread(otg);
 	return 0;
