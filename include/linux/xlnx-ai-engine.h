@@ -45,26 +45,27 @@ struct device;
 
 /* Data structure to capture the Tile Information */
 struct aie_tile_info {
-	u32 cols;
-	u32 rows;
+	u32 col_size;
+	u16 major;
+	u16 minor;
+	u16 cols;
+	u16 rows;
 	u16 core_rows;
 	u16 mem_rows;
 	u16 shim_rows;
 	u16 core_row_start;
 	u16 mem_row_start;
 	u16 shim_row_start;
-	u16 core_dma_s2mm_chan;
-	u16 core_dma_mm2s_chan;
-	u16 mem_dma_s2mm_chan;
-	u16 mem_dma_mm2s_chan;
-	u16 shim_dma_s2mm_chan;
-	u16 shim_dma_mm2s_chan;
+	u16 core_dma_channels;
+	u16 mem_dma_channels;
+	u16 shim_dma_channels;
 	u16 core_locks;
 	u16 mem_locks;
 	u16 shim_locks;
 	u16 core_events;
 	u16 mem_events;
 	u16 shim_events;
+	u16 padding;
 };
 
 /* Data structure to capture the dma status */
@@ -76,7 +77,8 @@ struct aie_dma_status {
 /* Data structure to capture the core tile status */
 struct aie_core_tile_status {
 	struct aie_dma_status *dma;
-	u32 *event_sts;
+	u32 *core_mode_event_sts;
+	u32 *mem_mode_event_sts;
 	u32 core_status;
 	u32 prg_cntr;
 	u32 stack_ptr;

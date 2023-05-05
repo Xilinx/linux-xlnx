@@ -7,6 +7,13 @@
 #include "ai-engine-internal.h"
 #include "linux/xlnx-ai-engine.h"
 
+/*
+ * Version Number to maintain Tile and Column Structure change
+ * between Linux Driver and Application
+ */
+#define MAJOR_VERSION 1
+#define MINOR_VERSION 1
+
 /**
  * aie_tile_core_status() - Stores AI engine core status, value of program
  *                        counter, stack pointer, and link register to a tile
@@ -258,7 +265,9 @@ static int aie_event_status(struct aie_partition *apart, struct aie_col_status *
 		if (ttype == AIE_TILE_TYPE_TILE) {
 			index = loc->row - tile_st;
 			aie_read_event_status(apart, loc, AIE_CORE_MOD,
-					      sts_coretile[index].event_sts);
+					      sts_coretile[index].core_mode_event_sts);
+			aie_read_event_status(apart, loc, AIE_MEM_MOD,
+					      sts_coretile[index].mem_mode_event_sts);
 		} else if (ttype == AIE_TILE_TYPE_MEMORY) {
 			index = loc->row - memtile_st;
 			aie_read_event_status(apart, loc, AIE_MEM_MOD,
@@ -344,6 +353,8 @@ int aie_get_tile_info(struct device *dev, struct aie_tile_info *tile_info)
 	if (!tile_info)
 		return -EFAULT;
 
+	tile_info->minor = MINOR_VERSION;
+	tile_info->major = MAJOR_VERSION;
 	tile_info->cols = apart->range.size.col;
 	tile_info->rows = apart->range.size.row;
 	tile_info->core_rows = apart->adev->ttype_attr[AIE_TILE_TYPE_TILE].num_rows;
@@ -352,12 +363,9 @@ int aie_get_tile_info(struct device *dev, struct aie_tile_info *tile_info)
 	tile_info->core_row_start = apart->adev->ttype_attr[AIE_TILE_TYPE_TILE].start_row;
 	tile_info->mem_row_start = apart->adev->ttype_attr[AIE_TILE_TYPE_MEMORY].start_row;
 	tile_info->shim_row_start = apart->adev->ttype_attr[AIE_TILE_TYPE_SHIMPL].start_row;
-	tile_info->core_dma_s2mm_chan = apart->adev->tile_dma->num_s2mm_chan;
-	tile_info->mem_dma_s2mm_chan = apart->adev->memtile_dma->num_s2mm_chan;
-	tile_info->shim_dma_s2mm_chan = apart->adev->shim_dma->num_s2mm_chan;
-	tile_info->core_dma_mm2s_chan = apart->adev->tile_dma->num_mm2s_chan;
-	tile_info->mem_dma_mm2s_chan = apart->adev->memtile_dma->num_mm2s_chan;
-	tile_info->shim_dma_mm2s_chan = apart->adev->shim_dma->num_mm2s_chan;
+	tile_info->core_dma_channels = apart->adev->tile_dma->num_s2mm_chan;
+	tile_info->shim_dma_channels = apart->adev->shim_dma->num_s2mm_chan;
+	tile_info->mem_dma_channels = apart->adev->memtile_dma->num_mm2s_chan;
 	tile_info->core_locks = apart->adev->mem_lock->num_locks;
 	tile_info->mem_locks = apart->adev->memtile_lock->num_locks;
 	tile_info->shim_locks = apart->adev->pl_lock->num_locks;
