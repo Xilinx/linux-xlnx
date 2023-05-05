@@ -338,8 +338,8 @@ static int start_host(struct dwc3_otg *otg)
 		return ret;
 	}
 
-	*(struct xhci_hcd **)xhci->shared_hcd->hcd_priv = xhci;
 	if (xhci->shared_hcd) {
+		*(struct xhci_hcd **)xhci->shared_hcd->hcd_priv = xhci;
 		ret = usb_add_hcd(xhci->shared_hcd, otg->hcd_irq, IRQF_SHARED);
 		if (ret) {
 			otg_err(otg,
