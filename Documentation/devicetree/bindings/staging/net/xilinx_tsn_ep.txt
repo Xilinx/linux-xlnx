@@ -8,7 +8,6 @@ Required properties:
 - interrupts		: Property with a value describing the interrupt
 - interrupts-names	: Property denotes the interrupt names.
 - interrupt-parent	: Must be core interrupt controller.
-- local-mac-address	: See ethernet.txt [1].
 
 Optional properties:
 - xlnx,num-tc		: Number of traffic class supported in current design,
