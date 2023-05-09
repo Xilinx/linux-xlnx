@@ -24,6 +24,10 @@ properties:
           - xlnx,v-dp-rxss-3.0
       - const: xlnx,v-dp-rxss-3.0
 
+  interrupt-names:
+    items:
+      - const: dprxss_dp_irq
+
   reg:
     minItems: 1
     items:
@@ -91,6 +95,21 @@ properties:
       - $ref: /schemas/types.yaml#/definitions/uint32
       - enum: [6, 8, 10, 12, 16]
 
+  xlnx,hdcp22-enable:
+    description: |
+      This denotes hdcp22 protocol is enabled in the IP.
+    $ref: /schemas/types.yaml#/definitions/uint32
+
+  xlnx,hdcp-enable:
+    description: |
+      This denotes hdcp1.4 protocol is enabled in the IP.
+    $ref: /schemas/types.yaml#/definitions/uint32
+
+  xlnx,audio-enable:
+    description: |
+      This denotes audio support has been enabled in the IP.
+    $ref: /schemas/types.yaml#/definitions/uint32
+
   xlnx,audio-channels:
     description: |
       This denotes number of audio channels enabled in the IP
@@ -140,9 +159,9 @@ required:
   - interrupts
   - reg
   - reg-names
-  - link-rate
-  - bpc
-  - lane-count
+  - xlnx,link-rate
+  - xlnx,bpc
+  - xlnx,lane-count
   - phy-names
   - phys
   - ports
@@ -153,7 +172,7 @@ examples:
   - |
    v_dp_rxss1@a0040000 {
        clock-names = "s_axi_aclk", "rx_lnk_clk", "rx_vid_clk" ;
-       clocks = <&zynqmp_clk 71>, <&zynqmp_clk 72>;
+       clocks = <&zynqmp_clk 71>, <&zynqmp_clk 72>, <&misc_clk_1>;
        compatible = "xlnx,v-dp-rxss-3.1", "xlnx,v-dp-rxss-3.0";
        interrupt-names = "dprxss_dp_irq";
        interrupt-parent = <&gic>;
@@ -161,11 +180,11 @@ examples:
        reg = <0xa0040000 0x40000>, <0xa0010000 0x1000>;
        reg-names = "dp_base", "edid_base";
        xlnx,link-rate = <0x1e>;
-       xlnx,audio-enable;
+       xlnx,audio-enable = <1>;
        xlnx,audio-channels = <2>;
        xlnx,bpc = <10>;
-       xlnx,hdcp22-enable;
-       xlnx,hdcp-enable;
+       xlnx,hdcp22-enable = <1>;
+       xlnx,hdcp-enable = <1>;
        xlnx,hdcp1x-keymgmt = <&hdcp_keymngmt_blk_0>;
        xlnx,lane-count = <4>;
        phy-names = "dp-phy0", "dp-phy1", "dp-phy2", "dp-phy3";
