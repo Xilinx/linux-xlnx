@@ -20,7 +20,9 @@ properties:
   compatible:
     items:
       - enum:
-          - xlnx,v-dprxss-3.0
+          - xlnx,v-dp-rxss-3.1
+          - xlnx,v-dp-rxss-3.0
+      - const: xlnx,v-dp-rxss-3.0
 
   reg:
     minItems: 1
@@ -152,7 +154,7 @@ examples:
    v_dp_rxss1@a0040000 {
        clock-names = "s_axi_aclk", "rx_lnk_clk", "rx_vid_clk" ;
        clocks = <&zynqmp_clk 71>, <&zynqmp_clk 72>;
-       compatible = "xlnx,v-dp-rxss-3.0";
+       compatible = "xlnx,v-dp-rxss-3.1", "xlnx,v-dp-rxss-3.0";
        interrupt-names = "dprxss_dp_irq";
        interrupt-parent = <&gic>;
        interrupts = <0 89 4>;
