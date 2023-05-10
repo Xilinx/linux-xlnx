@@ -1801,6 +1801,11 @@ static int tsnswitch_probe(struct platform_device *pdev)
 	data = axienet_ior(&lp, XAE_EP_EXT_CTRL_OFFSET);
 	pr_info("Data in Endpoint Extension Control Register is %x\n", data);
 	ndev = of_find_net_device_by_node(ep_node);
+	if (!ndev) {
+		dev_err(&pdev->dev, "Defer Switch probe as EP is not probed\n");
+		ret = -EPROBE_DEFER;
+		goto err;
+	}
 	ep_lp = netdev_priv(ndev);
 	if (ep_lp->ex_ep) {
 		if (num_tc == 3) {
@@ -1833,6 +1838,12 @@ static int tsnswitch_probe(struct platform_device *pdev)
 		}
 	}
 
+	return ret;
+err:
+	if (!inband_mgmt_tag)
+		xlnx_switchdev_remove();
+	misc_deregister(&switch_dev);
+	of_node_put(ep_node);
 	return ret;
 }
 
