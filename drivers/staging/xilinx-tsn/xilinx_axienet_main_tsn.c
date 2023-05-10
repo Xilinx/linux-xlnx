@@ -1908,6 +1908,9 @@ static int axienet_probe(struct platform_device *pdev)
 
 	ret = axienet_tsn_probe(pdev, lp, ndev);
 
+	if (ret)
+		goto cleanup_clk;
+
 	ret = axienet_clk_init(pdev, &lp->aclk, &lp->eth_sclk,
 			       &lp->eth_refclk, &lp->eth_dclk);
 	if (ret) {
