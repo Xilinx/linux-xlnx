@@ -32,6 +32,12 @@
 	};
 };
 
+&can0 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_can0_default>;
+};
+
 &i2c1 { /* I2C_SCK C26/C27 - MIO from SOM */
 	#address-cells = <1>;
 	#size-cells = <0>;
@@ -126,6 +132,30 @@
 
 &pinctrl0 { /* required by spec */
 	status = "okay";
+
+	pinctrl_can0_default: can0-default {
+		mux {
+			function = "can0";
+			groups = "can0_16_grp";
+		};
+
+		conf {
+			groups = "can0_16_grp";
+			slew-rate = <SLEW_RATE_SLOW>;
+			power-source = <IO_STANDARD_LVCMOS18>;
+		};
+
+		conf-rx {
+			pins = "MIO66";
+			bias-pull-up;
+		};
+
+		conf-tx {
+			pins = "MIO67";
+			bias-pull-up;
+			drive-strength = <4>;
+		};
+	};
 
 	pinctrl_uart1_default: uart1-default {
 		conf {
