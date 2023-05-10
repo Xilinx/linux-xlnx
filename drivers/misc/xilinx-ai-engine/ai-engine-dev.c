@@ -841,3 +841,4 @@ module_exit(xilinx_ai_engine_exit);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_LICENSE("GPL v2");
+MODULE_IMPORT_NS(DMA_BUF);
