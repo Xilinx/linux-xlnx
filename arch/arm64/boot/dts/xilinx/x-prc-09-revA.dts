@@ -48,6 +48,7 @@
 			ti,tx-internal-delay = <0xa>;
 			ti,fifo-depth = <0x1>;
 			ti,dp83867-rxctrl-strap-quirk;
+			ti,min-output-impedance;
 			reset-assert-us = <0x96>;
 			reset-deassert-us = <0x118>;
 			reset-gpios = <&gpio1 48 GPIO_ACTIVE_LOW>;
