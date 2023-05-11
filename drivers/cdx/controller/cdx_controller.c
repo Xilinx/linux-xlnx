@@ -24,7 +24,8 @@ static void cdx_mcdi_request(struct cdx_mcdi *cdx,
 			     const struct cdx_dword *hdr, size_t hdr_len,
 			     const struct cdx_dword *sdu, size_t sdu_len)
 {
-	cdx_rpmsg_send(cdx, hdr, hdr_len, sdu, sdu_len);
+	if (cdx_rpmsg_send(cdx, hdr, hdr_len, sdu, sdu_len))
+		dev_err(&cdx->rpdev->dev, "Failed to send rpmsg data\n");
 }
 
 static const struct cdx_mcdi_ops mcdi_ops = {
