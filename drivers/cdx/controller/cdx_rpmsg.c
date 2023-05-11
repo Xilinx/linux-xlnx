@@ -27,7 +27,7 @@ int cdx_rpmsg_send(struct cdx_mcdi *cdx_mcdi,
 		   const struct cdx_dword *sdu, size_t sdu_len)
 {
 	unsigned char *send_buf;
-	int rc;
+	int ret;
 
 	send_buf = kzalloc(hdr_len + sdu_len, GFP_KERNEL);
 	if (!send_buf)
@@ -36,10 +36,10 @@ int cdx_rpmsg_send(struct cdx_mcdi *cdx_mcdi,
 	memcpy(send_buf, hdr, hdr_len);
 	memcpy(send_buf + hdr_len, sdu, sdu_len);
 
-	rc = rpmsg_send(cdx_mcdi->ept, send_buf, hdr_len + sdu_len);
+	ret = rpmsg_send(cdx_mcdi->ept, send_buf, hdr_len + sdu_len);
 	kfree(send_buf);
 
-	return rc;
+	return ret;
 }
 
 static int cdx_attach_to_rproc(struct platform_device *pdev)
@@ -185,7 +185,7 @@ int cdx_setup_rpmsg(struct platform_device *pdev)
 
 	INIT_WORK(&cdx_mcdi->work, cdx_rpmsg_post_probe_work);
 	ret = register_rpmsg_driver(&cdx_rpmsg_driver);
-	if (ret < 0) {
+	if (ret) {
 		dev_err(&pdev->dev,
 			"Failed to register cdx RPMsg driver: %d\n", ret);
 		cdx_detach_to_r5(pdev);

@@ -57,7 +57,7 @@ static void cdx_mcdi_timeout_cmd(struct cdx_mcdi_iface *mcdi,
 static void cdx_mcdi_cmd_work(struct work_struct *context);
 static void cdx_mcdi_mode_fail(struct cdx_mcdi *cdx, struct list_head *cleanup_list);
 static void _cdx_mcdi_display_error(struct cdx_mcdi *cdx, unsigned int cmd,
-				    size_t inlen, int raw, int arg, int rc);
+				    size_t inlen, int raw, int arg, int err_no);
 
 static bool cdx_cmd_cancelled(struct cdx_mcdi_cmd *cmd)
 {
@@ -206,7 +206,7 @@ int cdx_mcdi_wait_for_quiescence(struct cdx_mcdi *cdx,
 
 	while (!cdx_mcdi_flushed(mcdi, true)) {
 		rc = wait_woken(&wait, TASK_IDLE, timeout_jiffies);
-		if (rc != 0)
+		if (rc)
 			continue;
 		break;
 	}
@@ -881,10 +881,10 @@ cdx_mcdi_rpc_async(struct cdx_mcdi *cdx, unsigned int cmd,
 }
 
 static void _cdx_mcdi_display_error(struct cdx_mcdi *cdx, unsigned int cmd,
-				    size_t inlen, int raw, int arg, int rc)
+				    size_t inlen, int raw, int arg, int err_no)
 {
-	pr_err("MC command 0x%x inlen %d failed rc=%d (raw=%d) arg=%d\n",
-	       cmd, (int)inlen, rc, raw, arg);
+	pr_err("MC command 0x%x inlen %d failed err_no=%d (raw=%d) arg=%d\n",
+	       cmd, (int)inlen, err_no, raw, arg);
 }
 
 /*

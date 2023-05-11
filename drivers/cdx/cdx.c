@@ -120,7 +120,7 @@ static int reset_cdx_device(struct device *dev, void *data)
  *	  the passed function (cdx_unregister_device) to have this
  *	  as an argument.
  *
- * Return: -errno on failure, 0 on success.
+ * Return: 0 on success.
  */
 static int cdx_unregister_device(struct device *dev,
 				 void *data)
@@ -239,7 +239,7 @@ static int cdx_probe(struct device *dev)
 	int error;
 
 	error = cdx_drv->probe(cdx_dev);
-	if (error < 0) {
+	if (error) {
 		dev_err_probe(dev, error, "%s failed\n", __func__);
 		return error;
 	}
@@ -517,7 +517,7 @@ int __cdx_driver_register(struct cdx_driver *cdx_driver,
 	cdx_driver->driver.bus = &cdx_bus_type;
 
 	error = driver_register(&cdx_driver->driver);
-	if (error < 0) {
+	if (error) {
 		pr_err("driver_register() failed for %s: %d\n",
 		       cdx_driver->driver.name, error);
 		return error;
@@ -641,7 +641,7 @@ static int cdx_create_res_attr(struct cdx_device *cdx_dev, int num)
 {
 	struct bin_attribute *res_attr;
 	char *res_attr_name;
-	int retval;
+	int ret;
 
 	res_attr = kzalloc(sizeof(*res_attr) + CDX_RES_ATTR_NAME_LEN, GFP_ATOMIC);
 	if (!res_attr)
@@ -659,11 +659,11 @@ static int cdx_create_res_attr(struct cdx_device *cdx_dev, int num)
 	res_attr->attr.mode = 0600;
 	res_attr->size = cdx_resource_len(cdx_dev, num);
 	res_attr->private = (void *)(unsigned long)num;
-	retval = sysfs_create_bin_file(&cdx_dev->dev.kobj, res_attr);
-	if (retval)
+	ret = sysfs_create_bin_file(&cdx_dev->dev.kobj, res_attr);
+	if (ret)
 		kfree(res_attr);
 
-	return retval;
+	return ret;
 }
 
 int cdx_device_add(struct cdx_dev_params *dev_params)
@@ -696,7 +696,7 @@ int cdx_device_add(struct cdx_dev_params *dev_params)
 	cdx_dev->cdx = dev_params->cdx;
 	cdx_dev->dma_mask = CDX_DEFAULT_DMA_MASK;
 
-	/* Initiaize generic device */
+	/* Initialize generic device */
 	device_initialize(&cdx_dev->dev);
 	cdx_dev->dev.parent = parent;
 	cdx_dev->dev.bus = &cdx_bus_type;
@@ -712,7 +712,7 @@ int cdx_device_add(struct cdx_dev_params *dev_params)
 		dev_set_msi_domain(&cdx_dev->dev, cdx->msi_domain);
 
 	ret = device_add(&cdx_dev->dev);
-	if (ret != 0) {
+	if (ret) {
 		dev_err(&cdx_dev->dev,
 			"cdx device add failed: %d", ret);
 		goto fail;
@@ -755,7 +755,7 @@ int cdx_register_controller(struct cdx_controller *cdx)
 
 	ret = xa_alloc(&cdx_controllers, &cdx->id, cdx,
 		       XA_LIMIT(0, MAX_CDX_CONTROLLERS - 1), GFP_KERNEL);
-	if (ret < 0) {
+	if (ret) {
 		dev_err(cdx->dev,
 			"No free index available. Maximum controllers already registered\n");
 		cdx->id = (u8)MAX_CDX_CONTROLLERS;

@@ -54,7 +54,7 @@ static int cdx_bus_enable(struct cdx_controller *cdx, bool enable)
 	else
 		ret = cdx_mcdi_bus_disable(cdx->priv, 0);
 
-	if (ret == 0)
+	if (!ret)
 		cdx->enabled = enable;
 
 	return ret;
@@ -125,7 +125,7 @@ static int cdx_scan_devices(struct cdx_controller *cdx)
 		ret = cdx_mcdi_get_num_devs(cdx_mcdi, bus_num);
 		if (ret < 0) {
 			dev_err(cdx->dev,
-				"CDX bus %d has no devices: %d\n", bus_num, ret);
+				"Get devices on CDX bus %d failed: %d\n", bus_num, ret);
 			ret = cdx_mcdi_bus_disable(cdx_mcdi, bus_num);
 			if (ret)
 				dev_err(cdx->dev,
@@ -268,7 +268,7 @@ static int __init cdx_controller_init(void)
 	int ret;
 
 	ret = platform_driver_register(&cdx_pdriver);
-	if (ret < 0)
+	if (ret)
 		pr_err("platform_driver_register() failed: %d\n", ret);
 
 	return ret;
