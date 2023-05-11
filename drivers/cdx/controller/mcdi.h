@@ -170,7 +170,7 @@ struct cdx_mcdi_iface {
 	enum cdx_mcdi_mode mode;
 	u8 prev_seq;
 	bool new_epoch;
-#ifdef CONFIG_MCDI_LOGGING
+#ifdef CONFIG_CDX_MCDI_LOGGING
 	bool logging_enabled;
 	char *logging_buffer;
 #endif
