@@ -10,18 +10,6 @@
 
 static struct cdx_driver vfio_cdx_driver;
 
-static int vfio_cdx_init_device(struct vfio_device *core_vdev)
-{
-	struct vfio_cdx_device *vdev =
-		container_of(core_vdev, struct vfio_cdx_device, vdev);
-	struct cdx_device *cdx_dev = to_cdx_device(core_vdev->dev);
-
-	vdev->cdx_dev = cdx_dev;
-	vdev->dev = &cdx_dev->dev;
-
-	return 0;
-}
-
 static void vfio_cdx_release_device(struct vfio_device *core_vdev)
 {
 	vfio_free_device(core_vdev);
@@ -272,8 +260,7 @@ static int vfio_cdx_mmap(struct vfio_device *core_vdev,
 
 static const struct vfio_device_ops vfio_cdx_ops = {
 	.name		= "vfio-cdx",
-	.init		= vfio_cdx_init_device,
-	.release	= vfio_cdx_release_device,
+	.release        = vfio_cdx_release_device,
 	.open_device	= vfio_cdx_open_device,
 	.close_device	= vfio_cdx_close_device,
 	.ioctl		= vfio_cdx_ioctl,
