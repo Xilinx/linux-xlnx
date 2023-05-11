@@ -12,12 +12,12 @@ int cdx_mcdi_get_num_buses(struct cdx_mcdi *cdx)
 {
 	MCDI_DECLARE_BUF(outbuf, MC_CMD_CDX_BUS_ENUM_BUSES_OUT_LEN);
 	size_t outlen;
-	int rc;
+	int ret;
 
-	rc = cdx_mcdi_rpc(cdx, MC_CMD_CDX_BUS_ENUM_BUSES, NULL, 0,
-			  outbuf, sizeof(outbuf), &outlen);
-	if (rc)
-		return rc;
+	ret = cdx_mcdi_rpc(cdx, MC_CMD_CDX_BUS_ENUM_BUSES, NULL, 0,
+			   outbuf, sizeof(outbuf), &outlen);
+	if (ret)
+		return ret;
 
 	if (outlen != MC_CMD_CDX_BUS_ENUM_BUSES_OUT_LEN)
 		return -EIO;
@@ -30,14 +30,14 @@ int cdx_mcdi_get_num_devs(struct cdx_mcdi *cdx, int bus_num)
 	MCDI_DECLARE_BUF(outbuf, MC_CMD_CDX_BUS_ENUM_DEVICES_OUT_LEN);
 	MCDI_DECLARE_BUF(inbuf, MC_CMD_CDX_BUS_ENUM_DEVICES_IN_LEN);
 	size_t outlen;
-	int rc;
+	int ret;
 
 	MCDI_SET_DWORD(inbuf, CDX_BUS_ENUM_DEVICES_IN_BUS, bus_num);
 
-	rc = cdx_mcdi_rpc(cdx, MC_CMD_CDX_BUS_ENUM_DEVICES, inbuf, sizeof(inbuf),
-			  outbuf, sizeof(outbuf), &outlen);
-	if (rc)
-		return rc;
+	ret = cdx_mcdi_rpc(cdx, MC_CMD_CDX_BUS_ENUM_DEVICES, inbuf, sizeof(inbuf),
+			   outbuf, sizeof(outbuf), &outlen);
+	if (ret)
+		return ret;
 
 	if (outlen != MC_CMD_CDX_BUS_ENUM_DEVICES_OUT_LEN)
 		return -EIO;
@@ -54,15 +54,15 @@ int cdx_mcdi_get_dev_config(struct cdx_mcdi *cdx,
 	struct resource *res = &dev_params->res[0];
 	size_t outlen;
 	u32 req_id;
-	int rc;
+	int ret;
 
 	MCDI_SET_DWORD(inbuf, CDX_BUS_GET_DEVICE_CONFIG_IN_BUS, bus_num);
 	MCDI_SET_DWORD(inbuf, CDX_BUS_GET_DEVICE_CONFIG_IN_DEVICE, dev_num);
 
-	rc = cdx_mcdi_rpc(cdx, MC_CMD_CDX_BUS_GET_DEVICE_CONFIG, inbuf, sizeof(inbuf),
-			  outbuf, sizeof(outbuf), &outlen);
-	if (rc)
-		return rc;
+	ret = cdx_mcdi_rpc(cdx, MC_CMD_CDX_BUS_GET_DEVICE_CONFIG, inbuf, sizeof(inbuf),
+			   outbuf, sizeof(outbuf), &outlen);
+	if (ret)
+		return ret;
 
 	if (outlen != MC_CMD_CDX_BUS_GET_DEVICE_CONFIG_OUT_LEN)
 		return -EIO;
@@ -135,32 +135,32 @@ int cdx_mcdi_get_dev_config(struct cdx_mcdi *cdx,
 int cdx_mcdi_bus_enable(struct cdx_mcdi *cdx, u8 bus_num)
 {
 	MCDI_DECLARE_BUF(inbuf, MC_CMD_CDX_BUS_UP_IN_LEN);
-	int rc;
+	int ret;
 
 	MCDI_SET_DWORD(inbuf, CDX_BUS_UP_IN_BUS, bus_num);
-	rc = cdx_mcdi_rpc(cdx, MC_CMD_CDX_BUS_UP, inbuf, sizeof(inbuf),
-			  NULL, 0, NULL);
+	ret = cdx_mcdi_rpc(cdx, MC_CMD_CDX_BUS_UP, inbuf, sizeof(inbuf),
+			   NULL, 0, NULL);
 
-	return rc;
+	return ret;
 }
 
 int cdx_mcdi_bus_disable(struct cdx_mcdi *cdx, u8 bus_num)
 {
 	MCDI_DECLARE_BUF(inbuf, MC_CMD_CDX_BUS_DOWN_IN_LEN);
-	int rc;
+	int ret;
 
 	MCDI_SET_DWORD(inbuf, CDX_BUS_DOWN_IN_BUS, bus_num);
-	rc = cdx_mcdi_rpc(cdx, MC_CMD_CDX_BUS_DOWN, inbuf, sizeof(inbuf),
-			  NULL, 0, NULL);
+	ret = cdx_mcdi_rpc(cdx, MC_CMD_CDX_BUS_DOWN, inbuf, sizeof(inbuf),
+			   NULL, 0, NULL);
 
-	return rc;
+	return ret;
 }
 
 int cdx_mcdi_write_msi(struct cdx_mcdi *cdx, u8 bus_num, u8 dev_num,
 		       u32 msi_vector, u64 msi_address, u32 msi_data)
 {
 	MCDI_DECLARE_BUF(inbuf, MC_CMD_CDX_DEVICE_WRITE_MSI_MSG_IN_LEN);
-	int rc;
+	int ret;
 
 	MCDI_SET_DWORD(inbuf, CDX_DEVICE_WRITE_MSI_MSG_IN_BUS, bus_num);
 	MCDI_SET_DWORD(inbuf, CDX_DEVICE_WRITE_MSI_MSG_IN_DEVICE, dev_num);
@@ -168,24 +168,24 @@ int cdx_mcdi_write_msi(struct cdx_mcdi *cdx, u8 bus_num, u8 dev_num,
 	MCDI_SET_QWORD(inbuf, CDX_DEVICE_WRITE_MSI_MSG_IN_MSI_ADDRESS, msi_address);
 	MCDI_SET_DWORD(inbuf, CDX_DEVICE_WRITE_MSI_MSG_IN_MSI_DATA, msi_data);
 
-	rc = cdx_mcdi_rpc_async(cdx, MC_CMD_CDX_DEVICE_WRITE_MSI_MSG, inbuf,
-				sizeof(inbuf), NULL, 0);
+	ret = cdx_mcdi_rpc_async(cdx, MC_CMD_CDX_DEVICE_WRITE_MSI_MSG, inbuf,
+				 sizeof(inbuf), NULL, 0);
 
-	return rc;
+	return ret;
 }
 
 int cdx_mcdi_reset_device(struct cdx_mcdi *cdx, u8 bus_num, u8 dev_num)
 {
 	MCDI_DECLARE_BUF(inbuf, MC_CMD_CDX_DEVICE_RESET_IN_LEN);
-	int rc;
+	int ret;
 
 	MCDI_SET_DWORD(inbuf, CDX_DEVICE_RESET_IN_BUS, bus_num);
 	MCDI_SET_DWORD(inbuf, CDX_DEVICE_RESET_IN_DEVICE, dev_num);
 
-	rc = cdx_mcdi_rpc(cdx, MC_CMD_CDX_DEVICE_RESET, inbuf, sizeof(inbuf),
-			  NULL, 0, NULL);
+	ret = cdx_mcdi_rpc(cdx, MC_CMD_CDX_DEVICE_RESET, inbuf, sizeof(inbuf),
+			   NULL, 0, NULL);
 
-	return rc;
+	return ret;
 }
 
 static int cdx_mcdi_ctrl_flag_get(struct cdx_mcdi *cdx, u8 bus_num,
@@ -194,14 +194,14 @@ static int cdx_mcdi_ctrl_flag_get(struct cdx_mcdi *cdx, u8 bus_num,
 	MCDI_DECLARE_BUF(inbuf, MC_CMD_CDX_DEVICE_CONTROL_GET_IN_LEN);
 	MCDI_DECLARE_BUF(outbuf, MC_CMD_CDX_DEVICE_CONTROL_GET_OUT_LEN);
 	size_t outlen;
-	int rc;
+	int ret;
 
 	MCDI_SET_DWORD(inbuf, CDX_DEVICE_CONTROL_GET_IN_BUS, bus_num);
 	MCDI_SET_DWORD(inbuf, CDX_DEVICE_CONTROL_GET_IN_DEVICE, dev_num);
-	rc = cdx_mcdi_rpc(cdx, MC_CMD_CDX_DEVICE_CONTROL_GET, inbuf,
-			  sizeof(inbuf), outbuf, sizeof(outbuf), &outlen);
-	if (rc)
-		return rc;
+	ret = cdx_mcdi_rpc(cdx, MC_CMD_CDX_DEVICE_CONTROL_GET, inbuf,
+			   sizeof(inbuf), outbuf, sizeof(outbuf), &outlen);
+	if (ret)
+		return ret;
 
 	if (outlen != MC_CMD_CDX_DEVICE_CONTROL_GET_OUT_LEN)
 		return -EIO;
@@ -215,16 +215,16 @@ static int cdx_mcdi_ctrl_flag_set(struct cdx_mcdi *cdx, u8 bus_num,
 				  u8 dev_num, bool enable, int lbn)
 {
 	MCDI_DECLARE_BUF(inbuf, MC_CMD_CDX_DEVICE_CONTROL_SET_IN_LEN);
-	int rc, en;
+	int ret, en;
 	u32 flags;
 
 	/*
 	 * Get flags and then set/reset BUS_MASTER_BIT according to
 	 * the input params.
 	 */
-	rc = cdx_mcdi_ctrl_flag_get(cdx, bus_num, dev_num, &flags);
-	if (rc)
-		return rc;
+	ret = cdx_mcdi_ctrl_flag_get(cdx, bus_num, dev_num, &flags);
+	if (ret)
+		return ret;
 
 	en = enable ? 1 : 0;
 	flags = (flags & (u32)(~(BIT(lbn)))) | (en << lbn);
@@ -232,10 +232,10 @@ static int cdx_mcdi_ctrl_flag_set(struct cdx_mcdi *cdx, u8 bus_num,
 	MCDI_SET_DWORD(inbuf, CDX_DEVICE_CONTROL_SET_IN_BUS, bus_num);
 	MCDI_SET_DWORD(inbuf, CDX_DEVICE_CONTROL_SET_IN_DEVICE, dev_num);
 	MCDI_SET_DWORD(inbuf, CDX_DEVICE_CONTROL_SET_IN_FLAGS, flags);
-	rc = cdx_mcdi_rpc(cdx, MC_CMD_CDX_DEVICE_CONTROL_SET, inbuf,
-			  sizeof(inbuf), NULL, 0, NULL);
+	ret = cdx_mcdi_rpc(cdx, MC_CMD_CDX_DEVICE_CONTROL_SET, inbuf,
+			   sizeof(inbuf), NULL, 0, NULL);
 
-	return rc;
+	return ret;
 }
 
 int cdx_mcdi_bus_master_enable(struct cdx_mcdi *cdx, u8 bus_num,
