@@ -44,8 +44,6 @@ static void cdx_mcdi_start_or_queue(struct cdx_mcdi_iface *mcdi,
 				    bool allow_retry);
 static void cdx_mcdi_cmd_start_or_queue(struct cdx_mcdi_iface *mcdi,
 					struct cdx_mcdi_cmd *cmd);
-static void cdx_mcdi_cmd_start_or_queue_ext(struct cdx_mcdi_iface *mcdi,
-					    struct cdx_mcdi_cmd *cmd);
 static bool cdx_mcdi_complete_cmd(struct cdx_mcdi_iface *mcdi,
 				  struct cdx_mcdi_cmd *cmd,
 				  struct cdx_dword *outbuf,
@@ -580,8 +578,8 @@ static int cdx_mcdi_rpc_async_internal(struct cdx_mcdi *cdx,
 	return 0;
 }
 
-static void cdx_mcdi_cmd_start_or_queue_ext(struct cdx_mcdi_iface *mcdi,
-					    struct cdx_mcdi_cmd *cmd)
+static void cdx_mcdi_cmd_start_or_queue(struct cdx_mcdi_iface *mcdi,
+					struct cdx_mcdi_cmd *cmd)
 {
 	struct cdx_mcdi *cdx = mcdi->cdx;
 	u8 seq;
@@ -595,12 +593,6 @@ static void cdx_mcdi_cmd_start_or_queue_ext(struct cdx_mcdi_iface *mcdi,
 	} else {
 		cmd->state = MCDI_STATE_QUEUED;
 	}
-}
-
-static void cdx_mcdi_cmd_start_or_queue(struct cdx_mcdi_iface *mcdi,
-					struct cdx_mcdi_cmd *cmd)
-{
-	cdx_mcdi_cmd_start_or_queue_ext(mcdi, cmd);
 }
 
 /* try to advance other commands */
@@ -663,7 +655,7 @@ static void cdx_mcdi_cmd_work(struct work_struct *context)
 
 	cmd->handle = mcdi->prev_handle++;
 	list_add_tail(&cmd->list, &mcdi->cmd_list);
-	cdx_mcdi_cmd_start_or_queue_ext(mcdi, cmd);
+	cdx_mcdi_cmd_start_or_queue(mcdi, cmd);
 
 	mutex_unlock(&mcdi->iface_lock);
 }
