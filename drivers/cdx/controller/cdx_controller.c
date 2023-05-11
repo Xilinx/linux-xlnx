@@ -89,7 +89,6 @@ static int cdx_configure_device(struct cdx_controller *cdx,
 					  dev_config->msi_enable);
 		break;
 	default:
-		dev_err(cdx->dev, "Invalid device configuration flag\n");
 		ret = -EINVAL;
 	}
 
