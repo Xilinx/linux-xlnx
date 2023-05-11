@@ -6,7 +6,7 @@
 #include <linux/vfio.h>
 #include <linux/cdx/cdx_bus.h>
 
-#include "vfio_cdx_private.h"
+#include "private.h"
 
 static struct cdx_driver vfio_cdx_driver;
 
