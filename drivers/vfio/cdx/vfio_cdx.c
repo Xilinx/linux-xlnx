@@ -3,23 +3,12 @@
  * Copyright (C) 2022-2023, Advanced Micro Devices, Inc.
  */
 
-#include <linux/device.h>
-#include <linux/iommu.h>
-#include <linux/module.h>
-#include <linux/slab.h>
-#include <linux/types.h>
 #include <linux/vfio.h>
 #include <linux/cdx/cdx_bus.h>
-#include <linux/delay.h>
-#include <linux/io-64-nonatomic-hi-lo.h>
 
 #include "vfio_cdx_private.h"
 
 static struct cdx_driver vfio_cdx_driver;
-
-enum {
-	CDX_ID_F_VFIO_DRIVER_OVERRIDE = 1,
-};
 
 static int vfio_cdx_init_device(struct vfio_device *core_vdev)
 {
@@ -91,11 +80,6 @@ static void vfio_cdx_regions_cleanup(struct vfio_cdx_device *vdev)
 	kfree(vdev->regions);
 }
 
-static int vfio_cdx_reset_device(struct vfio_cdx_device *vdev)
-{
-	return cdx_dev_reset(&vdev->cdx_dev->dev);
-}
-
 static void vfio_cdx_close_device(struct vfio_device *core_vdev)
 {
 	struct vfio_cdx_device *vdev =
@@ -105,7 +89,7 @@ static void vfio_cdx_close_device(struct vfio_device *core_vdev)
 	vfio_cdx_regions_cleanup(vdev);
 
 	/* reset the device before cleaning up the interrupts */
-	ret = vfio_cdx_reset_device(vdev);
+	ret = cdx_dev_reset(&vdev->cdx_dev->dev);
 	if (WARN_ON(ret))
 		dev_warn(core_vdev->dev,
 			 "VFIO_CDX: reset device has failed (%d)\n", ret);
@@ -158,7 +142,7 @@ static long vfio_cdx_ioctl(struct vfio_device *core_vdev,
 			return -EINVAL;
 
 		/* map offset to the physical address  */
-		info.offset = VFIO_CDX_INDEX_TO_OFFSET(info.index);
+		info.offset = vfio_cdx_index_to_offset(info.index);
 		info.size = vdev->regions[info.index].size;
 		info.flags = vdev->regions[info.index].flags;
 
@@ -190,9 +174,9 @@ static long vfio_cdx_ioctl(struct vfio_device *core_vdev,
 	case VFIO_DEVICE_SET_IRQS:
 	{
 		struct vfio_irq_set hdr;
+		size_t data_size = 0;
 		u8 *data = NULL;
 		int ret = 0;
-		size_t data_size = 0;
 
 		minsz = offsetofend(struct vfio_irq_set, count);
 
@@ -219,7 +203,7 @@ static long vfio_cdx_ioctl(struct vfio_device *core_vdev,
 	}
 	case VFIO_DEVICE_RESET:
 	{
-		return vfio_cdx_reset_device(vdev);
+		return cdx_dev_reset(&vdev->cdx_dev->dev);
 	}
 	default:
 		return -ENOTTY;
@@ -240,10 +224,10 @@ static int vfio_cdx_mmap_mmio(struct vfio_cdx_region region,
 		return -EINVAL;
 
 	vma->vm_pgoff = (region.addr >> PAGE_SHIFT) + pgoff;
-	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+	vma->vm_page_prot = pgprot_device(vma->vm_page_prot);
 
-	return remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff,
-			       size, vma->vm_page_prot);
+	return io_remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff,
+				  size, vma->vm_page_prot);
 }
 
 static int vfio_cdx_mmap(struct vfio_device *core_vdev,
@@ -256,14 +240,6 @@ static int vfio_cdx_mmap(struct vfio_device *core_vdev,
 
 	index = vma->vm_pgoff >> (VFIO_CDX_OFFSET_SHIFT - PAGE_SHIFT);
 
-	if (vma->vm_end < vma->vm_start)
-		return -EINVAL;
-	if (vma->vm_start & ~PAGE_MASK)
-		return -EINVAL;
-	if (vma->vm_end & ~PAGE_MASK)
-		return -EINVAL;
-	if (!(vma->vm_flags & VM_SHARED))
-		return -EINVAL;
 	if (index >= cdx_dev->res_count)
 		return -EINVAL;
 
@@ -277,8 +253,6 @@ static int vfio_cdx_mmap(struct vfio_device *core_vdev,
 	if (!(vdev->regions[index].flags & VFIO_REGION_INFO_FLAG_WRITE) &&
 	    (vma->vm_flags & VM_WRITE))
 		return -EINVAL;
-
-	vma->vm_private_data = cdx_dev;
 
 	return vfio_cdx_mmap_mmio(vdev->regions[index], vma);
 }
@@ -334,6 +308,8 @@ static const struct cdx_device_id vfio_cdx_table[] = {
 	{ CDX_DRIVER_OVERRIDE_DEVICE_VFIO(CDX_ANY_ID, CDX_ANY_ID) }, /* match all by default */
 	{}
 };
+
+MODULE_DEVICE_TABLE(cdx, vfio_cdx_table);
 
 static struct cdx_driver vfio_cdx_driver = {
 	.probe		= vfio_cdx_probe,
