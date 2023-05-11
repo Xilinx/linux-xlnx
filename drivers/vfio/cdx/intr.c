@@ -11,7 +11,7 @@
 #include <linux/interrupt.h>
 
 #include "linux/cdx/cdx_bus.h"
-#include "vfio_cdx_private.h"
+#include "private.h"
 
 static irqreturn_t vfio_cdx_msihandler(int irq_no, void *arg)
 {
