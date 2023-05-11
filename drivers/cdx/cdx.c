@@ -84,7 +84,7 @@ int cdx_dev_reset(struct device *dev)
 {
 	struct cdx_device *cdx_dev = to_cdx_device(dev);
 	struct cdx_controller *cdx = cdx_dev->cdx;
-	struct cdx_device_config dev_config;
+	struct cdx_device_config dev_config = {0};
 	struct cdx_driver *cdx_drv;
 	int ret;
 
@@ -301,9 +301,9 @@ static ssize_t remove_store(struct device *dev,
 			    struct device_attribute *attr,
 			    const char *buf, size_t count)
 {
-	unsigned long val = 0;
+	bool val;
 
-	if (kstrtoul(buf, 0, &val) < 0)
+	if (kstrtobool(buf, &val) < 0)
 		return -EINVAL;
 
 	if (!val)
@@ -324,10 +324,10 @@ static DEVICE_ATTR_WO(remove);
 static ssize_t reset_store(struct device *dev, struct device_attribute *attr,
 			   const char *buf, size_t count)
 {
-	unsigned long val = 0;
-	int ret = 0;
+	bool val;
+	int ret;
 
-	if (kstrtoul(buf, 0, &val) < 0)
+	if (kstrtobool(buf, &val) < 0)
 		return -EINVAL;
 
 	if (!val)
@@ -356,32 +356,14 @@ static ssize_t driver_override_store(struct device *dev,
 				     const char *buf, size_t count)
 {
 	struct cdx_device *cdx_dev = to_cdx_device(dev);
-	const char *old = cdx_dev->driver_override;
-	char *driver_override;
-	char *cp;
+	int ret;
 
 	if (WARN_ON(dev->bus != &cdx_bus_type))
 		return -EINVAL;
 
-	if (count >= (PAGE_SIZE - 1))
-		return -EINVAL;
-
-	driver_override = kstrndup(buf, count, GFP_KERNEL);
-	if (!driver_override)
-		return -ENOMEM;
-
-	cp = strchr(driver_override, '\n');
-	if (cp)
-		*cp = '\0';
-
-	if (strlen(driver_override)) {
-		cdx_dev->driver_override = driver_override;
-	} else {
-		kfree(driver_override);
-		cdx_dev->driver_override = NULL;
-	}
-
-	kfree(old);
+	ret = driver_set_override(dev, &cdx_dev->driver_override, buf, count);
+	if (ret)
+		return ret;
 
 	return count;
 }
@@ -435,8 +417,8 @@ static ssize_t enable_store(struct bus_type *bus,
 {
 	struct cdx_controller *cdx;
 	unsigned long index;
-	bool enable = 0;
-	int ret = 0;
+	bool enable;
+	int ret;
 
 	if (kstrtobool(buf, &enable) < 0)
 		return -EINVAL;
@@ -457,10 +439,11 @@ static BUS_ATTR_WO(enable);
 static ssize_t rescan_store(struct bus_type *bus,
 			    const char *buf, size_t count)
 {
-	unsigned long index, val = 0;
 	struct cdx_controller *cdx;
+	unsigned long index;
+	bool val;
 
-	if (kstrtoul(buf, 0, &val) < 0)
+	if (kstrtobool(buf, &val) < 0)
 		return -EINVAL;
 
 	if (!val)
@@ -485,10 +468,10 @@ static BUS_ATTR_WO(rescan);
 static ssize_t reset_all_store(struct bus_type *bus,
 			       const char *buf, size_t count)
 {
-	unsigned long val = 0;
+	bool val;
 	int ret;
 
-	if (kstrtoul(buf, 0, &val) < 0)
+	if (kstrtobool(buf, &val) < 0)
 		return -EINVAL;
 
 	if (!val)
