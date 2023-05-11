@@ -31,7 +31,7 @@ struct cdx_mcdi_copy_buffer {
 	struct cdx_dword buffer[DIV_ROUND_UP(MCDI_CTL_SDU_LEN_MAX, 4)];
 };
 
-#ifdef CONFIG_MCDI_LOGGING
+#ifdef CONFIG_CDX_MCDI_LOGGING
 #define LOG_LINE_MAX		(1024 - 32)
 #endif
 
@@ -119,7 +119,7 @@ int cdx_mcdi_init(struct cdx_mcdi *cdx)
 	mcdi = cdx_mcdi_if(cdx);
 	mcdi->cdx = cdx;
 
-#ifdef CONFIG_MCDI_LOGGING
+#ifdef CONFIG_CDX_MCDI_LOGGING
 	mcdi->logging_buffer = kmalloc(LOG_LINE_MAX, GFP_KERNEL);
 	if (!mcdi->logging_buffer)
 		goto fail2;
@@ -136,7 +136,7 @@ int cdx_mcdi_init(struct cdx_mcdi *cdx)
 
 	return 0;
 fail3:
-#ifdef CONFIG_MCDI_LOGGING
+#ifdef CONFIG_CDX_MCDI_LOGGING
 	kfree(mcdi->logging_buffer);
 fail2:
 #endif
@@ -156,7 +156,7 @@ void cdx_mcdi_finish(struct cdx_mcdi *cdx)
 
 	cdx_mcdi_wait_for_cleanup(cdx);
 
-#ifdef CONFIG_MCDI_LOGGING
+#ifdef CONFIG_CDX_MCDI_LOGGING
 	kfree(mcdi->logging_buffer);
 #endif
 
@@ -246,13 +246,13 @@ static void cdx_mcdi_send_request(struct cdx_mcdi *cdx,
 	size_t hdr_len;
 	bool not_epoch;
 	u32 xflags;
-#ifdef CONFIG_MCDI_LOGGING
+#ifdef CONFIG_CDX_MCDI_LOGGING
 	char *buf;
 #endif
 
 	if (!mcdi)
 		return;
-#ifdef CONFIG_MCDI_LOGGING
+#ifdef CONFIG_CDX_MCDI_LOGGING
 	buf = mcdi->logging_buffer; /* page-sized */
 #endif
 
@@ -281,7 +281,7 @@ static void cdx_mcdi_send_request(struct cdx_mcdi *cdx,
 			     MC_CMD_V2_EXTN_IN_MCDI_MESSAGE_TYPE_PLATFORM);
 	hdr_len = 8;
 
-#ifdef CONFIG_MCDI_LOGGING
+#ifdef CONFIG_CDX_MCDI_LOGGING
 	if (!WARN_ON_ONCE(!buf)) {
 		const struct cdx_dword *frags[] = { hdr, inbuf };
 		const size_t frag_len[] = { hdr_len, round_up(inlen, 4) };
@@ -700,7 +700,7 @@ static bool cdx_mcdi_complete_cmd(struct cdx_mcdi_iface *mcdi,
 		resp_data_len = 0;
 	}
 
-#ifdef CONFIG_MCDI_LOGGING
+#ifdef CONFIG_CDX_MCDI_LOGGING
 	if (!WARN_ON_ONCE(!mcdi->logging_buffer)) {
 		char *log = mcdi->logging_buffer;
 		int i, bytes = 0;
