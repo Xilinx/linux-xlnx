@@ -26,13 +26,10 @@ struct vfio_cdx_region {
 	u32			type;
 	u64			addr;
 	resource_size_t		size;
-	void __iomem		*ioaddr;
 };
 
 struct vfio_cdx_device {
 	struct vfio_device	vdev;
-	struct cdx_device	*cdx_dev;
-	struct device		*dev;
 	struct vfio_cdx_region	*regions;
 	struct vfio_cdx_irq	*cdx_irqs;
 	u32			irq_count;
