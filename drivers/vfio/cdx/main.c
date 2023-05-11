@@ -44,7 +44,7 @@ static int vfio_cdx_open_device(struct vfio_device *core_vdev)
 {
 	struct vfio_cdx_device *vdev =
 		container_of(core_vdev, struct vfio_cdx_device, vdev);
-	struct cdx_device *cdx_dev = vdev->cdx_dev;
+	struct cdx_device *cdx_dev = to_cdx_device(core_vdev->dev);
 	int count = cdx_dev->res_count;
 	int i;
 
@@ -89,12 +89,115 @@ static void vfio_cdx_close_device(struct vfio_device *core_vdev)
 	vfio_cdx_regions_cleanup(vdev);
 
 	/* reset the device before cleaning up the interrupts */
-	ret = cdx_dev_reset(&vdev->cdx_dev->dev);
-	if (WARN_ON(ret))
+	ret = cdx_dev_reset(core_vdev->dev);
+	if (ret)
 		dev_warn(core_vdev->dev,
 			 "VFIO_CDX: reset device has failed (%d)\n", ret);
 
 	vfio_cdx_irqs_cleanup(vdev);
+}
+
+static int vfio_cdx_ioctl_get_info(struct vfio_cdx_device *vdev,
+				   struct vfio_device_info __user *arg)
+{
+	unsigned long minsz = offsetofend(struct vfio_device_info, num_irqs);
+	struct cdx_device *cdx_dev = to_cdx_device(vdev->vdev.dev);
+	struct vfio_device_info info;
+
+	if (copy_from_user(&info, arg, minsz))
+		return -EFAULT;
+
+	if (info.argsz < minsz)
+		return -EINVAL;
+
+	info.flags = VFIO_DEVICE_FLAGS_CDX;
+	info.flags |= VFIO_DEVICE_FLAGS_RESET;
+
+	info.num_regions = cdx_dev->res_count;
+	info.num_irqs = 1;
+
+	return copy_to_user(arg, &info, minsz) ? -EFAULT : 0;
+}
+
+static int vfio_cdx_ioctl_get_region_info(struct vfio_cdx_device *vdev,
+					  struct vfio_region_info __user *arg)
+{
+	unsigned long minsz = offsetofend(struct vfio_region_info, offset);
+	struct cdx_device *cdx_dev = to_cdx_device(vdev->vdev.dev);
+	struct vfio_region_info info;
+
+	if (copy_from_user(&info, arg, minsz))
+		return -EFAULT;
+
+	if (info.argsz < minsz)
+		return -EINVAL;
+
+	if (info.index >= cdx_dev->res_count)
+		return -EINVAL;
+
+	/* map offset to the physical address  */
+	info.offset = vfio_cdx_index_to_offset(info.index);
+	info.size = vdev->regions[info.index].size;
+	info.flags = vdev->regions[info.index].flags;
+
+	if (copy_to_user(arg, &info, minsz))
+		return -EFAULT;
+	return 0;
+}
+
+static int vfio_cdx_ioctl_get_irq_info(struct vfio_cdx_device *vdev,
+				       struct vfio_irq_info __user *arg)
+{
+	unsigned long minsz = offsetofend(struct vfio_irq_info, count);
+	struct cdx_device *cdx_dev = to_cdx_device(vdev->vdev.dev);
+	struct vfio_irq_info info;
+
+	if (copy_from_user(&info, arg, minsz))
+		return -EFAULT;
+
+	if (info.argsz < minsz)
+		return -EINVAL;
+
+	if (info.index >= 1)
+		return -EINVAL;
+
+	info.flags = VFIO_IRQ_INFO_EVENTFD;
+	info.count = cdx_dev->num_msi;
+
+	if (copy_to_user(arg, &info, minsz))
+		return -EFAULT;
+	return 0;
+}
+
+static int vfio_cdx_ioctl_set_irqs(struct vfio_cdx_device *vdev,
+				   struct vfio_irq_set __user *arg)
+{
+	unsigned long minsz = offsetofend(struct vfio_irq_set, count);
+	struct cdx_device *cdx_dev = to_cdx_device(vdev->vdev.dev);
+	struct vfio_irq_set hdr;
+	size_t data_size = 0;
+	u8 *data = NULL;
+	int ret = 0;
+
+	if (copy_from_user(&hdr, arg, minsz))
+		return -EFAULT;
+
+	ret = vfio_set_irqs_validate_and_prepare(&hdr, cdx_dev->num_msi,
+						 1, &data_size);
+	if (ret)
+		return ret;
+
+	if (data_size) {
+		data = memdup_user(arg->data, data_size);
+		if (IS_ERR(data))
+			return PTR_ERR(data);
+	}
+
+	ret = vfio_cdx_set_irqs_ioctl(vdev, hdr.flags, hdr.index,
+				      hdr.start, hdr.count, data);
+	kfree(data);
+
+	return ret;
 }
 
 static long vfio_cdx_ioctl(struct vfio_device *core_vdev,
@@ -102,109 +205,19 @@ static long vfio_cdx_ioctl(struct vfio_device *core_vdev,
 {
 	struct vfio_cdx_device *vdev =
 		container_of(core_vdev, struct vfio_cdx_device, vdev);
-	struct cdx_device *cdx_dev = vdev->cdx_dev;
-	unsigned long minsz;
+	void __user *uarg = (void __user *)arg;
 
 	switch (cmd) {
 	case VFIO_DEVICE_GET_INFO:
-	{
-		struct vfio_device_info info;
-
-		minsz = offsetofend(struct vfio_device_info, num_irqs);
-
-		if (copy_from_user(&info, (void __user *)arg, minsz))
-			return -EFAULT;
-
-		if (info.argsz < minsz)
-			return -EINVAL;
-
-		info.flags = VFIO_DEVICE_FLAGS_RESET;
-
-		info.num_regions = cdx_dev->res_count;
-		info.num_irqs = 1;
-
-		return copy_to_user((void __user *)arg, &info, minsz) ?
-			-EFAULT : 0;
-	}
+		return vfio_cdx_ioctl_get_info(vdev, uarg);
 	case VFIO_DEVICE_GET_REGION_INFO:
-	{
-		struct vfio_region_info info;
-
-		minsz = offsetofend(struct vfio_region_info, offset);
-
-		if (copy_from_user(&info, (void __user *)arg, minsz))
-			return -EFAULT;
-
-		if (info.argsz < minsz)
-			return -EINVAL;
-
-		if (info.index >= cdx_dev->res_count)
-			return -EINVAL;
-
-		/* map offset to the physical address  */
-		info.offset = vfio_cdx_index_to_offset(info.index);
-		info.size = vdev->regions[info.index].size;
-		info.flags = vdev->regions[info.index].flags;
-
-		if (copy_to_user((void __user *)arg, &info, minsz))
-			return -EFAULT;
-		return 0;
-	}
+		return vfio_cdx_ioctl_get_region_info(vdev, uarg);
 	case VFIO_DEVICE_GET_IRQ_INFO:
-	{
-		struct vfio_irq_info info;
-
-		minsz = offsetofend(struct vfio_irq_info, count);
-		if (copy_from_user(&info, (void __user *)arg, minsz))
-			return -EFAULT;
-
-		if (info.argsz < minsz)
-			return -EINVAL;
-
-		if (info.index >= 1)
-			return -EINVAL;
-
-		info.flags = VFIO_IRQ_INFO_EVENTFD;
-		info.count = cdx_dev->num_msi;
-
-		if (copy_to_user((void __user *)arg, &info, minsz))
-			return -EFAULT;
-		return 0;
-	}
+		return vfio_cdx_ioctl_get_irq_info(vdev, uarg);
 	case VFIO_DEVICE_SET_IRQS:
-	{
-		struct vfio_irq_set hdr;
-		size_t data_size = 0;
-		u8 *data = NULL;
-		int ret = 0;
-
-		minsz = offsetofend(struct vfio_irq_set, count);
-
-		if (copy_from_user(&hdr, (void __user *)arg, minsz))
-			return -EFAULT;
-
-		ret = vfio_set_irqs_validate_and_prepare(&hdr, cdx_dev->num_msi,
-							 1, &data_size);
-		if (ret)
-			return ret;
-
-		if (data_size) {
-			data = memdup_user((void __user *)(arg + minsz),
-					   data_size);
-			if (IS_ERR(data))
-				return PTR_ERR(data);
-		}
-
-		ret = vfio_cdx_set_irqs_ioctl(vdev, hdr.flags, hdr.index,
-					      hdr.start, hdr.count, data);
-		kfree(data);
-
-		return ret;
-	}
+		return vfio_cdx_ioctl_set_irqs(vdev, uarg);
 	case VFIO_DEVICE_RESET:
-	{
-		return cdx_dev_reset(&vdev->cdx_dev->dev);
-	}
+		return cdx_dev_reset(core_vdev->dev);
 	default:
 		return -ENOTTY;
 	}
@@ -235,7 +248,7 @@ static int vfio_cdx_mmap(struct vfio_device *core_vdev,
 {
 	struct vfio_cdx_device *vdev =
 		container_of(core_vdev, struct vfio_cdx_device, vdev);
-	struct cdx_device *cdx_dev = vdev->cdx_dev;
+	struct cdx_device *cdx_dev = to_cdx_device(core_vdev->dev);
 	unsigned int index;
 
 	index = vma->vm_pgoff >> (VFIO_CDX_OFFSET_SHIFT - PAGE_SHIFT);

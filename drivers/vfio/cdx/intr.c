@@ -23,7 +23,7 @@ static irqreturn_t vfio_cdx_msihandler(int irq_no, void *arg)
 
 static int vfio_cdx_msi_enable(struct vfio_cdx_device *vdev, int nvec)
 {
-	struct device *dev = vdev->dev;
+	struct device *dev = vdev->vdev.dev;
 	int msi_idx = 0, ret;
 
 	vdev->cdx_irqs = kcalloc(nvec, sizeof(struct vfio_cdx_irq), GFP_KERNEL);
@@ -32,7 +32,7 @@ static int vfio_cdx_msi_enable(struct vfio_cdx_device *vdev, int nvec)
 
 	/* Allocate cdx MSIs */
 	ret = cdx_msi_domain_alloc_irqs(dev, nvec);
-	if (ret < 0) {
+	if (ret) {
 		kfree(vdev->cdx_irqs);
 		return ret;
 	}
@@ -68,7 +68,7 @@ static int vfio_cdx_msi_set_vector_signal(struct vfio_cdx_device *vdev,
 		return 0;
 
 	vdev->cdx_irqs[vector].name = kasprintf(GFP_KERNEL, "vfio-msi[%d](%s)",
-						vector, dev_name(vdev->dev));
+						vector, dev_name(vdev->vdev.dev));
 	if (!vdev->cdx_irqs[vector].name)
 		return -ENOMEM;
 
@@ -116,7 +116,7 @@ static int vfio_cdx_msi_set_block(struct vfio_cdx_device *vdev,
 
 static void vfio_cdx_msi_disable(struct vfio_cdx_device *vdev)
 {
-	struct device *dev = vdev->dev;
+	struct device *dev = vdev->vdev.dev;
 
 	vfio_cdx_msi_set_block(vdev, 0, vdev->irq_count, NULL);
 
@@ -136,7 +136,7 @@ static int vfio_cdx_set_msi_trigger(struct vfio_cdx_device *vdev,
 				    unsigned int count, u32 flags,
 				    void *data)
 {
-	struct cdx_device *cdx_dev = vdev->cdx_dev;
+	struct cdx_device *cdx_dev = to_cdx_device(vdev->vdev.dev);
 	int i;
 
 	if (start + count > cdx_dev->num_msi)
