@@ -192,3 +192,4 @@ struct irq_domain *cdx_msi_domain_init(struct device *dev)
 
 	return cdx_msi_domain;
 }
+EXPORT_SYMBOL_GPL(cdx_msi_domain_init);
