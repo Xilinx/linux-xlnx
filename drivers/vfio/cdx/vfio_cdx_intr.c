@@ -154,7 +154,7 @@ static int vfio_cdx_set_msi_trigger(struct vfio_cdx_device *vdev,
 		if (vdev->config_msi)
 			return vfio_cdx_msi_set_block(vdev, start, count,
 						  fds);
-		ret = vfio_cdx_msi_enable(vdev, start + count);
+		ret = vfio_cdx_msi_enable(vdev, cdx_dev->num_msi);
 		if (ret)
 			return ret;
 
