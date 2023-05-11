@@ -9,6 +9,7 @@
 
 #include <linux/mutex.h>
 #include <linux/kref.h>
+#include <linux/rpmsg.h>
 
 #include "bitfield.h"
 #include "mc_cdx_pcol.h"
