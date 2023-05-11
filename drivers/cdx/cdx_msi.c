@@ -46,8 +46,8 @@ static void cdx_msi_write_msg(struct irq_data *irq_data,
 	msi_desc->msg = *msg;
 	dev_config.msi.msi_index = msi_desc->msi_index;
 	dev_config.msi.data = msi_desc->msg.data;
-	dev_config.msi.addr = ((uint64_t)(msi_desc->msg.address_hi) << 32) |
-	       msi_desc->msg.address_lo;
+	dev_config.msi.addr = ((u64)(msi_desc->msg.address_hi) << 32) |
+			      msi_desc->msg.address_lo;
 
 	dev_config.type = CDX_DEV_MSI_CONF;
 	ret = cdx->ops->dev_configure(cdx, cdx_dev->bus_num, cdx_dev->dev_num,
