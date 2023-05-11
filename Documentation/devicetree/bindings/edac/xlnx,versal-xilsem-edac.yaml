@@ -38,5 +38,5 @@ examples:
   - |
       edac@f2014050 {
         compatible = "xlnx,versal-xilsem-edac";
-        reg = <0xF2014050 0xC4>;
+        reg = <0xf2014050 0xc4>;
       };
