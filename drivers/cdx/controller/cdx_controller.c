@@ -75,7 +75,7 @@ static int cdx_configure_device(struct cdx_controller *cdx,
 		addr = dev_config->msi.addr;
 
 		ret = cdx_mcdi_write_msi(cdx->priv, bus_num, dev_num,
-					 msi_index, data, addr);
+					 msi_index, addr, data);
 		break;
 	case CDX_DEV_RESET_CONF:
 		ret = cdx_mcdi_reset_device(cdx->priv, bus_num, dev_num);
