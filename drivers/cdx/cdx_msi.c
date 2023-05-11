@@ -43,6 +43,7 @@ static void cdx_msi_write_msg(struct irq_data *irq_data,
 	struct cdx_device_config dev_config;
 	int ret;
 
+	msi_desc->msg = *msg;
 	dev_config.msi.msi_index = msi_desc->msi_index;
 	dev_config.msi.data = msi_desc->msg.data;
 	dev_config.msi.addr = ((uint64_t)(msi_desc->msg.address_hi) << 32) |
