@@ -23,6 +23,8 @@
 #include <linux/module.h>
 #include <linux/pm_runtime.h>
 #include <linux/iopoll.h>
+#include <linux/gpio.h>
+#include <linux/gpio/consumer.h>
 
 #define CDNS_UART_TTY_NAME	"ttyPS"
 #define CDNS_UART_NAME		"xuartps"
@@ -193,6 +195,7 @@ MODULE_PARM_DESC(rx_timeout, "Rx timeout, 1-255");
  * @clk_rate_change_nb:	Notifier block for clock changes
  * @quirks:		Flags for RXBS support.
  * @cts_override:	Modem control state override
+ * @gpiod:		Pointer to the gpio descriptor
  */
 struct cdns_uart {
 	struct uart_port	*port;
@@ -203,10 +206,16 @@ struct cdns_uart {
 	struct notifier_block	clk_rate_change_nb;
 	u32			quirks;
 	bool cts_override;
+	struct gpio_desc	*gpiod;
 };
 struct cdns_platform_data {
 	u32 quirks;
 };
+
+struct serial_rs485 cdns_rs485_supported = {
+	.flags = SER_RS485_ENABLED,
+};
+
 #define to_cdns_uart(_nb) container_of(_nb, struct cdns_uart, \
 		clk_rate_change_nb)
 
@@ -313,6 +322,26 @@ static void cdns_uart_handle_rx(void *dev_id, unsigned int isrstatus)
 }
 
 /**
+ * cdns_rs485_tx_setup - Tx setup specific to rs485
+ * @cdns_uart: Handle to the cdns_uart
+ */
+static void cdns_rs485_tx_setup(struct cdns_uart *cdns_uart)
+{
+	gpiod_set_value(cdns_uart->gpiod, 1);
+}
+
+/**
+ * cdns_rs485_rx_setup - Rx setup specific to rs485
+ * @cdns_uart: Handle to the cdns_uart
+ */
+static void cdns_rs485_rx_setup(struct cdns_uart *cdns_uart)
+{
+	gpiod_set_value(cdns_uart->gpiod, 0);
+}
+
+static unsigned int cdns_uart_tx_empty(struct uart_port *port);
+
+/**
  * cdns_uart_handle_tx - Handle the bytes to be Txed.
  * @dev_id: Id of the UART port
  * Return: None
@@ -320,12 +349,17 @@ static void cdns_uart_handle_rx(void *dev_id, unsigned int isrstatus)
 static void cdns_uart_handle_tx(void *dev_id)
 {
 	struct uart_port *port = (struct uart_port *)dev_id;
+	struct cdns_uart *cdns_uart = port->private_data;
 	struct circ_buf *xmit = &port->state->xmit;
+	unsigned long time_out;
 	unsigned int numbytes;
+
+	if (cdns_uart->port->rs485.flags & SER_RS485_ENABLED)
+		cdns_rs485_tx_setup(cdns_uart);
 
 	if (uart_circ_empty(xmit)) {
 		writel(CDNS_UART_IXR_TXEMPTY, port->membase + CDNS_UART_IDR);
-		return;
+		goto rs485_rx_setup;
 	}
 
 	numbytes = port->fifosize;
@@ -341,6 +375,21 @@ static void cdns_uart_handle_tx(void *dev_id)
 
 	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
 		uart_write_wakeup(port);
+
+rs485_rx_setup:
+	if (cdns_uart->port->rs485.flags & SER_RS485_ENABLED) {
+		time_out = jiffies + usecs_to_jiffies(TX_TIMEOUT);
+		/* Wait for tx completion */
+		while ((cdns_uart_tx_empty(cdns_uart->port) != TIOCSER_TEMT) &&
+		       time_before(jiffies, time_out))
+			cpu_relax();
+
+		/*
+		 * Default Rx should be setup, because RX signaling path
+		 * need to enable to receive data.
+		 */
+		cdns_rs485_rx_setup(cdns_uart);
+	}
 }
 
 /**
@@ -837,6 +886,9 @@ static int cdns_uart_startup(struct uart_port *port)
 	while (readl(port->membase + CDNS_UART_CR) &
 		(CDNS_UART_CR_TXRST | CDNS_UART_CR_RXRST))
 		cpu_relax();
+
+	if (cdns_uart->port->rs485.flags & SER_RS485_ENABLED)
+		cdns_rs485_rx_setup(cdns_uart);
 
 	/*
 	 * Clear the RX disable bit and then set the RX enable bit to enable
@@ -1469,6 +1521,25 @@ MODULE_DEVICE_TABLE(of, cdns_uart_of_match);
 static int instances;
 
 /**
+ * cdns_rs485_config - Called when an application calls TIOCSRS485 ioctl.
+ * @port: Pointer to the uart_port structure
+ * @termios: Pointer to the ktermios structure
+ * @rs485: Pointer to the serial_rs485 structure
+ *
+ * Return: 0
+ */
+static int cdns_rs485_config(struct uart_port *port, struct ktermios *termios,
+			     struct serial_rs485 *rs485)
+{
+	port->rs485 = *rs485;
+
+	if (rs485->flags & SER_RS485_ENABLED)
+		dev_dbg(port->dev, "Setting UART to RS485\n");
+
+	return 0;
+}
+
+/**
  * cdns_uart_probe - Platform driver probe
  * @pdev: Pointer to the platform device structure
  *
@@ -1610,8 +1681,27 @@ static int cdns_uart_probe(struct platform_device *pdev)
 	port->private_data = cdns_uart_data;
 	port->read_status_mask = CDNS_UART_IXR_TXEMPTY | CDNS_UART_IXR_RXTRIG |
 			CDNS_UART_IXR_OVERRUN | CDNS_UART_IXR_TOUT;
+	port->rs485_config = cdns_rs485_config;
+	port->rs485_supported = cdns_rs485_supported;
 	cdns_uart_data->port = port;
 	platform_set_drvdata(pdev, port);
+
+	rc = uart_get_rs485_mode(port);
+	if (rc)
+		goto err_out_clk_notifier;
+
+	cdns_uart_data->gpiod = devm_gpiod_get_optional(&pdev->dev, "xlnx,phy-ctrl",
+							GPIOD_OUT_LOW);
+	if (IS_ERR(cdns_uart_data->gpiod)) {
+		rc = PTR_ERR(cdns_uart_data->gpiod);
+		dev_err(port->dev, "xuartps: devm_gpiod_get_optional failed\n");
+		goto err_out_clk_notifier;
+	}
+
+	if (cdns_uart_data->gpiod) {
+		gpiod_direction_output(cdns_uart_data->gpiod, GPIOD_OUT_LOW);
+		gpiod_set_value(cdns_uart_data->gpiod, 0);
+	}
 
 	pm_runtime_use_autosuspend(&pdev->dev);
 	pm_runtime_set_autosuspend_delay(&pdev->dev, UART_AUTOSUSPEND_TIMEOUT);
@@ -1659,6 +1749,7 @@ err_out_pm_disable:
 	pm_runtime_disable(&pdev->dev);
 	pm_runtime_set_suspended(&pdev->dev);
 	pm_runtime_dont_use_autosuspend(&pdev->dev);
+err_out_clk_notifier:
 #ifdef CONFIG_COMMON_CLK
 	clk_notifier_unregister(cdns_uart_data->uartclk,
 			&cdns_uart_data->clk_rate_change_nb);
