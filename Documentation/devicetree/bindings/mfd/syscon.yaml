@@ -70,6 +70,7 @@ properties:
               - rockchip,rv1126-qos
               - starfive,jh7100-sysmain
               - xlnx,zynqmp-dpaud-setting
+              - xlnx,hdcp-keymngmt-blk-1.0
 
           - const: syscon
 
