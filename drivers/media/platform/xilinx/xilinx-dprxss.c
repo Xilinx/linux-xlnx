@@ -2502,7 +2502,7 @@ static int dprx_register_hdcp1x_dev(struct xdprxss_state *xdprxss)
 {
 	xdprxss->hdcp1x = xhdcp1x_rx_init(xdprxss->dev, xdprxss,
 					  xdprxss->dp_base + XDPRX_HDCP1X_REG_OFFSET,
-					  0);
+					  0, XHDCP1X_DP);
 	if (IS_ERR(xdprxss->hdcp1x)) {
 		dev_err(xdprxss->dev, "failed to initialize hdcp1x\n");
 		return PTR_ERR(xdprxss->hdcp1x);

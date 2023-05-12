@@ -16,7 +16,6 @@
 
 /* HDCP1X over a specified protocol */
 enum xhdcp1x_rx_protocol {
-	XHDCP1X_NONE = 0,
 	XHDCP1X_DP = 1,
 	XHDCP1X_HDMI = 2
 };
@@ -42,7 +41,8 @@ enum xhdcp1x_rx_handler_type {
 
 #if IS_ENABLED(CONFIG_VIDEO_XILINX_HDCP1X_RX)
 void *xhdcp1x_rx_init(struct device *dev, void *interface_ref,
-		      void __iomem *interface_base, bool is_repeater);
+		      void __iomem *interface_base, bool is_repeater,
+		      enum xhdcp1x_rx_protocol protocol);
 int xhdcp1x_rx_enable(void *ref, u8 lane_count);
 int xhdcp1x_rx_disable(void *ref);
 int xhdcp1x_rx_set_callback(void *ref, u32 handler_type, void *handler);
