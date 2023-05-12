@@ -30,7 +30,7 @@ properties:
     maxItems: 1
 
   interrupts:
-    maxItems: 1
+    maxItems: 2
 
   clocks:
     items:
@@ -82,6 +82,30 @@ properties:
     description: |
       Video clock frequency in KHz
     $ref: /schemas/types.yaml#/definitions/uint32
+
+  xlnx,include-hdcp:
+    type: boolean
+    $ref: /schemas/types.yaml#/definitions/flag
+    description: |
+      Present when HDCP1x or HDCP2x is enabled.
+
+  xlnx,include-hdcp-1-4:
+    type: boolean
+    $ref: /schemas/types.yaml#/definitions/flag
+    description: |
+      Present when HDCP1x is enabled.
+
+  xlnx,include-hdcp-2-2:
+    type: boolean
+    $ref: /schemas/types.yaml#/definitions/flag
+    description: |
+      Present when HDCP2x is enabled.
+
+  xlnx,hdcp1x-keymgmt:
+    description: |
+      A phandle to a syscon device, used to access
+      HDCP1x keymgmt registers.
+    $ref: /schemas/types.yaml#/definitions/phandle
 
   phys:
     description: |
@@ -170,13 +194,17 @@ examples:
       clock-names = "s_axi_cpu_aclk", "frl_clk", "s_axis_video_aclk";
       clocks = <&zynqmp_clk 71>, <&misc_clk_4>, <&misc_clk_5>;
       interrupt-parent = <&gic>;
-      interrupts = <0 90 4>;
+      interrupts = <0 90 4>, <0 104 4>;
       xlnx,edid-ram-size = /bits/ 16 <0x100>;
       xlnx,input-pixels-per-clock = /bits/ 8 <0x8>;
       xlnx,max-bits-per-component = /bits/ 8 <0xa>;
       xlnx,max-frl-rate = /bits/ 8 <0x6>;
       xlnx,frl-clk-freq-khz = <449955>;
       xlnx,vid-clk-freq-khz = <400000>;
+      xlnx,include-hdcp;
+      xlnx,include-hdcp-1-4;
+      xlnx,include-hdcp-2-2;
+      xlnx,hdcp1x-keymgmt = <&hdcp_keymngmt_blk_1>;
       phy-names = "hdmi-phy0", "hdmi-phy1", "hdmi-phy2", "hdmi-phy3";
       phys = <&hdmiphy1_lane0 0 1 1 0>,
              <&hdmiphy1_lane1 0 1 1 0>,
@@ -198,5 +226,9 @@ examples:
            };
         };
       };
+    };
+    hdcp_keymngmt_blk_1: hdcp_keymngmt_blk@80040000 {
+       compatible = "xlnx,hdcp-keymngmt-blk-1.0", "syscon";
+       reg = <0x80040000 0x10000>;
     };
 ...
