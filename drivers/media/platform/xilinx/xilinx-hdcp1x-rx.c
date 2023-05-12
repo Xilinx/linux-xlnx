@@ -270,7 +270,8 @@ static enum xhdcp1x_rx_state (*xhdcp1x_rx_state_table[])(void *) = {
  * Return: void reference to hdcp1x driver instance on success, error otherwise
  */
 void *xhdcp1x_rx_init(struct device *dev, void *interface_ref,
-		      void __iomem *interface_base, bool is_repeater)
+		      void __iomem *interface_base, bool is_repeater,
+		      enum xhdcp1x_rx_protocol protocol)
 {
 	struct xhdcp1x_rx *hdcp1x;
 
