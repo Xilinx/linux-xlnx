@@ -11,6 +11,7 @@ maintainers:
 
 allOf:
   - $ref: /schemas/serial.yaml#
+  - $ref: /schemas/serial/rs485.yaml#
 
 properties:
   compatible:
@@ -45,6 +46,11 @@ properties:
       from the modem status register. Define this if your serial
       port does not use this pin.
     type: boolean
+
+  xlnx,phy-ctrl-gpios:
+    description: Optional GPIO to control transmit/receive on RS485 phy
+      in halfduplex mode.
+    maxItems: 1
 
 required:
   - compatible
