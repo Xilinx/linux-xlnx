@@ -74,6 +74,7 @@ config VIDEO_XILINX_HDCP1X_RX
 config VIDEO_XILINX_HDMI21RXSS
 	tristate "Xilinx HDMI 2.1 Rx Subsystem"
 	depends on VIDEO_XILINX
+	select VIDEO_XILINX_HDCP1X_RX
 	help
 	  Driver for the Xilinx HDMI 2.1 Rx subsystem to capture HDMI streams.
 	  This is a V4L2 subdev driver which used to get the stream properties
