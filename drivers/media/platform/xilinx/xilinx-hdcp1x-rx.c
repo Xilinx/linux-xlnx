@@ -8,7 +8,7 @@
  *
  */
 #include <linux/io.h>
-#include <linux/xilinx-hdcp1x-cipher.h>
+#include <linux/xlnx/xilinx-hdcp1x-cipher.h>
 #include "xilinx-hdcp1x-rx.h"
 
 /*
