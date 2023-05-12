@@ -8,7 +8,7 @@
  */
 
 #include <linux/bitfield.h>
-#include <linux/xilinx-hdcp1x-cipher.h>
+#include <linux/xlnx/xilinx-hdcp1x-cipher.h>
 
 /* HDCP Cipher register offsets */
 #define XHDCP1X_CIPHER_REG_VERSION		0x00
