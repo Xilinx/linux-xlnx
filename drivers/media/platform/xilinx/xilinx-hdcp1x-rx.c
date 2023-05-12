@@ -7,12 +7,13 @@
  * Author: Jagadeesh Banisetti <jagadeesh.banisetti@xilin.com>
  *
  */
+#include <linux/delay.h>
 #include <linux/io.h>
 #include <linux/xlnx/xilinx-hdcp1x-cipher.h>
 #include "xilinx-hdcp1x-rx.h"
 
 /*
- * HDCP1X PORT registers, plese refer
+ * HDCP1X PORT registers, please refer
  * 'HDCP on DisplayPort Specification Rev. 1.1' from DCP-LLC.
  */
 #define XHDCP1X_PORT_OFFSET_BKSV	0x00
@@ -34,6 +35,7 @@
 
 #define XHDCP1X_PORT_SIZE_BKSV		0x05
 #define XHDCP1X_PORT_SIZE_RO		0x02
+#define XHDCP1X_PORT_SIZE_RI		0x02
 #define XHDCP1X_PORT_SIZE_AKSV		0x05
 #define XHDCP1X_PORT_SIZE_AN		0x08
 #define XHDCP1X_PORT_SIZE_VH0		0x04
@@ -67,6 +69,22 @@
 #define XHDCP1X_LANE_COUNT_VAL_4		4
 #define XHDCP1X_RX_CIPHER_REQUEST_RETRY		100
 /*
+ * HDCP1X PORT registers, please refer
+ * 'HDCP Specification Rev. 1.4' from DCP-LLC.
+ */
+#define XHDCP1X_PORT_HDMI_OFFSET_RO		0x08
+#define XHDCP1X_PORT_HDMI_OFFSET_AKSV		0x10
+#define XHDCP1X_PORT_HDMI_OFFSET_AN		0x18
+#define XHDCP1X_PORT_HDMI_OFFSET_BCAPS		0x40
+#define XHDCP1X_PORT_HDMI_OFFSET_BSTATUS	0x41
+#define XHDCP1X_PORT_HDMI_SIZE_BSTATUS		0x02
+#define XHDCP1X_PORT_BIT_BSTATUS_HDMI_MODE	BIT(12)
+#define XHDCP1X_PORT_BIT_BCAPS_HDMI		BIT(7)
+
+#define XHDCP1X_RI_UPDATE_MIN_DELAY		0x300
+#define XHDCP1X_RI_UPDATE_MAX_DELAY		0x400
+
+/*
  * states of hdcp1x state machine, please refer
  * 'HDCP on DisplayPort Specification Rev. 1.1' from DCP-LLC.
  */
@@ -96,24 +114,29 @@ struct xhdcp1x_rx_callbacks {
  * @handlers: Callback handlers to interface driver
  * @sm_work: state-machine worker
  * @curr_state: Current authentication state
+ * @protocol: HDMI or DP
  * @prev_state: Previous authentication state
  * @cipher: Pointer to cipher driver instance
  * @interface_ref: Pointer to interface driver instance
  * @interface_base: Pointer to interface iomem base
  * @pending_events: events that are set by ineterface driver
+ * @protocol: current protocol of Rx Video interface (None,HDMI or DP)
  * @is_repeater: flag for repeater support
+ * @is_enabled: flag for HDCP module status
  */
 struct xhdcp1x_rx {
 	struct device		*dev;
 	struct xhdcp1x_rx_callbacks handlers;
 	struct delayed_work	sm_work;
 	enum xhdcp1x_rx_state	curr_state;
+	enum xhdcp1x_rx_protocol	protocol;
 	enum xhdcp1x_rx_state	prev_state;
 	void			*cipher;
 	void			*interface_ref;
 	void __iomem		*interface_base;
 	u32			pending_events;
 	bool			is_repeater;
+	bool			is_enabled;
 };
 
 #ifdef DEBUG
@@ -153,11 +176,13 @@ static void xhdcp1x_rx_process_aksv(struct xhdcp1x_rx *hdcp1x);
 static int xhdcp1x_rx_poll_for_computations(struct xhdcp1x_rx *hdcp1x);
 static void hdcp1x_rx_set_clr_bstatus(struct xhdcp1x_rx *hdcp1x, u8 mask,
 				      u8 set);
+static void xhdcp1x_rx_set_hdmimode(struct xhdcp1x_rx *hdcp1x, u8 set);
+
 static inline void xhdcp1x_buf_to_uint(u64 *dst, u8 *src, int length)
 {
-	int byte;
-
 	if (length) {
+		int byte;
+
 		*dst = 0;
 		for (byte = length; byte >= 0; byte--) {
 			*dst <<= 8;
@@ -169,18 +194,28 @@ static inline void xhdcp1x_buf_to_uint(u64 *dst, u8 *src, int length)
 static inline void xhdcp1x_rx_reset_port(struct xhdcp1x_rx *hdcp1x)
 {
 	u8 buf[XHDCP1X_PORT_SIZE_REGS_TO_RESET] = {0};
+	u8 offset;
 
+	offset = (hdcp1x->protocol == XHDCP1X_HDMI) ? XHDCP1X_PORT_HDMI_OFFSET_RO :
+		  XHDCP1X_PORT_OFFSET_RO;
 	hdcp1x->handlers.wr_handler(hdcp1x->interface_ref,
-				    XHDCP1X_PORT_OFFSET_RO, buf,
-				    XHDCP1X_PORT_SIZE_REGS_TO_RESET);
+				    offset, buf, XHDCP1X_PORT_SIZE_REGS_TO_RESET);
 }
 
 static inline void xhdcp1x_rx_reset_bstatus(struct xhdcp1x_rx *hdcp1x)
 {
 	u8 buf = 0;
+	u8 offset, size;
 
-	hdcp1x->handlers.wr_handler(hdcp1x->interface_ref,
-				      XHDCP1X_PORT_OFFSET_BSTATUS, &buf, 1);
+	if (hdcp1x->protocol == XHDCP1X_HDMI) {
+		offset = XHDCP1X_PORT_HDMI_OFFSET_BSTATUS;
+		size = XHDCP1X_PORT_HDMI_SIZE_BSTATUS;
+	} else {
+		offset = XHDCP1X_PORT_OFFSET_BSTATUS;
+		size = XHDCP1X_PORT_SIZE_BSTATUS;
+	}
+	hdcp1x->handlers.wr_handler(hdcp1x->interface_ref, offset, &buf,
+				    size);
 }
 
 static inline void xhdcp1x_rx_reset_binfo(struct xhdcp1x_rx *hdcp1x)
@@ -190,6 +225,15 @@ static inline void xhdcp1x_rx_reset_binfo(struct xhdcp1x_rx *hdcp1x)
 	hdcp1x->handlers.wr_handler(hdcp1x->interface_ref,
 				    XHDCP1X_PORT_OFFSET_BINFO, buf,
 				    XHDCP1X_PORT_SIZE_BINFO);
+}
+
+static inline void xhdcp1x_rx_reset_bcaps(struct xhdcp1x_rx *hdcp1x)
+{
+	u8 buf[XHDCP1X_PORT_SIZE_BCAPS] = {0};
+
+	hdcp1x->handlers.wr_handler(hdcp1x->interface_ref,
+				    XHDCP1X_PORT_OFFSET_BCAPS, buf,
+				    XHDCP1X_PORT_SIZE_BCAPS);
 }
 
 static inline void xhdcp1x_rx_init_debug_regs(struct xhdcp1x_rx *hdcp1x)
@@ -204,9 +248,12 @@ static inline void xhdcp1x_rx_init_debug_regs(struct xhdcp1x_rx *hdcp1x)
 static inline void xhdcp1x_rx_read_aksv(struct xhdcp1x_rx *hdcp1x, u64 *value)
 {
 	u8 buf[XHDCP1X_PORT_SIZE_AKSV];
+	u8 offset;
 
-	hdcp1x->handlers.rd_handler(hdcp1x->interface_ref,
-				    XHDCP1X_PORT_OFFSET_AKSV, buf,
+	offset = (hdcp1x->protocol == XHDCP1X_HDMI) ? XHDCP1X_PORT_HDMI_OFFSET_AKSV :
+		  XHDCP1X_PORT_OFFSET_AKSV;
+
+	hdcp1x->handlers.rd_handler(hdcp1x->interface_ref, offset, buf,
 				    XHDCP1X_PORT_SIZE_AKSV);
 	xhdcp1x_buf_to_uint(value, buf, XHDCP1X_PORT_SIZE_AKSV);
 }
@@ -214,10 +261,12 @@ static inline void xhdcp1x_rx_read_aksv(struct xhdcp1x_rx *hdcp1x, u64 *value)
 static inline void xhdcp1x_rx_read_an(struct xhdcp1x_rx *hdcp1x, u64 *value)
 {
 	u8 buf[XHDCP1X_PORT_SIZE_AN] = {0};
+	u8 offset;
 
-	hdcp1x->handlers.rd_handler(hdcp1x->interface_ref,
-				    XHDCP1X_PORT_OFFSET_AN, buf,
-				    XHDCP1X_PORT_SIZE_AN);
+	offset = (hdcp1x->protocol == XHDCP1X_HDMI) ? XHDCP1X_PORT_HDMI_OFFSET_AN :
+		  XHDCP1X_PORT_OFFSET_AN;
+
+	hdcp1x->handlers.rd_handler(hdcp1x->interface_ref, offset, buf, XHDCP1X_PORT_SIZE_AN);
 	xhdcp1x_buf_to_uint(value, buf, XHDCP1X_PORT_SIZE_AN);
 }
 
@@ -265,6 +314,7 @@ static enum xhdcp1x_rx_state (*xhdcp1x_rx_state_table[])(void *) = {
  * @interface_ref: void pointer to interface driver instance
  * @interface_base: Pointer to interface iomem base
  * @is_repeater: flag for repeater support
+ * @protocol: flag for interface type, HDMI or DP
  * This function instantiates the hdcp1x driver and initializes it.
  *
  * Return: void reference to hdcp1x driver instance on success, error otherwise
@@ -292,7 +342,9 @@ void *xhdcp1x_rx_init(struct device *dev, void *interface_ref,
 	hdcp1x->interface_base = interface_base;
 	hdcp1x->is_repeater = is_repeater;
 
-	/* cipher initializsation */
+	hdcp1x->protocol = protocol;
+	hdcp1x->is_enabled = false;
+	/* cipher initialization */
 	hdcp1x->cipher = xhdcp1x_cipher_init(dev, interface_base);
 	if (IS_ERR(hdcp1x->cipher))
 		return hdcp1x->cipher;
@@ -314,33 +366,53 @@ int xhdcp1x_rx_enable(void *ref, u8 lane_count)
 {
 	struct xhdcp1x_rx *hdcp1x = (struct xhdcp1x_rx *)ref;
 	int ret;
-	u8 buf;
+	u8 buf = 0, offset;
 
 	if (!hdcp1x)
 		return -EINVAL;
 
+	if (!hdcp1x->is_enabled)
+		return 0;
+
 	if (lane_count != XHDCP1X_LANE_COUNT_VAL_1 &&
 	    lane_count != XHDCP1X_LANE_COUNT_VAL_2 &&
-	    lane_count != XHDCP1X_LANE_COUNT_VAL_4)
+	    lane_count != XHDCP1X_LANE_COUNT_VAL_4) {
+		dev_info(hdcp1x->dev, "Invalid Lanecount\n");
 		return -EINVAL;
-
-	xhdcp1x_rx_reset_port(hdcp1x);
-	xhdcp1x_rx_reset_bstatus(hdcp1x);
-	xhdcp1x_rx_reset_binfo(hdcp1x);
+	}
 
 	ret = xhdcp1x_cipher_set_num_lanes(hdcp1x->cipher, lane_count);
 	if (ret)
 		return ret;
 
-	buf |= XHDCP1X_PORT_BIT_BCAPS_HDCP_CAPABLE;
-	if (hdcp1x->is_repeater)
-		buf |= XHDCP1X_PORT_BIT_BCAPS_REPEATER;
-	hdcp1x->handlers.wr_handler(hdcp1x->interface_ref,
-				    XHDCP1X_PORT_OFFSET_BCAPS, &buf,
-				    XHDCP1X_PORT_SIZE_BCAPS);
+	xhdcp1x_rx_reset_port(hdcp1x);
+	xhdcp1x_rx_reset_bstatus(hdcp1x);
 	xhdcp1x_rx_init_debug_regs(hdcp1x);
 
+	offset = (hdcp1x->protocol == XHDCP1X_HDMI) ? XHDCP1X_PORT_HDMI_OFFSET_BCAPS :
+		  XHDCP1X_PORT_OFFSET_BCAPS;
+
+	buf |= XHDCP1X_PORT_BIT_BCAPS_HDCP_CAPABLE;
+
+	if (hdcp1x->is_repeater)
+		buf |= XHDCP1X_PORT_BIT_BCAPS_REPEATER;
+
+	if (hdcp1x->protocol == XHDCP1X_DP) {
+		xhdcp1x_rx_reset_binfo(hdcp1x);
+		xhdcp1x_rx_reset_bcaps(hdcp1x);
+		xhdcp1x_rx_set_hdmimode(hdcp1x, false);
+	} else {
+		buf |= XHDCP1X_PORT_BIT_BCAPS_HDMI;
+		xhdcp1x_rx_set_hdmimode(hdcp1x, true);
+	}
+
+	hdcp1x->handlers.wr_handler(hdcp1x->interface_ref,
+				    offset, &buf,
+				    XHDCP1X_PORT_SIZE_BCAPS);
+
+	hdcp1x->is_enabled = true;
 	ret = xhdcp1x_cipher_enable(hdcp1x->cipher);
+
 	return ret;
 }
 EXPORT_SYMBOL_GPL(xhdcp1x_rx_enable);
@@ -363,10 +435,18 @@ int xhdcp1x_rx_disable(void *ref)
 	if (ret)
 		return ret;
 
+	if (hdcp1x->protocol == XHDCP1X_HDMI) {
+		xhdcp1x_rx_set_hdmimode(hdcp1x, false);
+		xhdcp1x_cipher_set_ri(hdcp1x->cipher, false);
+		xhdcp1x_rx_reset_bstatus(hdcp1x);
+		xhdcp1x_rx_reset_binfo(hdcp1x);
+		xhdcp1x_rx_reset_bcaps(hdcp1x);
+	}
+
 	hdcp1x->curr_state = XHDCP1X_STATE_B0;
 	hdcp1x->prev_state = XHDCP1X_STATE_B0;
 	hdcp1x->pending_events = 0;
-
+	hdcp1x->is_enabled = false;
 	return 0;
 }
 EXPORT_SYMBOL_GPL(xhdcp1x_rx_disable);
@@ -534,10 +614,46 @@ static enum xhdcp1x_rx_state xhdcp1x_state_B1(void *instance)
 		xhdcp1x_rx_process_aksv(hdcp1x);
 		xhdcp1x_rx_poll_for_computations(hdcp1x);
 		hdcp1x->pending_events &= ~XHDCP1X_RX_AKSV_RCVD;
-		return XHDCP1X_STATE_B2;
-	} else {
-		return XHDCP1X_STATE_B1;
+
+		if (hdcp1x->protocol == XHDCP1X_HDMI)
+			return XHDCP1X_STATE_B3;
+		else
+			return XHDCP1X_STATE_B2;
 	}
+
+	return XHDCP1X_STATE_B1;
+}
+
+static int xhdcp1x_rx_update_ri(void *ref)
+{
+	struct xhdcp1x_rx *hdcp1x = (struct xhdcp1x_rx *)ref;
+	u16 ri, retry = XHDCP1X_RX_CIPHER_REQUEST_RETRY;
+	u8 buf[4], offset;
+
+	while (!xhdcp1x_cipher_is_request_complete(hdcp1x->cipher) && retry--)
+		;
+	/* wait the requested amount of time to avoid cpu introduced delays */
+
+	/* This delay is not a specification recommended. This is added to
+	 * met/avoid any processor specific related delays.
+	 */
+	usleep_range(XHDCP1X_RI_UPDATE_MIN_DELAY,
+		     XHDCP1X_RI_UPDATE_MAX_DELAY);
+
+	if (!retry)
+		return -EAGAIN;
+
+	if (xhdcp1x_cipher_get_ri(hdcp1x->cipher, &ri))
+		return -EIO;
+
+	memcpy(buf, &ri, XHDCP1X_PORT_SIZE_RI);
+
+	offset = (hdcp1x->protocol == XHDCP1X_HDMI) ? XHDCP1X_PORT_HDMI_OFFSET_RO :
+		  XHDCP1X_PORT_OFFSET_RO;
+	hdcp1x->handlers.wr_handler(hdcp1x->interface_ref,
+				    offset, buf, XHDCP1X_PORT_SIZE_RI);
+
+	return 0;
 }
 
 /* TODO: Need to cancel the workqueue of hdcp1x before disabling it */
@@ -557,18 +673,29 @@ static enum xhdcp1x_rx_state xhdcp1x_state_B2(void *instance)
 	}
 
 	if (hdcp1x->pending_events & XHDCP1X_RX_CIPHER_EVENT_RCVD) {
-		if (xhdcp1x_cipher_is_linkintegrity_failed(hdcp1x->cipher)) {
-			hdcp1x_rx_set_clr_bstatus(hdcp1x,
-						  XHDCP1X_PORT_BIT_BSTATUS_LINK_FAILURE,
-						  1);
-			if (hdcp1x->handlers.notify_handler)
-				hdcp1x->handlers.notify_handler(hdcp1x->interface_ref,
-								XHDCP1X_RX_NOTIFY_SET_CP_IRQ);
-			xhdcp1x_cipher_disable(hdcp1x->cipher);
-			xhdcp1x_cipher_reset(hdcp1x->cipher);
-			xhdcp1x_cipher_enable(hdcp1x->cipher);
+		hdcp1x->pending_events &= ~XHDCP1X_RX_CIPHER_EVENT_RCVD;
 
-			return XHDCP1X_STATE_B1;
+		if (hdcp1x->protocol == XHDCP1X_DP) {
+			if (xhdcp1x_cipher_is_linkintegrity_failed(hdcp1x->cipher)) {
+				hdcp1x_rx_set_clr_bstatus(hdcp1x,
+							  XHDCP1X_PORT_BIT_BSTATUS_LINK_FAILURE,
+							  1);
+
+				if (hdcp1x->handlers.notify_handler)
+					hdcp1x->handlers.notify_handler(hdcp1x->interface_ref,
+						XHDCP1X_RX_NOTIFY_SET_CP_IRQ);
+
+				xhdcp1x_cipher_disable(hdcp1x->cipher);
+				xhdcp1x_cipher_reset(hdcp1x->cipher);
+				xhdcp1x_cipher_enable(hdcp1x->cipher);
+
+				return XHDCP1X_STATE_B1;
+			}
+		}
+		if (!xhdcp1x_cipher_is_request_to_change_ri(hdcp1x->cipher)) {
+			xhdcp1x_rx_update_ri(hdcp1x);
+
+			return XHDCP1X_STATE_B2;
 		}
 	}
 
@@ -590,7 +717,10 @@ static enum xhdcp1x_rx_state xhdcp1x_state_B3(void *instance)
 	 * it just required to enable the interrupts for link integrity
 	 * and go to state_B2(Authenticated)
 	 */
-	xhdcp1x_cipher_set_link_state_check(hdcp1x->cipher, true);
+	if (hdcp1x->protocol == XHDCP1X_DP)
+		xhdcp1x_cipher_set_link_state_check(hdcp1x->cipher, true);
+	else
+		xhdcp1x_cipher_set_ri(hdcp1x->cipher, true);
 
 	return XHDCP1X_STATE_B2;
 }
@@ -614,7 +744,7 @@ static int xhdcp1x_rx_poll_for_computations(struct xhdcp1x_rx *hdcp1x)
 {
 	u16 ro;
 	u16 retry = XHDCP1X_RX_CIPHER_REQUEST_RETRY;
-	u8 buf[4];
+	u8 buf[4], offset;
 
 	while (!xhdcp1x_cipher_is_request_complete(hdcp1x->cipher) && retry--)
 		;
@@ -626,18 +756,23 @@ static int xhdcp1x_rx_poll_for_computations(struct xhdcp1x_rx *hdcp1x)
 		return -EIO;
 
 	memcpy(buf, &ro, XHDCP1X_PORT_SIZE_RO);
-	hdcp1x->handlers.wr_handler(hdcp1x->interface_ref,
-				    XHDCP1X_PORT_OFFSET_RO, buf, 2);
 
-	/* Reset the KSV FIFO read pointer to 0x6802C */
-	xhdcp1x_rx_reset_ksv_fifo(hdcp1x);
+	offset = (hdcp1x->protocol == XHDCP1X_HDMI) ? XHDCP1X_PORT_HDMI_OFFSET_RO :
+		  XHDCP1X_PORT_OFFSET_RO;
 
-	/* Update the Bstatus to indicate Ro' available */
-	hdcp1x_rx_set_clr_bstatus(hdcp1x, XHDCP1X_PORT_BIT_BSTATUS_RO_AVAILABLE,
-				  1);
-	if (hdcp1x->handlers.notify_handler)
-		hdcp1x->handlers.notify_handler(hdcp1x->interface_ref,
-						XHDCP1X_RX_NOTIFY_SET_CP_IRQ);
+	hdcp1x->handlers.wr_handler(hdcp1x->interface_ref, offset, buf, XHDCP1X_PORT_SIZE_RO);
+
+	if (hdcp1x->protocol == XHDCP1X_DP) {
+		/* Reset the KSV FIFO read pointer to 0x6802C */
+		xhdcp1x_rx_reset_ksv_fifo(hdcp1x);
+
+		/* Update the Bstatus to indicate Ro' available */
+		hdcp1x_rx_set_clr_bstatus(hdcp1x, XHDCP1X_PORT_BIT_BSTATUS_RO_AVAILABLE,
+					  1);
+		if (hdcp1x->handlers.notify_handler)
+			hdcp1x->handlers.notify_handler(hdcp1x->interface_ref,
+							XHDCP1X_RX_NOTIFY_SET_CP_IRQ);
+	}
 
 	return 0;
 }
@@ -645,16 +780,45 @@ static int xhdcp1x_rx_poll_for_computations(struct xhdcp1x_rx *hdcp1x)
 static void hdcp1x_rx_set_clr_bstatus(struct xhdcp1x_rx *hdcp1x, u8 mask,
 				      u8 set)
 {
-	u8 val;
+	u8 val, offset, size;
 
-	hdcp1x->handlers.rd_handler(hdcp1x->interface_ref,
-				    XHDCP1X_PORT_OFFSET_BSTATUS,
-				    &val, XHDCP1X_PORT_SIZE_BSTATUS);
+	if (hdcp1x->protocol == XHDCP1X_DP) {
+		offset = XHDCP1X_PORT_OFFSET_BSTATUS;
+		size = XHDCP1X_PORT_SIZE_BSTATUS;
+	} else {
+		offset = XHDCP1X_PORT_HDMI_OFFSET_BSTATUS;
+		size = XHDCP1X_PORT_HDMI_SIZE_BSTATUS;
+	}
+
+	hdcp1x->handlers.rd_handler(hdcp1x->interface_ref, offset, &val, size);
+
 	if (set)
 		val |= mask;
 	else
 		val &= ~mask;
-	hdcp1x->handlers.wr_handler(hdcp1x->interface_ref,
-				    XHDCP1X_PORT_OFFSET_BSTATUS,
-				    &val, XHDCP1X_PORT_SIZE_BSTATUS);
+	hdcp1x->handlers.wr_handler(hdcp1x->interface_ref, offset, &val, size);
+}
+
+static void xhdcp1x_rx_set_hdmimode(struct xhdcp1x_rx *hdcp1x,
+				    u8 set)
+{
+	u32 val;
+	u8 offset, size;
+
+	if (hdcp1x->protocol == XHDCP1X_DP) {
+		offset = XHDCP1X_PORT_OFFSET_BSTATUS;
+		size = XHDCP1X_PORT_SIZE_BSTATUS;
+	} else {
+		offset = XHDCP1X_PORT_HDMI_OFFSET_BSTATUS;
+		size = XHDCP1X_PORT_HDMI_SIZE_BSTATUS;
+	}
+
+	hdcp1x->handlers.rd_handler(hdcp1x->interface_ref, offset, (u8 *)&val, size);
+
+	if (set)
+		val |= XHDCP1X_PORT_BIT_BSTATUS_HDMI_MODE;
+	else
+		val &= ~XHDCP1X_PORT_BIT_BSTATUS_HDMI_MODE;
+
+	hdcp1x->handlers.wr_handler(hdcp1x->interface_ref, offset, (u8 *)&val, size);
 }
