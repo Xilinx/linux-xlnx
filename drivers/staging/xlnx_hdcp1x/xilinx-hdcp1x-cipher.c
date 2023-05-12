@@ -8,7 +8,7 @@
  */
 
 #include <linux/bitfield.h>
-#include <linux/xilinx-hdcp1x-cipher.h>
+#include <linux/xlnx/xilinx-hdcp1x-cipher.h>
 
 /********************** Static function definations ***************************/
 static void xhdcp1x_cipher_write(struct xhdcp1x_cipher *cipher,
