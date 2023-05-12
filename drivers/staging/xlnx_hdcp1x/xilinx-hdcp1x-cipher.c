@@ -633,6 +633,39 @@ int xhdcp1x_cipher_is_request_complete(void *ref)
 EXPORT_SYMBOL_GPL(xhdcp1x_cipher_is_request_complete);
 
 /**
+ * xhdcp1x_cipher_set_ri - Enable/Disable Ri Update Check
+ * @ref: reference to cipher instance
+ * @enable: Flag (True / False)
+ *
+ * Return: 0 on success, error otherwise
+ */
+int xhdcp1x_cipher_set_ri(void *ref, bool enable)
+{
+	struct xhdcp1x_cipher *cipher = (struct xhdcp1x_cipher *)ref;
+
+	if (!cipher)
+		return -EINVAL;
+
+	if (!cipher->is_hdmi)
+		return -EINVAL;
+
+	xhdcp1x_cipher_write(cipher, XHDCP1X_CIPHER_REG_INTERRUPT_STATUS,
+			     XHDCP1X_CIPHER_BITMASK_INTERRUPT_RI_UPDATE);
+
+	if (enable)
+		xhdcp1x_cipher_clr_mask(cipher,
+					XHDCP1X_CIPHER_REG_INTERRUPT_MASK,
+					XHDCP1X_CIPHER_BITMASK_INTERRUPT_RI_UPDATE);
+	else
+		xhdcp1x_cipher_set_mask(cipher,
+					XHDCP1X_CIPHER_REG_INTERRUPT_MASK,
+					XHDCP1X_CIPHER_BITMASK_INTERRUPT_RI_UPDATE);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(xhdcp1x_cipher_set_ri);
+
+/**
  * xhdcp1x_cipher_set_link_state_check - Enable/Disable link status check
  * @ref: reference to cipher instance
  * @is_enabled: 1 for enable, 0 for disable
@@ -666,6 +699,28 @@ int xhdcp1x_cipher_set_link_state_check(void *ref, bool is_enabled)
 EXPORT_SYMBOL_GPL(xhdcp1x_cipher_set_link_state_check);
 
 /**
+ * xhdcp1x_cipher_is_request_to_change_ri - Check if ri update is required
+ * @ref: reference to cipher instance
+ *
+ * Return: 0 if ri update change is needed, error value otherwise
+ */
+int xhdcp1x_cipher_is_request_to_change_ri(void *ref)
+{
+	struct xhdcp1x_cipher *cipher = (struct xhdcp1x_cipher *)ref;
+	u32 value;
+
+	if (!cipher || !xhdcp1x_cipher_is_enabled(cipher))
+		return -EINVAL;
+
+	value = xhdcp1x_cipher_read(cipher, XHDCP1X_CIPHER_REG_STATUS);
+	if (!(value & XHDCP1X_CIPHER_BITMASK_INTERRUPT_RI_UPDATE))
+		return -EINVAL;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(xhdcp1x_cipher_is_request_to_change_ri);
+
+/**
  * xhdcp1x_cipher_get_interrupts - Read and clear the interrupts and return same
  * @ref: reference to cipher instance
  * @interrupts: reference to interrupts data
@@ -682,8 +737,7 @@ int xhdcp1x_cipher_get_interrupts(void *ref, u32 *interrupts)
 	/* Read and clear the interrupts */
 	*interrupts = xhdcp1x_cipher_read(cipher,
 					  XHDCP1X_CIPHER_REG_INTERRUPT_STATUS);
-	*interrupts &= xhdcp1x_cipher_read(cipher,
-					   XHDCP1X_CIPHER_REG_INTERRUPT_MASK);
+
 	if (*interrupts)
 		xhdcp1x_cipher_write(cipher,
 				     XHDCP1X_CIPHER_REG_INTERRUPT_STATUS,
@@ -715,3 +769,23 @@ int xhdcp1x_cipher_is_linkintegrity_failed(void *ref)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(xhdcp1x_cipher_is_linkintegrity_failed);
+
+/**
+ * xhdcp1x_cipher_get_ri - Read Ri from cipher
+ * @ref: reference to cipher instance
+ * @ri: reference to ri data
+ *
+ * Return: 0 on success, error otherwise
+ */
+int xhdcp1x_cipher_get_ri(void *ref, u16 *ri)
+{
+	struct xhdcp1x_cipher *cipher = (struct xhdcp1x_cipher *)ref;
+
+	if (!cipher || !ri || !xhdcp1x_cipher_is_enabled(cipher))
+		return -EINVAL;
+
+	*ri = xhdcp1x_cipher_read(cipher, XHDCP1X_CIPHER_REG_CIPHER_RI);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(xhdcp1x_cipher_get_ri);
