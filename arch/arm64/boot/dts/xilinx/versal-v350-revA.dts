@@ -23,6 +23,7 @@
 	aliases {
 		serial0 = &serial0;
 		serial1 = &serial1;
+		serial2 = &dcc;
 		spi0 = &ospi;
 	};
 
