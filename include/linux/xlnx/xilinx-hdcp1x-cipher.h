@@ -29,6 +29,9 @@ int xhdcp1x_cipher_is_request_complete(void *ref);
 int xhdcp1x_cipher_set_link_state_check(void *ref, bool is_enabled);
 int xhdcp1x_cipher_get_interrupts(void *ref, u32 *interrupts);
 int xhdcp1x_cipher_is_linkintegrity_failed(void *ref);
+int xhdcp1x_cipher_set_ri(void *ref, bool enable);
+int xhdcp1x_cipher_is_request_to_change_ri(void *ref);
+int xhdcp1x_cipher_get_ri(void *ref, u16 *ri);
 #else
 static inline void *xhdcp1x_cipher_init(struct device *dev,
 					void __iomem *hdcp1x_base)
@@ -100,6 +103,22 @@ static inline int xhdcp1x_cipher_is_linkintegrity_failed(void *ref)
 {
 	return -EINVAL;
 }
+
+static inline int xhdcp1x_cipher_get_ri(void *ref, u16 *ri)
+{
+	return -EINVAL;
+}
+
+static inline int xhdcp1x_cipher_is_request_to_change_ri(void *ref)
+{
+	return -EINVAL;
+}
+
+static inline int xhdcp1x_cipher_set_ri(void *ref, bool enable)
+{
+	return -EINVAL;
+}
+
 #endif /* CONFIG_XLNX_HDCP1X_CIPHER */
 
 #endif /* __XILINX_HDCP1X_CIPHER_H__ */
