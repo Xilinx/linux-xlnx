@@ -1,0 +1,126 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * dts file for Xilinx ZynqMP VN-P-B2197 (Tenzing2) X-PRC-08 RevA
+ *
+ * (C) Copyright 2022-2023, Advanced Micro Devices, Inc.
+ *
+ * Michal Simek <michal.simek@amd.com>
+ */
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+
+&{/} {
+	model = "X-PRC-08 revA";
+};
+
+/* LPD_MIO0-12, mdio LPD_MIO24-25 */
+&gem0 {
+	status = "okay";
+	phy-handle = <&phy0>;
+	phy-mode = "rmii";
+	mdio1: mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		phy0: ethernet-phy@1 { /* u37 VSC8540 */
+			#phy-cells = <1>;
+			compatible = "ethernet-phy-id0007.0760";
+			reg = <1>;
+			reset-gpios = <&gpio0 12 GPIO_ACTIVE_LOW>;
+		};
+	};
+};
+
+/* u1, u2, u3, u4 - 4x MT25QU01GBBBB, PMC_MIO0-5,7-12 */
+&qspi {
+	status = "okay";
+	reset-gpios = <&gpio1 39 GPIO_ACTIVE_HIGH>;
+	reset-names = "qspi";
+	#address-cells = <1>;
+	#size-cells = <0>;
+	num-cs = <2>;
+
+	mt25xu01g: flash@0 {
+		compatible = "micron,m25p80", "jedec,spi-nor";
+		reg = <0>, <1>;
+		parallel-memories = /bits/ 64 <0x8000000 0x8000000>; /* (128+128)MB */
+		spi-tx-bus-width = <4>;
+		spi-rx-bus-width = <4>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		spi-max-frequency = <150000000>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "qspi-flash0";
+				reg = <0 0x8000000>;
+			};
+			partition@1 {
+				label = "qspi-flash1";
+				reg = <0x8000000 0x8000000>;
+			};
+		};
+	};
+};
+
+/* LPD_MIO18-23 */
+&spi1 {
+	status = "okay";
+	num-cs = <1>; /* Via J16 - 3 chip selects to the same memory */
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	flash@0 { /* u35 MX25U3232 */
+		compatible = "m25p80";
+		spi-max-frequency = <5000000>;
+		reg = <0>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+			partition@0 {
+				label = "spi0-flash0";
+				reg = <0 0x80000>;
+			};
+		};
+	};
+};
+
+/* LPD_MIO16-17 */
+&serial0 {
+	status = "okay";
+};
+
+/* PMC_MIO26-36 */
+&sdhci0 {
+	status = "okay";
+	xlnx,mio-bank = <1>;
+	bus-width = <4>;
+};
+
+
+/* u36a PMC_MIO40-51 MTFC16GAPALBH */
+&sdhci1 {
+	status = "okay";
+	xlnx,mio-bank = <1>;
+	non-removable;
+	disable-wp;
+	bus-width = <8>;
+};
+
+/* u34 - usb3315c - PMC_MIO13-25 */
+&usb1 {
+	status = "okay";
+};
+
+&dwc3_1 {
+	status = "okay";
+};
