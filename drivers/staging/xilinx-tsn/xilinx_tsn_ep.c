@@ -46,6 +46,9 @@ int tsn_data_path_open(struct net_device *ndev)
 {
 	int ret, i = 0;
 	struct axienet_local *lp = netdev_priv(ndev);
+	struct net_device *emac0_ndev;
+	struct net_device *emac1_ndev;
+	u8 hw_addr_mask[ETH_ALEN];
 	struct axienet_dma_q *q;
 
 	static char irq_name[XAE_MAX_QUEUES + XAE_TSN_MIN_QUEUES][24];
@@ -93,6 +96,22 @@ int tsn_data_path_open(struct net_device *ndev)
 	if (ret)
 		goto err_tadma;
 #endif
+	if (lp->slaves[0] && lp->slaves[1]) {
+		emac0_ndev = lp->slaves[0];
+		emac1_ndev = lp->slaves[1];
+
+		for (i = 0; i < ETH_ALEN; i++)
+			hw_addr_mask[i] = 0xFF;
+		hw_addr_mask[5] &= 0x000000F0;
+		if (!ether_addr_equal_masked(emac0_ndev->dev_addr, emac1_ndev->dev_addr,
+					     hw_addr_mask))
+			netdev_warn(ndev,
+				    "MSB 44 bits of the MAC addresses of TSN EMAC0 and TSN EMAC1 are different");
+		if (!ether_addr_equal_masked(emac0_ndev->dev_addr, ndev->dev_addr, hw_addr_mask))
+			netdev_warn(ndev, "MSB 44 bits of the MAC addresses of TSN EMAC0 and TSN EP are different");
+		if (!ether_addr_equal_masked(emac0_ndev->dev_addr, ndev->dev_addr, hw_addr_mask))
+			netdev_warn(ndev, "MSB 44 bits of the MAC addresses of TSN EMAC1 and TSN EP are different");
+	}
 
 	netif_tx_start_all_queues(ndev);
 	return 0;
