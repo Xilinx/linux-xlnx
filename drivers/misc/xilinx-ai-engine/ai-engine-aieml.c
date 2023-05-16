@@ -1097,6 +1097,49 @@ static const struct aie_event_attr aieml_core_event = {
 	.num_events = 128U,
 };
 
+static const struct aie_l1_intr_ctrl_attr aieml_l1_intr_ctrl = {
+	.swa_status = {
+		.mask = GENMASK(19, 0),
+		.regoff = 0xcU,
+	},
+	.swb_status = {
+		.mask = GENMASK(19, 0),
+		.regoff = 0x3cU,
+	},
+	.swa_event = {
+		.mask = GENMASK(6, 0),
+		.regoff = 0x14U,
+	},
+	.swb_event = {
+		.mask = GENMASK(6, 0),
+		.regoff = 0x44U,
+	},
+	.regoff = 0x35000U,
+	.event_lsb = 8,
+	.num_broadcasts = 0x14U,
+};
+
+static const struct aie_l2_intr_ctrl_attr aieml_l2_intr_ctrl = {
+	.mask = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x0U,
+	},
+	.enable = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x4U,
+	},
+	.disable = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x8U,
+	},
+	.status = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0xcU,
+	},
+	.regoff = 0x15000U,
+	.num_broadcasts = 0x10U,
+};
+
 static char *aieml_core_status_str[] = {
 	"enable",
 	"reset",
@@ -2035,6 +2078,8 @@ int aieml_device_init(struct aie_device *adev)
 	adev->mem_errors = &aieml_mem_error;
 	adev->memtile_errors = &aieml_memtile_error;
 	adev->shim_errors = &aieml_shim_error;
+	adev->l1_ctrl = &aieml_l1_intr_ctrl;
+	adev->l2_ctrl = &aieml_l2_intr_ctrl;
 
 	aieml_device_init_rscs_attr(adev);
 
