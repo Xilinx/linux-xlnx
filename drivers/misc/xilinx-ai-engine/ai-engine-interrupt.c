@@ -193,13 +193,11 @@ static u32 aie_get_error_event(struct aie_partition *apart,
 /**
  * aie_get_bc_event() - get the broadcast event ID.
  * @apart: AIE partition pointer.
- * @loc: pointer to tile location.
  * @module: module type.
  * @bc_id: broadcast line ID.
  * @return: broadcast event ID.
  */
 static u32 aie_get_bc_event(struct aie_partition *apart,
-			    struct aie_location *loc,
 			    enum aie_module_type module, u8 bc_id)
 {
 	const struct aie_event_attr *event_mod;
@@ -578,7 +576,7 @@ static bool aie_l1_backtrack(struct aie_partition *apart,
 
 		temp.row = srow;
 		temp.col = l1_ctrl.col;
-		bc_event = aie_get_bc_event(apart, &temp, module,
+		bc_event = aie_get_bc_event(apart, module,
 					    AIE_ARRAY_TILE_ERROR_BC_ID);
 		for (; temp.row < erow; temp.row++) {
 			u32 reg[4];
