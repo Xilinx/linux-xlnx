@@ -1268,6 +1268,8 @@ ssize_t aie_part_read_cb_status(struct kobject *kobj, char *buffer,
 				ssize_t size);
 long aie_part_rscmgr_get_statistics(struct aie_partition *apart,
 				    void __user *user_args);
+int  aie_part_set_column_clock_from_user(struct aie_partition *apart,
+					 void __user *user_args);
 
 int aie_overlay_register_notifier(void);
 void aie_overlay_unregister_notifier(void);
