@@ -310,6 +310,18 @@ struct aie_tiles_array {
 };
 
 /**
+ * struct aie_column_args - AIE columns args
+ * @start_col : start column
+ * @num_cols : number of columns in aie
+ * @enable : enable/disable the columns
+ */
+struct aie_column_args {
+	__u32 start_col;
+	__u32 num_cols;
+	__u8 enable;
+};
+
+/**
  * struct aie_txn_inst - AIE transaction instance
  * @num_cmds: number commands containing register ops
  * @cmdsptr: pointer to the buffer containing register ops
@@ -643,4 +655,18 @@ struct aie_rsc_user_stat_array {
 #define AIE_RSC_GET_STAT_IOCTL		_IOW(AIE_IOCTL_BASE, 0x1a, \
 					struct aie_rsc_user_stat_array)
 
+/**
+ * DOC: AIE_SET_COLUMN_CLOCK_IOCTL - enable/disable the column clock
+ *
+ * This ioctl is used to enable and disable the column clock.
+ * User passes an aie_tile_array, If enable is set, It will request the
+ * AI engine partition, the kernel driver will scan the partition to track
+ * which tiles are enabled or not. After that, if user want to request for
+ * more tiles, it will use this ioctl to request more tiles.
+ * If enable is set to zero, It will release the AI engine titles
+ * If the aie_tiles_array is empty, it means it will request/release for all
+ * tiles in the partition.
+ */
+#define AIE_SET_COLUMN_CLOCK_IOCTL	_IOW(AIE_IOCTL_BASE, 0x1b, \
+					struct aie_tiles_array)
 #endif

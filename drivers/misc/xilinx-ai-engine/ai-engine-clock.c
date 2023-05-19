@@ -251,6 +251,90 @@ int aie_part_release_tiles_from_user(struct aie_partition *apart,
 }
 
 /**
+ * aie_part_set_column_clock_from_user() - enable/disable column clock register
+ *                                        from an AI engine partition from
+ *                                        user
+ * @apart: AI engine partition
+ * @user_args: user AI engine request tiles argument
+ * @return: 0 for success, negative value for failure.
+ *
+ * This function will request tiles from user request.h
+ */
+int aie_part_set_column_clock_from_user(struct aie_partition *apart,
+					void __user *user_args)
+{
+	u32 part_end_col = apart->range.start.col + apart->range.size.col - 1;
+	u32 node_id = apart->adev->pm_node_id;
+	struct aie_column_args args;
+	struct aie_location locs;
+	int ret;
+	u32 c;
+
+	if (copy_from_user(&args, user_args, sizeof(args)))
+		return -EFAULT;
+
+	if ((args.start_col + args.num_cols - 1) > part_end_col) {
+		dev_err(&apart->dev, "invalid start column/size column\n");
+		return -EINVAL;
+	}
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+
+	if (ret)
+		return ret;
+
+	if (args.enable) {
+		ret = zynqmp_pm_aie_operation(node_id, args.start_col,
+					      args.num_cols,
+					      XILINX_AIE_OPS_ENB_COL_CLK_BUFF);
+		if (ret < 0) {
+			dev_err(&apart->dev, "failed to enable clocks for partition\n");
+			goto exit;
+		}
+
+		for (c = (args.start_col + apart->range.start.col);
+				c < (args.start_col + args.num_cols); c++) {
+			int bit = aie_part_get_clk_state_bit(apart, &locs);
+
+			locs.col = c;
+			locs.row = 1;
+
+			if (bit >= 0)
+				aie_resource_set(&apart->tiles_inuse, bit, 1);
+		}
+
+		aie_resource_set(&apart->cores_clk_state, 0,
+				 apart->cores_clk_state.total);
+	} else {
+		ret = zynqmp_pm_aie_operation(node_id, args.start_col,
+					      args.num_cols,
+					      XILINX_AIE_OPS_DIS_COL_CLK_BUFF);
+		if (ret < 0) {
+			dev_err(&apart->dev, "failed to disable clocks for partition\n");
+			goto exit;
+		}
+
+		for (c = (args.start_col + apart->range.start.col);
+				c < (args.start_col + args.num_cols); c++) {
+			int bit = aie_part_get_clk_state_bit(apart, &locs);
+
+			locs.col = c;
+			locs.row = 1;
+
+			if (bit >= 0)
+				aie_resource_clear(&apart->tiles_inuse, bit, 1);
+		}
+
+		aie_resource_clear(&apart->cores_clk_state, 0,
+				   apart->cores_clk_state.total);
+	}
+
+exit:
+	mutex_unlock(&apart->mlock);
+	return ret;
+}
+
+/**
  * aie_aperture_get_freq_req() - get current required frequency of aperture
  * @aperture: AI engine aperture
  * @return: required clock frequency of the aperture which is the largest
