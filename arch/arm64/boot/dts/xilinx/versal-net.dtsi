@@ -304,9 +304,20 @@
 		};
 	};
 
+	fpga: fpga {
+		compatible = "fpga-region";
+		fpga-mgr = <&versal_fpga>;
+		#address-cells = <2>;
+		#size-cells = <2>;
+	};
+
 	timer: timer {
 		compatible = "arm,armv8-timer";
 		interrupts = <1 13 4>, <1 14 4>, <1 11 4>, <1 10 4>; /* FIXME 3rd cell */
+	};
+
+	versal_fpga: versal_fpga {
+		compatible = "xlnx,versal-fpga";
 	};
 
 	amba: axi {
