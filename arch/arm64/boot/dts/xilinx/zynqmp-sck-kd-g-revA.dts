@@ -16,9 +16,11 @@
 /plugin/;
 
 &{/} {
-	compatible = "xlnx,zynqmp-sk-kd240-revA",
+	compatible = "xlnx,zynqmp-sk-kd240-rev1",
+		     "xlnx,zynqmp-sk-kd240-revB",
+		     "xlnx,zynqmp-sk-kd240-revA",
 		     "xlnx,zynqmp-sk-kd240", "xlnx,zynqmp";
-	model = "ZynqMP KD240 revA";
+	model = "ZynqMP KD240 revA/B/1";
 
 	ina260-u3 {
 		compatible = "iio-hwmon";
