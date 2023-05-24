@@ -254,9 +254,14 @@ SND_SOC_DAILINK_DEFS(xlnx_sdi_rx,
 		     DAILINK_COMP_ARRAY(COMP_CODEC(NULL, "xlnx_sdi_rx")),
 		     DAILINK_COMP_ARRAY(COMP_PLATFORM(NULL)));
 
-SND_SOC_DAILINK_DEFS(xlnx_spdif,
+SND_SOC_DAILINK_DEFS(xlnx_spdif_tx,
 		     DAILINK_COMP_ARRAY(COMP_DUMMY()),
+		     DAILINK_COMP_ARRAY(COMP_CODEC(NULL, "xlnx_spdif_tx")),
+		     DAILINK_COMP_ARRAY(COMP_PLATFORM(NULL)));
+
+SND_SOC_DAILINK_DEFS(xlnx_spdif_rx,
 		     DAILINK_COMP_ARRAY(COMP_DUMMY()),
+		     DAILINK_COMP_ARRAY(COMP_CODEC(NULL, "xlnx_spdif_rx")),
 		     DAILINK_COMP_ARRAY(COMP_PLATFORM(NULL)));
 
 static struct snd_soc_dai_link xlnx_snd_dai[][XLNX_MAX_PATHS] = {
@@ -300,12 +305,12 @@ static struct snd_soc_dai_link xlnx_snd_dai[][XLNX_MAX_PATHS] = {
 	[SPDIF_AUDIO] = {
 		{
 			.name = "xilinx-spdif_playback",
-			SND_SOC_DAILINK_REG(xlnx_spdif),
+			SND_SOC_DAILINK_REG(xlnx_spdif_tx),
 			.ops = &xlnx_spdif_card_ops,
 		},
 		{
 			.name = "xilinx-spdif_capture",
-			SND_SOC_DAILINK_REG(xlnx_spdif),
+			SND_SOC_DAILINK_REG(xlnx_spdif_rx),
 			.ops = &xlnx_spdif_card_ops,
 		},
 	},
