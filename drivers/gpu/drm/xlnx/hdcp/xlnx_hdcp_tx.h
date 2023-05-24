@@ -17,6 +17,7 @@
 #include <linux/xlnx/xlnx_timer.h>
 #include "xlnx_hdcp2x_tx.h"
 
+#define XHDCP_KEY_WRITE_PERMISSION 0220
 enum xlnx_hdcptx_callback_type {
 	XHDCP2X_TX_HANDLER_DP_AUX_READ = 0,
 	XHDCP2X_TX_HANDLER_DP_AUX_WRITE = 1,
@@ -46,6 +47,7 @@ enum xlnx_hdcptx_authstatus {
  * information about HDCP protocol hardware engine.
  * @dev: platform device
  * @xhdcp2x: HDCP2X configuration structure
+ * @xhdcp1x: HDCP1X configuration structure
  * @xhdcptmr: Axi timer for HDCP module
  * @hdcptx_mutex: Mutex for HDCP state machine
  * @hdcp_task_monitor: Work function for HDCP
@@ -58,6 +60,7 @@ enum xlnx_hdcptx_authstatus {
 struct xlnx_hdcptx {
 	struct device *dev;
 	struct xlnx_hdcp2x_config	*xhdcp2x;
+	struct xlnx_hdcp1x_config	*xhdcp1x;
 	struct xlnx_hdcp_timer_config	*xhdcptmr;
 	struct mutex hdcptx_mutex; /* Mutex for HDCP state machine */
 	struct delayed_work  hdcp_task_monitor;
@@ -79,9 +82,10 @@ int xlnx_hdcp_tx_set_keys(struct xlnx_hdcptx *xtxhdcp, const u8 *data);
 void *xlnx_hdcp_tx_init(struct device *dev, void *protocol_ref,
 			struct xlnx_hdcptx *xtxhdcp, void __iomem *hdcp_base_address,
 			u8 is_repeater,	enum xlnx_hdcptx_protocol_type, u8 lane_count,
-			int hw_protocol);
+			int hw_protocol, void __iomem *key_base_address);
 void *xlnx_hdcp_timer_init(struct device *dev, void __iomem *interface_base);
 void xlnx_hdcp_tx_process_cp_irq(struct xlnx_hdcptx *xhdcptx);
 void xlnx_hdcp_tx_timer_exit(struct xlnx_hdcptx *xtxhdcp);
+void xlnx_hdcptx_read_ds_sink_capability(struct xlnx_hdcptx *xtxhdcp);
 
 #endif
