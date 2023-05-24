@@ -3459,7 +3459,7 @@ static int xlnx_hdcp_init(struct xlnx_hdmi *hdmi,
 						   hdmi->base + HDMI_HDCP2X_OFFSET,
 						   0, XHDCPTX_HDCP_2X,
 						   hdmi->stream.sink_max_lanes,
-						   XHDCP2X_TX_HDMI);
+						   XHDCP2X_TX_HDMI, NULL);
 
 		if (IS_ERR(xhdcp->xhdcp2x)) {
 			dev_err(hdmi->dev, "failed to initialize HDCP2X module\n");

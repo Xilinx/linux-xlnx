@@ -18,11 +18,12 @@
 #include <linux/xlnx/xlnx_hdcp_rng.h>
 #include <linux/xlnx/xlnx_hdcp_common.h>
 #include "xlnx_hdcp_tx.h"
+#include "xlnx_hdcp1x_tx.h"
 #include "xlnx_hdcp2x_tx.h"
 
 #define XDPTX_TIMER_CLOCK_FREQ_HZ 99999001U
 
-static void xlnx_hdcptx_read_ds_sink_capability(struct xlnx_hdcptx *xtxhdcp)
+void xlnx_hdcptx_read_ds_sink_capability(struct xlnx_hdcptx *xtxhdcp)
 {
 	int status = 0;
 
@@ -32,10 +33,11 @@ static void xlnx_hdcptx_read_ds_sink_capability(struct xlnx_hdcptx *xtxhdcp)
 			status = true;
 		}
 	}
-	if (xtxhdcp->hdcp1xenable && !status) {
-		xtxhdcp->hdcp_protocol = XHDCPTX_HDCP_1X;
-		status = true;
-		/*initialize HDCP1x */
+	if (xtxhdcp->hdcp1xenable) {
+		if (xlnx_hdcp1x_downstream_capbility(xtxhdcp->xhdcp1x)) {
+			xtxhdcp->hdcp_protocol = XHDCPTX_HDCP_1X;
+			status = true;
+		}
 	}
 	if (!status)
 		xtxhdcp->hdcp_protocol = XHDCPTX_HDCP_NONE;
@@ -46,22 +48,27 @@ static void hdcp_task_monitor_fun(struct work_struct *work)
 	struct xlnx_hdcptx *xtxhdcp;
 
 	xtxhdcp = container_of(work, struct xlnx_hdcptx, hdcp_task_monitor.work);
-
-	if (xtxhdcp->hdcp2xenable) {
+	if (xtxhdcp->hdcp_protocol == XHDCPTX_HDCP_2X) {
 		struct xlnx_hdcp2x_config  *xhdcp2x = xtxhdcp->xhdcp2x;
 
-		if (xtxhdcp->hdcp_protocol == XHDCPTX_HDCP_2X) {
-			mutex_lock(&xtxhdcp->hdcptx_mutex);
-			xtxhdcp->auth_status = xlnx_hdcp2x_task_monitor(xhdcp2x);
-			if (xhdcp2x->handlers.notify_handler)
-				xhdcp2x->handlers.notify_handler(xhdcp2x->interface_ref,
-								 xtxhdcp->auth_status);
-			schedule_delayed_work(&xtxhdcp->hdcp_task_monitor, 0);
-			mutex_unlock(&xtxhdcp->hdcptx_mutex);
-		} else {
-			dev_err(xhdcp2x->dev, "Downstream is HDCP1x\n");
-			dev_err(xhdcp2x->dev, "Not supported Currently\n");
-		}
+		mutex_lock(&xtxhdcp->hdcptx_mutex);
+		xtxhdcp->auth_status = xlnx_hdcp2x_task_monitor(xhdcp2x);
+		if (xhdcp2x->handlers.notify_handler)
+			xhdcp2x->handlers.notify_handler(xhdcp2x->interface_ref,
+							 xtxhdcp->auth_status);
+		mutex_unlock(&xtxhdcp->hdcptx_mutex);
+	} else if (xtxhdcp->hdcp_protocol == XHDCPTX_HDCP_1X) {
+		struct xlnx_hdcp1x_config  *xhdcp1x = xtxhdcp->xhdcp1x;
+
+		mutex_lock(&xtxhdcp->hdcptx_mutex);
+		xtxhdcp->auth_status = xlnx_hdcp1x_task_monitor(xhdcp1x);
+		if (xhdcp1x->handlers.notify_handler)
+			xhdcp1x->handlers.notify_handler(xhdcp1x->interface_ref,
+							  xtxhdcp->auth_status);
+		mutex_unlock(&xtxhdcp->hdcptx_mutex);
+	} else {
+		dev_err(xtxhdcp->dev, "Task Monitor is Failed\n");
+		dev_err(xtxhdcp->dev, "Unsupported protocol\n");
 	}
 }
 
@@ -86,14 +93,17 @@ void xlnx_hdcp_tx_process_cp_irq(struct xlnx_hdcptx *xtxhdcp)
  * @hdcp_type: HDCP protocol selection
  * @lane_count: Number of lanes data to be encrypted
  * @hw_protocol: Interface type HDMI or DP
+ * @key_base_address: HDCP Key Management base address
  * return: HDCP 1x/2x driver structure if success or return memory allocation error
  */
 void *xlnx_hdcp_tx_init(struct device *dev, void *protocol_ref,
 			struct xlnx_hdcptx *xtxhdcp, void __iomem *hdcp_base_address,
 			u8 is_repeater,	enum xlnx_hdcptx_protocol_type hdcp_type, u8 lane_count,
-			int hw_protocol)
+			int hw_protocol, void __iomem *key_base_address)
 {
 	struct xlnx_hdcp2x_config  *xhdcp2x;
+	struct xlnx_hdcp1x_config  *xhdcp1x;
+	void *hdcp_drv_address;
 	int ret;
 
 	if (hdcp_type == XHDCPTX_HDCP_2X) {
@@ -101,6 +111,7 @@ void *xlnx_hdcp_tx_init(struct device *dev, void *protocol_ref,
 		if (!xhdcp2x)
 			return ERR_PTR(-ENOMEM);
 
+		hdcp_drv_address = xhdcp2x;
 		xhdcp2x->xhdcp2x_hw.hdcp2xcore_address =
 					(void __iomem *)hdcp_base_address;
 
@@ -117,10 +128,34 @@ void *xlnx_hdcp_tx_init(struct device *dev, void *protocol_ref,
 			goto hdcp2x_error;
 		}
 	}
+	if (hdcp_type == XHDCPTX_HDCP_1X) {
+		xhdcp1x = devm_kzalloc(dev, sizeof(*xhdcp1x), GFP_KERNEL);
+		if (!xhdcp1x)
+			return ERR_PTR(-ENOMEM);
+
+		hdcp_drv_address = xhdcp1x;
+		xhdcp1x->dev = dev;
+		xhdcp1x->interface_ref = protocol_ref;
+		xhdcp1x->interface_base = hdcp_base_address;
+		xhdcp1x->is_repeater = is_repeater ? 1 : 0;
+		xhdcp1x->lane_count = lane_count;
+		xhdcp1x->hdcp1x_keymgmt_base = (void __iomem *)key_base_address;
+		ret = xlnx_hdcp1x_tx_init(xhdcp1x, xhdcp1x->is_repeater);
+		if (ret < 0) {
+			dev_err(xhdcp1x->dev, "Failed to initialize HDCP1X engine\n");
+			goto hdcp1x_error;
+		}
+	}
+	if (hdcp_type == XHDCPTX_HDCP_NONE)
+		return ERR_PTR(-ENOMEM);
+
 	mutex_init(&xtxhdcp->hdcptx_mutex);
 	INIT_DELAYED_WORK(&xtxhdcp->hdcp_task_monitor, hdcp_task_monitor_fun);
 
-	return (void *)xhdcp2x;
+	return (void *)hdcp_drv_address;
+
+hdcp1x_error:
+	devm_kfree(dev, xhdcp1x);
 
 hdcp2x_error:
 	devm_kfree(dev, xhdcp2x);
@@ -163,12 +198,21 @@ error:
 int xlnx_hdcp_tx_exit(struct xlnx_hdcptx *xtxhdcp)
 {
 	struct xlnx_hdcp2x_config  *xhdcp2x = xtxhdcp->xhdcp2x;
+	struct xlnx_hdcp1x_config  *xhdcp1x = xtxhdcp->xhdcp1x;
 
 	if (xtxhdcp->hdcp2xenable) {
 		if (xtxhdcp->xhdcp2x) {
 			devm_kfree(xtxhdcp->dev, xhdcp2x);
 		} else {
 			dev_err(xtxhdcp->dev, "HDCP2X is not initialized\n");
+			goto hdcp_error;
+		}
+	}
+	if (xtxhdcp->hdcp1xenable) {
+		if (xtxhdcp->xhdcp1x) {
+			devm_kfree(xtxhdcp->dev, xhdcp1x);
+		} else {
+			dev_err(xtxhdcp->dev, "Hdcp1x is not initialized\n");
 			goto hdcp_error;
 		}
 	}
@@ -190,6 +234,7 @@ int xlnx_hdcp_tx_set_keys(struct xlnx_hdcptx *xtxhdcp, const u8 *data)
 {
 	int ret = 0;
 	struct xlnx_hdcp2x_config  *xhdcp2x = xtxhdcp->xhdcp2x;
+	struct xlnx_hdcp1x_config  *xhdcp1x = xtxhdcp->xhdcp1x;
 	u8 local_srm[XHDCP2X_TX_SRM_SIZE];
 	u8 local_lc128[XHDCP2X_TX_LC128_SIZE];
 
@@ -202,6 +247,11 @@ int xlnx_hdcp_tx_set_keys(struct xlnx_hdcptx *xtxhdcp, const u8 *data)
 		if (ret < 0)
 			return -EINVAL;
 	}
+	if (xtxhdcp->hdcp2xenable) {
+		ret = xlnx_hdcp1x_set_keys(xhdcp1x, (u8 *)data);
+		if (ret < 0)
+			return -EINVAL;
+	}
 
 	xtxhdcp->is_enckey_available = true;
 
@@ -211,21 +261,39 @@ int xlnx_hdcp_tx_set_keys(struct xlnx_hdcptx *xtxhdcp, const u8 *data)
 int xlnx_hdcp_tx_reset(struct xlnx_hdcptx *xtxhdcp)
 {
 	int ret;
-	struct xlnx_hdcp2x_config  *xhdcp2x = xtxhdcp->xhdcp2x;
 
 	if (!(xtxhdcp->hdcp2xenable || xtxhdcp->hdcp1xenable))
 		return -EINVAL;
 
-	cancel_delayed_work_sync(&xtxhdcp->hdcp_task_monitor);
-	xtxhdcp->hdcp_protocol = XHDCPTX_HDCP_NONE;
-	mutex_lock(&xtxhdcp->hdcptx_mutex);
+	if (xtxhdcp->hdcp2xenable) {
+		struct xlnx_hdcp2x_config  *xhdcp2x = xtxhdcp->xhdcp2x;
 
-	ret = xlnx_hdcp2x_tx_reset(xhdcp2x);
-	if (ret < 0) {
+		cancel_delayed_work_sync(&xtxhdcp->hdcp_task_monitor);
+		xtxhdcp->hdcp_protocol = XHDCPTX_HDCP_NONE;
+		mutex_lock(&xtxhdcp->hdcptx_mutex);
+
+		ret = xlnx_hdcp2x_tx_reset(xhdcp2x);
+		if (ret < 0) {
+			mutex_unlock(&xtxhdcp->hdcptx_mutex);
+			return -EINVAL;
+		}
 		mutex_unlock(&xtxhdcp->hdcptx_mutex);
-		return -EINVAL;
 	}
-	mutex_unlock(&xtxhdcp->hdcptx_mutex);
+
+	if (xtxhdcp->hdcp1xenable) {
+		struct xlnx_hdcp1x_config  *xhdcp1x = xtxhdcp->xhdcp1x;
+
+		cancel_delayed_work_sync(&xtxhdcp->hdcp_task_monitor);
+		xtxhdcp->hdcp_protocol = XHDCPTX_HDCP_NONE;
+		mutex_lock(&xtxhdcp->hdcptx_mutex);
+
+		ret = xlnx_hdcp1x_tx_reset(xhdcp1x);
+		if (ret < 0) {
+			mutex_unlock(&xtxhdcp->hdcptx_mutex);
+			return -EINVAL;
+		}
+		mutex_unlock(&xtxhdcp->hdcptx_mutex);
+	}
 
 	return 0;
 }
@@ -261,11 +329,20 @@ int xlnx_start_hdcp_engine(struct xlnx_hdcptx *xtxhdcp, u8 lanecount)
 			xhdcp2x->lane_count = lanecount;
 			xlnx_start_hdcp2x_engine(xhdcp2x);
 			schedule_delayed_work(&xtxhdcp->hdcp_task_monitor, 0);
-		} else {
-			dev_err(xtxhdcp->dev, "Downstream is HDCP1x\n");
-			dev_err(xtxhdcp->dev, "Not supported Currently\n");
-			return -EINVAL;
 		}
+	} else if (xtxhdcp->hdcp1xenable) {
+		struct xlnx_hdcp1x_config  *xhdcp1x = xtxhdcp->xhdcp1x;
+
+		xlnx_hdcptx_read_ds_sink_capability(xtxhdcp);
+		if (xtxhdcp->hdcp_protocol == XHDCPTX_HDCP_1X) {
+			xhdcp1x->lane_count = lanecount;
+			xlnx_start_hdcp1x_engine(xhdcp1x);
+			schedule_delayed_work(&xtxhdcp->hdcp_task_monitor, 0);
+		}
+	} else {
+		dev_err(xtxhdcp->dev, "Downstream is HDCP1x\n");
+		dev_err(xtxhdcp->dev, "Not supported Currently\n");
+		return -EINVAL;
 	}
 
 	return 0;
@@ -297,6 +374,24 @@ int xlnx_hdcp_tx_set_callback(void *ref,
 			break;
 		}
 	}
+	if (xtxhdcp->hdcp1xenable) {
+		struct xlnx_hdcp1x_config  *xhdcp1x = xtxhdcp->xhdcp1x;
 
+		switch (callback_type) {
+		case XHDCP1X_TX_HANDLER_DP_AUX_READ:
+			xhdcp1x->handlers.rd_handler = callbackfunc;
+			break;
+		case XHDCP1X_TX_HANDLER_DP_AUX_WRITE:
+			xhdcp1x->handlers.wr_handler = callbackfunc;
+			break;
+		case XHDCP1X_TX_HANDLER_HDCP_STATUS:
+			xhdcp1x->handlers.notify_handler = callbackfunc;
+			break;
+		default:
+			dev_err(xtxhdcp->dev, "Invalid handler type\n");
+			ret = -EINVAL;
+			break;
+		}
+	}
 	return ret;
 }
