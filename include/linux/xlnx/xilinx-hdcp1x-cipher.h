@@ -96,6 +96,11 @@
 #define XHDCP1X_CIPHER_BITMASK_CIPHER_BZ_REPEATER		BIT(8)
 #define XHDCP1X_CIPHER_BITMASK_CIPHER_BZ			GENMASK(7, 0)
 #define XHDCP1X_CIPHER_SHIFT_CIPHER_B				28
+#define XHDCP1X_CIPHER_VALUE_SHIFT				32
+#define XHDCP1X_CIPHER_DWORD_VALUE				0xFFFFFFFFul
+#define XHDCP1X_CIPHER_SET_B					0x0FFFFFFFul
+#define XHDCP1X_CIPHER_DEFAULT_STREAMMAP			0x01ul
+#define XHDCP1X_CIPHER_KSV_VAL					0xFF
 
 enum xhdcp1x_cipher_request_type {
 	XHDCP1X_CIPHER_REQUEST_BLOCK = 0,
@@ -138,6 +143,15 @@ int xhdcp1x_cipher_is_linkintegrity_failed(void *ref);
 int xhdcp1x_cipher_set_ri(void *ref, bool enable);
 int xhdcp1x_cipher_is_request_to_change_ri(void *ref);
 int xhdcp1x_cipher_get_ri(void *ref, u16 *ri);
+int xhdcp1x_cipher_load_aksv(void *ref, u8 *buf);
+int xhdcp1x_cipher_do_request(void *ref, enum xhdcp1x_cipher_request_type request);
+u64 xhdcp1x_cipher_get_localksv(struct xhdcp1x_cipher *cipher);
+int xhdcp1x_cipher_getencryption(void *ref);
+int xhdcp1x_cipher_disableencryption(void *ref, u64 streammap);
+int xhdcp1x_cipher_setb(void *ref, u32 bx, u32 by, u32 bz);
+int xhdcp1x_cipher_enable_encryption(void *ref, u64 streammap);
+u64 xhdcp1x_cipher_get_mi(void *ref);
+u64 xhdcp1x_cipher_get_mo(void *ref);
 #else
 static inline void *xhdcp1x_cipher_init(struct device *dev,
 					void __iomem *hdcp1x_base)
@@ -225,6 +239,50 @@ static inline int xhdcp1x_cipher_set_ri(void *ref, bool enable)
 	return -EINVAL;
 }
 
+static inline int xhdcp1x_cipher_load_aksv(void *ref, u8 *buf)
+{
+	return -EINVAL;
+}
+
+static inline int xhdcp1x_cipher_do_request(void *ref, xhdcp1x_cipher_request_type request)
+{
+	return -EINVAL;
+}
+
+static inline u64 xhdcp1x_cipher_get_localksv(struct xhdcp1x_cipher *cipher)
+{
+	return -EINVAL;
+}
+
+static inline int xhdcp1x_cipher_getencryption(void *ref)
+{
+	return -EINVAL;
+}
+
+static inline int xhdcp1x_cipher_disableencryption(void *ref, u64 streammap)
+{
+	return -EINVAL;
+}
+
+static inline int xhdcp1x_cipher_setb(void *ref, u32 bx, u32 by, u32 bz)
+{
+	return -EINVAL;
+}
+
+static inline int xhdcp1x_cipher_enable_encryption(void *ref, u64 streammap)
+{
+	return -EINVAL;
+}
+
+static inline u64 xhdcp1x_cipher_get_mi(void *ref)
+{
+	return -EINVAL;
+}
+
+static inline u64 xhdcp1x_cipher_get_mo(void *ref)
+{
+	return -EINVAL;
+}
 #endif /* CONFIG_XLNX_HDCP1X_CIPHER */
 
 #endif /* __XILINX_HDCP1X_CIPHER_H__ */

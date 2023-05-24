@@ -60,7 +60,7 @@ static u8 xhdcp1x_cipher_is_km_ready(struct xhdcp1x_cipher *cipher)
 				    XHDCP1X_CIPHER_BITMASK_KEYMGMT_STATUS_KM_READY);
 }
 
-static u64 xhdcp1x_cipher_get_localksv(struct xhdcp1x_cipher *cipher)
+u64 xhdcp1x_cipher_get_localksv(struct xhdcp1x_cipher *cipher)
 {
 	u64 ksv;
 	u32 val;
@@ -116,8 +116,8 @@ static void xhdcp1x_cipher_config_lanes(struct xhdcp1x_cipher *cipher)
 	xhdcp1x_cipher_write(cipher, XHDCP1X_CIPHER_REG_CONTROL, value);
 }
 
-static int xhdcp1x_cipher_do_request(void *ref,
-				     enum xhdcp1x_cipher_request_type request)
+int xhdcp1x_cipher_do_request(void *ref,
+			      enum xhdcp1x_cipher_request_type request)
 {
 	struct xhdcp1x_cipher *cipher = (struct xhdcp1x_cipher *)ref;
 	u32 value;
@@ -683,3 +683,267 @@ int xhdcp1x_cipher_get_ri(void *ref, u16 *ri)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(xhdcp1x_cipher_get_ri);
+
+/**
+ * xhdcp1x_cipher_load_aksv - load local ksv from cipher to buf
+ * @ref: reference to cipher instance
+ * @buf: 5 byte buffer to store the local KSV
+ *
+ * Return: 0 on success, error otherwise.
+ */
+int xhdcp1x_cipher_load_aksv(void *ref, u8 *buf)
+{
+	struct xhdcp1x_cipher *cipher = (struct xhdcp1x_cipher *)ref;
+	u64 my_ksv;
+	u32 is_enabled;
+
+	if (!cipher || !buf)
+		return -EINVAL;
+
+	is_enabled = xhdcp1x_cipher_is_enabled(cipher);
+
+	xhdcp1x_cipher_enable(cipher);
+	my_ksv = xhdcp1x_cipher_get_localksv(cipher);
+	if (!is_enabled)
+		xhdcp1x_cipher_disable(cipher);
+	if (!my_ksv)
+		return -EAGAIN;
+	memcpy(buf, &my_ksv, XHDCP1X_CIPHER_SIZE_LOCAL_KSV);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(xhdcp1x_cipher_load_aksv);
+
+/**
+ * xhdcp1x_cipher_getencryption - This Function retrives the current encryption Stream Map.
+ * @ref: reference to cipher instance
+ *
+ * Return: streammap based on request, 0/error value otherwise.
+ */
+int xhdcp1x_cipher_getencryption(void *ref)
+{
+	struct xhdcp1x_cipher *cipher = (struct xhdcp1x_cipher *)ref;
+	u32 value = 0;
+	u64 streammap = 0;
+
+	if (!cipher)
+		return -EINVAL;
+
+	if (!(xhdcp1x_cipher_is_enabled(cipher)))
+		return streammap;
+
+	streammap = xhdcp1x_cipher_read(cipher, XHDCP1X_CIPHER_REG_ENCRYPT_ENABLE_H);
+	streammap <<= XHDCP1X_CIPHER_VALUE_SHIFT;
+	streammap |= xhdcp1x_cipher_read(cipher, XHDCP1X_CIPHER_REG_ENCRYPT_ENABLE_L);
+
+	/* Determine if there is a request in progress */
+	value = xhdcp1x_cipher_read(cipher, XHDCP1X_CIPHER_REG_CIPHER_STATUS);
+	value &= XHDCP1X_CIPHER_BITMASK_CIPHER_STATUS_XOR_IN_PROG;
+
+	if (!streammap && value)
+		streammap = XHDCP1X_CIPHER_DEFAULT_STREAMMAP;
+
+	return streammap;
+}
+EXPORT_SYMBOL_GPL(xhdcp1x_cipher_getencryption);
+
+/**
+ * xhdcp1x_cipher_disableencryption - This function disables encryption on a set of streams.
+ * @ref: reference to cipher instance
+ * @streammap: Streammap for display Audio/video content encyption
+ *
+ * Return: 0 for succes, error value otherwise.
+ */
+int xhdcp1x_cipher_disableencryption(void *ref, u64 streammap)
+{
+	u32 value = 0, checkxor = 1;
+	struct xhdcp1x_cipher *cipher = (struct xhdcp1x_cipher *)ref;
+
+	if (!(xhdcp1x_cipher_is_enabled(cipher)))
+		return -EINVAL;
+
+	if (!streammap)
+		return 0;
+
+	/* Clear the Register update bit */
+	value = xhdcp1x_cipher_read(cipher, XHDCP1X_CIPHER_REG_CONTROL);
+	value &= ~XHDCP1X_CIPHER_BITMASK_CONTROL_UPDATE;
+	xhdcp1x_cipher_write(cipher, XHDCP1X_CIPHER_REG_CONTROL, value);
+
+	/* Update the LS 32-bits */
+	value = xhdcp1x_cipher_read(cipher, XHDCP1X_CIPHER_REG_ENCRYPT_ENABLE_L);
+	value &= ~((u32)(streammap & XHDCP1X_CIPHER_DWORD_VALUE));
+	xhdcp1x_cipher_write(cipher, XHDCP1X_CIPHER_REG_ENCRYPT_ENABLE_L, value);
+	if (value)
+		checkxor = 0;
+
+	/* Update the MS 32-bits */
+	value = xhdcp1x_cipher_read(cipher, XHDCP1X_CIPHER_REG_ENCRYPT_ENABLE_H);
+	value &= ~((u32)((streammap >> XHDCP1X_CIPHER_VALUE_SHIFT) & XHDCP1X_CIPHER_DWORD_VALUE));
+	xhdcp1x_cipher_write(cipher, XHDCP1X_CIPHER_REG_ENCRYPT_ENABLE_H, value);
+	if (value)
+		checkxor = 0;
+
+	if (checkxor) {
+		value = xhdcp1x_cipher_read(cipher, XHDCP1X_CIPHER_REG_CIPHER_CONTROL);
+		value &= ~XHDCP1X_CIPHER_BITMASK_CIPHER_CONTROL_XOR_ENABLE;
+		xhdcp1x_cipher_write(cipher, XHDCP1X_CIPHER_REG_CIPHER_CONTROL, value);
+	}
+	/* Set the register update bit */
+	value = xhdcp1x_cipher_read(cipher, XHDCP1X_CIPHER_REG_CONTROL);
+	value |= XHDCP1X_CIPHER_BITMASK_CONTROL_UPDATE;
+	xhdcp1x_cipher_write(cipher, XHDCP1X_CIPHER_REG_CONTROL, value);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(xhdcp1x_cipher_disableencryption);
+
+/**
+ * xhdcp1x_cipher_setb - This function writes the contents of the B register in BM0.
+ * @ref: reference to cipher instance
+ * @x: is the value to be written to bx.
+ * @y: is the value to be written to by.
+ * @z: is the value to be written to bz.
+ *
+ * @return:
+ *		- SUCCESS if successful.
+ *		- NON_ZERO otherwise.
+ */
+int xhdcp1x_cipher_setb(void *ref, u32 bx, u32 by, u32 bz)
+{
+	struct xhdcp1x_cipher *cipher = (struct xhdcp1x_cipher *)ref;
+	u32 value = 0;
+
+	if (!(xhdcp1x_cipher_is_enabled(cipher)))
+		return -EINVAL;
+
+	/* Clear the register update bit */
+	value = xhdcp1x_cipher_read(cipher, XHDCP1X_CIPHER_REG_CONTROL);
+	value &= ~XHDCP1X_CIPHER_BITMASK_CONTROL_UPDATE;
+	xhdcp1x_cipher_write(cipher, XHDCP1X_CIPHER_REG_CONTROL, value);
+
+	/* Update the Bx */
+	value = (bx & XHDCP1X_CIPHER_SET_B);
+	xhdcp1x_cipher_write(cipher, XHDCP1X_CIPHER_REG_CIPHER_BX, value);
+
+	/* Update the By */
+	value = (by & XHDCP1X_CIPHER_SET_B);
+	xhdcp1x_cipher_write(cipher, XHDCP1X_CIPHER_REG_CIPHER_BY, value);
+
+	/* Update the Bz */
+	value = (bz & XHDCP1X_CIPHER_SET_B);
+	xhdcp1x_cipher_write(cipher, XHDCP1X_CIPHER_REG_CIPHER_BZ, value);
+
+	/* Set the register update bit */
+	value = xhdcp1x_cipher_read(cipher, XHDCP1X_CIPHER_REG_CONTROL);
+	value |= XHDCP1X_CIPHER_BITMASK_CONTROL_UPDATE;
+	xhdcp1x_cipher_write(cipher, XHDCP1X_CIPHER_REG_CONTROL, value);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(xhdcp1x_cipher_setb);
+
+/**
+ * xhdcp1x_cipher_enable_encryption - This function enables the encryption on a set of streams.
+ * @ref: reference to cipher instance
+ * @streammap: Streammap for display Audio/video content encyption
+ *
+ * Return: 0 for succes, error value otherwise.
+ */
+int xhdcp1x_cipher_enable_encryption(void *ref, u64 streammap)
+{
+	struct xhdcp1x_cipher *cipher = (struct xhdcp1x_cipher *)ref;
+	u32 value;
+
+	if (!cipher)
+		return -EINVAL;
+
+	if (!(xhdcp1x_cipher_is_enabled(cipher)))
+		return -EINVAL;
+
+	/* Check for nothing to do */
+	if (!streammap)
+		return 0;
+
+	/* Clear the register update bit */
+	value = xhdcp1x_cipher_read(cipher, XHDCP1X_CIPHER_REG_CONTROL);
+	value &= ~XHDCP1X_CIPHER_BITMASK_CONTROL_UPDATE;
+	xhdcp1x_cipher_write(cipher, XHDCP1X_CIPHER_REG_CONTROL, value);
+
+	/* Update the LS 32-bits */
+	value = xhdcp1x_cipher_read(cipher, XHDCP1X_CIPHER_REG_ENCRYPT_ENABLE_L);
+	value |= ((u32)(streammap & XHDCP1X_CIPHER_DWORD_VALUE));
+	xhdcp1x_cipher_write(cipher, XHDCP1X_CIPHER_REG_ENCRYPT_ENABLE_L, value);
+
+	/* Write the MS 32-bits */
+	value = xhdcp1x_cipher_read(cipher, XHDCP1X_CIPHER_REG_ENCRYPT_ENABLE_H);
+	value |= ((u32)((streammap >> XHDCP1X_CIPHER_VALUE_SHIFT) &
+			 XHDCP1X_CIPHER_DWORD_VALUE));
+	xhdcp1x_cipher_write(cipher, XHDCP1X_CIPHER_REG_ENCRYPT_ENABLE_H, value);
+	/* Ensure that the XOR is enabled */
+	value = xhdcp1x_cipher_read(cipher, XHDCP1X_CIPHER_REG_CIPHER_CONTROL);
+	value |= XHDCP1X_CIPHER_BITMASK_CIPHER_CONTROL_XOR_ENABLE;
+	xhdcp1x_cipher_write(cipher, XHDCP1X_CIPHER_REG_CIPHER_CONTROL, value);
+
+	/* Set the register update bit */
+	value = xhdcp1x_cipher_read(cipher, XHDCP1X_CIPHER_REG_CONTROL);
+	value |= XHDCP1X_CIPHER_BITMASK_CONTROL_UPDATE;
+	xhdcp1x_cipher_write(cipher, XHDCP1X_CIPHER_REG_CONTROL, value);
+	/* Check if XORInProgress bit is set in the status register*/
+	value = xhdcp1x_cipher_read(cipher, XHDCP1X_CIPHER_REG_CIPHER_STATUS);
+	if ((value & XHDCP1X_CIPHER_BITMASK_CIPHER_STATUS_XOR_IN_PROG)) {
+		/* Do nothing for now. We can depend on the Cipher
+		 * to set the XorInProgress in status register when
+		 * we receive protected content.
+		 */
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(xhdcp1x_cipher_enable_encryption);
+
+/**
+ * xhdcp1x_cipher_get_mi: This function reads the contents of the Mi/An register of BM0.
+ * @ref: is the device to query.
+ *
+ * @return: The contents of the register.
+ */
+u64 xhdcp1x_cipher_get_mi(void *ref)
+{
+	struct xhdcp1x_cipher *cipher = (struct xhdcp1x_cipher *)ref;
+	u64 mi = 0;
+
+	/* Check that it is not disabled */
+	if (!(xhdcp1x_cipher_is_enabled(cipher)))
+		return -EINVAL;
+
+	/* Update Mi */
+	mi = xhdcp1x_cipher_read(cipher, XHDCP1X_CIPHER_REG_CIPHER_MI_H);
+	mi <<= XHDCP1X_CIPHER_VALUE_SHIFT;
+	mi |= xhdcp1x_cipher_read(cipher, XHDCP1X_CIPHER_REG_CIPHER_MI_L);
+
+	return mi;
+}
+EXPORT_SYMBOL_GPL(xhdcp1x_cipher_get_mi);
+
+/**
+ * xhdcp1x_cipher_get_mo: This function reads the contents of the Mo register of the device.
+ * @ref: reference to cipher instance.
+ *
+ * @return: The contents of the Mo register.
+ */
+u64 xhdcp1x_cipher_get_mo(void *ref)
+{
+	struct xhdcp1x_cipher *cipher = (struct xhdcp1x_cipher *)ref;
+	u64 mo = 0;
+
+	/* Check that it is not disabled */
+	if (!(xhdcp1x_cipher_is_enabled(cipher)))
+		return -EINVAL;
+
+	/* Determine Mo */
+	mo = xhdcp1x_cipher_read(cipher, XHDCP1X_CIPHER_REG_CIPHER_MO_H);
+	mo <<= XHDCP1X_CIPHER_VALUE_SHIFT;
+	mo |= xhdcp1x_cipher_read(cipher, XHDCP1X_CIPHER_REG_CIPHER_MO_L);
+
+	return mo;
+}
