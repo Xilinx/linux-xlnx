@@ -81,4 +81,16 @@ config RPMSG_VIRTIO
 	select RPMSG_NS
 	select VIRTIO
 
+config RPMSG_VIRTIO_BUF_SIZE
+	int
+	prompt "Virtio RPMSG buffer size"
+	default 512
+	depends on RPMSG_VIRTIO
+	help
+	  Maximum virtio buffer size in bytes for rx and tx virtqueues.
+	  Each buffer will use 16 bytes for the msg header and
+	  remaining for the payload.
+
+	  Leave as default if not sure.
+
 endmenu
