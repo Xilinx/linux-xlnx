@@ -111,14 +111,13 @@ struct virtio_rpmsg_channel {
 	container_of(_rpdev, struct virtio_rpmsg_channel, rpdev)
 
 /*
- * We're allocating buffers of 512 bytes each for communications. The
- * number of buffers will be computed from the number of buffers supported
- * by the vring, upto a maximum of 512 buffers (256 in each direction).
+ * We're allocating buffers of size 512 bytes by default if not configured
+ * by CONFIG_RPMSG_VIRTIO_BUF_SIZE. The number of buffers will be
+ * computed from the number of buffers supported by the vring,
+ * upto a maximum of 512 buffers (256 in each direction).
  *
- * Each buffer will have 16 bytes for the msg header and 496 bytes for
+ * Each buffer will have 16 bytes for the msg header and remaining for
  * the payload.
- *
- * This will utilize a maximum total space of 256KB for the buffers.
  *
  * We might also want to add support for user-provided buffers in time.
  * This will allow bigger buffer size flexibility, and can also be used
@@ -129,7 +128,12 @@ struct virtio_rpmsg_channel {
  * processor.
  */
 #define MAX_RPMSG_NUM_BUFS	(512)
-#define MAX_RPMSG_BUF_SIZE	(512)
+
+#ifndef CONFIG_RPMSG_VIRTIO_BUF_SIZE
+#define MAX_RPMSG_BUF_SIZE (512)
+#else
+#define MAX_RPMSG_BUF_SIZE CONFIG_RPMSG_VIRTIO_BUF_SIZE
+#endif
 
 /*
  * Local addresses are dynamically allocated on-demand.
