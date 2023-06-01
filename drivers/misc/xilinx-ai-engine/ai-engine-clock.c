@@ -125,7 +125,7 @@ int aie_part_release_tiles(struct aie_partition *apart, int num_tiles,
 		}
 	}
 
-	return apart->adev->ops->clear_part_clocks(apart);
+	return apart->adev->ops->set_part_clocks(apart);
 }
 
 /**

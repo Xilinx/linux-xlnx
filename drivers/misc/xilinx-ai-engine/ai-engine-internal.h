@@ -354,11 +354,6 @@ struct aie_aperture;
  *		     caller to apply partition lock before calling this
  *		     function. The caller function will need to set the bitmap
  *		     on which tiles are required to be clocked on.
- * @clear_part_clocks: clear partition modules clocks gate registers based on the
- *                   partition clock states bitmap.This function expects the
- *                   caller to apply partition lock before calling this
- *                   function. The caller function will need to clear the bitmap
- *                   on which tiles are required to be clocked off.
  * @set_tile_isolation: set tile isolation boundary for input direction.
  * @mem_clear: clear data memory banks of the partition.
  * @get_dma_s2mm_status: get dma s2mm status
@@ -391,7 +386,6 @@ struct aie_tile_operations {
 	int (*init_part_clk_state)(struct aie_partition *apart);
 	int (*scan_part_clocks)(struct aie_partition *apart);
 	int (*set_part_clocks)(struct aie_partition *apart);
-	int (*clear_part_clocks)(struct aie_partition *apart);
 	int (*set_tile_isolation)(struct aie_partition *apart,
 				  struct aie_location *loc, u8 dir);
 	int (*mem_clear)(struct aie_partition *apart);
