@@ -30,6 +30,8 @@ static int io_msg_ring_data(struct io_kiocb *req)
 
 	if (msg->src_fd || msg->dst_fd || msg->flags)
 		return -EINVAL;
+	if (target_ctx->flags & IORING_SETUP_R_DISABLED)
+		return -EBADFD;
 
 	if (io_post_aux_cqe(target_ctx, msg->user_data, msg->len, 0, true))
 		return 0;
@@ -82,8 +84,12 @@ static int io_msg_send_fd(struct io_kiocb *req, unsigned int issue_flags)
 	struct file *src_file;
 	int ret;
 
+	if (msg->len)
+		return -EINVAL;
 	if (target_ctx == ctx)
 		return -EINVAL;
+	if (target_ctx->flags & IORING_SETUP_R_DISABLED)
+		return -EBADFD;
 
 	ret = io_double_lock_ctx(ctx, target_ctx, issue_flags);
 	if (unlikely(ret))
@@ -116,7 +122,7 @@ static int io_msg_send_fd(struct io_kiocb *req, unsigned int issue_flags)
 	 * completes with -EOVERFLOW, then the sender must ensure that a
 	 * later IORING_OP_MSG_RING delivers the message.
 	 */
-	if (!io_post_aux_cqe(target_ctx, msg->user_data, msg->len, 0, true))
+	if (!io_post_aux_cqe(target_ctx, msg->user_data, ret, 0, true))
 		ret = -EOVERFLOW;
 out_unlock:
 	io_double_unlock_ctx(ctx, target_ctx, issue_flags);

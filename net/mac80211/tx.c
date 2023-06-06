@@ -1295,7 +1295,8 @@ ieee80211_tx_prepare(struct ieee80211_sub_if_data *sdata,
 	if (!(info->flags & IEEE80211_TX_CTL_DONTFRAG)) {
 		if (!(tx->flags & IEEE80211_TX_UNICAST) ||
 		    skb->len + FCS_LEN <= local->hw.wiphy->frag_threshold ||
-		    info->flags & IEEE80211_TX_CTL_AMPDU)
+		    (info->flags & IEEE80211_TX_CTL_AMPDU &&
+		     !local->ops->wake_tx_queue))
 			info->flags |= IEEE80211_TX_CTL_DONTFRAG;
 	}
 
@@ -3709,13 +3710,16 @@ struct sk_buff *ieee80211_tx_dequeue(struct ieee80211_hw *hw,
 	struct ieee80211_local *local = hw_to_local(hw);
 	struct txq_info *txqi = container_of(txq, struct txq_info, txq);
 	struct ieee80211_hdr *hdr;
-	struct sk_buff *skb = NULL;
 	struct fq *fq = &local->fq;
 	struct fq_tin *tin = &txqi->tin;
 	struct ieee80211_tx_info *info;
 	struct ieee80211_tx_data tx;
+	struct sk_buff *skb;
 	ieee80211_tx_result r;
 	struct ieee80211_vif *vif = txq->vif;
+	int q = vif->hw_queue[txq->ac];
+	unsigned long flags;
+	bool q_stopped;
 
 	WARN_ON_ONCE(softirq_count() == 0);
 
@@ -3723,16 +3727,17 @@ struct sk_buff *ieee80211_tx_dequeue(struct ieee80211_hw *hw,
 		return NULL;
 
 begin:
-	spin_lock_bh(&fq->lock);
+	spin_lock_irqsave(&local->queue_stop_reason_lock, flags);
+	q_stopped = local->queue_stop_reasons[q];
+	spin_unlock_irqrestore(&local->queue_stop_reason_lock, flags);
 
-	if (test_bit(IEEE80211_TXQ_STOP, &txqi->flags) ||
-	    test_bit(IEEE80211_TXQ_STOP_NETIF_TX, &txqi->flags))
-		goto out;
-
-	if (vif->txqs_stopped[txq->ac]) {
-		set_bit(IEEE80211_TXQ_STOP_NETIF_TX, &txqi->flags);
-		goto out;
+	if (unlikely(q_stopped)) {
+		/* mark for waking later */
+		set_bit(IEEE80211_TXQ_DIRTY, &txqi->flags);
+		return NULL;
 	}
+
+	spin_lock_bh(&fq->lock);
 
 	/* Make sure fragments stay together. */
 	skb = __skb_dequeue(&txqi->frags);
@@ -3743,6 +3748,9 @@ begin:
 		IEEE80211_SKB_CB(skb)->control.flags &=
 			~IEEE80211_TX_INTCFL_NEED_TXPROCESSING;
 	} else {
+		if (unlikely(test_bit(IEEE80211_TXQ_STOP, &txqi->flags)))
+			goto out;
+
 		skb = fq_tin_dequeue(fq, tin, fq_tin_dequeue_func);
 	}
 
@@ -3793,7 +3801,8 @@ begin:
 	}
 
 	if (test_bit(IEEE80211_TXQ_AMPDU, &txqi->flags))
-		info->flags |= IEEE80211_TX_CTL_AMPDU;
+		info->flags |= (IEEE80211_TX_CTL_AMPDU |
+				IEEE80211_TX_CTL_DONTFRAG);
 	else
 		info->flags &= ~IEEE80211_TX_CTL_AMPDU;
 
@@ -4387,7 +4396,7 @@ static void ieee80211_mlo_multicast_tx(struct net_device *dev,
 	u32 ctrl_flags = IEEE80211_TX_CTRL_MCAST_MLO_FIRST_TX;
 
 	if (hweight16(links) == 1) {
-		ctrl_flags |= u32_encode_bits(ffs(links) - 1,
+		ctrl_flags |= u32_encode_bits(__ffs(links),
 					      IEEE80211_TX_CTRL_MLO_LINK);
 
 		__ieee80211_subif_start_xmit(skb, sdata->dev, 0, ctrl_flags,

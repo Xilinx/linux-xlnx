@@ -125,9 +125,8 @@ static void osnoise_unregister_instance(struct trace_array *tr)
 	 * register/unregister serialization is provided by trace's
 	 * trace_types_lock.
 	 */
-	lockdep_assert_held(&trace_types_lock);
-
-	list_for_each_entry_rcu(inst, &osnoise_instances, list) {
+	list_for_each_entry_rcu(inst, &osnoise_instances, list,
+				lockdep_is_held(&trace_types_lock)) {
 		if (inst->tr == tr) {
 			list_del_rcu(&inst->list);
 			found = 1;
@@ -1271,7 +1270,7 @@ static void notify_new_max_latency(u64 latency)
 	rcu_read_lock();
 	list_for_each_entry_rcu(inst, &osnoise_instances, list) {
 		tr = inst->tr;
-		if (tr->max_latency < latency) {
+		if (tracer_tracing_is_on(tr) && tr->max_latency < latency) {
 			tr->max_latency = latency;
 			latency_fsnotify(tr);
 		}
@@ -1681,6 +1680,8 @@ static int timerlat_main(void *data)
 		s.context = THREAD_CONTEXT;
 
 		trace_timerlat_sample(&s);
+
+		notify_new_max_latency(diff);
 
 		timerlat_dump_stack(time_to_us(diff));
 

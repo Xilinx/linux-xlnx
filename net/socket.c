@@ -449,7 +449,9 @@ static struct file_system_type sock_fs_type = {
  *
  *	Returns the &file bound with @sock, implicitly storing it
  *	in sock->file. If dname is %NULL, sets to "".
- *	On failure the return is a ERR pointer (see linux/err.h).
+ *
+ *	On failure @sock is released, and an ERR pointer is returned.
+ *
  *	This function uses GFP_KERNEL internally.
  */
 
@@ -750,7 +752,7 @@ EXPORT_SYMBOL(sock_sendmsg);
 int kernel_sendmsg(struct socket *sock, struct msghdr *msg,
 		   struct kvec *vec, size_t num, size_t size)
 {
-	iov_iter_kvec(&msg->msg_iter, WRITE, vec, num, size);
+	iov_iter_kvec(&msg->msg_iter, ITER_SOURCE, vec, num, size);
 	return sock_sendmsg(sock, msg);
 }
 EXPORT_SYMBOL(kernel_sendmsg);
@@ -776,7 +778,7 @@ int kernel_sendmsg_locked(struct sock *sk, struct msghdr *msg,
 	if (!sock->ops->sendmsg_locked)
 		return sock_no_sendmsg_locked(sk, msg, size);
 
-	iov_iter_kvec(&msg->msg_iter, WRITE, vec, num, size);
+	iov_iter_kvec(&msg->msg_iter, ITER_SOURCE, vec, num, size);
 
 	return sock->ops->sendmsg_locked(sk, msg, msg_data_left(msg));
 }
@@ -971,9 +973,12 @@ static inline void sock_recv_drops(struct msghdr *msg, struct sock *sk,
 static void sock_recv_mark(struct msghdr *msg, struct sock *sk,
 			   struct sk_buff *skb)
 {
-	if (sock_flag(sk, SOCK_RCVMARK) && skb)
-		put_cmsg(msg, SOL_SOCKET, SO_MARK, sizeof(__u32),
-			 &skb->mark);
+	if (sock_flag(sk, SOCK_RCVMARK) && skb) {
+		/* We must use a bounce buffer for CONFIG_HARDENED_USERCOPY=y */
+		__u32 mark = skb->mark;
+
+		put_cmsg(msg, SOL_SOCKET, SO_MARK, sizeof(__u32), &mark);
+	}
 }
 
 void __sock_recv_cmsgs(struct msghdr *msg, struct sock *sk,
@@ -1034,7 +1039,7 @@ int kernel_recvmsg(struct socket *sock, struct msghdr *msg,
 		   struct kvec *vec, size_t num, size_t size, int flags)
 {
 	msg->msg_control_is_user = false;
-	iov_iter_kvec(&msg->msg_iter, READ, vec, num, size);
+	iov_iter_kvec(&msg->msg_iter, ITER_DEST, vec, num, size);
 	return sock_recvmsg(sock, msg, flags);
 }
 EXPORT_SYMBOL(kernel_recvmsg);
@@ -1610,7 +1615,6 @@ static struct socket *__sys_socket_create(int family, int type, int protocol)
 struct file *__sys_socket_file(int family, int type, int protocol)
 {
 	struct socket *sock;
-	struct file *file;
 	int flags;
 
 	sock = __sys_socket_create(family, type, protocol);
@@ -1621,11 +1625,7 @@ struct file *__sys_socket_file(int family, int type, int protocol)
 	if (SOCK_NONBLOCK != O_NONBLOCK && (flags & SOCK_NONBLOCK))
 		flags = (flags & ~SOCK_NONBLOCK) | O_NONBLOCK;
 
-	file = sock_alloc_file(sock, flags, NULL);
-	if (IS_ERR(file))
-		sock_release(sock);
-
-	return file;
+	return sock_alloc_file(sock, flags, NULL);
 }
 
 int __sys_socket(int family, int type, int protocol)
@@ -2092,7 +2092,7 @@ int __sys_sendto(int fd, void __user *buff, size_t len, unsigned int flags,
 	struct iovec iov;
 	int fput_needed;
 
-	err = import_single_range(WRITE, buff, len, &iov, &msg.msg_iter);
+	err = import_single_range(ITER_SOURCE, buff, len, &iov, &msg.msg_iter);
 	if (unlikely(err))
 		return err;
 	sock = sockfd_lookup_light(fd, &err, &fput_needed);
@@ -2157,7 +2157,7 @@ int __sys_recvfrom(int fd, void __user *ubuf, size_t size, unsigned int flags,
 	int err, err2;
 	int fput_needed;
 
-	err = import_single_range(READ, ubuf, size, &iov, &msg.msg_iter);
+	err = import_single_range(ITER_DEST, ubuf, size, &iov, &msg.msg_iter);
 	if (unlikely(err))
 		return err;
 	sock = sockfd_lookup_light(fd, &err, &fput_needed);
@@ -2417,7 +2417,7 @@ static int copy_msghdr_from_user(struct msghdr *kmsg,
 	if (err)
 		return err;
 
-	err = import_iovec(save_addr ? READ : WRITE,
+	err = import_iovec(save_addr ? ITER_DEST : ITER_SOURCE,
 			    msg.msg_iov, msg.msg_iovlen,
 			    UIO_FASTIOV, iov, &kmsg->msg_iter);
 	return err < 0 ? err : 0;
@@ -2890,7 +2890,7 @@ static int do_recvmmsg(int fd, struct mmsghdr __user *mmsg,
 		 * error to return on the next call or if the
 		 * app asks about it using getsockopt(SO_ERROR).
 		 */
-		sock->sk->sk_err = -err;
+		WRITE_ONCE(sock->sk->sk_err, -err);
 	}
 out_put:
 	fput_light(sock->file, fput_needed);

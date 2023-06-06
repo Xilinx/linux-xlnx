@@ -121,7 +121,7 @@ static int fpga_bridge_dev_match(struct device *dev, const void *data)
 /**
  * fpga_bridge_get - get an exclusive reference to an fpga bridge
  * @dev:	parent device that fpga bridge was registered with
- * @info:	fpga manager info
+ * @info:	fpga image specific information
  *
  * Given a device, get an exclusive reference to an fpga bridge.
  *
@@ -390,7 +390,6 @@ fpga_bridge_register(struct device *parent, const char *name,
 	bridge->dev.parent = parent;
 	bridge->dev.of_node = parent->of_node;
 	bridge->dev.id = id;
-	of_platform_populate(bridge->dev.of_node, NULL, NULL, &bridge->dev);
 
 	ret = dev_set_name(&bridge->dev, "br%d", id);
 	if (ret)
@@ -401,6 +400,8 @@ fpga_bridge_register(struct device *parent, const char *name,
 		put_device(&bridge->dev);
 		return ERR_PTR(ret);
 	}
+
+	of_platform_populate(bridge->dev.of_node, NULL, NULL, &bridge->dev);
 
 	return bridge;
 

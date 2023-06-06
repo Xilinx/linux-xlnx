@@ -304,9 +304,9 @@ irqreturn_t lan966x_ptp_irq_handler(int irq, void *args)
 		if (WARN_ON(!skb_match))
 			continue;
 
-		spin_lock(&lan966x->ptp_ts_id_lock);
+		spin_lock_irqsave(&lan966x->ptp_ts_id_lock, flags);
 		lan966x->ptp_skbs--;
-		spin_unlock(&lan966x->ptp_ts_id_lock);
+		spin_unlock_irqrestore(&lan966x->ptp_ts_id_lock, flags);
 
 		/* Get the h/w timestamp */
 		lan966x_get_hwtimestamp(lan966x, &ts, delay);
@@ -852,6 +852,9 @@ void lan966x_ptp_deinit(struct lan966x *lan966x)
 {
 	struct lan966x_port *port;
 	int i;
+
+	if (!lan966x->ptp)
+		return;
 
 	for (i = 0; i < lan966x->num_phys_ports; i++) {
 		port = lan966x->ports[i];

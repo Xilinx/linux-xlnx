@@ -211,9 +211,9 @@ static int ttc_pwm_apply(struct pwm_chip *chip,
 	return 0;
 }
 
-static void ttc_pwm_get_state(struct pwm_chip *chip,
-			      struct pwm_device *pwm,
-			      struct pwm_state *state)
+static int ttc_pwm_get_state(struct pwm_chip *chip,
+			     struct pwm_device *pwm,
+			     struct pwm_state *state)
 {
 	struct ttc_pwm_priv *priv = xilinx_pwm_chip_to_priv(chip);
 	unsigned long rate;
@@ -239,6 +239,8 @@ static void ttc_pwm_get_state(struct pwm_chip *chip,
 
 	tmp = ttc_pwm_ch_readl(priv, pwm, TTC_MATCH_CNT_VAL_OFFSET);
 	state->duty_cycle = DIV_ROUND_CLOSEST_ULL(tmp, rate);
+
+	return 0;
 }
 
 static struct pwm_device *
