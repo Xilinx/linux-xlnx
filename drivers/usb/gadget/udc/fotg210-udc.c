@@ -706,6 +706,20 @@ static int fotg210_is_epnstall(struct fotg210_ep *ep)
 	return value & INOUTEPMPSR_STL_EP ? 1 : 0;
 }
 
+/* For EP0 requests triggered by this driver (currently GET_STATUS response) */
+static void fotg210_ep0_complete(struct usb_ep *_ep, struct usb_request *req)
+{
+	struct fotg210_ep *ep;
+	struct fotg210_udc *fotg210;
+
+	ep = container_of(_ep, struct fotg210_ep, ep);
+	fotg210 = ep->fotg210;
+
+	if (req->status || req->actual != req->length) {
+		dev_warn(&fotg210->gadget.dev, "EP0 request failed: %d\n", req->status);
+	}
+}
+
 static void fotg210_get_status(struct fotg210_udc *fotg210,
 				struct usb_ctrlrequest *ctrl)
 {
@@ -1009,7 +1023,6 @@ static int fotg210_udc_start(struct usb_gadget *g,
 	u32 value;
 
 	/* hook up the driver */
-	driver->driver.bus = NULL;
 	fotg210->driver = driver;
 
 	/* enable device global interrupt */
@@ -1171,6 +1184,8 @@ static int fotg210_udc_probe(struct platform_device *pdev)
 				GFP_KERNEL);
 	if (fotg210->ep0_req == NULL)
 		goto err_map;
+
+	fotg210->ep0_req->complete = fotg210_ep0_complete;
 
 	fotg210_init(fotg210);
 

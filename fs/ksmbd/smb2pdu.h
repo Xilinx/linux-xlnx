@@ -24,8 +24,9 @@
 
 #define SMB21_DEFAULT_IOSIZE	(1024 * 1024)
 #define SMB3_DEFAULT_TRANS_SIZE	(1024 * 1024)
-#define SMB3_MIN_IOSIZE	(64 * 1024)
-#define SMB3_MAX_IOSIZE	(8 * 1024 * 1024)
+#define SMB3_MIN_IOSIZE		(64 * 1024)
+#define SMB3_MAX_IOSIZE		(8 * 1024 * 1024)
+#define SMB3_MAX_MSGSIZE	(4 * 4096)
 
 /*
  *	Definitions for SMB2 Protocol Data Units (network frames)
@@ -59,6 +60,8 @@ struct preauth_integrity_info {
 #define SMB2_SESSION_EXPIRED		(0)
 #define SMB2_SESSION_IN_PROGRESS	BIT(0)
 #define SMB2_SESSION_VALID		BIT(1)
+
+#define SMB2_SESSION_TIMEOUT		(10 * HZ)
 
 struct create_durable_req_v2 {
 	struct create_context ccontext;

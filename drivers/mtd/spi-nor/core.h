@@ -136,9 +136,11 @@ enum spi_nor_option_flags {
 	SNOR_F_IO_MODE_EN_VOLATILE = BIT(11),
 	SNOR_F_SOFT_RESET	= BIT(12),
 	SNOR_F_SWP_IS_VOLATILE	= BIT(13),
-	SNOR_F_HAS_STACKED      = BIT(14),
-	SNOR_F_HAS_PARALLEL	= BIT(15),
-	SNOR_F_HAS_SR_BP3_BIT5	= BIT(16),
+	SNOR_F_RWW		= BIT(14),
+	SNOR_F_ECC		= BIT(15),
+	SNOR_F_HAS_STACKED	= BIT(16),
+	SNOR_F_HAS_PARALLEL	= BIT(17),
+	SNOR_F_HAS_SR_BP3_BIT5	= BIT(18),
 };
 
 struct spi_nor_read_command {
@@ -467,6 +469,8 @@ struct spi_nor_fixups {
  *   SPI_NOR_NO_ERASE:        no erase command needed.
  *   NO_CHIP_ERASE:           chip does not support chip erase.
  *   SPI_NOR_NO_FR:           can't do fastread.
+ *   SPI_NOR_QUAD_PP:         flash supports Quad Input Page Program.
+ *   SPI_NOR_RWW:             flash supports reads while write.
  *   SPI_NOR_BP3_SR_BIT5:     BP3 is bit 5 of status register,
  *                            must be used with SPI_NOR_4BIT_BP
  *   SST_GLOBAL_PROT_UNLK:    Unlock the Global protection for sst flashes.
@@ -522,8 +526,10 @@ struct flash_info {
 #define SPI_NOR_NO_ERASE		BIT(6)
 #define NO_CHIP_ERASE			BIT(7)
 #define SPI_NOR_NO_FR			BIT(8)
-#define SPI_NOR_BP3_SR_BIT5		BIT(9)
-#define SST_GLOBAL_PROT_UNLK            BIT(10)
+#define SPI_NOR_QUAD_PP			BIT(9)
+#define SPI_NOR_RWW			BIT(10)
+#define SPI_NOR_BP3_SR_BIT5		BIT(11)
+#define SST_GLOBAL_PROT_UNLK		BIT(12)
 
 	u8 no_sfdp_flags;
 #define SPI_NOR_SKIP_SFDP		BIT(0)
@@ -702,6 +708,7 @@ void spi_nor_set_pp_settings(struct spi_nor_pp_command *pp, u8 opcode,
 
 void spi_nor_set_erase_type(struct spi_nor_erase_type *erase, u32 size,
 			    u8 opcode);
+void spi_nor_mask_erase_type(struct spi_nor_erase_type *erase);
 struct spi_nor_erase_region *
 spi_nor_region_next(struct spi_nor_erase_region *region);
 void spi_nor_init_uniform_erase_map(struct spi_nor_erase_map *map,
@@ -728,8 +735,10 @@ static inline struct spi_nor *mtd_to_spi_nor(struct mtd_info *mtd)
 
 #ifdef CONFIG_DEBUG_FS
 void spi_nor_debugfs_register(struct spi_nor *nor);
+void spi_nor_debugfs_shutdown(void);
 #else
 static inline void spi_nor_debugfs_register(struct spi_nor *nor) {}
+static inline void spi_nor_debugfs_shutdown(void) {}
 #endif
 
 #endif /* __LINUX_MTD_SPI_NOR_INTERNAL_H */
