@@ -733,49 +733,37 @@
 		};
 
 		wwdt0: watchdog@ecc10000 {
-			compatible = "xlnx,versal-wwdt-1.0";
+			compatible = "xlnx,versal-wwdt";
 			status = "okay";
 			reg = <0 0xecc10000 0 0x10000>;
-			interrupt-names = "wdt", "wwdt_reset_pending";
-			interrupts = <0 139 1>, <0 140 1>;
 			timeout-sec = <30>;
-			pretimeout-sec = <25>;
 			clocks = <&versal_net_clk FPD_WWDT>;
 			power-domains = <&versal_net_firmware PM_DEV_FPD_SWDT_0>;
 		};
 
 		wwdt1: watchdog@ecd10000 {
-			compatible = "xlnx,versal-wwdt-1.0";
+			compatible = "xlnx,versal-wwdt";
 			status = "okay";
 			reg = <0 0xecd10000 0 0x10000>;
-			interrupt-names = "wdt", "wwdt_reset_pending";
-			interrupts = <0 143 1>, <0 144 1>;
 			timeout-sec = <30>;
-			pretimeout-sec = <25>;
 			clocks = <&versal_net_clk FPD_WWDT>;
 			power-domains = <&versal_net_firmware PM_DEV_FPD_SWDT_1>;
 		};
 
 		wwdt2: watchdog@ece10000 {
-			compatible = "xlnx,versal-wwdt-1.0";
+			compatible = "xlnx,versal-wwdt";
 			status = "okay";
 			reg = <0 0xece10000 0 0x10000>;
-			interrupt-names = "wdt", "wwdt_reset_pending";
-			interrupts = <0 147 1>,  <0 148 1>;
 			timeout-sec = <30>;
-			pretimeout-sec = <25>;
 			clocks = <&versal_net_clk FPD_WWDT>;
 			power-domains = <&versal_net_firmware PM_DEV_FPD_SWDT_2>;
 		};
 
 		wwdt3: watchdog@ecf10000 {
-			compatible = "xlnx,versal-wwdt-1.0";
+			compatible = "xlnx,versal-wwdt";
 			status = "okay";
 			reg = <0 0xecf10000 0 0x10000>;
-			interrupt-names = "wdt", "wwdt_reset_pending";
-			interrupts = <0 164 1>, <0 165 1>;
 			timeout-sec = <30>;
-			pretimeout-sec = <25>;
 			clocks = <&versal_net_clk FPD_WWDT>;
 			power-domains = <&versal_net_firmware PM_DEV_FPD_SWDT_3>;
 		};
