@@ -734,5 +734,19 @@
 			reg = <0 0xecf10000 0 0x10000>;
 			timeout-sec = <30>;
 		};
+
+		lpd_wwdt0: watchdog@ea420000 {
+			compatible = "xlnx,versal-wwdt";
+			status = "disabled";
+			reg = <0 0xea420000 0 0x10000>;
+			timeout-sec = <30>;
+		};
+
+		lpd_wwdt1: watchdog@ea430000 {
+			compatible = "xlnx,versal-wwdt";
+			status = "disabled";
+			reg = <0 0xea430000 0 0x10000>;
+			timeout-sec = <30>;
+		};
 	};
 };

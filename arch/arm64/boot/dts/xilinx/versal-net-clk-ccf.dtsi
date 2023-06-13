@@ -407,3 +407,13 @@
 	clocks = <&versal_net_clk FPD_WWDT>;
 	power-domains = <&versal_net_firmware PM_DEV_FPD_SWDT_3>;
 };
+
+&lpd_wwdt0 {
+	clocks = <&versal_net_clk LPD_WWDT>;
+	power-domains = <&versal_net_firmware PM_DEV_LPD_SWDT_0>;
+};
+
+&lpd_wwdt1 {
+	clocks = <&versal_net_clk LPD_WWDT>;
+	power-domains = <&versal_net_firmware PM_DEV_LPD_SWDT_1>;
+};
