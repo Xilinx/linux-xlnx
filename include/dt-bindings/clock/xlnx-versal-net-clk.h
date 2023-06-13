@@ -23,6 +23,7 @@
 #define I3C0_REF	0x9D
 #define I3C1_REF	0x9F
 #define USB1_BUS_REF	0xAE
+#define LPD_WWDT	0xAD
 
 /* Remove Versal specific node IDs */
 #undef APU_PLL

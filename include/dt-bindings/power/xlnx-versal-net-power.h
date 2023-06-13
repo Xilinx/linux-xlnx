@@ -18,6 +18,8 @@
 #define PM_DEV_TCM_A_0B				(0x183180CCU)
 #define PM_DEV_TCM_A_0C				(0x183180CDU)
 #define PM_DEV_RPU_A_0				(0x181100BFU)
+#define PM_DEV_LPD_SWDT_0			(0x182240D9U)
+#define PM_DEV_LPD_SWDT_1			(0x182240DAU)
 
 /* Remove Versal specific node IDs */
 #undef PM_DEV_RPU0_0

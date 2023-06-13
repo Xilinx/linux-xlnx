@@ -231,3 +231,11 @@
 &wwdt3 {
 	clocks = <&clk150>;
 };
+
+&lpd_wwdt0 {
+	clocks = <&clk150>;
+};
+
+&lpd_wwdt1 {
+	clocks = <&clk150>;
+};
