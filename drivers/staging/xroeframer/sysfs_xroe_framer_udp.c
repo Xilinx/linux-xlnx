@@ -166,7 +166,7 @@ int xroe_sysfs_udp_init(void)
 }
 
 /**
- * xroe_sysfs_ipv6_exit - Deletes the xroe sysfs "udp" subdirectory & entries
+ * xroe_sysfs_udp_exit - Deletes the xroe sysfs "udp" subdirectory & entries
  *
  * Deletes the xroe sysfs "udp" subdirectory and entries,
  * under the "xroe" entry

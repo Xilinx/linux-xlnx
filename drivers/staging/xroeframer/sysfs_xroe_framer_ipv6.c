@@ -494,7 +494,7 @@ int xroe_sysfs_ipv6_init(void)
 }
 
 /**
- * xroe_sysfs_ipv4_exit - Deletes the xroe sysfs "ipv6" subdirectory & entries
+ * xroe_sysfs_ipv6_exit - Deletes the xroe sysfs "ipv6" subdirectory & entries
  *
  * Deletes the xroe sysfs "ipv6" subdirectory and entries,
  * under the "xroe" entry
