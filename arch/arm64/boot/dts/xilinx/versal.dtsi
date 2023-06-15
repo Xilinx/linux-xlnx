@@ -607,6 +607,7 @@
 		};
 
 		cpm_pciea: pci@fca10000 {
+			device_type = "pci";
 			#address-cells = <3>;
 			#interrupt-cells = <1>;
 			#size-cells = <2>;
@@ -619,6 +620,8 @@
 			interrupt-map-mask = <0 0 0 7>;
 			interrupt-names = "misc";
 			interrupts = <0 72 4>;
+			interrupt-parent = <&gic>;
+			bus-range = <0x00 0xff>;
 			ranges = <0x02000000 0x00000000 0xe0000000 0x0 0xe0000000 0x00000000 0x10000000>,
 				 <0x43000000 0x00000080 0x00000000 0x00000080 0x00000000 0x00000000 0x80000000>;
 			msi-map = <0x0 &gic_its 0x0 0x10000>;
