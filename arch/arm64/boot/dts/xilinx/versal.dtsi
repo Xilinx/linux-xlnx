@@ -625,7 +625,7 @@
 			reg = <0x0 0xfca10000 0x0 0x1000>,
 			      <0x6 0x00000000 0x0 0x1000000>;
 			reg-names = "cpm_slcr", "cfg";
-			pcie_intc_0: pci-interrupt-controller {
+			pcie_intc_0: interrupt-controller {
 				#address-cells = <0>;
 				#interrupt-cells = <1>;
 				interrupt-controller ;
