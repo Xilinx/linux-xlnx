@@ -331,7 +331,7 @@ static void xlnx_fbdev_defio_fini(struct fb_info *fbi)
 }
 
 /**
- * xlnx_fbdev_fini - Free the Xilinx framebuffer
+ * xlnx_fb_fini - Free the Xilinx framebuffer
  * @fb_helper: drm_fb_helper struct
  *
  * This function is based on drm_fbdev_cma_fini().
