@@ -92,16 +92,16 @@
 	};
 };
 
-&spi0 {
+&spi1 {
 	status = "okay";
-	num-cs = <1>;
+	num-cs = <3>;
 	#address-cells = <1>;
 	#size-cells = <0>;
 
-	flash@0 { /* u397 MX25U3232 - FIXME not supported in U-Boot/Linux */
+	flash@2 { /* u397 MX25U3232 - FIXME not supported in U-Boot/Linux */
 		compatible = "m25p80";
 		spi-max-frequency = <5000000>;
-		reg = <0>;
+		reg = <2>;
 
 		partitions {
 			compatible = "fixed-partitions";
