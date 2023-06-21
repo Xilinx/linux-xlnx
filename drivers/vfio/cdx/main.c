@@ -8,25 +8,10 @@
 
 #include "private.h"
 
-static struct cdx_driver vfio_cdx_driver;
-
 static void vfio_cdx_release_device(struct vfio_device *core_vdev)
 {
 	vfio_free_device(core_vdev);
 }
-
-/**
- * CDX_DRIVER_OVERRIDE_DEVICE_VFIO - macro used to describe a VFIO
- *                                   "driver_override" CDX device.
- * @vend: the 16 bit CDX Vendor ID
- * @dev: the 16 bit CDX Device ID
- *
- * This macro is used to create a struct cdx_device_id that matches a
- * specific device. driver_override will be set to
- * CDX_ID_F_VFIO_DRIVER_OVERRIDE.
- */
-#define CDX_DRIVER_OVERRIDE_DEVICE_VFIO(vend, dev) \
-	CDX_DEVICE_DRIVER_OVERRIDE(vend, dev, CDX_ID_F_VFIO_DRIVER_OVERRIDE)
 
 static int vfio_cdx_open_device(struct vfio_device *core_vdev)
 {
@@ -63,24 +48,13 @@ static int vfio_cdx_open_device(struct vfio_device *core_vdev)
 	return 0;
 }
 
-static void vfio_cdx_regions_cleanup(struct vfio_cdx_device *vdev)
-{
-	kfree(vdev->regions);
-}
-
 static void vfio_cdx_close_device(struct vfio_device *core_vdev)
 {
 	struct vfio_cdx_device *vdev =
 		container_of(core_vdev, struct vfio_cdx_device, vdev);
-	int ret;
 
-	vfio_cdx_regions_cleanup(vdev);
-
-	/* reset the device before cleaning up the interrupts */
-	ret = cdx_dev_reset(core_vdev->dev);
-	if (ret)
-		dev_warn(core_vdev->dev,
-			 "VFIO_CDX: reset device has failed (%d)\n", ret);
+	kfree(vdev->regions);
+	cdx_dev_reset(core_vdev->dev);
 
 	vfio_cdx_irqs_cleanup(vdev);
 }
@@ -305,7 +279,8 @@ static int vfio_cdx_remove(struct cdx_device *cdx_dev)
 }
 
 static const struct cdx_device_id vfio_cdx_table[] = {
-	{ CDX_DRIVER_OVERRIDE_DEVICE_VFIO(CDX_ANY_ID, CDX_ANY_ID) }, /* match all by default */
+	{ CDX_DEVICE_DRIVER_OVERRIDE(CDX_ANY_ID, CDX_ANY_ID,
+				     CDX_ID_F_VFIO_DRIVER_OVERRIDE) }, /* match all by default */
 	{}
 };
 
