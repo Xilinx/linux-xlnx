@@ -168,8 +168,8 @@ int cdx_mcdi_write_msi(struct cdx_mcdi *cdx, u8 bus_num, u8 dev_num,
 	MCDI_SET_QWORD(inbuf, CDX_DEVICE_WRITE_MSI_MSG_IN_MSI_ADDRESS, msi_address);
 	MCDI_SET_DWORD(inbuf, CDX_DEVICE_WRITE_MSI_MSG_IN_MSI_DATA, msi_data);
 
-	ret = cdx_mcdi_rpc_async(cdx, MC_CMD_CDX_DEVICE_WRITE_MSI_MSG, inbuf,
-				 sizeof(inbuf), NULL, 0);
+	ret = cdx_mcdi_rpc(cdx, MC_CMD_CDX_DEVICE_WRITE_MSI_MSG, inbuf, sizeof(inbuf),
+			   NULL, 0, NULL);
 
 	return ret;
 }
