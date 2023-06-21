@@ -22,7 +22,7 @@ static int vfio_cdx_open_device(struct vfio_device *core_vdev)
 	int i;
 
 	vdev->regions = kcalloc(count, sizeof(struct vfio_cdx_region),
-				GFP_KERNEL);
+				GFP_KERNEL_ACCOUNT);
 	if (!vdev->regions)
 		return -ENOMEM;
 
@@ -55,7 +55,6 @@ static void vfio_cdx_close_device(struct vfio_device *core_vdev)
 
 	kfree(vdev->regions);
 	cdx_dev_reset(core_vdev->dev);
-
 	vfio_cdx_irqs_cleanup(vdev);
 }
 
@@ -97,14 +96,12 @@ static int vfio_cdx_ioctl_get_region_info(struct vfio_cdx_device *vdev,
 	if (info.index >= cdx_dev->res_count)
 		return -EINVAL;
 
-	/* map offset to the physical address  */
+	/* map offset to the physical address */
 	info.offset = vfio_cdx_index_to_offset(info.index);
 	info.size = vdev->regions[info.index].size;
 	info.flags = vdev->regions[info.index].flags;
 
-	if (copy_to_user(arg, &info, minsz))
-		return -EFAULT;
-	return 0;
+	return copy_to_user(arg, &info, minsz) ? -EFAULT : 0;
 }
 
 static int vfio_cdx_ioctl_get_irq_info(struct vfio_cdx_device *vdev,
@@ -126,9 +123,7 @@ static int vfio_cdx_ioctl_get_irq_info(struct vfio_cdx_device *vdev,
 	info.flags = VFIO_IRQ_INFO_EVENTFD;
 	info.count = cdx_dev->num_msi;
 
-	if (copy_to_user(arg, &info, minsz))
-		return -EFAULT;
-	return 0;
+	return copy_to_user(arg, &info, minsz) ? -EFAULT : 0;
 }
 
 static int vfio_cdx_ioctl_set_irqs(struct vfio_cdx_device *vdev,
@@ -195,7 +190,7 @@ static int vfio_cdx_mmap_mmio(struct vfio_cdx_region region,
 		((1U << (VFIO_CDX_OFFSET_SHIFT - PAGE_SHIFT)) - 1);
 	base = pgoff << PAGE_SHIFT;
 
-	if (region.size < PAGE_SIZE || base + size > region.size)
+	if (base + size > region.size)
 		return -EINVAL;
 
 	vma->vm_pgoff = (region.addr >> PAGE_SHIFT) + pgoff;
@@ -223,11 +218,11 @@ static int vfio_cdx_mmap(struct vfio_device *core_vdev,
 
 	if (!(vdev->regions[index].flags & VFIO_REGION_INFO_FLAG_READ) &&
 	    (vma->vm_flags & VM_READ))
-		return -EINVAL;
+		return -EPERM;
 
 	if (!(vdev->regions[index].flags & VFIO_REGION_INFO_FLAG_WRITE) &&
 	    (vma->vm_flags & VM_WRITE))
-		return -EINVAL;
+		return -EPERM;
 
 	return vfio_cdx_mmap_mmio(vdev->regions[index], vma);
 }
@@ -243,7 +238,7 @@ static const struct vfio_device_ops vfio_cdx_ops = {
 
 static int vfio_cdx_probe(struct cdx_device *cdx_dev)
 {
-	struct vfio_cdx_device *vdev = NULL;
+	struct vfio_cdx_device *vdev;
 	struct device *dev = &cdx_dev->dev;
 	int ret;
 
@@ -253,10 +248,8 @@ static int vfio_cdx_probe(struct cdx_device *cdx_dev)
 		return PTR_ERR(vdev);
 
 	ret = vfio_register_group_dev(&vdev->vdev);
-	if (ret) {
-		dev_err(dev, "VFIO_CDX: Failed to add to vfio group\n");
+	if (ret)
 		goto out_uninit;
-	}
 
 	dev_set_drvdata(dev, vdev);
 	return 0;
@@ -269,9 +262,8 @@ out_uninit:
 static int vfio_cdx_remove(struct cdx_device *cdx_dev)
 {
 	struct device *dev = &cdx_dev->dev;
-	struct vfio_cdx_device *vdev;
+	struct vfio_cdx_device *vdev = dev_get_drvdata(dev);
 
-	vdev = dev_get_drvdata(dev);
 	vfio_unregister_group_dev(&vdev->vdev);
 	vfio_put_device(&vdev->vdev);
 
