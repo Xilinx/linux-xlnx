@@ -322,18 +322,7 @@ static struct cdx_driver vfio_cdx_driver = {
 	.driver_managed_dma = true,
 };
 
-static int __init vfio_cdx_driver_init(void)
-{
-	return cdx_driver_register(&vfio_cdx_driver);
-}
-
-static void __exit vfio_cdx_driver_exit(void)
-{
-	cdx_driver_unregister(&vfio_cdx_driver);
-}
-
-module_init(vfio_cdx_driver_init);
-module_exit(vfio_cdx_driver_exit);
+module_driver(vfio_cdx_driver, cdx_driver_register, cdx_driver_unregister);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("VFIO for CDX devices - User Level meta-driver");
