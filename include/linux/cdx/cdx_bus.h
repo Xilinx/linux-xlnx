@@ -136,6 +136,8 @@ struct cdx_device {
 	u32 req_id;
 	u32 num_msi;
 	const char *driver_override;
+	struct mutex irqchip_lock;
+	bool msi_write_pending;
 };
 
 #define to_cdx_device(_dev) \

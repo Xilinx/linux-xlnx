@@ -39,11 +39,39 @@ static void cdx_msi_write_msg(struct irq_data *irq_data,
 {
 	struct msi_desc *msi_desc = irq_data_get_msi_desc(irq_data);
 	struct cdx_device *cdx_dev = to_cdx_device(msi_desc->dev);
+
+	/* We would not operate on msg here rather we wait for
+	 * irq_bus_sync_unlock() to be called from preemptible
+	 * task context.
+	 */
+	msi_desc->msg = *msg;
+	cdx_dev->msi_write_pending = true;
+}
+
+static void cdx_msi_write_irq_lock(struct irq_data *irq_data)
+{
+	struct msi_desc *msi_desc = irq_data_get_msi_desc(irq_data);
+	struct cdx_device *cdx_dev = to_cdx_device(msi_desc->dev);
+
+	mutex_lock(&cdx_dev->irqchip_lock);
+}
+
+static void cdx_msi_write_irq_unlock(struct irq_data *irq_data)
+{
+	struct msi_desc *msi_desc = irq_data_get_msi_desc(irq_data);
+	struct cdx_device *cdx_dev = to_cdx_device(msi_desc->dev);
 	struct cdx_controller *cdx = cdx_dev->cdx;
 	struct cdx_device_config dev_config;
 	int ret;
 
-	msi_desc->msg = *msg;
+	if (!cdx_dev->msi_write_pending) {
+		mutex_unlock(&cdx_dev->irqchip_lock);
+		return;
+	}
+
+	cdx_dev->msi_write_pending = false;
+	mutex_unlock(&cdx_dev->irqchip_lock);
+
 	dev_config.msi.msi_index = msi_desc->msi_index;
 	dev_config.msi.data = msi_desc->msg.data;
 	dev_config.msi.addr = ((u64)(msi_desc->msg.address_hi) << 32) |
@@ -117,7 +145,9 @@ static struct irq_chip cdx_msi_irq_chip = {
 	.irq_unmask		= irq_chip_unmask_parent,
 	.irq_eoi		= irq_chip_eoi_parent,
 	.irq_set_affinity	= msi_domain_set_affinity,
-	.irq_write_msi_msg	= cdx_msi_write_msg
+	.irq_write_msi_msg	= cdx_msi_write_msg,
+	.irq_bus_lock		= cdx_msi_write_irq_lock,
+	.irq_bus_sync_unlock	= cdx_msi_write_irq_unlock
 };
 
 static int cdx_msi_prepare(struct irq_domain *msi_domain,
