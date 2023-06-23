@@ -962,7 +962,7 @@ static void spi_res_release(struct spi_controller *ctlr, struct spi_message *mes
 static void spi_set_cs(struct spi_device *spi, bool enable, bool force)
 {
 	bool activate = enable;
-	u32 cs_num = __ffs(spi->cs_index_mask);
+	u32 cs_num = 0;
 	int idx;
 
 	/*
@@ -1018,6 +1018,9 @@ static void spi_set_cs(struct spi_device *spi, bool enable, bool force)
 			}
 		}
 	} else {
+		if (spi->cs_index_mask)
+			cs_num = ffs(spi->cs_index_mask) - 1;
+
 		/*
 		 * Avoid calling into the driver (or doing delays) if the chip select
 		 * isn't actually changing from the last time this was called.
@@ -3839,10 +3842,13 @@ static int __spi_validate(struct spi_device *spi, struct spi_message *message)
 	struct spi_controller *ctlr = spi->controller;
 	struct spi_transfer *xfer;
 	int w_size;
-	u32 cs_num = __ffs(spi->cs_index_mask);
+	u32 cs_num = 0;
 
 	if (list_empty(&message->transfers))
 		return -EINVAL;
+
+	if (spi->cs_index_mask)
+		cs_num = ffs(spi->cs_index_mask) - 1;
 
 	/*
 	 * If an SPI controller does not support toggling the CS line on each
