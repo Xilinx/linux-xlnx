@@ -133,15 +133,6 @@
 #define XDPRX_MST_CAP_REG		0x0d0
 #define XDPRX_SINK_COUNT_REG		0x0d4
 
-#define XDPRX_PHY_REG			0x200
-#define XDPRX_PHY_GTPLLRST_MASK		BIT(0)
-#define XDPRX_PHY_GTRXRST_MASK		BIT(1)
-#define XDPRX_PHYRST_TRITER_MASK	BIT(23)
-#define XDPRX_PHYRST_RATECHANGE_MASK	BIT(24)
-#define XDPRX_PHYRST_TP1START_MASK	BIT(25)
-#define XDPRX_PHYRST_ENBL_MASK		0x0
-#define XDPRX_PHY_INIT_MASK		GENMASK(29, 27)
-
 #define XDPRX_PHYSTATUS_REG			0x208
 #define XDPRX_PHYSTATUS_ALL_LANES_GOOD_MASK	GENMASK(6, 0)
 #define XDPRX_PHYSTATUS_READ_COUNT	100
@@ -1174,23 +1165,8 @@ static void xdprxss_core_init(struct xdprxss_state *xdprxss)
 	xdprxss_write(xdprxss, XDPRX_LINK_ENABLE_REG, 0x0);
 	axi_clk = clk_get_rate(xdprxss->axi_clk);
 	xdprxss_write(xdprxss, XDPRX_AUX_CLKDIV_REG, axi_clk / MHZ);
-	/* Put both GT RX/TX and CPLL into reset */
-	xdprxss_write(xdprxss, XDPRX_PHY_REG, XDPRX_PHY_GTPLLRST_MASK |
-		      XDPRX_PHY_GTRXRST_MASK);
-	/* Release CPLL reset */
-	xdprxss_write(xdprxss, XDPRX_PHY_REG, XDPRX_PHY_GTRXRST_MASK);
 	xdprxss_set_clk_data_recovery_timeout_val(xdprxss,
 						  XDPRX_CDRCTRL_TDLOCK_VAL);
-	/*
-	 * Remove the reset from the PHY and configure to issue reset after
-	 * every training iteration, link rate change, and start of training
-	 * pattern
-	 */
-	xdprxss_write(xdprxss, XDPRX_PHY_REG,
-		      XDPRX_PHYRST_ENBL_MASK |
-		      XDPRX_PHYRST_TRITER_MASK |
-		      XDPRX_PHYRST_RATECHANGE_MASK |
-		      XDPRX_PHYRST_TP1START_MASK);
 	xdprxss_write(xdprxss, XDPRX_MST_CAP_REG, 0x0);
 	xdprxss_write(xdprxss, XDPRX_SINK_COUNT_REG, 1);
 	xdprxss_enable_training_timeout(xdprxss);
@@ -1265,8 +1241,6 @@ static void xdprxss_irq_tp1(struct xdprxss_state *state)
 		phy_cfg->set_rate = 1;
 		for (i = 0; i < state->max_lanecount; i++)
 			phy_configure(state->phy[i], &phy_opts);
-		/* Initialize phy logic of DP-RX core */
-		xdprxss_write(state, XDPRX_PHY_REG, XDPRX_PHY_INIT_MASK);
 		phy_reset(state->phy[0]);
 	} else {
 		config_rx_dec_clk(state, linkrate);
@@ -1276,8 +1250,6 @@ static void xdprxss_irq_tp1(struct xdprxss_state *state)
 		if (get_rx_dec_clk_lock(state))
 			dev_info(state->dev, "rx decryption clock failed to lock\n");
 
-		/* Initialize phy logic of DP-RX core */
-		xdprxss_write(state, XDPRX_PHY_REG, XDPRX_PHY_INIT_MASK);
 	}
 	state->ltstate = 1;
 	xdprxss_clr(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_ALL_MASK);
