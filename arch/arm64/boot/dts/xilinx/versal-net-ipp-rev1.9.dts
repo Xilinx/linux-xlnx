@@ -477,6 +477,7 @@
 				spi-rx-bus-width = <8>;
 				spi-max-frequency = <5000000>;
 				broken-flash-reset;
+				no-wp;
 
 				partitions {
 					compatible = "fixed-partitions";
