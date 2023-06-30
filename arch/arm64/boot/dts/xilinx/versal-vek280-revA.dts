@@ -74,6 +74,7 @@
 		spi-tx-bus-width = <8>;
 		spi-rx-bus-width = <8>;
 		spi-max-frequency = <20000000>;
+		no-wp;
 		partition@0 {
 			label = "spi0-flash0";
 			reg = <0 0x8000000>;
