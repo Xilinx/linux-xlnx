@@ -273,6 +273,7 @@ static void issi_nor_default_init(struct spi_nor *nor)
 {
 	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
 
+	nor->flags &= ~SNOR_F_HAS_16BIT_SR;
 	params->quad_enable = spi_nor_sr1_bit6_quad_enable;
 }
 
