@@ -11,6 +11,7 @@
 #include <linux/slab.h>
 #include <linux/clk.h>
 #include <linux/of.h>
+#include <linux/of_irq.h>
 #include <linux/platform_device.h>
 #include <linux/dma-mapping.h>
 #include <linux/gpio/consumer.h>
@@ -81,6 +82,7 @@ struct dwc3_xlnx {
 	enum dwc3_xlnx_core_state	pmu_state;
 	bool				wakeup_capable;
 	struct reset_control		*crst;
+	int				wakeup_irq;
 	bool				enable_d3_suspend;
 	enum usb_dr_mode		dr_mode;
 	struct regulator_desc		dwc3_xlnx_reg_desc;
@@ -238,6 +240,15 @@ static int dwc3_versal_power_req(struct device *dev, bool on)
 			dev_err(priv_data->dev, "failed to enter D0 state\n");
 
 		priv_data->pmu_state = D0_STATE;
+
+		/* disable wakeup IRQ when USB power state D0 */
+		if (priv_data->enable_d3_suspend && priv_data->wakeup_irq > 0) {
+			disable_irq_wake(priv_data->wakeup_irq);
+			disable_irq(priv_data->wakeup_irq);
+		}
+
+		/* disable D3 entry */
+		priv_data->enable_d3_suspend = false;
 	} else {
 		dev_dbg(dev, "%s:Trying to set power state to D3...\n",
 			__func__);
@@ -261,6 +272,10 @@ static int dwc3_versal_power_req(struct device *dev, bool on)
 			dev_err(priv_data->dev, "failed to assert Reset\n");
 
 		priv_data->pmu_state = D3_STATE;
+
+		/* Enable wakeup IRQ when USB power state D3 */
+		if (priv_data->enable_d3_suspend && priv_data->wakeup_irq > 0)
+			enable_irq(priv_data->wakeup_irq);
 	}
 
 	return ret;
@@ -555,7 +570,31 @@ static void dwc3_xilinx_wakeup_capable(struct device *dev, bool wakeup)
 
 		/* Allow D3 state if wakeup capable only */
 		priv_data->enable_d3_suspend = wakeup;
+
+		/* Enable wakeup IRQ for versal-net */
+		if (priv_data->wakeup_irq > 0)
+			enable_irq_wake(priv_data->wakeup_irq);
 	}
+}
+
+static irqreturn_t dwc3_xlnx_resume_irq(int irq, void *data)
+{
+	struct dwc3_xlnx	*priv_data = data;
+
+	if (priv_data->enable_d3_suspend) {
+		/*
+		 * Disable wakeup IRQ for versal-net. Once IRQ handler
+		 * called then disable an irq without waiting.
+		 * It clears the interrupt and stop spurious interrupt
+		 * wakeup triggers.
+		 */
+		disable_irq_wake(priv_data->wakeup_irq);
+		disable_irq_nosync(priv_data->wakeup_irq);
+
+		priv_data->enable_d3_suspend = false;
+	}
+
+	return IRQ_HANDLED;
 }
 
 static const struct of_device_id dwc3_xlnx_of_match[] = {
@@ -581,6 +620,7 @@ static int dwc3_xlnx_probe(struct platform_device *pdev)
 	void __iomem			*regs;
 	int				ret;
 	const char                      *dr_modes;
+	unsigned long			irq_flags;
 
 	priv_data = devm_kzalloc(dev, sizeof(*priv_data), GFP_KERNEL);
 	if (!priv_data)
@@ -609,6 +649,30 @@ static int dwc3_xlnx_probe(struct platform_device *pdev)
 		priv_data->dr_mode = USB_DR_MODE_UNKNOWN;
 	else
 		priv_data->dr_mode = usb_get_dr_mode_from_string(dr_modes);
+
+	/* get the IRQ from the dwc3-xilinx core */
+	if (of_device_is_compatible(np, "xlnx,versal-dwc3") &&
+	    priv_data->dr_mode == USB_DR_MODE_HOST) {
+		priv_data->wakeup_irq = of_irq_get_byname(dwc3_child_node,
+							  "wakeup");
+		if (priv_data->wakeup_irq > 0) {
+			irq_flags = IRQF_TRIGGER_HIGH |
+					IRQF_ONESHOT |
+					IRQF_NO_AUTOEN;
+			ret = devm_request_threaded_irq(dev,
+							priv_data->wakeup_irq,
+							NULL,
+							dwc3_xlnx_resume_irq,
+							irq_flags,
+							"usb-wakeup",
+							priv_data);
+			if (ret) {
+				of_node_put(dwc3_child_node);
+				return dev_err_probe(dev,
+						     ret, "wakeup IRQ failed\n");
+			}
+		}
+	}
 
 	of_node_put(dwc3_child_node);
 
@@ -678,6 +742,7 @@ static int dwc3_xlnx_remove(struct platform_device *pdev)
 
 	/* Unregister the dwc3-xilinx wakeup function from dwc3 host */
 	dwc3_host_wakeup_register(NULL);
+	devm_free_irq(dev, priv_data->wakeup_irq, priv_data);
 	clk_bulk_disable_unprepare(priv_data->num_clocks, priv_data->clks);
 	priv_data->num_clocks = 0;
 
