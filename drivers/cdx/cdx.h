@@ -16,6 +16,8 @@
  * @parent: Associated CDX controller
  * @vendor: Vendor ID for CDX device
  * @device: Device ID for CDX device
+ * @subsys_vendor: Sub vendor ID for CDX device
+ * @subsys_device: Sub device ID for CDX device
  * @bus_num: Bus number for this CDX device
  * @dev_num: Device number for this device
  * @res: array of MMIO region entries
@@ -23,11 +25,15 @@
  * @req_id: Requestor ID associated with CDX device
  * @msi_dev_id: MSI device ID associated with CDX device
  * @num_msi: Number of MSI's supported by the device
+ * @class: Class of the CDX Device
+ * @revision: Revision of the CDX device
  */
 struct cdx_dev_params {
 	struct cdx_controller *cdx;
 	u16 vendor;
 	u16 device;
+	u16 subsys_vendor;
+	u16 subsys_device;
 	u8 bus_num;
 	u8 dev_num;
 	struct resource res[MAX_CDX_DEV_RESOURCES];
@@ -35,6 +41,8 @@ struct cdx_dev_params {
 	u32 req_id;
 	u32 msi_dev_id;
 	u32 num_msi;
+	u32 class;
+	u8 revision;
 };
 
 /**
