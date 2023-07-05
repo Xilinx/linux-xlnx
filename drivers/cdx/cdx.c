@@ -116,6 +116,26 @@ int cdx_dev_reset(struct device *dev)
 EXPORT_SYMBOL_GPL(cdx_dev_reset);
 
 /**
+ * reset_cdx_device - Reset a CDX device
+ * @dev: CDX device
+ * @data: Bus number
+ *    If bus number matches to the device's bus then this device
+ *    is reset else this is no op.
+ *
+ * Return: -errno on failure, 0 on success.
+ */
+static int reset_cdx_device(struct device *dev, void *data)
+{
+	struct cdx_device *cdx_dev = to_cdx_device(dev);
+	u8 bus_num = *((u8 *)data);
+
+	if (cdx_dev->bus_num == bus_num)
+		return cdx_dev_reset(dev);
+
+	return 0;
+}
+
+/**
  * cdx_unregister_device - Unregister a CDX device
  * @dev: CDX device
  * @data: This is always passed as NULL, and is not used in this API,
@@ -553,10 +573,31 @@ static ssize_t rescan_store(const struct bus_type *bus,
 }
 static BUS_ATTR_WO(rescan);
 
+static ssize_t bus_reset_store(const struct bus_type *bus,
+			       const char *buf, size_t count)
+{
+	u8 bus_id;
+	int ret;
+
+	if (kstrtou8(buf, 16, &bus_id))
+		return -EINVAL;
+
+	bus_id = BUS_ID(bus_id);
+	mutex_lock(&cdx_controller_lock);
+	/* Reset all the devices attached to cdx bus */
+	ret = bus_for_each_dev(bus, NULL, (void *)&bus_id, reset_cdx_device);
+	mutex_unlock(&cdx_controller_lock);
+
+	return ret < 0 ? ret : count;
+}
+static struct bus_attribute bus_attr_reset =  __ATTR(reset, 0200, NULL,
+								bus_reset_store);
+
 static struct attribute *cdx_bus_attrs[] = {
 	&bus_attr_enable.attr,
 	&bus_attr_disable.attr,
 	&bus_attr_rescan.attr,
+	&bus_attr_reset.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(cdx_bus);

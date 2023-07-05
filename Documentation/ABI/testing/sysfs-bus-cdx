@@ -38,6 +38,21 @@ Description:
 
 		  # echo 00 > /sys/bus/cdx/disable
 
+What:		/sys/bus/cdx/reset
+Date:		July 2023
+Contact:	puneet.gupta@amd.com
+Description:
+		Writing bus number in hex to this file will attempt to reset
+		all the devices present on the bus. Resetting a device would
+		clear all existing configuration of the device and put the
+		device in default state. The bus number for the cdx devices can
+		be found at /sys/bus/cdx/devices/cdx-BB:DD, where BB denotes
+		the bus number for the respective device.
+
+		For example ::
+
+		  # echo 00 > /sys/bus/cdx/reset
+
 What:		/sys/bus/cdx/devices/.../vendor
 Date:		March 2023
 Contact:	nipun.gupta@amd.com
