@@ -45,7 +45,9 @@
 #define XLNX_CUR_PWR_STATE_BITMASK		0x0F
 
 #define XLNX_USB_PME_ENABLE			0x0034
+#define XLNX_VERSAL_USB_PME_ENABLE		0x0020
 #define XLNX_PME_ENABLE_SIG_GEN			0x01
+#define XLNX_PME_DISABLE_SIG_GEN			0
 
 #define XLNX_USB_REQ_PWR_STATE			0x003c
 #define XLNX_REQ_PWR_STATE_D0			0x00
@@ -242,6 +244,10 @@ static int dwc3_versal_power_req(struct device *dev, bool on)
 
 		if (priv_data->pmu_state == D3_STATE)
 			return 0;
+
+		/* enable PME to wakeup from hibernation */
+		writel(XLNX_PME_ENABLE_SIG_GEN,
+		       priv_data->regs + XLNX_VERSAL_USB_PME_ENABLE);
 
 		ret = zynqmp_pm_usb_set_state(pm_info[1],
 					      XLNX_REQ_PWR_STATE_D3,
@@ -665,6 +671,10 @@ static int dwc3_xlnx_remove(struct platform_device *pdev)
 	struct device		*dev = &pdev->dev;
 
 	of_platform_depopulate(dev);
+
+	/* disable PME wakeup interrupt */
+	writel(XLNX_PME_DISABLE_SIG_GEN,
+	       priv_data->regs + XLNX_VERSAL_USB_PME_ENABLE);
 
 	/* Unregister the dwc3-xilinx wakeup function from dwc3 host */
 	dwc3_host_wakeup_register(NULL);
