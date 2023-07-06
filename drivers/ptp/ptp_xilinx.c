@@ -52,7 +52,6 @@
 #define PORT0_SEC_OFFSET_1                     0x0254
 #define PORT0_NS_OFFSET_0                      0x0258
 
-
 #define XPTPTIMER_CFG_MAIN_TOD_EN	BIT(0)
 #define XPTPTIMER_CFG_ENABLE_PORT0	BIT(16)
 #define XPTPTIMER_CFG_AUTO_REF	BIT(4)
@@ -95,10 +94,16 @@ static inline void xlnx_tod_read(struct xlnx_ptp_timer *timer,
 	xlnx_ptp_iow(timer, XPTPTIMER_TOD_SNAPSHOT_OFFSET,
 		     XPTPTIMER_SNAPSHOT_MASK);
 
-	/* use TX port here */
-	nsec = xlnx_ptp_ior(timer, XPTPTIMER_PORT_TX_NS_SNAP_OFFSET);
-	secl = xlnx_ptp_ior(timer, XPTPTIMER_PORT_TX_SEC_0_SNAP_OFFSET);
-	sech = xlnx_ptp_ior(timer, XPTPTIMER_PORT_TX_SEC_1_SNAP_OFFSET);
+	if (timer->use_sys_timer_only) {
+		nsec = xlnx_ptp_ior(timer, XPTPTIMER_SYS_NS_OFFSET);
+		sech = xlnx_ptp_ior(timer, XPTPTIMER_SYS_SEC_1_OFFSET);
+		secl = xlnx_ptp_ior(timer, XPTPTIMER_SYS_SEC_0_OFFSET);
+	} else {
+		/* use TX port here */
+		nsec = xlnx_ptp_ior(timer, XPTPTIMER_PORT_TX_NS_SNAP_OFFSET);
+		secl = xlnx_ptp_ior(timer, XPTPTIMER_PORT_TX_SEC_0_SNAP_OFFSET);
+		sech = xlnx_ptp_ior(timer, XPTPTIMER_PORT_TX_SEC_1_SNAP_OFFSET);
+	}
 
 	ts->tv_nsec = nsec;
 	ts->tv_sec = (((u64)sech << 32) | secl) & XPTPTIMER_MAX_SEC_MASK;
@@ -210,7 +215,10 @@ static int xlnx_ptp_adjfine(struct ptp_clock_info *ptp, long scaled_ppm)
 	adj >>= PPM_FRACTION; /* remove fractions */
 	adj = neg_adj ? (timer->incr - adj) : (timer->incr + adj);
 
-	xlnx_port_period_write(timer, adj);
+	if (timer->use_sys_timer_only)
+		xlnx_tod_period_write(timer, adj);
+	else
+		xlnx_port_period_write(timer, adj);
 
 	return 0;
 }
@@ -234,7 +242,8 @@ static int xlnx_ptp_adjtime(struct ptp_clock_info *ptp, s64 delta)
 	spin_lock(&timer->reg_lock);
 
 	/* Fixed offset between system and port timer */
-	delta += timer->static_delay;
+	if (!timer->use_sys_timer_only)
+		delta += timer->static_delay;
 	cumulative_delta += delta;
 	timer->timeoffset = cumulative_delta;
 	if (cumulative_delta < 0) {
@@ -244,7 +253,10 @@ static int xlnx_ptp_adjtime(struct ptp_clock_info *ptp, s64 delta)
 	offset = ns_to_timespec64(cumulative_delta);
 	offset.tv_sec |= sign;
 
-	xlnx_port_offset_write(timer, (const struct timespec64 *)&offset);
+	if (timer->use_sys_timer_only)
+		xlnx_tod_offset_write(timer, (const struct timespec64 *)&offset);
+	else
+		xlnx_port_offset_write(timer, (const struct timespec64 *)&offset);
 
 	spin_unlock(&timer->reg_lock);
 
@@ -336,6 +348,9 @@ static int xlnx_ptp_timer_probe(struct platform_device *pdev)
 		err = PTR_ERR(timer->baseaddr);
 		return err;
 	}
+
+	timer->use_sys_timer_only = of_property_read_bool(pdev->dev.of_node,
+							  "xlnx,has-timer-syncer");
 
 	spin_lock_init(&timer->reg_lock);
 
