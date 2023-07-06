@@ -18,12 +18,12 @@ void xhdmiphy_write(struct xhdmiphy_dev *inst, u32 addr, u32 value)
 
 void xhdmiphy_set(struct xhdmiphy_dev *inst, u32 addr, u32 val)
 {
-	xhdmiphy_write(xhdmiphy, addr, xhdmiphy_read(inst, addr) | val);
+	xhdmiphy_write(inst, addr, xhdmiphy_read(inst, addr) | val);
 }
 
 void xhdmiphy_clr(struct xhdmiphy_dev *inst, u32 addr, u32 val)
 {
-	xhdmiphy_write(xhdmiphy, addr, xhdmiphy_read(xhdmiphy, addr) & ~val);
+	xhdmiphy_write(inst, addr, xhdmiphy_read(inst, addr) & ~val);
 }
 
 void xhdmiphy_set_clr(struct xhdmiphy_dev *inst, u32 addr, u32 reg_val,
