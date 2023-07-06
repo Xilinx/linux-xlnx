@@ -32,6 +32,9 @@ properties:
       system and port timer mode. If property is present then its
       a system timer mode else system and port timer mode.
 
+  interrupts:
+    maxItems: 1
+
 required:
   - compatible
   - reg
