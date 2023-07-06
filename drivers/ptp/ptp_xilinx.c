@@ -31,8 +31,10 @@
 #define XPTPTIMER_TOD_SEC_SYS_OFST_0_OFFSET	0x0028
 #define XPTPTIMER_TOD_SEC_SYS_OFST_1_OFFSET	0x002C
 #define XPTPTIMER_TOD_NS_SYS_OFST_OFFSET	0x0030
-#define TOD_SYS_PERIOD_0                0x0130
-#define TOD_SYS_PERIOD_1                0x0134
+#define TOD_LEGACY_SYS_PERIOD_0		0x0130
+#define TOD_LEGACY_SYS_PERIOD_1		0x0134
+#define TOD_SYS_PERIOD_0		0x0034
+#define TOD_SYS_PERIOD_1		0x0038
 
 #define XPTPTIMER_SYS_SEC_0_OFFSET	0x0100
 #define XPTPTIMER_SYS_SEC_1_OFFSET	0x0104
@@ -171,8 +173,8 @@ static inline void xlnx_tod_period_write(struct xlnx_ptp_timer *timer, u64 adj)
 {
 	u32 adjhigh = upper_32_bits(adj);
 
-	xlnx_ptp_iow(timer, TOD_SYS_PERIOD_0, (u32)(adj));
-	xlnx_ptp_iow(timer, TOD_SYS_PERIOD_1, adjhigh);
+	xlnx_ptp_iow(timer, timer->period_0, (u32)(adj));
+	xlnx_ptp_iow(timer, timer->period_1, adjhigh);
 }
 
 static inline void xlnx_port_period_write(struct xlnx_ptp_timer *timer, u64 adj)
@@ -364,6 +366,14 @@ static int xlnx_ptp_timer_probe(struct platform_device *pdev)
 		return err;
 	}
 
+	timer->period_0 = TOD_LEGACY_SYS_PERIOD_0;
+	timer->period_1 = TOD_LEGACY_SYS_PERIOD_1;
+
+	if (of_device_is_compatible(pdev->dev.of_node, "xlnx,timer-syncer-1588-3.0")) {
+		timer->period_0 = TOD_SYS_PERIOD_0;
+		timer->period_1 = TOD_SYS_PERIOD_1;
+	}
+
 	xlnx_ptp_iow(timer, XPTPTIMER_TOD_CONFIG_OFFSET,
 		     XPTPTIMER_CFG_MAIN_TOD_EN | XPTPTIMER_CFG_ENABLE_PORT0);
 	/*
@@ -422,6 +432,7 @@ static int xlnx_ptp_timer_remove(struct platform_device *pdev)
 static const struct of_device_id timer_1588_of_match[] = {
 	{ .compatible = "xlnx,timer-syncer-1588-1.0", },
 	{ .compatible = "xlnx,timer-syncer-1588-2.0", },
+	{ .compatible = "xlnx,timer-syncer-1588-3.0", },
 		{ /* end of table */ }
 };
 MODULE_DEVICE_TABLE(of, timer_1588_of_match);
