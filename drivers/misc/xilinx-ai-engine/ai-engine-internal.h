@@ -508,6 +508,7 @@ struct aie_aperture;
  * @get_tile_sysfs_lock_status: get tile lock status for sysfs.
  * @get_part_sysfs_dma_status: get partition dma status for sysfs.
  * @get_tile_sysfs_dma_status: get tile dma status for sysfs.
+ * @get_tile_sysfs_bd_metadata: get tile bd metadata for sysfs.
  * @init_part_clk_state: initialize clock states software structure which is a
  *			 bitmap for the AI engine partition. The clock states
  *			 structure is the structure used to keep track of if
@@ -553,6 +554,9 @@ struct aie_tile_operations {
 	ssize_t (*get_tile_sysfs_dma_status)(struct aie_partition *apart,
 					     struct aie_location *loc,
 					     char *buffer, ssize_t size);
+	ssize_t (*get_tile_sysfs_bd_metadata)(struct aie_partition *apart,
+					      struct aie_location *loc,
+					      char *buffer, ssize_t size);
 	int (*init_part_clk_state)(struct aie_partition *apart);
 	int (*scan_part_clocks)(struct aie_partition *apart);
 	int (*set_part_clocks)(struct aie_partition *apart);
@@ -1397,6 +1401,8 @@ ssize_t aie_part_read_cb_core(struct kobject *kobj, char *buffer, ssize_t size);
 ssize_t aie_sysfs_get_dma_status(struct aie_partition *apart,
 				 struct aie_location *loc, char *buffer,
 				 ssize_t size);
+ssize_t aie_tile_show_bd(struct device *dev, struct device_attribute *attr,
+			 char *buffer);
 ssize_t aie_tile_show_dma(struct device *dev, struct device_attribute *attr,
 			  char *buffer);
 ssize_t aie_part_read_cb_dma(struct kobject *kobj, char *buffer, ssize_t size);
