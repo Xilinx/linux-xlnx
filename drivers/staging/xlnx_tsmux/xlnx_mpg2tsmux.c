@@ -123,7 +123,7 @@ enum stream_errors {
 };
 
 /**
- * struct strm_node - struct to describe stream node in linked list
+ * struct stream_context_node - struct to describe stream node in linked list
  * @node_number: node number to handle streams
  * @node_status: status of stream node
  * @element: stream context info
@@ -147,7 +147,7 @@ struct stream_context_node {
 };
 
 /**
- * struct strm_info - struct to describe streamid node in streamid table
+ * struct stream_info - struct to describe streamid node in streamid table
  * @pid: identification number of stream
  * @continuity_counter: counter to maintain packet count for a stream
  * @usageflag: flag to know free or under use for allocating streamid node
