@@ -20,6 +20,7 @@ struct xlnx_ptp_timer {
 	s64			timeoffset;
 	s32			static_delay;
 	int			phc_index;
+	bool                    use_sys_timer_only;
 };
 
 #endif /* __PTP_PTP_XILINX_H__ */
