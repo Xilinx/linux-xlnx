@@ -461,7 +461,7 @@ static bool si5324_regmap_is_readable(struct device *dev, unsigned int reg)
 }
 
 /**
- * si5324_regmap_is_writable - Checks the register is writable or not
+ * si5324_regmap_is_writeable - Checks the register is writable or not
  *
  * @dev:	Registered device
  * @reg:	Register offset
