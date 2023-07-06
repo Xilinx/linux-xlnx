@@ -7,6 +7,35 @@
 #include "ai-engine-internal.h"
 
 /**
+ * aie_tile_show_bd() - exports AI engine DMA buffer descriptor metadata for
+ *			all buffer descriptors to a tile level sysfs node.
+ * @dev: AI engine tile device.
+ * @attr: sysfs device attribute.
+ * @buffer: export buffer.
+ * @return: length of string copied to buffer.
+ */
+ssize_t aie_tile_show_bd(struct device *dev, struct device_attribute *attr,
+			 char *buffer)
+{
+	struct aie_tile *atile = container_of(dev, struct aie_tile, dev);
+	struct aie_partition *apart = atile->apart;
+	ssize_t len = 0, size = PAGE_SIZE;
+
+	if (mutex_lock_interruptible(&apart->mlock)) {
+		dev_err(&apart->dev,
+			"Failed to acquire lock. Process was interrupted by fatal signals\n");
+		return len;
+	}
+
+	len = apart->adev->ops->get_tile_sysfs_bd_metadata(apart, &atile->loc,
+							   &buffer[len],
+							   size);
+
+	mutex_unlock(&apart->mlock);
+	return len;
+}
+
+/**
  * aie_tile_show_dma() - exports AI engine DMA channel status, queue size,
  *			 queue status, and current buffer descriptor ID being
  *			 processed by DMA channel to a tile level sysfs node.
