@@ -91,6 +91,7 @@
 #define AIEML_SHIMPL_MODRESET_CTRL_0_REGOFF		0x000fff10U
 #define AIEML_SHIMPL_MODRESET_CTRL_1_REGOFF		0x000fff14U
 
+#define AIEML_MEMORY_BD0_0_REGOFF			0x000A0000U
 #define AIEML_MEMORY_GROUP0_REGOFF			0x00094500U
 #define AIEML_MEMORY_GROUPERROR_REGOFF			0x00094518U
 #define AIEML_MEMORY_TILECTRL_REGOFF			0x00096030U
@@ -123,6 +124,7 @@
 #define AIEML_TILE_COREMOD_CORE_PC_REGOFF		0x00031100U
 #define AIEML_TILE_COREMOD_CORE_SP_REGOFF		0x00031120U
 #define AIEML_TILE_COREMOD_CORE_LR_REGOFF		0x00031130U
+#define AIEML_TILE_MEMMOD_BD0_0_REGOFF			0x0001D000U
 #define AIEML_TILE_MEMMOD_GROUPERROR_REGOFF		0x00014514U
 #define AIEML_TILE_MEMMOD_GROUP0_REGOFF			0x00014500U
 #define AIEML_TILE_MEMMOD_EVENT_BC0_REGOFF		0x00014010U
@@ -884,6 +886,466 @@ static const struct aie_single_reg_field aieml_core_sp = {
 	.regoff = AIEML_TILE_COREMOD_CORE_SP_REGOFF,
 };
 
+static const struct aie_bd_lock_attr aieml_tile_lockbd = {
+	.lock_acq_id = {
+		.mask = GENMASK(3, 0),
+		.regoff = 0x14U,
+	},
+	.lock_acq_val = {
+		.mask = GENMASK(11, 5),
+		.regoff = 0x14U,
+	},
+	.lock_acq_en = {
+		.mask = BIT(12),
+		.regoff = 0x14U,
+	},
+	.lock_rel_id = {
+		.mask = GENMASK(16, 13),
+		.regoff = 0x14U,
+	},
+	.lock_rel_val = {
+		.mask = GENMASK(24, 18),
+		.regoff = 0x14U,
+	},
+};
+
+static const struct aie_bd_lock_attr aieml_memtile_lockbd = {
+	.lock_acq_id = {
+		.mask = GENMASK(7, 0),
+		.regoff = 0x1CU,
+	},
+	.lock_acq_val = {
+		.mask = GENMASK(14, 8),
+		.regoff = 0x1CU,
+	},
+	.lock_acq_en = {
+		.mask = BIT(15),
+		.regoff = 0x1CU,
+	},
+	.lock_rel_id = {
+		.mask = GENMASK(23, 16),
+		.regoff = 0x1CU,
+	},
+	.lock_rel_val = {
+		.mask = GENMASK(30, 24),
+		.regoff = 0x1CU,
+	},
+};
+
+static const struct aie_bd_lock_attr aieml_shim_lockbd = {
+	.lock_acq_id = {
+		.mask = GENMASK(3, 0),
+		.regoff = 0x1CU,
+	},
+	.lock_acq_val = {
+		.mask = GENMASK(11, 5),
+		.regoff = 0x1CU,
+	},
+	.lock_acq_en = {
+		.mask = BIT(12),
+		.regoff = 0x1CU,
+	},
+	.lock_rel_id = {
+		.mask = GENMASK(16, 13),
+		.regoff = 0x1CU,
+	},
+	.lock_rel_val = {
+		.mask = GENMASK(24, 18),
+		.regoff = 0x1CU,
+	},
+};
+
+static const struct aie_bd_pkt_attr aieml_tile_pktbd = {
+	.pkt_en = {
+		.mask = BIT(30),
+		.regoff = 0x4U,
+	},
+	.pkt_type = {
+		.mask = GENMASK(18, 16),
+		.regoff = 0x4U,
+	},
+	.pkt_id = {
+		.mask = GENMASK(23, 19),
+		.regoff = 0x4U,
+	},
+};
+
+static const struct aie_bd_pkt_attr aieml_memtile_pktbd = {
+	.pkt_en = {
+		.mask = BIT(31),
+		.regoff = 0x0U,
+	},
+	.pkt_type = {
+		.mask = GENMASK(30, 28),
+		.regoff = 0x0U,
+	},
+	.pkt_id = {
+		.mask = GENMASK(27, 23),
+		.regoff = 0x0U,
+	},
+};
+
+static const struct aie_bd_pkt_attr aieml_shim_pktbd = {
+	.pkt_en = {
+		.mask = BIT(30),
+		.regoff = 0x8U,
+	},
+	.pkt_type = {
+		.mask = GENMASK(18, 16),
+		.regoff = 0x8U,
+	},
+	.pkt_id = {
+		.mask = GENMASK(23, 19),
+		.regoff = 0x8U,
+	},
+};
+
+static const struct aie_bd_axi_attr aieml_shim_axibd = {
+	.smid = {
+		.mask = GENMASK(31, 28),
+		.regoff = 0x14U,
+	},
+	.cache = {
+		.mask = GENMASK(27, 24),
+		.regoff = 0x14U,
+	},
+	.qos = {
+		.mask = GENMASK(23, 20),
+		.regoff = 0x14U,
+	},
+	.secure_en = {
+		.mask = BIT(30),
+		.regoff = 0xCU,
+	},
+	.burst_len = {
+		.mask = GENMASK(31, 30),
+		.regoff = 0x10U,
+	},
+};
+
+static const struct aie_bd_aieml_dim_attr aieml_tile_dimbd = {
+	.iter_curr = {
+		.mask = GENMASK(24, 19),
+		.regoff = 0x10U,
+	},
+	.iter = {
+		.wrap = {
+			.mask = GENMASK(18, 13),
+			.regoff = 0x10U,
+		},
+		.step_size = {
+			.mask = GENMASK(12, 0),
+			.regoff = 0x10U,
+		},
+	},
+	.dims = {
+		/* Dim 0 */
+		{
+			.wrap = {
+				.mask = GENMASK(20, 13),
+				.regoff = 0xCU,
+			},
+			.step_size = {
+				.mask = GENMASK(12, 0),
+				.regoff = 0x8U,
+			},
+		},
+		/* Dim 1 */
+		{
+			.wrap = {
+				.mask = GENMASK(28, 21),
+				.regoff = 0xCU,
+			},
+			.step_size = {
+				.mask = GENMASK(25, 13),
+				.regoff = 0x8U,
+			},
+		},
+		/* Dim 2 */
+		{
+			.step_size = {
+				.mask = GENMASK(12, 0),
+				.regoff = 0xCU,
+			},
+		},
+	},
+};
+
+static const struct aie_bd_aieml_dim_attr aieml_memtile_dimbd = {
+	.iter_curr = {
+		.mask = GENMASK(28, 23),
+		.regoff = 0x18U,
+	},
+	.iter = {
+		.wrap = {
+			.mask = GENMASK(22, 17),
+			.regoff = 0x18U,
+		},
+		.step_size = {
+			.mask = GENMASK(16, 0),
+			.regoff = 0x18U,
+		},
+	},
+	.dims = {
+		/* Dim 0 */
+		{
+			.wrap = {
+				.mask = GENMASK(26, 17),
+				.regoff = 0x8U,
+			},
+			.step_size = {
+				.mask = GENMASK(16, 0),
+				.regoff = 0x8U,
+			},
+		},
+		/* Dim 1 */
+		{
+			.wrap = {
+				.mask = GENMASK(26, 17),
+				.regoff = 0xCU,
+			},
+			.step_size = {
+				.mask = GENMASK(16, 0),
+				.regoff = 0xCU,
+			},
+		},
+		/* Dim 2 */
+		{
+			.wrap = {
+				.mask = GENMASK(26, 17),
+				.regoff = 0x10U,
+			},
+			.step_size = {
+				.mask = GENMASK(16, 0),
+				.regoff = 0x10U,
+			},
+		},
+		/* Dim 3 */
+		{
+			.step_size = {
+				.mask = GENMASK(16, 0),
+				.regoff = 0x14U,
+			},
+		},
+	},
+	.pads = {
+		/* Dim 0 */
+		{
+			.before = {
+				.mask = GENMASK(31, 26),
+				.regoff = 0x4U,
+			},
+			.after = {
+				.mask = GENMASK(22, 17),
+				.regoff = 0x14U,
+			},
+		},
+		/* Dim 1 */
+		{
+			.before = {
+				.mask = GENMASK(31, 27),
+				.regoff = 0xCU,
+			},
+			.after = {
+				.mask = GENMASK(27, 23),
+				.regoff = 0x14U,
+			},
+		},
+		/* Dim 2 */
+		{
+			.before = {
+				.mask = GENMASK(30, 27),
+				.regoff = 0x10U,
+			},
+			.after = {
+				.mask = GENMASK(31, 28),
+				.regoff = 0x14U,
+			},
+		},
+	},
+};
+
+static const struct aie_bd_aieml_dim_attr aieml_shim_dimbd = {
+	.iter_curr = {
+		.mask = GENMASK(31, 26),
+		.regoff = 0x18U,
+	},
+	.iter = {
+		.wrap = {
+			.mask = GENMASK(25, 20),
+			.regoff = 0x18U,
+		},
+		.step_size = {
+			.mask = GENMASK(19, 0),
+			.regoff = 0x18U,
+		},
+	},
+	.dims = {
+		/* Dim 0 */
+		{
+			.wrap = {
+				.mask = GENMASK(29, 20),
+				.regoff = 0xCU,
+			},
+			.step_size = {
+				.mask = GENMASK(19, 0),
+				.regoff = 0xCU,
+			},
+		},
+		/* Dim 1 */
+		{
+			.wrap = {
+				.mask = GENMASK(29, 20),
+				.regoff = 0x10U,
+			},
+			.step_size = {
+				.mask = GENMASK(19, 0),
+				.regoff = 0x10U,
+			},
+		},
+		/* Dim 2 */
+		{
+			.step_size = {
+				.mask = GENMASK(19, 0),
+				.regoff = 0x14U,
+			},
+		},
+	},
+};
+
+static const struct aie_bd_attr aieml_tilebd = {
+	.valid_bd = {
+		.mask = BIT(25),
+		.regoff = 0x14U,
+	},
+	.next_bd = {
+		.mask = GENMASK(30, 27),
+		.regoff = 0x14U,
+	},
+	.use_next = {
+		.mask = BIT(26),
+		.regoff = 0x14U,
+	},
+	.addr = {
+		.addr = {
+			.mask = GENMASK(27, 14),
+			.regoff = 0x0U,
+		},
+		.length = {
+			.mask = GENMASK(13, 0),
+			.regoff = 0x0U,
+		},
+	},
+	.compression_en = {
+		.mask = BIT(31),
+		.regoff = 0x4U,
+	},
+	.out_of_order_id = {
+		.mask = GENMASK(29, 24),
+		.regoff = 0x4U,
+	},
+	.tlast_suppress = {
+		.mask = BIT(31),
+		.regoff = 0x14U,
+	},
+	.lock = aieml_tile_lockbd,
+	.packet = aieml_tile_pktbd,
+	.aieml_dim = aieml_tile_dimbd,
+	.num_dims = 3,
+	.bd_idx_off = 0x20U,
+};
+
+static const struct aie_bd_attr aieml_memtilebd = {
+	.valid_bd = {
+		.mask = BIT(31),
+		.regoff = 0x1CU,
+	},
+	.next_bd = {
+		.mask = GENMASK(25, 20),
+		.regoff = 0x4U,
+	},
+	.use_next = {
+		.mask = BIT(19),
+		.regoff = 0x4U,
+	},
+	.addr = {
+		.addr = {
+			.mask = GENMASK(18, 0),
+			.regoff = 0x4U,
+		},
+		.length = {
+			.mask = GENMASK(16, 0),
+			.regoff = 0x0U,
+		},
+	},
+	.compression_en = {
+		.mask = BIT(31),
+		.regoff = 0x10U,
+	},
+	.out_of_order_id = {
+		.mask = GENMASK(22, 17),
+		.regoff = 0x0U,
+	},
+	.tlast_suppress = {
+		.mask = BIT(31),
+		.regoff = 0x8U,
+	},
+	.lock = aieml_memtile_lockbd,
+	.packet = aieml_memtile_pktbd,
+	.aieml_dim = aieml_memtile_dimbd,
+	.num_dims = 4,
+	.bd_idx_off = 0x20U,
+};
+
+static const struct aie_bd_attr aieml_shimbd = {
+	.valid_bd = {
+		.mask = BIT(25),
+		.regoff = 0x1CU,
+	},
+	.next_bd = {
+		.mask = GENMASK(30, 27),
+		.regoff = 0x1CU,
+	},
+	.use_next = {
+		.mask = BIT(26),
+		.regoff = 0x1CU,
+	},
+	.addr = {
+		.addr = {
+			.mask = GENMASK(31, 0),
+			.regoff = 0x4U,
+		},
+		.length = {
+			.mask = GENMASK(31, 0),
+			.regoff = 0x0U,
+		},
+	},
+	.addr_2 = {
+		.addr = {
+			.mask = GENMASK(15, 0),
+			.regoff = 0x8U,
+		},
+	},
+	.compression_en = {
+		.mask = BIT(31),
+		.regoff = 0x10U,
+	},
+	.out_of_order_id = {
+		.mask = GENMASK(29, 24),
+		.regoff = 0x8U,
+	},
+	.tlast_suppress = {
+		.mask = BIT(31),
+		.regoff = 0x1CU,
+	},
+	.lock = aieml_shim_lockbd,
+	.packet = aieml_shim_pktbd,
+	.axi = aieml_shim_axibd,
+	.aieml_dim = aieml_shim_dimbd,
+	.num_dims = 3,
+	.bd_idx_off = 0x20U,
+};
+
 static const struct aie_dma_attr aieml_shimdma = {
 	.laddr = {
 		.mask = 0xffffffffU,
@@ -939,6 +1401,9 @@ static const struct aie_dma_attr aieml_tiledma = {
 		.mask = GENMASK(27, 24),
 		.regoff = 0x0,
 	},
+	.bd_regoff = AIEML_TILE_MEMMOD_BD0_0_REGOFF,
+	.num_bds = 16,
+	.bd_len = 0x18U,
 	.num_mm2s_chan = 2U,
 	.num_s2mm_chan = 2U,
 	.mm2s_sts_regoff = AIEML_TILE_MEMMOD_DMA_MM2S_STATUS_REGOFF,
@@ -962,6 +1427,9 @@ static const struct aie_dma_attr aieml_memtiledma = {
 		.mask = GENMASK(29, 24),
 		.regoff = 0x0,
 	},
+	.bd_regoff = AIEML_MEMORY_BD0_0_REGOFF,
+	.num_bds = 48,
+	.bd_len = 0x20U,
 	.num_mm2s_chan = 6U,
 	.num_s2mm_chan = 6U,
 	.mm2s_sts_regoff = AIEML_MEMORY_DMA_MM2S_STATUS_REGOFF,
@@ -2037,6 +2505,9 @@ int aieml_device_init(struct aie_device *adev)
 	adev->core_regs = aieml_core_regs;
 	adev->col_rst = &aieml_col_rst;
 	adev->col_clkbuf = &aieml_col_clkbuf;
+	adev->tile_bd = &aieml_tilebd;
+	adev->shim_bd = &aieml_shimbd;
+	adev->memtile_bd = &aieml_memtilebd;
 	adev->tile_dma = &aieml_tiledma;
 	adev->shim_dma = &aieml_shimdma;
 	adev->memtile_dma = &aieml_memtiledma;

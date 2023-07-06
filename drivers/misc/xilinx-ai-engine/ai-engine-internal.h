@@ -85,6 +85,9 @@ enum aie_tile_type {
 #define AIE_MAX_MM2S_CH		6U
 #define AIE_MAX_S2MM_CH		6U
 
+/* Max size of DMA buffer descriptors */
+#define AIE_MAX_BD_SIZE		8U
+
 /*
  * Macros of AI engine module type index of a tile type
  * e.g.
@@ -274,6 +277,173 @@ struct aie_part_mem {
 	struct dma_buf *dbuf;
 	struct aie_mem mem;
 	size_t size;
+};
+
+/**
+ * struct aie_bd_addr_attr - AI engine buffer descriptor address attributes
+ * @addr: address field attributes
+ * @length: length field attributes
+ */
+struct aie_bd_addr_attr {
+	struct aie_single_reg_field addr;
+	struct aie_single_reg_field length;
+};
+
+/**
+ * struct aie_bd_lock_attr - AI engine buffer descriptor lock attributes
+ * @lock_acq_id: lock acquire id field attributes
+ * @lock_acq_val: lock acquire value field attributes
+ * @lock_acq_en: lock acquire enable field attributes
+ * @lock_acq_val_en: lock acquire value enable field attributes
+ * @lock_rel_id: lock release id field attributes
+ * @lock_rel_val: lock release value field attributes
+ * @lock_rel_en: lock release enable field attributes
+ * @lock_rel_val_en: lock release value enable field attributes
+ */
+struct aie_bd_lock_attr {
+	struct aie_single_reg_field lock_acq_id;
+	struct aie_single_reg_field lock_acq_val;
+	struct aie_single_reg_field lock_acq_en;
+	struct aie_single_reg_field lock_acq_val_en;
+	struct aie_single_reg_field lock_rel_id;
+	struct aie_single_reg_field lock_rel_val;
+	struct aie_single_reg_field lock_rel_en;
+	struct aie_single_reg_field lock_rel_val_en;
+};
+
+/**
+ * struct aie_bd_pkt_attr - AI engine buffer descriptor packet attributes
+ * @pkt_en: packet enable field attributes
+ * @pkt_type: packet type field attributes
+ * @pkt_id: packet id field attributes
+ */
+struct aie_bd_pkt_attr {
+	struct aie_single_reg_field pkt_en;
+	struct aie_single_reg_field pkt_type;
+	struct aie_single_reg_field pkt_id;
+};
+
+/**
+ * struct aie_bd_axi_attr - AI engine buffer descriptor AXI attributes
+ * @smid: smid field attributes
+ * @cache: AxCache field attributes
+ * @qos: Axi QoS field attributes
+ * @secure_en: Axi Secure access field attributes
+ * @burst_len: Axi bursth length field attributes
+ */
+struct aie_bd_axi_attr {
+	struct aie_single_reg_field smid;
+	struct aie_single_reg_field cache;
+	struct aie_single_reg_field qos;
+	struct aie_single_reg_field secure_en;
+	struct aie_single_reg_field burst_len;
+};
+
+/**
+ * struct aie_bd_aie_dim_attr - AI engine buffer descriptor dimension
+ *				attributes for aie
+ * @x_incr: x increment field attributes
+ * @x_wrap: x wrap field attributes
+ * @x_off: x offset field attributes
+ * @y_incr: y increment field attributes
+ * @y_wrap: y wrap field attributes
+ * @y_off: y offset field attributes
+ */
+struct aie_bd_aie_dim_attr {
+	struct aie_single_reg_field x_incr;
+	struct aie_single_reg_field x_wrap;
+	struct aie_single_reg_field x_off;
+	struct aie_single_reg_field y_incr;
+	struct aie_single_reg_field y_wrap;
+	struct aie_single_reg_field y_off;
+};
+
+/**
+ * struct aie_bd_multi_dim_attr - AI engine buffer descriptor dimension
+ *				  attributes
+ * @wrap: wrap field attributes
+ * @step_size: step size field attributes
+ */
+struct aie_bd_multi_dim_attr {
+	struct aie_single_reg_field wrap;
+	struct aie_single_reg_field step_size;
+};
+
+/**
+ * struct aie_bd_pad_attr - AI engine buffer descriptor padding attributes
+ * @before: before padding attributes
+ * @after: after padding attributes
+ */
+struct aie_bd_pad_attr {
+	struct aie_single_reg_field before;
+	struct aie_single_reg_field after;
+};
+
+/**
+ * struct aie_bd_aieml_dim_attr - AI engine buffer descriptor dimension
+ *				  attributes for aieml
+ * @iter_curr: iteration current field attributes
+ * @iter: iteration field attributes
+ * @dims: dimension field attributes, supports up to 4 dimensions
+ * @pads: padding field attributes
+ */
+struct aie_bd_aieml_dim_attr {
+	struct aie_single_reg_field iter_curr;
+	struct aie_bd_multi_dim_attr iter;
+	struct aie_bd_multi_dim_attr dims[4U];
+	struct aie_bd_pad_attr pads[3U];
+};
+
+/**
+ * struct aie_bd_attr - AI engine DMA attributes structure
+ * @valid_bd: buffer descriptor valid bd field attributes
+ * @next_bd: buffer descriptor next bd field attributes
+ * @use_next: buffer descriptor use next bd field attributes
+ * @addr: buffer descriptor address attributes
+ * @addr_2: buffer descriptor address attributes of second address
+ * @lock: buffer descriptor lock attributes
+ * @lock_2: buffer descriptor lock attributes of second lock
+ * @packet: buffer descriptor packet attributes
+ * @axi: buffer descriptor AXI attributes
+ * @aie_dim: buffer descriptor dimension attributes for aie dma
+ * @aieml_dim: buffer descriptor dimension attributes for aieml dma
+ * @buf_sel: buffer descriptor buffer selection field attributes
+ * @curr_ptr: buffer descriptor current pointer field attributes
+ * @interleave_en: buffer descriptor interleave enable field attributes
+ * @interleave_cnt: buffer descriptor interleave count field attributes
+ * @double_buff_en: buffer descriptor double buffer enable field attributes
+ * @fifo_mode: buffer descriptor fifo mode field attributes
+ * @compression_en: buffer descriptor compression enable field attributes
+ * @out_of_order_id: buffer descriptor out of order bd id field attributes
+ * @tlast_suppress: buffer descriptor tlast suppress field attributes
+ * @num_dims: number of dimensions for tile buffer descriptor
+ * @bd_idx_off: buffer descriptor index offset in bytes
+ */
+struct aie_bd_attr {
+	struct aie_single_reg_field valid_bd;
+	struct aie_single_reg_field next_bd;
+	struct aie_single_reg_field use_next;
+	struct aie_bd_addr_attr addr;
+	struct aie_bd_addr_attr addr_2;
+	struct aie_bd_lock_attr lock;
+	struct aie_bd_lock_attr lock_2;
+	struct aie_bd_pkt_attr packet;
+	struct aie_bd_axi_attr axi;
+	union {
+		struct aie_bd_aie_dim_attr aie_dim;
+		struct aie_bd_aieml_dim_attr aieml_dim;
+	};
+	struct aie_single_reg_field buf_sel;
+	struct aie_single_reg_field curr_ptr;
+	struct aie_single_reg_field interleave_en;
+	struct aie_single_reg_field interleave_cnt;
+	struct aie_single_reg_field double_buff_en;
+	struct aie_single_reg_field fifo_mode;
+	struct aie_single_reg_field compression_en;
+	struct aie_single_reg_field out_of_order_id;
+	struct aie_single_reg_field tlast_suppress;
+	u32 num_dims;
+	u32 bd_idx_off;
 };
 
 /**
@@ -723,6 +893,9 @@ struct aie_tile {
  * @ops: tile operations
  * @col_rst: column reset attribute
  * @col_clkbuf: column clock buffer attribute
+ * @shim_bd: SHIM DMA buffer descriptor attribute
+ * @tile_bd: tile DMA buffer descriptor attribute
+ * @memtile_bd: MEM tile DMA buffer descriptor attribute
  * @shim_dma: SHIM DMA attribute
  * @tile_dma: tile DMA attribute
  * @memtile_dma: MEM tile DMA attribute
@@ -772,6 +945,9 @@ struct aie_device {
 	const struct aie_tile_operations *ops;
 	const struct aie_single_reg_field *col_rst;
 	const struct aie_single_reg_field *col_clkbuf;
+	const struct aie_bd_attr *shim_bd;
+	const struct aie_bd_attr *tile_bd;
+	const struct aie_bd_attr *memtile_bd;
 	const struct aie_dma_attr *shim_dma;
 	const struct aie_dma_attr *tile_dma;
 	const struct aie_dma_attr *memtile_dma;
