@@ -93,12 +93,13 @@ err_dev:
 /**
  * of_fpga_bridge_get - get an exclusive reference to an fpga bridge
  *
- * @np: node pointer of an FPGA bridge
- * @info: fpga image specific information
+ * @np: node pointer of an FPGA bridge.
+ * @info: fpga image specific information.
  *
- * Return fpga_bridge struct if successful.
- * Return -EBUSY if someone already has a reference to the bridge.
- * Return -ENODEV if @np is not an FPGA Bridge.
+ * Return:
+ * * fpga_bridge struct pointer if successful.
+ * * -EBUSY if someone already has a reference to the bridge.
+ * * -ENODEV if @np is not an FPGA Bridge or can't take parent driver refcount.
  */
 struct fpga_bridge *of_fpga_bridge_get(struct device_node *np,
 				       struct fpga_image_info *info)
@@ -161,9 +162,9 @@ EXPORT_SYMBOL_GPL(fpga_bridge_put);
  * fpga_bridges_enable - enable bridges in a list
  * @bridge_list: list of FPGA bridges
  *
- * Enable each bridge in the list.  If list is empty, do nothing.
+ * Enable each bridge in the list. If list is empty, do nothing.
  *
- * Return 0 for success or empty bridge list; return error code otherwise.
+ * Return: 0 for success or empty bridge list or an error code otherwise.
  */
 int fpga_bridges_enable(struct list_head *bridge_list)
 {
@@ -185,9 +186,9 @@ EXPORT_SYMBOL_GPL(fpga_bridges_enable);
  *
  * @bridge_list: list of FPGA bridges
  *
- * Disable each bridge in the list.  If list is empty, do nothing.
+ * Disable each bridge in the list. If list is empty, do nothing.
  *
- * Return 0 for success or empty bridge list; return error code otherwise.
+ * Return: 0 for success or empty bridge list or an error code otherwise.
  */
 int fpga_bridges_disable(struct list_head *bridge_list)
 {
@@ -236,7 +237,7 @@ EXPORT_SYMBOL_GPL(fpga_bridges_put);
  *
  * Get an exclusive reference to the bridge and it to the list.
  *
- * Return 0 for success, error code from of_fpga_bridge_get() otherwise.
+ * Return: 0 for success, error code from of_fpga_bridge_get() otherwise.
  */
 int of_fpga_bridge_get_to_list(struct device_node *np,
 			       struct fpga_image_info *info,
@@ -266,7 +267,7 @@ EXPORT_SYMBOL_GPL(of_fpga_bridge_get_to_list);
  *
  * Get an exclusive reference to the bridge and it to the list.
  *
- * Return 0 for success, error code from fpga_bridge_get() otherwise.
+ * Return: 0 for success, error code from fpga_bridge_get() otherwise.
  */
 int fpga_bridge_get_to_list(struct device *dev,
 			    struct fpga_image_info *info,
