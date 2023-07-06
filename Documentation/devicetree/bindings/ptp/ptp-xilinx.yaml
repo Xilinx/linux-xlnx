@@ -24,6 +24,13 @@ properties:
     description: |
       Offset and length of the register set for the device.
 
+  xlnx,has-timer-syncer:
+    type: boolean
+    description: |
+      Describes the timerIP modes. Supported modes are system timer,
+      system and port timer mode. If property is present then its
+      a system timer mode else system and port timer mode.
+
 required:
   - compatible
   - reg
@@ -35,4 +42,5 @@ examples:
     ptp_timer@80000000 {
         compatible = "xlnx,timer-syncer-1588-2.0";
         reg = <0x80000000 0x10000>;
+        xlnx,has-timer-syncer;
     };
