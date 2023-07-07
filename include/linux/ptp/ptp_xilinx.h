@@ -23,6 +23,7 @@ struct xlnx_ptp_timer {
 	bool                    use_sys_timer_only;
 	u32                     period_0;
 	u32                     period_1;
+	int                     irq;
 };
 
 #endif /* __PTP_PTP_XILINX_H__ */
