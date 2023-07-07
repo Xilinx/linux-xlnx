@@ -7,6 +7,7 @@ b) 10G/25G High Speed Ethernet Subsystem.
 c) 10 Gigabit Ethernet Subsystem.
 d) USXGMII Ethernet Subsystem.
 e) MRMAC Ethernet Subsystem.
+f) 1G/10G/25G Switching Ethernet Subsystem.
 
 AXI 1G/2.5G Ethernet Subsystem- also called  AXI 1G/2.5G Ethernet Subsystem,
 the xilinx axi ethernet IP core provides connectivity to an external ethernet
@@ -22,6 +23,9 @@ driver.
 MRMAC is a hardened Ethernet IP on Versal supporting multiple rates from
 10G to 100G which can be used with a soft DMA controller.
 
+The Xilinx 1G/10G/25G Switching Ethernet Subsystem contains integrated MAC
+and PCS and it supports runtime switchable speeds among 1G,10G & 25G.
+
 For details about MDIO please refer phy.txt [1].
 
 Required properties:
@@ -32,7 +36,8 @@ Required properties:
 		  "xlnx,xxv-ethernet-1.0" for 10G/25G MAC,
 		  "xlnx,axi-2_5-gig-ethernet-1.0" for 2.5G MAC,
 		  "xlnx,xxv-usxgmii-ethernet-1.0" for USXGMII and
-		  "xlnx,mrmac-ethernet-1.0" for MRMAC.
+		  "xlnx,mrmac-ethernet-1.0" for MRMAC and
+		  "xlnx,ethernet-1-10-25g-2.7" for switchable 1/10/25G IP.
 - reg		: Address and length of the IO space, as well as the address
                   and length of the AXI DMA controller IO space, unless
                   axistream-connected is specified, in which case the reg
