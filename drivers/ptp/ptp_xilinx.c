@@ -66,6 +66,8 @@
 #define XPTPTIMER_SNAPSHOT_MASK		BIT(0)
 #define XPTPTIMER_LOAD_TOD_MASK		BIT(0)
 #define XPTPTIMER_LOAD_OFFSET_MASK	BIT(1)
+#define XPTPTIMER_ENABLE_SNAPSHOT BIT(5)
+#define XPTPTIMER_EXTS_1PPS_INTR_MASK  BIT(16)
 
 /* TODO This should be derived from the system design */
 #define XPTPTIMER_CLOCK_PERIOD		4
@@ -310,6 +312,33 @@ static int xlnx_ptp_settime(struct ptp_clock_info *ptp,
 static int xlnx_ptp_enable(struct ptp_clock_info *ptp,
 			   struct ptp_clock_request *rq, int on)
 {
+	struct xlnx_ptp_timer *timer = container_of(ptp, struct xlnx_ptp_timer,
+			ptp_clock_info);
+	/* data is for snapshot enab/dis. data_ier is for interrupt enab/dis */
+	u32 data, data_ier;
+
+	switch (rq->type) {
+	case PTP_CLK_REQ_EXTTS:
+
+		data_ier = xlnx_ptp_ior(timer, XPTPTIMER_IER_OFFSET);
+		data = xlnx_ptp_ior(timer, XPTPTIMER_TOD_CONFIG_OFFSET);
+
+		data &= ~(XPTPTIMER_ENABLE_SNAPSHOT);
+		data_ier &= ~(XPTPTIMER_EXTS_1PPS_INTR_MASK);
+
+		if (on) {
+			data |= XPTPTIMER_ENABLE_SNAPSHOT;
+			data_ier |= XPTPTIMER_EXTS_1PPS_INTR_MASK;
+		}
+
+		xlnx_ptp_iow(timer, XPTPTIMER_TOD_CONFIG_OFFSET, data);
+		xlnx_ptp_iow(timer, XPTPTIMER_IER_OFFSET, data_ier);
+
+		return 0;
+	default:
+		break;
+	}
+
 	return -EOPNOTSUPP;
 }
 
@@ -317,13 +346,46 @@ static struct ptp_clock_info xlnx_ptp_clock_info = {
 	.owner		= THIS_MODULE,
 	.name		= "Xilinx Timer",
 	.max_adj	= 64000000,	/* Safe max adjutment for clock rate */
-	.n_ext_ts	= 0,
+	.n_ext_ts	= 1,
 	.adjfine	= xlnx_ptp_adjfine,
 	.adjtime	= xlnx_ptp_adjtime,
 	.gettime64	= xlnx_ptp_gettime,
 	.settime64	= xlnx_ptp_settime,
 	.enable		= xlnx_ptp_enable,
 };
+
+/**
+ * xlnx_ptp_timer_isr - Interrupt Service Routine
+ * @irq:               IRQ number
+ * @priv:              pointer to the timer structure
+ * Return:	       IRQ_HANDLED on success. IRQ_NONE on failure
+ */
+static irqreturn_t xlnx_ptp_timer_isr(int irq, void *priv)
+{
+	struct xlnx_ptp_timer *timer = priv;
+	struct ptp_clock_event event;
+	u32 sech, secl, nsec;
+	int status;
+	u64 sec;
+
+	memset(&event, 0, sizeof(event));
+	status = xlnx_ptp_ior(timer, XPTPTIMER_ISR_OFFSET);
+	if (status & XPTPTIMER_EXTS_1PPS_INTR_MASK) {
+		xlnx_ptp_iow(timer, XPTPTIMER_ISR_OFFSET,
+			     XPTPTIMER_EXTS_1PPS_INTR_MASK);
+		event.type = PTP_CLOCK_EXTTS;
+		nsec = xlnx_ptp_ior(timer, XPTPTIMER_SYS_NS_OFFSET);
+		sech = xlnx_ptp_ior(timer, XPTPTIMER_SYS_SEC_1_OFFSET);
+		secl = xlnx_ptp_ior(timer, XPTPTIMER_SYS_SEC_0_OFFSET);
+
+		sec = (((u64)sech << 32) | secl) & XPTPTIMER_MAX_SEC_MASK;
+		event.timestamp = ktime_set(sec, nsec);
+		ptp_clock_event(timer->ptp_clock, &event);
+		return IRQ_HANDLED;
+	}
+
+	return IRQ_NONE;
+}
 
 static int xlnx_ptp_timer_probe(struct platform_device *pdev)
 {
@@ -354,6 +416,20 @@ static int xlnx_ptp_timer_probe(struct platform_device *pdev)
 	timer->use_sys_timer_only = of_property_read_bool(pdev->dev.of_node,
 							  "xlnx,has-timer-syncer");
 
+	timer->irq = irq_of_parse_and_map(pdev->dev.of_node, 0);
+	if (timer->irq <= 0) {
+		dev_warn(&pdev->dev, "could not determine Timer IRQ\n");
+	} else {
+		/* Enable interrupts */
+		err = devm_request_irq(timer->dev, timer->irq,
+				       xlnx_ptp_timer_isr,
+				       IRQF_SHARED,
+				       "xlnx_ptp_timer",
+				       timer);
+		if (err)
+			dev_warn(&pdev->dev, "Failed to request ptp timer irq\n");
+	}
+
 	spin_lock_init(&timer->reg_lock);
 
 	timer->ptp_clock_info = xlnx_ptp_clock_info;
@@ -365,6 +441,11 @@ static int xlnx_ptp_timer_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Failed to register ptp clock\n");
 		return err;
 	}
+
+	if (timer->irq > 0)
+		/* Enable timer interrupt */
+		xlnx_ptp_iow(timer, XPTPTIMER_IER_OFFSET,
+			     XPTPTIMER_EXTS_1PPS_INTR_MASK);
 
 	timer->period_0 = TOD_LEGACY_SYS_PERIOD_0;
 	timer->period_1 = TOD_LEGACY_SYS_PERIOD_1;
@@ -424,6 +505,10 @@ static int xlnx_ptp_timer_remove(struct platform_device *pdev)
 {
 	struct xlnx_ptp_timer *timer = platform_get_drvdata(pdev);
 
+	if (timer->irq > 0)
+		/* Disable timer interrupt */
+		xlnx_ptp_iow(timer, XPTPTIMER_IER_OFFSET,
+			     (u32)~(XPTPTIMER_EXTS_1PPS_INTR_MASK));
 	ptp_clock_unregister(timer->ptp_clock);
 
 	return 0;
