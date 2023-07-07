@@ -393,6 +393,7 @@
 #define XXVS_SPEED_OFFSET		0x00000180
 
 #define XXVS_AN_STATUS_OFFSET		0x0000458
+#define XXVS_AN_LP_STATUS_OFFSET	0x000045C
 #define XXVS_LT_STATUS_OFFSET		0x000046C
 
 /* Switchable 1/10/25G MAC Register Mask Definitions */
@@ -781,6 +782,7 @@ struct aximcdma_bd {
  * @ptp_os_cf: CF TS of PTP PDelay req for one step usage.
  * @xxv_ip_version: XXV IP version
  * @switch_lock: Spinlock for switchable IP.
+ * @restart_work: delayable work queue.
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -867,6 +869,7 @@ struct axienet_local {
 	u64 ptp_os_cf;		/* CF TS of PTP PDelay req for one step usage */
 	u32 xxv_ip_version;
 	spinlock_t switch_lock;	/* To protect Link training programming from multiple context */
+	struct delayed_work restart_work;
 };
 
 /**
