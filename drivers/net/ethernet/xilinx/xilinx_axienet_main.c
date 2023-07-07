@@ -47,6 +47,7 @@
 #include <linux/xilinx_phy.h>
 #include <linux/clk.h>
 #include <linux/ptp/ptp_xilinx.h>
+#include <linux/workqueue.h>
 
 #include "xilinx_axienet.h"
 
@@ -1772,6 +1773,25 @@ axienet_config_autoneg_link_training(struct axienet_local *lp, unsigned int spee
 	}
 }
 
+static void speed_monitor_thread(struct work_struct *work)
+{
+	struct axienet_local *lp = container_of(work, struct axienet_local, restart_work.work);
+	static int lp_speed, dut_speed;
+
+	spin_lock(&lp->switch_lock);
+	lp_speed = axienet_ior(lp, XXVS_AN_LP_STATUS_OFFSET);
+	dut_speed = axienet_ior(lp, XXVS_AN_ABILITY_OFFSET);
+
+	if ((lp_speed & dut_speed) == XXVS_SPEED_1G)
+		axienet_iow(lp, XXVS_LT_CTL_OFFSET, 0);
+
+	if ((lp_speed & dut_speed) == XXVS_SPEED_10G)
+		axienet_iow(lp, XXVS_LT_CTL_OFFSET, 1);
+
+	spin_unlock(&lp->switch_lock);
+	schedule_delayed_work(&lp->restart_work, msecs_to_jiffies(200));
+}
+
 /**
  * axienet_open - Driver open routine.
  * @ndev:	Pointer to net_device structure
@@ -1987,10 +2007,12 @@ static int axienet_open(struct net_device *ndev)
 			goto err_eth_irq;
 	}
 
-	if (lp->axienet_config->mactype == XAXIENET_1G_10G_25G)
+	if (lp->axienet_config->mactype == XAXIENET_1G_10G_25G) {
 		axienet_config_autoneg_link_training(lp,
 						     (XXVS_AN_10G_ABILITY_MASK
 						     | XXVS_AN_1G_ABILITY_MASK));
+		schedule_delayed_work(&lp->restart_work, msecs_to_jiffies(500));
+	}
 
 	netif_tx_start_all_queues(ndev);
 	return 0;
@@ -2091,6 +2113,10 @@ static int axienet_stop(struct net_device *ndev)
 		free_irq(lp->eth_irq, ndev);
 
 	axienet_dma_bd_release(ndev);
+
+	if (lp->axienet_config->mactype == XAXIENET_1G_10G_25G)
+		cancel_delayed_work_sync(&lp->restart_work);
+
 	return 0;
 }
 
@@ -3866,6 +3892,9 @@ static int axienet_probe(struct platform_device *pdev)
 		dev_err(lp->dev, "register_netdev() error (%i)\n", ret);
 		goto cleanup_phylink;
 	}
+
+	if (lp->axienet_config->mactype == XAXIENET_1G_10G_25G)
+		INIT_DELAYED_WORK(&lp->restart_work, speed_monitor_thread);
 
 	return 0;
 
