@@ -382,6 +382,30 @@
 #define XXV_USXGMII_AN_STS_OFFSET	0x00000458
 #define XXV_STAT_GTWIZ_OFFSET		0x000004A0
 #define XXV_CONFIG_REVISION		0x00000024
+/* Switchable 1/10/25G MAC Register Definitions */
+#define XXVS_RESET_OFFSET		0x00000004
+#define XXVS_AN_CTL1_OFFSET		0x000000e0
+#define XXVS_AN_ABILITY_OFFSET		0x000000f8
+#define XXVS_LT_CTL_OFFSET		0x00000100
+#define XXVS_LT_TRAINED_OFFSET		0x00000104
+#define XXVS_LT_SEED_OFFSET		0x00000110
+#define XXVS_LT_COEF_OFFSET		0x00000130
+#define XXVS_SPEED_OFFSET		0x00000180
+
+#define XXVS_AN_STATUS_OFFSET		0x0000458
+#define XXVS_LT_STATUS_OFFSET		0x000046C
+
+/* Switchable 1/10/25G MAC Register Mask Definitions */
+#define XXVS_RX_SERDES_RESET		BIT(28)
+#define XXVS_AN_ENABLE_MASK		BIT(0)
+#define XXVS_AN_1G_ABILITY_MASK		BIT(0)
+#define XXVS_AN_10G_ABILITY_MASK	BIT(1)
+#define XXVS_LT_ENABLE_MASK		BIT(0)
+#define XXVS_LT_TRAINED_MASK		BIT(0)
+#define XXVS_AN_COMPLETE_MASK		BIT(2)
+#define XXVS_LT_DETECT_MASK		BIT(0)
+#define XXVS_SPEED_1G			BIT(0)
+#define	XXVS_SPEED_10G			BIT(1)
 
 /* XXV MAC Register Mask Definitions */
 #define XXV_GT_RESET_MASK	BIT(0)
@@ -491,6 +515,17 @@
 /* PTP Packet length */
 #define XAE_TX_PTP_LEN		16
 #define XXV_TX_PTP_LEN		12
+
+/* Switching 1/10/25G MAC AN & LT seed values */
+#define XXVS_AN_NONCE_SEED		0x16C
+#define XXVS_AN_NONCE_SEED1		0x10
+#define XXVS_LT_SEED			0x605
+#define XXVS_LT_COEF_P1			0x1
+#define XXVS_LT_COEF_P1_SHIFT		6
+#define XXVS_LT_COEF_STATE0		0x1
+#define XXVS_LT_COEF_STATE0_SHIFT	8
+#define XXVS_LT_COEF_M1			0x1
+#define XXVS_LT_COEF_M1_SHIFT		10
 
 /* Macros used when AXI DMA h/w is configured without DRE */
 #define XAE_TX_BUFFERS		64
@@ -745,6 +780,7 @@ struct aximcdma_bd {
  * @gt_lane: MRMAC GT lane index used.
  * @ptp_os_cf: CF TS of PTP PDelay req for one step usage.
  * @xxv_ip_version: XXV IP version
+ * @switch_lock: Spinlock for switchable IP.
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -830,6 +866,7 @@ struct axienet_local {
 	u32 gt_lane;		/* MRMAC GT lane index used */
 	u64 ptp_os_cf;		/* CF TS of PTP PDelay req for one step usage */
 	u32 xxv_ip_version;
+	spinlock_t switch_lock;	/* To protect Link training programming from multiple context */
 };
 
 /**
@@ -915,6 +952,7 @@ struct axienet_dma_q {
  * @XAXIENET_LEGACY_10G: IP type is legacy 10G MAC.
  * @XAXIENET_10G_25G:	 IP type is 10G/25G MAC(XXV MAC).
  * @XAXIENET_MRMAC:	 IP type is hardened Multi Rate MAC (MRMAC).
+ * @XAXIENET_1G_10G_25G: IP type is 1G/10G/25G MAC.
  *
  */
 enum axienet_ip_type {
@@ -923,6 +961,7 @@ enum axienet_ip_type {
 	XAXIENET_LEGACY_10G,
 	XAXIENET_10G_25G,
 	XAXIENET_MRMAC,
+	XAXIENET_1G_10G_25G,
 };
 
 struct axienet_config {
