@@ -201,6 +201,7 @@ struct xcan_devtype_data {
  * @can_clk:			Pointer to struct clk
  * @devtype:			Device type specific constants
  * @transceiver:		Optional pointer to associated CAN transceiver
+ * @rstc:			Pointer to reset control
  */
 struct xcan_priv {
 	struct can_priv can;
@@ -1811,7 +1812,6 @@ static int xcan_probe(struct platform_device *pdev)
 	ret = reset_control_reset(priv->rstc);
 	if (ret)
 		goto err_free;
-
 
 	if (devtype->cantype == XAXI_CANFD) {
 		priv->can.data_bittiming_const =
