@@ -23732,6 +23732,13 @@ F:	drivers/misc/Makefile
 F:	drivers/misc/xilinx_sdfec.c
 F:	include/uapi/misc/xilinx_sdfec.h
 
+XILINX PUF driver
+M:	Kundanala Praveen Teja <praveen.teja.kundanala@amd.com>
+R:	Michal Simek <michal.simek@amd.com>
+S:	Maintained
+F:	drivers/misc/xilinx_puf.c
+F:	include/uapi/misc/xilinx_puf.h
+
 XILINX VERSAL SYSMON DRIVER
 M:	Salih Erim <salih.erim@amd.com>
 R:	Dragan Cvetic <dragan.cvetic@amd.com>

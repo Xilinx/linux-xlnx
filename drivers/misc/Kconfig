@@ -507,6 +507,17 @@ config XILINX_AIE
 
 	  If unsure, say N
 
+config XILINX_PUF
+	tristate "Xilinx PUF driver"
+	depends on ZYNQMP_FIRMWARE
+	help
+	  This option enables support for the Xilinx Physical unclonable function
+	  (PUF) driver.
+	  It is a configurable driver to generate PUF KEK source either by using
+	  PUF registration or regeneration command.
+
+	  If unsure, say N.
+
 config MISC_RTSX
 	tristate
 	default MISC_RTSX_PCI || MISC_RTSX_USB
