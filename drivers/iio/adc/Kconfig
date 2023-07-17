@@ -1464,8 +1464,23 @@ config VERSAL_SYSMON
 	  Say yes here to have support for the Xilinx Sysmon.
 	  The driver will enable users to monitor temperature and voltage on the
 	  Xilinx Versal platform.
-	  The HW also supports I2C access but it is not supported by the driver.
 
 	  The driver can also be build as a module. If so, the module will be called
 	  versal-sysmon.
+
+config VERSAL_SYSMON_I2C
+	tristate "Xilinx I2C Sysmon driver for Versal"
+	depends on I2C
+	select VERSAL_SYSMON_CORE
+	help
+	  Say yes here to have support for the Xilinx Sysmon I2C driver.
+	  The driver will enable users to monitor temperature and voltage on the
+	  Xilinx Versal platform via I2C.
+
+	  This will require the Sysmon to be configured to be an I2C device on the
+	  target device.
+
+	  The driver can also be build as a module. If so, the module will be called
+	  versal-sysmon-i2c.
+
 endmenu
