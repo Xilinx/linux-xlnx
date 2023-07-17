@@ -2104,6 +2104,24 @@ int versal_pm_aes_dec_final(const u64 gcm_addr)
 }
 EXPORT_SYMBOL_GPL(versal_pm_aes_dec_final);
 
+int versal_pm_puf_registration(const u64 in_addr)
+{
+	return zynqmp_pm_invoke_fn(XPUF_API_PUF_REGISTRATION,
+				   lower_32_bits(in_addr),
+				   upper_32_bits(in_addr),
+				   0, 0, 0, NULL);
+}
+EXPORT_SYMBOL_GPL(versal_pm_puf_registration);
+
+int versal_pm_puf_regeneration(const u64 in_addr)
+{
+	return zynqmp_pm_invoke_fn(XPUF_API_PUF_REGENERATION,
+				   lower_32_bits(in_addr),
+				   upper_32_bits(in_addr),
+				   0, 0, 0, NULL);
+}
+EXPORT_SYMBOL_GPL(versal_pm_puf_regeneration);
+
 /**
  * zynqmp_pm_efuse_access - Provides access to efuse memory.
  * @address:	Address of the efuse params structure
