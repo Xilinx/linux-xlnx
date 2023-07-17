@@ -84,6 +84,10 @@
 /* Secure Commands */
 #define PM_WRITE_AES_KEY		0x568
 
+/* XilPuf API commands module id + api id */
+#define XPUF_API_PUF_REGISTRATION    0xC01
+#define XPUF_API_PUF_REGENERATION    0xC02
+
 /* XilSEM commands */
 #define PM_XSEM_HEADER			0x300
 #define PM_XSEM_CRAM_ERRINJ		0x304
@@ -803,6 +807,8 @@ int versal_pm_aes_dec_final(const u64 gcm_addr);
 int versal_pm_aes_enc_final(const u64 gcm_addr);
 int versal_pm_rsa_encrypt(const u64 in_params, const u64 in_addr);
 int versal_pm_rsa_decrypt(const u64 in_params, const u64 in_addr);
+int versal_pm_puf_registration(const u64 in_addr);
+int versal_pm_puf_regeneration(const u64 in_addr);
 #else
 static inline int zynqmp_pm_get_api_version(u32 *version)
 {
@@ -1395,6 +1401,16 @@ static inline int versal_pm_rsa_encrypt(const u64 in_params, const u64 in_addr)
 }
 
 static inline int versal_pm_rsa_decrypt(const u64 in_params, const u64 in_addr)
+{
+	return -ENODEV;
+}
+
+static inline int versal_pm_puf_registration(const u64 in_addr)
+{
+	return -ENODEV;
+}
+
+static inline int versal_pm_puf_regeneration(const u64 in_addr)
 {
 	return -ENODEV;
 }
