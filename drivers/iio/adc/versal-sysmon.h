@@ -156,6 +156,7 @@ enum sysmon_alarm_bit {
  * @pm_info: plm address of sysmon
  * @master_slr: to keep master sysmon info
  * @hbm_slr: flag if HBM slr is present
+ * @temp_read: function pointer for the special temperature read
  *
  * This structure contains necessary state for Sysmon driver to operate
  */
@@ -178,6 +179,7 @@ struct sysmon {
 	u32 pm_info;
 	bool master_slr;
 	bool hbm_slr;
+	int (*temp_read)(struct sysmon *sysmon, int offset);
 };
 
 struct sysmon_ops {
@@ -192,3 +194,8 @@ int sysmon_register_temp_ops(void (*cb)(void *data, struct regional_node *node),
 int sysmon_unregister_temp_ops(enum sysmon_region region_id);
 struct list_head *sysmon_nodes_by_region(enum sysmon_region region_id);
 int sysmon_get_node_value(int sat_id);
+int sysmon_parse_dt(struct iio_dev *indio_dev, struct device *dev);
+int sysmon_init_interrupt(struct sysmon *sysmon);
+void sysmon_read_reg(struct sysmon *sysmon, u32 offset, u32 *data);
+void sysmon_write_reg(struct sysmon *sysmon, u32 offset, u32 data);
+void sysmon_set_iio_dev_info(struct iio_dev *indio_dev);
