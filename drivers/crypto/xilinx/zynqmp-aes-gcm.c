@@ -241,7 +241,16 @@ static int versal_aes_aead_cipher(struct aead_request *req)
 	char *kbuf;
 	int ret;
 
-	dma_size = key_offset + tfm_ctx->keylen;
+	if (tfm_ctx->keylen != XSECURE_AES_KEY_SIZE_128 &&
+	    tfm_ctx->keylen != XSECURE_AES_KEY_SIZE_256) {
+		ret = -EINVAL;
+		goto err;
+	}
+
+	dma_size = key_offset;
+	/* Allocate keylen for volatile user keys */
+	if (tfm_ctx->keysrc >= VERSAL_AES_USER_KEY_0 && tfm_ctx->keysrc <= VERSAL_AES_USER_KEY_7)
+		dma_size += tfm_ctx->keylen;
 
 	kbuf = dma_alloc_coherent(dev, dma_size, &dma_addr_data, GFP_KERNEL);
 	if (!kbuf) {
@@ -291,13 +300,14 @@ static int versal_aes_aead_cipher(struct aead_request *req)
 	else if (tfm_ctx->keylen == XSECURE_AES_KEY_SIZE_256)
 		hwreq->size = AES_KEY_SIZE_256;
 
-	memcpy(kbuf + key_offset,
-	       tfm_ctx->key, tfm_ctx->keylen);
-
-	ret = versal_pm_aes_key_write(hwreq->size, hwreq->keysrc,
-				      dma_addr_data + key_offset);
-	if (ret)
-		goto in_fail;
+	/* Request aes key write for volatile user keys */
+	if (hwreq->keysrc >= VERSAL_AES_USER_KEY_0 && hwreq->keysrc <= VERSAL_AES_USER_KEY_7) {
+		memcpy(kbuf + key_offset, tfm_ctx->key, tfm_ctx->keylen);
+		ret = versal_pm_aes_key_write(hwreq->size, hwreq->keysrc,
+					      dma_addr_data + key_offset);
+		if (ret)
+			goto in_fail;
+	}
 
 	ret = versal_pm_aes_op_init(dma_addr_hw_req);
 	if (ret)
@@ -482,25 +492,29 @@ static int versal_aes_aead_setkey(struct crypto_aead *aead, const u8 *key,
 			(struct zynqmp_aead_tfm_ctx *)crypto_tfm_ctx(tfm);
 
 	if (keylen == ZYNQMP_KEY_SRC_SEL_KEY_LEN) {
-		unsigned char keysrc = VERSAL_AES_USER_KEY_0;
+		unsigned char keysrc = VERSAL_AES_EFUSE_USER_KEY_0;
 
-		keysrc += *key;
-		if (keysrc >= VERSAL_AES_USER_KEY_0 &&
-		    keysrc  <= VERSAL_AES_USER_KEY_7)
+		keysrc = *key;
+		if ((keysrc >= VERSAL_AES_EFUSE_USER_KEY_0 &&
+		     keysrc  <= VERSAL_AES_USER_KEY_7) &&
+		     keysrc != VERSAL_AES_KUP_KEY) {
 			tfm_ctx->keysrc = keysrc;
-		else
-			tfm_ctx->keysrc = VERSAL_AES_USER_KEY_0;
-
-		return 0;
+			return 0;
+		}
+		return -EINVAL;
 	} else {
 		tfm_ctx->keylen = keylen;
 		if (keylen == XSECURE_AES_KEY_SIZE_256 ||
 		    keylen == XSECURE_AES_KEY_SIZE_128) {
-			memcpy(tfm_ctx->key, key, keylen);
+			if (tfm_ctx->keysrc >= VERSAL_AES_USER_KEY_0 &&
+			    tfm_ctx->keysrc <= VERSAL_AES_USER_KEY_7) {
+				memcpy(tfm_ctx->key, key, keylen);
+			}
 		}
 
-		if (tfm_ctx->keysrc < VERSAL_AES_USER_KEY_0 ||
-		    tfm_ctx->keysrc > VERSAL_AES_USER_KEY_7) {
+		if (tfm_ctx->keysrc < VERSAL_AES_EFUSE_USER_KEY_0 ||
+		    tfm_ctx->keysrc > VERSAL_AES_USER_KEY_7 ||
+		    tfm_ctx->keysrc ==  VERSAL_AES_KUP_KEY) {
 			tfm_ctx->keysrc = VERSAL_AES_USER_KEY_0;
 		}
 	}
