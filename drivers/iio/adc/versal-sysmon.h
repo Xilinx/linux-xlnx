@@ -143,6 +143,7 @@ enum sysmon_alarm_bit {
  * @base: physical base address of device
  * @dev: pointer to device struct
  * @indio_dev: pointer to the iio device
+ * @i2c_client: pointer to the i2c client
  * @mutex: to handle multiple user interaction
  * @lock: to help manage interrupt registers correctly
  * @irq: interrupt number of the sysmon
@@ -164,6 +165,7 @@ struct sysmon {
 	void __iomem *base;
 	struct device *dev;
 	struct iio_dev *indio_dev;
+	struct i2c_client *client;
 	/* kernel doc above */
 	struct mutex mutex;
 	/* kernel doc above*/
