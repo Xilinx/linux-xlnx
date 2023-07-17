@@ -236,7 +236,7 @@ static int xlnx_puf_probe(struct platform_device *pdev)
 	}
 
 	xpuf->miscdev.minor = MISC_DYNAMIC_MINOR;
-	xpuf->miscdev.name = "xlnx-puf";
+	xpuf->miscdev.name = "xpuf";
 	xpuf->miscdev.fops = &dev_fops;
 	xpuf->miscdev.parent = dev;
 
@@ -245,7 +245,8 @@ static int xlnx_puf_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, xpuf);
 
-	dev_dbg(dev, "puf registered as /dev/puf successfully");
+	dev_dbg(dev, "puf registered as /dev/xpuf successfully");
+
 	return 0;
 }
 
@@ -262,7 +263,8 @@ static int xlnx_puf_remove(struct platform_device *pdev)
 	platform_set_drvdata(pdev, NULL);
 	misc_deregister(&xpuf->miscdev);
 
-	dev_dbg(xpuf->dev, "%s: device /dev/xpuf removed\n", __func__);
+	dev_dbg(xpuf->dev, "device /dev/xpuf removed\n");
+
 	return 0;
 }
 
@@ -298,10 +300,9 @@ static void __exit xlnx_puf_driver_exit(void)
 	platform_driver_unregister(&xlnx_puf_drv);
 }
 
-device_initcall(xlnx_puf_driver_init);
+module_init(xlnx_puf_driver_init);
 module_exit(xlnx_puf_driver_exit);
-module_platform_driver(xlnx_puf_drv);
 
-MODULE_AUTHOR("praveen.teja.kundanala@amd.com");
+MODULE_AUTHOR("Praveen Teja Kundanala <praveen.teja.kundanala@amd.com>");
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Xilinx Versal PUF driver");
