@@ -2454,14 +2454,16 @@ static ssize_t aieml_get_tile_sysfs_bd_metadata(struct aie_partition *apart,
 				 value, DELIMITER_LEVEL0);
 
 		for (i = 0; i < bd_attr->num_dims - 1; i++) {
-			index = bd_attr->aieml_dim.dims[0].step_size.regoff / sizeof(u32);
+			index = bd_attr->aieml_dim.dims[i].step_size.regoff / sizeof(u32);
 			value = aie_get_reg_field(&bd_attr->aieml_dim.dims[i].step_size,
 						  bd_data[index]);
 			len += scnprintf(&buffer[len], max(0L, size - len),
 					 "%lld%s", value, DELIMITER_LEVEL0);
-			index = bd_attr->aieml_dim.dims[0].wrap.regoff / sizeof(u32);
+			index = bd_attr->aieml_dim.dims[i].wrap.regoff / sizeof(u32);
 			value = aie_get_reg_field(&bd_attr->aieml_dim.dims[i].wrap,
 						  bd_data[index]);
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					 "%lld%s", value, DELIMITER_LEVEL0);
 			/* padding */
 			if (ttype == AIE_TILE_TYPE_MEMORY) {
 				index = bd_attr->aieml_dim.pads[i].before.regoff / sizeof(u32);
