@@ -121,7 +121,7 @@
 		};
 	};
 
-	zynqmp_ipi {
+	zynqmp-ipi {
 		compatible = "xlnx,zynqmp-ipi-mailbox";
 		interrupt-parent = <&gic>;
 		interrupts = <0 57 4>;
