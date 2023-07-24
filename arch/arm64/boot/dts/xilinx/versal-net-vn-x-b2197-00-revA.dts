@@ -159,7 +159,6 @@
 
 &sdhci1 {
 	status = "okay";
-	xlnx,device_id = <1>;
 	non-removable;
 	disable-wp;
 	bus-width = <8>;
