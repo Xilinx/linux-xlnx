@@ -110,7 +110,7 @@
 		};
 	};
 
-	zynqmp_ipi: zynqmp_ipi {
+	zynqmp_ipi: zynqmp-ipi {
 		u-boot,dm-pre-reloc;
 		compatible = "xlnx,zynqmp-ipi-mailbox";
 		interrupt-parent = <&gic>;
@@ -175,61 +175,61 @@
 				mbox-names = "tx", "rx";
 			};
 
-			nvmem_firmware {
+			nvmem-firmware {
 				compatible = "xlnx,zynqmp-nvmem-fw";
 				#address-cells = <1>;
 				#size-cells = <1>;
 
-				soc_revision: soc_revision@0 {
+				soc_revision: soc-revision@0 {
 					reg = <0x0 0x4>;
 				};
 				/* efuse access */
-				efuse_dna: efuse_dna@c {
+				efuse_dna: efuse-dna@c {
 					reg = <0xc 0xc>;
 				};
-				efuse_usr0: efuse_usr0@20 {
+				efuse_usr0: efuse-usr0@20 {
 					reg = <0x20 0x4>;
 				};
-				efuse_usr1: efuse_usr1@24 {
+				efuse_usr1: efuse-usr1@24 {
 					reg = <0x24 0x4>;
 				};
-				efuse_usr2: efuse_usr2@28 {
+				efuse_usr2: efuse-usr2@28 {
 					reg = <0x28 0x4>;
 				};
-				efuse_usr3: efuse_usr3@2c {
+				efuse_usr3: efuse-usr3@2c {
 					reg = <0x2c 0x4>;
 				};
-				efuse_usr4: efuse_usr4@30 {
+				efuse_usr4: efuse-usr4@30 {
 					reg = <0x30 0x4>;
 				};
-				efuse_usr5: efuse_usr5@34 {
+				efuse_usr5: efuse-usr5@34 {
 					reg = <0x34 0x4>;
 				};
-				efuse_usr6: efuse_usr6@38 {
+				efuse_usr6: efuse-usr6@38 {
 					reg = <0x38 0x4>;
 				};
-				efuse_usr7: efuse_usr7@3c {
+				efuse_usr7: efuse-usr7@3c {
 					reg = <0x3c 0x4>;
 				};
-				efuse_miscusr: efuse_miscusr@40 {
+				efuse_miscusr: efuse-miscusr@40 {
 					reg = <0x40 0x4>;
 				};
-				efuse_chash: efuse_chash@50 {
+				efuse_chash: efuse-chash@50 {
 					reg = <0x50 0x4>;
 				};
-				efuse_pufmisc: efuse_pufmisc@54 {
+				efuse_pufmisc: efuse-pufmisc@54 {
 					reg = <0x54 0x4>;
 				};
-				efuse_sec: efuse_sec@58 {
+				efuse_sec: efuse-sec@58 {
 					reg = <0x58 0x4>;
 				};
-				efuse_spkid: efuse_spkid@5c {
+				efuse_spkid: efuse-spkid@5c {
 					reg = <0x5c 0x4>;
 				};
-				efuse_ppk0hash: efuse_ppk0hash@a0 {
+				efuse_ppk0hash: efuse-ppk0hash@a0 {
 					reg = <0xa0 0x30>;
 				};
-				efuse_ppk1hash: efuse_ppk1hash@d0 {
+				efuse_ppk1hash: efuse-ppk1hash@d0 {
 					reg = <0xd0 0x30>;
 				};
 			};
@@ -1095,7 +1095,7 @@
 			#dma-cells = <1>;
 		};
 
-		zynqmp_dpaud_setting: dp_aud@fd4ac000 {
+		zynqmp_dpaud_setting: dp-aud@fd4ac000 {
 			compatible = "xlnx,zynqmp-dpaud-setting", "syscon";
 			reg = <0x0 0xfd4ac000 0x0 0x1000>;
 		};
@@ -1128,24 +1128,24 @@
 			i2c-bus {
 			};
 
-			zynqmp_dp_snd_codec0: zynqmp_dp_snd_codec0 {
+			zynqmp_dp_snd_codec0: zynqmp-dp-snd-codec0 {
 				compatible = "xlnx,dp-snd-codec";
 				clock-names = "aud_clk";
 			};
 
-			zynqmp_dp_snd_pcm0: zynqmp_dp_snd_pcm0 {
+			zynqmp_dp_snd_pcm0: zynqmp-dp-snd-pcm0 {
 				compatible = "xlnx,dp-snd-pcm0";
 				dmas = <&zynqmp_dpdma 4>;
 				dma-names = "tx";
 			};
 
-			zynqmp_dp_snd_pcm1: zynqmp_dp_snd_pcm1 {
+			zynqmp_dp_snd_pcm1: zynqmp-dp-snd-pcm1 {
 				compatible = "xlnx,dp-snd-pcm1";
 				dmas = <&zynqmp_dpdma 5>;
 				dma-names = "tx";
 			};
 
-			zynqmp_dp_snd_card0: zynqmp_dp_snd_card {
+			zynqmp_dp_snd_card0: zynqmp-dp-snd-card {
 				compatible = "xlnx,dp-snd-card";
 				xlnx,dp-snd-pcm = <&zynqmp_dp_snd_pcm0>,
 						  <&zynqmp_dp_snd_pcm1>;

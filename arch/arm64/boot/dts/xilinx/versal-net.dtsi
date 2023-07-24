@@ -316,7 +316,7 @@
 		interrupts = <1 13 4>, <1 14 4>, <1 11 4>, <1 10 4>; /* FIXME 3rd cell */
 	};
 
-	versal_fpga: versal_fpga {
+	versal_fpga: versal-fpga {
 		compatible = "xlnx,versal-fpga";
 	};
 
