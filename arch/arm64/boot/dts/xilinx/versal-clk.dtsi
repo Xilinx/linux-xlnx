@@ -13,21 +13,21 @@
 #include <dt-bindings/reset/xlnx-versal-resets.h>
 
 / {
-	pl_alt_ref_clk: pl_alt_ref_clk {
+	pl_alt_ref_clk: pl-alt-ref-clk {
 		u-boot,dm-pre-reloc;
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
 		clock-frequency = <33333333>;
 	};
 
-	ref_clk: ref_clk {
+	ref_clk: ref-clk {
 		u-boot,dm-pre-reloc;
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
 		clock-frequency = <33333333>;
 	};
 
-	can0_clk: can0_clk {
+	can0_clk: can0-clk {
 		#clock-cells = <0>;
 		compatible = "fixed-factor-clock";
 		clocks = <&versal_clk CAN0_REF>;
@@ -35,7 +35,7 @@
 		clock-mult = <1>;
 	};
 
-	can1_clk: can1_clk {
+	can1_clk: can1-clk {
 		#clock-cells = <0>;
 		compatible = "fixed-factor-clock";
 		clocks = <&versal_clk CAN1_REF>;
