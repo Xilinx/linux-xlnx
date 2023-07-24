@@ -44,7 +44,6 @@
 #include <linux/random.h>
 #include <net/sock.h>
 #include <linux/xilinx_phy.h>
-#include <linux/clk.h>
 
 #include "xilinx_axienet_tsn.h"
 
