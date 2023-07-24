@@ -43,49 +43,49 @@
 		reg = <0x0 0x0 0x0 0x80000000>;
 	};
 
-	ref_clk: ref_clk {
+	ref_clk: ref-clk {
 		status = "okay";
 		compatible = "xlnx,fclk";
 		clocks = <&si570_ref_clk>;
 	};
 
-	si570_ddrdimm1_clk: si570_ddrdimm1_clk {
+	si570_ddrdimm1_clk: si570-ddrdimm1-clk {
 		status = "okay";
 		compatible = "xlnx,fclk";
 		clocks = <&si570_ddr_dimm1>;
 	};
 
-	si570_lpddr4_clk2: si570_lpddr4_clk2 {
+	si570_lpddr4_clk2: si570-lpddr4-clk2 {
 		status = "okay";
 		compatible = "xlnx,fclk";
 		clocks = <&si570_lpddr4clk2>;
 	};
 
-	si570_lpddr4_clk1: si570_lpddr4_clk1 {
+	si570_lpddr4_clk1: si570-lpddr4-clk1 {
 		status = "okay";
 		compatible = "xlnx,fclk";
 		clocks = <&si570_lpddr4clk1>;
 	};
 
-	si570_hsdp_clk: si570_hsdp_clk {
+	si570_hsdp_clk: si570-hsdp-clk {
 		status = "okay";
 		compatible = "xlnx,fclk";
 		clocks = <&si570_hsdp>;
 	};
 
-	si570_zsfp_clk: si570_zsfp_clk {
+	si570_zsfp_clk: si570-zsfp-clk {
 		status = "okay";
 		compatible = "xlnx,fclk";
 		clocks = <&si570_zsfp>;
 	};
 
-	si570_user1_clk: si570_user1_clk {
+	si570_user1_clk: si570-user1-clk {
 		status = "okay";
 		compatible = "xlnx,fclk";
 		clocks = <&si570_user1>;
 	};
 
-	si5332_1: si5332_1 { /* u142 - GEM0 */
+	si5332_1: si5332-1 { /* u142 - GEM0 */
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
 		clock-frequency = <125000000>;
