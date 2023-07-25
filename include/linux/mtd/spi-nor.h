@@ -405,7 +405,6 @@ struct spi_nor {
 	u8			read_opcode;
 	u8			read_dummy;
 	u8			program_opcode;
-	u32			jedec_id;
 	u16			curbank;
 	enum spi_nor_protocol	read_proto;
 	enum spi_nor_protocol	write_proto;

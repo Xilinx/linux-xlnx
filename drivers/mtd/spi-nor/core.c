@@ -618,11 +618,11 @@ static int spi_nor_write_ear(struct spi_nor *nor, u32 addr)
 	if ((nor->flags & SNOR_F_HAS_STACKED) && mtd->size <= 0x2000000)
 		return 0;
 
-	if (nor->jedec_id == CFI_MFR_AMD)
+	if (nor->info->id[0] == CFI_MFR_AMD)
 		code = SPINOR_OP_BRWR;
-	if (nor->jedec_id == CFI_MFR_ST ||
-	    nor->jedec_id == CFI_MFR_MACRONIX ||
-	    nor->jedec_id == CFI_MFR_PMC) {
+	if (nor->info->id[0] == CFI_MFR_ST ||
+	    nor->info->id[0] == CFI_MFR_MACRONIX ||
+	    nor->info->id[0] == CFI_MFR_PMC) {
 		spi_nor_write_enable(nor);
 		code = SPINOR_OP_WREAR;
 	}
@@ -663,12 +663,12 @@ static int read_ear(struct spi_nor *nor, struct flash_info *info)
 	u8 code;
 
 	/* This is actually Spansion */
-	if (nor->jedec_id == CFI_MFR_AMD)
+	if (nor->info->id[0] == CFI_MFR_AMD)
 		code = SPINOR_OP_BRRD;
 	/* This is actually Micron */
-	else if (nor->jedec_id == CFI_MFR_ST ||
-		 nor->jedec_id == CFI_MFR_MACRONIX ||
-		 nor->jedec_id == CFI_MFR_PMC)
+	else if (nor->info->id[0] == CFI_MFR_ST ||
+		 nor->info->id[0] == CFI_MFR_MACRONIX ||
+		 nor->info->id[0] == CFI_MFR_PMC)
 		code = SPINOR_OP_RDEAR;
 	else
 		return -EINVAL;
