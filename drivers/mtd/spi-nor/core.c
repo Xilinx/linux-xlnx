@@ -597,12 +597,15 @@ static int spi_nor_write_ear(struct spi_nor *nor, u32 addr)
 	int ret;
 	struct mtd_info *mtd = &nor->mtd;
 
+#define OFFSET_16_MB 0x1000000
 	/* Wait until finished previous write command. */
 	if (spi_nor_wait_till_ready(nor))
 		return 1;
-	if (!(nor->flags & SNOR_F_HAS_PARALLEL) && mtd->size <= 0x1000000)
+	if (mtd->size <= OFFSET_16_MB)
 		return 0;
-	else if (mtd->size <= 0x2000000)
+	else if (((nor->flags & SNOR_F_HAS_PARALLEL) ||
+		  (nor->flags & SNOR_F_HAS_STACKED)) &&
+		 mtd->size <= OFFSET_16_MB * SNOR_FLASH_CNT_MAX)
 		return 0;
 
 	if (!(nor->flags & SNOR_F_HAS_PARALLEL) || !(nor->flags & SNOR_F_HAS_STACKED))
@@ -613,9 +616,6 @@ static int spi_nor_write_ear(struct spi_nor *nor, u32 addr)
 	ear = addr >> 24;
 
 	if (!(nor->flags & SNOR_F_HAS_STACKED) && ear == nor->curbank)
-		return 0;
-
-	if ((nor->flags & SNOR_F_HAS_STACKED) && mtd->size <= 0x2000000)
 		return 0;
 
 	if (nor->info->id[0] == CFI_MFR_AMD)
@@ -3978,7 +3978,7 @@ static void spi_nor_shutdown(struct spi_mem *spimem)
 {
 	struct spi_nor *nor = spi_mem_get_drvdata(spimem);
 
-	if (nor->addr_nbytes == 3 && nor->mtd.size > 0x1000000) {
+	if (nor->addr_nbytes == 3) {
 		spi_nor_write_enable(nor);
 		spi_nor_write_ear(nor, 0x00);
 	}
