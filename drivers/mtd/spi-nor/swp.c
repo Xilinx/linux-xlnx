@@ -397,9 +397,9 @@ static inline u16 min_lockable_sectors(struct spi_nor *nor,
 	 * protected area table is similar to that of spansion.
 	 */
 	lock_granularity = max(1, n_sectors / M25P_MAX_LOCKABLE_SECTORS);
-	if (nor->jedec_id == CFI_MFR_ST ||	/* Micron */
-	    nor->jedec_id == CFI_MFR_PMC ||	/* ISSI */
-	    nor->jedec_id == CFI_MFR_MACRONIX)	/* Macronix */
+	if (nor->info->id[0] == CFI_MFR_ST ||	/* Micron */
+	    nor->info->id[0] == CFI_MFR_PMC ||	/* ISSI */
+	    nor->info->id[0] == CFI_MFR_MACRONIX)	/* Macronix */
 		lock_granularity = 1;
 
 	return lock_granularity;
@@ -572,9 +572,9 @@ void spi_nor_try_unlock_all(struct spi_nor *nor)
 
 	dev_dbg(nor->dev, "Unprotecting entire flash array\n");
 
-	if (nor->jedec_id == CFI_MFR_ATMEL ||
-	    nor->jedec_id == CFI_MFR_INTEL ||
-	    nor->jedec_id == CFI_MFR_SST ||
+	if (nor->info->id[0] == CFI_MFR_ATMEL ||
+	    nor->info->id[0] == CFI_MFR_INTEL ||
+	    nor->info->id[0] == CFI_MFR_SST ||
 	    nor->flags & SNOR_F_HAS_LOCK) {
 		if (info->flags & SST_GLOBAL_PROT_UNLK) {
 			spi_nor_prot_unlock(nor);
