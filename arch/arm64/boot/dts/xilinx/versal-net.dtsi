@@ -621,6 +621,14 @@
 			clock-names = "ref_clk", "pclk";
 		};
 
+		sysmon0: sysmon@f1270000 {
+			compatible = "xlnx,versal-sysmon";
+			status = "disabled";
+			reg = <0x0 0xf1270000 0x0 0x4000>;
+			interrupts = <0 144 4>;
+			xlnx,numchannels = /bits/8 <0>;
+		};
+
 		ttc0: timer@f1dc0000 {
 			compatible = "cdns,ttc";
 			status = "disabled";
