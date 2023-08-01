@@ -1666,13 +1666,10 @@ static int xilinx_scaler_parse_of(struct xilinx_scaler *scaler)
  */
 static int xilinx_scaler_stream(struct xilinx_scaler *scaler)
 {
-	u32 fmt_in, fmt_out;
 	u32 pixel_rate;
 	u32 line_rate;
 	int ret;
 
-	fmt_in = scaler->fmt_in;
-	fmt_out = scaler->fmt_out;
 	line_rate = (scaler->height_in * STEP_PRECISION) / scaler->height_out;
 
 	if (scaler->is_polyphase) {
