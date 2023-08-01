@@ -1230,7 +1230,7 @@ static const short *xv_select_coeff(struct xilinx_scaler *scaler,
 }
 
 /**
- * xv_hscaler_coeff_select - Selection of H-Scaler coefficients of operation
+ * xv_hscaler_select_coeff - Selection of H-Scaler coefficients of operation
  * @scaler: Pointer to Scaler device structure
  * @width_in: Width of input video
  * @width_out: Width of desired output video
@@ -1363,7 +1363,7 @@ static void xv_vscaler_set_coeff(struct xilinx_scaler *scaler)
 }
 
 /**
- * xv_vscaler_coeff_select - Selection of V-Scaler coefficients of operation
+ * xv_vscaler_select_coeff - Selection of V-Scaler coefficients of operation
  * @scaler: Pointer to Scaler device structure
  * @height_in: Height of input video
  * @height_out: Height of desired output video
