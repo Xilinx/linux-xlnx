@@ -226,8 +226,7 @@ enum pm_api_id {
 	PM_CLOCK_GETSTATE = 38,
 	PM_CLOCK_SETDIVIDER = 39,
 	PM_CLOCK_GETDIVIDER = 40,
-	PM_CLOCK_SETRATE = 41,
-	PM_CLOCK_GETRATE = 42,
+	/* ID 41 and 42 is internal use for firmware */
 	PM_CLOCK_SETPARENT = 43,
 	PM_CLOCK_GETPARENT = 44,
 	PM_SECURE_IMAGE = 45,
@@ -852,16 +851,6 @@ static inline int zynqmp_pm_clock_setdivider(u32 clock_id, u32 divider)
 }
 
 static inline int zynqmp_pm_clock_getdivider(u32 clock_id, u32 *divider)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_clock_setrate(u32 clock_id, u64 rate)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_clock_getrate(u32 clock_id, u64 *rate)
 {
 	return -ENODEV;
 }
