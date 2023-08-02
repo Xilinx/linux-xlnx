@@ -2170,7 +2170,9 @@ static int cqspi_probe(struct platform_device *pdev)
 
 		if (of_device_is_compatible(pdev->dev.of_node,
 					    "xlnx,versal-ospi-1.0")) {
-			dma_set_mask(&pdev->dev, DMA_BIT_MASK(64));
+			ret = dma_set_mask(&pdev->dev, DMA_BIT_MASK(64));
+			if (ret)
+				goto probe_reset_failed;
 			if (cqspi->master_ref_clk_hz >= TAP_GRAN_SEL_MIN_FREQ)
 				writel(0x1, cqspi->iobase + CQSPI_REG_VERSAL_ECO);
 		}
