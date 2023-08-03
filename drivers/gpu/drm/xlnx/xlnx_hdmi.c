@@ -2624,7 +2624,7 @@ xlnx_hdmi_get_edid_block(void *data, u8 *buf, unsigned int block,
  * xlnx_hdmi_set_frl_tmds_mode - Function sets the supported mode (FRL/TMDS)
  * by the connectd sink device. Also gets the max_frl_rate supportd by sink.
  *
- * @hdmi: pointer to hdmi instance
+ * @connector: pointer to drm connector instance
  */
 static void
 xlnx_hdmi_set_frl_tmds_mode(struct drm_connector *connector)
