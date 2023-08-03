@@ -93,7 +93,7 @@ void xlnx_hdcp_tx_process_cp_irq(struct xlnx_hdcptx *xtxhdcp)
  * @hdcp_type: HDCP protocol selection
  * @lane_count: Number of lanes data to be encrypted
  * @hw_protocol: Interface type HDMI or DP
- * @Key_base_address: HDCP Key Management base address
+ * @key_base_address: HDCP Key Management base address
  * return: HDCP 1x/2x driver structure if success or return memory allocation error
  */
 void *xlnx_hdcp_tx_init(struct device *dev, void *protocol_ref,
