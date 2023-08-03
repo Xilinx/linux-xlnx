@@ -1,0 +1,66 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * dts file for Xilinx Versal Embedded+ VE2302 revA
+ *
+ * (C) Copyright 2023 - 2024, Advanced Micro Devices, Inc
+ *
+ * Michal Simek <michal.simek@amd.com>
+ */
+
+#include <dt-bindings/gpio/gpio.h>
+#include "versal.dtsi"
+#include "versal-clk.dtsi"
+
+/ {
+	compatible = "xlnx,versal-emb-plus-ve2302-revA",
+		     "xlnx,versal-emb-plus-ve2302",
+		     "xlnx,versal";
+	model = "Xilinx Versal Embedded+ VE2302 revA";
+
+	memory: memory@0 {
+		device_type = "memory";
+		reg = <0 0 0 0x80000000>, <0x8 0x0 0x1 0x80000000>; /* 8GB */
+	};
+
+	chosen {
+		bootargs = "earlycon clk_ignore_unused";
+		stdout-path = "serial0:115200";
+	};
+
+	aliases {
+		serial0 = &serial0;
+		serial1 = &serial1;
+		i2c0 = &i2c0;
+	};
+
+	/* For extension board */
+	onewire {
+		compatible = "w1-gpio";
+		gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>;
+	};
+};
+
+&serial1 { /* PMC_MIO20/21 */
+	status = "okay";
+};
+
+&i2c0 { /* PS_MIO 10/11 - to Ryzen */
+	status = "okay";
+};
+
+&gpio0 {
+	status = "okay";
+	gpio-line-names = "GPIO_LED2", "GPIO_LED3", "GPIO_LED4", "", "1WIRE", /* 0 - 4 */
+			"", "FUSA", "", "EGPIO", "AGPIO", /* 5 - 9 */
+			"I2C0_SCL", "I2C0_SDA", "", "", "", /* 10 - 14 */
+			"", "", "", "", "", /* 15 - 19 */
+			"", "", "", "", "3V3_MON_N", /* 20 - 24 */
+			"3V3_MON_P", /* 25, MIO end and EMIO start */
+			"", "", "", /* 26 - 29 */
+			"", "", "", "", "", /* 30 - 34 */
+			"", "", "", "", "", /* 35 - 39 */
+			"", "", "", "", "", /* 40 - 44 */
+			"", "", "", "", "", /* 45 - 49 */
+			"", "", "", "", "", /* 50 - 54 */
+			"", "", ""; /* 55 - 57 */
+};
