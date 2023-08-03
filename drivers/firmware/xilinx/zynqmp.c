@@ -489,10 +489,8 @@ static int zynqmp_pm_get_family_info(u32 *family, u32 *subfamily)
 		return ret;
 
 	idcode = ret_payload[1];
-	pm_family_code = FIELD_GET(GENMASK(FAMILY_CODE_MSB, FAMILY_CODE_LSB),
-				   idcode);
-	pm_sub_family_code = FIELD_GET(GENMASK(SUB_FAMILY_CODE_MSB,
-					       SUB_FAMILY_CODE_LSB), idcode);
+	pm_family_code = FIELD_GET(FAMILY_CODE_MASK, idcode);
+	pm_sub_family_code = FIELD_GET(SUB_FAMILY_CODE_MASK, idcode);
 	*family = pm_family_code;
 	*subfamily = pm_sub_family_code;
 
