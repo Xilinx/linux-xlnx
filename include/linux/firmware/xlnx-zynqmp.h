@@ -36,6 +36,8 @@
 #define PM_API_VERSION_1	1
 #define PM_API_VERSION_2	2
 
+#define PM_PINCTRL_PARAM_SET_VERSION   2
+
 /* Firmware feature check version mask */
 #define FIRMWARE_VERSION_MASK		0xFFFFU
 
