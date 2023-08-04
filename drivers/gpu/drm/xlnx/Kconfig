@@ -146,6 +146,7 @@ config DRM_XLNX_HDCP
 	tristate "Xilinx DRM HDCP Driver"
 	depends on DRM_XLNX_DPTX || DRM_XLNX_HDMITX
 	select XILINX_HDCP_COMMON
+	select CRYPTO_AES
 	help
 	  Enables the Functionality of HDCP Encryption/Decryption for
 	  Xilinx display drivers. It handles the HDCP authentication.
