@@ -126,7 +126,7 @@
 		stdout-path = "serial0:115200";
 	};
 
-	ref_clk: ref-clk {
+	ref_clk: ref_clk {
 		compatible = "fixed-clock";
 		u-boot,dm-pre-reloc;
 		#clock-cells = <0>;
