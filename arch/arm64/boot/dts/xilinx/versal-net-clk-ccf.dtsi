@@ -13,7 +13,7 @@
 #include <dt-bindings/reset/xlnx-versal-net-resets.h>
 
 / {
-	ref_clk: ref-clk {
+	ref_clk: ref_clk {
 		u-boot,dm-pre-reloc;
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
