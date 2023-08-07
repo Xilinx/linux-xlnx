@@ -679,10 +679,10 @@ static void aie_part_capture_utilization(struct timer_list *time)
 	struct aie_occupancy *util = util_timer->util;
 	struct aie_device *adev = apart->adev;
 	struct kernel_siginfo signal_info;
-	u32 val, mask, shift, value;
 	struct task_struct *task;
-	int cycle = 0, ret;
+	u32 val, value;
 	size_t offset;
+	int ret;
 
 	/*
 	 * Captures the active cycle and the total cycle values from respective
