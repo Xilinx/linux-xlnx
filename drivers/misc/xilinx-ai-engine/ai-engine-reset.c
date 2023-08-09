@@ -150,12 +150,23 @@ int aie_part_clear_context(struct aie_partition *apart)
 	if (ret < 0)
 		goto exit;
 
-	if (aie_part_clear_data_mem(apart))
-		dev_warn(&apart->dev, "failed to clear data memory.\n");
+	ret = zynqmp_pm_feature(PM_IOCTL);
+	if ((ret < 0) || ((ret >= 0) &&
+			((ret & FIRMWARE_VERSION_MASK) < PM_API_VERSION_3))) {
+		if (aie_part_clear_data_mem(apart))
+			dev_warn(&apart->dev, "failed to clear data memory.\n");
+	} else {
+		ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
+					apart->range.size.col,
+					XILINX_AIE_OPS_DATA_MEM_ZEROIZATION |
+					XILINX_AIE_OPS_MEM_TILE_ZEROIZATION);
+		if (ret < 0)
+			goto exit;
+	}
 
 	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
-				      apart->range.size.col,
-				      XILINX_AIE_OPS_SET_L2_CTRL_NPI_INTR);
+					apart->range.size.col,
+					XILINX_AIE_OPS_SET_L2_CTRL_NPI_INTR);
 exit:
 	mutex_unlock(&apart->mlock);
 

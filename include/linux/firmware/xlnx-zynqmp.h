@@ -35,6 +35,7 @@
 /* PM API versions */
 #define PM_API_VERSION_1	1
 #define PM_API_VERSION_2	2
+#define PM_API_VERSION_3	3
 
 #define PM_PINCTRL_PARAM_SET_VERSION   2
 
@@ -158,6 +159,8 @@
 #define XILINX_AIE_OPS_DIS_COL_CLK_BUFF			BIT(4)
 #define XILINX_AIE_OPS_ENB_AXI_MM_ERR_EVENT		BIT(5)
 #define XILINX_AIE_OPS_SET_L2_CTRL_NPI_INTR		BIT(6)
+#define XILINX_AIE_OPS_DATA_MEM_ZEROIZATION             BIT(8U)
+#define XILINX_AIE_OPS_MEM_TILE_ZEROIZATION             BIT(9U)
 
 enum pm_module_id {
 	PM_MODULE_ID = 0x0,
