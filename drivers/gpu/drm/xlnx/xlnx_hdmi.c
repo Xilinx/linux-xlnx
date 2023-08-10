@@ -1937,7 +1937,7 @@ static int xlnx_hdmi_exec_frl_state_lts3(struct xlnx_hdmi *hdmi)
 		hdmi->stream.frl_config.frl_train_states =
 			HDMI_TX_FRLSTATE_LTS_P_ARM;
 		xlnx_hdmi_set_frl_timer(hdmi, TIMEOUT_10US);
-		return status;
+		return 0;
 	} else if (ddc_buf[0] == 0xF && ddc_buf[1] == 0xF &&
 		   ddc_buf[2] == 0xF && ddc_buf[3] == 0xF) {
 		/* 0xF means a request to drop FRL rate */
