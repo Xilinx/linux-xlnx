@@ -803,9 +803,6 @@ static ssize_t xlnx_hdcp_key_store(struct device *sysfs_dev, struct device_attri
 		return ret;
 	}
 
-	if (hdmi->wait_for_streamup)
-		return ret;
-
 	if (hdmi->config.hdcp2x_enable) {
 		ret = xlnx_start_hdcp_engine(&hdmi->txhdcp,
 					     HDMI_MAX_LANES);
