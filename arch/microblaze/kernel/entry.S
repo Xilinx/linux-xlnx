@@ -327,7 +327,7 @@ C_ENTRY(mb_flush_dcache):
 	addik	r1, r1, -PT_SIZE
 	SAVE_REGS
 
-	LOAD_PER_CPU(r3, cpu_info)
+	addik	r3, r0, cpu_info
 	lwi	r7, r3, CI_DCS
 	lwi	r8, r3, CI_DCL
 	sub	r9, r7, r8
@@ -345,7 +345,7 @@ C_ENTRY(mb_invalidate_icache):
 	addik	r1, r1, -PT_SIZE
 	SAVE_REGS
 
-	LOAD_PER_CPU(r3, cpu_info)
+	addik	r3, r0, cpu_info
 	lwi	r7, r3, CI_ICS
 	lwi	r8, r3, CI_ICL
 	sub	r9, r7, r8
