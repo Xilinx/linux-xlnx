@@ -76,6 +76,7 @@ struct cdx_ops {
  * @priv: private data
  * @msi_domain: MSI domain
  * @id: Controller ID
+ * @controller_registered: controller registered with bus
  * @ops: CDX controller ops
  */
 struct cdx_controller {
@@ -83,6 +84,7 @@ struct cdx_controller {
 	void *priv;
 	struct irq_domain *msi_domain;
 	u32 id;
+	bool controller_registered;
 	struct cdx_ops *ops;
 };
 
