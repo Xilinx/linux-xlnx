@@ -3411,7 +3411,7 @@ static int xlnx_hdmi_hdcp_ddc_callback_write(void *ref, u32 offset,
 					     void *buf, u32 buf_size)
 {
 	struct xlnx_hdmi *hdmi = (struct xlnx_hdmi *)ref;
-	u32 ret;
+	int ret;
 	bool stop_flag;
 
 	stop_flag = (buf_size > 1) ? true : false;
