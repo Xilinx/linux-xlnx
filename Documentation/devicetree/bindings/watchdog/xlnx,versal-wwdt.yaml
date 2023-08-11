@@ -25,6 +25,7 @@ properties:
   compatible:
     enum:
       - xlnx,versal-wwdt
+      - xlnx,versal-wwdt-1.0 #deprecated
 
   reg:
     maxItems: 1
