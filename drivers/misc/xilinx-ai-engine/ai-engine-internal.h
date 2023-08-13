@@ -88,6 +88,9 @@ enum aie_tile_type {
 /* Max size of DMA buffer descriptors */
 #define AIE_MAX_BD_SIZE		8U
 
+/* Program memory offset and size index */
+#define AIE_PM_MEM_OFFSET_IDX	1U
+
 /*
  * Macros of AI engine module type index of a tile type
  * e.g.

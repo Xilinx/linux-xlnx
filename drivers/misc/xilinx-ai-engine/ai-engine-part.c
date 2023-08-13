@@ -67,7 +67,8 @@ static int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
 	u32 regend32, ttype;
 	u64 regoff, regend64;
 	struct aie_location loc, aloc;
-	unsigned int i;
+	unsigned int i, num_mems;
+	struct aie_part_mem *pmem = apart->pmems;
 
 	adev = apart->adev;
 	if (offset % sizeof(u32)) {
@@ -120,6 +121,36 @@ static int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
 		dev_err(&apart->dev,
 			"Tile(%u,%d) is gated.\n", loc.col, loc.row);
 		return -EINVAL;
+	}
+
+	num_mems = apart->adev->ops->get_mem_info(apart->adev,
+						  &apart->range, NULL);
+	for (i = 0; i < num_mems; i++) {
+		if (i == AIE_PM_MEM_OFFSET_IDX)
+			continue;
+		if (pmem[i].mem.range.start.row <= aloc.row &&
+		    (pmem[i].mem.range.start.row +
+		     pmem[i].mem.range.size.row) > aloc.row) {
+			if (pmem[i].mem.offset <= regoff &&
+			    ((pmem[i].mem.offset + pmem[i].mem.size)
+			      >= regoff)) {
+				if ((pmem[i].mem.offset + pmem[i].mem.size)
+				     < regend64) {
+					dev_err(&apart->dev,
+						"address 0x%zx, 0x%zx not accessible.\n",
+						offset, len);
+					return -EINVAL;
+				}
+			} else if (pmem[i].mem.offset > regoff &&
+				   (pmem[i].mem.offset <= regend64 &&
+				    ((pmem[i].mem.offset + pmem[i].mem.size)
+				     >= regend64))) {
+				dev_err(&apart->dev,
+					"address 0x%zx, 0x%zx not accessible.\n",
+					offset, len);
+				return -EINVAL;
+			}
+		}
 	}
 
 	if (!is_write)
