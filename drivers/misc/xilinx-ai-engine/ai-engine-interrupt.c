@@ -248,6 +248,9 @@ static u32 aie_get_bc_event(struct aie_partition *apart, u32 ttype,
 		event_mod = apart->adev->pl_events;
 	}
 
+	if (!event_mod)
+		return 0;
+
 	return event_mod->base_bc_event + bc_id;
 }
 
