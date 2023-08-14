@@ -156,6 +156,9 @@ static int xwwdt_probe(struct platform_device *pdev)
 	if (!xdev->freq)
 		return -EINVAL;
 
+	if (of_device_is_compatible(dev->of_node, "xlnx,versal-wwdt-1.0"))
+		dev_warn(dev, "Features deprecated: stop, set_timeout and set_pretimeout\n");
+
 	xilinx_wwdt_wdd->min_timeout = XWWDT_MIN_TIMEOUT;
 	xilinx_wwdt_wdd->timeout = XWWDT_DEFAULT_TIMEOUT;
 	xilinx_wwdt_wdd->max_hw_heartbeat_ms = 1000 * xilinx_wwdt_wdd->timeout;
@@ -182,6 +185,7 @@ static int xwwdt_probe(struct platform_device *pdev)
 
 static const struct of_device_id xwwdt_of_match[] = {
 	{ .compatible = "xlnx,versal-wwdt", },
+	{ .compatible = "xlnx,versal-wwdt-1.0", },
 	{},
 };
 MODULE_DEVICE_TABLE(of, xwwdt_of_match);
