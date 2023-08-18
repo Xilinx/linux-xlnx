@@ -2646,18 +2646,57 @@ static int aieml_set_part_clocks(struct aie_partition *apart)
 {
 	struct aie_range *range = &apart->range;
 	u32 node_id = apart->adev->pm_node_id;
-	int ret;
+	struct aie_location loc;
+	int ret, status;
 
-	ret = zynqmp_pm_aie_operation(node_id, range->start.col,
-				      range->size.col,
-				      XILINX_AIE_OPS_ENB_COL_CLK_BUFF);
-	if (ret < 0) {
-		dev_err(&apart->dev, "failed to enable clocks for partition\n");
-		return ret;
+	for (loc.col = range->start.col;
+	     loc.col < range->start.col + range->size.col;
+	     loc.col++) {
+		u32 startbit, col_inuse = 0;
+
+		startbit = loc.col * (range->size.row - 1);
+
+		for (loc.row = range->start.row + 1;
+		     loc.row < range->start.row + range->size.row;
+		     loc.row++) {
+			u32 nbitpos = startbit + loc.row;
+
+			if (aie_resource_testbit(&apart->tiles_inuse, nbitpos)) {
+				col_inuse = 1;
+				break;
+			}
+		}
+
+		if (col_inuse) {
+			ret = zynqmp_pm_aie_operation(node_id, loc.col,
+						      1,
+						      XILINX_AIE_OPS_ENB_COL_CLK_BUFF);
+			if (ret < 0) {
+				dev_err(&apart->dev,
+					"failed to enable clocks for partition\n");
+				return ret;
+			}
+
+			status = aie_resource_set(&apart->cores_clk_state,
+						  startbit, apart->range.size.row - 1);
+		} else {
+			ret = zynqmp_pm_aie_operation(node_id, loc.col,
+						      1,
+						      XILINX_AIE_OPS_DIS_COL_CLK_BUFF);
+			if (ret < 0) {
+				dev_err(&apart->dev,
+					"failed to disable clocks for partition\n");
+				return ret;
+			}
+
+			status = aie_resource_clear(&apart->tiles_inuse,
+						    startbit, apart->range.size.row - 1);
+			status = aie_resource_clear(&apart->cores_clk_state,
+						    startbit, apart->range.size.row - 1);
+		}
 	}
 
-	return aie_resource_set(&apart->cores_clk_state, 0,
-				apart->cores_clk_state.total);
+	return status;
 }
 
 static int aieml_part_clear_mems(struct aie_partition *apart)
