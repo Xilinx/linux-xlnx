@@ -100,7 +100,7 @@
 	#size-cells = <0>;
 
 	flash@2 { /* u397 MX25U3232 - FIXME not supported in U-Boot/Linux */
-		compatible = "m25p80";
+		compatible = "m25p80", "jedec,spi-nor";
 		spi-max-frequency = <5000000>;
 		reg = <2>;
 
