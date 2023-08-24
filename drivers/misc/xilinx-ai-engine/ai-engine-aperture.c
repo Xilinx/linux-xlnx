@@ -9,7 +9,7 @@
 #include <linux/bitmap.h>
 #include <linux/device.h>
 #include <linux/firmware/xlnx-zynqmp.h>
-#include <linux/firmware/xlnx-error-events.h>
+#include <linux/firmware/xlnx-versal-error-events.h>
 #include <linux/firmware/xlnx-event-manager.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
