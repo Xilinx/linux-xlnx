@@ -11,7 +11,7 @@
 #include <linux/sizes.h>
 #include <linux/bitfield.h>
 #include <linux/firmware/xlnx-zynqmp.h>
-#include <linux/firmware/xlnx-error-events.h>
+#include <linux/firmware/xlnx-versal-error-events.h>
 #include <linux/firmware/xlnx-event-manager.h>
 
 #include "edac_module.h"
