@@ -4,12 +4,13 @@
  * Use with Xilinx Event Management Driver
  *
  * Copyright (C) 2021-2022 Xilinx
+ * Copyright (C) 2023 Advanced Micro Devices, Inc.
  *
  * Abhyuday Godhasara <abhyuday.godhasara@xilinx.com>
  */
 
-#ifndef _FIRMWARE_XLNX_ERROR_EVENTS_H_
-#define _FIRMWARE_XLNX_ERROR_EVENTS_H_
+#ifndef _FIRMWARE_XLNX_VERSAL_ERROR_EVENTS_H_
+#define _FIRMWARE_XLNX_VERSAL_ERROR_EVENTS_H_
 
 /*
  * Error Event Node Ids
@@ -658,4 +659,4 @@
  */
 #define XPM_VERSAL_EVENT_ERROR_MASK_XSEM_NPI_UE_7		BIT(7)
 
-#endif /* _FIRMWARE_XLNX_ERROR_EVENTS_H_ */
+#endif /* _FIRMWARE_XLNX_VERSAL_ERROR_EVENTS_H_ */

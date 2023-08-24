@@ -9,7 +9,7 @@
  */
 
 #include <linux/cpuhotplug.h>
-#include <linux/firmware/xlnx-error-events.h>
+#include <linux/firmware/xlnx-versal-error-events.h>
 #include <linux/firmware/xlnx-event-manager.h>
 #include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/hashtable.h>
