@@ -3,6 +3,7 @@
  * Xilinx AI Engine partition driver
  *
  * Copyright (C) 2022 Xilinx, Inc.
+ * Copyright (C) 2023 Advanced Micro Devices, Inc.
  */
 
 #include <linux/bitmap.h>
@@ -314,8 +315,8 @@ int aie_aperture_remove(struct aie_aperture *aperture)
 
 	if (aperture->adev->device_name == AIE_DEV_GEN_S100 ||
 	    aperture->adev->device_name == AIE_DEV_GEN_S200) {
-		xlnx_unregister_event(PM_NOTIFY_CB, XPM_NODETYPE_EVENT_ERROR_PMC_ERR1,
-				      XPM_EVENT_ERROR_MASK_AIE_CR,
+		xlnx_unregister_event(PM_NOTIFY_CB, XPM_NODETYPE_VERSAL_EVENT_ERROR_PMC_ERR1,
+				      XPM_VERSAL_EVENT_ERROR_MASK_AIE_CR,
 				      aie_interrupt_callback, aperture);
 	}
 	mutex_unlock(&aperture->mlock);
@@ -498,8 +499,8 @@ of_aie_aperture_probe(struct aie_device *adev, struct device_node *nc)
 			goto put_aperture_dev;
 		}
 
-		ret = xlnx_register_event(PM_NOTIFY_CB, XPM_NODETYPE_EVENT_ERROR_PMC_ERR1,
-					  XPM_EVENT_ERROR_MASK_AIE_CR,
+		ret = xlnx_register_event(PM_NOTIFY_CB, XPM_NODETYPE_VERSAL_EVENT_ERROR_PMC_ERR1,
+					  XPM_VERSAL_EVENT_ERROR_MASK_AIE_CR,
 					  false, aie_interrupt_callback, aperture);
 
 		if (ret) {

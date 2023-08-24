@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2020 Xilinx, Inc.
+ * Copyright (C) 2023 Advanced Micro Devices, Inc.
  */
 
 #include <linux/edac.h>
@@ -605,9 +606,9 @@ static void xddr_err_callback(const u32 *payload, void *data)
 	/* Lock the PCSR registers */
 
 	writel(1, priv->ddrmc_baseaddr + XDDR_PCSR_OFFSET);
-	if (payload[2] == XPM_EVENT_ERROR_MASK_DDRMC_CR)
+	if (payload[2] == XPM_VERSAL_EVENT_ERROR_MASK_DDRMC_CR)
 		p->error_type = XDDR_ERR_TYPE_CE;
-	if (payload[2] == XPM_EVENT_ERROR_MASK_DDRMC_NCR)
+	if (payload[2] == XPM_VERSAL_EVENT_ERROR_MASK_DDRMC_NCR)
 		p->error_type = XDDR_ERR_TYPE_UE;
 
 	status = xddr_get_error_info(priv);
@@ -1193,8 +1194,8 @@ static int xddr_mc_probe(struct platform_device *pdev)
 	xddr_setup_address_map(priv);
 #endif
 
-	rc = xlnx_register_event(PM_NOTIFY_CB, EVENT_ERROR_PMC_ERR1,
-				 XPM_EVENT_ERROR_MASK_DDRMC_CR | XPM_EVENT_ERROR_MASK_DDRMC_NCR,
+	rc = xlnx_register_event(PM_NOTIFY_CB, XPM_NODETYPE_VERSAL_EVENT_ERROR_PMC_ERR1,
+				 XPM_VERSAL_EVENT_ERROR_MASK_DDRMC_CR | XPM_VERSAL_EVENT_ERROR_MASK_DDRMC_NCR,
 				 false, xddr_err_callback, mci);
 	if (rc == -ENODEV) {
 		rc = xddr_setup_irq(mci, pdev);
@@ -1239,9 +1240,9 @@ static int xddr_mc_remove(struct platform_device *pdev)
 	edac_remove_sysfs_attributes(mci);
 #endif
 
-	xlnx_unregister_event(PM_NOTIFY_CB, EVENT_ERROR_PMC_ERR1,
-			      XPM_EVENT_ERROR_MASK_DDRMC_CR |
-			      XPM_EVENT_ERROR_MASK_DDRMC_NCR, xddr_err_callback, mci);
+	xlnx_unregister_event(PM_NOTIFY_CB, XPM_NODETYPE_VERSAL_EVENT_ERROR_PMC_ERR1,
+			      XPM_VERSAL_EVENT_ERROR_MASK_DDRMC_CR |
+			      XPM_VERSAL_EVENT_ERROR_MASK_DDRMC_NCR, xddr_err_callback, mci);
 	edac_mc_del_mc(&pdev->dev);
 	edac_mc_free(mci);
 
