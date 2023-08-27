@@ -69,6 +69,11 @@ struct xlnx_hdcp2x_cipher_hw {
 #define xlnx_hdcp2x_cipher_get_status(cipher_address) \
 	xlnx_hdcp2x_cipher_read(cipher_address, XHDCP2X_CIPHER_REG_STA_OFFSET)
 
+#define xlnx_hdcp2x_cipher_is_encrypted(cipher_address) \
+	((xlnx_hdcp2x_cipher_get_status(cipher_address) \
+	& XHDCP2X_CIPHER_REG_STA_ENCRYPTED_MASK) == \
+	XHDCP2X_CIPHER_REG_STA_ENCRYPTED_MASK)
+
 #define xlnx_hdcp2x_cipher_enable(cipher_address) \
 	xlnx_hdcp2x_cipher_write(cipher_address, \
 	(XHDCP2X_CIPHER_REG_CTRL_SET_OFFSET), (XHDCP2X_CIPHER_REG_CTRL_RUN_MASK))
@@ -81,12 +86,17 @@ struct xlnx_hdcp2x_cipher_hw {
 	xlnx_hdcp2x_cipher_write(cipher_address, \
 	(XHDCP2X_CIPHER_REG_CTRL_CLR_OFFSET), (XHDCP2X_CIPHER_REG_CTRL_MODE_MASK))
 
+#define xlnx_hdcp2x_cipher_set_rxmode(cipher_address) \
+		xlnx_hdcp2x_cipher_write(cipher_address, \
+		(XHDCP2X_CIPHER_REG_CTRL_SET_OFFSET), (XHDCP2X_CIPHER_REG_CTRL_MODE_MASK))
+
 int xlnx_hdcp2x_cipher_cfg_init(struct xlnx_hdcp2x_cipher_hw *cipher_cfg);
 void xlnx_hdcp2x_cipher_set_keys(struct xlnx_hdcp2x_cipher_hw *cipher_cfg,
 				 const u8 *buf, u32 offset, u16 len);
 void xlnx_hdcp2x_cipher_set_lanecount(struct xlnx_hdcp2x_cipher_hw *cipher_cfg,
 				      u8 lanecount);
 void xlnx_hdcp2x_cipher_init(struct xlnx_hdcp2x_cipher_hw *cipher_cfg);
+void xlnx_hdcp2x_rx_cipher_init(struct xlnx_hdcp2x_cipher_hw *cipher_cfg);
 void  xlnx_hdcp2x_tx_cipher_update_encryption(struct xlnx_hdcp2x_cipher_hw *cipher_cfg,
 					      u8 enable);
 
