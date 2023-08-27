@@ -45,6 +45,13 @@ void xlnx_hdcp2x_cipher_init(struct xlnx_hdcp2x_cipher_hw *cipher_cfg)
 	xlnx_hdcp2x_cipher_disable(cipher_cfg->cipher_coreaddress);
 }
 
+void xlnx_hdcp2x_rx_cipher_init(struct xlnx_hdcp2x_cipher_hw *cipher_cfg)
+{
+	xlnx_hdcp2x_cipher_enable(cipher_cfg->cipher_coreaddress);
+	xlnx_hdcp2x_cipher_set_rxmode(cipher_cfg->cipher_coreaddress);
+	xlnx_hdcp2x_cipher_disable(cipher_cfg->cipher_coreaddress);
+}
+
 int xlnx_hdcp2x_cipher_cfg_init(struct xlnx_hdcp2x_cipher_hw *cipher_cfg)
 {
 	u32 reg_read;
