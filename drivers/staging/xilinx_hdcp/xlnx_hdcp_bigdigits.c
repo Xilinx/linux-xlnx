@@ -34,6 +34,14 @@
 #define XBIGDIG_HIHALF(x) ((unsigned int)((x) >> XBITS_PER_HALF_DIGIT & MAX_HALF_DIGIT))
 #define XBIGDIG_TOHALF(x) ((unsigned int)((x) << XBITS_PER_HALF_DIGIT))
 
+#define IS_NONZERO_DIGIT(x) \
+({\
+	typeof(x) _x = x;\
+	((_x) | ((~(_x)) + 1)) >> (XBITS_PER_DIGIT - 1); \
+})
+
+#define IS_ZERO_DIGIT(x) (1 ^ IS_NONZERO_DIGIT((x)))
+
 static void mp_next_bit_mask(unsigned int *mask, unsigned int *n)
 {
 	if ((*mask) == 1) {
@@ -230,8 +238,8 @@ static unsigned int sp_divide(unsigned int *q, unsigned int *r,
 	return q2;
 }
 
-static unsigned int mp_add(unsigned int w[], const unsigned int u[],
-			   const unsigned int v[], size_t ndigits)
+unsigned int mp_add(unsigned int w[], const unsigned int u[], const unsigned int v[],
+		    size_t ndigits)
 {
 	/*
 	 *	Calculates w = u + v
@@ -260,8 +268,7 @@ static unsigned int mp_add(unsigned int w[], const unsigned int u[],
 	return k;
 }
 
-static int mp_multiply(unsigned int w[], const unsigned int u[],
-		       const unsigned int v[], size_t ndigits)
+int mp_multiply(unsigned int w[], const unsigned int u[], const unsigned int v[], size_t ndigits)
 {
 	/*
 	 *	Computes product w = u * v
@@ -366,6 +373,18 @@ static int qhat_too_big(unsigned int qhat, unsigned int rhat,
 	return 0;
 }
 
+/** Returns 1 if a == 0, else 0 (constant-time) */
+static int mp_is_zero(const u32 a[], size_t ndigits)
+{
+	u32 dif = 0;
+	const u32 ZERO = 0;
+
+	while (ndigits--)
+		dif |= a[ndigits] ^ ZERO;
+
+	return IS_ZERO_DIGIT(dif);
+}
+
 static int mp_compare(const unsigned int a[], const unsigned int b[],
 		      size_t ndigits)
 {
@@ -426,47 +445,6 @@ static void mp_set_digit(unsigned int a[], unsigned int d, size_t ndigits)
 	for (i = 1; i < ndigits; i++)
 		a[i] = 0;
 	a[0] = d;
-}
-
-static unsigned int mp_shift_left(unsigned int a[], const unsigned int *b,
-				  size_t shift, size_t ndigits)
-{
-	/* Computes a = b << shift */
-	/* [v2.1] Modified to cope with shift > BITS_PERDIGIT */
-	size_t i, y, nw, bits;
-	unsigned int mask, carry, nextcarry;
-	u8 shift_bit = 0;
-
-	/* Do we shift whole digits? */
-	if (shift >= XBITS_PER_DIGIT) {
-		nw = shift / XBITS_PER_DIGIT;
-		i = ndigits;
-		while (i--) {
-			if (i >= nw)
-				a[i] = b[i - nw];
-			else
-				a[i] = 0;
-		}
-		/* Call again to shift bits inside digits */
-		bits = shift % XBITS_PER_DIGIT;
-		carry = b[ndigits - nw] << bits;
-		if (bits)
-			carry |= mp_shift_left(a, a, bits, ndigits);
-		return carry;
-	}
-	bits = shift;
-	/* Construct mask = high bits set */
-	mask = ~(~(unsigned int)shift_bit >> bits);
-
-	y = XBITS_PER_DIGIT - bits;
-	carry = 0;
-	for (i = 0; i < ndigits; i++) {
-		nextcarry = (b[i] & mask) >> y;
-		a[i] = b[i] << bits | carry;
-		carry = nextcarry;
-	}
-
-	return carry;
 }
 
 static unsigned int mp_short_div(unsigned int q[], const unsigned int u[], unsigned int v,
@@ -548,8 +526,8 @@ static unsigned int mp_shift_right(unsigned int a[], const unsigned int b[], siz
 	return carry;
 }
 
-static int mp_divide(unsigned int q[], unsigned int r[], const unsigned int u[],
-		     size_t udigits, unsigned int v[], size_t vdigits)
+int mp_divide(unsigned int q[], unsigned int r[], const unsigned int u[],
+	      size_t udigits, unsigned int v[], size_t vdigits)
 {
 	size_t shift;
 	int n, m, j;
@@ -667,6 +645,259 @@ static int mp_divide(unsigned int q[], unsigned int r[], const unsigned int u[],
 	mp_shift_right(v, v, shift, n);
 
 	return 0;
+}
+
+int mp_mod_inv(u32 inv[], const u32 u[], const u32 v[], size_t ndigits)
+{
+	/* Computes inv = u^(-1) mod v */
+
+	/*
+	 * Ref: Knuth Algorithm X Vol 2 p 342
+	 * ignoring u2, v2, t2
+	 * and avoiding negative numbers.
+	 * Returns non-zero if inverse undefined.
+	 */
+	int b_iter;
+	int result;
+
+	/* 1 * ndigits each, except w = 2 * ndigits */
+	u32 *u1, *u3, *v1, *v3, *t1, *t3, *q, *w;
+	/* allocate 9 * ndigits */
+	u1 = kzalloc(9 * ndigits * sizeof(u32), GFP_KERNEL);
+	if (!u1)
+		return -ENOMEM;
+
+	u3 = &u1[1 * ndigits];
+	v1 = &u1[2 * ndigits];
+	v3 = &u1[3 * ndigits];
+	t1 = &u1[4 * ndigits];
+	t3 = &u1[5 * ndigits];
+	q = &u1[6 * ndigits];
+	/* 2 * ndigits each */
+	w = &u1[7 * ndigits];
+
+	/* Step X1. Initialise */
+	mp_set_digit(u1, 1, ndigits);
+	mp_set_equal(u3, u, ndigits);
+	mp_set_zero(v1, ndigits);
+	mp_set_equal(v3, v, ndigits);
+
+	b_iter = 1;
+	while (!mp_is_zero(v3, ndigits)) {
+		mp_divide(q, t3, u3, ndigits, v3, ndigits);
+		mp_multiply(w, q, v1, ndigits);
+		mp_add(t1, u1, w, ndigits);
+		/* Swap u1 = v1; v1 = t1; u3 = v3; v3 = t3 */
+		mp_set_equal(u1, v1, ndigits);
+		mp_set_equal(v1, t1, ndigits);
+		mp_set_equal(u3, v3, ndigits);
+		mp_set_equal(v3, t3, ndigits);
+
+		b_iter = -b_iter;
+	}
+
+	if (b_iter < 0)
+		mp_subtract(inv, v, u1, ndigits);/* inv = v - u1 */
+	else
+		mp_set_equal(inv, u1, ndigits);	/* inv = u1 */
+
+	/* Make sure u3 = gcd(u,v) == 1 */
+	if (mp_short_cmp(u3, 1, ndigits) != 0) {
+		result = 1;
+		mp_set_zero(inv, ndigits);
+	} else {
+		result = 0;
+	}
+	/* Clear up */
+	kfree(u1);
+
+	return result;
+}
+
+int mp_modulo(u32 r[], const u32 u[], size_t udigits,
+	      u32 v[], size_t vdigits)
+{
+	/*
+	 * Computes r = u mod v
+	 * where r, v are multiprecision integers of length vdigits
+	 * and u is a multiprecision integer of length udigits.
+	 * r may overlap v.
+	 * Note that r here is only vdigits long,
+	 * whereas in mpDivide it is udigits long.
+	 * Use remainder from mpDivide function.
+	 */
+	u32 *qq, *rr;
+	size_t nn = max(udigits, vdigits);
+
+	qq = kcalloc(udigits, udigits * sizeof(u32), GFP_KERNEL);
+	if (!qq)
+		return -ENOMEM;
+
+	rr = kcalloc(nn, nn * sizeof(u32), GFP_KERNEL);
+	if (!rr) {
+		kfree(qq);
+		return -ENOMEM;
+	}
+	/* rr[nn] = u mod v */
+	mp_divide(qq, rr, u, udigits, v, vdigits);
+
+	/* Final r is only vdigits long */
+	mp_set_equal(r, rr, vdigits);
+
+	kfree(rr);
+	kfree(qq);
+
+	return 0;
+}
+
+int mp_get_bit(u32 a[], size_t ndigits, size_t ibit)
+{
+	/* Returns value 1 or 0 of bit n (0..nbits-1); or -1 if out of range */
+
+	size_t idigit, bit_to_get;
+	u32 mask;
+
+	/* Which digit? (0-based) */
+	idigit = ibit / XBITS_PER_DIGIT;
+	if (idigit >= ndigits)
+		return -1;
+
+	/* Set mask */
+	bit_to_get = ibit % XBITS_PER_DIGIT;
+	mask = 0x01 << bit_to_get;
+
+	return ((a[idigit] & mask) ? 1 : 0);
+}
+
+int mp_mod_mult(u32 a[], const u32 x[], const u32 y[], u32 m[], size_t ndigits)
+{
+	/* Computes a = (x * y) mod m */
+	/* Double-length temp variable p */
+	u32 *p;
+
+	p = kzalloc(ndigits * 2 * sizeof(u32), GFP_KERNEL);
+	if (!p)
+		return -ENOMEM;
+
+	/* Calc p[2n] = x * y */
+	mp_multiply(p, x, y, ndigits);
+
+	/* Then modulo (NOTE: a is OK at only ndigits long) */
+	mp_modulo(a, p, ndigits * 2, m, ndigits);
+
+	kfree(p);
+
+	return 0;
+}
+
+/** Returns 1 if a == b, else 0 (constant-time) */
+int mp_equal(const u32 a[], const u32 b[], size_t ndigits)
+{
+	u32 dif = 0;
+
+	while (ndigits--)
+		dif |= a[ndigits] ^ b[ndigits];
+
+	return IS_ZERO_DIGIT(dif);
+}
+
+u32 mp_subtract(u32 w[], const u32 u[], const u32 v[], size_t ndigits)
+{
+	/*
+	 * Calculates w = u - v where u >= v
+	 * w, u, v are multiprecision integers of ndigits each
+	 * Returns 0 if OK, or 1 if v > u.
+	 * Ref: Knuth Vol 2 Ch 4.3.1 p 267 Algorithm S.
+	 */
+
+	u32 k;
+	size_t j;
+
+	/* Step S1. Initialise */
+	k = 0;
+
+	for (j = 0; j < ndigits; j++) {
+		/*
+		 * Step S2. Subtract digits w_j = (u_j - v_j - k)
+		 * Set k = 1 if borrow occurs.
+		 */
+
+		w[j] = u[j] - k;
+		if (w[j] > MAX_DIGIT - k)
+			k = 1;
+		else
+			k = 0;
+
+		w[j] -= v[j];
+		if (w[j] > MAX_DIGIT - v[j])
+			k++;
+	}
+	/* Step S3. Loop on j */
+	/* Should be zero if u >= v */
+	return k;
+}
+
+/** Returns sign of (a - d) where d is a single digit */
+int mp_short_cmp(const u32 a[], u32 d, size_t ndigits)
+{
+	size_t i;
+	int gt = 0;
+	int lt = 0;
+
+	/* Zero-length a => a is zero */
+	if (ndigits == 0)
+		return (d ? -1 : 0);
+
+	/* If |a| > 1 then a > d */
+	for (i = 1; i < ndigits; i++) {
+		if (a[i] != 0)
+			return 1;	/* GT */
+	}
+
+	lt = (a[0] < d);
+	gt = (a[0] > d);
+
+	return gt - lt;	/* EQ=0 GT=+1 LT=-1 */
+}
+
+unsigned int mp_shift_left(unsigned int a[], const unsigned int *b, size_t shift, size_t ndigits)
+{
+	/* Computes a = b << shift */
+	/* [v2.1] Modified to cope with shift > BITS_PERDIGIT */
+	size_t i, y, nw, bits;
+	unsigned int mask, carry, nextcarry;
+	u8 shift_bit = 0;
+
+	/* Do we shift whole digits? */
+	if (shift >= XBITS_PER_DIGIT) {
+		nw = shift / XBITS_PER_DIGIT;
+		i = ndigits;
+		while (i--) {
+			if (i >= nw)
+				a[i] = b[i - nw];
+			else
+				a[i] = 0;
+		}
+		/* Call again to shift bits inside digits */
+		bits = shift % XBITS_PER_DIGIT;
+		carry = b[ndigits - nw] << bits;
+		if (bits)
+			carry |= mp_shift_left(a, a, bits, ndigits);
+		return carry;
+	}
+	bits = shift;
+	/* Construct mask = high bits set */
+	mask = ~(~(unsigned int)shift_bit >> bits);
+
+	y = XBITS_PER_DIGIT - bits;
+	carry = 0;
+	for (i = 0; i < ndigits; i++) {
+		nextcarry = (b[i] & mask) >> y;
+		a[i] = b[i] << bits | carry;
+		carry = nextcarry;
+	}
+
+	return carry;
 }
 
 static int mp_square(unsigned int w[], const unsigned int x[], size_t ndigits)
