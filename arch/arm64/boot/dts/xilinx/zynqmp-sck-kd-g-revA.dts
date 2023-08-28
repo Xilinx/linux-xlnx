@@ -159,6 +159,30 @@
 		};
 	};
 
+	pinctrl_uart0_default: uart0-default {
+		conf {
+			groups = "uart0_17_grp";
+			slew-rate = <SLEW_RATE_SLOW>;
+			power-source = <IO_STANDARD_LVCMOS18>;
+			drive-strength = <12>;
+		};
+
+		conf-rx {
+			pins = "MIO70";
+			bias-high-impedance;
+		};
+
+		conf-tx {
+			pins = "MIO71";
+			bias-disable;
+		};
+
+		mux {
+			groups = "uart0_17_grp";
+			function = "uart0";
+		};
+	};
+
 	pinctrl_uart1_default: uart1-default {
 		conf {
 			groups = "uart1_9_grp";
@@ -307,6 +331,12 @@
 			function = "usb1";
 		};
 	};
+};
+
+&uart0 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart0_default>;
 };
 
 &uart1 {
