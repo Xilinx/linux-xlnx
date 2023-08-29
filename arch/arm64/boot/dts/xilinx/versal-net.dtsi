@@ -625,7 +625,7 @@
 			compatible = "xlnx,versal-sysmon";
 			status = "disabled";
 			reg = <0x0 0xf1270000 0x0 0x4000>;
-			interrupts = <0 144 4>;
+			interrupts = <0 202 4>;
 			xlnx,numchannels = /bits/8 <0>;
 		};
 
