@@ -2659,7 +2659,7 @@ static int aieml_set_part_clocks(struct aie_partition *apart)
 		for (loc.row = range->start.row + 1;
 		     loc.row < range->start.row + range->size.row;
 		     loc.row++) {
-			u32 nbitpos = startbit + loc.row;
+			u32 nbitpos = startbit + loc.row - 1;
 
 			if (aie_resource_testbit(&apart->tiles_inuse, nbitpos)) {
 				col_inuse = 1;
@@ -2673,10 +2673,13 @@ static int aieml_set_part_clocks(struct aie_partition *apart)
 						      XILINX_AIE_OPS_ENB_COL_CLK_BUFF);
 			if (ret < 0) {
 				dev_err(&apart->dev,
-					"failed to enable clocks for partition\n");
+					"failed to enable clock for column: %d\n",
+					loc.col);
 				return ret;
 			}
 
+			status = aie_resource_set(&apart->tiles_inuse,
+						  startbit, apart->range.size.row - 1);
 			status = aie_resource_set(&apart->cores_clk_state,
 						  startbit, apart->range.size.row - 1);
 		} else {
@@ -2685,7 +2688,8 @@ static int aieml_set_part_clocks(struct aie_partition *apart)
 						      XILINX_AIE_OPS_DIS_COL_CLK_BUFF);
 			if (ret < 0) {
 				dev_err(&apart->dev,
-					"failed to disable clocks for partition\n");
+					"failed to disable clock for column: %d\n",
+					loc.col);
 				return ret;
 			}
 
