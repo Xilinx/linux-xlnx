@@ -53,35 +53,31 @@ int spi_nor_multi_die_sr_ready(struct spi_nor *nor)
 	if (ret < 0)
 		return ret;
 
-	if (nor->program_opcode == SPINOR_OP_WRSR ||
-	    nor->program_opcode == SPINOR_OP_WREAR ||
-	    nor->program_opcode == SPINOR_OP_CHIP_ERASE) {
-		for (die = 0; die < WINBOND_NOR_NUM_DIE; die++) {
-			if (nor->spimem) {
-				struct spi_mem_op op = SPI_NOR_DIESEL_OP(&die);
+	for (die = 0; die < WINBOND_NOR_NUM_DIE; die++) {
+		nor->bouncebuf[0] = die;
+		if (nor->spimem) {
+			struct spi_mem_op op = SPI_NOR_DIESEL_OP(nor->bouncebuf);
 
-				spi_nor_spimem_setup_op(nor, &op, nor->reg_proto);
-
-				ret = spi_mem_exec_op(nor->spimem, &op);
-			} else {
-				ret = spi_nor_controller_ops_write_reg(nor,
-								       SPINOR_OP_DIESEL, &die, 1);
-			}
-
-			if (ret) {
-				dev_dbg(nor->dev, "error %d Switching Die\n", ret);
-				return ret;
-			}
-
-			do
-				ret = spi_nor_sr_ready(nor);
-			while (!ret);
-			if (ret < 0)
-				return ret;
+			spi_nor_spimem_setup_op(nor, &op, nor->reg_proto);
+			ret = spi_mem_exec_op(nor->spimem, &op);
+		} else {
+			ret = spi_nor_controller_ops_write_reg(nor, SPINOR_OP_DIESEL,
+							       nor->bouncebuf, 1);
 		}
+
+		if (ret) {
+			dev_dbg(nor->dev, "error %d Switching Die\n", ret);
+			return ret;
+		}
+
+		do
+			ret = spi_nor_sr_ready(nor);
+		while (!ret);
+		if (ret < 0)
+			return ret;
 	}
 
-	return 0;
+	return ret;
 }
 
 static void w25q02_default_init_fixups(struct spi_nor *nor)

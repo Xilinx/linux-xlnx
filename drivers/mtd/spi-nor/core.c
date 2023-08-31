@@ -646,7 +646,6 @@ static int spi_nor_write_ear(struct spi_nor *nor, u32 addr)
 	}
 
 	nor->curbank = ear;
-	nor->program_opcode = code;
 
 	return ret;
 }
@@ -834,8 +833,6 @@ int spi_nor_write_sr(struct spi_nor *nor, const u8 *sr, size_t len)
 		ret = spi_nor_controller_ops_write_reg(nor, SPINOR_OP_WRSR, sr,
 						       len);
 	}
-
-	nor->program_opcode = SPINOR_OP_WRSR;
 
 	if (ret) {
 		dev_dbg(nor->dev, "error %d writing SR\n", ret);
@@ -1111,8 +1108,6 @@ static int spi_nor_erase_chip(struct spi_nor *nor)
 
 	if (ret)
 		dev_dbg(nor->dev, "error %d erasing chip\n", ret);
-
-	nor->program_opcode = SPINOR_OP_CHIP_ERASE;
 
 	return ret;
 }
