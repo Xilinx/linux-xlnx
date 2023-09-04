@@ -35,7 +35,10 @@
 
 #include <sound/soc.h>
 
+#include <linux/xlnx/xlnx_hdcp_common.h>
+#include <linux/xlnx/xlnx_timer.h>
 #include "xilinx-hdcp1x-rx.h"
+#include "xilinx-hdcp2x-rx.h"
 #include "xilinx-vip.h"
 
 #define XV_AES_ENABLE			0x8
@@ -83,6 +86,32 @@
 					 XDPRX_INTR_HDCP1X_AINFO_WRITE_MASK | \
 					 XDPRX_INTR_HDCP1X_RO_READ_MASK | \
 					 XDPRX_INTR_HDCP1X_BINFO_READ_MASK)
+#define XDPRX_INTR_HDCP2X_AKE_INIT_MASK BIT(0)
+#define XDPRX_INTR_HDCP2X_AKE_NO_STORED_KM_MASK BIT(1)
+#define XDPRX_INTR_HDCP2X_AKE_STORED_KM_MASK BIT(2)
+#define XDPRX_INTR_HDCP2X_LC_INIT_MASK BIT(3)
+#define XDPRX_INTR_HDCP2X_SKE_SEND_EKS_MASK BIT(4)
+#define XDPRX_INTR_HDCP2X_DBG_WRITE_MASK BIT(5)
+#define XDPRX_INTR_HDCP2X_HPRIME_READ_DONE_MASK BIT(6)
+#define XDPRX_INTR_HDCP2X_PAIRING_INFO_READ_MASK BIT(7)
+#define XDPRX_INTR_HDCP2X_STREAM_TYPE_MASK BIT(8)
+#define XDPRX_INTR_HDCP2X_RPTR_RCVID_LIST_ACK_MASK BIT(9)
+#define XDPRX_INTR_HDCP2X_RPTR_STREAM_MANAGE_MASK BIT(10)
+#define XDPRX_INTR_HDCP2X_MASK_ALL (XDPRX_INTR_HDCP2X_AKE_INIT_MASK | \
+				XDPRX_INTR_HDCP2X_AKE_NO_STORED_KM_MASK | \
+				XDPRX_INTR_HDCP2X_AKE_STORED_KM_MASK | \
+				XDPRX_INTR_HDCP2X_LC_INIT_MASK | \
+				XDPRX_INTR_HDCP2X_SKE_SEND_EKS_MASK | \
+				XDPRX_INTR_HDCP2X_DBG_WRITE_MASK | \
+				XDPRX_INTR_HDCP2X_HPRIME_READ_DONE_MASK | \
+				XDPRX_INTR_HDCP2X_PAIRING_INFO_READ_MASK | \
+				XDPRX_INTR_HDCP2X_STREAM_TYPE_MASK | \
+				XDPRX_INTR_HDCP2X_RPTR_RCVID_LIST_ACK_MASK | \
+				XDPRX_INTR_HDCP2X_RPTR_STREAM_MANAGE_MASK)
+#define XDPRX_HDCP2X_REG_OFFSET		0x8000
+#define XDPRX_HDCP_TIMER_OFFSET		0x3000
+#define XDPRX_HDCP2X_TABLE		0x1000
+
 #define XDPRX_INTR_LINKQUAL_MASK	BIT(29)
 #define XDPRX_INTR_UNPLUG_MASK		BIT(31)
 #define XDPRX_INTR_CRCTST_MASK		BIT(30)
@@ -104,6 +133,7 @@
 #define XDPRX_INTR_ALL_MASK_1		0xffffffff
 
 #define XDPRX_SOFT_RST_REG		0x01c
+#define XDPRX_SOFT_RST_REG_HDCP2X_MASK	0x200
 #define XDPRX_SOFT_VIDRST_MASK		BIT(0)
 #define XDPRX_SOFT_AUXRST_MASK		BIT(7)
 
@@ -114,10 +144,14 @@
 #define XDPRX_INTR_CAUSE_REG		0x040
 #define XDPRX_INTR_MASK_1_REG		0x044
 #define XDPRX_INTR_CAUSE_1_REG		0x048
+#define XDPRX_INTR_CAUSE_2_REG		0x070
+#define XDPRX_INTR_MASK_2_REG		0x005c
 #define XDPRX_CRC_CONFIG_REG		0x074
 #define XDPRX_CRC_EN_MASK		BIT(5)
 
 #define XDPRX_LOCAL_EDID_REG		0x084
+#define XDPRX_DEVICE_SERVICE_IRQ	0x090
+#define XDPRX_DEVICE_SERVICE_IRQ_CP_IRQ_MASK	BIT(3)
 #define XDPRX_VIDEO_UNSUPPORTED_REG	0x094
 #define XDPRX_VRD_BWSET_REG		0x09c
 #define XDPRX_LANE_CNT_REG		0x0a0
@@ -132,6 +166,15 @@
 #define XDPRX_CTRL_DPCD_REG		0x0b8
 #define XDPRX_MST_CAP_REG		0x0d0
 #define XDPRX_SINK_COUNT_REG		0x0d4
+
+#define XDPRX_PHY_REG			0x200
+#define XDPRX_PHY_GTPLLRST_MASK		BIT(0)
+#define XDPRX_PHY_GTRXRST_MASK		BIT(1)
+#define XDPRX_PHYRST_TRITER_MASK	BIT(23)
+#define XDPRX_PHYRST_RATECHANGE_MASK	BIT(24)
+#define XDPRX_PHYRST_TP1START_MASK	BIT(25)
+#define XDPRX_PHYRST_ENBL_MASK		0x0
+#define XDPRX_PHY_INIT_MASK		GENMASK(29, 27)
 
 #define XDPRX_PHYSTATUS_REG			0x208
 #define XDPRX_PHYSTATUS_ALL_LANES_GOOD_MASK	GENMASK(6, 0)
@@ -329,6 +372,8 @@
 #define HDCP1X_KEYMGMT_REG_TBL_STATUS_RETRY	0x400
 #define HDCP1X_KEYMGMT_TBLID_0			0
 #define HDCP1X_KEYS_SIZE			336
+#define HDCP2X_LC128_SIZE			16
+#define HDCP2X_PRIVATE_SIZE			996
 #define HDCP1X_KEYMGMT_REG_TBL_CTRL_WR_MASK	BIT(0)
 #define HDCP1X_KEYMGMT_REG_TBL_CTRL_RD_MASK	BIT(1)
 #define HDCP1X_KEYMGMT_REG_TBL_CTRL_EN_MASK	BIT(31)
@@ -370,6 +415,10 @@
 #define xdprxss_enable_hdcp1x_interrupts(state) \
 		xdprxss_clr(state, XDPRX_INTR_MASK_REG, \
 				XDPRX_INTR_HDCP1X_MASK_ALL)
+#define xdprxss_enable_hdcp2x_interrupts(state) \
+	xdprxss_set(state, XDPRX_INTR_MASK_2_REG, \
+			XDPRX_INTR_HDCP2X_MASK_ALL)
+#define XDP_RX_HPD_INTERRUPT_ASSERT_MASK 0x01
 #define ntohll(x) be64_to_cpu(x)
 
 union xdprxss_iframe_header {
@@ -436,12 +485,16 @@ struct vidphy_cfg {
  * @rx_lnk_clk: DP Rx GT clock
  * @rx_vid_clk: DP RX Video clock
  * @rx_dec_clk: DP Rx Decode clock
+ * @tmr_config: Pointer for timer core
  * @dp_base: Base address of DP Rx Subsystem
  * @edid_base: Bare Address of EDID block
  * @hdcp1x_keymgmt_base: regmap of HDCP1X Key Management block
  * @prvdata: Pointer to device private data
  * @hdcp1x: Pointer to hdcp1x data
+ * @hdcp2x: Pointer to hdcp2x data
  * @hdcp1x_key: Pointer to hdcp1x key data
+ * @hdcp2x_lc128: Pointer to hdcp2x lc128 key
+ * @hdcp2x_private: Pointer to hdcp2x Private key
  * @retimer_prvdata: Pointer to retimer private data structure
  * @vidphy_prvdata: Pointer to video phy private data structure
  * @tp1_work: training pattern 1 worker
@@ -456,14 +509,17 @@ struct vidphy_cfg {
  * @bpc: Bits per component
  * @ce_req_val: Variable for storing channel status
  * @hdcp1x_key_available: flag to indicate hdcp1x key availability
+ * @hdcp2x_key_available: flag to indicate hdcp2x key availability
  * @versal_gt_present: flag to indicate versal-gt property in device tree
- * @hdcp_enable: To indicate hdcp enabled or not
+ * @hdcp_enable: To indicate HDCP enabled or not
+ * @hdcp22_enable: To indicate HDCP22 enabled or not
  * @audio_enable: To indicate audio enabled or not
  * @audio_init: flag to indicate audio is initialized
  * @rx_audio_data: audio data
  * @valid_stream: To indicate valid video
  * @streaming: Flag for storing streaming state
  * @ltstate: Flag for storing link training state
+ * @hdcp2x_timer_irq: HDCP2X timer IRQ variable
  * This structure contains the device driver related parameters
  */
 struct xdprxss_state {
@@ -479,12 +535,16 @@ struct xdprxss_state {
 	struct clk *axi_clk;
 	struct clk *rx_lnk_clk;
 	struct clk *rx_vid_clk;
+	struct regmap *hdcp1x_keymgmt_base;
+	void *tmr_config;
 	void __iomem *dp_base;
 	void __iomem *edid_base;
-	struct regmap *hdcp1x_keymgmt_base;
 	void *prvdata;
 	void *hdcp1x;
+	void *hdcp2x;
 	u8 *hdcp1x_key;
+	u8 *hdcp2x_lc128;
+	u8 *hdcp2x_private;
 	struct retimer_cfg *retimer_prvdata;
 	struct vidphy_cfg *vidphy_prvdata;
 	struct delayed_work tp1_work;
@@ -500,14 +560,17 @@ struct xdprxss_state {
 	u32 bpc;
 	u32 ce_req_val;
 	bool hdcp1x_key_available;
+	bool hdcp2x_key_available;
 	bool versal_gt_present;
 	bool hdcp_enable;
+	bool hdcp22_enable;
 	bool audio_enable;
 	bool audio_init;
 	struct xlnx_dprx_audio_data *rx_audio_data;
 	unsigned int valid_stream : 1;
 	unsigned int streaming : 1;
 	unsigned int ltstate : 2;
+	int hdcp2x_timer_irq;
 };
 
 union hdcp1x_key_table {
@@ -1165,8 +1228,23 @@ static void xdprxss_core_init(struct xdprxss_state *xdprxss)
 	xdprxss_write(xdprxss, XDPRX_LINK_ENABLE_REG, 0x0);
 	axi_clk = clk_get_rate(xdprxss->axi_clk);
 	xdprxss_write(xdprxss, XDPRX_AUX_CLKDIV_REG, axi_clk / MHZ);
+	/* Put both GT RX/TX and CPLL into reset */
+	xdprxss_write(xdprxss, XDPRX_PHY_REG, XDPRX_PHY_GTPLLRST_MASK |
+		      XDPRX_PHY_GTRXRST_MASK);
+	/* Release CPLL reset */
+	xdprxss_write(xdprxss, XDPRX_PHY_REG, XDPRX_PHY_GTRXRST_MASK);
 	xdprxss_set_clk_data_recovery_timeout_val(xdprxss,
 						  XDPRX_CDRCTRL_TDLOCK_VAL);
+	/*
+	 * Remove the reset from the PHY and configure to issue reset after
+	 * every training iteration, link rate change, and start of training
+	 * pattern
+	 */
+	xdprxss_write(xdprxss, XDPRX_PHY_REG,
+		      XDPRX_PHYRST_ENBL_MASK |
+		      XDPRX_PHYRST_TRITER_MASK |
+		      XDPRX_PHYRST_RATECHANGE_MASK |
+		      XDPRX_PHYRST_TP1START_MASK);
 	xdprxss_write(xdprxss, XDPRX_MST_CAP_REG, 0x0);
 	xdprxss_write(xdprxss, XDPRX_SINK_COUNT_REG, 1);
 	xdprxss_enable_training_timeout(xdprxss);
@@ -1176,7 +1254,8 @@ static void xdprxss_core_init(struct xdprxss_state *xdprxss)
 static void xdprxss_irq_unplug(struct xdprxss_state *state)
 {
 	dev_dbg(state->dev, "Asserted cable unplug interrupt\n");
-
+	if (state->hdcp22_enable)
+		xhdcp2x_rx_disable(state->hdcp2x);
 	if (state->hdcp_enable)
 		xhdcp1x_rx_disable(state->hdcp1x);
 
@@ -1241,6 +1320,8 @@ static void xdprxss_irq_tp1(struct xdprxss_state *state)
 		phy_cfg->set_rate = 1;
 		for (i = 0; i < state->max_lanecount; i++)
 			phy_configure(state->phy[i], &phy_opts);
+		/* Initialize phy logic of DP-RX core */
+		xdprxss_write(state, XDPRX_PHY_REG, XDPRX_PHY_INIT_MASK);
 		phy_reset(state->phy[0]);
 	} else {
 		config_rx_dec_clk(state, linkrate);
@@ -1250,6 +1331,8 @@ static void xdprxss_irq_tp1(struct xdprxss_state *state)
 		if (get_rx_dec_clk_lock(state))
 			dev_info(state->dev, "rx decryption clock failed to lock\n");
 
+		/* Initialize phy logic of DP-RX core */
+		xdprxss_write(state, XDPRX_PHY_REG, XDPRX_PHY_INIT_MASK);
 	}
 	state->ltstate = 1;
 	xdprxss_clr(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_ALL_MASK);
@@ -1268,6 +1351,8 @@ static void xdprxss_training_failure(struct xdprxss_state *state)
 
 	if (state->hdcp_enable)
 		xhdcp1x_rx_disable(state->hdcp1x);
+	if (state->hdcp22_enable)
+		xhdcp2x_rx_disable(state->hdcp2x);
 
 	xdprxss_write(state, XDPRX_HPD_INTR_REG,
 		      FIELD_PREP(XDPRX_HPD_PULSE_MASK, XDPRX_HPD_PULSE_750) |
@@ -1440,8 +1525,9 @@ static void xdprxss_irq_access_linkqual(struct xdprxss_state *state)
 static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 {
 	struct xdprxss_state *state = (struct xdprxss_state *)dev_id;
-	u32 status, status1;
+	u32 status, status1, status2;
 	u32 lane_count;
+	u8 index;
 
 	status = xdprxss_read(state, XDPRX_INTR_CAUSE_REG);
 	status &= ~xdprxss_read(state, XDPRX_INTR_MASK_REG);
@@ -1449,7 +1535,9 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 	status1 = xdprxss_read(state, XDPRX_INTR_CAUSE_1_REG);
 	status1 &= ~xdprxss_read(state, XDPRX_INTR_MASK_1_REG);
 
-	if (!status && !status1)
+	status2 = xdprxss_read(state, XDPRX_INTR_CAUSE_2_REG);
+
+	if (!status && !status1 && !status2)
 		return IRQ_NONE;
 
 	if (status1 & XDPRX_INTR_ACCESS_LANE_SET_MASK)
@@ -1472,6 +1560,8 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 		xdprxss_irq_audio_detected(state);
 	if (status & XDPRX_INTR_TRDONE_MASK) {
 		lane_count = xdprxss_read(state, XDPRX_LANE_COUNT_REG);
+		if (state->hdcp22_enable && state->hdcp2x_key_available)
+			xhdcp2x_rx_enable(state->hdcp2x, lane_count);
 		if (state->hdcp_enable && state->hdcp1x_key_available)
 			xhdcp1x_rx_enable(state->hdcp1x, lane_count);
 		dev_dbg(state->dev, "DP Link training is done !!\n");
@@ -1481,6 +1571,31 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 	if (status & XDPRX_INTR_HDCP1X_RO_READ_MASK)
 		xhdcp1x_rx_push_events(state->hdcp1x,
 				       XHDCP1X_RX_RO_PRIME_READ_DONE);
+
+	if (status2 & XDPRX_INTR_HDCP2X_AKE_INIT_MASK) {
+		for (index = 0; index < 2; index++) {
+			xdprxss_write(state, XDPRX_SOFT_RST_REG_HDCP2X_MASK, XDPRX_SOFT_RST_REG);
+			xdprxss_write(state, XDPRX_SOFT_RST_REG_HDCP2X_MASK, 0);
+		}
+		xhdcp2x_rx_push_events(state->hdcp2x, XHDCP2X_RX_DPCD_AKE_INIT_RCVD);
+	}
+	if (status2 & XDPRX_INTR_HDCP2X_AKE_NO_STORED_KM_MASK)
+		xhdcp2x_rx_push_events(state->hdcp2x, XHDCP2X_RX_DPCD_AKE_NO_STORED_KM_RCVD);
+
+	if (status2 & XDPRX_INTR_HDCP2X_AKE_STORED_KM_MASK)
+		xhdcp2x_rx_push_events(state->hdcp2x, XHDCP2X_RX_DPCD_AKE_STORED_KM_RCVD);
+
+	if (status2 & XDPRX_INTR_HDCP2X_LC_INIT_MASK)
+		xhdcp2x_rx_push_events(state->hdcp2x, XHDCP2X_RX_DPCD_LC_INIT_RCVD);
+
+	if (status2 & XDPRX_INTR_HDCP2X_SKE_SEND_EKS_MASK)
+		xhdcp2x_rx_push_events(state->hdcp2x, XHDCP2X_RX_DPCD_SKE_SEND_EKS_RCVD);
+
+	if (status2 & XDPRX_INTR_HDCP2X_HPRIME_READ_DONE_MASK)
+		xhdcp2x_rx_push_events(state->hdcp2x, XHDCP2X_RX_DPCD_HPRIME_READ_DONE_RCVD);
+
+	if (status2 & XDPRX_INTR_HDCP2X_STREAM_TYPE_MASK)
+		xhdcp2x_rx_set_stream_type(state->hdcp2x);
 
 	return IRQ_HANDLED;
 }
@@ -1908,7 +2023,7 @@ static void xdprxss_hdcp1x_keymgmt_get_num_of_tables_rows(struct xdprxss_state *
 static int xdprxss_hdcp1x_keymgmt_init_tables(struct xdprxss_state *state)
 {
 	int ret = 0;
-	u8 num_tables, num_rows_per_table, table_id, row_id;
+	u8 num_tables = 0, num_rows_per_table = 0, table_id, row_id;
 
 	xdprxss_hdcp1x_keymgmt_get_num_of_tables_rows(state, &num_tables,
 						      &num_rows_per_table);
@@ -1994,6 +2109,43 @@ static int xdprxss_hdcp1x_keymgmt_set_key(struct xdprxss_state *state)
 	return ret;
 }
 
+static int xdprxss_hdcp2x_key_write(struct xdprxss_state *xdprxss,
+				    struct xdprxss_hdcp2x_keys_ioctl *xhdcp22_keys)
+{
+	int ret = 0;
+
+	if (xhdcp22_keys->size_lc128 != HDCP2X_LC128_SIZE &&
+	    xhdcp22_keys->size_private != HDCP2X_PRIVATE_SIZE)
+		return -EINVAL;
+
+	if (copy_from_user(xdprxss->hdcp2x_lc128, xhdcp22_keys->key_lc128,
+			   xhdcp22_keys->size_lc128))
+		return -EFAULT;
+
+	if (copy_from_user(xdprxss->hdcp2x_private, xhdcp22_keys->key_private,
+			   xhdcp22_keys->size_private))
+		return -EFAULT;
+
+	xdprxss->hdcp2x_key_available = true;
+
+	ret = xhdcp2x_rx_set_key(xdprxss->hdcp2x, xdprxss->hdcp2x_lc128, xdprxss->hdcp2x_private);
+	if (ret < 0)
+		return ret;
+
+	/* give a HPD to let the upstream do a new link training */
+	xdprxss_generate_hpd_intr(xdprxss, XDPRX_HPD_PULSE_5000);
+	xdprxss_write(xdprxss, XDPRX_LINK_ENABLE_REG, 0x0);
+
+	/*
+	 * TODO: without below sleep the DP Rx IP is not giving the HPD to
+	 * upstream, this needs to be removed once the issue fixed in IP
+	 */
+	msleep(XDPRX_LINK_ENABLE_DELAY_MS);
+	xdprxss_write(xdprxss, XDPRX_LINK_ENABLE_REG, 0x1);
+
+	return ret;
+}
+
 static int xdprxss_hdcp1x_key_write(struct xdprxss_state *xdprxss,
 				    struct xdprxss_hdcp1x_keys_ioctl *hdcp_keys)
 {
@@ -2032,9 +2184,19 @@ static long xdprxss_ioctl(struct v4l2_subdev *sd, u32 cmd, void *arg)
 {
 	struct xdprxss_state *xdprxss = to_xdprxssstate(sd);
 
-	if (!xdprxss->hdcp_enable) {
+	if (!xdprxss->hdcp22_enable && cmd == XILINX_DPRXSS_HDCP2X_KEY_WRITE) {
+		dev_err(xdprxss->dev, "hdcp22 is not enabled in the system");
+		return -ENODEV;
+	}
+
+	if (!xdprxss->hdcp_enable && cmd == XILINX_DPRXSS_HDCP_KEY_WRITE) {
 		dev_err(xdprxss->dev, "hdcp is not enabled in the system");
 		return -ENODEV;
+	}
+
+	if (xdprxss->hdcp2x_key_available) {
+		dev_info(xdprxss->dev, "hdcp2x keys are already loaded");
+		return -EPERM;
 	}
 
 	if (xdprxss->hdcp1x_key_available) {
@@ -2045,6 +2207,10 @@ static long xdprxss_ioctl(struct v4l2_subdev *sd, u32 cmd, void *arg)
 	switch (cmd) {
 	case XILINX_DPRXSS_HDCP_KEY_WRITE:
 		return xdprxss_hdcp1x_key_write(xdprxss, arg);
+	case XILINX_DPRXSS_HDCP2X_KEY_WRITE:
+		return xdprxss_hdcp2x_key_write(xdprxss, arg);
+	default:
+		dev_info(xdprxss->dev, "hdcp keys not made available");
 	}
 
 	return -EINVAL;
@@ -2220,6 +2386,10 @@ static int xdprxss_parse_of(struct xdprxss_state *xdprxss)
 		return -EINVAL;
 	}
 
+	xdprxss->hdcp22_enable = of_property_read_bool(node, "xlnx,hdcp22-enable");
+	if (!xdprxss->hdcp22_enable)
+		dev_info(xdprxss->dev, "hdcp2x is not enabled\n");
+
 	xdprxss->hdcp_enable = of_property_read_bool(node, "xlnx,hdcp-enable");
 	if (!xdprxss->hdcp_enable)
 		dev_info(xdprxss->dev, "hdcp is not enabled\n");
@@ -2333,6 +2503,205 @@ static int xlnx_find_device(struct platform_device *pdev,
 		}
 		of_node_put(fnode);
 	}
+
+	return 0;
+}
+
+static int dprx_hdcp2x_dpcd_rd_handler(void *ref, u32 offset, u8 *buff, u32 buff_size)
+{
+	struct xdprxss_state *xdprxss = (struct xdprxss_state *)ref;
+	u32 value, alignment, num_this_time, idx, reg_offset, num_read = 0;
+	u8 *read_buf = buff;
+
+	reg_offset = XDPRX_HDCP2X_TABLE;
+	reg_offset += offset;
+
+	/* Iterate through the reads */
+	do {
+		alignment = reg_offset & ALIGN_FOR_RDWR;
+		num_this_time = BYTES_PER_RDWR;
+
+		if (alignment)
+			num_this_time = BYTES_PER_RDWR - alignment;
+		if (num_this_time > buff_size)
+			num_this_time = buff_size;
+
+		value = xdprxss_read(xdprxss, (reg_offset & ~ALIGN_FOR_RDWR));
+		if (alignment)
+			value >>= (BITS_PER_BYTE * alignment);
+
+		for (idx = 0; idx < num_this_time; idx++) {
+			read_buf[idx] = (u8)(value & 0xFF);
+			value >>= BITS_PER_BYTE;
+		}
+
+		read_buf += num_this_time;
+		buff_size -= num_this_time;
+		reg_offset += num_this_time;
+		num_read += num_this_time;
+
+	} while (buff_size > 0);
+
+	return num_read;
+}
+
+static int dprx_hdcp2x_dpcd_wr_handler(void *ref, u32 offset, u8 *buff,
+				       u32 buff_size)
+{
+	struct xdprxss_state *xdprxss = (struct xdprxss_state *)ref;
+	u32 mask, temp, reg_offset, value, alignment, num_written = 0;
+	int num_this_time, idx = 0;
+	u8 *write_buf = buff;
+
+	reg_offset = XDPRX_HDCP2X_TABLE;
+	reg_offset += offset;
+
+	/* Iterate through the writes */
+	do {
+		alignment = reg_offset & ALIGN_FOR_RDWR;
+		num_this_time = BYTES_PER_RDWR;
+		if (alignment)
+			num_this_time = BYTES_PER_RDWR - alignment;
+
+		if (num_this_time > (int)buff_size)
+			num_this_time = buff_size;
+
+		/* Check for simple case */
+		if (num_this_time == BYTES_PER_RDWR) {
+			for (idx = ALIGN_FOR_RDWR; idx >= 0; idx--) {
+				value <<= BITS_PER_BYTE;
+				value |= write_buf[idx];
+			}
+		} else {
+			mask = 0xFF;
+			if (alignment)
+				mask <<= (BITS_PER_BYTE * alignment);
+
+			value = xdprxss_read(xdprxss, (reg_offset & ~ALIGN_FOR_RDWR));
+
+			for (idx = 0; idx < num_this_time; idx++) {
+				temp = write_buf[idx];
+				temp <<= (BITS_PER_BYTE * (alignment + idx));
+				value &= ~mask;
+				value |= temp;
+				mask <<= BITS_PER_BYTE;
+			}
+		}
+		xdprxss_write(xdprxss, (reg_offset & ~0x03ul), value);
+
+		write_buf += num_this_time;
+		buff_size -= num_this_time;
+		reg_offset += num_this_time;
+		num_written += num_this_time;
+
+	} while (buff_size > 0);
+
+	return num_written;
+}
+
+static void dprx_hdcp2x_cp_irq_set_handler(void *ref)
+{
+	struct xdprxss_state *xdprxss = (struct xdprxss_state *)ref;
+
+	xdprxss_write(xdprxss, XDPRX_HPD_INTR_REG, 0);
+	xdprxss_write(xdprxss, XDPRX_DEVICE_SERVICE_IRQ, XDPRX_DEVICE_SERVICE_IRQ_CP_IRQ_MASK);
+}
+
+static void dprx_hdcp2x_notification_handler(void *ref, u8 notification)
+{
+	struct xdprxss_state *xdprxss = (struct xdprxss_state *)ref;
+
+	switch (notification) {
+	case XHDCP2X_RX_NOTIFY_UN_AUTHENTICATED:
+		dev_info(xdprxss->dev, "DP RX HDCP2X Un-Authenticated\n");
+		break;
+	case XHDCP2X_RX_NOTIFY_RE_AUTHENTICATE:
+		dev_info(xdprxss->dev, "DP RX HDCP2X Re-Authentication requested\n");
+		break;
+	case XHDCP2X_RX_NOTIFY_SKE_SEND_EKS:
+		dev_info(xdprxss->dev, "DP RX HDCP2X SKE send EKS message processed\n");
+		break;
+	case XHDCP2X_RX_NOTIFY_AUTHENTICATED:
+		dev_info(xdprxss->dev, "DP RX HDCP2X Authenticated\n");
+		break;
+	case XHDCP2X_RX_NOTIFY_ENCRYPTION_DONE:
+		dev_info(xdprxss->dev, "DP RX HDCP2X Encrypted\n");
+		break;
+	}
+}
+
+static irqreturn_t xlnx_timer_irq_handler (int irq, void *dev_id)
+{
+	struct xdprxss_state *state = (struct xdprxss_state *)dev_id;
+
+	xlnx_hdcp_tmrcntr_interrupt_handler(state->tmr_config);
+
+	return IRQ_HANDLED;
+}
+
+static void xlnx_hdcp2x_rx_timer_handler(void *ref, u8 tmrcntr_number)
+{
+	struct xdprxss_state *state = (struct xdprxss_state *)ref;
+
+	xhdcp2x_rx_timer_handler((void *)state->hdcp2x, tmrcntr_number);
+	xhdcp2x_rx_push_events(state->hdcp2x, XHDCP2X_RX_TIMER_EVENT);
+}
+
+static int dprx_register_hdcp2x_dev(struct xdprxss_state *xdprxss, struct platform_device *pdev)
+{
+	int ret;
+	int lane_count = xdprxss_read(xdprxss, XDPRX_LANE_COUNT_REG);
+
+	xdprxss->hdcp2x = xhdcp2x_rx_init(xdprxss->dev, xdprxss,
+					  xdprxss->dp_base + XDPRX_HDCP2X_REG_OFFSET,
+					  XHDCP2X_RX_DP, 0, lane_count);
+	if (IS_ERR(xdprxss->hdcp2x)) {
+		dev_err(xdprxss->dev, "failed to initialize hdcp2x\n");
+		return PTR_ERR(xdprxss->hdcp2x);
+	}
+
+	xdprxss->hdcp2x_lc128 = devm_kzalloc(xdprxss->dev, HDCP2X_LC128_SIZE, GFP_KERNEL);
+	if (!xdprxss->hdcp2x_lc128)
+		return -ENOMEM;
+
+	xdprxss->hdcp2x_private = devm_kzalloc(xdprxss->dev, HDCP2X_PRIVATE_SIZE, GFP_KERNEL);
+	if (!xdprxss->hdcp2x_private)
+		return -ENOMEM;
+
+	xdprxss->tmr_config = xhdcp2x_timer_init(&pdev->dev,
+						 xdprxss->dp_base + XDPRX_HDCP_TIMER_OFFSET);
+	if (IS_ERR(xdprxss->hdcp2x)) {
+		dev_err(xdprxss->dev, "failed to initialize hdcp timer\n");
+		return PTR_ERR(xdprxss->hdcp2x);
+	}
+
+	xhdcp2x_timer_attach(xdprxss->hdcp2x, xdprxss->tmr_config);
+
+	xlnx_hdcp_tmrcntr_set_handler(xdprxss->tmr_config, xlnx_hdcp2x_rx_timer_handler,
+				      (void *)xdprxss);
+
+	xdprxss->hdcp2x_timer_irq = platform_get_irq_byname(pdev, "dprxss_timer_irq");
+
+	if (xdprxss->hdcp2x_timer_irq < 0) {
+		dev_err(xdprxss->dev, "failed to get HDCP Timer irq");
+		return -EINVAL;
+	}
+
+	ret = devm_request_threaded_irq(xdprxss->dev, xdprxss->hdcp2x_timer_irq, NULL,
+					xlnx_timer_irq_handler, IRQF_TRIGGER_HIGH | IRQF_ONESHOT,
+					"dprxss_timer_irq", xdprxss);
+	if (ret < 0) {
+		dev_err(xdprxss->dev, "failed to register hdcp timer irq");
+		return ret;
+	}
+	xhdcp2x_rx_set_callback(xdprxss->hdcp2x, XHDCP2X_RX_HANDLER_DP_AUX_READ,
+				dprx_hdcp2x_dpcd_rd_handler);
+	xhdcp2x_rx_set_callback(xdprxss->hdcp2x, XHDCP2X_RX_HANDLER_DP_AUX_WRITE,
+				dprx_hdcp2x_dpcd_wr_handler);
+	xhdcp2x_rx_set_callback(xdprxss->hdcp2x, XHDCP2X_RX_HANDLER_DP_CP_IRQ_SET,
+				dprx_hdcp2x_cp_irq_set_handler);
+	xhdcp2x_rx_set_callback(xdprxss->hdcp2x, XHDCP2X_RX_NOTIFICATION_HANDLER,
+				dprx_hdcp2x_notification_handler);
 
 	return 0;
 }
@@ -2726,6 +3095,15 @@ static int xdprxss_probe(struct platform_device *pdev)
 			init_waitqueue_head(&adata->audio_update_q);
 			dev_info(xdprxss->dev, "dp rx audio initialized\n");
 		}
+	}
+
+	if (xdprxss->hdcp22_enable) {
+		ret = dprx_register_hdcp2x_dev(xdprxss, pdev);
+		if (ret < 0) {
+			dev_err(xdprxss->dev, "dp rx hdcp2/x init failed\n");
+			goto error;
+		}
+		xdprxss_enable_hdcp2x_interrupts(xdprxss);
 	}
 
 	if (xdprxss->hdcp_enable) {
