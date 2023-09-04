@@ -333,12 +333,16 @@ static void zynq_qspi_chipselect(struct spi_device *spi, bool assert)
 	struct spi_controller *ctlr = spi->master;
 	struct zynq_qspi *xqspi = spi_controller_get_devdata(ctlr);
 	u32 config_reg;
+	u8 idx = 0;
 
 	/* Select the lower (CS0) or upper (CS1) memory */
 	if (ctlr->num_chipselect > 1) {
 		config_reg = zynq_qspi_read(xqspi, ZYNQ_QSPI_LINEAR_CFG_OFFSET);
 		if (!(xqspi->flags & ZYNQ_QSPI_IS_PARALLEL)) {
-			if (!spi_get_chipselect(spi, 0))
+			if (spi->cs_index_mask & ZYNQ_QSPI_CS1_MASK)
+				idx = 1;
+
+			if (!spi_get_chipselect(spi, idx))
 				config_reg &= ~ZYNQ_QSPI_LCFG_U_PAGE;
 			else
 				config_reg |= ZYNQ_QSPI_LCFG_U_PAGE;
