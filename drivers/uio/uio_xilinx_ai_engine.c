@@ -93,7 +93,7 @@ err_out:
  * Simulate the irq so the irq can be generated from user. This is only for
  * debugging purpose.
  *
- * Return: 0 for success, error code otherwise.
+ * Return: irq number for success, negative for error code.
  */
 static int xilinx_ai_engine_simulate_irq(struct platform_device *pdev)
 {
@@ -104,7 +104,7 @@ static int xilinx_ai_engine_simulate_irq(struct platform_device *pdev)
 	 * Sometimes, the returned base value is 0, so allocate 2 irqs, and
 	 * always use the 2nd one.
 	 */
-	irq_sim_domain = irq_domain_create_sim(NULL, 2);
+	irq_sim_domain = devm_irq_domain_create_sim(&pdev->dev, NULL, 2);
 	if (IS_ERR(irq_sim_domain)) {
 		ret = PTR_ERR(irq_sim_domain);
 		dev_err(&pdev->dev, "failed to create irq simulation domain");
@@ -112,10 +112,14 @@ static int xilinx_ai_engine_simulate_irq(struct platform_device *pdev)
 	}
 
 	ret = xilinx_ai_engine_debugfs_init(pdev, irq_sim_domain);
-	if (ret < 0)
+	if (ret < 0) {
 		dev_err(&pdev->dev, "failed create debugfs for sim irq");
 
-	return ret;
+		return  ret;
+	}
+
+	/* always use second interrupt */
+	return irq_create_mapping(irq_sim_domain, 1);
 }
 
 #else
