@@ -314,25 +314,20 @@ static int xlnx_ptp_enable(struct ptp_clock_info *ptp,
 {
 	struct xlnx_ptp_timer *timer = container_of(ptp, struct xlnx_ptp_timer,
 			ptp_clock_info);
-	/* data is for snapshot enab/dis. data_ier is for interrupt enab/dis */
-	u32 data, data_ier;
+	u32 data;
 
 	switch (rq->type) {
 	case PTP_CLK_REQ_EXTTS:
+		timer->extts_enable = on;
 
-		data_ier = xlnx_ptp_ior(timer, XPTPTIMER_IER_OFFSET);
 		data = xlnx_ptp_ior(timer, XPTPTIMER_TOD_CONFIG_OFFSET);
 
 		data &= ~(XPTPTIMER_ENABLE_SNAPSHOT);
-		data_ier &= ~(XPTPTIMER_EXTS_1PPS_INTR_MASK);
 
-		if (on) {
+		if (on)
 			data |= XPTPTIMER_ENABLE_SNAPSHOT;
-			data_ier |= XPTPTIMER_EXTS_1PPS_INTR_MASK;
-		}
 
 		xlnx_ptp_iow(timer, XPTPTIMER_TOD_CONFIG_OFFSET, data);
-		xlnx_ptp_iow(timer, XPTPTIMER_IER_OFFSET, data_ier);
 
 		return 0;
 	default:
@@ -373,14 +368,16 @@ static irqreturn_t xlnx_ptp_timer_isr(int irq, void *priv)
 	if (status & XPTPTIMER_EXTS_1PPS_INTR_MASK) {
 		xlnx_ptp_iow(timer, XPTPTIMER_ISR_OFFSET,
 			     XPTPTIMER_EXTS_1PPS_INTR_MASK);
-		event.type = PTP_CLOCK_EXTTS;
-		nsec = xlnx_ptp_ior(timer, XPTPTIMER_SYS_NS_OFFSET);
-		sech = xlnx_ptp_ior(timer, XPTPTIMER_SYS_SEC_1_OFFSET);
-		secl = xlnx_ptp_ior(timer, XPTPTIMER_SYS_SEC_0_OFFSET);
+		if (timer->extts_enable) {
+			event.type = PTP_CLOCK_EXTTS;
+			nsec = xlnx_ptp_ior(timer, XPTPTIMER_SYS_NS_OFFSET);
+			sech = xlnx_ptp_ior(timer, XPTPTIMER_SYS_SEC_1_OFFSET);
+			secl = xlnx_ptp_ior(timer, XPTPTIMER_SYS_SEC_0_OFFSET);
 
-		sec = (((u64)sech << 32) | secl) & XPTPTIMER_MAX_SEC_MASK;
-		event.timestamp = ktime_set(sec, nsec);
-		ptp_clock_event(timer->ptp_clock, &event);
+			sec = (((u64)sech << 32) | secl) & XPTPTIMER_MAX_SEC_MASK;
+			event.timestamp = ktime_set(sec, nsec);
+			ptp_clock_event(timer->ptp_clock, &event);
+		}
 		return IRQ_HANDLED;
 	}
 
