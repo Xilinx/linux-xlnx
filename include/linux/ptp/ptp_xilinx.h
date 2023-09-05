@@ -24,6 +24,7 @@ struct xlnx_ptp_timer {
 	u32                     period_0;
 	u32                     period_1;
 	int                     irq;
+	int			extts_enable;
 };
 
 #endif /* __PTP_PTP_XILINX_H__ */
