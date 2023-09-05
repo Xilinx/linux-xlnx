@@ -39,7 +39,7 @@ static ssize_t xilinx_ai_engine_debugfs_write(struct file *f,
 	int irq, ret;
 
 	irq = irq_find_mapping(irq_sim_domain, 1);
-	ret = irq_set_irqchip_state(1, IRQCHIP_STATE_PENDING, true);
+	ret = irq_set_irqchip_state(irq, IRQCHIP_STATE_PENDING, true);
 	if (ret)
 		return ret;
 
