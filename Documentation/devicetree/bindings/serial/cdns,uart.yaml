@@ -52,6 +52,9 @@ properties:
       in halfduplex mode.
     maxItems: 1
 
+  resets:
+    maxItems: 1
+
 required:
   - compatible
   - reg
