@@ -25,6 +25,7 @@
 #include <linux/iopoll.h>
 #include <linux/gpio.h>
 #include <linux/gpio/consumer.h>
+#include <linux/reset.h>
 
 #define CDNS_UART_TTY_NAME	"ttyPS"
 #define CDNS_UART_NAME		"xuartps"
@@ -196,6 +197,7 @@ MODULE_PARM_DESC(rx_timeout, "Rx timeout, 1-255");
  * @quirks:		Flags for RXBS support.
  * @cts_override:	Modem control state override
  * @gpiod:		Pointer to the gpio descriptor
+ * @rstc:		Pointer to the reset control
  */
 struct cdns_uart {
 	struct uart_port	*port;
@@ -207,6 +209,7 @@ struct cdns_uart {
 	u32			quirks;
 	bool cts_override;
 	struct gpio_desc	*gpiod;
+	struct reset_control	*rstc;
 };
 struct cdns_platform_data {
 	u32 quirks;
@@ -1628,10 +1631,21 @@ static int cdns_uart_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "clock name 'ref_clk' is deprecated.\n");
 	}
 
+	cdns_uart_data->rstc = devm_reset_control_get_optional_exclusive(&pdev->dev, NULL);
+	if (IS_ERR(cdns_uart_data->rstc)) {
+		rc = PTR_ERR(cdns_uart_data->rstc);
+		dev_err_probe(&pdev->dev, rc, "Cannot get UART reset\n");
+		goto err_out_unregister_driver;
+	}
+
+	rc = reset_control_reset(cdns_uart_data->rstc);
+	if (rc)
+		goto err_out_unregister_driver;
+
 	rc = clk_prepare_enable(cdns_uart_data->pclk);
 	if (rc) {
 		dev_err(&pdev->dev, "Unable to enable pclk clock.\n");
-		goto err_out_unregister_driver;
+		goto err_out_reset;
 	}
 	rc = clk_prepare_enable(cdns_uart_data->uartclk);
 	if (rc) {
@@ -1758,6 +1772,8 @@ err_out_clk_disable:
 	clk_disable_unprepare(cdns_uart_data->uartclk);
 err_out_clk_dis_pclk:
 	clk_disable_unprepare(cdns_uart_data->pclk);
+err_out_reset:
+	reset_control_assert(cdns_uart_data->rstc);
 err_out_unregister_driver:
 	if (!instances)
 		uart_unregister_driver(cdns_uart_data->cdns_uart_driver);
@@ -1794,6 +1810,8 @@ static int cdns_uart_remove(struct platform_device *pdev)
 	if (console_port == port)
 		console_port = NULL;
 #endif
+
+	reset_control_assert(cdns_uart_data->rstc);
 
 	if (!--instances)
 		uart_unregister_driver(cdns_uart_data->cdns_uart_driver);
