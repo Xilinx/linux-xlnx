@@ -30,6 +30,9 @@
 #define XHDCP1X_VERSION			(0x01u)
 #define XHDCP1X_STREAM_MAP		(0x01)
 #define XHDCP1X_BUF_OFFSET_LEN		(0x100)
+#define XHDCP1X_TX_REVOCLIST_MAX_DEVICES	944
+#define XHDCP1X_TX_ENCRYPTION_KEY_SIZE		336
+#define XHDCP1X_PORT_MIN_BYTES 3
 /* These constants specify the offsets for the various fields and/or
  * attributes within the hdcp port
  */
@@ -51,7 +54,7 @@
 #define XHDCP1X_PORT_HDCP_RESET_KSV	(0xD0u)   /* KSV FIFO Read pointer reset Offset */
 /*
  * These constants specify the sizes for the various fields and/or
- * attributes within the hdcp port
+ * attributes within the hdcp port for HDMI Interface
  */
 #define XHDCP1X_PORT_SIZE_BKSV		(0x05u)   /* Bksv Size          */
 #define XHDCP1X_PORT_SIZE_RO		(0x02u)   /* R0' Size           */
@@ -85,17 +88,81 @@
 /* BInfo Device Count for No Error Mask */
 #define XHDCP1X_PORT_BINFO_BIT_DEV_CNT_NO_ERR	(0u << 7)
 #define XHDCP1X_PORT_BINFO_DEV_CNT_MASK		(0x7F) /* BInfo Device Count Error Mask */
+#define XHDCP1X_PORT_BINFO_DEPTH_MASK		0x0700 /* BIndo Depth Mask */
 #define XHDCP1X_PORT_BINFO_BIT_DEPTH_ERR	BIT(11) /* BInfo Depth Error Mask    */
 /* BInfo Depth Error for No Error Mask */
 #define XHDCP1X_PORT_BINFO_BIT_DEPTH_NO_ERR	(0u << 11)
 #define XHDCP1X_PORT_BINFO_DEV_CNT_ERR_SHIFT	(7) /* BStatus Device Count Error Shift Mask */
 #define XHDCP1X_PORT_BINFO_DEPTH_ERR_SHIFT	(11) /* BStatus Depth Error Shift Mask */
 #define XHDCP1X_PORT_BINFO_DEPTH_SHIFT		(8) /* BInfo Device Count Error Mask */
+#define XHDCP1X_PORT_BINFO_VALUE		GENMASK(12, 0)
+/*
+ * These constants specify the sizes for the various fields and/or
+ * attributes within the hdcp port for HDMI interface
+ */
+#define XHDMI_HDCP1X_PORT_SIZE_BKSV		(0x05u)   /**< Bksv Size          */
+#define XHDMI_HDCP1X_PORT_SIZE_RO		(0x02u)   /**< Ri' Size           */
+#define XHDMI_HDCP1X_PORT_SIZE_PJ		(0x01u)   /**< Pj' Size           */
+#define XHDMI_HDCP1X_PORT_SIZE_AKSV		(0x05u)   /**< Aksv Size          */
+#define XHDMI_HDCP1X_PORT_SIZE_AINFO		(0x01u)   /**< Ainfo Size         */
+#define XHDMI_HDCP1X_PORT_SIZE_AN		(0x08u)   /**< An Size            */
+#define XHDMI_HDCP1X_PORT_SIZE_VH0		(0x04u)   /**< V'.H0 Size         */
+#define XHDMI_HDCP1X_PORT_SIZE_VH1		(0x04u)   /**< V'.H1 Size         */
+#define XHDMI_HDCP1X_PORT_SIZE_VH2		(0x04u)   /**< V'.H2 Size         */
+#define XHDMI_HDCP1X_PORT_SIZE_VH3		(0x04u)   /**< V'.H3 Size         */
+#define XHDMI_HDCP1X_PORT_SIZE_VH4		(0x04u)   /**< V'.H4 Size         */
+#define XHDMI_HDCP1X_PORT_SIZE_BCAPS		(0x01u)   /**< Bcaps Size         */
+#define XHDMI_HDCP1X_PORT_SIZE_BSTATUS		(0x02u)   /**< Bstatus Size       */
+#define XHDMI_HDCP1X_PORT_SIZE_KSVFIFO		(0x01u)   /**< KSV FIFO Size      */
+#define XHDMI_HDCP1X_PORT_SIZE_DBG		(0xC0u)   /**< Debug Space Size   */
+/*
+ * These constants specify the offsets for the various fields and/or
+ * attributes within the hdcp port for HDMI interface
+ */
+#define XHDMI_HDCP1X_PORT_OFFSET_BKSV		(0x00u)   /**< Bksv Offset        */
+#define XHDMI_HDCP1X_PORT_OFFSET_RO		(0x08u)   /**< Ri'/Ro' Offset     */
+#define XHDMI_HDCP1X_PORT_OFFSET_PJ		(0x0Au)   /**< Pj' Offset         */
+#define XHDMI_HDCP1X_PORT_OFFSET_AKSV		(0x10u)   /**< Aksv Offset        */
+#define XHDMI_HDCP1X_PORT_OFFSET_AINFO		(0x15u)   /**< Ainfo Offset       */
+#define XHDMI_HDCP1X_PORT_OFFSET_AN		(0x18u)   /**< An Offset          */
+#define XHDMI_HDCP1X_PORT_OFFSET_VH0		(0x20u)   /**< V'.H0 Offset       */
+#define XHDMI_HDCP1X_PORT_OFFSET_VH1		(0x24u)   /**< V'.H1 Offset       */
+#define XHDMI_HDCP1X_PORT_OFFSET_VH2		(0x28u)   /**< V'.H2 Offset       */
+#define XHDMI_HDCP1X_PORT_OFFSET_VH3		(0x2Cu)   /**< V'.H3 Offset       */
+#define XHDMI_HDCP1X_PORT_OFFSET_VH4		(0x30u)   /**< V'.H4 Offset       */
+#define XHDMI_HDCP1X_PORT_OFFSET_BCAPS		(0x40u)   /**< Bcaps Offset       */
+#define XHDMI_HDCP1X_PORT_OFFSET_BSTATUS	(0x41u)   /**< Bstatus Offset     */
+#define XHDMI_HDCP1X_OFFSET_KSVFIFO		(0x43u)   /**< KSV FIFO Offset    */
+#define XHDMI_HDCP1X_PORT_OFFSET_DBG		(0xC0u)   /**< Debug Space Offset */
+
+#define XHDMI_HDCP1X_PORT_BIT_BSTATUS_HDMI_MODE         BIT(12)
+#define XHDMI_HDCP1X_PORT_BIT_BCAPS_FAST_REAUTH         BIT(0)
+#define XHDMI_HDCP1X_PORT_BIT_BCAPS_1d1_FEATURES        BIT(1)
+#define XHDMI_HDCP1X_PORT_BIT_BCAPS_FAST                BIT(4)
+#define XHDMI_HDCP1X_PORT_BIT_BCAPS_READY               BIT(5)
+#define XHDMI_HDCP1X_PORT_BIT_BCAPS_REPEATER            BIT(6)
+#define XHDMI_HDCP1X_PORT_BIT_BCAPS_HDMI                BIT(7)
+#define XHDMI_HDCP1X_PORT_BIT_AINFO_ENABLE_1d1_FEATURES BIT(1)
+#define XHDMI_HDCP1X_PORT_BSTATUS_BIT_DEV_CNT_ERR       BIT(7)
+#define XHDMI_HDCP1X_PORT_BSTATUS_BIT_DEV_CNT_NO_ERR    (0u << 7)
+#define XHDMI_HDCP1X_PORT_BSTATUS_DEV_CNT_MASK          (0x7F)
+#define XHDMI_HDCP1X_PORT_BSTATUS_BIT_DEPTH_ERR         BIT(11)
+#define XHDMI_HDCP1X_PORT_BSTATUS_BIT_DEPTH_NO_ERR      (0u << 11)
+#define XHDMI_HDCP1X_PORT_BSTATUS_DEV_CNT_ERR_SHIFT     (7)
+#define XHDMI_HDCP1X_PORT_BSTATUS_DEPTH_ERR_SHIFT       (11)
+#define XHDMI_HDCP1X_PORT_BSTATUS_DEPTH_SHIFT           (8)
+#define XHDMI_HDCP1X_PORT_BINFO_VALUE			GENMASK(13, 0)
+#define XHDMI_HDCP1X_PORT_MAX_DEV_CNT			(0x7F)
+#define XHDMI_HDCP1X_READY_TIMEOUT			25
+#define XHDMI_HDCP1X_WAIT_FOR_READY_TIMEOUT		200
+#define XHDMI_HDCP1X_WAIT_FOR_ACTIVE_RECEIVER		2000
 /*
  * This constant defines the base address of the hdcp port within the DPCD
  * address space
  */
 #define XHDCP1X_PORT_DPCD_BASE		(0x68000u)   /* Base Addr in DPCD */
+#define XHDCP1X_TX_CLKDIV_MHZ			1000000
+#define XHDCP1X_TX_CLKDIV_HZ			1000
 
 /*
  * struct xhdcp1x_tx_callbacks - This structure contains the callback handlers.
@@ -110,24 +177,54 @@ struct xhdcp1x_tx_callbacks {
 };
 
 enum xlnx_hdcp1x_tx_callback_type {
-	XHDCP1X_TX_HANDLER_DP_AUX_READ = 0,
-	XHDCP1X_TX_HANDLER_DP_AUX_WRITE = 1,
+	XHDCP1X_TX_HANDLER_AUX_READ = 0,
+	XHDCP1X_TX_HANDLER_AUX_WRITE = 1,
 	XHDCP1X_TX_HANDLER_HDCP_STATUS = 2,
 	XHDCP1X_TX_HANDLER_INVALID = 3
 };
 
 enum xhdcp1x_tx_authtype {
 	XHDCP1X_TX_AUTHENTICATED = 0,
-	XHDCP1X_TX_UNAUTHENTICATED,
-	XHDCP1X_TX_INCOMPATIBLE_RX,
-	XHDCP1X_TX_AUTHENTICATION_BUSY,
-	XHDCP1X_TX_REAUTHENTICATE_REQUESTED,
-	XHDCP1X_TX_DEVICE_IS_REVOKED,
+	XHDCP1X_TX_UNAUTHENTICATED = 1,
+	XHDCP1X_TX_INCOMPATIBLE_RX = 2,
+	XHDCP1X_TX_AUTHENTICATION_BUSY = 3,
+	XHDCP1X_TX_REAUTHENTICATE_REQUESTED = 4,
+	XHDCP1X_TX_DEVICE_IS_REVOKED = 5,
 };
 
 enum xhdcp1x_tx_protocol {
 	XHDCP1X_TX_DP = 0,
-	XHDCP1X_TX_HDMI = 1
+	XHDCP1X_TX_HDMI = 1,
+};
+
+/*
+ * struct hdcp1x_tx_revoclist - This structure contains the HDCP
+ * keys revocation list information
+ * @rcvid: The array contains the revocation keys list of information
+ * @num_of_devices: Number of devices in the revocated list count
+ */
+struct hdcp1x_tx_revoclist {
+	u8  rcvid[XHDCP1X_TX_REVOCLIST_MAX_DEVICES][DRM_HDCP_KSV_LEN];
+	u32 num_of_devices;
+};
+
+/*
+ * struct xhdcp1x_repeater_exchange - This structure contains an instance of the HDCP
+ * Repeater values to exchanged between HDCP Tx and HDCP Rx
+ * @v[5]: The 20 byte value of SHA1 hash, v'h0,v'h1,v'h2,v'h3,v'h4
+ * read from downstream repeater.
+ * @ksvlist[32]: An array of 32 elements each of 64 bits to store the KSVs
+ * for the KSV FIFO
+ * @depth: depeth of downstream topology
+ * @device_count: Number of downstream devices attached to the repeater
+ * @hdcp14_propagatetopo_errupstream: propagate the topology error to upstream
+ */
+struct xhdcp1x_repeater_exchange {
+	u32 v[DRM_HDCP_KSV_LEN];
+	u64 ksvlist[HDCP_2_2_MAX_DEVICE_COUNT + 1];
+	u8 depth;
+	u8 device_count;
+	u8 hdcp14_propagatetopo_errupstream;
 };
 
 /*
@@ -149,6 +246,20 @@ struct xhdcp1x_tx_status {
 	u32 read_failure;
 	u32 link_checkpassed;
 	u32 link_checkfailed;
+};
+
+/*
+ * struct xhdcp1x_tx_internal_timer - Current state and data used for internal timer
+ * @tmr_ctr: hardware timer configuration structure
+ * @initial_ticks: Keep track of the start value of the timer.
+ * @timer_expired: Expiration flag set when the hardware timer has interrupted.
+ * @reason_id: Keep track of why the timer was started (message or status checking)
+ */
+struct xhdcp1x_tx_internal_timer {
+	struct xlnx_hdcp_timer_config tmr_ctr;
+	u32 initial_ticks;
+	u8 timer_expired;
+	u8 reason_id;
 };
 
 /*
@@ -182,9 +293,12 @@ struct xhdcp1x_tx_status {
 struct xlnx_hdcp1x_config {
 	struct device *dev;
 	struct xhdcp1x_tx_callbacks handlers;
+	struct hdcp1x_tx_revoclist xhdcp1x_revoc_list;
+	struct xhdcp1x_tx_internal_timer xhdcp1x_internal_timer;
 	struct delayed_work	sm_work;
 	enum hdcp1x_tx_state	curr_state;
 	enum hdcp1x_tx_state	prev_state;
+	struct xhdcp1x_repeater_exchange repeatervalues;
 	struct xhdcp1x_tx_status stats;
 	struct regmap *hdcp1x_keymgmt_base;
 	void	*cipher;
@@ -192,6 +306,7 @@ struct xlnx_hdcp1x_config {
 	void __iomem	*interface_base;
 	u32	pending_events;
 	u32	downstreamready;
+	u32	tmr_cnt;
 	bool	is_repeater;
 	bool	hdcp1x_key_available;
 	u8	lane_count;
@@ -201,8 +316,12 @@ struct xlnx_hdcp1x_config {
 	u8	is_encryption_en;
 	u8	is_enabled;
 	u8	is_cipher;
+	u8	is_hdmi;
+	u8	protocol;
+	u8	is_riupdate;
 	u64	state_helper;
 	u64	encryption_map;
+	u8	*xlnx_hdcp1x_key;
 };
 
 void xlnx_start_hdcp1x_engine(struct xlnx_hdcp1x_config *xhdcp1x_tx);
@@ -215,6 +334,9 @@ bool xlnx_hdcp1x_read_bksv_from_remote(struct xlnx_hdcp1x_config *xhdcp1x_tx, u8
 bool xlnx_hdcp1x_exchangeksvs(struct xlnx_hdcp1x_config *xhdcp1x_tx);
 bool xlnx_hdcp1x_computationsstate(struct xlnx_hdcp1x_config *xhdcp1x_tx);
 bool xlnx_hdcp1x_tx_validaterxstate(struct xlnx_hdcp1x_config *xhdcp1x_tx);
+int xlnx_hdcp1x_check_link_integrity(struct xlnx_hdcp1x_config *xhdcp1x_tx);
+void xhdcp1x_tx_set_check_linkstate(struct xlnx_hdcp1x_config *xhdcp1x_tx, int is_enabled);
+void xlnx_hdcp1x_tx_process_ri_event(struct xlnx_hdcp1x_config *xhdcp1x_tx);
 int xlnx_hdcp1x_is_ksvvalid(u64 ksv);
 u64 xlnx_hdcp1x_tx_generate_an(struct xlnx_hdcp1x_config *xhdcp1x_tx);
 int xhdcp1x_tx_set_keyselect(struct xlnx_hdcp1x_config *xhdcp1x_tx, u8 keyselect);
@@ -229,7 +351,14 @@ int xlnx_hdcp1x_tx_test_for_repeater(struct xlnx_hdcp1x_config *xhdcp1x_tx);
 int xlnx_hdcp1x_tx_read_ksv_list(struct xlnx_hdcp1x_config *xhdcp1x_tx);
 int xlnx_hdcp1x_setrepeaterinfo(struct xlnx_hdcp1x_config *xhdcp1x_tx);
 int xlnx_hdcp1x_tx_validate_ksv_list(struct xlnx_hdcp1x_config *xhdcp1x_tx, u16 repeaterinfo);
-int xlnx_hdcp1x_tx_wait_for_ready(struct xlnx_hdcp1x_config *xhdcp1x_tx);
+enum hdcp1x_tx_state xlnx_hdcp1x_tx_wait_for_ready(struct xlnx_hdcp1x_config *xhdcp1x_tx);
 int xlnx_hdcp1x_get_repeater_info(struct xlnx_hdcp1x_config *xhdcp1x_tx, u16 *info);
+int xlnx_hdcp1x_gettopology_maxcascadeexceeded(struct xlnx_hdcp1x_config *xhdcp1x_tx);
+int xlnx_hdcp1x_gettopology_maxdevsexceeded(struct xlnx_hdcp1x_config *xhdcp1x_tx);
 int xlnx_hdcp1x_set_keys(struct xlnx_hdcp1x_config *xhdcp1x_tx, u8 *data);
 int xlnx_hdcp1x_keymngt_init(struct xlnx_hdcp1x_config *xhdcp1x_tx, u8 *data);
+void xlnx_hdcp1x_tx_timer_init(struct xlnx_hdcp1x_config *xhdcp1x_tx,
+			       struct xlnx_hdcp_timer_config *tmr_cntrl);
+void xlnx_hdcp1x_tx_timer_handler(void *callbackref, u8 tmr_cnt_number);
+void xlnx_hdcp1x_tx_start_timer(struct xlnx_hdcp1x_config *xhdcp1x_tx,
+				u32 timeout, u8 reason_id);
