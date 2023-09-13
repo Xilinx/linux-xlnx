@@ -30,7 +30,6 @@
 #define XBITS_PER_DIGIT 32
 #define XMP_HI_BIT_MASK 0x80000000UL
 #define XBITS_PER_HALF_DIGIT (XBITS_PER_DIGIT / 2)
-#define XBYTES_PER_DIGIT (XBITS_PER_DIGIT / 8)
 #define XBIGDIG_LOHALF(x) ((unsigned int)((x) & MAX_HALF_DIGIT))
 #define XBIGDIG_HIHALF(x) ((unsigned int)((x) >> XBITS_PER_HALF_DIGIT & MAX_HALF_DIGIT))
 #define XBIGDIG_TOHALF(x) ((unsigned int)((x) << XBITS_PER_HALF_DIGIT))
