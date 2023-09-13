@@ -111,6 +111,12 @@ properties:
     description: |
       Present when HDCP2.2 is present in design.
 
+  xlnx,hdcp1x-keymgmt:
+    description:
+      A phandle to a syscon device, used to access
+      hdcp1x keymgmt registers.
+    $ref: /schemas/types.yaml#/definitions/phandle
+
   ports:
     type: object
 
@@ -151,6 +157,10 @@ required:
 
 additionalProperties: false
 
+dependencies:
+  xlnx,include-hdcp-1-4: [ 'xlnx,hdcp1x-keymgmt' ]
+  xlnx,hdcp1x-keymgmt: [ 'xlnx,include-hdcp-1-4' ]
+
 examples:
   - |
     #include <dt-bindings/interrupt-controller/arm-gic.h>
@@ -170,6 +180,7 @@ examples:
         xlnx,max-frl-rate = <0x6>;
         xlnx,include-hdcp-1-4;
         xlnx,include-hdcp-2-2;
+        xlnx,hdcp1x-keymgmt = <&hdcp_keymngmt_blk_0>;
         phy-names = "hdmi-phy0", "hdmi-phy1", "hdmi-phy2", "hdmi-phy3";
         phys = <&hdmiphy_lane0 0 1 1 1>, <&hdmiphy_lane1 0 1 1 1>,
                <&hdmiphy_lane2 0 1 1 1>, <&hdmiphy_lane3 0 1 1 1>;
@@ -184,5 +195,10 @@ examples:
                 };
             };
         };
+    };
+
+    hdcp_keymngmt_blk_0: hdcp_keymngmt_blk@80030000 {
+        compatible = "xlnx,hdcp-keymngmt-blk-1.0", "syscon";
+        reg = <0x80030000 0x10000>;
     };
 ...
