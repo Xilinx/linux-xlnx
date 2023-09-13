@@ -27,29 +27,73 @@ static enum hdcp1x_tx_state hdcp1x_run_unautheticated_state(struct xlnx_hdcp1x_c
 	return H0_HDCP1X_TX_STATE_DISABLED_NO_RX_ATTACHED;
 }
 
+static enum hdcp1x_tx_state hdcp1x_tx_runread_ksv_list_state_A7(struct xlnx_hdcp1x_config *hdcp1x)
+{
+	if (xlnx_hdcp1x_tx_read_ksv_list(hdcp1x))
+		return A4_HDCP1X_TX_STATE_AUTHENTICATED;
+	else
+		return REPTR_HDCP1X_TX_STATE_UNAUTHENTICATED;
+}
+
+static enum hdcp1x_tx_state hdcp1x_tx_runwait_for_ready_state_A6(struct xlnx_hdcp1x_config *hdcp1x)
+{
+	return xlnx_hdcp1x_tx_wait_for_ready(hdcp1x);
+}
+
 static enum hdcp1x_tx_state
 	    hdcp1x_tx_run_testfor_repeater_state_A5(struct xlnx_hdcp1x_config *hdcp1x)
 {
-	if (xlnx_hdcp1x_tx_test_for_repeater(hdcp1x))
-		return H0_HDCP1X_TX_STATE_DISABLED_NO_RX_ATTACHED;
-	else
-		return A4_HDCP1X_TX_STATE_AUTHENTICATED;
+	if (xlnx_hdcp1x_tx_test_for_repeater(hdcp1x)) {
+		xlnx_hdcp1x_tx_start_timer(hdcp1x, 100, 0);
+		return A6_HDCP1X_TX_STATE_WAIT_FOR_READY;
+	}
+
+	return A4_HDCP1X_TX_STATE_AUTHENTICATED;
 }
 
 static enum hdcp1x_tx_state hdcp1x_tx_run_authenticated_state_A4(struct xlnx_hdcp1x_config *hdcp1x)
 {
 	hdcp1x->state_helper = 0;
-	xlnx_hdcp1x_tx_enable_encryption(hdcp1x);
+
+	if (hdcp1x->prev_state != A4_HDCP1X_TX_STATE_AUTHENTICATED) {
+		xlnx_hdcp1x_tx_start_timer(hdcp1x, 2000, 0);
+		hdcp1x->stats.auth_passed++;
+
+		return A4_HDCP1X_TX_STATE_AUTHENTICATED;
+	}
+	if (hdcp1x->xhdcp1x_internal_timer.timer_expired) {
+		hdcp1x->xhdcp1x_internal_timer.timer_expired = 0;
+		xlnx_hdcp_tmrcntr_stop(&hdcp1x->xhdcp1x_internal_timer.tmr_ctr, 0);
+		xhdcp1x_tx_set_check_linkstate(hdcp1x, 1);
+
+		return A4_HDCP1X_TX_STATE_AUTHENTICATED;
+	}
+
+	if (hdcp1x->is_riupdate) {
+		xlnx_hdcp_tmrcntr_stop(&hdcp1x->xhdcp1x_internal_timer.tmr_ctr, 0);
+
+		return A8_XHDCP1X_TX_STATE_LINK_INTEGRITY_CHECK;
+	}
 
 	return A4_HDCP1X_TX_STATE_AUTHENTICATED;
 }
 
+static enum hdcp1x_tx_state hdcp1x_tx_check_link_integrity(struct xlnx_hdcp1x_config *hdcp1x)
+{
+	if (xlnx_hdcp1x_check_link_integrity(hdcp1x))
+		return A4_HDCP1X_TX_STATE_AUTHENTICATED;
+
+	return A0_HDCP1X_TX_STATE_DETERMINE_RX_CAPABLE;
+}
+
 static enum hdcp1x_tx_state hdcp1x_tx_run_validaterx_state_A3(struct xlnx_hdcp1x_config *hdcp1x)
 {
-	if (xlnx_hdcp1x_tx_validaterxstate(hdcp1x))
-		return A5_HDCP1X_TX_STATE_TESTFORREPEATER;
-	else
-		return  H0_HDCP1X_TX_STATE_DISABLED_NO_RX_ATTACHED;
+	if (xlnx_hdcp1x_tx_validaterxstate(hdcp1x)) {
+		xlnx_hdcp1x_tx_enable_encryption(hdcp1x);
+		return A5_HDCP1X_TX_STATE_TEST_FOR_REPEATER;
+	}
+
+	return  H0_HDCP1X_TX_STATE_DISABLED_NO_RX_ATTACHED;
 }
 
 static enum hdcp1x_tx_state hdcp1x_tx_run_computations_state_A2(struct xlnx_hdcp1x_config *hdcp1x)
@@ -80,7 +124,7 @@ static enum hdcp1x_tx_state
 static enum hdcp1x_tx_state hdcp1x_tx_run_disablestate(struct xlnx_hdcp1x_config *hdcp1x)
 {
 	hdcp1x->pending_events = 0;
-	hdcp1x->is_enabled = 0;
+
 	return A0_HDCP1X_TX_STATE_DETERMINE_RX_CAPABLE;
 }
 
@@ -114,8 +158,17 @@ int hdcp1x_tx_protocol_authenticate_sm(struct xlnx_hdcp1x_config *hdcp1x)
 	case A4_HDCP1X_TX_STATE_AUTHENTICATED:
 		status = hdcp1x_tx_run_authenticated_state_A4(hdcp1x);
 		break;
-	case A5_HDCP1X_TX_STATE_TESTFORREPEATER:
+	case A8_XHDCP1X_TX_STATE_LINK_INTEGRITY_CHECK:
+		status = hdcp1x_tx_check_link_integrity(hdcp1x);
+		break;
+	case A5_HDCP1X_TX_STATE_TEST_FOR_REPEATER:
 		status = hdcp1x_tx_run_testfor_repeater_state_A5(hdcp1x);
+		break;
+	case A6_HDCP1X_TX_STATE_WAIT_FOR_READY:
+		status = hdcp1x_tx_runwait_for_ready_state_A6(hdcp1x);
+		break;
+	case A7_HDCP1X_TX_STATE_READ_KSV_LIST:
+		status = hdcp1x_tx_runread_ksv_list_state_A7(hdcp1x);
 		break;
 	case REPTR_HDCP1X_TX_STATE_UNAUTHENTICATED:
 		status = hdcp1x_run_unautheticated_state(hdcp1x);
