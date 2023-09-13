@@ -800,9 +800,9 @@ EXPORT_SYMBOL_GPL(xhdcp1x_cipher_disableencryption);
 /**
  * xhdcp1x_cipher_setb - This function writes the contents of the B register in BM0.
  * @ref: reference to cipher instance
- * @x: is the value to be written to bx.
- * @y: is the value to be written to by.
- * @z: is the value to be written to bz.
+ * @bx: is the value to be written to bx.
+ * @by: is the value to be written to by.
+ * @bz: is the value to be written to bz.
  *
  * @return:
  *		- SUCCESS if successful.
