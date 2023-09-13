@@ -21,6 +21,7 @@
 #include <linux/pm.h>
 #include <linux/sysfs.h>
 #include <linux/workqueue.h>
+#include <linux/xlnx/xlnx_timer.h>
 
 #include <uapi/linux/media-bus-format.h>
 
@@ -337,6 +338,7 @@
 #define HDMI_HDCP_STATUS	BIT(1)
 #define HDMI_HDCP_TIMER_OFFSET	0x30000
 #define HDMI_HDCP2X_OFFSET	0x40000
+#define HDMI_HDCP1X_OFFSET	0x20000
 #define HDMI_HDCP_MAX_KEYS	800
 
 #define HDMI_MIN_WIDTH	640
@@ -465,6 +467,7 @@ struct xlnx_hdmi_frl_config {
  * @max_frl_rate: maximum frl rate supported by hardware
  * @htiming_div_fact: factor used in calculating htimings
  * @hdcp2x_enable: flag to indicate hdcp22-enable property in device tree
+ * @hdcp1x_enable: flag to indicate hdcp-enable property in device tree
  */
 struct xlnx_hdmi_config {
 	enum color_depths bpc;
@@ -473,6 +476,7 @@ struct xlnx_hdmi_config {
 	u8 max_frl_rate;
 	u8 htiming_div_fact;
 	bool hdcp2x_enable;
+	bool hdcp1x_enable;
 };
 
 /**
@@ -505,6 +509,7 @@ struct xlnx_hdmi_stream {
  * @base: device I/O memory for register access
  * @irq: hdmi subsystem irq
  * @phy: PHY handle for hdmi lanes
+ * @hdcp1x_keymgmt_base: HDCP Key management address
  * @hdmi_mutex: mutex to lock hdmi structure
  * @irq_lock: to lock irq handler
  * @cable_connected: flag to indicate cable state
@@ -532,6 +537,8 @@ struct xlnx_hdmi_stream {
  * @txhdcp: Hdcp configuration
  * @hdcp_cp_irq_work: hdcp cp irq interrupt detection worker
  * @hdcp2x_timer_irq: hdcp2x timer interrupt
+ * @hdcp1x_timer_irq: HDCP1X timer interrupt
+ * @hdcp_irq: HDCP1.4 protocol interrupt
  */
 struct xlnx_hdmi {
 	struct device *dev;
@@ -540,6 +547,7 @@ struct xlnx_hdmi {
 	void __iomem *base;
 	int irq;
 	struct phy *phy[HDMI_MAX_LANES];
+	struct regmap *hdcp1x_keymgmt_base;
 	/* to lock hdmi */
 	struct mutex hdmi_mutex;
 	/* to lock irq */
@@ -569,6 +577,8 @@ struct xlnx_hdmi {
 	struct delayed_work hdcp_cp_irq_work;
 	struct xlnx_hdcptx txhdcp;
 	int hdcp2x_timer_irq;
+	int hdcp1x_timer_irq;
+	int hdcp_irq;
 };
 
 enum xlnx_hdmitx_clks {
@@ -789,7 +799,7 @@ static ssize_t xlnx_hdcp_key_store(struct device *sysfs_dev, struct device_attri
 	struct xlnx_hdmi *hdmi = (struct xlnx_hdmi *)dev_get_drvdata(sysfs_dev);
 	struct xlnx_hdcptx *xhdcp = &hdmi->txhdcp;
 
-	if (!hdmi->config.hdcp2x_enable)
+	if (!(hdmi->config.hdcp2x_enable || hdmi->config.hdcp1x_enable))
 		return ret;
 
 	if (IS_ERR(xhdcp->xhdcp2x)) {
@@ -803,7 +813,7 @@ static ssize_t xlnx_hdcp_key_store(struct device *sysfs_dev, struct device_attri
 		return ret;
 	}
 
-	if (hdmi->config.hdcp2x_enable) {
+	if (hdmi->config.hdcp2x_enable || hdmi->config.hdcp1x_enable) {
 		ret = xlnx_start_hdcp_engine(&hdmi->txhdcp,
 					     HDMI_MAX_LANES);
 		if (ret < 0) {
@@ -2255,7 +2265,7 @@ static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 			hdmi->cable_connected = 0;
 			hdmi->connector.status = connector_status_disconnected;
 			dev_info(hdmi->dev, "stream is not connected\n");
-			if (xhdcp->hdcp2xenable) {
+			if (xhdcp->hdcp2xenable || xhdcp->hdcp1xenable) {
 				ret = xlnx_hdmi_hdcp_reset(hdmi);
 				if (ret < 0) {
 					dev_err(hdmi->dev, "failed to reset HDCP");
@@ -2985,7 +2995,7 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	} else {
 		dev_dbg(hdmi->dev, "Video/Link clock is not ready\n");
 	}
-	if (hdmi->config.hdcp2x_enable) {
+	if (hdmi->config.hdcp2x_enable || hdmi->config.hdcp1x_enable) {
 		ret = xlnx_start_hdcp_engine(&hdmi->txhdcp,
 					     HDMI_MAX_LANES);
 		if (ret < 0) {
@@ -3279,6 +3289,7 @@ static int xlnx_hdmi_parse_of(struct xlnx_hdmi *hdmi)
 	}
 	config->bpc = bpc;
 
+	config->hdcp1x_enable = of_property_read_bool(node, "xlnx,include-hdcp-1-4");
 	config->hdcp2x_enable = of_property_read_bool(node, "xlnx,include-hdcp-2-2");
 
 	ret = of_property_read_u32(node, "xlnx,vid-interface", &vid);
@@ -3388,6 +3399,23 @@ static void xlnx_hdmi_hdcp_status_update(void *ref, u32 notification)
 }
 
 /**
+ * xlnx_hdmi_hdcp_irq_handler - HDCP protocol message interrupt handler
+ * @irq: IRQ number of the interrupt being handled
+ * @data: Pointer to device structure
+ *
+ * Return: irq handler status
+ */
+static irqreturn_t xlnx_hdmi_hdcp_irq_handler(int irq, void *data)
+{
+	struct xlnx_hdmi *hdmi = (struct xlnx_hdmi *)data;
+	struct xlnx_hdcptx *hdmitxhdcp = &hdmi->txhdcp;
+
+	xlnx_hdcp1x_interrupt_handler(hdmitxhdcp);
+
+	return IRQ_HANDLED;
+}
+
+/**
  * xlnx_hdmi_timer_irq_handler - hdcp timer interrupt handler
  * @irq: IRQ number of the interrupt being handled
  * @data: Pointer to device structure
@@ -3427,6 +3455,8 @@ static int xlnx_hdmi_hdcp_ddc_callback_read(void *ref, u32 offset,
 	struct xlnx_hdmi *hdmi = (struct xlnx_hdmi *)ref;
 	int ret;
 
+	if (!buf_size)
+		return buf_size;
 	ret = xlnx_hdmi_ddc_readreg(hdmi, HDMI_HDCP_DDC_BASE_OFFSET, buf_size, offset, buf);
 	if (ret < 0) {
 		dev_err(hdmi->dev, "DDC read failed");
@@ -3450,13 +3480,15 @@ static int xlnx_hdcp_init(struct xlnx_hdmi *hdmi,
 
 	xhdcp->dev = hdmi->dev;
 	xhdcp->hdcp2xenable = hdmi->config.hdcp2x_enable;
+	xhdcp->hdcp1xenable = hdmi->config.hdcp1x_enable;
+	xhdcp->is_hdcp_initialized = false;
 
 	if (hdmi->config.hdcp2x_enable) {
 		xhdcp->xhdcp2x = xlnx_hdcp_tx_init(&pdev->dev, hdmi, xhdcp,
 						   hdmi->base + HDMI_HDCP2X_OFFSET,
 						   0, XHDCPTX_HDCP_2X,
 						   hdmi->stream.sink_max_lanes,
-						   XHDCP2X_TX_HDMI, NULL);
+						   XHDCP2X_TX_HDMI, hdmi->hdcp1x_keymgmt_base);
 
 		if (IS_ERR(xhdcp->xhdcp2x)) {
 			dev_err(hdmi->dev, "failed to initialize HDCP2X module\n");
@@ -3484,6 +3516,58 @@ static int xlnx_hdcp_init(struct xlnx_hdmi *hdmi,
 			return PTR_ERR(xhdcp->xhdcptmr);
 		}
 	}
+	if (hdmi->config.hdcp1x_enable) {
+		xhdcp->xhdcp1x = xlnx_hdcp_tx_init(&pdev->dev, hdmi, xhdcp,
+						   hdmi->base + HDMI_HDCP1X_OFFSET,
+						   0, XHDCPTX_HDCP_1X,
+						   hdmi->stream.sink_max_lanes,
+						   XHDCP2X_TX_HDMI,
+						   hdmi->hdcp1x_keymgmt_base);
+
+		if (IS_ERR(xhdcp->xhdcp1x)) {
+			dev_err(hdmi->dev, "failed to initialize HDCP1X module\n");
+			return PTR_ERR(xhdcp->xhdcp1x);
+		}
+
+		xhdcp->xhdcptmr =
+			xlnx_hdcp_timer_init(&pdev->dev, hdmi->base + HDMI_HDCP_TIMER_OFFSET);
+		if (IS_ERR(xhdcp->xhdcptmr)) {
+			dev_err(hdmi->dev, "failed to initialize HDCP timer\n");
+			return PTR_ERR(xhdcp->xhdcptmr);
+		}
+
+		hdmi->hdcp1x_timer_irq =
+				 platform_get_irq_byname(pdev, "hdcp14timer");
+		if (hdmi->hdcp1x_timer_irq < 0) {
+			dev_err(hdmi->dev, "failed to get HDCP timer irq ");
+			return -EINVAL;
+		}
+
+		ret = devm_request_threaded_irq(hdmi->dev, hdmi->hdcp1x_timer_irq, NULL,
+						xlnx_hdmi_timer_irq_handler,
+						IRQF_TRIGGER_HIGH | IRQF_ONESHOT,
+						"hdcp14timer", hdmi);
+		if (ret < 0) {
+			dev_err(hdmi->dev, "failed to register HDCP timer irq");
+			return ret;
+		}
+
+		hdmi->hdcp_irq =
+				 platform_get_irq_byname(pdev, "hdcp14");
+		if (hdmi->hdcp_irq < 0) {
+			dev_err(hdmi->dev, "failed to get HDCP irq ");
+			return -EINVAL;
+		}
+
+		ret = devm_request_threaded_irq(hdmi->dev, hdmi->hdcp_irq, NULL,
+						xlnx_hdmi_hdcp_irq_handler,
+						IRQF_TRIGGER_HIGH | IRQF_ONESHOT,
+						"hdcp14", hdmi);
+		if (ret < 0) {
+			dev_err(hdmi->dev, "failed to register HDCP interrupt irq");
+			return ret;
+		}
+	}
 	xlnx_hdcp_tx_set_callback(xhdcp, HDMI_HDCP_DPCD_WRITE,
 				  xlnx_hdmi_hdcp_ddc_callback_write);
 
@@ -3494,6 +3578,8 @@ static int xlnx_hdcp_init(struct xlnx_hdmi *hdmi,
 				  xlnx_hdmi_hdcp_status_update);
 
 	INIT_DELAYED_WORK(&hdmi->hdcp_cp_irq_work, xlnx_hdmi_hdcp_cp_irq_func);
+
+	xhdcp->is_hdcp_initialized = true;
 
 	return 0;
 }
@@ -3594,13 +3680,25 @@ static int xlnx_hdmi_probe(struct platform_device *pdev)
 		dev_err(hdmi->dev, "hdmi initialization failed\n");
 		goto error_phy;
 	}
-	if (hdmi->config.hdcp2x_enable) {
+	if (hdmi->config.hdcp2x_enable || hdmi->config.hdcp1x_enable) {
 		ret = sysfs_create_group(&hdmi->dev->kobj, &xlnx_hdcp_key_attr_group);
 		if (ret) {
 			dev_err(hdmi->dev, "\nunable to create sysfs group");
 			goto error_phy;
 		}
+	}
 
+	if (hdmi->config.hdcp1x_enable) {
+		hdmi->hdcp1x_keymgmt_base =
+			syscon_regmap_lookup_by_phandle(hdmi->dev->of_node,
+							"xlnx,hdcp1x-keymgmt");
+		if (IS_ERR(hdmi->hdcp1x_keymgmt_base)) {
+			dev_err(hdmi->dev, "couldn't map HDCP1X Keymgmt registers\n");
+			goto error_phy;
+		}
+	}
+
+	if (hdmi->config.hdcp1x_enable || hdmi->config.hdcp2x_enable) {
 		ret = xlnx_hdcp_init(hdmi, pdev);
 		if (ret < 0)
 			goto error_hdcp;
