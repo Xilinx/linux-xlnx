@@ -169,6 +169,7 @@ static const struct xcsi2rxss_event xcsi2rxss_events[] = {
  * and media bus formats
  */
 static const u32 xcsi2dt_mbus_lut[][2] = {
+	{ MIPI_CSI2_DT_YUV420_8B, MEDIA_BUS_FMT_VYYUYY8_1X24 },
 	{ MIPI_CSI2_DT_YUV422_8B, MEDIA_BUS_FMT_UYVY8_1X16 },
 	{ MIPI_CSI2_DT_YUV422_10B, MEDIA_BUS_FMT_UYVY10_1X20 },
 	{ MIPI_CSI2_DT_RGB444, 0 },
@@ -918,6 +919,7 @@ static int xcsi2rxss_parse_of(struct xcsi2rxss_state *xcsi2rxss)
 	}
 
 	switch (xcsi2rxss->datatype) {
+	case MIPI_CSI2_DT_YUV420_8B:
 	case MIPI_CSI2_DT_YUV422_8B:
 	case MIPI_CSI2_DT_RGB444:
 	case MIPI_CSI2_DT_RGB555:
