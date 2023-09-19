@@ -392,6 +392,8 @@ static irqreturn_t cdns_spi_irq(int irq, void *dev_id)
 			cdns_spi_write(xspi, CDNS_SPI_IDR,
 				       CDNS_SPI_IXR_DEFAULT);
 			spi_finalize_current_transfer(ctlr);
+
+			return IRQ_HANDLED;
 		}
 		trans_cnt = cdns_spi_read(xspi, CDNS_SPI_THLD);
 		/* Set threshold to one if number of pending are
