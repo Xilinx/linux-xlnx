@@ -3445,6 +3445,15 @@ static int spi_nor_init(struct spi_nor *nor)
 	struct spi_nor_flash_parameter *params;
 	int err, idx;
 
+	if (nor->info->id[0] == CFI_MFR_ATMEL ||
+	    nor->info->id[0] == CFI_MFR_INTEL ||
+	    nor->info->id[0] == CFI_MFR_SST ||
+	    nor->info->id[0] & SNOR_F_HAS_LOCK) {
+		spi_nor_write_enable(nor);
+		nor->bouncebuf[0] = 0;
+		spi_nor_write_sr(nor, nor->bouncebuf, 1);
+	}
+
 	err = spi_nor_octal_dtr_enable(nor, true);
 	if (err) {
 		dev_dbg(nor->dev, "octal mode not supported\n");
