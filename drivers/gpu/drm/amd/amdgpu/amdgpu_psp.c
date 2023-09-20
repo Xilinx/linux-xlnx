@@ -472,11 +472,11 @@ static int psp_sw_init(void *handle)
 	return 0;
 
 failed2:
-	amdgpu_bo_free_kernel(&psp->fw_pri_bo,
-			      &psp->fw_pri_mc_addr, &psp->fw_pri_buf);
-failed1:
 	amdgpu_bo_free_kernel(&psp->fence_buf_bo,
 			      &psp->fence_buf_mc_addr, &psp->fence_buf);
+failed1:
+	amdgpu_bo_free_kernel(&psp->fw_pri_bo,
+			      &psp->fw_pri_mc_addr, &psp->fw_pri_buf);
 	return ret;
 }
 
@@ -513,6 +513,8 @@ static int psp_sw_fini(void *handle)
 
 	kfree(cmd);
 	cmd = NULL;
+
+	psp_free_shared_bufs(psp);
 
 	if (psp->km_ring.ring_mem)
 		amdgpu_bo_free_kernel(&adev->firmware.rbuf,
@@ -2672,8 +2674,6 @@ static int psp_hw_fini(void *handle)
 	psp_tmr_terminate(psp);
 
 	psp_ring_destroy(psp, PSP_RING_TYPE__KM);
-
-	psp_free_shared_bufs(psp);
 
 	return 0;
 }
