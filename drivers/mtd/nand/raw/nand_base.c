@@ -6148,7 +6148,11 @@ static int nand_scan_tail(struct nand_chip *chip)
 			}
 			break;
 		}
-		break;
+		pr_warn("%d byte HW ECC not possible on %d byte page size, fallback to SW ECC\n",
+			ecc->size, mtd->writesize);
+		ecc->engine_type = NAND_ECC_ENGINE_TYPE_SOFT;
+		ecc->algo = NAND_ECC_ALGO_HAMMING;
+		fallthrough;
 
 	case NAND_ECC_ENGINE_TYPE_SOFT:
 		ret = nand_set_ecc_soft_ops(chip);
