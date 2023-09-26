@@ -116,9 +116,9 @@ struct clk_wzrd {
  * @width:	width of the divider bit field
  * @flags:	clk_wzrd divider flags
  * @table:	array of value/divider pairs, last entry should have div = 0
- * @valuem:	value of the multiplier
- * @valued:	value of the common divider
- * @valueo:	value of the leaf divider
+ * @m:	value of the multiplier
+ * @d:	value of the common divider
+ * @o:	value of the leaf divider
  * @lock:	register lock
  */
 struct clk_wzrd_divider {
@@ -129,9 +129,9 @@ struct clk_wzrd_divider {
 	u8 width;
 	u8 flags;
 	const struct clk_div_table *table;
-	u32 valuem;
-	u32 valued;
-	u32 valueo;
+	u32 m;
+	u32 d;
+	u32 o;
 	spinlock_t *lock;  /* divider lock */
 };
 
@@ -240,15 +240,15 @@ static int clk_wzrd_get_divisors(struct clk_hw *hw, unsigned long rate,
 					diff = abs(freq - rate);
 
 					if (diff < WZRD_MIN_ERR) {
-						divider->valuem = m;
-						divider->valued = d;
-						divider->valueo = o;
+						divider->m = m;
+						divider->d = d;
+						divider->o = o;
 						return 0;
 					}
 					if (diff < diff2) {
-						divider->valuem = m;
-						divider->valued = d;
-						divider->valueo = o;
+						divider->m = m;
+						divider->d = d;
+						divider->o = o;
 						diff2 = diff;
 					}
 				}
@@ -270,7 +270,7 @@ static int clk_wzrd_dynamic_all_nolock(struct clk_hw *hw, unsigned long rate,
 	if (err)
 		return err;
 
-	vco_freq = DIV_ROUND_CLOSEST((parent_rate * divider->valuem), divider->valued);
+	vco_freq = DIV_ROUND_CLOSEST((parent_rate * divider->m), divider->d);
 	rate_div = DIV_ROUND_CLOSEST_ULL((vco_freq * WZRD_FRAC_POINTS), rate);
 
 	clockout0_div = div_u64(rate_div,  WZRD_FRAC_POINTS);
@@ -284,10 +284,10 @@ static int clk_wzrd_dynamic_all_nolock(struct clk_hw *hw, unsigned long rate,
 
 	writel(reg, divider->base + WZRD_CLK_CFG_REG(2));
 	/* Set divisor and clear phase offset */
-	reg = FIELD_PREP(WZRD_CLKFBOUT_MULT_MASK, divider->valuem) |
-	      FIELD_PREP(WZRD_DIVCLK_DIVIDE_MASK, divider->valued);
+	reg = FIELD_PREP(WZRD_CLKFBOUT_MULT_MASK, divider->m) |
+	      FIELD_PREP(WZRD_DIVCLK_DIVIDE_MASK, divider->d);
 	writel(reg, divider->base + WZRD_CLK_CFG_REG(0));
-	writel(divider->valueo, divider->base + WZRD_CLK_CFG_REG(2));
+	writel(divider->o, divider->base + WZRD_CLK_CFG_REG(2));
 	writel(0, divider->base + WZRD_CLK_CFG_REG(3));
 	/* Check status register */
 	err = readl_poll_timeout(divider->base + WZRD_DR_STATUS_REG_OFFSET, value,
