@@ -71,6 +71,10 @@
 #define CDX_DEFAULT_DMA_MASK	(~0ULL)
 #define MAX_CDX_CONTROLLERS 16
 
+#define CONTROLLER_ID(X)	\
+	(((X) & CDX_CONTROLLER_ID_MASK) >> CDX_CONTROLLER_ID_SHIFT)
+#define BUS_ID(X) ((X) & CDX_BUS_NUM_MASK)
+
 /* IDA for CDX controllers registered with the CDX bus */
 static DEFINE_IDA(cdx_controller_ida);
 /* Lock to protect controller ops */
@@ -417,6 +421,97 @@ static struct attribute *cdx_dev_attrs[] = {
 };
 ATTRIBUTE_GROUPS(cdx_dev);
 
+/* Must be called with cdx_controller_lock acquired.
+ */
+static struct cdx_controller *cdx_find_controller(u8 controller_id)
+		__must_hold(&cdx_controller_lock)
+{
+	struct cdx_controller *cdx;
+	struct platform_device *pd;
+	struct device_node *np;
+
+	for_each_compatible_node(np, NULL, compat_node_name) {
+		if (!np)
+			return NULL;
+
+		pd = of_find_device_by_node(np);
+		if (!pd)
+			return NULL;
+
+		cdx = platform_get_drvdata(pd);
+		if (cdx && cdx->controller_registered && cdx->id == controller_id) {
+			put_device(&pd->dev);
+			return cdx;
+		}
+
+		put_device(&pd->dev);
+	}
+
+	return NULL;
+}
+
+static ssize_t enable_store(const struct bus_type *bus,
+			    const char *buf, size_t count)
+{
+	unsigned long controller_id;
+	struct cdx_controller *cdx;
+	u8 bus_id;
+	int ret;
+
+	if (kstrtou8(buf, 16, &bus_id))
+		return -EINVAL;
+
+	controller_id = CONTROLLER_ID(bus_id);
+	bus_id = BUS_ID(bus_id);
+
+	mutex_lock(&cdx_controller_lock);
+
+	cdx = cdx_find_controller(controller_id);
+	if (cdx)
+		if (cdx->ops->bus_enable)
+			ret = cdx->ops->bus_enable(cdx, bus_id);
+		else
+			ret = -EOPNOTSUPP;
+	else
+		ret = -EINVAL;
+
+	mutex_unlock(&cdx_controller_lock);
+
+	return ret < 0 ? ret : count;
+}
+static BUS_ATTR_WO(enable);
+
+static ssize_t disable_store(const struct bus_type *bus,
+			     const char *buf, size_t count)
+{
+	unsigned long controller_id;
+	struct cdx_controller *cdx;
+	u8 bus_id;
+	int ret;
+
+	if (kstrtou8(buf, 16, &bus_id))
+		return -EINVAL;
+
+	controller_id = CONTROLLER_ID(bus_id);
+	bus_id = BUS_ID(bus_id);
+
+	mutex_lock(&cdx_controller_lock);
+
+	cdx = cdx_find_controller(controller_id);
+	if (cdx)
+		if (cdx->ops->bus_disable)
+			ret = cdx->ops->bus_disable(cdx, bus_id);
+		else
+			ret = -EOPNOTSUPP;
+	else
+		ret = -EINVAL;
+
+	mutex_unlock(&cdx_controller_lock);
+
+	return ret < 0 ? ret : count;
+}
+static BUS_ATTR_WO(disable);
+
 static ssize_t rescan_store(const struct bus_type *bus,
 			    const char *buf, size_t count)
 {
@@ -459,6 +554,8 @@ static ssize_t rescan_store(const struct bus_type *bus,
 static BUS_ATTR_WO(rescan);
 
 static struct attribute *cdx_bus_attrs[] = {
+	&bus_attr_enable.attr,
+	&bus_attr_disable.attr,
 	&bus_attr_rescan.attr,
 	NULL,
 };

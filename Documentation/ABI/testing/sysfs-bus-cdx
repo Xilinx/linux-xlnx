@@ -11,6 +11,33 @@ Description:
 
 		  # echo 1 > /sys/bus/cdx/rescan
 
+What:		/sys/bus/cdx/enable
+Date:		July 2023
+Contact:	nipun.gupta@amd.com
+Description:
+		Writing bus number in hex to this file will attempt to enable
+		the CDX bus. The bus number for the cdx devices can be found
+		at /sys/bus/cdx/devices/cdx-BB:DD, where BB denotes the bus
+		number for the respective device.
+
+		For example ::
+
+		  # echo 00 > /sys/bus/cdx/enable
+
+What:		/sys/bus/cdx/disable
+Date:		July 2023
+Contact:	nipun.gupta@amd.com
+Description:
+		Writing bus number in hex to this file will attempt to disable
+		the CDX bus. CDX bus should be disabled before updating the
+		devices in FPGA. The bus number for the cdx devices can be
+		found at /sys/bus/cdx/devices/cdx-BB:DD, where BB denotes the
+		bus number for the respective device.
+
+		For example ::
+
+		  # echo 00 > /sys/bus/cdx/disable
+
 What:		/sys/bus/cdx/devices/.../vendor
 Date:		March 2023
 Contact:	nipun.gupta@amd.com
