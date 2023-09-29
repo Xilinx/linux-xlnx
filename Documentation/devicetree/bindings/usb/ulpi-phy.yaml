@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/usb/ulpi-phy.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: ULPI PHY- Generic platform
+
+maintainers:
+  - Piyush Mehta <piyush.mehta@amd.com>
+
+properties:
+  compatible:
+    const: ulpi-phy
+
+  reg:
+    maxItems: 1
+
+  '#phy-cells':
+    const: 0
+
+  external-drv-vbus:
+    description:
+      If present, configure ulpi-phy external supply to drive 5V on VBus.
+    type: boolean
+
+  view-port:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    description:
+      Address to read and write PHY registers with explicit control of
+      the address and data using the usb.VIEWPORT register.
+
+required:
+  - compatible
+  - reg
+  - view-port
+
+additionalProperties: false
+
+examples:
+  - |
+    phy0@e0002000 {
+        compatible = "ulpi-phy";
+        #phy-cells = <0x00>;
+        reg = <0xe0002000 0x1000>;
+        view-port = <0x170>;
+        external-drv-vbus;
+    };
