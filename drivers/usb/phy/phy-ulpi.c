@@ -13,9 +13,16 @@
 #include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/export.h>
+#include <linux/module.h>
+#include <linux/io.h>
+#include <linux/of.h>
+#include <linux/of_address.h>
+#include <linux/of_device.h>
+#include <linux/platform_device.h>
 #include <linux/usb.h>
 #include <linux/usb/otg.h>
 #include <linux/usb/ulpi.h>
+#include <linux/usb/phy.h>
 
 
 struct ulpi_info {
@@ -37,6 +44,13 @@ static struct ulpi_info ulpi_ids[] = {
 	ULPI_INFO(ULPI_ID(0x0424, 0x0007), "SMSC USB3320"),
 	ULPI_INFO(ULPI_ID(0x0424, 0x0009), "SMSC USB334x"),
 	ULPI_INFO(ULPI_ID(0x0451, 0x1507), "TI TUSB1210"),
+};
+
+struct ulpi_phy {
+	struct usb_phy	*usb_phy;
+	void __iomem *regs;
+	unsigned int vp_offset;
+	unsigned int flags;
 };
 
 static int ulpi_set_otg_flags(struct usb_phy *phy)
@@ -240,6 +254,23 @@ static int ulpi_set_vbus(struct usb_otg *otg, bool on)
 	return usb_phy_io_write(phy, flags, ULPI_OTG_CTRL);
 }
 
+static int usbphy_set_vbus(struct usb_phy *phy, int on)
+{
+	unsigned int flags = usb_phy_io_read(phy, ULPI_OTG_CTRL);
+
+	flags &= ~(ULPI_OTG_CTRL_DRVVBUS | ULPI_OTG_CTRL_DRVVBUS_EXT);
+
+	if (on) {
+		if (phy->flags & ULPI_OTG_DRVVBUS)
+			flags |= ULPI_OTG_CTRL_DRVVBUS;
+
+		if (phy->flags & ULPI_OTG_DRVVBUS_EXT)
+			flags |= ULPI_OTG_CTRL_DRVVBUS_EXT;
+	}
+
+	return usb_phy_io_write(phy, flags, ULPI_OTG_CTRL);
+}
+
 static void otg_ulpi_init(struct usb_phy *phy, struct usb_otg *otg,
 			  struct usb_phy_io_ops *ops,
 			  unsigned int flags)
@@ -249,6 +280,7 @@ static void otg_ulpi_init(struct usb_phy *phy, struct usb_otg *otg,
 	phy->io_ops	= ops;
 	phy->otg	= otg;
 	phy->init	= ulpi_init;
+	phy->set_vbus	= usbphy_set_vbus;
 
 	otg->usb_phy	= phy;
 	otg->set_host	= ulpi_set_host;
@@ -301,3 +333,61 @@ devm_otg_ulpi_create(struct device *dev,
 	return phy;
 }
 EXPORT_SYMBOL_GPL(devm_otg_ulpi_create);
+
+static int ulpi_phy_probe(struct platform_device *pdev)
+{
+	struct device_node *np = pdev->dev.of_node;
+	struct ulpi_phy *uphy;
+	int ret;
+
+	uphy = devm_kzalloc(&pdev->dev, sizeof(*uphy), GFP_KERNEL);
+	if (!uphy)
+		return -ENOMEM;
+
+	uphy->regs = devm_platform_ioremap_resource(pdev, 0);
+	if (IS_ERR(uphy->regs))
+		return PTR_ERR(uphy->regs);
+
+	if (of_property_read_bool(np, "external-drv-vbus"))
+		uphy->flags |= ULPI_OTG_DRVVBUS | ULPI_OTG_DRVVBUS_EXT;
+
+	ret = of_property_read_u32(np, "view-port", &uphy->vp_offset);
+	if (ret)
+		return ret;
+
+	uphy->usb_phy = otg_ulpi_create(&ulpi_viewport_access_ops, uphy->flags);
+	if (!uphy->usb_phy) {
+		dev_err(&pdev->dev, "Failed to create ULPI OTG\n");
+		return -ENOMEM;
+	}
+
+	uphy->usb_phy->dev = &pdev->dev;
+	uphy->usb_phy->io_priv = uphy->regs + uphy->vp_offset;
+	return usb_add_phy_dev(uphy->usb_phy);
+}
+
+static void ulpi_phy_remove(struct platform_device *pdev)
+{
+	struct ulpi_phy *uphy = platform_get_drvdata(pdev);
+
+	usb_remove_phy(uphy->usb_phy);
+}
+
+static const struct of_device_id ulpi_phy_table[] = {
+	{ .compatible = "ulpi-phy" },
+	{ },
+};
+MODULE_DEVICE_TABLE(of, ulpi_phy_table);
+
+static struct platform_driver ulpi_phy_driver = {
+	.probe		= ulpi_phy_probe,
+	.remove_new	= ulpi_phy_remove,
+	.driver		= {
+		.name	= "ulpi-phy",
+		.of_match_table = ulpi_phy_table,
+	},
+};
+module_platform_driver(ulpi_phy_driver);
+
+MODULE_DESCRIPTION("ULPI PHY driver");
+MODULE_LICENSE("GPL");
