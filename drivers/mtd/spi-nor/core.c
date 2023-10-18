@@ -470,16 +470,28 @@ int spi_nor_read_sr(struct spi_nor *nor, u8 *sr)
 			op.data.nbytes = 2;
 		}
 
+		if (nor->flags & SNOR_F_HAS_PARALLEL)
+			op.data.nbytes = 2;
+
 		spi_nor_spimem_setup_op(nor, &op, nor->reg_proto);
 
 		ret = spi_mem_exec_op(nor->spimem, &op);
 	} else {
-		ret = spi_nor_controller_ops_read_reg(nor, SPINOR_OP_RDSR, sr,
-						      1);
+		if (nor->flags & SNOR_F_HAS_PARALLEL)
+			ret = spi_nor_controller_ops_read_reg(nor,
+							      SPINOR_OP_RDSR,
+							      sr, 2);
+		else
+			ret = spi_nor_controller_ops_read_reg(nor,
+							      SPINOR_OP_RDSR,
+							      sr, 1);
 	}
 
 	if (ret)
 		dev_dbg(nor->dev, "error %d reading SR\n", ret);
+
+	if (nor->flags & SNOR_F_HAS_PARALLEL)
+		sr[0] |= sr[1];
 
 	return ret;
 }
@@ -1824,6 +1836,7 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
 	struct spi_nor_flash_parameter *params;
 	u32 addr, len, offset, cur_cs_num = 0;
 	uint32_t rem;
+	u32 n_flash = 1;
 	int ret;
 	u64 sz;
 
@@ -1832,6 +1845,9 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
 
 	params = spi_nor_get_params(nor, 0);
 	sz = params->size;
+
+	if (nor->num_flash)
+		n_flash = nor->num_flash;
 
 	if (spi_nor_has_uniform_erase(nor)) {
 		div_u64_rem(instr->len, mtd->erasesize, &rem);
@@ -1854,52 +1870,84 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
 		if (ret)
 			goto erase_err;
 
-		while (cur_cs_num < nor->num_flash) {
-			nor->spimem->spi->cs_index_mask = 0x01 << cur_cs_num;
+		if (nor->flags & SNOR_F_HAS_PARALLEL) {
+			nor->spimem->spi->cs_index_mask = SPI_NOR_ENABLE_MULTI_CS;
 			ret = spi_nor_erase_chip(nor);
 			spi_nor_unlock_device(nor);
 			if (ret)
 				goto erase_err;
 
 			/*
-			 * Scale the timeout linearly with the size of the flash, with
-			 * a minimum calibrated to an old 2MB flash. We could try to
-			 * pull these from CFI/SFDP, but these values should be good
-			 * enough for now.
-			 */
+			* Scale the timeout linearly with the size of the flash, with
+			* a minimum calibrated to an old 2MB flash. We could try to
+			* pull these from CFI/SFDP, but these values should be good
+			* enough for now.
+			*/
 			timeout = max(CHIP_ERASE_2MB_READY_WAIT_JIFFIES,
-				      CHIP_ERASE_2MB_READY_WAIT_JIFFIES *
-				      (unsigned long)(params->size / SZ_2M));
+					CHIP_ERASE_2MB_READY_WAIT_JIFFIES *
+					(unsigned long)(mtd->size / SZ_2M));
 			ret = spi_nor_wait_till_ready_with_timeout(nor, timeout);
 			if (ret)
 				goto erase_err;
-			cur_cs_num++;
-		}
 
+		} else {
+			while (cur_cs_num < n_flash) {
+				nor->spimem->spi->cs_index_mask = 1 << cur_cs_num;
+				ret = spi_nor_erase_chip(nor);
+				spi_nor_unlock_device(nor);
+				if (ret)
+					goto erase_err;
+
+				/*
+				 * Scale the timeout linearly with the size of the flash, with
+				 * a minimum calibrated to an old 2MB flash. We could try to
+				 * pull these from CFI/SFDP, but these values should be good
+				 * enough for now.
+				 */
+				timeout = max(CHIP_ERASE_2MB_READY_WAIT_JIFFIES,
+					      CHIP_ERASE_2MB_READY_WAIT_JIFFIES *
+						(unsigned long)(params->size / SZ_2M));
+				ret = spi_nor_wait_till_ready_with_timeout(nor, timeout);
+				if (ret)
+					goto erase_err;
+
+				cur_cs_num++;
+				params = spi_nor_get_params(nor, cur_cs_num);
+			}
+		}
 	/* REVISIT in some cases we could speed up erasing large regions
 	 * by using SPINOR_OP_SE instead of SPINOR_OP_BE_4K.  We may have set up
 	 * to use "small sector erase", but that's not always optimal.
 	 */
-
 	/* "sector"-at-a-time erase */
 	} else if (spi_nor_has_uniform_erase(nor)) {
-		/* Determine the flash from which the operation need to start */
-		while ((cur_cs_num < nor->num_flash) && (addr > sz - 1)) {
-			cur_cs_num++;
-			params = spi_nor_get_params(nor, cur_cs_num);
-			sz += params->size;
+		if (!(nor->flags & SNOR_F_HAS_PARALLEL)) {
+			while ((cur_cs_num < n_flash) && (addr > sz - 1)) {
+				cur_cs_num++;
+				params = spi_nor_get_params(nor, cur_cs_num);
+				sz += params->size;
+			}
 		}
-
 		while (len) {
 			ret = spi_nor_lock_device(nor);
 			if (ret)
 				goto erase_err;
 
-			nor->spimem->spi->cs_index_mask = 0x01 << cur_cs_num;
 			offset = addr;
 			if (nor->flags & SNOR_F_HAS_STACKED) {
 				params = spi_nor_get_params(nor, cur_cs_num);
 				offset -= (sz - params->size);
+			}
+			nor->spimem->spi->cs_index_mask = 1 << cur_cs_num;
+			/*
+			 * ADD NOTE: for why we are dividing the address by 2
+			 */
+			if (nor->flags & SNOR_F_HAS_PARALLEL) {
+				u64 aux = offset;
+
+				ret = do_div(aux, n_flash);
+				offset = aux;
+				nor->spimem->spi->cs_index_mask = SPI_NOR_ENABLE_MULTI_CS;
 			}
 
 			ret = spi_nor_erase_sector(nor, offset);
@@ -1923,34 +1971,42 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
 				sz += params->size;
 			}
 		}
-
 	/* erase multiple sectors */
 	} else {
-		u64 erase_len = 0;
+		if (nor->flags & SNOR_F_HAS_PARALLEL) {
+			u64 aux = offset;
 
-		/* Determine the flash from which the operation need to start */
-		while ((cur_cs_num < nor->num_flash) && (addr > sz - 1)) {
-			cur_cs_num++;
-			params = spi_nor_get_params(nor, cur_cs_num);
-			sz += params->size;
-		}
-		/* perform multi sector erase onec per Flash*/
-		while (len) {
-			erase_len = (len > (sz - addr)) ? (sz - addr) : len;
-			offset = addr;
-			nor->spimem->spi->cs_index_mask = 0x01 << cur_cs_num;
-			if (nor->flags & SNOR_F_HAS_STACKED) {
-				params = spi_nor_get_params(nor, cur_cs_num);
-				offset -= (sz - params->size);
-			}
-			ret = spi_nor_erase_multi_sectors(nor, offset, erase_len);
+			ret = do_div(aux, n_flash);
+			offset = aux;
+			ret = spi_nor_erase_multi_sectors(nor, addr, len);
 			if (ret)
 				goto erase_err;
-			len -= erase_len;
-			addr += erase_len;
-			cur_cs_num++;
-			params = spi_nor_get_params(nor, cur_cs_num);
-			sz += params->size;
+		} else {
+			u64 erase_len = 0;
+
+			/* Determine the flash from which the operation need to start */
+			while ((cur_cs_num < n_flash) && (addr > sz - 1)) {
+				cur_cs_num++;
+				params = spi_nor_get_params(nor, cur_cs_num);
+				sz += params->size;
+			}
+			/* perform multi sector erase onec per Flash*/
+			while (len) {
+				erase_len = (len > (sz - addr)) ? (sz - addr) : len;
+				offset = addr;
+				nor->spimem->spi->cs_index_mask = 1 << cur_cs_num;
+				if (nor->flags & SNOR_F_HAS_STACKED) {
+					params = spi_nor_get_params(nor, cur_cs_num);
+					offset -= (sz - params->size);
+				}
+				ret = spi_nor_erase_multi_sectors(nor, offset, erase_len);
+				if (ret)
+					goto erase_err;
+				len -= erase_len;
+				addr += erase_len;
+				params = spi_nor_get_params(nor, cur_cs_num);
+				sz += params->size;
+			}
 		}
 	}
 
@@ -2153,9 +2209,12 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 	struct spi_nor *nor = mtd_to_spi_nor(mtd);
 	struct spi_nor_flash_parameter *params;
 	ssize_t ret, read_len, len_lock =  len;
+	bool is_ofst_odd = false;
 	loff_t from_lock = from;
 	u32 cur_cs_num = 0;
-	u64 sz;
+	u_char *readbuf;
+	u32 n_flash = 1;
+	u64 sz = 0;
 
 	dev_dbg(nor->dev, "from 0x%08x, len %zd\n", (u32)from, len);
 
@@ -2166,23 +2225,54 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 	params = spi_nor_get_params(nor, 0);
 	sz = params->size;
 
-	/* Determine the flash from which the operation need to start */
-	while ((cur_cs_num < nor->num_flash) && (from > sz - 1)) {
-		cur_cs_num++;
-		params = spi_nor_get_params(nor, cur_cs_num);
-		sz += params->size;
+	if (nor->num_flash)
+		n_flash = nor->num_flash;
+
+	/*
+	 * When even number of flashes are connected in parallel and the
+	 * requested read length is odd then read (len + 1) from offset + 1
+	 * and ignore offset[0] data.
+	 */
+	if ((nor->flags & SNOR_F_HAS_PARALLEL) && (!(n_flash % 2)) && (from & 0x01)) {
+		from = (loff_t)(from - 1);
+		len = (size_t)(len + 1);
+		is_ofst_odd = true;
+		readbuf = kmalloc(len, GFP_KERNEL);
+		if (!readbuf)
+			return -ENOMEM;
+	} else {
+		readbuf = buf;
 	}
+
+	if (!(nor->flags & SNOR_F_HAS_PARALLEL)) {
+		/* Determine the flash from which the operation need to start */
+		while ((cur_cs_num < n_flash) && (from > sz - 1)) {
+			cur_cs_num++;
+			params = spi_nor_get_params(nor, cur_cs_num);
+			sz += params->size;
+		}
+	}
+
 	while (len) {
 		loff_t addr = from;
 
-		nor->spimem->spi->cs_index_mask = 0x01 << cur_cs_num;
-		read_len = (len > (sz - addr)) ? (sz - addr) : len;
-		params = spi_nor_get_params(nor, cur_cs_num);
-		addr -= (sz - params->size);
+		if (nor->flags & SNOR_F_HAS_PARALLEL) {
+			u64 aux = addr;
+
+			ret = do_div(aux, n_flash);
+			addr = aux;
+			nor->spimem->spi->cs_index_mask = SPI_NOR_ENABLE_MULTI_CS;
+			read_len = len;
+		} else {
+			nor->spimem->spi->cs_index_mask = 1 << cur_cs_num;
+			read_len = (len > (sz - addr)) ? (sz - addr) : len;
+			params = spi_nor_get_params(nor, cur_cs_num);
+			addr -= (sz - params->size);
+		}
 
 		addr = spi_nor_convert_addr(nor, addr);
 
-		ret = spi_nor_read_data(nor, addr, len, buf);
+		ret = spi_nor_read_data(nor, addr, read_len, readbuf);
 		if (ret == 0) {
 			/* We shouldn't see 0-length reads */
 			ret = -EIO;
@@ -2192,8 +2282,20 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 			goto read_err;
 
 		WARN_ON(ret > read_len);
-		*retlen += ret;
+		if (is_ofst_odd) {
+			/*
+			 * Cannot read from odd offset in parallel mode.
+			 * So read len + 1 from offset + 1 from the flash
+			 * and copy len data from readbuf[1].
+			 */
+			memcpy(buf, (readbuf + 1), (len - 1));
+			*retlen += (ret - 1);
+		} else {
+			*retlen += ret;
+		}
 		buf += ret;
+		if (!is_ofst_odd)
+			readbuf += ret;
 		from += ret;
 		len -= ret;
 
@@ -2211,8 +2313,10 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 	ret = 0;
 
 read_err:
-	spi_nor_unlock_and_unprep_rd(nor, from_lock, len_lock);
+	if (is_ofst_odd)
+		kfree(readbuf);
 
+	spi_nor_unlock_and_unprep_rd(nor, from_lock, len_lock);
 	return ret;
 }
 
@@ -2228,6 +2332,7 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 	struct spi_nor_flash_parameter *params;
 	size_t page_offset, page_remain, i;
 	u32 page_size, cur_cs_num = 0;
+	u32 n_flash = 1;
 	ssize_t ret;
 	u64 sz;
 
@@ -2241,11 +2346,41 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 	page_size = params->page_size;
 	sz = params->size;
 
-	/* Determine the flash from which the operation need to start */
-	while ((cur_cs_num < nor->num_flash) && (to > sz - 1)) {
-		cur_cs_num++;
-		params = spi_nor_get_params(nor, cur_cs_num);
-		sz += params->size;
+	if (nor->num_flash)
+		n_flash = nor->num_flash;
+
+	if (nor->flags & SNOR_F_HAS_PARALLEL) {
+		/*
+		 * When even number of flashes are connected in parallel and the
+		 * requested write length is odd then first write 2 bytes.
+		 */
+		if ((!(n_flash % 2)) && (to & 0x01)) {
+			u8 two[2] = {0xff, buf[0]};
+			size_t written_len;
+
+			ret = spi_nor_write(mtd, to & ~1, 2, &written_len, two);
+			if (ret < 0)
+				return ret;
+			*retlen += 1; /* We've written only one actual byte */
+			++buf;
+			--len;
+			++to;
+		}
+		/*
+		 * Write operation are performed in page size chunks and in
+		 * parallel memories both the flashes are written simultaneously,
+		 * hence increase the page_size in multiple of the number of flash
+		 * connected in parallel.
+		 */
+		page_size *= n_flash;
+
+	} else {
+		/* Determine the flash from which the operation need to start */
+		while ((cur_cs_num < n_flash) && (to > sz - 1)) {
+			cur_cs_num++;
+			params = spi_nor_get_params(nor, cur_cs_num);
+			sz += params->size;
+		}
 	}
 
 	for (i = 0; i < len; ) {
@@ -2267,9 +2402,17 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 		/* the size of data remaining on the first page */
 		page_remain = min_t(size_t, page_size - page_offset, len - i);
 
-		nor->spimem->spi->cs_index_mask = 0x01 << cur_cs_num;
-		params = spi_nor_get_params(nor, cur_cs_num);
-		addr -= (sz - params->size);
+		if (nor->flags & SNOR_F_HAS_PARALLEL) {
+			u64 aux = addr;
+
+			ret = do_div(aux, n_flash);
+			addr = aux;
+			nor->spimem->spi->cs_index_mask = SPI_NOR_ENABLE_MULTI_CS;
+		} else {
+			nor->spimem->spi->cs_index_mask = 1 << cur_cs_num;
+			params = spi_nor_get_params(nor, cur_cs_num);
+			addr -= (sz - params->size);
+		}
 
 		addr = spi_nor_convert_addr(nor, addr);
 
@@ -2719,7 +2862,15 @@ static int spi_nor_select_erase(struct spi_nor *nor)
 		if (!erase)
 			return -EINVAL;
 		nor->erase_opcode = erase->opcode;
-		mtd->erasesize = erase->size;
+		/*
+		 * In parallel-memories the erase operation is
+		 * performed on both the flashes simultaneously
+		 * so, double the erasesize.
+		 */
+		if (nor->flags & SNOR_F_HAS_PARALLEL)
+			mtd->erasesize = erase->size * 2;
+		else
+			mtd->erasesize = erase->size;
 		return 0;
 	}
 
@@ -2737,7 +2888,15 @@ static int spi_nor_select_erase(struct spi_nor *nor)
 	if (!erase)
 		return -EINVAL;
 
-	mtd->erasesize = erase->size;
+	/*
+	 * In parallel-memories the erase operation is
+	 * performed on both the flashes simultaneously
+	 * so, double the erasesize.
+	 */
+	if (nor->flags & SNOR_F_HAS_PARALLEL)
+		mtd->erasesize = erase->size * 2;
+	else
+		mtd->erasesize = erase->size;
 	return 0;
 }
 
@@ -3074,6 +3233,17 @@ static int spi_nor_late_init_params(struct spi_nor *nor)
 
 		nor->num_flash++;
 	}
+	idx = 0;
+	while (idx < SNOR_FLASH_CNT_MAX) {
+		rc = of_property_read_u64_index(np, "parallel-memories", idx, &flash_size[idx]);
+		if (rc)
+			break;
+		idx++;
+		if (!(nor->flags & SNOR_F_HAS_PARALLEL))
+			nor->flags |= SNOR_F_HAS_PARALLEL;
+
+		nor->num_flash++;
+	}
 
 	/*
 	 * By default one flash device should be connected
@@ -3082,7 +3252,7 @@ static int spi_nor_late_init_params(struct spi_nor *nor)
 	if (!nor->num_flash)
 		nor->num_flash = 1;
 
-	if (nor->flags & SNOR_F_HAS_STACKED) {
+	if (nor->flags & (SNOR_F_HAS_STACKED | SNOR_F_HAS_PARALLEL)) {
 		for (idx = 1; idx < nor->num_flash; idx++) {
 			params = spi_nor_get_params(nor, idx);
 			params = devm_kzalloc(nor->dev, sizeof(*params), GFP_KERNEL);
@@ -3305,10 +3475,14 @@ static int spi_nor_set_octal_dtr(struct spi_nor *nor, bool enable)
 static int spi_nor_quad_enable(struct spi_nor *nor)
 {
 	struct spi_nor_flash_parameter *params;
+	u32 n_flash = 1;
 	int err, idx;
 
-	for (idx = 0; idx < nor->num_flash; idx++) {
-		params = spi_nor_get_params(nor, idx);
+	if (nor->num_flash)
+		n_flash = nor->num_flash;
+
+	if (nor->flags & SNOR_F_HAS_PARALLEL) {
+		params = spi_nor_get_params(nor, 0);
 		if (!params->quad_enable)
 			return 0;
 
@@ -3316,14 +3490,32 @@ static int spi_nor_quad_enable(struct spi_nor *nor)
 		      spi_nor_get_protocol_width(nor->write_proto) == 4))
 			return 0;
 		/*
-		 * Set the appropriate CS index before
-		 * issuing the command.
+		 * In parallel mode both chip selects i.e., CS0 &
+		 * CS1 need to be asserted simulatneously.
 		 */
-		nor->spimem->spi->cs_index_mask = 0x01 << idx;
-
+		nor->spimem->spi->cs_index_mask = SPI_NOR_ENABLE_MULTI_CS;
 		err = params->quad_enable(nor);
 		if (err)
 			return err;
+	} else {
+		for (idx = 0; idx < n_flash; idx++) {
+			params = spi_nor_get_params(nor, idx);
+			if (!params->quad_enable)
+				return 0;
+
+			if (!(spi_nor_get_protocol_width(nor->read_proto) == 4 ||
+			      spi_nor_get_protocol_width(nor->write_proto) == 4))
+				return 0;
+			/*
+			 * Set the appropriate CS index before
+			 * issuing the command.
+			 */
+			nor->spimem->spi->cs_index_mask = 1 << idx;
+
+			err = params->quad_enable(nor);
+			if (err)
+				return err;
+		}
 	}
 	return err;
 }
@@ -3357,7 +3549,11 @@ int spi_nor_set_4byte_addr_mode(struct spi_nor *nor, bool enable)
 
 static int spi_nor_init(struct spi_nor *nor)
 {
+	u32 n_flash = 1;
 	int err, idx;
+
+	if (nor->num_flash)
+		n_flash = nor->num_flash;
 
 	err = spi_nor_set_octal_dtr(nor, true);
 	if (err) {
@@ -3398,15 +3594,26 @@ static int spi_nor_init(struct spi_nor *nor)
 		 */
 		WARN_ONCE(nor->flags & SNOR_F_BROKEN_RESET,
 			  "enabling reset hack; may not recover from unexpected reboots\n");
-		for (idx = 0; idx < nor->num_flash; idx++) {
+		if (nor->flags & SNOR_F_HAS_PARALLEL) {
 			/*
-			 * Select the appropriate CS index before
-			 * issuing the command.
+			 * In parallel mode both chip selects i.e., CS0 &
+			 * CS1 need to be asserted simulatneously.
 			 */
-			nor->spimem->spi->cs_index_mask = 0x01 << idx;
+			nor->spimem->spi->cs_index_mask = SPI_NOR_ENABLE_MULTI_CS;
 			err = spi_nor_set_4byte_addr_mode(nor, true);
 			if (err)
 				return err;
+		} else {
+			for (idx = 0; idx < n_flash; idx++) {
+				/*
+				 * Select the appropriate CS index before
+				 * issuing the command.
+				 */
+				nor->spimem->spi->cs_index_mask = 1 << idx;
+				err = spi_nor_set_4byte_addr_mode(nor, true);
+				if (err)
+					return err;
+			}
 		}
 	}
 
@@ -3521,19 +3728,23 @@ static void spi_nor_put_device(struct mtd_info *mtd)
 
 static void spi_nor_restore(struct spi_nor *nor)
 {
+	u32 n_flash = 1;
 	int ret;
 	int idx;
+
+	if (nor->num_flash)
+		n_flash = nor->num_flash;
 
 	/* restore the addressing mode */
 	if (nor->addr_nbytes == 4 && !(nor->flags & SNOR_F_4B_OPCODES) &&
 	    nor->flags & SNOR_F_BROKEN_RESET) {
-		for (idx = 0; idx < nor->num_flash; idx++) {
+		if (nor->flags & SNOR_F_HAS_PARALLEL) {
 			/*
-			 * Select the appropriate CS index before
-			 * issuing the command.
+			 * In parallel mode both chip selects i.e., CS0 &
+			 * CS1 need to be asserted simulatneously.
 			 */
-			nor->spimem->spi->cs_index_mask = 1 << idx;
-			ret = spi_nor_set_4byte_addr_mode(nor, false);
+			nor->spimem->spi->cs_index_mask = SPI_NOR_ENABLE_MULTI_CS;
+			spi_nor_set_4byte_addr_mode(nor, false);
 			if (ret)
 				/*
 				 * Do not stop the execution in the hope that the flash
@@ -3543,6 +3754,24 @@ static void spi_nor_restore(struct spi_nor *nor)
 				dev_err(nor->dev,
 					"Failed to exit 4-byte address mode, err = %d\n",
 					ret);
+		} else {
+			for (idx = 0; idx < n_flash; idx++) {
+				/*
+				 * Select the appropriate CS index before
+				 * issuing the command.
+				 */
+				nor->spimem->spi->cs_index_mask = 1 << idx;
+				ret = spi_nor_set_4byte_addr_mode(nor, false);
+				if (ret)
+					/*
+					 * Do not stop the execution in the hope that the
+					 * flash will default to the 3-byte address mode
+					 * after the software reset.
+					 */
+					dev_err(nor->dev,
+						"Failed to exit 4-byte address mode, err = %d\n",
+						ret);
+			}
 		}
 	}
 
@@ -3611,10 +3840,14 @@ static void spi_nor_set_mtd_info(struct spi_nor *nor)
 	struct mtd_info *mtd = &nor->mtd;
 	struct device *dev = nor->dev;
 	u64 total_sz = 0;
+	u32 n_flash = 1;
 	int idx;
 
 	spi_nor_set_mtd_locking_ops(nor);
 	spi_nor_set_mtd_otp_ops(nor);
+
+	if (nor->num_flash)
+		n_flash = nor->num_flash;
 
 	mtd->dev.parent = dev;
 	if (!mtd->name)
@@ -3629,8 +3862,17 @@ static void spi_nor_set_mtd_info(struct spi_nor *nor)
 	else
 		mtd->_erase = spi_nor_erase;
 	mtd->writesize = params->writesize;
-	mtd->writebufsize = params->page_size;
-	for (idx = 0; idx < nor->num_flash; idx++) {
+	/*
+	 * In parallel-memories the write operation is
+	 * performed on both the flashes simultaneously
+	 * one page per flash, so double the writebufsize.
+	 */
+	if (nor->flags & SNOR_F_HAS_PARALLEL)
+		mtd->writebufsize = params->page_size << 1;
+	else
+		mtd->writebufsize = params->page_size;
+
+	for (idx = 0; idx < n_flash; idx++) {
 		params = spi_nor_get_params(nor, idx);
 		total_sz += params->size;
 	}
