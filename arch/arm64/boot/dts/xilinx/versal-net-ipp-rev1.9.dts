@@ -455,8 +455,6 @@
 			cdns,fifo-width = <4>;
 			cdns,is-dma = <1>;
 			cdns,trigger-address = <0xc0000000>;
-			is-dual = <0>;
-			is-stacked = <0>;
 			clocks = <&versal_net_clk OSPI_REF>;
 			#address-cells = <1>;
 			#size-cells = <0>;
@@ -503,7 +501,6 @@
 			interrupts = <0 183 4>;
 			clock-names = "ref_clk", "pclk";
 			num-cs = <2>;
-			is-dual = <1>;
 			spi-rx-bus-width = <4>;
 			spi-tx-bus-width = <4>;
 			clocks = <&versal_net_clk QSPI_REF>, <&versal_net_clk LPD_LSBUS>;

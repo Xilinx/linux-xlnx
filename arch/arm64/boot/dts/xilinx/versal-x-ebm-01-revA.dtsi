@@ -13,7 +13,6 @@ spi-tx-bus-width = <4>;
 spi-rx-bus-width = <4>;
 #address-cells = <1>;
 #size-cells = <0>;
-is-dual = <1>;
 flash@0 {
 	#address-cells = <1>;
 	#size-cells = <1>;

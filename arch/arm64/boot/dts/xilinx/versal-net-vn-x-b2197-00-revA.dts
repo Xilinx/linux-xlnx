@@ -123,8 +123,7 @@
 
 &ospi {
 	status = "okay";
-	is-dual = <0>;
-	is-stacked = <1>;
+	num-cs = <2>;
 	reset-gpios = <&gpio1 12 GPIO_ACTIVE_HIGH>;
 	reset-names = "qspi";
 	#address-cells = <1>;
@@ -132,7 +131,8 @@
 
 	mt35xu02g: flash@0 {
 		compatible = "micron,m25p80", "jedec,spi-nor";
-		reg = <0>;
+		reg = <0>, <1>;
+		stacked-memories = /bits/ 64 <0x8000000 0x8000000>; /* 128MB */
 		#address-cells = <1>;
 		#size-cells = <1>;
 		cdns,read-delay = <0>;

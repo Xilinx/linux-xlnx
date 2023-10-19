@@ -102,7 +102,6 @@
 &qspi {
 	status = "okay"; /* u93 and u92 */
 	num-cs = <2>;
-	is-dual = <1>;
 	spi-rx-bus-width = <4>;
 	spi-tx-bus-width = <4>;
 	#address-cells = <1>;
