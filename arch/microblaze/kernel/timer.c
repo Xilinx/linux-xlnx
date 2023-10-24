@@ -223,7 +223,7 @@ static struct clocksource clocksource_microblaze = {
 	.flags		= CLOCK_SOURCE_IS_CONTINUOUS,
 };
 
-static int __init xilinx_clocksource_init(unsigned int timer_clock_freq)
+static int __init xilinx_clocksource_init(void)
 {
 	int ret;
 
@@ -313,7 +313,7 @@ static int __init xilinx_timer_init(struct device_node *timer)
 			__func__, (u32)timer_baseaddr,
 			(u32)clocksource_baseaddr);
 
-		ret = xilinx_clocksource_init(timer_clock_freq);
+		ret = xilinx_clocksource_init();
 		if (ret)
 			return ret;
 	}
