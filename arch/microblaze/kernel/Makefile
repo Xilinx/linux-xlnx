@@ -26,6 +26,5 @@ obj-y				+= misc.o
 obj-$(CONFIG_STACKTRACE)	+= stacktrace.o
 obj-$(CONFIG_FUNCTION_TRACER)	+= ftrace.o mcount.o
 obj-$(CONFIG_KGDB)		+= kgdb.o
-obj-$(CONFIG_SMP)		+= smp.o
 
 obj-y	+= entry.o
