@@ -301,7 +301,7 @@ static int __init xilinx_timer_init(struct device_node *timer)
 
 	if (!timer_clock_freq) {
 		pr_err("ERROR: Using CPU clock frequency\n");
-		return -EINVAL;
+		timer_clock_freq = cpuinfo.cpu_clock_freq;
 	}
 
 	freq_div_hz = timer_clock_freq / HZ;
