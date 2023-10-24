@@ -84,7 +84,7 @@ struct cpuinfo {
 	u32 pvr_user2;
 };
 
-DECLARE_PER_CPU(struct cpuinfo, cpu_info);
+extern struct cpuinfo cpuinfo;
 
 /* fwd declarations of the various CPUinfo populators */
 void setup_cpuinfo(void);
