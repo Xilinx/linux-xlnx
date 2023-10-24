@@ -12,10 +12,7 @@
 #   ifndef __ASSEMBLY__
 
 /* Default "unsigned long" context */
-typedef struct {
-	unsigned int	id;
-	unsigned int	active;
-} mm_context_t;
+typedef unsigned long mm_context_t;
 
 /* Hardware Page Table Entry */
 typedef struct _PTE {
