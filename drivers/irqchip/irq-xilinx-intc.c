@@ -32,6 +32,8 @@
 #define MER_ME (1<<0)
 #define MER_HIE (1<<1)
 
+#define SPURIOUS_IRQ	(-1U)
+
 static DEFINE_STATIC_KEY_FALSE(xintc_is_be);
 
 struct xintc_irq_chip {
@@ -44,7 +46,7 @@ struct xintc_irq_chip {
 #endif
 };
 
-static DEFINE_PER_CPU(struct xintc_irq_chip, primary_intc);
+static struct xintc_irq_chip *primary_intc;
 
 static void xintc_write(struct xintc_irq_chip *irqc, int reg, u32 data)
 {
@@ -155,21 +157,15 @@ static void xil_intc_irq_handler(struct irq_desc *desc)
 
 static void xil_intc_handle_irq(struct pt_regs *regs)
 {
-	int ret;
-	unsigned int hwirq, cpu_id = smp_processor_id();
-	struct xintc_irq_chip *irqc = per_cpu_ptr(&primary_intc, cpu_id);
+	u32 hwirq;
 
 	do {
-		hwirq = xintc_read(irqc, IVR);
-		if (hwirq != -1U) {
-			ret = generic_handle_domain_irq(irqc->root_domain, hwirq);
-			WARN_ONCE(ret, "cpu %d: Unhandled HWIRQ %d\n",
-				  cpu_id, hwirq);
-			continue;
-		}
+		hwirq = xintc_read(primary_intc, IVR);
+		if (unlikely(hwirq == SPURIOUS_IRQ))
+			break;
 
-		break;
-	} while (1);
+		generic_handle_domain_irq(primary_intc->root_domain, hwirq);
+	} while (true);
 }
 
 #ifndef CONFIG_IRQCHIP_XILINX_INTC_MODULE_SUPPORT_EXPERIMENTAL
@@ -182,26 +178,10 @@ static int xilinx_intc_of_init(struct device_node *intc,
 {
 	struct xintc_irq_chip *irqc;
 	int ret, irq;
-	u32 cpu_id = 0;
 
-	ret = of_property_read_u32(intc, "cpu-id", &cpu_id);
-	if (ret < 0)
-		pr_err("%s: %pOF: cpu_id not found\n", __func__, intc);
-
-	/* No parent means it is primary intc */
-	if (!parent) {
-		irqc = per_cpu_ptr(&primary_intc, cpu_id);
-		if (irqc->base) {
-			pr_err("%pOF: %s: cpu %d has already irq controller\n",
-				intc, __func__, cpu_id);
-			return -EINVAL;
-		}
-	} else {
-		irqc = kzalloc(sizeof(*irqc), GFP_KERNEL);
-		if (!irqc)
-			return -ENOMEM;
-	}
-
+	irqc = kzalloc(sizeof(*irqc), GFP_KERNEL);
+	if (!irqc)
+		return -ENOMEM;
 	irqc->base = of_iomap(intc, 0);
 	BUG_ON(!irqc->base);
 
@@ -264,7 +244,8 @@ static int xilinx_intc_of_init(struct device_node *intc,
 			goto error;
 		}
 	} else {
-		irq_set_default_host(irqc->root_domain);
+		primary_intc = irqc;
+		irq_set_default_host(primary_intc->root_domain);
 		set_handle_irq(xil_intc_handle_irq);
 	}
 
@@ -272,8 +253,7 @@ static int xilinx_intc_of_init(struct device_node *intc,
 
 error:
 	iounmap(irqc->base);
-	if (parent)
-		kfree(irqc);
+	kfree(irqc);
 	return ret;
 
 }
