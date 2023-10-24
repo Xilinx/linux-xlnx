@@ -32,19 +32,18 @@
 #define MER_ME (1<<0)
 #define MER_HIE (1<<1)
 
+static DEFINE_STATIC_KEY_FALSE(xintc_is_be);
+
 struct xintc_irq_chip {
 	void		__iomem *base;
-	struct		irq_domain *domain;
+	struct		irq_domain *root_domain;
 	u32		intr_mask;
-	struct			irq_chip *intc_dev;
-	u32				nr_irq;
-	u32				sw_irq;
+	u32		nr_irq;
+	u32		sw_irq;
 #ifdef CONFIG_IRQCHIP_XILINX_INTC_MODULE_SUPPORT_EXPERIMENTAL
 	int				irq;
 #endif
 };
-
-static DEFINE_STATIC_KEY_FALSE(xintc_is_be);
 
 static DEFINE_PER_CPU(struct xintc_irq_chip, primary_intc);
 
@@ -56,7 +55,7 @@ static void xintc_write(struct xintc_irq_chip *irqc, int reg, u32 data)
 		iowrite32(data, irqc->base + reg);
 }
 
-static unsigned int xintc_read(struct xintc_irq_chip *irqc, int reg)
+static u32 xintc_read(struct xintc_irq_chip *irqc, int reg)
 {
 	if (static_branch_unlikely(&xintc_is_be))
 		return ioread32be(irqc->base + reg);
@@ -66,8 +65,8 @@ static unsigned int xintc_read(struct xintc_irq_chip *irqc, int reg)
 
 static void intc_enable_or_unmask(struct irq_data *d)
 {
-	unsigned long mask = 1 << d->hwirq;
-	struct xintc_irq_chip *local_intc = irq_data_get_irq_chip_data(d);
+	struct xintc_irq_chip *irqc = irq_data_get_irq_chip_data(d);
+	unsigned long mask = BIT(d->hwirq);
 
 	pr_debug("irq-xilinx: enable_or_unmask: %ld\n", d->hwirq);
 
@@ -76,51 +75,59 @@ static void intc_enable_or_unmask(struct irq_data *d)
 	 * acks the irq before calling the interrupt handler
 	 */
 	if (irqd_is_level_type(d))
-		xintc_write(local_intc, IAR, mask);
+		xintc_write(irqc, IAR, mask);
 
-	xintc_write(local_intc, SIE, mask);
+	xintc_write(irqc, SIE, mask);
 }
 
 static void intc_disable_or_mask(struct irq_data *d)
 {
-	struct xintc_irq_chip *local_intc = irq_data_get_irq_chip_data(d);
+	struct xintc_irq_chip *irqc = irq_data_get_irq_chip_data(d);
 
 	pr_debug("irq-xilinx: disable: %ld\n", d->hwirq);
-	xintc_write(local_intc, CIE, 1 << d->hwirq);
+	xintc_write(irqc, CIE, BIT(d->hwirq));
 }
 
 static void intc_ack(struct irq_data *d)
 {
-	struct xintc_irq_chip *local_intc = irq_data_get_irq_chip_data(d);
+	struct xintc_irq_chip *irqc = irq_data_get_irq_chip_data(d);
 
 	pr_debug("irq-xilinx: ack: %ld\n", d->hwirq);
-	xintc_write(local_intc, IAR, 1 << d->hwirq);
+	xintc_write(irqc, IAR, BIT(d->hwirq));
 }
 
 static void intc_mask_ack(struct irq_data *d)
 {
-	unsigned long mask = 1 << d->hwirq;
-	struct xintc_irq_chip *local_intc = irq_data_get_irq_chip_data(d);
+	struct xintc_irq_chip *irqc = irq_data_get_irq_chip_data(d);
+	unsigned long mask = BIT(d->hwirq);
 
 	pr_debug("irq-xilinx: disable_and_ack: %ld\n", d->hwirq);
-	xintc_write(local_intc, CIE, mask);
-	xintc_write(local_intc, IAR, mask);
+	xintc_write(irqc, CIE, mask);
+	xintc_write(irqc, IAR, mask);
 }
+
+static struct irq_chip intc_dev = {
+	.name = "Xilinx INTC",
+	.irq_unmask = intc_enable_or_unmask,
+	.irq_mask = intc_disable_or_mask,
+	.irq_ack = intc_ack,
+	.irq_mask_ack = intc_mask_ack,
+};
 
 static int xintc_map(struct irq_domain *d, unsigned int irq, irq_hw_number_t hw)
 {
-	struct xintc_irq_chip *local_intc = d->host_data;
+	struct xintc_irq_chip *irqc = d->host_data;
 
-	if (local_intc->intr_mask & (1 << hw)) {
-		irq_set_chip_and_handler_name(irq, local_intc->intc_dev,
-						handle_edge_irq, "edge");
+	if (irqc->intr_mask & BIT(hw)) {
+		irq_set_chip_and_handler_name(irq, &intc_dev,
+					      handle_edge_irq, "edge");
 		irq_clear_status_flags(irq, IRQ_LEVEL);
 	} else {
-		irq_set_chip_and_handler_name(irq, local_intc->intc_dev,
-						handle_level_irq, "level");
+		irq_set_chip_and_handler_name(irq, &intc_dev,
+					      handle_level_irq, "level");
 		irq_set_status_flags(irq, IRQ_LEVEL);
 	}
-	irq_set_chip_data(irq, local_intc);
+	irq_set_chip_data(irq, irqc);
 	return 0;
 }
 
@@ -161,18 +168,17 @@ static void xil_intc_initial_setup(struct xintc_irq_chip *irqc)
 static void xil_intc_irq_handler(struct irq_desc *desc)
 {
 	struct irq_chip *chip = irq_desc_get_chip(desc);
-	struct xintc_irq_chip *irqc =
-		irq_data_get_irq_handler_data(&desc->irq_data);
+	struct xintc_irq_chip *irqc;
 
+	irqc = irq_data_get_irq_handler_data(&desc->irq_data);
 	chained_irq_enter(chip, desc);
-
 	do {
 		u32 hwirq = xintc_read(irqc, IVR);
 
 		if (hwirq == -1U)
 			break;
 
-		generic_handle_domain_irq(irqc->domain, hwirq);
+		generic_handle_domain_irq(irqc->root_domain, hwirq);
 	} while (true);
 	chained_irq_exit(chip, desc);
 }
@@ -192,7 +198,7 @@ static void xil_intc_handle_irq(struct pt_regs *regs)
 				xintc_write(irqc, IAR, 1 << hwirq);
 				continue;
 			} else {
-				ret = generic_handle_domain_irq(irqc->domain,
+				ret = generic_handle_domain_irq(irqc->root_domain,
 								hwirq);
 				WARN_ONCE(ret, "cpu %d: Unhandled HWIRQ %d\n",
 					  cpu_id, hwirq);
@@ -212,9 +218,8 @@ static int xilinx_intc_of_init(struct device_node *intc,
 			       struct device_node *parent)
 #endif
 {
-	int ret, irq;
 	struct xintc_irq_chip *irqc;
-	struct irq_chip *intc_dev;
+	int ret, irq;
 	u32 cpu_id = 0;
 
 	ret = of_property_read_u32(intc, "cpu-id", &cpu_id);
@@ -259,25 +264,12 @@ static int xilinx_intc_of_init(struct device_node *intc,
 	pr_info("irq-xilinx: %pOF: num_irq=%d, sw_irq=%d, edge=0x%x\n",
 		intc, irqc->nr_irq, irqc->sw_irq, irqc->intr_mask);
 
-	intc_dev = kzalloc(sizeof(*intc_dev), GFP_KERNEL);
-	if (!intc_dev) {
-		ret = -ENOMEM;
-		goto error;
-	}
-
-	intc_dev->name = intc->full_name;
-	intc_dev->irq_unmask = intc_enable_or_unmask,
-	intc_dev->irq_mask = intc_disable_or_mask,
-	intc_dev->irq_ack = intc_ack,
-	intc_dev->irq_mask_ack = intc_mask_ack,
-	irqc->intc_dev = intc_dev;
-
-	irqc->domain = irq_domain_add_linear(intc, irqc->nr_irq,
+	irqc->root_domain = irq_domain_add_linear(intc, irqc->nr_irq,
 						  &xintc_irq_domain_ops, irqc);
-	if (!irqc->domain) {
+	if (!irqc->root_domain) {
 		pr_err("irq-xilinx: Unable to create IRQ domain\n");
 		ret = -EINVAL;
-		goto err_alloc;
+		goto error;
 	}
 
 	if (parent) {
@@ -293,10 +285,10 @@ static int xilinx_intc_of_init(struct device_node *intc,
 		} else {
 			pr_err("irq-xilinx: interrupts property not in DT\n");
 			ret = -EINVAL;
-			goto err_alloc;
+			goto error;
 		}
 	} else {
-		irq_set_default_host(irqc->domain);
+		irq_set_default_host(irqc->root_domain);
 		set_handle_irq(xil_intc_handle_irq);
 	}
 
@@ -304,8 +296,6 @@ static int xilinx_intc_of_init(struct device_node *intc,
 
 	return 0;
 
-err_alloc:
-	kfree(intc_dev);
 error:
 	iounmap(irqc->base);
 	if (parent)
@@ -329,17 +319,17 @@ static int xilinx_intc_of_remove(struct device_node *intc,
 
 	irq_set_chained_handler_and_data(irq, NULL, NULL);
 
-	if (irqc->domain) {
+	if (irqc->root_domain) {
 		unsigned int tempirq;
 		unsigned int i;
 
-		for (i = 0; i < irqc->domain->mapcount; i++) {
-			tempirq = irq_find_mapping(irqc->domain, i);
+		for (i = 0; i < irqc->root_domain->mapcount; i++) {
+			tempirq = irq_find_mapping(irqc->root_domain, i);
 			if (tempirq)
 				irq_dispose_mapping(tempirq);
 		}
 		irq_dispose_mapping(irq);
-		irq_domain_remove(irqc->domain);
+		irq_domain_remove(irqc->root_domain);
 	}
 
 	/*
