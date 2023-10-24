@@ -16,7 +16,6 @@
 #include <linux/sched_clock.h>
 #include <linux/clk.h>
 #include <linux/clockchips.h>
-#include <linux/cpuhotplug.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
 #include <linux/timecounter.h>
@@ -180,20 +179,6 @@ static __init int xilinx_clockevent_init(void)
 	return 0;
 }
 
-static int microblaze_timer_starting(unsigned int cpu)
-{
-	pr_debug("%s: cpu %d\n", __func__, cpu);
-
-	return xilinx_clockevent_init();
-}
-
-static int microblaze_timer_dying(unsigned int cpu)
-{
-	pr_debug("%s: cpu %d\n", __func__, cpu);
-
-	return 0;
-}
-
 static u64 xilinx_clock_read(void)
 {
 	return read_fn(clocksource_baseaddr + TCR0);
@@ -339,11 +324,11 @@ static int __init xilinx_timer_init(struct device_node *timer)
 		return ret;
 	}
 
-	ret = cpuhp_setup_state(CPUHP_AP_MICROBLAZE_TIMER_STARTING,
-				"clockevents/microblaze/arch_timer:starting",
-				microblaze_timer_starting,
-				microblaze_timer_dying);
-	return ret;
+	ret = xilinx_clockevent_init();
+	if (ret)
+		return ret;
+
+	return 0;
 }
 
 TIMER_OF_DECLARE(xilinx_timer, "xlnx,xps-timer-1.00.a",
