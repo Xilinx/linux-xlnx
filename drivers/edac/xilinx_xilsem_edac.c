@@ -686,7 +686,7 @@ static int xsem_edac_probe(struct platform_device *pdev)
 		goto free_dev_ctl;
 
 	rc = xlnx_register_event(PM_NOTIFY_CB,
-				 XPM_NODETYPE_VERSAL_EVENT_ERROR_SW_ERR,
+				 VERSAL_EVENT_ERROR_SW_ERR,
 				 XPM_VERSAL_EVENT_ERROR_MASK_XSEM_CRAM_CE_5 |
 				 XPM_VERSAL_EVENT_ERROR_MASK_XSEM_CRAM_UE_6 |
 				 XPM_VERSAL_EVENT_ERROR_MASK_XSEM_NPI_UE_7,
@@ -718,7 +718,7 @@ static int xsem_edac_remove(struct platform_device *pdev)
 {
 	struct edac_device_ctl_info *dci = platform_get_drvdata(pdev);
 
-	xlnx_unregister_event(PM_NOTIFY_CB, XPM_NODETYPE_VERSAL_EVENT_ERROR_SW_ERR,
+	xlnx_unregister_event(PM_NOTIFY_CB, VERSAL_EVENT_ERROR_SW_ERR,
 			      XPM_VERSAL_EVENT_ERROR_MASK_XSEM_CRAM_CE_5 |
 			      XPM_VERSAL_EVENT_ERROR_MASK_XSEM_CRAM_UE_6 |
 			      XPM_VERSAL_EVENT_ERROR_MASK_XSEM_NPI_UE_7,

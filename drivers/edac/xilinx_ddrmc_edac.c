@@ -1194,7 +1194,7 @@ static int xddr_mc_probe(struct platform_device *pdev)
 	xddr_setup_address_map(priv);
 #endif
 
-	rc = xlnx_register_event(PM_NOTIFY_CB, XPM_NODETYPE_VERSAL_EVENT_ERROR_PMC_ERR1,
+	rc = xlnx_register_event(PM_NOTIFY_CB, VERSAL_EVENT_ERROR_PMC_ERR1,
 				 XPM_VERSAL_EVENT_ERROR_MASK_DDRMC_CR | XPM_VERSAL_EVENT_ERROR_MASK_DDRMC_NCR,
 				 false, xddr_err_callback, mci);
 	if (rc == -ENODEV) {
@@ -1240,7 +1240,7 @@ static int xddr_mc_remove(struct platform_device *pdev)
 	edac_remove_sysfs_attributes(mci);
 #endif
 
-	xlnx_unregister_event(PM_NOTIFY_CB, XPM_NODETYPE_VERSAL_EVENT_ERROR_PMC_ERR1,
+	xlnx_unregister_event(PM_NOTIFY_CB, VERSAL_EVENT_ERROR_PMC_ERR1,
 			      XPM_VERSAL_EVENT_ERROR_MASK_DDRMC_CR |
 			      XPM_VERSAL_EVENT_ERROR_MASK_DDRMC_NCR, xddr_err_callback, mci);
 	edac_mc_del_mc(&pdev->dev);
