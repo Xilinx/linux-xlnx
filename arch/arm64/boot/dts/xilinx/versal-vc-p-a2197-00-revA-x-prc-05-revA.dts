@@ -43,8 +43,8 @@
 	};
 	phy2: phy@2 { /* VSC8531 */
 		reg = <2>;
-		vsc8531,rx-delay = <VSC8531_RGMII_CLK_DELAY_2_6_NS>;
-		vsc8531,tx-delay = <VSC8531_RGMII_CLK_DELAY_2_6_NS>;
+		rx-internal-delay-ps = <2600>;
+		tx-internal-delay-ps = <2600>;
 	};
 };
 
