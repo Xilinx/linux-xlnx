@@ -357,7 +357,7 @@
 		};
 
 		mc0: memory-controller@f6150000	{
-			compatible = "xlnx,versal-ddrmc-edac";
+			compatible = "xlnx,versal-ddrmc";
 			status = "disabled";
 			reg = <0x0 0xf6150000 0x0 0x2000>, <0x0 0xf6070000 0x0 0x20000>;
 			reg-names = "ddrmc_base", "ddrmc_noc_base";
@@ -366,7 +366,7 @@
 		};
 
 		mc1: memory-controller@f62c0000 {
-			compatible = "xlnx,versal-ddrmc-edac";
+			compatible = "xlnx,versal-ddrmc";
 			status = "disabled";
 			reg = <0x0 0xf62c0000 0x0 0x2000>, <0x0 0xf6210000 0x0 0x20000>;
 			reg-names = "ddrmc_base", "ddrmc_noc_base";
@@ -375,7 +375,7 @@
 		};
 
 		mc2: memory-controller@f6430000 {
-			compatible = "xlnx,versal-ddrmc-edac";
+			compatible = "xlnx,versal-ddrmc";
 			status = "disabled";
 			reg = <0x0 0xf6430000 0x0 0x2000>, <0x0 0xf6380000 0x0 0x20000>;
 			reg-names = "ddrmc_base", "ddrmc_noc_base";
@@ -384,7 +384,7 @@
 		};
 
 		mc3: memory-controller@f65a0000 {
-			compatible = "xlnx,versal-ddrmc-edac";
+			compatible = "xlnx,versal-ddrmc";
 			status = "disabled";
 			reg = <0x0 0xf65a0000 0x0 0x2000>, <0x0 0xf64f0000 0x0 0x20000>;
 			reg-names = "ddrmc_base", "ddrmc_noc_base";
