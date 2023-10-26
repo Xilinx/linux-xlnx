@@ -1251,6 +1251,7 @@ static int xddr_mc_remove(struct platform_device *pdev)
 
 static const struct of_device_id xlnx_edac_match[] = {
 	{ .compatible = "xlnx,versal-ddrmc-edac", },
+	{ .compatible = "xlnx,versal-ddrmc", },
 	{
 		/* end of table */
 	}
