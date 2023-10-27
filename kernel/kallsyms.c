@@ -188,16 +188,23 @@ static bool cleanup_symbol_name(char *s)
 
 static int compare_symbol_name(const char *name, char *namebuf)
 {
-	int ret;
+	/* The kallsyms_seqs_of_names is sorted based on names after
+	 * cleanup_symbol_name() (see scripts/kallsyms.c) if clang lto is enabled.
+	 * To ensure correct bisection in kallsyms_lookup_names(), do
+	 * cleanup_symbol_name(namebuf) before comparing name and namebuf.
+	 */
+	cleanup_symbol_name(namebuf);
+	return strcmp(name, namebuf);
+}
 
-	ret = strcmp(name, namebuf);
-	if (!ret)
-		return ret;
+static unsigned int get_symbol_seq(int index)
+{
+	unsigned int i, seq = 0;
 
-	if (cleanup_symbol_name(namebuf) && !strcmp(name, namebuf))
-		return 0;
+	for (i = 0; i < 3; i++)
+		seq = (seq << 8) | kallsyms_seqs_of_names[3 * index + i];
 
-	return ret;
+	return seq;
 }
 
 static int kallsyms_lookup_names(const char *name,
@@ -214,7 +221,7 @@ static int kallsyms_lookup_names(const char *name,
 
 	while (low <= high) {
 		mid = low + (high - low) / 2;
-		seq = kallsyms_seqs_of_names[mid];
+		seq = get_symbol_seq(mid);
 		off = get_symbol_offset(seq);
 		kallsyms_expand_symbol(off, namebuf, ARRAY_SIZE(namebuf));
 		ret = compare_symbol_name(name, namebuf);
@@ -231,7 +238,7 @@ static int kallsyms_lookup_names(const char *name,
 
 	low = mid;
 	while (low) {
-		seq = kallsyms_seqs_of_names[low - 1];
+		seq = get_symbol_seq(low - 1);
 		off = get_symbol_offset(seq);
 		kallsyms_expand_symbol(off, namebuf, ARRAY_SIZE(namebuf));
 		if (compare_symbol_name(name, namebuf))
@@ -243,7 +250,7 @@ static int kallsyms_lookup_names(const char *name,
 	if (end) {
 		high = mid;
 		while (high < kallsyms_num_syms - 1) {
-			seq = kallsyms_seqs_of_names[high + 1];
+			seq = get_symbol_seq(high + 1);
 			off = get_symbol_offset(seq);
 			kallsyms_expand_symbol(off, namebuf, ARRAY_SIZE(namebuf));
 			if (compare_symbol_name(name, namebuf))
@@ -268,7 +275,7 @@ unsigned long kallsyms_lookup_name(const char *name)
 
 	ret = kallsyms_lookup_names(name, &i, NULL);
 	if (!ret)
-		return kallsyms_sym_address(kallsyms_seqs_of_names[i]);
+		return kallsyms_sym_address(get_symbol_seq(i));
 
 	return module_kallsyms_lookup_name(name);
 }
@@ -294,6 +301,24 @@ int kallsyms_on_each_symbol(int (*fn)(void *, const char *, struct module *,
 		cond_resched();
 	}
 	return 0;
+}
+
+int kallsyms_on_each_match_symbol(int (*fn)(void *, unsigned long),
+				  const char *name, void *data)
+{
+	int ret;
+	unsigned int i, start, end;
+
+	ret = kallsyms_lookup_names(name, &start, &end);
+	if (ret)
+		return 0;
+
+	for (i = start; !ret && i <= end; i++) {
+		ret = fn(data, kallsyms_sym_address(get_symbol_seq(i)));
+		cond_resched();
+	}
+
+	return ret;
 }
 
 static unsigned long get_symbol_pos(unsigned long addr,
