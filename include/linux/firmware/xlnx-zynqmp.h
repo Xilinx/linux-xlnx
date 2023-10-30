@@ -267,8 +267,6 @@ enum pm_ioctl_id {
 	IOCTL_READ_GGS = 13,
 	IOCTL_WRITE_PGGS = 14,
 	IOCTL_READ_PGGS = 15,
-	/* IOCTL for ULPI reset */
-	IOCTL_ULPI_RESET = 16,
 	/* Set healthy bit value */
 	IOCTL_SET_BOOT_HEALTH_STATUS = 17,
 	IOCTL_AFI = 18,
@@ -740,7 +738,6 @@ int zynqmp_pm_set_tapdelay_bypass(u32 index, u32 value);
 int zynqmp_pm_usb_set_state(u32 node, u32 state, u32 value);
 int zynqmp_pm_afi(u32 index, u32 value);
 int zynqmp_pm_set_sgmii_mode(u32 enable);
-int zynqmp_pm_ulpi_reset(void);
 int zynqmp_pm_probe_counter_read(u32 domain, u32 reg, u32 *value);
 int zynqmp_pm_probe_counter_write(u32 domain, u32 reg, u32 value);
 int zynqmp_pm_get_last_reset_reason(u32 *reset_reason);
@@ -1005,11 +1002,6 @@ static inline int zynqmp_pm_afi(u32 index, u32 value)
 }
 
 static inline int zynqmp_pm_set_sgmii_mode(u32 enable)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_ulpi_reset(void)
 {
 	return -ENODEV;
 }
