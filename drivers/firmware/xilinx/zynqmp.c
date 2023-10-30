@@ -1449,8 +1449,8 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_requirement);
 
 /**
  * zynqmp_pm_load_pdi - Load and process PDI
- * @src:       Source device where PDI is located
- * @address:   PDI src address
+ * @src:	Source device where PDI is located
+ * @address:	PDI src address
  *
  * This function provides support to load PDI from linux
  *
