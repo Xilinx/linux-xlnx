@@ -322,7 +322,13 @@ static int build_prologue(struct jit_ctx *ctx, bool ebpf_from_cbpf)
 	 *
 	 */
 
-	emit_bti(A64_BTI_C, ctx);
+	/* bpf function may be invoked by 3 instruction types:
+	 * 1. bl, attached via freplace to bpf prog via short jump
+	 * 2. br, attached via freplace to bpf prog via long jump
+	 * 3. blr, working as a function pointer, used by emit_call.
+	 * So BTI_JC should used here to support both br and blr.
+	 */
+	emit_bti(A64_BTI_JC, ctx);
 
 	emit(A64_MOV(1, A64_R(9), A64_LR), ctx);
 	emit(A64_NOP, ctx);
@@ -1649,13 +1655,8 @@ static void invoke_bpf_prog(struct jit_ctx *ctx, struct bpf_tramp_link *l,
 	struct bpf_prog *p = l->link.prog;
 	int cookie_off = offsetof(struct bpf_tramp_run_ctx, bpf_cookie);
 
-	if (p->aux->sleepable) {
-		enter_prog = (u64)__bpf_prog_enter_sleepable;
-		exit_prog = (u64)__bpf_prog_exit_sleepable;
-	} else {
-		enter_prog = (u64)__bpf_prog_enter;
-		exit_prog = (u64)__bpf_prog_exit;
-	}
+	enter_prog = (u64)bpf_trampoline_enter(p);
+	exit_prog = (u64)bpf_trampoline_exit(p);
 
 	if (l->cookie == 0) {
 		/* if cookie is zero, one instruction is enough to store it */

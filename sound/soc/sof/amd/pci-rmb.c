@@ -54,7 +54,6 @@ static const struct sof_amd_acp_desc rembrandt_chip_info = {
 	.sram_pte_offset = ACP6X_SRAM_PTE_OFFSET,
 	.i2s_pin_config_offset = ACP6X_I2S_PIN_CONFIG,
 	.hw_semaphore_offset = ACP6X_AXI2DAGB_SEM_0,
-	.acp_clkmux_sel = ACP6X_CLKMUX_SEL,
 	.fusion_dsp_offset = ACP6X_DSP_FUSION_RUNSTALL,
 };
 
@@ -89,6 +88,9 @@ static int acp_pci_rmb_probe(struct pci_dev *pci, const struct pci_device_id *pc
 	struct resource *res;
 	unsigned int flag, i, addr;
 	int ret;
+
+	if (pci->revision != ACP_RMB_PCI_ID)
+		return -ENODEV;
 
 	flag = snd_amd_acp_find_config(pci);
 	if (flag != FLAG_AMD_SOF && flag != FLAG_AMD_SOF_ONLY_DMIC)

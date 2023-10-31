@@ -229,6 +229,7 @@ static void vdec_handle_resolution_change(struct vpu_inst *inst)
 
 	vdec->source_change--;
 	vpu_notify_source_change(inst);
+	vpu_set_last_buffer_dequeued(inst, false);
 }
 
 static int vdec_update_state(struct vpu_inst *inst, enum vpu_codec_state state, u32 force)
@@ -248,7 +249,8 @@ static int vdec_update_state(struct vpu_inst *inst, enum vpu_codec_state state, 
 		vdec->state = VPU_CODEC_STATE_DYAMIC_RESOLUTION_CHANGE;
 
 	if (inst->state != pre_state)
-		vpu_trace(inst->dev, "[%d] %d -> %d\n", inst->id, pre_state, inst->state);
+		vpu_trace(inst->dev, "[%d] %s -> %s\n", inst->id,
+			  vpu_codec_state_name(pre_state), vpu_codec_state_name(inst->state));
 
 	if (inst->state == VPU_CODEC_STATE_DYAMIC_RESOLUTION_CHANGE)
 		vdec_handle_resolution_change(inst);
@@ -264,7 +266,7 @@ static void vdec_set_last_buffer_dequeued(struct vpu_inst *inst)
 		return;
 
 	if (vdec->eos_received) {
-		if (!vpu_set_last_buffer_dequeued(inst)) {
+		if (!vpu_set_last_buffer_dequeued(inst, true)) {
 			vdec->eos_received--;
 			vdec_update_state(inst, VPU_CODEC_STATE_DRAIN, 0);
 		}
@@ -517,7 +519,7 @@ static int vdec_drain(struct vpu_inst *inst)
 		return 0;
 
 	if (!vdec->params.frame_count) {
-		vpu_set_last_buffer_dequeued(inst);
+		vpu_set_last_buffer_dequeued(inst, true);
 		return 0;
 	}
 
@@ -556,7 +558,7 @@ static int vdec_cmd_stop(struct vpu_inst *inst)
 	vpu_trace(inst->dev, "[%d]\n", inst->id);
 
 	if (inst->state == VPU_CODEC_STATE_DEINIT) {
-		vpu_set_last_buffer_dequeued(inst);
+		vpu_set_last_buffer_dequeued(inst, true);
 	} else {
 		vdec->drain = 1;
 		vdec_drain(inst);
@@ -955,6 +957,7 @@ static int vdec_response_frame_abnormal(struct vpu_inst *inst)
 {
 	struct vdec_t *vdec = inst->priv;
 	struct vpu_fs_info info;
+	int ret;
 
 	if (!vdec->req_frame_count)
 		return 0;
@@ -962,7 +965,9 @@ static int vdec_response_frame_abnormal(struct vpu_inst *inst)
 	memset(&info, 0, sizeof(info));
 	info.type = MEM_RES_FRAME;
 	info.tag = vdec->seq_tag + 0xf0;
-	vpu_session_alloc_fs(inst, &info);
+	ret = vpu_session_alloc_fs(inst, &info);
+	if (ret)
+		return ret;
 	vdec->req_frame_count--;
 
 	return 0;
@@ -993,8 +998,8 @@ static int vdec_response_frame(struct vpu_inst *inst, struct vb2_v4l2_buffer *vb
 		return -EINVAL;
 	}
 
-	dev_dbg(inst->dev, "[%d] state = %d, alloc fs %d, tag = 0x%x\n",
-		inst->id, inst->state, vbuf->vb2_buf.index, vdec->seq_tag);
+	dev_dbg(inst->dev, "[%d] state = %s, alloc fs %d, tag = 0x%x\n",
+		inst->id, vpu_codec_state_name(inst->state), vbuf->vb2_buf.index, vdec->seq_tag);
 	vpu_buf = to_vpu_vb2_buffer(vbuf);
 
 	memset(&info, 0, sizeof(info));
@@ -1353,7 +1358,7 @@ static void vdec_abort(struct vpu_inst *inst)
 	struct vpu_rpc_buffer_desc desc;
 	int ret;
 
-	vpu_trace(inst->dev, "[%d] state = %d\n", inst->id, inst->state);
+	vpu_trace(inst->dev, "[%d] state = %s\n", inst->id, vpu_codec_state_name(inst->state));
 
 	vdec->aborting = true;
 	vpu_iface_add_scode(inst, SCODE_PADDING_ABORT);
@@ -1406,9 +1411,7 @@ static void vdec_release(struct vpu_inst *inst)
 {
 	if (inst->id != VPU_INST_NULL_ID)
 		vpu_trace(inst->dev, "[%d]\n", inst->id);
-	vpu_inst_lock(inst);
 	vdec_stop(inst, true);
-	vpu_inst_unlock(inst);
 }
 
 static void vdec_cleanup(struct vpu_inst *inst)

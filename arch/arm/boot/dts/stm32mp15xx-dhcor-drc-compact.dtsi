@@ -78,7 +78,7 @@
 	max-speed = <1000>;
 	phy-handle = <&phy0>;
 
-	mdio0 {
+	mdio {
 		#address-cells = <1>;
 		#size-cells = <0>;
 		compatible = "snps,dwmac-mdio";
@@ -190,6 +190,12 @@
 	eeprom@50 {
 		compatible = "atmel,24c04";
 		reg = <0x50>;
+		pagesize = <16>;
+	};
+
+	dh_mac_eeprom: eeprom@53 {
+		compatible = "atmel,24c02";
+		reg = <0x53>;
 		pagesize = <16>;
 	};
 };
