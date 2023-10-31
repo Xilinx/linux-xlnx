@@ -291,7 +291,6 @@ enum pm_ioctl_id {
 	/* Dynamic SD/GEM configuration */
 	IOCTL_SET_SD_CONFIG = 30,
 	IOCTL_SET_GEM_CONFIG = 31,
-	IOCTL_SET_USB_CONFIG = 32,
 	/* AIE/AIEML Operations */
 	IOCTL_AIE_OPS = 33,
 	/* IOCTL to get default/current QoS */
@@ -607,10 +606,6 @@ enum pm_feature_config_id {
 	PM_FEATURE_EXTWDT_VALUE = 4,
 };
 
-enum pm_usb_config_type {
-	USB_CONFIG_FIXED = 1, /* To set fixed config registers */
-};
-
 /**
  * enum pm_sd_config_type - PM SD configuration.
  * @SD_CONFIG_EMMC_SEL: To set SD_EMMC_SEL in CTRL_REG_SD and SD_SLOTTYPE
@@ -774,8 +769,6 @@ int zynqmp_pm_sec_mask_write_reg(const u32 node_id, const u32 offset,
 int zynqmp_pm_register_sgi(u32 sgi_num, u32 reset);
 int zynqmp_pm_set_sd_config(u32 node, enum pm_sd_config_type config, u32 value);
 int zynqmp_pm_set_gem_config(u32 node, enum pm_gem_config_type config,
-			     u32 value);
-int zynqmp_pm_set_usb_config(u32 node, enum pm_usb_config_type config,
 			     u32 value);
 int zynqmp_pm_xilsem_cntrl_ops(u32 cmd, u32 *const response);
 int zynqmp_pm_xilsem_cram_errinj(u32 frame, u32 qword, u32 bit, u32 row, u32 *const response);
@@ -1271,13 +1264,6 @@ static inline int zynqmp_pm_get_qos(u32 node, u32 *const def_qos, u32 *const qos
 
 static inline int zynqmp_pm_set_gem_config(u32 node,
 					   enum pm_gem_config_type config,
-					   u32 value)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_set_usb_config(u32 node,
-					   enum pm_usb_config_type config,
 					   u32 value)
 {
 	return -ENODEV;
