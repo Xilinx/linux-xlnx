@@ -4,17 +4,16 @@
 $id: http://devicetree.org/schemas/misc/xlnx,tmr-manager.yaml#
 $schema: http://devicetree.org/meta-schemas/core.yaml#
 
-title: Xilinx TMR Microblaze Device Tree Bindings
+title: Xilinx Triple Modular Redundancy(TMR) Manager IP
 
 maintainers:
-  - Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
+  - Appana Durga Kedareswara rao <appana.durga.kedareswara.rao@amd.com>
 
 description: |
-  The Triple Modular Redundancy(TMR) Manager is responsible
-  for handling the TMR subsystem state, including fault detection
-  and error recovery. The core is triplicated in each of the
-  sub-blocks in the TMR subsystem, and provides majority
-  voting of its internal state.
+  The Triple Modular Redundancy(TMR) Manager is responsible for handling the
+  TMR subsystem state, including fault detection and error recovery. The core
+  is triplicated in each of the sub-blocks in the TMR subsystem, and provides
+  majority voting of its internal state.
 
 properties:
   compatible:
@@ -25,11 +24,11 @@ properties:
     maxItems: 1
 
   xlnx,magic1:
+    minimum: 0
+    maximum: 255
     description:
-      Magic number 1, When writing to the control register the first
-      write data byte (bits 7:0) must match this value in order to
-      have any effect on the nominal recovery function. the value
-      shall be in the range 0-255.
+      Magic byte 1, When configured it allows the controller to perform
+      recovery.
     $ref: /schemas/types.yaml#/definitions/uint32
 
 required:
@@ -42,7 +41,7 @@ additionalProperties: false
 examples:
   - |
     tmr-manager@44a10000 {
-            compatible = "xlnx,tmr-manager-1.0";
-            reg = <0x44a10000 0x10000>;
-            xlnx,magic1 = <0x46>;
+        compatible = "xlnx,tmr-manager-1.0";
+        reg = <0x44a10000 0x10000>;
+        xlnx,magic1 = <0x46>;
     };
