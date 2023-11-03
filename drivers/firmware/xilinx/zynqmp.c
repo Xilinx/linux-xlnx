@@ -952,13 +952,6 @@ int zynqmp_pm_afi(u32 index, u32 value)
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_afi);
 
-int zynqmp_pm_set_sgmii_mode(u32 enable)
-{
-	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_SET_SGMII_MODE, enable, 0,
-				   0, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_set_sgmii_mode);
-
 int zynqmp_pm_probe_counter_read(u32 deviceid, u32 reg, u32 *value)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, deviceid, IOCTL_PROBE_COUNTER_READ, reg,

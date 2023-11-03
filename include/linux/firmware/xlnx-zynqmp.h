@@ -256,7 +256,6 @@ enum pm_ioctl_id {
 	IOCTL_RPU_BOOT_ADDR_CONFIG = 2,
 	IOCTL_TCM_COMB_CONFIG = 3,
 	IOCTL_SET_TAPDELAY_BYPASS = 4,
-	IOCTL_SET_SGMII_MODE = 5,
 	IOCTL_SD_DLL_RESET = 6,
 	IOCTL_SET_SD_TAPDELAY = 7,
 	IOCTL_SET_PLL_FRAC_MODE = 8,
@@ -577,11 +576,6 @@ enum ospi_mux_select_type {
 	PM_OSPI_MUX_SEL_LINEAR = 1,
 };
 
-enum sgmii_mode {
-	PM_SGMII_DISABLE = 0,
-	PM_SGMII_ENABLE = 1,
-};
-
 enum pm_register_access_id {
 	CONFIG_REG_WRITE = 0,
 	CONFIG_REG_READ = 1,
@@ -730,7 +724,6 @@ int zynqmp_pm_read_pggs(u32 index, u32 *value);
 int zynqmp_pm_set_tapdelay_bypass(u32 index, u32 value);
 int zynqmp_pm_usb_set_state(u32 node, u32 state, u32 value);
 int zynqmp_pm_afi(u32 index, u32 value);
-int zynqmp_pm_set_sgmii_mode(u32 enable);
 int zynqmp_pm_probe_counter_read(u32 domain, u32 reg, u32 *value);
 int zynqmp_pm_probe_counter_write(u32 domain, u32 reg, u32 value);
 int zynqmp_pm_get_last_reset_reason(u32 *reset_reason);
@@ -988,11 +981,6 @@ static inline int zynqmp_pm_usb_set_state(u32 node, u32 state, u32 value)
 }
 
 static inline int zynqmp_pm_afi(u32 index, u32 value)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_set_sgmii_mode(u32 enable)
 {
 	return -ENODEV;
 }
