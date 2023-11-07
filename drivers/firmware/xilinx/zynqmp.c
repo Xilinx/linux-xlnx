@@ -952,20 +952,6 @@ int zynqmp_pm_afi(u32 index, u32 value)
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_afi);
 
-int zynqmp_pm_probe_counter_read(u32 deviceid, u32 reg, u32 *value)
-{
-	return zynqmp_pm_invoke_fn(PM_IOCTL, deviceid, IOCTL_PROBE_COUNTER_READ, reg,
-				   0, 0, value);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_probe_counter_read);
-
-int zynqmp_pm_probe_counter_write(u32 domain, u32 reg, u32 value)
-{
-	return zynqmp_pm_invoke_fn(PM_IOCTL, domain, IOCTL_PROBE_COUNTER_WRITE, reg,
-				   value, 0, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_probe_counter_write);
-
 int zynqmp_pm_get_last_reset_reason(u32 *reset_reason)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_GET_LAST_RESET_REASON, 0,
