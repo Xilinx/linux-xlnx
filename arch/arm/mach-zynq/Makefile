@@ -6,5 +6,3 @@
 # Common support
 obj-y				:= common.o efuse.o slcr.o pm.o
 obj-$(CONFIG_SMP)		+= headsmp.o platsmp.o
-obj-$(CONFIG_SUSPEND)	+= suspend.o
-AFLAGS_suspend.o		+=-Wa,-march=armv7-a

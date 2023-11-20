@@ -27,7 +27,7 @@
 #define SLCR_PSS_IDCODE_DEVICE_SHIFT	12
 #define SLCR_PSS_IDCODE_DEVICE_MASK	0x1F
 
-void __iomem *zynq_slcr_base;
+static void __iomem *zynq_slcr_base;
 static struct regmap *zynq_slcr_regmap;
 
 /**
