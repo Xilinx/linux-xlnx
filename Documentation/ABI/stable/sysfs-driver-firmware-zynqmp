@@ -254,3 +254,16 @@ Description:
 		The expected result is 500.
 
 Users:		Xilinx
+
+What:		/sys/devices/platform/firmware\:zynqmp-firmware/last_reset_reason
+Date:		Nov 2023
+KernelVersion:	6.7
+Contact:	"Ronak Jain" <ronak.jain@amd.com>
+Description:
+		This sysfs interface allows to get last reset reason.
+
+		Usage:
+		Get last reset reason
+		# cat /sys/devices/platform/firmware\:zynqmp-firmware/last_reset_reason
+
+Users:		Xilinx

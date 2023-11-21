@@ -1971,6 +1971,41 @@ static ssize_t feature_config_value_store(struct device *device,
 
 static DEVICE_ATTR_RW(feature_config_value);
 
+static ssize_t last_reset_reason_show(struct device *device,
+				      struct device_attribute *attr,
+				      char *buf)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	ret = zynqmp_pm_get_last_reset_reason(ret_payload);
+	if (ret)
+		return ret;
+
+	switch (ret_payload[1]) {
+	case PM_RESET_REASON_EXT_POR:
+		return sprintf(buf, "ext_por\n");
+	case PM_RESET_REASON_SW_POR:
+		return sprintf(buf, "sw_por\n");
+	case PM_RESET_REASON_SLR_POR:
+		return sprintf(buf, "slr_por\n");
+	case PM_RESET_REASON_ERR_POR:
+		return sprintf(buf, "err_por\n");
+	case PM_RESET_REASON_DAP_SRST:
+		return sprintf(buf, "dap_srst\n");
+	case PM_RESET_REASON_ERR_SRST:
+		return sprintf(buf, "err_srst\n");
+	case PM_RESET_REASON_SW_SRST:
+		return sprintf(buf, "sw_srst\n");
+	case PM_RESET_REASON_SLR_SRST:
+		return sprintf(buf, "slr_srst\n");
+	default:
+		return sprintf(buf, "unknown reset\n");
+	}
+}
+
+static DEVICE_ATTR_RO(last_reset_reason);
+
 static struct attribute *zynqmp_firmware_attrs[] = {
 	&dev_attr_ggs0.attr,
 	&dev_attr_ggs1.attr,
@@ -1984,6 +2019,7 @@ static struct attribute *zynqmp_firmware_attrs[] = {
 	&dev_attr_health_status.attr,
 	&dev_attr_feature_config_id.attr,
 	&dev_attr_feature_config_value.attr,
+	&dev_attr_last_reset_reason.attr,
 	NULL,
 };
 
