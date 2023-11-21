@@ -938,6 +938,13 @@ int zynqmp_pm_set_tapdelay_bypass(u32 index, u32 value)
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_tapdelay_bypass);
 
+int zynqmp_pm_get_last_reset_reason(u32 *reset_reason)
+{
+	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_GET_LAST_RESET_REASON, 0,
+				   0, reset_reason);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_get_last_reset_reason);
+
 /**
  * zynqmp_pm_set_boot_health_status() - PM API for setting healthy boot status
  * @value:	Status value to be written
