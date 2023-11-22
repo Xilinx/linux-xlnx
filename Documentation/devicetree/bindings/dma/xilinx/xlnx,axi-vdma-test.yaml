@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/dma/xilinx/xlnx,axi-vdma-test.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx Video DMA Test client
+
+maintainers:
+  - Radhey Shyam Pandey <radhey.shyam.pandey@amd.com>
+  - Harini Katakam <harini.katakam@amd.com>
+
+properties:
+  compatible:
+    const: xlnx,axi-vdma-test-1.00.a
+
+  dmas:
+    description:
+      A list of <[DMA device phandle] [Channel ID]> pairs,
+      where Channel ID is '0' for write/tx and '1' for read/rx
+      channel.
+    maxItems: 2
+
+  dma-names:
+    items:
+      - const: vdma0
+      - const: vdma1
+
+  xlnx,num-fstores:
+    description:
+      Should be the number of framebuffers as configured in
+      VDMA device node.
+    $ref: /schemas/types.yaml#/definitions/uint32
+
+required:
+  - compatible
+  - dmas
+  - dma-names
+  - xlnx,num-fstores
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    vdmatest_0: vdmatest {
+      compatible ="xlnx,axi-vdma-test-1.00.a";
+      dmas = <&axi_vdma_0 0 &axi_vdma_0 1>;
+      dma-names = "vdma0", "vdma1";
+      xlnx,num-fstores = <0x8>;
+    };
