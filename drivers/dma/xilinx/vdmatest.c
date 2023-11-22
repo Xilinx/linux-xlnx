@@ -326,7 +326,7 @@ static int xilinx_vdmatest_slave_func(void *data)
 			dma_dsts[i] = dma_map_single(rx_dev->dev,
 							thread->dsts[i],
 							test_buf_size,
-							DMA_DEV_TO_MEM);
+							DMA_FROM_DEVICE);
 
 			if (dma_mapping_error(rx_dev->dev, dma_dsts[i])) {
 				failed_tests++;
@@ -347,7 +347,7 @@ static int xilinx_vdmatest_slave_func(void *data)
 			u8 *buf = thread->srcs[i];
 
 			dma_srcs[i] = dma_map_single(tx_dev->dev, buf, len,
-							DMA_MEM_TO_DEV);
+							DMA_TO_DEVICE);
 
 			if (dma_mapping_error(tx_dev->dev, dma_srcs[i])) {
 				failed_tests++;
@@ -367,11 +367,11 @@ static int xilinx_vdmatest_slave_func(void *data)
 		if (!rxd || !txd) {
 			for (i = 0; i < frm_cnt; i++)
 				dma_unmap_single(tx_dev->dev, dma_srcs[i], len,
-						DMA_MEM_TO_DEV);
+						DMA_TO_DEVICE);
 			for (i = 0; i < frm_cnt; i++)
 				dma_unmap_single(rx_dev->dev, dma_dsts[i],
 						test_buf_size,
-						DMA_DEV_TO_MEM);
+						DMA_FROM_DEVICE);
 			pr_warn("%s: #%u: prep error with len=0x%x ",
 					thread_name, total_tests - 1, len);
 			msleep(100);
@@ -443,7 +443,7 @@ static int xilinx_vdmatest_slave_func(void *data)
 		/* Unmap by myself */
 		for (i = 0; i < frm_cnt; i++)
 			dma_unmap_single(rx_dev->dev, dma_dsts[i],
-					 test_buf_size, DMA_DEV_TO_MEM);
+					 test_buf_size, DMA_FROM_DEVICE);
 
 		error_count = 0;
 

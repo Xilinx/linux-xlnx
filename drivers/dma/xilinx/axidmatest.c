@@ -336,7 +336,7 @@ static int dmatest_slave_func(void *data)
 			u8 *buf = thread->srcs[i] + src_off;
 
 			dma_srcs[i] = dma_map_single(tx_dev->dev, buf, len,
-						     DMA_MEM_TO_DEV);
+						     DMA_TO_DEVICE);
 		}
 
 		for (i = 0; i < dst_cnt; i++) {
@@ -367,7 +367,7 @@ static int dmatest_slave_func(void *data)
 		if (!rxd || !txd) {
 			for (i = 0; i < src_cnt; i++)
 				dma_unmap_single(tx_dev->dev, dma_srcs[i], len,
-						 DMA_MEM_TO_DEV);
+						 DMA_TO_DEVICE);
 			for (i = 0; i < dst_cnt; i++)
 				dma_unmap_single(rx_dev->dev, dma_dsts[i],
 						 test_buf_size,
