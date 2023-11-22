@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/dma/xilinx/xlnx,axi-dma-test.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx AXI DMA Test client
+
+maintainers:
+  - Radhey Shyam Pandey <radhey.shyam.pandey@amd.com>
+  - Harini Katakam <harini.katakam@amd.com>
+
+properties:
+  compatible:
+    const: xlnx,axi-dma-test-1.00.a
+
+  dmas:
+    description:
+      A list of <[DMA device phandle] [Channel ID]> pairs,
+      where Channel ID is '0' for write/tx and '1' for read/rx
+      channel.
+    maxItems: 2
+
+  dma-names:
+    items:
+      - const: axidma0
+      - const: axidma1
+
+required:
+  - compatible
+  - dmas
+  - dma-names
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    dmatest_0: dmatest {
+      compatible ="xlnx,axi-dma-test-1.00.a";
+      dmas = <&axi_dma_0 0 &axi_dma_0 1>;
+      dma-names = "axidma0", "axidma1";
+    };
