@@ -686,7 +686,7 @@
 			power-domains = <&versal_net_firmware PM_DEV_USB_0>;
 			resets = <&versal_net_reset VERSAL_RST_USB_0>;
 
-			dwc3_0: dwc3@f1b00000  {
+			dwc3_0: usb@f1b00000  {
 				compatible = "snps,dwc3";
 				status = "okay";
 				reg = <0 0xf1b00000 0 0x10000>;
@@ -714,7 +714,7 @@
 			power-domains = <&versal_net_firmware PM_DEV_USB_1>;
 			resets = <&versal_net_reset VERSAL_RST_USB_1>;
 
-			dwc3_1: dwc3@f1c00000  {
+			dwc3_1: usb@f1c00000  {
 				compatible = "snps,dwc3";
 				status = "okay";
 				reg = <0x0 0xf1c00000 0x0 0x10000>;
