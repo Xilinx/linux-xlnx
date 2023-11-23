@@ -442,5 +442,4 @@ module_platform_driver(xlnx_vtc_bridge_driver);
 
 MODULE_AUTHOR("Vishal Sagar");
 MODULE_DESCRIPTION("Xilinx VTC Bridge Driver");
-MODULE_LICENSE("GPL v2");
-
+MODULE_LICENSE("GPL");

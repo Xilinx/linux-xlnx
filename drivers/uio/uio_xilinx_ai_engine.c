@@ -299,4 +299,4 @@ static struct platform_driver xilinx_ai_engine_driver = {
 module_platform_driver(xilinx_ai_engine_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

@@ -155,6 +155,6 @@ static struct i2c_driver sysmon_i2c_driver = {
 };
 module_i2c_driver(sysmon_i2c_driver);
 
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Xilinx Versal I2C SysMon Driver");
 MODULE_AUTHOR("Conall O Griofa <conall.ogriofa@amd.com>");

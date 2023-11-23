@@ -1289,4 +1289,4 @@ static struct platform_driver zynqmp_r5_remoteproc_driver = {
 module_platform_driver(zynqmp_r5_remoteproc_driver);
 
 MODULE_AUTHOR("Ben Levinsky <ben.levinsky@xilinx.com>");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

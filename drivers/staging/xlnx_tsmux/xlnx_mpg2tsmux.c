@@ -1565,4 +1565,4 @@ module_exit(xlnx_tsmux_mod_exit);
 
 MODULE_AUTHOR("Xilinx Inc.");
 MODULE_DESCRIPTION("Xilinx mpeg2 transport stream muxer IP driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

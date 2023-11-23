@@ -627,4 +627,4 @@ module_platform_driver(xvsw_driver);
 
 MODULE_AUTHOR("Vishal Sagar <vishal.sagar@xilinx.com>");
 MODULE_DESCRIPTION("Xilinx AXI4-Stream Switch Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

@@ -285,4 +285,4 @@ module_platform_driver(xvbr_driver);
 
 MODULE_AUTHOR("Ronak Shah <ronak.shah@xilinx.com>");
 MODULE_DESCRIPTION("Xilinx AXI4-Stream Broadcaster Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

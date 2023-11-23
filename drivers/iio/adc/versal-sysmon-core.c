@@ -1038,6 +1038,6 @@ int sysmon_init_interrupt(struct sysmon *sysmon)
 }
 EXPORT_SYMBOL(sysmon_init_interrupt);
 
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Xilinx Versal SysMon Driver");
 MODULE_AUTHOR("Anand Ashok Dumbre <anand.ashok.dumbre@xilinx.com>");

@@ -663,4 +663,4 @@ module_platform_driver(xilinx_vdmatest_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Xilinx AXI VDMA Test Client");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

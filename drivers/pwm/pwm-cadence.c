@@ -359,4 +359,4 @@ module_platform_driver(ttc_pwm_driver);
 
 MODULE_AUTHOR("Mubin Usman Sayyed <mubin.usman.sayyed@xilinx.com>");
 MODULE_DESCRIPTION("Cadence TTC PWM driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

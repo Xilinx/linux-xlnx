@@ -693,4 +693,4 @@ module_platform_driver(xlnx_pl_disp_driver);
 
 MODULE_AUTHOR("Saurabh Sengar");
 MODULE_DESCRIPTION("Xilinx DRM Display Driver for PL IPs");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

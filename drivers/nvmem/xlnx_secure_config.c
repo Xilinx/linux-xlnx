@@ -275,4 +275,4 @@ module_platform_driver(secure_config_driver);
 
 MODULE_AUTHOR("Harsha <harsha.harsha@xilinx.com>");
 MODULE_DESCRIPTION("Versal Secure Configuration driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

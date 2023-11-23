@@ -4105,4 +4105,4 @@ module_platform_driver(dp_tx_driver);
 
 MODULE_AUTHOR("Rajesh Gugulothu <gugulothu.rajesh@xilinx.com>");
 MODULE_DESCRIPTION("Xilinx FPGA DisplayPort Tx Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

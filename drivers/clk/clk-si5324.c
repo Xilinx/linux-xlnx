@@ -1223,4 +1223,4 @@ module_i2c_driver(si5324_driver);
 
 MODULE_AUTHOR("Venkateshwar Rao G <vgannava@xilinx.com>");
 MODULE_DESCRIPTION("Silicon Labs 5319/5324/5328 clock driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

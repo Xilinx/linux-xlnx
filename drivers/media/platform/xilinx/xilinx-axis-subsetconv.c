@@ -352,4 +352,4 @@ module_platform_driver(xsubsetconv_driver);
 MODULE_AUTHOR("Anil Kumar M <anil.mamidal@xilinx.com>");
 MODULE_AUTHOR("Karthikeyan T <karthikeyan.thangavel@xilinx.com>");
 MODULE_DESCRIPTION("Xilinx AXI4-Stream Subset Converter Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

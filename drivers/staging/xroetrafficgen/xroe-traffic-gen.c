@@ -119,6 +119,6 @@ static struct platform_driver xroe_traffic_gen_driver = {
 module_init(xroe_traffic_gen_init);
 module_exit(xroe_traffic_gen_exit);
 
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Xilinx Inc.");
 MODULE_DESCRIPTION("Xilinx Radio over Ethernet Traffic Generator driver");

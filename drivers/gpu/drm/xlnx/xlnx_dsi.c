@@ -1032,4 +1032,4 @@ module_platform_driver(dsi_driver);
 
 MODULE_AUTHOR("Siva Rajesh <sivaraj@xilinx.com>");
 MODULE_DESCRIPTION("Xilinx FPGA MIPI DSI Tx Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

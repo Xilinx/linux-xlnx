@@ -95,4 +95,4 @@ module_platform_driver(afi_fpga_driver);
 
 MODULE_DESCRIPTION("FPGA afi module");
 MODULE_AUTHOR("Shubhrajyoti Datta <shubhrajyoti.datta@xilinx.com>");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

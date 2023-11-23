@@ -91,4 +91,4 @@ static struct platform_driver xilinx_dp_pcm_driver = {
 module_platform_driver(xilinx_dp_pcm_driver);
 
 MODULE_DESCRIPTION("Xilinx DisplayPort Sound PCM module");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

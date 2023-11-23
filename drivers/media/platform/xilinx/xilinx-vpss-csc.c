@@ -1202,4 +1202,4 @@ static struct platform_driver xcsc_driver = {
 
 module_platform_driver(xcsc_driver);
 MODULE_DESCRIPTION("Xilinx VPSS CSC Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

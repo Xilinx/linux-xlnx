@@ -433,4 +433,4 @@ static struct platform_driver xdmsc_driver = {
 
 module_platform_driver(xdmsc_driver);
 MODULE_DESCRIPTION("Xilinx Demosaic IP Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

@@ -64,4 +64,4 @@ module_platform_driver(usb2244_driver);
 
 MODULE_AUTHOR("Piyush Mehta <piyush.mehta@xilinx.com>");
 MODULE_DESCRIPTION("USB2244 Ultra Fast SD-Controller");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

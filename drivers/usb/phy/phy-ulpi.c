@@ -412,4 +412,4 @@ static struct platform_driver ulpi_phy_driver = {
 module_platform_driver(ulpi_phy_driver);
 
 MODULE_DESCRIPTION("ULPI PHY driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

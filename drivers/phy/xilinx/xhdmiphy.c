@@ -898,6 +898,6 @@ static struct platform_driver xhdmiphy_driver = {
 };
 module_platform_driver(xhdmiphy_driver);
 
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Rajesh Gugulothu <gugulothu.rajesh@xilinx.com");
 MODULE_DESCRIPTION("Xilinx HDMI PHY driver");

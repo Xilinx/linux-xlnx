@@ -355,4 +355,4 @@ module_platform_driver(xapm_driver);
 
 MODULE_AUTHOR("Xilinx Inc.");
 MODULE_DESCRIPTION("Xilinx AXI Performance Monitor driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

@@ -458,4 +458,4 @@ static struct platform_driver xcresample_driver = {
 module_platform_driver(xcresample_driver);
 
 MODULE_DESCRIPTION("Xilinx Chroma Resampler Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

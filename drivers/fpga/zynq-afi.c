@@ -78,4 +78,4 @@ module_platform_driver(zynq_afi_fpga_driver);
 
 MODULE_DESCRIPTION("ZYNQ FPGA AFI module");
 MODULE_AUTHOR("Nava kishore Manne <nava.manne@xilinx.com>");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

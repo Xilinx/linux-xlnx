@@ -502,4 +502,4 @@ module_platform_driver(xhls_driver);
 
 MODULE_AUTHOR("Laurent Pinchart <laurent.pinchart@ideasonboard.com>");
 MODULE_DESCRIPTION("Xilinx HLS Core Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

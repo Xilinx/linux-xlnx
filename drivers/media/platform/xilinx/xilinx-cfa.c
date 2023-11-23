@@ -407,4 +407,4 @@ static struct platform_driver xcfa_driver = {
 module_platform_driver(xcfa_driver);
 
 MODULE_DESCRIPTION("Xilinx Color Filter Array Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

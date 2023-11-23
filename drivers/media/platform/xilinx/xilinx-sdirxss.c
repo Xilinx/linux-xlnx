@@ -2755,4 +2755,4 @@ module_platform_driver(xsdirxss_driver);
 
 MODULE_AUTHOR("Vishal Sagar <vsagar@xilinx.com>");
 MODULE_DESCRIPTION("Xilinx SDI Rx Subsystem Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

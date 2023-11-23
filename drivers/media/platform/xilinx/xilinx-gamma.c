@@ -562,4 +562,4 @@ static struct platform_driver xg_driver = {
 
 module_platform_driver(xg_driver);
 MODULE_DESCRIPTION("Xilinx Video Gamma Correction LUT Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

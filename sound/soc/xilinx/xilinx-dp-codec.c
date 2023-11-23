@@ -310,4 +310,4 @@ static struct platform_driver xilinx_dp_codec_driver = {
 module_platform_driver(xilinx_dp_codec_driver);
 
 MODULE_DESCRIPTION("Xilinx DisplayPort Sound Codec module");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

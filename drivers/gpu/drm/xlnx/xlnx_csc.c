@@ -568,4 +568,4 @@ module_platform_driver(csc_bridge_driver);
 
 MODULE_AUTHOR("Venkateshwar Rao <vgannava@xilinx.com>");
 MODULE_DESCRIPTION("Xilinx FPGA CSC Bridge Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

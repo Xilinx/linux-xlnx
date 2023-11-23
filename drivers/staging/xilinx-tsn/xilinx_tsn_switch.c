@@ -1867,4 +1867,4 @@ module_platform_driver(tsnswitch_driver);
 
 MODULE_DESCRIPTION("Xilinx TSN Switch driver");
 MODULE_AUTHOR("Xilinx");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

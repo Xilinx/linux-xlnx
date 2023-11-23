@@ -530,4 +530,4 @@ module_exit(xlnx_drm_drv_exit);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Xilinx DRM KMS Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

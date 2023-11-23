@@ -3757,4 +3757,4 @@ module_platform_driver(xlnx_hdmi_driver);
 
 MODULE_AUTHOR("Venkateshwar Rao G <vgannava@xilinx.com>");
 MODULE_DESCRIPTION("Xilinx DRM KMS HDMI Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

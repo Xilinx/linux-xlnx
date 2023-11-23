@@ -748,4 +748,4 @@ static struct platform_driver xscaler_driver = {
 module_platform_driver(xscaler_driver);
 
 MODULE_DESCRIPTION("Xilinx Scaler Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

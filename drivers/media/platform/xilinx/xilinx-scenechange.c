@@ -192,4 +192,4 @@ module_platform_driver(xscd_driver);
 
 MODULE_AUTHOR("Xilinx Inc.");
 MODULE_DESCRIPTION("Xilinx Scene Change Detection");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

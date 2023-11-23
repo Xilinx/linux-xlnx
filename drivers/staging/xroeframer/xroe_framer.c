@@ -150,6 +150,6 @@ static struct platform_driver framer_driver = {
 	.probe = framer_probe,
 };
 
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Xilinx Inc.");
 MODULE_DESCRIPTION("framer - Xilinx Radio over Ethernet Framer driver");

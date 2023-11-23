@@ -3177,4 +3177,4 @@ module_platform_driver(xlnx_mix_driver);
 
 MODULE_AUTHOR("Saurabh Sengar");
 MODULE_DESCRIPTION("Xilinx Mixer Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

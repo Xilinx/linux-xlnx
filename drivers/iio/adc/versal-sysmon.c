@@ -278,6 +278,6 @@ static struct platform_driver sysmon_driver = {
 };
 module_platform_driver(sysmon_driver);
 
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Xilinx Versal SysMon Driver");
 MODULE_AUTHOR("Conall O Griofa <conall.ogriofa@amd.com>");

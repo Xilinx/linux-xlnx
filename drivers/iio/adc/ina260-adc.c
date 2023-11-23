@@ -554,4 +554,4 @@ module_i2c_driver(ina260_driver);
 
 MODULE_AUTHOR("Raviteja Narayanam <raviteja.narayanam@xilinx.com>");
 MODULE_DESCRIPTION("Texas Instruments INA 260 ADC driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

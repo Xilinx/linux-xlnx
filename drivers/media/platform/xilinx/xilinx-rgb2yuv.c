@@ -578,4 +578,4 @@ static struct platform_driver xrgb2yuv_driver = {
 module_platform_driver(xrgb2yuv_driver);
 
 MODULE_DESCRIPTION("Xilinx RGB to YUV Converter Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

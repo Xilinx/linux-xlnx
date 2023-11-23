@@ -4427,4 +4427,4 @@ module_platform_driver(xhdmirx_driver);
 
 MODULE_AUTHOR("Vishal Sagar <vishal.sagar@xilinx.com>");
 MODULE_DESCRIPTION("Xilinx HDMI 2.1 Rx Subsystem Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

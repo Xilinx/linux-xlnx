@@ -1490,5 +1490,5 @@ module_exit(xlnxsync_cleanup_mod);
 
 MODULE_AUTHOR("Vishal Sagar");
 MODULE_DESCRIPTION("Xilinx Synchronizer IP Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");
 MODULE_VERSION(XLNXSYNC_DRIVER_VERSION);

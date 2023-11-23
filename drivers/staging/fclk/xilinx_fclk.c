@@ -112,4 +112,4 @@ module_platform_driver(fclk_driver);
 
 MODULE_AUTHOR("Shubhrajyoti Datta <shubhrajyoti.datta@xilinx.com>");
 MODULE_DESCRIPTION("fclk enable");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

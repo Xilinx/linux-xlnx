@@ -542,4 +542,4 @@ module_platform_driver(xlnx_snd_driver);
 
 MODULE_DESCRIPTION("Xilinx FPGA sound card driver");
 MODULE_AUTHOR("Maruthi Srinivas Bayyavarapu");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

@@ -2495,5 +2495,5 @@ static struct platform_driver xm2m_msc_driver = {
 module_platform_driver(xm2m_msc_driver);
 
 MODULE_DESCRIPTION("Xilinx M2M Multi-Scaler Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");
 MODULE_ALIAS("xlnx_m2m_multiscaler_dev");

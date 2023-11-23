@@ -152,4 +152,4 @@ module_exit(usb5744_exit);
 
 MODULE_AUTHOR("Piyush Mehta <piyush.mehta@xilinx.com>");
 MODULE_DESCRIPTION("USB5744 Hub");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

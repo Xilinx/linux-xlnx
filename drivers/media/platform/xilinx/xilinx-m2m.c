@@ -2216,4 +2216,4 @@ module_platform_driver(xvip_m2m_driver);
 
 MODULE_AUTHOR("Xilinx Inc.");
 MODULE_DESCRIPTION("Xilinx V4L2 mem2mem driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

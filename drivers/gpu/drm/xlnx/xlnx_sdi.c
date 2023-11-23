@@ -1484,4 +1484,4 @@ module_platform_driver(sdi_tx_driver);
 
 MODULE_AUTHOR("Saurabh Sengar <saurabhs@xilinx.com>");
 MODULE_DESCRIPTION("Xilinx FPGA SDI Tx Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

@@ -3212,4 +3212,4 @@ module_platform_driver(xdprxss_driver);
 
 MODULE_AUTHOR("Rajesh Gugulothu <gugulothu.rajesh@xilinx.com");
 MODULE_DESCRIPTION("Xilinx DP Rx Subsystem Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

@@ -156,4 +156,4 @@ module_platform_driver(tsn_ex_ep_driver);
 
 MODULE_DESCRIPTION("Xilinx Axi Ethernet driver");
 MODULE_AUTHOR("Xilinx");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

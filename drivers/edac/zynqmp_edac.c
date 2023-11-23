@@ -635,4 +635,4 @@ module_platform_driver(zynqmp_ocm_edac_driver);
 
 MODULE_AUTHOR("Xilinx Inc");
 MODULE_DESCRIPTION("ZynqMP OCM ECC driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

@@ -608,4 +608,4 @@ module_platform_driver(xlnx_sdi_audio_driver);
 
 MODULE_DESCRIPTION("xilinx sdi audio codec driver");
 MODULE_AUTHOR("Maruthi Srinivas Bayyavarapu");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

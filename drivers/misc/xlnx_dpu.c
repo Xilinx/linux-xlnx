@@ -1365,4 +1365,4 @@ static int dpu_debugfs_init(struct xdpu_dev *xdpu)
 
 MODULE_DESCRIPTION(DRIVER_DESC);
 MODULE_AUTHOR("Ye Yang <ye.yang@xilinx.com>");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

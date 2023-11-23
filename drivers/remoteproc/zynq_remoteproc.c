@@ -426,5 +426,5 @@ MODULE_PARM_DESC(autoboot,
 module_param_array(vring_sgis, int, &n_vring_sgis, 0);
 
 MODULE_AUTHOR("Michal Simek <monstr@monstr.eu");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Zynq remote processor control driver");

@@ -695,4 +695,4 @@ module_exit(axidma_exit)
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Xilinx AXI DMA Test Client");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");
