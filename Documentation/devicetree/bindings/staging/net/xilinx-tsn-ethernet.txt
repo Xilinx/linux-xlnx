@@ -1,0 +1,54 @@
+Xilinx TSN (time sensitive networking) TEMAC axi ethernet driver (xilinx_axienet)
+-----------------------------------------------------------------------
+
+Required properties:
+- compatible		: Should be "xlnx,tsn-ethernet-1.00.a".
+- reg			: Physical base address and size of the TSN registers map.
+- interrupts		: Property with a value describing the interrupt
+			  number.
+- interrupts-names	: Property denotes the interrupt names.
+- interrupt-parent	: Must be core interrupt controller.
+- phy-handle		: See ethernet.txt file [1].
+- local-mac-address	: See ethernet.txt file [1].
+- phy-mode		: see ethernet.txt file [1].
+
+Optional properties:
+- xlnx,tsn		: Denotes a ethernet with TSN capabilities.
+- xlnx,tsn-slave	: Denotes a TSN slave port.
+- xlnx,txcsum		: Tx checksum mode (Full, Partial and None).
+- xlnx,rxcsum		: Rx checksum mode (Full, Partial and None).
+- xlnx,phy-type		: Xilinx phy device type. See xilinx-phy.txt [2].
+- xlnx,eth-hasnobuf	: Used when 1G MAC is configured in non-processor mode.
+- xlnx,num-queue	: Number of queue supported in current design, range is
+			  2 to 5 and default value is 5.
+- xlnx,num-tc		: Number of traffic class supported in current design,
+			  range is 2,3 and default value is 3. It denotes
+			  the traffic classes based on VLAN-PCP value.
+- xlnx,qbv-addr		: Denotes mac scheduler physical base address.
+- xlnx,qbv-size		: Denotes mac scheduler address space size.
+
+[1] Documentation/devicetree/bindings/net/ethernet.txt
+[2] Documentation/devicetree/bindings/net/xilinx-phy.txt
+
+Example:
+
+	tsn_emac_0: tsn_mac@80040000 {
+		compatible = "xlnx,tsn-ethernet-1.00.a";
+		interrupt-parent = <&gic>;
+		interrupts = <0 104 4 0 106 4 0 91 4 0 110 4>;
+		interrupt-names = "interrupt_ptp_rx_1", "interrupt_ptp_tx_1", "mac_irq_1", "interrupt_ptp_timer";
+		local-mac-address = [ 00 0A 35 00 01 0e ];
+		phy-mode = "rgmii";
+		reg = <0x0 0x80040000 0x0 0x14000>;
+		tsn,endpoint = <&tsn_ep>;
+		xlnx,tsn;
+		xlnx,tsn-slave;
+		xlnx,phy-type = <0x3>;
+		xlnx,eth-hasnobuf;
+		xlnx,num-queue = <0x2>;
+		xlnx,num-tc = <0x3>;
+		xlnx,qbv-addr = <0x80054000>;
+		xlnx,qbv-size = <0x2000>;
+		xlnx,txsum = <0>;
+		xlnx,rxsum = <0>;
+	};
