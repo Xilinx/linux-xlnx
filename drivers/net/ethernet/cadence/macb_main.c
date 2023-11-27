@@ -29,6 +29,7 @@
 #include <linux/of_gpio.h>
 #include <linux/of_mdio.h>
 #include <linux/of_net.h>
+#include <linux/of_platform.h>
 #include <linux/ip.h>
 #include <linux/udp.h>
 #include <linux/tcp.h>
@@ -925,7 +926,8 @@ static int macb_mii_probe(struct net_device *dev)
 
 static int macb_mdiobus_register(struct macb *bp)
 {
-	struct device_node *child, *np = bp->pdev->dev.of_node;
+	struct device_node *child, *np = bp->pdev->dev.of_node, *mdio_np, *dev_np;
+	struct platform_device *mdio_pdev = NULL;
 
 	/* If we have a child named mdio, probe it instead of looking for PHYs
 	 * directly under the MAC node
@@ -956,6 +958,29 @@ static int macb_mdiobus_register(struct macb *bp)
 			return of_mdiobus_register(bp->mii_bus, np);
 		}
 
+	/* For shared MDIO usecases find out MDIO producer platform
+	 * device node by traversing through phy-handle DT property.
+	 */
+	np = of_parse_phandle(np, "phy-handle", 0);
+	mdio_np = of_get_parent(np);
+	of_node_put(np);
+	dev_np = of_get_parent(mdio_np);
+	of_node_put(mdio_np);
+	/* Handle error where bus_find_device returns a match for NULL */
+	if (dev_np)
+		mdio_pdev = of_find_device_by_node(dev_np);
+
+	of_node_put(dev_np);
+
+	/* Check MDIO producer device driver data to see if it's probed */
+	if (mdio_pdev && !dev_get_drvdata(&mdio_pdev->dev)) {
+		platform_device_put(mdio_pdev);
+		netdev_info(bp->dev, "Defer probe as mdio producer %s is not probed\n",
+			    dev_name(&mdio_pdev->dev));
+		return -EPROBE_DEFER;
+	}
+
+	platform_device_put(mdio_pdev);
 	return mdiobus_register(bp->mii_bus);
 }
 
