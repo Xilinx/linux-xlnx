@@ -228,6 +228,7 @@ struct xcan_devtype_data {
  * @transceiver:		Optional pointer to associated CAN transceiver
  * @rstc:			Pointer to reset control
  * @ecc_enable:			ECC enable flag
+ * @stats_lock:			Lock for synchronizing ECC errors stats
  * @ecc_2bit_rxfifo_cnt:	RXFIFO 2bit ECC count
  * @ecc_1bit_rxfifo_cnt:	RXFIFO 1bit ECC count
  * @ecc_2bit_txolfifo_cnt:	TXOLFIFO 2bit ECC count
@@ -254,6 +255,7 @@ struct xcan_priv {
 	struct phy *transceiver;
 	struct reset_control *rstc;
 	bool ecc_enable;
+	spinlock_t stats_lock; /* Lock for synchronizing ECC errors stats */
 	u64_stats_t ecc_2bit_rxfifo_cnt;
 	u64_stats_t ecc_1bit_rxfifo_cnt;
 	u64_stats_t ecc_2bit_txolfifo_cnt;
@@ -345,6 +347,12 @@ static const struct can_tdc_const xcan_tdc_const_canfd2 = {
 	.tdco_max = 64,
 	.tdcf_min = 0, /* Filter window not supported */
 	.tdcf_max = 0,
+};
+
+static const char xcan_priv_flags_strings[][ETH_GSTRING_LEN] = {
+	"err-ecc-rx-2-bit", "err-ecc-rx-1-bit",
+	"err-ecc-txol-2-bit", "err-ecc-txol-1-bit",
+	"err-ecc-txtl-2-bit", "err-ecc-txtl-1-bit",
 };
 
 /**
@@ -1171,6 +1179,7 @@ static void xcan_err_interrupt(struct net_device *ndev, u32 isr)
 
 	if (priv->ecc_enable && isr & XCAN_IXR_ECC_MASK) {
 		u32 reg_rx_ecc, reg_txol_ecc, reg_txtl_ecc;
+		unsigned long flags;
 
 		reg_rx_ecc = priv->read_reg(priv, XCAN_RXFIFO_ECC_OFFSET);
 		reg_txol_ecc = priv->read_reg(priv, XCAN_TXOLFIFO_ECC_OFFSET);
@@ -1181,6 +1190,8 @@ static void xcan_err_interrupt(struct net_device *ndev, u32 isr)
 		 */
 		priv->write_reg(priv, XCAN_ECC_CFG_OFFSET, XCAN_ECC_CFG_REECRX_MASK |
 				XCAN_ECC_CFG_REECTXOL_MASK | XCAN_ECC_CFG_REECTXTL_MASK);
+
+		spin_lock_irqsave(&priv->stats_lock, flags);
 
 		if (isr & XCAN_IXR_E2BERX_MASK) {
 			u64_stats_add(&priv->ecc_2bit_rxfifo_cnt,
@@ -1211,6 +1222,8 @@ static void xcan_err_interrupt(struct net_device *ndev, u32 isr)
 			u64_stats_add(&priv->ecc_1bit_txtlfifo_cnt,
 				      FIELD_GET(XCAN_ECC_1BIT_CNT_MASK, reg_txtl_ecc));
 		}
+
+		spin_unlock_irqrestore(&priv->stats_lock, flags);
 	}
 
 	if (cf.can_id) {
@@ -1637,6 +1650,44 @@ static int xcan_get_auto_tdcv(const struct net_device *ndev, u32 *tdcv)
 	return 0;
 }
 
+static void xcan_get_strings(struct net_device *ndev, u32 stringset, u8 *buf)
+{
+	switch (stringset) {
+	case ETH_SS_STATS:
+		memcpy(buf, &xcan_priv_flags_strings,
+		       sizeof(xcan_priv_flags_strings));
+	}
+}
+
+static int xcan_get_sset_count(struct net_device *netdev, int sset)
+{
+	switch (sset) {
+	case ETH_SS_STATS:
+		return ARRAY_SIZE(xcan_priv_flags_strings);
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
+static void xcan_get_ethtool_stats(struct net_device *ndev,
+				   struct ethtool_stats *stats, u64 *data)
+{
+	struct xcan_priv *priv = netdev_priv(ndev);
+	unsigned long flags;
+	int i = 0;
+
+	spin_lock_irqsave(&priv->stats_lock, flags);
+
+	data[i++] = u64_stats_read(&priv->ecc_2bit_rxfifo_cnt);
+	data[i++] = u64_stats_read(&priv->ecc_1bit_rxfifo_cnt);
+	data[i++] = u64_stats_read(&priv->ecc_2bit_txolfifo_cnt);
+	data[i++] = u64_stats_read(&priv->ecc_1bit_txolfifo_cnt);
+	data[i++] = u64_stats_read(&priv->ecc_2bit_txtlfifo_cnt);
+	data[i++] = u64_stats_read(&priv->ecc_1bit_txtlfifo_cnt);
+
+	spin_unlock_irqrestore(&priv->stats_lock, flags);
+}
+
 static const struct net_device_ops xcan_netdev_ops = {
 	.ndo_open	= xcan_open,
 	.ndo_stop	= xcan_close,
@@ -1646,6 +1697,9 @@ static const struct net_device_ops xcan_netdev_ops = {
 
 static const struct ethtool_ops xcan_ethtool_ops = {
 	.get_ts_info = ethtool_op_get_ts_info,
+	.get_strings = xcan_get_strings,
+	.get_sset_count = xcan_get_sset_count,
+	.get_ethtool_stats = xcan_get_ethtool_stats,
 };
 
 /**
