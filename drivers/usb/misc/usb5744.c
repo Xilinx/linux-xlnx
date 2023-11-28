@@ -50,6 +50,21 @@ static int usb5744_i2c_dev_init(struct i2c_client *client)
 	struct device *dev = &client->dev;
 	struct usb5744 *data = NULL;
 	int ret = 0;
+	/*
+	 *  Prevent the MCU from the putting the HUB in suspend mode through register write.
+	 *  The BYPASS_UDC_SUSPEND bit (Bit 3) of the RuntimeFlags2 register at address
+	 *  0x411D controls this aspect of the hub.
+	 *  Format to write to hub registers via SMBus- 00 00 05 00 01 41 1D 08
+	 *  Byte 1: Command / Memory address 00
+	 *  Byte 2: Memory address 00
+	 *  Byte 3: Number of bytes to write to memory
+	 *  Byte 4: Write configuration register (00)
+	 *  Byte 5: Write the number of data bytes (01- 1 data byte)
+	 *  Byte 6: LSB of register address 0x41
+	 *  Byte 7: MSB of register address 0x1D
+	 *  Byte 8: value to be written to the register
+	 */
+	char wr_buf[7] = {0x00, 0x05, 0x00, 0x01, 0x41, 0x1D, 0x08};
 
 	i2c_set_clientdata(client, data);
 
@@ -58,10 +73,18 @@ static int usb5744_i2c_dev_init(struct i2c_client *client)
 	if (ret)
 		return ret;
 
+	ret = i2c_smbus_write_block_data(client, 0, sizeof(wr_buf), wr_buf);
+	if (ret)
+		return dev_err_probe(dev, ret, "BYPASS_UDC_SUSPEND bit configuration failed\n");
+
+	ret = i2c_smbus_write_word_data(client, 0x99, htons(0x3700));
+	if (ret)
+		return dev_err_probe(dev, ret, "Configuration Register Access Command failed\n");
+
 	/* Send SMBus command to boot hub. */
 	ret = i2c_smbus_write_word_data(client, 0xAA, htons(0x5600));
 	if (ret < 0)
-		dev_err(dev, "Sending boot command failed");
+		return dev_err_probe(dev, ret, "USB Attach with SMBus command failed\n");
 
 	return ret;
 }
