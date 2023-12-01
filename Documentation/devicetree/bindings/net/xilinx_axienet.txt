@@ -1,7 +1,7 @@
 XILINX AXI ETHERNET Device Tree Bindings
 --------------------------------------------------------
 
-This driver supports following MAC configurations-
+Following MAC configurations are supported-
 a) AXI 1G/2.5G Ethernet Subsystem.
 b) 10G/25G High Speed Ethernet Subsystem.
 c) 10 Gigabit Ethernet Subsystem.
@@ -114,12 +114,10 @@ Optional properties for MRMAC and 10G/25G:
 - ptp-hardware-clock	: Indicate the xilinx PTP device node to read PTP clock
 			  index(/dev/ptp0 etc).
 
-NOTE: Time Sensitive Networking (TSN) related DT bindings are explained in [4].
 
 [1] Documentation/devicetree/bindings/net/phy.txt
 [2] Documentation/devicetree/bindings/net/ethernet.txt
 [3] Documentation/devicetree/bindings/net/xilinx-phy.txt
-[4] Documentation/devicetree/bindings/net/xilinx_tsn.txt
 
  - pcs-handle: 	  Phandle to the internal PCS/PMA PHY in SGMII or 1000Base-X
 		  modes, where "pcs-handle" should be used to point
