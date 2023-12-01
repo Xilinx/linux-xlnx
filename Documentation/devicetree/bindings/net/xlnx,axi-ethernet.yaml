@@ -4,19 +4,46 @@
 $id: http://devicetree.org/schemas/net/xlnx,axi-ethernet.yaml#
 $schema: http://devicetree.org/meta-schemas/core.yaml#
 
-title: AXI 1G/2.5G Ethernet Subsystem
+title: XILINX AXI Ethernet Subsystem
 
 description: |
-  Also called  AXI 1G/2.5G Ethernet Subsystem, the xilinx axi ethernet IP core
-  provides connectivity to an external ethernet PHY supporting different
-  interfaces: MII, GMII, RGMII, SGMII, 1000BaseX. It also includes two
-  segments of memory for buffering TX and RX, as well as the capability of
-  offloading TX/RX checksum calculation off the processor.
+  Following MAC configurations are supported-
+  a) AXI 1G/2.5G Ethernet Subsystem.
+  b) 10G/25G High Speed Ethernet Subsystem.
+  c) 10 Gigabit Ethernet Subsystem.
+  d) USXGMII Ethernet Subsystem.
+  e) MRMAC Ethernet Subsystem.
+  f) 1G/10G/25G Switching Ethernet Subsystem.
+
+  AXI 1G/2.5G Ethernet Subsystem- also called  AXI 1G/2.5G Ethernet Subsystem,
+  the xilinx axi ethernet IP core provides connectivity to an external ethernet
+  PHY supporting different interfaces: MII, GMII, RGMII, SGMII, 1000BaseX.
+  It also includes two segments of memory for buffering TX and RX, as well as
+  the capability of offloading TX/RX checksum calculation off the processor.
 
   Management configuration is done through the AXI interface, while payload is
   sent and received through means of an AXI DMA controller. This driver
   includes the DMA driver code, so this driver is incompatible with AXI DMA
   driver.
+
+  10G/25G High Speed Ethernet Subsystem implements the 25G Ethernet Media
+  Access Controller (MAC) with a Physical Coding Sublayer (PCS) as specified
+  by the 25G Ethernet Consortium. Legacy operation at 10 Gb/s is supported.
+
+  The 10G Ethernet subsystem provides 10 Gb/s Ethernet MAC, Physical Coding
+  Sublayer (PCS) and Physical Medium Attachment (PMA) transmit and receive
+  functionality over an AXI4-Stream interface.
+
+  The Universal Serial 10GE Media Independent Interface (USXGMII) ethernet
+  subsystem implements an Ethernet Media Access Controller (MAC) with a
+  mechanism to carry a single port of 10M, 100M, 1G, 2.5G, 5G or 10GE over an
+  IEEE 802.3 Clause 49 BASE-R physical coding sublayer/physical layer (PCS/PHY).
+
+  MRMAC is a hardened Ethernet IP on Versal supporting multiple rates from
+  10G to 100G which can be used with a soft DMA controller.
+
+  The Xilinx 1G/10G/25G Switching Ethernet Subsystem contains integrated MAC
+  and PCS and it supports runtime switchable speeds among 1G,10G & 25G
 
 maintainers:
   - Radhey Shyam Pandey <radhey.shyam.pandey@xilinx.com>
@@ -24,9 +51,15 @@ maintainers:
 properties:
   compatible:
     enum:
-      - xlnx,axi-ethernet-1.00.a
-      - xlnx,axi-ethernet-1.01.a
-      - xlnx,axi-ethernet-2.01.a
+      - xlnx,axi-ethernet-1.00.a # AXI 1G Ethernet Subsystem.
+      - xlnx,axi-ethernet-1.01.a # AXI 1G Ethernet Subsystem.
+      - xlnx,axi-ethernet-2.01.a # AXI 1G Ethernet Subsystem.
+      - xlnx,axi-2_5-gig-ethernet-1.0 # AXI 2.5G Ethernet Subsystem.
+      - xlnx,ten-gig-eth-mac # 10 Gigabit Ethernet Subsystem.
+      - xlnx,xxv-ethernet-1.0 # 10G/25G High Speed Ethernet Subsystem.
+      - xlnx,xxv-usxgmii-ethernet-1.0 # USXGMII Ethernet Subsystem.
+      - xlnx,mrmac-ethernet-1.0 # MRMAC Ethernet Subsystem.
+      - xlnx,ethernet-1-10-25g-2.7 # 1G/10G/25G Switching Ethernet Subsystem.
 
   reg:
     description:
@@ -128,15 +161,106 @@ properties:
     type: boolean
     description: Used when 1G MAC is configured in non-processor mode.
 
+  xlnx,usxgmii-rate:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    description: USXGMII PHY speed
+
+  xlnx,rxtsfifo:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description: Configures the axi fifo for receive timestamping.
+
+  axififo-connected:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description: Configures the axi fifo for transmit timestamping.
+
+  ptp-hardware-clock:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description: Indicate the xilinx PTP device node to read PTP clock
+      index(/dev/ptp0 etc). This property is for MRMAC and 10G/25G.
+
+  xlnx,mrmac-rate:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    description: MRMAC rate in Mbps.
+
+  xlnx,gtlane:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    description: Indicate the GT reset and speed control lane for the
+      the current MRMAC lane.
+
+  xlnx,gtpll:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description: Handle to AXI GPIO instance for GT PLL mask control.
+      This is required to control the common PLL mask bits.
+
+  xlnx,gtctrl:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description: Handle to AXI GPIO instance for GT speed and reset
+      control for each MRMAC lane.
+
+  xlnx,phcindex:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    description: Indicate the index of the physical hardware clock
+      to be used as per PTP clock connected to the given
+      MRMAC lane.
+    deprecated: true
+
 required:
   - compatible
   - interrupts
   - reg
   - xlnx,rxmem
-  - phy-handle
 
 allOf:
   - $ref: /schemas/net/ethernet-controller.yaml#
+
+  - if:
+      properties:
+        compatible:
+          contains:
+            enum:
+              - xlnx,xxv-usxgmii-ethernet-1.0
+
+    then:
+      properties:
+        xlnx,usxgmii-rate:
+          enum: [10, 100, 1000, 2500, 5000, 10000]
+
+  - if:
+      properties:
+        compatible:
+          contains:
+            enum:
+              - xlnx,mrmac-ethernet-1.0
+
+    then:
+      properties:
+        xlnx,mrmac-rate:
+          enum: [10000, 25000]
+
+        xlnx,gtlane:
+          enum: [0, 1, 2, 3]
+
+        xlnx,phcindex:
+          enum: [0, 1, 2, 3]
+
+      required:
+        - xlnx,mrmac-rate
+        - xlnx,gtlane
+        - xlnx,gtpll
+        - xlnx,gtctrl
+
+  - if:
+      properties:
+        compatible:
+          contains:
+            enum:
+              - xlnx,axi-ethernet-1.00.a
+              - xlnx,axi-ethernet-1.01.a
+              - xlnx,axi-ethernet-2.01.a
+              - xlnx,axi-2_5-gig-ethernet-1.0
+    then:
+      required:
+        - phy-handle
 
 additionalProperties: false
 
@@ -188,4 +312,31 @@ examples:
                 reg = <1>;
             };
         };
+    };
+
+# 3) #Example for MRMAC Ethernet subsystem
+  - |
+    gt_pll: gpio@a4000000 {
+        reg = <0x0 0xa4000000 0x0 0x10000>;
+
+      };
+
+    gt_ctrl: gpio@a4010000 {
+        reg = <0x0 0xa4010000 0x0 0x40000>;
+
+    };
+
+    mrmac: ethernet@80000000 {
+        axistream-connected = <&dma>;
+        compatible = "xlnx,mrmac-ethernet-1.0";
+        reg = <0x0 0xa4090000 0x0 0x1000>;
+        interrupt-parent = <&gic>;
+        interrupts = <0 91 4>;
+        xlnx,mrmac-rate = <10000>;
+        xlnx,gtpll = <&gt_pll>;
+        xlnx,gtctrl = <&gt_ctrl>;
+        xlnx,gtlane = <0x0>;
+        xlnx,rxmem = <0x8000>;
+        ptp-hardware-clock = <&ptp_device>;
+
     };
