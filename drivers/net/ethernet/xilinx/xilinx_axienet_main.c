@@ -44,7 +44,6 @@
 #include <linux/net_tstamp.h>
 #include <linux/random.h>
 #include <net/sock.h>
-#include <linux/xilinx_phy.h>
 #include <linux/clk.h>
 #include <linux/ptp/ptp_xilinx.h>
 #include <linux/workqueue.h>
