@@ -23,7 +23,6 @@
 
 #include "remoteproc_internal.h"
 
-#define MAX_RPROCS	2 /* Support up to 2 RPU */
 #define BANK_LIST_PROP	"sram"
 #define DDR_LIST_PROP	"memory-region"
 #define PD_PROP		"power-domain"
@@ -34,8 +33,8 @@
 /* RX mailbox client buffer max length */
 #define RX_MBOX_CLIENT_BUF_MAX	(IPI_BUF_LEN_MAX + \
 				 sizeof(struct zynqmp_ipi_message))
-#define MAX_BANKS 4U
-#define MAX_BANKS_PER_CORE	3U
+#define MAX_BANKS 12U
+#define MAX_BANKS_PER_CORE	6U
 
 /*
  * NOTE: The resource table size is currently hard-coded to a maximum
@@ -57,11 +56,16 @@ enum soc_type_t {
  * @tcm_bases:	collection of device addresses that SoC has for TCM banks
  * @num_tcms:	number of entries in the tcm base collection.
  *		for each core.
+ * @max_rprocs: Maximum number of remoteproc instances allowed per RPU core.
+ * max_banks:	Maximnum number of banks allowed for All Remoteproc instances
+ *		for a given SOC.
  */
 struct xlnx_rpu_soc_data {
 	enum soc_type_t soc_type;
 	unsigned int tcm_bases[MAX_BANKS_PER_CORE];
 	unsigned int num_tcms;
+	unsigned int max_rprocs;
+	unsigned int max_banks;
 };
 
 /*
@@ -176,7 +180,7 @@ static int sram_mem_release(struct rproc *rproc, struct rproc_mem_entry *mem)
 	 * zynqmp_pm_release_node should also fail so error out in this case.
 	 */
 
-	for (i = 0; i < MAX_BANKS; i++) {
+	for (i = 0; i < z_rproc->soc_data->max_banks; i++) {
 		pnode_id = sram_banks->ids[i];
 
 		if (!pnode_id)
@@ -1137,16 +1141,6 @@ static int xlnx_rpu_remoteproc_probe(struct platform_device *pdev)
 	dev_dbg(dev, "RPU configuration: %s\n",
 		rpu_mode == PM_RPU_MODE_LOCKSTEP ? "lockstep" : "split");
 
-	/*
-	 * if 2 RPUs provided but one is lockstep, then we have an
-	 * invalid configuration.
-	 */
-
-	core_count = of_get_available_child_count(dev->of_node);
-	if ((rpu_mode == PM_RPU_MODE_LOCKSTEP && core_count != 1) ||
-	    core_count > MAX_RPROCS)
-		return -EINVAL;
-
 	cluster = devm_kzalloc(dev, sizeof(*cluster), GFP_KERNEL);
 	if (!cluster)
 		return -ENOMEM;
@@ -1168,6 +1162,16 @@ static int xlnx_rpu_remoteproc_probe(struct platform_device *pdev)
 		dev_err(dev, "SoC-specific data is not defined\n");
 		return -ENODEV;
 	}
+
+	/*
+	 * if 2 RPUs provided but one is lockstep, then we have an
+	 * invalid configuration.
+	 */
+
+	core_count = of_get_available_child_count(dev->of_node);
+	if ((rpu_mode == PM_RPU_MODE_LOCKSTEP && core_count != 1) ||
+	    core_count > data->max_rprocs)
+		return -EINVAL;
 
 	/* probe each individual RPU core's remoteproc-related info */
 	for_each_available_child_of_node(dev->of_node, nc) {
@@ -1255,18 +1259,24 @@ static const struct xlnx_rpu_soc_data zynqmp_data = {
 	.soc_type = SOC_ZYNQMP,
 	.tcm_bases = { 0x0, 0x20000 },
 	.num_tcms = 2U,
+	.max_rprocs = 2U,
+	.max_banks = 4U,
 };
 
 static const struct xlnx_rpu_soc_data versal_data = {
 	.soc_type = SOC_VERSAL,
 	.tcm_bases = { 0x0, 0x20000 },
 	.num_tcms = 2U,
+	.max_rprocs = 2U,
+	.max_banks = 4U,
 };
 
 static const struct xlnx_rpu_soc_data versal_net_data = {
 	.soc_type = SOC_VERSAL_NET,
 	.tcm_bases = { 0x0, 0x10000, 0x20000 },
 	.num_tcms = 3U,
+	.max_rprocs = 4U,
+	.max_banks = 12U,
 };
 
 static const struct of_device_id xilinx_r5_of_match[] = {
