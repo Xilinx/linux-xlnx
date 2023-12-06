@@ -21,6 +21,10 @@ int
 drm_hdmi_infoframe_set_hdr_metadata(struct hdmi_drm_infoframe *frame,
 				    const struct drm_connector_state *conn_state);
 
+int
+drm_hdmi_infoframe_set_gen_hdr_metadata(struct hdmi_drm_infoframe *frame,
+					const struct drm_connector_state *conn_state);
+
 void drm_hdmi_avi_infoframe_content_type(struct hdmi_avi_infoframe *frame,
 					 const struct drm_connector_state *conn_state);
 
