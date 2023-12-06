@@ -25712,6 +25712,12 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/nvmem/xlnx,zynqmp-nvmem.yaml
 F:	drivers/nvmem/zynqmp_nvmem.c
 
+XILINX VERSAL XILSEM EDAC DRIVER
+M:	Rama Devi Veggalam <rama.devi.veggalam@amd.com>
+S:	Maintained
+F:	Documentation/devicetree/bindings/edac/xlnx,versal-xilsem-edac.yaml
+F:	drivers/edac/xilinx_xilsem_edac.c
+
 XILINX ISP PIPELINE DRIVER
 M:	Mounik Katikala <mounik.katikala@amd.com>
 L:	linux-media@vger.kernel.org
