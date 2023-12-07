@@ -36,7 +36,6 @@ static u32 pm_sub_family_code;
 
 #define MAX_BITS	(32U) /* Number of bits available for error mask */
 
-#define FIRMWARE_VERSION_MASK			(0xFFFFU)
 #define REGISTER_NOTIFIER_FIRMWARE_VERSION	(2U)
 
 static DEFINE_HASHTABLE(reg_driver_map, REGISTERED_DRIVER_MAX_ORDER);
