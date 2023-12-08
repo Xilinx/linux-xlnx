@@ -1,0 +1,19 @@
+Xilinx Zynq AFI interface Manager
+
+The Zynq Processing System core provides access from PL masters to PS
+internal peripherals, and memory through AXI FIFO interface
+(AFI) interfaces.
+
+Required properties:
+-compatible:	Should contain "xlnx,zynq-afi-fpga"
+-reg:	Physical base address and size of the controller's register area.
+-xlnx,afi-buswidth :	Size of the afi bus width.
+			0: 64-bit AXI data width,
+			1: 32-bit AXI data width,
+
+Example:
+afi0: afi0 {
+	compatible = "xlnx,zynq-afi-fpga";
+	reg = <0xf8008000 0x1000>;
+	xlnx,afi-buswidth = <1>;
+};
