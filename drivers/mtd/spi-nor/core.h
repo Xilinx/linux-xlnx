@@ -147,6 +147,7 @@ enum spi_nor_option_flags {
 	SNOR_F_NO_WP		= BIT(16),
 	SNOR_F_HAS_STACKED      = BIT(17),
 	SNOR_F_HAS_PARALLEL	= BIT(18),
+	SNOR_F_HAS_SR_BP3_BIT5  = BIT(19),
 };
 
 struct spi_nor_read_command {
