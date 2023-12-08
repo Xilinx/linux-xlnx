@@ -942,6 +942,12 @@ int zynqmp_pm_get_last_reset_reason(u32 *reset_reason)
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_get_last_reset_reason);
 
+int zynqmp_pm_afi(u32 index, u32 value)
+{
+	return zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 4, 0, IOCTL_AFI, index, value);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_afi);
+
 /**
  * zynqmp_pm_set_boot_health_status() - PM API for setting healthy boot status
  * @value:	Status value to be written
