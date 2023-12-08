@@ -592,6 +592,43 @@ static int zynqmp_pm_get_sip_svc_version(u32 *version)
 }
 
 /**
+ * xlnx_get_crypto_dev_data() - Get crypto dev data of platform
+ * @feature_map:	List of available feature map of all platform
+ *
+ * Return: Returns crypto dev data, either address crypto dev or ERR PTR
+ */
+void *xlnx_get_crypto_dev_data(struct xlnx_feature *feature_map)
+{
+	struct xlnx_feature *feature;
+	u32 v;
+	int ret;
+
+	ret = zynqmp_pm_get_api_version(&v);
+	if (ret)
+		return ERR_PTR(ret);
+
+	feature = feature_map;
+	for (; feature->family; feature++) {
+		if (feature->family == pm_family_code &&
+		    (feature->subfamily == ALL_SUB_FAMILY_CODE ||
+		     feature->subfamily == pm_sub_family_code)) {
+			if (feature->family == ZYNQMP_FAMILY_CODE ||
+			    feature->family == VERSAL_FAMILY_CODE) {
+				ret = zynqmp_pm_feature(feature->feature_id);
+				if (ret < 0)
+					return ERR_PTR(ret);
+			} else {
+				return ERR_PTR(-ENODEV);
+			}
+
+			return feature->data;
+		}
+	}
+	return ERR_PTR(-ENODEV);
+}
+EXPORT_SYMBOL_GPL(xlnx_get_crypto_dev_data);
+
+/**
  * zynqmp_pm_get_trustzone_version() - Get secure trustzone firmware version
  * @version:	Returned version value
  *
