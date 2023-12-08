@@ -392,6 +392,31 @@
 #define XXV_CONFIG_REVISION		0x00000024
 #define XXV_USXGMII_AN_OFFSET		0x000000C8
 #define XXV_USXGMII_AN_STS_OFFSET	0x00000458
+/* Switchable 1/10/25G MAC Register Definitions */
+#define XXVS_RESET_OFFSET		0x00000004
+#define XXVS_AN_CTL1_OFFSET		0x000000e0
+#define XXVS_AN_ABILITY_OFFSET		0x000000f8
+#define XXVS_LT_CTL_OFFSET		0x00000100
+#define XXVS_LT_TRAINED_OFFSET		0x00000104
+#define XXVS_LT_SEED_OFFSET		0x00000110
+#define XXVS_LT_COEF_OFFSET		0x00000130
+#define XXVS_SPEED_OFFSET		0x00000180
+
+#define XXVS_AN_STATUS_OFFSET		0x0000458
+#define XXVS_AN_LP_STATUS_OFFSET	0x000045C
+#define XXVS_LT_STATUS_OFFSET		0x000046C
+
+/* Switchable 1/10/25G MAC Register Mask Definitions */
+#define XXVS_RX_SERDES_RESET		BIT(28)
+#define XXVS_AN_ENABLE_MASK		BIT(0)
+#define XXVS_AN_1G_ABILITY_MASK		BIT(0)
+#define XXVS_AN_10G_ABILITY_MASK	BIT(1)
+#define XXVS_LT_ENABLE_MASK		BIT(0)
+#define XXVS_LT_TRAINED_MASK		BIT(0)
+#define XXVS_AN_COMPLETE_MASK		BIT(2)
+#define XXVS_LT_DETECT_MASK		BIT(0)
+#define XXVS_SPEED_1G			BIT(0)
+#define	XXVS_SPEED_10G			BIT(1)
 
 /* XXV MAC Register Mask Definitions */
 #define XXV_GT_RESET_MASK	BIT(0)
@@ -501,6 +526,17 @@
 /* PTP Packet length */
 #define XAE_TX_PTP_LEN		16
 #define XXV_TX_PTP_LEN		12
+
+/* Switching 1/10/25G MAC AN & LT seed values */
+#define XXVS_AN_NONCE_SEED		0x16C
+#define XXVS_AN_NONCE_SEED1		0x10
+#define XXVS_LT_SEED			0x605
+#define XXVS_LT_COEF_P1			0x1
+#define XXVS_LT_COEF_P1_SHIFT		6
+#define XXVS_LT_COEF_STATE0		0x1
+#define XXVS_LT_COEF_STATE0_SHIFT	8
+#define XXVS_LT_COEF_M1			0x1
+#define XXVS_LT_COEF_M1_SHIFT		10
 
 /* Macros used when AXI DMA h/w is configured without DRE */
 #define XAE_TX_BUFFERS		64
@@ -756,6 +792,8 @@ struct aximcdma_bd {
  * @gt_ctrl: GT speed and reset control register space.
  * @phc_index: Index to corresponding PTP clock used.
  * @gt_lane: MRMAC GT lane index used.
+ * @switch_lock: Spinlock for switchable IP.
+ * @restart_work: delayable work queue.
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -841,6 +879,8 @@ struct axienet_local {
 	void __iomem *gt_ctrl;	/* GT speed and reset control register space */
 	u32 phc_index;		/* Index to corresponding PTP clock used  */
 	u32 gt_lane;		/* MRMAC GT lane index used */
+	spinlock_t switch_lock;	/* To protect Link training programming from multiple context */
+	struct delayed_work restart_work;
 };
 
 /**
@@ -926,6 +966,7 @@ struct axienet_dma_q {
  * @XAXIENET_LEGACY_10G: IP type is legacy 10G MAC.
  * @XAXIENET_10G_25G:	 IP type is 10G/25G MAC(XXV MAC).
  * @XAXIENET_MRMAC:	 IP type is hardened Multi Rate MAC (MRMAC).
+ * @XAXIENET_1G_10G_25G: IP type is 1G/10G/25G MAC.
  *
  */
 enum axienet_ip_type {
@@ -934,6 +975,7 @@ enum axienet_ip_type {
 	XAXIENET_LEGACY_10G,
 	XAXIENET_10G_25G,
 	XAXIENET_MRMAC,
+	XAXIENET_1G_10G_25G,
 };
 
 struct axienet_config {
