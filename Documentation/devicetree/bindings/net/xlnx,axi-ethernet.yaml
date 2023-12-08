@@ -122,6 +122,12 @@ properties:
       and "phy-handle" should point to an external PHY if exists.
     maxItems: 1
 
+  dma-coherent: true
+
+  xlnx,eth-hasnobuf:
+    type: boolean
+    description: Used when 1G MAC is configured in non-processor mode.
+
 required:
   - compatible
   - interrupts
@@ -135,6 +141,7 @@ allOf:
 additionalProperties: false
 
 examples:
+# 1) AXI 1G/2.5G Ethernet Subsystem + AXIDMA without "axistream-connected" property
   - |
     axi_ethernet_eth: ethernet@40c00000 {
         compatible = "xlnx,axi-ethernet-1.00.a";
@@ -158,6 +165,7 @@ examples:
         };
     };
 
+# 2) AXI 1G/2.5G Ethernet Subsystem + AXIDMA with "axistream-connected" property
   - |
     axi_ethernet_eth1: ethernet@40000000 {
         compatible = "xlnx,axi-ethernet-1.00.a";
