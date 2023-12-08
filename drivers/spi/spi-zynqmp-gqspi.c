@@ -187,6 +187,7 @@ struct qspi_platform_data {
  * @dma_addr:		DMA address after mapping the kernel buffer
  * @genfifoentry:	Used for storing the genfifoentry instruction.
  * @mode:		Defines the mode in which QSPI is operating
+* @io_mode:		Defines the operating mode, either IO or dma
  * @data_completion:	completion structure
  * @op_lock:		Operational lock
  * @speed_hz:          Current SPI bus clock speed in hz
@@ -213,6 +214,7 @@ struct zynqmp_qspi {
 	struct completion data_completion;
 	struct mutex op_lock;
 	u32 speed_hz;
+	bool io_mode;
 	bool has_tapdelay;
 	bool is_parallel;
 };
@@ -459,10 +461,11 @@ static void zynqmp_qspi_init_hw(struct zynqmp_qspi *xqspi)
 	zynqmp_gqspi_selectslave(xqspi,
 				 GQSPI_SELECT_FLASH_CS_LOWER,
 				 GQSPI_SELECT_FLASH_BUS_LOWER);
-	/* Initialize DMA */
-	zynqmp_gqspi_write(xqspi,
-			   GQSPI_QSPIDMA_DST_CTRL_OFST,
-			   GQSPI_QSPIDMA_DST_CTRL_RESET_VAL);
+	if (!xqspi->io_mode)
+		/* Initialize DMA */
+		zynqmp_gqspi_write(xqspi,
+				   GQSPI_QSPIDMA_DST_CTRL_OFST,
+				   GQSPI_QSPIDMA_DST_CTRL_RESET_VAL);
 
 	/* Enable the GQSPI */
 	zynqmp_gqspi_write(xqspi, GQSPI_EN_OFST, GQSPI_EN_MASK);
@@ -894,8 +897,9 @@ static int zynqmp_qspi_setuprxdma(struct zynqmp_qspi *xqspi)
 	dma_addr_t addr;
 	u64 dma_align =  (u64)(uintptr_t)xqspi->rxbuf;
 
-	if (xqspi->bytes_to_receive < 8 ||
-	    ((dma_align & GQSPI_DMA_UNALIGN) != 0x0)) {
+	if ((xqspi->bytes_to_receive < 8 || xqspi->io_mode) ||
+	    ((dma_align & GQSPI_DMA_UNALIGN) != 0x0) ||
+	    is_vmalloc_addr(xqspi->rxbuf)) {
 		/* Setting to IO mode */
 		config_reg = zynqmp_gqspi_read(xqspi, GQSPI_CONFIG_OFST);
 		config_reg &= ~GQSPI_CFG_MODE_EN_MASK;
@@ -1350,6 +1354,8 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 	pm_runtime_set_active(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
 
+	if (of_property_read_bool(pdev->dev.of_node, "has-io-mode"))
+		xqspi->io_mode = true;
 	ret = pm_runtime_get_sync(&pdev->dev);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Failed to pm_runtime_get_sync: %d\n", ret);
