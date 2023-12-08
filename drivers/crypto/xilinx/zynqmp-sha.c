@@ -2,6 +2,7 @@
 /*
  * Xilinx ZynqMP SHA Driver.
  * Copyright (c) 2022 Xilinx Inc.
+ * Copyright (C) 2022-2023, Advanced Micro Devices, Inc.
  */
 #include <linux/cacheflush.h>
 #include <crypto/hash.h>
@@ -26,7 +27,7 @@ enum zynqmp_sha_op {
 	ZYNQMP_SHA3_FINAL = 4,
 };
 
-struct zynqmp_sha_drv_ctx {
+struct xilinx_sha_drv_ctx {
 	struct shash_alg sha3_384;
 	struct device *dev;
 };
@@ -49,9 +50,9 @@ static int zynqmp_sha_init_tfm(struct crypto_shash *hash)
 	struct zynqmp_sha_tfm_ctx *tfm_ctx = crypto_shash_ctx(hash);
 	struct shash_alg *alg = crypto_shash_alg(hash);
 	struct crypto_shash *fallback_tfm;
-	struct zynqmp_sha_drv_ctx *drv_ctx;
+	struct xilinx_sha_drv_ctx *drv_ctx;
 
-	drv_ctx = container_of(alg, struct zynqmp_sha_drv_ctx, sha3_384);
+	drv_ctx = container_of(alg, struct xilinx_sha_drv_ctx, sha3_384);
 	tfm_ctx->dev = drv_ctx->dev;
 
 	/* Allocate a fallback and abort if it failed. */
@@ -159,7 +160,7 @@ static int zynqmp_sha_digest(struct shash_desc *desc, const u8 *data, unsigned i
 	return ret;
 }
 
-static struct zynqmp_sha_drv_ctx sha3_drv_ctx = {
+static struct xilinx_sha_drv_ctx zynqmp_sha3_drv_ctx = {
 	.sha3_384 = {
 		.init = zynqmp_sha_init,
 		.update = zynqmp_sha_update,
@@ -188,17 +189,28 @@ static struct zynqmp_sha_drv_ctx sha3_drv_ctx = {
 	}
 };
 
+static struct xlnx_feature sha_feature_map[] = {
+	{
+		.family = ZYNQMP_FAMILY_CODE,
+		.subfamily = ALL_SUB_FAMILY_CODE,
+		.feature_id = PM_SECURE_SHA,
+		.data = &zynqmp_sha3_drv_ctx,
+	},
+	{ /* sentinel */ }
+};
+
 static int zynqmp_sha_probe(struct platform_device *pdev)
 {
+	struct xilinx_sha_drv_ctx *sha3_drv_ctx;
 	struct device *dev = &pdev->dev;
 	int err;
-	u32 v;
 
 	/* Verify the hardware is present */
-	err = zynqmp_pm_get_api_version(&v);
-	if (err)
-		return err;
-
+	sha3_drv_ctx = xlnx_get_crypto_dev_data(sha_feature_map);
+	if (IS_ERR(sha3_drv_ctx)) {
+		dev_err(dev, "SHA is not supported on the platform\n");
+		return PTR_ERR(sha3_drv_ctx);
+	}
 
 	err = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(ZYNQMP_DMA_BIT_MASK));
 	if (err < 0) {
@@ -206,19 +218,13 @@ static int zynqmp_sha_probe(struct platform_device *pdev)
 		return err;
 	}
 
-	err = crypto_register_shash(&sha3_drv_ctx.sha3_384);
-	if (err < 0) {
-		dev_err(dev, "Failed to register shash alg.\n");
-		return err;
-	}
-
-	sha3_drv_ctx.dev = dev;
-	platform_set_drvdata(pdev, &sha3_drv_ctx);
+	sha3_drv_ctx->dev = dev;
+	platform_set_drvdata(pdev, sha3_drv_ctx);
 
 	ubuf = dma_alloc_coherent(dev, ZYNQMP_DMA_ALLOC_FIXED_SIZE, &update_dma_addr, GFP_KERNEL);
 	if (!ubuf) {
 		err = -ENOMEM;
-		goto err_shash;
+		return err;
 	}
 
 	fbuf = dma_alloc_coherent(dev, SHA3_384_DIGEST_SIZE, &final_dma_addr, GFP_KERNEL);
@@ -227,24 +233,33 @@ static int zynqmp_sha_probe(struct platform_device *pdev)
 		goto err_mem;
 	}
 
+	err = crypto_register_shash(&sha3_drv_ctx->sha3_384);
+	if (err < 0) {
+		dev_err(dev, "Failed to register shash alg.\n");
+		goto err_mem1;
+	}
 	return 0;
 
-err_mem:
-	dma_free_coherent(sha3_drv_ctx.dev, ZYNQMP_DMA_ALLOC_FIXED_SIZE, ubuf, update_dma_addr);
+err_mem1:
+	dma_free_coherent(dev, SHA3_384_DIGEST_SIZE, fbuf, final_dma_addr);
 
-err_shash:
-	crypto_unregister_shash(&sha3_drv_ctx.sha3_384);
+err_mem:
+	dma_free_coherent(dev, ZYNQMP_DMA_ALLOC_FIXED_SIZE, ubuf, update_dma_addr);
 
 	return err;
 }
 
 static int zynqmp_sha_remove(struct platform_device *pdev)
 {
-	sha3_drv_ctx.dev = platform_get_drvdata(pdev);
+	struct xilinx_sha_drv_ctx *sha3_drv_ctx;
 
-	dma_free_coherent(sha3_drv_ctx.dev, ZYNQMP_DMA_ALLOC_FIXED_SIZE, ubuf, update_dma_addr);
-	dma_free_coherent(sha3_drv_ctx.dev, SHA3_384_DIGEST_SIZE, fbuf, final_dma_addr);
-	crypto_unregister_shash(&sha3_drv_ctx.sha3_384);
+	sha3_drv_ctx = platform_get_drvdata(pdev);
+
+	dma_free_coherent(sha3_drv_ctx->dev,
+			  ZYNQMP_DMA_ALLOC_FIXED_SIZE, ubuf, update_dma_addr);
+	dma_free_coherent(sha3_drv_ctx->dev,
+			  SHA3_384_DIGEST_SIZE, fbuf, final_dma_addr);
+	crypto_unregister_shash(&sha3_drv_ctx->sha3_384);
 
 	return 0;
 }
@@ -257,7 +272,33 @@ static struct platform_driver zynqmp_sha_driver = {
 	},
 };
 
-module_platform_driver(zynqmp_sha_driver);
+static int __init sha_driver_init(void)
+{
+	struct platform_device *pdev;
+	int ret;
+
+	ret = platform_driver_register(&zynqmp_sha_driver);
+	if (ret)
+		return ret;
+
+	pdev = platform_device_register_simple(zynqmp_sha_driver.driver.name,
+					       0, NULL, 0);
+	if (IS_ERR(pdev)) {
+		ret = PTR_ERR(pdev);
+		platform_driver_unregister(&zynqmp_sha_driver);
+	}
+
+	return ret;
+}
+
+static void __exit sha_driver_exit(void)
+{
+	platform_driver_unregister(&zynqmp_sha_driver);
+}
+
+device_initcall(sha_driver_init);
+module_exit(sha_driver_exit);
+
 MODULE_DESCRIPTION("ZynqMP SHA3 hardware acceleration support.");
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Harsha <harsha.harsha@xilinx.com>");
