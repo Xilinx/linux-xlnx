@@ -488,6 +488,7 @@ struct spi_nor_fixups {
  *   SPI_NOR_RWW:             flash supports reads while write.
  *   SPI_NOR_BP3_SR_BIT5:     BP3 is bit 5 of status register,
  *                            must be used with SPI_NOR_4BIT_BP
+ *   SST_GLOBAL_PROT_UNLK:    Unlock the Global protection for sst flashes.
  *
  * @no_sfdp_flags:  flags that indicate support that can be discovered via SFDP.
  *                  Used when SFDP tables are not defined in the flash. These
@@ -544,6 +545,7 @@ struct flash_info {
 #define SPI_NOR_QUAD_PP			BIT(9)
 #define SPI_NOR_RWW			BIT(10)
 #define SPI_NOR_BP3_SR_BIT5		BIT(11)
+#define SST_GLOBAL_PROT_UNLK            BIT(12)
 
 	u8 no_sfdp_flags;
 #define SPI_NOR_SKIP_SFDP		BIT(0)
