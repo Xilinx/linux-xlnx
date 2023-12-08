@@ -756,6 +756,7 @@ axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	u32 orig_tail_ptr, new_tail_ptr;
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct axidma_bd *cur_p;
+	unsigned long flags;
 
 	orig_tail_ptr = lp->tx_bd_tail;
 	new_tail_ptr = orig_tail_ptr;
@@ -763,15 +764,25 @@ axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	num_frag = skb_shinfo(skb)->nr_frags;
 	cur_p = &lp->tx_bd_v[orig_tail_ptr];
 
-	if (axienet_check_tx_bd_space(lp, num_frag + 1)) {
-		/* Should not happen as last start_xmit call should have
-		 * checked for sufficient space and queue should only be
-		 * woken when sufficient space is available.
-		 */
+	spin_lock_irqsave(&lp->tx_lock, flags);
+	if (axienet_check_tx_bd_space(lp, num_frag)) {
+		if (netif_queue_stopped(ndev)) {
+			spin_unlock_irqrestore(&lp->tx_lock, flags);
+			return NETDEV_TX_BUSY;
+		}
+
 		netif_stop_queue(ndev);
-		if (net_ratelimit())
-			netdev_warn(ndev, "TX ring unexpectedly full\n");
-		return NETDEV_TX_BUSY;
+
+		/* Matches barrier in axienet_start_xmit_done */
+		smp_mb();
+
+		/* Space might have just been freed - check again */
+		if (axienet_check_tx_bd_space(lp, num_frag)) {
+			spin_unlock_irqrestore(&lp->tx_lock, flags);
+			return NETDEV_TX_BUSY;
+		}
+
+		netif_wake_queue(ndev);
 	}
 
 	if (skb->ip_summed == CHECKSUM_PARTIAL) {
@@ -845,6 +856,8 @@ axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		if (!axienet_check_tx_bd_space(lp, MAX_SKB_FRAGS + 1))
 			netif_wake_queue(ndev);
 	}
+
+	spin_unlock_irqrestore(&lp->tx_lock, flags);
 
 	return NETDEV_TX_OK;
 }
@@ -2159,6 +2172,7 @@ static int axienet_probe(struct platform_device *pdev)
 	if (lp->eth_irq <= 0)
 		dev_info(&pdev->dev, "Ethernet core IRQ not defined\n");
 
+	spin_lock_init(&lp->tx_lock);
 	spin_lock_init(&lp->rx_lock);
 
 	/* Retrieve the MAC address */
