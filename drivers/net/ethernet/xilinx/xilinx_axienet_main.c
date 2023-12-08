@@ -239,10 +239,12 @@ static void axienet_dma_bd_release(struct net_device *ndev)
 		}
 	}
 
-	dma_free_coherent(lp->dev,
-			  sizeof(*lp->rx_bd_v) * lp->rx_bd_num,
-			  lp->rx_bd_v,
-			  lp->rx_bd_p);
+	if (lp->tx_bufs) {
+		dma_free_coherent(ndev->dev.parent,
+				  XAE_MAX_PKT_LEN * lp->tx_bd_num,
+				  lp->tx_bufs,
+				  lp->tx_bufs_dma);
+	}
 }
 
 /**
@@ -312,6 +314,18 @@ static int axienet_dma_bd_init(struct net_device *ndev)
 			lp->tx_bd_v[i].next_msb = upper_32_bits(addr);
 	}
 
+	if (!lp->eth_hasdre) {
+		lp->tx_bufs = dma_alloc_coherent(ndev->dev.parent,
+						 XAE_MAX_PKT_LEN * lp->tx_bd_num,
+						 &lp->tx_bufs_dma,
+						 GFP_KERNEL);
+		if (!lp->tx_bufs)
+			goto out;
+
+		for (i = 0; i < lp->tx_bd_num; i++)
+			lp->tx_buf[i] = &lp->tx_bufs[i * XAE_MAX_PKT_LEN];
+	}
+
 	for (i = 0; i < lp->rx_bd_num; i++) {
 		dma_addr_t addr;
 
@@ -321,7 +335,7 @@ static int axienet_dma_bd_init(struct net_device *ndev)
 		if (lp->features & XAE_FEATURE_DMA_64BIT)
 			lp->rx_bd_v[i].next_msb = upper_32_bits(addr);
 
-		skb = netdev_alloc_skb_ip_align(ndev, lp->max_frm_size);
+		skb = netdev_alloc_skb(ndev, lp->max_frm_size);
 		if (!skb)
 			goto out;
 
@@ -1171,8 +1185,23 @@ axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	}
 	desc_set_phys_addr(lp, phys, cur_p);
 	cur_p->cntrl = (skb_headlen(skb) | XAXIDMA_BD_CTRL_TXSOF_MASK) + pad;
-	cur_p->phys = dma_map_single(ndev->dev.parent, skb->data,
-				     skb_headlen(skb), DMA_TO_DEVICE);
+	if (!lp->eth_hasdre &&
+	    (((phys_addr_t)skb->data & 0x3) || num_frag > 0)) {
+		skb_copy_and_csum_dev(skb, lp->tx_buf[lp->tx_bd_tail]);
+
+		cur_p->phys = lp->tx_bufs_dma +
+			      (lp->tx_buf[lp->tx_bd_tail] - lp->tx_bufs);
+
+		if (num_frag > 0) {
+			pad = skb_pagelen(skb) - skb_headlen(skb);
+			cur_p->cntrl = (skb_headlen(skb) |
+					XAXIDMA_BD_CTRL_TXSOF_MASK) + pad;
+		}
+		goto out;
+	} else {
+		cur_p->phys = dma_map_single(ndev->dev.parent, skb->data,
+					     skb_headlen(skb), DMA_TO_DEVICE);
+	}
 	cur_p->tx_desc_mapping = DESC_DMA_MAP_SINGLE;
 
 	for (ii = 0; ii < num_frag; ii++) {
@@ -1191,6 +1220,7 @@ axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		cur_p->tx_desc_mapping = DESC_DMA_MAP_PAGE;
 	}
 
+out:
 	cur_p->cntrl |= XAXIDMA_BD_CTRL_TXEOF_MASK;
 	cur_p->tx_skb = (phys_addr_t)skb;
 
@@ -1336,7 +1366,7 @@ static int axienet_recv(struct net_device *ndev, int budget)
 			packets++;
 		}
 
-		new_skb = netdev_alloc_skb_ip_align(ndev, lp->max_frm_size);
+		new_skb = netdev_alloc_skb(ndev, lp->max_frm_size);
 		if (!new_skb)
 			break;
 
@@ -2829,6 +2859,7 @@ static int axienet_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto cleanup_clk;
 	}
+	lp->eth_hasdre = of_property_read_bool(np, "xlnx,include-dre");
 
 	/* Reset core now that clocks are enabled, prior to accessing MDIO */
 	ret = __axienet_device_reset(lp);
