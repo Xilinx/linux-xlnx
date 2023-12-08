@@ -18,6 +18,11 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 
+#define CONTINUE_PACKET		BIT(31)
+#define FIRST_PACKET		BIT(30)
+#define FINAL_PACKET		0
+#define RESET			0
+
 #define ZYNQMP_DMA_BIT_MASK		32U
 #define ZYNQMP_DMA_ALLOC_FIXED_SIZE	0x1000U
 
@@ -160,6 +165,47 @@ static int zynqmp_sha_digest(struct shash_desc *desc, const u8 *data, unsigned i
 	return ret;
 }
 
+static int versal_sha_digest(struct shash_desc *desc, const u8 *data,
+			     unsigned int len, u8 *out)
+{
+	int update_size, ret, flag = FIRST_PACKET;
+	unsigned int remaining_len = len;
+
+	while (remaining_len != 0) {
+		memzero_explicit(ubuf, ZYNQMP_DMA_ALLOC_FIXED_SIZE);
+		if (remaining_len >= ZYNQMP_DMA_ALLOC_FIXED_SIZE) {
+			update_size = ZYNQMP_DMA_ALLOC_FIXED_SIZE;
+			remaining_len -= ZYNQMP_DMA_ALLOC_FIXED_SIZE;
+		} else {
+			update_size = remaining_len;
+			remaining_len = 0;
+		}
+
+		memcpy(ubuf, data, update_size);
+		flush_icache_range((unsigned long)ubuf,
+				   (unsigned long)ubuf + update_size);
+
+		flag |= CONTINUE_PACKET;
+		ret = versal_pm_sha_hash(update_dma_addr, 0,
+					 update_size | flag);
+		if (ret)
+			return ret;
+
+		data += update_size;
+		flag = RESET;
+	}
+
+	flag |= FINAL_PACKET;
+	ret = versal_pm_sha_hash(0, final_dma_addr, flag);
+	if (ret)
+		return ret;
+
+	memcpy(out, fbuf, SHA3_384_DIGEST_SIZE);
+	memzero_explicit(fbuf, SHA3_384_DIGEST_SIZE);
+
+	return 0;
+}
+
 static struct xilinx_sha_drv_ctx zynqmp_sha3_drv_ctx = {
 	.sha3_384 = {
 		.init = zynqmp_sha_init,
@@ -189,12 +235,47 @@ static struct xilinx_sha_drv_ctx zynqmp_sha3_drv_ctx = {
 	}
 };
 
+static struct xilinx_sha_drv_ctx versal_sha3_drv_ctx = {
+	.sha3_384 = {
+		.init = zynqmp_sha_init,
+		.update = zynqmp_sha_update,
+		.final = zynqmp_sha_final,
+		.finup = zynqmp_sha_finup,
+		.export = zynqmp_sha_export,
+		.import = zynqmp_sha_import,
+		.digest = versal_sha_digest,
+		.init_tfm = zynqmp_sha_init_tfm,
+		.exit_tfm = zynqmp_sha_exit_tfm,
+		.descsize = sizeof(struct zynqmp_sha_desc_ctx),
+		.statesize = sizeof(struct sha3_state),
+		.digestsize = SHA3_384_DIGEST_SIZE,
+		.base = {
+			.cra_name = "sha3-384",
+			.cra_driver_name = "versal-sha3-384",
+			.cra_priority = 300,
+			.cra_flags = CRYPTO_ALG_KERN_DRIVER_ONLY |
+				CRYPTO_ALG_ALLOCATES_MEMORY |
+				CRYPTO_ALG_NEED_FALLBACK,
+			.cra_blocksize = SHA3_384_BLOCK_SIZE,
+			.cra_ctxsize = sizeof(struct zynqmp_sha_tfm_ctx),
+			.cra_alignmask = 3,
+			.cra_module = THIS_MODULE,
+		}
+	}
+};
+
 static struct xlnx_feature sha_feature_map[] = {
 	{
 		.family = ZYNQMP_FAMILY_CODE,
 		.subfamily = ALL_SUB_FAMILY_CODE,
 		.feature_id = PM_SECURE_SHA,
 		.data = &zynqmp_sha3_drv_ctx,
+	},
+	{
+		.family = VERSAL_FAMILY_CODE,
+		.subfamily = VERSAL_SUB_FAMILY_CODE,
+		.feature_id = XSECURE_API_SHA3_UPDATE,
+		.data = &versal_sha3_drv_ctx,
 	},
 	{ /* sentinel */ }
 };
