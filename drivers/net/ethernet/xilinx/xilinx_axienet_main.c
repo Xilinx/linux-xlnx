@@ -875,38 +875,29 @@ static int axienet_free_tx_chain(struct net_device *ndev, u32 first_bd,
 {
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct axidma_bd *cur_p;
-	int max_bds = nr_bds;
 	unsigned int status = 0;
-	dma_addr_t phys;
-	int i;
+	int i = 0;
 
-	if (max_bds == -1)
-		max_bds = lp->tx_bd_num;
-
-	for (i = 0; i < max_bds; i++) {
-		cur_p = &lp->tx_bd_v[(first_bd + i) % lp->tx_bd_num];
-		status = cur_p->status;
-
-		/* If no number is given, clean up *all* descriptors that have
-		 * been completed by the MAC.
-		 */
-		if (nr_bds == -1 && !(status & XAXIDMA_BD_STS_COMPLETE_MASK))
-			break;
-
+	cur_p = &lp->tx_bd_v[lp->tx_bd_ci];
+	status = cur_p->status;
+	while (status & XAXIDMA_BD_STS_COMPLETE_MASK) {
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
 		if (cur_p->ptp_tx_skb)
 			axienet_tx_hwtstamp(lp, cur_p);
 #endif
-		/* Ensure we see complete descriptor update */
-		dma_rmb();
-		phys = desc_get_phys_addr(lp, cur_p);
-		dma_unmap_single(lp->dev, phys,
-				 (cur_p->cntrl & XAXIDMA_BD_CTRL_LENGTH_MASK),
-				 DMA_TO_DEVICE);
-
-		if (cur_p->skb && (status & XAXIDMA_BD_STS_COMPLETE_MASK))
-			dev_consume_skb_irq(cur_p->skb);
-
+		if (cur_p->tx_desc_mapping == DESC_DMA_MAP_PAGE)
+			dma_unmap_page(ndev->dev.parent, cur_p->phys,
+				       cur_p->cntrl &
+				       XAXIDMA_BD_CTRL_LENGTH_MASK,
+				       DMA_TO_DEVICE);
+		else
+			dma_unmap_single(ndev->dev.parent, cur_p->phys,
+					 cur_p->cntrl &
+					 XAXIDMA_BD_CTRL_LENGTH_MASK,
+					 DMA_TO_DEVICE);
+		if (cur_p->tx_skb)
+			dev_kfree_skb_irq((struct sk_buff *)cur_p->tx_skb);
+		/*cur_p->phys = 0;*/
 		cur_p->app0 = 0;
 		cur_p->app1 = 0;
 		cur_p->app2 = 0;
@@ -1045,7 +1036,6 @@ axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	u32 num_frag;
 	u32 csum_start_off;
 	u32 csum_index_off;
-	skb_frag_t *frag;
 	dma_addr_t tail_p, phys;
 	u32 orig_tail_ptr, new_tail_ptr;
 	struct axienet_local *lp = netdev_priv(ndev);
@@ -1183,26 +1173,22 @@ axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	cur_p->cntrl = (skb_headlen(skb) | XAXIDMA_BD_CTRL_TXSOF_MASK) + pad;
 	cur_p->phys = dma_map_single(ndev->dev.parent, skb->data,
 				     skb_headlen(skb), DMA_TO_DEVICE);
+	cur_p->tx_desc_mapping = DESC_DMA_MAP_SINGLE;
 
 	for (ii = 0; ii < num_frag; ii++) {
-		if (++new_tail_ptr >= lp->tx_bd_num)
-			new_tail_ptr = 0;
-		cur_p = &lp->tx_bd_v[new_tail_ptr];
+		u32 len;
+		skb_frag_t *frag;
+
+		if (++lp->tx_bd_tail >= lp->tx_bd_num)
+			lp->tx_bd_tail = 0;
+
+		cur_p = &lp->tx_bd_v[lp->tx_bd_tail];
 		frag = &skb_shinfo(skb)->frags[ii];
-		phys = dma_map_single(lp->dev,
-				      skb_frag_address(frag),
-				      skb_frag_size(frag),
-				      DMA_TO_DEVICE);
-		if (unlikely(dma_mapping_error(lp->dev, phys))) {
-			if (net_ratelimit())
-				netdev_err(ndev, "TX DMA mapping error\n");
-			ndev->stats.tx_dropped++;
-			axienet_free_tx_chain(ndev, orig_tail_ptr, ii + 1,
-					      NULL);
-			return NETDEV_TX_OK;
-		}
-		desc_set_phys_addr(lp, phys, cur_p);
-		cur_p->cntrl = skb_frag_size(frag) + pad;
+		len = skb_frag_size(frag);
+		cur_p->phys = skb_frag_dma_map(ndev->dev.parent, frag, 0, len,
+					       DMA_TO_DEVICE);
+		cur_p->cntrl = len + pad;
+		cur_p->tx_desc_mapping = DESC_DMA_MAP_PAGE;
 	}
 
 	cur_p->cntrl |= XAXIDMA_BD_CTRL_TXEOF_MASK;
