@@ -462,6 +462,7 @@ static void axienet_set_mac_address(struct net_device *ndev,
 static int netdev_set_mac_address(struct net_device *ndev, void *p)
 {
 	struct sockaddr *addr = p;
+
 	axienet_set_mac_address(ndev, addr->sa_data);
 	return 0;
 }
@@ -650,8 +651,7 @@ static int axienet_device_reset(struct net_device *ndev)
 		lp->options &= (~XAE_OPTION_JUMBO);
 	}
 
-	if ((ndev->mtu > XAE_MTU) &&
-	    (ndev->mtu <= XAE_JUMBO_MTU)) {
+	if (ndev->mtu > XAE_MTU && ndev->mtu <= XAE_JUMBO_MTU) {
 		lp->max_frm_size = ndev->mtu + VLAN_ETH_HLEN +
 					XAE_TRL_SIZE;
 		if (lp->max_frm_size <= lp->rxmem &&
@@ -1773,6 +1773,7 @@ static int axienet_change_mtu(struct net_device *ndev, int new_mtu)
 static void axienet_poll_controller(struct net_device *ndev)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
+
 	disable_irq(lp->tx_irq);
 	disable_irq(lp->rx_irq);
 	axienet_rx_irq(lp->tx_irq, ndev);
@@ -2082,7 +2083,7 @@ axienet_ethtools_get_pauseparam(struct net_device *ndev,
  * axienet_ethtools_set_pauseparam - Set device pause parameter(flow control)
  *				     settings.
  * @ndev:	Pointer to net_device structure
- * @epauseparm:Pointer to ethtool_pauseparam structure
+ * @epauseparm:	Pointer to ethtool_pauseparam structure
  *
  * This implements ethtool command for enabling flow control on Rx and Tx
  * paths. Issue "ethtool -A ethX tx on|off" under linux prompt to execute this
@@ -2121,11 +2122,16 @@ axienet_ethtools_get_coalesce(struct net_device *ndev,
 			      struct kernel_ethtool_coalesce *kernel_coal,
 			      struct netlink_ext_ack *extack)
 {
+	u32 regval = 0;
 	struct axienet_local *lp = netdev_priv(ndev);
 
-	ecoalesce->rx_max_coalesced_frames = lp->coalesce_count_rx;
+	regval = axienet_dma_in32(lp, XAXIDMA_RX_CR_OFFSET);
+	ecoalesce->rx_max_coalesced_frames = (regval & XAXIDMA_COALESCE_MASK)
+					     >> XAXIDMA_COALESCE_SHIFT;
 	ecoalesce->rx_coalesce_usecs = lp->coalesce_usec_rx;
-	ecoalesce->tx_max_coalesced_frames = lp->coalesce_count_tx;
+	regval = axienet_dma_in32(lp, XAXIDMA_TX_CR_OFFSET);
+	ecoalesce->tx_max_coalesced_frames = (regval & XAXIDMA_COALESCE_MASK)
+					     >> XAXIDMA_COALESCE_SHIFT;
 	ecoalesce->tx_coalesce_usecs = lp->coalesce_usec_tx;
 	return 0;
 }
@@ -2594,7 +2600,7 @@ MODULE_DEVICE_TABLE(of, axienet_of_match);
  */
 static int axienet_probe(struct platform_device *pdev)
 {
-	int ret;
+	int ret = 0;
 	struct device_node *np;
 	struct axienet_local *lp;
 	struct net_device *ndev;
@@ -2678,20 +2684,22 @@ static int axienet_probe(struct platform_device *pdev)
 
 	ret = of_property_read_u32(pdev->dev.of_node, "xlnx,txcsum", &value);
 	if (!ret) {
+		dev_info(&pdev->dev, "TX_CSUM %d\n", value);
+
 		switch (value) {
 		case 1:
 			lp->csum_offload_on_tx_path =
 				XAE_FEATURE_PARTIAL_TX_CSUM;
 			lp->features |= XAE_FEATURE_PARTIAL_TX_CSUM;
 			/* Can checksum TCP/UDP over IPv4. */
-			ndev->features |= NETIF_F_IP_CSUM;
+			ndev->features |= NETIF_F_IP_CSUM | NETIF_F_SG;
 			break;
 		case 2:
 			lp->csum_offload_on_tx_path =
 				XAE_FEATURE_FULL_TX_CSUM;
 			lp->features |= XAE_FEATURE_FULL_TX_CSUM;
 			/* Can checksum TCP/UDP over IPv4. */
-			ndev->features |= NETIF_F_IP_CSUM;
+			ndev->features |= NETIF_F_IP_CSUM | NETIF_F_SG;
 			break;
 		default:
 			lp->csum_offload_on_tx_path = XAE_NO_CSUM_OFFLOAD;
@@ -2699,6 +2707,8 @@ static int axienet_probe(struct platform_device *pdev)
 	}
 	ret = of_property_read_u32(pdev->dev.of_node, "xlnx,rxcsum", &value);
 	if (!ret) {
+		dev_info(&pdev->dev, "RX_CSUM %d\n", value);
+
 		switch (value) {
 		case 1:
 			lp->csum_offload_on_rx_path =
@@ -2846,7 +2856,6 @@ static int axienet_probe(struct platform_device *pdev)
 	}
 	lp->dma_regs = devm_ioremap_resource(&pdev->dev, &dmares);
 	if (IS_ERR(lp->dma_regs)) {
-		dev_err(&pdev->dev, "could not map DMA regs\n");
 		ret = PTR_ERR(lp->dma_regs);
 		goto cleanup_clk;
 	}
