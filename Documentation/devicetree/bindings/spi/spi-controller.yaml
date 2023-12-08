@@ -161,4 +161,12 @@ examples:
             reg = <2>, <3>;
             stacked-memories = /bits/ 64 <0x10000000 0x10000000>;
         };
+
+        flash@5 {
+            compatible = "jedec,spi-nor";
+            spi-max-frequency = <50000000>;
+            reg = <5>;
+            multi-die;
+        };
+
     };
