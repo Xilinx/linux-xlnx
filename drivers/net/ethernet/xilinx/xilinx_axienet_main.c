@@ -3037,6 +3037,9 @@ static int axienet_probe(struct platform_device *pdev)
 			case XAE_PHY_TYPE_1000BASE_X:
 				lp->phy_mode = PHY_INTERFACE_MODE_1000BASEX;
 				break;
+			case XXE_PHY_TYPE_USXGMII:
+				lp->phy_mode = PHY_INTERFACE_MODE_USXGMII;
+				break;
 			default:
 				/* Don't error out as phy-type is an optional property */
 				break;
