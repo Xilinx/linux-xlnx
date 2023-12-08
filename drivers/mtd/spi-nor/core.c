@@ -2335,15 +2335,16 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 	struct spi_nor *nor = mtd_to_spi_nor(mtd);
 	struct spi_nor_flash_parameter *params;
 	ssize_t ret, read_len, len_lock =  len;
+	u8 bank, cur_bank, nxt_bank;
 	bool is_ofst_odd = false;
 	loff_t from_lock = from;
 	u32 rem_bank_len = 0;
 	u32 cur_cs_num = 0;
 	u_char *readbuf;
 	u32 n_flash = 1;
+	u32 bank_size;
 	loff_t addr;
 	u64 sz = 0;
-	u8 bank;
 
 #define OFFSET_16_MB 0x1000000
 	dev_dbg(nor->dev, "from 0x%08x, len %zd\n", (u32)from, len);
@@ -2410,7 +2411,33 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 			params = spi_nor_get_params(nor, cur_cs_num);
 			addr -= (sz - params->size);
 		}
-
+		if (nor->addr_nbytes == 4) {
+			/*
+			 * Some flash devices like N25Q512 have multiple dies
+			 * in it. Read operation in these devices is bounded
+			 * by its die segment. In a continuous read, across
+			 * multiple dies, when the last byte of the selected
+			 * die segment is read, the next byte read is the
+			 * first byte of the same die segment. This is Die
+			 * cross over issue. So to handle this issue, split
+			 * a read transaction, that spans across multiple
+			 * banks, into one read per bank. Bank size is 16MB
+			 * for single and dual stacked mode and 32MB for dual
+			 * parallel mode.
+			 */
+			if (nor->spimem->spi->multi_die) {
+				bank_size = OFFSET_16_MB;
+				cur_bank = addr / bank_size;
+				nxt_bank = (addr + len) / bank_size;
+				if (cur_bank != nxt_bank)
+					rem_bank_len = ((bank_size *
+							(cur_bank + 1)) - addr);
+				else
+					rem_bank_len = mtd->size - addr;
+			} else {
+				rem_bank_len = mtd->size - addr;
+			}
+		}
 		if (nor->addr_nbytes == 3) {
 			ret = spi_nor_write_enable(nor);
 			if (ret)
@@ -2588,7 +2615,8 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 			params = spi_nor_get_params(nor, cur_cs_num);
 			addr -= (sz - params->size);
 		}
-
+		if (nor->addr_nbytes == 4)
+			rem_bank_len = mtd->size - addr;
 		if (nor->addr_nbytes == 3) {
 			ret = spi_nor_write_enable(nor);
 			if (ret)
