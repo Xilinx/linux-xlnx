@@ -675,6 +675,8 @@ config CRYPTO_DEV_ZYNQMP_AES
 	select CRYPTO_AES
 	select CRYPTO_ENGINE
 	select CRYPTO_AEAD
+	select CRYPTO_GCM
+	select CRYPTO_USER_API_AEAD
 	help
 	  Xilinx ZynqMP has AES-GCM engine used for symmetric key
 	  encryption and decryption. This driver interfaces with AES hw
