@@ -1090,7 +1090,9 @@ static int zynqmp_qspi_exec_op(struct spi_mem *mem,
 				    (mem->spi->master);
 	int err = 0, i;
 	u32 genfifoentry = 0;
+	u32 speed_hz = xqspi->speed_hz;
 	u16 opcode = op->cmd.opcode;
+	unsigned long long ms;
 	u64 opaddr;
 
 	dev_dbg(xqspi->dev, "cmd:%#x mode:%d.%d.%d.%d\n",
@@ -1214,9 +1216,31 @@ static int zynqmp_qspi_exec_op(struct spi_mem *mem,
 						   GQSPI_IER_RXEMPTY_MASK);
 			}
 		}
+
+		if (speed_hz)
+			speed_hz = 100000;
+
+		/*
+		 * For each byte we wait for 8 cycles of the SPI clock.
+		 * Since speed is defined in Hz and we want milliseconds,
+		 * use respective multiplier, but before the division,
+		 * otherwise we may get 0 for short transfers.
+		 */
+		ms = 8LL * MSEC_PER_SEC * op->data.nbytes;
+		do_div(ms, speed_hz);
+
+		/*
+		 * Increase it twice and add 10000 ms tolerance, use
+		 * predefined maximum in case of overflow.
+		 */
+		ms += ms + 10000;
+		if (ms > UINT_MAX)
+			ms = UINT_MAX;
+
 		if (!wait_for_completion_timeout
-		    (&xqspi->data_completion, msecs_to_jiffies(1000)))
+		    (&xqspi->data_completion, msecs_to_jiffies(ms)))
 			err = -ETIMEDOUT;
+
 	}
 
 return_err:
