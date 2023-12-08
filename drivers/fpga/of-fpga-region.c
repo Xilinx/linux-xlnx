@@ -230,6 +230,16 @@ of_fpga_region_parse_ov(struct fpga_region *region,
 	if (of_property_read_bool(overlay, "encrypted-fpga-config"))
 		info->flags |= FPGA_MGR_ENCRYPTED_BITSTREAM;
 
+	if (of_property_read_bool(overlay, "userkey-encrypted-fpga-config"))
+		info->flags |= FPGA_MGR_USERKEY_ENCRYPTED_BITSTREAM;
+
+	if (of_property_read_bool(overlay, "ddrmem-authenticated-fpga-config"))
+		info->flags |= FPGA_MGR_DDR_MEM_AUTH_BITSTREAM;
+
+	if (of_property_read_bool(overlay,
+				  "securemem-authenticated-fpga-config"))
+		info->flags |= FPGA_MGR_SECURE_MEM_AUTH_BITSTREAM;
+
 	if (!of_property_read_string(overlay, "firmware-name",
 				     &firmware_name)) {
 		info->firmware_name = devm_kstrdup(dev, firmware_name,
