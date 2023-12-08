@@ -4,7 +4,7 @@ The zynqmp PS-RSA hw accelerator is used to encrypt/decrypt
 the given user data.
 
 Required properties:
-- compatible:	should contain "xlnx,zynqmp-rsa"
+- compatible:	should contain "xlnx,zynqmp-rsa" (deprecated)
 
 Example:
 	xlnx_rsa: zynqmp_rsa {
