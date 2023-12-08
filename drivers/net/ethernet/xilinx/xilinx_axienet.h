@@ -432,6 +432,7 @@ struct axidma_bd {
  * @coalesce_usec_rx:	IRQ coalesce delay for RX
  * @coalesce_count_tx:	Store the irq coalesce on TX side.
  * @coalesce_usec_tx:	IRQ coalesce delay for TX
+ * @eth_hasnobuf: Ethernet is configured in Non buf mode.
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -489,6 +490,7 @@ struct axienet_local {
 	u32 coalesce_usec_rx;
 	u32 coalesce_count_tx;
 	u32 coalesce_usec_tx;
+	bool eth_hasnobuf;
 };
 
 /**
