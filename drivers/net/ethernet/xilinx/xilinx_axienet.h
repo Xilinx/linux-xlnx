@@ -157,6 +157,7 @@
 
 /* AXI Tx Timestamp Stream FIFO Register Definitions */
 #define XAXIFIFO_TXTS_ISR	0x00000000 /* Interrupt Status Register */
+#define XAXIFIFO_TXTS_TDFV	0x0000000C /* Transmit Data FIFO Vacancy */
 #define XAXIFIFO_TXTS_TXFD	0x00000010 /* Tx Data Write Port */
 #define XAXIFIFO_TXTS_TLR	0x00000014 /* Transmit Length Register */
 #define XAXIFIFO_TXTS_RFO	0x0000001C /* Rx Fifo Occupancy */
@@ -374,8 +375,11 @@
 #define TX_TS_OP_ONESTEP        0x1
 #define TX_TS_OP_TWOSTEP        0x2
 #define TX_TS_CSUM_UPDATE       0x1
+#define TX_TS_CSUM_UPDATE_MRMAC		0x4
+#define TX_TS_PDELAY_UPDATE_MRMAC	0x8
 #define TX_PTP_CSUM_OFFSET      0x28
 #define TX_PTP_TS_OFFSET        0x4C
+#define TX_PTP_CF_OFFSET        0x32
 
 /* XXV MAC Register Definitions */
 #define XXV_GT_RESET_OFFSET		0x00000000
@@ -502,6 +506,84 @@
 #define XAE_TX_BUFFERS		64
 #define XAE_MAX_PKT_LEN		8192
 
+/* MRMAC Register Definitions */
+/* Configuration Registers */
+#define MRMAC_REV_OFFSET		0x00000000
+#define MRMAC_RESET_OFFSET		0x00000004
+#define MRMAC_MODE_OFFSET		0x00000008
+#define MRMAC_CONFIG_TX_OFFSET		0x0000000C
+#define MRMAC_CONFIG_RX_OFFSET		0x00000010
+#define MRMAC_TICK_OFFSET		0x0000002C
+#define MRMAC_CFG1588_OFFSET	0x00000040
+
+/* Status Registers */
+#define MRMAC_TX_STS_OFFSET		0x00000740
+#define MRMAC_RX_STS_OFFSET		0x00000744
+#define MRMAC_TX_RT_STS_OFFSET		0x00000748
+#define MRMAC_RX_RT_STS_OFFSET		0x0000074C
+#define MRMAC_STATRX_BLKLCK_OFFSET	0x00000754
+#define MRMAC_STATRX_VALID_CTRL_OFFSET	0x000007B8
+
+/* Register bit masks */
+#define MRMAC_RX_SERDES_RST_MASK	(BIT(3) | BIT(2) | BIT(1) | BIT(0))
+#define MRMAC_TX_SERDES_RST_MASK	BIT(4)
+#define MRMAC_RX_RST_MASK		BIT(5)
+#define MRMAC_TX_RST_MASK		BIT(6)
+#define MRMAC_RX_AXI_RST_MASK		BIT(8)
+#define MRMAC_TX_AXI_RST_MASK		BIT(9)
+#define MRMAC_STS_ALL_MASK		0xFFFFFFFF
+
+#define MRMAC_RX_EN_MASK		BIT(0)
+#define MRMAC_RX_DEL_FCS_MASK		BIT(1)
+
+#define MRMAC_TX_EN_MASK		BIT(0)
+#define MRMAC_TX_INS_FCS_MASK		BIT(1)
+
+#define MRMAC_RX_BLKLCK_MASK		BIT(0)
+#define MRMAC_RX_STATUS_MASK		BIT(0)
+#define MRMAC_RX_VALID_MASK		BIT(0)
+
+#define MRMAC_CTL_DATA_RATE_MASK	GENMASK(2, 0)
+#define MRMAC_CTL_DATA_RATE_10G		0
+#define MRMAC_CTL_DATA_RATE_25G		1
+#define MRMAC_CTL_DATA_RATE_40G		2
+#define MRMAC_CTL_DATA_RATE_50G		3
+#define MRMAC_CTL_DATA_RATE_100G	4
+
+#define MRMAC_CTL_AXIS_CFG_MASK		GENMASK(11, 9)
+#define MRMAC_CTL_AXIS_CFG_SHIFT	9
+#define MRMAC_CTL_AXIS_CFG_10G_IND	1
+#define MRMAC_CTL_AXIS_CFG_25G_IND	1
+
+#define MRMAC_CTL_SERDES_WIDTH_MASK	GENMASK(6, 4)
+#define MRMAC_CTL_SERDES_WIDTH_SHIFT	4
+#define MRMAC_CTL_SERDES_WIDTH_10G	4
+#define MRMAC_CTL_SERDES_WIDTH_25G	6
+
+#define MRMAC_CTL_RATE_CFG_MASK		(MRMAC_CTL_DATA_RATE_MASK |	\
+					 MRMAC_CTL_AXIS_CFG_MASK |	\
+					 MRMAC_CTL_SERDES_WIDTH_MASK)
+
+#define MRMAC_CTL_PM_TICK_MASK		BIT(30)
+#define MRMAC_TICK_TRIGGER		BIT(0)
+#define MRMAC_ONE_STEP_EN		BIT(0)
+
+/* MRMAC GT wrapper registers */
+#define MRMAC_GT_PLL_OFFSET		0x0
+#define MRMAC_GT_PLL_STS_OFFSET		0x8
+#define MRMAC_GT_RATE_OFFSET		0x0
+#define MRMAC_GT_CTRL_OFFSET		0x8
+
+#define MRMAC_GT_PLL_RST_MASK		0x00030003
+#define MRMAC_GT_PLL_DONE_MASK		0xFF
+#define MRMAC_GT_RST_ALL_MASK		BIT(0)
+#define MRMAC_GT_RST_RX_MASK		BIT(1)
+#define MRMAC_GT_RST_TX_MASK		BIT(2)
+#define MRMAC_GT_10G_MASK		0x00000001
+#define MRMAC_GT_25G_MASK		0x00000002
+
+#define MRMAC_GT_LANE_OFFSET		BIT(16)
+#define MRMAC_MAX_GT_LANES		4
 /**
  * struct axidma_bd - Axi Dma buffer descriptor layout
  * @next:         MM2S/S2MM Next Descriptor Pointer
@@ -630,6 +712,7 @@ struct aximcdma_bd {
  * @num_rx_queues: Total number of Rx DMA queues
  * @dq:		DMA queues data
  * @phy_mode:  Phy type to identify between MII/GMII/RGMII/SGMII/1000 Base-X
+ * @ptp_tx_lock: PTP Tx lock
  * @eth_irq:	Axi Ethernet IRQ number
  * @options:	AxiEthernet option word
  * @features:	Stores the extended features supported by the axienet hw
@@ -668,6 +751,11 @@ struct aximcdma_bd {
  * @weight:   MCDMA Channel weight value to be configured for.
  * @dma_mask: Specify the width of the DMA address space.
  * @usxgmii_rate: USXGMII PHY speed.
+ * @mrmac_rate: MRMAC speed.
+ * @gt_pll: Common GT PLL mask control register space.
+ * @gt_ctrl: GT speed and reset control register space.
+ * @phc_index: Index to corresponding PTP clock used.
+ * @gt_lane: MRMAC GT lane index used.
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -699,6 +787,7 @@ struct axienet_local {
 	struct axienet_dma_q *dq[XAE_MAX_QUEUES];	/* DMA queue data*/
 
 	phy_interface_t phy_mode;
+	spinlock_t ptp_tx_lock;		/* PTP tx lock*/
 	int eth_irq;
 
 	u32 options;
@@ -746,6 +835,12 @@ struct axienet_local {
 
 	u8 dma_mask;
 	u32 usxgmii_rate;
+
+	u32 mrmac_rate;		/* MRMAC speed */
+	void __iomem *gt_pll;	/* Common GT PLL mask control register space */
+	void __iomem *gt_ctrl;	/* GT speed and reset control register space */
+	u32 phc_index;		/* Index to corresponding PTP clock used  */
+	u32 gt_lane;		/* MRMAC GT lane index used */
 };
 
 /**
@@ -829,6 +924,7 @@ struct axienet_dma_q {
  * @XAXIENET_2_5G:	 IP type is 2.5G MAC.
  * @XAXIENET_LEGACY_10G: IP type is legacy 10G MAC.
  * @XAXIENET_10G_25G:	 IP type is 10G/25G MAC(XXV MAC).
+ * @XAXIENET_MRMAC:	 IP type is hardened Multi Rate MAC (MRMAC).
  *
  */
 enum axienet_ip_type {
@@ -836,6 +932,7 @@ enum axienet_ip_type {
 	XAXIENET_2_5G,
 	XAXIENET_LEGACY_10G,
 	XAXIENET_10G_25G,
+	XAXIENET_MRMAC,
 };
 
 struct axienet_config {
@@ -845,6 +942,7 @@ struct axienet_config {
 			struct clk **axis_clk, struct clk **ref_clk,
 			struct clk **dclk);
 	u32 tx_ptplen;
+	u8 ts_header_len;
 };
 
 /**
@@ -864,6 +962,11 @@ struct xxvenet_option {
 	u32 reg;
 	u32 m_or;
 };
+
+extern void __iomem *mrmac_gt_pll;
+extern void __iomem *mrmac_gt_ctrl;
+extern int mrmac_pll_reg;
+extern int mrmac_pll_rst;
 
 /**
  * axienet_ior - Memory mapped Axi Ethernet register read
@@ -909,6 +1012,34 @@ static inline void axienet_iow(struct axienet_local *lp, off_t offset,
 			       u32 value)
 {
 	iowrite32(value, lp->regs + offset);
+}
+
+/**
+ * axienet_get_mrmac_blocklock - Write to Clear MRMAC RX block lock status register
+ * and read the latest status
+ * @lp:         Pointer to axienet local structure
+ *
+ * Return: The contents of the Contents of MRMAC RX block lock status register
+ */
+
+static inline u32 axienet_get_mrmac_blocklock(struct axienet_local *lp)
+{
+	axienet_iow(lp, MRMAC_STATRX_BLKLCK_OFFSET, MRMAC_STS_ALL_MASK);
+	return axienet_ior(lp, MRMAC_STATRX_BLKLCK_OFFSET);
+}
+
+/**
+ * axienet_get_mrmac_rx_status - Write to Clear MRMAC RX status register
+ * and read the latest status
+ * @lp:		Pointer to axienet local structure
+ *
+ * Return: The contents of the Contents of MRMAC RX status register
+ */
+
+static inline u32 axienet_get_mrmac_rx_status(struct axienet_local *lp)
+{
+	axienet_iow(lp, MRMAC_RX_STS_OFFSET, MRMAC_STS_ALL_MASK);
+	return axienet_ior(lp, MRMAC_RX_STS_OFFSET);
 }
 
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
