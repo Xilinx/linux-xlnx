@@ -193,6 +193,19 @@ static struct xxvenet_option mrmacenet_options[] = {
 	{}
 };
 
+struct axienet_ethtools_stat {
+	const char *name;
+};
+
+static struct axienet_ethtools_stat axienet_get_ethtools_strings_stats[] = {
+	{ "tx_packets" },
+	{ "rx_packets" },
+	{ "tx_bytes" },
+	{ "rx_bytes" },
+	{ "tx_errors" },
+	{ "rx_errors" },
+};
+
 /**
  * axienet_dma_bd_release - Release buffer descriptor rings
  * @ndev:	Pointer to the net_device structure
@@ -1261,6 +1274,7 @@ static int axienet_queue_xmit(struct sk_buff *skb,
 		 */
 		if (eth_skb_pad(skb)) {
 			ndev->stats.tx_dropped++;
+			ndev->stats.tx_errors++;
 			return NETDEV_TX_OK;
 		}
 	}
@@ -2587,6 +2601,80 @@ static int axienet_ethtools_get_ts_info(struct net_device *ndev,
 }
 #endif
 
+/**
+ * axienet_ethtools_sset_count - Get number of strings that
+ *				 get_strings will write.
+ * @ndev:	Pointer to net_device structure
+ * @sset:	Get the set strings
+ *
+ * Return: number of strings, on success, Non-zero error value on
+ *	   failure.
+ */
+int axienet_ethtools_sset_count(struct net_device *ndev, int sset)
+{
+	switch (sset) {
+	case ETH_SS_STATS:
+#ifdef CONFIG_AXIENET_HAS_MCDMA
+		return axienet_sset_count(ndev, sset);
+#else
+		return AXIENET_ETHTOOLS_SSTATS_LEN;
+#endif
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
+/**
+ * axienet_ethtools_get_stats - Get the extended statistics
+ *				about the device.
+ * @ndev:	Pointer to net_device structure
+ * @stats:	Pointer to ethtool_stats structure
+ * @data:	To store the statistics values
+ *
+ * Return: None.
+ */
+void axienet_ethtools_get_stats(struct net_device *ndev,
+				struct ethtool_stats *stats,
+				u64 *data)
+{
+	unsigned int i = 0;
+
+	data[i++] = ndev->stats.tx_packets;
+	data[i++] = ndev->stats.rx_packets;
+	data[i++] = ndev->stats.tx_bytes;
+	data[i++] = ndev->stats.rx_bytes;
+	data[i++] = ndev->stats.tx_errors;
+	data[i++] = ndev->stats.rx_missed_errors + ndev->stats.rx_frame_errors;
+
+#ifdef CONFIG_AXIENET_HAS_MCDMA
+	axienet_get_stats(ndev, stats, data);
+#endif
+}
+
+/**
+ * axienet_ethtools_strings - Set of strings that describe
+ *			 the requested objects.
+ * @ndev:	Pointer to net_device structure
+ * @sset:	Get the set strings
+ * @data:	Data of Transmit and Receive statistics
+ *
+ * Return: None.
+ */
+void axienet_ethtools_strings(struct net_device *ndev, u32 sset, u8 *data)
+{
+	int i;
+
+	for (i = 0; i < AXIENET_ETHTOOLS_SSTATS_LEN; i++) {
+		if (sset == ETH_SS_STATS)
+			memcpy(data + i * ETH_GSTRING_LEN,
+			       axienet_get_ethtools_strings_stats[i].name,
+			       ETH_GSTRING_LEN);
+	}
+#ifdef CONFIG_AXIENET_HAS_MCDMA
+	axienet_strings(ndev, sset, data);
+#endif
+}
+
 static const struct ethtool_ops axienet_ethtool_ops = {
 	.supported_coalesce_params = ETHTOOL_COALESCE_MAX_FRAMES |
 				     ETHTOOL_COALESCE_USECS,
@@ -2603,14 +2691,12 @@ static const struct ethtool_ops axienet_ethtool_ops = {
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
 	.get_ts_info    = axienet_ethtools_get_ts_info,
 #endif
+	.get_sset_count	= axienet_ethtools_sset_count,
+	.get_ethtool_stats = axienet_ethtools_get_stats,
+	.get_strings = axienet_ethtools_strings,
 	.get_link_ksettings = axienet_ethtools_get_link_ksettings,
 	.set_link_ksettings = axienet_ethtools_set_link_ksettings,
 	.nway_reset	= axienet_ethtools_nway_reset,
-#ifdef CONFIG_AXIENET_HAS_MCDMA
-	.get_sset_count	 = axienet_sset_count,
-	.get_ethtool_stats = axienet_get_stats,
-	.get_strings = axienet_strings,
-#endif
 };
 
 #ifdef CONFIG_AXIENET_HAS_MCDMA
