@@ -165,6 +165,7 @@ extern void spi_transfer_cs_change_delay_exec(struct spi_message *msg,
  *	(optional, NULL when not using a GPIO line)
  * @word_delay: delay to be inserted between consecutive
  *	words of a transfer
+ * @multi_die: Flash device with multiple dies.
  * @cs_setup: delay to be introduced by the controller after CS is asserted
  * @cs_hold: delay to be introduced by the controller before CS is deasserted
  * @cs_inactive: delay to be introduced by the controller after CS is
@@ -220,6 +221,7 @@ struct spi_device {
 	const char		*driver_override;
 	struct gpio_desc	*cs_gpiod[SPI_CS_CNT_MAX];	/* Chip select gpio desc */
 	struct spi_delay	word_delay; /* Inter-word delay */
+	bool			multi_die;	/* flash with multiple dies*/
 	/* CS delays */
 	struct spi_delay	cs_setup;
 	struct spi_delay	cs_hold;
