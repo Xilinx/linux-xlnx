@@ -228,12 +228,6 @@ static bool zynq_qspi_supports_op(struct spi_mem *mem,
 	if (!spi_mem_default_supports_op(mem, op))
 		return false;
 
-	/*
-	 * The number of address bytes should be equal to or less than 3 bytes.
-	 */
-	if (op->addr.nbytes > 3)
-		return false;
-
 	return true;
 }
 
