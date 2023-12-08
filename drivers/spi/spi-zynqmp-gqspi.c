@@ -244,6 +244,28 @@ bool zynqmp_gqspi_update_stripe(const struct spi_mem_op *op)
 }
 
 /**
+ * zynqmp_get_addr_buswidth - Get address buswidth
+ * @op:	The memory operation to execute
+ *
+ * This function gets address busswith
+ *
+ * Return:	buswidth
+ */
+static u8 zynqmp_get_addr_buswidth(const struct spi_mem_op *op)
+{
+	if (op->cmd.opcode == SPINOR_OP_BE_4K ||
+	    op->cmd.opcode == SPINOR_OP_BE_32K ||
+	    op->cmd.opcode == SPINOR_OP_CHIP_ERASE ||
+	    op->cmd.opcode == SPINOR_OP_SE ||
+	    op->cmd.opcode == SPINOR_OP_BE_4K_4B ||
+	    op->cmd.opcode == SPINOR_OP_BE_32K_4B ||
+	    op->cmd.opcode == SPINOR_OP_SE_4B)
+		return op->cmd.buswidth;
+
+	return op->addr.buswidth;
+}
+
+/**
  * zynqmp_gqspi_read - For GQSPI controller read operation
  * @xqspi:	Pointer to the zynqmp_qspi structure
  * @offset:	Offset from where to read
@@ -1104,6 +1126,7 @@ static int zynqmp_qspi_exec_op(struct spi_mem *mem,
 	u16 opcode = op->cmd.opcode;
 	unsigned long long ms;
 	u64 opaddr;
+	u8 addrbuswidth = zynqmp_get_addr_buswidth(op);
 
 	dev_dbg(xqspi->dev, "cmd:%#x mode:%d.%d.%d.%d\n",
 		op->cmd.opcode, op->cmd.buswidth, op->addr.buswidth,
@@ -1147,7 +1170,7 @@ static int zynqmp_qspi_exec_op(struct spi_mem *mem,
 		xqspi->rxbuf = NULL;
 		xqspi->bytes_to_transfer = op->addr.nbytes;
 		xqspi->bytes_to_receive = 0;
-		zynqmp_qspi_write_op(xqspi, op->addr.buswidth, genfifoentry);
+		zynqmp_qspi_write_op(xqspi, addrbuswidth, genfifoentry);
 		zynqmp_gqspi_write(xqspi, GQSPI_CONFIG_OFST,
 				   zynqmp_gqspi_read(xqspi,
 						     GQSPI_CONFIG_OFST) |
