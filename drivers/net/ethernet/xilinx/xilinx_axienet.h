@@ -347,6 +347,29 @@
 #define XLNX_MII_STD_SELECT_SGMII	BIT(0)
 #define XAXIENET_NAPI_WEIGHT		64
 
+/* XXV MAC Register Definitions */
+#define XXV_TC_OFFSET			0x0000000C
+#define XXV_RCW1_OFFSET			0x00000014
+#define XXV_JUM_OFFSET			0x00000018
+#define XXV_TICKREG_OFFSET		0x00000020
+#define XXV_STATRX_BLKLCK_OFFSET	0x0000040C
+#define XXV_STAT_GTWIZ_OFFSET		0x000004A0
+#define XXV_CONFIG_REVISION		0x00000024
+
+/* XXV MAC Register Mask Definitions */
+#define XXV_TC_TX_MASK		BIT(0)
+#define XXV_RCW1_RX_MASK	BIT(0)
+#define XXV_RCW1_FCS_MASK	BIT(1)
+#define XXV_TC_FCS_MASK		BIT(1)
+#define XXV_MIN_JUM_MASK	GENMASK(7, 0)
+#define XXV_MAX_JUM_MASK	GENMASK(10, 8)
+#define XXV_RX_BLKLCK_MASK	BIT(0)
+#define XXV_TICKREG_STATEN_MASK BIT(0)
+#define XXV_MAC_MIN_PKT_LEN	64
+#define XXV_GTWIZ_RESET_DONE	(BIT(0) | BIT(1))
+#define XXV_MAJ_MASK		GENMASK(7, 0)
+#define XXV_MIN_MASK		GENMASK(15, 8)
+
 /**
  * struct axidma_bd - Axi Dma buffer descriptor layout
  * @next:         MM2S/S2MM Next Descriptor Pointer
@@ -436,6 +459,8 @@ struct axidma_bd {
  * @coalesce_usec_tx:	IRQ coalesce delay for TX
  * @eth_hasnobuf: Ethernet is configured in Non buf mode.
  * @axienet_config: Ethernet config structure
+ * @ptp_os_cf: CF TS of PTP PDelay req for one step usage.
+ * @xxv_ip_version: XXV IP version
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -495,6 +520,8 @@ struct axienet_local {
 	u32 coalesce_usec_tx;
 	bool eth_hasnobuf;
 	const struct axienet_config *axienet_config;
+	u64 ptp_os_cf;		/* CF TS of PTP PDelay req for one step usage */
+	u32 xxv_ip_version;
 };
 
 /**
@@ -503,12 +530,14 @@ struct axienet_local {
  * @XAXIENET_1G:	 IP is 1G MAC
  * @XAXIENET_2_5G:	 IP type is 2.5G MAC.
  * @XAXIENET_LEGACY_10G: IP type is legacy 10G MAC.
+ * @XAXIENET_10G_25G:	 IP type is 10G/25G MAC(XXV MAC).
  *
  */
 enum axienet_ip_type {
 	XAXIENET_1G = 0,
 	XAXIENET_2_5G,
 	XAXIENET_LEGACY_10G,
+	XAXIENET_10G_25G,
 };
 
 struct axienet_config {
@@ -523,6 +552,12 @@ struct axienet_config {
  * @m_or:	Mask to be ORed for setting the option in the register
  */
 struct axienet_option {
+	u32 opt;
+	u32 reg;
+	u32 m_or;
+};
+
+struct xxvenet_option {
 	u32 opt;
 	u32 reg;
 	u32 m_or;
