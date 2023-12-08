@@ -1111,7 +1111,8 @@ static int zynqmp_qspi_exec_op(struct spi_mem *mem,
 		xqspi->rxbuf = NULL;
 		xqspi->bytes_to_transfer = op->cmd.nbytes;
 		xqspi->bytes_to_receive = 0;
-		zynqmp_qspi_write_op(xqspi, op->cmd.buswidth, genfifoentry);
+		/* Opcode always gets transmitted on single line */
+		zynqmp_qspi_write_op(xqspi, 0x1, genfifoentry);
 		zynqmp_gqspi_write(xqspi, GQSPI_CONFIG_OFST,
 				   zynqmp_gqspi_read(xqspi, GQSPI_CONFIG_OFST) |
 				   GQSPI_CFG_START_GEN_FIFO_MASK);
