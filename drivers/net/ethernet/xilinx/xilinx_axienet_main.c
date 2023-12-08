@@ -3688,18 +3688,21 @@ static int axienet_probe(struct platform_device *pdev)
 	lp->coalesce_count_tx = XAXIDMA_DFT_TX_THRESHOLD;
 	lp->coalesce_usec_tx = XAXIDMA_DFT_TX_USEC;
 
-	if (lp->phy_mode == PHY_INTERFACE_MODE_SGMII ||
-	    lp->phy_mode == PHY_INTERFACE_MODE_1000BASEX) {
+	if (lp->axienet_config->mactype != XAXIENET_10G_25G &&
+	    lp->axienet_config->mactype != XAXIENET_MRMAC) {
 		np = of_parse_phandle(pdev->dev.of_node, "pcs-handle", 0);
 		if (!np) {
-			/* Deprecated: Always use "pcs-handle" for pcs_phy.
-			 * Falling back to "phy-handle" here is only for
-			 * backward compatibility with old device trees.
+			/* For SGMII/1000BaseX:
+			 * "phy-handle" is deprecated; always use "pcs-handle"
+			 * for pcs_phy. Falling back to "phy-handle" here is
+			 * only for backward compatiblility with old device trees"
+			 * For RGMII:
+			 * "phy-handle" is used to describe external PHY.
 			 */
 			np = of_parse_phandle(pdev->dev.of_node, "phy-handle", 0);
 		}
 		if (!np) {
-			dev_err(&pdev->dev, "pcs-handle (preferred) or phy-handle required for 1000BaseX/SGMII\n");
+			dev_err(&pdev->dev, "pcs-handle (preferred for 1000BaseX/SGMII) or phy-handle required for external PHY\n");
 			ret = -EINVAL;
 			goto cleanup_mdio;
 		}
