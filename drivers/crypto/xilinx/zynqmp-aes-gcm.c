@@ -457,9 +457,8 @@ static int zynqmp_aes_aead_setkey(struct crypto_aead *aead, const u8 *key,
 		    keysrc == ZYNQMP_AES_DEV_KEY ||
 		    keysrc == ZYNQMP_AES_PUF_KEY) {
 			tfm_ctx->keysrc = keysrc;
-		} else {
-			tfm_ctx->keylen = keylen;
 		}
+		return 0;
 	} else {
 		tfm_ctx->keylen = keylen;
 		if (keylen == ZYNQMP_AES_KEY_SIZE) {
@@ -491,6 +490,8 @@ static int versal_aes_aead_setkey(struct crypto_aead *aead, const u8 *key,
 			tfm_ctx->keysrc = keysrc;
 		else
 			tfm_ctx->keysrc = VERSAL_AES_USER_KEY_0;
+
+		return 0;
 	} else {
 		tfm_ctx->keylen = keylen;
 		if (keylen == XSECURE_AES_KEY_SIZE_256 ||
