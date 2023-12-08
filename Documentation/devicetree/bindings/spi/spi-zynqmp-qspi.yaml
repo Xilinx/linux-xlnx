@@ -37,6 +37,12 @@ properties:
 
   power-domains:
     maxItems: 1
+  has-io-mode:
+    $ref: /schemas/types.yaml#/definitions/flag
+    description:
+      Describes the controller operating mode.
+      If exists controller will operate in IO
+      mode else DMA mode.
 
 required:
   - compatible
@@ -62,5 +68,6 @@ examples:
         interrupt-parent = <&gic>;
         reg = <0x0 0xff0f0000 0x0 0x1000>,
               <0x0 0xc0000000 0x0 0x8000000>;
+        has-io-mode;
       };
     };
