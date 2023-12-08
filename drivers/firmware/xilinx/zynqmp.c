@@ -1693,6 +1693,27 @@ int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags)
 EXPORT_SYMBOL_GPL(zynqmp_pm_sha_hash);
 
 /**
+ * zynqmp_pm_rsa - Access RSA hardware to encrypt/decrypt the data with RSA.
+ * @address:	Address of the data
+ * @size:	Size of the data.
+ * @flags:
+ *		BIT(0) - Encryption/Decryption
+ *			 0 - RSA decryption with private key
+ *			 1 - RSA encryption with public key.
+ *
+ * Return:	Returns status, either success or error code.
+ */
+int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags)
+{
+	u32 lower_32_bits = lower_32_bits(address);
+	u32 upper_32_bits = upper_32_bits(address);
+
+	return zynqmp_pm_invoke_fn(PM_SECURE_RSA, NULL, 4, upper_32_bits,
+				   lower_32_bits, size, flags);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_rsa);
+
+/**
  * zynqmp_pm_register_notifier() - PM API for register a subsystem
  *                                to be notified about specific
  *                                event/error.

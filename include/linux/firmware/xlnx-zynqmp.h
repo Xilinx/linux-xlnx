@@ -164,7 +164,10 @@ enum pm_api_id {
 	PM_FPGA_LOAD = 22,
 	PM_FPGA_GET_STATUS = 23,
 	PM_GET_CHIPID = 24,
+	/* ID 25 is been used by U-boot to process secure boot images */
+	/* Secure library generic API functions */
 	PM_SECURE_SHA = 26,
+	PM_SECURE_RSA = 27,
 	PM_PINCTRL_REQUEST = 28,
 	PM_PINCTRL_RELEASE = 29,
 	PM_PINCTRL_GET_FUNCTION = 30,
@@ -618,6 +621,7 @@ int zynqmp_pm_efuse_access(const u64 address, u32 *out);
 int zynqmp_pm_fpga_read(const u32 reg_numframes, const u64 phys_address,
 			u32 readback_type, u32 *value);
 int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags);
+int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_fpga_load(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_fpga_get_status(u32 *value);
 int zynqmp_pm_fpga_get_config_status(u32 *value);
@@ -996,6 +1000,12 @@ static inline int zynqmp_pm_request_wake(const u32 node,
 					 const bool set_addr,
 					 const u64 address,
 					 const enum zynqmp_pm_request_ack ack)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_rsa(const u64 address, const u32 size,
+				const u32 flags)
 {
 	return -ENODEV;
 }
