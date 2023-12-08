@@ -10,6 +10,8 @@ maintainers:
   - Kalyani Akula <kalyani.akula@amd.com>
   - Michal Simek <michal.simek@amd.com>
 
+deprecated: true
+
 description: |
   The ZynqMP AES-GCM hardened cryptographic accelerator is used to
   encrypt or decrypt the data with provided key and initialization vector.
