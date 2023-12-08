@@ -62,6 +62,9 @@
 #define PM_SET_SUSPEND_MODE		0xa02
 #define GET_CALLBACK_DATA		0xa01
 
+/* xilSecure API commands  module id + api id */
+#define XSECURE_API_SHA3_UPDATE		0x504
+
 /* XilPuf API commands module id + api id */
 #define XPUF_API_PUF_REGISTRATION	0xc01
 #define XPUF_API_PUF_REGENERATION	0xc02
@@ -677,6 +680,7 @@ int zynqmp_pm_aie_operation(u32 node, u16 start_col, u16 num_col, u32 operation)
 int versal_pm_puf_registration(const u64 in_addr);
 int versal_pm_puf_regeneration(const u64 in_addr);
 int zynqmp_pm_get_qos(u32 node, u32 *const def_qos, u32 *const qos);
+int versal_pm_sha_hash(const u64 src, const u64 dst, const u32 size);
 #else
 static inline int zynqmp_pm_get_api_version(u32 *version)
 {
@@ -1103,6 +1107,12 @@ static inline int versal_pm_puf_regeneration(const u64 in_addr)
 {
 	return -ENODEV;
 }
+
+static inline int versal_pm_sha_hash(const u64 src, const u64 dst, const u32 size)
+{
+	return -ENODEV;
+}
+
 #endif
 
 #endif /* __FIRMWARE_ZYNQMP_H__ */

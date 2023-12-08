@@ -1693,6 +1693,23 @@ int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags)
 EXPORT_SYMBOL_GPL(zynqmp_pm_sha_hash);
 
 /**
+ * versal_pm_sha_hash - Access the SHA engine to calculate the hash
+ * @src:	Address of the data
+ * @dst:	Address of the output buffer
+ * @size:	Size of the data.
+ *
+ * Return:	Returns status, either success or error code.
+ */
+int versal_pm_sha_hash(const u64 src, const u64 dst, const u32 size)
+{
+	return zynqmp_pm_invoke_fn(XSECURE_API_SHA3_UPDATE, NULL, 5,
+				   lower_32_bits(src), upper_32_bits(src),
+				   size,
+				   lower_32_bits(dst), upper_32_bits(dst));
+}
+EXPORT_SYMBOL_GPL(versal_pm_sha_hash);
+
+/**
  * zynqmp_pm_rsa - Access RSA hardware to encrypt/decrypt the data with RSA.
  * @address:	Address of the data
  * @size:	Size of the data.
