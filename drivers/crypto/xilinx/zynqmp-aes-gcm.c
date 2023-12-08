@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Xilinx ZynqMP AES Driver.
- * Copyright (c) 2020 Xilinx Inc.
+ * Copyright (C) 2020 - 2022 Xilinx Inc.
+ * Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc.
  */
 
 #include <crypto/aes.h>
@@ -56,6 +57,9 @@ struct xilinx_aead_drv_ctx {
 	struct aead_engine_alg aead;
 	struct device *dev;
 	struct crypto_engine *engine;
+	int (*aes_aead_cipher)(struct aead_request *areq);
+	int (*fallback_check)(struct zynqmp_aead_tfm_ctx *ctx,
+			      struct aead_request *areq);
 };
 
 struct zynqmp_aead_hw_req {
@@ -205,12 +209,16 @@ static int handle_aes_req(struct crypto_engine *engine, void *req)
 				container_of(req, struct aead_request, base);
 	struct crypto_aead *aead = crypto_aead_reqtfm(req);
 	struct zynqmp_aead_tfm_ctx *tfm_ctx = crypto_aead_ctx(aead);
+	struct aead_alg *alg = crypto_aead_alg(aead);
+	struct xilinx_aead_drv_ctx *drv_ctx;
+
 	struct zynqmp_aead_req_ctx *rq_ctx = aead_request_ctx(areq);
 	struct aead_request *subreq = aead_request_ctx(req);
 	int need_fallback;
 	int err;
 
-	need_fallback = zynqmp_fallback_check(tfm_ctx, areq);
+	drv_ctx = container_of(alg, struct xilinx_aead_drv_ctx, aead.base);
+	need_fallback = drv_ctx->fallback_check(tfm_ctx, areq);
 
 	if (need_fallback) {
 		aead_request_set_tfm(subreq, tfm_ctx->fbk_cipher);
@@ -225,7 +233,7 @@ static int handle_aes_req(struct crypto_engine *engine, void *req)
 		else
 			err = crypto_aead_decrypt(subreq);
 	} else {
-		err = zynqmp_aes_aead_cipher(areq);
+		err = drv_ctx->aes_aead_cipher(areq);
 	}
 
 	local_bh_disable();
@@ -345,7 +353,9 @@ static void zynqmp_aes_aead_exit(struct crypto_aead *aead)
 	memzero_explicit(tfm_ctx, sizeof(struct zynqmp_aead_tfm_ctx));
 }
 
-static struct xilinx_aead_drv_ctx aes_drv_ctx = {
+static struct xilinx_aead_drv_ctx zynqmp_aes_drv_ctx = {
+	.fallback_check = zynqmp_fallback_check,
+	.aes_aead_cipher = zynqmp_aes_aead_cipher,
 	.aead.base = {
 		.setkey		= zynqmp_aes_aead_setkey,
 		.setauthsize	= zynqmp_aes_aead_setauthsize,
@@ -374,16 +384,36 @@ static struct xilinx_aead_drv_ctx aes_drv_ctx = {
 	},
 };
 
+static struct xlnx_feature aes_feature_map[] = {
+	{
+		.family = ZYNQMP_FAMILY_CODE,
+		.subfamily = ALL_SUB_FAMILY_CODE,
+		.feature_id = PM_SECURE_AES,
+		.data = &zynqmp_aes_drv_ctx,
+	},
+	{ /* sentinel */ }
+};
+
 static int zynqmp_aes_aead_probe(struct platform_device *pdev)
 {
+	struct xilinx_aead_drv_ctx *aes_drv_ctx;
 	struct device *dev = &pdev->dev;
 	int err;
 
+	/* Verify the hardware is present */
+	aes_drv_ctx = xlnx_get_crypto_dev_data(aes_feature_map);
+	if (IS_ERR(aes_drv_ctx)) {
+		dev_err(dev, "AES is not supported on the platform\n");
+		return PTR_ERR(aes_drv_ctx);
+	}
+
 	/* ZynqMP AES driver supports only one instance */
-	if (!aes_drv_ctx.dev)
-		aes_drv_ctx.dev = dev;
+	if (!aes_drv_ctx->dev)
+		aes_drv_ctx->dev = dev;
 	else
 		return -ENODEV;
+
+	platform_set_drvdata(pdev, aes_drv_ctx);
 
 	err = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(ZYNQMP_DMA_BIT_MASK));
 	if (err < 0) {
@@ -391,40 +421,41 @@ static int zynqmp_aes_aead_probe(struct platform_device *pdev)
 		return err;
 	}
 
-	aes_drv_ctx.engine = crypto_engine_alloc_init(dev, 1);
-	if (!aes_drv_ctx.engine) {
+	aes_drv_ctx->engine = crypto_engine_alloc_init(dev, 1);
+	if (!aes_drv_ctx->engine) {
 		dev_err(dev, "Cannot alloc AES engine\n");
 		err = -ENOMEM;
 		goto err_engine;
 	}
 
-	err = crypto_engine_start(aes_drv_ctx.engine);
+	err = crypto_engine_start(aes_drv_ctx->engine);
 	if (err) {
 		dev_err(dev, "Cannot start AES engine\n");
 		goto err_engine;
 	}
 
-	err = crypto_engine_register_aead(&aes_drv_ctx.aead);
+	err = crypto_engine_register_aead(&aes_drv_ctx->aead);
 	if (err < 0) {
 		dev_err(dev, "Failed to register AEAD alg.\n");
-		goto err_aead;
+		goto err_engine;
 	}
 	return 0;
 
-err_aead:
-	crypto_engine_unregister_aead(&aes_drv_ctx.aead);
-
 err_engine:
-	if (aes_drv_ctx.engine)
-		crypto_engine_exit(aes_drv_ctx.engine);
+	if (aes_drv_ctx->engine)
+		crypto_engine_exit(aes_drv_ctx->engine);
 
 	return err;
 }
 
 static void zynqmp_aes_aead_remove(struct platform_device *pdev)
 {
-	crypto_engine_exit(aes_drv_ctx.engine);
-	crypto_engine_unregister_aead(&aes_drv_ctx.aead);
+	struct xilinx_aead_drv_ctx *aes_drv_ctx;
+
+	aes_drv_ctx = platform_get_drvdata(pdev);
+
+	crypto_engine_exit(aes_drv_ctx->engine);
+	crypto_engine_unregister_aead(&aes_drv_ctx->aead);
 }
 
 static const struct of_device_id zynqmp_aes_dt_ids[] = {
