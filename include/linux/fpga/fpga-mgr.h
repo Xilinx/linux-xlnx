@@ -226,6 +226,7 @@ struct fpga_manager_ops {
  * @mops: pointer to struct of fpga manager ops
  * @mops_owner: module containing the mops
  * @priv: low level driver private date
+ * @err: low level driver error code
  * @dir: debugfs image directory
  */
 struct fpga_manager {
@@ -241,6 +242,7 @@ struct fpga_manager {
 	const struct fpga_manager_ops *mops;
 	struct module *mops_owner;
 	void *priv;
+	int err;
 #ifdef CONFIG_FPGA_MGR_DEBUG_FS
 	struct dentry *dir;
 #endif
