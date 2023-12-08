@@ -1049,11 +1049,26 @@ static int __maybe_unused zynqmp_qspi_resume(struct device *dev)
 {
 	struct zynqmp_qspi *xqspi = dev_get_drvdata(dev);
 	struct spi_controller *ctlr = xqspi->ctlr;
+	int ret = 0;
 
-	zynqmp_gqspi_write(xqspi, GQSPI_EN_OFST, GQSPI_EN_MASK);
+	ret = clk_enable(xqspi->pclk);
+	if (ret) {
+		dev_err(dev, "Cannot enable APB clock.\n");
+		return ret;
+	}
 
+	ret = clk_enable(xqspi->refclk);
+	if (ret) {
+		dev_err(dev, "Cannot enable device clock.\n");
+		clk_disable(xqspi->pclk);
+		return ret;
+	}
+
+	zynqmp_qspi_init_hw(xqspi);
 	spi_controller_resume(ctlr);
 
+	clk_disable(xqspi->refclk);
+	clk_disable(xqspi->pclk);
 	return 0;
 }
 
@@ -1069,8 +1084,8 @@ static int __maybe_unused zynqmp_runtime_suspend(struct device *dev)
 {
 	struct zynqmp_qspi *xqspi = dev_get_drvdata(dev);
 
-	clk_disable_unprepare(xqspi->refclk);
-	clk_disable_unprepare(xqspi->pclk);
+	clk_disable(xqspi->refclk);
+	clk_disable(xqspi->pclk);
 
 	return 0;
 }
@@ -1088,16 +1103,16 @@ static int __maybe_unused zynqmp_runtime_resume(struct device *dev)
 	struct zynqmp_qspi *xqspi = dev_get_drvdata(dev);
 	int ret;
 
-	ret = clk_prepare_enable(xqspi->pclk);
+	ret = clk_enable(xqspi->pclk);
 	if (ret) {
 		dev_err(dev, "Cannot enable APB clock.\n");
 		return ret;
 	}
 
-	ret = clk_prepare_enable(xqspi->refclk);
+	ret = clk_enable(xqspi->refclk);
 	if (ret) {
 		dev_err(dev, "Cannot enable device clock.\n");
-		clk_disable_unprepare(xqspi->pclk);
+		clk_disable(xqspi->pclk);
 		return ret;
 	}
 
@@ -1285,9 +1300,20 @@ return_err:
 	return err;
 }
 
+static int __maybe_unused zynqmp_runtime_idle(struct device *dev)
+{
+	struct zynqmp_qspi *xqspi = dev_get_drvdata(dev);
+	u32 value;
+
+	value = zynqmp_gqspi_read(xqspi, GQSPI_EN_OFST);
+	if (value)
+		return -EBUSY;
+
+	return 0;
+}
 static const struct dev_pm_ops zynqmp_qspi_dev_pm_ops = {
 	SET_RUNTIME_PM_OPS(zynqmp_runtime_suspend,
-			   zynqmp_runtime_resume, NULL)
+			   zynqmp_runtime_resume, zynqmp_runtime_idle)
 	SET_SYSTEM_SLEEP_PM_OPS(zynqmp_qspi_suspend, zynqmp_qspi_resume)
 };
 
