@@ -365,6 +365,9 @@ static int fpga_mgr_buf_load_sg(struct fpga_manager *mgr,
 {
 	int ret;
 
+	if (info->flags & FPGA_MGR_USERKEY_ENCRYPTED_BITSTREAM)
+		memcpy(info->key, mgr->key, ENCRYPTED_KEY_LEN);
+
 	ret = fpga_mgr_prepare_sg(mgr, info, sgt);
 	if (ret)
 		return ret;
