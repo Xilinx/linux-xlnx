@@ -368,7 +368,7 @@ static struct xilinx_aead_drv_ctx zynqmp_aes_drv_ctx = {
 		.base = {
 		.cra_name		= "gcm(aes)",
 		.cra_driver_name	= "zynqmp-aes-gcm",
-		.cra_priority		= 200,
+		.cra_priority		= 300,
 		.cra_flags		= CRYPTO_ALG_TYPE_AEAD |
 					  CRYPTO_ALG_ASYNC |
 					  CRYPTO_ALG_ALLOCATES_MEMORY |
