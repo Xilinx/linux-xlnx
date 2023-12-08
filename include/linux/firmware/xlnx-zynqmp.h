@@ -186,6 +186,8 @@ enum pm_api_id {
 	PM_SECURE_AES = 47,
 	PM_EFUSE_ACCESS = 53,
 	PM_FEATURE_CHECK = 63,
+	PM_FPGA_GET_VERSION = 72,
+	PM_FPGA_GET_FEATURE_LIST = 73,
 };
 
 /* PMU-FW return status codes */
@@ -604,6 +606,8 @@ int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_fpga_load(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_fpga_get_status(u32 *value);
 int zynqmp_pm_fpga_get_config_status(u32 *value);
+int zynqmp_pm_fpga_get_version(u32 *value);
+int zynqmp_pm_fpga_get_feature_list(u32 *value);
 int zynqmp_pm_write_ggs(u32 index, u32 value);
 int zynqmp_pm_read_ggs(u32 index, u32 *value);
 int zynqmp_pm_write_pggs(u32 index, u32 value);
@@ -830,6 +834,16 @@ static inline int zynqmp_pm_fpga_get_status(u32 *value)
 }
 
 static inline int zynqmp_pm_fpga_get_config_status(u32 *value)
+{
+	return -ENODEV;
+}
+
+static int zynqmp_pm_fpga_get_version(u32 *value)
+{
+	return -ENODEV;
+}
+
+static int zynqmp_pm_fpga_get_feature_list(u32 *value)
 {
 	return -ENODEV;
 }
