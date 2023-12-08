@@ -722,6 +722,8 @@ static ssize_t firmware_store(struct device *dev,
 	/* struct with information about the FPGA image to program. */
 	struct fpga_image_info info = {0};
 
+	info.header_size = mgr->mops->initial_header_size;
+
 	/* lose terminating \n */
 	strcpy(image_name, buf);
 	len = strlen(image_name);
