@@ -64,6 +64,13 @@
 
 /* xilSecure API commands  module id + api id */
 #define XSECURE_API_SHA3_UPDATE		0x504
+#define XSECURE_API_AES_OP_INIT		0x50a
+#define XSECURE_API_AES_UPDATE_AAD	0x50b
+#define XSECURE_API_AES_ENCRYPT_UPDATE	0x50c
+#define XSECURE_API_AES_ENCRYPT_FINAL	0x50d
+#define XSECURE_API_AES_DECRYPT_UPDATE	0x50e
+#define XSECURE_API_AES_DECRYPT_FINAL	0x50f
+#define XSECURE_API_AES_WRITE_KEY	0x511
 
 /* XilPuf API commands module id + api id */
 #define XPUF_API_PUF_REGISTRATION	0xc01
@@ -141,6 +148,11 @@ enum pm_module_id {
 #define XILINX_AIE_OPS_DATA_MEM_ZEROIZATION		BIT(8U)
 #define XILINX_AIE_OPS_MEM_TILE_ZEROIZATION		BIT(9U)
 
+
+enum xsecure_aeskeysize {
+	XSECURE_AES_KEY_SIZE_128 = 16,
+	XSECURE_AES_KEY_SIZE_256 = 32,
+};
 
 enum pm_api_cb_id {
 	PM_INIT_SUSPEND_CB = 30,
@@ -681,6 +693,14 @@ int versal_pm_puf_registration(const u64 in_addr);
 int versal_pm_puf_regeneration(const u64 in_addr);
 int zynqmp_pm_get_qos(u32 node, u32 *const def_qos, u32 *const qos);
 int versal_pm_sha_hash(const u64 src, const u64 dst, const u32 size);
+int versal_pm_aes_key_write(const u32 keylen,
+			    const u32 keysrc, const u64 keyaddr);
+int versal_pm_aes_op_init(const u64 hw_req);
+int versal_pm_aes_update_aad(const u64 aad_addr, const u32 aad_len);
+int versal_pm_aes_enc_update(const u64 in_params, const u64 in_addr);
+int versal_pm_aes_dec_update(const u64 in_params, const u64 in_addr);
+int versal_pm_aes_dec_final(const u64 gcm_addr);
+int versal_pm_aes_enc_final(const u64 gcm_addr);
 #else
 static inline int zynqmp_pm_get_api_version(u32 *version)
 {
@@ -1109,6 +1129,45 @@ static inline int versal_pm_puf_regeneration(const u64 in_addr)
 }
 
 static inline int versal_pm_sha_hash(const u64 src, const u64 dst, const u32 size)
+{
+	return -ENODEV;
+}
+
+static inline int versal_pm_aes_key_write(const u32 keylen,
+					  const u32 keysrc, const u64 keyaddr)
+{
+	return -ENODEV;
+}
+
+static inline int versal_pm_aes_op_init(const u64 hw_req)
+{
+	return -ENODEV;
+}
+
+static inline int versal_pm_aes_update_aad(const u64 aad_addr,
+					   const u32 aad_len)
+{
+	return -ENODEV;
+}
+
+static inline int versal_pm_aes_enc_update(const u64 in_params,
+					   const u64 in_addr)
+{
+	return -ENODEV;
+}
+
+static inline int versal_pm_aes_dec_update(const u64 in_params,
+					   const u64 in_addr)
+{
+	return -ENODEV;
+}
+
+static inline int versal_pm_aes_enc_final(const u64 gcm_addr)
+{
+	return -ENODEV;
+}
+
+static inline int versal_pm_aes_dec_final(const u64 gcm_addr)
 {
 	return -ENODEV;
 }
