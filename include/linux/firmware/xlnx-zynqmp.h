@@ -598,6 +598,8 @@ int zynqmp_pm_set_requirement(const u32 node, const u32 capabilities,
 			      const enum zynqmp_pm_request_ack ack);
 int zynqmp_pm_aes_engine(const u64 address, u32 *out);
 int zynqmp_pm_efuse_access(const u64 address, u32 *out);
+int zynqmp_pm_fpga_read(const u32 reg_numframes, const u64 phys_address,
+			u32 readback_type, u32 *value);
 int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_fpga_load(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_fpga_get_status(u32 *value);
@@ -905,6 +907,13 @@ static inline int zynqmp_pm_pinctrl_set_config(const u32 pin, const u32 param,
 }
 
 static inline int zynqmp_pm_load_pdi(const u32 src, const u64 address)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_fpga_read(const u32 reg_numframes,
+				      const u64 phys_address, u32 readback_type,
+				      u32 *value)
 {
 	return -ENODEV;
 }
