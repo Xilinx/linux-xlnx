@@ -54,9 +54,6 @@
 #define DWC3_PWR_STATE_RETRIES			1000
 #define DWC3_PWR_TIMEOUT			100
 
-/* Versal USB Node ID */
-#define VERSAL_USB_NODE_ID			0x18224018
-
 #define XLNX_USB_FPD_PIPE_CLK			0x7c
 #define PIPE_CLK_DESELECT			1
 #define PIPE_CLK_SELECT				0
@@ -207,9 +204,21 @@ static int dwc3_zynqmp_power_req(struct device *dev, bool on)
 static int dwc3_versal_power_req(struct device *dev, bool on)
 {
 	int ret;
+	u32 pm_info[2];
 	struct dwc3_xlnx *priv_data;
 
 	priv_data = dev_get_drvdata(dev);
+
+	/* Check if entering into D3 state is allowed during suspend */
+	if (!priv_data->enable_d3_suspend)
+		return 0;
+
+	ret = of_property_read_u32_array(dev->of_node, "power-domains",
+					 pm_info, ARRAY_SIZE(pm_info));
+	if (ret < 0) {
+		dev_err(dev, "Failed to read power management information\n");
+		return ret;
+	}
 
 	if (on) {
 		dev_dbg(dev, "%s:Trying to set power state to D0....\n",
@@ -222,7 +231,7 @@ static int dwc3_versal_power_req(struct device *dev, bool on)
 		if (ret < 0)
 			dev_err(priv_data->dev, "failed to De-assert Reset\n");
 
-		ret = zynqmp_pm_usb_set_state(VERSAL_USB_NODE_ID,
+		ret = zynqmp_pm_usb_set_state(pm_info[1],
 					      XLNX_REQ_PWR_STATE_D0,
 					      DWC3_PWR_STATE_RETRIES *
 					      DWC3_PWR_TIMEOUT);
@@ -237,7 +246,7 @@ static int dwc3_versal_power_req(struct device *dev, bool on)
 		if (priv_data->pmu_state == D3_STATE)
 			return 0;
 
-		ret = zynqmp_pm_usb_set_state(VERSAL_USB_NODE_ID,
+		ret = zynqmp_pm_usb_set_state(pm_info[1],
 					      XLNX_REQ_PWR_STATE_D3,
 					      DWC3_PWR_STATE_RETRIES *
 					      DWC3_PWR_TIMEOUT);
