@@ -1765,6 +1765,22 @@ int zynqmp_pm_xilsem_cram_errinj(u32 frame, u32 qword, u32 bit, u32 row,
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_xilsem_cram_errinj);
 
+int versal_pm_puf_registration(const u64 in_addr)
+{
+	return zynqmp_pm_invoke_fn(XPUF_API_PUF_REGISTRATION, NULL,
+				   2, lower_32_bits(in_addr),
+				   upper_32_bits(in_addr));
+}
+EXPORT_SYMBOL_GPL(versal_pm_puf_registration);
+
+int versal_pm_puf_regeneration(const u64 in_addr)
+{
+	return zynqmp_pm_invoke_fn(XPUF_API_PUF_REGENERATION, NULL,
+				   2, lower_32_bits(in_addr),
+				   upper_32_bits(in_addr));
+}
+EXPORT_SYMBOL_GPL(versal_pm_puf_regeneration);
+
 /**
  * zynqmp_pm_xilsem_cram_readecc - PM call to perform CFRAME ECC read
  * @frame:	Frame number to be used for reading ECC

@@ -62,6 +62,10 @@
 #define PM_SET_SUSPEND_MODE		0xa02
 #define GET_CALLBACK_DATA		0xa01
 
+/* XilPuf API commands module id + api id */
+#define XPUF_API_PUF_REGISTRATION	0xc01
+#define XPUF_API_PUF_REGENERATION	0xc02
+
 /* XilSEM commands */
 #define PM_XSEM_HEADER			0x300
 #define PM_XSEM_CRAM_ERRINJ		0x304
@@ -640,6 +644,8 @@ int zynqmp_pm_xilsem_cram_errinj(u32 frame, u32 qword, u32 bit, u32 row, u32 *co
 int zynqmp_pm_xilsem_cram_readecc(u32 frame, u32 row, u32 *const response);
 int zynqmp_pm_xilsem_read_cfg(u32 *const response);
 int zynqmp_pm_aie_operation(u32 node, u16 start_col, u16 num_col, u32 operation);
+int versal_pm_puf_registration(const u64 in_addr);
+int versal_pm_puf_regeneration(const u64 in_addr);
 int zynqmp_pm_get_qos(u32 node, u32 *const def_qos, u32 *const qos);
 #else
 static inline int zynqmp_pm_get_api_version(u32 *version)
@@ -1021,6 +1027,16 @@ static inline int zynqmp_pm_xilsem_read_cfg(u32 *const response)
 
 static inline int zynqmp_pm_aie_operation(u32 node, u16 start_col,
 					  u16 num_col, u32 operation)
+{
+	return -ENODEV;
+}
+
+static inline int versal_pm_puf_registration(const u64 in_addr)
+{
+	return -ENODEV;
+}
+
+static inline int versal_pm_puf_regeneration(const u64 in_addr)
 {
 	return -ENODEV;
 }
