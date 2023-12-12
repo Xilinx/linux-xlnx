@@ -321,6 +321,13 @@ properties:
     maximum: 62
     deprecated: true
 
+  snps,xhci-reset-on-resume:
+    description:
+      When set, xhci host will reset the host controller on resume from
+      suspend. Some controllers might lose power during suspend, so host
+      require re-initialization.
+    type: boolean
+
   snps,rx-thr-num-pkt-prd:
     description:
       Periodic ESS RX packet threshold count (host mode only). Set this and

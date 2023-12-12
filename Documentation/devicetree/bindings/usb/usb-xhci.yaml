@@ -21,6 +21,13 @@ properties:
     description: Determines if platform is USB3 LPM capable
     type: boolean
 
+  snps,xhci-reset-on-resume:
+    description:
+      When set, xhci host will reset the host controller on resume from
+      suspend. Some controllers might lose power during suspend, so host
+      require re-initialization.
+    type: boolean
+
   quirk-broken-port-ped:
     description: Set if the controller has broken port disable mechanism
     type: boolean
