@@ -12,6 +12,7 @@
 #include <linux/platform_device.h>
 #include <linux/usb.h>
 #include <linux/usb/hcd.h>
+#include <linux/of_device.h>
 
 #include "../host/xhci-port.h"
 #include "../host/xhci-caps.h"
@@ -143,10 +144,11 @@ out:
 
 int dwc3_host_init(struct dwc3 *dwc)
 {
-	struct property_entry	props[6];
+	struct property_entry	props[7];
 	struct platform_device	*xhci;
 	int			ret, irq;
 	int			prop_idx = 0;
+	struct platform_device	*dwc3_pdev = to_platform_device(dwc->dev);
 
 	/*
 	 * Some platforms need to power off all Root hub ports immediately after DWC3 set to host
@@ -186,6 +188,10 @@ int dwc3_host_init(struct dwc3 *dwc)
 
 	if (dwc->usb2_lpm_disable)
 		props[prop_idx++] = PROPERTY_ENTRY_BOOL("usb2-lpm-disable");
+
+	if (device_property_read_bool(&dwc3_pdev->dev,
+				      "snps,xhci-reset-on-resume"))
+		props[prop_idx++] = PROPERTY_ENTRY_BOOL("xhci-reset-on-resume");
 
 	/**
 	 * WORKAROUND: dwc3 revisions <=3.00a have a limitation
