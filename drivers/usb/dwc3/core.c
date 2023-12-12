@@ -279,8 +279,10 @@ int dwc3_core_soft_reset(struct dwc3 *dwc)
 	 * We're resetting only the device side because, if we're in host mode,
 	 * XHCI driver will reset the host block. If dwc3 was configured for
 	 * host-only mode or current role is host, then we can return early.
+	 * When hibernated don't perform core soft reset.
 	 */
-	if (dwc->current_dr_role == DWC3_GCTL_PRTCAP_HOST)
+	if (dwc->current_dr_role == DWC3_GCTL_PRTCAP_HOST ||
+	    dwc->is_hibernated == true)
 		return 0;
 
 	/*
@@ -503,7 +505,7 @@ static struct dwc3_event_buffer *dwc3_alloc_one_event_buffer(struct dwc3 *dwc,
  * dwc3_free_event_buffers - frees all allocated event buffers
  * @dwc: Pointer to our controller context structure
  */
-static void dwc3_free_event_buffers(struct dwc3 *dwc)
+void dwc3_free_event_buffers(struct dwc3 *dwc)
 {
 	struct dwc3_event_buffer	*evt;
 
@@ -544,6 +546,9 @@ int dwc3_event_buffers_setup(struct dwc3 *dwc)
 {
 	struct dwc3_event_buffer	*evt;
 
+	if (dwc->dr_mode == USB_DR_MODE_HOST)
+		return 0;
+
 	evt = dwc->ev_buf;
 	evt->lpos = 0;
 	dwc3_writel(dwc->regs, DWC3_GEVNTADRLO(0),
@@ -570,6 +575,104 @@ void dwc3_event_buffers_cleanup(struct dwc3 *dwc)
 	dwc3_writel(dwc->regs, DWC3_GEVNTSIZ(0), DWC3_GEVNTSIZ_INTMASK
 			| DWC3_GEVNTSIZ_SIZE(0));
 	dwc3_writel(dwc->regs, DWC3_GEVNTCOUNT(0), 0);
+}
+
+static int dwc3_alloc_scratch_buffers(struct dwc3 *dwc)
+{
+	u32 size;
+
+	if (dwc->dr_mode == USB_DR_MODE_HOST)
+		return 0;
+
+	if (!dwc->has_hibernation)
+		return 0;
+
+	if (!dwc->nr_scratch)
+		return 0;
+
+	/* Allocate only if scratchbuf is NULL */
+	if (dwc->scratchbuf)
+		return 0;
+
+	size = dwc->nr_scratch * DWC3_SCRATCHBUF_SIZE;
+
+	dwc->scratchbuf = kzalloc(size, GFP_KERNEL);
+	if (!dwc->scratchbuf)
+		return -ENOMEM;
+
+	dwc->scratch_addr = dma_map_single(dwc->dev, dwc->scratchbuf, size,
+					   DMA_BIDIRECTIONAL);
+	if (dma_mapping_error(dwc->dev, dwc->scratch_addr)) {
+		dev_err(dwc->dev, "failed to map scratch buffer\n");
+		return -EFAULT;
+	}
+
+	return 0;
+}
+
+static int dwc3_setup_scratch_buffers(struct dwc3 *dwc)
+{
+	u32 param;
+	int ret;
+
+	if (dwc->dr_mode == USB_DR_MODE_HOST)
+		return 0;
+
+	if (!dwc->has_hibernation)
+		return 0;
+
+	if (!dwc->nr_scratch)
+		return 0;
+
+	 /* should never fall here */
+	if (WARN_ON(!dwc->scratchbuf))
+		return 0;
+
+	param = lower_32_bits(dwc->scratch_addr);
+
+	ret = dwc3_send_gadget_generic_command(dwc,
+			DWC3_DGCMD_SET_SCRATCHPAD_ADDR_LO, param);
+	if (ret < 0)
+		goto err1;
+
+	param = upper_32_bits(dwc->scratch_addr);
+
+	ret = dwc3_send_gadget_generic_command(dwc,
+			DWC3_DGCMD_SET_SCRATCHPAD_ADDR_HI, param);
+	if (ret < 0)
+		goto err1;
+
+	return 0;
+
+err1:
+	dma_unmap_single(dwc->sysdev, dwc->scratch_addr,
+			 (size_t)(dwc->nr_scratch *
+			 (size_t)DWC3_SCRATCHBUF_SIZE),
+			 DMA_BIDIRECTIONAL);
+
+	return ret;
+}
+
+static void dwc3_free_scratch_buffers(struct dwc3 *dwc)
+{
+	if (dwc->dr_mode == USB_DR_MODE_HOST)
+		return;
+
+	if (!dwc->has_hibernation)
+		return;
+
+	if (!dwc->nr_scratch)
+		return;
+
+	 /* should never fall here */
+	if (WARN_ON(!dwc->scratchbuf))
+		return;
+
+	dma_unmap_single(dwc->sysdev, dwc->scratch_addr,
+			 (size_t)(dwc->nr_scratch *
+			 (size_t)DWC3_SCRATCHBUF_SIZE),
+			 DMA_BIDIRECTIONAL);
+	kfree(dwc->scratchbuf);
 }
 
 static void dwc3_core_num_eps(struct dwc3 *dwc)
@@ -921,6 +1024,7 @@ static bool dwc3_core_is_valid(struct dwc3 *dwc)
 
 static void dwc3_core_setup_global_control(struct dwc3 *dwc)
 {
+	u32 hwparams4 = dwc->hwparams.hwparams4;
 	u32 reg;
 
 	reg = dwc3_readl(dwc->regs, DWC3_GCTL);
@@ -948,11 +1052,16 @@ static void dwc3_core_setup_global_control(struct dwc3 *dwc)
 			reg &= ~DWC3_GCTL_DSBLCLKGTNG;
 		break;
 	case DWC3_GHWPARAMS1_EN_PWROPT_HIB:
+		/* enable hibernation here */
+		dwc->nr_scratch = DWC3_GHWPARAMS4_HIBER_SCRATCHBUFS(hwparams4);
+		dwc->has_hibernation = 1;
+
 		/*
 		 * REVISIT Enabling this bit so that host-mode hibernation
 		 * will work. Device-mode hibernation is not yet implemented.
 		 */
-		reg |= DWC3_GCTL_GBLHIBERNATIONEN;
+		if (dwc->dr_mode == USB_DR_MODE_HOST)
+			reg |= DWC3_GCTL_GBLHIBERNATIONEN;
 		break;
 	default:
 		/* nothing */
@@ -1120,7 +1229,7 @@ static void dwc3_set_power_down_clk_scale(struct dwc3 *dwc)
  *
  * Returns 0 on success otherwise negative errno.
  */
-static int dwc3_core_init(struct dwc3 *dwc)
+int dwc3_core_init(struct dwc3 *dwc)
 {
 	unsigned int		hw_mode;
 	u32			reg;
@@ -1182,6 +1291,21 @@ static int dwc3_core_init(struct dwc3 *dwc)
 
 	dwc3_core_setup_global_control(dwc);
 	dwc3_core_num_eps(dwc);
+
+	if (dwc->scratchbuf == NULL) {
+		ret = dwc3_alloc_scratch_buffers(dwc);
+		if (ret) {
+			dev_err(dwc->dev,
+				"Not enough memory for scratch buffers\n");
+			goto err_exit_phy;
+		}
+	}
+
+	ret = dwc3_setup_scratch_buffers(dwc);
+	if (ret) {
+		dev_err(dwc->dev, "Failed to setup scratch buffers: %d\n", ret);
+		goto err_exit_phy;
+	}
 
 	/* Set power down scale of suspend_clk */
 	dwc3_set_power_down_clk_scale(dwc);
@@ -1830,10 +1954,10 @@ static int dwc3_probe(struct platform_device *pdev)
 {
 	struct device		*dev = &pdev->dev;
 	struct resource		*res, dwc_res;
-	void __iomem		*regs;
 	struct dwc3		*dwc;
 	int			ret;
 	u32			mdwidth;
+	void __iomem		*regs;
 
 	dwc = devm_kzalloc(dev, sizeof(*dwc), GFP_KERNEL);
 	if (!dwc)
@@ -1960,6 +2084,21 @@ static int dwc3_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_exit_debugfs;
 
+	/*
+	 * DWC3 controller has a Power Management Unit(PMU) module
+	 * which requests the power controller for entering into
+	 * D3/D0 state. Try getting the regulator.
+	 */
+	dwc->dwc3_pmu = devm_regulator_get(dev,
+					   dev->parent->of_node->full_name);
+	if (!IS_ERR(dwc->dwc3_pmu)) {
+		ret = regulator_enable(dwc->dwc3_pmu);
+		if (ret) {
+			dev_err(dev, "Failed to enable dwc3_pmu supply\n");
+			goto err_exit_debugfs;
+		}
+	}
+
 	pm_runtime_put(dev);
 
 	return 0;
@@ -1970,7 +2109,9 @@ err_exit_debugfs:
 	dwc3_phy_power_off(dwc);
 	dwc3_phy_exit(dwc);
 	dwc3_ulpi_exit(dwc);
+
 err_free_event_buffers:
+	dwc3_free_scratch_buffers(dwc);
 	dwc3_free_event_buffers(dwc);
 err_allow_rpm:
 	pm_runtime_allow(dev);
@@ -1995,6 +2136,18 @@ static void dwc3_remove(struct platform_device *pdev)
 
 	pm_runtime_get_sync(&pdev->dev);
 
+#ifdef CONFIG_PM_SLEEP
+	if (dwc->is_hibernated) {
+		/*
+		 * As we are about to get removed, wake the controller from
+		 * D3 & hibernation states
+		 */
+		dwc->force_hiber_wake = true;
+		dwc3_gadget_exit_hibernation(dwc);
+		dwc->force_hiber_wake = false;
+	}
+#endif /* CONFIG_PM_SLEEP */
+
 	dwc3_core_exit_mode(dwc);
 	dwc3_debugfs_exit(dwc);
 
@@ -2002,6 +2155,10 @@ static void dwc3_remove(struct platform_device *pdev)
 	dwc3_ulpi_exit(dwc);
 
 	pm_runtime_allow(&pdev->dev);
+
+	if (dwc->dwc3_pmu)
+		regulator_disable(dwc->dwc3_pmu);
+
 	pm_runtime_disable(&pdev->dev);
 	pm_runtime_dont_use_autosuspend(&pdev->dev);
 	pm_runtime_put_noidle(&pdev->dev);
@@ -2013,6 +2170,7 @@ static void dwc3_remove(struct platform_device *pdev)
 	pm_runtime_set_suspended(&pdev->dev);
 
 	dwc3_free_event_buffers(dwc);
+	dwc3_free_scratch_buffers(dwc);
 
 	if (dwc->usb_psy)
 		power_supply_put(dwc->usb_psy);
@@ -2099,6 +2257,18 @@ static int dwc3_suspend_common(struct dwc3 *dwc, pm_message_t msg)
 		break;
 	}
 
+	/* Put the core into D3 state */
+	if (dwc->dwc3_pmu) {
+		int ret;
+
+		ret = regulator_disable(dwc->dwc3_pmu);
+		if (ret) {
+			dev_err(dwc->dev,
+				"Failed to disable dwc3_pmu supply\n");
+			return ret;
+		}
+	}
+
 	return 0;
 }
 
@@ -2107,6 +2277,15 @@ static int dwc3_resume_common(struct dwc3 *dwc, pm_message_t msg)
 	unsigned long	flags;
 	int		ret;
 	u32		reg;
+
+	/* Bring core to D0 state */
+	if (dwc->dwc3_pmu) {
+		ret = regulator_enable(dwc->dwc3_pmu);
+		if (ret) {
+			dev_err(dwc->dev, "Failed to enable dwc3_pmu supply\n");
+			return ret;
+		}
+	}
 
 	switch (dwc->current_dr_role) {
 	case DWC3_GCTL_PRTCAP_DEVICE:
@@ -2249,6 +2428,16 @@ static int dwc3_suspend(struct device *dev)
 {
 	struct dwc3	*dwc = dev_get_drvdata(dev);
 	int		ret;
+
+	if (dwc->is_hibernated) {
+		/*
+		 * As we are about to suspend, wake the controller from
+		 * D3 & hibernation states
+		 */
+		dwc->force_hiber_wake = true;
+		dwc3_gadget_exit_hibernation(dwc);
+		dwc->force_hiber_wake = false;
+	}
 
 	ret = dwc3_suspend_common(dwc, PMSG_SUSPEND);
 	if (ret)

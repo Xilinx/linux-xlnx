@@ -972,6 +972,13 @@ int zynqmp_pm_set_tapdelay_bypass(u32 index, u32 value)
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_tapdelay_bypass);
 
+int zynqmp_pm_usb_set_state(u32 node, u32 state, u32 value)
+{
+	return zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 4, node, IOCTL_USB_SET_STATE,
+				   state, value);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_usb_set_state);
+
 int zynqmp_pm_get_last_reset_reason(u32 *reset_reason)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_GET_LAST_RESET_REASON, 0,
