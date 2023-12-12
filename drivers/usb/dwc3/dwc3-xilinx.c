@@ -57,9 +57,6 @@
 /* Versal USB Node ID */
 #define VERSAL_USB_NODE_ID			0x18224018
 
-/* Versal USB Reset ID */
-#define VERSAL_USB_RESET_ID			0xC104036
-
 #define XLNX_USB_FPD_PIPE_CLK			0x7c
 #define PIPE_CLK_DESELECT			1
 #define PIPE_CLK_SELECT				0
@@ -221,8 +218,7 @@ static int dwc3_versal_power_req(struct device *dev, bool on)
 		if (priv_data->pmu_state == D0_STATE)
 			return 0;
 
-		ret = zynqmp_pm_reset_assert(VERSAL_USB_RESET_ID,
-					     PM_RESET_ACTION_RELEASE);
+		ret = reset_control_deassert(priv_data->crst);
 		if (ret < 0)
 			dev_err(priv_data->dev, "failed to De-assert Reset\n");
 
@@ -248,8 +244,7 @@ static int dwc3_versal_power_req(struct device *dev, bool on)
 		if (ret < 0)
 			dev_err(priv_data->dev, "failed to enter D3 state\n");
 
-		ret = zynqmp_pm_reset_assert(VERSAL_USB_RESET_ID,
-					     PM_RESET_ACTION_ASSERT);
+		ret = reset_control_assert(priv_data->crst);
 		if (ret < 0)
 			dev_err(priv_data->dev, "failed to assert Reset\n");
 
@@ -354,18 +349,24 @@ static int dwc3_xlnx_init_versal(struct dwc3_xlnx *priv_data)
 	struct device		*dev = priv_data->dev;
 	int			ret;
 
+	priv_data->crst = devm_reset_control_get_exclusive(dev, NULL);
+	if (IS_ERR(priv_data->crst))
+		return dev_err_probe(dev, PTR_ERR(priv_data->crst),
+				     "failed to get reset signal\n");
+
 	dwc3_xlnx_mask_phy_rst(priv_data, false);
 
 	/* Assert and De-assert reset */
-	ret = zynqmp_pm_reset_assert(VERSAL_USB_RESET_ID,
-				     PM_RESET_ACTION_ASSERT);
+	ret = reset_control_assert(priv_data->crst);
 	if (ret < 0) {
 		dev_err_probe(dev, ret, "failed to assert Reset\n");
 		return ret;
 	}
 
-	ret = zynqmp_pm_reset_assert(VERSAL_USB_RESET_ID,
-				     PM_RESET_ACTION_RELEASE);
+	/* reset hold time */
+	usleep_range(5, 10);
+
+	ret = reset_control_deassert(priv_data->crst);
 	if (ret < 0) {
 		dev_err_probe(dev, ret, "failed to De-assert Reset\n");
 		return ret;
