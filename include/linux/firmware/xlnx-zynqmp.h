@@ -170,6 +170,10 @@ enum xsecure_aeskeysize {
 	XSECURE_AES_KEY_SIZE_256 = 32,
 };
 
+/* FPGA Status Reg */
+#define XILINX_ZYNQMP_PM_FPGA_CONFIG_STAT_OFFSET	7U
+#define XILINX_ZYNQMP_PM_FPGA_READ_CONFIG_REG		0U
+
 enum pm_api_cb_id {
 	PM_INIT_SUSPEND_CB = 30,
 	PM_ACKNOWLEDGE_CB = 31,
@@ -715,6 +719,7 @@ int zynqmp_pm_set_wakeup_source(const u32 target, const u32 wakeup_node, const u
 int zynqmp_pm_fpga_load(const u64 address, const u32 size,
 			const u32 flags, u32 *status);
 int zynqmp_pm_fpga_get_status(u32 *value);
+int zynqmp_pm_fpga_get_config_status(u32 *value);
 int zynqmp_pm_write_ggs(u32 index, u32 value);
 int zynqmp_pm_read_ggs(u32 index, u32 *value);
 int zynqmp_pm_write_pggs(u32 index, u32 value);
@@ -947,6 +952,11 @@ static inline int zynqmp_pm_fpga_load(const u64 address, const u32 size,
 }
 
 static inline int zynqmp_pm_fpga_get_status(u32 *value)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_fpga_get_config_status(u32 *value)
 {
 	return -ENODEV;
 }
