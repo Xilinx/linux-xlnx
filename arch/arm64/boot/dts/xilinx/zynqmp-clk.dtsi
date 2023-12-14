@@ -12,7 +12,7 @@
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
 		clock-frequency = <100000000>;
-		u-boot,dm-pre-reloc;
+		bootph-all;
 	};
 
 	clk125: clk125 {
@@ -25,7 +25,7 @@
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
 		clock-frequency = <200000000>;
-		u-boot,dm-pre-reloc;
+		bootph-all;
 	};
 
 	clk250: clk250 {
@@ -38,7 +38,7 @@
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
 		clock-frequency = <300000000>;
-		u-boot,dm-pre-reloc;
+		bootph-all;
 	};
 
 	clk600: clk600 {

@@ -73,7 +73,7 @@
 	firmware {
 		versal_net_firmware: versal-net-firmware {
 			compatible = "xlnx,versal-net-firmware", "xlnx,versal-firmware";
-			u-boot,dm-pre-reloc;
+			bootph-all;
 			method = "smc";
 
 			versal_net_reset: reset-controller {

@@ -111,7 +111,7 @@
 	};
 
 	zynqmp_ipi: zynqmp-ipi {
-		u-boot,dm-pre-reloc;
+		bootph-all;
 		compatible = "xlnx,zynqmp-ipi-mailbox";
 		interrupt-parent = <&gic>;
 		interrupts = <0 35 4>;
@@ -121,7 +121,7 @@
 		ranges;
 
 		ipi_mailbox_pmu1: mailbox@ff9905c0 {
-			u-boot,dm-pre-reloc;
+			bootph-all;
 			reg = <0x0 0xff9905c0 0x0 0x20>,
 			      <0x0 0xff9905e0 0x0 0x20>,
 			      <0x0 0xff990e80 0x0 0x20>,
@@ -138,7 +138,7 @@
 	dcc: dcc {
 		compatible = "arm,dcc";
 		status = "disabled";
-		u-boot,dm-pre-reloc;
+		bootph-all;
 	};
 
 	pmu {
@@ -164,10 +164,10 @@
 			compatible = "xlnx,zynqmp-firmware";
 			#power-domain-cells = <1>;
 			method = "smc";
-			u-boot,dm-pre-reloc;
+			bootph-all;
 
 			zynqmp_power: zynqmp-power {
-				u-boot,dm-pre-reloc;
+				bootph-all;
 				compatible = "xlnx,zynqmp-power";
 				interrupt-parent = <&gic>;
 				interrupts = <0 35 4>;
@@ -279,7 +279,7 @@
 
 	amba: axi {
 		compatible = "simple-bus";
-		u-boot,dm-pre-reloc;
+		bootph-all;
 		#address-cells = <2>;
 		#size-cells = <2>;
 		ranges;
@@ -801,7 +801,7 @@
 		};
 
 		qspi: spi@ff0f0000 {
-			u-boot,dm-pre-reloc;
+			bootph-all;
 			compatible = "xlnx,zynqmp-qspi-1.0";
 			status = "disabled";
 			clock-names = "ref_clk", "pclk";
@@ -849,7 +849,7 @@
 		};
 
 		sdhci0: mmc@ff160000 {
-			u-boot,dm-pre-reloc;
+			bootph-all;
 			compatible = "xlnx,zynqmp-8.9a", "arasan,sdhci-8.9a";
 			status = "disabled";
 			interrupt-parent = <&gic>;
@@ -864,7 +864,7 @@
 		};
 
 		sdhci1: mmc@ff170000 {
-			u-boot,dm-pre-reloc;
+			bootph-all;
 			compatible = "xlnx,zynqmp-8.9a", "arasan,sdhci-8.9a";
 			status = "disabled";
 			interrupt-parent = <&gic>;
@@ -957,7 +957,7 @@
 		};
 
 		uart0: serial@ff000000 {
-			u-boot,dm-pre-reloc;
+			bootph-all;
 			compatible = "xlnx,zynqmp-uart", "cdns,uart-r1p12";
 			status = "disabled";
 			interrupt-parent = <&gic>;
@@ -968,7 +968,7 @@
 		};
 
 		uart1: serial@ff010000 {
-			u-boot,dm-pre-reloc;
+			bootph-all;
 			compatible = "xlnx,zynqmp-uart", "cdns,uart-r1p12";
 			status = "disabled";
 			interrupt-parent = <&gic>;
@@ -1101,7 +1101,7 @@
 		};
 
 		zynqmp_dpsub: display@fd4a0000 {
-			u-boot,dm-pre-reloc;
+			bootph-all;
 			compatible = "xlnx,zynqmp-dpsub-1.7";
 			status = "disabled";
 			reg = <0x0 0xfd4a0000 0x0 0x1000>,

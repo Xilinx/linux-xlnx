@@ -108,7 +108,7 @@
 	eeprom0: eeprom@51 {
 		compatible = "st,24c128", "atmel,24c128";
 		reg = <0x51>;
-		u-boot,dm-pre-reloc;
+		bootph-all;
 	};
 };
 
@@ -117,7 +117,7 @@
 	eeprom1: eeprom@55 {
 		compatible = "st,24c128", "atmel,24c128";
 		reg = <0x55>;
-		u-boot,dm-pre-reloc;
+		bootph-all;
 	};
 };
 

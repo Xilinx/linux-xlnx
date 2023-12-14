@@ -14,7 +14,7 @@
 
 / {
 	ref_clk: ref_clk {
-		u-boot,dm-pre-reloc;
+		bootph-all;
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
 		clock-frequency = <33333333>;
@@ -39,7 +39,7 @@
 	firmware {
 		versal_net_firmware: versal-net-firmware {
 			compatible = "xlnx,versal-net-firmware", "xlnx,versal-firmware";
-			u-boot,dm-pre-reloc;
+			bootph-all;
 			method = "smc";
 			#power-domain-cells = <1>;
 
@@ -49,7 +49,7 @@
 			};
 
 			versal_net_clk: clock-controller {
-				u-boot,dm-pre-reloc;
+				bootph-all;
 				#clock-cells = <1>;
 				compatible = "xlnx,versal-net-clk", "xlnx,versal-clk";
 				clocks = <&ref_clk>, <&ref_clk>;

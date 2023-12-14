@@ -100,7 +100,7 @@
 	eeprom: eeprom@54 { /* u34 - m24128 16kB */
 		compatible = "st,24c128", "atmel,24c128";
 		reg = <0x54>; /* & 0x5c */
-		u-boot,dm-pre-reloc;
+		bootph-all;
 	};
 };
 

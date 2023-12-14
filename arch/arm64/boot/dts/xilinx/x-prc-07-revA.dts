@@ -118,7 +118,7 @@
 
 &i2c0 {
 	status = "okay";
-	u-boot,dm-pre-reloc;
+	bootph-all;
 	clock-frequency = <400000>;
 	#address-cells = <1>;
 	#size-cells = <0>;
@@ -126,13 +126,13 @@
 	eeprom0: eeprom@51 { /* u45 WP not used */
 		compatible = "st,24c128", "atmel,24c128";
 		reg = <0x51>;
-		u-boot,dm-pre-reloc;
+		bootph-all;
 	};
 };
 
 &i2c1 {
 	status = "okay";
-	u-boot,dm-pre-reloc;
+	bootph-all;
 	clock-frequency = <400000>;
 	#address-cells = <1>;
 	#size-cells = <0>;
@@ -140,7 +140,7 @@
 	eeprom1: eeprom@51 { /* u46 WP not used */
 		compatible = "st,24c128", "atmel,24c128";
 		reg = <0x51>;
-		u-boot,dm-pre-reloc;
+		bootph-all;
 	};
 };
 

@@ -294,7 +294,7 @@
 	dcc: dcc {
 		compatible = "arm,dcc";
 		status = "disabled";
-		u-boot,dm-pre-reloc;
+		bootph-all;
 	};
 
 	firmware {
@@ -322,7 +322,7 @@
 
 	amba: axi {
 		compatible = "simple-bus";
-		u-boot,dm-pre-reloc;
+		bootph-all;
 		#address-cells = <2>;
 		#size-cells = <2>;
 		ranges;
@@ -574,7 +574,7 @@
 		};
 
 		serial0: serial@f1920000 {
-			u-boot,dm-pre-reloc;
+			bootph-all;
 			compatible = "arm,pl011", "arm,primecell";
 			status = "disabled";
 			reg = <0 0xf1920000 0 0x1000>;
@@ -585,7 +585,7 @@
 		};
 
 		serial1: serial@f1930000 {
-			u-boot,dm-pre-reloc;
+			bootph-all;
 			compatible = "arm,pl011", "arm,primecell";
 			status = "disabled";
 			reg = <0 0xf1930000 0 0x1000>;

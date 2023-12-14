@@ -128,7 +128,7 @@
 
 	ref_clk: ref_clk {
 		compatible = "fixed-clock";
-		u-boot,dm-pre-reloc;
+		bootph-all;
 		#clock-cells = <0>;
 		clock-frequency = <33333333>;
 	};
@@ -137,12 +137,12 @@
 		versal_net_firmware: versal-net-firmware {
 			compatible = "xlnx,versal-net-firmware", "xlnx,versal-firmware";
 			interrupt-parent = <&gic>;
-			u-boot,dm-pre-reloc;
+			bootph-all;
 			method = "smc";
 			#power-domain-cells = <0x01>;
 
 			versal_net_clk: clock-controller {
-				u-boot,dm-pre-reloc;
+				bootph-all;
 				#clock-cells = <1>;
 				compatible = "xlnx,versal-net-clk", "xlnx,versal-clk";
 				clocks = <&ref_clk>, <&ref_clk>;
@@ -196,7 +196,7 @@
 
 	amba: axi {
 		compatible = "simple-bus";
-		u-boot,dm-pre-reloc;
+		bootph-all;
 		#address-cells = <2>;
 		#size-cells = <2>;
 		ranges;
@@ -567,7 +567,7 @@
 		};
 
 		serial0: serial@f1920000 {
-			u-boot,dm-pre-reloc;
+			bootph-all;
 			compatible = "arm,pl011", "arm,primecell";
 			reg = <0 0xf1920000 0 0x1000>;
 			interrupts = <0 25 4>;
@@ -581,7 +581,7 @@
 		};
 
 		serial1: serial@f1930000 {
-			u-boot,dm-pre-reloc;
+			bootph-all;
 			compatible = "arm,pl011", "arm,primecell";
 			reg = <0 0xf1930000 0 0x1000>;
 			interrupts = <0 26 4>;
