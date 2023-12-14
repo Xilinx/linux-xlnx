@@ -2284,6 +2284,9 @@ static const struct flash_info *spi_nor_match_id(struct spi_nor *nor,
 	const struct flash_info *part;
 	unsigned int i, j;
 
+	for (i = 0; i < SPI_NOR_MAX_ID_LEN; i++)
+		nor->spimem->device_id[i] = id[i];
+
 	for (i = 0; i < ARRAY_SIZE(manufacturers); i++) {
 		for (j = 0; j < manufacturers[i]->nparts; j++) {
 			part = &manufacturers[i]->parts[j];
