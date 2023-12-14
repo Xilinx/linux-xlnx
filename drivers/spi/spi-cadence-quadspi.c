@@ -920,10 +920,28 @@ static int cqspi_indirect_read_execute(struct cqspi_flash_pdata *f_pdata,
 	unsigned int mod_bytes = n_rx % 4;
 	unsigned int bytes_to_read = 0;
 	u8 *rxbuf_end = rxbuf + n_rx;
+	u8 *rxbuf_start = rxbuf;
 	int ret = 0;
+	u8 extra_bytes = 0;
+	u32 req_bytes;
+	u32 threshold_val;
+	bool is_unaligned_cnt = false;
+
+	if (n_rx % 2)
+		is_unaligned_cnt = true;
 
 	writel(from_addr, reg_base + CQSPI_REG_INDIRECTRDSTARTADDR);
-	writel(remaining, reg_base + CQSPI_REG_INDIRECTRDBYTES);
+	if (f_pdata->dtr && (from_addr % 2) != 0) {
+		mod_bytes += 1;
+		if (!is_unaligned_cnt)
+			extra_bytes = 2;
+	}
+
+	if (f_pdata->dtr && (from_addr % 2) != 0)
+		writel(from_addr - 1, reg_base + CQSPI_REG_INDIRECTRDSTARTADDR);
+
+	req_bytes = remaining + is_unaligned_cnt + extra_bytes;
+	writel(req_bytes, reg_base + CQSPI_REG_INDIRECTRDBYTES);
 
 	/* Clear all interrupts. */
 	writel(CQSPI_IRQ_STATUS_MASK, reg_base + CQSPI_REG_IRQSTATUS);
@@ -940,6 +958,7 @@ static int cqspi_indirect_read_execute(struct cqspi_flash_pdata *f_pdata,
 		writel(CQSPI_IRQ_MASK_RD, reg_base + CQSPI_REG_IRQMASK);
 	else
 		writel(CQSPI_REG_IRQ_WATERMARK, reg_base + CQSPI_REG_IRQMASK);
+	threshold_val = readl(reg_base + CQSPI_REG_INDIRECTRDWATERMARK);
 
 	reinit_completion(&cqspi->transfer_complete);
 	writel(CQSPI_REG_INDIRECTRD_START_MASK,
@@ -957,7 +976,10 @@ static int cqspi_indirect_read_execute(struct cqspi_flash_pdata *f_pdata,
 		if (cqspi->slow_sram)
 			writel(0x0, reg_base + CQSPI_REG_IRQMASK);
 
-		bytes_to_read = cqspi_get_rd_sram_level(cqspi);
+		if (req_bytes > (threshold_val + cqspi->fifo_width))
+			bytes_to_read = threshold_val + cqspi->fifo_width;
+		else
+			bytes_to_read = req_bytes;
 
 		if (ret && bytes_to_read == 0) {
 			dev_err(dev, "Indirect read timeout, no bytes\n");
@@ -966,26 +988,48 @@ static int cqspi_indirect_read_execute(struct cqspi_flash_pdata *f_pdata,
 
 		while (bytes_to_read != 0) {
 			unsigned int word_remain = round_down(remaining, 4);
+			unsigned int bytes_read = 0;
 
-			bytes_to_read *= cqspi->fifo_width;
 			bytes_to_read = bytes_to_read > remaining ?
 					remaining : bytes_to_read;
 			bytes_to_read = round_down(bytes_to_read, 4);
 			/* Read 4 byte word chunks then single bytes */
 			if (bytes_to_read) {
-				ioread32_rep(ahb_base, rxbuf,
-					     (bytes_to_read / 4));
+				u8 offset = 0;
+
+				if (f_pdata->dtr && ((from_addr % 2) != 0) &&
+				    rxbuf == rxbuf_start) {
+					unsigned int temp = ioread32(ahb_base);
+
+					temp >>= 8;
+					memcpy(rxbuf, &temp, 3);
+					bytes_to_read -= 3;
+					offset = 3;
+					bytes_read += 3;
+				}
+				if (bytes_to_read >= 4) {
+					ioread32_rep(ahb_base, rxbuf + offset,
+						     (bytes_to_read / 4));
+					bytes_read += (bytes_to_read / 4) * 4;
+				}
 			} else if (!word_remain && mod_bytes) {
 				unsigned int temp = ioread32(ahb_base);
 
-				bytes_to_read = mod_bytes;
-				memcpy(rxbuf, &temp, min((unsigned int)
-							 (rxbuf_end - rxbuf),
-							 bytes_to_read));
+				if (f_pdata->dtr && ((from_addr % 2) != 0) &&
+				    rxbuf == rxbuf_start)
+					temp >>= 8;
+
+				bytes_to_read = min(remaining, mod_bytes);
+				bytes_read = min((unsigned int)
+						    (rxbuf_end - rxbuf),
+						     bytes_to_read);
+				memcpy(rxbuf, &temp, bytes_read);
 			}
-			rxbuf += bytes_to_read;
-			remaining -= bytes_to_read;
+			rxbuf += bytes_read;
+			remaining -= bytes_read;
+			req_bytes -= bytes_read;
 			bytes_to_read = cqspi_get_rd_sram_level(cqspi);
+			bytes_to_read *= cqspi->fifo_width;
 		}
 
 		if (remaining > 0) {
@@ -1053,8 +1097,11 @@ static int cqspi_versal_indirect_read_dma(struct cqspi_flash_pdata *f_pdata,
 	bytes_rem = n_rx % 4;
 	bytes_to_dma = (n_rx - bytes_rem);
 
-	if (!bytes_to_dma)
+	if (!bytes_to_dma || (f_pdata->dtr && ((from_addr % 2) != 0))) {
+		bytes_to_dma = 0;
+		bytes_rem = n_rx;
 		goto nondmard;
+	}
 
 	ret = zynqmp_pm_ospi_mux_select(cqspi->pd_dev_id, PM_OSPI_MUX_SEL_DMA);
 	if (ret)
@@ -1235,9 +1282,14 @@ static int cqspi_indirect_write_execute(struct cqspi_flash_pdata *f_pdata,
 	unsigned int remaining = n_tx;
 	unsigned int write_bytes;
 	int ret;
+	u8 unaligned_bytes = 0;
+
+	if (f_pdata->dtr && ((n_tx % 2) != 0))
+		unaligned_bytes = 1;
 
 	writel(to_addr, reg_base + CQSPI_REG_INDIRECTWRSTARTADDR);
-	writel(remaining, reg_base + CQSPI_REG_INDIRECTWRBYTES);
+	writel(remaining + unaligned_bytes,
+	       reg_base + CQSPI_REG_INDIRECTWRBYTES);
 
 	/* Clear all interrupts. */
 	writel(CQSPI_IRQ_STATUS_MASK, reg_base + CQSPI_REG_IRQSTATUS);
@@ -1278,7 +1330,7 @@ static int cqspi_indirect_write_execute(struct cqspi_flash_pdata *f_pdata,
 		if (mod_bytes) {
 			unsigned int temp = 0xFFFFFFFF;
 
-			memcpy(&temp, txbuf, mod_bytes);
+			memcpy(&temp, txbuf, mod_bytes + unaligned_bytes);
 			iowrite32(temp, cqspi->ahb_base);
 			txbuf += mod_bytes;
 		}
