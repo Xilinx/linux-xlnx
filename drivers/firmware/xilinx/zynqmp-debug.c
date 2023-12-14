@@ -34,7 +34,6 @@ static struct pm_api_info pm_api_list[] = {
 	PM_API(PM_REQUEST_SUSPEND),
 	PM_API(PM_SELF_SUSPEND),
 	PM_API(PM_FORCE_POWERDOWN),
-	PM_API(PM_ABORT_SUSPEND),
 	PM_API(PM_REQUEST_WAKEUP),
 	PM_API(PM_SYSTEM_SHUTDOWN),
 	PM_API(PM_REQUEST_NODE),
@@ -79,19 +78,6 @@ static int zynqmp_pm_self_suspend(const u32 node, const u32 latency,
 {
 	return zynqmp_pm_invoke_fn(PM_SELF_SUSPEND, node, latency,
 				   state, 0, 0, NULL);
-}
-
-/**
- * zynqmp_pm_abort_suspend - PM call to announce that a prior suspend request
- *				is to be aborted.
- * @reason:	Reason for the abort
- *
- * Return:	Returns status, either success or error+reason
- */
-static int zynqmp_pm_abort_suspend(const enum zynqmp_pm_abort_reason reason)
-{
-	return zynqmp_pm_invoke_fn(PM_ABORT_SUSPEND, reason, 0, 0, 0, 0,
-				   NULL);
 }
 
 /**
@@ -186,10 +172,6 @@ static int process_api_request(u32 pm_id, u64 *pm_api_arg, u32 *pm_api_ret)
 		ret = zynqmp_pm_force_pwrdwn(pm_api_arg[0],
 					     pm_api_arg[1] ? pm_api_arg[1] :
 					     ZYNQMP_PM_REQUEST_ACK_NO);
-		break;
-	case PM_ABORT_SUSPEND:
-		ret = zynqmp_pm_abort_suspend(pm_api_arg[0] ? pm_api_arg[0] :
-					      ZYNQMP_PM_ABORT_REASON_UNKNOWN);
 		break;
 	case PM_REQUEST_WAKEUP:
 		ret = zynqmp_pm_request_wake(pm_api_arg[0],
