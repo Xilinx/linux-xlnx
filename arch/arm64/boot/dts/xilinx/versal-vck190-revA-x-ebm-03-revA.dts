@@ -4,7 +4,7 @@
  *
  * (C) Copyright 2020, Xilinx, Inc.
  *
- * Michal Simek <michal.simek@xilinx.com>
+ * Michal Simek <michal.simek@amd.com>
  */
 
 #include "versal-vmk180-revA-x-ebm-03-revA.dts"
