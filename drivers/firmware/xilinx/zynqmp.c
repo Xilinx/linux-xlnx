@@ -454,7 +454,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_get_chipid);
  *
  * Return: Returns status, either success or error+reason
  */
-int zynqmp_pm_get_family_info(u32 *family, u32 *subfamily)
+static int zynqmp_pm_get_family_info(u32 *family, u32 *subfamily)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
 	u32 idcode;
@@ -479,7 +479,6 @@ int zynqmp_pm_get_family_info(u32 *family, u32 *subfamily)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_get_family_info);
 
 /**
  * xlnx_get_crypto_dev_data() - Get crypto dev data of platform
