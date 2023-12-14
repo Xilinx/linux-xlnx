@@ -37,7 +37,6 @@ static struct pm_api_info pm_api_list[] = {
 	PM_API(PM_REQUEST_NODE),
 	PM_API(PM_RELEASE_NODE),
 	PM_API(PM_SET_REQUIREMENT),
-	PM_API(PM_SET_MAX_LATENCY),
 	PM_API(PM_GET_API_VERSION),
 	PM_API(PM_SET_CONFIGURATION),
 	PM_API(PM_GET_NODE_STATUS),
@@ -172,11 +171,6 @@ static int process_api_request(u32 pm_id, u64 *pm_api_arg, u32 *pm_api_ret)
 						pm_api_arg[2] : 0,
 						pm_api_arg[3] ? pm_api_arg[3] :
 						ZYNQMP_PM_REQUEST_ACK_BLOCKING);
-		break;
-	case PM_SET_MAX_LATENCY:
-		ret = zynqmp_pm_set_max_latency(pm_api_arg[0],
-						pm_api_arg[1] ? pm_api_arg[1] :
-						ZYNQMP_PM_MAX_LATENCY);
 		break;
 	case PM_SET_CONFIGURATION:
 		ret = zynqmp_pm_set_configuration(pm_api_arg[0]);

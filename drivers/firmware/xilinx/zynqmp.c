@@ -1540,20 +1540,6 @@ int zynqmp_pm_fpga_read(const u32 reg_numframes, const u64 phys_address,
 EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_read);
 
 /**
- * zynqmp_pm_set_max_latency - PM call to set wakeup latency requirements
- * @node:	Node ID of the slave
- * @latency:	Requested maximum wakeup latency
- *
- * Return:	Returns status, either success or error+reason
- */
-int zynqmp_pm_set_max_latency(const u32 node, const u32 latency)
-{
-	return zynqmp_pm_invoke_fn(PM_SET_MAX_LATENCY, node, latency,
-				   0, 0, 0, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_set_max_latency);
-
-/**
  * zynqmp_pm_set_configuration - PM call to set system configuration
  * @physical_addr:	Physical 32-bit address of data structure in memory
  *

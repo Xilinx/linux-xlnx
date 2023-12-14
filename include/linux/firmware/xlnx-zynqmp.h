@@ -109,7 +109,6 @@
 /* Payload size (consists of callback API ID + arguments) */
 #define CB_PAYLOAD_SIZE (CB_ARG_CNT + 1)
 
-#define ZYNQMP_PM_MAX_LATENCY	(~0U)
 #define ZYNQMP_PM_MAX_QOS	100U
 
 /* Usage status, returned by PmGetNodeStatus */
@@ -194,7 +193,6 @@ enum pm_api_id {
 	PM_REQUEST_NODE = 13,
 	PM_RELEASE_NODE = 14,
 	PM_SET_REQUIREMENT = 15,
-	PM_SET_MAX_LATENCY = 16,
 	/* Direct control API functions: */
 	PM_RESET_ASSERT = 17,
 	PM_RESET_GET_STATUS = 18,
@@ -693,7 +691,6 @@ int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_config_reg_access(u32 register_access_id, u32 address, u32 mask,
 				u32 value, u32 *out);
-int zynqmp_pm_set_max_latency(const u32 node, const u32 latency);
 int zynqmp_pm_set_configuration(const u32 physical_addr);
 int zynqmp_pm_get_node_status(const u32 node, u32 *const status,
 			      u32 *const requirements, u32 *const usage);
@@ -1075,11 +1072,6 @@ static inline int zynqmp_pm_rsa(const u64 address, const u32 size,
 static inline int zynqmp_pm_config_reg_access(u32 register_access_id,
 					      u32 address, u32 mask, u32 value,
 					      u32 *out)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_set_max_latency(const u32 node, const u32 latency)
 {
 	return -ENODEV;
 }
