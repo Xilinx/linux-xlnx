@@ -1540,19 +1540,6 @@ int zynqmp_pm_fpga_read(const u32 reg_numframes, const u64 phys_address,
 EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_read);
 
 /**
- * zynqmp_pm_set_configuration - PM call to set system configuration
- * @physical_addr:	Physical 32-bit address of data structure in memory
- *
- * Return:		Returns status, either success or error+reason
- */
-int zynqmp_pm_set_configuration(const u32 physical_addr)
-{
-	return zynqmp_pm_invoke_fn(PM_SET_CONFIGURATION, physical_addr, 0,
-				   0, 0, 0, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_set_configuration);
-
-/**
  * zynqmp_pm_get_node_status - PM call to request a node's current power state
  * @node:		ID of the component or sub-system in question
  * @status:		Current operating state of the requested node

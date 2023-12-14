@@ -182,7 +182,6 @@ enum pm_api_cb_id {
 enum pm_api_id {
 	PM_API_FEATURES = 0,
 	PM_GET_API_VERSION = 1,
-	PM_SET_CONFIGURATION = 2,
 	PM_GET_NODE_STATUS = 3,
 	PM_GET_OPERATING_CHARACTERISTIC = 4,
 	PM_REGISTER_NOTIFIER = 5,
@@ -691,7 +690,6 @@ int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_config_reg_access(u32 register_access_id, u32 address, u32 mask,
 				u32 value, u32 *out);
-int zynqmp_pm_set_configuration(const u32 physical_addr);
 int zynqmp_pm_get_node_status(const u32 node, u32 *const status,
 			      u32 *const requirements, u32 *const usage);
 int zynqmp_pm_get_operating_characteristic(const u32 node,
@@ -1072,11 +1070,6 @@ static inline int zynqmp_pm_rsa(const u64 address, const u32 size,
 static inline int zynqmp_pm_config_reg_access(u32 register_access_id,
 					      u32 address, u32 mask, u32 value,
 					      u32 *out)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_set_configuration(const u32 physical_addr)
 {
 	return -ENODEV;
 }

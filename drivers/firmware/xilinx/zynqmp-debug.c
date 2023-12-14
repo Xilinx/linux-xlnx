@@ -38,7 +38,6 @@ static struct pm_api_info pm_api_list[] = {
 	PM_API(PM_RELEASE_NODE),
 	PM_API(PM_SET_REQUIREMENT),
 	PM_API(PM_GET_API_VERSION),
-	PM_API(PM_SET_CONFIGURATION),
 	PM_API(PM_GET_NODE_STATUS),
 	PM_API(PM_GET_OPERATING_CHARACTERISTIC),
 	PM_API(PM_REGISTER_NOTIFIER),
@@ -171,9 +170,6 @@ static int process_api_request(u32 pm_id, u64 *pm_api_arg, u32 *pm_api_ret)
 						pm_api_arg[2] : 0,
 						pm_api_arg[3] ? pm_api_arg[3] :
 						ZYNQMP_PM_REQUEST_ACK_BLOCKING);
-		break;
-	case PM_SET_CONFIGURATION:
-		ret = zynqmp_pm_set_configuration(pm_api_arg[0]);
 		break;
 	case PM_GET_NODE_STATUS:
 		ret = zynqmp_pm_get_node_status(pm_api_arg[0],
