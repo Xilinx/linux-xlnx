@@ -326,6 +326,8 @@ struct cqspi_driver_platdata {
 #define CQSPI_TX_TAP_MASTER		0x1E
 #define CQSPI_MAX_DLL_TAPS		127
 
+#define	CQSPI_SELECT_LOWER_CS		BIT(0)
+
 static int cqspi_wait_for_bit(void __iomem *reg, const u32 mask, bool clr)
 {
 	u32 val;
@@ -1736,6 +1738,11 @@ static int cqspi_exec_mem_op(struct spi_mem *mem, const struct spi_mem_op *op)
 	int ret;
 
 	f_pdata = &cqspi->f_pdata[spi_get_chipselect(mem->spi, 0)];
+
+	if (mem->spi->cs_index_mask & CQSPI_SELECT_LOWER_CS)
+		f_pdata->cs = spi_get_chipselect(mem->spi, 0);
+	else
+		f_pdata->cs = spi_get_chipselect(mem->spi, 1);
 
 	if (op->cmd.dtr &&
 	    (!op->addr.nbytes || op->addr.dtr) &&
