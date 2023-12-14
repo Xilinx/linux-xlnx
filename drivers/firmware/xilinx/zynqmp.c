@@ -1540,25 +1540,6 @@ int zynqmp_pm_fpga_read(const u32 reg_numframes, const u64 phys_address,
 EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_read);
 
 /**
- * zynqmp_pm_request_suspend - PM call to request for another PU or subsystem to
- *					be suspended gracefully.
- * @node:	Node ID of the targeted PU or subsystem
- * @ack:	Flag to specify whether acknowledge is requested
- * @latency:	Requested wakeup latency (not supported)
- * @state:	Requested state (not supported)
- *
- * Return:	Returns status, either success or error+reason
- */
-int zynqmp_pm_request_suspend(const u32 node,
-			      const enum zynqmp_pm_request_ack ack,
-			      const u32 latency, const u32 state)
-{
-	return zynqmp_pm_invoke_fn(PM_REQUEST_SUSPEND, node, ack,
-				   latency, state, 0, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_request_suspend);
-
-/**
  * zynqmp_pm_set_max_latency - PM call to set wakeup latency requirements
  * @node:	Node ID of the slave
  * @latency:	Requested maximum wakeup latency

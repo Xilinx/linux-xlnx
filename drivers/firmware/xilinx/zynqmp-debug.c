@@ -31,7 +31,6 @@ static char debugfs_buf[PAGE_SIZE];
 
 #define PM_API(id)		 {id, #id, strlen(#id)}
 static struct pm_api_info pm_api_list[] = {
-	PM_API(PM_REQUEST_SUSPEND),
 	PM_API(PM_FORCE_POWERDOWN),
 	PM_API(PM_REQUEST_WAKEUP),
 	PM_API(PM_SYSTEM_SHUTDOWN),
@@ -139,13 +138,6 @@ static int process_api_request(u32 pm_id, u64 *pm_api_arg, u32 *pm_api_ret)
 		ret = zynqmp_pm_get_api_version(&pm_api_version);
 		sprintf(debugfs_buf, "PM-API Version = %d.%d\n",
 			pm_api_version >> 16, pm_api_version & 0xffff);
-		break;
-	case PM_REQUEST_SUSPEND:
-		ret = zynqmp_pm_request_suspend(pm_api_arg[0],
-						pm_api_arg[1] ? pm_api_arg[1] :
-						ZYNQMP_PM_REQUEST_ACK_NO,
-						pm_api_arg[2] ? pm_api_arg[2] :
-						ZYNQMP_PM_MAX_LATENCY, 0);
 		break;
 	case PM_FORCE_POWERDOWN:
 		ret = zynqmp_pm_force_pwrdwn(pm_api_arg[0],

@@ -188,7 +188,6 @@ enum pm_api_id {
 	PM_GET_OPERATING_CHARACTERISTIC = 4,
 	PM_REGISTER_NOTIFIER = 5,
 	/* API for suspending */
-	PM_REQUEST_SUSPEND = 6,
 	PM_FORCE_POWERDOWN = 8,
 	PM_REQUEST_WAKEUP = 10,
 	PM_SYSTEM_SHUTDOWN = 12,
@@ -694,8 +693,6 @@ int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_config_reg_access(u32 register_access_id, u32 address, u32 mask,
 				u32 value, u32 *out);
-int zynqmp_pm_request_suspend(const u32 node, const enum zynqmp_pm_request_ack ack,
-			      const u32 latency, const u32 state);
 int zynqmp_pm_set_max_latency(const u32 node, const u32 latency);
 int zynqmp_pm_set_configuration(const u32 physical_addr);
 int zynqmp_pm_get_node_status(const u32 node, u32 *const status,
@@ -1078,13 +1075,6 @@ static inline int zynqmp_pm_rsa(const u64 address, const u32 size,
 static inline int zynqmp_pm_config_reg_access(u32 register_access_id,
 					      u32 address, u32 mask, u32 value,
 					      u32 *out)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_request_suspend(const u32 node,
-					    const enum zynqmp_pm_request_ack ack,
-					    const u32 latency, const u32 state)
 {
 	return -ENODEV;
 }
