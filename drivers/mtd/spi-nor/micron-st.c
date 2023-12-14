@@ -175,6 +175,12 @@ static const struct flash_info micron_nor_parts[] = {
 		MFR_FLAGS(USE_FSR)
 		.fixups = &mt35xu512aba_fixups
 	},
+	{ "mt35xu01g", INFO(0x2c5b1b, 0, 128 * 1024, 1024)
+		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_OCTAL_READ |
+			   SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP)
+		FIXUP_FLAGS(SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE)
+		MFR_FLAGS(USE_FSR)
+	  .fixups = &mt35xu512aba_fixups},
 };
 
 static const struct flash_info st_nor_parts[] = {
