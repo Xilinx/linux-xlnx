@@ -312,8 +312,7 @@ static int xvip_entity_start_stop(struct xvip_composite_device *xdev,
  * dependencies are ready, set the streaming state on the entity. If the state
  * is already set, optimize it by skipping checks.
  *
- * Return: true if all dependecies are ready and there's a state change.
- * false otherwise.
+ * Return: true if the state is successfully or already set. false otherwise.
  */
 static bool xvip_graph_entity_start_stop(struct xvip_composite_device *xdev,
 					 struct xvip_graph_entity *entity,
@@ -326,7 +325,7 @@ static bool xvip_graph_entity_start_stop(struct xvip_composite_device *xdev,
 	int ret;
 
 	if (entity->streaming == on)
-		return false;
+		return true;
 
 	for (i = 0; i < entity->entity->num_pads; i++) {
 		struct xvip_graph_entity *remote;
@@ -349,8 +348,11 @@ static bool xvip_graph_entity_start_stop(struct xvip_composite_device *xdev,
 			continue;
 
 		/* the dependency state doesn't meet */
-		if (remote->streaming != on)
-			return false;
+		if (remote->streaming != on) {
+			state = xvip_graph_entity_start_stop(xdev, remote, on);
+			if (!state)
+				return state;
+		}
 	}
 
 	/* set state and report if state is changed or not */
@@ -359,7 +361,7 @@ static bool xvip_graph_entity_start_stop(struct xvip_composite_device *xdev,
 	/* This shouldn't happen as check is already above */
 	if (state == on) {
 		WARN(1, "Should never get here\n");
-		return false;
+		return true;
 	}
 
 	ret = xvip_entity_start_stop(xdev, entity->entity, on);
@@ -377,30 +379,25 @@ static bool xvip_graph_entity_start_stop(struct xvip_composite_device *xdev,
  * @xdev: composite device
  * @on: boolean flag. true for enable and false for disable
  *
- * Enable or disable the entire graph by checking dependencies and
- * repeating iterations until all sub-devices are handled.
+ * Enable or disable the entire graph by iterating the asd list.
+ * xvip_graph_entity_start_stop() takes care of dependencies,
+ * or state-checking.
  *
  * Return: 0 for success, otherwise error code
  */
 int xvip_graph_start_stop(struct xvip_composite_device *xdev, bool on)
 {
 	struct v4l2_async_connection *asd;
-	bool updated = true;
 
-	while (updated) {
-		updated = false;
-		list_for_each_entry(asd, &xdev->notifier.waiting_list, asc_entry) {
-			struct xvip_graph_entity *entity;
-			bool state;
+	list_for_each_entry(asd, &xdev->notifier.waiting_list, asc_entry) {
+		struct xvip_graph_entity *entity;
+		bool state;
 
-			entity = to_xvip_entity(asd);
+		entity = to_xvip_entity(asd);
 
-			state = xvip_graph_entity_start_stop(xdev, entity, on);
-			if (!state)
-				continue;
-
-			updated = true;
-		}
+		state = xvip_graph_entity_start_stop(xdev, entity, on);
+		if (!state)
+			return -EPIPE;
 	}
 
 	return 0;
