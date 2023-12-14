@@ -559,6 +559,14 @@ static int cqspi_command_read(struct cqspi_flash_pdata *f_pdata,
 
 	reg = opcode << CQSPI_REG_CMDCTRL_OPCODE_LSB;
 
+	if (op->addr.nbytes) {
+		reg |= (0x1 << CQSPI_REG_CMDCTRL_ADDR_EN_LSB);
+		reg |= ((op->addr.nbytes - 1) &
+			CQSPI_REG_CMDCTRL_ADD_BYTES_MASK) <<
+			CQSPI_REG_CMDCTRL_ADD_BYTES_LSB;
+		writel(op->addr.val, reg_base + CQSPI_REG_CMDADDRESS);
+	}
+
 	rdreg = cqspi_calc_rdreg(op);
 	writel(rdreg, reg_base + CQSPI_REG_RD_INSTR);
 
@@ -686,7 +694,7 @@ static int cqspi_setdlldelay(struct spi_mem *mem, const struct spi_mem_op *op)
 				}
 
 				id_matched = true;
-				for (j = 0; j < CQSPI_READ_ID_LEN; j++) {
+				for (j = 0; j < op->data.nbytes; j++) {
 					if (mem->device_id[j] != id[j]) {
 						id_matched = false;
 						break;
