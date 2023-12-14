@@ -39,7 +39,6 @@ static struct pm_api_info pm_api_list[] = {
 	PM_API(PM_SET_REQUIREMENT),
 	PM_API(PM_GET_API_VERSION),
 	PM_API(PM_GET_NODE_STATUS),
-	PM_API(PM_GET_OPERATING_CHARACTERISTIC),
 	PM_API(PM_REGISTER_NOTIFIER),
 	PM_API(PM_RESET_ASSERT),
 	PM_API(PM_RESET_GET_STATUS),
@@ -181,17 +180,6 @@ static int process_api_request(u32 pm_id, u64 *pm_api_arg, u32 *pm_api_ret)
 				"GET_NODE_STATUS:\n\tNodeId: %llu\n\tStatus: %u\n\tRequirements: %u\n\tUsage: %u\n",
 				pm_api_arg[0], pm_api_ret[0],
 				pm_api_ret[1], pm_api_ret[2]);
-		break;
-	case PM_GET_OPERATING_CHARACTERISTIC:
-		ret = zynqmp_pm_get_operating_characteristic(pm_api_arg[0],
-							     pm_api_arg[1] ? pm_api_arg[1] :
-				ZYNQMP_PM_OPERATING_CHARACTERISTIC_POWER,
-				&pm_api_ret[0]);
-		if (!ret)
-			sprintf(debugfs_buf,
-				"GET_OPERATING_CHARACTERISTIC:\n\tNodeId: %llu\n\tType: %llu\n\tResult: %u\n",
-				pm_api_arg[0], pm_api_arg[1],
-				pm_api_ret[0]);
 		break;
 	case PM_REGISTER_NOTIFIER:
 		ret = zynqmp_pm_register_notifier(pm_api_arg[0],

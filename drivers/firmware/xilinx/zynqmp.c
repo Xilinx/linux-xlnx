@@ -44,14 +44,13 @@
 #define UID_SET_LEN	4
 #define UID_LEN		4
 
-/* IOCTL/QUERY/GET_OP_CHAR feature payload size */
+/* IOCTL/QUERY feature payload size */
 #define FEATURE_PAYLOAD_SIZE		2
 
 static bool feature_check_enabled;
 static DEFINE_HASHTABLE(pm_api_features_map, PM_API_FEATURE_CHECK_MAX_ORDER);
 static u32 ioctl_features[FEATURE_PAYLOAD_SIZE];
 static u32 query_features[FEATURE_PAYLOAD_SIZE];
-static u32 get_op_char_features[FEATURE_PAYLOAD_SIZE];
 
 static unsigned long register_address;
 static struct platform_device *em_dev;
@@ -260,9 +259,6 @@ static int do_feature_check_call(const u32 api_id)
 	else if (api_id == PM_QUERY_DATA)
 		/* Store supported QUERY IDs mask */
 		memcpy(query_features, &ret_payload[2], FEATURE_PAYLOAD_SIZE * 4);
-	else if (api_id == PM_GET_OPERATING_CHARACTERISTIC)
-		/* Store supported GET_OP_CHAR IDs mask */
-		memcpy(get_op_char_features, &ret_payload[2], FEATURE_PAYLOAD_SIZE * 4);
 
 	return ret;
 }
@@ -288,9 +284,9 @@ int zynqmp_pm_feature(const u32 api_id)
 EXPORT_SYMBOL_GPL(zynqmp_pm_feature);
 
 /**
- * zynqmp_pm_is_function_supported() - Check whether given IOCTL/QUERY/GET_OP_CHAR function
+ * zynqmp_pm_is_function_supported() - Check whether given IOCTL/QUERY function
  *				       is supported or not
- * @api_id:		PM_IOCTL, PM_QUERY_DATA or PM_GET_OPERATING_CHARACTERISTIC
+ * @api_id:		PM_IOCTL, PM_QUERY_DATA
  * @id:			IOCTL, QUERY or GET_OP_CHAR function IDs
  *
  * Return: Returns status, either success or error+reason
@@ -301,8 +297,7 @@ int zynqmp_pm_is_function_supported(const u32 api_id, const u32 id)
 	u32 *bit_mask;
 
 	/* Input arguments validation */
-	if (id >= 64 || (api_id != PM_IOCTL && api_id != PM_QUERY_DATA &&
-			 api_id != PM_GET_OPERATING_CHARACTERISTIC))
+	if (id >= 64 || (api_id != PM_IOCTL && api_id != PM_QUERY_DATA))
 		return -EINVAL;
 
 	/* Check feature check API version */
@@ -313,26 +308,14 @@ int zynqmp_pm_is_function_supported(const u32 api_id, const u32 id)
 	/* Check if feature check version 2 is supported or not */
 	if ((ret & FIRMWARE_VERSION_MASK) == PM_API_VERSION_2) {
 		/*
-		 * Call feature check for IOCTL/QUERY/GET_OP_CHAR API
-		 * to get IOCTL ID, QUERY ID or GET_OP_CHAR feature status.
+		 * Call feature check for IOCTL/QUERY API to get IOCTL ID or
+		 * QUERY ID feature status.
 		 */
 		ret = do_feature_check_call(api_id);
 		if (ret < 0)
 			return ret;
 
-		switch (api_id) {
-		case PM_IOCTL:
-			bit_mask = ioctl_features;
-			break;
-		case PM_QUERY_DATA:
-			bit_mask = query_features;
-			break;
-		case PM_GET_OPERATING_CHARACTERISTIC:
-			bit_mask = get_op_char_features;
-			break;
-		default:
-			return -EINVAL;
-		}
+		bit_mask = (api_id == PM_IOCTL) ? ioctl_features : query_features;
 
 		if ((bit_mask[(id / 32)] & BIT((id % 32))) == 0U)
 			return -EOPNOTSUPP;
@@ -1580,34 +1563,6 @@ int zynqmp_pm_get_node_status(const u32 node, u32 *const status,
 	return ret;
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_get_node_status);
-
-/**
- * zynqmp_pm_get_operating_characteristic - PM call to request operating
- *						characteristic information
- * @node:	Node ID of the slave
- * @type:	Type of the operating characteristic requested
- * @result:	Used to return the requested operating characteristic
- *
- * Return:	Returns status, either success or error+reason
- */
-int zynqmp_pm_get_operating_characteristic(const u32 node,
-					   const enum zynqmp_pm_opchar_type type,
-					   u32 *const result)
-{
-	u32 ret_payload[PAYLOAD_ARG_CNT];
-	int ret;
-
-	if (!result)
-		return -EINVAL;
-
-	ret = zynqmp_pm_invoke_fn(PM_GET_OPERATING_CHARACTERISTIC,
-				  node, type, 0, 0, 0, ret_payload);
-	if (ret_payload[0] == XST_PM_SUCCESS)
-		*result = ret_payload[1];
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_get_operating_characteristic);
 
 /**
  * zynqmp_pm_config_reg_access - PM Config API for Config register access

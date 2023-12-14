@@ -183,7 +183,6 @@ enum pm_api_id {
 	PM_API_FEATURES = 0,
 	PM_GET_API_VERSION = 1,
 	PM_GET_NODE_STATUS = 3,
-	PM_GET_OPERATING_CHARACTERISTIC = 4,
 	PM_REGISTER_NOTIFIER = 5,
 	/* API for suspending */
 	PM_FORCE_POWERDOWN = 8,
@@ -516,12 +515,6 @@ enum pm_pinctrl_schmitt_cmos {
 	PM_PINCTRL_INPUT_TYPE_SCHMITT = 1,
 };
 
-enum zynqmp_pm_opchar_type {
-	ZYNQMP_PM_OPERATING_CHARACTERISTIC_POWER = 1,
-	ZYNQMP_PM_OPERATING_CHARACTERISTIC_ENERGY = 2,
-	ZYNQMP_PM_OPERATING_CHARACTERISTIC_TEMPERATURE = 3,
-};
-
 enum pm_pinctrl_drive_strength {
 	PM_PINCTRL_DRIVE_STRENGTH_2MA = 0,
 	PM_PINCTRL_DRIVE_STRENGTH_4MA = 1,
@@ -692,9 +685,6 @@ int zynqmp_pm_config_reg_access(u32 register_access_id, u32 address, u32 mask,
 				u32 value, u32 *out);
 int zynqmp_pm_get_node_status(const u32 node, u32 *const status,
 			      u32 *const requirements, u32 *const usage);
-int zynqmp_pm_get_operating_characteristic(const u32 node,
-					   const enum zynqmp_pm_opchar_type type,
-					   u32 *const result);
 int zynqmp_pm_fpga_load(const u64 address, const u32 size,
 			const u32 flags, u32 *status);
 int zynqmp_pm_fpga_get_status(u32 *value);
@@ -1077,13 +1067,6 @@ static inline int zynqmp_pm_config_reg_access(u32 register_access_id,
 static inline int zynqmp_pm_get_node_status(const u32 node, u32 *const status,
 					    u32 *const requirements,
 					    u32 *const usage)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_get_operating_characteristic(const u32 node,
-							 const enum zynqmp_pm_opchar_type type,
-							 u32 *const result)
 {
 	return -ENODEV;
 }
