@@ -44,6 +44,9 @@
 #define SPI_NOR_SRST_SLEEP_MIN 200
 #define SPI_NOR_SRST_SLEEP_MAX 400
 
+/* Perform a device reset */
+static int spi_nor_hw_reset(struct spi_nor *nor);
+
 /**
  * spi_nor_get_cmd_ext() - Get the command opcode extension based on the
  *			   extension type.
@@ -4015,6 +4018,10 @@ static void spi_nor_resume(struct mtd_info *mtd)
 	struct spi_nor *nor = mtd_to_spi_nor(mtd);
 	struct device *dev = nor->dev;
 	int ret;
+
+	ret = spi_nor_hw_reset(nor);
+	if (ret)
+		dev_err(dev, "device reset failed during resume()\n");
 
 	/* re-initialize the nor chip */
 	ret = spi_nor_init(nor);
