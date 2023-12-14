@@ -343,7 +343,7 @@
 			clock-names = "clk_main", "clk_apb";
 			#dma-cells = <1>;
 			xlnx,bus-width = <128>;
-			iommus = <&smmu 0x14e8>;
+			/* iommus = <&smmu 0x14e8>; */
 			power-domains = <&zynqmp_firmware PD_GDMA>;
 		};
 
@@ -356,7 +356,7 @@
 			clock-names = "clk_main", "clk_apb";
 			#dma-cells = <1>;
 			xlnx,bus-width = <128>;
-			iommus = <&smmu 0x14e9>;
+			/* iommus = <&smmu 0x14e9>; */
 			power-domains = <&zynqmp_firmware PD_GDMA>;
 		};
 
@@ -369,7 +369,7 @@
 			clock-names = "clk_main", "clk_apb";
 			#dma-cells = <1>;
 			xlnx,bus-width = <128>;
-			iommus = <&smmu 0x14ea>;
+			/* iommus = <&smmu 0x14ea>; */
 			power-domains = <&zynqmp_firmware PD_GDMA>;
 		};
 
@@ -382,7 +382,7 @@
 			clock-names = "clk_main", "clk_apb";
 			#dma-cells = <1>;
 			xlnx,bus-width = <128>;
-			iommus = <&smmu 0x14eb>;
+			/* iommus = <&smmu 0x14eb>; */
 			power-domains = <&zynqmp_firmware PD_GDMA>;
 		};
 
@@ -395,7 +395,7 @@
 			clock-names = "clk_main", "clk_apb";
 			#dma-cells = <1>;
 			xlnx,bus-width = <128>;
-			iommus = <&smmu 0x14ec>;
+			/* iommus = <&smmu 0x14ec>; */
 			power-domains = <&zynqmp_firmware PD_GDMA>;
 		};
 
@@ -408,7 +408,7 @@
 			clock-names = "clk_main", "clk_apb";
 			#dma-cells = <1>;
 			xlnx,bus-width = <128>;
-			iommus = <&smmu 0x14ed>;
+			/* iommus = <&smmu 0x14ed>; */
 			power-domains = <&zynqmp_firmware PD_GDMA>;
 		};
 
@@ -421,7 +421,7 @@
 			clock-names = "clk_main", "clk_apb";
 			#dma-cells = <1>;
 			xlnx,bus-width = <128>;
-			iommus = <&smmu 0x14ee>;
+			/* iommus = <&smmu 0x14ee>; */
 			power-domains = <&zynqmp_firmware PD_GDMA>;
 		};
 
@@ -434,7 +434,7 @@
 			clock-names = "clk_main", "clk_apb";
 			#dma-cells = <1>;
 			xlnx,bus-width = <128>;
-			iommus = <&smmu 0x14ef>;
+			/* iommus = <&smmu 0x14ef>; */
 			power-domains = <&zynqmp_firmware PD_GDMA>;
 		};
 
@@ -590,7 +590,7 @@
 			interrupts = <GIC_SPI 14 IRQ_TYPE_LEVEL_HIGH>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-			iommus = <&smmu 0x872>;
+			/* iommus = <&smmu 0x872>; */
 			power-domains = <&zynqmp_firmware PD_NAND>;
 		};
 
@@ -604,7 +604,7 @@
 			clock-names = "pclk", "hclk", "tx_clk", "rx_clk", "tsu_clk";
 			#address-cells = <1>;
 			#size-cells = <0>;
-			iommus = <&smmu 0x874>;
+			/* iommus = <&smmu 0x874>; */
 			power-domains = <&zynqmp_firmware PD_ETH_0>;
 			resets = <&zynqmp_reset ZYNQMP_RESET_GEM0>;
 			reset-names = "gem0_rst";
@@ -620,7 +620,7 @@
 			clock-names = "pclk", "hclk", "tx_clk", "rx_clk", "tsu_clk";
 			#address-cells = <1>;
 			#size-cells = <0>;
-			iommus = <&smmu 0x875>;
+			/* iommus = <&smmu 0x875>; */
 			power-domains = <&zynqmp_firmware PD_ETH_1>;
 			resets = <&zynqmp_reset ZYNQMP_RESET_GEM1>;
 			reset-names = "gem1_rst";
@@ -636,7 +636,7 @@
 			clock-names = "pclk", "hclk", "tx_clk", "rx_clk", "tsu_clk";
 			#address-cells = <1>;
 			#size-cells = <0>;
-			iommus = <&smmu 0x876>;
+			/* iommus = <&smmu 0x876>; */
 			power-domains = <&zynqmp_firmware PD_ETH_2>;
 			resets = <&zynqmp_reset ZYNQMP_RESET_GEM2>;
 			reset-names = "gem2_rst";
@@ -652,7 +652,7 @@
 			clock-names = "pclk", "hclk", "tx_clk", "rx_clk", "tsu_clk";
 			#address-cells = <1>;
 			#size-cells = <0>;
-			iommus = <&smmu 0x877>;
+			/* iommus = <&smmu 0x877>; */
 			power-domains = <&zynqmp_firmware PD_ETH_3>;
 			resets = <&zynqmp_reset ZYNQMP_RESET_GEM3>;
 			reset-names = "gem3_rst";
@@ -803,7 +803,7 @@
 					<0x0 0x0 0x0 0x2 &pcie_intc 0x2>,
 					<0x0 0x0 0x0 0x3 &pcie_intc 0x3>,
 					<0x0 0x0 0x0 0x4 &pcie_intc 0x4>;
-			iommus = <&smmu 0x4d0>;
+			/* iommus = <&smmu 0x4d0>; */
 			power-domains = <&zynqmp_firmware PD_PCIE>;
 			pcie_intc: legacy-interrupt-controller {
 				interrupt-controller;
@@ -824,7 +824,7 @@
 			      <0x0 0xc0000000 0x0 0x8000000>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-			iommus = <&smmu 0x873>;
+			/* iommus = <&smmu 0x873>; */
 			power-domains = <&zynqmp_firmware PD_QSPI>;
 		};
 
@@ -869,7 +869,7 @@
 			interrupts = <GIC_SPI 48 IRQ_TYPE_LEVEL_HIGH>;
 			reg = <0x0 0xff160000 0x0 0x1000>;
 			clock-names = "clk_xin", "clk_ahb";
-			iommus = <&smmu 0x870>;
+			/* iommus = <&smmu 0x870>; */
 			#clock-cells = <1>;
 			clock-output-names = "clk_out_sd0", "clk_in_sd0";
 			power-domains = <&zynqmp_firmware PD_SD_0>;
@@ -884,7 +884,7 @@
 			interrupts = <GIC_SPI 49 IRQ_TYPE_LEVEL_HIGH>;
 			reg = <0x0 0xff170000 0x0 0x1000>;
 			clock-names = "clk_xin", "clk_ahb";
-			iommus = <&smmu 0x871>;
+			/* iommus = <&smmu 0x871>; */
 			#clock-cells = <1>;
 			clock-output-names = "clk_out_sd1", "clk_in_sd1";
 			power-domains = <&zynqmp_firmware PD_SD_1>;
@@ -1035,7 +1035,7 @@
 				interrupts = <GIC_SPI 65 IRQ_TYPE_LEVEL_HIGH>,
 					     <GIC_SPI 69 IRQ_TYPE_LEVEL_HIGH>,
 					     <GIC_SPI 75 IRQ_TYPE_LEVEL_HIGH>;
-				iommus = <&smmu 0x860>;
+				/* iommus = <&smmu 0x860>; */
 				snps,quirk-frame-length-adjustment = <0x20>;
 				clock-names = "ref";
 				snps,enable_guctl1_ipd_quirk;
@@ -1067,7 +1067,7 @@
 				interrupts = <GIC_SPI 70 IRQ_TYPE_LEVEL_HIGH>,
 					     <GIC_SPI 74 IRQ_TYPE_LEVEL_HIGH>,
 					     <GIC_SPI 76 IRQ_TYPE_LEVEL_HIGH>;
-				iommus = <&smmu 0x861>;
+				/* iommus = <&smmu 0x861>; */
 				snps,quirk-frame-length-adjustment = <0x20>;
 				clock-names = "ref";
 				snps,enable_guctl1_ipd_quirk;
@@ -1128,7 +1128,7 @@
 			clock-names = "axi_clk";
 			power-domains = <&zynqmp_firmware PD_DP>;
 			dma-channels = <6>;
-			iommus = <&smmu 0xce4>;
+			/* iommus = <&smmu 0xce4>; */
 			#dma-cells = <1>;
 		};
 
@@ -1148,7 +1148,7 @@
 			xlnx,dpaud-reg = <&zynqmp_dpaud_setting>;
 			interrupts = <GIC_SPI 119 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-parent = <&gic>;
-			iommus = <&smmu 0xce3>;
+			/* iommus = <&smmu 0xce3>; */
 
 			clock-names = "dp_apb_clk", "dp_aud_clk",
 				      "dp_vtc_pixel_clk_in";
