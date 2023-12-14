@@ -69,6 +69,9 @@ static int micron_st_nor_octal_dtr_en(struct spi_nor *nor)
 	if (ret)
 		return ret;
 
+	if ((nor->flags & SNOR_F_HAS_STACKED) && nor->spimem->spi->cs_index_mask == 1)
+		return 0;
+
 	/* Read flash ID to make sure the switch was successful. */
 	ret = spi_nor_read_id(nor, 0, 8, buf, SNOR_PROTO_8_8_8_DTR);
 	if (ret) {
