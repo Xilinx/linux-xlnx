@@ -206,7 +206,6 @@ enum pm_api_id {
 	PM_SECURE_RSA = 27,
 	PM_PINCTRL_REQUEST = 28,
 	PM_PINCTRL_RELEASE = 29,
-	PM_PINCTRL_GET_FUNCTION = 30,
 	PM_PINCTRL_SET_FUNCTION = 31,
 	PM_PINCTRL_CONFIG_PARAM_GET = 32,
 	PM_PINCTRL_CONFIG_PARAM_SET = 33,
@@ -710,7 +709,6 @@ int zynqmp_pm_set_rpu_mode(u32 node_id, enum rpu_oper_mode arg1);
 int zynqmp_pm_set_tcm_config(u32 node_id, enum rpu_tcm_comb arg1);
 int zynqmp_pm_pinctrl_request(const u32 pin);
 int zynqmp_pm_pinctrl_release(const u32 pin);
-int zynqmp_pm_pinctrl_get_function(const u32 pin, u32 *id);
 int zynqmp_pm_pinctrl_set_function(const u32 pin, const u32 id);
 int zynqmp_pm_pinctrl_get_config(const u32 pin, const u32 param,
 				 u32 *value);
@@ -1010,11 +1008,6 @@ static inline int zynqmp_pm_pinctrl_request(const u32 pin)
 }
 
 static inline int zynqmp_pm_pinctrl_release(const u32 pin)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_pinctrl_get_function(const u32 pin, u32 *id)
 {
 	return -ENODEV;
 }

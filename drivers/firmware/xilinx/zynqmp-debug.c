@@ -43,7 +43,6 @@ static struct pm_api_info pm_api_list[] = {
 	PM_API(PM_RESET_ASSERT),
 	PM_API(PM_RESET_GET_STATUS),
 	PM_API(PM_GET_CHIPID),
-	PM_API(PM_PINCTRL_GET_FUNCTION),
 	PM_API(PM_PINCTRL_SET_FUNCTION),
 	PM_API(PM_PINCTRL_CONFIG_PARAM_GET),
 	PM_API(PM_PINCTRL_CONFIG_PARAM_SET),
@@ -204,14 +203,6 @@ static int process_api_request(u32 pm_id, u64 *pm_api_arg, u32 *pm_api_ret)
 		if (!ret)
 			sprintf(debugfs_buf, "Idcode: %#x, Version:%#x\n",
 				pm_api_ret[0], pm_api_ret[1]);
-		break;
-	case PM_PINCTRL_GET_FUNCTION:
-		ret = zynqmp_pm_pinctrl_get_function(pm_api_arg[0],
-						     &pm_api_ret[0]);
-		if (!ret)
-			sprintf(debugfs_buf,
-				"Current set function for the pin: %u\n",
-				pm_api_ret[0]);
 		break;
 	case PM_PINCTRL_SET_FUNCTION:
 		ret = zynqmp_pm_pinctrl_set_function(pm_api_arg[0],
