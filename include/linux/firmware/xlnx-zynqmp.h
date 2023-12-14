@@ -269,8 +269,6 @@ enum pm_ioctl_id {
 	IOCTL_USB_SET_STATE = 22,
 	/* IOCTL to get last reset reason */
 	IOCTL_GET_LAST_RESET_REASON = 23,
-	/* AI engine NPI ISR clear */
-	IOCTL_AIE_ISR_CLEAR = 24,
 	/* Register SGI to ATF */
 	IOCTL_REGISTER_SGI = 25,
 	/* Runtime feature configuration */
