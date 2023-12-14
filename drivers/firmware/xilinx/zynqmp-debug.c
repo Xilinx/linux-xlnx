@@ -36,7 +36,6 @@ static struct pm_api_info pm_api_list[] = {
 	PM_API(PM_FORCE_POWERDOWN),
 	PM_API(PM_ABORT_SUSPEND),
 	PM_API(PM_REQUEST_WAKEUP),
-	PM_API(PM_SET_WAKEUP_SOURCE),
 	PM_API(PM_SYSTEM_SHUTDOWN),
 	PM_API(PM_REQUEST_NODE),
 	PM_API(PM_RELEASE_NODE),
@@ -197,10 +196,6 @@ static int process_api_request(u32 pm_id, u64 *pm_api_arg, u32 *pm_api_ret)
 					     pm_api_arg[1], pm_api_arg[2],
 					     pm_api_arg[3] ? pm_api_arg[3] :
 					     ZYNQMP_PM_REQUEST_ACK_NO);
-		break;
-	case PM_SET_WAKEUP_SOURCE:
-		ret = zynqmp_pm_set_wakeup_source(pm_api_arg[0], pm_api_arg[1],
-						  pm_api_arg[2]);
 		break;
 	case PM_SYSTEM_SHUTDOWN:
 		ret = zynqmp_pm_system_shutdown(pm_api_arg[0], pm_api_arg[1]);

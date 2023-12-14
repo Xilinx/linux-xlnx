@@ -193,7 +193,6 @@ enum pm_api_id {
 	PM_FORCE_POWERDOWN = 8,
 	PM_ABORT_SUSPEND = 9,
 	PM_REQUEST_WAKEUP = 10,
-	PM_SET_WAKEUP_SOURCE = 11,
 	PM_SYSTEM_SHUTDOWN = 12,
 	PM_REQUEST_NODE = 13,
 	PM_RELEASE_NODE = 14,
@@ -713,7 +712,6 @@ int zynqmp_pm_get_node_status(const u32 node, u32 *const status,
 int zynqmp_pm_get_operating_characteristic(const u32 node,
 					   const enum zynqmp_pm_opchar_type type,
 					   u32 *const result);
-int zynqmp_pm_set_wakeup_source(const u32 target, const u32 wakeup_node, const u32 enable);
 int zynqmp_pm_fpga_load(const u64 address, const u32 size,
 			const u32 flags, u32 *status);
 int zynqmp_pm_fpga_get_status(u32 *value);
@@ -1120,13 +1118,6 @@ static inline int zynqmp_pm_get_node_status(const u32 node, u32 *const status,
 static inline int zynqmp_pm_get_operating_characteristic(const u32 node,
 							 const enum zynqmp_pm_opchar_type type,
 							 u32 *const result)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_set_wakeup_source(const u32 target,
-					      const u32 wakeup_node,
-					      const u32 enable)
 {
 	return -ENODEV;
 }

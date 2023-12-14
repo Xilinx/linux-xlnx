@@ -1559,23 +1559,6 @@ int zynqmp_pm_request_suspend(const u32 node,
 EXPORT_SYMBOL_GPL(zynqmp_pm_request_suspend);
 
 /**
- * zynqmp_pm_set_wakeup_source - PM call to specify the wakeup source
- *					while suspended
- * @target:	Node ID of the targeted PU or subsystem
- * @wakeup_node:Node ID of the wakeup peripheral
- * @enable:	Enable or disable the specified peripheral as wake source
- *
- * Return:	Returns status, either success or error+reason
- */
-int zynqmp_pm_set_wakeup_source(const u32 target, const u32 wakeup_node,
-				const u32 enable)
-{
-	return zynqmp_pm_invoke_fn(PM_SET_WAKEUP_SOURCE, target,
-				   wakeup_node, enable, 0, 0, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_set_wakeup_source);
-
-/**
  * zynqmp_pm_set_max_latency - PM call to set wakeup latency requirements
  * @node:	Node ID of the slave
  * @latency:	Requested maximum wakeup latency
