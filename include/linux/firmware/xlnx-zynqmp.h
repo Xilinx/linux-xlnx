@@ -1093,16 +1093,6 @@ static inline int zynqmp_pm_bbram_lock_userdata(void)
 	return -ENODEV;
 }
 
-static inline int zynqmp_pm_probe_counter_read(u32 deviceid, u32 reg, u32 *value)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_probe_counter_write(u32 domain, u32 reg, u32 value)
-{
-	return -ENODEV;
-}
-
 static inline int zynqmp_pm_secure_load(const u64 src_addr, u64 key_addr, u64 *dst)
 {
 	return -ENODEV;
