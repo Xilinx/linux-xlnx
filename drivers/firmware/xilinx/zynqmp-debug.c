@@ -32,7 +32,6 @@ static char debugfs_buf[PAGE_SIZE];
 #define PM_API(id)		 {id, #id, strlen(#id)}
 static struct pm_api_info pm_api_list[] = {
 	PM_API(PM_REQUEST_SUSPEND),
-	PM_API(PM_SELF_SUSPEND),
 	PM_API(PM_FORCE_POWERDOWN),
 	PM_API(PM_REQUEST_WAKEUP),
 	PM_API(PM_SYSTEM_SHUTDOWN),
@@ -64,21 +63,6 @@ static struct pm_api_info pm_api_list[] = {
 };
 
 static struct dentry *firmware_debugfs_root;
-
-/**
- * zynqmp_pm_self_suspend - PM call for master to suspend itself
- * @node:	Node ID of the master or subsystem
- * @latency:	Requested maximum wakeup latency (not supported)
- * @state:	Requested state (not supported)
- *
- * Return:	Returns status, either success or error+reason
- */
-static int zynqmp_pm_self_suspend(const u32 node, const u32 latency,
-				  const u32 state)
-{
-	return zynqmp_pm_invoke_fn(PM_SELF_SUSPEND, node, latency,
-				   state, 0, 0, NULL);
-}
 
 /**
  * zynqmp_pm_ioctl - PM IOCTL for device control and configs
@@ -162,11 +146,6 @@ static int process_api_request(u32 pm_id, u64 *pm_api_arg, u32 *pm_api_ret)
 						ZYNQMP_PM_REQUEST_ACK_NO,
 						pm_api_arg[2] ? pm_api_arg[2] :
 						ZYNQMP_PM_MAX_LATENCY, 0);
-		break;
-	case PM_SELF_SUSPEND:
-		ret = zynqmp_pm_self_suspend(pm_api_arg[0],
-					     pm_api_arg[1] ? pm_api_arg[1] :
-					     ZYNQMP_PM_MAX_LATENCY, 0);
 		break;
 	case PM_FORCE_POWERDOWN:
 		ret = zynqmp_pm_force_pwrdwn(pm_api_arg[0],
