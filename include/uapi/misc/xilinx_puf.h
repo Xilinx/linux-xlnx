@@ -11,6 +11,8 @@
 #ifndef _PUF_UAPI_H_
 #define _PUF_UAPI_H_
 
+#include <linux/types.h>
+
 #define PUF_MAX_SYNDROME_DATA_LEN_IN_WORDS 140
 #define PUF_EFUSE_TRIM_SYN_DATA_IN_WORDS   127
 #define PUF_ID_LEN_IN_WORDS                8
@@ -29,13 +31,13 @@
  * @trimsyndataaddr: used during puf registration to store trimmed data.
  */
 struct puf_usrparams {
-	u8 pufoperation;
-	u8 globalvarfilter;
-	u8 readoption;
-	u32 shuttervalue;
-	u64 pufdataaddr;
-	u64 pufidaddr;
-	u64 trimsyndataaddr;
+	__u8 pufoperation;
+	__u8 globalvarfilter;
+	__u8 readoption;
+	__u32 shuttervalue;
+	__u64 pufdataaddr;
+	__u64 pufidaddr;
+	__u64 trimsyndataaddr;
 };
 
 /**
@@ -45,9 +47,9 @@ struct puf_usrparams {
  * @aux: PUF aux.
  */
 struct puf_helperdata {
-	u32 syndata[PUF_MAX_SYNDROME_DATA_LEN_IN_WORDS];
-	u32 chash;
-	u32 aux;
+	__u32 syndata[PUF_MAX_SYNDROME_DATA_LEN_IN_WORDS];
+	__u32 chash;
+	__u32 aux;
 };
 
 /**
@@ -58,8 +60,8 @@ struct puf_helperdata {
  */
 struct pufdata {
 	struct puf_helperdata pufhd;
-	u32 pufid[PUF_ID_LEN_IN_WORDS];
-	u32 efusesyndata[PUF_EFUSE_TRIM_SYN_DATA_IN_WORDS];
+	__u32 pufid[PUF_ID_LEN_IN_WORDS];
+	__u32 efusesyndata[PUF_EFUSE_TRIM_SYN_DATA_IN_WORDS];
 };
 
 enum pufreadoption {
