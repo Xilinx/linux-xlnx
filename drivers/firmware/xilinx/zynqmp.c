@@ -14,6 +14,7 @@
 #include <linux/arm-smccc.h>
 #include <linux/compiler.h>
 #include <linux/device.h>
+#include <linux/dma-mapping.h>
 #include <linux/init.h>
 #include <linux/mfd/core.h>
 #include <linux/module.h>
@@ -37,6 +38,11 @@
 #define CRL_APB_BOOT_PIN_CTRL		(CRL_APB_BASE + (0x250U))
 /* BOOT_PIN_CTRL_MASK- out_val[11:8], out_en[3:0] */
 #define CRL_APB_BOOTPIN_CTRL_MASK	0xF0FU
+
+/* firmware required uid buff size */
+#define UID_BUFF_SIZE	786
+#define UID_SET_LEN	4
+#define UID_LEN		4
 
 /* IOCTL/QUERY feature payload size */
 #define FEATURE_PAYLOAD_SIZE		2
@@ -1403,6 +1409,35 @@ int zynqmp_pm_bbram_lock_userdata(void)
 EXPORT_SYMBOL_GPL(zynqmp_pm_bbram_lock_userdata);
 
 /**
+ * zynqmp_pm_get_uid_info - It is used to get image Info List
+ * @address:	Buffer address
+ * @size:	Number of bytes required to read from the firmware.
+ * @count:	Number of bytes read from the firmware.
+ *
+ * This function provides support to used to get image Info List
+ *
+ * Return: Returns status, either success or error+reason
+ */
+int zynqmp_pm_get_uid_info(const u64 address, const u32 size, u32 *count)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	if (!count)
+		return -EINVAL;
+
+	ret = zynqmp_pm_invoke_fn(PM_GET_UID_INFO_LIST, ret_payload, 3,
+				  upper_32_bits(address),
+				  lower_32_bits(address),
+				  size);
+
+	*count = ret_payload[1];
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_get_uid_info);
+
+/**
  * zynqmp_pm_fpga_read - Perform the fpga configuration readback
  * @reg_numframes: Configuration register offset (or) Number of frames to read
  * @phys_address: Physical Address of the buffer
@@ -2745,6 +2780,41 @@ static int zynqmp_pm_sysfs_init(void)
 	return ret;
 }
 
+static ssize_t firmware_uid_get_data(struct file *filp, struct kobject *kobj,
+				     struct bin_attribute *attr, char *buf,
+				     loff_t off, size_t count)
+{
+	struct device *kdev = kobj_to_dev(kobj);
+	dma_addr_t dma_addr = 0;
+	char *kbuf;
+	u32 size;
+	int ret;
+
+	kbuf = dma_alloc_coherent(kdev, UID_BUFF_SIZE, &dma_addr, GFP_KERNEL);
+	if (!kbuf)
+		return -ENOMEM;
+
+	/* Read from the firmware memory */
+	ret = zynqmp_pm_get_uid_info(dma_addr, UID_BUFF_SIZE, &size);
+	if (ret) {
+		dma_free_coherent(kdev, UID_BUFF_SIZE, kbuf, dma_addr);
+		return ret;
+	}
+
+	size = size * UID_SET_LEN * UID_LEN;
+	memcpy(buf, kbuf, size);
+	dma_free_coherent(kdev, UID_BUFF_SIZE, kbuf, dma_addr);
+
+	return size;
+}
+
+static const struct bin_attribute uid_attr = {
+	.attr.name = "uid-read",
+	.attr.mode = 00400,
+	.size = 1,
+	.read = firmware_uid_get_data,
+};
+
 static int zynqmp_firmware_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -2811,6 +2881,19 @@ static int zynqmp_firmware_probe(struct platform_device *pdev)
 	ret = zynqmp_pm_sysfs_init();
 	if (ret) {
 		pr_err("%s() sysfs init fail with error %d\n", __func__, ret);
+		return ret;
+	}
+
+	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
+	if (ret < 0) {
+		dev_err(dev, "no usable DMA configuration");
+		return ret;
+	}
+
+	ret = sysfs_create_bin_file(&pdev->dev.kobj, &uid_attr);
+	if (ret) {
+		pr_err("%s() Failed to create sysfs binary file for uid-read with error%d\n",
+		       __func__, ret);
 		return ret;
 	}
 
