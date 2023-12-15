@@ -294,17 +294,18 @@ int aie_part_set_column_clock_from_user(struct aie_partition *apart,
 
 		for (c = (args.start_col + apart->range.start.col);
 				c < (args.start_col + args.num_cols); c++) {
-			int bit = aie_part_get_clk_state_bit(apart, &locs);
+			int bit;
 
 			locs.col = c;
 			locs.row = 1;
-
-			if (bit >= 0)
-				aie_resource_set(&apart->tiles_inuse, bit, 1);
+			bit = aie_part_get_clk_state_bit(apart, &locs);
+			if (bit >= 0) {
+				aie_resource_set(&apart->tiles_inuse, bit,
+						 apart->range.size.row - 1);
+				aie_resource_set(&apart->cores_clk_state, bit,
+						 apart->range.size.row - 1);
+			}
 		}
-
-		aie_resource_set(&apart->cores_clk_state, 0,
-				 apart->cores_clk_state.total);
 	} else {
 		ret = zynqmp_pm_aie_operation(node_id, args.start_col,
 					      args.num_cols,
@@ -316,17 +317,18 @@ int aie_part_set_column_clock_from_user(struct aie_partition *apart,
 
 		for (c = (args.start_col + apart->range.start.col);
 				c < (args.start_col + args.num_cols); c++) {
-			int bit = aie_part_get_clk_state_bit(apart, &locs);
+			int bit;
 
 			locs.col = c;
 			locs.row = 1;
-
-			if (bit >= 0)
-				aie_resource_clear(&apart->tiles_inuse, bit, 1);
+			bit = aie_part_get_clk_state_bit(apart, &locs);
+			if (bit >= 0) {
+				aie_resource_clear(&apart->tiles_inuse, bit,
+						   apart->range.size.row - 1);
+				aie_resource_clear(&apart->cores_clk_state, bit,
+						   apart->range.size.row - 1);
+			}
 		}
-
-		aie_resource_clear(&apart->cores_clk_state, 0,
-				   apart->cores_clk_state.total);
 	}
 
 exit:
