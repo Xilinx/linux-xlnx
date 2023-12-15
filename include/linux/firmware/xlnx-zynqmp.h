@@ -70,9 +70,6 @@
 #define PM_BBRAM_LOCK_USERDATA		0xB05
 
 /* xilSecure API commands  module id + api id */
-#define XSECURE_API_RSA_SIGN_VERIFY	0x501
-#define XSECURE_API_RSA_PUBLIC_ENCRYPT	0x502
-#define XSECURE_API_RSA_PRIVATE_DECRYPT	0x503
 #define XSECURE_API_SHA3_UPDATE		0x504
 #define XSECURE_API_AES_OP_INIT		0x50a
 #define XSECURE_API_AES_UPDATE_AAD	0x50b
@@ -745,8 +742,6 @@ int versal_pm_aes_enc_update(const u64 in_params, const u64 in_addr);
 int versal_pm_aes_dec_update(const u64 in_params, const u64 in_addr);
 int versal_pm_aes_dec_final(const u64 gcm_addr);
 int versal_pm_aes_enc_final(const u64 gcm_addr);
-int versal_pm_rsa_encrypt(const u64 in_params, const u64 in_addr);
-int versal_pm_rsa_decrypt(const u64 in_params, const u64 in_addr);
 int versal_pm_puf_registration(const u64 in_addr);
 int versal_pm_puf_regeneration(const u64 in_addr);
 #else
@@ -1253,16 +1248,6 @@ static inline int versal_pm_aes_enc_final(const u64 gcm_addr)
 }
 
 static inline int versal_pm_aes_dec_final(const u64 gcm_addr)
-{
-	return -ENODEV;
-}
-
-static inline int versal_pm_rsa_encrypt(const u64 in_params, const u64 in_addr)
-{
-	return -ENODEV;
-}
-
-static inline int versal_pm_rsa_decrypt(const u64 in_params, const u64 in_addr)
 {
 	return -ENODEV;
 }
