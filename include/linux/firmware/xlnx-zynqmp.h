@@ -619,6 +619,7 @@ struct xlnx_feature {
 #if IS_REACHABLE(CONFIG_ZYNQMP_FIRMWARE)
 int zynqmp_pm_get_api_version(u32 *version);
 int zynqmp_pm_get_chipid(u32 *idcode, u32 *version);
+int zynqmp_pm_get_family_info(u32 *family, u32 *subfamily);
 void *xlnx_get_crypto_dev_data(struct xlnx_feature *feature_map);
 int zynqmp_pm_query_data(struct zynqmp_pm_query_data qdata, u32 *out);
 int zynqmp_pm_clock_enable(u32 clock_id);
@@ -736,6 +737,11 @@ static inline int zynqmp_pm_get_api_version(u32 *version)
 }
 
 static inline int zynqmp_pm_get_chipid(u32 *idcode, u32 *version)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_get_family_info(u32 *family, u32 *subfamily)
 {
 	return -ENODEV;
 }
