@@ -1146,12 +1146,14 @@ struct aie_partition {
  * @npages: number of pages of the user space buffer
  * @pages: array to receive pointers to the pages pinned.
  *	   should be at least npages long
+ * @aie_dma_handle: DMA physical address handle for AIE.
  */
 struct aie_part_pinned_region {
 	u64 user_addr;
 	u64 len;
 	struct page **pages;
 	int npages;
+	dma_addr_t aie_dma_handle;
 };
 
 extern struct class *aie_class;
