@@ -357,6 +357,70 @@ static void aie_part_unpin_user_region(struct aie_part_pinned_region *region)
 }
 
 /**
+ * aie_part_copy_user_region() - copy user space data to kernel space
+ * @apart: AI engine partition
+ * @region: User space region to copy data from
+ * @data: User data pointer
+ *
+ * This function replaces the previous method of pinning user pages
+ * directly and instead copies user space data to kernel space using
+ * copy_from_user(). It ensures that user space data is safely and securely
+ * copied to the kernel without directly accessing user pages.
+ *
+ * @return: 0 on success, negative error code on failure.
+ */
+static int aie_part_copy_user_region(struct aie_partition *apart,
+				     struct aie_part_pinned_region *region,
+				     void *data)
+{
+#ifdef CONFIG_ARM64_SW_TTBR0_PAN
+	if (region->len == 0)
+		return 0;
+
+	region->user_addr = (__u64)dma_alloc_coherent(&apart->dev, region->len,
+			&region->aie_dma_handle,
+			GFP_KERNEL | GFP_DMA);
+	if (!region->user_addr)
+		return -ENOMEM;
+
+	if (copy_from_user((void *)region->user_addr, (const void __user *)data,
+			   region->len)) {
+		dma_free_coherent(&apart->dev, region->len,
+				  (void *)region->user_addr,
+				  region->aie_dma_handle);
+		return -EFAULT;
+	}
+#else
+	int ret;
+
+	region->user_addr = (__u64)data;
+	ret = aie_part_pin_user_region(apart, region);
+	if (ret)
+		return ret;
+#endif
+	return 0;
+}
+
+/**
+ * aie_part_free_region() - free allocated memory
+ * @apart: AI engine partition
+ * @region: User space region structure to free
+ *
+ * This function simplifies the freeing of allocated kernel memory.
+ * It only frees the allocated memory associated with the user space region.
+ */
+static void aie_part_free_region(struct aie_partition *apart,
+				 struct aie_part_pinned_region *region)
+{
+#ifdef CONFIG_ARM64_SW_TTBR0_PAN
+	dma_free_coherent(&apart->dev, region->len, (void *)region->user_addr,
+			  region->aie_dma_handle);
+#else
+	aie_part_unpin_user_region(region);
+#endif
+}
+
+/**
  * aie_part_access_regs() - AI engine partition registers access
  * @apart: AI engine partition
  * @num_reqs: number of access requests
@@ -387,18 +451,17 @@ static int aie_part_access_regs(struct aie_partition *apart, u32 num_reqs,
 		{
 			struct aie_part_pinned_region region;
 
-			region.user_addr = args->dataptr;
 			region.len = args->len * sizeof(u32);
-			ret = aie_part_pin_user_region(apart, &region);
+			ret = aie_part_copy_user_region(apart, &region, (void *)args->dataptr);
 			if (ret)
 				break;
 
 			ret = aie_part_write_register(apart,
 						      (size_t)args->offset,
 						      sizeof(u32) * args->len,
-						      (void *)args->dataptr,
+						      (void *)region.user_addr,
 						      args->mask);
-			aie_part_unpin_user_region(&region);
+			aie_part_free_region(apart, &region);
 			break;
 		}
 		case AIE_REG_BLOCKSET:
@@ -410,29 +473,29 @@ static int aie_part_access_regs(struct aie_partition *apart, u32 num_reqs,
 		{
 			struct aie_part_pinned_region data_region;
 
-			data_region.user_addr = args->dataptr;
 			data_region.len = sizeof(struct aie_dmabuf_bd_args);
-			ret = aie_part_pin_user_region(apart, &data_region);
+			ret = aie_part_copy_user_region(apart, &data_region,
+							(void *)args->dataptr);
 			if (ret)
 				break;
 
 			ret =  aie_part_set_bd(apart,
-				(struct aie_dma_bd_args *)args->dataptr);
-			aie_part_unpin_user_region(&data_region);
+				(struct aie_dma_bd_args *)data_region.user_addr);
+			aie_part_free_region(apart, &data_region);
 			break;
 		}
 		case AIE_CONFIG_SHIMDMA_DMABUF_BD:
 		{
 			struct aie_part_pinned_region data_region;
 
-			data_region.user_addr = args->dataptr;
 			data_region.len = sizeof(struct aie_dmabuf_bd_args);
-			ret = aie_part_pin_user_region(apart, &data_region);
+			ret = aie_part_copy_user_region(apart, &data_region,
+							(void *)args->dataptr);
 			if (ret)
 				break;
 
 			ret =  aie_part_set_dmabuf_bd(apart,
-				(struct aie_dmabuf_bd_args *)args->dataptr);
+				(struct aie_dmabuf_bd_args *)data_region.user_addr);
 			aie_part_unpin_user_region(&data_region);
 			break;
 		}
@@ -472,15 +535,17 @@ static int aie_part_execute_transaction_from_user(struct aie_partition *apart,
 	if (copy_from_user(&txn_inst, user_args, sizeof(txn_inst)))
 		return -EFAULT;
 
-	region.user_addr = txn_inst.cmdsptr;
+	if (txn_inst.num_cmds == 0)
+		return 0;
+
 	region.len = txn_inst.num_cmds * sizeof(struct aie_reg_args);
-	ret = aie_part_pin_user_region(apart, &region);
+	ret = aie_part_copy_user_region(apart, &region, (void *)txn_inst.cmdsptr);
 	if (ret)
 		return ret;
 
 	ret = mutex_lock_interruptible(&apart->mlock);
 	if (ret) {
-		aie_part_unpin_user_region(&region);
+		aie_part_free_region(apart, &region);
 		return ret;
 	}
 
@@ -489,7 +554,7 @@ static int aie_part_execute_transaction_from_user(struct aie_partition *apart,
 
 	mutex_unlock(&apart->mlock);
 
-	aie_part_unpin_user_region(&region);
+	aie_part_free_region(apart, &region);
 	return ret;
 }
 
