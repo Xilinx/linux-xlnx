@@ -47,6 +47,15 @@ properties:
   "#power-domain-cells":
     const: 1
 
+  clock-controller:
+    $ref: /schemas/clock/xlnx,versal-clk.yaml#
+    description: The clock controller is a hardware block of Xilinx versal
+      clock tree. It reads required input clock frequencies from the devicetree
+      and acts as clock provider for all clock consumers of PS clocks.list of
+      clock specifiers which are external input clocks to the given clock
+      controller.
+    type: object
+
   versal-fpga:
     $ref: /schemas/fpga/xlnx,versal-fpga.yaml#
     description: Compatible of the FPGA device.
@@ -59,15 +68,6 @@ properties:
       vector.
     type: object
     deprecated: true
-
-  clock-controller:
-    $ref: /schemas/clock/xlnx,versal-clk.yaml#
-    description: The clock controller is a hardware block of Xilinx versal
-      clock tree. It reads required input clock frequencies from the devicetree
-      and acts as clock provider for all clock consumers of PS clocks.list of
-      clock specifiers which are external input clocks to the given clock
-      controller.
-    type: object
 
 required:
   - compatible
