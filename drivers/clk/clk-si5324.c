@@ -688,12 +688,25 @@ static int si5324_pll_set_rate(struct clk_hw *hw, unsigned long rate,
 	return 0;
 }
 
+static int si5324_determine_rate(struct clk_hw *hw,
+				 struct clk_rate_request *req)
+{
+	struct si5324_hw_data *hwdata =
+		container_of(hw, struct si5324_hw_data, hw);
+
+	dev_err(&hwdata->drvdata->client->dev,
+		"%s: Missing implementation\n", clk_hw_get_name(hw));
+
+	return clk_hw_determine_rate_no_reparent(hw, req);
+}
+
 static const struct clk_ops si5324_pll_ops = {
 	.set_parent = si5324_pll_set_parent,
 	.get_parent = si5324_pll_get_parent,
 	.recalc_rate = si5324_pll_recalc_rate,
 	.round_rate = si5324_pll_round_rate,
 	.set_rate = si5324_pll_set_rate,
+	.determine_rate = si5324_determine_rate,
 };
 
 static int si5324_clkout_set_drive_strength(
