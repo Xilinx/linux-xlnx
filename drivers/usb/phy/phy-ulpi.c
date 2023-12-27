@@ -337,6 +337,7 @@ EXPORT_SYMBOL_GPL(devm_otg_ulpi_create);
 static int ulpi_phy_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
+	struct resource *res;
 	struct ulpi_phy *uphy;
 	int ret;
 
@@ -344,7 +345,13 @@ static int ulpi_phy_probe(struct platform_device *pdev)
 	if (!uphy)
 		return -ENOMEM;
 
-	uphy->regs = devm_platform_ioremap_resource(pdev, 0);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!res) {
+		dev_err(&pdev->dev, "no phy I/O memory resource defined\n");
+		return -ENODEV;
+	}
+
+	uphy->regs = devm_ioremap(&pdev->dev, res->start, resource_size(res));
 	if (IS_ERR(uphy->regs))
 		return PTR_ERR(uphy->regs);
 
