@@ -79,9 +79,6 @@
 #define XSECURE_API_AES_DECRYPT_FINAL	0x50f
 #define XSECURE_API_AES_WRITE_KEY	0x511
 
-/* Secure Commands */
-#define PM_WRITE_AES_KEY		0x568
-
 /* XilPuf API commands module id + api id */
 #define XPUF_API_PUF_REGISTRATION	0xc01
 #define XPUF_API_PUF_REGENERATION	0xc02
@@ -654,7 +651,6 @@ int zynqmp_pm_set_requirement(const u32 node, const u32 capabilities,
 int zynqmp_pm_aes_engine(const u64 address, u32 *out);
 int zynqmp_pm_efuse_access(const u64 address, u32 *out);
 int zynqmp_pm_secure_load(const u64 src_addr, u64 key_addr, u64 *dst);
-int zynqmp_pm_write_aes_key(const u32 keylen, const u32 keysrc, const u64 keyaddr);
 int zynqmp_pm_bbram_write_usrdata(u32 data);
 int zynqmp_pm_bbram_read_usrdata(const u64 outaddr);
 int zynqmp_pm_bbram_write_aeskey(u32 keylen, const u64 keyaddr);
@@ -1004,11 +1000,6 @@ static inline int zynqmp_pm_load_pdi(const u32 src, const u64 address)
 static inline int zynqmp_pm_fpga_read(const u32 reg_numframes,
 				      const u64 phys_address, u32 readback_type,
 				      u32 *value)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_write_aes_key(const u32 keylen, const u32 keysrc, const u64 keyaddr)
 {
 	return -ENODEV;
 }

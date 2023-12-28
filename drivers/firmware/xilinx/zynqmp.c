@@ -1315,27 +1315,6 @@ int zynqmp_pm_init_finalize(void)
 EXPORT_SYMBOL_GPL(zynqmp_pm_init_finalize);
 
 /**
- * zynqmp_pm_write_aes_key - Write AES key registers
- * @keylen:	Size of the input key to be written
- * @keysrc:	Key Source to be selected to which provided
- *			key should be updated
- * @keyaddr: Address of a buffer which should contain the key
- *			to be written
- *
- * This function provides support to write AES volatile user keys.
- *
- * Return: Returns status, either success or error+reason
- */
-int zynqmp_pm_write_aes_key(const u32 keylen, const u32 keysrc,
-			    const u64 keyaddr)
-{
-	return zynqmp_pm_invoke_fn(PM_WRITE_AES_KEY, NULL, 4, keylen, keysrc,
-				   lower_32_bits(keyaddr),
-				   upper_32_bits(keyaddr));
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_write_aes_key);
-
-/**
  * zynqmp_pm_bbram_write_aeskey - Write AES key in BBRAM
  * @keylen:	Size of the input key to be written
  * @keyaddr: Address of a buffer which should contain the key
