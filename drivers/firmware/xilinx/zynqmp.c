@@ -953,8 +953,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_usb_set_state);
 
 int zynqmp_pm_get_last_reset_reason(u32 *reset_reason)
 {
-	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_GET_LAST_RESET_REASON, 0,
-				   0, reset_reason);
+	return zynqmp_pm_invoke_fn(PM_IOCTL, reset_reason, 2, 0, IOCTL_GET_LAST_RESET_REASON);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_get_last_reset_reason);
 
