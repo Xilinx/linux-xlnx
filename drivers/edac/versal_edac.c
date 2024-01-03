@@ -13,6 +13,7 @@
 #include <linux/platform_device.h>
 #include <linux/sizes.h>
 #include <linux/firmware/xlnx-zynqmp.h>
+#include <linux/firmware/xlnx-versal-error-events.h>
 #include <linux/firmware/xlnx-event-manager.h>
 
 #include "edac_module.h"
@@ -462,9 +463,9 @@ static void err_callback(const u32 *payload, void *data)
 
 	regval = readl(priv->ddrmc_baseaddr + XDDR_ISR_OFFSET);
 
-	if (payload[EVENT] == XPM_EVENT_ERROR_MASK_DDRMC_CR)
+	if (payload[EVENT] == XPM_VERSAL_EVENT_ERROR_MASK_DDRMC_CR)
 		p->error_type = XDDR_ERR_TYPE_CE;
-	if (payload[EVENT] == XPM_EVENT_ERROR_MASK_DDRMC_NCR)
+	if (payload[EVENT] == XPM_VERSAL_EVENT_ERROR_MASK_DDRMC_NCR)
 		p->error_type = XDDR_ERR_TYPE_UE;
 
 	if (get_error_info(priv))
@@ -1006,8 +1007,10 @@ static int mc_probe(struct platform_device *pdev)
 	}
 
 	rc = xlnx_register_event(PM_NOTIFY_CB, VERSAL_EVENT_ERROR_PMC_ERR1,
-				 XPM_EVENT_ERROR_MASK_DDRMC_CR | XPM_EVENT_ERROR_MASK_DDRMC_NCR |
-				 XPM_EVENT_ERROR_MASK_NOC_CR | XPM_EVENT_ERROR_MASK_NOC_NCR,
+				 XPM_VERSAL_EVENT_ERROR_MASK_DDRMC_CR |
+				 XPM_VERSAL_EVENT_ERROR_MASK_DDRMC_NCR |
+				 XPM_VERSAL_EVENT_ERROR_MASK_NOCTYPE1_CR |
+				 XPM_VERSAL_EVENT_ERROR_MASK_NOCTYPE1_NCR,
 				 false, err_callback, mci);
 	if (rc) {
 		if (rc == -EACCES)
@@ -1043,10 +1046,10 @@ static int mc_remove(struct platform_device *pdev)
 #endif
 
 	xlnx_unregister_event(PM_NOTIFY_CB, VERSAL_EVENT_ERROR_PMC_ERR1,
-			      XPM_EVENT_ERROR_MASK_DDRMC_CR |
-			      XPM_EVENT_ERROR_MASK_NOC_CR |
-			      XPM_EVENT_ERROR_MASK_NOC_NCR |
-			      XPM_EVENT_ERROR_MASK_DDRMC_NCR, err_callback, mci);
+			      XPM_VERSAL_EVENT_ERROR_MASK_DDRMC_CR |
+			      XPM_VERSAL_EVENT_ERROR_MASK_NOCTYPE1_CR |
+			      XPM_VERSAL_EVENT_ERROR_MASK_NOCTYPE1_NCR |
+			      XPM_VERSAL_EVENT_ERROR_MASK_DDRMC_NCR, err_callback, mci);
 	edac_mc_del_mc(&pdev->dev);
 	edac_mc_free(mci);
 
