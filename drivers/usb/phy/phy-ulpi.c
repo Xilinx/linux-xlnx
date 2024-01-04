@@ -355,7 +355,8 @@ static int ulpi_phy_probe(struct platform_device *pdev)
 	if (IS_ERR(uphy->regs))
 		return PTR_ERR(uphy->regs);
 
-	if (of_property_read_bool(np, "external-drv-vbus"))
+	if (of_property_read_bool(np, "external-drv-vbus") ||
+	    of_property_read_bool(np, "drv-vbus"))
 		uphy->flags |= ULPI_OTG_DRVVBUS | ULPI_OTG_DRVVBUS_EXT;
 
 	ret = of_property_read_u32(np, "view-port", &uphy->vp_offset);
