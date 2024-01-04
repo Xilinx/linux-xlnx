@@ -168,7 +168,7 @@ static int sec_cfg_write(void *context, unsigned int offset, void *val, size_t b
 
 				keylen = (bytes == AES_KEY_STRING_128_BYTES) ? AES_KEY_SIZE_128 : AES_KEY_SIZE_256;
 				keysrc = ((offset - AES_USER_KEY_0_OFFSET) / 0x20) + 12;
-				ret = zynqmp_pm_write_aes_key(keylen, keysrc, dma_addr);
+				ret = versal_pm_aes_key_write(keylen, keysrc, dma_addr);
 			}
 		}
 		break;
