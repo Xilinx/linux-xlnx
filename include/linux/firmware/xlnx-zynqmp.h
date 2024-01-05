@@ -905,12 +905,12 @@ static inline int zynqmp_pm_fpga_get_config_status(u32 *value)
 	return -ENODEV;
 }
 
-static int zynqmp_pm_fpga_get_version(u32 *value)
+static inline int zynqmp_pm_fpga_get_version(u32 *value)
 {
 	return -ENODEV;
 }
 
-static int zynqmp_pm_fpga_get_feature_list(u32 *value)
+static inline int zynqmp_pm_fpga_get_feature_list(u32 *value)
 {
 	return -ENODEV;
 }
