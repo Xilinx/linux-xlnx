@@ -64,7 +64,7 @@ struct inode *ialloc(struct inode *parent, umode_t mode)
 		goto fail_put;
 	}
 
-	inode_init_owner(&init_user_ns, inode, parent, mode);
+	inode_init_owner(&nop_mnt_idmap, inode, parent, mode);
 	/*
 	 * New inodes need to save sane values on disk when
 	 * uid & gid mount options are used
@@ -97,8 +97,8 @@ struct inode *ialloc(struct inode *parent, umode_t mode)
 	jfs_inode->mode2 |= inode->i_mode;
 
 	inode->i_blocks = 0;
-	inode->i_mtime = inode->i_atime = inode->i_ctime = current_time(inode);
-	jfs_inode->otime = inode->i_ctime.tv_sec;
+	inode->i_mtime = inode->i_atime = inode_set_ctime_current(inode);
+	jfs_inode->otime = inode_get_ctime(inode).tv_sec;
 	inode->i_generation = JFS_SBI(sb)->gengen++;
 
 	jfs_inode->cflag = 0;

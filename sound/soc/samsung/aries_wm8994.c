@@ -483,14 +483,16 @@ static struct snd_soc_dai_link aries_dai[] = {
 		.name = "WM8994 AIF2",
 		.stream_name = "Baseband",
 		.init = &aries_baseband_init,
-		.params = &baseband_params,
+		.c2c_params = &baseband_params,
+		.num_c2c_params = 1,
 		.ignore_suspend = 1,
 		SND_SOC_DAILINK_REG(baseband),
 	},
 	{
 		.name = "WM8994 AIF3",
 		.stream_name = "Bluetooth",
-		.params = &bluetooth_params,
+		.c2c_params = &bluetooth_params,
+		.num_c2c_params = 1,
 		.ignore_suspend = 1,
 		SND_SOC_DAILINK_REG(bluetooth),
 	},
@@ -618,10 +620,14 @@ static int aries_audio_probe(struct platform_device *pdev)
 	/* Update card-name if provided through DT, else use default name */
 	snd_soc_of_parse_card_name(card, "model");
 
-	ret = snd_soc_of_parse_audio_routing(card, "samsung,audio-routing");
+	ret = snd_soc_of_parse_audio_routing(card, "audio-routing");
 	if (ret < 0) {
-		dev_err(dev, "Audio routing invalid/unspecified\n");
-		return ret;
+		/* Backwards compatible way */
+		ret = snd_soc_of_parse_audio_routing(card, "samsung,audio-routing");
+		if (ret < 0) {
+			dev_err(dev, "Audio routing invalid/unspecified\n");
+			return ret;
+		}
 	}
 
 	aries_dai[1].dai_fmt = priv->variant->modem_dai_fmt;

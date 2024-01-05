@@ -8,7 +8,6 @@
 #include <linux/randomize_kstack.h>
 #include <linux/syscalls.h>
 
-#include <asm/daifflags.h>
 #include <asm/debug-monitors.h>
 #include <asm/exception.h>
 #include <asm/fpsimd.h>
@@ -75,9 +74,6 @@ static inline bool has_syscall_work(unsigned long flags)
 	return unlikely(flags & _TIF_SYSCALL_WORK);
 }
 
-int syscall_trace_enter(struct pt_regs *regs);
-void syscall_trace_exit(struct pt_regs *regs);
-
 static void el0_svc_common(struct pt_regs *regs, int scno, int sc_nr,
 			   const syscall_fn_t syscall_table[])
 {
@@ -103,8 +99,6 @@ static void el0_svc_common(struct pt_regs *regs, int scno, int sc_nr,
 	 * So, don't touch regs->pstate & PSR_BTYPE_MASK here.
 	 * (Similarly for HVC and SMC elsewhere.)
 	 */
-
-	local_daif_restore(DAIF_PROCCTX);
 
 	if (flags & _TIF_MTE_ASYNC_FAULT) {
 		/*
@@ -147,62 +141,17 @@ static void el0_svc_common(struct pt_regs *regs, int scno, int sc_nr,
 	 * exit regardless, as the old entry assembly did.
 	 */
 	if (!has_syscall_work(flags) && !IS_ENABLED(CONFIG_DEBUG_RSEQ)) {
-		local_daif_mask();
 		flags = read_thread_flags();
 		if (!has_syscall_work(flags) && !(flags & _TIF_SINGLESTEP))
 			return;
-		local_daif_restore(DAIF_PROCCTX);
 	}
 
 trace_exit:
 	syscall_trace_exit(regs);
 }
 
-/*
- * As per the ABI exit SME streaming mode and clear the SVE state not
- * shared with FPSIMD on syscall entry.
- */
-static inline void fp_user_discard(void)
-{
-	/*
-	 * If SME is active then exit streaming mode.  If ZA is active
-	 * then flush the SVE registers but leave userspace access to
-	 * both SVE and SME enabled, otherwise disable SME for the
-	 * task and fall through to disabling SVE too.  This means
-	 * that after a syscall we never have any streaming mode
-	 * register state to track, if this changes the KVM code will
-	 * need updating.
-	 */
-	if (system_supports_sme() && test_thread_flag(TIF_SME)) {
-		u64 svcr = read_sysreg_s(SYS_SVCR);
-
-		if (svcr & SVCR_SM_MASK)
-			sme_smstop_sm();
-	}
-
-	if (!system_supports_sve())
-		return;
-
-	/*
-	 * If SME is not active then disable SVE, the registers will
-	 * be cleared when userspace next attempts to access them and
-	 * we do not need to track the SVE register state until then.
-	 */
-	clear_thread_flag(TIF_SVE);
-
-	/*
-	 * task_fpsimd_load() won't be called to update CPACR_EL1 in
-	 * ret_to_user unless TIF_FOREIGN_FPSTATE is still set, which only
-	 * happens if a context switch or kernel_neon_begin() or context
-	 * modification (sigreturn, ptrace) intervenes.
-	 * So, ensure that CPACR_EL1 is already correct for the fast-path case.
-	 */
-	sve_user_disable();
-}
-
 void do_el0_svc(struct pt_regs *regs)
 {
-	fp_user_discard();
 	el0_svc_common(regs, regs->regs[8], __NR_syscalls, sys_call_table);
 }
 

@@ -205,9 +205,9 @@ static int lrw_xor_tweak_post(struct skcipher_request *req)
 	return lrw_xor_tweak(req, true);
 }
 
-static void lrw_crypt_done(struct crypto_async_request *areq, int err)
+static void lrw_crypt_done(void *data, int err)
 {
-	struct skcipher_request *req = areq->data;
+	struct skcipher_request *req = data;
 
 	if (!err) {
 		struct lrw_request_ctx *rctx = skcipher_request_ctx(req);
@@ -357,10 +357,10 @@ static int lrw_create(struct crypto_template *tmpl, struct rtattr **tb)
 	 * cipher name.
 	 */
 	if (!strncmp(cipher_name, "ecb(", 4)) {
-		unsigned len;
+		int len;
 
-		len = strlcpy(ecb_name, cipher_name + 4, sizeof(ecb_name));
-		if (len < 2 || len >= sizeof(ecb_name))
+		len = strscpy(ecb_name, cipher_name + 4, sizeof(ecb_name));
+		if (len < 2)
 			goto err_free_inst;
 
 		if (ecb_name[len - 1] != ')')

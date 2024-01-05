@@ -21,7 +21,6 @@
 #include <sound/soc.h>
 #include "rockchip_i2s.h"
 #include "../codecs/da7219.h"
-#include "../codecs/da7219-aad.h"
 #include "../codecs/rt5514.h"
 
 #define DRV_NAME "rk3399-gru-sound"
@@ -42,13 +41,17 @@ static struct snd_soc_jack_pin rockchip_sound_jack_pins[] = {
 		.pin = "Headset Mic",
 		.mask = SND_JACK_MICROPHONE,
 	},
-
+	{
+		.pin = "Line Out",
+		.mask = SND_JACK_LINEOUT,
+	},
 };
 
 static const struct snd_soc_dapm_widget rockchip_dapm_widgets[] = {
 	SND_SOC_DAPM_HP("Headphones", NULL),
 	SND_SOC_DAPM_SPK("Speakers", NULL),
 	SND_SOC_DAPM_MIC("Headset Mic", NULL),
+	SND_SOC_DAPM_LINE("Line Out", NULL),
 	SND_SOC_DAPM_MIC("Int Mic", NULL),
 	SND_SOC_DAPM_LINE("HDMI", NULL),
 };
@@ -57,6 +60,7 @@ static const struct snd_kcontrol_new rockchip_controls[] = {
 	SOC_DAPM_PIN_SWITCH("Headphones"),
 	SOC_DAPM_PIN_SWITCH("Speakers"),
 	SOC_DAPM_PIN_SWITCH("Headset Mic"),
+	SOC_DAPM_PIN_SWITCH("Line Out"),
 	SOC_DAPM_PIN_SWITCH("Int Mic"),
 	SOC_DAPM_PIN_SWITCH("HDMI"),
 };
@@ -226,7 +230,7 @@ static int rockchip_sound_da7219_init(struct snd_soc_pcm_runtime *rtd)
 	snd_jack_set_key(
 		rockchip_sound_jack.jack, SND_JACK_BTN_3, KEY_VOICECOMMAND);
 
-	da7219_aad_jack_det(component, &rockchip_sound_jack);
+	snd_soc_component_set_jack(component, &rockchip_sound_jack, NULL);
 
 	return 0;
 }

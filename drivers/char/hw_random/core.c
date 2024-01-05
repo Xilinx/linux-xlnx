@@ -15,14 +15,13 @@
 #include <linux/err.h>
 #include <linux/fs.h>
 #include <linux/hw_random.h>
-#include <linux/random.h>
 #include <linux/kernel.h>
 #include <linux/kthread.h>
-#include <linux/sched/signal.h>
 #include <linux/miscdevice.h>
 #include <linux/module.h>
 #include <linux/random.h>
 #include <linux/sched.h>
+#include <linux/sched/signal.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 
@@ -41,14 +40,14 @@ static DEFINE_MUTEX(reading_mutex);
 static int data_avail;
 static u8 *rng_buffer, *rng_fillbuf;
 static unsigned short current_quality;
-static unsigned short default_quality; /* = 0; default to "off" */
+static unsigned short default_quality = 1024; /* default to maximum */
 
 module_param(current_quality, ushort, 0644);
 MODULE_PARM_DESC(current_quality,
 		 "current hwrng entropy estimation per 1024 bits of input -- obsolete, use rng_quality instead");
 module_param(default_quality, ushort, 0644);
 MODULE_PARM_DESC(default_quality,
-		 "default entropy content of hwrng per 1024 bits of input");
+		 "default maximum entropy content of hwrng per 1024 bits of input");
 
 static void drop_current_rng(void);
 static int hwrng_init(struct hwrng *rng);
@@ -69,8 +68,10 @@ static void add_early_randomness(struct hwrng *rng)
 	mutex_lock(&reading_mutex);
 	bytes_read = rng_get_data(rng, rng_fillbuf, 32, 0);
 	mutex_unlock(&reading_mutex);
-	if (bytes_read > 0)
-		add_device_randomness(rng_fillbuf, bytes_read);
+	if (bytes_read > 0) {
+		size_t entropy = bytes_read * 8 * rng->quality / 1024;
+		add_hwgenerator_randomness(rng_fillbuf, bytes_read, entropy, false);
+	}
 }
 
 static inline void cleanup_rng(struct kref *kref)
@@ -170,10 +171,7 @@ static int hwrng_init(struct hwrng *rng)
 	reinit_completion(&rng->cleanup_done);
 
 skip_init:
-	if (!rng->quality)
-		rng->quality = default_quality;
-	if (rng->quality > 1024)
-		rng->quality = 1024;
+	rng->quality = min_t(u16, min_t(u16, default_quality, 1024), rng->quality ?: 1024);
 	current_quality = rng->quality; /* obsolete */
 
 	return 0;
@@ -528,7 +526,7 @@ static int hwrng_fillfn(void *unused)
 
 		/* Outside lock, sure, but y'know: randomness. */
 		add_hwgenerator_randomness((void *)rng_fillbuf, rc,
-					   entropy >> 10);
+					   entropy >> 10, true);
 	}
 	hwrng_fill = NULL;
 	return 0;

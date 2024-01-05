@@ -519,7 +519,7 @@ void fsl_pcibios_fixup_bus(struct pci_bus *bus)
 	}
 }
 
-int fsl_add_bridge(struct platform_device *pdev, int is_primary)
+static int fsl_add_bridge(struct platform_device *pdev, int is_primary)
 {
 	int len;
 	struct pci_controller *hose;
@@ -767,7 +767,7 @@ static int __init mpc83xx_pcie_setup(struct pci_controller *hose,
 	u32 cfg_bar;
 	int ret = -ENOMEM;
 
-	pcie = zalloc_maybe_bootmem(sizeof(*pcie), GFP_KERNEL);
+	pcie = kzalloc(sizeof(*pcie), GFP_KERNEL);
 	if (!pcie)
 		return ret;
 
@@ -1139,6 +1139,19 @@ void __init fsl_pci_assign_primary(void)
 	}
 
 	/*
+	 * If there's no PCI host bridge with ISA then check for
+	 * PCI host bridge with alias "pci0" (first PCI host bridge).
+	 */
+	np = of_find_node_by_path("pci0");
+	if (np && of_match_node(pci_ids, np) && of_device_is_available(np)) {
+		fsl_pci_primary = np;
+		of_node_put(np);
+		return;
+	}
+	if (np)
+		of_node_put(np);
+
+	/*
 	 * If there's no PCI host bridge with ISA, arbitrarily
 	 * designate one as primary.  This can go away once
 	 * various bugs with primary-less systems are fixed.
@@ -1340,6 +1353,7 @@ static struct platform_driver fsl_pci_driver = {
 		.of_match_table = pci_ids,
 	},
 	.probe = fsl_pci_probe,
+	.driver_managed_dma = true,
 };
 
 static int __init fsl_pci_init(void)

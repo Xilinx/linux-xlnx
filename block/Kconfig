@@ -5,8 +5,8 @@
 menuconfig BLOCK
        bool "Enable the block layer" if EXPERT
        default y
+       select FS_IOMAP
        select SBITMAP
-       select SRCU
        help
 	 Provide block layer support for the kernel.
 
@@ -40,6 +40,9 @@ config BLK_RQ_ALLOC_TIME
 	bool
 
 config BLK_CGROUP_RWSTAT
+	bool
+
+config BLK_CGROUP_PUNT_BIO
 	bool
 
 config BLK_DEV_BSG_COMMON
@@ -181,6 +184,8 @@ config BLK_DEBUG_FS_ZONED
 
 config BLK_SED_OPAL
 	bool "Logic for interfacing with Opal enabled SEDs"
+	depends on KEYS
+	select PSERIES_PLPKS if PPC_PSERIES
 	help
 	Builds Logic for interfacing with Opal enabled controllers.
 	Enabling this option enables users to setup/unlock/lock
@@ -205,20 +210,12 @@ config BLK_INLINE_ENCRYPTION_FALLBACK
 
 source "block/partitions/Kconfig"
 
-config BLOCK_COMPAT
-	def_bool COMPAT
-
 config BLK_MQ_PCI
 	def_bool PCI
 
 config BLK_MQ_VIRTIO
 	bool
 	depends on VIRTIO
-	default y
-
-config BLK_MQ_RDMA
-	bool
-	depends on INFINIBAND
 	default y
 
 config BLK_PM

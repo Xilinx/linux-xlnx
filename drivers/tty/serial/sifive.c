@@ -288,33 +288,12 @@ static void __ssp_transmit_char(struct sifive_serial_port *ssp, int ch)
  */
 static void __ssp_transmit_chars(struct sifive_serial_port *ssp)
 {
-	struct circ_buf *xmit = &ssp->port.state->xmit;
-	int count;
+	u8 ch;
 
-	if (ssp->port.x_char) {
-		__ssp_transmit_char(ssp, ssp->port.x_char);
-		ssp->port.icount.tx++;
-		ssp->port.x_char = 0;
-		return;
-	}
-	if (uart_circ_empty(xmit) || uart_tx_stopped(&ssp->port)) {
-		sifive_serial_stop_tx(&ssp->port);
-		return;
-	}
-	count = SIFIVE_TX_FIFO_DEPTH;
-	do {
-		__ssp_transmit_char(ssp, xmit->buf[xmit->tail]);
-		xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
-		ssp->port.icount.tx++;
-		if (uart_circ_empty(xmit))
-			break;
-	} while (--count > 0);
-
-	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
-		uart_write_wakeup(&ssp->port);
-
-	if (uart_circ_empty(xmit))
-		sifive_serial_stop_tx(&ssp->port);
+	uart_port_tx_limited(&ssp->port, ch, SIFIVE_TX_FIFO_DEPTH,
+		true,
+		__ssp_transmit_char(ssp, ch),
+		({}));
 }
 
 /**
@@ -423,9 +402,9 @@ static char __ssp_receive_char(struct sifive_serial_port *ssp, char *is_empty)
  */
 static void __ssp_receive_chars(struct sifive_serial_port *ssp)
 {
-	unsigned char ch;
 	char is_empty;
 	int c;
+	u8 ch;
 
 	for (c = SIFIVE_RX_FIFO_DEPTH; c > 0; --c) {
 		ch = __ssp_receive_char(ssp, &is_empty);
@@ -832,7 +811,7 @@ static void sifive_serial_console_write(struct console *co, const char *s,
 	local_irq_restore(flags);
 }
 
-static int __init sifive_serial_console_setup(struct console *co, char *options)
+static int sifive_serial_console_setup(struct console *co, char *options)
 {
 	struct sifive_serial_port *ssp;
 	int baud = SIFIVE_DEFAULT_BAUD_RATE;
@@ -938,12 +917,9 @@ static int sifive_serial_probe(struct platform_device *pdev)
 	if (irq < 0)
 		return -EPROBE_DEFER;
 
-	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	base = devm_ioremap_resource(&pdev->dev, mem);
-	if (IS_ERR(base)) {
-		dev_err(&pdev->dev, "could not acquire device memory\n");
+	base = devm_platform_get_and_ioremap_resource(pdev, 0, &mem);
+	if (IS_ERR(base))
 		return PTR_ERR(base);
-	}
 
 	clk = devm_clk_get_enabled(&pdev->dev, NULL);
 	if (IS_ERR(clk)) {
@@ -1043,6 +1019,23 @@ static int sifive_serial_remove(struct platform_device *dev)
 	return 0;
 }
 
+static int sifive_serial_suspend(struct device *dev)
+{
+	struct sifive_serial_port *ssp = dev_get_drvdata(dev);
+
+	return uart_suspend_port(&sifive_serial_uart_driver, &ssp->port);
+}
+
+static int sifive_serial_resume(struct device *dev)
+{
+	struct sifive_serial_port *ssp = dev_get_drvdata(dev);
+
+	return uart_resume_port(&sifive_serial_uart_driver, &ssp->port);
+}
+
+DEFINE_SIMPLE_DEV_PM_OPS(sifive_uart_pm_ops, sifive_serial_suspend,
+			 sifive_serial_resume);
+
 static const struct of_device_id sifive_serial_of_match[] = {
 	{ .compatible = "sifive,fu540-c000-uart0" },
 	{ .compatible = "sifive,uart0" },
@@ -1055,7 +1048,8 @@ static struct platform_driver sifive_serial_platform_driver = {
 	.remove		= sifive_serial_remove,
 	.driver		= {
 		.name	= SIFIVE_SERIAL_NAME,
-		.of_match_table = of_match_ptr(sifive_serial_of_match),
+		.pm = pm_sleep_ptr(&sifive_uart_pm_ops),
+		.of_match_table = sifive_serial_of_match,
 	},
 };
 

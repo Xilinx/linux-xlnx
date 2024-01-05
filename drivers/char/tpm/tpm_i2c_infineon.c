@@ -681,8 +681,7 @@ MODULE_DEVICE_TABLE(of, tpm_tis_i2c_of_match);
 
 static SIMPLE_DEV_PM_OPS(tpm_tis_i2c_ops, tpm_pm_suspend, tpm_pm_resume);
 
-static int tpm_tis_i2c_probe(struct i2c_client *client,
-			     const struct i2c_device_id *id)
+static int tpm_tis_i2c_probe(struct i2c_client *client)
 {
 	int rc;
 	struct device *dev = &(client->dev);

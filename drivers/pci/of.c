@@ -16,21 +16,32 @@
 #include "pci.h"
 
 #ifdef CONFIG_PCI
-void pci_set_of_node(struct pci_dev *dev)
+/**
+ * pci_set_of_node - Find and set device's DT device_node
+ * @dev: the PCI device structure to fill
+ *
+ * Returns 0 on success with of_node set or when no device is described in the
+ * DT. Returns -ENODEV if the device is present, but disabled in the DT.
+ */
+int pci_set_of_node(struct pci_dev *dev)
 {
+	struct device_node *node;
+
 	if (!dev->bus->dev.of_node)
-		return;
-	dev->dev.of_node = of_pci_find_child_device(dev->bus->dev.of_node,
-						    dev->devfn);
-	if (dev->dev.of_node)
-		dev->dev.fwnode = &dev->dev.of_node->fwnode;
+		return 0;
+
+	node = of_pci_find_child_device(dev->bus->dev.of_node, dev->devfn);
+	if (!node)
+		return 0;
+
+	device_set_node(&dev->dev, of_fwnode_handle(node));
+	return 0;
 }
 
 void pci_release_of_node(struct pci_dev *dev)
 {
 	of_node_put(dev->dev.of_node);
-	dev->dev.of_node = NULL;
-	dev->dev.fwnode = NULL;
+	device_set_node(&dev->dev, NULL);
 }
 
 void pci_set_bus_of_node(struct pci_bus *bus)
@@ -45,17 +56,13 @@ void pci_set_bus_of_node(struct pci_bus *bus)
 			bus->self->external_facing = true;
 	}
 
-	bus->dev.of_node = node;
-
-	if (bus->dev.of_node)
-		bus->dev.fwnode = &bus->dev.of_node->fwnode;
+	device_set_node(&bus->dev, of_fwnode_handle(node));
 }
 
 void pci_release_bus_of_node(struct pci_bus *bus)
 {
 	of_node_put(bus->dev.of_node);
-	bus->dev.of_node = NULL;
-	bus->dev.fwnode = NULL;
+	device_set_node(&bus->dev, NULL);
 }
 
 struct device_node * __weak pcibios_get_phb_of_node(struct pci_bus *bus)
@@ -447,7 +454,7 @@ static int of_irq_parse_pci(const struct pci_dev *pdev, struct of_phandle_args *
 		return -ENODEV;
 
 	/* Local interrupt-map in the device node? Use it! */
-	if (of_get_property(dn, "interrupt-map", NULL)) {
+	if (of_property_present(dn, "interrupt-map")) {
 		pin = pci_swizzle_interrupt_pin(pdev, pin);
 		ppnode = dn;
 	}
@@ -598,6 +605,88 @@ int devm_of_pci_bridge_init(struct device *dev, struct pci_host_bridge *bridge)
 
 	return pci_parse_request_of_pci_ranges(dev, bridge);
 }
+
+#ifdef CONFIG_PCI_DYNAMIC_OF_NODES
+
+void of_pci_remove_node(struct pci_dev *pdev)
+{
+	struct device_node *np;
+
+	np = pci_device_to_OF_node(pdev);
+	if (!np || !of_node_check_flag(np, OF_DYNAMIC))
+		return;
+	pdev->dev.of_node = NULL;
+
+	of_changeset_revert(np->data);
+	of_changeset_destroy(np->data);
+	of_node_put(np);
+}
+
+void of_pci_make_dev_node(struct pci_dev *pdev)
+{
+	struct device_node *ppnode, *np = NULL;
+	const char *pci_type;
+	struct of_changeset *cset;
+	const char *name;
+	int ret;
+
+	/*
+	 * If there is already a device tree node linked to this device,
+	 * return immediately.
+	 */
+	if (pci_device_to_OF_node(pdev))
+		return;
+
+	/* Check if there is device tree node for parent device */
+	if (!pdev->bus->self)
+		ppnode = pdev->bus->dev.of_node;
+	else
+		ppnode = pdev->bus->self->dev.of_node;
+	if (!ppnode)
+		return;
+
+	if (pci_is_bridge(pdev))
+		pci_type = "pci";
+	else
+		pci_type = "dev";
+
+	name = kasprintf(GFP_KERNEL, "%s@%x,%x", pci_type,
+			 PCI_SLOT(pdev->devfn), PCI_FUNC(pdev->devfn));
+	if (!name)
+		return;
+
+	cset = kmalloc(sizeof(*cset), GFP_KERNEL);
+	if (!cset)
+		goto out_free_name;
+	of_changeset_init(cset);
+
+	np = of_changeset_create_node(cset, ppnode, name);
+	if (!np)
+		goto out_destroy_cset;
+
+	ret = of_pci_add_properties(pdev, cset, np);
+	if (ret)
+		goto out_free_node;
+
+	ret = of_changeset_apply(cset);
+	if (ret)
+		goto out_free_node;
+
+	np->data = cset;
+	pdev->dev.of_node = np;
+	kfree(name);
+
+	return;
+
+out_free_node:
+	of_node_put(np);
+out_destroy_cset:
+	of_changeset_destroy(cset);
+	kfree(cset);
+out_free_name:
+	kfree(name);
+}
+#endif
 
 #endif /* CONFIG_PCI */
 

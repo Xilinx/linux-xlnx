@@ -3,7 +3,7 @@
  *
  * Name: acnames.h - Global names and strings
  *
- * Copyright (C) 2000 - 2022, Intel Corp.
+ * Copyright (C) 2000 - 2023, Intel Corp.
  *
  *****************************************************************************/
 
@@ -22,6 +22,7 @@
 #define METHOD_NAME__DDN        "_DDN"
 #define METHOD_NAME__DIS        "_DIS"
 #define METHOD_NAME__DMA        "_DMA"
+#define METHOD_NAME__EVT        "_EVT"
 #define METHOD_NAME__HID        "_HID"
 #define METHOD_NAME__INI        "_INI"
 #define METHOD_NAME__PLD        "_PLD"

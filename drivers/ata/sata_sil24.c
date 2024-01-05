@@ -328,7 +328,7 @@ static int sil24_scr_write(struct ata_link *link, unsigned sc_reg, u32 val);
 static int sil24_qc_defer(struct ata_queued_cmd *qc);
 static enum ata_completion_errors sil24_qc_prep(struct ata_queued_cmd *qc);
 static unsigned int sil24_qc_issue(struct ata_queued_cmd *qc);
-static bool sil24_qc_fill_rtf(struct ata_queued_cmd *qc);
+static void sil24_qc_fill_rtf(struct ata_queued_cmd *qc);
 static void sil24_pmp_attach(struct ata_port *ap);
 static void sil24_pmp_detach(struct ata_port *ap);
 static void sil24_freeze(struct ata_port *ap);
@@ -373,7 +373,7 @@ static struct pci_driver sil24_pci_driver = {
 #endif
 };
 
-static struct scsi_host_template sil24_sht = {
+static const struct scsi_host_template sil24_sht = {
 	__ATA_BASE_SHT(DRV_NAME),
 	.can_queue		= SIL24_MAX_CMDS,
 	.sg_tablesize		= SIL24_MAX_SGE,
@@ -597,7 +597,7 @@ static int sil24_init_port(struct ata_port *ap)
 static int sil24_exec_polled_cmd(struct ata_port *ap, int pmp,
 				 const struct ata_taskfile *tf,
 				 int is_cmd, u32 ctrl,
-				 unsigned long timeout_msec)
+				 unsigned int timeout_msec)
 {
 	void __iomem *port = sil24_port_base(ap);
 	struct sil24_port_priv *pp = ap->private_data;
@@ -651,7 +651,7 @@ static int sil24_softreset(struct ata_link *link, unsigned int *class,
 {
 	struct ata_port *ap = link->ap;
 	int pmp = sata_srst_pmp(link);
-	unsigned long timeout_msec = 0;
+	unsigned int timeout_msec = 0;
 	struct ata_taskfile tf;
 	const char *reason;
 	int rc;
@@ -901,10 +901,9 @@ static unsigned int sil24_qc_issue(struct ata_queued_cmd *qc)
 	return 0;
 }
 
-static bool sil24_qc_fill_rtf(struct ata_queued_cmd *qc)
+static void sil24_qc_fill_rtf(struct ata_queued_cmd *qc)
 {
 	sil24_read_tf(qc->ap, qc->hw_tag, &qc->result_tf);
-	return true;
 }
 
 static void sil24_pmp_attach(struct ata_port *ap)
@@ -1185,7 +1184,7 @@ static void sil24_post_internal_cmd(struct ata_queued_cmd *qc)
 	struct ata_port *ap = qc->ap;
 
 	/* make DMA engine forget about the failed command */
-	if ((qc->flags & ATA_QCFLAG_FAILED) && sil24_init_port(ap))
+	if ((qc->flags & ATA_QCFLAG_EH) && sil24_init_port(ap))
 		ata_eh_freeze_port(ap);
 }
 

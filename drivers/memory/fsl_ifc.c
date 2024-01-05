@@ -15,7 +15,7 @@
 #include <linux/slab.h>
 #include <linux/io.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
+#include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/fsl_ifc.h>
 #include <linux/irqdomain.h>
@@ -327,6 +327,5 @@ static int __init fsl_ifc_init(void)
 }
 subsys_initcall(fsl_ifc_init);
 
-MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Freescale Semiconductor");
 MODULE_DESCRIPTION("Freescale Integrated Flash Controller driver");

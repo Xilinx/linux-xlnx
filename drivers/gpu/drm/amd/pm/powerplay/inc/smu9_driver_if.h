@@ -122,6 +122,7 @@ typedef struct {
   uint16_t Vid;  /* min voltage in SVI2 VID */
 } DisplayClockTable_t;
 
+#pragma pack(push, 1)
 typedef struct {
   /* PowerTune */
   uint16_t SocketPowerLimit; /* Watts */
@@ -177,20 +178,20 @@ typedef struct {
   uint8_t      padding8_2[2];
 
   /* SOC Frequencies */
-  PllSetting_t GfxclkLevel        [NUM_GFXCLK_DPM_LEVELS];
+  PllSetting_t GfxclkLevel[NUM_GFXCLK_DPM_LEVELS];
 
-  uint8_t      SocclkDid          [NUM_SOCCLK_DPM_LEVELS];          /* DID */
-  uint8_t      SocDpmVoltageIndex [NUM_SOCCLK_DPM_LEVELS];
+  uint8_t      SocclkDid[NUM_SOCCLK_DPM_LEVELS];          /* DID */
+  uint8_t      SocDpmVoltageIndex[NUM_SOCCLK_DPM_LEVELS];
 
-  uint8_t      VclkDid            [NUM_UVD_DPM_LEVELS];            /* DID */
-  uint8_t      DclkDid            [NUM_UVD_DPM_LEVELS];            /* DID */
-  uint8_t      UvdDpmVoltageIndex [NUM_UVD_DPM_LEVELS];
+  uint8_t      VclkDid[NUM_UVD_DPM_LEVELS];            /* DID */
+  uint8_t      DclkDid[NUM_UVD_DPM_LEVELS];            /* DID */
+  uint8_t      UvdDpmVoltageIndex[NUM_UVD_DPM_LEVELS];
 
-  uint8_t      EclkDid            [NUM_VCE_DPM_LEVELS];            /* DID */
-  uint8_t      VceDpmVoltageIndex [NUM_VCE_DPM_LEVELS];
+  uint8_t      EclkDid[NUM_VCE_DPM_LEVELS];            /* DID */
+  uint8_t      VceDpmVoltageIndex[NUM_VCE_DPM_LEVELS];
 
-  uint8_t      Mp0clkDid          [NUM_MP0CLK_DPM_LEVELS];          /* DID */
-  uint8_t      Mp0DpmVoltageIndex [NUM_MP0CLK_DPM_LEVELS];
+  uint8_t      Mp0clkDid[NUM_MP0CLK_DPM_LEVELS];          /* DID */
+  uint8_t      Mp0DpmVoltageIndex[NUM_MP0CLK_DPM_LEVELS];
 
   DisplayClockTable_t DisplayClockTable[DSPCLK_COUNT][NUM_DSPCLK_LEVELS];
   QuadraticInt_t      DisplayClock2Gfxclk[DSPCLK_COUNT];
@@ -323,6 +324,7 @@ typedef struct {
   uint32_t     MmHubPadding[3]; /* SMU internal use */
 
 } PPTable_t;
+#pragma pack(pop)
 
 typedef struct {
   uint16_t MinClock; // This is either DCEFCLK or SOCCLK (in MHz)

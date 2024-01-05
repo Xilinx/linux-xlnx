@@ -145,7 +145,7 @@ static const struct reg_default cs42l83_reg_defaults[] = {
  * This is all the same as for CS42L42 but we
  * replace the on-reset register defaults.
  */
-const struct regmap_config cs42l83_regmap = {
+static const struct regmap_config cs42l83_regmap = {
 	.reg_bits = 8,
 	.val_bits = 8,
 
@@ -158,7 +158,7 @@ const struct regmap_config cs42l83_regmap = {
 	.max_register = CS42L42_MAX_REGISTER,
 	.reg_defaults = cs42l83_reg_defaults,
 	.num_reg_defaults = ARRAY_SIZE(cs42l83_reg_defaults),
-	.cache_type = REGCACHE_RBTREE,
+	.cache_type = REGCACHE_MAPLE,
 
 	.use_single_read = true,
 	.use_single_write = true,
@@ -228,7 +228,7 @@ static struct i2c_driver cs42l83_i2c_driver = {
 		.pm = &cs42l83_i2c_pm_ops,
 		.of_match_table = of_match_ptr(cs42l83_of_match),
 		},
-	.probe_new = cs42l83_i2c_probe,
+	.probe = cs42l83_i2c_probe,
 	.remove = cs42l83_i2c_remove,
 };
 

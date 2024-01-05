@@ -112,6 +112,7 @@ static int amd_sfh1_1_hid_client_init(struct amd_mp2_dev *privdata)
 	cl_data->num_hid_devices = amd_sfh_get_sensor_num(privdata, &cl_data->sensor_idx[0]);
 	if (cl_data->num_hid_devices == 0)
 		return -ENODEV;
+	cl_data->is_any_sensor_enabled = false;
 
 	INIT_DELAYED_WORK(&cl_data->work, amd_sfh_work);
 	INIT_DELAYED_WORK(&cl_data->work_buffer, amd_sfh_work_buffer);
@@ -160,36 +161,34 @@ static int amd_sfh1_1_hid_client_init(struct amd_mp2_dev *privdata)
 		}
 		rc = mp2_ops->get_rep_desc(cl_idx, cl_data->report_descr[i]);
 		if (rc)
-			return rc;
+			goto cleanup;
 
 		writel(0, privdata->mmio + AMD_P2C_MSG(0));
 		mp2_ops->start(privdata, info);
 		status = amd_sfh_wait_for_response
 				(privdata, cl_data->sensor_idx[i], ENABLE_SENSOR);
 
-		status = (status == 0) ? SENSOR_ENABLED : SENSOR_DISABLED;
+		cl_data->sensor_sts[i] = (status == 0) ? SENSOR_ENABLED : SENSOR_DISABLED;
+	}
 
-		if (status == SENSOR_ENABLED) {
-			cl_data->sensor_sts[i] = SENSOR_ENABLED;
+	for (i = 0; i < cl_data->num_hid_devices; i++) {
+		cl_data->cur_hid_dev = i;
+		if (cl_data->sensor_sts[i] == SENSOR_ENABLED) {
+			cl_data->is_any_sensor_enabled = true;
 			rc = amdtp_hid_probe(i, cl_data);
-			if (rc) {
-				mp2_ops->stop(privdata, cl_data->sensor_idx[i]);
-				status = amd_sfh_wait_for_response
-					(privdata, cl_data->sensor_idx[i], DISABLE_SENSOR);
-				if (status == 0)
-					status = SENSOR_DISABLED;
-				if (status != SENSOR_ENABLED)
-					cl_data->sensor_sts[i] = SENSOR_DISABLED;
-				dev_dbg(dev, "sid 0x%x (%s) status 0x%x\n",
-					cl_data->sensor_idx[i],
-					get_sensor_name(cl_data->sensor_idx[i]),
-					cl_data->sensor_sts[i]);
+			if (rc)
 				goto cleanup;
-			}
 		}
 		dev_dbg(dev, "sid 0x%x (%s) status 0x%x\n",
 			cl_data->sensor_idx[i], get_sensor_name(cl_data->sensor_idx[i]),
 			cl_data->sensor_sts[i]);
+	}
+
+	if (!cl_data->is_any_sensor_enabled) {
+		dev_warn(dev, "Failed to discover, sensors not enabled is %d\n",
+			 cl_data->is_any_sensor_enabled);
+		rc = -EOPNOTSUPP;
+		goto cleanup;
 	}
 
 	schedule_delayed_work(&cl_data->work_buffer, msecs_to_jiffies(AMD_SFH_IDLE_LOOP));

@@ -155,6 +155,9 @@ static int fifo_spdif_hw_params(struct snd_pcm_substream *substream,
 }
 
 const struct snd_soc_dai_ops aiu_fifo_spdif_dai_ops = {
+	.pcm_new	= aiu_fifo_pcm_new,
+	.probe		= aiu_fifo_spdif_dai_probe,
+	.remove		= aiu_fifo_dai_remove,
 	.trigger	= fifo_spdif_trigger,
 	.prepare	= fifo_spdif_prepare,
 	.hw_params	= fifo_spdif_hw_params,
@@ -173,7 +176,7 @@ int aiu_fifo_spdif_dai_probe(struct snd_soc_dai *dai)
 	if (ret)
 		return ret;
 
-	fifo = dai->playback_dma_data;
+	fifo = snd_soc_dai_dma_data_get_playback(dai);
 
 	fifo->pcm = &fifo_spdif_pcm;
 	fifo->mem_offset = AIU_MEM_IEC958_START;

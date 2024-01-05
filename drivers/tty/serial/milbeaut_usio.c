@@ -98,8 +98,7 @@ static void mlb_usio_tx_chars(struct uart_port *port)
 	do {
 		writew(xmit->buf[xmit->tail], port->membase + MLB_USIO_REG_DR);
 
-		xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
-		port->icount.tx++;
+		uart_xmit_advance(port, 1);
 		if (uart_circ_empty(xmit))
 			break;
 
@@ -149,8 +148,7 @@ static void mlb_usio_enable_ms(struct uart_port *port)
 static void mlb_usio_rx_chars(struct uart_port *port)
 {
 	struct tty_port *ttyport = &port->state->port;
-	unsigned long flag = 0;
-	char ch = 0;
+	u8 flag = 0, ch = 0;
 	u8 status;
 	int max_count = 2;
 

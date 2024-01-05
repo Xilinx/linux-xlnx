@@ -48,7 +48,7 @@
  * @list: list entry in a graph entities list
  * @node: the entity's DT node
  * @entity: media entity, from the corresponding V4L2 subdev
- * @asd: subdev asynchronous registration information
+ * @asc: subdev asynchronous registration information
  * @subdev: V4L2 subdev
  * @streaming: status of the V4L2 subdev if streaming or not
  */
@@ -57,7 +57,7 @@ struct xvip_graph_entity {
 	struct device_node *node;
 	struct media_entity *entity;
 
-	struct v4l2_async_subdev asd;
+	struct v4l2_async_connection asc;
 	struct v4l2_subdev *subdev;
 	bool streaming;
 };
@@ -1873,8 +1873,8 @@ static int xvip_graph_parse_one(struct xvip_m2m_dev *xdev,
 		}
 
 		entity->node = remote;
-		entity->asd.match_type = V4L2_ASYNC_MATCH_FWNODE;
-		entity->asd.match.fwnode = of_fwnode_handle(remote);
+		entity->asc.match.type = V4L2_ASYNC_MATCH_TYPE_FWNODE;
+		entity->asc.match.fwnode = of_fwnode_handle(remote);
 		list_add_tail(&entity->list, &xdev->entities);
 		xdev->num_subdevs++;
 	}
@@ -2035,7 +2035,7 @@ static int xvip_graph_notify_complete(struct v4l2_async_notifier *notifier)
 
 static int xvip_graph_notify_bound(struct v4l2_async_notifier *notifier,
 				   struct v4l2_subdev *subdev,
-				   struct v4l2_async_subdev *asd)
+				   struct v4l2_async_connection *asc)
 {
 	struct xvip_m2m_dev *xdev =
 		container_of(notifier, struct xvip_m2m_dev, notifier);
@@ -2112,15 +2112,12 @@ static int xvip_graph_init(struct xvip_m2m_dev *xdev)
 
 	/* Register the subdevices notifier. */
 	list_for_each_entry(entity, &xdev->entities, list) {
-		ret = __v4l2_async_nf_add_subdev(&xdev->notifier,
-						 &entity->asd);
-		if (ret)
-			goto done;
+		entity->asc.notifier = &xdev->notifier;
 	}
 
 	xdev->notifier.ops = &xvip_graph_notify_ops;
 
-	ret = v4l2_async_nf_register(&xdev->v4l2_dev, &xdev->notifier);
+	ret = v4l2_async_nf_register(&xdev->notifier);
 	if (ret < 0) {
 		dev_err(xdev->dev, "notifier registration failed\n");
 		goto done;
@@ -2156,7 +2153,7 @@ static int xvip_m2m_probe(struct platform_device *pdev)
 
 	xdev->dev = &pdev->dev;
 	INIT_LIST_HEAD(&xdev->entities);
-	v4l2_async_nf_init(&xdev->notifier);
+	v4l2_async_nf_init(&xdev->notifier, &xdev->v4l2_dev);
 
 	ret = xvip_composite_v4l2_init(xdev);
 	if (ret)

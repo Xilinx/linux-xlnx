@@ -37,41 +37,13 @@
 static void ast_post_chip_2300(struct drm_device *dev);
 static void ast_post_chip_2500(struct drm_device *dev);
 
-void ast_enable_vga(struct drm_device *dev)
-{
-	struct ast_private *ast = to_ast_private(dev);
-
-	ast_io_write8(ast, AST_IO_VGA_ENABLE_PORT, 0x01);
-	ast_io_write8(ast, AST_IO_MISC_PORT_WRITE, 0x01);
-}
-
-void ast_enable_mmio(struct drm_device *dev)
-{
-	struct ast_private *ast = to_ast_private(dev);
-
-	ast_set_index_reg(ast, AST_IO_CRTC_PORT, 0xa1, 0x06);
-}
-
-
-bool ast_is_vga_enabled(struct drm_device *dev)
-{
-	struct ast_private *ast = to_ast_private(dev);
-	u8 ch;
-
-	ch = ast_io_read8(ast, AST_IO_VGA_ENABLE_PORT);
-
-	return !!(ch & 0x01);
-}
-
 static const u8 extreginfo[] = { 0x0f, 0x04, 0x1c, 0xff };
-static const u8 extreginfo_ast2300a0[] = { 0x0f, 0x04, 0x1c, 0xff };
 static const u8 extreginfo_ast2300[] = { 0x0f, 0x04, 0x1f, 0xff };
 
 static void
 ast_set_def_ext_reg(struct drm_device *dev)
 {
-	struct ast_private *ast = to_ast_private(dev);
-	struct pci_dev *pdev = to_pci_dev(dev->dev);
+	struct ast_device *ast = to_ast_device(dev);
 	u8 i, index, reg;
 	const u8 *ext_reg_info;
 
@@ -79,13 +51,9 @@ ast_set_def_ext_reg(struct drm_device *dev)
 	for (i = 0x81; i <= 0x9f; i++)
 		ast_set_index_reg(ast, AST_IO_CRTC_PORT, i, 0x00);
 
-	if (ast->chip == AST2300 || ast->chip == AST2400 ||
-	    ast->chip == AST2500) {
-		if (pdev->revision >= 0x20)
-			ext_reg_info = extreginfo_ast2300;
-		else
-			ext_reg_info = extreginfo_ast2300a0;
-	} else
+	if (IS_AST_GEN4(ast) || IS_AST_GEN5(ast) || IS_AST_GEN6(ast))
+		ext_reg_info = extreginfo_ast2300;
+	else
 		ext_reg_info = extreginfo;
 
 	index = 0xa0;
@@ -104,13 +72,12 @@ ast_set_def_ext_reg(struct drm_device *dev)
 
 	/* Enable RAMDAC for A1 */
 	reg = 0x04;
-	if (ast->chip == AST2300 || ast->chip == AST2400 ||
-	    ast->chip == AST2500)
+	if (IS_AST_GEN4(ast) || IS_AST_GEN5(ast) || IS_AST_GEN6(ast))
 		reg |= 0x20;
 	ast_set_index_reg_mask(ast, AST_IO_CRTC_PORT, 0xb6, 0xff, reg);
 }
 
-u32 ast_mindwm(struct ast_private *ast, u32 r)
+u32 ast_mindwm(struct ast_device *ast, u32 r)
 {
 	uint32_t data;
 
@@ -123,7 +90,7 @@ u32 ast_mindwm(struct ast_private *ast, u32 r)
 	return ast_read32(ast, 0x10000 + (r & 0x0000ffff));
 }
 
-void ast_moutdwm(struct ast_private *ast, u32 r, u32 v)
+void ast_moutdwm(struct ast_device *ast, u32 r, u32 v)
 {
 	uint32_t data;
 	ast_write32(ast, 0xf004, r & 0xffff0000);
@@ -162,7 +129,7 @@ static const u32 pattern_AST2150[14] = {
 	0x20F050E0
 };
 
-static u32 mmctestburst2_ast2150(struct ast_private *ast, u32 datagen)
+static u32 mmctestburst2_ast2150(struct ast_device *ast, u32 datagen)
 {
 	u32 data, timeout;
 
@@ -192,7 +159,7 @@ static u32 mmctestburst2_ast2150(struct ast_private *ast, u32 datagen)
 }
 
 #if 0 /* unused in DDX driver - here for completeness */
-static u32 mmctestsingle2_ast2150(struct ast_private *ast, u32 datagen)
+static u32 mmctestsingle2_ast2150(struct ast_device *ast, u32 datagen)
 {
 	u32 data, timeout;
 
@@ -212,7 +179,7 @@ static u32 mmctestsingle2_ast2150(struct ast_private *ast, u32 datagen)
 }
 #endif
 
-static int cbrtest_ast2150(struct ast_private *ast)
+static int cbrtest_ast2150(struct ast_device *ast)
 {
 	int i;
 
@@ -222,7 +189,7 @@ static int cbrtest_ast2150(struct ast_private *ast)
 	return 1;
 }
 
-static int cbrscan_ast2150(struct ast_private *ast, int busw)
+static int cbrscan_ast2150(struct ast_device *ast, int busw)
 {
 	u32 patcnt, loop;
 
@@ -239,7 +206,7 @@ static int cbrscan_ast2150(struct ast_private *ast, int busw)
 }
 
 
-static void cbrdlli_ast2150(struct ast_private *ast, int busw)
+static void cbrdlli_ast2150(struct ast_device *ast, int busw)
 {
 	u32 dll_min[4], dll_max[4], dlli, data, passcnt;
 
@@ -273,7 +240,7 @@ cbr_start:
 
 static void ast_init_dram_reg(struct drm_device *dev)
 {
-	struct ast_private *ast = to_ast_private(dev);
+	struct ast_device *ast = to_ast_device(dev);
 	u8 j;
 	u32 data, temp, i;
 	const struct ast_dramstruct *dram_reg_info;
@@ -281,7 +248,7 @@ static void ast_init_dram_reg(struct drm_device *dev)
 	j = ast_get_index_reg_mask(ast, AST_IO_CRTC_PORT, 0xd0, 0xff);
 
 	if ((j & 0x80) == 0) { /* VGA only */
-		if (ast->chip == AST2000) {
+		if (IS_AST_GEN1(ast)) {
 			dram_reg_info = ast2000_dram_table_data;
 			ast_write32(ast, 0xf004, 0x1e6e0000);
 			ast_write32(ast, 0xf000, 0x1);
@@ -290,8 +257,8 @@ static void ast_init_dram_reg(struct drm_device *dev)
 			do {
 				;
 			} while (ast_read32(ast, 0x10100) != 0xa8);
-		} else {/* AST2100/1100 */
-			if (ast->chip == AST2100 || ast->chip == 2200)
+		} else { /* GEN2/GEN3 */
+			if (ast->chip == AST2100 || ast->chip == AST2200)
 				dram_reg_info = ast2100_dram_table_data;
 			else
 				dram_reg_info = ast1100_dram_table_data;
@@ -313,7 +280,7 @@ static void ast_init_dram_reg(struct drm_device *dev)
 			if (dram_reg_info->index == 0xff00) {/* delay fn */
 				for (i = 0; i < 15; i++)
 					udelay(dram_reg_info->data);
-			} else if (dram_reg_info->index == 0x4 && ast->chip != AST2000) {
+			} else if (dram_reg_info->index == 0x4 && !IS_AST_GEN1(ast)) {
 				data = dram_reg_info->data;
 				if (ast->dram_type == AST_DRAM_1Gx16)
 					data = 0x00000d89;
@@ -339,15 +306,13 @@ static void ast_init_dram_reg(struct drm_device *dev)
 				cbrdlli_ast2150(ast, 32); /* 32 bits */
 		}
 
-		switch (ast->chip) {
-		case AST2000:
+		switch (AST_GEN(ast)) {
+		case 1:
 			temp = ast_read32(ast, 0x10140);
 			ast_write32(ast, 0x10140, temp | 0x40);
 			break;
-		case AST1100:
-		case AST2100:
-		case AST2200:
-		case AST2150:
+		case 2:
+		case 3:
 			temp = ast_read32(ast, 0x1200c);
 			ast_write32(ast, 0x1200c, temp & 0xfffffffd);
 			temp = ast_read32(ast, 0x12040);
@@ -366,25 +331,17 @@ static void ast_init_dram_reg(struct drm_device *dev)
 
 void ast_post_gpu(struct drm_device *dev)
 {
-	struct ast_private *ast = to_ast_private(dev);
-	struct pci_dev *pdev = to_pci_dev(dev->dev);
-	u32 reg;
+	struct ast_device *ast = to_ast_device(dev);
 
-	pci_read_config_dword(pdev, 0x04, &reg);
-	reg |= 0x3;
-	pci_write_config_dword(pdev, 0x04, reg);
-
-	ast_enable_vga(dev);
-	ast_open_key(ast);
-	ast_enable_mmio(dev);
 	ast_set_def_ext_reg(dev);
 
-	if (ast->chip == AST2600) {
-		ast_dp_launch(dev, 1);
+	if (IS_AST_GEN7(ast)) {
+		if (ast->tx_chip_types & AST_TX_ASTDP_BIT)
+			ast_dp_launch(dev);
 	} else if (ast->config_mode == ast_use_p2a) {
-		if (ast->chip == AST2500)
+		if (IS_AST_GEN6(ast))
 			ast_post_chip_2500(dev);
-		else if (ast->chip == AST2300 || ast->chip == AST2400)
+		else if (IS_AST_GEN5(ast) || IS_AST_GEN4(ast))
 			ast_post_chip_2300(dev);
 		else
 			ast_init_dram_reg(dev);
@@ -449,7 +406,7 @@ static const u32 pattern[8] = {
 	0x7C61D253
 };
 
-static bool mmc_test(struct ast_private *ast, u32 datagen, u8 test_ctl)
+static bool mmc_test(struct ast_device *ast, u32 datagen, u8 test_ctl)
 {
 	u32 data, timeout;
 
@@ -469,7 +426,7 @@ static bool mmc_test(struct ast_private *ast, u32 datagen, u8 test_ctl)
 	return true;
 }
 
-static u32 mmc_test2(struct ast_private *ast, u32 datagen, u8 test_ctl)
+static u32 mmc_test2(struct ast_device *ast, u32 datagen, u8 test_ctl)
 {
 	u32 data, timeout;
 
@@ -490,32 +447,32 @@ static u32 mmc_test2(struct ast_private *ast, u32 datagen, u8 test_ctl)
 }
 
 
-static bool mmc_test_burst(struct ast_private *ast, u32 datagen)
+static bool mmc_test_burst(struct ast_device *ast, u32 datagen)
 {
 	return mmc_test(ast, datagen, 0xc1);
 }
 
-static u32 mmc_test_burst2(struct ast_private *ast, u32 datagen)
+static u32 mmc_test_burst2(struct ast_device *ast, u32 datagen)
 {
 	return mmc_test2(ast, datagen, 0x41);
 }
 
-static bool mmc_test_single(struct ast_private *ast, u32 datagen)
+static bool mmc_test_single(struct ast_device *ast, u32 datagen)
 {
 	return mmc_test(ast, datagen, 0xc5);
 }
 
-static u32 mmc_test_single2(struct ast_private *ast, u32 datagen)
+static u32 mmc_test_single2(struct ast_device *ast, u32 datagen)
 {
 	return mmc_test2(ast, datagen, 0x05);
 }
 
-static bool mmc_test_single_2500(struct ast_private *ast, u32 datagen)
+static bool mmc_test_single_2500(struct ast_device *ast, u32 datagen)
 {
 	return mmc_test(ast, datagen, 0x85);
 }
 
-static int cbr_test(struct ast_private *ast)
+static int cbr_test(struct ast_device *ast)
 {
 	u32 data;
 	int i;
@@ -534,7 +491,7 @@ static int cbr_test(struct ast_private *ast)
 	return 1;
 }
 
-static int cbr_scan(struct ast_private *ast)
+static int cbr_scan(struct ast_device *ast)
 {
 	u32 data, data2, patcnt, loop;
 
@@ -555,7 +512,7 @@ static int cbr_scan(struct ast_private *ast)
 	return data2;
 }
 
-static u32 cbr_test2(struct ast_private *ast)
+static u32 cbr_test2(struct ast_device *ast)
 {
 	u32 data;
 
@@ -569,7 +526,7 @@ static u32 cbr_test2(struct ast_private *ast)
 	return ~data & 0xffff;
 }
 
-static u32 cbr_scan2(struct ast_private *ast)
+static u32 cbr_scan2(struct ast_device *ast)
 {
 	u32 data, data2, patcnt, loop;
 
@@ -590,7 +547,7 @@ static u32 cbr_scan2(struct ast_private *ast)
 	return data2;
 }
 
-static bool cbr_test3(struct ast_private *ast)
+static bool cbr_test3(struct ast_device *ast)
 {
 	if (!mmc_test_burst(ast, 0))
 		return false;
@@ -599,7 +556,7 @@ static bool cbr_test3(struct ast_private *ast)
 	return true;
 }
 
-static bool cbr_scan3(struct ast_private *ast)
+static bool cbr_scan3(struct ast_device *ast)
 {
 	u32 patcnt, loop;
 
@@ -615,7 +572,7 @@ static bool cbr_scan3(struct ast_private *ast)
 	return true;
 }
 
-static bool finetuneDQI_L(struct ast_private *ast, struct ast2300_dram_param *param)
+static bool finetuneDQI_L(struct ast_device *ast, struct ast2300_dram_param *param)
 {
 	u32 gold_sadj[2], dllmin[16], dllmax[16], dlli, data, cnt, mask, passcnt, retry = 0;
 	bool status = false;
@@ -714,7 +671,7 @@ FINETUNE_DONE:
 	return status;
 } /* finetuneDQI_L */
 
-static void finetuneDQSI(struct ast_private *ast)
+static void finetuneDQSI(struct ast_device *ast)
 {
 	u32 dlli, dqsip, dqidly;
 	u32 reg_mcr18, reg_mcr0c, passcnt[2], diff;
@@ -804,7 +761,7 @@ static void finetuneDQSI(struct ast_private *ast)
 	ast_moutdwm(ast, 0x1E6E0018, reg_mcr18);
 
 }
-static bool cbr_dll2(struct ast_private *ast, struct ast2300_dram_param *param)
+static bool cbr_dll2(struct ast_device *ast, struct ast2300_dram_param *param)
 {
 	u32 dllmin[2], dllmax[2], dlli, data, passcnt, retry = 0;
 	bool status = false;
@@ -860,7 +817,7 @@ CBR_DONE2:
 	return status;
 } /* CBRDLL2 */
 
-static void get_ddr3_info(struct ast_private *ast, struct ast2300_dram_param *param)
+static void get_ddr3_info(struct ast_device *ast, struct ast2300_dram_param *param)
 {
 	u32 trap, trap_AC2, trap_MRS;
 
@@ -1102,7 +1059,7 @@ static void get_ddr3_info(struct ast_private *ast, struct ast2300_dram_param *pa
 
 }
 
-static void ddr3_init(struct ast_private *ast, struct ast2300_dram_param *param)
+static void ddr3_init(struct ast_device *ast, struct ast2300_dram_param *param)
 {
 	u32 data, data2, retry = 0;
 
@@ -1225,7 +1182,7 @@ ddr3_init_start:
 
 }
 
-static void get_ddr2_info(struct ast_private *ast, struct ast2300_dram_param *param)
+static void get_ddr2_info(struct ast_device *ast, struct ast2300_dram_param *param)
 {
 	u32 trap, trap_AC2, trap_MRS;
 
@@ -1472,7 +1429,7 @@ static void get_ddr2_info(struct ast_private *ast, struct ast2300_dram_param *pa
 	}
 }
 
-static void ddr2_init(struct ast_private *ast, struct ast2300_dram_param *param)
+static void ddr2_init(struct ast_device *ast, struct ast2300_dram_param *param)
 {
 	u32 data, data2, retry = 0;
 
@@ -1600,7 +1557,7 @@ ddr2_init_start:
 
 static void ast_post_chip_2300(struct drm_device *dev)
 {
-	struct ast_private *ast = to_ast_private(dev);
+	struct ast_device *ast = to_ast_device(dev);
 	struct ast2300_dram_param param;
 	u32 temp;
 	u8 reg;
@@ -1681,7 +1638,7 @@ static void ast_post_chip_2300(struct drm_device *dev)
 	} while ((reg & 0x40) == 0);
 }
 
-static bool cbr_test_2500(struct ast_private *ast)
+static bool cbr_test_2500(struct ast_device *ast)
 {
 	ast_moutdwm(ast, 0x1E6E0074, 0x0000FFFF);
 	ast_moutdwm(ast, 0x1E6E007C, 0xFF00FF00);
@@ -1692,7 +1649,7 @@ static bool cbr_test_2500(struct ast_private *ast)
 	return true;
 }
 
-static bool ddr_test_2500(struct ast_private *ast)
+static bool ddr_test_2500(struct ast_device *ast)
 {
 	ast_moutdwm(ast, 0x1E6E0074, 0x0000FFFF);
 	ast_moutdwm(ast, 0x1E6E007C, 0xFF00FF00);
@@ -1709,7 +1666,7 @@ static bool ddr_test_2500(struct ast_private *ast)
 	return true;
 }
 
-static void ddr_init_common_2500(struct ast_private *ast)
+static void ddr_init_common_2500(struct ast_device *ast)
 {
 	ast_moutdwm(ast, 0x1E6E0034, 0x00020080);
 	ast_moutdwm(ast, 0x1E6E0008, 0x2003000F);
@@ -1732,7 +1689,7 @@ static void ddr_init_common_2500(struct ast_private *ast)
 	ast_moutdwm(ast, 0x1E6E024C, 0x80808080);
 }
 
-static void ddr_phy_init_2500(struct ast_private *ast)
+static void ddr_phy_init_2500(struct ast_device *ast)
 {
 	u32 data, pass, timecnt;
 
@@ -1766,7 +1723,7 @@ static void ddr_phy_init_2500(struct ast_private *ast)
  * 4Gb : 0x80000000 ~ 0x9FFFFFFF
  * 8Gb : 0x80000000 ~ 0xBFFFFFFF
  */
-static void check_dram_size_2500(struct ast_private *ast, u32 tRFC)
+static void check_dram_size_2500(struct ast_device *ast, u32 tRFC)
 {
 	u32 reg_04, reg_14;
 
@@ -1797,7 +1754,7 @@ static void check_dram_size_2500(struct ast_private *ast, u32 tRFC)
 	ast_moutdwm(ast, 0x1E6E0014, reg_14);
 }
 
-static void enable_cache_2500(struct ast_private *ast)
+static void enable_cache_2500(struct ast_device *ast)
 {
 	u32 reg_04, data;
 
@@ -1810,7 +1767,7 @@ static void enable_cache_2500(struct ast_private *ast)
 	ast_moutdwm(ast, 0x1E6E0004, reg_04 | 0x400);
 }
 
-static void set_mpll_2500(struct ast_private *ast)
+static void set_mpll_2500(struct ast_device *ast)
 {
 	u32 addr, data, param;
 
@@ -1837,7 +1794,7 @@ static void set_mpll_2500(struct ast_private *ast)
 	udelay(100);
 }
 
-static void reset_mmc_2500(struct ast_private *ast)
+static void reset_mmc_2500(struct ast_device *ast)
 {
 	ast_moutdwm(ast, 0x1E78505C, 0x00000004);
 	ast_moutdwm(ast, 0x1E785044, 0x00000001);
@@ -1848,7 +1805,7 @@ static void reset_mmc_2500(struct ast_private *ast)
 	ast_moutdwm(ast, 0x1E6E0000, 0xFC600309);
 }
 
-static void ddr3_init_2500(struct ast_private *ast, const u32 *ddr_table)
+static void ddr3_init_2500(struct ast_device *ast, const u32 *ddr_table)
 {
 
 	ast_moutdwm(ast, 0x1E6E0004, 0x00000303);
@@ -1892,7 +1849,7 @@ static void ddr3_init_2500(struct ast_private *ast, const u32 *ddr_table)
 	ast_moutdwm(ast, 0x1E6E0038, 0xFFFFFF00);
 }
 
-static void ddr4_init_2500(struct ast_private *ast, const u32 *ddr_table)
+static void ddr4_init_2500(struct ast_device *ast, const u32 *ddr_table)
 {
 	u32 data, data2, pass, retrycnt;
 	u32 ddr_vref, phy_vref;
@@ -2002,7 +1959,7 @@ static void ddr4_init_2500(struct ast_private *ast, const u32 *ddr_table)
 	ast_moutdwm(ast, 0x1E6E0038, 0xFFFFFF00);
 }
 
-static bool ast_dram_init_2500(struct ast_private *ast)
+static bool ast_dram_init_2500(struct ast_device *ast)
 {
 	u32 data;
 	u32 max_tries = 5;
@@ -2030,7 +1987,7 @@ static bool ast_dram_init_2500(struct ast_private *ast)
 	return true;
 }
 
-void ast_patch_ahb_2500(struct ast_private *ast)
+void ast_patch_ahb_2500(struct ast_device *ast)
 {
 	u32	data;
 
@@ -2066,7 +2023,7 @@ void ast_patch_ahb_2500(struct ast_private *ast)
 
 void ast_post_chip_2500(struct drm_device *dev)
 {
-	struct ast_private *ast = to_ast_private(dev);
+	struct ast_device *ast = to_ast_device(dev);
 	u32 temp;
 	u8 reg;
 

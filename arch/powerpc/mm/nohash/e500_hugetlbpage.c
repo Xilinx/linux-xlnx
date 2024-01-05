@@ -45,7 +45,9 @@ static inline void book3e_tlb_lock(void)
 	if (!cpu_has_feature(CPU_FTR_SMT))
 		return;
 
-	asm volatile("1: lbarx %0, 0, %1;"
+	asm volatile(".machine push;"
+		     ".machine e6500;"
+		     "1: lbarx %0, 0, %1;"
 		     "cmpwi %0, 0;"
 		     "bne 2f;"
 		     "stbcx. %2, 0, %1;"
@@ -56,6 +58,7 @@ static inline void book3e_tlb_lock(void)
 		     "bne 2b;"
 		     "b 1b;"
 		     "3:"
+		     ".machine pop;"
 		     : "=&r" (tmp)
 		     : "r" (&paca->tcd_ptr->lock), "r" (token)
 		     : "memory");
@@ -175,7 +178,8 @@ book3e_hugetlb_preload(struct vm_area_struct *vma, unsigned long ea, pte_t pte)
  *
  * This must always be called with the pte lock held.
  */
-void update_mmu_cache(struct vm_area_struct *vma, unsigned long address, pte_t *ptep)
+void update_mmu_cache_range(struct vm_fault *vmf, struct vm_area_struct *vma,
+		unsigned long address, pte_t *ptep, unsigned int nr)
 {
 	if (is_vm_hugetlb_page(vma))
 		book3e_hugetlb_preload(vma, address, *ptep);

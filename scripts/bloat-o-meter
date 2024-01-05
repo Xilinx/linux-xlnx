@@ -80,8 +80,7 @@ def calc(oldfile, newfile, format):
         if d<0: shrink, down = shrink+1, down-d
         delta.append((d, name))
 
-    delta.sort()
-    delta.reverse()
+    delta.sort(reverse=True)
     return grow, shrink, add, remove, up, down, delta, old, new, otot, ntot
 
 def print_result(symboltype, symbolformat):
@@ -101,12 +100,12 @@ def print_result(symboltype, symbolformat):
     print("Total: Before=%d, After=%d, chg %+.2f%%" % (otot, ntot, percent))
 
 if args.c:
-    print_result("Function", "tT")
-    print_result("Data", "dDbB")
+    print_result("Function", "tTwW")
+    print_result("Data", "dDbBvV")
     print_result("RO Data", "rR")
 elif args.d:
-    print_result("Data", "dDbBrR")
+    print_result("Data", "dDbBrRvV")
 elif args.t:
-    print_result("Function", "tT")
+    print_result("Function", "tTwW")
 else:
-    print_result("Function", "tTdDbBrR")
+    print_result("Function", "tTdDbBrRvVwW")

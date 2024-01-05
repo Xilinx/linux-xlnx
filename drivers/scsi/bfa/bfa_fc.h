@@ -800,7 +800,7 @@ struct fc_rscn_pl_s {
 	u8	command;
 	u8	pagelen;
 	__be16	payldlen;
-	struct fc_rscn_event_s event[1];
+	struct fc_rscn_event_s event[];
 };
 
 /*
@@ -1548,7 +1548,7 @@ enum fdmi_port_attribute_type {
 struct fdmi_attr_s {
 	__be16        type;
 	__be16        len;
-	u8         value[1];
+	u8         value[];
 };
 
 /*

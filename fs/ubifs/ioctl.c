@@ -118,7 +118,7 @@ static int setflags(struct inode *inode, int flags)
 	ui->flags &= ~ioctl2ubifs(UBIFS_SETTABLE_IOCTL_FLAGS);
 	ui->flags |= ioctl2ubifs(flags);
 	ubifs_set_inode_flags(inode);
-	inode->i_ctime = current_time(inode);
+	inode_set_ctime_current(inode);
 	release = ui->dirty;
 	mark_inode_dirty_sync(inode);
 	mutex_unlock(&ui->ui_mutex);
@@ -144,7 +144,7 @@ int ubifs_fileattr_get(struct dentry *dentry, struct fileattr *fa)
 	return 0;
 }
 
-int ubifs_fileattr_set(struct user_namespace *mnt_userns,
+int ubifs_fileattr_set(struct mnt_idmap *idmap,
 		       struct dentry *dentry, struct fileattr *fa)
 {
 	struct inode *inode = d_inode(dentry);

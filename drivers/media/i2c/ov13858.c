@@ -1698,8 +1698,7 @@ static void ov13858_free_controls(struct ov13858 *ov13858)
 	mutex_destroy(&ov13858->mutex);
 }
 
-static int ov13858_probe(struct i2c_client *client,
-			 const struct i2c_device_id *devid)
+static int ov13858_probe(struct i2c_client *client)
 {
 	struct ov13858 *ov13858;
 	int ret;
@@ -1815,7 +1814,7 @@ static struct i2c_driver ov13858_i2c_driver = {
 module_i2c_driver(ov13858_i2c_driver);
 
 MODULE_AUTHOR("Kan, Chris <chris.kan@intel.com>");
-MODULE_AUTHOR("Rapolu, Chiranjeevi <chiranjeevi.rapolu@intel.com>");
+MODULE_AUTHOR("Rapolu, Chiranjeevi");
 MODULE_AUTHOR("Yang, Hyungwoo");
 MODULE_DESCRIPTION("Omnivision ov13858 sensor driver");
 MODULE_LICENSE("GPL v2");

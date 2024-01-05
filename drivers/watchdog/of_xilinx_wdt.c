@@ -2,7 +2,7 @@
 /*
  * Watchdog Device Driver for Xilinx axi/xps_timebase_wdt
  *
- * (C) Copyright 2013 - 2020 Xilinx, Inc.
+ * (C) Copyright 2013 - 2014 Xilinx, Inc.
  * (C) Copyright 2011 (Alejandro Cabrera <aldaya@gmail.com>)
  */
 
@@ -10,14 +10,13 @@
 #include <linux/clk.h>
 #include <linux/err.h>
 #include <linux/module.h>
+#include <linux/platform_device.h>
 #include <linux/types.h>
 #include <linux/kernel.h>
 #include <linux/ioport.h>
 #include <linux/watchdog.h>
 #include <linux/io.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
-#include <linux/of_address.h>
 
 /* Register offsets for the Wdt device */
 #define XWT_TWCSR0_OFFSET   0x0 /* Control/Status Register0 */

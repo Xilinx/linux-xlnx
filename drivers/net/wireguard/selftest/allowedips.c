@@ -285,8 +285,8 @@ static __init bool randomized_test(void)
 
 	for (i = 0; i < NUM_RAND_ROUTES; ++i) {
 		get_random_bytes(ip, 4);
-		cidr = prandom_u32_max(32) + 1;
-		peer = peers[prandom_u32_max(NUM_PEERS)];
+		cidr = get_random_u32_inclusive(1, 32);
+		peer = peers[get_random_u32_below(NUM_PEERS)];
 		if (wg_allowedips_insert_v4(&t, (struct in_addr *)ip, cidr,
 					    peer, &mutex) < 0) {
 			pr_err("allowedips random self-test malloc: FAIL\n");
@@ -300,7 +300,7 @@ static __init bool randomized_test(void)
 		for (j = 0; j < NUM_MUTATED_ROUTES; ++j) {
 			memcpy(mutated, ip, 4);
 			get_random_bytes(mutate_mask, 4);
-			mutate_amount = prandom_u32_max(32);
+			mutate_amount = get_random_u32_below(32);
 			for (k = 0; k < mutate_amount / 8; ++k)
 				mutate_mask[k] = 0xff;
 			mutate_mask[k] = 0xff
@@ -311,8 +311,8 @@ static __init bool randomized_test(void)
 				mutated[k] = (mutated[k] & mutate_mask[k]) |
 					     (~mutate_mask[k] &
 					      get_random_u8());
-			cidr = prandom_u32_max(32) + 1;
-			peer = peers[prandom_u32_max(NUM_PEERS)];
+			cidr = get_random_u32_inclusive(1, 32);
+			peer = peers[get_random_u32_below(NUM_PEERS)];
 			if (wg_allowedips_insert_v4(&t,
 						    (struct in_addr *)mutated,
 						    cidr, peer, &mutex) < 0) {
@@ -329,8 +329,8 @@ static __init bool randomized_test(void)
 
 	for (i = 0; i < NUM_RAND_ROUTES; ++i) {
 		get_random_bytes(ip, 16);
-		cidr = prandom_u32_max(128) + 1;
-		peer = peers[prandom_u32_max(NUM_PEERS)];
+		cidr = get_random_u32_inclusive(1, 128);
+		peer = peers[get_random_u32_below(NUM_PEERS)];
 		if (wg_allowedips_insert_v6(&t, (struct in6_addr *)ip, cidr,
 					    peer, &mutex) < 0) {
 			pr_err("allowedips random self-test malloc: FAIL\n");
@@ -344,7 +344,7 @@ static __init bool randomized_test(void)
 		for (j = 0; j < NUM_MUTATED_ROUTES; ++j) {
 			memcpy(mutated, ip, 16);
 			get_random_bytes(mutate_mask, 16);
-			mutate_amount = prandom_u32_max(128);
+			mutate_amount = get_random_u32_below(128);
 			for (k = 0; k < mutate_amount / 8; ++k)
 				mutate_mask[k] = 0xff;
 			mutate_mask[k] = 0xff
@@ -355,8 +355,8 @@ static __init bool randomized_test(void)
 				mutated[k] = (mutated[k] & mutate_mask[k]) |
 					     (~mutate_mask[k] &
 					      get_random_u8());
-			cidr = prandom_u32_max(128) + 1;
-			peer = peers[prandom_u32_max(NUM_PEERS)];
+			cidr = get_random_u32_inclusive(1, 128);
+			peer = peers[get_random_u32_below(NUM_PEERS)];
 			if (wg_allowedips_insert_v6(&t,
 						    (struct in6_addr *)mutated,
 						    cidr, peer, &mutex) < 0) {
@@ -593,16 +593,20 @@ bool __init wg_allowedips_selftest(void)
 	wg_allowedips_remove_by_peer(&t, a, &mutex);
 	test_negative(4, a, 192, 168, 0, 1);
 
-	/* These will hit the WARN_ON(len >= MAX_ALLOWEDIPS_BITS) in free_node
+	/* These will hit the WARN_ON(len >= MAX_ALLOWEDIPS_DEPTH) in free_node
 	 * if something goes wrong.
 	 */
-	for (i = 0; i < MAX_ALLOWEDIPS_BITS; ++i) {
-		part = cpu_to_be64(~(1LLU << (i % 64)));
-		memset(&ip, 0xff, 16);
-		memcpy((u8 *)&ip + (i < 64) * 8, &part, 8);
+	for (i = 0; i < 64; ++i) {
+		part = cpu_to_be64(~0LLU << i);
+		memset(&ip, 0xff, 8);
+		memcpy((u8 *)&ip + 8, &part, 8);
+		wg_allowedips_insert_v6(&t, &ip, 128, a, &mutex);
+		memcpy(&ip, &part, 8);
+		memset((u8 *)&ip + 8, 0, 8);
 		wg_allowedips_insert_v6(&t, &ip, 128, a, &mutex);
 	}
-
+	memset(&ip, 0, 16);
+	wg_allowedips_insert_v6(&t, &ip, 128, a, &mutex);
 	wg_allowedips_free(&t, &mutex);
 
 	wg_allowedips_init(&t);

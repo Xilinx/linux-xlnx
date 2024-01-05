@@ -12,12 +12,12 @@
  *
  * Get the DCBX status from the Firmware
  **/
-i40e_status i40e_get_dcbx_status(struct i40e_hw *hw, u16 *status)
+int i40e_get_dcbx_status(struct i40e_hw *hw, u16 *status)
 {
 	u32 reg;
 
 	if (!status)
-		return I40E_ERR_PARAM;
+		return -EINVAL;
 
 	reg = rd32(hw, I40E_PRTDCB_GENS);
 	*status = (u16)((reg & I40E_PRTDCB_GENS_DCBX_STATUS_MASK) >>
@@ -497,18 +497,18 @@ static void i40e_parse_org_tlv(struct i40e_lldp_org_tlv *tlv,
  *
  * Parse DCB configuration from the LLDPDU
  **/
-i40e_status i40e_lldp_to_dcb_config(u8 *lldpmib,
-				    struct i40e_dcbx_config *dcbcfg)
+int i40e_lldp_to_dcb_config(u8 *lldpmib,
+			    struct i40e_dcbx_config *dcbcfg)
 {
-	i40e_status ret = 0;
 	struct i40e_lldp_org_tlv *tlv;
-	u16 type;
-	u16 length;
 	u16 typelength;
 	u16 offset = 0;
+	int ret = 0;
+	u16 length;
+	u16 type;
 
 	if (!lldpmib || !dcbcfg)
-		return I40E_ERR_PARAM;
+		return -EINVAL;
 
 	/* set to the start of LLDPDU */
 	lldpmib += ETH_HLEN;
@@ -551,12 +551,12 @@ i40e_status i40e_lldp_to_dcb_config(u8 *lldpmib,
  *
  * Query DCB configuration from the Firmware
  **/
-i40e_status i40e_aq_get_dcb_config(struct i40e_hw *hw, u8 mib_type,
-				   u8 bridgetype,
-				   struct i40e_dcbx_config *dcbcfg)
+int i40e_aq_get_dcb_config(struct i40e_hw *hw, u8 mib_type,
+			   u8 bridgetype,
+			   struct i40e_dcbx_config *dcbcfg)
 {
-	i40e_status ret = 0;
 	struct i40e_virt_mem mem;
+	int ret = 0;
 	u8 *lldpmib;
 
 	/* Allocate the LLDPDU */
@@ -767,9 +767,9 @@ static void i40e_cee_to_dcb_config(
  *
  * Get IEEE mode DCB configuration from the Firmware
  **/
-static i40e_status i40e_get_ieee_dcb_config(struct i40e_hw *hw)
+static int i40e_get_ieee_dcb_config(struct i40e_hw *hw)
 {
-	i40e_status ret = 0;
+	int ret = 0;
 
 	/* IEEE mode */
 	hw->local_dcbx_config.dcbx_mode = I40E_DCBX_MODE_IEEE;
@@ -797,11 +797,11 @@ out:
  *
  * Get DCB configuration from the Firmware
  **/
-i40e_status i40e_get_dcb_config(struct i40e_hw *hw)
+int i40e_get_dcb_config(struct i40e_hw *hw)
 {
-	i40e_status ret = 0;
-	struct i40e_aqc_get_cee_dcb_cfg_resp cee_cfg;
 	struct i40e_aqc_get_cee_dcb_cfg_v1_resp cee_v1_cfg;
+	struct i40e_aqc_get_cee_dcb_cfg_resp cee_cfg;
+	int ret = 0;
 
 	/* If Firmware version < v4.33 on X710/XL710, IEEE only */
 	if ((hw->mac.type == I40E_MAC_XL710) &&
@@ -867,14 +867,14 @@ out:
  *
  * Update DCB configuration from the Firmware
  **/
-i40e_status i40e_init_dcb(struct i40e_hw *hw, bool enable_mib_change)
+int i40e_init_dcb(struct i40e_hw *hw, bool enable_mib_change)
 {
-	i40e_status ret = 0;
 	struct i40e_lldp_variables lldp_cfg;
 	u8 adminstatus = 0;
+	int ret = 0;
 
 	if (!hw->func_caps.dcb)
-		return I40E_NOT_SUPPORTED;
+		return -EOPNOTSUPP;
 
 	/* Read LLDP NVM area */
 	if (hw->flags & I40E_HW_FLAG_FW_LLDP_PERSISTENT) {
@@ -885,7 +885,7 @@ i40e_status i40e_init_dcb(struct i40e_hw *hw, bool enable_mib_change)
 		else if (hw->mac.type == I40E_MAC_X722)
 			offset = I40E_LLDP_CURRENT_STATUS_X722_OFFSET;
 		else
-			return I40E_NOT_SUPPORTED;
+			return -EOPNOTSUPP;
 
 		ret = i40e_read_nvm_module_data(hw,
 						I40E_SR_EMP_SR_SETTINGS_PTR,
@@ -897,7 +897,7 @@ i40e_status i40e_init_dcb(struct i40e_hw *hw, bool enable_mib_change)
 		ret = i40e_read_lldp_cfg(hw, &lldp_cfg);
 	}
 	if (ret)
-		return I40E_ERR_NOT_READY;
+		return -EBUSY;
 
 	/* Get the LLDP AdminStatus for the current port */
 	adminstatus = lldp_cfg.adminstatus >> (hw->port * 4);
@@ -906,7 +906,7 @@ i40e_status i40e_init_dcb(struct i40e_hw *hw, bool enable_mib_change)
 	/* LLDP agent disabled */
 	if (!adminstatus) {
 		hw->dcbx_status = I40E_DCBX_STATUS_DISABLED;
-		return I40E_ERR_NOT_READY;
+		return -EBUSY;
 	}
 
 	/* Get DCBX status */
@@ -922,7 +922,7 @@ i40e_status i40e_init_dcb(struct i40e_hw *hw, bool enable_mib_change)
 		if (ret)
 			return ret;
 	} else if (hw->dcbx_status == I40E_DCBX_STATUS_DISABLED) {
-		return I40E_ERR_NOT_READY;
+		return -EBUSY;
 	}
 
 	/* Configure the LLDP MIB change event */
@@ -940,16 +940,16 @@ i40e_status i40e_init_dcb(struct i40e_hw *hw, bool enable_mib_change)
  * Get status of FW Link Layer Discovery Protocol (LLDP) Agent.
  * Status of agent is reported via @lldp_status parameter.
  **/
-enum i40e_status_code
+int
 i40e_get_fw_lldp_status(struct i40e_hw *hw,
 			enum i40e_get_fw_lldp_status_resp *lldp_status)
 {
 	struct i40e_virt_mem mem;
-	i40e_status ret;
 	u8 *lldpmib;
+	int ret;
 
 	if (!lldp_status)
-		return I40E_ERR_PARAM;
+		return -EINVAL;
 
 	/* Allocate buffer for the LLDPDU */
 	ret = i40e_allocate_virt_mem(hw, &mem, I40E_LLDPDU_SIZE);
@@ -1238,13 +1238,13 @@ static void i40e_add_dcb_tlv(struct i40e_lldp_org_tlv *tlv,
  *
  * Set DCB configuration to the Firmware
  **/
-i40e_status i40e_set_dcb_config(struct i40e_hw *hw)
+int i40e_set_dcb_config(struct i40e_hw *hw)
 {
 	struct i40e_dcbx_config *dcbcfg;
 	struct i40e_virt_mem mem;
 	u8 mib_type, *lldpmib;
-	i40e_status ret;
 	u16 miblen;
+	int ret;
 
 	/* update the hw local config */
 	dcbcfg = &hw->local_dcbx_config;
@@ -1274,8 +1274,8 @@ i40e_status i40e_set_dcb_config(struct i40e_hw *hw)
  *
  * send DCB configuration to FW
  **/
-i40e_status i40e_dcb_config_to_lldp(u8 *lldpmib, u16 *miblen,
-				    struct i40e_dcbx_config *dcbcfg)
+int i40e_dcb_config_to_lldp(u8 *lldpmib, u16 *miblen,
+			    struct i40e_dcbx_config *dcbcfg)
 {
 	u16 length, offset = 0, tlvid, typelength;
 	struct i40e_lldp_org_tlv *tlv;
@@ -1299,7 +1299,7 @@ i40e_status i40e_dcb_config_to_lldp(u8 *lldpmib, u16 *miblen,
 			      sizeof(tlv->typelength) + length);
 	} while (tlvid < I40E_TLV_ID_END_OF_LLDPPDU);
 	*miblen = offset;
-	return I40E_SUCCESS;
+	return 0;
 }
 
 /**
@@ -1888,13 +1888,13 @@ void i40e_dcb_hw_rx_pb_config(struct i40e_hw *hw,
  *
  * Reads the LLDP configuration data from NVM using passed addresses
  **/
-static i40e_status _i40e_read_lldp_cfg(struct i40e_hw *hw,
-				       struct i40e_lldp_variables *lldp_cfg,
-				       u8 module, u32 word_offset)
+static int _i40e_read_lldp_cfg(struct i40e_hw *hw,
+			       struct i40e_lldp_variables *lldp_cfg,
+			       u8 module, u32 word_offset)
 {
 	u32 address, offset = (2 * word_offset);
-	i40e_status ret;
 	__le16 raw_mem;
+	int ret;
 	u16 mem;
 
 	ret = i40e_acquire_nvm(hw, I40E_RESOURCE_READ);
@@ -1950,14 +1950,14 @@ err_lldp_cfg:
  *
  * Reads the LLDP configuration data from NVM
  **/
-i40e_status i40e_read_lldp_cfg(struct i40e_hw *hw,
-			       struct i40e_lldp_variables *lldp_cfg)
+int i40e_read_lldp_cfg(struct i40e_hw *hw,
+		       struct i40e_lldp_variables *lldp_cfg)
 {
-	i40e_status ret = 0;
+	int ret = 0;
 	u32 mem;
 
 	if (!lldp_cfg)
-		return I40E_ERR_PARAM;
+		return -EINVAL;
 
 	ret = i40e_acquire_nvm(hw, I40E_RESOURCE_READ);
 	if (ret)

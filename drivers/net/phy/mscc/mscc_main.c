@@ -283,12 +283,9 @@ static int vsc85xx_wol_set(struct phy_device *phydev,
 	u16 pwd[3] = {0, 0, 0};
 	struct ethtool_wolinfo *wol_conf = wol;
 
-	mutex_lock(&phydev->lock);
 	rc = phy_select_page(phydev, MSCC_PHY_PAGE_EXTENDED_2);
-	if (rc < 0) {
-		rc = phy_restore_page(phydev, rc, rc);
-		goto out_unlock;
-	}
+	if (rc < 0)
+		return phy_restore_page(phydev, rc, rc);
 
 	if (wol->wolopts & WAKE_MAGIC) {
 		/* Store the device address for the magic packet */
@@ -326,7 +323,7 @@ static int vsc85xx_wol_set(struct phy_device *phydev,
 
 	rc = phy_restore_page(phydev, rc, rc > 0 ? 0 : rc);
 	if (rc < 0)
-		goto out_unlock;
+		return rc;
 
 	if (wol->wolopts & WAKE_MAGIC) {
 		/* Enable the WOL interrupt */
@@ -334,22 +331,19 @@ static int vsc85xx_wol_set(struct phy_device *phydev,
 		reg_val |= MII_VSC85XX_INT_MASK_WOL;
 		rc = phy_write(phydev, MII_VSC85XX_INT_MASK, reg_val);
 		if (rc)
-			goto out_unlock;
+			return rc;
 	} else {
 		/* Disable the WOL interrupt */
 		reg_val = phy_read(phydev, MII_VSC85XX_INT_MASK);
 		reg_val &= (~MII_VSC85XX_INT_MASK_WOL);
 		rc = phy_write(phydev, MII_VSC85XX_INT_MASK, reg_val);
 		if (rc)
-			goto out_unlock;
+			return rc;
 	}
 	/* Clear WOL iterrupt status */
 	reg_val = phy_read(phydev, MII_VSC85XX_INT_STATUS);
 
-out_unlock:
-	mutex_unlock(&phydev->lock);
-
-	return rc;
+	return 0;
 }
 
 static void vsc85xx_wol_get(struct phy_device *phydev,
@@ -361,10 +355,9 @@ static void vsc85xx_wol_get(struct phy_device *phydev,
 	u16 pwd[3] = {0, 0, 0};
 	struct ethtool_wolinfo *wol_conf = wol;
 
-	mutex_lock(&phydev->lock);
 	rc = phy_select_page(phydev, MSCC_PHY_PAGE_EXTENDED_2);
 	if (rc < 0)
-		goto out_unlock;
+		goto out_restore_page;
 
 	reg_val = __phy_read(phydev, MSCC_PHY_WOL_MAC_CONTROL);
 	if (reg_val & SECURE_ON_ENABLE)
@@ -380,9 +373,8 @@ static void vsc85xx_wol_get(struct phy_device *phydev,
 		}
 	}
 
-out_unlock:
+out_restore_page:
 	phy_restore_page(phydev, rc, rc > 0 ? 0 : rc);
-	mutex_unlock(&phydev->lock);
 }
 
 #if IS_ENABLED(CONFIG_OF_MDIO)
@@ -2345,6 +2337,30 @@ static int vsc85xx_probe(struct phy_device *phydev)
 
 /* Microsemi VSC85xx PHYs */
 static struct phy_driver vsc85xx_driver[] = {
+{
+	.phy_id		= PHY_ID_VSC8501,
+	.name		= "Microsemi GE VSC8501 SyncE",
+	.phy_id_mask	= 0xfffffff0,
+	/* PHY_BASIC_FEATURES */
+	.soft_reset	= &genphy_soft_reset,
+	.config_init	= &vsc85xx_config_init,
+	.config_aneg    = &vsc85xx_config_aneg,
+	.read_status	= &vsc85xx_read_status,
+	.handle_interrupt = vsc85xx_handle_interrupt,
+	.config_intr	= &vsc85xx_config_intr,
+	.suspend	= &genphy_suspend,
+	.resume		= &genphy_resume,
+	.probe		= &vsc85xx_probe,
+	.set_wol	= &vsc85xx_wol_set,
+	.get_wol	= &vsc85xx_wol_get,
+	.get_tunable	= &vsc85xx_get_tunable,
+	.set_tunable	= &vsc85xx_set_tunable,
+	.read_page	= &vsc85xx_phy_read_page,
+	.write_page	= &vsc85xx_phy_write_page,
+	.get_sset_count = &vsc85xx_get_sset_count,
+	.get_strings    = &vsc85xx_get_strings,
+	.get_stats      = &vsc85xx_get_stats,
+},
 {
 	.phy_id		= PHY_ID_VSC8502,
 	.name		= "Microsemi GE VSC8502 SyncE",

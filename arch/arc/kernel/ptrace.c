@@ -46,8 +46,7 @@ static const struct pt_regs_offset regoffset_table[] = {
 	REG_OFFSET_NAME(r0),
 	REG_OFFSET_NAME(sp),
 	REG_OFFSET_NAME(orig_r0),
-	REG_OFFSET_NAME(event),
-	REG_OFFSET_NAME(user_r25),
+	REG_OFFSET_NAME(ecr),
 	REG_OFFSET_END,
 };
 
@@ -55,9 +54,8 @@ static const struct pt_regs_offset regoffset_table[] = {
 
 static const struct pt_regs_offset regoffset_table[] = {
 	REG_OFFSET_NAME(orig_r0),
-	REG_OFFSET_NAME(event),
+	REG_OFFSET_NAME(ecr),
 	REG_OFFSET_NAME(bta),
-	REG_OFFSET_NAME(user_r25),
 	REG_OFFSET_NAME(r26),
 	REG_OFFSET_NAME(fp),
 	REG_OFFSET_NAME(sp),
@@ -185,7 +183,7 @@ static int genregs_set(struct task_struct *target,
 
 #define REG_IGNORE_ONE(LOC)		\
 	if (!ret)			\
-		ret = user_regset_copyin_ignore(&pos, &count, &kbuf, &ubuf, \
+		user_regset_copyin_ignore(&pos, &count, &kbuf, &ubuf, \
 			offsetof(struct user_regs_struct, LOC), \
 			offsetof(struct user_regs_struct, LOC) + 4);
 
@@ -341,7 +339,7 @@ long arch_ptrace(struct task_struct *child, long request,
 	return ret;
 }
 
-asmlinkage int syscall_trace_entry(struct pt_regs *regs)
+asmlinkage int syscall_trace_enter(struct pt_regs *regs)
 {
 	if (test_thread_flag(TIF_SYSCALL_TRACE))
 		if (ptrace_report_syscall_entry(regs))

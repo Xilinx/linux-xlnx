@@ -36,7 +36,7 @@ static int i40e_ddp_does_profile_exist(struct i40e_hw *hw,
 {
 	struct i40e_ddp_profile_list *profile_list;
 	u8 buff[I40E_PROFILE_LIST_SIZE];
-	i40e_status status;
+	int status;
 	int i;
 
 	status = i40e_aq_get_ddp_list(hw, buff, I40E_PROFILE_LIST_SIZE, 0,
@@ -91,7 +91,7 @@ static int i40e_ddp_does_profile_overlap(struct i40e_hw *hw,
 {
 	struct i40e_ddp_profile_list *profile_list;
 	u8 buff[I40E_PROFILE_LIST_SIZE];
-	i40e_status status;
+	int status;
 	int i;
 
 	status = i40e_aq_get_ddp_list(hw, buff, I40E_PROFILE_LIST_SIZE, 0,
@@ -117,14 +117,14 @@ static int i40e_ddp_does_profile_overlap(struct i40e_hw *hw,
  *
  * Register a profile to the list of loaded profiles.
  */
-static enum i40e_status_code
+static int
 i40e_add_pinfo(struct i40e_hw *hw, struct i40e_profile_segment *profile,
 	       u8 *profile_info_sec, u32 track_id)
 {
 	struct i40e_profile_section_header *sec;
 	struct i40e_profile_info *pinfo;
-	i40e_status status;
 	u32 offset = 0, info = 0;
+	int status;
 
 	sec = (struct i40e_profile_section_header *)profile_info_sec;
 	sec->tbl_size = 1;
@@ -157,14 +157,14 @@ i40e_add_pinfo(struct i40e_hw *hw, struct i40e_profile_segment *profile,
  *
  * Removes DDP profile from the NIC.
  **/
-static enum i40e_status_code
+static int
 i40e_del_pinfo(struct i40e_hw *hw, struct i40e_profile_segment *profile,
 	       u8 *profile_info_sec, u32 track_id)
 {
 	struct i40e_profile_section_header *sec;
 	struct i40e_profile_info *pinfo;
-	i40e_status status;
 	u32 offset = 0, info = 0;
+	int status;
 
 	sec = (struct i40e_profile_section_header *)profile_info_sec;
 	sec->tbl_size = 1;
@@ -220,7 +220,7 @@ static bool i40e_ddp_is_pkg_hdr_valid(struct net_device *netdev,
 		netdev_err(netdev, "Invalid DDP profile - size is bigger than 4G");
 		return false;
 	}
-	if (size < (sizeof(struct i40e_package_header) +
+	if (size < (sizeof(struct i40e_package_header) + sizeof(u32) +
 		sizeof(struct i40e_metadata_segment) + sizeof(u32) * 2)) {
 		netdev_err(netdev, "Invalid DDP profile - size is too small.");
 		return false;
@@ -270,18 +270,18 @@ int i40e_ddp_load(struct net_device *netdev, const u8 *data, size_t size,
 	struct i40e_profile_segment *profile_hdr;
 	struct i40e_profile_info pinfo;
 	struct i40e_package_header *pkg_hdr;
-	i40e_status status;
 	struct i40e_netdev_priv *np = netdev_priv(netdev);
 	struct i40e_vsi *vsi = np->vsi;
 	struct i40e_pf *pf = vsi->back;
 	u32 track_id;
 	int istatus;
+	int status;
 
 	pkg_hdr = (struct i40e_package_header *)data;
 	if (!i40e_ddp_is_pkg_hdr_valid(netdev, pkg_hdr, size))
 		return -EINVAL;
 
-	if (size < (sizeof(struct i40e_package_header) +
+	if (size < (sizeof(struct i40e_package_header) + sizeof(u32) +
 		    sizeof(struct i40e_metadata_segment) + sizeof(u32) * 2)) {
 		netdev_err(netdev, "Invalid DDP recipe size.");
 		return -EINVAL;
@@ -344,7 +344,7 @@ int i40e_ddp_load(struct net_device *netdev, const u8 *data, size_t size,
 	if (is_add) {
 		status = i40e_write_profile(&pf->hw, profile_hdr, track_id);
 		if (status) {
-			if (status == I40E_ERR_DEVICE_NOT_SUPPORTED) {
+			if (status == -ENODEV) {
 				netdev_err(netdev,
 					   "Profile is not supported by the device.");
 				return -EPERM;

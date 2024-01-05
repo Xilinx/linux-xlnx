@@ -826,7 +826,9 @@ struct hclge_dev_specs_1_cmd {
 	u8 rsv0[2];
 	__le16 umv_size;
 	__le16 mc_mac_size;
-	u8 rsv1[12];
+	u8 rsv1[6];
+	u8 tnl_num;
+	u8 rsv2[5];
 };
 
 /* mac speed type defined in firmware command */
@@ -872,10 +874,18 @@ struct hclge_phy_reg_cmd {
 	u8 rsv1[18];
 };
 
+struct hclge_wol_cfg_cmd {
+	__le32 wake_on_lan_mode;
+	u8 sopass[SOPASS_MAX];
+	u8 sopass_size;
+	u8 rsv[13];
+};
+
+struct hclge_query_wol_supported_cmd {
+	__le32 supported_wake_mode;
+	u8 rsv[20];
+};
+
 struct hclge_hw;
 int hclge_cmd_send(struct hclge_hw *hw, struct hclge_desc *desc, int num);
-enum hclge_comm_cmd_status hclge_cmd_mdio_write(struct hclge_hw *hw,
-						struct hclge_desc *desc);
-enum hclge_comm_cmd_status hclge_cmd_mdio_read(struct hclge_hw *hw,
-					       struct hclge_desc *desc);
 #endif

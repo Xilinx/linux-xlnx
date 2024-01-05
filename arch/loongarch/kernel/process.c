@@ -18,6 +18,7 @@
 #include <linux/sched/debug.h>
 #include <linux/sched/task.h>
 #include <linux/sched/task_stack.h>
+#include <linux/hw_breakpoint.h>
 #include <linux/mm.h>
 #include <linux/stddef.h>
 #include <linux/unistd.h>
@@ -36,7 +37,9 @@
 #include <asm/bootinfo.h>
 #include <asm/cpu.h>
 #include <asm/elf.h>
+#include <asm/exec.h>
 #include <asm/fpu.h>
+#include <asm/lbt.h>
 #include <asm/io.h>
 #include <asm/irq.h>
 #include <asm/irq_regs.h>
@@ -47,19 +50,18 @@
 #include <asm/unwind.h>
 #include <asm/vdso.h>
 
+#ifdef CONFIG_STACKPROTECTOR
+#include <linux/stackprotector.h>
+unsigned long __stack_chk_guard __read_mostly;
+EXPORT_SYMBOL(__stack_chk_guard);
+#endif
+
 /*
  * Idle related variables and functions
  */
 
 unsigned long boot_option_idle_override = IDLE_NO_OVERRIDE;
 EXPORT_SYMBOL(boot_option_idle_override);
-
-#ifdef CONFIG_HOTPLUG_CPU
-void arch_cpu_idle_dead(void)
-{
-	play_dead();
-}
-#endif
 
 asmlinkage void ret_from_fork(void);
 asmlinkage void ret_from_kernel_thread(void);
@@ -82,12 +84,19 @@ void start_thread(struct pt_regs *regs, unsigned long pc, unsigned long sp)
 	euen = regs->csr_euen & ~(CSR_EUEN_FPEN);
 	regs->csr_euen = euen;
 	lose_fpu(0);
+	lose_lbt(0);
 
 	clear_thread_flag(TIF_LSX_CTX_LIVE);
 	clear_thread_flag(TIF_LASX_CTX_LIVE);
+	clear_thread_flag(TIF_LBT_CTX_LIVE);
 	clear_used_math();
 	regs->csr_era = pc;
 	regs->regs[3] = sp;
+}
+
+void flush_thread(void)
+{
+	flush_ptrace_hw_breakpoint(current);
 }
 
 void exit_thread(struct task_struct *tsk)
@@ -105,15 +114,25 @@ int arch_dup_task_struct(struct task_struct *dst, struct task_struct *src)
 	 */
 	preempt_disable();
 
-	if (is_fpu_owner())
-		save_fp(current);
+	if (is_fpu_owner()) {
+		if (is_lasx_enabled())
+			save_lasx(current);
+		else if (is_lsx_enabled())
+			save_lsx(current);
+		else
+			save_fp(current);
+	}
 
 	preempt_enable();
 
-	if (used_math())
-		memcpy(dst, src, sizeof(struct task_struct));
-	else
+	if (!used_math())
 		memcpy(dst, src, offsetof(struct task_struct, thread.fpu.fpr));
+	else
+		memcpy(dst, src, offsetof(struct task_struct, thread.lbt.scr0));
+
+#ifdef CONFIG_CPU_HAS_LBT
+	memcpy(&dst->thread.lbt, &src->thread.lbt, sizeof(struct loongarch_lbt));
+#endif
 
 	return 0;
 }
@@ -175,30 +194,27 @@ int copy_thread(struct task_struct *p, const struct kernel_clone_args *args)
 		childregs->regs[2] = tls;
 
 out:
+	ptrace_hw_copy_thread(p);
 	clear_tsk_thread_flag(p, TIF_USEDFPU);
 	clear_tsk_thread_flag(p, TIF_USEDSIMD);
+	clear_tsk_thread_flag(p, TIF_USEDLBT);
 	clear_tsk_thread_flag(p, TIF_LSX_CTX_LIVE);
 	clear_tsk_thread_flag(p, TIF_LASX_CTX_LIVE);
+	clear_tsk_thread_flag(p, TIF_LBT_CTX_LIVE);
 
 	return 0;
 }
 
 unsigned long __get_wchan(struct task_struct *task)
 {
-	unsigned long pc;
+	unsigned long pc = 0;
 	struct unwind_state state;
 
 	if (!try_get_task_stack(task))
 		return 0;
 
-	unwind_start(&state, task, NULL);
-	state.sp = thread_saved_fp(task);
-	get_stack_info(state.sp, state.task, &state.stack_info);
-	state.pc = thread_saved_ra(task);
-#ifdef CONFIG_UNWINDER_PROLOGUE
-	state.type = UNWINDER_PROLOGUE;
-#endif
-	for (; !unwind_done(&state); unwind_next_frame(&state)) {
+	for (unwind_start(&state, task, NULL);
+	     !unwind_done(&state); unwind_next_frame(&state)) {
 		pc = unwind_get_return_address(&state);
 		if (!pc)
 			break;
@@ -278,7 +294,7 @@ unsigned long stack_top(void)
 
 	/* Space for the VDSO & data page */
 	top -= PAGE_ALIGN(current->thread.vdso->size);
-	top -= PAGE_SIZE;
+	top -= VVAR_SIZE;
 
 	/* Space to randomize the VDSO base */
 	if (current->flags & PF_RANDOMIZE)
@@ -294,7 +310,7 @@ unsigned long stack_top(void)
 unsigned long arch_align_stack(unsigned long sp)
 {
 	if (!(current->personality & ADDR_NO_RANDOMIZE) && randomize_va_space)
-		sp -= prandom_u32_max(PAGE_SIZE);
+		sp -= get_random_u32_below(PAGE_SIZE);
 
 	return sp & STACK_ALIGN;
 }
@@ -332,9 +348,9 @@ static void raise_backtrace(cpumask_t *mask)
 	}
 }
 
-void arch_trigger_cpumask_backtrace(const cpumask_t *mask, bool exclude_self)
+void arch_trigger_cpumask_backtrace(const cpumask_t *mask, int exclude_cpu)
 {
-	nmi_trigger_cpumask_backtrace(mask, exclude_self, raise_backtrace);
+	nmi_trigger_cpumask_backtrace(mask, exclude_cpu, raise_backtrace);
 }
 
 #ifdef CONFIG_64BIT

@@ -2,7 +2,9 @@
 // Copyright (C) 2018 Facebook
 // Author: Yonghong Song <yhs@fb.com>
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -234,7 +236,7 @@ static int do_help(int argc, char **argv)
 {
 	fprintf(stderr,
 		"Usage: %1$s %2$s { show | list }\n"
-		"       %1$s %2$s help }\n"
+		"       %1$s %2$s help\n"
 		"\n"
 		"       " HELP_SPEC_OPTIONS " }\n"
 		"",

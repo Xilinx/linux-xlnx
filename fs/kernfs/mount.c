@@ -16,6 +16,8 @@
 #include <linux/namei.h>
 #include <linux/seq_file.h>
 #include <linux/exportfs.h>
+#include <linux/uuid.h>
+#include <linux/statfs.h>
 
 #include "kernfs-internal.h"
 
@@ -45,8 +47,15 @@ static int kernfs_sop_show_path(struct seq_file *sf, struct dentry *dentry)
 	return 0;
 }
 
+static int kernfs_statfs(struct dentry *dentry, struct kstatfs *buf)
+{
+	simple_statfs(dentry, buf);
+	buf->f_fsid = uuid_to_fsid(dentry->d_sb->s_uuid.b);
+	return 0;
+}
+
 const struct super_operations kernfs_sops = {
-	.statfs		= simple_statfs,
+	.statfs		= kernfs_statfs,
 	.drop_inode	= generic_delete_inode,
 	.evict_inode	= kernfs_evict_inode,
 
@@ -153,7 +162,7 @@ static const struct export_operations kernfs_export_ops = {
  * kernfs_root_from_sb - determine kernfs_root associated with a super_block
  * @sb: the super_block in question
  *
- * Return the kernfs_root associated with @sb.  If @sb is not a kernfs one,
+ * Return: the kernfs_root associated with @sb.  If @sb is not a kernfs one,
  * %NULL is returned.
  */
 struct kernfs_root *kernfs_root_from_sb(struct super_block *sb)
@@ -167,7 +176,7 @@ struct kernfs_root *kernfs_root_from_sb(struct super_block *sb)
  * find the next ancestor in the path down to @child, where @parent was the
  * ancestor whose descendant we want to find.
  *
- * Say the path is /a/b/c/d.  @child is d, @parent is NULL.  We return the root
+ * Say the path is /a/b/c/d.  @child is d, @parent is %NULL.  We return the root
  * node.  If @parent is b, then we return the node for c.
  * Passing in d as @parent is not ok.
  */
@@ -192,6 +201,8 @@ static struct kernfs_node *find_next_ancestor(struct kernfs_node *child,
  * kernfs_node_dentry - get a dentry for the given kernfs_node
  * @kn: kernfs_node for which a dentry is needed
  * @sb: the kernfs super_block
+ *
+ * Return: the dentry pointer
  */
 struct dentry *kernfs_node_dentry(struct kernfs_node *kn,
 				  struct super_block *sb)
@@ -296,7 +307,7 @@ static int kernfs_set_super(struct super_block *sb, struct fs_context *fc)
  * kernfs_super_ns - determine the namespace tag of a kernfs super_block
  * @sb: super_block of interest
  *
- * Return the namespace tag associated with kernfs super_block @sb.
+ * Return: the namespace tag associated with kernfs super_block @sb.
  */
 const void *kernfs_super_ns(struct super_block *sb)
 {
@@ -313,6 +324,8 @@ const void *kernfs_super_ns(struct super_block *sb)
  * implementation, which should set the specified ->@fs_type and ->@flags, and
  * specify the hierarchy and namespace tag to mount via ->@root and ->@ns,
  * respectively.
+ *
+ * Return: %0 on success, -errno on failure.
  */
 int kernfs_get_tree(struct fs_context *fc)
 {
@@ -347,9 +360,11 @@ int kernfs_get_tree(struct fs_context *fc)
 		}
 		sb->s_flags |= SB_ACTIVE;
 
-		down_write(&root->kernfs_rwsem);
+		uuid_gen(&sb->s_uuid);
+
+		down_write(&root->kernfs_supers_rwsem);
 		list_add(&info->node, &info->root->supers);
-		up_write(&root->kernfs_rwsem);
+		up_write(&root->kernfs_supers_rwsem);
 	}
 
 	fc->root = dget(sb->s_root);
@@ -376,9 +391,9 @@ void kernfs_kill_sb(struct super_block *sb)
 	struct kernfs_super_info *info = kernfs_info(sb);
 	struct kernfs_root *root = info->root;
 
-	down_write(&root->kernfs_rwsem);
+	down_write(&root->kernfs_supers_rwsem);
 	list_del(&info->node);
-	up_write(&root->kernfs_rwsem);
+	up_write(&root->kernfs_supers_rwsem);
 
 	/*
 	 * Remove the superblock from fs_supers/s_instances

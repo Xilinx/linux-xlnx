@@ -267,7 +267,7 @@ static inline int wbsd_next_sg(struct wbsd_host *host)
 
 static inline char *wbsd_map_sg(struct wbsd_host *host)
 {
-	return kmap_atomic(sg_page(host->cur_sg)) + host->cur_sg->offset;
+	return kmap_local_page(sg_page(host->cur_sg)) + host->cur_sg->offset;
 }
 
 static inline void wbsd_sg_to_dma(struct wbsd_host *host, struct mmc_data *data)
@@ -439,7 +439,7 @@ static void wbsd_empty_fifo(struct wbsd_host *host)
 			 * End of scatter list entry?
 			 */
 			if (host->remain == 0) {
-				kunmap_atomic(buffer);
+				kunmap_local(buffer);
 				/*
 				 * Get next entry. Check if last.
 				 */
@@ -451,7 +451,7 @@ static void wbsd_empty_fifo(struct wbsd_host *host)
 			}
 		}
 	}
-	kunmap_atomic(buffer);
+	kunmap_local(buffer);
 
 	/*
 	 * This is a very dirty hack to solve a
@@ -505,7 +505,7 @@ static void wbsd_fill_fifo(struct wbsd_host *host)
 			 * End of scatter list entry?
 			 */
 			if (host->remain == 0) {
-				kunmap_atomic(buffer);
+				kunmap_local(buffer);
 				/*
 				 * Get next entry. Check if last.
 				 */
@@ -517,7 +517,7 @@ static void wbsd_fill_fifo(struct wbsd_host *host)
 			}
 		}
 	}
-	kunmap_atomic(buffer);
+	kunmap_local(buffer);
 
 	/*
 	 * The controller stops sending interrupts for
@@ -1264,8 +1264,6 @@ static void wbsd_free_mmc(struct device *dev)
 	del_timer_sync(&host->ignore_timer);
 
 	mmc_free_host(mmc);
-
-	dev_set_drvdata(dev, NULL);
 }
 
 /*
@@ -1698,7 +1696,15 @@ static int wbsd_init(struct device *dev, int base, int irq, int dma,
 	 */
 	wbsd_init_device(host);
 
-	mmc_add_host(mmc);
+	ret = mmc_add_host(mmc);
+	if (ret) {
+		if (!pnp)
+			wbsd_chip_poweroff(host);
+
+		wbsd_release_resources(host);
+		wbsd_free_mmc(dev);
+		return ret;
+	}
 
 	pr_info("%s: W83L51xD", mmc_hostname(mmc));
 	if (host->chip_id != 0)
@@ -1748,11 +1754,9 @@ static int wbsd_probe(struct platform_device *dev)
 	return wbsd_init(&dev->dev, param_io, param_irq, param_dma, 0);
 }
 
-static int wbsd_remove(struct platform_device *dev)
+static void wbsd_remove(struct platform_device *dev)
 {
 	wbsd_shutdown(&dev->dev, 0);
-
-	return 0;
 }
 
 /*
@@ -1894,8 +1898,7 @@ static struct platform_device *wbsd_device;
 
 static struct platform_driver wbsd_driver = {
 	.probe		= wbsd_probe,
-	.remove		= wbsd_remove,
-
+	.remove_new	= wbsd_remove,
 	.suspend	= wbsd_platform_suspend,
 	.resume		= wbsd_platform_resume,
 	.driver		= {

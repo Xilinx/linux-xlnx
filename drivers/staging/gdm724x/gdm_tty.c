@@ -21,7 +21,10 @@
 
 #define MUX_TX_MAX_SIZE 2048
 
-#define GDM_TTY_READY(gdm) (gdm && gdm->tty_dev && gdm->port.count)
+static inline bool gdm_tty_ready(struct gdm *gdm)
+{
+	return gdm && gdm->tty_dev && gdm->port.count;
+}
 
 static struct tty_driver *gdm_driver[TTY_MAX_COUNT];
 static struct gdm *gdm_table[TTY_MAX_COUNT][GDM_TTY_MINOR];
@@ -113,7 +116,7 @@ static int gdm_tty_recv_complete(void *data,
 {
 	struct gdm *gdm = tty_dev->gdm[index];
 
-	if (!GDM_TTY_READY(gdm)) {
+	if (!gdm_tty_ready(gdm)) {
 		if (complete == RECV_PACKET_PROCESS_COMPLETE)
 			gdm->tty_dev->recv_func(gdm->tty_dev->priv_dev,
 						gdm_tty_recv_complete);
@@ -140,28 +143,23 @@ static void gdm_tty_send_complete(void *arg)
 {
 	struct gdm *gdm = arg;
 
-	if (!GDM_TTY_READY(gdm))
+	if (!gdm_tty_ready(gdm))
 		return;
 
 	tty_port_tty_wakeup(&gdm->port);
 }
 
-static int gdm_tty_write(struct tty_struct *tty, const unsigned char *buf,
-			 int len)
+static ssize_t gdm_tty_write(struct tty_struct *tty, const u8 *buf, size_t len)
 {
 	struct gdm *gdm = tty->driver_data;
-	int remain = len;
-	int sent_len = 0;
-	int sending_len = 0;
+	size_t remain = len;
+	size_t sent_len = 0;
 
-	if (!GDM_TTY_READY(gdm))
+	if (!gdm_tty_ready(gdm))
 		return -ENODEV;
 
-	if (!len)
-		return 0;
-
-	while (1) {
-		sending_len = min(MUX_TX_MAX_SIZE, remain);
+	while (remain) {
+		size_t sending_len = min_t(size_t, MUX_TX_MAX_SIZE, remain);
 		gdm->tty_dev->send_func(gdm->tty_dev->priv_dev,
 					(void *)(buf + sent_len),
 					sending_len,
@@ -170,8 +168,6 @@ static int gdm_tty_write(struct tty_struct *tty, const unsigned char *buf,
 					gdm);
 		sent_len += sending_len;
 		remain -= sending_len;
-		if (remain <= 0)
-			break;
 	}
 
 	return len;
@@ -181,7 +177,7 @@ static unsigned int gdm_tty_write_room(struct tty_struct *tty)
 {
 	struct gdm *gdm = tty->driver_data;
 
-	if (!GDM_TTY_READY(gdm))
+	if (!gdm_tty_ready(gdm))
 		return 0;
 
 	return WRITE_SIZE;

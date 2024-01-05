@@ -189,7 +189,6 @@ static int sama5d2_piobu_probe(struct platform_device *pdev)
 	if (!piobu)
 		return -ENOMEM;
 
-	platform_set_drvdata(pdev, piobu);
 	piobu->chip.label = pdev->name;
 	piobu->chip.parent = &pdev->dev;
 	piobu->chip.owner = THIS_MODULE,
@@ -236,7 +235,7 @@ MODULE_DEVICE_TABLE(of, sama5d2_piobu_ids);
 static struct platform_driver sama5d2_piobu_driver = {
 	.driver = {
 		.name		= "sama5d2-piobu",
-		.of_match_table	= of_match_ptr(sama5d2_piobu_ids)
+		.of_match_table	= sama5d2_piobu_ids,
 	},
 	.probe = sama5d2_piobu_probe,
 };

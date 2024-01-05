@@ -32,6 +32,7 @@ void rproc_coredump_cleanup(struct rproc *rproc)
 		kfree(entry);
 	}
 }
+EXPORT_SYMBOL_GPL(rproc_coredump_cleanup);
 
 /**
  * rproc_coredump_add_segment() - add segment of device memory to coredump
@@ -249,7 +250,7 @@ void rproc_coredump(struct rproc *rproc)
 		return;
 
 	if (class == ELFCLASSNONE) {
-		dev_err(&rproc->dev, "Elf class is not set\n");
+		dev_err(&rproc->dev, "ELF class is not set\n");
 		return;
 	}
 
@@ -327,6 +328,7 @@ void rproc_coredump(struct rproc *rproc)
 	 */
 	wait_for_completion(&dump_state.dump_done);
 }
+EXPORT_SYMBOL_GPL(rproc_coredump);
 
 /**
  * rproc_coredump_using_sections() - perform coredump using section headers
@@ -361,7 +363,7 @@ void rproc_coredump_using_sections(struct rproc *rproc)
 		return;
 
 	if (class == ELFCLASSNONE) {
-		dev_err(&rproc->dev, "Elf class is not set\n");
+		dev_err(&rproc->dev, "ELF class is not set\n");
 		return;
 	}
 

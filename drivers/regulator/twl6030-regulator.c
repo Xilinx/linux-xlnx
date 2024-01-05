@@ -13,7 +13,6 @@
 #include <linux/err.h>
 #include <linux/platform_device.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/regulator/driver.h>
 #include <linux/regulator/machine.h>
 #include <linux/regulator/of_regulator.h>
@@ -729,7 +728,7 @@ static int twlreg_probe(struct platform_device *pdev)
 		break;
 	}
 
-	if (of_get_property(np, "ti,retain-on-reset", NULL))
+	if (of_property_read_bool(np, "ti,retain-on-reset"))
 		info->flags |= TWL_6030_WARM_RESET;
 
 	config.dev = &pdev->dev;
@@ -765,6 +764,7 @@ static struct platform_driver twlreg_driver = {
 	 */
 	.driver  = {
 		.name  = "twl6030_reg",
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 		.of_match_table = of_match_ptr(twl_of_match),
 	},
 };

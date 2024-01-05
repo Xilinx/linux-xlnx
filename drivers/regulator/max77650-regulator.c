@@ -239,7 +239,7 @@ static struct max77650_regulator_desc max77651_SBB1_desc = {
 		.supply_name		= "in-sbb1",
 		.id			= MAX77650_REGULATOR_ID_SBB1,
 		.ops			= &max77651_SBB1_regulator_ops,
-		.linear_range_selectors	= max77651_sbb1_volt_range_sel,
+		.linear_range_selectors_bitfield	= max77651_sbb1_volt_range_sel,
 		.linear_ranges		= max77651_sbb1_volt_ranges,
 		.n_linear_ranges	= ARRAY_SIZE(max77651_sbb1_volt_ranges),
 		.n_voltages		= 58,
@@ -395,6 +395,7 @@ MODULE_DEVICE_TABLE(of, max77650_regulator_of_match);
 static struct platform_driver max77650_regulator_driver = {
 	.driver = {
 		.name = "max77650-regulator",
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 		.of_match_table = max77650_regulator_of_match,
 	},
 	.probe = max77650_regulator_probe,

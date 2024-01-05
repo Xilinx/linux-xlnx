@@ -99,7 +99,7 @@ struct uwire_state {
  * Or, put it in a structure which is used throughout the driver;
  * that avoids having to issue two loads for each bit of static data.
  */
-static unsigned int uwire_idx_shift;
+static unsigned int uwire_idx_shift = 2;
 static void __iomem *uwire_base;
 
 static inline void uwire_write_reg(int idx, u16 val)
@@ -481,17 +481,12 @@ static int uwire_probe(struct platform_device *pdev)
 	}
 	clk_prepare_enable(uwire->ck);
 
-	if (cpu_is_omap7xx())
-		uwire_idx_shift = 1;
-	else
-		uwire_idx_shift = 2;
-
 	uwire_write_reg(UWIRE_SR3, 1);
 
 	/* the spi->mode bits understood by this driver: */
 	master->mode_bits = SPI_CPOL | SPI_CPHA | SPI_CS_HIGH;
 	master->bits_per_word_mask = SPI_BPW_RANGE_MASK(1, 16);
-	master->flags = SPI_MASTER_HALF_DUPLEX;
+	master->flags = SPI_CONTROLLER_HALF_DUPLEX;
 
 	master->bus_num = 2;	/* "official" */
 	master->num_chipselect = 4;
@@ -510,7 +505,7 @@ static int uwire_probe(struct platform_device *pdev)
 	return status;
 }
 
-static int uwire_remove(struct platform_device *pdev)
+static void uwire_remove(struct platform_device *pdev)
 {
 	struct uwire_spi	*uwire = platform_get_drvdata(pdev);
 
@@ -518,7 +513,6 @@ static int uwire_remove(struct platform_device *pdev)
 
 	spi_bitbang_stop(&uwire->bitbang);
 	uwire_off(uwire);
-	return 0;
 }
 
 /* work with hotplug and coldplug */
@@ -529,22 +523,13 @@ static struct platform_driver uwire_driver = {
 		.name		= "omap_uwire",
 	},
 	.probe = uwire_probe,
-	.remove = uwire_remove,
+	.remove_new = uwire_remove,
 	// suspend ... unuse ck
 	// resume ... use ck
 };
 
 static int __init omap_uwire_init(void)
 {
-	/* FIXME move these into the relevant board init code. also, include
-	 * H3 support; it uses tsc2101 like H2 (on a different chipselect).
-	 */
-
-	if (machine_is_omap_h2()) {
-		/* defaults: W21 SDO, U18 SDI, V19 SCL */
-		omap_cfg_reg(N14_1610_UWIRE_CS0);
-		omap_cfg_reg(N15_1610_UWIRE_CS1);
-	}
 	return platform_driver_register(&uwire_driver);
 }
 

@@ -50,30 +50,44 @@ void
 __ia64_sync_icache_dcache (pte_t pte)
 {
 	unsigned long addr;
-	struct page *page;
+	struct folio *folio;
 
-	page = pte_page(pte);
-	addr = (unsigned long) page_address(page);
+	folio = page_folio(pte_page(pte));
+	addr = (unsigned long)folio_address(folio);
 
-	if (test_bit(PG_arch_1, &page->flags))
+	if (test_bit(PG_arch_1, &folio->flags))
 		return;				/* i-cache is already coherent with d-cache */
 
-	flush_icache_range(addr, addr + page_size(page));
-	set_bit(PG_arch_1, &page->flags);	/* mark page as clean */
+	flush_icache_range(addr, addr + folio_size(folio));
+	set_bit(PG_arch_1, &folio->flags);	/* mark page as clean */
 }
 
 /*
- * Since DMA is i-cache coherent, any (complete) pages that were written via
+ * Since DMA is i-cache coherent, any (complete) folios that were written via
  * DMA can be marked as "clean" so that lazy_mmu_prot_update() doesn't have to
  * flush them when they get mapped into an executable vm-area.
  */
 void arch_dma_mark_clean(phys_addr_t paddr, size_t size)
 {
 	unsigned long pfn = PHYS_PFN(paddr);
+	struct folio *folio = page_folio(pfn_to_page(pfn));
+	ssize_t left = size;
+	size_t offset = offset_in_folio(folio, paddr);
 
-	do {
+	if (offset) {
+		left -= folio_size(folio) - offset;
+		if (left <= 0)
+			return;
+		folio = folio_next(folio);
+	}
+
+	while (left >= (ssize_t)folio_size(folio)) {
+		left -= folio_size(folio);
 		set_bit(PG_arch_1, &pfn_to_page(pfn)->flags);
-	} while (++pfn <= PHYS_PFN(paddr + size - 1));
+		if (!left)
+			break;
+		folio = folio_next(folio);
+	}
 }
 
 inline void
@@ -109,7 +123,7 @@ ia64_init_addr_space (void)
 		vma_set_anonymous(vma);
 		vma->vm_start = current->thread.rbs_bot & PAGE_MASK;
 		vma->vm_end = vma->vm_start + PAGE_SIZE;
-		vma->vm_flags = VM_DATA_DEFAULT_FLAGS|VM_GROWSUP|VM_ACCOUNT;
+		vm_flags_init(vma, VM_DATA_DEFAULT_FLAGS|VM_GROWSUP|VM_ACCOUNT);
 		vma->vm_page_prot = vm_get_page_prot(vma->vm_flags);
 		mmap_write_lock(current->mm);
 		if (insert_vm_struct(current->mm, vma)) {
@@ -127,8 +141,8 @@ ia64_init_addr_space (void)
 			vma_set_anonymous(vma);
 			vma->vm_end = PAGE_SIZE;
 			vma->vm_page_prot = __pgprot(pgprot_val(PAGE_READONLY) | _PAGE_MA_NAT);
-			vma->vm_flags = VM_READ | VM_MAYREAD | VM_IO |
-					VM_DONTEXPAND | VM_DONTDUMP;
+			vm_flags_init(vma, VM_READ | VM_MAYREAD | VM_IO |
+				      VM_DONTEXPAND | VM_DONTDUMP);
 			mmap_write_lock(current->mm);
 			if (insert_vm_struct(current->mm, vma)) {
 				mmap_write_unlock(current->mm);
@@ -272,7 +286,7 @@ static int __init gate_vma_init(void)
 	vma_init(&gate_vma, NULL);
 	gate_vma.vm_start = FIXADDR_USER_START;
 	gate_vma.vm_end = FIXADDR_USER_END;
-	gate_vma.vm_flags = VM_READ | VM_MAYREAD | VM_EXEC | VM_MAYEXEC;
+	vm_flags_init(&gate_vma, VM_READ | VM_MAYREAD | VM_EXEC | VM_MAYEXEC);
 	gate_vma.vm_page_prot = __pgprot(__ACCESS_BITS | _PAGE_PL_3 | _PAGE_AR_RX);
 
 	return 0;

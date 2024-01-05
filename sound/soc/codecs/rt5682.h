@@ -11,6 +11,7 @@
 
 #include <sound/rt5682.h>
 #include <linux/regulator/consumer.h>
+#include <linux/gpio/consumer.h>
 #include <linux/clk.h>
 #include <linux/clkdev.h>
 #include <linux/clk-provider.h>
@@ -1424,12 +1425,13 @@ enum {
 	RT5682_CLK_SEL_I2S2_ASRC,
 };
 
-#define RT5682_NUM_SUPPLIES 3
+#define RT5682_NUM_SUPPLIES 5
 
 struct rt5682_priv {
 	struct snd_soc_component *component;
 	struct device *i2c_dev;
 	struct rt5682_platform_data pdata;
+	struct gpio_desc *ldo1_en;
 	struct regmap *regmap;
 	struct regmap *sdw_regmap;
 	struct snd_soc_jack *hs_jack;
@@ -1440,7 +1442,6 @@ struct rt5682_priv {
 	bool disable_irq;
 	struct mutex calibrate_mutex;
 	struct sdw_slave *slave;
-	enum sdw_slave_status status;
 	struct sdw_bus_params params;
 	bool hw_init;
 	bool first_hw_init;
@@ -1462,6 +1463,7 @@ struct rt5682_priv {
 	int pll_out[RT5682_PLLS];
 
 	int jack_type;
+	int irq;
 	int irq_work_delay_time;
 };
 
@@ -1481,6 +1483,7 @@ int rt5682_register_component(struct device *dev);
 void rt5682_calibrate(struct rt5682_priv *rt5682);
 void rt5682_reset(struct rt5682_priv *rt5682);
 int rt5682_parse_dt(struct rt5682_priv *rt5682, struct device *dev);
+int rt5682_get_ldo1(struct rt5682_priv *rt5682, struct device *dev);
 
 int rt5682_register_dai_clks(struct rt5682_priv *rt5682);
 

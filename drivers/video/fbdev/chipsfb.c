@@ -82,13 +82,11 @@ static int chipsfb_blank(int blank, struct fb_info *info);
 
 static const struct fb_ops chipsfb_ops = {
 	.owner		= THIS_MODULE,
+	FB_DEFAULT_IOMEM_OPS,
 	.fb_check_var	= chipsfb_check_var,
 	.fb_set_par	= chipsfb_set_par,
 	.fb_setcolreg	= chipsfb_setcolreg,
 	.fb_blank	= chipsfb_blank,
-	.fb_fillrect	= cfb_fillrect,
-	.fb_copyarea	= cfb_copyarea,
-	.fb_imageblit	= cfb_imageblit,
 };
 
 static int chipsfb_check_var(struct fb_var_screeninfo *var,
@@ -332,7 +330,7 @@ static const struct fb_var_screeninfo chipsfb_var = {
 
 static void init_chips(struct fb_info *p, unsigned long addr)
 {
-	fb_memset(p->screen_base, 0, 0x100000);
+	fb_memset_io(p->screen_base, 0, 0x100000);
 
 	p->fix = chipsfb_fix;
 	p->fix.smem_start = addr;
@@ -340,7 +338,6 @@ static void init_chips(struct fb_info *p, unsigned long addr)
 	p->var = chipsfb_var;
 
 	p->fbops = &chipsfb_ops;
-	p->flags = FBINFO_DEFAULT;
 
 	fb_alloc_cmap(&p->cmap, 256, 0);
 
@@ -358,16 +355,21 @@ static int chipsfb_pci_init(struct pci_dev *dp, const struct pci_device_id *ent)
 	if (rc)
 		return rc;
 
-	if (pci_enable_device(dp) < 0) {
+	rc = pci_enable_device(dp);
+	if (rc < 0) {
 		dev_err(&dp->dev, "Cannot enable PCI device\n");
 		goto err_out;
 	}
 
-	if ((dp->resource[0].flags & IORESOURCE_MEM) == 0)
+	if ((dp->resource[0].flags & IORESOURCE_MEM) == 0) {
+		rc = -ENODEV;
 		goto err_disable;
+	}
 	addr = pci_resource_start(dp, 0);
-	if (addr == 0)
+	if (addr == 0) {
+		rc = -ENODEV;
 		goto err_disable;
+	}
 
 	p = framebuffer_alloc(0, &dp->dev);
 	if (p == NULL) {
@@ -417,7 +419,8 @@ static int chipsfb_pci_init(struct pci_dev *dp, const struct pci_device_id *ent)
 
 	init_chips(p, addr);
 
-	if (register_framebuffer(p) < 0) {
+	rc = register_framebuffer(p);
+	if (rc < 0) {
 		dev_err(&dp->dev,"C&T 65550 framebuffer failed to register\n");
 		goto err_unmap;
 	}
@@ -506,6 +509,9 @@ static struct pci_driver chipsfb_driver = {
 
 int __init chips_init(void)
 {
+	if (fb_modesetting_disabled("chipsfb"))
+		return -ENODEV;
+
 	if (fb_get_options("chipsfb", NULL))
 		return -ENODEV;
 

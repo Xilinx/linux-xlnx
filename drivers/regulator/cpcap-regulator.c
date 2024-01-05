@@ -12,7 +12,7 @@
 #include <linux/err.h>
 #include <linux/module.h>
 #include <linux/of.h>
-#include <linux/of_platform.h>
+#include <linux/platform_device.h>
 #include <linux/regmap.h>
 #include <linux/regulator/driver.h>
 #include <linux/regulator/machine.h>
@@ -553,6 +553,7 @@ static struct platform_driver cpcap_regulator_driver = {
 	.probe		= cpcap_regulator_probe,
 	.driver		= {
 		.name	= "cpcap-regulator",
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 		.of_match_table = of_match_ptr(cpcap_regulator_id_table),
 	},
 };

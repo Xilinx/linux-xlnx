@@ -22,7 +22,6 @@
 
 #define GXBB_WDT_CTRL_CLKDIV_EN			BIT(25)
 #define GXBB_WDT_CTRL_CLK_EN			BIT(24)
-#define GXBB_WDT_CTRL_EE_RESET			BIT(21)
 #define GXBB_WDT_CTRL_EN			BIT(18)
 #define GXBB_WDT_CTRL_DIV_MASK			(BIT(18) - 1)
 
@@ -43,6 +42,10 @@ struct meson_gxbb_wdt {
 	void __iomem *reg_base;
 	struct watchdog_device wdt_dev;
 	struct clk *clk;
+};
+
+struct wdt_params {
+	u32 rst;
 };
 
 static int meson_gxbb_wdt_start(struct watchdog_device *wdt_dev)
@@ -140,22 +143,26 @@ static const struct dev_pm_ops meson_gxbb_wdt_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(meson_gxbb_wdt_suspend, meson_gxbb_wdt_resume)
 };
 
+static const struct wdt_params gxbb_params = {
+	.rst = BIT(21),
+};
+
+static const struct wdt_params t7_params = {
+	.rst = BIT(22),
+};
+
 static const struct of_device_id meson_gxbb_wdt_dt_ids[] = {
-	 { .compatible = "amlogic,meson-gxbb-wdt", },
+	 { .compatible = "amlogic,meson-gxbb-wdt", .data = &gxbb_params, },
+	 { .compatible = "amlogic,t7-wdt", .data = &t7_params, },
 	 { /* sentinel */ },
 };
 MODULE_DEVICE_TABLE(of, meson_gxbb_wdt_dt_ids);
-
-static void meson_clk_disable_unprepare(void *data)
-{
-	clk_disable_unprepare(data);
-}
 
 static int meson_gxbb_wdt_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct meson_gxbb_wdt *data;
-	int ret;
+	struct wdt_params *params;
 	u32 ctrl_reg;
 
 	data = devm_kzalloc(dev, sizeof(*data), GFP_KERNEL);
@@ -166,17 +173,11 @@ static int meson_gxbb_wdt_probe(struct platform_device *pdev)
 	if (IS_ERR(data->reg_base))
 		return PTR_ERR(data->reg_base);
 
-	data->clk = devm_clk_get(dev, NULL);
+	data->clk = devm_clk_get_enabled(dev, NULL);
 	if (IS_ERR(data->clk))
 		return PTR_ERR(data->clk);
 
-	ret = clk_prepare_enable(data->clk);
-	if (ret)
-		return ret;
-	ret = devm_add_action_or_reset(dev, meson_clk_disable_unprepare,
-				       data->clk);
-	if (ret)
-		return ret;
+	params = (struct wdt_params *)of_device_get_match_data(dev);
 
 	platform_set_drvdata(pdev, data);
 
@@ -205,7 +206,7 @@ static int meson_gxbb_wdt_probe(struct platform_device *pdev)
 	/* Setup with 1ms timebase */
 	ctrl_reg |= ((clk_get_rate(data->clk) / 1000) &
 			GXBB_WDT_CTRL_DIV_MASK) |
-			GXBB_WDT_CTRL_EE_RESET |
+			params->rst |
 			GXBB_WDT_CTRL_CLK_EN |
 			GXBB_WDT_CTRL_CLKDIV_EN;
 

@@ -5,6 +5,9 @@
  * Copyright (C) 2021 Intel Corporation
  */
 
+#define UINT_PTR(_handle)		((void *)((uintptr_t)_handle))
+#define PTR_UINT(_ptr)			((uintptr_t)((void *)_ptr))
+
 typedef int (*hci_cmd_sync_work_func_t)(struct hci_dev *hdev, void *data);
 typedef void (*hci_cmd_sync_work_destroy_t)(struct hci_dev *hdev, void *data,
 					    int err);
@@ -41,6 +44,8 @@ void hci_cmd_sync_clear(struct hci_dev *hdev);
 void hci_cmd_sync_cancel(struct hci_dev *hdev, int err);
 void __hci_cmd_sync_cancel(struct hci_dev *hdev, int err);
 
+int hci_cmd_sync_submit(struct hci_dev *hdev, hci_cmd_sync_work_func_t func,
+			void *data, hci_cmd_sync_work_destroy_t destroy);
 int hci_cmd_sync_queue(struct hci_dev *hdev, hci_cmd_sync_work_func_t func,
 		       void *data, hci_cmd_sync_work_destroy_t destroy);
 
@@ -121,6 +126,8 @@ struct hci_conn;
 int hci_abort_conn_sync(struct hci_dev *hdev, struct hci_conn *conn, u8 reason);
 
 int hci_le_create_conn_sync(struct hci_dev *hdev, struct hci_conn *conn);
+
+int hci_le_create_cis_sync(struct hci_dev *hdev);
 
 int hci_le_remove_cig_sync(struct hci_dev *hdev, u8 handle);
 

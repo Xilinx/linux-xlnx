@@ -11,7 +11,7 @@ maintainers:
   - Kuldeep Singh <singh.kuldeep87k@gmail.com>
 
 allOf:
-  - $ref: "spi-controller.yaml#"
+  - $ref: spi-controller.yaml#
 
 properties:
   compatible:
@@ -44,6 +44,9 @@ properties:
     items:
       - const: fspi_en
       - const: fspi
+
+  power-domains:
+    maxItems: 1
 
 required:
   - compatible

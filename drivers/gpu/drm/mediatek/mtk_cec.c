@@ -12,6 +12,8 @@
 #include <linux/platform_device.h>
 
 #include "mtk_cec.h"
+#include "mtk_hdmi.h"
+#include "mtk_drm_drv.h"
 
 #define TR_CONFIG		0x00
 #define CLEAR_CEC_IRQ			BIT(15)
@@ -233,13 +235,12 @@ static int mtk_cec_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int mtk_cec_remove(struct platform_device *pdev)
+static void mtk_cec_remove(struct platform_device *pdev)
 {
 	struct mtk_cec *cec = platform_get_drvdata(pdev);
 
 	mtk_cec_htplg_irq_disable(cec);
 	clk_disable_unprepare(cec->clk);
-	return 0;
 }
 
 static const struct of_device_id mtk_cec_of_ids[] = {
@@ -250,7 +251,7 @@ MODULE_DEVICE_TABLE(of, mtk_cec_of_ids);
 
 struct platform_driver mtk_cec_driver = {
 	.probe = mtk_cec_probe,
-	.remove = mtk_cec_remove,
+	.remove_new = mtk_cec_remove,
 	.driver = {
 		.name = "mediatek-cec",
 		.of_match_table = mtk_cec_of_ids,

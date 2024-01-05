@@ -29,9 +29,13 @@ static const struct sof_dev_desc bxt_desc = {
 	.chip_info = &apl_chip_info,
 	.ipc_supported_mask	= BIT(SOF_IPC) | BIT(SOF_INTEL_IPC4),
 	.ipc_default		= SOF_IPC,
+	.dspless_mode_supported	= true,		/* Only supported for HDaudio */
 	.default_fw_path = {
 		[SOF_IPC] = "intel/sof",
 		[SOF_INTEL_IPC4] = "intel/avs/apl",
+	},
+	.default_lib_path = {
+		[SOF_INTEL_IPC4] = "intel/avs-lib/apl",
 	},
 	.default_tplg_path = {
 		[SOF_IPC] = "intel/sof-tplg",
@@ -57,9 +61,13 @@ static const struct sof_dev_desc glk_desc = {
 	.chip_info = &apl_chip_info,
 	.ipc_supported_mask	= BIT(SOF_IPC) | BIT(SOF_INTEL_IPC4),
 	.ipc_default		= SOF_IPC,
+	.dspless_mode_supported	= true,		/* Only supported for HDaudio */
 	.default_fw_path = {
 		[SOF_IPC] = "intel/sof",
 		[SOF_INTEL_IPC4] = "intel/avs/glk",
+	},
+	.default_lib_path = {
+		[SOF_INTEL_IPC4] = "intel/avs-lib/glk",
 	},
 	.default_tplg_path = {
 		[SOF_IPC] = "intel/sof-tplg",
@@ -72,16 +80,13 @@ static const struct sof_dev_desc glk_desc = {
 	.nocodec_tplg_filename = "sof-glk-nocodec.tplg",
 	.ops = &sof_apl_ops,
 	.ops_init = sof_apl_ops_init,
+	.ops_free = hda_ops_free,
 };
 
 /* PCI IDs */
 static const struct pci_device_id sof_pci_ids[] = {
-	{ PCI_DEVICE(0x8086, 0x5a98), /* BXT-P (ApolloLake) */
-		.driver_data = (unsigned long)&bxt_desc},
-	{ PCI_DEVICE(0x8086, 0x1a98),/* BXT-T */
-		.driver_data = (unsigned long)&bxt_desc},
-	{ PCI_DEVICE(0x8086, 0x3198), /* GeminiLake */
-		.driver_data = (unsigned long)&glk_desc},
+	{ PCI_DEVICE_DATA(INTEL, HDA_APL, &bxt_desc) },
+	{ PCI_DEVICE_DATA(INTEL, HDA_GML, &glk_desc) },
 	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, sof_pci_ids);

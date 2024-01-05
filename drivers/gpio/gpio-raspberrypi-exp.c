@@ -243,7 +243,7 @@ MODULE_DEVICE_TABLE(of, rpi_exp_gpio_ids);
 static struct platform_driver rpi_exp_gpio_driver = {
 	.driver	= {
 		.name		= MODULE_NAME,
-		.of_match_table	= of_match_ptr(rpi_exp_gpio_ids),
+		.of_match_table	= rpi_exp_gpio_ids,
 	},
 	.probe	= rpi_exp_gpio_probe,
 };

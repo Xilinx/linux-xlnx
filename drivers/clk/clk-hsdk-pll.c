@@ -12,7 +12,6 @@
 #include <linux/io.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
-#include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 
@@ -304,7 +303,6 @@ static const struct clk_ops hsdk_pll_ops = {
 static int hsdk_pll_clk_probe(struct platform_device *pdev)
 {
 	int ret;
-	struct resource *mem;
 	const char *parent_name;
 	unsigned int num_parents;
 	struct hsdk_pll_clk *pll_clk;
@@ -315,8 +313,7 @@ static int hsdk_pll_clk_probe(struct platform_device *pdev)
 	if (!pll_clk)
 		return -ENOMEM;
 
-	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	pll_clk->regs = devm_ioremap_resource(dev, mem);
+	pll_clk->regs = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(pll_clk->regs))
 		return PTR_ERR(pll_clk->regs);
 
@@ -346,14 +343,8 @@ static int hsdk_pll_clk_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	return of_clk_add_hw_provider(dev->of_node, of_clk_hw_simple_get,
-			&pll_clk->hw);
-}
-
-static int hsdk_pll_clk_remove(struct platform_device *pdev)
-{
-	of_clk_del_provider(pdev->dev.of_node);
-	return 0;
+	return devm_of_clk_add_hw_provider(dev, of_clk_hw_simple_get,
+					   &pll_clk->hw);
 }
 
 static void __init of_hsdk_pll_clk_setup(struct device_node *node)
@@ -432,6 +423,5 @@ static struct platform_driver hsdk_pll_clk_driver = {
 		.of_match_table = hsdk_pll_clk_id,
 	},
 	.probe = hsdk_pll_clk_probe,
-	.remove = hsdk_pll_clk_remove,
 };
 builtin_platform_driver(hsdk_pll_clk_driver);

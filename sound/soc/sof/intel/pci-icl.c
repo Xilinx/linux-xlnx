@@ -30,9 +30,13 @@ static const struct sof_dev_desc icl_desc = {
 	.chip_info = &icl_chip_info,
 	.ipc_supported_mask	= BIT(SOF_IPC) | BIT(SOF_INTEL_IPC4),
 	.ipc_default		= SOF_IPC,
+	.dspless_mode_supported	= true,		/* Only supported for HDaudio */
 	.default_fw_path = {
 		[SOF_IPC] = "intel/sof",
 		[SOF_INTEL_IPC4] = "intel/avs/icl",
+	},
+	.default_lib_path = {
+		[SOF_INTEL_IPC4] = "intel/avs-lib/icl",
 	},
 	.default_tplg_path = {
 		[SOF_IPC] = "intel/sof-tplg",
@@ -58,9 +62,13 @@ static const struct sof_dev_desc jsl_desc = {
 	.chip_info = &jsl_chip_info,
 	.ipc_supported_mask	= BIT(SOF_IPC) | BIT(SOF_INTEL_IPC4),
 	.ipc_default		= SOF_IPC,
+	.dspless_mode_supported	= true,		/* Only supported for HDaudio */
 	.default_fw_path = {
 		[SOF_IPC] = "intel/sof",
 		[SOF_INTEL_IPC4] = "intel/avs/jsl",
+	},
+	.default_lib_path = {
+		[SOF_INTEL_IPC4] = "intel/avs-lib/jsl",
 	},
 	.default_tplg_path = {
 		[SOF_IPC] = "intel/sof-tplg",
@@ -73,18 +81,15 @@ static const struct sof_dev_desc jsl_desc = {
 	.nocodec_tplg_filename = "sof-jsl-nocodec.tplg",
 	.ops = &sof_cnl_ops,
 	.ops_init = sof_cnl_ops_init,
+	.ops_free = hda_ops_free,
 };
 
 /* PCI IDs */
 static const struct pci_device_id sof_pci_ids[] = {
-	{ PCI_DEVICE(0x8086, 0x34C8), /* ICL-LP */
-		.driver_data = (unsigned long)&icl_desc},
-	{ PCI_DEVICE(0x8086, 0x3dc8), /* ICL-H */
-		.driver_data = (unsigned long)&icl_desc},
-	{ PCI_DEVICE(0x8086, 0x38c8), /* ICL-N */
-		.driver_data = (unsigned long)&jsl_desc},
-	{ PCI_DEVICE(0x8086, 0x4dc8), /* JSL-N */
-		.driver_data = (unsigned long)&jsl_desc},
+	{ PCI_DEVICE_DATA(INTEL, HDA_ICL_LP, &icl_desc) },
+	{ PCI_DEVICE_DATA(INTEL, HDA_ICL_H, &icl_desc) },
+	{ PCI_DEVICE_DATA(INTEL, HDA_ICL_N, &jsl_desc) },
+	{ PCI_DEVICE_DATA(INTEL, HDA_JSL_N, &jsl_desc) },
 	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, sof_pci_ids);

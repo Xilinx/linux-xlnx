@@ -29,7 +29,7 @@ struct ocfs2_dinode;
 
 struct ocfs2_recovery_map {
 	unsigned int rm_used;
-	unsigned int *rm_entries;
+	unsigned int rm_entries[];
 };
 
 
@@ -150,6 +150,7 @@ int ocfs2_recovery_init(struct ocfs2_super *osb);
 void ocfs2_recovery_exit(struct ocfs2_super *osb);
 
 int ocfs2_compute_replay_slots(struct ocfs2_super *osb);
+void ocfs2_free_replay_slots(struct ocfs2_super *osb);
 /*
  *  Journal Control:
  *  Initialize, Load, Shutdown, Wipe a journal.

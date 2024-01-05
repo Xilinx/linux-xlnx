@@ -77,6 +77,10 @@ mlx5_esw_bridge_rep_vport_num_vhca_id_get(struct net_device *dev, struct mlx5_es
 		return NULL;
 
 	priv = netdev_priv(dev);
+
+	if (!priv->mdev->priv.eswitch->br_offloads)
+		return NULL;
+
 	rpriv = priv->ppriv;
 	*vport_num = rpriv->rep->vport;
 	*esw_owner_vhca_id = MLX5_CAP_GEN(priv->mdev, vhca_id);
@@ -136,7 +140,6 @@ static int mlx5_esw_bridge_port_changeupper(struct notifier_block *nb, void *ptr
 	struct mlx5_eswitch *esw = br_offloads->esw;
 	u16 vport_num, esw_owner_vhca_id;
 	struct netlink_ext_ack *extack;
-	int ifindex = upper->ifindex;
 	int err = 0;
 
 	if (!netif_is_bridge_master(upper))
@@ -150,15 +153,15 @@ static int mlx5_esw_bridge_port_changeupper(struct notifier_block *nb, void *ptr
 
 	if (mlx5_esw_bridge_is_local(dev, rep, esw))
 		err = info->linking ?
-			mlx5_esw_bridge_vport_link(ifindex, vport_num, esw_owner_vhca_id,
+			mlx5_esw_bridge_vport_link(upper, vport_num, esw_owner_vhca_id,
 						   br_offloads, extack) :
-			mlx5_esw_bridge_vport_unlink(ifindex, vport_num, esw_owner_vhca_id,
+			mlx5_esw_bridge_vport_unlink(upper, vport_num, esw_owner_vhca_id,
 						     br_offloads, extack);
 	else if (mlx5_esw_bridge_dev_same_hw(rep, esw))
 		err = info->linking ?
-			mlx5_esw_bridge_vport_peer_link(ifindex, vport_num, esw_owner_vhca_id,
+			mlx5_esw_bridge_vport_peer_link(upper, vport_num, esw_owner_vhca_id,
 							br_offloads, extack) :
-			mlx5_esw_bridge_vport_peer_unlink(ifindex, vport_num, esw_owner_vhca_id,
+			mlx5_esw_bridge_vport_peer_unlink(upper, vport_num, esw_owner_vhca_id,
 							  br_offloads, extack);
 
 	return err;
@@ -220,6 +223,7 @@ mlx5_esw_bridge_port_obj_add(struct net_device *dev,
 	struct netlink_ext_ack *extack = switchdev_notifier_info_to_extack(&port_obj_info->info);
 	const struct switchdev_obj *obj = port_obj_info->obj;
 	const struct switchdev_obj_port_vlan *vlan;
+	const struct switchdev_obj_port_mdb *mdb;
 	u16 vport_num, esw_owner_vhca_id;
 	int err;
 
@@ -235,6 +239,11 @@ mlx5_esw_bridge_port_obj_add(struct net_device *dev,
 		err = mlx5_esw_bridge_port_vlan_add(vport_num, esw_owner_vhca_id, vlan->vid,
 						    vlan->flags, br_offloads, extack);
 		break;
+	case SWITCHDEV_OBJ_ID_PORT_MDB:
+		mdb = SWITCHDEV_OBJ_PORT_MDB(obj);
+		err = mlx5_esw_bridge_port_mdb_add(dev, vport_num, esw_owner_vhca_id, mdb->addr,
+						   mdb->vid, br_offloads, extack);
+		break;
 	default:
 		return -EOPNOTSUPP;
 	}
@@ -248,6 +257,7 @@ mlx5_esw_bridge_port_obj_del(struct net_device *dev,
 {
 	const struct switchdev_obj *obj = port_obj_info->obj;
 	const struct switchdev_obj_port_vlan *vlan;
+	const struct switchdev_obj_port_mdb *mdb;
 	u16 vport_num, esw_owner_vhca_id;
 
 	if (!mlx5_esw_bridge_rep_vport_num_vhca_id_get(dev, br_offloads->esw, &vport_num,
@@ -260,6 +270,11 @@ mlx5_esw_bridge_port_obj_del(struct net_device *dev,
 	case SWITCHDEV_OBJ_ID_PORT_VLAN:
 		vlan = SWITCHDEV_OBJ_PORT_VLAN(obj);
 		mlx5_esw_bridge_port_vlan_del(vport_num, esw_owner_vhca_id, vlan->vid, br_offloads);
+		break;
+	case SWITCHDEV_OBJ_ID_PORT_MDB:
+		mdb = SWITCHDEV_OBJ_PORT_MDB(obj);
+		mlx5_esw_bridge_port_mdb_del(dev, vport_num, esw_owner_vhca_id, mdb->addr, mdb->vid,
+					     br_offloads);
 		break;
 	default:
 		return -EOPNOTSUPP;
@@ -305,6 +320,10 @@ mlx5_esw_bridge_port_obj_attr_set(struct net_device *dev,
 						     esw_owner_vhca_id,
 						     attr->u.vlan_protocol,
 						     br_offloads);
+		break;
+	case SWITCHDEV_ATTR_ID_BRIDGE_MC_DISABLED:
+		err = mlx5_esw_bridge_mcast_set(vport_num, esw_owner_vhca_id,
+						!attr->u.mc_disabled, br_offloads);
 		break;
 	default:
 		err = -EOPNOTSUPP;
@@ -438,10 +457,6 @@ static int mlx5_esw_bridge_switchdev_event(struct notifier_block *nb,
 
 	switch (event) {
 	case SWITCHDEV_FDB_ADD_TO_BRIDGE:
-		/* only handle the event on native eswtich of representor */
-		if (!mlx5_esw_bridge_is_local(dev, rep, esw))
-			break;
-
 		fdb_info = container_of(info,
 					struct switchdev_notifier_fdb_info,
 					info);
@@ -452,6 +467,17 @@ static int mlx5_esw_bridge_switchdev_event(struct notifier_block *nb,
 		/* only handle the event on peers */
 		if (mlx5_esw_bridge_is_local(dev, rep, esw))
 			break;
+
+		fdb_info = container_of(info,
+					struct switchdev_notifier_fdb_info,
+					info);
+		/* Mark for deletion to prevent the update wq task from
+		 * spuriously refreshing the entry which would mark it again as
+		 * offloaded in SW bridge. After this fallthrough to regular
+		 * async delete code.
+		 */
+		mlx5_esw_bridge_fdb_mark_deleted(dev, vport_num, esw_owner_vhca_id, br_offloads,
+						 fdb_info);
 		fallthrough;
 	case SWITCHDEV_FDB_ADD_TO_DEVICE:
 	case SWITCHDEV_FDB_DEL_TO_DEVICE:

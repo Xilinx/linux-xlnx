@@ -27,7 +27,6 @@
 #include <asm/amigahw.h>
 #include <asm/amigaints.h>
 #include <asm/amigayle.h>
-#include <asm/ide.h>
 #include <asm/setup.h>
 
 #define DRV_NAME "pata_gayle"
@@ -35,7 +34,7 @@
 
 #define GAYLE_CONTROL	0x101a
 
-static struct scsi_host_template pata_gayle_sht = {
+static const struct scsi_host_template pata_gayle_sht = {
 	ATA_PIO_SHT(DRV_NAME),
 };
 

@@ -315,13 +315,17 @@ Some of the interface modes are described below:
     only the port id, but also so-called "extensions". The only documented
     extension so-far in the specification is the inclusion of timestamps, for
     PTP-enabled PHYs. This mode isn't compatible with QSGMII, but offers the
-    same capabilities in terms of link speed and negociation.
+    same capabilities in terms of link speed and negotiation.
 
 ``PHY_INTERFACE_MODE_1000BASEKX``
     This is 1000BASE-X as defined by IEEE 802.3 Clause 36 with Clause 73
     autonegotiation. Generally, it will be used with a Clause 70 PMD. To
     contrast with the 1000BASE-X phy mode used for Clause 38 and 39 PMDs, this
     interface mode has different autonegotiation and only supports full duplex.
+
+``PHY_INTERFACE_MODE_PSGMII``
+    This is the Penta SGMII mode, it is similar to QSGMII but it combines 5
+    SGMII lines into a single link compared to 4 on QSGMII.
 
 Pause frames / flow control
 ===========================

@@ -19,16 +19,15 @@ struct parmarea parmarea __section(".parmarea") = {
 };
 
 char __bootdata(early_command_line)[COMMAND_LINE_SIZE];
-int __bootdata(noexec_disabled);
 
 unsigned int __bootdata_preserved(zlib_dfltcc_support) = ZLIB_DFLTCC_FULL;
 struct ipl_parameter_block __bootdata_preserved(ipl_block);
 int __bootdata_preserved(ipl_block_valid);
+int __bootdata_preserved(__kaslr_enabled);
 
 unsigned long vmalloc_size = VMALLOC_DEFAULT_SIZE;
 unsigned long memory_limit;
 int vmalloc_size_set;
-int kaslr_enabled;
 
 static inline int __diag308(unsigned long subcode, void *addr)
 {
@@ -77,6 +76,9 @@ bool is_ipl_block_dump(void)
 	if (ipl_block.pb0_hdr.pbt == IPL_PBT_NVME &&
 	    ipl_block.nvme.opt == IPL_PB0_NVME_OPT_DUMP)
 		return true;
+	if (ipl_block.pb0_hdr.pbt == IPL_PBT_ECKD &&
+	    ipl_block.eckd.opt == IPL_PB0_ECKD_OPT_DUMP)
+		return true;
 	return false;
 }
 
@@ -108,6 +110,11 @@ static size_t ipl_block_get_ascii_scpdata(char *dest, size_t size,
 		scp_data_len = ipb->nvme.scp_data_len;
 		scp_data = ipb->nvme.scp_data;
 		break;
+	case IPL_PBT_ECKD:
+		scp_data_len = ipb->eckd.scp_data_len;
+		scp_data = ipb->eckd.scp_data;
+		break;
+
 	default:
 		goto out;
 	}
@@ -153,6 +160,7 @@ static void append_ipl_block_parm(void)
 		break;
 	case IPL_PBT_FCP:
 	case IPL_PBT_NVME:
+	case IPL_PBT_ECKD:
 		rc = ipl_block_get_ascii_scpdata(
 			parm, COMMAND_LINE_SIZE - len - 1, &ipl_block);
 		break;
@@ -255,7 +263,7 @@ void parse_boot_command_line(void)
 	char *args;
 	int rc;
 
-	kaslr_enabled = IS_ENABLED(CONFIG_RANDOMIZE_BASE);
+	__kaslr_enabled = IS_ENABLED(CONFIG_RANDOMIZE_BASE);
 	args = strcpy(command_line_buf, early_command_line);
 	while (*args) {
 		args = next_arg(args, &param, &val);
@@ -281,17 +289,11 @@ void parse_boot_command_line(void)
 				zlib_dfltcc_support = ZLIB_DFLTCC_FULL_DEBUG;
 		}
 
-		if (!strcmp(param, "noexec")) {
-			rc = kstrtobool(val, &enabled);
-			if (!rc && !enabled)
-				noexec_disabled = 1;
-		}
-
 		if (!strcmp(param, "facilities") && val)
 			modify_fac_list(val);
 
 		if (!strcmp(param, "nokaslr"))
-			kaslr_enabled = 0;
+			__kaslr_enabled = 0;
 
 #if IS_ENABLED(CONFIG_KVM)
 		if (!strcmp(param, "prot_virt")) {

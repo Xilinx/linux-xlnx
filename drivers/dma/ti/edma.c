@@ -20,7 +20,6 @@
 #include <linux/of_dma.h>
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
-#include <linux/of_device.h>
 #include <linux/pm_runtime.h>
 
 #include <linux/platform_data/edma.h>
@@ -315,14 +314,6 @@ static inline void edma_modify(struct edma_cc *ecc, int offset, unsigned and,
 
 	val &= and;
 	val |= or;
-	edma_write(ecc, offset, val);
-}
-
-static inline void edma_and(struct edma_cc *ecc, int offset, unsigned and)
-{
-	unsigned val = edma_read(ecc, offset);
-
-	val &= and;
 	edma_write(ecc, offset, val);
 }
 

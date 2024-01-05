@@ -40,7 +40,7 @@ bool within_error_injection_list(unsigned long addr)
 int get_injectable_error_type(unsigned long addr)
 {
 	struct ei_entry *ent;
-	int ei_type = EI_ETYPE_NONE;
+	int ei_type = -EINVAL;
 
 	mutex_lock(&ei_mutex);
 	list_for_each_entry(ent, &error_injection_list, list) {
@@ -217,8 +217,6 @@ static int __init ei_debugfs_init(void)
 	struct dentry *dir, *file;
 
 	dir = debugfs_create_dir("error_injection", NULL);
-	if (!dir)
-		return -ENOMEM;
 
 	file = debugfs_create_file("list", 0444, dir, NULL, &ei_fops);
 	if (!file) {

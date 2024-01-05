@@ -525,7 +525,7 @@ struct dvb_frontend *ts2020_attach(struct dvb_frontend *fe,
 
 	return fe;
 }
-EXPORT_SYMBOL(ts2020_attach);
+EXPORT_SYMBOL_GPL(ts2020_attach);
 
 /*
  * We implement own regmap locking due to legacy DVB attach which uses frontend
@@ -550,8 +550,7 @@ static void ts2020_regmap_unlock(void *__dev)
 	mutex_unlock(&dev->regmap_mutex);
 }
 
-static int ts2020_probe(struct i2c_client *client,
-		const struct i2c_device_id *id)
+static int ts2020_probe(struct i2c_client *client)
 {
 	struct ts2020_config *pdata = client->dev.platform_data;
 	struct dvb_frontend *fe = pdata->fe;

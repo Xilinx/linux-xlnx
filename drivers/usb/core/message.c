@@ -9,6 +9,7 @@
 #include <linux/pci.h>	/* for scatterlist macros */
 #include <linux/usb.h>
 #include <linux/module.h>
+#include <linux/of.h>
 #include <linux/slab.h>
 #include <linux/mm.h>
 #include <linux/timer.h>
@@ -1037,42 +1038,38 @@ char *usb_cache_string(struct usb_device *udev, int index)
 	}
 	return smallbuf;
 }
+EXPORT_SYMBOL_GPL(usb_cache_string);
 
 /*
- * usb_get_device_descriptor - (re)reads the device descriptor (usbcore)
- * @dev: the device whose device descriptor is being updated
- * @size: how much of the descriptor to read
+ * usb_get_device_descriptor - read the device descriptor
+ * @udev: the device whose device descriptor should be read
  *
  * Context: task context, might sleep.
- *
- * Updates the copy of the device descriptor stored in the device structure,
- * which dedicates space for this purpose.
  *
  * Not exported, only for use by the core.  If drivers really want to read
  * the device descriptor directly, they can call usb_get_descriptor() with
  * type = USB_DT_DEVICE and index = 0.
  *
- * This call is synchronous, and may not be used in an interrupt context.
- *
- * Return: The number of bytes received on success, or else the status code
- * returned by the underlying usb_control_msg() call.
+ * Returns: a pointer to a dynamically allocated usb_device_descriptor
+ * structure (which the caller must deallocate), or an ERR_PTR value.
  */
-int usb_get_device_descriptor(struct usb_device *dev, unsigned int size)
+struct usb_device_descriptor *usb_get_device_descriptor(struct usb_device *udev)
 {
 	struct usb_device_descriptor *desc;
 	int ret;
 
-	if (size > sizeof(*desc))
-		return -EINVAL;
 	desc = kmalloc(sizeof(*desc), GFP_NOIO);
 	if (!desc)
-		return -ENOMEM;
+		return ERR_PTR(-ENOMEM);
 
-	ret = usb_get_descriptor(dev, USB_DT_DEVICE, 0, desc, size);
+	ret = usb_get_descriptor(udev, USB_DT_DEVICE, 0, desc, sizeof(*desc));
+	if (ret == sizeof(*desc))
+		return desc;
+
 	if (ret >= 0)
-		memcpy(&dev->descriptor, desc, size);
+		ret = -EMSGSIZE;
 	kfree(desc);
-	return ret;
+	return ERR_PTR(ret);
 }
 
 /*
@@ -1818,11 +1815,11 @@ void usb_authorize_interface(struct usb_interface *intf)
 	}
 }
 
-static int usb_if_uevent(struct device *dev, struct kobj_uevent_env *env)
+static int usb_if_uevent(const struct device *dev, struct kobj_uevent_env *env)
 {
-	struct usb_device *usb_dev;
-	struct usb_interface *intf;
-	struct usb_host_interface *alt;
+	const struct usb_device *usb_dev;
+	const struct usb_interface *intf;
+	const struct usb_host_interface *alt;
 
 	intf = to_usb_interface(dev);
 	usb_dev = interface_to_usbdev(intf);
@@ -1907,6 +1904,45 @@ static void __usb_queue_reset_device(struct work_struct *ws)
 	usb_put_intf(iface);	/* Undo _get_ in usb_queue_reset_device() */
 }
 
+/*
+ * Internal function to set the wireless_status sysfs attribute
+ * See usb_set_wireless_status() for more details
+ */
+static void __usb_wireless_status_intf(struct work_struct *ws)
+{
+	struct usb_interface *iface =
+		container_of(ws, struct usb_interface, wireless_status_work);
+
+	device_lock(iface->dev.parent);
+	if (iface->sysfs_files_created)
+		usb_update_wireless_status_attr(iface);
+	device_unlock(iface->dev.parent);
+	usb_put_intf(iface);	/* Undo _get_ in usb_set_wireless_status() */
+}
+
+/**
+ * usb_set_wireless_status - sets the wireless_status struct member
+ * @iface: the interface to modify
+ * @status: the new wireless status
+ *
+ * Set the wireless_status struct member to the new value, and emit
+ * sysfs changes as necessary.
+ *
+ * Returns: 0 on success, -EALREADY if already set.
+ */
+int usb_set_wireless_status(struct usb_interface *iface,
+		enum usb_wireless_status status)
+{
+	if (iface->wireless_status == status)
+		return -EALREADY;
+
+	usb_get_intf(iface);
+	iface->wireless_status = status;
+	schedule_work(&iface->wireless_status_work);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(usb_set_wireless_status);
 
 /*
  * usb_set_configuration - Makes a particular device setting be current
@@ -2099,6 +2135,7 @@ free_interfaces:
 		intf->dev.type = &usb_if_device_type;
 		intf->dev.groups = usb_interface_groups;
 		INIT_WORK(&intf->reset_ws, __usb_queue_reset_device);
+		INIT_WORK(&intf->wireless_status_work, __usb_wireless_status_intf);
 		intf->minor = -1;
 		device_initialize(&intf->dev);
 		pm_runtime_no_callbacks(&intf->dev);

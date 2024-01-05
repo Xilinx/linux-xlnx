@@ -3584,8 +3584,7 @@ static ssize_t pmcraid_show_adapter_id(
 	struct Scsi_Host *shost = class_to_shost(dev);
 	struct pmcraid_instance *pinstance =
 		(struct pmcraid_instance *)shost->hostdata;
-	u32 adapter_id = (pinstance->pdev->bus->number << 8) |
-		pinstance->pdev->devfn;
+	u32 adapter_id = pci_dev_id(pinstance->pdev);
 	u32 aen_group = pmcraid_event_family.id;
 
 	return snprintf(buf, PAGE_SIZE,
@@ -3611,7 +3610,7 @@ static struct attribute *pmcraid_host_attrs[] = {
 ATTRIBUTE_GROUPS(pmcraid_host);
 
 /* host template structure for pmcraid driver */
-static struct scsi_host_template pmcraid_host_template = {
+static const struct scsi_host_template pmcraid_host_template = {
 	.module = THIS_MODULE,
 	.name = PMCRAID_DRIVER_NAME,
 	.queuecommand = pmcraid_queuecommand,
@@ -5346,7 +5345,7 @@ static int __init pmcraid_init(void)
 	}
 
 	pmcraid_major = MAJOR(dev);
-	pmcraid_class = class_create(THIS_MODULE, PMCRAID_DEVFILE);
+	pmcraid_class = class_create(PMCRAID_DEVFILE);
 
 	if (IS_ERR(pmcraid_class)) {
 		error = PTR_ERR(pmcraid_class);

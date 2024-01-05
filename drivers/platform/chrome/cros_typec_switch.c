@@ -51,13 +51,18 @@ static int cros_typec_cmd_mux_set(struct cros_typec_switch_data *sdata, int port
 static int cros_typec_get_mux_state(unsigned long mode, struct typec_altmode *alt)
 {
 	int ret = -EOPNOTSUPP;
+	u8 pin_assign;
 
-	if (mode == TYPEC_STATE_SAFE)
+	if (mode == TYPEC_STATE_SAFE) {
 		ret = USB_PD_MUX_SAFE_MODE;
-	else if (mode == TYPEC_STATE_USB)
+	} else if (mode == TYPEC_STATE_USB) {
 		ret = USB_PD_MUX_USB_ENABLED;
-	else if (alt && alt->svid == USB_TYPEC_DP_SID)
+	} else if (alt && alt->svid == USB_TYPEC_DP_SID) {
 		ret = USB_PD_MUX_DP_ENABLED;
+		pin_assign = mode - TYPEC_STATE_MODAL;
+		if (pin_assign & DP_PIN_ASSIGN_D)
+			ret |= USB_PD_MUX_USB_ENABLED;
+	}
 
 	return ret;
 }
@@ -246,15 +251,17 @@ static int cros_typec_register_switches(struct cros_typec_switch_data *sdata)
 		port->port_num = index;
 		sdata->ports[index] = port;
 
-		ret = cros_typec_register_retimer(port, fwnode);
-		if (ret) {
-			dev_err(dev, "Retimer switch register failed\n");
-			goto err_switch;
+		if (fwnode_property_present(fwnode, "retimer-switch")) {
+			ret = cros_typec_register_retimer(port, fwnode);
+			if (ret) {
+				dev_err(dev, "Retimer switch register failed\n");
+				goto err_switch;
+			}
+
+			dev_dbg(dev, "Retimer switch registered for index %llu\n", index);
 		}
 
-		dev_dbg(dev, "Retimer switch registered for index %llu\n", index);
-
-		if (!device_property_present(fwnode->dev, "mode-switch"))
+		if (!fwnode_property_present(fwnode, "mode-switch"))
 			continue;
 
 		ret = cros_typec_register_mode_switch(port, fwnode);
@@ -268,6 +275,7 @@ static int cros_typec_register_switches(struct cros_typec_switch_data *sdata)
 
 	return 0;
 err_switch:
+	fwnode_handle_put(fwnode);
 	cros_typec_unregister_switches(sdata);
 	return ret;
 }

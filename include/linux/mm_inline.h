@@ -178,7 +178,7 @@ static inline void lru_gen_update_size(struct lruvec *lruvec, struct folio *foli
 	int zone = folio_zonenum(folio);
 	int delta = folio_nr_pages(folio);
 	enum lru_list lru = type * LRU_INACTIVE_FILE;
-	struct lru_gen_struct *lrugen = &lruvec->lrugen;
+	struct lru_gen_folio *lrugen = &lruvec->lrugen;
 
 	VM_WARN_ON_ONCE(old_gen != -1 && old_gen >= MAX_NR_GENS);
 	VM_WARN_ON_ONCE(new_gen != -1 && new_gen >= MAX_NR_GENS);
@@ -224,7 +224,7 @@ static inline bool lru_gen_add_folio(struct lruvec *lruvec, struct folio *folio,
 	int gen = folio_lru_gen(folio);
 	int type = folio_is_file_lru(folio);
 	int zone = folio_zonenum(folio);
-	struct lru_gen_struct *lrugen = &lruvec->lrugen;
+	struct lru_gen_folio *lrugen = &lruvec->lrugen;
 
 	VM_WARN_ON_ONCE_FOLIO(gen != -1, folio);
 
@@ -256,9 +256,9 @@ static inline bool lru_gen_add_folio(struct lruvec *lruvec, struct folio *folio,
 	lru_gen_update_size(lruvec, folio, -1, gen);
 	/* for folio_rotate_reclaimable() */
 	if (reclaiming)
-		list_add_tail(&folio->lru, &lrugen->lists[gen][type][zone]);
+		list_add_tail(&folio->lru, &lrugen->folios[gen][type][zone]);
 	else
-		list_add(&folio->lru, &lrugen->lists[gen][type][zone]);
+		list_add(&folio->lru, &lrugen->folios[gen][type][zone]);
 
 	return true;
 }
@@ -323,12 +323,6 @@ void lruvec_add_folio(struct lruvec *lruvec, struct folio *folio)
 		list_add(&folio->lru, &lruvec->lists[lru]);
 }
 
-static __always_inline void add_page_to_lru_list(struct page *page,
-				struct lruvec *lruvec)
-{
-	lruvec_add_folio(lruvec, page_folio(page));
-}
-
 static __always_inline
 void lruvec_add_folio_tail(struct lruvec *lruvec, struct folio *folio)
 {
@@ -355,12 +349,6 @@ void lruvec_del_folio(struct lruvec *lruvec, struct folio *folio)
 		list_del(&folio->lru);
 	update_lru_size(lruvec, lru, folio_zonenum(folio),
 			-folio_nr_pages(folio));
-}
-
-static __always_inline void del_page_from_lru_list(struct page *page,
-				struct lruvec *lruvec)
-{
-	lruvec_del_folio(lruvec, page_folio(page));
 }
 
 #ifdef CONFIG_ANON_VMA_NAME
@@ -413,8 +401,7 @@ static inline void free_anon_vma_name(struct vm_area_struct *vma)
 	 * Not using anon_vma_name because it generates a warning if mmap_lock
 	 * is not held, which might be the case here.
 	 */
-	if (!vma->vm_file)
-		anon_vma_name_put(vma->anon_name);
+	anon_vma_name_put(vma->anon_name);
 }
 
 static inline bool anon_vma_name_eq(struct anon_vma_name *anon_name1,
@@ -536,6 +523,27 @@ static inline bool mm_tlb_flush_nested(struct mm_struct *mm)
 	return atomic_read(&mm->tlb_flush_pending) > 1;
 }
 
+#ifdef CONFIG_MMU
+/*
+ * Computes the pte marker to copy from the given source entry into dst_vma.
+ * If no marker should be copied, returns 0.
+ * The caller should insert a new pte created with make_pte_marker().
+ */
+static inline pte_marker copy_pte_marker(
+		swp_entry_t entry, struct vm_area_struct *dst_vma)
+{
+	pte_marker srcm = pte_marker_get(entry);
+	/* Always copy error entries. */
+	pte_marker dstm = srcm & PTE_MARKER_POISONED;
+
+	/* Only copy PTE markers if UFFD register matches. */
+	if ((srcm & PTE_MARKER_UFFD_WP) && userfaultfd_wp(dst_vma))
+		dstm |= PTE_MARKER_UFFD_WP;
+
+	return dstm;
+}
+#endif
+
 /*
  * If this pte is wr-protected by uffd-wp in any form, arm the special pte to
  * replace a none pte.  NOTE!  This should only be called when *pte is already
@@ -556,8 +564,14 @@ pte_install_uffd_wp_if_needed(struct vm_area_struct *vma, unsigned long addr,
 	bool arm_uffd_pte = false;
 
 	/* The current status of the pte should be "cleared" before calling */
-	WARN_ON_ONCE(!pte_none(*pte));
+	WARN_ON_ONCE(!pte_none(ptep_get(pte)));
 
+	/*
+	 * NOTE: userfaultfd_wp_unpopulated() doesn't need this whole
+	 * thing, because when zapping either it means it's dropping the
+	 * page, or in TTU where the present pte will be quickly replaced
+	 * with a swap pte.  There's no way of leaking the bit.
+	 */
 	if (vma_is_anonymous(vma) || !userfaultfd_wp(vma))
 		return;
 
@@ -576,6 +590,17 @@ pte_install_uffd_wp_if_needed(struct vm_area_struct *vma, unsigned long addr,
 		set_pte_at(vma->vm_mm, addr, pte,
 			   make_pte_marker(PTE_MARKER_UFFD_WP));
 #endif
+}
+
+static inline bool vma_has_recency(struct vm_area_struct *vma)
+{
+	if (vma->vm_flags & (VM_SEQ_READ | VM_RAND_READ))
+		return false;
+
+	if (vma->vm_file && (vma->vm_file->f_mode & FMODE_NOREUSE))
+		return false;
+
+	return true;
 }
 
 #endif

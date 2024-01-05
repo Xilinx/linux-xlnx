@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 // Copyright (C) 2018 Facebook
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include <errno.h>
 #include <fcntl.h>
 #include <stdlib.h>
@@ -72,6 +74,11 @@ static const char * const attach_type_strings[] = {
 	[NET_ATTACH_TYPE_XDP_GENERIC]	= "xdpgeneric",
 	[NET_ATTACH_TYPE_XDP_DRIVER]	= "xdpdrv",
 	[NET_ATTACH_TYPE_XDP_OFFLOAD]	= "xdpoffload",
+};
+
+static const char * const attach_loc_strings[] = {
+	[BPF_TCX_INGRESS]		= "tcx/ingress",
+	[BPF_TCX_EGRESS]		= "tcx/egress",
 };
 
 const size_t net_attach_type_size = ARRAY_SIZE(attach_type_strings);
@@ -420,8 +427,89 @@ static int dump_filter_nlmsg(void *cookie, void *msg, struct nlattr **tb)
 			      filter_info->devname, filter_info->ifindex);
 }
 
-static int show_dev_tc_bpf(int sock, unsigned int nl_pid,
-			   struct ip_devname_ifindex *dev)
+static int __show_dev_tc_bpf_name(__u32 id, char *name, size_t len)
+{
+	struct bpf_prog_info info = {};
+	__u32 ilen = sizeof(info);
+	int fd, ret;
+
+	fd = bpf_prog_get_fd_by_id(id);
+	if (fd < 0)
+		return fd;
+	ret = bpf_obj_get_info_by_fd(fd, &info, &ilen);
+	if (ret < 0)
+		goto out;
+	ret = -ENOENT;
+	if (info.name[0]) {
+		get_prog_full_name(&info, fd, name, len);
+		ret = 0;
+	}
+out:
+	close(fd);
+	return ret;
+}
+
+static void __show_dev_tc_bpf(const struct ip_devname_ifindex *dev,
+			      const enum bpf_attach_type loc)
+{
+	__u32 prog_flags[64] = {}, link_flags[64] = {}, i, j;
+	__u32 prog_ids[64] = {}, link_ids[64] = {};
+	LIBBPF_OPTS(bpf_prog_query_opts, optq);
+	char prog_name[MAX_PROG_FULL_NAME];
+	int ret;
+
+	optq.prog_ids = prog_ids;
+	optq.prog_attach_flags = prog_flags;
+	optq.link_ids = link_ids;
+	optq.link_attach_flags = link_flags;
+	optq.count = ARRAY_SIZE(prog_ids);
+
+	ret = bpf_prog_query_opts(dev->ifindex, loc, &optq);
+	if (ret)
+		return;
+	for (i = 0; i < optq.count; i++) {
+		NET_START_OBJECT;
+		NET_DUMP_STR("devname", "%s", dev->devname);
+		NET_DUMP_UINT("ifindex", "(%u)", dev->ifindex);
+		NET_DUMP_STR("kind", " %s", attach_loc_strings[loc]);
+		ret = __show_dev_tc_bpf_name(prog_ids[i], prog_name,
+					     sizeof(prog_name));
+		if (!ret)
+			NET_DUMP_STR("name", " %s", prog_name);
+		NET_DUMP_UINT("prog_id", " prog_id %u ", prog_ids[i]);
+		if (prog_flags[i] || json_output) {
+			NET_START_ARRAY("prog_flags", "%s ");
+			for (j = 0; prog_flags[i] && j < 32; j++) {
+				if (!(prog_flags[i] & (1 << j)))
+					continue;
+				NET_DUMP_UINT_ONLY(1 << j);
+			}
+			NET_END_ARRAY("");
+		}
+		if (link_ids[i] || json_output) {
+			NET_DUMP_UINT("link_id", "link_id %u ", link_ids[i]);
+			if (link_flags[i] || json_output) {
+				NET_START_ARRAY("link_flags", "%s ");
+				for (j = 0; link_flags[i] && j < 32; j++) {
+					if (!(link_flags[i] & (1 << j)))
+						continue;
+					NET_DUMP_UINT_ONLY(1 << j);
+				}
+				NET_END_ARRAY("");
+			}
+		}
+		NET_END_OBJECT_FINAL;
+	}
+}
+
+static void show_dev_tc_bpf(struct ip_devname_ifindex *dev)
+{
+	__show_dev_tc_bpf(dev, BPF_TCX_INGRESS);
+	__show_dev_tc_bpf(dev, BPF_TCX_EGRESS);
+}
+
+static int show_dev_tc_bpf_classic(int sock, unsigned int nl_pid,
+				   struct ip_devname_ifindex *dev)
 {
 	struct bpf_filter_t filter_info;
 	struct bpf_tcinfo_t tcinfo;
@@ -645,6 +733,108 @@ static int do_detach(int argc, char **argv)
 	return 0;
 }
 
+static int netfilter_link_compar(const void *a, const void *b)
+{
+	const struct bpf_link_info *nfa = a;
+	const struct bpf_link_info *nfb = b;
+	int delta;
+
+	delta = nfa->netfilter.pf - nfb->netfilter.pf;
+	if (delta)
+		return delta;
+
+	delta = nfa->netfilter.hooknum - nfb->netfilter.hooknum;
+	if (delta)
+		return delta;
+
+	if (nfa->netfilter.priority < nfb->netfilter.priority)
+		return -1;
+	if (nfa->netfilter.priority > nfb->netfilter.priority)
+		return 1;
+
+	return nfa->netfilter.flags - nfb->netfilter.flags;
+}
+
+static void show_link_netfilter(void)
+{
+	unsigned int nf_link_len = 0, nf_link_count = 0;
+	struct bpf_link_info *nf_link_info = NULL;
+	__u32 id = 0;
+
+	while (true) {
+		struct bpf_link_info info;
+		int fd, err;
+		__u32 len;
+
+		err = bpf_link_get_next_id(id, &id);
+		if (err) {
+			if (errno == ENOENT)
+				break;
+			p_err("can't get next link: %s (id %d)", strerror(errno), id);
+			break;
+		}
+
+		fd = bpf_link_get_fd_by_id(id);
+		if (fd < 0) {
+			p_err("can't get link by id (%u): %s", id, strerror(errno));
+			continue;
+		}
+
+		memset(&info, 0, sizeof(info));
+		len = sizeof(info);
+
+		err = bpf_link_get_info_by_fd(fd, &info, &len);
+
+		close(fd);
+
+		if (err) {
+			p_err("can't get link info for fd %d: %s", fd, strerror(errno));
+			continue;
+		}
+
+		if (info.type != BPF_LINK_TYPE_NETFILTER)
+			continue;
+
+		if (nf_link_count >= nf_link_len) {
+			static const unsigned int max_link_count = INT_MAX / sizeof(info);
+			struct bpf_link_info *expand;
+
+			if (nf_link_count > max_link_count) {
+				p_err("cannot handle more than %u links\n", max_link_count);
+				break;
+			}
+
+			nf_link_len += 16;
+
+			expand = realloc(nf_link_info, nf_link_len * sizeof(info));
+			if (!expand) {
+				p_err("realloc: %s",  strerror(errno));
+				break;
+			}
+
+			nf_link_info = expand;
+		}
+
+		nf_link_info[nf_link_count] = info;
+		nf_link_count++;
+	}
+
+	qsort(nf_link_info, nf_link_count, sizeof(*nf_link_info), netfilter_link_compar);
+
+	for (id = 0; id < nf_link_count; id++) {
+		NET_START_OBJECT;
+		if (json_output)
+			netfilter_dump_json(&nf_link_info[id], json_wtr);
+		else
+			netfilter_dump_plain(&nf_link_info[id]);
+
+		NET_DUMP_UINT("id", " prog_id %u", nf_link_info[id].prog_id);
+		NET_END_OBJECT;
+	}
+
+	free(nf_link_info);
+}
+
 static int do_show(int argc, char **argv)
 {
 	struct bpf_attach_info attach_info = {};
@@ -686,8 +876,9 @@ static int do_show(int argc, char **argv)
 	if (!ret) {
 		NET_START_ARRAY("tc", "%s:\n");
 		for (i = 0; i < dev_array.used_len; i++) {
-			ret = show_dev_tc_bpf(sock, nl_pid,
-					      &dev_array.devices[i]);
+			show_dev_tc_bpf(&dev_array.devices[i]);
+			ret = show_dev_tc_bpf_classic(sock, nl_pid,
+						      &dev_array.devices[i]);
 			if (ret)
 				break;
 		}
@@ -697,6 +888,10 @@ static int do_show(int argc, char **argv)
 	NET_START_ARRAY("flow_dissector", "%s:\n");
 	if (attach_info.flow_dissector_id > 0)
 		NET_DUMP_UINT("id", "id %u", attach_info.flow_dissector_id);
+	NET_END_ARRAY("\n");
+
+	NET_START_ARRAY("netfilter", "%s:\n");
+	show_link_netfilter();
 	NET_END_ARRAY("\n");
 
 	NET_END_OBJECT;
@@ -731,7 +926,8 @@ static int do_help(int argc, char **argv)
 		"       ATTACH_TYPE := { xdp | xdpgeneric | xdpdrv | xdpoffload }\n"
 		"       " HELP_SPEC_OPTIONS " }\n"
 		"\n"
-		"Note: Only xdp and tc attachments are supported now.\n"
+		"Note: Only xdp, tcx, tc, flow_dissector and netfilter attachments\n"
+		"      are currently supported.\n"
 		"      For progs attached to cgroups, use \"bpftool cgroup\"\n"
 		"      to dump program attachments. For program types\n"
 		"      sk_{filter,skb,msg,reuseport} and lwt/seg6, please\n"

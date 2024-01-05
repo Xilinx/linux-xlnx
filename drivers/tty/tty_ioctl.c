@@ -7,6 +7,7 @@
  * discipline handling modules (like SLIP).
  */
 
+#include <linux/bits.h>
 #include <linux/types.h>
 #include <linux/termios.h>
 #include <linux/errno.h>
@@ -27,23 +28,15 @@
 #include <asm/io.h>
 #include <linux/uaccess.h>
 
-#undef TTY_DEBUG_WAIT_UNTIL_SENT
-
-#ifdef TTY_DEBUG_WAIT_UNTIL_SENT
-# define tty_debug_wait_until_sent(tty, f, args...)    tty_debug(tty, f, ##args)
-#else
-# define tty_debug_wait_until_sent(tty, f, args...)    do {} while (0)
-#endif
-
 #undef	DEBUG
 
 /*
  * Internal flag options for termios setting behavior
  */
-#define TERMIOS_FLUSH	1
-#define TERMIOS_WAIT	2
-#define TERMIOS_TERMIO	4
-#define TERMIOS_OLD	8
+#define TERMIOS_FLUSH	BIT(0)
+#define TERMIOS_WAIT	BIT(1)
+#define TERMIOS_TERMIO	BIT(2)
+#define TERMIOS_OLD	BIT(3)
 
 
 /**
@@ -197,8 +190,6 @@ int tty_unthrottle_safe(struct tty_struct *tty)
 
 void tty_wait_until_sent(struct tty_struct *tty, long timeout)
 {
-	tty_debug_wait_until_sent(tty, "wait until sent, timeout=%ld\n", timeout);
-
 	if (!timeout)
 		timeout = MAX_SCHEDULE_TIMEOUT;
 
@@ -270,13 +261,13 @@ EXPORT_SYMBOL(tty_termios_copy_hw);
  *	between the two termios structures, or a speed change is needed.
  */
 
-int tty_termios_hw_change(const struct ktermios *a, const struct ktermios *b)
+bool tty_termios_hw_change(const struct ktermios *a, const struct ktermios *b)
 {
 	if (a->c_ispeed != b->c_ispeed || a->c_ospeed != b->c_ospeed)
-		return 1;
+		return true;
 	if ((a->c_cflag ^ b->c_cflag) & ~(HUPCL | CREAD | CLOCAL))
-		return 1;
-	return 0;
+		return true;
+	return false;
 }
 EXPORT_SYMBOL(tty_termios_hw_change);
 
@@ -500,21 +491,42 @@ static int set_termios(struct tty_struct *tty, void __user *arg, int opt)
 	tmp_termios.c_ispeed = tty_termios_input_baud_rate(&tmp_termios);
 	tmp_termios.c_ospeed = tty_termios_baud_rate(&tmp_termios);
 
-	ld = tty_ldisc_ref(tty);
+	if (opt & (TERMIOS_FLUSH|TERMIOS_WAIT)) {
+retry_write_wait:
+		retval = wait_event_interruptible(tty->write_wait, !tty_chars_in_buffer(tty));
+		if (retval < 0)
+			return retval;
 
-	if (ld != NULL) {
-		if ((opt & TERMIOS_FLUSH) && ld->ops->flush_buffer)
-			ld->ops->flush_buffer(tty);
-		tty_ldisc_deref(ld);
+		if (tty_write_lock(tty, false) < 0)
+			goto retry_write_wait;
+
+		/* Racing writer? */
+		if (tty_chars_in_buffer(tty)) {
+			tty_write_unlock(tty);
+			goto retry_write_wait;
+		}
+
+		ld = tty_ldisc_ref(tty);
+		if (ld != NULL) {
+			if ((opt & TERMIOS_FLUSH) && ld->ops->flush_buffer)
+				ld->ops->flush_buffer(tty);
+			tty_ldisc_deref(ld);
+		}
+
+		if ((opt & TERMIOS_WAIT) && tty->ops->wait_until_sent) {
+			tty->ops->wait_until_sent(tty, 0);
+			if (signal_pending(current)) {
+				tty_write_unlock(tty);
+				return -ERESTARTSYS;
+			}
+		}
+
+		tty_set_termios(tty, &tmp_termios);
+
+		tty_write_unlock(tty);
+	} else {
+		tty_set_termios(tty, &tmp_termios);
 	}
-
-	if (opt & TERMIOS_WAIT) {
-		tty_wait_until_sent(tty, 0);
-		if (signal_pending(current))
-			return -ERESTARTSYS;
-	}
-
-	tty_set_termios(tty, &tmp_termios);
 
 	/* FIXME: Arguably if tmp_termios == tty->termios AND the
 	   actual requested termios was not tmp_termios then we may
@@ -725,17 +737,17 @@ static int set_ltchars(struct tty_struct *tty, struct ltchars __user *ltchars)
 /**
  *	tty_change_softcar	-	carrier change ioctl helper
  *	@tty: tty to update
- *	@arg: enable/disable CLOCAL
+ *	@enable: enable/disable CLOCAL
  *
  *	Perform a change to the CLOCAL state and call into the driver
  *	layer to make it visible. All done with the termios rwsem
  */
 
-static int tty_change_softcar(struct tty_struct *tty, int arg)
+static int tty_change_softcar(struct tty_struct *tty, bool enable)
 {
 	int ret = 0;
-	int bit = arg ? CLOCAL : 0;
 	struct ktermios old;
+	tcflag_t bit = enable ? CLOCAL : 0;
 
 	down_write(&tty->termios_rwsem);
 	old = tty->termios;

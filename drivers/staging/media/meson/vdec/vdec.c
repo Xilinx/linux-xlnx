@@ -4,7 +4,7 @@
  * Author: Maxime Jourdan <mjourdan@baylibre.com>
  */
 
-#include <linux/of_device.h>
+#include <linux/of.h>
 #include <linux/clk.h>
 #include <linux/io.h>
 #include <linux/module.h>
@@ -1106,19 +1106,17 @@ err_vdev_release:
 	return ret;
 }
 
-static int vdec_remove(struct platform_device *pdev)
+static void vdec_remove(struct platform_device *pdev)
 {
 	struct amvdec_core *core = platform_get_drvdata(pdev);
 
 	video_unregister_device(core->vdev_dec);
 	v4l2_device_unregister(&core->v4l2_dev);
-
-	return 0;
 }
 
 static struct platform_driver meson_vdec_driver = {
 	.probe = vdec_probe,
-	.remove = vdec_remove,
+	.remove_new = vdec_remove,
 	.driver = {
 		.name = "meson-vdec",
 		.of_match_table = vdec_dt_match,

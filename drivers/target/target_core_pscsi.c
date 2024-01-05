@@ -144,8 +144,7 @@ static void pscsi_tape_read_blocksize(struct se_device *dev,
 	cdb[0] = MODE_SENSE;
 	cdb[4] = 0x0c; /* 12 bytes */
 
-	ret = scsi_execute_req(sdev, cdb, DMA_FROM_DEVICE, buf, 12, NULL,
-			HZ, 1, NULL);
+	ret = scsi_execute_cmd(sdev, cdb, REQ_OP_DRV_IN, buf, 12, HZ, 1, NULL);
 	if (ret)
 		goto out_free;
 
@@ -195,8 +194,8 @@ pscsi_get_inquiry_vpd_serial(struct scsi_device *sdev, struct t10_wwn *wwn)
 	cdb[2] = 0x80; /* Unit Serial Number */
 	put_unaligned_be16(INQUIRY_VPD_SERIAL_LEN, &cdb[3]);
 
-	ret = scsi_execute_req(sdev, cdb, DMA_FROM_DEVICE, buf,
-			      INQUIRY_VPD_SERIAL_LEN, NULL, HZ, 1, NULL);
+	ret = scsi_execute_cmd(sdev, cdb, REQ_OP_DRV_IN, buf,
+			       INQUIRY_VPD_SERIAL_LEN, HZ, 1, NULL);
 	if (ret)
 		goto out_free;
 
@@ -230,9 +229,8 @@ pscsi_get_inquiry_vpd_device_ident(struct scsi_device *sdev,
 	cdb[2] = 0x83; /* Device Identifier */
 	put_unaligned_be16(INQUIRY_VPD_DEVICE_IDENTIFIER_LEN, &cdb[3]);
 
-	ret = scsi_execute_req(sdev, cdb, DMA_FROM_DEVICE, buf,
-			      INQUIRY_VPD_DEVICE_IDENTIFIER_LEN,
-			      NULL, HZ, 1, NULL);
+	ret = scsi_execute_cmd(sdev, cdb, REQ_OP_DRV_IN, buf,
+			       INQUIRY_VPD_DEVICE_IDENTIFIER_LEN, HZ, 1, NULL);
 	if (ret)
 		goto out;
 
@@ -368,8 +366,8 @@ static int pscsi_create_type_disk(struct se_device *dev, struct scsi_device *sd)
 	 * Claim exclusive struct block_device access to struct scsi_device
 	 * for TYPE_DISK and TYPE_ZBC using supplied udev_path
 	 */
-	bd = blkdev_get_by_path(dev->udev_path,
-				FMODE_WRITE|FMODE_READ|FMODE_EXCL, pdv);
+	bd = blkdev_get_by_path(dev->udev_path, BLK_OPEN_WRITE | BLK_OPEN_READ,
+				pdv, NULL);
 	if (IS_ERR(bd)) {
 		pr_err("pSCSI: blkdev_get_by_path() failed\n");
 		scsi_device_put(sd);
@@ -379,7 +377,7 @@ static int pscsi_create_type_disk(struct se_device *dev, struct scsi_device *sd)
 
 	ret = pscsi_add_device_to_list(dev, sd);
 	if (ret) {
-		blkdev_put(pdv->pdv_bd, FMODE_WRITE|FMODE_READ|FMODE_EXCL);
+		blkdev_put(pdv->pdv_bd, pdv);
 		scsi_device_put(sd);
 		return ret;
 	}
@@ -567,8 +565,7 @@ static void pscsi_destroy_device(struct se_device *dev)
 		 */
 		if ((sd->type == TYPE_DISK || sd->type == TYPE_ZBC) &&
 		    pdv->pdv_bd) {
-			blkdev_put(pdv->pdv_bd,
-				   FMODE_WRITE|FMODE_READ|FMODE_EXCL);
+			blkdev_put(pdv->pdv_bd, pdv);
 			pdv->pdv_bd = NULL;
 		}
 		/*

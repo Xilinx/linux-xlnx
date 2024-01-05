@@ -7,9 +7,8 @@
 
 #include <linux/dma-mapping.h>
 #include <linux/io.h>
-#include <linux/init.h>
+#include <linux/module.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/sys_soc.h>
 #include <linux/dma/ti-cppi5.h>
@@ -125,6 +124,7 @@ struct k3_ring_ops {
  * @occ: Occupancy
  * @windex: Write index
  * @rindex: Read index
+ * @tdown_complete: Tear down complete state
  */
 struct k3_ring_state {
 	u32 free;
@@ -192,7 +192,7 @@ struct k3_ringacc_ops {
  * @num_rings: number of ring in RA
  * @rings_inuse: bitfield for ring usage tracking
  * @rm_gp_range: general purpose rings range from tisci
- * @dma_ring_reset_quirk: DMA reset w/a enable
+ * @dma_ring_reset_quirk: DMA reset workaround enable
  * @num_proxies: number of RA proxies
  * @proxy_inuse: bitfield for proxy usage tracking
  * @rings: array of rings descriptors (struct @k3_ring)
@@ -229,9 +229,9 @@ struct k3_ringacc {
 };
 
 /**
- * struct k3_ringacc - Rings accelerator SoC data
+ * struct k3_ringacc_soc_data - Rings accelerator SoC data
  *
- * @dma_ring_reset_quirk:  DMA reset w/a enable
+ * @dma_ring_reset_quirk:  DMA reset workaround enable
  */
 struct k3_ringacc_soc_data {
 	unsigned dma_ring_reset_quirk:1;
@@ -336,6 +336,9 @@ struct k3_ring *k3_ringacc_request_ring(struct k3_ringacc *ringacc,
 
 	mutex_lock(&ringacc->req_lock);
 
+	if (!try_module_get(ringacc->dev->driver->owner))
+		goto err_module_get;
+
 	if (id == K3_RINGACC_RING_ID_ANY) {
 		/* Request for any general purpose ring */
 		struct ti_sci_resource_desc *gp_rings =
@@ -380,6 +383,9 @@ out:
 	return &ringacc->rings[id];
 
 error:
+	module_put(ringacc->dev->driver->owner);
+
+err_module_get:
 	mutex_unlock(&ringacc->req_lock);
 	return NULL;
 }
@@ -400,6 +406,11 @@ static int k3_dmaring_request_dual_ring(struct k3_ringacc *ringacc, int fwd_id,
 
 	mutex_lock(&ringacc->req_lock);
 
+	if (!try_module_get(ringacc->dev->driver->owner)) {
+		ret = -EINVAL;
+		goto err_module_get;
+	}
+
 	if (test_bit(fwd_id, ringacc->rings_inuse)) {
 		ret = -EBUSY;
 		goto error;
@@ -415,6 +426,8 @@ static int k3_dmaring_request_dual_ring(struct k3_ringacc *ringacc, int fwd_id,
 	return 0;
 
 error:
+	module_put(ringacc->dev->driver->owner);
+err_module_get:
 	mutex_unlock(&ringacc->req_lock);
 	return ret;
 }
@@ -615,6 +628,8 @@ int k3_ringacc_ring_free(struct k3_ring *ring)
 
 no_init:
 	clear_bit(ring->ring_id, ringacc->rings_inuse);
+
+	module_put(ringacc->dev->driver->owner);
 
 out:
 	mutex_unlock(&ringacc->req_lock);
@@ -1353,15 +1368,12 @@ static int k3_ringacc_init(struct platform_device *pdev,
 	const struct soc_device_attribute *soc;
 	void __iomem *base_fifo, *base_rt;
 	struct device *dev = &pdev->dev;
-	struct resource *res;
 	int ret, i;
 
 	dev->msi.domain = of_msi_get_domain(dev, dev->of_node,
 					    DOMAIN_BUS_TI_SCI_INTA_MSI);
-	if (!dev->msi.domain) {
-		dev_err(dev, "Failed to get MSI domain\n");
+	if (!dev->msi.domain)
 		return -EPROBE_DEFER;
-	}
 
 	ret = k3_ringacc_probe_dt(ringacc);
 	if (ret)
@@ -1374,24 +1386,20 @@ static int k3_ringacc_init(struct platform_device *pdev,
 		ringacc->dma_ring_reset_quirk = soc_data->dma_ring_reset_quirk;
 	}
 
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "rt");
-	base_rt = devm_ioremap_resource(dev, res);
+	base_rt = devm_platform_ioremap_resource_byname(pdev, "rt");
 	if (IS_ERR(base_rt))
 		return PTR_ERR(base_rt);
 
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "fifos");
-	base_fifo = devm_ioremap_resource(dev, res);
+	base_fifo = devm_platform_ioremap_resource_byname(pdev, "fifos");
 	if (IS_ERR(base_fifo))
 		return PTR_ERR(base_fifo);
 
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "proxy_gcfg");
-	ringacc->proxy_gcfg = devm_ioremap_resource(dev, res);
+	ringacc->proxy_gcfg = devm_platform_ioremap_resource_byname(pdev, "proxy_gcfg");
 	if (IS_ERR(ringacc->proxy_gcfg))
 		return PTR_ERR(ringacc->proxy_gcfg);
 
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-					   "proxy_target");
-	ringacc->proxy_target_base = devm_ioremap_resource(dev, res);
+	ringacc->proxy_target_base = devm_platform_ioremap_resource_byname(pdev,
+									   "proxy_target");
 	if (IS_ERR(ringacc->proxy_target_base))
 		return PTR_ERR(ringacc->proxy_target_base);
 
@@ -1450,6 +1458,7 @@ static const struct of_device_id k3_ringacc_of_match[] = {
 	{ .compatible = "ti,am654-navss-ringacc", .data = &k3_ringacc_data, },
 	{},
 };
+MODULE_DEVICE_TABLE(of, k3_ringacc_of_match);
 
 struct k3_ringacc *k3_ringacc_dmarings_init(struct platform_device *pdev,
 					    struct k3_ringacc_init_data *data)
@@ -1457,7 +1466,6 @@ struct k3_ringacc *k3_ringacc_dmarings_init(struct platform_device *pdev,
 	struct device *dev = &pdev->dev;
 	struct k3_ringacc *ringacc;
 	void __iomem *base_rt;
-	struct resource *res;
 	int i;
 
 	ringacc = devm_kzalloc(dev, sizeof(*ringacc), GFP_KERNEL);
@@ -1472,8 +1480,7 @@ struct k3_ringacc *k3_ringacc_dmarings_init(struct platform_device *pdev,
 
 	mutex_init(&ringacc->req_lock);
 
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ringrt");
-	base_rt = devm_ioremap_resource(dev, res);
+	base_rt = devm_platform_ioremap_resource_byname(pdev, "ringrt");
 	if (IS_ERR(base_rt))
 		return ERR_CAST(base_rt);
 
@@ -1544,12 +1551,27 @@ static int k3_ringacc_probe(struct platform_device *pdev)
 	return 0;
 }
 
+static int k3_ringacc_remove(struct platform_device *pdev)
+{
+	struct k3_ringacc *ringacc = dev_get_drvdata(&pdev->dev);
+
+	mutex_lock(&k3_ringacc_list_lock);
+	list_del(&ringacc->list);
+	mutex_unlock(&k3_ringacc_list_lock);
+	return 0;
+}
+
 static struct platform_driver k3_ringacc_driver = {
 	.probe		= k3_ringacc_probe,
+	.remove		= k3_ringacc_remove,
 	.driver		= {
 		.name	= "k3-ringacc",
 		.of_match_table = k3_ringacc_of_match,
 		.suppress_bind_attrs = true,
 	},
 };
-builtin_platform_driver(k3_ringacc_driver);
+module_platform_driver(k3_ringacc_driver);
+
+MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("TI Ringacc driver for K3 SOCs");
+MODULE_AUTHOR("Grygorii Strashko <grygorii.strashko@ti.com>");

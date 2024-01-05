@@ -505,8 +505,9 @@ MODULE_DEVICE_TABLE(i2c, slg51000_i2c_id);
 static struct i2c_driver slg51000_regulator_driver = {
 	.driver = {
 		.name = "slg51000-regulator",
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 	},
-	.probe_new = slg51000_i2c_probe,
+	.probe = slg51000_i2c_probe,
 	.id_table = slg51000_i2c_id,
 };
 

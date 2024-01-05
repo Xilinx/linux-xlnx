@@ -9,6 +9,7 @@
 #include <linux/sched/task.h>
 
 #include <asm/set_memory.h>
+#include <asm/cpu_device_id.h>
 #include <asm/e820/api.h>
 #include <asm/init.h>
 #include <asm/page.h>
@@ -19,13 +20,13 @@
 #include <asm/tlb.h>
 #include <asm/proto.h>
 #include <asm/dma.h>		/* for MAX_DMA_PFN */
-#include <asm/microcode.h>
 #include <asm/kaslr.h>
 #include <asm/hypervisor.h>
 #include <asm/cpufeature.h>
 #include <asm/pti.h>
 #include <asm/text-patching.h>
 #include <asm/memtype.h>
+#include <asm/paravirt.h>
 
 /*
  * We need to define the tracepoints somewhere, and tlb.c
@@ -260,6 +261,24 @@ static void __init probe_page_size_mask(void)
 	}
 }
 
+#define INTEL_MATCH(_model) { .vendor  = X86_VENDOR_INTEL,	\
+			      .family  = 6,			\
+			      .model = _model,			\
+			    }
+/*
+ * INVLPG may not properly flush Global entries
+ * on these CPUs when PCIDs are enabled.
+ */
+static const struct x86_cpu_id invlpg_miss_ids[] = {
+	INTEL_MATCH(INTEL_FAM6_ALDERLAKE   ),
+	INTEL_MATCH(INTEL_FAM6_ALDERLAKE_L ),
+	INTEL_MATCH(INTEL_FAM6_ATOM_GRACEMONT ),
+	INTEL_MATCH(INTEL_FAM6_RAPTORLAKE  ),
+	INTEL_MATCH(INTEL_FAM6_RAPTORLAKE_P),
+	INTEL_MATCH(INTEL_FAM6_RAPTORLAKE_S),
+	{}
+};
+
 static void setup_pcid(void)
 {
 	if (!IS_ENABLED(CONFIG_X86_64))
@@ -267,6 +286,12 @@ static void setup_pcid(void)
 
 	if (!boot_cpu_has(X86_FEATURE_PCID))
 		return;
+
+	if (x86_match_cpu(invlpg_miss_ids)) {
+		pr_info("Incomplete global flushes, disabling PCID");
+		setup_clear_cpu_cap(X86_FEATURE_PCID);
+		return;
+	}
 
 	if (boot_cpu_has(X86_FEATURE_PGE)) {
 		/*
@@ -281,15 +306,6 @@ static void setup_pcid(void)
 		 * start_secondary().
 		 */
 		cr4_set_bits(X86_CR4_PCIDE);
-
-		/*
-		 * INVPCID's single-context modes (2/3) only work if we set
-		 * X86_CR4_PCIDE, *and* we INVPCID support.  It's unusable
-		 * on systems that have X86_CR4_PCIDE clear, or that have
-		 * no INVPCID support at all.
-		 */
-		if (boot_cpu_has(X86_FEATURE_INVPCID))
-			setup_force_cpu_cap(X86_FEATURE_INVPCID_SINGLE);
 	} else {
 		/*
 		 * flush_tlb_all(), as currently implemented, won't work if
@@ -801,8 +817,11 @@ void __init poking_init(void)
 	spinlock_t *ptl;
 	pte_t *ptep;
 
-	poking_mm = copy_init_mm();
+	poking_mm = mm_alloc();
 	BUG_ON(!poking_mm);
+
+	/* Xen PV guests need the PGD to be pinned. */
+	paravirt_enter_mmap(poking_mm);
 
 	/*
 	 * Randomize the poking address, but make sure that the following page
@@ -1043,6 +1062,11 @@ __visible DEFINE_PER_CPU_ALIGNED(struct tlb_state, cpu_tlbstate) = {
 	.next_asid = 1,
 	.cr4 = ~0UL,	/* fail hard if we screw up cr4 shadow initialization */
 };
+
+#ifdef CONFIG_ADDRESS_MASKING
+DEFINE_PER_CPU(u64, tlbstate_untag_mask);
+EXPORT_PER_CPU_SYMBOL(tlbstate_untag_mask);
+#endif
 
 void update_cache_mode_entry(unsigned entry, enum page_cache_mode cache)
 {

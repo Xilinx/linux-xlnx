@@ -300,7 +300,6 @@ struct reiserfs_journal {
 	struct reiserfs_journal_cnode *j_first;
 
 	struct block_device *j_dev_bd;
-	fmode_t j_dev_mode;
 
 	/* first block on s_dev of reserved area journal */
 	int j_1st_reserved_block;
@@ -2374,7 +2373,7 @@ struct virtual_node {
 struct direntry_uarea {
 	int flags;
 	__u16 entry_count;
-	__u16 entry_sizes[1];
+	__u16 entry_sizes[];
 } __attribute__ ((__packed__));
 
 /***************************************************************************
@@ -2700,7 +2699,7 @@ struct reiserfs_iget_args {
 #define get_journal_desc_magic(bh) (bh->b_data + bh->b_size - 12)
 
 #define journal_trans_half(blocksize) \
-	((blocksize - sizeof (struct reiserfs_journal_desc) + sizeof (__u32) - 12) / sizeof (__u32))
+	((blocksize - sizeof(struct reiserfs_journal_desc) - 12) / sizeof(__u32))
 
 /* journal.c see journal.c for all the comments here */
 
@@ -2712,7 +2711,7 @@ struct reiserfs_journal_desc {
 	__le32 j_len;
 
 	__le32 j_mount_id;	/* mount id of this trans */
-	__le32 j_realblock[1];	/* real locations for each block */
+	__le32 j_realblock[];	/* real locations for each block */
 };
 
 #define get_desc_trans_id(d)   le32_to_cpu((d)->j_trans_id)
@@ -2727,7 +2726,7 @@ struct reiserfs_journal_desc {
 struct reiserfs_journal_commit {
 	__le32 j_trans_id;	/* must match j_trans_id from the desc block */
 	__le32 j_len;		/* ditto */
-	__le32 j_realblock[1];	/* real locations for each block */
+	__le32 j_realblock[];	/* real locations for each block */
 };
 
 #define get_commit_trans_id(c) le32_to_cpu((c)->j_trans_id)
@@ -3100,12 +3099,13 @@ static inline void reiserfs_update_sd(struct reiserfs_transaction_handle *th,
 }
 
 void sd_attrs_to_i_attrs(__u16 sd_attrs, struct inode *inode);
-int reiserfs_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
+int reiserfs_setattr(struct mnt_idmap *idmap, struct dentry *dentry,
 		     struct iattr *attr);
 
 int __reiserfs_write_begin(struct page *page, unsigned from, unsigned len);
 
 /* namei.c */
+void reiserfs_init_priv_inode(struct inode *inode);
 void set_de_name_and_namelen(struct reiserfs_dir_entry *de);
 int search_by_entry_key(struct super_block *sb, const struct cpu_key *key,
 			struct treepath *path, struct reiserfs_dir_entry *de);
@@ -3175,6 +3175,7 @@ void reiserfs_unmap_buffer(struct buffer_head *);
 
 /* file.c */
 extern const struct inode_operations reiserfs_file_inode_operations;
+extern const struct inode_operations reiserfs_priv_file_inode_operations;
 extern const struct file_operations reiserfs_file_operations;
 extern const struct address_space_operations reiserfs_address_space_operations;
 
@@ -3407,7 +3408,7 @@ __u32 r5_hash(const signed char *msg, int len);
 
 /* prototypes from ioctl.c */
 int reiserfs_fileattr_get(struct dentry *dentry, struct fileattr *fa);
-int reiserfs_fileattr_set(struct user_namespace *mnt_userns,
+int reiserfs_fileattr_set(struct mnt_idmap *idmap,
 			  struct dentry *dentry, struct fileattr *fa);
 long reiserfs_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
 long reiserfs_compat_ioctl(struct file *filp,

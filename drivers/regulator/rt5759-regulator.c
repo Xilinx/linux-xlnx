@@ -4,7 +4,7 @@
 #include <linux/i2c.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
+#include <linux/of.h>
 #include <linux/regmap.h>
 #include <linux/regulator/driver.h>
 #include <linux/regulator/of_regulator.h>
@@ -359,9 +359,10 @@ MODULE_DEVICE_TABLE(of, rt5759_device_table);
 static struct i2c_driver rt5759_driver = {
 	.driver = {
 		.name = "rt5759",
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 		.of_match_table = of_match_ptr(rt5759_device_table),
 	},
-	.probe_new = rt5759_probe,
+	.probe = rt5759_probe,
 };
 module_i2c_driver(rt5759_driver);
 

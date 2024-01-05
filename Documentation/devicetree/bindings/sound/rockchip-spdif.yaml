@@ -26,6 +26,7 @@ properties:
       - const: rockchip,rk3568-spdif
       - items:
           - enum:
+              - rockchip,rk3128-spdif
               - rockchip,rk3188-spdif
               - rockchip,rk3288-spdif
               - rockchip,rk3308-spdif
@@ -75,17 +76,18 @@ required:
   - dma-names
   - "#sound-dai-cells"
 
-if:
-  properties:
-    compatible:
-      contains:
-        const: rockchip,rk3288-spdif
+allOf:
+  - $ref: dai-common.yaml#
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: rockchip,rk3288-spdif
+    then:
+      required:
+        - rockchip,grf
 
-then:
-  required:
-    - rockchip,grf
-
-additionalProperties: false
+unevaluatedProperties: false
 
 examples:
   - |

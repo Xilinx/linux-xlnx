@@ -19,8 +19,6 @@
 	fan0: pwm-fan {
 		compatible = "pwm-fan";
 		#cooling-cells = <2>;
-		cooling-min-state = <0>;
-		cooling-max-state = <3>;
 		cooling-levels = <0 120 170 220>;
 		pwms = <&pwm_cd 1 40000 0>;
 	};
@@ -76,9 +74,17 @@
 };
 
 &cpu_thermal {
+	trips {
+		cpu_active: cpu-active {
+			temperature = <60000>; /* millicelsius */
+			hysteresis = <2000>; /* millicelsius */
+			type = "active";
+		};
+	};
+
 	cooling-maps {
 		map {
-			trip = <&cpu_passive>;
+			trip = <&cpu_active>;
 			cooling-device = <&fan0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
 		};
 	};
@@ -131,10 +137,6 @@
 };
 
 &usb {
-	phys = <&usb2_phy1>;
-	phy-names = "usb2-phy1";
-};
-
-&usb2_phy0 {
-	status = "disabled";
+	phys = <&usb2_phy0>, <&usb2_phy1>;
+	phy-names = "usb2-phy0", "usb2-phy1";
 };

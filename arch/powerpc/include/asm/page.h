@@ -9,6 +9,7 @@
 #ifndef __ASSEMBLY__
 #include <linux/types.h>
 #include <linux/kernel.h>
+#include <linux/bug.h>
 #else
 #include <asm/types.h>
 #endif
@@ -117,26 +118,7 @@ extern long long virt_phys_offset;
 
 #ifdef CONFIG_FLATMEM
 #define ARCH_PFN_OFFSET		((unsigned long)(MEMORY_START >> PAGE_SHIFT))
-#ifndef __ASSEMBLY__
-extern unsigned long max_mapnr;
-static inline bool pfn_valid(unsigned long pfn)
-{
-	unsigned long min_pfn = ARCH_PFN_OFFSET;
-
-	return pfn >= min_pfn && pfn < max_mapnr;
-}
 #endif
-#endif
-
-#define virt_to_pfn(kaddr)	(__pa(kaddr) >> PAGE_SHIFT)
-#define virt_to_page(kaddr)	pfn_to_page(virt_to_pfn(kaddr))
-#define pfn_to_kaddr(pfn)	__va((pfn) << PAGE_SHIFT)
-
-#define virt_addr_valid(vaddr)	({					\
-	unsigned long _addr = (unsigned long)vaddr;			\
-	_addr >= PAGE_OFFSET && _addr < (unsigned long)high_memory &&	\
-	pfn_valid(virt_to_pfn(_addr));					\
-})
 
 /*
  * On Book-E parts we need __va to parse the device tree and we can't
@@ -241,6 +223,25 @@ static inline bool pfn_valid(unsigned long pfn)
 #define __pa(x) ((unsigned long)(x) - PAGE_OFFSET + MEMORY_START)
 #endif
 #endif
+
+#ifndef __ASSEMBLY__
+static inline unsigned long virt_to_pfn(const void *kaddr)
+{
+	return __pa(kaddr) >> PAGE_SHIFT;
+}
+
+static inline const void *pfn_to_kaddr(unsigned long pfn)
+{
+	return __va(pfn << PAGE_SHIFT);
+}
+#endif
+
+#define virt_to_page(kaddr)	pfn_to_page(virt_to_pfn(kaddr))
+#define virt_addr_valid(vaddr)	({					\
+	unsigned long _addr = (unsigned long)vaddr;			\
+	_addr >= PAGE_OFFSET && _addr < (unsigned long)high_memory &&	\
+	pfn_valid(virt_to_pfn((void *)_addr));				\
+})
 
 /*
  * Unfortunately the PLT is in the BSS in the PPC32 ELF ABI,

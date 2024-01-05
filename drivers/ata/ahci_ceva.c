@@ -10,7 +10,7 @@
 #include <linux/kernel.h>
 #include <linux/libata.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
+#include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/reset.h>
 #include "ahci.h"
@@ -185,7 +185,7 @@ static void ahci_ceva_setup(struct ahci_host_priv *hpriv)
 	}
 }
 
-static struct scsi_host_template ahci_platform_sht = {
+static const struct scsi_host_template ahci_platform_sht = {
 	AHCI_SHT(DRV_NAME),
 };
 
@@ -369,7 +369,7 @@ MODULE_DEVICE_TABLE(of, ceva_ahci_of_match);
 
 static struct platform_driver ceva_ahci_driver = {
 	.probe = ceva_ahci_probe,
-	.remove = ata_platform_remove_one,
+	.remove_new = ata_platform_remove_one,
 	.driver = {
 		.name = DRV_NAME,
 		.of_match_table = ceva_ahci_of_match,

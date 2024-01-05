@@ -348,8 +348,8 @@ static int tegra_cec_probe(struct platform_device *pdev)
 
 	cec->tegra_cec_irq = platform_get_irq(pdev, 0);
 
-	if (cec->tegra_cec_irq <= 0)
-		return -EBUSY;
+	if (cec->tegra_cec_irq < 0)
+		return cec->tegra_cec_irq;
 
 	cec->cec_base = devm_ioremap(&pdev->dev, res->start,
 					     resource_size(res));
@@ -421,7 +421,7 @@ err_clk:
 	return ret;
 }
 
-static int tegra_cec_remove(struct platform_device *pdev)
+static void tegra_cec_remove(struct platform_device *pdev)
 {
 	struct tegra_cec *cec = platform_get_drvdata(pdev);
 
@@ -429,8 +429,6 @@ static int tegra_cec_remove(struct platform_device *pdev)
 
 	cec_notifier_cec_adap_unregister(cec->notifier, cec->adap);
 	cec_unregister_adapter(cec->adap);
-
-	return 0;
 }
 
 #ifdef CONFIG_PM
@@ -464,10 +462,10 @@ static const struct of_device_id tegra_cec_of_match[] = {
 static struct platform_driver tegra_cec_driver = {
 	.driver = {
 		.name = TEGRA_CEC_NAME,
-		.of_match_table = of_match_ptr(tegra_cec_of_match),
+		.of_match_table = tegra_cec_of_match,
 	},
 	.probe = tegra_cec_probe,
-	.remove = tegra_cec_remove,
+	.remove_new = tegra_cec_remove,
 
 #ifdef CONFIG_PM
 	.suspend = tegra_cec_suspend,

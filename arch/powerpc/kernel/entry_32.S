@@ -18,6 +18,8 @@
 #include <linux/err.h>
 #include <linux/sys.h>
 #include <linux/threads.h>
+#include <linux/linkage.h>
+
 #include <asm/reg.h>
 #include <asm/page.h>
 #include <asm/mmu.h>
@@ -27,7 +29,6 @@
 #include <asm/asm-offsets.h>
 #include <asm/unistd.h>
 #include <asm/ptrace.h>
-#include <asm/export.h>
 #include <asm/feature-fixups.h>
 #include <asm/barrier.h>
 #include <asm/kup.h>
@@ -74,17 +75,18 @@ _ASM_NOKPROBE_SYMBOL(prepare_transfer_to_handler)
 #endif /* CONFIG_PPC_BOOK3S_32 || CONFIG_PPC_E500 */
 
 #if defined(CONFIG_PPC_KUEP) && defined(CONFIG_PPC_BOOK3S_32)
-	.globl	__kuep_lock
-__kuep_lock:
+SYM_FUNC_START(__kuep_lock)
 	lwz	r9, THREAD+THSR0(r2)
 	update_user_segments_by_4 r9, r10, r11, r12
 	blr
+SYM_FUNC_END(__kuep_lock)
 
-__kuep_unlock:
+SYM_FUNC_START_LOCAL(__kuep_unlock)
 	lwz	r9, THREAD+THSR0(r2)
 	rlwinm  r9,r9,0,~SR_NX
 	update_user_segments_by_4 r9, r10, r11, r12
 	blr
+SYM_FUNC_END(__kuep_unlock)
 
 .macro	kuep_lock
 	bl	__kuep_lock
@@ -114,7 +116,7 @@ transfer_to_syscall:
 	addi	r12,r12,STACK_FRAME_REGS_MARKER@l
 	stw	r9,_MSR(r1)
 	li	r2, INTERRUPT_SYSCALL
-	stw	r12,8(r1)
+	stw	r12,STACK_INT_FRAME_MARKER(r1)
 	stw	r2,_TRAP(r1)
 	SAVE_GPR(0, r1)
 	SAVE_GPRS(3, 8, r1)
@@ -123,20 +125,21 @@ transfer_to_syscall:
 	kuep_lock
 
 	/* Calling convention has r3 = regs, r4 = orig r0 */
-	addi	r3,r1,STACK_FRAME_OVERHEAD
+	addi	r3,r1,STACK_INT_FRAME_REGS
 	mr	r4,r0
 	bl	system_call_exception
 
 ret_from_syscall:
-	addi    r4,r1,STACK_FRAME_OVERHEAD
+	addi    r4,r1,STACK_INT_FRAME_REGS
 	li	r5,0
 	bl	syscall_exit_prepare
 #ifdef CONFIG_PPC_47x
 	lis	r4,icache_44x_need_flush@ha
 	lwz	r5,icache_44x_need_flush@l(r4)
 	cmplwi	cr0,r5,0
-	bne-	2f
+	bne-	.L44x_icache_flush
 #endif /* CONFIG_PPC_47x */
+.L44x_icache_flush_return:
 	kuep_unlock
 	lwz	r4,_LINK(r1)
 	lwz	r5,_CCR(r1)
@@ -170,22 +173,22 @@ syscall_exit_finish:
 	b	1b
 
 #ifdef CONFIG_44x
-2:	li	r7,0
+.L44x_icache_flush:
+	li	r7,0
 	iccci	r0,r0
 	stw	r7,icache_44x_need_flush@l(r4)
-	b	1b
+	b	.L44x_icache_flush_return
 #endif  /* CONFIG_44x */
 
 	.globl	ret_from_fork
 ret_from_fork:
 	REST_NVGPRS(r1)
 	bl	schedule_tail
-	li	r3,0
+	li	r3,0	/* fork() return value */
 	b	ret_from_syscall
 
-	.globl	ret_from_kernel_thread
-ret_from_kernel_thread:
-	REST_NVGPRS(r1)
+	.globl	ret_from_kernel_user_thread
+ret_from_kernel_user_thread:
 	bl	schedule_tail
 	mtctr	r14
 	mr	r3,r15
@@ -194,62 +197,20 @@ ret_from_kernel_thread:
 	li	r3,0
 	b	ret_from_syscall
 
-/*
- * This routine switches between two different tasks.  The process
- * state of one is saved on its kernel stack.  Then the state
- * of the other is restored from its kernel stack.  The memory
- * management hardware is updated to the second process's state.
- * Finally, we can return to the second process.
- * On entry, r3 points to the THREAD for the current task, r4
- * points to the THREAD for the new task.
- *
- * This routine is always called with interrupts disabled.
- *
- * Note: there are two ways to get to the "going out" portion
- * of this code; either by coming in via the entry (_switch)
- * or via "fork" which must set up an environment equivalent
- * to the "_switch" path.  If you change this , you'll have to
- * change the fork code also.
- *
- * The code which creates the new task context is in 'copy_thread'
- * in arch/ppc/kernel/process.c
- */
-_GLOBAL(_switch)
-	stwu	r1,-INT_FRAME_SIZE(r1)
-	mflr	r0
-	stw	r0,INT_FRAME_SIZE+4(r1)
-	/* r3-r12 are caller saved -- Cort */
-	SAVE_NVGPRS(r1)
-	stw	r0,_NIP(r1)	/* Return to switch caller */
-	mfcr	r10
-	stw	r10,_CCR(r1)
-	stw	r1,KSP(r3)	/* Set old stack pointer */
-
-#ifdef CONFIG_SMP
-	/* We need a sync somewhere here to make sure that if the
-	 * previous task gets rescheduled on another CPU, it sees all
-	 * stores it has performed on this one.
+	.globl	start_kernel_thread
+start_kernel_thread:
+	bl	schedule_tail
+	mtctr	r14
+	mr	r3,r15
+	PPC440EP_ERR42
+	bctrl
+	/*
+	 * This must not return. We actually want to BUG here, not WARN,
+	 * because BUG will exit the process which is what the kernel thread
+	 * should have done, which may give some hope of continuing.
 	 */
-	sync
-#endif /* CONFIG_SMP */
-
-	tophys(r0,r4)
-	mtspr	SPRN_SPRG_THREAD,r0	/* Update current THREAD phys addr */
-	lwz	r1,KSP(r4)	/* Load new stack pointer */
-
-	/* save the old current 'last' for return value */
-	mr	r3,r2
-	addi	r2,r4,-THREAD	/* Update current */
-
-	lwz	r0,_CCR(r1)
-	mtcrf	0xFF,r0
-	/* r3-r12 are destroyed -- Cort */
-	REST_NVGPRS(r1)
-
-	lwz	r4,_NIP(r1)	/* Return to _switch caller in new task */
-	mtlr	r4
-	addi	r1,r1,INT_FRAME_SIZE
-	blr
+100:	trap
+	EMIT_BUG_ENTRY 100b,__FILE__,__LINE__,0
 
 	.globl	fast_exception_return
 fast_exception_return:
@@ -293,7 +254,7 @@ _ASM_NOKPROBE_SYMBOL(fast_exception_return)
 	.globl interrupt_return
 interrupt_return:
 	lwz	r4,_MSR(r1)
-	addi	r3,r1,STACK_FRAME_OVERHEAD
+	addi	r3,r1,STACK_INT_FRAME_REGS
 	andi.	r0,r4,MSR_PR
 	beq	.Lkernel_interrupt_return
 	bl	interrupt_exit_user_prepare

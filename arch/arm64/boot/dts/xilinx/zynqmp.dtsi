@@ -113,6 +113,22 @@
 		};
 	};
 
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		rproc_0_fw_image: memory@3ed00000 {
+			no-map;
+			reg = <0x0 0x3ed00000 0x0 0x40000>;
+		};
+
+		rproc_1_fw_image: memory@3ef00000 {
+			no-map;
+			reg = <0x0 0x3ef00000 0x0 0x40000>;
+		};
+	};
+
 	zynqmp_ipi: zynqmp-ipi {
 		bootph-all;
 		compatible = "xlnx,zynqmp-ipi-mailbox";
@@ -229,11 +245,17 @@
 				efuse_spkid: efuse-spkid@5c {
 					reg = <0x5c 0x4>;
 				};
+				efuse_aeskey: efuse-aeskey@60 {
+					reg = <0x60 0x20>;
+				};
 				efuse_ppk0hash: efuse-ppk0hash@a0 {
 					reg = <0xa0 0x30>;
 				};
 				efuse_ppk1hash: efuse-ppk1hash@d0 {
 					reg = <0xd0 0x30>;
+				};
+				efuse_pufuser: efuse-pufuser@100 {
+					reg = <0x100 0x7F>;
 				};
 			};
 
@@ -278,6 +300,23 @@
 		#address-cells = <2>;
 		#size-cells = <2>;
 		ranges;
+	};
+
+	remoteproc {
+		compatible = "xlnx,zynqmp-r5fss";
+		xlnx,cluster-mode = <1>;
+
+		r5f-0 {
+			compatible = "xlnx,zynqmp-r5f";
+			power-domains = <&zynqmp_firmware PD_RPU_0>;
+			memory-region = <&rproc_0_fw_image>;
+		};
+
+		r5f-1 {
+			compatible = "xlnx,zynqmp-r5f";
+			power-domains = <&zynqmp_firmware PD_RPU_1>;
+			memory-region = <&rproc_1_fw_image>;
+		};
 	};
 
 	amba: axi {
@@ -1149,10 +1188,8 @@
 			interrupts = <GIC_SPI 119 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-parent = <&gic>;
 			/* iommus = <&smmu 0xce3>; */
-
 			clock-names = "dp_apb_clk", "dp_aud_clk",
 				      "dp_vtc_pixel_clk_in";
-
 			power-domains = <&zynqmp_firmware PD_DP>;
 			resets = <&zynqmp_reset ZYNQMP_RESET_DP>;
 			dma-names = "vid0", "vid1", "vid2", "gfx0";
@@ -1187,6 +1224,30 @@
 				xlnx,dp-snd-pcm = <&zynqmp_dp_snd_pcm0>,
 						  <&zynqmp_dp_snd_pcm1>;
 				xlnx,dp-snd-codec = <&zynqmp_dp_snd_codec0>;
+			};
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+				};
+				port@1 {
+					reg = <1>;
+				};
+				port@2 {
+					reg = <2>;
+				};
+				port@3 {
+					reg = <3>;
+				};
+				port@4 {
+					reg = <4>;
+				};
+				port@5 {
+					reg = <5>;
+				};
 			};
 		};
 	};

@@ -99,13 +99,15 @@
  */
 enum pageflags {
 	PG_locked,		/* Page is locked. Don't touch. */
+	PG_writeback,		/* Page is under writeback */
 	PG_referenced,
 	PG_uptodate,
 	PG_dirty,
 	PG_lru,
+	PG_head,		/* Must be in bit 6 */
+	PG_waiters,		/* Page has waiters, check its waitqueue. Must be bit #7 and in the same byte as "PG_locked" */
 	PG_active,
 	PG_workingset,
-	PG_waiters,		/* Page has waiters, check its waitqueue. Must be bit #7 and in the same byte as "PG_locked" */
 	PG_error,
 	PG_slab,
 	PG_owner_priv_1,	/* Owner use. If pagecache, fs may use*/
@@ -113,8 +115,6 @@ enum pageflags {
 	PG_reserved,
 	PG_private,		/* If pagecache, has fs-private data */
 	PG_private_2,		/* If pagecache, has fs aux data */
-	PG_writeback,		/* Page is under writeback */
-	PG_head,		/* A head page */
 	PG_mappedtodisk,	/* Has blocks allocated on-disk */
 	PG_reclaim,		/* To be reclaimed asap */
 	PG_swapbacked,		/* Page is backed by RAM/swap */
@@ -132,11 +132,9 @@ enum pageflags {
 	PG_young,
 	PG_idle,
 #endif
-#ifdef CONFIG_64BIT
+#ifdef CONFIG_ARCH_USES_PG_ARCH_X
 	PG_arch_2,
-#endif
-#ifdef CONFIG_KASAN_HW_TAGS
-	PG_skip_kasan_poison,
+	PG_arch_3,
 #endif
 	__NR_PAGEFLAGS,
 
@@ -173,21 +171,6 @@ enum pageflags {
 	/* Remapped by swiotlb-xen. */
 	PG_xen_remapped = PG_owner_priv_1,
 
-	/* SLOB */
-	PG_slob_free = PG_private,
-
-	/* Compound pages. Stored in first tail page's flags */
-	PG_double_map = PG_workingset,
-
-#ifdef CONFIG_MEMORY_FAILURE
-	/*
-	 * Compound pages. Stored in first tail page's flags.
-	 * Indicates that at least one subpage is hwpoisoned in the
-	 * THP.
-	 */
-	PG_has_hwpoisoned = PG_error,
-#endif
-
 	/* non-lru isolated movable page */
 	PG_isolated = PG_reclaim,
 
@@ -198,6 +181,17 @@ enum pageflags {
 	/* For self-hosted memmap pages */
 	PG_vmemmap_self_hosted = PG_owner_priv_1,
 #endif
+
+	/*
+	 * Flags only valid for compound pages.  Stored in first tail page's
+	 * flags word.  Cannot use the first 8 flags or any flag marked as
+	 * PF_ANY.
+	 */
+
+	/* At least one page in this folio has the hwpoison flag set */
+	PG_has_hwpoisoned = PG_error,
+	PG_hugetlb = PG_active,
+	PG_large_rmappable = PG_workingset, /* anon or file-backed */
 };
 
 #define PAGEFLAGS_MASK		((1UL << NR_PAGEFLAGS) - 1)
@@ -485,7 +479,6 @@ PAGEFLAG(Active, active, PF_HEAD) __CLEARPAGEFLAG(Active, active, PF_HEAD)
 PAGEFLAG(Workingset, workingset, PF_HEAD)
 	TESTCLEARFLAG(Workingset, workingset, PF_HEAD)
 __PAGEFLAG(Slab, slab, PF_NO_TAIL)
-__PAGEFLAG(SlobFree, slob_free, PF_NO_TAIL)
 PAGEFLAG(Checked, checked, PF_NO_COMPOUND)	   /* Used by some filesystems */
 
 /* Xen */
@@ -533,6 +526,7 @@ PAGEFLAG(Readahead, readahead, PF_NO_COMPOUND)
  * available at this point.
  */
 #define PageHighMem(__p) is_highmem_idx(page_zonenum(__p))
+#define folio_test_highmem(__f)	is_highmem_idx(folio_zonenum(__f))
 #else
 PAGEFLAG_FALSE(HighMem, highmem)
 #endif
@@ -595,12 +589,6 @@ TESTCLEARFLAG(Young, young, PF_ANY)
 PAGEFLAG(Idle, idle, PF_ANY)
 #endif
 
-#ifdef CONFIG_KASAN_HW_TAGS
-PAGEFLAG(SkipKASanPoison, skip_kasan_poison, PF_HEAD)
-#else
-PAGEFLAG_FALSE(SkipKASanPoison, skip_kasan_poison)
-#endif
-
 /*
  * PageReported() is used to track reported free pages within the Buddy
  * allocator. We can use the non-atomic version of the test and set
@@ -631,6 +619,12 @@ PAGEFLAG_FALSE(VmemmapSelfHosted, vmemmap_self_hosted)
  * Please note that, confusingly, "page_mapping" refers to the inode
  * address_space which maps the page from disk; whereas "page_mapped"
  * refers to user virtual address space into which the page is mapped.
+ *
+ * For slab pages, since slab reuses the bits in struct page to store its
+ * internal states, the page->mapping does not exist as such, nor do these
+ * flags below.  So in order to avoid testing non-existent bits, please
+ * make sure that PageSlab(page) actually evaluates to false before calling
+ * the following functions (e.g., PageAnon).  See mm/slab.h.
  */
 #define PAGE_MAPPING_ANON	0x1
 #define PAGE_MAPPING_MOVABLE	0x2
@@ -641,7 +635,7 @@ PAGEFLAG_FALSE(VmemmapSelfHosted, vmemmap_self_hosted)
  * Different with flags above, this flag is used only for fsdax mode.  It
  * indicates that this page->mapping is now under reflink case.
  */
-#define PAGE_MAPPING_DAX_COW	0x1
+#define PAGE_MAPPING_DAX_SHARED	((void *)0x1)
 
 static __always_inline bool folio_mapping_flags(struct folio *folio)
 {
@@ -767,11 +761,6 @@ bool set_page_writeback(struct page *page);
 #define folio_start_writeback_keepwrite(folio)	\
 	__folio_start_writeback(folio, true)
 
-static inline void set_page_writeback_keepwrite(struct page *page)
-{
-	folio_start_writeback_keepwrite(page_folio(page));
-}
-
 static inline bool test_set_page_writeback(struct page *page)
 {
 	return set_page_writeback(page);
@@ -819,20 +808,34 @@ static inline void ClearPageCompound(struct page *page)
 	BUG_ON(!PageHead(page));
 	ClearPageHead(page);
 }
+PAGEFLAG(LargeRmappable, large_rmappable, PF_SECOND)
+#else
+TESTPAGEFLAG_FALSE(LargeRmappable, large_rmappable)
 #endif
 
 #define PG_head_mask ((1UL << PG_head))
 
 #ifdef CONFIG_HUGETLB_PAGE
 int PageHuge(struct page *page);
-int PageHeadHuge(struct page *page);
+SETPAGEFLAG(HugeTLB, hugetlb, PF_SECOND)
+CLEARPAGEFLAG(HugeTLB, hugetlb, PF_SECOND)
+
+/**
+ * folio_test_hugetlb - Determine if the folio belongs to hugetlbfs
+ * @folio: The folio to test.
+ *
+ * Context: Any context.  Caller should have a reference on the folio to
+ * prevent it from being turned into a tail page.
+ * Return: True for hugetlbfs folios, false for anon folios or folios
+ * belonging to other filesystems.
+ */
 static inline bool folio_test_hugetlb(struct folio *folio)
 {
-	return PageHeadHuge(&folio->page);
+	return folio_test_large(folio) &&
+		test_bit(PG_hugetlb, folio_flags(folio, 1));
 }
 #else
 TESTPAGEFLAG_FALSE(Huge, hugetlb)
-TESTPAGEFLAG_FALSE(HeadHuge, headhuge)
 #endif
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
@@ -848,11 +851,6 @@ static inline int PageTransHuge(struct page *page)
 {
 	VM_BUG_ON_PAGE(PageTail(page), page);
 	return PageHead(page);
-}
-
-static inline bool folio_test_transhuge(struct folio *folio)
-{
-	return folio_test_head(folio);
 }
 
 /*
@@ -874,29 +872,11 @@ static inline int PageTransTail(struct page *page)
 {
 	return PageTail(page);
 }
-
-/*
- * PageDoubleMap indicates that the compound page is mapped with PTEs as well
- * as PMDs.
- *
- * This is required for optimization of rmap operations for THP: we can postpone
- * per small page mapcount accounting (and its overhead from atomic operations)
- * until the first PMD split.
- *
- * For the page PageDoubleMap means ->_mapcount in all sub-pages is offset up
- * by one. This reference will go away with last compound_mapcount.
- *
- * See also __split_huge_pmd_locked() and page_remove_anon_compound_rmap().
- */
-PAGEFLAG(DoubleMap, double_map, PF_SECOND)
-	TESTSCFLAG(DoubleMap, double_map, PF_SECOND)
 #else
 TESTPAGEFLAG_FALSE(TransHuge, transhuge)
 TESTPAGEFLAG_FALSE(TransCompound, transcompound)
 TESTPAGEFLAG_FALSE(TransCompoundMap, transcompoundmap)
 TESTPAGEFLAG_FALSE(TransTail, transtail)
-PAGEFLAG_FALSE(DoubleMap, double_map)
-	TESTSCFLAG_FALSE(DoubleMap, double_map)
 #endif
 
 #if defined(CONFIG_MEMORY_FAILURE) && defined(CONFIG_TRANSPARENT_HUGEPAGE)
@@ -944,33 +924,54 @@ static inline bool is_page_hwpoison(struct page *page)
 
 #define PageType(page, flag)						\
 	((page->page_type & (PAGE_TYPE_BASE | flag)) == PAGE_TYPE_BASE)
+#define folio_test_type(folio, flag)					\
+	((folio->page.page_type & (PAGE_TYPE_BASE | flag)) == PAGE_TYPE_BASE)
+
+static inline int page_type_has_type(unsigned int page_type)
+{
+	return (int)page_type < PAGE_MAPCOUNT_RESERVE;
+}
 
 static inline int page_has_type(struct page *page)
 {
-	return (int)page->page_type < PAGE_MAPCOUNT_RESERVE;
+	return page_type_has_type(page->page_type);
 }
 
-#define PAGE_TYPE_OPS(uname, lname)					\
-static __always_inline int Page##uname(struct page *page)		\
+#define PAGE_TYPE_OPS(uname, lname, fname)				\
+static __always_inline int Page##uname(const struct page *page)		\
 {									\
 	return PageType(page, PG_##lname);				\
+}									\
+static __always_inline int folio_test_##fname(const struct folio *folio)\
+{									\
+	return folio_test_type(folio, PG_##lname);			\
 }									\
 static __always_inline void __SetPage##uname(struct page *page)		\
 {									\
 	VM_BUG_ON_PAGE(!PageType(page, 0), page);			\
 	page->page_type &= ~PG_##lname;					\
 }									\
+static __always_inline void __folio_set_##fname(struct folio *folio)	\
+{									\
+	VM_BUG_ON_FOLIO(!folio_test_type(folio, 0), folio);		\
+	folio->page.page_type &= ~PG_##lname;				\
+}									\
 static __always_inline void __ClearPage##uname(struct page *page)	\
 {									\
 	VM_BUG_ON_PAGE(!Page##uname(page), page);			\
 	page->page_type |= PG_##lname;					\
-}
+}									\
+static __always_inline void __folio_clear_##fname(struct folio *folio)	\
+{									\
+	VM_BUG_ON_FOLIO(!folio_test_##fname(folio), folio);		\
+	folio->page.page_type |= PG_##lname;				\
+}									\
 
 /*
  * PageBuddy() indicates that the page is free and in the buddy system
  * (see mm/page_alloc.c).
  */
-PAGE_TYPE_OPS(Buddy, buddy)
+PAGE_TYPE_OPS(Buddy, buddy, buddy)
 
 /*
  * PageOffline() indicates that the page is logically offline although the
@@ -994,7 +995,7 @@ PAGE_TYPE_OPS(Buddy, buddy)
  * pages should check PageOffline() and synchronize with such drivers using
  * page_offline_freeze()/page_offline_thaw().
  */
-PAGE_TYPE_OPS(Offline, offline)
+PAGE_TYPE_OPS(Offline, offline, offline)
 
 extern void page_offline_freeze(void);
 extern void page_offline_thaw(void);
@@ -1004,12 +1005,12 @@ extern void page_offline_end(void);
 /*
  * Marks pages in use as page tables.
  */
-PAGE_TYPE_OPS(Table, table)
+PAGE_TYPE_OPS(Table, table, pgtable)
 
 /*
  * Marks guardpages used with debug_pagealloc.
  */
-PAGE_TYPE_OPS(Guard, guard)
+PAGE_TYPE_OPS(Guard, guard, guard)
 
 extern bool is_free_buddy_page(struct page *page);
 
@@ -1070,6 +1071,14 @@ static __always_inline void __ClearPageAnonExclusive(struct page *page)
  */
 #define PAGE_FLAGS_CHECK_AT_PREP	\
 	((PAGEFLAGS_MASK & ~__PG_HWPOISON) | LRU_GEN_MASK | LRU_REFS_MASK)
+
+/*
+ * Flags stored in the second page of a compound page.  They may overlap
+ * the CHECK_AT_FREE flags above, so need to be cleared.
+ */
+#define PAGE_FLAGS_SECOND						\
+	(0xffUL /* order */		| 1UL << PG_has_hwpoisoned |	\
+	 1UL << PG_hugetlb		| 1UL << PG_large_rmappable)
 
 #define PAGE_FLAGS_PRIVATE				\
 	(1UL << PG_private | 1UL << PG_private_2)

@@ -10,7 +10,7 @@
 #include <linux/fb.h>
 #include <linux/pci.h>
 #include <linux/init.h>
-#include <linux/of_device.h>
+#include <linux/of.h>
 
 #include <asm/io.h>
 
@@ -200,7 +200,6 @@ static int e3d_set_fbinfo(struct e3d_info *ep)
 	struct fb_info *info = ep->info;
 	struct fb_var_screeninfo *var = &info->var;
 
-	info->flags = FBINFO_DEFAULT;
 	info->fbops = &e3d_ops;
 	info->screen_base = ep->fb_base;
 	info->screen_size = ep->fb_size;
@@ -430,6 +429,9 @@ static struct pci_driver e3d_driver = {
 
 static int __init e3d_init(void)
 {
+	if (fb_modesetting_disabled("e3d"))
+		return -ENODEV;
+
 	if (fb_get_options("e3d", NULL))
 		return -ENODEV;
 

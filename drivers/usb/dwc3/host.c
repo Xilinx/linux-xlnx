@@ -10,6 +10,7 @@
 #include <linux/irq.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/of_device.h>
 
 #include "core.h"
 
@@ -67,13 +68,8 @@ static int dwc3_host_get_irq(struct dwc3 *dwc)
 		goto out;
 
 	irq = platform_get_irq(dwc3_pdev, 0);
-	if (irq > 0) {
+	if (irq > 0)
 		dwc3_host_fill_xhci_irq_res(dwc, irq, NULL);
-		goto out;
-	}
-
-	if (!irq)
-		irq = -EINVAL;
 
 out:
 	return irq;

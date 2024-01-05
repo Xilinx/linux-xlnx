@@ -331,7 +331,7 @@ static char *cpu_model(void)
 	file = fopen("/proc/cpuinfo", "r");
 	if (file) {
 		while (fgets(buf, 255, file)) {
-			if (strstr(buf, "model name")) {
+			if (strcasestr(buf, "model name")) {
 				strlcpy(cpu_m, &buf[13], 255);
 				break;
 			}
@@ -741,7 +741,7 @@ static int str_to_bitmap(char *s, cpumask_t *b, int nr_cpus)
 			break;
 		}
 
-		set_bit(c.cpu, cpumask_bits(b));
+		__set_bit(c.cpu, cpumask_bits(b));
 	}
 
 	perf_cpu_map__put(m);

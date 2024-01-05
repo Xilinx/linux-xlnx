@@ -17,7 +17,6 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
@@ -959,16 +958,16 @@ static void btmtkuart_remove(struct serdev_device *serdev)
 	hci_free_dev(hdev);
 }
 
-static const struct btmtkuart_data mt7622_data = {
+static const struct btmtkuart_data mt7622_data __maybe_unused = {
 	.fwname = FIRMWARE_MT7622,
 };
 
-static const struct btmtkuart_data mt7663_data = {
+static const struct btmtkuart_data mt7663_data __maybe_unused = {
 	.flags = BTMTKUART_FLAG_STANDALONE_HW,
 	.fwname = FIRMWARE_MT7663,
 };
 
-static const struct btmtkuart_data mt7668_data = {
+static const struct btmtkuart_data mt7668_data __maybe_unused = {
 	.flags = BTMTKUART_FLAG_STANDALONE_HW,
 	.fwname = FIRMWARE_MT7668,
 };

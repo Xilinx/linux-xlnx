@@ -98,8 +98,10 @@ static int snd_ymfpci_create_gameport(struct snd_ymfpci *chip, int dev,
 		case 0x204: legacy_ctrl2 |= 2 << 6; break;
 		case 0x205: legacy_ctrl2 |= 3 << 6; break;
 		default:
-			dev_err(chip->card->dev,
-				"invalid joystick port %#x", io_port);
+			if (io_port > 0)
+				dev_err(chip->card->dev,
+					"The %s does not support arbitrary IO ports for the game port (requested 0x%x)\n",
+					chip->card->shortname, (unsigned int)io_port);
 			return -EINVAL;
 		}
 	}
@@ -150,8 +152,8 @@ static inline int snd_ymfpci_create_gameport(struct snd_ymfpci *chip, int dev, i
 void snd_ymfpci_free_gameport(struct snd_ymfpci *chip) { }
 #endif /* SUPPORT_JOYSTICK */
 
-static int snd_card_ymfpci_probe(struct pci_dev *pci,
-				 const struct pci_device_id *pci_id)
+static int __snd_card_ymfpci_probe(struct pci_dev *pci,
+				   const struct pci_device_id *pci_id)
 {
 	static int dev;
 	struct snd_card *card;
@@ -170,7 +172,7 @@ static int snd_card_ymfpci_probe(struct pci_dev *pci,
 		return -ENOENT;
 	}
 
-	err = snd_card_new(&pci->dev, index[dev], id[dev], THIS_MODULE,
+	err = snd_devm_card_new(&pci->dev, index[dev], id[dev], THIS_MODULE,
 			   sizeof(*chip), &card);
 	if (err < 0)
 		return err;
@@ -185,6 +187,13 @@ static int snd_card_ymfpci_probe(struct pci_dev *pci,
 	case 0x0012: str = "YMF754";  model = "DS-1E"; break;
 	default: model = str = "???"; break;
 	}
+
+	strcpy(card->driver, str);
+	sprintf(card->shortname, "Yamaha %s (%s)", model, str);
+	sprintf(card->longname, "%s at 0x%lx, irq %i",
+		card->shortname,
+		chip->reg_area_phys,
+		chip->irq);
 
 	legacy_ctrl = 0;
 	legacy_ctrl2 = 0x0800;	/* SBEN = 0, SMOD = 01, LAD = 0 */
@@ -218,7 +227,13 @@ static int snd_card_ymfpci_probe(struct pci_dev *pci,
 		case 0x398: legacy_ctrl2 |= 1; break;
 		case 0x3a0: legacy_ctrl2 |= 2; break;
 		case 0x3a8: legacy_ctrl2 |= 3; break;
-		default: fm_port[dev] = 0; break;
+		default:
+			if (fm_port[dev] > 0)
+				dev_err(card->dev,
+					"The %s does not support arbitrary IO ports for FM (requested 0x%x)\n",
+					card->shortname, (unsigned int)fm_port[dev]);
+			fm_port[dev] = 0;
+			break;
 		}
 		if (fm_port[dev] > 0)
 			fm_res = devm_request_region(&pci->dev, fm_port[dev],
@@ -234,7 +249,13 @@ static int snd_card_ymfpci_probe(struct pci_dev *pci,
 		case 0x300: legacy_ctrl2 |= 1 << 4; break;
 		case 0x332: legacy_ctrl2 |= 2 << 4; break;
 		case 0x334: legacy_ctrl2 |= 3 << 4; break;
-		default: mpu_port[dev] = 0; break;
+		default:
+			if (mpu_port[dev] > 0)
+				dev_err(card->dev,
+					"The %s does not support arbitrary IO ports for MPU-401 (requested 0x%x)\n",
+					card->shortname, (unsigned int)mpu_port[dev]);
+			mpu_port[dev] = 0;
+			break;
 		}
 		if (mpu_port[dev] > 0)
 			mpu_res = devm_request_region(&pci->dev, mpu_port[dev],
@@ -257,12 +278,6 @@ static int snd_card_ymfpci_probe(struct pci_dev *pci,
 	if (err  < 0)
 		return err;
 
-	strcpy(card->driver, str);
-	sprintf(card->shortname, "Yamaha %s (%s)", model, str);
-	sprintf(card->longname, "%s at 0x%lx, irq %i",
-		card->shortname,
-		chip->reg_area_phys,
-		chip->irq);
 	err = snd_ymfpci_pcm(chip, 0);
 	if (err < 0)
 		return err;
@@ -333,15 +348,19 @@ static int snd_card_ymfpci_probe(struct pci_dev *pci,
 	return 0;
 }
 
+static int snd_card_ymfpci_probe(struct pci_dev *pci,
+				 const struct pci_device_id *pci_id)
+{
+	return snd_card_free_on_error(&pci->dev, __snd_card_ymfpci_probe(pci, pci_id));
+}
+
 static struct pci_driver ymfpci_driver = {
 	.name = KBUILD_MODNAME,
 	.id_table = snd_ymfpci_ids,
 	.probe = snd_card_ymfpci_probe,
-#ifdef CONFIG_PM_SLEEP
 	.driver = {
-		.pm = &snd_ymfpci_pm,
+		.pm = pm_sleep_ptr(&snd_ymfpci_pm),
 	},
-#endif
 };
 
 module_pci_driver(ymfpci_driver);

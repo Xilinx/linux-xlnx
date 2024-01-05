@@ -9,8 +9,7 @@
 #include <linux/err.h>
 #include <linux/io.h>
 #include <linux/module.h>
-#include <linux/of_address.h>
-#include <linux/of_device.h>
+#include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/soc/ti/ti_sci_protocol.h>
@@ -294,6 +293,8 @@ static int _sci_clk_build(struct sci_clk_provider *provider,
 
 	name = kasprintf(GFP_KERNEL, "clk:%d:%d", sci_clk->dev_id,
 			 sci_clk->clk_id);
+	if (!name)
+		return -ENOMEM;
 
 	init.name = name;
 
@@ -689,16 +690,14 @@ static int ti_sci_clk_probe(struct platform_device *pdev)
  * via common clock framework. Any memory allocated for the device will
  * be free'd silently via the devm framework. Returns 0 always.
  */
-static int ti_sci_clk_remove(struct platform_device *pdev)
+static void ti_sci_clk_remove(struct platform_device *pdev)
 {
 	of_clk_del_provider(pdev->dev.of_node);
-
-	return 0;
 }
 
 static struct platform_driver ti_sci_clk_driver = {
 	.probe = ti_sci_clk_probe,
-	.remove = ti_sci_clk_remove,
+	.remove_new = ti_sci_clk_remove,
 	.driver = {
 		.name = "ti-sci-clk",
 		.of_match_table = of_match_ptr(ti_sci_clk_of_match),

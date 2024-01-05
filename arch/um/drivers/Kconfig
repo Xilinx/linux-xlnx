@@ -111,23 +111,13 @@ config SSL_CHAN
 
 config UML_SOUND
 	tristate "Sound support"
+	depends on SOUND
+	select SOUND_OSS_CORE
 	help
 	  This option enables UML sound support.  If enabled, it will pull in
-	  soundcore and the UML hostaudio relay, which acts as a intermediary
+	  the UML hostaudio relay, which acts as a intermediary
 	  between the host's dsp and mixer devices and the UML sound system.
 	  It is safe to say 'Y' here.
-
-config SOUND
-	tristate
-	default UML_SOUND
-
-config SOUND_OSS_CORE
-	bool
-	default UML_SOUND
-
-config HOSTAUDIO
-	tristate
-	default UML_SOUND
 
 endmenu
 
@@ -261,6 +251,7 @@ config UML_NET_VECTOR
 config UML_NET_VDE
 	bool "VDE transport (obsolete)"
 	depends on UML_NET
+	depends on !MODVERSIONS
 	select MAY_HAVE_RUNTIME_DEPS
 	help
 	  This User-Mode Linux network transport allows one or more running
@@ -309,6 +300,7 @@ config UML_NET_MCAST
 config UML_NET_PCAP
 	bool "pcap transport (obsolete)"
 	depends on UML_NET
+	depends on !MODVERSIONS
 	select MAY_HAVE_RUNTIME_DEPS
 	help
 	  The pcap transport makes a pcap packet stream on the host look
@@ -381,7 +373,6 @@ config UML_PCI_OVER_VIRTIO
 	select UML_IOMEM_EMULATION
 	select UML_DMA_EMULATION
 	select PCI_MSI
-	select PCI_MSI_IRQ_DOMAIN
 	select PCI_LOCKLESS_CONFIG
 
 config UML_PCI_OVER_VIRTIO_DEVICE_ID

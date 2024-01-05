@@ -49,13 +49,17 @@ converted over. Modern compositors like Wayland or Surfaceflinger on Android
 really want an atomic modeset interface, so this is all about the bright
 future.
 
-There is a conversion guide for atomic and all you need is a GPU for a
-non-converted driver (again virtual HW drivers for KVM are still all
-suitable).
+There is a conversion guide for atomic [1]_ and all you need is a GPU for a
+non-converted driver.  The "Atomic mode setting design overview" series [2]_
+[3]_ at LWN.net can also be helpful.
 
 As part of this drivers also need to convert to universal plane (which means
 exposing primary & cursor as proper plane objects). But that's much easier to
 do by directly using the new atomic helper driver callbacks.
+
+  .. [1] https://blog.ffwll.ch/2014/11/atomic-modeset-support-for-kms-drivers.html
+  .. [2] https://lwn.net/Articles/653071/
+  .. [3] https://lwn.net/Articles/653466/
 
 Contact: Daniel Vetter, respective driver maintainers
 
@@ -65,7 +69,7 @@ Clean up the clipped coordination confusion around planes
 ---------------------------------------------------------
 
 We have a helper to get this right with drm_plane_helper_check_update(), but
-it's not consistently used. This should be fixed, preferrably in the atomic
+it's not consistently used. This should be fixed, preferably in the atomic
 helpers (and drivers then moved over to clipped coordinates). Probably the
 helper should also be moved from drm_plane_helper.c to the atomic helpers, to
 avoid confusion - the other helpers in that file are all deprecated legacy
@@ -181,13 +185,13 @@ reversed.
 
 To solve this we need one standard per-object locking mechanism, which is
 dma_resv_lock(). This lock needs to be called as the outermost lock, with all
-other driver specific per-object locks removed. The problem is tha rolling out
+other driver specific per-object locks removed. The problem is that rolling out
 the actual change to the locking contract is a flag day, due to struct dma_buf
 buffer sharing.
 
 Level: Expert
 
-Convert logging to drm_* functions with drm_device paramater
+Convert logging to drm_* functions with drm_device parameter
 ------------------------------------------------------------
 
 For drivers which could have multiple instances, it is necessary to
@@ -244,7 +248,7 @@ Level: Advanced
 Benchmark and optimize blitting and format-conversion function
 --------------------------------------------------------------
 
-Drawing to dispay memory quickly is crucial for many applications'
+Drawing to display memory quickly is crucial for many applications'
 performance.
 
 On at least x86-64, sys_imageblit() is significantly slower than
@@ -276,11 +280,8 @@ Various hold-ups:
 - Need to switch to drm_fbdev_generic_setup(), otherwise a lot of the custom fb
   setup code can't be deleted.
 
-- Many drivers wrap drm_gem_fb_create() only to check for valid formats. For
-  atomic drivers we could check for valid formats by calling
-  drm_plane_check_pixel_format() against all planes, and pass if any plane
-  supports the format. For non-atomic that's not possible since like the format
-  list for the primary plane is fake and we'd therefor reject valid formats.
+- Need to switch to drm_gem_fb_create(), as now drm_gem_fb_create() checks for
+  valid formats for atomic drivers.
 
 - Many drivers subclass drm_framebuffer, we'd need a embedding compatible
   version of the varios drm_gem_fb_create functions. Maybe called
@@ -321,15 +322,6 @@ Might be good to also have some igt testcases for this.
 Contact: Daniel Vetter, Noralf Tronnes
 
 Level: Advanced
-
-struct drm_gem_object_funcs
----------------------------
-
-GEM objects can now have a function table instead of having the callbacks on the
-DRM driver struct. This is now the preferred way. Callbacks in drivers have been
-converted, except for struct drm_driver.gem_prime_mmap.
-
-Level: Intermediate
 
 connector register/unregister fixes
 -----------------------------------
@@ -455,6 +447,44 @@ Contact: Thomas Zimmermann <tzimmermann@suse.de>
 
 Level: Starter
 
+Remove driver dependencies on FB_DEVICE
+---------------------------------------
+
+A number of fbdev drivers provide attributes via sysfs and therefore depend
+on CONFIG_FB_DEVICE to be selected. Review each driver and attempt to make
+any dependencies on CONFIG_FB_DEVICE optional. At the minimum, the respective
+code in the driver could be conditionalized via ifdef CONFIG_FB_DEVICE. Not
+all drivers might be able to drop CONFIG_FB_DEVICE.
+
+Contact: Thomas Zimmermann <tzimmermann@suse.de>
+
+Level: Starter
+
+Clean up checks for already prepared/enabled in panels
+------------------------------------------------------
+
+In a whole pile of panel drivers, we have code to make the
+prepare/unprepare/enable/disable callbacks behave as no-ops if they've already
+been called. To get some idea of the duplicated code, try::
+
+  git grep 'if.*>prepared' -- drivers/gpu/drm/panel
+  git grep 'if.*>enabled' -- drivers/gpu/drm/panel
+
+In the patch ("drm/panel: Check for already prepared/enabled in drm_panel")
+we've moved this check to the core. Now we can most definitely remove the
+check from the individual panels and save a pile of code.
+
+In adition to removing the check from the individual panels, it is believed
+that even the core shouldn't need this check and that should be considered
+an error if other code ever relies on this check. The check in the core
+currently prints a warning whenever something is relying on this check with
+dev_warn(). After a little while, we likely want to promote this to a
+WARN(1) to help encourage folks not to rely on this behavior.
+
+Contact: Douglas Anderson <dianders@chromium.org>
+
+Level: Starter/Intermediate
+
 
 Core refactorings
 =================
@@ -508,16 +538,17 @@ Clean up the debugfs support
 
 There's a bunch of issues with it:
 
-- The drm_info_list ->show() function doesn't even bother to cast to the drm
-  structure for you. This is lazy.
+- Convert drivers to support the drm_debugfs_add_files() function instead of
+  the drm_debugfs_create_files() function.
+
+- Improve late-register debugfs by rolling out the same debugfs pre-register
+  infrastructure for connector and crtc too. That way, the drivers won't need to
+  split their setup code into init and register anymore.
 
 - We probably want to have some support for debugfs files on crtc/connectors and
   maybe other kms objects directly in core. There's even drm_print support in
   the funcs for these objects to dump kms state, so it's all there. And then the
   ->show() functions should obviously give you a pointer to the right object.
-
-- The drm_info_list stuff is centered on drm_minor instead of drm_device. For
-  anything we want to print drm_device (or maybe drm_file) is the right thing.
 
 - The drm_driver->debugfs_init hooks we have is just an artifact of the old
   midlayered load sequence. DRM debugfs should work more like sysfs, where you
@@ -526,8 +557,6 @@ There's a bunch of issues with it:
   time. Drivers shouldn't need to worry about these technicalities, and fixing
   this (together with the drm_minor->drm_device move) would allow us to remove
   debugfs_init.
-
-Previous RFC that hasn't landed yet: https://lore.kernel.org/dri-devel/20200513114130.28641-2-wambui.karugax@gmail.com/
 
 Contact: Daniel Vetter
 
@@ -651,17 +680,6 @@ See drivers/gpu/drm/amd/display/TODO for tasks.
 
 Contact: Harry Wentland, Alex Deucher
 
-vmwgfx: Replace hashtable with Linux' implementation
-----------------------------------------------------
-
-The vmwgfx driver uses its own hashtable implementation. Replace the
-code with Linux' implementation and update the callers. It's mostly a
-refactoring task, but the interfaces are different.
-
-Contact: Zack Rusin, Thomas Zimmermann <tzimmermann@suse.de>
-
-Level: Intermediate
-
 Bootsplash
 ==========
 
@@ -764,16 +782,16 @@ existing hardware. The new driver's call-back functions are filled from
 existing fbdev code.
 
 More complex fbdev drivers can be refactored step-by-step into a DRM
-driver with the help of the DRM fbconv helpers. [1] These helpers provide
+driver with the help of the DRM fbconv helpers [4]_. These helpers provide
 the transition layer between the DRM core infrastructure and the fbdev
 driver interface. Create a new DRM driver on top of the fbconv helpers,
 copy over the fbdev driver, and hook it up to the DRM code. Examples for
-several fbdev drivers are available at [1] and a tutorial of this process
-available at [2]. The result is a primitive DRM driver that can run X11
-and Weston.
+several fbdev drivers are available in Thomas Zimmermann's fbconv tree
+[4]_, as well as a tutorial of this process [5]_. The result is a primitive
+DRM driver that can run X11 and Weston.
 
- - [1] https://gitlab.freedesktop.org/tzimmermann/linux/tree/fbconv
- - [2] https://gitlab.freedesktop.org/tzimmermann/linux/blob/fbconv/drivers/gpu/drm/drm_fbconv_helper.c
+ .. [4] https://gitlab.freedesktop.org/tzimmermann/linux/tree/fbconv
+ .. [5] https://gitlab.freedesktop.org/tzimmermann/linux/blob/fbconv/drivers/gpu/drm/drm_fbconv_helper.c
 
 Contact: Thomas Zimmermann <tzimmermann@suse.de>
 

@@ -14,6 +14,7 @@
 / {
 	model = "Qualcomm Technologies, Inc. SM8250 HDK";
 	compatible = "qcom,sm8250-hdk", "qcom,sm8250";
+	chassis-type = "embedded";
 
 	aliases {
 		serial0 = &uart12;
@@ -65,7 +66,7 @@
 };
 
 &apps_rsc {
-	pm8150-rpmh-regulators {
+	regulators-0 {
 		compatible = "qcom,pm8150-rpmh-regulators";
 		qcom,pmic-id = "a";
 
@@ -199,7 +200,7 @@
 		};
 	};
 
-	pm8150l-rpmh-regulators {
+	regulators-1 {
 		compatible = "qcom,pm8150l-rpmh-regulators";
 		qcom,pmic-id = "c";
 
@@ -310,7 +311,7 @@
 		};
 	};
 
-	pm8009-rpmh-regulators {
+	regulators-2 {
 		compatible = "qcom,pm8009-rpmh-regulators";
 		qcom,pmic-id = "f";
 

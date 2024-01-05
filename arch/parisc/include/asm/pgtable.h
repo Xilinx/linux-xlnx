@@ -23,21 +23,6 @@
 #include <asm/processor.h>
 #include <asm/cache.h>
 
-/*
- * kern_addr_valid(ADDR) tests if ADDR is pointing to valid kernel
- * memory.  For the return value to be meaningful, ADDR must be >=
- * PAGE_OFFSET.  This operation can be relatively expensive (e.g.,
- * require a hash-, or multi-level tree-lookup or something of that
- * sort) but it guarantees to return TRUE only if accessing the page
- * at that address does not cause an error.  Note that there may be
- * addresses for which kern_addr_valid() returns FALSE even though an
- * access would not cause an error (e.g., this is typically true for
- * memory mapped I/O regions.
- *
- * XXX Need to implement this for parisc.
- */
-#define kern_addr_valid(addr)	(1)
-
 /* This is for the serialization of PxTLB broadcasts. At least on the N class
  * systems, only one PxTLB inter processor broadcast can be active at any one
  * time on the Merced bus. */
@@ -87,15 +72,6 @@ extern void __update_cache(pte_t pte);
 		*(pteptr) = (pteval);		\
 		mb();				\
 	} while(0)
-
-#define set_pte_at(mm, addr, pteptr, pteval)	\
-	do {					\
-		if (pte_present(pteval) &&	\
-		    pte_user(pteval))		\
-			__update_cache(pteval);	\
-		*(pteptr) = (pteval);		\
-		purge_tlb_entries(mm, addr);	\
-	} while (0)
 
 #endif /* !__ASSEMBLY__ */
 
@@ -166,8 +142,8 @@ extern void __update_cache(pte_t pte);
 
 /* This calculates the number of initial pages we need for the initial
  * page tables */
-#if (KERNEL_INITIAL_ORDER) >= (PMD_SHIFT)
-# define PT_INITIAL	(1 << (KERNEL_INITIAL_ORDER - PMD_SHIFT))
+#if (KERNEL_INITIAL_ORDER) >= (PLD_SHIFT + BITS_PER_PTE)
+# define PT_INITIAL	(1 << (KERNEL_INITIAL_ORDER - PLD_SHIFT - BITS_PER_PTE))
 #else
 # define PT_INITIAL	(1)  /* all initial PTEs fit into one page */
 #endif
@@ -233,6 +209,9 @@ extern void __update_cache(pte_t pte);
 #define _PAGE_KERNEL_RWX	(_PAGE_KERNEL_EXEC | _PAGE_WRITE)
 #define _PAGE_KERNEL		(_PAGE_KERNEL_RO | _PAGE_WRITE)
 
+/* We borrow bit 23 to store the exclusive marker in swap PTEs. */
+#define _PAGE_SWP_EXCLUSIVE	_PAGE_ACCESSED
+
 /* The pgd/pmd contains a ptr (in phys addr space); since all pgds/pmds
  * are page-aligned, we don't care about the PAGE_OFFSET bits, except
  * for a few meta-information bits, so we shift the address to be
@@ -297,7 +276,7 @@ extern unsigned long *empty_zero_page;
 #define pte_none(x)     (pte_val(x) == 0)
 #define pte_present(x)	(pte_val(x) & _PAGE_PRESENT)
 #define pte_user(x)	(pte_val(x) & _PAGE_USER)
-#define pte_clear(mm, addr, xp)  set_pte_at(mm, addr, xp, __pte(0))
+#define pte_clear(mm, addr, xp)  set_pte(xp, __pte(0))
 
 #define pmd_flag(x)	(pmd_val(x) & PxD_FLAG_MASK)
 #define pmd_address(x)	((unsigned long)(pmd_val(x) &~ PxD_FLAG_MASK) << PxD_VALUE_SHIFT)
@@ -343,7 +322,7 @@ static inline pte_t pte_mkold(pte_t pte)	{ pte_val(pte) &= ~_PAGE_ACCESSED; retu
 static inline pte_t pte_wrprotect(pte_t pte)	{ pte_val(pte) &= ~_PAGE_WRITE; return pte; }
 static inline pte_t pte_mkdirty(pte_t pte)	{ pte_val(pte) |= _PAGE_DIRTY; return pte; }
 static inline pte_t pte_mkyoung(pte_t pte)	{ pte_val(pte) |= _PAGE_ACCESSED; return pte; }
-static inline pte_t pte_mkwrite(pte_t pte)	{ pte_val(pte) |= _PAGE_WRITE; return pte; }
+static inline pte_t pte_mkwrite_novma(pte_t pte)	{ pte_val(pte) |= _PAGE_WRITE; return pte; }
 static inline pte_t pte_mkspecial(pte_t pte)	{ pte_val(pte) |= _PAGE_SPECIAL; return pte; }
 
 /*
@@ -403,22 +382,71 @@ static inline unsigned long pmd_page_vaddr(pmd_t pmd)
 
 extern void paging_init (void);
 
+static inline void set_ptes(struct mm_struct *mm, unsigned long addr,
+		pte_t *ptep, pte_t pte, unsigned int nr)
+{
+	if (pte_present(pte) && pte_user(pte))
+		__update_cache(pte);
+	for (;;) {
+		*ptep = pte;
+		purge_tlb_entries(mm, addr);
+		if (--nr == 0)
+			break;
+		ptep++;
+		pte_val(pte) += 1 << PFN_PTE_SHIFT;
+		addr += PAGE_SIZE;
+	}
+}
+#define set_ptes set_ptes
+
 /* Used for deferring calls to flush_dcache_page() */
 
 #define PG_dcache_dirty         PG_arch_1
 
-#define update_mmu_cache(vms,addr,ptep) __update_cache(*ptep)
+#define update_mmu_cache_range(vmf, vma, addr, ptep, nr) __update_cache(*ptep)
+#define update_mmu_cache(vma, addr, ptep) __update_cache(*ptep)
 
-/* Encode and de-code a swap entry */
-
+/*
+ * Encode/decode swap entries and swap PTEs. Swap PTEs are all PTEs that
+ * are !pte_none() && !pte_present().
+ *
+ * Format of swap PTEs (32bit):
+ *
+ *                         1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 2 2 3 3
+ *   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ *   <---------------- offset -----------------> P E <ofs> < type ->
+ *
+ *   E is the exclusive marker that is not stored in swap entries.
+ *   _PAGE_PRESENT (P) must be 0.
+ *
+ *   For the 64bit version, the offset is extended by 32bit.
+ */
 #define __swp_type(x)                     ((x).val & 0x1f)
-#define __swp_offset(x)                   ( (((x).val >> 6) &  0x7) | \
-					  (((x).val >> 8) & ~0x7) )
-#define __swp_entry(type, offset)         ((swp_entry_t) { (type) | \
-					    ((offset &  0x7) << 6) | \
-					    ((offset & ~0x7) << 8) })
+#define __swp_offset(x)                   ( (((x).val >> 5) & 0x7) | \
+					  (((x).val >> 10) << 3) )
+#define __swp_entry(type, offset)         ((swp_entry_t) { \
+					    ((type) & 0x1f) | \
+					    ((offset & 0x7) << 5) | \
+					    ((offset >> 3) << 10) })
 #define __pte_to_swp_entry(pte)		((swp_entry_t) { pte_val(pte) })
 #define __swp_entry_to_pte(x)		((pte_t) { (x).val })
+
+static inline int pte_swp_exclusive(pte_t pte)
+{
+	return pte_val(pte) & _PAGE_SWP_EXCLUSIVE;
+}
+
+static inline pte_t pte_swp_mkexclusive(pte_t pte)
+{
+	pte_val(pte) |= _PAGE_SWP_EXCLUSIVE;
+	return pte;
+}
+
+static inline pte_t pte_swp_clear_exclusive(pte_t pte)
+{
+	pte_val(pte) &= ~_PAGE_SWP_EXCLUSIVE;
+	return pte;
+}
 
 static inline int ptep_test_and_clear_young(struct vm_area_struct *vma, unsigned long addr, pte_t *ptep)
 {
@@ -431,7 +459,7 @@ static inline int ptep_test_and_clear_young(struct vm_area_struct *vma, unsigned
 	if (!pte_young(pte)) {
 		return 0;
 	}
-	set_pte_at(vma->vm_mm, addr, ptep, pte_mkold(pte));
+	set_pte(ptep, pte_mkold(pte));
 	return 1;
 }
 
@@ -441,20 +469,17 @@ static inline pte_t ptep_get_and_clear(struct mm_struct *mm, unsigned long addr,
 	pte_t old_pte;
 
 	old_pte = *ptep;
-	set_pte_at(mm, addr, ptep, __pte(0));
+	set_pte(ptep, __pte(0));
 
 	return old_pte;
 }
 
 static inline void ptep_set_wrprotect(struct mm_struct *mm, unsigned long addr, pte_t *ptep)
 {
-	set_pte_at(mm, addr, ptep, pte_wrprotect(*ptep));
+	set_pte(ptep, pte_wrprotect(*ptep));
 }
 
 #define pte_same(A,B)	(pte_val(A) == pte_val(B))
-
-struct seq_file;
-extern void arch_report_meminfo(struct seq_file *m);
 
 #endif /* !__ASSEMBLY__ */
 

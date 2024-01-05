@@ -29,11 +29,13 @@
 #include <linux/etherdevice.h>
 #include <linux/module.h>
 #include <linux/netdevice.h>
+#include <linux/of.h>
+#include <linux/of_platform.h>
 #include <linux/of_mdio.h>
 #include <linux/of_net.h>
-#include <linux/of_platform.h>
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
+#include <linux/platform_device.h>
 #include <linux/skbuff.h>
 #include <linux/math64.h>
 #include <linux/phy.h>
@@ -44,7 +46,6 @@
 #include <linux/net_tstamp.h>
 #include <linux/random.h>
 #include <net/sock.h>
-#include <linux/clk.h>
 #include <linux/ptp/ptp_xilinx.h>
 #include <linux/workqueue.h>
 
@@ -596,9 +597,9 @@ static int axienet_device_reset(struct net_device *ndev)
 	struct axienet_local *lp = netdev_priv(ndev);
 	int ret;
 	u32 err, val;
+	u8 maj, minor;
 	struct axienet_dma_q *q;
 	u32 i;
-	u8 maj, minor;
 
 	if (lp->axienet_config->mactype == XAXIENET_10G_25G ||
 	    lp->axienet_config->mactype == XAXIENET_1G_10G_25G) {
@@ -1042,7 +1043,7 @@ static inline int axienet_check_tx_bd_space(struct axienet_dma_q *q,
  *	    NETDEV_TX_BUSY, if timestamp FIFO has no vacancy
  */
 static int axienet_create_tsheader(u8 *buf, u8 msg_type,
-				   struct axienet_dma_q *q)
+				    struct axienet_dma_q *q)
 {
 	struct axienet_local *lp = q->lp;
 #ifdef CONFIG_AXIENET_HAS_MCDMA
@@ -1207,7 +1208,7 @@ static int axienet_skb_tstsmp(struct sk_buff **__skb, struct axienet_dma_q *q,
 	} else if ((skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) &&
 		   (lp->axienet_config->mactype == XAXIENET_10G_25G ||
 		   lp->axienet_config->mactype == XAXIENET_MRMAC)) {
-		cur_p->ptp_tx_ts_tag = prandom_u32_max(XAXIFIFO_TXTS_TAG_MAX) + 1;
+		cur_p->ptp_tx_ts_tag = get_random_u32_below(XAXIFIFO_TXTS_TAG_MAX) + 1;
 			dev_dbg(lp->dev, "tx_tag:[%04x]\n",
 				cur_p->ptp_tx_ts_tag);
 			if (lp->tstamp_config.tx_type == HWTSTAMP_TX_ONESTEP_SYNC ||
@@ -1235,8 +1236,8 @@ static int axienet_skb_tstsmp(struct sk_buff **__skb, struct axienet_dma_q *q,
 				}
 			} else {
 				if (axienet_create_tsheader(lp->tx_ptpheader,
-							    TX_TS_OP_TWOSTEP,
-							    q))
+											TX_TS_OP_TWOSTEP,
+											q))
 					return NETDEV_TX_BUSY;
 				skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
 				cur_p->ptp_tx_skb = (phys_addr_t)skb_get(skb);
@@ -2691,7 +2692,7 @@ static int axienet_ethtools_get_ts_info(struct net_device *ndev,
 	info->phc_index = lp->phc_index;
 
 	if (lp->axienet_config->mactype == XAXIENET_MRMAC ||
-	    lp->axienet_config->mactype == XAXIENET_10G_25G) {
+		lp->axienet_config->mactype == XAXIENET_10G_25G) {
 		struct device_node *np;
 		struct xlnx_ptp_timer *timer = NULL;
 		struct platform_device *ptpnode;
@@ -2968,7 +2969,7 @@ static void axienet_pcs_an_restart(struct phylink_pcs *pcs)
 	phylink_mii_c22_pcs_an_restart(pcs_phy);
 }
 
-static int axienet_pcs_config(struct phylink_pcs *pcs, unsigned int mode,
+static int axienet_pcs_config(struct phylink_pcs *pcs, unsigned int neg_mode,
 			      phy_interface_t interface,
 			      const unsigned long *advertising,
 			      bool permit_pause_to_mac)
@@ -2990,7 +2991,8 @@ static int axienet_pcs_config(struct phylink_pcs *pcs, unsigned int mode,
 		}
 	}
 
-	ret = phylink_mii_c22_pcs_config(pcs_phy, mode, interface, advertising);
+	ret = phylink_mii_c22_pcs_config(pcs_phy, interface, advertising,
+					 neg_mode);
 	if (ret < 0)
 		netdev_warn(ndev, "Failed to configure PCS: %d\n", ret);
 
@@ -3076,7 +3078,6 @@ static void axienet_mac_link_up(struct phylink_config *config,
 }
 
 static const struct phylink_mac_ops axienet_phylink_ops = {
-	.validate = phylink_generic_validate,
 	.mac_select_pcs = axienet_mac_select_pcs,
 	.mac_config = axienet_mac_config,
 	.mac_link_down = axienet_mac_link_down,
@@ -3849,6 +3850,7 @@ static int axienet_probe(struct platform_device *pdev)
 		}
 		of_node_put(np);
 		lp->pcs.ops = &axienet_pcs_ops;
+		lp->pcs.neg_mode = true;
 		lp->pcs.poll = true;
 	}
 
@@ -3962,12 +3964,48 @@ static void axienet_shutdown(struct platform_device *pdev)
 	rtnl_unlock();
 }
 
+static int axienet_suspend(struct device *dev)
+{
+	struct net_device *ndev = dev_get_drvdata(dev);
+
+	if (!netif_running(ndev))
+		return 0;
+
+	netif_device_detach(ndev);
+
+	rtnl_lock();
+	axienet_stop(ndev);
+	rtnl_unlock();
+
+	return 0;
+}
+
+static int axienet_resume(struct device *dev)
+{
+	struct net_device *ndev = dev_get_drvdata(dev);
+
+	if (!netif_running(ndev))
+		return 0;
+
+	rtnl_lock();
+	axienet_open(ndev);
+	rtnl_unlock();
+
+	netif_device_attach(ndev);
+
+	return 0;
+}
+
+static DEFINE_SIMPLE_DEV_PM_OPS(axienet_pm_ops,
+				axienet_suspend, axienet_resume);
+
 static struct platform_driver axienet_driver = {
 	.probe = axienet_probe,
 	.remove = axienet_remove,
 	.shutdown = axienet_shutdown,
 	.driver = {
 		 .name = "xilinx_axienet",
+		 .pm = &axienet_pm_ops,
 		 .of_match_table = axienet_of_match,
 	},
 };

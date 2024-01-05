@@ -252,6 +252,7 @@ static int tps6586x_rtc_probe(struct platform_device *pdev)
 
 	rtc->rtc->ops = &tps6586x_rtc_ops;
 	rtc->rtc->range_max = (1ULL << 30) - 1; /* 30-bit seconds */
+	rtc->rtc->alarm_offset_max = ALM1_VALID_RANGE_IN_SEC;
 	rtc->rtc->start_secs = mktime64(2009, 1, 1, 0, 0, 0);
 	rtc->rtc->set_start_time = true;
 
@@ -279,13 +280,12 @@ fail_rtc_register:
 	return ret;
 };
 
-static int tps6586x_rtc_remove(struct platform_device *pdev)
+static void tps6586x_rtc_remove(struct platform_device *pdev)
 {
 	struct device *tps_dev = to_tps6586x_dev(&pdev->dev);
 
 	tps6586x_update(tps_dev, RTC_CTRL, 0,
 		RTC_ENABLE | OSC_SRC_SEL | PRE_BYPASS | CL_SEL_MASK);
-	return 0;
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -317,7 +317,7 @@ static struct platform_driver tps6586x_rtc_driver = {
 		.pm	= &tps6586x_pm_ops,
 	},
 	.probe	= tps6586x_rtc_probe,
-	.remove	= tps6586x_rtc_remove,
+	.remove_new = tps6586x_rtc_remove,
 };
 module_platform_driver(tps6586x_rtc_driver);
 

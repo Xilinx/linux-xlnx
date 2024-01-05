@@ -3,7 +3,7 @@
  *
  * Name: acpredef - Information table for ACPI predefined methods and objects
  *
- * Copyright (C) 2000 - 2022, Intel Corp.
+ * Copyright (C) 2000 - 2023, Intel Corp.
  *
  *****************************************************************************/
 
@@ -439,6 +439,9 @@ const union acpi_predefined_info acpi_gbl_predefined_methods[] = {
 
 	{{"_DOS", METHOD_1ARGS(ACPI_TYPE_INTEGER),
 	  METHOD_NO_RETURN_VALUE}},
+
+	{{"_DSC", METHOD_0ARGS,
+	  METHOD_RETURNS(ACPI_RTYPE_INTEGER)}},
 
 	{{"_DSD", METHOD_0ARGS,	/* ACPI 6.0 */
 	  METHOD_RETURNS(ACPI_RTYPE_PACKAGE)}},	/* Variable-length (Pkgs) each: 1 Buf, 1 Pkg */

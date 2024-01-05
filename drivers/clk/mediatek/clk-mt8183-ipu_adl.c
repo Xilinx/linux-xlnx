@@ -38,14 +38,15 @@ static const struct of_device_id of_match_clk_mt8183_ipu_adl[] = {
 		/* sentinel */
 	}
 };
+MODULE_DEVICE_TABLE(of, of_match_clk_mt8183_ipu_adl);
 
 static struct platform_driver clk_mt8183_ipu_adl_drv = {
 	.probe = mtk_clk_simple_probe,
-	.remove = mtk_clk_simple_remove,
+	.remove_new = mtk_clk_simple_remove,
 	.driver = {
 		.name = "clk-mt8183-ipu_adl",
 		.of_match_table = of_match_clk_mt8183_ipu_adl,
 	},
 };
-
-builtin_platform_driver(clk_mt8183_ipu_adl_drv);
+module_platform_driver(clk_mt8183_ipu_adl_drv);
+MODULE_LICENSE("GPL");

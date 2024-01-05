@@ -26,8 +26,8 @@
 #include <linux/seq_file.h>
 #include <linux/initrd.h>
 #include <linux/fsl_devices.h>
-#include <linux/of_platform.h>
-#include <linux/of_device.h>
+#include <linux/of.h>
+#include <linux/of_address.h>
 #include <linux/phy.h>
 #include <linux/memblock.h>
 #include <linux/fsl/guts.h>
@@ -48,13 +48,6 @@
 #include "smp.h"
 
 #include "mpc85xx.h"
-
-#undef DEBUG
-#ifdef DEBUG
-#define DBG(fmt...) udbg_printf(fmt)
-#else
-#define DBG(fmt...)
-#endif
 
 #if IS_BUILTIN(CONFIG_PHYLIB)
 
@@ -339,37 +332,25 @@ static void __init mpc85xx_mds_pic_init(void)
 	mpic_init(mpic);
 }
 
-static int __init mpc85xx_mds_probe(void)
-{
-	return of_machine_is_compatible("MPC85xxMDS");
-}
-
 define_machine(mpc8568_mds) {
 	.name		= "MPC8568 MDS",
-	.probe		= mpc85xx_mds_probe,
+	.compatible	= "MPC85xxMDS",
 	.setup_arch	= mpc85xx_mds_setup_arch,
 	.init_IRQ	= mpc85xx_mds_pic_init,
 	.get_irq	= mpic_get_irq,
-	.calibrate_decr	= generic_calibrate_decr,
 	.progress	= udbg_progress,
 #ifdef CONFIG_PCI
 	.pcibios_fixup_bus	= fsl_pcibios_fixup_bus,
 	.pcibios_fixup_phb      = fsl_pcibios_fixup_phb,
 #endif
 };
-
-static int __init mpc8569_mds_probe(void)
-{
-	return of_machine_is_compatible("fsl,MPC8569EMDS");
-}
 
 define_machine(mpc8569_mds) {
 	.name		= "MPC8569 MDS",
-	.probe		= mpc8569_mds_probe,
+	.compatible	= "fsl,MPC8569EMDS",
 	.setup_arch	= mpc85xx_mds_setup_arch,
 	.init_IRQ	= mpc85xx_mds_pic_init,
 	.get_irq	= mpic_get_irq,
-	.calibrate_decr	= generic_calibrate_decr,
 	.progress	= udbg_progress,
 #ifdef CONFIG_PCI
 	.pcibios_fixup_bus	= fsl_pcibios_fixup_bus,
@@ -377,19 +358,12 @@ define_machine(mpc8569_mds) {
 #endif
 };
 
-static int __init p1021_mds_probe(void)
-{
-	return of_machine_is_compatible("fsl,P1021MDS");
-
-}
-
 define_machine(p1021_mds) {
 	.name		= "P1021 MDS",
-	.probe		= p1021_mds_probe,
+	.compatible	= "fsl,P1021MDS",
 	.setup_arch	= mpc85xx_mds_setup_arch,
 	.init_IRQ	= mpc85xx_mds_pic_init,
 	.get_irq	= mpic_get_irq,
-	.calibrate_decr	= generic_calibrate_decr,
 	.progress	= udbg_progress,
 #ifdef CONFIG_PCI
 	.pcibios_fixup_bus	= fsl_pcibios_fixup_bus,

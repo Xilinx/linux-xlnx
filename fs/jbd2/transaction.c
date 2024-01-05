@@ -935,19 +935,15 @@ static void warn_dirty_buffer(struct buffer_head *bh)
 /* Call t_frozen trigger and copy buffer data into jh->b_frozen_data. */
 static void jbd2_freeze_jh_data(struct journal_head *jh)
 {
-	struct page *page;
-	int offset;
 	char *source;
 	struct buffer_head *bh = jh2bh(jh);
 
 	J_EXPECT_JH(jh, buffer_uptodate(bh), "Possible IO failure.\n");
-	page = bh->b_page;
-	offset = offset_in_page(bh->b_data);
-	source = kmap_atomic(page);
+	source = kmap_local_folio(bh->b_folio, bh_offset(bh));
 	/* Fire data frozen trigger just before we copy the data */
-	jbd2_buffer_frozen_trigger(jh, source + offset, jh->b_triggers);
-	memcpy(jh->b_frozen_data, source + offset, bh->b_size);
-	kunmap_atomic(source);
+	jbd2_buffer_frozen_trigger(jh, source, jh->b_triggers);
+	memcpy(jh->b_frozen_data, source, bh->b_size);
+	kunmap_local(source);
 
 	/*
 	 * Now that the frozen data is saved off, we need to store any matching
@@ -1010,36 +1006,28 @@ repeat:
 	 * ie. locked but not dirty) or tune2fs (which may actually have
 	 * the buffer dirtied, ugh.)  */
 
-	if (buffer_dirty(bh)) {
+	if (buffer_dirty(bh) && jh->b_transaction) {
+		warn_dirty_buffer(bh);
 		/*
-		 * First question: is this buffer already part of the current
-		 * transaction or the existing committing transaction?
-		 */
-		if (jh->b_transaction) {
-			J_ASSERT_JH(jh,
-				jh->b_transaction == transaction ||
-				jh->b_transaction ==
-					journal->j_committing_transaction);
-			if (jh->b_next_transaction)
-				J_ASSERT_JH(jh, jh->b_next_transaction ==
-							transaction);
-			warn_dirty_buffer(bh);
-		}
-		/*
-		 * In any case we need to clean the dirty flag and we must
-		 * do it under the buffer lock to be sure we don't race
-		 * with running write-out.
+		 * We need to clean the dirty flag and we must do it under the
+		 * buffer lock to be sure we don't race with running write-out.
 		 */
 		JBUFFER_TRACE(jh, "Journalling dirty buffer");
 		clear_buffer_dirty(bh);
+		/*
+		 * The buffer is going to be added to BJ_Reserved list now and
+		 * nothing guarantees jbd2_journal_dirty_metadata() will be
+		 * ever called for it. So we need to set jbddirty bit here to
+		 * make sure the buffer is dirtied and written out when the
+		 * journaling machinery is done with it.
+		 */
 		set_buffer_jbddirty(bh);
 	}
-
-	unlock_buffer(bh);
 
 	error = -EROFS;
 	if (is_handle_aborted(handle)) {
 		spin_unlock(&jh->b_state_lock);
+		unlock_buffer(bh);
 		goto out;
 	}
 	error = 0;
@@ -1049,8 +1037,10 @@ repeat:
 	 * b_next_transaction points to it
 	 */
 	if (jh->b_transaction == transaction ||
-	    jh->b_next_transaction == transaction)
+	    jh->b_next_transaction == transaction) {
+		unlock_buffer(bh);
 		goto done;
+	}
 
 	/*
 	 * this is the first time this transaction is touching this buffer,
@@ -1074,10 +1064,24 @@ repeat:
 		 */
 		smp_wmb();
 		spin_lock(&journal->j_list_lock);
+		if (test_clear_buffer_dirty(bh)) {
+			/*
+			 * Execute buffer dirty clearing and jh->b_transaction
+			 * assignment under journal->j_list_lock locked to
+			 * prevent bh being removed from checkpoint list if
+			 * the buffer is in an intermediate state (not dirty
+			 * and jh->b_transaction is NULL).
+			 */
+			JBUFFER_TRACE(jh, "Journalling dirty buffer");
+			set_buffer_jbddirty(bh);
+		}
 		__jbd2_journal_file_buffer(jh, transaction, BJ_Reserved);
 		spin_unlock(&journal->j_list_lock);
+		unlock_buffer(bh);
 		goto done;
 	}
+	unlock_buffer(bh);
+
 	/*
 	 * If there is already a copy-out version of this buffer, then we don't
 	 * need to make another one
@@ -1776,8 +1780,7 @@ int jbd2_journal_forget(handle_t *handle, struct buffer_head *bh)
 		 * Otherwise, if the buffer has been written to disk,
 		 * it is safe to remove the checkpoint and drop it.
 		 */
-		if (!buffer_dirty(bh)) {
-			__jbd2_journal_remove_checkpoint(jh);
+		if (jbd2_journal_try_remove_checkpoint(jh) >= 0) {
 			spin_unlock(&journal->j_list_lock);
 			goto drop;
 		}
@@ -2092,35 +2095,6 @@ void jbd2_journal_unfile_buffer(journal_t *journal, struct journal_head *jh)
 	__brelse(bh);
 }
 
-/*
- * Called from jbd2_journal_try_to_free_buffers().
- *
- * Called under jh->b_state_lock
- */
-static void
-__journal_try_to_free_buffer(journal_t *journal, struct buffer_head *bh)
-{
-	struct journal_head *jh;
-
-	jh = bh2jh(bh);
-
-	if (buffer_locked(bh) || buffer_dirty(bh))
-		goto out;
-
-	if (jh->b_next_transaction != NULL || jh->b_transaction != NULL)
-		goto out;
-
-	spin_lock(&journal->j_list_lock);
-	if (jh->b_cp_transaction != NULL) {
-		/* written-back checkpointed metadata buffer */
-		JBUFFER_TRACE(jh, "remove from checkpoint list");
-		__jbd2_journal_remove_checkpoint(jh);
-	}
-	spin_unlock(&journal->j_list_lock);
-out:
-	return;
-}
-
 /**
  * jbd2_journal_try_to_free_buffers() - try to free page buffers.
  * @journal: journal for operation
@@ -2178,7 +2152,13 @@ bool jbd2_journal_try_to_free_buffers(journal_t *journal, struct folio *folio)
 			continue;
 
 		spin_lock(&jh->b_state_lock);
-		__journal_try_to_free_buffer(journal, bh);
+		if (!jh->b_transaction && !jh->b_next_transaction) {
+			spin_lock(&journal->j_list_lock);
+			/* Remove written-back checkpointed metadata buffer */
+			if (jh->b_cp_transaction != NULL)
+				jbd2_journal_try_remove_checkpoint(jh);
+			spin_unlock(&journal->j_list_lock);
+		}
 		spin_unlock(&jh->b_state_lock);
 		jbd2_journal_put_journal_head(jh);
 		if (buffer_jbd(bh))
@@ -2379,6 +2359,9 @@ static int journal_unmap_buffer(journal_t *journal, struct buffer_head *bh,
 			spin_unlock(&jh->b_state_lock);
 			write_unlock(&journal->j_state_lock);
 			jbd2_journal_put_journal_head(jh);
+			/* Already zapped buffer? Nothing to do... */
+			if (!bh->b_bdev)
+				return 0;
 			return -EBUSY;
 		}
 		/*

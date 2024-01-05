@@ -6,8 +6,7 @@
 #include <drm/drm_fourcc.h>
 #include <linux/clk.h>
 #include <linux/component.h>
-#include <linux/of_address.h>
-#include <linux/of_device.h>
+#include <linux/mod_devicetable.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/soc/mediatek/mtk-cmdq.h>
@@ -61,6 +60,20 @@
 
 #define RDMA_CSC_FULL709_TO_RGB			5
 #define RDMA_CSC_BT601_TO_RGB			6
+
+static const u32 formats[] = {
+	DRM_FORMAT_XRGB8888,
+	DRM_FORMAT_ARGB8888,
+	DRM_FORMAT_BGRX8888,
+	DRM_FORMAT_BGRA8888,
+	DRM_FORMAT_ABGR8888,
+	DRM_FORMAT_XBGR8888,
+	DRM_FORMAT_RGB888,
+	DRM_FORMAT_BGR888,
+	DRM_FORMAT_RGB565,
+	DRM_FORMAT_UYVY,
+	DRM_FORMAT_YUYV,
+};
 
 enum rdma_format {
 	RDMA_INPUT_FORMAT_RGB565 = 0,
@@ -219,6 +232,16 @@ void mtk_mdp_rdma_config(struct device *dev, struct mtk_mdp_rdma_cfg *cfg,
 			   MDP_RDMA_MF_CLIP_SIZE, FLD_MF_CLIP_H);
 }
 
+const u32 *mtk_mdp_rdma_get_formats(struct device *dev)
+{
+	return formats;
+}
+
+size_t mtk_mdp_rdma_get_num_formats(struct device *dev)
+{
+	return ARRAY_SIZE(formats);
+}
+
 int mtk_mdp_rdma_clk_enable(struct device *dev)
 {
 	struct mtk_mdp_rdma *rdma = dev_get_drvdata(dev);
@@ -291,11 +314,10 @@ static int mtk_mdp_rdma_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int mtk_mdp_rdma_remove(struct platform_device *pdev)
+static void mtk_mdp_rdma_remove(struct platform_device *pdev)
 {
 	component_del(&pdev->dev, &mtk_mdp_rdma_component_ops);
 	pm_runtime_disable(&pdev->dev);
-	return 0;
 }
 
 static const struct of_device_id mtk_mdp_rdma_driver_dt_match[] = {
@@ -306,7 +328,7 @@ MODULE_DEVICE_TABLE(of, mtk_mdp_rdma_driver_dt_match);
 
 struct platform_driver mtk_mdp_rdma_driver = {
 	.probe = mtk_mdp_rdma_probe,
-	.remove = mtk_mdp_rdma_remove,
+	.remove_new = mtk_mdp_rdma_remove,
 	.driver = {
 		.name = "mediatek-mdp-rdma",
 		.owner = THIS_MODULE,

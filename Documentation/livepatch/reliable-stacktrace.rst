@@ -40,7 +40,7 @@ Principally, the reliable stacktrace function must ensure that either:
 .. note::
    In some cases it is legitimate to omit specific functions from the trace,
    but all other functions must be reported. These cases are described in
-   futher detail below.
+   further detail below.
 
 Secondly, the reliable stacktrace function must be robust to cases where
 the stack or other unwind state is corrupt or otherwise unreliable. The
@@ -183,7 +183,7 @@ trampoline or return trampoline. For example, considering the x86_64
 .. code-block:: none
 
    SYM_CODE_START(return_to_handler)
-           UNWIND_HINT_EMPTY
+           UNWIND_HINT_UNDEFINED
            subq  $24, %rsp
 
            /* Save the return values */

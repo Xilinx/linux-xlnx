@@ -22,9 +22,10 @@
 #include <linux/io.h>
 #include <linux/usb.h>
 #include <linux/usb/hcd.h>
+#include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
-#include <linux/of_platform.h>
+#include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/gpio/consumer.h>
 #include <soc/fsl/qe/qe.h>
@@ -651,7 +652,7 @@ static int of_fhci_probe(struct platform_device *ofdev)
 	}
 
 	for (j = 0; j < NUM_PINS; j++) {
-		fhci->pins[j] = qe_pin_request(node, j);
+		fhci->pins[j] = qe_pin_request(dev, j);
 		if (IS_ERR(fhci->pins[j])) {
 			ret = PTR_ERR(fhci->pins[j]);
 			dev_err(dev, "can't get pin %d: %d\n", j, ret);
@@ -676,7 +677,7 @@ static int of_fhci_probe(struct platform_device *ofdev)
 
 	/* USB Host interrupt. */
 	usb_irq = irq_of_parse_and_map(node, 0);
-	if (usb_irq == NO_IRQ) {
+	if (!usb_irq) {
 		dev_err(dev, "could not get usb irq\n");
 		ret = -EINVAL;
 		goto err_usb_irq;
@@ -757,7 +758,7 @@ err_regs:
 	return ret;
 }
 
-static int fhci_remove(struct device *dev)
+static void fhci_remove(struct device *dev)
 {
 	struct usb_hcd *hcd = dev_get_drvdata(dev);
 	struct fhci_hcd *fhci = hcd_to_fhci(hcd);
@@ -771,12 +772,11 @@ static int fhci_remove(struct device *dev)
 		qe_pin_free(fhci->pins[j]);
 	fhci_dfs_destroy(fhci);
 	usb_put_hcd(hcd);
-	return 0;
 }
 
-static int of_fhci_remove(struct platform_device *ofdev)
+static void of_fhci_remove(struct platform_device *ofdev)
 {
-	return fhci_remove(&ofdev->dev);
+	fhci_remove(&ofdev->dev);
 }
 
 static const struct of_device_id of_fhci_match[] = {
@@ -791,7 +791,7 @@ static struct platform_driver of_fhci_driver = {
 		.of_match_table = of_fhci_match,
 	},
 	.probe		= of_fhci_probe,
-	.remove		= of_fhci_remove,
+	.remove_new	= of_fhci_remove,
 };
 
 module_platform_driver(of_fhci_driver);

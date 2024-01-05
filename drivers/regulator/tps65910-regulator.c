@@ -17,7 +17,6 @@
 #include <linux/regulator/driver.h>
 #include <linux/regulator/machine.h>
 #include <linux/slab.h>
-#include <linux/gpio.h>
 #include <linux/mfd/tps65910.h>
 #include <linux/regulator/of_regulator.h>
 
@@ -1255,6 +1254,7 @@ static void tps65910_shutdown(struct platform_device *pdev)
 static struct platform_driver tps65910_driver = {
 	.driver = {
 		.name = "tps65910-pmic",
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 	},
 	.probe = tps65910_probe,
 	.shutdown = tps65910_shutdown,

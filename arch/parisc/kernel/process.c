@@ -97,18 +97,12 @@ void machine_restart(char *cmd)
 
 }
 
-void (*chassis_power_off)(void);
-
 /*
  * This routine is called from sys_reboot to actually turn off the
  * machine 
  */
 void machine_power_off(void)
 {
-	/* If there is a registered power off handler, call it. */
-	if (chassis_power_off)
-		chassis_power_off();
-
 	/* Put the soft power button back under hardware control.
 	 * If the user had already pressed the power button, the
 	 * following call will immediately power off. */
@@ -122,13 +116,18 @@ void machine_power_off(void)
 	/* It seems we have no way to power the system off via
 	 * software. The user has to press the button himself. */
 
-	printk(KERN_EMERG "System shut down completed.\n"
-	       "Please power this system off now.");
+	printk("Power off or press RETURN to reboot.\n");
 
 	/* prevent soft lockup/stalled CPU messages for endless loop. */
 	rcu_sysrq_start();
 	lockup_detector_soft_poweroff();
-	for (;;);
+	while (1) {
+		/* reboot if user presses RETURN key */
+		if (pdc_iodc_getc() == 13) {
+			printk("Rebooting...\n");
+			machine_restart(NULL);
+		}
+	}
 }
 
 void (*pm_power_off)(void);
@@ -159,15 +158,15 @@ EXPORT_SYMBOL(running_on_qemu);
 /*
  * Called from the idle thread for the CPU which has been shutdown.
  */
-void arch_cpu_idle_dead(void)
+void __noreturn arch_cpu_idle_dead(void)
 {
 #ifdef CONFIG_HOTPLUG_CPU
 	idle_task_exit();
 
 	local_irq_disable();
 
-	/* Tell __cpu_die() that this CPU is now safe to dispose of. */
-	(void)cpu_report_death();
+	/* Tell the core that this CPU is now safe to dispose of. */
+	cpuhp_ap_report_dead();
 
 	/* Ensure that the cache lines are written out. */
 	flush_cache_all_local();
@@ -183,8 +182,6 @@ void arch_cpu_idle_dead(void)
 
 void __cpuidle arch_cpu_idle(void)
 {
-	raw_local_irq_enable();
-
 	/* nop on real hardware, qemu will idle sleep. */
 	asm volatile("or %%r10,%%r10,%%r10\n":::);
 }
@@ -280,18 +277,4 @@ __get_wchan(struct task_struct *p)
 			return ip;
 	} while (count++ < MAX_UNWIND_ENTRIES);
 	return 0;
-}
-
-static inline unsigned long brk_rnd(void)
-{
-	return (get_random_u32() & BRK_RND_MASK) << PAGE_SHIFT;
-}
-
-unsigned long arch_randomize_brk(struct mm_struct *mm)
-{
-	unsigned long ret = PAGE_ALIGN(mm->brk + brk_rnd());
-
-	if (ret < mm->brk)
-		return mm->brk;
-	return ret;
 }

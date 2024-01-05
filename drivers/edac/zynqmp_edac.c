@@ -1,27 +1,25 @@
-// SPDX-License-Identifier: GPL-2.0+
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Xilinx ZynqMP OCM ECC Driver
- * This driver is based on mpc85xx_edac.c drivers
  *
- * Copyright (C) 2016 - 2021 Xilinx, Inc.
+ * Copyright (C) 2022 Advanced Micro Devices, Inc.
  */
 
 #include <linux/edac.h>
-#include <linux/module.h>
-#include <linux/platform_device.h>
 #include <linux/interrupt.h>
+#include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
+#include <linux/platform_device.h>
 
 #include "edac_module.h"
 
 #define ZYNQMP_OCM_EDAC_MSG_SIZE	256
 
 #define ZYNQMP_OCM_EDAC_STRING	"zynqmp_ocm"
-#define ZYNQMP_OCM_EDAC_MOD_VER	"1"
 
-/* Controller registers */
-#define CTRL_OFST		0x0
+/* Error/Interrupt registers */
+#define ERR_CTRL_OFST		0x0
 #define OCM_ISR_OFST		0x04
 #define OCM_IMR_OFST		0x08
 #define OCM_IEN_OFST		0x0C
@@ -57,35 +55,40 @@
 #define OCM_FID3_OFST		0x58
 #define OCM_FIC_OFST		0x74
 
+#define UE_MAX_BITPOS_LOWER	31
+#define UE_MIN_BITPOS_UPPER	32
+#define UE_MAX_BITPOS_UPPER	63
+
 /* Interrupt masks */
-#define OCM_CEINTR_MASK	0x40
-#define OCM_UEINTR_MASK	0x80
-#define OCM_ECC_ENABLE_MASK	0x1
-#define OCM_FICOUNT_MASK	0x0FFFFFFF
-#define OCM_BASEVAL	0xFFFC0000
-#define EDAC_DEVICE "ZynqMP-OCM"
-#define OCM_CEUE_MASK	0xC0
+#define OCM_CEINTR_MASK		BIT(6)
+#define OCM_UEINTR_MASK		BIT(7)
+#define OCM_ECC_ENABLE_MASK	BIT(0)
+
+#define OCM_FICOUNT_MASK	GENMASK(23, 0)
+#define OCM_NUM_UE_BITPOS	2
+#define OCM_BASEVAL		0xFFFC0000
+#define EDAC_DEVICE		"ZynqMP-OCM"
 
 /**
  * struct ecc_error_info - ECC error log information
  * @addr:	Fault generated at this address
- * @data0:	Generated fault data
- * @data1:	Generated fault data
+ * @fault_lo:	Generated fault data (lower 32-bit)
+ * @fault_hi:	Generated fault data (upper 32-bit)
  */
 struct ecc_error_info {
 	u32 addr;
-	u32 data0;
-	u32 data1;
+	u32 fault_lo;
+	u32 fault_hi;
 };
 
 /**
- * struct zynqmp_ocm_ecc_status - ECC status information to report
+ * struct ecc_status - ECC status information to report
  * @ce_cnt:	Correctable error count
  * @ue_cnt:	Uncorrectable error count
  * @ceinfo:	Correctable error log information
  * @ueinfo:	Uncorrectable error log information
  */
-struct zynqmp_ocm_ecc_status {
+struct ecc_status {
 	u32 ce_cnt;
 	u32 ue_cnt;
 	struct ecc_error_info ceinfo;
@@ -93,86 +96,82 @@ struct zynqmp_ocm_ecc_status {
 };
 
 /**
- * struct zynqmp_ocm_edac_priv - DDR memory controller private instance data
- * @baseaddr:	Base address of the DDR controller
+ * struct edac_priv - OCM private instance data
+ * @baseaddr:	Base address of the OCM
  * @message:	Buffer for framing the event specific info
  * @stat:	ECC status information
- * @p_data:	Pointer to platform data
  * @ce_cnt:	Correctable Error count
  * @ue_cnt:	Uncorrectable Error count
+ * @debugfs_dir:	Directory entry for debugfs
  * @ce_bitpos:	Bit position for Correctable Error
- * @ue_bitpos0:	First bit position for Uncorrectable Error
- * @ue_bitpos1:	Second bit position for Uncorrectable Error
+ * @ue_bitpos:	Array to store UnCorrectable Error bit positions
+ * @fault_injection_cnt: Fault Injection Counter value
  */
-struct zynqmp_ocm_edac_priv {
+struct edac_priv {
 	void __iomem *baseaddr;
 	char message[ZYNQMP_OCM_EDAC_MSG_SIZE];
-	struct zynqmp_ocm_ecc_status stat;
-	const struct zynqmp_ocm_platform_data *p_data;
+	struct ecc_status stat;
 	u32 ce_cnt;
 	u32 ue_cnt;
+#ifdef CONFIG_EDAC_DEBUG
+	struct dentry *debugfs_dir;
 	u8 ce_bitpos;
-	u8 ue_bitpos0;
-	u8 ue_bitpos1;
+	u8 ue_bitpos[OCM_NUM_UE_BITPOS];
+	u32 fault_injection_cnt;
+#endif
 };
 
 /**
- * zynqmp_ocm_edac_geterror_info - Get the current ecc error info
- * @base:	Pointer to the base address of the ddr memory controller
- * @p:		Pointer to the ocm ecc status structure
+ * get_error_info - Get the current ECC error info
+ * @base:	Pointer to the base address of the OCM
+ * @p:		Pointer to the OCM ECC status structure
  * @mask:	Status register mask value
  *
- * Determines there is any ecc error or not
+ * Determines there is any ECC error or not
  *
  */
-static void zynqmp_ocm_edac_geterror_info(void __iomem *base,
-				    struct zynqmp_ocm_ecc_status *p, int mask)
+static void get_error_info(void __iomem *base, struct ecc_status *p, int mask)
 {
 	if (mask & OCM_CEINTR_MASK) {
 		p->ce_cnt++;
-		p->ceinfo.data0 = readl(base + CE_FFD0_OFST);
-		p->ceinfo.data1 = readl(base + CE_FFD1_OFST);
+		p->ceinfo.fault_lo = readl(base + CE_FFD0_OFST);
+		p->ceinfo.fault_hi = readl(base + CE_FFD1_OFST);
 		p->ceinfo.addr = (OCM_BASEVAL | readl(base + CE_FFA_OFST));
 		writel(ECC_CTRL_CLR_CE_ERR, base + OCM_ISR_OFST);
 	} else if (mask & OCM_UEINTR_MASK) {
 		p->ue_cnt++;
-		p->ueinfo.data0 = readl(base + UE_FFD0_OFST);
-		p->ueinfo.data1 = readl(base + UE_FFD1_OFST);
+		p->ueinfo.fault_lo = readl(base + UE_FFD0_OFST);
+		p->ueinfo.fault_hi = readl(base + UE_FFD1_OFST);
 		p->ueinfo.addr = (OCM_BASEVAL | readl(base + UE_FFA_OFST));
 		writel(ECC_CTRL_CLR_UE_ERR, base + OCM_ISR_OFST);
 	}
 }
 
 /**
- * zynqmp_ocm_edac_handle_error - Handle controller error types CE and UE
- * @dci:	Pointer to the edac device controller instance
- * @p:		Pointer to the ocm ecc status structure
+ * handle_error - Handle error types CE and UE
+ * @dci:	Pointer to the EDAC device instance
+ * @p:		Pointer to the OCM ECC status structure
  *
- * Handles the controller ECC correctable and un correctable error.
+ * Handles correctable and uncorrectable errors.
  */
-static void zynqmp_ocm_edac_handle_error(struct edac_device_ctl_info *dci,
-				    struct zynqmp_ocm_ecc_status *p)
+static void handle_error(struct edac_device_ctl_info *dci, struct ecc_status *p)
 {
-	struct zynqmp_ocm_edac_priv *priv = dci->pvt_info;
+	struct edac_priv *priv = dci->pvt_info;
 	struct ecc_error_info *pinf;
 
 	if (p->ce_cnt) {
 		pinf = &p->ceinfo;
 		snprintf(priv->message, ZYNQMP_OCM_EDAC_MSG_SIZE,
-			 "\n\rOCM ECC error type :%s\n\r"
-			 "Addr: [0x%X]\n\rFault Data[31:0]: [0x%X]\n\r"
-			 "Fault Data[63:32]: [0x%X]",
-			 "CE", pinf->addr, pinf->data0, pinf->data1);
+			 "\nOCM ECC error type :%s\nAddr: [0x%x]\nFault Data[0x%08x%08x]",
+			 "CE", pinf->addr, pinf->fault_hi, pinf->fault_lo);
 		edac_device_handle_ce(dci, 0, 0, priv->message);
 	}
 
 	if (p->ue_cnt) {
 		pinf = &p->ueinfo;
 		snprintf(priv->message, ZYNQMP_OCM_EDAC_MSG_SIZE,
-			 "\n\rOCM ECC error type :%s\n\r"
-			 "Addr: [0x%X]\n\rFault Data[31:0]: [0x%X]\n\r"
-			 "Fault Data[63:32]: [0x%X]",
-			 "UE", pinf->addr, pinf->data0, pinf->data1);
+			 "\nOCM ECC error type :%s\nAddr: [0x%x]\nFault Data[0x%08x%08x]",
+			 "UE", pinf->addr, pinf->fault_hi, pinf->fault_lo);
 		edac_device_handle_ue(dci, 0, 0, priv->message);
 	}
 
@@ -180,390 +179,212 @@ static void zynqmp_ocm_edac_handle_error(struct edac_device_ctl_info *dci,
 }
 
 /**
- * zynqmp_ocm_edac_intr_handler - isr routine
+ * intr_handler - ISR routine
  * @irq:        irq number
- * @dev_id:     device id poniter
+ * @dev_id:     device id pointer
  *
- * This is the Isr routine called by edac core interrupt thread.
- * Used to check and post ECC errors.
- *
- * Return: IRQ_NONE, if interrupt not set or IRQ_HANDLED otherwise
+ * Return: IRQ_NONE, if CE/UE interrupt not set or IRQ_HANDLED otherwise
  */
-static irqreturn_t zynqmp_ocm_edac_intr_handler(int irq, void *dev_id)
+static irqreturn_t intr_handler(int irq, void *dev_id)
 {
 	struct edac_device_ctl_info *dci = dev_id;
-	struct zynqmp_ocm_edac_priv *priv = dci->pvt_info;
+	struct edac_priv *priv = dci->pvt_info;
 	int regval;
 
 	regval = readl(priv->baseaddr + OCM_ISR_OFST);
-	if (!(regval & OCM_CEUE_MASK))
+	if (!(regval & (OCM_CEINTR_MASK | OCM_UEINTR_MASK))) {
+		WARN_ONCE(1, "Unhandled IRQ%d, ISR: 0x%x", irq, regval);
 		return IRQ_NONE;
+	}
 
-	zynqmp_ocm_edac_geterror_info(priv->baseaddr,
-				&priv->stat, regval);
+	get_error_info(priv->baseaddr, &priv->stat, regval);
 
 	priv->ce_cnt += priv->stat.ce_cnt;
 	priv->ue_cnt += priv->stat.ue_cnt;
-	zynqmp_ocm_edac_handle_error(dci, &priv->stat);
+	handle_error(dci, &priv->stat);
 
 	return IRQ_HANDLED;
 }
 
 /**
- * zynqmp_ocm_edac_get_eccstate - Return the controller ecc status
- * @base:	Pointer to the ddr memory controller base address
+ * get_eccstate - Return the ECC status
+ * @base:	Pointer to the OCM base address
  *
- * Get the ECC enable/disable status for the controller
+ * Get the ECC enable/disable status
  *
- * Return: ecc status 0/1.
+ * Return: ECC status 0/1.
  */
-static bool zynqmp_ocm_edac_get_eccstate(void __iomem *base)
+static bool get_eccstate(void __iomem *base)
 {
 	return readl(base + ECC_CTRL_OFST) & OCM_ECC_ENABLE_MASK;
 }
 
-static const struct of_device_id zynqmp_ocm_edac_match[] = {
-	{ .compatible = "xlnx,zynqmp-ocmc-1.0"},
-	{ /* end of table */ }
-};
-
-MODULE_DEVICE_TABLE(of, zynqmp_ocm_edac_match);
-
+#ifdef CONFIG_EDAC_DEBUG
 /**
- * zynqmp_ocm_edac_inject_fault_count_show - Shows fault injection count
- * @dci:        Pointer to the edac device struct
- * @data:       Pointer to user data
- *
- * Shows the fault injection count, once the counter reaches
- * zero, it injects errors
- * Return: Number of bytes copied.
- */
-static ssize_t zynqmp_ocm_edac_inject_fault_count_show(
-		struct edac_device_ctl_info *dci, char *data)
-{
-	struct zynqmp_ocm_edac_priv *priv = dci->pvt_info;
-
-	return sprintf(data, "FIC: 0x%x\n\r",
-			readl(priv->baseaddr + OCM_FIC_OFST));
-}
-
-/**
- * zynqmp_ocm_edac_inject_fault_count_store - write fi count
- * @dci:	Pointer to the edac device struct
- * @data:	Pointer to user data
- * @count:	read the size bytes from buffer
+ * write_fault_count - write fault injection count
+ * @priv:	Pointer to the EDAC private struct
  *
  * Update the fault injection count register, once the counter reaches
  * zero, it injects errors
- * Return: Number of bytes copied.
  */
-static ssize_t zynqmp_ocm_edac_inject_fault_count_store(
-		struct edac_device_ctl_info *dci, const char *data,
-		size_t count)
+static void write_fault_count(struct edac_priv *priv)
 {
-	struct zynqmp_ocm_edac_priv *priv = dci->pvt_info;
-	u32 ficount;
+	u32 ficount = priv->fault_injection_cnt;
 
-	if (!data)
-		return -EFAULT;
+	if (ficount & ~OCM_FICOUNT_MASK) {
+		ficount &= OCM_FICOUNT_MASK;
+		edac_printk(KERN_INFO, EDAC_DEVICE,
+			    "Fault injection count value truncated to %d\n", ficount);
+	}
 
-	if (kstrtouint(data, 0, &ficount))
-		return -EINVAL;
-
-	ficount &= OCM_FICOUNT_MASK;
 	writel(ficount, priv->baseaddr + OCM_FIC_OFST);
-
-	return count;
 }
 
-/**
- * zynqmp_ocm_edac_inject_cebitpos_show - Shows CE bit position
- * @dci:        Pointer to the edac device struct
- * @data:       Pointer to user data
- *
- * Shows the Correctable error bit position,
- * Return: Number of bytes copied.
+/*
+ * To get the Correctable Error injected, the following steps are needed:
+ * - Setup the optional Fault Injection Count:
+ *	echo <fault_count val> > /sys/kernel/debug/edac/ocm/inject_fault_count
+ * - Write the Correctable Error bit position value:
+ *	echo <bit_pos val> > /sys/kernel/debug/edac/ocm/inject_ce_bitpos
  */
-static ssize_t zynqmp_ocm_edac_inject_cebitpos_show(struct edac_device_ctl_info
-							*dci, char *data)
+static ssize_t inject_ce_write(struct file *file, const char __user *data,
+			       size_t count, loff_t *ppos)
 {
-	struct zynqmp_ocm_edac_priv *priv = dci->pvt_info;
-
-	if (priv->ce_bitpos <= 31)
-		return sprintf(data, "Fault Injection Data Reg: [0x%x]\n\r",
-			((readl(priv->baseaddr + OCM_FID0_OFST))));
-
-	return sprintf(data, "Fault Injection Data Reg: [0x%x]\n\r",
-			((readl(priv->baseaddr + OCM_FID1_OFST))));
-}
-
-/**
- * zynqmp_ocm_edac_inject_cebitpos_store - Set CE bit postion
- * @dci:	Pointer to the edac device struct
- * @data:	Pointer to user data
- * @count:	read the size bytes from buffer
- *
- * Set any one bit to inject CE error
- * Return: Number of bytes copied.
- */
-static ssize_t zynqmp_ocm_edac_inject_cebitpos_store(
-		struct edac_device_ctl_info *dci, const char *data,
-		size_t count)
-{
-	struct zynqmp_ocm_edac_priv *priv = dci->pvt_info;
+	struct edac_device_ctl_info *edac_dev = file->private_data;
+	struct edac_priv *priv = edac_dev->pvt_info;
+	int ret;
 
 	if (!data)
 		return -EFAULT;
 
-	if (kstrtou8(data, 0, &priv->ce_bitpos))
+	ret = kstrtou8_from_user(data, count, 0, &priv->ce_bitpos);
+	if (ret)
+		return ret;
+
+	if (priv->ce_bitpos > UE_MAX_BITPOS_UPPER)
 		return -EINVAL;
 
-	if (priv->ce_bitpos <= 31) {
-		writel(1 << priv->ce_bitpos, priv->baseaddr + OCM_FID0_OFST);
+	if (priv->ce_bitpos <= UE_MAX_BITPOS_LOWER) {
+		writel(BIT(priv->ce_bitpos), priv->baseaddr + OCM_FID0_OFST);
 		writel(0, priv->baseaddr + OCM_FID1_OFST);
-	} else if (priv->ce_bitpos >= 32 && priv->ce_bitpos <= 63) {
-		writel(1 << (priv->ce_bitpos - 32),
-				priv->baseaddr + OCM_FID1_OFST);
-		writel(0, priv->baseaddr + OCM_FID0_OFST);
 	} else {
-		edac_printk(KERN_ERR, EDAC_DEVICE,
-			"Bit number > 64 is not valid\n");
-	}
-
-	return count;
-}
-
-/**
- * zynqmp_ocm_edac_inject_uebitpos0_show - Shows UE bit postion0
- * @dci:        Pointer to the edac device struct
- * @data:       Pointer to user data
- *
- * Shows the one of bit position for UE error
- * Return: Number of bytes copied.
- */
-static ssize_t zynqmp_ocm_edac_inject_uebitpos0_show(
-		struct edac_device_ctl_info *dci, char *data)
-{
-	struct zynqmp_ocm_edac_priv *priv = dci->pvt_info;
-
-	if (priv->ue_bitpos0 <= 31)
-		return sprintf(data, "Fault Injection Data Reg: [0x%x]\n\r",
-			((readl(priv->baseaddr + OCM_FID0_OFST))));
-
-	return sprintf(data, "Fault Injection Data Reg: [0x%x]\n\r",
-			((readl(priv->baseaddr + OCM_FID1_OFST))));
-}
-
-/**
- * zynqmp_ocm_edac_inject_uebitpos0_store - set UE bit position0
- * @dci:	Pointer to the edac device struct
- * @data:	Pointer to user data
- * @count:	read the size bytes from buffer
- *
- * Set the first bit postion for UE Error generation,we need to configure
- * any two bitpositions to inject UE Error
- * Return: Number of bytes copied.
- */
-static ssize_t zynqmp_ocm_edac_inject_uebitpos0_store(
-		struct edac_device_ctl_info *dci,
-		const char *data, size_t count)
-{
-	struct zynqmp_ocm_edac_priv *priv = dci->pvt_info;
-
-	if (!data)
-		return -EFAULT;
-
-	if (kstrtou8(data, 0, &priv->ue_bitpos0))
-		return -EINVAL;
-
-	if (priv->ue_bitpos0 <= 31)
-		writel(1 << priv->ue_bitpos0, priv->baseaddr + OCM_FID0_OFST);
-	else if (priv->ue_bitpos0 >= 32 && priv->ue_bitpos0 <= 63)
-		writel(1 << (priv->ue_bitpos0 - 32),
-				priv->baseaddr + OCM_FID1_OFST);
-	else
-		edac_printk(KERN_ERR, EDAC_DEVICE,
-			"Bit position > 64 is not valid\n");
-	edac_printk(KERN_INFO, EDAC_DEVICE,
-			"Set another bit position for UE\n");
-	return count;
-}
-
-/**
- * zynqmp_ocm_edac_inject_uebitpos1_show - Shows UE bit postion1
- * @dci:        Pointer to the edac device struct
- * @data:       Pointer to user data
- *
- * Shows the second bit postion configured for UE error
- * Return: Number of bytes copied.
- */
-static ssize_t zynqmp_ocm_edac_inject_uebitpos1_show(
-		struct edac_device_ctl_info *dci, char *data)
-{
-	struct zynqmp_ocm_edac_priv *priv = dci->pvt_info;
-
-	if (priv->ue_bitpos1 <= 31)
-		return sprintf(data, "Fault Injection Data Reg: [0x%x]\n\r",
-			((readl(priv->baseaddr + OCM_FID0_OFST))));
-
-	return sprintf(data, "Fault Injection Data Reg: [0x%x]\n\r",
-			((readl(priv->baseaddr + OCM_FID1_OFST))));
-
-}
-
-/**
- * zynqmp_ocm_edac_inject_uebitpos1_store - Set UE second bit postion
- * @dci:	Pointer to the edac device struct
- * @data:	Pointer to user data
- * @count:	read the size bytes from buffer
- *
- * Set the second bit postion for UE Error generation,we need to configure
- * any two bitpositions to inject UE Error
- * Return: Number of bytes copied.
- */
-static ssize_t zynqmp_ocm_edac_inject_uebitpos1_store(
-		struct edac_device_ctl_info *dci, const char *data,
-		size_t count)
-{
-	struct zynqmp_ocm_edac_priv *priv = dci->pvt_info;
-	u32 mask;
-
-	if (!data)
-		return -EFAULT;
-
-	if (kstrtou8(data, 0, &priv->ue_bitpos1))
-		return -EINVAL;
-
-	if (priv->ue_bitpos0 == priv->ue_bitpos1) {
-		edac_printk(KERN_ERR, EDAC_DEVICE,
-				"Bit positions should not be equal\n");
-		return -EINVAL;
-	}
-
-	/* If both bit postions are referring to 32 bit data, then configure
-	 * only FID0 register or if it is 64 bit data, then configure only
-	 * FID1 register.
-	 */
-	if (priv->ue_bitpos0 <= 31 &&
-	    priv->ue_bitpos1 <= 31) {
-		mask = (1 << priv->ue_bitpos0);
-		mask |= (1 << priv->ue_bitpos1);
-		writel(mask, priv->baseaddr + OCM_FID0_OFST);
-		writel(0, priv->baseaddr + OCM_FID1_OFST);
-	} else if ((priv->ue_bitpos0 >= 32 && priv->ue_bitpos0 <= 63) &&
-			(priv->ue_bitpos1 >= 32 && priv->ue_bitpos1 <= 63)) {
-		mask = (1 << (priv->ue_bitpos0 - 32));
-		mask |= (1 << (priv->ue_bitpos1 - 32));
-		writel(mask, priv->baseaddr + OCM_FID1_OFST);
+		writel(BIT(priv->ce_bitpos - UE_MIN_BITPOS_UPPER),
+		       priv->baseaddr + OCM_FID1_OFST);
 		writel(0, priv->baseaddr + OCM_FID0_OFST);
 	}
 
-	/* If one bit position is referring a bit in 32 bit data and other in
-	 * 64 bit data, just configure FID0/FID1 based on uebitpos1.
-	 */
-	if ((priv->ue_bitpos0 <= 31) &&
-	    (priv->ue_bitpos1 >= 32 && priv->ue_bitpos1 <= 63)) {
-		writel(1 << (priv->ue_bitpos1 - 32),
-				priv->baseaddr + OCM_FID1_OFST);
-	} else if ((priv->ue_bitpos0 >= 32 && priv->ue_bitpos0 <= 63) &&
-			(priv->ue_bitpos1 <= 31)) {
-		writel(1 << priv->ue_bitpos1,
-				priv->baseaddr + OCM_FID0_OFST);
-	} else {
-		edac_printk(KERN_ERR, EDAC_DEVICE,
-			"Bit position > 64 is not valid, Valid bits:[63:0]\n");
-	}
+	write_fault_count(priv);
 
-	edac_printk(KERN_INFO, EDAC_DEVICE,
-			"UE at Bit Position0: %d Bit Position1: %d\n",
-			priv->ue_bitpos0, priv->ue_bitpos1);
 	return count;
 }
 
-static struct edac_dev_sysfs_attribute zynqmp_ocm_edac_sysfs_attributes[] = {
-	{
-		.attr = {
-			.name = "inject_cebitpos",
-			.mode = (0644)
-		},
-		.show = zynqmp_ocm_edac_inject_cebitpos_show,
-		.store = zynqmp_ocm_edac_inject_cebitpos_store},
-	{
-		.attr = {
-			.name = "inject_uebitpos0",
-			.mode = (0644)
-		},
-		.show = zynqmp_ocm_edac_inject_uebitpos0_show,
-		.store = zynqmp_ocm_edac_inject_uebitpos0_store},
-	{
-		.attr = {
-			.name = "inject_uebitpos1",
-			.mode = (0644)
-		},
-		.show = zynqmp_ocm_edac_inject_uebitpos1_show,
-		.store = zynqmp_ocm_edac_inject_uebitpos1_store},
-	{
-		.attr = {
-			.name = "inject_fault_count",
-			.mode = (0644)
-		},
-		.show = zynqmp_ocm_edac_inject_fault_count_show,
-		.store = zynqmp_ocm_edac_inject_fault_count_store},
-	/* End of list */
-	{
-		.attr = {.name = NULL}
-	}
+static const struct file_operations inject_ce_fops = {
+	.open = simple_open,
+	.write = inject_ce_write,
+	.llseek = generic_file_llseek,
 };
 
-/**
- * zynqmp_set_ocm_edac_sysfs_attributes - create sysfs attributes
- * @edac_dev:	Pointer to the edac device struct
- *
- * Creates sysfs entires for error injection
- * Return: None.
+/*
+ * To get the Uncorrectable Error injected, the following steps are needed:
+ * - Setup the optional Fault Injection Count:
+ *      echo <fault_count val> > /sys/kernel/debug/edac/ocm/inject_fault_count
+ * - Write the Uncorrectable Error bit position values:
+ *      echo <bit_pos0 val>,<bit_pos1 val> > /sys/kernel/debug/edac/ocm/inject_ue_bitpos
  */
-static void zynqmp_set_ocm_edac_sysfs_attributes(struct edac_device_ctl_info
-						*edac_dev)
+static ssize_t inject_ue_write(struct file *file, const char __user *data,
+			       size_t count, loff_t *ppos)
 {
-	edac_dev->sysfs_attributes = zynqmp_ocm_edac_sysfs_attributes;
+	struct edac_device_ctl_info *edac_dev = file->private_data;
+	struct edac_priv *priv = edac_dev->pvt_info;
+	char buf[6], *pbuf, *token[2];
+	u64 ue_bitpos;
+	int i, ret;
+	u8 len;
+
+	if (!data)
+		return -EFAULT;
+
+	len = min_t(size_t, count, sizeof(buf));
+	if (copy_from_user(buf, data, len))
+		return -EFAULT;
+
+	buf[len] = '\0';
+	pbuf = &buf[0];
+	for (i = 0; i < OCM_NUM_UE_BITPOS; i++)
+		token[i] = strsep(&pbuf, ",");
+
+	ret = kstrtou8(token[0], 0, &priv->ue_bitpos[0]);
+	if (ret)
+		return ret;
+
+	ret = kstrtou8(token[1], 0, &priv->ue_bitpos[1]);
+	if (ret)
+		return ret;
+
+	if (priv->ue_bitpos[0] > UE_MAX_BITPOS_UPPER ||
+	    priv->ue_bitpos[1] > UE_MAX_BITPOS_UPPER)
+		return -EINVAL;
+
+	if (priv->ue_bitpos[0] == priv->ue_bitpos[1]) {
+		edac_printk(KERN_ERR, EDAC_DEVICE, "Bit positions should not be equal\n");
+		return -EINVAL;
+	}
+
+	ue_bitpos = BIT(priv->ue_bitpos[0]) | BIT(priv->ue_bitpos[1]);
+
+	writel((u32)ue_bitpos, priv->baseaddr + OCM_FID0_OFST);
+	writel((u32)(ue_bitpos >> 32), priv->baseaddr + OCM_FID1_OFST);
+
+	write_fault_count(priv);
+
+	return count;
 }
 
-/**
- * zynqmp_ocm_edac_probe - Check controller and bind driver
- * @pdev:	Pointer to the platform_device struct
- *
- * Probes a specific controller instance for binding with the driver.
- *
- * Return: 0 if the controller instance was successfully bound to the
- * driver; otherwise, < 0 on error.
- */
-static int zynqmp_ocm_edac_probe(struct platform_device *pdev)
+static const struct file_operations inject_ue_fops = {
+	.open = simple_open,
+	.write = inject_ue_write,
+	.llseek = generic_file_llseek,
+};
+
+static void setup_debugfs(struct edac_device_ctl_info *edac_dev)
+{
+	struct edac_priv *priv = edac_dev->pvt_info;
+
+	priv->debugfs_dir = edac_debugfs_create_dir("ocm");
+	if (!priv->debugfs_dir)
+		return;
+
+	edac_debugfs_create_x32("inject_fault_count", 0644, priv->debugfs_dir,
+				&priv->fault_injection_cnt);
+	edac_debugfs_create_file("inject_ue_bitpos", 0644, priv->debugfs_dir,
+				 edac_dev, &inject_ue_fops);
+	edac_debugfs_create_file("inject_ce_bitpos", 0644, priv->debugfs_dir,
+				 edac_dev, &inject_ce_fops);
+}
+#endif
+
+static int edac_probe(struct platform_device *pdev)
 {
 	struct edac_device_ctl_info *dci;
-	struct zynqmp_ocm_edac_priv *priv;
-	int irq, status;
-	struct resource *res;
+	struct edac_priv *priv;
 	void __iomem *baseaddr;
+	struct resource *res;
+	int irq, ret;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	baseaddr = devm_ioremap_resource(&pdev->dev, res);
+	baseaddr = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
 	if (IS_ERR(baseaddr))
 		return PTR_ERR(baseaddr);
 
-	if (!zynqmp_ocm_edac_get_eccstate(baseaddr)) {
-		edac_printk(KERN_INFO, EDAC_DEVICE,
-				"ECC not enabled - Disabling EDAC driver\n");
+	if (!get_eccstate(baseaddr)) {
+		edac_printk(KERN_INFO, EDAC_DEVICE, "ECC not enabled\n");
 		return -ENXIO;
 	}
 
 	dci = edac_device_alloc_ctl_info(sizeof(*priv), ZYNQMP_OCM_EDAC_STRING,
-			1, ZYNQMP_OCM_EDAC_STRING, 1, 0, NULL, 0,
-			edac_device_alloc_index());
-	if (!dci) {
-		edac_printk(KERN_ERR, EDAC_DEVICE,
-				"Unable to allocate EDAC device\n");
+					 1, ZYNQMP_OCM_EDAC_STRING, 1, 0, NULL, 0,
+					 edac_device_alloc_index());
+	if (!dci)
 		return -ENOMEM;
-	}
 
 	priv = dci->pvt_info;
 	platform_set_drvdata(pdev, dci);
@@ -573,66 +394,74 @@ static int zynqmp_ocm_edac_probe(struct platform_device *pdev)
 	dci->ctl_name = ZYNQMP_OCM_EDAC_STRING;
 	dci->dev_name = dev_name(&pdev->dev);
 
-	zynqmp_set_ocm_edac_sysfs_attributes(dci);
-	if (edac_device_add_device(dci))
-		goto free_dev_ctl;
-
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
-		edac_printk(KERN_ERR, EDAC_DEVICE,
-				"No irq %d in DT\n", irq);
-		return irq;
+		ret = irq;
+		goto free_dev_ctl;
 	}
 
-	status = devm_request_irq(&pdev->dev, irq,
-		zynqmp_ocm_edac_intr_handler,
-		0, dev_name(&pdev->dev), dci);
-	if (status < 0) {
+	ret = devm_request_irq(&pdev->dev, irq, intr_handler, 0,
+			       dev_name(&pdev->dev), dci);
+	if (ret) {
 		edac_printk(KERN_ERR, EDAC_DEVICE, "Failed to request Irq\n");
-		goto free_edac_dev;
+		goto free_dev_ctl;
 	}
 
-	writel(OCM_CEUE_MASK, priv->baseaddr + OCM_IEN_OFST);
+	/* Enable UE, CE interrupts */
+	writel((OCM_CEINTR_MASK | OCM_UEINTR_MASK), priv->baseaddr + OCM_IEN_OFST);
+
+#ifdef CONFIG_EDAC_DEBUG
+	setup_debugfs(dci);
+#endif
+
+	ret = edac_device_add_device(dci);
+	if (ret)
+		goto free_dev_ctl;
 
 	return 0;
 
-free_edac_dev:
-	edac_device_del_device(&pdev->dev);
 free_dev_ctl:
 	edac_device_free_ctl_info(dci);
 
-	return -1;
+	return ret;
 }
 
-/**
- * zynqmp_ocm_edac_remove - Unbind driver from controller
- * @pdev:	Pointer to the platform_device struct
- *
- * Return: Unconditionally 0
- */
-static int zynqmp_ocm_edac_remove(struct platform_device *pdev)
+static int edac_remove(struct platform_device *pdev)
 {
 	struct edac_device_ctl_info *dci = platform_get_drvdata(pdev);
-	struct zynqmp_ocm_edac_priv *priv = dci->pvt_info;
+	struct edac_priv *priv = dci->pvt_info;
 
-	writel(OCM_CEUE_MASK, priv->baseaddr + OCM_IDS_OFST);
+	/* Disable UE, CE interrupts */
+	writel((OCM_CEINTR_MASK | OCM_UEINTR_MASK), priv->baseaddr + OCM_IDS_OFST);
+
+#ifdef CONFIG_EDAC_DEBUG
+	debugfs_remove_recursive(priv->debugfs_dir);
+#endif
+
 	edac_device_del_device(&pdev->dev);
 	edac_device_free_ctl_info(dci);
 
 	return 0;
 }
+
+static const struct of_device_id zynqmp_ocm_edac_match[] = {
+	{ .compatible = "xlnx,zynqmp-ocmc-1.0"},
+	{ /* end of table */ }
+};
+
+MODULE_DEVICE_TABLE(of, zynqmp_ocm_edac_match);
 
 static struct platform_driver zynqmp_ocm_edac_driver = {
 	.driver = {
 		   .name = "zynqmp-ocm-edac",
 		   .of_match_table = zynqmp_ocm_edac_match,
 		   },
-	.probe = zynqmp_ocm_edac_probe,
-	.remove = zynqmp_ocm_edac_remove,
+	.probe = edac_probe,
+	.remove = edac_remove,
 };
 
 module_platform_driver(zynqmp_ocm_edac_driver);
 
-MODULE_AUTHOR("Xilinx Inc");
-MODULE_DESCRIPTION("ZynqMP OCM ECC driver");
+MODULE_AUTHOR("Advanced Micro Devices, Inc");
+MODULE_DESCRIPTION("Xilinx ZynqMP OCM ECC driver");
 MODULE_LICENSE("GPL");

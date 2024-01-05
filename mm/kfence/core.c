@@ -26,7 +26,6 @@
 #include <linux/random.h>
 #include <linux/rcupdate.h>
 #include <linux/sched/clock.h>
-#include <linux/sched/sysctl.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
@@ -117,7 +116,15 @@ EXPORT_SYMBOL(__kfence_pool); /* Export for test modules. */
  * backing pages (in __kfence_pool).
  */
 static_assert(CONFIG_KFENCE_NUM_OBJECTS > 0);
-struct kfence_metadata kfence_metadata[CONFIG_KFENCE_NUM_OBJECTS];
+struct kfence_metadata *kfence_metadata __read_mostly;
+
+/*
+ * If kfence_metadata is not NULL, it may be accessed by kfence_shutdown_cache().
+ * So introduce kfence_metadata_init to initialize metadata, and then make
+ * kfence_metadata visible after initialization is successful. This prevents
+ * potential UAF or access to uninitialized metadata.
+ */
+static struct kfence_metadata *kfence_metadata_init __read_mostly;
 
 /* Freelist with available objects. */
 static struct list_head kfence_freelist = LIST_HEAD_INIT(kfence_freelist);
@@ -298,20 +305,13 @@ metadata_update_state(struct kfence_metadata *meta, enum kfence_object_state nex
 	WRITE_ONCE(meta->state, next);
 }
 
-/* Write canary byte to @addr. */
-static inline bool set_canary_byte(u8 *addr)
-{
-	*addr = KFENCE_CANARY_PATTERN(addr);
-	return true;
-}
-
 /* Check canary byte at @addr. */
 static inline bool check_canary_byte(u8 *addr)
 {
 	struct kfence_metadata *meta;
 	unsigned long flags;
 
-	if (likely(*addr == KFENCE_CANARY_PATTERN(addr)))
+	if (likely(*addr == KFENCE_CANARY_PATTERN_U8(addr)))
 		return true;
 
 	atomic_long_inc(&counters[KFENCE_COUNTER_BUGS]);
@@ -324,15 +324,31 @@ static inline bool check_canary_byte(u8 *addr)
 	return false;
 }
 
-/* __always_inline this to ensure we won't do an indirect call to fn. */
-static __always_inline void for_each_canary(const struct kfence_metadata *meta, bool (*fn)(u8 *))
+static inline void set_canary(const struct kfence_metadata *meta)
 {
 	const unsigned long pageaddr = ALIGN_DOWN(meta->addr, PAGE_SIZE);
-	unsigned long addr;
+	unsigned long addr = pageaddr;
 
 	/*
-	 * We'll iterate over each canary byte per-side until fn() returns
-	 * false. However, we'll still iterate over the canary bytes to the
+	 * The canary may be written to part of the object memory, but it does
+	 * not affect it. The user should initialize the object before using it.
+	 */
+	for (; addr < meta->addr; addr += sizeof(u64))
+		*((u64 *)addr) = KFENCE_CANARY_PATTERN_U64;
+
+	addr = ALIGN_DOWN(meta->addr + meta->size, sizeof(u64));
+	for (; addr - pageaddr < PAGE_SIZE; addr += sizeof(u64))
+		*((u64 *)addr) = KFENCE_CANARY_PATTERN_U64;
+}
+
+static inline void check_canary(const struct kfence_metadata *meta)
+{
+	const unsigned long pageaddr = ALIGN_DOWN(meta->addr, PAGE_SIZE);
+	unsigned long addr = pageaddr;
+
+	/*
+	 * We'll iterate over each canary byte per-side until a corrupted byte
+	 * is found. However, we'll still iterate over the canary bytes to the
 	 * right of the object even if there was an error in the canary bytes to
 	 * the left of the object. Specifically, if check_canary_byte()
 	 * generates an error, showing both sides might give more clues as to
@@ -340,15 +356,34 @@ static __always_inline void for_each_canary(const struct kfence_metadata *meta, 
 	 */
 
 	/* Apply to left of object. */
-	for (addr = pageaddr; addr < meta->addr; addr++) {
-		if (!fn((u8 *)addr))
+	for (; meta->addr - addr >= sizeof(u64); addr += sizeof(u64)) {
+		if (unlikely(*((u64 *)addr) != KFENCE_CANARY_PATTERN_U64))
+			break;
+	}
+
+	/*
+	 * If the canary is corrupted in a certain 64 bytes, or the canary
+	 * memory cannot be completely covered by multiple consecutive 64 bytes,
+	 * it needs to be checked one by one.
+	 */
+	for (; addr < meta->addr; addr++) {
+		if (unlikely(!check_canary_byte((u8 *)addr)))
 			break;
 	}
 
 	/* Apply to right of object. */
-	for (addr = meta->addr + meta->size; addr < pageaddr + PAGE_SIZE; addr++) {
-		if (!fn((u8 *)addr))
-			break;
+	for (addr = meta->addr + meta->size; addr % sizeof(u64) != 0; addr++) {
+		if (unlikely(!check_canary_byte((u8 *)addr)))
+			return;
+	}
+	for (; addr - pageaddr < PAGE_SIZE; addr += sizeof(u64)) {
+		if (unlikely(*((u64 *)addr) != KFENCE_CANARY_PATTERN_U64)) {
+
+			for (; addr - pageaddr < PAGE_SIZE; addr++) {
+				if (!check_canary_byte((u8 *)addr))
+					return;
+			}
+		}
 	}
 }
 
@@ -360,9 +395,9 @@ static void *kfence_guarded_alloc(struct kmem_cache *cache, size_t size, gfp_t g
 	unsigned long flags;
 	struct slab *slab;
 	void *addr;
-	const bool random_right_allocate = prandom_u32_max(2);
+	const bool random_right_allocate = get_random_u32_below(2);
 	const bool random_fault = CONFIG_KFENCE_STRESS_TEST_FAULTS &&
-				  !prandom_u32_max(CONFIG_KFENCE_STRESS_TEST_FAULTS);
+				  !get_random_u32_below(CONFIG_KFENCE_STRESS_TEST_FAULTS);
 
 	/* Try to obtain a free object. */
 	raw_spin_lock_irqsave(&kfence_freelist_lock, flags);
@@ -435,7 +470,7 @@ static void *kfence_guarded_alloc(struct kmem_cache *cache, size_t size, gfp_t g
 #endif
 
 	/* Memory initialization. */
-	for_each_canary(meta, set_canary_byte);
+	set_canary(meta);
 
 	/*
 	 * We check slab_want_init_on_alloc() ourselves, rather than letting
@@ -496,7 +531,7 @@ static void kfence_guarded_free(void *addr, struct kfence_metadata *meta, bool z
 	alloc_covered_add(meta->alloc_stack_hash, -1);
 
 	/* Check canary bytes for memory corruption. */
-	for_each_canary(meta, check_canary_byte);
+	check_canary(meta);
 
 	/*
 	 * Clear memory if init-on-free is set. While we protect the page, the
@@ -539,13 +574,14 @@ static void rcu_guarded_free(struct rcu_head *h)
  */
 static unsigned long kfence_init_pool(void)
 {
-	unsigned long addr = (unsigned long)__kfence_pool;
+	unsigned long addr;
 	struct page *pages;
 	int i;
 
 	if (!arch_kfence_init_pool())
-		return addr;
+		return (unsigned long)__kfence_pool;
 
+	addr = (unsigned long)__kfence_pool;
 	pages = virt_to_page(__kfence_pool);
 
 	/*
@@ -557,18 +593,14 @@ static unsigned long kfence_init_pool(void)
 	 * enters __slab_free() slow-path.
 	 */
 	for (i = 0; i < KFENCE_POOL_SIZE / PAGE_SIZE; i++) {
-		struct slab *slab = page_slab(&pages[i]);
+		struct slab *slab = page_slab(nth_page(pages, i));
 
 		if (!i || (i % 2))
 			continue;
 
-		/* Verify we do not have a compound head page. */
-		if (WARN_ON(compound_head(&pages[i]) != &pages[i]))
-			return addr;
-
 		__folio_set_slab(slab_folio(slab));
 #ifdef CONFIG_MEMCG
-		slab->memcg_data = (unsigned long)&kfence_metadata[i / 2 - 1].objcg |
+		slab->memcg_data = (unsigned long)&kfence_metadata_init[i / 2 - 1].objcg |
 				   MEMCG_DATA_OBJCGS;
 #endif
 	}
@@ -587,7 +619,7 @@ static unsigned long kfence_init_pool(void)
 	}
 
 	for (i = 0; i < CONFIG_KFENCE_NUM_OBJECTS; i++) {
-		struct kfence_metadata *meta = &kfence_metadata[i];
+		struct kfence_metadata *meta = &kfence_metadata_init[i];
 
 		/* Initialize metadata. */
 		INIT_LIST_HEAD(&meta->list);
@@ -598,12 +630,32 @@ static unsigned long kfence_init_pool(void)
 
 		/* Protect the right redzone. */
 		if (unlikely(!kfence_protect(addr + PAGE_SIZE)))
-			return addr;
+			goto reset_slab;
 
 		addr += 2 * PAGE_SIZE;
 	}
 
+	/*
+	 * Make kfence_metadata visible only when initialization is successful.
+	 * Otherwise, if the initialization fails and kfence_metadata is freed,
+	 * it may cause UAF in kfence_shutdown_cache().
+	 */
+	smp_store_release(&kfence_metadata, kfence_metadata_init);
 	return 0;
+
+reset_slab:
+	for (i = 0; i < KFENCE_POOL_SIZE / PAGE_SIZE; i++) {
+		struct slab *slab = page_slab(nth_page(pages, i));
+
+		if (!i || (i % 2))
+			continue;
+#ifdef CONFIG_MEMCG
+		slab->memcg_data = 0;
+#endif
+		__folio_clear_slab(slab_folio(slab));
+	}
+
+	return addr;
 }
 
 static bool __init kfence_init_pool_early(void)
@@ -633,38 +685,12 @@ static bool __init kfence_init_pool_early(void)
 	 * fails for the first page, and therefore expect addr==__kfence_pool in
 	 * most failure cases.
 	 */
-	for (char *p = (char *)addr; p < __kfence_pool + KFENCE_POOL_SIZE; p += PAGE_SIZE) {
-		struct slab *slab = virt_to_slab(p);
-
-		if (!slab)
-			continue;
-#ifdef CONFIG_MEMCG
-		slab->memcg_data = 0;
-#endif
-		__folio_clear_slab(slab_folio(slab));
-	}
 	memblock_free_late(__pa(addr), KFENCE_POOL_SIZE - (addr - (unsigned long)__kfence_pool));
 	__kfence_pool = NULL;
-	return false;
-}
 
-static bool kfence_init_pool_late(void)
-{
-	unsigned long addr, free_size;
+	memblock_free_late(__pa(kfence_metadata_init), KFENCE_METADATA_SIZE);
+	kfence_metadata_init = NULL;
 
-	addr = kfence_init_pool();
-
-	if (!addr)
-		return true;
-
-	/* Same as above. */
-	free_size = KFENCE_POOL_SIZE - (addr - (unsigned long)__kfence_pool);
-#ifdef CONFIG_CONTIG_ALLOC
-	free_contig_range(page_to_pfn(virt_to_page((void *)addr)), free_size / PAGE_SIZE);
-#else
-	free_pages_exact((void *)addr, free_size);
-#endif
-	__kfence_pool = NULL;
 	return false;
 }
 
@@ -727,10 +753,14 @@ static const struct seq_operations objects_sops = {
 };
 DEFINE_SEQ_ATTRIBUTE(objects);
 
-static int __init kfence_debugfs_init(void)
+static int kfence_debugfs_init(void)
 {
-	struct dentry *kfence_dir = debugfs_create_dir("kfence", NULL);
+	struct dentry *kfence_dir;
 
+	if (!READ_ONCE(kfence_enabled))
+		return 0;
+
+	kfence_dir = debugfs_create_dir("kfence", NULL);
 	debugfs_create_file("stats", 0444, kfence_dir, NULL, &stats_fops);
 	debugfs_create_file("objects", 0400, kfence_dir, NULL, &objects_fops);
 	return 0;
@@ -748,7 +778,7 @@ static void kfence_check_all_canary(void)
 		struct kfence_metadata *meta = &kfence_metadata[i];
 
 		if (meta->state == KFENCE_OBJECT_ALLOCATED)
-			for_each_canary(meta, check_canary_byte);
+			check_canary(meta);
 	}
 }
 
@@ -799,16 +829,7 @@ static void toggle_allocation_gate(struct work_struct *work)
 	/* Enable static key, and await allocation to happen. */
 	static_branch_enable(&kfence_allocation_key);
 
-	if (sysctl_hung_task_timeout_secs) {
-		/*
-		 * During low activity with no allocations we might wait a
-		 * while; let's avoid the hung task warning.
-		 */
-		wait_event_idle_timeout(allocation_wait, atomic_read(&kfence_allocation_gate),
-					sysctl_hung_task_timeout_secs * HZ / 2);
-	} else {
-		wait_event_idle(allocation_wait, atomic_read(&kfence_allocation_gate));
-	}
+	wait_event_idle(allocation_wait, atomic_read(&kfence_allocation_gate));
 
 	/* Disable static key and reset timer. */
 	static_branch_disable(&kfence_allocation_key);
@@ -819,15 +840,30 @@ static void toggle_allocation_gate(struct work_struct *work)
 
 /* === Public interface ===================================================== */
 
-void __init kfence_alloc_pool(void)
+void __init kfence_alloc_pool_and_metadata(void)
 {
 	if (!kfence_sample_interval)
 		return;
 
-	__kfence_pool = memblock_alloc(KFENCE_POOL_SIZE, PAGE_SIZE);
-
+	/*
+	 * If the pool has already been initialized by arch, there is no need to
+	 * re-allocate the memory pool.
+	 */
 	if (!__kfence_pool)
+		__kfence_pool = memblock_alloc(KFENCE_POOL_SIZE, PAGE_SIZE);
+
+	if (!__kfence_pool) {
 		pr_err("failed to allocate pool\n");
+		return;
+	}
+
+	/* The memory allocated by memblock has been zeroed out. */
+	kfence_metadata_init = memblock_alloc(KFENCE_METADATA_SIZE, PAGE_SIZE);
+	if (!kfence_metadata_init) {
+		pr_err("failed to allocate metadata\n");
+		memblock_free(__kfence_pool, KFENCE_POOL_SIZE);
+		__kfence_pool = NULL;
+	}
 }
 
 static void kfence_init_enable(void)
@@ -869,31 +905,69 @@ void __init kfence_init(void)
 
 static int kfence_init_late(void)
 {
-	const unsigned long nr_pages = KFENCE_POOL_SIZE / PAGE_SIZE;
+	const unsigned long nr_pages_pool = KFENCE_POOL_SIZE / PAGE_SIZE;
+	const unsigned long nr_pages_meta = KFENCE_METADATA_SIZE / PAGE_SIZE;
+	unsigned long addr = (unsigned long)__kfence_pool;
+	unsigned long free_size = KFENCE_POOL_SIZE;
+	int err = -ENOMEM;
+
 #ifdef CONFIG_CONTIG_ALLOC
 	struct page *pages;
 
-	pages = alloc_contig_pages(nr_pages, GFP_KERNEL, first_online_node, NULL);
+	pages = alloc_contig_pages(nr_pages_pool, GFP_KERNEL, first_online_node,
+				   NULL);
 	if (!pages)
 		return -ENOMEM;
+
 	__kfence_pool = page_to_virt(pages);
+	pages = alloc_contig_pages(nr_pages_meta, GFP_KERNEL, first_online_node,
+				   NULL);
+	if (pages)
+		kfence_metadata_init = page_to_virt(pages);
 #else
-	if (nr_pages > MAX_ORDER_NR_PAGES) {
+	if (nr_pages_pool > MAX_ORDER_NR_PAGES ||
+	    nr_pages_meta > MAX_ORDER_NR_PAGES) {
 		pr_warn("KFENCE_NUM_OBJECTS too large for buddy allocator\n");
 		return -EINVAL;
 	}
+
 	__kfence_pool = alloc_pages_exact(KFENCE_POOL_SIZE, GFP_KERNEL);
 	if (!__kfence_pool)
 		return -ENOMEM;
+
+	kfence_metadata_init = alloc_pages_exact(KFENCE_METADATA_SIZE, GFP_KERNEL);
 #endif
 
-	if (!kfence_init_pool_late()) {
-		pr_err("%s failed\n", __func__);
-		return -EBUSY;
+	if (!kfence_metadata_init)
+		goto free_pool;
+
+	memzero_explicit(kfence_metadata_init, KFENCE_METADATA_SIZE);
+	addr = kfence_init_pool();
+	if (!addr) {
+		kfence_init_enable();
+		kfence_debugfs_init();
+		return 0;
 	}
 
-	kfence_init_enable();
-	return 0;
+	pr_err("%s failed\n", __func__);
+	free_size = KFENCE_POOL_SIZE - (addr - (unsigned long)__kfence_pool);
+	err = -EBUSY;
+
+#ifdef CONFIG_CONTIG_ALLOC
+	free_contig_range(page_to_pfn(virt_to_page((void *)kfence_metadata_init)),
+			  nr_pages_meta);
+free_pool:
+	free_contig_range(page_to_pfn(virt_to_page((void *)addr)),
+			  free_size / PAGE_SIZE);
+#else
+	free_pages_exact((void *)kfence_metadata_init, KFENCE_METADATA_SIZE);
+free_pool:
+	free_pages_exact((void *)addr, free_size);
+#endif
+
+	kfence_metadata_init = NULL;
+	__kfence_pool = NULL;
+	return err;
 }
 
 static int kfence_enable_late(void)
@@ -912,6 +986,10 @@ void kfence_shutdown_cache(struct kmem_cache *s)
 	unsigned long flags;
 	struct kfence_metadata *meta;
 	int i;
+
+	/* Pairs with release in kfence_init_pool(). */
+	if (!smp_load_acquire(&kfence_metadata))
+		return;
 
 	for (i = 0; i < CONFIG_KFENCE_NUM_OBJECTS; i++) {
 		bool in_use;

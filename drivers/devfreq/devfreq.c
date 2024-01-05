@@ -472,10 +472,11 @@ static void devfreq_monitor(struct work_struct *work)
  * devfreq_monitor_start() - Start load monitoring of devfreq instance
  * @devfreq:	the devfreq instance.
  *
- * Helper function for starting devfreq device load monitoring. By
- * default delayed work based monitoring is supported. Function
- * to be called from governor in response to DEVFREQ_GOV_START
- * event when device is added to devfreq framework.
+ * Helper function for starting devfreq device load monitoring. By default,
+ * deferrable timer is used for load monitoring. But the users can change this
+ * behavior using the "timer" type in devfreq_dev_profile. This function will be
+ * called by devfreq governor in response to the DEVFREQ_GOV_START event
+ * generated while adding a device to the devfreq framework.
  */
 void devfreq_monitor_start(struct devfreq *devfreq)
 {
@@ -763,6 +764,7 @@ static void devfreq_dev_release(struct device *dev)
 		dev_pm_opp_put_opp_table(devfreq->opp_table);
 
 	mutex_destroy(&devfreq->lock);
+	srcu_cleanup_notifier_head(&devfreq->transition_notifier_list);
 	kfree(devfreq);
 }
 
@@ -776,8 +778,7 @@ static void remove_sysfs_files(struct devfreq *devfreq,
  * @dev:	the device to add devfreq feature.
  * @profile:	device-specific profile to run devfreq.
  * @governor_name:	name of the policy to choose frequency.
- * @data:	private data for the governor. The devfreq framework does not
- *		touch this value.
+ * @data:	devfreq driver pass to governors, governor should not change it.
  */
 struct devfreq *devfreq_add_device(struct device *dev,
 				   struct devfreq_dev_profile *profile,
@@ -1011,8 +1012,7 @@ static void devm_devfreq_dev_release(struct device *dev, void *res)
  * @dev:	the device to add devfreq feature.
  * @profile:	device-specific profile to run devfreq.
  * @governor_name:	name of the policy to choose frequency.
- * @data:	private data for the governor. The devfreq framework does not
- *		touch this value.
+ * @data:	 devfreq driver pass to governors, governor should not change it.
  *
  * This function manages automatically the memory of devfreq device using device
  * resource management and simplify the free operation for memory of devfreq
@@ -1059,7 +1059,7 @@ struct devfreq *devfreq_get_devfreq_by_node(struct device_node *node)
 	mutex_lock(&devfreq_list_lock);
 	list_for_each_entry(devfreq, &devfreq_list, node) {
 		if (devfreq->dev.parent
-			&& devfreq->dev.parent->of_node == node) {
+			&& device_match_of_node(devfreq->dev.parent, node)) {
 			mutex_unlock(&devfreq_list_lock);
 			return devfreq;
 		}
@@ -1990,7 +1990,7 @@ DEFINE_SHOW_ATTRIBUTE(devfreq_summary);
 
 static int __init devfreq_init(void)
 {
-	devfreq_class = class_create(THIS_MODULE, "devfreq");
+	devfreq_class = class_create("devfreq");
 	if (IS_ERR(devfreq_class)) {
 		pr_err("%s: couldn't create class\n", __FILE__);
 		return PTR_ERR(devfreq_class);

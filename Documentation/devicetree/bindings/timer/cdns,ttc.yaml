@@ -7,7 +7,7 @@ $schema: http://devicetree.org/meta-schemas/core.yaml#
 title: Cadence TTC - Triple Timer Counter
 
 maintainers:
-  - Michal Simek <michal.simek@xilinx.com>
+  - Michal Simek <michal.simek@amd.com>
 
 properties:
   compatible:
@@ -28,15 +28,12 @@ properties:
     maxItems: 1
 
   timer-width:
-    $ref: "/schemas/types.yaml#/definitions/uint32"
+    $ref: /schemas/types.yaml#/definitions/uint32
     description: |
       Bit width of the timer, necessary if not 16.
 
   "#pwm-cells":
-    description: |
-      Required to configure TTC as PWM device, supported cells are 0 to 3.
-    minimum: 0
-    maximum: 3
+    const: 3
 
 required:
   - compatible
@@ -66,9 +63,9 @@ examples:
     };
 
   - |
-    ttc1: ttc1@f8002000 {
+    pwm: pwm@f8002000 {
         compatible = "cdns,ttc";
-        reg = <0xF8002000 0x1000>;
+        reg = <0xf8002000 0x1000>;
         clocks = <&cpu_clk 3>;
         timer-width = <32>;
         #pwm-cells = <3>;

@@ -1,6 +1,6 @@
 #ifndef __NOUVEAU_MEM_H__
 #define __NOUVEAU_MEM_H__
-#include <drm/ttm/ttm_bo_api.h>
+#include <drm/ttm/ttm_bo.h>
 struct ttm_tt;
 
 #include <nvif/mem.h>
@@ -35,4 +35,9 @@ int nouveau_mem_vram(struct ttm_resource *, bool contig, u8 page);
 int nouveau_mem_host(struct ttm_resource *, struct ttm_tt *);
 void nouveau_mem_fini(struct nouveau_mem *);
 int nouveau_mem_map(struct nouveau_mem *, struct nvif_vmm *, struct nvif_vma *);
+int
+nouveau_mem_map_fixed(struct nouveau_mem *mem,
+		      struct nvif_vmm *vmm,
+		      u8 kind, u64 addr,
+		      u64 offset, u64 range);
 #endif

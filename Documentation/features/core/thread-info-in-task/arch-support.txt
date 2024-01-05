@@ -1,7 +1,7 @@
 #
 # Feature name:          thread-info-in-task
 #         Kconfig:       THREAD_INFO_IN_TASK
-#         description:   arch makes use of the core kernel facility to embedd thread_info in task_struct
+#         description:   arch makes use of the core kernel facility to embed thread_info in task_struct
 #
     -----------------------
     |         arch |status|
@@ -13,7 +13,7 @@
     |        csky: | TODO |
     |     hexagon: | TODO |
     |        ia64: | TODO |
-    |       loong: | TODO |
+    |   loongarch: | TODO |
     |        m68k: | TODO |
     |  microblaze: | TODO |
     |        mips: | TODO |

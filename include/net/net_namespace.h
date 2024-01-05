@@ -42,6 +42,7 @@
 #include <linux/idr.h>
 #include <linux/skbuff.h>
 #include <linux/notifier.h>
+#include <linux/xarray.h>
 
 struct user_namespace;
 struct proc_dir_entry;
@@ -69,7 +70,7 @@ struct net {
 	atomic_t		dev_unreg_count;
 
 	unsigned int		dev_base_seq;	/* protected by rtnl_mutex */
-	int			ifindex;
+	u32			ifindex;
 
 	spinlock_t		nsid_lock;
 	atomic_t		fnhe_genid;
@@ -92,7 +93,9 @@ struct net {
 
 	struct ns_common	ns;
 	struct ref_tracker_dir  refcnt_tracker;
-
+	struct ref_tracker_dir  notrefcnt_tracker; /* tracker for objects not
+						    * refcounted against netns
+						    */
 	struct list_head 	dev_base_head;
 	struct proc_dir_entry 	*proc_net;
 	struct proc_dir_entry 	*proc_net_stat;
@@ -108,6 +111,7 @@ struct net {
 
 	struct hlist_head 	*dev_name_head;
 	struct hlist_head	*dev_index_head;
+	struct xarray		dev_by_index;
 	struct raw_notifier_head	netdev_chain;
 
 	/* Note that @hash_mix can be read millions times per second,
@@ -320,19 +324,31 @@ static inline int check_net(const struct net *net)
 #endif
 
 
-static inline void netns_tracker_alloc(struct net *net,
-				       netns_tracker *tracker, gfp_t gfp)
+static inline void __netns_tracker_alloc(struct net *net,
+					 netns_tracker *tracker,
+					 bool refcounted,
+					 gfp_t gfp)
 {
 #ifdef CONFIG_NET_NS_REFCNT_TRACKER
-	ref_tracker_alloc(&net->refcnt_tracker, tracker, gfp);
+	ref_tracker_alloc(refcounted ? &net->refcnt_tracker :
+				       &net->notrefcnt_tracker,
+			  tracker, gfp);
 #endif
 }
 
-static inline void netns_tracker_free(struct net *net,
-				      netns_tracker *tracker)
+static inline void netns_tracker_alloc(struct net *net, netns_tracker *tracker,
+				       gfp_t gfp)
+{
+	__netns_tracker_alloc(net, tracker, true, gfp);
+}
+
+static inline void __netns_tracker_free(struct net *net,
+					netns_tracker *tracker,
+					bool refcounted)
 {
 #ifdef CONFIG_NET_NS_REFCNT_TRACKER
-       ref_tracker_free(&net->refcnt_tracker, tracker);
+       ref_tracker_free(refcounted ? &net->refcnt_tracker :
+				     &net->notrefcnt_tracker, tracker);
 #endif
 }
 
@@ -346,7 +362,7 @@ static inline struct net *get_net_track(struct net *net,
 
 static inline void put_net_track(struct net *net, netns_tracker *tracker)
 {
-	netns_tracker_free(net, tracker);
+	__netns_tracker_free(net, tracker, true);
 	put_net(net);
 }
 
@@ -455,15 +471,17 @@ void unregister_pernet_device(struct pernet_operations *);
 
 struct ctl_table;
 
+#define register_net_sysctl(net, path, table)	\
+	register_net_sysctl_sz(net, path, table, ARRAY_SIZE(table))
 #ifdef CONFIG_SYSCTL
 int net_sysctl_init(void);
-struct ctl_table_header *register_net_sysctl(struct net *net, const char *path,
-					     struct ctl_table *table);
+struct ctl_table_header *register_net_sysctl_sz(struct net *net, const char *path,
+					     struct ctl_table *table, size_t table_size);
 void unregister_net_sysctl_table(struct ctl_table_header *header);
 #else
 static inline int net_sysctl_init(void) { return 0; }
-static inline struct ctl_table_header *register_net_sysctl(struct net *net,
-	const char *path, struct ctl_table *table)
+static inline struct ctl_table_header *register_net_sysctl_sz(struct net *net,
+	const char *path, struct ctl_table *table, size_t table_size)
 {
 	return NULL;
 }

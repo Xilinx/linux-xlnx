@@ -172,11 +172,6 @@ struct thread_struct {
 	unsigned int	align_ctl;	/* alignment handling control */
 #ifdef CONFIG_HAVE_HW_BREAKPOINT
 	struct perf_event *ptrace_bps[HBP_NUM_MAX];
-	/*
-	 * Helps identify source of single-step exception and subsequent
-	 * hw-breakpoint enablement
-	 */
-	struct perf_event *last_hit_ubp[HBP_NUM_MAX];
 #endif /* CONFIG_HAVE_HW_BREAKPOINT */
 	struct arch_hw_breakpoint hw_brk[HBP_NUM_MAX]; /* hardware breakpoint info */
 	unsigned long	trap_nr;	/* last trap # on this thread */
@@ -264,6 +259,7 @@ struct thread_struct {
 	unsigned long   mmcr3;
 	unsigned long   sier2;
 	unsigned long   sier3;
+	unsigned long	hashkeyr;
 
 #endif
 };
@@ -374,16 +370,24 @@ static inline unsigned long __pack_fe01(unsigned int fpmode)
 
 #endif
 
-/* Check that a certain kernel stack pointer is valid in task_struct p */
-int validate_sp(unsigned long sp, struct task_struct *p,
-                       unsigned long nbytes);
+/*
+ * Check that a certain kernel stack pointer is a valid (minimum sized)
+ * stack frame in task_struct p.
+ */
+int validate_sp(unsigned long sp, struct task_struct *p);
+
+/*
+ * validate the stack frame of a particular minimum size, used for when we are
+ * looking at a certain object in the stack beyond the minimum.
+ */
+int validate_sp_size(unsigned long sp, struct task_struct *p,
+		     unsigned long nbytes);
 
 /*
  * Prefetch macros.
  */
 #define ARCH_HAS_PREFETCH
 #define ARCH_HAS_PREFETCHW
-#define ARCH_HAS_SPINLOCK_PREFETCH
 
 static inline void prefetch(const void *x)
 {
@@ -400,8 +404,6 @@ static inline void prefetchw(const void *x)
 
 	__asm__ __volatile__ ("dcbtst 0,%0" : : "r" (x));
 }
-
-#define spin_lock_prefetch(x)	prefetchw(x)
 
 /* asm stubs */
 extern unsigned long isa300_idle_stop_noloss(unsigned long psscr_val);

@@ -599,13 +599,11 @@ static int pxafb_blank(int blank, struct fb_info *info)
 
 static const struct fb_ops pxafb_ops = {
 	.owner		= THIS_MODULE,
+	FB_DEFAULT_IOMEM_OPS,
 	.fb_check_var	= pxafb_check_var,
 	.fb_set_par	= pxafb_set_par,
 	.fb_pan_display	= pxafb_pan_display,
 	.fb_setcolreg	= pxafb_setcolreg,
-	.fb_fillrect	= cfb_fillrect,
-	.fb_copyarea	= cfb_copyarea,
-	.fb_imageblit	= cfb_imageblit,
 	.fb_blank	= pxafb_blank,
 };
 
@@ -888,7 +886,6 @@ static void init_pxafb_overlay(struct pxafb_info *fbi, struct pxafb_layer *ofb,
 	ofb->fb.var.vmode		= FB_VMODE_NONINTERLACED;
 
 	ofb->fb.fbops			= &overlay_fb_ops;
-	ofb->fb.flags			= FBINFO_FLAG_DEFAULT;
 	ofb->fb.node			= -1;
 	ofb->fb.pseudo_palette		= NULL;
 
@@ -1826,7 +1823,6 @@ static struct pxafb_info *pxafb_init_fbinfo(struct device *dev,
 	fbi->fb.var.vmode	= FB_VMODE_NONINTERLACED;
 
 	fbi->fb.fbops		= &pxafb_ops;
-	fbi->fb.flags		= FBINFO_DEFAULT;
 	fbi->fb.node		= -1;
 
 	addr = fbi;
@@ -2327,7 +2323,6 @@ static int pxafb_probe(struct platform_device *dev)
 
 	irq = platform_get_irq(dev, 0);
 	if (irq < 0) {
-		dev_err(&dev->dev, "no IRQ defined\n");
 		ret = -ENODEV;
 		goto failed_free_mem;
 	}
@@ -2397,13 +2392,13 @@ failed:
 	return ret;
 }
 
-static int pxafb_remove(struct platform_device *dev)
+static void pxafb_remove(struct platform_device *dev)
 {
 	struct pxafb_info *fbi = platform_get_drvdata(dev);
 	struct fb_info *info;
 
 	if (!fbi)
-		return 0;
+		return;
 
 	info = &fbi->fb;
 
@@ -2419,8 +2414,6 @@ static int pxafb_remove(struct platform_device *dev)
 
 	dma_free_coherent(&dev->dev, fbi->dma_buff_size, fbi->dma_buff,
 			  fbi->dma_buff_phys);
-
-	return 0;
 }
 
 static const struct of_device_id pxafb_of_dev_id[] = {
@@ -2433,7 +2426,7 @@ MODULE_DEVICE_TABLE(of, pxafb_of_dev_id);
 
 static struct platform_driver pxafb_driver = {
 	.probe		= pxafb_probe,
-	.remove 	= pxafb_remove,
+	.remove_new 	= pxafb_remove,
 	.driver		= {
 		.name	= "pxa2xx-fb",
 		.of_match_table = pxafb_of_dev_id,

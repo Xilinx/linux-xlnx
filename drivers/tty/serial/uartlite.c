@@ -20,15 +20,17 @@
 #include <linux/io.h>
 #include <linux/iopoll.h>
 #include <linux/of.h>
-#include <linux/of_address.h>
-#include <linux/of_device.h>
-#include <linux/of_platform.h>
 #include <linux/clk.h>
 #include <linux/pm_runtime.h>
 
 #define ULITE_NAME		"ttyUL"
+#if CONFIG_SERIAL_UARTLITE_NR_UARTS > 4
+#define ULITE_MAJOR             0       /* use dynamic node allocation */
+#define ULITE_MINOR             0
+#else
 #define ULITE_MAJOR		204
 #define ULITE_MINOR		187
+#endif
 #define ULITE_NR_UARTS		CONFIG_SERIAL_UARTLITE_NR_UARTS
 
 /* ---------------------------------------------------------------------
@@ -203,8 +205,7 @@ static int ulite_transmit(struct uart_port *port, int stat)
 		return 0;
 
 	uart_out32(xmit->buf[xmit->tail], ULITE_TX, port);
-	xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE-1);
-	port->icount.tx++;
+	uart_xmit_advance(port, 1);
 
 	/* wake up */
 	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
@@ -686,18 +687,15 @@ static int ulite_assign(struct device *dev, int id, phys_addr_t base, int irq,
  *
  * @dev: pointer to device structure
  */
-static int ulite_release(struct device *dev)
+static void ulite_release(struct device *dev)
 {
 	struct uart_port *port = dev_get_drvdata(dev);
-	int rc = 0;
 
 	if (port) {
-		rc = uart_remove_one_port(&ulite_uart_driver, port);
+		uart_remove_one_port(&ulite_uart_driver, port);
 		dev_set_drvdata(dev, NULL);
 		port->mapbase = 0;
 	}
-
-	return rc;
 }
 
 /**
@@ -901,14 +899,13 @@ static int ulite_remove(struct platform_device *pdev)
 {
 	struct uart_port *port = dev_get_drvdata(&pdev->dev);
 	struct uartlite_data *pdata = port->private_data;
-	int rc;
 
 	clk_disable_unprepare(pdata->clk);
-	rc = ulite_release(&pdev->dev);
+	ulite_release(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
 	pm_runtime_set_suspended(&pdev->dev);
 	pm_runtime_dont_use_autosuspend(&pdev->dev);
-	return rc;
+	return 0;
 }
 
 /* work with hotplug and coldplug */

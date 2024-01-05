@@ -49,10 +49,6 @@ static int fsl_aud2htx_trigger(struct snd_pcm_substream *substream, int cmd,
 	return 0;
 }
 
-static const struct snd_soc_dai_ops fsl_aud2htx_dai_ops = {
-	.trigger	= fsl_aud2htx_trigger,
-};
-
 static int fsl_aud2htx_dai_probe(struct snd_soc_dai *cpu_dai)
 {
 	struct fsl_aud2htx *aud2htx = dev_get_drvdata(cpu_dai->dev);
@@ -84,8 +80,12 @@ static int fsl_aud2htx_dai_probe(struct snd_soc_dai *cpu_dai)
 	return 0;
 }
 
+static const struct snd_soc_dai_ops fsl_aud2htx_dai_ops = {
+	.probe		= fsl_aud2htx_dai_probe,
+	.trigger	= fsl_aud2htx_trigger,
+};
+
 static struct snd_soc_dai_driver fsl_aud2htx_dai = {
-	.probe = fsl_aud2htx_dai_probe,
 	.playback = {
 		.stream_name = "CPU-Playback",
 		.channels_min = 1,
@@ -257,11 +257,9 @@ static int fsl_aud2htx_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int fsl_aud2htx_remove(struct platform_device *pdev)
+static void fsl_aud2htx_remove(struct platform_device *pdev)
 {
 	pm_runtime_disable(&pdev->dev);
-
-	return 0;
 }
 
 static int __maybe_unused fsl_aud2htx_runtime_suspend(struct device *dev)
@@ -300,7 +298,7 @@ static const struct dev_pm_ops fsl_aud2htx_pm_ops = {
 
 static struct platform_driver fsl_aud2htx_driver = {
 	.probe = fsl_aud2htx_probe,
-	.remove = fsl_aud2htx_remove,
+	.remove_new = fsl_aud2htx_remove,
 	.driver = {
 		.name = "fsl-aud2htx",
 		.pm = &fsl_aud2htx_pm_ops,

@@ -774,7 +774,6 @@ check_roaming:
 		if (roamed_back) {
 			batadv_tt_global_free(bat_priv, tt_global,
 					      "Roaming canceled");
-			tt_global = NULL;
 		} else {
 			/* The global entry has to be marked as ROAMING and
 			 * has to be kept for consistency purpose
@@ -4168,11 +4167,11 @@ int batadv_tt_init(struct batadv_priv *bat_priv)
 	}
 
 	batadv_tvlv_handler_register(bat_priv, batadv_tt_tvlv_ogm_handler_v1,
-				     batadv_tt_tvlv_unicast_handler_v1,
+				     batadv_tt_tvlv_unicast_handler_v1, NULL,
 				     BATADV_TVLV_TT, 1, BATADV_NO_FLAGS);
 
 	batadv_tvlv_handler_register(bat_priv, NULL,
-				     batadv_roam_tvlv_unicast_handler_v1,
+				     batadv_roam_tvlv_unicast_handler_v1, NULL,
 				     BATADV_TVLV_ROAM, 1, BATADV_NO_FLAGS);
 
 	INIT_DELAYED_WORK(&bat_priv->tt.work, batadv_tt_purge);

@@ -174,7 +174,7 @@ Read byte from page <page>, register <reg>.
   int (*read_word_data)(struct i2c_client *client, int page, int phase,
                         int reg);
 
-Read word from page <page>, phase <pase>, register <reg>. If the chip does not
+Read word from page <page>, phase <phase>, register <reg>. If the chip does not
 support multiple phases, the phase parameter can be ignored. If the chip
 supports multiple phases, a phase value of 0xff indicates all phases.
 
@@ -345,7 +345,7 @@ PMBUS_NO_CAPABILITY
 
 Some PMBus chips don't respond with valid data when reading the CAPABILITY
 register. For such chips, this flag should be set so that the PMBus core
-driver doesn't use CAPABILITY to determine it's behavior.
+driver doesn't use CAPABILITY to determine its behavior.
 
 PMBUS_READ_STATUS_AFTER_FAILED_CHECK
 

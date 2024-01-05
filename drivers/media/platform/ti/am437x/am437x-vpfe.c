@@ -1285,12 +1285,12 @@ static int __subdev_get_format(struct vpfe_device *vpfe,
 			       struct v4l2_mbus_framefmt *fmt)
 {
 	struct v4l2_subdev *sd = vpfe->current_subdev->sd;
-	struct v4l2_subdev_format sd_fmt;
+	struct v4l2_subdev_format sd_fmt = {
+		.which = V4L2_SUBDEV_FORMAT_ACTIVE,
+		.pad = 0,
+	};
 	struct v4l2_mbus_framefmt *mbus_fmt = &sd_fmt.format;
 	int ret;
-
-	sd_fmt.which = V4L2_SUBDEV_FORMAT_ACTIVE;
-	sd_fmt.pad = 0;
 
 	ret = v4l2_subdev_call(sd, pad, get_fmt, NULL, &sd_fmt);
 	if (ret)
@@ -1309,12 +1309,13 @@ static int __subdev_set_format(struct vpfe_device *vpfe,
 			       struct v4l2_mbus_framefmt *fmt)
 {
 	struct v4l2_subdev *sd = vpfe->current_subdev->sd;
-	struct v4l2_subdev_format sd_fmt;
+	struct v4l2_subdev_format sd_fmt = {
+		.which = V4L2_SUBDEV_FORMAT_ACTIVE,
+		.pad = 0,
+	};
 	struct v4l2_mbus_framefmt *mbus_fmt = &sd_fmt.format;
 	int ret;
 
-	sd_fmt.which = V4L2_SUBDEV_FORMAT_ACTIVE;
-	sd_fmt.pad = 0;
 	*mbus_fmt = *fmt;
 
 	ret = v4l2_subdev_call(sd, pad, set_fmt, NULL, &sd_fmt);
@@ -1393,7 +1394,9 @@ static int vpfe_try_fmt(struct file *file, void *priv,
 	struct vpfe_device *vpfe = video_drvdata(file);
 	struct v4l2_subdev *sd = vpfe->current_subdev->sd;
 	const struct vpfe_fmt *fmt;
-	struct v4l2_subdev_frame_size_enum fse;
+	struct v4l2_subdev_frame_size_enum fse = {
+		.which = V4L2_SUBDEV_FORMAT_ACTIVE,
+	};
 	int ret, found;
 
 	fmt = find_format_by_pix(vpfe, f->fmt.pix.pixelformat);
@@ -1412,7 +1415,6 @@ static int vpfe_try_fmt(struct file *file, void *priv,
 	found = false;
 	fse.pad = 0;
 	fse.code = fmt->code;
-	fse.which = V4L2_SUBDEV_FORMAT_ACTIVE;
 	for (fse.index = 0; ; fse.index++) {
 		ret = v4l2_subdev_call(sd, pad, enum_frame_size,
 				       NULL, &fse);
@@ -1499,7 +1501,9 @@ static int vpfe_enum_size(struct file *file, void  *priv,
 			  struct v4l2_frmsizeenum *fsize)
 {
 	struct vpfe_device *vpfe = video_drvdata(file);
-	struct v4l2_subdev_frame_size_enum fse;
+	struct v4l2_subdev_frame_size_enum fse = {
+		.which = V4L2_SUBDEV_FORMAT_ACTIVE,
+	};
 	struct v4l2_subdev *sd = vpfe->current_subdev->sd;
 	struct vpfe_fmt *fmt;
 	int ret;
@@ -1514,11 +1518,9 @@ static int vpfe_enum_size(struct file *file, void  *priv,
 
 	memset(fsize->reserved, 0x0, sizeof(fsize->reserved));
 
-	memset(&fse, 0x0, sizeof(fse));
 	fse.index = fsize->index;
 	fse.pad = 0;
 	fse.code = fmt->code;
-	fse.which = V4L2_SUBDEV_FORMAT_ACTIVE;
 	ret = v4l2_subdev_call(sd, pad, enum_frame_size, NULL, &fse);
 	if (ret)
 		return ret;
@@ -2142,11 +2144,10 @@ static const struct v4l2_ioctl_ops vpfe_ioctl_ops = {
 static int
 vpfe_async_bound(struct v4l2_async_notifier *notifier,
 		 struct v4l2_subdev *subdev,
-		 struct v4l2_async_subdev *asd)
+		 struct v4l2_async_connection *asd)
 {
 	struct vpfe_device *vpfe = container_of(notifier->v4l2_dev,
 					       struct vpfe_device, v4l2_dev);
-	struct v4l2_subdev_mbus_code_enum mbus_code;
 	struct vpfe_subdev_info *sdinfo;
 	struct vpfe_fmt *fmt;
 	int ret = 0;
@@ -2173,9 +2174,11 @@ vpfe_async_bound(struct v4l2_async_notifier *notifier,
 
 	vpfe->num_active_fmt = 0;
 	for (j = 0, i = 0; (ret != -EINVAL); ++j) {
-		memset(&mbus_code, 0, sizeof(mbus_code));
-		mbus_code.index = j;
-		mbus_code.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+		struct v4l2_subdev_mbus_code_enum mbus_code = {
+			.index = j,
+			.which = V4L2_SUBDEV_FORMAT_ACTIVE,
+		};
+
 		ret = v4l2_subdev_call(subdev, pad, enum_mbus_code,
 				       NULL, &mbus_code);
 		if (ret)
@@ -2297,7 +2300,7 @@ vpfe_get_pdata(struct vpfe_device *vpfe)
 
 	dev_dbg(dev, "vpfe_get_pdata\n");
 
-	v4l2_async_nf_init(&vpfe->notifier);
+	v4l2_async_nf_init(&vpfe->notifier, &vpfe->v4l2_dev);
 
 	if (!IS_ENABLED(CONFIG_OF) || !dev->of_node)
 		return dev->platform_data;
@@ -2367,8 +2370,7 @@ vpfe_get_pdata(struct vpfe_device *vpfe)
 
 		pdata->asd[i] = v4l2_async_nf_add_fwnode(&vpfe->notifier,
 							 of_fwnode_handle(rem),
-							 struct
-							 v4l2_async_subdev);
+							 struct v4l2_async_connection);
 		of_node_put(rem);
 		if (IS_ERR(pdata->asd[i]))
 			goto cleanup;
@@ -2401,10 +2403,17 @@ static int vpfe_probe(struct platform_device *pdev)
 
 	vpfe->pdev = &pdev->dev;
 
+	ret = v4l2_device_register(&pdev->dev, &vpfe->v4l2_dev);
+	if (ret) {
+		vpfe_err(vpfe, "Unable to register v4l2 device.\n");
+		return ret;
+	}
+
 	vpfe_cfg = vpfe_get_pdata(vpfe);
 	if (!vpfe_cfg) {
 		dev_err(&pdev->dev, "No platform data\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto probe_out_cleanup;
 	}
 
 	vpfe->cfg = vpfe_cfg;
@@ -2417,10 +2426,8 @@ static int vpfe_probe(struct platform_device *pdev)
 	}
 
 	ret = platform_get_irq(pdev, 0);
-	if (ret <= 0) {
-		ret = -ENODEV;
+	if (ret < 0)
 		goto probe_out_cleanup;
-	}
 	vpfe->irq = ret;
 
 	ret = devm_request_irq(vpfe->pdev, vpfe->irq, vpfe_isr, 0,
@@ -2428,13 +2435,6 @@ static int vpfe_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(&pdev->dev, "Unable to request interrupt\n");
 		ret = -EINVAL;
-		goto probe_out_cleanup;
-	}
-
-	ret = v4l2_device_register(&pdev->dev, &vpfe->v4l2_dev);
-	if (ret) {
-		vpfe_err(vpfe,
-			"Unable to register v4l2 device.\n");
 		goto probe_out_cleanup;
 	}
 
@@ -2447,7 +2447,7 @@ static int vpfe_probe(struct platform_device *pdev)
 	ret = pm_runtime_resume_and_get(&pdev->dev);
 	if (ret < 0) {
 		vpfe_err(vpfe, "Unable to resume device.\n");
-		goto probe_out_v4l2_unregister;
+		goto probe_out_cleanup;
 	}
 
 	vpfe_ccdc_config_defaults(ccdc);
@@ -2460,30 +2460,29 @@ static int vpfe_probe(struct platform_device *pdev)
 				GFP_KERNEL);
 	if (!vpfe->sd) {
 		ret = -ENOMEM;
-		goto probe_out_v4l2_unregister;
+		goto probe_out_cleanup;
 	}
 
 	vpfe->notifier.ops = &vpfe_async_ops;
-	ret = v4l2_async_nf_register(&vpfe->v4l2_dev, &vpfe->notifier);
+	ret = v4l2_async_nf_register(&vpfe->notifier);
 	if (ret) {
 		vpfe_err(vpfe, "Error registering async notifier\n");
 		ret = -EINVAL;
-		goto probe_out_v4l2_unregister;
+		goto probe_out_cleanup;
 	}
 
 	return 0;
 
-probe_out_v4l2_unregister:
-	v4l2_device_unregister(&vpfe->v4l2_dev);
 probe_out_cleanup:
 	v4l2_async_nf_cleanup(&vpfe->notifier);
+	v4l2_device_unregister(&vpfe->v4l2_dev);
 	return ret;
 }
 
 /*
  * vpfe_remove : It un-register device from V4L2 driver
  */
-static int vpfe_remove(struct platform_device *pdev)
+static void vpfe_remove(struct platform_device *pdev)
 {
 	struct vpfe_device *vpfe = platform_get_drvdata(pdev);
 
@@ -2491,10 +2490,8 @@ static int vpfe_remove(struct platform_device *pdev)
 
 	v4l2_async_nf_unregister(&vpfe->notifier);
 	v4l2_async_nf_cleanup(&vpfe->notifier);
-	v4l2_device_unregister(&vpfe->v4l2_dev);
 	video_unregister_device(&vpfe->video_dev);
-
-	return 0;
+	v4l2_device_unregister(&vpfe->v4l2_dev);
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -2625,11 +2622,11 @@ MODULE_DEVICE_TABLE(of, vpfe_of_match);
 
 static struct platform_driver vpfe_driver = {
 	.probe		= vpfe_probe,
-	.remove		= vpfe_remove,
+	.remove_new	= vpfe_remove,
 	.driver = {
 		.name	= VPFE_MODULE_NAME,
 		.pm	= &vpfe_pm_ops,
-		.of_match_table = of_match_ptr(vpfe_of_match),
+		.of_match_table = vpfe_of_match,
 	},
 };
 

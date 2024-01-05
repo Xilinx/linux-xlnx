@@ -179,9 +179,10 @@ static int vboxsf_dir_iterate(struct file *dir, struct dir_context *ctx)
 	return 0;
 }
 
+WRAP_DIR_ITER(vboxsf_dir_iterate) // FIXME!
 const struct file_operations vboxsf_dir_fops = {
 	.open = vboxsf_dir_open,
-	.iterate = vboxsf_dir_iterate,
+	.iterate_shared = shared_vboxsf_dir_iterate,
 	.release = vboxsf_dir_release,
 	.read = generic_read_dir,
 	.llseek = generic_file_llseek,
@@ -294,14 +295,14 @@ out:
 	return err;
 }
 
-static int vboxsf_dir_mkfile(struct user_namespace *mnt_userns,
+static int vboxsf_dir_mkfile(struct mnt_idmap *idmap,
 			     struct inode *parent, struct dentry *dentry,
 			     umode_t mode, bool excl)
 {
 	return vboxsf_dir_create(parent, dentry, mode, false, excl, NULL);
 }
 
-static int vboxsf_dir_mkdir(struct user_namespace *mnt_userns,
+static int vboxsf_dir_mkdir(struct mnt_idmap *idmap,
 			    struct inode *parent, struct dentry *dentry,
 			    umode_t mode)
 {
@@ -387,7 +388,7 @@ static int vboxsf_dir_unlink(struct inode *parent, struct dentry *dentry)
 	return 0;
 }
 
-static int vboxsf_dir_rename(struct user_namespace *mnt_userns,
+static int vboxsf_dir_rename(struct mnt_idmap *idmap,
 			     struct inode *old_parent,
 			     struct dentry *old_dentry,
 			     struct inode *new_parent,
@@ -430,7 +431,7 @@ err_put_old_path:
 	return err;
 }
 
-static int vboxsf_dir_symlink(struct user_namespace *mnt_userns,
+static int vboxsf_dir_symlink(struct mnt_idmap *idmap,
 			      struct inode *parent, struct dentry *dentry,
 			      const char *symname)
 {

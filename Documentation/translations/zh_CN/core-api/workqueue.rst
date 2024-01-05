@@ -202,7 +202,7 @@ workqueue将自动创建与属性相匹配的后备工作者池。调节并发�
 同的排序属性。
 
 在目前的实现中，上述配置只保证了特定NUMA节点内的ST行为。相反，
-``alloc_ordered_queue()`` 应该被用来实现全系统的ST行为。
+``alloc_ordered_workqueue()`` 应该被用来实现全系统的ST行为。
 
 
 执行场景示例
@@ -313,8 +313,8 @@ And with cmwq with ``@max_active`` >= 3, ::
 
 第一个可以用追踪的方式进行跟踪: ::
 
-	$ echo workqueue:workqueue_queue_work > /sys/kernel/debug/tracing/set_event
-	$ cat /sys/kernel/debug/tracing/trace_pipe > out.txt
+	$ echo workqueue:workqueue_queue_work > /sys/kernel/tracing/set_event
+	$ cat /sys/kernel/tracing/trace_pipe > out.txt
 	(wait a few secs)
 
 如果有什么东西在工作队列上忙着做循环，它就会主导输出，可以用工作项函数确定违规者。

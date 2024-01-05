@@ -83,7 +83,7 @@ __cold int io_uring_alloc_task_context(struct task_struct *task,
 
 	xa_init(&tctx->xa);
 	init_waitqueue_head(&tctx->wait);
-	atomic_set(&tctx->in_idle, 0);
+	atomic_set(&tctx->in_cancel, 0);
 	atomic_set(&tctx->inflight_tracked, 0);
 	task->io_uring = tctx;
 	init_llist_head(&tctx->task_list);
@@ -208,29 +208,38 @@ void io_uring_unreg_ringfd(void)
 	}
 }
 
+int io_ring_add_registered_file(struct io_uring_task *tctx, struct file *file,
+				     int start, int end)
+{
+	int offset;
+	for (offset = start; offset < end; offset++) {
+		offset = array_index_nospec(offset, IO_RINGFD_REG_MAX);
+		if (tctx->registered_rings[offset])
+			continue;
+
+		tctx->registered_rings[offset] = file;
+		return offset;
+	}
+	return -EBUSY;
+}
+
 static int io_ring_add_registered_fd(struct io_uring_task *tctx, int fd,
 				     int start, int end)
 {
 	struct file *file;
 	int offset;
 
-	for (offset = start; offset < end; offset++) {
-		offset = array_index_nospec(offset, IO_RINGFD_REG_MAX);
-		if (tctx->registered_rings[offset])
-			continue;
-
-		file = fget(fd);
-		if (!file) {
-			return -EBADF;
-		} else if (!io_is_uring_fops(file)) {
-			fput(file);
-			return -EOPNOTSUPP;
-		}
-		tctx->registered_rings[offset] = file;
-		return offset;
+	file = fget(fd);
+	if (!file) {
+		return -EBADF;
+	} else if (!io_is_uring_fops(file)) {
+		fput(file);
+		return -EOPNOTSUPP;
 	}
-
-	return -EBUSY;
+	offset = io_ring_add_registered_file(tctx, file, start, end);
+	if (offset < 0)
+		fput(file);
+	return offset;
 }
 
 /*

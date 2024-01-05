@@ -29,8 +29,8 @@
 #include "../../util/top.h"
 #include "../../util/thread.h"
 #include "../../util/block-info.h"
+#include "../../util/util.h"
 #include "../../arch/common.h"
-#include "../../perf.h"
 
 #include "../browsers/hists.h"
 #include "../helpline.h"
@@ -407,11 +407,6 @@ static bool hist_browser__selection_has_children(struct hist_browser *browser)
 	return container_of(ms, struct callchain_list, ms)->has_children;
 }
 
-static bool hist_browser__he_selection_unfolded(struct hist_browser *browser)
-{
-	return browser->he_selection ? browser->he_selection->unfolded : false;
-}
-
 static bool hist_browser__selection_unfolded(struct hist_browser *browser)
 {
 	struct hist_entry *he = browser->he_selection;
@@ -584,8 +579,8 @@ static int hierarchy_set_folding(struct hist_browser *hb, struct hist_entry *he,
 	return n;
 }
 
-static void __hist_entry__set_folding(struct hist_entry *he,
-				      struct hist_browser *hb, bool unfold)
+static void hist_entry__set_folding(struct hist_entry *he,
+				    struct hist_browser *hb, bool unfold)
 {
 	hist_entry__init_have_children(he);
 	he->unfolded = unfold ? he->has_children : false;
@@ -603,34 +598,12 @@ static void __hist_entry__set_folding(struct hist_entry *he,
 		he->nr_rows = 0;
 }
 
-static void hist_entry__set_folding(struct hist_entry *he,
-				    struct hist_browser *browser, bool unfold)
-{
-	double percent;
-
-	percent = hist_entry__get_percent_limit(he);
-	if (he->filtered || percent < browser->min_pcnt)
-		return;
-
-	__hist_entry__set_folding(he, browser, unfold);
-
-	if (!he->depth || unfold)
-		browser->nr_hierarchy_entries++;
-	if (he->leaf)
-		browser->nr_callchain_rows += he->nr_rows;
-	else if (unfold && !hist_entry__has_hierarchy_children(he, browser->min_pcnt)) {
-		browser->nr_hierarchy_entries++;
-		he->has_no_entry = true;
-		he->nr_rows = 1;
-	} else
-		he->has_no_entry = false;
-}
-
 static void
 __hist_browser__set_folding(struct hist_browser *browser, bool unfold)
 {
 	struct rb_node *nd;
 	struct hist_entry *he;
+	double percent;
 
 	nd = rb_first_cached(&browser->hists->entries);
 	while (nd) {
@@ -640,6 +613,21 @@ __hist_browser__set_folding(struct hist_browser *browser, bool unfold)
 		nd = __rb_hierarchy_next(nd, HMD_FORCE_CHILD);
 
 		hist_entry__set_folding(he, browser, unfold);
+
+		percent = hist_entry__get_percent_limit(he);
+		if (he->filtered || percent < browser->min_pcnt)
+			continue;
+
+		if (!he->depth || unfold)
+			browser->nr_hierarchy_entries++;
+		if (he->leaf)
+			browser->nr_callchain_rows += he->nr_rows;
+		else if (unfold && !hist_entry__has_hierarchy_children(he, browser->min_pcnt)) {
+			browser->nr_hierarchy_entries++;
+			he->has_no_entry = true;
+			he->nr_rows = 1;
+		} else
+			he->has_no_entry = false;
 	}
 }
 
@@ -659,8 +647,10 @@ static void hist_browser__set_folding_selected(struct hist_browser *browser, boo
 	if (!browser->he_selection)
 		return;
 
-	hist_entry__set_folding(browser->he_selection, browser, unfold);
-	browser->b.nr_entries = hist_browser__nr_entries(browser);
+	if (unfold == browser->he_selection->unfolded)
+		return;
+
+	hist_browser__toggle_fold(browser);
 }
 
 static void ui_browser__warn_lost_events(struct ui_browser *browser)
@@ -732,8 +722,8 @@ static int hist_browser__handle_hotkey(struct hist_browser *browser, bool warn_l
 		hist_browser__set_folding(browser, true);
 		break;
 	case 'e':
-		/* Expand the selected entry. */
-		hist_browser__set_folding_selected(browser, !hist_browser__he_selection_unfolded(browser));
+		/* Toggle expand/collapse the selected entry. */
+		hist_browser__toggle_fold(browser);
 		break;
 	case 'H':
 		browser->show_headers = !browser->show_headers;
@@ -1779,7 +1769,7 @@ static void hists_browser__hierarchy_headers(struct hist_browser *browser)
 	hists_browser__scnprintf_hierarchy_headers(browser, headers,
 						   sizeof(headers));
 
-	ui_browser__gotorc(&browser->b, 0, 0);
+	ui_browser__gotorc_title(&browser->b, 0, 0);
 	ui_browser__set_color(&browser->b, HE_COLORSET_ROOT);
 	ui_browser__write_nstring(&browser->b, headers, browser->b.width + 1);
 }
@@ -2487,7 +2477,7 @@ static struct symbol *symbol__new_unresolved(u64 addr, struct map *map)
 			return NULL;
 		}
 
-		dso__insert_symbol(map->dso, sym);
+		dso__insert_symbol(map__dso(map), sym);
 	}
 
 	return sym;
@@ -2499,7 +2489,9 @@ add_annotate_opt(struct hist_browser *browser __maybe_unused,
 		 struct map_symbol *ms,
 		 u64 addr)
 {
-	if (!ms->map || !ms->map->dso || ms->map->dso->annotate_warned)
+	struct dso *dso;
+
+	if (!ms->map || (dso = map__dso(ms->map)) == NULL || dso->annotate_warned)
 		return 0;
 
 	if (!ms->sym)
@@ -2531,13 +2523,15 @@ do_zoom_thread(struct hist_browser *browser, struct popup_action *act)
 		thread__zput(browser->hists->thread_filter);
 		ui_helpline__pop();
 	} else {
+		const char *comm_set_str =
+			thread__comm_set(thread) ? thread__comm_str(thread) : "";
+
 		if (hists__has(browser->hists, thread)) {
 			ui_helpline__fpush("To zoom out press ESC or ENTER + \"Zoom out of %s(%d) thread\"",
-					   thread->comm_set ? thread__comm_str(thread) : "",
-					   thread->tid);
+					   comm_set_str, thread__tid(thread));
 		} else {
 			ui_helpline__fpush("To zoom out press ESC or ENTER + \"Zoom out of %s thread\"",
-					   thread->comm_set ? thread__comm_str(thread) : "");
+					   comm_set_str);
 		}
 
 		browser->hists->thread_filter = thread__get(thread);
@@ -2555,20 +2549,19 @@ add_thread_opt(struct hist_browser *browser, struct popup_action *act,
 	       char **optstr, struct thread *thread)
 {
 	int ret;
+	const char *comm_set_str, *in_out;
 
 	if ((!hists__has(browser->hists, thread) &&
 	     !hists__has(browser->hists, comm)) || thread == NULL)
 		return 0;
 
+	in_out = browser->hists->thread_filter ? "out of" : "into";
+	comm_set_str = thread__comm_set(thread) ? thread__comm_str(thread) : "";
 	if (hists__has(browser->hists, thread)) {
 		ret = asprintf(optstr, "Zoom %s %s(%d) thread",
-			       browser->hists->thread_filter ? "out of" : "into",
-			       thread->comm_set ? thread__comm_str(thread) : "",
-			       thread->tid);
+			       in_out, comm_set_str, thread__tid(thread));
 	} else {
-		ret = asprintf(optstr, "Zoom %s %s thread",
-			       browser->hists->thread_filter ? "out of" : "into",
-			       thread->comm_set ? thread__comm_str(thread) : "");
+		ret = asprintf(optstr, "Zoom %s %s thread", in_out, comm_set_str);
 	}
 	if (ret < 0)
 		return 0;
@@ -2589,9 +2582,10 @@ static int hists_browser__zoom_map(struct hist_browser *browser, struct map *map
 		browser->hists->dso_filter = NULL;
 		ui_helpline__pop();
 	} else {
+		struct dso *dso = map__dso(map);
 		ui_helpline__fpush("To zoom out press ESC or ENTER + \"Zoom out of %s DSO\"",
-				   __map__is_kernel(map) ? "the Kernel" : map->dso->short_name);
-		browser->hists->dso_filter = map->dso;
+				   __map__is_kernel(map) ? "the Kernel" : dso->short_name);
+		browser->hists->dso_filter = dso;
 		perf_hpp__set_elide(HISTC_DSO, true);
 		pstack__push(browser->pstack, &browser->hists->dso_filter);
 	}
@@ -2616,7 +2610,7 @@ add_dso_opt(struct hist_browser *browser, struct popup_action *act,
 
 	if (asprintf(optstr, "Zoom %s %s DSO (use the 'k' hotkey to zoom directly into the kernel)",
 		     browser->hists->dso_filter ? "out of" : "into",
-		     __map__is_kernel(map) ? "the Kernel" : map->dso->short_name) < 0)
+		     __map__is_kernel(map) ? "the Kernel" : map__dso(map)->short_name) < 0)
 		return 0;
 
 	act->ms.map = map;
@@ -3091,8 +3085,8 @@ do_hotkey:		 // key came straight from options ui__popup_menu()
 
 			if (!browser->selection ||
 			    !browser->selection->map ||
-			    !browser->selection->map->dso ||
-			    browser->selection->map->dso->annotate_warned) {
+			    !map__dso(browser->selection->map) ||
+			    map__dso(browser->selection->map)->annotate_warned) {
 				continue;
 			}
 
@@ -3139,7 +3133,8 @@ do_hotkey:		 // key came straight from options ui__popup_menu()
 			continue;
 		case 'k':
 			if (browser->selection != NULL)
-				hists_browser__zoom_map(browser, browser->selection->maps->machine->vmlinux_map);
+				hists_browser__zoom_map(browser,
+					      maps__machine(browser->selection->maps)->vmlinux_map);
 			continue;
 		case 'V':
 			verbose = (verbose + 1) % 4;

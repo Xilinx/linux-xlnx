@@ -119,15 +119,6 @@ static inline void mchp_corespi_write(struct mchp_corespi *spi, unsigned int reg
 	writel(val, spi->regs + reg);
 }
 
-static inline void mchp_corespi_enable(struct mchp_corespi *spi)
-{
-	u32 control = mchp_corespi_read(spi, REG_CONTROL);
-
-	control |= CONTROL_ENABLE;
-
-	mchp_corespi_write(spi, REG_CONTROL, control);
-}
-
 static inline void mchp_corespi_disable(struct mchp_corespi *spi)
 {
 	u32 control = mchp_corespi_read(spi, REG_CONTROL);
@@ -539,10 +530,8 @@ static int mchp_corespi_probe(struct platform_device *pdev)
 		return PTR_ERR(spi->regs);
 
 	spi->irq = platform_get_irq(pdev, 0);
-	if (spi->irq <= 0)
-		return dev_err_probe(&pdev->dev, -ENXIO,
-				     "invalid IRQ %d for SPI controller\n",
-				     spi->irq);
+	if (spi->irq < 0)
+		return spi->irq;
 
 	ret = devm_request_irq(&pdev->dev, spi->irq, mchp_corespi_interrupt,
 			       IRQF_SHARED, dev_name(&pdev->dev), master);
@@ -575,7 +564,7 @@ static int mchp_corespi_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int mchp_corespi_remove(struct platform_device *pdev)
+static void mchp_corespi_remove(struct platform_device *pdev)
 {
 	struct spi_master *master  = platform_get_drvdata(pdev);
 	struct mchp_corespi *spi = spi_master_get_devdata(master);
@@ -583,8 +572,6 @@ static int mchp_corespi_remove(struct platform_device *pdev)
 	mchp_corespi_disable_ints(spi);
 	clk_disable_unprepare(spi->clk);
 	mchp_corespi_disable(spi);
-
-	return 0;
 }
 
 #define MICROCHIP_SPI_PM_OPS (NULL)
@@ -608,7 +595,7 @@ static struct platform_driver mchp_corespi_driver = {
 		.pm = MICROCHIP_SPI_PM_OPS,
 		.of_match_table = of_match_ptr(mchp_corespi_dt_ids),
 	},
-	.remove = mchp_corespi_remove,
+	.remove_new = mchp_corespi_remove,
 };
 module_platform_driver(mchp_corespi_driver);
 MODULE_DESCRIPTION("Microchip coreSPI SPI controller driver");

@@ -24,8 +24,10 @@ struct env {
 	bool verbose;
 	bool list;
 	bool affinity;
+	bool quiet;
 	int consumer_cnt;
 	int producer_cnt;
+	int nr_cpus;
 	struct cpu_set prod_cpus;
 	struct cpu_set cons_cpus;
 };
@@ -47,6 +49,7 @@ struct bench_res {
 
 struct bench {
 	const char *name;
+	const struct argp *argp;
 	void (*validate)(void);
 	void (*setup)(void);
 	void *(*producer_thread)(void *ctx);
@@ -77,15 +80,6 @@ void grace_period_latency_basic_stats(struct bench_res res[], int res_cnt,
 				      struct basic_stats *gp_stat);
 void grace_period_ticks_basic_stats(struct bench_res res[], int res_cnt,
 				    struct basic_stats *gp_stat);
-
-static inline __u64 get_time_ns(void)
-{
-	struct timespec t;
-
-	clock_gettime(CLOCK_MONOTONIC, &t);
-
-	return (u64)t.tv_sec * 1000000000 + t.tv_nsec;
-}
 
 static inline void atomic_inc(long *value)
 {

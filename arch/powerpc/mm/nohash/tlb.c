@@ -184,6 +184,14 @@ void local_flush_tlb_page(struct vm_area_struct *vma, unsigned long vmaddr)
 			       mmu_get_tsize(mmu_virtual_psize), 0);
 }
 EXPORT_SYMBOL(local_flush_tlb_page);
+
+void local_flush_tlb_page_psize(struct mm_struct *mm,
+				unsigned long vmaddr, int psize)
+{
+	__local_flush_tlb_page(mm, vmaddr, mmu_get_tsize(psize), 0);
+}
+EXPORT_SYMBOL(local_flush_tlb_page_psize);
+
 #endif
 
 /*
@@ -309,17 +317,6 @@ void flush_tlb_page(struct vm_area_struct *vma, unsigned long vmaddr)
 EXPORT_SYMBOL(flush_tlb_page);
 
 #endif /* CONFIG_SMP */
-
-#ifdef CONFIG_PPC_47x
-void __init early_init_mmu_47x(void)
-{
-#ifdef CONFIG_SMP
-	unsigned long root = of_get_flat_dt_root();
-	if (of_get_flat_dt_prop(root, "cooperative-partition", NULL))
-		mmu_clear_feature(MMU_FTR_USE_TLBIVAX_BCAST);
-#endif /* CONFIG_SMP */
-}
-#endif /* CONFIG_PPC_47x */
 
 /*
  * Flush kernel TLB entries in the given range
@@ -738,8 +735,10 @@ void setup_initial_memory_limit(phys_addr_t first_memblock_base,
 #else /* ! CONFIG_PPC64 */
 void __init early_init_mmu(void)
 {
-#ifdef CONFIG_PPC_47x
-	early_init_mmu_47x();
-#endif
+	unsigned long root = of_get_flat_dt_root();
+
+	if (IS_ENABLED(CONFIG_PPC_47x) && IS_ENABLED(CONFIG_SMP) &&
+	    of_get_flat_dt_prop(root, "cooperative-partition", NULL))
+		mmu_clear_feature(MMU_FTR_USE_TLBIVAX_BCAST);
 }
 #endif /* CONFIG_PPC64 */

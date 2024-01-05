@@ -13,7 +13,8 @@
 #include <linux/clk.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
-#include <linux/of_platform.h>
+#include <linux/of.h>
+#include <linux/platform_device.h>
 #include <linux/reset.h>
 #include <media/rc-core.h>
 
@@ -364,14 +365,12 @@ exit_free_dev:
 	return ret;
 }
 
-static int sunxi_ir_remove(struct platform_device *pdev)
+static void sunxi_ir_remove(struct platform_device *pdev)
 {
 	struct sunxi_ir *ir = platform_get_drvdata(pdev);
 
 	rc_unregister_device(ir->rc);
 	sunxi_ir_hw_exit(&pdev->dev);
-
-	return 0;
 }
 
 static void sunxi_ir_shutdown(struct platform_device *pdev)
@@ -413,7 +412,7 @@ MODULE_DEVICE_TABLE(of, sunxi_ir_match);
 
 static struct platform_driver sunxi_ir_driver = {
 	.probe          = sunxi_ir_probe,
-	.remove         = sunxi_ir_remove,
+	.remove_new     = sunxi_ir_remove,
 	.shutdown       = sunxi_ir_shutdown,
 	.driver = {
 		.name = SUNXI_IR_DEV,

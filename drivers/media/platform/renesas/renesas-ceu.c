@@ -22,7 +22,6 @@
 #include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/of_graph.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
@@ -152,7 +151,7 @@ static inline struct ceu_buffer *vb2_to_ceu(struct vb2_v4l2_buffer *vbuf)
  * ceu_subdev - Wraps v4l2 sub-device and provides async subdevice.
  */
 struct ceu_subdev {
-	struct v4l2_async_subdev asd;
+	struct v4l2_async_connection asd;
 	struct v4l2_subdev *v4l2_sd;
 
 	/* per-subdevice mbus configuration options */
@@ -160,7 +159,7 @@ struct ceu_subdev {
 	struct ceu_mbus_fmt mbus_fmt;
 };
 
-static struct ceu_subdev *to_ceu_subdev(struct v4l2_async_subdev *asd)
+static struct ceu_subdev *to_ceu_subdev(struct v4l2_async_connection *asd)
 {
 	return container_of(asd, struct ceu_subdev, asd);
 }
@@ -702,12 +701,6 @@ static int ceu_start_streaming(struct vb2_queue *vq, unsigned int count)
 	/* Grab the first available buffer and trigger the first capture. */
 	buf = list_first_entry(&ceudev->capture, struct ceu_buffer,
 			       queue);
-	if (!buf) {
-		spin_unlock_irqrestore(&ceudev->lock, irqflags);
-		dev_dbg(ceudev->dev,
-			"No buffer available for capture.\n");
-		goto error_stop_sensor;
-	}
 
 	list_del(&buf->queue);
 	ceudev->active = &buf->vb;
@@ -721,9 +714,6 @@ static int ceu_start_streaming(struct vb2_queue *vq, unsigned int count)
 	spin_unlock_irqrestore(&ceudev->lock, irqflags);
 
 	return 0;
-
-error_stop_sensor:
-	v4l2_subdev_call(v4l2_sd, video, s_stream, 0);
 
 error_return_bufs:
 	spin_lock_irqsave(&ceudev->lock, irqflags);
@@ -795,8 +785,8 @@ static int __ceu_try_fmt(struct ceu_device *ceudev, struct v4l2_format *v4l2_fmt
 	struct v4l2_subdev *v4l2_sd = ceu_sd->v4l2_sd;
 	struct v4l2_subdev_pad_config pad_cfg;
 	struct v4l2_subdev_state pad_state = {
-		.pads = &pad_cfg
-		};
+		.pads = &pad_cfg,
+	};
 	const struct ceu_fmt *ceu_fmt;
 	u32 mbus_code_old;
 	u32 mbus_code;
@@ -1384,7 +1374,7 @@ static void ceu_vdev_release(struct video_device *vdev)
 
 static int ceu_notify_bound(struct v4l2_async_notifier *notifier,
 			    struct v4l2_subdev *v4l2_sd,
-			    struct v4l2_async_subdev *asd)
+			    struct v4l2_async_connection *asd)
 {
 	struct v4l2_device *v4l2_dev = notifier->v4l2_dev;
 	struct ceu_device *ceudev = v4l2_to_ceu(v4l2_dev);
@@ -1667,7 +1657,7 @@ static int ceu_probe(struct platform_device *pdev)
 	if (ret)
 		goto error_pm_disable;
 
-	v4l2_async_nf_init(&ceudev->notifier);
+	v4l2_async_nf_init(&ceudev->notifier, &ceudev->v4l2_dev);
 
 	if (IS_ENABLED(CONFIG_OF) && dev->of_node) {
 		ceu_data = of_device_get_match_data(dev);
@@ -1689,7 +1679,7 @@ static int ceu_probe(struct platform_device *pdev)
 
 	ceudev->notifier.v4l2_dev	= &ceudev->v4l2_dev;
 	ceudev->notifier.ops		= &ceu_notify_ops;
-	ret = v4l2_async_nf_register(&ceudev->v4l2_dev, &ceudev->notifier);
+	ret = v4l2_async_nf_register(&ceudev->notifier);
 	if (ret)
 		goto error_cleanup;
 
@@ -1709,7 +1699,7 @@ error_free_ceudev:
 	return ret;
 }
 
-static int ceu_remove(struct platform_device *pdev)
+static void ceu_remove(struct platform_device *pdev)
 {
 	struct ceu_device *ceudev = platform_get_drvdata(pdev);
 
@@ -1722,8 +1712,6 @@ static int ceu_remove(struct platform_device *pdev)
 	v4l2_device_unregister(&ceudev->v4l2_dev);
 
 	video_unregister_device(&ceudev->vdev);
-
-	return 0;
 }
 
 static const struct dev_pm_ops ceu_pm_ops = {
@@ -1739,7 +1727,7 @@ static struct platform_driver ceu_driver = {
 		.of_match_table = of_match_ptr(ceu_of_match),
 	},
 	.probe		= ceu_probe,
-	.remove		= ceu_remove,
+	.remove_new	= ceu_remove,
 };
 
 module_platform_driver(ceu_driver);

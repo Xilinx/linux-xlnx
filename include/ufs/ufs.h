@@ -11,9 +11,15 @@
 #ifndef _UFS_H
 #define _UFS_H
 
-#include <linux/mutex.h>
+#include <linux/bitops.h>
 #include <linux/types.h>
 #include <uapi/scsi/scsi_bsg_ufs.h>
+
+/*
+ * Using static_assert() is not allowed in UAPI header files. Hence the check
+ * in this header file of the size of struct utp_upiu_header.
+ */
+static_assert(sizeof(struct utp_upiu_header) == 12);
 
 #define GENERAL_UPIU_REQUEST_SIZE (sizeof(struct utp_upiu_req))
 #define QUERY_DESC_MAX_SIZE       255
@@ -23,9 +29,6 @@
 					(sizeof(struct utp_upiu_header)))
 #define UFS_SENSE_SIZE	18
 
-#define UPIU_HEADER_DWORD(byte3, byte2, byte1, byte0)\
-			cpu_to_be32((byte3 << 24) | (byte2 << 16) |\
-			 (byte1 << 8) | (byte0))
 /*
  * UFS device may have standard LUs and LUN id could be from 0x00 to
  * 0x7F. Standard LUs use "Peripheral Device Addressing Format".
@@ -38,7 +41,6 @@
 #define UFS_UPIU_MAX_UNIT_NUM_ID	0x7F
 #define UFS_MAX_LUNS		(SCSI_W_LUN_BASE + UFS_UPIU_MAX_UNIT_NUM_ID)
 #define UFS_UPIU_WLUN_ID	(1 << 7)
-#define UFS_RPMB_UNIT		0xC4
 
 /* WriteBooster buffer is available only for the logical unit from 0 to 7 */
 #define UFS_UPIU_MAX_WB_LUN_ID	8
@@ -48,6 +50,11 @@
  * If it is over the limit, WriteBooster feature will be disabled.
  */
 #define UFS_WB_EXCEED_LIFETIME		0x0B
+
+/*
+ * In UFS Spec, the Extra Header Segment (EHS) starts from byte 32 in UPIU request/response packet
+ */
+#define EHS_OFFSET_IN_RESPONSE 32
 
 /* Well known logical unit id in LUN field of UPIU */
 enum {
@@ -72,7 +79,7 @@ enum {
 };
 
 /* UTP UPIU Transaction Codes Initiator to Target */
-enum {
+enum upiu_request_transaction {
 	UPIU_TRANSACTION_NOP_OUT	= 0x00,
 	UPIU_TRANSACTION_COMMAND	= 0x01,
 	UPIU_TRANSACTION_DATA_OUT	= 0x02,
@@ -81,7 +88,7 @@ enum {
 };
 
 /* UTP UPIU Transaction Codes Target to Initiator */
-enum {
+enum upiu_response_transaction {
 	UPIU_TRANSACTION_NOP_IN		= 0x20,
 	UPIU_TRANSACTION_RESPONSE	= 0x21,
 	UPIU_TRANSACTION_DATA_IN	= 0x22,
@@ -96,6 +103,12 @@ enum {
 	UPIU_CMD_FLAGS_NONE	= 0x00,
 	UPIU_CMD_FLAGS_WRITE	= 0x20,
 	UPIU_CMD_FLAGS_READ	= 0x40,
+};
+
+/* UPIU response flags */
+enum {
+	UPIU_RSP_FLAG_UNDERFLOW	= 0x20,
+	UPIU_RSP_FLAG_OVERFLOW	= 0x40,
 };
 
 /* UPIU Task Attributes */
@@ -165,6 +178,8 @@ enum attr_idn {
 	QUERY_ATTR_IDN_AVAIL_WB_BUFF_SIZE       = 0x1D,
 	QUERY_ATTR_IDN_WB_BUFF_LIFE_TIME_EST    = 0x1E,
 	QUERY_ATTR_IDN_CURR_WB_BUFF_SIZE        = 0x1F,
+	QUERY_ATTR_IDN_EXT_IID_EN		= 0x2A,
+	QUERY_ATTR_IDN_TIMESTAMP		= 0x30
 };
 
 /* Descriptor idn for Query requests */
@@ -210,6 +225,28 @@ enum unit_desc_param {
 	UNIT_DESC_PARAM_HPB_PIN_RGN_START_OFF	= 0x25,
 	UNIT_DESC_PARAM_HPB_NUM_PIN_RGNS	= 0x27,
 	UNIT_DESC_PARAM_WB_BUF_ALLOC_UNITS	= 0x29,
+};
+
+/* RPMB Unit descriptor parameters offsets in bytes*/
+enum rpmb_unit_desc_param {
+	RPMB_UNIT_DESC_PARAM_LEN		= 0x0,
+	RPMB_UNIT_DESC_PARAM_TYPE		= 0x1,
+	RPMB_UNIT_DESC_PARAM_UNIT_INDEX		= 0x2,
+	RPMB_UNIT_DESC_PARAM_LU_ENABLE		= 0x3,
+	RPMB_UNIT_DESC_PARAM_BOOT_LUN_ID	= 0x4,
+	RPMB_UNIT_DESC_PARAM_LU_WR_PROTECT	= 0x5,
+	RPMB_UNIT_DESC_PARAM_LU_Q_DEPTH		= 0x6,
+	RPMB_UNIT_DESC_PARAM_PSA_SENSITIVE	= 0x7,
+	RPMB_UNIT_DESC_PARAM_MEM_TYPE		= 0x8,
+	RPMB_UNIT_DESC_PARAM_REGION_EN		= 0x9,
+	RPMB_UNIT_DESC_PARAM_LOGICAL_BLK_SIZE	= 0xA,
+	RPMB_UNIT_DESC_PARAM_LOGICAL_BLK_COUNT	= 0xB,
+	RPMB_UNIT_DESC_PARAM_REGION0_SIZE	= 0x13,
+	RPMB_UNIT_DESC_PARAM_REGION1_SIZE	= 0x14,
+	RPMB_UNIT_DESC_PARAM_REGION2_SIZE	= 0x15,
+	RPMB_UNIT_DESC_PARAM_REGION3_SIZE	= 0x16,
+	RPMB_UNIT_DESC_PARAM_PROVISIONING_TYPE	= 0x17,
+	RPMB_UNIT_DESC_PARAM_PHY_MEM_RSRC_CNT	= 0x18,
 };
 
 /* Device descriptor parameters offsets in bytes*/
@@ -352,6 +389,7 @@ enum {
 	UFS_DEV_EXT_TEMP_NOTIF		= BIT(6),
 	UFS_DEV_HPB_SUPPORT		= BIT(7),
 	UFS_DEV_WRITE_BOOSTER_SUP	= BIT(8),
+	UFS_DEV_EXT_IID_SUP		= BIT(16),
 };
 #define UFS_DEV_HPB_SUPPORT_VERSION		0x310
 
@@ -437,21 +475,11 @@ enum {
 	UPIU_COMMAND_SET_TYPE_QUERY	= 0x2,
 };
 
-/* UTP Transfer Request Command Offset */
-#define UPIU_COMMAND_TYPE_OFFSET	28
-
 /* Offset of the response code in the UPIU header */
 #define UPIU_RSP_CODE_OFFSET		8
 
 enum {
-	MASK_SCSI_STATUS		= 0xFF,
-	MASK_TASK_RESPONSE              = 0xFF00,
-	MASK_RSP_UPIU_RESULT            = 0xFFFF,
-	MASK_QUERY_DATA_SEG_LEN         = 0xFFFF,
-	MASK_RSP_UPIU_DATA_SEG_LEN	= 0xFFFF,
-	MASK_RSP_EXCEPTION_EVENT        = 0x10000,
 	MASK_TM_SERVICE_RESP		= 0xFF,
-	MASK_TM_FUNC			= 0xFF,
 };
 
 /* Task management service response */
@@ -487,41 +515,6 @@ struct utp_cmd_rsp {
 	u8 sense_data[UFS_SENSE_SIZE];
 };
 
-struct ufshpb_active_field {
-	__be16 active_rgn;
-	__be16 active_srgn;
-};
-#define HPB_ACT_FIELD_SIZE 4
-
-/**
- * struct utp_hpb_rsp - Response UPIU structure
- * @residual_transfer_count: Residual transfer count DW-3
- * @reserved1: Reserved double words DW-4 to DW-7
- * @sense_data_len: Sense data length DW-8 U16
- * @desc_type: Descriptor type of sense data
- * @additional_len: Additional length of sense data
- * @hpb_op: HPB operation type
- * @lun: LUN of response UPIU
- * @active_rgn_cnt: Active region count
- * @inactive_rgn_cnt: Inactive region count
- * @hpb_active_field: Recommended to read HPB region and subregion
- * @hpb_inactive_field: To be inactivated HPB region and subregion
- */
-struct utp_hpb_rsp {
-	__be32 residual_transfer_count;
-	__be32 reserved1[4];
-	__be16 sense_data_len;
-	u8 desc_type;
-	u8 additional_len;
-	u8 hpb_op;
-	u8 lun;
-	u8 active_rgn_cnt;
-	u8 inactive_rgn_cnt;
-	struct ufshpb_active_field hpb_active_field[2];
-	__be16 hpb_inactive_field[2];
-};
-#define UTP_HPB_RSP_SIZE 40
-
 /**
  * struct utp_upiu_rsp - general upiu response structure
  * @header: UPIU header structure DW-0 to DW-2
@@ -532,29 +525,8 @@ struct utp_upiu_rsp {
 	struct utp_upiu_header header;
 	union {
 		struct utp_cmd_rsp sr;
-		struct utp_hpb_rsp hr;
 		struct utp_upiu_query qr;
 	};
-};
-
-/**
- * struct ufs_query_req - parameters for building a query request
- * @query_func: UPIU header query function
- * @upiu_req: the query request data
- */
-struct ufs_query_req {
-	u8 query_func;
-	struct utp_upiu_query upiu_req;
-};
-
-/**
- * struct ufs_query_resp - UPIU QUERY
- * @response: device response code
- * @upiu_res: query response data
- */
-struct ufs_query_res {
-	u8 response;
-	struct utp_upiu_query upiu_res;
 };
 
 /*
@@ -589,9 +561,8 @@ struct ufs_dev_info {
 	u8	*model;
 	u16	wspecversion;
 	u32	clk_gating_wait_us;
-
-	/* UFS HPB related flag */
-	bool	hpb_enabled;
+	/* Stores the depth of queue in UFS device */
+	u8	bqueuedepth;
 
 	/* UFS WB related flags */
 	bool    wb_enabled;
@@ -601,6 +572,11 @@ struct ufs_dev_info {
 
 	bool	b_rpm_dev_flush_capable;
 	u8	b_presrv_uspc_en;
+
+	bool    b_advanced_rpmb_en;
+
+	/* UFS EXT_IID Enable */
+	bool	b_ext_iid_en;
 };
 
 /*

@@ -1,5 +1,3 @@
-.. _hugetlbfs_reserve:
-
 =====================
 Hugetlbfs Reservation
 =====================
@@ -7,10 +5,10 @@ Hugetlbfs Reservation
 Overview
 ========
 
-Huge pages as described at :ref:`hugetlbpage` are typically
-preallocated for application use.  These huge pages are instantiated in a
-task's address space at page fault time if the VMA indicates huge pages are
-to be used.  If no huge page exists at page fault time, the task is sent
+Huge pages as described at Documentation/admin-guide/mm/hugetlbpage.rst are
+typically preallocated for application use.  These huge pages are instantiated
+in a task's address space at page fault time if the VMA indicates huge pages
+are to be used.  If no huge page exists at page fault time, the task is sent
 a SIGBUS and often dies an unhappy death.  Shortly after huge page support
 was added, it was determined that it would be better to detect a shortage
 of huge pages at mmap() time.  The idea is that if there were not enough
@@ -181,14 +179,14 @@ Consuming Reservations/Allocating a Huge Page
 
 Reservations are consumed when huge pages associated with the reservations
 are allocated and instantiated in the corresponding mapping.  The allocation
-is performed within the routine alloc_huge_page()::
+is performed within the routine alloc_hugetlb_folio()::
 
-	struct page *alloc_huge_page(struct vm_area_struct *vma,
+	struct folio *alloc_hugetlb_folio(struct vm_area_struct *vma,
 				     unsigned long addr, int avoid_reserve)
 
-alloc_huge_page is passed a VMA pointer and a virtual address, so it can
+alloc_hugetlb_folio is passed a VMA pointer and a virtual address, so it can
 consult the reservation map to determine if a reservation exists.  In addition,
-alloc_huge_page takes the argument avoid_reserve which indicates reserves
+alloc_hugetlb_folio takes the argument avoid_reserve which indicates reserves
 should not be used even if it appears they have been set aside for the
 specified address.  The avoid_reserve argument is most often used in the case
 of Copy on Write and Page Migration where additional copies of an existing
@@ -208,7 +206,8 @@ a reservation for the allocation.  After determining whether a reservation
 exists and can be used for the allocation, the routine dequeue_huge_page_vma()
 is called.  This routine takes two arguments related to reservations:
 
-- avoid_reserve, this is the same value/argument passed to alloc_huge_page()
+- avoid_reserve, this is the same value/argument passed to
+  alloc_hugetlb_folio().
 - chg, even though this argument is of type long only the values 0 or 1 are
   passed to dequeue_huge_page_vma.  If the value is 0, it indicates a
   reservation exists (see the section "Memory Policy and Reservations" for
@@ -233,9 +232,9 @@ the scope reservations.  Even if a surplus page is allocated, the same
 reservation based adjustments as above will be made: SetPagePrivate(page) and
 resv_huge_pages--.
 
-After obtaining a new huge page, (page)->private is set to the value of
-the subpool associated with the page if it exists.  This will be used for
-subpool accounting when the page is freed.
+After obtaining a new hugetlb folio, (folio)->_hugetlb_subpool is set to the
+value of the subpool associated with the page if it exists.  This will be used
+for subpool accounting when the folio is freed.
 
 The routine vma_commit_reservation() is then called to adjust the reserve
 map based on the consumption of the reservation.  In general, this involves
@@ -246,8 +245,8 @@ was no reservation in a shared mapping or this was a private mapping a new
 entry must be created.
 
 It is possible that the reserve map could have been changed between the call
-to vma_needs_reservation() at the beginning of alloc_huge_page() and the
-call to vma_commit_reservation() after the page was allocated.  This would
+to vma_needs_reservation() at the beginning of alloc_hugetlb_folio() and the
+call to vma_commit_reservation() after the folio was allocated.  This would
 be possible if hugetlb_reserve_pages was called for the same page in a shared
 mapping.  In such cases, the reservation count and subpool free page count
 will be off by one.  This rare condition can be identified by comparing the
@@ -272,12 +271,12 @@ to the global reservation count (resv_huge_pages).
 Freeing Huge Pages
 ==================
 
-Huge page freeing is performed by the routine free_huge_page().  This routine
-is the destructor for hugetlbfs compound pages.  As a result, it is only
-passed a pointer to the page struct.  When a huge page is freed, reservation
-accounting may need to be performed.  This would be the case if the page was
-associated with a subpool that contained reserves, or the page is being freed
-on an error path where a global reserve count must be restored.
+Huge pages are freed by free_huge_folio().  It is only passed a pointer
+to the folio as it is called from the generic MM code.  When a huge page
+is freed, reservation accounting may need to be performed.  This would
+be the case if the page was associated with a subpool that contained
+reserves, or the page is being freed on an error path where a global
+reserve count must be restored.
 
 The page->private field points to any subpool associated with the page.
 If the PagePrivate flag is set, it indicates the global reserve count should
@@ -526,7 +525,7 @@ However, there are several instances where errors are encountered after a huge
 page is allocated but before it is instantiated.  In this case, the page
 allocation has consumed the reservation and made the appropriate subpool,
 reservation map and global count adjustments.  If the page is freed at this
-time (before instantiation and clearing of PagePrivate), then free_huge_page
+time (before instantiation and clearing of PagePrivate), then free_huge_folio
 will increment the global reservation count.  However, the reservation map
 indicates the reservation was consumed.  This resulting inconsistent state
 will cause the 'leak' of a reserved huge page.  The global reserve count will

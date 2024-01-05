@@ -31,6 +31,17 @@ struct io_close {
 	u32				file_slot;
 };
 
+static bool io_openat_force_async(struct io_open *open)
+{
+	/*
+	 * Don't bother trying for O_TRUNC, O_CREAT, or O_TMPFILE open,
+	 * it'll always -EAGAIN. Note that we test for __O_TMPFILE because
+	 * O_TMPFILE includes O_DIRECTORY, which isn't a flag we need to force
+	 * async for.
+	 */
+	return open->how.flags & (O_TRUNC | O_CREAT | __O_TMPFILE);
+}
+
 static int __io_openat_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 {
 	struct io_open *open = io_kiocb_to_cmd(req, struct io_open);
@@ -61,6 +72,8 @@ static int __io_openat_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe
 
 	open->nofile = rlimit(RLIMIT_NOFILE);
 	req->flags |= REQ_F_NEED_CLEANUP;
+	if (io_openat_force_async(open))
+		req->flags |= REQ_F_FORCE_ASYNC;
 	return 0;
 }
 
@@ -108,12 +121,7 @@ int io_openat2(struct io_kiocb *req, unsigned int issue_flags)
 	nonblock_set = op.open_flag & O_NONBLOCK;
 	resolve_nonblock = open->how.resolve & RESOLVE_CACHED;
 	if (issue_flags & IO_URING_F_NONBLOCK) {
-		/*
-		 * Don't bother trying for O_TRUNC, O_CREAT, or O_TMPFILE open,
-		 * it'll always -EAGAIN
-		 */
-		if (open->how.flags & (O_TRUNC | O_CREAT | O_TMPFILE))
-			return -EAGAIN;
+		WARN_ON_ONCE(io_openat_force_async(open));
 		op.lookup_flags |= LOOKUP_CACHED;
 		op.open_flag |= O_NONBLOCK;
 	}
@@ -144,7 +152,6 @@ int io_openat2(struct io_kiocb *req, unsigned int issue_flags)
 
 	if ((issue_flags & IO_URING_F_NONBLOCK) && !nonblock_set)
 		file->f_flags &= ~O_NONBLOCK;
-	fsnotify_open(file);
 
 	if (!fixed)
 		fd_install(ret, file);

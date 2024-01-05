@@ -156,7 +156,7 @@ static bool increase_address_space(struct protection_domain *domain,
 	bool ret = true;
 	u64 *pte;
 
-	pte = (void *)get_zeroed_page(gfp);
+	pte = alloc_pgtable_page(domain->nid, gfp);
 	if (!pte)
 		return false;
 
@@ -250,7 +250,7 @@ static u64 *alloc_pte(struct protection_domain *domain,
 
 		if (!IOMMU_PTE_PRESENT(__pte) ||
 		    pte_level == PAGE_MODE_NONE) {
-			page = (u64 *)get_zeroed_page(gfp);
+			page = alloc_pgtable_page(domain->nid, gfp);
 
 			if (!page)
 				return NULL;
@@ -310,8 +310,8 @@ static u64 *fetch_pte(struct amd_io_pgtable *pgtable,
 			return NULL;
 
 		/* Large PTE */
-		if (PM_PTE_LEVEL(*pte) == 7 ||
-		    PM_PTE_LEVEL(*pte) == 0)
+		if (PM_PTE_LEVEL(*pte) == PAGE_MODE_7_LEVEL ||
+		    PM_PTE_LEVEL(*pte) == PAGE_MODE_NONE)
 			break;
 
 		/* No level skipping support yet */

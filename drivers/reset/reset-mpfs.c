@@ -9,6 +9,7 @@
 #include <linux/auxiliary_bus.h>
 #include <linux/delay.h>
 #include <linux/module.h>
+#include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/reset-controller.h>
 #include <dt-bindings/clock/microchip,mpfs-clock.h>
@@ -153,5 +154,4 @@ module_auxiliary_driver(mpfs_reset_driver);
 
 MODULE_DESCRIPTION("Microchip PolarFire SoC Reset Driver");
 MODULE_AUTHOR("Conor Dooley <conor.dooley@microchip.com>");
-MODULE_LICENSE("GPL");
 MODULE_IMPORT_NS(MCHP_CLK_MPFS);

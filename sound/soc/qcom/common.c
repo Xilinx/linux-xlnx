@@ -8,6 +8,11 @@
 #include "qdsp6/q6afe.h"
 #include "common.h"
 
+static const struct snd_soc_dapm_widget qcom_jack_snd_widgets[] = {
+	SND_SOC_DAPM_HP("Headphone Jack", NULL),
+	SND_SOC_DAPM_MIC("Mic Jack", NULL),
+};
+
 int qcom_snd_parse_of(struct snd_soc_card *card)
 {
 	struct device_node *np;
@@ -96,21 +101,14 @@ int qcom_snd_parse_of(struct snd_soc_card *card)
 			goto err;
 		}
 
-		ret = of_parse_phandle_with_args(cpu, "sound-dai",
-					"#sound-dai-cells", 0, &args);
-		if (ret) {
-			dev_err(card->dev, "%s: error getting cpu phandle\n", link->name);
-			goto err;
-		}
-		link->cpus->of_node = args.np;
-		link->id = args.args[0];
-
-		ret = snd_soc_of_get_dai_name(cpu, &link->cpus->dai_name);
+		ret = snd_soc_of_get_dlc(cpu, &args, link->cpus, 0);
 		if (ret) {
 			dev_err_probe(card->dev, ret,
 				      "%s: error getting cpu dai name\n", link->name);
 			goto err;
 		}
+
+		link->id = args.args[0];
 
 		if (platform) {
 			link->platforms->of_node = of_parse_phandle(platform,
@@ -140,17 +138,8 @@ int qcom_snd_parse_of(struct snd_soc_card *card)
 			}
 		} else {
 			/* DPCM frontend */
-			dlc = devm_kzalloc(dev, sizeof(*dlc), GFP_KERNEL);
-			if (!dlc) {
-				ret = -ENOMEM;
-				goto err;
-			}
-
-			link->codecs	 = dlc;
+			link->codecs	 = &asoc_dummy_dlc;
 			link->num_codecs = 1;
-
-			link->codecs->dai_name = "snd-soc-dummy-dai";
-			link->codecs->name = "snd-soc-dummy";
 			link->dynamic = 1;
 		}
 
@@ -169,6 +158,11 @@ int qcom_snd_parse_of(struct snd_soc_card *card)
 		of_node_put(platform);
 	}
 
+	if (!card->dapm_widgets) {
+		card->dapm_widgets = qcom_jack_snd_widgets;
+		card->num_dapm_widgets = ARRAY_SIZE(qcom_jack_snd_widgets);
+	}
+
 	return 0;
 err:
 	of_node_put(cpu);
@@ -180,121 +174,17 @@ err_put_np:
 }
 EXPORT_SYMBOL_GPL(qcom_snd_parse_of);
 
-#if IS_ENABLED(CONFIG_SOUNDWIRE)
-int qcom_snd_sdw_prepare(struct snd_pcm_substream *substream,
-			 struct sdw_stream_runtime *sruntime,
-			 bool *stream_prepared)
-{
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
-	int ret;
-
-	if (!sruntime)
-		return 0;
-
-	switch (cpu_dai->id) {
-	case WSA_CODEC_DMA_RX_0:
-	case WSA_CODEC_DMA_RX_1:
-	case RX_CODEC_DMA_RX_0:
-	case RX_CODEC_DMA_RX_1:
-	case TX_CODEC_DMA_TX_0:
-	case TX_CODEC_DMA_TX_1:
-	case TX_CODEC_DMA_TX_2:
-	case TX_CODEC_DMA_TX_3:
-		break;
-	default:
-		return 0;
-	}
-
-	if (*stream_prepared) {
-		sdw_disable_stream(sruntime);
-		sdw_deprepare_stream(sruntime);
-		*stream_prepared = false;
-	}
-
-	ret = sdw_prepare_stream(sruntime);
-	if (ret)
-		return ret;
-
-	/**
-	 * NOTE: there is a strict hw requirement about the ordering of port
-	 * enables and actual WSA881x PA enable. PA enable should only happen
-	 * after soundwire ports are enabled if not DC on the line is
-	 * accumulated resulting in Click/Pop Noise
-	 * PA enable/mute are handled as part of codec DAPM and digital mute.
-	 */
-
-	ret = sdw_enable_stream(sruntime);
-	if (ret) {
-		sdw_deprepare_stream(sruntime);
-		return ret;
-	}
-	*stream_prepared  = true;
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(qcom_snd_sdw_prepare);
-
-int qcom_snd_sdw_hw_params(struct snd_pcm_substream *substream,
-			   struct snd_pcm_hw_params *params,
-			   struct sdw_stream_runtime **psruntime)
-{
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai *codec_dai;
-	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
-	struct sdw_stream_runtime *sruntime;
-	int i;
-
-	switch (cpu_dai->id) {
-	case WSA_CODEC_DMA_RX_0:
-	case RX_CODEC_DMA_RX_0:
-	case RX_CODEC_DMA_RX_1:
-	case TX_CODEC_DMA_TX_0:
-	case TX_CODEC_DMA_TX_1:
-	case TX_CODEC_DMA_TX_2:
-	case TX_CODEC_DMA_TX_3:
-		for_each_rtd_codec_dais(rtd, i, codec_dai) {
-			sruntime = snd_soc_dai_get_stream(codec_dai, substream->stream);
-			if (sruntime != ERR_PTR(-ENOTSUPP))
-				*psruntime = sruntime;
-		}
-		break;
-	}
-
-	return 0;
-
-}
-EXPORT_SYMBOL_GPL(qcom_snd_sdw_hw_params);
-
-int qcom_snd_sdw_hw_free(struct snd_pcm_substream *substream,
-			 struct sdw_stream_runtime *sruntime, bool *stream_prepared)
-{
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
-
-	switch (cpu_dai->id) {
-	case WSA_CODEC_DMA_RX_0:
-	case WSA_CODEC_DMA_RX_1:
-	case RX_CODEC_DMA_RX_0:
-	case RX_CODEC_DMA_RX_1:
-	case TX_CODEC_DMA_TX_0:
-	case TX_CODEC_DMA_TX_1:
-	case TX_CODEC_DMA_TX_2:
-	case TX_CODEC_DMA_TX_3:
-		if (sruntime && *stream_prepared) {
-			sdw_disable_stream(sruntime);
-			sdw_deprepare_stream(sruntime);
-			*stream_prepared = false;
-		}
-		break;
-	default:
-		break;
-	}
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(qcom_snd_sdw_hw_free);
-#endif
+static struct snd_soc_jack_pin qcom_headset_jack_pins[] = {
+	/* Headset */
+	{
+		.pin = "Mic Jack",
+		.mask = SND_JACK_MICROPHONE,
+	},
+	{
+		.pin = "Headphone Jack",
+		.mask = SND_JACK_HEADPHONE,
+	},
+};
 
 int qcom_snd_wcd_jack_setup(struct snd_soc_pcm_runtime *rtd,
 			    struct snd_soc_jack *jack, bool *jack_setup)
@@ -305,13 +195,14 @@ int qcom_snd_wcd_jack_setup(struct snd_soc_pcm_runtime *rtd,
 	int rval, i;
 
 	if (!*jack_setup) {
-		rval = snd_soc_card_jack_new(card, "Headset Jack",
+		rval = snd_soc_card_jack_new_pins(card, "Headset Jack",
 					     SND_JACK_HEADSET | SND_JACK_LINEOUT |
 					     SND_JACK_MECHANICAL |
 					     SND_JACK_BTN_0 | SND_JACK_BTN_1 |
 					     SND_JACK_BTN_2 | SND_JACK_BTN_3 |
 					     SND_JACK_BTN_4 | SND_JACK_BTN_5,
-					     jack);
+					     jack, qcom_headset_jack_pins,
+					     ARRAY_SIZE(qcom_headset_jack_pins));
 
 		if (rval < 0) {
 			dev_err(card->dev, "Unable to add Headphone Jack\n");

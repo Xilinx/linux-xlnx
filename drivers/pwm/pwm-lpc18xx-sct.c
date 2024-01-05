@@ -22,6 +22,7 @@
 #include <linux/clk.h>
 #include <linux/err.h>
 #include <linux/io.h>
+#include <linux/mod_devicetable.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/pwm.h>
@@ -175,7 +176,7 @@ static void lpc18xx_pwm_config_duty(struct pwm_chip *chip,
 	u32 val;
 
 	/*
-	 * With clk_rate < NSEC_PER_SEC this cannot overflow.
+	 * With clk_rate <= NSEC_PER_SEC this cannot overflow.
 	 * With duty_ns <= period_ns < max_period_ns this also fits into an u32.
 	 */
 	val = mul_u64_u64_div_u64(duty_ns, lpc18xx_pwm->clk_rate, NSEC_PER_SEC);
@@ -366,30 +367,21 @@ static int lpc18xx_pwm_probe(struct platform_device *pdev)
 	if (IS_ERR(lpc18xx_pwm->base))
 		return PTR_ERR(lpc18xx_pwm->base);
 
-	lpc18xx_pwm->pwm_clk = devm_clk_get(&pdev->dev, "pwm");
+	lpc18xx_pwm->pwm_clk = devm_clk_get_enabled(&pdev->dev, "pwm");
 	if (IS_ERR(lpc18xx_pwm->pwm_clk))
 		return dev_err_probe(&pdev->dev, PTR_ERR(lpc18xx_pwm->pwm_clk),
 				     "failed to get pwm clock\n");
 
-	ret = clk_prepare_enable(lpc18xx_pwm->pwm_clk);
-	if (ret < 0)
-		return dev_err_probe(&pdev->dev, ret,
-				     "could not prepare or enable pwm clock\n");
-
 	lpc18xx_pwm->clk_rate = clk_get_rate(lpc18xx_pwm->pwm_clk);
-	if (!lpc18xx_pwm->clk_rate) {
-		ret = dev_err_probe(&pdev->dev,
-				    -EINVAL, "pwm clock has no frequency\n");
-		goto disable_pwmclk;
-	}
+	if (!lpc18xx_pwm->clk_rate)
+		return dev_err_probe(&pdev->dev,
+				     -EINVAL, "pwm clock has no frequency\n");
 
 	/*
 	 * If clkrate is too fast, the calculations in .apply() might overflow.
 	 */
-	if (lpc18xx_pwm->clk_rate > NSEC_PER_SEC) {
-		ret = dev_err_probe(&pdev->dev, -EINVAL, "pwm clock to fast\n");
-		goto disable_pwmclk;
-	}
+	if (lpc18xx_pwm->clk_rate > NSEC_PER_SEC)
+		return dev_err_probe(&pdev->dev, -EINVAL, "pwm clock to fast\n");
 
 	mutex_init(&lpc18xx_pwm->res_lock);
 	mutex_init(&lpc18xx_pwm->period_lock);
@@ -435,21 +427,15 @@ static int lpc18xx_pwm_probe(struct platform_device *pdev)
 	lpc18xx_pwm_writel(lpc18xx_pwm, LPC18XX_PWM_CTRL, val);
 
 	ret = pwmchip_add(&lpc18xx_pwm->chip);
-	if (ret < 0) {
-		dev_err_probe(&pdev->dev, ret, "pwmchip_add failed\n");
-		goto disable_pwmclk;
-	}
+	if (ret < 0)
+		return dev_err_probe(&pdev->dev, ret, "pwmchip_add failed\n");
 
 	platform_set_drvdata(pdev, lpc18xx_pwm);
 
 	return 0;
-
-disable_pwmclk:
-	clk_disable_unprepare(lpc18xx_pwm->pwm_clk);
-	return ret;
 }
 
-static int lpc18xx_pwm_remove(struct platform_device *pdev)
+static void lpc18xx_pwm_remove(struct platform_device *pdev)
 {
 	struct lpc18xx_pwm_chip *lpc18xx_pwm = platform_get_drvdata(pdev);
 	u32 val;
@@ -459,10 +445,6 @@ static int lpc18xx_pwm_remove(struct platform_device *pdev)
 	val = lpc18xx_pwm_readl(lpc18xx_pwm, LPC18XX_PWM_CTRL);
 	lpc18xx_pwm_writel(lpc18xx_pwm, LPC18XX_PWM_CTRL,
 			   val | LPC18XX_PWM_CTRL_HALT);
-
-	clk_disable_unprepare(lpc18xx_pwm->pwm_clk);
-
-	return 0;
 }
 
 static struct platform_driver lpc18xx_pwm_driver = {
@@ -471,7 +453,7 @@ static struct platform_driver lpc18xx_pwm_driver = {
 		.of_match_table = lpc18xx_pwm_of_match,
 	},
 	.probe = lpc18xx_pwm_probe,
-	.remove = lpc18xx_pwm_remove,
+	.remove_new = lpc18xx_pwm_remove,
 };
 module_platform_driver(lpc18xx_pwm_driver);
 

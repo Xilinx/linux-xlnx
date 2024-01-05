@@ -23,16 +23,24 @@ static irqreturn_t vfio_cdx_msihandler(int irq_no, void *arg)
 
 static int vfio_cdx_msi_enable(struct vfio_cdx_device *vdev, int nvec)
 {
+	struct cdx_device *cdx_dev = to_cdx_device(vdev->vdev.dev);
 	struct device *dev = vdev->vdev.dev;
-	int msi_idx = 0, ret;
+	int msi_idx, ret;
 
 	vdev->cdx_irqs = kcalloc(nvec, sizeof(struct vfio_cdx_irq), GFP_KERNEL);
 	if (!vdev->cdx_irqs)
 		return -ENOMEM;
 
+	ret = cdx_enable_msi(cdx_dev);
+	if (ret) {
+		kfree(vdev->cdx_irqs);
+		return ret;
+	}
+
 	/* Allocate cdx MSIs */
 	ret = cdx_msi_domain_alloc_irqs(dev, nvec);
 	if (ret) {
+		cdx_disable_msi(cdx_dev);
 		kfree(vdev->cdx_irqs);
 		return ret;
 	}
@@ -116,6 +124,7 @@ static int vfio_cdx_msi_set_block(struct vfio_cdx_device *vdev,
 
 static void vfio_cdx_msi_disable(struct vfio_cdx_device *vdev)
 {
+	struct cdx_device *cdx_dev = to_cdx_device(vdev->vdev.dev);
 	struct device *dev = vdev->vdev.dev;
 
 	vfio_cdx_msi_set_block(vdev, 0, vdev->irq_count, NULL);
@@ -123,7 +132,8 @@ static void vfio_cdx_msi_disable(struct vfio_cdx_device *vdev)
 	if (!vdev->config_msi)
 		return;
 
-	cdx_msi_domain_free_irqs(dev_get_msi_domain(dev), dev);
+	cdx_msi_domain_free_irqs(dev, MSI_DEFAULT_DOMAIN);
+	cdx_disable_msi(cdx_dev);
 	kfree(vdev->cdx_irqs);
 
 	vdev->cdx_irqs = NULL;
@@ -168,14 +178,8 @@ static int vfio_cdx_set_msi_trigger(struct vfio_cdx_device *vdev,
 	for (i = start; i < start + count; i++) {
 		if (!vdev->cdx_irqs[i].trigger)
 			continue;
-		if (flags & VFIO_IRQ_SET_DATA_NONE) {
+		if (flags & VFIO_IRQ_SET_DATA_NONE)
 			eventfd_signal(vdev->cdx_irqs[i].trigger, 1);
-		} else if (flags & VFIO_IRQ_SET_DATA_BOOL) {
-			u8 *bools = data;
-
-			if (bools[i - start])
-				eventfd_signal(vdev->cdx_irqs[i].trigger, 1);
-		}
 	}
 
 	return 0;

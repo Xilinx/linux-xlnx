@@ -245,7 +245,7 @@ static inline int xhdcp1x_cipher_load_aksv(void *ref, u8 *buf)
 	return -EINVAL;
 }
 
-static inline int xhdcp1x_cipher_do_request(void *ref, xhdcp1x_cipher_request_type request)
+static inline int xhdcp1x_cipher_do_request(void *ref, enum xhdcp1x_cipher_request_type request)
 {
 	return -EINVAL;
 }
@@ -285,7 +285,7 @@ static inline u64 xhdcp1x_cipher_get_mo(void *ref)
 	return -EINVAL;
 }
 
-static int xhdcp1x_cipher_set_ri_update(void *ref, int is_enabled)
+static inline int xhdcp1x_cipher_set_ri_update(void *ref, int is_enabled)
 {
 	return -EINVAL;
 }

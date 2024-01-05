@@ -233,7 +233,7 @@ xfs_acl_set_mode(
 	xfs_ilock(ip, XFS_ILOCK_EXCL);
 	xfs_trans_ijoin(tp, ip, XFS_ILOCK_EXCL);
 	inode->i_mode = mode;
-	inode->i_ctime = current_time(inode);
+	inode_set_ctime_current(inode);
 	xfs_trans_log_inode(tp, ip, XFS_ILOG_CORE);
 
 	if (xfs_has_wsync(mp))
@@ -242,12 +242,13 @@ xfs_acl_set_mode(
 }
 
 int
-xfs_set_acl(struct user_namespace *mnt_userns, struct inode *inode,
+xfs_set_acl(struct mnt_idmap *idmap, struct dentry *dentry,
 	    struct posix_acl *acl, int type)
 {
 	umode_t mode;
 	bool set_mode = false;
 	int error = 0;
+	struct inode *inode = d_inode(dentry);
 
 	if (!acl)
 		goto set_acl;
@@ -257,7 +258,7 @@ xfs_set_acl(struct user_namespace *mnt_userns, struct inode *inode,
 		return error;
 
 	if (type == ACL_TYPE_ACCESS) {
-		error = posix_acl_update_mode(mnt_userns, inode, &mode, &acl);
+		error = posix_acl_update_mode(idmap, inode, &mode, &acl);
 		if (error)
 			return error;
 		set_mode = true;

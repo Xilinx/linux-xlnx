@@ -22,7 +22,6 @@ static __cold int io_uring_show_cred(struct seq_file *m, unsigned int id,
 	struct user_namespace *uns = seq_user_ns(m);
 	struct group_info *gi;
 	kernel_cap_t cap;
-	unsigned __capi;
 	int g;
 
 	seq_printf(m, "%5d\n", id);
@@ -42,16 +41,18 @@ static __cold int io_uring_show_cred(struct seq_file *m, unsigned int id,
 	}
 	seq_puts(m, "\n\tCapEff:\t");
 	cap = cred->cap_effective;
-	CAP_FOR_EACH_U32(__capi)
-		seq_put_hex_ll(m, NULL, cap.cap[CAP_LAST_U32 - __capi], 8);
+	seq_put_hex_ll(m, NULL, cap.val, 16);
 	seq_putc(m, '\n');
 	return 0;
 }
 
-static __cold void __io_uring_show_fdinfo(struct io_ring_ctx *ctx,
-					  struct seq_file *m)
+/*
+ * Caller holds a reference to the file already, we don't need to do
+ * anything else to get an extra reference.
+ */
+__cold void io_uring_show_fdinfo(struct seq_file *m, struct file *f)
 {
-	struct io_sq_data *sq = NULL;
+	struct io_ring_ctx *ctx = f->private_data;
 	struct io_overflow_cqe *ocqe;
 	struct io_rings *r = ctx->rings;
 	unsigned int sq_mask = ctx->sq_entries - 1, cq_mask = ctx->cq_entries - 1;
@@ -62,6 +63,7 @@ static __cold void __io_uring_show_fdinfo(struct io_ring_ctx *ctx,
 	unsigned int cq_shift = 0;
 	unsigned int sq_shift = 0;
 	unsigned int sq_entries, cq_entries;
+	int sq_pid = -1, sq_cpu = -1;
 	bool has_lock;
 	unsigned int i;
 
@@ -91,6 +93,8 @@ static __cold void __io_uring_show_fdinfo(struct io_ring_ctx *ctx,
 		struct io_uring_sqe *sqe;
 		unsigned int sq_idx;
 
+		if (ctx->flags & IORING_SETUP_NO_SQARRAY)
+			break;
 		sq_idx = READ_ONCE(ctx->sq_array[entry & sq_mask]);
 		if (sq_idx > sq_mask)
 			continue;
@@ -139,13 +143,19 @@ static __cold void __io_uring_show_fdinfo(struct io_ring_ctx *ctx,
 	has_lock = mutex_trylock(&ctx->uring_lock);
 
 	if (has_lock && (ctx->flags & IORING_SETUP_SQPOLL)) {
-		sq = ctx->sq_data;
-		if (!sq->thread)
-			sq = NULL;
+		struct io_sq_data *sq = ctx->sq_data;
+
+		if (mutex_trylock(&sq->lock)) {
+			if (sq->thread) {
+				sq_pid = task_pid_nr(sq->thread);
+				sq_cpu = task_cpu(sq->thread);
+			}
+			mutex_unlock(&sq->lock);
+		}
 	}
 
-	seq_printf(m, "SqThread:\t%d\n", sq ? task_pid_nr(sq->thread) : -1);
-	seq_printf(m, "SqThreadCpu:\t%d\n", sq ? task_cpu(sq->thread) : -1);
+	seq_printf(m, "SqThread:\t%d\n", sq_pid);
+	seq_printf(m, "SqThreadCpu:\t%d\n", sq_cpu);
 	seq_printf(m, "UserFiles:\t%u\n", ctx->nr_user_files);
 	for (i = 0; has_lock && i < ctx->nr_user_files; i++) {
 		struct file *f = io_file_from_index(&ctx->file_table, i);
@@ -170,12 +180,11 @@ static __cold void __io_uring_show_fdinfo(struct io_ring_ctx *ctx,
 		xa_for_each(&ctx->personalities, index, cred)
 			io_uring_show_cred(m, index, cred);
 	}
-	if (has_lock)
-		mutex_unlock(&ctx->uring_lock);
 
 	seq_puts(m, "PollList:\n");
 	for (i = 0; i < (1U << ctx->cancel_table.hash_bits); i++) {
 		struct io_hash_bucket *hb = &ctx->cancel_table.hbs[i];
+		struct io_hash_bucket *hbl = &ctx->cancel_table_locked.hbs[i];
 		struct io_kiocb *req;
 
 		spin_lock(&hb->lock);
@@ -183,7 +192,16 @@ static __cold void __io_uring_show_fdinfo(struct io_ring_ctx *ctx,
 			seq_printf(m, "  op=%d, task_works=%d\n", req->opcode,
 					task_work_pending(req->task));
 		spin_unlock(&hb->lock);
+
+		if (!has_lock)
+			continue;
+		hlist_for_each_entry(req, &hbl->list, hash_node)
+			seq_printf(m, "  op=%d, task_works=%d\n", req->opcode,
+					task_work_pending(req->task));
 	}
+
+	if (has_lock)
+		mutex_unlock(&ctx->uring_lock);
 
 	seq_puts(m, "CqOverflowList:\n");
 	spin_lock(&ctx->completion_lock);
@@ -196,15 +214,5 @@ static __cold void __io_uring_show_fdinfo(struct io_ring_ctx *ctx,
 	}
 
 	spin_unlock(&ctx->completion_lock);
-}
-
-__cold void io_uring_show_fdinfo(struct seq_file *m, struct file *f)
-{
-	struct io_ring_ctx *ctx = f->private_data;
-
-	if (percpu_ref_tryget(&ctx->refs)) {
-		__io_uring_show_fdinfo(ctx, m);
-		percpu_ref_put(&ctx->refs);
-	}
 }
 #endif

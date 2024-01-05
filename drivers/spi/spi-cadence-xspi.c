@@ -11,7 +11,6 @@
 #include <linux/iopoll.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
@@ -177,7 +176,10 @@
 #define CDNS_XSPI_CMD_FLD_DSEQ_CMD_3(op) ( \
 	FIELD_PREP(CDNS_XSPI_CMD_DSEQ_R3_DCNT_H, \
 		((op)->data.nbytes >> 16) & 0xffff) | \
-	FIELD_PREP(CDNS_XSPI_CMD_DSEQ_R3_NUM_OF_DUMMY, (op)->dummy.nbytes * 8))
+	FIELD_PREP(CDNS_XSPI_CMD_DSEQ_R3_NUM_OF_DUMMY, \
+		  (op)->dummy.buswidth != 0 ? \
+		  (((op)->dummy.nbytes * 8) / (op)->dummy.buswidth) : \
+		  0))
 
 #define CDNS_XSPI_CMD_FLD_DSEQ_CMD_4(op, chipsel) ( \
 	FIELD_PREP(CDNS_XSPI_CMD_DSEQ_R4_BANK, chipsel) | \
@@ -417,7 +419,7 @@ static int cdns_xspi_mem_op_execute(struct spi_mem *mem,
 				    const struct spi_mem_op *op)
 {
 	struct cdns_xspi_dev *cdns_xspi =
-		spi_master_get_devdata(mem->spi->master);
+		spi_controller_get_devdata(mem->spi->controller);
 	int ret = 0;
 
 	ret = cdns_xspi_mem_op(cdns_xspi, mem, op);
@@ -428,7 +430,7 @@ static int cdns_xspi_mem_op_execute(struct spi_mem *mem,
 static int cdns_xspi_adjust_mem_op_size(struct spi_mem *mem, struct spi_mem_op *op)
 {
 	struct cdns_xspi_dev *cdns_xspi =
-		spi_master_get_devdata(mem->spi->master);
+		spi_controller_get_devdata(mem->spi->controller);
 
 	op->data.nbytes = clamp_val(op->data.nbytes, 0, cdns_xspi->sdmasize);
 
@@ -525,26 +527,26 @@ static void cdns_xspi_print_phy_config(struct cdns_xspi_dev *cdns_xspi)
 static int cdns_xspi_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct spi_master *master = NULL;
+	struct spi_controller *host = NULL;
 	struct cdns_xspi_dev *cdns_xspi = NULL;
 	struct resource *res;
 	int ret;
 
-	master = devm_spi_alloc_master(dev, sizeof(*cdns_xspi));
-	if (!master)
+	host = devm_spi_alloc_host(dev, sizeof(*cdns_xspi));
+	if (!host)
 		return -ENOMEM;
 
-	master->mode_bits = SPI_3WIRE | SPI_TX_DUAL  | SPI_TX_QUAD  |
+	host->mode_bits = SPI_3WIRE | SPI_TX_DUAL  | SPI_TX_QUAD  |
 		SPI_RX_DUAL | SPI_RX_QUAD | SPI_TX_OCTAL | SPI_RX_OCTAL |
 		SPI_MODE_0  | SPI_MODE_3;
 
-	master->mem_ops = &cadence_xspi_mem_ops;
-	master->dev.of_node = pdev->dev.of_node;
-	master->bus_num = -1;
+	host->mem_ops = &cadence_xspi_mem_ops;
+	host->dev.of_node = pdev->dev.of_node;
+	host->bus_num = -1;
 
-	platform_set_drvdata(pdev, master);
+	platform_set_drvdata(pdev, host);
 
-	cdns_xspi = spi_master_get_devdata(master);
+	cdns_xspi = spi_controller_get_devdata(host);
 	cdns_xspi->pdev = pdev;
 	cdns_xspi->dev = &pdev->dev;
 	cdns_xspi->cur_cs = 0;
@@ -594,20 +596,19 @@ static int cdns_xspi_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	master->num_chipselect = 1 << cdns_xspi->hw_num_banks;
+	host->num_chipselect = 1 << cdns_xspi->hw_num_banks;
 
-	ret = devm_spi_register_master(dev, master);
+	ret = devm_spi_register_controller(dev, host);
 	if (ret) {
-		dev_err(dev, "Failed to register SPI master\n");
+		dev_err(dev, "Failed to register SPI host\n");
 		return ret;
 	}
 
-	dev_info(dev, "Successfully registered SPI master\n");
+	dev_info(dev, "Successfully registered SPI host\n");
 
 	return 0;
 }
 
-#ifdef CONFIG_OF
 static const struct of_device_id cdns_xspi_of_match[] = {
 	{
 		.compatible = "cdns,xspi-nor",
@@ -615,9 +616,6 @@ static const struct of_device_id cdns_xspi_of_match[] = {
 	{ /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, cdns_xspi_of_match);
-#else
-#define cdns_xspi_of_match NULL
-#endif /* CONFIG_OF */
 
 static struct platform_driver cdns_xspi_platform_driver = {
 	.probe          = cdns_xspi_probe,

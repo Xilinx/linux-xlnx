@@ -59,10 +59,9 @@ const struct nla_policy ethnl_coalesce_get_policy[] = {
 
 static int coalesce_prepare_data(const struct ethnl_req_info *req_base,
 				 struct ethnl_reply_data *reply_base,
-				 struct genl_info *info)
+				 const struct genl_info *info)
 {
 	struct coalesce_reply_data *data = COALESCE_REPDATA(reply_base);
-	struct netlink_ext_ack *extack = info ? info->extack : NULL;
 	struct net_device *dev = reply_base->dev;
 	int ret;
 
@@ -73,7 +72,8 @@ static int coalesce_prepare_data(const struct ethnl_req_info *req_base,
 	if (ret < 0)
 		return ret;
 	ret = dev->ethtool_ops->get_coalesce(dev, &data->coalesce,
-					     &data->kernel_coalesce, extack);
+					     &data->kernel_coalesce,
+					     info->extack);
 	ethnl_ops_complete(dev);
 
 	return ret;
@@ -195,18 +195,6 @@ static int coalesce_fill_reply(struct sk_buff *skb,
 	return 0;
 }
 
-const struct ethnl_request_ops ethnl_coalesce_request_ops = {
-	.request_cmd		= ETHTOOL_MSG_COALESCE_GET,
-	.reply_cmd		= ETHTOOL_MSG_COALESCE_GET_REPLY,
-	.hdr_attr		= ETHTOOL_A_COALESCE_HEADER,
-	.req_info_size		= sizeof(struct coalesce_req_info),
-	.reply_data_size	= sizeof(struct coalesce_reply_data),
-
-	.prepare_data		= coalesce_prepare_data,
-	.reply_size		= coalesce_reply_size,
-	.fill_reply		= coalesce_fill_reply,
-};
-
 /* COALESCE_SET */
 
 const struct nla_policy ethnl_coalesce_set_policy[] = {
@@ -241,50 +229,47 @@ const struct nla_policy ethnl_coalesce_set_policy[] = {
 	[ETHTOOL_A_COALESCE_TX_AGGR_TIME_USECS] = { .type = NLA_U32 },
 };
 
-int ethnl_set_coalesce(struct sk_buff *skb, struct genl_info *info)
+static int
+ethnl_set_coalesce_validate(struct ethnl_req_info *req_info,
+			    struct genl_info *info)
 {
-	struct kernel_ethtool_coalesce kernel_coalesce = {};
-	struct ethtool_coalesce coalesce = {};
-	struct ethnl_req_info req_info = {};
+	const struct ethtool_ops *ops = req_info->dev->ethtool_ops;
 	struct nlattr **tb = info->attrs;
-	const struct ethtool_ops *ops;
-	struct net_device *dev;
 	u32 supported_params;
-	bool mod = false;
-	int ret;
 	u16 a;
 
-	ret = ethnl_parse_header_dev_get(&req_info,
-					 tb[ETHTOOL_A_COALESCE_HEADER],
-					 genl_info_net(info), info->extack,
-					 true);
-	if (ret < 0)
-		return ret;
-	dev = req_info.dev;
-	ops = dev->ethtool_ops;
-	ret = -EOPNOTSUPP;
 	if (!ops->get_coalesce || !ops->set_coalesce)
-		goto out_dev;
+		return -EOPNOTSUPP;
 
 	/* make sure that only supported parameters are present */
 	supported_params = ops->supported_coalesce_params;
 	for (a = ETHTOOL_A_COALESCE_RX_USECS; a < __ETHTOOL_A_COALESCE_CNT; a++)
 		if (tb[a] && !(supported_params & attr_to_mask(a))) {
-			ret = -EINVAL;
 			NL_SET_ERR_MSG_ATTR(info->extack, tb[a],
 					    "cannot modify an unsupported parameter");
-			goto out_dev;
+			return -EINVAL;
 		}
 
-	rtnl_lock();
-	ret = ethnl_ops_begin(dev);
-	if (ret < 0)
-		goto out_rtnl;
-	ret = ops->get_coalesce(dev, &coalesce, &kernel_coalesce,
-				info->extack);
-	if (ret < 0)
-		goto out_ops;
+	return 1;
+}
 
+static int
+__ethnl_set_coalesce(struct ethnl_req_info *req_info, struct genl_info *info,
+		     bool *dual_change)
+{
+	struct kernel_ethtool_coalesce kernel_coalesce = {};
+	struct net_device *dev = req_info->dev;
+	struct ethtool_coalesce coalesce = {};
+	bool mod_mode = false, mod = false;
+	struct nlattr **tb = info->attrs;
+	int ret;
+
+	ret = dev->ethtool_ops->get_coalesce(dev, &coalesce, &kernel_coalesce,
+					     info->extack);
+	if (ret < 0)
+		return ret;
+
+	/* Update values */
 	ethnl_update_u32(&coalesce.rx_coalesce_usecs,
 			 tb[ETHTOOL_A_COALESCE_RX_USECS], &mod);
 	ethnl_update_u32(&coalesce.rx_max_coalesced_frames,
@@ -303,10 +288,6 @@ int ethnl_set_coalesce(struct sk_buff *skb, struct genl_info *info)
 			 tb[ETHTOOL_A_COALESCE_TX_MAX_FRAMES_IRQ], &mod);
 	ethnl_update_u32(&coalesce.stats_block_coalesce_usecs,
 			 tb[ETHTOOL_A_COALESCE_STATS_BLOCK_USECS], &mod);
-	ethnl_update_bool32(&coalesce.use_adaptive_rx_coalesce,
-			    tb[ETHTOOL_A_COALESCE_USE_ADAPTIVE_RX], &mod);
-	ethnl_update_bool32(&coalesce.use_adaptive_tx_coalesce,
-			    tb[ETHTOOL_A_COALESCE_USE_ADAPTIVE_TX], &mod);
 	ethnl_update_u32(&coalesce.pkt_rate_low,
 			 tb[ETHTOOL_A_COALESCE_PKT_RATE_LOW], &mod);
 	ethnl_update_u32(&coalesce.rx_coalesce_usecs_low,
@@ -329,31 +310,70 @@ int ethnl_set_coalesce(struct sk_buff *skb, struct genl_info *info)
 			 tb[ETHTOOL_A_COALESCE_TX_MAX_FRAMES_HIGH], &mod);
 	ethnl_update_u32(&coalesce.rate_sample_interval,
 			 tb[ETHTOOL_A_COALESCE_RATE_SAMPLE_INTERVAL], &mod);
-	ethnl_update_u8(&kernel_coalesce.use_cqe_mode_tx,
-			tb[ETHTOOL_A_COALESCE_USE_CQE_MODE_TX], &mod);
-	ethnl_update_u8(&kernel_coalesce.use_cqe_mode_rx,
-			tb[ETHTOOL_A_COALESCE_USE_CQE_MODE_RX], &mod);
 	ethnl_update_u32(&kernel_coalesce.tx_aggr_max_bytes,
 			 tb[ETHTOOL_A_COALESCE_TX_AGGR_MAX_BYTES], &mod);
 	ethnl_update_u32(&kernel_coalesce.tx_aggr_max_frames,
 			 tb[ETHTOOL_A_COALESCE_TX_AGGR_MAX_FRAMES], &mod);
 	ethnl_update_u32(&kernel_coalesce.tx_aggr_time_usecs,
 			 tb[ETHTOOL_A_COALESCE_TX_AGGR_TIME_USECS], &mod);
-	ret = 0;
-	if (!mod)
-		goto out_ops;
+
+	/* Update operation modes */
+	ethnl_update_bool32(&coalesce.use_adaptive_rx_coalesce,
+			    tb[ETHTOOL_A_COALESCE_USE_ADAPTIVE_RX], &mod_mode);
+	ethnl_update_bool32(&coalesce.use_adaptive_tx_coalesce,
+			    tb[ETHTOOL_A_COALESCE_USE_ADAPTIVE_TX], &mod_mode);
+	ethnl_update_u8(&kernel_coalesce.use_cqe_mode_tx,
+			tb[ETHTOOL_A_COALESCE_USE_CQE_MODE_TX], &mod_mode);
+	ethnl_update_u8(&kernel_coalesce.use_cqe_mode_rx,
+			tb[ETHTOOL_A_COALESCE_USE_CQE_MODE_RX], &mod_mode);
+
+	*dual_change = mod && mod_mode;
+	if (!mod && !mod_mode)
+		return 0;
 
 	ret = dev->ethtool_ops->set_coalesce(dev, &coalesce, &kernel_coalesce,
 					     info->extack);
-	if (ret < 0)
-		goto out_ops;
-	ethtool_notify(dev, ETHTOOL_MSG_COALESCE_NTF, NULL);
+	return ret < 0 ? ret : 1;
+}
 
-out_ops:
-	ethnl_ops_complete(dev);
-out_rtnl:
-	rtnl_unlock();
-out_dev:
-	ethnl_parse_header_dev_put(&req_info);
+static int
+ethnl_set_coalesce(struct ethnl_req_info *req_info, struct genl_info *info)
+{
+	bool dual_change;
+	int err, ret;
+
+	/* SET_COALESCE may change operation mode and parameters in one call.
+	 * Changing operation mode may cause the driver to reset the parameter
+	 * values, and therefore ignore user input (driver does not know which
+	 * parameters come from user and which are echoed back from ->get).
+	 * To not complicate the drivers if user tries to change both the mode
+	 * and parameters at once - call the driver twice.
+	 */
+	err = __ethnl_set_coalesce(req_info, info, &dual_change);
+	if (err < 0)
+		return err;
+	ret = err;
+
+	if (ret && dual_change) {
+		err = __ethnl_set_coalesce(req_info, info, &dual_change);
+		if (err < 0)
+			return err;
+	}
 	return ret;
 }
+
+const struct ethnl_request_ops ethnl_coalesce_request_ops = {
+	.request_cmd		= ETHTOOL_MSG_COALESCE_GET,
+	.reply_cmd		= ETHTOOL_MSG_COALESCE_GET_REPLY,
+	.hdr_attr		= ETHTOOL_A_COALESCE_HEADER,
+	.req_info_size		= sizeof(struct coalesce_req_info),
+	.reply_data_size	= sizeof(struct coalesce_reply_data),
+
+	.prepare_data		= coalesce_prepare_data,
+	.reply_size		= coalesce_reply_size,
+	.fill_reply		= coalesce_fill_reply,
+
+	.set_validate		= ethnl_set_coalesce_validate,
+	.set			= ethnl_set_coalesce,
+	.set_ntf_cmd		= ETHTOOL_MSG_COALESCE_NTF,
+};

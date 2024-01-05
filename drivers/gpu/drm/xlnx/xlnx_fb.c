@@ -28,6 +28,7 @@
 #include <drm/drm_framebuffer.h>
 #include <drm/drm_gem_dma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
+#include <drm/drm_modeset_helper.h>
 
 #include "xlnx_crtc.h"
 #include "xlnx_drv.h"
@@ -225,8 +226,7 @@ static int xlnx_fbdev_create(struct drm_fb_helper *fb_helper,
 
 	fb = fbdev->fb;
 	fb_helper->fb = fb;
-	fb_helper->fbdev = fbi;
-	fbi->flags = FBINFO_FLAG_DEFAULT;
+	fb_helper->info = fbi;
 	fbi->fbops = &xlnx_fbdev_ops;
 
 	ret = fb_alloc_cmap(&fbi->cmap, 256, 0);
@@ -241,7 +241,6 @@ static int xlnx_fbdev_create(struct drm_fb_helper *fb_helper,
 	offset = (unsigned long)fbi->var.xoffset * bytes_per_pixel;
 	offset += fbi->var.yoffset * fb->pitches[0];
 
-	drm->mode_config.fb_base = (resource_size_t)obj->dma_addr;
 	fbi->screen_base = (char __iomem *)(obj->vaddr + offset);
 	fbi->fix.smem_start = (unsigned long)(obj->dma_addr + offset);
 	fbi->screen_size = bytes;
@@ -259,7 +258,7 @@ err_drm_gem_cma_free_object:
 	return ret;
 }
 
-static struct drm_fb_helper_funcs xlnx_fb_helper_funcs = {
+static const struct drm_fb_helper_funcs xlnx_fb_helper_funcs = {
 	.fb_probe = xlnx_fbdev_create,
 };
 
@@ -291,7 +290,7 @@ xlnx_fb_init(struct drm_device *drm, int preferred_bpp,
 	fbdev->vres_mult = vres_mult;
 	fbdev->align = align;
 	fb_helper = &fbdev->fb_helper;
-	drm_fb_helper_prepare(drm, fb_helper, &xlnx_fb_helper_funcs);
+	drm_fb_helper_prepare(drm, fb_helper, preferred_bpp, &xlnx_fb_helper_funcs);
 
 	ret = drm_fb_helper_init(drm, fb_helper);
 	if (ret < 0) {
@@ -299,7 +298,7 @@ xlnx_fb_init(struct drm_device *drm, int preferred_bpp,
 		goto err_free;
 	}
 
-	ret = drm_fb_helper_initial_config(fb_helper, preferred_bpp);
+	ret = drm_fb_helper_initial_config(fb_helper);
 	if (ret < 0) {
 		dev_err(drm->dev, "Failed to set initial hw configuration.\n");
 		goto err_drm_fb_helper_fini;
@@ -340,9 +339,9 @@ void xlnx_fb_fini(struct drm_fb_helper *fb_helper)
 {
 	struct xlnx_fbdev *fbdev = to_fbdev(fb_helper);
 
-	drm_fb_helper_unregister_fbi(&fbdev->fb_helper);
-	if (fbdev->fb_helper.fbdev)
-		xlnx_fbdev_defio_fini(fbdev->fb_helper.fbdev);
+	drm_fb_helper_unregister_info(&fbdev->fb_helper);
+	if (fbdev->fb_helper.info)
+		xlnx_fbdev_defio_fini(fbdev->fb_helper.info);
 
 	if (fbdev->fb_helper.fb)
 		drm_framebuffer_remove(fbdev->fb_helper.fb);

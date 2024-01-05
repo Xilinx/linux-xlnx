@@ -12,7 +12,7 @@
 #include <linux/module.h>
 #include <linux/i2c.h>
 #include <linux/err.h>
-#include <linux/of_device.h>
+#include <linux/mod_devicetable.h>
 #include <linux/iio/iio.h>
 #include <linux/iio/sysfs.h>
 
@@ -949,8 +949,7 @@ static irqreturn_t isl29501_trigger_handler(int irq, void *p)
 	return IRQ_HANDLED;
 }
 
-static int isl29501_probe(struct i2c_client *client,
-			  const struct i2c_device_id *id)
+static int isl29501_probe(struct i2c_client *client)
 {
 	struct iio_dev *indio_dev;
 	struct isl29501_private *isl29501;

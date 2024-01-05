@@ -66,6 +66,7 @@ static int dcss_drv_platform_probe(struct platform_device *pdev)
 	mdrv->kms = dcss_kms_attach(mdrv->dcss);
 	if (IS_ERR(mdrv->kms)) {
 		err = PTR_ERR(mdrv->kms);
+		dev_err_probe(dev, err, "Failed to initialize KMS\n");
 		goto dcss_shutoff;
 	}
 
@@ -73,8 +74,6 @@ static int dcss_drv_platform_probe(struct platform_device *pdev)
 
 dcss_shutoff:
 	dcss_dev_destroy(mdrv->dcss);
-
-	dev_set_drvdata(dev, NULL);
 
 err:
 	kfree(mdrv);
@@ -85,13 +84,8 @@ static int dcss_drv_platform_remove(struct platform_device *pdev)
 {
 	struct dcss_drv *mdrv = dev_get_drvdata(&pdev->dev);
 
-	if (!mdrv)
-		return 0;
-
 	dcss_kms_detach(mdrv->kms);
 	dcss_dev_destroy(mdrv->dcss);
-
-	dev_set_drvdata(&pdev->dev, NULL);
 
 	kfree(mdrv);
 
@@ -117,19 +111,13 @@ static const struct of_device_id dcss_of_match[] = {
 
 MODULE_DEVICE_TABLE(of, dcss_of_match);
 
-static const struct dev_pm_ops dcss_dev_pm = {
-	SET_SYSTEM_SLEEP_PM_OPS(dcss_dev_suspend, dcss_dev_resume)
-	SET_RUNTIME_PM_OPS(dcss_dev_runtime_suspend,
-			   dcss_dev_runtime_resume, NULL)
-};
-
 static struct platform_driver dcss_platform_driver = {
 	.probe	= dcss_drv_platform_probe,
 	.remove	= dcss_drv_platform_remove,
 	.driver	= {
 		.name = "imx-dcss",
 		.of_match_table	= dcss_of_match,
-		.pm = &dcss_dev_pm,
+		.pm = pm_ptr(&dcss_dev_pm_ops),
 	},
 };
 

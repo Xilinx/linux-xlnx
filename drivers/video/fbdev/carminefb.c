@@ -530,10 +530,7 @@ static int init_hardware(struct carmine_hw *hw)
 
 static const struct fb_ops carminefb_ops = {
 	.owner		= THIS_MODULE,
-	.fb_fillrect	= cfb_fillrect,
-	.fb_copyarea	= cfb_copyarea,
-	.fb_imageblit	= cfb_imageblit,
-
+	FB_DEFAULT_IOMEM_OPS,
 	.fb_check_var	= carmine_check_var,
 	.fb_set_par	= carmine_set_par,
 	.fb_setcolreg	= carmine_setcolreg,
@@ -561,7 +558,6 @@ static int alloc_carmine_fb(void __iomem *regs, void __iomem *smem_base,
 
 	info->fix = carminefb_fix;
 	info->pseudo_palette = par->pseudo_palette;
-	info->flags = FBINFO_DEFAULT;
 
 	ret = fb_alloc_cmap(&info->cmap, 256, 1);
 	if (ret < 0)
@@ -773,6 +769,9 @@ static struct pci_driver carmine_pci_driver = {
 
 static int __init carminefb_init(void)
 {
+	if (fb_modesetting_disabled("carminefb"))
+		return -ENODEV;
+
 	if (!(fb_displays &
 		(CARMINE_USE_DISPLAY0 | CARMINE_USE_DISPLAY1))) {
 		printk(KERN_ERR "If you disable both displays than you don't "

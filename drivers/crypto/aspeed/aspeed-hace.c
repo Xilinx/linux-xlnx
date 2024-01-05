@@ -3,15 +3,20 @@
  * Copyright (c) 2021 Aspeed Technology Inc.
  */
 
+#include "aspeed-hace.h"
+#include <crypto/engine.h>
 #include <linux/clk.h>
+#include <linux/dma-mapping.h>
+#include <linux/err.h>
+#include <linux/interrupt.h>
+#include <linux/io.h>
+#include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/of_address.h>
 #include <linux/of_device.h>
 #include <linux/of_irq.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
-
-#include "aspeed-hace.h"
 
 #ifdef CONFIG_CRYPTO_DEV_ASPEED_DEBUG
 #define HACE_DBG(d, fmt, ...)	\
@@ -99,7 +104,6 @@ static int aspeed_hace_probe(struct platform_device *pdev)
 	const struct of_device_id *hace_dev_id;
 	struct aspeed_engine_hash *hash_engine;
 	struct aspeed_hace_dev *hace_dev;
-	struct resource *res;
 	int rc;
 
 	hace_dev = devm_kzalloc(&pdev->dev, sizeof(struct aspeed_hace_dev),
@@ -118,11 +122,9 @@ static int aspeed_hace_probe(struct platform_device *pdev)
 	hash_engine = &hace_dev->hash_engine;
 	crypto_engine = &hace_dev->crypto_engine;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-
 	platform_set_drvdata(pdev, hace_dev);
 
-	hace_dev->regs = devm_ioremap_resource(&pdev->dev, res);
+	hace_dev->regs = devm_platform_get_and_ioremap_resource(pdev, 0, NULL);
 	if (IS_ERR(hace_dev->regs))
 		return PTR_ERR(hace_dev->regs);
 

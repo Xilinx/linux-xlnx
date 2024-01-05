@@ -118,6 +118,7 @@ SECTIONS
     SECTION_VECTOR2 (.DoubleExceptionVector.text, DOUBLEEXC_VECTOR_VADDR)
 
     *(.exception.text)
+    *(.xiptext)
 #endif
 
     IRQENTRY_TEXT
@@ -125,7 +126,6 @@ SECTIONS
     ENTRY_TEXT
     TEXT_TEXT
     SCHED_TEXT
-    CPUIDLE_TEXT
     LOCK_TEXT
     *(.fixup)
   }
@@ -202,6 +202,9 @@ SECTIONS
 		   .DebugInterruptVector.text);
     RELOCATE_ENTRY(_exception_text,
 		   .exception.text);
+#ifdef CONFIG_XIP_KERNEL
+    RELOCATE_ENTRY(_xip_text, .xiptext);
+#endif
 #endif
 #ifdef CONFIG_XIP_KERNEL
     RELOCATE_ENTRY(_xip_data, .data);
@@ -320,7 +323,12 @@ SECTIONS
 		  LAST)
 #undef LAST
 #define LAST .exception.text
-
+  SECTION_VECTOR4 (_xip_text,
+		  .xiptext,
+		  ,
+		  LAST)
+#undef LAST
+#define LAST .xiptext
 #endif
   . = (LOADADDR(LAST) + SIZEOF(LAST) + 3) & ~ 3;
 

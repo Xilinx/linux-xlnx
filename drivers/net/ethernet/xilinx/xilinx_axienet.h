@@ -388,10 +388,10 @@
 #define XXV_JUM_OFFSET			0x00000018
 #define XXV_TICKREG_OFFSET		0x00000020
 #define XXV_STATRX_BLKLCK_OFFSET	0x0000040C
-#define XXV_USXGMII_AN_OFFSET		0x000000C8
-#define XXV_USXGMII_AN_STS_OFFSET	0x00000458
 #define XXV_STAT_GTWIZ_OFFSET		0x000004A0
 #define XXV_CONFIG_REVISION		0x00000024
+#define XXV_USXGMII_AN_OFFSET		0x000000C8
+#define XXV_USXGMII_AN_STS_OFFSET	0x00000458
 /* Switchable 1/10/25G MAC Register Definitions */
 #define XXVS_RESET_OFFSET		0x00000004
 #define XXVS_AN_CTL1_OFFSET		0x000000e0
@@ -741,13 +741,14 @@ struct aximcdma_bd {
  * @mii_clk_div: MII bus clock divider value
  * @regs_start: Resource start for axienet device addresses
  * @regs:	Base address for the axienet_local device address space
- * @mcdma_regs:	Base address for the aximcdma device address space
+ * @dma_err_tasklet: Tasklet structure to process Axi DMA errors
  * @napi:	Napi Structure array for all dma queues
+ * @mcdma_regs:	Base address for the aximcdma device address space
  * @num_tx_queues: Total number of Tx DMA queues
  * @num_rx_queues: Total number of Rx DMA queues
  * @dq:		DMA queues data
- * @phy_mode:	Phy type to identify between MII/GMII/RGMII/SGMII/1000 Base-X
- * @dma_err_tasklet: Tasklet structure to process Axi DMA errors
+ * @phy_mode:  Phy type to identify between MII/GMII/RGMII/SGMII/1000 Base-X
+ * @ptp_tx_lock: PTP Tx lock
  * @eth_irq:	Axi Ethernet IRQ number
  * @options:	AxiEthernet option word
  * @features:	Stores the extended features supported by the axienet hw
@@ -767,6 +768,8 @@ struct aximcdma_bd {
  * @eth_hasnobuf: Ethernet is configured in Non buf mode.
  * @eth_hasptp: Ethernet is configured for ptp.
  * @axienet_config: Ethernet config structure
+ * @ptp_os_cf: CF TS of PTP PDelay req for one step usage.
+ * @xxv_ip_version: XXV IP version
  * @tx_ts_regs:	  Base address for the axififo device address space.
  * @rx_ts_regs:	  Base address for the rx axififo device address space.
  * @tstamp_config: Hardware timestamp config structure.
@@ -789,8 +792,6 @@ struct aximcdma_bd {
  * @gt_ctrl: GT speed and reset control register space.
  * @phc_index: Index to corresponding PTP clock used.
  * @gt_lane: MRMAC GT lane index used.
- * @ptp_os_cf: CF TS of PTP PDelay req for one step usage.
- * @xxv_ip_version: XXV IP version
  * @switch_lock: Spinlock for switchable IP.
  * @restart_work: delayable work queue.
  */
@@ -846,6 +847,8 @@ struct axienet_local {
 	bool eth_hasnobuf;
 	bool eth_hasptp;
 	const struct axienet_config *axienet_config;
+	u64 ptp_os_cf;		/* CF TS of PTP PDelay req for one step usage */
+	u32 xxv_ip_version;
 
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
 	void __iomem *tx_ts_regs;
@@ -876,8 +879,6 @@ struct axienet_local {
 	void __iomem *gt_ctrl;	/* GT speed and reset control register space */
 	u32 phc_index;		/* Index to corresponding PTP clock used  */
 	u32 gt_lane;		/* MRMAC GT lane index used */
-	u64 ptp_os_cf;		/* CF TS of PTP PDelay req for one step usage */
-	u32 xxv_ip_version;
 	spinlock_t switch_lock;	/* To protect Link training programming from multiple context */
 	struct delayed_work restart_work;
 };
@@ -1189,8 +1190,6 @@ static inline void axienet_dma_bdout(struct axienet_dma_q *q,
 }
 
 /* Function prototypes visible in xilinx_axienet_mdio.c for other files */
-int axienet_mdio_enable(struct axienet_local *lp);
-void axienet_mdio_disable(struct axienet_local *lp);
 int axienet_mdio_setup(struct axienet_local *lp);
 void axienet_mdio_teardown(struct axienet_local *lp);
 void __maybe_unused axienet_bd_free(struct net_device *ndev,

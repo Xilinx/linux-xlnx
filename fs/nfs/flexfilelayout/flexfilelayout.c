@@ -493,10 +493,10 @@ ff_layout_alloc_lseg(struct pnfs_layout_hdr *lh,
 		gid = make_kgid(&init_user_ns, id);
 
 		if (gfp_flags & __GFP_FS)
-			kcred = prepare_kernel_cred(NULL);
+			kcred = prepare_kernel_cred(&init_task);
 		else {
 			unsigned int nofs_flags = memalloc_nofs_save();
-			kcred = prepare_kernel_cred(NULL);
+			kcred = prepare_kernel_cred(&init_task);
 			memalloc_nofs_restore(nofs_flags);
 		}
 		rc = -ENOMEM;
@@ -1235,6 +1235,7 @@ static void ff_layout_io_track_ds_error(struct pnfs_layout_segment *lseg,
 		case -EPFNOSUPPORT:
 		case -EPROTONOSUPPORT:
 		case -EOPNOTSUPP:
+		case -EINVAL:
 		case -ECONNREFUSED:
 		case -ECONNRESET:
 		case -EHOSTDOWN:
@@ -2519,9 +2520,9 @@ ff_layout_mirror_prepare_stats(struct pnfs_layout_hdr *lo,
 	return i;
 }
 
-static int
-ff_layout_prepare_layoutstats(struct nfs42_layoutstat_args *args)
+static int ff_layout_prepare_layoutstats(struct nfs42_layoutstat_args *args)
 {
+	struct pnfs_layout_hdr *lo;
 	struct nfs4_flexfile_layout *ff_layout;
 	const int dev_count = PNFS_LAYOUTSTATS_MAXDEV;
 
@@ -2532,11 +2533,14 @@ ff_layout_prepare_layoutstats(struct nfs42_layoutstat_args *args)
 		return -ENOMEM;
 
 	spin_lock(&args->inode->i_lock);
-	ff_layout = FF_LAYOUT_FROM_HDR(NFS_I(args->inode)->layout);
-	args->num_dev = ff_layout_mirror_prepare_stats(&ff_layout->generic_hdr,
-						       &args->devinfo[0],
-						       dev_count,
-						       NFS4_FF_OP_LAYOUTSTATS);
+	lo = NFS_I(args->inode)->layout;
+	if (lo && pnfs_layout_is_valid(lo)) {
+		ff_layout = FF_LAYOUT_FROM_HDR(lo);
+		args->num_dev = ff_layout_mirror_prepare_stats(
+			&ff_layout->generic_hdr, &args->devinfo[0], dev_count,
+			NFS4_FF_OP_LAYOUTSTATS);
+	} else
+		args->num_dev = 0;
 	spin_unlock(&args->inode->i_lock);
 	if (!args->num_dev) {
 		kfree(args->devinfo);

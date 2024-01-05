@@ -419,11 +419,6 @@ static int tegra_admaif_trigger(struct snd_pcm_substream *substream, int cmd,
 	}
 }
 
-static const struct snd_soc_dai_ops tegra_admaif_dai_ops = {
-	.hw_params	= tegra_admaif_hw_params,
-	.trigger	= tegra_admaif_trigger,
-};
-
 static int tegra210_admaif_pget_mono_to_stereo(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
@@ -544,16 +539,21 @@ static int tegra_admaif_dai_probe(struct snd_soc_dai *dai)
 {
 	struct tegra_admaif *admaif = snd_soc_dai_get_drvdata(dai);
 
-	dai->capture_dma_data = &admaif->capture_dma_data[dai->id];
-	dai->playback_dma_data = &admaif->playback_dma_data[dai->id];
+	snd_soc_dai_init_dma_data(dai,	&admaif->playback_dma_data[dai->id],
+					&admaif->capture_dma_data[dai->id]);
 
 	return 0;
 }
 
+static const struct snd_soc_dai_ops tegra_admaif_dai_ops = {
+	.probe		= tegra_admaif_dai_probe,
+	.hw_params	= tegra_admaif_hw_params,
+	.trigger	= tegra_admaif_trigger,
+};
+
 #define DAI(dai_name)					\
 	{							\
 		.name = dai_name,				\
-		.probe = tegra_admaif_dai_probe,		\
 		.playback = {					\
 			.stream_name = dai_name " Playback",	\
 			.channels_min = 1,			\
@@ -842,11 +842,9 @@ static int tegra_admaif_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int tegra_admaif_remove(struct platform_device *pdev)
+static void tegra_admaif_remove(struct platform_device *pdev)
 {
 	pm_runtime_disable(&pdev->dev);
-
-	return 0;
 }
 
 static const struct dev_pm_ops tegra_admaif_pm_ops = {
@@ -858,7 +856,7 @@ static const struct dev_pm_ops tegra_admaif_pm_ops = {
 
 static struct platform_driver tegra_admaif_driver = {
 	.probe = tegra_admaif_probe,
-	.remove = tegra_admaif_remove,
+	.remove_new = tegra_admaif_remove,
 	.driver = {
 		.name = "tegra210-admaif",
 		.of_match_table = tegra_admaif_of_match,

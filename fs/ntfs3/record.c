@@ -124,7 +124,7 @@ int mi_read(struct mft_inode *mi, bool is_mft)
 	struct rw_semaphore *rw_lock = NULL;
 
 	if (is_mounted(sbi)) {
-		if (!is_mft) {
+		if (!is_mft && mft_ni) {
 			rw_lock = &mft_ni->file.run_lock;
 			down_read(rw_lock);
 		}
@@ -148,7 +148,7 @@ int mi_read(struct mft_inode *mi, bool is_mft)
 		ni_lock(mft_ni);
 		down_write(rw_lock);
 	}
-	err = attr_load_runs_vcn(mft_ni, ATTR_DATA, NULL, 0, &mft_ni->file.run,
+	err = attr_load_runs_vcn(mft_ni, ATTR_DATA, NULL, 0, run,
 				 vbo >> sbi->cluster_bits);
 	if (rw_lock) {
 		up_write(rw_lock);
@@ -180,15 +180,28 @@ ok:
 	return 0;
 
 out:
+	if (err == -E_NTFS_CORRUPT) {
+		ntfs_err(sbi->sb, "mft corrupted");
+		ntfs_set_state(sbi, NTFS_DIRTY_ERROR);
+		err = -EINVAL;
+	}
+
 	return err;
 }
 
+/*
+ * mi_enum_attr - start/continue attributes enumeration in record.
+ *
+ * NOTE: mi->mrec - memory of size sbi->record_size
+ * here we sure that mi->mrec->total == sbi->record_size (see mi_read)
+ */
 struct ATTRIB *mi_enum_attr(struct mft_inode *mi, struct ATTRIB *attr)
 {
 	const struct MFT_REC *rec = mi->mrec;
 	u32 used = le32_to_cpu(rec->used);
-	u32 t32, off, asize;
+	u32 t32, off, asize, prev_type;
 	u16 t16;
+	u64 data_size, alloc_size, tot_size;
 
 	if (!attr) {
 		u32 total = le32_to_cpu(rec->total);
@@ -207,6 +220,7 @@ struct ATTRIB *mi_enum_attr(struct mft_inode *mi, struct ATTRIB *attr)
 		if (!is_rec_inuse(rec))
 			return NULL;
 
+		prev_type = 0;
 		attr = Add2Ptr(rec, off);
 	} else {
 		/* Check if input attr inside record. */
@@ -220,6 +234,11 @@ struct ATTRIB *mi_enum_attr(struct mft_inode *mi, struct ATTRIB *attr)
 			return NULL;
 		}
 
+		/* Overflow check. */
+		if (off + asize < off)
+			return NULL;
+
+		prev_type = le32_to_cpu(attr->type);
 		attr = Add2Ptr(attr, asize);
 		off += asize;
 	}
@@ -239,45 +258,83 @@ struct ATTRIB *mi_enum_attr(struct mft_inode *mi, struct ATTRIB *attr)
 
 	/* 0x100 is last known attribute for now. */
 	t32 = le32_to_cpu(attr->type);
-	if ((t32 & 0xf) || (t32 > 0x100))
+	if (!t32 || (t32 & 0xf) || (t32 > 0x100))
 		return NULL;
 
-	/* Check boundary. */
-	if (off + asize > used)
+	/* attributes in record must be ordered by type */
+	if (t32 < prev_type)
+		return NULL;
+
+	/* Check overflow and boundary. */
+	if (off + asize < off || off + asize > used)
 		return NULL;
 
 	/* Check size of attribute. */
 	if (!attr->non_res) {
+		/* Check resident fields. */
 		if (asize < SIZEOF_RESIDENT)
 			return NULL;
 
 		t16 = le16_to_cpu(attr->res.data_off);
-
 		if (t16 > asize)
 			return NULL;
 
-		t32 = le32_to_cpu(attr->res.data_size);
-		if (t16 + t32 > asize)
+		if (t16 + le32_to_cpu(attr->res.data_size) > asize)
+			return NULL;
+
+		t32 = sizeof(short) * attr->name_len;
+		if (t32 && le16_to_cpu(attr->name_off) + t32 > t16)
 			return NULL;
 
 		return attr;
 	}
 
-	/* Check some nonresident fields. */
-	if (attr->name_len &&
-	    le16_to_cpu(attr->name_off) + sizeof(short) * attr->name_len >
-		    le16_to_cpu(attr->nres.run_off)) {
+	/* Check nonresident fields. */
+	if (attr->non_res != 1)
 		return NULL;
-	}
 
-	if (attr->nres.svcn || !is_attr_ext(attr)) {
+	t16 = le16_to_cpu(attr->nres.run_off);
+	if (t16 > asize)
+		return NULL;
+
+	t32 = sizeof(short) * attr->name_len;
+	if (t32 && le16_to_cpu(attr->name_off) + t32 > t16)
+		return NULL;
+
+	/* Check start/end vcn. */
+	if (le64_to_cpu(attr->nres.svcn) > le64_to_cpu(attr->nres.evcn) + 1)
+		return NULL;
+
+	data_size = le64_to_cpu(attr->nres.data_size);
+	if (le64_to_cpu(attr->nres.valid_size) > data_size)
+		return NULL;
+
+	alloc_size = le64_to_cpu(attr->nres.alloc_size);
+	if (data_size > alloc_size)
+		return NULL;
+
+	t32 = mi->sbi->cluster_mask;
+	if (alloc_size & t32)
+		return NULL;
+
+	if (!attr->nres.svcn && is_attr_ext(attr)) {
+		/* First segment of sparse/compressed attribute */
+		if (asize + 8 < SIZEOF_NONRESIDENT_EX)
+			return NULL;
+
+		tot_size = le64_to_cpu(attr->nres.total_size);
+		if (tot_size & t32)
+			return NULL;
+
+		if (tot_size > alloc_size)
+			return NULL;
+	} else {
 		if (asize + 8 < SIZEOF_NONRESIDENT)
 			return NULL;
 
 		if (attr->nres.c_unit)
 			return NULL;
-	} else if (asize + 8 < SIZEOF_NONRESIDENT_EX)
-		return NULL;
+	}
 
 	return attr;
 }
@@ -287,7 +344,7 @@ struct ATTRIB *mi_enum_attr(struct mft_inode *mi, struct ATTRIB *attr)
  */
 struct ATTRIB *mi_find_attr(struct mft_inode *mi, struct ATTRIB *attr,
 			    enum ATTR_TYPE type, const __le16 *name,
-			    size_t name_len, const __le16 *id)
+			    u8 name_len, const __le16 *id)
 {
 	u32 type_in = le32_to_cpu(type);
 	u32 atype;
@@ -373,6 +430,8 @@ int mi_format_new(struct mft_inode *mi, struct ntfs_sb_info *sbi, CLST rno,
 
 	rec->seq = cpu_to_le16(seq);
 	rec->flags = RECORD_FLAG_IN_USE | flags;
+	if (MFTRECORD_FIXUP_OFFSET == MFTRECORD_FIXUP_OFFSET_3)
+		rec->mft_record = cpu_to_le32(rno);
 
 	mi->dirty = true;
 
@@ -410,10 +469,9 @@ struct ATTRIB *mi_insert_attr(struct mft_inode *mi, enum ATTR_TYPE type,
 	struct ntfs_sb_info *sbi = mi->sbi;
 	u32 used = le32_to_cpu(rec->used);
 	const u16 *upcase = sbi->upcase;
-	int diff;
 
 	/* Can we insert mi attribute? */
-	if (used + asize > mi->sbi->record_size)
+	if (used + asize > sbi->record_size)
 		return NULL;
 
 	/*
@@ -422,7 +480,7 @@ struct ATTRIB *mi_insert_attr(struct mft_inode *mi, enum ATTR_TYPE type,
 	 */
 	attr = NULL;
 	while ((attr = mi_enum_attr(mi, attr))) {
-		diff = compare_attr(attr, type, name, name_len, upcase);
+		int diff = compare_attr(attr, type, name, name_len, upcase);
 
 		if (diff < 0)
 			continue;
@@ -433,9 +491,11 @@ struct ATTRIB *mi_insert_attr(struct mft_inode *mi, enum ATTR_TYPE type,
 	}
 
 	if (!attr) {
-		tail = 8; /* Not used, just to suppress warning. */
+		/* Append. */
+		tail = 8;
 		attr = Add2Ptr(rec, used - 8);
 	} else {
+		/* Insert before 'attr'. */
 		tail = used - PtrOffset(rec, attr);
 	}
 
@@ -537,6 +597,10 @@ bool mi_resize_attr(struct mft_inode *mi, struct ATTRIB *attr, int bytes)
 	return true;
 }
 
+/*
+ * Pack runs in MFT record.
+ * If failed record is not changed.
+ */
 int mi_pack_runs(struct mft_inode *mi, struct ATTRIB *attr,
 		 struct runs_tree *run, CLST len)
 {

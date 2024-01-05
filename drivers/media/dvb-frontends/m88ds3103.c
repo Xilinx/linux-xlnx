@@ -1695,7 +1695,7 @@ struct dvb_frontend *m88ds3103_attach(const struct m88ds3103_config *cfg,
 	*tuner_i2c_adapter = pdata.get_i2c_adapter(client);
 	return pdata.get_dvb_frontend(client);
 }
-EXPORT_SYMBOL(m88ds3103_attach);
+EXPORT_SYMBOL_GPL(m88ds3103_attach);
 
 static const struct dvb_frontend_ops m88ds3103_ops = {
 	.delsys = {SYS_DVBS, SYS_DVBS2},
@@ -1760,9 +1760,9 @@ static struct i2c_adapter *m88ds3103_get_i2c_adapter(struct i2c_client *client)
 	return dev->muxc->adapter[0];
 }
 
-static int m88ds3103_probe(struct i2c_client *client,
-			const struct i2c_device_id *id)
+static int m88ds3103_probe(struct i2c_client *client)
 {
+	const struct i2c_device_id *id = i2c_client_get_device_id(client);
 	struct m88ds3103_dev *dev;
 	struct m88ds3103_platform_data *pdata = client->dev.platform_data;
 	int ret;

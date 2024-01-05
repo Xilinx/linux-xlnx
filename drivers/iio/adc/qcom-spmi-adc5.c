@@ -114,7 +114,7 @@ enum adc5_cal_val {
  *	that is an average of multiple measurements.
  * @scale_fn_type: Represents the scaling function to convert voltage
  *	physical units desired by the client for the channel.
- * @datasheet_name: Channel name used in device tree.
+ * @channel_name: Channel name used in device tree.
  */
 struct adc5_channel_prop {
 	unsigned int		channel;
@@ -126,7 +126,7 @@ struct adc5_channel_prop {
 	unsigned int		hw_settle_time;
 	unsigned int		avg_samples;
 	enum vadc_scale_fn_type	scale_fn_type;
-	const char		*datasheet_name;
+	const char		*channel_name;
 };
 
 /**
@@ -543,6 +543,8 @@ static const struct adc5_channels adc5_chans_pmic[ADC5_MAX_CHANNEL] = {
 					SCALE_HW_CALIB_DEFAULT)
 	[ADC5_XO_THERM_100K_PU]	= ADC5_CHAN_TEMP("xo_therm", 0,
 					SCALE_HW_CALIB_XOTHERM)
+	[ADC5_BAT_ID_100K_PU]	= ADC5_CHAN_TEMP("bat_id", 0,
+					SCALE_HW_CALIB_DEFAULT)
 	[ADC5_AMUX_THM1_100K_PU] = ADC5_CHAN_TEMP("amux_thm1_100k_pu", 0,
 					SCALE_HW_CALIB_THERM_100K_PULLUP)
 	[ADC5_AMUX_THM2_100K_PU] = ADC5_CHAN_TEMP("amux_thm2_100k_pu", 0,
@@ -552,6 +554,8 @@ static const struct adc5_channels adc5_chans_pmic[ADC5_MAX_CHANNEL] = {
 	[ADC5_AMUX_THM2]	= ADC5_CHAN_TEMP("amux_thm2", 0,
 					SCALE_HW_CALIB_PM5_SMB_TEMP)
 	[ADC5_GPIO1_100K_PU]	= ADC5_CHAN_TEMP("gpio1_100k_pu", 0,
+					SCALE_HW_CALIB_THERM_100K_PULLUP)
+	[ADC5_GPIO2_100K_PU]	= ADC5_CHAN_TEMP("gpio2_100k_pu", 0,
 					SCALE_HW_CALIB_THERM_100K_PULLUP)
 	[ADC5_GPIO3_100K_PU]	= ADC5_CHAN_TEMP("gpio3_100k_pu", 0,
 					SCALE_HW_CALIB_THERM_100K_PULLUP)
@@ -626,11 +630,19 @@ static int adc5_get_fw_channel_data(struct adc5_chip *adc,
 				    struct fwnode_handle *fwnode,
 				    const struct adc5_data *data)
 {
-	const char *name = fwnode_get_name(fwnode), *channel_name;
+	const char *channel_name;
+	char *name;
 	u32 chan, value, varr[2];
 	u32 sid = 0;
 	int ret;
 	struct device *dev = adc->dev;
+
+	name = devm_kasprintf(dev, GFP_KERNEL, "%pfwP", fwnode);
+	if (!name)
+		return -ENOMEM;
+
+	/* Cut the address part */
+	name[strchrnul(name, '@') - name] = '\0';
 
 	ret = fwnode_property_read_u32(fwnode, "reg", &chan);
 	if (ret) {
@@ -647,8 +659,7 @@ static int adc5_get_fw_channel_data(struct adc5_chip *adc,
 		chan = chan & ADC_CHANNEL_MASK;
 	}
 
-	if (chan > ADC5_PARALLEL_ISENSE_VBAT_IDATA ||
-	    !data->adc_chans[chan].datasheet_name) {
+	if (chan > ADC5_PARALLEL_ISENSE_VBAT_IDATA) {
 		dev_err(dev, "%s invalid channel number %d\n", name, chan);
 		return -EINVAL;
 	}
@@ -659,9 +670,9 @@ static int adc5_get_fw_channel_data(struct adc5_chip *adc,
 
 	ret = fwnode_property_read_string(fwnode, "label", &channel_name);
 	if (ret)
-		channel_name = name;
+		channel_name = data->adc_chans[chan].datasheet_name;
 
-	prop->datasheet_name = channel_name;
+	prop->channel_name = channel_name;
 
 	ret = fwnode_property_read_u32(fwnode, "qcom,decimation", &value);
 	if (!ret) {
@@ -851,8 +862,8 @@ static int adc5_get_fw_data(struct adc5_chip *adc)
 		adc_chan = &adc->data->adc_chans[prop.channel];
 
 		iio_chan->channel = prop.channel;
-		iio_chan->datasheet_name = prop.datasheet_name;
-		iio_chan->extend_name = prop.datasheet_name;
+		iio_chan->datasheet_name = adc_chan->datasheet_name;
+		iio_chan->extend_name = prop.channel_name;
 		iio_chan->info_mask_separate = adc_chan->info_mask;
 		iio_chan->type = adc_chan->type;
 		iio_chan->address = index;
@@ -894,10 +905,8 @@ static int adc5_probe(struct platform_device *pdev)
 	mutex_init(&adc->lock);
 
 	ret = adc5_get_fw_data(adc);
-	if (ret) {
-		dev_err(dev, "adc get dt data failed\n");
-		return ret;
-	}
+	if (ret)
+		return dev_err_probe(dev, ret, "adc get dt data failed\n");
 
 	irq_eoc = platform_get_irq(pdev, 0);
 	if (irq_eoc < 0) {

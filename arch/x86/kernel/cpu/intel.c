@@ -20,7 +20,7 @@
 #include <asm/bugs.h>
 #include <asm/cpu.h>
 #include <asm/intel-family.h>
-#include <asm/microcode_intel.h>
+#include <asm/microcode.h>
 #include <asm/hwcap2.h>
 #include <asm/elf.h>
 #include <asm/cpu_device_id.h>
@@ -183,38 +183,6 @@ static bool bad_spectre_microcode(struct cpuinfo_x86 *c)
 	}
 	return false;
 }
-
-int intel_cpu_collect_info(struct ucode_cpu_info *uci)
-{
-	unsigned int val[2];
-	unsigned int family, model;
-	struct cpu_signature csig = { 0 };
-	unsigned int eax, ebx, ecx, edx;
-
-	memset(uci, 0, sizeof(*uci));
-
-	eax = 0x00000001;
-	ecx = 0;
-	native_cpuid(&eax, &ebx, &ecx, &edx);
-	csig.sig = eax;
-
-	family = x86_family(eax);
-	model  = x86_model(eax);
-
-	if (model >= 5 || family > 6) {
-		/* get processor flags from MSR 0x17 */
-		native_rdmsr(MSR_IA32_PLATFORM_ID, val[0], val[1]);
-		csig.pf = 1 << ((val[1] >> 18) & 7);
-	}
-
-	csig.rev = intel_get_microcode_revision();
-
-	uci->cpu_sig = csig;
-	uci->valid = 1;
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(intel_cpu_collect_info);
 
 static void early_init_intel(struct cpuinfo_x86 *c)
 {
@@ -1034,7 +1002,31 @@ static const struct {
 
 static struct ratelimit_state bld_ratelimit;
 
-static DEFINE_SEMAPHORE(buslock_sem);
+static unsigned int sysctl_sld_mitigate = 1;
+static DEFINE_SEMAPHORE(buslock_sem, 1);
+
+#ifdef CONFIG_PROC_SYSCTL
+static struct ctl_table sld_sysctls[] = {
+	{
+		.procname       = "split_lock_mitigate",
+		.data           = &sysctl_sld_mitigate,
+		.maxlen         = sizeof(unsigned int),
+		.mode           = 0644,
+		.proc_handler	= proc_douintvec_minmax,
+		.extra1         = SYSCTL_ZERO,
+		.extra2         = SYSCTL_ONE,
+	},
+	{}
+};
+
+static int __init sld_mitigate_sysctl_init(void)
+{
+	register_sysctl_init("kernel", sld_sysctls);
+	return 0;
+}
+
+late_initcall(sld_mitigate_sysctl_init);
+#endif
 
 static inline bool match_option(const char *arg, int arglen, const char *opt)
 {
@@ -1146,11 +1138,19 @@ static void split_lock_init(void)
 		split_lock_verify_msr(sld_state != sld_off);
 }
 
-static void __split_lock_reenable(struct work_struct *work)
+static void __split_lock_reenable_unlock(struct work_struct *work)
 {
 	sld_update_msr(true);
 	up(&buslock_sem);
 }
+
+static DECLARE_DELAYED_WORK(sl_reenable_unlock, __split_lock_reenable_unlock);
+
+static void __split_lock_reenable(struct work_struct *work)
+{
+	sld_update_msr(true);
+}
+static DECLARE_DELAYED_WORK(sl_reenable, __split_lock_reenable);
 
 /*
  * If a CPU goes offline with pending delayed work to re-enable split lock
@@ -1169,10 +1169,9 @@ static int splitlock_cpu_offline(unsigned int cpu)
 	return 0;
 }
 
-static DECLARE_DELAYED_WORK(split_lock_reenable, __split_lock_reenable);
-
 static void split_lock_warn(unsigned long ip)
 {
+	struct delayed_work *work;
 	int cpu;
 
 	if (!current->reported_split_lock)
@@ -1180,14 +1179,26 @@ static void split_lock_warn(unsigned long ip)
 				    current->comm, current->pid, ip);
 	current->reported_split_lock = 1;
 
-	/* misery factor #1, sleep 10ms before trying to execute split lock */
-	if (msleep_interruptible(10) > 0)
-		return;
-	/* Misery factor #2, only allow one buslocked disabled core at a time */
-	if (down_interruptible(&buslock_sem) == -EINTR)
-		return;
+	if (sysctl_sld_mitigate) {
+		/*
+		 * misery factor #1:
+		 * sleep 10ms before trying to execute split lock.
+		 */
+		if (msleep_interruptible(10) > 0)
+			return;
+		/*
+		 * Misery factor #2:
+		 * only allow one buslocked disabled core at a time.
+		 */
+		if (down_interruptible(&buslock_sem) == -EINTR)
+			return;
+		work = &sl_reenable_unlock;
+	} else {
+		work = &sl_reenable;
+	}
+
 	cpu = get_cpu();
-	schedule_delayed_work_on(cpu, &split_lock_reenable, 2);
+	schedule_delayed_work_on(cpu, work, 2);
 
 	/* Disable split lock detection on this CPU to make progress */
 	sld_update_msr(false);
@@ -1266,31 +1277,13 @@ void handle_bus_lock(struct pt_regs *regs)
 }
 
 /*
- * Bits in the IA32_CORE_CAPABILITIES are not architectural, so they should
- * only be trusted if it is confirmed that a CPU model implements a
- * specific feature at a particular bit position.
- *
- * The possible driver data field values:
- *
- * - 0: CPU models that are known to have the per-core split-lock detection
- *	feature even though they do not enumerate IA32_CORE_CAPABILITIES.
- *
- * - 1: CPU models which may enumerate IA32_CORE_CAPABILITIES and if so use
- *      bit 5 to enumerate the per-core split-lock detection feature.
+ * CPU models that are known to have the per-core split-lock detection
+ * feature even though they do not enumerate IA32_CORE_CAPABILITIES.
  */
 static const struct x86_cpu_id split_lock_cpu_ids[] __initconst = {
-	X86_MATCH_INTEL_FAM6_MODEL(ICELAKE_X,		0),
-	X86_MATCH_INTEL_FAM6_MODEL(ICELAKE_L,		0),
-	X86_MATCH_INTEL_FAM6_MODEL(ICELAKE_D,		0),
-	X86_MATCH_INTEL_FAM6_MODEL(ATOM_TREMONT,	1),
-	X86_MATCH_INTEL_FAM6_MODEL(ATOM_TREMONT_D,	1),
-	X86_MATCH_INTEL_FAM6_MODEL(ATOM_TREMONT_L,	1),
-	X86_MATCH_INTEL_FAM6_MODEL(TIGERLAKE_L,		1),
-	X86_MATCH_INTEL_FAM6_MODEL(TIGERLAKE,		1),
-	X86_MATCH_INTEL_FAM6_MODEL(SAPPHIRERAPIDS_X,	1),
-	X86_MATCH_INTEL_FAM6_MODEL(ALDERLAKE,		1),
-	X86_MATCH_INTEL_FAM6_MODEL(ALDERLAKE_L,		1),
-	X86_MATCH_INTEL_FAM6_MODEL(RAPTORLAKE,		1),
+	X86_MATCH_INTEL_FAM6_MODEL(ICELAKE_X,	0),
+	X86_MATCH_INTEL_FAM6_MODEL(ICELAKE_L,	0),
+	X86_MATCH_INTEL_FAM6_MODEL(ICELAKE_D,	0),
 	{}
 };
 
@@ -1302,24 +1295,27 @@ static void __init split_lock_setup(struct cpuinfo_x86 *c)
 	if (boot_cpu_has(X86_FEATURE_HYPERVISOR))
 		return;
 
+	/* Check for CPUs that have support but do not enumerate it: */
 	m = x86_match_cpu(split_lock_cpu_ids);
-	if (!m)
+	if (m)
+		goto supported;
+
+	if (!cpu_has(c, X86_FEATURE_CORE_CAPABILITIES))
 		return;
 
-	switch (m->driver_data) {
-	case 0:
-		break;
-	case 1:
-		if (!cpu_has(c, X86_FEATURE_CORE_CAPABILITIES))
-			return;
-		rdmsrl(MSR_IA32_CORE_CAPS, ia32_core_caps);
-		if (!(ia32_core_caps & MSR_IA32_CORE_CAPS_SPLIT_LOCK_DETECT))
-			return;
-		break;
-	default:
-		return;
-	}
+	/*
+	 * Not all bits in MSR_IA32_CORE_CAPS are architectural, but
+	 * MSR_IA32_CORE_CAPS_SPLIT_LOCK_DETECT is.  All CPUs that set
+	 * it have split lock detection.
+	 */
+	rdmsrl(MSR_IA32_CORE_CAPS, ia32_core_caps);
+	if (ia32_core_caps & MSR_IA32_CORE_CAPS_SPLIT_LOCK_DETECT)
+		goto supported;
 
+	/* CPU is not in the model list and does not have the MSR bit: */
+	return;
+
+supported:
 	cpu_model_supports_sld = true;
 	__split_lock_setup();
 }

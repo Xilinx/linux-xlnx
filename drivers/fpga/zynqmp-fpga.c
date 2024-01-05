@@ -127,7 +127,6 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 	dma_addr_t dma_addr;
 	u32 eemi_flags = 0;
 	size_t dma_size;
-	u32 status;
 	char *kbuf;
 
 	priv = mgr->priv;
@@ -171,15 +170,11 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 
 	if (priv->flags & FPGA_MGR_USERKEY_ENCRYPTED_BITSTREAM)
 		ret = zynqmp_pm_fpga_load(dma_addr, dma_addr + size,
-					  eemi_flags, &status);
+					  eemi_flags);
 	else
-		ret = zynqmp_pm_fpga_load(dma_addr, size,
-					  eemi_flags, &status);
+		ret = zynqmp_pm_fpga_load(dma_addr, size, eemi_flags);
 
 	dma_free_coherent(priv->dev, dma_size, kbuf, dma_addr);
-
-	if (status)
-		return status;
 
 	return ret;
 }
@@ -208,7 +203,6 @@ static int zynqmp_fpga_ops_write_sg(struct fpga_manager *mgr,
 	struct zynqmp_fpga_priv *priv;
 	unsigned long contig_size;
 	u32 eemi_flags = 0;
-	u32 status;
 	char *kbuf;
 	int ret;
 
@@ -234,16 +228,11 @@ static int zynqmp_fpga_ops_write_sg(struct fpga_manager *mgr,
 		if (!kbuf)
 			return -ENOMEM;
 		memcpy(kbuf, mgr->key, ENCRYPTED_KEY_LEN);
-		ret = zynqmp_pm_fpga_load(dma_addr, key_addr,
-					  eemi_flags, &status);
+		ret = zynqmp_pm_fpga_load(dma_addr, key_addr, eemi_flags);
 		dma_free_coherent(priv->dev, ENCRYPTED_KEY_LEN, kbuf, key_addr);
 	} else {
-		ret = zynqmp_pm_fpga_load(dma_addr, contig_size,
-					  eemi_flags, &status);
+		ret = zynqmp_pm_fpga_load(dma_addr, contig_size, eemi_flags);
 	}
-
-	if (status)
-		return status;
 
 	return ret;
 }
@@ -258,6 +247,26 @@ static enum fpga_mgr_states zynqmp_fpga_ops_state(struct fpga_manager *mgr)
 
 	return FPGA_MGR_STATE_UNKNOWN;
 }
+
+static ssize_t status_show(struct device *dev,
+			   struct device_attribute *attr, char *buf)
+{
+	u32 status;
+	int ret;
+
+	ret = zynqmp_pm_fpga_get_config_status(&status);
+	if (ret)
+		return ret;
+
+	return sysfs_emit(buf, "0x%x\n", status);
+}
+static DEVICE_ATTR_RO(status);
+
+static struct attribute *zynqmp_fpga_attrs[] = {
+	&dev_attr_status.attr,
+	NULL,
+};
+ATTRIBUTE_GROUPS(zynqmp_fpga);
 
 static int zynqmp_fpga_read_cfgreg(struct fpga_manager *mgr,
 				   struct seq_file *s)
@@ -344,26 +353,6 @@ static int zynqmp_fpga_ops_read(struct fpga_manager *mgr, struct seq_file *s)
 
 	return ret;
 }
-
-static ssize_t status_show(struct device *dev,
-			   struct device_attribute *attr, char *buf)
-{
-	u32 status;
-	int ret;
-
-	ret = zynqmp_pm_fpga_get_config_status(&status);
-	if (ret)
-		return ret;
-
-	return sysfs_emit(buf, "0x%x\n", status);
-}
-static DEVICE_ATTR_RO(status);
-
-static struct attribute *zynqmp_fpga_attrs[] = {
-	&dev_attr_status.attr,
-	NULL,
-};
-ATTRIBUTE_GROUPS(zynqmp_fpga);
 
 static const struct fpga_manager_ops zynqmp_fpga_ops = {
 	.state = zynqmp_fpga_ops_state,

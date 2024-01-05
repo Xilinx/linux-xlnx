@@ -72,7 +72,7 @@ extern void pci_console_init(const char *arg);
 static unsigned long long max_memory = ULLONG_MAX;
 static unsigned long long reserve_low_mem;
 
-DEFINE_SEMAPHORE(octeon_bootbus_sem);
+DEFINE_SEMAPHORE(octeon_bootbus_sem, 1);
 EXPORT_SYMBOL(octeon_bootbus_sem);
 
 static struct octeon_boot_descriptor *octeon_boot_desc_ptr;
@@ -1240,7 +1240,7 @@ static int __init octeon_no_pci_init(void)
 	 */
 	octeon_dummy_iospace = vzalloc(IO_SPACE_LIMIT);
 	set_io_port_base((unsigned long)octeon_dummy_iospace);
-	ioport_resource.start = MAX_RESOURCE;
+	ioport_resource.start = RESOURCE_SIZE_MAX;
 	ioport_resource.end = 0;
 	return 0;
 }

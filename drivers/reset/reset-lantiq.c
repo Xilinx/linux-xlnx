@@ -173,7 +173,6 @@ static int lantiq_rcu_reset_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	priv->dev = &pdev->dev;
-	platform_set_drvdata(pdev, priv);
 
 	err = lantiq_rcu_reset_of_parse(pdev, priv);
 	if (err)
@@ -207,4 +206,3 @@ module_platform_driver(lantiq_rcu_reset_driver);
 
 MODULE_AUTHOR("Martin Blumenstingl <martin.blumenstingl@googlemail.com>");
 MODULE_DESCRIPTION("Lantiq XWAY RCU Reset Controller Driver");
-MODULE_LICENSE("GPL");

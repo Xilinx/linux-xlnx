@@ -46,8 +46,7 @@ int nand_jedec_detect(struct nand_chip *chip)
 	if (!p)
 		return -ENOMEM;
 
-	if (!nand_has_exec_op(chip) ||
-	    !nand_read_data_op(chip, p, sizeof(*p), true, true))
+	if (!nand_has_exec_op(chip) || chip->controller->supported_op.data_only_read)
 		use_datain = true;
 
 	for (i = 0; i < JEDEC_PARAM_PAGES; i++) {
@@ -94,6 +93,9 @@ int nand_jedec_detect(struct nand_chip *chip)
 		ret = -ENOMEM;
 		goto free_jedec_param_page;
 	}
+
+	if (p->opt_cmd[0] & JEDEC_OPT_CMD_READ_CACHE)
+		chip->parameters.supports_read_cache = true;
 
 	memorg->pagesize = le32_to_cpu(p->byte_per_page);
 	mtd->writesize = memorg->pagesize;

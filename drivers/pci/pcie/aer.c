@@ -184,6 +184,9 @@ static int disable_ecrc_checking(struct pci_dev *dev)
  */
 void pcie_set_ecrc_checking(struct pci_dev *dev)
 {
+	if (!pcie_aer_is_native(dev))
+		return;
+
 	switch (ecrc_policy) {
 	case ECRC_POLICY_DEFAULT:
 		return;
@@ -226,8 +229,9 @@ int pcie_aer_is_native(struct pci_dev *dev)
 
 	return pcie_ports_native || host->native_aer;
 }
+EXPORT_SYMBOL_NS_GPL(pcie_aer_is_native, CXL);
 
-int pci_enable_pcie_error_reporting(struct pci_dev *dev)
+static int pci_enable_pcie_error_reporting(struct pci_dev *dev)
 {
 	int rc;
 
@@ -237,19 +241,6 @@ int pci_enable_pcie_error_reporting(struct pci_dev *dev)
 	rc = pcie_capability_set_word(dev, PCI_EXP_DEVCTL, PCI_EXP_AER_FLAGS);
 	return pcibios_err_to_errno(rc);
 }
-EXPORT_SYMBOL_GPL(pci_enable_pcie_error_reporting);
-
-int pci_disable_pcie_error_reporting(struct pci_dev *dev)
-{
-	int rc;
-
-	if (!pcie_aer_is_native(dev))
-		return -EIO;
-
-	rc = pcie_capability_clear_word(dev, PCI_EXP_DEVCTL, PCI_EXP_AER_FLAGS);
-	return pcibios_err_to_errno(rc);
-}
-EXPORT_SYMBOL_GPL(pci_disable_pcie_error_reporting);
 
 int pci_aer_clear_nonfatal_status(struct pci_dev *dev)
 {
@@ -709,7 +700,7 @@ static void __aer_print_error(struct pci_dev *dev,
 void aer_print_error(struct pci_dev *dev, struct aer_err_info *info)
 {
 	int layer, agent;
-	int id = ((dev->bus->number << 8) | dev->devfn);
+	int id = pci_dev_id(dev);
 	const char *level;
 
 	if (!info->status) {
@@ -844,7 +835,7 @@ static bool is_error_source(struct pci_dev *dev, struct aer_err_info *e_info)
 	if ((PCI_BUS_NUM(e_info->id) != 0) &&
 	    !(dev->bus->bus_flags & PCI_BUS_FLAGS_NO_AERSID)) {
 		/* Device ID match? */
-		if (e_info->id == ((dev->bus->number << 8) | dev->devfn))
+		if (e_info->id == pci_dev_id(dev))
 			return true;
 
 		/* Continue id comparing if there is no multiple error */
@@ -961,8 +952,14 @@ static void handle_error_source(struct pci_dev *dev, struct aer_err_info *info)
 		if (aer)
 			pci_write_config_dword(dev, aer + PCI_ERR_COR_STATUS,
 					info->status);
-		if (pcie_aer_is_native(dev))
+		if (pcie_aer_is_native(dev)) {
+			struct pci_driver *pdrv = dev->driver;
+
+			if (pdrv && pdrv->err_handler &&
+			    pdrv->err_handler->cor_error_detected)
+				pdrv->err_handler->cor_error_detected(dev);
 			pcie_clear_device_status(dev);
+		}
 	} else if (info->severity == AER_NONFATAL)
 		pcie_do_recovery(dev, pci_channel_io_normal, aer_root_reset);
 	else if (info->severity == AER_FATAL)
@@ -972,8 +969,7 @@ static void handle_error_source(struct pci_dev *dev, struct aer_err_info *info)
 
 #ifdef CONFIG_ACPI_APEI_PCIEAER
 
-#define AER_RECOVER_RING_ORDER		4
-#define AER_RECOVER_RING_SIZE		(1 << AER_RECOVER_RING_ORDER)
+#define AER_RECOVER_RING_SIZE		16
 
 struct aer_recover_entry {
 	u8	bus;
@@ -1218,42 +1214,6 @@ static irqreturn_t aer_irq(int irq, void *context)
 	return IRQ_WAKE_THREAD;
 }
 
-static int set_device_error_reporting(struct pci_dev *dev, void *data)
-{
-	bool enable = *((bool *)data);
-	int type = pci_pcie_type(dev);
-
-	if ((type == PCI_EXP_TYPE_ROOT_PORT) ||
-	    (type == PCI_EXP_TYPE_RC_EC) ||
-	    (type == PCI_EXP_TYPE_UPSTREAM) ||
-	    (type == PCI_EXP_TYPE_DOWNSTREAM)) {
-		if (enable)
-			pci_enable_pcie_error_reporting(dev);
-		else
-			pci_disable_pcie_error_reporting(dev);
-	}
-
-	return 0;
-}
-
-/**
- * set_downstream_devices_error_reporting - enable/disable the error reporting  bits on the root port and its downstream ports.
- * @dev: pointer to root port's pci_dev data structure
- * @enable: true = enable error reporting, false = disable error reporting.
- */
-static void set_downstream_devices_error_reporting(struct pci_dev *dev,
-						   bool enable)
-{
-	set_device_error_reporting(dev, &enable);
-
-	if (pci_pcie_type(dev) == PCI_EXP_TYPE_RC_EC)
-		pcie_walk_rcec(dev, set_device_error_reporting, &enable);
-	else if (dev->subordinate)
-		pci_walk_bus(dev->subordinate, set_device_error_reporting,
-			     &enable);
-
-}
-
 /**
  * aer_enable_rootport - enable Root Port's interrupts when receiving messages
  * @rpc: pointer to a Root Port data structure
@@ -1283,12 +1243,6 @@ static void aer_enable_rootport(struct aer_rpc *rpc)
 	pci_read_config_dword(pdev, aer + PCI_ERR_UNCOR_STATUS, &reg32);
 	pci_write_config_dword(pdev, aer + PCI_ERR_UNCOR_STATUS, reg32);
 
-	/*
-	 * Enable error reporting for the root port device and downstream port
-	 * devices.
-	 */
-	set_downstream_devices_error_reporting(pdev, true);
-
 	/* Enable Root Port's interrupt in response to error messages */
 	pci_read_config_dword(pdev, aer + PCI_ERR_ROOT_COMMAND, &reg32);
 	reg32 |= ROOT_PORT_INTR_ON_MESG_MASK;
@@ -1306,12 +1260,6 @@ static void aer_disable_rootport(struct aer_rpc *rpc)
 	struct pci_dev *pdev = rpc->rpd;
 	int aer = pdev->aer_cap;
 	u32 reg32;
-
-	/*
-	 * Disable error reporting for the root port device and downstream port
-	 * devices.
-	 */
-	set_downstream_devices_error_reporting(pdev, false);
 
 	/* Disable Root's interrupt in response to error messages */
 	pci_read_config_dword(pdev, aer + PCI_ERR_ROOT_COMMAND, &reg32);

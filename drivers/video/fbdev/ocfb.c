@@ -287,10 +287,8 @@ static int ocfb_init_var(struct ocfb_dev *fbdev)
 
 static const struct fb_ops ocfb_ops = {
 	.owner		= THIS_MODULE,
+	FB_DEFAULT_IOMEM_OPS,
 	.fb_setcolreg	= ocfb_setcolreg,
-	.fb_fillrect	= cfb_fillrect,
-	.fb_copyarea	= cfb_copyarea,
-	.fb_imageblit	= cfb_imageblit,
 };
 
 static int ocfb_probe(struct platform_device *pdev)
@@ -370,7 +368,7 @@ err_dma_free:
 	return ret;
 }
 
-static int ocfb_remove(struct platform_device *pdev)
+static void ocfb_remove(struct platform_device *pdev)
 {
 	struct ocfb_dev *fbdev = platform_get_drvdata(pdev);
 
@@ -383,8 +381,6 @@ static int ocfb_remove(struct platform_device *pdev)
 	ocfb_writereg(fbdev, OCFB_CTRL, 0);
 
 	platform_set_drvdata(pdev, NULL);
-
-	return 0;
 }
 
 static const struct of_device_id ocfb_match[] = {
@@ -395,7 +391,7 @@ MODULE_DEVICE_TABLE(of, ocfb_match);
 
 static struct platform_driver ocfb_driver = {
 	.probe  = ocfb_probe,
-	.remove	= ocfb_remove,
+	.remove_new = ocfb_remove,
 	.driver = {
 		.name = "ocfb_fb",
 		.of_match_table = ocfb_match,

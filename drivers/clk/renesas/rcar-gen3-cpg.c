@@ -264,11 +264,13 @@ static const struct clk_ops cpg_z_clk_ops = {
 	.set_rate = cpg_z_clk_set_rate,
 };
 
-static struct clk * __init cpg_z_clk_register(const char *name,
+static struct clk * __init __cpg_z_clk_register(const char *name,
 					      const char *parent_name,
 					      void __iomem *reg,
 					      unsigned int div,
-					      unsigned int offset)
+					      unsigned int offset,
+					      unsigned int fcr,
+					      unsigned int flags)
 {
 	struct clk_init_data init = {};
 	struct cpg_z_clk *zclk;
@@ -280,11 +282,11 @@ static struct clk * __init cpg_z_clk_register(const char *name,
 
 	init.name = name;
 	init.ops = &cpg_z_clk_ops;
-	init.flags = CLK_SET_RATE_PARENT;
+	init.flags = flags;
 	init.parent_names = &parent_name;
 	init.num_parents = 1;
 
-	zclk->reg = reg + CPG_FRQCRC;
+	zclk->reg = reg + fcr;
 	zclk->kick_reg = reg + CPG_FRQCRB;
 	zclk->hw.init = &init;
 	zclk->mask = GENMASK(offset + 4, offset);
@@ -301,6 +303,27 @@ static struct clk * __init cpg_z_clk_register(const char *name,
 	return clk;
 }
 
+static struct clk * __init cpg_z_clk_register(const char *name,
+					      const char *parent_name,
+					      void __iomem *reg,
+					      unsigned int div,
+					      unsigned int offset)
+{
+	return __cpg_z_clk_register(name, parent_name, reg, div, offset,
+				    CPG_FRQCRC, CLK_SET_RATE_PARENT);
+}
+
+static struct clk * __init cpg_zg_clk_register(const char *name,
+					       const char *parent_name,
+					       void __iomem *reg,
+					       unsigned int div,
+					       unsigned int offset)
+{
+	return __cpg_z_clk_register(name, parent_name, reg, div, offset,
+				    CPG_FRQCRB, 0);
+
+}
+
 static const struct clk_div_table cpg_rpcsrc_div_table[] = {
 	{ 2, 5 }, { 3, 6 }, { 0, 0 },
 };
@@ -310,19 +333,10 @@ static unsigned int cpg_clk_extalr __initdata;
 static u32 cpg_mode __initdata;
 static u32 cpg_quirks __initdata;
 
-#define PLL_ERRATA	BIT(0)		/* Missing PLL0/2/4 post-divider */
 #define RCKCR_CKSEL	BIT(1)		/* Manual RCLK parent selection */
 
 
 static const struct soc_device_attribute cpg_quirks_match[] __initconst = {
-	{
-		.soc_id = "r8a7795", .revision = "ES1.0",
-		.data = (void *)(PLL_ERRATA | RCKCR_CKSEL),
-	},
-	{
-		.soc_id = "r8a7795", .revision = "ES1.*",
-		.data = (void *)(RCKCR_CKSEL),
-	},
 	{
 		.soc_id = "r8a7796", .revision = "ES1.0",
 		.data = (void *)(RCKCR_CKSEL),
@@ -355,9 +369,8 @@ struct clk * __init rcar_gen3_cpg_clk_register(struct device *dev,
 		 * multiplier when cpufreq changes between normal and boost
 		 * modes.
 		 */
-		mult = (cpg_quirks & PLL_ERRATA) ? 4 : 2;
 		return cpg_pll_clk_register(core->name, __clk_get_name(parent),
-					    base, mult, CPG_PLL0CR, 0);
+					    base, 2, CPG_PLL0CR, 0);
 
 	case CLK_TYPE_GEN3_PLL1:
 		mult = cpg_pll_config->pll1_mult;
@@ -370,9 +383,8 @@ struct clk * __init rcar_gen3_cpg_clk_register(struct device *dev,
 		 * multiplier when cpufreq changes between normal and boost
 		 * modes.
 		 */
-		mult = (cpg_quirks & PLL_ERRATA) ? 4 : 2;
 		return cpg_pll_clk_register(core->name, __clk_get_name(parent),
-					    base, mult, CPG_PLL2CR, 2);
+					    base, 2, CPG_PLL2CR, 2);
 
 	case CLK_TYPE_GEN3_PLL3:
 		mult = cpg_pll_config->pll3_mult;
@@ -388,8 +400,6 @@ struct clk * __init rcar_gen3_cpg_clk_register(struct device *dev,
 		 */
 		value = readl(base + CPG_PLL4CR);
 		mult = (((value >> 24) & 0x7f) + 1) * 2;
-		if (cpg_quirks & PLL_ERRATA)
-			mult *= 2;
 		break;
 
 	case CLK_TYPE_GEN3_SDH:
@@ -450,6 +460,10 @@ struct clk * __init rcar_gen3_cpg_clk_register(struct device *dev,
 	case CLK_TYPE_GEN3_Z:
 		return cpg_z_clk_register(core->name, __clk_get_name(parent),
 					  base, core->div, core->offset);
+
+	case CLK_TYPE_GEN3_ZG:
+		return cpg_zg_clk_register(core->name, __clk_get_name(parent),
+					   base, core->div, core->offset);
 
 	case CLK_TYPE_GEN3_OSC:
 		/*

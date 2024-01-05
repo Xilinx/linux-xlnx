@@ -461,7 +461,6 @@ static int clcdfb_register(struct clcd_fb *fb)
 	}
 
 	fb->fb.fbops		= &clcdfb_ops;
-	fb->fb.flags		= FBINFO_FLAG_DEFAULT;
 	fb->fb.pseudo_palette	= fb->cmap;
 
 	strncpy(fb->fb.fix.id, clcd_name, sizeof(fb->fb.fix.id));
@@ -854,7 +853,7 @@ static struct clcd_board *clcdfb_of_get_board(struct amba_device *dev)
 	board->caps = CLCD_CAP_ALL;
 	board->check = clcdfb_check;
 	board->decode = clcdfb_decode;
-	if (of_find_property(node, "memory-region", NULL)) {
+	if (of_property_present(node, "memory-region")) {
 		board->setup = clcdfb_of_vram_setup;
 		board->mmap = clcdfb_of_vram_mmap;
 		board->remove = clcdfb_of_vram_remove;

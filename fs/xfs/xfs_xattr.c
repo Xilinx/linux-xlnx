@@ -46,6 +46,17 @@ xfs_attr_grab_log_assist(
 	if (xfs_sb_version_haslogxattrs(&mp->m_sb))
 		return 0;
 
+	/*
+	 * Check if the filesystem featureset is new enough to set this log
+	 * incompat feature bit.  Strictly speaking, the minimum requirement is
+	 * a V5 filesystem for the superblock field, but we'll require rmap
+	 * or reflink to avoid having to deal with really old kernels.
+	 */
+	if (!xfs_has_reflink(mp) && !xfs_has_rmapbt(mp)) {
+		error = -EOPNOTSUPP;
+		goto drop_incompat;
+	}
+
 	/* Enable log-assisted xattrs. */
 	error = xfs_add_incompat_log_feature(mp,
 			XFS_SB_FEAT_INCOMPAT_LOG_XATTRS);
@@ -133,7 +144,7 @@ xfs_xattr_get(const struct xattr_handler *handler, struct dentry *unused,
 
 static int
 xfs_xattr_set(const struct xattr_handler *handler,
-	      struct user_namespace *mnt_userns, struct dentry *unused,
+	      struct mnt_idmap *idmap, struct dentry *unused,
 	      struct inode *inode, const char *name, const void *value,
 	      size_t size, int flags)
 {
@@ -179,10 +190,6 @@ const struct xattr_handler *xfs_xattr_handlers[] = {
 	&xfs_xattr_user_handler,
 	&xfs_xattr_trusted_handler,
 	&xfs_xattr_security_handler,
-#ifdef CONFIG_XFS_POSIX_ACL
-	&posix_acl_access_xattr_handler,
-	&posix_acl_default_xattr_handler,
-#endif
 	NULL
 };
 
@@ -210,7 +217,7 @@ __xfs_xattr_put_listent(
 		return;
 	}
 	offset = context->buffer + context->count;
-	strncpy(offset, prefix, prefix_len);
+	memcpy(offset, prefix, prefix_len);
 	offset += prefix_len;
 	strncpy(offset, (char *)name, namelen);			/* real name */
 	offset += namelen;

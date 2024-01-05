@@ -4,8 +4,8 @@
 #define __USDT_BPF_H__
 
 #include <linux/errno.h>
-#include <bpf/bpf_helpers.h>
-#include <bpf/bpf_tracing.h>
+#include "bpf_helpers.h"
+#include "bpf_tracing.h"
 
 /* Below types and maps are internal implementation details of libbpf's USDT
  * support and are subjects to change. Also, bpf_usdt_xxx() API helpers should
@@ -130,7 +130,10 @@ int bpf_usdt_arg(struct pt_regs *ctx, __u64 arg_num, long *res)
 	if (!spec)
 		return -ESRCH;
 
-	if (arg_num >= BPF_USDT_MAX_ARG_CNT || arg_num >= spec->arg_cnt)
+	if (arg_num >= BPF_USDT_MAX_ARG_CNT)
+		return -ENOENT;
+	barrier_var(arg_num);
+	if (arg_num >= spec->arg_cnt)
 		return -ENOENT;
 
 	arg_spec = &spec->args[arg_num];

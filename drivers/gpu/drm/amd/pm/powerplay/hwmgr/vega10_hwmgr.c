@@ -22,7 +22,6 @@
  */
 
 #include <linux/delay.h>
-#include <linux/fb.h>
 #include <linux/module.h>
 #include <linux/pci.h>
 #include <linux/slab.h>
@@ -1376,8 +1375,7 @@ static int vega10_setup_default_dpm_tables(struct pp_hwmgr *hwmgr)
 						dep_mm_table->entries[i].eclk) {
 			dpm_table->dpm_levels[dpm_table->count].value =
 					dep_mm_table->entries[i].eclk;
-			dpm_table->dpm_levels[dpm_table->count].enabled =
-					(i == 0) ? true : false;
+			dpm_table->dpm_levels[dpm_table->count].enabled = i == 0;
 			dpm_table->count++;
 		}
 	}
@@ -1392,8 +1390,7 @@ static int vega10_setup_default_dpm_tables(struct pp_hwmgr *hwmgr)
 						dep_mm_table->entries[i].vclk) {
 			dpm_table->dpm_levels[dpm_table->count].value =
 					dep_mm_table->entries[i].vclk;
-			dpm_table->dpm_levels[dpm_table->count].enabled =
-					(i == 0) ? true : false;
+			dpm_table->dpm_levels[dpm_table->count].enabled = i == 0;
 			dpm_table->count++;
 		}
 	}
@@ -1406,8 +1403,7 @@ static int vega10_setup_default_dpm_tables(struct pp_hwmgr *hwmgr)
 						dep_mm_table->entries[i].dclk) {
 			dpm_table->dpm_levels[dpm_table->count].value =
 					dep_mm_table->entries[i].dclk;
-			dpm_table->dpm_levels[dpm_table->count].enabled =
-					(i == 0) ? true : false;
+			dpm_table->dpm_levels[dpm_table->count].enabled = i == 0;
 			dpm_table->count++;
 		}
 	}
@@ -3008,6 +3004,30 @@ static int vega10_enable_disable_PCC_limit_feature(struct pp_hwmgr *hwmgr, bool 
 	return 0;
 }
 
+static void vega10_populate_umdpstate_clocks(struct pp_hwmgr *hwmgr)
+{
+	struct phm_ppt_v2_information *table_info =
+			(struct phm_ppt_v2_information *)(hwmgr->pptable);
+
+	if (table_info->vdd_dep_on_sclk->count > VEGA10_UMD_PSTATE_GFXCLK_LEVEL &&
+	    table_info->vdd_dep_on_mclk->count > VEGA10_UMD_PSTATE_MCLK_LEVEL) {
+		hwmgr->pstate_sclk = table_info->vdd_dep_on_sclk->entries[VEGA10_UMD_PSTATE_GFXCLK_LEVEL].clk;
+		hwmgr->pstate_mclk = table_info->vdd_dep_on_mclk->entries[VEGA10_UMD_PSTATE_MCLK_LEVEL].clk;
+	} else {
+		hwmgr->pstate_sclk = table_info->vdd_dep_on_sclk->entries[0].clk;
+		hwmgr->pstate_mclk = table_info->vdd_dep_on_mclk->entries[0].clk;
+	}
+
+	hwmgr->pstate_sclk_peak = table_info->vdd_dep_on_sclk->entries[table_info->vdd_dep_on_sclk->count - 1].clk;
+	hwmgr->pstate_mclk_peak = table_info->vdd_dep_on_mclk->entries[table_info->vdd_dep_on_mclk->count - 1].clk;
+
+	/* make sure the output is in Mhz */
+	hwmgr->pstate_sclk /= 100;
+	hwmgr->pstate_mclk /= 100;
+	hwmgr->pstate_sclk_peak /= 100;
+	hwmgr->pstate_mclk_peak /= 100;
+}
+
 static int vega10_enable_dpm_tasks(struct pp_hwmgr *hwmgr)
 {
 	struct vega10_hwmgr *data = hwmgr->backend;
@@ -3081,6 +3101,8 @@ static int vega10_enable_dpm_tasks(struct pp_hwmgr *hwmgr)
 				    "Failed to enable ULV!",
 				    result = tmp_result);
 	}
+
+	vega10_populate_umdpstate_clocks(hwmgr);
 
 	return result;
 }
@@ -3944,7 +3966,7 @@ static int vega10_read_sensor(struct pp_hwmgr *hwmgr, int idx,
 		*((uint32_t *)value) = data->vce_power_gated ? 0 : 1;
 		*size = 4;
 		break;
-	case AMDGPU_PP_SENSOR_GPU_POWER:
+	case AMDGPU_PP_SENSOR_GPU_INPUT_POWER:
 		ret = vega10_get_gpu_power(hwmgr, (uint32_t *)value);
 		break;
 	case AMDGPU_PP_SENSOR_VDDGFX:
@@ -4169,8 +4191,6 @@ static int vega10_get_profiling_clk_mask(struct pp_hwmgr *hwmgr, enum amd_dpm_fo
 		*sclk_mask = VEGA10_UMD_PSTATE_GFXCLK_LEVEL;
 		*soc_mask = VEGA10_UMD_PSTATE_SOCCLK_LEVEL;
 		*mclk_mask = VEGA10_UMD_PSTATE_MCLK_LEVEL;
-		hwmgr->pstate_sclk = table_info->vdd_dep_on_sclk->entries[VEGA10_UMD_PSTATE_GFXCLK_LEVEL].clk;
-		hwmgr->pstate_mclk = table_info->vdd_dep_on_mclk->entries[VEGA10_UMD_PSTATE_MCLK_LEVEL].clk;
 	}
 
 	if (level == AMD_DPM_FORCED_LEVEL_PROFILE_MIN_SCLK) {
@@ -4280,9 +4300,6 @@ static int vega10_dpm_force_dpm_level(struct pp_hwmgr *hwmgr,
 	uint32_t sclk_mask = 0;
 	uint32_t mclk_mask = 0;
 	uint32_t soc_mask = 0;
-
-	if (hwmgr->pstate_sclk == 0)
-		vega10_get_profiling_clk_mask(hwmgr, level, &sclk_mask, &mclk_mask, &soc_mask);
 
 	switch (level) {
 	case AMD_DPM_FORCED_LEVEL_HIGH:
@@ -5221,6 +5238,9 @@ static int vega10_get_thermal_temperature_range(struct pp_hwmgr *hwmgr,
 {
 	struct vega10_hwmgr *data = hwmgr->backend;
 	PPTable_t *pp_table = &(data->smc_state_table.pp_table);
+	struct phm_ppt_v2_information *pp_table_info =
+		(struct phm_ppt_v2_information *)(hwmgr->pptable);
+	struct phm_tdp_table *tdp_table = pp_table_info->tdp_table;
 
 	memcpy(thermal_data, &SMU7ThermalWithDelayPolicy[0], sizeof(struct PP_TemperatureRange));
 
@@ -5236,6 +5256,13 @@ static int vega10_get_thermal_temperature_range(struct pp_hwmgr *hwmgr,
 		PP_TEMPERATURE_UNITS_PER_CENTIGRADES;
 	thermal_data->mem_emergency_max = (pp_table->ThbmLimit + CTF_OFFSET_HBM)*
 		PP_TEMPERATURE_UNITS_PER_CENTIGRADES;
+
+	if (tdp_table->usSoftwareShutdownTemp > pp_table->ThotspotLimit &&
+	    tdp_table->usSoftwareShutdownTemp < VEGA10_THERMAL_MAXIMUM_ALERT_TEMP)
+		thermal_data->sw_ctf_threshold = tdp_table->usSoftwareShutdownTemp;
+	else
+		thermal_data->sw_ctf_threshold = VEGA10_THERMAL_MAXIMUM_ALERT_TEMP;
+	thermal_data->sw_ctf_threshold *= PP_TEMPERATURE_UNITS_PER_CENTIGRADES;
 
 	return 0;
 }

@@ -2870,10 +2870,8 @@ static int s5p_jpeg_probe(struct platform_device *pdev)
 
 	/* interrupt service routine registration */
 	jpeg->irq = ret = platform_get_irq(pdev, 0);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "cannot find IRQ\n");
+	if (ret < 0)
 		return ret;
-	}
 
 	ret = devm_request_irq(&pdev->dev, jpeg->irq, jpeg->variant->jpeg_irq,
 				0, dev_name(&pdev->dev), jpeg);
@@ -2991,7 +2989,7 @@ device_register_rollback:
 	return ret;
 }
 
-static int s5p_jpeg_remove(struct platform_device *pdev)
+static void s5p_jpeg_remove(struct platform_device *pdev)
 {
 	struct s5p_jpeg *jpeg = platform_get_drvdata(pdev);
 	int i;
@@ -3008,8 +3006,6 @@ static int s5p_jpeg_remove(struct platform_device *pdev)
 		for (i = jpeg->variant->num_clocks - 1; i >= 0; i--)
 			clk_disable_unprepare(jpeg->clocks[i]);
 	}
-
-	return 0;
 }
 
 #ifdef CONFIG_PM
@@ -3164,9 +3160,9 @@ static void *jpeg_get_drv_data(struct device *dev)
 
 static struct platform_driver s5p_jpeg_driver = {
 	.probe = s5p_jpeg_probe,
-	.remove = s5p_jpeg_remove,
+	.remove_new = s5p_jpeg_remove,
 	.driver = {
-		.of_match_table	= of_match_ptr(samsung_jpeg_match),
+		.of_match_table	= samsung_jpeg_match,
 		.name		= S5P_JPEG_M2M_NAME,
 		.pm		= &s5p_jpeg_pm_ops,
 	},

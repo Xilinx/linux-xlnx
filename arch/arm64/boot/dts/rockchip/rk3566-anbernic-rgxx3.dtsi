@@ -22,6 +22,7 @@
 			      <&adc_mux 3>;
 		pinctrl-0 = <&joy_mux_en>;
 		pinctrl-names = "default";
+		poll-interval = <60>;
 		#address-cells = <1>;
 		#size-cells = <0>;
 
@@ -190,61 +191,30 @@
 		};
 	};
 
-	leds: gpio-leds {
-		compatible = "gpio-leds";
-		pinctrl-0 = <&led_pins>;
-		pinctrl-names = "default";
+	leds: pwm-leds {
+		compatible = "pwm-leds";
 
 		green_led: led-0 {
 			color = <LED_COLOR_ID_GREEN>;
 			default-state = "on";
 			function = LED_FUNCTION_POWER;
-			gpios = <&gpio0 RK_PC5 GPIO_ACTIVE_HIGH>;
+			max-brightness = <255>;
+			pwms = <&pwm6 0 25000 0>;
 		};
 
 		amber_led: led-1 {
 			color = <LED_COLOR_ID_AMBER>;
 			function = LED_FUNCTION_CHARGING;
-			gpios = <&gpio0 RK_PC6 GPIO_ACTIVE_HIGH>;
-			retain-state-suspended;
+			max-brightness = <255>;
+			pwms = <&pwm7 0 25000 0>;
 		};
 
 		red_led: led-2 {
 			color = <LED_COLOR_ID_RED>;
 			default-state = "off";
 			function = LED_FUNCTION_STATUS;
-			gpios = <&gpio0 RK_PC7 GPIO_ACTIVE_HIGH>;
-		};
-	};
-
-	/* Channels reversed for both headphones and speakers. */
-	sound {
-		compatible = "simple-audio-card";
-		simple-audio-card,name = "anbernic_rk817";
-		simple-audio-card,aux-devs = <&spk_amp>;
-		simple-audio-card,format = "i2s";
-		simple-audio-card,hp-det-gpio = <&gpio4 RK_PC6 GPIO_ACTIVE_HIGH>;
-		simple-audio-card,mclk-fs = <256>;
-		simple-audio-card,widgets =
-			"Microphone", "Mic Jack",
-			"Headphone", "Headphones",
-			"Speaker", "Internal Speakers";
-		simple-audio-card,routing =
-			"MICL", "Mic Jack",
-			"Headphones", "HPOL",
-			"Headphones", "HPOR",
-			"Internal Speakers", "Speaker Amp OUTL",
-			"Internal Speakers", "Speaker Amp OUTR",
-			"Speaker Amp INL", "HPOL",
-			"Speaker Amp INR", "HPOR";
-		simple-audio-card,pin-switches = "Internal Speakers";
-
-		simple-audio-card,codec {
-			sound-dai = <&rk817>;
-		};
-
-		simple-audio-card,cpu {
-			sound-dai = <&i2s1_8ch>;
+			max-brightness = <255>;
+			pwms = <&pwm0 0 25000 0>;
 		};
 	};
 
@@ -256,14 +226,6 @@
 		pinctrl-names = "default";
 		post-power-on-delay-ms = <200>;
 		reset-gpios = <&gpio4 RK_PA2 GPIO_ACTIVE_LOW>;
-	};
-
-	spk_amp: audio-amplifier {
-		compatible = "simple-audio-amplifier";
-		enable-gpios = <&gpio4 RK_PC2 GPIO_ACTIVE_HIGH>;
-		pinctrl-0 = <&spk_amp_enable_h>;
-		pinctrl-names = "default";
-		sound-name-prefix = "Speaker Amp";
 	};
 
 	vcc3v3_lcd0_n: regulator-vcc3v3-lcd0 {
@@ -394,7 +356,6 @@
 				regulator-boot-on;
 				regulator-min-microvolt = <500000>;
 				regulator-max-microvolt = <1350000>;
-				regulator-init-microvolt = <900000>;
 				regulator-ramp-delay = <6001>;
 				regulator-initial-mode = <0x2>;
 				regulator-name = "vdd_logic";
@@ -409,7 +370,6 @@
 				regulator-boot-on;
 				regulator-min-microvolt = <500000>;
 				regulator-max-microvolt = <1350000>;
-				regulator-init-microvolt = <900000>;
 				regulator-ramp-delay = <6001>;
 				regulator-initial-mode = <0x2>;
 				regulator-name = "vdd_gpu";
@@ -571,7 +531,6 @@
 		regulator-boot-on;
 		regulator-min-microvolt = <712500>;
 		regulator-max-microvolt = <1390000>;
-		regulator-init-microvolt = <900000>;
 		regulator-name = "vdd_cpu";
 		regulator-ramp-delay = <2300>;
 		vin-supply = <&vcc_sys>;
@@ -607,13 +566,6 @@
 };
 
 &pinctrl {
-	audio-amplifier {
-		spk_amp_enable_h: spk-amp-enable-h {
-			rockchip,pins =
-				<4 RK_PC2 RK_FUNC_GPIO &pcfg_pull_none>;
-		};
-	};
-
 	gpio-btns {
 		btn_pins_ctrl: btn-pins-ctrl {
 			rockchip,pins =
@@ -639,15 +591,6 @@
 			rockchip,pins =
 			<3 RK_PA7 RK_FUNC_GPIO &pcfg_pull_up>,
 			<3 RK_PB0 RK_FUNC_GPIO &pcfg_pull_up>;
-		};
-	};
-
-	gpio-led {
-		led_pins: led-pins {
-			rockchip,pins =
-				<0 RK_PC5 RK_FUNC_GPIO &pcfg_pull_none>,
-				<0 RK_PC6 RK_FUNC_GPIO &pcfg_pull_none>,
-				<0 RK_PC7 RK_FUNC_GPIO &pcfg_pull_none>;
 		};
 	};
 
@@ -699,7 +642,21 @@
 	vccio7-supply = <&vcc_3v3>;
 };
 
+&pwm0 {
+	pinctrl-0 = <&pwm0m1_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
 &pwm5 {
+	status = "okay";
+};
+
+&pwm6 {
+	status = "okay";
+};
+
+&pwm7 {
 	status = "okay";
 };
 
@@ -761,7 +718,7 @@
 	status = "okay";
 
 	bluetooth {
-		compatible = "realtek,rtl8821cs-bt";
+		compatible = "realtek,rtl8821cs-bt", "realtek,rtl8723bs-bt";
 		device-wake-gpios = <&gpio4 4 GPIO_ACTIVE_HIGH>;
 		enable-gpios = <&gpio4 3 GPIO_ACTIVE_HIGH>;
 		host-wake-gpios = <&gpio4 5 GPIO_ACTIVE_HIGH>;

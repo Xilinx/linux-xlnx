@@ -16,6 +16,7 @@
 #include <linux/extcon.h>
 #include <linux/interrupt.h>
 #include <linux/list.h>
+#include <linux/of.h>
 #include <linux/phy/phy.h>
 #include <linux/regulator/consumer.h>
 #include <linux/usb.h>
@@ -90,7 +91,7 @@ struct mtu3_request;
  */
 #define EP0_RESPONSE_BUF  6
 
-#define BULK_CLKS_CNT	4
+#define BULK_CLKS_CNT	6
 
 /* device operated link and speed got from DEVICE_CONF register */
 enum mtu3_speed {

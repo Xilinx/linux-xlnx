@@ -11,10 +11,8 @@
 #include <linux/module.h>
 #include <linux/rtc.h>
 #include <linux/of.h>
-#include <linux/of_address.h>
-#include <linux/of_device.h>
 #include <linux/of_irq.h>
-#include <linux/of_platform.h>
+#include <linux/platform_device.h>
 #include <linux/io.h>
 #include <linux/slab.h>
 
@@ -372,7 +370,7 @@ out_dispose:
 	return err;
 }
 
-static int mpc5121_rtc_remove(struct platform_device *op)
+static void mpc5121_rtc_remove(struct platform_device *op)
 {
 	struct mpc5121_rtc_data *rtc = platform_get_drvdata(op);
 	struct mpc5121_rtc_regs __iomem *regs = rtc->regs;
@@ -383,8 +381,6 @@ static int mpc5121_rtc_remove(struct platform_device *op)
 
 	irq_dispose_mapping(rtc->irq);
 	irq_dispose_mapping(rtc->irq_periodic);
-
-	return 0;
 }
 
 #ifdef CONFIG_OF
@@ -402,7 +398,7 @@ static struct platform_driver mpc5121_rtc_driver = {
 		.of_match_table = of_match_ptr(mpc5121_rtc_match),
 	},
 	.probe = mpc5121_rtc_probe,
-	.remove = mpc5121_rtc_remove,
+	.remove_new = mpc5121_rtc_remove,
 };
 
 module_platform_driver(mpc5121_rtc_driver);

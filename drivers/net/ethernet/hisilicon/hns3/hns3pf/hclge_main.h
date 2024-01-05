@@ -249,6 +249,13 @@ enum HCLGE_MAC_DUPLEX {
 #define QUERY_SFP_SPEED		0
 #define QUERY_ACTIVE_SPEED	1
 
+struct hclge_wol_info {
+	u32 wol_support_mode; /* store the wake on lan info */
+	u32 wol_current_mode;
+	u8 wol_sopass[SOPASS_MAX];
+	u8 wol_sopass_size;
+};
+
 struct hclge_mac {
 	u8 mac_id;
 	u8 phy_addr;
@@ -268,6 +275,7 @@ struct hclge_mac {
 	u32 user_fec_mode;
 	u32 fec_ability;
 	int link;	/* store the link status of mac & phy (if phy exists) */
+	struct hclge_wol_info wol;
 	struct phy_device *phydev;
 	struct mii_bus *mdio_bus;
 	phy_interface_t phy_if;
@@ -827,15 +835,10 @@ struct hclge_vf_vlan_cfg {
  * Then for input key(k) and mask(v), we can calculate the value by
  * the formulae:
  *	x = (~k) & v
- *	y = (k ^ ~v) & k
+ *	y = k & v
  */
-#define calc_x(x, k, v) (x = ~(k) & (v))
-#define calc_y(y, k, v) \
-	do { \
-		const typeof(k) _k_ = (k); \
-		const typeof(v) _v_ = (v); \
-		(y) = (_k_ ^ ~_v_) & (_k_); \
-	} while (0)
+#define calc_x(x, k, v) ((x) = ~(k) & (v))
+#define calc_y(y, k, v) ((y) = (k) & (v))
 
 #define HCLGE_MAC_STATS_FIELD_OFF(f) (offsetof(struct hclge_mac_stats, f))
 #define HCLGE_STATS_READ(p, offset) (*(u64 *)((u8 *)(p) + (offset)))
@@ -916,8 +919,6 @@ struct hclge_dev {
 
 #define HCLGE_FLAG_MAIN			BIT(0)
 #define HCLGE_FLAG_DCB_CAPABLE		BIT(1)
-#define HCLGE_FLAG_DCB_ENABLE		BIT(2)
-#define HCLGE_FLAG_MQPRIO_ENABLE	BIT(3)
 	u32 flag;
 
 	u32 pkt_buf_size; /* Total pf buf size for tx/rx */
@@ -995,7 +996,13 @@ enum HCLGE_VPORT_STATE {
 	HCLGE_VPORT_STATE_MAC_TBL_CHANGE,
 	HCLGE_VPORT_STATE_PROMISC_CHANGE,
 	HCLGE_VPORT_STATE_VLAN_FLTR_CHANGE,
+	HCLGE_VPORT_STATE_INITED,
 	HCLGE_VPORT_STATE_MAX
+};
+
+enum HCLGE_VPORT_NEED_NOTIFY {
+	HCLGE_VPORT_NEED_NOTIFY_RESET,
+	HCLGE_VPORT_NEED_NOTIFY_VF_VLAN,
 };
 
 struct hclge_vlan_info {
@@ -1044,6 +1051,7 @@ struct hclge_vport {
 	struct hnae3_handle roce;
 
 	unsigned long state;
+	unsigned long need_notify;
 	unsigned long last_active_jiffies;
 	u32 mps; /* Max packet size */
 	struct hclge_vf_info vf_info;
@@ -1132,11 +1140,8 @@ int hclge_push_vf_port_base_vlan_info(struct hclge_vport *vport, u8 vfid,
 				      u16 state,
 				      struct hclge_vlan_info *vlan_info);
 void hclge_task_schedule(struct hclge_dev *hdev, unsigned long delay_time);
-int hclge_query_bd_num_cmd_send(struct hclge_dev *hdev,
-				struct hclge_desc *desc);
 void hclge_report_hw_error(struct hclge_dev *hdev,
 			   enum hnae3_hw_error_type type);
-void hclge_inform_vf_promisc_info(struct hclge_vport *vport);
 int hclge_dbg_dump_rst_info(struct hclge_dev *hdev, char *buf, int len);
 int hclge_push_vf_link_status(struct hclge_vport *vport);
 int hclge_enable_vport_vlan_filter(struct hclge_vport *vport, bool request_en);

@@ -8,7 +8,9 @@
 #include <net/dsa.h>
 #include <linux/dsa/tag_qca.h>
 
-#include "dsa_priv.h"
+#include "tag.h"
+
+#define QCA_NAME "qca"
 
 static struct sk_buff *qca_tag_xmit(struct sk_buff *skb, struct net_device *dev)
 {
@@ -73,16 +75,16 @@ static struct sk_buff *qca_tag_rcv(struct sk_buff *skb, struct net_device *dev)
 		return NULL;
 	}
 
-	/* Remove QCA tag and recalculate checksum */
-	skb_pull_rcsum(skb, QCA_HDR_LEN);
-	dsa_strip_etype_header(skb, QCA_HDR_LEN);
-
 	/* Get source port information */
 	port = FIELD_GET(QCA_HDR_RECV_SOURCE_PORT, hdr);
 
 	skb->dev = dsa_master_find_slave(dev, 0, port);
 	if (!skb->dev)
 		return NULL;
+
+	/* Remove QCA tag and recalculate checksum */
+	skb_pull_rcsum(skb, QCA_HDR_LEN);
+	dsa_strip_etype_header(skb, QCA_HDR_LEN);
 
 	return skb;
 }
@@ -107,7 +109,7 @@ static void qca_tag_disconnect(struct dsa_switch *ds)
 }
 
 static const struct dsa_device_ops qca_netdev_ops = {
-	.name	= "qca",
+	.name	= QCA_NAME,
 	.proto	= DSA_TAG_PROTO_QCA,
 	.connect = qca_tag_connect,
 	.disconnect = qca_tag_disconnect,
@@ -118,6 +120,6 @@ static const struct dsa_device_ops qca_netdev_ops = {
 };
 
 MODULE_LICENSE("GPL");
-MODULE_ALIAS_DSA_TAG_DRIVER(DSA_TAG_PROTO_QCA);
+MODULE_ALIAS_DSA_TAG_DRIVER(DSA_TAG_PROTO_QCA, QCA_NAME);
 
 module_dsa_tag_driver(qca_netdev_ops);

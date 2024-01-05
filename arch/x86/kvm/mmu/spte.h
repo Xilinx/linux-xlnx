@@ -3,6 +3,7 @@
 #ifndef KVM_X86_MMU_SPTE_H
 #define KVM_X86_MMU_SPTE_H
 
+#include "mmu.h"
 #include "mmu_internal.h"
 
 /*
@@ -28,10 +29,10 @@
  */
 #define SPTE_TDP_AD_SHIFT		52
 #define SPTE_TDP_AD_MASK		(3ULL << SPTE_TDP_AD_SHIFT)
-#define SPTE_TDP_AD_ENABLED_MASK	(0ULL << SPTE_TDP_AD_SHIFT)
-#define SPTE_TDP_AD_DISABLED_MASK	(1ULL << SPTE_TDP_AD_SHIFT)
-#define SPTE_TDP_AD_WRPROT_ONLY_MASK	(2ULL << SPTE_TDP_AD_SHIFT)
-static_assert(SPTE_TDP_AD_ENABLED_MASK == 0);
+#define SPTE_TDP_AD_ENABLED		(0ULL << SPTE_TDP_AD_SHIFT)
+#define SPTE_TDP_AD_DISABLED		(1ULL << SPTE_TDP_AD_SHIFT)
+#define SPTE_TDP_AD_WRPROT_ONLY		(2ULL << SPTE_TDP_AD_SHIFT)
+static_assert(SPTE_TDP_AD_ENABLED == 0);
 
 #ifdef CONFIG_DYNAMIC_PHYSICAL_MASK
 #define SPTE_BASE_ADDR_MASK (physical_mask & ~(u64)(PAGE_SIZE-1))
@@ -164,7 +165,7 @@ extern u64 __read_mostly shadow_me_value;
 extern u64 __read_mostly shadow_me_mask;
 
 /*
- * SPTEs in MMUs without A/D bits are marked with SPTE_TDP_AD_DISABLED_MASK;
+ * SPTEs in MMUs without A/D bits are marked with SPTE_TDP_AD_DISABLED;
  * shadow_acc_track_mask is the set of bits to be cleared in non-accessed
  * pages.
  */
@@ -188,7 +189,7 @@ extern u64 __read_mostly shadow_nonpresent_or_rsvd_mask;
  * should not modify the SPTE.
  *
  * Use a semi-arbitrary value that doesn't set RWX bits, i.e. is not-present on
- * bot AMD and Intel CPUs, and doesn't set PFN bits, i.e. doesn't create a L1TF
+ * both AMD and Intel CPUs, and doesn't set PFN bits, i.e. doesn't create a L1TF
  * vulnerability.  Use only low bits to avoid 64-bit immediates.
  *
  * Only used by the TDP MMU.
@@ -219,6 +220,35 @@ static inline int spte_index(u64 *sptep)
  */
 extern u64 __read_mostly shadow_nonpresent_or_rsvd_lower_gfn_mask;
 
+static inline struct kvm_mmu_page *to_shadow_page(hpa_t shadow_page)
+{
+	struct page *page = pfn_to_page((shadow_page) >> PAGE_SHIFT);
+
+	return (struct kvm_mmu_page *)page_private(page);
+}
+
+static inline struct kvm_mmu_page *spte_to_child_sp(u64 spte)
+{
+	return to_shadow_page(spte & SPTE_BASE_ADDR_MASK);
+}
+
+static inline struct kvm_mmu_page *sptep_to_sp(u64 *sptep)
+{
+	return to_shadow_page(__pa(sptep));
+}
+
+static inline struct kvm_mmu_page *root_to_sp(hpa_t root)
+{
+	if (kvm_mmu_is_dummy_root(root))
+		return NULL;
+
+	/*
+	 * The "root" may be a special root, e.g. a PAE entry, treat it as a
+	 * SPTE to ensure any non-PA bits are dropped.
+	 */
+	return spte_to_child_sp(root);
+}
+
 static inline bool is_mmio_spte(u64 spte)
 {
 	return (spte & shadow_mmio_mask) == shadow_mmio_value &&
@@ -248,30 +278,30 @@ static inline bool sp_ad_disabled(struct kvm_mmu_page *sp)
 
 static inline bool spte_ad_enabled(u64 spte)
 {
-	MMU_WARN_ON(!is_shadow_present_pte(spte));
-	return (spte & SPTE_TDP_AD_MASK) != SPTE_TDP_AD_DISABLED_MASK;
+	KVM_MMU_WARN_ON(!is_shadow_present_pte(spte));
+	return (spte & SPTE_TDP_AD_MASK) != SPTE_TDP_AD_DISABLED;
 }
 
 static inline bool spte_ad_need_write_protect(u64 spte)
 {
-	MMU_WARN_ON(!is_shadow_present_pte(spte));
+	KVM_MMU_WARN_ON(!is_shadow_present_pte(spte));
 	/*
-	 * This is benign for non-TDP SPTEs as SPTE_TDP_AD_ENABLED_MASK is '0',
+	 * This is benign for non-TDP SPTEs as SPTE_TDP_AD_ENABLED is '0',
 	 * and non-TDP SPTEs will never set these bits.  Optimize for 64-bit
 	 * TDP and do the A/D type check unconditionally.
 	 */
-	return (spte & SPTE_TDP_AD_MASK) != SPTE_TDP_AD_ENABLED_MASK;
+	return (spte & SPTE_TDP_AD_MASK) != SPTE_TDP_AD_ENABLED;
 }
 
 static inline u64 spte_shadow_accessed_mask(u64 spte)
 {
-	MMU_WARN_ON(!is_shadow_present_pte(spte));
+	KVM_MMU_WARN_ON(!is_shadow_present_pte(spte));
 	return spte_ad_enabled(spte) ? shadow_accessed_mask : 0;
 }
 
 static inline u64 spte_shadow_dirty_mask(u64 spte)
 {
-	MMU_WARN_ON(!is_shadow_present_pte(spte));
+	KVM_MMU_WARN_ON(!is_shadow_present_pte(spte));
 	return spte_ad_enabled(spte) ? shadow_dirty_mask : 0;
 }
 
@@ -346,7 +376,7 @@ static __always_inline bool is_rsvd_spte(struct rsvd_bits_validate *rsvd_check,
  * A shadow-present leaf SPTE may be non-writable for 4 possible reasons:
  *
  *  1. To intercept writes for dirty logging. KVM write-protects huge pages
- *     so that they can be split be split down into the dirty logging
+ *     so that they can be split down into the dirty logging
  *     granularity (4KiB) whenever the guest writes to them. KVM also
  *     write-protects 4KiB pages so that writes can be recorded in the dirty log
  *     (e.g. if not using PML). SPTEs are write-protected for dirty logging
@@ -418,11 +448,11 @@ static inline void check_spte_writable_invariants(u64 spte)
 {
 	if (spte & shadow_mmu_writable_mask)
 		WARN_ONCE(!(spte & shadow_host_writable_mask),
-			  "kvm: MMU-writable SPTE is not Host-writable: %llx",
+			  KBUILD_MODNAME ": MMU-writable SPTE is not Host-writable: %llx",
 			  spte);
 	else
 		WARN_ONCE(is_writable_pte(spte),
-			  "kvm: Writable SPTE is not MMU-writable: %llx", spte);
+			  KBUILD_MODNAME ": Writable SPTE is not MMU-writable: %llx", spte);
 }
 
 static inline bool is_mmu_writable_spte(u64 spte)

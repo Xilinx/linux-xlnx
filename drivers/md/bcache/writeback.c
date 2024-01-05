@@ -434,7 +434,7 @@ static void write_dirty(struct closure *cl)
 	 */
 	if (KEY_DIRTY(&w->key)) {
 		dirty_init(w);
-		bio_set_op_attrs(&io->bio, REQ_OP_WRITE, 0);
+		io->bio.bi_opf = REQ_OP_WRITE;
 		io->bio.bi_iter.bi_sector = KEY_START(&w->key);
 		bio_set_dev(&io->bio, io->dc->bdev);
 		io->bio.bi_end_io	= dirty_endio;
@@ -547,7 +547,7 @@ static void read_dirty(struct cached_dev *dc)
 			io->sequence    = sequence++;
 
 			dirty_init(w);
-			bio_set_op_attrs(&io->bio, REQ_OP_READ, 0);
+			io->bio.bi_opf = REQ_OP_READ;
 			io->bio.bi_iter.bi_sector = PTR_OFFSET(&w->key, 0);
 			bio_set_dev(&io->bio, dc->disk.c->cache->bdev);
 			io->bio.bi_end_io	= read_dirty_endio;
@@ -889,6 +889,16 @@ static int bch_root_node_dirty_init(struct cache_set *c,
 			   0);
 	if (ret < 0)
 		pr_warn("sectors dirty init failed, ret=%d!\n", ret);
+
+	/*
+	 * The op may be added to cache_set's btree_cache_wait
+	 * in mca_cannibalize(), must ensure it is removed from
+	 * the list and release btree_cache_alloc_lock before
+	 * free op memory.
+	 * Otherwise, the btree_cache_wait will be damaged.
+	 */
+	bch_cannibalize_unlock(c);
+	finish_wait(&c->btree_cache_wait, &(&op.op)->wait);
 
 	return ret;
 }

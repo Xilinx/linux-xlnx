@@ -6,9 +6,7 @@
 
 #include <linux/module.h>
 #include <linux/clk-provider.h>
-#include <linux/of.h>
-#include <linux/of_address.h>
-#include <linux/of_device.h>
+#include <linux/mod_devicetable.h>
 #include <linux/platform_device.h>
 
 #include "clk-mtk.h"
@@ -102,10 +100,11 @@ static const struct of_device_id of_match_clk_mt6779_aud[] = {
 		/* sentinel */
 	}
 };
+MODULE_DEVICE_TABLE(of, of_match_clk_mt6779_aud);
 
 static struct platform_driver clk_mt6779_aud_drv = {
 	.probe = mtk_clk_simple_probe,
-	.remove = mtk_clk_simple_remove,
+	.remove_new = mtk_clk_simple_remove,
 	.driver = {
 		.name = "clk-mt6779-aud",
 		.of_match_table = of_match_clk_mt6779_aud,

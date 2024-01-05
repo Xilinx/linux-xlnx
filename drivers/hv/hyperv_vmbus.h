@@ -122,8 +122,15 @@ enum {
 struct hv_per_cpu_context {
 	void *synic_message_page;
 	void *synic_event_page;
+
 	/*
-	 * buffer to post messages to the host.
+	 * The page is only used in hv_post_message() for a TDX VM (with the
+	 * paravisor) to post a messages to Hyper-V: when such a VM calls
+	 * HVCALL_POST_MESSAGE, it can't use the hyperv_pcpu_input_arg (which
+	 * is encrypted in such a VM) as the hypercall input page, because
+	 * the input page for HVCALL_POST_MESSAGE must be decrypted in such a
+	 * VM, so post_msg_page (which is decrypted in hv_synic_alloc()) is
+	 * introduced for this purpose. See hyperv_init() for more comments.
 	 */
 	void *post_msg_page;
 
@@ -241,8 +248,6 @@ struct vmbus_connection {
 	 * is child->parent notification
 	 */
 	struct hv_monitor_page *monitor_pages[2];
-	void *monitor_pages_original[2];
-	phys_addr_t monitor_pages_pa[2];
 	struct list_head chn_msg_list;
 	spinlock_t channelmsg_lock;
 

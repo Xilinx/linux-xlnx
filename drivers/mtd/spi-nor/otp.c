@@ -12,19 +12,6 @@
 #include "core.h"
 
 /**
- * spi_nor_otp_n_regions() - get number of individual OTP regions
- * @nor:        pointer to 'struct spi_nor'
- *
- * Return: number of individual OTP regions
- */
-static inline unsigned int spi_nor_otp_n_regions(struct spi_nor *nor)
-{
-	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
-
-	return params->otp.org->n_regions;
-}
-
-/**
  * spi_nor_otp_region_len() - get size of one OTP region in bytes
  * @nor:        pointer to 'struct spi_nor'
  *
@@ -35,6 +22,19 @@ static inline unsigned int spi_nor_otp_region_len(struct spi_nor *nor)
 	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
 
 	return params->otp.org->len;
+}
+
+/**
+ * spi_nor_otp_n_regions() - get number of individual OTP regions
+ * @nor:        pointer to 'struct spi_nor'
+ *
+ * Return: number of individual OTP regions
+ */
+static inline unsigned int spi_nor_otp_n_regions(struct spi_nor *nor)
+{
+	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
+
+	return params->otp.org->n_regions;
 }
 
 /**
@@ -280,7 +280,7 @@ static int spi_nor_mtd_otp_info(struct mtd_info *mtd, size_t len,
 	if (len < n_regions * sizeof(*buf))
 		return -ENOSPC;
 
-	ret = spi_nor_lock_and_prep(nor);
+	ret = spi_nor_prep_and_lock(nor);
 	if (ret)
 		return ret;
 
@@ -352,7 +352,7 @@ static int spi_nor_mtd_otp_read_write(struct mtd_info *mtd, loff_t ofs,
 	if (!total_len)
 		return 0;
 
-	ret = spi_nor_lock_and_prep(nor);
+	ret = spi_nor_prep_and_lock(nor);
 	if (ret)
 		return ret;
 
@@ -443,7 +443,7 @@ static int spi_nor_mtd_otp_erase(struct mtd_info *mtd, loff_t from, size_t len)
 	if (!IS_ALIGNED(len, rlen) || !IS_ALIGNED(from, rlen))
 		return -EINVAL;
 
-	ret = spi_nor_lock_and_prep(nor);
+	ret = spi_nor_prep_and_lock(nor);
 	if (ret)
 		return ret;
 
@@ -489,7 +489,7 @@ static int spi_nor_mtd_otp_lock(struct mtd_info *mtd, loff_t from, size_t len)
 	if (!IS_ALIGNED(len, rlen) || !IS_ALIGNED(from, rlen))
 		return -EINVAL;
 
-	ret = spi_nor_lock_and_prep(nor);
+	ret = spi_nor_prep_and_lock(nor);
 	if (ret)
 		return ret;
 

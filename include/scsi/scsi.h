@@ -121,6 +121,7 @@ enum scsi_disposition {
  *      msg_byte    (unused)
  *      host_byte   = set by low-level driver to indicate status.
  */
+#define status_byte(result) (result & 0xff)
 #define host_byte(result)   (((result) >> 16) & 0xff)
 
 #define sense_class(sense)  (((sense) >> 4) & 0x7)
@@ -156,6 +157,9 @@ enum scsi_disposition {
 #define SCSI_3          4        /* SPC */
 #define SCSI_SPC_2      5
 #define SCSI_SPC_3      6
+#define SCSI_SPC_4	7
+#define SCSI_SPC_5	8
+#define SCSI_SPC_6	14
 
 /*
  * INQ PERIPHERAL QUALIFIERS

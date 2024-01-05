@@ -150,7 +150,6 @@ static int ipc3_trace_update_filter(struct snd_sof_dev *sdev, int num_elems,
 				    struct sof_ipc_trace_filter_elem *elems)
 {
 	struct sof_ipc_trace_filter *msg;
-	struct sof_ipc_reply reply;
 	size_t size;
 	int ret;
 
@@ -172,13 +171,13 @@ static int ipc3_trace_update_filter(struct snd_sof_dev *sdev, int num_elems,
 		dev_err(sdev->dev, "enabling device failed: %d\n", ret);
 		goto error;
 	}
-	ret = sof_ipc_tx_message(sdev->ipc, msg, msg->hdr.size, &reply, sizeof(reply));
+	ret = sof_ipc_tx_message_no_reply(sdev->ipc, msg, msg->hdr.size);
 	pm_runtime_mark_last_busy(sdev->dev);
 	pm_runtime_put_autosuspend(sdev->dev);
 
 error:
 	kfree(msg);
-	return ret ? ret : reply.error;
+	return ret;
 }
 
 static ssize_t dfsentry_trace_filter_write(struct file *file, const char __user *from,
@@ -187,7 +186,6 @@ static ssize_t dfsentry_trace_filter_write(struct file *file, const char __user 
 	struct snd_sof_dfsentry *dfse = file->private_data;
 	struct sof_ipc_trace_filter_elem *elems = NULL;
 	struct snd_sof_dev *sdev = dfse->sdev;
-	loff_t pos = 0;
 	int num_elems;
 	char *string;
 	int ret;
@@ -198,15 +196,9 @@ static ssize_t dfsentry_trace_filter_write(struct file *file, const char __user 
 		return -EINVAL;
 	}
 
-	string = kmalloc(count + 1, GFP_KERNEL);
-	if (!string)
-		return -ENOMEM;
-
-	/* assert null termination */
-	string[count] = 0;
-	ret = simple_write_to_buffer(string, count, &pos, from, count);
-	if (ret < 0)
-		goto error;
+	string = memdup_user_nul(from, count);
+	if (IS_ERR(string))
+		return PTR_ERR(string);
 
 	ret = trace_filter_parse(sdev, string, &num_elems, &elems);
 	if (ret < 0)
@@ -434,7 +426,6 @@ static int ipc3_dtrace_enable(struct snd_sof_dev *sdev)
 	struct sof_ipc_fw_ready *ready = &sdev->fw_ready;
 	struct sof_ipc_fw_version *v = &ready->version;
 	struct sof_ipc_dma_trace_params_ext params;
-	struct sof_ipc_reply ipc_reply;
 	int ret;
 
 	if (!sdev->fw_trace_is_supported)
@@ -474,7 +465,7 @@ static int ipc3_dtrace_enable(struct snd_sof_dev *sdev)
 
 	/* send IPC to the DSP */
 	priv->dtrace_state = SOF_DTRACE_INITIALIZING;
-	ret = sof_ipc_tx_message(sdev->ipc, &params, sizeof(params), &ipc_reply, sizeof(ipc_reply));
+	ret = sof_ipc_tx_message_no_reply(sdev->ipc, &params, sizeof(params));
 	if (ret < 0) {
 		dev_err(sdev->dev, "can't set params for DMA for trace %d\n", ret);
 		goto trace_release;
@@ -604,7 +595,6 @@ static void ipc3_dtrace_release(struct snd_sof_dev *sdev, bool only_stop)
 	struct sof_ipc_fw_ready *ready = &sdev->fw_ready;
 	struct sof_ipc_fw_version *v = &ready->version;
 	struct sof_ipc_cmd_hdr hdr;
-	struct sof_ipc_reply ipc_reply;
 	int ret;
 
 	if (!sdev->fw_trace_is_supported || priv->dtrace_state == SOF_DTRACE_DISABLED)
@@ -623,8 +613,7 @@ static void ipc3_dtrace_release(struct snd_sof_dev *sdev, bool only_stop)
 		hdr.size = sizeof(hdr);
 		hdr.cmd = SOF_IPC_GLB_TRACE_MSG | SOF_IPC_TRACE_DMA_FREE;
 
-		ret = sof_ipc_tx_message(sdev->ipc, &hdr, hdr.size,
-					 &ipc_reply, sizeof(ipc_reply));
+		ret = sof_ipc_tx_message_no_reply(sdev->ipc, &hdr, hdr.size);
 		if (ret < 0)
 			dev_err(sdev->dev, "DMA_TRACE_FREE failed with error: %d\n", ret);
 	}

@@ -50,14 +50,15 @@ static const struct of_device_id of_match_clk_mt8365_vdec[] = {
 		/* sentinel */
 	}
 };
+MODULE_DEVICE_TABLE(of, of_match_clk_mt8365_vdec);
 
 static struct platform_driver clk_mt8365_vdec_drv = {
 	.probe = mtk_clk_simple_probe,
-	.remove = mtk_clk_simple_remove,
+	.remove_new = mtk_clk_simple_remove,
 	.driver = {
 		.name = "clk-mt8365-vdec",
 		.of_match_table = of_match_clk_mt8365_vdec,
 	},
 };
-builtin_platform_driver(clk_mt8365_vdec_drv);
+module_platform_driver(clk_mt8365_vdec_drv);
 MODULE_LICENSE("GPL");

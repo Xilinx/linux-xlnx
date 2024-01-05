@@ -291,7 +291,7 @@ mlx4_en_filter_alloc(struct mlx4_en_priv *priv, int rxq_index, __be32 src_ip,
 		     __be32 dst_ip, u8 ip_proto, __be16 src_port,
 		     __be16 dst_port, u32 flow_id)
 {
-	struct mlx4_en_filter *filter = NULL;
+	struct mlx4_en_filter *filter;
 
 	filter = kzalloc(sizeof(struct mlx4_en_filter), GFP_ATOMIC);
 	if (!filter)
@@ -2337,11 +2337,8 @@ void mlx4_en_destroy_netdev(struct net_device *dev)
 	en_dbg(DRV, priv, "Destroying netdev on port:%d\n", priv->port);
 
 	/* Unregister device - this will close the port if it was up */
-	if (priv->registered) {
-		devlink_port_type_clear(mlx4_get_devlink_port(mdev->dev,
-							      priv->port));
+	if (priv->registered)
 		unregister_netdev(dev);
-	}
 
 	if (priv->allocated)
 		mlx4_free_hwq_res(mdev->dev, &priv->res, MLX4_EN_PAGE_SIZE);
@@ -2892,62 +2889,10 @@ static const struct net_device_ops mlx4_netdev_ops_master = {
 	.ndo_bpf		= mlx4_xdp,
 };
 
-struct mlx4_en_bond {
-	struct work_struct work;
-	struct mlx4_en_priv *priv;
-	int is_bonded;
-	struct mlx4_port_map port_map;
+static const struct xdp_metadata_ops mlx4_xdp_metadata_ops = {
+	.xmo_rx_timestamp		= mlx4_en_xdp_rx_timestamp,
+	.xmo_rx_hash			= mlx4_en_xdp_rx_hash,
 };
-
-static void mlx4_en_bond_work(struct work_struct *work)
-{
-	struct mlx4_en_bond *bond = container_of(work,
-						     struct mlx4_en_bond,
-						     work);
-	int err = 0;
-	struct mlx4_dev *dev = bond->priv->mdev->dev;
-
-	if (bond->is_bonded) {
-		if (!mlx4_is_bonded(dev)) {
-			err = mlx4_bond(dev);
-			if (err)
-				en_err(bond->priv, "Fail to bond device\n");
-		}
-		if (!err) {
-			err = mlx4_port_map_set(dev, &bond->port_map);
-			if (err)
-				en_err(bond->priv, "Fail to set port map [%d][%d]: %d\n",
-				       bond->port_map.port1,
-				       bond->port_map.port2,
-				       err);
-		}
-	} else if (mlx4_is_bonded(dev)) {
-		err = mlx4_unbond(dev);
-		if (err)
-			en_err(bond->priv, "Fail to unbond device\n");
-	}
-	dev_put(bond->priv->dev);
-	kfree(bond);
-}
-
-static int mlx4_en_queue_bond_work(struct mlx4_en_priv *priv, int is_bonded,
-				   u8 v2p_p1, u8 v2p_p2)
-{
-	struct mlx4_en_bond *bond = NULL;
-
-	bond = kzalloc(sizeof(*bond), GFP_ATOMIC);
-	if (!bond)
-		return -ENOMEM;
-
-	INIT_WORK(&bond->work, mlx4_en_bond_work);
-	bond->priv = priv;
-	bond->is_bonded = is_bonded;
-	bond->port_map.port1 = v2p_p1;
-	bond->port_map.port2 = v2p_p2;
-	dev_hold(priv->dev);
-	queue_work(priv->mdev->workqueue, &bond->work);
-	return 0;
-}
 
 int mlx4_en_netdev_event(struct notifier_block *this,
 			 unsigned long event, void *ptr)
@@ -2958,14 +2903,13 @@ int mlx4_en_netdev_event(struct notifier_block *this,
 	struct mlx4_dev *dev;
 	int i, num_eth_ports = 0;
 	bool do_bond = true;
-	struct mlx4_en_priv *priv;
 	u8 v2p_port1 = 0;
 	u8 v2p_port2 = 0;
 
 	if (!net_eq(dev_net(ndev), &init_net))
 		return NOTIFY_DONE;
 
-	mdev = container_of(this, struct mlx4_en_dev, nb);
+	mdev = container_of(this, struct mlx4_en_dev, netdev_nb);
 	dev = mdev->dev;
 
 	/* Go into this mode only when two network devices set on two ports
@@ -2993,7 +2937,6 @@ int mlx4_en_netdev_event(struct notifier_block *this,
 	if ((do_bond && (event != NETDEV_BONDING_INFO)) || !port)
 		return NOTIFY_DONE;
 
-	priv = netdev_priv(ndev);
 	if (do_bond) {
 		struct netdev_notifier_bonding_info *notifier_info = ptr;
 		struct netdev_bonding_info *bonding_info =
@@ -3060,8 +3003,7 @@ int mlx4_en_netdev_event(struct notifier_block *this,
 		}
 	}
 
-	mlx4_en_queue_bond_work(priv, do_bond,
-				v2p_port1, v2p_port2);
+	mlx4_queue_bond_work(dev, do_bond, v2p_port1, v2p_port2);
 
 	return NOTIFY_DONE;
 }
@@ -3313,6 +3255,7 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 		dev->netdev_ops = &mlx4_netdev_ops_master;
 	else
 		dev->netdev_ops = &mlx4_netdev_ops;
+	dev->xdp_metadata_ops = &mlx4_xdp_metadata_ops;
 	dev->watchdog_timeo = MLX4_EN_WATCHDOG_TIMEOUT;
 	netif_set_real_num_tx_queues(dev, priv->tx_ring_num[TX]);
 	netif_set_real_num_rx_queues(dev, priv->rx_ring_num);
@@ -3413,6 +3356,8 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 		priv->rss_hash_fn = ETH_RSS_HASH_TOP;
 	}
 
+	dev->xdp_features = NETDEV_XDP_ACT_BASIC | NETDEV_XDP_ACT_REDIRECT;
+
 	/* MTU range: 68 - hw-specific max */
 	dev->min_mtu = ETH_MIN_MTU;
 	dev->max_mtu = priv->max_mtu;
@@ -3474,6 +3419,8 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 				 mdev->profile.prof[priv->port].tx_ppp,
 				 mdev->profile.prof[priv->port].tx_pause);
 
+	SET_NETDEV_DEVLINK_PORT(dev,
+				mlx4_get_devlink_port(mdev->dev, priv->port));
 	err = register_netdev(dev);
 	if (err) {
 		en_err(priv, "Netdev registration failed for port %d\n", port);
@@ -3481,8 +3428,6 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	}
 
 	priv->registered = 1;
-	devlink_port_type_eth_set(mlx4_get_devlink_port(mdev->dev, priv->port),
-				  dev);
 
 	return 0;
 

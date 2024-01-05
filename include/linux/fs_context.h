@@ -99,17 +99,17 @@ struct fs_context {
 	const struct cred	*cred;		/* The mounter's credentials */
 	struct p_log		log;		/* Logging buffer */
 	const char		*source;	/* The source name (eg. dev path) */
-	void			*security;	/* Linux S&M options */
+	void			*security;	/* LSM options */
 	void			*s_fs_info;	/* Proposed s_fs_info */
 	unsigned int		sb_flags;	/* Proposed superblock flags (SB_*) */
 	unsigned int		sb_flags_mask;	/* Superblock flags that were changed */
 	unsigned int		s_iflags;	/* OR'd with sb->s_iflags */
-	unsigned int		lsm_flags;	/* Information flags from the fs to the LSM */
 	enum fs_context_purpose	purpose:8;
 	enum fs_context_phase	phase:8;	/* The phase the context is in */
 	bool			need_free:1;	/* Need to call ops->free() */
 	bool			global:1;	/* Goes into &init_user_ns */
 	bool			oldapi:1;	/* Coming from mount(2) */
+	bool			exclusive:1;    /* create new superblock, reject existing one */
 };
 
 struct fs_context_operations {
@@ -136,6 +136,8 @@ extern struct fs_context *vfs_dup_fs_context(struct fs_context *fc);
 extern int vfs_parse_fs_param(struct fs_context *fc, struct fs_parameter *param);
 extern int vfs_parse_fs_string(struct fs_context *fc, const char *key,
 			       const char *value, size_t v_size);
+int vfs_parse_monolithic_sep(struct fs_context *fc, void *data,
+			     char *(*sep)(char **));
 extern int generic_parse_monolithic(struct fs_context *fc, void *data);
 extern int vfs_get_tree(struct fs_context *fc);
 extern void put_fs_context(struct fs_context *fc);
@@ -145,27 +147,10 @@ extern void fc_drop_locked(struct fs_context *fc);
 int reconfigure_single(struct super_block *s,
 		       int flags, void *data);
 
-/*
- * sget() wrappers to be called from the ->get_tree() op.
- */
-enum vfs_get_super_keying {
-	vfs_get_single_super,	/* Only one such superblock may exist */
-	vfs_get_single_reconf_super, /* As above, but reconfigure if it exists */
-	vfs_get_keyed_super,	/* Superblocks with different s_fs_info keys may exist */
-	vfs_get_independent_super, /* Multiple independent superblocks may exist */
-};
-extern int vfs_get_super(struct fs_context *fc,
-			 enum vfs_get_super_keying keying,
-			 int (*fill_super)(struct super_block *sb,
-					   struct fs_context *fc));
-
 extern int get_tree_nodev(struct fs_context *fc,
 			 int (*fill_super)(struct super_block *sb,
 					   struct fs_context *fc));
 extern int get_tree_single(struct fs_context *fc,
-			 int (*fill_super)(struct super_block *sb,
-					   struct fs_context *fc));
-extern int get_tree_single_reconf(struct fs_context *fc,
 			 int (*fill_super)(struct super_block *sb,
 					   struct fs_context *fc));
 extern int get_tree_keyed(struct fs_context *fc,
@@ -173,6 +158,8 @@ extern int get_tree_keyed(struct fs_context *fc,
 					   struct fs_context *fc),
 			 void *key);
 
+int setup_bdev_super(struct super_block *sb, int sb_flags,
+		struct fs_context *fc);
 extern int get_tree_bdev(struct fs_context *fc,
 			       int (*fill_super)(struct super_block *sb,
 						 struct fs_context *fc));

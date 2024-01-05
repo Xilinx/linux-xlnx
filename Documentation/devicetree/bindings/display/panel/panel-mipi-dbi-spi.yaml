@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: (GPL-2.0-only or BSD-2-Clause)
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 %YAML 1.2
 ---
 $id: http://devicetree.org/schemas/display/panel/panel-mipi-dbi-spi.yaml#
@@ -22,8 +22,9 @@ description: |
   The standard defines the following interface signals for type C:
   - Power:
     - Vdd: Power supply for display module
+      Called power-supply in this binding.
     - Vddi: Logic level supply for interface signals
-    Combined into one in this binding called: power-supply
+      Called io-supply in this binding.
   - Interface:
     - CSx: Chip select
     - SCL: Serial clock
@@ -65,7 +66,9 @@ properties:
   compatible:
     items:
       - enum:
+          - saef,sftc154b
           - sainsmart18
+          - shineworld,lh133k
       - const: panel-mipi-dbi-spi
 
   write-only:
@@ -79,6 +82,13 @@ properties:
     description: |
       Controller data/command selection (D/CX) in 4-line SPI mode.
       If not set, the controller is in 3-line SPI mode.
+
+  io-supply:
+    description: |
+      Logic level supply for interface signals (Vddi).
+      No need to set if this is the same as power-supply.
+
+  spi-3wire: true
 
 required:
   - compatible

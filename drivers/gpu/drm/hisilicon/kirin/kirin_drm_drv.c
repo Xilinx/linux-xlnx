@@ -11,15 +11,15 @@
  *	Xinwei Kong <kong.kongxinwei@hisilicon.com>
  */
 
-#include <linux/of_platform.h>
 #include <linux/component.h>
 #include <linux/module.h>
+#include <linux/of.h>
 #include <linux/of_graph.h>
 #include <linux/platform_device.h>
 
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_drv.h>
-#include <drm/drm_fb_helper.h>
+#include <drm/drm_fbdev_generic.h>
 #include <drm/drm_gem_dma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_module.h>
@@ -279,10 +279,9 @@ static int kirin_drm_platform_probe(struct platform_device *pdev)
 	return component_master_add_with_match(dev, &kirin_drm_ops, match);
 }
 
-static int kirin_drm_platform_remove(struct platform_device *pdev)
+static void kirin_drm_platform_remove(struct platform_device *pdev)
 {
 	component_master_del(&pdev->dev, &kirin_drm_ops);
-	return 0;
 }
 
 static const struct of_device_id kirin_drm_dt_ids[] = {
@@ -295,7 +294,7 @@ MODULE_DEVICE_TABLE(of, kirin_drm_dt_ids);
 
 static struct platform_driver kirin_drm_platform_driver = {
 	.probe = kirin_drm_platform_probe,
-	.remove = kirin_drm_platform_remove,
+	.remove_new = kirin_drm_platform_remove,
 	.driver = {
 		.name = "kirin-drm",
 		.of_match_table = kirin_drm_dt_ids,

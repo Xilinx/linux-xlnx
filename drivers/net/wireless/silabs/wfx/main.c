@@ -128,6 +128,7 @@ static const struct ieee80211_ops wfx_ops = {
 	.remove_interface        = wfx_remove_interface,
 	.config                  = wfx_config,
 	.tx                      = wfx_tx,
+	.wake_tx_queue           = ieee80211_handle_wake_tx_queue,
 	.join_ibss               = wfx_join_ibss,
 	.leave_ibss              = wfx_leave_ibss,
 	.conf_tx                 = wfx_conf_tx,
@@ -292,12 +293,11 @@ struct wfx_dev *wfx_init_common(struct device *dev, const struct wfx_platform_da
 	hw->wiphy->max_scan_ie_len = IEEE80211_MAX_DATA_LEN;
 	hw->wiphy->n_iface_combinations = ARRAY_SIZE(wfx_iface_combinations);
 	hw->wiphy->iface_combinations = wfx_iface_combinations;
-	hw->wiphy->bands[NL80211_BAND_2GHZ] = devm_kmalloc(dev, sizeof(wfx_band_2ghz), GFP_KERNEL);
+	/* FIXME: also copy wfx_rates and wfx_2ghz_chantable */
+	hw->wiphy->bands[NL80211_BAND_2GHZ] = devm_kmemdup(dev, &wfx_band_2ghz,
+							   sizeof(wfx_band_2ghz), GFP_KERNEL);
 	if (!hw->wiphy->bands[NL80211_BAND_2GHZ])
 		goto err;
-
-	/* FIXME: also copy wfx_rates and wfx_2ghz_chantable */
-	memcpy(hw->wiphy->bands[NL80211_BAND_2GHZ], &wfx_band_2ghz, sizeof(wfx_band_2ghz));
 
 	wdev = hw->priv;
 	wdev->hw = hw;
@@ -357,13 +357,9 @@ int wfx_probe(struct wfx_dev *wdev)
 
 	wfx_bh_poll_irq(wdev);
 	err = wait_for_completion_timeout(&wdev->firmware_ready, 1 * HZ);
-	if (err <= 0) {
-		if (err == 0) {
-			dev_err(wdev->dev, "timeout while waiting for startup indication\n");
-			err = -ETIMEDOUT;
-		} else if (err == -ERESTARTSYS) {
-			dev_info(wdev->dev, "probe interrupted by user\n");
-		}
+	if (err == 0) {
+		dev_err(wdev->dev, "timeout while waiting for startup indication\n");
+		err = -ETIMEDOUT;
 		goto bh_unregister;
 	}
 

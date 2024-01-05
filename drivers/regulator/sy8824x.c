@@ -8,7 +8,7 @@
 
 #include <linux/module.h>
 #include <linux/i2c.h>
-#include <linux/of_device.h>
+#include <linux/of.h>
 #include <linux/regmap.h>
 #include <linux/regulator/driver.h>
 #include <linux/regulator/of_regulator.h>
@@ -233,9 +233,10 @@ MODULE_DEVICE_TABLE(i2c, sy8824_id);
 static struct i2c_driver sy8824_regulator_driver = {
 	.driver = {
 		.name = "sy8824-regulator",
-		.of_match_table = of_match_ptr(sy8824_dt_ids),
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
+		.of_match_table = sy8824_dt_ids,
 	},
-	.probe_new = sy8824_i2c_probe,
+	.probe = sy8824_i2c_probe,
 	.id_table = sy8824_id,
 };
 module_i2c_driver(sy8824_regulator_driver);

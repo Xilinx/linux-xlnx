@@ -10,7 +10,6 @@
 #include <linux/mfd/as3722.h>
 #include <linux/module.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 
@@ -84,4 +83,3 @@ module_platform_driver(as3722_poweroff_driver);
 MODULE_DESCRIPTION("Power off driver for ams AS3722 PMIC Device");
 MODULE_ALIAS("platform:as3722-power-off");
 MODULE_AUTHOR("Laxman Dewangan <ldewangan@nvidia.com>");
-MODULE_LICENSE("GPL v2");

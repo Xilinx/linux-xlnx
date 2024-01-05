@@ -619,10 +619,12 @@ process migrations.
 and is an example of this type.
 
 
+.. _cgroupv2-limits-distributor:
+
 Limits
 ------
 
-A child can only consume upto the configured amount of the resource.
+A child can only consume up to the configured amount of the resource.
 Limits can be over-committed - the sum of the limits of children can
 exceed the amount of resource available to the parent.
 
@@ -635,15 +637,16 @@ process migrations.
 "io.max" limits the maximum BPS and/or IOPS that a cgroup can consume
 on an IO device and is an example of this type.
 
+.. _cgroupv2-protections-distributor:
 
 Protections
 -----------
 
-A cgroup is protected upto the configured amount of the resource
+A cgroup is protected up to the configured amount of the resource
 as long as the usages of all its ancestors are under their
 protected levels.  Protections can be hard guarantees or best effort
 soft boundaries.  Protections can also be over-committed in which case
-only upto the amount available to the parent is protected among
+only up to the amount available to the parent is protected among
 children.
 
 Protections are in the range [0, max] and defaults to 0, which is
@@ -1042,7 +1045,7 @@ All time durations are in microseconds.
 	- user_usec
 	- system_usec
 
-	and the following three when the controller is enabled:
+	and the following five when the controller is enabled:
 
 	- nr_periods
 	- nr_throttled
@@ -1076,7 +1079,7 @@ All time durations are in microseconds.
 
 	  $MAX $PERIOD
 
-	which indicates that the group may consume upto $MAX in each
+	which indicates that the group may consume up to $MAX in each
 	$PERIOD duration.  "max" for $MAX indicates no limit.  If only
 	one number is written, $MAX is updated.
 
@@ -1210,23 +1213,25 @@ PAGE_SIZE multiple when read back.
 	A read-write single value file which exists on non-root
 	cgroups.  The default is "max".
 
-	Memory usage throttle limit.  This is the main mechanism to
-	control memory usage of a cgroup.  If a cgroup's usage goes
+	Memory usage throttle limit.  If a cgroup's usage goes
 	over the high boundary, the processes of the cgroup are
 	throttled and put under heavy reclaim pressure.
 
 	Going over the high limit never invokes the OOM killer and
-	under extreme conditions the limit may be breached.
+	under extreme conditions the limit may be breached. The high
+	limit should be used in scenarios where an external process
+	monitors the limited cgroup to alleviate heavy reclaim
+	pressure.
 
   memory.max
 	A read-write single value file which exists on non-root
 	cgroups.  The default is "max".
 
-	Memory usage hard limit.  This is the final protection
-	mechanism.  If a cgroup's memory usage reaches this limit and
-	can't be reduced, the OOM killer is invoked in the cgroup.
-	Under certain circumstances, the usage may go over the limit
-	temporarily.
+	Memory usage hard limit.  This is the main mechanism to limit
+	memory usage of a cgroup.  If a cgroup's memory usage reaches
+	this limit and can't be reduced, the OOM killer is invoked in
+	the cgroup. Under certain circumstances, the usage may go
+	over the limit temporarily.
 
 	In default configuration regular 0-order allocations always
 	succeed unless OOM killer chooses current task as a victim.
@@ -1234,10 +1239,6 @@ PAGE_SIZE multiple when read back.
 	Some kinds of allocations don't invoke the OOM killer.
 	Caller could retry them differently, return into userspace
 	as -ENOMEM or silently ignore in cases like disk readahead.
-
-	This is the ultimate protection mechanism.  As long as the
-	high limit is used and monitored properly, this limit's
-	utility is limited to providing the final safety net.
 
   memory.reclaim
 	A write-only nested-keyed file which exists for all cgroups.
@@ -1488,11 +1489,17 @@ PAGE_SIZE multiple when read back.
 	  pgscan_direct (npn)
 		Amount of scanned pages directly  (in an inactive LRU list)
 
+	  pgscan_khugepaged (npn)
+		Amount of scanned pages by khugepaged  (in an inactive LRU list)
+
 	  pgsteal_kswapd (npn)
 		Amount of reclaimed pages by kswapd
 
 	  pgsteal_direct (npn)
 		Amount of reclaimed pages directly
+
+	  pgsteal_khugepaged (npn)
+		Amount of reclaimed pages by khugepaged
 
 	  pgfault (npn)
 		Total number of page faults incurred
@@ -1572,6 +1579,13 @@ PAGE_SIZE multiple when read back.
 	continue unimpeded as long as other memory can be reclaimed.
 
 	Healthy workloads are not expected to reach this limit.
+
+  memory.swap.peak
+	A read-only single value file which exists on non-root
+	cgroups.
+
+	The max swap usage recorded for the cgroup and its
+	descendants since the creation of the cgroup.
 
   memory.swap.max
 	A read-write single value file which exists on non-root
@@ -2015,31 +2029,33 @@ that attribute:
   no-change
 	Do not modify the I/O priority class.
 
-  none-to-rt
-	For requests that do not have an I/O priority class (NONE),
-	change the I/O priority class into RT. Do not modify
-	the I/O priority class of other requests.
+  promote-to-rt
+	For requests that have a non-RT I/O priority class, change it into RT.
+	Also change the priority level of these requests to 4. Do not modify
+	the I/O priority of requests that have priority class RT.
 
   restrict-to-be
 	For requests that do not have an I/O priority class or that have I/O
-	priority class RT, change it into BE. Do not modify the I/O priority
-	class of requests that have priority class IDLE.
+	priority class RT, change it into BE. Also change the priority level
+	of these requests to 0. Do not modify the I/O priority class of
+	requests that have priority class IDLE.
 
   idle
 	Change the I/O priority class of all requests into IDLE, the lowest
 	I/O priority class.
 
+  none-to-rt
+	Deprecated. Just an alias for promote-to-rt.
+
 The following numerical values are associated with the I/O priority policies:
 
-+-------------+---+
-| no-change   | 0 |
-+-------------+---+
-| none-to-rt  | 1 |
-+-------------+---+
-| rt-to-be    | 2 |
-+-------------+---+
-| all-to-idle | 3 |
-+-------------+---+
++----------------+---+
+| no-change      | 0 |
++----------------+---+
+| rt-to-be       | 2 |
++----------------+---+
+| all-to-idle    | 3 |
++----------------+---+
 
 The numerical value that corresponds to each I/O priority class is as follows:
 
@@ -2055,9 +2071,13 @@ The numerical value that corresponds to each I/O priority class is as follows:
 
 The algorithm to set the I/O priority class for a request is as follows:
 
-- Translate the I/O priority class policy into a number.
-- Change the request I/O priority class into the maximum of the I/O priority
-  class policy number and the numerical I/O priority class.
+- If I/O priority class policy is promote-to-rt, change the request I/O
+  priority class to IOPRIO_CLASS_RT and change the request I/O priority
+  level to 4.
+- If I/O priorityt class is not promote-to-rt, translate the I/O priority
+  class policy into a number, then change the request I/O priority class
+  into the maximum of the I/O priority class policy number and the numerical
+  I/O priority class.
 
 PID
 ---
@@ -2280,7 +2300,7 @@ Cpuset Interface Files
 	For a valid partition root with the sibling cpu exclusivity
 	rule enabled, changes made to "cpuset.cpus" that violate the
 	exclusivity rule will invalidate the partition as well as its
-	sibiling partitions with conflicting cpuset.cpus values. So
+	sibling partitions with conflicting cpuset.cpus values. So
 	care must be taking in changing "cpuset.cpus".
 
 	A valid non-root parent partition may distribute out all its CPUs
@@ -2430,7 +2450,7 @@ Miscellaneous controller provides 3 interface files. If two misc resources (res_
 	  res_b 10
 
   misc.current
-        A read-only flat-keyed file shown in the non-root cgroups.  It shows
+        A read-only flat-keyed file shown in the all cgroups.  It shows
         the current usage of the resources in the cgroup and its children.::
 
 	  $ cat misc.current

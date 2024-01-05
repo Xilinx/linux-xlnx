@@ -688,12 +688,25 @@ static int si5324_pll_set_rate(struct clk_hw *hw, unsigned long rate,
 	return 0;
 }
 
+static int si5324_determine_rate(struct clk_hw *hw,
+				 struct clk_rate_request *req)
+{
+	struct si5324_hw_data *hwdata =
+		container_of(hw, struct si5324_hw_data, hw);
+
+	dev_err(&hwdata->drvdata->client->dev,
+		"%s: Missing implementation\n", clk_hw_get_name(hw));
+
+	return clk_hw_determine_rate_no_reparent(hw, req);
+}
+
 static const struct clk_ops si5324_pll_ops = {
 	.set_parent = si5324_pll_set_parent,
 	.get_parent = si5324_pll_get_parent,
 	.recalc_rate = si5324_pll_recalc_rate,
 	.round_rate = si5324_pll_round_rate,
 	.set_rate = si5324_pll_set_rate,
+	.determine_rate = si5324_determine_rate,
 };
 
 static int si5324_clkout_set_drive_strength(
@@ -951,9 +964,17 @@ put_child:
 
 static u8 instance;
 
-static int si5324_i2c_probe(struct i2c_client *client,
-			    const struct i2c_device_id *id)
+static const struct i2c_device_id si5324_i2c_ids[] = {
+	{ "si5319", si5319 },
+	{ "si5324", si5324 },
+	{ "si5328", si5328 },
+	{ }
+};
+MODULE_DEVICE_TABLE(i2c, si5324_i2c_ids);
+
+static int si5324_i2c_probe(struct i2c_client *client)
 {
+	const struct i2c_device_id *id =  i2c_match_id(si5324_i2c_ids, client);
 	struct si5324_platform_data *pdata;
 	struct si5324_driver_data *drvdata;
 	struct clk_init_data init;
@@ -1201,14 +1222,6 @@ static void si5324_i2c_remove(struct i2c_client *client)
 {
 	of_clk_del_provider(client->dev.of_node);
 }
-
-static const struct i2c_device_id si5324_i2c_ids[] = {
-	{ "si5319", si5319 },
-	{ "si5324", si5324 },
-	{ "si5328", si5328 },
-	{ }
-};
-MODULE_DEVICE_TABLE(i2c, si5324_i2c_ids);
 
 static struct i2c_driver si5324_driver = {
 	.driver = {

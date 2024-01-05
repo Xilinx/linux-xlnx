@@ -14,6 +14,8 @@
 
 #include <linux/compiler.h>
 #include <linux/stringify.h>
+
+#include <asm/bootparam.h>
 #include <asm/ptrace.h>
 #include <asm/types.h>
 #include <asm/regs.h>
@@ -154,11 +156,6 @@ struct thread_struct {
 	unsigned long ra; /* kernel's a0: return address and window call size */
 	unsigned long sp; /* kernel's a1: stack pointer */
 
-	/* struct xtensa_cpuinfo info; */
-
-	unsigned long bad_vaddr; /* last user fault */
-	unsigned long bad_uaddr; /* last kernel fault accessing user space */
-	unsigned long error_code;
 #ifdef CONFIG_HAVE_HW_BREAKPOINT
 	struct perf_event *ptrace_bp[XCHAL_NUM_IBREAK];
 	struct perf_event *ptrace_wp[XCHAL_NUM_DBREAK];
@@ -176,10 +173,6 @@ struct thread_struct {
 {									\
 	ra:		0, 						\
 	sp:		sizeof(init_stack) + (long) &init_stack,	\
-	/*info:		{0}, */						\
-	bad_vaddr:	0,						\
-	bad_uaddr:	0,						\
-	error_code:	0,						\
 }
 
 
@@ -225,6 +218,9 @@ struct task_struct;
 struct mm_struct;
 
 extern unsigned long __get_wchan(struct task_struct *p);
+
+void init_arch(bp_tag_t *bp_start);
+void do_notify_resume(struct pt_regs *regs);
 
 #define KSTK_EIP(tsk)		(task_pt_regs(tsk)->pc)
 #define KSTK_ESP(tsk)		(task_pt_regs(tsk)->areg[1])

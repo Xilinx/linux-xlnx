@@ -1442,13 +1442,13 @@ static int i810fb_set_par(struct fb_info *info)
 	encode_fix(&info->fix, info);
 
 	if (info->var.accel_flags && !(par->dev_flags & LOCKUP)) {
-		info->flags = FBINFO_DEFAULT | FBINFO_HWACCEL_YPAN |
+		info->flags = FBINFO_HWACCEL_YPAN |
 		FBINFO_HWACCEL_COPYAREA | FBINFO_HWACCEL_FILLRECT |
 		FBINFO_HWACCEL_IMAGEBLIT;
 		info->pixmap.scan_align = 2;
 	} else {
 		info->pixmap.scan_align = 1;
-		info->flags = FBINFO_DEFAULT | FBINFO_HWACCEL_YPAN;
+		info->flags = FBINFO_HWACCEL_YPAN;
 	}
 	return 0;
 }
@@ -2143,6 +2143,9 @@ static int i810fb_init(void)
 {
 	char *option = NULL;
 
+	if (fb_modesetting_disabled("i810fb"))
+		return -ENODEV;
+
 	if (fb_get_options("i810fb", &option))
 		return -ENODEV;
 	i810fb_setup(option);
@@ -2159,6 +2162,9 @@ static int i810fb_init(void)
 
 static int i810fb_init(void)
 {
+	if (fb_modesetting_disabled("i810fb"))
+		return -ENODEV;
+
 	hsync1 *= 1000;
 	hsync2 *= 1000;
 

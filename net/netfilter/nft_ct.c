@@ -12,7 +12,7 @@
 #include <linux/netlink.h>
 #include <linux/netfilter.h>
 #include <linux/netfilter/nf_tables.h>
-#include <net/netfilter/nf_tables.h>
+#include <net/netfilter/nf_tables_core.h>
 #include <net/netfilter/nf_conntrack.h>
 #include <net/netfilter/nf_conntrack_acct.h>
 #include <net/netfilter/nf_conntrack_tuple.h>
@@ -22,16 +22,6 @@
 #include <net/netfilter/nf_conntrack_timeout.h>
 #include <net/netfilter/nf_conntrack_l4proto.h>
 #include <net/netfilter/nf_conntrack_expect.h>
-
-struct nft_ct {
-	enum nft_ct_keys	key:8;
-	enum ip_conntrack_dir	dir:8;
-	u8			len;
-	union {
-		u8		dreg;
-		u8		sreg;
-	};
-};
 
 struct nft_ct_helper_obj  {
 	struct nf_conntrack_helper *helper4;
@@ -118,7 +108,7 @@ static void nft_ct_get_eval(const struct nft_expr *expr,
 		helper = rcu_dereference(help->helper);
 		if (helper == NULL)
 			goto err;
-		strncpy((char *)dest, helper->name, NF_CT_HELPER_NAME_LEN);
+		strscpy_pad((char *)dest, helper->name, NF_CT_HELPER_NAME_LEN);
 		return;
 #ifdef CONFIG_NF_CONNTRACK_LABELS
 	case NFT_CT_LABELS: {
@@ -272,6 +262,7 @@ static void nft_ct_set_zone_eval(const struct nft_expr *expr,
 			regs->verdict.code = NF_DROP;
 			return;
 		}
+		__set_bit(IPS_CONFIRMED_BIT, &ct->status);
 	}
 
 	nf_ct_set(skb, ct, IP_CT_NEW);
@@ -342,7 +333,7 @@ static void nft_ct_set_eval(const struct nft_expr *expr,
 
 static const struct nla_policy nft_ct_policy[NFTA_CT_MAX + 1] = {
 	[NFTA_CT_DREG]		= { .type = NLA_U32 },
-	[NFTA_CT_KEY]		= { .type = NLA_U32 },
+	[NFTA_CT_KEY]		= NLA_POLICY_MAX(NLA_BE32, 255),
 	[NFTA_CT_DIRECTION]	= { .type = NLA_U8 },
 	[NFTA_CT_SREG]		= { .type = NLA_U32 },
 };
@@ -378,6 +369,7 @@ static bool nft_ct_tmpl_alloc_pcpu(void)
 			return false;
 		}
 
+		__set_bit(IPS_CONFIRMED_BIT, &tmp->status);
 		per_cpu(nft_ct_pcpu_template, cpu) = tmp;
 	}
 
@@ -641,7 +633,8 @@ static void nft_ct_set_destroy(const struct nft_ctx *ctx,
 	nf_ct_netns_put(ctx->net, ctx->family);
 }
 
-static int nft_ct_get_dump(struct sk_buff *skb, const struct nft_expr *expr)
+static int nft_ct_get_dump(struct sk_buff *skb,
+			   const struct nft_expr *expr, bool reset)
 {
 	const struct nft_ct *priv = nft_expr_priv(expr);
 
@@ -703,7 +696,8 @@ static bool nft_ct_get_reduce(struct nft_regs_track *track,
 	return nft_expr_reduce_bitwise(track, expr);
 }
 
-static int nft_ct_set_dump(struct sk_buff *skb, const struct nft_expr *expr)
+static int nft_ct_set_dump(struct sk_buff *skb,
+			   const struct nft_expr *expr, bool reset)
 {
 	const struct nft_ct *priv = nft_expr_priv(expr);
 
@@ -757,6 +751,18 @@ static bool nft_ct_set_reduce(struct nft_regs_track *track,
 	return false;
 }
 
+#ifdef CONFIG_RETPOLINE
+static const struct nft_expr_ops nft_ct_get_fast_ops = {
+	.type		= &nft_ct_type,
+	.size		= NFT_EXPR_SIZE(sizeof(struct nft_ct)),
+	.eval		= nft_ct_get_fast_eval,
+	.init		= nft_ct_get_init,
+	.destroy	= nft_ct_get_destroy,
+	.dump		= nft_ct_get_dump,
+	.reduce		= nft_ct_set_reduce,
+};
+#endif
+
 static const struct nft_expr_ops nft_ct_set_ops = {
 	.type		= &nft_ct_type,
 	.size		= NFT_EXPR_SIZE(sizeof(struct nft_ct)),
@@ -789,8 +795,21 @@ nft_ct_select_ops(const struct nft_ctx *ctx,
 	if (tb[NFTA_CT_DREG] && tb[NFTA_CT_SREG])
 		return ERR_PTR(-EINVAL);
 
-	if (tb[NFTA_CT_DREG])
+	if (tb[NFTA_CT_DREG]) {
+#ifdef CONFIG_RETPOLINE
+		u32 k = ntohl(nla_get_be32(tb[NFTA_CT_KEY]));
+
+		switch (k) {
+		case NFT_CT_STATE:
+		case NFT_CT_DIRECTION:
+		case NFT_CT_STATUS:
+		case NFT_CT_MARK:
+		case NFT_CT_SECMARK:
+			return &nft_ct_get_fast_ops;
+		}
+#endif
 		return &nft_ct_get_ops;
+	}
 
 	if (tb[NFTA_CT_SREG]) {
 #ifdef CONFIG_NF_CONNTRACK_ZONES

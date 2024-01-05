@@ -2,12 +2,12 @@
 
 .. include:: ../disclaimer-zh_TW.rst
 
-:Original: :doc:`../../../admin-guide/security-bugs`
+:Original: :doc:`../../../process/security-bugs`
 
 :譯者:
 
  吳想成 Wu XiangCheng <bobwxc@email.cn>
- 胡皓文 Hu Haowen <src.res@email.cn>
+ 胡皓文 Hu Haowen <src.res.211@gmail.com>
 
 安全缺陷
 =========

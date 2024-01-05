@@ -50,19 +50,6 @@ struct lag_tracker {
 	enum netdev_lag_hash hash_type;
 };
 
-enum mpesw_op {
-	MLX5_MPESW_OP_ENABLE,
-	MLX5_MPESW_OP_DISABLE,
-};
-
-struct mlx5_mpesw_work_st {
-	struct work_struct work;
-	struct mlx5_lag    *lag;
-	enum mpesw_op	   op;
-	struct completion  comp;
-	int result;
-};
-
 /* LAG data of a ConnectX card.
  * It serves both its phys functions.
  */
@@ -87,16 +74,6 @@ struct mlx5_lag {
 	struct lag_mpesw	  lag_mpesw;
 };
 
-static inline bool mlx5_is_lag_supported(struct mlx5_core_dev *dev)
-{
-	if (!MLX5_CAP_GEN(dev, vport_group_manager) ||
-	    !MLX5_CAP_GEN(dev, lag_master) ||
-	    MLX5_CAP_GEN(dev, num_lag_ports) < 2 ||
-	    MLX5_CAP_GEN(dev, num_lag_ports) > MLX5_MAX_PORTS)
-		return false;
-	return true;
-}
-
 static inline struct mlx5_lag *
 mlx5_lag_dev(struct mlx5_core_dev *dev)
 {
@@ -115,6 +92,7 @@ mlx5_lag_is_ready(struct mlx5_lag *ldev)
 	return test_bit(MLX5_LAG_FLAG_NDEVS_READY, &ldev->state_flags);
 }
 
+bool mlx5_lag_check_prereq(struct mlx5_lag *ldev);
 void mlx5_modify_lag(struct mlx5_lag *ldev,
 		     struct lag_tracker *tracker);
 int mlx5_activate_lag(struct mlx5_lag *ldev,
@@ -123,9 +101,6 @@ int mlx5_activate_lag(struct mlx5_lag *ldev,
 		      bool shared_fdb);
 int mlx5_lag_dev_get_netdev_idx(struct mlx5_lag *ldev,
 				struct net_device *ndev);
-bool mlx5_shared_fdb_supported(struct mlx5_lag *ldev);
-void mlx5_lag_del_mpesw_rule(struct mlx5_core_dev *dev);
-int mlx5_lag_add_mpesw_rule(struct mlx5_core_dev *dev);
 
 char *mlx5_get_str_port_sel_mode(enum mlx5_lag_mode mode, unsigned long flags);
 void mlx5_infer_tx_enabled(struct lag_tracker *tracker, u8 num_ports,
@@ -134,5 +109,18 @@ void mlx5_infer_tx_enabled(struct lag_tracker *tracker, u8 num_ports,
 void mlx5_ldev_add_debugfs(struct mlx5_core_dev *dev);
 void mlx5_ldev_remove_debugfs(struct dentry *dbg);
 void mlx5_disable_lag(struct mlx5_lag *ldev);
+void mlx5_lag_remove_devices(struct mlx5_lag *ldev);
+int mlx5_deactivate_lag(struct mlx5_lag *ldev);
+void mlx5_lag_add_devices(struct mlx5_lag *ldev);
+
+static inline bool mlx5_lag_is_supported(struct mlx5_core_dev *dev)
+{
+	if (!MLX5_CAP_GEN(dev, vport_group_manager) ||
+	    !MLX5_CAP_GEN(dev, lag_master) ||
+	    MLX5_CAP_GEN(dev, num_lag_ports) < 2 ||
+	    MLX5_CAP_GEN(dev, num_lag_ports) > MLX5_MAX_PORTS)
+		return false;
+	return true;
+}
 
 #endif /* __MLX5_LAG_H__ */

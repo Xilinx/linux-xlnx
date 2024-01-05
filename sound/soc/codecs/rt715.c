@@ -16,18 +16,16 @@
 #include <linux/pm_runtime.h>
 #include <linux/pm.h>
 #include <linux/soundwire/sdw.h>
-#include <linux/gpio.h>
 #include <linux/regmap.h>
 #include <linux/slab.h>
 #include <linux/platform_device.h>
 #include <linux/regulator/consumer.h>
-#include <linux/gpio/consumer.h>
 #include <linux/of.h>
-#include <linux/of_gpio.h>
 #include <linux/of_device.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
+#include <sound/sdw.h>
 #include <sound/soc.h>
 #include <sound/soc-dapm.h>
 #include <sound/initval.h>
@@ -50,6 +48,60 @@ static int rt715_index_write(struct regmap *regmap, unsigned int reg,
 
 	return ret;
 }
+
+static int rt715_index_write_nid(struct regmap *regmap,
+		unsigned int nid, unsigned int reg, unsigned int value)
+{
+	int ret;
+	unsigned int addr = ((RT715_PRIV_INDEX_W_H_2 | nid) << 8) | reg;
+
+	ret = regmap_write(regmap, addr, value);
+	if (ret < 0)
+		pr_err("Failed to set private value: %06x <= %04x ret=%d\n",
+			addr, value, ret);
+
+	return ret;
+}
+
+static int rt715_index_read_nid(struct regmap *regmap,
+		unsigned int nid, unsigned int reg, unsigned int *value)
+{
+	int ret;
+	unsigned int addr = ((RT715_PRIV_INDEX_W_H_2 | nid) << 8) | reg;
+
+	*value = 0;
+	ret = regmap_read(regmap, addr, value);
+	if (ret < 0)
+		pr_err("Failed to get private value: %06x => %04x ret=%d\n",
+			addr, *value, ret);
+
+	return ret;
+}
+
+static int rt715_index_update_bits(struct regmap *regmap, unsigned int nid,
+			unsigned int reg, unsigned int mask, unsigned int val)
+{
+	unsigned int tmp, orig;
+	int ret;
+
+	ret = rt715_index_read_nid(regmap, nid, reg, &orig);
+	if (ret < 0)
+		return ret;
+
+	tmp = orig & ~mask;
+	tmp |= val & mask;
+
+	return rt715_index_write_nid(regmap, nid, reg, tmp);
+}
+
+static void rt715_reset(struct regmap *regmap)
+{
+	regmap_write(regmap, RT715_FUNC_RESET, 0);
+	rt715_index_update_bits(regmap, RT715_VENDOR_REGISTERS,
+		RT715_VD_CLEAR_CTRL, RT715_CLEAR_HIDDEN_REG,
+		RT715_CLEAR_HIDDEN_REG);
+}
+
 
 static void rt715_get_gain(struct rt715_priv *rt715, unsigned int addr_h,
 				unsigned int addr_l, unsigned int val_h,
@@ -203,12 +255,12 @@ static int rt715_set_main_switch_put(struct snd_kcontrol *kcontrol,
 	struct snd_soc_dapm_context *dapm =
 		snd_soc_component_get_dapm(component);
 	struct rt715_priv *rt715 = snd_soc_component_get_drvdata(component);
-	unsigned int capture_reg_H[] = {RT715_SET_GAIN_MIC_ADC_H,
-		RT715_SET_GAIN_LINE_ADC_H, RT715_SET_GAIN_MIX_ADC_H,
-		RT715_SET_GAIN_MIX_ADC2_H};
-	unsigned int capture_reg_L[] = {RT715_SET_GAIN_MIC_ADC_L,
-		RT715_SET_GAIN_LINE_ADC_L, RT715_SET_GAIN_MIX_ADC_L,
-		RT715_SET_GAIN_MIX_ADC2_L};
+	static const unsigned int capture_reg_H[] = {
+		RT715_SET_GAIN_MIC_ADC_H, RT715_SET_GAIN_LINE_ADC_H,
+		RT715_SET_GAIN_MIX_ADC_H, RT715_SET_GAIN_MIX_ADC2_H };
+	static const unsigned int capture_reg_L[] = {
+		RT715_SET_GAIN_MIC_ADC_L, RT715_SET_GAIN_LINE_ADC_L,
+		RT715_SET_GAIN_MIX_ADC_L, RT715_SET_GAIN_MIX_ADC2_L };
 	unsigned int addr_h, addr_l, val_h = 0x0, val_ll, val_lr;
 	unsigned int k_shift = RT715_DIR_IN_SFT, k_changed = 0;
 	unsigned int read_ll, read_rl, i, j, loop_cnt = 4;
@@ -283,12 +335,12 @@ static int rt715_set_main_switch_get(struct snd_kcontrol *kcontrol,
 {
 	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
 	struct rt715_priv *rt715 = snd_soc_component_get_drvdata(component);
-	unsigned int capture_reg_H[] = {RT715_SET_GAIN_MIC_ADC_H,
-		RT715_SET_GAIN_LINE_ADC_H, RT715_SET_GAIN_MIX_ADC_H,
-		RT715_SET_GAIN_MIX_ADC2_H};
-	unsigned int capture_reg_L[] = {RT715_SET_GAIN_MIC_ADC_L,
-		RT715_SET_GAIN_LINE_ADC_L, RT715_SET_GAIN_MIX_ADC_L,
-		RT715_SET_GAIN_MIX_ADC2_L};
+	static const unsigned int capture_reg_H[] = {
+		RT715_SET_GAIN_MIC_ADC_H, RT715_SET_GAIN_LINE_ADC_H,
+		RT715_SET_GAIN_MIX_ADC_H, RT715_SET_GAIN_MIX_ADC2_H };
+	static const unsigned int capture_reg_L[] = {
+		RT715_SET_GAIN_MIC_ADC_L, RT715_SET_GAIN_LINE_ADC_L,
+		RT715_SET_GAIN_MIX_ADC_L, RT715_SET_GAIN_MIX_ADC2_L };
 	unsigned int addr_h, addr_l, val_h = 0x0, i, loop_cnt = 4;
 	unsigned int read_ll, read_rl;
 
@@ -311,12 +363,12 @@ static int rt715_set_main_vol_put(struct snd_kcontrol *kcontrol,
 	struct snd_soc_dapm_context *dapm =
 		snd_soc_component_get_dapm(component);
 	struct rt715_priv *rt715 = snd_soc_component_get_drvdata(component);
-	unsigned int capture_reg_H[] = {RT715_SET_GAIN_MIC_ADC_H,
-		RT715_SET_GAIN_LINE_ADC_H, RT715_SET_GAIN_MIX_ADC_H,
-		RT715_SET_GAIN_MIX_ADC2_H};
-	unsigned int capture_reg_L[] = {RT715_SET_GAIN_MIC_ADC_L,
-		RT715_SET_GAIN_LINE_ADC_L, RT715_SET_GAIN_MIX_ADC_L,
-		RT715_SET_GAIN_MIX_ADC2_L};
+	static const unsigned int capture_reg_H[] = {
+		RT715_SET_GAIN_MIC_ADC_H, RT715_SET_GAIN_LINE_ADC_H,
+		RT715_SET_GAIN_MIX_ADC_H, RT715_SET_GAIN_MIX_ADC2_H };
+	static const unsigned int capture_reg_L[] = {
+		RT715_SET_GAIN_MIC_ADC_L, RT715_SET_GAIN_LINE_ADC_L,
+		RT715_SET_GAIN_MIX_ADC_L, RT715_SET_GAIN_MIX_ADC2_L};
 	unsigned int addr_h, addr_l, val_h = 0x0, val_ll, val_lr;
 	unsigned int read_ll, read_rl, i, j, loop_cnt = 4, k_changed = 0;
 	unsigned int k_shift = RT715_DIR_IN_SFT, k_max = 0x3f;
@@ -392,12 +444,12 @@ static int rt715_set_main_vol_get(struct snd_kcontrol *kcontrol,
 {
 	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
 	struct rt715_priv *rt715 = snd_soc_component_get_drvdata(component);
-	unsigned int capture_reg_H[] = {RT715_SET_GAIN_MIC_ADC_H,
-		RT715_SET_GAIN_LINE_ADC_H, RT715_SET_GAIN_MIX_ADC_H,
-		RT715_SET_GAIN_MIX_ADC2_H};
-	unsigned int capture_reg_L[] = {RT715_SET_GAIN_MIC_ADC_L,
-		RT715_SET_GAIN_LINE_ADC_L, RT715_SET_GAIN_MIX_ADC_L,
-		RT715_SET_GAIN_MIX_ADC2_L};
+	static const unsigned int capture_reg_H[] = {
+		RT715_SET_GAIN_MIC_ADC_H, RT715_SET_GAIN_LINE_ADC_H,
+		RT715_SET_GAIN_MIX_ADC_H, RT715_SET_GAIN_MIX_ADC2_H };
+	static const unsigned int capture_reg_L[] = {
+		RT715_SET_GAIN_MIC_ADC_L, RT715_SET_GAIN_LINE_ADC_L,
+		RT715_SET_GAIN_MIX_ADC_L, RT715_SET_GAIN_MIX_ADC2_L };
 	unsigned int addr_h, addr_l, val_h = 0x0, i, loop_cnt = 4;
 	unsigned int read_ll, read_rl;
 
@@ -739,7 +791,11 @@ static int rt715_set_bias_level(struct snd_soc_component *component,
 
 static int rt715_probe(struct snd_soc_component *component)
 {
+	struct rt715_priv *rt715 = snd_soc_component_get_drvdata(component);
 	int ret;
+
+	if (!rt715->first_hw_init)
+		return 0;
 
 	ret = pm_runtime_resume(component->dev);
 	if (ret < 0 && ret != -EACCES)
@@ -764,22 +820,7 @@ static int rt715_set_sdw_stream(struct snd_soc_dai *dai, void *sdw_stream,
 				int direction)
 {
 
-	struct sdw_stream_data *stream;
-
-	if (!sdw_stream)
-		return 0;
-
-	stream = kzalloc(sizeof(*stream), GFP_KERNEL);
-	if (!stream)
-		return -ENOMEM;
-
-	stream->sdw_stream = sdw_stream;
-
-	/* Use tx_mask or rx_mask to configure stream tag and set dma_data */
-	if (direction == SNDRV_PCM_STREAM_PLAYBACK)
-		dai->playback_dma_data = stream;
-	else
-		dai->capture_dma_data = stream;
+	snd_soc_dai_dma_data_set(dai, direction, sdw_stream);
 
 	return 0;
 }
@@ -788,11 +829,7 @@ static void rt715_shutdown(struct snd_pcm_substream *substream,
 				struct snd_soc_dai *dai)
 
 {
-	struct sdw_stream_data *stream;
-
-	stream = snd_soc_dai_get_dma_data(dai, substream);
 	snd_soc_dai_set_dma_data(dai, substream, NULL);
-	kfree(stream);
 }
 
 static int rt715_pcm_hw_params(struct snd_pcm_substream *substream,
@@ -801,30 +838,29 @@ static int rt715_pcm_hw_params(struct snd_pcm_substream *substream,
 {
 	struct snd_soc_component *component = dai->component;
 	struct rt715_priv *rt715 = snd_soc_component_get_drvdata(component);
-	struct sdw_stream_config stream_config;
-	struct sdw_port_config port_config;
-	enum sdw_data_direction direction;
-	struct sdw_stream_data *stream;
-	int retval, port, num_channels;
+	struct sdw_stream_config stream_config = {0};
+	struct sdw_port_config port_config = {0};
+	struct sdw_stream_runtime *sdw_stream;
+	int retval;
 	unsigned int val = 0;
 
-	stream = snd_soc_dai_get_dma_data(dai, substream);
+	sdw_stream = snd_soc_dai_get_dma_data(dai, substream);
 
-	if (!stream)
+	if (!sdw_stream)
 		return -EINVAL;
 
 	if (!rt715->slave)
 		return -EINVAL;
 
+	snd_sdw_params_to_config(substream, params, &stream_config, &port_config);
+
 	switch (dai->id) {
 	case RT715_AIF1:
-		direction = SDW_DATA_DIR_TX;
-		port = 6;
+		port_config.num = 6;
 		rt715_index_write(rt715->regmap, RT715_SDW_INPUT_SEL, 0xa500);
 		break;
 	case RT715_AIF2:
-		direction = SDW_DATA_DIR_TX;
-		port = 4;
+		port_config.num = 4;
 		rt715_index_write(rt715->regmap, RT715_SDW_INPUT_SEL, 0xa000);
 		break;
 	default:
@@ -832,17 +868,8 @@ static int rt715_pcm_hw_params(struct snd_pcm_substream *substream,
 		return -EINVAL;
 	}
 
-	stream_config.frame_rate =  params_rate(params);
-	stream_config.ch_count = params_channels(params);
-	stream_config.bps = snd_pcm_format_width(params_format(params));
-	stream_config.direction = direction;
-
-	num_channels = params_channels(params);
-	port_config.ch_mask = (1 << (num_channels)) - 1;
-	port_config.num = port;
-
 	retval = sdw_stream_add_slave(rt715->slave, &stream_config,
-					&port_config, 1, stream->sdw_stream);
+					&port_config, 1, sdw_stream);
 	if (retval) {
 		dev_err(dai->dev, "Unable to configure port\n");
 		return retval;
@@ -905,13 +932,13 @@ static int rt715_pcm_hw_free(struct snd_pcm_substream *substream,
 {
 	struct snd_soc_component *component = dai->component;
 	struct rt715_priv *rt715 = snd_soc_component_get_drvdata(component);
-	struct sdw_stream_data *stream =
+	struct sdw_stream_runtime *sdw_stream =
 		snd_soc_dai_get_dma_data(dai, substream);
 
 	if (!rt715->slave)
 		return -EINVAL;
 
-	sdw_stream_remove_slave(rt715->slave, stream->sdw_stream);
+	sdw_stream_remove_slave(rt715->slave, sdw_stream);
 	return 0;
 }
 
@@ -1012,6 +1039,8 @@ int rt715_init(struct device *dev, struct regmap *sdw_regmap,
 	rt715->regmap = regmap;
 	rt715->sdw_regmap = sdw_regmap;
 
+	regcache_cache_only(rt715->regmap, true);
+
 	/*
 	 * Mark hw_init to false
 	 * HW init will be performed when device reports present
@@ -1023,8 +1052,25 @@ int rt715_init(struct device *dev, struct regmap *sdw_regmap,
 						&soc_codec_dev_rt715,
 						rt715_dai,
 						ARRAY_SIZE(rt715_dai));
+	if (ret < 0)
+		return ret;
 
-	return ret;
+	/* set autosuspend parameters */
+	pm_runtime_set_autosuspend_delay(dev, 3000);
+	pm_runtime_use_autosuspend(dev);
+
+	/* make sure the device does not suspend immediately */
+	pm_runtime_mark_last_busy(dev);
+
+	pm_runtime_enable(dev);
+
+	/* important note: the device is NOT tagged as 'active' and will remain
+	 * 'suspended' until the hardware is enumerated/initialized. This is required
+	 * to make sure the ASoC framework use of pm_runtime_get_sync() does not silently
+	 * fail with -EACCESS because of race conditions between card creation and enumeration
+	 */
+
+	return 0;
 }
 
 int rt715_io_init(struct device *dev, struct sdw_slave *slave)
@@ -1034,24 +1080,18 @@ int rt715_io_init(struct device *dev, struct sdw_slave *slave)
 	if (rt715->hw_init)
 		return 0;
 
-	/*
-	 * PM runtime is only enabled when a Slave reports as Attached
-	 */
-	if (!rt715->first_hw_init) {
-		/* set autosuspend parameters */
-		pm_runtime_set_autosuspend_delay(&slave->dev, 3000);
-		pm_runtime_use_autosuspend(&slave->dev);
+	regcache_cache_only(rt715->regmap, false);
 
+	/*
+	 *  PM runtime status is marked as 'active' only when a Slave reports as Attached
+	 */
+	if (!rt715->first_hw_init)
 		/* update count of parent 'active' children */
 		pm_runtime_set_active(&slave->dev);
 
-		/* make sure the device does not suspend immediately */
-		pm_runtime_mark_last_busy(&slave->dev);
-
-		pm_runtime_enable(&slave->dev);
-	}
-
 	pm_runtime_get_noresume(&slave->dev);
+
+	rt715_reset(rt715->regmap);
 
 	/* Mute nid=08h/09h */
 	regmap_write(rt715->regmap, RT715_SET_GAIN_LINE_ADC_H, 0xb080);

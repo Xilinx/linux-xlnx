@@ -21,10 +21,10 @@
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/rawnand.h>
 #include <linux/mtd/partitions.h>
+#include <linux/of.h>
 #include <linux/of_address.h>
-#include <linux/of_device.h>
 #include <linux/of_irq.h>
-#include <linux/of_platform.h>
+#include <linux/platform_device.h>
 
 #include <asm/mpc5121.h>
 
@@ -595,8 +595,6 @@ static void mpc5121_nfc_free(struct device *dev, struct mtd_info *mtd)
 	struct nand_chip *chip = mtd_to_nand(mtd);
 	struct mpc5121_nfc_prv *prv = nand_get_controller_data(chip);
 
-	clk_disable_unprepare(prv->clk);
-
 	if (prv->csreg)
 		iounmap(prv->csreg);
 }
@@ -663,7 +661,7 @@ static int mpc5121_nfc_probe(struct platform_device *op)
 	}
 
 	prv->irq = irq_of_parse_and_map(dn, 0);
-	if (prv->irq == NO_IRQ) {
+	if (!prv->irq) {
 		dev_err(dev, "Error mapping IRQ!\n");
 		return -EINVAL;
 	}
@@ -717,15 +715,10 @@ static int mpc5121_nfc_probe(struct platform_device *op)
 	}
 
 	/* Enable NFC clock */
-	clk = devm_clk_get(dev, "ipg");
+	clk = devm_clk_get_enabled(dev, "ipg");
 	if (IS_ERR(clk)) {
-		dev_err(dev, "Unable to acquire NFC clock!\n");
+		dev_err(dev, "Unable to acquire and enable NFC clock!\n");
 		retval = PTR_ERR(clk);
-		goto error;
-	}
-	retval = clk_prepare_enable(clk);
-	if (retval) {
-		dev_err(dev, "Unable to enable NFC clock!\n");
 		goto error;
 	}
 	prv->clk = clk;
@@ -822,7 +815,7 @@ error:
 	return retval;
 }
 
-static int mpc5121_nfc_remove(struct platform_device *op)
+static void mpc5121_nfc_remove(struct platform_device *op)
 {
 	struct device *dev = &op->dev;
 	struct mtd_info *mtd = dev_get_drvdata(dev);
@@ -832,8 +825,6 @@ static int mpc5121_nfc_remove(struct platform_device *op)
 	WARN_ON(ret);
 	nand_cleanup(mtd_to_nand(mtd));
 	mpc5121_nfc_free(dev, mtd);
-
-	return 0;
 }
 
 static const struct of_device_id mpc5121_nfc_match[] = {
@@ -844,7 +835,7 @@ MODULE_DEVICE_TABLE(of, mpc5121_nfc_match);
 
 static struct platform_driver mpc5121_nfc_driver = {
 	.probe		= mpc5121_nfc_probe,
-	.remove		= mpc5121_nfc_remove,
+	.remove_new	= mpc5121_nfc_remove,
 	.driver		= {
 		.name = DRV_NAME,
 		.of_match_table = mpc5121_nfc_match,

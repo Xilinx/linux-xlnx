@@ -1656,7 +1656,7 @@ static int rtl_op_set_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 			memcpy(rtlpriv->sec.key_buf[key_idx],
 			       key->key, key->keylen);
 			rtlpriv->sec.key_len[key_idx] = key->keylen;
-			memcpy(mac_addr, bcast_addr, ETH_ALEN);
+			eth_broadcast_addr(mac_addr);
 		} else {	/* pairwise key */
 			rtl_dbg(rtlpriv, COMP_SEC, DBG_DMESG,
 				"set pairwise key\n");
@@ -1908,10 +1908,21 @@ bool rtl_cmd_send_packet(struct ieee80211_hw *hw, struct sk_buff *skb)
 	return true;
 }
 EXPORT_SYMBOL(rtl_cmd_send_packet);
+
+void rtl_init_sw_leds(struct ieee80211_hw *hw)
+{
+	struct rtl_priv *rtlpriv = rtl_priv(hw);
+
+	rtlpriv->ledctl.sw_led0 = LED_PIN_LED0;
+	rtlpriv->ledctl.sw_led1 = LED_PIN_LED1;
+}
+EXPORT_SYMBOL(rtl_init_sw_leds);
+
 const struct ieee80211_ops rtl_ops = {
 	.start = rtl_op_start,
 	.stop = rtl_op_stop,
 	.tx = rtl_op_tx,
+	.wake_tx_queue = ieee80211_handle_wake_tx_queue,
 	.add_interface = rtl_op_add_interface,
 	.remove_interface = rtl_op_remove_interface,
 	.change_interface = rtl_op_change_interface,

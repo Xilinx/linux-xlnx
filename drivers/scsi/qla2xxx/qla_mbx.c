@@ -273,7 +273,6 @@ qla2x00_mailbox_command(scsi_qla_host_t *vha, mbx_cmd_t *mcp)
 		spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
 		wait_time = jiffies;
-		atomic_inc(&ha->num_pend_mbx_stage3);
 		if (!wait_for_completion_timeout(&ha->mbx_intr_comp,
 		    mcp->tov * HZ)) {
 			ql_dbg(ql_dbg_mbx, vha, 0x117a,
@@ -290,7 +289,6 @@ qla2x00_mailbox_command(scsi_qla_host_t *vha, mbx_cmd_t *mcp)
 				spin_unlock_irqrestore(&ha->hardware_lock,
 				    flags);
 				atomic_dec(&ha->num_pend_mbx_stage2);
-				atomic_dec(&ha->num_pend_mbx_stage3);
 				rval = QLA_ABORTED;
 				goto premature_exit;
 			}
@@ -302,11 +300,9 @@ qla2x00_mailbox_command(scsi_qla_host_t *vha, mbx_cmd_t *mcp)
 			ha->flags.mbox_busy = 0;
 			spin_unlock_irqrestore(&ha->hardware_lock, flags);
 			atomic_dec(&ha->num_pend_mbx_stage2);
-			atomic_dec(&ha->num_pend_mbx_stage3);
 			rval = QLA_ABORTED;
 			goto premature_exit;
 		}
-		atomic_dec(&ha->num_pend_mbx_stage3);
 
 		if (time_after(jiffies, wait_time + 5 * HZ))
 			ql_log(ql_log_warn, vha, 0x1015, "cmd=0x%x, waited %d msecs\n",
@@ -2213,6 +2209,9 @@ qla2x00_get_firmware_state(scsi_qla_host_t *vha, uint16_t *states)
 	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1054,
 	    "Entered %s.\n", __func__);
 
+	if (!ha->flags.fw_started)
+		return QLA_FUNCTION_FAILED;
+
 	mcp->mb[0] = MBC_GET_FIRMWARE_STATE;
 	mcp->out_mb = MBX_0;
 	if (IS_FWI2_CAPABLE(vha->hw))
@@ -4010,7 +4009,7 @@ qla24xx_report_id_acquisition(scsi_qla_host_t *vha,
 		    rptid_entry->port_id[2], rptid_entry->port_id[1],
 		    rptid_entry->port_id[0]);
 		ha->current_topology = ISP_CFG_NL;
-		qlt_update_host_map(vha, id);
+		qla_update_host_map(vha, id);
 
 	} else if (rptid_entry->format == 1) {
 		/* fabric */
@@ -4126,7 +4125,7 @@ qla24xx_report_id_acquisition(scsi_qla_host_t *vha,
 					    WWN_SIZE);
 				}
 
-				qlt_update_host_map(vha, id);
+				qla_update_host_map(vha, id);
 			}
 
 			set_bit(REGISTER_FC4_NEEDED, &vha->dpc_flags);
@@ -4153,7 +4152,7 @@ qla24xx_report_id_acquisition(scsi_qla_host_t *vha,
 			if (!found)
 				return;
 
-			qlt_update_host_map(vp, id);
+			qla_update_host_map(vp, id);
 
 			/*
 			 * Cannot configure here as we are still sitting on the
@@ -4184,7 +4183,7 @@ qla24xx_report_id_acquisition(scsi_qla_host_t *vha,
 
 		ha->flags.n2n_ae = 1;
 		spin_lock_irqsave(&ha->vport_slock, flags);
-		qlt_update_vp_map(vha, SET_AL_PA);
+		qla_update_vp_map(vha, SET_AL_PA);
 		spin_unlock_irqrestore(&ha->vport_slock, flags);
 
 		list_for_each_entry(fcport, &vha->vp_fcports, list) {

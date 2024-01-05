@@ -14,7 +14,7 @@
 #include <linux/delay.h>
 #include "pci.h"
 
-#define VIRTFN_ID_LEN	16
+#define VIRTFN_ID_LEN	17	/* "virtfn%u\0" for 2^32 - 1 */
 
 int pci_iov_virtfn_bus(struct pci_dev *dev, int vf_id)
 {
@@ -41,8 +41,7 @@ int pci_iov_vf_id(struct pci_dev *dev)
 		return -EINVAL;
 
 	pf = pci_physfn(dev);
-	return (((dev->bus->number << 8) + dev->devfn) -
-		((pf->bus->number << 8) + pf->devfn + pf->sriov->offset)) /
+	return (pci_dev_id(dev) - (pci_dev_id(pf) + pf->sriov->offset)) /
 	       pf->sriov->stride;
 }
 EXPORT_SYMBOL_GPL(pci_iov_vf_id);

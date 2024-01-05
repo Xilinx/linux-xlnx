@@ -1038,13 +1038,11 @@ static int s3c_fb_ioctl(struct fb_info *info, unsigned int cmd,
 
 static const struct fb_ops s3c_fb_ops = {
 	.owner		= THIS_MODULE,
+	FB_DEFAULT_IOMEM_OPS,
 	.fb_check_var	= s3c_fb_check_var,
 	.fb_set_par	= s3c_fb_set_par,
 	.fb_blank	= s3c_fb_blank,
 	.fb_setcolreg	= s3c_fb_setcolreg,
-	.fb_fillrect	= cfb_fillrect,
-	.fb_copyarea	= cfb_copyarea,
-	.fb_imageblit	= cfb_imageblit,
 	.fb_pan_display	= s3c_fb_pan_display,
 	.fb_ioctl	= s3c_fb_ioctl,
 };
@@ -1244,7 +1242,6 @@ static int s3c_fb_probe_win(struct s3c_fb *sfb, unsigned int win_no,
 	fbinfo->var.vmode	= FB_VMODE_NONINTERLACED;
 	fbinfo->var.bits_per_pixel = windata->default_bpp;
 	fbinfo->fbops		= &s3c_fb_ops;
-	fbinfo->flags		= FBINFO_FLAG_DEFAULT;
 	fbinfo->pseudo_palette  = &win->pseudo_palette;
 
 	/* prepare to actually start the framebuffer */
@@ -1507,7 +1504,7 @@ err_bus_clk:
  * Shutdown and then release all the resources that the driver allocated
  * on initialisation.
  */
-static int s3c_fb_remove(struct platform_device *pdev)
+static void s3c_fb_remove(struct platform_device *pdev)
 {
 	struct s3c_fb *sfb = platform_get_drvdata(pdev);
 	int win;
@@ -1525,8 +1522,6 @@ static int s3c_fb_remove(struct platform_device *pdev)
 
 	pm_runtime_put_sync(sfb->dev);
 	pm_runtime_disable(sfb->dev);
-
-	return 0;
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -1794,7 +1789,7 @@ static const struct dev_pm_ops s3cfb_pm_ops = {
 
 static struct platform_driver s3c_fb_driver = {
 	.probe		= s3c_fb_probe,
-	.remove		= s3c_fb_remove,
+	.remove_new	= s3c_fb_remove,
 	.id_table	= s3c_fb_driver_ids,
 	.driver		= {
 		.name	= "s3c-fb",

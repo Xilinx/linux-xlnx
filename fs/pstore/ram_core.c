@@ -13,22 +13,22 @@
 #include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/memblock.h>
-#include <linux/pstore_ram.h>
 #include <linux/rslib.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/vmalloc.h>
+#include <linux/mm.h>
 #include <asm/page.h>
+
+#include "ram_internal.h"
 
 /**
  * struct persistent_ram_buffer - persistent circular RAM buffer
  *
- * @sig:
- *	signature to indicate header (PERSISTENT_RAM_SIG xor PRZ-type value)
- * @start:
- *	offset into @data where the beginning of the stored bytes begin
- * @size:
- *	number of valid bytes stored in @data
+ * @sig: Signature to indicate header (PERSISTENT_RAM_SIG xor PRZ-type value)
+ * @start: First valid byte in the buffer.
+ * @size: Number of valid bytes in the buffer.
+ * @data: The contents of the buffer.
  */
 struct persistent_ram_buffer {
 	uint32_t    sig;
@@ -300,7 +300,7 @@ void persistent_ram_save_old(struct persistent_ram_zone *prz)
 
 	if (!prz->old_log) {
 		persistent_ram_ecc_old(prz);
-		prz->old_log = kmalloc(size, GFP_KERNEL);
+		prz->old_log = kvzalloc(size, GFP_KERNEL);
 	}
 	if (!prz->old_log) {
 		pr_err("failed to allocate buffer\n");
@@ -384,7 +384,7 @@ void *persistent_ram_old(struct persistent_ram_zone *prz)
 
 void persistent_ram_free_old(struct persistent_ram_zone *prz)
 {
-	kfree(prz->old_log);
+	kvfree(prz->old_log);
 	prz->old_log = NULL;
 	prz->old_log_size = 0;
 }
@@ -439,7 +439,11 @@ static void *persistent_ram_vmap(phys_addr_t start, size_t size,
 		phys_addr_t addr = page_start + i * PAGE_SIZE;
 		pages[i] = pfn_to_page(addr >> PAGE_SHIFT);
 	}
-	vaddr = vmap(pages, page_count, VM_MAP, prot);
+	/*
+	 * VM_IOREMAP used here to bypass this region during vread()
+	 * and kmap_atomic() (i.e. kcore) to avoid __va() failures.
+	 */
+	vaddr = vmap(pages, page_count, VM_MAP | VM_IOREMAP, prot);
 	kfree(pages);
 
 	/*
@@ -514,7 +518,7 @@ static int persistent_ram_post_init(struct persistent_ram_zone *prz, u32 sig,
 	sig ^= PERSISTENT_RAM_SIG;
 
 	if (prz->buffer->sig == sig) {
-		if (buffer_size(prz) == 0) {
+		if (buffer_size(prz) == 0 && buffer_start(prz) == 0) {
 			pr_debug("found existing empty buffer\n");
 			return 0;
 		}
@@ -543,8 +547,14 @@ static int persistent_ram_post_init(struct persistent_ram_zone *prz, u32 sig,
 	return 0;
 }
 
-void persistent_ram_free(struct persistent_ram_zone *prz)
+void persistent_ram_free(struct persistent_ram_zone **_prz)
 {
+	struct persistent_ram_zone *prz;
+
+	if (!_prz)
+		return;
+
+	prz = *_prz;
 	if (!prz)
 		return;
 
@@ -568,6 +578,7 @@ void persistent_ram_free(struct persistent_ram_zone *prz)
 	persistent_ram_free_old(prz);
 	kfree(prz->label);
 	kfree(prz);
+	*_prz = NULL;
 }
 
 struct persistent_ram_zone *persistent_ram_new(phys_addr_t start, size_t size,
@@ -587,6 +598,8 @@ struct persistent_ram_zone *persistent_ram_new(phys_addr_t start, size_t size,
 	raw_spin_lock_init(&prz->buffer_lock);
 	prz->flags = flags;
 	prz->label = kstrdup(label, GFP_KERNEL);
+	if (!prz->label)
+		goto err;
 
 	ret = persistent_ram_buffer_map(start, size, prz, memtype);
 	if (ret)
@@ -604,6 +617,6 @@ struct persistent_ram_zone *persistent_ram_new(phys_addr_t start, size_t size,
 
 	return prz;
 err:
-	persistent_ram_free(prz);
+	persistent_ram_free(&prz);
 	return ERR_PTR(ret);
 }

@@ -181,8 +181,8 @@ static inline void dz_receive_chars(struct dz_mux *mux)
 	struct dz_port *dport = &mux->dport[0];
 	struct uart_icount *icount;
 	int lines_rx[DZ_NB_PORT] = { [0 ... DZ_NB_PORT - 1] = 0 };
-	unsigned char ch, flag;
 	u16 status;
+	u8 ch, flag;
 	int i;
 
 	while ((status = dz_in(dport, DZ_RBUF)) & DZ_DVAL) {
@@ -279,9 +279,8 @@ static inline void dz_transmit_chars(struct dz_mux *mux)
 	 * so we go one char at a time) :-<
 	 */
 	tmp = xmit->buf[xmit->tail];
-	xmit->tail = (xmit->tail + 1) & (DZ_XMIT_SIZE - 1);
 	dz_out(dport, DZ_TDR, tmp);
-	dport->port.icount.tx++;
+	uart_xmit_advance(&dport->port, 1);
 
 	if (uart_circ_chars_pending(xmit) < DZ_WAKEUP_CHARS)
 		uart_write_wakeup(&dport->port);

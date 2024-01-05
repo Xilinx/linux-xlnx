@@ -23,6 +23,7 @@ FILES=                                          \
          test-libbfd-liberty.bin                \
          test-libbfd-liberty-z.bin              \
          test-cplus-demangle.bin                \
+         test-cxa-demangle.bin                  \
          test-libcap.bin			\
          test-libelf.bin                        \
          test-libelf-getphdrnum.bin             \
@@ -58,19 +59,13 @@ FILES=                                          \
          test-lzma.bin                          \
          test-bpf.bin                           \
          test-libbpf.bin                        \
-         test-libbpf-btf__load_from_kernel_by_id.bin	\
-         test-libbpf-bpf_prog_load.bin          \
-         test-libbpf-bpf_map_create.bin		\
-         test-libbpf-bpf_object__next_program.bin \
-         test-libbpf-bpf_object__next_map.bin   \
-         test-libbpf-bpf_program__set_insns.bin	\
-         test-libbpf-btf__raw_data.bin          \
          test-get_cpuid.bin                     \
          test-sdt.bin                           \
          test-cxx.bin                           \
          test-gettid.bin			\
          test-jvmti.bin				\
          test-jvmti-cmlr.bin			\
+         test-scandirat.bin			\
          test-sched_getcpu.bin			\
          test-setns.bin				\
          test-libopencsd.bin			\
@@ -133,6 +128,9 @@ $(OUTPUT)test-get_current_dir_name.bin:
 	$(BUILD)
 
 $(OUTPUT)test-glibc.bin:
+	$(BUILD)
+
+$(OUTPUT)test-scandirat.bin:
 	$(BUILD)
 
 $(OUTPUT)test-sched_getcpu.bin:
@@ -210,7 +208,7 @@ $(OUTPUT)test-libtraceevent.bin:
 	$(BUILD) -ltraceevent
 
 $(OUTPUT)test-libtracefs.bin:
-	$(BUILD) -ltracefs
+	 $(BUILD) $(shell $(PKG_CONFIG) --cflags libtraceevent 2>/dev/null) -ltracefs
 
 $(OUTPUT)test-libcrypto.bin:
 	$(BUILD) -lcrypto
@@ -268,6 +266,9 @@ $(OUTPUT)test-libbfd-liberty-z.bin:
 
 $(OUTPUT)test-cplus-demangle.bin:
 	$(BUILD) -liberty
+
+$(OUTPUT)test-cxa-demangle.bin:
+	$(BUILDXX)
 
 $(OUTPUT)test-backtrace.bin:
 	$(BUILD)
@@ -339,7 +340,7 @@ $(OUTPUT)test-jvmti-cmlr.bin:
 	$(BUILD)
 
 $(OUTPUT)test-llvm.bin:
-	$(BUILDXX) -std=gnu++14 				\
+	$(BUILDXX) -std=gnu++17 				\
 		-I$(shell $(LLVM_CONFIG) --includedir) 		\
 		-L$(shell $(LLVM_CONFIG) --libdir)		\
 		$(shell $(LLVM_CONFIG) --libs Core BPF)		\
@@ -347,17 +348,15 @@ $(OUTPUT)test-llvm.bin:
 		> $(@:.bin=.make.output) 2>&1
 
 $(OUTPUT)test-llvm-version.bin:
-	$(BUILDXX) -std=gnu++14					\
+	$(BUILDXX) -std=gnu++17					\
 		-I$(shell $(LLVM_CONFIG) --includedir)		\
 		> $(@:.bin=.make.output) 2>&1
 
 $(OUTPUT)test-clang.bin:
-	$(BUILDXX) -std=gnu++14					\
+	$(BUILDXX) -std=gnu++17					\
 		-I$(shell $(LLVM_CONFIG) --includedir) 		\
 		-L$(shell $(LLVM_CONFIG) --libdir)		\
-		-Wl,--start-group -lclangBasic -lclangDriver	\
-		  -lclangFrontend -lclangEdit -lclangLex	\
-		  -lclangAST -Wl,--end-group 			\
+		-Wl,--start-group -lclang-cpp -Wl,--end-group	\
 		$(shell $(LLVM_CONFIG) --libs Core option)	\
 		$(shell $(LLVM_CONFIG) --system-libs)		\
 		> $(@:.bin=.make.output) 2>&1
@@ -371,7 +370,7 @@ $(OUTPUT)test-libzstd.bin:
 	$(BUILD) -lzstd
 
 $(OUTPUT)test-clang-bpf-co-re.bin:
-	$(CLANG) -S -g -target bpf -o - $(patsubst %.bin,%.c,$(@F)) |	\
+	$(CLANG) -S -g --target=bpf -o - $(patsubst %.bin,%.c,$(@F)) |	\
 		grep BTF_KIND_VAR
 
 $(OUTPUT)test-file-handle.bin:

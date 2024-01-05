@@ -4,8 +4,8 @@ config DRM_ZYNQMP_DPSUB
 	depends on COMMON_CLK && DRM && OF
 	depends on DMADEVICES
 	depends on PHY_XILINX_ZYNQMP
+	depends on XILINX_ZYNQMP_DPDMA
 	depends on DRM_XLNX
-	select XILINX_ZYNQMP_DPDMA
 	select VIDEOMODE_HELPERS
 	select XILINX_DMA_ENGINES
 	select DMA_ENGINE

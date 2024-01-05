@@ -37,8 +37,7 @@
 
 #include "mm_32.h"
 
-unsigned long *sparc_valid_addr_bitmap;
-EXPORT_SYMBOL(sparc_valid_addr_bitmap);
+static unsigned long *sparc_valid_addr_bitmap;
 
 unsigned long phys_base;
 EXPORT_SYMBOL(phys_base);
@@ -298,10 +297,19 @@ void sparc_flush_page_to_ram(struct page *page)
 {
 	unsigned long vaddr = (unsigned long)page_address(page);
 
-	if (vaddr)
-		__flush_page_to_ram(vaddr);
+	__flush_page_to_ram(vaddr);
 }
 EXPORT_SYMBOL(sparc_flush_page_to_ram);
+
+void sparc_flush_folio_to_ram(struct folio *folio)
+{
+	unsigned long vaddr = (unsigned long)folio_address(folio);
+	unsigned int i, nr = folio_nr_pages(folio);
+
+	for (i = 0; i < nr; i++)
+		__flush_page_to_ram(vaddr + i * PAGE_SIZE);
+}
+EXPORT_SYMBOL(sparc_flush_folio_to_ram);
 
 static const pgprot_t protection_map[16] = {
 	[VM_NONE]					= PAGE_NONE,

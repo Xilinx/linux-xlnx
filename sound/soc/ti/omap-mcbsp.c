@@ -70,8 +70,8 @@ static int omap2_mcbsp_set_clks_src(struct omap_mcbsp *mcbsp, u8 fck_src_id)
 
 	fck_src = clk_get(mcbsp->dev, src);
 	if (IS_ERR(fck_src)) {
-		dev_err(mcbsp->dev, "CLKS: could not clk_get() %s\n", src);
-		return -EINVAL;
+		dev_info(mcbsp->dev, "CLKS: could not clk_get() %s\n", src);
+		return 0;
 	}
 
 	pm_runtime_put_sync(mcbsp->dev);
@@ -1254,18 +1254,6 @@ static int omap_mcbsp_dai_set_dai_sysclk(struct snd_soc_dai *cpu_dai,
 	return err;
 }
 
-static const struct snd_soc_dai_ops mcbsp_dai_ops = {
-	.startup	= omap_mcbsp_dai_startup,
-	.shutdown	= omap_mcbsp_dai_shutdown,
-	.prepare	= omap_mcbsp_dai_prepare,
-	.trigger	= omap_mcbsp_dai_trigger,
-	.delay		= omap_mcbsp_dai_delay,
-	.hw_params	= omap_mcbsp_dai_hw_params,
-	.set_fmt	= omap_mcbsp_dai_set_dai_fmt,
-	.set_clkdiv	= omap_mcbsp_dai_set_clkdiv,
-	.set_sysclk	= omap_mcbsp_dai_set_dai_sysclk,
-};
-
 static int omap_mcbsp_probe(struct snd_soc_dai *dai)
 {
 	struct omap_mcbsp *mcbsp = snd_soc_dai_get_drvdata(dai);
@@ -1288,9 +1276,21 @@ static int omap_mcbsp_remove(struct snd_soc_dai *dai)
 	return 0;
 }
 
+static const struct snd_soc_dai_ops mcbsp_dai_ops = {
+	.probe		= omap_mcbsp_probe,
+	.remove		= omap_mcbsp_remove,
+	.startup	= omap_mcbsp_dai_startup,
+	.shutdown	= omap_mcbsp_dai_shutdown,
+	.prepare	= omap_mcbsp_dai_prepare,
+	.trigger	= omap_mcbsp_dai_trigger,
+	.delay		= omap_mcbsp_dai_delay,
+	.hw_params	= omap_mcbsp_dai_hw_params,
+	.set_fmt	= omap_mcbsp_dai_set_dai_fmt,
+	.set_clkdiv	= omap_mcbsp_dai_set_clkdiv,
+	.set_sysclk	= omap_mcbsp_dai_set_dai_sysclk,
+};
+
 static struct snd_soc_dai_driver omap_mcbsp_dai = {
-	.probe = omap_mcbsp_probe,
-	.remove = omap_mcbsp_remove,
 	.playback = {
 		.channels_min = 1,
 		.channels_max = 16,
@@ -1412,7 +1412,7 @@ static int asoc_mcbsp_probe(struct platform_device *pdev)
 	return sdma_pcm_platform_register(&pdev->dev, "tx", "rx");
 }
 
-static int asoc_mcbsp_remove(struct platform_device *pdev)
+static void asoc_mcbsp_remove(struct platform_device *pdev)
 {
 	struct omap_mcbsp *mcbsp = platform_get_drvdata(pdev);
 
@@ -1421,8 +1421,6 @@ static int asoc_mcbsp_remove(struct platform_device *pdev)
 
 	if (cpu_latency_qos_request_active(&mcbsp->pm_qos_req))
 		cpu_latency_qos_remove_request(&mcbsp->pm_qos_req);
-
-	return 0;
 }
 
 static struct platform_driver asoc_mcbsp_driver = {
@@ -1432,7 +1430,7 @@ static struct platform_driver asoc_mcbsp_driver = {
 	},
 
 	.probe = asoc_mcbsp_probe,
-	.remove = asoc_mcbsp_remove,
+	.remove_new = asoc_mcbsp_remove,
 };
 
 module_platform_driver(asoc_mcbsp_driver);

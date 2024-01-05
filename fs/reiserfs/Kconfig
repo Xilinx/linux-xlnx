@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-only
 config REISERFS_FS
 	tristate "Reiserfs support (deprecated)"
+	select BUFFER_HEAD
 	select CRC32
+	select LEGACY_DIRECT_IO
 	help
 	  Reiserfs is deprecated and scheduled to be removed from the kernel
 	  in 2025. If you are still using it, please migrate to another

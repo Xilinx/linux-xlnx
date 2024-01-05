@@ -3,35 +3,12 @@
  * Copyright (C) 2015 Freescale Semiconductor, Inc.
  */
 #include <linux/irqchip.h>
-#include <linux/mfd/syscon.h>
-#include <linux/mfd/syscon/imx6q-iomuxc-gpr.h>
-#include <linux/micrel_phy.h>
 #include <linux/of_platform.h>
-#include <linux/phy.h>
-#include <linux/regmap.h>
 #include <asm/mach/arch.h>
-#include <asm/mach/map.h>
 
 #include "common.h"
 #include "cpuidle.h"
 #include "hardware.h"
-
-static void __init imx6ul_enet_clk_init(void)
-{
-	struct regmap *gpr;
-
-	gpr = syscon_regmap_lookup_by_compatible("fsl,imx6ul-iomuxc-gpr");
-	if (!IS_ERR(gpr))
-		regmap_update_bits(gpr, IOMUXC_GPR1, IMX6UL_GPR1_ENET_CLK_DIR,
-				   IMX6UL_GPR1_ENET_CLK_OUTPUT);
-	else
-		pr_err("failed to find fsl,imx6ul-iomux-gpr regmap\n");
-}
-
-static inline void imx6ul_enet_init(void)
-{
-	imx6ul_enet_clk_init();
-}
 
 static void __init imx6ul_init_machine(void)
 {
@@ -39,7 +16,6 @@ static void __init imx6ul_init_machine(void)
 		imx_get_soc_revision());
 
 	of_platform_default_populate(NULL, NULL, NULL);
-	imx6ul_enet_init();
 	imx_anatop_init();
 	imx6ul_pm_init();
 }
@@ -63,6 +39,7 @@ static void __init imx6ul_init_late(void)
 static const char * const imx6ul_dt_compat[] __initconst = {
 	"fsl,imx6ul",
 	"fsl,imx6ull",
+	"fsl,imx6ulz",
 	NULL,
 };
 

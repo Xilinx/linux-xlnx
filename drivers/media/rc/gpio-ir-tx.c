@@ -174,12 +174,9 @@ static int gpio_ir_tx_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	gpio_ir->gpio = devm_gpiod_get(&pdev->dev, NULL, GPIOD_OUT_LOW);
-	if (IS_ERR(gpio_ir->gpio)) {
-		if (PTR_ERR(gpio_ir->gpio) != -EPROBE_DEFER)
-			dev_err(&pdev->dev, "Failed to get gpio (%ld)\n",
-				PTR_ERR(gpio_ir->gpio));
-		return PTR_ERR(gpio_ir->gpio);
-	}
+	if (IS_ERR(gpio_ir->gpio))
+		return dev_err_probe(&pdev->dev, PTR_ERR(gpio_ir->gpio),
+				     "Failed to get gpio\n");
 
 	rcdev->priv = gpio_ir;
 	rcdev->driver_name = DRIVER_NAME;
@@ -202,7 +199,7 @@ static struct platform_driver gpio_ir_tx_driver = {
 	.probe	= gpio_ir_tx_probe,
 	.driver = {
 		.name	= DRIVER_NAME,
-		.of_match_table = of_match_ptr(gpio_ir_tx_of_match),
+		.of_match_table = gpio_ir_tx_of_match,
 	},
 };
 module_platform_driver(gpio_ir_tx_driver);

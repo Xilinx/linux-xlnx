@@ -14,6 +14,8 @@
 #include "psp-dev.h"
 #include "sev-dev.h"
 #include "tee-dev.h"
+#include "platform-access.h"
+#include "dbc.h"
 
 struct psp_device *psp_master;
 
@@ -42,17 +44,14 @@ static irqreturn_t psp_irq_handler(int irq, void *data)
 	/* Read the interrupt status: */
 	status = ioread32(psp->io_regs + psp->vdata->intsts_reg);
 
+	/* Clear the interrupt status by writing the same value we read. */
+	iowrite32(status, psp->io_regs + psp->vdata->intsts_reg);
+
 	/* invoke subdevice interrupt handlers */
 	if (status) {
 		if (psp->sev_irq_handler)
 			psp->sev_irq_handler(irq, psp->sev_irq_data, status);
-
-		if (psp->tee_irq_handler)
-			psp->tee_irq_handler(irq, psp->tee_irq_data, status);
 	}
-
-	/* Clear the interrupt status by writing the same value we read. */
-	iowrite32(status, psp->io_regs + psp->vdata->intsts_reg);
 
 	return IRQ_HANDLED;
 }
@@ -105,6 +104,23 @@ static int psp_check_tee_support(struct psp_device *psp)
 	return 0;
 }
 
+static void psp_init_platform_access(struct psp_device *psp)
+{
+	int ret;
+
+	ret = platform_access_dev_init(psp);
+	if (ret) {
+		dev_warn(psp->dev, "platform access init failed: %d\n", ret);
+		return;
+	}
+
+	/* dbc must come after platform access as it tests the feature */
+	ret = dbc_dev_init(psp);
+	if (ret)
+		dev_warn(psp->dev, "failed to init dynamic boost control: %d\n",
+			 ret);
+}
+
 static int psp_init(struct psp_device *psp)
 {
 	int ret;
@@ -120,6 +136,9 @@ static int psp_init(struct psp_device *psp)
 		if (ret)
 			return ret;
 	}
+
+	if (psp->vdata->platform_access)
+		psp_init_platform_access(psp);
 
 	return 0;
 }
@@ -161,12 +180,13 @@ int psp_dev_init(struct sp_device *sp)
 		goto e_err;
 	}
 
+	/* master device must be set for platform access */
+	if (psp->sp->set_psp_master_device)
+		psp->sp->set_psp_master_device(psp->sp);
+
 	ret = psp_init(psp);
 	if (ret)
 		goto e_irq;
-
-	if (sp->set_psp_master_device)
-		sp->set_psp_master_device(sp);
 
 	/* Enable interrupt */
 	iowrite32(-1, psp->io_regs + psp->vdata->inten_reg);
@@ -176,6 +196,9 @@ int psp_dev_init(struct sp_device *sp)
 	return 0;
 
 e_irq:
+	if (sp->clear_psp_master_device)
+		sp->clear_psp_master_device(sp);
+
 	sp_free_psp_irq(psp->sp, psp);
 e_err:
 	sp->psp_data = NULL;
@@ -201,6 +224,10 @@ void psp_dev_destroy(struct sp_device *sp)
 
 	tee_dev_destroy(psp);
 
+	dbc_dev_destroy(psp);
+
+	platform_access_dev_destroy(psp);
+
 	sp_free_psp_irq(sp, psp);
 
 	if (sp->clear_psp_master_device)
@@ -217,18 +244,6 @@ void psp_set_sev_irq_handler(struct psp_device *psp, psp_irq_handler_t handler,
 void psp_clear_sev_irq_handler(struct psp_device *psp)
 {
 	psp_set_sev_irq_handler(psp, NULL, NULL);
-}
-
-void psp_set_tee_irq_handler(struct psp_device *psp, psp_irq_handler_t handler,
-			     void *data)
-{
-	psp->tee_irq_data = data;
-	psp->tee_irq_handler = handler;
-}
-
-void psp_clear_tee_irq_handler(struct psp_device *psp)
-{
-	psp_set_tee_irq_handler(psp, NULL, NULL);
 }
 
 struct psp_device *psp_get_master_device(void)

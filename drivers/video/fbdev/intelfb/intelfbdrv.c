@@ -389,6 +389,9 @@ static int __init intelfb_init(void)
 	if (idonly)
 		return -ENODEV;
 
+	if (fb_modesetting_disabled("intelfb"))
+		return -ENODEV;
+
 #ifndef MODULE
 	if (fb_get_options("intelfb", &option))
 		return -ENODEV;
@@ -1095,7 +1098,6 @@ static int intelfb_set_fbinfo(struct intelfb_info *dinfo)
 
 	DBG_MSG("intelfb_set_fbinfo\n");
 
-	info->flags = FBINFO_FLAG_DEFAULT;
 	info->fbops = &intel_fb_ops;
 	info->pseudo_palette = dinfo->pseudo_palette;
 
@@ -1218,6 +1220,9 @@ static int intelfb_check_var(struct fb_var_screeninfo *var,
 	DBG_MSG("intelfb_check_var: accel_flags is %d\n", var->accel_flags);
 
 	dinfo = GET_DINFO(info);
+
+	if (!var->pixclock)
+		return -EINVAL;
 
 	/* update the pitch */
 	if (intelfbhw_validate_mode(dinfo, var) != 0)
@@ -1366,11 +1371,11 @@ static int intelfb_set_par(struct fb_info *info)
 	intelfb_blank(FB_BLANK_UNBLANK, info);
 
 	if (ACCEL(dinfo, info)) {
-		info->flags = FBINFO_DEFAULT | FBINFO_HWACCEL_YPAN |
+		info->flags = FBINFO_HWACCEL_YPAN |
 		FBINFO_HWACCEL_COPYAREA | FBINFO_HWACCEL_FILLRECT |
 		FBINFO_HWACCEL_IMAGEBLIT;
 	} else
-		info->flags = FBINFO_DEFAULT | FBINFO_HWACCEL_YPAN;
+		info->flags = FBINFO_HWACCEL_YPAN;
 
 	kfree(hw);
 	return 0;

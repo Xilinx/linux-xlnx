@@ -75,6 +75,7 @@ struct vsock_sock {
 	void *trans;
 };
 
+s64 vsock_connectible_has_data(struct vsock_sock *vsk);
 s64 vsock_stream_has_data(struct vsock_sock *vsk);
 s64 vsock_stream_has_space(struct vsock_sock *vsk);
 struct sock *vsock_create_connected(struct sock *parent);
@@ -173,6 +174,9 @@ struct vsock_transport {
 
 	/* Addressing. */
 	u32 (*get_local_cid)(void);
+
+	/* Read a single skb */
+	int (*read_skb)(struct vsock_sock *, skb_read_actor_t);
 };
 
 /**** CORE ****/
@@ -197,7 +201,6 @@ static inline bool __vsock_in_connected_table(struct vsock_sock *vsk)
 	return !list_empty(&vsk->connected_table);
 }
 
-void vsock_release_pending(struct sock *pending);
 void vsock_add_pending(struct sock *listener, struct sock *pending);
 void vsock_remove_pending(struct sock *listener, struct sock *pending);
 void vsock_enqueue_accept(struct sock *listener, struct sock *connected);
@@ -221,9 +224,21 @@ struct vsock_tap {
 	struct list_head list;
 };
 
-int vsock_init_tap(void);
 int vsock_add_tap(struct vsock_tap *vt);
 int vsock_remove_tap(struct vsock_tap *vt);
 void vsock_deliver_tap(struct sk_buff *build_skb(void *opaque), void *opaque);
+int vsock_connectible_recvmsg(struct socket *sock, struct msghdr *msg, size_t len,
+			      int flags);
+int vsock_dgram_recvmsg(struct socket *sock, struct msghdr *msg,
+			size_t len, int flags);
+
+#ifdef CONFIG_BPF_SYSCALL
+extern struct proto vsock_proto;
+int vsock_bpf_update_proto(struct sock *sk, struct sk_psock *psock, bool restore);
+void __init vsock_bpf_build_proto(void);
+#else
+static inline void __init vsock_bpf_build_proto(void)
+{}
+#endif
 
 #endif /* __AF_VSOCK_H__ */

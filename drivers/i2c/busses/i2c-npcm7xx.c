@@ -17,7 +17,6 @@
 #include <linux/mfd/syscon.h>
 #include <linux/module.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
 
@@ -106,7 +105,7 @@ enum i2c_addr {
 #define NPCM_I2CCST3			0x19
 #define I2C_VER				0x1F
 
-/*BANK0 regs*/
+/* BANK 0 regs */
 #define NPCM_I2CADDR3			0x10
 #define NPCM_I2CADDR7			0x11
 #define NPCM_I2CADDR4			0x12
@@ -115,6 +114,20 @@ enum i2c_addr {
 #define NPCM_I2CADDR9			0x15
 #define NPCM_I2CADDR6			0x16
 #define NPCM_I2CADDR10			0x17
+#define NPCM_I2CCTL4			0x1A
+#define NPCM_I2CCTL5			0x1B
+#define NPCM_I2CSCLLT			0x1C /* SCL Low Time */
+#define NPCM_I2CFIF_CTL			0x1D /* FIFO Control */
+#define NPCM_I2CSCLHT			0x1E /* SCL High Time */
+
+/* BANK 1 regs */
+#define NPCM_I2CFIF_CTS			0x10 /* Both FIFOs Control and Status */
+#define NPCM_I2CTXF_CTL			0x12 /* Tx-FIFO Control */
+#define NPCM_I2CT_OUT			0x14 /* Bus T.O. */
+#define NPCM_I2CPEC			0x16 /* PEC Data */
+#define NPCM_I2CTXF_STS			0x1A /* Tx-FIFO Status */
+#define NPCM_I2CRXF_STS			0x1C /* Rx-FIFO Status */
+#define NPCM_I2CRXF_CTL			0x1E /* Rx-FIFO Control */
 
 #if IS_ENABLED(CONFIG_I2C_SLAVE)
 /*
@@ -131,66 +144,51 @@ static const int npcm_i2caddr[I2C_NUM_OWN_ADDR] = {
 };
 #endif
 
-#define NPCM_I2CCTL4			0x1A
-#define NPCM_I2CCTL5			0x1B
-#define NPCM_I2CSCLLT			0x1C /* SCL Low Time */
-#define NPCM_I2CFIF_CTL			0x1D /* FIFO Control */
-#define NPCM_I2CSCLHT			0x1E /* SCL High Time */
-
-/* BANK 1 regs */
-#define NPCM_I2CFIF_CTS			0x10 /* Both FIFOs Control and Status */
-#define NPCM_I2CTXF_CTL			0x12 /* Tx-FIFO Control */
-#define NPCM_I2CT_OUT			0x14 /* Bus T.O. */
-#define NPCM_I2CPEC			0x16 /* PEC Data */
-#define NPCM_I2CTXF_STS			0x1A /* Tx-FIFO Status */
-#define NPCM_I2CRXF_STS			0x1C /* Rx-FIFO Status */
-#define NPCM_I2CRXF_CTL			0x1E /* Rx-FIFO Control */
-
 /* NPCM_I2CST reg fields */
-#define NPCM_I2CST_XMIT			BIT(0)
-#define NPCM_I2CST_MASTER		BIT(1)
-#define NPCM_I2CST_NMATCH		BIT(2)
-#define NPCM_I2CST_STASTR		BIT(3)
-#define NPCM_I2CST_NEGACK		BIT(4)
-#define NPCM_I2CST_BER			BIT(5)
-#define NPCM_I2CST_SDAST		BIT(6)
-#define NPCM_I2CST_SLVSTP		BIT(7)
+#define NPCM_I2CST_XMIT			BIT(0)	/* Transmit mode */
+#define NPCM_I2CST_MASTER		BIT(1)	/* Master mode */
+#define NPCM_I2CST_NMATCH		BIT(2)	/* New match */
+#define NPCM_I2CST_STASTR		BIT(3)	/* Stall after start */
+#define NPCM_I2CST_NEGACK		BIT(4)	/* Negative ACK */
+#define NPCM_I2CST_BER			BIT(5)	/* Bus error */
+#define NPCM_I2CST_SDAST		BIT(6)	/* SDA status */
+#define NPCM_I2CST_SLVSTP		BIT(7)	/* Slave stop */
 
 /* NPCM_I2CCST reg fields */
-#define NPCM_I2CCST_BUSY		BIT(0)
-#define NPCM_I2CCST_BB			BIT(1)
-#define NPCM_I2CCST_MATCH		BIT(2)
-#define NPCM_I2CCST_GCMATCH		BIT(3)
-#define NPCM_I2CCST_TSDA		BIT(4)
-#define NPCM_I2CCST_TGSCL		BIT(5)
-#define NPCM_I2CCST_MATCHAF		BIT(6)
-#define NPCM_I2CCST_ARPMATCH		BIT(7)
+#define NPCM_I2CCST_BUSY		BIT(0)	/* Busy */
+#define NPCM_I2CCST_BB			BIT(1)	/* Bus busy */
+#define NPCM_I2CCST_MATCH		BIT(2)	/* Address match */
+#define NPCM_I2CCST_GCMATCH		BIT(3)	/* Global call match */
+#define NPCM_I2CCST_TSDA		BIT(4)	/* Test SDA line */
+#define NPCM_I2CCST_TGSCL		BIT(5)	/* Toggle SCL line */
+#define NPCM_I2CCST_MATCHAF		BIT(6)	/* Match address field */
+#define NPCM_I2CCST_ARPMATCH		BIT(7)	/* ARP address match */
 
 /* NPCM_I2CCTL1 reg fields */
-#define NPCM_I2CCTL1_START		BIT(0)
-#define NPCM_I2CCTL1_STOP		BIT(1)
-#define NPCM_I2CCTL1_INTEN		BIT(2)
+#define NPCM_I2CCTL1_START		BIT(0)	/* Generate start condition */
+#define NPCM_I2CCTL1_STOP		BIT(1)	/* Generate stop condition */
+#define NPCM_I2CCTL1_INTEN		BIT(2)	/* Interrupt enable */
 #define NPCM_I2CCTL1_EOBINTE		BIT(3)
 #define NPCM_I2CCTL1_ACK		BIT(4)
-#define NPCM_I2CCTL1_GCMEN		BIT(5)
-#define NPCM_I2CCTL1_NMINTE		BIT(6)
-#define NPCM_I2CCTL1_STASTRE		BIT(7)
+#define NPCM_I2CCTL1_GCMEN		BIT(5)	/* Global call match enable */
+#define NPCM_I2CCTL1_NMINTE		BIT(6)	/* New match interrupt enable */
+#define NPCM_I2CCTL1_STASTRE		BIT(7)	/* Stall after start enable */
 
 /* RW1S fields (inside a RW reg): */
 #define NPCM_I2CCTL1_RWS   \
 	(NPCM_I2CCTL1_START | NPCM_I2CCTL1_STOP | NPCM_I2CCTL1_ACK)
 
 /* npcm_i2caddr reg fields */
-#define NPCM_I2CADDR_A			GENMASK(6, 0)
-#define NPCM_I2CADDR_SAEN		BIT(7)
+#define NPCM_I2CADDR_A			GENMASK(6, 0)	/* Address */
+#define NPCM_I2CADDR_SAEN		BIT(7)		/* Slave address enable */
 
 /* NPCM_I2CCTL2 reg fields */
-#define I2CCTL2_ENABLE			BIT(0)
-#define I2CCTL2_SCLFRQ6_0		GENMASK(7, 1)
+#define I2CCTL2_ENABLE			BIT(0)		/* Module enable */
+#define I2CCTL2_SCLFRQ6_0		GENMASK(7, 1)	/* Bits 0:6 of frequency divisor */
 
 /* NPCM_I2CCTL3 reg fields */
-#define I2CCTL3_SCLFRQ8_7		GENMASK(1, 0)
-#define I2CCTL3_ARPMEN			BIT(2)
+#define I2CCTL3_SCLFRQ8_7		GENMASK(1, 0)	/* Bits 7:8 of frequency divisor */
+#define I2CCTL3_ARPMEN			BIT(2)	/* ARP match enable */
 #define I2CCTL3_IDL_START		BIT(3)
 #define I2CCTL3_400K_MODE		BIT(4)
 #define I2CCTL3_BNK_SEL			BIT(5)
@@ -696,6 +694,7 @@ static void npcm_i2c_callback(struct npcm_i2c *bus,
 {
 	struct i2c_msg *msgs;
 	int msgs_num;
+	bool do_complete = false;
 
 	msgs = bus->msgs;
 	msgs_num = bus->msgs_num;
@@ -724,23 +723,17 @@ static void npcm_i2c_callback(struct npcm_i2c *bus,
 				 msgs[1].flags & I2C_M_RD)
 				msgs[1].len = info;
 		}
-		if (completion_done(&bus->cmd_complete) == false)
-			complete(&bus->cmd_complete);
-	break;
-
+		do_complete = true;
+		break;
 	case I2C_NACK_IND:
 		/* MASTER transmit got a NACK before tx all bytes */
 		bus->cmd_err = -ENXIO;
-		if (bus->master_or_slave == I2C_MASTER)
-			complete(&bus->cmd_complete);
-
+		do_complete = true;
 		break;
 	case I2C_BUS_ERR_IND:
 		/* Bus error */
 		bus->cmd_err = -EAGAIN;
-		if (bus->master_or_slave == I2C_MASTER)
-			complete(&bus->cmd_complete);
-
+		do_complete = true;
 		break;
 	case I2C_WAKE_UP_IND:
 		/* I2C wake up */
@@ -754,6 +747,8 @@ static void npcm_i2c_callback(struct npcm_i2c *bus,
 	if (bus->slave)
 		bus->master_or_slave = I2C_SLAVE;
 #endif
+	if (do_complete)
+		complete(&bus->cmd_complete);
 }
 
 static u8 npcm_i2c_fifo_usage(struct npcm_i2c *bus)
@@ -2362,7 +2357,7 @@ static int npcm_i2c_probe_bus(struct platform_device *pdev)
 	return 0;
 }
 
-static int npcm_i2c_remove_bus(struct platform_device *pdev)
+static void npcm_i2c_remove_bus(struct platform_device *pdev)
 {
 	unsigned long lock_flags;
 	struct npcm_i2c *bus = platform_get_drvdata(pdev);
@@ -2372,7 +2367,6 @@ static int npcm_i2c_remove_bus(struct platform_device *pdev)
 	npcm_i2c_disable(bus);
 	spin_unlock_irqrestore(&bus->lock, lock_flags);
 	i2c_del_adapter(&bus->adap);
-	return 0;
 }
 
 static const struct of_device_id npcm_i2c_bus_of_table[] = {
@@ -2384,7 +2378,7 @@ MODULE_DEVICE_TABLE(of, npcm_i2c_bus_of_table);
 
 static struct platform_driver npcm_i2c_bus_driver = {
 	.probe = npcm_i2c_probe_bus,
-	.remove = npcm_i2c_remove_bus,
+	.remove_new = npcm_i2c_remove_bus,
 	.driver = {
 		.name = "nuvoton-i2c",
 		.of_match_table = npcm_i2c_bus_of_table,

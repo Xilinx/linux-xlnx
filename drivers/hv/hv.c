@@ -20,6 +20,7 @@
 #include <linux/interrupt.h>
 #include <clocksource/hyperv_timer.h>
 #include <asm/mshyperv.h>
+#include <linux/set_memory.h>
 #include "hyperv_vmbus.h"
 
 /* The one and only */
@@ -39,42 +40,6 @@ int hv_init(void)
 }
 
 /*
- * Functions for allocating and freeing memory with size and
- * alignment HV_HYP_PAGE_SIZE. These functions are needed because
- * the guest page size may not be the same as the Hyper-V page
- * size. We depend upon kmalloc() aligning power-of-two size
- * allocations to the allocation size boundary, so that the
- * allocated memory appears to Hyper-V as a page of the size
- * it expects.
- */
-
-void *hv_alloc_hyperv_page(void)
-{
-	BUILD_BUG_ON(PAGE_SIZE <  HV_HYP_PAGE_SIZE);
-
-	if (PAGE_SIZE == HV_HYP_PAGE_SIZE)
-		return (void *)__get_free_page(GFP_KERNEL);
-	else
-		return kmalloc(HV_HYP_PAGE_SIZE, GFP_KERNEL);
-}
-
-void *hv_alloc_hyperv_zeroed_page(void)
-{
-	if (PAGE_SIZE == HV_HYP_PAGE_SIZE)
-		return (void *)__get_free_page(GFP_KERNEL | __GFP_ZERO);
-	else
-		return kzalloc(HV_HYP_PAGE_SIZE, GFP_KERNEL);
-}
-
-void hv_free_hyperv_page(unsigned long addr)
-{
-	if (PAGE_SIZE == HV_HYP_PAGE_SIZE)
-		free_page(addr);
-	else
-		kfree((void *)addr);
-}
-
-/*
  * hv_post_message - Post a message using the hypervisor message IPC.
  *
  * This involves a hypercall.
@@ -84,40 +49,54 @@ int hv_post_message(union hv_connection_id connection_id,
 		  void *payload, size_t payload_size)
 {
 	struct hv_input_post_message *aligned_msg;
-	struct hv_per_cpu_context *hv_cpu;
+	unsigned long flags;
 	u64 status;
 
 	if (payload_size > HV_MESSAGE_PAYLOAD_BYTE_COUNT)
 		return -EMSGSIZE;
 
-	hv_cpu = get_cpu_ptr(hv_context.cpu_context);
-	aligned_msg = hv_cpu->post_msg_page;
+	local_irq_save(flags);
+
+	/*
+	 * A TDX VM with the paravisor must use the decrypted post_msg_page: see
+	 * the comment in struct hv_per_cpu_context. A SNP VM with the paravisor
+	 * can use the encrypted hyperv_pcpu_input_arg because it copies the
+	 * input into the GHCB page, which has been decrypted by the paravisor.
+	 */
+	if (hv_isolation_type_tdx() && ms_hyperv.paravisor_present)
+		aligned_msg = this_cpu_ptr(hv_context.cpu_context)->post_msg_page;
+	else
+		aligned_msg = *this_cpu_ptr(hyperv_pcpu_input_arg);
+
 	aligned_msg->connectionid = connection_id;
 	aligned_msg->reserved = 0;
 	aligned_msg->message_type = message_type;
 	aligned_msg->payload_size = payload_size;
 	memcpy((void *)aligned_msg->payload, payload, payload_size);
 
-	if (hv_isolation_type_snp())
-		status = hv_ghcb_hypercall(HVCALL_POST_MESSAGE,
-				(void *)aligned_msg, NULL,
-				sizeof(*aligned_msg));
-	else
+	if (ms_hyperv.paravisor_present) {
+		if (hv_isolation_type_tdx())
+			status = hv_tdx_hypercall(HVCALL_POST_MESSAGE,
+						  virt_to_phys(aligned_msg), 0);
+		else if (hv_isolation_type_snp())
+			status = hv_ghcb_hypercall(HVCALL_POST_MESSAGE,
+						   aligned_msg, NULL,
+						   sizeof(*aligned_msg));
+		else
+			status = HV_STATUS_INVALID_PARAMETER;
+	} else {
 		status = hv_do_hypercall(HVCALL_POST_MESSAGE,
 				aligned_msg, NULL);
+	}
 
-	/* Preemption must remain disabled until after the hypercall
-	 * so some other thread can't get scheduled onto this cpu and
-	 * corrupt the per-cpu post_msg_page
-	 */
-	put_cpu_ptr(hv_cpu);
+	local_irq_restore(flags);
 
 	return hv_result(status);
 }
 
 int hv_synic_alloc(void)
 {
-	int cpu;
+	int cpu, ret = -ENOMEM;
 	struct hv_per_cpu_context *hv_cpu;
 
 	/*
@@ -143,11 +122,29 @@ int hv_synic_alloc(void)
 		tasklet_init(&hv_cpu->msg_dpc,
 			     vmbus_on_msg_dpc, (unsigned long) hv_cpu);
 
+		if (ms_hyperv.paravisor_present && hv_isolation_type_tdx()) {
+			hv_cpu->post_msg_page = (void *)get_zeroed_page(GFP_ATOMIC);
+			if (hv_cpu->post_msg_page == NULL) {
+				pr_err("Unable to allocate post msg page\n");
+				goto err;
+			}
+
+			ret = set_memory_decrypted((unsigned long)hv_cpu->post_msg_page, 1);
+			if (ret) {
+				pr_err("Failed to decrypt post msg page: %d\n", ret);
+				/* Just leak the page, as it's unsafe to free the page. */
+				hv_cpu->post_msg_page = NULL;
+				goto err;
+			}
+
+			memset(hv_cpu->post_msg_page, 0, PAGE_SIZE);
+		}
+
 		/*
 		 * Synic message and event pages are allocated by paravisor.
 		 * Skip these pages allocation here.
 		 */
-		if (!hv_isolation_type_snp()) {
+		if (!ms_hyperv.paravisor_present && !hv_root_partition) {
 			hv_cpu->synic_message_page =
 				(void *)get_zeroed_page(GFP_ATOMIC);
 			if (hv_cpu->synic_message_page == NULL) {
@@ -159,38 +156,98 @@ int hv_synic_alloc(void)
 				(void *)get_zeroed_page(GFP_ATOMIC);
 			if (hv_cpu->synic_event_page == NULL) {
 				pr_err("Unable to allocate SYNIC event page\n");
+
+				free_page((unsigned long)hv_cpu->synic_message_page);
+				hv_cpu->synic_message_page = NULL;
 				goto err;
 			}
 		}
 
-		hv_cpu->post_msg_page = (void *)get_zeroed_page(GFP_ATOMIC);
-		if (hv_cpu->post_msg_page == NULL) {
-			pr_err("Unable to allocate post msg page\n");
-			goto err;
+		if (!ms_hyperv.paravisor_present &&
+		    (hv_isolation_type_snp() || hv_isolation_type_tdx())) {
+			ret = set_memory_decrypted((unsigned long)
+				hv_cpu->synic_message_page, 1);
+			if (ret) {
+				pr_err("Failed to decrypt SYNIC msg page: %d\n", ret);
+				hv_cpu->synic_message_page = NULL;
+
+				/*
+				 * Free the event page here so that hv_synic_free()
+				 * won't later try to re-encrypt it.
+				 */
+				free_page((unsigned long)hv_cpu->synic_event_page);
+				hv_cpu->synic_event_page = NULL;
+				goto err;
+			}
+
+			ret = set_memory_decrypted((unsigned long)
+				hv_cpu->synic_event_page, 1);
+			if (ret) {
+				pr_err("Failed to decrypt SYNIC event page: %d\n", ret);
+				hv_cpu->synic_event_page = NULL;
+				goto err;
+			}
+
+			memset(hv_cpu->synic_message_page, 0, PAGE_SIZE);
+			memset(hv_cpu->synic_event_page, 0, PAGE_SIZE);
 		}
 	}
 
 	return 0;
+
 err:
 	/*
 	 * Any memory allocations that succeeded will be freed when
 	 * the caller cleans up by calling hv_synic_free()
 	 */
-	return -ENOMEM;
+	return ret;
 }
 
 
 void hv_synic_free(void)
 {
-	int cpu;
+	int cpu, ret;
 
 	for_each_present_cpu(cpu) {
 		struct hv_per_cpu_context *hv_cpu
 			= per_cpu_ptr(hv_context.cpu_context, cpu);
 
+		/* It's better to leak the page if the encryption fails. */
+		if (ms_hyperv.paravisor_present && hv_isolation_type_tdx()) {
+			if (hv_cpu->post_msg_page) {
+				ret = set_memory_encrypted((unsigned long)
+					hv_cpu->post_msg_page, 1);
+				if (ret) {
+					pr_err("Failed to encrypt post msg page: %d\n", ret);
+					hv_cpu->post_msg_page = NULL;
+				}
+			}
+		}
+
+		if (!ms_hyperv.paravisor_present &&
+		    (hv_isolation_type_snp() || hv_isolation_type_tdx())) {
+			if (hv_cpu->synic_message_page) {
+				ret = set_memory_encrypted((unsigned long)
+					hv_cpu->synic_message_page, 1);
+				if (ret) {
+					pr_err("Failed to encrypt SYNIC msg page: %d\n", ret);
+					hv_cpu->synic_message_page = NULL;
+				}
+			}
+
+			if (hv_cpu->synic_event_page) {
+				ret = set_memory_encrypted((unsigned long)
+					hv_cpu->synic_event_page, 1);
+				if (ret) {
+					pr_err("Failed to encrypt SYNIC event page: %d\n", ret);
+					hv_cpu->synic_event_page = NULL;
+				}
+			}
+		}
+
+		free_page((unsigned long)hv_cpu->post_msg_page);
 		free_page((unsigned long)hv_cpu->synic_event_page);
 		free_page((unsigned long)hv_cpu->synic_message_page);
-		free_page((unsigned long)hv_cpu->post_msg_page);
 	}
 
 	kfree(hv_context.hv_numa_map);
@@ -216,12 +273,14 @@ void hv_synic_enable_regs(unsigned int cpu)
 	simp.as_uint64 = hv_get_register(HV_REGISTER_SIMP);
 	simp.simp_enabled = 1;
 
-	if (hv_isolation_type_snp()) {
+	if (ms_hyperv.paravisor_present || hv_root_partition) {
+		/* Mask out vTOM bit. ioremap_cache() maps decrypted */
+		u64 base = (simp.base_simp_gpa << HV_HYP_PAGE_SHIFT) &
+				~ms_hyperv.shared_gpa_boundary;
 		hv_cpu->synic_message_page
-			= memremap(simp.base_simp_gpa << HV_HYP_PAGE_SHIFT,
-				   HV_HYP_PAGE_SIZE, MEMREMAP_WB);
+			= (void *)ioremap_cache(base, HV_HYP_PAGE_SIZE);
 		if (!hv_cpu->synic_message_page)
-			pr_err("Fail to map syinc message page.\n");
+			pr_err("Fail to map synic message page.\n");
 	} else {
 		simp.base_simp_gpa = virt_to_phys(hv_cpu->synic_message_page)
 			>> HV_HYP_PAGE_SHIFT;
@@ -233,13 +292,14 @@ void hv_synic_enable_regs(unsigned int cpu)
 	siefp.as_uint64 = hv_get_register(HV_REGISTER_SIEFP);
 	siefp.siefp_enabled = 1;
 
-	if (hv_isolation_type_snp()) {
-		hv_cpu->synic_event_page =
-			memremap(siefp.base_siefp_gpa << HV_HYP_PAGE_SHIFT,
-				 HV_HYP_PAGE_SIZE, MEMREMAP_WB);
-
+	if (ms_hyperv.paravisor_present || hv_root_partition) {
+		/* Mask out vTOM bit. ioremap_cache() maps decrypted */
+		u64 base = (siefp.base_siefp_gpa << HV_HYP_PAGE_SHIFT) &
+				~ms_hyperv.shared_gpa_boundary;
+		hv_cpu->synic_event_page
+			= (void *)ioremap_cache(base, HV_HYP_PAGE_SIZE);
 		if (!hv_cpu->synic_event_page)
-			pr_err("Fail to map syinc event page.\n");
+			pr_err("Fail to map synic event page.\n");
 	} else {
 		siefp.base_siefp_gpa = virt_to_phys(hv_cpu->synic_event_page)
 			>> HV_HYP_PAGE_SHIFT;
@@ -315,20 +375,24 @@ void hv_synic_disable_regs(unsigned int cpu)
 	 * addresses.
 	 */
 	simp.simp_enabled = 0;
-	if (hv_isolation_type_snp())
-		memunmap(hv_cpu->synic_message_page);
-	else
+	if (ms_hyperv.paravisor_present || hv_root_partition) {
+		iounmap(hv_cpu->synic_message_page);
+		hv_cpu->synic_message_page = NULL;
+	} else {
 		simp.base_simp_gpa = 0;
+	}
 
 	hv_set_register(HV_REGISTER_SIMP, simp.as_uint64);
 
 	siefp.as_uint64 = hv_get_register(HV_REGISTER_SIEFP);
 	siefp.siefp_enabled = 0;
 
-	if (hv_isolation_type_snp())
-		memunmap(hv_cpu->synic_event_page);
-	else
+	if (ms_hyperv.paravisor_present || hv_root_partition) {
+		iounmap(hv_cpu->synic_event_page);
+		hv_cpu->synic_event_page = NULL;
+	} else {
 		siefp.base_siefp_gpa = 0;
+	}
 
 	hv_set_register(HV_REGISTER_SIEFP, siefp.as_uint64);
 

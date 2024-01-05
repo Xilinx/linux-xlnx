@@ -8,14 +8,17 @@
  * Copyright (C) 2000, 2001 Silicon Graphics, Inc.
  * Copyright (C) 2000, 2001, 2003 Broadcom Corporation
  */
+#include <linux/acpi.h>
 #include <linux/cpu.h>
 #include <linux/cpumask.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
+#include <linux/profile.h>
 #include <linux/seq_file.h>
 #include <linux/smp.h>
 #include <linux/threads.h>
 #include <linux/export.h>
+#include <linux/syscore_ops.h>
 #include <linux/time.h>
 #include <linux/tracepoint.h>
 #include <linux/sched/hotplug.h>
@@ -35,10 +38,6 @@ EXPORT_SYMBOL(__cpu_number_map);
 
 int __cpu_logical_map[NR_CPUS];		/* Map logical to physical */
 EXPORT_SYMBOL(__cpu_logical_map);
-
-/* Number of threads (siblings) per CPU core */
-int smp_num_siblings = 1;
-EXPORT_SYMBOL(smp_num_siblings);
 
 /* Representing the threads (siblings) of each logical CPU */
 cpumask_t cpu_sibling_map[NR_CPUS] __read_mostly;
@@ -117,7 +116,7 @@ static u32 ipi_read_clear(int cpu)
 	action = iocsr_read32(LOONGARCH_IOCSR_IPI_STATUS);
 	/* Clear the ipi register to clear the interrupt */
 	iocsr_write32(action, LOONGARCH_IOCSR_IPI_CLEAR);
-	smp_mb();
+	wbflush();
 
 	return action;
 }
@@ -154,11 +153,11 @@ void loongson_send_ipi_mask(const struct cpumask *mask, unsigned int action)
  * it goes straight through and wastes no time serializing
  * anything. Worst case is that we lose a reschedule ...
  */
-void smp_send_reschedule(int cpu)
+void arch_smp_send_reschedule(int cpu)
 {
 	loongson_send_ipi_single(cpu, SMP_RESCHEDULE);
 }
-EXPORT_SYMBOL_GPL(smp_send_reschedule);
+EXPORT_SYMBOL_GPL(arch_smp_send_reschedule);
 
 irqreturn_t loongson_ipi_interrupt(int irq, void *dev)
 {
@@ -180,8 +179,43 @@ irqreturn_t loongson_ipi_interrupt(int irq, void *dev)
 	return IRQ_HANDLED;
 }
 
+static void __init fdt_smp_setup(void)
+{
+#ifdef CONFIG_OF
+	unsigned int cpu, cpuid;
+	struct device_node *node = NULL;
+
+	for_each_of_cpu_node(node) {
+		if (!of_device_is_available(node))
+			continue;
+
+		cpuid = of_get_cpu_hwid(node, 0);
+		if (cpuid >= nr_cpu_ids)
+			continue;
+
+		if (cpuid == loongson_sysconf.boot_cpu_id) {
+			cpu = 0;
+			numa_add_cpu(cpu);
+		} else {
+			cpu = cpumask_next_zero(-1, cpu_present_mask);
+		}
+
+		num_processors++;
+		set_cpu_possible(cpu, true);
+		set_cpu_present(cpu, true);
+		__cpu_number_map[cpuid] = cpu;
+		__cpu_logical_map[cpu] = cpuid;
+	}
+
+	loongson_sysconf.nr_cpus = num_processors;
+	set_bit(0, &(loongson_sysconf.cores_io_master));
+#endif
+}
+
 void __init loongson_smp_setup(void)
 {
+	fdt_smp_setup();
+
 	cpu_data[0].core = cpu_logical_map(0) % loongson_sysconf.cores_per_package;
 	cpu_data[0].package = cpu_logical_map(0) / loongson_sysconf.cores_per_package;
 
@@ -193,9 +227,12 @@ void __init loongson_prepare_cpus(unsigned int max_cpus)
 {
 	int i = 0;
 
+	parse_acpi_topology();
+
 	for (i = 0; i < loongson_sysconf.nr_cpus; i++) {
 		set_cpu_present(i, true);
 		csr_mail_send(0, __cpu_logical_map[i], 0);
+		cpu_data[i].global_id = __cpu_logical_map[i];
 	}
 
 	per_cpu(cpu_state, smp_processor_id()) = CPU_ONLINE;
@@ -236,10 +273,10 @@ void loongson_init_secondary(void)
 	numa_add_cpu(cpu);
 #endif
 	per_cpu(cpu_state, cpu) = CPU_ONLINE;
-	cpu_data[cpu].core =
-		     cpu_logical_map(cpu) % loongson_sysconf.cores_per_package;
 	cpu_data[cpu].package =
 		     cpu_logical_map(cpu) / loongson_sysconf.cores_per_package;
+	cpu_data[cpu].core = pptt_enabled ? cpu_data[cpu].core :
+		     cpu_logical_map(cpu) % loongson_sysconf.cores_per_package;
 }
 
 void loongson_smp_finish(void)
@@ -281,7 +318,7 @@ void loongson_cpu_die(unsigned int cpu)
 	mb();
 }
 
-void play_dead(void)
+void __noreturn arch_cpu_idle_dead(void)
 {
 	register uint64_t addr;
 	register void (*init_fn)(void);
@@ -301,7 +338,7 @@ void play_dead(void)
 	iocsr_write32(0xffffffff, LOONGARCH_IOCSR_IPI_CLEAR);
 
 	init_fn();
-	unreachable();
+	BUG();
 }
 
 #endif
@@ -345,14 +382,10 @@ static inline void set_cpu_sibling_map(int cpu)
 
 	cpumask_set_cpu(cpu, &cpu_sibling_setup_map);
 
-	if (smp_num_siblings <= 1)
-		cpumask_set_cpu(cpu, &cpu_sibling_map[cpu]);
-	else {
-		for_each_cpu(i, &cpu_sibling_setup_map) {
-			if (cpus_are_siblings(cpu, i)) {
-				cpumask_set_cpu(i, &cpu_sibling_map[cpu]);
-				cpumask_set_cpu(cpu, &cpu_sibling_map[i]);
-			}
+	for_each_cpu(i, &cpu_sibling_setup_map) {
+		if (cpus_are_siblings(cpu, i)) {
+			cpumask_set_cpu(i, &cpu_sibling_map[cpu]);
+			cpumask_set_cpu(cpu, &cpu_sibling_map[i]);
 		}
 	}
 }
@@ -524,10 +557,12 @@ void smp_send_stop(void)
 	smp_call_function(stop_this_cpu, NULL, 0);
 }
 
+#ifdef CONFIG_PROFILING
 int setup_profiling_timer(unsigned int multiplier)
 {
 	return 0;
 }
+#endif
 
 static void flush_tlb_all_ipi(void *info)
 {

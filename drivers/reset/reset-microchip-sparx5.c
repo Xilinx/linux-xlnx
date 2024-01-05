@@ -7,9 +7,10 @@
  * https://github.com/microchip-ung/sparx-5_reginfo
  */
 #include <linux/mfd/syscon.h>
-#include <linux/of_device.h>
+#include <linux/of.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/property.h>
 #include <linux/regmap.h>
 #include <linux/reset-controller.h>
 
@@ -179,4 +180,3 @@ postcore_initcall(mchp_sparx5_reset_init);
 
 MODULE_DESCRIPTION("Microchip Sparx5 switch reset driver");
 MODULE_AUTHOR("Steen Hegelund <steen.hegelund@microchip.com>");
-MODULE_LICENSE("Dual MIT/GPL");

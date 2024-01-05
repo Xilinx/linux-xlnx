@@ -30,17 +30,6 @@ config ARM_PL172_MPMC
 	  If you have an embedded system with an AMBA bus and a PL172
 	  controller, say Y or M here.
 
-config ATMEL_SDRAMC
-	bool "Atmel (Multi-port DDR-)SDRAM Controller"
-	default y if ARCH_AT91
-	depends on ARCH_AT91 || COMPILE_TEST
-	depends on OF
-	help
-	  This driver is for Atmel SDRAM Controller or Atmel Multi-port
-	  DDR-SDRAM Controller available on Atmel AT91SAM9 and SAMA5 SoCs.
-	  Starting with the at91sam9g45, this controller supports SDR, DDR and
-	  LP-DDR memories.
-
 config ATMEL_EBI
 	bool "Atmel EBI driver"
 	default y if ARCH_AT91
@@ -228,7 +217,7 @@ config RENESAS_RPCIF
 
 config STM32_FMC2_EBI
 	tristate "Support for FMC2 External Bus Interface on STM32MP SoCs"
-	depends on MACH_STM32MP157 || COMPILE_TEST
+	depends on ARCH_STM32 || COMPILE_TEST
 	select MFD_SYSCON
 	help
 	  Select this option to enable the STM32 FMC2 External Bus Interface

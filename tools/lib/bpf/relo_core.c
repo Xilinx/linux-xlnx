@@ -776,7 +776,7 @@ static int bpf_core_calc_field_relo(const char *prog_name,
 		break;
 	case BPF_CORE_FIELD_SIGNED:
 		*val = (btf_is_any_enum(mt) && BTF_INFO_KFLAG(mt->info)) ||
-		       (btf_int_encoding(mt) & BTF_INT_SIGNED);
+		       (btf_is_int(mt) && (btf_int_encoding(mt) & BTF_INT_SIGNED));
 		if (validate)
 			*validate = true; /* signedness is never ambiguous */
 		break;
@@ -1550,9 +1550,6 @@ int __bpf_core_types_match(const struct btf *local_btf, __u32 local_id, const st
 
 	if (level <= 0)
 		return -EINVAL;
-
-	local_t = btf_type_by_id(local_btf, local_id);
-	targ_t = btf_type_by_id(targ_btf, targ_id);
 
 recur:
 	depth--;

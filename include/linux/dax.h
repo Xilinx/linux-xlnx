@@ -205,6 +205,8 @@ static inline void dax_unlock_mapping_entry(struct address_space *mapping,
 }
 #endif
 
+int dax_file_unshare(struct inode *inode, loff_t pos, loff_t len,
+		const struct iomap_ops *ops);
 int dax_zero_range(struct inode *inode, loff_t pos, loff_t len, bool *did_zero,
 		const struct iomap_ops *ops);
 int dax_truncate_page(struct inode *inode, loff_t pos, bool *did_zero,
@@ -239,10 +241,10 @@ void dax_flush(struct dax_device *dax_dev, void *addr, size_t size);
 
 ssize_t dax_iomap_rw(struct kiocb *iocb, struct iov_iter *iter,
 		const struct iomap_ops *ops);
-vm_fault_t dax_iomap_fault(struct vm_fault *vmf, enum page_entry_size pe_size,
+vm_fault_t dax_iomap_fault(struct vm_fault *vmf, unsigned int order,
 		    pfn_t *pfnp, int *errp, const struct iomap_ops *ops);
 vm_fault_t dax_finish_sync_fault(struct vm_fault *vmf,
-		enum page_entry_size pe_size, pfn_t pfn);
+		unsigned int order, pfn_t pfn);
 int dax_delete_mapping_entry(struct address_space *mapping, pgoff_t index);
 int dax_invalidate_mapping_entry_sync(struct address_space *mapping,
 				      pgoff_t index);
@@ -259,12 +261,28 @@ static inline bool dax_mapping(struct address_space *mapping)
 	return mapping->host && IS_DAX(mapping->host);
 }
 
+/*
+ * Due to dax's memory and block duo personalities, hwpoison reporting
+ * takes into consideration which personality is presently visible.
+ * When dax acts like a block device, such as in block IO, an encounter of
+ * dax hwpoison is reported as -EIO.
+ * When dax acts like memory, such as in page fault, a detection of hwpoison
+ * is reported as -EHWPOISON which leads to VM_FAULT_HWPOISON.
+ */
+static inline int dax_mem2blk_err(int err)
+{
+	return (err == -EHWPOISON) ? -EIO : err;
+}
+
 #ifdef CONFIG_DEV_DAX_HMEM_DEVICES
-void hmem_register_device(int target_nid, struct resource *r);
+void hmem_register_resource(int target_nid, struct resource *r);
 #else
-static inline void hmem_register_device(int target_nid, struct resource *r)
+static inline void hmem_register_resource(int target_nid, struct resource *r)
 {
 }
 #endif
 
+typedef int (*walk_hmem_fn)(struct device *dev, int target_nid,
+			    const struct resource *res);
+int walk_hmem_resources(struct device *dev, walk_hmem_fn fn);
 #endif

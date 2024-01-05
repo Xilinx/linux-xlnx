@@ -236,6 +236,14 @@ enum {
 	ISCSI_SESSION_FREE,
 };
 
+enum {
+	ISCSI_SESSION_TARGET_UNBOUND,
+	ISCSI_SESSION_TARGET_ALLOCATED,
+	ISCSI_SESSION_TARGET_SCANNED,
+	ISCSI_SESSION_TARGET_UNBINDING,
+	ISCSI_SESSION_TARGET_MAX,
+};
+
 #define ISCSI_MAX_TARGET -1
 
 struct iscsi_cls_session {
@@ -264,6 +272,7 @@ struct iscsi_cls_session {
 	 */
 	pid_t creator;
 	int state;
+	int target_state;			/* session target bind state */
 	int sid;				/* session id */
 	void *dd_data;				/* LLD private data */
 	struct device dev;	/* sysfs transport/container device */
@@ -463,7 +472,6 @@ extern struct iscsi_iface *iscsi_create_iface(struct Scsi_Host *shost,
 					      uint32_t iface_type,
 					      uint32_t iface_num, int dd_size);
 extern void iscsi_destroy_iface(struct iscsi_iface *iface);
-extern struct iscsi_iface *iscsi_lookup_iface(int handle);
 extern char *iscsi_get_port_speed_name(struct Scsi_Host *shost);
 extern char *iscsi_get_port_state_name(struct Scsi_Host *shost);
 extern int iscsi_is_session_dev(const struct device *dev);

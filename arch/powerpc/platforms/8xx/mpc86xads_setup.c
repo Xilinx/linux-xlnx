@@ -24,7 +24,6 @@
 #include <asm/time.h>
 #include <asm/8xx_immap.h>
 #include <asm/cpm1.h>
-#include <asm/fs_pd.h>
 #include <asm/udbg.h>
 
 #include "mpc86xads.h"
@@ -117,11 +116,6 @@ static void __init mpc86xads_setup_arch(void)
 	iounmap(bcsr_io);
 }
 
-static int __init mpc86xads_probe(void)
-{
-	return of_machine_is_compatible("fsl,mpc866ads");
-}
-
 static const struct of_device_id of_bus_ids[] __initconst = {
 	{ .name = "soc", },
 	{ .name = "cpm", },
@@ -139,7 +133,7 @@ machine_device_initcall(mpc86x_ads, declare_of_platform_devices);
 
 define_machine(mpc86x_ads) {
 	.name			= "MPC86x ADS",
-	.probe			= mpc86xads_probe,
+	.compatible		= "fsl,mpc866ads",
 	.setup_arch		= mpc86xads_setup_arch,
 	.init_IRQ		= mpc8xx_pic_init,
 	.get_irq		= mpc8xx_get_irq,

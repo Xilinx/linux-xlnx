@@ -652,9 +652,9 @@ static void silead_disable_regulator(void *arg)
 	regulator_bulk_disable(ARRAY_SIZE(data->regulators), data->regulators);
 }
 
-static int silead_ts_probe(struct i2c_client *client,
-			   const struct i2c_device_id *id)
+static int silead_ts_probe(struct i2c_client *client)
 {
+	const struct i2c_device_id *id = i2c_client_get_device_id(client);
 	struct silead_ts_data *data;
 	struct device *dev = &client->dev;
 	int error;
@@ -706,11 +706,9 @@ static int silead_ts_probe(struct i2c_client *client,
 
 	/* Power GPIO pin */
 	data->gpio_power = devm_gpiod_get_optional(dev, "power", GPIOD_OUT_LOW);
-	if (IS_ERR(data->gpio_power)) {
-		if (PTR_ERR(data->gpio_power) != -EPROBE_DEFER)
-			dev_err(dev, "Shutdown GPIO request failed\n");
-		return PTR_ERR(data->gpio_power);
-	}
+	if (IS_ERR(data->gpio_power))
+		return dev_err_probe(dev, PTR_ERR(data->gpio_power),
+				     "Shutdown GPIO request failed\n");
 
 	error = silead_ts_setup(client);
 	if (error)
@@ -736,7 +734,7 @@ static int silead_ts_probe(struct i2c_client *client,
 	return 0;
 }
 
-static int __maybe_unused silead_ts_suspend(struct device *dev)
+static int silead_ts_suspend(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 
@@ -745,7 +743,7 @@ static int __maybe_unused silead_ts_suspend(struct device *dev)
 	return 0;
 }
 
-static int __maybe_unused silead_ts_resume(struct device *dev)
+static int silead_ts_resume(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	bool second_try = false;
@@ -784,7 +782,7 @@ static int __maybe_unused silead_ts_resume(struct device *dev)
 	return 0;
 }
 
-static SIMPLE_DEV_PM_OPS(silead_ts_pm, silead_ts_suspend, silead_ts_resume);
+static DEFINE_SIMPLE_DEV_PM_OPS(silead_ts_pm, silead_ts_suspend, silead_ts_resume);
 
 static const struct i2c_device_id silead_ts_id[] = {
 	{ "gsl1680", 0 },
@@ -832,7 +830,7 @@ static struct i2c_driver silead_ts_driver = {
 		.name = SILEAD_TS_NAME,
 		.acpi_match_table = ACPI_PTR(silead_ts_acpi_match),
 		.of_match_table = of_match_ptr(silead_ts_of_match),
-		.pm = &silead_ts_pm,
+		.pm = pm_sleep_ptr(&silead_ts_pm),
 	},
 };
 module_i2c_driver(silead_ts_driver);

@@ -2,15 +2,14 @@
 /*
  * Access vector cache interface for the security server.
  *
- * Author : Stephen Smalley, <sds@tycho.nsa.gov>
+ * Author : Stephen Smalley, <stephen.smalley.work@gmail.com>
  */
 #ifndef _SELINUX_AVC_SS_H_
 #define _SELINUX_AVC_SS_H_
 
 #include <linux/types.h>
 
-struct selinux_avc;
-int avc_ss_reset(struct selinux_avc *avc, u32 seqno);
+int avc_ss_reset(u32 seqno);
 
 /* Class/perm mapping support */
 struct security_class_mapping {

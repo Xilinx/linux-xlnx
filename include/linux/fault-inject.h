@@ -6,6 +6,7 @@
 
 #include <linux/types.h>
 #include <linux/debugfs.h>
+#include <linux/configfs.h>
 #include <linux/ratelimit.h>
 #include <linux/atomic.h>
 
@@ -65,11 +66,41 @@ static inline struct dentry *fault_create_debugfs_attr(const char *name,
 
 #endif /* CONFIG_FAULT_INJECTION_DEBUG_FS */
 
+#ifdef CONFIG_FAULT_INJECTION_CONFIGFS
+
+struct fault_config {
+	struct fault_attr attr;
+	struct config_group group;
+};
+
+void fault_config_init(struct fault_config *config, const char *name);
+
+#else /* CONFIG_FAULT_INJECTION_CONFIGFS */
+
+struct fault_config {
+};
+
+static inline void fault_config_init(struct fault_config *config,
+			const char *name)
+{
+}
+
+#endif /* CONFIG_FAULT_INJECTION_CONFIGFS */
+
 #endif /* CONFIG_FAULT_INJECTION */
 
 struct kmem_cache;
 
 bool should_fail_alloc_page(gfp_t gfp_mask, unsigned int order);
+
+#ifdef CONFIG_FAIL_PAGE_ALLOC
+bool __should_fail_alloc_page(gfp_t gfp_mask, unsigned int order);
+#else
+static inline bool __should_fail_alloc_page(gfp_t gfp_mask, unsigned int order)
+{
+	return false;
+}
+#endif /* CONFIG_FAIL_PAGE_ALLOC */
 
 int should_failslab(struct kmem_cache *s, gfp_t gfpflags);
 #ifdef CONFIG_FAILSLAB

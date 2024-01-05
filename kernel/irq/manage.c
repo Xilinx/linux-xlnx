@@ -108,6 +108,16 @@ bool synchronize_hardirq(unsigned int irq)
 }
 EXPORT_SYMBOL(synchronize_hardirq);
 
+static void __synchronize_irq(struct irq_desc *desc)
+{
+	__synchronize_hardirq(desc, true);
+	/*
+	 * We made sure that no hardirq handler is running. Now verify that no
+	 * threaded handlers are active.
+	 */
+	wait_event(desc->wait_for_threads, !atomic_read(&desc->threads_active));
+}
+
 /**
  *	synchronize_irq - wait for pending IRQ handlers (on other CPUs)
  *	@irq: interrupt number to wait for
@@ -127,16 +137,8 @@ void synchronize_irq(unsigned int irq)
 {
 	struct irq_desc *desc = irq_to_desc(irq);
 
-	if (desc) {
-		__synchronize_hardirq(desc, true);
-		/*
-		 * We made sure that no hardirq handler is
-		 * running. Now verify that no threaded handlers are
-		 * active.
-		 */
-		wait_event(desc->wait_for_threads,
-			   !atomic_read(&desc->threads_active));
-	}
+	if (desc)
+		__synchronize_irq(desc);
 }
 EXPORT_SYMBOL(synchronize_irq);
 
@@ -189,9 +191,12 @@ void irq_set_thread_affinity(struct irq_desc *desc)
 {
 	struct irqaction *action;
 
-	for_each_action_of_desc(desc, action)
+	for_each_action_of_desc(desc, action) {
 		if (action->thread)
 			set_bit(IRQTF_AFFINITY, &action->thread_flags);
+		if (action->secondary && action->secondary->thread)
+			set_bit(IRQTF_AFFINITY, &action->secondary->thread_flags);
+	}
 }
 
 #ifdef CONFIG_GENERIC_IRQ_EFFECTIVE_AFF_MASK
@@ -321,7 +326,7 @@ static int irq_try_set_affinity(struct irq_data *data,
 }
 
 static bool irq_set_affinity_deactivated(struct irq_data *data,
-					 const struct cpumask *mask, bool force)
+					 const struct cpumask *mask)
 {
 	struct irq_desc *desc = irq_data_to_desc(data);
 
@@ -354,7 +359,7 @@ int irq_set_affinity_locked(struct irq_data *data, const struct cpumask *mask,
 	if (!chip || !chip->irq_set_affinity)
 		return -EINVAL;
 
-	if (irq_set_affinity_deactivated(data, mask, force))
+	if (irq_set_affinity_deactivated(data, mask))
 		return 0;
 
 	if (irq_can_move_pcntxt(data) && !irqd_is_setaffinity_pending(data)) {
@@ -723,10 +728,13 @@ EXPORT_SYMBOL(disable_irq_nosync);
  *	to complete before returning. If you use this function while
  *	holding a resource the IRQ handler may need you will deadlock.
  *
- *	This function may be called - with care - from IRQ context.
+ *	Can only be called from preemptible code as it might sleep when
+ *	an interrupt thread is associated to @irq.
+ *
  */
 void disable_irq(unsigned int irq)
 {
+	might_sleep();
 	if (!__disable_irq_nosync(irq))
 		synchronize_irq(irq);
 }
@@ -1210,7 +1218,7 @@ static irqreturn_t irq_thread_fn(struct irq_desc *desc,
 	return ret;
 }
 
-static void wake_threads_waitq(struct irq_desc *desc)
+void wake_threads_waitq(struct irq_desc *desc)
 {
 	if (atomic_dec_and_test(&desc->threads_active))
 		wake_up(&desc->wait_for_threads);
@@ -1938,7 +1946,7 @@ static struct irqaction *__free_irq(struct irq_desc *desc, void *dev_id)
 	 * supports it also make sure that there is no (not yet serviced)
 	 * interrupt in flight at the hardware level.
 	 */
-	__synchronize_hardirq(desc, true);
+	__synchronize_irq(desc);
 
 #ifdef CONFIG_DEBUG_SHIRQ
 	/*

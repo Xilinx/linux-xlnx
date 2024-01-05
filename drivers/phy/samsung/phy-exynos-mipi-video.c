@@ -11,9 +11,8 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/of.h>
-#include <linux/of_address.h>
-#include <linux/of_device.h>
 #include <linux/phy/phy.h>
+#include <linux/platform_device.h>
 #include <linux/regmap.h>
 #include <linux/spinlock.h>
 #include <linux/soc/samsung/exynos-regs-pmu.h>
@@ -298,7 +297,7 @@ static int exynos_mipi_video_phy_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct device_node *np = dev->of_node;
 	struct phy_provider *phy_provider;
-	unsigned int i;
+	unsigned int i = 0;
 
 	phy_dev = of_device_get_match_data(dev);
 	if (!phy_dev)
@@ -308,7 +307,10 @@ static int exynos_mipi_video_phy_probe(struct platform_device *pdev)
 	if (!state)
 		return -ENOMEM;
 
-	for (i = 0; i < phy_dev->num_regmaps; i++) {
+	state->regmaps[i] = syscon_node_to_regmap(dev->parent->of_node);
+	if (!IS_ERR(state->regmaps[i]))
+		i++;
+	for (; i < phy_dev->num_regmaps; i++) {
 		state->regmaps[i] = syscon_regmap_lookup_by_phandle(np,
 						phy_dev->regmap_names[i]);
 		if (IS_ERR(state->regmaps[i]))

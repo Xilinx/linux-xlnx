@@ -51,9 +51,9 @@ int main(int ac, char **argv)
 	struct bpf_program *prog;
 	struct bpf_object *obj;
 	char filename[256];
-	int map_fd, i, j = 0;
+	int map_fd, j = 0;
 
-	snprintf(filename, sizeof(filename), "%s_kern.o", argv[0]);
+	snprintf(filename, sizeof(filename), "%s.bpf.o", argv[0]);
 	obj = bpf_object__open_file(filename, NULL);
 	if (libbpf_get_error(obj)) {
 		fprintf(stderr, "ERROR: opening BPF object file failed\n");
@@ -82,7 +82,7 @@ int main(int ac, char **argv)
 		j++;
 	}
 
-	for (i = 0; ; i++) {
+	while (1) {
 		print_old_objects(map_fd);
 		sleep(1);
 	}

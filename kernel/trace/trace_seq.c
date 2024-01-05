@@ -131,6 +131,7 @@ EXPORT_SYMBOL_GPL(trace_seq_bitmask);
  * trace_seq_vprintf - sequence printing of trace information
  * @s: trace sequence descriptor
  * @fmt: printf format string
+ * @args: Arguments for the format string
  *
  * The tracer may use either sequence operations or its own
  * copy to user routines. To simplify formatting of a trace
@@ -403,3 +404,26 @@ int trace_seq_hex_dump(struct trace_seq *s, const char *prefix_str,
 	return 1;
 }
 EXPORT_SYMBOL(trace_seq_hex_dump);
+
+/*
+ * trace_seq_acquire - acquire seq buffer with size len
+ * @s: trace sequence descriptor
+ * @len: size of buffer to be acquired
+ *
+ * acquire buffer with size of @len from trace_seq for output usage,
+ * user can fill string into that buffer.
+ *
+ * Returns start address of acquired buffer.
+ *
+ * it allow multiple usage in one trace output function call.
+ */
+char *trace_seq_acquire(struct trace_seq *s, unsigned int len)
+{
+	char *ret = trace_seq_buffer_ptr(s);
+
+	if (!WARN_ON_ONCE(seq_buf_buffer_left(&s->seq) < len))
+		seq_buf_commit(&s->seq, len);
+
+	return ret;
+}
+EXPORT_SYMBOL(trace_seq_acquire);

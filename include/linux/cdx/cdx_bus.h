@@ -16,15 +16,17 @@
 #define MAX_CDX_DEV_RESOURCES	4
 #define CDX_CONTROLLER_ID_SHIFT 4
 #define CDX_BUS_NUM_MASK 0xF
+#define CDX_CONTROLLER_ID_MASK	0xF0
+#define MAX_CDX_BUSES			(CDX_BUS_NUM_MASK + 1)
 
 /* Forward declaration for CDX controller */
 struct cdx_controller;
 
 enum {
 	CDX_DEV_MSI_CONF,
-	CDX_DEV_MSI_ENABLE,
 	CDX_DEV_BUS_MASTER_CONF,
 	CDX_DEV_RESET_CONF,
+	CDX_DEV_MSI_ENABLE,
 };
 
 struct cdx_msi_config {
@@ -35,20 +37,33 @@ struct cdx_msi_config {
 
 struct cdx_device_config {
 	u8 type;
-	union {
-		struct cdx_msi_config msi;
-		bool msi_enable;
-		bool bme;
-	};
+	struct cdx_msi_config msi;
+	bool bus_master_enable;
+	bool msi_enable;
 };
 
-typedef int (*cdx_bus_enable_cb)(struct cdx_controller *cdx, bool enable);
+typedef int (*cdx_bus_enable_cb)(struct cdx_controller *cdx, u8 bus_num);
+
+typedef int (*cdx_bus_disable_cb)(struct cdx_controller *cdx, u8 bus_num);
 
 typedef int (*cdx_scan_cb)(struct cdx_controller *cdx);
 
 typedef int (*cdx_dev_configure_cb)(struct cdx_controller *cdx,
 				    u8 bus_num, u8 dev_num,
 				    struct cdx_device_config *dev_config);
+
+/**
+ * CDX_DEVICE - macro used to describe a specific CDX device
+ * @vend: the 16 bit CDX Vendor ID
+ * @dev: the 16 bit CDX Device ID
+ *
+ * This macro is used to create a struct cdx_device_id that matches a
+ * specific device. The subvendor and subdevice fields will be set to
+ * CDX_ANY_ID.
+ */
+#define CDX_DEVICE(vend, dev) \
+	.vendor = (vend), .device = (dev), \
+	.subvendor = CDX_ANY_ID, .subdevice = CDX_ANY_ID
 
 /**
  * CDX_DEVICE_DRIVER_OVERRIDE - macro used to describe a CDX device with
@@ -58,20 +73,24 @@ typedef int (*cdx_dev_configure_cb)(struct cdx_controller *cdx,
  * @driver_override: the 32 bit CDX Device override_only
  *
  * This macro is used to create a struct cdx_device_id that matches only a
- * driver_override device.
+ * driver_override device. The subvendor and subdevice fields will be set to
+ * CDX_ANY_ID.
  */
 #define CDX_DEVICE_DRIVER_OVERRIDE(vend, dev, driver_override) \
-	.vendor = (vend), .device = (dev), .override_only = (driver_override)
+	.vendor = (vend), .device = (dev), .subvendor = CDX_ANY_ID,\
+	.subdevice = CDX_ANY_ID, .override_only = (driver_override)
 
 /**
  * struct cdx_ops - Callbacks supported by CDX controller.
- * @enable: enable or disable bus on the controller
+ * @bus_enable: enable bus on the controller
+ * @bus_disable: disable bus on the controller
  * @scan: scan the devices on the controller
  * @dev_configure: configuration like reset, master_enable,
  *		   msi_config etc for a CDX device
  */
 struct cdx_ops {
-	cdx_bus_enable_cb enable;
+	cdx_bus_enable_cb bus_enable;
+	cdx_bus_disable_cb bus_disable;
 	cdx_scan_cb scan;
 	cdx_dev_configure_cb dev_configure;
 };
@@ -82,7 +101,8 @@ struct cdx_ops {
  * @priv: private data
  * @msi_domain: MSI domain
  * @id: Controller ID
- * @enabled: state enabled/disabled
+ * @controller_registered: controller registered with bus
+ * @bus_state: state of the buses(enabled/disabled)
  * @ops: CDX controller ops
  */
 struct cdx_controller {
@@ -90,7 +110,8 @@ struct cdx_controller {
 	void *priv;
 	struct irq_domain *msi_domain;
 	u32 id;
-	bool enabled;
+	bool controller_registered;
+	DECLARE_BITMAP(bus_state, MAX_CDX_BUSES);
 	struct cdx_ops *ops;
 };
 
@@ -112,10 +133,13 @@ struct cdx_controller {
  * @dma_mask: Default DMA mask
  * @flags: CDX device flags
  * @req_id: Requestor ID associated with CDX device
+ * @msi_dev_id: MSI Device ID associated with CDX device
  * @num_msi: Number of MSI's supported by the device
  * @driver_override: driver name to force a match; do not set directly,
  *                   because core frees it; use driver_set_override() to
  *                   set or clear it.
+ * @irqchip_lock: lock to synchronize irq/msi configuration
+ * @msi_write_pending: MSI write pending for this device
  */
 struct cdx_device {
 	struct device dev;
@@ -134,18 +158,16 @@ struct cdx_device {
 	u64 dma_mask;
 	u16 flags;
 	u32 req_id;
+	u32 msi_dev_id;
 	u32 num_msi;
 	const char *driver_override;
-	struct mutex irqchip_lock;
+	struct mutex irqchip_lock; /* Serialize write msi configuration */
 	bool msi_write_pending;
 };
 
 #define to_cdx_device(_dev) \
 	container_of(_dev, struct cdx_device, dev)
 
-/* these helpers provide future and backwards compatibility
- * for accessing popular CDX mem region info
- */
 #define cdx_resource_start(dev, num)	((dev)->res[(num)].start)
 #define cdx_resource_end(dev, num)	((dev)->res[(num)].end)
 #define cdx_resource_flags(dev, num)	((dev)->res[(num)].flags)
@@ -221,7 +243,7 @@ int cdx_msi_domain_alloc_irqs(struct device *dev, unsigned int irq_count);
 /**
  * cdx_msi_domain_free_irqs - Free MSI's for CDX device
  */
-#define cdx_msi_domain_free_irqs msi_domain_free_irqs
+#define cdx_msi_domain_free_irqs msi_domain_free_irqs_all
 
 /**
  * cdx_dev_reset - Reset CDX device
@@ -230,6 +252,22 @@ int cdx_msi_domain_alloc_irqs(struct device *dev, unsigned int irq_count);
  * Return: 0 for success, -errno on failure
  */
 int cdx_dev_reset(struct device *dev);
+
+/**
+ * cdx_set_master - enables bus-mastering for CDX device
+ * @cdx_dev: the CDX device to enable
+ *
+ * Return: 0 for success, -errno on failure
+ */
+int cdx_set_master(struct cdx_device *cdx_dev);
+
+/**
+ * cdx_clear_master - disables bus-mastering for CDX device
+ * @cdx_dev: the CDX device to disable
+ *
+ * Return: 0 for success, -errno on failure
+ */
+int cdx_clear_master(struct cdx_device *cdx_dev);
 
 /**
  * cdx_enable_msi - Enable MSI for the CDX device.
@@ -244,19 +282,5 @@ int cdx_enable_msi(struct cdx_device *cdx_dev);
  * @cdx_dev: device pointer
  */
 void cdx_disable_msi(struct cdx_device *cdx_dev);
-
-/**
- * cdx_set_master - enables bus-mastering for CDX device
- * @cdx_dev: the CDX device to enable
- *
- * Return: 0 for success, -errno on failure
- */
-int cdx_set_master(struct cdx_device *cdx_dev);
-
-/**
- * cdx_clear_master - disables bus-mastering for CDX device
- * @cdx_dev: the CDX device to disable
- */
-void cdx_clear_master(struct cdx_device *cdx_dev);
 
 #endif /* _CDX_BUS_H_ */

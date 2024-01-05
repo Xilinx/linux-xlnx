@@ -18,11 +18,11 @@
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/pci.h>
-#if defined(CONFIG_OF)
+#include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
-#include <linux/of_platform.h>
-#endif
+#include <linux/platform_device.h>
+
 #include "mb862xxfb.h"
 #include "mb862xx_reg.h"
 
@@ -112,8 +112,7 @@ static int mb862xxfb_check_var(struct fb_var_screeninfo *var,
 {
 	unsigned long tmp;
 
-	if (fbi->dev)
-		dev_dbg(fbi->dev, "%s\n", __func__);
+	fb_dbg(fbi, "%s\n", __func__);
 
 	/* check if these values fit into the registers */
 	if (var->hsync_len > 255 || var->vsync_len > 255)
@@ -290,7 +289,7 @@ static int mb862xxfb_blank(int mode, struct fb_info *fbi)
 	struct mb862xxfb_par  *par = fbi->par;
 	unsigned long reg;
 
-	dev_dbg(fbi->dev, "blank mode=%d\n", mode);
+	fb_dbg(fbi, "blank mode=%d\n", mode);
 
 	switch (mode) {
 	case FB_BLANK_POWERDOWN:
@@ -408,14 +407,12 @@ static int mb862xxfb_ioctl(struct fb_info *fbi, unsigned int cmd,
 /* framebuffer ops */
 static struct fb_ops mb862xxfb_ops = {
 	.owner		= THIS_MODULE,
+	FB_DEFAULT_IOMEM_OPS,
 	.fb_check_var	= mb862xxfb_check_var,
 	.fb_set_par	= mb862xxfb_set_par,
 	.fb_setcolreg	= mb862xxfb_setcolreg,
 	.fb_blank	= mb862xxfb_blank,
 	.fb_pan_display	= mb862xxfb_pan,
-	.fb_fillrect	= cfb_fillrect,
-	.fb_copyarea	= cfb_copyarea,
-	.fb_imageblit	= cfb_imageblit,
 	.fb_ioctl	= mb862xxfb_ioctl,
 };
 
@@ -502,7 +499,7 @@ static int mb862xxfb_init_fbinfo(struct fb_info *fbi)
 	fbi->var.accel_flags = 0;
 	fbi->var.vmode = FB_VMODE_NONINTERLACED;
 	fbi->var.activate = FB_ACTIVATE_NOW;
-	fbi->flags = FBINFO_DEFAULT |
+	fbi->flags =
 #ifdef __BIG_ENDIAN
 		     FBINFO_FOREIGN_ENDIAN |
 #endif
@@ -784,14 +781,14 @@ fbrel:
 	return ret;
 }
 
-static int of_platform_mb862xx_remove(struct platform_device *ofdev)
+static void of_platform_mb862xx_remove(struct platform_device *ofdev)
 {
 	struct fb_info *fbi = dev_get_drvdata(&ofdev->dev);
 	struct mb862xxfb_par *par = fbi->par;
 	resource_size_t res_size = resource_size(par->res);
 	unsigned long reg;
 
-	dev_dbg(fbi->dev, "%s release\n", fbi->fix.id);
+	fb_dbg(fbi, "%s release\n", fbi->fix.id);
 
 	/* display off */
 	reg = inreg(disp, GC_DCM1);
@@ -814,7 +811,6 @@ static int of_platform_mb862xx_remove(struct platform_device *ofdev)
 
 	release_mem_region(par->res->start, res_size);
 	framebuffer_release(fbi);
-	return 0;
 }
 
 /*
@@ -838,7 +834,7 @@ static struct platform_driver of_platform_mb862xxfb_driver = {
 		.of_match_table = of_platform_mb862xx_tbl,
 	},
 	.probe		= of_platform_mb862xx_probe,
-	.remove		= of_platform_mb862xx_remove,
+	.remove_new	= of_platform_mb862xx_remove,
 };
 #endif
 
@@ -1139,7 +1135,7 @@ static void mb862xx_pci_remove(struct pci_dev *pdev)
 	struct mb862xxfb_par *par = fbi->par;
 	unsigned long reg;
 
-	dev_dbg(fbi->dev, "%s release\n", fbi->fix.id);
+	fb_dbg(fbi, "%s release\n", fbi->fix.id);
 
 	/* display off */
 	reg = inreg(disp, GC_DCM1);
@@ -1180,6 +1176,9 @@ static struct pci_driver mb862xxfb_pci_driver = {
 static int mb862xxfb_init(void)
 {
 	int ret = -ENODEV;
+
+	if (fb_modesetting_disabled(DRV_NAME))
+		return -ENODEV;
 
 #if defined(CONFIG_FB_MB862XX_LIME)
 	ret = platform_driver_register(&of_platform_mb862xxfb_driver);

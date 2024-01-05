@@ -4,11 +4,12 @@
  *  Copyright (C) 2012 John Crispin <john@phrozen.org>
  */
 
+#include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/types.h>
-#include <linux/of_platform.h>
+#include <linux/of.h>
 #include <linux/mutex.h>
 #include <linux/gpio/driver.h>
 #include <linux/io.h>
@@ -292,7 +293,7 @@ static int xway_stp_probe(struct platform_device *pdev)
 	}
 
 	/* check which edge trigger we should use, default to a falling edge */
-	if (!of_find_property(pdev->dev.of_node, "lantiq,rising", NULL))
+	if (!of_property_read_bool(pdev->dev.of_node, "lantiq,rising"))
 		chip->edge = XWAY_STP_FALLING;
 
 	clk = devm_clk_get(&pdev->dev, NULL);

@@ -18,6 +18,7 @@
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
+#include <sound/sdw.h>
 #include <sound/soc-dapm.h>
 #include <sound/initval.h>
 #include <sound/tlv.h>
@@ -294,7 +295,7 @@ static void rt711_sdca_jack_detect_handler(struct work_struct *work)
 	if (!rt711->hs_jack)
 		return;
 
-	if (!rt711->component->card || !rt711->component->card->instantiated)
+	if (!snd_soc_card_is_instantiated(rt711->component->card))
 		return;
 
 	/* SDW_SCP_SDCA_INT_SDCA_0 is used for jack detection */
@@ -462,6 +463,21 @@ static void rt711_sdca_jack_init(struct rt711_sdca_priv *rt711)
 				RT711_HP_JD_FINAL_RESULT_CTL_JD12,
 				RT711_HP_JD_FINAL_RESULT_CTL_JD12);
 			break;
+		case RT711_JD2_100K:
+			rt711_sdca_index_write(rt711, RT711_VENDOR_REG,
+				RT711_COMBO_JACK_AUTO_CTL3, 0xa47e);
+			rt711_sdca_index_update_bits(rt711, RT711_VENDOR_REG,
+				RT711_JD_CTL1, RT711_JD2_DIGITAL_MODE_SEL,
+				RT711_JD2_DIGITAL_MODE_SEL);
+			rt711_sdca_index_update_bits(rt711, RT711_VENDOR_REG,
+				RT711_JD_CTL2, RT711_JD2_2PORT_200K_DECODE_HP |
+				RT711_JD2_2PORT_100K_DECODE_MASK | RT711_HP_JD_SEL_JD2,
+				RT711_JD2_2PORT_100K_DECODE_HP | RT711_HP_JD_SEL_JD2);
+			rt711_sdca_index_update_bits(rt711, RT711_VENDOR_REG,
+				RT711_CC_DET1,
+				RT711_HP_JD_FINAL_RESULT_CTL_JD12 | RT711_POW_CC1_AGPI,
+				RT711_HP_JD_FINAL_RESULT_CTL_JD12 | RT711_POW_CC1_AGPI_OFF);
+			break;
 		default:
 			dev_warn(rt711->component->dev, "Wrong JD source\n");
 			break;
@@ -490,6 +506,10 @@ static int rt711_sdca_set_jack_detect(struct snd_soc_component *component,
 	int ret;
 
 	rt711->hs_jack = hs_jack;
+
+	/* we can only resume if the device was initialized at least once */
+	if (!rt711->first_hw_init)
+		return 0;
 
 	ret = pm_runtime_resume_and_get(component->dev);
 	if (ret < 0) {
@@ -1199,6 +1219,9 @@ static int rt711_sdca_probe(struct snd_soc_component *component)
 	rt711_sdca_parse_dt(rt711, &rt711->slave->dev);
 	rt711->component = component;
 
+	if (!rt711->first_hw_init)
+		return 0;
+
 	ret = pm_runtime_resume(component->dev);
 	if (ret < 0 && ret != -EACCES)
 		return ret;
@@ -1221,22 +1244,7 @@ static const struct snd_soc_component_driver soc_sdca_dev_rt711 = {
 static int rt711_sdca_set_sdw_stream(struct snd_soc_dai *dai, void *sdw_stream,
 				int direction)
 {
-	struct sdw_stream_data *stream;
-
-	if (!sdw_stream)
-		return 0;
-
-	stream = kzalloc(sizeof(*stream), GFP_KERNEL);
-	if (!stream)
-		return -ENOMEM;
-
-	stream->sdw_stream = sdw_stream;
-
-	/* Use tx_mask or rx_mask to configure stream tag and set dma_data */
-	if (direction == SNDRV_PCM_STREAM_PLAYBACK)
-		dai->playback_dma_data = stream;
-	else
-		dai->capture_dma_data = stream;
+	snd_soc_dai_dma_data_set(dai, direction, sdw_stream);
 
 	return 0;
 }
@@ -1244,11 +1252,7 @@ static int rt711_sdca_set_sdw_stream(struct snd_soc_dai *dai, void *sdw_stream,
 static void rt711_sdca_shutdown(struct snd_pcm_substream *substream,
 				struct snd_soc_dai *dai)
 {
-	struct sdw_stream_data *stream;
-
-	stream = snd_soc_dai_get_dma_data(dai, substream);
 	snd_soc_dai_set_dma_data(dai, substream, NULL);
-	kfree(stream);
 }
 
 static int rt711_sdca_pcm_hw_params(struct snd_pcm_substream *substream,
@@ -1257,47 +1261,37 @@ static int rt711_sdca_pcm_hw_params(struct snd_pcm_substream *substream,
 {
 	struct snd_soc_component *component = dai->component;
 	struct rt711_sdca_priv *rt711 = snd_soc_component_get_drvdata(component);
-	struct sdw_stream_config stream_config;
-	struct sdw_port_config port_config;
-	enum sdw_data_direction direction;
-	struct sdw_stream_data *stream;
-	int retval, port, num_channels;
+	struct sdw_stream_config stream_config = {0};
+	struct sdw_port_config port_config = {0};
+	struct sdw_stream_runtime *sdw_stream;
+	int retval;
 	unsigned int sampling_rate;
 
 	dev_dbg(dai->dev, "%s %s", __func__, dai->name);
-	stream = snd_soc_dai_get_dma_data(dai, substream);
+	sdw_stream = snd_soc_dai_get_dma_data(dai, substream);
 
-	if (!stream)
+	if (!sdw_stream)
 		return -EINVAL;
 
 	if (!rt711->slave)
 		return -EINVAL;
 
 	/* SoundWire specific configuration */
+	snd_sdw_params_to_config(substream, params, &stream_config, &port_config);
+
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		direction = SDW_DATA_DIR_RX;
-		port = 3;
+		port_config.num = 3;
 	} else {
-		direction = SDW_DATA_DIR_TX;
 		if (dai->id == RT711_AIF1)
-			port = 2;
+			port_config.num = 2;
 		else if (dai->id == RT711_AIF2)
-			port = 4;
+			port_config.num = 4;
 		else
 			return -EINVAL;
 	}
 
-	stream_config.frame_rate = params_rate(params);
-	stream_config.ch_count = params_channels(params);
-	stream_config.bps = snd_pcm_format_width(params_format(params));
-	stream_config.direction = direction;
-
-	num_channels = params_channels(params);
-	port_config.ch_mask = GENMASK(num_channels - 1, 0);
-	port_config.num = port;
-
 	retval = sdw_stream_add_slave(rt711->slave, &stream_config,
-					&port_config, 1, stream->sdw_stream);
+					&port_config, 1, sdw_stream);
 	if (retval) {
 		dev_err(dai->dev, "Unable to configure port\n");
 		return retval;
@@ -1348,13 +1342,13 @@ static int rt711_sdca_pcm_hw_free(struct snd_pcm_substream *substream,
 {
 	struct snd_soc_component *component = dai->component;
 	struct rt711_sdca_priv *rt711 = snd_soc_component_get_drvdata(component);
-	struct sdw_stream_data *stream =
+	struct sdw_stream_runtime *sdw_stream =
 		snd_soc_dai_get_dma_data(dai, substream);
 
 	if (!rt711->slave)
 		return -EINVAL;
 
-	sdw_stream_remove_slave(rt711->slave, stream->sdw_stream);
+	sdw_stream_remove_slave(rt711->slave, sdw_stream);
 	return 0;
 }
 
@@ -1419,6 +1413,9 @@ int rt711_sdca_init(struct device *dev, struct regmap *regmap,
 	rt711->regmap = regmap;
 	rt711->mbq_regmap = mbq_regmap;
 
+	regcache_cache_only(rt711->regmap, true);
+	regcache_cache_only(rt711->mbq_regmap, true);
+
 	mutex_init(&rt711->calibrate_mutex);
 	mutex_init(&rt711->disable_irq_lock);
 
@@ -1444,9 +1441,27 @@ int rt711_sdca_init(struct device *dev, struct regmap *regmap,
 			rt711_sdca_dai,
 			ARRAY_SIZE(rt711_sdca_dai));
 
-	dev_dbg(&slave->dev, "%s\n", __func__);
+	if (ret < 0)
+		return ret;
 
-	return ret;
+	/* set autosuspend parameters */
+	pm_runtime_set_autosuspend_delay(dev, 3000);
+	pm_runtime_use_autosuspend(dev);
+
+	/* make sure the device does not suspend immediately */
+	pm_runtime_mark_last_busy(dev);
+
+	pm_runtime_enable(dev);
+
+	/* important note: the device is NOT tagged as 'active' and will remain
+	 * 'suspended' until the hardware is enumerated/initialized. This is required
+	 * to make sure the ASoC framework use of pm_runtime_get_sync() does not silently
+	 * fail with -EACCESS because of race conditions between card creation and enumeration
+	 */
+
+	dev_dbg(dev, "%s\n", __func__);
+
+	return 0;
 }
 
 static void rt711_sdca_vd0_io_init(struct rt711_sdca_priv *rt711)
@@ -1513,27 +1528,19 @@ int rt711_sdca_io_init(struct device *dev, struct sdw_slave *slave)
 	if (rt711->hw_init)
 		return 0;
 
+	regcache_cache_only(rt711->regmap, false);
+	regcache_cache_only(rt711->mbq_regmap, false);
+
 	if (rt711->first_hw_init) {
-		regcache_cache_only(rt711->regmap, false);
 		regcache_cache_bypass(rt711->regmap, true);
-		regcache_cache_only(rt711->mbq_regmap, false);
 		regcache_cache_bypass(rt711->mbq_regmap, true);
 	} else {
 		/*
-		 * PM runtime is only enabled when a Slave reports as Attached
+		 * PM runtime status is marked as 'active' only when a Slave reports as Attached
 		 */
-
-		/* set autosuspend parameters */
-		pm_runtime_set_autosuspend_delay(&slave->dev, 3000);
-		pm_runtime_use_autosuspend(&slave->dev);
 
 		/* update count of parent 'active' children */
 		pm_runtime_set_active(&slave->dev);
-
-		/* make sure the device does not suspend immediately */
-		pm_runtime_mark_last_busy(&slave->dev);
-
-		pm_runtime_enable(&slave->dev);
 	}
 
 	pm_runtime_get_noresume(&slave->dev);

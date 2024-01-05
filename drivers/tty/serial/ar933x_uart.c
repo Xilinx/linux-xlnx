@@ -425,8 +425,7 @@ static void ar933x_uart_tx_chars(struct ar933x_uart_port *up)
 
 		ar933x_uart_putc(up, xmit->buf[xmit->tail]);
 
-		xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
-		up->port.icount.tx++;
+		uart_xmit_advance(&up->port, 1);
 	} while (--count > 0);
 
 	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
@@ -750,8 +749,7 @@ static int ar933x_uart_probe(struct platform_device *pdev)
 
 	port = &up->port;
 
-	mem_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	port->membase = devm_ioremap_resource(&pdev->dev, mem_res);
+	port->membase = devm_platform_get_and_ioremap_resource(pdev, 0, &mem_res);
 	if (IS_ERR(port->membase))
 		return PTR_ERR(port->membase);
 

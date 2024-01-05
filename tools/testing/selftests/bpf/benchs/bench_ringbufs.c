@@ -96,7 +96,7 @@ static inline void bufs_trigger_batch(void)
 static void bufs_validate(void)
 {
 	if (env.consumer_cnt != 1) {
-		fprintf(stderr, "rb-libbpf benchmark doesn't support multi-consumer!\n");
+		fprintf(stderr, "rb-libbpf benchmark needs one consumer!\n");
 		exit(1);
 	}
 
@@ -399,7 +399,7 @@ static void perfbuf_libbpf_setup(void)
 	ctx->skel = perfbuf_setup_skeleton();
 
 	memset(&attr, 0, sizeof(attr));
-	attr.config = PERF_COUNT_SW_BPF_OUTPUT,
+	attr.config = PERF_COUNT_SW_BPF_OUTPUT;
 	attr.type = PERF_TYPE_SOFTWARE;
 	attr.sample_type = PERF_SAMPLE_RAW;
 	/* notify only every Nth sample */
@@ -518,6 +518,7 @@ static void *perfbuf_custom_consumer(void *input)
 
 const struct bench bench_rb_libbpf = {
 	.name = "rb-libbpf",
+	.argp = &bench_ringbufs_argp,
 	.validate = bufs_validate,
 	.setup = ringbuf_libbpf_setup,
 	.producer_thread = bufs_sample_producer,
@@ -529,6 +530,7 @@ const struct bench bench_rb_libbpf = {
 
 const struct bench bench_rb_custom = {
 	.name = "rb-custom",
+	.argp = &bench_ringbufs_argp,
 	.validate = bufs_validate,
 	.setup = ringbuf_custom_setup,
 	.producer_thread = bufs_sample_producer,
@@ -540,6 +542,7 @@ const struct bench bench_rb_custom = {
 
 const struct bench bench_pb_libbpf = {
 	.name = "pb-libbpf",
+	.argp = &bench_ringbufs_argp,
 	.validate = bufs_validate,
 	.setup = perfbuf_libbpf_setup,
 	.producer_thread = bufs_sample_producer,
@@ -551,6 +554,7 @@ const struct bench bench_pb_libbpf = {
 
 const struct bench bench_pb_custom = {
 	.name = "pb-custom",
+	.argp = &bench_ringbufs_argp,
 	.validate = bufs_validate,
 	.setup = perfbuf_libbpf_setup,
 	.producer_thread = bufs_sample_producer,

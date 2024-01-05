@@ -34,6 +34,7 @@
 #include "xfs_health.h"
 #include "xfs_trace.h"
 #include "xfs_ag.h"
+#include "scrub/stats.h"
 
 static DEFINE_MUTEX(xfs_uuid_table_mutex);
 static int xfs_uuid_table_size;
@@ -538,6 +539,20 @@ xfs_check_summary_counts(
 	return 0;
 }
 
+static void
+xfs_unmount_check(
+	struct xfs_mount	*mp)
+{
+	if (xfs_is_shutdown(mp))
+		return;
+
+	if (percpu_counter_sum(&mp->m_ifree) >
+			percpu_counter_sum(&mp->m_icount)) {
+		xfs_alert(mp, "ifree/icount mismatch at unmount");
+		xfs_fs_mark_sick(mp, XFS_SICK_FS_COUNTERS);
+	}
+}
+
 /*
  * Flush and reclaim dirty inodes in preparation for unmount. Inodes and
  * internal inode structures can be sitting in the CIL and AIL at this point,
@@ -702,9 +717,11 @@ xfs_mountfs(
 	if (error)
 		goto out_remove_sysfs;
 
+	xchk_stats_register(mp->m_scrub_stats, mp->m_debugfs);
+
 	error = xfs_error_sysfs_init(mp);
 	if (error)
-		goto out_del_stats;
+		goto out_remove_scrub_stats;
 
 	error = xfs_errortag_init(mp);
 	if (error)
@@ -1019,7 +1036,8 @@ xfs_mountfs(
 	xfs_errortag_del(mp);
  out_remove_error_sysfs:
 	xfs_error_sysfs_del(mp);
- out_del_stats:
+ out_remove_scrub_stats:
+	xchk_stats_unregister(mp->m_scrub_stats);
 	xfs_sysfs_del(&mp->m_stats.xs_kobj);
  out_remove_sysfs:
 	xfs_sysfs_del(&mp->m_kobj);
@@ -1077,6 +1095,7 @@ xfs_unmountfs(
 	if (error)
 		xfs_warn(mp, "Unable to free reserved block pool. "
 				"Freespace may not be correct on next mount.");
+	xfs_unmount_check(mp);
 
 	xfs_log_unmount(mp);
 	xfs_da_unmount(mp);
@@ -1090,6 +1109,7 @@ xfs_unmountfs(
 
 	xfs_errortag_del(mp);
 	xfs_error_sysfs_del(mp);
+	xchk_stats_unregister(mp->m_scrub_stats);
 	xfs_sysfs_del(&mp->m_stats.xs_kobj);
 	xfs_sysfs_del(&mp->m_kobj);
 }

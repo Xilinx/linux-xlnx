@@ -4,7 +4,6 @@
  */
 
 #include <linux/efi.h>
-#include <linux/libfdt.h>
 
 #include <asm/efi.h>
 #include <asm/sections.h>
@@ -12,92 +11,16 @@
 
 #include "efistub.h"
 
-/*
- * RISC-V requires the kernel image to placed 2 MB aligned base for 64 bit and
- * 4MB for 32 bit.
- */
-#ifdef CONFIG_64BIT
-#define MIN_KIMG_ALIGN		SZ_2M
-#else
-#define MIN_KIMG_ALIGN		SZ_4M
-#endif
-
-typedef void __noreturn (*jump_kernel_func)(unsigned long, unsigned long);
-
-static unsigned long hartid;
-
-static int get_boot_hartid_from_fdt(void)
+unsigned long stext_offset(void)
 {
-	const void *fdt;
-	int chosen_node, len;
-	const void *prop;
-
-	fdt = get_efi_config_table(DEVICE_TREE_GUID);
-	if (!fdt)
-		return -EINVAL;
-
-	chosen_node = fdt_path_offset(fdt, "/chosen");
-	if (chosen_node < 0)
-		return -EINVAL;
-
-	prop = fdt_getprop((void *)fdt, chosen_node, "boot-hartid", &len);
-	if (!prop)
-		return -EINVAL;
-
-	if (len == sizeof(u32))
-		hartid = (unsigned long) fdt32_to_cpu(*(fdt32_t *)prop);
-	else if (len == sizeof(u64))
-		hartid = (unsigned long) fdt64_to_cpu(__get_unaligned_t(fdt64_t, prop));
-	else
-		return -EINVAL;
-
-	return 0;
-}
-
-static efi_status_t get_boot_hartid_from_efi(void)
-{
-	efi_guid_t boot_protocol_guid = RISCV_EFI_BOOT_PROTOCOL_GUID;
-	struct riscv_efi_boot_protocol *boot_protocol;
-	efi_status_t status;
-
-	status = efi_bs_call(locate_protocol, &boot_protocol_guid, NULL,
-			     (void **)&boot_protocol);
-	if (status != EFI_SUCCESS)
-		return status;
-	return efi_call_proto(boot_protocol, get_boot_hartid, &hartid);
-}
-
-efi_status_t check_platform_features(void)
-{
-	efi_status_t status;
-	int ret;
-
-	status = get_boot_hartid_from_efi();
-	if (status != EFI_SUCCESS) {
-		ret = get_boot_hartid_from_fdt();
-		if (ret) {
-			efi_err("Failed to get boot hartid!\n");
-			return EFI_UNSUPPORTED;
-		}
-	}
-	return EFI_SUCCESS;
-}
-
-void __noreturn efi_enter_kernel(unsigned long entrypoint, unsigned long fdt,
-				 unsigned long fdt_size)
-{
-	unsigned long stext_offset = _start_kernel - _start;
-	unsigned long kernel_entry = entrypoint + stext_offset;
-	jump_kernel_func jump_kernel = (jump_kernel_func)kernel_entry;
-
 	/*
-	 * Jump to real kernel here with following constraints.
-	 * 1. MMU should be disabled.
-	 * 2. a0 should contain hartid
-	 * 3. a1 should DT address
+	 * When built as part of the kernel, the EFI stub cannot branch to the
+	 * kernel proper via the image header, as the PE/COFF header is
+	 * strictly not part of the in-memory presentation of the image, only
+	 * of the file representation. So instead, we need to jump to the
+	 * actual entrypoint in the .text region of the image.
 	 */
-	csr_write(CSR_SATP, 0);
-	jump_kernel(hartid, fdt);
+	return _start_kernel - _start;
 }
 
 efi_status_t handle_kernel_image(unsigned long *image_addr,
@@ -107,31 +30,29 @@ efi_status_t handle_kernel_image(unsigned long *image_addr,
 				 efi_loaded_image_t *image,
 				 efi_handle_t image_handle)
 {
-	unsigned long kernel_size = 0;
-	unsigned long preferred_addr;
+	unsigned long kernel_size, kernel_codesize, kernel_memsize;
 	efi_status_t status;
 
 	kernel_size = _edata - _start;
+	kernel_codesize = __init_text_end - _start;
+	kernel_memsize = kernel_size + (_end - _edata);
 	*image_addr = (unsigned long)_start;
-	*image_size = kernel_size + (_end - _edata);
+	*image_size = kernel_memsize;
+	*reserve_size = *image_size;
 
-	/*
-	 * RISC-V kernel maps PAGE_OFFSET virtual address to the same physical
-	 * address where kernel is booted. That's why kernel should boot from
-	 * as low as possible to avoid wastage of memory. Currently, dram_base
-	 * is occupied by the firmware. So the preferred address for kernel to
-	 * boot is next aligned address. If preferred address is not available,
-	 * relocate_kernel will fall back to efi_low_alloc_above to allocate
-	 * lowest possible memory region as long as the address and size meets
-	 * the alignment constraints.
-	 */
-	preferred_addr = MIN_KIMG_ALIGN;
-	status = efi_relocate_kernel(image_addr, kernel_size, *image_size,
-				     preferred_addr, MIN_KIMG_ALIGN, 0x0);
-
+	status = efi_kaslr_relocate_kernel(image_addr,
+					   reserve_addr, reserve_size,
+					   kernel_size, kernel_codesize, kernel_memsize,
+					   efi_kaslr_get_phys_seed(image_handle));
 	if (status != EFI_SUCCESS) {
 		efi_err("Failed to relocate kernel\n");
 		*image_size = 0;
 	}
+
 	return status;
+}
+
+void efi_icache_sync(unsigned long start, unsigned long end)
+{
+	asm volatile ("fence.i" ::: "memory");
 }

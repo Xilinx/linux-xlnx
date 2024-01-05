@@ -543,14 +543,12 @@ static irqreturn_t pxa168fb_handle_irq(int irq, void *dev_id)
 
 static const struct fb_ops pxa168fb_ops = {
 	.owner		= THIS_MODULE,
+	FB_DEFAULT_IOMEM_OPS,
 	.fb_check_var	= pxa168fb_check_var,
 	.fb_set_par	= pxa168fb_set_par,
 	.fb_setcolreg	= pxa168fb_setcolreg,
 	.fb_blank	= pxa168fb_blank,
 	.fb_pan_display	= pxa168fb_pan_display,
-	.fb_fillrect	= cfb_fillrect,
-	.fb_copyarea	= cfb_copyarea,
-	.fb_imageblit	= cfb_imageblit,
 };
 
 static void pxa168fb_init_mode(struct fb_info *info,
@@ -629,7 +627,7 @@ static int pxa168fb_probe(struct platform_device *pdev)
 	fbi = info->par;
 	fbi->info = info;
 	fbi->clk = clk;
-	fbi->dev = info->dev = &pdev->dev;
+	fbi->dev = &pdev->dev;
 	fbi->panel_rbswap = mi->panel_rbswap;
 	fbi->is_blanked = 0;
 	fbi->active = mi->active;
@@ -637,7 +635,7 @@ static int pxa168fb_probe(struct platform_device *pdev)
 	/*
 	 * Initialise static fb parameters.
 	 */
-	info->flags = FBINFO_DEFAULT | FBINFO_PARTIAL_PAN_OK |
+	info->flags = FBINFO_PARTIAL_PAN_OK |
 		      FBINFO_HWACCEL_XPAN | FBINFO_HWACCEL_YPAN;
 	info->node = -1;
 	strscpy(info->fix.id, mi->id, 16);
@@ -765,14 +763,14 @@ failed_free_info:
 	return ret;
 }
 
-static int pxa168fb_remove(struct platform_device *pdev)
+static void pxa168fb_remove(struct platform_device *pdev)
 {
 	struct pxa168fb_info *fbi = platform_get_drvdata(pdev);
 	struct fb_info *info;
 	unsigned int data;
 
 	if (!fbi)
-		return 0;
+		return;
 
 	/* disable DMA transfer */
 	data = readl(fbi->reg_base + LCD_SPU_DMA_CTRL0);
@@ -794,8 +792,6 @@ static int pxa168fb_remove(struct platform_device *pdev)
 	clk_disable_unprepare(fbi->clk);
 
 	framebuffer_release(info);
-
-	return 0;
 }
 
 static struct platform_driver pxa168fb_driver = {
@@ -803,7 +799,7 @@ static struct platform_driver pxa168fb_driver = {
 		.name	= "pxa168-fb",
 	},
 	.probe		= pxa168fb_probe,
-	.remove		= pxa168fb_remove,
+	.remove_new	= pxa168fb_remove,
 };
 
 module_platform_driver(pxa168fb_driver);

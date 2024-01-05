@@ -382,7 +382,6 @@ ath5k_configure_filter(struct ieee80211_hw *hw, unsigned int changed_flags,
 	mfilt[1] = multicast >> 32;
 
 	/* Only deal with supported flags */
-	changed_flags &= SUPPORTED_FIF_FLAGS;
 	*new_flags &= SUPPORTED_FIF_FLAGS;
 
 	/* If HW detects any phy or radar errors, leave those filters on.
@@ -781,6 +780,7 @@ static int ath5k_set_ringparam(struct ieee80211_hw *hw, u32 tx, u32 rx)
 
 const struct ieee80211_ops ath5k_hw_ops = {
 	.tx			= ath5k_tx,
+	.wake_tx_queue		= ieee80211_handle_wake_tx_queue,
 	.start			= ath5k_start,
 	.stop			= ath5k_stop,
 	.add_interface		= ath5k_add_interface,

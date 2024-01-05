@@ -33,8 +33,6 @@ void udplitev6_exit(void);
 int tcpv6_init(void);
 void tcpv6_exit(void);
 
-int udpv6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len);
-
 /* this does all the common and the specific ctl work */
 void ip6_datagram_recv_ctl(struct sock *sk, struct msghdr *msg,
 			   struct sk_buff *skb);
@@ -57,8 +55,6 @@ ip6_dgram_sock_seq_show(struct seq_file *seq, struct sock *sp, __u16 srcp,
 }
 
 #define LOOPBACK4_IPV6 cpu_to_be32(0x7f000006)
-
-void inet6_destroy_sock(struct sock *sk);
 
 #define IPV6_SEQ_DGRAM_HEADER					       \
 	"  sl  "						       \

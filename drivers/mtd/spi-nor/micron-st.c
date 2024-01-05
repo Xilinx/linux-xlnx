@@ -46,21 +46,25 @@
 
 static int micron_st_nor_octal_dtr_en(struct spi_nor *nor)
 {
+	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
 	struct spi_mem_op op;
 	u8 *buf = nor->bouncebuf;
 	int ret;
+	u8 addr_mode_nbytes = params->addr_mode_nbytes;
 
 	/* Use 20 dummy cycles for memory array reads. */
 	*buf = 20;
 	op = (struct spi_mem_op)
-		MICRON_ST_NOR_WR_ANY_REG_OP(3, SPINOR_REG_MT_CFR1V, 1, buf);
+		MICRON_ST_NOR_WR_ANY_REG_OP(addr_mode_nbytes,
+					    SPINOR_REG_MT_CFR1V, 1, buf);
 	ret = spi_nor_write_any_volatile_reg(nor, &op, nor->reg_proto);
 	if (ret)
 		return ret;
 
 	buf[0] = SPINOR_MT_OCT_DTR;
 	op = (struct spi_mem_op)
-		MICRON_ST_NOR_WR_ANY_REG_OP(3, SPINOR_REG_MT_CFR0V, 1, buf);
+		MICRON_ST_NOR_WR_ANY_REG_OP(addr_mode_nbytes,
+					    SPINOR_REG_MT_CFR0V, 1, buf);
 	ret = spi_nor_write_any_volatile_reg(nor, &op, nor->reg_proto);
 	if (ret)
 		return ret;
@@ -98,7 +102,8 @@ static int micron_st_nor_octal_dtr_dis(struct spi_nor *nor)
 	buf[0] = SPINOR_MT_EXSPI;
 	buf[1] = SPINOR_REG_MT_CFR1V_DEF;
 	op = (struct spi_mem_op)
-		MICRON_ST_NOR_WR_ANY_REG_OP(4, SPINOR_REG_MT_CFR0V, 2, buf);
+		MICRON_ST_NOR_WR_ANY_REG_OP(nor->addr_nbytes,
+					    SPINOR_REG_MT_CFR0V, 2, buf);
 	ret = spi_nor_write_any_volatile_reg(nor, &op, SNOR_PROTO_8_8_8_DTR);
 	if (ret)
 		return ret;
@@ -116,7 +121,7 @@ static int micron_st_nor_octal_dtr_dis(struct spi_nor *nor)
 	return 0;
 }
 
-static int micron_st_nor_octal_dtr_enable(struct spi_nor *nor, bool enable)
+static int micron_st_nor_set_octal_dtr(struct spi_nor *nor, bool enable)
 {
 	return enable ? micron_st_nor_octal_dtr_en(nor) :
 			micron_st_nor_octal_dtr_dis(nor);
@@ -126,10 +131,10 @@ static void mt35xu512aba_default_init(struct spi_nor *nor)
 {
 	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
 
-	params->octal_dtr_enable = micron_st_nor_octal_dtr_enable;
+	params->set_octal_dtr = micron_st_nor_set_octal_dtr;
 }
 
-static void mt35xu512aba_post_sfdp_fixup(struct spi_nor *nor)
+static int mt35xu512aba_post_sfdp_fixup(struct spi_nor *nor)
 {
 	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
 
@@ -149,6 +154,8 @@ static void mt35xu512aba_post_sfdp_fixup(struct spi_nor *nor)
 	 * disable it.
 	 */
 	params->quad_enable = NULL;
+
+	return 0;
 }
 
 static const struct spi_nor_fixups mt35xu512aba_fixups = {
@@ -223,6 +230,8 @@ static const struct flash_info st_nor_parts[] = {
 		MFR_FLAGS(USE_FSR)
 	},
 	{ "mt25qu256a",  INFO6(0x20bb19, 0x104400, 64 * 1024,  512)
+		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_4BIT_BP |
+		      SPI_NOR_BP3_SR_BIT6)
 		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ)
 		FIXUP_FLAGS(SPI_NOR_4B_OPCODES)
 		MFR_FLAGS(USE_FSR)
@@ -325,30 +334,6 @@ static const struct flash_info st_nor_parts[] = {
 	{ "m25px64",    INFO(0x207117,  0, 64 * 1024, 128) },
 	{ "m25px80",    INFO(0x207114,  0, 64 * 1024, 16) },
 };
-
-/**
- * micron_st_nor_set_4byte_addr_mode() - Set 4-byte address mode for ST and
- * Micron flashes.
- * @nor:	pointer to 'struct spi_nor'.
- * @enable:	true to enter the 4-byte address mode, false to exit the 4-byte
- *		address mode.
- *
- * Return: 0 on success, -errno otherwise.
- */
-static int micron_st_nor_set_4byte_addr_mode(struct spi_nor *nor, bool enable)
-{
-	int ret;
-
-	ret = spi_nor_write_enable(nor);
-	if (ret)
-		return ret;
-
-	ret = spi_nor_set_4byte_addr_mode(nor, enable);
-	if (ret)
-		return ret;
-
-	return spi_nor_write_disable(nor);
-}
 
 /**
  * micron_st_nor_read_fsr() - Read the Flag Status Register.
@@ -482,15 +467,19 @@ static void micron_st_nor_default_init(struct spi_nor *nor)
 	nor->flags |= SNOR_F_HAS_LOCK;
 	nor->flags &= ~SNOR_F_HAS_16BIT_SR;
 	params->quad_enable = NULL;
-	params->set_4byte_addr_mode = micron_st_nor_set_4byte_addr_mode;
 }
 
-static void micron_st_nor_late_init(struct spi_nor *nor)
+static int micron_st_nor_late_init(struct spi_nor *nor)
 {
 	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
 
 	if (nor->info->mfr_flags & USE_FSR)
 		params->ready = micron_st_nor_ready;
+
+	if (!params->set_4byte_addr_mode)
+		params->set_4byte_addr_mode = spi_nor_set_4byte_addr_mode_wren_en4b_ex4b;
+
+	return 0;
 }
 
 static const struct spi_nor_fixups micron_st_nor_fixups = {

@@ -2,9 +2,7 @@
 /*
  *  The driver for the EMU10K1 (SB Live!) based soundcards
  *  Copyright (c) by Jaroslav Kysela <perex@perex.cz>
- *
- *  Copyright (c) by James Courtier-Dutton <James@superbug.demon.co.uk>
- *      Added support for Audigy 2 Value.
+ *                   James Courtier-Dutton <James@superbug.co.uk>
  */
 
 #include <linux/init.h>
@@ -34,7 +32,6 @@ static int max_synth_voices[SNDRV_CARDS] = {[0 ... (SNDRV_CARDS - 1)] = 64};
 static int max_buffer_size[SNDRV_CARDS] = {[0 ... (SNDRV_CARDS - 1)] = 128};
 static bool enable_ir[SNDRV_CARDS];
 static uint subsystem[SNDRV_CARDS]; /* Force card subsystem model */
-static uint delay_pcm_irq[SNDRV_CARDS] = {[0 ... (SNDRV_CARDS - 1)] = 2};
 
 module_param_array(index, int, NULL, 0444);
 MODULE_PARM_DESC(index, "Index value for the EMU10K1 soundcard.");
@@ -56,8 +53,6 @@ module_param_array(enable_ir, bool, NULL, 0444);
 MODULE_PARM_DESC(enable_ir, "Enable IR.");
 module_param_array(subsystem, uint, NULL, 0444);
 MODULE_PARM_DESC(subsystem, "Force card subsystem model.");
-module_param_array(delay_pcm_irq, uint, NULL, 0444);
-MODULE_PARM_DESC(delay_pcm_irq, "Delay PCM interrupt by specified number of samples (default 0).");
 /*
  * Class 0401: 1102:0008 (rev 00) Subsystem: 1102:1001 -> Audigy2 Value  Model:SB0400
  */
@@ -67,17 +62,6 @@ static const struct pci_device_id snd_emu10k1_ids[] = {
 	{ PCI_VDEVICE(CREATIVE, 0x0008), 1 },	/* Audigy 2 Value SB0400 */
 	{ 0, }
 };
-
-/*
- * Audigy 2 Value notes:
- * A_IOCFG Input (GPIO)
- * 0x400  = Front analog jack plugged in. (Green socket)
- * 0x1000 = Read analog jack plugged in. (Black socket)
- * 0x2000 = Center/LFE analog jack plugged in. (Orange socket)
- * A_IOCFG Output (GPIO)
- * 0x60 = Sound out of front Left.
- * Win sets it to 0xXX61
- */
 
 MODULE_DEVICE_TABLE(pci, snd_emu10k1_ids);
 
@@ -114,13 +98,14 @@ static int snd_card_emu10k1_probe(struct pci_dev *pci,
 				 enable_ir[dev], subsystem[dev]);
 	if (err < 0)
 		return err;
-	emu->delay_pcm_irq = delay_pcm_irq[dev] & 0x1f;
 	err = snd_emu10k1_pcm(emu, 0);
 	if (err < 0)
 		return err;
-	err = snd_emu10k1_pcm_mic(emu, 1);
-	if (err < 0)
-		return err;
+	if (emu->card_capabilities->ac97_chip) {
+		err = snd_emu10k1_pcm_mic(emu, 1);
+		if (err < 0)
+			return err;
+	}
 	err = snd_emu10k1_pcm_efx(emu, 2);
 	if (err < 0)
 		return err;
@@ -189,9 +174,6 @@ static int snd_card_emu10k1_probe(struct pci_dev *pci,
 	if (err < 0)
 		return err;
 
-	if (emu->card_capabilities->emu_model)
-		schedule_delayed_work(&emu->emu1010.firmware_work, 0);
-
 	pci_set_drvdata(pci, card);
 	dev++;
 	return 0;
@@ -207,7 +189,8 @@ static int snd_emu10k1_suspend(struct device *dev)
 
 	emu->suspend = 1;
 
-	cancel_delayed_work_sync(&emu->emu1010.firmware_work);
+	cancel_work_sync(&emu->emu1010.firmware_work);
+	cancel_work_sync(&emu->emu1010.clock_work);
 
 	snd_ac97_suspend(emu->ac97);
 
@@ -236,9 +219,6 @@ static int snd_emu10k1_resume(struct device *dev)
 	emu->suspend = 0;
 
 	snd_power_change_state(card, SNDRV_CTL_POWER_D0);
-
-	if (emu->card_capabilities->emu_model)
-		schedule_delayed_work(&emu->emu1010.firmware_work, 0);
 
 	return 0;
 }

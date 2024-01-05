@@ -499,7 +499,7 @@ static const unsigned char by_vt3253_init_tab_rfmd[CB_VT3253_INIT_FOR_RFMD][2] =
 };
 
 #define CB_VT3253B0_INIT_FOR_RFMD 256
-static const unsigned char byVT3253B0_RFMD[CB_VT3253B0_INIT_FOR_RFMD][2] = {
+static const unsigned char vt3253b0_rfmd[CB_VT3253B0_INIT_FOR_RFMD][2] = {
 	{0x00, 0x31},
 	{0x01, 0x00},
 	{0x02, 0x00},
@@ -2005,8 +2005,8 @@ bool bb_vt3253_init(struct vnt_private *priv)
 		} else {
 			for (ii = 0; ii < CB_VT3253B0_INIT_FOR_RFMD; ii++)
 				result &= bb_write_embedded(priv,
-					byVT3253B0_RFMD[ii][0],
-					byVT3253B0_RFMD[ii][1]);
+					vt3253b0_rfmd[ii][0],
+					vt3253b0_rfmd[ii][1]);
 
 			for (ii = 0; ii < CB_VT3253B0_AGC_FOR_RFMD2959; ii++)
 				result &= bb_write_embedded(priv,
@@ -2169,50 +2169,6 @@ bb_software_reset(struct vnt_private *priv)
 	bb_write_embedded(priv, 0x50, 0);
 	bb_write_embedded(priv, 0x9C, 0x01);
 	bb_write_embedded(priv, 0x9C, 0);
-}
-
-/*
- * Description: Baseband Power Save Mode ON
- *
- * Parameters:
- *  In:
- *      iobase      - I/O base address
- *  Out:
- *      none
- *
- * Return Value: none
- *
- */
-void
-bb_power_save_mode_on(struct vnt_private *priv)
-{
-	unsigned char by_org_data;
-
-	bb_read_embedded(priv, 0x0D, &by_org_data);
-	by_org_data |= BIT(0);
-	bb_write_embedded(priv, 0x0D, by_org_data);
-}
-
-/*
- * Description: Baseband Power Save Mode OFF
- *
- * Parameters:
- *  In:
- *      iobase      - I/O base address
- *  Out:
- *      none
- *
- * Return Value: none
- *
- */
-void
-bb_power_save_mode_off(struct vnt_private *priv)
-{
-	unsigned char by_org_data;
-
-	bb_read_embedded(priv, 0x0D, &by_org_data);
-	by_org_data &= ~(BIT(0));
-	bb_write_embedded(priv, 0x0D, by_org_data);
 }
 
 /*

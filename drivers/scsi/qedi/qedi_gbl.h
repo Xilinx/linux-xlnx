@@ -17,7 +17,7 @@ extern int qedi_do_not_recover;
 
 extern uint qedi_io_tracing;
 
-extern struct scsi_host_template qedi_host_template;
+extern const struct scsi_host_template qedi_host_template;
 extern struct iscsi_transport qedi_iscsi_transport;
 extern const struct qed_iscsi_ops *qedi_ops;
 extern const struct qedi_debugfs_ops qedi_debugfs_ops[];
@@ -67,8 +67,6 @@ void qedi_trace_io(struct qedi_ctx *qedi, struct iscsi_task *task,
 int qedi_alloc_id(struct qedi_portid_tbl *id_tbl, u16 id);
 u16 qedi_alloc_new_id(struct qedi_portid_tbl *id_tbl);
 void qedi_free_id(struct qedi_portid_tbl *id_tbl, u16 id);
-int qedi_create_sysfs_ctx_attr(struct qedi_ctx *qedi);
-void qedi_remove_sysfs_ctx_attr(struct qedi_ctx *qedi);
 void qedi_clearsq(struct qedi_ctx *qedi,
 		  struct qedi_conn *qedi_conn,
 		  struct iscsi_task *task);

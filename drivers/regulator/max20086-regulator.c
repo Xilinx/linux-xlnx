@@ -6,7 +6,6 @@
 // Copyright (C) 2018 Avnet, Inc.
 
 #include <linux/err.h>
-#include <linux/gpio.h>
 #include <linux/gpio/consumer.h>
 #include <linux/i2c.h>
 #include <linux/module.h>
@@ -286,7 +285,7 @@ static const struct i2c_device_id max20086_i2c_id[] = {
 
 MODULE_DEVICE_TABLE(i2c, max20086_i2c_id);
 
-static const struct of_device_id max20086_dt_ids[] = {
+static const struct of_device_id max20086_dt_ids[] __maybe_unused = {
 	{
 		.compatible = "maxim,max20086",
 		.data = &(const struct max20086_chip_info) {
@@ -320,9 +319,10 @@ MODULE_DEVICE_TABLE(of, max20086_dt_ids);
 static struct i2c_driver max20086_regulator_driver = {
 	.driver = {
 		.name = "max20086",
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 		.of_match_table = of_match_ptr(max20086_dt_ids),
 	},
-	.probe_new = max20086_i2c_probe,
+	.probe = max20086_i2c_probe,
 	.id_table = max20086_i2c_id,
 };
 

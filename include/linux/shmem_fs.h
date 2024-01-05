@@ -9,8 +9,13 @@
 #include <linux/percpu_counter.h>
 #include <linux/xattr.h>
 #include <linux/fs_parser.h>
+#include <linux/userfaultfd_k.h>
 
 /* inode in-kernel data */
+
+#ifdef CONFIG_TMPFS_QUOTA
+#define SHMEM_MAXQUOTAS 2
+#endif
 
 struct shmem_inode_info {
 	spinlock_t		lock;
@@ -26,6 +31,10 @@ struct shmem_inode_info {
 	atomic_t		stop_eviction;	/* hold when working on inode */
 	struct timespec64	i_crtime;	/* file creation time */
 	unsigned int		fsflags;	/* flags for FS_IOC_[SG]ETFLAGS */
+#ifdef CONFIG_TMPFS_QUOTA
+	struct dquot		*i_dquot[MAXQUOTAS];
+#endif
+	struct offset_ctx	dir_offsets;	/* stable entry offsets */
 	struct inode		vfs_inode;
 };
 
@@ -34,23 +43,32 @@ struct shmem_inode_info {
 	(FS_IMMUTABLE_FL | FS_APPEND_FL | FS_NODUMP_FL | FS_NOATIME_FL)
 #define SHMEM_FL_INHERITED		(FS_NODUMP_FL | FS_NOATIME_FL)
 
+struct shmem_quota_limits {
+	qsize_t usrquota_bhardlimit; /* Default user quota block hard limit */
+	qsize_t usrquota_ihardlimit; /* Default user quota inode hard limit */
+	qsize_t grpquota_bhardlimit; /* Default group quota block hard limit */
+	qsize_t grpquota_ihardlimit; /* Default group quota inode hard limit */
+};
+
 struct shmem_sb_info {
 	unsigned long max_blocks;   /* How many blocks are allowed */
 	struct percpu_counter used_blocks;  /* How many are allocated */
 	unsigned long max_inodes;   /* How many inodes are allowed */
-	unsigned long free_inodes;  /* How many are left for allocation */
+	unsigned long free_ispace;  /* How much ispace left for allocation */
 	raw_spinlock_t stat_lock;   /* Serialize shmem_sb_info changes */
 	umode_t mode;		    /* Mount mode for root directory */
 	unsigned char huge;	    /* Whether to try for hugepages */
 	kuid_t uid;		    /* Mount uid for root directory */
 	kgid_t gid;		    /* Mount gid for root directory */
 	bool full_inums;	    /* If i_ino should be uint or ino_t */
+	bool noswap;		    /* ignores VM reclaim / swap requests */
 	ino_t next_ino;		    /* The next per-sb inode number to use */
 	ino_t __percpu *ino_batch;  /* The next per-cpu inode number to use */
 	struct mempolicy *mpol;     /* default memory policy for mappings */
 	spinlock_t shrinklist_lock;   /* Protects shrinklist */
 	struct list_head shrinklist;  /* List of shinkable inodes */
 	unsigned long shrinklist_len; /* Length of shrinklist */
+	struct shmem_quota_limits qlimits; /* Default quota limits */
 };
 
 static inline struct shmem_inode_info *SHMEM_I(struct inode *inode)
@@ -92,15 +110,16 @@ extern struct page *shmem_read_mapping_page_gfp(struct address_space *mapping,
 extern void shmem_truncate_range(struct inode *inode, loff_t start, loff_t end);
 int shmem_unuse(unsigned int type);
 
-extern bool shmem_is_huge(struct vm_area_struct *vma, struct inode *inode,
-			  pgoff_t index, bool shmem_huge_force);
-static inline bool shmem_huge_enabled(struct vm_area_struct *vma,
-				      bool shmem_huge_force)
-{
-	return shmem_is_huge(vma, file_inode(vma->vm_file), vma->vm_pgoff,
-			     shmem_huge_force);
-}
+extern bool shmem_is_huge(struct inode *inode, pgoff_t index, bool shmem_huge_force,
+			  struct mm_struct *mm, unsigned long vm_flags);
+#ifdef CONFIG_SHMEM
 extern unsigned long shmem_swap_usage(struct vm_area_struct *vma);
+#else
+static inline unsigned long shmem_swap_usage(struct vm_area_struct *vma)
+{
+	return 0;
+}
+#endif
 extern unsigned long shmem_partial_swap_usage(struct address_space *mapping,
 						pgoff_t start, pgoff_t end);
 
@@ -115,6 +134,14 @@ enum sgp_type {
 
 int shmem_get_folio(struct inode *inode, pgoff_t index, struct folio **foliop,
 		enum sgp_type sgp);
+struct folio *shmem_read_folio_gfp(struct address_space *mapping,
+		pgoff_t index, gfp_t gfp);
+
+static inline struct folio *shmem_read_folio(struct address_space *mapping,
+		pgoff_t index)
+{
+	return shmem_read_folio_gfp(mapping, index, mapping_gfp_mask(mapping));
+}
 
 static inline struct page *shmem_read_mapping_page(
 				struct address_space *mapping, pgoff_t index)
@@ -149,16 +176,29 @@ extern void shmem_uncharge(struct inode *inode, long pages);
 
 #ifdef CONFIG_USERFAULTFD
 #ifdef CONFIG_SHMEM
-extern int shmem_mfill_atomic_pte(struct mm_struct *dst_mm, pmd_t *dst_pmd,
+extern int shmem_mfill_atomic_pte(pmd_t *dst_pmd,
 				  struct vm_area_struct *dst_vma,
 				  unsigned long dst_addr,
 				  unsigned long src_addr,
-				  bool zeropage, bool wp_copy,
-				  struct page **pagep);
+				  uffd_flags_t flags,
+				  struct folio **foliop);
 #else /* !CONFIG_SHMEM */
-#define shmem_mfill_atomic_pte(dst_mm, dst_pmd, dst_vma, dst_addr, \
-			       src_addr, zeropage, wp_copy, pagep) ({ BUG(); 0; })
+#define shmem_mfill_atomic_pte(dst_pmd, dst_vma, dst_addr, \
+			       src_addr, flags, foliop) ({ BUG(); 0; })
 #endif /* CONFIG_SHMEM */
 #endif /* CONFIG_USERFAULTFD */
+
+/*
+ * Used space is stored as unsigned 64-bit value in bytes but
+ * quota core supports only signed 64-bit values so use that
+ * as a limit
+ */
+#define SHMEM_QUOTA_MAX_SPC_LIMIT 0x7fffffffffffffffLL /* 2^63-1 */
+#define SHMEM_QUOTA_MAX_INO_LIMIT 0x7fffffffffffffffLL
+
+#ifdef CONFIG_TMPFS_QUOTA
+extern const struct dquot_operations shmem_quota_operations;
+extern struct quota_format_type shmem_quota_format;
+#endif /* CONFIG_TMPFS_QUOTA */
 
 #endif

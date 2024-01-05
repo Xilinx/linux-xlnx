@@ -99,7 +99,7 @@ static int dev_dax_kmem_probe(struct dev_dax *dev_dax)
 	if (!data->res_name)
 		goto err_res_name;
 
-	rc = memory_group_register_static(numa_node, total_len);
+	rc = memory_group_register_static(numa_node, PFN_UP(total_len));
 	if (rc < 0)
 		goto err_reg_mgid;
 	data->mgid = rc;
@@ -146,7 +146,7 @@ static int dev_dax_kmem_probe(struct dev_dax *dev_dax)
 		if (rc) {
 			dev_warn(dev, "mapping%d: %#llx-%#llx memory add failed\n",
 					i, range.start, range.end);
-			release_resource(res);
+			remove_resource(res);
 			kfree(res);
 			data->res[i] = NULL;
 			if (mapped)
@@ -195,7 +195,7 @@ static void dev_dax_kmem_remove(struct dev_dax *dev_dax)
 
 		rc = remove_memory(range.start, range_len(&range));
 		if (rc == 0) {
-			release_resource(data->res[i]);
+			remove_resource(data->res[i]);
 			kfree(data->res[i]);
 			data->res[i] = NULL;
 			success++;
@@ -239,6 +239,7 @@ static void dev_dax_kmem_remove(struct dev_dax *dev_dax)
 static struct dax_device_driver device_dax_kmem_driver = {
 	.probe = dev_dax_kmem_probe,
 	.remove = dev_dax_kmem_remove,
+	.type = DAXDRV_KMEM_TYPE,
 };
 
 static int __init dax_kmem_init(void)
@@ -263,7 +264,7 @@ static int __init dax_kmem_init(void)
 	return rc;
 
 error_dax_driver:
-	destroy_memory_type(dax_slowmem_type);
+	put_memory_type(dax_slowmem_type);
 err_dax_slowmem_type:
 	kfree_const(kmem_name);
 	return rc;
@@ -274,7 +275,7 @@ static void __exit dax_kmem_exit(void)
 	dax_driver_unregister(&device_dax_kmem_driver);
 	if (!any_hotremove_failed)
 		kfree_const(kmem_name);
-	destroy_memory_type(dax_slowmem_type);
+	put_memory_type(dax_slowmem_type);
 }
 
 MODULE_AUTHOR("Intel Corporation");

@@ -1262,7 +1262,6 @@ int reiserfs_delete_item(struct reiserfs_transaction_handle *th,
 
 #ifdef CONFIG_REISERFS_CHECK
 	char mode;
-	int iter = 0;
 #endif
 
 	BUG_ON(!th->t_trans_id);
@@ -1274,7 +1273,6 @@ int reiserfs_delete_item(struct reiserfs_transaction_handle *th,
 		removed = 0;
 
 #ifdef CONFIG_REISERFS_CHECK
-		iter++;
 		mode =
 #endif
 		    prepare_for_delete_or_cut(th, inode, path,
@@ -2006,7 +2004,7 @@ int reiserfs_do_truncate(struct reiserfs_transaction_handle *th,
 
 			if (update_timestamps) {
 				inode->i_mtime = current_time(inode);
-				inode->i_ctime = current_time(inode);
+				inode_set_ctime_current(inode);
 			}
 			reiserfs_update_sd(th, inode);
 
@@ -2031,7 +2029,7 @@ update_and_out:
 	if (update_timestamps) {
 		/* this is truncate, not file closing */
 		inode->i_mtime = current_time(inode);
-		inode->i_ctime = current_time(inode);
+		inode_set_ctime_current(inode);
 	}
 	reiserfs_update_sd(th, inode);
 

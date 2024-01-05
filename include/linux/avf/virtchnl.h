@@ -1,21 +1,13 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/*******************************************************************************
- *
- * Intel Ethernet Controller XL710 Family Linux Virtual Function Driver
- * Copyright(c) 2013 - 2014 Intel Corporation.
- *
- * Contact Information:
- * e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
- ******************************************************************************/
+/* Copyright (c) 2013-2022, Intel Corporation. */
 
 #ifndef _VIRTCHNL_H_
 #define _VIRTCHNL_H_
 
 /* Description:
- * This header file describes the VF-PF communication protocol used
- * by the drivers for all devices starting from our 40G product line
+ * This header file describes the Virtual Function (VF) - Physical Function
+ * (PF) communication protocol used by the drivers for all devices starting
+ * from our 40G product line
  *
  * Admin queue buffer usage:
  * desc->opcode is always aqc_opc_send_msg_to_pf
@@ -29,8 +21,8 @@
  * have a maximum of sixteen queues for all of its VSIs.
  *
  * The PF is required to return a status code in v_retval for all messages
- * except RESET_VF, which does not require any response. The return value
- * is of status_code type, defined in the shared type.h.
+ * except RESET_VF, which does not require any response. The returned value
+ * is of virtchnl_status_code type, defined here.
  *
  * In general, VF driver initialization should roughly follow the order of
  * these opcodes. The VF driver must first validate the API version of the
@@ -122,9 +114,13 @@ enum virtchnl_ops {
 	VIRTCHNL_OP_GET_STATS = 15,
 	VIRTCHNL_OP_RSVD = 16,
 	VIRTCHNL_OP_EVENT = 17, /* must ALWAYS be 17 */
+	/* opcode 19 is reserved */
 	VIRTCHNL_OP_IWARP = 20, /* advanced opcode */
+	VIRTCHNL_OP_RDMA = VIRTCHNL_OP_IWARP,
 	VIRTCHNL_OP_CONFIG_IWARP_IRQ_MAP = 21, /* advanced opcode */
+	VIRTCHNL_OP_CONFIG_RDMA_IRQ_MAP = VIRTCHNL_OP_CONFIG_IWARP_IRQ_MAP,
 	VIRTCHNL_OP_RELEASE_IWARP_IRQ_MAP = 22, /* advanced opcode */
+	VIRTCHNL_OP_RELEASE_RDMA_IRQ_MAP = VIRTCHNL_OP_RELEASE_IWARP_IRQ_MAP,
 	VIRTCHNL_OP_CONFIG_RSS_KEY = 23,
 	VIRTCHNL_OP_CONFIG_RSS_LUT = 24,
 	VIRTCHNL_OP_GET_RSS_HENA_CAPS = 25,
@@ -136,7 +132,8 @@ enum virtchnl_ops {
 	VIRTCHNL_OP_DISABLE_CHANNELS = 31,
 	VIRTCHNL_OP_ADD_CLOUD_FILTER = 32,
 	VIRTCHNL_OP_DEL_CLOUD_FILTER = 33,
-	/* opcode 34 - 44 are reserved */
+	/* opcode 34 - 43 are reserved */
+	VIRTCHNL_OP_GET_SUPPORTED_RXDIDS = 44,
 	VIRTCHNL_OP_ADD_RSS_CFG = 45,
 	VIRTCHNL_OP_DEL_RSS_CFG = 46,
 	VIRTCHNL_OP_ADD_FDIR_FILTER = 47,
@@ -160,19 +157,6 @@ enum virtchnl_ops {
 	{ virtchnl_static_assert_##X = (n)/((sizeof(struct X) == (n)) ? 1 : 0) }
 #define VIRTCHNL_CHECK_UNION_LEN(n, X) enum virtchnl_static_asset_enum_##X \
 	{ virtchnl_static_assert_##X = (n)/((sizeof(union X) == (n)) ? 1 : 0) }
-
-/* Virtual channel message descriptor. This overlays the admin queue
- * descriptor. All other data is passed in external buffers.
- */
-
-struct virtchnl_msg {
-	u8 pad[8];			 /* AQ flags/opcode/len/retval fields */
-	enum virtchnl_ops v_opcode; /* avoid confusion with desc->opcode */
-	enum virtchnl_status_code v_retval;  /* ditto for desc->retval */
-	u32 vfid;			 /* used by PF when sending to VF */
-};
-
-VIRTCHNL_CHECK_STRUCT_LEN(20, virtchnl_msg);
 
 /* Message descriptions and data structures. */
 
@@ -234,7 +218,9 @@ enum virtchnl_vsi_type {
 struct virtchnl_vsi_resource {
 	u16 vsi_id;
 	u16 num_queue_pairs;
-	enum virtchnl_vsi_type vsi_type;
+
+	/* see enum virtchnl_vsi_type */
+	s32 vsi_type;
 	u16 qset_handle;
 	u8 default_mac_addr[ETH_ALEN];
 };
@@ -246,7 +232,8 @@ VIRTCHNL_CHECK_STRUCT_LEN(16, virtchnl_vsi_resource);
  * TX/RX Checksum offloading and TSO for non-tunnelled packets.
  */
 #define VIRTCHNL_VF_OFFLOAD_L2			BIT(0)
-#define VIRTCHNL_VF_OFFLOAD_IWARP		BIT(1)
+#define VIRTCHNL_VF_OFFLOAD_RDMA		BIT(1)
+#define VIRTCHNL_VF_CAP_RDMA			VIRTCHNL_VF_OFFLOAD_RDMA
 #define VIRTCHNL_VF_OFFLOAD_RSS_AQ		BIT(3)
 #define VIRTCHNL_VF_OFFLOAD_RSS_REG		BIT(4)
 #define VIRTCHNL_VF_OFFLOAD_WB_ON_ITR		BIT(5)
@@ -263,6 +250,7 @@ VIRTCHNL_CHECK_STRUCT_LEN(16, virtchnl_vsi_resource);
 #define VIRTCHNL_VF_OFFLOAD_RX_ENCAP_CSUM	BIT(22)
 #define VIRTCHNL_VF_OFFLOAD_ADQ			BIT(23)
 #define VIRTCHNL_VF_OFFLOAD_USO			BIT(25)
+#define VIRTCHNL_VF_OFFLOAD_RX_FLEX_DESC	BIT(26)
 #define VIRTCHNL_VF_OFFLOAD_ADV_RSS_PF		BIT(27)
 #define VIRTCHNL_VF_OFFLOAD_FDIR_PF		BIT(28)
 
@@ -280,10 +268,11 @@ struct virtchnl_vf_resource {
 	u32 rss_key_size;
 	u32 rss_lut_size;
 
-	struct virtchnl_vsi_resource vsi_res[1];
+	struct virtchnl_vsi_resource vsi_res[];
 };
 
-VIRTCHNL_CHECK_STRUCT_LEN(36, virtchnl_vf_resource);
+VIRTCHNL_CHECK_STRUCT_LEN(20, virtchnl_vf_resource);
+#define virtchnl_vf_resource_LEGACY_SIZEOF	36
 
 /* VIRTCHNL_OP_CONFIG_TX_QUEUE
  * VF sends this message to set up parameters for one TX queue.
@@ -318,9 +307,13 @@ struct virtchnl_rxq_info {
 	u16 splithdr_enabled; /* deprecated with AVF 1.0 */
 	u32 databuffer_size;
 	u32 max_pkt_size;
-	u32 pad1;
+	u8 pad0;
+	u8 rxdid;
+	u8 pad1[2];
 	u64 dma_ring_addr;
-	enum virtchnl_rx_hsplit rx_split_pos; /* deprecated with AVF 1.0 */
+
+	/* see enum virtchnl_rx_hsplit; deprecated with AVF 1.0 */
+	s32 rx_split_pos;
 	u32 pad2;
 };
 
@@ -332,6 +325,9 @@ VIRTCHNL_CHECK_STRUCT_LEN(40, virtchnl_rxq_info);
  * PF configures queues and returns status.
  * If the number of queues specified is greater than the number of queues
  * associated with the VSI, an error is returned and no queues are configured.
+ * NOTE: The VF is not required to configure all queues in a single request.
+ * It may send multiple messages. PF drivers must correctly handle all VF
+ * requests.
  */
 struct virtchnl_queue_pair_info {
 	/* NOTE: vsi_id and queue_id should be identical for both queues. */
@@ -345,10 +341,11 @@ struct virtchnl_vsi_queue_config_info {
 	u16 vsi_id;
 	u16 num_queue_pairs;
 	u32 pad;
-	struct virtchnl_queue_pair_info qpair[1];
+	struct virtchnl_queue_pair_info qpair[];
 };
 
-VIRTCHNL_CHECK_STRUCT_LEN(72, virtchnl_vsi_queue_config_info);
+VIRTCHNL_CHECK_STRUCT_LEN(8, virtchnl_vsi_queue_config_info);
+#define virtchnl_vsi_queue_config_info_LEGACY_SIZEOF	72
 
 /* VIRTCHNL_OP_REQUEST_QUEUES
  * VF sends this message to request the PF to allocate additional queues to
@@ -369,8 +366,13 @@ struct virtchnl_vf_res_request {
  * VF uses this message to map vectors to queues.
  * The rxq_map and txq_map fields are bitmaps used to indicate which queues
  * are to be associated with the specified vector.
- * The "other" causes are always mapped to vector 0.
+ * The "other" causes are always mapped to vector 0. The VF may not request
+ * that vector 0 be used for traffic.
  * PF configures interrupt mapping and returns status.
+ * NOTE: due to hardware requirements, all active queues (both TX and RX)
+ * should be mapped to interrupts, even if the driver intends to operate
+ * only in polling mode. In this case the interrupt may be disabled, but
+ * the ITR timer will still run to trigger writebacks.
  */
 struct virtchnl_vector_map {
 	u16 vsi_id;
@@ -385,10 +387,11 @@ VIRTCHNL_CHECK_STRUCT_LEN(12, virtchnl_vector_map);
 
 struct virtchnl_irq_map_info {
 	u16 num_vectors;
-	struct virtchnl_vector_map vecmap[1];
+	struct virtchnl_vector_map vecmap[];
 };
 
-VIRTCHNL_CHECK_STRUCT_LEN(14, virtchnl_irq_map_info);
+VIRTCHNL_CHECK_STRUCT_LEN(2, virtchnl_irq_map_info);
+#define virtchnl_irq_map_info_LEGACY_SIZEOF	14
 
 /* VIRTCHNL_OP_ENABLE_QUEUES
  * VIRTCHNL_OP_DISABLE_QUEUES
@@ -397,6 +400,9 @@ VIRTCHNL_CHECK_STRUCT_LEN(14, virtchnl_irq_map_info);
  * (Currently, we only support 16 queues per VF, but we make the field
  * u32 to allow for expansion.)
  * PF performs requested action and returns status.
+ * NOTE: The VF is not required to enable/disable all queues in a single
+ * request. It may send multiple messages.
+ * PF drivers must correctly handle all VF requests.
  */
 struct virtchnl_queue_select {
 	u16 vsi_id;
@@ -456,10 +462,11 @@ VIRTCHNL_CHECK_STRUCT_LEN(8, virtchnl_ether_addr);
 struct virtchnl_ether_addr_list {
 	u16 vsi_id;
 	u16 num_elements;
-	struct virtchnl_ether_addr list[1];
+	struct virtchnl_ether_addr list[];
 };
 
-VIRTCHNL_CHECK_STRUCT_LEN(12, virtchnl_ether_addr_list);
+VIRTCHNL_CHECK_STRUCT_LEN(4, virtchnl_ether_addr_list);
+#define virtchnl_ether_addr_list_LEGACY_SIZEOF	12
 
 /* VIRTCHNL_OP_ADD_VLAN
  * VF sends this message to add one or more VLAN tag filters for receives.
@@ -478,10 +485,11 @@ VIRTCHNL_CHECK_STRUCT_LEN(12, virtchnl_ether_addr_list);
 struct virtchnl_vlan_filter_list {
 	u16 vsi_id;
 	u16 num_elements;
-	u16 vlan_id[1];
+	u16 vlan_id[];
 };
 
-VIRTCHNL_CHECK_STRUCT_LEN(6, virtchnl_vlan_filter_list);
+VIRTCHNL_CHECK_STRUCT_LEN(4, virtchnl_vlan_filter_list);
+#define virtchnl_vlan_filter_list_LEGACY_SIZEOF	6
 
 /* This enum is used for all of the VIRTCHNL_VF_OFFLOAD_VLAN_V2_CAPS related
  * structures and opcodes.
@@ -708,10 +716,11 @@ struct virtchnl_vlan_filter_list_v2 {
 	u16 vport_id;
 	u16 num_elements;
 	u8 pad[4];
-	struct virtchnl_vlan_filter filters[1];
+	struct virtchnl_vlan_filter filters[];
 };
 
-VIRTCHNL_CHECK_STRUCT_LEN(40, virtchnl_vlan_filter_list_v2);
+VIRTCHNL_CHECK_STRUCT_LEN(8, virtchnl_vlan_filter_list_v2);
+#define virtchnl_vlan_filter_list_v2_LEGACY_SIZEOF	40
 
 /* VIRTCHNL_OP_ENABLE_VLAN_STRIPPING_V2
  * VIRTCHNL_OP_DISABLE_VLAN_STRIPPING_V2
@@ -863,18 +872,20 @@ VIRTCHNL_CHECK_STRUCT_LEN(4, virtchnl_promisc_info);
 struct virtchnl_rss_key {
 	u16 vsi_id;
 	u16 key_len;
-	u8 key[1];         /* RSS hash key, packed bytes */
+	u8 key[];          /* RSS hash key, packed bytes */
 };
 
-VIRTCHNL_CHECK_STRUCT_LEN(6, virtchnl_rss_key);
+VIRTCHNL_CHECK_STRUCT_LEN(4, virtchnl_rss_key);
+#define virtchnl_rss_key_LEGACY_SIZEOF	6
 
 struct virtchnl_rss_lut {
 	u16 vsi_id;
 	u16 lut_entries;
-	u8 lut[1];        /* RSS lookup table */
+	u8 lut[];         /* RSS lookup table */
 };
 
-VIRTCHNL_CHECK_STRUCT_LEN(6, virtchnl_rss_lut);
+VIRTCHNL_CHECK_STRUCT_LEN(4, virtchnl_rss_lut);
+#define virtchnl_rss_lut_LEGACY_SIZEOF	6
 
 /* VIRTCHNL_OP_GET_RSS_HENA_CAPS
  * VIRTCHNL_OP_SET_RSS_HENA
@@ -908,10 +919,11 @@ VIRTCHNL_CHECK_STRUCT_LEN(16, virtchnl_channel_info);
 struct virtchnl_tc_info {
 	u32	num_tc;
 	u32	pad;
-	struct	virtchnl_channel_info list[1];
+	struct virtchnl_channel_info list[];
 };
 
-VIRTCHNL_CHECK_STRUCT_LEN(24, virtchnl_tc_info);
+VIRTCHNL_CHECK_STRUCT_LEN(8, virtchnl_tc_info);
+#define virtchnl_tc_info_LEGACY_SIZEOF	24
 
 /* VIRTCHNL_ADD_CLOUD_FILTER
  * VIRTCHNL_DEL_CLOUD_FILTER
@@ -961,14 +973,22 @@ enum virtchnl_flow_type {
 struct virtchnl_filter {
 	union	virtchnl_flow_spec data;
 	union	virtchnl_flow_spec mask;
-	enum	virtchnl_flow_type flow_type;
-	enum	virtchnl_action action;
+
+	/* see enum virtchnl_flow_type */
+	s32	flow_type;
+
+	/* see enum virtchnl_action */
+	s32	action;
 	u32	action_meta;
 	u8	field_flags;
 	u8	pad[3];
 };
 
 VIRTCHNL_CHECK_STRUCT_LEN(272, virtchnl_filter);
+
+struct virtchnl_supported_rxdids {
+	u64 supported_rxdids;
+};
 
 /* VIRTCHNL_OP_EVENT
  * PF sends this message to inform the VF driver of events that may affect it.
@@ -986,7 +1006,8 @@ enum virtchnl_event_codes {
 #define PF_EVENT_SEVERITY_CERTAIN_DOOM	255
 
 struct virtchnl_pf_event {
-	enum virtchnl_event_codes event;
+	/* see enum virtchnl_event_codes */
+	s32 event;
 	union {
 		/* If the PF driver does not support the new speed reporting
 		 * capabilities then use link_event else use link_event_adv to
@@ -999,6 +1020,7 @@ struct virtchnl_pf_event {
 		struct {
 			enum virtchnl_link_speed link_speed;
 			bool link_status;
+			u8 pad[3];
 		} link_event;
 		struct {
 			/* link_speed provided in Mbps */
@@ -1008,39 +1030,42 @@ struct virtchnl_pf_event {
 		} link_event_adv;
 	} event_data;
 
-	int severity;
+	s32 severity;
 };
 
 VIRTCHNL_CHECK_STRUCT_LEN(16, virtchnl_pf_event);
 
-/* VIRTCHNL_OP_CONFIG_IWARP_IRQ_MAP
- * VF uses this message to request PF to map IWARP vectors to IWARP queues.
- * The request for this originates from the VF IWARP driver through
- * a client interface between VF LAN and VF IWARP driver.
+/* used to specify if a ceq_idx or aeq_idx is invalid */
+#define VIRTCHNL_RDMA_INVALID_QUEUE_IDX	0xFFFF
+/* VIRTCHNL_OP_CONFIG_RDMA_IRQ_MAP
+ * VF uses this message to request PF to map RDMA vectors to RDMA queues.
+ * The request for this originates from the VF RDMA driver through
+ * a client interface between VF LAN and VF RDMA driver.
  * A vector could have an AEQ and CEQ attached to it although
- * there is a single AEQ per VF IWARP instance in which case
- * most vectors will have an INVALID_IDX for aeq and valid idx for ceq.
- * There will never be a case where there will be multiple CEQs attached
- * to a single vector.
+ * there is a single AEQ per VF RDMA instance in which case
+ * most vectors will have an VIRTCHNL_RDMA_INVALID_QUEUE_IDX for aeq and valid
+ * idx for ceqs There will never be a case where there will be multiple CEQs
+ * attached to a single vector.
  * PF configures interrupt mapping and returns status.
  */
 
-struct virtchnl_iwarp_qv_info {
+struct virtchnl_rdma_qv_info {
 	u32 v_idx; /* msix_vector */
-	u16 ceq_idx;
-	u16 aeq_idx;
+	u16 ceq_idx; /* set to VIRTCHNL_RDMA_INVALID_QUEUE_IDX if invalid */
+	u16 aeq_idx; /* set to VIRTCHNL_RDMA_INVALID_QUEUE_IDX if invalid */
 	u8 itr_idx;
 	u8 pad[3];
 };
 
-VIRTCHNL_CHECK_STRUCT_LEN(12, virtchnl_iwarp_qv_info);
+VIRTCHNL_CHECK_STRUCT_LEN(12, virtchnl_rdma_qv_info);
 
-struct virtchnl_iwarp_qvlist_info {
+struct virtchnl_rdma_qvlist_info {
 	u32 num_vectors;
-	struct virtchnl_iwarp_qv_info qv_info[1];
+	struct virtchnl_rdma_qv_info qv_info[];
 };
 
-VIRTCHNL_CHECK_STRUCT_LEN(16, virtchnl_iwarp_qvlist_info);
+VIRTCHNL_CHECK_STRUCT_LEN(4, virtchnl_rdma_qvlist_info);
+#define virtchnl_rdma_qvlist_info_LEGACY_SIZEOF	16
 
 /* VF reset states - these are written into the RSTAT register:
  * VFGEN_RSTAT on the VF
@@ -1099,7 +1124,7 @@ enum virtchnl_rss_algorithm {
 #define VIRTCHNL_GET_PROTO_HDR_TYPE(hdr) \
 	(((hdr)->type) >> PROTO_HDR_SHIFT)
 #define VIRTCHNL_TEST_PROTO_HDR_TYPE(hdr, val) \
-	((hdr)->type == ((val) >> PROTO_HDR_SHIFT))
+	((hdr)->type == ((s32)((val) >> PROTO_HDR_SHIFT)))
 #define VIRTCHNL_TEST_PROTO_HDR(hdr, val) \
 	(VIRTCHNL_TEST_PROTO_HDR_TYPE((hdr), (val)) && \
 	 VIRTCHNL_TEST_PROTO_HDR_FIELD((hdr), (val)))
@@ -1195,7 +1220,8 @@ enum virtchnl_proto_hdr_field {
 };
 
 struct virtchnl_proto_hdr {
-	enum virtchnl_proto_hdr_type type;
+	/* see enum virtchnl_proto_hdr_type */
+	s32 type;
 	u32 field_selector; /* a bit mask to select field for header type */
 	u8 buffer[64];
 	/**
@@ -1225,15 +1251,18 @@ VIRTCHNL_CHECK_STRUCT_LEN(2312, virtchnl_proto_hdrs);
 
 struct virtchnl_rss_cfg {
 	struct virtchnl_proto_hdrs proto_hdrs;	   /* protocol headers */
-	enum virtchnl_rss_algorithm rss_algorithm; /* RSS algorithm type */
-	u8 reserved[128];			   /* reserve for future */
+
+	/* see enum virtchnl_rss_algorithm; rss algorithm type */
+	s32 rss_algorithm;
+	u8 reserved[128];                          /* reserve for future */
 };
 
 VIRTCHNL_CHECK_STRUCT_LEN(2444, virtchnl_rss_cfg);
 
 /* action configuration for FDIR */
 struct virtchnl_filter_action {
-	enum virtchnl_action type;
+	/* see enum virtchnl_action type */
+	s32 type;
 	union {
 		/* used for queue and qgroup action */
 		struct {
@@ -1275,7 +1304,7 @@ VIRTCHNL_CHECK_STRUCT_LEN(2604, virtchnl_fdir_rule);
 /* Status returned to VF after VF requests FDIR commands
  * VIRTCHNL_FDIR_SUCCESS
  * VF FDIR related request is successfully done by PF
- * The request can be OP_ADD/DEL.
+ * The request can be OP_ADD/DEL/QUERY_FDIR_FILTER.
  *
  * VIRTCHNL_FDIR_FAILURE_RULE_NORESOURCE
  * OP_ADD_FDIR_FILTER request is failed due to no Hardware resource.
@@ -1296,6 +1325,10 @@ VIRTCHNL_CHECK_STRUCT_LEN(2604, virtchnl_fdir_rule);
  * VIRTCHNL_FDIR_FAILURE_RULE_TIMEOUT
  * OP_ADD/DEL_FDIR_FILTER request is failed due to timing out
  * for programming.
+ *
+ * VIRTCHNL_FDIR_FAILURE_QUERY_INVALID
+ * OP_QUERY_FDIR_FILTER request is failed due to parameters validation,
+ * for example, VF query counter of a rule who has no counter action.
  */
 enum virtchnl_fdir_prgm_status {
 	VIRTCHNL_FDIR_SUCCESS = 0,
@@ -1305,6 +1338,7 @@ enum virtchnl_fdir_prgm_status {
 	VIRTCHNL_FDIR_FAILURE_RULE_NONEXIST,
 	VIRTCHNL_FDIR_FAILURE_RULE_INVALID,
 	VIRTCHNL_FDIR_FAILURE_RULE_TIMEOUT,
+	VIRTCHNL_FDIR_FAILURE_QUERY_INVALID,
 };
 
 /* VIRTCHNL_OP_ADD_FDIR_FILTER
@@ -1321,7 +1355,9 @@ struct virtchnl_fdir_add {
 	u16 validate_only; /* INPUT */
 	u32 flow_id;       /* OUTPUT */
 	struct virtchnl_fdir_rule rule_cfg; /* INPUT */
-	enum virtchnl_fdir_prgm_status status; /* OUTPUT */
+
+	/* see enum virtchnl_fdir_prgm_status; OUTPUT */
+	s32 status;
 };
 
 VIRTCHNL_CHECK_STRUCT_LEN(2616, virtchnl_fdir_add);
@@ -1334,10 +1370,37 @@ struct virtchnl_fdir_del {
 	u16 vsi_id;  /* INPUT */
 	u16 pad;
 	u32 flow_id; /* INPUT */
-	enum virtchnl_fdir_prgm_status status; /* OUTPUT */
+
+	/* see enum virtchnl_fdir_prgm_status; OUTPUT */
+	s32 status;
 };
 
 VIRTCHNL_CHECK_STRUCT_LEN(12, virtchnl_fdir_del);
+
+#define __vss_byone(p, member, count, old)				      \
+	(struct_size(p, member, count) + (old - 1 - struct_size(p, member, 0)))
+
+#define __vss_byelem(p, member, count, old)				      \
+	(struct_size(p, member, count - 1) + (old - struct_size(p, member, 0)))
+
+#define __vss_full(p, member, count, old)				      \
+	(struct_size(p, member, count) + (old - struct_size(p, member, 0)))
+
+#define __vss(type, func, p, member, count)		\
+	struct type: func(p, member, count, type##_LEGACY_SIZEOF)
+
+#define virtchnl_struct_size(p, m, c)					      \
+	_Generic(*p,							      \
+		 __vss(virtchnl_vf_resource, __vss_full, p, m, c),	      \
+		 __vss(virtchnl_vsi_queue_config_info, __vss_full, p, m, c),  \
+		 __vss(virtchnl_irq_map_info, __vss_full, p, m, c),	      \
+		 __vss(virtchnl_ether_addr_list, __vss_full, p, m, c),	      \
+		 __vss(virtchnl_vlan_filter_list, __vss_full, p, m, c),	      \
+		 __vss(virtchnl_vlan_filter_list_v2, __vss_byelem, p, m, c),  \
+		 __vss(virtchnl_tc_info, __vss_byelem, p, m, c),	      \
+		 __vss(virtchnl_rdma_qvlist_info, __vss_byelem, p, m, c),     \
+		 __vss(virtchnl_rss_key, __vss_byone, p, m, c),		      \
+		 __vss(virtchnl_rss_lut, __vss_byone, p, m, c))
 
 /**
  * virtchnl_vc_validate_vf_msg
@@ -1353,7 +1416,7 @@ virtchnl_vc_validate_vf_msg(struct virtchnl_version_info *ver, u32 v_opcode,
 			    u8 *msg, u16 msglen)
 {
 	bool err_msg_format = false;
-	int valid_len = 0;
+	u32 valid_len = 0;
 
 	/* Validate message length. */
 	switch (v_opcode) {
@@ -1373,24 +1436,23 @@ virtchnl_vc_validate_vf_msg(struct virtchnl_version_info *ver, u32 v_opcode,
 		valid_len = sizeof(struct virtchnl_rxq_info);
 		break;
 	case VIRTCHNL_OP_CONFIG_VSI_QUEUES:
-		valid_len = sizeof(struct virtchnl_vsi_queue_config_info);
+		valid_len = virtchnl_vsi_queue_config_info_LEGACY_SIZEOF;
 		if (msglen >= valid_len) {
 			struct virtchnl_vsi_queue_config_info *vqc =
 			    (struct virtchnl_vsi_queue_config_info *)msg;
-			valid_len += (vqc->num_queue_pairs *
-				      sizeof(struct
-					     virtchnl_queue_pair_info));
+			valid_len = virtchnl_struct_size(vqc, qpair,
+							 vqc->num_queue_pairs);
 			if (vqc->num_queue_pairs == 0)
 				err_msg_format = true;
 		}
 		break;
 	case VIRTCHNL_OP_CONFIG_IRQ_MAP:
-		valid_len = sizeof(struct virtchnl_irq_map_info);
+		valid_len = virtchnl_irq_map_info_LEGACY_SIZEOF;
 		if (msglen >= valid_len) {
 			struct virtchnl_irq_map_info *vimi =
 			    (struct virtchnl_irq_map_info *)msg;
-			valid_len += (vimi->num_vectors *
-				      sizeof(struct virtchnl_vector_map));
+			valid_len = virtchnl_struct_size(vimi, vecmap,
+							 vimi->num_vectors);
 			if (vimi->num_vectors == 0)
 				err_msg_format = true;
 		}
@@ -1401,23 +1463,24 @@ virtchnl_vc_validate_vf_msg(struct virtchnl_version_info *ver, u32 v_opcode,
 		break;
 	case VIRTCHNL_OP_ADD_ETH_ADDR:
 	case VIRTCHNL_OP_DEL_ETH_ADDR:
-		valid_len = sizeof(struct virtchnl_ether_addr_list);
+		valid_len = virtchnl_ether_addr_list_LEGACY_SIZEOF;
 		if (msglen >= valid_len) {
 			struct virtchnl_ether_addr_list *veal =
 			    (struct virtchnl_ether_addr_list *)msg;
-			valid_len += veal->num_elements *
-			    sizeof(struct virtchnl_ether_addr);
+			valid_len = virtchnl_struct_size(veal, list,
+							 veal->num_elements);
 			if (veal->num_elements == 0)
 				err_msg_format = true;
 		}
 		break;
 	case VIRTCHNL_OP_ADD_VLAN:
 	case VIRTCHNL_OP_DEL_VLAN:
-		valid_len = sizeof(struct virtchnl_vlan_filter_list);
+		valid_len = virtchnl_vlan_filter_list_LEGACY_SIZEOF;
 		if (msglen >= valid_len) {
 			struct virtchnl_vlan_filter_list *vfl =
 			    (struct virtchnl_vlan_filter_list *)msg;
-			valid_len += vfl->num_elements * sizeof(u16);
+			valid_len = virtchnl_struct_size(vfl, vlan_id,
+							 vfl->num_elements);
 			if (vfl->num_elements == 0)
 				err_msg_format = true;
 		}
@@ -1428,7 +1491,7 @@ virtchnl_vc_validate_vf_msg(struct virtchnl_version_info *ver, u32 v_opcode,
 	case VIRTCHNL_OP_GET_STATS:
 		valid_len = sizeof(struct virtchnl_queue_select);
 		break;
-	case VIRTCHNL_OP_IWARP:
+	case VIRTCHNL_OP_RDMA:
 		/* These messages are opaque to us and will be validated in
 		 * the RDMA client code. We just need to check for nonzero
 		 * length. The firmware will enforce max length restrictions.
@@ -1438,35 +1501,34 @@ virtchnl_vc_validate_vf_msg(struct virtchnl_version_info *ver, u32 v_opcode,
 		else
 			err_msg_format = true;
 		break;
-	case VIRTCHNL_OP_RELEASE_IWARP_IRQ_MAP:
+	case VIRTCHNL_OP_RELEASE_RDMA_IRQ_MAP:
 		break;
-	case VIRTCHNL_OP_CONFIG_IWARP_IRQ_MAP:
-		valid_len = sizeof(struct virtchnl_iwarp_qvlist_info);
+	case VIRTCHNL_OP_CONFIG_RDMA_IRQ_MAP:
+		valid_len = virtchnl_rdma_qvlist_info_LEGACY_SIZEOF;
 		if (msglen >= valid_len) {
-			struct virtchnl_iwarp_qvlist_info *qv =
-				(struct virtchnl_iwarp_qvlist_info *)msg;
-			if (qv->num_vectors == 0) {
-				err_msg_format = true;
-				break;
-			}
-			valid_len += ((qv->num_vectors - 1) *
-				sizeof(struct virtchnl_iwarp_qv_info));
+			struct virtchnl_rdma_qvlist_info *qv =
+				(struct virtchnl_rdma_qvlist_info *)msg;
+
+			valid_len = virtchnl_struct_size(qv, qv_info,
+							 qv->num_vectors);
 		}
 		break;
 	case VIRTCHNL_OP_CONFIG_RSS_KEY:
-		valid_len = sizeof(struct virtchnl_rss_key);
+		valid_len = virtchnl_rss_key_LEGACY_SIZEOF;
 		if (msglen >= valid_len) {
 			struct virtchnl_rss_key *vrk =
 				(struct virtchnl_rss_key *)msg;
-			valid_len += vrk->key_len - 1;
+			valid_len = virtchnl_struct_size(vrk, key,
+							 vrk->key_len);
 		}
 		break;
 	case VIRTCHNL_OP_CONFIG_RSS_LUT:
-		valid_len = sizeof(struct virtchnl_rss_lut);
+		valid_len = virtchnl_rss_lut_LEGACY_SIZEOF;
 		if (msglen >= valid_len) {
 			struct virtchnl_rss_lut *vrl =
 				(struct virtchnl_rss_lut *)msg;
-			valid_len += vrl->lut_entries - 1;
+			valid_len = virtchnl_struct_size(vrl, lut,
+							 vrl->lut_entries);
 		}
 		break;
 	case VIRTCHNL_OP_GET_RSS_HENA_CAPS:
@@ -1481,12 +1543,12 @@ virtchnl_vc_validate_vf_msg(struct virtchnl_version_info *ver, u32 v_opcode,
 		valid_len = sizeof(struct virtchnl_vf_res_request);
 		break;
 	case VIRTCHNL_OP_ENABLE_CHANNELS:
-		valid_len = sizeof(struct virtchnl_tc_info);
+		valid_len = virtchnl_tc_info_LEGACY_SIZEOF;
 		if (msglen >= valid_len) {
 			struct virtchnl_tc_info *vti =
 				(struct virtchnl_tc_info *)msg;
-			valid_len += (vti->num_tc - 1) *
-				     sizeof(struct virtchnl_channel_info);
+			valid_len = virtchnl_struct_size(vti, list,
+							 vti->num_tc);
 			if (vti->num_tc == 0)
 				err_msg_format = true;
 		}
@@ -1494,10 +1556,10 @@ virtchnl_vc_validate_vf_msg(struct virtchnl_version_info *ver, u32 v_opcode,
 	case VIRTCHNL_OP_DISABLE_CHANNELS:
 		break;
 	case VIRTCHNL_OP_ADD_CLOUD_FILTER:
-		valid_len = sizeof(struct virtchnl_filter);
-		break;
 	case VIRTCHNL_OP_DEL_CLOUD_FILTER:
 		valid_len = sizeof(struct virtchnl_filter);
+		break;
+	case VIRTCHNL_OP_GET_SUPPORTED_RXDIDS:
 		break;
 	case VIRTCHNL_OP_ADD_RSS_CFG:
 	case VIRTCHNL_OP_DEL_RSS_CFG:
@@ -1513,13 +1575,13 @@ virtchnl_vc_validate_vf_msg(struct virtchnl_version_info *ver, u32 v_opcode,
 		break;
 	case VIRTCHNL_OP_ADD_VLAN_V2:
 	case VIRTCHNL_OP_DEL_VLAN_V2:
-		valid_len = sizeof(struct virtchnl_vlan_filter_list_v2);
+		valid_len = virtchnl_vlan_filter_list_v2_LEGACY_SIZEOF;
 		if (msglen >= valid_len) {
 			struct virtchnl_vlan_filter_list_v2 *vfl =
 			    (struct virtchnl_vlan_filter_list_v2 *)msg;
 
-			valid_len += (vfl->num_elements - 1) *
-				sizeof(struct virtchnl_vlan_filter);
+			valid_len = virtchnl_struct_size(vfl, filters,
+							 vfl->num_elements);
 
 			if (vfl->num_elements == 0) {
 				err_msg_format = true;

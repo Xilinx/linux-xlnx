@@ -398,7 +398,7 @@ static struct i2c_driver proxo_i2c_driver = {
 		.name = "proxo",
 		.of_match_table = proxo_of_match,
 	},
-	.probe_new = proxo_probe,
+	.probe = proxo_probe,
 	.remove = proxo_remove,
 	.id_table = proxo_i2c_id,
 };

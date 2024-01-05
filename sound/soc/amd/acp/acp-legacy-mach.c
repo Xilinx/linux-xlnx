@@ -16,6 +16,7 @@
 #include <sound/pcm_params.h>
 #include <sound/soc-acpi.h>
 #include <sound/soc-dapm.h>
+#include <linux/dmi.h>
 #include <linux/module.h>
 
 #include "acp-mach.h"
@@ -27,6 +28,7 @@ static struct acp_card_drvdata rt5682_rt1019_data = {
 	.hs_codec_id = RT5682,
 	.amp_codec_id = RT1019,
 	.dmic_codec_id = DMIC,
+	.tdm_mode = false,
 };
 
 static struct acp_card_drvdata rt5682s_max_data = {
@@ -36,6 +38,7 @@ static struct acp_card_drvdata rt5682s_max_data = {
 	.hs_codec_id = RT5682S,
 	.amp_codec_id = MAX98360A,
 	.dmic_codec_id = DMIC,
+	.tdm_mode = false,
 };
 
 static struct acp_card_drvdata rt5682s_rt1019_data = {
@@ -45,6 +48,7 @@ static struct acp_card_drvdata rt5682s_rt1019_data = {
 	.hs_codec_id = RT5682S,
 	.amp_codec_id = RT1019,
 	.dmic_codec_id = DMIC,
+	.tdm_mode = false,
 };
 
 static struct acp_card_drvdata max_nau8825_data = {
@@ -56,6 +60,7 @@ static struct acp_card_drvdata max_nau8825_data = {
 	.dmic_codec_id = DMIC,
 	.soc_mclk = true,
 	.platform = REMBRANDT,
+	.tdm_mode = false,
 };
 
 static struct acp_card_drvdata rt5682s_rt1019_rmb_data = {
@@ -67,29 +72,15 @@ static struct acp_card_drvdata rt5682s_rt1019_rmb_data = {
 	.dmic_codec_id = DMIC,
 	.soc_mclk = true,
 	.platform = REMBRANDT,
-};
-
-static const struct snd_kcontrol_new acp_controls[] = {
-	SOC_DAPM_PIN_SWITCH("Headphone Jack"),
-	SOC_DAPM_PIN_SWITCH("Headset Mic"),
-	SOC_DAPM_PIN_SWITCH("Spk"),
-	SOC_DAPM_PIN_SWITCH("Left Spk"),
-	SOC_DAPM_PIN_SWITCH("Right Spk"),
-
-};
-
-static const struct snd_soc_dapm_widget acp_widgets[] = {
-	SND_SOC_DAPM_HP("Headphone Jack", NULL),
-	SND_SOC_DAPM_MIC("Headset Mic", NULL),
-	SND_SOC_DAPM_SPK("Spk", NULL),
-	SND_SOC_DAPM_SPK("Left Spk", NULL),
-	SND_SOC_DAPM_SPK("Right Spk", NULL),
+	.tdm_mode = false,
 };
 
 static int acp_asoc_probe(struct platform_device *pdev)
 {
 	struct snd_soc_card *card = NULL;
 	struct device *dev = &pdev->dev;
+	const struct dmi_system_id *dmi_id;
+	struct acp_card_drvdata *acp_card_drvdata;
 	int ret;
 
 	if (!pdev->id_entry)
@@ -102,11 +93,13 @@ static int acp_asoc_probe(struct platform_device *pdev)
 	card->dev = dev;
 	card->owner = THIS_MODULE;
 	card->name = pdev->id_entry->name;
-	card->dapm_widgets = acp_widgets;
-	card->num_dapm_widgets = ARRAY_SIZE(acp_widgets);
-	card->controls = acp_controls;
-	card->num_controls = ARRAY_SIZE(acp_controls);
 	card->drvdata = (struct acp_card_drvdata *)pdev->id_entry->driver_data;
+	/* Widgets and controls added per-codec in acp-mach-common.c */
+
+	acp_card_drvdata = card->drvdata;
+	dmi_id = dmi_first_match(acp_quirk_table);
+	if (dmi_id && dmi_id->driver_data)
+		acp_card_drvdata->tdm_mode = dmi_id->driver_data;
 
 	acp_legacy_dai_links_create(card);
 

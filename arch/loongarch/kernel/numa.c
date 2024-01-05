@@ -67,39 +67,7 @@ static int __init pcpu_cpu_distance(unsigned int from, unsigned int to)
 
 void __init pcpu_populate_pte(unsigned long addr)
 {
-	pgd_t *pgd = pgd_offset_k(addr);
-	p4d_t *p4d = p4d_offset(pgd, addr);
-	pud_t *pud;
-	pmd_t *pmd;
-
-	if (p4d_none(*p4d)) {
-		pud_t *new;
-
-		new = memblock_alloc(PAGE_SIZE, PAGE_SIZE);
-		pgd_populate(&init_mm, pgd, new);
-#ifndef __PAGETABLE_PUD_FOLDED
-		pud_init((unsigned long)new, (unsigned long)invalid_pmd_table);
-#endif
-	}
-
-	pud = pud_offset(p4d, addr);
-	if (pud_none(*pud)) {
-		pmd_t *new;
-
-		new = memblock_alloc(PAGE_SIZE, PAGE_SIZE);
-		pud_populate(&init_mm, pud, new);
-#ifndef __PAGETABLE_PMD_FOLDED
-		pmd_init((unsigned long)new, (unsigned long)invalid_pte_table);
-#endif
-	}
-
-	pmd = pmd_offset(pud, addr);
-	if (!pmd_present(*pmd)) {
-		pte_t *new;
-
-		new = memblock_alloc(PAGE_SIZE, PAGE_SIZE);
-		pmd_populate_kernel(&init_mm, pmd, new);
-	}
+	populate_kernel_pte(addr);
 }
 
 void __init setup_per_cpu_areas(void)
@@ -388,6 +356,21 @@ static void __init numa_default_distance(void)
 	}
 }
 
+/*
+ * fake_numa_init() - For Non-ACPI systems
+ * Return: 0 on success, -errno on failure.
+ */
+static int __init fake_numa_init(void)
+{
+	phys_addr_t start = memblock_start_of_DRAM();
+	phys_addr_t end = memblock_end_of_DRAM() - 1;
+
+	node_set(0, numa_nodes_parsed);
+	pr_info("Faking a node at [mem %pap-%pap]\n", &start, &end);
+
+	return numa_add_memblk(0, start, end + 1);
+}
+
 int __init init_numa_memory(void)
 {
 	int i;
@@ -404,7 +387,7 @@ int __init init_numa_memory(void)
 	memset(&numa_meminfo, 0, sizeof(numa_meminfo));
 
 	/* Parse SRAT and SLIT if provided by firmware. */
-	ret = acpi_numa_init();
+	ret = acpi_disabled ? fake_numa_init() : acpi_numa_init();
 	if (ret < 0)
 		return ret;
 
@@ -453,9 +436,8 @@ void __init paging_init(void)
 
 void __init mem_init(void)
 {
-	high_memory = (void *) __va(get_num_physpages() << PAGE_SHIFT);
+	high_memory = (void *) __va(max_low_pfn << PAGE_SHIFT);
 	memblock_free_all();
-	setup_zero_pages();	/* This comes from node 0 */
 }
 
 int pcibus_to_node(struct pci_bus *bus)

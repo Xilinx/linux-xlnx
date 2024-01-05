@@ -63,7 +63,6 @@ static inline struct mcb_bus *to_mcb_bus(struct device *dev)
 struct mcb_device {
 	struct device dev;
 	struct mcb_bus *bus;
-	bool is_added;
 	struct mcb_driver *driver;
 	u16 id;
 	int inst;
@@ -76,10 +75,7 @@ struct mcb_device {
 	struct device *dma_dev;
 };
 
-static inline struct mcb_device *to_mcb_device(struct device *dev)
-{
-	return container_of(dev, struct mcb_device, dev);
-}
+#define to_mcb_device(__dev)	container_of_const(__dev, struct mcb_device, dev)
 
 /**
  * struct mcb_driver - MEN Chameleon Bus device driver

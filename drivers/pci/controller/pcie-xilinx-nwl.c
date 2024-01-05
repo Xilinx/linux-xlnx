@@ -17,7 +17,6 @@
 #include <linux/of_address.h>
 #include <linux/of_pci.h>
 #include <linux/of_platform.h>
-#include <linux/of_irq.h>
 #include <linux/pci.h>
 #include <linux/pci-ecam.h>
 #include <linux/platform_device.h>
@@ -473,7 +472,7 @@ static int nwl_irq_domain_alloc(struct irq_domain *domain, unsigned int virq,
 	for (i = 0; i < nr_irqs; i++) {
 		irq_domain_set_info(domain, virq + i, bit + i, &nwl_irq_chip,
 				    domain->host_data, handle_simple_irq,
-				NULL, NULL);
+				    NULL, NULL);
 	}
 	mutex_unlock(&msi->lock);
 	return 0;

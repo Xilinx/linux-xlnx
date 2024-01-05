@@ -1277,7 +1277,7 @@ static void ocrdma_set_qp_init_params(struct ocrdma_qp *qp,
 	qp->sq.max_sges = attrs->cap.max_send_sge;
 	qp->rq.max_sges = attrs->cap.max_recv_sge;
 	qp->state = OCRDMA_QPS_RST;
-	qp->signaled = (attrs->sq_sig_type == IB_SIGNAL_ALL_WR) ? true : false;
+	qp->signaled = attrs->sq_sig_type == IB_SIGNAL_ALL_WR;
 }
 
 static void ocrdma_store_gsi_qp_cq(struct ocrdma_dev *dev,
@@ -1589,7 +1589,6 @@ static void ocrdma_discard_cqes(struct ocrdma_qp *qp, struct ocrdma_cq *cq)
 {
 	unsigned long cq_flags;
 	unsigned long flags;
-	int discard_cnt = 0;
 	u32 cur_getp, stop_getp;
 	struct ocrdma_cqe *cqe;
 	u32 qpn = 0, wqe_idx = 0;
@@ -1641,7 +1640,6 @@ static void ocrdma_discard_cqes(struct ocrdma_qp *qp, struct ocrdma_cq *cq)
 		/* mark cqe discarded so that it is not picked up later
 		 * in the poll_cq().
 		 */
-		discard_cnt += 1;
 		cqe->cmn.qpn = 0;
 skip_cqe:
 		cur_getp = (cur_getp + 1) % cq->max_hw_cqe;

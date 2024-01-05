@@ -104,7 +104,7 @@ bool ath_hw_keysetmac(struct ath_common *common, u16 entry, const u8 *mac)
 		 * Not setting this bit allows the hardware to use the key
 		 * for multicast frame decryption.
 		 */
-		if (mac[0] & 0x01)
+		if (is_multicast_ether_addr(mac))
 			unicast_flag = 0;
 
 		macLo = get_unaligned_le32(mac);
@@ -503,7 +503,7 @@ int ath_key_config(struct ath_common *common,
 
 	hk.kv_len = key->keylen;
 	if (key->keylen)
-		memcpy(hk.kv_val, key->key, key->keylen);
+		memcpy(&hk.kv_values, key->key, key->keylen);
 
 	if (!(key->flags & IEEE80211_KEY_FLAG_PAIRWISE)) {
 		switch (vif->type) {

@@ -9,7 +9,6 @@
 #include "r8190P_rtl8256.h"
 #include "rtl_pm.h"
 
-
 int rtl92e_suspend(struct device *dev_d)
 {
 	struct net_device *dev = dev_get_drvdata(dev_d);
@@ -41,7 +40,7 @@ int rtl92e_suspend(struct device *dev_d)
 		rtl92e_writel(dev, WFCRC1, 0xffffffff);
 		rtl92e_writel(dev, WFCRC2, 0xffffffff);
 		rtl92e_writeb(dev, PMR, 0x5);
-		rtl92e_writeb(dev, MacBlkCtrl, 0xa);
+		rtl92e_writeb(dev, MAC_BLK_CTRL, 0xa);
 	}
 out_pci_suspend:
 	netdev_info(dev, "WOL is %s\n", priv->rtllib->bSupportRemoteWakeUp ?
@@ -61,7 +60,6 @@ int rtl92e_resume(struct device *dev_d)
 	u32 val;
 
 	netdev_info(dev, "================>r8192E resume call.\n");
-
 
 	pci_read_config_dword(pdev, 0x40, &val);
 	if ((val & 0x0000ff00) != 0)

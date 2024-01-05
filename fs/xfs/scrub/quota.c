@@ -1,7 +1,7 @@
-// SPDX-License-Identifier: GPL-2.0+
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
- * Copyright (C) 2017 Oracle.  All Rights Reserved.
- * Author: Darrick J. Wong <darrick.wong@oracle.com>
+ * Copyright (C) 2017-2023 Oracle.  All Rights Reserved.
+ * Author: Darrick J. Wong <djwong@kernel.org>
  */
 #include "xfs.h"
 #include "xfs_fs.h"
@@ -14,6 +14,7 @@
 #include "xfs_inode.h"
 #include "xfs_quota.h"
 #include "xfs_qm.h"
+#include "xfs_bmap.h"
 #include "scrub/scrub.h"
 #include "scrub/common.h"
 
@@ -52,12 +53,18 @@ xchk_setup_quota(
 	if (!xfs_this_quota_on(sc->mp, dqtype))
 		return -ENOENT;
 
+	if (xchk_need_intent_drain(sc))
+		xchk_fsgates_enable(sc, XCHK_FSGATES_DRAIN);
+
 	error = xchk_setup_fs(sc);
 	if (error)
 		return error;
-	sc->ip = xfs_quota_inode(sc->mp, dqtype);
-	xfs_ilock(sc->ip, XFS_ILOCK_EXCL);
-	sc->ilock_flags = XFS_ILOCK_EXCL;
+
+	error = xchk_install_live_inode(sc, xfs_quota_inode(sc->mp, dqtype));
+	if (error)
+		return error;
+
+	xchk_ilock(sc, XFS_ILOCK_EXCL);
 	return 0;
 }
 
@@ -84,7 +91,7 @@ xchk_quota_item(
 	int			error = 0;
 
 	if (xchk_should_terminate(sc, &error))
-		return -ECANCELED;
+		return error;
 
 	/*
 	 * Except for the root dquot, the actual dquot we got must either have
@@ -189,11 +196,12 @@ xchk_quota_data_fork(
 	for_each_xfs_iext(ifp, &icur, &irec) {
 		if (xchk_should_terminate(sc, &error))
 			break;
+
 		/*
-		 * delalloc extents or blocks mapped above the highest
+		 * delalloc/unwritten extents or blocks mapped above the highest
 		 * quota id shouldn't happen.
 		 */
-		if (isnullstartblock(irec.br_startblock) ||
+		if (!xfs_bmap_is_written_extent(&irec) ||
 		    irec.br_startoff > max_dqid_off ||
 		    irec.br_startoff + irec.br_blockcount - 1 > max_dqid_off) {
 			xchk_fblock_set_corrupt(sc, XFS_DATA_FORK,
@@ -230,13 +238,11 @@ xchk_quota(
 	 * data fork we have to drop ILOCK_EXCL to use the regular dquot
 	 * functions.
 	 */
-	xfs_iunlock(sc->ip, sc->ilock_flags);
-	sc->ilock_flags = 0;
+	xchk_iunlock(sc, sc->ilock_flags);
 	sqi.sc = sc;
 	sqi.last_id = 0;
 	error = xfs_qm_dqiterate(mp, dqtype, xchk_quota_item, &sqi);
-	sc->ilock_flags = XFS_ILOCK_EXCL;
-	xfs_ilock(sc->ip, sc->ilock_flags);
+	xchk_ilock(sc, XFS_ILOCK_EXCL);
 	if (error == -ECANCELED)
 		error = 0;
 	if (!xchk_fblock_process_error(sc, XFS_DATA_FORK,

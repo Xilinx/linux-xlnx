@@ -133,8 +133,8 @@ static void i2c_rd(struct v4l2_subdev *sd, u16 reg, u8 *values, u32 n)
 
 	err = i2c_transfer(client->adapter, msgs, ARRAY_SIZE(msgs));
 	if (err != ARRAY_SIZE(msgs)) {
-		v4l2_err(sd, "%s: reading register 0x%x from 0x%x failed\n",
-				__func__, reg, client->addr);
+		v4l2_err(sd, "%s: reading register 0x%x from 0x%x failed: %d\n",
+				__func__, reg, client->addr, err);
 	}
 }
 
@@ -165,8 +165,8 @@ static void i2c_wr(struct v4l2_subdev *sd, u16 reg, u8 *values, u32 n)
 
 	err = i2c_transfer(client->adapter, &msg, 1);
 	if (err != 1) {
-		v4l2_err(sd, "%s: writing register 0x%x from 0x%x failed\n",
-				__func__, reg, client->addr);
+		v4l2_err(sd, "%s: writing register 0x%x from 0x%x failed: %d\n",
+				__func__, reg, client->addr, err);
 		return;
 	}
 
@@ -1891,12 +1891,9 @@ static int tc358743_probe_of(struct tc358743_state *state)
 	int ret;
 
 	refclk = devm_clk_get(dev, "refclk");
-	if (IS_ERR(refclk)) {
-		if (PTR_ERR(refclk) != -EPROBE_DEFER)
-			dev_err(dev, "failed to get refclk: %ld\n",
-				PTR_ERR(refclk));
-		return PTR_ERR(refclk);
-	}
+	if (IS_ERR(refclk))
+		return dev_err_probe(dev, PTR_ERR(refclk),
+				     "failed to get refclk\n");
 
 	ep = of_graph_get_next_endpoint(dev->of_node, NULL);
 	if (!ep) {
@@ -2209,7 +2206,7 @@ static struct i2c_driver tc358743_driver = {
 		.name = "tc358743",
 		.of_match_table = of_match_ptr(tc358743_of_match),
 	},
-	.probe_new = tc358743_probe,
+	.probe = tc358743_probe,
 	.remove = tc358743_remove,
 	.id_table = tc358743_id,
 };

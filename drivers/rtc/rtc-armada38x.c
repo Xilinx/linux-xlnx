@@ -11,7 +11,6 @@
 #include <linux/io.h>
 #include <linux/module.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/rtc.h>
 
@@ -474,7 +473,6 @@ static const struct armada38x_rtc_data armada8k_data = {
 	.alarm = ALARM2,
 };
 
-#ifdef CONFIG_OF
 static const struct of_device_id armada38x_rtc_of_match_table[] = {
 	{
 		.compatible = "marvell,armada-380-rtc",
@@ -487,11 +485,9 @@ static const struct of_device_id armada38x_rtc_of_match_table[] = {
 	{}
 };
 MODULE_DEVICE_TABLE(of, armada38x_rtc_of_match_table);
-#endif
 
 static __init int armada38x_rtc_probe(struct platform_device *pdev)
 {
-	struct resource *res;
 	struct armada38x_rtc *rtc;
 
 	rtc = devm_kzalloc(&pdev->dev, sizeof(struct armada38x_rtc),
@@ -508,12 +504,10 @@ static __init int armada38x_rtc_probe(struct platform_device *pdev)
 
 	spin_lock_init(&rtc->lock);
 
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "rtc");
-	rtc->regs = devm_ioremap_resource(&pdev->dev, res);
+	rtc->regs = devm_platform_ioremap_resource_byname(pdev, "rtc");
 	if (IS_ERR(rtc->regs))
 		return PTR_ERR(rtc->regs);
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "rtc-soc");
-	rtc->regs_soc = devm_ioremap_resource(&pdev->dev, res);
+	rtc->regs_soc = devm_platform_ioremap_resource_byname(pdev, "rtc-soc");
 	if (IS_ERR(rtc->regs_soc))
 		return PTR_ERR(rtc->regs_soc);
 
@@ -580,7 +574,7 @@ static struct platform_driver armada38x_rtc_driver = {
 	.driver		= {
 		.name	= "armada38x-rtc",
 		.pm	= &armada38x_rtc_pm_ops,
-		.of_match_table = of_match_ptr(armada38x_rtc_of_match_table),
+		.of_match_table = armada38x_rtc_of_match_table,
 	},
 };
 

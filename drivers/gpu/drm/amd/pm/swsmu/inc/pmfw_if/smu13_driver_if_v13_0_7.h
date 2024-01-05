@@ -25,7 +25,7 @@
 
 // *** IMPORTANT ***
 // PMFW TEAM: Always increment the interface version on any change to this file
-#define SMU13_DRIVER_IF_VERSION  0x35
+#define SMU13_0_7_DRIVER_IF_VERSION  0x35
 
 //Increment this version if SkuTable_t or BoardTable_t change
 #define PPTABLE_VERSION 0x27
@@ -113,20 +113,21 @@
 #define NUM_FEATURES                          64
 
 #define ALLOWED_FEATURE_CTRL_DEFAULT 0xFFFFFFFFFFFFFFFFULL
-#define ALLOWED_FEATURE_CTRL_SCPM        (1 << FEATURE_DPM_GFXCLK_BIT) | \
-                                         (1 << FEATURE_DPM_GFX_POWER_OPTIMIZER_BIT) | \
-                                         (1 << FEATURE_DPM_UCLK_BIT) | \
-                                         (1 << FEATURE_DPM_FCLK_BIT) | \
-                                         (1 << FEATURE_DPM_SOCCLK_BIT) | \
-                                         (1 << FEATURE_DPM_MP0CLK_BIT) | \
-                                         (1 << FEATURE_DPM_LINK_BIT) | \
-                                         (1 << FEATURE_DPM_DCN_BIT) | \
-                                         (1 << FEATURE_DS_GFXCLK_BIT) | \
-                                         (1 << FEATURE_DS_SOCCLK_BIT) | \
-                                         (1 << FEATURE_DS_FCLK_BIT) | \
-                                         (1 << FEATURE_DS_LCLK_BIT) | \
-                                         (1 << FEATURE_DS_DCFCLK_BIT) | \
-                                         (1 << FEATURE_DS_UCLK_BIT)
+#define ALLOWED_FEATURE_CTRL_SCPM	((1 << FEATURE_DPM_GFXCLK_BIT) | \
+					(1 << FEATURE_DPM_GFX_POWER_OPTIMIZER_BIT) | \
+					(1 << FEATURE_DPM_UCLK_BIT) | \
+					(1 << FEATURE_DPM_FCLK_BIT) | \
+					(1 << FEATURE_DPM_SOCCLK_BIT) | \
+					(1 << FEATURE_DPM_MP0CLK_BIT) | \
+					(1 << FEATURE_DPM_LINK_BIT) | \
+					(1 << FEATURE_DPM_DCN_BIT) | \
+					(1 << FEATURE_DS_GFXCLK_BIT) | \
+					(1 << FEATURE_DS_SOCCLK_BIT) | \
+					(1 << FEATURE_DS_FCLK_BIT) | \
+					(1 << FEATURE_DS_LCLK_BIT) | \
+					(1 << FEATURE_DS_DCFCLK_BIT) | \
+					(1 << FEATURE_DS_UCLK_BIT) | \
+					(1ULL << FEATURE_DS_VCN_BIT))
 
 //For use with feature control messages
 typedef enum {
@@ -682,18 +683,12 @@ typedef struct {
 
 
 #define PP_OD_FEATURE_GFX_VF_CURVE_BIT  0
-#define PP_OD_FEATURE_VMAX_BIT      1
 #define PP_OD_FEATURE_PPT_BIT       2
 #define PP_OD_FEATURE_FAN_CURVE_BIT 3
-#define PP_OD_FEATURE_FREQ_DETER_BIT 4
-#define PP_OD_FEATURE_FULL_CTRL_BIT 5
-#define PP_OD_FEATURE_TDC_BIT      6
 #define PP_OD_FEATURE_GFXCLK_BIT      7
 #define PP_OD_FEATURE_UCLK_BIT      8
 #define PP_OD_FEATURE_ZERO_FAN_BIT      9
 #define PP_OD_FEATURE_TEMPERATURE_BIT 10
-#define PP_OD_FEATURE_POWER_FEATURE_CTRL_BIT 11
-#define PP_OD_FEATURE_ASIC_TDC_BIT 12
 #define PP_OD_FEATURE_COUNT 13
 
 typedef enum {
@@ -712,10 +707,8 @@ typedef struct {
 
   //Voltage control
   int16_t                VoltageOffsetPerZoneBoundary[PP_NUM_OD_VF_CURVE_POINTS];
-  uint16_t               VddGfxVmax;         // in mV
 
-  uint8_t                IdlePwrSavingFeaturesCtrl;
-  uint8_t                RuntimePwrSavingFeaturesCtrl;
+  uint32_t               Reserved;
 
   //Frequency changes
   int16_t                GfxclkFmin;           // MHz
@@ -740,12 +733,7 @@ typedef struct {
   uint8_t                MaxOpTemp;
   uint8_t                Padding[4];
 
-  uint16_t               GfxVoltageFullCtrlMode;
-  uint16_t               GfxclkFullCtrlMode;
-  uint16_t               UclkFullCtrlMode;
-  int16_t                AsicTdc;
-
-  uint32_t               Spare[10];
+  uint32_t               Spare[12];
   uint32_t               MmHubPadding[8]; // SMU internal use. Adding here instead of external as a workaround
 } OverDriveTable_t;
 
@@ -758,10 +746,9 @@ typedef struct {
   uint32_t FeatureCtrlMask;
 
   int16_t VoltageOffsetPerZoneBoundary;
-  uint16_t               VddGfxVmax;         // in mV
+  uint16_t               Reserved1;
 
-  uint8_t                IdlePwrSavingFeaturesCtrl;
-  uint8_t                RuntimePwrSavingFeaturesCtrl;
+  uint16_t               Reserved2;
 
   int16_t                GfxclkFmin;           // MHz
   int16_t                GfxclkFmax;           // MHz
@@ -784,12 +771,7 @@ typedef struct {
   uint8_t                MaxOpTemp;
   uint8_t                Padding[4];
 
-  uint16_t               GfxVoltageFullCtrlMode;
-  uint16_t               GfxclkFullCtrlMode;
-  uint16_t               UclkFullCtrlMode;
-  int16_t                AsicTdc;
-
-  uint32_t               Spare[10];
+  uint32_t               Spare[12];
 
 } OverDriveLimits_t;
 
@@ -1379,10 +1361,12 @@ typedef struct {
   uint32_t     MmHubPadding[8];
 } BoardTable_t;
 
+#pragma pack(push, 1)
 typedef struct {
   SkuTable_t SkuTable;
   BoardTable_t BoardTable;
 } PPTable_t;
+#pragma pack(pop)
 
 typedef struct {
   // Time constant parameters for clock averages in ms

@@ -16,7 +16,6 @@
 #include <linux/console.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
-#include <linux/of_device.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/serial_core.h>
@@ -129,29 +128,11 @@ static void mps2_uart_stop_tx(struct uart_port *port)
 
 static void mps2_uart_tx_chars(struct uart_port *port)
 {
-	struct circ_buf *xmit = &port->state->xmit;
+	u8 ch;
 
-	while (!(mps2_uart_read8(port, UARTn_STATE) & UARTn_STATE_TX_FULL)) {
-		if (port->x_char) {
-			mps2_uart_write8(port, port->x_char, UARTn_DATA);
-			port->x_char = 0;
-			port->icount.tx++;
-			continue;
-		}
-
-		if (uart_circ_empty(xmit) || uart_tx_stopped(port))
-			break;
-
-		mps2_uart_write8(port, xmit->buf[xmit->tail], UARTn_DATA);
-		xmit->tail = (xmit->tail + 1) % UART_XMIT_SIZE;
-		port->icount.tx++;
-	}
-
-	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
-		uart_write_wakeup(port);
-
-	if (uart_circ_empty(xmit))
-		mps2_uart_stop_tx(port);
+	uart_port_tx(port, ch,
+		mps2_uart_tx_empty(port),
+		mps2_uart_write8(port, ch, UARTn_DATA));
 }
 
 static void mps2_uart_start_tx(struct uart_port *port)
@@ -557,8 +538,7 @@ static int mps2_init_port(struct platform_device *pdev,
 	struct resource *res;
 	int ret;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	mps_port->port.membase = devm_ioremap_resource(&pdev->dev, res);
+	mps_port->port.membase = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
 	if (IS_ERR(mps_port->port.membase))
 		return PTR_ERR(mps_port->port.membase);
 

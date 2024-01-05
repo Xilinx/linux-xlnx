@@ -428,6 +428,15 @@ VP9
 
 :author:    Adrian Grange (Google), Peter de Rivaz (Argon Design), Jonathan Hunt (Argon Design)
 
+.. _av1:
+
+AV1
+===
+
+:title:     AV1 Bitstream & Decoding Process Specification
+
+:author:    Peter de Rivaz, Argon Design Ltd, Jack Haughton, Argon Design Ltd
+
 .. _itu2100:
 
 ITU BT.2100

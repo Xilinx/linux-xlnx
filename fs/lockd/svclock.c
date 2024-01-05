@@ -131,12 +131,14 @@ static void nlmsvc_insert_block(struct nlm_block *block, unsigned long when)
 static inline void
 nlmsvc_remove_block(struct nlm_block *block)
 {
+	spin_lock(&nlm_blocked_lock);
 	if (!list_empty(&block->b_list)) {
-		spin_lock(&nlm_blocked_lock);
 		list_del_init(&block->b_list);
 		spin_unlock(&nlm_blocked_lock);
 		nlmsvc_release_block(block);
+		return;
 	}
+	spin_unlock(&nlm_blocked_lock);
 }
 
 /*
@@ -152,6 +154,7 @@ nlmsvc_lookup_block(struct nlm_file *file, struct nlm_lock *lock)
 				file, lock->fl.fl_pid,
 				(long long)lock->fl.fl_start,
 				(long long)lock->fl.fl_end, lock->fl.fl_type);
+	spin_lock(&nlm_blocked_lock);
 	list_for_each_entry(block, &nlm_blocked, b_list) {
 		fl = &block->b_call->a_args.lock.fl;
 		dprintk("lockd: check f=%p pd=%d %Ld-%Ld ty=%d cookie=%s\n",
@@ -161,9 +164,11 @@ nlmsvc_lookup_block(struct nlm_file *file, struct nlm_lock *lock)
 				nlmdbg_cookie2a(&block->b_call->a_args.cookie));
 		if (block->b_file == file && nlm_compare_locks(fl, &lock->fl)) {
 			kref_get(&block->b_count);
+			spin_unlock(&nlm_blocked_lock);
 			return block;
 		}
 	}
+	spin_unlock(&nlm_blocked_lock);
 
 	return NULL;
 }
@@ -185,16 +190,19 @@ nlmsvc_find_block(struct nlm_cookie *cookie)
 {
 	struct nlm_block *block;
 
+	spin_lock(&nlm_blocked_lock);
 	list_for_each_entry(block, &nlm_blocked, b_list) {
 		if (nlm_cookie_match(&block->b_call->a_args.cookie,cookie))
 			goto found;
 	}
+	spin_unlock(&nlm_blocked_lock);
 
 	return NULL;
 
 found:
 	dprintk("nlmsvc_find_block(%s): block=%p\n", nlmdbg_cookie2a(cookie), block);
 	kref_get(&block->b_count);
+	spin_unlock(&nlm_blocked_lock);
 	return block;
 }
 
@@ -317,6 +325,7 @@ void nlmsvc_traverse_blocks(struct nlm_host *host,
 
 restart:
 	mutex_lock(&file->f_mutex);
+	spin_lock(&nlm_blocked_lock);
 	list_for_each_entry_safe(block, next, &file->f_blocks, b_flist) {
 		if (!match(block->b_host, host))
 			continue;
@@ -325,11 +334,13 @@ restart:
 		if (list_empty(&block->b_list))
 			continue;
 		kref_get(&block->b_count);
+		spin_unlock(&nlm_blocked_lock);
 		mutex_unlock(&file->f_mutex);
 		nlmsvc_unlink_block(block);
 		nlmsvc_release_block(block);
 		goto restart;
 	}
+	spin_unlock(&nlm_blocked_lock);
 	mutex_unlock(&file->f_mutex);
 }
 
@@ -659,11 +670,13 @@ nlmsvc_unlock(struct net *net, struct nlm_file *file, struct nlm_lock *lock)
 	nlmsvc_cancel_blocked(net, file, lock);
 
 	lock->fl.fl_type = F_UNLCK;
-	if (file->f_file[O_RDONLY])
-		error = vfs_lock_file(file->f_file[O_RDONLY], F_SETLK,
+	lock->fl.fl_file = file->f_file[O_RDONLY];
+	if (lock->fl.fl_file)
+		error = vfs_lock_file(lock->fl.fl_file, F_SETLK,
 					&lock->fl, NULL);
-	if (file->f_file[O_WRONLY])
-		error = vfs_lock_file(file->f_file[O_WRONLY], F_SETLK,
+	lock->fl.fl_file = file->f_file[O_WRONLY];
+	if (lock->fl.fl_file)
+		error |= vfs_lock_file(lock->fl.fl_file, F_SETLK,
 					&lock->fl, NULL);
 
 	return (error < 0)? nlm_lck_denied_nolocks : nlm_granted;
@@ -697,9 +710,10 @@ nlmsvc_cancel_blocked(struct net *net, struct nlm_file *file, struct nlm_lock *l
 	block = nlmsvc_lookup_block(file, lock);
 	mutex_unlock(&file->f_mutex);
 	if (block != NULL) {
-		mode = lock_to_openmode(&lock->fl);
-		vfs_cancel_lock(block->b_file->f_file[mode],
-				&block->b_call->a_args.lock.fl);
+		struct file_lock *fl = &block->b_call->a_args.lock.fl;
+
+		mode = lock_to_openmode(fl);
+		vfs_cancel_lock(block->b_file->f_file[mode], fl);
 		status = nlmsvc_unlink_block(block);
 		nlmsvc_release_block(block);
 	}
@@ -951,19 +965,32 @@ void
 nlmsvc_grant_reply(struct nlm_cookie *cookie, __be32 status)
 {
 	struct nlm_block	*block;
+	struct file_lock	*fl;
+	int			error;
 
 	dprintk("grant_reply: looking for cookie %x, s=%d \n",
 		*(unsigned int *)(cookie->data), status);
 	if (!(block = nlmsvc_find_block(cookie)))
 		return;
 
-	if (status == nlm_lck_denied_grace_period) {
+	switch (status) {
+	case nlm_lck_denied_grace_period:
 		/* Try again in a couple of seconds */
 		nlmsvc_insert_block(block, 10 * HZ);
-	} else {
+		break;
+	case nlm_lck_denied:
+		/* Client doesn't want it, just unlock it */
+		nlmsvc_unlink_block(block);
+		fl = &block->b_call->a_args.lock.fl;
+		fl->fl_type = F_UNLCK;
+		error = vfs_lock_file(fl->fl_file, F_SETLK, fl, NULL);
+		if (error)
+			pr_warn("lockd: unable to unlock lock rejected by client!\n");
+		break;
+	default:
 		/*
-		 * Lock is now held by client, or has been rejected.
-		 * In both cases, the block should be removed.
+		 * Either it was accepted or the status makes no sense
+		 * just unlink it either way.
 		 */
 		nlmsvc_unlink_block(block);
 	}
@@ -992,7 +1019,7 @@ retry_deferred_block(struct nlm_block *block)
  * picks up locks that can be granted, or grant notifications that must
  * be retransmitted.
  */
-unsigned long
+void
 nlmsvc_retry_blocked(void)
 {
 	unsigned long	timeout = MAX_SCHEDULE_TIMEOUT;
@@ -1022,5 +1049,6 @@ nlmsvc_retry_blocked(void)
 	}
 	spin_unlock(&nlm_blocked_lock);
 
-	return timeout;
+	if (timeout < MAX_SCHEDULE_TIMEOUT)
+		mod_timer(&nlmsvc_retry, jiffies + timeout);
 }

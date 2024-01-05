@@ -21,6 +21,7 @@ static long ns_ioctl(struct file *filp, unsigned int ioctl,
 static const struct file_operations ns_file_operations = {
 	.llseek		= no_llseek,
 	.unlocked_ioctl = ns_ioctl,
+	.compat_ioctl   = compat_ptr_ioctl,
 };
 
 static char *ns_dname(struct dentry *dentry, char *buffer, int buflen)
@@ -83,7 +84,7 @@ slow:
 		return -ENOMEM;
 	}
 	inode->i_ino = ns->inum;
-	inode->i_mtime = inode->i_atime = inode->i_ctime = current_time(inode);
+	inode->i_mtime = inode->i_atime = inode_set_ctime_current(inode);
 	inode->i_flags |= S_IMMUTABLE;
 	inode->i_mode = S_IFREG | S_IRUGO;
 	inode->i_fop = &ns_file_operations;
@@ -234,27 +235,9 @@ bool proc_ns_file(const struct file *file)
 	return file->f_op == &ns_file_operations;
 }
 
-struct file *proc_ns_fget(int fd)
-{
-	struct file *file;
-
-	file = fget(fd);
-	if (!file)
-		return ERR_PTR(-EBADF);
-
-	if (file->f_op != &ns_file_operations)
-		goto out_invalid;
-
-	return file;
-
-out_invalid:
-	fput(file);
-	return ERR_PTR(-EINVAL);
-}
-
 /**
  * ns_match() - Returns true if current namespace matches dev/ino provided.
- * @ns_common: current ns
+ * @ns: current namespace
  * @dev: dev_t from nsfs that will be matched against current nsfs
  * @ino: ino_t from nsfs that will be matched against current nsfs
  *

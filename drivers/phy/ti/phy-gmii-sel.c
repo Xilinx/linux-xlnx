@@ -23,7 +23,9 @@
 #define AM33XX_GMII_SEL_MODE_RGMII	2
 
 /* J72xx SoC specific definitions for the CONTROL port */
+#define J72XX_GMII_SEL_MODE_SGMII	3
 #define J72XX_GMII_SEL_MODE_QSGMII	4
+#define J72XX_GMII_SEL_MODE_USXGMII	5
 #define J72XX_GMII_SEL_MODE_QSGMII_SUB	6
 
 #define PHY_GMII_PORT(n)	BIT((n) - 1)
@@ -50,6 +52,7 @@ struct phy_gmii_sel_soc_data {
 	const struct reg_field (*regfields)[PHY_GMII_SEL_LAST];
 	bool use_of_data;
 	u64 extra_modes;
+	u32 num_qsgmii_main_ports;
 };
 
 struct phy_gmii_sel_priv {
@@ -103,6 +106,20 @@ static int phy_gmii_sel_mode(struct phy *phy, enum phy_mode mode, int submode)
 			gmii_sel_mode = J72XX_GMII_SEL_MODE_QSGMII;
 		else
 			gmii_sel_mode = J72XX_GMII_SEL_MODE_QSGMII_SUB;
+		break;
+
+	case PHY_INTERFACE_MODE_SGMII:
+		if (!(soc_data->extra_modes & BIT(PHY_INTERFACE_MODE_SGMII)))
+			goto unsupported;
+		else
+			gmii_sel_mode = J72XX_GMII_SEL_MODE_SGMII;
+		break;
+
+	case PHY_INTERFACE_MODE_USXGMII:
+		if (!(soc_data->extra_modes & BIT(PHY_INTERFACE_MODE_USXGMII)))
+			goto unsupported;
+		else
+			gmii_sel_mode = J72XX_GMII_SEL_MODE_USXGMII;
 		break;
 
 	default:
@@ -212,7 +229,28 @@ static const
 struct phy_gmii_sel_soc_data phy_gmii_sel_cpsw5g_soc_j7200 = {
 	.use_of_data = true,
 	.regfields = phy_gmii_sel_fields_am654,
-	.extra_modes = BIT(PHY_INTERFACE_MODE_QSGMII),
+	.extra_modes = BIT(PHY_INTERFACE_MODE_QSGMII) | BIT(PHY_INTERFACE_MODE_SGMII),
+	.num_ports = 4,
+	.num_qsgmii_main_ports = 1,
+};
+
+static const
+struct phy_gmii_sel_soc_data phy_gmii_sel_cpsw9g_soc_j721e = {
+	.use_of_data = true,
+	.regfields = phy_gmii_sel_fields_am654,
+	.extra_modes = BIT(PHY_INTERFACE_MODE_QSGMII) | BIT(PHY_INTERFACE_MODE_SGMII),
+	.num_ports = 8,
+	.num_qsgmii_main_ports = 2,
+};
+
+static const
+struct phy_gmii_sel_soc_data phy_gmii_sel_cpsw9g_soc_j784s4 = {
+	.use_of_data = true,
+	.regfields = phy_gmii_sel_fields_am654,
+	.extra_modes = BIT(PHY_INTERFACE_MODE_QSGMII) |
+		       BIT(PHY_INTERFACE_MODE_USXGMII),
+	.num_ports = 8,
+	.num_qsgmii_main_ports = 2,
 };
 
 static const struct of_device_id phy_gmii_sel_id_table[] = {
@@ -239,6 +277,14 @@ static const struct of_device_id phy_gmii_sel_id_table[] = {
 	{
 		.compatible	= "ti,j7200-cpsw5g-phy-gmii-sel",
 		.data		= &phy_gmii_sel_cpsw5g_soc_j7200,
+	},
+	{
+		.compatible	= "ti,j721e-cpsw9g-phy-gmii-sel",
+		.data		= &phy_gmii_sel_cpsw9g_soc_j721e,
+	},
+	{
+		.compatible	= "ti,j784s4-cpsw9g-phy-gmii-sel",
+		.data		= &phy_gmii_sel_cpsw9g_soc_j784s4,
 	},
 	{}
 };
@@ -378,11 +424,13 @@ static int phy_gmii_sel_init_ports(struct phy_gmii_sel_priv *priv)
 static int phy_gmii_sel_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
+	const struct phy_gmii_sel_soc_data *soc_data;
 	struct device_node *node = dev->of_node;
 	const struct of_device_id *of_id;
 	struct phy_gmii_sel_priv *priv;
 	u32 main_ports = 1;
 	int ret;
+	u32 i;
 
 	of_id = of_match_node(phy_gmii_sel_id_table, pdev->dev.of_node);
 	if (!of_id)
@@ -394,22 +442,35 @@ static int phy_gmii_sel_probe(struct platform_device *pdev)
 
 	priv->dev = &pdev->dev;
 	priv->soc_data = of_id->data;
+	soc_data = priv->soc_data;
 	priv->num_ports = priv->soc_data->num_ports;
-	of_property_read_u32(node, "ti,qsgmii-main-ports", &main_ports);
+	priv->qsgmii_main_ports = 0;
+
 	/*
-	 * Ensure that main_ports is within bounds. If the property
-	 * ti,qsgmii-main-ports is not mentioned, or the value mentioned
-	 * is out of bounds, default to 1.
+	 * Based on the compatible, try to read the appropriate number of
+	 * QSGMII main ports from the "ti,qsgmii-main-ports" property from
+	 * the device-tree node.
 	 */
-	if (main_ports < 1 || main_ports > 4)
-		main_ports = 1;
-	priv->qsgmii_main_ports = PHY_GMII_PORT(main_ports);
+	for (i = 0; i < soc_data->num_qsgmii_main_ports; i++) {
+		of_property_read_u32_index(node, "ti,qsgmii-main-ports", i, &main_ports);
+		/*
+		 * Ensure that main_ports is within bounds.
+		 */
+		if (main_ports < 1 || main_ports > soc_data->num_ports) {
+			dev_err(dev, "Invalid qsgmii main port provided\n");
+			return -EINVAL;
+		}
+		priv->qsgmii_main_ports |= PHY_GMII_PORT(main_ports);
+	}
 
 	priv->regmap = syscon_node_to_regmap(node->parent);
 	if (IS_ERR(priv->regmap)) {
-		ret = PTR_ERR(priv->regmap);
-		dev_err(dev, "Failed to get syscon %d\n", ret);
-		return ret;
+		priv->regmap = device_node_to_regmap(node);
+		if (IS_ERR(priv->regmap)) {
+			ret = PTR_ERR(priv->regmap);
+			dev_err(dev, "Failed to get syscon %d\n", ret);
+			return ret;
+		}
 	}
 
 	ret = phy_gmii_sel_init_ports(priv);

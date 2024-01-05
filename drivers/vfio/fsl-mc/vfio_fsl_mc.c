@@ -28,7 +28,7 @@ static int vfio_fsl_mc_open_device(struct vfio_device *core_vdev)
 	int i;
 
 	vdev->regions = kcalloc(count, sizeof(struct vfio_fsl_mc_region),
-				GFP_KERNEL);
+				GFP_KERNEL_ACCOUNT);
 	if (!vdev->regions)
 		return -ENOMEM;
 
@@ -568,10 +568,9 @@ static void vfio_fsl_mc_release_dev(struct vfio_device *core_vdev)
 
 	vfio_fsl_uninit_device(vdev);
 	mutex_destroy(&vdev->igate);
-	vfio_free_device(core_vdev);
 }
 
-static int vfio_fsl_mc_remove(struct fsl_mc_device *mc_dev)
+static void vfio_fsl_mc_remove(struct fsl_mc_device *mc_dev)
 {
 	struct device *dev = &mc_dev->dev;
 	struct vfio_fsl_mc_device *vdev = dev_get_drvdata(dev);
@@ -579,7 +578,6 @@ static int vfio_fsl_mc_remove(struct fsl_mc_device *mc_dev)
 	vfio_unregister_group_dev(&vdev->vdev);
 	dprc_remove_devices(mc_dev, NULL, 0);
 	vfio_put_device(&vdev->vdev);
-	return 0;
 }
 
 static const struct vfio_device_ops vfio_fsl_mc_ops = {
@@ -592,6 +590,10 @@ static const struct vfio_device_ops vfio_fsl_mc_ops = {
 	.read		= vfio_fsl_mc_read,
 	.write		= vfio_fsl_mc_write,
 	.mmap		= vfio_fsl_mc_mmap,
+	.bind_iommufd	= vfio_iommufd_physical_bind,
+	.unbind_iommufd	= vfio_iommufd_physical_unbind,
+	.attach_ioas	= vfio_iommufd_physical_attach_ioas,
+	.detach_ioas	= vfio_iommufd_physical_detach_ioas,
 };
 
 static struct fsl_mc_driver vfio_fsl_mc_driver = {
@@ -599,23 +601,11 @@ static struct fsl_mc_driver vfio_fsl_mc_driver = {
 	.remove		= vfio_fsl_mc_remove,
 	.driver	= {
 		.name	= "vfio-fsl-mc",
-		.owner	= THIS_MODULE,
 	},
 	.driver_managed_dma = true,
 };
 
-static int __init vfio_fsl_mc_driver_init(void)
-{
-	return fsl_mc_driver_register(&vfio_fsl_mc_driver);
-}
-
-static void __exit vfio_fsl_mc_driver_exit(void)
-{
-	fsl_mc_driver_unregister(&vfio_fsl_mc_driver);
-}
-
-module_init(vfio_fsl_mc_driver_init);
-module_exit(vfio_fsl_mc_driver_exit);
+module_fsl_mc_driver(vfio_fsl_mc_driver);
 
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_DESCRIPTION("VFIO for FSL-MC devices - User Level meta-driver");

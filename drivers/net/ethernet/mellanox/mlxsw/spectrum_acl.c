@@ -40,6 +40,11 @@ struct mlxsw_afk *mlxsw_sp_acl_afk(struct mlxsw_sp_acl *acl)
 	return acl->afk;
 }
 
+struct mlxsw_sp_acl_tcam *mlxsw_sp_acl_to_tcam(struct mlxsw_sp_acl *acl)
+{
+	return &acl->tcam;
+}
+
 struct mlxsw_sp_acl_ruleset_ht_key {
 	struct mlxsw_sp_flow_block *block;
 	u32 chain_index;
@@ -334,10 +339,17 @@ err_afa_block_create:
 	return ERR_PTR(err);
 }
 
-void mlxsw_sp_acl_rulei_destroy(struct mlxsw_sp_acl_rule_info *rulei)
+void mlxsw_sp_acl_rulei_destroy(struct mlxsw_sp *mlxsw_sp,
+				struct mlxsw_sp_acl_rule_info *rulei)
 {
 	if (rulei->action_created)
 		mlxsw_afa_block_destroy(rulei->act_block);
+	if (rulei->src_port_range_reg_valid)
+		mlxsw_sp_port_range_reg_put(mlxsw_sp,
+					    rulei->src_port_range_reg_index);
+	if (rulei->dst_port_range_reg_valid)
+		mlxsw_sp_port_range_reg_put(mlxsw_sp,
+					    rulei->dst_port_range_reg_index);
 	kfree(rulei);
 }
 
@@ -763,6 +775,15 @@ int mlxsw_sp_acl_rulei_act_fid_set(struct mlxsw_sp *mlxsw_sp,
 	return mlxsw_afa_block_append_fid_set(rulei->act_block, fid, extack);
 }
 
+int mlxsw_sp_acl_rulei_act_ignore(struct mlxsw_sp *mlxsw_sp,
+				  struct mlxsw_sp_acl_rule_info *rulei,
+				  bool disable_learning, bool disable_security)
+{
+	return mlxsw_afa_block_append_ignore(rulei->act_block,
+					     disable_learning,
+					     disable_security);
+}
+
 int mlxsw_sp_acl_rulei_act_sample(struct mlxsw_sp *mlxsw_sp,
 				  struct mlxsw_sp_acl_rule_info *rulei,
 				  struct mlxsw_sp_flow_block *block,
@@ -829,7 +850,7 @@ void mlxsw_sp_acl_rule_destroy(struct mlxsw_sp *mlxsw_sp,
 {
 	struct mlxsw_sp_acl_ruleset *ruleset = rule->ruleset;
 
-	mlxsw_sp_acl_rulei_destroy(rule->rulei);
+	mlxsw_sp_acl_rulei_destroy(mlxsw_sp, rule->rulei);
 	kfree(rule);
 	mlxsw_sp_acl_ruleset_ref_dec(mlxsw_sp, ruleset);
 }
@@ -1097,22 +1118,6 @@ void mlxsw_sp_acl_fini(struct mlxsw_sp *mlxsw_sp)
 	rhashtable_destroy(&acl->ruleset_ht);
 	mlxsw_afk_destroy(acl->afk);
 	kfree(acl);
-}
-
-u32 mlxsw_sp_acl_region_rehash_intrvl_get(struct mlxsw_sp *mlxsw_sp)
-{
-	struct mlxsw_sp_acl *acl = mlxsw_sp->acl;
-
-	return mlxsw_sp_acl_tcam_vregion_rehash_intrvl_get(mlxsw_sp,
-							   &acl->tcam);
-}
-
-int mlxsw_sp_acl_region_rehash_intrvl_set(struct mlxsw_sp *mlxsw_sp, u32 val)
-{
-	struct mlxsw_sp_acl *acl = mlxsw_sp->acl;
-
-	return mlxsw_sp_acl_tcam_vregion_rehash_intrvl_set(mlxsw_sp,
-							   &acl->tcam, val);
 }
 
 struct mlxsw_sp_acl_rulei_ops mlxsw_sp1_acl_rulei_ops = {

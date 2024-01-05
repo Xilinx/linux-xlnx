@@ -166,12 +166,9 @@ static void __attribute__((__flatten__)) l1_guest_code(void *test_data)
 
 static void assert_ucall_vector(struct kvm_vcpu *vcpu, int vector)
 {
-	struct kvm_run *run = vcpu->run;
 	struct ucall uc;
 
-	TEST_ASSERT(run->exit_reason == KVM_EXIT_IO,
-		    "Unexpected exit reason: %u (%s),\n",
-		    run->exit_reason, exit_reason_str(run->exit_reason));
+	TEST_ASSERT_KVM_EXIT_REASON(vcpu, KVM_EXIT_IO);
 
 	switch (get_ucall(vcpu, &uc)) {
 	case UCALL_SYNC:
@@ -183,9 +180,7 @@ static void assert_ucall_vector(struct kvm_vcpu *vcpu, int vector)
 			    "Expected L2 to ask for %d, L2 says it's done", vector);
 		break;
 	case UCALL_ABORT:
-		TEST_FAIL("%s at %s:%ld (0x%lx != 0x%lx)",
-			  (const char *)uc.args[0], __FILE__, uc.args[1],
-			  uc.args[2], uc.args[3]);
+		REPORT_GUEST_ASSERT(uc);
 		break;
 	default:
 		TEST_FAIL("Expected L2 to ask for %d, got unexpected ucall %lu", vector, uc.cmd);
@@ -250,12 +245,12 @@ int main(int argc, char *argv[])
 
 	/* Verify the pending events comes back out the same as it went in. */
 	vcpu_events_get(vcpu, &events);
-	ASSERT_EQ(events.flags & KVM_VCPUEVENT_VALID_PAYLOAD,
-		  KVM_VCPUEVENT_VALID_PAYLOAD);
-	ASSERT_EQ(events.exception.pending, true);
-	ASSERT_EQ(events.exception.nr, SS_VECTOR);
-	ASSERT_EQ(events.exception.has_error_code, true);
-	ASSERT_EQ(events.exception.error_code, SS_ERROR_CODE);
+	TEST_ASSERT_EQ(events.flags & KVM_VCPUEVENT_VALID_PAYLOAD,
+			KVM_VCPUEVENT_VALID_PAYLOAD);
+	TEST_ASSERT_EQ(events.exception.pending, true);
+	TEST_ASSERT_EQ(events.exception.nr, SS_VECTOR);
+	TEST_ASSERT_EQ(events.exception.has_error_code, true);
+	TEST_ASSERT_EQ(events.exception.error_code, SS_ERROR_CODE);
 
 	/*
 	 * Run for real with the pending #SS, L1 should get a VM-Exit due to

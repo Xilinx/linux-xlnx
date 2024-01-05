@@ -8,7 +8,7 @@ title: AMD CDX bus controller
 
 description: |
   CDX bus controller for AMD devices is implemented to dynamically
-  detect CDX bus and devices on these bus using the firmware.
+  detect CDX bus and devices using the firmware.
   The CDX bus manages multiple FPGA based hardware devices, which
   can support network, crypto or any other specialized type of
   devices. These FPGA based devices can be added/modified dynamically

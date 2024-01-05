@@ -89,7 +89,7 @@ static int imx_cpufreq_dt_probe(struct platform_device *pdev)
 
 	cpu_dev = get_cpu_device(0);
 
-	if (!of_find_property(cpu_dev->of_node, "cpu-supply", NULL))
+	if (!of_property_present(cpu_dev->of_node, "cpu-supply"))
 		return -ENODEV;
 
 	if (of_machine_is_compatible("fsl,imx7ulp")) {
@@ -172,20 +172,18 @@ static int imx_cpufreq_dt_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int imx_cpufreq_dt_remove(struct platform_device *pdev)
+static void imx_cpufreq_dt_remove(struct platform_device *pdev)
 {
 	platform_device_unregister(cpufreq_dt_pdev);
 	if (!of_machine_is_compatible("fsl,imx7ulp"))
 		dev_pm_opp_put_supported_hw(cpufreq_opp_token);
 	else
 		clk_bulk_put(ARRAY_SIZE(imx7ulp_clks), imx7ulp_clks);
-
-	return 0;
 }
 
 static struct platform_driver imx_cpufreq_dt_driver = {
 	.probe = imx_cpufreq_dt_probe,
-	.remove = imx_cpufreq_dt_remove,
+	.remove_new = imx_cpufreq_dt_remove,
 	.driver = {
 		.name = "imx-cpufreq-dt",
 	},

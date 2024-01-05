@@ -7,6 +7,7 @@
 #include <linux/lockdep.h>
 #include <linux/scatterlist.h>
 #include <linux/prefetch.h>
+#include <linux/srcu.h>
 
 struct blk_mq_tags;
 struct blk_flush_queue;
@@ -27,8 +28,6 @@ typedef __u32 __bitwise req_flags_t;
 
 /* drive already may have started this one */
 #define RQF_STARTED		((__force req_flags_t)(1 << 1))
-/* may not be passed by ioscheduler */
-#define RQF_SOFTBARRIER		((__force req_flags_t)(1 << 3))
 /* request for flush sequence */
 #define RQF_FLUSH_SEQ		((__force req_flags_t)(1 << 4))
 /* merge of different types, fail separately */
@@ -37,12 +36,14 @@ typedef __u32 __bitwise req_flags_t;
 #define RQF_MQ_INFLIGHT		((__force req_flags_t)(1 << 6))
 /* don't call prep for this one */
 #define RQF_DONTPREP		((__force req_flags_t)(1 << 7))
+/* use hctx->sched_tags */
+#define RQF_SCHED_TAGS		((__force req_flags_t)(1 << 8))
+/* use an I/O scheduler for this request */
+#define RQF_USE_SCHED		((__force req_flags_t)(1 << 9))
 /* vaguely specified driver internal error.  Ignored by the block layer */
 #define RQF_FAILED		((__force req_flags_t)(1 << 10))
 /* don't warn about errors */
 #define RQF_QUIET		((__force req_flags_t)(1 << 11))
-/* elevator private data attached */
-#define RQF_ELVPRIV		((__force req_flags_t)(1 << 12))
 /* account into disk and partition IO statistics */
 #define RQF_IO_STAT		((__force req_flags_t)(1 << 13))
 /* runtime pm request */
@@ -56,17 +57,13 @@ typedef __u32 __bitwise req_flags_t;
 #define RQF_SPECIAL_PAYLOAD	((__force req_flags_t)(1 << 18))
 /* The per-zone write lock is held for this request */
 #define RQF_ZONE_WRITE_LOCKED	((__force req_flags_t)(1 << 19))
-/* already slept for hybrid poll */
-#define RQF_MQ_POLL_SLEPT	((__force req_flags_t)(1 << 20))
 /* ->timeout has been called, don't expire again */
 #define RQF_TIMED_OUT		((__force req_flags_t)(1 << 21))
-/* queue has elevator attached */
-#define RQF_ELV			((__force req_flags_t)(1 << 22))
-#define RQF_RESV			((__force req_flags_t)(1 << 23))
+#define RQF_RESV		((__force req_flags_t)(1 << 23))
 
 /* flags that prevent us from merging requests: */
 #define RQF_NOMERGE_FLAGS \
-	(RQF_STARTED | RQF_SOFTBARRIER | RQF_FLUSH_SEQ | RQF_SPECIAL_PAYLOAD)
+	(RQF_STARTED | RQF_FLUSH_SEQ | RQF_SPECIAL_PAYLOAD)
 
 enum mq_rq_state {
 	MQ_RQ_IDLE		= 0,
@@ -140,7 +137,6 @@ struct request {
 	struct blk_crypto_keyslot *crypt_keyslot;
 #endif
 
-	unsigned short write_hint;
 	unsigned short ioprio;
 
 	enum mq_rq_state state;
@@ -162,39 +158,30 @@ struct request {
 
 	/*
 	 * The rb_node is only used inside the io scheduler, requests
-	 * are pruned when moved to the dispatch queue. So let the
-	 * completion_data share space with the rb_node.
+	 * are pruned when moved to the dispatch queue. special_vec must
+	 * only be used if RQF_SPECIAL_PAYLOAD is set, and those cannot be
+	 * insert into an IO scheduler.
 	 */
 	union {
 		struct rb_node rb_node;	/* sort/lookup */
 		struct bio_vec special_vec;
-		void *completion_data;
 	};
-
 
 	/*
 	 * Three pointers are available for the IO schedulers, if they need
-	 * more they have to dynamically allocate it.  Flush requests are
-	 * never put on the IO scheduler. So let the flush fields share
-	 * space with the elevator data.
+	 * more they have to dynamically allocate it.
 	 */
-	union {
-		struct {
-			struct io_cq		*icq;
-			void			*priv[2];
-		} elv;
+	struct {
+		struct io_cq		*icq;
+		void			*priv[2];
+	} elv;
 
-		struct {
-			unsigned int		seq;
-			struct list_head	list;
-			rq_end_io_fn		*saved_end_io;
-		} flush;
-	};
+	struct {
+		unsigned int		seq;
+		rq_end_io_fn		*saved_end_io;
+	} flush;
 
-	union {
-		struct __call_single_data csd;
-		u64 fifo_time;
-	};
+	u64 fifo_time;
 
 	/*
 	 * completion callback.
@@ -210,7 +197,7 @@ static inline enum req_op req_op(const struct request *req)
 
 static inline bool blk_rq_is_passthrough(struct request *rq)
 {
-	return blk_op_is_passthrough(req_op(rq));
+	return blk_op_is_passthrough(rq->cmd_flags);
 }
 
 static inline unsigned short req_get_ioprio(struct request *req)
@@ -226,6 +213,12 @@ static inline unsigned short req_get_ioprio(struct request *req)
 #define rq_list_add(listptr, rq)	do {		\
 	(rq)->rq_next = *(listptr);			\
 	*(listptr) = rq;				\
+} while (0)
+
+#define rq_list_add_tail(lastpptr, rq)	do {		\
+	(rq)->rq_next = NULL;				\
+	**(lastpptr) = rq;				\
+	*(lastpptr) = &rq->rq_next;			\
 } while (0)
 
 #define rq_list_pop(listptr)				\
@@ -400,8 +393,6 @@ struct blk_mq_hw_ctx {
 	 */
 	struct blk_mq_tags	*sched_tags;
 
-	/** @queued: Number of queued requests. */
-	unsigned long		queued;
 	/** @run: Number of dispatched requests. */
 	unsigned long		run;
 
@@ -473,6 +464,7 @@ enum hctx_type {
 
 /**
  * struct blk_mq_tag_set - tag set that can be shared between request queues
+ * @ops:	   Pointers to functions that implement block driver behavior.
  * @map:	   One or more ctx -> hctx mappings. One map exists for each
  *		   hardware queue type (enum hctx_type) that the driver wishes
  *		   to support. There are no restrictions on maps being of the
@@ -480,7 +472,6 @@ enum hctx_type {
  *		   types.
  * @nr_maps:	   Number of elements in the @map array. A number in the range
  *		   [1, HCTX_MAX_TYPES].
- * @ops:	   Pointers to functions that implement block driver behavior.
  * @nr_hw_queues:  Number of hardware queues supported by the block driver that
  *		   owns this data structure.
  * @queue_depth:   Number of tags per hardware queue, reserved tags included.
@@ -501,11 +492,13 @@ enum hctx_type {
  * @tag_list_lock: Serializes tag_list accesses.
  * @tag_list:	   List of the request queues that use this tag set. See also
  *		   request_queue.tag_set_list.
+ * @srcu:	   Use as lock when type of the request queue is blocking
+ *		   (BLK_MQ_F_BLOCKING).
  */
 struct blk_mq_tag_set {
+	const struct blk_mq_ops	*ops;
 	struct blk_mq_queue_map	map[HCTX_MAX_TYPES];
 	unsigned int		nr_maps;
-	const struct blk_mq_ops	*ops;
 	unsigned int		nr_hw_queues;
 	unsigned int		queue_depth;
 	unsigned int		reserved_tags;
@@ -521,6 +514,7 @@ struct blk_mq_tag_set {
 
 	struct mutex		tag_list_lock;
 	struct list_head	tag_list;
+	struct srcu_struct	*srcu;
 };
 
 /**
@@ -715,6 +709,8 @@ int blk_mq_alloc_sq_tag_set(struct blk_mq_tag_set *set,
 void blk_mq_free_tag_set(struct blk_mq_tag_set *set);
 
 void blk_mq_free_request(struct request *rq);
+int blk_rq_poll(struct request *rq, struct io_comp_batch *iob,
+		unsigned int poll_flags);
 
 bool blk_mq_queue_inflight(struct request_queue *q);
 
@@ -739,8 +735,7 @@ struct request *blk_mq_alloc_request_hctx(struct request_queue *q,
 struct blk_mq_tags {
 	unsigned int nr_tags;
 	unsigned int nr_reserved_tags;
-
-	atomic_t active_queues;
+	unsigned int active_queues;
 
 	struct sbitmap_queue bitmap_tags;
 	struct sbitmap_queue breserved_tags;
@@ -837,7 +832,7 @@ void blk_mq_end_request_batch(struct io_comp_batch *ib);
  */
 static inline bool blk_mq_need_time_stamp(struct request *rq)
 {
-	return (rq->rq_flags & (RQF_IO_STAT | RQF_STATS | RQF_ELV));
+	return (rq->rq_flags & (RQF_IO_STAT | RQF_STATS | RQF_USE_SCHED));
 }
 
 static inline bool blk_mq_is_reserved_rq(struct request *rq)
@@ -853,7 +848,11 @@ static inline bool blk_mq_add_to_batch(struct request *req,
 				       struct io_comp_batch *iob, int ioerror,
 				       void (*complete)(struct io_comp_batch *))
 {
-	if (!iob || (req->rq_flags & RQF_ELV) || ioerror ||
+	/*
+	 * blk_mq_end_request_batch() can't end request allocated from
+	 * sched tags
+	 */
+	if (!iob || (req->rq_flags & RQF_SCHED_TAGS) || ioerror ||
 			(req->end_io && !blk_rq_is_passthrough(req)))
 		return false;
 
@@ -878,7 +877,9 @@ void blk_mq_start_hw_queues(struct request_queue *q);
 void blk_mq_start_stopped_hw_queue(struct blk_mq_hw_ctx *hctx, bool async);
 void blk_mq_start_stopped_hw_queues(struct request_queue *q, bool async);
 void blk_mq_quiesce_queue(struct request_queue *q);
-void blk_mq_wait_quiesce_done(struct request_queue *q);
+void blk_mq_wait_quiesce_done(struct blk_mq_tag_set *set);
+void blk_mq_quiesce_tagset(struct blk_mq_tag_set *set);
+void blk_mq_unquiesce_tagset(struct blk_mq_tag_set *set);
 void blk_mq_unquiesce_queue(struct request_queue *q);
 void blk_mq_delay_run_hw_queue(struct blk_mq_hw_ctx *hctx, unsigned long msecs);
 void blk_mq_run_hw_queue(struct blk_mq_hw_ctx *hctx, bool async);
@@ -1155,6 +1156,18 @@ static inline unsigned int blk_rq_zone_is_seq(struct request *rq)
 	return disk_zone_is_seq(rq->q->disk, blk_rq_pos(rq));
 }
 
+/**
+ * blk_rq_is_seq_zoned_write() - Check if @rq requires write serialization.
+ * @rq: Request to examine.
+ *
+ * Note: REQ_OP_ZONE_APPEND requests do not require serialization.
+ */
+static inline bool blk_rq_is_seq_zoned_write(struct request *rq)
+{
+	return op_needs_zoned_write_locking(req_op(rq)) &&
+		blk_rq_zone_is_seq(rq);
+}
+
 bool blk_req_needs_zone_write_lock(struct request *rq);
 bool blk_req_zone_write_trylock(struct request *rq);
 void __blk_req_zone_write_lock(struct request *rq);
@@ -1185,6 +1198,11 @@ static inline bool blk_req_can_dispatch_to_zone(struct request *rq)
 	return !blk_req_zone_is_write_locked(rq);
 }
 #else /* CONFIG_BLK_DEV_ZONED */
+static inline bool blk_rq_is_seq_zoned_write(struct request *rq)
+{
+	return false;
+}
+
 static inline bool blk_req_needs_zone_write_lock(struct request *rq)
 {
 	return false;

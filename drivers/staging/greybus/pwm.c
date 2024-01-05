@@ -19,11 +19,12 @@ struct gb_pwm_chip {
 	u8			pwm_max;	/* max pwm number */
 
 	struct pwm_chip		chip;
-	struct pwm_chip		*pwm;
 };
-#define pwm_chip_to_gb_pwm_chip(chip) \
-	container_of(chip, struct gb_pwm_chip, chip)
 
+static inline struct gb_pwm_chip *pwm_chip_to_gb_pwm_chip(struct pwm_chip *chip)
+{
+	return container_of(chip, struct gb_pwm_chip, chip);
+}
 
 static int gb_pwm_count_operation(struct gb_pwm_chip *pwmc)
 {
@@ -265,7 +266,7 @@ static int gb_pwm_probe(struct gbphy_device *gbphy_dev,
 {
 	struct gb_connection *connection;
 	struct gb_pwm_chip *pwmc;
-	struct pwm_chip *pwm;
+	struct pwm_chip *chip;
 	int ret;
 
 	pwmc = kzalloc(sizeof(*pwmc), GFP_KERNEL);
@@ -293,13 +294,13 @@ static int gb_pwm_probe(struct gbphy_device *gbphy_dev,
 	if (ret)
 		goto exit_connection_disable;
 
-	pwm = &pwmc->chip;
+	chip = &pwmc->chip;
 
-	pwm->dev = &gbphy_dev->dev;
-	pwm->ops = &gb_pwm_ops;
-	pwm->npwm = pwmc->pwm_max + 1;
+	chip->dev = &gbphy_dev->dev;
+	chip->ops = &gb_pwm_ops;
+	chip->npwm = pwmc->pwm_max + 1;
 
-	ret = pwmchip_add(pwm);
+	ret = pwmchip_add(chip);
 	if (ret) {
 		dev_err(&gbphy_dev->dev,
 			"failed to register PWM: %d\n", ret);

@@ -71,7 +71,7 @@ static int sg_proc_init(void);
 
 #define SG_ALLOW_DIO_DEF 0
 
-#define SG_MAX_DEVS 32768
+#define SG_MAX_DEVS (1 << MINORBITS)
 
 /* SG_MAX_CDB_SIZE should be 260 (spc4r37 section 3.1.30) however the type
  * of sg_io_hdr::cmd_len can only represent 255. All SCSI commands greater
@@ -96,8 +96,8 @@ static int scatter_elem_sz_prev = SG_SCATTER_SZ;
 
 #define SG_SECTOR_SZ 512
 
-static int sg_add_device(struct device *, struct class_interface *);
-static void sg_remove_device(struct device *, struct class_interface *);
+static int sg_add_device(struct device *);
+static void sg_remove_device(struct device *);
 
 static DEFINE_IDR(sg_index_idr);
 static DEFINE_RWLOCK(sg_index_lock);	/* Also used to lock
@@ -237,7 +237,7 @@ static int sg_allow_access(struct file *filp, unsigned char *cmd)
 
 	if (sfp->parentdp->device->type == TYPE_SCANNER)
 		return 0;
-	if (!scsi_cmd_allowed(cmd, filp->f_mode))
+	if (!scsi_cmd_allowed(cmd, filp->f_mode & FMODE_WRITE))
 		return -EPERM;
 	return 0;
 }
@@ -1103,7 +1103,8 @@ sg_ioctl_common(struct file *filp, Sg_device *sdp, Sg_fd *sfp,
 	case SCSI_IOCTL_SEND_COMMAND:
 		if (atomic_read(&sdp->detaching))
 			return -ENODEV;
-		return scsi_ioctl(sdp->device, filp->f_mode, cmd_in, p);
+		return scsi_ioctl(sdp->device, filp->f_mode & FMODE_WRITE,
+				  cmd_in, p);
 	case SG_SET_DEBUG:
 		result = get_user(val, ip);
 		if (result)
@@ -1159,7 +1160,7 @@ sg_ioctl(struct file *filp, unsigned int cmd_in, unsigned long arg)
 	ret = sg_ioctl_common(filp, sdp, sfp, cmd_in, p);
 	if (ret != -ENOIOCTLCMD)
 		return ret;
-	return scsi_ioctl(sdp->device, filp->f_mode, cmd_in, p);
+	return scsi_ioctl(sdp->device, filp->f_mode & FMODE_WRITE, cmd_in, p);
 }
 
 static __poll_t
@@ -1288,7 +1289,7 @@ sg_mmap(struct file *filp, struct vm_area_struct *vma)
 	}
 
 	sfp->mmap_called = 1;
-	vma->vm_flags |= VM_IO | VM_DONTEXPAND | VM_DONTDUMP;
+	vm_flags_set(vma, VM_IO | VM_DONTEXPAND | VM_DONTDUMP);
 	vma->vm_private_data = sfp;
 	vma->vm_ops = &sg_mmap_vm_ops;
 out:
@@ -1349,7 +1350,7 @@ sg_rq_end_io(struct request *rq, blk_status_t status)
 		struct scsi_sense_hdr sshdr;
 
 		srp->header.status = 0xff & result;
-		srp->header.masked_status = status_byte(result);
+		srp->header.masked_status = sg_status_byte(result);
 		srp->header.msg_status = COMMAND_COMPLETE;
 		srp->header.host_status = host_byte(result);
 		srp->header.driver_status = driver_byte(result);
@@ -1488,13 +1489,18 @@ out_unlock:
 }
 
 static int
-sg_add_device(struct device *cl_dev, struct class_interface *cl_intf)
+sg_add_device(struct device *cl_dev)
 {
 	struct scsi_device *scsidp = to_scsi_device(cl_dev->parent);
 	Sg_device *sdp = NULL;
 	struct cdev * cdev = NULL;
 	int error;
 	unsigned long iflags;
+
+	if (!blk_get_queue(scsidp->request_queue)) {
+		pr_warn("%s: get scsi_device queue failed\n", __func__);
+		return -ENODEV;
+	}
 
 	error = -ENOMEM;
 	cdev = cdev_alloc();
@@ -1553,6 +1559,7 @@ cdev_add_err:
 out:
 	if (cdev)
 		cdev_del(cdev);
+	blk_put_queue(scsidp->request_queue);
 	return error;
 }
 
@@ -1560,12 +1567,16 @@ static void
 sg_device_destroy(struct kref *kref)
 {
 	struct sg_device *sdp = container_of(kref, struct sg_device, d_ref);
+	struct request_queue *q = sdp->device->request_queue;
 	unsigned long flags;
 
 	/* CAUTION!  Note that the device can still be found via idr_find()
 	 * even though the refcount is 0.  Therefore, do idr_remove() BEFORE
 	 * any other cleanup.
 	 */
+
+	blk_trace_remove(q);
+	blk_put_queue(q);
 
 	write_lock_irqsave(&sg_index_lock, flags);
 	idr_remove(&sg_index_idr, sdp->index);
@@ -1578,7 +1589,7 @@ sg_device_destroy(struct kref *kref)
 }
 
 static void
-sg_remove_device(struct device *cl_dev, struct class_interface *cl_intf)
+sg_remove_device(struct device *cl_dev)
 {
 	struct scsi_device *scsidp = to_scsi_device(cl_dev->parent);
 	Sg_device *sdp = dev_get_drvdata(cl_dev);
@@ -1677,7 +1688,7 @@ init_sg(void)
 				    SG_MAX_DEVS, "sg");
 	if (rc)
 		return rc;
-        sg_sysfs_class = class_create(THIS_MODULE, "scsi_generic");
+        sg_sysfs_class = class_create("scsi_generic");
         if ( IS_ERR(sg_sysfs_class) ) {
 		rc = PTR_ERR(sg_sysfs_class);
 		goto err_out;
@@ -1726,7 +1737,7 @@ sg_start_req(Sg_request *srp, unsigned char *cmd)
 	Sg_scatter_hold *rsv_schp = &sfp->reserve;
 	struct request_queue *q = sfp->parentdp->device->request_queue;
 	struct rq_map_data *md, map_data;
-	int rw = hp->dxfer_direction == SG_DXFER_TO_DEV ? WRITE : READ;
+	int rw = hp->dxfer_direction == SG_DXFER_TO_DEV ? ITER_SOURCE : ITER_DEST;
 	struct scsi_cmnd *scmd;
 
 	SCSI_LOG_TIMEOUT(4, sg_printk(KERN_INFO, sfp->parentdp,

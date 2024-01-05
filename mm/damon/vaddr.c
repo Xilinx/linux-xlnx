@@ -301,29 +301,34 @@ static int damon_mkold_pmd_entry(pmd_t *pmd, unsigned long addr,
 		unsigned long next, struct mm_walk *walk)
 {
 	pte_t *pte;
+	pmd_t pmde;
 	spinlock_t *ptl;
 
-	if (pmd_trans_huge(*pmd)) {
+	if (pmd_trans_huge(pmdp_get(pmd))) {
 		ptl = pmd_lock(walk->mm, pmd);
-		if (!pmd_present(*pmd)) {
+		pmde = pmdp_get(pmd);
+
+		if (!pmd_present(pmde)) {
 			spin_unlock(ptl);
 			return 0;
 		}
 
-		if (pmd_trans_huge(*pmd)) {
-			damon_pmdp_mkold(pmd, walk->mm, addr);
+		if (pmd_trans_huge(pmde)) {
+			damon_pmdp_mkold(pmd, walk->vma, addr);
 			spin_unlock(ptl);
 			return 0;
 		}
 		spin_unlock(ptl);
 	}
 
-	if (pmd_none(*pmd) || unlikely(pmd_bad(*pmd)))
-		return 0;
 	pte = pte_offset_map_lock(walk->mm, pmd, addr, &ptl);
-	if (!pte_present(*pte))
+	if (!pte) {
+		walk->action = ACTION_AGAIN;
+		return 0;
+	}
+	if (!pte_present(ptep_get(pte)))
 		goto out;
-	damon_ptep_mkold(pte, walk->mm, addr);
+	damon_ptep_mkold(pte, walk->vma, addr);
 out:
 	pte_unmap_unlock(pte, ptl);
 	return 0;
@@ -335,14 +340,15 @@ static void damon_hugetlb_mkold(pte_t *pte, struct mm_struct *mm,
 {
 	bool referenced = false;
 	pte_t entry = huge_ptep_get(pte);
-	struct page *page = pte_page(entry);
+	struct folio *folio = pfn_folio(pte_pfn(entry));
+	unsigned long psize = huge_page_size(hstate_vma(vma));
 
-	get_page(page);
+	folio_get(folio);
 
 	if (pte_young(entry)) {
 		referenced = true;
 		entry = pte_mkold(entry);
-		set_huge_pte_at(mm, addr, pte, entry);
+		set_huge_pte_at(mm, addr, pte, entry, psize);
 	}
 
 #ifdef CONFIG_MMU_NOTIFIER
@@ -352,10 +358,10 @@ static void damon_hugetlb_mkold(pte_t *pte, struct mm_struct *mm,
 #endif /* CONFIG_MMU_NOTIFIER */
 
 	if (referenced)
-		set_page_young(page);
+		folio_set_young(folio);
 
-	set_page_idle(page);
-	put_page(page);
+	folio_set_idle(folio);
+	folio_put(folio);
 }
 
 static int damon_mkold_hugetlb_entry(pte_t *pte, unsigned long hmask,
@@ -384,6 +390,7 @@ out:
 static const struct mm_walk_ops damon_mkold_ops = {
 	.pmd_entry = damon_mkold_pmd_entry,
 	.hugetlb_entry = damon_mkold_hugetlb_entry,
+	.walk_lock = PGWALK_RDLOCK,
 };
 
 static void damon_va_mkold(struct mm_struct *mm, unsigned long addr)
@@ -422,7 +429,8 @@ static void damon_va_prepare_access_checks(struct damon_ctx *ctx)
 }
 
 struct damon_young_walk_private {
-	unsigned long *page_sz;
+	/* size of the folio for the access checked virtual memory address */
+	unsigned long *folio_sz;
 	bool young;
 };
 
@@ -430,32 +438,36 @@ static int damon_young_pmd_entry(pmd_t *pmd, unsigned long addr,
 		unsigned long next, struct mm_walk *walk)
 {
 	pte_t *pte;
+	pte_t ptent;
 	spinlock_t *ptl;
-	struct page *page;
+	struct folio *folio;
 	struct damon_young_walk_private *priv = walk->private;
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
-	if (pmd_trans_huge(*pmd)) {
+	if (pmd_trans_huge(pmdp_get(pmd))) {
+		pmd_t pmde;
+
 		ptl = pmd_lock(walk->mm, pmd);
-		if (!pmd_present(*pmd)) {
+		pmde = pmdp_get(pmd);
+
+		if (!pmd_present(pmde)) {
 			spin_unlock(ptl);
 			return 0;
 		}
 
-		if (!pmd_trans_huge(*pmd)) {
+		if (!pmd_trans_huge(pmde)) {
 			spin_unlock(ptl);
 			goto regular_page;
 		}
-		page = damon_get_page(pmd_pfn(*pmd));
-		if (!page)
+		folio = damon_get_folio(pmd_pfn(pmde));
+		if (!folio)
 			goto huge_out;
-		if (pmd_young(*pmd) || !page_is_idle(page) ||
+		if (pmd_young(pmde) || !folio_test_idle(folio) ||
 					mmu_notifier_test_young(walk->mm,
-						addr)) {
-			*priv->page_sz = HPAGE_PMD_SIZE;
+						addr))
 			priv->young = true;
-		}
-		put_page(page);
+		*priv->folio_sz = HPAGE_PMD_SIZE;
+		folio_put(folio);
 huge_out:
 		spin_unlock(ptl);
 		return 0;
@@ -464,20 +476,22 @@ huge_out:
 regular_page:
 #endif	/* CONFIG_TRANSPARENT_HUGEPAGE */
 
-	if (pmd_none(*pmd) || unlikely(pmd_bad(*pmd)))
-		return -EINVAL;
 	pte = pte_offset_map_lock(walk->mm, pmd, addr, &ptl);
-	if (!pte_present(*pte))
-		goto out;
-	page = damon_get_page(pte_pfn(*pte));
-	if (!page)
-		goto out;
-	if (pte_young(*pte) || !page_is_idle(page) ||
-			mmu_notifier_test_young(walk->mm, addr)) {
-		*priv->page_sz = PAGE_SIZE;
-		priv->young = true;
+	if (!pte) {
+		walk->action = ACTION_AGAIN;
+		return 0;
 	}
-	put_page(page);
+	ptent = ptep_get(pte);
+	if (!pte_present(ptent))
+		goto out;
+	folio = damon_get_folio(pte_pfn(ptent));
+	if (!folio)
+		goto out;
+	if (pte_young(ptent) || !folio_test_idle(folio) ||
+			mmu_notifier_test_young(walk->mm, addr))
+		priv->young = true;
+	*priv->folio_sz = folio_size(folio);
+	folio_put(folio);
 out:
 	pte_unmap_unlock(pte, ptl);
 	return 0;
@@ -490,7 +504,7 @@ static int damon_young_hugetlb_entry(pte_t *pte, unsigned long hmask,
 {
 	struct damon_young_walk_private *priv = walk->private;
 	struct hstate *h = hstate_vma(walk->vma);
-	struct page *page;
+	struct folio *folio;
 	spinlock_t *ptl;
 	pte_t entry;
 
@@ -499,16 +513,15 @@ static int damon_young_hugetlb_entry(pte_t *pte, unsigned long hmask,
 	if (!pte_present(entry))
 		goto out;
 
-	page = pte_page(entry);
-	get_page(page);
+	folio = pfn_folio(pte_pfn(entry));
+	folio_get(folio);
 
-	if (pte_young(entry) || !page_is_idle(page) ||
-	    mmu_notifier_test_young(walk->mm, addr)) {
-		*priv->page_sz = huge_page_size(h);
+	if (pte_young(entry) || !folio_test_idle(folio) ||
+	    mmu_notifier_test_young(walk->mm, addr))
 		priv->young = true;
-	}
+	*priv->folio_sz = huge_page_size(h);
 
-	put_page(page);
+	folio_put(folio);
 
 out:
 	spin_unlock(ptl);
@@ -521,13 +534,14 @@ out:
 static const struct mm_walk_ops damon_young_ops = {
 	.pmd_entry = damon_young_pmd_entry,
 	.hugetlb_entry = damon_young_hugetlb_entry,
+	.walk_lock = PGWALK_RDLOCK,
 };
 
 static bool damon_va_young(struct mm_struct *mm, unsigned long addr,
-		unsigned long *page_sz)
+		unsigned long *folio_sz)
 {
 	struct damon_young_walk_private arg = {
-		.page_sz = page_sz,
+		.folio_sz = folio_sz,
 		.young = false,
 	};
 
@@ -547,18 +561,18 @@ static void __damon_va_check_access(struct mm_struct *mm,
 				struct damon_region *r, bool same_target)
 {
 	static unsigned long last_addr;
-	static unsigned long last_page_sz = PAGE_SIZE;
+	static unsigned long last_folio_sz = PAGE_SIZE;
 	static bool last_accessed;
 
 	/* If the region is in the last checked page, reuse the result */
-	if (same_target && (ALIGN_DOWN(last_addr, last_page_sz) ==
-				ALIGN_DOWN(r->sampling_addr, last_page_sz))) {
+	if (same_target && (ALIGN_DOWN(last_addr, last_folio_sz) ==
+				ALIGN_DOWN(r->sampling_addr, last_folio_sz))) {
 		if (last_accessed)
 			r->nr_accesses++;
 		return;
 	}
 
-	last_accessed = damon_va_young(mm, r->sampling_addr, &last_page_sz);
+	last_accessed = damon_va_young(mm, r->sampling_addr, &last_folio_sz);
 	if (last_accessed)
 		r->nr_accesses++;
 

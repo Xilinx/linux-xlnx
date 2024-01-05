@@ -88,7 +88,7 @@ static void *vcpu_worker(void *data)
 	}
 
 	if (run->exit_reason == KVM_EXIT_IO && cmd == UCALL_ABORT)
-		REPORT_GUEST_ASSERT_1(uc, "val = %lu");
+		REPORT_GUEST_ASSERT(uc);
 
 	return NULL;
 }
@@ -156,19 +156,22 @@ static void guest_code_move_memory_region(void)
 	 * window where the memslot is invalid is usually quite small.
 	 */
 	val = guest_spin_on_val(0);
-	GUEST_ASSERT_1(val == 1 || val == MMIO_VAL, val);
+	__GUEST_ASSERT(val == 1 || val == MMIO_VAL,
+		       "Expected '1' or MMIO ('%llx'), got '%llx'", MMIO_VAL, val);
 
 	/* Spin until the misaligning memory region move completes. */
 	val = guest_spin_on_val(MMIO_VAL);
-	GUEST_ASSERT_1(val == 1 || val == 0, val);
+	__GUEST_ASSERT(val == 1 || val == 0,
+		       "Expected '0' or '1' (no MMIO), got '%llx'", val);
 
 	/* Spin until the memory region starts to get re-aligned. */
 	val = guest_spin_on_val(0);
-	GUEST_ASSERT_1(val == 1 || val == MMIO_VAL, val);
+	__GUEST_ASSERT(val == 1 || val == MMIO_VAL,
+		       "Expected '1' or MMIO ('%llx'), got '%llx'", MMIO_VAL, val);
 
 	/* Spin until the re-aligning memory region move completes. */
 	val = guest_spin_on_val(MMIO_VAL);
-	GUEST_ASSERT_1(val == 1, val);
+	GUEST_ASSERT_EQ(val, 1);
 
 	GUEST_DONE();
 }
@@ -224,15 +227,15 @@ static void guest_code_delete_memory_region(void)
 
 	/* Spin until the memory region is deleted. */
 	val = guest_spin_on_val(0);
-	GUEST_ASSERT_1(val == MMIO_VAL, val);
+	GUEST_ASSERT_EQ(val, MMIO_VAL);
 
 	/* Spin until the memory region is recreated. */
 	val = guest_spin_on_val(MMIO_VAL);
-	GUEST_ASSERT_1(val == 0, val);
+	GUEST_ASSERT_EQ(val, 0);
 
 	/* Spin until the memory region is deleted. */
 	val = guest_spin_on_val(0);
-	GUEST_ASSERT_1(val == MMIO_VAL, val);
+	GUEST_ASSERT_EQ(val, MMIO_VAL);
 
 	asm("1:\n\t"
 	    ".pushsection .rodata\n\t"
@@ -249,7 +252,7 @@ static void guest_code_delete_memory_region(void)
 	    "final_rip_end: .quad 1b\n\t"
 	    ".popsection");
 
-	GUEST_ASSERT_1(0, 0);
+	GUEST_ASSERT(0);
 }
 
 static void test_delete_memory_region(void)
@@ -308,7 +311,6 @@ static void test_delete_memory_region(void)
 static void test_zero_memory_regions(void)
 {
 	struct kvm_vcpu *vcpu;
-	struct kvm_run *run;
 	struct kvm_vm *vm;
 
 	pr_info("Testing KVM_RUN with zero added memory regions\n");
@@ -318,10 +320,7 @@ static void test_zero_memory_regions(void)
 
 	vm_ioctl(vm, KVM_SET_NR_MMU_PAGES, (void *)64ul);
 	vcpu_run(vcpu);
-
-	run = vcpu->run;
-	TEST_ASSERT(run->exit_reason == KVM_EXIT_INTERNAL_ERROR,
-		    "Unexpected exit_reason = %u\n", run->exit_reason);
+	TEST_ASSERT_KVM_EXIT_REASON(vcpu, KVM_EXIT_INTERNAL_ERROR);
 
 	kvm_vm_free(vm);
 }
@@ -392,9 +391,6 @@ int main(int argc, char *argv[])
 	int i, loops;
 #endif
 
-	/* Tell stdout not to buffer its content */
-	setbuf(stdout, NULL);
-
 #ifdef __x86_64__
 	/*
 	 * FIXME: the zero-memslot test fails on aarch64 and s390x because
@@ -407,7 +403,7 @@ int main(int argc, char *argv[])
 
 #ifdef __x86_64__
 	if (argc > 1)
-		loops = atoi(argv[1]);
+		loops = atoi_positive("Number of iterations", argv[1]);
 	else
 		loops = 10;
 

@@ -13,6 +13,9 @@
  * must be implemented by each architecture.
  */
 
+/* arch may override to do additional checking of ELF header architecture */
+bool module_elf_check_arch(Elf_Ehdr *hdr);
+
 /* Adjust arch-specific sections.  Return 0 on success.  */
 int module_frob_arch_sections(Elf_Ehdr *hdr,
 			      Elf_Shdr *sechdrs,
@@ -38,6 +41,11 @@ bool module_init_section(const char *name);
  * module unloading)
  */
 bool module_exit_section(const char *name);
+
+/* Describes whether within_module_init() will consider this an init section
+ * or not. This behaviour changes with CONFIG_MODULE_UNLOAD.
+ */
+bool module_init_layout_section(const char *sname);
 
 /*
  * Apply the given relocation to the (simplified) ELF.  Return -error
@@ -72,6 +80,23 @@ int apply_relocate_add(Elf_Shdr *sechdrs,
 		       unsigned int symindex,
 		       unsigned int relsec,
 		       struct module *mod);
+#ifdef CONFIG_LIVEPATCH
+/*
+ * Some architectures (namely x86_64 and ppc64) perform sanity checks when
+ * applying relocations.  If a patched module gets unloaded and then later
+ * reloaded (and re-patched), klp re-applies relocations to the replacement
+ * function(s).  Any leftover relocations from the previous loading of the
+ * patched module might trigger the sanity checks.
+ *
+ * To prevent that, when unloading a patched module, clear out any relocations
+ * that might trigger arch-specific sanity checks on a future module reload.
+ */
+void clear_relocate_add(Elf_Shdr *sechdrs,
+		   const char *strtab,
+		   unsigned int symindex,
+		   unsigned int relsec,
+		   struct module *me);
+#endif
 #else
 static inline int apply_relocate_add(Elf_Shdr *sechdrs,
 				     const char *strtab,

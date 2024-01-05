@@ -30,6 +30,8 @@
 #include <linux/list.h>
 #include <linux/irqreturn.h>
 
+#include <video/nomodeset.h>
+
 #include <drm/drm_device.h>
 
 struct drm_file;
@@ -94,6 +96,20 @@ enum drm_driver_feature {
 	 * synchronization of command submission.
 	 */
 	DRIVER_SYNCOBJ_TIMELINE         = BIT(6),
+	/**
+	 * @DRIVER_COMPUTE_ACCEL:
+	 *
+	 * Driver supports compute acceleration devices. This flag is mutually exclusive with
+	 * @DRIVER_RENDER and @DRIVER_MODESET. Devices that support both graphics and compute
+	 * acceleration should be handled by two drivers that are connected using auxiliary bus.
+	 */
+	DRIVER_COMPUTE_ACCEL            = BIT(7),
+	/**
+	 * @DRIVER_GEM_GPUVA:
+	 *
+	 * Driver supports user defined GPU VA bindings for GEM objects.
+	 */
+	DRIVER_GEM_GPUVA		= BIT(8),
 
 	/* IMPORTANT: Below are all the legacy flags, add new ones above. */
 
@@ -139,13 +155,6 @@ enum drm_driver_feature {
 	 * Legacy irq support. Only for legacy drivers. Do not use.
 	 */
 	DRIVER_HAVE_IRQ			= BIT(30),
-	/**
-	 * @DRIVER_KMS_LEGACY_CONTEXT:
-	 *
-	 * Used only by nouveau for backwards compatibility with existing
-	 * userspace.  Do not use.
-	 */
-	DRIVER_KMS_LEGACY_CONTEXT	= BIT(31),
 };
 
 /**
@@ -301,22 +310,14 @@ struct drm_driver {
 	/**
 	 * @prime_handle_to_fd:
 	 *
-	 * Main PRIME export function. Should be implemented with
-	 * drm_gem_prime_handle_to_fd() for GEM based drivers.
-	 *
-	 * For an in-depth discussion see :ref:`PRIME buffer sharing
-	 * documentation <prime_buffer_sharing>`.
+	 * PRIME export function. Only used by vmwgfx.
 	 */
 	int (*prime_handle_to_fd)(struct drm_device *dev, struct drm_file *file_priv,
 				uint32_t handle, uint32_t flags, int *prime_fd);
 	/**
 	 * @prime_fd_to_handle:
 	 *
-	 * Main PRIME import function. Should be implemented with
-	 * drm_gem_prime_fd_to_handle() for GEM based drivers.
-	 *
-	 * For an in-depth discussion see :ref:`PRIME buffer sharing
-	 * documentation <prime_buffer_sharing>`.
+	 * PRIME import function. Only used by vmwgfx.
 	 */
 	int (*prime_fd_to_handle)(struct drm_device *dev, struct drm_file *file_priv,
 				int prime_fd, uint32_t *handle);
@@ -340,20 +341,6 @@ struct drm_driver {
 				struct drm_device *dev,
 				struct dma_buf_attachment *attach,
 				struct sg_table *sgt);
-	/**
-	 * @gem_prime_mmap:
-	 *
-	 * mmap hook for GEM drivers, used to implement dma-buf mmap in the
-	 * PRIME helpers.
-	 *
-	 * This hook only exists for historical reasons. Drivers must use
-	 * drm_gem_prime_mmap() to implement it.
-	 *
-	 * FIXME: Convert all drivers to implement mmap in struct
-	 * &drm_gem_object_funcs and inline drm_gem_prime_mmap() into
-	 * its callers. This hook should be removed afterwards.
-	 */
-	int (*gem_prime_mmap)(struct drm_gem_object *obj, struct vm_area_struct *vma);
 
 	/**
 	 * @dumb_create:
@@ -397,25 +384,13 @@ struct drm_driver {
 	int (*dumb_map_offset)(struct drm_file *file_priv,
 			       struct drm_device *dev, uint32_t handle,
 			       uint64_t *offset);
+
 	/**
-	 * @dumb_destroy:
+	 * @show_fdinfo:
 	 *
-	 * This destroys the userspace handle for the given dumb backing storage buffer.
-	 * Since buffer objects must be reference counted in the kernel a buffer object
-	 * won't be immediately freed if a framebuffer modeset object still uses it.
-	 *
-	 * Called by the user via ioctl.
-	 *
-	 * The default implementation is drm_gem_dumb_destroy(). GEM based drivers
-	 * must not overwrite this.
-	 *
-	 * Returns:
-	 *
-	 * Zero on success, negative errno on failure.
+	 * Print device specific fdinfo.  See Documentation/gpu/drm-usage-stats.rst.
 	 */
-	int (*dumb_destroy)(struct drm_file *file_priv,
-			    struct drm_device *dev,
-			    uint32_t handle);
+	void (*show_fdinfo)(struct drm_printer *p, struct drm_file *f);
 
 	/** @major: driver major number */
 	int major;
@@ -600,8 +575,10 @@ static inline bool drm_drv_uses_atomic_modeset(struct drm_device *dev)
 }
 
 
-int drm_dev_set_unique(struct drm_device *dev, const char *name);
-
-extern bool drm_firmware_drivers_only(void);
+/* TODO: Inline drm_firmware_drivers_only() in all its callers. */
+static inline bool drm_firmware_drivers_only(void)
+{
+	return video_firmware_drivers_only();
+}
 
 #endif

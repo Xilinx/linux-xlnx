@@ -10,7 +10,7 @@ maintainers:
   - Eugene Zaikonnikov <ez@norophonic.com>
 
 description: |
-  Relative humidity and tempereature sensors on I2C bus
+  Relative humidity and temperature sensors on I2C bus
 
   Datasheets are available at:
     http://www.ti.com/product/HDC2010/datasheet
@@ -35,12 +35,12 @@ additionalProperties: false
 
 examples:
   - |
-    i2c0 {
-      #address-cells = <1>;
-      #size-cells = <0>;
+    i2c {
+        #address-cells = <1>;
+        #size-cells = <0>;
 
-      humidity@40 {
-          compatible = "ti,hdc2010";
-          reg = <0x40>;
-      };
+        humidity@40 {
+            compatible = "ti,hdc2010";
+            reg = <0x40>;
+        };
     };

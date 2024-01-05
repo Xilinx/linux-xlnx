@@ -1732,7 +1732,6 @@ static int omapfb_fb_init(struct omapfb2_device *fbdev, struct fb_info *fbi)
 	int r = 0;
 
 	fbi->fbops = &omapfb_ops;
-	fbi->flags = FBINFO_FLAG_DEFAULT;
 	fbi->pseudo_palette = fbdev->pseudo_palette;
 
 	if (ofbi->region->size == 0) {
@@ -2599,7 +2598,7 @@ err0:
 	return r;
 }
 
-static int omapfb_remove(struct platform_device *pdev)
+static void omapfb_remove(struct platform_device *pdev)
 {
 	struct omapfb2_device *fbdev = platform_get_drvdata(pdev);
 
@@ -2610,13 +2609,11 @@ static int omapfb_remove(struct platform_device *pdev)
 	omapfb_free_resources(fbdev);
 
 	omapdss_compat_uninit();
-
-	return 0;
 }
 
 static struct platform_driver omapfb_driver = {
 	.probe		= omapfb_probe,
-	.remove         = omapfb_remove,
+	.remove_new     = omapfb_remove,
 	.driver         = {
 		.name   = "omapfb",
 	},

@@ -508,6 +508,7 @@ static int sun4i_spdif_soc_dai_probe(struct snd_soc_dai *dai)
 }
 
 static const struct snd_soc_dai_ops sun4i_spdif_dai_ops = {
+	.probe		= sun4i_spdif_soc_dai_probe,
 	.startup	= sun4i_spdif_startup,
 	.trigger	= sun4i_spdif_trigger,
 	.hw_params	= sun4i_spdif_hw_params,
@@ -533,7 +534,6 @@ static struct snd_soc_dai_driver sun4i_spdif_dai = {
 		.rates = SUN4I_RATES,
 		.formats = SUN4I_FORMATS,
 	},
-	.probe = sun4i_spdif_soc_dai_probe,
 	.ops = &sun4i_spdif_dai_ops,
 	.name = "spdif",
 };
@@ -703,13 +703,11 @@ err_unregister:
 	return ret;
 }
 
-static int sun4i_spdif_remove(struct platform_device *pdev)
+static void sun4i_spdif_remove(struct platform_device *pdev)
 {
 	pm_runtime_disable(&pdev->dev);
 	if (!pm_runtime_status_suspended(&pdev->dev))
 		sun4i_spdif_runtime_suspend(&pdev->dev);
-
-	return 0;
 }
 
 static const struct dev_pm_ops sun4i_spdif_pm = {
@@ -720,11 +718,11 @@ static const struct dev_pm_ops sun4i_spdif_pm = {
 static struct platform_driver sun4i_spdif_driver = {
 	.driver		= {
 		.name	= "sun4i-spdif",
-		.of_match_table = of_match_ptr(sun4i_spdif_of_match),
+		.of_match_table = sun4i_spdif_of_match,
 		.pm	= &sun4i_spdif_pm,
 	},
 	.probe		= sun4i_spdif_probe,
-	.remove		= sun4i_spdif_remove,
+	.remove_new	= sun4i_spdif_remove,
 };
 
 module_platform_driver(sun4i_spdif_driver);

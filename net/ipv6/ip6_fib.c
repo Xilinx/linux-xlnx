@@ -91,13 +91,12 @@ static void fib6_walker_unlink(struct net *net, struct fib6_walker *w)
 
 static int fib6_new_sernum(struct net *net)
 {
-	int new, old;
+	int new, old = atomic_read(&net->ipv6.fib6_sernum);
 
 	do {
-		old = atomic_read(&net->ipv6.fib6_sernum);
 		new = old < INT_MAX ? old + 1 : 1;
-	} while (atomic_cmpxchg(&net->ipv6.fib6_sernum,
-				old, new) != old);
+	} while (!atomic_try_cmpxchg(&net->ipv6.fib6_sernum, &old, new));
+
 	return new;
 }
 
@@ -160,6 +159,8 @@ struct fib6_info *fib6_info_alloc(gfp_t gfp_flags, bool with_fib6_nh)
 	/* fib6_siblings is a union with nh_list, so this initializes both */
 	INIT_LIST_HEAD(&f6i->fib6_siblings);
 	refcount_set(&f6i->fib6_ref, 1);
+
+	INIT_HLIST_NODE(&f6i->gc_link);
 
 	return f6i;
 }
@@ -247,6 +248,7 @@ static struct fib6_table *fib6_alloc_table(struct net *net, u32 id)
 				   net->ipv6.fib6_null_entry);
 		table->tb6_root.fn_flags = RTN_ROOT | RTN_TL_ROOT | RTN_RTINFO;
 		inet_peer_base_init(&table->tb6_peers);
+		INIT_HLIST_HEAD(&table->tb6_gc_hlist);
 	}
 
 	return table;
@@ -1058,6 +1060,8 @@ static void fib6_purge_rt(struct fib6_info *rt, struct fib6_node *fn,
 				    lockdep_is_held(&table->tb6_lock));
 		}
 	}
+
+	fib6_clean_expires_locked(rt);
 }
 
 /*
@@ -1119,9 +1123,10 @@ static int fib6_add_rt2node(struct fib6_node *fn, struct fib6_info *rt,
 				if (!(iter->fib6_flags & RTF_EXPIRES))
 					return -EEXIST;
 				if (!(rt->fib6_flags & RTF_EXPIRES))
-					fib6_clean_expires(iter);
+					fib6_clean_expires_locked(iter);
 				else
-					fib6_set_expires(iter, rt->expires);
+					fib6_set_expires_locked(iter,
+								rt->expires);
 
 				if (rt->fib6_pmtu)
 					fib6_metric_set(iter, RTAX_MTU,
@@ -1480,6 +1485,10 @@ int fib6_add(struct fib6_node *root, struct fib6_info *rt,
 		if (rt->nh)
 			list_add(&rt->nh_list, &rt->nh->f6i_list);
 		__fib6_update_sernum_upto_root(rt, fib6_new_sernum(info->nl_net));
+
+		if (fib6_has_expires(rt))
+			hlist_add_head(&rt->gc_link, &table->tb6_gc_hlist);
+
 		fib6_start_gc(info->nl_net, rt);
 	}
 
@@ -2286,9 +2295,8 @@ static void fib6_flush_trees(struct net *net)
  *	Garbage collection
  */
 
-static int fib6_age(struct fib6_info *rt, void *arg)
+static int fib6_age(struct fib6_info *rt, struct fib6_gc_args *gc_args)
 {
-	struct fib6_gc_args *gc_args = arg;
 	unsigned long now = jiffies;
 
 	/*
@@ -2296,7 +2304,7 @@ static int fib6_age(struct fib6_info *rt, void *arg)
 	 *	Routes are expired even if they are in use.
 	 */
 
-	if (rt->fib6_flags & RTF_EXPIRES && rt->expires) {
+	if (fib6_has_expires(rt) && rt->expires) {
 		if (time_after(now, rt->expires)) {
 			RT6_TRACE("expiring %p\n", rt);
 			return -1;
@@ -2311,6 +2319,40 @@ static int fib6_age(struct fib6_info *rt, void *arg)
 	rt6_age_exceptions(rt, gc_args, now);
 
 	return 0;
+}
+
+static void fib6_gc_table(struct net *net,
+			  struct fib6_table *tb6,
+			  struct fib6_gc_args *gc_args)
+{
+	struct fib6_info *rt;
+	struct hlist_node *n;
+	struct nl_info info = {
+		.nl_net = net,
+		.skip_notify = false,
+	};
+
+	hlist_for_each_entry_safe(rt, n, &tb6->tb6_gc_hlist, gc_link)
+		if (fib6_age(rt, gc_args) == -1)
+			fib6_del(rt, &info);
+}
+
+static void fib6_gc_all(struct net *net, struct fib6_gc_args *gc_args)
+{
+	struct fib6_table *table;
+	struct hlist_head *head;
+	unsigned int h;
+
+	rcu_read_lock();
+	for (h = 0; h < FIB6_TABLE_HASHSZ; h++) {
+		head = &net->ipv6.fib_table_hash[h];
+		hlist_for_each_entry_rcu(table, head, tb6_hlist) {
+			spin_lock_bh(&table->tb6_lock);
+			fib6_gc_table(net, table, gc_args);
+			spin_unlock_bh(&table->tb6_lock);
+		}
+	}
+	rcu_read_unlock();
 }
 
 void fib6_run_gc(unsigned long expires, struct net *net, bool force)
@@ -2328,7 +2370,7 @@ void fib6_run_gc(unsigned long expires, struct net *net, bool force)
 			  net->ipv6.sysctl.ip6_rt_gc_interval;
 	gc_args.more = 0;
 
-	fib6_clean_all(net, fib6_age, &gc_args);
+	fib6_gc_all(net, &gc_args);
 	now = jiffies;
 	net->ipv6.ip6_rt_last_gc = now;
 
@@ -2492,7 +2534,7 @@ static int ipv6_route_native_seq_show(struct seq_file *seq, void *v)
 	const struct net_device *dev;
 
 	if (rt->nh)
-		fib6_nh = nexthop_fib6_nh_bh(rt->nh);
+		fib6_nh = nexthop_fib6_nh(rt->nh);
 
 	seq_printf(seq, "%pi6 %02x ", &rt->fib6_dst.addr, rt->fib6_dst.plen);
 
@@ -2557,14 +2599,14 @@ static struct fib6_table *ipv6_route_seq_next_table(struct fib6_table *tbl,
 
 	if (tbl) {
 		h = (tbl->tb6_id & (FIB6_TABLE_HASHSZ - 1)) + 1;
-		node = rcu_dereference_bh(hlist_next_rcu(&tbl->tb6_hlist));
+		node = rcu_dereference(hlist_next_rcu(&tbl->tb6_hlist));
 	} else {
 		h = 0;
 		node = NULL;
 	}
 
 	while (!node && h < FIB6_TABLE_HASHSZ) {
-		node = rcu_dereference_bh(
+		node = rcu_dereference(
 			hlist_first_rcu(&net->ipv6.fib_table_hash[h++]));
 	}
 	return hlist_entry_safe(node, struct fib6_table, tb6_hlist);
@@ -2594,7 +2636,7 @@ static void *ipv6_route_seq_next(struct seq_file *seq, void *v, loff_t *pos)
 	if (!v)
 		goto iter_table;
 
-	n = rcu_dereference_bh(((struct fib6_info *)v)->fib6_next);
+	n = rcu_dereference(((struct fib6_info *)v)->fib6_next);
 	if (n)
 		return n;
 
@@ -2620,12 +2662,12 @@ iter_table:
 }
 
 static void *ipv6_route_seq_start(struct seq_file *seq, loff_t *pos)
-	__acquires(RCU_BH)
+	__acquires(RCU)
 {
 	struct net *net = seq_file_net(seq);
 	struct ipv6_route_iter *iter = seq->private;
 
-	rcu_read_lock_bh();
+	rcu_read_lock();
 	iter->tbl = ipv6_route_seq_next_table(NULL, net);
 	iter->skip = *pos;
 
@@ -2646,7 +2688,7 @@ static bool ipv6_route_iter_active(struct ipv6_route_iter *iter)
 }
 
 static void ipv6_route_native_seq_stop(struct seq_file *seq, void *v)
-	__releases(RCU_BH)
+	__releases(RCU)
 {
 	struct net *net = seq_file_net(seq);
 	struct ipv6_route_iter *iter = seq->private;
@@ -2654,7 +2696,7 @@ static void ipv6_route_native_seq_stop(struct seq_file *seq, void *v)
 	if (ipv6_route_iter_active(iter))
 		fib6_walker_unlink(net, &iter->w);
 
-	rcu_read_unlock_bh();
+	rcu_read_unlock();
 }
 
 #if IS_BUILTIN(CONFIG_IPV6) && defined(CONFIG_BPF_SYSCALL)

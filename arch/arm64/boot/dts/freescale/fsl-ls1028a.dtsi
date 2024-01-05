@@ -28,6 +28,12 @@
 			reg = <0x0>;
 			enable-method = "psci";
 			clocks = <&clockgen QORIQ_CLK_CMUX 0>;
+			i-cache-size = <0xc000>;
+			i-cache-line-size = <64>;
+			i-cache-sets = <256>;
+			d-cache-size = <0x8000>;
+			d-cache-line-size = <64>;
+			d-cache-sets = <256>;
 			next-level-cache = <&l2>;
 			cpu-idle-states = <&CPU_PW20>;
 			#cooling-cells = <2>;
@@ -39,6 +45,12 @@
 			reg = <0x1>;
 			enable-method = "psci";
 			clocks = <&clockgen QORIQ_CLK_CMUX 0>;
+			i-cache-size = <0xc000>;
+			i-cache-line-size = <64>;
+			i-cache-sets = <256>;
+			d-cache-size = <0x8000>;
+			d-cache-line-size = <64>;
+			d-cache-sets = <256>;
 			next-level-cache = <&l2>;
 			cpu-idle-states = <&CPU_PW20>;
 			#cooling-cells = <2>;
@@ -46,6 +58,11 @@
 
 		l2: l2-cache {
 			compatible = "cache";
+			cache-level = <2>;
+			cache-unified;
+			cache-size = <0x100000>;
+			cache-line-size = <64>;
+			cache-sets = <1024>;
 		};
 	};
 
@@ -130,7 +147,7 @@
 		interrupt-controller;
 		interrupts = <GIC_PPI 9 (GIC_CPU_MASK_RAW(0xf) |
 					 IRQ_TYPE_LEVEL_LOW)>;
-		its: gic-its@6020000 {
+		its: msi-controller@6020000 {
 			compatible = "arm,gic-v3-its";
 			msi-controller;
 			reg = <0x0 0x06020000 0 0x20000>;/* GIC Translater */
@@ -712,6 +729,7 @@
 			reg = <0 0x5000000 0 0x800000>;
 			#global-interrupts = <8>;
 			#iommu-cells = <1>;
+			dma-coherent;
 			stream-match-mask = <0x7c00>;
 			/* global secure fault */
 			interrupts = <GIC_SPI 13 IRQ_TYPE_LEVEL_HIGH>,

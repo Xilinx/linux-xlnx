@@ -22,8 +22,15 @@ static inline unsigned long huge_pte_dirty(pte_t pte)
 
 static inline pte_t huge_pte_mkwrite(pte_t pte)
 {
-	return pte_mkwrite(pte);
+	return pte_mkwrite_novma(pte);
 }
+
+#ifndef __HAVE_ARCH_HUGE_PTE_WRPROTECT
+static inline pte_t huge_pte_wrprotect(pte_t pte)
+{
+	return pte_wrprotect(pte);
+}
+#endif
 
 static inline pte_t huge_pte_mkdirty(pte_t pte)
 {
@@ -37,7 +44,7 @@ static inline pte_t huge_pte_modify(pte_t pte, pgprot_t newprot)
 
 static inline pte_t huge_pte_mkuffd_wp(pte_t pte)
 {
-	return pte_mkuffd_wp(pte);
+	return huge_pte_wrprotect(pte_mkuffd_wp(pte));
 }
 
 static inline pte_t huge_pte_clear_uffd_wp(pte_t pte)
@@ -69,7 +76,7 @@ static inline void hugetlb_free_pgd_range(struct mmu_gather *tlb,
 
 #ifndef __HAVE_ARCH_HUGE_SET_HUGE_PTE_AT
 static inline void set_huge_pte_at(struct mm_struct *mm, unsigned long addr,
-		pte_t *ptep, pte_t pte)
+		pte_t *ptep, pte_t pte, unsigned long sz)
 {
 	set_pte_at(mm, addr, ptep, pte);
 }
@@ -103,13 +110,6 @@ static inline int huge_pte_none_mostly(pte_t pte)
 {
 	return huge_pte_none(pte) || is_pte_marker(pte);
 }
-
-#ifndef __HAVE_ARCH_HUGE_PTE_WRPROTECT
-static inline pte_t huge_pte_wrprotect(pte_t pte)
-{
-	return pte_wrprotect(pte);
-}
-#endif
 
 #ifndef __HAVE_ARCH_PREPARE_HUGEPAGE_RANGE
 static inline int prepare_hugepage_range(struct file *file,

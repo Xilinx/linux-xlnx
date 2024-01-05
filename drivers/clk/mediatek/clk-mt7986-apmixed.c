@@ -6,9 +6,7 @@
  */
 
 #include <linux/clk-provider.h>
-#include <linux/of.h>
-#include <linux/of_address.h>
-#include <linux/of_device.h>
+#include <linux/mod_devicetable.h>
 #include <linux/platform_device.h>
 
 #include "clk-gate.h"
@@ -42,7 +40,7 @@
 		 "clkxtal")
 
 static const struct mtk_pll_data plls[] = {
-	PLL(CLK_APMIXED_ARMPLL, "armpll", 0x0200, 0x020C, 0x0, 0, 32,
+	PLL(CLK_APMIXED_ARMPLL, "armpll", 0x0200, 0x020C, 0x0, PLL_AO, 32,
 	    0x0200, 4, 0, 0x0204, 0),
 	PLL(CLK_APMIXED_NET2PLL, "net2pll", 0x0210, 0x021C, 0x0, 0, 32,
 	    0x0210, 4, 0, 0x0214, 0),
@@ -62,8 +60,9 @@ static const struct mtk_pll_data plls[] = {
 
 static const struct of_device_id of_match_clk_mt7986_apmixed[] = {
 	{ .compatible = "mediatek,mt7986-apmixedsys", },
-	{}
+	{ }
 };
+MODULE_DEVICE_TABLE(of, of_match_clk_mt7986_apmixed);
 
 static int clk_mt7986_apmixed_probe(struct platform_device *pdev)
 {
@@ -76,8 +75,6 @@ static int clk_mt7986_apmixed_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	mtk_clk_register_plls(node, plls, ARRAY_SIZE(plls), clk_data);
-
-	clk_prepare_enable(clk_data->hws[CLK_APMIXED_ARMPLL]->clk);
 
 	r = of_clk_add_hw_provider(node, of_clk_hw_onecell_get, clk_data);
 	if (r) {
@@ -100,3 +97,4 @@ static struct platform_driver clk_mt7986_apmixed_drv = {
 	},
 };
 builtin_platform_driver(clk_mt7986_apmixed_drv);
+MODULE_LICENSE("GPL");

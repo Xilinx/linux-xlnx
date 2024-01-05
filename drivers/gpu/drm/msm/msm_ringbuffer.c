@@ -16,26 +16,25 @@ static struct dma_fence *msm_job_run(struct drm_sched_job *job)
 	struct msm_gem_submit *submit = to_msm_submit(job);
 	struct msm_fence_context *fctx = submit->ring->fctx;
 	struct msm_gpu *gpu = submit->gpu;
+	struct msm_drm_private *priv = gpu->dev->dev_private;
 	int i;
 
-	submit->hw_fence = msm_fence_alloc(fctx);
+	msm_fence_init(submit->hw_fence, fctx);
+
+	submit->seqno = submit->hw_fence->seqno;
+
+	mutex_lock(&priv->lru.lock);
 
 	for (i = 0; i < submit->nr_bos; i++) {
-		struct drm_gem_object *obj = &submit->bos[i].obj->base;
+		struct drm_gem_object *obj = submit->bos[i].obj;
 
-		msm_gem_lock(obj);
-		msm_gem_unpin_vma_fenced(submit->bos[i].vma, fctx);
-		msm_gem_unpin_locked(obj);
-		submit->bos[i].flags &= ~(BO_VMA_PINNED | BO_OBJ_PINNED);
-		msm_gem_unlock(obj);
+		msm_gem_unpin_active(obj);
+		submit->bos[i].flags &= ~BO_PINNED;
 	}
 
-	/* TODO move submit path over to using a per-ring lock.. */
-	mutex_lock(&gpu->lock);
+	mutex_unlock(&priv->lru.lock);
 
 	msm_gpu_submit(gpu, submit);
-
-	mutex_unlock(&gpu->lock);
 
 	return dma_fence_get(submit->hw_fence);
 }

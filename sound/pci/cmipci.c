@@ -2688,20 +2688,20 @@ static int snd_cmipci_mixer_new(struct cmipci *cm, int pcm_spdif_device)
 		}
 		if (cm->can_ac3_hw) {
 			kctl = snd_ctl_new1(&snd_cmipci_spdif_default, cm);
+			kctl->id.device = pcm_spdif_device;
 			err = snd_ctl_add(card, kctl);
 			if (err < 0)
 				return err;
-			kctl->id.device = pcm_spdif_device;
 			kctl = snd_ctl_new1(&snd_cmipci_spdif_mask, cm);
+			kctl->id.device = pcm_spdif_device;
 			err = snd_ctl_add(card, kctl);
 			if (err < 0)
 				return err;
-			kctl->id.device = pcm_spdif_device;
 			kctl = snd_ctl_new1(&snd_cmipci_spdif_stream, cm);
+			kctl->id.device = pcm_spdif_device;
 			err = snd_ctl_add(card, kctl);
 			if (err < 0)
 				return err;
-			kctl->id.device = pcm_spdif_device;
 		}
 		if (cm->chip_version <= 37) {
 			sw = snd_cmipci_old_mixer_switches;
@@ -2734,12 +2734,8 @@ static int snd_cmipci_mixer_new(struct cmipci *cm, int pcm_spdif_device)
 	}
 
 	for (idx = 0; idx < CM_SAVED_MIXERS; idx++) {
-		struct snd_ctl_elem_id elem_id;
 		struct snd_kcontrol *ctl;
-		memset(&elem_id, 0, sizeof(elem_id));
-		elem_id.iface = SNDRV_CTL_ELEM_IFACE_MIXER;
-		strcpy(elem_id.name, cm_saved_mixer[idx].name);
-		ctl = snd_ctl_find_id(cm->card, &elem_id);
+		ctl = snd_ctl_find_id_mixer(cm->card, cm_saved_mixer[idx].name);
 		if (ctl)
 			cm->mixer_res_ctl[idx] = ctl;
 	}
@@ -3106,11 +3102,13 @@ static int snd_cmipci_create(struct snd_card *card, struct pci_dev *pci,
 	}
 	sprintf(card->shortname, "C-Media CMI%d", val);
 	if (cm->chip_version < 68)
-		sprintf(modelstr, " (model %d)", cm->chip_version);
+		scnprintf(modelstr, sizeof(modelstr),
+			  " (model %d)", cm->chip_version);
 	else
 		modelstr[0] = '\0';
-	sprintf(card->longname, "%s%s at %#lx, irq %i",
-		card->shortname, modelstr, cm->iobase, cm->irq);
+	scnprintf(card->longname, sizeof(card->longname),
+		  "%s%s at %#lx, irq %i",
+		  card->shortname, modelstr, cm->iobase, cm->irq);
 
 	if (cm->chip_version >= 39) {
 		val = snd_cmipci_read_b(cm, CM_REG_MPU_PCI + 1);

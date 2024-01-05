@@ -38,11 +38,7 @@ subdir-ccflags-y :=
 
 include $(srctree)/scripts/Kbuild.include
 include $(srctree)/scripts/Makefile.compiler
-
-# The filename Kbuild has precedence over Makefile
-kbuild-dir := $(if $(filter /%,$(src)),$(src),$(srctree)/$(src))
-include $(or $(wildcard $(kbuild-dir)/Kbuild),$(kbuild-dir)/Makefile)
-
+include $(kbuild-file)
 include $(srctree)/scripts/Makefile.lib
 
 # Do not include hostprogs rules unless needed.
@@ -86,7 +82,7 @@ ifdef need-builtin
 targets-for-builtin += $(obj)/built-in.a
 endif
 
-targets-for-modules := $(foreach x, o mod $(if $(CONFIG_TRIM_UNUSED_KSYMS), usyms), \
+targets-for-modules := $(foreach x, o mod, \
 				$(patsubst %.o, %.$x, $(filter %.o, $(obj-m))))
 
 ifdef need-modorder
@@ -105,7 +101,9 @@ else ifeq ($(KBUILD_CHECKSRC),2)
 endif
 
 ifneq ($(KBUILD_EXTRA_WARN),)
-  cmd_checkdoc = $(srctree)/scripts/kernel-doc -none $<
+  cmd_checkdoc = $(srctree)/scripts/kernel-doc -none $(KDOCFLAGS) \
+        $(if $(findstring 2, $(KBUILD_EXTRA_WARN)), -Wall) \
+        $<
 endif
 
 # Compile C sources (.c)
@@ -165,7 +163,7 @@ quiet_cmd_cc_o_c = CC $(quiet_modtag)  $@
 ifdef CONFIG_MODVERSIONS
 # When module versioning is enabled the following steps are executed:
 # o compile a <file>.o from <file>.c
-# o if <file>.o doesn't contain a __ksymtab version, i.e. does
+# o if <file>.o doesn't contain a __export_symbol_*, i.e. does
 #   not export symbols, it's done.
 # o otherwise, we calculate symbol versions using the good old
 #   genksyms on the preprocessed source and dump them into the .cmd file.
@@ -173,7 +171,7 @@ ifdef CONFIG_MODVERSIONS
 #   be compiled and linked to the kernel and/or modules.
 
 gen_symversions =								\
-	if $(NM) $@ 2>/dev/null | grep -q __ksymtab; then			\
+	if $(NM) $@ 2>/dev/null | grep -q ' __export_symbol_'; then		\
 		$(call cmd_gensymtypes_$(1),$(KBUILD_SYMTYPES),$(@:.o=.symtypes)) \
 			>> $(dot-target).cmd;					\
 	fi
@@ -219,30 +217,25 @@ is-standard-object = $(if $(filter-out y%, $(OBJECT_FILES_NON_STANDARD_$(basetar
 
 $(obj)/%.o: objtool-enabled = $(if $(is-standard-object),$(if $(delay-objtool),$(is-single-obj-m),y))
 
-ifdef CONFIG_TRIM_UNUSED_KSYMS
-cmd_gen_ksymdeps = \
-	$(CONFIG_SHELL) $(srctree)/scripts/gen_ksymdeps.sh $@ >> $(dot-target).cmd
+ifneq ($(findstring 1, $(KBUILD_EXTRA_WARN)),)
+cmd_warn_shared_object = $(if $(word 2, $(modname-multi)),$(warning $(kbuild-file): $*.o is added to multiple modules: $(modname-multi)))
 endif
-
-cmd_check_local_export = $(srctree)/scripts/check-local-export $@
 
 define rule_cc_o_c
 	$(call cmd_and_fixdep,cc_o_c)
-	$(call cmd,gen_ksymdeps)
-	$(call cmd,check_local_export)
 	$(call cmd,checksrc)
 	$(call cmd,checkdoc)
 	$(call cmd,gen_objtooldep)
 	$(call cmd,gen_symversions_c)
 	$(call cmd,record_mcount)
+	$(call cmd,warn_shared_object)
 endef
 
 define rule_as_o_S
 	$(call cmd_and_fixdep,as_o_S)
-	$(call cmd,gen_ksymdeps)
-	$(call cmd,check_local_export)
 	$(call cmd,gen_objtooldep)
 	$(call cmd,gen_symversions_S)
+	$(call cmd,warn_shared_object)
 endef
 
 # Built-in and composite module parts
@@ -258,12 +251,6 @@ cmd_mod = printf '%s\n' $(call real-search, $*.o, .o, -objs -y -m) | \
 $(obj)/%.mod: FORCE
 	$(call if_changed,mod)
 
-# List module undefined symbols
-cmd_undefined_syms = $(NM) $< | sed -n 's/^  *U //p' > $@
-
-$(obj)/%.usyms: $(obj)/%.o FORCE
-	$(call if_changed,undefined_syms)
-
 quiet_cmd_cc_lst_c = MKLST   $@
       cmd_cc_lst_c = $(CC) $(c_flags) -g -c -o $*.o $< && \
 		     $(CONFIG_SHELL) $(srctree)/scripts/makelst $*.o \
@@ -275,20 +262,20 @@ $(obj)/%.lst: $(src)/%.c FORCE
 # Compile Rust sources (.rs)
 # ---------------------------------------------------------------------------
 
-rust_allowed_features := core_ffi_c
+rust_allowed_features := new_uninit
 
+# `--out-dir` is required to avoid temporaries being created by `rustc` in the
+# current working directory, which may be not accessible in the out-of-tree
+# modules case.
 rust_common_cmd = \
 	RUST_MODFILE=$(modfile) $(RUSTC_OR_CLIPPY) $(rust_flags) \
 	-Zallow-features=$(rust_allowed_features) \
 	-Zcrate-attr=no_std \
 	-Zcrate-attr='feature($(rust_allowed_features))' \
 	--extern alloc --extern kernel \
-	--crate-type rlib --out-dir $(obj) -L $(objtree)/rust/ \
-	--crate-name $(basename $(notdir $@))
-
-rust_handle_depfile = \
-	mv $(obj)/$(basename $(notdir $@)).d $(depfile); \
-	sed -i '/^\#/d' $(depfile)
+	--crate-type rlib -L $(objtree)/rust/ \
+	--crate-name $(basename $(notdir $@)) \
+	--out-dir $(dir $@) --emit=dep-info=$(depfile)
 
 # `--emit=obj`, `--emit=asm` and `--emit=llvm-ir` imply a single codegen unit
 # will be used. We explicitly request `-Ccodegen-units=1` in any case, and
@@ -299,34 +286,27 @@ rust_handle_depfile = \
 # would not match each other.
 
 quiet_cmd_rustc_o_rs = $(RUSTC_OR_CLIPPY_QUIET) $(quiet_modtag) $@
-      cmd_rustc_o_rs = \
-	$(rust_common_cmd) --emit=dep-info,obj $<; \
-	$(rust_handle_depfile)
+      cmd_rustc_o_rs = $(rust_common_cmd) --emit=obj=$@ $<
 
 $(obj)/%.o: $(src)/%.rs FORCE
 	$(call if_changed_dep,rustc_o_rs)
 
 quiet_cmd_rustc_rsi_rs = $(RUSTC_OR_CLIPPY_QUIET) $(quiet_modtag) $@
       cmd_rustc_rsi_rs = \
-	$(rust_common_cmd) --emit=dep-info -Zunpretty=expanded $< >$@; \
-	command -v $(RUSTFMT) >/dev/null && $(RUSTFMT) $@; \
-	$(rust_handle_depfile)
+	$(rust_common_cmd) -Zunpretty=expanded $< >$@; \
+	command -v $(RUSTFMT) >/dev/null && $(RUSTFMT) $@
 
 $(obj)/%.rsi: $(src)/%.rs FORCE
 	$(call if_changed_dep,rustc_rsi_rs)
 
 quiet_cmd_rustc_s_rs = $(RUSTC_OR_CLIPPY_QUIET) $(quiet_modtag) $@
-      cmd_rustc_s_rs = \
-	$(rust_common_cmd) --emit=dep-info,asm $<; \
-	$(rust_handle_depfile)
+      cmd_rustc_s_rs = $(rust_common_cmd) --emit=asm=$@ $<
 
 $(obj)/%.s: $(src)/%.rs FORCE
 	$(call if_changed_dep,rustc_s_rs)
 
 quiet_cmd_rustc_ll_rs = $(RUSTC_OR_CLIPPY_QUIET) $(quiet_modtag) $@
-      cmd_rustc_ll_rs = \
-	$(rust_common_cmd) --emit=dep-info,llvm-ir $<; \
-	$(rust_handle_depfile)
+      cmd_rustc_ll_rs = $(rust_common_cmd) --emit=llvm-ir=$@ $<
 
 $(obj)/%.ll: $(src)/%.rs FORCE
 	$(call if_changed_dep,rustc_ll_rs)
@@ -348,9 +328,7 @@ $(obj)/%.ll: $(src)/%.rs FORCE
 cmd_gensymtypes_S =                                                         \
    { echo "\#include <linux/kernel.h>" ;                                    \
      echo "\#include <asm/asm-prototypes.h>" ;                              \
-    $(CPP) $(a_flags) $< |                                                  \
-     grep "\<___EXPORT_SYMBOL\>" |                                          \
-     sed 's/.*___EXPORT_SYMBOL[[:space:]]*\([a-zA-Z0-9_]*\)[[:space:]]*,.*/EXPORT_SYMBOL(\1);/' ; } | \
+     $(NM) $@ | sed -n 's/.* __export_symbol_\(.*\)/EXPORT_SYMBOL(\1);/p' ; } | \
     $(CPP) -D__GENKSYMS__ $(c_flags) -xc - | $(genksyms)
 
 quiet_cmd_cc_symtypes_S = SYM $(quiet_modtag) $@
@@ -433,7 +411,7 @@ $(obj)/built-in.a: $(real-obj-y) FORCE
 # modules.order unless contained modules are updated.
 
 cmd_modules_order = { $(foreach m, $(real-prereqs), \
-	$(if $(filter %/modules.order, $m), cat $m, echo $(patsubst %.o,%.ko,$m));) :; } \
+	$(if $(filter %/modules.order, $m), cat $m, echo $m);) :; } \
 	> $@
 
 $(obj)/modules.order: $(obj-m) FORCE
@@ -468,10 +446,12 @@ intermediate_targets = $(foreach sfx, $(2), \
 					$(filter %$(strip $(1)), $(targets))))
 # %.asn1.o <- %.asn1.[ch] <- %.asn1
 # %.dtb.o <- %.dtb.S <- %.dtb <- %.dts
+# %.dtbo.o <- %.dtbo.S <- %.dtbo <- %.dtso
 # %.lex.o <- %.lex.c <- %.l
 # %.tab.o <- %.tab.[ch] <- %.y
 targets += $(call intermediate_targets, .asn1.o, .asn1.c .asn1.h) \
 	   $(call intermediate_targets, .dtb.o, .dtb.S .dtb) \
+	   $(call intermediate_targets, .dtbo.o, .dtbo.S .dtbo) \
 	   $(call intermediate_targets, .lex.o, .lex.c) \
 	   $(call intermediate_targets, .tab.o, .tab.c .tab.h)
 

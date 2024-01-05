@@ -14,11 +14,11 @@
  * Contributors: Daniel Hellstrom <daniel@gaisler.com>
  */
 #include <linux/platform_device.h>
-#include <linux/of_device.h>
 #include <linux/module.h>
 #include <linux/serio.h>
 #include <linux/errno.h>
 #include <linux/interrupt.h>
+#include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/device.h>
 #include <linux/delay.h>
@@ -132,7 +132,6 @@ static int apbps2_of_probe(struct platform_device *ofdev)
 	struct apbps2_priv *priv;
 	int irq, err;
 	u32 freq_hz;
-	struct resource *res;
 
 	priv = devm_kzalloc(&ofdev->dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv) {
@@ -141,8 +140,7 @@ static int apbps2_of_probe(struct platform_device *ofdev)
 	}
 
 	/* Find Device Address */
-	res = platform_get_resource(ofdev, IORESOURCE_MEM, 0);
-	priv->regs = devm_ioremap_resource(&ofdev->dev, res);
+	priv->regs = devm_platform_get_and_ioremap_resource(ofdev, 0, NULL);
 	if (IS_ERR(priv->regs))
 		return PTR_ERR(priv->regs);
 

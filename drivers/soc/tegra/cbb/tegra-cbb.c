@@ -7,16 +7,11 @@
 #include <linux/cpufeature.h>
 #include <linux/debugfs.h>
 #include <linux/module.h>
-#include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/device.h>
 #include <linux/io.h>
-#include <linux/of_irq.h>
-#include <linux/of_address.h>
 #include <linux/interrupt.h>
 #include <linux/ioport.h>
-#include <linux/version.h>
 #include <soc/tegra/fuse.h>
 #include <soc/tegra/tegra-cbb.h>
 
@@ -72,18 +67,7 @@ static int tegra_cbb_err_show(struct seq_file *file, void *data)
 
 	return cbb->ops->debugfs_show(cbb, file, data);
 }
-
-static int tegra_cbb_err_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, tegra_cbb_err_show, inode->i_private);
-}
-
-static const struct file_operations tegra_cbb_err_fops = {
-	.open = tegra_cbb_err_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release
-};
+DEFINE_SHOW_ATTRIBUTE(tegra_cbb_err);
 
 static int tegra_cbb_err_debugfs_init(struct tegra_cbb *cbb)
 {
@@ -138,20 +122,16 @@ int tegra_cbb_get_irq(struct platform_device *pdev, unsigned int *nonsec_irq,
 
 	if (num_intr == 2) {
 		irq = platform_get_irq(pdev, index);
-		if (irq <= 0) {
-			dev_err(&pdev->dev, "failed to get non-secure IRQ: %d\n", irq);
+		if (irq <= 0)
 			return -ENOENT;
-		}
 
 		*nonsec_irq = irq;
 		index++;
 	}
 
 	irq = platform_get_irq(pdev, index);
-	if (irq <= 0) {
-		dev_err(&pdev->dev, "failed to get secure IRQ: %d\n", irq);
+	if (irq <= 0)
 		return -ENOENT;
-	}
 
 	*sec_irq = irq;
 

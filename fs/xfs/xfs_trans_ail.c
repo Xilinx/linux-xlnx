@@ -422,7 +422,7 @@ xfsaild_push(
 	struct xfs_ail_cursor	cur;
 	struct xfs_log_item	*lip;
 	xfs_lsn_t		lsn;
-	xfs_lsn_t		target;
+	xfs_lsn_t		target = NULLCOMMITLSN;
 	long			tout;
 	int			stuck = 0;
 	int			flushing = 0;
@@ -471,6 +471,8 @@ xfsaild_push(
 		goto out_done;
 
 	XFS_STATS_INC(mp, xs_push_ail);
+
+	ASSERT(target != NULLCOMMITLSN);
 
 	lsn = lip->li_lsn;
 	while ((XFS_LSN_CMP(lip->li_lsn, target) <= 0)) {
@@ -821,7 +823,7 @@ xfs_trans_ail_update_bulk(
 			trace_xfs_ail_insert(lip, 0, lsn);
 		}
 		lip->li_lsn = lsn;
-		list_add(&lip->li_ail, &tmp);
+		list_add_tail(&lip->li_ail, &tmp);
 	}
 
 	if (!list_empty(&tmp))

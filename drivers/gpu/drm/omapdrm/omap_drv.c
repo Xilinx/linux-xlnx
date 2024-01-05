@@ -6,6 +6,7 @@
 
 #include <linux/dma-mapping.h>
 #include <linux/platform_device.h>
+#include <linux/of.h>
 #include <linux/sort.h>
 #include <linux/sys_soc.h>
 
@@ -14,7 +15,6 @@
 #include <drm/drm_bridge.h>
 #include <drm/drm_bridge_connector.h>
 #include <drm/drm_drv.h>
-#include <drm/drm_fb_helper.h>
 #include <drm/drm_file.h>
 #include <drm/drm_ioctl.h>
 #include <drm/drm_panel.h>
@@ -24,6 +24,7 @@
 
 #include "omap_dmm_tiler.h"
 #include "omap_drv.h"
+#include "omap_fbdev.h"
 
 #define DRIVER_NAME		MODULE_NAME
 #define DRIVER_DESC		"OMAP DRM"
@@ -219,7 +220,6 @@ static const struct drm_mode_config_helper_funcs omap_mode_config_helper_funcs =
 
 static const struct drm_mode_config_funcs omap_mode_config_funcs = {
 	.fb_create = omap_framebuffer_create,
-	.output_poll_changed = drm_fb_helper_output_poll_changed,
 	.atomic_check = omap_atomic_check,
 	.atomic_commit = drm_atomic_helper_commit,
 };
@@ -546,44 +546,6 @@ static void omap_modeset_fini(struct drm_device *ddev)
 }
 
 /*
- * Enable the HPD in external components if supported
- */
-static void omap_modeset_enable_external_hpd(struct drm_device *ddev)
-{
-	struct omap_drm_private *priv = ddev->dev_private;
-	unsigned int i;
-
-	for (i = 0; i < priv->num_pipes; i++) {
-		struct drm_connector *connector = priv->pipes[i].connector;
-
-		if (!connector)
-			continue;
-
-		if (priv->pipes[i].output->bridge)
-			drm_bridge_connector_enable_hpd(connector);
-	}
-}
-
-/*
- * Disable the HPD in external components if supported
- */
-static void omap_modeset_disable_external_hpd(struct drm_device *ddev)
-{
-	struct omap_drm_private *priv = ddev->dev_private;
-	unsigned int i;
-
-	for (i = 0; i < priv->num_pipes; i++) {
-		struct drm_connector *connector = priv->pipes[i].connector;
-
-		if (!connector)
-			continue;
-
-		if (priv->pipes[i].output->bridge)
-			drm_bridge_connector_disable_hpd(connector);
-	}
-}
-
-/*
  * drm ioctl funcs
  */
 
@@ -674,28 +636,15 @@ static int dev_open(struct drm_device *dev, struct drm_file *file)
 	return 0;
 }
 
-static const struct file_operations omapdriver_fops = {
-	.owner = THIS_MODULE,
-	.open = drm_open,
-	.unlocked_ioctl = drm_ioctl,
-	.compat_ioctl = drm_compat_ioctl,
-	.release = drm_release,
-	.mmap = omap_gem_mmap,
-	.poll = drm_poll,
-	.read = drm_read,
-	.llseek = noop_llseek,
-};
+DEFINE_DRM_GEM_FOPS(omapdriver_fops);
 
 static const struct drm_driver omap_drm_driver = {
 	.driver_features = DRIVER_MODESET | DRIVER_GEM  |
 		DRIVER_ATOMIC | DRIVER_RENDER,
 	.open = dev_open,
-	.lastclose = drm_fb_helper_lastclose,
 #ifdef CONFIG_DEBUG_FS
 	.debugfs_init = omap_debugfs_init,
 #endif
-	.prime_handle_to_fd = drm_gem_prime_handle_to_fd,
-	.prime_fd_to_handle = drm_gem_prime_fd_to_handle,
 	.gem_prime_import = omap_gem_prime_import,
 	.dumb_create = omap_gem_dumb_create,
 	.dumb_map_offset = omap_gem_dumb_map_offset,
@@ -779,10 +728,7 @@ static int omapdrm_init(struct omap_drm_private *priv, struct device *dev)
 		goto err_cleanup_modeset;
 	}
 
-	omap_fbdev_init(ddev);
-
 	drm_kms_helper_poll_init(ddev);
-	omap_modeset_enable_external_hpd(ddev);
 
 	/*
 	 * Register the DRM device with the core and the connectors with
@@ -792,13 +738,12 @@ static int omapdrm_init(struct omap_drm_private *priv, struct device *dev)
 	if (ret)
 		goto err_cleanup_helpers;
 
+	omap_fbdev_setup(ddev);
+
 	return 0;
 
 err_cleanup_helpers:
-	omap_modeset_disable_external_hpd(ddev);
 	drm_kms_helper_poll_fini(ddev);
-
-	omap_fbdev_fini(ddev);
 err_cleanup_modeset:
 	omap_modeset_fini(ddev);
 err_free_overlays:
@@ -822,10 +767,7 @@ static void omapdrm_cleanup(struct omap_drm_private *priv)
 
 	drm_dev_unregister(ddev);
 
-	omap_modeset_disable_external_hpd(ddev);
 	drm_kms_helper_poll_fini(ddev);
-
-	omap_fbdev_fini(ddev);
 
 	drm_atomic_helper_shutdown(ddev);
 
@@ -867,14 +809,12 @@ static int pdev_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int pdev_remove(struct platform_device *pdev)
+static void pdev_remove(struct platform_device *pdev)
 {
 	struct omap_drm_private *priv = platform_get_drvdata(pdev);
 
 	omapdrm_cleanup(priv);
 	kfree(priv);
-
-	return 0;
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -905,7 +845,7 @@ static struct platform_driver pdev = {
 		.pm = &omapdrm_pm_ops,
 	},
 	.probe = pdev_probe,
-	.remove = pdev_remove,
+	.remove_new = pdev_remove,
 };
 
 static struct platform_driver * const drivers[] = {

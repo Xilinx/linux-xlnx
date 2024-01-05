@@ -956,11 +956,10 @@ static int rpm_reg_probe(struct platform_device *pdev)
 	}
 
 	for (reg = match->data; reg->name; reg++) {
-		vreg = devm_kmalloc(&pdev->dev, sizeof(*vreg), GFP_KERNEL);
+		vreg = devm_kmemdup(&pdev->dev, reg->template, sizeof(*vreg), GFP_KERNEL);
 		if (!vreg)
 			return -ENOMEM;
 
-		memcpy(vreg, reg->template, sizeof(*vreg));
 		mutex_init(&vreg->lock);
 
 		vreg->dev = &pdev->dev;
@@ -991,6 +990,7 @@ static struct platform_driver rpm_reg_driver = {
 	.probe          = rpm_reg_probe,
 	.driver  = {
 		.name  = "qcom_rpm_reg",
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 		.of_match_table = of_match_ptr(rpm_of_match),
 	},
 };

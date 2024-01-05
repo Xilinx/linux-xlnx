@@ -104,7 +104,7 @@ static void pci_std_update_resource(struct pci_dev *dev, int resno)
 	pci_read_config_dword(dev, reg, &check);
 
 	if ((new ^ check) & mask) {
-		pci_err(dev, "BAR %d: error updating (%#08x != %#08x)\n",
+		pci_err(dev, "BAR %d: error updating (%#010x != %#010x)\n",
 			resno, new, check);
 	}
 
@@ -113,7 +113,7 @@ static void pci_std_update_resource(struct pci_dev *dev, int resno)
 		pci_write_config_dword(dev, reg + 4, new);
 		pci_read_config_dword(dev, reg + 4, &check);
 		if (check != new) {
-			pci_err(dev, "BAR %d: error updating (high %#08x != %#08x)\n",
+			pci_err(dev, "BAR %d: error updating (high %#010x != %#010x)\n",
 				resno, new, check);
 		}
 	}
@@ -484,11 +484,9 @@ int pci_enable_resources(struct pci_dev *dev, int mask)
 	pci_read_config_word(dev, PCI_COMMAND, &cmd);
 	old_cmd = cmd;
 
-	for (i = 0; i < PCI_NUM_RESOURCES; i++) {
+	pci_dev_for_each_resource(dev, r, i) {
 		if (!(mask & (1 << i)))
 			continue;
-
-		r = &dev->resource[i];
 
 		if (!(r->flags & (IORESOURCE_IO | IORESOURCE_MEM)))
 			continue;

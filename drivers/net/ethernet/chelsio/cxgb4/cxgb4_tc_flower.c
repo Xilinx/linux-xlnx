@@ -313,15 +313,15 @@ static int cxgb4_validate_flow_match(struct net_device *dev,
 	u16 ethtype_key = 0;
 
 	if (dissector->used_keys &
-	    ~(BIT(FLOW_DISSECTOR_KEY_CONTROL) |
-	      BIT(FLOW_DISSECTOR_KEY_BASIC) |
-	      BIT(FLOW_DISSECTOR_KEY_IPV4_ADDRS) |
-	      BIT(FLOW_DISSECTOR_KEY_IPV6_ADDRS) |
-	      BIT(FLOW_DISSECTOR_KEY_PORTS) |
-	      BIT(FLOW_DISSECTOR_KEY_ENC_KEYID) |
-	      BIT(FLOW_DISSECTOR_KEY_VLAN) |
-	      BIT(FLOW_DISSECTOR_KEY_IP))) {
-		netdev_warn(dev, "Unsupported key used: 0x%x\n",
+	    ~(BIT_ULL(FLOW_DISSECTOR_KEY_CONTROL) |
+	      BIT_ULL(FLOW_DISSECTOR_KEY_BASIC) |
+	      BIT_ULL(FLOW_DISSECTOR_KEY_IPV4_ADDRS) |
+	      BIT_ULL(FLOW_DISSECTOR_KEY_IPV6_ADDRS) |
+	      BIT_ULL(FLOW_DISSECTOR_KEY_PORTS) |
+	      BIT_ULL(FLOW_DISSECTOR_KEY_ENC_KEYID) |
+	      BIT_ULL(FLOW_DISSECTOR_KEY_VLAN) |
+	      BIT_ULL(FLOW_DISSECTOR_KEY_IP))) {
+		netdev_warn(dev, "Unsupported key used: 0x%llx\n",
 			    dissector->used_keys);
 		return -EOPNOTSUPP;
 	}
@@ -1135,7 +1135,7 @@ void cxgb4_cleanup_tc_flower(struct adapter *adap)
 		return;
 
 	if (adap->flower_stats_timer.function)
-		del_timer_sync(&adap->flower_stats_timer);
+		timer_shutdown_sync(&adap->flower_stats_timer);
 	cancel_work_sync(&adap->flower_stats_work);
 	rhashtable_destroy(&adap->flower_tbl);
 	adap->tc_flower_initialized = false;

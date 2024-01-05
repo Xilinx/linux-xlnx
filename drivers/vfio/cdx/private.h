@@ -31,6 +31,8 @@ struct vfio_cdx_region {
 struct vfio_cdx_device {
 	struct vfio_device	vdev;
 	struct vfio_cdx_region	*regions;
+	u32			flags;
+#define BME_SUPPORT BIT(0)
 	struct vfio_cdx_irq	*cdx_irqs;
 	u32			irq_count;
 	u32			config_msi;
@@ -38,8 +40,8 @@ struct vfio_cdx_device {
 
 int vfio_cdx_set_irqs_ioctl(struct vfio_cdx_device *vdev,
 			    u32 flags, unsigned int index,
-		unsigned int start, unsigned int count,
-		void *data);
+			    unsigned int start, unsigned int count,
+			    void *data);
 
 void vfio_cdx_irqs_cleanup(struct vfio_cdx_device *vdev);
 

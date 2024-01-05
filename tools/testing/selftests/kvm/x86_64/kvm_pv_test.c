@@ -46,10 +46,10 @@ static void test_msr(struct msr_data *msr)
 	PR_MSR(msr);
 
 	vector = rdmsr_safe(msr->idx, &ignored);
-	GUEST_ASSERT_1(vector == GP_VECTOR, vector);
+	GUEST_ASSERT_EQ(vector, GP_VECTOR);
 
 	vector = wrmsr_safe(msr->idx, 0);
-	GUEST_ASSERT_1(vector == GP_VECTOR, vector);
+	GUEST_ASSERT_EQ(vector, GP_VECTOR);
 }
 
 struct hcall_data {
@@ -77,7 +77,7 @@ static void test_hcall(struct hcall_data *hc)
 
 	PR_HCALL(hc);
 	r = kvm_hypercall(hc->nr, 0, 0, 0, 0);
-	GUEST_ASSERT(r == -KVM_ENOSYS);
+	GUEST_ASSERT_EQ(r, -KVM_ENOSYS);
 }
 
 static void guest_main(void)
@@ -111,14 +111,11 @@ static void pr_hcall(struct ucall *uc)
 
 static void enter_guest(struct kvm_vcpu *vcpu)
 {
-	struct kvm_run *run = vcpu->run;
 	struct ucall uc;
 
 	while (true) {
 		vcpu_run(vcpu);
-		TEST_ASSERT(run->exit_reason == KVM_EXIT_IO,
-			    "unexpected exit reason: %u (%s)",
-			    run->exit_reason, exit_reason_str(run->exit_reason));
+		TEST_ASSERT_KVM_EXIT_REASON(vcpu, KVM_EXIT_IO);
 
 		switch (get_ucall(vcpu, &uc)) {
 		case UCALL_PR_MSR:
@@ -128,7 +125,7 @@ static void enter_guest(struct kvm_vcpu *vcpu)
 			pr_hcall(&uc);
 			break;
 		case UCALL_ABORT:
-			REPORT_GUEST_ASSERT_1(uc, "vector = %lu");
+			REPORT_GUEST_ASSERT(uc);
 			return;
 		case UCALL_DONE:
 			return;

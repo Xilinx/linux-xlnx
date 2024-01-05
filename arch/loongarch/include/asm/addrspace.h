@@ -19,7 +19,7 @@
  */
 #ifndef __ASSEMBLY__
 #ifndef PHYS_OFFSET
-#define PHYS_OFFSET	_AC(0, UL)
+#define PHYS_OFFSET	_UL(0)
 #endif
 extern unsigned long vm_map_base;
 #endif /* __ASSEMBLY__ */
@@ -43,7 +43,7 @@ extern unsigned long vm_map_base;
  * Memory above this physical address will be considered highmem.
  */
 #ifndef HIGHMEM_START
-#define HIGHMEM_START		(_AC(1, UL) << _AC(DMW_PABITS, UL))
+#define HIGHMEM_START		(_UL(1) << _UL(DMW_PABITS))
 #endif
 
 #define TO_PHYS(x)		(		((x) & TO_PHYS_MASK))
@@ -65,16 +65,16 @@ extern unsigned long vm_map_base;
 #define _ATYPE_
 #define _ATYPE32_
 #define _ATYPE64_
-#define _CONST64_(x)	x
 #else
 #define _ATYPE_		__PTRDIFF_TYPE__
 #define _ATYPE32_	int
 #define _ATYPE64_	__s64
-#ifdef CONFIG_64BIT
-#define _CONST64_(x)	x ## L
-#else
-#define _CONST64_(x)	x ## LL
 #endif
+
+#ifdef CONFIG_64BIT
+#define _CONST64_(x)	_UL(x)
+#else
+#define _CONST64_(x)	_ULL(x)
 #endif
 
 /*
@@ -124,5 +124,7 @@ extern unsigned long vm_map_base;
 #define PCI_IOSIZE	SZ_32M
 #define ISA_IOSIZE	SZ_16K
 #define IO_SPACE_LIMIT	(PCI_IOSIZE - 1)
+
+#define PHYS_LINK_KADDR	PHYSADDR(VMLINUX_LOAD_ADDRESS)
 
 #endif /* _ASM_ADDRSPACE_H */

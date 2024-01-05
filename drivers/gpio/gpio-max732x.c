@@ -18,8 +18,6 @@
 #include <linux/interrupt.h>
 #include <linux/i2c.h>
 #include <linux/platform_data/max732x.h>
-#include <linux/of.h>
-
 
 /*
  * Each port of MAX732x (including MAX7319) falls into one of the
@@ -114,7 +112,6 @@ static const struct i2c_device_id max732x_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, max732x_id);
 
-#ifdef CONFIG_OF
 static const struct of_device_id max732x_of_table[] = {
 	{ .compatible = "maxim,max7319" },
 	{ .compatible = "maxim,max7320" },
@@ -128,7 +125,6 @@ static const struct of_device_id max732x_of_table[] = {
 	{ }
 };
 MODULE_DEVICE_TABLE(of, max732x_of_table);
-#endif
 
 struct max732x_chip {
 	struct gpio_chip gpio_chip;
@@ -351,6 +347,7 @@ static void max732x_irq_mask(struct irq_data *d)
 	struct max732x_chip *chip = gpiochip_get_data(gc);
 
 	chip->irq_mask_cur &= ~(1 << d->hwirq);
+	gpiochip_disable_irq(gc, irqd_to_hwirq(d));
 }
 
 static void max732x_irq_unmask(struct irq_data *d)
@@ -358,6 +355,7 @@ static void max732x_irq_unmask(struct irq_data *d)
 	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
 	struct max732x_chip *chip = gpiochip_get_data(gc);
 
+	gpiochip_enable_irq(gc, irqd_to_hwirq(d));
 	chip->irq_mask_cur |= 1 << d->hwirq;
 }
 
@@ -429,7 +427,7 @@ static int max732x_irq_set_wake(struct irq_data *data, unsigned int on)
 	return 0;
 }
 
-static struct irq_chip max732x_irq_chip = {
+static const struct irq_chip max732x_irq_chip = {
 	.name			= "max732x",
 	.irq_mask		= max732x_irq_mask,
 	.irq_unmask		= max732x_irq_unmask,
@@ -437,6 +435,8 @@ static struct irq_chip max732x_irq_chip = {
 	.irq_bus_sync_unlock	= max732x_irq_bus_sync_unlock,
 	.irq_set_type		= max732x_irq_set_type,
 	.irq_set_wake		= max732x_irq_set_wake,
+	.flags			= IRQCHIP_IMMUTABLE,
+	 GPIOCHIP_IRQ_RESOURCE_HELPERS,
 };
 
 static uint8_t max732x_irq_pending(struct max732x_chip *chip)
@@ -517,7 +517,7 @@ static int max732x_irq_setup(struct max732x_chip *chip,
 		}
 
 		girq = &chip->gpio_chip.irq;
-		girq->chip = &max732x_irq_chip;
+		gpio_irq_chip_set_chip(girq, &max732x_irq_chip);
 		/* This will let us handle the parent IRQ in the driver */
 		girq->parent_handler = NULL;
 		girq->num_parents = 0;
@@ -608,9 +608,9 @@ static struct max732x_platform_data *of_gpio_max732x(struct device *dev)
 	return pdata;
 }
 
-static int max732x_probe(struct i2c_client *client,
-				   const struct i2c_device_id *id)
+static int max732x_probe(struct i2c_client *client)
 {
+	const struct i2c_device_id *id = i2c_client_get_device_id(client);
 	struct max732x_platform_data *pdata;
 	struct device_node *node;
 	struct max732x_chip *chip;
@@ -705,7 +705,7 @@ static int max732x_probe(struct i2c_client *client,
 static struct i2c_driver max732x_driver = {
 	.driver = {
 		.name		= "max732x",
-		.of_match_table	= of_match_ptr(max732x_of_table),
+		.of_match_table	= max732x_of_table,
 	},
 	.probe		= max732x_probe,
 	.id_table	= max732x_id,

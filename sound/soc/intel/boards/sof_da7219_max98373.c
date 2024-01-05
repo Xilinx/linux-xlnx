@@ -7,13 +7,13 @@
 
 #include <linux/input.h>
 #include <linux/module.h>
+#include <sound/jack.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <linux/platform_device.h>
 #include <sound/soc.h>
 #include <sound/soc-acpi.h>
 #include "../../codecs/da7219.h"
-#include "../../codecs/da7219-aad.h"
 #include "hda_dsp_common.h"
 
 #define DIALOG_CODEC_DAI	"da7219-hifi"
@@ -65,6 +65,7 @@ static int platform_clock_control(struct snd_soc_dapm_widget *w,
 static const struct snd_kcontrol_new controls[] = {
 	SOC_DAPM_PIN_SWITCH("Headphone Jack"),
 	SOC_DAPM_PIN_SWITCH("Headset Mic"),
+	SOC_DAPM_PIN_SWITCH("Line Out"),
 	SOC_DAPM_PIN_SWITCH("Left Spk"),
 	SOC_DAPM_PIN_SWITCH("Right Spk"),
 };
@@ -72,6 +73,7 @@ static const struct snd_kcontrol_new controls[] = {
 static const struct snd_kcontrol_new m98360a_controls[] = {
 	SOC_DAPM_PIN_SWITCH("Headphone Jack"),
 	SOC_DAPM_PIN_SWITCH("Headset Mic"),
+	SOC_DAPM_PIN_SWITCH("Line Out"),
 	SOC_DAPM_PIN_SWITCH("Spk"),
 };
 
@@ -79,6 +81,7 @@ static const struct snd_kcontrol_new m98360a_controls[] = {
 static const struct snd_soc_dapm_widget widgets[] = {
 	SND_SOC_DAPM_HP("Headphone Jack", NULL),
 	SND_SOC_DAPM_MIC("Headset Mic", NULL),
+	SND_SOC_DAPM_LINE("Line Out", NULL),
 
 	SND_SOC_DAPM_SPK("Left Spk", NULL),
 	SND_SOC_DAPM_SPK("Right Spk", NULL),
@@ -98,6 +101,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 
 	{ "Headphone Jack", NULL, "Platform Clock" },
 	{ "Headset Mic", NULL, "Platform Clock" },
+	{ "Line Out", NULL, "Platform Clock" },
 
 	{ "Left Spk", NULL, "Left BE_OUT" },
 	{ "Right Spk", NULL, "Right BE_OUT" },
@@ -110,6 +114,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 static const struct snd_soc_dapm_widget max98360a_widgets[] = {
 	SND_SOC_DAPM_HP("Headphone Jack", NULL),
 	SND_SOC_DAPM_MIC("Headset Mic", NULL),
+	SND_SOC_DAPM_LINE("Line Out", NULL),
 
 	SND_SOC_DAPM_SPK("Spk", NULL),
 
@@ -128,6 +133,7 @@ static const struct snd_soc_dapm_route max98360a_map[] = {
 
 	{ "Headphone Jack", NULL, "Platform Clock" },
 	{ "Headset Mic", NULL, "Platform Clock" },
+	{ "Line Out", NULL, "Platform Clock" },
 
 	{"Spk", NULL, "Speaker"},
 
@@ -143,6 +149,10 @@ static struct snd_soc_jack_pin jack_pins[] = {
 	{
 		.pin    = "Headset Mic",
 		.mask   = SND_JACK_MICROPHONE,
+	},
+	{
+		.pin    = "Line Out",
+		.mask   = SND_JACK_LINEOUT,
 	},
 };
 
@@ -184,7 +194,7 @@ static int da7219_codec_init(struct snd_soc_pcm_runtime *rtd)
 	snd_jack_set_key(jack->jack, SND_JACK_BTN_1, KEY_VOLUMEUP);
 	snd_jack_set_key(jack->jack, SND_JACK_BTN_2, KEY_VOLUMEDOWN);
 	snd_jack_set_key(jack->jack, SND_JACK_BTN_3, KEY_VOICECOMMAND);
-	da7219_aad_jack_det(component, jack);
+	snd_soc_component_set_jack(component, jack, NULL);
 
 	return ret;
 }

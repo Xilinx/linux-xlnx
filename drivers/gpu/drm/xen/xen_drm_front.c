@@ -11,7 +11,6 @@
 #include <linux/delay.h>
 #include <linux/dma-mapping.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
 
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_drv.h>
@@ -474,10 +473,7 @@ DEFINE_DRM_GEM_FOPS(xen_drm_dev_fops);
 static const struct drm_driver xen_drm_driver = {
 	.driver_features           = DRIVER_GEM | DRIVER_MODESET | DRIVER_ATOMIC,
 	.release                   = xen_drm_drv_release,
-	.prime_handle_to_fd        = drm_gem_prime_handle_to_fd,
-	.prime_fd_to_handle        = drm_gem_prime_fd_to_handle,
 	.gem_prime_import_sg_table = xen_drm_front_gem_import_sg_table,
-	.gem_prime_mmap            = drm_gem_prime_mmap,
 	.dumb_create               = xen_drm_drv_dumb_create,
 	.fops                      = &xen_drm_dev_fops,
 	.name                      = "xendrm-du",
@@ -717,7 +713,7 @@ static int xen_drv_probe(struct xenbus_device *xb_dev,
 	return xenbus_switch_state(xb_dev, XenbusStateInitialising);
 }
 
-static int xen_drv_remove(struct xenbus_device *dev)
+static void xen_drv_remove(struct xenbus_device *dev)
 {
 	struct xen_drm_front_info *front_info = dev_get_drvdata(&dev->dev);
 	int to = 100;
@@ -751,7 +747,6 @@ static int xen_drv_remove(struct xenbus_device *dev)
 
 	xen_drm_drv_fini(front_info);
 	xenbus_frontend_closed(dev);
-	return 0;
 }
 
 static const struct xenbus_device_id xen_driver_ids[] = {

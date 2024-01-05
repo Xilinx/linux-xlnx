@@ -57,7 +57,7 @@ static inline bool arch_thp_swp_supported(void)
  * fault on one CPU which has been handled concurrently by another CPU
  * does not need to perform additional invalidation.
  */
-#define flush_tlb_fix_spurious_fault(vma, address) do { } while (0)
+#define flush_tlb_fix_spurious_fault(vma, address, ptep) do { } while (0)
 
 /*
  * ZERO_PAGE is a global shared page that is always zero: used
@@ -77,11 +77,11 @@ extern unsigned long empty_zero_page[PAGE_SIZE / sizeof(unsigned long)];
 static inline phys_addr_t __pte_to_phys(pte_t pte)
 {
 	return (pte_val(pte) & PTE_ADDR_LOW) |
-		((pte_val(pte) & PTE_ADDR_HIGH) << 36);
+		((pte_val(pte) & PTE_ADDR_HIGH) << PTE_ADDR_HIGH_SHIFT);
 }
 static inline pteval_t __phys_to_pte_val(phys_addr_t phys)
 {
-	return (phys | (phys >> 36)) & PTE_ADDR_MASK;
+	return (phys | (phys >> PTE_ADDR_HIGH_SHIFT)) & PTE_ADDR_MASK;
 }
 #else
 #define __pte_to_phys(pte)	(pte_val(pte) & PTE_ADDR_MASK)
@@ -103,6 +103,7 @@ static inline pteval_t __phys_to_pte_val(phys_addr_t phys)
 #define pte_young(pte)		(!!(pte_val(pte) & PTE_AF))
 #define pte_special(pte)	(!!(pte_val(pte) & PTE_SPECIAL))
 #define pte_write(pte)		(!!(pte_val(pte) & PTE_WRITE))
+#define pte_rdonly(pte)		(!!(pte_val(pte) & PTE_RDONLY))
 #define pte_user(pte)		(!!(pte_val(pte) & PTE_USER))
 #define pte_user_exec(pte)	(!(pte_val(pte) & PTE_UXN))
 #define pte_cont(pte)		(!!(pte_val(pte) & PTE_CONT))
@@ -120,7 +121,7 @@ static inline pteval_t __phys_to_pte_val(phys_addr_t phys)
 	(__boundary - 1 < (end) - 1) ? __boundary : (end);			\
 })
 
-#define pte_hw_dirty(pte)	(pte_write(pte) && !(pte_val(pte) & PTE_RDONLY))
+#define pte_hw_dirty(pte)	(pte_write(pte) && !pte_rdonly(pte))
 #define pte_sw_dirty(pte)	(!!(pte_val(pte) & PTE_DIRTY))
 #define pte_dirty(pte)		(pte_sw_dirty(pte) || pte_hw_dirty(pte))
 
@@ -180,7 +181,7 @@ static inline pmd_t set_pmd_bit(pmd_t pmd, pgprot_t prot)
 	return pmd;
 }
 
-static inline pte_t pte_mkwrite(pte_t pte)
+static inline pte_t pte_mkwrite_novma(pte_t pte)
 {
 	pte = set_pte_bit(pte, __pgprot(PTE_WRITE));
 	pte = clear_pte_bit(pte, __pgprot(PTE_RDONLY));
@@ -212,7 +213,7 @@ static inline pte_t pte_wrprotect(pte_t pte)
 	 * clear), set the PTE_DIRTY bit.
 	 */
 	if (pte_hw_dirty(pte))
-		pte = pte_mkdirty(pte);
+		pte = set_pte_bit(pte, __pgprot(PTE_DIRTY));
 
 	pte = clear_pte_bit(pte, __pgprot(PTE_WRITE));
 	pte = set_pte_bit(pte, __pgprot(PTE_RDONLY));
@@ -275,6 +276,7 @@ static inline void set_pte(pte_t *ptep, pte_t pte)
 }
 
 extern void __sync_icache_dcache(pte_t pteval);
+bool pgattr_change_is_safe(u64 old, u64 new);
 
 /*
  * PTE bits configuration in the presence of hardware Dirty Bit Management
@@ -292,7 +294,7 @@ extern void __sync_icache_dcache(pte_t pteval);
  *   PTE_DIRTY || (PTE_WRITE && !PTE_RDONLY)
  */
 
-static inline void __check_racy_pte_update(struct mm_struct *mm, pte_t *ptep,
+static inline void __check_safe_pte_update(struct mm_struct *mm, pte_t *ptep,
 					   pte_t pte)
 {
 	pte_t old_pte;
@@ -318,6 +320,9 @@ static inline void __check_racy_pte_update(struct mm_struct *mm, pte_t *ptep,
 	VM_WARN_ONCE(pte_write(old_pte) && !pte_dirty(pte),
 		     "%s: racy dirty state clearing: 0x%016llx -> 0x%016llx",
 		     __func__, pte_val(old_pte), pte_val(pte));
+	VM_WARN_ONCE(!pgattr_change_is_safe(pte_val(old_pte), pte_val(pte)),
+		     "%s: unsafe attribute change: 0x%016llx -> 0x%016llx",
+		     __func__, pte_val(old_pte), pte_val(pte));
 }
 
 static inline void __set_pte_at(struct mm_struct *mm, unsigned long addr,
@@ -333,30 +338,29 @@ static inline void __set_pte_at(struct mm_struct *mm, unsigned long addr,
 	 * don't expose tags (instruction fetches don't check tags).
 	 */
 	if (system_supports_mte() && pte_access_permitted(pte, false) &&
-	    !pte_special(pte)) {
-		pte_t old_pte = READ_ONCE(*ptep);
-		/*
-		 * We only need to synchronise if the new PTE has tags enabled
-		 * or if swapping in (in which case another mapping may have
-		 * set tags in the past even if this PTE isn't tagged).
-		 * (!pte_none() && !pte_present()) is an open coded version of
-		 * is_swap_pte()
-		 */
-		if (pte_tagged(pte) || (!pte_none(old_pte) && !pte_present(old_pte)))
-			mte_sync_tags(old_pte, pte);
-	}
+	    !pte_special(pte) && pte_tagged(pte))
+		mte_sync_tags(pte);
 
-	__check_racy_pte_update(mm, ptep, pte);
+	__check_safe_pte_update(mm, ptep, pte);
 
 	set_pte(ptep, pte);
 }
 
-static inline void set_pte_at(struct mm_struct *mm, unsigned long addr,
-			      pte_t *ptep, pte_t pte)
+static inline void set_ptes(struct mm_struct *mm, unsigned long addr,
+			      pte_t *ptep, pte_t pte, unsigned int nr)
 {
-	page_table_check_pte_set(mm, addr, ptep, pte);
-	return __set_pte_at(mm, addr, ptep, pte);
+	page_table_check_ptes_set(mm, ptep, pte, nr);
+
+	for (;;) {
+		__set_pte_at(mm, addr, ptep, pte);
+		if (--nr == 0)
+			break;
+		ptep++;
+		addr += PAGE_SIZE;
+		pte_val(pte) += PAGE_SIZE;
+	}
 }
+#define set_ptes set_ptes
 
 /*
  * Huge pte definitions.
@@ -417,7 +421,6 @@ static inline pgprot_t mk_pmd_sect_prot(pgprot_t prot)
 	return __pgprot((pgprot_val(prot) & ~PMD_TABLE_BIT) | PMD_TYPE_SECT);
 }
 
-#define __HAVE_ARCH_PTE_SWP_EXCLUSIVE
 static inline pte_t pte_swp_mkexclusive(pte_t pte)
 {
 	return set_pte_bit(pte, __pgprot(PTE_SWP_EXCLUSIVE));
@@ -484,7 +487,7 @@ static inline int pmd_trans_huge(pmd_t pmd)
 #define pmd_cont(pmd)		pte_cont(pmd_pte(pmd))
 #define pmd_wrprotect(pmd)	pte_pmd(pte_wrprotect(pmd_pte(pmd)))
 #define pmd_mkold(pmd)		pte_pmd(pte_mkold(pmd_pte(pmd)))
-#define pmd_mkwrite(pmd)	pte_pmd(pte_mkwrite(pmd_pte(pmd)))
+#define pmd_mkwrite_novma(pmd)	pte_pmd(pte_mkwrite_novma(pmd_pte(pmd)))
 #define pmd_mkclean(pmd)	pte_pmd(pte_mkclean(pmd_pte(pmd)))
 #define pmd_mkdirty(pmd)	pte_pmd(pte_mkdirty(pmd_pte(pmd)))
 #define pmd_mkyoung(pmd)	pte_pmd(pte_mkyoung(pmd_pte(pmd)))
@@ -531,14 +534,14 @@ static inline pmd_t pmd_mkdevmap(pmd_t pmd)
 static inline void set_pmd_at(struct mm_struct *mm, unsigned long addr,
 			      pmd_t *pmdp, pmd_t pmd)
 {
-	page_table_check_pmd_set(mm, addr, pmdp, pmd);
+	page_table_check_pmd_set(mm, pmdp, pmd);
 	return __set_pte_at(mm, addr, (pte_t *)pmdp, pmd_pte(pmd));
 }
 
 static inline void set_pud_at(struct mm_struct *mm, unsigned long addr,
 			      pud_t *pudp, pud_t pud)
 {
-	page_table_check_pud_set(mm, addr, pudp, pud);
+	page_table_check_pud_set(mm, pudp, pud);
 	return __set_pte_at(mm, addr, (pte_t *)pudp, pud_pte(pud));
 }
 
@@ -609,7 +612,6 @@ extern pgd_t init_pg_dir[PTRS_PER_PGD];
 extern pgd_t init_pg_end[];
 extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 extern pgd_t idmap_pg_dir[PTRS_PER_PGD];
-extern pgd_t idmap_pg_end[];
 extern pgd_t tramp_pg_dir[PTRS_PER_PGD];
 extern pgd_t reserved_pg_dir[PTRS_PER_PGD];
 
@@ -682,7 +684,7 @@ static inline unsigned long pmd_page_vaddr(pmd_t pmd)
 #define pud_leaf(pud)		(pud_present(pud) && !pud_table(pud))
 #define pud_valid(pud)		pte_valid(pud_pte(pud))
 #define pud_user(pud)		pte_user(pud_pte(pud))
-
+#define pud_user_exec(pud)	pte_user_exec(pud_pte(pud))
 
 static inline void set_pud(pud_t *pudp, pud_t pud)
 {
@@ -731,6 +733,7 @@ static inline pmd_t *pud_pgtable(pud_t pud)
 #else
 
 #define pud_page_paddr(pud)	({ BUILD_BUG(); 0; })
+#define pud_user_exec(pud)	pud_user(pud) /* Always 0 with folding */
 
 /* Match pmd_offset folding in <asm/generic/pgtable-nopmd.h> */
 #define pmd_set_fixmap(addr)		NULL
@@ -820,7 +823,8 @@ static inline pte_t pte_modify(pte_t pte, pgprot_t newprot)
 			      PTE_ATTRINDX_MASK;
 	/* preserve the hardware dirty information */
 	if (pte_hw_dirty(pte))
-		pte = pte_mkdirty(pte);
+		pte = set_pte_bit(pte, __pgprot(PTE_DIRTY));
+
 	pte_val(pte) = (pte_val(pte) & ~mask) | (pgprot_val(newprot) & mask);
 	return pte;
 }
@@ -863,12 +867,12 @@ static inline bool pte_user_accessible_page(pte_t pte)
 
 static inline bool pmd_user_accessible_page(pmd_t pmd)
 {
-	return pmd_leaf(pmd) && (pmd_user(pmd) || pmd_user_exec(pmd));
+	return pmd_leaf(pmd) && !pmd_present_invalid(pmd) && (pmd_user(pmd) || pmd_user_exec(pmd));
 }
 
 static inline bool pud_user_accessible_page(pud_t pud)
 {
-	return pud_leaf(pud) && pud_user(pud);
+	return pud_leaf(pud) && (pud_user(pud) || pud_user_exec(pud));
 }
 #endif
 
@@ -935,7 +939,7 @@ static inline pte_t ptep_get_and_clear(struct mm_struct *mm,
 {
 	pte_t pte = __pte(xchg_relaxed(&pte_val(*ptep), 0));
 
-	page_table_check_pte_clear(mm, address, pte);
+	page_table_check_pte_clear(mm, pte);
 
 	return pte;
 }
@@ -947,7 +951,7 @@ static inline pmd_t pmdp_huge_get_and_clear(struct mm_struct *mm,
 {
 	pmd_t pmd = __pmd(xchg_relaxed(&pmd_val(*pmdp), 0));
 
-	page_table_check_pmd_clear(mm, address, pmd);
+	page_table_check_pmd_clear(mm, pmd);
 
 	return pmd;
 }
@@ -983,7 +987,7 @@ static inline void pmdp_set_wrprotect(struct mm_struct *mm,
 static inline pmd_t pmdp_establish(struct vm_area_struct *vma,
 		unsigned long address, pmd_t *pmdp, pmd_t pmd)
 {
-	page_table_check_pmd_set(vma->vm_mm, address, pmdp, pmd);
+	page_table_check_pmd_set(vma->vm_mm, pmdp, pmd);
 	return __pmd(xchg_relaxed(&pmd_val(*pmdp), pmd_val(pmd)));
 }
 #endif
@@ -1021,8 +1025,6 @@ static inline pmd_t pmdp_establish(struct vm_area_struct *vma,
  */
 #define MAX_SWAPFILES_CHECK() BUILD_BUG_ON(MAX_SWAPFILES_SHIFT > __SWP_TYPE_BITS)
 
-extern int kern_addr_valid(unsigned long addr);
-
 #ifdef CONFIG_ARM64_MTE
 
 #define __HAVE_ARCH_PREPARE_TO_SWAP
@@ -1049,8 +1051,8 @@ static inline void arch_swap_invalidate_area(int type)
 #define __HAVE_ARCH_SWAP_RESTORE
 static inline void arch_swap_restore(swp_entry_t entry, struct folio *folio)
 {
-	if (system_supports_mte() && mte_restore_tags(entry, &folio->page))
-		set_bit(PG_mte_tagged, &folio->flags);
+	if (system_supports_mte())
+		mte_restore_tags(entry, &folio->page);
 }
 
 #endif /* CONFIG_ARM64_MTE */
@@ -1058,8 +1060,9 @@ static inline void arch_swap_restore(swp_entry_t entry, struct folio *folio)
 /*
  * On AArch64, the cache coherency is handled via the set_pte_at() function.
  */
-static inline void update_mmu_cache(struct vm_area_struct *vma,
-				    unsigned long addr, pte_t *ptep)
+static inline void update_mmu_cache_range(struct vm_fault *vmf,
+		struct vm_area_struct *vma, unsigned long addr, pte_t *ptep,
+		unsigned int nr)
 {
 	/*
 	 * We don't do anything here, so there's a very small chance of
@@ -1068,6 +1071,8 @@ static inline void update_mmu_cache(struct vm_area_struct *vma,
 	 */
 }
 
+#define update_mmu_cache(vma, addr, ptep) \
+	update_mmu_cache_range(NULL, vma, addr, ptep, 1)
 #define update_mmu_cache_pmd(vma, address, pmd) do { } while (0)
 
 #ifdef CONFIG_ARM64_PA_BITS_52
@@ -1096,6 +1101,15 @@ static inline bool pud_sect_supported(void)
 }
 
 
+#define __HAVE_ARCH_PTEP_MODIFY_PROT_TRANSACTION
+#define ptep_modify_prot_start ptep_modify_prot_start
+extern pte_t ptep_modify_prot_start(struct vm_area_struct *vma,
+				    unsigned long addr, pte_t *ptep);
+
+#define ptep_modify_prot_commit ptep_modify_prot_commit
+extern void ptep_modify_prot_commit(struct vm_area_struct *vma,
+				    unsigned long addr, pte_t *ptep,
+				    pte_t old_pte, pte_t new_pte);
 #endif /* !__ASSEMBLY__ */
 
 #endif /* __ASM_PGTABLE_H */

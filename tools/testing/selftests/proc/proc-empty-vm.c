@@ -1,3 +1,4 @@
+#if defined __amd64__ || defined __i386__
 /*
  * Copyright (c) 2022 Alexey Dobriyan <adobriyan@gmail.com>
  *
@@ -25,6 +26,7 @@
 #undef NDEBUG
 #include <assert.h>
 #include <errno.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -36,12 +38,16 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#ifdef __amd64__
+#define TEST_VSYSCALL
+#endif
+
 /*
  * 0: vsyscall VMA doesn't exist	vsyscall=none
  * 1: vsyscall VMA is --xp		vsyscall=xonly
  * 2: vsyscall VMA is r-xp		vsyscall=emulate
  */
-static int g_vsyscall;
+static volatile int g_vsyscall;
 static const char *g_proc_pid_maps_vsyscall;
 static const char *g_proc_pid_smaps_vsyscall;
 
@@ -76,7 +82,7 @@ static const char proc_pid_smaps_vsyscall_1[] =
 "Swap:                  0 kB\n"
 "SwapPss:               0 kB\n"
 "Locked:                0 kB\n"
-"THPeligible:    0\n"
+"THPeligible:           0\n"
 /*
  * "ProtectionKey:" field is conditional. It is possible to check it as well,
  * but I don't have such machine.
@@ -106,7 +112,7 @@ static const char proc_pid_smaps_vsyscall_2[] =
 "Swap:                  0 kB\n"
 "SwapPss:               0 kB\n"
 "Locked:                0 kB\n"
-"THPeligible:    0\n"
+"THPeligible:           0\n"
 /*
  * "ProtectionKey:" field is conditional. It is possible to check it as well,
  * but I'm too tired.
@@ -118,6 +124,7 @@ static void sigaction_SIGSEGV(int _, siginfo_t *__, void *___)
 	_exit(EXIT_FAILURE);
 }
 
+#ifdef TEST_VSYSCALL
 static void sigaction_SIGSEGV_vsyscall(int _, siginfo_t *__, void *___)
 {
 	_exit(g_vsyscall);
@@ -147,11 +154,12 @@ static void vsyscall(void)
 
 		g_vsyscall = 0;
 		/* gettimeofday(NULL, NULL); */
+		uint64_t rax = 0xffffffffff600000;
 		asm volatile (
-			"call %P0"
-			:
-			: "i" (0xffffffffff600000), "D" (NULL), "S" (NULL)
-			: "rax", "rcx", "r11"
+			"call *%[rax]"
+			: [rax] "+a" (rax)
+			: "D" (NULL), "S" (NULL)
+			: "rcx", "r11"
 		);
 
 		g_vsyscall = 1;
@@ -168,6 +176,7 @@ static void vsyscall(void)
 		exit(1);
 	}
 }
+#endif
 
 static int test_proc_pid_maps(pid_t pid)
 {
@@ -258,6 +267,7 @@ static const char g_smaps_rollup[] =
 "Private_Dirty:         0 kB\n"
 "Referenced:            0 kB\n"
 "Anonymous:             0 kB\n"
+"KSM:                   0 kB\n"
 "LazyFree:              0 kB\n"
 "AnonHugePages:         0 kB\n"
 "ShmemPmdMapped:        0 kB\n"
@@ -297,7 +307,9 @@ int main(void)
 {
 	int rv = EXIT_SUCCESS;
 
+#ifdef TEST_VSYSCALL
 	vsyscall();
+#endif
 
 	switch (g_vsyscall) {
 	case 0:
@@ -344,6 +356,14 @@ int main(void)
 
 #ifdef __amd64__
 		munmap(NULL, ((size_t)1 << 47) - 4096);
+#elif defined __i386__
+		{
+			size_t len;
+
+			for (len = -4096;; len -= 4096) {
+				munmap(NULL, len);
+			}
+		}
 #else
 #error "implement 'unmap everything'"
 #endif
@@ -384,3 +404,9 @@ int main(void)
 
 	return rv;
 }
+#else
+int main(void)
+{
+	return 4;
+}
+#endif

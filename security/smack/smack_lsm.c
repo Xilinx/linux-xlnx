@@ -52,6 +52,15 @@
 #define SMK_RECEIVING	1
 #define SMK_SENDING	2
 
+/*
+ * Smack uses multiple xattrs.
+ * SMACK64 - for access control,
+ * SMACK64TRANSMUTE - label initialization,
+ * Not saved on files - SMACK64IPIN and SMACK64IPOUT,
+ * Must be set explicitly - SMACK64EXEC and SMACK64MMAP
+ */
+#define SMACK_INODE_INIT_XATTRS 2
+
 #ifdef SMACK_IPV6_PORT_LABELING
 static DEFINE_MUTEX(smack_ipv6_lock);
 static LIST_HEAD(smk_ipv6_port_list);
@@ -550,23 +559,22 @@ static int smack_sb_alloc_security(struct super_block *sb)
 }
 
 struct smack_mnt_opts {
-	const char *fsdefault, *fsfloor, *fshat, *fsroot, *fstransmute;
+	const char *fsdefault;
+	const char *fsfloor;
+	const char *fshat;
+	const char *fsroot;
+	const char *fstransmute;
 };
 
 static void smack_free_mnt_opts(void *mnt_opts)
 {
-	struct smack_mnt_opts *opts = mnt_opts;
-	kfree(opts->fsdefault);
-	kfree(opts->fsfloor);
-	kfree(opts->fshat);
-	kfree(opts->fsroot);
-	kfree(opts->fstransmute);
-	kfree(opts);
+	kfree(mnt_opts);
 }
 
 static int smack_add_opt(int token, const char *s, void **mnt_opts)
 {
 	struct smack_mnt_opts *opts = *mnt_opts;
+	struct smack_known *skp;
 
 	if (!opts) {
 		opts = kzalloc(sizeof(struct smack_mnt_opts), GFP_KERNEL);
@@ -577,31 +585,35 @@ static int smack_add_opt(int token, const char *s, void **mnt_opts)
 	if (!s)
 		return -ENOMEM;
 
+	skp = smk_import_entry(s, 0);
+	if (IS_ERR(skp))
+		return PTR_ERR(skp);
+
 	switch (token) {
 	case Opt_fsdefault:
 		if (opts->fsdefault)
 			goto out_opt_err;
-		opts->fsdefault = s;
+		opts->fsdefault = skp->smk_known;
 		break;
 	case Opt_fsfloor:
 		if (opts->fsfloor)
 			goto out_opt_err;
-		opts->fsfloor = s;
+		opts->fsfloor = skp->smk_known;
 		break;
 	case Opt_fshat:
 		if (opts->fshat)
 			goto out_opt_err;
-		opts->fshat = s;
+		opts->fshat = skp->smk_known;
 		break;
 	case Opt_fsroot:
 		if (opts->fsroot)
 			goto out_opt_err;
-		opts->fsroot = s;
+		opts->fsroot = skp->smk_known;
 		break;
 	case Opt_fstransmute:
 		if (opts->fstransmute)
 			goto out_opt_err;
-		opts->fstransmute = s;
+		opts->fstransmute = skp->smk_known;
 		break;
 	}
 	return 0;
@@ -609,6 +621,56 @@ static int smack_add_opt(int token, const char *s, void **mnt_opts)
 out_opt_err:
 	pr_warn("Smack: duplicate mount options\n");
 	return -EINVAL;
+}
+
+/**
+ * smack_fs_context_submount - Initialise security data for a filesystem context
+ * @fc: The filesystem context.
+ * @reference: reference superblock
+ *
+ * Returns 0 on success or -ENOMEM on error.
+ */
+static int smack_fs_context_submount(struct fs_context *fc,
+				 struct super_block *reference)
+{
+	struct superblock_smack *sbsp;
+	struct smack_mnt_opts *ctx;
+	struct inode_smack *isp;
+
+	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
+	if (!ctx)
+		return -ENOMEM;
+	fc->security = ctx;
+
+	sbsp = smack_superblock(reference);
+	isp = smack_inode(reference->s_root->d_inode);
+
+	if (sbsp->smk_default) {
+		ctx->fsdefault = kstrdup(sbsp->smk_default->smk_known, GFP_KERNEL);
+		if (!ctx->fsdefault)
+			return -ENOMEM;
+	}
+
+	if (sbsp->smk_floor) {
+		ctx->fsfloor = kstrdup(sbsp->smk_floor->smk_known, GFP_KERNEL);
+		if (!ctx->fsfloor)
+			return -ENOMEM;
+	}
+
+	if (sbsp->smk_hat) {
+		ctx->fshat = kstrdup(sbsp->smk_hat->smk_known, GFP_KERNEL);
+		if (!ctx->fshat)
+			return -ENOMEM;
+	}
+
+	if (isp->smk_flags & SMK_INODE_TRANSMUTE) {
+		if (sbsp->smk_root) {
+			ctx->fstransmute = kstrdup(sbsp->smk_root->smk_known, GFP_KERNEL);
+			if (!ctx->fstransmute)
+				return -ENOMEM;
+		}
+	}
+	return 0;
 }
 
 /**
@@ -629,33 +691,14 @@ static int smack_fs_context_dup(struct fs_context *fc,
 	fc->security = kzalloc(sizeof(struct smack_mnt_opts), GFP_KERNEL);
 	if (!fc->security)
 		return -ENOMEM;
-	dst = fc->security;
 
-	if (src->fsdefault) {
-		dst->fsdefault = kstrdup(src->fsdefault, GFP_KERNEL);
-		if (!dst->fsdefault)
-			return -ENOMEM;
-	}
-	if (src->fsfloor) {
-		dst->fsfloor = kstrdup(src->fsfloor, GFP_KERNEL);
-		if (!dst->fsfloor)
-			return -ENOMEM;
-	}
-	if (src->fshat) {
-		dst->fshat = kstrdup(src->fshat, GFP_KERNEL);
-		if (!dst->fshat)
-			return -ENOMEM;
-	}
-	if (src->fsroot) {
-		dst->fsroot = kstrdup(src->fsroot, GFP_KERNEL);
-		if (!dst->fsroot)
-			return -ENOMEM;
-	}
-	if (src->fstransmute) {
-		dst->fstransmute = kstrdup(src->fstransmute, GFP_KERNEL);
-		if (!dst->fstransmute)
-			return -ENOMEM;
-	}
+	dst = fc->security;
+	dst->fsdefault = src->fsdefault;
+	dst->fsfloor = src->fsfloor;
+	dst->fshat = src->fshat;
+	dst->fsroot = src->fsroot;
+	dst->fstransmute = src->fstransmute;
+
 	return 0;
 }
 
@@ -712,8 +755,8 @@ static int smack_sb_eat_lsm_opts(char *options, void **mnt_opts)
 		if (token != Opt_error) {
 			arg = kmemdup_nul(arg, from + len - arg, GFP_KERNEL);
 			rc = smack_add_opt(token, arg, mnt_opts);
+			kfree(arg);
 			if (unlikely(rc)) {
-				kfree(arg);
 				if (*mnt_opts)
 					smack_free_mnt_opts(*mnt_opts);
 				*mnt_opts = NULL;
@@ -939,48 +982,73 @@ static int smack_inode_alloc_security(struct inode *inode)
  * @inode: the newly created inode
  * @dir: containing directory object
  * @qstr: unused
- * @name: where to put the attribute name
- * @value: where to put the attribute value
- * @len: where to put the length of the attribute
+ * @xattrs: where to put the attributes
+ * @xattr_count: current number of LSM-provided xattrs (updated)
  *
  * Returns 0 if it all works out, -ENOMEM if there's no memory
  */
 static int smack_inode_init_security(struct inode *inode, struct inode *dir,
-				     const struct qstr *qstr, const char **name,
-				     void **value, size_t *len)
+				     const struct qstr *qstr,
+				     struct xattr *xattrs, int *xattr_count)
 {
-	struct inode_smack *issp = smack_inode(inode);
-	struct smack_known *skp = smk_of_current();
+	struct task_smack *tsp = smack_cred(current_cred());
+	struct smack_known *skp = smk_of_task(tsp);
 	struct smack_known *isp = smk_of_inode(inode);
 	struct smack_known *dsp = smk_of_inode(dir);
+	struct xattr *xattr = lsm_get_xattr_slot(xattrs, xattr_count);
 	int may;
 
-	if (name)
-		*name = XATTR_SMACK_SUFFIX;
-
-	if (value && len) {
-		rcu_read_lock();
-		may = smk_access_entry(skp->smk_known, dsp->smk_known,
-				       &skp->smk_rules);
-		rcu_read_unlock();
-
+	if (xattr) {
 		/*
-		 * If the access rule allows transmutation and
-		 * the directory requests transmutation then
-		 * by all means transmute.
-		 * Mark the inode as changed.
+		 * If equal, transmuting already occurred in
+		 * smack_dentry_create_files_as(). No need to check again.
 		 */
-		if (may > 0 && ((may & MAY_TRANSMUTE) != 0) &&
-		    smk_inode_transmutable(dir)) {
-			isp = dsp;
-			issp->smk_flags |= SMK_INODE_CHANGED;
+		if (tsp->smk_task != tsp->smk_transmuted) {
+			rcu_read_lock();
+			may = smk_access_entry(skp->smk_known, dsp->smk_known,
+					       &skp->smk_rules);
+			rcu_read_unlock();
 		}
 
-		*value = kstrdup(isp->smk_known, GFP_NOFS);
-		if (*value == NULL)
+		/*
+		 * In addition to having smk_task equal to smk_transmuted,
+		 * if the access rule allows transmutation and the directory
+		 * requests transmutation then by all means transmute.
+		 * Mark the inode as changed.
+		 */
+		if ((tsp->smk_task == tsp->smk_transmuted) ||
+		    (may > 0 && ((may & MAY_TRANSMUTE) != 0) &&
+		     smk_inode_transmutable(dir))) {
+			struct xattr *xattr_transmute;
+
+			/*
+			 * The caller of smack_dentry_create_files_as()
+			 * should have overridden the current cred, so the
+			 * inode label was already set correctly in
+			 * smack_inode_alloc_security().
+			 */
+			if (tsp->smk_task != tsp->smk_transmuted)
+				isp = dsp;
+			xattr_transmute = lsm_get_xattr_slot(xattrs,
+							     xattr_count);
+			if (xattr_transmute) {
+				xattr_transmute->value = kmemdup(TRANS_TRUE,
+								 TRANS_TRUE_SIZE,
+								 GFP_NOFS);
+				if (!xattr_transmute->value)
+					return -ENOMEM;
+
+				xattr_transmute->value_len = TRANS_TRUE_SIZE;
+				xattr_transmute->name = XATTR_SMACK_TRANSMUTE;
+			}
+		}
+
+		xattr->value = kstrdup(isp->smk_known, GFP_NOFS);
+		if (!xattr->value)
 			return -ENOMEM;
 
-		*len = strlen(isp->smk_known);
+		xattr->value_len = strlen(isp->smk_known);
+		xattr->name = XATTR_SMACK_SUFFIX;
 	}
 
 	return 0;
@@ -1207,7 +1275,7 @@ static int smack_inode_getattr(const struct path *path)
 
 /**
  * smack_inode_setxattr - Smack check for setting xattrs
- * @mnt_userns: active user namespace
+ * @idmap: idmap of the mount
  * @dentry: the object
  * @name: name of the attribute
  * @value: value of the attribute
@@ -1218,7 +1286,7 @@ static int smack_inode_getattr(const struct path *path)
  *
  * Returns 0 if access is permitted, an error code otherwise
  */
-static int smack_inode_setxattr(struct user_namespace *mnt_userns,
+static int smack_inode_setxattr(struct mnt_idmap *idmap,
 				struct dentry *dentry, const char *name,
 				const void *value, size_t size, int flags)
 {
@@ -1334,7 +1402,7 @@ static int smack_inode_getxattr(struct dentry *dentry, const char *name)
 
 /**
  * smack_inode_removexattr - Smack check on removexattr
- * @mnt_userns: active user namespace
+ * @idmap: idmap of the mount
  * @dentry: the object
  * @name: name of the attribute
  *
@@ -1342,7 +1410,7 @@ static int smack_inode_getxattr(struct dentry *dentry, const char *name)
  *
  * Returns 0 if access is permitted, an error code otherwise
  */
-static int smack_inode_removexattr(struct user_namespace *mnt_userns,
+static int smack_inode_removexattr(struct mnt_idmap *idmap,
 				   struct dentry *dentry, const char *name)
 {
 	struct inode_smack *isp;
@@ -1358,7 +1426,7 @@ static int smack_inode_removexattr(struct user_namespace *mnt_userns,
 		if (!smack_privileged(CAP_MAC_ADMIN))
 			rc = -EPERM;
 	} else
-		rc = cap_inode_removexattr(mnt_userns, dentry, name);
+		rc = cap_inode_removexattr(idmap, dentry, name);
 
 	if (rc != 0)
 		return rc;
@@ -1393,8 +1461,76 @@ static int smack_inode_removexattr(struct user_namespace *mnt_userns,
 }
 
 /**
+ * smack_inode_set_acl - Smack check for setting posix acls
+ * @idmap: idmap of the mnt this request came from
+ * @dentry: the object
+ * @acl_name: name of the posix acl
+ * @kacl: the posix acls
+ *
+ * Returns 0 if access is permitted, an error code otherwise
+ */
+static int smack_inode_set_acl(struct mnt_idmap *idmap,
+			       struct dentry *dentry, const char *acl_name,
+			       struct posix_acl *kacl)
+{
+	struct smk_audit_info ad;
+	int rc;
+
+	smk_ad_init(&ad, __func__, LSM_AUDIT_DATA_DENTRY);
+	smk_ad_setfield_u_fs_path_dentry(&ad, dentry);
+
+	rc = smk_curacc(smk_of_inode(d_backing_inode(dentry)), MAY_WRITE, &ad);
+	rc = smk_bu_inode(d_backing_inode(dentry), MAY_WRITE, rc);
+	return rc;
+}
+
+/**
+ * smack_inode_get_acl - Smack check for getting posix acls
+ * @idmap: idmap of the mnt this request came from
+ * @dentry: the object
+ * @acl_name: name of the posix acl
+ *
+ * Returns 0 if access is permitted, an error code otherwise
+ */
+static int smack_inode_get_acl(struct mnt_idmap *idmap,
+			       struct dentry *dentry, const char *acl_name)
+{
+	struct smk_audit_info ad;
+	int rc;
+
+	smk_ad_init(&ad, __func__, LSM_AUDIT_DATA_DENTRY);
+	smk_ad_setfield_u_fs_path_dentry(&ad, dentry);
+
+	rc = smk_curacc(smk_of_inode(d_backing_inode(dentry)), MAY_READ, &ad);
+	rc = smk_bu_inode(d_backing_inode(dentry), MAY_READ, rc);
+	return rc;
+}
+
+/**
+ * smack_inode_remove_acl - Smack check for getting posix acls
+ * @idmap: idmap of the mnt this request came from
+ * @dentry: the object
+ * @acl_name: name of the posix acl
+ *
+ * Returns 0 if access is permitted, an error code otherwise
+ */
+static int smack_inode_remove_acl(struct mnt_idmap *idmap,
+				  struct dentry *dentry, const char *acl_name)
+{
+	struct smk_audit_info ad;
+	int rc;
+
+	smk_ad_init(&ad, __func__, LSM_AUDIT_DATA_DENTRY);
+	smk_ad_setfield_u_fs_path_dentry(&ad, dentry);
+
+	rc = smk_curacc(smk_of_inode(d_backing_inode(dentry)), MAY_WRITE, &ad);
+	rc = smk_bu_inode(d_backing_inode(dentry), MAY_WRITE, rc);
+	return rc;
+}
+
+/**
  * smack_inode_getsecurity - get smack xattrs
- * @mnt_userns: active user namespace
+ * @idmap: idmap of the mount
  * @inode: the object
  * @name: attribute name
  * @buffer: where to put the result
@@ -1402,19 +1538,28 @@ static int smack_inode_removexattr(struct user_namespace *mnt_userns,
  *
  * Returns the size of the attribute or an error code
  */
-static int smack_inode_getsecurity(struct user_namespace *mnt_userns,
+static int smack_inode_getsecurity(struct mnt_idmap *idmap,
 				   struct inode *inode, const char *name,
 				   void **buffer, bool alloc)
 {
 	struct socket_smack *ssp;
 	struct socket *sock;
 	struct super_block *sbp;
-	struct inode *ip = (struct inode *)inode;
+	struct inode *ip = inode;
 	struct smack_known *isp;
+	struct inode_smack *ispp;
+	size_t label_len;
+	char *label = NULL;
 
-	if (strcmp(name, XATTR_SMACK_SUFFIX) == 0)
+	if (strcmp(name, XATTR_SMACK_SUFFIX) == 0) {
 		isp = smk_of_inode(inode);
-	else {
+	} else if (strcmp(name, XATTR_SMACK_TRANSMUTE) == 0) {
+		ispp = smack_inode(inode);
+		if (ispp->smk_flags & SMK_INODE_TRANSMUTE)
+			label = TRANS_TRUE;
+		else
+			label = "";
+	} else {
 		/*
 		 * The rest of the Smack xattrs are only on sockets.
 		 */
@@ -1436,13 +1581,18 @@ static int smack_inode_getsecurity(struct user_namespace *mnt_userns,
 			return -EOPNOTSUPP;
 	}
 
+	if (!label)
+		label = isp->smk_known;
+
+	label_len = strlen(label);
+
 	if (alloc) {
-		*buffer = kstrdup(isp->smk_known, GFP_KERNEL);
+		*buffer = kstrdup(label, GFP_KERNEL);
 		if (*buffer == NULL)
 			return -ENOMEM;
 	}
 
-	return strlen(isp->smk_known);
+	return label_len;
 }
 
 
@@ -3437,20 +3587,12 @@ static void smack_d_instantiate(struct dentry *opt_dentry, struct inode *inode)
 			 * If there is a transmute attribute on the
 			 * directory mark the inode.
 			 */
-			if (isp->smk_flags & SMK_INODE_CHANGED) {
-				isp->smk_flags &= ~SMK_INODE_CHANGED;
-				rc = __vfs_setxattr(&init_user_ns, dp, inode,
-					XATTR_NAME_SMACKTRANSMUTE,
-					TRANS_TRUE, TRANS_TRUE_SIZE,
-					0);
-			} else {
-				rc = __vfs_getxattr(dp, inode,
-					XATTR_NAME_SMACKTRANSMUTE, trattr,
-					TRANS_TRUE_SIZE);
-				if (rc >= 0 && strncmp(trattr, TRANS_TRUE,
-						       TRANS_TRUE_SIZE) != 0)
-					rc = -EINVAL;
-			}
+			rc = __vfs_getxattr(dp, inode,
+					    XATTR_NAME_SMACKTRANSMUTE, trattr,
+					    TRANS_TRUE_SIZE);
+			if (rc >= 0 && strncmp(trattr, TRANS_TRUE,
+					       TRANS_TRUE_SIZE) != 0)
+				rc = -EINVAL;
 			if (rc >= 0)
 				transflag = SMK_INODE_TRANSMUTE;
 		}
@@ -4006,12 +4148,12 @@ static int smack_socket_sock_rcv_skb(struct sock *sk, struct sk_buff *skb)
  * returns zero on success, an error code otherwise
  */
 static int smack_socket_getpeersec_stream(struct socket *sock,
-					  char __user *optval,
-					  int __user *optlen, unsigned len)
+					  sockptr_t optval, sockptr_t optlen,
+					  unsigned int len)
 {
 	struct socket_smack *ssp;
 	char *rcp = "";
-	int slen = 1;
+	u32 slen = 1;
 	int rc = 0;
 
 	ssp = sock->sk->sk_security;
@@ -4019,15 +4161,16 @@ static int smack_socket_getpeersec_stream(struct socket *sock,
 		rcp = ssp->smk_packet->smk_known;
 		slen = strlen(rcp) + 1;
 	}
-
-	if (slen > len)
+	if (slen > len) {
 		rc = -ERANGE;
-	else if (copy_to_user(optval, rcp, slen) != 0)
-		rc = -EFAULT;
+		goto out_len;
+	}
 
-	if (put_user(slen, optlen) != 0)
+	if (copy_to_sockptr(optval, rcp, slen))
 		rc = -EFAULT;
-
+out_len:
+	if (copy_to_sockptr(optlen, &slen, sizeof(slen)))
+		rc = -EFAULT;
 	return rc;
 }
 
@@ -4617,7 +4760,7 @@ static int smack_inode_notifysecctx(struct inode *inode, void *ctx, u32 ctxlen)
 
 static int smack_inode_setsecctx(struct dentry *dentry, void *ctx, u32 ctxlen)
 {
-	return __vfs_setxattr_noperm(&init_user_ns, dentry, XATTR_NAME_SMACK,
+	return __vfs_setxattr_noperm(&nop_mnt_idmap, dentry, XATTR_NAME_SMACK,
 				     ctx, ctxlen, 0);
 }
 
@@ -4700,8 +4843,10 @@ static int smack_dentry_create_files_as(struct dentry *dentry, int mode,
 		 * providing access is transmuting use the containing
 		 * directory label instead of the process label.
 		 */
-		if (may > 0 && (may & MAY_TRANSMUTE))
+		if (may > 0 && (may & MAY_TRANSMUTE)) {
 			ntsp->smk_task = isp->smk_inode;
+			ntsp->smk_transmuted = ntsp->smk_task;
+		}
 	}
 	return 0;
 }
@@ -4778,20 +4923,22 @@ static int smack_uring_cmd(struct io_uring_cmd *ioucmd)
 
 #endif /* CONFIG_IO_URING */
 
-struct lsm_blob_sizes smack_blob_sizes __lsm_ro_after_init = {
+struct lsm_blob_sizes smack_blob_sizes __ro_after_init = {
 	.lbs_cred = sizeof(struct task_smack),
 	.lbs_file = sizeof(struct smack_known *),
 	.lbs_inode = sizeof(struct inode_smack),
 	.lbs_ipc = sizeof(struct smack_known *),
 	.lbs_msg_msg = sizeof(struct smack_known *),
 	.lbs_superblock = sizeof(struct superblock_smack),
+	.lbs_xattr_count = SMACK_INODE_INIT_XATTRS,
 };
 
-static struct security_hook_list smack_hooks[] __lsm_ro_after_init = {
+static struct security_hook_list smack_hooks[] __ro_after_init = {
 	LSM_HOOK_INIT(ptrace_access_check, smack_ptrace_access_check),
 	LSM_HOOK_INIT(ptrace_traceme, smack_ptrace_traceme),
 	LSM_HOOK_INIT(syslog, smack_syslog),
 
+	LSM_HOOK_INIT(fs_context_submount, smack_fs_context_submount),
 	LSM_HOOK_INIT(fs_context_dup, smack_fs_context_dup),
 	LSM_HOOK_INIT(fs_context_parse_param, smack_fs_context_parse_param),
 
@@ -4816,6 +4963,9 @@ static struct security_hook_list smack_hooks[] __lsm_ro_after_init = {
 	LSM_HOOK_INIT(inode_post_setxattr, smack_inode_post_setxattr),
 	LSM_HOOK_INIT(inode_getxattr, smack_inode_getxattr),
 	LSM_HOOK_INIT(inode_removexattr, smack_inode_removexattr),
+	LSM_HOOK_INIT(inode_set_acl, smack_inode_set_acl),
+	LSM_HOOK_INIT(inode_get_acl, smack_inode_get_acl),
+	LSM_HOOK_INIT(inode_remove_acl, smack_inode_remove_acl),
 	LSM_HOOK_INIT(inode_getsecurity, smack_inode_getsecurity),
 	LSM_HOOK_INIT(inode_setsecurity, smack_inode_setsecurity),
 	LSM_HOOK_INIT(inode_listsecurity, smack_inode_listsecurity),

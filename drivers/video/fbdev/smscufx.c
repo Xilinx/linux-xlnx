@@ -114,7 +114,7 @@ static struct fb_fix_screeninfo ufx_fix = {
 	.accel =        FB_ACCEL_NONE,
 };
 
-static const u32 smscufx_info_flags = FBINFO_DEFAULT | FBINFO_READS_FAST |
+static const u32 smscufx_info_flags = FBINFO_READS_FAST |
 	FBINFO_VIRTFB |	FBINFO_HWACCEL_IMAGEBLIT | FBINFO_HWACCEL_FILLRECT |
 	FBINFO_HWACCEL_COPYAREA | FBINFO_MISC_ALWAYS_SETPAR;
 
@@ -1150,7 +1150,7 @@ static void ufx_free_framebuffer(struct ufx_data *dev)
 		fb_dealloc_cmap(&info->cmap);
 	if (info->monspecs.modedb)
 		fb_destroy_modedb(info->monspecs.modedb);
-	vfree(info->screen_base);
+	vfree(info->screen_buffer);
 
 	fb_destroy_modelist(&info->modelist);
 
@@ -1257,7 +1257,7 @@ static int ufx_ops_set_par(struct fb_info *info)
 
 	if ((result == 0) && (dev->fb_count == 0)) {
 		/* paint greenscreen */
-		pix_framebuffer = (u16 *) info->screen_base;
+		pix_framebuffer = (u16 *)info->screen_buffer;
 		for (i = 0; i < info->fix.smem_len / 2; i++)
 			pix_framebuffer[i] = 0x37e6;
 
@@ -1303,7 +1303,7 @@ static int ufx_realloc_framebuffer(struct ufx_data *dev, struct fb_info *info)
 {
 	int old_len = info->fix.smem_len;
 	int new_len;
-	unsigned char *old_fb = info->screen_base;
+	unsigned char *old_fb = info->screen_buffer;
 	unsigned char *new_fb;
 
 	pr_debug("Reallocating framebuffer. Addresses will change!");
@@ -1318,12 +1318,12 @@ static int ufx_realloc_framebuffer(struct ufx_data *dev, struct fb_info *info)
 		if (!new_fb)
 			return -ENOMEM;
 
-		if (info->screen_base) {
+		if (info->screen_buffer) {
 			memcpy(new_fb, old_fb, old_len);
-			vfree(info->screen_base);
+			vfree(info->screen_buffer);
 		}
 
-		info->screen_base = new_fb;
+		info->screen_buffer = new_fb;
 		info->fix.smem_len = PAGE_ALIGN(new_len);
 		info->fix.smem_start = (unsigned long) new_fb;
 		info->flags = smscufx_info_flags;
@@ -1496,7 +1496,7 @@ static int ufx_setup_modes(struct ufx_data *dev, struct fb_info *info,
 	u8 *edid;
 	int i, result = 0, tries = 3;
 
-	if (info->dev) /* only use mutex if info has been registered */
+	if (refcount_read(&info->count)) /* only use mutex if info has been registered */
 		mutex_lock(&info->lock);
 
 	edid = kmalloc(EDID_LENGTH, GFP_KERNEL);
@@ -1610,7 +1610,7 @@ error:
 	if (edid && (dev->edid != edid))
 		kfree(edid);
 
-	if (info->dev)
+	if (refcount_read(&info->count))
 		mutex_unlock(&info->lock);
 
 	return result;
@@ -1622,7 +1622,7 @@ static int ufx_usb_probe(struct usb_interface *interface,
 	struct usb_device *usbdev;
 	struct ufx_data *dev;
 	struct fb_info *info;
-	int retval;
+	int retval = -ENOMEM;
 	u32 id_rev, fpga_rev;
 
 	/* usb initialization */
@@ -1654,15 +1654,17 @@ static int ufx_usb_probe(struct usb_interface *interface,
 
 	if (!ufx_alloc_urb_list(dev, WRITES_IN_FLIGHT, MAX_TRANSFER)) {
 		dev_err(dev->gdev, "ufx_alloc_urb_list failed\n");
-		goto e_nomem;
+		goto put_ref;
 	}
 
 	/* We don't register a new USB class. Our client interface is fbdev */
 
 	/* allocates framebuffer driver structure, not framebuffer memory */
 	info = framebuffer_alloc(0, &usbdev->dev);
-	if (!info)
-		goto e_nomem;
+	if (!info) {
+		dev_err(dev->gdev, "framebuffer_alloc failed\n");
+		goto free_urb_list;
+	}
 
 	dev->info = info;
 	info->par = dev;
@@ -1705,22 +1707,34 @@ static int ufx_usb_probe(struct usb_interface *interface,
 	check_warn_goto_error(retval, "unable to find common mode for display and adapter");
 
 	retval = ufx_reg_set_bits(dev, 0x4000, 0x00000001);
-	check_warn_goto_error(retval, "error %d enabling graphics engine", retval);
+	if (retval < 0) {
+		dev_err(dev->gdev, "error %d enabling graphics engine", retval);
+		goto setup_modes;
+	}
 
 	/* ready to begin using device */
 	atomic_set(&dev->usb_active, 1);
 
 	dev_dbg(dev->gdev, "checking var");
 	retval = ufx_ops_check_var(&info->var, info);
-	check_warn_goto_error(retval, "error %d ufx_ops_check_var", retval);
+	if (retval < 0) {
+		dev_err(dev->gdev, "error %d ufx_ops_check_var", retval);
+		goto reset_active;
+	}
 
 	dev_dbg(dev->gdev, "setting par");
 	retval = ufx_ops_set_par(info);
-	check_warn_goto_error(retval, "error %d ufx_ops_set_par", retval);
+	if (retval < 0) {
+		dev_err(dev->gdev, "error %d ufx_ops_set_par", retval);
+		goto reset_active;
+	}
 
 	dev_dbg(dev->gdev, "registering framebuffer");
 	retval = register_framebuffer(info);
-	check_warn_goto_error(retval, "error %d register_framebuffer", retval);
+	if (retval < 0) {
+		dev_err(dev->gdev, "error %d register_framebuffer", retval);
+		goto reset_active;
+	}
 
 	dev_info(dev->gdev, "SMSC UDX USB device /dev/fb%d attached. %dx%d resolution."
 		" Using %dK framebuffer memory\n", info->node,
@@ -1728,21 +1742,23 @@ static int ufx_usb_probe(struct usb_interface *interface,
 
 	return 0;
 
+reset_active:
+	atomic_set(&dev->usb_active, 0);
+setup_modes:
+	fb_destroy_modedb(info->monspecs.modedb);
+	vfree(info->screen_buffer);
+	fb_destroy_modelist(&info->modelist);
 error:
 	fb_dealloc_cmap(&info->cmap);
 destroy_modedb:
-	fb_destroy_modedb(info->monspecs.modedb);
-	vfree(info->screen_base);
-	fb_destroy_modelist(&info->modelist);
 	framebuffer_release(info);
+free_urb_list:
+	if (dev->urbs.count > 0)
+		ufx_free_urb_list(dev);
 put_ref:
 	kref_put(&dev->kref, ufx_free); /* ref for framebuffer */
 	kref_put(&dev->kref, ufx_free); /* last ref from kref_init */
 	return retval;
-
-e_nomem:
-	retval = -ENOMEM;
-	goto put_ref;
 }
 
 static void ufx_usb_disconnect(struct usb_interface *interface)

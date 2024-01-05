@@ -59,9 +59,9 @@ class Helper(APIElement):
         Break down helper function protocol into smaller chunks: return type,
         name, distincts arguments.
         """
-        arg_re = re.compile('((\w+ )*?(\w+|...))( (\**)(\w+))?$')
+        arg_re = re.compile(r'((\w+ )*?(\w+|...))( (\**)(\w+))?$')
         res = {}
-        proto_re = re.compile('(.+) (\**)(\w+)\(((([^,]+)(, )?){1,5})\)$')
+        proto_re = re.compile(r'(.+) (\**)(\w+)\(((([^,]+)(, )?){1,5})\)$')
 
         capture = proto_re.match(self.proto)
         res['ret_type'] = capture.group(1)
@@ -97,6 +97,7 @@ class HeaderParser(object):
         self.desc_unique_helpers = set()
         self.define_unique_helpers = []
         self.helper_enum_vals = {}
+        self.helper_enum_pos = {}
         self.desc_syscalls = []
         self.enum_syscalls = []
 
@@ -113,11 +114,11 @@ class HeaderParser(object):
         return Helper(proto=proto, desc=desc, ret=ret)
 
     def parse_symbol(self):
-        p = re.compile(' \* ?(BPF\w+)$')
+        p = re.compile(r' \* ?(BPF\w+)$')
         capture = p.match(self.line)
         if not capture:
             raise NoSyscallCommandFound
-        end_re = re.compile(' \* ?NOTES$')
+        end_re = re.compile(r' \* ?NOTES$')
         end = end_re.match(self.line)
         if end:
             raise NoSyscallCommandFound
@@ -132,7 +133,7 @@ class HeaderParser(object):
         #   - Same as above, with "const" and/or "struct" in front of type
         #   - "..." (undefined number of arguments, for bpf_trace_printk())
         # There is at least one term ("void"), and at most five arguments.
-        p = re.compile(' \* ?((.+) \**\w+\((((const )?(struct )?(\w+|\.\.\.)( \**\w+)?)(, )?){1,5}\))$')
+        p = re.compile(r' \* ?((.+) \**\w+\((((const )?(struct )?(\w+|\.\.\.)( \**\w+)?)(, )?){1,5}\))$')
         capture = p.match(self.line)
         if not capture:
             raise NoHelperFound
@@ -140,7 +141,7 @@ class HeaderParser(object):
         return capture.group(1)
 
     def parse_desc(self, proto):
-        p = re.compile(' \* ?(?:\t| {5,8})Description$')
+        p = re.compile(r' \* ?(?:\t| {5,8})Description$')
         capture = p.match(self.line)
         if not capture:
             raise Exception("No description section found for " + proto)
@@ -153,7 +154,7 @@ class HeaderParser(object):
             if self.line == ' *\n':
                 desc += '\n'
             else:
-                p = re.compile(' \* ?(?:\t| {5,8})(?:\t| {8})(.*)')
+                p = re.compile(r' \* ?(?:\t| {5,8})(?:\t| {8})(.*)')
                 capture = p.match(self.line)
                 if capture:
                     desc_present = True
@@ -166,7 +167,7 @@ class HeaderParser(object):
         return desc
 
     def parse_ret(self, proto):
-        p = re.compile(' \* ?(?:\t| {5,8})Return$')
+        p = re.compile(r' \* ?(?:\t| {5,8})Return$')
         capture = p.match(self.line)
         if not capture:
             raise Exception("No return section found for " + proto)
@@ -179,7 +180,7 @@ class HeaderParser(object):
             if self.line == ' *\n':
                 ret += '\n'
             else:
-                p = re.compile(' \* ?(?:\t| {5,8})(?:\t| {8})(.*)')
+                p = re.compile(r' \* ?(?:\t| {5,8})(?:\t| {8})(.*)')
                 capture = p.match(self.line)
                 if capture:
                     ret_present = True
@@ -218,12 +219,12 @@ class HeaderParser(object):
         self.seek_to('enum bpf_cmd {',
                      'Could not find start of bpf_cmd enum', 0)
         # Searches for either one or more BPF\w+ enums
-        bpf_p = re.compile('\s*(BPF\w+)+')
+        bpf_p = re.compile(r'\s*(BPF\w+)+')
         # Searches for an enum entry assigned to another entry,
         # for e.g. BPF_PROG_RUN = BPF_PROG_TEST_RUN, which is
         # not documented hence should be skipped in check to
         # determine if the right number of syscalls are documented
-        assign_p = re.compile('\s*(BPF\w+)\s*=\s*(BPF\w+)')
+        assign_p = re.compile(r'\s*(BPF\w+)\s*=\s*(BPF\w+)')
         bpf_cmd_str = ''
         while True:
             capture = assign_p.match(self.line)
@@ -238,7 +239,7 @@ class HeaderParser(object):
                 break
             self.line = self.reader.readline()
         # Find the number of occurences of BPF\w+
-        self.enum_syscalls = re.findall('(BPF\w+)+', bpf_cmd_str)
+        self.enum_syscalls = re.findall(r'(BPF\w+)+', bpf_cmd_str)
 
     def parse_desc_helpers(self):
         self.seek_to(helpersDocStart,
@@ -253,54 +254,71 @@ class HeaderParser(object):
                 break
 
     def parse_define_helpers(self):
-        # Parse FN(...) in #define __BPF_FUNC_MAPPER to compare later with the
+        # Parse FN(...) in #define ___BPF_FUNC_MAPPER to compare later with the
         # number of unique function names present in description and use the
         # correct enumeration value.
         # Note: seek_to(..) discards the first line below the target search text,
-        # resulting in FN(unspec) being skipped and not added to self.define_unique_helpers.
-        self.seek_to('#define __BPF_FUNC_MAPPER(FN)',
+        # resulting in FN(unspec, 0, ##ctx) being skipped and not added to
+        # self.define_unique_helpers.
+        self.seek_to('#define ___BPF_FUNC_MAPPER(FN, ctx...)',
                      'Could not find start of eBPF helper definition list')
         # Searches for one FN(\w+) define or a backslash for newline
-        p = re.compile('\s*FN\((\w+)\)|\\\\')
+        p = re.compile(r'\s*FN\((\w+), (\d+), ##ctx\)|\\\\')
         fn_defines_str = ''
-        i = 1  # 'unspec' is skipped as mentioned above
+        i = 0
         while True:
             capture = p.match(self.line)
             if capture:
                 fn_defines_str += self.line
-                self.helper_enum_vals[capture.expand(r'bpf_\1')] = i
+                helper_name = capture.expand(r'bpf_\1')
+                self.helper_enum_vals[helper_name] = int(capture.group(2))
+                self.helper_enum_pos[helper_name] = i
                 i += 1
             else:
                 break
             self.line = self.reader.readline()
         # Find the number of occurences of FN(\w+)
-        self.define_unique_helpers = re.findall('FN\(\w+\)', fn_defines_str)
+        self.define_unique_helpers = re.findall(r'FN\(\w+, \d+, ##ctx\)', fn_defines_str)
 
-    def assign_helper_values(self):
+    def validate_helpers(self):
+        last_helper = ''
         seen_helpers = set()
+        seen_enum_vals = set()
+        i = 0
         for helper in self.helpers:
             proto = helper.proto_break_down()
             name = proto['name']
             try:
                 enum_val = self.helper_enum_vals[name]
+                enum_pos = self.helper_enum_pos[name]
             except KeyError:
                 raise Exception("Helper %s is missing from enum bpf_func_id" % name)
 
+            if name in seen_helpers:
+                if last_helper != name:
+                    raise Exception("Helper %s has multiple descriptions which are not grouped together" % name)
+                continue
+
             # Enforce current practice of having the descriptions ordered
             # by enum value.
+            if enum_pos != i:
+                raise Exception("Helper %s (ID %d) comment order (#%d) must be aligned with its position (#%d) in enum bpf_func_id" % (name, enum_val, i + 1, enum_pos + 1))
+            if enum_val in seen_enum_vals:
+                raise Exception("Helper %s has duplicated value %d" % (name, enum_val))
+
             seen_helpers.add(name)
-            desc_val = len(seen_helpers)
-            if desc_val != enum_val:
-                raise Exception("Helper %s comment order (#%d) must be aligned with its position (#%d) in enum bpf_func_id" % (name, desc_val, enum_val))
+            last_helper = name
+            seen_enum_vals.add(enum_val)
 
             helper.enum_val = enum_val
+            i += 1
 
     def run(self):
         self.parse_desc_syscall()
         self.parse_enum_syscall()
         self.parse_desc_helpers()
         self.parse_define_helpers()
-        self.assign_helper_values()
+        self.validate_helpers()
         self.reader.close()
 
 ###############################################################################
@@ -365,7 +383,7 @@ class PrinterRST(Printer):
 .. Copyright (C) All BPF authors and contributors from 2014 to present.
 .. See git log include/uapi/linux/bpf.h in kernel tree for details.
 .. 
-.. SPDX-License-Identifier:  Linux-man-pages-copyleft
+.. SPDX-License-Identifier: Linux-man-pages-copyleft
 .. 
 .. Please do not edit this file. It was generated from the documentation
 .. located in file include/uapi/linux/bpf.h of the Linux kernel sources
@@ -407,7 +425,7 @@ class PrinterRST(Printer):
         try:
             cmd = ['git', 'log', '-1', '--pretty=format:%cs', '--no-patch',
                    '-L',
-                   '/{}/,/\*\//:include/uapi/linux/bpf.h'.format(delimiter)]
+                   '/{}/,/\\*\\//:include/uapi/linux/bpf.h'.format(delimiter)]
             date = subprocess.run(cmd, cwd=linuxRoot,
                                   capture_output=True, check=True)
             return date.stdout.decode().rstrip()
@@ -423,7 +441,7 @@ class PrinterHelpersRST(PrinterRST):
     """
     def __init__(self, parser):
         self.elements = parser.helpers
-        self.elem_number_check(parser.desc_unique_helpers, parser.define_unique_helpers, 'helper', '__BPF_FUNC_MAPPER')
+        self.elem_number_check(parser.desc_unique_helpers, parser.define_unique_helpers, 'helper', '___BPF_FUNC_MAPPER')
 
     def print_header(self):
         header = '''\
@@ -498,7 +516,7 @@ as "Dual BSD/GPL", may be used). Some helper functions are only accessible to
 programs that are compatible with the GNU Privacy License (GPL).
 
 In order to use such helpers, the eBPF program must be loaded with the correct
-license string passed (via **attr**) to the **bpf**\ () system call, and this
+license string passed (via **attr**) to the **bpf**\\ () system call, and this
 generally translates into the C source code of the program containing a line
 similar to the following:
 
@@ -532,7 +550,7 @@ may be interested in:
 * The bpftool utility can be used to probe the availability of helper functions
   on the system (as well as supported program and map types, and a number of
   other parameters). To do so, run **bpftool feature probe** (see
-  **bpftool-feature**\ (8) for details). Add the **unprivileged** keyword to
+  **bpftool-feature**\\ (8) for details). Add the **unprivileged** keyword to
   list features available to unprivileged users.
 
 Compatibility between helper functions and program types can generally be found
@@ -544,23 +562,23 @@ other functions, themselves allowing access to additional helpers. The
 requirement for GPL license is also in those **struct bpf_func_proto**.
 
 Compatibility between helper functions and map types can be found in the
-**check_map_func_compatibility**\ () function in file *kernel/bpf/verifier.c*.
+**check_map_func_compatibility**\\ () function in file *kernel/bpf/verifier.c*.
 
 Helper functions that invalidate the checks on **data** and **data_end**
 pointers for network processing are listed in function
-**bpf_helper_changes_pkt_data**\ () in file *net/core/filter.c*.
+**bpf_helper_changes_pkt_data**\\ () in file *net/core/filter.c*.
 
 SEE ALSO
 ========
 
-**bpf**\ (2),
-**bpftool**\ (8),
-**cgroups**\ (7),
-**ip**\ (8),
-**perf_event_open**\ (2),
-**sendmsg**\ (2),
-**socket**\ (7),
-**tc-bpf**\ (8)'''
+**bpf**\\ (2),
+**bpftool**\\ (8),
+**cgroups**\\ (7),
+**ip**\\ (8),
+**perf_event_open**\\ (2),
+**sendmsg**\\ (2),
+**socket**\\ (7),
+**tc-bpf**\\ (8)'''
         print(footer)
 
     def print_proto(self, helper):
@@ -580,7 +598,7 @@ SEE ALSO
             one_arg = '{}{}'.format(comma, a['type'])
             if a['name']:
                 if a['star']:
-                    one_arg += ' {}**\ '.format(a['star'].replace('*', '\\*'))
+                    one_arg += ' {}**\\ '.format(a['star'].replace('*', '\\*'))
                 else:
                     one_arg += '** '
                 one_arg += '*{}*\\ **'.format(a['name'])
@@ -636,7 +654,7 @@ class PrinterHelpers(Printer):
     """
     def __init__(self, parser):
         self.elements = parser.helpers
-        self.elem_number_check(parser.desc_unique_helpers, parser.define_unique_helpers, 'helper', '__BPF_FUNC_MAPPER')
+        self.elem_number_check(parser.desc_unique_helpers, parser.define_unique_helpers, 'helper', '___BPF_FUNC_MAPPER')
 
     type_fwds = [
             'struct bpf_fib_lookup',
@@ -667,6 +685,7 @@ class PrinterHelpers(Printer):
             'struct udp6_sock',
             'struct unix_sock',
             'struct task_struct',
+            'struct cgroup',
 
             'struct __sk_buff',
             'struct sk_msg_md',
@@ -724,6 +743,7 @@ class PrinterHelpers(Printer):
             'struct udp6_sock',
             'struct unix_sock',
             'struct task_struct',
+            'struct cgroup',
             'struct path',
             'struct btf_ptr',
             'struct inode',
@@ -732,6 +752,7 @@ class PrinterHelpers(Printer):
             'struct bpf_timer',
             'struct mptcp_sock',
             'struct bpf_dynptr',
+            'const struct bpf_dynptr',
             'struct iphdr',
             'struct ipv6hdr',
     }

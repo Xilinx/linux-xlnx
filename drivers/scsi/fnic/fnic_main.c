@@ -95,7 +95,7 @@ static int fnic_slave_alloc(struct scsi_device *sdev)
 	return 0;
 }
 
-static struct scsi_host_template fnic_host_template = {
+static const struct scsi_host_template fnic_host_template = {
 	.module = THIS_MODULE,
 	.name = DRV_NAME,
 	.queuecommand = fnic_queuecommand,
@@ -753,6 +753,8 @@ static int fnic_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	for (i = 0; i < FNIC_IO_LOCKS; i++)
 		spin_lock_init(&fnic->io_req_lock[i]);
+
+	spin_lock_init(&fnic->sgreset_lock);
 
 	err = -ENOMEM;
 	fnic->io_req_pool = mempool_create_slab_pool(2, fnic_io_req_cache);

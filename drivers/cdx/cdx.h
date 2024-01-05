@@ -23,6 +23,7 @@
  * @res: array of MMIO region entries
  * @res_count: number of valid MMIO regions
  * @req_id: Requestor ID associated with CDX device
+ * @msi_dev_id: MSI device ID associated with CDX device
  * @num_msi: Number of MSI's supported by the device
  * @class: Class of the CDX Device
  * @revision: Revision of the CDX device
@@ -38,6 +39,7 @@ struct cdx_dev_params {
 	struct resource res[MAX_CDX_DEV_RESOURCES];
 	u8 res_count;
 	u32 req_id;
+	u32 msi_dev_id;
 	u32 num_msi;
 	u32 class;
 	u8 revision;

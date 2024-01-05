@@ -349,7 +349,7 @@ static struct i2c_driver tps544_driver = {
 		.name = "tps544",
 		.of_match_table = of_match_ptr(tps544_of_match),
 	},
-	.probe_new = tps544_probe,
+	.probe = tps544_probe,
 	.remove = tps544_remove,
 	.id_table = tps544_id,
 };

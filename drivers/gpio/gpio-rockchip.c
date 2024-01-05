@@ -17,10 +17,10 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
-#include <linux/of_device.h>
 #include <linux/of_irq.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/pinctrl/pinconf-generic.h>
+#include <linux/platform_device.h>
 #include <linux/regmap.h>
 
 #include "../pinctrl/core.h"
@@ -299,7 +299,7 @@ static int rockchip_gpio_set_config(struct gpio_chip *gc, unsigned int offset,
 }
 
 /*
- * gpiolib gpio_to_irq callback function. Creates a mapping between a GPIO pin
+ * gpiod_to_irq() callback function. Creates a mapping between a GPIO pin
  * and a virtual IRQ, if not already present.
  */
 static int rockchip_gpio_to_irq(struct gpio_chip *gc, unsigned int offset)

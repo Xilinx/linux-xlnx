@@ -48,7 +48,6 @@
  * the output mode.  This driver does not change the output mode setting.
  */
 
-#include <linux/device.h>
 #include <linux/irq.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
@@ -57,8 +56,8 @@
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
-#include <linux/of_platform.h>
 #include <linux/of_gpio.h>
+#include <linux/platform_device.h>
 #include <linux/kernel.h>
 #include <linux/property.h>
 #include <linux/slab.h>
@@ -735,8 +734,8 @@ static int mpc52xx_gpt_probe(struct platform_device *ofdev)
 	mutex_unlock(&mpc52xx_gpt_list_mutex);
 
 	/* check if this device could be a watchdog */
-	if (of_get_property(ofdev->dev.of_node, "fsl,has-wdt", NULL) ||
-	    of_get_property(ofdev->dev.of_node, "has-wdt", NULL)) {
+	if (of_property_read_bool(ofdev->dev.of_node, "fsl,has-wdt") ||
+	    of_property_read_bool(ofdev->dev.of_node, "has-wdt")) {
 		const u32 *on_boot_wdt;
 
 		gpt->wdt_mode = MPC52xx_GPT_CAN_WDT;

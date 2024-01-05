@@ -6,6 +6,7 @@
  * Copyright (C) 2010 Alexey Charkov <alchark@gmail.com>
  */
 
+#include <linux/mod_devicetable.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
@@ -17,10 +18,6 @@
 #include <linux/clk.h>
 
 #include <asm/div64.h>
-
-#include <linux/of.h>
-#include <linux/of_device.h>
-#include <linux/of_address.h>
 
 /*
  * SoC architecture allocates register space for 4 PWMs but only
@@ -279,20 +276,18 @@ static int vt8500_pwm_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int vt8500_pwm_remove(struct platform_device *pdev)
+static void vt8500_pwm_remove(struct platform_device *pdev)
 {
 	struct vt8500_chip *vt8500 = platform_get_drvdata(pdev);
 
 	pwmchip_remove(&vt8500->chip);
 
 	clk_unprepare(vt8500->clk);
-
-	return 0;
 }
 
 static struct platform_driver vt8500_pwm_driver = {
 	.probe		= vt8500_pwm_probe,
-	.remove		= vt8500_pwm_remove,
+	.remove_new	= vt8500_pwm_remove,
 	.driver		= {
 		.name	= "vt8500-pwm",
 		.of_match_table = vt8500_pwm_dt_ids,

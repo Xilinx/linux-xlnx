@@ -191,10 +191,10 @@ static int ocfs2_acl_set_mode(struct inode *inode, struct buffer_head *di_bh,
 	}
 
 	inode->i_mode = new_mode;
-	inode->i_ctime = current_time(inode);
+	inode_set_ctime_current(inode);
 	di->i_mode = cpu_to_le16(inode->i_mode);
-	di->i_ctime = cpu_to_le64(inode->i_ctime.tv_sec);
-	di->i_ctime_nsec = cpu_to_le32(inode->i_ctime.tv_nsec);
+	di->i_ctime = cpu_to_le64(inode_get_ctime(inode).tv_sec);
+	di->i_ctime_nsec = cpu_to_le32(inode_get_ctime(inode).tv_nsec);
 	ocfs2_update_inode_fsync_trans(handle, inode, 0);
 
 	ocfs2_journal_dirty(handle, di_bh);
@@ -260,12 +260,13 @@ static int ocfs2_set_acl(handle_t *handle,
 	return ret;
 }
 
-int ocfs2_iop_set_acl(struct user_namespace *mnt_userns, struct inode *inode,
+int ocfs2_iop_set_acl(struct mnt_idmap *idmap, struct dentry *dentry,
 		      struct posix_acl *acl, int type)
 {
 	struct buffer_head *bh = NULL;
 	int status, had_lock;
 	struct ocfs2_lock_holder oh;
+	struct inode *inode = d_inode(dentry);
 
 	had_lock = ocfs2_inode_lock_tracker(inode, &bh, 1, &oh);
 	if (had_lock < 0)
@@ -273,7 +274,7 @@ int ocfs2_iop_set_acl(struct user_namespace *mnt_userns, struct inode *inode,
 	if (type == ACL_TYPE_ACCESS && acl) {
 		umode_t mode;
 
-		status = posix_acl_update_mode(&init_user_ns, inode, &mode,
+		status = posix_acl_update_mode(&nop_mnt_idmap, inode, &mode,
 					       &acl);
 		if (status)
 			goto unlock;

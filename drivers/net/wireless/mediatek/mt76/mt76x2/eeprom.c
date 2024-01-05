@@ -256,7 +256,8 @@ void mt76x2_read_rx_gain(struct mt76x02_dev *dev)
 	struct ieee80211_channel *chan = dev->mphy.chandef.chan;
 	int channel = chan->hw_value;
 	s8 lna_5g[3], lna_2g;
-	u8 lna;
+	bool use_lna;
+	u8 lna = 0;
 	u16 val;
 
 	if (chan->band == NL80211_BAND_2GHZ)
@@ -275,12 +276,20 @@ void mt76x2_read_rx_gain(struct mt76x02_dev *dev)
 	dev->cal.rx.mcu_gain |= (lna_5g[1] & 0xff) << 16;
 	dev->cal.rx.mcu_gain |= (lna_5g[2] & 0xff) << 24;
 
-	lna = mt76x02_get_lna_gain(dev, &lna_2g, lna_5g, chan);
+	val = mt76x02_eeprom_get(dev, MT_EE_NIC_CONF_1);
+	if (chan->band == NL80211_BAND_2GHZ)
+		use_lna = !(val & MT_EE_NIC_CONF_1_LNA_EXT_2G);
+	else
+		use_lna = !(val & MT_EE_NIC_CONF_1_LNA_EXT_5G);
+
+	if (use_lna)
+		lna = mt76x02_get_lna_gain(dev, &lna_2g, lna_5g, chan);
+
 	dev->cal.rx.lna_gain = mt76x02_sign_extend(lna, 8);
 }
 EXPORT_SYMBOL_GPL(mt76x2_read_rx_gain);
 
-void mt76x2_get_rate_power(struct mt76x02_dev *dev, struct mt76_rate_power *t,
+void mt76x2_get_rate_power(struct mt76x02_dev *dev, struct mt76x02_rate_power *t,
 			   struct ieee80211_channel *chan)
 {
 	bool is_5ghz;
@@ -324,22 +333,10 @@ void mt76x2_get_rate_power(struct mt76x02_dev *dev, struct mt76_rate_power *t,
 	t->ht[12] = t->ht[13] = mt76x02_rate_power_val(val);
 	t->ht[14] = t->ht[15] = mt76x02_rate_power_val(val >> 8);
 
-	val = mt76x02_eeprom_get(dev, MT_EE_TX_POWER_VHT_MCS0);
-	t->vht[0] = t->vht[1] = mt76x02_rate_power_val(val);
-	t->vht[2] = t->vht[3] = mt76x02_rate_power_val(val >> 8);
-
-	val = mt76x02_eeprom_get(dev, MT_EE_TX_POWER_VHT_MCS4);
-	t->vht[4] = t->vht[5] = mt76x02_rate_power_val(val);
-	t->vht[6] = t->vht[7] = mt76x02_rate_power_val(val >> 8);
-
 	val = mt76x02_eeprom_get(dev, MT_EE_TX_POWER_VHT_MCS8);
 	if (!is_5ghz)
 		val >>= 8;
-	t->vht[8] = t->vht[9] = mt76x02_rate_power_val(val >> 8);
-
-	memcpy(t->stbc, t->ht, sizeof(t->stbc[0]) * 8);
-	t->stbc[8] = t->vht[8];
-	t->stbc[9] = t->vht[9];
+	t->vht[0] = t->vht[1] = mt76x02_rate_power_val(val >> 8);
 }
 EXPORT_SYMBOL_GPL(mt76x2_get_rate_power);
 

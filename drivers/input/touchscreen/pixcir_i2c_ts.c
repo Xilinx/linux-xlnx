@@ -13,8 +13,8 @@
 #include <linux/input/mt.h>
 #include <linux/input/touchscreen.h>
 #include <linux/interrupt.h>
-#include <linux/of_device.h>
 #include <linux/module.h>
+#include <linux/of.h>
 #include <linux/slab.h>
 
 #define PIXCIR_MAX_SLOTS       5 /* Max fingers supported by driver */
@@ -405,7 +405,7 @@ static void pixcir_input_close(struct input_dev *dev)
 	pixcir_stop(ts);
 }
 
-static int __maybe_unused pixcir_i2c_ts_suspend(struct device *dev)
+static int pixcir_i2c_ts_suspend(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	struct pixcir_i2c_ts_data *ts = i2c_get_clientdata(client);
@@ -432,7 +432,7 @@ unlock:
 	return ret;
 }
 
-static int __maybe_unused pixcir_i2c_ts_resume(struct device *dev)
+static int pixcir_i2c_ts_resume(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	struct pixcir_i2c_ts_data *ts = i2c_get_clientdata(client);
@@ -459,12 +459,12 @@ unlock:
 	return ret;
 }
 
-static SIMPLE_DEV_PM_OPS(pixcir_dev_pm_ops,
-			 pixcir_i2c_ts_suspend, pixcir_i2c_ts_resume);
+static DEFINE_SIMPLE_DEV_PM_OPS(pixcir_dev_pm_ops,
+				pixcir_i2c_ts_suspend, pixcir_i2c_ts_resume);
 
-static int pixcir_i2c_ts_probe(struct i2c_client *client,
-			       const struct i2c_device_id *id)
+static int pixcir_i2c_ts_probe(struct i2c_client *client)
 {
+	const struct i2c_device_id *id = i2c_client_get_device_id(client);
 	struct device *dev = &client->dev;
 	struct pixcir_i2c_ts_data *tsdata;
 	struct input_dev *input;
@@ -515,41 +515,27 @@ static int pixcir_i2c_ts_probe(struct i2c_client *client,
 	input_set_drvdata(input, tsdata);
 
 	tsdata->gpio_attb = devm_gpiod_get(dev, "attb", GPIOD_IN);
-	if (IS_ERR(tsdata->gpio_attb)) {
-		error = PTR_ERR(tsdata->gpio_attb);
-		if (error != -EPROBE_DEFER)
-			dev_err(dev, "Failed to request ATTB gpio: %d\n",
-				error);
-		return error;
-	}
+	if (IS_ERR(tsdata->gpio_attb))
+		return dev_err_probe(dev, PTR_ERR(tsdata->gpio_attb),
+				     "Failed to request ATTB gpio\n");
 
 	tsdata->gpio_reset = devm_gpiod_get_optional(dev, "reset",
 						     GPIOD_OUT_LOW);
-	if (IS_ERR(tsdata->gpio_reset)) {
-		error = PTR_ERR(tsdata->gpio_reset);
-		if (error != -EPROBE_DEFER)
-			dev_err(dev, "Failed to request RESET gpio: %d\n",
-				error);
-		return error;
-	}
+	if (IS_ERR(tsdata->gpio_reset))
+		return dev_err_probe(dev, PTR_ERR(tsdata->gpio_reset),
+				     "Failed to request RESET gpio\n");
 
 	tsdata->gpio_wake = devm_gpiod_get_optional(dev, "wake",
 						    GPIOD_OUT_HIGH);
-	if (IS_ERR(tsdata->gpio_wake)) {
-		error = PTR_ERR(tsdata->gpio_wake);
-		if (error != -EPROBE_DEFER)
-			dev_err(dev, "Failed to get wake gpio: %d\n", error);
-		return error;
-	}
+	if (IS_ERR(tsdata->gpio_wake))
+		return dev_err_probe(dev, PTR_ERR(tsdata->gpio_wake),
+				     "Failed to get wake gpio\n");
 
 	tsdata->gpio_enable = devm_gpiod_get_optional(dev, "enable",
 						      GPIOD_OUT_HIGH);
-	if (IS_ERR(tsdata->gpio_enable)) {
-		error = PTR_ERR(tsdata->gpio_enable);
-		if (error != -EPROBE_DEFER)
-			dev_err(dev, "Failed to get enable gpio: %d\n", error);
-		return error;
-	}
+	if (IS_ERR(tsdata->gpio_enable))
+		return dev_err_probe(dev, PTR_ERR(tsdata->gpio_enable),
+				     "Failed to get enable gpio\n");
 
 	if (tsdata->gpio_enable)
 		msleep(100);
@@ -614,7 +600,7 @@ MODULE_DEVICE_TABLE(of, pixcir_of_match);
 static struct i2c_driver pixcir_i2c_ts_driver = {
 	.driver = {
 		.name	= "pixcir_ts",
-		.pm	= &pixcir_dev_pm_ops,
+		.pm	= pm_sleep_ptr(&pixcir_dev_pm_ops),
 		.of_match_table = of_match_ptr(pixcir_of_match),
 	},
 	.probe		= pixcir_i2c_ts_probe,

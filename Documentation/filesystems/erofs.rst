@@ -30,12 +30,18 @@ It is implemented to be a better choice for the following scenarios:
    especially for those embedded devices with limited memory and high-density
    hosts with numerous containers.
 
-Here is the main features of EROFS:
+Here are the main features of EROFS:
 
  - Little endian on-disk design;
 
- - 4KiB block size and 32-bit block addresses, therefore 16TiB address space
-   at most for now;
+ - Block-based distribution and file-based distribution over fscache are
+   supported;
+
+ - Support multiple devices to refer to external blobs, which can be used
+   for container images;
+
+ - 32-bit block addresses for each device, therefore 16TiB address space at
+   most with 4KiB block size for now;
 
  - Two inode layouts for different requirements:
 
@@ -50,27 +56,32 @@ Here is the main features of EROFS:
    Metadata reserved      8 bytes       18 bytes
    =====================  ============  ======================================
 
- - Metadata and data could be mixed as an option;
+ - Support extended attributes as an option;
 
- - Support extended attributes (xattrs) as an option;
+ - Support a bloom filter that speeds up negative extended attribute lookups;
 
- - Support tailpacking data and xattr inline compared to byte-addressed
-   unaligned metadata or smaller block size alternatives;
-
- - Support POSIX.1e ACLs by using xattrs;
+ - Support POSIX.1e ACLs by using extended attributes;
 
  - Support transparent data compression as an option:
-   LZ4 and MicroLZMA algorithms can be used on a per-file basis; In addition,
-   inplace decompression is also supported to avoid bounce compressed buffers
-   and page cache thrashing.
+   LZ4, MicroLZMA and DEFLATE algorithms can be used on a per-file basis; In
+   addition, inplace decompression is also supported to avoid bounce compressed
+   buffers and unnecessary page cache thrashing.
+
+ - Support chunk-based data deduplication and rolling-hash compressed data
+   deduplication;
+
+ - Support tailpacking inline compared to byte-addressed unaligned metadata
+   or smaller block size alternatives;
+
+ - Support merging tail-end data into a special inode as fragments.
+
+ - Support large folios for uncompressed files.
 
  - Support direct I/O on uncompressed files to avoid double caching for loop
    devices;
 
  - Support FSDAX on uncompressed images for secure containers and ramdisks in
    order to get rid of unnecessary page cache.
-
- - Support multiple devices for multi blob container images;
 
  - Support file-based on-demand loading with the Fscache infrastructure.
 
@@ -111,6 +122,8 @@ dax={always,never}     Use direct access (no page cache).  See
 dax                    A legacy option which is an alias for ``dax=always``.
 device=%s              Specify a path to an extra device to be used together.
 fsid=%s                Specify a filesystem image ID for Fscache back-end.
+domain_id=%s           Specify a domain ID in fscache mode so that different images
+                       with the same blobs under a given domain ID can share storage.
 ===================    =========================================================
 
 Sysfs Entries
@@ -257,9 +270,41 @@ details.)
 
 By the way, chunk-based files are all uncompressed for now.
 
+Long extended attribute name prefixes
+-------------------------------------
+There are use cases where extended attributes with different values can have
+only a few common prefixes (such as overlayfs xattrs).  The predefined prefixes
+work inefficiently in both image size and runtime performance in such cases.
+
+The long xattr name prefixes feature is introduced to address this issue.  The
+overall idea is that, apart from the existing predefined prefixes, the xattr
+entry could also refer to user-specified long xattr name prefixes, e.g.
+"trusted.overlay.".
+
+When referring to a long xattr name prefix, the highest bit (bit 7) of
+erofs_xattr_entry.e_name_index is set, while the lower bits (bit 0-6) as a whole
+represent the index of the referred long name prefix among all long name
+prefixes.  Therefore, only the trailing part of the name apart from the long
+xattr name prefix is stored in erofs_xattr_entry.e_name, which could be empty if
+the full xattr name matches exactly as its long xattr name prefix.
+
+All long xattr prefixes are stored one by one in the packed inode as long as
+the packed inode is valid, or in the meta inode otherwise.  The
+xattr_prefix_count (of the on-disk superblock) indicates the total number of
+long xattr name prefixes, while (xattr_prefix_start * 4) indicates the start
+offset of long name prefixes in the packed/meta inode.  Note that, long extended
+attribute name prefixes are disabled if xattr_prefix_count is 0.
+
+Each long name prefix is stored in the format: ALIGN({__le16 len, data}, 4),
+where len represents the total size of the data part.  The data part is actually
+represented by 'struct erofs_xattr_long_prefix', where base_index represents the
+index of the predefined xattr name prefix, e.g. EROFS_XATTR_INDEX_TRUSTED for
+"trusted.overlay." long name prefix, while the infix string keeps the string
+after stripping the short prefix, e.g. "overlay." for the example above.
+
 Data compression
 ----------------
-EROFS implements LZ4 fixed-sized output compression which generates fixed-sized
+EROFS implements fixed-sized output compression which generates fixed-sized
 compressed data blocks from variable-sized input in contrast to other existing
 fixed-sized input solutions. Relatively higher compression ratios can be gotten
 by using fixed-sized output compression since nowadays popular data compression
@@ -314,3 +359,6 @@ to understand its delta0 is constantly 1, as illustrated below::
 
 If another HEAD follows a HEAD lcluster, there is no room to record CBLKCNT,
 but it's easy to know the size of such pcluster is 1 lcluster as well.
+
+Since Linux v6.1, each pcluster can be used for multiple variable-sized extents,
+therefore it can be used for compressed data deduplication.

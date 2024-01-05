@@ -338,32 +338,15 @@ static int host1x_device_match(struct device *dev, struct device_driver *drv)
 	return strcmp(dev_name(dev), drv->name) == 0;
 }
 
-static int host1x_device_uevent(struct device *dev,
+/*
+ * Note that this is really only needed for backwards compatibility
+ * with libdrm, which parses this information from sysfs and will
+ * fail if it can't find the OF_FULLNAME, specifically.
+ */
+static int host1x_device_uevent(const struct device *dev,
 				struct kobj_uevent_env *env)
 {
-	struct device_node *np = dev->parent->of_node;
-	unsigned int count = 0;
-	struct property *p;
-	const char *compat;
-
-	/*
-	 * This duplicates most of of_device_uevent(), but the latter cannot
-	 * be called from modules and operates on dev->of_node, which is not
-	 * available in this case.
-	 *
-	 * Note that this is really only needed for backwards compatibility
-	 * with libdrm, which parses this information from sysfs and will
-	 * fail if it can't find the OF_FULLNAME, specifically.
-	 */
-	add_uevent_var(env, "OF_NAME=%pOFn", np);
-	add_uevent_var(env, "OF_FULLNAME=%pOF", np);
-
-	of_property_for_each_string(np, "compatible", p, compat) {
-		add_uevent_var(env, "OF_COMPATIBLE_%u=%s", count, compat);
-		count++;
-	}
-
-	add_uevent_var(env, "OF_COMPATIBLE_N=%u", count);
+	of_device_uevent(dev->parent, env);
 
 	return 0;
 }
@@ -803,7 +786,7 @@ EXPORT_SYMBOL(__host1x_client_register);
  * Removes a host1x client from its host1x controller instance. If a logical
  * device has already been initialized, it will be torn down.
  */
-int host1x_client_unregister(struct host1x_client *client)
+void host1x_client_unregister(struct host1x_client *client)
 {
 	struct host1x_client *c;
 	struct host1x *host1x;
@@ -815,7 +798,7 @@ int host1x_client_unregister(struct host1x_client *client)
 		err = host1x_del_client(host1x, client);
 		if (!err) {
 			mutex_unlock(&devices_lock);
-			return 0;
+			return;
 		}
 	}
 
@@ -832,8 +815,6 @@ int host1x_client_unregister(struct host1x_client *client)
 	mutex_unlock(&clients_lock);
 
 	host1x_bo_cache_destroy(&client->cache);
-
-	return 0;
 }
 EXPORT_SYMBOL(host1x_client_unregister);
 

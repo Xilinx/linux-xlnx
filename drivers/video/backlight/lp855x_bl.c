@@ -71,6 +71,7 @@ struct lp855x {
 	struct device *dev;
 	struct lp855x_platform_data *pdata;
 	struct pwm_device *pwm;
+	bool needs_pwm_init;
 	struct regulator *supply;	/* regulator for VDD input */
 	struct regulator *enable;	/* regulator for EN/VDDIO input */
 };
@@ -216,29 +217,24 @@ err:
 	return ret;
 }
 
-static void lp855x_pwm_ctrl(struct lp855x *lp, int br, int max_br)
+static int lp855x_pwm_ctrl(struct lp855x *lp, int br, int max_br)
 {
-	struct pwm_device *pwm;
 	struct pwm_state state;
 
-	/* request pwm device with the consumer name */
-	if (!lp->pwm) {
-		pwm = devm_pwm_get(lp->dev, lp->chipname);
-		if (IS_ERR(pwm))
-			return;
-
-		lp->pwm = pwm;
-
+	if (lp->needs_pwm_init) {
 		pwm_init_state(lp->pwm, &state);
+		/* Legacy platform data compatibility */
+		if (lp->pdata->period_ns > 0)
+			state.period = lp->pdata->period_ns;
+		lp->needs_pwm_init = false;
 	} else {
 		pwm_get_state(lp->pwm, &state);
 	}
 
-	state.period = lp->pdata->period_ns;
 	state.duty_cycle = div_u64(br * state.period, max_br);
 	state.enabled = state.duty_cycle;
 
-	pwm_apply_state(lp->pwm, &state);
+	return pwm_apply_state(lp->pwm, &state);
 }
 
 static int lp855x_bl_update_status(struct backlight_device *bl)
@@ -250,11 +246,12 @@ static int lp855x_bl_update_status(struct backlight_device *bl)
 		brightness = 0;
 
 	if (lp->mode == PWM_BASED)
-		lp855x_pwm_ctrl(lp, brightness, bl->props.max_brightness);
+		return lp855x_pwm_ctrl(lp, brightness,
+				      bl->props.max_brightness);
 	else if (lp->mode == REGISTER_BASED)
-		lp855x_write_byte(lp, lp->cfg->reg_brightness, (u8)brightness);
-
-	return 0;
+		return lp855x_write_byte(lp, lp->cfg->reg_brightness,
+					(u8)brightness);
+	return -EINVAL;
 }
 
 static const struct backlight_ops lp855x_bl_ops = {
@@ -339,6 +336,7 @@ static int lp855x_parse_dt(struct lp855x *lp)
 	of_property_read_string(node, "bl-name", &pdata->name);
 	of_property_read_u8(node, "dev-ctrl", &pdata->device_control);
 	of_property_read_u8(node, "init-brt", &pdata->initial_brightness);
+	/* Deprecated, specify period in pwms property instead */
 	of_property_read_u32(node, "pwm-period", &pdata->period_ns);
 
 	/* Fill ROM platform data if defined */
@@ -394,8 +392,9 @@ static int lp855x_parse_acpi(struct lp855x *lp)
 	return 0;
 }
 
-static int lp855x_probe(struct i2c_client *cl, const struct i2c_device_id *id)
+static int lp855x_probe(struct i2c_client *cl)
 {
+	const struct i2c_device_id *id = i2c_client_get_device_id(cl);
 	const struct acpi_device_id *acpi_id = NULL;
 	struct device *dev = &cl->dev;
 	struct lp855x *lp;
@@ -456,11 +455,6 @@ static int lp855x_probe(struct i2c_client *cl, const struct i2c_device_id *id)
 		}
 	}
 
-	if (lp->pdata->period_ns > 0)
-		lp->mode = PWM_BASED;
-	else
-		lp->mode = REGISTER_BASED;
-
 	lp->supply = devm_regulator_get(dev, "power");
 	if (IS_ERR(lp->supply)) {
 		if (PTR_ERR(lp->supply) == -EPROBE_DEFER)
@@ -471,11 +465,27 @@ static int lp855x_probe(struct i2c_client *cl, const struct i2c_device_id *id)
 	lp->enable = devm_regulator_get_optional(dev, "enable");
 	if (IS_ERR(lp->enable)) {
 		ret = PTR_ERR(lp->enable);
-		if (ret == -ENODEV) {
+		if (ret == -ENODEV)
 			lp->enable = NULL;
-		} else {
+		else
 			return dev_err_probe(dev, ret, "getting enable regulator\n");
-		}
+	}
+
+	lp->pwm = devm_pwm_get(lp->dev, lp->chipname);
+	if (IS_ERR(lp->pwm)) {
+		ret = PTR_ERR(lp->pwm);
+		if (ret == -ENODEV || ret == -EINVAL)
+			lp->pwm = NULL;
+		else
+			return dev_err_probe(dev, ret, "getting PWM\n");
+
+		lp->needs_pwm_init = false;
+		lp->mode = REGISTER_BASED;
+		dev_dbg(dev, "mode: register based\n");
+	} else {
+		lp->needs_pwm_init = true;
+		lp->mode = PWM_BASED;
+		dev_dbg(dev, "mode: PWM based\n");
 	}
 
 	if (lp->supply) {
@@ -547,7 +557,7 @@ static void lp855x_remove(struct i2c_client *cl)
 	sysfs_remove_group(&lp->dev->kobj, &lp855x_attr_group);
 }
 
-static const struct of_device_id lp855x_dt_ids[] = {
+static const struct of_device_id lp855x_dt_ids[] __maybe_unused = {
 	{ .compatible = "ti,lp8550", },
 	{ .compatible = "ti,lp8551", },
 	{ .compatible = "ti,lp8552", },

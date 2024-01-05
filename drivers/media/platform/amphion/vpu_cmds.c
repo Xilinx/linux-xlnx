@@ -9,8 +9,6 @@
 #include <linux/list.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
-#include <linux/of_address.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/types.h>
@@ -98,7 +96,7 @@ static struct vpu_cmd_t *vpu_alloc_cmd(struct vpu_inst *inst, u32 id, void *data
 	cmd->id = id;
 	ret = vpu_iface_pack_cmd(inst->core, cmd->pkt, inst->id, id, data);
 	if (ret) {
-		dev_err(inst->dev, "iface pack cmd(%d) fail\n", id);
+		dev_err(inst->dev, "iface pack cmd %s fail\n", vpu_id_name(id));
 		vfree(cmd->pkt);
 		vfree(cmd);
 		return NULL;
@@ -125,14 +123,14 @@ static int vpu_session_process_cmd(struct vpu_inst *inst, struct vpu_cmd_t *cmd)
 {
 	int ret;
 
-	dev_dbg(inst->dev, "[%d]send cmd(0x%x)\n", inst->id, cmd->id);
+	dev_dbg(inst->dev, "[%d]send cmd %s\n", inst->id, vpu_id_name(cmd->id));
 	vpu_iface_pre_send_cmd(inst);
 	ret = vpu_cmd_send(inst->core, cmd->pkt);
 	if (!ret) {
 		vpu_iface_post_send_cmd(inst);
 		vpu_inst_record_flow(inst, cmd->id);
 	} else {
-		dev_err(inst->dev, "[%d] iface send cmd(0x%x) fail\n", inst->id, cmd->id);
+		dev_err(inst->dev, "[%d] iface send cmd %s fail\n", inst->id, vpu_id_name(cmd->id));
 	}
 
 	return ret;
@@ -149,7 +147,8 @@ static void vpu_process_cmd_request(struct vpu_inst *inst)
 	list_for_each_entry_safe(cmd, tmp, &inst->cmd_q, list) {
 		list_del_init(&cmd->list);
 		if (vpu_session_process_cmd(inst, cmd))
-			dev_err(inst->dev, "[%d] process cmd(%d) fail\n", inst->id, cmd->id);
+			dev_err(inst->dev, "[%d] process cmd %s fail\n",
+				inst->id, vpu_id_name(cmd->id));
 		if (cmd->request) {
 			inst->pending = (void *)cmd;
 			break;
@@ -269,7 +268,7 @@ exit:
 	return flag;
 }
 
-static int sync_session_response(struct vpu_inst *inst, unsigned long key)
+static int sync_session_response(struct vpu_inst *inst, unsigned long key, long timeout, int try)
 {
 	struct vpu_core *core;
 
@@ -279,10 +278,12 @@ static int sync_session_response(struct vpu_inst *inst, unsigned long key)
 	core = inst->core;
 
 	call_void_vop(inst, wait_prepare);
-	wait_event_timeout(core->ack_wq, check_is_responsed(inst, key), VPU_TIMEOUT);
+	wait_event_timeout(core->ack_wq, check_is_responsed(inst, key), timeout);
 	call_void_vop(inst, wait_finish);
 
 	if (!check_is_responsed(inst, key)) {
+		if (try)
+			return -EINVAL;
 		dev_err(inst->dev, "[%d] sync session timeout\n", inst->id);
 		set_bit(inst->id, &core->hang_mask);
 		mutex_lock(&inst->core->cmd_lock);
@@ -294,21 +295,51 @@ static int sync_session_response(struct vpu_inst *inst, unsigned long key)
 	return 0;
 }
 
+static void vpu_core_keep_active(struct vpu_core *core)
+{
+	struct vpu_rpc_event pkt;
+
+	memset(&pkt, 0, sizeof(pkt));
+	vpu_iface_pack_cmd(core, &pkt, 0, VPU_CMD_ID_NOOP, NULL);
+
+	dev_dbg(core->dev, "try to wake up\n");
+	mutex_lock(&core->cmd_lock);
+	if (vpu_cmd_send(core, &pkt))
+		dev_err(core->dev, "fail to keep active\n");
+	mutex_unlock(&core->cmd_lock);
+}
+
 static int vpu_session_send_cmd(struct vpu_inst *inst, u32 id, void *data)
 {
 	unsigned long key;
 	int sync = false;
-	int ret = -EINVAL;
+	int ret;
 
 	if (inst->id < 0)
 		return -EINVAL;
 
 	ret = vpu_request_cmd(inst, id, data, &key, &sync);
-	if (!ret && sync)
-		ret = sync_session_response(inst, key);
-
 	if (ret)
-		dev_err(inst->dev, "[%d] send cmd(0x%x) fail\n", inst->id, id);
+		goto exit;
+
+	/* workaround for a firmware issue,
+	 * firmware should be waked up by start or configure command,
+	 * but there is a very small change that firmware failed to wakeup.
+	 * in such case, try to wakeup firmware again by sending a noop command
+	 */
+	if (sync && (id == VPU_CMD_ID_CONFIGURE_CODEC || id == VPU_CMD_ID_START)) {
+		if (sync_session_response(inst, key, VPU_TIMEOUT_WAKEUP, 1))
+			vpu_core_keep_active(inst->core);
+		else
+			goto exit;
+	}
+
+	if (sync)
+		ret = sync_session_response(inst, key, VPU_TIMEOUT, 0);
+
+exit:
+	if (ret)
+		dev_err(inst->dev, "[%d] send cmd %s fail\n", inst->id, vpu_id_name(id));
 
 	return ret;
 }

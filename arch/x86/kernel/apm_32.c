@@ -239,12 +239,6 @@ extern int (*console_blank_hook)(int);
 #endif
 
 /*
- * The apm_bios device is one of the misc char devices.
- * This is its minor number.
- */
-#define	APM_MINOR_DEV	134
-
-/*
  * Various options can be changed at boot time as follows:
  * (We allow underscores for compatibility with the modules code)
  *	apm=on/off			enable/disable APM
@@ -609,7 +603,7 @@ static long __apm_bios_call(void *_call)
 
 	apm_irq_save(flags);
 	firmware_restrict_branch_speculation_start();
-	ibt = ibt_save();
+	ibt = ibt_save(true);
 	APM_DO_SAVE_SEGS;
 	apm_bios_call_asm(call->func, call->ebx, call->ecx,
 			  &call->eax, &call->ebx, &call->ecx, &call->edx,
@@ -690,7 +684,7 @@ static long __apm_bios_call_simple(void *_call)
 
 	apm_irq_save(flags);
 	firmware_restrict_branch_speculation_start();
-	ibt = ibt_save();
+	ibt = ibt_save(true);
 	APM_DO_SAVE_SEGS;
 	error = apm_bios_call_simple_asm(call->func, call->ebx, call->ecx,
 					 &call->eax);

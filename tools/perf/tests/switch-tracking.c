@@ -19,7 +19,8 @@
 #include "record.h"
 #include "tests.h"
 #include "util/mmap.h"
-#include "pmu.h"
+#include "util/sample.h"
+#include "pmus.h"
 
 static int spin_sleep(void)
 {
@@ -374,17 +375,7 @@ static int test__switch_tracking(struct test_suite *test __maybe_unused, int sub
 	cpu_clocks_evsel = evlist__last(evlist);
 
 	/* Second event */
-	if (perf_pmu__has_hybrid()) {
-		cycles = "cpu_core/cycles/u";
-		err = parse_event(evlist, cycles);
-		if (err) {
-			cycles = "cpu_atom/cycles/u";
-			pr_debug("Trying %s\n", cycles);
-			err = parse_event(evlist, cycles);
-		}
-	} else {
-		err = parse_event(evlist, cycles);
-	}
+	err = parse_event(evlist, cycles);
 	if (err) {
 		pr_debug("Failed to parse event %s\n", cycles);
 		goto out_err;

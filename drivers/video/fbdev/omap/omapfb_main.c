@@ -544,19 +544,25 @@ static int set_fb_var(struct fb_info *fbi,
 		var->yoffset = var->yres_virtual - var->yres;
 
 	if (plane->color_mode == OMAPFB_COLOR_RGB444) {
-		var->red.offset	  = 8; var->red.length	 = 4;
-						var->red.msb_right   = 0;
-		var->green.offset = 4; var->green.length = 4;
-						var->green.msb_right = 0;
-		var->blue.offset  = 0; var->blue.length  = 4;
-						var->blue.msb_right  = 0;
+		var->red.offset		= 8;
+		var->red.length		= 4;
+		var->red.msb_right	= 0;
+		var->green.offset	= 4;
+		var->green.length	= 4;
+		var->green.msb_right	= 0;
+		var->blue.offset	= 0;
+		var->blue.length	= 4;
+		var->blue.msb_right	= 0;
 	} else {
-		var->red.offset	 = 11; var->red.length	 = 5;
-						var->red.msb_right   = 0;
-		var->green.offset = 5;  var->green.length = 6;
-						var->green.msb_right = 0;
-		var->blue.offset = 0;  var->blue.length  = 5;
-						var->blue.msb_right  = 0;
+		var->red.offset		= 11;
+		var->red.length		= 5;
+		var->red.msb_right	= 0;
+		var->green.offset	= 5;
+		var->green.length	= 6;
+		var->green.msb_right	= 0;
+		var->blue.offset	= 0;
+		var->blue.length	= 5;
+		var->blue.msb_right	= 0;
 	}
 
 	var->height		= -1;
@@ -1210,13 +1216,11 @@ static int omapfb_mmap(struct fb_info *info, struct vm_area_struct *vma)
  */
 static struct fb_ops omapfb_ops = {
 	.owner		= THIS_MODULE,
+	FB_DEFAULT_IOMEM_OPS,
 	.fb_open        = omapfb_open,
 	.fb_release     = omapfb_release,
 	.fb_setcolreg	= omapfb_setcolreg,
 	.fb_setcmap	= omapfb_setcmap,
-	.fb_fillrect	= cfb_fillrect,
-	.fb_copyarea	= cfb_copyarea,
-	.fb_imageblit	= cfb_imageblit,
 	.fb_blank       = omapfb_blank,
 	.fb_ioctl	= omapfb_ioctl,
 	.fb_check_var	= omapfb_check_var,
@@ -1445,9 +1449,8 @@ static int fbinfo_init(struct omapfb_device *fbdev, struct fb_info *info)
 	int				r = 0;
 
 	info->fbops = &omapfb_ops;
-	info->flags = FBINFO_FLAG_DEFAULT;
 
-	strncpy(fix->id, MODULE_NAME, sizeof(fix->id));
+	strscpy(fix->id, MODULE_NAME, sizeof(fix->id));
 
 	info->pseudo_palette = fbdev->pseudo_palette;
 
@@ -1573,8 +1576,7 @@ static int omapfb_find_ctrl(struct omapfb_device *fbdev)
 
 	fbdev->ctrl = NULL;
 
-	strncpy(name, conf->lcd.ctrl_name, sizeof(name) - 1);
-	name[sizeof(name) - 1] = '\0';
+	strscpy(name, conf->lcd.ctrl_name, sizeof(name));
 
 	if (strcmp(name, "internal") == 0) {
 		fbdev->ctrl = fbdev->int_ctrl;
@@ -1643,13 +1645,13 @@ static int omapfb_do_probe(struct platform_device *pdev,
 	}
 	fbdev->int_irq = platform_get_irq(pdev, 0);
 	if (fbdev->int_irq < 0) {
-		r = ENXIO;
+		r = -ENXIO;
 		goto cleanup;
 	}
 
 	fbdev->ext_irq = platform_get_irq(pdev, 1);
 	if (fbdev->ext_irq < 0) {
-		r = ENXIO;
+		r = -ENXIO;
 		goto cleanup;
 	}
 
@@ -1794,7 +1796,7 @@ void omapfb_register_panel(struct lcd_panel *panel)
 EXPORT_SYMBOL_GPL(omapfb_register_panel);
 
 /* Called when the device is being detached from the driver */
-static int omapfb_remove(struct platform_device *pdev)
+static void omapfb_remove(struct platform_device *pdev)
 {
 	struct omapfb_device *fbdev = platform_get_drvdata(pdev);
 	enum omapfb_state saved_state = fbdev->state;
@@ -1806,8 +1808,6 @@ static int omapfb_remove(struct platform_device *pdev)
 
 	platform_device_unregister(&omapdss_device);
 	fbdev->dssdev = NULL;
-
-	return 0;
 }
 
 /* PM suspend */
@@ -1832,7 +1832,7 @@ static int omapfb_resume(struct platform_device *pdev)
 
 static struct platform_driver omapfb_driver = {
 	.probe		= omapfb_probe,
-	.remove		= omapfb_remove,
+	.remove_new	= omapfb_remove,
 	.suspend	= omapfb_suspend,
 	.resume		= omapfb_resume,
 	.driver		= {

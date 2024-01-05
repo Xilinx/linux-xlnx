@@ -6,7 +6,9 @@
 #include <linux/component.h>
 #include <linux/dma-mapping.h>
 #include <linux/module.h>
-#include <linux/of_platform.h>
+#include <linux/of.h>
+#include <linux/of_device.h>
+#include <linux/platform_device.h>
 #include <linux/uaccess.h>
 
 #include <drm/drm_debugfs.h>
@@ -56,6 +58,11 @@ static int etnaviv_open(struct drm_device *dev, struct drm_file *file)
 	if (!ctx)
 		return -ENOMEM;
 
+	ret = xa_alloc_cyclic(&priv->active_contexts, &ctx->id, ctx,
+			      xa_limit_32b, &priv->next_context_id, GFP_KERNEL);
+	if (ret < 0)
+		goto out_free;
+
 	ctx->mmu = etnaviv_iommu_context_init(priv->mmu_global,
 					      priv->cmdbuf_suballoc);
 	if (!ctx->mmu) {
@@ -98,6 +105,8 @@ static void etnaviv_postclose(struct drm_device *dev, struct drm_file *file)
 	}
 
 	etnaviv_iommu_context_put(ctx->mmu);
+
+	xa_erase(&priv->active_contexts, ctx->id);
 
 	kfree(ctx);
 }
@@ -474,10 +483,7 @@ static const struct drm_driver etnaviv_drm_driver = {
 	.driver_features    = DRIVER_GEM | DRIVER_RENDER,
 	.open               = etnaviv_open,
 	.postclose           = etnaviv_postclose,
-	.prime_handle_to_fd = drm_gem_prime_handle_to_fd,
-	.prime_fd_to_handle = drm_gem_prime_fd_to_handle,
 	.gem_prime_import_sg_table = etnaviv_gem_prime_import_sg_table,
-	.gem_prime_mmap     = drm_gem_prime_mmap,
 #ifdef CONFIG_DEBUG_FS
 	.debugfs_init       = etnaviv_debugfs_init,
 #endif
@@ -513,6 +519,8 @@ static int etnaviv_bind(struct device *dev)
 	drm->dev_private = priv;
 
 	dma_set_max_seg_size(dev, SZ_2G);
+
+	xa_init_flags(&priv->active_contexts, XA_FLAGS_ALLOC);
 
 	mutex_init(&priv->gem_lock);
 	INIT_LIST_HEAD(&priv->gem_list);
@@ -562,6 +570,8 @@ static void etnaviv_unbind(struct device *dev)
 	component_unbind_all(dev, drm);
 
 	etnaviv_cmdbuf_suballoc_destroy(priv->cmdbuf_suballoc);
+
+	xa_destroy(&priv->active_contexts);
 
 	drm->dev_private = NULL;
 	kfree(priv);

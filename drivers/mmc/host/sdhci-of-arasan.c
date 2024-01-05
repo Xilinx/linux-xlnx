@@ -18,11 +18,11 @@
 #include <linux/clk-provider.h>
 #include <linux/mfd/syscon.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
+#include <linux/of.h>
+#include <linux/platform_device.h>
 #include <linux/phy/phy.h>
 #include <linux/regmap.h>
 #include <linux/reset.h>
-#include <linux/of.h>
 #include <linux/firmware/xlnx-zynqmp.h>
 
 #include "cqhci.h"
@@ -227,13 +227,6 @@ static const struct sdhci_arasan_soc_ctl_map intel_lgm_emmc_soc_ctl_map = {
 static const struct sdhci_arasan_soc_ctl_map intel_lgm_sdxc_soc_ctl_map = {
 	.baseclkfreq = { .reg = 0x80, .width = 8, .shift = 2 },
 	.clockmultiplier = { .reg = 0, .width = -1, .shift = -1 },
-	.hiword_update = false,
-};
-
-static const struct sdhci_arasan_soc_ctl_map thunderbay_soc_ctl_map = {
-	.baseclkfreq = { .reg = 0x0, .width = 8, .shift = 14 },
-	.clockmultiplier = { .reg = 0x4, .width = 8, .shift = 14 },
-	.support64b = { .reg = 0x4, .width = 1, .shift = 24 },
 	.hiword_update = false,
 };
 
@@ -568,15 +561,6 @@ static const struct sdhci_pltfm_data sdhci_arasan_cqe_pdata = {
 	.quirks = SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN,
 	.quirks2 = SDHCI_QUIRK2_PRESET_VALUE_BROKEN |
 			SDHCI_QUIRK2_CLOCK_DIV_ZERO_BROKEN,
-};
-
-static const struct sdhci_pltfm_data sdhci_arasan_thunderbay_pdata = {
-	.ops = &sdhci_arasan_cqe_ops,
-	.quirks = SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN | SDHCI_QUIRK_NO_ENDATTR_IN_NOPDESC,
-	.quirks2 = SDHCI_QUIRK2_PRESET_VALUE_BROKEN |
-		SDHCI_QUIRK2_CLOCK_DIV_ZERO_BROKEN |
-		SDHCI_QUIRK2_STOP_WITH_TC |
-		SDHCI_QUIRK2_CAPS_BIT63_FOR_HS400,
 };
 
 #ifdef CONFIG_PM_SLEEP
@@ -1026,6 +1010,7 @@ static int sdhci_versal_net_emmc_sdcardclk_set_phase(struct clk_hw *hw, int degr
 	}
 
 	tap_delay = (degrees * tap_max) / 360;
+
 	/* Set the Clock Phase */
 	if (tap_delay) {
 		u32 regval;
@@ -1073,6 +1058,7 @@ static int sdhci_versal_net_emmc_sampleclk_set_phase(struct clk_hw *hw, int degr
 	}
 
 	tap_delay = (degrees * tap_max) / 360;
+
 	/* Set the Clock Phase */
 	if (tap_delay) {
 		regval = sdhci_readl(host, PHY_CTRL_REG1);
@@ -1358,12 +1344,6 @@ static struct sdhci_arasan_of_data sdhci_arasan_generic_data = {
 	.clk_ops = &arasan_clk_ops,
 };
 
-static const struct sdhci_arasan_of_data sdhci_arasan_thunderbay_data = {
-	.soc_ctl_map = &thunderbay_soc_ctl_map,
-	.pdata = &sdhci_arasan_thunderbay_pdata,
-	.clk_ops = &arasan_clk_ops,
-};
-
 static const struct sdhci_pltfm_data sdhci_keembay_emmc_pdata = {
 	.ops = &sdhci_arasan_cqe_ops,
 	.quirks = SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN |
@@ -1515,10 +1495,6 @@ static const struct of_device_id sdhci_arasan_of_match[] = {
 		.compatible = "intel,keembay-sdhci-5.1-sdio",
 		.data = &intel_keembay_sdio_data,
 	},
-	{
-		.compatible = "intel,thunderbay-sdhci-5.1",
-		.data = &sdhci_arasan_thunderbay_data,
-	},
 	/* Generic compatible below here */
 	{
 		.compatible = "arasan,sdhci-8.9a",
@@ -1664,7 +1640,7 @@ static void sdhci_arasan_unregister_sdclk(struct device *dev)
 {
 	struct device_node *np = dev->of_node;
 
-	if (!of_find_property(np, "#clock-cells", NULL))
+	if (!of_property_present(np, "#clock-cells"))
 		return;
 
 	of_clk_del_provider(dev->of_node);
@@ -1760,9 +1736,8 @@ static int sdhci_zynqmp_set_dynamic_config(struct device *dev,
 	struct clk_hw *hw = &sdhci_arasan->clk_data.sdcardclk_hw;
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	const char *clk_name = clk_hw_get_name(hw);
-	u32 node_id = !strcmp(clk_name, "clk_out_sd0") ? NODE_SD_0 : NODE_SD_1;
+	u32 mhz, node_id = !strcmp(clk_name, "clk_out_sd0") ? NODE_SD_0 : NODE_SD_1;
 	struct reset_control *rstc;
-	u32 mhz;
 	int ret;
 
 	/* Obtain SDHC reset control */
@@ -1772,7 +1747,9 @@ static int sdhci_zynqmp_set_dynamic_config(struct device *dev,
 		return PTR_ERR(rstc);
 	}
 
-	reset_control_assert(rstc);
+	ret = reset_control_assert(rstc);
+	if (ret)
+		return ret;
 
 	ret = zynqmp_pm_set_sd_config(node_id, SD_CONFIG_FIXED, 0);
 	if (ret)
@@ -1802,12 +1779,10 @@ static int sdhci_zynqmp_set_dynamic_config(struct device *dev,
 	if (ret)
 		return ret;
 
-	reset_control_deassert(rstc);
+	ret = reset_control_deassert(rstc);
+	if (ret)
+		return ret;
 
-	/*
-	 * Workaround: In case of eMMC, to reach the card stable state
-	 * it is taking 1msec delay after deassert the controller reset.
-	 */
 	usleep_range(1000, 1500);
 
 	return 0;
@@ -1954,8 +1929,7 @@ static int sdhci_arasan_probe(struct platform_device *pdev)
 
 	if (of_device_is_compatible(np, "intel,keembay-sdhci-5.1-emmc") ||
 	    of_device_is_compatible(np, "intel,keembay-sdhci-5.1-sd") ||
-	    of_device_is_compatible(np, "intel,keembay-sdhci-5.1-sdio") ||
-	    of_device_is_compatible(np, "intel,thunderbay-sdhci-5.1")) {
+	    of_device_is_compatible(np, "intel,keembay-sdhci-5.1-sdio")) {
 		sdhci_arasan_update_clockmultiplier(host, 0x0);
 		sdhci_arasan_update_support64b(host, 0x0);
 
@@ -2042,12 +2016,13 @@ err_pltfm_free:
 	return ret;
 }
 
-static int sdhci_arasan_remove(struct platform_device *pdev)
+static void sdhci_arasan_remove(struct platform_device *pdev)
 {
 	struct sdhci_host *host = platform_get_drvdata(pdev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_arasan_data *sdhci_arasan = sdhci_pltfm_priv(pltfm_host);
 	struct clk *clk_ahb = sdhci_arasan->clk_ahb;
+	struct clk *clk_xin = pltfm_host->clk;
 
 	if (!IS_ERR(sdhci_arasan->phy)) {
 		if (sdhci_arasan->is_phy_on)
@@ -2057,11 +2032,10 @@ static int sdhci_arasan_remove(struct platform_device *pdev)
 
 	sdhci_arasan_unregister_sdclk(&pdev->dev);
 
-	sdhci_pltfm_unregister(pdev);
+	sdhci_pltfm_remove(pdev);
 
+	clk_disable_unprepare(clk_xin);
 	clk_disable_unprepare(clk_ahb);
-
-	return 0;
 }
 
 static struct platform_driver sdhci_arasan_driver = {
@@ -2072,7 +2046,7 @@ static struct platform_driver sdhci_arasan_driver = {
 		.pm = &sdhci_arasan_dev_pm_ops,
 	},
 	.probe = sdhci_arasan_probe,
-	.remove = sdhci_arasan_remove,
+	.remove_new = sdhci_arasan_remove,
 };
 
 module_platform_driver(sdhci_arasan_driver);

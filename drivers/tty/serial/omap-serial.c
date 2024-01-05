@@ -222,16 +222,11 @@ static inline int calculate_baud_abs_diff(struct uart_port *port,
 				unsigned int baud, unsigned int mode)
 {
 	unsigned int n = port->uartclk / (mode * baud);
-	int abs_diff;
 
 	if (n == 0)
 		n = 1;
 
-	abs_diff = baud - (port->uartclk / (mode * n));
-	if (abs_diff < 0)
-		abs_diff = -abs_diff;
-
-	return abs_diff;
+	return abs_diff(baud, port->uartclk / (mode * n));
 }
 
 /*
@@ -347,34 +342,12 @@ static void serial_omap_put_char(struct uart_omap_port *up, unsigned char ch)
 
 static void transmit_chars(struct uart_omap_port *up, unsigned int lsr)
 {
-	struct circ_buf *xmit = &up->port.state->xmit;
-	int count;
+	u8 ch;
 
-	if (up->port.x_char) {
-		serial_omap_put_char(up, up->port.x_char);
-		up->port.icount.tx++;
-		up->port.x_char = 0;
-		return;
-	}
-	if (uart_circ_empty(xmit) || uart_tx_stopped(&up->port)) {
-		serial_omap_stop_tx(&up->port);
-		return;
-	}
-	count = up->port.fifosize / 4;
-	do {
-		serial_omap_put_char(up, xmit->buf[xmit->tail]);
-		xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
-		up->port.icount.tx++;
-
-		if (uart_circ_empty(xmit))
-			break;
-	} while (--count > 0);
-
-	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
-		uart_write_wakeup(&up->port);
-
-	if (uart_circ_empty(xmit))
-		serial_omap_stop_tx(&up->port);
+	uart_port_tx_limited(&up->port, ch, up->port.fifosize / 4,
+		true,
+		serial_omap_put_char(up, ch),
+		({}));
 }
 
 static inline void serial_omap_enable_ier_thri(struct uart_omap_port *up)
@@ -464,7 +437,7 @@ static unsigned int check_modem_status(struct uart_omap_port *up)
 
 static void serial_omap_rlsi(struct uart_omap_port *up, unsigned int lsr)
 {
-	unsigned int flag;
+	u8 flag;
 
 	/*
 	 * Read one data character out to avoid stalling the receiver according
@@ -520,8 +493,7 @@ static void serial_omap_rlsi(struct uart_omap_port *up, unsigned int lsr)
 
 static void serial_omap_rdi(struct uart_omap_port *up, unsigned int lsr)
 {
-	unsigned char ch = 0;
-	unsigned int flag;
+	u8 ch;
 
 	if (!(lsr & UART_LSR_DR))
 		return;
@@ -534,13 +506,12 @@ static void serial_omap_rdi(struct uart_omap_port *up, unsigned int lsr)
 		return;
 	}
 
-	flag = TTY_NORMAL;
 	up->port.icount.rx++;
 
 	if (uart_handle_sysrq_char(&up->port, ch))
 		return;
 
-	uart_insert_char(&up->port, lsr, UART_LSR_OE, ch, flag);
+	uart_insert_char(&up->port, lsr, UART_LSR_OE, ch, TTY_NORMAL);
 }
 
 /**
@@ -1595,8 +1566,7 @@ static int serial_omap_probe(struct platform_device *pdev)
 	if (!up)
 		return -ENOMEM;
 
-	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	base = devm_ioremap_resource(&pdev->dev, mem);
+	base = devm_platform_get_and_ioremap_resource(pdev, 0, &mem);
 	if (IS_ERR(base))
 		return PTR_ERR(base);
 

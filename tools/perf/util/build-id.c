@@ -58,9 +58,11 @@ int build_id__mark_dso_hit(struct perf_tool *tool __maybe_unused,
 		return -1;
 	}
 
+	addr_location__init(&al);
 	if (thread__find_map(thread, sample->cpumode, sample->ip, &al))
-		al.map->dso->hit = 1;
+		map__dso(al.map)->hit = 1;
 
+	addr_location__exit(&al);
 	thread__put(thread);
 	return 0;
 }
@@ -558,7 +560,7 @@ char *build_id_cache__cachedir(const char *sbuild_id, const char *name,
 			       struct nsinfo *nsi, bool is_kallsyms,
 			       bool is_vdso)
 {
-	char *realname = (char *)name, *filename;
+	char *realname = NULL, *filename;
 	bool slash = is_kallsyms || is_vdso;
 
 	if (!slash)
@@ -569,9 +571,7 @@ char *build_id_cache__cachedir(const char *sbuild_id, const char *name,
 		     sbuild_id ? "/" : "", sbuild_id ?: "") < 0)
 		filename = NULL;
 
-	if (!slash)
-		free(realname);
-
+	free(realname);
 	return filename;
 }
 
@@ -715,9 +715,13 @@ build_id_cache__add(const char *sbuild_id, const char *name, const char *realnam
 		} else if (nsi && nsinfo__need_setns(nsi)) {
 			if (copyfile_ns(name, filename, nsi))
 				goto out_free;
-		} else if (link(realname, filename) && errno != EEXIST &&
-				copyfile(name, filename))
-			goto out_free;
+		} else if (link(realname, filename) && errno != EEXIST) {
+			struct stat f_stat;
+
+			if (!(stat(name, &f_stat) < 0) &&
+					copyfile_mode(name, filename, f_stat.st_mode))
+				goto out_free;
+		}
 	}
 
 	/* Some binaries are stripped, but have .debug files with their symbol

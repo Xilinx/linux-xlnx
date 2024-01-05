@@ -10,7 +10,6 @@
 
 #include <linux/module.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/io.h>
 
@@ -164,4 +163,3 @@ module_platform_driver(da8xx_ddrctl_driver);
 
 MODULE_AUTHOR("Bartosz Golaszewski <bgolaszewski@baylibre.com>");
 MODULE_DESCRIPTION("TI da8xx DDR2/mDDR controller driver");
-MODULE_LICENSE("GPL v2");

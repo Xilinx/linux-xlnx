@@ -1,16 +1,16 @@
 # SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 %YAML 1.2
 ---
-$id: "http://devicetree.org/schemas/mmc/arasan,sdhci.yaml#"
-$schema: "http://devicetree.org/meta-schemas/core.yaml#"
+$id: http://devicetree.org/schemas/mmc/arasan,sdhci.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
 
-title: Device Tree Bindings for the Arasan SDHCI Controller
+title: Arasan SDHCI Controller
 
 maintainers:
   - Adrian Hunter <adrian.hunter@intel.com>
 
 allOf:
-  - $ref: "mmc-controller.yaml#"
+  - $ref: mmc-controller.yaml#
   - if:
       properties:
         compatible:
@@ -93,12 +93,6 @@ properties:
         description:
           For this device it is strongly suggested to include
           arasan,soc-ctl-syscon.
-      - items:
-          - const: intel,thunderbay-sdhci-5.1   # Intel Thunder Bay eMMC PHY
-          - const: arasan,sdhci-5.1
-        description:
-          For this device it is strongly suggested to include
-          clock-output-names and '#clock-cells'.
 
   reg:
     maxItems: 1
@@ -166,6 +160,12 @@ properties:
     description:
       The MIO bank number in which the command and data lines are configured.
 
+  iommus:
+    maxItems: 1
+
+  power-domains:
+    maxItems: 1
+
 dependencies:
   '#clock-cells': [ clock-output-names ]
 
@@ -226,8 +226,8 @@ examples:
           interrupt-parent = <&gic>;
           interrupts = <0 48 4>;
           reg = <0xff160000 0x1000>;
-          clocks = <&clk200>, <&clk200>;
-          clock-names = "clk_xin", "clk_ahb";
+          clocks = <&clk200>, <&clk200>, <&clk1200>;
+          clock-names = "clk_xin", "clk_ahb", "gate";
           clock-output-names = "clk_out_sd0", "clk_in_sd0";
           #clock-cells = <1>;
           clk-phase-sd-hs = <63>, <72>;
@@ -313,23 +313,4 @@ examples:
           clocks = <&scmi_clk KEEM_BAY_PSS_AUX_SD0>,
                    <&scmi_clk KEEM_BAY_PSS_SD0>;
           arasan,soc-ctl-syscon = <&sd0_phy_syscon>;
-    };
-
-  - |
-    #define EMMC_XIN_CLK
-    #define EMMC_AXI_CLK
-    #define TBH_PSS_EMMC_RST_N
-    mmc@80420000 {
-          compatible = "intel,thunderbay-sdhci-5.1", "arasan,sdhci-5.1";
-          interrupts = <GIC_SPI 714 IRQ_TYPE_LEVEL_HIGH>;
-          reg = <0x80420000 0x400>;
-          clocks = <&scmi_clk EMMC_XIN_CLK>,
-                   <&scmi_clk EMMC_AXI_CLK>;
-          clock-names = "clk_xin", "clk_ahb";
-          phys = <&emmc_phy>;
-          phy-names = "phy_arasan";
-          assigned-clocks = <&scmi_clk EMMC_XIN_CLK>;
-          clock-output-names = "emmc_cardclock";
-          resets = <&rst_pss1 TBH_PSS_EMMC_RST_N>;
-          #clock-cells = <0x0>;
     };

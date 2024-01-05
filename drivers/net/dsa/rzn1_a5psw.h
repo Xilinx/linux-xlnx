@@ -19,6 +19,7 @@
 #define A5PSW_PORT_OFFSET(port)		(0x400 * (port))
 
 #define A5PSW_PORT_ENA			0x8
+#define A5PSW_PORT_ENA_TX(port)		BIT(port)
 #define A5PSW_PORT_ENA_RX_SHIFT		16
 #define A5PSW_PORT_ENA_TX_RX(port)	(BIT((port) + A5PSW_PORT_ENA_RX_SHIFT) | \
 					 BIT(port))
@@ -36,7 +37,7 @@
 #define A5PSW_INPUT_LEARN_BLOCK(p)	BIT(p)
 
 #define A5PSW_MGMT_CFG			0x20
-#define A5PSW_MGMT_CFG_DISCARD		BIT(7)
+#define A5PSW_MGMT_CFG_ENABLE		BIT(6)
 
 #define A5PSW_MODE_CFG			0x24
 #define A5PSW_MODE_STATS_RESET		BIT(31)
@@ -50,7 +51,9 @@
 #define A5PSW_VLAN_IN_MODE_TAG_ALWAYS		0x2
 
 #define A5PSW_VLAN_OUT_MODE		0x2C
-#define A5PSW_VLAN_OUT_MODE_PORT(port)	(GENMASK(1, 0) << ((port) * 2))
+#define A5PSW_VLAN_OUT_MODE_PORT_SHIFT(port)	((port) * 2)
+#define A5PSW_VLAN_OUT_MODE_PORT(port)	(GENMASK(1, 0) << \
+					A5PSW_VLAN_OUT_MODE_PORT_SHIFT(port))
 #define A5PSW_VLAN_OUT_MODE_DIS		0x0
 #define A5PSW_VLAN_OUT_MODE_STRIP	0x1
 #define A5PSW_VLAN_OUT_MODE_TAG_THROUGH	0x2
@@ -59,7 +62,7 @@
 #define A5PSW_VLAN_IN_MODE_ENA		0x30
 #define A5PSW_VLAN_TAG_ID		0x34
 
-#define A5PSW_SYSTEM_TAGINFO(port)	(0x200 + A5PSW_PORT_OFFSET(port))
+#define A5PSW_SYSTEM_TAGINFO(port)	(0x200 + 4 * (port))
 
 #define A5PSW_AUTH_PORT(port)		(0x240 + 4 * (port))
 #define A5PSW_AUTH_PORT_AUTHORIZED	BIT(0)
@@ -68,7 +71,7 @@
 #define A5PSW_VLAN_RES_WR_PORTMASK	BIT(30)
 #define A5PSW_VLAN_RES_WR_TAGMASK	BIT(29)
 #define A5PSW_VLAN_RES_RD_TAGMASK	BIT(28)
-#define A5PSW_VLAN_RES_ID		GENMASK(16, 5)
+#define A5PSW_VLAN_RES_VLANID		GENMASK(16, 5)
 #define A5PSW_VLAN_RES_PORTMASK		GENMASK(4, 0)
 
 #define A5PSW_RXMATCH_CONFIG(port)	(0x3e80 + 4 * (port))

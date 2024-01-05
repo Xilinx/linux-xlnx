@@ -108,7 +108,7 @@ static void pty_unthrottle(struct tty_struct *tty)
  *	the other side of the pty/tty pair.
  */
 
-static int pty_write(struct tty_struct *tty, const unsigned char *buf, int c)
+static ssize_t pty_write(struct tty_struct *tty, const u8 *buf, size_t c)
 {
 	struct tty_struct *to = tty->link;
 
@@ -931,7 +931,7 @@ static void __init unix98_pty_init(void)
 	if (cdev_add(&ptmx_cdev, MKDEV(TTYAUX_MAJOR, 2), 1) ||
 	    register_chrdev_region(MKDEV(TTYAUX_MAJOR, 2), 1, "/dev/ptmx") < 0)
 		panic("Couldn't register /dev/ptmx driver");
-	device_create(tty_class, NULL, MKDEV(TTYAUX_MAJOR, 2), NULL, "ptmx");
+	device_create(&tty_class, NULL, MKDEV(TTYAUX_MAJOR, 2), NULL, "ptmx");
 }
 
 #else

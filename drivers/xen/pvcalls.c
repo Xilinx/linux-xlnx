@@ -122,7 +122,6 @@ const struct proto_ops pvcalls_stream_ops = {
 	.sendmsg = pvcalls_stream_sendmsg,
 	.recvmsg = pvcalls_stream_recvmsg,
 	.mmap = sock_no_mmap,
-	.sendpage = sock_no_sendpage,
 };
 
 bool pvcalls = false;

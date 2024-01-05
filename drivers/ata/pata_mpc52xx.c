@@ -19,9 +19,10 @@
 #include <linux/gfp.h>
 #include <linux/delay.h>
 #include <linux/libata.h>
+#include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
-#include <linux/of_platform.h>
+#include <linux/platform_device.h>
 #include <linux/types.h>
 
 #include <asm/cacheflush.h>
@@ -606,7 +607,7 @@ mpc52xx_ata_task_irq(int irq, void *vpriv)
 	return IRQ_HANDLED;
 }
 
-static struct scsi_host_template mpc52xx_ata_sht = {
+static const struct scsi_host_template mpc52xx_ata_sht = {
 	ATA_PIO_SHT(DRV_NAME),
 };
 
@@ -731,7 +732,7 @@ static int mpc52xx_ata_probe(struct platform_device *op)
 		udma_mask = ATA_UDMA2 & ((1 << (*prop + 1)) - 1);
 
 	ata_irq = irq_of_parse_and_map(op->dev.of_node, 0);
-	if (ata_irq == NO_IRQ) {
+	if (!ata_irq) {
 		dev_err(&op->dev, "error mapping irq\n");
 		return -EINVAL;
 	}
@@ -800,8 +801,7 @@ static int mpc52xx_ata_probe(struct platform_device *op)
 	return rv;
 }
 
-static int
-mpc52xx_ata_remove(struct platform_device *op)
+static void mpc52xx_ata_remove(struct platform_device *op)
 {
 	struct ata_host *host = platform_get_drvdata(op);
 	struct mpc52xx_ata_priv *priv = host->private_data;
@@ -815,8 +815,6 @@ mpc52xx_ata_remove(struct platform_device *op)
 	irq_dispose_mapping(task_irq);
 	bcom_ata_release(priv->dmatsk);
 	irq_dispose_mapping(priv->ata_irq);
-
-	return 0;
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -857,7 +855,7 @@ static const struct of_device_id mpc52xx_ata_of_match[] = {
 
 static struct platform_driver mpc52xx_ata_of_platform_driver = {
 	.probe		= mpc52xx_ata_probe,
-	.remove		= mpc52xx_ata_remove,
+	.remove_new	= mpc52xx_ata_remove,
 #ifdef CONFIG_PM_SLEEP
 	.suspend	= mpc52xx_ata_suspend,
 	.resume		= mpc52xx_ata_resume,

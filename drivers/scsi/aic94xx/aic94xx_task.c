@@ -50,6 +50,9 @@ static int asd_map_scatterlist(struct sas_task *task,
 		dma_addr_t dma = dma_map_single(&asd_ha->pcidev->dev, p,
 						task->total_xfer_len,
 						task->data_dir);
+		if (dma_mapping_error(&asd_ha->pcidev->dev, dma))
+			return -ENOMEM;
+
 		sg_arr[0].bus_addr = cpu_to_le64((u64)dma);
 		sg_arr[0].size = cpu_to_le32(task->total_xfer_len);
 		sg_arr[0].flags |= ASD_SG_EL_LIST_EOL;
@@ -385,14 +388,9 @@ static int asd_build_ata_ascb(struct asd_ascb *ascb, struct sas_task *task,
 		flags |= data_dir_flags[task->data_dir];
 		scb->ata_task.ata_flags = flags;
 
-		scb->ata_task.retry_count = task->ata_task.retry_count;
+		scb->ata_task.retry_count = 0;
 
-		flags = 0;
-		if (task->ata_task.set_affil_pol)
-			flags |= SET_AFFIL_POLICY;
-		if (task->ata_task.stp_affil_pol)
-			flags |= STP_AFFIL_POLICY;
-		scb->ata_task.flags = flags;
+		scb->ata_task.flags = 0;
 	}
 	ascb->tasklet_complete = asd_task_tasklet_complete;
 
@@ -482,9 +480,6 @@ static int asd_build_ssp_ascb(struct asd_ascb *ascb, struct sas_task *task,
 	scb->ssp_task.ssp_frame.tptt = cpu_to_be16(0xFFFF);
 
 	memcpy(scb->ssp_task.ssp_cmd.lun, task->ssp_task.LUN, 8);
-	if (task->ssp_task.enable_first_burst)
-		scb->ssp_task.ssp_cmd.efb_prio_attr |= EFB_MASK;
-	scb->ssp_task.ssp_cmd.efb_prio_attr |= (task->ssp_task.task_prio << 3);
 	scb->ssp_task.ssp_cmd.efb_prio_attr |= (task->ssp_task.task_attr & 7);
 	memcpy(scb->ssp_task.ssp_cmd.cdb, task->ssp_task.cmd->cmnd,
 	       task->ssp_task.cmd->cmd_len);

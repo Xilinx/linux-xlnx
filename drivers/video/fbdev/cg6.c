@@ -17,7 +17,8 @@
 #include <linux/init.h>
 #include <linux/fb.h>
 #include <linux/mm.h>
-#include <linux/of_device.h>
+#include <linux/of.h>
+#include <linux/platform_device.h>
 
 #include <asm/io.h>
 #include <asm/fbio.h>
@@ -782,7 +783,7 @@ static int cg6_probe(struct platform_device *op)
 	par->fhc = of_ioremap(&op->resource[0], CG6_FHC_OFFSET,
 				sizeof(u32), "cgsix fhc");
 
-	info->flags = FBINFO_DEFAULT | FBINFO_HWACCEL_IMAGEBLIT |
+	info->flags = FBINFO_HWACCEL_IMAGEBLIT |
 			FBINFO_HWACCEL_COPYAREA | FBINFO_HWACCEL_FILLRECT |
 			FBINFO_READS_FAST;
 	info->fbops = &cg6_ops;
@@ -828,7 +829,7 @@ out_err:
 	return err;
 }
 
-static int cg6_remove(struct platform_device *op)
+static void cg6_remove(struct platform_device *op)
 {
 	struct fb_info *info = dev_get_drvdata(&op->dev);
 	struct cg6_par *par = info->par;
@@ -839,8 +840,6 @@ static int cg6_remove(struct platform_device *op)
 	cg6_unmap_regs(op, info, par);
 
 	framebuffer_release(info);
-
-	return 0;
 }
 
 static const struct of_device_id cg6_match[] = {
@@ -860,7 +859,7 @@ static struct platform_driver cg6_driver = {
 		.of_match_table = cg6_match,
 	},
 	.probe		= cg6_probe,
-	.remove		= cg6_remove,
+	.remove_new	= cg6_remove,
 };
 
 static int __init cg6_init(void)

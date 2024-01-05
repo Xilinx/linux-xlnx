@@ -748,13 +748,12 @@ static void __s1d13xxxfb_remove(struct platform_device *pdev)
 			   resource_size(&pdev->resource[1]));
 }
 
-static int s1d13xxxfb_remove(struct platform_device *pdev)
+static void s1d13xxxfb_remove(struct platform_device *pdev)
 {
 	struct fb_info *info = platform_get_drvdata(pdev);
 
 	unregister_framebuffer(info);
 	__s1d13xxxfb_remove(pdev);
-	return 0;
 }
 
 static int s1d13xxxfb_probe(struct platform_device *pdev)
@@ -870,14 +869,14 @@ static int s1d13xxxfb_probe(struct platform_device *pdev)
 	       default_par->regs, info->fix.smem_len / 1024, info->screen_base);
 
 	info->par = default_par;
-	info->flags = FBINFO_DEFAULT | FBINFO_HWACCEL_YPAN;
+	info->flags = FBINFO_HWACCEL_YPAN;
 	info->fbops = &s1d13xxxfb_fbops;
 
 	switch(prod_id) {
 	case S1D13506_PROD_ID:	/* activate acceleration */
 		s1d13xxxfb_fbops.fb_fillrect = s1d13xxxfb_bitblt_solidfill;
 		s1d13xxxfb_fbops.fb_copyarea = s1d13xxxfb_bitblt_copyarea;
-		info->flags = FBINFO_DEFAULT | FBINFO_HWACCEL_YPAN |
+		info->flags = FBINFO_HWACCEL_YPAN |
 			FBINFO_HWACCEL_FILLRECT | FBINFO_HWACCEL_COPYAREA;
 		break;
 	default:
@@ -995,7 +994,7 @@ static int s1d13xxxfb_resume(struct platform_device *dev)
 
 static struct platform_driver s1d13xxxfb_driver = {
 	.probe		= s1d13xxxfb_probe,
-	.remove		= s1d13xxxfb_remove,
+	.remove_new	= s1d13xxxfb_remove,
 #ifdef CONFIG_PM
 	.suspend	= s1d13xxxfb_suspend,
 	.resume		= s1d13xxxfb_resume,

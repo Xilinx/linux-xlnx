@@ -14,7 +14,7 @@
 #include <linux/init.h>
 #include <linux/mfd/syscon.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
+#include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/reset.h>
@@ -280,11 +280,6 @@ struct inno_mipi_dphy_timing inno_mipi_dphy_timing_table_max_2_5ghz[] = {
 	{2400000000, 0x13, 0x33, 0x7f, 0x15, 0x6a},
 	{2500000000, 0x15, 0x54, 0x7f, 0x15, 0x6a},
 };
-
-static inline struct inno_dsidphy *hw_to_inno(struct clk_hw *hw)
-{
-	return container_of(hw, struct inno_dsidphy, pll.hw);
-}
 
 static void phy_update_bits(struct inno_dsidphy *inno,
 			    u8 first, u8 second, u8 mask, u8 val)
@@ -755,13 +750,11 @@ static int inno_dsidphy_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int inno_dsidphy_remove(struct platform_device *pdev)
+static void inno_dsidphy_remove(struct platform_device *pdev)
 {
 	struct inno_dsidphy *inno = platform_get_drvdata(pdev);
 
 	pm_runtime_disable(inno->dev);
-
-	return 0;
 }
 
 static const struct of_device_id inno_dsidphy_of_match[] = {
@@ -777,6 +770,9 @@ static const struct of_device_id inno_dsidphy_of_match[] = {
 	}, {
 		.compatible = "rockchip,rk3568-dsi-dphy",
 		.data = &max_2_5ghz_video_phy_plat_data,
+	}, {
+		.compatible = "rockchip,rv1126-dsi-dphy",
+		.data = &max_2_5ghz_video_phy_plat_data,
 	},
 	{}
 };
@@ -788,7 +784,7 @@ static struct platform_driver inno_dsidphy_driver = {
 		.of_match_table	= of_match_ptr(inno_dsidphy_of_match),
 	},
 	.probe = inno_dsidphy_probe,
-	.remove = inno_dsidphy_remove,
+	.remove_new = inno_dsidphy_remove,
 };
 module_platform_driver(inno_dsidphy_driver);
 

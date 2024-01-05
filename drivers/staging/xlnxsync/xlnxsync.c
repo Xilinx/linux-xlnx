@@ -1453,7 +1453,7 @@ static int __init xlnxsync_init_mod(void)
 {
 	int err;
 
-	xlnxsync_class = class_create(THIS_MODULE, XLNXSYNC_DRIVER_NAME);
+	xlnxsync_class = class_create(XLNXSYNC_DRIVER_NAME);
 	if (IS_ERR(xlnxsync_class)) {
 		pr_err("%s : Unable to create xlnxsync class", __func__);
 		return PTR_ERR(xlnxsync_class);

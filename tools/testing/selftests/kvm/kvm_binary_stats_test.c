@@ -19,6 +19,7 @@
 #include "kvm_util.h"
 #include "asm/kvm.h"
 #include "linux/kvm.h"
+#include "kselftest.h"
 
 static void stats_test(int stats_fd)
 {
@@ -42,8 +43,10 @@ static void stats_test(int stats_fd)
 	id = malloc(header.name_size);
 	TEST_ASSERT(id, "Allocate memory for id string");
 
-	ret = read(stats_fd, id, header.name_size);
-	TEST_ASSERT(ret == header.name_size, "Read id string");
+	ret = pread(stats_fd, id, header.name_size, sizeof(header));
+	TEST_ASSERT(ret == header.name_size,
+		    "Expected header size '%u', read '%lu' bytes",
+		    header.name_size, ret);
 
 	/* Check id string, that should start with "kvm" */
 	TEST_ASSERT(!strncmp(id, "kvm", 3) && strlen(id) < header.name_size,
@@ -51,7 +54,7 @@ static void stats_test(int stats_fd)
 
 	/* Sanity check for other fields in header */
 	if (header.num_desc == 0) {
-		printf("No KVM stats defined!");
+		ksft_print_msg("No KVM stats defined!\n");
 		return;
 	}
 	/*
@@ -133,7 +136,7 @@ static void stats_test(int stats_fd)
 				    "Bucket size of stats (%s) is not zero",
 				    pdesc->name);
 		}
-		size_data += pdesc->size * sizeof(*stats_data);
+		size_data = max(size_data, pdesc->offset + pdesc->size * sizeof(*stats_data));
 	}
 
 	/*
@@ -147,14 +150,6 @@ static void stats_test(int stats_fd)
 	/* Check validity of all stats data size */
 	TEST_ASSERT(size_data >= header.num_desc * sizeof(*stats_data),
 		    "Data size is not correct");
-
-	/* Check stats offset */
-	for (i = 0; i < header.num_desc; ++i) {
-		pdesc = get_stats_descriptor(stats_desc, i, &header);
-		TEST_ASSERT(pdesc->offset < size_data,
-			    "Invalid offset (%u) for stats: %s",
-			    pdesc->offset, pdesc->name);
-	}
 
 	/* Allocate memory for stats data */
 	stats_data = malloc(size_data);
@@ -172,23 +167,7 @@ static void stats_test(int stats_fd)
 	free(stats_data);
 	free(stats_desc);
 	free(id);
-}
 
-
-static void vm_stats_test(struct kvm_vm *vm)
-{
-	int stats_fd = vm_get_stats_fd(vm);
-
-	stats_test(stats_fd);
-	close(stats_fd);
-	TEST_ASSERT(fcntl(stats_fd, F_GETFD) == -1, "Stats fd not freed");
-}
-
-static void vcpu_stats_test(struct kvm_vcpu *vcpu)
-{
-	int stats_fd = vcpu_get_stats_fd(vcpu);
-
-	stats_test(stats_fd);
 	close(stats_fd);
 	TEST_ASSERT(fcntl(stats_fd, F_GETFD) == -1, "Stats fd not freed");
 }
@@ -206,6 +185,7 @@ static void vcpu_stats_test(struct kvm_vcpu *vcpu)
 
 int main(int argc, char *argv[])
 {
+	int vm_stats_fds, *vcpu_stats_fds;
 	int i, j;
 	struct kvm_vcpu **vcpus;
 	struct kvm_vm **vms;
@@ -224,8 +204,12 @@ int main(int argc, char *argv[])
 			max_vcpu = DEFAULT_NUM_VCPU;
 	}
 
+	ksft_print_header();
+
 	/* Check the extension for binary stats */
 	TEST_REQUIRE(kvm_has_cap(KVM_CAP_BINARY_STATS_FD));
+
+	ksft_set_plan(max_vm);
 
 	/* Create VMs and VCPUs */
 	vms = malloc(sizeof(vms[0]) * max_vm);
@@ -234,21 +218,58 @@ int main(int argc, char *argv[])
 	vcpus = malloc(sizeof(struct kvm_vcpu *) * max_vm * max_vcpu);
 	TEST_ASSERT(vcpus, "Allocate memory for storing vCPU pointers");
 
+	/*
+	 * Not per-VM as the array is populated, used, and invalidated within a
+	 * single for-loop iteration.
+	 */
+	vcpu_stats_fds = calloc(max_vm, sizeof(*vcpu_stats_fds));
+	TEST_ASSERT(vcpu_stats_fds, "Allocate memory for VM stats fds");
+
 	for (i = 0; i < max_vm; ++i) {
 		vms[i] = vm_create_barebones();
 		for (j = 0; j < max_vcpu; ++j)
 			vcpus[i * max_vcpu + j] = __vm_vcpu_add(vms[i], j);
 	}
 
-	/* Check stats read for every VM and VCPU */
+	/*
+	 * Check stats read for every VM and vCPU, with a variety of flavors.
+	 * Note, stats_test() closes the passed in stats fd.
+	 */
 	for (i = 0; i < max_vm; ++i) {
-		vm_stats_test(vms[i]);
+		/*
+		 * Verify that creating multiple userspace references to a
+		 * single stats file works and doesn't cause explosions.
+		 */
+		vm_stats_fds = vm_get_stats_fd(vms[i]);
+		stats_test(dup(vm_stats_fds));
+
+		/* Verify userspace can instantiate multiple stats files. */
+		stats_test(vm_get_stats_fd(vms[i]));
+
+		for (j = 0; j < max_vcpu; ++j) {
+			vcpu_stats_fds[j] = vcpu_get_stats_fd(vcpus[i * max_vcpu + j]);
+			stats_test(dup(vcpu_stats_fds[j]));
+			stats_test(vcpu_get_stats_fd(vcpus[i * max_vcpu + j]));
+		}
+
+		/*
+		 * Close the VM fd and redo the stats tests.  KVM should gift a
+		 * reference (to the VM) to each stats fd, i.e. stats should
+		 * still be accessible even after userspace has put its last
+		 * _direct_ reference to the VM.
+		 */
+		kvm_vm_free(vms[i]);
+
+		stats_test(vm_stats_fds);
 		for (j = 0; j < max_vcpu; ++j)
-			vcpu_stats_test(vcpus[i * max_vcpu + j]);
+			stats_test(vcpu_stats_fds[j]);
+
+		ksft_test_result_pass("vm%i\n", i);
 	}
 
-	for (i = 0; i < max_vm; ++i)
-		kvm_vm_free(vms[i]);
 	free(vms);
-	return 0;
+	free(vcpus);
+	free(vcpu_stats_fds);
+
+	ksft_finished();	/* Print results and exit() accordingly */
 }

@@ -244,9 +244,9 @@ static int esp_output_tail_tcp(struct xfrm_state *x, struct sk_buff *skb)
 }
 #endif
 
-static void esp_output_done(struct crypto_async_request *base, int err)
+static void esp_output_done(void *data, int err)
 {
-	struct sk_buff *skb = base->data;
+	struct sk_buff *skb = data;
 	struct xfrm_offload *xo = xfrm_offload(skb);
 	void *tmp;
 	struct xfrm_state *x;
@@ -332,12 +332,12 @@ static struct ip_esp_hdr *esp_output_set_extra(struct sk_buff *skb,
 	return esph;
 }
 
-static void esp_output_done_esn(struct crypto_async_request *base, int err)
+static void esp_output_done_esn(void *data, int err)
 {
-	struct sk_buff *skb = base->data;
+	struct sk_buff *skb = data;
 
 	esp_output_restore_header(skb);
-	esp_output_done(base, err);
+	esp_output_done(data, err);
 }
 
 static struct ip_esp_hdr *esp_output_udp_encap(struct sk_buff *skb,
@@ -732,7 +732,9 @@ static inline int esp_remove_trailer(struct sk_buff *skb)
 		skb->csum = csum_block_sub(skb->csum, csumdiff,
 					   skb->len - trimlen);
 	}
-	pskb_trim(skb, skb->len - trimlen);
+	ret = pskb_trim(skb, skb->len - trimlen);
+	if (unlikely(ret))
+		return ret;
 
 	ret = nexthdr[1];
 
@@ -784,7 +786,7 @@ int esp_input_done2(struct sk_buff *skb, int err)
 
 		/*
 		 * 1) if the NAT-T peer's IP or port changed then
-		 *    advertize the change to the keying daemon.
+		 *    advertise the change to the keying daemon.
 		 *    This is an inbound SA, so just compare
 		 *    SRC ports.
 		 */
@@ -830,9 +832,9 @@ out:
 }
 EXPORT_SYMBOL_GPL(esp_input_done2);
 
-static void esp_input_done(struct crypto_async_request *base, int err)
+static void esp_input_done(void *data, int err)
 {
-	struct sk_buff *skb = base->data;
+	struct sk_buff *skb = data;
 
 	xfrm_input_resume(skb, esp_input_done2(skb, err));
 }
@@ -860,12 +862,12 @@ static void esp_input_set_header(struct sk_buff *skb, __be32 *seqhi)
 	}
 }
 
-static void esp_input_done_esn(struct crypto_async_request *base, int err)
+static void esp_input_done_esn(void *data, int err)
 {
-	struct sk_buff *skb = base->data;
+	struct sk_buff *skb = data;
 
 	esp_input_restore_header(skb);
-	esp_input_done(base, err);
+	esp_input_done(data, err);
 }
 
 /*
@@ -1132,7 +1134,7 @@ static int esp_init_authenc(struct xfrm_state *x,
 	err = crypto_aead_setkey(aead, key, keylen);
 
 free_key:
-	kfree(key);
+	kfree_sensitive(key);
 
 error:
 	return err;

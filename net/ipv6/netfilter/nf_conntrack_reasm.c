@@ -87,7 +87,8 @@ static int nf_ct_frag6_sysctl_register(struct net *net)
 	table[2].data	= &nf_frag->fqdir->high_thresh;
 	table[2].extra1	= &nf_frag->fqdir->low_thresh;
 
-	hdr = register_net_sysctl(net, "net/netfilter", table);
+	hdr = register_net_sysctl_sz(net, "net/netfilter", table,
+				     ARRAY_SIZE(nf_ct_frag6_sysctl_table));
 	if (hdr == NULL)
 		goto err_reg;
 
@@ -253,7 +254,7 @@ static int nf_ct_frag6_queue(struct frag_queue *fq, struct sk_buff *skb,
 	if (err) {
 		if (err == IPFRAG_DUP) {
 			/* No error for duplicates, pretend they got queued. */
-			kfree_skb(skb);
+			kfree_skb_reason(skb, SKB_DROP_REASON_DUP_FRAG);
 			return -EINPROGRESS;
 		}
 		goto insert_error;

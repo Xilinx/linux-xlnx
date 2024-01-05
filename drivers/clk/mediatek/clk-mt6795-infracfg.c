@@ -81,6 +81,7 @@ static const struct of_device_id of_match_clk_mt6795_infracfg[] = {
 	{ .compatible = "mediatek,mt6795-infracfg" },
 	{ /* sentinel */ }
 };
+MODULE_DEVICE_TABLE(of, of_match_clk_mt6795_infracfg);
 
 static int clk_mt6795_infracfg_probe(struct platform_device *pdev)
 {
@@ -101,11 +102,13 @@ static int clk_mt6795_infracfg_probe(struct platform_device *pdev)
 	if (ret)
 		goto free_clk_data;
 
-	ret = mtk_clk_register_gates(node, infra_gates, ARRAY_SIZE(infra_gates), clk_data);
+	ret = mtk_clk_register_gates(&pdev->dev, node, infra_gates,
+				     ARRAY_SIZE(infra_gates), clk_data);
 	if (ret)
 		goto free_clk_data;
 
-	ret = mtk_clk_register_cpumuxes(node, cpu_muxes, ARRAY_SIZE(cpu_muxes), clk_data);
+	ret = mtk_clk_register_cpumuxes(&pdev->dev, node, cpu_muxes,
+					ARRAY_SIZE(cpu_muxes), clk_data);
 	if (ret)
 		goto unregister_gates;
 
@@ -124,7 +127,7 @@ free_clk_data:
 	return ret;
 }
 
-static int clk_mt6795_infracfg_remove(struct platform_device *pdev)
+static void clk_mt6795_infracfg_remove(struct platform_device *pdev)
 {
 	struct device_node *node = pdev->dev.of_node;
 	struct clk_hw_onecell_data *clk_data = platform_get_drvdata(pdev);
@@ -133,8 +136,6 @@ static int clk_mt6795_infracfg_remove(struct platform_device *pdev)
 	mtk_clk_unregister_cpumuxes(cpu_muxes, ARRAY_SIZE(cpu_muxes), clk_data);
 	mtk_clk_unregister_gates(infra_gates, ARRAY_SIZE(infra_gates), clk_data);
 	mtk_free_clk_data(clk_data);
-
-	return 0;
 }
 
 static struct platform_driver clk_mt6795_infracfg_drv = {
@@ -143,7 +144,7 @@ static struct platform_driver clk_mt6795_infracfg_drv = {
 		.of_match_table = of_match_clk_mt6795_infracfg,
 	},
 	.probe = clk_mt6795_infracfg_probe,
-	.remove = clk_mt6795_infracfg_remove,
+	.remove_new = clk_mt6795_infracfg_remove,
 };
 module_platform_driver(clk_mt6795_infracfg_drv);
 

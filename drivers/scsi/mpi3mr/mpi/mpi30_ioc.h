@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
- *  Copyright 2016-2022 Broadcom Inc. All rights reserved.
+ *  Copyright 2016-2023 Broadcom Inc. All rights reserved.
  */
 #ifndef MPI30_IOC_H
 #define MPI30_IOC_H     1
@@ -600,6 +600,7 @@ struct mpi3_event_data_pcie_error_threshold {
 	__le16                                 threshold_count;
 	__le16                                 attached_dev_handle;
 	__le16                                 reserved12;
+	__le32                                 reserved14;
 };
 
 #define MPI3_EVENT_PCI_ERROR_RC_THRESHOLD_EXCEEDED          (0x00)

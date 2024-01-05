@@ -34,6 +34,10 @@ properties:
           - const: mediatek,mt7623-smi-larb
           - const: mediatek,mt2701-smi-larb
 
+      - items:
+          - const: mediatek,mt8365-smi-larb
+          - const: mediatek,mt8186-smi-larb
+
   reg:
     maxItems: 1
 
@@ -63,7 +67,7 @@ properties:
     minimum: 0
     maximum: 31
     description: the hardware id of this larb. It's only required when this
-      hardward id is not consecutive from its M4U point of view.
+      hardware id is not consecutive from its M4U point of view.
 
 required:
   - compatible

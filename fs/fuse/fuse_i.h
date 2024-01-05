@@ -88,6 +88,9 @@ struct fuse_inode {
 	    preserve the original mode */
 	umode_t orig_i_mode;
 
+	/* Cache birthtime */
+	struct timespec64 i_btime;
+
 	/** 64 bit inode number */
 	u64 orig_ino;
 
@@ -167,6 +170,8 @@ enum {
 	FUSE_I_SIZE_UNSTABLE,
 	/* Bad inode */
 	FUSE_I_BAD,
+	/* Has btime */
+	FUSE_I_BTIME,
 };
 
 struct fuse_conn;
@@ -249,8 +254,9 @@ struct fuse_page_desc {
 struct fuse_args {
 	uint64_t nodeid;
 	uint32_t opcode;
-	unsigned short in_numargs;
-	unsigned short out_numargs;
+	uint8_t in_numargs;
+	uint8_t out_numargs;
+	uint8_t ext_idx;
 	bool force:1;
 	bool noreply:1;
 	bool nocreds:1;
@@ -261,6 +267,7 @@ struct fuse_args {
 	bool page_zeroing:1;
 	bool page_replace:1;
 	bool may_block:1;
+	bool is_ext:1;
 	struct fuse_in_arg in_args[3];
 	struct fuse_arg out_args[2];
 	void (*end)(struct fuse_mount *fm, struct fuse_args *args, int error);
@@ -781,11 +788,20 @@ struct fuse_conn {
 	/* Initialize security xattrs when creating a new inode */
 	unsigned int init_security:1;
 
+	/* Add supplementary group info when creating a new inode */
+	unsigned int create_supp_group:1;
+
 	/* Does the filesystem support per inode DAX? */
 	unsigned int inode_dax:1;
 
 	/* Is tmpfile not implemented by fs? */
 	unsigned int no_tmpfile:1;
+
+	/* relax restrictions in FOPEN_DIRECT_IO mode */
+	unsigned int direct_io_relax:1;
+
+	/* Is statx not implemented by fs? */
+	unsigned int no_statx:1;
 
 	/** The number of requests waiting for completion */
 	atomic_t num_waiting;
@@ -1053,9 +1069,11 @@ void fuse_init_symlink(struct inode *inode);
  * Change attributes of an inode
  */
 void fuse_change_attributes(struct inode *inode, struct fuse_attr *attr,
+			    struct fuse_statx *sx,
 			    u64 attr_valid, u64 attr_version);
 
 void fuse_change_attributes_common(struct inode *inode, struct fuse_attr *attr,
+				   struct fuse_statx *sx,
 				   u64 attr_valid, u32 cache_mask);
 
 u32 fuse_get_cache_mask(struct inode *inode);
@@ -1106,7 +1124,10 @@ void fuse_invalidate_entry_cache(struct dentry *entry);
 
 void fuse_invalidate_atime(struct inode *inode);
 
-u64 entry_attr_timeout(struct fuse_entry_out *o);
+u64 fuse_time_to_jiffies(u64 sec, u32 nsec);
+#define ATTR_TIMEOUT(o) \
+	fuse_time_to_jiffies((o)->attr_valid, (o)->attr_valid_nsec)
+
 void fuse_change_entry_timeout(struct dentry *entry, struct fuse_entry_out *o);
 
 /**
@@ -1179,7 +1200,7 @@ bool fuse_invalid_attr(struct fuse_attr *attr);
 /**
  * Is current process allowed to perform filesystem operation?
  */
-int fuse_allow_current_process(struct fuse_conn *fc);
+bool fuse_allow_current_process(struct fuse_conn *fc);
 
 u64 fuse_lock_owner_id(struct fuse_conn *fc, fl_owner_t id);
 
@@ -1220,7 +1241,7 @@ int fuse_reverse_inval_inode(struct fuse_conn *fc, u64 nodeid,
  * then the dentry is unhashed (d_delete()).
  */
 int fuse_reverse_inval_entry(struct fuse_conn *fc, u64 parent_nodeid,
-			     u64 child_nodeid, struct qstr *name);
+			     u64 child_nodeid, struct qstr *name, u32 flags);
 
 int fuse_do_open(struct fuse_mount *fm, u64 nodeid, struct file *file,
 		 bool isdir);
@@ -1264,12 +1285,12 @@ ssize_t fuse_getxattr(struct inode *inode, const char *name, void *value,
 ssize_t fuse_listxattr(struct dentry *entry, char *list, size_t size);
 int fuse_removexattr(struct inode *inode, const char *name);
 extern const struct xattr_handler *fuse_xattr_handlers[];
-extern const struct xattr_handler *fuse_acl_xattr_handlers[];
-extern const struct xattr_handler *fuse_no_acl_xattr_handlers[];
 
 struct posix_acl;
-struct posix_acl *fuse_get_acl(struct inode *inode, int type, bool rcu);
-int fuse_set_acl(struct user_namespace *mnt_userns, struct inode *inode,
+struct posix_acl *fuse_get_inode_acl(struct inode *inode, int type, bool rcu);
+struct posix_acl *fuse_get_acl(struct mnt_idmap *idmap,
+			       struct dentry *dentry, int type);
+int fuse_set_acl(struct mnt_idmap *, struct dentry *dentry,
 		 struct posix_acl *acl, int type);
 
 /* readdir.c */
@@ -1309,7 +1330,7 @@ long fuse_file_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
 long fuse_file_compat_ioctl(struct file *file, unsigned int cmd,
 			    unsigned long arg);
 int fuse_fileattr_get(struct dentry *dentry, struct fileattr *fa);
-int fuse_fileattr_set(struct user_namespace *mnt_userns,
+int fuse_fileattr_set(struct mnt_idmap *idmap,
 		      struct dentry *dentry, struct fileattr *fa);
 
 /* file.c */

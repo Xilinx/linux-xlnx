@@ -59,7 +59,9 @@ xvip_dma_remote_subdev(struct media_pad *local, u32 *pad)
 
 static int xvip_dma_verify_format(struct xvip_dma *dma)
 {
-	struct v4l2_subdev_format fmt;
+	struct v4l2_subdev_format fmt = {
+		.which = V4L2_SUBDEV_FORMAT_ACTIVE,
+	};
 	struct v4l2_subdev *subdev;
 	int ret;
 
@@ -67,7 +69,6 @@ static int xvip_dma_verify_format(struct xvip_dma *dma)
 	if (!subdev)
 		return -EPIPE;
 
-	fmt.which = V4L2_SUBDEV_FORMAT_ACTIVE;
 	ret = v4l2_subdev_call(subdev, pad, get_fmt, NULL, &fmt);
 	if (ret < 0)
 		return ret == -ENOIOCTLCMD ? -EINVAL : ret;
@@ -144,41 +145,25 @@ done:
 static int xvip_pipeline_validate(struct xvip_pipeline *pipe,
 				  struct xvip_dma *start)
 {
-	struct media_graph graph;
-	struct media_entity *entity = &start->video.entity;
-	struct media_device *mdev = entity->graph_obj.mdev;
+	struct media_pipeline_pad_iter iter;
 	unsigned int num_inputs = 0;
 	unsigned int num_outputs = 0;
-	int ret;
+	struct media_pad *pad;
 
-	mutex_lock(&mdev->graph_mutex);
-
-	/* Walk the graph to locate the video nodes. */
-	ret = media_graph_walk_init(&graph, mdev);
-	if (ret) {
-		mutex_unlock(&mdev->graph_mutex);
-		return ret;
-	}
-
-	media_graph_walk_start(&graph, entity);
-
-	while ((entity = media_graph_walk_next(&graph))) {
+	/* Locate the video nodes in the pipeline. */
+	media_pipeline_for_each_pad(&pipe->pipe, &iter, pad) {
 		struct xvip_dma *dma;
 
-		if (entity->function != MEDIA_ENT_F_IO_V4L)
+		if (pad->entity->function != MEDIA_ENT_F_IO_V4L)
 			continue;
 
-		dma = to_xvip_dma(media_entity_to_video_device(entity));
+		dma = to_xvip_dma(media_entity_to_video_device(pad->entity));
 
 		if (dma->pad.flags & MEDIA_PAD_FL_SINK)
 			num_outputs++;
 		else
 			num_inputs++;
 	}
-
-	mutex_unlock(&mdev->graph_mutex);
-
-	media_graph_walk_cleanup(&graph);
 
 	/* We need at least one DMA to proceed */
 	if (num_outputs == 0 && num_inputs == 0)

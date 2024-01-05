@@ -89,6 +89,7 @@ static const struct of_device_id of_match_clk_mt6795_pericfg[] = {
 	{ .compatible = "mediatek,mt6795-pericfg" },
 	{ /* sentinel */ }
 };
+MODULE_DEVICE_TABLE(of, of_match_clk_mt6795_pericfg);
 
 static int clk_mt6795_pericfg_probe(struct platform_device *pdev)
 {
@@ -109,11 +110,13 @@ static int clk_mt6795_pericfg_probe(struct platform_device *pdev)
 	if (ret)
 		goto free_clk_data;
 
-	ret = mtk_clk_register_gates(node, peri_gates, ARRAY_SIZE(peri_gates), clk_data);
+	ret = mtk_clk_register_gates(&pdev->dev, node, peri_gates,
+				     ARRAY_SIZE(peri_gates), clk_data);
 	if (ret)
 		goto free_clk_data;
 
-	ret = mtk_clk_register_composites(peri_clks, ARRAY_SIZE(peri_clks), base,
+	ret = mtk_clk_register_composites(&pdev->dev, peri_clks,
+					  ARRAY_SIZE(peri_clks), base,
 					  &mt6795_peri_clk_lock, clk_data);
 	if (ret)
 		goto unregister_gates;
@@ -133,7 +136,7 @@ free_clk_data:
 	return ret;
 }
 
-static int clk_mt6795_pericfg_remove(struct platform_device *pdev)
+static void clk_mt6795_pericfg_remove(struct platform_device *pdev)
 {
 	struct device_node *node = pdev->dev.of_node;
 	struct clk_hw_onecell_data *clk_data = platform_get_drvdata(pdev);
@@ -142,8 +145,6 @@ static int clk_mt6795_pericfg_remove(struct platform_device *pdev)
 	mtk_clk_unregister_composites(peri_clks, ARRAY_SIZE(peri_clks), clk_data);
 	mtk_clk_unregister_gates(peri_gates, ARRAY_SIZE(peri_gates), clk_data);
 	mtk_free_clk_data(clk_data);
-
-	return 0;
 }
 
 static struct platform_driver clk_mt6795_pericfg_drv = {
@@ -152,7 +153,7 @@ static struct platform_driver clk_mt6795_pericfg_drv = {
 		.of_match_table = of_match_clk_mt6795_pericfg,
 	},
 	.probe = clk_mt6795_pericfg_probe,
-	.remove = clk_mt6795_pericfg_remove,
+	.remove_new = clk_mt6795_pericfg_remove,
 };
 module_platform_driver(clk_mt6795_pericfg_drv);
 

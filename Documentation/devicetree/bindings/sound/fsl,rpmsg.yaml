@@ -11,8 +11,14 @@ maintainers:
 
 description: |
   fsl_rpmsg is a virtual audio device. Mapping to real hardware devices
-  are SAI, DMA controlled by Cortex M core. What we see from Linux
-  side is a device which provides audio service by rpmsg channel.
+  are SAI, MICFIL, DMA controlled by Cortex M core. What we see from
+  Linux side is a device which provides audio service by rpmsg channel.
+  We can create different sound cards which access different hardwares
+  such as SAI, MICFIL, .etc through building rpmsg channels between
+  Cortex-A and Cortex-M.
+
+allOf:
+  - $ref: sound-card-common.yaml#
 
 properties:
   compatible:
@@ -22,10 +28,7 @@ properties:
       - fsl,imx8mm-rpmsg-audio
       - fsl,imx8mp-rpmsg-audio
       - fsl,imx8ulp-rpmsg-audio
-
-  model:
-    $ref: /schemas/types.yaml#/definitions/string
-    description: User specified audio sound card name
+      - fsl,imx93-rpmsg-audio
 
   clocks:
     items:
@@ -62,13 +65,6 @@ properties:
     $ref: /schemas/types.yaml#/definitions/phandle
     description: The phandle to a node of audio codec
 
-  audio-routing:
-    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
-    description: |
-      A list of the connections between audio components. Each entry is a
-      pair of strings, the first being the connection's sink, the second
-      being the connection's source.
-
   fsl,enable-lpa:
     $ref: /schemas/types.yaml#/definitions/flag
     description: enable low power audio path.
@@ -85,11 +81,20 @@ properties:
       This is a boolean property. If present, the receiving function
       will be enabled.
 
+  fsl,rpmsg-channel-name:
+    $ref: /schemas/types.yaml#/definitions/string
+    description: |
+      A string property to assign rpmsg channel this sound card sits on.
+      This property can be omitted if there is only one sound card and it sits
+      on "rpmsg-audio-channel".
+    enum:
+      - rpmsg-audio-channel
+      - rpmsg-micfil-channel
+
 required:
   - compatible
-  - model
 
-additionalProperties: false
+unevaluatedProperties: false
 
 examples:
   - |
@@ -107,3 +112,22 @@ examples:
                  <&clk IMX8MN_AUDIO_PLL2_OUT>;
         clock-names = "ipg", "mclk", "dma", "pll8k", "pll11k";
     };
+
+  - |
+    #include <dt-bindings/clock/imx8mm-clock.h>
+
+    rpmsg_micfil: audio-controller {
+        compatible = "fsl,imx8mm-rpmsg-audio";
+        model = "micfil-audio";
+        fsl,rpmsg-channel-name = "rpmsg-micfil-channel";
+        fsl,enable-lpa;
+        fsl,rpmsg-in;
+        clocks = <&clk IMX8MM_CLK_PDM_IPG>,
+                 <&clk IMX8MM_CLK_PDM_ROOT>,
+                 <&clk IMX8MM_CLK_SDMA3_ROOT>,
+                 <&clk IMX8MM_AUDIO_PLL1_OUT>,
+                 <&clk IMX8MM_AUDIO_PLL2_OUT>;
+        clock-names = "ipg", "mclk", "dma", "pll8k", "pll11k";
+    };
+
+...

@@ -1500,7 +1500,7 @@ static void mvumi_rescan_devices(struct mvumi_hba *mhba, int id)
 
 	sdev = scsi_device_lookup(mhba->shost, 0, id, 0);
 	if (sdev) {
-		scsi_rescan_device(&sdev->sdev_gendev);
+		scsi_rescan_device(sdev);
 		scsi_device_put(sdev);
 	}
 }
@@ -1841,7 +1841,7 @@ static enum mvumi_qc_result mvumi_send_command(struct mvumi_hba *mhba,
 	cmd->frame->request_id = mhba->io_seq++;
 	cmd->request_id = cmd->frame->request_id;
 	mhba->tag_cmd[cmd->frame->tag] = cmd;
-	frame_len = sizeof(*ib_frame) - 4 +
+	frame_len = sizeof(*ib_frame) +
 				ib_frame->sg_counts * sizeof(struct mvumi_sgl);
 	if (mhba->hba_capability & HS_CAPABILITY_SUPPORT_DYN_SRC) {
 		struct mvumi_dyn_list_entry *dle;
@@ -2109,7 +2109,7 @@ out_return_cmd:
 	return 0;
 }
 
-static enum blk_eh_timer_return mvumi_timed_out(struct scsi_cmnd *scmd)
+static enum scsi_timeout_action mvumi_timed_out(struct scsi_cmnd *scmd)
 {
 	struct mvumi_cmd *cmd = mvumi_priv(scmd)->cmd_priv;
 	struct Scsi_Host *host = scmd->device->host;
@@ -2137,7 +2137,7 @@ static enum blk_eh_timer_return mvumi_timed_out(struct scsi_cmnd *scmd)
 	mvumi_return_cmd(mhba, cmd);
 	spin_unlock_irqrestore(mhba->shost->host_lock, flags);
 
-	return BLK_EH_DONE;
+	return SCSI_EH_NOT_HANDLED;
 }
 
 static int
@@ -2168,7 +2168,7 @@ mvumi_bios_param(struct scsi_device *sdev, struct block_device *bdev,
 	return 0;
 }
 
-static struct scsi_host_template mvumi_template = {
+static const struct scsi_host_template mvumi_template = {
 
 	.module = THIS_MODULE,
 	.name = "Marvell Storage Controller",
@@ -2387,7 +2387,7 @@ static int mvumi_io_attach(struct mvumi_hba *mhba)
 	struct Scsi_Host *host = mhba->shost;
 	struct scsi_device *sdev = NULL;
 	int ret;
-	unsigned int max_sg = (mhba->ib_max_size + 4 -
+	unsigned int max_sg = (mhba->ib_max_size -
 		sizeof(struct mvumi_msg_frame)) / sizeof(struct mvumi_sgl);
 
 	host->irq = mhba->pdev->irq;
@@ -2490,7 +2490,7 @@ static int mvumi_probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	mhba->pdev = pdev;
 	mhba->shost = host;
-	mhba->unique_id = pdev->bus->number << 8 | pdev->devfn;
+	mhba->unique_id = pci_dev_id(pdev);
 
 	ret = mvumi_init_fw(mhba);
 	if (ret)

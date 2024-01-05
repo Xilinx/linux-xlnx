@@ -170,7 +170,7 @@ int sas_notify_lldd_dev_found(struct domain_device *dev)
 {
 	int res = 0;
 	struct sas_ha_struct *sas_ha = dev->port->ha;
-	struct Scsi_Host *shost = sas_ha->core.shost;
+	struct Scsi_Host *shost = sas_ha->shost;
 	struct sas_internal *i = to_sas_internal(shost->transportt);
 
 	if (!i->dft->lldd_dev_found)
@@ -192,7 +192,7 @@ int sas_notify_lldd_dev_found(struct domain_device *dev)
 void sas_notify_lldd_dev_gone(struct domain_device *dev)
 {
 	struct sas_ha_struct *sas_ha = dev->port->ha;
-	struct Scsi_Host *shost = sas_ha->core.shost;
+	struct Scsi_Host *shost = sas_ha->shost;
 	struct sas_internal *i = to_sas_internal(shost->transportt);
 
 	if (!i->dft->lldd_dev_gone)
@@ -234,7 +234,7 @@ static void sas_suspend_devices(struct work_struct *work)
 	struct domain_device *dev;
 	struct sas_discovery_event *ev = to_sas_discovery_event(work);
 	struct asd_sas_port *port = ev->port;
-	struct Scsi_Host *shost = port->ha->core.shost;
+	struct Scsi_Host *shost = port->ha->shost;
 	struct sas_internal *si = to_sas_internal(shost->transportt);
 
 	clear_bit(DISCE_SUSPEND, &port->disc.pending);
@@ -301,7 +301,7 @@ void sas_free_device(struct kref *kref)
 
 	if (dev_is_sata(dev) && dev->sata_dev.ap) {
 		ata_sas_tport_delete(dev->sata_dev.ap);
-		ata_sas_port_destroy(dev->sata_dev.ap);
+		kfree(dev->sata_dev.ap);
 		ata_host_put(dev->sata_dev.ata_host);
 		dev->sata_dev.ata_host = NULL;
 		dev->sata_dev.ap = NULL;
@@ -360,6 +360,33 @@ static void sas_destruct_ports(struct asd_sas_port *port)
 	}
 }
 
+static bool sas_abort_cmd(struct request *req, void *data)
+{
+	struct scsi_cmnd *cmd = blk_mq_rq_to_pdu(req);
+	struct domain_device *dev = data;
+
+	if (dev == cmd_to_domain_dev(cmd))
+		blk_abort_request(req);
+	return true;
+}
+
+static void sas_abort_device_scsi_cmds(struct domain_device *dev)
+{
+	struct sas_ha_struct *sas_ha = dev->port->ha;
+	struct Scsi_Host *shost = sas_ha->shost;
+
+	if (dev_is_expander(dev->dev_type))
+		return;
+
+	/*
+	 * For removed device with active IOs, the user space applications have
+	 * to spend very long time waiting for the timeout. This is not
+	 * necessary because a removed device will not return the IOs.
+	 * Abort the inflight IOs here so that EH can be quickly kicked in.
+	 */
+	blk_mq_tagset_busy_iter(&shost->tag_set, sas_abort_cmd, dev);
+}
+
 void sas_unregister_dev(struct asd_sas_port *port, struct domain_device *dev)
 {
 	if (!test_bit(SAS_DEV_DESTROY, &dev->state) &&
@@ -372,6 +399,8 @@ void sas_unregister_dev(struct asd_sas_port *port, struct domain_device *dev)
 	}
 
 	if (!test_and_set_bit(SAS_DEV_DESTROY, &dev->state)) {
+		if (test_bit(SAS_DEV_GONE, &dev->state))
+			sas_abort_device_scsi_cmds(dev);
 		sas_rphy_unlink(dev->rphy);
 		list_move_tail(&dev->disco_list_node, &port->destroy_list);
 	}
@@ -455,14 +484,8 @@ static void sas_discover_domain(struct work_struct *work)
 		break;
 	case SAS_SATA_DEV:
 	case SAS_SATA_PM:
-#ifdef CONFIG_SCSI_SAS_ATA
 		error = sas_discover_sata(dev);
 		break;
-#else
-		pr_notice("ATA device seen but CONFIG_SCSI_SAS_ATA=N so cannot attach\n");
-		fallthrough;
-#endif
-		/* Fall through - only for the #else condition above. */
 	default:
 		error = -ENXIO;
 		pr_err("unhandled device %d\n", dev->dev_type);

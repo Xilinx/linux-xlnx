@@ -351,13 +351,16 @@ static int sctp_v4_addr_valid(union sctp_addr *addr,
 /* Should this be available for binding?   */
 static int sctp_v4_available(union sctp_addr *addr, struct sctp_sock *sp)
 {
-	struct net *net = sock_net(&sp->inet.sk);
-	int ret = inet_addr_type(net, addr->v4.sin_addr.s_addr);
+	struct sock *sk = &sp->inet.sk;
+	struct net *net = sock_net(sk);
+	int tb_id = RT_TABLE_LOCAL;
+	int ret;
 
-
+	tb_id = l3mdev_fib_table_by_index(net, sk->sk_bound_dev_if) ?: tb_id;
+	ret = inet_addr_type_table(net, addr->v4.sin_addr.s_addr, tb_id);
 	if (addr->v4.sin_addr.s_addr != htonl(INADDR_ANY) &&
 	   ret != RTN_LOCAL &&
-	   !sp->inet.freebind &&
+	   !inet_test_bit(FREEBIND, sk) &&
 	    !READ_ONCE(net->ipv4.sysctl_ip_nonlocal_bind))
 		return 0;
 
@@ -432,7 +435,8 @@ static void sctp_v4_get_dst(struct sctp_transport *t, union sctp_addr *saddr,
 	fl4->fl4_dport = daddr->v4.sin_port;
 	fl4->flowi4_proto = IPPROTO_SCTP;
 	if (asoc) {
-		fl4->flowi4_tos = RT_CONN_FLAGS_TOS(asoc->base.sk, tos);
+		fl4->flowi4_tos = RT_TOS(tos);
+		fl4->flowi4_scope = ip_sock_rt_scope(asoc->base.sk);
 		fl4->flowi4_oif = asoc->base.sk->sk_bound_dev_if;
 		fl4->fl4_sport = htons(asoc->base.bind_addr.port);
 	}
@@ -497,9 +501,7 @@ static void sctp_v4_get_dst(struct sctp_transport *t, union sctp_addr *saddr,
 			continue;
 
 		fl4->fl4_sport = laddr->a.v4.sin_port;
-		flowi4_update_output(fl4,
-				     asoc->base.sk->sk_bound_dev_if,
-				     RT_CONN_FLAGS_TOS(asoc->base.sk, tos),
+		flowi4_update_output(fl4, asoc->base.sk->sk_bound_dev_if,
 				     daddr->v4.sin_addr.s_addr,
 				     laddr->a.v4.sin_addr.s_addr);
 
@@ -564,6 +566,11 @@ static int sctp_v4_skb_iif(const struct sk_buff *skb)
 	return inet_iif(skb);
 }
 
+static int sctp_v4_skb_sdif(const struct sk_buff *skb)
+{
+	return inet_sdif(skb);
+}
+
 /* Was this packet marked by Explicit Congestion Notification? */
 static int sctp_v4_is_ce(const struct sk_buff *skb)
 {
@@ -592,8 +599,6 @@ static struct sock *sctp_v4_create_accept_sk(struct sock *sk,
 	newinet = inet_sk(newsk);
 
 	newinet->inet_daddr = asoc->peer.primary_addr.v4.sin_addr.s_addr;
-
-	sk_refcnt_debug_inc(newsk);
 
 	if (newsk->sk_prot->init(newsk)) {
 		sk_common_release(newsk);
@@ -1129,7 +1134,6 @@ static const struct proto_ops inet_seqpacket_ops = {
 	.sendmsg	   = inet_sendmsg,
 	.recvmsg	   = inet_recvmsg,
 	.mmap		   = sock_no_mmap,
-	.sendpage	   = sock_no_sendpage,
 };
 
 /* Registration with AF_INET family.  */
@@ -1182,6 +1186,7 @@ static struct sctp_af sctp_af_inet = {
 	.available	   = sctp_v4_available,
 	.scope		   = sctp_v4_scope,
 	.skb_iif	   = sctp_v4_skb_iif,
+	.skb_sdif	   = sctp_v4_skb_sdif,
 	.is_ce		   = sctp_v4_is_ce,
 	.seq_dump_addr	   = sctp_v4_seq_dump_addr,
 	.ecn_capable	   = sctp_v4_ecn_capable,
@@ -1384,6 +1389,10 @@ static int __net_init sctp_defaults_init(struct net *net)
 
 	/* Initialize maximum autoclose timeout. */
 	net->sctp.max_autoclose		= INT_MAX / HZ;
+
+#ifdef CONFIG_NET_L3_MASTER_DEV
+	net->sctp.l3mdev_accept = 1;
+#endif
 
 	status = sctp_sysctl_net_register(net);
 	if (status)

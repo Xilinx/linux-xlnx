@@ -12,6 +12,7 @@
 #include <linux/string.h>
 #include <net/sock.h>
 #include <linux/workqueue.h>
+#include <trace/events/sock.h>
 #include <linux/soc/qcom/qmi.h>
 
 static struct socket *qmi_sock_create(struct qmi_handle *qmi,
@@ -569,6 +570,8 @@ static void qmi_data_ready(struct sock *sk)
 {
 	struct qmi_handle *qmi = sk->sk_user_data;
 
+	trace_sk_data_ready(sk);
+
 	/*
 	 * This will be NULL if we receive data while being in
 	 * qmi_handle_release()
@@ -647,7 +650,7 @@ int qmi_handle_init(struct qmi_handle *qmi, size_t recv_buf_size,
 	if (!qmi->recv_buf)
 		return -ENOMEM;
 
-	qmi->wq = alloc_workqueue("qmi_msg_handler", WQ_UNBOUND, 1);
+	qmi->wq = alloc_ordered_workqueue("qmi_msg_handler", 0);
 	if (!qmi->wq) {
 		ret = -ENOMEM;
 		goto err_free_recv_buf;

@@ -35,8 +35,10 @@ struct svc_sock {
 	/* Total length of the data (not including fragment headers)
 	 * received so far in the fragments making up this rpc: */
 	u32			sk_datalen;
-	/* Number of queued send requests */
-	atomic_t		sk_sendqlen;
+
+	struct page_frag_cache  sk_frag_cache;
+
+	struct completion	sk_handshake_done;
 
 	struct page *		sk_pages[RPCSVC_MAXPAGES];	/* received data */
 };
@@ -54,19 +56,15 @@ static inline u32 svc_sock_final_rec(struct svc_sock *svsk)
 /*
  * Function prototypes.
  */
-void		svc_close_net(struct svc_serv *, struct net *);
-int		svc_recv(struct svc_rqst *, long);
-int		svc_send(struct svc_rqst *);
+void		svc_recv(struct svc_rqst *rqstp);
+void		svc_send(struct svc_rqst *rqstp);
 void		svc_drop(struct svc_rqst *);
 void		svc_sock_update_bufs(struct svc_serv *serv);
-bool		svc_alien_sock(struct net *net, int fd);
-int		svc_addsock(struct svc_serv *serv, const int fd,
-					char *name_return, const size_t len,
-					const struct cred *cred);
+int		svc_addsock(struct svc_serv *serv, struct net *net,
+			    const int fd, char *name_return, const size_t len,
+			    const struct cred *cred);
 void		svc_init_xprt_sock(void);
 void		svc_cleanup_xprt_sock(void);
-struct svc_xprt *svc_sock_create(struct svc_serv *serv, int prot);
-void		svc_sock_destroy(struct svc_xprt *);
 
 /*
  * svc_makesock socket characteristics

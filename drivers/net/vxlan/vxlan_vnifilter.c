@@ -129,9 +129,9 @@ static void vxlan_vnifilter_stats_get(const struct vxlan_vni_node *vninode,
 
 		pstats = per_cpu_ptr(vninode->stats, i);
 		do {
-			start = u64_stats_fetch_begin_irq(&pstats->syncp);
+			start = u64_stats_fetch_begin(&pstats->syncp);
 			memcpy(&temp, &pstats->stats, sizeof(temp));
-		} while (u64_stats_fetch_retry_irq(&pstats->syncp, start));
+		} while (u64_stats_fetch_retry(&pstats->syncp, start));
 
 		dest->rx_packets += temp.rx_packets;
 		dest->rx_bytes += temp.rx_bytes;
@@ -696,7 +696,7 @@ static struct vxlan_vni_node *vxlan_vni_alloc(struct vxlan_dev *vxlan,
 {
 	struct vxlan_vni_node *vninode;
 
-	vninode = kzalloc(sizeof(*vninode), GFP_ATOMIC);
+	vninode = kzalloc(sizeof(*vninode), GFP_KERNEL);
 	if (!vninode)
 		return NULL;
 	vninode->stats = netdev_alloc_pcpu_stats(struct vxlan_vni_stats_pcpu);
@@ -711,6 +711,12 @@ static struct vxlan_vni_node *vxlan_vni_alloc(struct vxlan_dev *vxlan,
 #endif
 
 	return vninode;
+}
+
+static void vxlan_vni_free(struct vxlan_vni_node *vninode)
+{
+	free_percpu(vninode->stats);
+	kfree(vninode);
 }
 
 static int vxlan_vni_add(struct vxlan_dev *vxlan,
@@ -740,7 +746,7 @@ static int vxlan_vni_add(struct vxlan_dev *vxlan,
 					    &vninode->vnode,
 					    vxlan_vni_rht_params);
 	if (err) {
-		kfree(vninode);
+		vxlan_vni_free(vninode);
 		return err;
 	}
 
@@ -763,8 +769,7 @@ static void vxlan_vni_node_rcu_free(struct rcu_head *rcu)
 	struct vxlan_vni_node *v;
 
 	v = container_of(rcu, struct vxlan_vni_node, rcu);
-	free_percpu(v->stats);
-	kfree(v);
+	vxlan_vni_free(v);
 }
 
 static int vxlan_vni_del(struct vxlan_dev *vxlan,

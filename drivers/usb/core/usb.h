@@ -15,6 +15,7 @@ extern int usb_create_sysfs_dev_files(struct usb_device *dev);
 extern void usb_remove_sysfs_dev_files(struct usb_device *dev);
 extern void usb_create_sysfs_intf_files(struct usb_interface *intf);
 extern void usb_remove_sysfs_intf_files(struct usb_interface *intf);
+extern int usb_update_wireless_status_attr(struct usb_interface *intf);
 extern int usb_create_ep_devs(struct device *parent,
 				struct usb_host_endpoint *endpoint,
 				struct usb_device *udev);
@@ -42,12 +43,11 @@ extern bool usb_endpoint_is_ignored(struct usb_device *udev,
 		struct usb_endpoint_descriptor *epd);
 extern int usb_remove_device(struct usb_device *udev);
 
-extern int usb_get_device_descriptor(struct usb_device *dev,
-		unsigned int size);
+extern struct usb_device_descriptor *usb_get_device_descriptor(
+		struct usb_device *udev);
 extern int usb_set_isoch_delay(struct usb_device *dev);
 extern int usb_get_bos_descriptor(struct usb_device *dev);
 extern void usb_release_bos_descriptor(struct usb_device *dev);
-extern char *usb_cache_string(struct usb_device *udev, int index);
 extern int usb_set_configuration(struct usb_device *dev, int configuration);
 extern int usb_choose_configuration(struct usb_device *udev);
 extern int usb_generic_driver_probe(struct usb_device *udev);
@@ -141,7 +141,8 @@ static inline int usb_disable_usb2_hardware_lpm(struct usb_device *udev)
 
 #endif
 
-extern struct bus_type usb_bus_type;
+extern const struct class usbmisc_class;
+extern const struct bus_type usb_bus_type;
 extern struct mutex usb_port_peer_mutex;
 extern struct device_type usb_device_type;
 extern struct device_type usb_if_device_type;

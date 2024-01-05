@@ -28,6 +28,8 @@
 #include <media/v4l2-fwnode.h>
 #include <media/v4l2-subdev.h>
 
+#include "v4l2-subdev-priv.h"
+
 static const struct v4l2_fwnode_bus_conv {
 	enum v4l2_fwnode_bus_type fwnode_bus_type;
 	enum v4l2_mbus_type mbus_type;
@@ -298,10 +300,25 @@ v4l2_fwnode_endpoint_parse_parallel_bus(struct fwnode_handle *fwnode,
 
 	if (!fwnode_property_read_u32(fwnode, "pclk-sample", &v)) {
 		flags &= ~(V4L2_MBUS_PCLK_SAMPLE_RISING |
-			   V4L2_MBUS_PCLK_SAMPLE_FALLING);
-		flags |= v ? V4L2_MBUS_PCLK_SAMPLE_RISING :
-			V4L2_MBUS_PCLK_SAMPLE_FALLING;
-		pr_debug("pclk-sample %s\n", v ? "high" : "low");
+			   V4L2_MBUS_PCLK_SAMPLE_FALLING |
+			   V4L2_MBUS_PCLK_SAMPLE_DUALEDGE);
+		switch (v) {
+		case 0:
+			flags |= V4L2_MBUS_PCLK_SAMPLE_FALLING;
+			pr_debug("pclk-sample low\n");
+			break;
+		case 1:
+			flags |= V4L2_MBUS_PCLK_SAMPLE_RISING;
+			pr_debug("pclk-sample high\n");
+			break;
+		case 2:
+			flags |= V4L2_MBUS_PCLK_SAMPLE_DUALEDGE;
+			pr_debug("pclk-sample dual edge\n");
+			break;
+		default:
+			pr_warn("invalid argument for pclk-sample");
+			break;
+		}
 	}
 
 	if (!fwnode_property_read_u32(fwnode, "data-active", &v)) {
@@ -551,19 +568,29 @@ int v4l2_fwnode_parse_link(struct fwnode_handle *fwnode,
 	link->local_id = fwep.id;
 	link->local_port = fwep.port;
 	link->local_node = fwnode_graph_get_port_parent(fwnode);
+	if (!link->local_node)
+		return -ENOLINK;
 
 	fwnode = fwnode_graph_get_remote_endpoint(fwnode);
-	if (!fwnode) {
-		fwnode_handle_put(fwnode);
-		return -ENOLINK;
-	}
+	if (!fwnode)
+		goto err_put_local_node;
 
 	fwnode_graph_parse_endpoint(fwnode, &fwep);
 	link->remote_id = fwep.id;
 	link->remote_port = fwep.port;
 	link->remote_node = fwnode_graph_get_port_parent(fwnode);
+	if (!link->remote_node)
+		goto err_put_remote_endpoint;
 
 	return 0;
+
+err_put_remote_endpoint:
+	fwnode_handle_put(fwnode);
+
+err_put_local_node:
+	fwnode_handle_put(link->local_node);
+
+	return -ENOLINK;
 }
 EXPORT_SYMBOL_GPL(v4l2_fwnode_parse_link);
 
@@ -781,103 +808,6 @@ int v4l2_fwnode_device_parse(struct device *dev,
 }
 EXPORT_SYMBOL_GPL(v4l2_fwnode_device_parse);
 
-static int
-v4l2_async_nf_fwnode_parse_endpoint(struct device *dev,
-				    struct v4l2_async_notifier *notifier,
-				    struct fwnode_handle *endpoint,
-				    unsigned int asd_struct_size,
-				    parse_endpoint_func parse_endpoint)
-{
-	struct v4l2_fwnode_endpoint vep = { .bus_type = 0 };
-	struct v4l2_async_subdev *asd;
-	int ret;
-
-	asd = kzalloc(asd_struct_size, GFP_KERNEL);
-	if (!asd)
-		return -ENOMEM;
-
-	asd->match_type = V4L2_ASYNC_MATCH_FWNODE;
-	asd->match.fwnode =
-		fwnode_graph_get_remote_port_parent(endpoint);
-	if (!asd->match.fwnode) {
-		dev_dbg(dev, "no remote endpoint found\n");
-		ret = -ENOTCONN;
-		goto out_err;
-	}
-
-	ret = v4l2_fwnode_endpoint_alloc_parse(endpoint, &vep);
-	if (ret) {
-		dev_warn(dev, "unable to parse V4L2 fwnode endpoint (%d)\n",
-			 ret);
-		goto out_err;
-	}
-
-	ret = parse_endpoint ? parse_endpoint(dev, &vep, asd) : 0;
-	if (ret == -ENOTCONN)
-		dev_dbg(dev, "ignoring port@%u/endpoint@%u\n", vep.base.port,
-			vep.base.id);
-	else if (ret < 0)
-		dev_warn(dev,
-			 "driver could not parse port@%u/endpoint@%u (%d)\n",
-			 vep.base.port, vep.base.id, ret);
-	v4l2_fwnode_endpoint_free(&vep);
-	if (ret < 0)
-		goto out_err;
-
-	ret = __v4l2_async_nf_add_subdev(notifier, asd);
-	if (ret < 0) {
-		/* not an error if asd already exists */
-		if (ret == -EEXIST)
-			ret = 0;
-		goto out_err;
-	}
-
-	return 0;
-
-out_err:
-	fwnode_handle_put(asd->match.fwnode);
-	kfree(asd);
-
-	return ret == -ENOTCONN ? 0 : ret;
-}
-
-int
-v4l2_async_nf_parse_fwnode_endpoints(struct device *dev,
-				     struct v4l2_async_notifier *notifier,
-				     size_t asd_struct_size,
-				     parse_endpoint_func parse_endpoint)
-{
-	struct fwnode_handle *fwnode;
-	int ret = 0;
-
-	if (WARN_ON(asd_struct_size < sizeof(struct v4l2_async_subdev)))
-		return -EINVAL;
-
-	fwnode_graph_for_each_endpoint(dev_fwnode(dev), fwnode) {
-		struct fwnode_handle *dev_fwnode;
-		bool is_available;
-
-		dev_fwnode = fwnode_graph_get_port_parent(fwnode);
-		is_available = fwnode_device_is_available(dev_fwnode);
-		fwnode_handle_put(dev_fwnode);
-		if (!is_available)
-			continue;
-
-
-		ret = v4l2_async_nf_fwnode_parse_endpoint(dev, notifier,
-							  fwnode,
-							  asd_struct_size,
-							  parse_endpoint);
-		if (ret < 0)
-			break;
-	}
-
-	fwnode_handle_put(fwnode);
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(v4l2_async_nf_parse_fwnode_endpoints);
-
 /*
  * v4l2_fwnode_reference_parse - parse references for async sub-devices
  * @dev: the device node the properties of which are parsed for references
@@ -901,10 +831,10 @@ static int v4l2_fwnode_reference_parse(struct device *dev,
 	     !(ret = fwnode_property_get_reference_args(dev_fwnode(dev), prop,
 							NULL, 0, index, &args));
 	     index++) {
-		struct v4l2_async_subdev *asd;
+		struct v4l2_async_connection *asd;
 
 		asd = v4l2_async_nf_add_fwnode(notifier, args.fwnode,
-					       struct v4l2_async_subdev);
+					       struct v4l2_async_connection);
 		fwnode_handle_put(args.fwnode);
 		if (IS_ERR(asd)) {
 			/* not an error if asd already exists */
@@ -1206,10 +1136,10 @@ v4l2_fwnode_reference_parse_int_props(struct device *dev,
 								  props,
 								  nprops)));
 	     index++) {
-		struct v4l2_async_subdev *asd;
+		struct v4l2_async_connection *asd;
 
 		asd = v4l2_async_nf_add_fwnode(notifier, fwnode,
-					       struct v4l2_async_subdev);
+					       struct v4l2_async_connection);
 		fwnode_handle_put(fwnode);
 		if (IS_ERR(asd)) {
 			ret = PTR_ERR(asd);
@@ -1285,13 +1215,17 @@ int v4l2_async_register_subdev_sensor(struct v4l2_subdev *sd)
 	if (!notifier)
 		return -ENOMEM;
 
-	v4l2_async_nf_init(notifier);
+	v4l2_async_subdev_nf_init(notifier, sd);
+
+	ret = v4l2_subdev_get_privacy_led(sd);
+	if (ret < 0)
+		goto out_cleanup;
 
 	ret = v4l2_async_nf_parse_fwnode_sensor(sd->dev, notifier);
 	if (ret < 0)
 		goto out_cleanup;
 
-	ret = v4l2_async_subdev_nf_register(sd, notifier);
+	ret = v4l2_async_nf_register(notifier);
 	if (ret < 0)
 		goto out_cleanup;
 
@@ -1307,6 +1241,7 @@ out_unregister:
 	v4l2_async_nf_unregister(notifier);
 
 out_cleanup:
+	v4l2_subdev_put_privacy_led(sd);
 	v4l2_async_nf_cleanup(notifier);
 	kfree(notifier);
 

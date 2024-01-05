@@ -72,7 +72,6 @@ Documentation for filesystem implementations.
    befs
    bfs
    btrfs
-   cifs/index
    ceph
    coda
    configfs
@@ -111,6 +110,7 @@ Documentation for filesystem implementations.
    ramfs-rootfs-initramfs
    relay
    romfs
+   smb/index
    spufs/index
    squashfs
    sysfs
@@ -122,5 +122,7 @@ Documentation for filesystem implementations.
    virtiofs
    vfat
    xfs-delayed-logging-design
+   xfs-maintainer-entry-profile
    xfs-self-describing-metadata
+   xfs-online-fsck-design
    zonefs

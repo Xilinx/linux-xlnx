@@ -14,7 +14,6 @@
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
 
-#include "../../codecs/da7219-aad.h"
 #include "../../codecs/da7219.h"
 #include "../../codecs/rt1015.h"
 #include "../common/mtk-afe-platform-driver.h"
@@ -28,6 +27,21 @@
 
 struct mt8183_da7219_max98357_priv {
 	struct snd_soc_jack headset_jack, hdmi_jack;
+};
+
+static struct snd_soc_jack_pin mt8183_da7219_max98357_jack_pins[] = {
+	{
+		.pin	= "Headphone",
+		.mask	= SND_JACK_HEADPHONE,
+	},
+	{
+		.pin	= "Headset Mic",
+		.mask	= SND_JACK_MICROPHONE,
+	},
+	{
+		.pin	= "Line Out",
+		.mask	= SND_JACK_LINEOUT,
+	},
 };
 
 static int mt8183_mt6358_i2s_hw_params(struct snd_pcm_substream *substream,
@@ -573,13 +587,15 @@ mt8183_da7219_max98357_headset_init(struct snd_soc_component *component)
 			snd_soc_card_get_drvdata(component->card);
 
 	/* Enable Headset and 4 Buttons Jack detection */
-	ret = snd_soc_card_jack_new(component->card,
-				    "Headset Jack",
-				    SND_JACK_HEADSET |
-				    SND_JACK_BTN_0 | SND_JACK_BTN_1 |
-				    SND_JACK_BTN_2 | SND_JACK_BTN_3 |
-				    SND_JACK_LINEOUT,
-				    &priv->headset_jack);
+	ret = snd_soc_card_jack_new_pins(component->card,
+					 "Headset Jack",
+					 SND_JACK_HEADSET |
+					 SND_JACK_BTN_0 | SND_JACK_BTN_1 |
+					 SND_JACK_BTN_2 | SND_JACK_BTN_3 |
+					 SND_JACK_LINEOUT,
+					 &priv->headset_jack,
+					 mt8183_da7219_max98357_jack_pins,
+					 ARRAY_SIZE(mt8183_da7219_max98357_jack_pins));
 	if (ret)
 		return ret;
 
@@ -592,7 +608,7 @@ mt8183_da7219_max98357_headset_init(struct snd_soc_component *component)
 	snd_jack_set_key(
 		priv->headset_jack.jack, SND_JACK_BTN_3, KEY_VOICECOMMAND);
 
-	da7219_aad_jack_det(component, &priv->headset_jack);
+	snd_soc_component_set_jack(component, &priv->headset_jack, NULL);
 
 	return 0;
 }
@@ -610,12 +626,18 @@ static struct snd_soc_codec_conf mt6358_codec_conf[] = {
 };
 
 static const struct snd_kcontrol_new mt8183_da7219_max98357_snd_controls[] = {
+	SOC_DAPM_PIN_SWITCH("Headphone"),
+	SOC_DAPM_PIN_SWITCH("Headset Mic"),
 	SOC_DAPM_PIN_SWITCH("Speakers"),
+	SOC_DAPM_PIN_SWITCH("Line Out"),
 };
 
 static const
 struct snd_soc_dapm_widget mt8183_da7219_max98357_dapm_widgets[] = {
+	SND_SOC_DAPM_HP("Headphone", NULL),
+	SND_SOC_DAPM_MIC("Headset Mic", NULL),
 	SND_SOC_DAPM_SPK("Speakers", NULL),
+	SND_SOC_DAPM_SPK("Line Out", NULL),
 	SND_SOC_DAPM_PINCTRL("TDM_OUT_PINCTRL",
 			     "aud_tdm_out_on", "aud_tdm_out_off"),
 };
@@ -658,14 +680,20 @@ static struct snd_soc_codec_conf mt8183_da7219_rt1015_codec_conf[] = {
 };
 
 static const struct snd_kcontrol_new mt8183_da7219_rt1015_snd_controls[] = {
+	SOC_DAPM_PIN_SWITCH("Headphone"),
+	SOC_DAPM_PIN_SWITCH("Headset Mic"),
 	SOC_DAPM_PIN_SWITCH("Left Spk"),
 	SOC_DAPM_PIN_SWITCH("Right Spk"),
+	SOC_DAPM_PIN_SWITCH("Line Out"),
 };
 
 static const
 struct snd_soc_dapm_widget mt8183_da7219_rt1015_dapm_widgets[] = {
+	SND_SOC_DAPM_HP("Headphone", NULL),
+	SND_SOC_DAPM_MIC("Headset Mic", NULL),
 	SND_SOC_DAPM_SPK("Left Spk", NULL),
 	SND_SOC_DAPM_SPK("Right Spk", NULL),
+	SND_SOC_DAPM_LINE("Line Out", NULL),
 	SND_SOC_DAPM_PINCTRL("TDM_OUT_PINCTRL",
 			     "aud_tdm_out_on", "aud_tdm_out_off"),
 };
@@ -842,6 +870,7 @@ static const struct of_device_id mt8183_da7219_max98357_dt_match[] = {
 	},
 	{}
 };
+MODULE_DEVICE_TABLE(of, mt8183_da7219_max98357_dt_match);
 #endif
 
 static struct platform_driver mt8183_da7219_max98357_driver = {

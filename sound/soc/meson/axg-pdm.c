@@ -169,7 +169,7 @@ static int axg_pdm_set_sysclk(struct axg_pdm *priv, unsigned int os,
 
 	/*
 	 * Set the default system clock rate unless it is too fast for
-	 * for the requested sample rate. In this case, the sample pointer
+	 * the requested sample rate. In this case, the sample pointer
 	 * counter could overflow so set a lower system clock rate
 	 */
 	if (sys_rate < priv->cfg->sys_rate)
@@ -293,13 +293,6 @@ static void axg_pdm_shutdown(struct snd_pcm_substream *substream,
 	axg_pdm_filters_enable(priv->map, false);
 	clk_disable_unprepare(priv->dclk);
 }
-
-static const struct snd_soc_dai_ops axg_pdm_dai_ops = {
-	.trigger	= axg_pdm_trigger,
-	.hw_params	= axg_pdm_hw_params,
-	.startup	= axg_pdm_startup,
-	.shutdown	= axg_pdm_shutdown,
-};
 
 static void axg_pdm_set_hcic_ctrl(struct axg_pdm *priv)
 {
@@ -440,6 +433,15 @@ static int axg_pdm_dai_remove(struct snd_soc_dai *dai)
 	return 0;
 }
 
+static const struct snd_soc_dai_ops axg_pdm_dai_ops = {
+	.probe		= axg_pdm_dai_probe,
+	.remove		= axg_pdm_dai_remove,
+	.trigger	= axg_pdm_trigger,
+	.hw_params	= axg_pdm_hw_params,
+	.startup	= axg_pdm_startup,
+	.shutdown	= axg_pdm_shutdown,
+};
+
 static struct snd_soc_dai_driver axg_pdm_dai_drv = {
 	.name = "PDM",
 	.capture = {
@@ -453,8 +455,6 @@ static struct snd_soc_dai_driver axg_pdm_dai_drv = {
 				   SNDRV_PCM_FMTBIT_S32_LE),
 	},
 	.ops		= &axg_pdm_dai_ops,
-	.probe		= axg_pdm_dai_probe,
-	.remove		= axg_pdm_dai_remove,
 };
 
 static const struct snd_soc_component_driver axg_pdm_component_drv = {

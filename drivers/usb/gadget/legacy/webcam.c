@@ -171,7 +171,7 @@ static const struct uvc_format_uncompressed uvc_format_yuv = {
 	.bDefaultFrameIndex	= 1,
 	.bAspectRatioX		= 0,
 	.bAspectRatioY		= 0,
-	.bmInterfaceFlags	= 0,
+	.bmInterlaceFlags	= 0,
 	.bCopyProtect		= 0,
 };
 
@@ -267,7 +267,7 @@ static const struct uvc_format_mjpeg uvc_format_mjpg = {
 	.bDefaultFrameIndex	= 1,
 	.bAspectRatioX		= 0,
 	.bAspectRatioY		= 0,
-	.bmInterfaceFlags	= 0,
+	.bmInterlaceFlags	= 0,
 	.bCopyProtect		= 0,
 };
 
@@ -338,6 +338,7 @@ static const struct uvc_descriptor_header * const uvc_fs_streaming_cls[] = {
 	(const struct uvc_descriptor_header *) &uvc_format_yuv,
 	(const struct uvc_descriptor_header *) &uvc_frame_yuv_360p,
 	(const struct uvc_descriptor_header *) &uvc_frame_yuv_720p,
+	(const struct uvc_descriptor_header *) &uvc_color_matching,
 	(const struct uvc_descriptor_header *) &uvc_frame_yuv_1080p,
 	(const struct uvc_descriptor_header *) &uvc_frame_yuv_2160p,
 	(const struct uvc_descriptor_header *) &uvc_format_mjpg,
@@ -352,6 +353,7 @@ static const struct uvc_descriptor_header * const uvc_hs_streaming_cls[] = {
 	(const struct uvc_descriptor_header *) &uvc_format_yuv,
 	(const struct uvc_descriptor_header *) &uvc_frame_yuv_360p,
 	(const struct uvc_descriptor_header *) &uvc_frame_yuv_720p,
+	(const struct uvc_descriptor_header *) &uvc_color_matching,
 	(const struct uvc_descriptor_header *) &uvc_frame_yuv_1080p,
 	(const struct uvc_descriptor_header *) &uvc_frame_yuv_2160p,
 	(const struct uvc_descriptor_header *) &uvc_format_mjpg,
@@ -366,6 +368,7 @@ static const struct uvc_descriptor_header * const uvc_ss_streaming_cls[] = {
 	(const struct uvc_descriptor_header *) &uvc_format_yuv,
 	(const struct uvc_descriptor_header *) &uvc_frame_yuv_360p,
 	(const struct uvc_descriptor_header *) &uvc_frame_yuv_720p,
+	(const struct uvc_descriptor_header *) &uvc_color_matching,
 	(const struct uvc_descriptor_header *) &uvc_frame_yuv_1080p,
 	(const struct uvc_descriptor_header *) &uvc_frame_yuv_2160p,
 	(const struct uvc_descriptor_header *) &uvc_format_mjpg,

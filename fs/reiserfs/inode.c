@@ -1259,9 +1259,8 @@ static void init_inode(struct inode *inode, struct treepath *path)
 		inode->i_size = sd_v1_size(sd);
 		inode->i_atime.tv_sec = sd_v1_atime(sd);
 		inode->i_mtime.tv_sec = sd_v1_mtime(sd);
-		inode->i_ctime.tv_sec = sd_v1_ctime(sd);
+		inode_set_ctime(inode, sd_v1_ctime(sd), 0);
 		inode->i_atime.tv_nsec = 0;
-		inode->i_ctime.tv_nsec = 0;
 		inode->i_mtime.tv_nsec = 0;
 
 		inode->i_blocks = sd_v1_blocks(sd);
@@ -1314,8 +1313,7 @@ static void init_inode(struct inode *inode, struct treepath *path)
 		i_gid_write(inode, sd_v2_gid(sd));
 		inode->i_mtime.tv_sec = sd_v2_mtime(sd);
 		inode->i_atime.tv_sec = sd_v2_atime(sd);
-		inode->i_ctime.tv_sec = sd_v2_ctime(sd);
-		inode->i_ctime.tv_nsec = 0;
+		inode_set_ctime(inode, sd_v2_ctime(sd), 0);
 		inode->i_mtime.tv_nsec = 0;
 		inode->i_atime.tv_nsec = 0;
 		inode->i_blocks = sd_v2_blocks(sd);
@@ -1374,7 +1372,7 @@ static void inode2sd(void *sd, struct inode *inode, loff_t size)
 	set_sd_v2_gid(sd_v2, i_gid_read(inode));
 	set_sd_v2_mtime(sd_v2, inode->i_mtime.tv_sec);
 	set_sd_v2_atime(sd_v2, inode->i_atime.tv_sec);
-	set_sd_v2_ctime(sd_v2, inode->i_ctime.tv_sec);
+	set_sd_v2_ctime(sd_v2, inode_get_ctime(inode).tv_sec);
 	set_sd_v2_blocks(sd_v2, to_fake_used_blocks(inode, SD_V2_SIZE));
 	if (S_ISCHR(inode->i_mode) || S_ISBLK(inode->i_mode))
 		set_sd_v2_rdev(sd_v2, new_encode_dev(inode->i_rdev));
@@ -1394,7 +1392,7 @@ static void inode2sd_v1(void *sd, struct inode *inode, loff_t size)
 	set_sd_v1_nlink(sd_v1, inode->i_nlink);
 	set_sd_v1_size(sd_v1, size);
 	set_sd_v1_atime(sd_v1, inode->i_atime.tv_sec);
-	set_sd_v1_ctime(sd_v1, inode->i_ctime.tv_sec);
+	set_sd_v1_ctime(sd_v1, inode_get_ctime(inode).tv_sec);
 	set_sd_v1_mtime(sd_v1, inode->i_mtime.tv_sec);
 
 	if (S_ISCHR(inode->i_mode) || S_ISBLK(inode->i_mode))
@@ -1986,7 +1984,7 @@ int reiserfs_new_inode(struct reiserfs_transaction_handle *th,
 
 	/* uid and gid must already be set by the caller for quota init */
 
-	inode->i_mtime = inode->i_atime = inode->i_ctime = current_time(inode);
+	inode->i_mtime = inode->i_atime = inode_set_ctime_current(inode);
 	inode->i_size = i_size;
 	inode->i_blocks = 0;
 	inode->i_bytes = 0;
@@ -2087,10 +2085,8 @@ int reiserfs_new_inode(struct reiserfs_transaction_handle *th,
 	 * Mark it private if we're creating the privroot
 	 * or something under it.
 	 */
-	if (IS_PRIVATE(dir) || dentry == REISERFS_SB(sb)->priv_root) {
-		inode->i_flags |= S_PRIVATE;
-		inode->i_opflags &= ~IOP_XATTR;
-	}
+	if (IS_PRIVATE(dir) || dentry == REISERFS_SB(sb)->priv_root)
+		reiserfs_init_priv_inode(inode);
 
 	if (reiserfs_posixacl(inode->i_sb)) {
 		reiserfs_write_unlock(inode->i_sb);
@@ -2508,7 +2504,7 @@ out:
 
 /*
  * mason@suse.com: updated in 2.5.54 to follow the same general io
- * start/recovery path as __block_write_full_page, along with special
+ * start/recovery path as __block_write_full_folio, along with special
  * code to handle reiserfs tails.
  */
 static int reiserfs_write_full_page(struct page *page,
@@ -2874,6 +2870,7 @@ static int reiserfs_write_end(struct file *file, struct address_space *mapping,
 			      loff_t pos, unsigned len, unsigned copied,
 			      struct page *page, void *fsdata)
 {
+	struct folio *folio = page_folio(page);
 	struct inode *inode = page->mapping->host;
 	int ret = 0;
 	int update_sd = 0;
@@ -2889,12 +2886,12 @@ static int reiserfs_write_end(struct file *file, struct address_space *mapping,
 
 	start = pos & (PAGE_SIZE - 1);
 	if (unlikely(copied < len)) {
-		if (!PageUptodate(page))
+		if (!folio_test_uptodate(folio))
 			copied = 0;
 
-		page_zero_new_buffers(page, start + copied, start + len);
+		folio_zero_new_buffers(folio, start + copied, start + len);
 	}
-	flush_dcache_page(page);
+	flush_dcache_folio(folio);
 
 	reiserfs_commit_page(inode, page, start, start + copied);
 
@@ -3262,21 +3259,21 @@ static ssize_t reiserfs_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 	return ret;
 }
 
-int reiserfs_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
+int reiserfs_setattr(struct mnt_idmap *idmap, struct dentry *dentry,
 		     struct iattr *attr)
 {
 	struct inode *inode = d_inode(dentry);
 	unsigned int ia_valid;
 	int error;
 
-	error = setattr_prepare(&init_user_ns, dentry, attr);
+	error = setattr_prepare(&nop_mnt_idmap, dentry, attr);
 	if (error)
 		return error;
 
 	/* must be turned off for recursive notify_change calls */
 	ia_valid = attr->ia_valid &= ~(ATTR_KILL_SUID|ATTR_KILL_SGID);
 
-	if (is_quota_modification(mnt_userns, inode, attr)) {
+	if (is_quota_modification(&nop_mnt_idmap, inode, attr)) {
 		error = dquot_initialize(inode);
 		if (error)
 			return error;
@@ -3359,7 +3356,7 @@ int reiserfs_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
 		reiserfs_write_unlock(inode->i_sb);
 		if (error)
 			goto out;
-		error = dquot_transfer(mnt_userns, inode, attr);
+		error = dquot_transfer(&nop_mnt_idmap, inode, attr);
 		reiserfs_write_lock(inode->i_sb);
 		if (error) {
 			journal_end(&th);
@@ -3398,13 +3395,13 @@ int reiserfs_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
 	}
 
 	if (!error) {
-		setattr_copy(&init_user_ns, inode, attr);
+		setattr_copy(&nop_mnt_idmap, inode, attr);
 		mark_inode_dirty(inode);
 	}
 
 	if (!error && reiserfs_posixacl(inode->i_sb)) {
 		if (attr->ia_valid & ATTR_MODE)
-			error = reiserfs_acl_chmod(inode);
+			error = reiserfs_acl_chmod(dentry);
 	}
 
 out:

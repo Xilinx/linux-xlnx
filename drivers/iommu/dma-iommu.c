@@ -23,6 +23,7 @@
 #include <linux/memremap.h>
 #include <linux/mm.h>
 #include <linux/mutex.h>
+#include <linux/of_iommu.h>
 #include <linux/pci.h>
 #include <linux/scatterlist.h>
 #include <linux/spinlock.h>
@@ -391,6 +392,8 @@ void iommu_dma_get_resv_regions(struct device *dev, struct list_head *list)
 	if (!is_of_node(dev_iommu_fwspec_get(dev)->iommu_fwnode))
 		iort_iommu_get_resv_regions(dev, list);
 
+	if (dev->of_node)
+		of_iommu_get_resv_regions(dev, list);
 }
 EXPORT_SYMBOL(iommu_dma_get_resv_regions);
 
@@ -517,9 +520,38 @@ static bool dev_is_untrusted(struct device *dev)
 	return dev_is_pci(dev) && to_pci_dev(dev)->untrusted;
 }
 
-static bool dev_use_swiotlb(struct device *dev)
+static bool dev_use_swiotlb(struct device *dev, size_t size,
+			    enum dma_data_direction dir)
 {
-	return IS_ENABLED(CONFIG_SWIOTLB) && dev_is_untrusted(dev);
+	return IS_ENABLED(CONFIG_SWIOTLB) &&
+		(dev_is_untrusted(dev) ||
+		 dma_kmalloc_needs_bounce(dev, size, dir));
+}
+
+static bool dev_use_sg_swiotlb(struct device *dev, struct scatterlist *sg,
+			       int nents, enum dma_data_direction dir)
+{
+	struct scatterlist *s;
+	int i;
+
+	if (!IS_ENABLED(CONFIG_SWIOTLB))
+		return false;
+
+	if (dev_is_untrusted(dev))
+		return true;
+
+	/*
+	 * If kmalloc() buffers are not DMA-safe for this device and
+	 * direction, check the individual lengths in the sg list. If any
+	 * element is deemed unsafe, use the swiotlb for bouncing.
+	 */
+	if (!dma_kmalloc_safe(dev, dir)) {
+		for_each_sg(sg, s, nents, i)
+			if (!dma_kmalloc_size_aligned(s->length))
+				return true;
+	}
+
+	return false;
 }
 
 /**
@@ -583,7 +615,8 @@ static int iommu_dma_init_domain(struct iommu_domain *domain, dma_addr_t base,
 		goto done_unlock;
 
 	/* If the FQ fails we can simply fall back to strict mode */
-	if (domain->type == IOMMU_DOMAIN_DMA_FQ && iommu_dma_init_fq(domain))
+	if (domain->type == IOMMU_DOMAIN_DMA_FQ &&
+	    (!device_iommu_capable(dev, IOMMU_CAP_DEFERRED_FLUSH) || iommu_dma_init_fq(domain)))
 		domain->type = IOMMU_DOMAIN_DMA;
 
 	ret = iova_reserve_iommu_regions(dev, domain);
@@ -627,7 +660,7 @@ static dma_addr_t iommu_dma_alloc_iova(struct iommu_domain *domain,
 {
 	struct iommu_dma_cookie *cookie = domain->iova_cookie;
 	struct iova_domain *iovad = &cookie->iovad;
-	unsigned long shift, iova_len, iova = 0;
+	unsigned long shift, iova_len, iova;
 
 	if (cookie->type == IOMMU_DMA_MSI_COOKIE) {
 		cookie->msi_iova += size;
@@ -642,15 +675,29 @@ static dma_addr_t iommu_dma_alloc_iova(struct iommu_domain *domain,
 	if (domain->geometry.force_aperture)
 		dma_limit = min(dma_limit, (u64)domain->geometry.aperture_end);
 
-	/* Try to get PCI devices a SAC address */
-	if (dma_limit > DMA_BIT_MASK(32) && !iommu_dma_forcedac && dev_is_pci(dev))
+	/*
+	 * Try to use all the 32-bit PCI addresses first. The original SAC vs.
+	 * DAC reasoning loses relevance with PCIe, but enough hardware and
+	 * firmware bugs are still lurking out there that it's safest not to
+	 * venture into the 64-bit space until necessary.
+	 *
+	 * If your device goes wrong after seeing the notice then likely either
+	 * its driver is not setting DMA masks accurately, the hardware has
+	 * some inherent bug in handling >32-bit addresses, or not all the
+	 * expected address bits are wired up between the device and the IOMMU.
+	 */
+	if (dma_limit > DMA_BIT_MASK(32) && dev->iommu->pci_32bit_workaround) {
 		iova = alloc_iova_fast(iovad, iova_len,
 				       DMA_BIT_MASK(32) >> shift, false);
+		if (iova)
+			goto done;
 
-	if (!iova)
-		iova = alloc_iova_fast(iovad, iova_len, dma_limit >> shift,
-				       true);
+		dev->iommu->pci_32bit_workaround = false;
+		dev_notice(dev, "Using %d-bit DMA addresses\n", bits_per(dma_limit));
+	}
 
+	iova = alloc_iova_fast(iovad, iova_len, dma_limit >> shift, true);
+done:
 	return (dma_addr_t)iova << shift;
 }
 
@@ -713,7 +760,7 @@ static dma_addr_t __iommu_dma_map(struct device *dev, phys_addr_t phys,
 	if (!iova)
 		return DMA_MAPPING_ERROR;
 
-	if (iommu_map_atomic(domain, iova, phys - iova_off, size, prot)) {
+	if (iommu_map(domain, iova, phys - iova_off, size, prot, GFP_ATOMIC)) {
 		iommu_dma_free_iova(cookie, iova, size, NULL);
 		return DMA_MAPPING_ERROR;
 	}
@@ -733,7 +780,7 @@ static struct page **__iommu_dma_alloc_pages(struct device *dev,
 	struct page **pages;
 	unsigned int i = 0, nid = dev_to_node(dev);
 
-	order_mask &= (2U << MAX_ORDER) - 1;
+	order_mask &= GENMASK(MAX_ORDER, 0);
 	if (!order_mask)
 		return NULL;
 
@@ -744,9 +791,6 @@ static struct page **__iommu_dma_alloc_pages(struct device *dev,
 	/* IOMMU can map any pages, so himem can also be used here */
 	gfp |= __GFP_NOWARN | __GFP_HIGHMEM;
 
-	/* It makes no sense to muck about with huge pages */
-	gfp &= ~__GFP_COMP;
-
 	while (count) {
 		struct page *page = NULL;
 		unsigned int order_size;
@@ -756,7 +800,7 @@ static struct page **__iommu_dma_alloc_pages(struct device *dev,
 		 * than a necessity, hence using __GFP_NORETRY until
 		 * falling back to minimum-order allocations.
 		 */
-		for (order_mask &= (2U << __fls(count)) - 1;
+		for (order_mask &= GENMASK(__fls(count), 0);
 		     order_mask; order_mask &= ~order_size) {
 			unsigned int order = __fls(order_mask);
 			gfp_t alloc_flags = gfp;
@@ -825,7 +869,14 @@ static struct page **__iommu_dma_alloc_noncontiguous(struct device *dev,
 	if (!iova)
 		goto out_free_pages;
 
-	if (sg_alloc_table_from_pages(sgt, pages, count, 0, size, GFP_KERNEL))
+	/*
+	 * Remove the zone/policy flags from the GFP - these are applied to the
+	 * __iommu_dma_alloc_pages() but are not used for the supporting
+	 * internal allocations that follow.
+	 */
+	gfp &= ~(__GFP_DMA | __GFP_DMA32 | __GFP_HIGHMEM | __GFP_COMP);
+
+	if (sg_alloc_table_from_pages(sgt, pages, count, 0, size, gfp))
 		goto out_free_iova;
 
 	if (!(ioprot & IOMMU_CACHE)) {
@@ -836,7 +887,8 @@ static struct page **__iommu_dma_alloc_noncontiguous(struct device *dev,
 			arch_dma_prep_coherent(sg_page(sg), sg->length);
 	}
 
-	ret = iommu_map_sg_atomic(domain, iova, sgt->sgl, sgt->orig_nents, ioprot);
+	ret = iommu_map_sg(domain, iova, sgt->sgl, sgt->orig_nents, ioprot,
+			   gfp);
 	if (ret < 0 || ret < size)
 		goto out_free_sg;
 
@@ -914,7 +966,7 @@ static void iommu_dma_sync_single_for_cpu(struct device *dev,
 {
 	phys_addr_t phys;
 
-	if (dev_is_dma_coherent(dev) && !dev_use_swiotlb(dev))
+	if (dev_is_dma_coherent(dev) && !dev_use_swiotlb(dev, size, dir))
 		return;
 
 	phys = iommu_iova_to_phys(iommu_get_dma_domain(dev), dma_handle);
@@ -930,7 +982,7 @@ static void iommu_dma_sync_single_for_device(struct device *dev,
 {
 	phys_addr_t phys;
 
-	if (dev_is_dma_coherent(dev) && !dev_use_swiotlb(dev))
+	if (dev_is_dma_coherent(dev) && !dev_use_swiotlb(dev, size, dir))
 		return;
 
 	phys = iommu_iova_to_phys(iommu_get_dma_domain(dev), dma_handle);
@@ -948,7 +1000,7 @@ static void iommu_dma_sync_sg_for_cpu(struct device *dev,
 	struct scatterlist *sg;
 	int i;
 
-	if (dev_use_swiotlb(dev))
+	if (sg_dma_is_swiotlb(sgl))
 		for_each_sg(sgl, sg, nelems, i)
 			iommu_dma_sync_single_for_cpu(dev, sg_dma_address(sg),
 						      sg->length, dir);
@@ -964,7 +1016,7 @@ static void iommu_dma_sync_sg_for_device(struct device *dev,
 	struct scatterlist *sg;
 	int i;
 
-	if (dev_use_swiotlb(dev))
+	if (sg_dma_is_swiotlb(sgl))
 		for_each_sg(sgl, sg, nelems, i)
 			iommu_dma_sync_single_for_device(dev,
 							 sg_dma_address(sg),
@@ -990,7 +1042,8 @@ static dma_addr_t iommu_dma_map_page(struct device *dev, struct page *page,
 	 * If both the physical buffer start address and size are
 	 * page aligned, we don't need to use a bounce page.
 	 */
-	if (dev_use_swiotlb(dev) && iova_offset(iovad, phys | size)) {
+	if (dev_use_swiotlb(dev, size, dir) &&
+	    iova_offset(iovad, phys | size)) {
 		void *padding_start;
 		size_t padding_size, aligned_size;
 
@@ -1072,7 +1125,7 @@ static int __finalise_sg(struct device *dev, struct scatterlist *sg, int nents,
 		sg_dma_address(s) = DMA_MAPPING_ERROR;
 		sg_dma_len(s) = 0;
 
-		if (sg_is_dma_bus_address(s)) {
+		if (sg_dma_is_bus_address(s)) {
 			if (i > 0)
 				cur = sg_next(cur);
 
@@ -1128,7 +1181,7 @@ static void __invalidate_sg(struct scatterlist *sg, int nents)
 	int i;
 
 	for_each_sg(sg, s, nents, i) {
-		if (sg_is_dma_bus_address(s)) {
+		if (sg_dma_is_bus_address(s)) {
 			sg_dma_unmark_bus_address(s);
 		} else {
 			if (sg_dma_address(s) != DMA_MAPPING_ERROR)
@@ -1157,6 +1210,8 @@ static int iommu_dma_map_sg_swiotlb(struct device *dev, struct scatterlist *sg,
 {
 	struct scatterlist *s;
 	int i;
+
+	sg_dma_mark_swiotlb(sg);
 
 	for_each_sg(sg, s, nents, i) {
 		sg_dma_address(s) = iommu_dma_map_page(dev, sg_page(s),
@@ -1202,7 +1257,7 @@ static int iommu_dma_map_sg(struct device *dev, struct scatterlist *sg,
 			goto out;
 	}
 
-	if (dev_use_swiotlb(dev))
+	if (dev_use_sg_swiotlb(dev, sg, nents, dir))
 		return iommu_dma_map_sg_swiotlb(dev, sg, nents, dir, attrs);
 
 	if (!(attrs & DMA_ATTR_SKIP_CPU_SYNC))
@@ -1284,7 +1339,7 @@ static int iommu_dma_map_sg(struct device *dev, struct scatterlist *sg,
 	 * We'll leave any physical concatenation to the IOMMU driver's
 	 * implementation - it knows better than we do.
 	 */
-	ret = iommu_map_sg_atomic(domain, iova, sg, nents, prot);
+	ret = iommu_map_sg(domain, iova, sg, nents, prot, GFP_ATOMIC);
 	if (ret < 0 || ret < iova_len)
 		goto out_free_iova;
 
@@ -1307,7 +1362,7 @@ static void iommu_dma_unmap_sg(struct device *dev, struct scatterlist *sg,
 	struct scatterlist *tmp;
 	int i;
 
-	if (dev_use_swiotlb(dev)) {
+	if (sg_dma_is_swiotlb(sg)) {
 		iommu_dma_unmap_sg_swiotlb(dev, sg, nents, dir, attrs);
 		return;
 	}
@@ -1321,7 +1376,7 @@ static void iommu_dma_unmap_sg(struct device *dev, struct scatterlist *sg,
 	 * just have to be determined.
 	 */
 	for_each_sg(sg, tmp, nents, i) {
-		if (sg_is_dma_bus_address(tmp)) {
+		if (sg_dma_is_bus_address(tmp)) {
 			sg_dma_unmark_bus_address(tmp);
 			continue;
 		}
@@ -1335,7 +1390,7 @@ static void iommu_dma_unmap_sg(struct device *dev, struct scatterlist *sg,
 
 	nents -= i;
 	for_each_sg(tmp, tmp, nents, i) {
-		if (sg_is_dma_bus_address(tmp)) {
+		if (sg_dma_is_bus_address(tmp)) {
 			sg_dma_unmark_bus_address(tmp);
 			continue;
 		}
@@ -1618,7 +1673,7 @@ static struct iommu_dma_msi_page *iommu_dma_get_msi_page(struct device *dev,
 	if (!iova)
 		goto out_free_page;
 
-	if (iommu_map(domain, iova, msi_addr, size, prot))
+	if (iommu_map(domain, iova, msi_addr, size, prot, GFP_KERNEL))
 		goto out_free_iova;
 
 	INIT_LIST_HEAD(&msi_page->list);

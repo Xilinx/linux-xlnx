@@ -284,7 +284,7 @@ static int cmd_db_debugfs_dump(struct seq_file *seq, void *p)
 		ent = rsc_to_entry_header(rsc);
 		for (j = 0; j < le16_to_cpu(rsc->cnt); j++, ent++) {
 			seq_printf(seq, "0x%05x: %*pEp", le32_to_cpu(ent->addr),
-				   (int)sizeof(ent->id), ent->id);
+				   (int)strnlen(ent->id, sizeof(ent->id)), ent->id);
 
 			len = le16_to_cpu(ent->len);
 			if (len) {
@@ -337,6 +337,8 @@ static int cmd_db_dev_probe(struct platform_device *pdev)
 	}
 
 	debugfs_create_file("cmd-db", 0400, NULL, NULL, &cmd_db_debugfs_ops);
+
+	device_set_pm_not_required(&pdev->dev);
 
 	return 0;
 }

@@ -97,7 +97,7 @@ struct osf_dirent {
 	unsigned int d_ino;
 	unsigned short d_reclen;
 	unsigned short d_namlen;
-	char d_name[1];
+	char d_name[];
 };
 
 struct osf_dirent_callback {
@@ -522,7 +522,7 @@ SYSCALL_DEFINE4(osf_mount, unsigned long, typenr, const char __user *, path,
 		break;
 	default:
 		retval = -EINVAL;
-		printk("osf_mount(%ld, %x)\n", typenr, flag);
+		printk_ratelimited("osf_mount(%ld, %x)\n", typenr, flag);
 	}
 
 	return retval;
@@ -1013,8 +1013,6 @@ SYSCALL_DEFINE2(osf_settimeofday, struct timeval32 __user *, tv,
 
 	return do_sys_settimeofday64(tv ? &kts : NULL, tz ? &ktz : NULL);
 }
-
-asmlinkage long sys_ni_posix_timers(void);
 
 SYSCALL_DEFINE2(osf_utimes, const char __user *, filename,
 		struct timeval32 __user *, tvs)

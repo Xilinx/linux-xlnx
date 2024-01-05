@@ -254,6 +254,7 @@ static int xvsw_set_format(struct v4l2_subdev *subdev,
 	return 0;
 }
 
+#if 0
 static int xvsw_get_routing(struct v4l2_subdev *subdev,
 			    struct v4l2_subdev_routing *route)
 {
@@ -273,8 +274,8 @@ static int xvsw_get_routing(struct v4l2_subdev *subdev,
 		min = route->num_routes;
 
 	for (i = 0; i < min; ++i) {
-		route->routes[i].sink = xvsw->routing[i];
-		route->routes[i].source = i;
+		route->routes[i].sink_pad = xvsw->routing[i];
+		route->routes[i].source_pad = i;
 	}
 
 	route->num_routes = xvsw->nsources;
@@ -283,9 +284,12 @@ static int xvsw_get_routing(struct v4l2_subdev *subdev,
 
 	return 0;
 }
+#endif
 
 static int xvsw_set_routing(struct v4l2_subdev *subdev,
-			    struct v4l2_subdev_routing *route)
+			    struct v4l2_subdev_state *state,
+			    enum v4l2_subdev_format_whence which,
+			    struct v4l2_subdev_krouting *route)
 {
 	struct xvswitch_device *xvsw = to_xvsw(subdev);
 	unsigned int i;
@@ -306,8 +310,8 @@ static int xvsw_set_routing(struct v4l2_subdev *subdev,
 		xvsw->routing[i] = -1;
 
 	for (i = 0; i < route->num_routes; ++i)
-		xvsw->routing[route->routes[i].source - xvsw->nsinks] =
-			route->routes[i].sink;
+		xvsw->routing[route->routes[i].source_pad - xvsw->nsinks] =
+			route->routes[i].sink_pad;
 
 done:
 	mutex_unlock(&subdev->entity.graph_obj.mdev->graph_mutex);
@@ -333,7 +337,7 @@ static struct v4l2_subdev_pad_ops xvsw_pad_ops = {
 	.enum_frame_size = xvip_enum_frame_size,
 	.get_fmt = xvsw_get_format,
 	.set_fmt = xvsw_set_format,
-	.get_routing = xvsw_get_routing,
+/*	.get_routing = xvsw_get_routing,*/
 	.set_routing = xvsw_set_routing,
 };
 

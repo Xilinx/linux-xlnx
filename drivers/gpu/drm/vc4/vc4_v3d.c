@@ -96,8 +96,8 @@ static const struct debugfs_reg32 v3d_regs[] = {
 
 static int vc4_v3d_debugfs_ident(struct seq_file *m, void *unused)
 {
-	struct drm_info_node *node = (struct drm_info_node *)m->private;
-	struct drm_device *dev = node->minor->dev;
+	struct drm_debugfs_entry *entry = m->private;
+	struct drm_device *dev = entry->dev;
 	struct vc4_dev *vc4 = to_vc4_dev(dev);
 	int ret = vc4_v3d_pm_get(vc4);
 
@@ -404,19 +404,13 @@ int vc4_v3d_debugfs_init(struct drm_minor *minor)
 	struct drm_device *drm = minor->dev;
 	struct vc4_dev *vc4 = to_vc4_dev(drm);
 	struct vc4_v3d *v3d = vc4->v3d;
-	int ret;
 
 	if (!vc4->v3d)
 		return -ENODEV;
 
-	ret = vc4_debugfs_add_file(minor, "v3d_ident",
-				   vc4_v3d_debugfs_ident, NULL);
-	if (ret)
-		return ret;
+	drm_debugfs_add_file(drm, "v3d_ident", vc4_v3d_debugfs_ident, NULL);
 
-	ret = vc4_debugfs_add_regset32(minor, "v3d_regs", &v3d->regset);
-	if (ret)
-		return ret;
+	vc4_debugfs_add_regset32(drm, "v3d_regs", &v3d->regset);
 
 	return 0;
 }
@@ -538,10 +532,9 @@ static int vc4_v3d_dev_probe(struct platform_device *pdev)
 	return component_add(&pdev->dev, &vc4_v3d_ops);
 }
 
-static int vc4_v3d_dev_remove(struct platform_device *pdev)
+static void vc4_v3d_dev_remove(struct platform_device *pdev)
 {
 	component_del(&pdev->dev, &vc4_v3d_ops);
-	return 0;
 }
 
 const struct of_device_id vc4_v3d_dt_match[] = {
@@ -553,7 +546,7 @@ const struct of_device_id vc4_v3d_dt_match[] = {
 
 struct platform_driver vc4_v3d_driver = {
 	.probe = vc4_v3d_dev_probe,
-	.remove = vc4_v3d_dev_remove,
+	.remove_new = vc4_v3d_dev_remove,
 	.driver = {
 		.name = "vc4_v3d",
 		.of_match_table = vc4_v3d_dt_match,

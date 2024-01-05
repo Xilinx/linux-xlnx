@@ -89,8 +89,7 @@ static int usb5744_i2c_dev_init(struct i2c_client *client)
 	return ret;
 }
 
-static int usb5744_i2c_probe(struct i2c_client *client,
-			     const struct i2c_device_id *id)
+static int usb5744_i2c_probe(struct i2c_client *client)
 {
 	/* I2C device init and gpio reset to the hub. */
 	return usb5744_i2c_dev_init(client);

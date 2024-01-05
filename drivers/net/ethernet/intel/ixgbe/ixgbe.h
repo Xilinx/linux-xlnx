@@ -9,7 +9,6 @@
 #include <linux/pci.h>
 #include <linux/netdevice.h>
 #include <linux/cpumask.h>
-#include <linux/aer.h>
 #include <linux/if_vlan.h>
 #include <linux/jiffies.h>
 #include <linux/phy.h>
@@ -39,7 +38,10 @@
 /* TX/RX descriptor defines */
 #define IXGBE_DEFAULT_TXD		    512
 #define IXGBE_DEFAULT_TX_WORK		    256
-#define IXGBE_MAX_TXD			   4096
+#define IXGBE_MAX_TXD_82598		   4096
+#define IXGBE_MAX_TXD_82599		   8192
+#define IXGBE_MAX_TXD_X540		   8192
+#define IXGBE_MAX_TXD_X550		  32768
 #define IXGBE_MIN_TXD			     64
 
 #if (PAGE_SIZE < 8192)
@@ -47,7 +49,10 @@
 #else
 #define IXGBE_DEFAULT_RXD		    128
 #endif
-#define IXGBE_MAX_RXD			   4096
+#define IXGBE_MAX_RXD_82598		   4096
+#define IXGBE_MAX_RXD_82599		   8192
+#define IXGBE_MAX_RXD_X540		   8192
+#define IXGBE_MAX_RXD_X550		  32768
 #define IXGBE_MIN_RXD			     64
 
 /* flow control */
@@ -66,6 +71,8 @@
 #define IXGBE_RXBUFFER_3K    3072
 #define IXGBE_RXBUFFER_4K    4096
 #define IXGBE_MAX_RXBUFFER  16384  /* largest size for a single descriptor */
+
+#define IXGBE_PKT_HDR_PAD   (ETH_HLEN + ETH_FCS_LEN + (VLAN_HLEN * 2))
 
 /* Attempt to maximize the headroom available for incoming frames.  We
  * use a 2K buffer for receives and need 1536/1534 to store the data for
@@ -938,8 +945,6 @@ void ixgbe_update_pf_promisc_vlvf(struct ixgbe_adapter *adapter, u32 vid);
 void ixgbe_clear_interrupt_scheme(struct ixgbe_adapter *adapter);
 netdev_tx_t ixgbe_xmit_frame_ring(struct sk_buff *, struct ixgbe_adapter *,
 				  struct ixgbe_ring *);
-void ixgbe_unmap_and_free_tx_resource(struct ixgbe_ring *,
-				      struct ixgbe_tx_buffer *);
 void ixgbe_alloc_rx_buffers(struct ixgbe_ring *, u16);
 void ixgbe_write_eitr(struct ixgbe_q_vector *);
 int ixgbe_poll(struct napi_struct *napi, int budget);
@@ -990,10 +995,6 @@ int ixgbe_setup_fcoe_ddp_resources(struct ixgbe_adapter *adapter);
 void ixgbe_free_fcoe_ddp_resources(struct ixgbe_adapter *adapter);
 int ixgbe_fcoe_enable(struct net_device *netdev);
 int ixgbe_fcoe_disable(struct net_device *netdev);
-#ifdef CONFIG_IXGBE_DCB
-u8 ixgbe_fcoe_getapp(struct ixgbe_adapter *adapter);
-u8 ixgbe_fcoe_setapp(struct ixgbe_adapter *adapter, u8 up);
-#endif /* CONFIG_IXGBE_DCB */
 int ixgbe_fcoe_get_wwn(struct net_device *netdev, u64 *wwn, int type);
 int ixgbe_fcoe_get_hbainfo(struct net_device *netdev,
 			   struct netdev_fcoe_hbainfo *info);

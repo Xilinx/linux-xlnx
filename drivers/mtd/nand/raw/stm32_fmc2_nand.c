@@ -1531,6 +1531,9 @@ static int stm32_fmc2_nfc_setup_interface(struct nand_chip *chip, int chipnr,
 	if (IS_ERR(sdrt))
 		return PTR_ERR(sdrt);
 
+	if (conf->timings.mode > 3)
+		return -EOPNOTSUPP;
+
 	if (chipnr == NAND_DATA_IFACE_CHECK_ONLY)
 		return 0;
 
@@ -1919,8 +1922,8 @@ static int stm32_fmc2_nfc_probe(struct platform_device *pdev)
 		if (!(nfc->cs_assigned & BIT(chip_cs)))
 			continue;
 
-		res = platform_get_resource(pdev, IORESOURCE_MEM, mem_region);
-		nfc->data_base[chip_cs] = devm_ioremap_resource(dev, res);
+		nfc->data_base[chip_cs] = devm_platform_get_and_ioremap_resource(pdev,
+						mem_region, &res);
 		if (IS_ERR(nfc->data_base[chip_cs]))
 			return PTR_ERR(nfc->data_base[chip_cs]);
 
@@ -1948,21 +1951,17 @@ static int stm32_fmc2_nfc_probe(struct platform_device *pdev)
 
 	init_completion(&nfc->complete);
 
-	nfc->clk = devm_clk_get(nfc->cdev, NULL);
-	if (IS_ERR(nfc->clk))
+	nfc->clk = devm_clk_get_enabled(nfc->cdev, NULL);
+	if (IS_ERR(nfc->clk)) {
+		dev_err(dev, "can not get and enable the clock\n");
 		return PTR_ERR(nfc->clk);
-
-	ret = clk_prepare_enable(nfc->clk);
-	if (ret) {
-		dev_err(dev, "can not enable the clock\n");
-		return ret;
 	}
 
 	rstc = devm_reset_control_get(dev, NULL);
 	if (IS_ERR(rstc)) {
 		ret = PTR_ERR(rstc);
 		if (ret == -EPROBE_DEFER)
-			goto err_clk_disable;
+			return ret;
 	} else {
 		reset_control_assert(rstc);
 		reset_control_deassert(rstc);
@@ -2015,13 +2014,10 @@ err_release_dma:
 	sg_free_table(&nfc->dma_data_sg);
 	sg_free_table(&nfc->dma_ecc_sg);
 
-err_clk_disable:
-	clk_disable_unprepare(nfc->clk);
-
 	return ret;
 }
 
-static int stm32_fmc2_nfc_remove(struct platform_device *pdev)
+static void stm32_fmc2_nfc_remove(struct platform_device *pdev)
 {
 	struct stm32_fmc2_nfc *nfc = platform_get_drvdata(pdev);
 	struct stm32_fmc2_nand *nand = &nfc->nand;
@@ -2042,11 +2038,7 @@ static int stm32_fmc2_nfc_remove(struct platform_device *pdev)
 	sg_free_table(&nfc->dma_data_sg);
 	sg_free_table(&nfc->dma_ecc_sg);
 
-	clk_disable_unprepare(nfc->clk);
-
 	stm32_fmc2_nfc_wp_enable(nand);
-
-	return 0;
 }
 
 static int __maybe_unused stm32_fmc2_nfc_suspend(struct device *dev)
@@ -2103,7 +2095,7 @@ MODULE_DEVICE_TABLE(of, stm32_fmc2_nfc_match);
 
 static struct platform_driver stm32_fmc2_nfc_driver = {
 	.probe	= stm32_fmc2_nfc_probe,
-	.remove	= stm32_fmc2_nfc_remove,
+	.remove_new = stm32_fmc2_nfc_remove,
 	.driver	= {
 		.name = "stm32_fmc2_nfc",
 		.of_match_table = stm32_fmc2_nfc_match,

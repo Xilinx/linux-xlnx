@@ -21,6 +21,10 @@ config NVMEM_SYSFS
 	 This interface is mostly used by userspace applications to
 	 read/write directly into nvmem.
 
+# Layouts
+
+source "drivers/nvmem/layouts/Kconfig"
+
 # Devices
 
 config NVMEM_APPLE_EFUSES
@@ -51,6 +55,7 @@ config NVMEM_BRCM_NVRAM
 	tristate "Broadcom's NVRAM support"
 	depends on ARCH_BCM_5301X || COMPILE_TEST
 	depends on HAS_IOMEM
+	select GENERIC_NET_UTILS
 	help
 	  This driver provides support for Broadcom's NVRAM that can be accessed
 	  using I/O mapping.
@@ -77,6 +82,15 @@ config NVMEM_IMX_OCOTP
 
 	  This driver can also be built as a module. If so, the module
 	  will be called nvmem-imx-ocotp.
+
+config NVMEM_IMX_OCOTP_ELE
+	tristate "i.MX On-Chip OTP Controller support"
+	depends on ARCH_MXC || COMPILE_TEST
+	depends on HAS_IOMEM
+	depends on OF
+	help
+	  This is a driver for the On-Chip OTP Controller (OCOTP)
+	  available on i.MX SoCs which has ELE.
 
 config NVMEM_IMX_OCOTP_SCU
 	tristate "i.MX8 SCU On-Chip OTP Controller support"
@@ -164,7 +178,7 @@ config NVMEM_MICROCHIP_OTPC
 	depends on ARCH_AT91 || COMPILE_TEST
 	help
 	  This driver enable the OTP controller available on Microchip SAMA7G5
-	  SoCs. It controlls the access to the OTP memory connected to it.
+	  SoCs. It controls the access to the OTP memory connected to it.
 
 config NVMEM_MTK_EFUSE
 	tristate "Mediatek SoCs EFUSE support"
@@ -212,6 +226,19 @@ config NVMEM_QCOM_QFPROM
 	  This driver can also be built as a module. If so, the module
 	  will be called nvmem_qfprom.
 
+config NVMEM_QCOM_SEC_QFPROM
+        tristate "QCOM SECURE QFPROM Support"
+        depends on ARCH_QCOM || COMPILE_TEST
+        depends on HAS_IOMEM
+        depends on OF
+        select QCOM_SCM
+        help
+          Say y here to enable secure QFPROM support. The secure QFPROM provides access
+          functions for QFPROM data to rest of the drivers via nvmem interface.
+
+          This driver can also be built as a module. If so, the module will be called
+          nvmem_sec_qfprom.
+
 config NVMEM_RAVE_SP_EEPROM
 	tristate "Rave SP EEPROM Support"
 	depends on RAVE_SP_CORE
@@ -233,7 +260,7 @@ config NVMEM_ROCKCHIP_EFUSE
 	depends on ARCH_ROCKCHIP || COMPILE_TEST
 	depends on HAS_IOMEM
 	help
-	  This is a simple drive to dump specified values of Rockchip SoC
+	  This is a simple driver to dump specified values of Rockchip SoC
 	  from eFuse, such as cpu-leakage.
 
 	  This driver can also be built as a module. If so, the module
@@ -244,8 +271,8 @@ config NVMEM_ROCKCHIP_OTP
 	depends on ARCH_ROCKCHIP || COMPILE_TEST
 	depends on HAS_IOMEM
 	help
-	  This is a simple drive to dump specified values of Rockchip SoC
-	  from otp, such as cpu-leakage.
+	  This is a simple driver to dump specified values of Rockchip SoC
+	  from OTP, such as cpu-leakage.
 
 	  This driver can also be built as a module. If so, the module
 	  will be called nvmem_rockchip_otp.
@@ -290,9 +317,19 @@ config NVMEM_SPRD_EFUSE
 	  This driver can also be built as a module. If so, the module
 	  will be called nvmem-sprd-efuse.
 
+config NVMEM_STM32_BSEC_OPTEE_TA
+	def_bool NVMEM_STM32_ROMEM && OPTEE
+	help
+	  Say y here to enable the accesses to STM32MP SoC OTPs by the OP-TEE
+	  trusted application STM32MP BSEC.
+
+	  This library is a used by stm32-romem driver or included in the module
+	  called nvmem-stm32-romem.
+
 config NVMEM_STM32_ROMEM
 	tristate "STMicroelectronics STM32 factory-programmed memory support"
 	depends on ARCH_STM32 || COMPILE_TEST
+	depends on OPTEE || !OPTEE
 	help
 	  Say y here to enable read-only access for STMicroelectronics STM32
 	  factory-programmed memory area.
@@ -326,6 +363,7 @@ config NVMEM_U_BOOT_ENV
 	tristate "U-Boot environment variables support"
 	depends on OF && MTD
 	select CRC32
+	select GENERIC_NET_UTILS
 	help
 	  U-Boot stores its setup as environment variables. This driver adds
 	  support for verifying & exporting such data. It also exposes variables
@@ -358,7 +396,7 @@ config NVMEM_VF610_OCOTP
 	  be called nvmem-vf610-ocotp.
 
 config NVMEM_ZYNQMP
-	bool "Xilinx ZYNQMP SoC nvmem firmware support"
+	tristate "Xilinx ZYNQMP SoC nvmem firmware support"
 	depends on ARCH_ZYNQMP
 	help
 	  This is a driver to access hardware related data like
@@ -377,5 +415,17 @@ config XLNX_SEC_CFG
 	  It also supports of programming AES keys in volatile user keys.
 
 	  If sure, say yes. If unsure, say no.
+
+config NVMEM_QORIQ_EFUSE
+	tristate "NXP QorIQ eFuse support"
+	depends on PPC_85xx || COMPILE_TEST
+	depends on HAS_IOMEM
+	help
+	  This driver provides read support for the eFuses (SFP) on NXP QorIQ
+	  series SoC's. This includes secure boot settings, the globally unique
+	  NXP ID 'FUIDR' and the OEM unique ID 'OUIDR'.
+
+	  This driver can also be built as a module. If so, the module
+	  will be called nvmem_qoriq_efuse.
 
 endif

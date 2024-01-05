@@ -11,6 +11,7 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include "vpu.h"
+#include "vpu_defs.h"
 #include "vpu_core.h"
 #include "vpu_rpc.h"
 #include "vpu_helpers.h"
@@ -57,6 +58,36 @@ const struct vpu_format *vpu_helper_find_format(struct vpu_inst *inst, u32 type,
 	}
 
 	return NULL;
+}
+
+const struct vpu_format *vpu_helper_find_sibling(struct vpu_inst *inst, u32 type, u32 pixelfmt)
+{
+	const struct vpu_format *fmt;
+	const struct vpu_format *sibling;
+
+	fmt = vpu_helper_find_format(inst, type, pixelfmt);
+	if (!fmt || !fmt->sibling)
+		return NULL;
+
+	sibling = vpu_helper_find_format(inst, type, fmt->sibling);
+	if (!sibling || sibling->sibling != fmt->pixfmt ||
+	    sibling->comp_planes != fmt->comp_planes)
+		return NULL;
+
+	return sibling;
+}
+
+bool vpu_helper_match_format(struct vpu_inst *inst, u32 type, u32 fmta, u32 fmtb)
+{
+	const struct vpu_format *sibling;
+
+	if (fmta == fmtb)
+		return true;
+
+	sibling = vpu_helper_find_sibling(inst, type, fmta);
+	if (sibling && sibling->pixfmt == fmtb)
+		return true;
+	return false;
 }
 
 const struct vpu_format *vpu_helper_enum_format(struct vpu_inst *inst, u32 type, int index)
@@ -123,9 +154,10 @@ static u32 get_nv12_plane_size(u32 width, u32 height, int plane_no,
 	u32 bytesperline;
 	u32 size = 0;
 
-	bytesperline = ALIGN(width, stride);
+	bytesperline = width;
 	if (pbl)
 		bytesperline = max(bytesperline, *pbl);
+	bytesperline = ALIGN(bytesperline, stride);
 	height = ALIGN(height, 2);
 	if (plane_no == 0)
 		size = bytesperline * height;
@@ -148,13 +180,13 @@ static u32 get_tiled_8l128_plane_size(u32 fmt, u32 width, u32 height, int plane_
 
 	if (interlaced)
 		hs++;
-	if (fmt == V4L2_PIX_FMT_NV12M_10BE_8L128)
+	if (fmt == V4L2_PIX_FMT_NV12M_10BE_8L128 || fmt == V4L2_PIX_FMT_NV12_10BE_8L128)
 		bitdepth = 10;
 	bytesperline = DIV_ROUND_UP(width * bitdepth, BITS_PER_BYTE);
-	bytesperline = ALIGN(bytesperline, 1 << ws);
-	bytesperline = ALIGN(bytesperline, stride);
 	if (pbl)
 		bytesperline = max(bytesperline, *pbl);
+	bytesperline = ALIGN(bytesperline, 1 << ws);
+	bytesperline = ALIGN(bytesperline, stride);
 	height = ALIGN(height, 1 << hs);
 	if (plane_no == 0)
 		size = bytesperline * height;
@@ -172,9 +204,10 @@ static u32 get_default_plane_size(u32 width, u32 height, int plane_no,
 	u32 bytesperline;
 	u32 size = 0;
 
-	bytesperline = ALIGN(width, stride);
+	bytesperline = width;
 	if (pbl)
 		bytesperline = max(bytesperline, *pbl);
+	bytesperline = ALIGN(bytesperline, stride);
 	if (plane_no == 0)
 		size = bytesperline * height;
 	if (pbl)
@@ -187,9 +220,12 @@ u32 vpu_helper_get_plane_size(u32 fmt, u32 w, u32 h, int plane_no,
 			      u32 stride, u32 interlaced, u32 *pbl)
 {
 	switch (fmt) {
+	case V4L2_PIX_FMT_NV12:
 	case V4L2_PIX_FMT_NV12M:
 		return get_nv12_plane_size(w, h, plane_no, stride, interlaced, pbl);
+	case V4L2_PIX_FMT_NV12_8L128:
 	case V4L2_PIX_FMT_NV12M_8L128:
+	case V4L2_PIX_FMT_NV12_10BE_8L128:
 	case V4L2_PIX_FMT_NV12M_10BE_8L128:
 		return get_tiled_8l128_plane_size(fmt, w, h, plane_no, stride, interlaced, pbl);
 	default:
@@ -411,4 +447,64 @@ int vpu_find_src_by_dst(struct vpu_pair *pairs, u32 cnt, u32 dst)
 	}
 
 	return -EINVAL;
+}
+
+const char *vpu_id_name(u32 id)
+{
+	switch (id) {
+	case VPU_CMD_ID_NOOP: return "noop";
+	case VPU_CMD_ID_CONFIGURE_CODEC: return "configure codec";
+	case VPU_CMD_ID_START: return "start";
+	case VPU_CMD_ID_STOP: return "stop";
+	case VPU_CMD_ID_ABORT: return "abort";
+	case VPU_CMD_ID_RST_BUF: return "reset buf";
+	case VPU_CMD_ID_SNAPSHOT: return "snapshot";
+	case VPU_CMD_ID_FIRM_RESET: return "reset firmware";
+	case VPU_CMD_ID_UPDATE_PARAMETER: return "update parameter";
+	case VPU_CMD_ID_FRAME_ENCODE: return "encode frame";
+	case VPU_CMD_ID_SKIP: return "skip";
+	case VPU_CMD_ID_FS_ALLOC: return "alloc fb";
+	case VPU_CMD_ID_FS_RELEASE: return "release fb";
+	case VPU_CMD_ID_TIMESTAMP: return "timestamp";
+	case VPU_CMD_ID_DEBUG: return "debug";
+	case VPU_MSG_ID_RESET_DONE: return "reset done";
+	case VPU_MSG_ID_START_DONE: return "start done";
+	case VPU_MSG_ID_STOP_DONE: return "stop done";
+	case VPU_MSG_ID_ABORT_DONE: return "abort done";
+	case VPU_MSG_ID_BUF_RST: return "buf reset done";
+	case VPU_MSG_ID_MEM_REQUEST: return "mem request";
+	case VPU_MSG_ID_PARAM_UPD_DONE: return "param upd done";
+	case VPU_MSG_ID_FRAME_INPUT_DONE: return "frame input done";
+	case VPU_MSG_ID_ENC_DONE: return "encode done";
+	case VPU_MSG_ID_DEC_DONE: return "frame display";
+	case VPU_MSG_ID_FRAME_REQ: return "fb request";
+	case VPU_MSG_ID_FRAME_RELEASE: return "fb release";
+	case VPU_MSG_ID_SEQ_HDR_FOUND: return "seq hdr found";
+	case VPU_MSG_ID_RES_CHANGE: return "resolution change";
+	case VPU_MSG_ID_PIC_HDR_FOUND: return "pic hdr found";
+	case VPU_MSG_ID_PIC_DECODED: return "picture decoded";
+	case VPU_MSG_ID_PIC_EOS: return "eos";
+	case VPU_MSG_ID_FIFO_LOW: return "fifo low";
+	case VPU_MSG_ID_BS_ERROR: return "bs error";
+	case VPU_MSG_ID_UNSUPPORTED: return "unsupported";
+	case VPU_MSG_ID_FIRMWARE_XCPT: return "exception";
+	case VPU_MSG_ID_PIC_SKIPPED: return "skipped";
+	}
+	return "<unknown>";
+}
+
+const char *vpu_codec_state_name(enum vpu_codec_state state)
+{
+	switch (state) {
+	case VPU_CODEC_STATE_DEINIT: return "initialization";
+	case VPU_CODEC_STATE_CONFIGURED: return "configured";
+	case VPU_CODEC_STATE_START: return "start";
+	case VPU_CODEC_STATE_STARTED: return "started";
+	case VPU_CODEC_STATE_ACTIVE: return "active";
+	case VPU_CODEC_STATE_SEEK: return "seek";
+	case VPU_CODEC_STATE_STOP: return "stop";
+	case VPU_CODEC_STATE_DRAIN: return "drain";
+	case VPU_CODEC_STATE_DYAMIC_RESOLUTION_CHANGE: return "resolution change";
+	}
+	return "<unknown>";
 }

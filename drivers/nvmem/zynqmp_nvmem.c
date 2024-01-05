@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright (C) 2017 - 2021 Xilinx, Inc.
+ * Copyright (C) 2019 Xilinx, Inc.
+ * Copyright (C), 2022 - 2023 Advanced Micro Devices, Inc.
  */
 
 #include <linux/dma-mapping.h>
@@ -11,29 +12,35 @@
 #include <linux/firmware/xlnx-zynqmp.h>
 
 #define SILICON_REVISION_MASK 0xF
-#define P_USER_0_64_UPPER_MASK	0x5FFF0000
-#define P_USER_127_LOWER_4_BIT_MASK 0xF
-#define WORD_INBYTES		(4)
-#define SOC_VER_SIZE		(0x4)
-#define EFUSE_MEMORY_SIZE	(0x177)
-#define UNUSED_SPACE		(0x8)
+#define P_USER_0_64_UPPER_MASK	GENMASK(31, 16)
+#define P_USER_127_LOWER_4_BIT_MASK GENMASK(3, 0)
+#define WORD_INBYTES		4
+#define SOC_VER_SIZE		0x4
+#define EFUSE_MEMORY_SIZE	0x177
+#define UNUSED_SPACE		0x8
 #define ZYNQMP_NVMEM_SIZE	(SOC_VER_SIZE + UNUSED_SPACE + \
 				 EFUSE_MEMORY_SIZE)
-#define SOC_VERSION_OFFSET	(0x0)
-#define EFUSE_START_OFFSET	(0xC)
-#define EFUSE_END_OFFSET	(0xFC)
-#define EFUSE_PUF_START_OFFSET	(0x100)
-#define EFUSE_PUF_MID_OFFSET	(0x140)
-#define EFUSE_PUF_END_OFFSET	(0x17F)
-#define EFUSE_NOT_ENABLED	(29)
-#define EFUSE_READ		(0)
-#define EFUSE_WRITE		(1)
+#define SOC_VERSION_OFFSET	0x0
+#define EFUSE_START_OFFSET	0xC
+#define EFUSE_END_OFFSET	0xFC
+#define EFUSE_PUF_START_OFFSET	0x100
+#define EFUSE_PUF_MID_OFFSET	0x140
+#define EFUSE_PUF_END_OFFSET	0x17F
+#define EFUSE_NOT_ENABLED	29
+
+/*
+ * efuse access type
+ */
+enum efuse_access {
+	EFUSE_READ = 0,
+	EFUSE_WRITE
+};
 
 /**
  * struct xilinx_efuse - the basic structure
  * @src:	address of the buffer to store the data to be write/read
- * @size:	no of words to be read/write
- * @offset:	offset to be read/write`
+ * @size:	read/write word count
+ * @offset:	read/write offset
  * @flag:	0 - represents efuse read and 1- represents efuse write
  * @pufuserfuse:0 - represents non-puf efuses, offset is used for read/write
  *		1 - represents puf user fuse row number.
@@ -45,20 +52,22 @@ struct xilinx_efuse {
 	u64 src;
 	u32 size;
 	u32 offset;
-	u32 flag;
+	enum efuse_access flag;
 	u32 pufuserfuse;
 };
 
 static int zynqmp_efuse_access(void *context, unsigned int offset,
-			       void *val, size_t bytes, unsigned int flag,
+			       void *val, size_t bytes, enum efuse_access flag,
 			       unsigned int pufflag)
 {
-	size_t words = bytes / WORD_INBYTES;
 	struct device *dev = context;
-	dma_addr_t dma_addr, dma_buf;
 	struct xilinx_efuse *efuse;
+	dma_addr_t dma_addr;
+	dma_addr_t dma_buf;
+	size_t words = bytes / WORD_INBYTES;
+	int ret;
+	int value;
 	char *data;
-	int ret, value;
 
 	if (bytes % WORD_INBYTES != 0) {
 		dev_err(dev, "Bytes requested should be word aligned\n");
@@ -94,9 +103,8 @@ static int zynqmp_efuse_access(void *context, unsigned int offset,
 	data = dma_alloc_coherent(dev, sizeof(bytes),
 				  &dma_buf, GFP_KERNEL);
 	if (!data) {
-		dma_free_coherent(dev, sizeof(struct xilinx_efuse),
-				  efuse, dma_addr);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto efuse_data_fail;
 	}
 
 	if (flag == EFUSE_WRITE) {
@@ -116,29 +124,32 @@ static int zynqmp_efuse_access(void *context, unsigned int offset,
 		if (ret == EFUSE_NOT_ENABLED) {
 			dev_err(dev, "efuse access is not enabled\n");
 			ret = -EOPNOTSUPP;
-			goto END;
+		} else {
+			dev_err(dev, "Error in efuse read %x\n", ret);
+			ret = -EPERM;
 		}
-		dev_err(dev, "Error in efuse read %x\n", ret);
-		ret = -EPERM;
-		goto END;
+		goto efuse_access_err;
 	}
 
 	if (flag == EFUSE_READ)
 		memcpy(val, data, bytes);
-END:
-
-	dma_free_coherent(dev, sizeof(struct xilinx_efuse),
-			  efuse, dma_addr);
+efuse_access_err:
 	dma_free_coherent(dev, sizeof(bytes),
 			  data, dma_buf);
+efuse_data_fail:
+	dma_free_coherent(dev, sizeof(struct xilinx_efuse),
+			  efuse, dma_addr);
 
 	return ret;
 }
 
 static int zynqmp_nvmem_read(void *context, unsigned int offset, void *val, size_t bytes)
 {
-	int ret, pufflag = 0;
-	int idcode, version;
+	struct device *dev = context;
+	int ret;
+	int pufflag = 0;
+	int idcode;
+	int version;
 
 	if (offset >= EFUSE_PUF_START_OFFSET && offset <= EFUSE_PUF_END_OFFSET)
 		pufflag = 1;
@@ -153,7 +164,7 @@ static int zynqmp_nvmem_read(void *context, unsigned int offset, void *val, size
 		if (ret < 0)
 			return ret;
 
-		pr_debug("Read chipid val %x %x\n", idcode, version);
+		dev_dbg(dev, "Read chipid val %x %x\n", idcode, version);
 		*(int *)val = version & SILICON_REVISION_MASK;
 		break;
 	/* Efuse offset starts from 0xc */
@@ -186,13 +197,6 @@ static int zynqmp_nvmem_write(void *context,
 				   val, bytes, EFUSE_WRITE, pufflag);
 }
 
-static struct nvmem_config econfig = {
-	.name = "zynqmp-nvmem",
-	.owner = THIS_MODULE,
-	.word_size = 1,
-	.size = ZYNQMP_NVMEM_SIZE,
-};
-
 static const struct of_device_id zynqmp_nvmem_match[] = {
 	{ .compatible = "xlnx,zynqmp-nvmem-fw", },
 	{ /* sentinel */ },
@@ -201,20 +205,20 @@ MODULE_DEVICE_TABLE(of, zynqmp_nvmem_match);
 
 static int zynqmp_nvmem_probe(struct platform_device *pdev)
 {
-	struct nvmem_device *nvmem;
+	struct device *dev = &pdev->dev;
+	struct nvmem_config econfig = {};
 
-	econfig.dev = &pdev->dev;
-	econfig.priv = &pdev->dev;
+	econfig.name = "zynqmp-nvmem";
+	econfig.owner = THIS_MODULE;
+	econfig.word_size = 1;
+	econfig.size = ZYNQMP_NVMEM_SIZE;
+	econfig.dev = dev;
+	econfig.add_legacy_fixed_of_cells = true;
+	econfig.priv = dev;
 	econfig.reg_read = zynqmp_nvmem_read;
 	econfig.reg_write = zynqmp_nvmem_write;
 
-	nvmem = nvmem_register(&econfig);
-	if (IS_ERR(nvmem))
-		return PTR_ERR(nvmem);
-
-	platform_set_drvdata(pdev, nvmem);
-
-	return 0;
+	return PTR_ERR_OR_ZERO(devm_nvmem_register(dev, &econfig));
 }
 
 static struct platform_driver zynqmp_nvmem_driver = {
@@ -227,6 +231,6 @@ static struct platform_driver zynqmp_nvmem_driver = {
 
 module_platform_driver(zynqmp_nvmem_driver);
 
-MODULE_AUTHOR("Michal Simek <michal.simek@xilinx.com>, Nava kishore Manne <navam@xilinx.com>");
+MODULE_AUTHOR("Kalyani Akula <kalyani.akula@amd.com>, Praveen Teja Kundanala <praveen.teja.kundanala@amd.com>");
 MODULE_DESCRIPTION("ZynqMP NVMEM driver");
 MODULE_LICENSE("GPL");

@@ -10,8 +10,8 @@
 
 #include <linux/acpi.h>
 #include <linux/bitmap.h>
-#include <linux/gpio/driver.h>
 #include <linux/gpio/consumer.h>
+#include <linux/gpio/driver.h>
 #include <linux/i2c.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
@@ -20,6 +20,7 @@
 #include <linux/platform_data/pca953x.h>
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
+#include <linux/seq_file.h>
 #include <linux/slab.h>
 
 #include <asm/unaligned.h>
@@ -107,6 +108,7 @@ static const struct i2c_device_id pca953x_id[] = {
 	{ "tca6408", 8  | PCA953X_TYPE | PCA_INT, },
 	{ "tca6416", 16 | PCA953X_TYPE | PCA_INT, },
 	{ "tca6424", 24 | PCA953X_TYPE | PCA_INT, },
+	{ "tca9538", 8  | PCA953X_TYPE | PCA_INT, },
 	{ "tca9539", 16 | PCA953X_TYPE | PCA_INT, },
 	{ "tca9554", 8  | PCA953X_TYPE | PCA_INT, },
 	{ "xra1202", 8  | PCA953X_TYPE },
@@ -305,33 +307,30 @@ static bool pca953x_check_register(struct pca953x_chip *chip, unsigned int reg,
 static bool pcal6534_check_register(struct pca953x_chip *chip, unsigned int reg,
 				    u32 checkbank)
 {
+	int bank_shift;
 	int bank;
 	int offset;
 
-	if (reg >= 0x30) {
-		/*
-		 * Reserved block between 14h and 2Fh does not align on
-		 * expected bank boundaries like other devices.
-		 */
-		int temp = reg - 0x30;
-
-		bank = temp / NBANK(chip);
-		offset = temp - (bank * NBANK(chip));
-		bank += 8;
-	} else if (reg >= 0x54) {
+	if (reg >= 0x54) {
 		/*
 		 * Handle lack of reserved registers after output port
 		 * configuration register to form a bank.
 		 */
-		int temp = reg - 0x54;
-
-		bank = temp / NBANK(chip);
-		offset = temp - (bank * NBANK(chip));
-		bank += 16;
+		reg -= 0x54;
+		bank_shift = 16;
+	} else if (reg >= 0x30) {
+		/*
+		 * Reserved block between 14h and 2Fh does not align on
+		 * expected bank boundaries like other devices.
+		 */
+		reg -= 0x30;
+		bank_shift = 8;
 	} else {
-		bank = reg / NBANK(chip);
-		offset = reg - (bank * NBANK(chip));
+		bank_shift = 0;
 	}
+
+	bank = bank_shift + reg / NBANK(chip);
+	offset = reg % NBANK(chip);
 
 	/* Register is not in the matching bank. */
 	if (!(BIT(bank) & checkbank))
@@ -463,7 +462,6 @@ static u8 pcal6534_recalc_addr(struct pca953x_chip *chip, int reg, int off)
 	case PCAL953X_PULL_SEL:
 	case PCAL953X_INT_MASK:
 	case PCAL953X_INT_STAT:
-	case PCAL953X_OUT_CONF:
 		pinctrl = ((reg & PCAL_PINCTRL_MASK) >> 1) + 0x20;
 		break;
 	case PCAL6524_INT_EDGE:
@@ -472,6 +470,9 @@ static u8 pcal6534_recalc_addr(struct pca953x_chip *chip, int reg, int off)
 	case PCAL6524_OUT_INDCONF:
 	case PCAL6524_DEBOUNCE:
 		pinctrl = ((reg & PCAL_PINCTRL_MASK) >> 1) + 0x1c;
+		break;
+	default:
+		pinctrl = 0;
 		break;
 	}
 
@@ -1049,8 +1050,7 @@ out:
 	return ret;
 }
 
-static int pca953x_probe(struct i2c_client *client,
-			 const struct i2c_device_id *i2c_id)
+static int pca953x_probe(struct i2c_client *client)
 {
 	struct pca953x_platform_data *pdata;
 	struct pca953x_chip *chip;
@@ -1090,6 +1090,9 @@ static int pca953x_probe(struct i2c_client *client,
 	}
 
 	chip->client = client;
+	chip->driver_data = (uintptr_t)i2c_get_match_data(client);
+	if (!chip->driver_data)
+		return -ENODEV;
 
 	reg = devm_regulator_get(&client->dev, "vcc");
 	if (IS_ERR(reg))
@@ -1101,20 +1104,6 @@ static int pca953x_probe(struct i2c_client *client,
 		return ret;
 	}
 	chip->regulator = reg;
-
-	if (i2c_id) {
-		chip->driver_data = i2c_id->driver_data;
-	} else {
-		const void *match;
-
-		match = device_get_match_data(&client->dev);
-		if (!match) {
-			ret = -ENODEV;
-			goto err_exit;
-		}
-
-		chip->driver_data = (uintptr_t)match;
-	}
 
 	i2c_set_clientdata(client, chip);
 
@@ -1354,6 +1343,7 @@ static const struct of_device_id pca953x_dt_ids[] = {
 	{ .compatible = "ti,tca6408", .data = OF_953X( 8, PCA_INT), },
 	{ .compatible = "ti,tca6416", .data = OF_953X(16, PCA_INT), },
 	{ .compatible = "ti,tca6424", .data = OF_953X(24, PCA_INT), },
+	{ .compatible = "ti,tca9538", .data = OF_953X( 8, PCA_INT), },
 	{ .compatible = "ti,tca9539", .data = OF_953X(16, PCA_INT), },
 
 	{ .compatible = "onnn,cat9554", .data = OF_953X( 8, PCA_INT), },

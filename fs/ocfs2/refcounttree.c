@@ -2952,10 +2952,11 @@ retry:
 		 */
 		if (PAGE_SIZE <= OCFS2_SB(sb)->s_clustersize) {
 			if (PageDirty(page)) {
-				/*
-				 * write_on_page will unlock the page on return
-				 */
-				ret = write_one_page(page);
+				unlock_page(page);
+				put_page(page);
+
+				ret = filemap_write_and_wait_range(mapping,
+						offset, map_end - 1);
 				goto retry;
 			}
 		}
@@ -3749,9 +3750,9 @@ static int ocfs2_change_ctime(struct inode *inode,
 		goto out_commit;
 	}
 
-	inode->i_ctime = current_time(inode);
-	di->i_ctime = cpu_to_le64(inode->i_ctime.tv_sec);
-	di->i_ctime_nsec = cpu_to_le32(inode->i_ctime.tv_nsec);
+	inode_set_ctime_current(inode);
+	di->i_ctime = cpu_to_le64(inode_get_ctime(inode).tv_sec);
+	di->i_ctime_nsec = cpu_to_le32(inode_get_ctime(inode).tv_nsec);
 
 	ocfs2_journal_dirty(handle, di_bh);
 
@@ -4072,10 +4073,10 @@ static int ocfs2_complete_reflink(struct inode *s_inode,
 		 * we want mtime to appear identical to the source and
 		 * update ctime.
 		 */
-		t_inode->i_ctime = current_time(t_inode);
+		inode_set_ctime_current(t_inode);
 
-		di->i_ctime = cpu_to_le64(t_inode->i_ctime.tv_sec);
-		di->i_ctime_nsec = cpu_to_le32(t_inode->i_ctime.tv_nsec);
+		di->i_ctime = cpu_to_le64(inode_get_ctime(t_inode).tv_sec);
+		di->i_ctime_nsec = cpu_to_le32(inode_get_ctime(t_inode).tv_nsec);
 
 		t_inode->i_mtime = s_inode->i_mtime;
 		di->i_mtime = s_di->i_mtime;
@@ -4316,7 +4317,7 @@ static inline int ocfs2_may_create(struct inode *dir, struct dentry *child)
 		return -EEXIST;
 	if (IS_DEADDIR(dir))
 		return -ENOENT;
-	return inode_permission(&init_user_ns, dir, MAY_WRITE | MAY_EXEC);
+	return inode_permission(&nop_mnt_idmap, dir, MAY_WRITE | MAY_EXEC);
 }
 
 /**
@@ -4370,7 +4371,7 @@ static int ocfs2_vfs_reflink(struct dentry *old_dentry, struct inode *dir,
 	 * file.
 	 */
 	if (!preserve) {
-		error = inode_permission(&init_user_ns, inode, MAY_READ);
+		error = inode_permission(&nop_mnt_idmap, inode, MAY_READ);
 		if (error)
 			return error;
 	}
@@ -4455,7 +4456,7 @@ int ocfs2_reflink_update_dest(struct inode *dest,
 	if (newlen > i_size_read(dest))
 		i_size_write(dest, newlen);
 	spin_unlock(&OCFS2_I(dest)->ip_lock);
-	dest->i_ctime = dest->i_mtime = current_time(dest);
+	dest->i_mtime = inode_set_ctime_current(dest);
 
 	ret = ocfs2_mark_inode_dirty(handle, dest, d_bh);
 	if (ret) {

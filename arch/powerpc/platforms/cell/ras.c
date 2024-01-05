@@ -22,7 +22,7 @@
 #include <asm/cell-regs.h>
 
 #include "ras.h"
-
+#include "pervasive.h"
 
 static void dump_fir(int cpu)
 {
@@ -297,8 +297,8 @@ int cbe_sysreset_hack(void)
 static int __init cbe_ptcal_init(void)
 {
 	int ret;
-	ptcal_start_tok = rtas_token("ibm,cbe-start-ptcal");
-	ptcal_stop_tok = rtas_token("ibm,cbe-stop-ptcal");
+	ptcal_start_tok = rtas_function_token(RTAS_FN_IBM_CBE_START_PTCAL);
+	ptcal_stop_tok = rtas_function_token(RTAS_FN_IBM_CBE_STOP_PTCAL);
 
 	if (ptcal_start_tok == RTAS_UNKNOWN_SERVICE
 			|| ptcal_stop_tok == RTAS_UNKNOWN_SERVICE)

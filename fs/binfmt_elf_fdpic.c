@@ -138,7 +138,7 @@ static int is_constdisp(struct elfhdr *hdr)
 static int elf_fdpic_fetch_phdrs(struct elf_fdpic_params *params,
 				 struct file *file)
 {
-	struct elf32_phdr *phdr;
+	struct elf_phdr *phdr;
 	unsigned long size;
 	int retval, loop;
 	loff_t pos = params->hdr.e_phoff;
@@ -345,10 +345,9 @@ static int load_elf_fdpic_binary(struct linux_binprm *bprm)
 	/* there's now no turning back... the old userspace image is dead,
 	 * defunct, deceased, etc.
 	 */
+	SET_PERSONALITY(exec_params.hdr);
 	if (elf_check_fdpic(&exec_params.hdr))
-		set_personality(PER_LINUX_FDPIC);
-	else
-		set_personality(PER_LINUX);
+		current->personality |= PER_LINUX_FDPIC;
 	if (elf_read_implies_exec(&exec_params.hdr, executable_stack))
 		current->personality |= READ_IMPLIES_EXEC;
 
@@ -434,8 +433,9 @@ static int load_elf_fdpic_binary(struct linux_binprm *bprm)
 	current->mm->start_stack = current->mm->start_brk + stack_size;
 #endif
 
-	if (create_elf_fdpic_tables(bprm, current->mm,
-				    &exec_params, &interp_params) < 0)
+	retval = create_elf_fdpic_tables(bprm, current->mm, &exec_params,
+					 &interp_params);
+	if (retval < 0)
 		goto error;
 
 	kdebug("- start_code  %lx", current->mm->start_code);
@@ -559,8 +559,8 @@ static int create_elf_fdpic_tables(struct linux_binprm *bprm,
 	sp &= ~7UL;
 
 	/* stack the load map(s) */
-	len = sizeof(struct elf32_fdpic_loadmap);
-	len += sizeof(struct elf32_fdpic_loadseg) * exec_params->loadmap->nsegs;
+	len = sizeof(struct elf_fdpic_loadmap);
+	len += sizeof(struct elf_fdpic_loadseg) * exec_params->loadmap->nsegs;
 	sp = (sp - len) & ~7UL;
 	exec_params->map_addr = sp;
 
@@ -570,8 +570,8 @@ static int create_elf_fdpic_tables(struct linux_binprm *bprm,
 	current->mm->context.exec_fdpic_loadmap = (unsigned long) sp;
 
 	if (interp_params->loadmap) {
-		len = sizeof(struct elf32_fdpic_loadmap);
-		len += sizeof(struct elf32_fdpic_loadseg) *
+		len = sizeof(struct elf_fdpic_loadmap);
+		len += sizeof(struct elf_fdpic_loadseg) *
 			interp_params->loadmap->nsegs;
 		sp = (sp - len) & ~7UL;
 		interp_params->map_addr = sp;
@@ -739,15 +739,15 @@ static int elf_fdpic_map_file(struct elf_fdpic_params *params,
 			      struct mm_struct *mm,
 			      const char *what)
 {
-	struct elf32_fdpic_loadmap *loadmap;
+	struct elf_fdpic_loadmap *loadmap;
 #ifdef CONFIG_MMU
-	struct elf32_fdpic_loadseg *mseg;
+	struct elf_fdpic_loadseg *mseg;
+	unsigned long load_addr;
 #endif
-	struct elf32_fdpic_loadseg *seg;
-	struct elf32_phdr *phdr;
-	unsigned long load_addr, stop;
+	struct elf_fdpic_loadseg *seg;
+	struct elf_phdr *phdr;
 	unsigned nloads, tmp;
-	size_t size;
+	unsigned long stop;
 	int loop, ret;
 
 	/* allocate a load map table */
@@ -759,18 +759,14 @@ static int elf_fdpic_map_file(struct elf_fdpic_params *params,
 	if (nloads == 0)
 		return -ELIBBAD;
 
-	size = sizeof(*loadmap) + nloads * sizeof(*seg);
-	loadmap = kzalloc(size, GFP_KERNEL);
+	loadmap = kzalloc(struct_size(loadmap, segs, nloads), GFP_KERNEL);
 	if (!loadmap)
 		return -ENOMEM;
 
 	params->loadmap = loadmap;
 
-	loadmap->version = ELF32_FDPIC_LOADMAP_VERSION;
+	loadmap->version = ELF_FDPIC_LOADMAP_VERSION;
 	loadmap->nsegs = nloads;
-
-	load_addr = params->load_addr;
-	seg = loadmap->segs;
 
 	/* map the requested LOADs into the memory space */
 	switch (params->flags & ELF_FDPIC_FLAG_ARRANGEMENT) {
@@ -842,8 +838,8 @@ static int elf_fdpic_map_file(struct elf_fdpic_params *params,
 			if (phdr->p_vaddr >= seg->p_vaddr &&
 			    phdr->p_vaddr + phdr->p_memsz <=
 			    seg->p_vaddr + seg->p_memsz) {
-				Elf32_Dyn __user *dyn;
-				Elf32_Sword d_tag;
+				Elf_Dyn __user *dyn;
+				Elf_Sword d_tag;
 
 				params->dynamic_addr =
 					(phdr->p_vaddr - seg->p_vaddr) +
@@ -853,11 +849,11 @@ static int elf_fdpic_map_file(struct elf_fdpic_params *params,
 				 * one item, and that the last item is a NULL
 				 * entry */
 				if (phdr->p_memsz == 0 ||
-				    phdr->p_memsz % sizeof(Elf32_Dyn) != 0)
+				    phdr->p_memsz % sizeof(Elf_Dyn) != 0)
 					goto dynamic_error;
 
-				tmp = phdr->p_memsz / sizeof(Elf32_Dyn);
-				dyn = (Elf32_Dyn __user *)params->dynamic_addr;
+				tmp = phdr->p_memsz / sizeof(Elf_Dyn);
+				dyn = (Elf_Dyn __user *)params->dynamic_addr;
 				if (get_user(d_tag, &dyn[tmp - 1].d_tag) ||
 				    d_tag != 0)
 					goto dynamic_error;
@@ -926,8 +922,8 @@ static int elf_fdpic_map_file_constdisp_on_uclinux(
 	struct file *file,
 	struct mm_struct *mm)
 {
-	struct elf32_fdpic_loadseg *seg;
-	struct elf32_phdr *phdr;
+	struct elf_fdpic_loadseg *seg;
+	struct elf_phdr *phdr;
 	unsigned long load_addr, base = ULONG_MAX, top = 0, maddr = 0;
 	int loop, ret;
 
@@ -1010,8 +1006,8 @@ static int elf_fdpic_map_file_by_direct_mmap(struct elf_fdpic_params *params,
 					     struct file *file,
 					     struct mm_struct *mm)
 {
-	struct elf32_fdpic_loadseg *seg;
-	struct elf32_phdr *phdr;
+	struct elf_fdpic_loadseg *seg;
+	struct elf_phdr *phdr;
 	unsigned long load_addr, delta_vaddr;
 	int loop, dvset;
 
@@ -1268,7 +1264,7 @@ static inline void fill_elf_note_phdr(struct elf_phdr *phdr, int sz, loff_t offs
 	phdr->p_filesz = sz;
 	phdr->p_memsz = 0;
 	phdr->p_flags = 0;
-	phdr->p_align = 0;
+	phdr->p_align = 4;
 	return;
 }
 
@@ -1508,7 +1504,7 @@ static int elf_fdpic_core_dump(struct coredump_params *cprm)
 	tmp->next = thread_list;
 	thread_list = tmp;
 
-	segs = cprm->vma_count + elf_core_extra_phdrs();
+	segs = cprm->vma_count + elf_core_extra_phdrs(cprm);
 
 	/* for notes section */
 	segs++;
@@ -1539,7 +1535,7 @@ static int elf_fdpic_core_dump(struct coredump_params *cprm)
 	fill_note(&auxv_note, "CORE", NT_AUXV, i * sizeof(elf_addr_t), auxv);
 	thread_status_size += notesize(&auxv_note);
 
-	offset = sizeof(*elf);				/* Elf header */
+	offset = sizeof(*elf);				/* ELF header */
 	offset += segs * sizeof(struct elf_phdr);	/* Program headers */
 
 	/* Write notes phdr entry */
@@ -1554,7 +1550,7 @@ static int elf_fdpic_core_dump(struct coredump_params *cprm)
 	dataoff = offset = roundup(offset, ELF_EXEC_PAGESIZE);
 
 	offset += cprm->vma_data_size;
-	offset += elf_core_extra_data_size();
+	offset += elf_core_extra_data_size(cprm);
 	e_shoff = offset;
 
 	if (e_phnum == PN_XNUM) {
@@ -1603,7 +1599,7 @@ static int elf_fdpic_core_dump(struct coredump_params *cprm)
 	if (!elf_core_write_extra_phdrs(cprm, offset))
 		goto end_coredump;
 
- 	/* write out the notes section */
+	/* write out the notes section */
 	if (!writenote(thread_list->notes, cprm))
 		goto end_coredump;
 	if (!writenote(&psinfo_note, cprm))

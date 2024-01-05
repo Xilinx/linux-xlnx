@@ -273,11 +273,10 @@ static int find_group_orlov(struct super_block *sb, struct inode *parent)
 
 	if ((parent == d_inode(sb->s_root)) ||
 	    (EXT2_I(parent)->i_flags & EXT2_TOPDIR_FL)) {
-		struct ext2_group_desc *best_desc = NULL;
 		int best_ndir = inodes_per_group;
 		int best_group = -1;
 
-		parent_group = prandom_u32_max(ngroups);
+		parent_group = get_random_u32_below(ngroups);
 		for (i = 0; i < ngroups; i++) {
 			group = (parent_group + i) % ngroups;
 			desc = ext2_get_group_desc (sb, group, NULL);
@@ -291,10 +290,8 @@ static int find_group_orlov(struct super_block *sb, struct inode *parent)
 				continue;
 			best_group = group;
 			best_ndir = le16_to_cpu(desc->bg_used_dirs_count);
-			best_desc = desc;
 		}
 		if (best_group >= 0) {
-			desc = best_desc;
 			group = best_group;
 			goto found;
 		}
@@ -545,11 +542,11 @@ got:
 		inode->i_uid = current_fsuid();
 		inode->i_gid = dir->i_gid;
 	} else
-		inode_init_owner(&init_user_ns, inode, dir, mode);
+		inode_init_owner(&nop_mnt_idmap, inode, dir, mode);
 
 	inode->i_ino = ino;
 	inode->i_blocks = 0;
-	inode->i_mtime = inode->i_atime = inode->i_ctime = current_time(inode);
+	inode->i_mtime = inode->i_atime = inode_set_ctime_current(inode);
 	memset(ei->i_data, 0, sizeof(ei->i_data));
 	ei->i_flags =
 		ext2_mask_flags(mode, EXT2_I(dir)->i_flags & EXT2_FL_INHERITED);

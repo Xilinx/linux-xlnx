@@ -55,8 +55,20 @@ static void *get_hashentry(struct rhashtable *ht, void *key,
 
 bool is_pre_ct_flow(struct flow_cls_offload *flow)
 {
+	struct flow_rule *rule = flow_cls_offload_flow_rule(flow);
+	struct flow_dissector *dissector = rule->match.dissector;
 	struct flow_action_entry *act;
+	struct flow_match_ct ct;
 	int i;
+
+	if (dissector->used_keys & BIT_ULL(FLOW_DISSECTOR_KEY_CT)) {
+		flow_rule_match_ct(rule, &ct);
+		if (ct.key->ct_state)
+			return false;
+	}
+
+	if (flow->common.chain_index)
+		return false;
 
 	flow_action_for_each(i, act, &flow->rule->action) {
 		if (act->id == FLOW_ACTION_CT) {
@@ -82,24 +94,23 @@ bool is_post_ct_flow(struct flow_cls_offload *flow)
 	struct flow_match_ct ct;
 	int i;
 
-	/* post ct entry cannot contains any ct action except ct_clear. */
-	flow_action_for_each(i, act, &flow->rule->action) {
-		if (act->id == FLOW_ACTION_CT) {
-			/* ignore ct clear action. */
-			if (act->ct.action == TCA_CT_ACT_CLEAR) {
-				exist_ct_clear = true;
-				continue;
-			}
-
-			return false;
-		}
-	}
-
-	if (dissector->used_keys & BIT(FLOW_DISSECTOR_KEY_CT)) {
+	if (dissector->used_keys & BIT_ULL(FLOW_DISSECTOR_KEY_CT)) {
 		flow_rule_match_ct(rule, &ct);
 		if (ct.key->ct_state & TCA_FLOWER_KEY_CT_FLAGS_ESTABLISHED)
 			return true;
 	} else {
+		/* post ct entry cannot contains any ct action except ct_clear. */
+		flow_action_for_each(i, act, &flow->rule->action) {
+			if (act->id == FLOW_ACTION_CT) {
+				/* ignore ct clear action. */
+				if (act->ct.action == TCA_CT_ACT_CLEAR) {
+					exist_ct_clear = true;
+					continue;
+				}
+
+				return false;
+			}
+		}
 		/* when do nat with ct, the post ct entry ignore the ct status,
 		 * will match the nat field(sip/dip) instead. In this situation,
 		 * the flow chain index is not zero and contains ct clear action.
@@ -225,10 +236,11 @@ static bool nfp_ct_merge_check_cannot_skip(struct nfp_fl_ct_flow_entry *entry1,
 static int nfp_ct_merge_check(struct nfp_fl_ct_flow_entry *entry1,
 			      struct nfp_fl_ct_flow_entry *entry2)
 {
-	unsigned int ovlp_keys = entry1->rule->match.dissector->used_keys &
-				 entry2->rule->match.dissector->used_keys;
+	unsigned long long ovlp_keys;
 	bool out, is_v6 = false;
 	u8 ip_proto = 0;
+	ovlp_keys = entry1->rule->match.dissector->used_keys &
+			entry2->rule->match.dissector->used_keys;
 	/* Temporary buffer for mangling keys, 64 is enough to cover max
 	 * struct size of key in various fields that may be mangled.
 	 * Supported fields to mangle:
@@ -246,7 +258,7 @@ static int nfp_ct_merge_check(struct nfp_fl_ct_flow_entry *entry1,
 	/* Check the overlapped fields one by one, the unmasked part
 	 * should not conflict with each other.
 	 */
-	if (ovlp_keys & BIT(FLOW_DISSECTOR_KEY_CONTROL)) {
+	if (ovlp_keys & BIT_ULL(FLOW_DISSECTOR_KEY_CONTROL)) {
 		struct flow_match_control match1, match2;
 
 		flow_rule_match_control(entry1->rule, &match1);
@@ -256,7 +268,7 @@ static int nfp_ct_merge_check(struct nfp_fl_ct_flow_entry *entry1,
 			goto check_failed;
 	}
 
-	if (ovlp_keys & BIT(FLOW_DISSECTOR_KEY_BASIC)) {
+	if (ovlp_keys & BIT_ULL(FLOW_DISSECTOR_KEY_BASIC)) {
 		struct flow_match_basic match1, match2;
 
 		flow_rule_match_basic(entry1->rule, &match1);
@@ -278,7 +290,7 @@ static int nfp_ct_merge_check(struct nfp_fl_ct_flow_entry *entry1,
 	 * will be do merge check when do nft and post ct merge,
 	 * so skip this ip merge check here.
 	 */
-	if ((ovlp_keys & BIT(FLOW_DISSECTOR_KEY_IPV4_ADDRS)) &&
+	if ((ovlp_keys & BIT_ULL(FLOW_DISSECTOR_KEY_IPV4_ADDRS)) &&
 	    nfp_ct_merge_check_cannot_skip(entry1, entry2)) {
 		struct flow_match_ipv4_addrs match1, match2;
 
@@ -300,7 +312,7 @@ static int nfp_ct_merge_check(struct nfp_fl_ct_flow_entry *entry1,
 	 * will be do merge check when do nft and post ct merge,
 	 * so skip this ip merge check here.
 	 */
-	if ((ovlp_keys & BIT(FLOW_DISSECTOR_KEY_IPV6_ADDRS)) &&
+	if ((ovlp_keys & BIT_ULL(FLOW_DISSECTOR_KEY_IPV6_ADDRS)) &&
 	    nfp_ct_merge_check_cannot_skip(entry1, entry2)) {
 		struct flow_match_ipv6_addrs match1, match2;
 
@@ -322,7 +334,7 @@ static int nfp_ct_merge_check(struct nfp_fl_ct_flow_entry *entry1,
 	 * will be do merge check when do nft and post ct merge,
 	 * so skip this tport merge check here.
 	 */
-	if ((ovlp_keys & BIT(FLOW_DISSECTOR_KEY_PORTS)) &&
+	if ((ovlp_keys & BIT_ULL(FLOW_DISSECTOR_KEY_PORTS)) &&
 	    nfp_ct_merge_check_cannot_skip(entry1, entry2)) {
 		enum flow_action_mangle_base htype = FLOW_ACT_MANGLE_UNSPEC;
 		struct flow_match_ports match1, match2;
@@ -344,7 +356,7 @@ static int nfp_ct_merge_check(struct nfp_fl_ct_flow_entry *entry1,
 			goto check_failed;
 	}
 
-	if (ovlp_keys & BIT(FLOW_DISSECTOR_KEY_ETH_ADDRS)) {
+	if (ovlp_keys & BIT_ULL(FLOW_DISSECTOR_KEY_ETH_ADDRS)) {
 		struct flow_match_eth_addrs match1, match2;
 
 		flow_rule_match_eth_addrs(entry1->rule, &match1);
@@ -360,7 +372,7 @@ static int nfp_ct_merge_check(struct nfp_fl_ct_flow_entry *entry1,
 			goto check_failed;
 	}
 
-	if (ovlp_keys & BIT(FLOW_DISSECTOR_KEY_VLAN)) {
+	if (ovlp_keys & BIT_ULL(FLOW_DISSECTOR_KEY_VLAN)) {
 		struct flow_match_vlan match1, match2;
 
 		flow_rule_match_vlan(entry1->rule, &match1);
@@ -370,7 +382,7 @@ static int nfp_ct_merge_check(struct nfp_fl_ct_flow_entry *entry1,
 			goto check_failed;
 	}
 
-	if (ovlp_keys & BIT(FLOW_DISSECTOR_KEY_MPLS)) {
+	if (ovlp_keys & BIT_ULL(FLOW_DISSECTOR_KEY_MPLS)) {
 		struct flow_match_mpls match1, match2;
 
 		flow_rule_match_mpls(entry1->rule, &match1);
@@ -380,7 +392,7 @@ static int nfp_ct_merge_check(struct nfp_fl_ct_flow_entry *entry1,
 			goto check_failed;
 	}
 
-	if (ovlp_keys & BIT(FLOW_DISSECTOR_KEY_TCP)) {
+	if (ovlp_keys & BIT_ULL(FLOW_DISSECTOR_KEY_TCP)) {
 		struct flow_match_tcp match1, match2;
 
 		flow_rule_match_tcp(entry1->rule, &match1);
@@ -390,7 +402,7 @@ static int nfp_ct_merge_check(struct nfp_fl_ct_flow_entry *entry1,
 			goto check_failed;
 	}
 
-	if (ovlp_keys & BIT(FLOW_DISSECTOR_KEY_IP)) {
+	if (ovlp_keys & BIT_ULL(FLOW_DISSECTOR_KEY_IP)) {
 		struct flow_match_ip match1, match2;
 
 		flow_rule_match_ip(entry1->rule, &match1);
@@ -402,7 +414,7 @@ static int nfp_ct_merge_check(struct nfp_fl_ct_flow_entry *entry1,
 			goto check_failed;
 	}
 
-	if (ovlp_keys & BIT(FLOW_DISSECTOR_KEY_ENC_KEYID)) {
+	if (ovlp_keys & BIT_ULL(FLOW_DISSECTOR_KEY_ENC_KEYID)) {
 		struct flow_match_enc_keyid match1, match2;
 
 		flow_rule_match_enc_keyid(entry1->rule, &match1);
@@ -412,7 +424,7 @@ static int nfp_ct_merge_check(struct nfp_fl_ct_flow_entry *entry1,
 			goto check_failed;
 	}
 
-	if (ovlp_keys & BIT(FLOW_DISSECTOR_KEY_ENC_IPV4_ADDRS)) {
+	if (ovlp_keys & BIT_ULL(FLOW_DISSECTOR_KEY_ENC_IPV4_ADDRS)) {
 		struct flow_match_ipv4_addrs match1, match2;
 
 		flow_rule_match_enc_ipv4_addrs(entry1->rule, &match1);
@@ -422,7 +434,7 @@ static int nfp_ct_merge_check(struct nfp_fl_ct_flow_entry *entry1,
 			goto check_failed;
 	}
 
-	if (ovlp_keys & BIT(FLOW_DISSECTOR_KEY_ENC_IPV6_ADDRS)) {
+	if (ovlp_keys & BIT_ULL(FLOW_DISSECTOR_KEY_ENC_IPV6_ADDRS)) {
 		struct flow_match_ipv6_addrs match1, match2;
 
 		flow_rule_match_enc_ipv6_addrs(entry1->rule, &match1);
@@ -432,7 +444,7 @@ static int nfp_ct_merge_check(struct nfp_fl_ct_flow_entry *entry1,
 			goto check_failed;
 	}
 
-	if (ovlp_keys & BIT(FLOW_DISSECTOR_KEY_ENC_CONTROL)) {
+	if (ovlp_keys & BIT_ULL(FLOW_DISSECTOR_KEY_ENC_CONTROL)) {
 		struct flow_match_control match1, match2;
 
 		flow_rule_match_enc_control(entry1->rule, &match1);
@@ -442,7 +454,7 @@ static int nfp_ct_merge_check(struct nfp_fl_ct_flow_entry *entry1,
 			goto check_failed;
 	}
 
-	if (ovlp_keys & BIT(FLOW_DISSECTOR_KEY_ENC_IP)) {
+	if (ovlp_keys & BIT_ULL(FLOW_DISSECTOR_KEY_ENC_IP)) {
 		struct flow_match_ip match1, match2;
 
 		flow_rule_match_enc_ip(entry1->rule, &match1);
@@ -452,7 +464,7 @@ static int nfp_ct_merge_check(struct nfp_fl_ct_flow_entry *entry1,
 			goto check_failed;
 	}
 
-	if (ovlp_keys & BIT(FLOW_DISSECTOR_KEY_ENC_OPTS)) {
+	if (ovlp_keys & BIT_ULL(FLOW_DISSECTOR_KEY_ENC_OPTS)) {
 		struct flow_match_enc_opts match1, match2;
 
 		flow_rule_match_enc_opts(entry1->rule, &match1);
@@ -511,6 +523,21 @@ static int nfp_ct_check_vlan_merge(struct flow_action_entry *a_in,
 	return 0;
 }
 
+/* Extra check for multiple ct-zones merge
+ * currently surpport nft entries merge check in different zones
+ */
+static int nfp_ct_merge_extra_check(struct nfp_fl_ct_flow_entry *nft_entry,
+				    struct nfp_fl_ct_tc_merge *tc_m_entry)
+{
+	struct nfp_fl_nft_tc_merge *prev_nft_m_entry;
+	struct nfp_fl_ct_flow_entry *pre_ct_entry;
+
+	pre_ct_entry = tc_m_entry->pre_ct_parent;
+	prev_nft_m_entry = pre_ct_entry->prev_m_entries[pre_ct_entry->num_prev_m_entries - 1];
+
+	return nfp_ct_merge_check(prev_nft_m_entry->nft_parent, nft_entry);
+}
+
 static int nfp_ct_merge_act_check(struct nfp_fl_ct_flow_entry *pre_ct_entry,
 				  struct nfp_fl_ct_flow_entry *post_ct_entry,
 				  struct nfp_fl_ct_flow_entry *nft_entry)
@@ -563,7 +590,7 @@ static int nfp_ct_check_meta(struct nfp_fl_ct_flow_entry *post_ct_entry,
 	int i;
 
 	ct_met = get_flow_act(nft_entry->rule, FLOW_ACTION_CT_METADATA);
-	if (ct_met && (dissector->used_keys & BIT(FLOW_DISSECTOR_KEY_CT))) {
+	if (ct_met && (dissector->used_keys & BIT_ULL(FLOW_DISSECTOR_KEY_CT))) {
 		u32 *act_lbl;
 
 		act_lbl = ct_met->ct_metadata.labels;
@@ -682,34 +709,34 @@ static void nfp_fl_get_csum_flag(struct flow_action_entry *a_in, u8 ip_proto, u3
 static int nfp_fl_merge_actions_offload(struct flow_rule **rules,
 					struct nfp_flower_priv *priv,
 					struct net_device *netdev,
-					struct nfp_fl_payload *flow_pay)
+					struct nfp_fl_payload *flow_pay,
+					int num_rules)
 {
 	enum flow_action_hw_stats tmp_stats = FLOW_ACTION_HW_STATS_DONT_CARE;
 	struct flow_action_entry *a_in;
-	int i, j, num_actions, id;
+	int i, j, id, num_actions = 0;
 	struct flow_rule *a_rule;
 	int err = 0, offset = 0;
 
-	num_actions = rules[CT_TYPE_PRE_CT]->action.num_entries +
-		      rules[CT_TYPE_NFT]->action.num_entries +
-		      rules[CT_TYPE_POST_CT]->action.num_entries;
+	for (i = 0; i < num_rules; i++)
+		num_actions += rules[i]->action.num_entries;
 
 	/* Add one action to make sure there is enough room to add an checksum action
 	 * when do nat.
 	 */
-	a_rule = flow_rule_alloc(num_actions + 1);
+	a_rule = flow_rule_alloc(num_actions + (num_rules / 2));
 	if (!a_rule)
 		return -ENOMEM;
 
-	/* Actions need a BASIC dissector. */
-	a_rule->match = rules[CT_TYPE_PRE_CT]->match;
 	/* post_ct entry have one action at least. */
-	if (rules[CT_TYPE_POST_CT]->action.num_entries != 0) {
-		tmp_stats = rules[CT_TYPE_POST_CT]->action.entries[0].hw_stats;
-	}
+	if (rules[num_rules - 1]->action.num_entries != 0)
+		tmp_stats = rules[num_rules - 1]->action.entries[0].hw_stats;
+
+	/* Actions need a BASIC dissector. */
+	a_rule->match = rules[0]->match;
 
 	/* Copy actions */
-	for (j = 0; j < _CT_TYPE_MAX; j++) {
+	for (j = 0; j < num_rules; j++) {
 		u32 csum_updated = 0;
 		u8 ip_proto = 0;
 
@@ -747,8 +774,9 @@ static int nfp_fl_merge_actions_offload(struct flow_rule **rules,
 				/* nft entry is generated by tc ct, which mangle action do not care
 				 * the stats, inherit the post entry stats to meet the
 				 * flow_action_hw_stats_check.
+				 * nft entry flow rules are at odd array index.
 				 */
-				if (j == CT_TYPE_NFT) {
+				if (j & 0x01) {
 					if (a_in->hw_stats == FLOW_ACTION_HW_STATS_DONT_CARE)
 						a_in->hw_stats = tmp_stats;
 					nfp_fl_get_csum_flag(a_in, ip_proto, &csum_updated);
@@ -784,32 +812,40 @@ static int nfp_fl_ct_add_offload(struct nfp_fl_nft_tc_merge *m_entry)
 {
 	enum nfp_flower_tun_type tun_type = NFP_FL_TUNNEL_NONE;
 	struct nfp_fl_ct_zone_entry *zt = m_entry->zt;
+	struct flow_rule *rules[NFP_MAX_ENTRY_RULES];
+	struct nfp_fl_ct_flow_entry *pre_ct_entry;
 	struct nfp_fl_key_ls key_layer, tmp_layer;
 	struct nfp_flower_priv *priv = zt->priv;
 	u16 key_map[_FLOW_PAY_LAYERS_MAX];
 	struct nfp_fl_payload *flow_pay;
-
-	struct flow_rule *rules[_CT_TYPE_MAX];
 	u8 *key, *msk, *kdata, *mdata;
 	struct nfp_port *port = NULL;
+	int num_rules, err, i, j = 0;
 	struct net_device *netdev;
 	bool qinq_sup;
 	u32 port_id;
 	u16 offset;
-	int i, err;
 
 	netdev = m_entry->netdev;
 	qinq_sup = !!(priv->flower_ext_feats & NFP_FL_FEATS_VLAN_QINQ);
 
-	rules[CT_TYPE_PRE_CT] = m_entry->tc_m_parent->pre_ct_parent->rule;
-	rules[CT_TYPE_NFT] = m_entry->nft_parent->rule;
-	rules[CT_TYPE_POST_CT] = m_entry->tc_m_parent->post_ct_parent->rule;
+	pre_ct_entry = m_entry->tc_m_parent->pre_ct_parent;
+	num_rules = pre_ct_entry->num_prev_m_entries * 2 + _CT_TYPE_MAX;
+
+	for (i = 0; i < pre_ct_entry->num_prev_m_entries; i++) {
+		rules[j++] = pre_ct_entry->prev_m_entries[i]->tc_m_parent->pre_ct_parent->rule;
+		rules[j++] = pre_ct_entry->prev_m_entries[i]->nft_parent->rule;
+	}
+
+	rules[j++] = m_entry->tc_m_parent->pre_ct_parent->rule;
+	rules[j++] = m_entry->nft_parent->rule;
+	rules[j++] = m_entry->tc_m_parent->post_ct_parent->rule;
 
 	memset(&key_layer, 0, sizeof(struct nfp_fl_key_ls));
 	memset(&key_map, 0, sizeof(key_map));
 
 	/* Calculate the resultant key layer and size for offload */
-	for (i = 0; i < _CT_TYPE_MAX; i++) {
+	for (i = 0; i < num_rules; i++) {
 		err = nfp_flower_calculate_key_layers(priv->app,
 						      m_entry->netdev,
 						      &tmp_layer, rules[i],
@@ -875,7 +911,7 @@ static int nfp_fl_ct_add_offload(struct nfp_fl_nft_tc_merge *m_entry)
 	 * that the layer is not present.
 	 */
 	if (!qinq_sup) {
-		for (i = 0; i < _CT_TYPE_MAX; i++) {
+		for (i = 0; i < num_rules; i++) {
 			offset = key_map[FLOW_PAY_META_TCI];
 			key = kdata + offset;
 			msk = mdata + offset;
@@ -889,7 +925,7 @@ static int nfp_fl_ct_add_offload(struct nfp_fl_nft_tc_merge *m_entry)
 		offset = key_map[FLOW_PAY_MAC_MPLS];
 		key = kdata + offset;
 		msk = mdata + offset;
-		for (i = 0; i < _CT_TYPE_MAX; i++) {
+		for (i = 0; i < num_rules; i++) {
 			nfp_flower_compile_mac((struct nfp_flower_mac_mpls *)key,
 					       (struct nfp_flower_mac_mpls *)msk,
 					       rules[i]);
@@ -905,7 +941,7 @@ static int nfp_fl_ct_add_offload(struct nfp_fl_nft_tc_merge *m_entry)
 		offset = key_map[FLOW_PAY_IPV4];
 		key = kdata + offset;
 		msk = mdata + offset;
-		for (i = 0; i < _CT_TYPE_MAX; i++) {
+		for (i = 0; i < num_rules; i++) {
 			nfp_flower_compile_ipv4((struct nfp_flower_ipv4 *)key,
 						(struct nfp_flower_ipv4 *)msk,
 						rules[i]);
@@ -916,7 +952,7 @@ static int nfp_fl_ct_add_offload(struct nfp_fl_nft_tc_merge *m_entry)
 		offset = key_map[FLOW_PAY_IPV6];
 		key = kdata + offset;
 		msk = mdata + offset;
-		for (i = 0; i < _CT_TYPE_MAX; i++) {
+		for (i = 0; i < num_rules; i++) {
 			nfp_flower_compile_ipv6((struct nfp_flower_ipv6 *)key,
 						(struct nfp_flower_ipv6 *)msk,
 						rules[i]);
@@ -927,7 +963,7 @@ static int nfp_fl_ct_add_offload(struct nfp_fl_nft_tc_merge *m_entry)
 		offset = key_map[FLOW_PAY_L4];
 		key = kdata + offset;
 		msk = mdata + offset;
-		for (i = 0; i < _CT_TYPE_MAX; i++) {
+		for (i = 0; i < num_rules; i++) {
 			nfp_flower_compile_tport((struct nfp_flower_tp_ports *)key,
 						 (struct nfp_flower_tp_ports *)msk,
 						 rules[i]);
@@ -938,7 +974,7 @@ static int nfp_fl_ct_add_offload(struct nfp_fl_nft_tc_merge *m_entry)
 		offset = key_map[FLOW_PAY_QINQ];
 		key = kdata + offset;
 		msk = mdata + offset;
-		for (i = 0; i < _CT_TYPE_MAX; i++) {
+		for (i = 0; i < num_rules; i++) {
 			nfp_flower_compile_vlan((struct nfp_flower_vlan *)key,
 						(struct nfp_flower_vlan *)msk,
 						rules[i]);
@@ -954,7 +990,7 @@ static int nfp_fl_ct_add_offload(struct nfp_fl_nft_tc_merge *m_entry)
 			struct nfp_ipv6_addr_entry *entry;
 			struct in6_addr *dst;
 
-			for (i = 0; i < _CT_TYPE_MAX; i++) {
+			for (i = 0; i < num_rules; i++) {
 				nfp_flower_compile_ipv6_gre_tun((void *)key,
 								(void *)msk, rules[i]);
 			}
@@ -971,7 +1007,7 @@ static int nfp_fl_ct_add_offload(struct nfp_fl_nft_tc_merge *m_entry)
 		} else {
 			__be32 dst;
 
-			for (i = 0; i < _CT_TYPE_MAX; i++) {
+			for (i = 0; i < num_rules; i++) {
 				nfp_flower_compile_ipv4_gre_tun((void *)key,
 								(void *)msk, rules[i]);
 			}
@@ -995,7 +1031,7 @@ static int nfp_fl_ct_add_offload(struct nfp_fl_nft_tc_merge *m_entry)
 			struct nfp_ipv6_addr_entry *entry;
 			struct in6_addr *dst;
 
-			for (i = 0; i < _CT_TYPE_MAX; i++) {
+			for (i = 0; i < num_rules; i++) {
 				nfp_flower_compile_ipv6_udp_tun((void *)key,
 								(void *)msk, rules[i]);
 			}
@@ -1012,7 +1048,7 @@ static int nfp_fl_ct_add_offload(struct nfp_fl_nft_tc_merge *m_entry)
 		} else {
 			__be32 dst;
 
-			for (i = 0; i < _CT_TYPE_MAX; i++) {
+			for (i = 0; i < num_rules; i++) {
 				nfp_flower_compile_ipv4_udp_tun((void *)key,
 								(void *)msk, rules[i]);
 			}
@@ -1029,13 +1065,13 @@ static int nfp_fl_ct_add_offload(struct nfp_fl_nft_tc_merge *m_entry)
 			offset = key_map[FLOW_PAY_GENEVE_OPT];
 			key = kdata + offset;
 			msk = mdata + offset;
-			for (i = 0; i < _CT_TYPE_MAX; i++)
+			for (i = 0; i < num_rules; i++)
 				nfp_flower_compile_geneve_opt(key, msk, rules[i]);
 		}
 	}
 
 	/* Merge actions into flow_pay */
-	err = nfp_fl_merge_actions_offload(rules, priv, netdev, flow_pay);
+	err = nfp_fl_merge_actions_offload(rules, priv, netdev, flow_pay, num_rules);
 	if (err)
 		goto ct_offload_err;
 
@@ -1168,6 +1204,12 @@ static int nfp_ct_do_nft_merge(struct nfp_fl_ct_zone_entry *zt,
 	if (err)
 		return err;
 
+	if (pre_ct_entry->num_prev_m_entries > 0) {
+		err = nfp_ct_merge_extra_check(nft_entry, tc_m_entry);
+		if (err)
+			return err;
+	}
+
 	/* Combine tc_merge and nft cookies for this cookie. */
 	new_cookie[0] = tc_m_entry->cookie[0];
 	new_cookie[1] = tc_m_entry->cookie[1];
@@ -1198,11 +1240,6 @@ static int nfp_ct_do_nft_merge(struct nfp_fl_ct_zone_entry *zt,
 	list_add(&nft_m_entry->tc_merge_list, &tc_m_entry->children);
 	list_add(&nft_m_entry->nft_flow_list, &nft_entry->children);
 
-	/* Generate offload structure and send to nfp */
-	err = nfp_fl_ct_add_offload(nft_m_entry);
-	if (err)
-		goto err_nft_ct_offload;
-
 	err = rhashtable_insert_fast(&zt->nft_merge_tb, &nft_m_entry->hash_node,
 				     nfp_nft_ct_merge_params);
 	if (err)
@@ -1210,12 +1247,20 @@ static int nfp_ct_do_nft_merge(struct nfp_fl_ct_zone_entry *zt,
 
 	zt->nft_merge_count++;
 
+	if (post_ct_entry->goto_chain_index > 0)
+		return nfp_fl_create_new_pre_ct(nft_m_entry);
+
+	/* Generate offload structure and send to nfp */
+	err = nfp_fl_ct_add_offload(nft_m_entry);
+	if (err)
+		goto err_nft_ct_offload;
+
 	return err;
 
-err_nft_ct_merge_insert:
+err_nft_ct_offload:
 	nfp_fl_ct_del_offload(zt->priv->app, nft_m_entry->tc_flower_cookie,
 			      nft_m_entry->netdev);
-err_nft_ct_offload:
+err_nft_ct_merge_insert:
 	list_del(&nft_m_entry->tc_merge_list);
 	list_del(&nft_m_entry->nft_flow_list);
 	kfree(nft_m_entry);
@@ -1243,7 +1288,7 @@ static int nfp_ct_do_tc_merge(struct nfp_fl_ct_zone_entry *zt,
 	/* Checks that the chain_index of the filter matches the
 	 * chain_index of the GOTO action.
 	 */
-	if (post_ct_entry->chain_index != pre_ct_entry->chain_index)
+	if (post_ct_entry->chain_index != pre_ct_entry->goto_chain_index)
 		return -EINVAL;
 
 	err = nfp_ct_merge_check(pre_ct_entry, post_ct_entry);
@@ -1461,7 +1506,7 @@ nfp_fl_ct_flow_entry *nfp_fl_ct_add_flow(struct nfp_fl_ct_zone_entry *zt,
 
 	entry->zt = zt;
 	entry->netdev = netdev;
-	entry->cookie = flow->cookie;
+	entry->cookie = flow->cookie > 0 ? flow->cookie : (unsigned long)entry;
 	entry->chain_index = flow->common.chain_index;
 	entry->tun_offset = NFP_FL_CT_NO_TUN;
 
@@ -1500,6 +1545,9 @@ nfp_fl_ct_flow_entry *nfp_fl_ct_add_flow(struct nfp_fl_ct_zone_entry *zt,
 	}
 
 	INIT_LIST_HEAD(&entry->children);
+
+	if (flow->cookie == 0)
+		return entry;
 
 	/* Now add a ct map entry to flower-priv */
 	map = get_hashentry(&zt->priv->ct_map_table, &flow->cookie,
@@ -1558,6 +1606,14 @@ static void cleanup_nft_merge_entry(struct nfp_fl_nft_tc_merge *m_entry)
 	zt->nft_merge_count--;
 	list_del(&m_entry->tc_merge_list);
 	list_del(&m_entry->nft_flow_list);
+
+	if (m_entry->next_pre_ct_entry) {
+		struct nfp_fl_ct_map_entry pre_ct_map_ent;
+
+		pre_ct_map_ent.ct_entry = m_entry->next_pre_ct_entry;
+		pre_ct_map_ent.cookie = 0;
+		nfp_fl_ct_del_flow(&pre_ct_map_ent);
+	}
 
 	kfree(m_entry);
 }
@@ -1656,6 +1712,22 @@ void nfp_fl_ct_clean_flow_entry(struct nfp_fl_ct_flow_entry *entry)
 	kfree(entry);
 }
 
+static struct flow_action_entry *get_flow_act_ct(struct flow_rule *rule)
+{
+	struct flow_action_entry *act;
+	int i;
+
+	/* More than one ct action may be present in a flow rule,
+	 * Return the first one that is not a CT clear action
+	 */
+	flow_action_for_each(i, act, &rule->action) {
+		if (act->id == FLOW_ACTION_CT && act->ct.action != TCA_CT_ACT_CLEAR)
+			return act;
+	}
+
+	return NULL;
+}
+
 static struct flow_action_entry *get_flow_act(struct flow_rule *rule,
 					      enum flow_action_id act_id)
 {
@@ -1713,14 +1785,15 @@ nfp_ct_merge_nft_with_tc(struct nfp_fl_ct_flow_entry *nft_entry,
 int nfp_fl_ct_handle_pre_ct(struct nfp_flower_priv *priv,
 			    struct net_device *netdev,
 			    struct flow_cls_offload *flow,
-			    struct netlink_ext_ack *extack)
+			    struct netlink_ext_ack *extack,
+			    struct nfp_fl_nft_tc_merge *m_entry)
 {
 	struct flow_action_entry *ct_act, *ct_goto;
 	struct nfp_fl_ct_flow_entry *ct_entry;
 	struct nfp_fl_ct_zone_entry *zt;
 	int err;
 
-	ct_act = get_flow_act(flow->rule, FLOW_ACTION_CT);
+	ct_act = get_flow_act_ct(flow->rule);
 	if (!ct_act) {
 		NL_SET_ERR_MSG_MOD(extack,
 				   "unsupported offload: Conntrack action empty in conntrack offload");
@@ -1756,7 +1829,22 @@ int nfp_fl_ct_handle_pre_ct(struct nfp_flower_priv *priv,
 	if (IS_ERR(ct_entry))
 		return PTR_ERR(ct_entry);
 	ct_entry->type = CT_TYPE_PRE_CT;
-	ct_entry->chain_index = ct_goto->chain_index;
+	ct_entry->chain_index = flow->common.chain_index;
+	ct_entry->goto_chain_index = ct_goto->chain_index;
+
+	if (m_entry) {
+		struct nfp_fl_ct_flow_entry *pre_ct_entry;
+		int i;
+
+		pre_ct_entry = m_entry->tc_m_parent->pre_ct_parent;
+		for (i = 0; i < pre_ct_entry->num_prev_m_entries; i++)
+			ct_entry->prev_m_entries[i] = pre_ct_entry->prev_m_entries[i];
+		ct_entry->prev_m_entries[i++] = m_entry;
+		ct_entry->num_prev_m_entries = i;
+
+		m_entry->next_pre_ct_entry = ct_entry;
+	}
+
 	list_add(&ct_entry->list_node, &zt->pre_ct_list);
 	zt->pre_ct_count++;
 
@@ -1779,6 +1867,7 @@ int nfp_fl_ct_handle_post_ct(struct nfp_flower_priv *priv,
 	struct nfp_fl_ct_zone_entry *zt;
 	bool wildcarded = false;
 	struct flow_match_ct ct;
+	struct flow_action_entry *ct_goto;
 
 	flow_rule_match_ct(rule, &ct);
 	if (!ct.mask->ct_zone) {
@@ -1803,6 +1892,8 @@ int nfp_fl_ct_handle_post_ct(struct nfp_flower_priv *priv,
 
 	ct_entry->type = CT_TYPE_POST_CT;
 	ct_entry->chain_index = flow->common.chain_index;
+	ct_goto = get_flow_act(flow->rule, FLOW_ACTION_GOTO);
+	ct_entry->goto_chain_index = ct_goto ? ct_goto->chain_index : 0;
 	list_add(&ct_entry->list_node, &zt->post_ct_list);
 	zt->post_ct_count++;
 
@@ -1829,6 +1920,28 @@ int nfp_fl_ct_handle_post_ct(struct nfp_flower_priv *priv,
 	}
 
 	return 0;
+}
+
+int nfp_fl_create_new_pre_ct(struct nfp_fl_nft_tc_merge *m_entry)
+{
+	struct nfp_fl_ct_flow_entry *pre_ct_entry, *post_ct_entry;
+	struct flow_cls_offload new_pre_ct_flow;
+	int err;
+
+	pre_ct_entry = m_entry->tc_m_parent->pre_ct_parent;
+	if (pre_ct_entry->num_prev_m_entries >= NFP_MAX_RECIRC_CT_ZONES - 1)
+		return -1;
+
+	post_ct_entry = m_entry->tc_m_parent->post_ct_parent;
+	memset(&new_pre_ct_flow, 0, sizeof(struct flow_cls_offload));
+	new_pre_ct_flow.rule = post_ct_entry->rule;
+	new_pre_ct_flow.common.chain_index = post_ct_entry->chain_index;
+
+	err = nfp_fl_ct_handle_pre_ct(pre_ct_entry->zt->priv,
+				      pre_ct_entry->netdev,
+				      &new_pre_ct_flow, NULL,
+				      m_entry);
+	return err;
 }
 
 static void
@@ -1876,6 +1989,32 @@ nfp_fl_ct_sub_stats(struct nfp_fl_nft_tc_merge *nft_merge,
 				  0, priv->stats[ctx_id].used,
 				  FLOW_ACTION_HW_STATS_DELAYED);
 	}
+
+	/* Update previous pre_ct/post_ct/nft flow stats */
+	if (nft_merge->tc_m_parent->pre_ct_parent->num_prev_m_entries > 0) {
+		struct nfp_fl_nft_tc_merge *tmp_nft_merge;
+		int i;
+
+		for (i = 0; i < nft_merge->tc_m_parent->pre_ct_parent->num_prev_m_entries; i++) {
+			tmp_nft_merge = nft_merge->tc_m_parent->pre_ct_parent->prev_m_entries[i];
+			flow_stats_update(&tmp_nft_merge->tc_m_parent->pre_ct_parent->stats,
+					  priv->stats[ctx_id].bytes,
+					  priv->stats[ctx_id].pkts,
+					  0, priv->stats[ctx_id].used,
+					  FLOW_ACTION_HW_STATS_DELAYED);
+			flow_stats_update(&tmp_nft_merge->tc_m_parent->post_ct_parent->stats,
+					  priv->stats[ctx_id].bytes,
+					  priv->stats[ctx_id].pkts,
+					  0, priv->stats[ctx_id].used,
+					  FLOW_ACTION_HW_STATS_DELAYED);
+			flow_stats_update(&tmp_nft_merge->nft_parent->stats,
+					  priv->stats[ctx_id].bytes,
+					  priv->stats[ctx_id].pkts,
+					  0, priv->stats[ctx_id].used,
+					  FLOW_ACTION_HW_STATS_DELAYED);
+		}
+	}
+
 	/* Reset stats from the nfp */
 	priv->stats[ctx_id].pkts = 0;
 	priv->stats[ctx_id].bytes = 0;
@@ -1964,6 +2103,27 @@ int nfp_fl_ct_stats(struct flow_cls_offload *flow,
 	return 0;
 }
 
+static bool
+nfp_fl_ct_offload_nft_supported(struct flow_cls_offload *flow)
+{
+	struct flow_rule *flow_rule = flow->rule;
+	struct flow_action *flow_action =
+		&flow_rule->action;
+	struct flow_action_entry *act;
+	int i;
+
+	flow_action_for_each(i, act, flow_action) {
+		if (act->id == FLOW_ACTION_CT_METADATA) {
+			enum ip_conntrack_info ctinfo =
+				act->ct_metadata.cookie & NFCT_INFOMASK;
+
+			return ctinfo != IP_CT_NEW;
+		}
+	}
+
+	return false;
+}
+
 static int
 nfp_fl_ct_offload_nft_flow(struct nfp_fl_ct_zone_entry *zt, struct flow_cls_offload *flow)
 {
@@ -1971,11 +2131,12 @@ nfp_fl_ct_offload_nft_flow(struct nfp_fl_ct_zone_entry *zt, struct flow_cls_offl
 	struct nfp_fl_ct_flow_entry *ct_entry;
 	struct netlink_ext_ack *extack = NULL;
 
-	ASSERT_RTNL();
-
 	extack = flow->common.extack;
 	switch (flow->command) {
 	case FLOW_CLS_REPLACE:
+		if (!nfp_fl_ct_offload_nft_supported(flow))
+			return -EOPNOTSUPP;
+
 		/* Netfilter can request offload multiple times for the same
 		 * flow - protect against adding duplicates.
 		 */
@@ -2015,9 +2176,13 @@ int nfp_fl_ct_handle_nft_flow(enum tc_setup_type type, void *type_data, void *cb
 
 	switch (type) {
 	case TC_SETUP_CLSFLOWER:
-		rtnl_lock();
+		while (!mutex_trylock(&zt->priv->nfp_fl_lock)) {
+			if (!zt->nft) /* avoid deadlock */
+				return err;
+			msleep(20);
+		}
 		err = nfp_fl_ct_offload_nft_flow(zt, flow);
-		rtnl_unlock();
+		mutex_unlock(&zt->priv->nfp_fl_lock);
 		break;
 	default:
 		return -EOPNOTSUPP;
@@ -2045,6 +2210,7 @@ int nfp_fl_ct_del_flow(struct nfp_fl_ct_map_entry *ct_map_ent)
 	struct nfp_fl_ct_flow_entry *ct_entry;
 	struct nfp_fl_ct_zone_entry *zt;
 	struct rhashtable *m_table;
+	struct nf_flowtable *nft;
 
 	if (!ct_map_ent)
 		return -ENOENT;
@@ -2056,13 +2222,19 @@ int nfp_fl_ct_del_flow(struct nfp_fl_ct_map_entry *ct_map_ent)
 	switch (ct_entry->type) {
 	case CT_TYPE_PRE_CT:
 		zt->pre_ct_count--;
-		rhashtable_remove_fast(m_table, &ct_map_ent->hash_node,
-				       nfp_ct_map_params);
+		if (ct_map_ent->cookie > 0)
+			rhashtable_remove_fast(m_table, &ct_map_ent->hash_node,
+					       nfp_ct_map_params);
 		nfp_fl_ct_clean_flow_entry(ct_entry);
-		kfree(ct_map_ent);
+		if (ct_map_ent->cookie > 0)
+			kfree(ct_map_ent);
 
-		if (!zt->pre_ct_count) {
-			zt->nft = NULL;
+		if (!zt->pre_ct_count && zt->nft) {
+			nft = zt->nft;
+			zt->nft = NULL; /* avoid deadlock */
+			nf_flow_table_offload_del_cb(nft,
+						     nfp_fl_ct_handle_nft_flow,
+						     zt);
 			nfp_fl_ct_clean_nft_entries(zt);
 		}
 		break;

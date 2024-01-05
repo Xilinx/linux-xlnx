@@ -22,7 +22,7 @@
 #include "coresight-priv.h"
 #include "coresight-cti.h"
 
-/**
+/*
  * CTI devices can be associated with a PE, or be connected to CoreSight
  * hardware. We have a list of all CTIs irrespective of CPU bound or
  * otherwise.
@@ -107,12 +107,12 @@ static int cti_enable_hw(struct cti_drvdata *drvdata)
 	cti_write_all_hw_regs(drvdata);
 
 	config->hw_enabled = true;
-	atomic_inc(&drvdata->config.enable_req_count);
+	drvdata->config.enable_req_count++;
 	spin_unlock_irqrestore(&drvdata->spinlock, flags);
 	return rc;
 
 cti_state_unchanged:
-	atomic_inc(&drvdata->config.enable_req_count);
+	drvdata->config.enable_req_count++;
 
 	/* cannot enable due to error */
 cti_err_not_enabled:
@@ -129,7 +129,7 @@ static void cti_cpuhp_enable_hw(struct cti_drvdata *drvdata)
 	config->hw_powered = true;
 
 	/* no need to do anything if no enable request */
-	if (!atomic_read(&drvdata->config.enable_req_count))
+	if (!drvdata->config.enable_req_count)
 		goto cti_hp_not_enabled;
 
 	/* try to claim the device */
@@ -151,11 +151,18 @@ static int cti_disable_hw(struct cti_drvdata *drvdata)
 {
 	struct cti_config *config = &drvdata->config;
 	struct coresight_device *csdev = drvdata->csdev;
+	int ret = 0;
 
 	spin_lock(&drvdata->spinlock);
 
+	/* don't allow negative refcounts, return an error */
+	if (!drvdata->config.enable_req_count) {
+		ret = -EINVAL;
+		goto cti_not_disabled;
+	}
+
 	/* check refcount - disable on 0 */
-	if (atomic_dec_return(&drvdata->config.enable_req_count) > 0)
+	if (--drvdata->config.enable_req_count > 0)
 		goto cti_not_disabled;
 
 	/* no need to do anything if disabled or cpu unpowered */
@@ -171,12 +178,12 @@ static int cti_disable_hw(struct cti_drvdata *drvdata)
 	coresight_disclaim_device_unlocked(csdev);
 	CS_LOCK(drvdata->base);
 	spin_unlock(&drvdata->spinlock);
-	return 0;
+	return ret;
 
 	/* not disabled this call */
 cti_not_disabled:
 	spin_unlock(&drvdata->spinlock);
-	return 0;
+	return ret;
 }
 
 void cti_write_single_reg(struct cti_drvdata *drvdata, int offset, u32 value)
@@ -232,7 +239,7 @@ static void cti_set_default_config(struct device *dev,
 	/* Most regs default to 0 as zalloc'ed except...*/
 	config->trig_filter_enable = true;
 	config->ctigate = GENMASK(config->nr_ctm_channels - 1, 0);
-	atomic_set(&config->enable_req_count, 0);
+	config->enable_req_count = 0;
 }
 
 /*
@@ -548,7 +555,10 @@ static void cti_add_assoc_to_csdev(struct coresight_device *csdev)
 	mutex_lock(&ect_mutex);
 
 	/* exit if current is an ECT device.*/
-	if ((csdev->type == CORESIGHT_DEV_TYPE_ECT) || list_empty(&ect_net))
+	if ((csdev->type == CORESIGHT_DEV_TYPE_HELPER &&
+	     csdev->subtype.helper_subtype ==
+		     CORESIGHT_DEV_SUBTYPE_HELPER_ECT_CTI) ||
+	    list_empty(&ect_net))
 		goto cti_add_done;
 
 	/* if we didn't find the csdev previously we used the fwnode name */
@@ -564,8 +574,7 @@ static void cti_add_assoc_to_csdev(struct coresight_device *csdev)
 			 * if we found a matching csdev then update the ECT
 			 * association pointer for the device with this CTI.
 			 */
-			coresight_set_assoc_ectdev_mutex(csdev->ect_dev,
-							 ect_item->csdev);
+			coresight_add_helper(csdev, ect_item->csdev);
 			break;
 		}
 	}
@@ -575,26 +584,30 @@ cti_add_done:
 
 /*
  * Removing the associated devices is easier.
- * A CTI will not have a value for csdev->ect_dev.
  */
 static void cti_remove_assoc_from_csdev(struct coresight_device *csdev)
 {
 	struct cti_drvdata *ctidrv;
 	struct cti_trig_con *tc;
 	struct cti_device *ctidev;
+	union coresight_dev_subtype cti_subtype = {
+		.helper_subtype = CORESIGHT_DEV_SUBTYPE_HELPER_ECT_CTI
+	};
+	struct coresight_device *cti_csdev = coresight_find_output_type(
+		csdev->pdata, CORESIGHT_DEV_TYPE_HELPER, cti_subtype);
+
+	if (!cti_csdev)
+		return;
 
 	mutex_lock(&ect_mutex);
-	if (csdev->ect_dev) {
-		ctidrv = csdev_to_cti_drvdata(csdev->ect_dev);
-		ctidev = &ctidrv->ctidev;
-		list_for_each_entry(tc, &ctidev->trig_cons, node) {
-			if (tc->con_dev == csdev) {
-				cti_remove_sysfs_link(ctidrv, tc);
-				tc->con_dev = NULL;
-				break;
-			}
+	ctidrv = csdev_to_cti_drvdata(cti_csdev);
+	ctidev = &ctidrv->ctidev;
+	list_for_each_entry(tc, &ctidev->trig_cons, node) {
+		if (tc->con_dev == csdev) {
+			cti_remove_sysfs_link(ctidrv, tc);
+			tc->con_dev = NULL;
+			break;
 		}
-		csdev->ect_dev = NULL;
 	}
 	mutex_unlock(&ect_mutex);
 }
@@ -623,8 +636,8 @@ static void cti_update_conn_xrefs(struct cti_drvdata *drvdata)
 			/* if we can set the sysfs link */
 			if (cti_add_sysfs_link(drvdata, tc))
 				/* set the CTI/csdev association */
-				coresight_set_assoc_ectdev_mutex(tc->con_dev,
-							 drvdata->csdev);
+				coresight_add_helper(tc->con_dev,
+						     drvdata->csdev);
 			else
 				/* otherwise remove reference from CTI */
 				tc->con_dev = NULL;
@@ -639,8 +652,6 @@ static void cti_remove_conn_xrefs(struct cti_drvdata *drvdata)
 
 	list_for_each_entry(tc, &ctidev->trig_cons, node) {
 		if (tc->con_dev) {
-			coresight_set_assoc_ectdev_mutex(tc->con_dev,
-							 NULL);
 			cti_remove_sysfs_link(drvdata, tc);
 			tc->con_dev = NULL;
 		}
@@ -689,7 +700,7 @@ static int cti_cpu_pm_notify(struct notifier_block *nb, unsigned long cmd,
 		drvdata->config.hw_enabled = false;
 
 		/* check enable reference count to enable HW */
-		if (atomic_read(&drvdata->config.enable_req_count)) {
+		if (drvdata->config.enable_req_count) {
 			/* check we can claim the device as we re-power */
 			if (coresight_claim_device(csdev))
 				goto cti_notify_exit;
@@ -788,27 +799,27 @@ static void cti_pm_release(struct cti_drvdata *drvdata)
 }
 
 /** cti ect operations **/
-int cti_enable(struct coresight_device *csdev)
+int cti_enable(struct coresight_device *csdev, enum cs_mode mode, void *data)
 {
 	struct cti_drvdata *drvdata = csdev_to_cti_drvdata(csdev);
 
 	return cti_enable_hw(drvdata);
 }
 
-int cti_disable(struct coresight_device *csdev)
+int cti_disable(struct coresight_device *csdev, void *data)
 {
 	struct cti_drvdata *drvdata = csdev_to_cti_drvdata(csdev);
 
 	return cti_disable_hw(drvdata);
 }
 
-static const struct coresight_ops_ect cti_ops_ect = {
+static const struct coresight_ops_helper cti_ops_ect = {
 	.enable = cti_enable,
 	.disable = cti_disable,
 };
 
 static const struct coresight_ops cti_ops = {
-	.ect_ops = &cti_ops_ect,
+	.helper_ops = &cti_ops_ect,
 };
 
 /*
@@ -915,8 +926,8 @@ static int cti_probe(struct amba_device *adev, const struct amba_id *id)
 
 	/* set up coresight component description */
 	cti_desc.pdata = pdata;
-	cti_desc.type = CORESIGHT_DEV_TYPE_ECT;
-	cti_desc.subtype.ect_subtype = CORESIGHT_DEV_SUBTYPE_ECT_CTI;
+	cti_desc.type = CORESIGHT_DEV_TYPE_HELPER;
+	cti_desc.subtype.helper_subtype = CORESIGHT_DEV_SUBTYPE_HELPER_ECT_CTI;
 	cti_desc.ops = &cti_ops;
 	cti_desc.groups = drvdata->ctidev.con_groups;
 	cti_desc.dev = dev;

@@ -43,8 +43,7 @@ static const struct of_device_id of_lp87565_match_table[] = {
 };
 MODULE_DEVICE_TABLE(of, of_lp87565_match_table);
 
-static int lp87565_probe(struct i2c_client *client,
-			 const struct i2c_device_id *ids)
+static int lp87565_probe(struct i2c_client *client)
 {
 	struct lp87565 *lp87565;
 	const struct of_device_id *of_id;
@@ -93,7 +92,7 @@ static int lp87565_probe(struct i2c_client *client,
 
 	of_id = of_match_device(of_lp87565_match_table, &client->dev);
 	if (of_id)
-		lp87565->dev_type = (enum lp87565_device_type)of_id->data;
+		lp87565->dev_type = (uintptr_t)of_id->data;
 
 	i2c_set_clientdata(client, lp87565);
 

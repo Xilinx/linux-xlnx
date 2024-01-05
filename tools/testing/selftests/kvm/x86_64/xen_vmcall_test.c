@@ -108,24 +108,21 @@ int main(int argc, char *argv[])
 		vcpu_run(vcpu);
 
 		if (run->exit_reason == KVM_EXIT_XEN) {
-			ASSERT_EQ(run->xen.type, KVM_EXIT_XEN_HCALL);
-			ASSERT_EQ(run->xen.u.hcall.cpl, 0);
-			ASSERT_EQ(run->xen.u.hcall.longmode, 1);
-			ASSERT_EQ(run->xen.u.hcall.input, INPUTVALUE);
-			ASSERT_EQ(run->xen.u.hcall.params[0], ARGVALUE(1));
-			ASSERT_EQ(run->xen.u.hcall.params[1], ARGVALUE(2));
-			ASSERT_EQ(run->xen.u.hcall.params[2], ARGVALUE(3));
-			ASSERT_EQ(run->xen.u.hcall.params[3], ARGVALUE(4));
-			ASSERT_EQ(run->xen.u.hcall.params[4], ARGVALUE(5));
-			ASSERT_EQ(run->xen.u.hcall.params[5], ARGVALUE(6));
+			TEST_ASSERT_EQ(run->xen.type, KVM_EXIT_XEN_HCALL);
+			TEST_ASSERT_EQ(run->xen.u.hcall.cpl, 0);
+			TEST_ASSERT_EQ(run->xen.u.hcall.longmode, 1);
+			TEST_ASSERT_EQ(run->xen.u.hcall.input, INPUTVALUE);
+			TEST_ASSERT_EQ(run->xen.u.hcall.params[0], ARGVALUE(1));
+			TEST_ASSERT_EQ(run->xen.u.hcall.params[1], ARGVALUE(2));
+			TEST_ASSERT_EQ(run->xen.u.hcall.params[2], ARGVALUE(3));
+			TEST_ASSERT_EQ(run->xen.u.hcall.params[3], ARGVALUE(4));
+			TEST_ASSERT_EQ(run->xen.u.hcall.params[4], ARGVALUE(5));
+			TEST_ASSERT_EQ(run->xen.u.hcall.params[5], ARGVALUE(6));
 			run->xen.u.hcall.result = RETVALUE;
 			continue;
 		}
 
-		TEST_ASSERT(run->exit_reason == KVM_EXIT_IO,
-			    "Got exit_reason other than KVM_EXIT_IO: %u (%s)\n",
-			    run->exit_reason,
-			    exit_reason_str(run->exit_reason));
+		TEST_ASSERT_KVM_EXIT_REASON(vcpu, KVM_EXIT_IO);
 
 		switch (get_ucall(vcpu, &uc)) {
 		case UCALL_ABORT:

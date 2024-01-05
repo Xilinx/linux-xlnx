@@ -669,19 +669,19 @@ static int pktgen_if_show(struct seq_file *seq, void *v)
 	seq_puts(seq, "     Flags: ");
 
 	for (i = 0; i < NR_PKT_FLAGS; i++) {
-		if (i == F_FLOW_SEQ)
+		if (i == FLOW_SEQ_SHIFT)
 			if (!pkt_dev->cflows)
 				continue;
 
-		if (pkt_dev->flags & (1 << i))
+		if (pkt_dev->flags & (1 << i)) {
 			seq_printf(seq, "%s  ", pkt_flag_names[i]);
-		else if (i == F_FLOW_SEQ)
-			seq_puts(seq, "FLOW_RND  ");
-
 #ifdef CONFIG_XFRM
-		if (i == F_IPSEC && pkt_dev->spi)
-			seq_printf(seq, "spi:%u", pkt_dev->spi);
+			if (i == IPSEC_SHIFT && pkt_dev->spi)
+				seq_printf(seq, "spi:%u  ", pkt_dev->spi);
 #endif
+		} else if (i == FLOW_SEQ_SHIFT) {
+			seq_puts(seq, "FLOW_RND  ");
+		}
 	}
 
 	seq_puts(seq, "\n");
@@ -2324,7 +2324,7 @@ static inline int f_pick(struct pktgen_dev *pkt_dev)
 				pkt_dev->curfl = 0; /*reset */
 		}
 	} else {
-		flow = prandom_u32_max(pkt_dev->cflows);
+		flow = get_random_u32_below(pkt_dev->cflows);
 		pkt_dev->curfl = flow;
 
 		if (pkt_dev->flows[flow].count > pkt_dev->lflow) {
@@ -2380,9 +2380,8 @@ static void set_cur_queue_map(struct pktgen_dev *pkt_dev)
 	else if (pkt_dev->queue_map_min <= pkt_dev->queue_map_max) {
 		__u16 t;
 		if (pkt_dev->flags & F_QUEUE_MAP_RND) {
-			t = prandom_u32_max(pkt_dev->queue_map_max -
-					    pkt_dev->queue_map_min + 1) +
-			    pkt_dev->queue_map_min;
+			t = get_random_u32_inclusive(pkt_dev->queue_map_min,
+						     pkt_dev->queue_map_max);
 		} else {
 			t = pkt_dev->cur_queue_map + 1;
 			if (t > pkt_dev->queue_map_max)
@@ -2411,7 +2410,7 @@ static void mod_cur_headers(struct pktgen_dev *pkt_dev)
 		__u32 tmp;
 
 		if (pkt_dev->flags & F_MACSRC_RND)
-			mc = prandom_u32_max(pkt_dev->src_mac_count);
+			mc = get_random_u32_below(pkt_dev->src_mac_count);
 		else {
 			mc = pkt_dev->cur_src_mac_offset++;
 			if (pkt_dev->cur_src_mac_offset >=
@@ -2437,7 +2436,7 @@ static void mod_cur_headers(struct pktgen_dev *pkt_dev)
 		__u32 tmp;
 
 		if (pkt_dev->flags & F_MACDST_RND)
-			mc = prandom_u32_max(pkt_dev->dst_mac_count);
+			mc = get_random_u32_below(pkt_dev->dst_mac_count);
 
 		else {
 			mc = pkt_dev->cur_dst_mac_offset++;
@@ -2469,18 +2468,17 @@ static void mod_cur_headers(struct pktgen_dev *pkt_dev)
 	}
 
 	if ((pkt_dev->flags & F_VID_RND) && (pkt_dev->vlan_id != 0xffff)) {
-		pkt_dev->vlan_id = prandom_u32_max(4096);
+		pkt_dev->vlan_id = get_random_u32_below(4096);
 	}
 
 	if ((pkt_dev->flags & F_SVID_RND) && (pkt_dev->svlan_id != 0xffff)) {
-		pkt_dev->svlan_id = prandom_u32_max(4096);
+		pkt_dev->svlan_id = get_random_u32_below(4096);
 	}
 
 	if (pkt_dev->udp_src_min < pkt_dev->udp_src_max) {
 		if (pkt_dev->flags & F_UDPSRC_RND)
-			pkt_dev->cur_udp_src = prandom_u32_max(
-				pkt_dev->udp_src_max - pkt_dev->udp_src_min) +
-				pkt_dev->udp_src_min;
+			pkt_dev->cur_udp_src = get_random_u32_inclusive(pkt_dev->udp_src_min,
+									pkt_dev->udp_src_max - 1);
 
 		else {
 			pkt_dev->cur_udp_src++;
@@ -2491,9 +2489,8 @@ static void mod_cur_headers(struct pktgen_dev *pkt_dev)
 
 	if (pkt_dev->udp_dst_min < pkt_dev->udp_dst_max) {
 		if (pkt_dev->flags & F_UDPDST_RND) {
-			pkt_dev->cur_udp_dst = prandom_u32_max(
-				pkt_dev->udp_dst_max - pkt_dev->udp_dst_min) +
-				pkt_dev->udp_dst_min;
+			pkt_dev->cur_udp_dst = get_random_u32_inclusive(pkt_dev->udp_dst_min,
+									pkt_dev->udp_dst_max - 1);
 		} else {
 			pkt_dev->cur_udp_dst++;
 			if (pkt_dev->cur_udp_dst >= pkt_dev->udp_dst_max)
@@ -2508,7 +2505,7 @@ static void mod_cur_headers(struct pktgen_dev *pkt_dev)
 		if (imn < imx) {
 			__u32 t;
 			if (pkt_dev->flags & F_IPSRC_RND)
-				t = prandom_u32_max(imx - imn) + imn;
+				t = get_random_u32_inclusive(imn, imx - 1);
 			else {
 				t = ntohl(pkt_dev->cur_saddr);
 				t++;
@@ -2530,8 +2527,7 @@ static void mod_cur_headers(struct pktgen_dev *pkt_dev)
 				if (pkt_dev->flags & F_IPDST_RND) {
 
 					do {
-						t = prandom_u32_max(imx - imn) +
-						    imn;
+						t = get_random_u32_inclusive(imn, imx - 1);
 						s = htonl(t);
 					} while (ipv4_is_loopback(s) ||
 						ipv4_is_multicast(s) ||
@@ -2578,9 +2574,8 @@ static void mod_cur_headers(struct pktgen_dev *pkt_dev)
 	if (pkt_dev->min_pkt_size < pkt_dev->max_pkt_size) {
 		__u32 t;
 		if (pkt_dev->flags & F_TXSIZE_RND) {
-			t = prandom_u32_max(pkt_dev->max_pkt_size -
-					    pkt_dev->min_pkt_size) +
-			    pkt_dev->min_pkt_size;
+			t = get_random_u32_inclusive(pkt_dev->min_pkt_size,
+						     pkt_dev->max_pkt_size - 1);
 		} else {
 			t = pkt_dev->cur_pkt_size + 1;
 			if (t > pkt_dev->max_pkt_size)
@@ -2589,7 +2584,7 @@ static void mod_cur_headers(struct pktgen_dev *pkt_dev)
 		pkt_dev->cur_pkt_size = t;
 	} else if (pkt_dev->n_imix_entries > 0) {
 		struct imix_pkt *entry;
-		__u32 t = prandom_u32_max(IMIX_PRECISION);
+		__u32 t = get_random_u32_below(IMIX_PRECISION);
 		__u8 entry_index = pkt_dev->imix_distribution[t];
 
 		entry = &pkt_dev->imix_entries[entry_index];
@@ -2790,14 +2785,17 @@ static void pktgen_finalize_skb(struct pktgen_dev *pkt_dev, struct sk_buff *skb,
 					break;
 			}
 			get_page(pkt_dev->page);
-			skb_frag_set_page(skb, i, pkt_dev->page);
-			skb_frag_off_set(&skb_shinfo(skb)->frags[i], 0);
+
 			/*last fragment, fill rest of data*/
 			if (i == (frags - 1))
-				skb_frag_size_set(&skb_shinfo(skb)->frags[i],
-				    (datalen < PAGE_SIZE ? datalen : PAGE_SIZE));
+				skb_frag_fill_page_desc(&skb_shinfo(skb)->frags[i],
+							pkt_dev->page, 0,
+							(datalen < PAGE_SIZE ?
+							 datalen : PAGE_SIZE));
 			else
-				skb_frag_size_set(&skb_shinfo(skb)->frags[i], frag_len);
+				skb_frag_fill_page_desc(&skb_shinfo(skb)->frags[i],
+							pkt_dev->page, 0, frag_len);
+
 			datalen -= skb_frag_size(&skb_shinfo(skb)->frags[i]);
 			skb->len += skb_frag_size(&skb_shinfo(skb)->frags[i]);
 			skb->data_len += skb_frag_size(&skb_shinfo(skb)->frags[i]);

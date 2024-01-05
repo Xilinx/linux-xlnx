@@ -302,7 +302,7 @@ static struct inode *mqueue_get_inode(struct super_block *sb,
 	inode->i_mode = mode;
 	inode->i_uid = current_fsuid();
 	inode->i_gid = current_fsgid();
-	inode->i_mtime = inode->i_ctime = inode->i_atime = current_time(inode);
+	inode->i_mtime = inode->i_atime = inode_set_ctime_current(inode);
 
 	if (S_ISREG(mode)) {
 		struct mqueue_inode_info *info;
@@ -596,7 +596,7 @@ static int mqueue_create_attr(struct dentry *dentry, umode_t mode, void *arg)
 
 	put_ipc_ns(ipc_ns);
 	dir->i_size += DIRENT_SIZE;
-	dir->i_ctime = dir->i_mtime = dir->i_atime = current_time(dir);
+	dir->i_mtime = dir->i_atime = inode_set_ctime_current(dir);
 
 	d_instantiate(dentry, inode);
 	dget(dentry);
@@ -608,7 +608,7 @@ out_unlock:
 	return error;
 }
 
-static int mqueue_create(struct user_namespace *mnt_userns, struct inode *dir,
+static int mqueue_create(struct mnt_idmap *idmap, struct inode *dir,
 			 struct dentry *dentry, umode_t mode, bool excl)
 {
 	return mqueue_create_attr(dentry, mode, NULL);
@@ -618,7 +618,7 @@ static int mqueue_unlink(struct inode *dir, struct dentry *dentry)
 {
 	struct inode *inode = d_inode(dentry);
 
-	dir->i_ctime = dir->i_mtime = dir->i_atime = current_time(dir);
+	dir->i_mtime = dir->i_atime = inode_set_ctime_current(dir);
 	dir->i_size -= DIRENT_SIZE;
 	drop_nlink(inode);
 	dput(dentry);
@@ -635,7 +635,8 @@ static int mqueue_unlink(struct inode *dir, struct dentry *dentry)
 static ssize_t mqueue_read_file(struct file *filp, char __user *u_data,
 				size_t count, loff_t *off)
 {
-	struct mqueue_inode_info *info = MQUEUE_I(file_inode(filp));
+	struct inode *inode = file_inode(filp);
+	struct mqueue_inode_info *info = MQUEUE_I(inode);
 	char buffer[FILENT_SIZE];
 	ssize_t ret;
 
@@ -656,7 +657,7 @@ static ssize_t mqueue_read_file(struct file *filp, char __user *u_data,
 	if (ret <= 0)
 		return ret;
 
-	file_inode(filp)->i_atime = file_inode(filp)->i_ctime = current_time(file_inode(filp));
+	inode->i_atime = inode_set_ctime_current(inode);
 	return ret;
 }
 
@@ -887,7 +888,7 @@ static int prepare_open(struct dentry *dentry, int oflag, int ro,
 	if ((oflag & O_ACCMODE) == (O_RDWR | O_WRONLY))
 		return -EINVAL;
 	acc = oflag2acc[oflag & O_ACCMODE];
-	return inode_permission(&init_user_ns, d_inode(dentry), acc);
+	return inode_permission(&nop_mnt_idmap, d_inode(dentry), acc);
 }
 
 static int do_mq_open(const char __user *u_name, int oflag, umode_t mode,
@@ -979,7 +980,7 @@ SYSCALL_DEFINE1(mq_unlink, const char __user *, u_name)
 		err = -ENOENT;
 	} else {
 		ihold(inode);
-		err = vfs_unlink(&init_user_ns, d_inode(dentry->d_parent),
+		err = vfs_unlink(&nop_mnt_idmap, d_inode(dentry->d_parent),
 				 dentry, NULL);
 	}
 	dput(dentry);
@@ -1162,8 +1163,7 @@ static int do_mq_timedsend(mqd_t mqdes, const char __user *u_msg_ptr,
 				goto out_unlock;
 			__do_notify(info);
 		}
-		inode->i_atime = inode->i_mtime = inode->i_ctime =
-				current_time(inode);
+		inode->i_atime = inode->i_mtime = inode_set_ctime_current(inode);
 	}
 out_unlock:
 	spin_unlock(&info->lock);
@@ -1257,8 +1257,7 @@ static int do_mq_timedreceive(mqd_t mqdes, char __user *u_msg_ptr,
 
 		msg_ptr = msg_get(info);
 
-		inode->i_atime = inode->i_mtime = inode->i_ctime =
-				current_time(inode);
+		inode->i_atime = inode->i_mtime = inode_set_ctime_current(inode);
 
 		/* There is now free space in queue. */
 		pipelined_receive(&wake_q, info);
@@ -1396,7 +1395,7 @@ retry:
 	if (notification == NULL) {
 		if (info->notify_owner == task_tgid(current)) {
 			remove_notification(info);
-			inode->i_atime = inode->i_ctime = current_time(inode);
+			inode->i_atime = inode_set_ctime_current(inode);
 		}
 	} else if (info->notify_owner != NULL) {
 		ret = -EBUSY;
@@ -1422,7 +1421,7 @@ retry:
 
 		info->notify_owner = get_pid(task_tgid(current));
 		info->notify_user_ns = get_user_ns(current_user_ns());
-		inode->i_atime = inode->i_ctime = current_time(inode);
+		inode->i_atime = inode_set_ctime_current(inode);
 	}
 	spin_unlock(&info->lock);
 out_fput:
@@ -1485,7 +1484,7 @@ static int do_mq_getsetattr(int mqdes, struct mq_attr *new, struct mq_attr *old)
 			f.file->f_flags &= ~O_NONBLOCK;
 		spin_unlock(&f.file->f_lock);
 
-		inode->i_atime = inode->i_ctime = current_time(inode);
+		inode->i_atime = inode_set_ctime_current(inode);
 	}
 
 	spin_unlock(&info->lock);
@@ -1709,11 +1708,6 @@ void mq_clear_sbinfo(struct ipc_namespace *ns)
 	ns->mq_mnt->mnt_sb->s_fs_info = NULL;
 }
 
-void mq_put_mnt(struct ipc_namespace *ns)
-{
-	kern_unmount(ns->mq_mnt);
-}
-
 static int __init init_mqueue_fs(void)
 {
 	int error;
@@ -1726,7 +1720,8 @@ static int __init init_mqueue_fs(void)
 
 	if (!setup_mq_sysctls(&init_ipc_ns)) {
 		pr_warn("sysctl registration failed\n");
-		return -ENOMEM;
+		error = -ENOMEM;
+		goto out_kmem;
 	}
 
 	error = register_filesystem(&mqueue_fs_type);
@@ -1744,8 +1739,9 @@ static int __init init_mqueue_fs(void)
 out_filesystem:
 	unregister_filesystem(&mqueue_fs_type);
 out_sysctl:
-	kmem_cache_destroy(mqueue_inode_cachep);
 	retire_mq_sysctls(&init_ipc_ns);
+out_kmem:
+	kmem_cache_destroy(mqueue_inode_cachep);
 	return error;
 }
 

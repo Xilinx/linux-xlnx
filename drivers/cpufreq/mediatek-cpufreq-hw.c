@@ -10,8 +10,9 @@
 #include <linux/iopoll.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/of_address.h>
+#include <linux/of.h>
 #include <linux/of_platform.h>
+#include <linux/platform_device.h>
 #include <linux/slab.h>
 
 #define LUT_MAX_ENTRIES			32U
@@ -160,6 +161,7 @@ static int mtk_cpu_resources_init(struct platform_device *pdev,
 	struct mtk_cpufreq_data *data;
 	struct device *dev = &pdev->dev;
 	struct resource *res;
+	struct of_phandle_args args;
 	void __iomem *base;
 	int ret, i;
 	int index;
@@ -168,11 +170,14 @@ static int mtk_cpu_resources_init(struct platform_device *pdev,
 	if (!data)
 		return -ENOMEM;
 
-	index = of_perf_domain_get_sharing_cpumask(policy->cpu, "performance-domains",
-						   "#performance-domain-cells",
-						   policy->cpus);
-	if (index < 0)
-		return index;
+	ret = of_perf_domain_get_sharing_cpumask(policy->cpu, "performance-domains",
+						 "#performance-domain-cells",
+						 policy->cpus, &args);
+	if (ret < 0)
+		return ret;
+
+	index = args.args[0];
+	of_node_put(args.np);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, index);
 	if (!res) {
@@ -311,19 +316,20 @@ static int mtk_cpufreq_hw_driver_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int mtk_cpufreq_hw_driver_remove(struct platform_device *pdev)
+static void mtk_cpufreq_hw_driver_remove(struct platform_device *pdev)
 {
-	return cpufreq_unregister_driver(&cpufreq_mtk_hw_driver);
+	cpufreq_unregister_driver(&cpufreq_mtk_hw_driver);
 }
 
 static const struct of_device_id mtk_cpufreq_hw_match[] = {
 	{ .compatible = "mediatek,cpufreq-hw", .data = &cpufreq_mtk_offsets },
 	{}
 };
+MODULE_DEVICE_TABLE(of, mtk_cpufreq_hw_match);
 
 static struct platform_driver mtk_cpufreq_hw_driver = {
 	.probe = mtk_cpufreq_hw_driver_probe,
-	.remove = mtk_cpufreq_hw_driver_remove,
+	.remove_new = mtk_cpufreq_hw_driver_remove,
 	.driver = {
 		.name = "mtk-cpufreq-hw",
 		.of_match_table = mtk_cpufreq_hw_match,

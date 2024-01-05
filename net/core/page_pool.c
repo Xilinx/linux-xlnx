@@ -10,7 +10,7 @@
 #include <linux/slab.h>
 #include <linux/device.h>
 
-#include <net/page_pool.h>
+#include <net/page_pool/helpers.h>
 #include <net/xdp.h>
 
 #include <linux/dma-direction.h>
@@ -19,6 +19,7 @@
 #include <linux/mm.h> /* for put_page() */
 #include <linux/poison.h>
 #include <linux/ethtool.h>
+#include <linux/netdevice.h>
 
 #include <trace/events/page_pool.h>
 
@@ -57,6 +58,17 @@ static const char pp_stats[][ETH_GSTRING_LEN] = {
 	"rx_pp_recycle_released_ref",
 };
 
+/**
+ * page_pool_get_stats() - fetch page pool stats
+ * @pool:	pool from which page was allocated
+ * @stats:	struct page_pool_stats to fill in
+ *
+ * Retrieve statistics about the page_pool. This API is only available
+ * if the kernel has been configured with ``CONFIG_PAGE_POOL_STATS=y``.
+ * A pointer to a caller allocated struct page_pool_stats structure
+ * is passed to this API which is filled in. The caller can then report
+ * those stats to the user (perhaps via ethtool, debugfs, etc.).
+ */
 bool page_pool_get_stats(struct page_pool *pool,
 			 struct page_pool_stats *stats)
 {
@@ -133,6 +145,29 @@ EXPORT_SYMBOL(page_pool_ethtool_stats_get);
 #define recycle_stat_add(pool, __stat, val)
 #endif
 
+static bool page_pool_producer_lock(struct page_pool *pool)
+	__acquires(&pool->ring.producer_lock)
+{
+	bool in_softirq = in_softirq();
+
+	if (in_softirq)
+		spin_lock(&pool->ring.producer_lock);
+	else
+		spin_lock_bh(&pool->ring.producer_lock);
+
+	return in_softirq;
+}
+
+static void page_pool_producer_unlock(struct page_pool *pool,
+				      bool in_softirq)
+	__releases(&pool->ring.producer_lock)
+{
+	if (in_softirq)
+		spin_unlock(&pool->ring.producer_lock);
+	else
+		spin_unlock_bh(&pool->ring.producer_lock);
+}
+
 static int page_pool_init(struct page_pool *pool,
 			  const struct page_pool_params *params)
 {
@@ -200,6 +235,10 @@ static int page_pool_init(struct page_pool *pool,
 	return 0;
 }
 
+/**
+ * page_pool_create() - create a page pool.
+ * @params: parameters, see struct page_pool_params
+ */
 struct page_pool *page_pool_create(const struct page_pool_params *params)
 {
 	struct page_pool *pool;
@@ -315,7 +354,8 @@ static bool page_pool_dma_map(struct page_pool *pool, struct page *page)
 	 */
 	dma = dma_map_page_attrs(pool->p.dev, page, 0,
 				 (PAGE_SIZE << pool->p.order),
-				 pool->p.dma_dir, DMA_ATTR_SKIP_CPU_SYNC);
+				 pool->p.dma_dir, DMA_ATTR_SKIP_CPU_SYNC |
+						  DMA_ATTR_WEAK_ORDERING);
 	if (dma_mapping_error(pool->p.dev, dma))
 		return false;
 
@@ -467,7 +507,7 @@ static s32 page_pool_inflight(struct page_pool *pool)
  * a regular page (that will eventually be returned to the normal
  * page-allocator via put_page).
  */
-void page_pool_release_page(struct page_pool *pool, struct page *page)
+static void page_pool_return_page(struct page_pool *pool, struct page *page)
 {
 	dma_addr_t dma;
 	int count;
@@ -483,7 +523,7 @@ void page_pool_release_page(struct page_pool *pool, struct page *page)
 	/* When page is unmapped, it cannot be returned to our pool */
 	dma_unmap_page_attrs(pool->p.dev, dma,
 			     PAGE_SIZE << pool->p.order, pool->p.dma_dir,
-			     DMA_ATTR_SKIP_CPU_SYNC);
+			     DMA_ATTR_SKIP_CPU_SYNC | DMA_ATTR_WEAK_ORDERING);
 	page_pool_set_dma_addr(page, 0);
 skip_dma_unmap:
 	page_pool_clear_pp_info(page);
@@ -493,13 +533,6 @@ skip_dma_unmap:
 	 */
 	count = atomic_inc_return_relaxed(&pool->pages_state_release_cnt);
 	trace_page_pool_state_release(pool, page, count);
-}
-EXPORT_SYMBOL(page_pool_release_page);
-
-/* Return a page to the page allocator, cleaning up our state */
-static void page_pool_return_page(struct page_pool *pool, struct page *page)
-{
-	page_pool_release_page(pool, page);
 
 	put_page(page);
 	/* An optimization would be to call __free_pages(page, pool->p.order)
@@ -511,8 +544,8 @@ static void page_pool_return_page(struct page_pool *pool, struct page *page)
 static bool page_pool_recycle_in_ring(struct page_pool *pool, struct page *page)
 {
 	int ret;
-	/* BH protection not needed if current is serving softirq */
-	if (in_serving_softirq())
+	/* BH protection not needed if current is softirq */
+	if (in_softirq())
 		ret = ptr_ring_produce(&pool->ring, page);
 	else
 		ret = ptr_ring_produce_bh(&pool->ring, page);
@@ -554,6 +587,8 @@ static __always_inline struct page *
 __page_pool_put_page(struct page_pool *pool, struct page *page,
 		     unsigned int dma_sync_size, bool allow_direct)
 {
+	lockdep_assert_no_hardirq();
+
 	/* This allocator is optimized for the XDP mode that uses
 	 * one-frame-per-page, but have fallbacks that act like the
 	 * regular page allocator APIs.
@@ -570,7 +605,7 @@ __page_pool_put_page(struct page_pool *pool, struct page *page,
 			page_pool_dma_sync_for_device(pool, page,
 						      dma_sync_size);
 
-		if (allow_direct && in_serving_softirq() &&
+		if (allow_direct && in_softirq() &&
 		    page_pool_recycle_in_cache(page, pool))
 			return NULL;
 
@@ -591,9 +626,7 @@ __page_pool_put_page(struct page_pool *pool, struct page *page,
 	 * will be invoking put_page.
 	 */
 	recycle_stat_inc(pool, released_refcnt);
-	/* Do not replace this with page_pool_return_page() */
-	page_pool_release_page(pool, page);
-	put_page(page);
+	page_pool_return_page(pool, page);
 
 	return NULL;
 }
@@ -610,11 +643,26 @@ void page_pool_put_defragged_page(struct page_pool *pool, struct page *page,
 }
 EXPORT_SYMBOL(page_pool_put_defragged_page);
 
-/* Caller must not use data area after call, as this function overwrites it */
+/**
+ * page_pool_put_page_bulk() - release references on multiple pages
+ * @pool:	pool from which pages were allocated
+ * @data:	array holding page pointers
+ * @count:	number of pages in @data
+ *
+ * Tries to refill a number of pages into the ptr_ring cache holding ptr_ring
+ * producer lock. If the ptr_ring is full, page_pool_put_page_bulk()
+ * will release leftover pages to the page allocator.
+ * page_pool_put_page_bulk() is suitable to be run inside the driver NAPI tx
+ * completion loop for the XDP_REDIRECT use case.
+ *
+ * Please note the caller must not use data area after running
+ * page_pool_put_page_bulk(), as this function overwrites it.
+ */
 void page_pool_put_page_bulk(struct page_pool *pool, void **data,
 			     int count)
 {
 	int i, bulk_len = 0;
+	bool in_softirq;
 
 	for (i = 0; i < count; i++) {
 		struct page *page = virt_to_head_page(data[i]);
@@ -633,7 +681,7 @@ void page_pool_put_page_bulk(struct page_pool *pool, void **data,
 		return;
 
 	/* Bulk producer into ptr_ring page_pool cache */
-	page_pool_ring_lock(pool);
+	in_softirq = page_pool_producer_lock(pool);
 	for (i = 0; i < bulk_len; i++) {
 		if (__ptr_ring_produce(&pool->ring, data[i])) {
 			/* ring full */
@@ -642,7 +690,7 @@ void page_pool_put_page_bulk(struct page_pool *pool, void **data,
 		}
 	}
 	recycle_stat_add(pool, ring, i);
-	page_pool_ring_unlock(pool);
+	page_pool_producer_unlock(pool, in_softirq);
 
 	/* Hopefully all pages was return into ptr_ring */
 	if (likely(i == bulk_len))
@@ -837,6 +885,21 @@ void page_pool_use_xdp_mem(struct page_pool *pool, void (*disconnect)(void *),
 	pool->xdp_mem_id = mem->id;
 }
 
+void page_pool_unlink_napi(struct page_pool *pool)
+{
+	if (!pool->p.napi)
+		return;
+
+	/* To avoid races with recycling and additional barriers make sure
+	 * pool and NAPI are unlinked when NAPI is disabled.
+	 */
+	WARN_ON(!test_bit(NAPI_STATE_SCHED, &pool->p.napi->state) ||
+		READ_ONCE(pool->p.napi->list_owner) != -1);
+
+	WRITE_ONCE(pool->p.napi, NULL);
+}
+EXPORT_SYMBOL(page_pool_unlink_napi);
+
 void page_pool_destroy(struct page_pool *pool)
 {
 	if (!pool)
@@ -845,6 +908,7 @@ void page_pool_destroy(struct page_pool *pool)
 	if (!page_pool_put(pool))
 		return;
 
+	page_pool_unlink_napi(pool);
 	page_pool_free_frag(pool);
 
 	if (!page_pool_release(pool))
@@ -873,32 +937,3 @@ void page_pool_update_nid(struct page_pool *pool, int new_nid)
 	}
 }
 EXPORT_SYMBOL(page_pool_update_nid);
-
-bool page_pool_return_skb_page(struct page *page)
-{
-	struct page_pool *pp;
-
-	page = compound_head(page);
-
-	/* page->pp_magic is OR'ed with PP_SIGNATURE after the allocation
-	 * in order to preserve any existing bits, such as bit 0 for the
-	 * head page of compound page and bit 1 for pfmemalloc page, so
-	 * mask those bits for freeing side when doing below checking,
-	 * and page_is_pfmemalloc() is checked in __page_pool_put_page()
-	 * to avoid recycling the pfmemalloc page.
-	 */
-	if (unlikely((page->pp_magic & ~0x3UL) != PP_SIGNATURE))
-		return false;
-
-	pp = page->pp;
-
-	/* Driver set this to memory recycling info. Reset it on recycle.
-	 * This will *not* work for NIC using a split-page memory model.
-	 * The page will be returned to the pool here regardless of the
-	 * 'flipped' fragment being in use or not.
-	 */
-	page_pool_put_full_page(pp, page, false);
-
-	return true;
-}
-EXPORT_SYMBOL(page_pool_return_skb_page);

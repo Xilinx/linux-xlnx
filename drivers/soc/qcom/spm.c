@@ -12,8 +12,6 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/of.h>
-#include <linux/of_address.h>
-#include <linux/of_device.h>
 #include <linux/err.h>
 #include <linux/platform_device.h>
 #include <soc/qcom/spm.h>
@@ -96,6 +94,46 @@ static const struct spm_reg_data spm_reg_8916_cpu = {
 		0x80, 0x10, 0x26, 0x30, 0x0F },
 	.start_index[PM_SLEEP_MODE_STBY] = 0,
 	.start_index[PM_SLEEP_MODE_SPC] = 5,
+};
+
+static const struct spm_reg_data spm_reg_8939_cpu = {
+	.reg_offset = spm_reg_offset_v3_0,
+	.spm_cfg = 0x1,
+	.spm_dly = 0x3C102800,
+	.seq = { 0x60, 0x03, 0x60, 0x0B, 0x0F, 0x20, 0x50, 0x1B, 0x10, 0x80,
+		0x30, 0x90, 0x5B, 0x60, 0x50, 0x03, 0x60, 0x76, 0x76, 0x0B,
+		0x50, 0x1B, 0x94, 0x5B, 0x80, 0x10, 0x26, 0x30, 0x50, 0x0F },
+	.start_index[PM_SLEEP_MODE_STBY] = 0,
+	.start_index[PM_SLEEP_MODE_SPC] = 5,
+};
+
+static const u16 spm_reg_offset_v2_3[SPM_REG_NR] = {
+	[SPM_REG_CFG]		= 0x08,
+	[SPM_REG_SPM_CTL]	= 0x30,
+	[SPM_REG_DLY]		= 0x34,
+	[SPM_REG_PMIC_DATA_0]	= 0x40,
+	[SPM_REG_PMIC_DATA_1]	= 0x44,
+};
+
+/* SPM register data for 8976 */
+static const struct spm_reg_data spm_reg_8976_gold_l2 = {
+	.reg_offset = spm_reg_offset_v2_3,
+	.spm_cfg = 0x14,
+	.spm_dly = 0x3c11840a,
+	.pmic_data[0] = 0x03030080,
+	.pmic_data[1] = 0x00030000,
+	.start_index[PM_SLEEP_MODE_STBY] = 0,
+	.start_index[PM_SLEEP_MODE_SPC] = 3,
+};
+
+static const struct spm_reg_data spm_reg_8976_silver_l2 = {
+	.reg_offset = spm_reg_offset_v2_3,
+	.spm_cfg = 0x14,
+	.spm_dly = 0x3c102800,
+	.pmic_data[0] = 0x03030080,
+	.pmic_data[1] = 0x00030000,
+	.start_index[PM_SLEEP_MODE_STBY] = 0,
+	.start_index[PM_SLEEP_MODE_SPC] = 2,
 };
 
 static const u16 spm_reg_offset_v2_1[SPM_REG_NR] = {
@@ -211,8 +249,14 @@ static const struct of_device_id spm_match_table[] = {
 	  .data = &spm_reg_8909_cpu },
 	{ .compatible = "qcom,msm8916-saw2-v3.0-cpu",
 	  .data = &spm_reg_8916_cpu },
+	{ .compatible = "qcom,msm8939-saw2-v3.0-cpu",
+	  .data = &spm_reg_8939_cpu },
 	{ .compatible = "qcom,msm8974-saw2-v2.1-cpu",
 	  .data = &spm_reg_8974_8084_cpu },
+	{ .compatible = "qcom,msm8976-gold-saw2-v2.3-l2",
+	  .data = &spm_reg_8976_gold_l2 },
+	{ .compatible = "qcom,msm8976-silver-saw2-v2.3-l2",
+	  .data = &spm_reg_8976_silver_l2 },
 	{ .compatible = "qcom,msm8998-gold-saw2-v4.1-l2",
 	  .data = &spm_reg_8998_gold_l2 },
 	{ .compatible = "qcom,msm8998-silver-saw2-v4.1-l2",
@@ -229,15 +273,13 @@ static int spm_dev_probe(struct platform_device *pdev)
 {
 	const struct of_device_id *match_id;
 	struct spm_driver_data *drv;
-	struct resource *res;
 	void __iomem *addr;
 
 	drv = devm_kzalloc(&pdev->dev, sizeof(*drv), GFP_KERNEL);
 	if (!drv)
 		return -ENOMEM;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	drv->reg_base = devm_ioremap_resource(&pdev->dev, res);
+	drv->reg_base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(drv->reg_base))
 		return PTR_ERR(drv->reg_base);
 

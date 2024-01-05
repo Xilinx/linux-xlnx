@@ -119,8 +119,7 @@ static int ibm_panel_i2c_slave_cb(struct i2c_client *client,
 	return 0;
 }
 
-static int ibm_panel_probe(struct i2c_client *client,
-			   const struct i2c_device_id *id)
+static int ibm_panel_probe(struct i2c_client *client)
 {
 	struct ibm_panel *panel;
 	int i;

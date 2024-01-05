@@ -128,6 +128,8 @@ struct seccomp_data {
 #  define __NR_seccomp 277
 # elif defined(__csky__)
 #  define __NR_seccomp 277
+# elif defined(__loongarch__)
+#  define __NR_seccomp 277
 # elif defined(__hppa__)
 #  define __NR_seccomp 338
 # elif defined(__powerpc__)
@@ -138,6 +140,8 @@ struct seccomp_data {
 #  define __NR_seccomp 337
 # elif defined(__sh__)
 #  define __NR_seccomp 372
+# elif defined(__mc68000__)
+#  define __NR_seccomp 380
 # else
 #  warning "seccomp syscall number unknown for this architecture"
 #  define __NR_seccomp 0xffff
@@ -392,6 +396,8 @@ TEST(mode_filter_without_nnp)
 		.filter = filter,
 	};
 	long ret;
+	cap_t cap = cap_get_proc();
+	cap_flag_value_t is_cap_sys_admin = 0;
 
 	ret = prctl(PR_GET_NO_NEW_PRIVS, 0, NULL, 0, 0);
 	ASSERT_LE(0, ret) {
@@ -400,8 +406,8 @@ TEST(mode_filter_without_nnp)
 	errno = 0;
 	ret = prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog, 0, 0);
 	/* Succeeds with CAP_SYS_ADMIN, fails without */
-	/* TODO(wad) check caps not euid */
-	if (geteuid()) {
+	cap_get_flag(cap, CAP_SYS_ADMIN, CAP_EFFECTIVE, &is_cap_sys_admin);
+	if (!is_cap_sys_admin) {
 		EXPECT_EQ(-1, ret);
 		EXPECT_EQ(EACCES, errno);
 	} else {
@@ -1751,6 +1757,10 @@ TEST_F(TRACE_poke, getpid_runs_normally)
 				    NT_ARM_SYSTEM_CALL, &__v));	\
 	} while (0)
 # define SYSCALL_RET(_regs)	(_regs).regs[0]
+#elif defined(__loongarch__)
+# define ARCH_REGS		struct user_pt_regs
+# define SYSCALL_NUM(_regs)	(_regs).regs[11]
+# define SYSCALL_RET(_regs)	(_regs).regs[4]
 #elif defined(__riscv) && __riscv_xlen == 64
 # define ARCH_REGS		struct user_regs_struct
 # define SYSCALL_NUM(_regs)	(_regs).a7
@@ -1836,6 +1846,10 @@ TEST_F(TRACE_poke, getpid_runs_normally)
 # define ARCH_REGS		struct pt_regs
 # define SYSCALL_NUM(_regs)	(_regs).regs[3]
 # define SYSCALL_RET(_regs)	(_regs).regs[0]
+#elif defined(__mc68000__)
+# define ARCH_REGS		struct user_regs_struct
+# define SYSCALL_NUM(_regs)	(_regs).orig_d0
+# define SYSCALL_RET(_regs)	(_regs).d0
 #else
 # error "Do not know how to find your architecture's registers and syscalls"
 #endif
@@ -1900,7 +1914,7 @@ const bool ptrace_entry_set_syscall_ret =
  * Use PTRACE_GETREGS and PTRACE_SETREGS when available. This is useful for
  * architectures without HAVE_ARCH_TRACEHOOK (e.g. User-mode Linux).
  */
-#if defined(__x86_64__) || defined(__i386__) || defined(__mips__)
+#if defined(__x86_64__) || defined(__i386__) || defined(__mips__) || defined(__mc68000__)
 # define ARCH_GETREGS(_regs)	ptrace(PTRACE_GETREGS, tracee, 0, &(_regs))
 # define ARCH_SETREGS(_regs)	ptrace(PTRACE_SETREGS, tracee, 0, &(_regs))
 #else
@@ -2170,6 +2184,9 @@ FIXTURE_TEARDOWN(TRACE_syscall)
 
 TEST(negative_ENOSYS)
 {
+#if defined(__arm__)
+	SKIP(return, "arm32 does not support calling syscall -1");
+#endif
 	/*
 	 * There should be no difference between an "internal" skip
 	 * and userspace asking for syscall "-1".
@@ -3058,7 +3075,8 @@ TEST(syscall_restart)
 		timeout.tv_sec = 1;
 		errno = 0;
 		EXPECT_EQ(0, nanosleep(&timeout, NULL)) {
-			TH_LOG("Call to nanosleep() failed (errno %d)", errno);
+			TH_LOG("Call to nanosleep() failed (errno %d: %s)",
+				errno, strerror(errno));
 		}
 
 		/* Read final sync from parent. */
@@ -3894,6 +3912,9 @@ TEST(user_notification_filter_empty)
 		TH_LOG("Kernel does not support PR_SET_NO_NEW_PRIVS!");
 	}
 
+	if (__NR_clone3 < 0)
+		SKIP(return, "Test not built with clone3 support");
+
 	pid = sys_clone3(&args, sizeof(args));
 	ASSERT_GE(pid, 0);
 
@@ -3947,6 +3968,9 @@ TEST(user_notification_filter_empty_threaded)
 	ASSERT_EQ(0, ret) {
 		TH_LOG("Kernel does not support PR_SET_NO_NEW_PRIVS!");
 	}
+
+	if (__NR_clone3 < 0)
+		SKIP(return, "Test not built with clone3 support");
 
 	pid = sys_clone3(&args, sizeof(args));
 	ASSERT_GE(pid, 0);
@@ -4240,6 +4264,61 @@ TEST(user_notification_addfd_rlimit)
 
 	close(memfd);
 }
+
+#ifndef SECCOMP_USER_NOTIF_FD_SYNC_WAKE_UP
+#define SECCOMP_USER_NOTIF_FD_SYNC_WAKE_UP (1UL << 0)
+#define SECCOMP_IOCTL_NOTIF_SET_FLAGS  SECCOMP_IOW(4, __u64)
+#endif
+
+TEST(user_notification_sync)
+{
+	struct seccomp_notif req = {};
+	struct seccomp_notif_resp resp = {};
+	int status, listener;
+	pid_t pid;
+	long ret;
+
+	ret = prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
+	ASSERT_EQ(0, ret) {
+		TH_LOG("Kernel does not support PR_SET_NO_NEW_PRIVS!");
+	}
+
+	listener = user_notif_syscall(__NR_getppid,
+				      SECCOMP_FILTER_FLAG_NEW_LISTENER);
+	ASSERT_GE(listener, 0);
+
+	/* Try to set invalid flags. */
+	EXPECT_SYSCALL_RETURN(-EINVAL,
+		ioctl(listener, SECCOMP_IOCTL_NOTIF_SET_FLAGS, 0xffffffff, 0));
+
+	ASSERT_EQ(ioctl(listener, SECCOMP_IOCTL_NOTIF_SET_FLAGS,
+			SECCOMP_USER_NOTIF_FD_SYNC_WAKE_UP, 0), 0);
+
+	pid = fork();
+	ASSERT_GE(pid, 0);
+	if (pid == 0) {
+		ret = syscall(__NR_getppid);
+		ASSERT_EQ(ret, USER_NOTIF_MAGIC) {
+			_exit(1);
+		}
+		_exit(0);
+	}
+
+	req.pid = 0;
+	ASSERT_EQ(ioctl(listener, SECCOMP_IOCTL_NOTIF_RECV, &req), 0);
+
+	ASSERT_EQ(req.data.nr,  __NR_getppid);
+
+	resp.id = req.id;
+	resp.error = 0;
+	resp.val = USER_NOTIF_MAGIC;
+	resp.flags = 0;
+	ASSERT_EQ(ioctl(listener, SECCOMP_IOCTL_NOTIF_SEND, &resp), 0);
+
+	ASSERT_EQ(waitpid(pid, &status, 0), pid);
+	ASSERT_EQ(status, 0);
+}
+
 
 /* Make sure PTRACE_O_SUSPEND_SECCOMP requires CAP_SYS_ADMIN. */
 FIXTURE(O_SUSPEND_SECCOMP) {

@@ -9,7 +9,7 @@
 #include <linux/host1x.h>
 #include <linux/iommu.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
+#include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/pm_domain.h>
 #include <linux/pm_opp.h>
@@ -80,22 +80,15 @@ static int gr3d_init(struct host1x_client *client)
 		goto free;
 	}
 
-	pm_runtime_enable(client->dev);
-	pm_runtime_use_autosuspend(client->dev);
-	pm_runtime_set_autosuspend_delay(client->dev, 200);
-
 	err = tegra_drm_register_client(dev->dev_private, drm);
 	if (err < 0) {
 		dev_err(client->dev, "failed to register client: %d\n", err);
-		goto disable_rpm;
+		goto detach_iommu;
 	}
 
 	return 0;
 
-disable_rpm:
-	pm_runtime_dont_use_autosuspend(client->dev);
-	pm_runtime_force_suspend(client->dev);
-
+detach_iommu:
 	host1x_client_iommu_detach(client);
 free:
 	host1x_syncpt_put(client->syncpts[0]);
@@ -550,19 +543,12 @@ static int gr3d_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int gr3d_remove(struct platform_device *pdev)
+static void gr3d_remove(struct platform_device *pdev)
 {
 	struct gr3d *gr3d = platform_get_drvdata(pdev);
-	int err;
 
-	err = host1x_client_unregister(&gr3d->client.base);
-	if (err < 0) {
-		dev_err(&pdev->dev, "failed to unregister host1x client: %d\n",
-			err);
-		return err;
-	}
-
-	return 0;
+	pm_runtime_disable(&pdev->dev);
+	host1x_client_unregister(&gr3d->client.base);
 }
 
 static int __maybe_unused gr3d_runtime_suspend(struct device *dev)
@@ -615,6 +601,10 @@ static int __maybe_unused gr3d_runtime_resume(struct device *dev)
 		goto disable_clk;
 	}
 
+	pm_runtime_enable(dev);
+	pm_runtime_use_autosuspend(dev);
+	pm_runtime_set_autosuspend_delay(dev, 500);
+
 	return 0;
 
 disable_clk:
@@ -638,5 +628,5 @@ struct platform_driver tegra_gr3d_driver = {
 		.pm = &tegra_gr3d_pm,
 	},
 	.probe = gr3d_probe,
-	.remove = gr3d_remove,
+	.remove_new = gr3d_remove,
 };

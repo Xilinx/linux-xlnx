@@ -36,9 +36,13 @@
 /* Channel ID and Message ID definitions.
  * The channel number consists of peer_id(15:12) , channel_id(11:0)
  * peer_id:
- * 0:reserved, 1: to sAP, 2: to MD
+ * 0:reserved, 1: to AP, 2: to MD
  */
 enum port_ch {
+	/* to AP */
+	PORT_CH_AP_CONTROL_RX = 0x1000,
+	PORT_CH_AP_CONTROL_TX = 0x1001,
+
 	/* to MD */
 	PORT_CH_CONTROL_RX = 0x2000,
 	PORT_CH_CONTROL_TX = 0x2001,
@@ -99,7 +103,6 @@ struct t7xx_port_conf {
 struct t7xx_port {
 	/* Members not initialized in definition */
 	const struct t7xx_port_conf	*port_conf;
-	struct wwan_port		*wwan_port;
 	struct t7xx_pci_dev		*t7xx_dev;
 	struct device			*dev;
 	u16				seq_nums[2];	/* TX/RX sequence numbers */
@@ -122,6 +125,14 @@ struct t7xx_port {
 	int				rx_length_th;
 	bool				chan_enable;
 	struct task_struct		*thread;
+	union {
+		struct {
+			struct wwan_port		*wwan_port;
+		} wwan;
+		struct {
+			struct rchan			*relaych;
+		} log;
+	};
 };
 
 struct sk_buff *t7xx_port_alloc_skb(int payload);

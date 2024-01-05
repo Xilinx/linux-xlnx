@@ -296,13 +296,6 @@ static struct snd_soc_dai_link_component dmic_component[] = {
 	}
 };
 
-static struct snd_soc_dai_link_component dummy_component[] = {
-	{
-		.name = "snd-soc-dummy",
-		.dai_name = "snd-soc-dummy-dai",
-	}
-};
-
 static int create_spk_amp_dai_links(struct device *dev,
 				    struct snd_soc_dai_link *links,
 				    struct snd_soc_dai_link_component *cpus,
@@ -336,6 +329,9 @@ static int create_spk_amp_dai_links(struct device *dev,
 	links[*id].platforms = platform_component;
 	links[*id].num_platforms = ARRAY_SIZE(platform_component);
 	links[*id].dpcm_playback = 1;
+	/* firmware-generated echo reference */
+	links[*id].dpcm_capture = 1;
+
 	links[*id].no_pcm = 1;
 	links[*id].cpus = &cpus[*id];
 	links[*id].num_cpus = 1;
@@ -507,8 +503,8 @@ static int create_bt_offload_dai_links(struct device *dev,
 		goto devm_err;
 
 	links[*id].id = *id;
-	links[*id].codecs = dummy_component;
-	links[*id].num_codecs = ARRAY_SIZE(dummy_component);
+	links[*id].codecs = &asoc_dummy_dlc;
+	links[*id].num_codecs = 1;
 	links[*id].platforms = platform_component;
 	links[*id].num_platforms = ARRAY_SIZE(platform_component);
 

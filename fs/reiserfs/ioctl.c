@@ -24,7 +24,7 @@ int reiserfs_fileattr_get(struct dentry *dentry, struct fileattr *fa)
 	return 0;
 }
 
-int reiserfs_fileattr_set(struct user_namespace *mnt_userns,
+int reiserfs_fileattr_set(struct mnt_idmap *idmap,
 			  struct dentry *dentry, struct fileattr *fa)
 {
 	struct inode *inode = d_inode(dentry);
@@ -55,7 +55,7 @@ int reiserfs_fileattr_set(struct user_namespace *mnt_userns,
 	}
 	sd_attrs_to_i_attrs(flags, inode);
 	REISERFS_I(inode)->i_attrs = flags;
-	inode->i_ctime = current_time(inode);
+	inode_set_ctime_current(inode);
 	mark_inode_dirty(inode);
 	err = 0;
 unlock:
@@ -96,7 +96,7 @@ long reiserfs_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		err = put_user(inode->i_generation, (int __user *)arg);
 		break;
 	case REISERFS_IOC_SETVERSION:
-		if (!inode_owner_or_capable(&init_user_ns, inode)) {
+		if (!inode_owner_or_capable(&nop_mnt_idmap, inode)) {
 			err = -EPERM;
 			break;
 		}
@@ -107,7 +107,7 @@ long reiserfs_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			err = -EFAULT;
 			goto setversion_out;
 		}
-		inode->i_ctime = current_time(inode);
+		inode_set_ctime_current(inode);
 		mark_inode_dirty(inode);
 setversion_out:
 		mnt_drop_write_file(filp);

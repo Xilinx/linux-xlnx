@@ -10,7 +10,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
+#include <linux/platform_device.h>
 #include <linux/regulator/coupler.h>
 #include <linux/regulator/driver.h>
 #include <linux/regulator/of_regulator.h>
@@ -543,6 +543,7 @@ static struct platform_driver vctrl_driver = {
 	.probe		= vctrl_probe,
 	.driver		= {
 		.name		= "vctrl-regulator",
+		.probe_type	= PROBE_PREFER_ASYNCHRONOUS,
 		.of_match_table = of_match_ptr(vctrl_of_match),
 	},
 };

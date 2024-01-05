@@ -320,7 +320,7 @@ void acct_exit_ns(struct pid_namespace *ns)
 }
 
 /*
- *  encode an unsigned long into a comp_t
+ *  encode an u64 into a comp_t
  *
  *  This routine has been adopted from the encode_comp_t() function in
  *  the kern_acct.c file of the FreeBSD operating system. The encoding
@@ -331,7 +331,7 @@ void acct_exit_ns(struct pid_namespace *ns)
 #define	EXPSIZE		3			/* Base 8 (3 bit) exponent. */
 #define	MAXFRACT	((1 << MANTSIZE) - 1)	/* Maximum fractional value. */
 
-static comp_t encode_comp_t(unsigned long value)
+static comp_t encode_comp_t(u64 value)
 {
 	int exp, rnd;
 
@@ -350,6 +350,8 @@ static comp_t encode_comp_t(unsigned long value)
 		exp++;
 	}
 
+	if (exp > (((comp_t) ~0U) >> MANTSIZE))
+		return (comp_t) ~0U;
 	/*
 	 * Clean it up and polish it off.
 	 */
@@ -443,7 +445,7 @@ static void fill_ac(acct_t *ac)
 	memset(ac, 0, sizeof(acct_t));
 
 	ac->ac_version = ACCT_VERSION | ACCT_BYTEORDER;
-	strlcpy(ac->ac_comm, current->comm, sizeof(ac->ac_comm));
+	strscpy(ac->ac_comm, current->comm, sizeof(ac->ac_comm));
 
 	/* calculate run_time in nsec*/
 	run_time = ktime_get_ns();
@@ -468,7 +470,7 @@ static void fill_ac(acct_t *ac)
 	do_div(elapsed, AHZ);
 	btime = ktime_get_real_seconds() - elapsed;
 	ac->ac_btime = clamp_t(time64_t, btime, 0, U32_MAX);
-#if ACCT_VERSION==2
+#if ACCT_VERSION == 2
 	ac->ac_ahz = AHZ;
 #endif
 

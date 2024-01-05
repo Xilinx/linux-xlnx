@@ -193,7 +193,7 @@ static ssize_t new_id_store(struct device_driver *driver, const char *buf,
 	u32 vendor, device, subvendor = PCI_ANY_ID,
 		subdevice = PCI_ANY_ID, class = 0, class_mask = 0;
 	unsigned long driver_data = 0;
-	int fields = 0;
+	int fields;
 	int retval = 0;
 
 	fields = sscanf(buf, "%x %x %x %x %x %x %lx",
@@ -260,7 +260,7 @@ static ssize_t remove_id_store(struct device_driver *driver, const char *buf,
 	struct pci_driver *pdrv = to_pci_driver(driver);
 	u32 vendor, device, subvendor = PCI_ANY_ID,
 		subdevice = PCI_ANY_ID, class = 0, class_mask = 0;
-	int fields = 0;
+	int fields;
 	size_t retval = -ENODEV;
 
 	fields = sscanf(buf, "%x %x %x %x %x %x",
@@ -572,7 +572,20 @@ static void pci_pm_default_resume_early(struct pci_dev *pci_dev)
 
 static void pci_pm_bridge_power_up_actions(struct pci_dev *pci_dev)
 {
-	pci_bridge_wait_for_secondary_bus(pci_dev);
+	int ret;
+
+	ret = pci_bridge_wait_for_secondary_bus(pci_dev, "resume");
+	if (ret) {
+		/*
+		 * The downstream link failed to come up, so mark the
+		 * devices below as disconnected to make sure we don't
+		 * attempt to resume them.
+		 */
+		pci_walk_bus(pci_dev->subordinate, pci_dev_set_disconnected,
+			     NULL);
+		return;
+	}
+
 	/*
 	 * When powering on a bridge from D3cold, the whole hierarchy may be
 	 * powered on into D0uninitialized state, resume them to give them a
@@ -646,7 +659,7 @@ static int pci_legacy_suspend(struct device *dev, pm_message_t state)
 	return 0;
 }
 
-static int pci_legacy_suspend_late(struct device *dev, pm_message_t state)
+static int pci_legacy_suspend_late(struct device *dev)
 {
 	struct pci_dev *pci_dev = to_pci_dev(dev);
 
@@ -848,7 +861,7 @@ static int pci_pm_suspend_noirq(struct device *dev)
 		return 0;
 
 	if (pci_has_legacy_pm_support(pci_dev))
-		return pci_legacy_suspend_late(dev, PMSG_SUSPEND);
+		return pci_legacy_suspend_late(dev);
 
 	if (!pm) {
 		pci_save_state(pci_dev);
@@ -1060,7 +1073,7 @@ static int pci_pm_freeze_noirq(struct device *dev)
 	const struct dev_pm_ops *pm = dev->driver ? dev->driver->pm : NULL;
 
 	if (pci_has_legacy_pm_support(pci_dev))
-		return pci_legacy_suspend_late(dev, PMSG_FREEZE);
+		return pci_legacy_suspend_late(dev);
 
 	if (pm && pm->freeze_noirq) {
 		int error;
@@ -1179,7 +1192,7 @@ static int pci_pm_poweroff_noirq(struct device *dev)
 		return 0;
 
 	if (pci_has_legacy_pm_support(pci_dev))
-		return pci_legacy_suspend_late(dev, PMSG_HIBERNATE);
+		return pci_legacy_suspend_late(dev);
 
 	if (!pm) {
 		pci_fixup_device(pci_fixup_suspend_late, pci_dev);
@@ -1473,14 +1486,15 @@ static struct pci_driver pci_compat_driver = {
  */
 struct pci_driver *pci_dev_driver(const struct pci_dev *dev)
 {
+	int i;
+
 	if (dev->driver)
 		return dev->driver;
-	else {
-		int i;
-		for (i = 0; i <= PCI_ROM_RESOURCE; i++)
-			if (dev->resource[i].flags & IORESOURCE_BUSY)
-				return &pci_compat_driver;
-	}
+
+	for (i = 0; i <= PCI_ROM_RESOURCE; i++)
+		if (dev->resource[i].flags & IORESOURCE_BUSY)
+			return &pci_compat_driver;
+
 	return NULL;
 }
 EXPORT_SYMBOL(pci_dev_driver);
@@ -1545,9 +1559,9 @@ void pci_dev_put(struct pci_dev *dev)
 }
 EXPORT_SYMBOL(pci_dev_put);
 
-static int pci_uevent(struct device *dev, struct kobj_uevent_env *env)
+static int pci_uevent(const struct device *dev, struct kobj_uevent_env *env)
 {
-	struct pci_dev *pdev;
+	const struct pci_dev *pdev;
 
 	if (!dev)
 		return -ENODEV;
@@ -1704,7 +1718,6 @@ struct bus_type pcie_port_bus_type = {
 	.name		= "pci_express",
 	.match		= pcie_port_bus_match,
 };
-EXPORT_SYMBOL_GPL(pcie_port_bus_type);
 #endif
 
 static int __init pci_driver_init(void)

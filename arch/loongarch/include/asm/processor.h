@@ -11,6 +11,7 @@
 
 #include <asm/cpu.h>
 #include <asm/cpu-info.h>
+#include <asm/hw_breakpoint.h>
 #include <asm/loongarch.h>
 #include <asm/vdso/processor.h>
 #include <uapi/asm/ptrace.h>
@@ -79,9 +80,20 @@ BUILD_FPR_ACCESS(32)
 BUILD_FPR_ACCESS(64)
 
 struct loongarch_fpu {
-	unsigned int	fcsr;
 	uint64_t	fcc;	/* 8x8 */
+	uint32_t	fcsr;
+	uint32_t	ftop;
 	union fpureg	fpr[NUM_FPU_REGS];
+};
+
+struct loongarch_lbt {
+	/* Scratch registers */
+	unsigned long scr0;
+	unsigned long scr1;
+	unsigned long scr2;
+	unsigned long scr3;
+	/* Eflags register */
+	unsigned long eflags;
 };
 
 #define INIT_CPUMASK { \
@@ -112,25 +124,22 @@ struct thread_struct {
 	unsigned long csr_ecfg;
 	unsigned long csr_badvaddr;	/* Last user fault */
 
-	/* Scratch registers */
-	unsigned long scr0;
-	unsigned long scr1;
-	unsigned long scr2;
-	unsigned long scr3;
-
-	/* Eflags register */
-	unsigned long eflags;
-
 	/* Other stuff associated with the thread. */
 	unsigned long trap_nr;
 	unsigned long error_code;
+	unsigned long single_step; /* Used by PTRACE_SINGLESTEP */
 	struct loongarch_vdso_info *vdso;
 
 	/*
-	 * FPU & vector registers, must be at last because
-	 * they are conditionally copied at fork().
+	 * FPU & vector registers, must be at the last of inherited
+	 * context because they are conditionally copied at fork().
 	 */
 	struct loongarch_fpu fpu FPU_ALIGN;
+	struct loongarch_lbt lbt; /* Also conditionally copied */
+
+	/* Hardware breakpoints pinned to this task. */
+	struct perf_event *hbp_break[LOONGARCH_MAX_BRP];
+	struct perf_event *hbp_watch[LOONGARCH_MAX_WRP];
 };
 
 #define thread_saved_ra(tsk)	(tsk->thread.sched_ra)
@@ -168,10 +177,13 @@ struct thread_struct {
 	 * FPU & vector registers				\
 	 */							\
 	.fpu			= {				\
-		.fcsr		= 0,				\
 		.fcc		= 0,				\
+		.fcsr		= 0,				\
+		.ftop		= 0,				\
 		.fpr		= {{{0,},},},			\
 	},							\
+	.hbp_break		= {0},				\
+	.hbp_watch		= {0},				\
 }
 
 struct task_struct;
@@ -183,10 +195,6 @@ extern unsigned long		boot_option_idle_override;
  * Do necessary setup to start up a newly executed thread.
  */
 extern void start_thread(struct pt_regs *regs, unsigned long pc, unsigned long sp);
-
-static inline void flush_thread(void)
-{
-}
 
 unsigned long __get_wchan(struct task_struct *p);
 

@@ -189,7 +189,7 @@ activate_next:
 		int time_ms = 0;
 
 		if (err)
-			time_ms = 10 + prandom_u32_max(16);
+			time_ms = 10 + get_random_u32_below(16);
 
 		j1939_tp_schedule_txtimer(first, time_ms);
 	}
@@ -798,7 +798,7 @@ static int j1939_sk_recvmsg(struct socket *sock, struct msghdr *msg,
 	struct j1939_sk_buff_cb *skcb;
 	int ret = 0;
 
-	if (flags & ~(MSG_DONTWAIT | MSG_ERRQUEUE))
+	if (flags & ~(MSG_DONTWAIT | MSG_ERRQUEUE | MSG_CMSG_COMPAT))
 		return -EINVAL;
 
 	if (flags & MSG_ERRQUEUE)
@@ -974,6 +974,7 @@ static void __j1939_sk_errqueue(struct j1939_session *session, struct sock *sk,
 	struct sock_exterr_skb *serr;
 	struct sk_buff *skb;
 	char *state = "UNK";
+	u32 tsflags;
 	int err;
 
 	jsk = j1939_sk(sk);
@@ -981,13 +982,14 @@ static void __j1939_sk_errqueue(struct j1939_session *session, struct sock *sk,
 	if (!(jsk->state & J1939_SOCK_ERRQUEUE))
 		return;
 
+	tsflags = READ_ONCE(sk->sk_tsflags);
 	switch (type) {
 	case J1939_ERRQUEUE_TX_ACK:
-		if (!(sk->sk_tsflags & SOF_TIMESTAMPING_TX_ACK))
+		if (!(tsflags & SOF_TIMESTAMPING_TX_ACK))
 			return;
 		break;
 	case J1939_ERRQUEUE_TX_SCHED:
-		if (!(sk->sk_tsflags & SOF_TIMESTAMPING_TX_SCHED))
+		if (!(tsflags & SOF_TIMESTAMPING_TX_SCHED))
 			return;
 		break;
 	case J1939_ERRQUEUE_TX_ABORT:
@@ -997,7 +999,7 @@ static void __j1939_sk_errqueue(struct j1939_session *session, struct sock *sk,
 	case J1939_ERRQUEUE_RX_DPO:
 		fallthrough;
 	case J1939_ERRQUEUE_RX_ABORT:
-		if (!(sk->sk_tsflags & SOF_TIMESTAMPING_RX_SOFTWARE))
+		if (!(tsflags & SOF_TIMESTAMPING_RX_SOFTWARE))
 			return;
 		break;
 	default:
@@ -1054,7 +1056,7 @@ static void __j1939_sk_errqueue(struct j1939_session *session, struct sock *sk,
 	}
 
 	serr->opt_stats = true;
-	if (sk->sk_tsflags & SOF_TIMESTAMPING_OPT_ID)
+	if (tsflags & SOF_TIMESTAMPING_OPT_ID)
 		serr->ee.ee_data = session->tskey;
 
 	netdev_dbg(session->priv->ndev, "%s: 0x%p tskey: %i, state: %s\n",
@@ -1088,6 +1090,11 @@ void j1939_sk_errqueue(struct j1939_session *session,
 
 void j1939_sk_send_loop_abort(struct sock *sk, int err)
 {
+	struct j1939_sock *jsk = j1939_sk(sk);
+
+	if (jsk->state & J1939_SOCK_ERRQUEUE)
+		return;
+
 	sk->sk_err = err;
 
 	sk_error_report(sk);
@@ -1301,7 +1308,6 @@ static const struct proto_ops j1939_ops = {
 	.sendmsg = j1939_sk_sendmsg,
 	.recvmsg = j1939_sk_recvmsg,
 	.mmap = sock_no_mmap,
-	.sendpage = sock_no_sendpage,
 };
 
 static struct proto j1939_proto __read_mostly = {

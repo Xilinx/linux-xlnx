@@ -167,7 +167,6 @@
 		assigned-clock-rates = <294912000>,
 				       <270950400>,
 				       <393216000>;
-		status = "okay";
 
 		dai-link-0 {
 			sound-dai = <&aiu AIU_CPU CPU_I2S_FIFO>;
@@ -305,7 +304,6 @@
 };
 
 &usb2_phy0 {
-	pinctrl-names = "default";
 	phy-supply = <&vcc5v>;
 };
 

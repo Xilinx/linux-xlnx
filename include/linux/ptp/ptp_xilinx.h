@@ -21,10 +21,10 @@ struct xlnx_ptp_timer {
 	s32			static_delay;
 	int			phc_index;
 	bool                    use_sys_timer_only;
-	u32                     period_0;
-	u32                     period_1;
 	int                     irq;
 	int			extts_enable;
+	u32                     period_0;
+	u32                     period_1;
 };
 
 #endif /* __PTP_PTP_XILINX_H__ */

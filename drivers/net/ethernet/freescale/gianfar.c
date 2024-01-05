@@ -60,6 +60,7 @@
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/kernel.h>
+#include <linux/platform_device.h>
 #include <linux/string.h>
 #include <linux/errno.h>
 #include <linux/unistd.h>
@@ -75,7 +76,6 @@
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
 #include <linux/of_mdio.h>
-#include <linux/of_platform.h>
 #include <linux/ip.h>
 #include <linux/tcp.h>
 #include <linux/udp.h>
@@ -787,10 +787,10 @@ static int gfar_of_init(struct platform_device *ofdev, struct net_device **pdev)
 	else
 		priv->interface = gfar_get_interface(dev);
 
-	if (of_find_property(np, "fsl,magic-packet", NULL))
+	if (of_property_read_bool(np, "fsl,magic-packet"))
 		priv->device_flags |= FSL_GIANFAR_DEV_HAS_MAGIC_PACKET;
 
-	if (of_get_property(np, "fsl,wake-on-filer", NULL))
+	if (of_property_read_bool(np, "fsl,wake-on-filer"))
 		priv->device_flags |= FSL_GIANFAR_DEV_HAS_WAKE_ON_FILER;
 
 	priv->phy_node = of_parse_phandle(np, "phy-handle", 0);
@@ -3364,7 +3364,7 @@ register_fail:
 	return err;
 }
 
-static int gfar_remove(struct platform_device *ofdev)
+static void gfar_remove(struct platform_device *ofdev)
 {
 	struct gfar_private *priv = platform_get_drvdata(ofdev);
 	struct device_node *np = ofdev->dev.of_node;
@@ -3381,8 +3381,6 @@ static int gfar_remove(struct platform_device *ofdev)
 	gfar_free_rx_queues(priv);
 	gfar_free_tx_queues(priv);
 	free_gfar_dev(priv);
-
-	return 0;
 }
 
 #ifdef CONFIG_PM
@@ -3642,7 +3640,7 @@ static struct platform_driver gfar_driver = {
 		.of_match_table = gfar_match,
 	},
 	.probe = gfar_probe,
-	.remove = gfar_remove,
+	.remove_new = gfar_remove,
 };
 
 module_platform_driver(gfar_driver);

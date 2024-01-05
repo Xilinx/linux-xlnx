@@ -23,7 +23,6 @@
 #include <linux/pm_runtime.h>
 #include <linux/davinci_emac.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/of_mdio.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/mdio-bitbang.h>
@@ -225,7 +224,7 @@ static int davinci_get_mdio_data(struct mdiobb_ctrl *ctrl)
 	return test_bit(MDIO_PIN, &reg);
 }
 
-static int davinci_mdiobb_read(struct mii_bus *bus, int phy, int reg)
+static int davinci_mdiobb_read_c22(struct mii_bus *bus, int phy, int reg)
 {
 	int ret;
 
@@ -233,7 +232,7 @@ static int davinci_mdiobb_read(struct mii_bus *bus, int phy, int reg)
 	if (ret < 0)
 		return ret;
 
-	ret = mdiobb_read(bus, phy, reg);
+	ret = mdiobb_read_c22(bus, phy, reg);
 
 	pm_runtime_mark_last_busy(bus->parent);
 	pm_runtime_put_autosuspend(bus->parent);
@@ -241,8 +240,8 @@ static int davinci_mdiobb_read(struct mii_bus *bus, int phy, int reg)
 	return ret;
 }
 
-static int davinci_mdiobb_write(struct mii_bus *bus, int phy, int reg,
-				u16 val)
+static int davinci_mdiobb_write_c22(struct mii_bus *bus, int phy, int reg,
+				    u16 val)
 {
 	int ret;
 
@@ -250,7 +249,41 @@ static int davinci_mdiobb_write(struct mii_bus *bus, int phy, int reg,
 	if (ret < 0)
 		return ret;
 
-	ret = mdiobb_write(bus, phy, reg, val);
+	ret = mdiobb_write_c22(bus, phy, reg, val);
+
+	pm_runtime_mark_last_busy(bus->parent);
+	pm_runtime_put_autosuspend(bus->parent);
+
+	return ret;
+}
+
+static int davinci_mdiobb_read_c45(struct mii_bus *bus, int phy, int devad,
+				   int reg)
+{
+	int ret;
+
+	ret = pm_runtime_resume_and_get(bus->parent);
+	if (ret < 0)
+		return ret;
+
+	ret = mdiobb_read_c45(bus, phy, devad, reg);
+
+	pm_runtime_mark_last_busy(bus->parent);
+	pm_runtime_put_autosuspend(bus->parent);
+
+	return ret;
+}
+
+static int davinci_mdiobb_write_c45(struct mii_bus *bus, int phy, int devad,
+				    int reg, u16 val)
+{
+	int ret;
+
+	ret = pm_runtime_resume_and_get(bus->parent);
+	if (ret < 0)
+		return ret;
+
+	ret = mdiobb_write_c45(bus, phy, devad, reg, val);
 
 	pm_runtime_mark_last_busy(bus->parent);
 	pm_runtime_put_autosuspend(bus->parent);
@@ -573,8 +606,10 @@ static int davinci_mdio_probe(struct platform_device *pdev)
 	data->bus->name		= dev_name(dev);
 
 	if (data->manual_mode) {
-		data->bus->read		= davinci_mdiobb_read;
-		data->bus->write	= davinci_mdiobb_write;
+		data->bus->read		= davinci_mdiobb_read_c22;
+		data->bus->write	= davinci_mdiobb_write_c22;
+		data->bus->read_c45	= davinci_mdiobb_read_c45;
+		data->bus->write_c45	= davinci_mdiobb_write_c45;
 		data->bus->reset	= davinci_mdiobb_reset;
 
 		dev_info(dev, "Configuring MDIO in manual mode\n");

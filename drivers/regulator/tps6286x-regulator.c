@@ -4,7 +4,7 @@
 #include <linux/err.h>
 #include <linux/i2c.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
+#include <linux/of.h>
 #include <linux/regmap.h>
 #include <linux/regulator/of_regulator.h>
 #include <linux/regulator/machine.h>
@@ -84,11 +84,11 @@ static unsigned int tps6286x_of_map_mode(unsigned int mode)
 
 static const struct regulator_desc tps6286x_reg = {
 	.name = "tps6286x",
-	.of_match = of_match_ptr("SW"),
+	.of_match = "SW",
 	.owner = THIS_MODULE,
 	.ops = &tps6286x_regulator_ops,
 	.of_map_mode = tps6286x_of_map_mode,
-	.regulators_node = of_match_ptr("regulators"),
+	.regulators_node = "regulators",
 	.type = REGULATOR_VOLTAGE,
 	.n_voltages = ((TPS6286X_MAX_MV - TPS6286X_MIN_MV) / TPS6286X_STEP_MV) + 1,
 	.min_uV = TPS6286X_MIN_MV * 1000,
@@ -111,8 +111,7 @@ static const struct of_device_id tps6286x_dt_ids[] = {
 };
 MODULE_DEVICE_TABLE(of, tps6286x_dt_ids);
 
-static int tps6286x_i2c_probe(struct i2c_client *i2c,
-			    const struct i2c_device_id *id)
+static int tps6286x_i2c_probe(struct i2c_client *i2c)
 {
 	struct device *dev = &i2c->dev;
 	struct regulator_config config = {};
@@ -148,7 +147,8 @@ MODULE_DEVICE_TABLE(i2c, tps6286x_i2c_id);
 static struct i2c_driver tps6286x_regulator_driver = {
 	.driver = {
 		.name = "tps6286x",
-		.of_match_table = of_match_ptr(tps6286x_dt_ids),
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
+		.of_match_table = tps6286x_dt_ids,
 	},
 	.probe = tps6286x_i2c_probe,
 	.id_table = tps6286x_i2c_id,

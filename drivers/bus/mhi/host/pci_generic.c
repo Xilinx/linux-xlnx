@@ -8,7 +8,6 @@
  * Copyright (C) 2020 Linaro Ltd <loic.poulain@linaro.org>
  */
 
-#include <linux/aer.h>
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/mhi.h>
@@ -23,6 +22,10 @@
 #define MHI_POST_RESET_DELAY_MS 2000
 
 #define HEALTH_CHECK_PERIOD (HZ * 2)
+
+/* PCI VID definitions */
+#define PCI_VENDOR_ID_THALES	0x1269
+#define PCI_VENDOR_ID_QUECTEL	0x1eac
 
 /**
  * struct mhi_pci_dev_info - MHI PCI device specific information
@@ -209,6 +212,19 @@ struct mhi_pci_dev_info {
 		.offload_channel = false,	\
 	}
 
+#define MHI_EVENT_CONFIG_SW_DATA(ev_ring, el_count) \
+	{					\
+		.num_elements = el_count,	\
+		.irq_moderation_ms = 0,		\
+		.irq = (ev_ring) + 1,		\
+		.priority = 1,			\
+		.mode = MHI_DB_BRST_DISABLE,	\
+		.data_type = MHI_ER_DATA,	\
+		.hardware_event = false,	\
+		.client_managed = false,	\
+		.offload_channel = false,	\
+	}
+
 #define MHI_EVENT_CONFIG_HW_DATA(ev_ring, el_count, ch_num) \
 	{					\
 		.num_elements = el_count,	\
@@ -234,8 +250,10 @@ static const struct mhi_channel_config modem_qcom_v1_mhi_channels[] = {
 	MHI_CHANNEL_CONFIG_DL_AUTOQUEUE(21, "IPCR", 8, 0),
 	MHI_CHANNEL_CONFIG_UL_FP(34, "FIREHOSE", 32, 0),
 	MHI_CHANNEL_CONFIG_DL_FP(35, "FIREHOSE", 32, 0),
-	MHI_CHANNEL_CONFIG_HW_UL(100, "IP_HW0", 128, 2),
-	MHI_CHANNEL_CONFIG_HW_DL(101, "IP_HW0", 128, 3),
+	MHI_CHANNEL_CONFIG_UL(46, "IP_SW0", 64, 2),
+	MHI_CHANNEL_CONFIG_DL(47, "IP_SW0", 64, 3),
+	MHI_CHANNEL_CONFIG_HW_UL(100, "IP_HW0", 128, 4),
+	MHI_CHANNEL_CONFIG_HW_DL(101, "IP_HW0", 128, 5),
 };
 
 static struct mhi_event_config modem_qcom_v1_mhi_events[] = {
@@ -243,9 +261,12 @@ static struct mhi_event_config modem_qcom_v1_mhi_events[] = {
 	MHI_EVENT_CONFIG_CTRL(0, 64),
 	/* DIAG dedicated event ring */
 	MHI_EVENT_CONFIG_DATA(1, 128),
+	/* Software channels dedicated event ring */
+	MHI_EVENT_CONFIG_SW_DATA(2, 64),
+	MHI_EVENT_CONFIG_SW_DATA(3, 64),
 	/* Hardware channels request dedicated hardware event rings */
-	MHI_EVENT_CONFIG_HW_DATA(2, 1024, 100),
-	MHI_EVENT_CONFIG_HW_DATA(3, 2048, 101)
+	MHI_EVENT_CONFIG_HW_DATA(4, 1024, 100),
+	MHI_EVENT_CONFIG_HW_DATA(5, 2048, 101)
 };
 
 static const struct mhi_controller_config modem_qcom_v1_mhiv_config = {
@@ -331,6 +352,16 @@ static const struct mhi_pci_dev_info mhi_quectel_em1xx_info = {
 	.sideband_wake = true,
 };
 
+static const struct mhi_pci_dev_info mhi_quectel_rm5xx_info = {
+	.name = "quectel-rm5xx",
+	.edl = "qcom/prog_firehose_sdx6x.elf",
+	.config = &modem_quectel_em1xx_config,
+	.bar_num = MHI_PCI_DEFAULT_BAR_NUM,
+	.dma_data_width = 32,
+	.mru_default = 32768,
+	.sideband_wake = true,
+};
+
 static const struct mhi_channel_config mhi_foxconn_sdx55_channels[] = {
 	MHI_CHANNEL_CONFIG_UL(0, "LOOPBACK", 32, 0),
 	MHI_CHANNEL_CONFIG_DL(1, "LOOPBACK", 32, 0),
@@ -358,6 +389,15 @@ static const struct mhi_controller_config modem_foxconn_sdx55_config = {
 	.ch_cfg = mhi_foxconn_sdx55_channels,
 	.num_events = ARRAY_SIZE(mhi_foxconn_sdx55_events),
 	.event_cfg = mhi_foxconn_sdx55_events,
+};
+
+static const struct mhi_pci_dev_info mhi_foxconn_sdx24_info = {
+	.name = "foxconn-sdx24",
+	.config = &modem_foxconn_sdx55_config,
+	.bar_num = MHI_PCI_DEFAULT_BAR_NUM,
+	.dma_data_width = 32,
+	.mru_default = 32768,
+	.sideband_wake = false,
 };
 
 static const struct mhi_pci_dev_info mhi_foxconn_sdx55_info = {
@@ -542,6 +582,8 @@ static const struct mhi_pci_dev_info mhi_telit_fn990_info = {
 static const struct pci_device_id mhi_pci_id_table[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_QCOM, 0x0304),
 		.driver_data = (kernel_ulong_t) &mhi_qcom_sdx24_info },
+	{ PCI_DEVICE_SUB(PCI_VENDOR_ID_QCOM, 0x0306, PCI_VENDOR_ID_QCOM, 0x010c),
+		.driver_data = (kernel_ulong_t) &mhi_foxconn_sdx55_info },
 	/* EM919x (sdx55), use the same vid:pid as qcom-sdx55m */
 	{ PCI_DEVICE_SUB(PCI_VENDOR_ID_QCOM, 0x0306, 0x18d7, 0x0200),
 		.driver_data = (kernel_ulong_t) &mhi_sierra_em919x_info },
@@ -553,13 +595,24 @@ static const struct pci_device_id mhi_pci_id_table[] = {
 	/* Telit FN990 */
 	{ PCI_DEVICE_SUB(PCI_VENDOR_ID_QCOM, 0x0308, 0x1c5d, 0x2010),
 		.driver_data = (kernel_ulong_t) &mhi_telit_fn990_info },
+	/* Telit FE990 */
+	{ PCI_DEVICE_SUB(PCI_VENDOR_ID_QCOM, 0x0308, 0x1c5d, 0x2015),
+		.driver_data = (kernel_ulong_t) &mhi_telit_fn990_info },
 	{ PCI_DEVICE(PCI_VENDOR_ID_QCOM, 0x0308),
 		.driver_data = (kernel_ulong_t) &mhi_qcom_sdx65_info },
-	{ PCI_DEVICE(0x1eac, 0x1001), /* EM120R-GL (sdx24) */
+	{ PCI_DEVICE(PCI_VENDOR_ID_QUECTEL, 0x1001), /* EM120R-GL (sdx24) */
 		.driver_data = (kernel_ulong_t) &mhi_quectel_em1xx_info },
-	{ PCI_DEVICE(0x1eac, 0x1002), /* EM160R-GL (sdx24) */
+	{ PCI_DEVICE(PCI_VENDOR_ID_QUECTEL, 0x1002), /* EM160R-GL (sdx24) */
 		.driver_data = (kernel_ulong_t) &mhi_quectel_em1xx_info },
-	{ PCI_DEVICE(0x1eac, 0x2001), /* EM120R-GL for FCCL (sdx24) */
+	/* RM520N-GL (sdx6x), eSIM */
+	{ PCI_DEVICE(PCI_VENDOR_ID_QUECTEL, 0x1004),
+		.driver_data = (kernel_ulong_t) &mhi_quectel_rm5xx_info },
+	/* RM520N-GL (sdx6x), Lenovo variant */
+	{ PCI_DEVICE(PCI_VENDOR_ID_QUECTEL, 0x1007),
+		.driver_data = (kernel_ulong_t) &mhi_quectel_rm5xx_info },
+	{ PCI_DEVICE(PCI_VENDOR_ID_QUECTEL, 0x100d), /* EM160R-GL (sdx24) */
+		.driver_data = (kernel_ulong_t) &mhi_quectel_em1xx_info },
+	{ PCI_DEVICE(PCI_VENDOR_ID_QUECTEL, 0x2001), /* EM120R-GL for FCCL (sdx24) */
 		.driver_data = (kernel_ulong_t) &mhi_quectel_em1xx_info },
 	/* T99W175 (sdx55), Both for eSIM and Non-eSIM */
 	{ PCI_DEVICE(PCI_VENDOR_ID_FOXCONN, 0xe0ab),
@@ -582,18 +635,36 @@ static const struct pci_device_id mhi_pci_id_table[] = {
 	/* T99W373 (sdx62) */
 	{ PCI_DEVICE(PCI_VENDOR_ID_FOXCONN, 0xe0d9),
 		.driver_data = (kernel_ulong_t) &mhi_foxconn_sdx65_info },
+	/* T99W510 (sdx24), variant 1 */
+	{ PCI_DEVICE(PCI_VENDOR_ID_FOXCONN, 0xe0f0),
+		.driver_data = (kernel_ulong_t) &mhi_foxconn_sdx24_info },
+	/* T99W510 (sdx24), variant 2 */
+	{ PCI_DEVICE(PCI_VENDOR_ID_FOXCONN, 0xe0f1),
+		.driver_data = (kernel_ulong_t) &mhi_foxconn_sdx24_info },
+	/* T99W510 (sdx24), variant 3 */
+	{ PCI_DEVICE(PCI_VENDOR_ID_FOXCONN, 0xe0f2),
+		.driver_data = (kernel_ulong_t) &mhi_foxconn_sdx24_info },
+	/* DW5932e-eSIM (sdx62), With eSIM */
+	{ PCI_DEVICE(PCI_VENDOR_ID_FOXCONN, 0xe0f5),
+		.driver_data = (kernel_ulong_t) &mhi_foxconn_sdx65_info },
+	/* DW5932e (sdx62), Non-eSIM */
+	{ PCI_DEVICE(PCI_VENDOR_ID_FOXCONN, 0xe0f9),
+		.driver_data = (kernel_ulong_t) &mhi_foxconn_sdx65_info },
 	/* MV31-W (Cinterion) */
-	{ PCI_DEVICE(0x1269, 0x00b3),
+	{ PCI_DEVICE(PCI_VENDOR_ID_THALES, 0x00b3),
 		.driver_data = (kernel_ulong_t) &mhi_mv31_info },
 	/* MV31-W (Cinterion), based on new baseline */
-	{ PCI_DEVICE(0x1269, 0x00b4),
+	{ PCI_DEVICE(PCI_VENDOR_ID_THALES, 0x00b4),
 		.driver_data = (kernel_ulong_t) &mhi_mv31_info },
 	/* MV32-WA (Cinterion) */
-	{ PCI_DEVICE(0x1269, 0x00ba),
+	{ PCI_DEVICE(PCI_VENDOR_ID_THALES, 0x00ba),
 		.driver_data = (kernel_ulong_t) &mhi_mv32_info },
 	/* MV32-WB (Cinterion) */
-	{ PCI_DEVICE(0x1269, 0x00bb),
+	{ PCI_DEVICE(PCI_VENDOR_ID_THALES, 0x00bb),
 		.driver_data = (kernel_ulong_t) &mhi_mv32_info },
+	/* T99W175 (sdx55), HP variant */
+	{ PCI_DEVICE(0x03f0, 0x0a6c),
+		.driver_data = (kernel_ulong_t) &mhi_foxconn_sdx55_info },
 	{  }
 };
 MODULE_DEVICE_TABLE(pci, mhi_pci_id_table);
@@ -892,11 +963,9 @@ static int mhi_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	mhi_pdev->pci_state = pci_store_saved_state(pdev);
 	pci_load_saved_state(pdev, NULL);
 
-	pci_enable_pcie_error_reporting(pdev);
-
 	err = mhi_register_controller(mhi_cntrl, mhi_cntrl_config);
 	if (err)
-		goto err_disable_reporting;
+		return err;
 
 	/* MHI bus does not power up the controller by default */
 	err = mhi_prepare_for_power_up(mhi_cntrl);
@@ -930,8 +999,6 @@ err_unprepare:
 	mhi_unprepare_after_power_down(mhi_cntrl);
 err_unregister:
 	mhi_unregister_controller(mhi_cntrl);
-err_disable_reporting:
-	pci_disable_pcie_error_reporting(pdev);
 
 	return err;
 }
@@ -954,7 +1021,6 @@ static void mhi_pci_remove(struct pci_dev *pdev)
 		pm_runtime_get_noresume(&pdev->dev);
 
 	mhi_unregister_controller(mhi_cntrl);
-	pci_disable_pcie_error_reporting(pdev);
 }
 
 static void mhi_pci_shutdown(struct pci_dev *pdev)

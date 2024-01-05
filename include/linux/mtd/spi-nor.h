@@ -7,7 +7,6 @@
 #define __LINUX_MTD_SPI_NOR_H
 
 #include <linux/bitops.h>
-#include <linux/mtd/cfi.h>
 #include <linux/mtd/mtd.h>
 #include <linux/spi/spi-mem.h>
 
@@ -112,15 +111,12 @@
 #define SR_BP1			BIT(3)	/* Block protect 1 */
 #define SR_BP2			BIT(4)	/* Block protect 2 */
 #define SR_BP3			BIT(5)	/* Block protect 3 */
-#define SR_BP_BIT_MASK		(SR_BP2 | SR_BP1 | SR_BP0)
 #define SR_TB_BIT5		BIT(5)	/* Top/Bottom protect */
-#define SR_BP3_BIT5		BIT(5)	/* Block protect 3 */
+#define SR_BP3_BIT5             BIT(5)  /* Block protect 3 */
 #define SR_BP3_BIT6		BIT(6)	/* Block protect 3 */
 #define SR_TB_BIT6		BIT(6)	/* Top/Bottom protect */
 #define SR_SRWD			BIT(7)	/* SR write protect */
-/* Bit to determine whether protection starts from top or bottom */
-#define SR_BP_TB			0x20
-#define M25P_MAX_LOCKABLE_SECTORS	64
+#define M25P_MAX_LOCKABLE_SECTORS       64
 /* Spansion/Cypress specific status bits */
 #define SR_E_ERR		BIT(5)
 #define SR_P_ERR		BIT(6)
@@ -146,7 +142,7 @@
  * Maximum number of flashes that can be connected
  * in stacked/parallel configuration
  */
-#define	SNOR_FLASH_CNT_MAX	2
+#define	SNOR_FLASH_CNT_MAX	4
 
 /* Supported SPI protocols */
 #define SNOR_PROTO_INST_MASK	GENMASK(23, 16)
@@ -364,11 +360,19 @@ struct spi_nor_flash_parameter;
  * struct spi_nor - Structure for defining the SPI NOR layer
  * @mtd:		an mtd_info structure
  * @lock:		the lock for the read/write/erase/lock/unlock operations
+ * @rww:		Read-While-Write (RWW) sync lock
+ * @rww.wait:		wait queue for the RWW sync
+ * @rww.ongoing_io:	the bus is busy
+ * @rww.ongoing_rd:	a read is ongoing on the chip
+ * @rww.ongoing_pe:	a program/erase is ongoing on the chip
+ * @rww.used_banks:	bitmap of the banks in use
  * @dev:		pointer to an SPI device or an SPI NOR controller device
  * @spimem:		pointer to the SPI memory device
  * @bouncebuf:		bounce buffer used when the buffer passed by the MTD
  *                      layer is not DMA-able
  * @bouncebuf_size:	size of the bounce buffer
+ * @id:			The flash's ID bytes. Always contains
+ *			SPI_NOR_MAX_ID_LEN bytes.
  * @info:		SPI NOR part JEDEC MFR ID and other info
  * @manufacturer:	SPI NOR manufacturer
  * @addr_nbytes:	number of address bytes
@@ -376,6 +380,8 @@ struct spi_nor_flash_parameter;
  * @read_opcode:	the read opcode
  * @read_dummy:		the dummy needed by the read operation
  * @program_opcode:	the program opcode
+ * @jedec_id:		flash part JEDEC MFR ID
+ * @curbank:		current memory bank
  * @sst_write_second:	used by the SST write operation
  * @flags:		flag options for the current SPI NOR (SNOR_F_*)
  * @cmd_ext_type:	the command opcode extension type for DTR mode.
@@ -390,15 +396,24 @@ struct spi_nor_flash_parameter;
  *                      settings that can be overwritten by the spi_nor_fixups
  *                      hooks, or dynamically when parsing the SFDP tables.
  * @dirmap:		pointers to struct spi_mem_dirmap_desc for reads/writes.
+ * @num_flash		number of flashes connected in parallel or stacked mode
  * @priv:		pointer to the private data
  */
 struct spi_nor {
 	struct mtd_info		mtd;
 	struct mutex		lock;
+	struct spi_nor_rww {
+		wait_queue_head_t wait;
+		bool		ongoing_io;
+		bool		ongoing_rd;
+		bool		ongoing_pe;
+		unsigned int	used_banks;
+	} rww;
 	struct device		*dev;
 	struct spi_mem		*spimem;
 	u8			*bouncebuf;
 	size_t			bouncebuf_size;
+	u8			*id;
 	const struct flash_info	*info;
 	const struct spi_nor_manufacturer *manufacturer;
 	u8			addr_nbytes;
@@ -406,12 +421,12 @@ struct spi_nor {
 	u8			read_opcode;
 	u8			read_dummy;
 	u8			program_opcode;
+	u32			jedec_id;
 	u16			curbank;
 	enum spi_nor_protocol	read_proto;
 	enum spi_nor_protocol	write_proto;
 	enum spi_nor_protocol	reg_proto;
 	bool			sst_write_second;
-	bool			is_lock;
 	u32			flags;
 	enum spi_nor_cmd_ext	cmd_ext_type;
 	struct sfdp		*sfdp;
@@ -425,7 +440,7 @@ struct spi_nor {
 		struct spi_mem_dirmap_desc *rdesc;
 		struct spi_mem_dirmap_desc *wdesc;
 	} dirmap;
-
+	u32			num_flash;
 	void *priv;
 };
 
@@ -466,11 +481,5 @@ static inline void spi_nor_set_params(struct spi_nor *nor, u8 idx,
  */
 int spi_nor_scan(struct spi_nor *nor, const char *name,
 		 const struct spi_nor_hwcaps *hwcaps);
-
-/**
- * spi_nor_restore_addr_mode() - restore the status of SPI NOR
- * @nor:	the spi_nor structure
- */
-void spi_nor_restore(struct spi_nor *nor);
 
 #endif

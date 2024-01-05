@@ -41,7 +41,7 @@ will need to add a 32-bit compat layer:
    structures to the kernel, or if the kernel checks the structure size, which
    e.g. the drm core does.
 
- * Pointers are __u64, cast from/to a uintprt_t on the userspace side and
+ * Pointers are __u64, cast from/to a uintptr_t on the userspace side and
    from/to a void __user * in the kernel. Try really hard not to delay this
    conversion or worse, fiddle the raw __u64 through your code since that
    diminishes the checking tools like sparse can provide. The macro
@@ -208,7 +208,7 @@ Not every problem needs a new ioctl:
    it's much quicker to push a driver-private interface than engaging in
    lengthy discussions for a more generic solution. And occasionally doing a
    private interface to spearhead a new concept is what's required. But in the
-   end, once the generic interface comes around you'll end up maintainer two
+   end, once the generic interface comes around you'll end up maintaining two
    interfaces. Indefinitely.
 
  * Consider other interfaces than ioctls. A sysfs attribute is much better for

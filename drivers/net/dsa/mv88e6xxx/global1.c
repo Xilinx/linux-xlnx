@@ -75,37 +75,6 @@ static int mv88e6xxx_g1_wait_init_ready(struct mv88e6xxx_chip *chip)
 	return mv88e6xxx_g1_wait_bit(chip, MV88E6XXX_G1_STS, bit, 1);
 }
 
-void mv88e6xxx_g1_wait_eeprom_done(struct mv88e6xxx_chip *chip)
-{
-	const unsigned long timeout = jiffies + 1 * HZ;
-	u16 val;
-	int err;
-
-	/* Wait up to 1 second for the switch to finish reading the
-	 * EEPROM.
-	 */
-	while (time_before(jiffies, timeout)) {
-		err = mv88e6xxx_g1_read(chip, MV88E6XXX_G1_STS, &val);
-		if (err) {
-			dev_err(chip->dev, "Error reading status");
-			return;
-		}
-
-		/* If the switch is still resetting, it may not
-		 * respond on the bus, and so MDIO read returns
-		 * 0xffff. Differentiate between that, and waiting for
-		 * the EEPROM to be done by bit 0 being set.
-		 */
-		if (val != 0xffff &&
-		    val & BIT(MV88E6XXX_G1_STS_IRQ_EEPROM_DONE))
-			return;
-
-		usleep_range(1000, 2000);
-	}
-
-	dev_err(chip->dev, "Timeout waiting for EEPROM done");
-}
-
 /* Offset 0x01: Switch MAC Address Register Bytes 0 & 1
  * Offset 0x02: Switch MAC Address Register Bytes 2 & 3
  * Offset 0x03: Switch MAC Address Register Bytes 4 & 5
@@ -396,6 +365,18 @@ int mv88e6390_g1_set_cpu_port(struct mv88e6xxx_chip *chip, int port)
 	u16 ptr = MV88E6390_G1_MONITOR_MGMT_CTL_PTR_CPU_DEST;
 
 	/* Use the default high priority for management frames sent to
+	 * the CPU.
+	 */
+	port |= MV88E6390_G1_MONITOR_MGMT_CTL_PTR_CPU_DEST_MGMTPRI;
+
+	return mv88e6390_g1_monitor_write(chip, ptr, port);
+}
+
+int mv88e6390_g1_set_ptp_cpu_port(struct mv88e6xxx_chip *chip, int port)
+{
+	u16 ptr = MV88E6390_G1_MONITOR_MGMT_CTL_PTR_PTP_CPU_DEST;
+
+	/* Use the default high priority for PTP frames sent to
 	 * the CPU.
 	 */
 	port |= MV88E6390_G1_MONITOR_MGMT_CTL_PTR_CPU_DEST_MGMTPRI;

@@ -6,14 +6,14 @@
 #include <linux/clk.h>
 #include <linux/component.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
-#include <linux/of_irq.h>
+#include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/soc/mediatek/mtk-cmdq.h>
 
 #include "mtk_disp_drv.h"
 #include "mtk_drm_crtc.h"
 #include "mtk_drm_ddp_comp.h"
+#include "mtk_drm_drv.h"
 
 #define DISP_COLOR_CFG_MAIN			0x0400
 #define DISP_COLOR_START_MT2701			0x0f00
@@ -131,11 +131,9 @@ static int mtk_disp_color_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int mtk_disp_color_remove(struct platform_device *pdev)
+static void mtk_disp_color_remove(struct platform_device *pdev)
 {
 	component_del(&pdev->dev, &mtk_disp_color_component_ops);
-
-	return 0;
 }
 
 static const struct mtk_disp_color_data mt2701_color_driver_data = {
@@ -163,7 +161,7 @@ MODULE_DEVICE_TABLE(of, mtk_disp_color_driver_dt_match);
 
 struct platform_driver mtk_disp_color_driver = {
 	.probe		= mtk_disp_color_probe,
-	.remove		= mtk_disp_color_remove,
+	.remove_new	= mtk_disp_color_remove,
 	.driver		= {
 		.name	= "mediatek-disp-color",
 		.owner	= THIS_MODULE,

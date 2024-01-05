@@ -8,7 +8,7 @@
 #include <linux/component.h>
 #include <linux/debugfs.h>
 #include <linux/module.h>
-#include <linux/of_gpio.h>
+#include <linux/of.h>
 #include <linux/platform_device.h>
 
 #include <drm/drm_atomic_helper.h>
@@ -288,7 +288,7 @@ static void sti_dvo_set_mode(struct drm_bridge *bridge,
 
 	DRM_DEBUG_DRIVER("\n");
 
-	memcpy(&dvo->mode, mode, sizeof(struct drm_display_mode));
+	drm_mode_copy(&dvo->mode, mode);
 
 	/* According to the path used (main or aux), the dvo clocks should
 	 * have a different parent clock. */
@@ -346,8 +346,9 @@ static int sti_dvo_connector_get_modes(struct drm_connector *connector)
 
 #define CLK_TOLERANCE_HZ 50
 
-static int sti_dvo_connector_mode_valid(struct drm_connector *connector,
-					struct drm_display_mode *mode)
+static enum drm_mode_status
+sti_dvo_connector_mode_valid(struct drm_connector *connector,
+			     struct drm_display_mode *mode)
 {
 	int target = mode->clock * 1000;
 	int target_min = target - CLK_TOLERANCE_HZ;
@@ -566,10 +567,9 @@ static int sti_dvo_probe(struct platform_device *pdev)
 	return component_add(&pdev->dev, &sti_dvo_ops);
 }
 
-static int sti_dvo_remove(struct platform_device *pdev)
+static void sti_dvo_remove(struct platform_device *pdev)
 {
 	component_del(&pdev->dev, &sti_dvo_ops);
-	return 0;
 }
 
 static const struct of_device_id dvo_of_match[] = {
@@ -585,7 +585,7 @@ struct platform_driver sti_dvo_driver = {
 		.of_match_table = dvo_of_match,
 	},
 	.probe = sti_dvo_probe,
-	.remove = sti_dvo_remove,
+	.remove_new = sti_dvo_remove,
 };
 
 MODULE_AUTHOR("Benjamin Gaignard <benjamin.gaignard@st.com>");

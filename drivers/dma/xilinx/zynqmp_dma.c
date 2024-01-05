@@ -11,8 +11,9 @@
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/module.h>
+#include <linux/of.h>
 #include <linux/of_dma.h>
-#include <linux/of_platform.h>
+#include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/clk.h>
 #include <linux/io-64-nonatomic-lo-hi.h>
@@ -890,7 +891,6 @@ static int zynqmp_dma_chan_probe(struct zynqmp_dma_device *zdev,
 			   struct platform_device *pdev)
 {
 	struct zynqmp_dma_chan *chan;
-	struct resource *res;
 	struct device_node *node = pdev->dev.of_node;
 	int err;
 
@@ -900,8 +900,7 @@ static int zynqmp_dma_chan_probe(struct zynqmp_dma_device *zdev,
 	chan->dev = zdev->dev;
 	chan->zdev = zdev;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	chan->regs = devm_ioremap_resource(&pdev->dev, res);
+	chan->regs = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(chan->regs))
 		return PTR_ERR(chan->regs);
 

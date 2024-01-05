@@ -14,6 +14,7 @@
 #include <net/ip6_checksum.h>
 #include "ip6_offload.h"
 #include <net/gro.h>
+#include <net/gso.h>
 
 static struct sk_buff *udp6_ufo_fragment(struct sk_buff *skb,
 					 netdev_features_t features)
@@ -116,10 +117,14 @@ static struct sock *udp6_gro_lookup_skb(struct sk_buff *skb, __be16 sport,
 					__be16 dport)
 {
 	const struct ipv6hdr *iph = skb_gro_network_header(skb);
+	struct net *net = dev_net(skb->dev);
+	int iif, sdif;
 
-	return __udp6_lib_lookup(dev_net(skb->dev), &iph->saddr, sport,
-				 &iph->daddr, dport, inet6_iif(skb),
-				 inet6_sdif(skb), &udp_table, NULL);
+	inet6_get_iif_sdif(skb, &iif, &sdif);
+
+	return __udp6_lib_lookup(net, &iph->saddr, sport,
+				 &iph->daddr, dport, iif,
+				 sdif, net->ipv4.udp_table, NULL);
 }
 
 INDIRECT_CALLABLE_SCOPE

@@ -1464,7 +1464,7 @@ static int omap2_mcspi_probe(struct platform_device *pdev)
 
 		of_property_read_u32(node, "ti,spi-num-cs", &num_cs);
 		master->num_chipselect = num_cs;
-		if (of_get_property(node, "ti,pindir-d0-out-d1-in", NULL))
+		if (of_property_read_bool(node, "ti,pindir-d0-out-d1-in"))
 			mcspi->pin_dir = MCSPI_PINDIR_D0_OUT_D1_IN;
 	} else {
 		pdata = dev_get_platdata(&pdev->dev);
@@ -1477,8 +1477,7 @@ static int omap2_mcspi_probe(struct platform_device *pdev)
 		master->max_transfer_size = omap2_mcspi_max_xfer_size;
 	}
 
-	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	mcspi->base = devm_ioremap_resource(&pdev->dev, r);
+	mcspi->base = devm_platform_get_and_ioremap_resource(pdev, 0, &r);
 	if (IS_ERR(mcspi->base)) {
 		status = PTR_ERR(mcspi->base);
 		goto free_master;
@@ -1509,10 +1508,8 @@ static int omap2_mcspi_probe(struct platform_device *pdev)
 	}
 
 	status = platform_get_irq(pdev, 0);
-	if (status < 0) {
-		dev_err_probe(&pdev->dev, status, "no irq resource found\n");
+	if (status < 0)
 		goto free_master;
-	}
 	init_completion(&mcspi->txdone);
 	status = devm_request_irq(&pdev->dev, status,
 				  omap2_mcspi_irq_handler, 0, pdev->name,
@@ -1546,7 +1543,7 @@ free_master:
 	return status;
 }
 
-static int omap2_mcspi_remove(struct platform_device *pdev)
+static void omap2_mcspi_remove(struct platform_device *pdev)
 {
 	struct spi_master *master = platform_get_drvdata(pdev);
 	struct omap2_mcspi *mcspi = spi_master_get_devdata(master);
@@ -1556,8 +1553,6 @@ static int omap2_mcspi_remove(struct platform_device *pdev)
 	pm_runtime_dont_use_autosuspend(mcspi->dev);
 	pm_runtime_put_sync(mcspi->dev);
 	pm_runtime_disable(&pdev->dev);
-
-	return 0;
 }
 
 /* work with hotplug and coldplug */
@@ -1610,7 +1605,7 @@ static struct platform_driver omap2_mcspi_driver = {
 		.of_match_table = omap_mcspi_of_match,
 	},
 	.probe =	omap2_mcspi_probe,
-	.remove =	omap2_mcspi_remove,
+	.remove_new =	omap2_mcspi_remove,
 };
 
 module_platform_driver(omap2_mcspi_driver);

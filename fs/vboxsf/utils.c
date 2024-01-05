@@ -128,8 +128,8 @@ int vboxsf_init_inode(struct vboxsf_sbi *sbi, struct inode *inode,
 
 	inode->i_atime = ns_to_timespec64(
 				 info->access_time.ns_relative_to_unix_epoch);
-	inode->i_ctime = ns_to_timespec64(
-				 info->change_time.ns_relative_to_unix_epoch);
+	inode_set_ctime_to_ts(inode,
+			      ns_to_timespec64(info->change_time.ns_relative_to_unix_epoch));
 	inode->i_mtime = ns_to_timespec64(
 			   info->modification_time.ns_relative_to_unix_epoch);
 	return 0;
@@ -231,7 +231,7 @@ int vboxsf_inode_revalidate(struct dentry *dentry)
 	return 0;
 }
 
-int vboxsf_getattr(struct user_namespace *mnt_userns, const struct path *path,
+int vboxsf_getattr(struct mnt_idmap *idmap, const struct path *path,
 		   struct kstat *kstat, u32 request_mask, unsigned int flags)
 {
 	int err;
@@ -252,11 +252,11 @@ int vboxsf_getattr(struct user_namespace *mnt_userns, const struct path *path,
 	if (err)
 		return err;
 
-	generic_fillattr(&init_user_ns, d_inode(dentry), kstat);
+	generic_fillattr(&nop_mnt_idmap, request_mask, d_inode(dentry), kstat);
 	return 0;
 }
 
-int vboxsf_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
+int vboxsf_setattr(struct mnt_idmap *idmap, struct dentry *dentry,
 		   struct iattr *iattr)
 {
 	struct vboxsf_inode *sf_i = VBOXSF_I(d_inode(dentry));

@@ -52,10 +52,11 @@
 		gpios = <&gpio GPIODV_14 GPIO_ACTIVE_HIGH
 			 &gpio GPIODV_15 GPIO_ACTIVE_HIGH>;
 		/* Dummy RPM values since fan is optional */
-		gpio-fan,speed-map = <0 0
-				      1 1
-				      2 2
-				      3 3>;
+		gpio-fan,speed-map =
+				<0 0>,
+				<1 1>,
+				<2 2>,
+				<3 3>;
 		#cooling-cells = <2>;
 	};
 
@@ -156,7 +157,6 @@
 		assigned-clock-rates = <294912000>,
 				       <270950400>,
 				       <393216000>;
-		status = "okay";
 
 		dai-link-0 {
 			sound-dai = <&aiu AIU_CPU CPU_I2S_FIFO>;
@@ -270,7 +270,6 @@
 		compatible = "haoyu,hym8563";
 		reg = <0x51>;
 		#clock-cells = <0>;
-		clock-frequency = <32768>;
 		clock-output-names = "xin32k";
 	};
 };

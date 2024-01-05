@@ -60,6 +60,7 @@
 #define PCIE_PORT_LINKUP		BIT(0)
 #define PCIE_PORT_CNT			3
 
+#define INIT_PORTS_DELAY_MS		100
 #define PERST_DELAY_MS			100
 
 /**
@@ -369,6 +370,7 @@ static int mt7621_pcie_init_ports(struct mt7621_pcie *pcie)
 		}
 	}
 
+	msleep(INIT_PORTS_DELAY_MS);
 	mt7621_pcie_reset_ep_deassert(pcie);
 
 	tmp = NULL;
@@ -376,8 +378,8 @@ static int mt7621_pcie_init_ports(struct mt7621_pcie *pcie)
 		u32 slot = port->slot;
 
 		if (!mt7621_pcie_port_is_linkup(port)) {
-			dev_err(dev, "pcie%d no card, disable it (RST & CLK)\n",
-				slot);
+			dev_info(dev, "pcie%d no card, disable it (RST & CLK)\n",
+				 slot);
 			mt7621_control_assert(port);
 			port->enabled = false;
 			num_disabled++;
@@ -466,7 +468,8 @@ static int mt7621_pcie_register_host(struct pci_host_bridge *host)
 }
 
 static const struct soc_device_attribute mt7621_pcie_quirks_match[] = {
-	{ .soc_id = "mt7621", .revision = "E2" }
+	{ .soc_id = "mt7621", .revision = "E2" },
+	{ /* sentinel */ }
 };
 
 static int mt7621_pcie_probe(struct platform_device *pdev)
@@ -521,15 +524,13 @@ remove_resets:
 	return err;
 }
 
-static int mt7621_pcie_remove(struct platform_device *pdev)
+static void mt7621_pcie_remove(struct platform_device *pdev)
 {
 	struct mt7621_pcie *pcie = platform_get_drvdata(pdev);
 	struct mt7621_pcie_port *port;
 
 	list_for_each_entry(port, &pcie->ports, list)
 		reset_control_put(port->pcie_rst);
-
-	return 0;
 }
 
 static const struct of_device_id mt7621_pcie_ids[] = {
@@ -540,7 +541,7 @@ MODULE_DEVICE_TABLE(of, mt7621_pcie_ids);
 
 static struct platform_driver mt7621_pcie_driver = {
 	.probe = mt7621_pcie_probe,
-	.remove = mt7621_pcie_remove,
+	.remove_new = mt7621_pcie_remove,
 	.driver = {
 		.name = "mt7621-pci",
 		.of_match_table = mt7621_pcie_ids,

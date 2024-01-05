@@ -11,7 +11,6 @@
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_blend.h>
-#include <drm/drm_crtc_helper.h>
 #include <drm/drm_device.h>
 #include <drm/drm_writeback.h>
 #include <drm/drm_print.h>
@@ -85,6 +84,9 @@ struct komeda_crtc {
 
 	/** @disable_done: this flip_done is for tracing the disable */
 	struct completion *disable_done;
+
+	/** @encoder: encoder at the end of the pipeline */
+	struct drm_encoder encoder;
 };
 
 /**

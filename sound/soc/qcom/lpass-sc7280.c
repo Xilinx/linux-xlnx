@@ -8,7 +8,7 @@
 #include <linux/module.h>
 #include <sound/pcm.h>
 #include <sound/soc.h>
-#include <linux/pm_runtime.h>
+#include <linux/pm.h>
 
 #include <dt-bindings/sound/sc7180-lpass.h>
 
@@ -38,7 +38,6 @@ static struct snd_soc_dai_driver sc7280_lpass_cpu_dai_driver[] = {
 			.channels_min	= 2,
 			.channels_max	= 2,
 		},
-		.probe	= &asoc_qcom_lpass_cpu_dai_probe,
 		.ops    = &asoc_qcom_lpass_cpu_dai_ops,
 	}, {
 		.id = MI2S_SECONDARY,
@@ -52,7 +51,6 @@ static struct snd_soc_dai_driver sc7280_lpass_cpu_dai_driver[] = {
 			.channels_min	= 2,
 			.channels_max	= 2,
 		},
-		.probe	= &asoc_qcom_lpass_cpu_dai_probe,
 		.ops	= &asoc_qcom_lpass_cpu_dai_ops,
 	}, {
 		.id = LPASS_DP_RX,
@@ -232,9 +230,27 @@ static int sc7280_lpass_exit(struct platform_device *pdev)
 	struct lpass_data *drvdata = platform_get_drvdata(pdev);
 
 	clk_bulk_disable_unprepare(drvdata->num_clks, drvdata->clks);
-
 	return 0;
 }
+
+static int __maybe_unused sc7280_lpass_dev_resume(struct device *dev)
+{
+	struct lpass_data *drvdata = dev_get_drvdata(dev);
+
+	return clk_bulk_prepare_enable(drvdata->num_clks, drvdata->clks);
+}
+
+static int __maybe_unused sc7280_lpass_dev_suspend(struct device *dev)
+{
+	struct lpass_data *drvdata = dev_get_drvdata(dev);
+
+	clk_bulk_disable_unprepare(drvdata->num_clks, drvdata->clks);
+	return 0;
+}
+
+static const struct dev_pm_ops sc7280_lpass_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(sc7280_lpass_dev_suspend, sc7280_lpass_dev_resume)
+};
 
 static struct lpass_variant sc7280_data = {
 	.i2sctrl_reg_base		= 0x1000,
@@ -426,6 +442,7 @@ static struct platform_driver sc7280_lpass_cpu_platform_driver = {
 	.driver = {
 		.name = "sc7280-lpass-cpu",
 		.of_match_table = of_match_ptr(sc7280_lpass_cpu_device_id),
+		.pm = &sc7280_lpass_pm_ops,
 	},
 	.probe = asoc_qcom_lpass_cpu_platform_probe,
 	.remove = asoc_qcom_lpass_cpu_platform_remove,

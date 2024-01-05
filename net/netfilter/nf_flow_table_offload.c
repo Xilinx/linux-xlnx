@@ -34,7 +34,7 @@ static void nf_flow_rule_lwt_match(struct nf_flow_match *match,
 {
 	struct nf_flow_key *mask = &match->mask;
 	struct nf_flow_key *key = &match->key;
-	unsigned int enc_keys;
+	unsigned long long enc_keys;
 
 	if (!tun_info || !(tun_info->mode & IP_TUNNEL_INFO_TX))
 		return;
@@ -43,8 +43,8 @@ static void nf_flow_rule_lwt_match(struct nf_flow_match *match,
 	NF_FLOW_DISSECTOR(match, FLOW_DISSECTOR_KEY_ENC_KEYID, enc_key_id);
 	key->enc_key_id.keyid = tunnel_id_to_key32(tun_info->key.tun_id);
 	mask->enc_key_id.keyid = 0xffffffff;
-	enc_keys = BIT(FLOW_DISSECTOR_KEY_ENC_KEYID) |
-		   BIT(FLOW_DISSECTOR_KEY_ENC_CONTROL);
+	enc_keys = BIT_ULL(FLOW_DISSECTOR_KEY_ENC_KEYID) |
+		   BIT_ULL(FLOW_DISSECTOR_KEY_ENC_CONTROL);
 
 	if (ip_tunnel_info_af(tun_info) == AF_INET) {
 		NF_FLOW_DISSECTOR(match, FLOW_DISSECTOR_KEY_ENC_IPV4_ADDRS,
@@ -55,7 +55,7 @@ static void nf_flow_rule_lwt_match(struct nf_flow_match *match,
 			mask->enc_ipv4.src = 0xffffffff;
 		if (key->enc_ipv4.dst)
 			mask->enc_ipv4.dst = 0xffffffff;
-		enc_keys |= BIT(FLOW_DISSECTOR_KEY_ENC_IPV4_ADDRS);
+		enc_keys |= BIT_ULL(FLOW_DISSECTOR_KEY_ENC_IPV4_ADDRS);
 		key->enc_control.addr_type = FLOW_DISSECTOR_KEY_IPV4_ADDRS;
 	} else {
 		memcpy(&key->enc_ipv6.src, &tun_info->key.u.ipv6.dst,
@@ -70,7 +70,7 @@ static void nf_flow_rule_lwt_match(struct nf_flow_match *match,
 			   sizeof(struct in6_addr)))
 			memset(&mask->enc_ipv6.dst, 0xff,
 			       sizeof(struct in6_addr));
-		enc_keys |= BIT(FLOW_DISSECTOR_KEY_ENC_IPV6_ADDRS);
+		enc_keys |= BIT_ULL(FLOW_DISSECTOR_KEY_ENC_IPV6_ADDRS);
 		key->enc_control.addr_type = FLOW_DISSECTOR_KEY_IPV6_ADDRS;
 	}
 
@@ -163,14 +163,14 @@ static int nf_flow_rule_match(struct nf_flow_match *match,
 		return -EOPNOTSUPP;
 	}
 	mask->control.addr_type = 0xffff;
-	match->dissector.used_keys |= BIT(key->control.addr_type);
+	match->dissector.used_keys |= BIT_ULL(key->control.addr_type);
 	mask->basic.n_proto = 0xffff;
 
 	switch (tuple->l4proto) {
 	case IPPROTO_TCP:
 		key->tcp.flags = 0;
 		mask->tcp.flags = cpu_to_be16(be32_to_cpu(TCP_FLAG_RST | TCP_FLAG_FIN) >> 16);
-		match->dissector.used_keys |= BIT(FLOW_DISSECTOR_KEY_TCP);
+		match->dissector.used_keys |= BIT_ULL(FLOW_DISSECTOR_KEY_TCP);
 		break;
 	case IPPROTO_UDP:
 	case IPPROTO_GRE:
@@ -182,9 +182,9 @@ static int nf_flow_rule_match(struct nf_flow_match *match,
 	key->basic.ip_proto = tuple->l4proto;
 	mask->basic.ip_proto = 0xff;
 
-	match->dissector.used_keys |= BIT(FLOW_DISSECTOR_KEY_META) |
-				      BIT(FLOW_DISSECTOR_KEY_CONTROL) |
-				      BIT(FLOW_DISSECTOR_KEY_BASIC);
+	match->dissector.used_keys |= BIT_ULL(FLOW_DISSECTOR_KEY_META) |
+				      BIT_ULL(FLOW_DISSECTOR_KEY_CONTROL) |
+				      BIT_ULL(FLOW_DISSECTOR_KEY_BASIC);
 
 	switch (tuple->l4proto) {
 	case IPPROTO_TCP:
@@ -194,7 +194,7 @@ static int nf_flow_rule_match(struct nf_flow_match *match,
 		key->tp.dst = tuple->dst_port;
 		mask->tp.dst = 0xffff;
 
-		match->dissector.used_keys |= BIT(FLOW_DISSECTOR_KEY_PORTS);
+		match->dissector.used_keys |= BIT_ULL(FLOW_DISSECTOR_KEY_PORTS);
 		break;
 	}
 
@@ -383,12 +383,12 @@ static void flow_offload_ipv6_mangle(struct nf_flow_rule *flow_rule,
 				     const __be32 *addr, const __be32 *mask)
 {
 	struct flow_action_entry *entry;
-	int i, j;
+	int i;
 
-	for (i = 0, j = 0; i < sizeof(struct in6_addr) / sizeof(u32); i += sizeof(u32), j++) {
+	for (i = 0; i < sizeof(struct in6_addr) / sizeof(u32); i++) {
 		entry = flow_action_entry_next(flow_rule);
 		flow_offload_mangle(entry, FLOW_ACT_MANGLE_HDR_TYPE_IP6,
-				    offset + i, &addr[j], mask);
+				    offset + i * sizeof(u32), &addr[i], mask);
 	}
 }
 
@@ -679,7 +679,7 @@ nf_flow_rule_route_common(struct net *net, const struct flow_offload *flow,
 	return 0;
 }
 
-int nf_flow_rule_route_ipv4(struct net *net, const struct flow_offload *flow,
+int nf_flow_rule_route_ipv4(struct net *net, struct flow_offload *flow,
 			    enum flow_offload_tuple_dir dir,
 			    struct nf_flow_rule *flow_rule)
 {
@@ -704,7 +704,7 @@ int nf_flow_rule_route_ipv4(struct net *net, const struct flow_offload *flow,
 }
 EXPORT_SYMBOL_GPL(nf_flow_rule_route_ipv4);
 
-int nf_flow_rule_route_ipv6(struct net *net, const struct flow_offload *flow,
+int nf_flow_rule_route_ipv6(struct net *net, struct flow_offload *flow,
 			    enum flow_offload_tuple_dir dir,
 			    struct nf_flow_rule *flow_rule)
 {
@@ -735,7 +735,7 @@ nf_flow_offload_rule_alloc(struct net *net,
 {
 	const struct nf_flowtable *flowtable = offload->flowtable;
 	const struct flow_offload_tuple *tuple, *other_tuple;
-	const struct flow_offload *flow = offload->flow;
+	struct flow_offload *flow = offload->flow;
 	struct dst_entry *other_dst = NULL;
 	struct nf_flow_rule *flow_rule;
 	int err = -ENOMEM;
@@ -895,8 +895,9 @@ static int flow_offload_rule_add(struct flow_offload_work *offload,
 
 	ok_count += flow_offload_tuple_add(offload, flow_rule[0],
 					   FLOW_OFFLOAD_DIR_ORIGINAL);
-	ok_count += flow_offload_tuple_add(offload, flow_rule[1],
-					   FLOW_OFFLOAD_DIR_REPLY);
+	if (test_bit(NF_FLOW_HW_BIDIRECTIONAL, &offload->flow->flags))
+		ok_count += flow_offload_tuple_add(offload, flow_rule[1],
+						   FLOW_OFFLOAD_DIR_REPLY);
 	if (ok_count == 0)
 		return -ENOENT;
 
@@ -926,7 +927,8 @@ static void flow_offload_work_del(struct flow_offload_work *offload)
 {
 	clear_bit(IPS_HW_OFFLOAD_BIT, &offload->flow->ct->status);
 	flow_offload_tuple_del(offload, FLOW_OFFLOAD_DIR_ORIGINAL);
-	flow_offload_tuple_del(offload, FLOW_OFFLOAD_DIR_REPLY);
+	if (test_bit(NF_FLOW_HW_BIDIRECTIONAL, &offload->flow->flags))
+		flow_offload_tuple_del(offload, FLOW_OFFLOAD_DIR_REPLY);
 	set_bit(NF_FLOW_HW_DEAD, &offload->flow->flags);
 }
 
@@ -946,7 +948,9 @@ static void flow_offload_work_stats(struct flow_offload_work *offload)
 	u64 lastused;
 
 	flow_offload_tuple_stats(offload, FLOW_OFFLOAD_DIR_ORIGINAL, &stats[0]);
-	flow_offload_tuple_stats(offload, FLOW_OFFLOAD_DIR_REPLY, &stats[1]);
+	if (test_bit(NF_FLOW_HW_BIDIRECTIONAL, &offload->flow->flags))
+		flow_offload_tuple_stats(offload, FLOW_OFFLOAD_DIR_REPLY,
+					 &stats[1]);
 
 	lastused = max_t(u64, stats[0].lastused, stats[1].lastused);
 	offload->flow->timeout = max_t(u64, offload->flow->timeout,

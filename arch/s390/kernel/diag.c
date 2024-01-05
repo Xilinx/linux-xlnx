@@ -11,6 +11,7 @@
 #include <linux/cpu.h>
 #include <linux/seq_file.h>
 #include <linux/debugfs.h>
+#include <linux/vmalloc.h>
 #include <asm/asm-extable.h>
 #include <asm/diag.h>
 #include <asm/trace/diag.h>
@@ -35,6 +36,7 @@ static const struct diag_desc diag_map[NR_DIAG_STAT] = {
 	[DIAG_STAT_X014] = { .code = 0x014, .name = "Spool File Services" },
 	[DIAG_STAT_X044] = { .code = 0x044, .name = "Voluntary Timeslice End" },
 	[DIAG_STAT_X064] = { .code = 0x064, .name = "NSS Manipulation" },
+	[DIAG_STAT_X08C] = { .code = 0x08c, .name = "Access 3270 Display Device Information" },
 	[DIAG_STAT_X09C] = { .code = 0x09c, .name = "Relinquish Timeslice" },
 	[DIAG_STAT_X0DC] = { .code = 0x0dc, .name = "Appldata Control" },
 	[DIAG_STAT_X204] = { .code = 0x204, .name = "Logical-CPU Utilization" },
@@ -49,6 +51,7 @@ static const struct diag_desc diag_map[NR_DIAG_STAT] = {
 	[DIAG_STAT_X304] = { .code = 0x304, .name = "Partition-Resource Service" },
 	[DIAG_STAT_X308] = { .code = 0x308, .name = "List-Directed IPL" },
 	[DIAG_STAT_X318] = { .code = 0x318, .name = "CP Name and Version Codes" },
+	[DIAG_STAT_X320] = { .code = 0x320, .name = "Certificate Store" },
 	[DIAG_STAT_X500] = { .code = 0x500, .name = "Virtio Service" },
 };
 
@@ -57,11 +60,15 @@ struct diag_ops __amode31_ref diag_amode31_ops = {
 	.diag26c = _diag26c_amode31,
 	.diag14 = _diag14_amode31,
 	.diag0c = _diag0c_amode31,
+	.diag8c = _diag8c_amode31,
 	.diag308_reset = _diag308_reset_amode31
 };
 
 static struct diag210 _diag210_tmp_amode31 __section(".amode31.data");
 struct diag210 __amode31_ref *__diag210_tmp_amode31 = &_diag210_tmp_amode31;
+
+static struct diag8c _diag8c_tmp_amode31 __section(".amode31.data");
+static struct diag8c __amode31_ref *__diag8c_tmp_amode31 = &_diag8c_tmp_amode31;
 
 static int show_diag_stat(struct seq_file *m, void *v)
 {
@@ -162,8 +169,29 @@ static inline int __diag204(unsigned long *subcode, unsigned long size, void *ad
 	return rp.odd;
 }
 
+/**
+ * diag204() - Issue diagnose 204 call.
+ * @subcode: Subcode of diagnose 204 to be executed.
+ * @size: Size of area in pages which @area points to, if given.
+ * @addr: Vmalloc'ed memory area where the result is written to.
+ *
+ * Execute diagnose 204 with the given subcode and write the result to the
+ * memory area specified with @addr. For subcodes which do not write a
+ * result to memory both @size and @addr must be zero. If @addr is
+ * specified it must be page aligned and must have been allocated with
+ * vmalloc(). Conversion to real / physical addresses will be handled by
+ * this function if required.
+ */
 int diag204(unsigned long subcode, unsigned long size, void *addr)
 {
+	if (addr) {
+		if (WARN_ON_ONCE(!is_vmalloc_addr(addr)))
+			return -1;
+		if (WARN_ON_ONCE(!IS_ALIGNED((unsigned long)addr, PAGE_SIZE)))
+			return -1;
+	}
+	if ((subcode & DIAG204_SUBCODE_MASK) == DIAG204_SUBC_STIB4)
+		addr = (void *)pfn_to_phys(vmalloc_to_pfn(addr));
 	diag_stat_inc(DIAG_STAT_X204);
 	size = __diag204(&subcode, size, addr);
 	if (subcode)
@@ -193,6 +221,27 @@ int diag210(struct diag210 *addr)
 	return ccode;
 }
 EXPORT_SYMBOL(diag210);
+
+/*
+ * Diagnose 8C: Access 3270 Display Device Information
+ */
+int diag8c(struct diag8c *addr, struct ccw_dev_id *devno)
+{
+	static DEFINE_SPINLOCK(diag8c_lock);
+	unsigned long flags;
+	int ccode;
+
+	spin_lock_irqsave(&diag8c_lock, flags);
+
+	diag_stat_inc(DIAG_STAT_X08C);
+	ccode = diag_amode31_ops.diag8c(__diag8c_tmp_amode31, devno, sizeof(*addr));
+
+	*addr = *__diag8c_tmp_amode31;
+	spin_unlock_irqrestore(&diag8c_lock, flags);
+
+	return ccode;
+}
+EXPORT_SYMBOL(diag8c);
 
 int diag224(void *ptr)
 {

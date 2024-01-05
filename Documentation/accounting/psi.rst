@@ -105,6 +105,10 @@ prevent overly frequent polling. Max limit is chosen as a high enough number
 after which monitors are most likely not needed and psi averages can be used
 instead.
 
+Unprivileged users can also create monitors, with the only limitation that the
+window size must be a multiple of 2s, in order to prevent excessive resource
+usage.
+
 When activated, psi monitor stays active for at least the duration of one
 tracking window to avoid repeated activations/deactivations when system is
 bouncing in and out of the stall state.
@@ -174,7 +178,7 @@ Userspace monitor usage example
 Cgroup2 interface
 =================
 
-In a system with a CONFIG_CGROUP=y kernel and the cgroup2 filesystem
+In a system with a CONFIG_CGROUPS=y kernel and the cgroup2 filesystem
 mounted, pressure stall information is also tracked for tasks grouped
 into cgroups. Each subdirectory in the cgroupfs mountpoint contains
 cpu.pressure, memory.pressure, and io.pressure files; the format is

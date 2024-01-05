@@ -331,6 +331,25 @@ int rpmsg_trysend_offchannel(struct rpmsg_endpoint *ept, u32 src, u32 dst,
 EXPORT_SYMBOL(rpmsg_trysend_offchannel);
 
 /**
+ * rpmsg_set_flow_control() - request remote to pause/resume transmission
+ * @ept:	the rpmsg endpoint
+ * @pause:	pause transmission
+ * @dst:	destination address of the endpoint
+ *
+ * Return: 0 on success and an appropriate error value on failure.
+ */
+int rpmsg_set_flow_control(struct rpmsg_endpoint *ept, bool pause, u32 dst)
+{
+	if (WARN_ON(!ept))
+		return -EINVAL;
+	if (!ept->ops->set_flow_control)
+		return -EOPNOTSUPP;
+
+	return ept->ops->set_flow_control(ept, pause, dst);
+}
+EXPORT_SYMBOL_GPL(rpmsg_set_flow_control);
+
+/**
  * rpmsg_get_mtu() - get maximum transmission buffer size for sending message.
  * @ept: the rpmsg endpoint
  *
@@ -492,9 +511,9 @@ static int rpmsg_dev_match(struct device *dev, struct device_driver *drv)
 	return of_driver_match_device(dev, drv);
 }
 
-static int rpmsg_uevent(struct device *dev, struct kobj_uevent_env *env)
+static int rpmsg_uevent(const struct device *dev, struct kobj_uevent_env *env)
 {
-	struct rpmsg_device *rpdev = to_rpmsg_device(dev);
+	const struct rpmsg_device *rpdev = to_rpmsg_device(dev);
 	int ret;
 
 	ret = of_device_uevent_modalias(dev, env);
@@ -539,6 +558,8 @@ static int rpmsg_dev_probe(struct device *dev)
 
 		rpdev->ept = ept;
 		rpdev->src = ept->addr;
+
+		ept->flow_cb = rpdrv->flowcontrol;
 	}
 
 	err = rpdrv->probe(rpdev);
@@ -694,7 +715,7 @@ static int __init rpmsg_init(void)
 {
 	int ret;
 
-	rpmsg_class = class_create(THIS_MODULE, "rpmsg");
+	rpmsg_class = class_create("rpmsg");
 	if (IS_ERR(rpmsg_class)) {
 		pr_err("failed to create rpmsg class\n");
 		return PTR_ERR(rpmsg_class);

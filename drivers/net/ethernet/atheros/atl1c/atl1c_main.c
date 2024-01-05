@@ -207,16 +207,6 @@ static inline void atl1c_irq_disable(struct atl1c_adapter *adapter)
 	synchronize_irq(adapter->pdev->irq);
 }
 
-/**
- * atl1c_irq_reset - reset interrupt confiure on the NIC
- * @adapter: board private structure
- */
-static inline void atl1c_irq_reset(struct atl1c_adapter *adapter)
-{
-	atomic_set(&adapter->irq_sem, 1);
-	atl1c_irq_enable(adapter);
-}
-
 /*
  * atl1c_wait_until_idle - wait up to AT_HW_MAX_IDLE_DELAY reads
  * of the idle status register until the device is actually idle
@@ -2104,8 +2094,11 @@ static int atl1c_tso_csum(struct atl1c_adapter *adapter,
 			real_len = (((unsigned char *)ip_hdr(skb) - skb->data)
 					+ ntohs(ip_hdr(skb)->tot_len));
 
-			if (real_len < skb->len)
-				pskb_trim(skb, real_len);
+			if (real_len < skb->len) {
+				err = pskb_trim(skb, real_len);
+				if (err)
+					return err;
+			}
 
 			hdr_len = skb_tcp_all_headers(skb);
 			if (unlikely(skb->len == hdr_len)) {

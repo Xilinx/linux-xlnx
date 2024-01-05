@@ -7,7 +7,7 @@
 #include <drm/drm_cache.h>
 
 #include "gt/intel_gt.h"
-#include "gt/intel_gt_pm.h"
+#include "gt/intel_tlb.h"
 
 #include "i915_drv.h"
 #include "i915_gem_object.h"
@@ -16,8 +16,7 @@
 #include "i915_gem_mman.h"
 
 void __i915_gem_object_set_pages(struct drm_i915_gem_object *obj,
-				 struct sg_table *pages,
-				 unsigned int sg_page_sizes)
+				 struct sg_table *pages)
 {
 	struct drm_i915_private *i915 = to_i915(obj->base.dev);
 	unsigned long supported = RUNTIME_INFO(i915)->page_sizes;
@@ -45,8 +44,8 @@ void __i915_gem_object_set_pages(struct drm_i915_gem_object *obj,
 
 	obj->mm.pages = pages;
 
-	GEM_BUG_ON(!sg_page_sizes);
-	obj->mm.page_sizes.phys = sg_page_sizes;
+	obj->mm.page_sizes.phys = i915_sg_dma_sizes(pages->sgl);
+	GEM_BUG_ON(!obj->mm.page_sizes.phys);
 
 	/*
 	 * Calculate the supported page-sizes which fit into the given
@@ -194,13 +193,16 @@ static void unmap_object(struct drm_i915_gem_object *obj, void *ptr)
 static void flush_tlb_invalidate(struct drm_i915_gem_object *obj)
 {
 	struct drm_i915_private *i915 = to_i915(obj->base.dev);
-	struct intel_gt *gt = to_gt(i915);
+	struct intel_gt *gt;
+	int id;
 
-	if (!obj->mm.tlb)
-		return;
+	for_each_gt(gt, i915, id) {
+		if (!obj->mm.tlb[id])
+			continue;
 
-	intel_gt_invalidate_tlb(gt, obj->mm.tlb);
-	obj->mm.tlb = 0;
+		intel_gt_invalidate_tlb_full(gt, obj->mm.tlb[id]);
+		obj->mm.tlb[id] = 0;
+	}
 }
 
 struct sg_table *
@@ -510,14 +512,16 @@ void __i915_gem_object_release_map(struct drm_i915_gem_object *obj)
 }
 
 struct scatterlist *
-__i915_gem_object_get_sg(struct drm_i915_gem_object *obj,
-			 struct i915_gem_object_page_iter *iter,
-			 unsigned int n,
-			 unsigned int *offset,
-			 bool dma)
+__i915_gem_object_page_iter_get_sg(struct drm_i915_gem_object *obj,
+				   struct i915_gem_object_page_iter *iter,
+				   pgoff_t n,
+				   unsigned int *offset)
+
 {
-	struct scatterlist *sg;
+	const bool dma = iter == &obj->mm.get_dma_page ||
+			 iter == &obj->ttm.get_io_page;
 	unsigned int idx, count;
+	struct scatterlist *sg;
 
 	might_sleep();
 	GEM_BUG_ON(n >= obj->base.size >> PAGE_SHIFT);
@@ -625,7 +629,7 @@ lookup:
 }
 
 struct page *
-i915_gem_object_get_page(struct drm_i915_gem_object *obj, unsigned int n)
+__i915_gem_object_get_page(struct drm_i915_gem_object *obj, pgoff_t n)
 {
 	struct scatterlist *sg;
 	unsigned int offset;
@@ -638,8 +642,7 @@ i915_gem_object_get_page(struct drm_i915_gem_object *obj, unsigned int n)
 
 /* Like i915_gem_object_get_page(), but mark the returned page dirty */
 struct page *
-i915_gem_object_get_dirty_page(struct drm_i915_gem_object *obj,
-			       unsigned int n)
+__i915_gem_object_get_dirty_page(struct drm_i915_gem_object *obj, pgoff_t n)
 {
 	struct page *page;
 
@@ -651,9 +654,8 @@ i915_gem_object_get_dirty_page(struct drm_i915_gem_object *obj,
 }
 
 dma_addr_t
-i915_gem_object_get_dma_address_len(struct drm_i915_gem_object *obj,
-				    unsigned long n,
-				    unsigned int *len)
+__i915_gem_object_get_dma_address_len(struct drm_i915_gem_object *obj,
+				      pgoff_t n, unsigned int *len)
 {
 	struct scatterlist *sg;
 	unsigned int offset;
@@ -667,8 +669,7 @@ i915_gem_object_get_dma_address_len(struct drm_i915_gem_object *obj,
 }
 
 dma_addr_t
-i915_gem_object_get_dma_address(struct drm_i915_gem_object *obj,
-				unsigned long n)
+__i915_gem_object_get_dma_address(struct drm_i915_gem_object *obj, pgoff_t n)
 {
 	return i915_gem_object_get_dma_address_len(obj, n, NULL);
 }

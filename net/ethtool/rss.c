@@ -42,7 +42,8 @@ rss_parse_request(struct ethnl_req_info *req_info, struct nlattr **tb,
 
 static int
 rss_prepare_data(const struct ethnl_req_info *req_base,
-		 struct ethnl_reply_data *reply_base, struct genl_info *info)
+		 struct ethnl_reply_data *reply_base,
+		 const struct genl_info *info)
 {
 	struct rss_reply_data *data = RSS_REPDATA(reply_base);
 	struct rss_req_info *request = RSS_REQINFO(req_base);
@@ -122,10 +123,13 @@ rss_fill_reply(struct sk_buff *skb, const struct ethnl_req_info *req_base,
 {
 	const struct rss_reply_data *data = RSS_REPDATA(reply_base);
 
-	if (nla_put_u32(skb, ETHTOOL_A_RSS_HFUNC, data->hfunc) ||
-	    nla_put(skb, ETHTOOL_A_RSS_INDIR,
-		    sizeof(u32) * data->indir_size, data->indir_table) ||
-	    nla_put(skb, ETHTOOL_A_RSS_HKEY, data->hkey_size, data->hkey))
+	if ((data->hfunc &&
+	     nla_put_u32(skb, ETHTOOL_A_RSS_HFUNC, data->hfunc)) ||
+	    (data->indir_size &&
+	     nla_put(skb, ETHTOOL_A_RSS_INDIR,
+		     sizeof(u32) * data->indir_size, data->indir_table)) ||
+	    (data->hkey_size &&
+	     nla_put(skb, ETHTOOL_A_RSS_HKEY, data->hkey_size, data->hkey)))
 		return -EMSGSIZE;
 
 	return 0;

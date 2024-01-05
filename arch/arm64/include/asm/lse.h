@@ -10,7 +10,6 @@
 
 #include <linux/compiler_types.h>
 #include <linux/export.h>
-#include <linux/jump_label.h>
 #include <linux/stringify.h>
 #include <asm/alternative.h>
 #include <asm/alternative-macros.h>
@@ -19,7 +18,7 @@
 
 static __always_inline bool system_uses_lse_atomics(void)
 {
-	return alternative_has_feature_likely(ARM64_HAS_LSE_ATOMICS);
+	return alternative_has_cap_likely(ARM64_HAS_LSE_ATOMICS);
 }
 
 #define __lse_ll_sc_body(op, ...)					\

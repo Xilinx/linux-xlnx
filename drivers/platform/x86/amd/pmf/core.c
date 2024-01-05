@@ -8,6 +8,7 @@
  * Author: Shyam Sundar S K <Shyam-sundar.S-k@amd.com>
  */
 
+#include <asm/amd_nb.h>
 #include <linux/debugfs.h>
 #include <linux/iopoll.h>
 #include <linux/module.h>
@@ -22,8 +23,6 @@
 #define AMD_PMF_REGISTER_ARGUMENT	0xA58
 
 /* Base address of SMU for mapping physical address to virtual address */
-#define AMD_PMF_SMU_INDEX_ADDRESS	0xB8
-#define AMD_PMF_SMU_INDEX_DATA		0xBC
 #define AMD_PMF_MAPPING_SIZE		0x01000
 #define AMD_PMF_BASE_ADDR_OFFSET	0x10000
 #define AMD_PMF_BASE_ADDR_LO		0x13B102E8
@@ -41,6 +40,7 @@
 /* List of supported CPU ids */
 #define AMD_CPU_ID_RMB			0x14b5
 #define AMD_CPU_ID_PS			0x14e8
+#define PCI_DEVICE_ID_AMD_1AH_M20H_ROOT	0x1507
 
 #define PMF_MSG_DELAY_MIN_US		50
 #define RESPONSE_REGISTER_LOOP_MAX	20000
@@ -57,6 +57,29 @@ MODULE_PARM_DESC(metrics_table_loop_ms, "Metrics Table sample size time (default
 static bool force_load;
 module_param(force_load, bool, 0444);
 MODULE_PARM_DESC(force_load, "Force load this driver on supported older platforms (experimental)");
+
+static int amd_pmf_pwr_src_notify_call(struct notifier_block *nb, unsigned long event, void *data)
+{
+	struct amd_pmf_dev *pmf = container_of(nb, struct amd_pmf_dev, pwr_src_notifier);
+
+	if (event != PSY_EVENT_PROP_CHANGED)
+		return NOTIFY_OK;
+
+	if (is_apmf_func_supported(pmf, APMF_FUNC_AUTO_MODE) ||
+	    is_apmf_func_supported(pmf, APMF_FUNC_DYN_SLIDER_DC) ||
+	    is_apmf_func_supported(pmf, APMF_FUNC_DYN_SLIDER_AC)) {
+		if ((pmf->amt_enabled || pmf->cnqf_enabled) && is_pprof_balanced(pmf))
+			return NOTIFY_DONE;
+	}
+
+	if (is_apmf_func_supported(pmf, APMF_FUNC_STATIC_SLIDER_GRANULAR))
+		amd_pmf_set_sps_power_limits(pmf);
+
+	if (is_apmf_func_supported(pmf, APMF_FUNC_OS_POWER_SLIDER_UPDATE))
+		amd_pmf_power_slider_update_event(pmf);
+
+	return NOTIFY_OK;
+}
 
 static int current_power_limits_show(struct seq_file *seq, void *unused)
 {
@@ -224,20 +247,14 @@ out_unlock:
 static const struct pci_device_id pmf_pci_ids[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_AMD, AMD_CPU_ID_RMB) },
 	{ PCI_DEVICE(PCI_VENDOR_ID_AMD, AMD_CPU_ID_PS) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_AMD, PCI_DEVICE_ID_AMD_1AH_M20H_ROOT) },
 	{ }
 };
 
-int amd_pmf_init_metrics_table(struct amd_pmf_dev *dev)
+static void amd_pmf_set_dram_addr(struct amd_pmf_dev *dev)
 {
 	u64 phys_addr;
 	u32 hi, low;
-
-	INIT_DELAYED_WORK(&dev->work_buffer, amd_pmf_get_metrics);
-
-	/* Get Metrics Table Address */
-	dev->buf = kzalloc(sizeof(dev->m_table), GFP_KERNEL);
-	if (!dev->buf)
-		return -ENOMEM;
 
 	phys_addr = virt_to_phys(dev->buf);
 	hi = phys_addr >> 32;
@@ -245,6 +262,18 @@ int amd_pmf_init_metrics_table(struct amd_pmf_dev *dev)
 
 	amd_pmf_send_cmd(dev, SET_DRAM_ADDR_HIGH, 0, hi, NULL);
 	amd_pmf_send_cmd(dev, SET_DRAM_ADDR_LOW, 0, low, NULL);
+}
+
+int amd_pmf_init_metrics_table(struct amd_pmf_dev *dev)
+{
+	/* Get Metrics Table Address */
+	dev->buf = kzalloc(sizeof(dev->m_table), GFP_KERNEL);
+	if (!dev->buf)
+		return -ENOMEM;
+
+	INIT_DELAYED_WORK(&dev->work_buffer, amd_pmf_get_metrics);
+
+	amd_pmf_set_dram_addr(dev);
 
 	/*
 	 * Start collecting the metrics data after a small delay
@@ -255,13 +284,28 @@ int amd_pmf_init_metrics_table(struct amd_pmf_dev *dev)
 	return 0;
 }
 
+static int amd_pmf_resume_handler(struct device *dev)
+{
+	struct amd_pmf_dev *pdev = dev_get_drvdata(dev);
+
+	if (pdev->buf)
+		amd_pmf_set_dram_addr(pdev);
+
+	return 0;
+}
+
+static DEFINE_SIMPLE_DEV_PM_OPS(amd_pmf_pm, NULL, amd_pmf_resume_handler);
+
 static void amd_pmf_init_features(struct amd_pmf_dev *dev)
 {
 	int ret;
 
 	/* Enable Static Slider */
-	if (is_apmf_func_supported(dev, APMF_FUNC_STATIC_SLIDER_GRANULAR)) {
+	if (is_apmf_func_supported(dev, APMF_FUNC_STATIC_SLIDER_GRANULAR) ||
+	    is_apmf_func_supported(dev, APMF_FUNC_OS_POWER_SLIDER_UPDATE)) {
 		amd_pmf_init_sps(dev);
+		dev->pwr_src_notifier.notifier_call = amd_pmf_pwr_src_notify_call;
+		power_supply_reg_notifier(&dev->pwr_src_notifier);
 		dev_dbg(dev->dev, "SPS enabled and Platform Profiles registered\n");
 	}
 
@@ -280,8 +324,11 @@ static void amd_pmf_init_features(struct amd_pmf_dev *dev)
 
 static void amd_pmf_deinit_features(struct amd_pmf_dev *dev)
 {
-	if (is_apmf_func_supported(dev, APMF_FUNC_STATIC_SLIDER_GRANULAR))
+	if (is_apmf_func_supported(dev, APMF_FUNC_STATIC_SLIDER_GRANULAR) ||
+	    is_apmf_func_supported(dev, APMF_FUNC_OS_POWER_SLIDER_UPDATE)) {
+		power_supply_unreg_notifier(&dev->pwr_src_notifier);
 		amd_pmf_deinit_sps(dev);
+	}
 
 	if (is_apmf_func_supported(dev, APMF_FUNC_AUTO_MODE)) {
 		amd_pmf_deinit_auto_mode(dev);
@@ -294,6 +341,7 @@ static void amd_pmf_deinit_features(struct amd_pmf_dev *dev)
 static const struct acpi_device_id amd_pmf_acpi_ids[] = {
 	{"AMDI0100", 0x100},
 	{"AMDI0102", 0},
+	{"AMDI0103", 0},
 	{ }
 };
 MODULE_DEVICE_TABLE(acpi, amd_pmf_acpi_ids);
@@ -329,30 +377,19 @@ static int amd_pmf_probe(struct platform_device *pdev)
 	}
 
 	dev->cpu_id = rdev->device;
-	err = pci_write_config_dword(rdev, AMD_PMF_SMU_INDEX_ADDRESS, AMD_PMF_BASE_ADDR_LO);
-	if (err) {
-		dev_err(dev->dev, "error writing to 0x%x\n", AMD_PMF_SMU_INDEX_ADDRESS);
-		pci_dev_put(rdev);
-		return pcibios_err_to_errno(err);
-	}
 
-	err = pci_read_config_dword(rdev, AMD_PMF_SMU_INDEX_DATA, &val);
+	err = amd_smn_read(0, AMD_PMF_BASE_ADDR_LO, &val);
 	if (err) {
+		dev_err(dev->dev, "error in reading from 0x%x\n", AMD_PMF_BASE_ADDR_LO);
 		pci_dev_put(rdev);
 		return pcibios_err_to_errno(err);
 	}
 
 	base_addr_lo = val & AMD_PMF_BASE_ADDR_HI_MASK;
 
-	err = pci_write_config_dword(rdev, AMD_PMF_SMU_INDEX_ADDRESS, AMD_PMF_BASE_ADDR_HI);
+	err = amd_smn_read(0, AMD_PMF_BASE_ADDR_HI, &val);
 	if (err) {
-		dev_err(dev->dev, "error writing to 0x%x\n", AMD_PMF_SMU_INDEX_ADDRESS);
-		pci_dev_put(rdev);
-		return pcibios_err_to_errno(err);
-	}
-
-	err = pci_read_config_dword(rdev, AMD_PMF_SMU_INDEX_DATA, &val);
-	if (err) {
+		dev_err(dev->dev, "error in reading from 0x%x\n", AMD_PMF_BASE_ADDR_HI);
 		pci_dev_put(rdev);
 		return pcibios_err_to_errno(err);
 	}
@@ -366,30 +403,30 @@ static int amd_pmf_probe(struct platform_device *pdev)
 	if (!dev->regbase)
 		return -ENOMEM;
 
+	mutex_init(&dev->lock);
+	mutex_init(&dev->update_mutex);
+
 	apmf_acpi_init(dev);
 	platform_set_drvdata(pdev, dev);
 	amd_pmf_init_features(dev);
 	apmf_install_handler(dev);
 	amd_pmf_dbgfs_register(dev);
 
-	mutex_init(&dev->lock);
-	mutex_init(&dev->update_mutex);
 	dev_info(dev->dev, "registered PMF device successfully\n");
 
 	return 0;
 }
 
-static int amd_pmf_remove(struct platform_device *pdev)
+static void amd_pmf_remove(struct platform_device *pdev)
 {
 	struct amd_pmf_dev *dev = platform_get_drvdata(pdev);
 
-	mutex_destroy(&dev->lock);
-	mutex_destroy(&dev->update_mutex);
 	amd_pmf_deinit_features(dev);
 	apmf_acpi_deinit(dev);
 	amd_pmf_dbgfs_unregister(dev);
+	mutex_destroy(&dev->lock);
+	mutex_destroy(&dev->update_mutex);
 	kfree(dev->buf);
-	return 0;
 }
 
 static const struct attribute_group *amd_pmf_driver_groups[] = {
@@ -402,9 +439,10 @@ static struct platform_driver amd_pmf_driver = {
 		.name = "amd-pmf",
 		.acpi_match_table = amd_pmf_acpi_ids,
 		.dev_groups = amd_pmf_driver_groups,
+		.pm = pm_sleep_ptr(&amd_pmf_pm),
 	},
 	.probe = amd_pmf_probe,
-	.remove = amd_pmf_remove,
+	.remove_new = amd_pmf_remove,
 };
 module_platform_driver(amd_pmf_driver);
 

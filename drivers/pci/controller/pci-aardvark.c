@@ -1859,20 +1859,18 @@ static int advk_pcie_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	pcie->reset_gpio = devm_gpiod_get_from_of_node(dev, dev->of_node,
-						       "reset-gpios", 0,
-						       GPIOD_OUT_LOW,
-						       "pcie1-reset");
+	pcie->reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW);
 	ret = PTR_ERR_OR_ZERO(pcie->reset_gpio);
 	if (ret) {
-		if (ret == -ENOENT) {
-			pcie->reset_gpio = NULL;
-		} else {
-			if (ret != -EPROBE_DEFER)
-				dev_err(dev, "Failed to get reset-gpio: %i\n",
-					ret);
-			return ret;
-		}
+		if (ret != -EPROBE_DEFER)
+			dev_err(dev, "Failed to get reset-gpio: %i\n", ret);
+		return ret;
+	}
+
+	ret = gpiod_set_consumer_name(pcie->reset_gpio, "pcie1-reset");
+	if (ret) {
+		dev_err(dev, "Failed to set reset gpio name: %d\n", ret);
+		return ret;
 	}
 
 	ret = of_pci_get_max_link_speed(dev->of_node);
@@ -1929,7 +1927,7 @@ static int advk_pcie_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int advk_pcie_remove(struct platform_device *pdev)
+static void advk_pcie_remove(struct platform_device *pdev)
 {
 	struct advk_pcie *pcie = platform_get_drvdata(pdev);
 	struct pci_host_bridge *bridge = pci_host_bridge_from_priv(pcie);
@@ -1991,8 +1989,6 @@ static int advk_pcie_remove(struct platform_device *pdev)
 
 	/* Disable phy */
 	advk_pcie_disable_phy(pcie);
-
-	return 0;
 }
 
 static const struct of_device_id advk_pcie_of_match_table[] = {
@@ -2007,7 +2003,7 @@ static struct platform_driver advk_pcie_driver = {
 		.of_match_table = advk_pcie_of_match_table,
 	},
 	.probe = advk_pcie_probe,
-	.remove = advk_pcie_remove,
+	.remove_new = advk_pcie_remove,
 };
 module_platform_driver(advk_pcie_driver);
 

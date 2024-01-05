@@ -37,7 +37,7 @@ void snd_soc_jack_report(struct snd_soc_jack *jack, int status, int mask)
 	struct snd_soc_jack_pin *pin;
 	unsigned int sync = 0;
 
-	if (!jack)
+	if (!jack || !jack->jack)
 		return;
 	trace_snd_soc_jack_report(jack, mask, status);
 
@@ -367,6 +367,7 @@ got_gpio:
 
 		ret = request_any_context_irq(gpiod_to_irq(gpios[i].desc),
 					      gpio_handler,
+					      IRQF_SHARED |
 					      IRQF_TRIGGER_RISING |
 					      IRQF_TRIGGER_FALLING,
 					      gpios[i].name,

@@ -1,16 +1,16 @@
 # SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
 %YAML 1.2
 ---
-$id: "http://devicetree.org/schemas/usb/richtek,rt1719.yaml#"
-$schema: "http://devicetree.org/meta-schemas/core.yaml#"
+$id: http://devicetree.org/schemas/usb/richtek,rt1719.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
 
-title: Richtek RT1719 sink-only Type-C PD controller bindings
+title: Richtek RT1719 sink-only Type-C PD controller
 
 maintainers:
   - ChiYuan Huang <cy_huang@richtek.com>
 
 description: |
-  The RT1719 is a sink-only USB Type-C contoller that complies with the latest
+  The RT1719 is a sink-only USB Type-C controller that complies with the latest
   USB Type-C and PD standards. It does the USB Type-C detection including attach
   and orientation. It integrates the physical layer of the USB BMC power
   delivery protocol to allow up to 100W of power. The BMC PD block enables full
@@ -48,7 +48,7 @@ required:
 examples:
   - |
     #include <dt-bindings/interrupt-controller/irq.h>
-    i2c0 {
+    i2c {
       #address-cells = <1>;
       #size-cells = <0>;
 

@@ -364,9 +364,9 @@ struct inode *nilfs_new_inode(struct inode *dir, umode_t mode)
 	ii->i_bh = bh;
 
 	atomic64_inc(&root->inodes_count);
-	inode_init_owner(&init_user_ns, inode, dir, mode);
+	inode_init_owner(&nop_mnt_idmap, inode, dir, mode);
 	inode->i_ino = ino;
-	inode->i_mtime = inode->i_atime = inode->i_ctime = current_time(inode);
+	inode->i_mtime = inode->i_atime = inode_set_ctime_current(inode);
 
 	if (S_ISREG(mode) || S_ISDIR(mode) || S_ISLNK(mode)) {
 		err = nilfs_bmap_read(ii->i_bmap, NULL);
@@ -450,10 +450,10 @@ int nilfs_read_inode_common(struct inode *inode,
 	set_nlink(inode, le16_to_cpu(raw_inode->i_links_count));
 	inode->i_size = le64_to_cpu(raw_inode->i_size);
 	inode->i_atime.tv_sec = le64_to_cpu(raw_inode->i_mtime);
-	inode->i_ctime.tv_sec = le64_to_cpu(raw_inode->i_ctime);
+	inode_set_ctime(inode, le64_to_cpu(raw_inode->i_ctime),
+			le32_to_cpu(raw_inode->i_ctime_nsec));
 	inode->i_mtime.tv_sec = le64_to_cpu(raw_inode->i_mtime);
 	inode->i_atime.tv_nsec = le32_to_cpu(raw_inode->i_mtime_nsec);
-	inode->i_ctime.tv_nsec = le32_to_cpu(raw_inode->i_ctime_nsec);
 	inode->i_mtime.tv_nsec = le32_to_cpu(raw_inode->i_mtime_nsec);
 	if (nilfs_is_metadata_file_inode(inode) && !S_ISREG(inode->i_mode))
 		return -EIO; /* this inode is for metadata and corrupted */
@@ -768,9 +768,9 @@ void nilfs_write_inode_common(struct inode *inode,
 	raw_inode->i_gid = cpu_to_le32(i_gid_read(inode));
 	raw_inode->i_links_count = cpu_to_le16(inode->i_nlink);
 	raw_inode->i_size = cpu_to_le64(inode->i_size);
-	raw_inode->i_ctime = cpu_to_le64(inode->i_ctime.tv_sec);
+	raw_inode->i_ctime = cpu_to_le64(inode_get_ctime(inode).tv_sec);
 	raw_inode->i_mtime = cpu_to_le64(inode->i_mtime.tv_sec);
-	raw_inode->i_ctime_nsec = cpu_to_le32(inode->i_ctime.tv_nsec);
+	raw_inode->i_ctime_nsec = cpu_to_le32(inode_get_ctime(inode).tv_nsec);
 	raw_inode->i_mtime_nsec = cpu_to_le32(inode->i_mtime.tv_nsec);
 	raw_inode->i_blocks = cpu_to_le64(inode->i_blocks);
 
@@ -875,7 +875,7 @@ void nilfs_truncate(struct inode *inode)
 
 	nilfs_truncate_bmap(ii, blkoff);
 
-	inode->i_mtime = inode->i_ctime = current_time(inode);
+	inode->i_mtime = inode_set_ctime_current(inode);
 	if (IS_SYNC(inode))
 		nilfs_set_transaction_flag(NILFS_TI_SYNC);
 
@@ -917,6 +917,7 @@ void nilfs_evict_inode(struct inode *inode)
 	struct nilfs_transaction_info ti;
 	struct super_block *sb = inode->i_sb;
 	struct nilfs_inode_info *ii = NILFS_I(inode);
+	struct the_nilfs *nilfs;
 	int ret;
 
 	if (inode->i_nlink || !ii->i_root || unlikely(is_bad_inode(inode))) {
@@ -928,6 +929,23 @@ void nilfs_evict_inode(struct inode *inode)
 	nilfs_transaction_begin(sb, &ti, 0); /* never fails */
 
 	truncate_inode_pages_final(&inode->i_data);
+
+	nilfs = sb->s_fs_info;
+	if (unlikely(sb_rdonly(sb) || !nilfs->ns_writer)) {
+		/*
+		 * If this inode is about to be disposed after the file system
+		 * has been degraded to read-only due to file system corruption
+		 * or after the writer has been detached, do not make any
+		 * changes that cause writes, just clear it.
+		 * Do this check after read-locking ns_segctor_sem by
+		 * nilfs_transaction_begin() in order to avoid a race with
+		 * the writer detach operation.
+		 */
+		clear_inode(inode);
+		nilfs_clear_inode(inode);
+		nilfs_transaction_abort(sb);
+		return;
+	}
 
 	/* TODO: some of the following operations may fail.  */
 	nilfs_truncate_bmap(ii, 0);
@@ -949,7 +967,7 @@ void nilfs_evict_inode(struct inode *inode)
 	 */
 }
 
-int nilfs_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
+int nilfs_setattr(struct mnt_idmap *idmap, struct dentry *dentry,
 		  struct iattr *iattr)
 {
 	struct nilfs_transaction_info ti;
@@ -957,7 +975,7 @@ int nilfs_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
 	struct super_block *sb = inode->i_sb;
 	int err;
 
-	err = setattr_prepare(&init_user_ns, dentry, iattr);
+	err = setattr_prepare(&nop_mnt_idmap, dentry, iattr);
 	if (err)
 		return err;
 
@@ -972,7 +990,7 @@ int nilfs_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
 		nilfs_truncate(inode);
 	}
 
-	setattr_copy(&init_user_ns, inode, iattr);
+	setattr_copy(&nop_mnt_idmap, inode, iattr);
 	mark_inode_dirty(inode);
 
 	if (iattr->ia_valid & ATTR_MODE) {
@@ -988,7 +1006,7 @@ out_err:
 	return err;
 }
 
-int nilfs_permission(struct user_namespace *mnt_userns, struct inode *inode,
+int nilfs_permission(struct mnt_idmap *idmap, struct inode *inode,
 		     int mask)
 {
 	struct nilfs_root *root = NILFS_I(inode)->i_root;
@@ -997,7 +1015,7 @@ int nilfs_permission(struct user_namespace *mnt_userns, struct inode *inode,
 	    root->cno != NILFS_CPTREE_CURRENT_CNO)
 		return -EROFS; /* snapshot is not writable */
 
-	return generic_permission(&init_user_ns, inode, mask);
+	return generic_permission(&nop_mnt_idmap, inode, mask);
 }
 
 int nilfs_load_inode_block(struct inode *inode, struct buffer_head **pbh)
@@ -1007,7 +1025,7 @@ int nilfs_load_inode_block(struct inode *inode, struct buffer_head **pbh)
 	int err;
 
 	spin_lock(&nilfs->ns_inode_lock);
-	if (ii->i_bh == NULL) {
+	if (ii->i_bh == NULL || unlikely(!buffer_uptodate(ii->i_bh))) {
 		spin_unlock(&nilfs->ns_inode_lock);
 		err = nilfs_ifile_get_inode_block(ii->i_root->ifile,
 						  inode->i_ino, pbh);
@@ -1016,7 +1034,10 @@ int nilfs_load_inode_block(struct inode *inode, struct buffer_head **pbh)
 		spin_lock(&nilfs->ns_inode_lock);
 		if (ii->i_bh == NULL)
 			ii->i_bh = *pbh;
-		else {
+		else if (unlikely(!buffer_uptodate(ii->i_bh))) {
+			__brelse(ii->i_bh);
+			ii->i_bh = *pbh;
+		} else {
 			brelse(*pbh);
 			*pbh = ii->i_bh;
 		}
@@ -1083,8 +1104,16 @@ int nilfs_set_file_dirty(struct inode *inode, unsigned int nr_dirty)
 
 int __nilfs_mark_inode_dirty(struct inode *inode, int flags)
 {
+	struct the_nilfs *nilfs = inode->i_sb->s_fs_info;
 	struct buffer_head *ibh;
 	int err;
+
+	/*
+	 * Do not dirty inodes after the log writer has been detached
+	 * and its nilfs_root struct has been freed.
+	 */
+	if (unlikely(nilfs_purging(nilfs)))
+		return 0;
 
 	err = nilfs_load_inode_block(inode, &ibh);
 	if (unlikely(err)) {

@@ -15,7 +15,6 @@
 #include <linux/regmap.h>
 #include <linux/err.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/irq.h>
 #include <linux/interrupt.h>
 #include <linux/mutex.h>
@@ -280,8 +279,7 @@ static int tps65218_voltage_set_uvlo(struct tps65218 *tps)
 	return 0;
 }
 
-static int tps65218_probe(struct i2c_client *client,
-				const struct i2c_device_id *ids)
+static int tps65218_probe(struct i2c_client *client)
 {
 	struct tps65218 *tps;
 	int ret;

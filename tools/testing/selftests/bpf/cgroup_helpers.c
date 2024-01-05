@@ -13,6 +13,7 @@
 #include <ftw.h>
 
 #include "cgroup_helpers.h"
+#include "bpf_util.h"
 
 /*
  * To avoid relying on the system setup, when setup_cgroup_env is called
@@ -77,7 +78,7 @@ static int __enable_controllers(const char *cgroup_path, const char *controllers
 		enable[len] = 0;
 		close(fd);
 	} else {
-		strncpy(enable, controllers, sizeof(enable));
+		bpf_strlcpy(enable, controllers, sizeof(enable));
 	}
 
 	snprintf(path, sizeof(path), "%s/cgroup.subtree_control", cgroup_path);
@@ -277,6 +278,18 @@ int join_cgroup(const char *relative_path)
 }
 
 /**
+ * join_root_cgroup() - Join the root cgroup
+ *
+ * This function joins the root cgroup.
+ *
+ * On success, it returns 0, otherwise on failure it returns 1.
+ */
+int join_root_cgroup(void)
+{
+	return join_cgroup_from_top(CGROUP_MOUNT_PATH);
+}
+
+/**
  * join_parent_cgroup() - Join a cgroup in the parent process workdir
  * @relative_path: The cgroup path, relative to parent process workdir, to join
  *
@@ -330,6 +343,25 @@ int get_root_cgroup(void)
 		return -1;
 	}
 	return fd;
+}
+
+/*
+ * remove_cgroup() - Remove a cgroup
+ * @relative_path: The cgroup path, relative to the workdir, to remove
+ *
+ * This function expects a cgroup to already be created, relative to the cgroup
+ * work dir. It also expects the cgroup doesn't have any children or live
+ * processes and it removes the cgroup.
+ *
+ * On failure, it will print an error to stderr.
+ */
+void remove_cgroup(const char *relative_path)
+{
+	char cgroup_path[PATH_MAX + 1];
+
+	format_cgroup_path(cgroup_path, relative_path);
+	if (rmdir(cgroup_path))
+		log_err("rmdiring cgroup %s .. %s", relative_path, cgroup_path);
 }
 
 /**

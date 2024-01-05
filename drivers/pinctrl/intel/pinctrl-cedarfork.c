@@ -28,18 +28,7 @@
 	}
 
 #define CDF_COMMUNITY(b, s, e, g)			\
-	{						\
-		.barno = (b),				\
-		.padown_offset = CDF_PAD_OWN,		\
-		.padcfglock_offset = CDF_PADCFGLOCK,	\
-		.hostown_offset = CDF_HOSTSW_OWN,	\
-		.is_offset = CDF_GPI_IS,		\
-		.ie_offset = CDF_GPI_IE,		\
-		.pin_base = (s),			\
-		.npins = ((e) - (s) + 1),		\
-		.gpps = (g),				\
-		.ngpps = ARRAY_SIZE(g),			\
-	}
+	INTEL_COMMUNITY_GPPS(b, s, e, g, CDF)
 
 /* Cedar Fork PCH */
 static const struct pinctrl_pin_desc cdf_pins[] = {
@@ -362,3 +351,4 @@ module_exit(cdf_pinctrl_exit);
 MODULE_AUTHOR("Mika Westerberg <mika.westerberg@linux.intel.com>");
 MODULE_DESCRIPTION("Intel Cedar Fork PCH pinctrl/GPIO driver");
 MODULE_LICENSE("GPL v2");
+MODULE_IMPORT_NS(PINCTRL_INTEL);

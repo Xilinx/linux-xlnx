@@ -10,8 +10,8 @@
 #define DRIVER_DATE		"20120801"
 
 #define DRIVER_MAJOR		1
-#define DRIVER_MINOR		3
-#define DRIVER_PATCHLEVEL	1
+#define DRIVER_MINOR		4
+#define DRIVER_PATCHLEVEL	0
 
 /*
  * 1.1.1:
@@ -51,8 +51,7 @@
 #include <drm/drm_drv.h>
 #include <drm/drm_file.h>
 
-#include <drm/ttm/ttm_bo_api.h>
-#include <drm/ttm/ttm_bo_driver.h>
+#include <drm/ttm/ttm_bo.h>
 #include <drm/ttm/ttm_placement.h>
 
 #include <drm/drm_audio_component.h>
@@ -64,7 +63,9 @@ struct platform_device;
 
 #include "nouveau_fence.h"
 #include "nouveau_bios.h"
+#include "nouveau_sched.h"
 #include "nouveau_vmm.h"
+#include "nouveau_uvmm.h"
 
 struct nouveau_drm_tile {
 	struct nouveau_fence *fence;
@@ -76,11 +77,6 @@ enum nouveau_drm_object_route {
 	NVDRM_OBJECT_USIF,
 	NVDRM_OBJECT_ABI16,
 	NVDRM_OBJECT_ANY = NVIF_IOCTL_V0_OWNER_ANY,
-};
-
-enum nouveau_drm_notify_route {
-	NVDRM_NOTIFY_NVIF = 0,
-	NVDRM_NOTIFY_USIF
 };
 
 enum nouveau_drm_handle {
@@ -97,6 +93,10 @@ struct nouveau_cli {
 	struct nvif_mmu mmu;
 	struct nouveau_vmm vmm;
 	struct nouveau_vmm svm;
+	struct nouveau_uvmm uvmm;
+
+	struct nouveau_sched_entity sched_entity;
+
 	const struct nvif_mclass *mem;
 
 	struct list_head head;
@@ -118,6 +118,59 @@ struct nouveau_cli_work {
 	struct dma_fence_cb cb;
 };
 
+static inline struct nouveau_uvmm *
+nouveau_cli_uvmm(struct nouveau_cli *cli)
+{
+	if (!cli || !cli->uvmm.vmm.cli)
+		return NULL;
+
+	return &cli->uvmm;
+}
+
+static inline struct nouveau_uvmm *
+nouveau_cli_uvmm_locked(struct nouveau_cli *cli)
+{
+	struct nouveau_uvmm *uvmm;
+
+	mutex_lock(&cli->mutex);
+	uvmm = nouveau_cli_uvmm(cli);
+	mutex_unlock(&cli->mutex);
+
+	return uvmm;
+}
+
+static inline struct nouveau_vmm *
+nouveau_cli_vmm(struct nouveau_cli *cli)
+{
+	struct nouveau_uvmm *uvmm;
+
+	uvmm = nouveau_cli_uvmm(cli);
+	if (uvmm)
+		return &uvmm->vmm;
+
+	if (cli->svm.cli)
+		return &cli->svm;
+
+	return &cli->vmm;
+}
+
+static inline void
+__nouveau_cli_disable_uvmm_noinit(struct nouveau_cli *cli)
+{
+	struct nouveau_uvmm *uvmm = nouveau_cli_uvmm(cli);
+
+	if (!uvmm)
+		cli->uvmm.disabled = true;
+}
+
+static inline void
+nouveau_cli_disable_uvmm_noinit(struct nouveau_cli *cli)
+{
+	mutex_lock(&cli->mutex);
+	__nouveau_cli_disable_uvmm_noinit(cli);
+	mutex_unlock(&cli->mutex);
+}
+
 void nouveau_cli_work_queue(struct nouveau_cli *, struct dma_fence *,
 			    struct nouveau_cli_work *);
 
@@ -125,6 +178,23 @@ static inline struct nouveau_cli *
 nouveau_cli(struct drm_file *fpriv)
 {
 	return fpriv ? fpriv->driver_priv : NULL;
+}
+
+static inline void
+u_free(void *addr)
+{
+	kvfree(addr);
+}
+
+static inline void *
+u_memcpya(uint64_t user, unsigned int nmemb, unsigned int size)
+{
+	void __user *userptr = u64_to_user_ptr(user);
+	size_t bytes;
+
+	if (unlikely(check_mul_overflow(nmemb, size, &bytes)))
+		return ERR_PTR(-EOVERFLOW);
+	return vmemdup_user(userptr, bytes);
 }
 
 #include <nvif/object.h>
@@ -179,16 +249,19 @@ struct nouveau_drm {
 	void *fence;
 
 	/* Global channel management. */
+	int chan_total; /* Number of channels across all runlists. */
+	int chan_nr;	/* 0 if per-runlist CHIDs. */
+	int runl_nr;
 	struct {
-		int nr;
+		int chan_nr;
+		int chan_id_base;
 		u64 context_base;
-	} chan;
+	} *runl;
 
 	/* context for accelerated drm-internal operations */
 	struct nouveau_channel *cechan;
 	struct nouveau_channel *channel;
 	struct nvkm_gpuobj *notify;
-	struct nouveau_fbdev *fbcon;
 	struct nvif_object ntfy;
 
 	/* nv10-nv40 tiling regions */
@@ -201,10 +274,8 @@ struct nouveau_drm {
 	struct nvbios vbios;
 	struct nouveau_display *display;
 	struct work_struct hpd_work;
-	struct mutex hpd_lock;
+	spinlock_t hpd_lock;
 	u32 hpd_pending;
-	struct work_struct fbcon_work;
-	int fbcon_new_state;
 #ifdef CONFIG_ACPI
 	struct notifier_block acpi_nb;
 #endif
@@ -227,6 +298,10 @@ struct nouveau_drm {
 		struct mutex lock;
 		bool component_registered;
 	} audio;
+
+	struct drm_gpu_scheduler sched;
+	struct workqueue_struct *sched_wq;
+
 };
 
 static inline struct nouveau_drm *

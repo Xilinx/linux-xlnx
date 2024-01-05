@@ -18,7 +18,6 @@
 #include <linux/kexec.h>
 #include <linux/i8253.h>
 #include <linux/random.h>
-#include <linux/swiotlb.h>
 #include <asm/processor.h>
 #include <asm/hypervisor.h>
 #include <asm/hyperv-tlfs.h>
@@ -33,13 +32,84 @@
 #include <asm/nmi.h>
 #include <clocksource/hyperv_timer.h>
 #include <asm/numa.h>
-#include <asm/coco.h>
+#include <asm/svm.h>
 
 /* Is Linux running as the root partition? */
 bool hv_root_partition;
+/* Is Linux running on nested Microsoft Hypervisor */
+bool hv_nested;
 struct ms_hyperv_info ms_hyperv;
 
+/* Used in modules via hv_do_hypercall(): see arch/x86/include/asm/mshyperv.h */
+bool hyperv_paravisor_present __ro_after_init;
+EXPORT_SYMBOL_GPL(hyperv_paravisor_present);
+
 #if IS_ENABLED(CONFIG_HYPERV)
+static inline unsigned int hv_get_nested_reg(unsigned int reg)
+{
+	if (hv_is_sint_reg(reg))
+		return reg - HV_REGISTER_SINT0 + HV_REGISTER_NESTED_SINT0;
+
+	switch (reg) {
+	case HV_REGISTER_SIMP:
+		return HV_REGISTER_NESTED_SIMP;
+	case HV_REGISTER_SIEFP:
+		return HV_REGISTER_NESTED_SIEFP;
+	case HV_REGISTER_SVERSION:
+		return HV_REGISTER_NESTED_SVERSION;
+	case HV_REGISTER_SCONTROL:
+		return HV_REGISTER_NESTED_SCONTROL;
+	case HV_REGISTER_EOM:
+		return HV_REGISTER_NESTED_EOM;
+	default:
+		return reg;
+	}
+}
+
+u64 hv_get_non_nested_register(unsigned int reg)
+{
+	u64 value;
+
+	if (hv_is_synic_reg(reg) && ms_hyperv.paravisor_present)
+		hv_ivm_msr_read(reg, &value);
+	else
+		rdmsrl(reg, value);
+	return value;
+}
+EXPORT_SYMBOL_GPL(hv_get_non_nested_register);
+
+void hv_set_non_nested_register(unsigned int reg, u64 value)
+{
+	if (hv_is_synic_reg(reg) && ms_hyperv.paravisor_present) {
+		hv_ivm_msr_write(reg, value);
+
+		/* Write proxy bit via wrmsl instruction */
+		if (hv_is_sint_reg(reg))
+			wrmsrl(reg, value | 1 << 20);
+	} else {
+		wrmsrl(reg, value);
+	}
+}
+EXPORT_SYMBOL_GPL(hv_set_non_nested_register);
+
+u64 hv_get_register(unsigned int reg)
+{
+	if (hv_nested)
+		reg = hv_get_nested_reg(reg);
+
+	return hv_get_non_nested_register(reg);
+}
+EXPORT_SYMBOL_GPL(hv_get_register);
+
+void hv_set_register(unsigned int reg, u64 value)
+{
+	if (hv_nested)
+		reg = hv_get_nested_reg(reg);
+
+	hv_set_non_nested_register(reg, value);
+}
+EXPORT_SYMBOL_GPL(hv_set_register);
+
 static void (*vmbus_handler)(void);
 static void (*hv_stimer0_handler)(void);
 static void (*hv_kexec_handler)(void);
@@ -54,7 +124,7 @@ DEFINE_IDTENTRY_SYSVEC(sysvec_hyperv_callback)
 		vmbus_handler();
 
 	if (ms_hyperv.hints & HV_DEPRECATING_AEOI_RECOMMENDED)
-		ack_APIC_irq();
+		apic_eoi();
 
 	set_irq_regs(old_regs);
 }
@@ -82,7 +152,7 @@ DEFINE_IDTENTRY_SYSVEC(sysvec_hyperv_stimer0)
 	if (hv_stimer0_handler)
 		hv_stimer0_handler();
 	add_interrupt_randomness(HYPERV_STIMER0_VECTOR);
-	ack_APIC_irq();
+	apic_eoi();
 
 	set_irq_regs(old_regs);
 }
@@ -183,11 +253,6 @@ static uint32_t  __init ms_hyperv_platform(void)
 	return HYPERV_CPUID_VENDOR_AND_MAX_FUNCTIONS;
 }
 
-static unsigned char hv_get_nmi_reason(void)
-{
-	return 0;
-}
-
 #ifdef CONFIG_X86_LOCAL_APIC
 /*
  * Prior to WS2016 Debug-VM sends NMIs to all CPUs which makes
@@ -235,6 +300,15 @@ static void __init hv_smp_prepare_cpus(unsigned int max_cpus)
 
 	native_smp_prepare_cpus(max_cpus);
 
+	/*
+	 *  Override wakeup_secondary_cpu_64 callback for SEV-SNP
+	 *  enlightened guest.
+	 */
+	if (!ms_hyperv.paravisor_present && hv_isolation_type_snp()) {
+		apic->wakeup_secondary_cpu_64 = hv_snp_boot_ap;
+		return;
+	}
+
 #ifdef CONFIG_X86_64
 	for_each_present_cpu(i) {
 		if (i == 0)
@@ -252,6 +326,26 @@ static void __init hv_smp_prepare_cpus(unsigned int max_cpus)
 #endif
 }
 #endif
+
+/*
+ * When a fully enlightened TDX VM runs on Hyper-V, the firmware sets the
+ * HW_REDUCED flag: refer to acpi_tb_create_local_fadt(). Consequently ttyS0
+ * interrupts can't work because request_irq() -> ... -> irq_to_desc() returns
+ * NULL for ttyS0. This happens because mp_config_acpi_legacy_irqs() sees a
+ * nr_legacy_irqs() of 0, so it doesn't initialize the array 'mp_irqs[]', and
+ * later setup_IO_APIC_irqs() -> find_irq_entry() fails to find the legacy irqs
+ * from the array and hence doesn't create the necessary irq description info.
+ *
+ * Clone arch/x86/kernel/acpi/boot.c: acpi_generic_reduced_hw_init() here,
+ * except don't change 'legacy_pic', which keeps its default value
+ * 'default_legacy_pic'. This way, mp_config_acpi_legacy_irqs() sees a non-zero
+ * nr_legacy_irqs() and eventually serial console interrupts works properly.
+ */
+static void __init reduced_hw_init(void)
+{
+	x86_init.timers.timer_init	= x86_init_noop;
+	x86_init.irqs.pre_vector_init	= x86_init_noop;
+}
 
 static void __init ms_hyperv_init_platform(void)
 {
@@ -291,14 +385,23 @@ static void __init ms_hyperv_init_platform(void)
 	 * To mirror what Windows does we should extract CPU management
 	 * features and use the ReservedIdentityBit to detect if Linux is the
 	 * root partition. But that requires negotiating CPU management
-	 * interface (a process to be finalized).
+	 * interface (a process to be finalized). For now, use the privilege
+	 * flag as the indicator for running as root.
 	 *
-	 * For now, use the privilege flag as the indicator for running as
-	 * root.
+	 * Hyper-V should never specify running as root and as a Confidential
+	 * VM. But to protect against a compromised/malicious Hyper-V trying
+	 * to exploit root behavior to expose Confidential VM memory, ignore
+	 * the root partition setting if also a Confidential VM.
 	 */
-	if (cpuid_ebx(HYPERV_CPUID_FEATURES) & HV_CPU_MANAGEMENT) {
+	if ((ms_hyperv.priv_high & HV_CPU_MANAGEMENT) &&
+	    !(ms_hyperv.priv_high & HV_ISOLATION)) {
 		hv_root_partition = true;
 		pr_info("Hyper-V: running as root partition\n");
+	}
+
+	if (ms_hyperv.hints & HV_X64_HYPERV_NESTED) {
+		hv_nested = true;
+		pr_info("Hyper-V: running on a nested hypervisor\n");
 	}
 
 	/*
@@ -325,22 +428,37 @@ static void __init ms_hyperv_init_platform(void)
 	if (ms_hyperv.priv_high & HV_ISOLATION) {
 		ms_hyperv.isolation_config_a = cpuid_eax(HYPERV_CPUID_ISOLATION_CONFIG);
 		ms_hyperv.isolation_config_b = cpuid_ebx(HYPERV_CPUID_ISOLATION_CONFIG);
-		ms_hyperv.shared_gpa_boundary =
-			BIT_ULL(ms_hyperv.shared_gpa_boundary_bits);
+
+		if (ms_hyperv.shared_gpa_boundary_active)
+			ms_hyperv.shared_gpa_boundary =
+				BIT_ULL(ms_hyperv.shared_gpa_boundary_bits);
+
+		hyperv_paravisor_present = !!ms_hyperv.paravisor_present;
 
 		pr_info("Hyper-V: Isolation Config: Group A 0x%x, Group B 0x%x\n",
 			ms_hyperv.isolation_config_a, ms_hyperv.isolation_config_b);
 
+
 		if (hv_get_isolation_type() == HV_ISOLATION_TYPE_SNP) {
 			static_branch_enable(&isolation_type_snp);
-#ifdef CONFIG_SWIOTLB
-			swiotlb_unencrypted_base = ms_hyperv.shared_gpa_boundary;
-#endif
-		}
-		/* Isolation VMs are unenlightened SEV-based VMs, thus this check: */
-		if (IS_ENABLED(CONFIG_AMD_MEM_ENCRYPT)) {
-			if (hv_get_isolation_type() != HV_ISOLATION_TYPE_NONE)
-				cc_set_vendor(CC_VENDOR_HYPERV);
+		} else if (hv_get_isolation_type() == HV_ISOLATION_TYPE_TDX) {
+			static_branch_enable(&isolation_type_tdx);
+
+			/* A TDX VM must use x2APIC and doesn't use lazy EOI. */
+			ms_hyperv.hints &= ~HV_X64_APIC_ACCESS_RECOMMENDED;
+
+			if (!ms_hyperv.paravisor_present) {
+				/* To be supported: more work is required.  */
+				ms_hyperv.features &= ~HV_MSR_REFERENCE_TSC_AVAILABLE;
+
+				/* HV_REGISTER_CRASH_CTL is unsupported. */
+				ms_hyperv.misc_features &= ~HV_FEATURE_GUEST_CRASH_MSR_AVAILABLE;
+
+				/* Don't trust Hyper-V's TLB-flushing hypercalls. */
+				ms_hyperv.hints &= ~HV_X64_REMOTE_TLB_FLUSH_RECOMMENDED;
+
+				x86_init.acpi.reduced_hw_early_init = reduced_hw_init;
+			}
 		}
 	}
 
@@ -388,7 +506,7 @@ static void __init ms_hyperv_init_platform(void)
 		 * setting of this MSR bit should happen before init_intel()
 		 * is called.
 		 */
-		wrmsrl(HV_X64_MSR_TSC_INVARIANT_CONTROL, 0x1);
+		wrmsrl(HV_X64_MSR_TSC_INVARIANT_CONTROL, HV_EXPOSE_INVARIANT_TSC);
 		setup_force_cpu_cap(X86_FEATURE_TSC_RELIABLE);
 	}
 
@@ -410,6 +528,9 @@ static void __init ms_hyperv_init_platform(void)
 	i8253_clear_counter_on_shutdown = false;
 
 #if IS_ENABLED(CONFIG_HYPERV)
+	if ((hv_get_isolation_type() == HV_ISOLATION_TYPE_VBS) ||
+	    ms_hyperv.paravisor_present)
+		hv_vtom_init();
 	/*
 	 * Setup the hook to get control post apic initialization.
 	 */
@@ -432,7 +553,8 @@ static void __init ms_hyperv_init_platform(void)
 
 # ifdef CONFIG_SMP
 	smp_ops.smp_prepare_boot_cpu = hv_smp_prepare_boot_cpu;
-	if (hv_root_partition)
+	if (hv_root_partition ||
+	    (!ms_hyperv.paravisor_present && hv_isolation_type_snp()))
 		smp_ops.smp_prepare_cpus = hv_smp_prepare_cpus;
 # endif
 
@@ -449,6 +571,7 @@ static void __init ms_hyperv_init_platform(void)
 
 	/* Register Hyper-V specific clocksource */
 	hv_init_clocksource();
+	hv_vtl_init_platform();
 #endif
 	/*
 	 * TSC should be marked as unstable only after Hyper-V
@@ -475,6 +598,12 @@ static bool __init ms_hyperv_x2apic_available(void)
  * (logically) generates MSIs directly to the system APIC irq domain.
  * There is no HPET, and PCI MSI/MSI-X interrupts are remapped by the
  * pci-hyperv host bridge.
+ *
+ * Note: for a Hyper-V root partition, this will always return false.
+ * The hypervisor doesn't expose these HYPERV_CPUID_VIRT_STACK_* cpuids by
+ * default, they are implemented as intercepts by the Windows Hyper-V stack.
+ * Even a nested root partition (L2 root) will not get them because the
+ * nested (L1) hypervisor filters them out.
  */
 static bool __init ms_hyperv_msi_ext_dest_id(void)
 {
@@ -488,6 +617,22 @@ static bool __init ms_hyperv_msi_ext_dest_id(void)
 	return eax & HYPERV_VS_PROPERTIES_EAX_EXTENDED_IOAPIC_RTE;
 }
 
+#ifdef CONFIG_AMD_MEM_ENCRYPT
+static void hv_sev_es_hcall_prepare(struct ghcb *ghcb, struct pt_regs *regs)
+{
+	/* RAX and CPL are already in the GHCB */
+	ghcb_set_rcx(ghcb, regs->cx);
+	ghcb_set_rdx(ghcb, regs->dx);
+	ghcb_set_r8(ghcb, regs->r8);
+}
+
+static bool hv_sev_es_hcall_finish(struct ghcb *ghcb, struct pt_regs *regs)
+{
+	/* No checking of the return state needed */
+	return true;
+}
+#endif
+
 const __initconst struct hypervisor_x86 x86_hyper_ms_hyperv = {
 	.name			= "Microsoft Hyper-V",
 	.detect			= ms_hyperv_platform,
@@ -495,4 +640,8 @@ const __initconst struct hypervisor_x86 x86_hyper_ms_hyperv = {
 	.init.x2apic_available	= ms_hyperv_x2apic_available,
 	.init.msi_ext_dest_id	= ms_hyperv_msi_ext_dest_id,
 	.init.init_platform	= ms_hyperv_init_platform,
+#ifdef CONFIG_AMD_MEM_ENCRYPT
+	.runtime.sev_es_hcall_prepare = hv_sev_es_hcall_prepare,
+	.runtime.sev_es_hcall_finish = hv_sev_es_hcall_finish,
+#endif
 };

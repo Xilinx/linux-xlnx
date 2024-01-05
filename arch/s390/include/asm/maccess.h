@@ -4,10 +4,13 @@
 
 #include <linux/types.h>
 
+#define MEMCPY_REAL_SIZE	PAGE_SIZE
+#define MEMCPY_REAL_MASK	PAGE_MASK
+
 struct iov_iter;
 
 extern unsigned long __memcpy_real_area;
-void memcpy_real_init(void);
+extern pte_t *memcpy_real_ptep;
 size_t memcpy_real_iter(struct iov_iter *iter, unsigned long src, size_t count);
 int memcpy_real(void *dest, unsigned long src, size_t count);
 #ifdef CONFIG_CRASH_DUMP

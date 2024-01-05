@@ -13,8 +13,9 @@
 #include <linux/kernel.h>
 #include <linux/mfd/syscon.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
+#include <linux/of.h>
 #include <linux/phy/phy.h>
+#include <linux/platform_device.h>
 #include <linux/regmap.h>
 
 /* SPEAr1310 Registers */
@@ -246,7 +247,7 @@ static struct platform_driver spear1310_miphy_driver = {
 	.probe		= spear1310_miphy_probe,
 	.driver = {
 		.name = "spear1310-miphy",
-		.of_match_table = of_match_ptr(spear1310_miphy_of_match),
+		.of_match_table = spear1310_miphy_of_match,
 	},
 };
 

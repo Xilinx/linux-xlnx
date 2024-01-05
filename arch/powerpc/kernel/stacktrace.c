@@ -43,7 +43,7 @@ void __no_sanitize_address arch_stack_walk(stack_trace_consume_fn consume_entry,
 		unsigned long *stack = (unsigned long *) sp;
 		unsigned long newsp, ip;
 
-		if (!validate_sp(sp, task, STACK_FRAME_OVERHEAD))
+		if (!validate_sp(sp, task))
 			return;
 
 		newsp = stack[0];
@@ -73,29 +73,12 @@ int __no_sanitize_address arch_stack_walk_reliable(stack_trace_consume_fn consum
 	bool firstframe;
 
 	stack_end = stack_page + THREAD_SIZE;
-	if (!is_idle_task(task)) {
-		/*
-		 * For user tasks, this is the SP value loaded on
-		 * kernel entry, see "PACAKSAVE(r13)" in _switch() and
-		 * system_call_common()/EXCEPTION_PROLOG_COMMON().
-		 *
-		 * Likewise for non-swapper kernel threads,
-		 * this also happens to be the top of the stack
-		 * as setup by copy_thread().
-		 *
-		 * Note that stack backlinks are not properly setup by
-		 * copy_thread() and thus, a forked task() will have
-		 * an unreliable stack trace until it's been
-		 * _switch()'ed to for the first time.
-		 */
-		stack_end -= STACK_FRAME_OVERHEAD + sizeof(struct pt_regs);
-	} else {
-		/*
-		 * idle tasks have a custom stack layout,
-		 * c.f. cpu_idle_thread_init().
-		 */
-		stack_end -= STACK_FRAME_OVERHEAD;
-	}
+
+	// See copy_thread() for details.
+	if (task->flags & PF_KTHREAD)
+		stack_end -= STACK_FRAME_MIN_SIZE;
+	else
+		stack_end -= STACK_USER_INT_FRAME_SIZE;
 
 	if (task == current)
 		sp = current_stack_frame();
@@ -136,7 +119,7 @@ int __no_sanitize_address arch_stack_walk_reliable(stack_trace_consume_fn consum
 
 		/* Mark stacktraces with exception frames as unreliable. */
 		if (sp <= stack_end - STACK_INT_FRAME_SIZE &&
-		    stack[STACK_FRAME_MARKER] == STACK_FRAME_REGS_MARKER) {
+		    stack[STACK_INT_FRAME_MARKER_LONGS] == STACK_FRAME_REGS_MARKER) {
 			return -EINVAL;
 		}
 
@@ -221,8 +204,8 @@ static void raise_backtrace_ipi(cpumask_t *mask)
 	}
 }
 
-void arch_trigger_cpumask_backtrace(const cpumask_t *mask, bool exclude_self)
+void arch_trigger_cpumask_backtrace(const cpumask_t *mask, int exclude_cpu)
 {
-	nmi_trigger_cpumask_backtrace(mask, exclude_self, raise_backtrace_ipi);
+	nmi_trigger_cpumask_backtrace(mask, exclude_cpu, raise_backtrace_ipi);
 }
 #endif /* defined(CONFIG_PPC_BOOK3S_64) && defined(CONFIG_NMI_IPI) */

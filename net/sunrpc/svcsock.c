@@ -36,6 +36,8 @@
 #include <linux/skbuff.h>
 #include <linux/file.h>
 #include <linux/freezer.h>
+#include <linux/bvec.h>
+
 #include <net/sock.h>
 #include <net/checksum.h>
 #include <net/ip.h>
@@ -43,9 +45,12 @@
 #include <net/udp.h>
 #include <net/tcp.h>
 #include <net/tcp_states.h>
+#include <net/tls_prot.h>
+#include <net/handshake.h>
 #include <linux/uaccess.h>
 #include <linux/highmem.h>
 #include <asm/ioctls.h>
+#include <linux/key.h>
 
 #include <linux/sunrpc/types.h>
 #include <linux/sunrpc/clnt.h>
@@ -55,6 +60,7 @@
 #include <linux/sunrpc/stats.h>
 #include <linux/sunrpc/xprt.h>
 
+#include <trace/events/sock.h>
 #include <trace/events/sunrpc.h>
 
 #include "socklib.h"
@@ -62,6 +68,12 @@
 
 #define RPCDBG_FACILITY	RPCDBG_SVCXPRT
 
+/* To-do: to avoid tying up an nfsd thread while waiting for a
+ * handshake request, the request could instead be deferred.
+ */
+enum {
+	SVC_HANDSHAKE_TO	= 5U * HZ
+};
 
 static struct svc_sock *svc_setup_socket(struct svc_serv *, struct socket *,
 					 int flags);
@@ -111,27 +123,27 @@ static void svc_reclassify_socket(struct socket *sock)
 #endif
 
 /**
- * svc_tcp_release_rqst - Release transport-related resources
- * @rqstp: request structure with resources to be released
+ * svc_tcp_release_ctxt - Release transport-related resources
+ * @xprt: the transport which owned the context
+ * @ctxt: the context from rqstp->rq_xprt_ctxt or dr->xprt_ctxt
  *
  */
-static void svc_tcp_release_rqst(struct svc_rqst *rqstp)
+static void svc_tcp_release_ctxt(struct svc_xprt *xprt, void *ctxt)
 {
 }
 
 /**
- * svc_udp_release_rqst - Release transport-related resources
- * @rqstp: request structure with resources to be released
+ * svc_udp_release_ctxt - Release transport-related resources
+ * @xprt: the transport which owned the context
+ * @ctxt: the context from rqstp->rq_xprt_ctxt or dr->xprt_ctxt
  *
  */
-static void svc_udp_release_rqst(struct svc_rqst *rqstp)
+static void svc_udp_release_ctxt(struct svc_xprt *xprt, void *ctxt)
 {
-	struct sk_buff *skb = rqstp->rq_xprt_ctxt;
+	struct sk_buff *skb = ctxt;
 
-	if (skb) {
-		rqstp->rq_xprt_ctxt = NULL;
+	if (skb)
 		consume_skb(skb);
-	}
 }
 
 union svc_pktinfo_u {
@@ -215,6 +227,53 @@ static int svc_one_sock_name(struct svc_sock *svsk, char *buf, int remaining)
 	return len;
 }
 
+static int
+svc_tcp_sock_process_cmsg(struct socket *sock, struct msghdr *msg,
+			  struct cmsghdr *cmsg, int ret)
+{
+	u8 content_type = tls_get_record_type(sock->sk, cmsg);
+	u8 level, description;
+
+	switch (content_type) {
+	case 0:
+		break;
+	case TLS_RECORD_TYPE_DATA:
+		/* TLS sets EOR at the end of each application data
+		 * record, even though there might be more frames
+		 * waiting to be decrypted.
+		 */
+		msg->msg_flags &= ~MSG_EOR;
+		break;
+	case TLS_RECORD_TYPE_ALERT:
+		tls_alert_recv(sock->sk, msg, &level, &description);
+		ret = (level == TLS_ALERT_LEVEL_FATAL) ?
+			-ENOTCONN : -EAGAIN;
+		break;
+	default:
+		/* discard this record type */
+		ret = -EAGAIN;
+	}
+	return ret;
+}
+
+static int
+svc_tcp_sock_recv_cmsg(struct svc_sock *svsk, struct msghdr *msg)
+{
+	union {
+		struct cmsghdr	cmsg;
+		u8		buf[CMSG_SPACE(sizeof(u8))];
+	} u;
+	struct socket *sock = svsk->sk_sock;
+	int ret;
+
+	msg->msg_control = &u;
+	msg->msg_controllen = sizeof(u);
+	ret = sock_recvmsg(sock, msg, MSG_DONTWAIT);
+	if (unlikely(msg->msg_controllen != sizeof(u)))
+		ret = svc_tcp_sock_process_cmsg(sock, msg, &u.cmsg, ret);
+	return ret;
+}
+
 #if ARCH_IMPLEMENTS_FLUSH_DCACHE_PAGE
 static void svc_flush_bvec(const struct bio_vec *bvec, size_t size, size_t seek)
 {
@@ -252,20 +311,17 @@ static ssize_t svc_tcp_read_msg(struct svc_rqst *rqstp, size_t buflen,
 
 	clear_bit(XPT_DATA, &svsk->sk_xprt.xpt_flags);
 
-	for (i = 0, t = 0; t < buflen; i++, t += PAGE_SIZE) {
-		bvec[i].bv_page = rqstp->rq_pages[i];
-		bvec[i].bv_len = PAGE_SIZE;
-		bvec[i].bv_offset = 0;
-	}
+	for (i = 0, t = 0; t < buflen; i++, t += PAGE_SIZE)
+		bvec_set_page(&bvec[i], rqstp->rq_pages[i], PAGE_SIZE, 0);
 	rqstp->rq_respages = &rqstp->rq_pages[i];
 	rqstp->rq_next_page = rqstp->rq_respages + 1;
 
-	iov_iter_bvec(&msg.msg_iter, READ, bvec, i, buflen);
+	iov_iter_bvec(&msg.msg_iter, ITER_DEST, bvec, i, buflen);
 	if (seek) {
 		iov_iter_advance(&msg.msg_iter, seek);
 		buflen -= seek;
 	}
-	len = sock_recvmsg(svsk->sk_sock, &msg, MSG_DONTWAIT);
+	len = svc_tcp_sock_recv_cmsg(svsk, &msg);
 	if (len > 0)
 		svc_flush_bvec(bvec, len, seek);
 
@@ -298,9 +354,9 @@ static void svc_sock_setbufsize(struct svc_sock *svsk, unsigned int nreqs)
 static void svc_sock_secure_port(struct svc_rqst *rqstp)
 {
 	if (svc_port_is_privileged(svc_addr(rqstp)))
-		__set_bit(RQ_SECURE, &rqstp->rq_flags);
+		set_bit(RQ_SECURE, &rqstp->rq_flags);
 	else
-		__clear_bit(RQ_SECURE, &rqstp->rq_flags);
+		clear_bit(RQ_SECURE, &rqstp->rq_flags);
 }
 
 /*
@@ -310,11 +366,15 @@ static void svc_data_ready(struct sock *sk)
 {
 	struct svc_sock	*svsk = (struct svc_sock *)sk->sk_user_data;
 
+	trace_sk_data_ready(sk);
+
 	if (svsk) {
 		/* Refer to svc_setup_socket() for details. */
 		rmb();
 		svsk->sk_odata(sk);
 		trace_svcsock_data_ready(&svsk->sk_xprt, 0);
+		if (test_bit(XPT_HANDSHAKE, &svsk->sk_xprt.xpt_flags))
+			return;
 		if (!test_and_set_bit(XPT_DATA, &svsk->sk_xprt.xpt_flags))
 			svc_xprt_enqueue(&svsk->sk_xprt);
 	}
@@ -350,6 +410,88 @@ static void svc_tcp_kill_temp_xprt(struct svc_xprt *xprt)
 	struct svc_sock *svsk = container_of(xprt, struct svc_sock, sk_xprt);
 
 	sock_no_linger(svsk->sk_sock->sk);
+}
+
+/**
+ * svc_tcp_handshake_done - Handshake completion handler
+ * @data: address of xprt to wake
+ * @status: status of handshake
+ * @peerid: serial number of key containing the remote peer's identity
+ *
+ * If a security policy is specified as an export option, we don't
+ * have a specific export here to check. So we set a "TLS session
+ * is present" flag on the xprt and let an upper layer enforce local
+ * security policy.
+ */
+static void svc_tcp_handshake_done(void *data, int status, key_serial_t peerid)
+{
+	struct svc_xprt *xprt = data;
+	struct svc_sock *svsk = container_of(xprt, struct svc_sock, sk_xprt);
+
+	if (!status) {
+		if (peerid != TLS_NO_PEERID)
+			set_bit(XPT_PEER_AUTH, &xprt->xpt_flags);
+		set_bit(XPT_TLS_SESSION, &xprt->xpt_flags);
+	}
+	clear_bit(XPT_HANDSHAKE, &xprt->xpt_flags);
+	complete_all(&svsk->sk_handshake_done);
+}
+
+/**
+ * svc_tcp_handshake - Perform a transport-layer security handshake
+ * @xprt: connected transport endpoint
+ *
+ */
+static void svc_tcp_handshake(struct svc_xprt *xprt)
+{
+	struct svc_sock *svsk = container_of(xprt, struct svc_sock, sk_xprt);
+	struct sock *sk = svsk->sk_sock->sk;
+	struct tls_handshake_args args = {
+		.ta_sock	= svsk->sk_sock,
+		.ta_done	= svc_tcp_handshake_done,
+		.ta_data	= xprt,
+	};
+	int ret;
+
+	trace_svc_tls_upcall(xprt);
+
+	clear_bit(XPT_TLS_SESSION, &xprt->xpt_flags);
+	init_completion(&svsk->sk_handshake_done);
+
+	ret = tls_server_hello_x509(&args, GFP_KERNEL);
+	if (ret) {
+		trace_svc_tls_not_started(xprt);
+		goto out_failed;
+	}
+
+	ret = wait_for_completion_interruptible_timeout(&svsk->sk_handshake_done,
+							SVC_HANDSHAKE_TO);
+	if (ret <= 0) {
+		if (tls_handshake_cancel(sk)) {
+			trace_svc_tls_timed_out(xprt);
+			goto out_close;
+		}
+	}
+
+	if (!test_bit(XPT_TLS_SESSION, &xprt->xpt_flags)) {
+		trace_svc_tls_unavailable(xprt);
+		goto out_close;
+	}
+
+	/* Mark the transport ready in case the remote sent RPC
+	 * traffic before the kernel received the handshake
+	 * completion downcall.
+	 */
+	set_bit(XPT_DATA, &xprt->xpt_flags);
+	svc_xprt_enqueue(xprt);
+	return;
+
+out_close:
+	set_bit(XPT_CLOSE, &xprt->xpt_flags);
+out_failed:
+	clear_bit(XPT_HANDSHAKE, &xprt->xpt_flags);
+	set_bit(XPT_DATA, &xprt->xpt_flags);
+	svc_xprt_enqueue(xprt);
 }
 
 /*
@@ -508,6 +650,7 @@ static int svc_udp_recvfrom(struct svc_rqst *rqstp)
 	if (serv->sv_stats)
 		serv->sv_stats->netudpcnt++;
 
+	svc_sock_secure_port(rqstp);
 	svc_xprt_received(rqstp->rq_xprt);
 	return len;
 
@@ -554,12 +697,14 @@ static int svc_udp_sendto(struct svc_rqst *rqstp)
 		.msg_name	= &rqstp->rq_addr,
 		.msg_namelen	= rqstp->rq_addrlen,
 		.msg_control	= cmh,
+		.msg_flags	= MSG_SPLICE_PAGES,
 		.msg_controllen	= sizeof(buffer),
 	};
-	unsigned int sent;
+	unsigned int count;
 	int err;
 
-	svc_udp_release_rqst(rqstp);
+	svc_udp_release_ctxt(xprt, rqstp->rq_xprt_ctxt);
+	rqstp->rq_xprt_ctxt = NULL;
 
 	svc_set_cmsg_data(rqstp, cmh);
 
@@ -568,22 +713,23 @@ static int svc_udp_sendto(struct svc_rqst *rqstp)
 	if (svc_xprt_is_dead(xprt))
 		goto out_notconn;
 
-	err = xdr_alloc_bvec(xdr, GFP_KERNEL);
-	if (err < 0)
-		goto out_unlock;
+	count = xdr_buf_to_bvec(rqstp->rq_bvec,
+				ARRAY_SIZE(rqstp->rq_bvec), xdr);
 
-	err = xprt_sock_sendmsg(svsk->sk_sock, &msg, xdr, 0, 0, &sent);
+	iov_iter_bvec(&msg.msg_iter, ITER_SOURCE, rqstp->rq_bvec,
+		      count, 0);
+	err = sock_sendmsg(svsk->sk_sock, &msg);
 	if (err == -ECONNREFUSED) {
 		/* ICMP error on earlier request. */
-		err = xprt_sock_sendmsg(svsk->sk_sock, &msg, xdr, 0, 0, &sent);
+		iov_iter_bvec(&msg.msg_iter, ITER_SOURCE, rqstp->rq_bvec,
+			      count, 0);
+		err = sock_sendmsg(svsk->sk_sock, &msg);
 	}
-	xdr_free_bvec(xdr);
+
 	trace_svcsock_udp_send(xprt, err);
-out_unlock:
+
 	mutex_unlock(&xprt->xpt_mutex);
-	if (err < 0)
-		return err;
-	return sent;
+	return err;
 
 out_notconn:
 	mutex_unlock(&xprt->xpt_mutex);
@@ -631,12 +777,11 @@ static const struct svc_xprt_ops svc_udp_ops = {
 	.xpo_recvfrom = svc_udp_recvfrom,
 	.xpo_sendto = svc_udp_sendto,
 	.xpo_result_payload = svc_sock_result_payload,
-	.xpo_release_rqst = svc_udp_release_rqst,
+	.xpo_release_ctxt = svc_udp_release_ctxt,
 	.xpo_detach = svc_sock_detach,
 	.xpo_free = svc_sock_free,
 	.xpo_has_wspace = svc_udp_has_wspace,
 	.xpo_accept = svc_udp_accept,
-	.xpo_secure_port = svc_sock_secure_port,
 	.xpo_kill_temp_xprt = svc_udp_kill_temp_xprt,
 };
 
@@ -687,11 +832,7 @@ static void svc_tcp_listen_data_ready(struct sock *sk)
 {
 	struct svc_sock	*svsk = (struct svc_sock *)sk->sk_user_data;
 
-	if (svsk) {
-		/* Refer to svc_setup_socket() for details. */
-		rmb();
-		svsk->sk_odata(sk);
-	}
+	trace_sk_data_ready(sk);
 
 	/*
 	 * This callback may called twice when a new connection
@@ -701,13 +842,18 @@ static void svc_tcp_listen_data_ready(struct sock *sk)
 	 *    when one of child sockets become ESTABLISHED.
 	 * 2) data_ready method of the child socket may be called
 	 *    when it receives data before the socket is accepted.
-	 * In case of 2, we should ignore it silently.
+	 * In case of 2, we should ignore it silently and DO NOT
+	 * dereference svsk.
 	 */
-	if (sk->sk_state == TCP_LISTEN) {
-		if (svsk) {
-			set_bit(XPT_CONN, &svsk->sk_xprt.xpt_flags);
-			svc_xprt_enqueue(&svsk->sk_xprt);
-		}
+	if (sk->sk_state != TCP_LISTEN)
+		return;
+
+	if (svsk) {
+		/* Refer to svc_setup_socket() for details. */
+		rmb();
+		svsk->sk_odata(sk);
+		set_bit(XPT_CONN, &svsk->sk_xprt.xpt_flags);
+		svc_xprt_enqueue(&svsk->sk_xprt);
 	}
 }
 
@@ -748,15 +894,13 @@ static struct svc_xprt *svc_tcp_accept(struct svc_xprt *xprt)
 	clear_bit(XPT_CONN, &svsk->sk_xprt.xpt_flags);
 	err = kernel_accept(sock, &newsock, O_NONBLOCK);
 	if (err < 0) {
-		if (err == -ENOMEM)
-			printk(KERN_WARNING "%s: no more sockets!\n",
-			       serv->sv_name);
-		else if (err != -EAGAIN)
-			net_warn_ratelimited("%s: accept failed (err %d)!\n",
-					     serv->sv_name, -err);
-		trace_svcsock_accept_err(xprt, serv->sv_name, err);
+		if (err != -EAGAIN)
+			trace_svcsock_accept_err(xprt, serv->sv_name, err);
 		return NULL;
 	}
+	if (IS_ERR(sock_alloc_file(newsock, O_NONBLOCK, NULL)))
+		return NULL;
+
 	set_bit(XPT_CONN, &svsk->sk_xprt.xpt_flags);
 
 	err = kernel_getpeername(newsock, sin);
@@ -797,7 +941,7 @@ static struct svc_xprt *svc_tcp_accept(struct svc_xprt *xprt)
 	return &newsvsk->sk_xprt;
 
 failed:
-	sock_release(newsock);
+	sockfd_put(newsock);
 	return NULL;
 }
 
@@ -874,8 +1018,8 @@ static ssize_t svc_tcp_read_marker(struct svc_sock *svsk,
 		want = sizeof(rpc_fraghdr) - svsk->sk_tcplen;
 		iov.iov_base = ((char *)&svsk->sk_marker) + svsk->sk_tcplen;
 		iov.iov_len  = want;
-		iov_iter_kvec(&msg.msg_iter, READ, &iov, 1, want);
-		len = sock_recvmsg(svsk->sk_sock, &msg, MSG_DONTWAIT);
+		iov_iter_kvec(&msg.msg_iter, ITER_DEST, &iov, 1, want);
+		len = svc_tcp_sock_recv_cmsg(svsk, &msg);
 		if (len < 0)
 			return len;
 		svsk->sk_tcplen += len;
@@ -949,6 +1093,9 @@ static void svc_tcp_fragment_received(struct svc_sock *svsk)
 	/* If we have more data, signal svc_xprt_enqueue() to try again */
 	svsk->sk_tcplen = 0;
 	svsk->sk_marker = xdr_zero;
+
+	smp_wmb();
+	tcp_set_rcvlowat(svsk->sk_sk, 1);
 }
 
 /**
@@ -1008,9 +1155,9 @@ static int svc_tcp_recvfrom(struct svc_rqst *rqstp)
 	rqstp->rq_xprt_ctxt   = NULL;
 	rqstp->rq_prot	      = IPPROTO_TCP;
 	if (test_bit(XPT_LOCAL, &svsk->sk_xprt.xpt_flags))
-		__set_bit(RQ_LOCAL, &rqstp->rq_flags);
+		set_bit(RQ_LOCAL, &rqstp->rq_flags);
 	else
-		__clear_bit(RQ_LOCAL, &rqstp->rq_flags);
+		clear_bit(RQ_LOCAL, &rqstp->rq_flags);
 
 	p = (__be32 *)rqstp->rq_arg.head[0].iov_base;
 	calldir = p[1];
@@ -1028,6 +1175,7 @@ static int svc_tcp_recvfrom(struct svc_rqst *rqstp)
 	if (serv->sv_stats)
 		serv->sv_stats->nettcpcnt++;
 
+	svc_sock_secure_port(rqstp);
 	svc_xprt_received(rqstp->rq_xprt);
 	return rqstp->rq_arg.len;
 
@@ -1037,10 +1185,17 @@ err_incomplete:
 		goto err_delete;
 	if (len == want)
 		svc_tcp_fragment_received(svsk);
-	else
+	else {
+		/* Avoid more ->sk_data_ready() calls until the rest
+		 * of the message has arrived. This reduces service
+		 * thread wake-ups on large incoming messages. */
+		tcp_set_rcvlowat(svsk->sk_sk,
+				 svc_sock_reclen(svsk) - svsk->sk_tcplen);
+
 		trace_svcsock_tcp_recv_short(&svsk->sk_xprt,
 				svc_sock_reclen(svsk),
 				svsk->sk_tcplen - sizeof(rpc_fraghdr));
+	}
 	goto err_noclose;
 error:
 	if (len != -EAGAIN)
@@ -1057,86 +1212,51 @@ err_noclose:
 	return 0;	/* record not complete */
 }
 
-static int svc_tcp_send_kvec(struct socket *sock, const struct kvec *vec,
-			      int flags)
-{
-	return kernel_sendpage(sock, virt_to_page(vec->iov_base),
-			       offset_in_page(vec->iov_base),
-			       vec->iov_len, flags);
-}
-
 /*
- * kernel_sendpage() is used exclusively to reduce the number of
+ * MSG_SPLICE_PAGES is used exclusively to reduce the number of
  * copy operations in this path. Therefore the caller must ensure
  * that the pages backing @xdr are unchanging.
  *
- * In addition, the logic assumes that * .bv_len is never larger
- * than PAGE_SIZE.
+ * Note that the send is non-blocking. The caller has incremented
+ * the reference count on each page backing the RPC message, and
+ * the network layer will "put" these pages when transmission is
+ * complete.
+ *
+ * This is safe for our RPC services because the memory backing
+ * the head and tail components is never kmalloc'd. These always
+ * come from pages in the svc_rqst::rq_pages array.
  */
-static int svc_tcp_sendmsg(struct socket *sock, struct xdr_buf *xdr,
+static int svc_tcp_sendmsg(struct svc_sock *svsk, struct svc_rqst *rqstp,
 			   rpc_fraghdr marker, unsigned int *sentp)
 {
-	const struct kvec *head = xdr->head;
-	const struct kvec *tail = xdr->tail;
-	struct kvec rm = {
-		.iov_base	= &marker,
-		.iov_len	= sizeof(marker),
-	};
 	struct msghdr msg = {
-		.msg_flags	= 0,
+		.msg_flags	= MSG_SPLICE_PAGES,
 	};
+	unsigned int count;
+	void *buf;
 	int ret;
 
 	*sentp = 0;
-	ret = xdr_alloc_bvec(xdr, GFP_KERNEL);
-	if (ret < 0)
-		return ret;
 
-	ret = kernel_sendmsg(sock, &msg, &rm, 1, rm.iov_len);
+	/* The stream record marker is copied into a temporary page
+	 * fragment buffer so that it can be included in rq_bvec.
+	 */
+	buf = page_frag_alloc(&svsk->sk_frag_cache, sizeof(marker),
+			      GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+	memcpy(buf, &marker, sizeof(marker));
+	bvec_set_virt(rqstp->rq_bvec, buf, sizeof(marker));
+
+	count = xdr_buf_to_bvec(rqstp->rq_bvec + 1,
+				ARRAY_SIZE(rqstp->rq_bvec) - 1, &rqstp->rq_res);
+
+	iov_iter_bvec(&msg.msg_iter, ITER_SOURCE, rqstp->rq_bvec,
+		      1 + count, sizeof(marker) + rqstp->rq_res.len);
+	ret = sock_sendmsg(svsk->sk_sock, &msg);
 	if (ret < 0)
 		return ret;
 	*sentp += ret;
-	if (ret != rm.iov_len)
-		return -EAGAIN;
-
-	ret = svc_tcp_send_kvec(sock, head, 0);
-	if (ret < 0)
-		return ret;
-	*sentp += ret;
-	if (ret != head->iov_len)
-		goto out;
-
-	if (xdr->page_len) {
-		unsigned int offset, len, remaining;
-		struct bio_vec *bvec;
-
-		bvec = xdr->bvec + (xdr->page_base >> PAGE_SHIFT);
-		offset = offset_in_page(xdr->page_base);
-		remaining = xdr->page_len;
-		while (remaining > 0) {
-			len = min(remaining, bvec->bv_len - offset);
-			ret = kernel_sendpage(sock, bvec->bv_page,
-					      bvec->bv_offset + offset,
-					      len, 0);
-			if (ret < 0)
-				return ret;
-			*sentp += ret;
-			if (ret != len)
-				goto out;
-			remaining -= len;
-			offset = 0;
-			bvec++;
-		}
-	}
-
-	if (tail->iov_len) {
-		ret = svc_tcp_send_kvec(sock, tail, 0);
-		if (ret < 0)
-			return ret;
-		*sentp += ret;
-	}
-
-out:
 	return 0;
 }
 
@@ -1159,25 +1279,20 @@ static int svc_tcp_sendto(struct svc_rqst *rqstp)
 	unsigned int sent;
 	int err;
 
-	svc_tcp_release_rqst(rqstp);
+	svc_tcp_release_ctxt(xprt, rqstp->rq_xprt_ctxt);
+	rqstp->rq_xprt_ctxt = NULL;
 
-	atomic_inc(&svsk->sk_sendqlen);
 	mutex_lock(&xprt->xpt_mutex);
 	if (svc_xprt_is_dead(xprt))
 		goto out_notconn;
-	tcp_sock_set_cork(svsk->sk_sk, true);
-	err = svc_tcp_sendmsg(svsk->sk_sock, xdr, marker, &sent);
-	xdr_free_bvec(xdr);
+	err = svc_tcp_sendmsg(svsk, rqstp, marker, &sent);
 	trace_svcsock_tcp_send(xprt, err < 0 ? (long)err : sent);
 	if (err < 0 || sent != (xdr->len + sizeof(marker)))
 		goto out_close;
-	if (atomic_dec_and_test(&svsk->sk_sendqlen))
-		tcp_sock_set_cork(svsk->sk_sk, false);
 	mutex_unlock(&xprt->xpt_mutex);
 	return sent;
 
 out_notconn:
-	atomic_dec(&svsk->sk_sendqlen);
 	mutex_unlock(&xprt->xpt_mutex);
 	return -ENOTCONN;
 out_close:
@@ -1186,7 +1301,6 @@ out_close:
 		  (err < 0) ? "got error" : "sent",
 		  (err < 0) ? err : sent, xdr->len);
 	svc_xprt_deferred_close(xprt);
-	atomic_dec(&svsk->sk_sendqlen);
 	mutex_unlock(&xprt->xpt_mutex);
 	return -EAGAIN;
 }
@@ -1204,13 +1318,13 @@ static const struct svc_xprt_ops svc_tcp_ops = {
 	.xpo_recvfrom = svc_tcp_recvfrom,
 	.xpo_sendto = svc_tcp_sendto,
 	.xpo_result_payload = svc_sock_result_payload,
-	.xpo_release_rqst = svc_tcp_release_rqst,
+	.xpo_release_ctxt = svc_tcp_release_ctxt,
 	.xpo_detach = svc_tcp_sock_detach,
 	.xpo_free = svc_sock_free,
 	.xpo_has_wspace = svc_tcp_has_wspace,
 	.xpo_accept = svc_tcp_accept,
-	.xpo_secure_port = svc_sock_secure_port,
 	.xpo_kill_temp_xprt = svc_tcp_kill_temp_xprt,
+	.xpo_handshake = svc_tcp_handshake,
 };
 
 static struct svc_xprt_class svc_tcp_class = {
@@ -1294,7 +1408,6 @@ static struct svc_sock *svc_setup_socket(struct svc_serv *serv,
 	struct svc_sock	*svsk;
 	struct sock	*inet;
 	int		pmap_register = !(flags & SVC_SOCK_ANONYMOUS);
-	int		err = 0;
 
 	svsk = kzalloc(sizeof(*svsk), GFP_KERNEL);
 	if (!svsk)
@@ -1302,15 +1415,16 @@ static struct svc_sock *svc_setup_socket(struct svc_serv *serv,
 
 	inet = sock->sk;
 
-	/* Register socket with portmapper */
-	if (pmap_register)
+	if (pmap_register) {
+		int err;
+
 		err = svc_register(serv, sock_net(sock->sk), inet->sk_family,
 				     inet->sk_protocol,
 				     ntohs(inet_sk(inet)->inet_sport));
-
-	if (err < 0) {
-		kfree(svsk);
-		return ERR_PTR(err);
+		if (err < 0) {
+			kfree(svsk);
+			return ERR_PTR(err);
+		}
 	}
 
 	svsk->sk_sock = sock;
@@ -1320,7 +1434,7 @@ static struct svc_sock *svc_setup_socket(struct svc_serv *serv,
 	svsk->sk_owspace = inet->sk_write_space;
 	/*
 	 * This barrier is necessary in order to prevent race condition
-	 * with svc_data_ready(), svc_listen_data_ready() and others
+	 * with svc_data_ready(), svc_tcp_listen_data_ready(), and others
 	 * when calling callbacks above.
 	 */
 	wmb();
@@ -1332,29 +1446,14 @@ static struct svc_sock *svc_setup_socket(struct svc_serv *serv,
 	else
 		svc_tcp_init(svsk, serv);
 
-	trace_svcsock_new_socket(sock);
+	trace_svcsock_new(svsk, sock);
 	return svsk;
 }
-
-bool svc_alien_sock(struct net *net, int fd)
-{
-	int err;
-	struct socket *sock = sockfd_lookup(fd, &err);
-	bool ret = false;
-
-	if (!sock)
-		goto out;
-	if (sock_net(sock->sk) != net)
-		ret = true;
-	sockfd_put(sock);
-out:
-	return ret;
-}
-EXPORT_SYMBOL_GPL(svc_alien_sock);
 
 /**
  * svc_addsock - add a listener socket to an RPC service
  * @serv: pointer to RPC service to which to add a new listener
+ * @net: caller's network namespace
  * @fd: file descriptor of the new listener
  * @name_return: pointer to buffer to fill in with name of listener
  * @len: size of the buffer
@@ -1364,8 +1463,8 @@ EXPORT_SYMBOL_GPL(svc_alien_sock);
  * Name is terminated with '\n'.  On error, returns a negative errno
  * value.
  */
-int svc_addsock(struct svc_serv *serv, const int fd, char *name_return,
-		const size_t len, const struct cred *cred)
+int svc_addsock(struct svc_serv *serv, struct net *net, const int fd,
+		char *name_return, const size_t len, const struct cred *cred)
 {
 	int err = 0;
 	struct socket *so = sockfd_lookup(fd, &err);
@@ -1376,6 +1475,9 @@ int svc_addsock(struct svc_serv *serv, const int fd, char *name_return,
 
 	if (!so)
 		return err;
+	err = -EINVAL;
+	if (sock_net(so->sk) != net)
+		goto out;
 	err = -EAFNOSUPPORT;
 	if ((so->sk->sk_family != PF_INET) && (so->sk->sk_family != PF_INET6))
 		goto out;
@@ -1509,6 +1611,8 @@ static void svc_tcp_sock_detach(struct svc_xprt *xprt)
 {
 	struct svc_sock *svsk = container_of(xprt, struct svc_sock, sk_xprt);
 
+	tls_handshake_close(svsk->sk_sock);
+
 	svc_sock_detach(xprt);
 
 	if (!test_bit(XPT_LISTENER, &xprt->xpt_flags)) {
@@ -1523,10 +1627,18 @@ static void svc_tcp_sock_detach(struct svc_xprt *xprt)
 static void svc_sock_free(struct svc_xprt *xprt)
 {
 	struct svc_sock *svsk = container_of(xprt, struct svc_sock, sk_xprt);
+	struct page_frag_cache *pfc = &svsk->sk_frag_cache;
+	struct socket *sock = svsk->sk_sock;
 
-	if (svsk->sk_sock->file)
-		sockfd_put(svsk->sk_sock);
+	trace_svcsock_free(svsk, sock);
+
+	tls_handshake_cancel(sock->sk);
+	if (sock->file)
+		sockfd_put(sock);
 	else
-		sock_release(svsk->sk_sock);
+		sock_release(sock);
+	if (pfc->va)
+		__page_frag_cache_drain(virt_to_head_page(pfc->va),
+					pfc->pagecnt_bias);
 	kfree(svsk);
 }

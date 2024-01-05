@@ -85,6 +85,7 @@ enum irdma_device_caps_const {
 	IRDMA_Q2_BUF_SIZE =			256,
 	IRDMA_QP_CTX_SIZE =			256,
 	IRDMA_MAX_PDS =				262144,
+	IRDMA_MIN_WQ_SIZE_GEN2 =                8,
 };
 
 enum irdma_addressing_type {
@@ -173,14 +174,6 @@ struct irdma_post_send {
 	u32 ah_id;
 };
 
-struct irdma_post_inline_send {
-	void *data;
-	u32 len;
-	u32 qkey;
-	u32 dest_qp;
-	u32 ah_id;
-};
-
 struct irdma_post_rq_info {
 	u64 wr_id;
 	struct ib_sge *sg_list;
@@ -190,12 +183,6 @@ struct irdma_post_rq_info {
 struct irdma_rdma_write {
 	struct ib_sge *lo_sg_list;
 	u32 num_lo_sges;
-	struct ib_sge rem_addr;
-};
-
-struct irdma_inline_rdma_write {
-	void *data;
-	u32 len;
 	struct ib_sge rem_addr;
 };
 
@@ -229,7 +216,6 @@ struct irdma_post_sq_info {
 	bool local_fence:1;
 	bool inline_data:1;
 	bool imm_data_valid:1;
-	bool push_wqe:1;
 	bool report_rtt:1;
 	bool udp_hdr:1;
 	bool defer_flag:1;
@@ -241,8 +227,6 @@ struct irdma_post_sq_info {
 		struct irdma_rdma_read rdma_read;
 		struct irdma_bind_window bind_window;
 		struct irdma_inv_local_stag inv_local_stag;
-		struct irdma_inline_rdma_write inline_rdma_write;
-		struct irdma_post_inline_send inline_send;
 	} op;
 };
 
@@ -261,8 +245,8 @@ struct irdma_cq_poll_info {
 	u16 ud_vlan;
 	u8 ud_smac[6];
 	u8 op_type;
+	u8 q_type;
 	bool stag_invalid_set:1; /* or L_R_Key set */
-	bool push_dropped:1;
 	bool error:1;
 	bool solicited_event:1;
 	bool ipv4:1;
@@ -291,7 +275,8 @@ int irdma_uk_stag_local_invalidate(struct irdma_qp_uk *qp,
 				   bool post_sq);
 
 struct irdma_wqe_uk_ops {
-	void (*iw_copy_inline_data)(u8 *dest, u8 *src, u32 len, u8 polarity);
+	void (*iw_copy_inline_data)(u8 *dest, struct ib_sge *sge_list,
+				    u32 num_sges, u8 polarity);
 	u16 (*iw_inline_data_size_to_quanta)(u32 data_size);
 	void (*iw_set_fragment)(__le64 *wqe, u32 offset, struct ib_sge *sge,
 				u8 valid);
@@ -309,6 +294,12 @@ void irdma_uk_cq_init(struct irdma_cq_uk *cq,
 		      struct irdma_cq_uk_init_info *info);
 int irdma_uk_qp_init(struct irdma_qp_uk *qp,
 		     struct irdma_qp_uk_init_info *info);
+void irdma_uk_calc_shift_wq(struct irdma_qp_uk_init_info *ukinfo, u8 *sq_shift,
+			    u8 *rq_shift);
+int irdma_uk_calc_depth_shift_sq(struct irdma_qp_uk_init_info *ukinfo,
+				 u32 *sq_depth, u8 *sq_shift);
+int irdma_uk_calc_depth_shift_rq(struct irdma_qp_uk_init_info *ukinfo,
+				 u32 *rq_depth, u8 *rq_shift);
 struct irdma_sq_uk_wr_trk_info {
 	u64 wrid;
 	u32 wr_len;
@@ -328,8 +319,6 @@ struct irdma_qp_uk {
 	struct irdma_sq_uk_wr_trk_info *sq_wrtrk_array;
 	u64 *rq_wrid_array;
 	__le64 *shadow_area;
-	__le32 *push_db;
-	__le64 *push_wqe;
 	struct irdma_ring sq_ring;
 	struct irdma_ring rq_ring;
 	struct irdma_ring initial_ring;
@@ -349,8 +338,6 @@ struct irdma_qp_uk {
 	u8 rq_wqe_size;
 	u8 rq_wqe_size_multiplier;
 	bool deferred_flag:1;
-	bool push_mode:1; /* whether the last post wqe was pushed */
-	bool push_dropped:1;
 	bool first_sq_wq:1;
 	bool sq_flush_complete:1; /* Indicates flush was seen and SQ was empty after the flush */
 	bool rq_flush_complete:1; /* Indicates flush was seen and RQ was empty after the flush */
@@ -388,8 +375,12 @@ struct irdma_qp_uk_init_info {
 	u32 max_sq_frag_cnt;
 	u32 max_rq_frag_cnt;
 	u32 max_inline_data;
+	u32 sq_depth;
+	u32 rq_depth;
 	u8 first_sq_wq;
 	u8 type;
+	u8 sq_shift;
+	u8 rq_shift;
 	int abi_ver;
 	bool legacy_mode;
 };
@@ -418,7 +409,5 @@ int irdma_get_sqdepth(struct irdma_uk_attrs *uk_attrs, u32 sq_size, u8 shift,
 		      u32 *wqdepth);
 int irdma_get_rqdepth(struct irdma_uk_attrs *uk_attrs, u32 rq_size, u8 shift,
 		      u32 *wqdepth);
-void irdma_qp_push_wqe(struct irdma_qp_uk *qp, __le64 *wqe, u16 quanta,
-		       u32 wqe_idx, bool post_sq);
 void irdma_clr_wqes(struct irdma_qp_uk *qp, u32 qp_wqe_idx);
 #endif /* IRDMA_USER_H */

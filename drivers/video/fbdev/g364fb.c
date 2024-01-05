@@ -6,7 +6,7 @@
  *
  *  This driver is based on tgafb.c
  *
- *	Copyright (C) 1997 Geert Uytterhoeven 
+ *	Copyright (C) 1997 Geert Uytterhoeven
  *	Copyright (C) 1995  Jay Estabrook
  *
  *  This file is subject to the terms and conditions of the GNU General Public
@@ -28,7 +28,7 @@
 #include <asm/io.h>
 #include <asm/jazz.h>
 
-/* 
+/*
  * Various defines for the G364
  */
 #define G364_MEM_BASE   0xe4400000
@@ -112,12 +112,10 @@ static int g364fb_blank(int blank, struct fb_info *info);
 
 static const struct fb_ops g364fb_ops = {
 	.owner		= THIS_MODULE,
+	FB_DEFAULT_IOMEM_OPS,
 	.fb_setcolreg	= g364fb_setcolreg,
 	.fb_pan_display	= g364fb_pan_display,
 	.fb_blank	= g364fb_blank,
-	.fb_fillrect	= cfb_fillrect,
-	.fb_copyarea	= cfb_copyarea,
-	.fb_imageblit	= cfb_imageblit,
 };
 
 /*
@@ -125,7 +123,7 @@ static const struct fb_ops g364fb_ops = {
  *
  *  This call looks only at xoffset, yoffset and the FB_VMODE_YWRAP flag
  */
-static int g364fb_pan_display(struct fb_var_screeninfo *var, 
+static int g364fb_pan_display(struct fb_var_screeninfo *var,
 			      struct fb_info *info)
 {
 	if (var->xoffset ||
@@ -219,7 +217,7 @@ int __init g364fb_init(void)
 	fb_info.screen_base = (char *) G364_MEM_BASE;	/* virtual kernel address */
 	fb_info.var = fb_var;
 	fb_info.fix = fb_fix;
-	fb_info.flags = FBINFO_DEFAULT | FBINFO_HWACCEL_YPAN;
+	fb_info.flags = FBINFO_HWACCEL_YPAN;
 
 	fb_alloc_cmap(&fb_info.cmap, 255, 0);
 

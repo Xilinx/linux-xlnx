@@ -23,6 +23,7 @@
 #include <linux/clk.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
+#include <linux/mod_devicetable.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/pwm.h>
@@ -124,8 +125,8 @@ static int sunplus_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 	return 0;
 }
 
-static void sunplus_pwm_get_state(struct pwm_chip *chip, struct pwm_device *pwm,
-				  struct pwm_state *state)
+static int sunplus_pwm_get_state(struct pwm_chip *chip, struct pwm_device *pwm,
+				 struct pwm_state *state)
 {
 	struct sunplus_pwm *priv = to_sunplus_pwm(chip);
 	u32 mode0, dd_freq, duty;
@@ -155,6 +156,8 @@ static void sunplus_pwm_get_state(struct pwm_chip *chip, struct pwm_device *pwm,
 	}
 
 	state->polarity = PWM_POLARITY_NORMAL;
+
+	return 0;
 }
 
 static const struct pwm_ops sunplus_pwm_ops = {

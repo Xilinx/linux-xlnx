@@ -4,6 +4,7 @@
 #include <asm/thread_info.h>
 
 #define PAGE_SIZE _PAGE_SIZE
+#define RO_EXCEPTION_TABLE_ALIGN	4
 
 /*
  * Put .bss..swapper_pg_dir as the first thing in .bss. This will
@@ -42,7 +43,6 @@ SECTIONS
 	.text : {
 		TEXT_TEXT
 		SCHED_TEXT
-		CPUIDLE_TEXT
 		LOCK_TEXT
 		KPROBES_TEXT
 		IRQENTRY_TEXT
@@ -52,12 +52,6 @@ SECTIONS
 	} :text = 0
 	. = ALIGN(PECOFF_SEGMENT_ALIGN);
 	_etext = .;
-
-	EXCEPTION_TABLE(16)
-
-	.got : ALIGN(16) { *(.got) }
-	.plt : ALIGN(16) { *(.plt) }
-	.got.plt : ALIGN(16) { *(.got.plt) }
 
 	. = ALIGN(PECOFF_SEGMENT_ALIGN);
 	__init_begin = .;
@@ -73,6 +67,18 @@ SECTIONS
 
 	__initdata_begin = .;
 
+	/*
+	 * struct alt_inst entries. From the header (alternative.h):
+	 * "Alternative instructions for different CPU types or capabilities"
+	 * Think locking instructions on spinlocks.
+	 */
+	. = ALIGN(4);
+	.altinstructions : AT(ADDR(.altinstructions) - LOAD_OFFSET) {
+		__alt_instructions = .;
+		*(.altinstructions)
+		__alt_instructions_end = .;
+	}
+
 	INIT_DATA_SECTION(16)
 	.exit.data : {
 		EXIT_DATA
@@ -81,8 +87,6 @@ SECTIONS
 #ifdef CONFIG_SMP
 	PERCPU_SECTION(1 << CONFIG_L1_CACHE_SHIFT)
 #endif
-
-	.rela.dyn : ALIGN(8) { *(.rela.dyn) *(.rela*) }
 
 	.init.bss : {
 		*(.init.bss)
@@ -94,7 +98,29 @@ SECTIONS
 
 	_sdata = .;
 	RO_DATA(4096)
+
+	.got : ALIGN(16) { *(.got) }
+	.plt : ALIGN(16) { *(.plt) }
+	.got.plt : ALIGN(16) { *(.got.plt) }
+
 	RW_DATA(1 << CONFIG_L1_CACHE_SHIFT, PAGE_SIZE, THREAD_SIZE)
+
+	.rela.dyn : ALIGN(8) {
+		__rela_dyn_begin = .;
+		 *(.rela.dyn) *(.rela*)
+		__rela_dyn_end = .;
+	}
+
+	.data.rel : { *(.data.rel*) }
+
+#ifdef CONFIG_RELOCATABLE
+	. = ALIGN(8);
+	.la_abs : AT(ADDR(.la_abs) - LOAD_OFFSET) {
+		__la_abs_begin = .;
+		*(.la_abs)
+		__la_abs_end = .;
+	}
+#endif
 
 	.sdata : {
 		*(.sdata)
@@ -111,6 +137,15 @@ SECTIONS
 	DWARF_DEBUG
 	ELF_DETAILS
 
+#ifdef CONFIG_EFI_STUB
+	/* header symbols */
+	_kernel_asize = _end - _text;
+	_kernel_fsize = _edata - _text;
+	_kernel_vsize = _end - __initdata_begin;
+	_kernel_rsize = _edata - __initdata_begin;
+	_kernel_offset = kernel_offset - _text;
+#endif
+
 	.gptab.sdata : {
 		*(.gptab.data)
 		*(.gptab.sdata)
@@ -122,6 +157,7 @@ SECTIONS
 
 	DISCARDS
 	/DISCARD/ : {
+		*(.dynamic .dynsym .dynstr .hash .gnu.hash)
 		*(.gnu.attributes)
 		*(.options)
 		*(.eh_frame)

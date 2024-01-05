@@ -12,7 +12,8 @@
 #include <linux/init.h>
 #include <linux/dma-mapping.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
+#include <linux/of_platform.h>
+#include <linux/platform_device.h>
 #include <linux/gfp.h>
 
 #include <asm/irq.h>
@@ -146,7 +147,7 @@ static void esp_get_differential(struct esp *esp)
 	struct device_node *dp;
 
 	dp = op->dev.of_node;
-	if (of_find_property(dp, "differential", NULL))
+	if (of_property_read_bool(dp, "differential"))
 		esp->flags |= ESP_FLAG_DIFFERENTIAL;
 	else
 		esp->flags &= ~ESP_FLAG_DIFFERENTIAL;
@@ -451,7 +452,7 @@ static const struct esp_driver_ops sbus_esp_ops = {
 static int esp_sbus_probe_one(struct platform_device *op,
 			      struct platform_device *espdma, int hme)
 {
-	struct scsi_host_template *tpnt = &scsi_esp_template;
+	const struct scsi_host_template *tpnt = &scsi_esp_template;
 	struct Scsi_Host *host;
 	struct esp *esp;
 	int err;

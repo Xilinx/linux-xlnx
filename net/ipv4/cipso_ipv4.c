@@ -1881,7 +1881,7 @@ int cipso_v4_sock_setattr(struct sock *sk,
 
 	old = rcu_dereference_protected(sk_inet->inet_opt,
 					lockdep_sock_is_held(sk));
-	if (sk_inet->is_icsk) {
+	if (inet_test_bit(IS_ICSK, sk)) {
 		sk_conn = inet_csk(sk);
 		if (old)
 			sk_conn->icsk_ext_hdr_len -= old->opt.optlen;
@@ -2051,7 +2051,7 @@ void cipso_v4_sock_delattr(struct sock *sk)
 	sk_inet = inet_sk(sk);
 
 	hdr_delta = cipso_v4_delopt(&sk_inet->inet_opt);
-	if (sk_inet->is_icsk && hdr_delta > 0) {
+	if (inet_test_bit(IS_ICSK, sk) && hdr_delta > 0) {
 		struct inet_connection_sock *sk_conn = inet_csk(sk);
 		sk_conn->icsk_ext_hdr_len -= hdr_delta;
 		sk_conn->icsk_sync_mss(sk, sk_conn->icsk_pmtu_cookie);
@@ -2222,7 +2222,7 @@ int cipso_v4_skbuff_setattr(struct sk_buff *skb,
 		memset((char *)(iph + 1) + buf_len, 0, opt_len - buf_len);
 	if (len_delta != 0) {
 		iph->ihl = 5 + (opt_len >> 2);
-		iph->tot_len = htons(skb->len);
+		iph_set_totlen(iph, skb->len);
 	}
 	ip_send_check(iph);
 

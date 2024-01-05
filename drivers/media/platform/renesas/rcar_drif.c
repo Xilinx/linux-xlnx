@@ -44,8 +44,9 @@
 #include <linux/ioctl.h>
 #include <linux/iopoll.h>
 #include <linux/module.h>
+#include <linux/of.h>
 #include <linux/of_graph.h>
-#include <linux/of_device.h>
+#include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/sched.h>
 #include <media/v4l2-async.h>
@@ -1097,7 +1098,7 @@ static void rcar_drif_sdr_unregister(struct rcar_drif_sdr *sdr)
 /* Sub-device bound callback */
 static int rcar_drif_notify_bound(struct v4l2_async_notifier *notifier,
 				   struct v4l2_subdev *subdev,
-				   struct v4l2_async_subdev *asd)
+				   struct v4l2_async_connection *asd)
 {
 	struct rcar_drif_sdr *sdr =
 		container_of(notifier, struct rcar_drif_sdr, notifier);
@@ -1112,7 +1113,7 @@ static int rcar_drif_notify_bound(struct v4l2_async_notifier *notifier,
 /* Sub-device unbind callback */
 static void rcar_drif_notify_unbind(struct v4l2_async_notifier *notifier,
 				   struct v4l2_subdev *subdev,
-				   struct v4l2_async_subdev *asd)
+				   struct v4l2_async_connection *asd)
 {
 	struct rcar_drif_sdr *sdr =
 		container_of(notifier, struct rcar_drif_sdr, notifier);
@@ -1205,9 +1206,9 @@ static int rcar_drif_parse_subdevs(struct rcar_drif_sdr *sdr)
 {
 	struct v4l2_async_notifier *notifier = &sdr->notifier;
 	struct fwnode_handle *fwnode, *ep;
-	struct v4l2_async_subdev *asd;
+	struct v4l2_async_connection *asd;
 
-	v4l2_async_nf_init(notifier);
+	v4l2_async_nf_init(&sdr->notifier, &sdr->v4l2_dev);
 
 	ep = fwnode_graph_get_next_endpoint(of_fwnode_handle(sdr->dev->of_node),
 					    NULL);
@@ -1225,7 +1226,7 @@ static int rcar_drif_parse_subdevs(struct rcar_drif_sdr *sdr)
 	}
 
 	asd = v4l2_async_nf_add_fwnode(notifier, fwnode,
-				       struct v4l2_async_subdev);
+				       struct v4l2_async_connection);
 	fwnode_handle_put(fwnode);
 	if (IS_ERR(asd))
 		return PTR_ERR(asd);
@@ -1341,7 +1342,7 @@ static int rcar_drif_sdr_probe(struct rcar_drif_sdr *sdr)
 	sdr->notifier.ops = &rcar_drif_notify_ops;
 
 	/* Register notifier */
-	ret = v4l2_async_nf_register(&sdr->v4l2_dev, &sdr->notifier);
+	ret = v4l2_async_nf_register(&sdr->notifier);
 	if (ret < 0) {
 		dev_err(sdr->dev, "failed: notifier register ret %d\n", ret);
 		goto cleanup;
@@ -1433,19 +1434,17 @@ static int rcar_drif_probe(struct platform_device *pdev)
 }
 
 /* DRIF channel remove */
-static int rcar_drif_remove(struct platform_device *pdev)
+static void rcar_drif_remove(struct platform_device *pdev)
 {
 	struct rcar_drif *ch = platform_get_drvdata(pdev);
 	struct rcar_drif_sdr *sdr = ch->sdr;
 
 	/* Channel 0 will be the SDR instance */
 	if (ch->num)
-		return 0;
+		return;
 
 	/* SDR instance */
 	rcar_drif_sdr_remove(sdr);
-
-	return 0;
 }
 
 /* FIXME: Implement suspend/resume support */
@@ -1476,7 +1475,7 @@ static struct platform_driver rcar_drif_driver = {
 		.pm = &rcar_drif_pm_ops,
 		},
 	.probe = rcar_drif_probe,
-	.remove = rcar_drif_remove,
+	.remove_new = rcar_drif_remove,
 };
 
 module_platform_driver(rcar_drif_driver);

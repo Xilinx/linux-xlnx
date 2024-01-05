@@ -53,17 +53,15 @@ static int skl_dsp_setup_spib(struct device *dev, unsigned int size,
 	struct hdac_bus *bus = dev_get_drvdata(dev);
 	struct hdac_stream *stream = snd_hdac_get_stream(bus,
 			SNDRV_PCM_STREAM_PLAYBACK, stream_tag);
-	struct hdac_ext_stream *estream;
 
 	if (!stream)
 		return -EINVAL;
 
-	estream = stream_to_hdac_ext_stream(stream);
 	/* enable/disable SPIB for this hdac stream */
-	snd_hdac_ext_stream_spbcap_enable(bus, enable, stream->index);
+	snd_hdac_stream_spbcap_enable(bus, enable, stream->index);
 
 	/* set the spib value */
-	snd_hdac_ext_stream_set_spib(bus, estream, size);
+	snd_hdac_stream_set_spib(bus, stream, size);
 
 	return 0;
 }
@@ -171,7 +169,7 @@ static struct skl_dsp_loader_ops bxt_get_loader_ops(void)
 
 static const struct skl_dsp_ops dsp_ops[] = {
 	{
-		.id = 0x9d70,
+		.id = PCI_DEVICE_ID_INTEL_HDA_SKL_LP,
 		.num_cores = 2,
 		.loader_ops = skl_get_loader_ops,
 		.init = skl_sst_dsp_init,
@@ -179,7 +177,7 @@ static const struct skl_dsp_ops dsp_ops[] = {
 		.cleanup = skl_sst_dsp_cleanup
 	},
 	{
-		.id = 0x9d71,
+		.id = PCI_DEVICE_ID_INTEL_HDA_KBL_LP,
 		.num_cores = 2,
 		.loader_ops = skl_get_loader_ops,
 		.init = skl_sst_dsp_init,
@@ -187,7 +185,7 @@ static const struct skl_dsp_ops dsp_ops[] = {
 		.cleanup = skl_sst_dsp_cleanup
 	},
 	{
-		.id = 0x5a98,
+		.id = PCI_DEVICE_ID_INTEL_HDA_APL,
 		.num_cores = 2,
 		.loader_ops = bxt_get_loader_ops,
 		.init = bxt_sst_dsp_init,
@@ -195,7 +193,7 @@ static const struct skl_dsp_ops dsp_ops[] = {
 		.cleanup = bxt_sst_dsp_cleanup
 	},
 	{
-		.id = 0x3198,
+		.id = PCI_DEVICE_ID_INTEL_HDA_GML,
 		.num_cores = 2,
 		.loader_ops = bxt_get_loader_ops,
 		.init = bxt_sst_dsp_init,
@@ -203,7 +201,7 @@ static const struct skl_dsp_ops dsp_ops[] = {
 		.cleanup = bxt_sst_dsp_cleanup
 	},
 	{
-		.id = 0x9dc8,
+		.id = PCI_DEVICE_ID_INTEL_HDA_CNL_LP,
 		.num_cores = 4,
 		.loader_ops = bxt_get_loader_ops,
 		.init = cnl_sst_dsp_init,
@@ -211,7 +209,7 @@ static const struct skl_dsp_ops dsp_ops[] = {
 		.cleanup = cnl_sst_dsp_cleanup
 	},
 	{
-		.id = 0xa348,
+		.id = PCI_DEVICE_ID_INTEL_HDA_CNL_H,
 		.num_cores = 4,
 		.loader_ops = bxt_get_loader_ops,
 		.init = cnl_sst_dsp_init,
@@ -219,7 +217,7 @@ static const struct skl_dsp_ops dsp_ops[] = {
 		.cleanup = cnl_sst_dsp_cleanup
 	},
 	{
-		.id = 0x02c8,
+		.id = PCI_DEVICE_ID_INTEL_HDA_CML_LP,
 		.num_cores = 4,
 		.loader_ops = bxt_get_loader_ops,
 		.init = cnl_sst_dsp_init,
@@ -227,7 +225,7 @@ static const struct skl_dsp_ops dsp_ops[] = {
 		.cleanup = cnl_sst_dsp_cleanup
 	},
 	{
-		.id = 0x06c8,
+		.id = PCI_DEVICE_ID_INTEL_HDA_CML_H,
 		.num_cores = 4,
 		.loader_ops = bxt_get_loader_ops,
 		.init = cnl_sst_dsp_init,
@@ -551,7 +549,7 @@ static void skl_copy_copier_caps(struct skl_module_cfg *mconfig,
 	if (mconfig->formats_config[SKL_PARAM_INIT].caps_size == 0)
 		return;
 
-	memcpy(cpr_mconfig->gtw_cfg.config_data,
+	memcpy(&cpr_mconfig->gtw_cfg.config_data,
 			mconfig->formats_config[SKL_PARAM_INIT].caps,
 			mconfig->formats_config[SKL_PARAM_INIT].caps_size);
 

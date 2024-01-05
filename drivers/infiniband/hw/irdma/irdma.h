@@ -119,6 +119,7 @@ struct irdma_uk_attrs {
 	u32 min_hw_cq_size;
 	u32 max_hw_cq_size;
 	u16 max_hw_sq_chunk;
+	u16 min_hw_wq_size;
 	u8 hw_rev;
 };
 
@@ -147,6 +148,7 @@ struct irdma_hw_attrs {
 	u32 max_sleep_count;
 	u32 max_cqp_compl_wait_time_ms;
 	u16 max_stat_inst;
+	u16 max_stat_idx;
 };
 
 void i40iw_init_hw(struct irdma_sc_dev *dev);

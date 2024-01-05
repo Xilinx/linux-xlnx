@@ -38,6 +38,7 @@ struct alias_prop {
 #define OF_ROOT_NODE_SIZE_CELLS_DEFAULT 1
 
 extern struct mutex of_mutex;
+extern raw_spinlock_t devtree_lock;
 extern struct list_head aliases_lookup;
 extern struct kset *of_kset;
 
@@ -58,6 +59,12 @@ static inline int of_property_notify(int action, struct device_node *np,
 	return 0;
 }
 #endif /* CONFIG_OF_DYNAMIC */
+
+#if defined(CONFIG_OF_DYNAMIC) && defined(CONFIG_OF_ADDRESS)
+void of_platform_register_reconfig_notifier(void);
+#else
+static inline void of_platform_register_reconfig_notifier(void) { }
+#endif
 
 #if defined(CONFIG_OF_KOBJ)
 int of_node_is_attached(const struct device_node *node);

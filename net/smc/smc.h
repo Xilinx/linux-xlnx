@@ -21,7 +21,10 @@
 
 #define SMC_V1		1		/* SMC version V1 */
 #define SMC_V2		2		/* SMC version V2 */
-#define SMC_RELEASE	0
+
+#define SMC_RELEASE_0 0
+#define SMC_RELEASE_1 1
+#define SMC_RELEASE	SMC_RELEASE_1 /* the latest release version */
 
 #define SMCPROTO_SMC		0	/* SMC protocol, IPv4 */
 #define SMCPROTO_SMC6		1	/* SMC protocol, IPv6 */
@@ -161,7 +164,7 @@ struct smc_connection {
 
 	struct smc_buf_desc	*sndbuf_desc;	/* send buffer descriptor */
 	struct smc_buf_desc	*rmb_desc;	/* RMBE descriptor */
-	int			rmbe_size_short;/* compressed notation */
+	int                     rmbe_size_comp; /* compressed notation */
 	int			rmbe_update_limit;
 						/* lower limit for consumer
 						 * cursor update
@@ -283,10 +286,7 @@ struct smc_sock {				/* smc sock container */
 						 * */
 };
 
-static inline struct smc_sock *smc_sk(const struct sock *sk)
-{
-	return (struct smc_sock *)sk;
-}
+#define smc_sk(ptr) container_of_const(ptr, struct smc_sock, sk)
 
 static inline void smc_init_saved_callbacks(struct smc_sock *smc)
 {

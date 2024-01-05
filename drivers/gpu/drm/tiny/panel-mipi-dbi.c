@@ -16,7 +16,7 @@
 
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_drv.h>
-#include <drm/drm_fb_helper.h>
+#include <drm/drm_fbdev_generic.h>
 #include <drm/drm_gem_atomic_helper.h>
 #include <drm/drm_gem_dma_helper.h>
 #include <drm/drm_managed.h>
@@ -212,10 +212,7 @@ out_exit:
 }
 
 static const struct drm_simple_display_pipe_funcs panel_mipi_dbi_pipe_funcs = {
-	.mode_valid = mipi_dbi_pipe_mode_valid,
-	.enable = panel_mipi_dbi_enable,
-	.disable = mipi_dbi_pipe_disable,
-	.update = mipi_dbi_pipe_update,
+	DRM_MIPI_DBI_SIMPLE_DISPLAY_PIPE_FUNCS(panel_mipi_dbi_enable),
 };
 
 DEFINE_DRM_GEM_DMA_FOPS(panel_mipi_dbi_fops);
@@ -297,6 +294,11 @@ static int panel_mipi_dbi_spi_probe(struct spi_device *spi)
 		return dev_err_probe(dev, PTR_ERR(dbidev->regulator),
 				     "Failed to get regulator 'power'\n");
 
+	dbidev->io_regulator = devm_regulator_get(dev, "io");
+	if (IS_ERR(dbidev->io_regulator))
+		return dev_err_probe(dev, PTR_ERR(dbidev->io_regulator),
+				     "Failed to get regulator 'io'\n");
+
 	dbidev->backlight = devm_of_find_backlight(dev);
 	if (IS_ERR(dbidev->backlight))
 		return dev_err_probe(dev, PTR_ERR(dbidev->backlight), "Failed to get backlight\n");
@@ -305,7 +307,8 @@ static int panel_mipi_dbi_spi_probe(struct spi_device *spi)
 	if (IS_ERR(dbi->reset))
 		return dev_err_probe(dev, PTR_ERR(dbi->reset), "Failed to get GPIO 'reset'\n");
 
-	dc = devm_gpiod_get_optional(dev, "dc", GPIOD_OUT_LOW);
+	/* Multiple panels can share the "dc" GPIO, but only if they are on the same SPI bus! */
+	dc = devm_gpiod_get_optional(dev, "dc", GPIOD_OUT_LOW | GPIOD_FLAGS_BIT_NONEXCLUSIVE);
 	if (IS_ERR(dc))
 		return dev_err_probe(dev, PTR_ERR(dc), "Failed to get GPIO 'dc'\n");
 

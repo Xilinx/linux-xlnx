@@ -76,8 +76,7 @@ static const struct i2c_device_id st_press_id_table[] = {
 };
 MODULE_DEVICE_TABLE(i2c, st_press_id_table);
 
-static int st_press_i2c_probe(struct i2c_client *client,
-			      const struct i2c_device_id *id)
+static int st_press_i2c_probe(struct i2c_client *client)
 {
 	const struct st_sensor_settings *settings;
 	struct st_sensor_data *press_data;

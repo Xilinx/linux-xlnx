@@ -21,7 +21,6 @@
 #include <linux/io.h>
 #include <linux/mfd/syscon.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
 #include <linux/slab.h>
@@ -733,7 +732,6 @@ static int armada_3700_periph_clock_probe(struct platform_device *pdev)
 	const struct clk_periph_data *data;
 	struct device *dev = &pdev->dev;
 	int num_periph = 0, i, ret;
-	struct resource *res;
 
 	data = of_device_get_match_data(dev);
 	if (!data)
@@ -754,8 +752,7 @@ static int armada_3700_periph_clock_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	driver_data->hw_data->num = num_periph;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	driver_data->reg = devm_ioremap_resource(dev, res);
+	driver_data->reg = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(driver_data->reg))
 		return PTR_ERR(driver_data->reg);
 
@@ -781,7 +778,7 @@ static int armada_3700_periph_clock_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int armada_3700_periph_clock_remove(struct platform_device *pdev)
+static void armada_3700_periph_clock_remove(struct platform_device *pdev)
 {
 	struct clk_periph_driver_data *data = platform_get_drvdata(pdev);
 	struct clk_hw_onecell_data *hw_data = data->hw_data;
@@ -791,13 +788,11 @@ static int armada_3700_periph_clock_remove(struct platform_device *pdev)
 
 	for (i = 0; i < hw_data->num; i++)
 		clk_hw_unregister(hw_data->hws[i]);
-
-	return 0;
 }
 
 static struct platform_driver armada_3700_periph_clock_driver = {
 	.probe = armada_3700_periph_clock_probe,
-	.remove = armada_3700_periph_clock_remove,
+	.remove_new = armada_3700_periph_clock_remove,
 	.driver		= {
 		.name	= "marvell-armada-3700-periph-clock",
 		.of_match_table = armada_3700_periph_clock_of_match,

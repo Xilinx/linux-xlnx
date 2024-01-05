@@ -13,8 +13,6 @@
 #include <linux/gpio/driver.h>
 #include <linux/mfd/syscon.h>
 #include <linux/of.h>
-#include <linux/of_address.h>
-#include <linux/of_device.h>
 #include <linux/of_irq.h>
 #include <linux/pinctrl/pinconf-generic.h>
 #include <linux/pinctrl/pinconf.h>
@@ -23,6 +21,7 @@
 #include <linux/platform_device.h>
 #include <linux/property.h>
 #include <linux/regmap.h>
+#include <linux/seq_file.h>
 #include <linux/slab.h>
 #include <linux/string_helpers.h>
 
@@ -101,7 +100,6 @@ struct armada_37xx_pinctrl {
 	const struct armada_37xx_pin_data	*data;
 	struct device			*dev;
 	struct gpio_chip		gpio_chip;
-	struct irq_chip			irq_chip;
 	raw_spinlock_t			irq_lock;
 	struct pinctrl_desc		pctl;
 	struct pinctrl_dev		*pctl_dev;
@@ -548,6 +546,7 @@ static void armada_37xx_irq_mask(struct irq_data *d)
 	val = readl(info->base + reg);
 	writel(val & ~d->mask, info->base + reg);
 	raw_spin_unlock_irqrestore(&info->irq_lock, flags);
+	gpiochip_disable_irq(chip, irqd_to_hwirq(d));
 }
 
 static void armada_37xx_irq_unmask(struct irq_data *d)
@@ -557,6 +556,7 @@ static void armada_37xx_irq_unmask(struct irq_data *d)
 	u32 val, reg = IRQ_EN;
 	unsigned long flags;
 
+	gpiochip_enable_irq(chip, irqd_to_hwirq(d));
 	armada_37xx_irq_update_reg(&reg, d);
 	raw_spin_lock_irqsave(&info->irq_lock, flags);
 	val = readl(info->base + reg);
@@ -729,11 +729,30 @@ static unsigned int armada_37xx_irq_startup(struct irq_data *d)
 	return 0;
 }
 
+static void armada_37xx_irq_print_chip(struct irq_data *d, struct seq_file *p)
+{
+	struct gpio_chip *chip = irq_data_get_irq_chip_data(d);
+	struct armada_37xx_pinctrl *info = gpiochip_get_data(chip);
+
+	seq_printf(p, info->data->name);
+}
+
+static const struct irq_chip armada_37xx_irqchip = {
+	.irq_ack = armada_37xx_irq_ack,
+	.irq_mask = armada_37xx_irq_mask,
+	.irq_unmask = armada_37xx_irq_unmask,
+	.irq_set_wake = armada_37xx_irq_set_wake,
+	.irq_set_type = armada_37xx_irq_set_type,
+	.irq_startup = armada_37xx_irq_startup,
+	.irq_print_chip = armada_37xx_irq_print_chip,
+	.flags = IRQCHIP_IMMUTABLE,
+	GPIOCHIP_IRQ_RESOURCE_HELPERS,
+};
+
 static int armada_37xx_irqchip_register(struct platform_device *pdev,
 					struct armada_37xx_pinctrl *info)
 {
 	struct gpio_chip *gc = &info->gpio_chip;
-	struct irq_chip *irqchip = &info->irq_chip;
 	struct gpio_irq_chip *girq = &gc->irq;
 	struct device_node *np = to_of_node(gc->fwnode);
 	struct device *dev = &pdev->dev;
@@ -751,14 +770,7 @@ static int armada_37xx_irqchip_register(struct platform_device *pdev,
 	if (IS_ERR(info->base))
 		return PTR_ERR(info->base);
 
-	irqchip->irq_ack = armada_37xx_irq_ack;
-	irqchip->irq_mask = armada_37xx_irq_mask;
-	irqchip->irq_unmask = armada_37xx_irq_unmask;
-	irqchip->irq_set_wake = armada_37xx_irq_set_wake;
-	irqchip->irq_set_type = armada_37xx_irq_set_type;
-	irqchip->irq_startup = armada_37xx_irq_startup;
-	irqchip->name = info->data->name;
-	girq->chip = irqchip;
+	gpio_irq_chip_set_chip(girq, &armada_37xx_irqchip);
 	girq->parent_handler = armada_37xx_irq_handler;
 	/*
 	 * Many interrupts are connected to the parent interrupt
@@ -999,7 +1011,6 @@ static int armada_37xx_pinctrl_register(struct platform_device *pdev,
 	return 0;
 }
 
-#if defined(CONFIG_PM)
 static int armada_3700_pinctrl_suspend(struct device *dev)
 {
 	struct armada_37xx_pinctrl *info = dev_get_drvdata(dev);
@@ -1093,15 +1104,8 @@ static int armada_3700_pinctrl_resume(struct device *dev)
  * Since pinctrl is an infrastructure module, its resume should be issued prior
  * to other IO drivers.
  */
-static const struct dev_pm_ops armada_3700_pinctrl_pm_ops = {
-	.suspend_noirq = armada_3700_pinctrl_suspend,
-	.resume_noirq = armada_3700_pinctrl_resume,
-};
-
-#define PINCTRL_ARMADA_37XX_DEV_PM_OPS (&armada_3700_pinctrl_pm_ops)
-#else
-#define PINCTRL_ARMADA_37XX_DEV_PM_OPS NULL
-#endif /* CONFIG_PM */
+static DEFINE_NOIRQ_DEV_PM_OPS(armada_3700_pinctrl_pm_ops,
+			       armada_3700_pinctrl_suspend, armada_3700_pinctrl_resume);
 
 static const struct of_device_id armada_37xx_pinctrl_of_match[] = {
 	{
@@ -1168,7 +1172,7 @@ static struct platform_driver armada_37xx_pinctrl_driver = {
 	.driver = {
 		.name = "armada-37xx-pinctrl",
 		.of_match_table = armada_37xx_pinctrl_of_match,
-		.pm = PINCTRL_ARMADA_37XX_DEV_PM_OPS,
+		.pm = pm_sleep_ptr(&armada_3700_pinctrl_pm_ops),
 	},
 };
 

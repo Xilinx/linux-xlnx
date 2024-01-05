@@ -5,6 +5,7 @@
 		changeset {
 			prop-update = "hello";
 			prop-remove = "world";
+
 			node-remove {
 			};
 		};
@@ -17,3 +18,4 @@
 #include "tests-address.dtsi"
 #include "tests-platform.dtsi"
 #include "tests-overlay.dtsi"
+#include "tests-lifecycle.dtsi"

@@ -1978,6 +1978,8 @@
 #define RT5640_ZCD_HP_EN			(0x1 << 15)
 
 /* General Control 1 (0xfa) */
+#define RT5640_EN_LOUT_DF			(0x1 << 14)
+#define RT5640_EN_LOUT_DF_SFT			14
 #define RT5640_M_MONO_ADC_L			(0x1 << 13)
 #define RT5640_M_MONO_ADC_L_SFT			13
 #define RT5640_M_MONO_ADC_R			(0x1 << 12)
@@ -2136,7 +2138,7 @@ struct rt5640_priv {
 	struct regmap *regmap;
 	struct clk *mclk;
 
-	int ldo1_en; /* GPIO for LDO1_EN */
+	struct gpio_desc *ldo1_en; /* GPIO for LDO1_EN */
 	int irq;
 	int jd_gpio_irq;
 	int sysclk;

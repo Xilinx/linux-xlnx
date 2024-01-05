@@ -192,6 +192,7 @@ static int xsw_set_format(struct v4l2_subdev *subdev,
 	return 0;
 }
 
+/*
 static int xsw_get_routing(struct v4l2_subdev *subdev,
 			   struct v4l2_subdev_routing *route)
 {
@@ -211,9 +212,12 @@ static int xsw_get_routing(struct v4l2_subdev *subdev,
 
 	return 0;
 }
+*/
 
 static int xsw_set_routing(struct v4l2_subdev *subdev,
-			   struct v4l2_subdev_routing *route)
+			   struct v4l2_subdev_state *state,
+			   enum v4l2_subdev_format_whence which,
+			   struct v4l2_subdev_krouting *route)
 {
 	struct xswitch_device *xsw = to_xsw(subdev);
 	unsigned int i;
@@ -230,8 +234,8 @@ static int xsw_set_routing(struct v4l2_subdev *subdev,
 		xsw->routing[i] = -1;
 
 	for (i = 0; i < route->num_routes; ++i)
-		xsw->routing[route->routes[i].source - xsw->nsinks] =
-			route->routes[i].sink;
+		xsw->routing[route->routes[i].source_pad - xsw->nsinks] =
+			route->routes[i].sink_pad;
 
 done:
 	mutex_unlock(&subdev->entity.graph_obj.mdev->graph_mutex);
@@ -296,7 +300,7 @@ static struct v4l2_subdev_pad_ops xsw_pad_ops = {
 	.enum_frame_size = xvip_enum_frame_size,
 	.get_fmt = xsw_get_format,
 	.set_fmt = xsw_set_format,
-	.get_routing = xsw_get_routing,
+/*	.get_routing = xsw_get_routing, */
 	.set_routing = xsw_set_routing,
 };
 

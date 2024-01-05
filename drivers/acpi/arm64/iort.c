@@ -19,6 +19,7 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/dma-map-ops.h>
+#include "init.h"
 
 #define IORT_TYPE_MASK(type)	(1 << (type))
 #define IORT_MSI_TYPE		(1 << ACPI_IORT_NODE_ITS_GROUP)
@@ -402,6 +403,10 @@ static struct acpi_iort_node *iort_node_get_id(struct acpi_iort_node *node,
 	return NULL;
 }
 
+#ifndef ACPI_IORT_SMMU_V3_DEVICEID_VALID
+#define ACPI_IORT_SMMU_V3_DEVICEID_VALID (1 << 4)
+#endif
+
 static int iort_get_id_mapping_index(struct acpi_iort_node *node)
 {
 	struct acpi_iort_smmu_v3 *smmu;
@@ -418,12 +423,16 @@ static int iort_get_id_mapping_index(struct acpi_iort_node *node)
 
 		smmu = (struct acpi_iort_smmu_v3 *)node->node_data;
 		/*
-		 * ID mapping index is only ignored if all interrupts are
-		 * GSIV based
+		 * Until IORT E.e (node rev. 5), the ID mapping index was
+		 * defined to be valid unless all interrupts are GSIV-based.
 		 */
-		if (smmu->event_gsiv && smmu->pri_gsiv && smmu->gerr_gsiv
-		    && smmu->sync_gsiv)
+		if (node->revision < 5) {
+			if (smmu->event_gsiv && smmu->pri_gsiv &&
+			    smmu->gerr_gsiv && smmu->sync_gsiv)
+				return -EINVAL;
+		} else if (!(smmu->flags & ACPI_IORT_SMMU_V3_DEVICEID_VALID)) {
 			return -EINVAL;
+		}
 
 		if (smmu->id_mapping_index >= node->mapping_count) {
 			pr_err(FW_BUG "[node %p type %d] ID mapping index overflows valid mappings\n",
@@ -997,9 +1006,6 @@ static void iort_node_get_rmr_info(struct acpi_iort_node *node,
 	 */
 	for (i = 0; i < node->mapping_count; i++, map++) {
 		struct acpi_iort_node *parent;
-
-		if (!map->id_count)
-			continue;
 
 		parent = ACPI_ADD_PTR(struct acpi_iort_node, iort_table,
 				      map->output_reference);
@@ -1702,7 +1708,10 @@ static void __init arm_smmu_v3_pmcg_init_resources(struct resource *res,
 static struct acpi_platform_list pmcg_plat_info[] __initdata = {
 	/* HiSilicon Hip08 Platform */
 	{"HISI  ", "HIP08   ", 0, ACPI_SIG_IORT, greater_than_or_equal,
-	 "Erratum #162001800", IORT_SMMU_V3_PMCG_HISI_HIP08},
+	 "Erratum #162001800, Erratum #162001900", IORT_SMMU_V3_PMCG_HISI_HIP08},
+	/* HiSilicon Hip09 Platform */
+	{"HISI  ", "HIP09   ", 0, ACPI_SIG_IORT, greater_than_or_equal,
+	 "Erratum #162001900", IORT_SMMU_V3_PMCG_HISI_HIP09},
 	{ }
 };
 

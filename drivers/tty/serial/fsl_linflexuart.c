@@ -11,7 +11,7 @@
 #include <linux/irq.h>
 #include <linux/module.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
+#include <linux/platform_device.h>
 #include <linux/serial_core.h>
 #include <linux/slab.h>
 #include <linux/tty_flip.h>
@@ -178,8 +178,7 @@ static inline void linflex_transmit_buffer(struct uart_port *sport)
 
 	while (!uart_circ_empty(xmit)) {
 		linflex_put_char(sport, xmit->buf[xmit->tail]);
-		xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
-		sport->icount.tx++;
+		uart_xmit_advance(sport, 1);
 	}
 
 	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
@@ -828,14 +827,10 @@ static int linflex_probe(struct platform_device *pdev)
 
 	sport->line = ret;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res)
-		return -ENODEV;
-
-	sport->mapbase = res->start;
-	sport->membase = devm_ioremap_resource(&pdev->dev, res);
+	sport->membase = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
 	if (IS_ERR(sport->membase))
 		return PTR_ERR(sport->membase);
+	sport->mapbase = res->start;
 
 	sport->dev = &pdev->dev;
 	sport->type = PORT_LINFLEXUART;

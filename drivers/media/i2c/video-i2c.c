@@ -16,9 +16,9 @@
 #include <linux/kthread.h>
 #include <linux/i2c.h>
 #include <linux/list.h>
+#include <linux/mod_devicetable.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
-#include <linux/of_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/nvmem-provider.h>
 #include <linux/regmap.h>
@@ -274,7 +274,7 @@ static const struct hwmon_channel_info amg88xx_temp = {
 	.config = amg88xx_temp_config,
 };
 
-static const struct hwmon_channel_info *amg88xx_info[] = {
+static const struct hwmon_channel_info * const amg88xx_info[] = {
 	&amg88xx_temp,
 	NULL
 };
@@ -757,9 +757,9 @@ static void video_i2c_release(struct video_device *vdev)
 	kfree(data);
 }
 
-static int video_i2c_probe(struct i2c_client *client,
-			     const struct i2c_device_id *id)
+static int video_i2c_probe(struct i2c_client *client)
 {
+	const struct i2c_device_id *id = i2c_client_get_device_id(client);
 	struct video_i2c_data *data;
 	struct v4l2_device *v4l2_dev;
 	struct vb2_queue *queue;

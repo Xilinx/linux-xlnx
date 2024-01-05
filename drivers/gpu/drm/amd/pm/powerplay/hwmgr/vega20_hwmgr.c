@@ -22,7 +22,6 @@
  */
 
 #include <linux/delay.h>
-#include <linux/fb.h>
 #include <linux/module.h>
 #include <linux/slab.h>
 
@@ -1403,7 +1402,7 @@ static int vega20_od8_set_settings(
 			"Failed to export over drive table!",
 			return ret);
 
-	switch(index) {
+	switch (index) {
 	case OD8_SETTING_GFXCLK_FMIN:
 		od_table.GfxclkFmin = (uint16_t)value;
 		break;
@@ -1555,26 +1554,23 @@ static int vega20_set_mclk_od(
 	return 0;
 }
 
-static int vega20_populate_umdpstate_clocks(
-		struct pp_hwmgr *hwmgr)
+static void vega20_populate_umdpstate_clocks(struct pp_hwmgr *hwmgr)
 {
 	struct vega20_hwmgr *data = (struct vega20_hwmgr *)(hwmgr->backend);
 	struct vega20_single_dpm_table *gfx_table = &(data->dpm_table.gfx_table);
 	struct vega20_single_dpm_table *mem_table = &(data->dpm_table.mem_table);
 
-	hwmgr->pstate_sclk = gfx_table->dpm_levels[0].value;
-	hwmgr->pstate_mclk = mem_table->dpm_levels[0].value;
-
 	if (gfx_table->count > VEGA20_UMD_PSTATE_GFXCLK_LEVEL &&
 	    mem_table->count > VEGA20_UMD_PSTATE_MCLK_LEVEL) {
 		hwmgr->pstate_sclk = gfx_table->dpm_levels[VEGA20_UMD_PSTATE_GFXCLK_LEVEL].value;
 		hwmgr->pstate_mclk = mem_table->dpm_levels[VEGA20_UMD_PSTATE_MCLK_LEVEL].value;
+	} else {
+		hwmgr->pstate_sclk = gfx_table->dpm_levels[0].value;
+		hwmgr->pstate_mclk = mem_table->dpm_levels[0].value;
 	}
 
-	hwmgr->pstate_sclk = hwmgr->pstate_sclk * 100;
-	hwmgr->pstate_mclk = hwmgr->pstate_mclk * 100;
-
-	return 0;
+	hwmgr->pstate_sclk_peak = gfx_table->dpm_levels[gfx_table->count - 1].value;
+	hwmgr->pstate_mclk_peak = mem_table->dpm_levels[mem_table->count - 1].value;
 }
 
 static int vega20_get_max_sustainable_clock(struct pp_hwmgr *hwmgr,
@@ -1753,10 +1749,7 @@ static int vega20_enable_dpm_tasks(struct pp_hwmgr *hwmgr)
 			"[EnableDPMTasks] Failed to initialize odn settings!",
 			return result);
 
-	result = vega20_populate_umdpstate_clocks(hwmgr);
-	PP_ASSERT_WITH_CODE(!result,
-			"[EnableDPMTasks] Failed to populate umdpstate clocks!",
-			return result);
+	vega20_populate_umdpstate_clocks(hwmgr);
 
 	result = smum_send_msg_to_smc_with_parameter(hwmgr, PPSMC_MSG_GetPptLimit,
 			POWER_SOURCE_AC << 16, &hwmgr->default_power_limit);
@@ -2136,7 +2129,7 @@ static int vega20_get_metrics_table(struct pp_hwmgr *hwmgr,
 	return ret;
 }
 
-static int vega20_get_gpu_power(struct pp_hwmgr *hwmgr,
+static int vega20_get_gpu_power(struct pp_hwmgr *hwmgr, int idx,
 		uint32_t *query)
 {
 	int ret = 0;
@@ -2147,10 +2140,17 @@ static int vega20_get_gpu_power(struct pp_hwmgr *hwmgr,
 		return ret;
 
 	/* For the 40.46 release, they changed the value name */
-	if (hwmgr->smu_version == 0x282e00)
-		*query = metrics_table.AverageSocketPower << 8;
-	else
+	switch (idx) {
+	case AMDGPU_PP_SENSOR_GPU_AVG_POWER:
+		if (hwmgr->smu_version == 0x282e00)
+			*query = metrics_table.AverageSocketPower << 8;
+		else
+			ret = -EOPNOTSUPP;
+		break;
+	case AMDGPU_PP_SENSOR_GPU_INPUT_POWER:
 		*query = metrics_table.CurrSocketPower << 8;
+		break;
+	}
 
 	return ret;
 }
@@ -2260,9 +2260,10 @@ static int vega20_read_sensor(struct pp_hwmgr *hwmgr, int idx,
 		*((uint32_t *)value) = data->vce_power_gated ? 0 : 1;
 		*size = 4;
 		break;
-	case AMDGPU_PP_SENSOR_GPU_POWER:
+	case AMDGPU_PP_SENSOR_GPU_AVG_POWER:
+	case AMDGPU_PP_SENSOR_GPU_INPUT_POWER:
 		*size = 16;
-		ret = vega20_get_gpu_power(hwmgr, (uint32_t *)value);
+		ret = vega20_get_gpu_power(hwmgr, idx, (uint32_t *)value);
 		break;
 	case AMDGPU_PP_SENSOR_VDDGFX:
 		val_vid = (RREG32_SOC15(SMUIO, 0, mmSMUSVI0_TEL_PLANE0) &
@@ -2367,7 +2368,7 @@ static int vega20_notify_smc_display_config_after_ps_adjustment(
 		dpm_table->dpm_state.hard_min_level = min_clocks.memoryClock / 100;
 		PP_ASSERT_WITH_CODE(!(ret = smum_send_msg_to_smc_with_parameter(hwmgr,
 				PPSMC_MSG_SetHardMinByFreq,
-				(PPCLK_UCLK << 16 ) | dpm_table->dpm_state.hard_min_level,
+				(PPCLK_UCLK << 16) | dpm_table->dpm_state.hard_min_level,
 				NULL)),
 				"[SetHardMinFreq] Set hard min uclk failed!",
 				return ret);
@@ -2961,7 +2962,8 @@ static int vega20_odn_edit_dpm_table(struct pp_hwmgr *hwmgr,
 			data->od8_settings.od8_settings_array;
 	OverDriveTable_t *od_table =
 			&(data->smc_state_table.overdrive_table);
-	int32_t input_index, input_clk, input_vol, i;
+	int32_t input_clk, input_vol, i;
+	uint32_t input_index;
 	int od8_id;
 	int ret;
 
@@ -3585,7 +3587,7 @@ static int vega20_set_uclk_to_highest_dpm_level(struct pp_hwmgr *hwmgr,
 		dpm_table->dpm_state.hard_min_level = dpm_table->dpm_levels[dpm_table->count - 1].value;
 		PP_ASSERT_WITH_CODE(!(ret = smum_send_msg_to_smc_with_parameter(hwmgr,
 				PPSMC_MSG_SetHardMinByFreq,
-				(PPCLK_UCLK << 16 ) | dpm_table->dpm_state.hard_min_level,
+				(PPCLK_UCLK << 16) | dpm_table->dpm_state.hard_min_level,
 				NULL)),
 				"[SetUclkToHightestDpmLevel] Set hard min uclk failed!",
 				return ret);
@@ -3611,7 +3613,7 @@ static int vega20_set_fclk_to_highest_dpm_level(struct pp_hwmgr *hwmgr)
 		dpm_table->dpm_state.soft_min_level = dpm_table->dpm_levels[dpm_table->count - 1].value;
 		PP_ASSERT_WITH_CODE(!(ret = smum_send_msg_to_smc_with_parameter(hwmgr,
 				PPSMC_MSG_SetSoftMinByFreq,
-				(PPCLK_FCLK << 16 ) | dpm_table->dpm_state.soft_min_level,
+				(PPCLK_FCLK << 16) | dpm_table->dpm_state.soft_min_level,
 				NULL)),
 				"[SetFclkToHightestDpmLevel] Set soft min fclk failed!",
 				return ret);
@@ -3733,8 +3735,8 @@ static int vega20_apply_clocks_adjust_rules(struct pp_hwmgr *hwmgr)
 	uint32_t i, latency;
 
 	disable_mclk_switching = ((1 < hwmgr->display_config->num_display) &&
-                           !hwmgr->display_config->multi_monitor_in_sync) ||
-                            vblank_too_short;
+				!hwmgr->display_config->multi_monitor_in_sync) ||
+				vblank_too_short;
 	latency = hwmgr->display_config->dce_tolerable_mclk_in_active_latency;
 
 	/* gfxclk */
@@ -4212,6 +4214,8 @@ static int vega20_notify_cac_buffer_info(struct pp_hwmgr *hwmgr,
 static int vega20_get_thermal_temperature_range(struct pp_hwmgr *hwmgr,
 		struct PP_TemperatureRange *thermal_data)
 {
+	struct phm_ppt_v3_information *pptable_information =
+		(struct phm_ppt_v3_information *)hwmgr->pptable;
 	struct vega20_hwmgr *data =
 			(struct vega20_hwmgr *)(hwmgr->backend);
 	PPTable_t *pp_table = &(data->smc_state_table.pp_table);
@@ -4229,6 +4233,8 @@ static int vega20_get_thermal_temperature_range(struct pp_hwmgr *hwmgr,
 	thermal_data->mem_crit_max = pp_table->ThbmLimit *
 		PP_TEMPERATURE_UNITS_PER_CENTIGRADES;
 	thermal_data->mem_emergency_max = (pp_table->ThbmLimit + CTF_OFFSET_HBM)*
+		PP_TEMPERATURE_UNITS_PER_CENTIGRADES;
+	thermal_data->sw_ctf_threshold = pptable_information->us_software_shutdown_temp *
 		PP_TEMPERATURE_UNITS_PER_CENTIGRADES;
 
 	return 0;

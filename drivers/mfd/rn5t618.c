@@ -80,8 +80,7 @@ static const struct regmap_irq_chip rc5t619_irq_chip = {
 	.num_irqs = ARRAY_SIZE(rc5t619_irqs),
 	.num_regs = 1,
 	.status_base = RN5T618_INTMON,
-	.mask_base = RN5T618_INTEN,
-	.mask_invert = true,
+	.unmask_base = RN5T618_INTEN,
 };
 
 static struct i2c_client *rn5t618_pm_power_off;
@@ -278,10 +277,10 @@ static SIMPLE_DEV_PM_OPS(rn5t618_i2c_dev_pm_ops,
 static struct i2c_driver rn5t618_i2c_driver = {
 	.driver = {
 		.name = "rn5t618",
-		.of_match_table = of_match_ptr(rn5t618_of_match),
+		.of_match_table = rn5t618_of_match,
 		.pm = &rn5t618_i2c_dev_pm_ops,
 	},
-	.probe_new = rn5t618_i2c_probe,
+	.probe = rn5t618_i2c_probe,
 	.remove = rn5t618_i2c_remove,
 };
 

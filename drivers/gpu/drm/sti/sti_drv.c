@@ -8,13 +8,15 @@
 #include <linux/dma-mapping.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/of.h>
 #include <linux/of_platform.h>
+#include <linux/platform_device.h>
 
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_debugfs.h>
 #include <drm/drm_drv.h>
-#include <drm/drm_fb_helper.h>
+#include <drm/drm_fbdev_dma.h>
 #include <drm/drm_gem_dma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_of.h>
@@ -199,7 +201,7 @@ static int sti_bind(struct device *dev)
 
 	drm_mode_config_reset(ddev);
 
-	drm_fbdev_generic_setup(ddev, 32);
+	drm_fbdev_dma_setup(ddev, 32);
 
 	return 0;
 
@@ -246,11 +248,9 @@ static int sti_platform_probe(struct platform_device *pdev)
 	return component_master_add_with_match(dev, &sti_ops, match);
 }
 
-static int sti_platform_remove(struct platform_device *pdev)
+static void sti_platform_remove(struct platform_device *pdev)
 {
 	component_master_del(&pdev->dev, &sti_ops);
-
-	return 0;
 }
 
 static const struct of_device_id sti_dt_ids[] = {
@@ -261,7 +261,7 @@ MODULE_DEVICE_TABLE(of, sti_dt_ids);
 
 static struct platform_driver sti_platform_driver = {
 	.probe = sti_platform_probe,
-	.remove = sti_platform_remove,
+	.remove_new = sti_platform_remove,
 	.driver = {
 		.name = DRIVER_NAME,
 		.of_match_table = sti_dt_ids,

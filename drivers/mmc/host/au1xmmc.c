@@ -388,7 +388,7 @@ static void au1xmmc_send_pio(struct au1xmmc_host *host)
 
 	/* This is the pointer to the data buffer */
 	sg = &data->sg[host->pio.index];
-	sg_ptr = kmap_atomic(sg_page(sg)) + sg->offset + host->pio.offset;
+	sg_ptr = kmap_local_page(sg_page(sg)) + sg->offset + host->pio.offset;
 
 	/* This is the space left inside the buffer */
 	sg_len = data->sg[host->pio.index].length - host->pio.offset;
@@ -409,7 +409,7 @@ static void au1xmmc_send_pio(struct au1xmmc_host *host)
 		__raw_writel((unsigned long)val, HOST_TXPORT(host));
 		wmb(); /* drain writebuffer */
 	}
-	kunmap_atomic(sg_ptr);
+	kunmap_local(sg_ptr);
 
 	host->pio.len -= count;
 	host->pio.offset += count;
@@ -446,7 +446,7 @@ static void au1xmmc_receive_pio(struct au1xmmc_host *host)
 
 	if (host->pio.index < host->dma.len) {
 		sg = &data->sg[host->pio.index];
-		sg_ptr = kmap_atomic(sg_page(sg)) + sg->offset + host->pio.offset;
+		sg_ptr = kmap_local_page(sg_page(sg)) + sg->offset + host->pio.offset;
 
 		/* This is the space left inside the buffer */
 		sg_len = sg_dma_len(&data->sg[host->pio.index]) - host->pio.offset;
@@ -488,7 +488,7 @@ static void au1xmmc_receive_pio(struct au1xmmc_host *host)
 			sg_ptr[count] = (unsigned char)(val & 0xFF);
 	}
 	if (sg_ptr)
-		kunmap_atomic(sg_ptr);
+		kunmap_local(sg_ptr);
 
 	host->pio.len -= count;
 	host->pio.offset += count;
@@ -1114,7 +1114,7 @@ out0:
 	return ret;
 }
 
-static int au1xmmc_remove(struct platform_device *pdev)
+static void au1xmmc_remove(struct platform_device *pdev)
 {
 	struct au1xmmc_host *host = platform_get_drvdata(pdev);
 
@@ -1153,7 +1153,6 @@ static int au1xmmc_remove(struct platform_device *pdev)
 
 		mmc_free_host(host->mmc);
 	}
-	return 0;
 }
 
 #ifdef CONFIG_PM
@@ -1185,7 +1184,7 @@ static int au1xmmc_resume(struct platform_device *pdev)
 
 static struct platform_driver au1xmmc_driver = {
 	.probe         = au1xmmc_probe,
-	.remove        = au1xmmc_remove,
+	.remove_new    = au1xmmc_remove,
 	.suspend       = au1xmmc_suspend,
 	.resume        = au1xmmc_resume,
 	.driver        = {

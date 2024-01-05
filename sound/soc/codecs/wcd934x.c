@@ -2642,7 +2642,7 @@ static int wcd934x_mbhc_micb_ctrl_threshold_mic(struct snd_soc_component *compon
 	return rc;
 }
 
-static inline void wcd934x_mbhc_get_result_params(struct wcd934x_codec *wcd934x,
+static void wcd934x_mbhc_get_result_params(struct wcd934x_codec *wcd934x,
 						s16 *d1_a, u16 noff,
 						int32_t *zdet)
 {
@@ -2683,7 +2683,7 @@ static inline void wcd934x_mbhc_get_result_params(struct wcd934x_codec *wcd934x,
 	else if (x1 < minCode_param[noff])
 		*zdet = WCD934X_ZDET_FLOATING_IMPEDANCE;
 
-	dev_info(wcd934x->dev, "%s: d1=%d, c1=%d, x1=0x%x, z_val=%d(milliOhm)\n",
+	dev_dbg(wcd934x->dev, "%s: d1=%d, c1=%d, x1=0x%x, z_val=%di (milliohm)\n",
 		__func__, d1, c1, x1, *zdet);
 ramp_down:
 	i = 0;
@@ -2740,8 +2740,8 @@ z_right:
 	*zr = zdet;
 }
 
-static inline void wcd934x_wcd_mbhc_qfuse_cal(struct snd_soc_component *component,
-					      int32_t *z_val, int flag_l_r)
+static void wcd934x_wcd_mbhc_qfuse_cal(struct snd_soc_component *component,
+					int32_t *z_val, int flag_l_r)
 {
 	s16 q1;
 	int q1_cal;
@@ -3044,6 +3044,17 @@ static int wcd934x_mbhc_init(struct snd_soc_component *component)
 
 	return 0;
 }
+
+static void wcd934x_mbhc_deinit(struct snd_soc_component *component)
+{
+	struct wcd934x_codec *wcd = snd_soc_component_get_drvdata(component);
+
+	if (!wcd->mbhc)
+		return;
+
+	wcd_mbhc_deinit(wcd->mbhc);
+}
+
 static int wcd934x_comp_probe(struct snd_soc_component *component)
 {
 	struct wcd934x_codec *wcd = dev_get_drvdata(component->dev);
@@ -3077,6 +3088,7 @@ static void wcd934x_comp_remove(struct snd_soc_component *comp)
 {
 	struct wcd934x_codec *wcd = dev_get_drvdata(comp->dev);
 
+	wcd934x_mbhc_deinit(comp);
 	wcd_clsh_ctrl_free(wcd->clsh_ctrl);
 }
 
@@ -4737,13 +4749,9 @@ static u32 wcd934x_get_dmic_sample_rate(struct snd_soc_component *comp,
 	if (dec_found && adc_mux_index <= 8) {
 		tx_fs_reg = WCD934X_CDC_TX0_TX_PATH_CTL + (16 * adc_mux_index);
 		tx_stream_fs = snd_soc_component_read(comp, tx_fs_reg) & 0x0F;
-		if (tx_stream_fs <= 4)  {
-			if (wcd->dmic_sample_rate <=
-					WCD9XXX_DMIC_SAMPLE_RATE_2P4MHZ)
-				dmic_fs = wcd->dmic_sample_rate;
-			else
-				dmic_fs = WCD9XXX_DMIC_SAMPLE_RATE_2P4MHZ;
-		} else
+		if (tx_stream_fs <= 4)
+			dmic_fs = min(wcd->dmic_sample_rate, WCD9XXX_DMIC_SAMPLE_RATE_2P4MHZ);
+		else
 			dmic_fs = WCD9XXX_DMIC_SAMPLE_RATE_4P8MHZ;
 	} else {
 		dmic_fs = wcd->dmic_sample_rate;
@@ -5872,10 +5880,9 @@ static int wcd934x_codec_parse_data(struct wcd934x_codec *wcd)
 	slim_get_logical_addr(wcd->sidev);
 	wcd->if_regmap = regmap_init_slimbus(wcd->sidev,
 				  &wcd934x_ifc_regmap_config);
-	if (IS_ERR(wcd->if_regmap)) {
-		dev_err(dev, "Failed to allocate ifc register map\n");
-		return PTR_ERR(wcd->if_regmap);
-	}
+	if (IS_ERR(wcd->if_regmap))
+		return dev_err_probe(dev, PTR_ERR(wcd->if_regmap),
+				     "Failed to allocate ifc register map\n");
 
 	of_property_read_u32(dev->parent->of_node, "qcom,dmic-sample-rate",
 			     &wcd->dmic_sample_rate);
@@ -5897,12 +5904,12 @@ static int wcd934x_codec_parse_data(struct wcd934x_codec *wcd)
 
 static int wcd934x_codec_probe(struct platform_device *pdev)
 {
-	struct wcd934x_ddata *data = dev_get_drvdata(pdev->dev.parent);
-	struct wcd934x_codec *wcd;
 	struct device *dev = &pdev->dev;
+	struct wcd934x_ddata *data = dev_get_drvdata(dev->parent);
+	struct wcd934x_codec *wcd;
 	int ret, irq;
 
-	wcd = devm_kzalloc(&pdev->dev, sizeof(*wcd), GFP_KERNEL);
+	wcd = devm_kzalloc(dev, sizeof(*wcd), GFP_KERNEL);
 	if (!wcd)
 		return -ENOMEM;
 
@@ -5927,19 +5934,15 @@ static int wcd934x_codec_probe(struct platform_device *pdev)
 	memcpy(wcd->tx_chs, wcd934x_tx_chs, sizeof(wcd934x_tx_chs));
 
 	irq = regmap_irq_get_virq(data->irq_data, WCD934X_IRQ_SLIMBUS);
-	if (irq < 0) {
-		dev_err(wcd->dev, "Failed to get SLIM IRQ\n");
-		return irq;
-	}
+	if (irq < 0)
+		return dev_err_probe(wcd->dev, irq, "Failed to get SLIM IRQ\n");
 
 	ret = devm_request_threaded_irq(dev, irq, NULL,
 					wcd934x_slim_irq_handler,
 					IRQF_TRIGGER_RISING | IRQF_ONESHOT,
 					"slim", wcd);
-	if (ret) {
-		dev_err(dev, "Failed to request slimbus irq\n");
-		return ret;
-	}
+	if (ret)
+		return dev_err_probe(dev, ret, "Failed to request slimbus irq\n");
 
 	wcd934x_register_mclk_output(wcd);
 	platform_set_drvdata(pdev, wcd);

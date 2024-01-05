@@ -721,6 +721,8 @@ static irqreturn_t xiic_process(int irq, void *dev_id)
 			wakeup_req = 1;
 			wakeup_code = STATE_ERROR;
 		}
+		/* don't try to handle other events */
+		goto out;
 	}
 	if (pend & XIIC_INTR_RX_FULL_MASK) {
 		/* Receive register/FIFO is full */
@@ -1164,7 +1166,7 @@ static int xiic_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs, int num)
 	err = xiic_start_xfer(i2c, msgs, num);
 	if (err < 0) {
 		dev_err(adap->dev.parent, "Error xiic_start_xfer\n");
-		return err;
+		goto out;
 	}
 
 	err = wait_for_completion_timeout(&i2c->completion, XIIC_XFER_TIMEOUT);
@@ -1174,14 +1176,12 @@ static int xiic_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs, int num)
 		i2c->rx_msg = NULL;
 		i2c->nmsgs = 0;
 		err = -ETIMEDOUT;
-	} else if (err < 0) {	/* Completion error */
-		i2c->tx_msg = NULL;
-		i2c->rx_msg = NULL;
-		i2c->nmsgs = 0;
 	} else {
 		err = (i2c->state == STATE_DONE) ? num : -EIO;
 	}
 	mutex_unlock(&i2c->lock);
+
+out:
 	pm_runtime_mark_last_busy(i2c->dev);
 	pm_runtime_put_autosuspend(i2c->dev);
 	return err;
@@ -1203,11 +1203,11 @@ static const struct i2c_adapter xiic_adapter = {
 	.algo = &xiic_algorithm,
 };
 
+#if defined(CONFIG_OF)
 static const struct xiic_version_data xiic_2_00 = {
 	.quirks = DYNAMIC_MODE_READ_BROKEN_BIT,
 };
 
-#if defined(CONFIG_OF)
 static const struct of_device_id xiic_of_match[] = {
 	{ .compatible = "xlnx,xps-iic-2.00.a", .data = &xiic_2_00 },
 	{ .compatible = "xlnx,axi-iic-2.1", },
@@ -1237,8 +1237,7 @@ static int xiic_i2c_probe(struct platform_device *pdev)
 		i2c->quirks = data->quirks;
 	}
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	i2c->base = devm_ioremap_resource(&pdev->dev, res);
+	i2c->base = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
 	if (IS_ERR(i2c->base))
 		return PTR_ERR(i2c->base);
 
@@ -1259,16 +1258,11 @@ static int xiic_i2c_probe(struct platform_device *pdev)
 
 	mutex_init(&i2c->lock);
 
-	i2c->clk = devm_clk_get(&pdev->dev, NULL);
+	i2c->clk = devm_clk_get_enabled(&pdev->dev, NULL);
 	if (IS_ERR(i2c->clk))
 		return dev_err_probe(&pdev->dev, PTR_ERR(i2c->clk),
-				     "input clock not found.\n");
+				     "failed to enable input clock.\n");
 
-	ret = clk_prepare_enable(i2c->clk);
-	if (ret) {
-		dev_err(&pdev->dev, "Unable to enable clock.\n");
-		return ret;
-	}
 	i2c->dev = &pdev->dev;
 	pm_runtime_set_autosuspend_delay(i2c->dev, XIIC_PM_TIMEOUT);
 	pm_runtime_use_autosuspend(i2c->dev);
@@ -1289,7 +1283,7 @@ static int xiic_i2c_probe(struct platform_device *pdev)
 
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Cannot claim IRQ\n");
-		goto err_clk_dis;
+		goto err_pm_disable;
 	}
 
 	i2c->singlemaster =
@@ -1310,14 +1304,14 @@ static int xiic_i2c_probe(struct platform_device *pdev)
 	ret = xiic_reinit(i2c);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Cannot xiic_reinit\n");
-		goto err_clk_dis;
+		goto err_pm_disable;
 	}
 
 	/* add i2c adapter to i2c tree */
 	ret = i2c_add_adapter(&i2c->adap);
 	if (ret) {
 		xiic_deinit(i2c);
-		goto err_clk_dis;
+		goto err_pm_disable;
 	}
 
 	if (pdata) {
@@ -1331,14 +1325,14 @@ static int xiic_i2c_probe(struct platform_device *pdev)
 
 	return 0;
 
-err_clk_dis:
+err_pm_disable:
 	pm_runtime_set_suspended(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
-	clk_disable_unprepare(i2c->clk);
+
 	return ret;
 }
 
-static int xiic_i2c_remove(struct platform_device *pdev)
+static void xiic_i2c_remove(struct platform_device *pdev)
 {
 	struct xiic_i2c *i2c = platform_get_drvdata(pdev);
 	int ret;
@@ -1355,12 +1349,9 @@ static int xiic_i2c_remove(struct platform_device *pdev)
 		xiic_deinit(i2c);
 
 	pm_runtime_put_sync(i2c->dev);
-	clk_disable_unprepare(i2c->clk);
 	pm_runtime_disable(&pdev->dev);
 	pm_runtime_set_suspended(&pdev->dev);
 	pm_runtime_dont_use_autosuspend(&pdev->dev);
-
-	return 0;
 }
 
 static int __maybe_unused xiic_i2c_runtime_suspend(struct device *dev)
@@ -1393,7 +1384,7 @@ static const struct dev_pm_ops xiic_dev_pm_ops = {
 
 static struct platform_driver xiic_i2c_driver = {
 	.probe   = xiic_i2c_probe,
-	.remove  = xiic_i2c_remove,
+	.remove_new = xiic_i2c_remove,
 	.driver  = {
 		.name = DRIVER_NAME,
 		.of_match_table = of_match_ptr(xiic_of_match),

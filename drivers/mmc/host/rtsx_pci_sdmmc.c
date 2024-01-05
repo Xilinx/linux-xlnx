@@ -1474,6 +1474,7 @@ static int rtsx_pci_sdmmc_drv_probe(struct platform_device *pdev)
 	struct realtek_pci_sdmmc *host;
 	struct rtsx_pcr *pcr;
 	struct pcr_handle *handle = pdev->dev.platform_data;
+	int ret;
 
 	if (!handle)
 		return -ENXIO;
@@ -1511,19 +1512,22 @@ static int rtsx_pci_sdmmc_drv_probe(struct platform_device *pdev)
 	pm_runtime_mark_last_busy(&pdev->dev);
 	pm_runtime_use_autosuspend(&pdev->dev);
 
-	mmc_add_host(mmc);
+	ret = mmc_add_host(mmc);
+	if (ret) {
+		pm_runtime_dont_use_autosuspend(&pdev->dev);
+		pm_runtime_disable(&pdev->dev);
+		mmc_free_host(mmc);
+		return ret;
+	}
 
 	return 0;
 }
 
-static int rtsx_pci_sdmmc_drv_remove(struct platform_device *pdev)
+static void rtsx_pci_sdmmc_drv_remove(struct platform_device *pdev)
 {
 	struct realtek_pci_sdmmc *host = platform_get_drvdata(pdev);
 	struct rtsx_pcr *pcr;
 	struct mmc_host *mmc;
-
-	if (!host)
-		return 0;
 
 	pcr = host->pcr;
 	pcr->slots[RTSX_SD_CARD].p_dev = NULL;
@@ -1559,8 +1563,6 @@ static int rtsx_pci_sdmmc_drv_remove(struct platform_device *pdev)
 
 	dev_dbg(&(pdev->dev),
 		": Realtek PCI-E SDMMC controller has been removed\n");
-
-	return 0;
 }
 
 static const struct platform_device_id rtsx_pci_sdmmc_ids[] = {
@@ -1574,7 +1576,7 @@ MODULE_DEVICE_TABLE(platform, rtsx_pci_sdmmc_ids);
 
 static struct platform_driver rtsx_pci_sdmmc_driver = {
 	.probe		= rtsx_pci_sdmmc_drv_probe,
-	.remove		= rtsx_pci_sdmmc_drv_remove,
+	.remove_new	= rtsx_pci_sdmmc_drv_remove,
 	.id_table       = rtsx_pci_sdmmc_ids,
 	.driver		= {
 		.name	= DRV_NAME_RTSX_PCI_SDMMC,

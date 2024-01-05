@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR Linux-OpenIB
 /*
- * Copyright 2018-2022 Amazon.com, Inc. or its affiliates. All rights reserved.
+ * Copyright 2018-2023 Amazon.com, Inc. or its affiliates. All rights reserved.
  */
 
 #include <linux/dma-buf.h>
@@ -61,6 +61,10 @@ struct efa_user_mmap_entry {
 	op(EFA_RDMA_READ_BYTES, "rdma_read_bytes") \
 	op(EFA_RDMA_READ_WR_ERR, "rdma_read_wr_err") \
 	op(EFA_RDMA_READ_RESP_BYTES, "rdma_read_resp_bytes") \
+	op(EFA_RDMA_WRITE_WRS, "rdma_write_wrs") \
+	op(EFA_RDMA_WRITE_BYTES, "rdma_write_bytes") \
+	op(EFA_RDMA_WRITE_WR_ERR, "rdma_write_wr_err") \
+	op(EFA_RDMA_WRITE_RECV_BYTES, "rdma_write_recv_bytes") \
 
 #define EFA_STATS_ENUM(ename, name) ename,
 #define EFA_STATS_STR(ename, nam) \
@@ -249,6 +253,12 @@ int efa_query_device(struct ib_device *ibdev,
 
 		if (EFA_DEV_CAP(dev, RNR_RETRY))
 			resp.device_caps |= EFA_QUERY_DEVICE_CAPS_RNR_RETRY;
+
+		if (EFA_DEV_CAP(dev, DATA_POLLING_128))
+			resp.device_caps |= EFA_QUERY_DEVICE_CAPS_DATA_POLLING_128;
+
+		if (EFA_DEV_CAP(dev, RDMA_WRITE))
+			resp.device_caps |= EFA_QUERY_DEVICE_CAPS_RDMA_WRITE;
 
 		if (dev->neqs)
 			resp.device_caps |= EFA_QUERY_DEVICE_CAPS_CQ_NOTIFICATIONS;
@@ -443,11 +453,11 @@ int efa_destroy_qp(struct ib_qp *ibqp, struct ib_udata *udata)
 
 	ibdev_dbg(&dev->ibdev, "Destroy qp[%u]\n", ibqp->qp_num);
 
-	efa_qp_user_mmap_entries_remove(qp);
-
 	err = efa_destroy_qp_handle(dev, qp->qp_handle);
 	if (err)
 		return err;
+
+	efa_qp_user_mmap_entries_remove(qp);
 
 	if (qp->rq_cpu_addr) {
 		ibdev_dbg(&dev->ibdev,
@@ -1007,8 +1017,8 @@ int efa_destroy_cq(struct ib_cq *ibcq, struct ib_udata *udata)
 		  "Destroy cq[%d] virt[0x%p] freed: size[%lu], dma[%pad]\n",
 		  cq->cq_idx, cq->cpu_addr, cq->size, &cq->dma_addr);
 
-	efa_cq_user_mmap_entries_remove(cq);
 	efa_destroy_cq_idx(dev, cq->cq_idx);
+	efa_cq_user_mmap_entries_remove(cq);
 	if (cq->eq) {
 		xa_erase(&dev->cqs_xa, cq->cq_idx);
 		synchronize_irq(cq->eq->irq.irqn);
@@ -1397,7 +1407,7 @@ static int pbl_continuous_initialize(struct efa_dev *dev,
  */
 static int pbl_indirect_initialize(struct efa_dev *dev, struct pbl_context *pbl)
 {
-	u32 size_in_pages = DIV_ROUND_UP(pbl->pbl_buf_size_in_bytes, PAGE_SIZE);
+	u32 size_in_pages = DIV_ROUND_UP(pbl->pbl_buf_size_in_bytes, EFA_CHUNK_PAYLOAD_SIZE);
 	struct scatterlist *sgl;
 	int sg_dma_cnt, err;
 
@@ -1569,7 +1579,8 @@ static struct efa_mr *efa_alloc_mr(struct ib_pd *ibpd, int access_flags,
 
 	supp_access_flags =
 		IB_ACCESS_LOCAL_WRITE |
-		(EFA_DEV_CAP(dev, RDMA_READ) ? IB_ACCESS_REMOTE_READ : 0);
+		(EFA_DEV_CAP(dev, RDMA_READ) ? IB_ACCESS_REMOTE_READ : 0) |
+		(EFA_DEV_CAP(dev, RDMA_WRITE) ? IB_ACCESS_REMOTE_WRITE : 0);
 
 	access_flags &= ~IB_ACCESS_OPTIONAL;
 	if (access_flags & ~supp_access_flags) {
@@ -2073,6 +2084,7 @@ static int efa_fill_port_stats(struct efa_dev *dev, struct rdma_hw_stats *stats,
 {
 	struct efa_com_get_stats_params params = {};
 	union efa_com_get_stats_result result;
+	struct efa_com_rdma_write_stats *rws;
 	struct efa_com_rdma_read_stats *rrs;
 	struct efa_com_messages_stats *ms;
 	struct efa_com_basic_stats *bs;
@@ -2113,6 +2125,19 @@ static int efa_fill_port_stats(struct efa_dev *dev, struct rdma_hw_stats *stats,
 	stats->value[EFA_RDMA_READ_BYTES] = rrs->read_bytes;
 	stats->value[EFA_RDMA_READ_WR_ERR] = rrs->read_wr_err;
 	stats->value[EFA_RDMA_READ_RESP_BYTES] = rrs->read_resp_bytes;
+
+	if (EFA_DEV_CAP(dev, RDMA_WRITE)) {
+		params.type = EFA_ADMIN_GET_STATS_TYPE_RDMA_WRITE;
+		err = efa_com_get_stats(&dev->edev, &params, &result);
+		if (err)
+			return err;
+
+		rws = &result.rdma_write_stats;
+		stats->value[EFA_RDMA_WRITE_WRS] = rws->write_wrs;
+		stats->value[EFA_RDMA_WRITE_BYTES] = rws->write_bytes;
+		stats->value[EFA_RDMA_WRITE_WR_ERR] = rws->write_wr_err;
+		stats->value[EFA_RDMA_WRITE_RECV_BYTES] = rws->write_recv_bytes;
+	}
 
 	return ARRAY_SIZE(efa_port_stats_descs);
 }

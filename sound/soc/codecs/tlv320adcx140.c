@@ -925,7 +925,7 @@ static int adcx140_configure_gpio(struct adcx140_priv *adcx140)
 
 	gpio_count = device_property_count_u32(adcx140->dev,
 			"ti,gpio-config");
-	if (gpio_count == 0)
+	if (gpio_count <= 0)
 		return 0;
 
 	if (gpio_count != ADCX140_NUM_GPIO_CFGS)
@@ -1208,7 +1208,7 @@ static struct i2c_driver adcx140_i2c_driver = {
 		.name	= "tlv320adcx140-codec",
 		.of_match_table = of_match_ptr(tlv320adcx140_of_match),
 	},
-	.probe_new	= adcx140_i2c_probe,
+	.probe		= adcx140_i2c_probe,
 	.id_table	= adcx140_i2c_id,
 };
 module_i2c_driver(adcx140_i2c_driver);

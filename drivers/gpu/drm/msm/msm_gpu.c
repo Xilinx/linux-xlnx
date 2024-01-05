@@ -16,7 +16,6 @@
 #include <generated/utsrelease.h>
 #include <linux/string_helpers.h>
 #include <linux/devcoredump.h>
-#include <linux/reset.h>
 #include <linux/sched/task.h>
 
 /*
@@ -59,7 +58,7 @@ static int disable_pwrrail(struct msm_gpu *gpu)
 static int enable_clk(struct msm_gpu *gpu)
 {
 	if (gpu->core_clk && gpu->fast_rate)
-		clk_set_rate(gpu->core_clk, gpu->fast_rate);
+		dev_pm_opp_set_rate(&gpu->pdev->dev, gpu->fast_rate);
 
 	/* Set the RBBM timer rate to 19.2Mhz */
 	if (gpu->rbbmtimer_clk)
@@ -78,7 +77,7 @@ static int disable_clk(struct msm_gpu *gpu)
 	 * will be rounded down to zero anyway so it all works out.
 	 */
 	if (gpu->core_clk)
-		clk_set_rate(gpu->core_clk, 27000000);
+		dev_pm_opp_set_rate(&gpu->pdev->dev, 27000000);
 
 	if (gpu->rbbmtimer_clk)
 		clk_set_rate(gpu->rbbmtimer_clk, 0);
@@ -152,8 +151,6 @@ int msm_gpu_pm_suspend(struct msm_gpu *gpu)
 void msm_gpu_show_fdinfo(struct msm_gpu *gpu, struct msm_file_private *ctx,
 			 struct drm_printer *p)
 {
-	drm_printf(p, "drm-driver:\t%s\n", gpu->dev->driver->name);
-	drm_printf(p, "drm-client-id:\t%u\n", ctx->seqno);
 	drm_printf(p, "drm-engine-gpu:\t%llu ns\n", ctx->elapsed_ns);
 	drm_printf(p, "drm-cycles-gpu:\t%llu\n", ctx->cycles);
 	drm_printf(p, "drm-maxfreq-gpu:\t%u Hz\n", gpu->fast_rate);
@@ -222,36 +219,36 @@ static void msm_gpu_devcoredump_free(void *data)
 }
 
 static void msm_gpu_crashstate_get_bo(struct msm_gpu_state *state,
-		struct msm_gem_object *obj, u64 iova, bool full)
+		struct drm_gem_object *obj, u64 iova, bool full)
 {
 	struct msm_gpu_state_bo *state_bo = &state->bos[state->nr_bos];
 
 	/* Don't record write only objects */
-	state_bo->size = obj->base.size;
+	state_bo->size = obj->size;
 	state_bo->iova = iova;
 
-	BUILD_BUG_ON(sizeof(state_bo->name) != sizeof(obj->name));
+	BUILD_BUG_ON(sizeof(state_bo->name) != sizeof(to_msm_bo(obj)->name));
 
-	memcpy(state_bo->name, obj->name, sizeof(state_bo->name));
+	memcpy(state_bo->name, to_msm_bo(obj)->name, sizeof(state_bo->name));
 
 	if (full) {
 		void *ptr;
 
-		state_bo->data = kvmalloc(obj->base.size, GFP_KERNEL);
+		state_bo->data = kvmalloc(obj->size, GFP_KERNEL);
 		if (!state_bo->data)
 			goto out;
 
-		msm_gem_lock(&obj->base);
-		ptr = msm_gem_get_vaddr_active(&obj->base);
-		msm_gem_unlock(&obj->base);
+		msm_gem_lock(obj);
+		ptr = msm_gem_get_vaddr_active(obj);
+		msm_gem_unlock(obj);
 		if (IS_ERR(ptr)) {
 			kvfree(state_bo->data);
 			state_bo->data = NULL;
 			goto out;
 		}
 
-		memcpy(state_bo->data, ptr, obj->base.size);
-		msm_gem_put_vaddr(&obj->base);
+		memcpy(state_bo->data, ptr, obj->size);
+		msm_gem_put_vaddr(obj);
 	}
 out:
 	state->nr_bos++;
@@ -334,6 +331,8 @@ static void get_comm_cmdline(struct msm_gem_submit *submit, char **comm, char **
 {
 	struct msm_file_private *ctx = submit->queue->ctx;
 	struct task_struct *task;
+
+	WARN_ON(!mutex_is_locked(&submit->gpu->lock));
 
 	/* Note that kstrdup will return NULL if argument is NULL: */
 	*comm = kstrdup(ctx->comm, GFP_KERNEL);
@@ -492,6 +491,21 @@ static void hangcheck_timer_reset(struct msm_gpu *gpu)
 			round_jiffies_up(jiffies + msecs_to_jiffies(priv->hangcheck_period)));
 }
 
+static bool made_progress(struct msm_gpu *gpu, struct msm_ringbuffer *ring)
+{
+	if (ring->hangcheck_progress_retries >= DRM_MSM_HANGCHECK_PROGRESS_RETRIES)
+		return false;
+
+	if (!gpu->funcs->progress)
+		return false;
+
+	if (!gpu->funcs->progress(gpu, ring))
+		return false;
+
+	ring->hangcheck_progress_retries++;
+	return true;
+}
+
 static void hangcheck_handler(struct timer_list *t)
 {
 	struct msm_gpu *gpu = from_timer(gpu, t, hangcheck_timer);
@@ -502,9 +516,12 @@ static void hangcheck_handler(struct timer_list *t)
 	if (fence != ring->hangcheck_fence) {
 		/* some progress has been made.. ya! */
 		ring->hangcheck_fence = fence;
-	} else if (fence_before(fence, ring->fctx->last_fence)) {
+		ring->hangcheck_progress_retries = 0;
+	} else if (fence_before(fence, ring->fctx->last_fence) &&
+			!made_progress(gpu, ring)) {
 		/* no progress and not done.. hung! */
 		ring->hangcheck_fence = fence;
+		ring->hangcheck_progress_retries = 0;
 		DRM_DEV_ERROR(dev->dev, "%s: hangcheck detected gpu lockup rb %d!\n",
 				gpu->name, ring->id);
 		DRM_DEV_ERROR(dev->dev, "%s:     completed fence: %u\n",
@@ -729,20 +746,14 @@ void msm_gpu_retire(struct msm_gpu *gpu)
 /* add bo's to gpu's ring, and kick gpu: */
 void msm_gpu_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 {
-	struct drm_device *dev = gpu->dev;
-	struct msm_drm_private *priv = dev->dev_private;
 	struct msm_ringbuffer *ring = submit->ring;
 	unsigned long flags;
 
-	WARN_ON(!mutex_is_locked(&gpu->lock));
-
 	pm_runtime_get_sync(&gpu->pdev->dev);
 
+	mutex_lock(&gpu->lock);
+
 	msm_gpu_hw_init(gpu);
-
-	submit->seqno = submit->hw_fence->seqno;
-
-	msm_rd_dump_submit(priv->rd, submit, NULL);
 
 	update_sw_cntrs(gpu);
 
@@ -768,8 +779,11 @@ void msm_gpu_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 	gpu->funcs->submit(gpu, submit);
 	gpu->cur_ctx_seqno = submit->queue->ctx->seqno;
 
-	pm_runtime_put(&gpu->pdev->dev);
 	hangcheck_timer_reset(gpu);
+
+	mutex_unlock(&gpu->lock);
+
+	pm_runtime_put(&gpu->pdev->dev);
 }
 
 /*
@@ -830,6 +844,7 @@ int msm_gpu_init(struct drm_device *drm, struct platform_device *pdev,
 		struct msm_gpu *gpu, const struct msm_gpu_funcs *funcs,
 		const char *name, struct msm_gpu_config *config)
 {
+	struct msm_drm_private *priv = drm->dev_private;
 	int i, ret, nr_rings = config->nr_rings;
 	void *memptrs;
 	uint64_t memptrs_iova;
@@ -857,6 +872,16 @@ int msm_gpu_init(struct drm_device *drm, struct platform_device *pdev,
 	kthread_init_work(&gpu->recover_work, recover_worker);
 	kthread_init_work(&gpu->fault_work, fault_worker);
 
+	priv->hangcheck_period = DRM_MSM_HANGCHECK_DEFAULT_PERIOD;
+
+	/*
+	 * If progress detection is supported, halve the hangcheck timer
+	 * duration, as it takes two iterations of the hangcheck handler
+	 * to detect a hang.
+	 */
+	if (funcs->progress)
+		priv->hangcheck_period /= 2;
+
 	timer_setup(&gpu->hangcheck_timer, hangcheck_handler, 0);
 
 	spin_lock_init(&gpu->perf_lock);
@@ -873,7 +898,6 @@ int msm_gpu_init(struct drm_device *drm, struct platform_device *pdev,
 	gpu->irq = platform_get_irq(pdev, 0);
 	if (gpu->irq < 0) {
 		ret = gpu->irq;
-		DRM_DEV_ERROR(drm->dev, "failed to get irq: %d\n", ret);
 		goto fail;
 	}
 
@@ -903,9 +927,6 @@ int msm_gpu_init(struct drm_device *drm, struct platform_device *pdev,
 	DBG("gpu_cx: %p", gpu->gpu_cx);
 	if (IS_ERR(gpu->gpu_cx))
 		gpu->gpu_cx = NULL;
-
-	gpu->cx_collapse = devm_reset_control_get_optional_exclusive(&pdev->dev,
-			"cx_collapse");
 
 	gpu->pdev = pdev;
 	platform_set_drvdata(pdev, &gpu->adreno_smmu);

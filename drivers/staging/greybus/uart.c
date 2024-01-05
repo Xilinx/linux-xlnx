@@ -427,8 +427,7 @@ static void gb_tty_hangup(struct tty_struct *tty)
 	tty_port_hangup(&gb_tty->port);
 }
 
-static int gb_tty_write(struct tty_struct *tty, const unsigned char *buf,
-			int count)
+static ssize_t gb_tty_write(struct tty_struct *tty, const u8 *buf, size_t count)
 {
 	struct gb_tty *gb_tty = tty->driver_data;
 
@@ -701,7 +700,7 @@ static int gb_tty_ioctl(struct tty_struct *tty, unsigned int cmd,
 	return -ENOIOCTLCMD;
 }
 
-static void gb_tty_dtr_rts(struct tty_port *port, int on)
+static void gb_tty_dtr_rts(struct tty_port *port, bool active)
 {
 	struct gb_tty *gb_tty;
 	u8 newctrl;
@@ -709,7 +708,7 @@ static void gb_tty_dtr_rts(struct tty_port *port, int on)
 	gb_tty = container_of(port, struct gb_tty, port);
 	newctrl = gb_tty->ctrlout;
 
-	if (on)
+	if (active)
 		newctrl |= (GB_UART_CTRL_DTR | GB_UART_CTRL_RTS);
 	else
 		newctrl &= ~(GB_UART_CTRL_DTR | GB_UART_CTRL_RTS);

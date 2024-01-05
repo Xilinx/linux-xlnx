@@ -110,6 +110,7 @@ extern void MMU_init_hw(void);
 void MMU_init_hw_patch(void);
 unsigned long mmu_mapin_ram(unsigned long base, unsigned long top);
 #endif
+void mmu_init_secondary(int cpu);
 
 #ifdef CONFIG_PPC_E500
 extern unsigned long map_mem_in_cams(unsigned long ram, int max_cam_idx,
@@ -120,6 +121,7 @@ extern int switch_to_as1(void);
 extern void restore_to_as0(int esel, int offset, void *dt_ptr, int bootcpu);
 void create_kaslr_tlb_entry(int entry, unsigned long virt, phys_addr_t phys);
 void reloc_kernel_entry(void *fdt, int addr);
+void relocate_init(u64 dt_ptr, phys_addr_t start);
 extern int is_second_reloc;
 #endif
 extern void loadcam_entry(unsigned int index);

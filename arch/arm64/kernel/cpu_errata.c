@@ -661,6 +661,13 @@ const struct arm64_cpu_capabilities arm64_errata[] = {
 		CAP_MIDR_RANGE_LIST(trbe_write_out_of_range_cpus),
 	},
 #endif
+#ifdef CONFIG_ARM64_ERRATUM_2645198
+	{
+		.desc = "ARM erratum 2645198",
+		.capability = ARM64_WORKAROUND_2645198,
+		ERRATA_MIDR_ALL_VERSIONS(MIDR_CORTEX_A715)
+	},
+#endif
 #ifdef CONFIG_ARM64_ERRATUM_2077057
 	{
 		.desc = "ARM erratum 2077057",
@@ -721,6 +728,21 @@ const struct arm64_cpu_capabilities arm64_errata[] = {
 		ERRATA_MIDR_RANGE(MIDR_CORTEX_A510, 0, 0, 1, 1),
 		MIDR_FIXED(MIDR_CPU_VAR_REV(1,1), BIT(25)),
 		.cpu_enable = cpu_clear_bf16_from_user_emulation,
+	},
+#endif
+#ifdef CONFIG_ARM64_ERRATUM_2966298
+	{
+		.desc = "ARM erratum 2966298",
+		.capability = ARM64_WORKAROUND_2966298,
+		/* Cortex-A520 r0p0 - r0p1 */
+		ERRATA_MIDR_REV_RANGE(MIDR_CORTEX_A520, 0, 0, 1),
+	},
+#endif
+#ifdef CONFIG_AMPERE_ERRATUM_AC03_CPU_38
+	{
+		.desc = "AmpereOne erratum AC03_CPU_38",
+		.capability = ARM64_WORKAROUND_AMPERE_AC03_CPU_38,
+		ERRATA_MIDR_ALL_VERSIONS(MIDR_AMPERE1),
 	},
 #endif
 	{

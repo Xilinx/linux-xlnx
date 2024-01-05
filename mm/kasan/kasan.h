@@ -42,6 +42,10 @@ enum kasan_mode {
 
 extern enum kasan_mode kasan_mode __ro_after_init;
 
+extern unsigned long kasan_page_alloc_sample;
+extern unsigned int kasan_page_alloc_sample_order;
+DECLARE_PER_CPU(long, kasan_page_alloc_skip);
+
 static inline bool kasan_vmalloc_enabled(void)
 {
 	return static_branch_likely(&kasan_flag_vmalloc);
@@ -57,6 +61,24 @@ static inline bool kasan_sync_fault_possible(void)
 	return kasan_mode == KASAN_MODE_SYNC || kasan_mode == KASAN_MODE_ASYMM;
 }
 
+static inline bool kasan_sample_page_alloc(unsigned int order)
+{
+	/* Fast-path for when sampling is disabled. */
+	if (kasan_page_alloc_sample == 1)
+		return true;
+
+	if (order < kasan_page_alloc_sample_order)
+		return true;
+
+	if (this_cpu_dec_return(kasan_page_alloc_skip) < 0) {
+		this_cpu_write(kasan_page_alloc_skip,
+			       kasan_page_alloc_sample - 1);
+		return true;
+	}
+
+	return false;
+}
+
 #else /* CONFIG_KASAN_HW_TAGS */
 
 static inline bool kasan_async_fault_possible(void)
@@ -65,6 +87,11 @@ static inline bool kasan_async_fault_possible(void)
 }
 
 static inline bool kasan_sync_fault_possible(void)
+{
+	return true;
+}
+
+static inline bool kasan_sample_page_alloc(unsigned int order)
 {
 	return true;
 }
@@ -171,15 +198,16 @@ enum kasan_report_type {
 struct kasan_report_info {
 	/* Filled in by kasan_report_*(). */
 	enum kasan_report_type type;
-	void *access_addr;
+	const void *access_addr;
 	size_t access_size;
 	bool is_write;
 	unsigned long ip;
 
 	/* Filled in by the common reporting code. */
-	void *first_bad_addr;
+	const void *first_bad_addr;
 	struct kmem_cache *cache;
 	void *object;
+	size_t alloc_size;
 
 	/* Filled in by the mode-specific reporting code. */
 	const char *bug_type;
@@ -261,27 +289,23 @@ struct kasan_stack_ring {
 
 #endif /* CONFIG_KASAN_SW_TAGS || CONFIG_KASAN_HW_TAGS */
 
-#if IS_ENABLED(CONFIG_KASAN_KUNIT_TEST)
-/* Used in KUnit-compatible KASAN tests. */
-struct kunit_kasan_status {
-	bool report_found;
-	bool sync_fault;
-};
-#endif
-
 #if defined(CONFIG_KASAN_GENERIC) || defined(CONFIG_KASAN_SW_TAGS)
 
+#ifndef kasan_shadow_to_mem
 static inline const void *kasan_shadow_to_mem(const void *shadow_addr)
 {
 	return (void *)(((unsigned long)shadow_addr - KASAN_SHADOW_OFFSET)
 		<< KASAN_SHADOW_SCALE_SHIFT);
 }
+#endif
 
-static inline bool addr_has_metadata(const void *addr)
+#ifndef addr_has_metadata
+static __always_inline bool addr_has_metadata(const void *addr)
 {
 	return (kasan_reset_tag(addr) >=
 		kasan_shadow_to_mem((void *)KASAN_SHADOW_START));
 }
+#endif
 
 /**
  * kasan_check_range - Check memory region, and report if invalid access.
@@ -291,19 +315,20 @@ static inline bool addr_has_metadata(const void *addr)
  * @ret_ip: return address
  * @return: true if access was valid, false if invalid
  */
-bool kasan_check_range(unsigned long addr, size_t size, bool write,
+bool kasan_check_range(const void *addr, size_t size, bool write,
 				unsigned long ret_ip);
 
 #else /* CONFIG_KASAN_GENERIC || CONFIG_KASAN_SW_TAGS */
 
-static inline bool addr_has_metadata(const void *addr)
+static __always_inline bool addr_has_metadata(const void *addr)
 {
 	return (is_vmalloc_addr(addr) || virt_addr_valid(addr));
 }
 
 #endif /* CONFIG_KASAN_GENERIC || CONFIG_KASAN_SW_TAGS */
 
-void *kasan_find_first_bad_addr(void *addr, size_t size);
+const void *kasan_find_first_bad_addr(const void *addr, size_t size);
+size_t kasan_get_alloc_size(void *object, struct kmem_cache *cache);
 void kasan_complete_mode_report_info(struct kasan_report_info *info);
 void kasan_metadata_fetch_row(char *buffer, void *row);
 
@@ -325,7 +350,7 @@ void kasan_print_aux_stacks(struct kmem_cache *cache, const void *object);
 static inline void kasan_print_aux_stacks(struct kmem_cache *cache, const void *object) { }
 #endif
 
-bool kasan_report(unsigned long addr, size_t size,
+bool kasan_report(const void *addr, size_t size,
 		bool is_write, unsigned long ip);
 void kasan_report_invalid_free(void *object, unsigned long ip, enum kasan_report_type type);
 
@@ -374,46 +399,22 @@ static inline const void *arch_kasan_set_tag(const void *addr, u8 tag)
 
 #ifdef CONFIG_KASAN_HW_TAGS
 
-#ifndef arch_enable_tagging_sync
-#define arch_enable_tagging_sync()
-#endif
-#ifndef arch_enable_tagging_async
-#define arch_enable_tagging_async()
-#endif
-#ifndef arch_enable_tagging_asymm
-#define arch_enable_tagging_asymm()
-#endif
-#ifndef arch_force_async_tag_fault
-#define arch_force_async_tag_fault()
-#endif
-#ifndef arch_get_random_tag
-#define arch_get_random_tag()	(0xFF)
-#endif
-#ifndef arch_get_mem_tag
-#define arch_get_mem_tag(addr)	(0xFF)
-#endif
-#ifndef arch_set_mem_tag_range
-#define arch_set_mem_tag_range(addr, size, tag, init) ((void *)(addr))
-#endif
-
-#define hw_enable_tagging_sync()		arch_enable_tagging_sync()
-#define hw_enable_tagging_async()		arch_enable_tagging_async()
-#define hw_enable_tagging_asymm()		arch_enable_tagging_asymm()
+#define hw_enable_tag_checks_sync()		arch_enable_tag_checks_sync()
+#define hw_enable_tag_checks_async()		arch_enable_tag_checks_async()
+#define hw_enable_tag_checks_asymm()		arch_enable_tag_checks_asymm()
+#define hw_suppress_tag_checks_start()		arch_suppress_tag_checks_start()
+#define hw_suppress_tag_checks_stop()		arch_suppress_tag_checks_stop()
 #define hw_force_async_tag_fault()		arch_force_async_tag_fault()
 #define hw_get_random_tag()			arch_get_random_tag()
 #define hw_get_mem_tag(addr)			arch_get_mem_tag(addr)
 #define hw_set_mem_tag_range(addr, size, tag, init) \
 			arch_set_mem_tag_range((addr), (size), (tag), (init))
 
-void kasan_enable_tagging(void);
+void kasan_enable_hw_tags(void);
 
 #else /* CONFIG_KASAN_HW_TAGS */
 
-#define hw_enable_tagging_sync()
-#define hw_enable_tagging_async()
-#define hw_enable_tagging_asymm()
-
-static inline void kasan_enable_tagging(void) { }
+static inline void kasan_enable_hw_tags(void) { }
 
 #endif /* CONFIG_KASAN_HW_TAGS */
 
@@ -469,18 +470,6 @@ static inline void kasan_unpoison(const void *addr, size_t size, bool init)
 
 	if (WARN_ON((unsigned long)addr & KASAN_GRANULE_MASK))
 		return;
-	/*
-	 * Explicitly initialize the memory with the precise object size to
-	 * avoid overwriting the slab redzone. This disables initialization in
-	 * the arch code and may thus lead to performance penalty. This penalty
-	 * does not affect production builds, as slab redzones are not enabled
-	 * there.
-	 */
-	if (__slub_debug_enabled() &&
-	    init && ((unsigned long)size & KASAN_GRANULE_MASK)) {
-		init = false;
-		memzero_explicit((void *)addr, size);
-	}
 	size = round_up(size, KASAN_GRANULE_SIZE);
 
 	hw_set_mem_tag_range((void *)addr, size, tag, init);
@@ -549,6 +538,18 @@ static inline bool kasan_arch_is_ready(void)	{ return true; }
 #error kasan_arch_is_ready only works in KASAN generic outline mode!
 #endif
 
+#if IS_ENABLED(CONFIG_KASAN_KUNIT_TEST)
+
+void kasan_kunit_test_suite_start(void);
+void kasan_kunit_test_suite_end(void);
+
+#else /* CONFIG_KASAN_KUNIT_TEST */
+
+static inline void kasan_kunit_test_suite_start(void) { }
+static inline void kasan_kunit_test_suite_end(void) { }
+
+#endif /* CONFIG_KASAN_KUNIT_TEST */
+
 #if IS_ENABLED(CONFIG_KASAN_KUNIT_TEST) || IS_ENABLED(CONFIG_KASAN_MODULE_TEST)
 
 bool kasan_save_enable_multi_shot(void);
@@ -562,71 +563,82 @@ void kasan_restore_multi_shot(bool enabled);
  */
 
 asmlinkage void kasan_unpoison_task_stack_below(const void *watermark);
-void __asan_register_globals(struct kasan_global *globals, size_t size);
-void __asan_unregister_globals(struct kasan_global *globals, size_t size);
+void __asan_register_globals(void *globals, ssize_t size);
+void __asan_unregister_globals(void *globals, ssize_t size);
 void __asan_handle_no_return(void);
-void __asan_alloca_poison(unsigned long addr, size_t size);
-void __asan_allocas_unpoison(const void *stack_top, const void *stack_bottom);
+void __asan_alloca_poison(void *, ssize_t size);
+void __asan_allocas_unpoison(void *stack_top, ssize_t stack_bottom);
 
-void __asan_load1(unsigned long addr);
-void __asan_store1(unsigned long addr);
-void __asan_load2(unsigned long addr);
-void __asan_store2(unsigned long addr);
-void __asan_load4(unsigned long addr);
-void __asan_store4(unsigned long addr);
-void __asan_load8(unsigned long addr);
-void __asan_store8(unsigned long addr);
-void __asan_load16(unsigned long addr);
-void __asan_store16(unsigned long addr);
-void __asan_loadN(unsigned long addr, size_t size);
-void __asan_storeN(unsigned long addr, size_t size);
+void __asan_load1(void *);
+void __asan_store1(void *);
+void __asan_load2(void *);
+void __asan_store2(void *);
+void __asan_load4(void *);
+void __asan_store4(void *);
+void __asan_load8(void *);
+void __asan_store8(void *);
+void __asan_load16(void *);
+void __asan_store16(void *);
+void __asan_loadN(void *, ssize_t size);
+void __asan_storeN(void *, ssize_t size);
 
-void __asan_load1_noabort(unsigned long addr);
-void __asan_store1_noabort(unsigned long addr);
-void __asan_load2_noabort(unsigned long addr);
-void __asan_store2_noabort(unsigned long addr);
-void __asan_load4_noabort(unsigned long addr);
-void __asan_store4_noabort(unsigned long addr);
-void __asan_load8_noabort(unsigned long addr);
-void __asan_store8_noabort(unsigned long addr);
-void __asan_load16_noabort(unsigned long addr);
-void __asan_store16_noabort(unsigned long addr);
-void __asan_loadN_noabort(unsigned long addr, size_t size);
-void __asan_storeN_noabort(unsigned long addr, size_t size);
+void __asan_load1_noabort(void *);
+void __asan_store1_noabort(void *);
+void __asan_load2_noabort(void *);
+void __asan_store2_noabort(void *);
+void __asan_load4_noabort(void *);
+void __asan_store4_noabort(void *);
+void __asan_load8_noabort(void *);
+void __asan_store8_noabort(void *);
+void __asan_load16_noabort(void *);
+void __asan_store16_noabort(void *);
+void __asan_loadN_noabort(void *, ssize_t size);
+void __asan_storeN_noabort(void *, ssize_t size);
 
-void __asan_report_load1_noabort(unsigned long addr);
-void __asan_report_store1_noabort(unsigned long addr);
-void __asan_report_load2_noabort(unsigned long addr);
-void __asan_report_store2_noabort(unsigned long addr);
-void __asan_report_load4_noabort(unsigned long addr);
-void __asan_report_store4_noabort(unsigned long addr);
-void __asan_report_load8_noabort(unsigned long addr);
-void __asan_report_store8_noabort(unsigned long addr);
-void __asan_report_load16_noabort(unsigned long addr);
-void __asan_report_store16_noabort(unsigned long addr);
-void __asan_report_load_n_noabort(unsigned long addr, size_t size);
-void __asan_report_store_n_noabort(unsigned long addr, size_t size);
+void __asan_report_load1_noabort(void *);
+void __asan_report_store1_noabort(void *);
+void __asan_report_load2_noabort(void *);
+void __asan_report_store2_noabort(void *);
+void __asan_report_load4_noabort(void *);
+void __asan_report_store4_noabort(void *);
+void __asan_report_load8_noabort(void *);
+void __asan_report_store8_noabort(void *);
+void __asan_report_load16_noabort(void *);
+void __asan_report_store16_noabort(void *);
+void __asan_report_load_n_noabort(void *, ssize_t size);
+void __asan_report_store_n_noabort(void *, ssize_t size);
 
-void __asan_set_shadow_00(const void *addr, size_t size);
-void __asan_set_shadow_f1(const void *addr, size_t size);
-void __asan_set_shadow_f2(const void *addr, size_t size);
-void __asan_set_shadow_f3(const void *addr, size_t size);
-void __asan_set_shadow_f5(const void *addr, size_t size);
-void __asan_set_shadow_f8(const void *addr, size_t size);
+void __asan_set_shadow_00(const void *addr, ssize_t size);
+void __asan_set_shadow_f1(const void *addr, ssize_t size);
+void __asan_set_shadow_f2(const void *addr, ssize_t size);
+void __asan_set_shadow_f3(const void *addr, ssize_t size);
+void __asan_set_shadow_f5(const void *addr, ssize_t size);
+void __asan_set_shadow_f8(const void *addr, ssize_t size);
 
-void __hwasan_load1_noabort(unsigned long addr);
-void __hwasan_store1_noabort(unsigned long addr);
-void __hwasan_load2_noabort(unsigned long addr);
-void __hwasan_store2_noabort(unsigned long addr);
-void __hwasan_load4_noabort(unsigned long addr);
-void __hwasan_store4_noabort(unsigned long addr);
-void __hwasan_load8_noabort(unsigned long addr);
-void __hwasan_store8_noabort(unsigned long addr);
-void __hwasan_load16_noabort(unsigned long addr);
-void __hwasan_store16_noabort(unsigned long addr);
-void __hwasan_loadN_noabort(unsigned long addr, size_t size);
-void __hwasan_storeN_noabort(unsigned long addr, size_t size);
+void *__asan_memset(void *addr, int c, ssize_t len);
+void *__asan_memmove(void *dest, const void *src, ssize_t len);
+void *__asan_memcpy(void *dest, const void *src, ssize_t len);
 
-void __hwasan_tag_memory(unsigned long addr, u8 tag, unsigned long size);
+void __hwasan_load1_noabort(void *);
+void __hwasan_store1_noabort(void *);
+void __hwasan_load2_noabort(void *);
+void __hwasan_store2_noabort(void *);
+void __hwasan_load4_noabort(void *);
+void __hwasan_store4_noabort(void *);
+void __hwasan_load8_noabort(void *);
+void __hwasan_store8_noabort(void *);
+void __hwasan_load16_noabort(void *);
+void __hwasan_store16_noabort(void *);
+void __hwasan_loadN_noabort(void *, ssize_t size);
+void __hwasan_storeN_noabort(void *, ssize_t size);
+
+void __hwasan_tag_memory(void *, u8 tag, ssize_t size);
+
+void *__hwasan_memset(void *addr, int c, ssize_t len);
+void *__hwasan_memmove(void *dest, const void *src, ssize_t len);
+void *__hwasan_memcpy(void *dest, const void *src, ssize_t len);
+
+void kasan_tag_mismatch(void *addr, unsigned long access_info,
+			unsigned long ret_ip);
 
 #endif /* __MM_KASAN_KASAN_H */

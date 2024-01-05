@@ -1,7 +1,7 @@
 /*******************************************************************
  * This file is part of the Emulex Linux Device Driver for         *
  * Fibre Channel Host Bus Adapters.                                *
- * Copyright (C) 2017-2022 Broadcom. All Rights Reserved. The term *
+ * Copyright (C) 2017-2023 Broadcom. All Rights Reserved. The term *
  * “Broadcom” refers to Broadcom Inc. and/or its subsidiaries.     *
  * Copyright (C) 2004-2016 Emulex.  All rights reserved.           *
  * EMULEX and SLI are trademarks of Emulex.                        *
@@ -169,29 +169,45 @@ lpfc_dev_loss_tmo_callbk(struct fc_rport *rport)
 
 	lpfc_printf_vlog(ndlp->vport, KERN_INFO, LOG_NODE,
 			 "3181 dev_loss_callbk x%06x, rport x%px flg x%x "
-			 "load_flag x%x refcnt %d state %d xpt x%x\n",
+			 "load_flag x%x refcnt %u state %d xpt x%x\n",
 			 ndlp->nlp_DID, ndlp->rport, ndlp->nlp_flag,
 			 vport->load_flag, kref_read(&ndlp->kref),
 			 ndlp->nlp_state, ndlp->fc4_xpt_flags);
 
-	/* Don't schedule a worker thread event if the vport is going down.
-	 * The teardown process cleans up the node via lpfc_drop_node.
-	 */
+	/* Don't schedule a worker thread event if the vport is going down. */
 	if (vport->load_flag & FC_UNLOADING) {
-		((struct lpfc_rport_data *)rport->dd_data)->pnode = NULL;
+		spin_lock_irqsave(&ndlp->lock, iflags);
 		ndlp->rport = NULL;
 
-		ndlp->fc4_xpt_flags &= ~SCSI_XPT_REGD;
-		/* clear the NLP_XPT_REGD if the node is not registered
-		 * with nvme-fc
+		/* The scsi_transport is done with the rport so lpfc cannot
+		 * call to unregister. Remove the scsi transport reference
+		 * and clean up the SCSI transport node details.
 		 */
-		if (ndlp->fc4_xpt_flags == NLP_XPT_REGD)
-			ndlp->fc4_xpt_flags &= ~NLP_XPT_REGD;
+		if (ndlp->fc4_xpt_flags & (NLP_XPT_REGD | SCSI_XPT_REGD)) {
+			ndlp->fc4_xpt_flags &= ~SCSI_XPT_REGD;
 
-		/* Remove the node reference from remote_port_add now.
-		 * The driver will not call remote_port_delete.
+			/* NVME transport-registered rports need the
+			 * NLP_XPT_REGD flag to complete an unregister.
+			 */
+			if (!(ndlp->fc4_xpt_flags & NVME_XPT_REGD))
+				ndlp->fc4_xpt_flags &= ~NLP_XPT_REGD;
+			spin_unlock_irqrestore(&ndlp->lock, iflags);
+			lpfc_nlp_put(ndlp);
+			spin_lock_irqsave(&ndlp->lock, iflags);
+		}
+
+		/* Only 1 thread can drop the initial node reference.  If
+		 * another thread has set NLP_DROPPED, this thread is done.
 		 */
-		lpfc_nlp_put(ndlp);
+		if (!(ndlp->fc4_xpt_flags & NVME_XPT_REGD) &&
+		    !(ndlp->nlp_flag & NLP_DROPPED)) {
+			ndlp->nlp_flag |= NLP_DROPPED;
+			spin_unlock_irqrestore(&ndlp->lock, iflags);
+			lpfc_nlp_put(ndlp);
+			return;
+		}
+
+		spin_unlock_irqrestore(&ndlp->lock, iflags);
 		return;
 	}
 
@@ -426,10 +442,6 @@ lpfc_dev_loss_tmo_handler(struct lpfc_nodelist *ndlp)
 	name = (uint8_t *)&ndlp->nlp_portname;
 	phba = vport->phba;
 
-	spin_lock_irqsave(&ndlp->lock, iflags);
-	ndlp->nlp_flag &= ~NLP_IN_DEV_LOSS;
-	spin_unlock_irqrestore(&ndlp->lock, iflags);
-
 	if (phba->sli_rev == LPFC_SLI_REV4)
 		fcf_inuse = lpfc_fcf_inuse(phba);
 
@@ -451,22 +463,34 @@ lpfc_dev_loss_tmo_handler(struct lpfc_nodelist *ndlp)
 				 *name, *(name+1), *(name+2), *(name+3),
 				 *(name+4), *(name+5), *(name+6), *(name+7),
 				 ndlp->nlp_DID);
+
+		spin_lock_irqsave(&ndlp->lock, iflags);
+		ndlp->nlp_flag &= ~NLP_IN_DEV_LOSS;
+		spin_unlock_irqrestore(&ndlp->lock, iflags);
 		return fcf_inuse;
 	}
 
 	/* Fabric nodes are done. */
 	if (ndlp->nlp_type & NLP_FABRIC) {
 		spin_lock_irqsave(&ndlp->lock, iflags);
-		/* In massive vport configuration settings, it's possible
-		 * dev_loss_tmo fired during node recovery.  So, check if
-		 * fabric nodes are in discovery states outstanding.
+
+		/* The driver has to account for a race between any fabric
+		 * node that's in recovery when dev_loss_tmo expires. When this
+		 * happens, the driver has to allow node recovery.
 		 */
 		switch (ndlp->nlp_DID) {
 		case Fabric_DID:
 			fc_vport = vport->fc_vport;
-			if (fc_vport &&
-			    fc_vport->vport_state == FC_VPORT_INITIALIZING)
-				recovering = true;
+			if (fc_vport) {
+				/* NPIV path. */
+				if (fc_vport->vport_state ==
+				    FC_VPORT_INITIALIZING)
+					recovering = true;
+			} else {
+				/* Physical port path. */
+				if (phba->hba_flag & HBA_FLOGI_OUTSTANDING)
+					recovering = true;
+			}
 			break;
 		case Fabric_Cntl_DID:
 			if (ndlp->nlp_flag & NLP_REG_LOGIN_SEND)
@@ -478,6 +502,17 @@ lpfc_dev_loss_tmo_handler(struct lpfc_nodelist *ndlp)
 			if (ndlp->nlp_state >= NLP_STE_PLOGI_ISSUE &&
 			    ndlp->nlp_state <= NLP_STE_REG_LOGIN_ISSUE)
 				recovering = true;
+			break;
+		default:
+			/* Ensure the nlp_DID at least has the correct prefix.
+			 * The fabric domain controller's last three nibbles
+			 * vary so we handle it in the default case.
+			 */
+			if (ndlp->nlp_DID & Fabric_DID_MASK) {
+				if (ndlp->nlp_state >= NLP_STE_PLOGI_ISSUE &&
+				    ndlp->nlp_state <= NLP_STE_REG_LOGIN_ISSUE)
+					recovering = true;
+			}
 			break;
 		}
 		spin_unlock_irqrestore(&ndlp->lock, iflags);
@@ -514,6 +549,9 @@ lpfc_dev_loss_tmo_handler(struct lpfc_nodelist *ndlp)
 			return fcf_inuse;
 		}
 
+		spin_lock_irqsave(&ndlp->lock, iflags);
+		ndlp->nlp_flag &= ~NLP_IN_DEV_LOSS;
+		spin_unlock_irqrestore(&ndlp->lock, iflags);
 		lpfc_nlp_put(ndlp);
 		return fcf_inuse;
 	}
@@ -543,6 +581,9 @@ lpfc_dev_loss_tmo_handler(struct lpfc_nodelist *ndlp)
 				 ndlp->nlp_DID, ndlp->nlp_flag,
 				 ndlp->nlp_state, ndlp->nlp_rpi);
 	}
+	spin_lock_irqsave(&ndlp->lock, iflags);
+	ndlp->nlp_flag &= ~NLP_IN_DEV_LOSS;
+	spin_unlock_irqrestore(&ndlp->lock, iflags);
 
 	/* If we are devloss, but we are in the process of rediscovering the
 	 * ndlp, don't issue a NLP_EVT_DEVICE_RM event.
@@ -1113,21 +1154,6 @@ lpfc_cleanup_rpis(struct lpfc_vport *vport, int remove)
 	struct lpfc_nodelist *ndlp, *next_ndlp;
 
 	list_for_each_entry_safe(ndlp, next_ndlp, &vport->fc_nodes, nlp_listp) {
-		if (ndlp->nlp_state == NLP_STE_UNUSED_NODE) {
-			/* It's possible the FLOGI to the fabric node never
-			 * successfully completed and never registered with the
-			 * transport.  In this case there is no way to clean up
-			 * the node.
-			 */
-			if (ndlp->nlp_DID == Fabric_DID) {
-				if (ndlp->nlp_prev_state ==
-				    NLP_STE_UNUSED_NODE &&
-				    !ndlp->fc4_xpt_flags)
-					lpfc_nlp_put(ndlp);
-			}
-			continue;
-		}
-
 		if ((phba->sli3_options & LPFC_SLI3_VPORT_TEARDOWN) ||
 		    ((vport->port_type == LPFC_NPIV_PORT) &&
 		     ((ndlp->nlp_DID == NameServer_DID) ||
@@ -2458,7 +2484,7 @@ static void lpfc_sli4_fcf_pri_list_del(struct lpfc_hba *phba,
  * @phba: pointer to lpfc hba data structure.
  * @fcf_index: the index of the fcf record to update
  * This routine acquires the hbalock and then set the LPFC_FCF_FLOGI_FAILED
- * flag so the the round robin slection for the particular priority level
+ * flag so the round robin selection for the particular priority level
  * will try a different fcf record that does not have this bit set.
  * If the fcf record is re-read for any reason this flag is cleared brfore
  * adding it to the priority list.
@@ -4332,13 +4358,14 @@ out:
 
 		/* If the node is not registered with the scsi or nvme
 		 * transport, remove the fabric node.  The failed reg_login
-		 * is terminal.
+		 * is terminal and forces the removal of the last node
+		 * reference.
 		 */
 		if (!(ndlp->fc4_xpt_flags & (SCSI_XPT_REGD | NVME_XPT_REGD))) {
 			spin_lock_irq(&ndlp->lock);
 			ndlp->nlp_flag &= ~NLP_NPR_2B_DISC;
 			spin_unlock_irq(&ndlp->lock);
-			lpfc_nlp_not_used(ndlp);
+			lpfc_nlp_put(ndlp);
 		}
 
 		if (phba->fc_topology == LPFC_TOPOLOGY_LOOP) {
@@ -4495,14 +4522,6 @@ lpfc_register_remote_port(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp)
 	/* Don't add the remote port if unloading. */
 	if (vport->load_flag & FC_UNLOADING)
 		return;
-
-	/*
-	 * Disassociate any older association between this ndlp and rport
-	 */
-	if (ndlp->rport) {
-		rdata = ndlp->rport->dd_data;
-		rdata->pnode = NULL;
-	}
 
 	ndlp->rport = rport = fc_remote_port_add(shost, 0, &rport_ids);
 	if (!rport) {
@@ -4683,7 +4702,8 @@ lpfc_nlp_unreg_node(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp)
 	spin_lock_irqsave(&ndlp->lock, iflags);
 	if (!(ndlp->fc4_xpt_flags & NLP_XPT_REGD)) {
 		spin_unlock_irqrestore(&ndlp->lock, iflags);
-		lpfc_printf_vlog(vport, KERN_INFO, LOG_SLI,
+		lpfc_printf_vlog(vport, KERN_INFO,
+				 LOG_ELS | LOG_NODE | LOG_DISCOVERY,
 				 "0999 %s Not regd: ndlp x%px rport x%px DID "
 				 "x%x FLG x%x XPT x%x\n",
 				  __func__, ndlp, ndlp->rport, ndlp->nlp_DID,
@@ -4699,9 +4719,10 @@ lpfc_nlp_unreg_node(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp)
 		vport->phba->nport_event_cnt++;
 		lpfc_unregister_remote_port(ndlp);
 	} else if (!ndlp->rport) {
-		lpfc_printf_vlog(vport, KERN_INFO, LOG_SLI,
+		lpfc_printf_vlog(vport, KERN_INFO,
+				 LOG_ELS | LOG_NODE | LOG_DISCOVERY,
 				 "1999 %s NDLP in devloss x%px DID x%x FLG x%x"
-				 " XPT x%x refcnt %d\n",
+				 " XPT x%x refcnt %u\n",
 				 __func__, ndlp, ndlp->nlp_DID, ndlp->nlp_flag,
 				 ndlp->fc4_xpt_flags,
 				 kref_read(&ndlp->kref));
@@ -4834,7 +4855,7 @@ lpfc_nlp_state_name(char *buffer, size_t size, int state)
 	};
 
 	if (state < NLP_STE_MAX_STATE && states[state])
-		strlcpy(buffer, states[state], size);
+		strscpy(buffer, states[state], size);
 	else
 		snprintf(buffer, size, "unknown (%d)", state);
 	return buffer;
@@ -4951,22 +4972,29 @@ lpfc_drop_node(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp)
 {
 	/*
 	 * Use of lpfc_drop_node and UNUSED list: lpfc_drop_node should
-	 * be used if we wish to issue the "last" lpfc_nlp_put() to remove
-	 * the ndlp from the vport. The ndlp marked as UNUSED on the list
-	 * until ALL other outstanding threads have completed. We check
-	 * that the ndlp not already in the UNUSED state before we proceed.
+	 * be used when lpfc wants to remove the "last" lpfc_nlp_put() to
+	 * release the ndlp from the vport when conditions are correct.
 	 */
 	if (ndlp->nlp_state == NLP_STE_UNUSED_NODE)
 		return;
 	lpfc_nlp_set_state(vport, ndlp, NLP_STE_UNUSED_NODE);
-	ndlp->nlp_flag |= NLP_DROPPED;
 	if (vport->phba->sli_rev == LPFC_SLI_REV4) {
 		lpfc_cleanup_vports_rrqs(vport, ndlp);
 		lpfc_unreg_rpi(vport, ndlp);
 	}
 
-	lpfc_nlp_put(ndlp);
-	return;
+	/* NLP_DROPPED means another thread already removed the initial
+	 * reference from lpfc_nlp_init.  If set, don't drop it again and
+	 * introduce an imbalance.
+	 */
+	spin_lock_irq(&ndlp->lock);
+	if (!(ndlp->nlp_flag & NLP_DROPPED)) {
+		ndlp->nlp_flag |= NLP_DROPPED;
+		spin_unlock_irq(&ndlp->lock);
+		lpfc_nlp_put(ndlp);
+		return;
+	}
+	spin_unlock_irq(&ndlp->lock);
 }
 
 /*
@@ -5754,8 +5782,11 @@ lpfc_setup_disc_node(struct lpfc_vport *vport, uint32_t did)
 			     (NLP_FCP_TARGET | NLP_NVME_TARGET)))
 				return NULL;
 
-			ndlp->nlp_prev_state = ndlp->nlp_state;
-			lpfc_nlp_set_state(vport, ndlp, NLP_STE_NPR_NODE);
+			if (ndlp->nlp_state > NLP_STE_UNUSED_NODE &&
+			    ndlp->nlp_state < NLP_STE_PRLI_ISSUE) {
+				lpfc_disc_state_machine(vport, ndlp, NULL,
+							NLP_EVT_DEVICE_RECOVERY);
+			}
 
 			spin_lock_irq(&ndlp->lock);
 			ndlp->nlp_flag |= NLP_NPR_2B_DISC;
@@ -6703,25 +6734,6 @@ lpfc_nlp_put(struct lpfc_nodelist *ndlp)
 	return ndlp ? kref_put(&ndlp->kref, lpfc_nlp_release) : 0;
 }
 
-/* This routine free's the specified nodelist if it is not in use
- * by any other discovery thread. This routine returns 1 if the
- * ndlp has been freed. A return value of 0 indicates the ndlp is
- * not yet been released.
- */
-int
-lpfc_nlp_not_used(struct lpfc_nodelist *ndlp)
-{
-	lpfc_debugfs_disc_trc(ndlp->vport, LPFC_DISC_TRC_NODE,
-		"node not used:   did:x%x flg:x%x refcnt:x%x",
-		ndlp->nlp_DID, ndlp->nlp_flag,
-		kref_read(&ndlp->kref));
-
-	if (kref_read(&ndlp->kref) == 1)
-		if (lpfc_nlp_put(ndlp))
-			return 1;
-	return 0;
-}
-
 /**
  * lpfc_fcf_inuse - Check if FCF can be unregistered.
  * @phba: Pointer to hba context object.
@@ -6960,7 +6972,9 @@ lpfc_unregister_fcf_rescan(struct lpfc_hba *phba)
 	if (rc)
 		return;
 	/* Reset HBA FCF states after successful unregister FCF */
+	spin_lock_irq(&phba->hbalock);
 	phba->fcf.fcf_flag = 0;
+	spin_unlock_irq(&phba->hbalock);
 	phba->fcf.current_rec.flag = 0;
 
 	/*
@@ -7267,4 +7281,39 @@ lpfc_parse_fcoe_conf(struct lpfc_hba *phba,
 	if (rec_ptr)
 		lpfc_read_fcf_conn_tbl(phba, rec_ptr);
 
+}
+
+/*
+ * lpfc_error_lost_link - IO failure from link event or FW reset check.
+ *
+ * @vport: Pointer to lpfc_vport data structure.
+ * @ulp_status: IO completion status.
+ * @ulp_word4: Reason code for the ulp_status.
+ *
+ * This function evaluates the ulp_status and ulp_word4 values
+ * for specific error values that indicate an internal link fault
+ * or fw reset event for the completing IO.  Callers require this
+ * common data to decide next steps on the IO.
+ *
+ * Return:
+ * false - No link or reset error occurred.
+ * true - A link or reset error occurred.
+ */
+bool
+lpfc_error_lost_link(struct lpfc_vport *vport, u32 ulp_status, u32 ulp_word4)
+{
+	/* Mask off the extra port data to get just the reason code. */
+	u32 rsn_code = IOERR_PARAM_MASK & ulp_word4;
+
+	if (ulp_status == IOSTAT_LOCAL_REJECT &&
+	    (rsn_code == IOERR_SLI_ABORTED ||
+	     rsn_code == IOERR_LINK_DOWN ||
+	     rsn_code == IOERR_SLI_DOWN)) {
+		lpfc_printf_vlog(vport, KERN_WARNING, LOG_SLI | LOG_ELS,
+				 "0408 Report link error true: <x%x:x%x>\n",
+				 ulp_status, ulp_word4);
+		return true;
+	}
+
+	return false;
 }

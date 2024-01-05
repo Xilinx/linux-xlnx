@@ -46,10 +46,15 @@ extern char end_virt_trampolines[];
  */
 static inline unsigned long kernel_toc_addr(void)
 {
+#ifdef CONFIG_PPC_KERNEL_PCREL
+	BUILD_BUG();
+	return -1UL;
+#else
 	unsigned long toc_ptr;
 
 	asm volatile("mr %0, 2" : "=r" (toc_ptr));
 	return toc_ptr;
+#endif
 }
 
 static inline int overlaps_interrupt_vector_text(unsigned long start,
@@ -69,6 +74,8 @@ static inline int overlaps_kernel_text(unsigned long start, unsigned long end)
 		(unsigned long)_stext < end;
 }
 
+#else
+static inline unsigned long kernel_toc_addr(void) { BUILD_BUG(); return -1UL; }
 #endif
 
 #endif /* __KERNEL__ */

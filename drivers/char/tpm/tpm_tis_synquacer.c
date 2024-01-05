@@ -9,7 +9,6 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/kernel.h>
 #include "tpm.h"
 #include "tpm_tis_core.h"
@@ -127,14 +126,12 @@ static int tpm_tis_synquacer_probe(struct platform_device *pdev)
 	return tpm_tis_synquacer_init(&pdev->dev, &tpm_info);
 }
 
-static int tpm_tis_synquacer_remove(struct platform_device *pdev)
+static void tpm_tis_synquacer_remove(struct platform_device *pdev)
 {
 	struct tpm_chip *chip = dev_get_drvdata(&pdev->dev);
 
 	tpm_chip_unregister(chip);
 	tpm_tis_remove(chip);
-
-	return 0;
 }
 
 #ifdef CONFIG_OF
@@ -155,7 +152,7 @@ MODULE_DEVICE_TABLE(acpi, tpm_synquacer_acpi_tbl);
 
 static struct platform_driver tis_synquacer_drv = {
 	.probe = tpm_tis_synquacer_probe,
-	.remove = tpm_tis_synquacer_remove,
+	.remove_new = tpm_tis_synquacer_remove,
 	.driver = {
 		.name		= "tpm_tis_synquacer",
 		.pm		= &tpm_tis_synquacer_pm,
@@ -164,23 +161,7 @@ static struct platform_driver tis_synquacer_drv = {
 	},
 };
 
-static int __init tpm_tis_synquacer_module_init(void)
-{
-	int rc;
+module_platform_driver(tis_synquacer_drv);
 
-	rc = platform_driver_register(&tis_synquacer_drv);
-	if (rc)
-		return rc;
-
-	return 0;
-}
-
-static void __exit tpm_tis_synquacer_module_exit(void)
-{
-	platform_driver_unregister(&tis_synquacer_drv);
-}
-
-module_init(tpm_tis_synquacer_module_init);
-module_exit(tpm_tis_synquacer_module_exit);
 MODULE_DESCRIPTION("TPM MMIO Driver for Socionext SynQuacer platform");
 MODULE_LICENSE("GPL");

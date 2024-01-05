@@ -1451,7 +1451,6 @@ static int net2272_start(struct usb_gadget *_gadget,
 		dev->ep[i].irqs = 0;
 	/* hook up the driver ... */
 	dev->softconnect = 1;
-	driver->driver.bus = NULL;
 	dev->driver = driver;
 
 	/* ... then enable host detection and ep0; and we're ready
@@ -2671,7 +2670,7 @@ net2272_plat_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int
+static void
 net2272_plat_remove(struct platform_device *pdev)
 {
 	struct net2272 *dev = platform_get_drvdata(pdev);
@@ -2682,13 +2681,11 @@ net2272_plat_remove(struct platform_device *pdev)
 		resource_size(&pdev->resource[0]));
 
 	usb_put_gadget(&dev->gadget);
-
-	return 0;
 }
 
 static struct platform_driver net2272_plat_driver = {
 	.probe   = net2272_plat_probe,
-	.remove  = net2272_plat_remove,
+	.remove_new = net2272_plat_remove,
 	.driver  = {
 		.name  = driver_name,
 	},

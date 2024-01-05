@@ -48,7 +48,6 @@
 #include <linux/i2c.h>
 #include <linux/i2c-algo-bit.h>
 
-
 #ifdef __arm__
 #include <asm/mach-types.h>
 #endif
@@ -1460,7 +1459,7 @@ static struct cfb_info *cyberpro_alloc_fb_info(unsigned int id, char *name)
 	cfb->fb.var.accel_flags	= FB_ACCELF_TEXT;
 
 	cfb->fb.fbops		= &cyber2000fb_ops;
-	cfb->fb.flags		= FBINFO_DEFAULT | FBINFO_HWACCEL_YPAN;
+	cfb->fb.flags		= FBINFO_HWACCEL_YPAN;
 	cfb->fb.pseudo_palette	= cfb->pseudo_palette;
 
 	spin_lock_init(&cfb->reg_b0_lock);
@@ -1878,7 +1877,12 @@ static int __init cyber2000fb_init(void)
 
 #ifndef MODULE
 	char *option = NULL;
+#endif
 
+	if (fb_modesetting_disabled("CyberPro"))
+		return -ENODEV;
+
+#ifndef MODULE
 	if (fb_get_options("cyber2000fb", &option))
 		return -ENODEV;
 	cyber2000fb_setup(option);

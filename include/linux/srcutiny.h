@@ -31,7 +31,7 @@ struct srcu_struct {
 
 void srcu_drive_gp(struct work_struct *wp);
 
-#define __SRCU_STRUCT_INIT(name, __ignored)				\
+#define __SRCU_STRUCT_INIT(name, __ignored, ___ignored)			\
 {									\
 	.srcu_wq = __SWAIT_QUEUE_HEAD_INITIALIZER(name.srcu_wq),	\
 	.srcu_cb_tail = &name.srcu_cb_head,				\
@@ -44,9 +44,13 @@ void srcu_drive_gp(struct work_struct *wp);
  * Tree SRCU, which needs some per-CPU data.
  */
 #define DEFINE_SRCU(name) \
-	struct srcu_struct name = __SRCU_STRUCT_INIT(name, name)
+	struct srcu_struct name = __SRCU_STRUCT_INIT(name, name, name)
 #define DEFINE_STATIC_SRCU(name) \
-	static struct srcu_struct name = __SRCU_STRUCT_INIT(name, name)
+	static struct srcu_struct name = __SRCU_STRUCT_INIT(name, name, name)
+
+// Dummy structure for srcu_notifier_head.
+struct srcu_usage { };
+#define __SRCU_USAGE_INIT(name) { }
 
 void synchronize_srcu(struct srcu_struct *ssp);
 

@@ -29,9 +29,10 @@
 
 #include <linux/if_vlan.h>
 #include <linux/mfd/syscon.h>
+#include <linux/of.h>
 #include <linux/of_mdio.h>
 #include <linux/of_net.h>
-#include <linux/of_platform.h>
+#include <linux/platform_device.h>
 #include <linux/phylink.h>
 #include <linux/regmap.h>
 #include <linux/reset.h>
@@ -1086,7 +1087,6 @@ static void ag71xx_mac_link_up(struct phylink_config *config,
 }
 
 static const struct phylink_mac_ops ag71xx_phylink_mac_ops = {
-	.validate = phylink_generic_validate,
 	.mac_config = ag71xx_mac_config,
 	.mac_link_down = ag71xx_mac_link_down,
 	.mac_link_up = ag71xx_mac_link_up,

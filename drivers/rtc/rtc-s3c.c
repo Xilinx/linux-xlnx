@@ -23,7 +23,6 @@
 #include <linux/log2.h>
 #include <linux/slab.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/uaccess.h>
 #include <linux/io.h>
 
@@ -385,7 +384,7 @@ static void s3c6410_rtc_disable(struct s3c_rtc *info)
 	writew(con, info->base + S3C2410_RTCCON);
 }
 
-static int s3c_rtc_remove(struct platform_device *pdev)
+static void s3c_rtc_remove(struct platform_device *pdev)
 {
 	struct s3c_rtc *info = platform_get_drvdata(pdev);
 
@@ -394,8 +393,6 @@ static int s3c_rtc_remove(struct platform_device *pdev)
 	if (info->data->needs_src_clk)
 		clk_unprepare(info->rtc_src_clk);
 	clk_unprepare(info->rtc_clk);
-
-	return 0;
 }
 
 static int s3c_rtc_probe(struct platform_device *pdev)
@@ -429,14 +426,9 @@ static int s3c_rtc_probe(struct platform_device *pdev)
 		return PTR_ERR(info->base);
 
 	info->rtc_clk = devm_clk_get(&pdev->dev, "rtc");
-	if (IS_ERR(info->rtc_clk)) {
-		ret = PTR_ERR(info->rtc_clk);
-		if (ret != -EPROBE_DEFER)
-			dev_err(&pdev->dev, "failed to find rtc clock\n");
-		else
-			dev_dbg(&pdev->dev, "probe deferred due to missing rtc clk\n");
-		return ret;
-	}
+	if (IS_ERR(info->rtc_clk))
+		return dev_err_probe(&pdev->dev, PTR_ERR(info->rtc_clk),
+				     "failed to find rtc clock\n");
 	ret = clk_prepare_enable(info->rtc_clk);
 	if (ret)
 		return ret;
@@ -605,7 +597,7 @@ MODULE_DEVICE_TABLE(of, s3c_rtc_dt_match);
 
 static struct platform_driver s3c_rtc_driver = {
 	.probe		= s3c_rtc_probe,
-	.remove		= s3c_rtc_remove,
+	.remove_new	= s3c_rtc_remove,
 	.driver		= {
 		.name	= "s3c-rtc",
 		.pm	= &s3c_rtc_pm_ops,

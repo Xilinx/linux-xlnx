@@ -3,7 +3,7 @@
  *
  * Module Name: exserial - field_unit support for serial address spaces
  *
- * Copyright (C) 2000 - 2022, Intel Corp.
+ * Copyright (C) 2000 - 2023, Intel Corp.
  *
  *****************************************************************************/
 
@@ -323,6 +323,12 @@ acpi_ex_write_serial_bus(union acpi_operand_object *source_desc,
 		function = ACPI_WRITE;
 		break;
 
+	case ACPI_ADR_SPACE_FIXED_HARDWARE:
+
+		buffer_length = ACPI_FFH_INPUT_BUFFER_SIZE;
+		function = ACPI_WRITE;
+		break;
+
 	default:
 		return_ACPI_STATUS(AE_AML_INVALID_SPACE_ID);
 	}
@@ -337,8 +343,7 @@ acpi_ex_write_serial_bus(union acpi_operand_object *source_desc,
 	/* Copy the input buffer data to the transfer buffer */
 
 	buffer = buffer_desc->buffer.pointer;
-	data_length = (buffer_length < source_desc->buffer.length ?
-		       buffer_length : source_desc->buffer.length);
+	data_length = ACPI_MIN(buffer_length, source_desc->buffer.length);
 	memcpy(buffer, source_desc->buffer.pointer, data_length);
 
 	/* Lock entire transaction if requested */

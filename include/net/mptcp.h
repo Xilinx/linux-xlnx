@@ -96,9 +96,28 @@ struct mptcp_out_options {
 #endif
 };
 
-#ifdef CONFIG_MPTCP
-extern struct request_sock_ops mptcp_subflow_request_sock_ops;
+#define MPTCP_SCHED_NAME_MAX	16
+#define MPTCP_SUBFLOWS_MAX	8
 
+struct mptcp_sched_data {
+	bool	reinject;
+	u8	subflows;
+	struct mptcp_subflow_context *contexts[MPTCP_SUBFLOWS_MAX];
+};
+
+struct mptcp_sched_ops {
+	int (*get_subflow)(struct mptcp_sock *msk,
+			   struct mptcp_sched_data *data);
+
+	char			name[MPTCP_SCHED_NAME_MAX];
+	struct module		*owner;
+	struct list_head	list;
+
+	void (*init)(struct mptcp_sock *msk);
+	void (*release)(struct mptcp_sock *msk);
+} ____cacheline_aligned_in_smp;
+
+#ifdef CONFIG_MPTCP
 void mptcp_init(void);
 
 static inline bool sk_is_mptcp(const struct sock *sk)
@@ -188,6 +207,9 @@ void mptcp_seq_show(struct seq_file *seq);
 int mptcp_subflow_init_cookie_req(struct request_sock *req,
 				  const struct sock *sk_listener,
 				  struct sk_buff *skb);
+struct request_sock *mptcp_subflow_reqsk_alloc(const struct request_sock_ops *ops,
+					       struct sock *sk_listener,
+					       bool attach_listener);
 
 __be32 mptcp_get_reset_option(const struct sk_buff *skb);
 
@@ -272,6 +294,13 @@ static inline int mptcp_subflow_init_cookie_req(struct request_sock *req,
 						struct sk_buff *skb)
 {
 	return 0; /* TCP fallback */
+}
+
+static inline struct request_sock *mptcp_subflow_reqsk_alloc(const struct request_sock_ops *ops,
+							     struct sock *sk_listener,
+							     bool attach_listener)
+{
+	return NULL;
 }
 
 static inline __be32 mptcp_reset_option(const struct sk_buff *skb)  { return htonl(0u); }

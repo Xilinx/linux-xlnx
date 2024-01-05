@@ -7,6 +7,16 @@
 
 #ifdef CONFIG_HAVE_HW_BREAKPOINT
 
+enum bp_type_idx {
+	TYPE_INST	= 0,
+#if defined(CONFIG_HAVE_MIXED_BREAKPOINTS_REGS)
+	TYPE_DATA	= 0,
+#else
+	TYPE_DATA	= 1,
+#endif
+	TYPE_MAX
+};
+
 extern int __init init_hw_breakpoint(void);
 
 static inline void hw_breakpoint_init(struct perf_event_attr *attr)
@@ -80,9 +90,6 @@ extern int dbg_reserve_bp_slot(struct perf_event *bp);
 extern int dbg_release_bp_slot(struct perf_event *bp);
 extern int reserve_bp_slot(struct perf_event *bp);
 extern void release_bp_slot(struct perf_event *bp);
-int arch_reserve_bp_slot(struct perf_event *bp);
-void arch_release_bp_slot(struct perf_event *bp);
-void arch_unregister_hw_breakpoint(struct perf_event *bp);
 
 extern void flush_ptrace_hw_breakpoint(struct task_struct *tsk);
 

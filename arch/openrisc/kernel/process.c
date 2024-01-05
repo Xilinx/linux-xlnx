@@ -14,6 +14,7 @@
  */
 
 #define __KERNEL_SYSCALLS__
+#include <linux/cpu.h>
 #include <linux/errno.h>
 #include <linux/sched.h>
 #include <linux/sched/debug.h>
@@ -38,6 +39,7 @@
 #include <asm/io.h>
 #include <asm/processor.h>
 #include <asm/spr_defs.h>
+#include <asm/switch_to.h>
 
 #include <linux/smp.h>
 
@@ -102,6 +104,7 @@ void arch_cpu_idle(void)
 	raw_local_irq_enable();
 	if (mfspr(SPR_UPR) & SPR_UPR_PMP)
 		mtspr(SPR_PMR, mfspr(SPR_PMR) | SPR_PMR_DME);
+	raw_local_irq_disable();
 }
 
 void (*pm_power_off)(void) = NULL;
@@ -118,8 +121,6 @@ void flush_thread(void)
 
 void show_regs(struct pt_regs *regs)
 {
-	extern void show_registers(struct pt_regs *regs);
-
 	show_regs_print_info(KERN_DEFAULT);
 	/* __PHX__ cleanup this mess */
 	show_registers(regs);

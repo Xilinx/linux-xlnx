@@ -29,6 +29,12 @@ static const struct dmi_system_id kbl_dmi_table[] = {
 			DMI_MATCH(DMI_BOARD_NAME, "Skylake Y LPDDR3 RVP3"),
 		},
 	},
+	{
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Intel Corporation"),
+			DMI_MATCH(DMI_BOARD_NAME, "AmberLake Y"),
+		},
+	},
 	{}
 };
 
@@ -122,6 +128,22 @@ static struct snd_soc_acpi_mach avs_kbl_i2s_machines[] = {
 		.tplg_filename = "rt298-tplg.bin",
 	},
 	{
+		.id = "MX98927",
+		.drv_name = "avs_max98927",
+		.mach_params = {
+			.i2s_link_mask = AVS_SSP(0),
+		},
+		.tplg_filename = "max98927-tplg.bin",
+	},
+	{
+		.id = "10EC5663",
+		.drv_name = "avs_rt5663",
+		.mach_params = {
+			.i2s_link_mask = AVS_SSP(1),
+		},
+		.tplg_filename = "rt5663-tplg.bin",
+	},
+	{
 		.id = "MX98373",
 		.drv_name = "avs_max98373",
 		.mach_params = {
@@ -130,12 +152,28 @@ static struct snd_soc_acpi_mach avs_kbl_i2s_machines[] = {
 		.tplg_filename = "max98373-tplg.bin",
 	},
 	{
+		.id = "MX98357A",
+		.drv_name = "avs_max98357a",
+		.mach_params = {
+			.i2s_link_mask = AVS_SSP(0),
+		},
+		.tplg_filename = "max98357a-tplg.bin",
+	},
+	{
 		.id = "DLGS7219",
 		.drv_name = "avs_da7219",
 		.mach_params = {
 			.i2s_link_mask = AVS_SSP(1),
 		},
 		.tplg_filename = "da7219-tplg.bin",
+	},
+	{
+		.id = "ESSX8336",
+		.drv_name = "avs_es8336",
+		.mach_params = {
+			.i2s_link_mask = AVS_SSP(0),
+		},
+		.tplg_filename = "es8336-tplg.bin",
 	},
 	{},
 };
@@ -241,14 +279,14 @@ struct avs_acpi_boards {
 };
 
 #define AVS_MACH_ENTRY(_id, _mach) \
-	{ .id = (_id), .machs = (_mach), }
+	{ .id = PCI_DEVICE_ID_INTEL_##_id, .machs = (_mach), }
 
 /* supported I2S boards per platform */
 static const struct avs_acpi_boards i2s_boards[] = {
-	AVS_MACH_ENTRY(0x9d70, avs_skl_i2s_machines), /* SKL */
-	AVS_MACH_ENTRY(0x9d71, avs_kbl_i2s_machines), /* KBL */
-	AVS_MACH_ENTRY(0x5a98, avs_apl_i2s_machines), /* APL */
-	AVS_MACH_ENTRY(0x3198, avs_gml_i2s_machines), /* GML */
+	AVS_MACH_ENTRY(HDA_SKL_LP, avs_skl_i2s_machines),
+	AVS_MACH_ENTRY(HDA_KBL_LP, avs_kbl_i2s_machines),
+	AVS_MACH_ENTRY(HDA_APL, avs_apl_i2s_machines),
+	AVS_MACH_ENTRY(HDA_GML, avs_gml_i2s_machines),
 	{},
 };
 
@@ -267,6 +305,33 @@ static const struct avs_acpi_boards *avs_get_i2s_boards(struct avs_dev *adev)
 static void board_pdev_unregister(void *data)
 {
 	platform_device_unregister(data);
+}
+
+static int __maybe_unused avs_register_probe_board(struct avs_dev *adev)
+{
+	struct platform_device *board;
+	struct snd_soc_acpi_mach mach = {{0}};
+	int ret;
+
+	ret = avs_probe_platform_register(adev, "probe-platform");
+	if (ret < 0)
+		return ret;
+
+	mach.mach_params.platform = "probe-platform";
+
+	board = platform_device_register_data(NULL, "avs_probe_mb", PLATFORM_DEVID_NONE,
+					      (const void *)&mach, sizeof(mach));
+	if (IS_ERR(board)) {
+		dev_err(adev->dev, "probe board register failed\n");
+		return PTR_ERR(board);
+	}
+
+	ret = devm_add_action(adev->dev, board_pdev_unregister, board);
+	if (ret < 0) {
+		platform_device_unregister(board);
+		return ret;
+	}
+	return 0;
 }
 
 static int avs_register_dmic_board(struct avs_dev *adev)
@@ -394,7 +459,7 @@ static int avs_register_i2s_boards(struct avs_dev *adev)
 	}
 
 	for (mach = boards->machs; mach->id[0]; mach++) {
-		if (!acpi_dev_present(mach->id, NULL, -1))
+		if (!acpi_dev_present(mach->id, mach->uid, -1))
 			continue;
 
 		if (mach->machine_quirk)
@@ -477,6 +542,12 @@ static int avs_register_hda_boards(struct avs_dev *adev)
 int avs_register_all_boards(struct avs_dev *adev)
 {
 	int ret;
+
+#ifdef CONFIG_DEBUG_FS
+	ret = avs_register_probe_board(adev);
+	if (ret < 0)
+		dev_warn(adev->dev, "enumerate PROBE endpoints failed: %d\n", ret);
+#endif
 
 	ret = avs_register_dmic_board(adev);
 	if (ret < 0)

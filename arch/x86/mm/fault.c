@@ -19,6 +19,7 @@
 #include <linux/uaccess.h>		/* faulthandler_disabled()	*/
 #include <linux/efi.h>			/* efi_crash_gracefully_on_page_fault()*/
 #include <linux/mm_types.h>
+#include <linux/mm.h>			/* find_and_lock_vma() */
 
 #include <asm/cpufeature.h>		/* boot_cpu_has, ...		*/
 #include <asm/traps.h>			/* dotraplinkage, ...		*/
@@ -260,7 +261,7 @@ static noinline int vmalloc_fault(unsigned long address)
 }
 NOKPROBE_SYMBOL(vmalloc_fault);
 
-static void __arch_sync_kernel_mappings(unsigned long start, unsigned long end)
+void arch_sync_kernel_mappings(unsigned long start, unsigned long end)
 {
 	unsigned long addr;
 
@@ -282,27 +283,6 @@ static void __arch_sync_kernel_mappings(unsigned long start, unsigned long end)
 		}
 		spin_unlock(&pgd_lock);
 	}
-}
-
-void arch_sync_kernel_mappings(unsigned long start, unsigned long end)
-{
-	__arch_sync_kernel_mappings(start, end);
-#ifdef CONFIG_KMSAN
-	/*
-	 * KMSAN maintains two additional metadata page mappings for the
-	 * [VMALLOC_START, VMALLOC_END) range. These mappings start at
-	 * KMSAN_VMALLOC_SHADOW_START and KMSAN_VMALLOC_ORIGIN_START and
-	 * have to be synced together with the vmalloc memory mapping.
-	 */
-	if (start >= VMALLOC_START && end < VMALLOC_END) {
-		__arch_sync_kernel_mappings(
-			start - VMALLOC_START + KMSAN_VMALLOC_SHADOW_START,
-			end - VMALLOC_START + KMSAN_VMALLOC_SHADOW_START);
-		__arch_sync_kernel_mappings(
-			start - VMALLOC_START + KMSAN_VMALLOC_ORIGIN_START,
-			end - VMALLOC_START + KMSAN_VMALLOC_ORIGIN_START);
-	}
-#endif
 }
 
 static bool low_pfn(unsigned long pfn)
@@ -900,12 +880,6 @@ __bad_area(struct pt_regs *regs, unsigned long error_code,
 	__bad_area_nosemaphore(regs, error_code, address, pkey, si_code);
 }
 
-static noinline void
-bad_area(struct pt_regs *regs, unsigned long error_code, unsigned long address)
-{
-	__bad_area(regs, error_code, address, 0, SEGV_MAPERR);
-}
-
 static inline bool bad_area_access_from_pkeys(unsigned long error_code,
 		struct vm_area_struct *vma)
 {
@@ -1138,8 +1112,22 @@ access_error(unsigned long error_code, struct vm_area_struct *vma)
 				       (error_code & X86_PF_INSTR), foreign))
 		return 1;
 
+	/*
+	 * Shadow stack accesses (PF_SHSTK=1) are only permitted to
+	 * shadow stack VMAs. All other accesses result in an error.
+	 */
+	if (error_code & X86_PF_SHSTK) {
+		if (unlikely(!(vma->vm_flags & VM_SHADOW_STACK)))
+			return 1;
+		if (unlikely(!(vma->vm_flags & VM_WRITE)))
+			return 1;
+		return 0;
+	}
+
 	if (error_code & X86_PF_WRITE) {
 		/* write, present and write, not present: */
+		if (unlikely(vma->vm_flags & VM_SHADOW_STACK))
+			return 1;
 		if (unlikely(!(vma->vm_flags & VM_WRITE)))
 			return 1;
 		return 0;
@@ -1331,6 +1319,14 @@ void do_user_addr_fault(struct pt_regs *regs,
 
 	perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS, 1, regs, address);
 
+	/*
+	 * Read-only permissions can not be expressed in shadow stack PTEs.
+	 * Treat all shadow stack accesses as WRITE faults. This ensures
+	 * that the MM will prepare everything (e.g., break COW) such that
+	 * maybe_mkwrite() can create a proper shadow stack PTE.
+	 */
+	if (error_code & X86_PF_SHSTK)
+		flags |= FAULT_FLAG_WRITE;
 	if (error_code & X86_PF_WRITE)
 		flags |= FAULT_FLAG_WRITE;
 	if (error_code & X86_PF_INSTR)
@@ -1354,51 +1350,41 @@ void do_user_addr_fault(struct pt_regs *regs,
 	}
 #endif
 
-	/*
-	 * Kernel-mode access to the user address space should only occur
-	 * on well-defined single instructions listed in the exception
-	 * tables.  But, an erroneous kernel fault occurring outside one of
-	 * those areas which also holds mmap_lock might deadlock attempting
-	 * to validate the fault against the address space.
-	 *
-	 * Only do the expensive exception table search when we might be at
-	 * risk of a deadlock.  This happens if we
-	 * 1. Failed to acquire mmap_lock, and
-	 * 2. The access did not originate in userspace.
-	 */
-	if (unlikely(!mmap_read_trylock(mm))) {
-		if (!user_mode(regs) && !search_exception_tables(regs->ip)) {
-			/*
-			 * Fault from code in kernel from
-			 * which we do not expect faults.
-			 */
-			bad_area_nosemaphore(regs, error_code, address);
-			return;
-		}
-retry:
-		mmap_read_lock(mm);
-	} else {
-		/*
-		 * The above down_read_trylock() might have succeeded in
-		 * which case we'll have missed the might_sleep() from
-		 * down_read():
-		 */
-		might_sleep();
-	}
+	if (!(flags & FAULT_FLAG_USER))
+		goto lock_mmap;
 
-	vma = find_vma(mm, address);
+	vma = lock_vma_under_rcu(mm, address);
+	if (!vma)
+		goto lock_mmap;
+
+	if (unlikely(access_error(error_code, vma))) {
+		vma_end_read(vma);
+		goto lock_mmap;
+	}
+	fault = handle_mm_fault(vma, address, flags | FAULT_FLAG_VMA_LOCK, regs);
+	if (!(fault & (VM_FAULT_RETRY | VM_FAULT_COMPLETED)))
+		vma_end_read(vma);
+
+	if (!(fault & VM_FAULT_RETRY)) {
+		count_vm_vma_lock_event(VMA_LOCK_SUCCESS);
+		goto done;
+	}
+	count_vm_vma_lock_event(VMA_LOCK_RETRY);
+
+	/* Quick path to respond to signals */
+	if (fault_signal_pending(fault, regs)) {
+		if (!user_mode(regs))
+			kernelmode_fixup_or_oops(regs, error_code, address,
+						 SIGBUS, BUS_ADRERR,
+						 ARCH_DEFAULT_PKEY);
+		return;
+	}
+lock_mmap:
+
+retry:
+	vma = lock_mm_and_find_vma(mm, address, regs);
 	if (unlikely(!vma)) {
-		bad_area(regs, error_code, address);
-		return;
-	}
-	if (likely(vma->vm_start <= address))
-		goto good_area;
-	if (unlikely(!(vma->vm_flags & VM_GROWSDOWN))) {
-		bad_area(regs, error_code, address);
-		return;
-	}
-	if (unlikely(expand_stack(vma, address))) {
-		bad_area(regs, error_code, address);
+		bad_area_nosemaphore(regs, error_code, address);
 		return;
 	}
 
@@ -1406,7 +1392,6 @@ retry:
 	 * Ok, we have a good vm_area for this memory access, so
 	 * we can handle it..
 	 */
-good_area:
 	if (unlikely(access_error(error_code, vma))) {
 		bad_area_access_error(regs, error_code, address, vma);
 		return;
@@ -1454,6 +1439,7 @@ good_area:
 	}
 
 	mmap_read_unlock(mm);
+done:
 	if (likely(!(fault & VM_FAULT_ERROR)))
 		return;
 

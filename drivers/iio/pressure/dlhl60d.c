@@ -282,9 +282,9 @@ static irqreturn_t dlh_interrupt(int irq, void *private)
 	return IRQ_HANDLED;
 };
 
-static int dlh_probe(struct i2c_client *client,
-	const struct i2c_device_id *id)
+static int dlh_probe(struct i2c_client *client)
 {
+	const struct i2c_device_id *id = i2c_client_get_device_id(client);
 	struct dlh_state *st;
 	struct iio_dev *indio_dev;
 	int ret;

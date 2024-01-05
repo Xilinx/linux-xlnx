@@ -24,9 +24,9 @@
  */
 
 #include <linux/limits.h>
-#include <linux/swiotlb.h>
 
 #include <drm/ttm/ttm_range_manager.h>
+#include <drm/drm_cache.h>
 
 #include "nouveau_drv.h"
 #include "nouveau_gem.h"
@@ -139,7 +139,7 @@ nv04_gart_manager_new(struct ttm_resource_manager *man,
 	mem = nouveau_mem(*res);
 	ttm_resource_init(bo, place, *res);
 	ret = nvif_vmm_get(&mem->cli->vmm.vmm, PTES, false, 12, 0,
-			   (long)(*res)->num_pages << PAGE_SHIFT, &mem->vma[0]);
+			   (long)(*res)->size, &mem->vma[0]);
 	if (ret) {
 		nouveau_mem_del(man, *res);
 		return ret;
@@ -265,7 +265,6 @@ nouveau_ttm_init(struct nouveau_drm *drm)
 	struct nvkm_pci *pci = device->pci;
 	struct nvif_mmu *mmu = &drm->client.mmu;
 	struct drm_device *dev = drm->dev;
-	bool need_swiotlb = false;
 	int typei, ret;
 
 	ret = nouveau_ttm_init_host(drm, 0);
@@ -300,13 +299,10 @@ nouveau_ttm_init(struct nouveau_drm *drm)
 		drm->agp.cma = pci->agp.cma;
 	}
 
-#if IS_ENABLED(CONFIG_SWIOTLB) && IS_ENABLED(CONFIG_X86)
-	need_swiotlb = is_swiotlb_active(dev->dev);
-#endif
-
 	ret = ttm_device_init(&drm->ttm.bdev, &nouveau_bo_driver, drm->dev->dev,
 				  dev->anon_inode->i_mapping,
-				  dev->vma_offset_manager, need_swiotlb,
+				  dev->vma_offset_manager,
+				  drm_need_swiotlb(drm->client.mmu.dmabits),
 				  drm->client.mmu.dmabits <= 32);
 	if (ret) {
 		NV_ERROR(drm, "error initialising bo driver, %d\n", ret);

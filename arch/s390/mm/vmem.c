@@ -11,6 +11,7 @@
 #include <linux/list.h>
 #include <linux/hugetlb.h>
 #include <linux/slab.h>
+#include <linux/sort.h>
 #include <asm/cacheflush.h>
 #include <asm/nospec-branch.h>
 #include <asm/pgalloc.h>
@@ -34,7 +35,7 @@ static void vmem_free_pages(unsigned long addr, int order)
 {
 	/* We don't expect boot memory to be removed ever. */
 	if (!slab_is_available() ||
-	    WARN_ON_ONCE(PageReserved(virt_to_page(addr))))
+	    WARN_ON_ONCE(PageReserved(virt_to_page((void *)addr))))
 		return;
 	free_pages(addr, order);
 }
@@ -289,17 +290,9 @@ out:
 
 static void try_free_pmd_table(pud_t *pud, unsigned long start)
 {
-	const unsigned long end = start + PUD_SIZE;
 	pmd_t *pmd;
 	int i;
 
-	/* Don't mess with any tables not fully in 1:1 mapping & vmemmap area */
-	if (end > VMALLOC_START)
-		return;
-#ifdef CONFIG_KASAN
-	if (start < KASAN_SHADOW_END && KASAN_SHADOW_START > end)
-		return;
-#endif
 	pmd = pmd_offset(pud, start);
 	for (i = 0; i < PTRS_PER_PMD; i++, pmd++)
 		if (!pmd_none(*pmd))
@@ -364,17 +357,8 @@ out:
 
 static void try_free_pud_table(p4d_t *p4d, unsigned long start)
 {
-	const unsigned long end = start + P4D_SIZE;
 	pud_t *pud;
 	int i;
-
-	/* Don't mess with any tables not fully in 1:1 mapping & vmemmap area */
-	if (end > VMALLOC_START)
-		return;
-#ifdef CONFIG_KASAN
-	if (start < KASAN_SHADOW_END && KASAN_SHADOW_START > end)
-		return;
-#endif
 
 	pud = pud_offset(p4d, start);
 	for (i = 0; i < PTRS_PER_PUD; i++, pud++) {
@@ -418,17 +402,8 @@ out:
 
 static void try_free_p4d_table(pgd_t *pgd, unsigned long start)
 {
-	const unsigned long end = start + PGDIR_SIZE;
 	p4d_t *p4d;
 	int i;
-
-	/* Don't mess with any tables not fully in 1:1 mapping & vmemmap area */
-	if (end > VMALLOC_START)
-		return;
-#ifdef CONFIG_KASAN
-	if (start < KASAN_SHADOW_END && KASAN_SHADOW_START > end)
-		return;
-#endif
 
 	p4d = p4d_offset(pgd, start);
 	for (i = 0; i < PTRS_PER_P4D; i++, p4d++) {
@@ -448,6 +423,9 @@ static int modify_pagetable(unsigned long start, unsigned long end, bool add,
 	p4d_t *p4d;
 
 	if (WARN_ON_ONCE(!PAGE_ALIGNED(start | end)))
+		return -EINVAL;
+	/* Don't mess with any tables not fully in 1:1 mapping & vmemmap area */
+	if (WARN_ON_ONCE(end > VMALLOC_START))
 		return -EINVAL;
 	for (addr = start; addr < end; addr = next) {
 		next = pgd_addr_end(addr, end);
@@ -490,6 +468,7 @@ static int remove_pagetable(unsigned long start, unsigned long end, bool direct)
  */
 static int vmem_add_range(unsigned long start, unsigned long size)
 {
+	start = (unsigned long)__va(start);
 	return add_pagetable(start, start + size, true);
 }
 
@@ -498,6 +477,7 @@ static int vmem_add_range(unsigned long start, unsigned long size)
  */
 static void vmem_remove_range(unsigned long start, unsigned long size)
 {
+	start = (unsigned long)__va(start);
 	remove_pagetable(start, start + size, true);
 }
 
@@ -538,7 +518,7 @@ struct range arch_get_mappable_range(void)
 	struct range mhp_range;
 
 	mhp_range.start = 0;
-	mhp_range.end =  VMEM_MAX_PHYS - 1;
+	mhp_range.end = max_mappable - 1;
 	return mhp_range;
 }
 
@@ -565,7 +545,7 @@ int vmem_add_mapping(unsigned long start, unsigned long size)
  * to any physical address. If missing, allocate segment- and region-
  * table entries along. Meeting a large segment- or region-table entry
  * while traversing is an error, since the function is expected to be
- * called against virtual regions reserverd for 4KB mappings only.
+ * called against virtual regions reserved for 4KB mappings only.
  */
 pte_t *vmem_get_alloc_pte(unsigned long addr, bool alloc)
 {
@@ -657,37 +637,29 @@ void vmem_unmap_4k_page(unsigned long addr)
 	mutex_unlock(&vmem_mutex);
 }
 
-/*
- * map whole physical memory to virtual memory (identity mapping)
- * we reserve enough space in the vmalloc area for vmemmap to hotplug
- * additional memory segments.
- */
 void __init vmem_map_init(void)
 {
-	phys_addr_t base, end;
-	u64 i;
-
-	for_each_mem_range(i, &base, &end)
-		vmem_add_range(base, end - base);
-	__set_memory((unsigned long)_stext,
-		     (unsigned long)(_etext - _stext) >> PAGE_SHIFT,
-		     SET_MEMORY_RO | SET_MEMORY_X);
-	__set_memory((unsigned long)_etext,
-		     (unsigned long)(__end_rodata - _etext) >> PAGE_SHIFT,
-		     SET_MEMORY_RO);
-	__set_memory((unsigned long)_sinittext,
-		     (unsigned long)(_einittext - _sinittext) >> PAGE_SHIFT,
-		     SET_MEMORY_RO | SET_MEMORY_X);
-	__set_memory(__stext_amode31, (__etext_amode31 - __stext_amode31) >> PAGE_SHIFT,
-		     SET_MEMORY_RO | SET_MEMORY_X);
-
-	/* lowcore requires 4k mapping for real addresses / prefixing */
-	set_memory_4k(0, LC_PAGES);
-
-	/* lowcore must be executable for LPSWE */
+	__set_memory_rox(_stext, _etext);
+	__set_memory_ro(_etext, __end_rodata);
+	__set_memory_rox(_sinittext, _einittext);
+	__set_memory_rox(__stext_amode31, __etext_amode31);
+	/*
+	 * If the BEAR-enhancement facility is not installed the first
+	 * prefix page is used to return to the previous context with
+	 * an LPSWE instruction and therefore must be executable.
+	 */
 	if (!static_key_enabled(&cpu_has_bear))
 		set_memory_x(0, 1);
-
+	if (debug_pagealloc_enabled()) {
+		/*
+		 * Use RELOC_HIDE() as long as __va(0) translates to NULL,
+		 * since performing pointer arithmetic on a NULL pointer
+		 * has undefined behavior and generates compiler warnings.
+		 */
+		__set_memory_4k(__va(0), RELOC_HIDE(__va(0), ident_map_size));
+	}
+	if (MACHINE_HAS_NX)
+		ctl_set_bit(0, 20);
 	pr_info("Write protected kernel read-only data: %luk\n",
 		(unsigned long)(__end_rodata - _stext) >> 10);
 }

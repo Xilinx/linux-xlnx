@@ -76,7 +76,7 @@ static int omap4_pm_suspend(void)
 	 * domain CSWR is not supported by hardware.
 	 * More details can be found in OMAP4430 TRM section 4.3.4.2.
 	 */
-	omap4_enter_lowpower(cpu_id, cpu_suspend_state);
+	omap4_enter_lowpower(cpu_id, cpu_suspend_state, false);
 
 	/* Restore next powerdomain state */
 	list_for_each_entry(pwrst, &pwrst_list, node) {
@@ -99,7 +99,7 @@ static int omap4_pm_suspend(void)
 		 * possible causes.
 		 * http://www.spinics.net/lists/arm-kernel/msg218641.html
 		 */
-		pr_warn("A possible cause could be an old bootloader - try u-boot >= v2012.07\n");
+		pr_debug("A possible cause could be an old bootloader - try u-boot >= v2012.07\n");
 	} else {
 		pr_info("Successfully put all powerdomains to target state\n");
 	}
@@ -257,7 +257,7 @@ int __init omap4_pm_init(void)
 	 * http://www.spinics.net/lists/arm-kernel/msg218641.html
 	 */
 	if (cpu_is_omap44xx())
-		pr_warn("OMAP4 PM: u-boot >= v2012.07 is required for full PM support\n");
+		pr_debug("OMAP4 PM: u-boot >= v2012.07 is required for full PM support\n");
 
 	ret = pwrdm_for_each(pwrdms_setup, NULL);
 	if (ret) {

@@ -96,7 +96,7 @@ static MDEV_TYPE_ATTR_RO(device_api);
 static ssize_t name_show(struct mdev_type *mtype,
 			 struct mdev_type_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%s\n",
+	return sysfs_emit(buf, "%s\n",
 		mtype->pretty_name ? mtype->pretty_name : mtype->sysfs_name);
 }
 
@@ -233,7 +233,8 @@ int parent_create_sysfs_files(struct mdev_parent *parent)
 out_err:
 	while (--i >= 0)
 		mdev_type_remove(parent->types[i]);
-	return 0;
+	kset_unregister(parent->mdev_types_kset);
+	return ret;
 }
 
 static ssize_t remove_store(struct device *dev, struct device_attribute *attr,

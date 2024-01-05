@@ -7,7 +7,7 @@
 #include <linux/clk.h>
 #include <linux/io.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
+#include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
 #include <linux/regulator/driver.h>
@@ -212,6 +212,7 @@ static struct platform_driver uniphier_regulator_driver = {
 	.remove = uniphier_regulator_remove,
 	.driver = {
 		.name  = "uniphier-regulator",
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 		.of_match_table = uniphier_regulator_match,
 	},
 };

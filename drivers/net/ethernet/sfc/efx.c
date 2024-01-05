@@ -18,7 +18,6 @@
 #include <linux/ethtool.h>
 #include <linux/topology.h>
 #include <linux/gfp.h>
-#include <linux/aer.h>
 #include <linux/interrupt.h>
 #include "net_driver.h"
 #include <net/gre.h>
@@ -33,6 +32,7 @@
 #include "io.h"
 #include "selftest.h"
 #include "sriov.h"
+#include "efx_devlink.h"
 
 #include "mcdi_port_common.h"
 #include "mcdi_pcol.h"
@@ -541,7 +541,6 @@ int efx_net_open(struct net_device *net_dev)
 	else
 		efx->state = STATE_NET_UP;
 
-	efx_selftest_async_start(efx);
 	return 0;
 }
 
@@ -606,7 +605,6 @@ static const struct net_device_ops efx_netdev_ops = {
 #endif
 	.ndo_get_phys_port_id   = efx_get_phys_port_id,
 	.ndo_get_phys_port_name	= efx_get_phys_port_name,
-	.ndo_setup_tc		= efx_setup_tc,
 #ifdef CONFIG_RFS_ACCEL
 	.ndo_rx_flow_steer	= efx_filter_rfs,
 #endif
@@ -879,6 +877,7 @@ static void efx_pci_remove(struct pci_dev *pci_dev)
 	if (efx->type->sriov_fini)
 		efx->type->sriov_fini(efx);
 
+	efx_fini_devlink_lock(efx);
 	efx_unregister_netdev(efx);
 
 	efx_mtd_remove(efx);
@@ -888,12 +887,11 @@ static void efx_pci_remove(struct pci_dev *pci_dev)
 	efx_fini_io(efx);
 	pci_dbg(efx->pci_dev, "shutdown successful\n");
 
+	efx_fini_devlink_and_unlock(efx);
 	efx_fini_struct(efx);
 	free_netdev(efx->net_dev);
 	probe_data = container_of(efx, struct efx_probe_data, efx);
 	kfree(probe_data);
-
-	pci_disable_pcie_error_reporting(pci_dev);
 };
 
 /* NIC VPD information
@@ -1001,18 +999,18 @@ static int efx_pci_probe_post_io(struct efx_nic *efx)
 	}
 
 	/* Determine netdevice features */
-	net_dev->features |= (efx->type->offload_features | NETIF_F_SG |
-			      NETIF_F_TSO | NETIF_F_RXCSUM | NETIF_F_RXALL);
-	if (efx->type->offload_features & (NETIF_F_IPV6_CSUM | NETIF_F_HW_CSUM))
-		net_dev->features |= NETIF_F_TSO6;
-	/* Check whether device supports TSO */
-	if (!efx->type->tso_versions || !efx->type->tso_versions(efx))
-		net_dev->features &= ~NETIF_F_ALL_TSO;
+	net_dev->features |= efx->type->offload_features;
+
+	/* Add TSO features */
+	if (efx->type->tso_versions && efx->type->tso_versions(efx))
+		net_dev->features |= NETIF_F_TSO | NETIF_F_TSO6;
+
 	/* Mask for features that also apply to VLAN devices */
 	net_dev->vlan_features |= (NETIF_F_HW_CSUM | NETIF_F_SG |
 				   NETIF_F_HIGHDMA | NETIF_F_ALL_TSO |
 				   NETIF_F_RXCSUM);
 
+	/* Determine user configurable features */
 	net_dev->hw_features |= net_dev->features & ~efx->fixed_features;
 
 	/* Disable receiving frames with bad FCS, by default. */
@@ -1025,7 +1023,17 @@ static int efx_pci_probe_post_io(struct efx_nic *efx)
 	net_dev->features &= ~NETIF_F_HW_VLAN_CTAG_FILTER;
 	net_dev->features |= efx->fixed_features;
 
+	net_dev->xdp_features = NETDEV_XDP_ACT_BASIC |
+				NETDEV_XDP_ACT_REDIRECT |
+				NETDEV_XDP_ACT_NDO_XMIT;
+
+	/* devlink creation, registration and lock */
+	rc = efx_probe_devlink_and_lock(efx);
+	if (rc)
+		pci_err(efx->pci_dev, "devlink registration failed");
+
 	rc = efx_register_netdev(efx);
+	efx_probe_devlink_unlock(efx);
 	if (!rc)
 		return 0;
 
@@ -1118,8 +1126,6 @@ static int efx_pci_probe(struct pci_dev *pci_dev,
 	if (rc && rc != -EPERM)
 		netif_warn(efx, probe, efx->net_dev,
 			   "failed to create MTDs (%d)\n", rc);
-
-	(void)pci_enable_pcie_error_reporting(pci_dev);
 
 	if (efx->type->udp_tnl_push_ports)
 		efx->type->udp_tnl_push_ports(efx);

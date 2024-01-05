@@ -203,7 +203,7 @@
  *	prb_rec_init_wr(&r, 5);
  *
  *	// try to extend, but only if it does not exceed 32 bytes
- *	if (prb_reserve_in_last(&e, &test_rb, &r, printk_caller_id()), 32) {
+ *	if (prb_reserve_in_last(&e, &test_rb, &r, printk_caller_id(), 32)) {
  *		snprintf(&r.text_buf[r.info->text_len],
  *			 r.text_buf_size - r.info->text_len, "hello");
  *
@@ -1735,7 +1735,7 @@ static bool copy_data(struct prb_data_ring *data_ring,
 	if (!buf || !buf_size)
 		return true;
 
-	data_size = min_t(u16, buf_size, len);
+	data_size = min_t(unsigned int, buf_size, len);
 
 	memcpy(&buf[0], data, data_size); /* LMM(copy_data:A) */
 	return true;

@@ -150,7 +150,7 @@ able to start an L1 guest with::
     $ qemu-kvm -cpu host [...]
 
 The above will pass through the host CPU's capabilities as-is to the
-gues); or for better live migration compatibility, use a named CPU
+guest, or for better live migration compatibility, use a named CPU
 model supported by QEMU. e.g.::
 
     $ qemu-kvm -cpu Haswell-noTSX-IBRS,vmx=on
@@ -169,7 +169,7 @@ Enabling "nested" (s390x)
     $ modprobe kvm nested=1
 
 .. note:: On s390x, the kernel parameter ``hpage`` is mutually exclusive
-          with the ``nested`` paramter — i.e. to be able to enable
+          with the ``nested`` parameter — i.e. to be able to enable
           ``nested``, the ``hpage`` parameter *must* be disabled.
 
 2. The guest hypervisor (L1) must be provided with the ``sie`` CPU

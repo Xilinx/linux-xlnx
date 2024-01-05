@@ -16,14 +16,25 @@ enum monitor_mwait_testcases {
 	MWAIT_DISABLED = BIT(2),
 };
 
+/*
+ * If both MWAIT and its quirk are disabled, MONITOR/MWAIT should #UD, in all
+ * other scenarios KVM should emulate them as nops.
+ */
+#define GUEST_ASSERT_MONITOR_MWAIT(insn, testcase, vector)		\
+do {									\
+	bool fault_wanted = ((testcase) & MWAIT_QUIRK_DISABLED) &&	\
+			    ((testcase) & MWAIT_DISABLED);		\
+									\
+	if (fault_wanted)						\
+		__GUEST_ASSERT((vector) == UD_VECTOR,			\
+			       "Expected #UD on " insn " for testcase '0x%x', got '0x%x'", vector); \
+	else								\
+		__GUEST_ASSERT(!(vector),				\
+			       "Expected success on " insn " for testcase '0x%x', got '0x%x'", vector); \
+} while (0)
+
 static void guest_monitor_wait(int testcase)
 {
-	/*
-	 * If both MWAIT and its quirk are disabled, MONITOR/MWAIT should #UD,
-	 * in all other scenarios KVM should emulate them as nops.
-	 */
-	bool fault_wanted = (testcase & MWAIT_QUIRK_DISABLED) &&
-			    (testcase & MWAIT_DISABLED);
 	u8 vector;
 
 	GUEST_SYNC(testcase);
@@ -33,16 +44,10 @@ static void guest_monitor_wait(int testcase)
 	 * intercept checks, so the inputs for MONITOR and MWAIT must be valid.
 	 */
 	vector = kvm_asm_safe("monitor", "a"(guest_monitor_wait), "c"(0), "d"(0));
-	if (fault_wanted)
-		GUEST_ASSERT_2(vector == UD_VECTOR, testcase, vector);
-	else
-		GUEST_ASSERT_2(!vector, testcase, vector);
+	GUEST_ASSERT_MONITOR_MWAIT("MONITOR", testcase, vector);
 
 	vector = kvm_asm_safe("mwait", "a"(guest_monitor_wait), "c"(0), "d"(0));
-	if (fault_wanted)
-		GUEST_ASSERT_2(vector == UD_VECTOR, testcase, vector);
-	else
-		GUEST_ASSERT_2(!vector, testcase, vector);
+	GUEST_ASSERT_MONITOR_MWAIT("MWAIT", testcase, vector);
 }
 
 static void guest_code(void)
@@ -64,7 +69,6 @@ int main(int argc, char *argv[])
 {
 	uint64_t disabled_quirks;
 	struct kvm_vcpu *vcpu;
-	struct kvm_run *run;
 	struct kvm_vm *vm;
 	struct ucall uc;
 	int testcase;
@@ -74,25 +78,19 @@ int main(int argc, char *argv[])
 	vm = vm_create_with_one_vcpu(&vcpu, guest_code);
 	vcpu_clear_cpuid_feature(vcpu, X86_FEATURE_MWAIT);
 
-	run = vcpu->run;
-
 	vm_init_descriptor_tables(vm);
 	vcpu_init_descriptor_tables(vcpu);
 
 	while (1) {
 		vcpu_run(vcpu);
-
-		TEST_ASSERT(run->exit_reason == KVM_EXIT_IO,
-			    "Unexpected exit reason: %u (%s),\n",
-			    run->exit_reason,
-			    exit_reason_str(run->exit_reason));
+		TEST_ASSERT_KVM_EXIT_REASON(vcpu, KVM_EXIT_IO);
 
 		switch (get_ucall(vcpu, &uc)) {
 		case UCALL_SYNC:
 			testcase = uc.args[1];
 			break;
 		case UCALL_ABORT:
-			REPORT_GUEST_ASSERT_2(uc, "testcase = %lx, vector = %ld");
+			REPORT_GUEST_ASSERT(uc);
 			goto done;
 		case UCALL_DONE:
 			goto done;

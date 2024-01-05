@@ -70,33 +70,21 @@ static void xlnx_rtc_offset_read(struct xlnx_ptp_timer *timer,
 
 /* PTP clock operations
  */
-static int xlnx_ptp_adjfreq(struct ptp_clock_info *ptp, s32 ppb)
+static int xlnx_ptp_adjfine(struct ptp_clock_info *ptp, long scaled_ppm)
 {
 	struct xlnx_ptp_timer *timer = container_of(ptp, struct xlnx_ptp_timer,
 						    ptp_clock_info);
 
-	int neg_adj = 0;
 	u64 freq;
-	u32 diff, incval;
+	u32 incval;
 
 	/* This number should be replaced by a call to get the frequency
 	 * from the device-tree. Currently assumes 125MHz
 	 */
 	incval = 0x800000;
 	/* for 156.25 MHZ Ref clk the value is  incval = 0x800000; */
-
-	if (ppb < 0) {
-		neg_adj = 1;
-		ppb = -ppb;
-	}
-
 	freq = incval;
-	freq *= ppb;
-	diff = div_u64(freq, 1000000000ULL);
-
-	pr_debug("%s: adj: %d ppb: %d\n", __func__, diff, ppb);
-
-	incval = neg_adj ? (incval - diff) : (incval + diff);
+	incval = adjust_by_scaled_ppm(freq, scaled_ppm);
 	out_be32((timer->baseaddr + XTIMER1588_RTC_INCREMENT), incval);
 	return 0;
 }
@@ -201,7 +189,7 @@ static struct ptp_clock_info xlnx_ptp_clock_info = {
 	.max_adj  = 999999999,
 	.n_ext_ts	= 0,
 	.pps      = 1,
-	.adjfreq  = xlnx_ptp_adjfreq,
+	.adjfine  = xlnx_ptp_adjfine,
 	.adjtime  = xlnx_ptp_adjtime,
 	.gettime64  = xlnx_ptp_gettime,
 	.settime64 = xlnx_ptp_settime,

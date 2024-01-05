@@ -60,17 +60,31 @@ svc_put_auth_ops(struct auth_ops *aops)
 	module_put(aops->owner);
 }
 
-int
-svc_authenticate(struct svc_rqst *rqstp)
+/**
+ * svc_authenticate - Initialize an outgoing credential
+ * @rqstp: RPC execution context
+ *
+ * Return values:
+ *   %SVC_OK: XDR encoding of the result can begin
+ *   %SVC_DENIED: Credential or verifier is not valid
+ *   %SVC_GARBAGE: Failed to decode credential or verifier
+ *   %SVC_COMPLETE: GSS context lifetime event; no further action
+ *   %SVC_DROP: Drop this request; no further action
+ *   %SVC_CLOSE: Like drop, but also close transport connection
+ */
+enum svc_auth_status svc_authenticate(struct svc_rqst *rqstp)
 {
-	rpc_authflavor_t	flavor;
-	struct auth_ops		*aops;
+	struct auth_ops *aops;
+	u32 flavor;
 
 	rqstp->rq_auth_stat = rpc_auth_ok;
 
-	flavor = svc_getnl(&rqstp->rq_arg.head[0]);
-
-	dprintk("svc: svc_authenticate (%d)\n", flavor);
+	/*
+	 * Decode the Call credential's flavor field. The credential's
+	 * body field is decoded in the chosen ->accept method below.
+	 */
+	if (xdr_stream_decode_u32(&rqstp->rq_arg_stream, &flavor) < 0)
+		return SVC_GARBAGE;
 
 	aops = svc_get_auth_ops(flavor);
 	if (aops == NULL) {
@@ -86,16 +100,28 @@ svc_authenticate(struct svc_rqst *rqstp)
 }
 EXPORT_SYMBOL_GPL(svc_authenticate);
 
-int svc_set_client(struct svc_rqst *rqstp)
+/**
+ * svc_set_client - Assign an appropriate 'auth_domain' as the client
+ * @rqstp: RPC execution context
+ *
+ * Return values:
+ *   %SVC_OK: Client was found and assigned
+ *   %SVC_DENY: Client was explicitly denied
+ *   %SVC_DROP: Ignore this request
+ *   %SVC_CLOSE: Ignore this request and close the connection
+ */
+enum svc_auth_status svc_set_client(struct svc_rqst *rqstp)
 {
 	rqstp->rq_client = NULL;
 	return rqstp->rq_authop->set_client(rqstp);
 }
 EXPORT_SYMBOL_GPL(svc_set_client);
 
-/* A request, which was authenticated, has now executed.
- * Time to finalise the credentials and verifier
- * and release and resources
+/**
+ * svc_authorise - Finalize credentials/verifier and release resources
+ * @rqstp: RPC execution context
+ *
+ * Returns zero on success, or a negative errno.
  */
 int svc_authorise(struct svc_rqst *rqstp)
 {

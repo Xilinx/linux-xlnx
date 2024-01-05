@@ -378,7 +378,7 @@ int cdnsp_ep_enqueue(struct cdnsp_ep *pep, struct cdnsp_request *preq)
 		ret = cdnsp_queue_bulk_tx(pdev, preq);
 		break;
 	case USB_ENDPOINT_XFER_ISOC:
-		ret = cdnsp_queue_isoc_tx_prepare(pdev, preq);
+		ret = cdnsp_queue_isoc_tx(pdev, preq);
 	}
 
 	if (ret)
@@ -1124,6 +1124,9 @@ static int cdnsp_gadget_ep_dequeue(struct usb_ep *ep,
 	struct cdnsp_device *pdev = pep->pdev;
 	unsigned long flags;
 	int ret;
+
+	if (request->status != -EINPROGRESS)
+		return 0;
 
 	if (!pep->endpoint.desc) {
 		dev_err(pdev->dev,

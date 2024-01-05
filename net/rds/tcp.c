@@ -503,6 +503,9 @@ bool rds_tcp_tune(struct socket *sock)
 			release_sock(sk);
 			return false;
 		}
+		/* Update ns_tracker to current stack trace and refcounted tracker */
+		__netns_tracker_free(net, &sk->ns_tracker, false);
+
 		sk->sk_net_refcnt = 1;
 		netns_tracker_alloc(net, &sk->ns_tracker, GFP_KERNEL);
 		sock_inuse_add(net, 1);
@@ -562,7 +565,8 @@ static __net_init int rds_tcp_init_net(struct net *net)
 	}
 	tbl[RDS_TCP_SNDBUF].data = &rtn->sndbuf_size;
 	tbl[RDS_TCP_RCVBUF].data = &rtn->rcvbuf_size;
-	rtn->rds_tcp_sysctl = register_net_sysctl(net, "net/rds/tcp", tbl);
+	rtn->rds_tcp_sysctl = register_net_sysctl_sz(net, "net/rds/tcp", tbl,
+						     ARRAY_SIZE(rds_tcp_sysctl_table));
 	if (!rtn->rds_tcp_sysctl) {
 		pr_warn("could not register sysctl\n");
 		err = -ENOMEM;

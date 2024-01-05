@@ -172,6 +172,8 @@ static inline struct tcp_request_sock *tcp_rsk(const struct request_sock *req)
 	return (struct tcp_request_sock *)req;
 }
 
+#define TCP_RMEM_TO_WIN_SCALE 8
+
 struct tcp_sock {
 	/* inet_connection_sock has to be the first member of tcp_sock */
 	struct inet_connection_sock	inet_conn;
@@ -238,7 +240,7 @@ struct tcp_sock {
 
 	u32	window_clamp;	/* Maximal window to advertise		*/
 	u32	rcv_ssthresh;	/* Current window clamp			*/
-
+	u8	scaling_ratio;	/* see tcp_win_from_space() */
 	/* Information of the most recently (s)acked skb */
 	struct tcp_rack {
 		u64 mstamp; /* (Re)sent time of the skb */
@@ -423,6 +425,7 @@ struct tcp_sock {
 		u32		  probe_seq_start;
 		u32		  probe_seq_end;
 	} mtu_probe;
+	u32     plb_rehash;     /* PLB-triggered rehash attempts */
 	u32	mtu_info; /* We received an ICMP_FRAG_NEEDED / ICMPV6_PKT_TOOBIG
 			   * while socket was owned by user.
 			   */
@@ -471,10 +474,12 @@ enum tsq_flags {
 	TCPF_MTU_REDUCED_DEFERRED	= (1UL << TCP_MTU_REDUCED_DEFERRED),
 };
 
-static inline struct tcp_sock *tcp_sk(const struct sock *sk)
-{
-	return (struct tcp_sock *)sk;
-}
+#define tcp_sk(ptr) container_of_const(ptr, struct tcp_sock, inet_conn.icsk_inet.sk)
+
+/* Variant of tcp_sk() upgrading a const sock to a read/write tcp socket.
+ * Used in context of (lockless) tcp listeners.
+ */
+#define tcp_sk_rw(ptr) container_of(ptr, struct tcp_sock, inet_conn.icsk_inet.sk)
 
 struct tcp_timewait_sock {
 	struct inet_timewait_sock tw_sk;
@@ -510,7 +515,7 @@ static inline void fastopen_queue_tune(struct sock *sk, int backlog)
 	struct request_sock_queue *queue = &inet_csk(sk)->icsk_accept_queue;
 	int somaxconn = READ_ONCE(sock_net(sk)->core.sysctl_somaxconn);
 
-	queue->fastopenq.max_qlen = min_t(unsigned int, backlog, somaxconn);
+	WRITE_ONCE(queue->fastopenq.max_qlen, min_t(unsigned int, backlog, somaxconn));
 }
 
 static inline void tcp_move_syn(struct tcp_sock *tp,
@@ -559,6 +564,6 @@ void __tcp_sock_set_nodelay(struct sock *sk, bool on);
 void tcp_sock_set_nodelay(struct sock *sk);
 void tcp_sock_set_quickack(struct sock *sk, int val);
 int tcp_sock_set_syncnt(struct sock *sk, int val);
-void tcp_sock_set_user_timeout(struct sock *sk, u32 val);
+int tcp_sock_set_user_timeout(struct sock *sk, int val);
 
 #endif	/* _LINUX_TCP_H */

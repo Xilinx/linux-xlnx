@@ -19,7 +19,6 @@
 #include <linux/of.h>
 #include <linux/of_gpio.h>
 #include <linux/platform_device.h>
-#include <linux/pm_runtime.h>
 #include <linux/regmap.h>
 #include <linux/reset.h>
 #include <linux/slab.h>
@@ -204,23 +203,23 @@ static int tegra20_ac97_trigger(struct snd_pcm_substream *substream, int cmd,
 	return 0;
 }
 
-static const struct snd_soc_dai_ops tegra20_ac97_dai_ops = {
-	.trigger	= tegra20_ac97_trigger,
-};
-
 static int tegra20_ac97_probe(struct snd_soc_dai *dai)
 {
 	struct tegra20_ac97 *ac97 = snd_soc_dai_get_drvdata(dai);
 
-	dai->capture_dma_data = &ac97->capture_dma_data;
-	dai->playback_dma_data = &ac97->playback_dma_data;
+	snd_soc_dai_init_dma_data(dai,	&ac97->playback_dma_data,
+					&ac97->capture_dma_data);
 
 	return 0;
 }
 
+static const struct snd_soc_dai_ops tegra20_ac97_dai_ops = {
+	.probe		= tegra20_ac97_probe,
+	.trigger	= tegra20_ac97_trigger,
+};
+
 static struct snd_soc_dai_driver tegra20_ac97_dai = {
 	.name = "tegra-ac97-pcm",
-	.probe = tegra20_ac97_probe,
 	.playback = {
 		.stream_name = "PCM Playback",
 		.channels_min = 2,
@@ -318,7 +317,8 @@ static int tegra20_ac97_platform_probe(struct platform_device *pdev)
 	ac97->reset = devm_reset_control_get_exclusive(&pdev->dev, "ac97");
 	if (IS_ERR(ac97->reset)) {
 		dev_err(&pdev->dev, "Can't retrieve ac97 reset\n");
-		return PTR_ERR(ac97->reset);
+		ret = PTR_ERR(ac97->reset);
+		goto err;
 	}
 
 	ac97->clk_ac97 = devm_clk_get(&pdev->dev, NULL);
@@ -328,8 +328,7 @@ static int tegra20_ac97_platform_probe(struct platform_device *pdev)
 		goto err;
 	}
 
-	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	regs = devm_ioremap_resource(&pdev->dev, mem);
+	regs = devm_platform_get_and_ioremap_resource(pdev, 0, &mem);
 	if (IS_ERR(regs)) {
 		ret = PTR_ERR(regs);
 		goto err_clk_put;
@@ -429,7 +428,7 @@ err:
 	return ret;
 }
 
-static int tegra20_ac97_platform_remove(struct platform_device *pdev)
+static void tegra20_ac97_platform_remove(struct platform_device *pdev)
 {
 	struct tegra20_ac97 *ac97 = dev_get_drvdata(&pdev->dev);
 
@@ -439,8 +438,6 @@ static int tegra20_ac97_platform_remove(struct platform_device *pdev)
 	clk_disable_unprepare(ac97->clk_ac97);
 
 	snd_soc_set_ac97_ops(NULL);
-
-	return 0;
 }
 
 static const struct of_device_id tegra20_ac97_of_match[] = {
@@ -454,7 +451,7 @@ static struct platform_driver tegra20_ac97_driver = {
 		.of_match_table = tegra20_ac97_of_match,
 	},
 	.probe = tegra20_ac97_platform_probe,
-	.remove = tegra20_ac97_platform_remove,
+	.remove_new = tegra20_ac97_platform_remove,
 };
 module_platform_driver(tegra20_ac97_driver);
 

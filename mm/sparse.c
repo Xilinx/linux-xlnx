@@ -172,8 +172,7 @@ static void __section_mark_present(struct mem_section *ms,
 
 #define for_each_present_section_nr(start, section_nr)		\
 	for (section_nr = next_present_section_nr(start-1);	\
-	     ((section_nr != -1) &&				\
-	      (section_nr <= __highest_present_section_nr));	\
+	     section_nr != -1;								\
 	     section_nr = next_present_section_nr(section_nr))
 
 static inline unsigned long first_present_section_nr(void)
@@ -318,6 +317,7 @@ size_t mem_section_usage_size(void)
 	return sizeof(struct mem_section_usage) + usemap_size();
 }
 
+#ifdef CONFIG_MEMORY_HOTREMOVE
 static inline phys_addr_t pgdat_to_phys(struct pglist_data *pgdat)
 {
 #ifndef CONFIG_NUMA
@@ -328,7 +328,6 @@ static inline phys_addr_t pgdat_to_phys(struct pglist_data *pgdat)
 #endif
 }
 
-#ifdef CONFIG_MEMORY_HOTREMOVE
 static struct mem_section_usage * __init
 sparse_early_usemaps_alloc_pgdat_section(struct pglist_data *pgdat,
 					 unsigned long size)
@@ -701,7 +700,7 @@ static int fill_subsection_map(unsigned long pfn, unsigned long nr_pages)
 	return rc;
 }
 #else
-struct page * __meminit populate_section_memmap(unsigned long pfn,
+static struct page * __meminit populate_section_memmap(unsigned long pfn,
 		unsigned long nr_pages, int nid, struct vmem_altmap *altmap,
 		struct dev_pagemap *pgmap)
 {
@@ -832,7 +831,7 @@ static struct page * __meminit section_activate(int nid, unsigned long pfn,
 	struct mem_section *ms = __pfn_to_section(pfn);
 	struct mem_section_usage *usage = NULL;
 	struct page *memmap;
-	int rc = 0;
+	int rc;
 
 	if (!ms->usage) {
 		usage = kzalloc(mem_section_usage_size(), GFP_KERNEL);
@@ -922,12 +921,14 @@ int __meminit sparse_add_section(int nid, unsigned long start_pfn,
 	return 0;
 }
 
-void sparse_remove_section(struct mem_section *ms, unsigned long pfn,
-		unsigned long nr_pages, unsigned long map_offset,
-		struct vmem_altmap *altmap)
+void sparse_remove_section(unsigned long pfn, unsigned long nr_pages,
+			   struct vmem_altmap *altmap)
 {
-	clear_hwpoisoned_pages(pfn_to_page(pfn) + map_offset,
-			nr_pages - map_offset);
+	struct mem_section *ms = __pfn_to_section(pfn);
+
+	if (WARN_ON_ONCE(!valid_section(ms)))
+		return;
+
 	section_deactivate(pfn, nr_pages, altmap);
 }
 #endif /* CONFIG_MEMORY_HOTPLUG */

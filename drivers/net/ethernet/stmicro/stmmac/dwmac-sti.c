@@ -17,7 +17,6 @@
 #include <linux/regmap.h>
 #include <linux/clk.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/of_net.h>
 
 #include "stmmac_platform.h"
@@ -35,7 +34,7 @@
 #define IS_PHY_IF_MODE_GBIT(iface)	(IS_PHY_IF_MODE_RGMII(iface) || \
 					 iface == PHY_INTERFACE_MODE_GMII)
 
-/* STiH4xx register definitions (STiH415/STiH416/STiH407/STiH410 families)
+/* STiH4xx register definitions (STiH407/STiH410 families)
  *
  * Below table summarizes the clock requirement and clock sources for
  * supported phy interface modes with link speeds.
@@ -75,27 +74,6 @@
 #define STIH4XX_ETH_SEL_INTERNAL_NOTEXT_PHYCLK	BIT(7)
 #define STIH4XX_ETH_SEL_TXCLK_NOT_CLK125	BIT(6)
 
-/* STiD127 register definitions
- *-----------------------
- * src	 |BIT(6)| BIT(7)|
- *-----------------------
- * MII   |  1	|   n/a	|
- *-----------------------
- * RMII  |  n/a	|   1	|
- * clkgen|	|	|
- *-----------------------
- * RMII  |  n/a	|   0	|
- * phyclk|	|	|
- *-----------------------
- * RGMII |  1	|  n/a	|
- * clkgen|	|	|
- *-----------------------
- */
-
-#define STID127_RETIME_SRC_MASK			GENMASK(7, 6)
-#define STID127_ETH_SEL_INTERNAL_NOTEXT_PHYCLK	BIT(7)
-#define STID127_ETH_SEL_INTERNAL_NOTEXT_TXCLK	BIT(6)
-
 #define ENMII_MASK	GENMASK(5, 5)
 #define ENMII		BIT(5)
 #define EN_MASK		GENMASK(1, 1)
@@ -125,11 +103,11 @@ struct sti_dwmac {
 	struct regmap *regmap;
 	bool gmac_en;
 	u32 speed;
-	void (*fix_retime_src)(void *priv, unsigned int speed);
+	void (*fix_retime_src)(void *priv, unsigned int speed, unsigned int mode);
 };
 
 struct sti_dwmac_of_data {
-	void (*fix_retime_src)(void *priv, unsigned int speed);
+	void (*fix_retime_src)(void *priv, unsigned int speed, unsigned int mode);
 };
 
 static u32 phy_intf_sels[] = {
@@ -157,7 +135,7 @@ static u32 stih4xx_tx_retime_val[] = {
 				 | STIH4XX_ETH_SEL_INTERNAL_NOTEXT_PHYCLK,
 };
 
-static void stih4xx_fix_retime_src(void *priv, u32 spd)
+static void stih4xx_fix_retime_src(void *priv, u32 spd, unsigned int mode)
 {
 	struct sti_dwmac *dwmac = priv;
 	u32 src = dwmac->tx_retime_src;
@@ -194,36 +172,6 @@ static void stih4xx_fix_retime_src(void *priv, u32 spd)
 			   stih4xx_tx_retime_val[src]);
 }
 
-static void stid127_fix_retime_src(void *priv, u32 spd)
-{
-	struct sti_dwmac *dwmac = priv;
-	u32 reg = dwmac->ctrl_reg;
-	u32 freq = 0;
-	u32 val = 0;
-
-	if (dwmac->interface == PHY_INTERFACE_MODE_MII) {
-		val = STID127_ETH_SEL_INTERNAL_NOTEXT_TXCLK;
-	} else if (dwmac->interface == PHY_INTERFACE_MODE_RMII) {
-		if (!dwmac->ext_phyclk) {
-			val = STID127_ETH_SEL_INTERNAL_NOTEXT_PHYCLK;
-			freq = DWMAC_50MHZ;
-		}
-	} else if (IS_PHY_IF_MODE_RGMII(dwmac->interface)) {
-		val = STID127_ETH_SEL_INTERNAL_NOTEXT_TXCLK;
-		if (spd == SPEED_1000)
-			freq = DWMAC_125MHZ;
-		else if (spd == SPEED_100)
-			freq = DWMAC_25MHZ;
-		else if (spd == SPEED_10)
-			freq = DWMAC_2_5MHZ;
-	}
-
-	if (freq)
-		clk_set_rate(dwmac->clk, freq);
-
-	regmap_update_bits(dwmac->regmap, reg, STID127_RETIME_SRC_MASK, val);
-}
-
 static int sti_dwmac_set_mode(struct sti_dwmac *dwmac)
 {
 	struct regmap *regmap = dwmac->regmap;
@@ -239,7 +187,7 @@ static int sti_dwmac_set_mode(struct sti_dwmac *dwmac)
 	val = (iface == PHY_INTERFACE_MODE_REVMII) ? 0 : ENMII;
 	regmap_update_bits(regmap, reg, ENMII_MASK, val);
 
-	dwmac->fix_retime_src(dwmac, dwmac->speed);
+	dwmac->fix_retime_src(dwmac, dwmac->speed, 0);
 
 	return 0;
 }
@@ -368,14 +316,13 @@ err_remove_config_dt:
 	return ret;
 }
 
-static int sti_dwmac_remove(struct platform_device *pdev)
+static void sti_dwmac_remove(struct platform_device *pdev)
 {
 	struct sti_dwmac *dwmac = get_stmmac_bsp_priv(&pdev->dev);
-	int ret = stmmac_dvr_remove(&pdev->dev);
+
+	stmmac_dvr_remove(&pdev->dev);
 
 	clk_disable_unprepare(dwmac->clk);
-
-	return ret;
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -407,14 +354,7 @@ static const struct sti_dwmac_of_data stih4xx_dwmac_data = {
 	.fix_retime_src = stih4xx_fix_retime_src,
 };
 
-static const struct sti_dwmac_of_data stid127_dwmac_data = {
-	.fix_retime_src = stid127_fix_retime_src,
-};
-
 static const struct of_device_id sti_dwmac_match[] = {
-	{ .compatible = "st,stih415-dwmac", .data = &stih4xx_dwmac_data},
-	{ .compatible = "st,stih416-dwmac", .data = &stih4xx_dwmac_data},
-	{ .compatible = "st,stid127-dwmac", .data = &stid127_dwmac_data},
 	{ .compatible = "st,stih407-dwmac", .data = &stih4xx_dwmac_data},
 	{ }
 };
@@ -422,7 +362,7 @@ MODULE_DEVICE_TABLE(of, sti_dwmac_match);
 
 static struct platform_driver sti_dwmac_driver = {
 	.probe  = sti_dwmac_probe,
-	.remove = sti_dwmac_remove,
+	.remove_new = sti_dwmac_remove,
 	.driver = {
 		.name           = "sti-dwmac",
 		.pm		= &sti_dwmac_pm_ops,

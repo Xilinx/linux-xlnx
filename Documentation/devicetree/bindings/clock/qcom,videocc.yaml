@@ -4,21 +4,21 @@
 $id: http://devicetree.org/schemas/clock/qcom,videocc.yaml#
 $schema: http://devicetree.org/meta-schemas/core.yaml#
 
-title: Qualcomm Video Clock & Reset Controller Binding
+title: Qualcomm Video Clock & Reset Controller
 
 maintainers:
-  - Taniya Das <tdas@codeaurora.org>
+  - Taniya Das <quic_tdas@quicinc.com>
 
 description: |
-  Qualcomm video clock control module which supports the clocks, resets and
-  power domains on Qualcomm SoCs.
+  Qualcomm video clock control module provides the clocks, resets and power
+  domains on Qualcomm SoCs.
 
-  See also:
-    dt-bindings/clock/qcom,videocc-sc7180.h
-    dt-bindings/clock/qcom,videocc-sc7280.h
-    dt-bindings/clock/qcom,videocc-sdm845.h
-    dt-bindings/clock/qcom,videocc-sm8150.h
-    dt-bindings/clock/qcom,videocc-sm8250.h
+  See also::
+    include/dt-bindings/clock/qcom,videocc-sc7180.h
+    include/dt-bindings/clock/qcom,videocc-sc7280.h
+    include/dt-bindings/clock/qcom,videocc-sdm845.h
+    include/dt-bindings/clock/qcom,videocc-sm8150.h
+    include/dt-bindings/clock/qcom,videocc-sm8250.h
 
 properties:
   compatible:
@@ -30,12 +30,12 @@ properties:
       - qcom,sm8250-videocc
 
   clocks:
-    items:
-      - description: Board XO source
+    minItems: 1
+    maxItems: 3
 
   clock-names:
-    items:
-      - const: bi_tcxo
+    minItems: 1
+    maxItems: 3
 
   '#clock-cells':
     const: 1
@@ -68,12 +68,63 @@ required:
   - '#reset-cells'
   - '#power-domain-cells'
 
+allOf:
+  - if:
+      properties:
+        compatible:
+          enum:
+            - qcom,sc7180-videocc
+            - qcom,sdm845-videocc
+            - qcom,sm8150-videocc
+    then:
+      properties:
+        clocks:
+          items:
+            - description: Board XO source
+        clock-names:
+          items:
+            - const: bi_tcxo
+
+  - if:
+      properties:
+        compatible:
+          enum:
+            - qcom,sc7280-videocc
+    then:
+      properties:
+        clocks:
+          items:
+            - description: Board XO source
+            - description: Board active XO source
+        clock-names:
+          items:
+            - const: bi_tcxo
+            - const: bi_tcxo_ao
+
+  - if:
+      properties:
+        compatible:
+          enum:
+            - qcom,sm8250-videocc
+    then:
+      properties:
+        clocks:
+          items:
+            - description: AHB
+            - description: Board XO source
+            - description: Board active XO source
+        clock-names:
+          items:
+            - const: iface
+            - const: bi_tcxo
+            - const: bi_tcxo_ao
+
 additionalProperties: false
 
 examples:
   - |
     #include <dt-bindings/clock/qcom,rpmh.h>
-    #include <dt-bindings/power/qcom-rpmpd.h>
+    #include <dt-bindings/power/qcom,rpmhpd.h>
     clock-controller@ab00000 {
       compatible = "qcom,sdm845-videocc";
       reg = <0x0ab00000 0x10000>;
@@ -82,7 +133,7 @@ examples:
       #clock-cells = <1>;
       #reset-cells = <1>;
       #power-domain-cells = <1>;
-      power-domains = <&rpmhpd SM8250_MMCX>;
+      power-domains = <&rpmhpd RPMHPD_MMCX>;
       required-opps = <&rpmhpd_opp_low_svs>;
     };
 ...

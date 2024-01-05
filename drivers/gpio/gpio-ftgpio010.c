@@ -250,8 +250,8 @@ static int ftgpio_gpio_probe(struct platform_device *pdev)
 		return PTR_ERR(g->base);
 
 	irq = platform_get_irq(pdev, 0);
-	if (irq <= 0)
-		return irq ? irq : -EINVAL;
+	if (irq < 0)
+		return irq;
 
 	g->clk = devm_clk_get(dev, NULL);
 	if (!IS_ERR(g->clk)) {
@@ -277,7 +277,7 @@ static int ftgpio_gpio_probe(struct platform_device *pdev)
 		dev_err(dev, "unable to init generic GPIO\n");
 		goto dis_clk;
 	}
-	g->gc.label = "FTGPIO010";
+	g->gc.label = dev_name(dev);
 	g->gc.base = -1;
 	g->gc.parent = dev;
 	g->gc.owner = THIS_MODULE;
@@ -349,7 +349,7 @@ static const struct of_device_id ftgpio_gpio_of_match[] = {
 static struct platform_driver ftgpio_gpio_driver = {
 	.driver = {
 		.name		= "ftgpio010-gpio",
-		.of_match_table = of_match_ptr(ftgpio_gpio_of_match),
+		.of_match_table = ftgpio_gpio_of_match,
 	},
 	.probe = ftgpio_gpio_probe,
 	.remove = ftgpio_gpio_remove,

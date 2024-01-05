@@ -1823,7 +1823,7 @@ static void drm_dp_destroy_port(struct kref *kref)
 		return;
 	}
 
-	kfree(port->cached_edid);
+	drm_edid_free(port->cached_edid);
 
 	/*
 	 * we can't destroy the connector here, as we might be holding the
@@ -2272,8 +2272,8 @@ drm_dp_mst_port_add_connector(struct drm_dp_mst_branch *mstb,
 	if (port->pdt != DP_PEER_DEVICE_NONE &&
 	    drm_dp_mst_is_end_device(port->pdt, port->mcs) &&
 	    port->port_num >= DP_MST_LOGICAL_PORT_0)
-		port->cached_edid = drm_get_edid(port->connector,
-						 &port->aux.ddc);
+		port->cached_edid = drm_edid_read_ddc(port->connector,
+						      &port->aux.ddc);
 
 	drm_connector_register(port->connector);
 	return;
@@ -2574,14 +2574,14 @@ static struct drm_dp_mst_branch *get_mst_branch_device_by_guid_helper(
 	struct drm_dp_mst_branch *found_mstb;
 	struct drm_dp_mst_port *port;
 
+	if (!mstb)
+		return NULL;
+
 	if (memcmp(mstb->guid, guid, 16) == 0)
 		return mstb;
 
 
 	list_for_each_entry(port, &mstb->ports, next) {
-		if (!port->mstb)
-			continue;
-
 		found_mstb = get_mst_branch_device_by_guid_helper(port->mstb, guid);
 
 		if (found_mstb)
@@ -3309,8 +3309,13 @@ int drm_dp_add_payload_part1(struct drm_dp_mst_topology_mgr *mgr,
 	int ret;
 
 	port = drm_dp_mst_topology_get_port_validated(mgr, payload->port);
-	if (!port)
+	if (!port) {
+		drm_dbg_kms(mgr->dev,
+			    "VCPI %d for port %p not in topology, not creating a payload\n",
+			    payload->vcpi, payload->port);
+		payload->vc_start_slot = -1;
 		return 0;
+	}
 
 	if (mgr->payload_count == 0)
 		mgr->next_start_slot = mst_state->start_slot;
@@ -3337,7 +3342,8 @@ EXPORT_SYMBOL(drm_dp_add_payload_part1);
  * drm_dp_remove_payload() - Remove an MST payload
  * @mgr: Manager to use.
  * @mst_state: The MST atomic state
- * @payload: The payload to write
+ * @old_payload: The payload with its old state
+ * @new_payload: The payload to write
  *
  * Removes a payload from an MST topology if it was successfully assigned a start slot. Also updates
  * the starting time slots of all other payloads which would have been shifted towards the start of
@@ -3345,33 +3351,37 @@ EXPORT_SYMBOL(drm_dp_add_payload_part1);
  */
 void drm_dp_remove_payload(struct drm_dp_mst_topology_mgr *mgr,
 			   struct drm_dp_mst_topology_state *mst_state,
-			   struct drm_dp_mst_atomic_payload *payload)
+			   const struct drm_dp_mst_atomic_payload *old_payload,
+			   struct drm_dp_mst_atomic_payload *new_payload)
 {
 	struct drm_dp_mst_atomic_payload *pos;
 	bool send_remove = false;
 
 	/* We failed to make the payload, so nothing to do */
-	if (payload->vc_start_slot == -1)
+	if (new_payload->vc_start_slot == -1)
 		return;
 
 	mutex_lock(&mgr->lock);
-	send_remove = drm_dp_mst_port_downstream_of_branch(payload->port, mgr->mst_primary);
+	send_remove = drm_dp_mst_port_downstream_of_branch(new_payload->port, mgr->mst_primary);
 	mutex_unlock(&mgr->lock);
 
 	if (send_remove)
-		drm_dp_destroy_payload_step1(mgr, mst_state, payload);
+		drm_dp_destroy_payload_step1(mgr, mst_state, new_payload);
 	else
 		drm_dbg_kms(mgr->dev, "Payload for VCPI %d not in topology, not sending remove\n",
-			    payload->vcpi);
+			    new_payload->vcpi);
 
 	list_for_each_entry(pos, &mst_state->payloads, next) {
-		if (pos != payload && pos->vc_start_slot > payload->vc_start_slot)
-			pos->vc_start_slot -= payload->time_slots;
+		if (pos != new_payload && pos->vc_start_slot > new_payload->vc_start_slot)
+			pos->vc_start_slot -= old_payload->time_slots;
 	}
-	payload->vc_start_slot = -1;
+	new_payload->vc_start_slot = -1;
 
 	mgr->payload_count--;
-	mgr->next_start_slot -= payload->time_slots;
+	mgr->next_start_slot -= old_payload->time_slots;
+
+	if (new_payload->delete)
+		drm_dp_mst_put_port_malloc(new_payload->port);
 }
 EXPORT_SYMBOL(drm_dp_remove_payload);
 
@@ -3394,7 +3404,7 @@ int drm_dp_add_payload_part2(struct drm_dp_mst_topology_mgr *mgr,
 
 	/* Skip failed payloads */
 	if (payload->vc_start_slot == -1) {
-		drm_dbg_kms(state->dev, "Part 1 of payload creation for %s failed, skipping part 2\n",
+		drm_dbg_kms(mgr->dev, "Part 1 of payload creation for %s failed, skipping part 2\n",
 			    payload->port->connector->name);
 		return -EIO;
 	}
@@ -3641,6 +3651,9 @@ int drm_dp_mst_topology_mgr_set_mst(struct drm_dp_mst_topology_mgr *mgr, bool ms
 		drm_dp_dpcd_writeb(mgr->aux, DP_MSTM_CTRL, 0);
 		ret = 0;
 		mgr->payload_id_table_cleared = false;
+
+		memset(&mgr->down_rep_recv, 0, sizeof(mgr->down_rep_recv));
+		memset(&mgr->up_req_recv, 0, sizeof(mgr->up_req_recv));
 	}
 
 out_unlock:
@@ -3853,7 +3866,7 @@ static int drm_dp_mst_handle_down_rep(struct drm_dp_mst_topology_mgr *mgr)
 	struct drm_dp_sideband_msg_rx *msg = &mgr->down_rep_recv;
 
 	if (!drm_dp_get_one_sb_msg(mgr, false, &mstb))
-		goto out;
+		goto out_clear_reply;
 
 	/* Multi-packet message transmission, don't clear the reply */
 	if (!msg->have_eomt)
@@ -4040,17 +4053,28 @@ out:
 }
 
 /**
- * drm_dp_mst_hpd_irq() - MST hotplug IRQ notify
+ * drm_dp_mst_hpd_irq_handle_event() - MST hotplug IRQ handle MST event
  * @mgr: manager to notify irq for.
  * @esi: 4 bytes from SINK_COUNT_ESI
+ * @ack: 4 bytes used to ack events starting from SINK_COUNT_ESI
  * @handled: whether the hpd interrupt was consumed or not
  *
- * This should be called from the driver when it detects a short IRQ,
+ * This should be called from the driver when it detects a HPD IRQ,
  * along with the value of the DEVICE_SERVICE_IRQ_VECTOR_ESI0. The
- * topology manager will process the sideband messages received as a result
- * of this.
+ * topology manager will process the sideband messages received
+ * as indicated in the DEVICE_SERVICE_IRQ_VECTOR_ESI0 and set the
+ * corresponding flags that Driver has to ack the DP receiver later.
+ *
+ * Note that driver shall also call
+ * drm_dp_mst_hpd_irq_send_new_request() if the 'handled' is set
+ * after calling this function, to try to kick off a new request in
+ * the queue if the previous message transaction is completed.
+ *
+ * See also:
+ * drm_dp_mst_hpd_irq_send_new_request()
  */
-int drm_dp_mst_hpd_irq(struct drm_dp_mst_topology_mgr *mgr, u8 *esi, bool *handled)
+int drm_dp_mst_hpd_irq_handle_event(struct drm_dp_mst_topology_mgr *mgr, const u8 *esi,
+				    u8 *ack, bool *handled)
 {
 	int ret = 0;
 	int sc;
@@ -4065,18 +4089,47 @@ int drm_dp_mst_hpd_irq(struct drm_dp_mst_topology_mgr *mgr, u8 *esi, bool *handl
 	if (esi[1] & DP_DOWN_REP_MSG_RDY) {
 		ret = drm_dp_mst_handle_down_rep(mgr);
 		*handled = true;
+		ack[1] |= DP_DOWN_REP_MSG_RDY;
 	}
 
 	if (esi[1] & DP_UP_REQ_MSG_RDY) {
 		ret |= drm_dp_mst_handle_up_req(mgr);
 		*handled = true;
+		ack[1] |= DP_UP_REQ_MSG_RDY;
 	}
 
-	drm_dp_mst_kick_tx(mgr);
 	return ret;
 }
-EXPORT_SYMBOL(drm_dp_mst_hpd_irq);
+EXPORT_SYMBOL(drm_dp_mst_hpd_irq_handle_event);
 
+/**
+ * drm_dp_mst_hpd_irq_send_new_request() - MST hotplug IRQ kick off new request
+ * @mgr: manager to notify irq for.
+ *
+ * This should be called from the driver when mst irq event is handled
+ * and acked. Note that new down request should only be sent when
+ * previous message transaction is completed. Source is not supposed to generate
+ * interleaved message transactions.
+ */
+void drm_dp_mst_hpd_irq_send_new_request(struct drm_dp_mst_topology_mgr *mgr)
+{
+	struct drm_dp_sideband_msg_tx *txmsg;
+	bool kick = true;
+
+	mutex_lock(&mgr->qlock);
+	txmsg = list_first_entry_or_null(&mgr->tx_msg_downq,
+					 struct drm_dp_sideband_msg_tx, next);
+	/* If last transaction is not completed yet*/
+	if (!txmsg ||
+	    txmsg->state == DRM_DP_SIDEBAND_TX_START_SEND ||
+	    txmsg->state == DRM_DP_SIDEBAND_TX_SENT)
+		kick = false;
+	mutex_unlock(&mgr->qlock);
+
+	if (kick)
+		drm_dp_mst_kick_tx(mgr);
+}
+EXPORT_SYMBOL(drm_dp_mst_hpd_irq_send_new_request);
 /**
  * drm_dp_mst_detect_port() - get connection status for an MST port
  * @connector: DRM connector for this port
@@ -4120,7 +4173,7 @@ drm_dp_mst_detect_port(struct drm_connector *connector,
 		ret = connector_status_connected;
 		/* for logical ports - cache the EDID */
 		if (port->port_num >= DP_MST_LOGICAL_PORT_0 && !port->cached_edid)
-			port->cached_edid = drm_get_edid(connector, &port->aux.ddc);
+			port->cached_edid = drm_edid_read_ddc(connector, &port->aux.ddc);
 		break;
 	case DP_PEER_DEVICE_DP_LEGACY_CONV:
 		if (port->ldps)
@@ -4134,7 +4187,7 @@ out:
 EXPORT_SYMBOL(drm_dp_mst_detect_port);
 
 /**
- * drm_dp_mst_get_edid() - get EDID for an MST port
+ * drm_dp_mst_edid_read() - get EDID for an MST port
  * @connector: toplevel connector to get EDID for
  * @mgr: manager for this port
  * @port: unverified pointer to a port.
@@ -4143,9 +4196,11 @@ EXPORT_SYMBOL(drm_dp_mst_detect_port);
  * It validates the pointer still exists so the caller doesn't require a
  * reference.
  */
-struct edid *drm_dp_mst_get_edid(struct drm_connector *connector, struct drm_dp_mst_topology_mgr *mgr, struct drm_dp_mst_port *port)
+const struct drm_edid *drm_dp_mst_edid_read(struct drm_connector *connector,
+					    struct drm_dp_mst_topology_mgr *mgr,
+					    struct drm_dp_mst_port *port)
 {
-	struct edid *edid = NULL;
+	const struct drm_edid *drm_edid;
 
 	/* we need to search for the port in the mgr in case it's gone */
 	port = drm_dp_mst_topology_get_port_validated(mgr, port);
@@ -4153,12 +4208,41 @@ struct edid *drm_dp_mst_get_edid(struct drm_connector *connector, struct drm_dp_
 		return NULL;
 
 	if (port->cached_edid)
-		edid = drm_edid_duplicate(port->cached_edid);
-	else {
-		edid = drm_get_edid(connector, &port->aux.ddc);
-	}
-	port->has_audio = drm_detect_monitor_audio(edid);
+		drm_edid = drm_edid_dup(port->cached_edid);
+	else
+		drm_edid = drm_edid_read_ddc(connector, &port->aux.ddc);
+
 	drm_dp_mst_topology_put_port(port);
+
+	return drm_edid;
+}
+EXPORT_SYMBOL(drm_dp_mst_edid_read);
+
+/**
+ * drm_dp_mst_get_edid() - get EDID for an MST port
+ * @connector: toplevel connector to get EDID for
+ * @mgr: manager for this port
+ * @port: unverified pointer to a port.
+ *
+ * This function is deprecated; please use drm_dp_mst_edid_read() instead.
+ *
+ * This returns an EDID for the port connected to a connector,
+ * It validates the pointer still exists so the caller doesn't require a
+ * reference.
+ */
+struct edid *drm_dp_mst_get_edid(struct drm_connector *connector,
+				 struct drm_dp_mst_topology_mgr *mgr,
+				 struct drm_dp_mst_port *port)
+{
+	const struct drm_edid *drm_edid;
+	struct edid *edid;
+
+	drm_edid = drm_dp_mst_edid_read(connector, mgr, port);
+
+	edid = drm_edid_duplicate(drm_edid_raw(drm_edid));
+
+	drm_edid_free(drm_edid);
+
 	return edid;
 }
 EXPORT_SYMBOL(drm_dp_mst_get_edid);
@@ -4327,7 +4411,6 @@ int drm_dp_atomic_release_time_slots(struct drm_atomic_state *state,
 
 	drm_dbg_atomic(mgr->dev, "[MST PORT:%p] TU %d -> 0\n", port, payload->time_slots);
 	if (!payload->delete) {
-		drm_dp_mst_put_port_malloc(port);
 		payload->pbn = 0;
 		payload->delete = true;
 		topology_state->payload_mask &= ~BIT(payload->vcpi - 1);
@@ -5353,27 +5436,52 @@ struct drm_dp_mst_topology_state *drm_atomic_get_mst_topology_state(struct drm_a
 EXPORT_SYMBOL(drm_atomic_get_mst_topology_state);
 
 /**
- * drm_atomic_get_new_mst_topology_state: get new MST topology state in atomic state, if any
+ * drm_atomic_get_old_mst_topology_state: get old MST topology state in atomic state, if any
  * @state: global atomic state
  * @mgr: MST topology manager, also the private object in this case
  *
- * This function wraps drm_atomic_get_priv_obj_state() passing in the MST atomic
+ * This function wraps drm_atomic_get_old_private_obj_state() passing in the MST atomic
  * state vtable so that the private object state returned is that of a MST
  * topology object.
  *
  * Returns:
  *
- * The MST topology state, or NULL if there's no topology state for this MST mgr
+ * The old MST topology state, or NULL if there's no topology state for this MST mgr
+ * in the global atomic state
+ */
+struct drm_dp_mst_topology_state *
+drm_atomic_get_old_mst_topology_state(struct drm_atomic_state *state,
+				      struct drm_dp_mst_topology_mgr *mgr)
+{
+	struct drm_private_state *old_priv_state =
+		drm_atomic_get_old_private_obj_state(state, &mgr->base);
+
+	return old_priv_state ? to_dp_mst_topology_state(old_priv_state) : NULL;
+}
+EXPORT_SYMBOL(drm_atomic_get_old_mst_topology_state);
+
+/**
+ * drm_atomic_get_new_mst_topology_state: get new MST topology state in atomic state, if any
+ * @state: global atomic state
+ * @mgr: MST topology manager, also the private object in this case
+ *
+ * This function wraps drm_atomic_get_new_private_obj_state() passing in the MST atomic
+ * state vtable so that the private object state returned is that of a MST
+ * topology object.
+ *
+ * Returns:
+ *
+ * The new MST topology state, or NULL if there's no topology state for this MST mgr
  * in the global atomic state
  */
 struct drm_dp_mst_topology_state *
 drm_atomic_get_new_mst_topology_state(struct drm_atomic_state *state,
 				      struct drm_dp_mst_topology_mgr *mgr)
 {
-	struct drm_private_state *priv_state =
+	struct drm_private_state *new_priv_state =
 		drm_atomic_get_new_private_obj_state(state, &mgr->base);
 
-	return priv_state ? to_dp_mst_topology_state(priv_state) : NULL;
+	return new_priv_state ? to_dp_mst_topology_state(new_priv_state) : NULL;
 }
 EXPORT_SYMBOL(drm_atomic_get_new_mst_topology_state);
 
@@ -5665,7 +5773,7 @@ static int drm_dp_mst_register_i2c_bus(struct drm_dp_mst_port *port)
 	aux->ddc.dev.parent = parent_dev;
 	aux->ddc.dev.of_node = parent_dev->of_node;
 
-	strlcpy(aux->ddc.name, aux->name ? aux->name : dev_name(parent_dev),
+	strscpy(aux->ddc.name, aux->name ? aux->name : dev_name(parent_dev),
 		sizeof(aux->ddc.name));
 
 	return i2c_add_adapter(&aux->ddc);

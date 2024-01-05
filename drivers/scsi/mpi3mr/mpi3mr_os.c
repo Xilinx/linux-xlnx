@@ -2,7 +2,7 @@
 /*
  * Driver for Broadcom MPI3 Storage Controllers
  *
- * Copyright (C) 2017-2022 Broadcom Inc.
+ * Copyright (C) 2017-2023 Broadcom Inc.
  *  (mailto: mpi3mr-linuxdrv.pdl@broadcom.com)
  *
  */
@@ -33,6 +33,12 @@ static int logging_level;
 module_param(logging_level, int, 0);
 MODULE_PARM_DESC(logging_level,
 	" bits for enabling additional logging info (default=0)");
+static int max_sgl_entries = MPI3MR_DEFAULT_SGL_ENTRIES;
+module_param(max_sgl_entries, int, 0444);
+MODULE_PARM_DESC(max_sgl_entries,
+	"Preferred max number of SG entries to be used for a single I/O\n"
+	"The actual value will be determined by the driver\n"
+	"(Minimum=256, Maximum=2048, default=256)");
 
 /* Forward declarations*/
 static void mpi3mr_send_event_ack(struct mpi3mr_ioc *mrioc, u8 event,
@@ -424,6 +430,7 @@ void mpi3mr_invalidate_devhandles(struct mpi3mr_ioc *mrioc)
 			tgt_priv->io_throttle_enabled = 0;
 			tgt_priv->io_divert = 0;
 			tgt_priv->throttle_group = NULL;
+			tgt_priv->wslen = 0;
 			if (tgtdev->host_exposed)
 				atomic_set(&tgt_priv->block_io, 1);
 		}
@@ -652,6 +659,7 @@ static void mpi3mr_tgtdev_add_to_list(struct mpi3mr_ioc *mrioc,
 	mpi3mr_tgtdev_get(tgtdev);
 	INIT_LIST_HEAD(&tgtdev->list);
 	list_add_tail(&tgtdev->list, &mrioc->tgtdev_list);
+	tgtdev->state = MPI3MR_DEV_CREATED;
 	spin_unlock_irqrestore(&mrioc->tgtdev_lock, flags);
 }
 
@@ -659,20 +667,25 @@ static void mpi3mr_tgtdev_add_to_list(struct mpi3mr_ioc *mrioc,
  * mpi3mr_tgtdev_del_from_list -Delete tgtdevice from the list
  * @mrioc: Adapter instance reference
  * @tgtdev: Target device
+ * @must_delete: Must delete the target device from the list irrespective
+ * of the device state.
  *
  * Remove the target device from the target device list
  *
  * Return: Nothing.
  */
 static void mpi3mr_tgtdev_del_from_list(struct mpi3mr_ioc *mrioc,
-	struct mpi3mr_tgt_dev *tgtdev)
+	struct mpi3mr_tgt_dev *tgtdev, bool must_delete)
 {
 	unsigned long flags;
 
 	spin_lock_irqsave(&mrioc->tgtdev_lock, flags);
-	if (!list_empty(&tgtdev->list)) {
-		list_del_init(&tgtdev->list);
-		mpi3mr_tgtdev_put(tgtdev);
+	if ((tgtdev->state == MPI3MR_DEV_REMOVE_HS_STARTED) || (must_delete == true)) {
+		if (!list_empty(&tgtdev->list)) {
+			list_del_init(&tgtdev->list);
+			tgtdev->state = MPI3MR_DEV_DELETED;
+			mpi3mr_tgtdev_put(tgtdev);
+		}
 	}
 	spin_unlock_irqrestore(&mrioc->tgtdev_lock, flags);
 }
@@ -1028,6 +1041,19 @@ mpi3mr_update_sdev(struct scsi_device *sdev, void *data)
 void mpi3mr_rfresh_tgtdevs(struct mpi3mr_ioc *mrioc)
 {
 	struct mpi3mr_tgt_dev *tgtdev, *tgtdev_next;
+	struct mpi3mr_stgt_priv_data *tgt_priv;
+
+	dprint_reset(mrioc, "refresh target devices: check for removals\n");
+	list_for_each_entry_safe(tgtdev, tgtdev_next, &mrioc->tgtdev_list,
+	    list) {
+		if ((tgtdev->dev_handle == MPI3MR_INVALID_DEV_HANDLE) &&
+		    tgtdev->host_exposed && tgtdev->starget &&
+		    tgtdev->starget->hostdata) {
+			tgt_priv = tgtdev->starget->hostdata;
+			tgt_priv->dev_removed = 1;
+			atomic_set(&tgt_priv->block_io, 0);
+		}
+	}
 
 	list_for_each_entry_safe(tgtdev, tgtdev_next, &mrioc->tgtdev_list,
 	    list) {
@@ -1036,7 +1062,7 @@ void mpi3mr_rfresh_tgtdevs(struct mpi3mr_ioc *mrioc)
 			    tgtdev->perst_id);
 			if (tgtdev->host_exposed)
 				mpi3mr_remove_tgtdev_from_host(mrioc, tgtdev);
-			mpi3mr_tgtdev_del_from_list(mrioc, tgtdev);
+			mpi3mr_tgtdev_del_from_list(mrioc, tgtdev, true);
 			mpi3mr_tgtdev_put(tgtdev);
 		}
 	}
@@ -1096,6 +1122,18 @@ static void mpi3mr_update_tgtdev(struct mpi3mr_ioc *mrioc,
 		tgtdev->io_throttle_enabled =
 		    (flags & MPI3_DEVICE0_FLAGS_IO_THROTTLING_REQUIRED) ? 1 : 0;
 
+	switch (flags & MPI3_DEVICE0_FLAGS_MAX_WRITE_SAME_MASK) {
+	case MPI3_DEVICE0_FLAGS_MAX_WRITE_SAME_256_LB:
+		tgtdev->wslen = MPI3MR_WRITE_SAME_MAX_LEN_256_BLKS;
+		break;
+	case MPI3_DEVICE0_FLAGS_MAX_WRITE_SAME_2048_LB:
+		tgtdev->wslen = MPI3MR_WRITE_SAME_MAX_LEN_2048_BLKS;
+		break;
+	case MPI3_DEVICE0_FLAGS_MAX_WRITE_SAME_NO_LIMIT:
+	default:
+		tgtdev->wslen = 0;
+		break;
+	}
 
 	if (tgtdev->starget && tgtdev->starget->hostdata) {
 		scsi_tgt_priv_data = (struct mpi3mr_stgt_priv_data *)
@@ -1107,6 +1145,7 @@ static void mpi3mr_update_tgtdev(struct mpi3mr_ioc *mrioc,
 		    tgtdev->io_throttle_enabled;
 		if (is_added == true)
 			atomic_set(&scsi_tgt_priv_data->block_io, 0);
+		scsi_tgt_priv_data->wslen = tgtdev->wslen;
 	}
 
 	switch (dev_pg0->access_status) {
@@ -1281,12 +1320,12 @@ static void mpi3mr_devstatuschg_evt_bh(struct mpi3mr_ioc *mrioc,
 		if (!tgtdev->host_exposed)
 			mpi3mr_report_tgtdev_to_host(mrioc, tgtdev->perst_id);
 	}
-	if (tgtdev->starget && tgtdev->starget->hostdata) {
-		if (delete)
-			mpi3mr_remove_tgtdev_from_host(mrioc, tgtdev);
-	}
+
+	if (delete)
+		mpi3mr_remove_tgtdev_from_host(mrioc, tgtdev);
+
 	if (cleanup) {
-		mpi3mr_tgtdev_del_from_list(mrioc, tgtdev);
+		mpi3mr_tgtdev_del_from_list(mrioc, tgtdev, false);
 		mpi3mr_tgtdev_put(tgtdev);
 	}
 
@@ -1604,7 +1643,7 @@ static void mpi3mr_sastopochg_evt_bh(struct mpi3mr_ioc *mrioc,
 		case MPI3_EVENT_SAS_TOPO_PHY_RC_TARG_NOT_RESPONDING:
 			if (tgtdev->host_exposed)
 				mpi3mr_remove_tgtdev_from_host(mrioc, tgtdev);
-			mpi3mr_tgtdev_del_from_list(mrioc, tgtdev);
+			mpi3mr_tgtdev_del_from_list(mrioc, tgtdev, false);
 			mpi3mr_tgtdev_put(tgtdev);
 			break;
 		case MPI3_EVENT_SAS_TOPO_PHY_RC_RESPONDING:
@@ -1762,7 +1801,7 @@ static void mpi3mr_pcietopochg_evt_bh(struct mpi3mr_ioc *mrioc,
 		case MPI3_EVENT_PCIE_TOPO_PS_NOT_RESPONDING:
 			if (tgtdev->host_exposed)
 				mpi3mr_remove_tgtdev_from_host(mrioc, tgtdev);
-			mpi3mr_tgtdev_del_from_list(mrioc, tgtdev);
+			mpi3mr_tgtdev_del_from_list(mrioc, tgtdev, false);
 			mpi3mr_tgtdev_put(tgtdev);
 			break;
 		default:
@@ -2016,12 +2055,18 @@ static int mpi3mr_create_tgtdev(struct mpi3mr_ioc *mrioc,
 	int retval = 0;
 	struct mpi3mr_tgt_dev *tgtdev = NULL;
 	u16 perst_id = 0;
+	unsigned long flags;
 
 	perst_id = le16_to_cpu(dev_pg0->persistent_id);
 	if (perst_id == MPI3_DEVICE0_PERSISTENTID_INVALID)
 		return retval;
 
-	tgtdev = mpi3mr_get_tgtdev_by_perst_id(mrioc, perst_id);
+	spin_lock_irqsave(&mrioc->tgtdev_lock, flags);
+	tgtdev = __mpi3mr_get_tgtdev_by_perst_id(mrioc, perst_id);
+	if (tgtdev)
+		tgtdev->state = MPI3MR_DEV_CREATED;
+	spin_unlock_irqrestore(&mrioc->tgtdev_lock, flags);
+
 	if (tgtdev) {
 		mpi3mr_update_tgtdev(mrioc, tgtdev, dev_pg0, true);
 		mpi3mr_tgtdev_put(tgtdev);
@@ -2219,6 +2264,14 @@ static void mpi3mr_dev_rmhs_send_tm(struct mpi3mr_ioc *mrioc, u16 handle,
 	u8 retrycount = 5;
 	struct mpi3mr_drv_cmd *drv_cmd = cmdparam;
 	struct delayed_dev_rmhs_node *delayed_dev_rmhs = NULL;
+	struct mpi3mr_tgt_dev *tgtdev = NULL;
+	unsigned long flags;
+
+	spin_lock_irqsave(&mrioc->tgtdev_lock, flags);
+	tgtdev = __mpi3mr_get_tgtdev_by_handle(mrioc, handle);
+	if (tgtdev && (iou_rc == MPI3_CTRL_OP_REMOVE_DEVICE))
+		tgtdev->state = MPI3MR_DEV_REMOVE_HS_STARTED;
+	spin_unlock_irqrestore(&mrioc->tgtdev_lock, flags);
 
 	if (drv_cmd)
 		goto issue_cmd;
@@ -3311,19 +3364,19 @@ static int mpi3mr_get_chain_idx(struct mpi3mr_ioc *mrioc)
 {
 	u8 retry_count = 5;
 	int cmd_idx = -1;
+	unsigned long flags;
 
+	spin_lock_irqsave(&mrioc->chain_buf_lock, flags);
 	do {
-		spin_lock(&mrioc->chain_buf_lock);
 		cmd_idx = find_first_zero_bit(mrioc->chain_bitmap,
 		    mrioc->chain_buf_count);
 		if (cmd_idx < mrioc->chain_buf_count) {
 			set_bit(cmd_idx, mrioc->chain_bitmap);
-			spin_unlock(&mrioc->chain_buf_lock);
 			break;
 		}
-		spin_unlock(&mrioc->chain_buf_lock);
 		cmd_idx = -1;
 	} while (retry_count--);
+	spin_unlock_irqrestore(&mrioc->chain_buf_lock, flags);
 	return cmd_idx;
 }
 
@@ -3393,7 +3446,7 @@ static int mpi3mr_prepare_sg_scmd(struct mpi3mr_ioc *mrioc,
 		    scsi_bufflen(scmd));
 		return -ENOMEM;
 	}
-	if (sges_left > MPI3MR_SG_DEPTH) {
+	if (sges_left > mrioc->max_sgl_entries) {
 		sdev_printk(KERN_ERR, scmd->device,
 		    "scsi_dma_map returned unsupported sge count %d!\n",
 		    sges_left);
@@ -3720,6 +3773,7 @@ int mpi3mr_issue_tm(struct mpi3mr_ioc *mrioc, u8 tm_type,
 		mpi3mr_poll_pend_io_completions(mrioc);
 		mpi3mr_ioc_enable_intr(mrioc);
 		mpi3mr_poll_pend_io_completions(mrioc);
+		mpi3mr_process_admin_reply_q(mrioc);
 	}
 	switch (tm_type) {
 	case MPI3_SCSITASKMGMT_TASKTYPE_TARGET_RESET:
@@ -3913,6 +3967,48 @@ void mpi3mr_wait_for_host_io(struct mpi3mr_ioc *mrioc, u32 timeout)
 }
 
 /**
+ * mpi3mr_setup_divert_ws - Setup Divert IO flag for write same
+ * @mrioc: Adapter instance reference
+ * @scmd: SCSI command reference
+ * @scsiio_req: MPI3 SCSI IO request
+ * @scsiio_flags: Pointer to MPI3 SCSI IO Flags
+ * @wslen: write same max length
+ *
+ * Gets values of unmap, ndob and number of blocks from write
+ * same scsi io and based on these values it sets divert IO flag
+ * and reason for diverting IO to firmware.
+ *
+ * Return: Nothing
+ */
+static inline void mpi3mr_setup_divert_ws(struct mpi3mr_ioc *mrioc,
+	struct scsi_cmnd *scmd, struct mpi3_scsi_io_request *scsiio_req,
+	u32 *scsiio_flags, u16 wslen)
+{
+	u8 unmap = 0, ndob = 0;
+	u8 opcode = scmd->cmnd[0];
+	u32 num_blocks = 0;
+	u16 sa = (scmd->cmnd[8] << 8) | (scmd->cmnd[9]);
+
+	if (opcode == WRITE_SAME_16) {
+		unmap = scmd->cmnd[1] & 0x08;
+		ndob = scmd->cmnd[1] & 0x01;
+		num_blocks = get_unaligned_be32(scmd->cmnd + 10);
+	} else if ((opcode == VARIABLE_LENGTH_CMD) && (sa == WRITE_SAME_32)) {
+		unmap = scmd->cmnd[10] & 0x08;
+		ndob = scmd->cmnd[10] & 0x01;
+		num_blocks = get_unaligned_be32(scmd->cmnd + 28);
+	} else
+		return;
+
+	if ((unmap) && (ndob) && (num_blocks > wslen)) {
+		scsiio_req->msg_flags |=
+		    MPI3_SCSIIO_MSGFLAGS_DIVERT_TO_FIRMWARE;
+		*scsiio_flags |=
+			MPI3_SCSIIO_FLAGS_DIVERT_REASON_WRITE_SAME_TOO_LARGE;
+	}
+}
+
+/**
  * mpi3mr_eh_host_reset - Host reset error handling callback
  * @scmd: SCSI command reference
  *
@@ -3995,10 +4091,14 @@ static int mpi3mr_eh_target_reset(struct scsi_cmnd *scmd)
 	stgt_priv_data = sdev_priv_data->tgt_priv_data;
 	dev_handle = stgt_priv_data->dev_handle;
 	if (stgt_priv_data->dev_removed) {
+		struct scmd_priv *cmd_priv = scsi_cmd_priv(scmd);
 		sdev_printk(KERN_INFO, scmd->device,
 		    "%s:target(handle = 0x%04x) is removed, target reset is not issued\n",
 		    mrioc->name, dev_handle);
-		retval = FAILED;
+		if (!cmd_priv->in_lld_scope || cmd_priv->host_tag == MPI3MR_HOSTTAG_INVALID)
+			retval = SUCCESS;
+		else
+			retval = FAILED;
 		goto out;
 	}
 	sdev_printk(KERN_INFO, scmd->device,
@@ -4063,10 +4163,14 @@ static int mpi3mr_eh_dev_reset(struct scsi_cmnd *scmd)
 	stgt_priv_data = sdev_priv_data->tgt_priv_data;
 	dev_handle = stgt_priv_data->dev_handle;
 	if (stgt_priv_data->dev_removed) {
+		struct scmd_priv *cmd_priv = scsi_cmd_priv(scmd);
 		sdev_printk(KERN_INFO, scmd->device,
 		    "%s: device(handle = 0x%04x) is removed, device(LUN) reset is not issued\n",
 		    mrioc->name, dev_handle);
-		retval = FAILED;
+		if (!cmd_priv->in_lld_scope || cmd_priv->host_tag == MPI3MR_HOSTTAG_INVALID)
+			retval = SUCCESS;
+		else
+			retval = FAILED;
 		goto out;
 	}
 	sdev_printk(KERN_INFO, scmd->device,
@@ -4401,7 +4505,6 @@ static int mpi3mr_target_alloc(struct scsi_target *starget)
 	unsigned long flags;
 	int retval = 0;
 	struct sas_rphy *rphy = NULL;
-	bool update_stgt_priv_data = false;
 
 	scsi_tgt_priv_data = kzalloc(sizeof(*scsi_tgt_priv_data), GFP_KERNEL);
 	if (!scsi_tgt_priv_data)
@@ -4410,38 +4513,49 @@ static int mpi3mr_target_alloc(struct scsi_target *starget)
 	starget->hostdata = scsi_tgt_priv_data;
 
 	spin_lock_irqsave(&mrioc->tgtdev_lock, flags);
-
 	if (starget->channel == mrioc->scsi_device_channel) {
 		tgt_dev = __mpi3mr_get_tgtdev_by_perst_id(mrioc, starget->id);
-		if (tgt_dev && !tgt_dev->is_hidden)
-			update_stgt_priv_data = true;
-		else
+		if (tgt_dev && !tgt_dev->is_hidden) {
+			scsi_tgt_priv_data->starget = starget;
+			scsi_tgt_priv_data->dev_handle = tgt_dev->dev_handle;
+			scsi_tgt_priv_data->perst_id = tgt_dev->perst_id;
+			scsi_tgt_priv_data->dev_type = tgt_dev->dev_type;
+			scsi_tgt_priv_data->tgt_dev = tgt_dev;
+			tgt_dev->starget = starget;
+			atomic_set(&scsi_tgt_priv_data->block_io, 0);
+			retval = 0;
+			if ((tgt_dev->dev_type == MPI3_DEVICE_DEVFORM_PCIE) &&
+			    ((tgt_dev->dev_spec.pcie_inf.dev_info &
+			    MPI3_DEVICE0_PCIE_DEVICE_INFO_TYPE_MASK) ==
+			    MPI3_DEVICE0_PCIE_DEVICE_INFO_TYPE_NVME_DEVICE) &&
+			    ((tgt_dev->dev_spec.pcie_inf.dev_info &
+			    MPI3_DEVICE0_PCIE_DEVICE_INFO_PITYPE_MASK) !=
+			    MPI3_DEVICE0_PCIE_DEVICE_INFO_PITYPE_0))
+				scsi_tgt_priv_data->dev_nvme_dif = 1;
+			scsi_tgt_priv_data->io_throttle_enabled = tgt_dev->io_throttle_enabled;
+			scsi_tgt_priv_data->wslen = tgt_dev->wslen;
+			if (tgt_dev->dev_type == MPI3_DEVICE_DEVFORM_VD)
+				scsi_tgt_priv_data->throttle_group = tgt_dev->dev_spec.vd_inf.tg;
+		} else
 			retval = -ENXIO;
 	} else if (mrioc->sas_transport_enabled && !starget->channel) {
 		rphy = dev_to_rphy(starget->dev.parent);
 		tgt_dev = __mpi3mr_get_tgtdev_by_addr_and_rphy(mrioc,
 		    rphy->identify.sas_address, rphy);
 		if (tgt_dev && !tgt_dev->is_hidden && !tgt_dev->non_stl &&
-		    (tgt_dev->dev_type == MPI3_DEVICE_DEVFORM_SAS_SATA))
-			update_stgt_priv_data = true;
-		else
+		    (tgt_dev->dev_type == MPI3_DEVICE_DEVFORM_SAS_SATA)) {
+			scsi_tgt_priv_data->starget = starget;
+			scsi_tgt_priv_data->dev_handle = tgt_dev->dev_handle;
+			scsi_tgt_priv_data->perst_id = tgt_dev->perst_id;
+			scsi_tgt_priv_data->dev_type = tgt_dev->dev_type;
+			scsi_tgt_priv_data->tgt_dev = tgt_dev;
+			scsi_tgt_priv_data->io_throttle_enabled = tgt_dev->io_throttle_enabled;
+			scsi_tgt_priv_data->wslen = tgt_dev->wslen;
+			tgt_dev->starget = starget;
+			atomic_set(&scsi_tgt_priv_data->block_io, 0);
+			retval = 0;
+		} else
 			retval = -ENXIO;
-	}
-
-	if (update_stgt_priv_data) {
-		scsi_tgt_priv_data->starget = starget;
-		scsi_tgt_priv_data->dev_handle = tgt_dev->dev_handle;
-		scsi_tgt_priv_data->perst_id = tgt_dev->perst_id;
-		scsi_tgt_priv_data->dev_type = tgt_dev->dev_type;
-		scsi_tgt_priv_data->tgt_dev = tgt_dev;
-		tgt_dev->starget = starget;
-		atomic_set(&scsi_tgt_priv_data->block_io, 0);
-		retval = 0;
-		scsi_tgt_priv_data->io_throttle_enabled =
-		    tgt_dev->io_throttle_enabled;
-		if (tgt_dev->dev_type == MPI3_DEVICE_DEVFORM_VD)
-			scsi_tgt_priv_data->throttle_group =
-			    tgt_dev->dev_spec.vd_inf.tg;
 	}
 	spin_unlock_irqrestore(&mrioc->tgtdev_lock, flags);
 
@@ -4624,12 +4738,23 @@ static int mpi3mr_qcmd(struct Scsi_Host *shost,
 		goto out;
 	}
 
+	stgt_priv_data = sdev_priv_data->tgt_priv_data;
+	dev_handle = stgt_priv_data->dev_handle;
+
+	/* Avoid error handling escalation when device is removed or blocked */
+
+	if (scmd->device->host->shost_state == SHOST_RECOVERY &&
+		scmd->cmnd[0] == TEST_UNIT_READY &&
+		(stgt_priv_data->dev_removed || (dev_handle == MPI3MR_INVALID_DEV_HANDLE))) {
+		scsi_build_sense(scmd, 0, UNIT_ATTENTION, 0x29, 0x07);
+		scsi_done(scmd);
+		goto out;
+	}
+
 	if (mrioc->reset_in_progress) {
 		retval = SCSI_MLQUEUE_HOST_BUSY;
 		goto out;
 	}
-
-	stgt_priv_data = sdev_priv_data->tgt_priv_data;
 
 	if (atomic_read(&stgt_priv_data->block_io)) {
 		if (mrioc->stop_drv_processing) {
@@ -4641,7 +4766,6 @@ static int mpi3mr_qcmd(struct Scsi_Host *shost,
 		goto out;
 	}
 
-	dev_handle = stgt_priv_data->dev_handle;
 	if (dev_handle == MPI3MR_INVALID_DEV_HANDLE) {
 		scmd->result = DID_NO_CONNECT << 16;
 		scsi_done(scmd);
@@ -4692,6 +4816,10 @@ static int mpi3mr_qcmd(struct Scsi_Host *shost,
 	scsiio_req->host_tag = cpu_to_le16(host_tag);
 
 	mpi3mr_setup_eedp(mrioc, scmd, scsiio_req);
+
+	if (stgt_priv_data->wslen)
+		mpi3mr_setup_divert_ws(mrioc, scmd, scsiio_req, &scsiio_flags,
+		    stgt_priv_data->wslen);
 
 	memcpy(scsiio_req->cdb.cdb32, scmd->cmnd, scmd->cmd_len);
 	scsiio_req->data_length = cpu_to_le32(scsi_bufflen(scmd));
@@ -4757,7 +4885,7 @@ out:
 	return retval;
 }
 
-static struct scsi_host_template mpi3mr_driver_template = {
+static const struct scsi_host_template mpi3mr_driver_template = {
 	.module				= THIS_MODULE,
 	.name				= "MPI3 Storage Controller",
 	.proc_name			= MPI3MR_DRIVER_NAME,
@@ -4779,10 +4907,10 @@ static struct scsi_host_template mpi3mr_driver_template = {
 	.no_write_same			= 1,
 	.can_queue			= 1,
 	.this_id			= -1,
-	.sg_tablesize			= MPI3MR_SG_DEPTH,
+	.sg_tablesize			= MPI3MR_DEFAULT_SGL_ENTRIES,
 	/* max xfer supported is 1M (2K in 512 byte sized sectors)
 	 */
-	.max_sectors			= 2048,
+	.max_sectors			= (MPI3MR_DEFAULT_MAX_IO_SIZE / 512),
 	.cmd_per_lun			= MPI3MR_MAX_CMDS_LUN,
 	.max_segment_size		= 0xffffffff,
 	.track_queue_depth		= 1,
@@ -4952,6 +5080,10 @@ mpi3mr_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		mpi3mr_init_drv_cmd(&mrioc->dev_rmhs_cmds[i],
 		    MPI3MR_HOSTTAG_DEVRMCMD_MIN + i);
 
+	for (i = 0; i < MPI3MR_NUM_EVTACKCMD; i++)
+		mpi3mr_init_drv_cmd(&mrioc->evtack_cmds[i],
+				    MPI3MR_HOSTTAG_EVTACKCMD_MIN + i);
+
 	if (pdev->revision)
 		mrioc->enable_segqueue = true;
 
@@ -4960,6 +5092,16 @@ mpi3mr_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	mrioc->shost = shost;
 	mrioc->pdev = pdev;
 	mrioc->stop_bsgs = 1;
+
+	mrioc->max_sgl_entries = max_sgl_entries;
+	if (max_sgl_entries > MPI3MR_MAX_SGL_ENTRIES)
+		mrioc->max_sgl_entries = MPI3MR_MAX_SGL_ENTRIES;
+	else if (max_sgl_entries < MPI3MR_DEFAULT_SGL_ENTRIES)
+		mrioc->max_sgl_entries = MPI3MR_DEFAULT_SGL_ENTRIES;
+	else {
+		mrioc->max_sgl_entries /= MPI3MR_DEFAULT_SGL_ENTRIES;
+		mrioc->max_sgl_entries *= MPI3MR_DEFAULT_SGL_ENTRIES;
+	}
 
 	/* init shost parameters */
 	shost->max_cmd_len = MPI3MR_MAX_CDB_LENGTH;
@@ -5025,7 +5167,7 @@ mpi3mr_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		shost->nr_maps = 3;
 
 	shost->can_queue = mrioc->max_host_ios;
-	shost->sg_tablesize = MPI3MR_SG_DEPTH;
+	shost->sg_tablesize = mrioc->max_sgl_entries;
 	shost->max_id = mrioc->facts.max_perids + 1;
 
 	retval = scsi_add_host(shost, &pdev->dev);
@@ -5073,6 +5215,8 @@ static void mpi3mr_remove(struct pci_dev *pdev)
 	struct workqueue_struct	*wq;
 	unsigned long flags;
 	struct mpi3mr_tgt_dev *tgtdev, *tgtdev_next;
+	struct mpi3mr_hba_port *port, *hba_port_next;
+	struct mpi3mr_sas_node *sas_expander, *sas_expander_next;
 
 	if (!shost)
 		return;
@@ -5104,13 +5248,35 @@ static void mpi3mr_remove(struct pci_dev *pdev)
 	list_for_each_entry_safe(tgtdev, tgtdev_next, &mrioc->tgtdev_list,
 	    list) {
 		mpi3mr_remove_tgtdev_from_host(mrioc, tgtdev);
-		mpi3mr_tgtdev_del_from_list(mrioc, tgtdev);
+		mpi3mr_tgtdev_del_from_list(mrioc, tgtdev, true);
 		mpi3mr_tgtdev_put(tgtdev);
 	}
 	mpi3mr_stop_watchdog(mrioc);
 	mpi3mr_cleanup_ioc(mrioc);
 	mpi3mr_free_mem(mrioc);
 	mpi3mr_cleanup_resources(mrioc);
+
+	spin_lock_irqsave(&mrioc->sas_node_lock, flags);
+	list_for_each_entry_safe_reverse(sas_expander, sas_expander_next,
+	    &mrioc->sas_expander_list, list) {
+		spin_unlock_irqrestore(&mrioc->sas_node_lock, flags);
+		mpi3mr_expander_node_remove(mrioc, sas_expander);
+		spin_lock_irqsave(&mrioc->sas_node_lock, flags);
+	}
+	list_for_each_entry_safe(port, hba_port_next, &mrioc->hba_port_table_list, list) {
+		ioc_info(mrioc,
+		    "removing hba_port entry: %p port: %d from hba_port list\n",
+		    port, port->port_id);
+		list_del(&port->list);
+		kfree(port);
+	}
+	spin_unlock_irqrestore(&mrioc->sas_node_lock, flags);
+
+	if (mrioc->sas_hba.num_phys) {
+		kfree(mrioc->sas_hba.phy);
+		mrioc->sas_hba.phy = NULL;
+		mrioc->sas_hba.num_phys = 0;
+	}
 
 	spin_lock(&mrioc_list_lock);
 	list_del(&mrioc->list);

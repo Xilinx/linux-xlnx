@@ -91,7 +91,7 @@ typedef __s64	Elf64_Sxword;
 #define DT_INIT		12
 #define DT_FINI		13
 #define DT_SONAME	14
-#define DT_RPATH 	15
+#define DT_RPATH	15
 #define DT_SYMBOLIC	16
 #define DT_REL	        17
 #define DT_RELSZ	18
@@ -140,9 +140,9 @@ typedef __s64	Elf64_Sxword;
 #define ELF64_ST_BIND(x)	ELF_ST_BIND(x)
 #define ELF64_ST_TYPE(x)	ELF_ST_TYPE(x)
 
-typedef struct dynamic{
+typedef struct dynamic {
   Elf32_Sword d_tag;
-  union{
+  union {
     Elf32_Sword	d_val;
     Elf32_Addr	d_ptr;
   } d_un;
@@ -173,7 +173,7 @@ typedef struct elf64_rel {
   Elf64_Xword r_info;	/* index and type of relocation */
 } Elf64_Rel;
 
-typedef struct elf32_rela{
+typedef struct elf32_rela {
   Elf32_Addr	r_offset;
   Elf32_Word	r_info;
   Elf32_Sword	r_addend;
@@ -185,7 +185,7 @@ typedef struct elf64_rela {
   Elf64_Sxword r_addend;	/* Constant addend used to compute value */
 } Elf64_Rela;
 
-typedef struct elf32_sym{
+typedef struct elf32_sym {
   Elf32_Word	st_name;
   Elf32_Addr	st_value;
   Elf32_Word	st_size;
@@ -206,7 +206,7 @@ typedef struct elf64_sym {
 
 #define EI_NIDENT	16
 
-typedef struct elf32_hdr{
+typedef struct elf32_hdr {
   unsigned char	e_ident[EI_NIDENT];
   Elf32_Half	e_type;
   Elf32_Half	e_machine;
@@ -246,7 +246,7 @@ typedef struct elf64_hdr {
 #define PF_W		0x2
 #define PF_X		0x1
 
-typedef struct elf32_phdr{
+typedef struct elf32_phdr {
   Elf32_Word	p_type;
   Elf32_Off	p_offset;
   Elf32_Addr	p_vaddr;
@@ -372,7 +372,8 @@ typedef struct elf64_shdr {
  * Notes used in ET_CORE. Architectures export some of the arch register sets
  * using the corresponding note types via the PTRACE_GETREGSET and
  * PTRACE_SETREGSET requests.
- * The note name for all these is "LINUX".
+ * The note name for these types is "LINUX", except NT_PRFPREG that is named
+ * "CORE".
  */
 #define NT_PRSTATUS	1
 #define NT_PRFPREG	2
@@ -403,9 +404,13 @@ typedef struct elf64_shdr {
 #define NT_PPC_TM_CPPR	0x10e		/* TM checkpointed Program Priority Register */
 #define NT_PPC_TM_CDSCR	0x10f		/* TM checkpointed Data Stream Control Register */
 #define NT_PPC_PKEY	0x110		/* Memory Protection Keys registers */
+#define NT_PPC_DEXCR	0x111		/* PowerPC DEXCR registers */
+#define NT_PPC_HASHKEYR	0x112		/* PowerPC HASHKEYR register */
 #define NT_386_TLS	0x200		/* i386 TLS slots (struct user_desc) */
 #define NT_386_IOPERM	0x201		/* x86 io permission bitmap (1=deny) */
 #define NT_X86_XSTATE	0x202		/* x86 extended state using xsave */
+/* Old binutils treats 0x203 as a CET state */
+#define NT_X86_SHSTK	0x204		/* x86 SHSTK state */
 #define NT_S390_HIGH_GPRS	0x300	/* s390 upper register halves */
 #define NT_S390_TIMER	0x301		/* s390 timer register */
 #define NT_S390_TODCMP	0x302		/* s390 TOD clock comparator register */
@@ -434,16 +439,21 @@ typedef struct elf64_shdr {
 #define NT_ARM_PAC_ENABLED_KEYS	0x40a	/* arm64 ptr auth enabled keys (prctl()) */
 #define NT_ARM_SSVE	0x40b		/* ARM Streaming SVE registers */
 #define NT_ARM_ZA	0x40c		/* ARM SME ZA registers */
+#define NT_ARM_ZT	0x40d		/* ARM SME ZT registers */
 #define NT_ARC_V2	0x600		/* ARCv2 accumulator/extra registers */
 #define NT_VMCOREDD	0x700		/* Vmcore Device Dump Note */
 #define NT_MIPS_DSP	0x800		/* MIPS DSP ASE registers */
 #define NT_MIPS_FP_MODE	0x801		/* MIPS floating-point mode */
 #define NT_MIPS_MSA	0x802		/* MIPS SIMD registers */
+#define NT_RISCV_CSR	0x900		/* RISC-V Control and Status Registers */
+#define NT_RISCV_VECTOR	0x901		/* RISC-V vector registers */
 #define NT_LOONGARCH_CPUCFG	0xa00	/* LoongArch CPU config registers */
 #define NT_LOONGARCH_CSR	0xa01	/* LoongArch control and status registers */
 #define NT_LOONGARCH_LSX	0xa02	/* LoongArch Loongson SIMD Extension registers */
 #define NT_LOONGARCH_LASX	0xa03	/* LoongArch Loongson Advanced SIMD Extension registers */
 #define NT_LOONGARCH_LBT	0xa04	/* LoongArch Loongson Binary Translation registers */
+#define NT_LOONGARCH_HW_BREAK	0xa05   /* LoongArch hardware breakpoint registers */
+#define NT_LOONGARCH_HW_WATCH	0xa06   /* LoongArch hardware watchpoint registers */
 
 /* Note types with note name "GNU" */
 #define NT_GNU_PROPERTY_TYPE_0	5

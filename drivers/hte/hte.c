@@ -10,12 +10,12 @@
 #include <linux/err.h>
 #include <linux/slab.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/mutex.h>
 #include <linux/uaccess.h>
 #include <linux/hte.h>
 #include <linux/delay.h>
 #include <linux/debugfs.h>
+#include <linux/device.h>
 
 #define HTE_TS_NAME_LEN		10
 
@@ -444,7 +444,7 @@ static struct hte_device *of_node_to_htedevice(struct device_node *np)
 
 	list_for_each_entry(gdev, &hte_devices, list)
 		if (gdev->chip && gdev->chip->dev &&
-		    gdev->chip->dev->of_node == np) {
+		    device_match_of_node(gdev->chip->dev, np)) {
 			spin_unlock(&hte_lock);
 			return gdev;
 		}
@@ -518,7 +518,7 @@ static struct hte_device *hte_of_get_dev(struct device *dev,
 
 	np = dev->of_node;
 
-	if (!of_find_property(np, "timestamp-names", NULL)) {
+	if (!of_property_present(np, "timestamp-names")) {
 		/* Let hte core construct it during request time */
 		desc->attr.name = NULL;
 	} else {

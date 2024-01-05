@@ -7,7 +7,6 @@
 
 #include <linux/backlight.h>
 #include <linux/err.h>
-#include <linux/gpio.h>
 #include <linux/gpio/driver.h>
 #include <linux/i2c.h>
 #include <linux/init.h>
@@ -282,8 +281,7 @@ static int attiny_i2c_read(struct i2c_client *client, u8 reg, unsigned int *buf)
 /*
  * I2C driver interface functions
  */
-static int attiny_i2c_probe(struct i2c_client *i2c,
-		const struct i2c_device_id *id)
+static int attiny_i2c_probe(struct i2c_client *i2c)
 {
 	struct backlight_properties props = { };
 	struct regulator_config config = { };
@@ -397,7 +395,8 @@ MODULE_DEVICE_TABLE(of, attiny_dt_ids);
 static struct i2c_driver attiny_regulator_driver = {
 	.driver = {
 		.name = "rpi_touchscreen_attiny",
-		.of_match_table = of_match_ptr(attiny_dt_ids),
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
+		.of_match_table = attiny_dt_ids,
 	},
 	.probe = attiny_i2c_probe,
 	.remove	= attiny_i2c_remove,

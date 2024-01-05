@@ -33,6 +33,7 @@
 #include <linux/kmemleak.h>
 #include <trace/events/cma.h>
 
+#include "internal.h"
 #include "cma.h"
 
 struct cma cma_areas[MAX_CMA_AREAS];
@@ -266,6 +267,9 @@ int __init cma_declare_contiguous_nid(phys_addr_t base,
 	if (alignment && !is_power_of_2(alignment))
 		return -EINVAL;
 
+	if (!IS_ENABLED(CONFIG_NUMA))
+		nid = NUMA_NO_NODE;
+
 	/* Sanitise input arguments. */
 	alignment = max_t(phys_addr_t, alignment, CMA_MIN_ALIGNMENT_BYTES);
 	if (fixed && base & (alignment - 1)) {
@@ -322,18 +326,6 @@ int __init cma_declare_contiguous_nid(phys_addr_t base,
 		phys_addr_t addr = 0;
 
 		/*
-		 * All pages in the reserved area must come from the same zone.
-		 * If the requested region crosses the low/high memory boundary,
-		 * try allocating from high memory first and fall back to low
-		 * memory in case of failure.
-		 */
-		if (base < highmem_start && limit > highmem_start) {
-			addr = memblock_alloc_range_nid(size, alignment,
-					highmem_start, limit, nid, true);
-			limit = highmem_start;
-		}
-
-		/*
 		 * If there is enough memory, try a bottom-up allocation first.
 		 * It will place the new cma area close to the start of the node
 		 * and guarantee that the compaction is moving pages out of the
@@ -349,6 +341,18 @@ int __init cma_declare_contiguous_nid(phys_addr_t base,
 			memblock_set_bottom_up(false);
 		}
 #endif
+
+		/*
+		 * All pages in the reserved area must come from the same zone.
+		 * If the requested region crosses the low/high memory boundary,
+		 * try allocating from high memory first and fall back to low
+		 * memory in case of failure.
+		 */
+		if (!addr && base < highmem_start && limit > highmem_start) {
+			addr = memblock_alloc_range_nid(size, alignment,
+					highmem_start, limit, nid, true);
+			limit = highmem_start;
+		}
 
 		if (!addr) {
 			addr = memblock_alloc_range_nid(size, alignment, base,
@@ -371,14 +375,15 @@ int __init cma_declare_contiguous_nid(phys_addr_t base,
 	if (ret)
 		goto free_mem;
 
-	pr_info("Reserved %ld MiB at %pa\n", (unsigned long)size / SZ_1M,
-		&base);
+	pr_info("Reserved %ld MiB at %pa on node %d\n", (unsigned long)size / SZ_1M,
+		&base, nid);
 	return 0;
 
 free_mem:
 	memblock_phys_free(base, size);
 err:
-	pr_err("Failed to reserve %ld MiB\n", (unsigned long)size / SZ_1M);
+	pr_err("Failed to reserve %ld MiB on node %d\n", (unsigned long)size / SZ_1M,
+	       nid);
 	return ret;
 }
 
@@ -435,8 +440,8 @@ struct page *cma_alloc(struct cma *cma, unsigned long count,
 	if (!cma || !cma->count || !cma->bitmap)
 		goto out;
 
-	pr_debug("%s(cma %p, count %lu, align %d)\n", __func__, (void *)cma,
-		 count, align);
+	pr_debug("%s(cma %p, name: %s, count %lu, align %d)\n", __func__,
+		(void *)cma, cma->name, count, align);
 
 	if (!count)
 		goto out;
@@ -482,8 +487,8 @@ struct page *cma_alloc(struct cma *cma, unsigned long count,
 		if (ret != -EBUSY)
 			break;
 
-		pr_debug("%s(): memory range at %p is busy, retrying\n",
-			 __func__, pfn_to_page(pfn));
+		pr_debug("%s(): memory range at pfn 0x%lx %p is busy, retrying\n",
+			 __func__, pfn, pfn_to_page(pfn));
 
 		trace_cma_alloc_busy_retry(cma->name, pfn, pfn_to_page(pfn),
 					   count, align);
@@ -491,7 +496,7 @@ struct page *cma_alloc(struct cma *cma, unsigned long count,
 		start = bitmap_no + mask + 1;
 	}
 
-	trace_cma_alloc_finish(cma->name, pfn, page, count, align);
+	trace_cma_alloc_finish(cma->name, pfn, page, count, align, ret);
 
 	/*
 	 * CMA can allocate multiple page blocks, which results in different

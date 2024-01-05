@@ -250,14 +250,19 @@ Now we are ready to write the test cases.
 	};
 	kunit_test_suite(misc_example_test_suite);
 
+	MODULE_LICENSE("GPL");
+
 2. Add the following lines to ``drivers/misc/Kconfig``:
 
 .. code-block:: kconfig
 
 	config MISC_EXAMPLE_TEST
 		tristate "Test for my example" if !KUNIT_ALL_TESTS
-		depends on MISC_EXAMPLE && KUNIT=y
+		depends on MISC_EXAMPLE && KUNIT
 		default KUNIT_ALL_TESTS
+
+Note: If your test does not support being built as a loadable module (which is
+discouraged), replace tristate by bool, and depend on KUNIT=y instead of KUNIT.
 
 3. Add the following lines to ``drivers/misc/Makefile``:
 
@@ -294,13 +299,11 @@ Congrats! You just wrote your first KUnit test.
 Next Steps
 ==========
 
-*   Documentation/dev-tools/kunit/architecture.rst - KUnit architecture.
-*   Documentation/dev-tools/kunit/run_wrapper.rst - run kunit_tool.
-*   Documentation/dev-tools/kunit/run_manual.rst - run tests without kunit_tool.
-*   Documentation/dev-tools/kunit/usage.rst - write tests.
-*   Documentation/dev-tools/kunit/tips.rst - best practices with
-    examples.
-*   Documentation/dev-tools/kunit/api/index.rst - KUnit APIs
-    used for testing.
-*   Documentation/dev-tools/kunit/faq.rst - KUnit common questions and
-    answers.
+If you're interested in using some of the more advanced features of kunit.py,
+take a look at Documentation/dev-tools/kunit/run_wrapper.rst
+
+If you'd like to run tests without using kunit.py, check out
+Documentation/dev-tools/kunit/run_manual.rst
+
+For more information on writing KUnit tests (including some common techniques
+for testing different things), see Documentation/dev-tools/kunit/usage.rst

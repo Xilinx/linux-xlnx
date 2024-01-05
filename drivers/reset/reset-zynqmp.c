@@ -9,7 +9,6 @@
 #include <linux/platform_device.h>
 #include <linux/reset-controller.h>
 #include <linux/firmware/xlnx-zynqmp.h>
-#include <linux/of_device.h>
 
 #define ZYNQMP_NR_RESETS (ZYNQMP_PM_RESET_END - ZYNQMP_PM_RESET_START)
 #define ZYNQMP_RESET_ID ZYNQMP_PM_RESET_START
@@ -112,8 +111,6 @@ static int zynqmp_reset_probe(struct platform_device *pdev)
 	priv->data = of_device_get_match_data(&pdev->dev);
 	if (!priv->data)
 		return -EINVAL;
-
-	platform_set_drvdata(pdev, priv);
 
 	priv->rcdev.ops = &zynqmp_reset_ops;
 	priv->rcdev.owner = THIS_MODULE;

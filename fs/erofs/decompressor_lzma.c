@@ -47,7 +47,7 @@ void z_erofs_lzma_exit(void)
 	}
 }
 
-int z_erofs_lzma_init(void)
+int __init z_erofs_lzma_init(void)
 {
 	unsigned int i;
 
@@ -166,8 +166,8 @@ int z_erofs_lzma_decompress(struct z_erofs_decompress_req *rq,
 	/* 1. get the exact LZMA compressed size */
 	kin = kmap(*rq->in);
 	err = z_erofs_fixup_insize(rq, kin + rq->pageofs_in,
-				   min_t(unsigned int, rq->inputsize,
-					 EROFS_BLKSIZ - rq->pageofs_in));
+			min_t(unsigned int, rq->inputsize,
+			      rq->sb->s_blocksize - rq->pageofs_in));
 	if (err) {
 		kunmap(*rq->in);
 		return err;
@@ -217,9 +217,12 @@ again:
 			strm->buf.out_size = min_t(u32, outlen,
 						   PAGE_SIZE - pageofs);
 			outlen -= strm->buf.out_size;
-			if (!rq->out[no] && rq->fillgaps)	/* deduped */
+			if (!rq->out[no] && rq->fillgaps) {	/* deduped */
 				rq->out[no] = erofs_allocpage(pagepool,
 						GFP_KERNEL | __GFP_NOFAIL);
+				set_page_private(rq->out[no],
+						 Z_EROFS_SHORTLIVED_PAGE);
+			}
 			if (rq->out[no])
 				strm->buf.out = kmap(rq->out[no]) + pageofs;
 			pageofs = 0;
@@ -278,7 +281,7 @@ again:
 		}
 	}
 	if (no < nrpages_out && strm->buf.out)
-		kunmap(rq->in[no]);
+		kunmap(rq->out[no]);
 	if (ni < nrpages_in)
 		kunmap(rq->in[ni]);
 	/* 4. push back LZMA stream context to the global list */

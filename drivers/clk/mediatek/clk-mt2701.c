@@ -5,9 +5,7 @@
  */
 
 #include <linux/clk-provider.h>
-#include <linux/of.h>
-#include <linux/of_address.h>
-#include <linux/of_device.h>
+#include <linux/mod_devicetable.h>
 #include <linux/platform_device.h>
 
 #include "clk-cpumux.h"
@@ -636,14 +634,8 @@ static const struct mtk_gate_regs top_aud_cg_regs = {
 	.sta_ofs = 0x012C,
 };
 
-#define GATE_TOP_AUD(_id, _name, _parent, _shift) {	\
-		.id = _id,				\
-		.name = _name,				\
-		.parent_name = _parent,			\
-		.regs = &top_aud_cg_regs,		\
-		.shift = _shift,			\
-		.ops = &mtk_clk_gate_ops_no_setclr,	\
-	}
+#define GATE_TOP_AUD(_id, _name, _parent, _shift)			\
+	GATE_MTK(_id, _name, _parent, &top_aud_cg_regs, _shift, &mtk_clk_gate_ops_no_setclr)
 
 static const struct mtk_gate top_clks[] = {
 	GATE_TOP_AUD(CLK_TOP_AUD_48K_TIMING, "a1sys_hp_ck", "aud_mux1_div",
@@ -669,9 +661,8 @@ static int mtk_topckgen_init(struct platform_device *pdev)
 	struct clk_hw_onecell_data *clk_data;
 	void __iomem *base;
 	struct device_node *node = pdev->dev.of_node;
-	struct resource *res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 
-	base = devm_ioremap_resource(&pdev->dev, res);
+	base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(base))
 		return PTR_ERR(base);
 
@@ -683,14 +674,15 @@ static int mtk_topckgen_init(struct platform_device *pdev)
 	mtk_clk_register_factors(top_fixed_divs, ARRAY_SIZE(top_fixed_divs),
 								clk_data);
 
-	mtk_clk_register_composites(top_muxes, ARRAY_SIZE(top_muxes),
+	mtk_clk_register_composites(&pdev->dev, top_muxes,
+				    ARRAY_SIZE(top_muxes), base,
+				    &mt2701_clk_lock, clk_data);
+
+	mtk_clk_register_dividers(&pdev->dev, top_adj_divs, ARRAY_SIZE(top_adj_divs),
 				base, &mt2701_clk_lock, clk_data);
 
-	mtk_clk_register_dividers(top_adj_divs, ARRAY_SIZE(top_adj_divs),
-				base, &mt2701_clk_lock, clk_data);
-
-	mtk_clk_register_gates(node, top_clks, ARRAY_SIZE(top_clks),
-						clk_data);
+	mtk_clk_register_gates(&pdev->dev, node, top_clks,
+			       ARRAY_SIZE(top_clks), clk_data);
 
 	return of_clk_add_hw_provider(node, of_clk_hw_onecell_get, clk_data);
 }
@@ -701,14 +693,8 @@ static const struct mtk_gate_regs infra_cg_regs = {
 	.sta_ofs = 0x0048,
 };
 
-#define GATE_ICG(_id, _name, _parent, _shift) {		\
-		.id = _id,				\
-		.name = _name,				\
-		.parent_name = _parent,			\
-		.regs = &infra_cg_regs,			\
-		.shift = _shift,			\
-		.ops = &mtk_clk_gate_ops_setclr,	\
-	}
+#define GATE_ICG(_id, _name, _parent, _shift)				\
+	GATE_MTK(_id, _name, _parent, &infra_cg_regs, _shift, &mtk_clk_gate_ops_setclr)
 
 static const struct mtk_gate infra_clks[] = {
 	GATE_ICG(CLK_INFRA_DBG, "dbgclk", "axi_sel", 0),
@@ -769,7 +755,7 @@ static void __init mtk_infrasys_init_early(struct device_node *node)
 	mtk_clk_register_factors(infra_fixed_divs, ARRAY_SIZE(infra_fixed_divs),
 						infra_clk_data);
 
-	mtk_clk_register_cpumuxes(node, cpu_muxes, ARRAY_SIZE(cpu_muxes),
+	mtk_clk_register_cpumuxes(NULL, node, cpu_muxes, ARRAY_SIZE(cpu_muxes),
 				  infra_clk_data);
 
 	r = of_clk_add_hw_provider(node, of_clk_hw_onecell_get,
@@ -795,8 +781,8 @@ static int mtk_infrasys_init(struct platform_device *pdev)
 		}
 	}
 
-	mtk_clk_register_gates(node, infra_clks, ARRAY_SIZE(infra_clks),
-						infra_clk_data);
+	mtk_clk_register_gates(&pdev->dev, node, infra_clks,
+			       ARRAY_SIZE(infra_clks), infra_clk_data);
 	mtk_clk_register_factors(infra_fixed_divs, ARRAY_SIZE(infra_fixed_divs),
 						infra_clk_data);
 
@@ -822,23 +808,11 @@ static const struct mtk_gate_regs peri1_cg_regs = {
 	.sta_ofs = 0x001c,
 };
 
-#define GATE_PERI0(_id, _name, _parent, _shift) {	\
-		.id = _id,				\
-		.name = _name,				\
-		.parent_name = _parent,			\
-		.regs = &peri0_cg_regs,			\
-		.shift = _shift,			\
-		.ops = &mtk_clk_gate_ops_setclr,	\
-	}
+#define GATE_PERI0(_id, _name, _parent, _shift)				\
+	GATE_MTK(_id, _name, _parent, &peri0_cg_regs, _shift, &mtk_clk_gate_ops_setclr)
 
-#define GATE_PERI1(_id, _name, _parent, _shift) {	\
-		.id = _id,				\
-		.name = _name,				\
-		.parent_name = _parent,			\
-		.regs = &peri1_cg_regs,			\
-		.shift = _shift,			\
-		.ops = &mtk_clk_gate_ops_setclr,	\
-	}
+#define GATE_PERI1(_id, _name, _parent, _shift)				\
+	GATE_MTK(_id, _name, _parent, &peri1_cg_regs, _shift, &mtk_clk_gate_ops_setclr)
 
 static const struct mtk_gate peri_clks[] = {
 	GATE_PERI0(CLK_PERI_USB0_MCU, "usb0_mcu_ck", "axi_sel", 31),
@@ -910,19 +884,19 @@ static int mtk_pericfg_init(struct platform_device *pdev)
 	void __iomem *base;
 	int r;
 	struct device_node *node = pdev->dev.of_node;
-	struct resource *res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 
-	base = devm_ioremap_resource(&pdev->dev, res);
+	base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(base))
 		return PTR_ERR(base);
 
 	clk_data = mtk_alloc_clk_data(CLK_PERI_NR);
 
-	mtk_clk_register_gates(node, peri_clks, ARRAY_SIZE(peri_clks),
-						clk_data);
+	mtk_clk_register_gates(&pdev->dev, node, peri_clks,
+			       ARRAY_SIZE(peri_clks), clk_data);
 
-	mtk_clk_register_composites(peri_muxs, ARRAY_SIZE(peri_muxs), base,
-			&mt2701_clk_lock, clk_data);
+	mtk_clk_register_composites(&pdev->dev, peri_muxs,
+				    ARRAY_SIZE(peri_muxs), base,
+				    &mt2701_clk_lock, clk_data);
 
 	r = of_clk_add_hw_provider(node, of_clk_hw_onecell_get, clk_data);
 	if (r)
@@ -1021,6 +995,7 @@ static const struct of_device_id of_match_clk_mt2701[] = {
 		/* sentinel */
 	}
 };
+MODULE_DEVICE_TABLE(of, of_match_clk_mt2701);
 
 static int clk_mt2701_probe(struct platform_device *pdev)
 {
@@ -1054,3 +1029,4 @@ static int __init clk_mt2701_init(void)
 }
 
 arch_initcall(clk_mt2701_init);
+MODULE_LICENSE("GPL");

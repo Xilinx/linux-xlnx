@@ -16,8 +16,10 @@ static int mtdblock_readsect(struct mtd_blktrans_dev *dev,
 			      unsigned long block, char *buf)
 {
 	size_t retlen;
+	int err;
 
-	if (mtd_read(dev->mtd, (block * 512), 512, &retlen, buf))
+	err = mtd_read(dev->mtd, (block * 512), 512, &retlen, buf);
+	if (err && !mtd_is_bitflip(err))
 		return 1;
 	return 0;
 }
@@ -47,7 +49,7 @@ static void mtdblock_add_mtd(struct mtd_blktrans_ops *tr, struct mtd_info *mtd)
 	dev->readonly = 1;
 
 	if (mtd_type_is_nand(mtd))
-		pr_warn("%s: MTD device '%s' is NAND, please consider using UBI block devices instead.\n",
+		pr_warn_ratelimited("%s: MTD device '%s' is NAND, please consider using UBI block devices instead.\n",
 			tr->name, mtd->name);
 
 	if (add_mtd_blktrans_dev(dev))

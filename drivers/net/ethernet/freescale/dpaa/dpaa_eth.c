@@ -7,8 +7,8 @@
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/init.h>
+#include <linux/mod_devicetable.h>
 #include <linux/module.h>
-#include <linux/of_platform.h>
 #include <linux/of_mdio.h>
 #include <linux/of_net.h>
 #include <linux/io.h>
@@ -17,6 +17,7 @@
 #include <linux/icmp.h>
 #include <linux/ip.h>
 #include <linux/ipv6.h>
+#include <linux/platform_device.h>
 #include <linux/udp.h>
 #include <linux/tcp.h>
 #include <linux/net.h>
@@ -244,6 +245,10 @@ static int dpaa_netdev_init(struct net_device *net_dev,
 	net_dev->features |= net_dev->hw_features;
 	net_dev->vlan_features = net_dev->features;
 
+	net_dev->xdp_features = NETDEV_XDP_ACT_BASIC |
+				NETDEV_XDP_ACT_REDIRECT |
+				NETDEV_XDP_ACT_NDO_XMIT;
+
 	if (is_valid_ether_addr(mac_addr)) {
 		memcpy(net_dev->perm_addr, mac_addr, net_dev->addr_len);
 		eth_hw_addr_set(net_dev, mac_addr);
@@ -264,8 +269,19 @@ static int dpaa_netdev_init(struct net_device *net_dev,
 	net_dev->needed_headroom = priv->tx_headroom;
 	net_dev->watchdog_timeo = msecs_to_jiffies(tx_timeout);
 
-	mac_dev->net_dev = net_dev;
+	/* The rest of the config is filled in by the mac device already */
+	mac_dev->phylink_config.dev = &net_dev->dev;
+	mac_dev->phylink_config.type = PHYLINK_NETDEV;
 	mac_dev->update_speed = dpaa_eth_cgr_set_speed;
+	mac_dev->phylink = phylink_create(&mac_dev->phylink_config,
+					  dev_fwnode(mac_dev->dev),
+					  mac_dev->phy_if,
+					  mac_dev->phylink_ops);
+	if (IS_ERR(mac_dev->phylink)) {
+		err = PTR_ERR(mac_dev->phylink);
+		dev_err_probe(dev, err, "Could not create phylink\n");
+		return err;
+	}
 
 	/* start without the RUNNING flag, phylib controls it later */
 	netif_carrier_off(net_dev);
@@ -273,6 +289,7 @@ static int dpaa_netdev_init(struct net_device *net_dev,
 	err = register_netdev(net_dev);
 	if (err < 0) {
 		dev_err(dev, "register_netdev() = %d\n", err);
+		phylink_destroy(mac_dev->phylink);
 		return err;
 	}
 
@@ -283,7 +300,8 @@ static int dpaa_stop(struct net_device *net_dev)
 {
 	struct mac_device *mac_dev;
 	struct dpaa_priv *priv;
-	int i, err, error;
+	int i, error;
+	int err = 0;
 
 	priv = netdev_priv(net_dev);
 	mac_dev = priv->mac_dev;
@@ -294,8 +312,7 @@ static int dpaa_stop(struct net_device *net_dev)
 	 */
 	msleep(200);
 
-	if (mac_dev->phy_dev)
-		phy_stop(mac_dev->phy_dev);
+	phylink_stop(mac_dev->phylink);
 	mac_dev->disable(mac_dev->fman_mac);
 
 	for (i = 0; i < ARRAY_SIZE(mac_dev->port); i++) {
@@ -304,8 +321,7 @@ static int dpaa_stop(struct net_device *net_dev)
 			err = error;
 	}
 
-	if (net_dev->phydev)
-		phy_disconnect(net_dev->phydev);
+	phylink_disconnect_phy(mac_dev->phylink);
 	net_dev->phydev = NULL;
 
 	msleep(200);
@@ -833,10 +849,10 @@ static int dpaa_eth_cgr_init(struct dpaa_priv *priv)
 
 	/* Set different thresholds based on the configured MAC speed.
 	 * This may turn suboptimal if the MAC is reconfigured at another
-	 * speed, so MACs must call dpaa_eth_cgr_set_speed in their adjust_link
+	 * speed, so MACs must call dpaa_eth_cgr_set_speed in their link_up
 	 * callback.
 	 */
-	if (priv->mac_dev->if_support & SUPPORTED_10000baseT_Full)
+	if (priv->mac_dev->phylink_config.mac_capabilities & MAC_10000FD)
 		cs_th = DPAA_CS_THRESHOLD_10G;
 	else
 		cs_th = DPAA_CS_THRESHOLD_1G;
@@ -865,7 +881,7 @@ out_error:
 
 static void dpaa_eth_cgr_set_speed(struct mac_device *mac_dev, int speed)
 {
-	struct net_device *net_dev = mac_dev->net_dev;
+	struct net_device *net_dev = to_net_dev(mac_dev->phylink_config.dev);
 	struct dpaa_priv *priv = netdev_priv(net_dev);
 	struct qm_mcc_initcgr opts = { };
 	u32 cs_th;
@@ -1468,13 +1484,8 @@ static int dpaa_enable_tx_csum(struct dpaa_priv *priv,
 	parse_result = (struct fman_prs_result *)parse_results;
 
 	/* If we're dealing with VLAN, get the real Ethernet type */
-	if (ethertype == ETH_P_8021Q) {
-		/* We can't always assume the MAC header is set correctly
-		 * by the stack, so reset to beginning of skb->data
-		 */
-		skb_reset_mac_header(skb);
-		ethertype = ntohs(vlan_eth_hdr(skb)->h_vlan_encapsulated_proto);
-	}
+	if (ethertype == ETH_P_8021Q)
+		ethertype = ntohs(skb_vlan_eth_hdr(skb)->h_vlan_encapsulated_proto);
 
 	/* Fill in the relevant L3 parse result fields
 	 * and read the L4 protocol type
@@ -2400,15 +2411,15 @@ static int dpaa_eth_poll(struct napi_struct *napi, int budget)
 
 	cleaned = qman_p_poll_dqrr(np->p, budget);
 
+	if (np->xdp_act & XDP_REDIRECT)
+		xdp_do_flush();
+
 	if (cleaned < budget) {
 		napi_complete_done(napi, cleaned);
 		qman_p_irqsource_add(np->p, QM_PIRQ_DQRI);
 	} else if (np->down) {
 		qman_p_irqsource_add(np->p, QM_PIRQ_DQRI);
 	}
-
-	if (np->xdp_act & XDP_REDIRECT)
-		xdp_do_flush();
 
 	return cleaned;
 }
@@ -2904,58 +2915,6 @@ static void dpaa_eth_napi_disable(struct dpaa_priv *priv)
 	}
 }
 
-static void dpaa_adjust_link(struct net_device *net_dev)
-{
-	struct mac_device *mac_dev;
-	struct dpaa_priv *priv;
-
-	priv = netdev_priv(net_dev);
-	mac_dev = priv->mac_dev;
-	mac_dev->adjust_link(mac_dev);
-}
-
-/* The Aquantia PHYs are capable of performing rate adaptation */
-#define PHY_VEND_AQUANTIA	0x03a1b400
-#define PHY_VEND_AQUANTIA2	0x31c31c00
-
-static int dpaa_phy_init(struct net_device *net_dev)
-{
-	__ETHTOOL_DECLARE_LINK_MODE_MASK(mask) = { 0, };
-	struct mac_device *mac_dev;
-	struct phy_device *phy_dev;
-	struct dpaa_priv *priv;
-	u32 phy_vendor;
-
-	priv = netdev_priv(net_dev);
-	mac_dev = priv->mac_dev;
-
-	phy_dev = of_phy_connect(net_dev, mac_dev->phy_node,
-				 &dpaa_adjust_link, 0,
-				 mac_dev->phy_if);
-	if (!phy_dev) {
-		netif_err(priv, ifup, net_dev, "init_phy() failed\n");
-		return -ENODEV;
-	}
-
-	phy_vendor = phy_dev->drv->phy_id & GENMASK(31, 10);
-	/* Unless the PHY is capable of rate adaptation */
-	if (mac_dev->phy_if != PHY_INTERFACE_MODE_XGMII ||
-	    (phy_vendor != PHY_VEND_AQUANTIA &&
-	     phy_vendor != PHY_VEND_AQUANTIA2)) {
-		/* remove any features not supported by the controller */
-		ethtool_convert_legacy_u32_to_link_mode(mask,
-							mac_dev->if_support);
-		linkmode_and(phy_dev->supported, phy_dev->supported, mask);
-	}
-
-	phy_support_asym_pause(phy_dev);
-
-	mac_dev->phy_dev = phy_dev;
-	net_dev->phydev = phy_dev;
-
-	return 0;
-}
-
 static int dpaa_open(struct net_device *net_dev)
 {
 	struct mac_device *mac_dev;
@@ -2966,7 +2925,8 @@ static int dpaa_open(struct net_device *net_dev)
 	mac_dev = priv->mac_dev;
 	dpaa_eth_napi_enable(priv);
 
-	err = dpaa_phy_init(net_dev);
+	err = phylink_of_phy_connect(mac_dev->phylink,
+				     mac_dev->dev->of_node, 0);
 	if (err)
 		goto phy_init_failed;
 
@@ -2981,7 +2941,7 @@ static int dpaa_open(struct net_device *net_dev)
 		netif_err(priv, ifup, net_dev, "mac_dev->enable() = %d\n", err);
 		goto mac_start_failed;
 	}
-	phy_start(priv->mac_dev->phy_dev);
+	phylink_start(mac_dev->phylink);
 
 	netif_tx_start_all_queues(net_dev);
 
@@ -2990,6 +2950,7 @@ static int dpaa_open(struct net_device *net_dev)
 mac_start_failed:
 	for (i = 0; i < ARRAY_SIZE(mac_dev->port); i++)
 		fman_port_disable(mac_dev->port[i]);
+	phylink_disconnect_phy(mac_dev->phylink);
 
 phy_init_failed:
 	dpaa_eth_napi_disable(priv);
@@ -3145,10 +3106,12 @@ static int dpaa_ts_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 static int dpaa_ioctl(struct net_device *net_dev, struct ifreq *rq, int cmd)
 {
 	int ret = -EINVAL;
+	struct dpaa_priv *priv = netdev_priv(net_dev);
 
 	if (cmd == SIOCGMIIREG) {
 		if (net_dev->phydev)
-			return phy_mii_ioctl(net_dev->phydev, rq, cmd);
+			return phylink_mii_ioctl(priv->mac_dev->phylink, rq,
+						 cmd);
 	}
 
 	if (cmd == SIOCSHWTSTAMP)
@@ -3535,7 +3498,7 @@ free_netdev:
 	return err;
 }
 
-static int dpaa_remove(struct platform_device *pdev)
+static void dpaa_remove(struct platform_device *pdev)
 {
 	struct net_device *net_dev;
 	struct dpaa_priv *priv;
@@ -3551,8 +3514,12 @@ static int dpaa_remove(struct platform_device *pdev)
 
 	dev_set_drvdata(dev, NULL);
 	unregister_netdev(net_dev);
+	phylink_destroy(priv->mac_dev->phylink);
 
 	err = dpaa_fq_free(dev, &priv->dpaa_fq_list);
+	if (err)
+		dev_err(dev, "Failed to free FQs on remove (%pE)\n",
+			ERR_PTR(err));
 
 	qman_delete_cgr_safe(&priv->ingress_cgr);
 	qman_release_cgrid(priv->ingress_cgr.cgrid);
@@ -3564,8 +3531,6 @@ static int dpaa_remove(struct platform_device *pdev)
 	dpaa_bps_free(priv);
 
 	free_netdev(net_dev);
-
-	return err;
 }
 
 static const struct platform_device_id dpaa_devtype[] = {
@@ -3583,7 +3548,7 @@ static struct platform_driver dpaa_driver = {
 	},
 	.id_table = dpaa_devtype,
 	.probe = dpaa_eth_probe,
-	.remove = dpaa_remove
+	.remove_new = dpaa_remove
 };
 
 static int __init dpaa_load(void)

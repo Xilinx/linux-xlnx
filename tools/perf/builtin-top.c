@@ -87,8 +87,8 @@
 #include <linux/ctype.h>
 #include <perf/mmap.h>
 
-static volatile int done;
-static volatile int resize;
+static volatile sig_atomic_t done;
+static volatile sig_atomic_t resize;
 
 #define HEADER_LINE_NR  5
 
@@ -114,6 +114,7 @@ static int perf_top__parse_source(struct perf_top *top, struct hist_entry *he)
 	struct symbol *sym;
 	struct annotation *notes;
 	struct map *map;
+	struct dso *dso;
 	int err = -1;
 
 	if (!he || !he->ms.sym)
@@ -123,12 +124,12 @@ static int perf_top__parse_source(struct perf_top *top, struct hist_entry *he)
 
 	sym = he->ms.sym;
 	map = he->ms.map;
+	dso = map__dso(map);
 
 	/*
 	 * We can't annotate with just /proc/kallsyms
 	 */
-	if (map->dso->symtab_type == DSO_BINARY_TYPE__KALLSYMS &&
-	    !dso__is_kcore(map->dso)) {
+	if (dso->symtab_type == DSO_BINARY_TYPE__KALLSYMS && !dso__is_kcore(dso)) {
 		pr_err("Can't annotate %s: No vmlinux file was found in the "
 		       "path\n", sym->name);
 		sleep(1);
@@ -136,10 +137,10 @@ static int perf_top__parse_source(struct perf_top *top, struct hist_entry *he)
 	}
 
 	notes = symbol__annotation(sym);
-	mutex_lock(&notes->lock);
+	annotation__lock(notes);
 
 	if (!symbol__hists(sym, top->evlist->core.nr_entries)) {
-		mutex_unlock(&notes->lock);
+		annotation__unlock(notes);
 		pr_err("Not enough memory for annotating '%s' symbol!\n",
 		       sym->name);
 		sleep(1);
@@ -155,7 +156,7 @@ static int perf_top__parse_source(struct perf_top *top, struct hist_entry *he)
 		pr_err("Couldn't annotate %s: %s\n", sym->name, msg);
 	}
 
-	mutex_unlock(&notes->lock);
+	annotation__unlock(notes);
 	return err;
 }
 
@@ -169,6 +170,7 @@ static void ui__warn_map_erange(struct map *map, struct symbol *sym, u64 ip)
 {
 	struct utsname uts;
 	int err = uname(&uts);
+	struct dso *dso = map__dso(map);
 
 	ui__warning("Out of bounds address found:\n\n"
 		    "Addr:   %" PRIx64 "\n"
@@ -180,8 +182,8 @@ static void ui__warn_map_erange(struct map *map, struct symbol *sym, u64 ip)
 		    "Tools:  %s\n\n"
 		    "Not all samples will be on the annotation output.\n\n"
 		    "Please report to linux-kernel@vger.kernel.org\n",
-		    ip, map->dso->long_name, dso__symtab_origin(map->dso),
-		    map->start, map->end, sym->start, sym->end,
+		    ip, dso->long_name, dso__symtab_origin(dso),
+		    map__start(map), map__end(map), sym->start, sym->end,
 		    sym->binding == STB_GLOBAL ? 'g' :
 		    sym->binding == STB_LOCAL  ? 'l' : 'w', sym->name,
 		    err ? "[unknown]" : uts.machine,
@@ -189,7 +191,7 @@ static void ui__warn_map_erange(struct map *map, struct symbol *sym, u64 ip)
 	if (use_browser <= 0)
 		sleep(5);
 
-	map->erange_warned = true;
+	map__set_erange_warned(map, true);
 }
 
 static void perf_top__record_precise_ip(struct perf_top *top,
@@ -209,12 +211,12 @@ static void perf_top__record_precise_ip(struct perf_top *top,
 
 	notes = symbol__annotation(sym);
 
-	if (!mutex_trylock(&notes->lock))
+	if (!annotation__trylock(notes))
 		return;
 
 	err = hist_entry__inc_addr_samples(he, sample, evsel, ip);
 
-	mutex_unlock(&notes->lock);
+	annotation__unlock(notes);
 
 	if (unlikely(err)) {
 		/*
@@ -223,7 +225,7 @@ static void perf_top__record_precise_ip(struct perf_top *top,
 		 */
 		mutex_unlock(&he->hists->lock);
 
-		if (err == -ERANGE && !he->ms.map->erange_warned)
+		if (err == -ERANGE && !map__erange_warned(he->ms.map))
 			ui__warn_map_erange(he->ms.map, sym, ip);
 		else if (err == -ENOMEM) {
 			pr_err("Not enough memory for annotating '%s' symbol!\n",
@@ -251,7 +253,7 @@ static void perf_top__show_details(struct perf_top *top)
 	symbol = he->ms.sym;
 	notes = symbol__annotation(symbol);
 
-	mutex_lock(&notes->lock);
+	annotation__lock(notes);
 
 	symbol__calc_percent(symbol, evsel);
 
@@ -272,7 +274,7 @@ static void perf_top__show_details(struct perf_top *top)
 	if (more != 0)
 		printf("%d lines not displayed, maybe increase display entries [e]\n", more);
 out_unlock:
-	mutex_unlock(&notes->lock);
+	annotation__unlock(notes);
 }
 
 static void perf_top__resort_hists(struct perf_top *t)
@@ -390,7 +392,7 @@ static void prompt_percent(int *target, const char *msg)
 
 static void perf_top__prompt_symbol(struct perf_top *top, const char *msg)
 {
-	char *buf = malloc(0), *p;
+	char *buf = NULL, *p;
 	struct hist_entry *syme = top->sym_filter_entry, *n, *found = NULL;
 	struct hists *hists = evsel__hists(top->sym_evsel);
 	struct rb_node *next;
@@ -707,7 +709,7 @@ repeat:
 		case -1:
 			if (errno == EINTR)
 				continue;
-			__fallthrough;
+			fallthrough;
 		default:
 			c = getc(stdin);
 			tcsetattr(0, TCSAFLUSH, &save);
@@ -771,11 +773,12 @@ static void perf_event__process_sample(struct perf_tool *tool,
 	if (event->header.misc & PERF_RECORD_MISC_EXACT_IP)
 		top->exact_samples++;
 
+	addr_location__init(&al);
 	if (machine__resolve(machine, &al, sample) < 0)
-		return;
+		goto out;
 
 	if (top->stitch_lbr)
-		al.thread->lbr_stitch_enable = true;
+		thread__set_lbr_stitch_enable(al.thread, true);
 
 	if (!machine->kptr_restrict_warned &&
 	    symbol_conf.kptr_restrict &&
@@ -810,7 +813,8 @@ static void perf_event__process_sample(struct perf_tool *tool,
 		    __map__is_kernel(al.map) && map__has_symbols(al.map)) {
 			if (symbol_conf.vmlinux_name) {
 				char serr[256];
-				dso__strerror_load(al.map->dso, serr, sizeof(serr));
+
+				dso__strerror_load(map__dso(al.map), serr, sizeof(serr));
 				ui__warning("The %s file can't be used: %s\n%s",
 					    symbol_conf.vmlinux_name, serr, msg);
 			} else {
@@ -845,7 +849,8 @@ static void perf_event__process_sample(struct perf_tool *tool,
 		mutex_unlock(&hists->lock);
 	}
 
-	addr_location__put(&al);
+out:
+	addr_location__exit(&al);
 }
 
 static void
@@ -1222,6 +1227,14 @@ static void init_process_thread(struct perf_top *top)
 	cond_init(&top->qe.cond);
 }
 
+static void exit_process_thread(struct perf_top *top)
+{
+	ordered_events__free(&top->qe.data[0]);
+	ordered_events__free(&top->qe.data[1]);
+	mutex_destroy(&top->qe.mutex);
+	cond_destroy(&top->qe.cond);
+}
+
 static int __cmd_top(struct perf_top *top)
 {
 	struct record_opts *opts = &top->record_opts;
@@ -1273,8 +1286,7 @@ static int __cmd_top(struct perf_top *top)
 				    top->evlist->core.threads, true, false,
 				    top->nr_threads_synthesize);
 
-	if (top->nr_threads_synthesize > 1)
-		perf_set_singlethreaded();
+	perf_set_multithreaded();
 
 	if (perf_hpp_list.socket) {
 		ret = perf_env__read_cpu_topology_map(&perf_env);
@@ -1352,6 +1364,8 @@ out_join:
 out_join_thread:
 	cond_signal(&top->qe.cond);
 	pthread_join(thread_process, NULL);
+	perf_set_singlethreaded();
+	exit_process_thread(top);
 	return ret;
 }
 
@@ -1435,13 +1449,17 @@ int cmd_top(int argc, const char **argv)
 			.sample_time_set = true,
 		},
 		.max_stack	     = sysctl__max_stack(),
-		.annotation_opts     = annotation__default_options,
 		.nr_threads_synthesize = UINT_MAX,
 	};
+	struct parse_events_option_args parse_events_option_args = {
+		.evlistp = &top.evlist,
+	};
+	bool branch_call_mode = false;
 	struct record_opts *opts = &top.record_opts;
 	struct target *target = &opts->target;
+	const char *disassembler_style = NULL, *objdump_path = NULL, *addr2line_path = NULL;
 	const struct option options[] = {
-	OPT_CALLBACK('e', "event", &top.evlist, "event",
+	OPT_CALLBACK('e', "event", &parse_events_option_args, "event",
 		     "event selector. use 'perf list' to list available events",
 		     parse_events_option),
 	OPT_U64('c', "count", &opts->user_interval, "event period to sample"),
@@ -1471,8 +1489,6 @@ int cmd_top(int argc, const char **argv)
 			    "dump the symbol table used for profiling"),
 	OPT_INTEGER('f', "count-filter", &top.count_filter,
 		    "only display functions with more events than this"),
-	OPT_BOOLEAN(0, "group", &opts->group,
-			    "put the counters into a counter group"),
 	OPT_BOOLEAN('i', "no-inherit", &opts->no_inherit,
 		    "child tasks do not inherit counters"),
 	OPT_STRING(0, "sym-annotate", &top.sym_filter, "symbol name",
@@ -1527,9 +1543,11 @@ int cmd_top(int argc, const char **argv)
 	OPT_BOOLEAN(0, "demangle-kernel", &symbol_conf.demangle_kernel,
 		    "Enable kernel symbol demangling"),
 	OPT_BOOLEAN(0, "no-bpf-event", &top.record_opts.no_bpf_event, "do not record bpf events"),
-	OPT_STRING(0, "objdump", &top.annotation_opts.objdump_path, "path",
+	OPT_STRING(0, "objdump", &objdump_path, "path",
 		    "objdump binary to use for disassembly and annotations"),
-	OPT_STRING('M', "disassembler-style", &top.annotation_opts.disassembler_style, "disassembler style",
+	OPT_STRING(0, "addr2line", &addr2line_path, "path",
+		   "addr2line binary to use for line numbers"),
+	OPT_STRING('M', "disassembler-style", &disassembler_style, "disassembler style",
 		   "Specify disassembler style (e.g. -M intel for intel syntax)"),
 	OPT_STRING(0, "prefix", &top.annotation_opts.prefix, "prefix",
 		    "Add prefix to source file path names in programs (with --prefix-strip)"),
@@ -1551,6 +1569,8 @@ int cmd_top(int argc, const char **argv)
 	OPT_CALLBACK('j', "branch-filter", &opts->branch_stack,
 		     "branch filter mask", "branch stack filter modes",
 		     parse_branch_stack),
+	OPT_BOOLEAN(0, "branch-history", &branch_call_mode,
+		    "add last branch records to call history"),
 	OPT_BOOLEAN(0, "raw-trace", &symbol_conf.raw_trace,
 		    "Show raw trace event output (do not use print fmt or plugins)"),
 	OPT_BOOLEAN(0, "hierarchy", &symbol_conf.report_hierarchy,
@@ -1589,6 +1609,8 @@ int cmd_top(int argc, const char **argv)
 	if (status < 0)
 		return status;
 
+	annotation_options__init(&top.annotation_opts);
+
 	top.annotation_opts.min_pcnt = 5;
 	top.annotation_opts.context  = 4;
 
@@ -1619,6 +1641,22 @@ int cmd_top(int argc, const char **argv)
 	if (argc)
 		usage_with_options(top_usage, options);
 
+	if (disassembler_style) {
+		top.annotation_opts.disassembler_style = strdup(disassembler_style);
+		if (!top.annotation_opts.disassembler_style)
+			return -ENOMEM;
+	}
+	if (objdump_path) {
+		top.annotation_opts.objdump_path = strdup(objdump_path);
+		if (!top.annotation_opts.objdump_path)
+			return -ENOMEM;
+	}
+	if (addr2line_path) {
+		symbol_conf.addr2line_path = strdup(addr2line_path);
+		if (!symbol_conf.addr2line_path)
+			return -ENOMEM;
+	}
+
 	status = symbol__validate_sym_arguments();
 	if (status)
 		goto out_delete_evlist;
@@ -1626,10 +1664,12 @@ int cmd_top(int argc, const char **argv)
 	if (annotate_check_args(&top.annotation_opts) < 0)
 		goto out_delete_evlist;
 
-	if (!top.evlist->core.nr_entries &&
-	    evlist__add_default(top.evlist) < 0) {
-		pr_err("Not enough memory for event selector list\n");
-		goto out_delete_evlist;
+	if (!top.evlist->core.nr_entries) {
+		bool can_profile_kernel = perf_event_paranoid_check(1);
+		int err = parse_event(top.evlist, can_profile_kernel ? "cycles:P" : "cycles:Pu");
+
+		if (err)
+			goto out_delete_evlist;
 	}
 
 	status = evswitch__init(&top.evswitch, top.evlist, stderr);
@@ -1657,6 +1697,20 @@ int cmd_top(int argc, const char **argv)
 	if (nr_cgroups > 0 && opts->record_cgroup) {
 		pr_err("--cgroup and --all-cgroups cannot be used together\n");
 		goto out_delete_evlist;
+	}
+
+	if (branch_call_mode) {
+		if (!opts->branch_stack)
+			opts->branch_stack = PERF_SAMPLE_BRANCH_ANY;
+		symbol_conf.use_callchain = true;
+		callchain_param.key = CCKEY_ADDRESS;
+		callchain_param.branch_callstack = true;
+		callchain_param.enabled = true;
+		if (callchain_param.record_mode == CALLCHAIN_NONE)
+			callchain_param.record_mode = CALLCHAIN_FP;
+		callchain_register_param(&callchain_param);
+		if (!sort_order)
+			sort_order = "srcline,symbol,dso";
 	}
 
 	if (opts->branch_stack && callchain_param.enabled)
@@ -1751,6 +1805,7 @@ int cmd_top(int argc, const char **argv)
 	top.session = perf_session__new(NULL, NULL);
 	if (IS_ERR(top.session)) {
 		status = PTR_ERR(top.session);
+		top.session = NULL;
 		goto out_delete_evlist;
 	}
 
@@ -1785,6 +1840,7 @@ int cmd_top(int argc, const char **argv)
 out_delete_evlist:
 	evlist__delete(top.evlist);
 	perf_session__delete(top.session);
+	annotation_options__exit(&top.annotation_opts);
 
 	return status;
 }

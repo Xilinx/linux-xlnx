@@ -16,14 +16,15 @@
 #include <linux/memblock.h>
 #include <linux/seq_file.h>
 #include <linux/kthread.h>
+#include <linux/proc_fs.h>
 #include <linux/initrd.h>
 #include <linux/pgtable.h>
-#include <linux/swap.h>
-#include <linux/swapops.h>
+#include <linux/mm.h>
 
 #include <asm/pdc.h>
 #include <asm/pdcpat.h>
 #include <asm/sections.h>
+#include <asm/pgtable.h>
 
 enum pdt_access_type {
 	PDT_NONE,
@@ -232,7 +233,7 @@ void __init pdc_pdt_init(void)
 
 		/* mark memory page bad */
 		memblock_reserve(pdt_entry[i] & PAGE_MASK, PAGE_SIZE);
-		num_poisoned_pages_inc();
+		num_poisoned_pages_inc(addr >> PAGE_SHIFT);
 	}
 }
 
@@ -353,10 +354,8 @@ static int __init pdt_initcall(void)
 		return -ENODEV;
 
 	kpdtd_task = kthread_run(pdt_mainloop, NULL, "kpdtd");
-	if (IS_ERR(kpdtd_task))
-		return PTR_ERR(kpdtd_task);
 
-	return 0;
+	return PTR_ERR_OR_ZERO(kpdtd_task);
 }
 
 late_initcall(pdt_initcall);

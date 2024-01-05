@@ -249,15 +249,19 @@ static void __init cppc_freq_invariance_init(void)
 		return;
 
 	kworker_fie = kthread_create_worker(0, "cppc_fie");
-	if (IS_ERR(kworker_fie))
+	if (IS_ERR(kworker_fie)) {
+		pr_warn("%s: failed to create kworker_fie: %ld\n", __func__,
+			PTR_ERR(kworker_fie));
+		fie_disabled = FIE_DISABLED;
 		return;
+	}
 
 	ret = sched_setattr_nocheck(kworker_fie->task, &attr);
 	if (ret) {
 		pr_warn("%s: failed to set SCHED_DEADLINE: %d\n", __func__,
 			ret);
 		kthread_destroy_worker(kworker_fie);
-		return;
+		fie_disabled = FIE_DISABLED;
 	}
 }
 
@@ -267,7 +271,6 @@ static void cppc_freq_invariance_exit(void)
 		return;
 
 	kthread_destroy_worker(kworker_fie);
-	kworker_fie = NULL;
 }
 
 #else
@@ -487,7 +490,8 @@ static unsigned int get_perf_level_count(struct cpufreq_policy *policy)
 	cpu_data = policy->driver_data;
 	perf_caps = &cpu_data->perf_caps;
 	max_cap = arch_scale_cpu_capacity(cpu);
-	min_cap = div_u64(max_cap * perf_caps->lowest_perf, perf_caps->highest_perf);
+	min_cap = div_u64((u64)max_cap * perf_caps->lowest_perf,
+			  perf_caps->highest_perf);
 	if ((min_cap == 0) || (max_cap < min_cap))
 		return 0;
 	return 1 + max_cap / CPPC_EM_CAP_STEP - min_cap / CPPC_EM_CAP_STEP;
@@ -519,10 +523,10 @@ static int cppc_get_cpu_power(struct device *cpu_dev,
 	cpu_data = policy->driver_data;
 	perf_caps = &cpu_data->perf_caps;
 	max_cap = arch_scale_cpu_capacity(cpu_dev->id);
-	min_cap = div_u64(max_cap * perf_caps->lowest_perf,
-			perf_caps->highest_perf);
-
-	perf_step = CPPC_EM_CAP_STEP * perf_caps->highest_perf / max_cap;
+	min_cap = div_u64((u64)max_cap * perf_caps->lowest_perf,
+			  perf_caps->highest_perf);
+	perf_step = div_u64((u64)CPPC_EM_CAP_STEP * perf_caps->highest_perf,
+			    max_cap);
 	min_step = min_cap / CPPC_EM_CAP_STEP;
 	max_step = max_cap / CPPC_EM_CAP_STEP;
 
@@ -848,13 +852,13 @@ static unsigned int cppc_cpufreq_get_rate(unsigned int cpu)
 
 	ret = cppc_get_perf_ctrs(cpu, &fb_ctrs_t0);
 	if (ret)
-		return ret;
+		return 0;
 
 	udelay(2); /* 2usec delay between sampling */
 
 	ret = cppc_get_perf_ctrs(cpu, &fb_ctrs_t1);
 	if (ret)
-		return ret;
+		return 0;
 
 	delivered_perf = cppc_perf_from_fbctrs(cpu_data, &fb_ctrs_t0,
 					       &fb_ctrs_t1);

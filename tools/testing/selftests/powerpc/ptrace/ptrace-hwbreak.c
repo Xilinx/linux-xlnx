@@ -23,6 +23,7 @@
 #include <sys/syscall.h>
 #include <linux/limits.h>
 #include "ptrace.h"
+#include "reg.h"
 
 #define SPRN_PVR	0x11F
 #define PVR_8xx		0x00500000
@@ -63,26 +64,26 @@ static bool dawr_present(struct ppc_debug_info *dbginfo)
 
 static void write_var(int len)
 {
-	__u8 *pcvar;
-	__u16 *psvar;
-	__u32 *pivar;
-	__u64 *plvar;
+	volatile __u8 *pcvar;
+	volatile __u16 *psvar;
+	volatile __u32 *pivar;
+	volatile __u64 *plvar;
 
 	switch (len) {
 	case 1:
-		pcvar = (__u8 *)&glvar;
+		pcvar = (volatile __u8 *)&glvar;
 		*pcvar = 0xff;
 		break;
 	case 2:
-		psvar = (__u16 *)&glvar;
+		psvar = (volatile __u16 *)&glvar;
 		*psvar = 0xffff;
 		break;
 	case 4:
-		pivar = (__u32 *)&glvar;
+		pivar = (volatile __u32 *)&glvar;
 		*pivar = 0xffffffff;
 		break;
 	case 8:
-		plvar = (__u64 *)&glvar;
+		plvar = (volatile __u64 *)&glvar;
 		*plvar = 0xffffffffffffffffLL;
 		break;
 	}
@@ -97,16 +98,16 @@ static void read_var(int len)
 
 	switch (len) {
 	case 1:
-		cvar = (__u8)glvar;
+		cvar = (volatile __u8)glvar;
 		break;
 	case 2:
-		svar = (__u16)glvar;
+		svar = (volatile __u16)glvar;
 		break;
 	case 4:
-		ivar = (__u32)glvar;
+		ivar = (volatile __u32)glvar;
 		break;
 	case 8:
-		lvar = (__u64)glvar;
+		lvar = (volatile __u64)glvar;
 		break;
 	}
 }
@@ -602,7 +603,7 @@ static int ptrace_hwbreak(void)
 	wait(NULL);
 
 	get_dbginfo(child_pid, &dbginfo);
-	SKIP_IF(dbginfo.num_data_bps == 0);
+	SKIP_IF_MSG(dbginfo.num_data_bps == 0, "No data breakpoints present");
 
 	dawr = dawr_present(&dbginfo);
 	run_tests(child_pid, &dbginfo, dawr);
@@ -620,10 +621,7 @@ static int ptrace_hwbreak(void)
 
 int main(int argc, char **argv, char **envp)
 {
-	int pvr = 0;
-	asm __volatile__ ("mfspr %0,%1" : "=r"(pvr) : "i"(SPRN_PVR));
-	if (pvr == PVR_8xx)
-		is_8xx = true;
+	is_8xx = mfspr(SPRN_PVR) == PVR_8xx;
 
 	return test_harness(ptrace_hwbreak, "ptrace-hwbreak");
 }

@@ -1202,9 +1202,10 @@ static enum drm_connector_status mtk_hdmi_detect(struct mtk_hdmi *hdmi)
 	return mtk_hdmi_update_plugged_status(hdmi);
 }
 
-static int mtk_hdmi_bridge_mode_valid(struct drm_bridge *bridge,
-				      const struct drm_display_info *info,
-				      const struct drm_display_mode *mode)
+static enum drm_mode_status
+mtk_hdmi_bridge_mode_valid(struct drm_bridge *bridge,
+			   const struct drm_display_info *info,
+			   const struct drm_display_mode *mode)
 {
 	struct mtk_hdmi *hdmi = hdmi_ctx_from_bridge(bridge);
 	struct drm_bridge *next_bridge;
@@ -1217,7 +1218,7 @@ static int mtk_hdmi_bridge_mode_valid(struct drm_bridge *bridge,
 	if (next_bridge) {
 		struct drm_display_mode adjusted_mode;
 
-		drm_mode_copy(&adjusted_mode, mode);
+		drm_mode_init(&adjusted_mode, mode);
 		if (!drm_bridge_chain_mode_fixup(next_bridge, mode,
 						 &adjusted_mode))
 			return MODE_BAD;
@@ -1745,13 +1746,12 @@ err_bridge_remove:
 	return ret;
 }
 
-static int mtk_drm_hdmi_remove(struct platform_device *pdev)
+static void mtk_drm_hdmi_remove(struct platform_device *pdev)
 {
 	struct mtk_hdmi *hdmi = platform_get_drvdata(pdev);
 
 	drm_bridge_remove(&hdmi->bridge);
 	mtk_hdmi_clk_disable_audio(hdmi);
-	return 0;
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -1805,7 +1805,7 @@ MODULE_DEVICE_TABLE(of, mtk_drm_hdmi_of_ids);
 
 static struct platform_driver mtk_hdmi_driver = {
 	.probe = mtk_drm_hdmi_probe,
-	.remove = mtk_drm_hdmi_remove,
+	.remove_new = mtk_drm_hdmi_remove,
 	.driver = {
 		.name = "mediatek-drm-hdmi",
 		.of_match_table = mtk_drm_hdmi_of_ids,

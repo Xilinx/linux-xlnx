@@ -421,7 +421,7 @@ static void __init hpet_legacy_clockevent_register(struct hpet_channel *hc)
 	 * the IO_APIC has been initialized.
 	 */
 	hc->cpu = boot_cpu_data.cpu_index;
-	strncpy(hc->name, "hpet", sizeof(hc->name));
+	strscpy(hc->name, "hpet", sizeof(hc->name));
 	hpet_init_clockevent(hc, 50);
 
 	hc->evt.tick_resume	= hpet_clkevt_legacy_resume;
@@ -1091,6 +1091,8 @@ int __init hpet_enable(void)
 	if (!hpet_counting())
 		goto out_nohpet;
 
+	if (tsc_clocksource_watchdog_disabled())
+		clocksource_hpet.flags |= CLOCK_SOURCE_MUST_VERIFY;
 	clocksource_register_hz(&clocksource_hpet, (u32)hpet_freq);
 
 	if (id & HPET_ID_LEGSUP) {

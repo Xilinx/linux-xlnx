@@ -145,7 +145,6 @@
 		assigned-clock-rates = <294912000>,
 				       <270950400>,
 				       <393216000>;
-		status = "okay";
 
 		dai-link-0 {
 			sound-dai = <&frddr_a>;
@@ -401,5 +400,4 @@
 
 &usb {
 	status = "okay";
-	dr_mode = "host";
 };

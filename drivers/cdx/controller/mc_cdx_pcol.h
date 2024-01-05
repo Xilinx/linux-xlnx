@@ -200,7 +200,7 @@
 #define MC_CMD_ERR_CLIENT_NOT_FN	0x100c
 /*
  * The requested operation might require the command to be passed between
- * MCs, and thetransport doesn't support that. Should only ever been seen over
+ * MCs, and the transport doesn't support that. Should only ever been seen over
  * the UART.
  */
 #define MC_CMD_ERR_NO_PRIVILEGE		0x1013
@@ -455,6 +455,12 @@
 #define MC_CMD_CDX_BUS_GET_DEVICE_CONFIG_OUT_REQUESTER_ID_OFST			84
 #define MC_CMD_CDX_BUS_GET_DEVICE_CONFIG_OUT_REQUESTER_ID_LEN			4
 
+/* MC_CMD_CDX_BUS_GET_DEVICE_CONFIG_OUT_V2 msgresponse */
+#define MC_CMD_CDX_BUS_GET_DEVICE_CONFIG_OUT_V2_LEN				92
+/* Requester ID used by device for GIC ITS DeviceID */
+#define MC_CMD_CDX_BUS_GET_DEVICE_CONFIG_OUT_V2_REQUESTER_DEVICE_ID_OFST	88
+#define MC_CMD_CDX_BUS_GET_DEVICE_CONFIG_OUT_V2_REQUESTER_DEVICE_ID_LEN		4
+
 /***********************************/
 /*
  * MC_CMD_CDX_BUS_DOWN
@@ -469,17 +475,14 @@
  * not enforce this restriction and it is up to the caller to make sure this
  * requirement is satisfied.
  */
-#define MC_CMD_CDX_BUS_DOWN				0x4
+#define MC_CMD_CDX_BUS_DOWN					0x4
 #define MC_CMD_CDX_BUS_DOWN_MSGSET			0x4
-#undef MC_CMD_0x4_PRIVILEGE_CTG
-
-#define MC_CMD_0x4_PRIVILEGE_CTG SRIOV_CTG_ADMIN
 
 /* MC_CMD_CDX_BUS_DOWN_IN msgrequest */
 #define MC_CMD_CDX_BUS_DOWN_IN_LEN			4
 /* Bus number to put in reset, in range 0 to BUS_COUNT-1 */
-#define MC_CMD_CDX_BUS_DOWN_IN_BUS_OFST			0
-#define MC_CMD_CDX_BUS_DOWN_IN_BUS_LEN			4
+#define MC_CMD_CDX_BUS_DOWN_IN_BUS_OFST		0
+#define MC_CMD_CDX_BUS_DOWN_IN_BUS_LEN		4
 
 /*
  * MC_CMD_CDX_BUS_DOWN_OUT msgresponse: The bus is quiesced, no further
@@ -500,17 +503,14 @@
  * is expected to re-enumerate the bus. Returns EALREADY if the bus was already
  * up before the call.
  */
-#define MC_CMD_CDX_BUS_UP				0x5
+#define MC_CMD_CDX_BUS_UP					0x5
 #define MC_CMD_CDX_BUS_UP_MSGSET			0x5
-#undef MC_CMD_0x5_PRIVILEGE_CTG
-
-#define MC_CMD_0x5_PRIVILEGE_CTG SRIOV_CTG_ADMIN
 
 /* MC_CMD_CDX_BUS_UP_IN msgrequest */
 #define MC_CMD_CDX_BUS_UP_IN_LEN			4
 /* Bus number to take out of reset, in range 0 to BUS_COUNT-1 */
-#define MC_CMD_CDX_BUS_UP_IN_BUS_OFST			0
-#define MC_CMD_CDX_BUS_UP_IN_BUS_LEN			4
+#define MC_CMD_CDX_BUS_UP_IN_BUS_OFST		0
+#define MC_CMD_CDX_BUS_UP_IN_BUS_LEN		4
 
 /* MC_CMD_CDX_BUS_UP_OUT msgresponse: The bus can now be enumerated. */
 #define MC_CMD_CDX_BUS_UP_OUT_LEN			0

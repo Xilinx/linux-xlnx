@@ -18,11 +18,9 @@
 #else
 #include <linux/module.h>
 #include <linux/gfp.h>
-#if !RAID6_USE_EMPTY_ZERO_PAGE
 /* In .bss so it's zeroed */
 const char raid6_empty_zero_page[PAGE_SIZE] __attribute__((aligned(256)));
 EXPORT_SYMBOL(raid6_empty_zero_page);
-#endif
 #endif
 
 struct raid6_calls raid6_call;
@@ -75,6 +73,14 @@ const struct raid6_calls * const raid6_algos[] = {
 	&raid6_neonx2,
 	&raid6_neonx1,
 #endif
+#ifdef CONFIG_LOONGARCH
+#ifdef CONFIG_CPU_HAS_LASX
+	&raid6_lasx,
+#endif
+#ifdef CONFIG_CPU_HAS_LSX
+	&raid6_lsx,
+#endif
+#endif
 #if defined(__ia64__)
 	&raid6_intx32,
 	&raid6_intx16,
@@ -105,6 +111,14 @@ const struct raid6_recov_calls *const raid6_recov_algos[] = {
 #endif
 #if defined(CONFIG_KERNEL_MODE_NEON)
 	&raid6_recov_neon,
+#endif
+#ifdef CONFIG_LOONGARCH
+#ifdef CONFIG_CPU_HAS_LASX
+	&raid6_recov_lasx,
+#endif
+#ifdef CONFIG_CPU_HAS_LSX
+	&raid6_recov_lsx,
+#endif
 #endif
 	&raid6_recov_intx1,
 	NULL

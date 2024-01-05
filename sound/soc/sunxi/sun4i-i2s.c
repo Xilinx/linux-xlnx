@@ -1081,14 +1081,6 @@ static int sun4i_i2s_set_tdm_slot(struct snd_soc_dai *dai,
 	return 0;
 }
 
-static const struct snd_soc_dai_ops sun4i_i2s_dai_ops = {
-	.hw_params	= sun4i_i2s_hw_params,
-	.set_fmt	= sun4i_i2s_set_fmt,
-	.set_sysclk	= sun4i_i2s_set_sysclk,
-	.set_tdm_slot	= sun4i_i2s_set_tdm_slot,
-	.trigger	= sun4i_i2s_trigger,
-};
-
 static int sun4i_i2s_dai_probe(struct snd_soc_dai *dai)
 {
 	struct sun4i_i2s *i2s = snd_soc_dai_get_drvdata(dai);
@@ -1100,12 +1092,20 @@ static int sun4i_i2s_dai_probe(struct snd_soc_dai *dai)
 	return 0;
 }
 
+static const struct snd_soc_dai_ops sun4i_i2s_dai_ops = {
+	.probe		= sun4i_i2s_dai_probe,
+	.hw_params	= sun4i_i2s_hw_params,
+	.set_fmt	= sun4i_i2s_set_fmt,
+	.set_sysclk	= sun4i_i2s_set_sysclk,
+	.set_tdm_slot	= sun4i_i2s_set_tdm_slot,
+	.trigger	= sun4i_i2s_trigger,
+};
+
 #define SUN4I_FORMATS	(SNDRV_PCM_FMTBIT_S16_LE | \
 			 SNDRV_PCM_FMTBIT_S20_LE | \
 			 SNDRV_PCM_FMTBIT_S24_LE)
 
 static struct snd_soc_dai_driver sun4i_i2s_dai = {
-	.probe = sun4i_i2s_dai_probe,
 	.capture = {
 		.stream_name = "Capture",
 		.channels_min = 1,
@@ -1606,7 +1606,7 @@ err_pm_disable:
 	return ret;
 }
 
-static int sun4i_i2s_remove(struct platform_device *pdev)
+static void sun4i_i2s_remove(struct platform_device *pdev)
 {
 	struct sun4i_i2s *i2s = dev_get_drvdata(&pdev->dev);
 
@@ -1616,8 +1616,6 @@ static int sun4i_i2s_remove(struct platform_device *pdev)
 
 	if (!IS_ERR(i2s->rst))
 		reset_control_assert(i2s->rst);
-
-	return 0;
 }
 
 static const struct of_device_id sun4i_i2s_match[] = {
@@ -1660,7 +1658,7 @@ static const struct dev_pm_ops sun4i_i2s_pm_ops = {
 
 static struct platform_driver sun4i_i2s_driver = {
 	.probe	= sun4i_i2s_probe,
-	.remove	= sun4i_i2s_remove,
+	.remove_new = sun4i_i2s_remove,
 	.driver	= {
 		.name		= "sun4i-i2s",
 		.of_match_table	= sun4i_i2s_match,

@@ -352,6 +352,24 @@ static ssize_t ceph_vxattrcb_auth_mds(struct ceph_inode_info *ci,
 	return ret;
 }
 
+#if IS_ENABLED(CONFIG_FS_ENCRYPTION)
+static bool ceph_vxattrcb_fscrypt_auth_exists(struct ceph_inode_info *ci)
+{
+	return ci->fscrypt_auth_len;
+}
+
+static ssize_t ceph_vxattrcb_fscrypt_auth(struct ceph_inode_info *ci,
+					  char *val, size_t size)
+{
+	if (size) {
+		if (size < ci->fscrypt_auth_len)
+			return -ERANGE;
+		memcpy(val, ci->fscrypt_auth, ci->fscrypt_auth_len);
+	}
+	return ci->fscrypt_auth_len;
+}
+#endif /* CONFIG_FS_ENCRYPTION */
+
 #define CEPH_XATTR_NAME(_type, _name)	XATTR_CEPH_PREFIX #_type "." #_name
 #define CEPH_XATTR_NAME2(_type, _name, _name2)	\
 	XATTR_CEPH_PREFIX #_type "." #_name "." #_name2
@@ -500,6 +518,15 @@ static struct ceph_vxattr ceph_common_vxattrs[] = {
 		.exists_cb = NULL,
 		.flags = VXATTR_FLAG_READONLY,
 	},
+#if IS_ENABLED(CONFIG_FS_ENCRYPTION)
+	{
+		.name = "ceph.fscrypt.auth",
+		.name_size = sizeof("ceph.fscrypt.auth"),
+		.getxattr_cb = ceph_vxattrcb_fscrypt_auth,
+		.exists_cb = ceph_vxattrcb_fscrypt_auth_exists,
+		.flags = VXATTR_FLAG_READONLY,
+	},
+#endif /* CONFIG_FS_ENCRYPTION */
 	{ .name = NULL, 0 }	/* Required table terminator */
 };
 
@@ -534,6 +561,8 @@ static struct ceph_vxattr *ceph_match_vxattr(struct inode *inode,
 
 	return NULL;
 }
+
+#define MAX_XATTR_VAL_PRINT_LEN 256
 
 static int __set_xattr(struct ceph_inode_info *ci,
 			   const char *name, int name_len,
@@ -597,7 +626,7 @@ static int __set_xattr(struct ceph_inode_info *ci,
 		xattr->should_free_name = update_xattr;
 
 		ci->i_xattrs.count++;
-		dout("__set_xattr count=%d\n", ci->i_xattrs.count);
+		dout("%s count=%d\n", __func__, ci->i_xattrs.count);
 	} else {
 		kfree(*newxattr);
 		*newxattr = NULL;
@@ -625,11 +654,13 @@ static int __set_xattr(struct ceph_inode_info *ci,
 	if (new) {
 		rb_link_node(&xattr->node, parent, p);
 		rb_insert_color(&xattr->node, &ci->i_xattrs.index);
-		dout("__set_xattr_val p=%p\n", p);
+		dout("%s p=%p\n", __func__, p);
 	}
 
-	dout("__set_xattr_val added %llx.%llx xattr %p %.*s=%.*s\n",
-	     ceph_vinop(&ci->netfs.inode), xattr, name_len, name, val_len, val);
+	dout("%s added %llx.%llx xattr %p %.*s=%.*s%s\n", __func__,
+	     ceph_vinop(&ci->netfs.inode), xattr, name_len, name,
+	     min(val_len, MAX_XATTR_VAL_PRINT_LEN), val,
+	     val_len > MAX_XATTR_VAL_PRINT_LEN ? "..." : "");
 
 	return 0;
 }
@@ -655,13 +686,15 @@ static struct ceph_inode_xattr *__get_xattr(struct ceph_inode_info *ci,
 		else if (c > 0)
 			p = &(*p)->rb_right;
 		else {
-			dout("__get_xattr %s: found %.*s\n", name,
-			     xattr->val_len, xattr->val);
+			int len = min(xattr->val_len, MAX_XATTR_VAL_PRINT_LEN);
+
+			dout("%s %s: found %.*s%s\n", __func__, name, len,
+			     xattr->val, xattr->val_len > len ? "..." : "");
 			return xattr;
 		}
 	}
 
-	dout("__get_xattr %s: not found\n", name);
+	dout("%s %s: not found\n", __func__, name);
 
 	return NULL;
 }
@@ -1232,7 +1265,7 @@ retry:
 		dirty = __ceph_mark_dirty_caps(ci, CEPH_CAP_XATTR_EXCL,
 					       &prealloc_cf);
 		ci->i_xattrs.dirty = true;
-		inode->i_ctime = current_time(inode);
+		inode_set_ctime_current(inode);
 	}
 
 	spin_unlock(&ci->i_ceph_lock);
@@ -1285,7 +1318,7 @@ static int ceph_get_xattr_handler(const struct xattr_handler *handler,
 }
 
 static int ceph_set_xattr_handler(const struct xattr_handler *handler,
-				  struct user_namespace *mnt_userns,
+				  struct mnt_idmap *idmap,
 				  struct dentry *unused, struct inode *inode,
 				  const char *name, const void *value,
 				  size_t size, int flags)
@@ -1402,6 +1435,9 @@ void ceph_release_acl_sec_ctx(struct ceph_acl_sec_ctx *as_ctx)
 #ifdef CONFIG_CEPH_FS_SECURITY_LABEL
 	security_release_secctx(as_ctx->sec_ctx, as_ctx->sec_ctxlen);
 #endif
+#ifdef CONFIG_FS_ENCRYPTION
+	kfree(as_ctx->fscrypt_auth);
+#endif
 	if (as_ctx->pagelist)
 		ceph_pagelist_release(as_ctx->pagelist);
 }
@@ -1411,10 +1447,6 @@ void ceph_release_acl_sec_ctx(struct ceph_acl_sec_ctx *as_ctx)
  * attributes are handled directly.
  */
 const struct xattr_handler *ceph_xattr_handlers[] = {
-#ifdef CONFIG_CEPH_FS_POSIX_ACL
-	&posix_acl_access_xattr_handler,
-	&posix_acl_default_xattr_handler,
-#endif
 	&ceph_other_xattr_handler,
 	NULL,
 };

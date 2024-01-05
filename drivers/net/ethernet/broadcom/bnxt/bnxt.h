@@ -24,6 +24,7 @@
 #include <linux/interrupt.h>
 #include <linux/rhashtable.h>
 #include <linux/crash_dump.h>
+#include <linux/auxiliary_bus.h>
 #include <net/devlink.h>
 #include <net/dst_metadata.h>
 #include <net/xdp.h>
@@ -591,12 +592,20 @@ struct nqe_cn {
 #define BNXT_RX_PAGE_SIZE (1 << BNXT_RX_PAGE_SHIFT)
 
 #define BNXT_MAX_MTU		9500
-#define BNXT_PAGE_MODE_BUF_SIZE \
+
+/* First RX buffer page in XDP multi-buf mode
+ *
+ * +-------------------------------------------------------------------------+
+ * | XDP_PACKET_HEADROOM | bp->rx_buf_use_size              | skb_shared_info|
+ * | (bp->rx_dma_offset) |                                  |                |
+ * +-------------------------------------------------------------------------+
+ */
+#define BNXT_MAX_PAGE_MODE_MTU_SBUF \
 	((unsigned int)PAGE_SIZE - VLAN_ETH_HLEN - NET_IP_ALIGN -	\
 	 XDP_PACKET_HEADROOM)
 #define BNXT_MAX_PAGE_MODE_MTU	\
-	BNXT_PAGE_MODE_BUF_SIZE - \
-	SKB_DATA_ALIGN((unsigned int)sizeof(struct skb_shared_info))
+	(BNXT_MAX_PAGE_MODE_MTU_SBUF - \
+	 SKB_DATA_ALIGN((unsigned int)sizeof(struct skb_shared_info)))
 
 #define BNXT_MIN_PKT_SIZE	52
 
@@ -910,9 +919,6 @@ struct bnxt_rx_ring_info {
 	unsigned long		*rx_agg_bmap;
 	u16			rx_agg_bmap_size;
 
-	struct page		*rx_page;
-	unsigned int		rx_page_offset;
-
 	dma_addr_t		rx_desc_mapping[MAX_RX_PAGES];
 	dma_addr_t		rx_agg_desc_mapping[MAX_RX_AGG_PAGES];
 
@@ -933,13 +939,30 @@ struct bnxt_rx_sw_stats {
 	u64			rx_netpoll_discards;
 };
 
+struct bnxt_tx_sw_stats {
+	u64			tx_resets;
+};
+
 struct bnxt_cmn_sw_stats {
 	u64			missed_irqs;
 };
 
 struct bnxt_sw_stats {
 	struct bnxt_rx_sw_stats rx;
+	struct bnxt_tx_sw_stats tx;
 	struct bnxt_cmn_sw_stats cmn;
+};
+
+struct bnxt_total_ring_err_stats {
+	u64			rx_total_l4_csum_errors;
+	u64			rx_total_resets;
+	u64			rx_total_buf_errors;
+	u64			rx_total_oom_discards;
+	u64			rx_total_netpoll_discards;
+	u64			rx_total_ring_discards;
+	u64			tx_total_resets;
+	u64			tx_total_ring_discards;
+	u64			total_missed_irqs;
 };
 
 struct bnxt_stats_mem {
@@ -996,9 +1019,10 @@ struct bnxt_napi {
 	struct bnxt_tx_ring_info	*tx_ring;
 
 	void			(*tx_int)(struct bnxt *, struct bnxt_napi *,
-					  int);
+					  int budget);
 	int			tx_pkts;
 	u8			events;
+	u8			tx_fault:1;
 
 	u32			flags;
 #define BNXT_NAPI_FLAG_XDP	0x1
@@ -1217,6 +1241,7 @@ struct bnxt_link_info {
 #define BNXT_LINK_SPEED_40GB	PORT_PHY_QCFG_RESP_LINK_SPEED_40GB
 #define BNXT_LINK_SPEED_50GB	PORT_PHY_QCFG_RESP_LINK_SPEED_50GB
 #define BNXT_LINK_SPEED_100GB	PORT_PHY_QCFG_RESP_LINK_SPEED_100GB
+#define BNXT_LINK_SPEED_200GB	PORT_PHY_QCFG_RESP_LINK_SPEED_200GB
 	u16			support_speeds;
 	u16			support_pam4_speeds;
 	u16			auto_link_speeds;	/* fw adv setting */
@@ -1623,6 +1648,12 @@ struct bnxt_fw_health {
 #define BNXT_FW_IF_RETRY		10
 #define BNXT_FW_SLOT_RESET_RETRY	4
 
+struct bnxt_aux_priv {
+	struct auxiliary_device aux_dev;
+	struct bnxt_en_dev *edev;
+	int id;
+};
+
 enum board_idx {
 	BCM57301,
 	BCM57302,
@@ -1844,6 +1875,7 @@ struct bnxt {
 #define BNXT_CHIP_P4_PLUS(bp)			\
 	(BNXT_CHIP_P4(bp) || BNXT_CHIP_P5(bp))
 
+	struct bnxt_aux_priv	*aux_priv;
 	struct bnxt_en_dev	*edev;
 
 	struct bnxt_napi	**bnapi;
@@ -1901,6 +1933,7 @@ struct bnxt {
 	u16			*rss_indir_tbl;
 	u16			rss_indir_tbl_entries;
 	u32			rss_hash_cfg;
+	u32			rss_hash_delta;
 
 	u16			max_mtu;
 	u8			max_tc;
@@ -1951,37 +1984,41 @@ struct bnxt {
 
 	u32			msg_enable;
 
-	u32			fw_cap;
-	#define BNXT_FW_CAP_SHORT_CMD			0x00000001
-	#define BNXT_FW_CAP_LLDP_AGENT			0x00000002
-	#define BNXT_FW_CAP_DCBX_AGENT			0x00000004
-	#define BNXT_FW_CAP_NEW_RM			0x00000008
-	#define BNXT_FW_CAP_IF_CHANGE			0x00000010
-	#define BNXT_FW_CAP_KONG_MB_CHNL		0x00000080
-	#define BNXT_FW_CAP_OVS_64BIT_HANDLE		0x00000400
-	#define BNXT_FW_CAP_TRUSTED_VF			0x00000800
-	#define BNXT_FW_CAP_ERROR_RECOVERY		0x00002000
-	#define BNXT_FW_CAP_PKG_VER			0x00004000
-	#define BNXT_FW_CAP_CFA_ADV_FLOW		0x00008000
-	#define BNXT_FW_CAP_CFA_RFS_RING_TBL_IDX_V2	0x00010000
-	#define BNXT_FW_CAP_PCIE_STATS_SUPPORTED	0x00020000
-	#define BNXT_FW_CAP_EXT_STATS_SUPPORTED		0x00040000
-	#define BNXT_FW_CAP_ERR_RECOVER_RELOAD		0x00100000
-	#define BNXT_FW_CAP_HOT_RESET			0x00200000
-	#define BNXT_FW_CAP_PTP_RTC			0x00400000
-	#define BNXT_FW_CAP_RX_ALL_PKT_TS		0x00800000
-	#define BNXT_FW_CAP_VLAN_RX_STRIP		0x01000000
-	#define BNXT_FW_CAP_VLAN_TX_INSERT		0x02000000
-	#define BNXT_FW_CAP_EXT_HW_STATS_SUPPORTED	0x04000000
-	#define BNXT_FW_CAP_LIVEPATCH			0x08000000
-	#define BNXT_FW_CAP_PTP_PPS			0x10000000
-	#define BNXT_FW_CAP_HOT_RESET_IF		0x20000000
-	#define BNXT_FW_CAP_RING_MONITOR		0x40000000
-	#define BNXT_FW_CAP_DBG_QCAPS			0x80000000
+	u64			fw_cap;
+	#define BNXT_FW_CAP_SHORT_CMD			BIT_ULL(0)
+	#define BNXT_FW_CAP_LLDP_AGENT			BIT_ULL(1)
+	#define BNXT_FW_CAP_DCBX_AGENT			BIT_ULL(2)
+	#define BNXT_FW_CAP_NEW_RM			BIT_ULL(3)
+	#define BNXT_FW_CAP_IF_CHANGE			BIT_ULL(4)
+	#define BNXT_FW_CAP_KONG_MB_CHNL		BIT_ULL(7)
+	#define BNXT_FW_CAP_OVS_64BIT_HANDLE		BIT_ULL(10)
+	#define BNXT_FW_CAP_TRUSTED_VF			BIT_ULL(11)
+	#define BNXT_FW_CAP_ERROR_RECOVERY		BIT_ULL(13)
+	#define BNXT_FW_CAP_PKG_VER			BIT_ULL(14)
+	#define BNXT_FW_CAP_CFA_ADV_FLOW		BIT_ULL(15)
+	#define BNXT_FW_CAP_CFA_RFS_RING_TBL_IDX_V2	BIT_ULL(16)
+	#define BNXT_FW_CAP_PCIE_STATS_SUPPORTED	BIT_ULL(17)
+	#define BNXT_FW_CAP_EXT_STATS_SUPPORTED		BIT_ULL(18)
+	#define BNXT_FW_CAP_RSS_HASH_TYPE_DELTA		BIT_ULL(19)
+	#define BNXT_FW_CAP_ERR_RECOVER_RELOAD		BIT_ULL(20)
+	#define BNXT_FW_CAP_HOT_RESET			BIT_ULL(21)
+	#define BNXT_FW_CAP_PTP_RTC			BIT_ULL(22)
+	#define BNXT_FW_CAP_RX_ALL_PKT_TS		BIT_ULL(23)
+	#define BNXT_FW_CAP_VLAN_RX_STRIP		BIT_ULL(24)
+	#define BNXT_FW_CAP_VLAN_TX_INSERT		BIT_ULL(25)
+	#define BNXT_FW_CAP_EXT_HW_STATS_SUPPORTED	BIT_ULL(26)
+	#define BNXT_FW_CAP_LIVEPATCH			BIT_ULL(27)
+	#define BNXT_FW_CAP_PTP_PPS			BIT_ULL(28)
+	#define BNXT_FW_CAP_HOT_RESET_IF		BIT_ULL(29)
+	#define BNXT_FW_CAP_RING_MONITOR		BIT_ULL(30)
+	#define BNXT_FW_CAP_DBG_QCAPS			BIT_ULL(31)
+	#define BNXT_FW_CAP_PTP				BIT_ULL(32)
 
 	u32			fw_dbg_cap;
 
 #define BNXT_NEW_RM(bp)		((bp)->fw_cap & BNXT_FW_CAP_NEW_RM)
+#define BNXT_PTP_USE_RTC(bp)	(!BNXT_MH(bp) && \
+				 ((bp)->fw_cap & BNXT_FW_CAP_PTP_RTC))
 	u32			hwrm_spec_code;
 	u16			hwrm_cmd_seq;
 	u16                     hwrm_cmd_kong_seq;
@@ -1997,6 +2034,8 @@ struct bnxt {
 	u16			hw_ring_stats_size;
 	u8			pri2cos_idx[8];
 	u8			pri2cos_valid;
+
+	struct bnxt_total_ring_err_stats ring_err_stats_prev;
 
 	u16			hwrm_max_req_len;
 	u16			hwrm_max_ext_req_len;
@@ -2117,6 +2156,7 @@ struct bnxt {
 #define BNXT_PHY_FL_NO_FCS		PORT_PHY_QCAPS_RESP_FLAGS_NO_FCS
 #define BNXT_PHY_FL_NO_PAUSE		(PORT_PHY_QCAPS_RESP_FLAGS2_PAUSE_UNSUPPORTED << 8)
 #define BNXT_PHY_FL_NO_PFC		(PORT_PHY_QCAPS_RESP_FLAGS2_PFC_UNSUPPORTED << 8)
+#define BNXT_PHY_FL_BANK_SEL		(PORT_PHY_QCAPS_RESP_FLAGS2_BANK_ADDR_SUPPORTED << 8)
 
 	u8			num_tests;
 	struct bnxt_test_info	*test_info;
@@ -2131,7 +2171,6 @@ struct bnxt {
 #define BNXT_DUMP_CRASH		1
 
 	struct bpf_prog		*xdp_prog;
-	u8			xdp_has_frags;
 
 	struct bnxt_ptp_cfg	*ptp_cfg;
 	u8			ptp_all_rx_tstamp;
@@ -2209,13 +2248,12 @@ struct bnxt {
 #define SFF_MODULE_ID_QSFP28			0x11
 #define BNXT_MAX_PHY_I2C_RESP_SIZE		64
 
-static inline u32 bnxt_tx_avail(struct bnxt *bp, struct bnxt_tx_ring_info *txr)
+static inline u32 bnxt_tx_avail(struct bnxt *bp,
+				const struct bnxt_tx_ring_info *txr)
 {
-	/* Tell compiler to fetch tx indices from memory. */
-	barrier();
+	u32 used = READ_ONCE(txr->tx_prod) - READ_ONCE(txr->tx_cons);
 
-	return bp->tx_ring_size -
-		((txr->tx_prod - txr->tx_cons) & bp->tx_ring_mask);
+	return bp->tx_ring_size - (used & bp->tx_ring_mask);
 }
 
 static inline void bnxt_writeq(struct bnxt *bp, u64 val,
@@ -2308,6 +2346,8 @@ int bnxt_get_avail_msix(struct bnxt *bp, int num);
 int bnxt_reserve_rings(struct bnxt *bp, bool irq_re_init);
 void bnxt_tx_disable(struct bnxt *bp);
 void bnxt_tx_enable(struct bnxt *bp);
+void bnxt_sched_reset_txr(struct bnxt *bp, struct bnxt_tx_ring_info *txr,
+			  int idx);
 void bnxt_report_link(struct bnxt *bp);
 int bnxt_update_link(struct bnxt *bp, bool chng_link_state);
 int bnxt_hwrm_set_pause(struct bnxt *);
@@ -2323,6 +2363,8 @@ int bnxt_half_open_nic(struct bnxt *bp);
 void bnxt_half_close_nic(struct bnxt *bp);
 void bnxt_reenable_sriov(struct bnxt *bp);
 int bnxt_close_nic(struct bnxt *, bool, bool);
+void bnxt_get_ring_err_stats(struct bnxt *bp,
+			     struct bnxt_total_ring_err_stats *stats);
 int bnxt_dbg_hwrm_rd_reg(struct bnxt *bp, u32 reg_off, u16 num_words,
 			 u32 *reg_buf);
 void bnxt_fw_exception(struct bnxt *bp);

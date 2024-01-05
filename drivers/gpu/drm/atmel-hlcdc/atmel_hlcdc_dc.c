@@ -19,7 +19,7 @@
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_drv.h>
-#include <drm/drm_fb_helper.h>
+#include <drm/drm_fbdev_dma.h>
 #include <drm/drm_gem_dma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_module.h>
@@ -760,7 +760,7 @@ static int atmel_hlcdc_dc_drm_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_unload;
 
-	drm_fbdev_generic_setup(ddev, 24);
+	drm_fbdev_dma_setup(ddev, 24);
 
 	return 0;
 
@@ -773,18 +773,15 @@ err_put:
 	return ret;
 }
 
-static int atmel_hlcdc_dc_drm_remove(struct platform_device *pdev)
+static void atmel_hlcdc_dc_drm_remove(struct platform_device *pdev)
 {
 	struct drm_device *ddev = platform_get_drvdata(pdev);
 
 	drm_dev_unregister(ddev);
 	atmel_hlcdc_dc_unload(ddev);
 	drm_dev_put(ddev);
-
-	return 0;
 }
 
-#ifdef CONFIG_PM_SLEEP
 static int atmel_hlcdc_dc_drm_suspend(struct device *dev)
 {
 	struct drm_device *drm_dev = dev_get_drvdata(dev);
@@ -815,10 +812,10 @@ static int atmel_hlcdc_dc_drm_resume(struct device *dev)
 
 	return drm_atomic_helper_resume(drm_dev, dc->suspend.state);
 }
-#endif
 
-static SIMPLE_DEV_PM_OPS(atmel_hlcdc_dc_drm_pm_ops,
-		atmel_hlcdc_dc_drm_suspend, atmel_hlcdc_dc_drm_resume);
+static DEFINE_SIMPLE_DEV_PM_OPS(atmel_hlcdc_dc_drm_pm_ops,
+				atmel_hlcdc_dc_drm_suspend,
+				atmel_hlcdc_dc_drm_resume);
 
 static const struct of_device_id atmel_hlcdc_dc_of_match[] = {
 	{ .compatible = "atmel,hlcdc-display-controller" },
@@ -827,10 +824,10 @@ static const struct of_device_id atmel_hlcdc_dc_of_match[] = {
 
 static struct platform_driver atmel_hlcdc_dc_platform_driver = {
 	.probe	= atmel_hlcdc_dc_drm_probe,
-	.remove	= atmel_hlcdc_dc_drm_remove,
+	.remove_new = atmel_hlcdc_dc_drm_remove,
 	.driver	= {
 		.name	= "atmel-hlcdc-display-controller",
-		.pm	= &atmel_hlcdc_dc_drm_pm_ops,
+		.pm	= pm_sleep_ptr(&atmel_hlcdc_dc_drm_pm_ops),
 		.of_match_table = atmel_hlcdc_dc_of_match,
 	},
 };

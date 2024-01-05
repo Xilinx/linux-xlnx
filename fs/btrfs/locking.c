@@ -12,6 +12,7 @@
 #include "ctree.h"
 #include "extent_io.h"
 #include "locking.h"
+#include "accessors.h"
 
 /*
  * Lockdep class keys for extent_buffer->lock's in this root.  For a given
@@ -56,8 +57,8 @@
 
 static struct btrfs_lockdep_keyset {
 	u64			id;		/* root objectid */
-	/* Longest entry: btrfs-free-space-00 */
-	char			names[BTRFS_MAX_LEVEL][20];
+	/* Longest entry: btrfs-block-group-00 */
+	char			names[BTRFS_MAX_LEVEL][24];
 	struct lock_class_key	keys[BTRFS_MAX_LEVEL];
 } btrfs_lockdep_keysets[] = {
 	{ .id = BTRFS_ROOT_TREE_OBJECTID,	DEFINE_NAME("root")	},
@@ -71,6 +72,7 @@ static struct btrfs_lockdep_keyset {
 	{ .id = BTRFS_DATA_RELOC_TREE_OBJECTID,	DEFINE_NAME("dreloc")	},
 	{ .id = BTRFS_UUID_TREE_OBJECTID,	DEFINE_NAME("uuid")	},
 	{ .id = BTRFS_FREE_SPACE_TREE_OBJECTID,	DEFINE_NAME("free-space") },
+	{ .id = BTRFS_BLOCK_GROUP_TREE_OBJECTID, DEFINE_NAME("block-group") },
 	{ .id = 0,				DEFINE_NAME("tree")	},
 };
 
@@ -324,24 +326,12 @@ struct extent_buffer *btrfs_try_read_lock_root_node(struct btrfs_root *root)
  * acquire the lock.
  */
 
-int btrfs_drew_lock_init(struct btrfs_drew_lock *lock)
+void btrfs_drew_lock_init(struct btrfs_drew_lock *lock)
 {
-	int ret;
-
-	ret = percpu_counter_init(&lock->writers, 0, GFP_KERNEL);
-	if (ret)
-		return ret;
-
 	atomic_set(&lock->readers, 0);
+	atomic_set(&lock->writers, 0);
 	init_waitqueue_head(&lock->pending_readers);
 	init_waitqueue_head(&lock->pending_writers);
-
-	return 0;
-}
-
-void btrfs_drew_lock_destroy(struct btrfs_drew_lock *lock)
-{
-	percpu_counter_destroy(&lock->writers);
 }
 
 /* Return true if acquisition is successful, false otherwise */
@@ -350,10 +340,10 @@ bool btrfs_drew_try_write_lock(struct btrfs_drew_lock *lock)
 	if (atomic_read(&lock->readers))
 		return false;
 
-	percpu_counter_inc(&lock->writers);
+	atomic_inc(&lock->writers);
 
 	/* Ensure writers count is updated before we check for pending readers */
-	smp_mb();
+	smp_mb__after_atomic();
 	if (atomic_read(&lock->readers)) {
 		btrfs_drew_write_unlock(lock);
 		return false;
@@ -373,7 +363,7 @@ void btrfs_drew_write_lock(struct btrfs_drew_lock *lock)
 
 void btrfs_drew_write_unlock(struct btrfs_drew_lock *lock)
 {
-	percpu_counter_dec(&lock->writers);
+	atomic_dec(&lock->writers);
 	cond_wake_up(&lock->pending_readers);
 }
 
@@ -389,8 +379,7 @@ void btrfs_drew_read_lock(struct btrfs_drew_lock *lock)
 	 */
 	smp_mb__after_atomic();
 
-	wait_event(lock->pending_readers,
-		   percpu_counter_sum(&lock->writers) == 0);
+	wait_event(lock->pending_readers, atomic_read(&lock->writers) == 0);
 }
 
 void btrfs_drew_read_unlock(struct btrfs_drew_lock *lock)

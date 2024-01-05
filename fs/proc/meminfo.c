@@ -6,6 +6,7 @@
 #include <linux/hugetlb.h>
 #include <linux/mman.h>
 #include <linux/mmzone.h>
+#include <linux/memblock.h>
 #include <linux/proc_fs.h>
 #include <linux/percpu.h>
 #include <linux/seq_file.h>
@@ -16,6 +17,7 @@
 #ifdef CONFIG_CMA
 #include <linux/cma.h>
 #endif
+#include <linux/zswap.h>
 #include <asm/page.h>
 #include "internal.h"
 
@@ -131,6 +133,8 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 	show_val_kb(m, "VmallocChunk:   ", 0ul);
 	show_val_kb(m, "Percpu:         ", pcpu_nr_pages());
 
+	memtest_report_meminfo(m);
+
 #ifdef CONFIG_MEMORY_FAILURE
 	seq_printf(m, "HardwareCorrupted: %5lu kB\n",
 		   atomic_long_read(&num_poisoned_pages) << (PAGE_SHIFT - 10));
@@ -153,6 +157,11 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 	show_val_kb(m, "CmaTotal:       ", totalcma_pages);
 	show_val_kb(m, "CmaFree:        ",
 		    global_zone_page_state(NR_FREE_CMA_PAGES));
+#endif
+
+#ifdef CONFIG_UNACCEPTED_MEMORY
+	show_val_kb(m, "Unaccepted:     ",
+		    global_zone_page_state(NR_UNACCEPTED));
 #endif
 
 	hugetlb_report_meminfo(m);

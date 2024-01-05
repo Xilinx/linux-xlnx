@@ -15,7 +15,8 @@ Hugetlbfs 预留
 概述
 ====
 
-:ref:`hugetlbpage` 中描述的巨页通常是预先分配给应用程序使用的。如果VMA指
+Documentation/admin-guide/mm/hugetlbpage.rst
+中描述的巨页通常是预先分配给应用程序使用的 。如果VMA指
 示要使用巨页，这些巨页会在缺页异常时被实例化到任务的地址空间。如果在缺页异常
 时没有巨页存在，任务就会被发送一个SIGBUS，并经常不高兴地死去。在加入巨页支
 持后不久，人们决定，在mmap()时检测巨页的短缺情况会更好。这个想法是，如果
@@ -142,14 +143,14 @@ HPAGE_RESV_OWNER标志被设置，以表明该VMA拥有预留。
 消耗预留/分配一个巨页
 ===========================
 
-当与预留相关的巨页在相应的映射中被分配和实例化时，预留就被消耗了。该分配是在函数alloc_huge_page()
+当与预留相关的巨页在相应的映射中被分配和实例化时，预留就被消耗了。该分配是在函数alloc_hugetlb_folio()
 中进行的::
 
-	struct page *alloc_huge_page(struct vm_area_struct *vma,
+	struct folio *alloc_hugetlb_folio(struct vm_area_struct *vma,
 				     unsigned long addr, int avoid_reserve)
 
-alloc_huge_page被传递给一个VMA指针和一个虚拟地址，因此它可以查阅预留映射以确定是否存在预留。
-此外，alloc_huge_page需要一个参数avoid_reserve，该参数表示即使看起来已经为指定的地址预留了
+alloc_hugetlb_folio被传递给一个VMA指针和一个虚拟地址，因此它可以查阅预留映射以确定是否存在预留。
+此外，alloc_hugetlb_folio需要一个参数avoid_reserve，该参数表示即使看起来已经为指定的地址预留了
 预留，也不应该使用预留。avoid_reserve参数最常被用于写时拷贝和页面迁移的情况下，即现有页面的额
 外拷贝被分配。
 
@@ -162,7 +163,7 @@ vma_needs_reservation()返回的值通常为0或1。如果该地址存在预留�
 确定预留是否存在并可用于分配后，调用dequeue_huge_page_vma()函数。这个函数需要两个与预留有关
 的参数：
 
-- avoid_reserve，这是传递给alloc_huge_page()的同一个值/参数。
+- avoid_reserve，这是传递给alloc_hugetlb_folio()的同一个值/参数。
 - chg，尽管这个参数的类型是long，但只有0或1的值被传递给dequeue_huge_page_vma。如果该值为0，
   则表明存在预留（关于可能的问题，请参见 “预留和内存策略” 一节）。如果值
   为1，则表示不存在预留，如果可能的话，必须从全局空闲池中取出该页。
@@ -179,7 +180,7 @@ free_huge_pages的值被递减。如果有一个与该页相关的预留，将�
 的剩余巨页和超额分配的问题。即使分配了一个多余的页面，也会进行与上面一样的基于预留的调整:
 SetPagePrivate(page) 和 resv_huge_pages--.
 
-在获得一个新的巨页后，(page)->private被设置为与该页面相关的子池的值，如果它存在的话。当页
+在获得一个新的巨页后，(folio)->_hugetlb_subpool被设置为与该页面相关的子池的值，如果它存在的话。当页
 面被释放时，这将被用于子池的计数。
 
 然后调用函数vma_commit_reservation()，根据预留的消耗情况调整预留映射。一般来说，这涉及
@@ -199,7 +200,7 @@ SetPagePrivate(page)和resv_huge_pages-。
 已经存在，所以不做任何改变。然而，如果共享映射中没有预留，或者这是一个私有映射，则必须创建
 一个新的条目。
 
-在alloc_huge_page()开始调用vma_needs_reservation()和页面分配后调用
+在alloc_hugetlb_folio()开始调用vma_needs_reservation()和页面分配后调用
 vma_commit_reservation()之间，预留映射有可能被改变。如果hugetlb_reserve_pages在共
 享映射中为同一页面被调用，这将是可能的。在这种情况下，预留计数和子池空闲页计数会有一个偏差。
 这种罕见的情况可以通过比较vma_needs_reservation和vma_commit_reservation的返回值来
@@ -218,7 +219,7 @@ vma_commit_reservation()之间，预留映射有可能被改变。如果hugetlb_
 释放巨页
 ========
 
-巨页释放是由函数free_huge_page()执行的。这个函数是hugetlbfs复合页的析构器。因此，它只传
+巨页释放是由函数free_huge_folio()执行的。这个函数是hugetlbfs复合页的析构器。因此，它只传
 递一个指向页面结构体的指针。当一个巨页被释放时，可能需要进行预留计算。如果该页与包含保
 留的子池相关联，或者该页在错误路径上被释放，必须恢复全局预留计数，就会出现这种情况。
 
@@ -295,7 +296,7 @@ COW和预留
    调用代码执行全局检查和分配，以确定是否有足够的巨页使操作成功。
 
 2)
-  a) 如果操作能够成功，regi_add()将被调用，以实际修改先前传递给regi_chg()的相同范围
+  a) 如果操作能够成功，region_add()将被调用，以实际修改先前传递给region_chg()的相同范围
      [f, t]的预留映射。
   b) 如果操作不能成功，region_abort被调用，在相同的范围[f, t]内中止操作。
 
@@ -306,7 +307,7 @@ COW和预留
 如上所述，region_chg()确定该范围内当前没有在映射中表示的页面的数量。region_add()返回添加
 到映射中的范围内的页数。在大多数情况下， region_add() 的返回值与 region_chg() 的返回值相
 同。然而，在共享映射的情况下，有可能在调用 region_chg() 和 region_add() 之间对预留映射进
-行更改。在这种情况下，regi_add()的返回值将与regi_chg()的返回值不符。在这种情况下，全局计数
+行更改。在这种情况下，region_add()的返回值将与region_chg()的返回值不符。在这种情况下，全局计数
 和子池计数很可能是不正确的，需要调整。检查这种情况并进行适当的调整是调用者的责任。
 
 函数region_del()被调用以从预留映射中移除区域。
@@ -386,7 +387,7 @@ region_count()在解除私有巨页映射时被调用。在私有映射中，预
 
 然而，有几种情况是，在一个巨页被分配后，但在它被实例化之前，就遇到了错误。在这种情况下，
 页面分配已经消耗了预留，并进行了适当的子池、预留映射和全局计数调整。如果页面在这个时候被释放
-（在实例化和清除PagePrivate之前），那么free_huge_page将增加全局预留计数。然而，预留映射
+（在实例化和清除PagePrivate之前），那么free_huge_folio将增加全局预留计数。然而，预留映射
 显示报留被消耗了。这种不一致的状态将导致预留的巨页的 “泄漏” 。全局预留计数将比它原本的要高，
 并阻止分配一个预先分配的页面。
 

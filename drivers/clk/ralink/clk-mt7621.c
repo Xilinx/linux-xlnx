@@ -121,7 +121,7 @@ static int mt7621_gate_is_enabled(struct clk_hw *hw)
 	if (regmap_read(sysc, SYSC_REG_CLKCFG1, &val))
 		return 0;
 
-	return val & BIT(clk_gate->bit_idx);
+	return val & clk_gate->bit_idx;
 }
 
 static const struct clk_ops mt7621_gate_ops = {
@@ -133,8 +133,14 @@ static const struct clk_ops mt7621_gate_ops = {
 static int mt7621_gate_ops_init(struct device *dev,
 				struct mt7621_gate *sclk)
 {
+	/*
+	 * There are drivers for this SoC that are older
+	 * than clock driver and are not prepared for the clock.
+	 * We don't want the kernel to disable anything so we
+	 * add CLK_IS_CRITICAL flag here.
+	 */
 	struct clk_init_data init = {
-		.flags = CLK_SET_RATE_PARENT,
+		.flags = CLK_SET_RATE_PARENT | CLK_IS_CRITICAL,
 		.num_parents = 1,
 		.parent_names = &sclk->parent_name,
 		.ops = &mt7621_gate_ops,
@@ -515,6 +521,7 @@ static int mt7621_clk_probe(struct platform_device *pdev)
 				GFP_KERNEL);
 	if (!clk_data)
 		return -ENOMEM;
+	clk_data->num = count;
 
 	for (i = 0; i < ARRAY_SIZE(mt7621_clks_base); i++)
 		clk_data->hws[i] = mt7621_clk_early[i];
@@ -530,8 +537,6 @@ static int mt7621_clk_probe(struct platform_device *pdev)
 		dev_err(dev, "Couldn't register fixed clock gates\n");
 		goto unreg_clk_fixed;
 	}
-
-	clk_data->num = count;
 
 	ret = devm_of_clk_add_hw_provider(dev, of_clk_hw_onecell_get, clk_data);
 	if (ret) {

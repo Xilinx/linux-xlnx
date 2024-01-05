@@ -7,20 +7,24 @@ $schema: http://devicetree.org/meta-schemas/core.yaml#
 title: Atmel AT91 RTC
 
 allOf:
-  - $ref: "rtc.yaml#"
+  - $ref: rtc.yaml#
 
 maintainers:
   - Alexandre Belloni <alexandre.belloni@bootlin.com>
 
 properties:
   compatible:
-    enum:
-      - atmel,at91rm9200-rtc
-      - atmel,at91sam9x5-rtc
-      - atmel,sama5d4-rtc
-      - atmel,sama5d2-rtc
-      - microchip,sam9x60-rtc
-      - microchip,sama7g5-rtc
+    oneOf:
+      - enum:
+          - atmel,at91rm9200-rtc
+          - atmel,at91sam9x5-rtc
+          - atmel,sama5d4-rtc
+          - atmel,sama5d2-rtc
+          - microchip,sam9x60-rtc
+          - microchip,sama7g5-rtc
+      - items:
+          - const: microchip,sam9x7-rtc
+          - const: microchip,sam9x60-rtc
 
   reg:
     maxItems: 1

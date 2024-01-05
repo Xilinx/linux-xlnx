@@ -4,12 +4,18 @@
 
 #include <linux/bits.h>
 #include <linux/ctype.h>
+#include <linux/string_choices.h>
 #include <linux/string.h>
 #include <linux/types.h>
 
 struct device;
 struct file;
 struct task_struct;
+
+static inline bool string_is_terminated(const char *s, int len)
+{
+	return memchr(s, '\0', len) ? true : false;
+}
 
 /* Descriptions of the types of units to
  * print in */
@@ -103,34 +109,11 @@ char *kstrdup_quotable(const char *src, gfp_t gfp);
 char *kstrdup_quotable_cmdline(struct task_struct *task, gfp_t gfp);
 char *kstrdup_quotable_file(struct file *file, gfp_t gfp);
 
+char *kstrdup_and_replace(const char *src, char old, char new, gfp_t gfp);
+
 char **kasprintf_strarray(gfp_t gfp, const char *prefix, size_t n);
 void kfree_strarray(char **array, size_t n);
 
 char **devm_kasprintf_strarray(struct device *dev, const char *prefix, size_t n);
-
-static inline const char *str_yes_no(bool v)
-{
-	return v ? "yes" : "no";
-}
-
-static inline const char *str_on_off(bool v)
-{
-	return v ? "on" : "off";
-}
-
-static inline const char *str_enable_disable(bool v)
-{
-	return v ? "enable" : "disable";
-}
-
-static inline const char *str_enabled_disabled(bool v)
-{
-	return v ? "enabled" : "disabled";
-}
-
-static inline const char *str_read_write(bool v)
-{
-	return v ? "read" : "write";
-}
 
 #endif

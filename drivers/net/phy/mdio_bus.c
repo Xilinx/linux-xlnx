@@ -19,6 +19,7 @@
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
+#include <linux/micrel_phy.h>
 #include <linux/mii.h>
 #include <linux/mm.h>
 #include <linux/module.h>
@@ -106,10 +107,21 @@ int mdiobus_unregister_device(struct mdio_device *mdiodev)
 }
 EXPORT_SYMBOL(mdiobus_unregister_device);
 
+static struct mdio_device *mdiobus_find_device(struct mii_bus *bus, int addr)
+{
+	bool addr_valid = addr >= 0 && addr < ARRAY_SIZE(bus->mdio_map);
+
+	if (WARN_ONCE(!addr_valid, "addr %d out of range\n", addr))
+		return NULL;
+
+	return bus->mdio_map[addr];
+}
+
 struct phy_device *mdiobus_get_phy(struct mii_bus *bus, int addr)
 {
-	struct mdio_device *mdiodev = bus->mdio_map[addr];
+	struct mdio_device *mdiodev;
 
+	mdiodev = mdiobus_find_device(bus, addr);
 	if (!mdiodev)
 		return NULL;
 
@@ -122,7 +134,7 @@ EXPORT_SYMBOL(mdiobus_get_phy);
 
 bool mdiobus_is_registered_device(struct mii_bus *bus, int addr)
 {
-	return bus->mdio_map[addr];
+	return mdiobus_find_device(bus, addr) != NULL;
 }
 EXPORT_SYMBOL(mdiobus_is_registered_device);
 
@@ -506,6 +518,126 @@ static int mdiobus_create_device(struct mii_bus *bus,
 	return ret;
 }
 
+static struct phy_device *mdiobus_scan(struct mii_bus *bus, int addr, bool c45)
+{
+	struct phy_device *phydev = ERR_PTR(-ENODEV);
+	int err;
+
+	phydev = get_phy_device(bus, addr, c45);
+	if (IS_ERR(phydev))
+		return phydev;
+
+	/* For DT, see if the auto-probed phy has a corresponding child
+	 * in the bus node, and set the of_node pointer in this case.
+	 */
+	of_mdiobus_link_mdiodev(bus, &phydev->mdio);
+
+	err = phy_device_register(phydev);
+	if (err) {
+		phy_device_free(phydev);
+		return ERR_PTR(-ENODEV);
+	}
+
+	return phydev;
+}
+
+/**
+ * mdiobus_scan_c22 - scan one address on a bus for C22 MDIO devices.
+ * @bus: mii_bus to scan
+ * @addr: address on bus to scan
+ *
+ * This function scans one address on the MDIO bus, looking for
+ * devices which can be identified using a vendor/product ID in
+ * registers 2 and 3. Not all MDIO devices have such registers, but
+ * PHY devices typically do. Hence this function assumes anything
+ * found is a PHY, or can be treated as a PHY. Other MDIO devices,
+ * such as switches, will probably not be found during the scan.
+ */
+struct phy_device *mdiobus_scan_c22(struct mii_bus *bus, int addr)
+{
+	return mdiobus_scan(bus, addr, false);
+}
+EXPORT_SYMBOL(mdiobus_scan_c22);
+
+/**
+ * mdiobus_scan_c45 - scan one address on a bus for C45 MDIO devices.
+ * @bus: mii_bus to scan
+ * @addr: address on bus to scan
+ *
+ * This function scans one address on the MDIO bus, looking for
+ * devices which can be identified using a vendor/product ID in
+ * registers 2 and 3. Not all MDIO devices have such registers, but
+ * PHY devices typically do. Hence this function assumes anything
+ * found is a PHY, or can be treated as a PHY. Other MDIO devices,
+ * such as switches, will probably not be found during the scan.
+ */
+static struct phy_device *mdiobus_scan_c45(struct mii_bus *bus, int addr)
+{
+	return mdiobus_scan(bus, addr, true);
+}
+
+static int mdiobus_scan_bus_c22(struct mii_bus *bus)
+{
+	int i;
+
+	for (i = 0; i < PHY_MAX_ADDR; i++) {
+		if ((bus->phy_mask & BIT(i)) == 0) {
+			struct phy_device *phydev;
+
+			phydev = mdiobus_scan_c22(bus, i);
+			if (IS_ERR(phydev) && (PTR_ERR(phydev) != -ENODEV))
+				return PTR_ERR(phydev);
+		}
+	}
+	return 0;
+}
+
+static int mdiobus_scan_bus_c45(struct mii_bus *bus)
+{
+	int i;
+
+	for (i = 0; i < PHY_MAX_ADDR; i++) {
+		if ((bus->phy_mask & BIT(i)) == 0) {
+			struct phy_device *phydev;
+
+			/* Don't scan C45 if we already have a C22 device */
+			if (bus->mdio_map[i])
+				continue;
+
+			phydev = mdiobus_scan_c45(bus, i);
+			if (IS_ERR(phydev) && (PTR_ERR(phydev) != -ENODEV))
+				return PTR_ERR(phydev);
+		}
+	}
+	return 0;
+}
+
+/* There are some C22 PHYs which do bad things when where is a C45
+ * transaction on the bus, like accepting a read themselves, and
+ * stomping over the true devices reply, to performing a write to
+ * themselves which was intended for another device. Now that C22
+ * devices have been found, see if any of them are bad for C45, and if we
+ * should skip the C45 scan.
+ */
+static bool mdiobus_prevent_c45_scan(struct mii_bus *bus)
+{
+	int i;
+
+	for (i = 0; i < PHY_MAX_ADDR; i++) {
+		struct phy_device *phydev;
+		u32 oui;
+
+		phydev = mdiobus_get_phy(bus, i);
+		if (!phydev)
+			continue;
+		oui = phydev->phy_id >> 10;
+
+		if (oui == MICREL_OUI)
+			return true;
+	}
+	return false;
+}
+
 /**
  * __mdiobus_register - bring up all the PHYs on a given bus and attach them to bus
  * @bus: target mii_bus
@@ -523,11 +655,19 @@ static int mdiobus_create_device(struct mii_bus *bus,
 int __mdiobus_register(struct mii_bus *bus, struct module *owner)
 {
 	struct mdio_device *mdiodev;
-	int i, err;
 	struct gpio_desc *gpiod;
+	bool prevent_c45_scan;
+	int i, err;
 
-	if (NULL == bus || NULL == bus->name ||
-	    NULL == bus->read || NULL == bus->write)
+	if (!bus || !bus->name)
+		return -EINVAL;
+
+	/* An access method always needs both read and write operations */
+	if (!!bus->read != !!bus->write || !!bus->read_c45 != !!bus->write_c45)
+		return -EINVAL;
+
+	/* At least one method is mandatory */
+	if (!bus->read && !bus->read_c45)
 		return -EINVAL;
 
 	if (bus->parent && bus->parent->of_node)
@@ -582,16 +722,18 @@ int __mdiobus_register(struct mii_bus *bus, struct module *owner)
 			goto error_reset_gpiod;
 	}
 
-	for (i = 0; i < PHY_MAX_ADDR; i++) {
-		if ((bus->phy_mask & BIT(i)) == 0) {
-			struct phy_device *phydev;
+	if (bus->read) {
+		err = mdiobus_scan_bus_c22(bus);
+		if (err)
+			goto error;
+	}
 
-			phydev = mdiobus_scan(bus, i);
-			if (IS_ERR(phydev) && (PTR_ERR(phydev) != -ENODEV)) {
-				err = PTR_ERR(phydev);
-				goto error;
-			}
-		}
+	prevent_c45_scan = mdiobus_prevent_c45_scan(bus);
+
+	if (!prevent_c45_scan && bus->read_c45) {
+		err = mdiobus_scan_bus_c45(bus);
+		if (err)
+			goto error;
 	}
 
 	mdiobus_setup_mdiodev_from_board_info(bus, mdiobus_create_device);
@@ -601,7 +743,7 @@ int __mdiobus_register(struct mii_bus *bus, struct module *owner)
 	return 0;
 
 error:
-	while (--i >= 0) {
+	for (i = 0; i < PHY_MAX_ADDR; i++) {
 		mdiodev = bus->mdio_map[i];
 		if (!mdiodev)
 			continue;
@@ -672,57 +814,6 @@ void mdiobus_free(struct mii_bus *bus)
 }
 EXPORT_SYMBOL(mdiobus_free);
 
-/**
- * mdiobus_scan - scan a bus for MDIO devices.
- * @bus: mii_bus to scan
- * @addr: address on bus to scan
- *
- * This function scans the MDIO bus, looking for devices which can be
- * identified using a vendor/product ID in registers 2 and 3. Not all
- * MDIO devices have such registers, but PHY devices typically
- * do. Hence this function assumes anything found is a PHY, or can be
- * treated as a PHY. Other MDIO devices, such as switches, will
- * probably not be found during the scan.
- */
-struct phy_device *mdiobus_scan(struct mii_bus *bus, int addr)
-{
-	struct phy_device *phydev = ERR_PTR(-ENODEV);
-	int err;
-
-	switch (bus->probe_capabilities) {
-	case MDIOBUS_NO_CAP:
-	case MDIOBUS_C22:
-		phydev = get_phy_device(bus, addr, false);
-		break;
-	case MDIOBUS_C45:
-		phydev = get_phy_device(bus, addr, true);
-		break;
-	case MDIOBUS_C22_C45:
-		phydev = get_phy_device(bus, addr, false);
-		if (IS_ERR(phydev))
-			phydev = get_phy_device(bus, addr, true);
-		break;
-	}
-
-	if (IS_ERR(phydev))
-		return phydev;
-
-	/*
-	 * For DT, see if the auto-probed phy has a correspoding child
-	 * in the bus node, and set the of_node pointer in this case.
-	 */
-	of_mdiobus_link_mdiodev(bus, &phydev->mdio);
-
-	err = phy_device_register(phydev);
-	if (err) {
-		phy_device_free(phydev);
-		return ERR_PTR(-ENODEV);
-	}
-
-	return phydev;
-}
-EXPORT_SYMBOL(mdiobus_scan);
-
 static void mdiobus_stats_acct(struct mdio_bus_stats *stats, bool op, int ret)
 {
 	preempt_disable();
@@ -759,7 +850,10 @@ int __mdiobus_read(struct mii_bus *bus, int addr, u32 regnum)
 
 	lockdep_assert_held_once(&bus->mdio_lock);
 
-	retval = bus->read(bus, addr, regnum);
+	if (bus->read)
+		retval = bus->read(bus, addr, regnum);
+	else
+		retval = -EOPNOTSUPP;
 
 	trace_mdio_access(bus, 1, addr, regnum, retval, retval);
 	mdiobus_stats_acct(&bus->stats[addr], true, retval);
@@ -785,7 +879,10 @@ int __mdiobus_write(struct mii_bus *bus, int addr, u32 regnum, u16 val)
 
 	lockdep_assert_held_once(&bus->mdio_lock);
 
-	err = bus->write(bus, addr, regnum, val);
+	if (bus->write)
+		err = bus->write(bus, addr, regnum, val);
+	else
+		err = -EOPNOTSUPP;
 
 	trace_mdio_access(bus, 0, addr, regnum, val, err);
 	mdiobus_stats_acct(&bus->stats[addr], false, err);
@@ -825,6 +922,99 @@ int __mdiobus_modify_changed(struct mii_bus *bus, int addr, u32 regnum,
 	return ret < 0 ? ret : 1;
 }
 EXPORT_SYMBOL_GPL(__mdiobus_modify_changed);
+
+/**
+ * __mdiobus_c45_read - Unlocked version of the mdiobus_c45_read function
+ * @bus: the mii_bus struct
+ * @addr: the phy address
+ * @devad: device address to read
+ * @regnum: register number to read
+ *
+ * Read a MDIO bus register. Caller must hold the mdio bus lock.
+ *
+ * NOTE: MUST NOT be called from interrupt context.
+ */
+int __mdiobus_c45_read(struct mii_bus *bus, int addr, int devad, u32 regnum)
+{
+	int retval;
+
+	lockdep_assert_held_once(&bus->mdio_lock);
+
+	if (bus->read_c45)
+		retval = bus->read_c45(bus, addr, devad, regnum);
+	else
+		retval = -EOPNOTSUPP;
+
+	trace_mdio_access(bus, 1, addr, regnum, retval, retval);
+	mdiobus_stats_acct(&bus->stats[addr], true, retval);
+
+	return retval;
+}
+EXPORT_SYMBOL(__mdiobus_c45_read);
+
+/**
+ * __mdiobus_c45_write - Unlocked version of the mdiobus_write function
+ * @bus: the mii_bus struct
+ * @addr: the phy address
+ * @devad: device address to read
+ * @regnum: register number to write
+ * @val: value to write to @regnum
+ *
+ * Write a MDIO bus register. Caller must hold the mdio bus lock.
+ *
+ * NOTE: MUST NOT be called from interrupt context.
+ */
+int __mdiobus_c45_write(struct mii_bus *bus, int addr, int devad, u32 regnum,
+			u16 val)
+{
+	int err;
+
+	lockdep_assert_held_once(&bus->mdio_lock);
+
+	if (bus->write_c45)
+		err = bus->write_c45(bus, addr, devad, regnum, val);
+	else
+		err = -EOPNOTSUPP;
+
+	trace_mdio_access(bus, 0, addr, regnum, val, err);
+	mdiobus_stats_acct(&bus->stats[addr], false, err);
+
+	return err;
+}
+EXPORT_SYMBOL(__mdiobus_c45_write);
+
+/**
+ * __mdiobus_c45_modify_changed - Unlocked version of the mdiobus_modify function
+ * @bus: the mii_bus struct
+ * @addr: the phy address
+ * @devad: device address to read
+ * @regnum: register number to modify
+ * @mask: bit mask of bits to clear
+ * @set: bit mask of bits to set
+ *
+ * Read, modify, and if any change, write the register value back to the
+ * device. Any error returns a negative number.
+ *
+ * NOTE: MUST NOT be called from interrupt context.
+ */
+static int __mdiobus_c45_modify_changed(struct mii_bus *bus, int addr,
+					int devad, u32 regnum, u16 mask,
+					u16 set)
+{
+	int new, ret;
+
+	ret = __mdiobus_c45_read(bus, addr, devad, regnum);
+	if (ret < 0)
+		return ret;
+
+	new = (ret & ~mask) | set;
+	if (new == ret)
+		return 0;
+
+	ret = __mdiobus_c45_write(bus, addr, devad, regnum, new);
+
+	return ret < 0 ? ret : 1;
+}
 
 /**
  * mdiobus_read_nested - Nested version of the mdiobus_read function
@@ -872,6 +1062,56 @@ int mdiobus_read(struct mii_bus *bus, int addr, u32 regnum)
 	return retval;
 }
 EXPORT_SYMBOL(mdiobus_read);
+
+/**
+ * mdiobus_c45_read - Convenience function for reading a given MII mgmt register
+ * @bus: the mii_bus struct
+ * @addr: the phy address
+ * @devad: device address to read
+ * @regnum: register number to read
+ *
+ * NOTE: MUST NOT be called from interrupt context,
+ * because the bus read/write functions may wait for an interrupt
+ * to conclude the operation.
+ */
+int mdiobus_c45_read(struct mii_bus *bus, int addr, int devad, u32 regnum)
+{
+	int retval;
+
+	mutex_lock(&bus->mdio_lock);
+	retval = __mdiobus_c45_read(bus, addr, devad, regnum);
+	mutex_unlock(&bus->mdio_lock);
+
+	return retval;
+}
+EXPORT_SYMBOL(mdiobus_c45_read);
+
+/**
+ * mdiobus_c45_read_nested - Nested version of the mdiobus_c45_read function
+ * @bus: the mii_bus struct
+ * @addr: the phy address
+ * @devad: device address to read
+ * @regnum: register number to read
+ *
+ * In case of nested MDIO bus access avoid lockdep false positives by
+ * using mutex_lock_nested().
+ *
+ * NOTE: MUST NOT be called from interrupt context,
+ * because the bus read/write functions may wait for an interrupt
+ * to conclude the operation.
+ */
+int mdiobus_c45_read_nested(struct mii_bus *bus, int addr, int devad,
+			    u32 regnum)
+{
+	int retval;
+
+	mutex_lock_nested(&bus->mdio_lock, MDIO_MUTEX_NESTED);
+	retval = __mdiobus_c45_read(bus, addr, devad, regnum);
+	mutex_unlock(&bus->mdio_lock);
+
+	return retval;
+}
+EXPORT_SYMBOL(mdiobus_c45_read_nested);
 
 /**
  * mdiobus_write_nested - Nested version of the mdiobus_write function
@@ -923,6 +1163,79 @@ int mdiobus_write(struct mii_bus *bus, int addr, u32 regnum, u16 val)
 EXPORT_SYMBOL(mdiobus_write);
 
 /**
+ * mdiobus_c45_write - Convenience function for writing a given MII mgmt register
+ * @bus: the mii_bus struct
+ * @addr: the phy address
+ * @devad: device address to read
+ * @regnum: register number to write
+ * @val: value to write to @regnum
+ *
+ * NOTE: MUST NOT be called from interrupt context,
+ * because the bus read/write functions may wait for an interrupt
+ * to conclude the operation.
+ */
+int mdiobus_c45_write(struct mii_bus *bus, int addr, int devad, u32 regnum,
+		      u16 val)
+{
+	int err;
+
+	mutex_lock(&bus->mdio_lock);
+	err = __mdiobus_c45_write(bus, addr, devad, regnum, val);
+	mutex_unlock(&bus->mdio_lock);
+
+	return err;
+}
+EXPORT_SYMBOL(mdiobus_c45_write);
+
+/**
+ * mdiobus_c45_write_nested - Nested version of the mdiobus_c45_write function
+ * @bus: the mii_bus struct
+ * @addr: the phy address
+ * @devad: device address to read
+ * @regnum: register number to write
+ * @val: value to write to @regnum
+ *
+ * In case of nested MDIO bus access avoid lockdep false positives by
+ * using mutex_lock_nested().
+ *
+ * NOTE: MUST NOT be called from interrupt context,
+ * because the bus read/write functions may wait for an interrupt
+ * to conclude the operation.
+ */
+int mdiobus_c45_write_nested(struct mii_bus *bus, int addr, int devad,
+			     u32 regnum, u16 val)
+{
+	int err;
+
+	mutex_lock_nested(&bus->mdio_lock, MDIO_MUTEX_NESTED);
+	err = __mdiobus_c45_write(bus, addr, devad, regnum, val);
+	mutex_unlock(&bus->mdio_lock);
+
+	return err;
+}
+EXPORT_SYMBOL(mdiobus_c45_write_nested);
+
+/*
+ * __mdiobus_modify - Convenience function for modifying a given mdio device
+ *	register
+ * @bus: the mii_bus struct
+ * @addr: the phy address
+ * @regnum: register number to write
+ * @mask: bit mask of bits to clear
+ * @set: bit mask of bits to set
+ */
+int __mdiobus_modify(struct mii_bus *bus, int addr, u32 regnum, u16 mask,
+		     u16 set)
+{
+	int err;
+
+	err = __mdiobus_modify_changed(bus, addr, regnum, mask, set);
+
+	return err < 0 ? err : 0;
+}
+EXPORT_SYMBOL_GPL(__mdiobus_modify);
+
+/**
  * mdiobus_modify - Convenience function for modifying a given mdio device
  *	register
  * @bus: the mii_bus struct
@@ -936,12 +1249,36 @@ int mdiobus_modify(struct mii_bus *bus, int addr, u32 regnum, u16 mask, u16 set)
 	int err;
 
 	mutex_lock(&bus->mdio_lock);
-	err = __mdiobus_modify_changed(bus, addr, regnum, mask, set);
+	err = __mdiobus_modify(bus, addr, regnum, mask, set);
+	mutex_unlock(&bus->mdio_lock);
+
+	return err;
+}
+EXPORT_SYMBOL_GPL(mdiobus_modify);
+
+/**
+ * mdiobus_c45_modify - Convenience function for modifying a given mdio device
+ *	register
+ * @bus: the mii_bus struct
+ * @addr: the phy address
+ * @devad: device address to read
+ * @regnum: register number to write
+ * @mask: bit mask of bits to clear
+ * @set: bit mask of bits to set
+ */
+int mdiobus_c45_modify(struct mii_bus *bus, int addr, int devad, u32 regnum,
+		       u16 mask, u16 set)
+{
+	int err;
+
+	mutex_lock(&bus->mdio_lock);
+	err = __mdiobus_c45_modify_changed(bus, addr, devad, regnum,
+					   mask, set);
 	mutex_unlock(&bus->mdio_lock);
 
 	return err < 0 ? err : 0;
 }
-EXPORT_SYMBOL_GPL(mdiobus_modify);
+EXPORT_SYMBOL_GPL(mdiobus_c45_modify);
 
 /**
  * mdiobus_modify_changed - Convenience function for modifying a given mdio
@@ -964,6 +1301,29 @@ int mdiobus_modify_changed(struct mii_bus *bus, int addr, u32 regnum,
 	return err;
 }
 EXPORT_SYMBOL_GPL(mdiobus_modify_changed);
+
+/**
+ * mdiobus_c45_modify_changed - Convenience function for modifying a given mdio
+ *	device register and returning if it changed
+ * @bus: the mii_bus struct
+ * @addr: the phy address
+ * @devad: device address to read
+ * @regnum: register number to write
+ * @mask: bit mask of bits to clear
+ * @set: bit mask of bits to set
+ */
+int mdiobus_c45_modify_changed(struct mii_bus *bus, int addr, int devad,
+			       u32 regnum, u16 mask, u16 set)
+{
+	int err;
+
+	mutex_lock(&bus->mdio_lock);
+	err = __mdiobus_c45_modify_changed(bus, addr, devad, regnum, mask, set);
+	mutex_unlock(&bus->mdio_lock);
+
+	return err;
+}
+EXPORT_SYMBOL_GPL(mdiobus_c45_modify_changed);
 
 /**
  * mdio_bus_match - determine if given MDIO driver supports the given
@@ -995,7 +1355,7 @@ static int mdio_bus_match(struct device *dev, struct device_driver *drv)
 	return 0;
 }
 
-static int mdio_uevent(struct device *dev, struct kobj_uevent_env *env)
+static int mdio_uevent(const struct device *dev, struct kobj_uevent_env *env)
 {
 	int rc;
 

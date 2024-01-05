@@ -20,8 +20,8 @@ static void guest_ins_port80(uint8_t *buffer, unsigned int count)
 		end = (unsigned long)buffer + 8192;
 
 	asm volatile("cld; rep; insb" : "+D"(buffer), "+c"(count) : "d"(0x80) : "memory");
-	GUEST_ASSERT_1(count == 0, count);
-	GUEST_ASSERT_2((unsigned long)buffer == end, buffer, end);
+	GUEST_ASSERT_EQ(count, 0);
+	GUEST_ASSERT_EQ((unsigned long)buffer, end);
 }
 
 static void guest_code(void)
@@ -43,7 +43,9 @@ static void guest_code(void)
 	memset(buffer, 0, sizeof(buffer));
 	guest_ins_port80(buffer, 8192);
 	for (i = 0; i < 8192; i++)
-		GUEST_ASSERT_2(buffer[i] == 0xaa, i, buffer[i]);
+		__GUEST_ASSERT(buffer[i] == 0xaa,
+			       "Expected '0xaa', got '0x%x' at buffer[%u]",
+			       buffer[i], i);
 
 	GUEST_DONE();
 }
@@ -56,9 +58,6 @@ int main(int argc, char *argv[])
 	struct kvm_vm *vm;
 	struct ucall uc;
 
-	/* Tell stdout not to buffer its content */
-	setbuf(stdout, NULL);
-
 	vm = vm_create_with_one_vcpu(&vcpu, guest_code);
 	run = vcpu->run;
 
@@ -66,11 +65,7 @@ int main(int argc, char *argv[])
 
 	while (1) {
 		vcpu_run(vcpu);
-
-		TEST_ASSERT(run->exit_reason == KVM_EXIT_IO,
-			    "Unexpected exit reason: %u (%s),\n",
-			    run->exit_reason,
-			    exit_reason_str(run->exit_reason));
+		TEST_ASSERT_KVM_EXIT_REASON(vcpu, KVM_EXIT_IO);
 
 		if (get_ucall(vcpu, &uc))
 			break;
@@ -98,7 +93,7 @@ int main(int argc, char *argv[])
 	case UCALL_DONE:
 		break;
 	case UCALL_ABORT:
-		REPORT_GUEST_ASSERT_2(uc, "argN+1 = 0x%lx, argN+2 = 0x%lx");
+		REPORT_GUEST_ASSERT(uc);
 	default:
 		TEST_FAIL("Unknown ucall %lu", uc.cmd);
 	}

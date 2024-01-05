@@ -354,10 +354,11 @@ done:
  * Also they depend on separate root hub suspend/resume.
  */
 
-static int ehci_pci_resume(struct usb_hcd *hcd, bool hibernated)
+static int ehci_pci_resume(struct usb_hcd *hcd, pm_message_t msg)
 {
 	struct ehci_hcd		*ehci = hcd_to_ehci(hcd);
 	struct pci_dev		*pdev = to_pci_dev(hcd->self.controller);
+	bool			hibernated = (msg.event == PM_EVENT_RESTORE);
 
 	if (ehci_resume(hcd, hibernated) != 0)
 		(void) ehci_pci_reinit(ehci, pdev);
@@ -411,11 +412,12 @@ static struct pci_driver ehci_pci_driver = {
 	.remove =	ehci_pci_remove,
 	.shutdown = 	usb_hcd_pci_shutdown,
 
-#ifdef CONFIG_PM
 	.driver =	{
-		.pm =	&usb_hcd_pci_pm_ops
-	},
+#ifdef CONFIG_PM
+		.pm =	&usb_hcd_pci_pm_ops,
 #endif
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
+	},
 };
 
 static int __init ehci_pci_init(void)

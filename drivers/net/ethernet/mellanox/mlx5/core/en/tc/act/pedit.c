@@ -78,15 +78,6 @@ out_err:
 	return err;
 }
 
-static bool
-tc_act_can_offload_pedit(struct mlx5e_tc_act_parse_state *parse_state,
-			 const struct flow_action_entry *act,
-			 int act_index,
-			 struct mlx5_flow_attr *attr)
-{
-	return true;
-}
-
 static int
 tc_act_parse_pedit(struct mlx5e_tc_act_parse_state *parse_state,
 		   const struct flow_action_entry *act,
@@ -107,13 +98,14 @@ tc_act_parse_pedit(struct mlx5e_tc_act_parse_state *parse_state,
 
 	attr->action |= MLX5_FLOW_CONTEXT_ACTION_MOD_HDR;
 
-	if (ns_type == MLX5_FLOW_NAMESPACE_FDB)
+	if (ns_type == MLX5_FLOW_NAMESPACE_FDB) {
 		esw_attr->split_count = esw_attr->out_count;
+		parse_state->if_count = 0;
+	}
 
 	return 0;
 }
 
 struct mlx5e_tc_act mlx5e_tc_act_pedit = {
-	.can_offload = tc_act_can_offload_pedit,
 	.parse_action = tc_act_parse_pedit,
 };

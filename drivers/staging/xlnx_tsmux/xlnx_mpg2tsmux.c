@@ -1522,7 +1522,7 @@ static int __init xlnx_tsmux_mod_init(void)
 {
 	int err;
 
-	xlnx_tsmux_class = class_create(THIS_MODULE, DRIVER_NAME);
+	xlnx_tsmux_class = class_create(DRIVER_NAME);
 	if (IS_ERR(xlnx_tsmux_class)) {
 		pr_err("%s : Unable to create driver class", __func__);
 		return PTR_ERR(xlnx_tsmux_class);

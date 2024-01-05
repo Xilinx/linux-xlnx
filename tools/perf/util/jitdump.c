@@ -235,9 +235,11 @@ jit_open(struct jit_buf_desc *jd, const char *name)
 	 */
 	strcpy(jd->dir, name);
 	dirname(jd->dir);
+	free(buf);
 
 	return 0;
 error:
+	free(buf);
 	funlockfile(jd->in);
 	fclose(jd->in);
 	return retval;
@@ -523,7 +525,7 @@ static int jit_repipe_code_load(struct jit_buf_desc *jd, union jr_entry *jr)
 
 	ret = perf_event__process_mmap2(tool, event, &sample, jd->machine);
 	if (ret)
-		return ret;
+		goto out;
 
 	ret = jit_inject_event(jd, event);
 	/*
@@ -532,6 +534,8 @@ static int jit_repipe_code_load(struct jit_buf_desc *jd, union jr_entry *jr)
 	if (!ret)
 		build_id__mark_dso_hit(tool, event, &sample, NULL, jd->machine);
 
+out:
+	free(event);
 	return ret;
 }
 
@@ -795,17 +799,21 @@ static void jit_add_pid(struct machine *machine, pid_t pid)
 		return;
 	}
 
-	thread->priv = (void *)1;
+	thread__set_priv(thread, (void *)true);
+	thread__put(thread);
 }
 
 static bool jit_has_pid(struct machine *machine, pid_t pid)
 {
 	struct thread *thread = machine__find_thread(machine, pid, pid);
+	void *priv;
 
 	if (!thread)
-		return 0;
+		return false;
 
-	return (bool)thread->priv;
+	priv = thread__priv(thread);
+	thread__put(thread);
+	return (bool)priv;
 }
 
 int
@@ -829,7 +837,7 @@ jit_process(struct perf_session *session,
 		return 0;
 	}
 
-	nsi = nsinfo__get(thread->nsinfo);
+	nsi = nsinfo__get(thread__nsinfo(thread));
 	thread__put(thread);
 
 	/*
@@ -874,6 +882,7 @@ jit_process(struct perf_session *session,
 	}
 
 	nsinfo__put(jd.nsi);
+	free(jd.buf);
 
 	return ret;
 }

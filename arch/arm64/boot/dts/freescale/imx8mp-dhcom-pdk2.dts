@@ -23,6 +23,12 @@
 		stdout-path = &uart1;
 	};
 
+	clk_ext_audio_codec: clock-codec {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <24000000>;
+	};
+
 	gpio-keys {
 		compatible = "gpio-keys";
 
@@ -102,22 +108,49 @@
 			pinctrl-names = "default";
 		};
 	};
+
+	reg_3p3vdd: regulator-3p3vdd {	/* 3.3VDD */
+		compatible = "regulator-fixed";
+		regulator-always-on;
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		regulator-name = "3P3VDD";
+	};
+
+	sound {
+		compatible = "simple-audio-card";
+		simple-audio-card,name = "SGTL5000-Card";
+		simple-audio-card,format = "i2s";
+		simple-audio-card,bitclock-master = <&codec_dai>;
+		simple-audio-card,frame-master = <&codec_dai>;
+		simple-audio-card,widgets = "Headphone", "Headphone Jack";
+		simple-audio-card,routing = "Headphone Jack", "HP_OUT";
+
+		cpu_dai: simple-audio-card,cpu {
+			sound-dai = <&sai3>;
+		};
+
+		codec_dai: simple-audio-card,codec {
+			sound-dai = <&sgtl5000>;
+		};
+	};
 };
 
-/*
- * PDK2 carrier board uses SoM with KSZ9131 populated and connected to
- * SoM EQoS ethernet RGMII interface. Remove the other SoM PHY DT node.
- */
-/delete-node/ &ethphy0f;
-
-/*
- * PDK2 carrier board has KSZ9021 PHY populated and connected to SoM FEC
- * ethernet RGMII interface. The SoM is not populated with second FEC PHY.
- */
-/delete-node/ &ethphy1f;
+&i2c5 {
+	sgtl5000: codec@a {
+		compatible = "fsl,sgtl5000";
+		reg = <0x0a>;
+		#sound-dai-cells = <0>;
+		clocks = <&clk_ext_audio_codec>;
+		VDDA-supply = <&reg_3p3vdd>;
+		VDDIO-supply = <&reg_vdd_3p3v_awo>;
+	};
+};
 
 &fec {	/* Second ethernet */
+	pinctrl-0 = <&pinctrl_fec_rgmii>;
 	phy-handle = <&ethphypdk>;
+	phy-mode = "rgmii";
 
 	mdio {
 		ethphypdk: ethernet-phy@7 { /* KSZ 9021 */
@@ -151,6 +184,31 @@
 	status = "okay";
 };
 
+&pcie_phy {
+	clock-names = "ref";
+	clocks = <&clk IMX8MP_SYS_PLL2_100M>;
+	fsl,clkreq-unsupported;
+	fsl,refclk-pad-mode = <IMX8_PCIE_REFCLK_PAD_UNUSED>;
+	status = "okay";
+};
+
+&pcie {
+	fsl,max-link-speed = <1>;
+	reset-gpio = <&gpio1 6 GPIO_ACTIVE_LOW>;	/* GPIO J */
+	status = "okay";
+};
+
+&sai3 {
+	#sound-dai-cells = <0>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_sai3>;
+	assigned-clocks = <&clk IMX8MP_CLK_SAI3>;
+	assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
+	assigned-clock-rates = <12288000>;
+	fsl,sai-mclk-direction-output;
+	status = "okay";
+};
+
 &usb3_1 {
 	fsl,over-current-active-low;
 };
@@ -159,7 +217,7 @@
 	/*
 	 * GPIO_A,B,C,D are connected to buttons.
 	 * GPIO_E,F,H,I are connected to LEDs.
-	 * GPIO_M is connected to CLKOUT2.
+	 * GPIO_M is connected to CLKOUT1.
 	 */
 	pinctrl-0 = <&pinctrl_hog_base
 		     &pinctrl_dhcom_g &pinctrl_dhcom_j

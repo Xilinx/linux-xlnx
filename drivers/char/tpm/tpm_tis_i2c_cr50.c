@@ -100,8 +100,7 @@ static int tpm_cr50_i2c_wait_tpm_ready(struct tpm_chip *chip)
 	}
 
 	/* Wait for interrupt to indicate TPM is ready to respond */
-	if (!wait_for_completion_timeout(&priv->tpm_ready,
-					 msecs_to_jiffies(chip->timeout_a))) {
+	if (!wait_for_completion_timeout(&priv->tpm_ready, chip->timeout_a)) {
 		dev_warn(&chip->dev, "Timeout waiting for TPM ready\n");
 		return -ETIMEDOUT;
 	}
@@ -780,7 +779,7 @@ static void tpm_cr50_i2c_remove(struct i2c_client *client)
 static SIMPLE_DEV_PM_OPS(cr50_i2c_pm, tpm_pm_suspend, tpm_pm_resume);
 
 static struct i2c_driver cr50_i2c_driver = {
-	.probe_new = tpm_cr50_i2c_probe,
+	.probe = tpm_cr50_i2c_probe,
 	.remove = tpm_cr50_i2c_remove,
 	.driver = {
 		.name = "cr50_i2c",

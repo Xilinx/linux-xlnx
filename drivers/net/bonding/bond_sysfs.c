@@ -31,12 +31,12 @@
 /* "show" function for the bond_masters attribute.
  * The class parameter is ignored.
  */
-static ssize_t bonding_show_bonds(struct class *cls,
-				  struct class_attribute *attr,
+static ssize_t bonding_show_bonds(const struct class *cls,
+				  const struct class_attribute *attr,
 				  char *buf)
 {
-	struct bond_net *bn =
-		container_of(attr, struct bond_net, class_attr_bonding_masters);
+	const struct bond_net *bn =
+		container_of_const(attr, struct bond_net, class_attr_bonding_masters);
 	int res = 0;
 	struct bonding *bond;
 
@@ -59,7 +59,7 @@ static ssize_t bonding_show_bonds(struct class *cls,
 	return res;
 }
 
-static struct net_device *bond_get_by_name(struct bond_net *bn, const char *ifname)
+static struct net_device *bond_get_by_name(const struct bond_net *bn, const char *ifname)
 {
 	struct bonding *bond;
 
@@ -75,12 +75,12 @@ static struct net_device *bond_get_by_name(struct bond_net *bn, const char *ifna
  *
  * The class parameter is ignored.
  */
-static ssize_t bonding_store_bonds(struct class *cls,
-				   struct class_attribute *attr,
+static ssize_t bonding_store_bonds(const struct class *cls,
+				   const struct class_attribute *attr,
 				   const char *buffer, size_t count)
 {
-	struct bond_net *bn =
-		container_of(attr, struct bond_net, class_attr_bonding_masters);
+	const struct bond_net *bn =
+		container_of_const(attr, struct bond_net, class_attr_bonding_masters);
 	char command[IFNAMSIZ + 1] = {0, };
 	char *ifname;
 	int rv, res = count;
@@ -803,7 +803,7 @@ static const struct attribute_group bonding_group = {
 /* Initialize sysfs.  This sets up the bonding_masters file in
  * /sys/class/net.
  */
-int bond_create_sysfs(struct bond_net *bn)
+int __net_init bond_create_sysfs(struct bond_net *bn)
 {
 	int ret;
 
@@ -836,7 +836,7 @@ int bond_create_sysfs(struct bond_net *bn)
 }
 
 /* Remove /sys/class/net/bonding_masters. */
-void bond_destroy_sysfs(struct bond_net *bn)
+void __net_exit bond_destroy_sysfs(struct bond_net *bn)
 {
 	netdev_class_remove_file_ns(&bn->class_attr_bonding_masters, bn->net);
 }

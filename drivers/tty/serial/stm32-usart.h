@@ -199,11 +199,11 @@ struct stm32_port {
 	u32 cr3_irq;		 /* USART_CR3_RXFTIE */
 	int last_res;
 	bool tx_dma_busy;	 /* dma tx transaction in progress */
+	bool rx_dma_busy;	 /* dma rx transaction in progress */
 	bool throttled;		 /* port throttled            */
 	bool hw_flow_control;
 	bool swap;		 /* swap RX & TX pins */
 	bool fifoen;
-	bool txdone;
 	int rxftcfg;		/* RX FIFO threshold CFG      */
 	int txftcfg;		/* TX FIFO threshold CFG      */
 	bool wakeup_src;

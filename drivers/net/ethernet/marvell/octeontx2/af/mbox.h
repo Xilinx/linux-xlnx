@@ -96,9 +96,10 @@ void otx2_mbox_destroy(struct otx2_mbox *mbox);
 int otx2_mbox_init(struct otx2_mbox *mbox, void __force *hwbase,
 		   struct pci_dev *pdev, void __force *reg_base,
 		   int direction, int ndevs);
+
 int otx2_mbox_regions_init(struct otx2_mbox *mbox, void __force **hwbase,
 			   struct pci_dev *pdev, void __force *reg_base,
-			   int direction, int ndevs);
+			   int direction, int ndevs, unsigned long *bmap);
 void otx2_mbox_msg_send(struct otx2_mbox *mbox, int devid);
 int otx2_mbox_wait_for_rsp(struct otx2_mbox *mbox, int devid);
 int otx2_mbox_busy_poll_for_rsp(struct otx2_mbox *mbox, int devid);
@@ -135,6 +136,7 @@ M(GET_HW_CAP,		0x008, get_hw_cap, msg_req, get_hw_cap_rsp)	\
 M(LMTST_TBL_SETUP,	0x00a, lmtst_tbl_setup, lmtst_tbl_setup_req,    \
 				msg_rsp)				\
 M(SET_VF_PERM,		0x00b, set_vf_perm, set_vf_perm, msg_rsp)	\
+M(PTP_GET_CAP,		0x00c, ptp_get_cap, msg_req, ptp_get_cap_rsp)	\
 /* CGX mbox IDs (range 0x200 - 0x3FF) */				\
 M(CGX_START_RXTX,	0x200, cgx_start_rxtx, msg_req, msg_rsp)	\
 M(CGX_STOP_RXTX,	0x201, cgx_stop_rxtx, msg_req, msg_rsp)		\
@@ -195,6 +197,9 @@ M(CPT_STATS,            0xA05, cpt_sts, cpt_sts_req, cpt_sts_rsp)	\
 M(CPT_RXC_TIME_CFG,     0xA06, cpt_rxc_time_cfg, cpt_rxc_time_cfg_req,  \
 			       msg_rsp)                                 \
 M(CPT_CTX_CACHE_SYNC,   0xA07, cpt_ctx_cache_sync, msg_req, msg_rsp)    \
+M(CPT_LF_RESET,         0xA08, cpt_lf_reset, cpt_lf_rst_req, msg_rsp)	\
+M(CPT_FLT_ENG_INFO,     0xA09, cpt_flt_eng_info, cpt_flt_eng_info_req,	\
+			       cpt_flt_eng_info_rsp)			\
 /* SDP mbox IDs (range 0x1000 - 0x11FF) */				\
 M(SET_SDP_CHAN_INFO, 0x1000, set_sdp_chan_info, sdp_chan_info_msg, msg_rsp) \
 M(GET_SDP_CHAN_INFO, 0x1001, get_sdp_chan_info, msg_req, sdp_get_chan_info_msg) \
@@ -231,7 +236,7 @@ M(NPC_GET_KEX_CFG,	  0x600c, npc_get_kex_cfg,			\
 M(NPC_INSTALL_FLOW,	  0x600d, npc_install_flow,			       \
 				  npc_install_flow_req, npc_install_flow_rsp)  \
 M(NPC_DELETE_FLOW,	  0x600e, npc_delete_flow,			\
-				  npc_delete_flow_req, msg_rsp)		\
+				  npc_delete_flow_req, npc_delete_flow_rsp)		\
 M(NPC_MCAM_READ_ENTRY,	  0x600f, npc_mcam_read_entry,			\
 				  npc_mcam_read_entry_req,		\
 				  npc_mcam_read_entry_rsp)		\
@@ -242,9 +247,12 @@ M(NPC_MCAM_READ_BASE_RULE, 0x6011, npc_read_base_steer_rule,            \
 M(NPC_MCAM_GET_STATS, 0x6012, npc_mcam_entry_stats,                     \
 				   npc_mcam_get_stats_req,              \
 				   npc_mcam_get_stats_rsp)              \
-M(NPC_GET_SECRET_KEY, 0x6013, npc_get_secret_key,                     \
-				   npc_get_secret_key_req,              \
-				   npc_get_secret_key_rsp)              \
+M(NPC_GET_FIELD_HASH_INFO, 0x6013, npc_get_field_hash_info,                     \
+				   npc_get_field_hash_info_req,              \
+				   npc_get_field_hash_info_rsp)              \
+M(NPC_GET_FIELD_STATUS, 0x6014, npc_get_field_status,                     \
+				   npc_get_field_status_req,              \
+				   npc_get_field_status_rsp)              \
 /* NIX mbox IDs (range 0x8000 - 0xFFFF) */				\
 M(NIX_LF_ALLOC,		0x8000, nix_lf_alloc,				\
 				 nix_lf_alloc_req, nix_lf_alloc_rsp)	\
@@ -294,6 +302,8 @@ M(NIX_BANDPROF_FREE,	0x801e, nix_bandprof_free, nix_bandprof_free_req,   \
 				msg_rsp)				    \
 M(NIX_BANDPROF_GET_HWINFO, 0x801f, nix_bandprof_get_hwinfo, msg_req,		\
 				nix_bandprof_get_hwinfo_rsp)		    \
+M(NIX_READ_INLINE_IPSEC_CFG, 0x8023, nix_read_inline_ipsec_cfg,		\
+				msg_req, nix_inline_ipsec_cfg)		\
 /* MCS mbox IDs (range 0xA000 - 0xBFFF) */					\
 M(MCS_ALLOC_RESOURCES,	0xa000, mcs_alloc_resources, mcs_alloc_rsrc_req,	\
 				mcs_alloc_rsrc_rsp)				\
@@ -928,7 +938,7 @@ struct nix_aq_enq_req {
 		struct nix_cq_ctx_s cq;
 		struct nix_rsse_s   rss;
 		struct nix_rx_mce_s mce;
-		u64 prof;
+		struct nix_bandprof_s prof;
 	};
 	union {
 		struct nix_rq_ctx_s rq_mask;
@@ -936,7 +946,7 @@ struct nix_aq_enq_req {
 		struct nix_cq_ctx_s cq_mask;
 		struct nix_rsse_s   rss_mask;
 		struct nix_rx_mce_s mce_mask;
-		u64 prof_mask;
+		struct nix_bandprof_s prof_mask;
 	};
 };
 
@@ -1071,6 +1081,8 @@ struct nix_vtag_config_rsp {
 	 */
 };
 
+#define NIX_FLOW_KEY_TYPE_L3_L4_MASK (~(0xf << 28))
+
 struct nix_rss_flowkey_cfg {
 	struct mbox_msghdr hdr;
 	int	mcam_index;  /* MCAM entry index to modify */
@@ -1096,6 +1108,10 @@ struct nix_rss_flowkey_cfg {
 #define NIX_FLOW_KEY_TYPE_IPV4_PROTO	BIT(21)
 #define NIX_FLOW_KEY_TYPE_AH		BIT(22)
 #define NIX_FLOW_KEY_TYPE_ESP		BIT(23)
+#define NIX_FLOW_KEY_TYPE_L4_DST_ONLY BIT(28)
+#define NIX_FLOW_KEY_TYPE_L4_SRC_ONLY BIT(29)
+#define NIX_FLOW_KEY_TYPE_L3_DST_ONLY BIT(30)
+#define NIX_FLOW_KEY_TYPE_L3_SRC_ONLY BIT(31)
 	u32	flowkey_cfg; /* Flowkey types selected */
 	u8	group;       /* RSS context or group */
 };
@@ -1142,6 +1158,7 @@ struct nix_rx_cfg {
 	struct mbox_msghdr hdr;
 #define NIX_RX_OL3_VERIFY   BIT(0)
 #define NIX_RX_OL4_VERIFY   BIT(1)
+#define NIX_RX_DROP_RE      BIT(2)
 	u8 len_verify; /* Outer L3/L4 len check */
 #define NIX_RX_CSUM_OL4_VERIFY  BIT(0)
 	u8 csum_verify; /* Outer L4 checksum verification */
@@ -1193,7 +1210,7 @@ struct nix_inline_ipsec_cfg {
 	u32 cpt_credit;
 	struct {
 		u8 egrp;
-		u8 opcode;
+		u16 opcode;
 		u16 param1;
 		u16 param2;
 	} gen_cfg;
@@ -1202,6 +1219,8 @@ struct nix_inline_ipsec_cfg {
 		u8 cpt_slot;
 	} inst_qsel;
 	u8 enable;
+	u16 bpid;
+	u32 credit_th;
 };
 
 /* Per NIX LF inline IPSec configuration */
@@ -1228,7 +1247,9 @@ struct nix_hw_info {
 	u16 min_mtu;
 	u32 rpm_dwrr_mtu;
 	u32 sdp_dwrr_mtu;
-	u64 rsvd[16]; /* Add reserved fields for future expansion */
+	u32 lbk_dwrr_mtu;
+	u32 rsvd32[1];
+	u64 rsvd[15]; /* Add reserved fields for future expansion */
 };
 
 struct nix_bandprof_alloc_req {
@@ -1417,6 +1438,12 @@ struct npc_get_kex_cfg_rsp {
 	u8 mkex_pfl_name[MKEX_NAME_LEN];
 };
 
+struct ptp_get_cap_rsp {
+	struct mbox_msghdr hdr;
+#define        PTP_CAP_HW_ATOMIC_UPDATE BIT_ULL(0)
+	u64 cap;
+};
+
 struct flow_msg {
 	unsigned char dmac[6];
 	unsigned char smac[6];
@@ -1431,12 +1458,21 @@ struct flow_msg {
 		__be32 ip4dst;
 		__be32 ip6dst[4];
 	};
+	union {
+		__be32 spi;
+	};
+
 	u8 tos;
 	u8 ip_ver;
 	u8 ip_proto;
 	u8 tc;
 	__be16 sport;
 	__be16 dport;
+	union {
+		u8 ip_flag;
+		u8 next_header;
+	};
+	__be16 vlan_itci;
 };
 
 struct npc_install_flow_req {
@@ -1467,6 +1503,8 @@ struct npc_install_flow_req {
 	u8  vtag0_op;
 	u16 vtag1_def;
 	u8  vtag1_op;
+	/* old counter value */
+	u16 cntr_val;
 };
 
 struct npc_install_flow_rsp {
@@ -1480,6 +1518,11 @@ struct npc_delete_flow_req {
 	u16 start;/*Disable range of entries */
 	u16 end;
 	u8 all; /* PF + VFs */
+};
+
+struct npc_delete_flow_rsp {
+	struct mbox_msghdr hdr;
+	u16 cntr_val;
 };
 
 struct npc_mcam_read_entry_req {
@@ -1510,14 +1553,20 @@ struct npc_mcam_get_stats_rsp {
 	u8 stat_ena; /* enabled */
 };
 
-struct npc_get_secret_key_req {
+struct npc_get_field_hash_info_req {
 	struct mbox_msghdr hdr;
 	u8 intf;
 };
 
-struct npc_get_secret_key_rsp {
+struct npc_get_field_hash_info_rsp {
 	struct mbox_msghdr hdr;
 	u64 secret_key[3];
+#define NPC_MAX_HASH 2
+#define NPC_MAX_HASH_MASK 2
+	/* NPC_AF_INTF(0..1)_HASH(0..1)_MASK(0..1) */
+	u64 hash_mask[NPC_MAX_INTF][NPC_MAX_HASH][NPC_MAX_HASH_MASK];
+	/* NPC_AF_INTF(0..1)_HASH(0..1)_RESULT_CTRL */
+	u64 hash_ctrl[NPC_MAX_INTF][NPC_MAX_HASH];
 };
 
 enum ptp_op {
@@ -1526,6 +1575,8 @@ enum ptp_op {
 	PTP_OP_GET_TSTMP = 2,
 	PTP_OP_SET_THRESH = 3,
 	PTP_OP_EXTTS_ON = 4,
+	PTP_OP_ADJTIME = 5,
+	PTP_OP_SET_CLOCK = 6,
 };
 
 struct ptp_req {
@@ -1534,11 +1585,25 @@ struct ptp_req {
 	s64 scaled_ppm;
 	u64 thresh;
 	int extts_on;
+	s64 delta;
+	u64 clk;
 };
 
 struct ptp_rsp {
 	struct mbox_msghdr hdr;
 	u64 clk;
+	u64 tsc;
+};
+
+struct npc_get_field_status_req {
+	struct mbox_msghdr hdr;
+	u8 intf;
+	u8 field;
+};
+
+struct npc_get_field_status_rsp {
+	struct mbox_msghdr hdr;
+	u8 enable;
 };
 
 struct set_vf_perm  {
@@ -1591,6 +1656,8 @@ struct cpt_lf_alloc_req_msg {
 	u16 sso_pf_func;
 	u16 eng_grpmsk;
 	int blkaddr;
+	u8 ctx_ilen_valid : 1;
+	u8 ctx_ilen : 7;
 };
 
 #define CPT_INLINE_INBOUND      0
@@ -1671,6 +1738,28 @@ struct cpt_rxc_time_cfg_req {
 struct cpt_inst_lmtst_req {
 	struct mbox_msghdr hdr;
 	u64 inst[8];
+	u64 rsvd;
+};
+
+/* Mailbox message format to request for CPT LF reset */
+struct cpt_lf_rst_req {
+	struct mbox_msghdr hdr;
+	u32 slot;
+	u32 rsvd;
+};
+
+/* Mailbox message format to request for CPT faulted engines */
+struct cpt_flt_eng_info_req {
+	struct mbox_msghdr hdr;
+	int blkaddr;
+	bool reset;
+	u32 rsvd;
+};
+
+struct cpt_flt_eng_info_rsp {
+	struct mbox_msghdr hdr;
+	u64 flt_eng_map[CPT_10K_AF_INT_VEC_RVU];
+	u64 rcvrd_eng_map[CPT_10K_AF_INT_VEC_RVU];
 	u64 rsvd;
 };
 

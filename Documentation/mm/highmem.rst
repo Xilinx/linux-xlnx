@@ -1,5 +1,3 @@
-.. _highmem:
-
 ====================
 High Memory Handling
 ====================
@@ -53,11 +51,15 @@ Temporary Virtual Mappings
 The kernel contains several ways of creating temporary mappings. The following
 list shows them in order of preference of use.
 
-* kmap_local_page().  This function is used to require short term mappings.
-  It can be invoked from any context (including interrupts) but the mappings
-  can only be used in the context which acquired them.
+* kmap_local_page(), kmap_local_folio() - These functions are used to create
+  short term mappings. They can be invoked from any context (including
+  interrupts) but the mappings can only be used in the context which acquired
+  them. The only differences between them consist in the first taking a pointer
+  to a struct page and the second taking a pointer to struct folio and the byte
+  offset within the folio which identifies the page.
 
-  This function should be preferred, where feasible, over all the others.
+  These functions should always be used, whereas kmap_atomic() and kmap() have
+  been deprecated.
 
   These mappings are thread-local and CPU-local, meaning that the mapping
   can only be accessed from within this thread and the thread is bound to the
@@ -73,17 +75,17 @@ list shows them in order of preference of use.
   maps of the outgoing task are saved and those of the incoming one are
   restored.
 
-  kmap_local_page() always returns a valid virtual address and it is assumed
-  that kunmap_local() will never fail.
+  kmap_local_page(), as well as kmap_local_folio() always returns valid virtual
+  kernel addresses and it is assumed that kunmap_local() will never fail.
 
-  On CONFIG_HIGHMEM=n kernels and for low memory pages this returns the
+  On CONFIG_HIGHMEM=n kernels and for low memory pages they return the
   virtual address of the direct mapping. Only real highmem pages are
   temporarily mapped. Therefore, users may call a plain page_address()
   for pages which are known to not come from ZONE_HIGHMEM. However, it is
-  always safe to use kmap_local_page() / kunmap_local().
+  always safe to use kmap_local_{page,folio}() / kunmap_local().
 
-  While it is significantly faster than kmap(), for the higmem case it
-  comes with restrictions about the pointers validity. Contrary to kmap()
+  While they are significantly faster than kmap(), for the highmem case they
+  come with restrictions about the pointers validity. Contrary to kmap()
   mappings, the local mappings are only valid in the context of the caller
   and cannot be handed to other contexts. This implies that users must
   be absolutely sure to keep the use of the return address local to the
@@ -92,7 +94,7 @@ list shows them in order of preference of use.
   Most code can be designed to use thread local mappings. User should
   therefore try to design their code to avoid the use of kmap() by mapping
   pages in the same thread the address will be used and prefer
-  kmap_local_page().
+  kmap_local_page() or kmap_local_folio().
 
   Nesting kmap_local_page() and kmap_atomic() mappings is allowed to a certain
   extent (up to KMAP_TYPE_NR) but their invocations have to be strictly ordered
@@ -100,10 +102,21 @@ list shows them in order of preference of use.
   (included in the "Functions" section) for details on how to manage nested
   mappings.
 
-* kmap_atomic().  This permits a very short duration mapping of a single
-  page.  Since the mapping is restricted to the CPU that issued it, it
-  performs well, but the issuing task is therefore required to stay on that
-  CPU until it has finished, lest some other task displace its mappings.
+* kmap_atomic(). This function has been deprecated; use kmap_local_page().
+
+  NOTE: Conversions to kmap_local_page() must take care to follow the mapping
+  restrictions imposed on kmap_local_page(). Furthermore, the code between
+  calls to kmap_atomic() and kunmap_atomic() may implicitly depend on the side
+  effects of atomic mappings, i.e. disabling page faults or preemption, or both.
+  In that case, explicit calls to pagefault_disable() or preempt_disable() or
+  both must be made in conjunction with the use of kmap_local_page().
+
+  [Legacy documentation]
+
+  This permits a very short duration mapping of a single page.  Since the
+  mapping is restricted to the CPU that issued it, it performs well, but
+  the issuing task is therefore required to stay on that CPU until it has
+  finished, lest some other task displace its mappings.
 
   kmap_atomic() may also be used by interrupt contexts, since it does not
   sleep and the callers too may not sleep until after kunmap_atomic() is
@@ -115,11 +128,20 @@ list shows them in order of preference of use.
 
   It is assumed that k[un]map_atomic() won't fail.
 
-* kmap().  This should be used to make short duration mapping of a single
-  page with no restrictions on preemption or migration. It comes with an
-  overhead as mapping space is restricted and protected by a global lock
-  for synchronization. When mapping is no longer needed, the address that
-  the page was mapped to must be released with kunmap().
+* kmap(). This function has been deprecated; use kmap_local_page().
+
+  NOTE: Conversions to kmap_local_page() must take care to follow the mapping
+  restrictions imposed on kmap_local_page(). In particular, it is necessary to
+  make sure that the kernel virtual memory pointer is only valid in the thread
+  that obtained it.
+
+  [Legacy documentation]
+
+  This should be used to make short duration mapping of a single page with no
+  restrictions on preemption or migration. It comes with an overhead as mapping
+  space is restricted and protected by a global lock for synchronization. When
+  mapping is no longer needed, the address that the page was mapped to must be
+  released with kunmap().
 
   Mapping changes must be propagated across all the CPUs. kmap() also
   requires global TLB invalidation when the kmap's pool wraps and it might
@@ -187,4 +209,5 @@ Functions
 =========
 
 .. kernel-doc:: include/linux/highmem.h
+.. kernel-doc:: mm/highmem.c
 .. kernel-doc:: include/linux/highmem-internal.h

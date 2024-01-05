@@ -820,8 +820,8 @@ static int spear_smi_probe_config_dt(struct platform_device *pdev,
 		pdata->board_flash_info->mem_base = be32_to_cpup(&addr[0]);
 		pdata->board_flash_info->size = be32_to_cpup(&addr[1]);
 
-		if (of_get_property(pp, "st,smi-fast-mode", NULL))
-			pdata->board_flash_info->fast_mode = 1;
+		pdata->board_flash_info->fast_mode =
+			of_property_read_bool(pp, "st,smi-fast-mode");
 
 		i++;
 	}
@@ -937,7 +937,6 @@ static int spear_smi_probe(struct platform_device *pdev)
 	struct device_node *np = pdev->dev.of_node;
 	struct spear_smi_plat_data *pdata = NULL;
 	struct spear_smi *dev;
-	struct resource *smi_base;
 	int irq, ret = 0;
 	int i;
 
@@ -975,9 +974,7 @@ static int spear_smi_probe(struct platform_device *pdev)
 		goto err;
 	}
 
-	smi_base = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-
-	dev->io_base = devm_ioremap_resource(&pdev->dev, smi_base);
+	dev->io_base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(dev->io_base)) {
 		ret = PTR_ERR(dev->io_base);
 		goto err;
@@ -996,21 +993,17 @@ static int spear_smi_probe(struct platform_device *pdev)
 		dev->num_flashes = MAX_NUM_FLASH_CHIP;
 	}
 
-	dev->clk = devm_clk_get(&pdev->dev, NULL);
+	dev->clk = devm_clk_get_enabled(&pdev->dev, NULL);
 	if (IS_ERR(dev->clk)) {
 		ret = PTR_ERR(dev->clk);
 		goto err;
 	}
 
-	ret = clk_prepare_enable(dev->clk);
-	if (ret)
-		goto err;
-
 	ret = devm_request_irq(&pdev->dev, irq, spear_smi_int_handler, 0,
 			       pdev->name, dev);
 	if (ret) {
 		dev_err(&dev->pdev->dev, "SMI IRQ allocation failed\n");
-		goto err_irq;
+		goto err;
 	}
 
 	mutex_init(&dev->lock);
@@ -1023,14 +1016,11 @@ static int spear_smi_probe(struct platform_device *pdev)
 		ret = spear_smi_setup_banks(pdev, i, pdata->np[i]);
 		if (ret) {
 			dev_err(&dev->pdev->dev, "bank setup failed\n");
-			goto err_irq;
+			goto err;
 		}
 	}
 
 	return 0;
-
-err_irq:
-	clk_disable_unprepare(dev->clk);
 err:
 	return ret;
 }
@@ -1058,8 +1048,6 @@ static int spear_smi_remove(struct platform_device *pdev)
 		/* clean up mtd stuff */
 		WARN_ON(mtd_device_unregister(&flash->mtd));
 	}
-
-	clk_disable_unprepare(dev->clk);
 
 	return 0;
 }

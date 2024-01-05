@@ -203,7 +203,7 @@ static inline void ibmveth_flush_buffer(void *addr, unsigned long length)
 	unsigned long offset;
 
 	for (offset = 0; offset < length; offset += SMP_CACHE_BYTES)
-		asm("dcbfl %0,%1" :: "b" (addr), "r" (offset));
+		asm("dcbf %0,%1,1" :: "b" (addr), "r" (offset));
 }
 
 /* replenish the buffers for a pool.  note that we don't need to
@@ -690,8 +690,7 @@ static int ibmveth_close(struct net_device *netdev)
 
 	napi_disable(&adapter->napi);
 
-	if (!adapter->pool_config)
-		netif_tx_stop_all_queues(netdev);
+	netif_tx_stop_all_queues(netdev);
 
 	h_vio_signal(adapter->vdev->unit_address, VIO_IRQ_DISABLE);
 
@@ -799,9 +798,7 @@ static int ibmveth_set_csum_offload(struct net_device *dev, u32 data)
 
 	if (netif_running(dev)) {
 		restart = 1;
-		adapter->pool_config = 1;
 		ibmveth_close(dev);
-		adapter->pool_config = 0;
 	}
 
 	set_attr = 0;
@@ -883,9 +880,7 @@ static int ibmveth_set_tso(struct net_device *dev, u32 data)
 
 	if (netif_running(dev)) {
 		restart = 1;
-		adapter->pool_config = 1;
 		ibmveth_close(dev);
-		adapter->pool_config = 0;
 	}
 
 	set_attr = 0;
@@ -1308,24 +1303,23 @@ static void ibmveth_rx_csum_helper(struct sk_buff *skb,
 	 * the user space for finding a flow. During this process, OVS computes
 	 * checksum on the first packet when CHECKSUM_PARTIAL flag is set.
 	 *
-	 * So, re-compute TCP pseudo header checksum when configured for
-	 * trunk mode.
+	 * So, re-compute TCP pseudo header checksum.
 	 */
+
 	if (iph_proto == IPPROTO_TCP) {
 		struct tcphdr *tcph = (struct tcphdr *)(skb->data + iphlen);
+
 		if (tcph->check == 0x0000) {
 			/* Recompute TCP pseudo header checksum  */
-			if (adapter->is_active_trunk) {
-				tcphdrlen = skb->len - iphlen;
-				if (skb_proto == ETH_P_IP)
-					tcph->check =
-					 ~csum_tcpudp_magic(iph->saddr,
-					iph->daddr, tcphdrlen, iph_proto, 0);
-				else if (skb_proto == ETH_P_IPV6)
-					tcph->check =
-					 ~csum_ipv6_magic(&iph6->saddr,
-					&iph6->daddr, tcphdrlen, iph_proto, 0);
-			}
+			tcphdrlen = skb->len - iphlen;
+			if (skb_proto == ETH_P_IP)
+				tcph->check =
+				 ~csum_tcpudp_magic(iph->saddr,
+				iph->daddr, tcphdrlen, iph_proto, 0);
+			else if (skb_proto == ETH_P_IPV6)
+				tcph->check =
+				 ~csum_ipv6_magic(&iph6->saddr,
+				&iph6->daddr, tcphdrlen, iph_proto, 0);
 			/* Setup SKB fields for checksum offload */
 			skb_partial_csum_set(skb, iphlen,
 					     offsetof(struct tcphdr, check));
@@ -1535,9 +1529,7 @@ static int ibmveth_change_mtu(struct net_device *dev, int new_mtu)
 	   only the buffer pools necessary to hold the new MTU */
 	if (netif_running(adapter->netdev)) {
 		need_restart = 1;
-		adapter->pool_config = 1;
 		ibmveth_close(adapter->netdev);
-		adapter->pool_config = 0;
 	}
 
 	/* Look for an active buffer pool that can hold the new MTU */
@@ -1701,7 +1693,6 @@ static int ibmveth_probe(struct vio_dev *dev, const struct vio_device_id *id)
 	adapter->vdev = dev;
 	adapter->netdev = netdev;
 	adapter->mcastFilterSize = be32_to_cpu(*mcastFilterSize_p);
-	adapter->pool_config = 0;
 	ibmveth_init_link_settings(netdev);
 
 	netif_napi_add_weight(netdev, &adapter->napi, ibmveth_poll, 16);
@@ -1842,9 +1833,7 @@ static ssize_t veth_pool_store(struct kobject *kobj, struct attribute *attr,
 					return -ENOMEM;
 				}
 				pool->active = 1;
-				adapter->pool_config = 1;
 				ibmveth_close(netdev);
-				adapter->pool_config = 0;
 				if ((rc = ibmveth_open(netdev)))
 					return rc;
 			} else {
@@ -1870,10 +1859,8 @@ static ssize_t veth_pool_store(struct kobject *kobj, struct attribute *attr,
 			}
 
 			if (netif_running(netdev)) {
-				adapter->pool_config = 1;
 				ibmveth_close(netdev);
 				pool->active = 0;
-				adapter->pool_config = 0;
 				if ((rc = ibmveth_open(netdev)))
 					return rc;
 			}
@@ -1884,9 +1871,7 @@ static ssize_t veth_pool_store(struct kobject *kobj, struct attribute *attr,
 			return -EINVAL;
 		} else {
 			if (netif_running(netdev)) {
-				adapter->pool_config = 1;
 				ibmveth_close(netdev);
-				adapter->pool_config = 0;
 				pool->size = value;
 				if ((rc = ibmveth_open(netdev)))
 					return rc;
@@ -1899,9 +1884,7 @@ static ssize_t veth_pool_store(struct kobject *kobj, struct attribute *attr,
 			return -EINVAL;
 		} else {
 			if (netif_running(netdev)) {
-				adapter->pool_config = 1;
 				ibmveth_close(netdev);
-				adapter->pool_config = 0;
 				pool->buff_size = value;
 				if ((rc = ibmveth_open(netdev)))
 					return rc;

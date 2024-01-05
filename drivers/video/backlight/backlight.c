@@ -79,8 +79,8 @@ static const char *const backlight_scale_types[] = {
 	[BACKLIGHT_SCALE_NON_LINEAR]	= "non-linear",
 };
 
-#if defined(CONFIG_FB) || (defined(CONFIG_FB_MODULE) && \
-			   defined(CONFIG_BACKLIGHT_CLASS_DEVICE_MODULE))
+#if defined(CONFIG_FB_CORE) || (defined(CONFIG_FB_CORE_MODULE) && \
+				defined(CONFIG_BACKLIGHT_CLASS_DEVICE_MODULE))
 /*
  * fb_notifier_callback
  *
@@ -155,7 +155,7 @@ static inline int backlight_register_fb(struct backlight_device *bd)
 static inline void backlight_unregister_fb(struct backlight_device *bd)
 {
 }
-#endif /* CONFIG_FB */
+#endif /* CONFIG_FB_CORE */
 
 static void backlight_generate_event(struct backlight_device *bd,
 				     enum backlight_update_reason reason)
@@ -501,7 +501,7 @@ EXPORT_SYMBOL(backlight_device_get_by_type);
  *
  * This function looks up a backlight device by its name. It obtains a reference
  * on the backlight device and it is the caller's responsibility to drop the
- * reference by calling backlight_put().
+ * reference by calling put_device().
  *
  * Returns:
  * A pointer to the backlight device if found, otherwise NULL.
@@ -751,7 +751,7 @@ static void __exit backlight_class_exit(void)
 
 static int __init backlight_class_init(void)
 {
-	backlight_class = class_create(THIS_MODULE, "backlight");
+	backlight_class = class_create("backlight");
 	if (IS_ERR(backlight_class)) {
 		pr_warn("Unable to create backlight class; errno = %ld\n",
 			PTR_ERR(backlight_class));

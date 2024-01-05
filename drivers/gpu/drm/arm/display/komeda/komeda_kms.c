@@ -4,13 +4,11 @@
  * Author: James.Qian.Wang <james.qian.wang@arm.com>
  *
  */
-#include <linux/component.h>
 #include <linux/interrupt.h>
 
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_drv.h>
-#include <drm/drm_fb_helper.h>
 #include <drm/drm_gem_dma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_managed.h>
@@ -59,7 +57,6 @@ static irqreturn_t komeda_kms_irq_handler(int irq, void *data)
 
 static const struct drm_driver komeda_kms_driver = {
 	.driver_features = DRIVER_GEM | DRIVER_MODESET | DRIVER_ATOMIC,
-	.lastclose			= drm_fb_helper_lastclose,
 	DRM_GEM_DMA_DRIVER_OPS_WITH_DUMB_CREATE(komeda_gem_dma_dumb_create),
 	.fops = &komeda_cma_fops,
 	.name = "komeda",
@@ -307,17 +304,13 @@ struct komeda_kms_dev *komeda_kms_attach(struct komeda_dev *mdev)
 	if (err)
 		goto cleanup_mode_config;
 
-	err = component_bind_all(mdev->dev, kms);
-	if (err)
-		goto cleanup_mode_config;
-
 	drm_mode_config_reset(drm);
 
 	err = devm_request_irq(drm->dev, mdev->irq,
 			       komeda_kms_irq_handler, IRQF_SHARED,
 			       drm->driver->name, drm);
 	if (err)
-		goto free_component_binding;
+		goto cleanup_mode_config;
 
 	drm_kms_helper_poll_init(drm);
 
@@ -329,8 +322,6 @@ struct komeda_kms_dev *komeda_kms_attach(struct komeda_dev *mdev)
 
 free_interrupts:
 	drm_kms_helper_poll_fini(drm);
-free_component_binding:
-	component_unbind_all(mdev->dev, drm);
 cleanup_mode_config:
 	drm_mode_config_cleanup(drm);
 	komeda_kms_cleanup_private_objs(kms);
@@ -341,12 +332,10 @@ cleanup_mode_config:
 void komeda_kms_detach(struct komeda_kms_dev *kms)
 {
 	struct drm_device *drm = &kms->base;
-	struct komeda_dev *mdev = drm->dev_private;
 
 	drm_dev_unregister(drm);
 	drm_kms_helper_poll_fini(drm);
 	drm_atomic_helper_shutdown(drm);
-	component_unbind_all(mdev->dev, drm);
 	drm_mode_config_cleanup(drm);
 	komeda_kms_cleanup_private_objs(kms);
 	drm->dev_private = NULL;

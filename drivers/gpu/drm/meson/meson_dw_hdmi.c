@@ -9,8 +9,9 @@
 #include <linux/component.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
+#include <linux/of.h>
 #include <linux/of_graph.h>
+#include <linux/platform_device.h>
 #include <linux/regulator/consumer.h>
 #include <linux/reset.h>
 
@@ -140,7 +141,6 @@ struct meson_dw_hdmi {
 	struct reset_control *hdmitx_apb;
 	struct reset_control *hdmitx_ctrl;
 	struct reset_control *hdmitx_phy;
-	struct regulator *hdmi_supply;
 	u32 irq_stat;
 	struct dw_hdmi *hdmi;
 	struct drm_bridge *bridge;
@@ -380,8 +380,8 @@ static int dw_hdmi_phy_init(struct dw_hdmi *hdmi, void *data,
 			 mode->clock > 340000 ? 40 : 10);
 
 	if (drm_mode_is_420_only(display, mode) ||
-	    (!is_hdmi2_sink &&
-	     drm_mode_is_420_also(display, mode)))
+	    (!is_hdmi2_sink && drm_mode_is_420_also(display, mode)) ||
+	    dw_hdmi_bus_fmt_is_420(hdmi))
 		mode_is_420 = true;
 
 	/* Enable clocks */
@@ -665,11 +665,6 @@ static void meson_dw_hdmi_init(struct meson_dw_hdmi *meson_dw_hdmi)
 
 }
 
-static void meson_disable_regulator(void *data)
-{
-	regulator_disable(data);
-}
-
 static void meson_disable_clk(void *data)
 {
 	clk_disable_unprepare(data);
@@ -723,20 +718,9 @@ static int meson_dw_hdmi_bind(struct device *dev, struct device *master,
 	meson_dw_hdmi->data = match;
 	dw_plat_data = &meson_dw_hdmi->dw_plat_data;
 
-	meson_dw_hdmi->hdmi_supply = devm_regulator_get_optional(dev, "hdmi");
-	if (IS_ERR(meson_dw_hdmi->hdmi_supply)) {
-		if (PTR_ERR(meson_dw_hdmi->hdmi_supply) == -EPROBE_DEFER)
-			return -EPROBE_DEFER;
-		meson_dw_hdmi->hdmi_supply = NULL;
-	} else {
-		ret = regulator_enable(meson_dw_hdmi->hdmi_supply);
-		if (ret)
-			return ret;
-		ret = devm_add_action_or_reset(dev, meson_disable_regulator,
-					       meson_dw_hdmi->hdmi_supply);
-		if (ret)
-			return ret;
-	}
+	ret = devm_regulator_get_enable_optional(dev, "hdmi");
+	if (ret < 0 && ret != -ENODEV)
+		return ret;
 
 	meson_dw_hdmi->hdmitx_apb = devm_reset_control_get_exclusive(dev,
 						"hdmitx_apb");
@@ -869,11 +853,9 @@ static int meson_dw_hdmi_probe(struct platform_device *pdev)
 	return component_add(&pdev->dev, &meson_dw_hdmi_ops);
 }
 
-static int meson_dw_hdmi_remove(struct platform_device *pdev)
+static void meson_dw_hdmi_remove(struct platform_device *pdev)
 {
 	component_del(&pdev->dev, &meson_dw_hdmi_ops);
-
-	return 0;
 }
 
 static const struct dev_pm_ops meson_dw_hdmi_pm_ops = {
@@ -896,7 +878,7 @@ MODULE_DEVICE_TABLE(of, meson_dw_hdmi_of_table);
 
 static struct platform_driver meson_dw_hdmi_platform_driver = {
 	.probe		= meson_dw_hdmi_probe,
-	.remove		= meson_dw_hdmi_remove,
+	.remove_new	= meson_dw_hdmi_remove,
 	.driver		= {
 		.name		= DRIVER_NAME,
 		.of_match_table	= meson_dw_hdmi_of_table,

@@ -47,6 +47,9 @@ nouveau-y += nouveau_prime.o
 nouveau-y += nouveau_sgdma.o
 nouveau-y += nouveau_ttm.o
 nouveau-y += nouveau_vmm.o
+nouveau-y += nouveau_exec.o
+nouveau-y += nouveau_sched.o
+nouveau-y += nouveau_uvmm.o
 
 # DRM - modesetting
 nouveau-$(CONFIG_DRM_NOUVEAU_BACKLIGHT) += nouveau_backlight.o
@@ -54,10 +57,6 @@ nouveau-y += nouveau_bios.o
 nouveau-y += nouveau_connector.o
 nouveau-y += nouveau_display.o
 nouveau-y += nouveau_dp.o
-nouveau-y += nouveau_fbcon.o
-nouveau-y += nv04_fbcon.o
-nouveau-y += nv50_fbcon.o
-nouveau-y += nvc0_fbcon.o
 include $(src)/dispnv04/Kbuild
 include $(src)/dispnv50/Kbuild
 

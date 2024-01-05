@@ -15,8 +15,10 @@
 #include <linux/spi/spi.h>
 #include <linux/spi/mmc_spi.h>
 #include <linux/mmc/host.h>
+#include <linux/of.h>
+#include <linux/of_address.h>
 #include <linux/of_irq.h>
-#include <linux/of_platform.h>
+#include <linux/platform_device.h>
 #include <linux/fsl_devices.h>
 
 #include <asm/time.h>
@@ -107,7 +109,7 @@ static int __init of_fsl_spi_probe(char *type, char *compatible, u32 sysclk,
 
 		goto next;
 unreg:
-		platform_device_del(pdev);
+		platform_device_put(pdev);
 err:
 		pr_err("%pOF: registration failed\n", np);
 next:
@@ -212,23 +214,14 @@ static void __init mpc832x_rdb_setup_arch(void)
 
 machine_device_initcall(mpc832x_rdb, mpc83xx_declare_of_platform_devices);
 
-/*
- * Called very early, MMU is off, device-tree isn't unflattened
- */
-static int __init mpc832x_rdb_probe(void)
-{
-	return of_machine_is_compatible("MPC832xRDB");
-}
-
 define_machine(mpc832x_rdb) {
 	.name		= "MPC832x RDB",
-	.probe		= mpc832x_rdb_probe,
+	.compatible	= "MPC832xRDB",
 	.setup_arch	= mpc832x_rdb_setup_arch,
 	.discover_phbs  = mpc83xx_setup_pci,
 	.init_IRQ	= mpc83xx_ipic_init_IRQ,
 	.get_irq	= ipic_get_irq,
 	.restart	= mpc83xx_restart,
 	.time_init	= mpc83xx_time_init,
-	.calibrate_decr	= generic_calibrate_decr,
 	.progress	= udbg_progress,
 };

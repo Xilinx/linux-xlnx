@@ -379,7 +379,7 @@ static int pvt_read_alarm(struct pvt_hwmon *pvt, enum pvt_sensor_type type,
 	return 0;
 }
 
-static const struct hwmon_channel_info *pvt_channel_info[] = {
+static const struct hwmon_channel_info * const pvt_channel_info[] = {
 	HWMON_CHANNEL_INFO(chip,
 			   HWMON_C_REGISTER_TZ | HWMON_C_UPDATE_INTERVAL),
 	HWMON_CHANNEL_INFO(temp,
@@ -523,7 +523,7 @@ static int pvt_read_alarm(struct pvt_hwmon *pvt, enum pvt_sensor_type type,
 	return -EOPNOTSUPP;
 }
 
-static const struct hwmon_channel_info *pvt_channel_info[] = {
+static const struct hwmon_channel_info * const pvt_channel_info[] = {
 	HWMON_CHANNEL_INFO(chip,
 			   HWMON_C_REGISTER_TZ | HWMON_C_UPDATE_INTERVAL),
 	HWMON_CHANNEL_INFO(temp,
@@ -891,15 +891,8 @@ static struct pvt_hwmon *pvt_create_data(struct platform_device *pdev)
 static int pvt_request_regs(struct pvt_hwmon *pvt)
 {
 	struct platform_device *pdev = to_platform_device(pvt->dev);
-	struct resource *res;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res) {
-		dev_err(pvt->dev, "Couldn't find PVT memresource\n");
-		return -EINVAL;
-	}
-
-	pvt->regs = devm_ioremap_resource(pvt->dev, res);
+	pvt->regs = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(pvt->regs))
 		return PTR_ERR(pvt->regs);
 

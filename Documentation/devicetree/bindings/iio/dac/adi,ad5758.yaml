@@ -78,7 +78,8 @@ properties:
           - const: -1000
           - const: 22000
 
-  reset-gpios: true
+  reset-gpios:
+    maxItems: 1
 
   adi,dc-dc-ilim-microamp:
     enum: [150000, 200000, 250000, 300000, 350000, 400000]
@@ -102,8 +103,7 @@ allOf:
   - if:
       properties:
         adi,dc-dc-mode:
-          contains:
-            enum: [1, 3]
+          enum: [1, 3]
     then:
       properties:
         adi,range-microvolt: false

@@ -79,7 +79,7 @@ config MTD_NAND_NDFC
 
 config MTD_NAND_S3C2410
 	tristate "Samsung S3C NAND controller"
-	depends on ARCH_S3C24XX || ARCH_S3C64XX
+	depends on ARCH_S3C64XX
 	help
 	  This enables the NAND flash controller on the S3C24xx and S3C64xx
 	  SoCs
@@ -160,7 +160,7 @@ config MTD_NAND_MARVELL
 	  including:
 	  - PXA3xx processors (NFCv1)
 	  - 32-bit Armada platforms (XP, 37x, 38x, 39x) (NFCv2)
-	  - 64-bit Aramda platforms (7k, 8k) (NFCv2)
+	  - 64-bit Aramda platforms (7k, 8k, ac5) (NFCv2)
 
 config MTD_NAND_SLC_LPC32XX
 	tristate "NXP LPC32xx SLC NAND controller"
@@ -193,13 +193,6 @@ config MTD_NAND_PASEMI
 	  Enables support for NAND Flash interface on PA Semi PWRficient
 	  based boards
 
-config MTD_NAND_TMIO
-	tristate "Toshiba Mobile IO NAND controller"
-	depends on MFD_TMIO
-	help
-	  Support for NAND flash connected to a Toshiba Mobile IO
-	  Controller in some PDAs, including the Sharp SL6000x.
-
 source "drivers/mtd/nand/raw/brcmnand/Kconfig"
 
 config MTD_NAND_BCM47XXNFLASH
@@ -210,13 +203,6 @@ config MTD_NAND_BCM47XXNFLASH
 	  BCMA bus can have various flash memories attached, they are
 	  registered by bcma as platform devices. This enables driver for
 	  NAND flash memories. For now only BCM4706 is supported.
-
-config MTD_NAND_OXNAS
-	tristate "Oxford Semiconductor NAND controller"
-	depends on ARCH_OXNAS || COMPILE_TEST
-	depends on HAS_IOMEM
-	help
-	  This enables the NAND flash controller on Oxford Semiconductor SoCs.
 
 config MTD_NAND_MPC5121_NFC
 	tristate "MPC5121 NAND controller"
@@ -380,7 +366,7 @@ config MTD_NAND_TEGRA
 
 config MTD_NAND_STM32_FMC2
 	tristate "Support for NAND controller on STM32MP SoCs"
-	depends on MACH_STM32MP157 || COMPILE_TEST
+	depends on ARCH_STM32 || COMPILE_TEST
 	select MFD_SYSCON
 	help
 	  Enables support for NAND Flash chips on SoCs containing the FMC2
@@ -415,7 +401,7 @@ config MTD_NAND_PLATFORM
 
 config MTD_NAND_CADENCE
 	tristate "Support Cadence NAND (HPNFC) controller"
-	depends on (OF || COMPILE_TEST) && HAS_IOMEM
+	depends on OF && HAS_IOMEM
 	help
 	  Enable the driver for NAND flash on platforms using a Cadence NAND
 	  controller.
@@ -430,7 +416,7 @@ config MTD_NAND_ARASAN
 
 config MTD_NAND_INTEL_LGM
 	tristate "Support for NAND controller on Intel LGM SoC"
-	depends on OF || COMPILE_TEST
+	depends on OF
 	depends on HAS_IOMEM
 	help
 	  Enables support for NAND Flash chips on Intel's LGM SoC.
@@ -450,7 +436,7 @@ config MTD_NAND_ROCKCHIP
 
 config MTD_NAND_PL35X
 	tristate "ARM PL35X NAND controller"
-	depends on OF || COMPILE_TEST
+	depends on OF
 	depends on PL353_SMC
 	help
 	  Enables support for PrimeCell SMC PL351 and PL353 NAND

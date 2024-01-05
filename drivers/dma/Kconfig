@@ -97,6 +97,7 @@ config AT_HDMAC
 	tristate "Atmel AHB DMA support"
 	depends on ARCH_AT91
 	select DMA_ENGINE
+	select DMA_VIRTUAL_CHANNELS
 	help
 	  Support the Atmel AHB DMA controller.
 
@@ -210,6 +211,7 @@ config FSL_DMA
 config FSL_EDMA
 	tristate "Freescale eDMA engine support"
 	depends on OF
+	depends on HAS_IOMEM
 	select DMA_ENGINE
 	select DMA_VIRTUAL_CHANNELS
 	help
@@ -244,7 +246,7 @@ config FSL_RAID
 
 config HISI_DMA
 	tristate "HiSilicon DMA Engine support"
-	depends on ARM64 || COMPILE_TEST
+	depends on ARCH_HISI || COMPILE_TEST
 	depends on PCI_MSI
 	select DMA_ENGINE
 	select DMA_VIRTUAL_CHANNELS
@@ -279,6 +281,7 @@ config IMX_SDMA
 
 config INTEL_IDMA64
 	tristate "Intel integrated DMA 64-bit support"
+	depends on HAS_IOMEM
 	select DMA_ENGINE
 	select DMA_VIRTUAL_CHANNELS
 	help
@@ -356,14 +359,6 @@ config INTEL_IOATDMA
 	  Say Y here if you have such a chipset.
 
 	  If unsure, say N.
-
-config INTEL_IOP_ADMA
-	tristate "Intel IOP32x ADMA support"
-	depends on ARCH_IOP32X || COMPILE_TEST
-	select DMA_ENGINE
-	select ASYNC_TX_ENABLE_CHANNEL_SWITCH
-	help
-	  Enable support for the Intel(R) IOP Series RAID engines.
 
 config K3_DMA
 	tristate "Hisilicon K3 DMA support"
@@ -462,7 +457,7 @@ config MV_XOR_V2
 	select DMA_ENGINE
 	select DMA_ENGINE_RAID
 	select ASYNC_TX_ENABLE_CHANNEL_SWITCH
-	select GENERIC_MSI_IRQ_DOMAIN
+	select GENERIC_MSI_IRQ
 	help
 	  Enable support for the Marvell version 2 XOR engine.
 
@@ -478,25 +473,6 @@ config MXS_DMA
 	help
 	  Support the MXS DMA engine. This engine including APBH-DMA
 	  and APBX-DMA is integrated into some Freescale chips.
-
-config MX3_IPU
-	bool "MX3x Image Processing Unit support"
-	depends on ARCH_MXC
-	select DMA_ENGINE
-	default y
-	help
-	  If you plan to use the Image Processing unit in the i.MX3x, say
-	  Y here. If unsure, select Y.
-
-config MX3_IPU_IRQS
-	int "Number of dynamically mapped interrupts for IPU"
-	depends on MX3_IPU
-	range 2 137
-	default 4
-	help
-	  Out of 137 interrupt sources on i.MX31 IPU only very few are used.
-	  To avoid bloating the irq_desc[] array we allocate a sufficient
-	  number of IRQ slots and map them dynamically to specific sources.
 
 config NBPFAXI_DMA
 	tristate "Renesas Type-AXI NBPF DMA support"
@@ -560,6 +536,7 @@ config STE_DMA40
 	bool "ST-Ericsson DMA40 support"
 	depends on ARCH_U8500
 	select DMA_ENGINE
+	select SRAM
 	help
 	  Support for ST-Ericsson DMA40 controller
 
@@ -617,18 +594,6 @@ config SPRD_DMA
 	help
 	  Enable support for the on-chip DMA controller on Spreadtrum platform.
 
-config S3C24XX_DMAC
-	bool "Samsung S3C24XX DMA support"
-	depends on ARCH_S3C24XX || COMPILE_TEST
-	select DMA_ENGINE
-	select DMA_VIRTUAL_CHANNELS
-	help
-	  Support for the Samsung S3C24XX DMA controller driver. The
-	  DMA controller is having multiple DMA channels which can be
-	  configured for different peripherals like audio, UART, SPI.
-	  The DMA controller can transfer data from memory to peripheral,
-	  periphal to memory, periphal to periphal and memory to memory.
-
 config TXX9_DMAC
 	tristate "Toshiba TXx9 SoC DMA support"
 	depends on MACH_TX49XX
@@ -642,6 +607,7 @@ config TEGRA186_GPC_DMA
 	depends on (ARCH_TEGRA || COMPILE_TEST) && ARCH_DMA_ADDR_T_64BIT
 	depends on IOMMU_API
 	select DMA_ENGINE
+	select DMA_VIRTUAL_CHANNELS
 	help
 	  Support for the NVIDIA Tegra General Purpose Central DMA controller.
 	  The DMA controller has multiple DMA channels which can be configured
@@ -714,7 +680,7 @@ config XGENE_DMA
 
 config XILINX_DMA
 	tristate "Xilinx AXI DMAS Engine"
-	depends on (ARCH_ZYNQ || MICROBLAZE || ARM64)
+	depends on HAS_IOMEM
 	select DMA_ENGINE
 	help
 	  Enable support for Xilinx AXI VDMA Soft IP.
@@ -734,6 +700,20 @@ config XILINX_DMA
 	  between memory and AXI4-Stream target peripherals. It provides
 	  the scatter gather interface with multiple channels independent
 	  configuration support.
+
+config XILINX_XDMA
+	tristate "Xilinx DMA/Bridge Subsystem DMA Engine"
+	depends on HAS_IOMEM
+	select DMA_ENGINE
+	select DMA_VIRTUAL_CHANNELS
+	select REGMAP_MMIO
+	help
+	  Enable support for Xilinx DMA/Bridge Subsystem DMA engine. The DMA
+	  provides high performance block data movement between Host memory
+	  and the DMA subsystem. These direct memory transfers can be both in
+	  the Host to Card (H2C) and Card to Host (C2H) transfers.
+	  The core also provides up to 16 user interrupt wires that generate
+	  interrupts to the host.
 
 config XILINX_ZYNQMP_DMA
 	tristate "Xilinx ZynqMP DMA Engine"

@@ -15,7 +15,6 @@
 #include <linux/leds.h>
 #include <linux/module.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 
 /* Used to indicate a device has no such register */
 #define IS31FL32XX_REG_NONE 0xFF
@@ -422,8 +421,7 @@ static const struct of_device_id of_is31fl32xx_match[] = {
 
 MODULE_DEVICE_TABLE(of, of_is31fl32xx_match);
 
-static int is31fl32xx_probe(struct i2c_client *client,
-			    const struct i2c_device_id *id)
+static int is31fl32xx_probe(struct i2c_client *client)
 {
 	const struct is31fl32xx_chipdef *cdef;
 	struct device *dev = &client->dev;

@@ -160,16 +160,9 @@ static int lpc32xx_kscan_probe(struct platform_device *pdev)
 {
 	struct lpc32xx_kscan_drv *kscandat;
 	struct input_dev *input;
-	struct resource *res;
 	size_t keymap_size;
 	int error;
 	int irq;
-
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res) {
-		dev_err(&pdev->dev, "failed to get platform I/O memory\n");
-		return -EINVAL;
-	}
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0)
@@ -221,7 +214,7 @@ static int lpc32xx_kscan_probe(struct platform_device *pdev)
 
 	input_set_drvdata(kscandat->input, kscandat);
 
-	kscandat->kscan_base = devm_ioremap_resource(&pdev->dev, res);
+	kscandat->kscan_base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(kscandat->kscan_base))
 		return PTR_ERR(kscandat->kscan_base);
 
@@ -264,7 +257,6 @@ static int lpc32xx_kscan_probe(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_PM_SLEEP
 static int lpc32xx_kscan_suspend(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
@@ -302,10 +294,9 @@ static int lpc32xx_kscan_resume(struct device *dev)
 	mutex_unlock(&input->mutex);
 	return retval;
 }
-#endif
 
-static SIMPLE_DEV_PM_OPS(lpc32xx_kscan_pm_ops, lpc32xx_kscan_suspend,
-			 lpc32xx_kscan_resume);
+static DEFINE_SIMPLE_DEV_PM_OPS(lpc32xx_kscan_pm_ops, lpc32xx_kscan_suspend,
+				lpc32xx_kscan_resume);
 
 static const struct of_device_id lpc32xx_kscan_match[] = {
 	{ .compatible = "nxp,lpc3220-key" },
@@ -317,7 +308,7 @@ static struct platform_driver lpc32xx_kscan_driver = {
 	.probe		= lpc32xx_kscan_probe,
 	.driver		= {
 		.name	= DRV_NAME,
-		.pm	= &lpc32xx_kscan_pm_ops,
+		.pm	= pm_sleep_ptr(&lpc32xx_kscan_pm_ops),
 		.of_match_table = lpc32xx_kscan_match,
 	}
 };

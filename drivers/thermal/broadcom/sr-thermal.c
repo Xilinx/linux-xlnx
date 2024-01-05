@@ -32,7 +32,7 @@ struct sr_thermal {
 
 static int sr_get_temp(struct thermal_zone_device *tz, int *temp)
 {
-	struct sr_tmon *tmon = tz->devdata;
+	struct sr_tmon *tmon = thermal_zone_device_priv(tz);
 	struct sr_thermal *sr_thermal = tmon->priv;
 
 	*temp = readl(sr_thermal->regs + SR_TMON_TEMP_BASE(tmon->tmon_id));
@@ -91,7 +91,6 @@ static int sr_thermal_probe(struct platform_device *pdev)
 
 		dev_dbg(dev, "thermal sensor %d registered\n", i);
 	}
-	platform_set_drvdata(pdev, sr_thermal);
 
 	return 0;
 }

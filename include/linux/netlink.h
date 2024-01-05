@@ -50,7 +50,7 @@ struct netlink_kernel_cfg {
 	struct mutex	*cb_mutex;
 	int		(*bind)(struct net *net, int group);
 	void		(*unbind)(struct net *net, int group);
-	bool		(*compare)(struct net *net, struct sock *sk);
+	void            (*release) (struct sock *sk, unsigned long *groups);
 };
 
 struct sock *__netlink_kernel_create(struct net *net, int unit,
@@ -64,6 +64,7 @@ netlink_kernel_create(struct net *net, int unit, struct netlink_kernel_cfg *cfg)
 
 /* this can be increased when necessary - don't expose to userland */
 #define NETLINK_MAX_COOKIE_LEN	20
+#define NETLINK_MAX_FMTMSG_LEN	80
 
 /**
  * struct netlink_ext_ack - netlink extended ACK report struct
@@ -75,6 +76,8 @@ netlink_kernel_create(struct net *net, int unit, struct netlink_kernel_cfg *cfg)
  * @miss_nest: nest missing an attribute (%NULL if missing top level attr)
  * @cookie: cookie data to return to userspace (for success)
  * @cookie_len: actual cookie data length
+ * @_msg_buf: output buffer for formatted message strings - don't access
+ *	directly, use %NL_SET_ERR_MSG_FMT
  */
 struct netlink_ext_ack {
 	const char *_msg;
@@ -84,13 +87,13 @@ struct netlink_ext_ack {
 	u16 miss_type;
 	u8 cookie[NETLINK_MAX_COOKIE_LEN];
 	u8 cookie_len;
+	char _msg_buf[NETLINK_MAX_FMTMSG_LEN];
 };
 
 /* Always use this macro, this allows later putting the
  * message into a separate section or such for things
  * like translation or listing all possible messages.
- * Currently string formatting is not supported (due
- * to the lack of an output buffer.)
+ * If string formatting is needed use NL_SET_ERR_MSG_FMT.
  */
 #define NL_SET_ERR_MSG(extack, msg) do {		\
 	static const char __msg[] = msg;		\
@@ -102,8 +105,40 @@ struct netlink_ext_ack {
 		__extack->_msg = __msg;			\
 } while (0)
 
+/* We splice fmt with %s at each end even in the snprintf so that both calls
+ * can use the same string constant, avoiding its duplication in .ro
+ */
+#define NL_SET_ERR_MSG_FMT(extack, fmt, args...) do {			       \
+	struct netlink_ext_ack *__extack = (extack);			       \
+									       \
+	if (!__extack)							       \
+		break;							       \
+	if (snprintf(__extack->_msg_buf, NETLINK_MAX_FMTMSG_LEN,	       \
+		     "%s" fmt "%s", "", ##args, "") >=			       \
+	    NETLINK_MAX_FMTMSG_LEN)					       \
+		net_warn_ratelimited("%s" fmt "%s", "truncated extack: ",      \
+				     ##args, "\n");			       \
+									       \
+	do_trace_netlink_extack(__extack->_msg_buf);			       \
+									       \
+	__extack->_msg = __extack->_msg_buf;				       \
+} while (0)
+
 #define NL_SET_ERR_MSG_MOD(extack, msg)			\
 	NL_SET_ERR_MSG((extack), KBUILD_MODNAME ": " msg)
+
+#define NL_SET_ERR_MSG_FMT_MOD(extack, fmt, args...)	\
+	NL_SET_ERR_MSG_FMT((extack), KBUILD_MODNAME ": " fmt, ##args)
+
+#define NL_SET_ERR_MSG_WEAK(extack, msg) do {		\
+	if ((extack) && !(extack)->_msg)		\
+		NL_SET_ERR_MSG((extack), msg);		\
+} while (0)
+
+#define NL_SET_ERR_MSG_WEAK_MOD(extack, msg) do {	\
+	if ((extack) && !(extack)->_msg)		\
+		NL_SET_ERR_MSG_MOD((extack), msg);	\
+} while (0)
 
 #define NL_SET_BAD_ATTR_POLICY(extack, attr, pol) do {	\
 	if ((extack)) {					\
@@ -127,8 +162,30 @@ struct netlink_ext_ack {
 	}							\
 } while (0)
 
+#define NL_SET_ERR_MSG_ATTR_POL_FMT(extack, attr, pol, fmt, args...) do {	\
+	struct netlink_ext_ack *__extack = (extack);				\
+										\
+	if (!__extack)								\
+		break;								\
+										\
+	if (snprintf(__extack->_msg_buf, NETLINK_MAX_FMTMSG_LEN,		\
+		     "%s" fmt "%s", "", ##args, "") >=				\
+	    NETLINK_MAX_FMTMSG_LEN)						\
+		net_warn_ratelimited("%s" fmt "%s", "truncated extack: ",       \
+				     ##args, "\n");				\
+										\
+	do_trace_netlink_extack(__extack->_msg_buf);				\
+										\
+	__extack->_msg = __extack->_msg_buf;					\
+	__extack->bad_attr = (attr);						\
+	__extack->policy = (pol);						\
+} while (0)
+
 #define NL_SET_ERR_MSG_ATTR(extack, attr, msg)		\
 	NL_SET_ERR_MSG_ATTR_POL(extack, attr, NULL, msg)
+
+#define NL_SET_ERR_MSG_ATTR_FMT(extack, attr, msg, args...) \
+	NL_SET_ERR_MSG_ATTR_POL_FMT(extack, attr, NULL, msg, ##args)
 
 #define NL_SET_ERR_ATTR_MISS(extack, nest, type)  do {	\
 	struct netlink_ext_ack *__extack = (extack);	\
@@ -171,6 +228,11 @@ bool netlink_strict_get_check(struct sk_buff *skb);
 int netlink_unicast(struct sock *ssk, struct sk_buff *skb, __u32 portid, int nonblock);
 int netlink_broadcast(struct sock *ssk, struct sk_buff *skb, __u32 portid,
 		      __u32 group, gfp_t allocation);
+int netlink_broadcast_filtered(struct sock *ssk, struct sk_buff *skb,
+			       __u32 portid, __u32 group, gfp_t allocation,
+			       int (*filter)(struct sock *dsk,
+					     struct sk_buff *skb, void *data),
+			       void *filter_data);
 int netlink_set_err(struct sock *ssk, __u32 portid, __u32 group, int code);
 int netlink_register_notifier(struct notifier_block *nb);
 int netlink_unregister_notifier(struct notifier_block *nb);
@@ -238,6 +300,10 @@ struct netlink_callback {
 	};
 };
 
+#define NL_ASSERT_DUMP_CTX_FITS(type_name)				\
+	BUILD_BUG_ON(sizeof(type_name) >				\
+		     sizeof_field(struct netlink_callback, ctx))
+
 struct netlink_notify {
 	struct net *net;
 	u32 portid;
@@ -251,6 +317,7 @@ struct netlink_dump_control {
 	int (*start)(struct netlink_callback *);
 	int (*dump)(struct sk_buff *skb, struct netlink_callback *);
 	int (*done)(struct netlink_callback *);
+	struct netlink_ext_ack *extack;
 	void *data;
 	struct module *module;
 	u32 min_dump_alloc;

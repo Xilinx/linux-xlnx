@@ -3,7 +3,7 @@
  *
  * Name: acdebug.h - ACPI/AML debugger
  *
- * Copyright (C) 2000 - 2022, Intel Corp.
+ * Copyright (C) 2000 - 2023, Intel Corp.
  *
  *****************************************************************************/
 
@@ -286,5 +286,7 @@ void acpi_db_prep_namestring(char *name);
 struct acpi_namespace_node *acpi_db_local_ns_lookup(char *name);
 
 void acpi_db_uint32_to_hex_string(u32 value, char *buffer);
+
+void acpi_db_generate_interrupt(char *gsiv_arg);
 
 #endif				/* __ACDEBUG_H__ */

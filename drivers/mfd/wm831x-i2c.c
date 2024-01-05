@@ -21,9 +21,9 @@
 #include <linux/mfd/wm831x/core.h>
 #include <linux/mfd/wm831x/pdata.h>
 
-static int wm831x_i2c_probe(struct i2c_client *i2c,
-			    const struct i2c_device_id *id)
+static int wm831x_i2c_probe(struct i2c_client *i2c)
 {
+	const struct i2c_device_id *id = i2c_client_get_device_id(i2c);
 	struct wm831x_pdata *pdata = dev_get_platdata(&i2c->dev);
 	const struct of_device_id *of_id;
 	struct wm831x *wm831x;
@@ -36,7 +36,7 @@ static int wm831x_i2c_probe(struct i2c_client *i2c,
 			dev_err(&i2c->dev, "Failed to match device\n");
 			return -ENODEV;
 		}
-		type = (enum wm831x_parent)of_id->data;
+		type = (uintptr_t)of_id->data;
 	} else {
 		type = (enum wm831x_parent)id->driver_data;
 	}

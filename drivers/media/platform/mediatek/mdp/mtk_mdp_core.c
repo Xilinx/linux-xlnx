@@ -28,7 +28,7 @@ EXPORT_SYMBOL(mtk_mdp_dbg_level);
 
 module_param(mtk_mdp_dbg_level, int, 0644);
 
-static const struct of_device_id mtk_mdp_comp_dt_ids[] = {
+static const struct of_device_id mtk_mdp_comp_dt_ids[] __maybe_unused = {
 	{
 		.compatible = "mediatek,mt8173-mdp-rdma",
 		.data = (void *)MTK_MDP_RDMA
@@ -235,7 +235,7 @@ err_comp:
 	return ret;
 }
 
-static int mtk_mdp_remove(struct platform_device *pdev)
+static void mtk_mdp_remove(struct platform_device *pdev)
 {
 	struct mtk_mdp_dev *mdp = platform_get_drvdata(pdev);
 	struct mtk_mdp_comp *comp, *comp_temp;
@@ -255,7 +255,6 @@ static int mtk_mdp_remove(struct platform_device *pdev)
 	}
 
 	dev_dbg(&pdev->dev, "%s driver unloaded\n", pdev->name);
-	return 0;
 }
 
 static int __maybe_unused mtk_mdp_pm_suspend(struct device *dev)
@@ -299,7 +298,7 @@ static const struct dev_pm_ops mtk_mdp_pm_ops = {
 
 static struct platform_driver mtk_mdp_driver = {
 	.probe		= mtk_mdp_probe,
-	.remove		= mtk_mdp_remove,
+	.remove_new	= mtk_mdp_remove,
 	.driver = {
 		.name	= MTK_MDP_MODULE_NAME,
 		.pm	= &mtk_mdp_pm_ops,

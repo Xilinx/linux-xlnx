@@ -377,19 +377,6 @@ static inline u8 _ipw_read8(struct ipw_priv *ipw, unsigned long ofs)
 	_ipw_read8(ipw, ofs); \
 })
 
-/* 16-bit direct read (low 4K) */
-static inline u16 _ipw_read16(struct ipw_priv *ipw, unsigned long ofs)
-{
-	return readw(ipw->hw_base + ofs);
-}
-
-/* alias to 16-bit direct read (low 4K of SRAM/regs), with debug wrapper */
-#define ipw_read16(ipw, ofs) ({ \
-	IPW_DEBUG_IO("%s %d: read_direct16(0x%08X)\n", __FILE__, __LINE__, \
-			(u32)(ofs)); \
-	_ipw_read16(ipw, ofs); \
-})
-
 /* 32-bit direct read (low 4K) */
 static inline u32 _ipw_read32(struct ipw_priv *ipw, unsigned long ofs)
 {
@@ -1189,23 +1176,20 @@ static ssize_t debug_level_show(struct device_driver *d, char *buf)
 static ssize_t debug_level_store(struct device_driver *d, const char *buf,
 				 size_t count)
 {
-	char *p = (char *)buf;
-	u32 val;
+	unsigned long val;
 
-	if (p[1] == 'x' || p[1] == 'X' || p[0] == 'x' || p[0] == 'X') {
-		p++;
-		if (p[0] == 'x' || p[0] == 'X')
-			p++;
-		val = simple_strtoul(p, &p, 16);
-	} else
-		val = simple_strtoul(p, &p, 10);
-	if (p == buf)
+	int result = kstrtoul(buf, 0, &val);
+
+	if (result == -EINVAL)
 		printk(KERN_INFO DRV_NAME
 		       ": %s is not in hex or decimal form.\n", buf);
+	else if (result == -ERANGE)
+		printk(KERN_INFO DRV_NAME
+			 ": %s has overflowed.\n", buf);
 	else
 		ipw_debug_level = val;
 
-	return strnlen(buf, count);
+	return count;
 }
 static DRIVER_ATTR_RW(debug_level);
 
@@ -1234,9 +1218,9 @@ static struct ipw_fw_error *ipw_alloc_error_log(struct ipw_priv *priv)
 	u32 base = ipw_read32(priv, IPW_ERROR_LOG);
 	u32 elem_len = ipw_read_reg32(priv, base);
 
-	error = kmalloc(sizeof(*error) +
-			sizeof(*error->elem) * elem_len +
-			sizeof(*error->log) * log_len, GFP_ATOMIC);
+	error = kmalloc(size_add(struct_size(error, elem, elem_len),
+				 array_size(sizeof(*error->log), log_len)),
+			GFP_ATOMIC);
 	if (!error) {
 		IPW_ERROR("Memory allocation for firmware error log "
 			  "failed.\n");
@@ -1247,7 +1231,6 @@ static struct ipw_fw_error *ipw_alloc_error_log(struct ipw_priv *priv)
 	error->config = priv->config;
 	error->elem_len = elem_len;
 	error->log_len = log_len;
-	error->elem = (struct ipw_error_elem *)error->payload;
 	error->log = (struct ipw_event *)(error->elem + elem_len);
 
 	ipw_capture_event_log(priv, log_len, error->log);
@@ -1475,25 +1458,13 @@ static ssize_t scan_age_store(struct device *d, struct device_attribute *attr,
 {
 	struct ipw_priv *priv = dev_get_drvdata(d);
 	struct net_device *dev = priv->net_dev;
-	char buffer[] = "00000000";
-	unsigned long len =
-	    (sizeof(buffer) - 1) > count ? count : sizeof(buffer) - 1;
-	unsigned long val;
-	char *p = buffer;
 
 	IPW_DEBUG_INFO("enter\n");
 
-	strncpy(buffer, buf, len);
-	buffer[len] = 0;
+	unsigned long val;
+	int result = kstrtoul(buf, 0, &val);
 
-	if (p[1] == 'x' || p[1] == 'X' || p[0] == 'x' || p[0] == 'X') {
-		p++;
-		if (p[0] == 'x' || p[0] == 'X')
-			p++;
-		val = simple_strtoul(p, &p, 16);
-	} else
-		val = simple_strtoul(p, &p, 10);
-	if (p == buffer) {
+	if (result == -EINVAL || result == -ERANGE) {
 		IPW_DEBUG_INFO("%s: user supplied invalid value.\n", dev->name);
 	} else {
 		priv->ieee->scan_age = val;
@@ -1501,7 +1472,7 @@ static ssize_t scan_age_store(struct device *d, struct device_attribute *attr,
 	}
 
 	IPW_DEBUG_INFO("exit\n");
-	return len;
+	return count;
 }
 
 static DEVICE_ATTR_RW(scan_age);
@@ -2995,20 +2966,6 @@ static void ipw_remove_current_network(struct ipw_priv *priv)
 	spin_unlock_irqrestore(&priv->ieee->lock, flags);
 }
 
-/*
- * Check that card is still alive.
- * Reads debug register from domain0.
- * If card is present, pre-defined value should
- * be found there.
- *
- * @param priv
- * @return 1 if card is present, 0 otherwise
- */
-static inline int ipw_alive(struct ipw_priv *priv)
-{
-	return ipw_read32(priv, 0x90) == 0xd55555d5;
-}
-
 /* timeout in msec, attempted in 10-msec quanta */
 static int ipw_poll_bit(struct ipw_priv *priv, u32 addr, u32 mask,
 			       int timeout)
@@ -3441,7 +3398,7 @@ static void ipw_rx_queue_reset(struct ipw_priv *priv,
 			dma_unmap_single(&priv->pci_dev->dev,
 					 rxq->pool[i].dma_addr,
 					 IPW_RX_BUF_SIZE, DMA_FROM_DEVICE);
-			dev_kfree_skb(rxq->pool[i].skb);
+			dev_kfree_skb_irq(rxq->pool[i].skb);
 			rxq->pool[i].skb = NULL;
 		}
 		list_add_tail(&rxq->pool[i].list, &rxq->rx_used);
@@ -9870,7 +9827,7 @@ static int ipw_wx_sw_reset(struct net_device *dev,
 
 /* Rebase the WE IOCTLs to zero for the handler array */
 static iw_handler ipw_wx_handlers[] = {
-	IW_HANDLER(SIOCGIWNAME, (iw_handler)cfg80211_wext_giwname),
+	IW_HANDLER(SIOCGIWNAME, cfg80211_wext_giwname),
 	IW_HANDLER(SIOCSIWFREQ, ipw_wx_set_freq),
 	IW_HANDLER(SIOCGIWFREQ, ipw_wx_get_freq),
 	IW_HANDLER(SIOCSIWMODE, ipw_wx_set_mode),
@@ -11397,9 +11354,14 @@ static int ipw_wdev_init(struct net_device *dev)
 	set_wiphy_dev(wdev->wiphy, &priv->pci_dev->dev);
 
 	/* With that information in place, we can now register the wiphy... */
-	if (wiphy_register(wdev->wiphy))
-		rc = -EIO;
+	rc = wiphy_register(wdev->wiphy);
+	if (rc)
+		goto out;
+
+	return 0;
 out:
+	kfree(priv->ieee->a_band.channels);
+	kfree(priv->ieee->bg_band.channels);
 	return rc;
 }
 

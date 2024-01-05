@@ -9,6 +9,7 @@
 #include <linux/udp.h>
 #include <linux/sctp.h>
 #include <linux/static_key.h>
+#include <linux/string_helpers.h>
 #include <net/ip.h>
 #include <net/genetlink.h>
 #include <net/netfilter/nf_conntrack_core.h>
@@ -28,6 +29,7 @@
 #include <net/netfilter/nf_conntrack_act_ct.h>
 
 #include "datapath.h"
+#include "drop.h"
 #include "conntrack.h"
 #include "flow.h"
 #include "flow_netlink.h"
@@ -434,153 +436,24 @@ static int ovs_ct_set_labels(struct nf_conn *ct, struct sw_flow_key *key,
 	return 0;
 }
 
-/* 'skb' should already be pulled to nh_ofs. */
-static int ovs_ct_helper(struct sk_buff *skb, u16 proto)
-{
-	const struct nf_conntrack_helper *helper;
-	const struct nf_conn_help *help;
-	enum ip_conntrack_info ctinfo;
-	unsigned int protoff;
-	struct nf_conn *ct;
-	int err;
-
-	ct = nf_ct_get(skb, &ctinfo);
-	if (!ct || ctinfo == IP_CT_RELATED_REPLY)
-		return NF_ACCEPT;
-
-	help = nfct_help(ct);
-	if (!help)
-		return NF_ACCEPT;
-
-	helper = rcu_dereference(help->helper);
-	if (!helper)
-		return NF_ACCEPT;
-
-	switch (proto) {
-	case NFPROTO_IPV4:
-		protoff = ip_hdrlen(skb);
-		break;
-	case NFPROTO_IPV6: {
-		u8 nexthdr = ipv6_hdr(skb)->nexthdr;
-		__be16 frag_off;
-		int ofs;
-
-		ofs = ipv6_skip_exthdr(skb, sizeof(struct ipv6hdr), &nexthdr,
-				       &frag_off);
-		if (ofs < 0 || (frag_off & htons(~0x7)) != 0) {
-			pr_debug("proto header not found\n");
-			return NF_ACCEPT;
-		}
-		protoff = ofs;
-		break;
-	}
-	default:
-		WARN_ONCE(1, "helper invoked on non-IP family!");
-		return NF_DROP;
-	}
-
-	err = helper->help(skb, protoff, ct, ctinfo);
-	if (err != NF_ACCEPT)
-		return err;
-
-	/* Adjust seqs after helper.  This is needed due to some helpers (e.g.,
-	 * FTP with NAT) adusting the TCP payload size when mangling IP
-	 * addresses and/or port numbers in the text-based control connection.
-	 */
-	if (test_bit(IPS_SEQ_ADJUST_BIT, &ct->status) &&
-	    !nf_ct_seq_adjust(skb, ct, ctinfo, protoff))
-		return NF_DROP;
-	return NF_ACCEPT;
-}
-
-/* Returns 0 on success, -EINPROGRESS if 'skb' is stolen, or other nonzero
- * value if 'skb' is freed.
- */
-static int handle_fragments(struct net *net, struct sw_flow_key *key,
-			    u16 zone, struct sk_buff *skb)
+static int ovs_ct_handle_fragments(struct net *net, struct sw_flow_key *key,
+				   u16 zone, int family, struct sk_buff *skb)
 {
 	struct ovs_skb_cb ovs_cb = *OVS_CB(skb);
 	int err;
 
-	if (key->eth.type == htons(ETH_P_IP)) {
-		enum ip_defrag_users user = IP_DEFRAG_CONNTRACK_IN + zone;
-
-		memset(IPCB(skb), 0, sizeof(struct inet_skb_parm));
-		err = ip_defrag(net, skb, user);
-		if (err)
-			return err;
-
-		ovs_cb.mru = IPCB(skb)->frag_max_size;
-#if IS_ENABLED(CONFIG_NF_DEFRAG_IPV6)
-	} else if (key->eth.type == htons(ETH_P_IPV6)) {
-		enum ip6_defrag_users user = IP6_DEFRAG_CONNTRACK_IN + zone;
-
-		memset(IP6CB(skb), 0, sizeof(struct inet6_skb_parm));
-		err = nf_ct_frag6_gather(net, skb, user);
-		if (err) {
-			if (err != -EINPROGRESS)
-				kfree_skb(skb);
-			return err;
-		}
-
-		key->ip.proto = ipv6_hdr(skb)->nexthdr;
-		ovs_cb.mru = IP6CB(skb)->frag_max_size;
-#endif
-	} else {
-		kfree_skb(skb);
-		return -EPFNOSUPPORT;
-	}
+	err = nf_ct_handle_fragments(net, skb, zone, family, &key->ip.proto, &ovs_cb.mru);
+	if (err)
+		return err;
 
 	/* The key extracted from the fragment that completed this datagram
 	 * likely didn't have an L4 header, so regenerate it.
 	 */
 	ovs_flow_key_update_l3l4(skb, key);
-
 	key->ip.frag = OVS_FRAG_TYPE_NONE;
-	skb_clear_hash(skb);
-	skb->ignore_df = 1;
 	*OVS_CB(skb) = ovs_cb;
 
 	return 0;
-}
-
-static struct nf_conntrack_expect *
-ovs_ct_expect_find(struct net *net, const struct nf_conntrack_zone *zone,
-		   u16 proto, const struct sk_buff *skb)
-{
-	struct nf_conntrack_tuple tuple;
-	struct nf_conntrack_expect *exp;
-
-	if (!nf_ct_get_tuplepr(skb, skb_network_offset(skb), proto, net, &tuple))
-		return NULL;
-
-	exp = __nf_ct_expect_find(net, zone, &tuple);
-	if (exp) {
-		struct nf_conntrack_tuple_hash *h;
-
-		/* Delete existing conntrack entry, if it clashes with the
-		 * expectation.  This can happen since conntrack ALGs do not
-		 * check for clashes between (new) expectations and existing
-		 * conntrack entries.  nf_conntrack_in() will check the
-		 * expectations only if a conntrack entry can not be found,
-		 * which can lead to OVS finding the expectation (here) in the
-		 * init direction, but which will not be removed by the
-		 * nf_conntrack_in() call, if a matching conntrack entry is
-		 * found instead.  In this case all init direction packets
-		 * would be reported as new related packets, while reply
-		 * direction packets would be reported as un-related
-		 * established packets.
-		 */
-		h = nf_conntrack_find_get(net, zone, &tuple);
-		if (h) {
-			struct nf_conn *ct = nf_ct_tuplehash_to_ctrack(h);
-
-			nf_ct_delete(ct, 0, 0);
-			nf_ct_put(ct);
-		}
-	}
-
-	return exp;
 }
 
 /* This replicates logic from nf_conntrack_core.c that is not exported. */
@@ -785,147 +658,27 @@ static void ovs_nat_update_key(struct sw_flow_key *key,
 	}
 }
 
-/* Modelled after nf_nat_ipv[46]_fn().
- * range is only used for new, uninitialized NAT state.
- * Returns either NF_ACCEPT or NF_DROP.
- */
-static int ovs_ct_nat_execute(struct sk_buff *skb, struct nf_conn *ct,
-			      enum ip_conntrack_info ctinfo,
-			      const struct nf_nat_range2 *range,
-			      enum nf_nat_manip_type maniptype, struct sw_flow_key *key)
-{
-	int hooknum, nh_off, err = NF_ACCEPT;
-
-	nh_off = skb_network_offset(skb);
-	skb_pull_rcsum(skb, nh_off);
-
-	/* See HOOK2MANIP(). */
-	if (maniptype == NF_NAT_MANIP_SRC)
-		hooknum = NF_INET_LOCAL_IN; /* Source NAT */
-	else
-		hooknum = NF_INET_LOCAL_OUT; /* Destination NAT */
-
-	switch (ctinfo) {
-	case IP_CT_RELATED:
-	case IP_CT_RELATED_REPLY:
-		if (IS_ENABLED(CONFIG_NF_NAT) &&
-		    skb->protocol == htons(ETH_P_IP) &&
-		    ip_hdr(skb)->protocol == IPPROTO_ICMP) {
-			if (!nf_nat_icmp_reply_translation(skb, ct, ctinfo,
-							   hooknum))
-				err = NF_DROP;
-			goto push;
-		} else if (IS_ENABLED(CONFIG_IPV6) &&
-			   skb->protocol == htons(ETH_P_IPV6)) {
-			__be16 frag_off;
-			u8 nexthdr = ipv6_hdr(skb)->nexthdr;
-			int hdrlen = ipv6_skip_exthdr(skb,
-						      sizeof(struct ipv6hdr),
-						      &nexthdr, &frag_off);
-
-			if (hdrlen >= 0 && nexthdr == IPPROTO_ICMPV6) {
-				if (!nf_nat_icmpv6_reply_translation(skb, ct,
-								     ctinfo,
-								     hooknum,
-								     hdrlen))
-					err = NF_DROP;
-				goto push;
-			}
-		}
-		/* Non-ICMP, fall thru to initialize if needed. */
-		fallthrough;
-	case IP_CT_NEW:
-		/* Seen it before?  This can happen for loopback, retrans,
-		 * or local packets.
-		 */
-		if (!nf_nat_initialized(ct, maniptype)) {
-			/* Initialize according to the NAT action. */
-			err = (range && range->flags & NF_NAT_RANGE_MAP_IPS)
-				/* Action is set up to establish a new
-				 * mapping.
-				 */
-				? nf_nat_setup_info(ct, range, maniptype)
-				: nf_nat_alloc_null_binding(ct, hooknum);
-			if (err != NF_ACCEPT)
-				goto push;
-		}
-		break;
-
-	case IP_CT_ESTABLISHED:
-	case IP_CT_ESTABLISHED_REPLY:
-		break;
-
-	default:
-		err = NF_DROP;
-		goto push;
-	}
-
-	err = nf_nat_packet(ct, ctinfo, hooknum, skb);
-push:
-	skb_push_rcsum(skb, nh_off);
-
-	/* Update the flow key if NAT successful. */
-	if (err == NF_ACCEPT)
-		ovs_nat_update_key(key, skb, maniptype);
-
-	return err;
-}
-
 /* Returns NF_DROP if the packet should be dropped, NF_ACCEPT otherwise. */
 static int ovs_ct_nat(struct net *net, struct sw_flow_key *key,
 		      const struct ovs_conntrack_info *info,
 		      struct sk_buff *skb, struct nf_conn *ct,
 		      enum ip_conntrack_info ctinfo)
 {
-	enum nf_nat_manip_type maniptype;
-	int err;
+	int err, action = 0;
 
-	/* Add NAT extension if not confirmed yet. */
-	if (!nf_ct_is_confirmed(ct) && !nf_ct_nat_ext_add(ct))
-		return NF_ACCEPT;   /* Can't NAT. */
+	if (!(info->nat & OVS_CT_NAT))
+		return NF_ACCEPT;
+	if (info->nat & OVS_CT_SRC_NAT)
+		action |= BIT(NF_NAT_MANIP_SRC);
+	if (info->nat & OVS_CT_DST_NAT)
+		action |= BIT(NF_NAT_MANIP_DST);
 
-	/* Determine NAT type.
-	 * Check if the NAT type can be deduced from the tracked connection.
-	 * Make sure new expected connections (IP_CT_RELATED) are NATted only
-	 * when committing.
-	 */
-	if (info->nat & OVS_CT_NAT && ctinfo != IP_CT_NEW &&
-	    ct->status & IPS_NAT_MASK &&
-	    (ctinfo != IP_CT_RELATED || info->commit)) {
-		/* NAT an established or related connection like before. */
-		if (CTINFO2DIR(ctinfo) == IP_CT_DIR_REPLY)
-			/* This is the REPLY direction for a connection
-			 * for which NAT was applied in the forward
-			 * direction.  Do the reverse NAT.
-			 */
-			maniptype = ct->status & IPS_SRC_NAT
-				? NF_NAT_MANIP_DST : NF_NAT_MANIP_SRC;
-		else
-			maniptype = ct->status & IPS_SRC_NAT
-				? NF_NAT_MANIP_SRC : NF_NAT_MANIP_DST;
-	} else if (info->nat & OVS_CT_SRC_NAT) {
-		maniptype = NF_NAT_MANIP_SRC;
-	} else if (info->nat & OVS_CT_DST_NAT) {
-		maniptype = NF_NAT_MANIP_DST;
-	} else {
-		return NF_ACCEPT; /* Connection is not NATed. */
-	}
-	err = ovs_ct_nat_execute(skb, ct, ctinfo, &info->range, maniptype, key);
+	err = nf_ct_nat(skb, ct, ctinfo, &action, &info->range, info->commit);
 
-	if (err == NF_ACCEPT && ct->status & IPS_DST_NAT) {
-		if (ct->status & IPS_SRC_NAT) {
-			if (maniptype == NF_NAT_MANIP_SRC)
-				maniptype = NF_NAT_MANIP_DST;
-			else
-				maniptype = NF_NAT_MANIP_SRC;
-
-			err = ovs_ct_nat_execute(skb, ct, ctinfo, &info->range,
-						 maniptype, key);
-		} else if (CTINFO2DIR(ctinfo) == IP_CT_DIR_ORIGINAL) {
-			err = ovs_ct_nat_execute(skb, ct, ctinfo, NULL,
-						 NF_NAT_MANIP_SRC, key);
-		}
-	}
+	if (action & BIT(NF_NAT_MANIP_SRC))
+		ovs_nat_update_key(key, skb, NF_NAT_MANIP_SRC);
+	if (action & BIT(NF_NAT_MANIP_DST))
+		ovs_nat_update_key(key, skb, NF_NAT_MANIP_DST);
 
 	return err;
 }
@@ -1038,7 +791,7 @@ static int __ovs_ct_lookup(struct net *net, struct sw_flow_key *key,
 		 */
 		if ((nf_ct_is_confirmed(ct) ? !cached || add_helper :
 					      info->commit) &&
-		    ovs_ct_helper(skb, info->family) != NF_ACCEPT) {
+		    nf_ct_helper(skb, ct, ctinfo, info->family) != NF_ACCEPT) {
 			return -EINVAL;
 		}
 
@@ -1061,36 +814,16 @@ static int ovs_ct_lookup(struct net *net, struct sw_flow_key *key,
 			 const struct ovs_conntrack_info *info,
 			 struct sk_buff *skb)
 {
-	struct nf_conntrack_expect *exp;
+	struct nf_conn *ct;
+	int err;
 
-	/* If we pass an expected packet through nf_conntrack_in() the
-	 * expectation is typically removed, but the packet could still be
-	 * lost in upcall processing.  To prevent this from happening we
-	 * perform an explicit expectation lookup.  Expected connections are
-	 * always new, and will be passed through conntrack only when they are
-	 * committed, as it is OK to remove the expectation at that time.
-	 */
-	exp = ovs_ct_expect_find(net, &info->zone, info->family, skb);
-	if (exp) {
-		u8 state;
+	err = __ovs_ct_lookup(net, key, info, skb);
+	if (err)
+		return err;
 
-		/* NOTE: New connections are NATted and Helped only when
-		 * committed, so we are not calling into NAT here.
-		 */
-		state = OVS_CS_F_TRACKED | OVS_CS_F_NEW | OVS_CS_F_RELATED;
-		__ovs_ct_update_key(key, state, &info->zone, exp->master);
-	} else {
-		struct nf_conn *ct;
-		int err;
-
-		err = __ovs_ct_lookup(net, key, info, skb);
-		if (err)
-			return err;
-
-		ct = (struct nf_conn *)skb_nfct(skb);
-		if (ct)
-			nf_ct_deliver_cached_events(ct);
-	}
+	ct = (struct nf_conn *)skb_nfct(skb);
+	if (ct)
+		nf_ct_deliver_cached_events(ct);
 
 	return 0;
 }
@@ -1269,36 +1002,6 @@ static int ovs_ct_commit(struct net *net, struct sw_flow_key *key,
 	return 0;
 }
 
-/* Trim the skb to the length specified by the IP/IPv6 header,
- * removing any trailing lower-layer padding. This prepares the skb
- * for higher-layer processing that assumes skb->len excludes padding
- * (such as nf_ip_checksum). The caller needs to pull the skb to the
- * network header, and ensure ip_hdr/ipv6_hdr points to valid data.
- */
-static int ovs_skb_network_trim(struct sk_buff *skb)
-{
-	unsigned int len;
-	int err;
-
-	switch (skb->protocol) {
-	case htons(ETH_P_IP):
-		len = ntohs(ip_hdr(skb)->tot_len);
-		break;
-	case htons(ETH_P_IPV6):
-		len = sizeof(struct ipv6hdr)
-			+ ntohs(ipv6_hdr(skb)->payload_len);
-		break;
-	default:
-		len = skb->len;
-	}
-
-	err = pskb_trim_rcsum(skb, len);
-	if (err)
-		kfree_skb(skb);
-
-	return err;
-}
-
 /* Returns 0 on success, -EINPROGRESS if 'skb' is stolen, or other nonzero
  * value if 'skb' is freed.
  */
@@ -1313,12 +1016,15 @@ int ovs_ct_execute(struct net *net, struct sk_buff *skb,
 	nh_ofs = skb_network_offset(skb);
 	skb_pull_rcsum(skb, nh_ofs);
 
-	err = ovs_skb_network_trim(skb);
-	if (err)
+	err = nf_ct_skb_network_trim(skb, info->family);
+	if (err) {
+		kfree_skb(skb);
 		return err;
+	}
 
 	if (key->ip.frag != OVS_FRAG_TYPE_NONE) {
-		err = handle_fragments(net, key, info->zone.id, skb);
+		err = ovs_ct_handle_fragments(net, key, info->zone.id,
+					      info->family, skb);
 		if (err)
 			return err;
 	}
@@ -1330,7 +1036,7 @@ int ovs_ct_execute(struct net *net, struct sk_buff *skb,
 
 	skb_push_rcsum(skb, nh_ofs);
 	if (err)
-		kfree_skb(skb);
+		ovs_kfree_skb_reason(skb, OVS_DROP_CONNTRACK);
 	return err;
 }
 
@@ -1348,43 +1054,6 @@ int ovs_ct_clear(struct sk_buff *skb, struct sw_flow_key *key)
 		ovs_ct_fill_key(skb, key, false);
 
 	return 0;
-}
-
-static int ovs_ct_add_helper(struct ovs_conntrack_info *info, const char *name,
-			     const struct sw_flow_key *key, bool log)
-{
-	struct nf_conntrack_helper *helper;
-	struct nf_conn_help *help;
-	int ret = 0;
-
-	helper = nf_conntrack_helper_try_module_get(name, info->family,
-						    key->ip.proto);
-	if (!helper) {
-		OVS_NLERR(log, "Unknown helper \"%s\"", name);
-		return -EINVAL;
-	}
-
-	help = nf_ct_helper_ext_add(info->ct, GFP_KERNEL);
-	if (!help) {
-		nf_conntrack_helper_put(helper);
-		return -ENOMEM;
-	}
-
-#if IS_ENABLED(CONFIG_NF_NAT)
-	if (info->nat) {
-		ret = nf_nat_helper_try_module_get(name, info->family,
-						   key->ip.proto);
-		if (ret) {
-			nf_conntrack_helper_put(helper);
-			OVS_NLERR(log, "Failed to load \"%s\" NAT helper, error: %d",
-				  name, ret);
-			return ret;
-		}
-	}
-#endif
-	rcu_assign_pointer(help->helper, helper);
-	info->helper = helper;
-	return ret;
 }
 
 #if IS_ENABLED(CONFIG_NF_NAT)
@@ -1599,7 +1268,7 @@ static int parse_ct(const struct nlattr *attr, struct ovs_conntrack_info *info,
 #endif
 		case OVS_CT_ATTR_HELPER:
 			*helper = nla_data(a);
-			if (!memchr(*helper, '\0', nla_len(a))) {
+			if (!string_is_terminated(*helper, nla_len(a))) {
 				OVS_NLERR(log, "Invalid conntrack helper");
 				return -EINVAL;
 			}
@@ -1620,7 +1289,7 @@ static int parse_ct(const struct nlattr *attr, struct ovs_conntrack_info *info,
 #ifdef CONFIG_NF_CONNTRACK_TIMEOUT
 		case OVS_CT_ATTR_TIMEOUT:
 			memcpy(info->timeout, nla_data(a), nla_len(a));
-			if (!memchr(info->timeout, '\0', nla_len(a))) {
+			if (!string_is_terminated(info->timeout, nla_len(a))) {
 				OVS_NLERR(log, "Invalid conntrack timeout");
 				return -EINVAL;
 			}
@@ -1720,9 +1389,12 @@ int ovs_ct_copy_action(struct net *net, const struct nlattr *attr,
 	}
 
 	if (helper) {
-		err = ovs_ct_add_helper(&ct_info, helper, key, log);
-		if (err)
+		err = nf_ct_add_helper(ct_info.ct, helper, ct_info.family,
+				       key->ip.proto, ct_info.nat, &ct_info.helper);
+		if (err) {
+			OVS_NLERR(log, "Failed to add %s helper %d", helper, err);
 			goto err_free_ct;
+		}
 	}
 
 	err = ovs_nla_add_action(sfa, OVS_ACTION_ATTR_CT, &ct_info,
@@ -1730,7 +1402,8 @@ int ovs_ct_copy_action(struct net *net, const struct nlattr *attr,
 	if (err)
 		goto err_free_ct;
 
-	__set_bit(IPS_CONFIRMED_BIT, &ct_info.ct->status);
+	if (ct_info.commit)
+		__set_bit(IPS_CONFIRMED_BIT, &ct_info.ct->status);
 	return 0;
 err_free_ct:
 	__ovs_ct_free_action(&ct_info);
@@ -1932,7 +1605,7 @@ static struct sk_buff *
 ovs_ct_limit_cmd_reply_start(struct genl_info *info, u8 cmd,
 			     struct ovs_header **ovs_reply_header)
 {
-	struct ovs_header *ovs_header = info->userhdr;
+	struct ovs_header *ovs_header = genl_info_userhdr(info);
 	struct sk_buff *skb;
 
 	skb = genlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);

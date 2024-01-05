@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: (LGPL-2.1 OR BSD-2-Clause) */
 
 /*
- * common eBPF ELF operations.
+ * Common BPF ELF operations.
  *
  * Copyright (C) 2013-2015 Alexei Starovoitov <ast@kernel.org>
  * Copyright (C) 2015 Wang Nan <wangnan0@huawei.com>
@@ -96,13 +96,20 @@ struct bpf_prog_load_opts {
 	__u32 log_level;
 	__u32 log_size;
 	char *log_buf;
+	/* output: actual total log contents size (including termintaing zero).
+	 * It could be both larger than original log_size (if log was
+	 * truncated), or smaller (if log buffer wasn't filled completely).
+	 * If kernel doesn't support this feature, log_size is left unchanged.
+	 */
+	__u32 log_true_size;
+	size_t :0;
 };
-#define bpf_prog_load_opts__last_field log_buf
+#define bpf_prog_load_opts__last_field log_true_size
 
 LIBBPF_API int bpf_prog_load(enum bpf_prog_type prog_type,
 			     const char *prog_name, const char *license,
 			     const struct bpf_insn *insns, size_t insn_cnt,
-			     const struct bpf_prog_load_opts *opts);
+			     struct bpf_prog_load_opts *opts);
 
 /* Flags to direct loading requirements */
 #define MAPS_RELAX_COMPAT	0x01
@@ -117,11 +124,18 @@ struct bpf_btf_load_opts {
 	char *log_buf;
 	__u32 log_level;
 	__u32 log_size;
+	/* output: actual total log contents size (including termintaing zero).
+	 * It could be both larger than original log_size (if log was
+	 * truncated), or smaller (if log buffer wasn't filled completely).
+	 * If kernel doesn't support this feature, log_size is left unchanged.
+	 */
+	__u32 log_true_size;
+	size_t :0;
 };
-#define bpf_btf_load_opts__last_field log_size
+#define bpf_btf_load_opts__last_field log_true_size
 
 LIBBPF_API int bpf_btf_load(const void *btf_data, size_t btf_size,
-			    const struct bpf_btf_load_opts *opts);
+			    struct bpf_btf_load_opts *opts);
 
 LIBBPF_API int bpf_map_update_elem(int fd, const void *key, const void *value,
 				   __u64 flags);
@@ -270,35 +284,95 @@ LIBBPF_API int bpf_map_update_batch(int fd, const void *keys, const void *values
 				    __u32 *count,
 				    const struct bpf_map_batch_opts *opts);
 
+struct bpf_obj_pin_opts {
+	size_t sz; /* size of this struct for forward/backward compatibility */
+
+	__u32 file_flags;
+	int path_fd;
+
+	size_t :0;
+};
+#define bpf_obj_pin_opts__last_field path_fd
+
+LIBBPF_API int bpf_obj_pin(int fd, const char *pathname);
+LIBBPF_API int bpf_obj_pin_opts(int fd, const char *pathname,
+				const struct bpf_obj_pin_opts *opts);
+
 struct bpf_obj_get_opts {
 	size_t sz; /* size of this struct for forward/backward compatibility */
 
 	__u32 file_flags;
+	int path_fd;
 
 	size_t :0;
 };
-#define bpf_obj_get_opts__last_field file_flags
+#define bpf_obj_get_opts__last_field path_fd
 
-LIBBPF_API int bpf_obj_pin(int fd, const char *pathname);
 LIBBPF_API int bpf_obj_get(const char *pathname);
 LIBBPF_API int bpf_obj_get_opts(const char *pathname,
 				const struct bpf_obj_get_opts *opts);
 
-struct bpf_prog_attach_opts {
-	size_t sz; /* size of this struct for forward/backward compatibility */
-	unsigned int flags;
-	int replace_prog_fd;
-};
-#define bpf_prog_attach_opts__last_field replace_prog_fd
-
 LIBBPF_API int bpf_prog_attach(int prog_fd, int attachable_fd,
 			       enum bpf_attach_type type, unsigned int flags);
-LIBBPF_API int bpf_prog_attach_opts(int prog_fd, int attachable_fd,
-				     enum bpf_attach_type type,
-				     const struct bpf_prog_attach_opts *opts);
 LIBBPF_API int bpf_prog_detach(int attachable_fd, enum bpf_attach_type type);
 LIBBPF_API int bpf_prog_detach2(int prog_fd, int attachable_fd,
 				enum bpf_attach_type type);
+
+struct bpf_prog_attach_opts {
+	size_t sz; /* size of this struct for forward/backward compatibility */
+	__u32 flags;
+	union {
+		int replace_prog_fd;
+		int replace_fd;
+	};
+	int relative_fd;
+	__u32 relative_id;
+	__u64 expected_revision;
+	size_t :0;
+};
+#define bpf_prog_attach_opts__last_field expected_revision
+
+struct bpf_prog_detach_opts {
+	size_t sz; /* size of this struct for forward/backward compatibility */
+	__u32 flags;
+	int relative_fd;
+	__u32 relative_id;
+	__u64 expected_revision;
+	size_t :0;
+};
+#define bpf_prog_detach_opts__last_field expected_revision
+
+/**
+ * @brief **bpf_prog_attach_opts()** attaches the BPF program corresponding to
+ * *prog_fd* to a *target* which can represent a file descriptor or netdevice
+ * ifindex.
+ *
+ * @param prog_fd BPF program file descriptor
+ * @param target attach location file descriptor or ifindex
+ * @param type attach type for the BPF program
+ * @param opts options for configuring the attachment
+ * @return 0, on success; negative error code, otherwise (errno is also set to
+ * the error code)
+ */
+LIBBPF_API int bpf_prog_attach_opts(int prog_fd, int target,
+				    enum bpf_attach_type type,
+				    const struct bpf_prog_attach_opts *opts);
+
+/**
+ * @brief **bpf_prog_detach_opts()** detaches the BPF program corresponding to
+ * *prog_fd* from a *target* which can represent a file descriptor or netdevice
+ * ifindex.
+ *
+ * @param prog_fd BPF program file descriptor
+ * @param target detach location file descriptor or ifindex
+ * @param type detach type for the BPF program
+ * @param opts options for configuring the detachment
+ * @return 0, on success; negative error code, otherwise (errno is also set to
+ * the error code)
+ */
+LIBBPF_API int bpf_prog_detach_opts(int prog_fd, int target,
+				    enum bpf_attach_type type,
+				    const struct bpf_prog_detach_opts *opts);
 
 union bpf_iter_link_info; /* defined in up-to-date linux/bpf.h */
 struct bpf_link_create_opts {
@@ -319,12 +393,32 @@ struct bpf_link_create_opts {
 			const __u64 *cookies;
 		} kprobe_multi;
 		struct {
+			__u32 flags;
+			__u32 cnt;
+			const char *path;
+			const unsigned long *offsets;
+			const unsigned long *ref_ctr_offsets;
+			const __u64 *cookies;
+			__u32 pid;
+		} uprobe_multi;
+		struct {
 			__u64 cookie;
 		} tracing;
+		struct {
+			__u32 pf;
+			__u32 hooknum;
+			__s32 priority;
+			__u32 flags;
+		} netfilter;
+		struct {
+			__u32 relative_fd;
+			__u32 relative_id;
+			__u64 expected_revision;
+		} tcx;
 	};
 	size_t :0;
 };
-#define bpf_link_create_opts__last_field kprobe_multi.cookies
+#define bpf_link_create_opts__last_field uprobe_multi.pid
 
 LIBBPF_API int bpf_link_create(int prog_fd, int target_fd,
 			       enum bpf_attach_type attach_type,
@@ -336,8 +430,9 @@ struct bpf_link_update_opts {
 	size_t sz; /* size of this struct for forward/backward compatibility */
 	__u32 flags;	   /* extra flags */
 	__u32 old_prog_fd; /* expected old program FD */
+	__u32 old_map_fd;  /* expected old map FD */
 };
-#define bpf_link_update_opts__last_field old_prog_fd
+#define bpf_link_update_opts__last_field old_map_fd
 
 LIBBPF_API int bpf_link_update(int link_fd, int new_prog_fd,
 			       const struct bpf_link_update_opts *opts);
@@ -365,24 +460,126 @@ LIBBPF_API int bpf_prog_get_next_id(__u32 start_id, __u32 *next_id);
 LIBBPF_API int bpf_map_get_next_id(__u32 start_id, __u32 *next_id);
 LIBBPF_API int bpf_btf_get_next_id(__u32 start_id, __u32 *next_id);
 LIBBPF_API int bpf_link_get_next_id(__u32 start_id, __u32 *next_id);
+
+struct bpf_get_fd_by_id_opts {
+	size_t sz; /* size of this struct for forward/backward compatibility */
+	__u32 open_flags; /* permissions requested for the operation on fd */
+	size_t :0;
+};
+#define bpf_get_fd_by_id_opts__last_field open_flags
+
 LIBBPF_API int bpf_prog_get_fd_by_id(__u32 id);
+LIBBPF_API int bpf_prog_get_fd_by_id_opts(__u32 id,
+				const struct bpf_get_fd_by_id_opts *opts);
 LIBBPF_API int bpf_map_get_fd_by_id(__u32 id);
+LIBBPF_API int bpf_map_get_fd_by_id_opts(__u32 id,
+				const struct bpf_get_fd_by_id_opts *opts);
 LIBBPF_API int bpf_btf_get_fd_by_id(__u32 id);
+LIBBPF_API int bpf_btf_get_fd_by_id_opts(__u32 id,
+				const struct bpf_get_fd_by_id_opts *opts);
 LIBBPF_API int bpf_link_get_fd_by_id(__u32 id);
+LIBBPF_API int bpf_link_get_fd_by_id_opts(__u32 id,
+				const struct bpf_get_fd_by_id_opts *opts);
 LIBBPF_API int bpf_obj_get_info_by_fd(int bpf_fd, void *info, __u32 *info_len);
+
+/**
+ * @brief **bpf_prog_get_info_by_fd()** obtains information about the BPF
+ * program corresponding to *prog_fd*.
+ *
+ * Populates up to *info_len* bytes of *info* and updates *info_len* with the
+ * actual number of bytes written to *info*.
+ *
+ * @param prog_fd BPF program file descriptor
+ * @param info pointer to **struct bpf_prog_info** that will be populated with
+ * BPF program information
+ * @param info_len pointer to the size of *info*; on success updated with the
+ * number of bytes written to *info*
+ * @return 0, on success; negative error code, otherwise (errno is also set to
+ * the error code)
+ */
+LIBBPF_API int bpf_prog_get_info_by_fd(int prog_fd, struct bpf_prog_info *info, __u32 *info_len);
+
+/**
+ * @brief **bpf_map_get_info_by_fd()** obtains information about the BPF
+ * map corresponding to *map_fd*.
+ *
+ * Populates up to *info_len* bytes of *info* and updates *info_len* with the
+ * actual number of bytes written to *info*.
+ *
+ * @param map_fd BPF map file descriptor
+ * @param info pointer to **struct bpf_map_info** that will be populated with
+ * BPF map information
+ * @param info_len pointer to the size of *info*; on success updated with the
+ * number of bytes written to *info*
+ * @return 0, on success; negative error code, otherwise (errno is also set to
+ * the error code)
+ */
+LIBBPF_API int bpf_map_get_info_by_fd(int map_fd, struct bpf_map_info *info, __u32 *info_len);
+
+/**
+ * @brief **bpf_btf_get_info_by_fd()** obtains information about the 
+ * BTF object corresponding to *btf_fd*.
+ *
+ * Populates up to *info_len* bytes of *info* and updates *info_len* with the
+ * actual number of bytes written to *info*.
+ *
+ * @param btf_fd BTF object file descriptor
+ * @param info pointer to **struct bpf_btf_info** that will be populated with
+ * BTF object information
+ * @param info_len pointer to the size of *info*; on success updated with the
+ * number of bytes written to *info*
+ * @return 0, on success; negative error code, otherwise (errno is also set to
+ * the error code)
+ */
+LIBBPF_API int bpf_btf_get_info_by_fd(int btf_fd, struct bpf_btf_info *info, __u32 *info_len);
+
+/**
+ * @brief **bpf_btf_get_info_by_fd()** obtains information about the BPF
+ * link corresponding to *link_fd*.
+ *
+ * Populates up to *info_len* bytes of *info* and updates *info_len* with the
+ * actual number of bytes written to *info*.
+ *
+ * @param link_fd BPF link file descriptor
+ * @param info pointer to **struct bpf_link_info** that will be populated with
+ * BPF link information
+ * @param info_len pointer to the size of *info*; on success updated with the
+ * number of bytes written to *info*
+ * @return 0, on success; negative error code, otherwise (errno is also set to
+ * the error code)
+ */
+LIBBPF_API int bpf_link_get_info_by_fd(int link_fd, struct bpf_link_info *info, __u32 *info_len);
 
 struct bpf_prog_query_opts {
 	size_t sz; /* size of this struct for forward/backward compatibility */
 	__u32 query_flags;
 	__u32 attach_flags; /* output argument */
 	__u32 *prog_ids;
-	__u32 prog_cnt; /* input+output argument */
+	union {
+		/* input+output argument */
+		__u32 prog_cnt;
+		__u32 count;
+	};
 	__u32 *prog_attach_flags;
+	__u32 *link_ids;
+	__u32 *link_attach_flags;
+	__u64 revision;
+	size_t :0;
 };
-#define bpf_prog_query_opts__last_field prog_attach_flags
+#define bpf_prog_query_opts__last_field revision
 
-LIBBPF_API int bpf_prog_query_opts(int target_fd,
-				   enum bpf_attach_type type,
+/**
+ * @brief **bpf_prog_query_opts()** queries the BPF programs and BPF links
+ * which are attached to *target* which can represent a file descriptor or
+ * netdevice ifindex.
+ *
+ * @param target query location file descriptor or ifindex
+ * @param type attach type for the BPF program
+ * @param opts options for configuring the query
+ * @return 0, on success; negative error code, otherwise (errno is also set to
+ * the error code)
+ */
+LIBBPF_API int bpf_prog_query_opts(int target, enum bpf_attach_type type,
 				   struct bpf_prog_query_opts *opts);
 LIBBPF_API int bpf_prog_query(int target_fd, enum bpf_attach_type type,
 			      __u32 query_flags, __u32 *attach_flags,
@@ -393,8 +590,15 @@ LIBBPF_API int bpf_task_fd_query(int pid, int fd, __u32 flags, char *buf,
 				 __u32 *buf_len, __u32 *prog_id, __u32 *fd_type,
 				 __u64 *probe_offset, __u64 *probe_addr);
 
+#ifdef __cplusplus
+/* forward-declaring enums in C++ isn't compatible with pure C enums, so
+ * instead define bpf_enable_stats() as accepting int as an input
+ */
+LIBBPF_API int bpf_enable_stats(int type);
+#else
 enum bpf_stats_type; /* defined in up-to-date linux/bpf.h */
 LIBBPF_API int bpf_enable_stats(enum bpf_stats_type type);
+#endif
 
 struct bpf_prog_bind_opts {
 	size_t sz; /* size of this struct for forward/backward compatibility */

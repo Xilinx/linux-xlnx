@@ -14,9 +14,8 @@
 #include <linux/mm_types.h>
 #include <linux/vmalloc.h>
 #include <linux/pagemap.h>
-#include <linux/screen_info.h>
 #include <linux/console.h>
-#include <asm/fb.h>
+
 #include "sm750.h"
 #include "sm750_accel.h"
 #include "sm750_cursor.h"
@@ -808,7 +807,6 @@ static int lynxfb_set_fbinfo(struct fb_info *info, int index)
 	info->screen_base = crtc->v_screen;
 	pr_debug("screen_base vaddr = %p\n", info->screen_base);
 	info->screen_size = line_length * var->yres_virtual;
-	info->flags = FBINFO_FLAG_DEFAULT | 0;
 
 	/* set info->fix */
 	fix->type = FB_TYPE_PACKED_PIXELS;
@@ -989,20 +987,6 @@ release_fb:
 	return err;
 }
 
-static int lynxfb_kick_out_firmware_fb(struct pci_dev *pdev)
-{
-	resource_size_t base = pci_resource_start(pdev, 0);
-	resource_size_t size = pci_resource_len(pdev, 0);
-	bool primary = false;
-
-#ifdef CONFIG_X86
-	primary = pdev->resource[PCI_ROM_RESOURCE].flags &
-					IORESOURCE_ROM_SHADOW;
-#endif
-
-	return aperture_remove_conflicting_devices(base, size, primary, "sm750_fb1");
-}
-
 static int lynxfb_pci_probe(struct pci_dev *pdev,
 			    const struct pci_device_id *ent)
 {
@@ -1011,7 +995,7 @@ static int lynxfb_pci_probe(struct pci_dev *pdev,
 	int fbidx;
 	int err;
 
-	err = lynxfb_kick_out_firmware_fb(pdev);
+	err = aperture_remove_conflicting_pci_devices(pdev, "sm750_fb1");
 	if (err)
 		return err;
 
@@ -1167,6 +1151,9 @@ static struct pci_driver lynxfb_driver = {
 static int __init lynxfb_init(void)
 {
 	char *option;
+
+	if (fb_modesetting_disabled("sm750fb"))
+		return -ENODEV;
 
 #ifdef MODULE
 	option = g_option;

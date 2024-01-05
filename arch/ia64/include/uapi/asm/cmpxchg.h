@@ -15,11 +15,7 @@
 #include <linux/types.h>
 /* include compiler specific intrinsics */
 #include <asm/ia64regs.h>
-#ifdef __INTEL_COMPILER
-# include <asm/intel_intrin.h>
-#else
-# include <asm/gcc_intrin.h>
-#endif
+#include <asm/gcc_intrin.h>
 
 /*
  * This function doesn't exist, so you'll get a linker error if
@@ -27,7 +23,7 @@
  */
 extern void ia64_xchg_called_with_bad_pointer(void);
 
-#define __xchg(x, ptr, size)						\
+#define __arch_xchg(x, ptr, size)					\
 ({									\
 	unsigned long __xchg_result;					\
 									\
@@ -55,7 +51,7 @@ extern void ia64_xchg_called_with_bad_pointer(void);
 
 #ifndef __KERNEL__
 #define xchg(ptr, x)							\
-({(__typeof__(*(ptr))) __xchg((unsigned long) (x), (ptr), sizeof(*(ptr)));})
+({(__typeof__(*(ptr))) __arch_xchg((unsigned long) (x), (ptr), sizeof(*(ptr)));})
 #endif
 
 /*
@@ -136,23 +132,6 @@ extern long ia64_cmpxchg_called_with_bad_pointer(void);
 #define cmpxchg_local		cmpxchg
 #define cmpxchg64_local		cmpxchg64
 #endif
-
-#ifdef CONFIG_IA64_DEBUG_CMPXCHG
-# define CMPXCHG_BUGCHECK_DECL	int _cmpxchg_bugcheck_count = 128;
-# define CMPXCHG_BUGCHECK(v)						\
-do {									\
-	if (_cmpxchg_bugcheck_count-- <= 0) {				\
-		void *ip;						\
-		extern int _printk(const char *fmt, ...);		\
-		ip = (void *) ia64_getreg(_IA64_REG_IP);		\
-		_printk("CMPXCHG_BUGCHECK: stuck at %p on word %p\n", ip, (v));\
-		break;							\
-	}								\
-} while (0)
-#else /* !CONFIG_IA64_DEBUG_CMPXCHG */
-# define CMPXCHG_BUGCHECK_DECL
-# define CMPXCHG_BUGCHECK(v)
-#endif /* !CONFIG_IA64_DEBUG_CMPXCHG */
 
 #endif /* !__ASSEMBLY__ */
 

@@ -16,7 +16,8 @@
  */
 static unsigned long get_entry_num_slots(efi_memory_desc_t *md,
 					 unsigned long size,
-					 unsigned long align_shift)
+					 unsigned long align_shift,
+					 u64 alloc_limit)
 {
 	unsigned long align = 1UL << align_shift;
 	u64 first_slot, last_slot, region_end;
@@ -29,7 +30,7 @@ static unsigned long get_entry_num_slots(efi_memory_desc_t *md,
 		return 0;
 
 	region_end = min(md->phys_addr + md->num_pages * EFI_PAGE_SIZE - 1,
-			 (u64)ULONG_MAX);
+			 alloc_limit);
 	if (region_end < size)
 		return 0;
 
@@ -53,7 +54,9 @@ static unsigned long get_entry_num_slots(efi_memory_desc_t *md,
 efi_status_t efi_random_alloc(unsigned long size,
 			      unsigned long align,
 			      unsigned long *addr,
-			      unsigned long random_seed)
+			      unsigned long random_seed,
+			      int memory_type,
+			      unsigned long alloc_limit)
 {
 	unsigned long total_slots = 0, target_slot;
 	unsigned long total_mirrored_slots = 0;
@@ -75,7 +78,7 @@ efi_status_t efi_random_alloc(unsigned long size,
 		efi_memory_desc_t *md = (void *)map->map + map_offset;
 		unsigned long slots;
 
-		slots = get_entry_num_slots(md, size, ilog2(align));
+		slots = get_entry_num_slots(md, size, ilog2(align), alloc_limit);
 		MD_NUM_SLOTS(md) = slots;
 		total_slots += slots;
 		if (md->attribute & EFI_MEMORY_MORE_RELIABLE)
@@ -100,6 +103,7 @@ efi_status_t efi_random_alloc(unsigned long size,
 	 * to calculate the randomly chosen address, and allocate it directly
 	 * using EFI_ALLOCATE_ADDRESS.
 	 */
+	status = EFI_OUT_OF_RESOURCES;
 	for (map_offset = 0; map_offset < map->map_size; map_offset += map->desc_size) {
 		efi_memory_desc_t *md = (void *)map->map + map_offset;
 		efi_physical_addr_t target;
@@ -118,7 +122,7 @@ efi_status_t efi_random_alloc(unsigned long size,
 		pages = size / EFI_PAGE_SIZE;
 
 		status = efi_bs_call(allocate_pages, EFI_ALLOCATE_ADDRESS,
-				     EFI_LOADER_DATA, pages, &target);
+				     memory_type, pages, &target);
 		if (status == EFI_SUCCESS)
 			*addr = target;
 		break;

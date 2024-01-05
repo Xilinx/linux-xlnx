@@ -57,8 +57,12 @@ enum clock_rate {
 #define LDO_1P8V_OFF	0x58 /* ... bottom bit is "enabled" */
 
 /* CRYSTAL COVE PMIC register set */
-#define CRYSTAL_1P8V_REG	0x57
-#define CRYSTAL_2P8V_REG	0x5d
+#define CRYSTAL_BYT_1P8V_REG	0x5d
+#define CRYSTAL_BYT_2P8V_REG	0x66
+
+#define CRYSTAL_CHT_1P8V_REG	0x57
+#define CRYSTAL_CHT_2P8V_REG	0x5d
+
 #define CRYSTAL_ON		0x63
 #define CRYSTAL_OFF		0x62
 
@@ -145,7 +149,6 @@ int atomisp_register_i2c_module(struct v4l2_subdev *subdev,
 				enum intel_v4l2_subdev_type type)
 {
 	int i;
-	struct i2c_board_info *bi;
 	struct gmin_subdev *gs;
 	struct i2c_client *client = v4l2_get_subdevdata(subdev);
 	struct acpi_device *adev = ACPI_COMPANION(&client->dev);
@@ -158,6 +161,14 @@ int atomisp_register_i2c_module(struct v4l2_subdev *subdev,
 	 * tickled during suspend/resume.  This has caused power and
 	 * performance issues on multiple devices.
 	 */
+
+	/*
+	 * Turn off the device before disabling ACPI power resources
+	 * (the sensor driver has already probed it at this point).
+	 * This avoids leaking the reference count of the (possibly shared)
+	 * ACPI power resources which were enabled/referenced before probe().
+	 */
+	acpi_device_set_power(adev, ACPI_STATE_D3_COLD);
 	adev->power.flags.power_resources = 0;
 
 	for (i = 0; i < MAX_SUBDEVS; i++)
@@ -178,36 +189,11 @@ int atomisp_register_i2c_module(struct v4l2_subdev *subdev,
 
 	pdata.subdevs[i].type = type;
 	pdata.subdevs[i].port = gs->csi_port;
+	pdata.subdevs[i].lanes = gs->csi_lanes;
 	pdata.subdevs[i].subdev = subdev;
-	pdata.subdevs[i].v4l2_subdev.i2c_adapter_id = client->adapter->nr;
-
-	/* Convert i2c_client to i2c_board_info */
-	bi = &pdata.subdevs[i].v4l2_subdev.board_info;
-	memcpy(bi->type, client->name, I2C_NAME_SIZE);
-	bi->flags = client->flags;
-	bi->addr = client->addr;
-	bi->irq = client->irq;
-	bi->platform_data = plat_data;
-
 	return 0;
 }
 EXPORT_SYMBOL_GPL(atomisp_register_i2c_module);
-
-struct v4l2_subdev *atomisp_gmin_find_subdev(struct i2c_adapter *adapter,
-	struct i2c_board_info *board_info)
-{
-	int i;
-
-	for (i = 0; i < MAX_SUBDEVS && pdata.subdevs[i].type; i++) {
-		struct intel_v4l2_subdev_table *sd = &pdata.subdevs[i];
-
-		if (sd->v4l2_subdev.i2c_adapter_id == adapter->nr &&
-		    sd->v4l2_subdev.board_info.addr == board_info->addr)
-			return sd->subdev;
-	}
-	return NULL;
-}
-EXPORT_SYMBOL_GPL(atomisp_gmin_find_subdev);
 
 int atomisp_gmin_remove_subdev(struct v4l2_subdev *sd)
 {
@@ -319,7 +305,17 @@ static struct gmin_cfg_var surface3_vars[] = {
 	{},
 };
 
+static struct gmin_cfg_var lenovo_ideapad_miix_310_vars[] = {
+	/* _DSM contains the wrong CsiPort! */
+	{ "OVTI2680:01_CsiPort", "0" },
+	{}
+};
+
 static const struct dmi_system_id gmin_vars[] = {
+	/*
+	 * These DMI IDs were present when the atomisp driver was merged into
+	 * drivers/staging and it is unclear if they are really necessary.
+	 */
 	{
 		.ident = "BYT-T FFD8",
 		.matches = {
@@ -356,12 +352,21 @@ static const struct dmi_system_id gmin_vars[] = {
 		},
 		.driver_data = i8880_vars,
 	},
+	/* Later added DMI ids, these are confirmed to really be necessary! */
 	{
 		.ident = "Surface 3",
 		.matches = {
 			DMI_MATCH(DMI_BOARD_NAME, "Surface 3"),
 		},
 		.driver_data = surface3_vars,
+	},
+	{
+		.ident = "Lenovo Ideapad Miix 310",
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+			DMI_MATCH(DMI_PRODUCT_VERSION, "MIIX 310-10"),
+		},
+		.driver_data = lenovo_ideapad_miix_310_vars,
 	},
 	{}
 };
@@ -843,6 +848,7 @@ static int gmin_v1p8_ctrl(struct v4l2_subdev *subdev, int on)
 	struct gmin_subdev *gs = find_gmin_subdev(subdev);
 	int ret;
 	int value;
+	int reg;
 
 	if (!gs || gs->v1p8_on == on)
 		return 0;
@@ -898,10 +904,15 @@ static int gmin_v1p8_ctrl(struct v4l2_subdev *subdev, int on)
 				     LDO10_REG, value, 0xff);
 		break;
 	case PMIC_CRYSTALCOVE:
+		if (IS_ISP2401)
+			reg = CRYSTAL_CHT_1P8V_REG;
+		else
+			reg = CRYSTAL_BYT_1P8V_REG;
+
 		value = on ? CRYSTAL_ON : CRYSTAL_OFF;
 
 		ret = gmin_i2c_write(subdev->dev, gs->pwm_i2c_addr,
-				     CRYSTAL_1P8V_REG, value, 0xff);
+				     reg, value, 0xff);
 		break;
 	default:
 		dev_err(subdev->dev, "Couldn't set power mode for v1p8\n");
@@ -918,6 +929,7 @@ static int gmin_v2p8_ctrl(struct v4l2_subdev *subdev, int on)
 	struct gmin_subdev *gs = find_gmin_subdev(subdev);
 	int ret;
 	int value;
+	int reg;
 
 	if (WARN_ON(!gs))
 		return -ENODEV;
@@ -974,10 +986,15 @@ static int gmin_v2p8_ctrl(struct v4l2_subdev *subdev, int on)
 				     LDO9_REG, value, 0xff);
 		break;
 	case PMIC_CRYSTALCOVE:
+		if (IS_ISP2401)
+			reg = CRYSTAL_CHT_2P8V_REG;
+		else
+			reg = CRYSTAL_BYT_2P8V_REG;
+
 		value = on ? CRYSTAL_ON : CRYSTAL_OFF;
 
 		ret = gmin_i2c_write(subdev->dev, gs->pwm_i2c_addr,
-				     CRYSTAL_2P8V_REG, value, 0xff);
+				     reg, value, 0xff);
 		break;
 	default:
 		dev_err(subdev->dev, "Couldn't set power mode for v2p8\n");
@@ -1094,6 +1111,68 @@ static int gmin_csi_cfg(struct v4l2_subdev *sd, int flag)
 	camera_sensor_csi_free(sd);
 	return 0;
 }
+
+int atomisp_register_sensor_no_gmin(struct v4l2_subdev *subdev, u32 lanes,
+				    enum atomisp_input_format format,
+				    enum atomisp_bayer_order bayer_order)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(subdev);
+	struct acpi_device *adev = ACPI_COMPANION(&client->dev);
+	int i, ret, clock_num, port = 0;
+
+	if (adev) {
+		/* Get ACPI _PR0 derived clock to determine the csi_port default */
+		if (acpi_device_power_manageable(adev)) {
+			clock_num = atomisp_get_acpi_power(&client->dev);
+
+			/* Compare clock to CsiPort 1 pmc-clock used in the CHT/BYT reference designs */
+			if (IS_ISP2401)
+				port = clock_num == 4 ? 1 : 0;
+			else
+				port = clock_num == 0 ? 1 : 0;
+		}
+
+		port = gmin_get_var_int(&client->dev, false, "CsiPort", port);
+		lanes = gmin_get_var_int(&client->dev, false, "CsiLanes", lanes);
+	}
+
+	for (i = 0; i < MAX_SUBDEVS; i++)
+		if (!pdata.subdevs[i].type)
+			break;
+
+	if (i >= MAX_SUBDEVS) {
+		dev_err(&client->dev, "Error too many subdevs already registered\n");
+		return -ENOMEM;
+	}
+
+	ret = camera_sensor_csi_alloc(subdev, port, lanes, format, bayer_order);
+	if (ret)
+		return ret;
+
+	pdata.subdevs[i].type = RAW_CAMERA;
+	pdata.subdevs[i].port = port;
+	pdata.subdevs[i].lanes = lanes;
+	pdata.subdevs[i].subdev = subdev;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(atomisp_register_sensor_no_gmin);
+
+void atomisp_unregister_subdev(struct v4l2_subdev *subdev)
+{
+	int i;
+
+	for (i = 0; i < MAX_SUBDEVS; i++) {
+		if (pdata.subdevs[i].subdev != subdev)
+			continue;
+
+		camera_sensor_csi_free(subdev);
+		pdata.subdevs[i].subdev = NULL;
+		pdata.subdevs[i].type = 0;
+		pdata.subdevs[i].port = 0;
+		break;
+	}
+}
+EXPORT_SYMBOL_GPL(atomisp_unregister_subdev);
 
 static struct camera_vcm_control *gmin_get_vcm_ctrl(struct v4l2_subdev *subdev,
 	char *camera_module)
@@ -1280,7 +1359,7 @@ static int gmin_get_config_dsm_var(struct device *dev,
 	dev_info(dev, "found _DSM entry for '%s': %s\n", var,
 		 cur->string.pointer);
 	strscpy(out, cur->string.pointer, *out_len);
-	*out_len = strlen(cur->string.pointer);
+	*out_len = strlen(out);
 
 	ACPI_FREE(obj);
 	return 0;
@@ -1295,41 +1374,33 @@ static int gmin_get_config_var(struct device *maindev,
 			       const char *var,
 			       char *out, size_t *out_len)
 {
+	struct acpi_device *adev = ACPI_COMPANION(maindev);
 	efi_char16_t var16[CFG_VAR_NAME_MAX];
 	const struct dmi_system_id *id;
-	struct device *dev = maindev;
 	char var8[CFG_VAR_NAME_MAX];
 	efi_status_t status;
 	int i, ret;
 
-	/* For sensors, try first to use the _DSM table */
-	if (!is_gmin) {
-		ret = gmin_get_config_dsm_var(maindev, var, out, out_len);
-		if (!ret)
-			return 0;
-	}
-
-	/* Fall-back to other approaches */
-
-	if (!is_gmin && ACPI_COMPANION(dev))
-		dev = &ACPI_COMPANION(dev)->dev;
-
-	if (!is_gmin)
-		ret = snprintf(var8, sizeof(var8), "%s_%s", dev_name(dev), var);
+	if (!is_gmin && adev)
+		ret = snprintf(var8, sizeof(var8), "%s_%s", acpi_dev_name(adev), var);
 	else
 		ret = snprintf(var8, sizeof(var8), "gmin_%s", var);
 
 	if (ret < 0 || ret >= sizeof(var8) - 1)
 		return -EINVAL;
 
-	/* First check a hard-coded list of board-specific variables.
-	 * Some device firmwares lack the ability to set EFI variables at
-	 * runtime.
-	 */
+	/* DMI based quirks override both the _DSM table and EFI variables */
 	id = dmi_first_match(gmin_vars);
 	if (id) {
 		ret = gmin_get_hardcoded_var(maindev, id->driver_data, var8,
 					     out, out_len);
+		if (!ret)
+			return 0;
+	}
+
+	/* For sensors, try first to use the _DSM table */
+	if (!is_gmin) {
+		ret = gmin_get_config_dsm_var(maindev, var, out, out_len);
 		if (!ret)
 			return 0;
 	}
@@ -1358,8 +1429,8 @@ static int gmin_get_config_var(struct device *maindev,
 
 int gmin_get_var_int(struct device *dev, bool is_gmin, const char *var, int def)
 {
-	char val[CFG_VAR_NAME_MAX];
-	size_t len = sizeof(val);
+	char val[CFG_VAR_NAME_MAX + 1];
+	size_t len = CFG_VAR_NAME_MAX;
 	long result;
 	int ret;
 

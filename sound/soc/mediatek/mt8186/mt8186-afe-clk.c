@@ -13,8 +13,6 @@
 #include "mt8186-afe-clk.h"
 #include "mt8186-audsys-clk.h"
 
-static DEFINE_MUTEX(mutex_request_dram);
-
 static const char *aud_clks[CLK_NUM] = {
 	[CLK_AFE] = "aud_afe_clk",
 	[CLK_DAC] = "aud_dac_clk",
@@ -643,10 +641,4 @@ int mt8186_init_clock(struct mtk_base_afe *afe)
 	}
 
 	return 0;
-}
-
-void mt8186_deinit_clock(void *priv)
-{
-	struct mtk_base_afe *afe = priv;
-	mt8186_audsys_clk_unregister(afe);
 }

@@ -15,7 +15,7 @@
 #include <linux/bpf.h>
 #include <linux/bpf_trace.h>
 #include <linux/filter.h>
-#include <net/page_pool.h>
+#include <net/page_pool/helpers.h>
 #include "bnxt_hsi.h"
 #include "bnxt.h"
 #include "bnxt_xdp.h"
@@ -64,7 +64,7 @@ struct bnxt_sw_tx_bd *bnxt_xmit_bd(struct bnxt *bp,
 		int frag_len;
 
 		prod = NEXT_TX(prod);
-		txr->tx_prod = prod;
+		WRITE_ONCE(txr->tx_prod, prod);
 
 		/* first fill up the first buffer */
 		frag_tx_buf = &txr->tx_buf_ring[prod];
@@ -94,7 +94,7 @@ struct bnxt_sw_tx_bd *bnxt_xmit_bd(struct bnxt *bp,
 	/* Sync TX BD */
 	wmb();
 	prod = NEXT_TX(prod);
-	txr->tx_prod = prod;
+	WRITE_ONCE(txr->tx_prod, prod);
 
 	return tx_buf;
 }
@@ -125,15 +125,19 @@ static void __bnxt_xmit_xdp_redirect(struct bnxt *bp,
 	dma_unmap_len_set(tx_buf, len, 0);
 }
 
-void bnxt_tx_int_xdp(struct bnxt *bp, struct bnxt_napi *bnapi, int nr_pkts)
+void bnxt_tx_int_xdp(struct bnxt *bp, struct bnxt_napi *bnapi, int budget)
 {
 	struct bnxt_tx_ring_info *txr = bnapi->tx_ring;
 	struct bnxt_rx_ring_info *rxr = bnapi->rx_ring;
 	bool rx_doorbell_needed = false;
+	int nr_pkts = bnapi->tx_pkts;
 	struct bnxt_sw_tx_bd *tx_buf;
 	u16 tx_cons = txr->tx_cons;
 	u16 last_tx_cons = tx_cons;
 	int i, j, frags;
+
+	if (!budget)
+		return;
 
 	for (i = 0; i < nr_pkts; i++) {
 		tx_buf = &txr->tx_buf_ring[tx_cons];
@@ -149,6 +153,7 @@ void bnxt_tx_int_xdp(struct bnxt *bp, struct bnxt_napi *bnapi, int nr_pkts)
 			tx_buf->action = 0;
 			tx_buf->xdpf = NULL;
 		} else if (tx_buf->action == XDP_TX) {
+			tx_buf->action = 0;
 			rx_doorbell_needed = true;
 			last_tx_cons = tx_cons;
 
@@ -158,10 +163,15 @@ void bnxt_tx_int_xdp(struct bnxt *bp, struct bnxt_napi *bnapi, int nr_pkts)
 				tx_buf = &txr->tx_buf_ring[tx_cons];
 				page_pool_recycle_direct(rxr->page_pool, tx_buf->page);
 			}
+		} else {
+			bnxt_sched_reset_txr(bp, txr, i);
+			return;
 		}
 		tx_cons = NEXT_TX(tx_cons);
 	}
-	txr->tx_cons = tx_cons;
+
+	bnapi->tx_pkts = 0;
+	WRITE_ONCE(txr->tx_cons, tx_cons);
 	if (rx_doorbell_needed) {
 		tx_buf = &txr->tx_buf_ring[last_tx_cons];
 		bnxt_db_write(bp, &rxr->rx_db, tx_buf->rx_prod);
@@ -177,11 +187,11 @@ bool bnxt_xdp_attached(struct bnxt *bp, struct bnxt_rx_ring_info *rxr)
 }
 
 void bnxt_xdp_buff_init(struct bnxt *bp, struct bnxt_rx_ring_info *rxr,
-			u16 cons, u8 **data_ptr, unsigned int *len,
+			u16 cons, u8 *data_ptr, unsigned int len,
 			struct xdp_buff *xdp)
 {
+	u32 buflen = BNXT_RX_PAGE_SIZE;
 	struct bnxt_sw_rx_bd *rx_buf;
-	u32 buflen = PAGE_SIZE;
 	struct pci_dev *pdev;
 	dma_addr_t mapping;
 	u32 offset;
@@ -191,13 +201,10 @@ void bnxt_xdp_buff_init(struct bnxt *bp, struct bnxt_rx_ring_info *rxr,
 	offset = bp->rx_offset;
 
 	mapping = rx_buf->mapping - bp->rx_dma_offset;
-	dma_sync_single_for_cpu(&pdev->dev, mapping + offset, *len, bp->rx_dir);
-
-	if (bp->xdp_has_frags)
-		buflen = BNXT_PAGE_MODE_BUF_SIZE + offset;
+	dma_sync_single_for_cpu(&pdev->dev, mapping + offset, len, bp->rx_dir);
 
 	xdp_init_buff(xdp, buflen, &rxr->xdp_rxq);
-	xdp_prepare_buff(xdp, *data_ptr - offset, offset, *len, false);
+	xdp_prepare_buff(xdp, data_ptr - offset, offset, len, false);
 }
 
 void bnxt_xdp_buff_frags_free(struct bnxt_rx_ring_info *rxr,
@@ -222,7 +229,8 @@ void bnxt_xdp_buff_frags_free(struct bnxt_rx_ring_info *rxr,
  * false   - packet should be passed to the stack.
  */
 bool bnxt_rx_xdp(struct bnxt *bp, struct bnxt_rx_ring_info *rxr, u16 cons,
-		 struct xdp_buff xdp, struct page *page, unsigned int *len, u8 *event)
+		 struct xdp_buff xdp, struct page *page, u8 **data_ptr,
+		 unsigned int *len, u8 *event)
 {
 	struct bpf_prog *xdp_prog = READ_ONCE(rxr->xdp_prog);
 	struct bnxt_tx_ring_info *txr;
@@ -255,8 +263,10 @@ bool bnxt_rx_xdp(struct bnxt *bp, struct bnxt_rx_ring_info *rxr, u16 cons,
 		*event &= ~BNXT_RX_EVENT;
 
 	*len = xdp.data_end - xdp.data;
-	if (orig_data != xdp.data)
+	if (orig_data != xdp.data) {
 		offset = xdp.data - xdp.data_hard_start;
+		*data_ptr = xdp.data_hard_start + offset;
+	}
 
 	switch (act) {
 	case XDP_PASS:
@@ -297,7 +307,7 @@ bool bnxt_rx_xdp(struct bnxt *bp, struct bnxt_rx_ring_info *rxr, u16 cons,
 		rx_buf = &rxr->rx_buf_ring[cons];
 		mapping = rx_buf->mapping - bp->rx_dma_offset;
 		dma_unmap_page_attrs(&pdev->dev, mapping,
-				     PAGE_SIZE, bp->rx_dir,
+				     BNXT_RX_PAGE_SIZE, bp->rx_dir,
 				     DMA_ATTR_WEAK_ORDERING);
 
 		/* if we are unable to allocate a new buffer, abort and reuse */
@@ -401,10 +411,8 @@ static int bnxt_xdp_set(struct bnxt *bp, struct bpf_prog *prog)
 		netdev_warn(dev, "ethtool rx/tx channels must be combined to support XDP.\n");
 		return -EOPNOTSUPP;
 	}
-	if (prog) {
+	if (prog)
 		tx_xdp = bp->rx_nr_rings;
-		bp->xdp_has_frags = prog->aux->xdp_has_frags;
-	}
 
 	tc = netdev_get_num_tc(dev);
 	if (!tc)
@@ -424,9 +432,11 @@ static int bnxt_xdp_set(struct bnxt *bp, struct bpf_prog *prog)
 
 	if (prog) {
 		bnxt_set_rx_skb_mode(bp, true);
+		xdp_features_set_redirect_target(dev, true);
 	} else {
 		int rx, tx;
 
+		xdp_features_clear_redirect_target(dev);
 		bnxt_set_rx_skb_mode(bp, false);
 		bnxt_get_max_rings(bp, &rx, &tx, true);
 		if (rx > 1) {
@@ -480,7 +490,7 @@ bnxt_xdp_build_skb(struct bnxt *bp, struct sk_buff *skb, u8 num_frags,
 	}
 	xdp_update_skb_shared_info(skb, num_frags,
 				   sinfo->xdp_frags_size,
-				   PAGE_SIZE * sinfo->nr_frags,
+				   BNXT_RX_PAGE_SIZE * sinfo->nr_frags,
 				   xdp_buff_is_frag_pfmemalloc(xdp));
 	return skb;
 }

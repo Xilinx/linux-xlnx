@@ -27,9 +27,9 @@
  * MCLK/LRCK ratios, but we also add ratio 400, which is commonly used on
  * Intel Cherry Trail platforms (19.2MHz MCLK, 48kHz LRCK).
  */
-#define NR_SUPPORTED_MCLK_LRCK_RATIOS 6
+#define NR_SUPPORTED_MCLK_LRCK_RATIOS ARRAY_SIZE(supported_mclk_lrck_ratios)
 static const unsigned int supported_mclk_lrck_ratios[] = {
-	256, 384, 400, 512, 768, 1024
+	256, 384, 400, 500, 512, 768, 1024
 };
 
 struct es8316_priv {
@@ -52,7 +52,12 @@ static const SNDRV_CTL_TLVD_DECLARE_DB_SCALE(dac_vol_tlv, -9600, 50, 1);
 static const SNDRV_CTL_TLVD_DECLARE_DB_SCALE(adc_vol_tlv, -9600, 50, 1);
 static const SNDRV_CTL_TLVD_DECLARE_DB_SCALE(alc_max_gain_tlv, -650, 150, 0);
 static const SNDRV_CTL_TLVD_DECLARE_DB_SCALE(alc_min_gain_tlv, -1200, 150, 0);
-static const SNDRV_CTL_TLVD_DECLARE_DB_SCALE(alc_target_tlv, -1650, 150, 0);
+
+static const SNDRV_CTL_TLVD_DECLARE_DB_RANGE(alc_target_tlv,
+	0, 10, TLV_DB_SCALE_ITEM(-1650, 150, 0),
+	11, 11, TLV_DB_SCALE_ITEM(-150, 0, 0),
+);
+
 static const SNDRV_CTL_TLVD_DECLARE_DB_RANGE(hpmixer_gain_tlv,
 	0, 4, TLV_DB_SCALE_ITEM(-1200, 150, 0),
 	8, 11, TLV_DB_SCALE_ITEM(-450, 150, 0),
@@ -115,7 +120,7 @@ static const struct snd_kcontrol_new es8316_snd_controls[] = {
 		       alc_max_gain_tlv),
 	SOC_SINGLE_TLV("ALC Capture Min Volume", ES8316_ADC_ALC2, 0, 28, 0,
 		       alc_min_gain_tlv),
-	SOC_SINGLE_TLV("ALC Capture Target Volume", ES8316_ADC_ALC3, 4, 10, 0,
+	SOC_SINGLE_TLV("ALC Capture Target Volume", ES8316_ADC_ALC3, 4, 11, 0,
 		       alc_target_tlv),
 	SOC_SINGLE("ALC Capture Hold Time", ES8316_ADC_ALC3, 0, 10, 0),
 	SOC_SINGLE("ALC Capture Decay Time", ES8316_ADC_ALC4, 4, 10, 0),
@@ -148,7 +153,7 @@ static const char * const es8316_dmic_txt[] = {
 		"dmic data at high level",
 		"dmic data at low level",
 };
-static const unsigned int es8316_dmic_values[] = { 0, 1, 2 };
+static const unsigned int es8316_dmic_values[] = { 0, 2, 3 };
 static const struct soc_enum es8316_dmic_src_enum =
 	SOC_VALUE_ENUM_SINGLE(ES8316_ADC_DMIC, 0, 3,
 			      ARRAY_SIZE(es8316_dmic_txt),
@@ -364,13 +369,11 @@ static int es8316_set_dai_sysclk(struct snd_soc_dai *codec_dai,
 	int count = 0;
 
 	es8316->sysclk = freq;
+	es8316->sysclk_constraints.list = NULL;
+	es8316->sysclk_constraints.count = 0;
 
-	if (freq == 0) {
-		es8316->sysclk_constraints.list = NULL;
-		es8316->sysclk_constraints.count = 0;
-
+	if (freq == 0)
 		return 0;
-	}
 
 	ret = clk_set_rate(es8316->mclk, freq);
 	if (ret)
@@ -386,8 +389,10 @@ static int es8316_set_dai_sysclk(struct snd_soc_dai *codec_dai,
 			es8316->allowed_rates[count++] = freq / ratio;
 	}
 
-	es8316->sysclk_constraints.list = es8316->allowed_rates;
-	es8316->sysclk_constraints.count = count;
+	if (count) {
+		es8316->sysclk_constraints.list = es8316->allowed_rates;
+		es8316->sysclk_constraints.count = count;
+	}
 
 	return 0;
 }
@@ -489,6 +494,7 @@ static int es8316_pcm_hw_params(struct snd_pcm_substream *substream,
 		bclk_divider /= 20;
 		break;
 	case SNDRV_PCM_FORMAT_S24_LE:
+	case SNDRV_PCM_FORMAT_S24_3LE:
 		wordlen = ES8316_SERDATA2_LEN_24;
 		bclk_divider /= 24;
 		break;
@@ -803,14 +809,15 @@ static const struct snd_soc_component_driver soc_component_dev_es8316 = {
 	.endianness		= 1,
 };
 
-static const struct regmap_range es8316_volatile_ranges[] = {
-	regmap_reg_range(ES8316_GPIO_FLAG, ES8316_GPIO_FLAG),
-};
-
-static const struct regmap_access_table es8316_volatile_table = {
-	.yes_ranges	= es8316_volatile_ranges,
-	.n_yes_ranges	= ARRAY_SIZE(es8316_volatile_ranges),
-};
+static bool es8316_volatile_reg(struct device *dev, unsigned int reg)
+{
+	switch (reg) {
+	case ES8316_GPIO_FLAG:
+		return true;
+	default:
+		return false;
+	}
+}
 
 static const struct regmap_config es8316_regmap = {
 	.reg_bits = 8,
@@ -818,8 +825,8 @@ static const struct regmap_config es8316_regmap = {
 	.use_single_read = true,
 	.use_single_write = true,
 	.max_register = 0x53,
-	.volatile_table	= &es8316_volatile_table,
-	.cache_type = REGCACHE_RBTREE,
+	.volatile_reg = es8316_volatile_reg,
+	.cache_type = REGCACHE_MAPLE,
 };
 
 static int es8316_i2c_probe(struct i2c_client *i2c_client)
@@ -842,12 +849,14 @@ static int es8316_i2c_probe(struct i2c_client *i2c_client)
 	es8316->irq = i2c_client->irq;
 	mutex_init(&es8316->lock);
 
-	ret = devm_request_threaded_irq(dev, es8316->irq, NULL, es8316_irq,
-					IRQF_TRIGGER_HIGH | IRQF_ONESHOT | IRQF_NO_AUTOEN,
-					"es8316", es8316);
-	if (ret) {
-		dev_warn(dev, "Failed to get IRQ %d: %d\n", es8316->irq, ret);
-		es8316->irq = -ENXIO;
+	if (es8316->irq > 0) {
+		ret = devm_request_threaded_irq(dev, es8316->irq, NULL, es8316_irq,
+						IRQF_TRIGGER_HIGH | IRQF_ONESHOT | IRQF_NO_AUTOEN,
+						"es8316", es8316);
+		if (ret) {
+			dev_warn(dev, "Failed to get IRQ %d: %d\n", es8316->irq, ret);
+			es8316->irq = -ENXIO;
+		}
 	}
 
 	return devm_snd_soc_register_component(&i2c_client->dev,
@@ -884,7 +893,7 @@ static struct i2c_driver es8316_i2c_driver = {
 		.acpi_match_table	= ACPI_PTR(es8316_acpi_match),
 		.of_match_table		= of_match_ptr(es8316_of_match),
 	},
-	.probe_new	= es8316_i2c_probe,
+	.probe		= es8316_i2c_probe,
 	.id_table	= es8316_i2c_id,
 };
 module_i2c_driver(es8316_i2c_driver);

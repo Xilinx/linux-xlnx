@@ -35,11 +35,6 @@ MODULE_PARM_DESC(debug, "Bitmapped debugging message enable value");
 
 /* This is the time (in jiffies) between invocations of the hardware
  * monitor.
- * On Falcon-based NICs, this will:
- * - Check the on-board hardware monitor;
- * - Poll the link state and reconfigure the hardware as necessary.
- * On Siena-based NICs for power systems with EEH support, this will give EEH a
- * chance to start.
  */
 static unsigned int efx_monitor_interval = 1 * HZ;
 
@@ -544,6 +539,8 @@ void efx_start_all(struct efx_nic *efx)
 	/* Start the hardware monitor if there is one */
 	efx_start_monitor(efx);
 
+	efx_selftest_async_start(efx);
+
 	/* Link state detection is normally event-driven; we have
 	 * to poll now because we could have missed a change
 	 */
@@ -783,8 +780,6 @@ int efx_reset_up(struct efx_nic *efx, enum reset_type method, bool ok)
 	mutex_unlock(&efx->rss_lock);
 	efx->type->filter_table_restore(efx);
 	up_write(&efx->filter_sem);
-	if (efx->type->sriov_reset)
-		efx->type->sriov_reset(efx);
 
 	mutex_unlock(&efx->mac_lock);
 
@@ -1164,7 +1159,7 @@ static ssize_t mcdi_logging_show(struct device *dev,
 	struct efx_nic *efx = dev_get_drvdata(dev);
 	struct efx_mcdi_iface *mcdi = efx_mcdi(efx);
 
-	return scnprintf(buf, PAGE_SIZE, "%d\n", mcdi->logging_enabled);
+	return sysfs_emit(buf, "%d\n", mcdi->logging_enabled);
 }
 
 static ssize_t mcdi_logging_store(struct device *dev,

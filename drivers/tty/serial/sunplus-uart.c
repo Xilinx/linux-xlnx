@@ -216,9 +216,7 @@ static void transmit_chars(struct uart_port *port)
 
 	do {
 		sp_uart_put_char(port, xmit->buf[xmit->tail]);
-		xmit->tail = (xmit->tail + 1) % UART_XMIT_SIZE;
-		port->icount.tx++;
-
+		uart_xmit_advance(port, 1);
 		if (uart_circ_empty(xmit))
 			break;
 	} while (sunplus_tx_buf_not_full(port));
@@ -233,7 +231,7 @@ static void transmit_chars(struct uart_port *port)
 static void receive_chars(struct uart_port *port)
 {
 	unsigned int lsr = readl(port->membase + SUP_UART_LSR);
-	unsigned int ch, flag;
+	u8 ch, flag;
 
 	do {
 		ch = readl(port->membase + SUP_UART_DATA);

@@ -16,7 +16,6 @@ ALL_TESTS="
 	bridge_deletion_test
 	bridge_vlan_flags_test
 	vlan_1_test
-	lag_bridge_upper_test
 	duplicate_vlans_test
 	vlan_rif_refcount_test
 	subport_rif_refcount_test
@@ -34,6 +33,7 @@ ALL_TESTS="
 	nexthop_obj_bucket_offload_test
 	nexthop_obj_blackhole_offload_test
 	nexthop_obj_route_offload_test
+	bridge_locked_port_test
 	devlink_reload_test
 "
 NUM_NETIFS=2
@@ -208,33 +208,6 @@ vlan_1_test()
 	log_test "vlan 1"
 
 	ip link del dev $swp1.1
-}
-
-lag_bridge_upper_test()
-{
-	# Test that ports cannot be enslaved to LAG devices that have uppers
-	# and that failure is handled gracefully. See commit b3529af6bb0d
-	# ("spectrum: Reference count VLAN entries") for more details
-	RET=0
-
-	ip link add name bond1 type bond mode 802.3ad
-
-	ip link add name br0 type bridge vlan_filtering 1
-	ip link set dev bond1 master br0
-
-	ip link set dev $swp1 down
-	ip link set dev $swp1 master bond1 &> /dev/null
-	check_fail $? "managed to enslave port to lag when should not"
-
-	# This might generate a trace, if we did not handle the failure
-	# correctly
-	ip -6 address add 2001:db8:1::1/64 dev $swp1
-	ip -6 address del 2001:db8:1::1/64 dev $swp1
-
-	log_test "lag with bridge upper"
-
-	ip link del dev br0
-	ip link del dev bond1
 }
 
 duplicate_vlans_test()
@@ -509,9 +482,6 @@ vlan_interface_uppers_test()
 	ip link set dev $swp1 master br0
 
 	ip link add link br0 name br0.10 type vlan id 10
-	ip link add link br0.10 name macvlan0 \
-		type macvlan mode private &> /dev/null
-	check_fail $? "managed to create a macvlan when should not"
 
 	ip -6 address add 2001:db8:1::1/64 dev br0.10
 	ip link add link br0.10 name macvlan0 type macvlan mode private
@@ -915,6 +885,36 @@ nexthop_obj_route_offload_test()
 
 	simple_if_fini $swp2
 	simple_if_fini $swp1 192.0.2.1/24 2001:db8:1::1/64
+}
+
+bridge_locked_port_test()
+{
+	RET=0
+
+	ip link add name br1 up type bridge vlan_filtering 0
+
+	ip link add link $swp1 name $swp1.10 type vlan id 10
+	ip link set dev $swp1.10 master br1
+
+	bridge link set dev $swp1.10 locked on
+	check_fail $? "managed to set locked flag on a VLAN upper"
+
+	ip link set dev $swp1.10 nomaster
+	ip link set dev $swp1 master br1
+
+	bridge link set dev $swp1 locked on
+	check_fail $? "managed to set locked flag on a bridge port that has a VLAN upper"
+
+	ip link del dev $swp1.10
+	bridge link set dev $swp1 locked on
+
+	ip link add link $swp1 name $swp1.10 type vlan id 10
+	check_fail $? "managed to configure a VLAN upper on a locked port"
+
+	log_test "bridge locked port"
+
+	ip link del dev $swp1.10 &> /dev/null
+	ip link del dev br1
 }
 
 devlink_reload_test()

@@ -117,12 +117,12 @@ static int cal_legacy_enum_fmt_vid_cap(struct file *file, void *priv,
 static int __subdev_get_format(struct cal_ctx *ctx,
 			       struct v4l2_mbus_framefmt *fmt)
 {
-	struct v4l2_subdev_format sd_fmt;
+	struct v4l2_subdev_format sd_fmt = {
+		.which = V4L2_SUBDEV_FORMAT_ACTIVE,
+		.pad = 0,
+	};
 	struct v4l2_mbus_framefmt *mbus_fmt = &sd_fmt.format;
 	int ret;
-
-	sd_fmt.which = V4L2_SUBDEV_FORMAT_ACTIVE;
-	sd_fmt.pad = 0;
 
 	ret = v4l2_subdev_call(ctx->phy->source, pad, get_fmt, NULL, &sd_fmt);
 	if (ret)
@@ -139,12 +139,13 @@ static int __subdev_get_format(struct cal_ctx *ctx,
 static int __subdev_set_format(struct cal_ctx *ctx,
 			       struct v4l2_mbus_framefmt *fmt)
 {
-	struct v4l2_subdev_format sd_fmt;
+	struct v4l2_subdev_format sd_fmt = {
+		.which = V4L2_SUBDEV_FORMAT_ACTIVE,
+		.pad = 0,
+	};
 	struct v4l2_mbus_framefmt *mbus_fmt = &sd_fmt.format;
 	int ret;
 
-	sd_fmt.which = V4L2_SUBDEV_FORMAT_ACTIVE;
-	sd_fmt.pad = 0;
 	*mbus_fmt = *fmt;
 
 	ret = v4l2_subdev_call(ctx->phy->source, pad, set_fmt, NULL, &sd_fmt);
@@ -190,7 +191,9 @@ static int cal_legacy_try_fmt_vid_cap(struct file *file, void *priv,
 {
 	struct cal_ctx *ctx = video_drvdata(file);
 	const struct cal_format_info *fmtinfo;
-	struct v4l2_subdev_frame_size_enum fse;
+	struct v4l2_subdev_frame_size_enum fse = {
+		.which = V4L2_SUBDEV_FORMAT_ACTIVE,
+	};
 	int found;
 
 	fmtinfo = find_format_by_pix(ctx, f->fmt.pix.pixelformat);
@@ -209,7 +212,6 @@ static int cal_legacy_try_fmt_vid_cap(struct file *file, void *priv,
 	found = false;
 	fse.pad = 0;
 	fse.code = fmtinfo->code;
-	fse.which = V4L2_SUBDEV_FORMAT_ACTIVE;
 	for (fse.index = 0; ; fse.index++) {
 		int ret;
 
@@ -302,7 +304,11 @@ static int cal_legacy_enum_framesizes(struct file *file, void *fh,
 {
 	struct cal_ctx *ctx = video_drvdata(file);
 	const struct cal_format_info *fmtinfo;
-	struct v4l2_subdev_frame_size_enum fse;
+	struct v4l2_subdev_frame_size_enum fse = {
+		.index = fsize->index,
+		.pad = 0,
+		.which = V4L2_SUBDEV_FORMAT_ACTIVE,
+	};
 	int ret;
 
 	/* check for valid format */
@@ -313,10 +319,7 @@ static int cal_legacy_enum_framesizes(struct file *file, void *fh,
 		return -EINVAL;
 	}
 
-	fse.index = fsize->index;
-	fse.pad = 0;
 	fse.code = fmtinfo->code;
-	fse.which = V4L2_SUBDEV_FORMAT_ACTIVE;
 
 	ret = v4l2_subdev_call(ctx->phy->source, pad, enum_frame_size, NULL,
 			       &fse);
@@ -684,21 +687,34 @@ static void cal_release_buffers(struct cal_ctx *ctx,
 static int cal_video_check_format(struct cal_ctx *ctx)
 {
 	const struct v4l2_mbus_framefmt *format;
+	struct v4l2_subdev_state *state;
 	struct media_pad *remote_pad;
+	int ret = 0;
 
 	remote_pad = media_pad_remote_pad_first(&ctx->pad);
 	if (!remote_pad)
 		return -ENODEV;
 
-	format = &ctx->phy->formats[remote_pad->index];
+	state = v4l2_subdev_lock_and_get_active_state(&ctx->phy->subdev);
+
+	format = v4l2_subdev_get_pad_format(&ctx->phy->subdev, state, remote_pad->index);
+	if (!format) {
+		ret = -EINVAL;
+		goto out;
+	}
 
 	if (ctx->fmtinfo->code != format->code ||
 	    ctx->v_fmt.fmt.pix.height != format->height ||
 	    ctx->v_fmt.fmt.pix.width != format->width ||
-	    ctx->v_fmt.fmt.pix.field != format->field)
-		return -EPIPE;
+	    ctx->v_fmt.fmt.pix.field != format->field) {
+		ret = -EPIPE;
+		goto out;
+	}
 
-	return 0;
+out:
+	v4l2_subdev_unlock_state(state);
+
+	return ret;
 }
 
 static int cal_start_streaming(struct vb2_queue *vq, unsigned int count)
@@ -811,7 +827,6 @@ static const struct v4l2_file_operations cal_fops = {
 
 static int cal_ctx_v4l2_init_formats(struct cal_ctx *ctx)
 {
-	struct v4l2_subdev_mbus_code_enum mbus_code;
 	struct v4l2_mbus_framefmt mbus_fmt;
 	const struct cal_format_info *fmtinfo;
 	unsigned int i, j, k;
@@ -826,10 +841,11 @@ static int cal_ctx_v4l2_init_formats(struct cal_ctx *ctx)
 	ctx->num_active_fmt = 0;
 
 	for (j = 0, i = 0; ; ++j) {
+		struct v4l2_subdev_mbus_code_enum mbus_code = {
+			.index = j,
+			.which = V4L2_SUBDEV_FORMAT_ACTIVE,
+		};
 
-		memset(&mbus_code, 0, sizeof(mbus_code));
-		mbus_code.index = j;
-		mbus_code.which = V4L2_SUBDEV_FORMAT_ACTIVE;
 		ret = v4l2_subdev_call(ctx->phy->source, pad, enum_mbus_code,
 				       NULL, &mbus_code);
 		if (ret == -EINVAL)
@@ -891,7 +907,7 @@ static int cal_ctx_v4l2_init_mc_format(struct cal_ctx *ctx)
 	const struct cal_format_info *fmtinfo;
 	struct v4l2_pix_format *pix_fmt = &ctx->v_fmt.fmt.pix;
 
-	fmtinfo = cal_format_by_code(MEDIA_BUS_FMT_UYVY8_2X8);
+	fmtinfo = cal_format_by_code(MEDIA_BUS_FMT_UYVY8_1X16);
 	if (!fmtinfo)
 		return -EINVAL;
 

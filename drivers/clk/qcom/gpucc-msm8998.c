@@ -9,7 +9,6 @@
 #include <linux/platform_device.h>
 #include <linux/module.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/clk-provider.h>
 #include <linux/regmap.h>
 #include <linux/reset-controller.h>
@@ -98,7 +97,7 @@ static const struct parent_map gpu_xo_gpll0_map[] = {
 
 static const struct clk_parent_data gpu_xo_gpll0[] = {
 	{ .hw = &gpucc_cxo_clk.clkr.hw },
-	{ .fw_name = "gpll0" },
+	{ .fw_name = "gpll0", .name = "gcc_gpu_gpll0_clk" },
 };
 
 static const struct parent_map gpu_xo_gpupll0_map[] = {
@@ -106,9 +105,9 @@ static const struct parent_map gpu_xo_gpupll0_map[] = {
 	{ P_GPUPLL0_OUT_EVEN, 1 },
 };
 
-static const struct clk_parent_data gpu_xo_gpupll0[] = {
-	{ .hw = &gpucc_cxo_clk.clkr.hw },
-	{ .hw = &gpupll0_out_even.clkr.hw },
+static const struct clk_hw *gpu_xo_gpupll0[] = {
+	&gpucc_cxo_clk.clkr.hw,
+	&gpupll0_out_even.clkr.hw,
 };
 
 static const struct freq_tbl ftbl_rbcpr_clk_src[] = {
@@ -142,7 +141,7 @@ static struct clk_rcg2 gfx3d_clk_src = {
 	.freq_tbl = ftbl_gfx3d_clk_src,
 	.clkr.hw.init = &(struct clk_init_data){
 		.name = "gfx3d_clk_src",
-		.parent_data = gpu_xo_gpupll0,
+		.parent_hws = gpu_xo_gpupll0,
 		.num_parents = ARRAY_SIZE(gpu_xo_gpupll0),
 		.ops = &clk_rcg2_ops,
 		.flags = CLK_SET_RATE_PARENT | CLK_OPS_PARENT_ENABLE,

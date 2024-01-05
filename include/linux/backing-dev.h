@@ -46,7 +46,6 @@ extern spinlock_t bdi_lock;
 extern struct list_head bdi_list;
 
 extern struct workqueue_struct *bdi_wq;
-extern struct workqueue_struct *bdi_async_bio_wq;
 
 static inline bool wb_has_dirty_io(struct bdi_writeback *wb)
 {
@@ -102,8 +101,18 @@ static inline unsigned long wb_stat_error(void)
 #endif
 }
 
+/* BDI ratio is expressed as part per 1000000 for finer granularity. */
+#define BDI_RATIO_SCALE 10000
+
+u64 bdi_get_min_bytes(struct backing_dev_info *bdi);
+u64 bdi_get_max_bytes(struct backing_dev_info *bdi);
 int bdi_set_min_ratio(struct backing_dev_info *bdi, unsigned int min_ratio);
 int bdi_set_max_ratio(struct backing_dev_info *bdi, unsigned int max_ratio);
+int bdi_set_min_ratio_no_scale(struct backing_dev_info *bdi, unsigned int min_ratio);
+int bdi_set_max_ratio_no_scale(struct backing_dev_info *bdi, unsigned int max_ratio);
+int bdi_set_min_bytes(struct backing_dev_info *bdi, u64 min_bytes);
+int bdi_set_max_bytes(struct backing_dev_info *bdi, u64 max_bytes);
+int bdi_set_strict_limit(struct backing_dev_info *bdi, unsigned int strict_limit);
 
 /*
  * Flags in backing_dev_info::capability

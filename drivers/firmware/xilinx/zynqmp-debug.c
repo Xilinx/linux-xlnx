@@ -4,7 +4,7 @@
  *
  *  Copyright (C) 2014-2021 Xilinx, Inc.
  *
- *  Michal Simek <michal.simek@xilinx.com>
+ *  Michal Simek <michal.simek@amd.com>
  *  Davorin Mista <davorin.mista@aggios.com>
  *  Jolly Shah <jollys@xilinx.com>
  *  Rajan Vaja <rajanv@xilinx.com>
@@ -73,8 +73,7 @@ static struct dentry *firmware_debugfs_root;
 static int zynqmp_pm_ioctl(const u32 node, const u32 ioctl, const u32 arg1,
 			   const u32 arg2, const u32 arg3, u32 *out)
 {
-	return zynqmp_pm_invoke_fn(PM_IOCTL, node, ioctl, arg1, arg2, arg3,
-				   out);
+	return zynqmp_pm_invoke_fn(PM_IOCTL, out, 5, node, ioctl, arg1, arg2, arg3);
 }
 
 /**

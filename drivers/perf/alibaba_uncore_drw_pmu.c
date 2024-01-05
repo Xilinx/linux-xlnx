@@ -236,10 +236,37 @@ static const struct attribute_group ali_drw_pmu_cpumask_attr_group = {
 	.attrs = ali_drw_pmu_cpumask_attrs,
 };
 
+static ssize_t ali_drw_pmu_identifier_show(struct device *dev,
+					struct device_attribute *attr,
+					char *page)
+{
+	return sysfs_emit(page, "%s\n", "ali_drw_pmu");
+}
+
+static umode_t ali_drw_pmu_identifier_attr_visible(struct kobject *kobj,
+						struct attribute *attr, int n)
+{
+	return attr->mode;
+}
+
+static struct device_attribute ali_drw_pmu_identifier_attr =
+	__ATTR(identifier, 0444, ali_drw_pmu_identifier_show, NULL);
+
+static struct attribute *ali_drw_pmu_identifier_attrs[] = {
+	&ali_drw_pmu_identifier_attr.attr,
+	NULL
+};
+
+static const struct attribute_group ali_drw_pmu_identifier_attr_group = {
+	.attrs = ali_drw_pmu_identifier_attrs,
+	.is_visible = ali_drw_pmu_identifier_attr_visible
+};
+
 static const struct attribute_group *ali_drw_pmu_attr_groups[] = {
 	&ali_drw_pmu_events_attr_group,
 	&ali_drw_pmu_cpumask_attr_group,
 	&ali_drw_pmu_format_group,
+	&ali_drw_pmu_identifier_attr_group,
 	NULL,
 };
 
@@ -656,8 +683,7 @@ static int ali_drw_pmu_probe(struct platform_device *pdev)
 	drw_pmu->dev = &pdev->dev;
 	platform_set_drvdata(pdev, drw_pmu);
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	drw_pmu->cfg_base = devm_ioremap_resource(&pdev->dev, res);
+	drw_pmu->cfg_base = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
 	if (IS_ERR(drw_pmu->cfg_base))
 		return PTR_ERR(drw_pmu->cfg_base);
 

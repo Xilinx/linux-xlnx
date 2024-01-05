@@ -42,6 +42,9 @@
 #define _PMD_PRESENT_MASK (PAGE_MASK)
 #define _PMD_BAD	(~PAGE_MASK)
 
+/* We borrow the _PAGE_USER bit to store the exclusive marker in swap PTEs. */
+#define _PAGE_SWP_EXCLUSIVE	_PAGE_USER
+
 /* And here we include common definitions */
 
 #define _PAGE_KERNEL_RO		0
@@ -363,16 +366,40 @@ static inline void __ptep_set_access_flags(struct vm_area_struct *vma,
 #define pmd_page(pmd)		pfn_to_page(pmd_pfn(pmd))
 
 /*
- * Encode and decode a swap entry.
- * Note that the bits we use in a PTE for representing a swap entry
- * must not include the _PAGE_PRESENT bit or the _PAGE_HASHPTE bit (if used).
- *   -- paulus
+ * Encode/decode swap entries and swap PTEs. Swap PTEs are all PTEs that
+ * are !pte_none() && !pte_present().
+ *
+ * Format of swap PTEs (32bit PTEs):
+ *
+ *                         1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 2 2 3 3
+ *   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ *   <----------------- offset --------------------> < type -> E H P
+ *
+ *   E is the exclusive marker that is not stored in swap entries.
+ *   _PAGE_PRESENT (P) and __PAGE_HASHPTE (H) must be 0.
+ *
+ * For 64bit PTEs, the offset is extended by 32bit.
  */
 #define __swp_type(entry)		((entry).val & 0x1f)
 #define __swp_offset(entry)		((entry).val >> 5)
-#define __swp_entry(type, offset)	((swp_entry_t) { (type) | ((offset) << 5) })
+#define __swp_entry(type, offset)	((swp_entry_t) { ((type) & 0x1f) | ((offset) << 5) })
 #define __pte_to_swp_entry(pte)		((swp_entry_t) { pte_val(pte) >> 3 })
 #define __swp_entry_to_pte(x)		((pte_t) { (x).val << 3 })
+
+static inline int pte_swp_exclusive(pte_t pte)
+{
+	return pte_val(pte) & _PAGE_SWP_EXCLUSIVE;
+}
+
+static inline pte_t pte_swp_mkexclusive(pte_t pte)
+{
+	return __pte(pte_val(pte) | _PAGE_SWP_EXCLUSIVE);
+}
+
+static inline pte_t pte_swp_clear_exclusive(pte_t pte)
+{
+	return __pte(pte_val(pte) & ~_PAGE_SWP_EXCLUSIVE);
+}
 
 /* Generic accessors to PTE bits */
 static inline int pte_write(pte_t pte)		{ return !!(pte_val(pte) & _PAGE_RW);}
@@ -435,11 +462,6 @@ static inline pte_t pfn_pte(unsigned long pfn, pgprot_t pgprot)
 		     pgprot_val(pgprot));
 }
 
-static inline unsigned long pte_pfn(pte_t pte)
-{
-	return pte_val(pte) >> PTE_RPN_SHIFT;
-}
-
 /* Generic modifiers for PTE bits */
 static inline pte_t pte_wrprotect(pte_t pte)
 {
@@ -471,7 +493,7 @@ static inline pte_t pte_mkpte(pte_t pte)
 	return pte;
 }
 
-static inline pte_t pte_mkwrite(pte_t pte)
+static inline pte_t pte_mkwrite_novma(pte_t pte)
 {
 	return __pte(pte_val(pte) | _PAGE_RW);
 }
@@ -514,58 +536,43 @@ static inline pte_t pte_modify(pte_t pte, pgprot_t newprot)
 
 
 /* This low level function performs the actual PTE insertion
- * Setting the PTE depends on the MMU type and other factors. It's
- * an horrible mess that I'm not going to try to clean up now but
- * I'm keeping it in one place rather than spread around
+ * Setting the PTE depends on the MMU type and other factors.
+ *
+ * First case is 32-bit in UP mode with 32-bit PTEs, we need to preserve
+ * the _PAGE_HASHPTE bit since we may not have invalidated the previous
+ * translation in the hash yet (done in a subsequent flush_tlb_xxx())
+ * and see we need to keep track that this PTE needs invalidating.
+ *
+ * Second case is 32-bit with 64-bit PTE.  In this case, we
+ * can just store as long as we do the two halves in the right order
+ * with a barrier in between. This is possible because we take care,
+ * in the hash code, to pre-invalidate if the PTE was already hashed,
+ * which synchronizes us with any concurrent invalidation.
+ * In the percpu case, we fallback to the simple update preserving
+ * the hash bits (ie, same as the non-SMP case).
+ *
+ * Third case is 32-bit in SMP mode with 32-bit PTEs. We use the
+ * helper pte_update() which does an atomic update. We need to do that
+ * because a concurrent invalidation can clear _PAGE_HASHPTE. If it's a
+ * per-CPU PTE such as a kmap_atomic, we also do a simple update preserving
+ * the hash bits instead.
  */
 static inline void __set_pte_at(struct mm_struct *mm, unsigned long addr,
 				pte_t *ptep, pte_t pte, int percpu)
 {
-#if defined(CONFIG_SMP) && !defined(CONFIG_PTE_64BIT)
-	/* First case is 32-bit Hash MMU in SMP mode with 32-bit PTEs. We use the
-	 * helper pte_update() which does an atomic update. We need to do that
-	 * because a concurrent invalidation can clear _PAGE_HASHPTE. If it's a
-	 * per-CPU PTE such as a kmap_atomic, we do a simple update preserving
-	 * the hash bits instead (ie, same as the non-SMP case)
-	 */
-	if (percpu)
-		*ptep = __pte((pte_val(*ptep) & _PAGE_HASHPTE)
-			      | (pte_val(pte) & ~_PAGE_HASHPTE));
-	else
+	if ((!IS_ENABLED(CONFIG_SMP) && !IS_ENABLED(CONFIG_PTE_64BIT)) || percpu) {
+		*ptep = __pte((pte_val(*ptep) & _PAGE_HASHPTE) |
+			      (pte_val(pte) & ~_PAGE_HASHPTE));
+	} else if (IS_ENABLED(CONFIG_PTE_64BIT)) {
+		if (pte_val(*ptep) & _PAGE_HASHPTE)
+			flush_hash_entry(mm, ptep, addr);
+
+		asm volatile("stw%X0 %2,%0; eieio; stw%X1 %L2,%1" :
+			     "=m" (*ptep), "=m" (*((unsigned char *)ptep+4)) :
+			     "r" (pte) : "memory");
+	} else {
 		pte_update(mm, addr, ptep, ~_PAGE_HASHPTE, pte_val(pte), 0);
-
-#elif defined(CONFIG_PTE_64BIT)
-	/* Second case is 32-bit with 64-bit PTE.  In this case, we
-	 * can just store as long as we do the two halves in the right order
-	 * with a barrier in between. This is possible because we take care,
-	 * in the hash code, to pre-invalidate if the PTE was already hashed,
-	 * which synchronizes us with any concurrent invalidation.
-	 * In the percpu case, we also fallback to the simple update preserving
-	 * the hash bits
-	 */
-	if (percpu) {
-		*ptep = __pte((pte_val(*ptep) & _PAGE_HASHPTE)
-			      | (pte_val(pte) & ~_PAGE_HASHPTE));
-		return;
 	}
-	if (pte_val(*ptep) & _PAGE_HASHPTE)
-		flush_hash_entry(mm, ptep, addr);
-	__asm__ __volatile__("\
-		stw%X0 %2,%0\n\
-		eieio\n\
-		stw%X1 %L2,%1"
-	: "=m" (*ptep), "=m" (*((unsigned char *)ptep+4))
-	: "r" (pte) : "memory");
-
-#else
-	/* Third case is 32-bit hash table in UP mode, we need to preserve
-	 * the _PAGE_HASHPTE bit since we may not have invalidated the previous
-	 * translation in the hash yet (done in a subsequent flush_tlb_xxx())
-	 * and see we need to keep track that this PTE needs invalidating
-	 */
-	*ptep = __pte((pte_val(*ptep) & _PAGE_HASHPTE)
-		      | (pte_val(pte) & ~_PAGE_HASHPTE));
-#endif
 }
 
 /*

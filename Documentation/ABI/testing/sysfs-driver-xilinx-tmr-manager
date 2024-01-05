@@ -1,18 +1,16 @@
-What:		/sys/devices/platform/amba_pl/<dev>/status
-Date:		Feb 2022
-Contact:	appana.durga.rao@xilinx.com
-Description:	This control file provides the status of the tmr manager
-		useful for getting the status of fault.
-		This file cannot be written.
+What:          /sys/devices/platform/amba_pl/<dev>/errcnt
+Date:          Nov 2022
+Contact:       appana.durga.kedareswara.rao@amd.com
+Description:   This control file provides the fault detection count.
+               This file cannot be written.
+               Example:
+               # cat /sys/devices/platform/amba_pl/44a10000.tmr_manager/errcnt
+               1
 
-What:		/sys/devices/platform/amba_pl/<dev>/errcnt
-Date:		Feb 2022
-Contact:	appana.durga.rao@xilinx.com
-Description:	This control file provides the fault detection count.
-		This file cannot be written.
-
-What:		/sys/devices/platform/amba_pl/<dev>/dis_block_break
-Date:		Feb 2022
-Contact:	appana.durga.rao@xilinx.com
-Description:	This control file enables the break signal.
-		This file is write only.
+What:          /sys/devices/platform/amba_pl/<dev>/dis_block_break
+Date:          Nov 2022
+Contact:       appana.durga.kedareswara.rao@amd.com
+Description:   Write any value to it, This control file enables the break signal.
+               This file is write only.
+               Example:
+               # echo <any value> > /sys/devices/platform/amba_pl/44a10000.tmr_manager/dis_block_break

@@ -432,14 +432,6 @@ static int s3c_pcm_set_sysclk(struct snd_soc_dai *cpu_dai,
 	return 0;
 }
 
-static const struct snd_soc_dai_ops s3c_pcm_dai_ops = {
-	.set_sysclk	= s3c_pcm_set_sysclk,
-	.set_clkdiv	= s3c_pcm_set_clkdiv,
-	.trigger	= s3c_pcm_trigger,
-	.hw_params	= s3c_pcm_hw_params,
-	.set_fmt	= s3c_pcm_set_fmt,
-};
-
 static int s3c_pcm_dai_probe(struct snd_soc_dai *dai)
 {
 	struct s3c_pcm_info *pcm = snd_soc_dai_get_drvdata(dai);
@@ -449,11 +441,19 @@ static int s3c_pcm_dai_probe(struct snd_soc_dai *dai)
 	return 0;
 }
 
+static const struct snd_soc_dai_ops s3c_pcm_dai_ops = {
+	.probe		= s3c_pcm_dai_probe,
+	.set_sysclk	= s3c_pcm_set_sysclk,
+	.set_clkdiv	= s3c_pcm_set_clkdiv,
+	.trigger	= s3c_pcm_trigger,
+	.hw_params	= s3c_pcm_hw_params,
+	.set_fmt	= s3c_pcm_set_fmt,
+};
+
 #define S3C_PCM_RATES  SNDRV_PCM_RATE_8000_96000
 
 #define S3C_PCM_DAI_DECLARE			\
 	.symmetric_rate = 1,					\
-	.probe = s3c_pcm_dai_probe,				\
 	.ops = &s3c_pcm_dai_ops,				\
 	.playback = {						\
 		.channels_min	= 2,				\
@@ -579,20 +579,18 @@ err_dis_cclk:
 	return ret;
 }
 
-static int s3c_pcm_dev_remove(struct platform_device *pdev)
+static void s3c_pcm_dev_remove(struct platform_device *pdev)
 {
 	struct s3c_pcm_info *pcm = &s3c_pcm[pdev->id];
 
 	pm_runtime_disable(&pdev->dev);
 	clk_disable_unprepare(pcm->cclk);
 	clk_disable_unprepare(pcm->pclk);
-
-	return 0;
 }
 
 static struct platform_driver s3c_pcm_driver = {
 	.probe  = s3c_pcm_dev_probe,
-	.remove = s3c_pcm_dev_remove,
+	.remove_new = s3c_pcm_dev_remove,
 	.driver = {
 		.name = "samsung-pcm",
 	},

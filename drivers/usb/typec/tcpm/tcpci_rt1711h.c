@@ -327,8 +327,7 @@ static int rt1711h_check_revision(struct i2c_client *i2c, struct rt1711h_chip *c
 	return ret;
 }
 
-static int rt1711h_probe(struct i2c_client *client,
-			 const struct i2c_device_id *i2c_id)
+static int rt1711h_probe(struct i2c_client *client)
 {
 	int ret;
 	struct rt1711h_chip *chip;

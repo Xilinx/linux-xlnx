@@ -73,10 +73,10 @@ static int xenbus_probe_frontend(struct xen_bus_type *bus, const char *type,
 	return err;
 }
 
-static int xenbus_uevent_frontend(struct device *_dev,
+static int xenbus_uevent_frontend(const struct device *_dev,
 				  struct kobj_uevent_env *env)
 {
-	struct xenbus_device *dev = to_xenbus_device(_dev);
+	const struct xenbus_device *dev = to_xenbus_device(_dev);
 
 	if (add_uevent_var(env, "MODALIAS=xen:%s", dev->devicetype))
 		return -ENOMEM;
@@ -429,7 +429,7 @@ static void xenbus_check_frontend(char *class, char *dev)
 		printk(KERN_DEBUG "XENBUS: frontend %s %s\n",
 				frontend, xenbus_strstate(fe_state));
 		backend = xenbus_read(XBT_NIL, frontend, "backend", NULL);
-		if (!backend || IS_ERR(backend))
+		if (IS_ERR_OR_NULL(backend))
 			goto out;
 		err = xenbus_scanf(XBT_NIL, backend, "state", "%i", &be_state);
 		if (err == 1)

@@ -441,7 +441,7 @@ config CLKSRC_EXYNOS_MCT
 config CLKSRC_SAMSUNG_PWM
 	bool "PWM timer driver for Samsung S3C, S5P" if COMPILE_TEST
 	depends on HAS_IOMEM
-	depends on ARCH_EXYNOS || ARCH_S3C24XX || ARCH_S3C64XX || ARCH_S5PV210 || COMPILE_TEST
+	depends on ARCH_EXYNOS || ARCH_S3C64XX || ARCH_S5PV210 || COMPILE_TEST
 	help
 	  This is a new clocksource driver for the PWM timer found in
 	  Samsung S3C, S5P and Exynos SoCs, replacing an earlier driver
@@ -461,13 +461,6 @@ config VF_PIT_TIMER
 	help
 	  Support for Periodic Interrupt Timer on Freescale Vybrid Family SoCs.
 
-config OXNAS_RPS_TIMER
-	bool "Oxford Semiconductor OXNAS RPS Timers driver" if COMPILE_TEST
-	select TIMER_OF
-	select CLKSRC_MMIO
-	help
-	  This enables support for the Oxford Semiconductor OXNAS RPS timers.
-
 config SYS_SUPPORTS_SH_CMT
 	bool
 
@@ -478,6 +471,15 @@ config MTK_TIMER
 	select CLKSRC_MMIO
 	help
 	  Support for Mediatek timer driver.
+
+config MTK_CPUX_TIMER
+	bool "MediaTek CPUX timer driver" if COMPILE_TEST
+	depends on HAS_IOMEM
+	default ARCH_MEDIATEK
+	select TIMER_OF
+	select CLKSRC_MMIO
+	help
+	  Support for MediaTek CPUXGPT timer driver.
 
 config SPRD_TIMER
 	bool "Spreadtrum timer driver" if EXPERT
@@ -603,6 +605,15 @@ config TIMER_IMX_SYS_CTR
 	  Enable this option to use i.MX system counter timer as a
 	  clockevent.
 
+config CLKSRC_LOONGSON1_PWM
+	bool "Clocksource using Loongson1 PWM"
+	depends on MACH_LOONGSON32 || COMPILE_TEST
+	select MIPS_EXTERNAL_TIMER
+	select TIMER_OF
+	help
+	  Enable this option to use Loongson1 PWM timer as clocksource
+	  instead of the performance counter.
+
 config CLKSRC_ST_LPC
 	bool "Low power clocksource found in the LPC" if COMPILE_TEST
 	select TIMER_OF if OF
@@ -706,7 +717,7 @@ config INGENIC_OST
 
 config MICROCHIP_PIT64B
 	bool "Microchip PIT64B support"
-	depends on OF || COMPILE_TEST
+	depends on OF && ARM
 	select TIMER_OF
 	help
 	  This option enables Microchip PIT64B timer for Atmel

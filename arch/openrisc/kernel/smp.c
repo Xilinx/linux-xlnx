@@ -23,6 +23,8 @@
 #include <asm/cacheflush.h>
 #include <asm/time.h>
 
+asmlinkage __init void secondary_start_kernel(void);
+
 static void (*smp_cross_call)(const struct cpumask *, unsigned int);
 
 unsigned long secondary_release = -1;
@@ -173,7 +175,7 @@ void handle_IPI(unsigned int ipi_msg)
 	}
 }
 
-void smp_send_reschedule(int cpu)
+void arch_smp_send_reschedule(int cpu)
 {
 	smp_cross_call(cpumask_of(cpu), IPI_RESCHEDULE);
 }

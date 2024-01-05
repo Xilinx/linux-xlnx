@@ -455,7 +455,11 @@ static int tegra_sflash_probe(struct platform_device *pdev)
 		goto exit_free_master;
 	}
 
-	tsd->irq = platform_get_irq(pdev, 0);
+	ret = platform_get_irq(pdev, 0);
+	if (ret < 0)
+		goto exit_free_master;
+	tsd->irq = ret;
+
 	ret = request_irq(tsd->irq, tegra_sflash_isr, 0,
 			dev_name(&pdev->dev), tsd);
 	if (ret < 0) {
@@ -520,7 +524,7 @@ exit_free_master:
 	return ret;
 }
 
-static int tegra_sflash_remove(struct platform_device *pdev)
+static void tegra_sflash_remove(struct platform_device *pdev)
 {
 	struct spi_master *master = platform_get_drvdata(pdev);
 	struct tegra_sflash_data	*tsd = spi_master_get_devdata(master);
@@ -530,8 +534,6 @@ static int tegra_sflash_remove(struct platform_device *pdev)
 	pm_runtime_disable(&pdev->dev);
 	if (!pm_runtime_status_suspended(&pdev->dev))
 		tegra_sflash_runtime_suspend(&pdev->dev);
-
-	return 0;
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -598,7 +600,7 @@ static struct platform_driver tegra_sflash_driver = {
 		.of_match_table	= tegra_sflash_of_match,
 	},
 	.probe =	tegra_sflash_probe,
-	.remove =	tegra_sflash_remove,
+	.remove_new =	tegra_sflash_remove,
 };
 module_platform_driver(tegra_sflash_driver);
 

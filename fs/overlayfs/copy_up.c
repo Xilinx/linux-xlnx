@@ -44,6 +44,35 @@ static bool ovl_must_copy_xattr(const char *name)
 	       !strncmp(name, XATTR_SECURITY_PREFIX, XATTR_SECURITY_PREFIX_LEN);
 }
 
+static int ovl_copy_acl(struct ovl_fs *ofs, const struct path *path,
+			struct dentry *dentry, const char *acl_name)
+{
+	int err;
+	struct posix_acl *clone, *real_acl = NULL;
+
+	real_acl = ovl_get_acl_path(path, acl_name, false);
+	if (!real_acl)
+		return 0;
+
+	if (IS_ERR(real_acl)) {
+		err = PTR_ERR(real_acl);
+		if (err == -ENODATA || err == -EOPNOTSUPP)
+			return 0;
+		return err;
+	}
+
+	clone = posix_acl_clone(real_acl, GFP_KERNEL);
+	posix_acl_release(real_acl); /* release original acl */
+	if (!clone)
+		return -ENOMEM;
+
+	err = ovl_do_set_acl(ofs, dentry, acl_name, clone);
+
+	/* release cloned acl */
+	posix_acl_release(clone);
+	return err;
+}
+
 int ovl_copy_xattr(struct super_block *sb, const struct path *oldpath, struct dentry *new)
 {
 	struct dentry *old = oldpath->dentry;
@@ -52,8 +81,7 @@ int ovl_copy_xattr(struct super_block *sb, const struct path *oldpath, struct de
 	int error = 0;
 	size_t slen;
 
-	if (!(old->d_inode->i_opflags & IOP_XATTR) ||
-	    !(new->d_inode->i_opflags & IOP_XATTR))
+	if (!old->d_inode->i_op->listxattr || !new->d_inode->i_op->listxattr)
 		return 0;
 
 	list_size = vfs_listxattr(old, NULL, 0);
@@ -93,6 +121,15 @@ int ovl_copy_xattr(struct super_block *sb, const struct path *oldpath, struct de
 			error = 0;
 			continue; /* Discard */
 		}
+
+		if (is_posix_acl_xattr(name)) {
+			error = ovl_copy_acl(OVL_FS(sb), oldpath, new, name);
+			if (!error)
+				continue;
+			/* POSIX ACLs must be copied. */
+			break;
+		}
+
 retry:
 		size = ovl_do_getxattr(oldpath, name, value, value_size);
 		if (size == -ERANGE)
@@ -300,7 +337,7 @@ static int ovl_set_timestamps(struct ovl_fs *ofs, struct dentry *upperdentry,
 {
 	struct iattr attr = {
 		.ia_valid =
-		     ATTR_ATIME | ATTR_MTIME | ATTR_ATIME_SET | ATTR_MTIME_SET,
+		     ATTR_ATIME | ATTR_MTIME | ATTR_ATIME_SET | ATTR_MTIME_SET | ATTR_CTIME,
 		.ia_atime = stat->atime,
 		.ia_mtime = stat->mtime,
 	};
@@ -379,7 +416,7 @@ struct ovl_fh *ovl_encode_real_fh(struct ovl_fs *ofs, struct dentry *real,
 	if (is_upper)
 		fh->fb.flags |= OVL_FH_FLAG_PATH_UPPER;
 	fh->fb.len = sizeof(fh->fb) + buflen;
-	if (ofs->config.uuid)
+	if (ovl_origin_uuid(ofs))
 		fh->fb.uuid = *uuid;
 
 	return fh;
@@ -507,6 +544,7 @@ struct ovl_copy_up_ctx {
 	bool origin;
 	bool indexed;
 	bool metacopy;
+	bool metacopy_digest;
 };
 
 static int ovl_link_up(struct ovl_copy_up_ctx *c)
@@ -538,6 +576,7 @@ static int ovl_link_up(struct ovl_copy_up_ctx *c)
 			/* Restore timestamps on parent (best effort) */
 			ovl_set_timestamps(ofs, upperdir, &c->pstat);
 			ovl_dentry_set_upper_alias(c->dentry);
+			ovl_dentry_update_reval(c->dentry, upper);
 		}
 	}
 	inode_unlock(udir);
@@ -579,7 +618,8 @@ static int ovl_copy_up_metadata(struct ovl_copy_up_ctx *c, struct dentry *temp)
 	if (err)
 		return err;
 
-	if (inode->i_flags & OVL_COPY_I_FLAGS_MASK) {
+	if (inode->i_flags & OVL_COPY_I_FLAGS_MASK &&
+	    (S_ISREG(c->stat.mode) || S_ISDIR(c->stat.mode))) {
 		/*
 		 * Copy the fileattr inode flags that are the source of already
 		 * copied i_flags
@@ -603,8 +643,20 @@ static int ovl_copy_up_metadata(struct ovl_copy_up_ctx *c, struct dentry *temp)
 	}
 
 	if (c->metacopy) {
-		err = ovl_check_setxattr(ofs, temp, OVL_XATTR_METACOPY,
-					 NULL, 0, -EOPNOTSUPP);
+		struct path lowerdatapath;
+		struct ovl_metacopy metacopy_data = OVL_METACOPY_INIT;
+
+		ovl_path_lowerdata(c->dentry, &lowerdatapath);
+		if (WARN_ON_ONCE(lowerdatapath.dentry == NULL))
+			return -EIO;
+		err = ovl_get_verity_digest(ofs, &lowerdatapath, &metacopy_data);
+		if (err)
+			return err;
+
+		if (metacopy_data.digest_algo)
+			c->metacopy_digest = true;
+
+		err = ovl_set_metacopy_xattr(ofs, temp, &metacopy_data);
 		if (err)
 			return err;
 	}
@@ -713,9 +765,15 @@ static int ovl_copy_up_workdir(struct ovl_copy_up_ctx *c)
 	if (err)
 		goto cleanup;
 
-	if (!c->metacopy)
-		ovl_set_upperdata(d_inode(c->dentry));
 	inode = d_inode(c->dentry);
+	if (c->metacopy_digest)
+		ovl_set_flag(OVL_HAS_DIGEST, inode);
+	else
+		ovl_clear_flag(OVL_HAS_DIGEST, inode);
+	ovl_clear_flag(OVL_VERIFIED_DIGEST, inode);
+
+	if (!c->metacopy)
+		ovl_set_upperdata(inode);
 	ovl_inode_update(inode, temp);
 	if (S_ISDIR(inode->i_mode))
 		ovl_set_flag(OVL_WHITEOUTS, inode);
@@ -754,7 +812,7 @@ static int ovl_copy_up_tmpfile(struct ovl_copy_up_ctx *c)
 	if (!c->metacopy && c->stat.size) {
 		err = ovl_copy_up_file(ofs, c->dentry, tmpfile, c->stat.size);
 		if (err)
-			return err;
+			goto out_fput;
 	}
 
 	err = ovl_copy_up_metadata(c, temp);
@@ -774,6 +832,12 @@ static int ovl_copy_up_tmpfile(struct ovl_copy_up_ctx *c)
 
 	if (err)
 		goto out_fput;
+
+	if (c->metacopy_digest)
+		ovl_set_flag(OVL_HAS_DIGEST, d_inode(c->dentry));
+	else
+		ovl_clear_flag(OVL_HAS_DIGEST, d_inode(c->dentry));
+	ovl_clear_flag(OVL_VERIFIED_DIGEST, d_inode(c->dentry));
 
 	if (!c->metacopy)
 		ovl_set_upperdata(d_inode(c->dentry));
@@ -857,6 +921,7 @@ static int ovl_do_copy_up(struct ovl_copy_up_ctx *c)
 		inode_unlock(udir);
 
 		ovl_dentry_set_upper_alias(c->dentry);
+		ovl_dentry_update_reval(c->dentry, ovl_dentry_upper(c->dentry));
 	}
 
 out:
@@ -868,7 +933,7 @@ out:
 static bool ovl_need_meta_copy_up(struct dentry *dentry, umode_t mode,
 				  int flags)
 {
-	struct ovl_fs *ofs = dentry->d_sb->s_fs_info;
+	struct ovl_fs *ofs = OVL_FS(dentry->d_sb);
 
 	if (!ofs->config.metacopy)
 		return false;
@@ -878,6 +943,19 @@ static bool ovl_need_meta_copy_up(struct dentry *dentry, umode_t mode,
 
 	if (flags && ((OPEN_FMODE(flags) & FMODE_WRITE) || (flags & O_TRUNC)))
 		return false;
+
+	/* Fall back to full copy if no fsverity on source data and we require verity */
+	if (ofs->config.verity_mode == OVL_VERITY_REQUIRE) {
+		struct path lowerdata;
+
+		ovl_path_lowerdata(dentry, &lowerdata);
+
+		if (WARN_ON_ONCE(lowerdata.dentry == NULL) ||
+		    ovl_ensure_verity_loaded(&lowerdata) ||
+		    !fsverity_active(d_inode(lowerdata.dentry))) {
+			return false;
+		}
+	}
 
 	return true;
 }
@@ -945,6 +1023,8 @@ static int ovl_copy_up_meta_inode_data(struct ovl_copy_up_ctx *c)
 	if (err)
 		goto out_free;
 
+	ovl_clear_flag(OVL_HAS_DIGEST, d_inode(c->dentry));
+	ovl_clear_flag(OVL_VERIFIED_DIGEST, d_inode(c->dentry));
 	ovl_set_upperdata(d_inode(c->dentry));
 out_free:
 	kfree(capability);
@@ -972,6 +1052,10 @@ static int ovl_copy_up_one(struct dentry *parent, struct dentry *dentry,
 			  STATX_BASIC_STATS, AT_STATX_SYNC_AS_STAT);
 	if (err)
 		return err;
+
+	if (!kuid_has_mapping(current_user_ns(), ctx.stat.uid) ||
+	    !kgid_has_mapping(current_user_ns(), ctx.stat.gid))
+		return -EOVERFLOW;
 
 	ctx.metacopy = ovl_need_meta_copy_up(dentry, ctx.stat.mode, flags);
 
@@ -1029,6 +1113,15 @@ static int ovl_copy_up_flags(struct dentry *dentry, int flags)
 	 */
 	if (WARN_ON(disconnected && d_is_dir(dentry)))
 		return -EIO;
+
+	/*
+	 * We may not need lowerdata if we are only doing metacopy up, but it is
+	 * not very important to optimize this case, so do lazy lowerdata lookup
+	 * before any copy up, so we can do it before taking ovl_inode_lock().
+	 */
+	err = ovl_verify_lowerdata(dentry);
+	if (err)
+		return err;
 
 	old_cred = ovl_override_creds(dentry->d_sb);
 	while (!err) {

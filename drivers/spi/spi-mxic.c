@@ -772,8 +772,7 @@ static int mxic_spi_probe(struct platform_device *pdev)
 	if (IS_ERR(mxic->send_dly_clk))
 		return PTR_ERR(mxic->send_dly_clk);
 
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "regs");
-	mxic->regs = devm_ioremap_resource(&pdev->dev, res);
+	mxic->regs = devm_platform_ioremap_resource_byname(pdev, "regs");
 	if (IS_ERR(mxic->regs))
 		return PTR_ERR(mxic->regs);
 
@@ -819,7 +818,7 @@ static int mxic_spi_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int mxic_spi_remove(struct platform_device *pdev)
+static void mxic_spi_remove(struct platform_device *pdev)
 {
 	struct spi_master *master = platform_get_drvdata(pdev);
 	struct mxic_spi *mxic = spi_master_get_devdata(master);
@@ -827,8 +826,6 @@ static int mxic_spi_remove(struct platform_device *pdev)
 	pm_runtime_disable(&pdev->dev);
 	mxic_spi_mem_ecc_remove(mxic);
 	spi_unregister_master(master);
-
-	return 0;
 }
 
 static const struct of_device_id mxic_spi_of_ids[] = {
@@ -839,7 +836,7 @@ MODULE_DEVICE_TABLE(of, mxic_spi_of_ids);
 
 static struct platform_driver mxic_spi_driver = {
 	.probe = mxic_spi_probe,
-	.remove = mxic_spi_remove,
+	.remove_new = mxic_spi_remove,
 	.driver = {
 		.name = "mxic-spi",
 		.of_match_table = mxic_spi_of_ids,

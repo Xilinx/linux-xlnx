@@ -125,11 +125,6 @@ static inline void usbtll_writeb(void __iomem *base, u32 reg, u8 val)
 	writeb_relaxed(val, base + reg);
 }
 
-static inline u8 usbtll_readb(void __iomem *base, u32 reg)
-{
-	return readb_relaxed(base + reg);
-}
-
 /*-------------------------------------------------------------------------*/
 
 static bool is_ohci_port(enum usbhs_omap_port_mode pmode)
@@ -205,15 +200,13 @@ static unsigned ohci_omap3_fslsmode(enum usbhs_omap_port_mode mode)
 static int usbtll_omap_probe(struct platform_device *pdev)
 {
 	struct device				*dev =  &pdev->dev;
-	struct resource				*res;
 	struct usbtll_omap			*tll;
 	void __iomem				*base;
 	int					i, nch, ver;
 
 	dev_dbg(dev, "starting TI HSUSB TLL Controller\n");
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	base = devm_ioremap_resource(dev, res);
+	base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(base))
 		return PTR_ERR(base);
 
@@ -450,7 +443,6 @@ EXPORT_SYMBOL_GPL(omap_tll_disable);
 
 MODULE_AUTHOR("Keshava Munegowda <keshava_mgowda@ti.com>");
 MODULE_AUTHOR("Roger Quadros <rogerq@ti.com>");
-MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("usb tll driver for TI OMAP EHCI and OHCI controllers");
 
 static int __init omap_usbtll_drvinit(void)

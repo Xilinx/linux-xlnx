@@ -6,8 +6,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
-#include <linux/of_device.h>
-#include <linux/of_platform.h>
+#include <linux/of_.h>
 #include <linux/regulator/driver.h>
 #include <linux/regulator/of_regulator.h>
 #include <linux/soc/mediatek/mtk_dvfsrc.h>
@@ -194,6 +193,7 @@ static int dvfsrc_vcore_regulator_probe(struct platform_device *pdev)
 static struct platform_driver mtk_dvfsrc_regulator_driver = {
 	.driver = {
 		.name  = "mtk-dvfsrc-regulator",
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 	},
 	.probe = dvfsrc_vcore_regulator_probe,
 };

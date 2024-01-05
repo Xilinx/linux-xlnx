@@ -67,6 +67,8 @@ struct gpio_desc;
 
 /* Extended commands for large page devices */
 #define NAND_CMD_READSTART	0x30
+#define NAND_CMD_READCACHESEQ	0x31
+#define NAND_CMD_READCACHEEND	0x3f
 #define NAND_CMD_RNDOUTSTART	0xE0
 #define NAND_CMD_CACHEDPROG	0x15
 
@@ -223,6 +225,7 @@ struct gpio_desc;
  * struct nand_parameters - NAND generic parameters from the parameter page
  * @model: Model name
  * @supports_set_get_features: The NAND chip supports setting/getting features
+ * @supports_read_cache: The NAND chip supports read cache operations
  * @set_feature_list: Bitmap of features that can be set
  * @get_feature_list: Bitmap of features that can be get
  * @onfi: ONFI specific parameters
@@ -231,6 +234,7 @@ struct nand_parameters {
 	/* Generic parameters */
 	const char *model;
 	bool supports_set_get_features;
+	bool supports_read_cache;
 	DECLARE_BITMAP(set_feature_list, ONFI_FEATURE_NUMBER);
 	DECLARE_BITMAP(get_feature_list, ONFI_FEATURE_NUMBER);
 
@@ -1073,7 +1077,7 @@ static inline void nand_op_trace(const char *prefix,
  * @exec_op:	 controller specific method to execute NAND operations.
  *		 This method replaces chip->legacy.cmdfunc(),
  *		 chip->legacy.{read,write}_{buf,byte,word}(),
- *		 chip->legacy.dev_ready() and chip->legacy.waifunc().
+ *		 chip->legacy.dev_ready() and chip->legacy.waitfunc().
  * @setup_interface: setup the data interface and timing. If chipnr is set to
  *		     %NAND_DATA_IFACE_CHECK_ONLY this means the configuration
  *		     should not be applied but only checked.
@@ -1094,10 +1098,20 @@ struct nand_controller_ops {
  *
  * @lock:		lock used to serialize accesses to the NAND controller
  * @ops:		NAND controller operations.
+ * @supported_op:	NAND controller known-to-be-supported operations,
+ *			only writable by the core after initial checking.
+ * @supported_op.data_only_read: The controller supports reading more data from
+ *			the bus without restarting an entire read operation nor
+ *			changing the column.
+ * @supported_op.cont_read: The controller supports sequential cache reads.
  */
 struct nand_controller {
 	struct mutex lock;
 	const struct nand_controller_ops *ops;
+	struct {
+		unsigned int data_only_read: 1;
+		unsigned int cont_read: 1;
+	} supported_op;
 };
 
 static inline void nand_controller_init(struct nand_controller *nfc)
@@ -1248,6 +1262,10 @@ struct nand_secure_region {
  * @read_retries: The number of read retry modes supported
  * @secure_regions: Structure containing the secure regions info
  * @nr_secure_regions: Number of secure regions
+ * @cont_read: Sequential page read internals
+ * @cont_read.ongoing: Whether a continuous read is ongoing or not
+ * @cont_read.first_page: Start of the continuous read operation
+ * @cont_read.last_page: End of the continuous read operation
  * @controller: The hardware controller	structure which is shared among multiple
  *              independent devices
  * @ecc: The ECC controller structure
@@ -1300,6 +1318,11 @@ struct nand_chip {
 	int read_retries;
 	struct nand_secure_region *secure_regions;
 	u8 nr_secure_regions;
+	struct {
+		bool ongoing;
+		unsigned int first_page;
+		unsigned int last_page;
+	} cont_read;
 
 	/* Externals */
 	struct nand_controller *controller;
@@ -1519,6 +1542,7 @@ int nand_reset_op(struct nand_chip *chip);
 int nand_readid_op(struct nand_chip *chip, u8 addr, void *buf,
 		   unsigned int len);
 int nand_status_op(struct nand_chip *chip, u8 *status);
+int nand_exit_status_op(struct nand_chip *chip);
 int nand_erase_op(struct nand_chip *chip, unsigned int eraseblock);
 int nand_read_page_op(struct nand_chip *chip, unsigned int page,
 		      unsigned int offset_in_page, void *buf, unsigned int len);

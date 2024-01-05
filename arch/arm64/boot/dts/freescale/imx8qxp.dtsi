@@ -46,9 +46,9 @@
 		serial1 = &lpuart1;
 		serial2 = &lpuart2;
 		serial3 = &lpuart3;
-		vpu_core0 = &vpu_core0;
-		vpu_core1 = &vpu_core1;
-		vpu_core2 = &vpu_core2;
+		vpu-core0 = &vpu_core0;
+		vpu-core1 = &vpu_core1;
+		vpu-core2 = &vpu_core2;
 	};
 
 	cpus {
@@ -127,6 +127,7 @@
 		A35_L2: l2-cache0 {
 			compatible = "cache";
 			cache-level = <2>;
+			cache-unified;
 			cache-size = <0x80000>;
 			cache-line-size = <64>;
 			cache-sets = <1024>;

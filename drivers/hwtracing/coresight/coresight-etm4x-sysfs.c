@@ -266,9 +266,10 @@ static ssize_t reset_store(struct device *dev,
 	config->vmid_mask0 = 0x0;
 	config->vmid_mask1 = 0x0;
 
-	drvdata->trcid = drvdata->cpu + 1;
-
 	spin_unlock(&drvdata->spinlock);
+
+	/* for sysfs - only release trace id when resetting */
+	etm4_release_trace_id(drvdata);
 
 	cscfg_csdev_reset_feats(to_coresight_device(dev));
 
@@ -2392,6 +2393,25 @@ static struct attribute *coresight_etmv4_attrs[] = {
 	NULL,
 };
 
+/*
+ * Trace ID allocated dynamically on enable - but also allocate on read
+ * in case sysfs or perf read before enable to ensure consistent metadata
+ * information for trace decode
+ */
+static ssize_t trctraceid_show(struct device *dev,
+			       struct device_attribute *attr,
+			       char *buf)
+{
+	int trace_id;
+	struct etmv4_drvdata *drvdata = dev_get_drvdata(dev->parent);
+
+	trace_id = etm4_read_alloc_trace_id(drvdata);
+	if (trace_id < 0)
+		return trace_id;
+
+	return sysfs_emit(buf, "0x%x\n", trace_id);
+}
+
 struct etmv4_reg {
 	struct coresight_device *csdev;
 	u32 offset;
@@ -2507,13 +2527,23 @@ coresight_etm4x_attr_reg_implemented(struct kobject *kobj,
 	return 0;
 }
 
-#define coresight_etm4x_reg(name, offset)				\
-	&((struct dev_ext_attribute[]) {				\
-	   {								\
-		__ATTR(name, 0444, coresight_etm4x_reg_show, NULL),	\
-		(void *)(unsigned long)offset				\
-	   }								\
-	})[0].attr.attr
+/*
+ * Macro to set an RO ext attribute with offset and show function.
+ * Offset is used in mgmt group to ensure only correct registers for
+ * the ETM / ETE variant are visible.
+ */
+#define coresight_etm4x_reg_showfn(name, offset, showfn) (	\
+	&((struct dev_ext_attribute[]) {			\
+	   {							\
+		__ATTR(name, 0444, showfn, NULL),		\
+		(void *)(unsigned long)offset			\
+	   }							\
+	})[0].attr.attr						\
+	)
+
+/* macro using the default coresight_etm4x_reg_show function */
+#define coresight_etm4x_reg(name, offset)	\
+	coresight_etm4x_reg_showfn(name, offset, coresight_etm4x_reg_show)
 
 static struct attribute *coresight_etmv4_mgmt_attrs[] = {
 	coresight_etm4x_reg(trcpdcr, TRCPDCR),
@@ -2528,7 +2558,7 @@ static struct attribute *coresight_etmv4_mgmt_attrs[] = {
 	coresight_etm4x_reg(trcpidr3, TRCPIDR3),
 	coresight_etm4x_reg(trcoslsr, TRCOSLSR),
 	coresight_etm4x_reg(trcconfig, TRCCONFIGR),
-	coresight_etm4x_reg(trctraceid, TRCTRACEIDR),
+	coresight_etm4x_reg_showfn(trctraceid, TRCTRACEIDR, trctraceid_show),
 	coresight_etm4x_reg(trcdevarch, TRCDEVARCH),
 	NULL,
 };

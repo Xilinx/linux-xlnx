@@ -17,7 +17,6 @@
 #include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/of_dma.h>
 #include <linux/platform_device.h>
 #include <linux/pm.h>
@@ -231,11 +230,6 @@ struct tegra_dma {
 static inline void tdma_write(struct tegra_dma *tdma, u32 reg, u32 val)
 {
 	writel(val, tdma->base_addr + reg);
-}
-
-static inline u32 tdma_read(struct tegra_dma *tdma, u32 reg)
-{
-	return readl(tdma->base_addr + reg);
 }
 
 static inline void tdc_write(struct tegra_dma_channel *tdc,

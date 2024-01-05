@@ -17,7 +17,8 @@
 #include <linux/fb.h>
 #include <linux/mm.h>
 #include <linux/uaccess.h>
-#include <linux/of_device.h>
+#include <linux/of.h>
+#include <linux/platform_device.h>
 
 #include <asm/io.h>
 #include <asm/fbio.h>
@@ -512,7 +513,7 @@ static int cg14_probe(struct platform_device *op)
 	is_8mb = (resource_size(&op->resource[1]) == (8 * 1024 * 1024));
 
 	BUILD_BUG_ON(sizeof(par->mmap_map) != sizeof(__cg14_mmap_map));
-		
+
 	memcpy(&par->mmap_map, &__cg14_mmap_map, sizeof(par->mmap_map));
 
 	for (i = 0; i < CG14_MMAP_ENTRIES; i++) {
@@ -533,7 +534,7 @@ static int cg14_probe(struct platform_device *op)
 	par->mode = MDI_8_PIX;
 	par->ramsize = (is_8mb ? 0x800000 : 0x400000);
 
-	info->flags = FBINFO_DEFAULT | FBINFO_HWACCEL_YPAN;
+	info->flags = FBINFO_HWACCEL_YPAN;
 	info->fbops = &cg14_ops;
 
 	__cg14_reset(par);
@@ -569,7 +570,7 @@ out_err:
 	return err;
 }
 
-static int cg14_remove(struct platform_device *op)
+static void cg14_remove(struct platform_device *op)
 {
 	struct fb_info *info = dev_get_drvdata(&op->dev);
 	struct cg14_par *par = info->par;
@@ -580,8 +581,6 @@ static int cg14_remove(struct platform_device *op)
 	cg14_unmap_regs(op, info, par);
 
 	framebuffer_release(info);
-
-	return 0;
 }
 
 static const struct of_device_id cg14_match[] = {
@@ -598,7 +597,7 @@ static struct platform_driver cg14_driver = {
 		.of_match_table = cg14_match,
 	},
 	.probe		= cg14_probe,
-	.remove		= cg14_remove,
+	.remove_new	= cg14_remove,
 };
 
 static int __init cg14_init(void)

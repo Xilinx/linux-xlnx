@@ -19,13 +19,7 @@ extern void efi_init(void);
 #endif
 
 int efi_create_mapping(struct mm_struct *mm, efi_memory_desc_t *md);
-int efi_set_mapping_permissions(struct mm_struct *mm, efi_memory_desc_t *md);
-
-#define arch_efi_call_virt_setup()      ({		\
-		sync_kernel_mappings(efi_mm.pgd);	\
-		efi_virtmap_load();			\
-	})
-#define arch_efi_call_virt_teardown()   efi_virtmap_unload()
+int efi_set_mapping_permissions(struct mm_struct *mm, efi_memory_desc_t *md, bool);
 
 #define ARCH_EFI_IRQ_FLAGS_MASK (SR_IE | SR_SPIE)
 
@@ -35,13 +29,22 @@ static inline unsigned long efi_get_max_initrd_addr(unsigned long image_addr)
 	return ULONG_MAX;
 }
 
-#define alloc_screen_info(x...)		(&screen_info)
-
-static inline void free_screen_info(struct screen_info *si)
+static inline unsigned long efi_get_kimg_min_align(void)
 {
+	/*
+	 * RISC-V requires the kernel image to placed 2 MB aligned base for 64
+	 * bit and 4MB for 32 bit.
+	 */
+	return IS_ENABLED(CONFIG_64BIT) ? SZ_2M : SZ_4M;
 }
 
-void efi_virtmap_load(void);
-void efi_virtmap_unload(void);
+#define EFI_KIMG_PREFERRED_ADDRESS	efi_get_kimg_min_align()
+
+void arch_efi_call_virt_setup(void);
+void arch_efi_call_virt_teardown(void);
+
+unsigned long stext_offset(void);
+
+void efi_icache_sync(unsigned long start, unsigned long end);
 
 #endif /* _ASM_EFI_H */

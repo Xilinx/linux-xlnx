@@ -124,7 +124,7 @@ static void vsw_set_rx_mode(struct net_device *dev)
 	return sunvnet_set_rx_mode_common(dev, port->vp);
 }
 
-int ldmvsw_open(struct net_device *dev)
+static int ldmvsw_open(struct net_device *dev)
 {
 	struct vnet_port *port = netdev_priv(dev);
 	struct vio_driver_state *vio = &port->vio;
@@ -136,7 +136,6 @@ int ldmvsw_open(struct net_device *dev)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(ldmvsw_open);
 
 #ifdef CONFIG_NET_POLL_CONTROLLER
 static void vsw_poll_controller(struct net_device *dev)
@@ -286,6 +285,9 @@ static int vsw_port_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	u64 handle;
 
 	hp = mdesc_grab();
+
+	if (!hp)
+		return -ENODEV;
 
 	rmac = mdesc_get_property(hp, vdev->mp, remote_macaddr_prop, &len);
 	err = -ENODEV;

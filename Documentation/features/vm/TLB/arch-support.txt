@@ -9,11 +9,11 @@
     |       alpha: | TODO |
     |         arc: | TODO |
     |         arm: | TODO |
-    |       arm64: | N/A  |
+    |       arm64: |  ok  |
     |        csky: | TODO |
     |     hexagon: | TODO |
     |        ia64: | TODO |
-    |       loong: | TODO |
+    |   loongarch: | TODO |
     |        m68k: |  ..  |
     |  microblaze: |  ..  |
     |        mips: | TODO |

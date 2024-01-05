@@ -855,7 +855,7 @@ static size_t sizeof_idt(struct acpi_nfit_interleave *idt)
 {
 	if (idt->header.length < sizeof(*idt))
 		return 0;
-	return sizeof(*idt) + sizeof(u32) * (idt->line_count - 1);
+	return sizeof(*idt) + sizeof(u32) * idt->line_count;
 }
 
 static bool add_idt(struct acpi_nfit_desc *acpi_desc,
@@ -894,7 +894,7 @@ static size_t sizeof_flush(struct acpi_nfit_flush_address *flush)
 {
 	if (flush->header.length < sizeof(*flush))
 		return 0;
-	return sizeof(*flush) + sizeof(u64) * (flush->hint_count - 1);
+	return struct_size(flush, hint_address, flush->hint_count);
 }
 
 static bool add_flush(struct acpi_nfit_desc *acpi_desc,
@@ -3282,6 +3282,23 @@ static void acpi_nfit_put_table(void *table)
 	acpi_put_table(table);
 }
 
+static void acpi_nfit_notify(acpi_handle handle, u32 event, void *data)
+{
+	struct acpi_device *adev = data;
+
+	device_lock(&adev->dev);
+	__acpi_nfit_notify(&adev->dev, handle, event);
+	device_unlock(&adev->dev);
+}
+
+static void acpi_nfit_remove_notify_handler(void *data)
+{
+	struct acpi_device *adev = data;
+
+	acpi_dev_remove_notify_handler(adev, ACPI_DEVICE_NOTIFY,
+				       acpi_nfit_notify);
+}
+
 void acpi_nfit_shutdown(void *data)
 {
 	struct acpi_nfit_desc *acpi_desc = data;
@@ -3297,8 +3314,8 @@ void acpi_nfit_shutdown(void *data)
 
 	mutex_lock(&acpi_desc->init_mutex);
 	set_bit(ARS_CANCEL, &acpi_desc->scrub_flags);
-	cancel_delayed_work_sync(&acpi_desc->dwork);
 	mutex_unlock(&acpi_desc->init_mutex);
+	cancel_delayed_work_sync(&acpi_desc->dwork);
 
 	/*
 	 * Bounce the nvdimm bus lock to make sure any in-flight
@@ -3321,6 +3338,16 @@ static int acpi_nfit_add(struct acpi_device *adev)
 	acpi_status status = AE_OK;
 	acpi_size sz;
 	int rc = 0;
+
+	rc = acpi_dev_install_notify_handler(adev, ACPI_DEVICE_NOTIFY,
+					     acpi_nfit_notify);
+	if (rc)
+		return rc;
+
+	rc = devm_add_action_or_reset(dev, acpi_nfit_remove_notify_handler,
+					adev);
+	if (rc)
+		return rc;
 
 	status = acpi_get_table(ACPI_SIG_NFIT, 0, &tbl);
 	if (ACPI_FAILURE(status)) {
@@ -3368,13 +3395,8 @@ static int acpi_nfit_add(struct acpi_device *adev)
 
 	if (rc)
 		return rc;
-	return devm_add_action_or_reset(dev, acpi_nfit_shutdown, acpi_desc);
-}
 
-static int acpi_nfit_remove(struct acpi_device *adev)
-{
-	/* see acpi_nfit_unregister */
-	return 0;
+	return devm_add_action_or_reset(dev, acpi_nfit_shutdown, acpi_desc);
 }
 
 static void acpi_nfit_update_notify(struct device *dev, acpi_handle handle)
@@ -3447,13 +3469,6 @@ void __acpi_nfit_notify(struct device *dev, acpi_handle handle, u32 event)
 }
 EXPORT_SYMBOL_GPL(__acpi_nfit_notify);
 
-static void acpi_nfit_notify(struct acpi_device *adev, u32 event)
-{
-	device_lock(&adev->dev);
-	__acpi_nfit_notify(&adev->dev, adev->handle, event);
-	device_unlock(&adev->dev);
-}
-
 static const struct acpi_device_id acpi_nfit_ids[] = {
 	{ "ACPI0012", 0 },
 	{ "", 0 },
@@ -3465,8 +3480,6 @@ static struct acpi_driver acpi_nfit_driver = {
 	.ids = acpi_nfit_ids,
 	.ops = {
 		.add = acpi_nfit_add,
-		.remove = acpi_nfit_remove,
-		.notify = acpi_nfit_notify,
 	},
 };
 
@@ -3477,8 +3490,8 @@ static __init int nfit_init(void)
 	BUILD_BUG_ON(sizeof(struct acpi_table_nfit) != 40);
 	BUILD_BUG_ON(sizeof(struct acpi_nfit_system_address) != 64);
 	BUILD_BUG_ON(sizeof(struct acpi_nfit_memory_map) != 48);
-	BUILD_BUG_ON(sizeof(struct acpi_nfit_interleave) != 20);
-	BUILD_BUG_ON(sizeof(struct acpi_nfit_smbios) != 9);
+	BUILD_BUG_ON(sizeof(struct acpi_nfit_interleave) != 16);
+	BUILD_BUG_ON(sizeof(struct acpi_nfit_smbios) != 8);
 	BUILD_BUG_ON(sizeof(struct acpi_nfit_control_region) != 80);
 	BUILD_BUG_ON(sizeof(struct acpi_nfit_data_region) != 40);
 	BUILD_BUG_ON(sizeof(struct acpi_nfit_capabilities) != 16);

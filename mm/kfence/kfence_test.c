@@ -191,11 +191,10 @@ static size_t setup_test_cache(struct kunit *test, size_t size, slab_flags_t fla
 	kunit_info(test, "%s: size=%zu, ctor=%ps\n", __func__, size, ctor);
 
 	/*
-	 * Use SLAB_NOLEAKTRACE to prevent merging with existing caches. Any
-	 * other flag in SLAB_NEVER_MERGE also works. Use SLAB_ACCOUNT to
-	 * allocate via memcg, if enabled.
+	 * Use SLAB_NO_MERGE to prevent merging with existing caches.
+	 * Use SLAB_ACCOUNT to allocate via memcg, if enabled.
 	 */
-	flags |= SLAB_NOLEAKTRACE | SLAB_ACCOUNT;
+	flags |= SLAB_NO_MERGE | SLAB_ACCOUNT;
 	test_cache = kmem_cache_create("test", size, 1, flags, ctor);
 	KUNIT_ASSERT_TRUE_MSG(test, test_cache, "could not create cache");
 
@@ -213,7 +212,9 @@ static void test_cache_destroy(void)
 
 static inline size_t kmalloc_cache_alignment(size_t size)
 {
-	return kmalloc_caches[kmalloc_type(GFP_KERNEL)][__kmalloc_index(size, false)]->align;
+	/* just to get ->align so no need to pass in the real caller */
+	enum kmalloc_cache_type type = kmalloc_type(GFP_KERNEL, 0);
+	return kmalloc_caches[type][__kmalloc_index(size, false)]->align;
 }
 
 /* Must always inline to match stack trace against caller. */
@@ -283,8 +284,9 @@ static void *test_alloc(struct kunit *test, size_t size, gfp_t gfp, enum allocat
 
 		if (is_kfence_address(alloc)) {
 			struct slab *slab = virt_to_slab(alloc);
+			enum kmalloc_cache_type type = kmalloc_type(GFP_KERNEL, _RET_IP_);
 			struct kmem_cache *s = test_cache ?:
-					kmalloc_caches[kmalloc_type(GFP_KERNEL)][__kmalloc_index(size, false)];
+					kmalloc_caches[type][__kmalloc_index(size, false)];
 
 			/*
 			 * Verify that various helpers return the right values
@@ -532,8 +534,8 @@ static void test_free_bulk(struct kunit *test)
 	int iter;
 
 	for (iter = 0; iter < 5; iter++) {
-		const size_t size = setup_test_cache(test, 8 + prandom_u32_max(300), 0,
-						     (iter & 1) ? ctor_set_x : NULL);
+		const size_t size = setup_test_cache(test, get_random_u32_inclusive(8, 307),
+						     0, (iter & 1) ? ctor_set_x : NULL);
 		void *objects[] = {
 			test_alloc(test, size, GFP_KERNEL, ALLOCATE_RIGHT),
 			test_alloc(test, size, GFP_KERNEL, ALLOCATE_NONE),
@@ -825,33 +827,15 @@ static void test_exit(struct kunit *test)
 	test_cache_destroy();
 }
 
-static void register_tracepoints(struct tracepoint *tp, void *ignore)
-{
-	check_trace_callback_type_console(probe_console);
-	if (!strcmp(tp->name, "console"))
-		WARN_ON(tracepoint_probe_register(tp, probe_console, NULL));
-}
-
-static void unregister_tracepoints(struct tracepoint *tp, void *ignore)
-{
-	if (!strcmp(tp->name, "console"))
-		tracepoint_probe_unregister(tp, probe_console, NULL);
-}
-
 static int kfence_suite_init(struct kunit_suite *suite)
 {
-	/*
-	 * Because we want to be able to build the test as a module, we need to
-	 * iterate through all known tracepoints, since the static registration
-	 * won't work here.
-	 */
-	for_each_kernel_tracepoint(register_tracepoints, NULL);
+	register_trace_console(probe_console, NULL);
 	return 0;
 }
 
 static void kfence_suite_exit(struct kunit_suite *suite)
 {
-	for_each_kernel_tracepoint(unregister_tracepoints, NULL);
+	unregister_trace_console(probe_console, NULL);
 	tracepoint_synchronize_unregister();
 }
 

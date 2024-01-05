@@ -31,7 +31,9 @@ void trigger_data_free(struct event_trigger_data *data)
 /**
  * event_triggers_call - Call triggers associated with a trace event
  * @file: The trace_event_file associated with the event
+ * @buffer: The ring buffer that the event is being written to
  * @rec: The trace entry for the event, NULL for unconditional invocation
+ * @event: The event meta data in the ring buffer
  *
  * For each trigger associated with an event, invoke the trigger
  * function registered with the associated trigger command.  If rec is
@@ -1067,7 +1069,14 @@ int set_trigger_filter(char *filter_str,
 
 	/* The filter is for the 'trigger' event, not the triggered event */
 	ret = create_event_filter(file->tr, file->event_call,
-				  filter_str, false, &filter);
+				  filter_str, true, &filter);
+
+	/* Only enabled set_str for error handling */
+	if (filter) {
+		kfree(filter->filter_string);
+		filter->filter_string = NULL;
+	}
+
 	/*
 	 * If create_event_filter() fails, filter still needs to be freed.
 	 * Which the calling code will do with data->filter.
@@ -1078,8 +1087,14 @@ int set_trigger_filter(char *filter_str,
 	rcu_assign_pointer(data->filter, filter);
 
 	if (tmp) {
-		/* Make sure the call is done with the filter */
-		tracepoint_synchronize_unregister();
+		/*
+		 * Make sure the call is done with the filter.
+		 * It is possible that a filter could fail at boot up,
+		 * and then this path will be called. Avoid the synchronization
+		 * in that case.
+		 */
+		if (system_state != SYSTEM_BOOTING)
+			tracepoint_synchronize_unregister();
 		free_event_filter(tmp);
 	}
 

@@ -260,7 +260,7 @@ static u8 ns87560_check_status(struct ata_port *ap)
  *	LOCKING:
  *	Inherited from caller.
  */
-void ns87560_tf_read(struct ata_port *ap, struct ata_taskfile *tf)
+static void ns87560_tf_read(struct ata_port *ap, struct ata_taskfile *tf)
 {
 	struct ata_ioports *ioaddr = &ap->ioaddr;
 
@@ -320,7 +320,7 @@ static struct ata_port_operations ns87560_pata_ops = {
 };
 #endif
 
-static struct scsi_host_template ns87415_sht = {
+static const struct scsi_host_template ns87415_sht = {
 	ATA_BMDMA_SHT(DRV_NAME),
 };
 

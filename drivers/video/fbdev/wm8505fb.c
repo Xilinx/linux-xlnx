@@ -261,7 +261,6 @@ static const struct fb_ops wm8505fb_ops = {
 static int wm8505fb_probe(struct platform_device *pdev)
 {
 	struct wm8505fb_info	*fbi;
-	struct resource	*res;
 	struct display_timings *disp_timing;
 	void			*addr;
 	int ret;
@@ -286,8 +285,7 @@ static int wm8505fb_probe(struct platform_device *pdev)
 	fbi->fb.fix.accel	= FB_ACCEL_NONE;
 
 	fbi->fb.fbops		= &wm8505fb_ops;
-	fbi->fb.flags		= FBINFO_DEFAULT
-				| FBINFO_HWACCEL_COPYAREA
+	fbi->fb.flags		= FBINFO_HWACCEL_COPYAREA
 				| FBINFO_HWACCEL_FILLRECT
 				| FBINFO_HWACCEL_XPAN
 				| FBINFO_HWACCEL_YPAN
@@ -299,8 +297,7 @@ static int wm8505fb_probe(struct platform_device *pdev)
 	addr = addr + sizeof(struct wm8505fb_info);
 	fbi->fb.pseudo_palette	= addr;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	fbi->regbase = devm_ioremap_resource(&pdev->dev, res);
+	fbi->regbase = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(fbi->regbase))
 		return PTR_ERR(fbi->regbase);
 
@@ -374,7 +371,7 @@ static int wm8505fb_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int wm8505fb_remove(struct platform_device *pdev)
+static void wm8505fb_remove(struct platform_device *pdev)
 {
 	struct wm8505fb_info *fbi = platform_get_drvdata(pdev);
 
@@ -384,8 +381,6 @@ static int wm8505fb_remove(struct platform_device *pdev)
 
 	if (fbi->fb.cmap.len)
 		fb_dealloc_cmap(&fbi->fb.cmap);
-
-	return 0;
 }
 
 static const struct of_device_id wmt_dt_ids[] = {
@@ -395,7 +390,7 @@ static const struct of_device_id wmt_dt_ids[] = {
 
 static struct platform_driver wm8505fb_driver = {
 	.probe		= wm8505fb_probe,
-	.remove		= wm8505fb_remove,
+	.remove_new	= wm8505fb_remove,
 	.driver		= {
 		.name	= DRIVER_NAME,
 		.of_match_table = wmt_dt_ids,
@@ -407,5 +402,4 @@ module_platform_driver(wm8505fb_driver);
 
 MODULE_AUTHOR("Ed Spiridonov <edo.rus@gmail.com>");
 MODULE_DESCRIPTION("Framebuffer driver for WMT WM8505");
-MODULE_LICENSE("GPL v2");
 MODULE_DEVICE_TABLE(of, wmt_dt_ids);

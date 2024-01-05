@@ -16,24 +16,6 @@
 
 #include "cdx.h"
 
-#define REQ_ID_SHIFT	10
-
-/*
- * Convert an msi_desc to a globally unique identifier.
- */
-static irq_hw_number_t cdx_domain_calc_hwirq(struct cdx_device *dev,
-					     struct msi_desc *desc)
-{
-	return ((irq_hw_number_t)dev->req_id << REQ_ID_SHIFT) | desc->msi_index;
-}
-
-static void cdx_msi_set_desc(msi_alloc_info_t *arg,
-			     struct msi_desc *desc)
-{
-	arg->desc = desc;
-	arg->hwirq = cdx_domain_calc_hwirq(to_cdx_device(desc->dev), desc);
-}
-
 static void cdx_msi_write_msg(struct irq_data *irq_data,
 			      struct msi_msg *msg)
 {
@@ -84,29 +66,6 @@ static void cdx_msi_write_irq_unlock(struct irq_data *irq_data)
 		dev_err(&cdx_dev->dev, "Write MSI failed to CDX controller\n");
 }
 
-int cdx_msi_domain_alloc_irqs(struct device *dev, unsigned int irq_count)
-{
-	int ret;
-
-	ret = msi_setup_device_data(dev);
-	if (ret)
-		return ret;
-
-	msi_lock_descs(dev);
-	if (msi_first_desc(dev, MSI_DESC_ALL))
-		ret = -EINVAL;
-	msi_unlock_descs(dev);
-	if (ret)
-		return ret;
-
-	ret = msi_domain_alloc_irqs(dev_get_msi_domain(dev), dev, irq_count);
-	if (ret)
-		dev_err(dev, "Failed to allocate IRQs\n");
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(cdx_msi_domain_alloc_irqs);
-
 int cdx_enable_msi(struct cdx_device *cdx_dev)
 {
 	struct cdx_controller *cdx = cdx_dev->cdx;
@@ -150,6 +109,37 @@ static struct irq_chip cdx_msi_irq_chip = {
 	.irq_bus_sync_unlock	= cdx_msi_write_irq_unlock
 };
 
+int cdx_msi_domain_alloc_irqs(struct device *dev, unsigned int irq_count)
+{
+	int ret;
+
+	ret = msi_setup_device_data(dev);
+	if (ret)
+		return ret;
+
+	ret = msi_domain_alloc_irqs_range(dev, MSI_DEFAULT_DOMAIN,
+					  0, irq_count - 1);
+	if (ret)
+		dev_err(dev, "Failed to allocate IRQs: %d\n", ret);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(cdx_msi_domain_alloc_irqs);
+
+/* Convert an msi_desc to a globally unique identifier. */
+static irq_hw_number_t cdx_domain_calc_hwirq(struct cdx_device *dev,
+					     struct msi_desc *desc)
+{
+	return ((irq_hw_number_t)dev->msi_dev_id << 10) | desc->msi_index;
+}
+
+static void cdx_msi_set_desc(msi_alloc_info_t *arg,
+			     struct msi_desc *desc)
+{
+	arg->desc = desc;
+	arg->hwirq = cdx_domain_calc_hwirq(to_cdx_device(desc->dev), desc);
+}
+
 static int cdx_msi_prepare(struct irq_domain *msi_domain,
 			   struct device *dev,
 			   int nvec, msi_alloc_info_t *info)
@@ -161,8 +151,8 @@ static int cdx_msi_prepare(struct irq_domain *msi_domain,
 	int ret;
 
 	/* Retrieve device ID from requestor ID using parent device */
-	ret = of_map_id(parent->of_node, cdx_dev->req_id, "msi-map",
-			"msi-map-mask",	NULL, &dev_id);
+	ret = of_map_id(parent->of_node, cdx_dev->msi_dev_id, "msi-map",
+			"msi-map-mask", NULL, &dev_id);
 	if (ret) {
 		dev_err(dev, "of_map_id failed for MSI: %d\n", ret);
 		return ret;
@@ -211,8 +201,8 @@ struct irq_domain *cdx_msi_domain_init(struct device *dev)
 		return NULL;
 	}
 
-	cdx_msi_domain = msi_create_irq_domain(fwnode_handle,
-					       &cdx_msi_domain_info, parent);
+	cdx_msi_domain = msi_create_irq_domain(fwnode_handle, &cdx_msi_domain_info,
+					       parent);
 	if (!cdx_msi_domain) {
 		dev_err(dev, "unable to create CDX-MSI domain\n");
 		return NULL;

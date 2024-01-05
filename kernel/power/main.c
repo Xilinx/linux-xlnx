@@ -6,6 +6,7 @@
  * Copyright (c) 2003 Open Source Development Lab
  */
 
+#include <linux/acpi.h>
 #include <linux/export.h>
 #include <linux/kobject.h>
 #include <linux/string.h>
@@ -20,6 +21,33 @@
 #include "power.h"
 
 #ifdef CONFIG_PM_SLEEP
+/*
+ * The following functions are used by the suspend/hibernate code to temporarily
+ * change gfp_allowed_mask in order to avoid using I/O during memory allocations
+ * while devices are suspended.  To avoid races with the suspend/hibernate code,
+ * they should always be called with system_transition_mutex held
+ * (gfp_allowed_mask also should only be modified with system_transition_mutex
+ * held, unless the suspend/hibernate code is guaranteed not to run in parallel
+ * with that modification).
+ */
+static gfp_t saved_gfp_mask;
+
+void pm_restore_gfp_mask(void)
+{
+	WARN_ON(!mutex_is_locked(&system_transition_mutex));
+	if (saved_gfp_mask) {
+		gfp_allowed_mask = saved_gfp_mask;
+		saved_gfp_mask = 0;
+	}
+}
+
+void pm_restrict_gfp_mask(void)
+{
+	WARN_ON(!mutex_is_locked(&system_transition_mutex));
+	WARN_ON(saved_gfp_mask);
+	saved_gfp_mask = gfp_allowed_mask;
+	gfp_allowed_mask &= ~(__GFP_IO | __GFP_FS);
+}
 
 unsigned int lock_system_sleep(void)
 {
@@ -82,6 +110,19 @@ int unregister_pm_notifier(struct notifier_block *nb)
 	return blocking_notifier_chain_unregister(&pm_chain_head, nb);
 }
 EXPORT_SYMBOL_GPL(unregister_pm_notifier);
+
+void pm_report_hw_sleep_time(u64 t)
+{
+	suspend_stats.last_hw_sleep = t;
+	suspend_stats.total_hw_sleep += t;
+}
+EXPORT_SYMBOL_GPL(pm_report_hw_sleep_time);
+
+void pm_report_max_hw_sleep(u64 t)
+{
+	suspend_stats.max_hw_sleep = t;
+}
+EXPORT_SYMBOL_GPL(pm_report_max_hw_sleep);
 
 int pm_notifier_call_chain_robust(unsigned long val_up, unsigned long val_down)
 {
@@ -314,24 +355,27 @@ static char *suspend_step_name(enum suspend_stat_step step)
 	}
 }
 
-#define suspend_attr(_name)					\
+#define suspend_attr(_name, format_str)				\
 static ssize_t _name##_show(struct kobject *kobj,		\
 		struct kobj_attribute *attr, char *buf)		\
 {								\
-	return sprintf(buf, "%d\n", suspend_stats._name);	\
+	return sprintf(buf, format_str, suspend_stats._name);	\
 }								\
 static struct kobj_attribute _name = __ATTR_RO(_name)
 
-suspend_attr(success);
-suspend_attr(fail);
-suspend_attr(failed_freeze);
-suspend_attr(failed_prepare);
-suspend_attr(failed_suspend);
-suspend_attr(failed_suspend_late);
-suspend_attr(failed_suspend_noirq);
-suspend_attr(failed_resume);
-suspend_attr(failed_resume_early);
-suspend_attr(failed_resume_noirq);
+suspend_attr(success, "%d\n");
+suspend_attr(fail, "%d\n");
+suspend_attr(failed_freeze, "%d\n");
+suspend_attr(failed_prepare, "%d\n");
+suspend_attr(failed_suspend, "%d\n");
+suspend_attr(failed_suspend_late, "%d\n");
+suspend_attr(failed_suspend_noirq, "%d\n");
+suspend_attr(failed_resume, "%d\n");
+suspend_attr(failed_resume_early, "%d\n");
+suspend_attr(failed_resume_noirq, "%d\n");
+suspend_attr(last_hw_sleep, "%llu\n");
+suspend_attr(total_hw_sleep, "%llu\n");
+suspend_attr(max_hw_sleep, "%llu\n");
 
 static ssize_t last_failed_dev_show(struct kobject *kobj,
 		struct kobj_attribute *attr, char *buf)
@@ -391,12 +435,30 @@ static struct attribute *suspend_attrs[] = {
 	&last_failed_dev.attr,
 	&last_failed_errno.attr,
 	&last_failed_step.attr,
+	&last_hw_sleep.attr,
+	&total_hw_sleep.attr,
+	&max_hw_sleep.attr,
 	NULL,
 };
+
+static umode_t suspend_attr_is_visible(struct kobject *kobj, struct attribute *attr, int idx)
+{
+	if (attr != &last_hw_sleep.attr &&
+	    attr != &total_hw_sleep.attr &&
+	    attr != &max_hw_sleep.attr)
+		return 0444;
+
+#ifdef CONFIG_ACPI
+	if (acpi_gbl_FADT.flags & ACPI_FADT_LOW_POWER_S0)
+		return 0444;
+#endif
+	return 0;
+}
 
 static const struct attribute_group suspend_attr_group = {
 	.name = "suspend_stats",
 	.attrs = suspend_attrs,
+	.is_visible = suspend_attr_is_visible,
 };
 
 #ifdef CONFIG_DEBUG_FS
@@ -520,6 +582,12 @@ static ssize_t pm_wakeup_irq_show(struct kobject *kobj,
 power_attr_ro(pm_wakeup_irq);
 
 bool pm_debug_messages_on __read_mostly;
+
+bool pm_debug_messages_should_print(void)
+{
+	return pm_debug_messages_on && pm_suspend_target_state != PM_SUSPEND_ON;
+}
+EXPORT_SYMBOL_GPL(pm_debug_messages_should_print);
 
 static ssize_t pm_debug_messages_show(struct kobject *kobj,
 				      struct kobj_attribute *attr, char *buf)

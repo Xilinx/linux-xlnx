@@ -28,10 +28,6 @@ static bool sleep_no_lps0 __read_mostly;
 module_param(sleep_no_lps0, bool, 0644);
 MODULE_PARM_DESC(sleep_no_lps0, "Do not use the special LPS0 device interface");
 
-static bool prefer_microsoft_dsm_guid __read_mostly;
-module_param(prefer_microsoft_dsm_guid, bool, 0644);
-MODULE_PARM_DESC(prefer_microsoft_dsm_guid, "Prefer using Microsoft GUID in LPS0 device _DSM evaluation");
-
 static const struct acpi_device_id lps0_device_ids[] = {
 	{"PNP0D80", },
 	{"", },
@@ -63,6 +59,7 @@ static int lps0_dsm_func_mask;
 
 static guid_t lps0_dsm_guid_microsoft;
 static int lps0_dsm_func_mask_microsoft;
+static int lps0_dsm_state;
 
 /* Device constraint entry structure */
 struct lpi_device_info {
@@ -97,6 +94,11 @@ static struct lpi_constraints *lpi_constraints_table;
 static int lpi_constraints_table_size;
 static int rev_id;
 
+#define for_each_lpi_constraint(entry)						\
+	for (int i = 0;								\
+	     entry = &lpi_constraints_table[i], i < lpi_constraints_table_size;	\
+	     i++)
+
 static void lpi_device_get_constraints_amd(void)
 {
 	union acpi_object *out_obj;
@@ -116,6 +118,12 @@ static void lpi_device_get_constraints_amd(void)
 		union acpi_object *package = &out_obj->package.elements[i];
 
 		if (package->type == ACPI_TYPE_PACKAGE) {
+			if (lpi_constraints_table) {
+				acpi_handle_err(lps0_device_handle,
+						"Duplicate constraints list\n");
+				goto free_acpi_buffer;
+			}
+
 			lpi_constraints_table = kcalloc(package->package.count,
 							sizeof(*lpi_constraints_table),
 							GFP_KERNEL);
@@ -126,17 +134,16 @@ static void lpi_device_get_constraints_amd(void)
 			acpi_handle_debug(lps0_device_handle,
 					  "LPI: constraints list begin:\n");
 
-			for (j = 0; j < package->package.count; ++j) {
+			for (j = 0; j < package->package.count; j++) {
 				union acpi_object *info_obj = &package->package.elements[j];
 				struct lpi_device_constraint_amd dev_info = {};
 				struct lpi_constraints *list;
 				acpi_status status;
 
-				for (k = 0; k < info_obj->package.count; ++k) {
-					union acpi_object *obj = &info_obj->package.elements[k];
+				list = &lpi_constraints_table[lpi_constraints_table_size];
 
-					list = &lpi_constraints_table[lpi_constraints_table_size];
-					list->min_dstate = -1;
+				for (k = 0; k < info_obj->package.count; k++) {
+					union acpi_object *obj = &info_obj->package.elements[k];
 
 					switch (k) {
 					case 0:
@@ -152,27 +159,25 @@ static void lpi_device_get_constraints_amd(void)
 						dev_info.min_dstate = obj->integer.value;
 						break;
 					}
-
-					if (!dev_info.enabled || !dev_info.name ||
-					    !dev_info.min_dstate)
-						continue;
-
-					status = acpi_get_handle(NULL, dev_info.name,
-								 &list->handle);
-					if (ACPI_FAILURE(status))
-						continue;
-
-					acpi_handle_debug(lps0_device_handle,
-							  "Name:%s\n", dev_info.name);
-
-					list->min_dstate = dev_info.min_dstate;
-
-					if (list->min_dstate < 0) {
-						acpi_handle_debug(lps0_device_handle,
-								  "Incomplete constraint defined\n");
-						continue;
-					}
 				}
+
+				acpi_handle_debug(lps0_device_handle,
+						  "Name:%s, Enabled: %d, States: %d, MinDstate: %d\n",
+						  dev_info.name,
+						  dev_info.enabled,
+						  dev_info.function_states,
+						  dev_info.min_dstate);
+
+				if (!dev_info.enabled || !dev_info.name ||
+				    !dev_info.min_dstate)
+					continue;
+
+				status = acpi_get_handle(NULL, dev_info.name, &list->handle);
+				if (ACPI_FAILURE(status))
+					continue;
+
+				list->min_dstate = dev_info.min_dstate;
+
 				lpi_constraints_table_size++;
 			}
 		}
@@ -217,7 +222,7 @@ static void lpi_device_get_constraints(void)
 		if (!package)
 			continue;
 
-		for (j = 0; j < package->package.count; ++j) {
+		for (j = 0; j < package->package.count; j++) {
 			union acpi_object *element =
 					&(package->package.elements[j]);
 
@@ -249,7 +254,7 @@ static void lpi_device_get_constraints(void)
 
 		constraint->min_dstate = -1;
 
-		for (j = 0; j < package_count; ++j) {
+		for (j = 0; j < package_count; j++) {
 			union acpi_object *info_obj = &info.package[j];
 			union acpi_object *cnstr_pkg;
 			union acpi_object *obj;
@@ -294,34 +299,95 @@ free_acpi_buffer:
 	ACPI_FREE(out_obj);
 }
 
+/**
+ * acpi_get_lps0_constraint - Get the LPS0 constraint for a device.
+ * @adev: Device to get the constraint for.
+ *
+ * The LPS0 constraint is the shallowest (minimum) power state in which the
+ * device can be so as to allow the platform as a whole to achieve additional
+ * energy conservation by utilizing a system-wide low-power state.
+ *
+ * Returns:
+ *  - ACPI power state value of the constraint for @adev on success.
+ *  - Otherwise, ACPI_STATE_UNKNOWN.
+ */
+int acpi_get_lps0_constraint(struct acpi_device *adev)
+{
+	struct lpi_constraints *entry;
+
+	for_each_lpi_constraint(entry) {
+		if (adev->handle == entry->handle)
+			return entry->min_dstate;
+	}
+
+	return ACPI_STATE_UNKNOWN;
+}
+
 static void lpi_check_constraints(void)
 {
-	int i;
+	struct lpi_constraints *entry;
 
-	for (i = 0; i < lpi_constraints_table_size; ++i) {
-		acpi_handle handle = lpi_constraints_table[i].handle;
-		struct acpi_device *adev = acpi_fetch_acpi_dev(handle);
+	for_each_lpi_constraint(entry) {
+		struct acpi_device *adev = acpi_fetch_acpi_dev(entry->handle);
 
 		if (!adev)
 			continue;
 
-		acpi_handle_debug(handle,
+		acpi_handle_debug(entry->handle,
 			"LPI: required min power state:%s current power state:%s\n",
-			acpi_power_state_string(lpi_constraints_table[i].min_dstate),
+			acpi_power_state_string(entry->min_dstate),
 			acpi_power_state_string(adev->power.state));
 
 		if (!adev->flags.power_manageable) {
-			acpi_handle_info(handle, "LPI: Device not power manageable\n");
-			lpi_constraints_table[i].handle = NULL;
+			acpi_handle_info(entry->handle, "LPI: Device not power manageable\n");
+			entry->handle = NULL;
 			continue;
 		}
 
-		if (adev->power.state < lpi_constraints_table[i].min_dstate)
-			acpi_handle_info(handle,
+		if (adev->power.state < entry->min_dstate)
+			acpi_handle_info(entry->handle,
 				"LPI: Constraint not met; min power state:%s current power state:%s\n",
-				acpi_power_state_string(lpi_constraints_table[i].min_dstate),
+				acpi_power_state_string(entry->min_dstate),
 				acpi_power_state_string(adev->power.state));
 	}
+}
+
+static bool acpi_s2idle_vendor_amd(void)
+{
+	return boot_cpu_data.x86_vendor == X86_VENDOR_AMD;
+}
+
+static const char *acpi_sleep_dsm_state_to_str(unsigned int state)
+{
+	if (lps0_dsm_func_mask_microsoft || !acpi_s2idle_vendor_amd()) {
+		switch (state) {
+		case ACPI_LPS0_SCREEN_OFF:
+			return "screen off";
+		case ACPI_LPS0_SCREEN_ON:
+			return "screen on";
+		case ACPI_LPS0_ENTRY:
+			return "lps0 entry";
+		case ACPI_LPS0_EXIT:
+			return "lps0 exit";
+		case ACPI_LPS0_MS_ENTRY:
+			return "lps0 ms entry";
+		case ACPI_LPS0_MS_EXIT:
+			return "lps0 ms exit";
+		}
+	} else {
+		switch (state) {
+		case ACPI_LPS0_SCREEN_ON_AMD:
+			return "screen on";
+		case ACPI_LPS0_SCREEN_OFF_AMD:
+			return "screen off";
+		case ACPI_LPS0_ENTRY_AMD:
+			return "lps0 entry";
+		case ACPI_LPS0_EXIT_AMD:
+			return "lps0 exit";
+		}
+	}
+
+	return "unknown";
 }
 
 static void acpi_sleep_run_lps0_dsm(unsigned int func, unsigned int func_mask, guid_t dsm_guid)
@@ -335,14 +401,15 @@ static void acpi_sleep_run_lps0_dsm(unsigned int func, unsigned int func_mask, g
 					rev_id, func, NULL);
 	ACPI_FREE(out_obj);
 
-	acpi_handle_debug(lps0_device_handle, "_DSM function %u evaluation %s\n",
-			  func, out_obj ? "successful" : "failed");
+	lps0_dsm_state = func;
+	if (pm_debug_messages_on) {
+		acpi_handle_info(lps0_device_handle,
+				"%s transitioned to state %s\n",
+				 out_obj ? "Successfully" : "Failed to",
+				 acpi_sleep_dsm_state_to_str(lps0_dsm_state));
+	}
 }
 
-static bool acpi_s2idle_vendor_amd(void)
-{
-	return boot_cpu_data.x86_vendor == X86_VENDOR_AMD;
-}
 
 static int validate_dsm(acpi_handle handle, const char *uuid, int rev, guid_t *dsm_guid)
 {
@@ -369,27 +436,15 @@ out:
 }
 
 struct amd_lps0_hid_device_data {
-	const unsigned int rev_id;
 	const bool check_off_by_one;
-	const bool prefer_amd_guid;
 };
 
 static const struct amd_lps0_hid_device_data amd_picasso = {
-	.rev_id = 0,
 	.check_off_by_one = true,
-	.prefer_amd_guid = false,
 };
 
 static const struct amd_lps0_hid_device_data amd_cezanne = {
-	.rev_id = 0,
 	.check_off_by_one = false,
-	.prefer_amd_guid = false,
-};
-
-static const struct amd_lps0_hid_device_data amd_rembrandt = {
-	.rev_id = 2,
-	.check_off_by_one = false,
-	.prefer_amd_guid = true,
 };
 
 static const struct acpi_device_id amd_hid_ids[] = {
@@ -397,71 +452,6 @@ static const struct acpi_device_id amd_hid_ids[] = {
 	{"AMD0005",	(kernel_ulong_t)&amd_picasso,	},
 	{"AMDI0005",	(kernel_ulong_t)&amd_picasso,	},
 	{"AMDI0006",	(kernel_ulong_t)&amd_cezanne,	},
-	{"AMDI0007",	(kernel_ulong_t)&amd_rembrandt,	},
-	{}
-};
-
-static int lps0_prefer_microsoft(const struct dmi_system_id *id)
-{
-	pr_debug("Preferring Microsoft GUID.\n");
-	prefer_microsoft_dsm_guid = true;
-	return 0;
-}
-
-static const struct dmi_system_id s2idle_dmi_table[] __initconst = {
-	{
-		/*
-		 * ASUS TUF Gaming A17 FA707RE
-		 * https://bugzilla.kernel.org/show_bug.cgi?id=216101
-		 */
-		.callback = lps0_prefer_microsoft,
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
-			DMI_MATCH(DMI_PRODUCT_NAME, "ASUS TUF Gaming A17"),
-		},
-	},
-	{
-		/* ASUS ROG Zephyrus G14 (2022) */
-		.callback = lps0_prefer_microsoft,
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
-			DMI_MATCH(DMI_PRODUCT_NAME, "ROG Zephyrus G14 GA402"),
-		},
-	},
-	{
-		/*
-		 * Lenovo Yoga Slim 7 Pro X 14ARH7
-		 * https://bugzilla.kernel.org/show_bug.cgi?id=216473 : 82V2
-		 * https://bugzilla.kernel.org/show_bug.cgi?id=216438 : 82TL
-		 */
-		.callback = lps0_prefer_microsoft,
-		.matches = {
-			DMI_MATCH(DMI_BOARD_VENDOR, "LENOVO"),
-			DMI_MATCH(DMI_PRODUCT_NAME, "82"),
-		},
-	},
-	{
-		/*
-		 * ASUSTeK COMPUTER INC. ROG Flow X13 GV301RE_GV301RE
-		 * https://gitlab.freedesktop.org/drm/amd/-/issues/2148
-		 */
-		.callback = lps0_prefer_microsoft,
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
-			DMI_MATCH(DMI_PRODUCT_NAME, "ROG Flow X13 GV301"),
-		},
-	},
-	{
-		/*
-		 * ASUSTeK COMPUTER INC. ROG Flow X16 GV601RW_GV601RW
-		 * https://gitlab.freedesktop.org/drm/amd/-/issues/2148
-		 */
-		.callback = lps0_prefer_microsoft,
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
-			DMI_MATCH(DMI_PRODUCT_NAME, "ROG Flow X16 GV601"),
-		},
-	},
 	{}
 };
 
@@ -484,16 +474,14 @@ static int lps0_device_attach(struct acpi_device *adev,
 		if (dev_id->id[0])
 			data = (const struct amd_lps0_hid_device_data *) dev_id->driver_data;
 		else
-			data = &amd_rembrandt;
-		rev_id = data->rev_id;
+			data = &amd_cezanne;
 		lps0_dsm_func_mask = validate_dsm(adev->handle,
 					ACPI_LPS0_DSM_UUID_AMD, rev_id, &lps0_dsm_guid);
 		if (lps0_dsm_func_mask > 0x3 && data->check_off_by_one) {
 			lps0_dsm_func_mask = (lps0_dsm_func_mask << 1) | 0x1;
 			acpi_handle_debug(adev->handle, "_DSM UUID %s: Adjusted function mask: 0x%x\n",
 					  ACPI_LPS0_DSM_UUID_AMD, lps0_dsm_func_mask);
-		} else if (lps0_dsm_func_mask_microsoft > 0 && data->prefer_amd_guid &&
-				!prefer_microsoft_dsm_guid) {
+		} else if (lps0_dsm_func_mask_microsoft > 0 && rev_id) {
 			lps0_dsm_func_mask_microsoft = -EINVAL;
 			acpi_handle_debug(adev->handle, "_DSM Using AMD method\n");
 		}
@@ -501,8 +489,7 @@ static int lps0_device_attach(struct acpi_device *adev,
 		rev_id = 1;
 		lps0_dsm_func_mask = validate_dsm(adev->handle,
 					ACPI_LPS0_DSM_UUID, rev_id, &lps0_dsm_guid);
-		if (!prefer_microsoft_dsm_guid)
-			lps0_dsm_func_mask_microsoft = -EINVAL;
+		lps0_dsm_func_mask_microsoft = -EINVAL;
 	}
 
 	if (lps0_dsm_func_mask < 0 && lps0_dsm_func_mask_microsoft < 0)
@@ -569,10 +556,10 @@ int acpi_s2idle_prepare_late(void)
 					ACPI_LPS0_ENTRY,
 					lps0_dsm_func_mask, lps0_dsm_guid);
 	if (lps0_dsm_func_mask_microsoft > 0) {
-		acpi_sleep_run_lps0_dsm(ACPI_LPS0_ENTRY,
-				lps0_dsm_func_mask_microsoft, lps0_dsm_guid_microsoft);
 		/* modern standby entry */
 		acpi_sleep_run_lps0_dsm(ACPI_LPS0_MS_ENTRY,
+				lps0_dsm_func_mask_microsoft, lps0_dsm_guid_microsoft);
+		acpi_sleep_run_lps0_dsm(ACPI_LPS0_ENTRY,
 				lps0_dsm_func_mask_microsoft, lps0_dsm_guid_microsoft);
 	}
 
@@ -608,11 +595,6 @@ void acpi_s2idle_restore_early(void)
 		if (handler->restore)
 			handler->restore();
 
-	/* Modern standby exit */
-	if (lps0_dsm_func_mask_microsoft > 0)
-		acpi_sleep_run_lps0_dsm(ACPI_LPS0_MS_EXIT,
-				lps0_dsm_func_mask_microsoft, lps0_dsm_guid_microsoft);
-
 	/* LPS0 exit */
 	if (lps0_dsm_func_mask > 0)
 		acpi_sleep_run_lps0_dsm(acpi_s2idle_vendor_amd() ?
@@ -621,6 +603,11 @@ void acpi_s2idle_restore_early(void)
 					lps0_dsm_func_mask, lps0_dsm_guid);
 	if (lps0_dsm_func_mask_microsoft > 0)
 		acpi_sleep_run_lps0_dsm(ACPI_LPS0_EXIT,
+				lps0_dsm_func_mask_microsoft, lps0_dsm_guid_microsoft);
+
+	/* Modern standby exit */
+	if (lps0_dsm_func_mask_microsoft > 0)
+		acpi_sleep_run_lps0_dsm(ACPI_LPS0_MS_EXIT,
 				lps0_dsm_func_mask_microsoft, lps0_dsm_guid_microsoft);
 
 	/* Screen on */
@@ -647,7 +634,6 @@ static const struct platform_s2idle_ops acpi_s2idle_ops_lps0 = {
 
 void __init acpi_s2idle_setup(void)
 {
-	dmi_check_system(s2idle_dmi_table);
 	acpi_scan_add_handler(&lps0_handler);
 	s2idle_set_ops(&acpi_s2idle_ops_lps0);
 }

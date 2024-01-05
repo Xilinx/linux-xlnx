@@ -12,7 +12,6 @@
 #include <linux/kernel.h>
 #include <linux/mfd/syscon.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/regmap.h>
@@ -1287,7 +1286,6 @@ static int fimd_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_PM
 static int exynos_fimd_suspend(struct device *dev)
 {
 	struct fimd_context *ctx = dev_get_drvdata(dev);
@@ -1321,13 +1319,9 @@ static int exynos_fimd_resume(struct device *dev)
 
 	return 0;
 }
-#endif
 
-static const struct dev_pm_ops exynos_fimd_pm_ops = {
-	SET_RUNTIME_PM_OPS(exynos_fimd_suspend, exynos_fimd_resume, NULL)
-	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
-				pm_runtime_force_resume)
-};
+static DEFINE_RUNTIME_DEV_PM_OPS(exynos_fimd_pm_ops, exynos_fimd_suspend,
+				 exynos_fimd_resume, NULL);
 
 struct platform_driver fimd_driver = {
 	.probe		= fimd_probe,
@@ -1335,7 +1329,7 @@ struct platform_driver fimd_driver = {
 	.driver		= {
 		.name	= "exynos4-fb",
 		.owner	= THIS_MODULE,
-		.pm	= &exynos_fimd_pm_ops,
+		.pm	= pm_ptr(&exynos_fimd_pm_ops),
 		.of_match_table = fimd_driver_dt_match,
 	},
 };

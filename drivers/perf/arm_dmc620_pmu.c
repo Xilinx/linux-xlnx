@@ -66,8 +66,13 @@
 #define DMC620_PMU_COUNTERn_OFFSET(n) \
 	(DMC620_PMU_COUNTERS_BASE + 0x28 * (n))
 
-static LIST_HEAD(dmc620_pmu_irqs);
+/*
+ * dmc620_pmu_irqs_lock: protects dmc620_pmu_irqs list
+ * dmc620_pmu_node_lock: protects pmus_node lists in all dmc620_pmu instances
+ */
 static DEFINE_MUTEX(dmc620_pmu_irqs_lock);
+static DEFINE_MUTEX(dmc620_pmu_node_lock);
+static LIST_HEAD(dmc620_pmu_irqs);
 
 struct dmc620_pmu_irq {
 	struct hlist_node node;
@@ -227,9 +232,31 @@ static const struct attribute_group dmc620_pmu_format_attr_group = {
 	.attrs	= dmc620_pmu_formats_attrs,
 };
 
+static ssize_t dmc620_pmu_cpumask_show(struct device *dev,
+				       struct device_attribute *attr, char *buf)
+{
+	struct dmc620_pmu *dmc620_pmu = to_dmc620_pmu(dev_get_drvdata(dev));
+
+	return cpumap_print_to_pagebuf(true, buf,
+				       cpumask_of(dmc620_pmu->irq->cpu));
+}
+
+static struct device_attribute dmc620_pmu_cpumask_attr =
+	__ATTR(cpumask, 0444, dmc620_pmu_cpumask_show, NULL);
+
+static struct attribute *dmc620_pmu_cpumask_attrs[] = {
+	&dmc620_pmu_cpumask_attr.attr,
+	NULL,
+};
+
+static const struct attribute_group dmc620_pmu_cpumask_attr_group = {
+	.attrs = dmc620_pmu_cpumask_attrs,
+};
+
 static const struct attribute_group *dmc620_pmu_attr_groups[] = {
 	&dmc620_pmu_events_attr_group,
 	&dmc620_pmu_format_attr_group,
+	&dmc620_pmu_cpumask_attr_group,
 	NULL,
 };
 
@@ -453,9 +480,9 @@ static int dmc620_pmu_get_irq(struct dmc620_pmu *dmc620_pmu, int irq_num)
 		return PTR_ERR(irq);
 
 	dmc620_pmu->irq = irq;
-	mutex_lock(&dmc620_pmu_irqs_lock);
+	mutex_lock(&dmc620_pmu_node_lock);
 	list_add_rcu(&dmc620_pmu->pmus_node, &irq->pmus_node);
-	mutex_unlock(&dmc620_pmu_irqs_lock);
+	mutex_unlock(&dmc620_pmu_node_lock);
 
 	return 0;
 }
@@ -464,9 +491,11 @@ static void dmc620_pmu_put_irq(struct dmc620_pmu *dmc620_pmu)
 {
 	struct dmc620_pmu_irq *irq = dmc620_pmu->irq;
 
-	mutex_lock(&dmc620_pmu_irqs_lock);
+	mutex_lock(&dmc620_pmu_node_lock);
 	list_del_rcu(&dmc620_pmu->pmus_node);
+	mutex_unlock(&dmc620_pmu_node_lock);
 
+	mutex_lock(&dmc620_pmu_irqs_lock);
 	if (!refcount_dec_and_test(&irq->refcount)) {
 		mutex_unlock(&dmc620_pmu_irqs_lock);
 		return;
@@ -616,10 +645,10 @@ static int dmc620_pmu_cpu_teardown(unsigned int cpu,
 		return 0;
 
 	/* We're only reading, but this isn't the place to be involving RCU */
-	mutex_lock(&dmc620_pmu_irqs_lock);
+	mutex_lock(&dmc620_pmu_node_lock);
 	list_for_each_entry(dmc620_pmu, &irq->pmus_node, pmus_node)
 		perf_pmu_migrate_context(&dmc620_pmu->pmu, irq->cpu, target);
-	mutex_unlock(&dmc620_pmu_irqs_lock);
+	mutex_unlock(&dmc620_pmu_node_lock);
 
 	WARN_ON(irq_set_affinity(irq->irq_num, cpumask_of(target)));
 	irq->cpu = target;
@@ -655,8 +684,7 @@ static int dmc620_pmu_device_probe(struct platform_device *pdev)
 		.attr_groups	= dmc620_pmu_attr_groups,
 	};
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	dmc620_pmu->base = devm_ioremap_resource(&pdev->dev, res);
+	dmc620_pmu->base = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
 	if (IS_ERR(dmc620_pmu->base))
 		return PTR_ERR(dmc620_pmu->base);
 
@@ -725,6 +753,8 @@ static struct platform_driver dmc620_pmu_driver = {
 
 static int __init dmc620_pmu_init(void)
 {
+	int ret;
+
 	cpuhp_state_num = cpuhp_setup_state_multi(CPUHP_AP_ONLINE_DYN,
 				      DMC620_DRVNAME,
 				      NULL,
@@ -732,7 +762,11 @@ static int __init dmc620_pmu_init(void)
 	if (cpuhp_state_num < 0)
 		return cpuhp_state_num;
 
-	return platform_driver_register(&dmc620_pmu_driver);
+	ret = platform_driver_register(&dmc620_pmu_driver);
+	if (ret)
+		cpuhp_remove_multi_state(cpuhp_state_num);
+
+	return ret;
 }
 
 static void __exit dmc620_pmu_exit(void)

@@ -504,6 +504,7 @@ static void aty128_bl_set_power(struct fb_info *info, int power);
 
 static const struct fb_ops aty128fb_ops = {
 	.owner		= THIS_MODULE,
+	FB_DEFAULT_IOMEM_OPS,
 	.fb_check_var	= aty128fb_check_var,
 	.fb_set_par	= aty128fb_set_par,
 	.fb_setcolreg	= aty128fb_setcolreg,
@@ -511,9 +512,6 @@ static const struct fb_ops aty128fb_ops = {
 	.fb_blank	= aty128fb_blank,
 	.fb_ioctl	= aty128fb_ioctl,
 	.fb_sync	= aty128fb_sync,
-	.fb_fillrect	= cfb_fillrect,
-	.fb_copyarea	= cfb_copyarea,
-	.fb_imageblit	= cfb_imageblit,
 };
 
     /*
@@ -1766,12 +1764,10 @@ static int aty128_bl_update_status(struct backlight_device *bd)
 	unsigned int reg = aty_ld_le32(LVDS_GEN_CNTL);
 	int level;
 
-	if (bd->props.power != FB_BLANK_UNBLANK ||
-	    bd->props.fb_blank != FB_BLANK_UNBLANK ||
-	    !par->lcd_on)
+	if (!par->lcd_on)
 		level = 0;
 	else
-		level = bd->props.brightness;
+		level = backlight_get_brightness(bd);
 
 	reg |= LVDS_BL_MOD_EN | LVDS_BLON;
 	if (level > 0) {
@@ -1848,7 +1844,7 @@ static void aty128_bl_init(struct aty128fb_par *par)
 	memset(&props, 0, sizeof(struct backlight_properties));
 	props.type = BACKLIGHT_RAW;
 	props.max_brightness = FB_BACKLIGHT_LEVELS - 1;
-	bd = backlight_device_register(name, info->dev, par, &aty128_bl_data,
+	bd = backlight_device_register(name, info->device, par, &aty128_bl_data,
 				       &props);
 	if (IS_ERR(bd)) {
 		info->bl_dev = NULL;
@@ -1929,7 +1925,6 @@ static int aty128_init(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	/* fill in info */
 	info->fbops = &aty128fb_ops;
-	info->flags = FBINFO_FLAG_DEFAULT;
 
 	par->lcd_on = default_lcd_on;
 	par->crt_on = default_crt_on;
@@ -2030,13 +2025,13 @@ static int aty128_init(struct pci_dev *pdev, const struct pci_device_id *ent)
 	par->asleep = 0;
 	par->lock_blank = 0;
 
+	if (register_framebuffer(info) < 0)
+		return 0;
+
 #ifdef CONFIG_FB_ATY128_BACKLIGHT
 	if (backlight)
 		aty128_bl_init(par);
 #endif
-
-	if (register_framebuffer(info) < 0)
-		return 0;
 
 	fb_info(info, "%s frame buffer device on %s\n",
 		info->fix.id, video_card);
@@ -2169,11 +2164,11 @@ static void aty128_remove(struct pci_dev *pdev)
 
 	par = info->par;
 
-	unregister_framebuffer(info);
-
 #ifdef CONFIG_FB_ATY128_BACKLIGHT
 	aty128_bl_exit(info->bl_dev);
 #endif
+
+	unregister_framebuffer(info);
 
 	arch_phys_wc_del(par->wc_cookie);
 	iounmap(par->regbase);
@@ -2503,7 +2498,12 @@ static int aty128fb_init(void)
 {
 #ifndef MODULE
 	char *option = NULL;
+#endif
 
+	if (fb_modesetting_disabled("aty128fb"))
+		return -ENODEV;
+
+#ifndef MODULE
 	if (fb_get_options("aty128fb", &option))
 		return -ENODEV;
 	aty128fb_setup(option);

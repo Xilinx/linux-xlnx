@@ -957,6 +957,10 @@ static int cs47l24_set_fll(struct snd_soc_component *component, int fll_id,
 #define CS47L24_FORMATS (SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S20_3LE |\
 			 SNDRV_PCM_FMTBIT_S24_LE | SNDRV_PCM_FMTBIT_S32_LE)
 
+static const struct snd_soc_dai_ops cs47l24_dai_ops = {
+	.compress_new = snd_soc_new_compress,
+};
+
 static struct snd_soc_dai_driver cs47l24_dai[] = {
 	{
 		.name = "cs47l24-aif1",
@@ -1033,7 +1037,7 @@ static struct snd_soc_dai_driver cs47l24_dai[] = {
 			.rates = CS47L24_RATES,
 			.formats = CS47L24_FORMATS,
 		},
-		.compress_new = snd_soc_new_compress,
+		.ops = &cs47l24_dai_ops,
 	},
 	{
 		.name = "cs47l24-dsp-voicectrl",
@@ -1054,7 +1058,7 @@ static struct snd_soc_dai_driver cs47l24_dai[] = {
 			.rates = CS47L24_RATES,
 			.formats = CS47L24_FORMATS,
 		},
-		.compress_new = snd_soc_new_compress,
+		.ops = &cs47l24_dai_ops,
 	},
 	{
 		.name = "cs47l24-dsp-trace",
@@ -1319,7 +1323,7 @@ err_dsp_irq:
 	return ret;
 }
 
-static int cs47l24_remove(struct platform_device *pdev)
+static void cs47l24_remove(struct platform_device *pdev)
 {
 	struct cs47l24_priv *cs47l24 = platform_get_drvdata(pdev);
 	struct arizona *arizona = cs47l24->core.arizona;
@@ -1333,8 +1337,6 @@ static int cs47l24_remove(struct platform_device *pdev)
 
 	arizona_set_irq_wake(arizona, ARIZONA_IRQ_DSP_IRQ1, 0);
 	arizona_free_irq(arizona, ARIZONA_IRQ_DSP_IRQ1, cs47l24);
-
-	return 0;
 }
 
 static struct platform_driver cs47l24_codec_driver = {
@@ -1342,7 +1344,7 @@ static struct platform_driver cs47l24_codec_driver = {
 		.name = "cs47l24-codec",
 	},
 	.probe = cs47l24_probe,
-	.remove = cs47l24_remove,
+	.remove_new = cs47l24_remove,
 };
 
 module_platform_driver(cs47l24_codec_driver);

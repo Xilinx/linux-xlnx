@@ -76,7 +76,7 @@ static s16 mb1232_read_distance(struct mb1232_data *data)
 		goto error_unlock;
 	}
 
-	if (data->irqnr >= 0) {
+	if (data->irqnr > 0) {
 		/* it cannot take more than 100 ms */
 		ret = wait_for_completion_killable_timeout(&data->ranging,
 									HZ/10);
@@ -180,9 +180,9 @@ static const struct iio_info mb1232_info = {
 	.read_raw = mb1232_read_raw,
 };
 
-static int mb1232_probe(struct i2c_client *client,
-					 const struct i2c_device_id *id)
+static int mb1232_probe(struct i2c_client *client)
 {
+	const struct i2c_device_id *id = i2c_client_get_device_id(client);
 	struct iio_dev *indio_dev;
 	struct mb1232_data *data;
 	int ret;
@@ -212,10 +212,7 @@ static int mb1232_probe(struct i2c_client *client,
 	init_completion(&data->ranging);
 
 	data->irqnr = fwnode_irq_get(dev_fwnode(&client->dev), 0);
-	if (data->irqnr <= 0) {
-		/* usage of interrupt is optional */
-		data->irqnr = -1;
-	} else {
+	if (data->irqnr > 0) {
 		ret = devm_request_irq(dev, data->irqnr, mb1232_handle_irq,
 				IRQF_TRIGGER_FALLING, id->name, indio_dev);
 		if (ret < 0) {

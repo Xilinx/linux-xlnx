@@ -18,14 +18,8 @@ static const struct mtk_gate_regs cam_cg_regs = {
 	.sta_ofs = 0x0,
 };
 
-#define GATE_CAM(_id, _name, _parent, _shift) {		\
-		.id = _id,				\
-		.name = _name,				\
-		.parent_name = _parent,			\
-		.regs = &cam_cg_regs,			\
-		.shift = _shift,			\
-		.ops = &mtk_clk_gate_ops_setclr,	\
-	}
+#define GATE_CAM(_id, _name, _parent, _shift)				\
+	GATE_MTK(_id, _name, _parent, &cam_cg_regs, _shift, &mtk_clk_gate_ops_setclr)
 
 static const struct mtk_gate cam_clks[] = {
 	GATE_CAM(CLK_CAM_LARB3, "cam_larb3", "mm_ck", 0),
@@ -52,14 +46,15 @@ static const struct of_device_id of_match_clk_mt6765_cam[] = {
 		/* sentinel */
 	}
 };
+MODULE_DEVICE_TABLE(of, of_match_clk_mt6765_cam);
 
 static struct platform_driver clk_mt6765_cam_drv = {
 	.probe = mtk_clk_simple_probe,
-	.remove = mtk_clk_simple_remove,
+	.remove_new = mtk_clk_simple_remove,
 	.driver = {
 		.name = "clk-mt6765-cam",
 		.of_match_table = of_match_clk_mt6765_cam,
 	},
 };
-
-builtin_platform_driver(clk_mt6765_cam_drv);
+module_platform_driver(clk_mt6765_cam_drv);
+MODULE_LICENSE("GPL");

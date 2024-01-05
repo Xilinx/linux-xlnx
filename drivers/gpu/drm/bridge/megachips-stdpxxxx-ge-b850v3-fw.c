@@ -336,8 +336,7 @@ static int ge_b850v3_register(void)
 			"ge-b850v3-lvds-dp", ge_b850v3_lvds_ptr);
 }
 
-static int stdp4028_ge_b850v3_fw_probe(struct i2c_client *stdp4028_i2c,
-				       const struct i2c_device_id *id)
+static int stdp4028_ge_b850v3_fw_probe(struct i2c_client *stdp4028_i2c)
 {
 	struct device *dev = &stdp4028_i2c->dev;
 	int ret;
@@ -384,8 +383,7 @@ static struct i2c_driver stdp4028_ge_b850v3_fw_driver = {
 	},
 };
 
-static int stdp2690_ge_b850v3_fw_probe(struct i2c_client *stdp2690_i2c,
-				       const struct i2c_device_id *id)
+static int stdp2690_ge_b850v3_fw_probe(struct i2c_client *stdp2690_i2c)
 {
 	struct device *dev = &stdp2690_i2c->dev;
 	int ret;
@@ -440,7 +438,11 @@ static int __init stdpxxxx_ge_b850v3_init(void)
 	if (ret)
 		return ret;
 
-	return i2c_add_driver(&stdp2690_ge_b850v3_fw_driver);
+	ret = i2c_add_driver(&stdp2690_ge_b850v3_fw_driver);
+	if (ret)
+		i2c_del_driver(&stdp4028_ge_b850v3_fw_driver);
+
+	return ret;
 }
 module_init(stdpxxxx_ge_b850v3_init);
 

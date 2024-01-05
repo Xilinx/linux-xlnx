@@ -205,7 +205,6 @@ static int odroid_audio_probe(struct platform_device *pdev)
 	struct snd_soc_card *card;
 	struct snd_soc_dai_link *link, *codec_link;
 	int num_pcms, ret, i;
-	struct of_phandle_args args = {};
 
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
@@ -224,19 +223,20 @@ static int odroid_audio_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return ret;
 
-	if (of_property_read_bool(dev->of_node, "samsung,audio-widgets")) {
+	if (of_property_present(dev->of_node, "samsung,audio-widgets")) {
 		ret = snd_soc_of_parse_audio_simple_widgets(card,
 						"samsung,audio-widgets");
 		if (ret < 0)
 			return ret;
 	}
 
-	if (of_property_read_bool(dev->of_node, "samsung,audio-routing")) {
-		ret = snd_soc_of_parse_audio_routing(card,
-						"samsung,audio-routing");
-		if (ret < 0)
-			return ret;
-	}
+	ret = 0;
+	if (of_property_present(dev->of_node, "audio-routing"))
+		ret = snd_soc_of_parse_audio_routing(card, "audio-routing");
+	else if (of_property_present(dev->of_node, "samsung,audio-routing"))
+		ret = snd_soc_of_parse_audio_routing(card, "samsung,audio-routing");
+	if (ret < 0)
+		return ret;
 
 	card->dai_link = odroid_card_dais;
 	card->num_links = ARRAY_SIZE(odroid_card_dais);
@@ -260,20 +260,7 @@ static int odroid_audio_probe(struct platform_device *pdev)
 	}
 
 	for (i = 0; i < num_pcms; i++, link += 2) {
-		ret = of_parse_phandle_with_args(cpu, "sound-dai",
-						 "#sound-dai-cells", i, &args);
-		if (ret < 0)
-			break;
-
-		if (!args.np) {
-			dev_err(dev, "sound-dai property parse error: %d\n", ret);
-			ret = -EINVAL;
-			break;
-		}
-
-		ret = snd_soc_get_dai_name(&args, &link->cpus->dai_name);
-		of_node_put(args.np);
-
+		ret = snd_soc_of_get_dai_name(cpu, &link->cpus->dai_name, i);
 		if (ret < 0)
 			break;
 	}
@@ -331,15 +318,13 @@ err_put_node:
 	return ret;
 }
 
-static int odroid_audio_remove(struct platform_device *pdev)
+static void odroid_audio_remove(struct platform_device *pdev)
 {
 	struct odroid_priv *priv = platform_get_drvdata(pdev);
 
 	snd_soc_of_put_dai_link_codecs(&priv->card.dai_link[1]);
 	clk_put(priv->sclk_i2s);
 	clk_put(priv->clk_i2s_bus);
-
-	return 0;
 }
 
 static const struct of_device_id odroid_audio_of_match[] = {
@@ -358,7 +343,7 @@ static struct platform_driver odroid_audio_driver = {
 		.pm		= &snd_soc_pm_ops,
 	},
 	.probe	= odroid_audio_probe,
-	.remove	= odroid_audio_remove,
+	.remove_new = odroid_audio_remove,
 };
 module_platform_driver(odroid_audio_driver);
 

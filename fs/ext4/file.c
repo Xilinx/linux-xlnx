@@ -131,7 +131,7 @@ static ssize_t ext4_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct inode *inode = file_inode(iocb->ki_filp);
 
-	if (unlikely(ext4_forced_shutdown(EXT4_SB(inode->i_sb))))
+	if (unlikely(ext4_forced_shutdown(inode->i_sb)))
 		return -EIO;
 
 	if (!iov_iter_count(to))
@@ -145,6 +145,17 @@ static ssize_t ext4_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 		return ext4_dio_read_iter(iocb, to);
 
 	return generic_file_read_iter(iocb, to);
+}
+
+static ssize_t ext4_file_splice_read(struct file *in, loff_t *ppos,
+				     struct pipe_inode_info *pipe,
+				     size_t len, unsigned int flags)
+{
+	struct inode *inode = file_inode(in);
+
+	if (unlikely(ext4_forced_shutdown(inode->i_sb)))
+		return -EIO;
+	return filemap_splice_read(in, ppos, pipe, len, flags);
 }
 
 /*
@@ -202,8 +213,9 @@ ext4_extending_io(struct inode *inode, loff_t offset, size_t len)
 	return false;
 }
 
-/* Is IO overwriting allocated and initialized blocks? */
-static bool ext4_overwrite_io(struct inode *inode, loff_t pos, loff_t len)
+/* Is IO overwriting allocated or initialized blocks? */
+static bool ext4_overwrite_io(struct inode *inode,
+			      loff_t pos, loff_t len, bool *unwritten)
 {
 	struct ext4_map_blocks map;
 	unsigned int blkbits = inode->i_blkbits;
@@ -217,12 +229,15 @@ static bool ext4_overwrite_io(struct inode *inode, loff_t pos, loff_t len)
 	blklen = map.m_len;
 
 	err = ext4_map_blocks(NULL, inode, &map, 0);
+	if (err != blklen)
+		return false;
 	/*
 	 * 'err==len' means that all of the blocks have been preallocated,
-	 * regardless of whether they have been initialized or not. To exclude
-	 * unwritten extents, we need to check m_flags.
+	 * regardless of whether they have been initialized or not. We need to
+	 * check m_flags to distinguish the unwritten extents.
 	 */
-	return err == blklen && (map.m_flags & EXT4_MAP_MAPPED);
+	*unwritten = !(map.m_flags & EXT4_MAP_MAPPED);
+	return true;
 }
 
 static ssize_t ext4_generic_write_checks(struct kiocb *iocb,
@@ -281,18 +296,13 @@ static ssize_t ext4_buffered_write_iter(struct kiocb *iocb,
 	if (ret <= 0)
 		goto out;
 
-	current->backing_dev_info = inode_to_bdi(inode);
 	ret = generic_perform_write(iocb, from);
-	current->backing_dev_info = NULL;
 
 out:
 	inode_unlock(inode);
-	if (likely(ret > 0)) {
-		iocb->ki_pos += ret;
-		ret = generic_write_sync(iocb, ret);
-	}
-
-	return ret;
+	if (unlikely(ret <= 0))
+		return ret;
+	return generic_write_sync(iocb, ret);
 }
 
 static ssize_t ext4_handle_inode_extension(struct inode *inode, loff_t offset,
@@ -431,17 +441,23 @@ static const struct iomap_dio_ops ext4_dio_write_ops = {
  * - For extending writes case we don't take the shared lock, since it requires
  *   updating inode i_disksize and/or orphan handling with exclusive lock.
  *
- * - shared locking will only be true mostly with overwrites. Otherwise we will
- *   switch to exclusive i_rwsem lock.
+ * - shared locking will only be true mostly with overwrites, including
+ *   initialized blocks and unwritten blocks. For overwrite unwritten blocks
+ *   we protect splitting extents by i_data_sem in ext4_inode_info, so we can
+ *   also release exclusive i_rwsem lock.
+ *
+ * - Otherwise we will switch to exclusive i_rwsem lock.
  */
 static ssize_t ext4_dio_write_checks(struct kiocb *iocb, struct iov_iter *from,
-				     bool *ilock_shared, bool *extend)
+				     bool *ilock_shared, bool *extend,
+				     bool *unwritten, int *dio_flags)
 {
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file_inode(file);
 	loff_t offset;
 	size_t count;
 	ssize_t ret;
+	bool overwrite, unaligned_io;
 
 restart:
 	ret = ext4_generic_write_checks(iocb, from);
@@ -450,16 +466,25 @@ restart:
 
 	offset = iocb->ki_pos;
 	count = ret;
-	if (ext4_extending_io(inode, offset, count))
-		*extend = true;
+
+	unaligned_io = ext4_unaligned_io(inode, from, offset);
+	*extend = ext4_extending_io(inode, offset, count);
+	overwrite = ext4_overwrite_io(inode, offset, count, unwritten);
+
 	/*
-	 * Determine whether the IO operation will overwrite allocated
-	 * and initialized blocks.
-	 * We need exclusive i_rwsem for changing security info
-	 * in file_modified().
+	 * Determine whether we need to upgrade to an exclusive lock. This is
+	 * required to change security info in file_modified(), for extending
+	 * I/O, any form of non-overwrite I/O, and unaligned I/O to unwritten
+	 * extents (as partial block zeroing may be required).
+	 *
+	 * Note that unaligned writes are allowed under shared lock so long as
+	 * they are pure overwrites. Otherwise, concurrent unaligned writes risk
+	 * data corruption due to partial block zeroing in the dio layer, and so
+	 * the I/O must occur exclusively.
 	 */
-	if (*ilock_shared && (!IS_NOSEC(inode) || *extend ||
-	     !ext4_overwrite_io(inode, offset, count))) {
+	if (*ilock_shared &&
+	    ((!IS_NOSEC(inode) || *extend || !overwrite ||
+	     (unaligned_io && *unwritten)))) {
 		if (iocb->ki_flags & IOCB_NOWAIT) {
 			ret = -EAGAIN;
 			goto out;
@@ -468,6 +493,23 @@ restart:
 		*ilock_shared = false;
 		inode_lock(inode);
 		goto restart;
+	}
+
+	/*
+	 * Now that locking is settled, determine dio flags and exclusivity
+	 * requirements. We don't use DIO_OVERWRITE_ONLY because we enforce
+	 * behavior already. The inode lock is already held exclusive if the
+	 * write is non-overwrite or extending, so drain all outstanding dio and
+	 * set the force wait dio flag.
+	 */
+	if (!*ilock_shared && (unaligned_io || *extend)) {
+		if (iocb->ki_flags & IOCB_NOWAIT) {
+			ret = -EAGAIN;
+			goto out;
+		}
+		if (unaligned_io && (!overwrite || *unwritten))
+			inode_dio_wait(inode);
+		*dio_flags = IOMAP_DIO_FORCE_WAIT;
 	}
 
 	ret = file_modified(file);
@@ -491,17 +533,10 @@ static ssize_t ext4_dio_write_iter(struct kiocb *iocb, struct iov_iter *from)
 	loff_t offset = iocb->ki_pos;
 	size_t count = iov_iter_count(from);
 	const struct iomap_ops *iomap_ops = &ext4_iomap_ops;
-	bool extend = false, unaligned_io = false;
+	bool extend = false, unwritten = false;
 	bool ilock_shared = true;
+	int dio_flags = 0;
 
-	/*
-	 * We initially start with shared inode lock unless it is
-	 * unaligned IO which needs exclusive lock anyways.
-	 */
-	if (ext4_unaligned_io(inode, from, offset)) {
-		unaligned_io = true;
-		ilock_shared = false;
-	}
 	/*
 	 * Quick check here without any i_rwsem lock to see if it is extending
 	 * IO. A more reliable check is done in ext4_dio_write_checks() with
@@ -534,15 +569,11 @@ static ssize_t ext4_dio_write_iter(struct kiocb *iocb, struct iov_iter *from)
 		return ext4_buffered_write_iter(iocb, from);
 	}
 
-	ret = ext4_dio_write_checks(iocb, from, &ilock_shared, &extend);
+	ret = ext4_dio_write_checks(iocb, from, &ilock_shared, &extend,
+				    &unwritten, &dio_flags);
 	if (ret <= 0)
 		return ret;
 
-	/* if we're going to block and IOCB_NOWAIT is set, return -EAGAIN */
-	if ((iocb->ki_flags & IOCB_NOWAIT) && (unaligned_io || extend)) {
-		ret = -EAGAIN;
-		goto out;
-	}
 	/*
 	 * Make sure inline data cannot be created anymore since we are going
 	 * to allocate blocks for DIO. We know the inode does not have any
@@ -552,19 +583,6 @@ static ssize_t ext4_dio_write_iter(struct kiocb *iocb, struct iov_iter *from)
 
 	offset = iocb->ki_pos;
 	count = ret;
-
-	/*
-	 * Unaligned direct IO must be serialized among each other as zeroing
-	 * of partial blocks of two competing unaligned IOs can result in data
-	 * corruption.
-	 *
-	 * So we make sure we don't allow any unaligned IO in flight.
-	 * For IOs where we need not wait (like unaligned non-AIO DIO),
-	 * below inode_dio_wait() may anyway become a no-op, since we start
-	 * with exclusive lock.
-	 */
-	if (unaligned_io)
-		inode_dio_wait(inode);
 
 	if (extend) {
 		handle = ext4_journal_start(inode, EXT4_HT_INODE, 2);
@@ -582,11 +600,10 @@ static ssize_t ext4_dio_write_iter(struct kiocb *iocb, struct iov_iter *from)
 		ext4_journal_stop(handle);
 	}
 
-	if (ilock_shared)
+	if (ilock_shared && !unwritten)
 		iomap_ops = &ext4_iomap_overwrite_ops;
 	ret = iomap_dio_rw(iocb, from, iomap_ops, &ext4_dio_write_ops,
-			   (unaligned_io || extend) ? IOMAP_DIO_FORCE_WAIT : 0,
-			   NULL, 0);
+			   dio_flags, NULL, 0);
 	if (ret == -ENOTBLK)
 		ret = 0;
 
@@ -687,7 +704,7 @@ ext4_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct inode *inode = file_inode(iocb->ki_filp);
 
-	if (unlikely(ext4_forced_shutdown(EXT4_SB(inode->i_sb))))
+	if (unlikely(ext4_forced_shutdown(inode->i_sb)))
 		return -EIO;
 
 #ifdef CONFIG_FS_DAX
@@ -701,8 +718,7 @@ ext4_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 }
 
 #ifdef CONFIG_FS_DAX
-static vm_fault_t ext4_dax_huge_fault(struct vm_fault *vmf,
-		enum page_entry_size pe_size)
+static vm_fault_t ext4_dax_huge_fault(struct vm_fault *vmf, unsigned int order)
 {
 	int error = 0;
 	vm_fault_t result;
@@ -718,7 +734,7 @@ static vm_fault_t ext4_dax_huge_fault(struct vm_fault *vmf,
 	 * read-only.
 	 *
 	 * We check for VM_SHARED rather than vmf->cow_page since the latter is
-	 * unset for pe_size != PE_SIZE_PTE (i.e. only in do_cow_fault); for
+	 * unset for order != 0 (i.e. only in do_cow_fault); for
 	 * other sizes, dax_iomap_fault will handle splitting / fallback so that
 	 * we eventually come back with a COW page.
 	 */
@@ -742,7 +758,7 @@ retry:
 	} else {
 		filemap_invalidate_lock_shared(mapping);
 	}
-	result = dax_iomap_fault(vmf, pe_size, &pfn, &error, &ext4_iomap_ops);
+	result = dax_iomap_fault(vmf, order, &pfn, &error, &ext4_iomap_ops);
 	if (write) {
 		ext4_journal_stop(handle);
 
@@ -751,7 +767,7 @@ retry:
 			goto retry;
 		/* Handling synchronous page fault? */
 		if (result & VM_FAULT_NEEDDSYNC)
-			result = dax_finish_sync_fault(vmf, pe_size, pfn);
+			result = dax_finish_sync_fault(vmf, order, pfn);
 		filemap_invalidate_unlock_shared(mapping);
 		sb_end_pagefault(sb);
 	} else {
@@ -763,7 +779,7 @@ retry:
 
 static vm_fault_t ext4_dax_fault(struct vm_fault *vmf)
 {
-	return ext4_dax_huge_fault(vmf, PE_SIZE_PTE);
+	return ext4_dax_huge_fault(vmf, 0);
 }
 
 static const struct vm_operations_struct ext4_dax_vm_ops = {
@@ -785,10 +801,9 @@ static const struct vm_operations_struct ext4_file_vm_ops = {
 static int ext4_file_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	struct inode *inode = file->f_mapping->host;
-	struct ext4_sb_info *sbi = EXT4_SB(inode->i_sb);
-	struct dax_device *dax_dev = sbi->s_daxdev;
+	struct dax_device *dax_dev = EXT4_SB(inode->i_sb)->s_daxdev;
 
-	if (unlikely(ext4_forced_shutdown(sbi)))
+	if (unlikely(ext4_forced_shutdown(inode->i_sb)))
 		return -EIO;
 
 	/*
@@ -801,7 +816,7 @@ static int ext4_file_mmap(struct file *file, struct vm_area_struct *vma)
 	file_accessed(file);
 	if (IS_DAX(file_inode(file))) {
 		vma->vm_ops = &ext4_dax_vm_ops;
-		vma->vm_flags |= VM_HUGEPAGE;
+		vm_flags_set(vma, VM_HUGEPAGE);
 	} else {
 		vma->vm_ops = &ext4_file_vm_ops;
 	}
@@ -864,7 +879,7 @@ static int ext4_file_open(struct inode *inode, struct file *filp)
 {
 	int ret;
 
-	if (unlikely(ext4_forced_shutdown(EXT4_SB(inode->i_sb))))
+	if (unlikely(ext4_forced_shutdown(inode->i_sb)))
 		return -EIO;
 
 	ret = ext4_sample_last_mounted(inode->i_sb, filp->f_path.mnt);
@@ -889,7 +904,8 @@ static int ext4_file_open(struct inode *inode, struct file *filp)
 			return ret;
 	}
 
-	filp->f_mode |= FMODE_NOWAIT | FMODE_BUF_RASYNC;
+	filp->f_mode |= FMODE_NOWAIT | FMODE_BUF_RASYNC |
+			FMODE_DIO_PARALLEL_WRITE;
 	return dquot_file_open(inode, filp);
 }
 
@@ -946,7 +962,7 @@ const struct file_operations ext4_file_operations = {
 	.release	= ext4_release_file,
 	.fsync		= ext4_sync_file,
 	.get_unmapped_area = thp_get_unmapped_area,
-	.splice_read	= generic_file_splice_read,
+	.splice_read	= ext4_file_splice_read,
 	.splice_write	= iter_file_splice_write,
 	.fallocate	= ext4_fallocate,
 };
@@ -955,7 +971,7 @@ const struct inode_operations ext4_file_inode_operations = {
 	.setattr	= ext4_setattr,
 	.getattr	= ext4_file_getattr,
 	.listxattr	= ext4_listxattr,
-	.get_acl	= ext4_get_acl,
+	.get_inode_acl	= ext4_get_acl,
 	.set_acl	= ext4_set_acl,
 	.fiemap		= ext4_fiemap,
 	.fileattr_get	= ext4_fileattr_get,

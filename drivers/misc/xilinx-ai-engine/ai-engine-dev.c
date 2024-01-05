@@ -811,7 +811,7 @@ static int __init xilinx_ai_engine_init(void)
 		return ret;
 	}
 
-	aie_class = class_create(THIS_MODULE, "aie");
+	aie_class = class_create("aie");
 	if (IS_ERR(aie_class)) {
 		pr_err("failed to create aie class\n");
 		unregister_chrdev_region(aie_major, AIE_DEV_MAX);

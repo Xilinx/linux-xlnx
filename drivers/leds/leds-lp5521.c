@@ -58,14 +58,11 @@
 /* CONFIG register */
 #define LP5521_PWM_HF			0x40	/* PWM: 0 = 256Hz, 1 = 558Hz */
 #define LP5521_PWRSAVE_EN		0x20	/* 1 = Power save mode */
-#define LP5521_CP_MODE_OFF		0	/* Charge pump (CP) off */
-#define LP5521_CP_MODE_BYPASS		8	/* CP forced to bypass mode */
-#define LP5521_CP_MODE_1X5		0x10	/* CP forced to 1.5x mode */
-#define LP5521_CP_MODE_AUTO		0x18	/* Automatic mode selection */
+#define LP5521_CP_MODE_MASK		0x18	/* Charge pump mode */
+#define LP5521_CP_MODE_SHIFT		3
 #define LP5521_R_TO_BATT		0x04	/* R out: 0 = CP, 1 = Vbat */
 #define LP5521_CLK_INT			0x01	/* Internal clock */
-#define LP5521_DEFAULT_CFG		\
-	(LP5521_PWM_HF | LP5521_PWRSAVE_EN | LP5521_CP_MODE_AUTO)
+#define LP5521_DEFAULT_CFG		(LP5521_PWM_HF | LP5521_PWRSAVE_EN)
 
 /* Status */
 #define LP5521_EXT_CLK_USED		0x08
@@ -310,6 +307,8 @@ static int lp5521_post_init_device(struct lp55xx_chip *chip)
 	if (!lp55xx_is_extclk_used(chip))
 		val |= LP5521_CLK_INT;
 
+	val |= (chip->pdata->charge_pump_mode << LP5521_CP_MODE_SHIFT) & LP5521_CP_MODE_MASK;
+
 	ret = lp55xx_write(chip, LP5521_REG_CONFIG, val);
 	if (ret)
 		return ret;
@@ -469,7 +468,7 @@ static ssize_t lp5521_selftest(struct device *dev,
 	ret = lp5521_run_selftest(chip, buf);
 	mutex_unlock(&chip->lock);
 
-	return scnprintf(buf, PAGE_SIZE, "%s\n", ret ? "FAIL" : "OK");
+	return sysfs_emit(buf, "%s\n", ret ? "FAIL" : "OK");
 }
 
 /* device attributes */
@@ -516,9 +515,9 @@ static struct lp55xx_device_config lp5521_cfg = {
 	.dev_attr_group     = &lp5521_group,
 };
 
-static int lp5521_probe(struct i2c_client *client,
-			const struct i2c_device_id *id)
+static int lp5521_probe(struct i2c_client *client)
 {
+	const struct i2c_device_id *id = i2c_client_get_device_id(client);
 	int ret;
 	struct lp55xx_chip *chip;
 	struct lp55xx_led *led;
@@ -595,18 +594,17 @@ static const struct i2c_device_id lp5521_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, lp5521_id);
 
-#ifdef CONFIG_OF
 static const struct of_device_id of_lp5521_leds_match[] = {
 	{ .compatible = "national,lp5521", },
 	{},
 };
 
 MODULE_DEVICE_TABLE(of, of_lp5521_leds_match);
-#endif
+
 static struct i2c_driver lp5521_driver = {
 	.driver = {
 		.name	= "lp5521",
-		.of_match_table = of_match_ptr(of_lp5521_leds_match),
+		.of_match_table = of_lp5521_leds_match,
 	},
 	.probe		= lp5521_probe,
 	.remove		= lp5521_remove,

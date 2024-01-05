@@ -73,7 +73,7 @@ static struct dentry *coda_lookup(struct inode *dir, struct dentry *entry, unsig
 }
 
 
-int coda_permission(struct user_namespace *mnt_userns, struct inode *inode,
+int coda_permission(struct mnt_idmap *idmap, struct inode *inode,
 		    int mask)
 {
 	int error;
@@ -111,7 +111,7 @@ static inline void coda_dir_update_mtime(struct inode *dir)
 	/* optimistically we can also act as if our nose bleeds. The
 	 * granularity of the mtime is coarse anyways so we might actually be
 	 * right most of the time. Note: we only do this for directories. */
-	dir->i_mtime = dir->i_ctime = current_time(dir);
+	dir->i_mtime = inode_set_ctime_current(dir);
 #endif
 }
 
@@ -133,7 +133,7 @@ static inline void coda_dir_drop_nlink(struct inode *dir)
 }
 
 /* creation routines: create, mknod, mkdir, link, symlink */
-static int coda_create(struct user_namespace *mnt_userns, struct inode *dir,
+static int coda_create(struct mnt_idmap *idmap, struct inode *dir,
 		       struct dentry *de, umode_t mode, bool excl)
 {
 	int error;
@@ -166,7 +166,7 @@ err_out:
 	return error;
 }
 
-static int coda_mkdir(struct user_namespace *mnt_userns, struct inode *dir,
+static int coda_mkdir(struct mnt_idmap *idmap, struct inode *dir,
 		      struct dentry *de, umode_t mode)
 {
 	struct inode *inode;
@@ -228,7 +228,7 @@ static int coda_link(struct dentry *source_de, struct inode *dir_inode,
 }
 
 
-static int coda_symlink(struct user_namespace *mnt_userns,
+static int coda_symlink(struct mnt_idmap *idmap,
 			struct inode *dir_inode, struct dentry *de,
 			const char *symname)
 {
@@ -295,7 +295,7 @@ static int coda_rmdir(struct inode *dir, struct dentry *de)
 }
 
 /* rename */
-static int coda_rename(struct user_namespace *mnt_userns, struct inode *old_dir,
+static int coda_rename(struct mnt_idmap *idmap, struct inode *old_dir,
 		       struct dentry *old_dentry, struct inode *new_dir,
 		       struct dentry *new_dentry, unsigned int flags)
 {
@@ -429,21 +429,14 @@ static int coda_readdir(struct file *coda_file, struct dir_context *ctx)
 	cfi = coda_ftoc(coda_file);
 	host_file = cfi->cfi_container;
 
-	if (host_file->f_op->iterate || host_file->f_op->iterate_shared) {
+	if (host_file->f_op->iterate_shared) {
 		struct inode *host_inode = file_inode(host_file);
 		ret = -ENOENT;
 		if (!IS_DEADDIR(host_inode)) {
-			if (host_file->f_op->iterate_shared) {
-				inode_lock_shared(host_inode);
-				ret = host_file->f_op->iterate_shared(host_file, ctx);
-				file_accessed(host_file);
-				inode_unlock_shared(host_inode);
-			} else {
-				inode_lock(host_inode);
-				ret = host_file->f_op->iterate(host_file, ctx);
-				file_accessed(host_file);
-				inode_unlock(host_inode);
-			}
+			inode_lock_shared(host_inode);
+			ret = host_file->f_op->iterate_shared(host_file, ctx);
+			file_accessed(host_file);
+			inode_unlock_shared(host_inode);
 		}
 		return ret;
 	}
@@ -585,10 +578,11 @@ const struct inode_operations coda_dir_inode_operations = {
 	.setattr	= coda_setattr,
 };
 
+WRAP_DIR_ITER(coda_readdir) // FIXME!
 const struct file_operations coda_dir_operations = {
 	.llseek		= generic_file_llseek,
 	.read		= generic_read_dir,
-	.iterate	= coda_readdir,
+	.iterate_shared	= shared_coda_readdir,
 	.open		= coda_open,
 	.release	= coda_release,
 	.fsync		= coda_fsync,

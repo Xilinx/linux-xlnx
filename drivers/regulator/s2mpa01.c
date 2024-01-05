@@ -5,7 +5,6 @@
 
 #include <linux/bug.h>
 #include <linux/err.h>
-#include <linux/gpio.h>
 #include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -376,6 +375,7 @@ MODULE_DEVICE_TABLE(platform, s2mpa01_pmic_id);
 static struct platform_driver s2mpa01_pmic_driver = {
 	.driver = {
 		.name = "s2mpa01-pmic",
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 	},
 	.probe = s2mpa01_pmic_probe,
 	.id_table = s2mpa01_pmic_id,

@@ -115,8 +115,6 @@ enum {
 	ADIS16475_SCAN_ACCEL_Y,
 	ADIS16475_SCAN_ACCEL_Z,
 	ADIS16475_SCAN_TEMP,
-	ADIS16475_SCAN_DIAG_S_FLAGS,
-	ADIS16475_SCAN_CRC_FAILURE,
 };
 
 static bool low_rate_allow;
@@ -326,11 +324,11 @@ static int adis16475_set_freq(struct adis16475 *st, const u32 freq)
 
 		/*
 		 * This is not an hard requirement but it's not advised to run the IMU
-		 * with a sample rate lower than 4000Hz due to possible undersampling
+		 * with a sample rate lower than 1900Hz due to possible undersampling
 		 * issues. However, there are users that might really want to take the risk.
 		 * Hence, we provide a module parameter for them. If set, we allow sample
-		 * rates lower than 4KHz. By default, we won't allow this and we just roundup
-		 * the rate to the next multiple of the input clock bigger than 4KHz. This
+		 * rates lower than 1.9KHz. By default, we won't allow this and we just roundup
+		 * the rate to the next multiple of the input clock bigger than 1.9KHz. This
 		 * is done like this as in some cases (when DEC_RATE is 0) might give
 		 * us the closest value to the one desired by the user...
 		 */
@@ -728,6 +726,7 @@ static const struct adis16475_chip_info adis16475_chip_info[] = {
 		.max_dec = 1999,
 		.sync = adis16475_sync_mode,
 		.num_sync = ARRAY_SIZE(adis16475_sync_mode),
+		.has_burst32 = true,
 		.adis_data = ADIS16475_DATA(16477, &adis16475_timeouts),
 	},
 	[ADIS16477_2] = {
@@ -743,6 +742,7 @@ static const struct adis16475_chip_info adis16475_chip_info[] = {
 		.max_dec = 1999,
 		.sync = adis16475_sync_mode,
 		.num_sync = ARRAY_SIZE(adis16475_sync_mode),
+		.has_burst32 = true,
 		.adis_data = ADIS16475_DATA(16477, &adis16475_timeouts),
 	},
 	[ADIS16477_3] = {
@@ -758,6 +758,7 @@ static const struct adis16475_chip_info adis16475_chip_info[] = {
 		.max_dec = 1999,
 		.sync = adis16475_sync_mode,
 		.num_sync = ARRAY_SIZE(adis16475_sync_mode),
+		.has_burst32 = true,
 		.adis_data = ADIS16475_DATA(16477, &adis16475_timeouts),
 	},
 	[ADIS16465_1] = {

@@ -16,6 +16,7 @@
 #include <linux/bitops.h>
 #include <linux/pm_qos.h>
 #include <linux/refcount.h>
+#include <linux/uio.h>
 
 #define snd_pcm_substream_chip(substream) ((substream)->private_data)
 #define snd_pcm_chip(pcm) ((pcm)->private_data)
@@ -68,11 +69,8 @@ struct snd_pcm_ops {
 			struct snd_pcm_audio_tstamp_report *audio_tstamp_report);
 	int (*fill_silence)(struct snd_pcm_substream *substream, int channel,
 			    unsigned long pos, unsigned long bytes);
-	int (*copy_user)(struct snd_pcm_substream *substream, int channel,
-			 unsigned long pos, void __user *buf,
-			 unsigned long bytes);
-	int (*copy_kernel)(struct snd_pcm_substream *substream, int channel,
-			   unsigned long pos, void *buf, unsigned long bytes);
+	int (*copy)(struct snd_pcm_substream *substream, int channel,
+		    unsigned long pos, struct iov_iter *iter, unsigned long bytes);
 	struct page *(*page)(struct snd_pcm_substream *substream,
 			     unsigned long offset);
 	int (*mmap)(struct snd_pcm_substream *substream, struct vm_area_struct *vma);
@@ -106,24 +104,24 @@ struct snd_pcm_ops {
 #define SNDRV_PCM_POS_XRUN		((snd_pcm_uframes_t)-1)
 
 /* If you change this don't forget to change rates[] table in pcm_native.c */
-#define SNDRV_PCM_RATE_5512		(1<<0)		/* 5512Hz */
-#define SNDRV_PCM_RATE_8000		(1<<1)		/* 8000Hz */
-#define SNDRV_PCM_RATE_11025		(1<<2)		/* 11025Hz */
-#define SNDRV_PCM_RATE_16000		(1<<3)		/* 16000Hz */
-#define SNDRV_PCM_RATE_22050		(1<<4)		/* 22050Hz */
-#define SNDRV_PCM_RATE_32000		(1<<5)		/* 32000Hz */
-#define SNDRV_PCM_RATE_44100		(1<<6)		/* 44100Hz */
-#define SNDRV_PCM_RATE_48000		(1<<7)		/* 48000Hz */
-#define SNDRV_PCM_RATE_64000		(1<<8)		/* 64000Hz */
-#define SNDRV_PCM_RATE_88200		(1<<9)		/* 88200Hz */
-#define SNDRV_PCM_RATE_96000		(1<<10)		/* 96000Hz */
-#define SNDRV_PCM_RATE_176400		(1<<11)		/* 176400Hz */
-#define SNDRV_PCM_RATE_192000		(1<<12)		/* 192000Hz */
-#define SNDRV_PCM_RATE_352800		(1<<13)		/* 352800Hz */
-#define SNDRV_PCM_RATE_384000		(1<<14)		/* 384000Hz */
+#define SNDRV_PCM_RATE_5512		(1U<<0)		/* 5512Hz */
+#define SNDRV_PCM_RATE_8000		(1U<<1)		/* 8000Hz */
+#define SNDRV_PCM_RATE_11025		(1U<<2)		/* 11025Hz */
+#define SNDRV_PCM_RATE_16000		(1U<<3)		/* 16000Hz */
+#define SNDRV_PCM_RATE_22050		(1U<<4)		/* 22050Hz */
+#define SNDRV_PCM_RATE_32000		(1U<<5)		/* 32000Hz */
+#define SNDRV_PCM_RATE_44100		(1U<<6)		/* 44100Hz */
+#define SNDRV_PCM_RATE_48000		(1U<<7)		/* 48000Hz */
+#define SNDRV_PCM_RATE_64000		(1U<<8)		/* 64000Hz */
+#define SNDRV_PCM_RATE_88200		(1U<<9)		/* 88200Hz */
+#define SNDRV_PCM_RATE_96000		(1U<<10)	/* 96000Hz */
+#define SNDRV_PCM_RATE_176400		(1U<<11)	/* 176400Hz */
+#define SNDRV_PCM_RATE_192000		(1U<<12)	/* 192000Hz */
+#define SNDRV_PCM_RATE_352800		(1U<<13)	/* 352800Hz */
+#define SNDRV_PCM_RATE_384000		(1U<<14)	/* 384000Hz */
 
-#define SNDRV_PCM_RATE_CONTINUOUS	(1<<30)		/* continuous range */
-#define SNDRV_PCM_RATE_KNOT		(1<<31)		/* supports more non-continuos rates */
+#define SNDRV_PCM_RATE_CONTINUOUS	(1U<<30)	/* continuous range */
+#define SNDRV_PCM_RATE_KNOT		(1U<<31)	/* supports more non-continuos rates */
 
 #define SNDRV_PCM_RATE_8000_44100	(SNDRV_PCM_RATE_8000|SNDRV_PCM_RATE_11025|\
 					 SNDRV_PCM_RATE_16000|SNDRV_PCM_RATE_22050|\
@@ -378,18 +376,18 @@ struct snd_pcm_runtime {
 	unsigned int rate_den;
 	unsigned int no_period_wakeup: 1;
 
-	/* -- SW params -- */
-	int tstamp_mode;		/* mmap timestamp is updated */
+	/* -- SW params; see struct snd_pcm_sw_params for comments -- */
+	int tstamp_mode;
   	unsigned int period_step;
 	snd_pcm_uframes_t start_threshold;
 	snd_pcm_uframes_t stop_threshold;
-	snd_pcm_uframes_t silence_threshold; /* Silence filling happens when
-						noise is nearest than this */
-	snd_pcm_uframes_t silence_size;	/* Silence filling size */
-	snd_pcm_uframes_t boundary;	/* pointers wrap point */
+	snd_pcm_uframes_t silence_threshold;
+	snd_pcm_uframes_t silence_size;
+	snd_pcm_uframes_t boundary;
 
+	/* internal data of auto-silencer */
 	snd_pcm_uframes_t silence_start; /* starting pointer to silence area */
-	snd_pcm_uframes_t silence_filled; /* size filled with silence */
+	snd_pcm_uframes_t silence_filled; /* already filled part of silence area */
 
 	union snd_pcm_sync_id sync;	/* hardware synchronization ID */
 
@@ -510,7 +508,7 @@ struct snd_pcm_str {
 #endif
 #endif
 	struct snd_kcontrol *chmap_kctl; /* channel-mapping controls */
-	struct device dev;
+	struct device *dev;
 };
 
 struct snd_pcm {
@@ -1555,6 +1553,11 @@ static inline u64 pcm_format_to_bits(snd_pcm_format_t pcm_format)
 	dev_warn((pcm)->card->dev, fmt, ##args)
 #define pcm_dbg(pcm, fmt, args...) \
 	dev_dbg((pcm)->card->dev, fmt, ##args)
+
+/* helpers for copying between iov_iter and iomem */
+int copy_to_iter_fromio(struct iov_iter *itert, const void __iomem *src,
+			size_t count);
+int copy_from_iter_toio(void __iomem *dst, struct iov_iter *iter, size_t count);
 
 struct snd_pcm_status64 {
 	snd_pcm_state_t state;		/* stream state */

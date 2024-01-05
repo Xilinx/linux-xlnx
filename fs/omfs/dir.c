@@ -143,7 +143,7 @@ static int omfs_add_link(struct dentry *dentry, struct inode *inode)
 	mark_buffer_dirty(bh);
 	brelse(bh);
 
-	dir->i_ctime = current_time(dir);
+	inode_set_ctime_current(dir);
 
 	/* mark affected inodes dirty to rebuild checksums */
 	mark_inode_dirty(dir);
@@ -279,13 +279,13 @@ out_free_inode:
 	return err;
 }
 
-static int omfs_mkdir(struct user_namespace *mnt_userns, struct inode *dir,
+static int omfs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
 		      struct dentry *dentry, umode_t mode)
 {
 	return omfs_add_node(dir, dentry, mode | S_IFDIR);
 }
 
-static int omfs_create(struct user_namespace *mnt_userns, struct inode *dir,
+static int omfs_create(struct mnt_idmap *idmap, struct inode *dir,
 		       struct dentry *dentry, umode_t mode, bool excl)
 {
 	return omfs_add_node(dir, dentry, mode | S_IFREG);
@@ -370,7 +370,7 @@ static bool omfs_fill_chain(struct inode *dir, struct dir_context *ctx,
 	return true;
 }
 
-static int omfs_rename(struct user_namespace *mnt_userns, struct inode *old_dir,
+static int omfs_rename(struct mnt_idmap *idmap, struct inode *old_dir,
 		       struct dentry *old_dentry, struct inode *new_dir,
 		       struct dentry *new_dentry, unsigned int flags)
 {
@@ -399,7 +399,7 @@ static int omfs_rename(struct user_namespace *mnt_userns, struct inode *old_dir,
 	if (err)
 		goto out;
 
-	old_inode->i_ctime = current_time(old_inode);
+	inode_set_ctime_current(old_inode);
 	mark_inode_dirty(old_inode);
 out:
 	return err;

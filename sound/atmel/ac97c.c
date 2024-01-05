@@ -12,13 +12,12 @@
 #include <linux/gpio/consumer.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
+#include <linux/mod_devicetable.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/mutex.h>
 #include <linux/types.h>
 #include <linux/io.h>
-#include <linux/of.h>
-#include <linux/of_device.h>
 
 #include <sound/core.h>
 #include <sound/initval.h>
@@ -843,7 +842,7 @@ static SIMPLE_DEV_PM_OPS(atmel_ac97c_pm, atmel_ac97c_suspend, atmel_ac97c_resume
 #define ATMEL_AC97C_PM_OPS	NULL
 #endif
 
-static int atmel_ac97c_remove(struct platform_device *pdev)
+static void atmel_ac97c_remove(struct platform_device *pdev)
 {
 	struct snd_card *card = platform_get_drvdata(pdev);
 	struct atmel_ac97c *chip = get_chip(card);
@@ -858,13 +857,11 @@ static int atmel_ac97c_remove(struct platform_device *pdev)
 	free_irq(chip->irq, chip);
 
 	snd_card_free(card);
-
-	return 0;
 }
 
 static struct platform_driver atmel_ac97c_driver = {
 	.probe		= atmel_ac97c_probe,
-	.remove		= atmel_ac97c_remove,
+	.remove_new	= atmel_ac97c_remove,
 	.driver		= {
 		.name	= "atmel_ac97c",
 		.pm	= ATMEL_AC97C_PM_OPS,

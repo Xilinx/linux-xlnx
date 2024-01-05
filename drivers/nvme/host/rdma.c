@@ -12,7 +12,6 @@
 #include <linux/string.h>
 #include <linux/atomic.h>
 #include <linux/blk-mq.h>
-#include <linux/blk-mq-rdma.h>
 #include <linux/blk-integrity.h>
 #include <linux/types.h>
 #include <linux/list.h>
@@ -464,7 +463,6 @@ static int nvme_rdma_create_cq(struct ib_device *ibdev,
 		struct nvme_rdma_queue *queue)
 {
 	int ret, comp_vector, idx = nvme_rdma_queue_idx(queue);
-	enum ib_poll_context poll_ctx;
 
 	/*
 	 * Spread I/O queues completion vectors according their queue index.
@@ -473,15 +471,12 @@ static int nvme_rdma_create_cq(struct ib_device *ibdev,
 	comp_vector = (idx == 0 ? idx : idx - 1) % ibdev->num_comp_vectors;
 
 	/* Polling queues need direct cq polling context */
-	if (nvme_rdma_poll_queue(queue)) {
-		poll_ctx = IB_POLL_DIRECT;
+	if (nvme_rdma_poll_queue(queue))
 		queue->ib_cq = ib_alloc_cq(ibdev, queue, queue->cq_size,
-					   comp_vector, poll_ctx);
-	} else {
-		poll_ctx = IB_POLL_SOFTIRQ;
+					   comp_vector, IB_POLL_DIRECT);
+	else
 		queue->ib_cq = ib_cq_pool_get(ibdev, queue->cq_size,
-					      comp_vector, poll_ctx);
-	}
+					      comp_vector, IB_POLL_SOFTIRQ);
 
 	if (IS_ERR(queue->ib_cq)) {
 		ret = PTR_ERR(queue->ib_cq);
@@ -506,7 +501,7 @@ static int nvme_rdma_create_queue_ib(struct nvme_rdma_queue *queue)
 	}
 	ibdev = queue->device->dev;
 
-	/* +1 for ib_stop_cq */
+	/* +1 for ib_drain_qp */
 	queue->cq_size = cq_factor * queue->queue_size + 1;
 
 	ret = nvme_rdma_create_cq(ibdev, queue);
@@ -643,6 +638,9 @@ static void __nvme_rdma_stop_queue(struct nvme_rdma_queue *queue)
 
 static void nvme_rdma_stop_queue(struct nvme_rdma_queue *queue)
 {
+	if (!test_bit(NVME_RDMA_Q_ALLOCATED, &queue->flags))
+		return;
+
 	mutex_lock(&queue->queue_lock);
 	if (test_and_clear_bit(NVME_RDMA_Q_LIVE, &queue->flags))
 		__nvme_rdma_stop_queue(queue);
@@ -718,18 +716,10 @@ out_stop_queues:
 static int nvme_rdma_alloc_io_queues(struct nvme_rdma_ctrl *ctrl)
 {
 	struct nvmf_ctrl_options *opts = ctrl->ctrl.opts;
-	struct ib_device *ibdev = ctrl->device->dev;
-	unsigned int nr_io_queues, nr_default_queues;
-	unsigned int nr_read_queues, nr_poll_queues;
+	unsigned int nr_io_queues;
 	int i, ret;
 
-	nr_read_queues = min_t(unsigned int, ibdev->num_comp_vectors,
-				min(opts->nr_io_queues, num_online_cpus()));
-	nr_default_queues =  min_t(unsigned int, ibdev->num_comp_vectors,
-				min(opts->nr_write_queues, num_online_cpus()));
-	nr_poll_queues = min(opts->nr_poll_queues, num_online_cpus());
-	nr_io_queues = nr_read_queues + nr_default_queues + nr_poll_queues;
-
+	nr_io_queues = nvmf_nr_io_queues(opts);
 	ret = nvme_set_queue_count(&ctrl->ctrl, &nr_io_queues);
 	if (ret)
 		return ret;
@@ -744,34 +734,7 @@ static int nvme_rdma_alloc_io_queues(struct nvme_rdma_ctrl *ctrl)
 	dev_info(ctrl->ctrl.device,
 		"creating %d I/O queues.\n", nr_io_queues);
 
-	if (opts->nr_write_queues && nr_read_queues < nr_io_queues) {
-		/*
-		 * separate read/write queues
-		 * hand out dedicated default queues only after we have
-		 * sufficient read queues.
-		 */
-		ctrl->io_queues[HCTX_TYPE_READ] = nr_read_queues;
-		nr_io_queues -= ctrl->io_queues[HCTX_TYPE_READ];
-		ctrl->io_queues[HCTX_TYPE_DEFAULT] =
-			min(nr_default_queues, nr_io_queues);
-		nr_io_queues -= ctrl->io_queues[HCTX_TYPE_DEFAULT];
-	} else {
-		/*
-		 * shared read/write queues
-		 * either no write queues were requested, or we don't have
-		 * sufficient queue count to have dedicated default queues.
-		 */
-		ctrl->io_queues[HCTX_TYPE_DEFAULT] =
-			min(nr_read_queues, nr_io_queues);
-		nr_io_queues -= ctrl->io_queues[HCTX_TYPE_DEFAULT];
-	}
-
-	if (opts->nr_poll_queues && nr_io_queues) {
-		/* map dedicated poll queues only if we have queues left */
-		ctrl->io_queues[HCTX_TYPE_POLL] =
-			min(nr_poll_queues, nr_io_queues);
-	}
-
+	nvmf_set_io_queues(opts, nr_io_queues, ctrl->io_queues);
 	for (i = 1; i < ctrl->ctrl.queue_count; i++) {
 		ret = nvme_rdma_alloc_queue(ctrl, i,
 				ctrl->ctrl.sqsize + 1);
@@ -798,7 +761,9 @@ static int nvme_rdma_alloc_tag_set(struct nvme_ctrl *ctrl)
 			    NVME_RDMA_METADATA_SGL_SIZE;
 
 	return nvme_alloc_io_tag_set(ctrl, &to_rdma_ctrl(ctrl)->tag_set,
-			&nvme_rdma_mq_ops, BLK_MQ_F_SHOULD_MERGE, cmd_size);
+			&nvme_rdma_mq_ops,
+			ctrl->opts->nr_poll_queues ? HCTX_MAX_TYPES : 2,
+			cmd_size);
 }
 
 static void nvme_rdma_destroy_admin_queue(struct nvme_rdma_ctrl *ctrl)
@@ -846,7 +811,6 @@ static int nvme_rdma_configure_admin_queue(struct nvme_rdma_ctrl *ctrl,
 	if (new) {
 		error = nvme_alloc_admin_tag_set(&ctrl->ctrl,
 				&ctrl->admin_tag_set, &nvme_rdma_admin_mq_ops,
-				BLK_MQ_F_NO_SCHED,
 				sizeof(struct nvme_rdma_request) +
 				NVME_RDMA_DATA_SGL_SIZE);
 		if (error)
@@ -869,16 +833,16 @@ static int nvme_rdma_configure_admin_queue(struct nvme_rdma_ctrl *ctrl,
 	else
 		ctrl->ctrl.max_integrity_segments = 0;
 
-	nvme_start_admin_queue(&ctrl->ctrl);
+	nvme_unquiesce_admin_queue(&ctrl->ctrl);
 
-	error = nvme_init_ctrl_finish(&ctrl->ctrl);
+	error = nvme_init_ctrl_finish(&ctrl->ctrl, false);
 	if (error)
 		goto out_quiesce_queue;
 
 	return 0;
 
 out_quiesce_queue:
-	nvme_stop_admin_queue(&ctrl->ctrl);
+	nvme_quiesce_admin_queue(&ctrl->ctrl);
 	blk_sync_queue(ctrl->ctrl.admin_q);
 out_stop_queue:
 	nvme_rdma_stop_queue(&ctrl->queues[0]);
@@ -922,7 +886,8 @@ static int nvme_rdma_configure_io_queues(struct nvme_rdma_ctrl *ctrl, bool new)
 		goto out_cleanup_tagset;
 
 	if (!new) {
-		nvme_start_queues(&ctrl->ctrl);
+		nvme_start_freeze(&ctrl->ctrl);
+		nvme_unquiesce_io_queues(&ctrl->ctrl);
 		if (!nvme_wait_freeze_timeout(&ctrl->ctrl, NVME_IO_TIMEOUT)) {
 			/*
 			 * If we timed out waiting for freeze we are likely to
@@ -930,6 +895,7 @@ static int nvme_rdma_configure_io_queues(struct nvme_rdma_ctrl *ctrl, bool new)
 			 * to be safe.
 			 */
 			ret = -ENODEV;
+			nvme_unfreeze(&ctrl->ctrl);
 			goto out_wait_freeze_timed_out;
 		}
 		blk_mq_update_nr_hw_queues(ctrl->ctrl.tagset,
@@ -949,7 +915,7 @@ static int nvme_rdma_configure_io_queues(struct nvme_rdma_ctrl *ctrl, bool new)
 	return 0;
 
 out_wait_freeze_timed_out:
-	nvme_stop_queues(&ctrl->ctrl);
+	nvme_quiesce_io_queues(&ctrl->ctrl);
 	nvme_sync_io_queues(&ctrl->ctrl);
 	nvme_rdma_stop_io_queues(ctrl);
 out_cleanup_tagset:
@@ -964,12 +930,12 @@ out_free_io_queues:
 static void nvme_rdma_teardown_admin_queue(struct nvme_rdma_ctrl *ctrl,
 		bool remove)
 {
-	nvme_stop_admin_queue(&ctrl->ctrl);
+	nvme_quiesce_admin_queue(&ctrl->ctrl);
 	blk_sync_queue(ctrl->ctrl.admin_q);
 	nvme_rdma_stop_queue(&ctrl->queues[0]);
 	nvme_cancel_admin_tagset(&ctrl->ctrl);
 	if (remove) {
-		nvme_start_admin_queue(&ctrl->ctrl);
+		nvme_unquiesce_admin_queue(&ctrl->ctrl);
 		nvme_remove_admin_tag_set(&ctrl->ctrl);
 	}
 	nvme_rdma_destroy_admin_queue(ctrl);
@@ -979,13 +945,12 @@ static void nvme_rdma_teardown_io_queues(struct nvme_rdma_ctrl *ctrl,
 		bool remove)
 {
 	if (ctrl->ctrl.queue_count > 1) {
-		nvme_start_freeze(&ctrl->ctrl);
-		nvme_stop_queues(&ctrl->ctrl);
+		nvme_quiesce_io_queues(&ctrl->ctrl);
 		nvme_sync_io_queues(&ctrl->ctrl);
 		nvme_rdma_stop_io_queues(ctrl);
 		nvme_cancel_tagset(&ctrl->ctrl);
 		if (remove) {
-			nvme_start_queues(&ctrl->ctrl);
+			nvme_unquiesce_io_queues(&ctrl->ctrl);
 			nvme_remove_io_tag_set(&ctrl->ctrl);
 		}
 		nvme_rdma_free_io_queues(ctrl);
@@ -1106,7 +1071,7 @@ static int nvme_rdma_setup_ctrl(struct nvme_rdma_ctrl *ctrl, bool new)
 
 destroy_io:
 	if (ctrl->ctrl.queue_count > 1) {
-		nvme_stop_queues(&ctrl->ctrl);
+		nvme_quiesce_io_queues(&ctrl->ctrl);
 		nvme_sync_io_queues(&ctrl->ctrl);
 		nvme_rdma_stop_io_queues(ctrl);
 		nvme_cancel_tagset(&ctrl->ctrl);
@@ -1115,7 +1080,7 @@ destroy_io:
 		nvme_rdma_free_io_queues(ctrl);
 	}
 destroy_admin:
-	nvme_stop_admin_queue(&ctrl->ctrl);
+	nvme_quiesce_admin_queue(&ctrl->ctrl);
 	blk_sync_queue(ctrl->ctrl.admin_q);
 	nvme_rdma_stop_queue(&ctrl->queues[0]);
 	nvme_cancel_admin_tagset(&ctrl->ctrl);
@@ -1153,13 +1118,13 @@ static void nvme_rdma_error_recovery_work(struct work_struct *work)
 	struct nvme_rdma_ctrl *ctrl = container_of(work,
 			struct nvme_rdma_ctrl, err_work);
 
-	nvme_auth_stop(&ctrl->ctrl);
 	nvme_stop_keep_alive(&ctrl->ctrl);
 	flush_work(&ctrl->ctrl.async_event_work);
 	nvme_rdma_teardown_io_queues(ctrl, false);
-	nvme_start_queues(&ctrl->ctrl);
+	nvme_unquiesce_io_queues(&ctrl->ctrl);
 	nvme_rdma_teardown_admin_queue(ctrl, false);
-	nvme_start_admin_queue(&ctrl->ctrl);
+	nvme_unquiesce_admin_queue(&ctrl->ctrl);
+	nvme_auth_stop(&ctrl->ctrl);
 
 	if (!nvme_change_ctrl_state(&ctrl->ctrl, NVME_CTRL_CONNECTING)) {
 		/* state change failure is ok if we started ctrl delete */
@@ -2040,7 +2005,7 @@ static blk_status_t nvme_rdma_queue_rq(struct blk_mq_hw_ctx *hctx,
 	if (ret)
 		goto unmap_qe;
 
-	blk_mq_start_request(rq);
+	nvme_start_request(rq);
 
 	if (IS_ENABLED(CONFIG_BLK_DEV_INTEGRITY) &&
 	    queue->pi_support &&
@@ -2142,46 +2107,8 @@ static void nvme_rdma_complete_rq(struct request *rq)
 static void nvme_rdma_map_queues(struct blk_mq_tag_set *set)
 {
 	struct nvme_rdma_ctrl *ctrl = to_rdma_ctrl(set->driver_data);
-	struct nvmf_ctrl_options *opts = ctrl->ctrl.opts;
 
-	if (opts->nr_write_queues && ctrl->io_queues[HCTX_TYPE_READ]) {
-		/* separate read/write queues */
-		set->map[HCTX_TYPE_DEFAULT].nr_queues =
-			ctrl->io_queues[HCTX_TYPE_DEFAULT];
-		set->map[HCTX_TYPE_DEFAULT].queue_offset = 0;
-		set->map[HCTX_TYPE_READ].nr_queues =
-			ctrl->io_queues[HCTX_TYPE_READ];
-		set->map[HCTX_TYPE_READ].queue_offset =
-			ctrl->io_queues[HCTX_TYPE_DEFAULT];
-	} else {
-		/* shared read/write queues */
-		set->map[HCTX_TYPE_DEFAULT].nr_queues =
-			ctrl->io_queues[HCTX_TYPE_DEFAULT];
-		set->map[HCTX_TYPE_DEFAULT].queue_offset = 0;
-		set->map[HCTX_TYPE_READ].nr_queues =
-			ctrl->io_queues[HCTX_TYPE_DEFAULT];
-		set->map[HCTX_TYPE_READ].queue_offset = 0;
-	}
-	blk_mq_rdma_map_queues(&set->map[HCTX_TYPE_DEFAULT],
-			ctrl->device->dev, 0);
-	blk_mq_rdma_map_queues(&set->map[HCTX_TYPE_READ],
-			ctrl->device->dev, 0);
-
-	if (opts->nr_poll_queues && ctrl->io_queues[HCTX_TYPE_POLL]) {
-		/* map dedicated poll queues only if we have queues left */
-		set->map[HCTX_TYPE_POLL].nr_queues =
-				ctrl->io_queues[HCTX_TYPE_POLL];
-		set->map[HCTX_TYPE_POLL].queue_offset =
-			ctrl->io_queues[HCTX_TYPE_DEFAULT] +
-			ctrl->io_queues[HCTX_TYPE_READ];
-		blk_mq_map_queues(&set->map[HCTX_TYPE_POLL]);
-	}
-
-	dev_info(ctrl->ctrl.device,
-		"mapped %d/%d/%d default/read/poll queues.\n",
-		ctrl->io_queues[HCTX_TYPE_DEFAULT],
-		ctrl->io_queues[HCTX_TYPE_READ],
-		ctrl->io_queues[HCTX_TYPE_POLL]);
+	nvmf_map_queues(set, &ctrl->ctrl, ctrl->io_queues);
 }
 
 static const struct blk_mq_ops nvme_rdma_mq_ops = {
@@ -2207,11 +2134,8 @@ static const struct blk_mq_ops nvme_rdma_admin_mq_ops = {
 static void nvme_rdma_shutdown_ctrl(struct nvme_rdma_ctrl *ctrl, bool shutdown)
 {
 	nvme_rdma_teardown_io_queues(ctrl, shutdown);
-	nvme_stop_admin_queue(&ctrl->ctrl);
-	if (shutdown)
-		nvme_shutdown_ctrl(&ctrl->ctrl);
-	else
-		nvme_disable_ctrl(&ctrl->ctrl);
+	nvme_quiesce_admin_queue(&ctrl->ctrl);
+	nvme_disable_ctrl(&ctrl->ctrl, shutdown);
 	nvme_rdma_teardown_admin_queue(ctrl, shutdown);
 }
 

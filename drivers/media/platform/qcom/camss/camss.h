@@ -97,6 +97,7 @@ struct camss {
 	struct csid_device *csid;
 	struct ispif_device *ispif;
 	int vfe_num;
+	int vfe_lite_num;
 	struct vfe_device *vfe;
 	atomic_t ref_count;
 	int genpd_num;
@@ -112,7 +113,7 @@ struct camss_camera_interface {
 };
 
 struct camss_async_subdev {
-	struct v4l2_async_subdev asd; /* must be first */
+	struct v4l2_async_connection asd; /* must be first */
 	struct camss_camera_interface interface;
 };
 

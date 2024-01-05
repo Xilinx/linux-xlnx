@@ -1736,18 +1736,18 @@ static struct omap_hsmmc_platform_data *of_get_hsmmc_pdata(struct device *dev)
 	if (legacy && legacy->name)
 		pdata->name = legacy->name;
 
-	if (of_find_property(np, "ti,dual-volt", NULL))
+	if (of_property_read_bool(np, "ti,dual-volt"))
 		pdata->controller_flags |= OMAP_HSMMC_SUPPORTS_DUAL_VOLT;
 
-	if (of_find_property(np, "ti,non-removable", NULL)) {
+	if (of_property_read_bool(np, "ti,non-removable")) {
 		pdata->nonremovable = true;
 		pdata->no_regulator_off_init = true;
 	}
 
-	if (of_find_property(np, "ti,needs-special-reset", NULL))
+	if (of_property_read_bool(np, "ti,needs-special-reset"))
 		pdata->features |= HSMMC_HAS_UPDATED_RESET;
 
-	if (of_find_property(np, "ti,needs-special-hs-handling", NULL))
+	if (of_property_read_bool(np, "ti,needs-special-hs-handling"))
 		pdata->features |= HSMMC_HAS_HSPE_SUPPORT;
 
 	return pdata;
@@ -1790,12 +1790,11 @@ static int omap_hsmmc_probe(struct platform_device *pdev)
 		return -ENXIO;
 	}
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	irq = platform_get_irq(pdev, 0);
-	if (res == NULL || irq < 0)
-		return -ENXIO;
+	if (irq < 0)
+		return irq;
 
-	base = devm_ioremap_resource(&pdev->dev, res);
+	base = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
 	if (IS_ERR(base))
 		return PTR_ERR(base);
 
@@ -1946,7 +1945,9 @@ static int omap_hsmmc_probe(struct platform_device *pdev)
 	if (!ret)
 		mmc->caps |= MMC_CAP_SDIO_IRQ;
 
-	mmc_add_host(mmc);
+	ret = mmc_add_host(mmc);
+	if (ret)
+		goto err_irq;
 
 	if (mmc_pdata(host)->name != NULL) {
 		ret = device_create_file(&mmc->class_dev, &dev_attr_slot_name);
@@ -1978,7 +1979,7 @@ err:
 	return ret;
 }
 
-static int omap_hsmmc_remove(struct platform_device *pdev)
+static void omap_hsmmc_remove(struct platform_device *pdev)
 {
 	struct omap_hsmmc_host *host = platform_get_drvdata(pdev);
 
@@ -1996,8 +1997,6 @@ static int omap_hsmmc_remove(struct platform_device *pdev)
 	clk_disable_unprepare(host->dbclk);
 
 	mmc_free_host(host->mmc);
-
-	return 0;
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -2122,7 +2121,7 @@ static const struct dev_pm_ops omap_hsmmc_dev_pm_ops = {
 
 static struct platform_driver omap_hsmmc_driver = {
 	.probe		= omap_hsmmc_probe,
-	.remove		= omap_hsmmc_remove,
+	.remove_new	= omap_hsmmc_remove,
 	.driver		= {
 		.name = DRIVER_NAME,
 		.probe_type = PROBE_PREFER_ASYNCHRONOUS,

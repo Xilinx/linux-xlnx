@@ -7,8 +7,8 @@ workflows related to reporting bugs, submitting patches, and queueing
 patches for stable kernels.
 
 For general information about submitting patches, please refer to
-`Documentation/process/`_. This document only describes additional specifics
-related to BPF.
+Documentation/process/submitting-patches.rst. This document only describes
+additional specifics related to BPF.
 
 .. contents::
     :local:
@@ -43,6 +43,33 @@ is a guarantee that the reported issue will be overlooked.**
 
 Submitting patches
 ==================
+
+Q: How do I run BPF CI on my changes before sending them out for review?
+------------------------------------------------------------------------
+A: BPF CI is GitHub based and hosted at https://github.com/kernel-patches/bpf.
+While GitHub also provides a CLI that can be used to accomplish the same
+results, here we focus on the UI based workflow.
+
+The following steps lay out how to start a CI run for your patches:
+
+- Create a fork of the aforementioned repository in your own account (one time
+  action)
+
+- Clone the fork locally, check out a new branch tracking either the bpf-next
+  or bpf branch, and apply your to-be-tested patches on top of it
+
+- Push the local branch to your fork and create a pull request against
+  kernel-patches/bpf's bpf-next_base or bpf_base branch, respectively
+
+Shortly after the pull request has been created, the CI workflow will run. Note
+that capacity is shared with patches submitted upstream being checked and so
+depending on utilization the run can take a while to finish.
+
+Note furthermore that both base branches (bpf-next_base and bpf_base) will be
+updated as patches are pushed to the respective upstream branches they track. As
+such, your patch set will automatically (be attempted to) be rebased as well.
+This behavior can result in a CI run being aborted and restarted with the new
+base line.
 
 Q: To which mailing list do I need to submit my BPF patches?
 ------------------------------------------------------------
@@ -101,7 +128,8 @@ into the bpf-next tree will make their way into net-next tree. net and
 net-next are both run by David S. Miller. From there, they will go
 into the kernel mainline tree run by Linus Torvalds. To read up on the
 process of net and net-next being merged into the mainline tree, see
-the :ref:`netdev-FAQ`
+the documentation on netdev subsystem at
+Documentation/process/maintainer-netdev.rst.
 
 
 
@@ -120,7 +148,8 @@ request)::
 Q: How do I indicate which tree (bpf vs. bpf-next) my patch should be applied to?
 ---------------------------------------------------------------------------------
 
-A: The process is the very same as described in the :ref:`netdev-FAQ`,
+A: The process is the very same as described in the netdev subsystem
+documentation at Documentation/process/maintainer-netdev.rst,
 so please read up on it. The subject line must indicate whether the
 patch is a fix or rather "next-like" content in order to let the
 maintainers know whether it is targeted at bpf or bpf-next.
@@ -179,8 +208,9 @@ ii) run extensive BPF test suite and
 Once the BPF pull request was accepted by David S. Miller, then
 the patches end up in net or net-next tree, respectively, and
 make their way from there further into mainline. Again, see the
-:ref:`netdev-FAQ` for additional information e.g. on how often they are
-merged to mainline.
+documentation for netdev subsystem at
+Documentation/process/maintainer-netdev.rst for additional information
+e.g. on how often they are merged to mainline.
 
 Q: How long do I need to wait for feedback on my BPF patches?
 -------------------------------------------------------------
@@ -203,7 +233,8 @@ Q: Are patches applied to bpf-next when the merge window is open?
 -----------------------------------------------------------------
 A: For the time when the merge window is open, bpf-next will not be
 processed. This is roughly analogous to net-next patch processing,
-so feel free to read up on the :ref:`netdev-FAQ` about further details.
+so feel free to read up on the netdev docs at
+Documentation/process/maintainer-netdev.rst about further details.
 
 During those two weeks of merge window, we might ask you to resend
 your patch series once bpf-next is open again. Once Linus released
@@ -367,7 +398,8 @@ netdev kernel mailing list in Cc and ask for the fix to be queued up:
   netdev@vger.kernel.org
 
 The process in general is the same as on netdev itself, see also the
-:ref:`netdev-FAQ`.
+the documentation on networking subsystem at
+Documentation/process/maintainer-netdev.rst.
 
 Q: Do you also backport to kernels not currently maintained as stable?
 ----------------------------------------------------------------------
@@ -383,7 +415,7 @@ Q: The BPF patch I am about to submit needs to go to stable as well
 What should I do?
 
 A: The same rules apply as with netdev patch submissions in general, see
-the :ref:`netdev-FAQ`.
+the netdev docs at Documentation/process/maintainer-netdev.rst.
 
 Never add "``Cc: stable@vger.kernel.org``" to the patch description, but
 ask the BPF maintainers to queue the patches instead. This can be done
@@ -434,15 +466,15 @@ needed::
 
   $ sudo make run_tests
 
-See the kernels selftest `Documentation/dev-tools/kselftest.rst`_
-document for further documentation.
+See :doc:`kernel selftest documentation </dev-tools/kselftest>`
+for details.
 
 To maximize the number of tests passing, the .config of the kernel
 under test should match the config file fragment in
 tools/testing/selftests/bpf as closely as possible.
 
 Finally to ensure support for latest BPF Type Format features -
-discussed in `Documentation/bpf/btf.rst`_ - pahole version 1.16
+discussed in Documentation/bpf/btf.rst - pahole version 1.16
 is required for kernels built with CONFIG_DEBUG_INFO_BTF=y.
 pahole is delivered in the dwarves package or can be built
 from source at
@@ -603,12 +635,12 @@ test coverage.
 
 Q: clang flag for target bpf?
 -----------------------------
-Q: In some cases clang flag ``-target bpf`` is used but in other cases the
+Q: In some cases clang flag ``--target=bpf`` is used but in other cases the
 default clang target, which matches the underlying architecture, is used.
 What is the difference and when I should use which?
 
 A: Although LLVM IR generation and optimization try to stay architecture
-independent, ``-target <arch>`` still has some impact on generated code:
+independent, ``--target=<arch>`` still has some impact on generated code:
 
 - BPF program may recursively include header file(s) with file scope
   inline assembly codes. The default target can handle this well,
@@ -626,7 +658,7 @@ independent, ``-target <arch>`` still has some impact on generated code:
   The clang option ``-fno-jump-tables`` can be used to disable
   switch table generation.
 
-- For clang ``-target bpf``, it is guaranteed that pointer or long /
+- For clang ``--target=bpf``, it is guaranteed that pointer or long /
   unsigned long types will always have a width of 64 bit, no matter
   whether underlying clang binary or default target (or kernel) is
   32 bit. However, when native clang target is used, then it will
@@ -636,7 +668,7 @@ independent, ``-target <arch>`` still has some impact on generated code:
   while the BPF LLVM back end still operates in 64 bit. The native
   target is mostly needed in tracing for the case of walking ``pt_regs``
   or other kernel structures where CPU's register width matters.
-  Otherwise, ``clang -target bpf`` is generally recommended.
+  Otherwise, ``clang --target=bpf`` is generally recommended.
 
 You should use default target when:
 
@@ -653,16 +685,11 @@ when:
   into these structures is verified by the BPF verifier and may result
   in verification failures if the native architecture is not aligned with
   the BPF architecture, e.g. 64-bit. An example of this is
-  BPF_PROG_TYPE_SK_MSG require ``-target bpf``
+  BPF_PROG_TYPE_SK_MSG require ``--target=bpf``
 
 
 .. Links
-.. _Documentation/process/: https://www.kernel.org/doc/html/latest/process/
-.. _netdev-FAQ: Documentation/process/maintainer-netdev.rst
 .. _selftests:
    https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/tools/testing/selftests/bpf/
-.. _Documentation/dev-tools/kselftest.rst:
-   https://www.kernel.org/doc/html/latest/dev-tools/kselftest.html
-.. _Documentation/bpf/btf.rst: btf.rst
 
 Happy BPF hacking!

@@ -54,7 +54,9 @@ static const struct imx_pll14xx_rate_table imx_pll1416x_tbl[] = {
 	PLL_1416X_RATE(800000000U,  200, 3, 1),
 	PLL_1416X_RATE(750000000U,  250, 2, 2),
 	PLL_1416X_RATE(700000000U,  350, 3, 2),
+	PLL_1416X_RATE(640000000U,  320, 3, 2),
 	PLL_1416X_RATE(600000000U,  300, 3, 2),
+	PLL_1416X_RATE(320000000U,  160, 3, 2),
 };
 
 static const struct imx_pll14xx_rate_table imx_pll1443x_tbl[] = {
@@ -62,8 +64,6 @@ static const struct imx_pll14xx_rate_table imx_pll1443x_tbl[] = {
 	PLL_1443X_RATE(650000000U, 325, 3, 2, 0),
 	PLL_1443X_RATE(594000000U, 198, 2, 2, 0),
 	PLL_1443X_RATE(519750000U, 173, 2, 2, 16384),
-	PLL_1443X_RATE(393216000U, 262, 2, 3, 9437),
-	PLL_1443X_RATE(361267200U, 361, 3, 3, 17511),
 };
 
 struct imx_pll14xx_clk imx_1443x_pll = {
@@ -137,11 +137,10 @@ static void imx_pll14xx_calc_settings(struct clk_pll14xx *pll, unsigned long rat
 	/*
 	 * Fractional PLL constrains:
 	 *
-	 * a) 6MHz <= prate <= 25MHz
-	 * b) 1 <= p <= 63 (1 <= p <= 4 prate = 24MHz)
-	 * c) 64 <= m <= 1023
-	 * d) 0 <= s <= 6
-	 * e) -32768 <= k <= 32767
+	 * a) 1 <= p <= 63
+	 * b) 64 <= m <= 1023
+	 * c) 0 <= s <= 6
+	 * d) -32768 <= k <= 32767
 	 *
 	 * fvco = (m * 65536 + k) * prate / (p * 65536)
 	 */
@@ -184,7 +183,7 @@ static void imx_pll14xx_calc_settings(struct clk_pll14xx *pll, unsigned long rat
 	}
 
 	/* Finally calculate best values */
-	for (pdiv = 1; pdiv <= 7; pdiv++) {
+	for (pdiv = 1; pdiv <= 63; pdiv++) {
 		for (sdiv = 0; sdiv <= 6; sdiv++) {
 			/* calc mdiv = round(rate * pdiv * 2^sdiv) / prate) */
 			mdiv = DIV_ROUND_CLOSEST(rate * (pdiv << sdiv), prate);
@@ -254,7 +253,7 @@ static unsigned long clk_pll14xx_recalc_rate(struct clk_hw *hw,
 
 	if (pll->type == PLL_1443X) {
 		pll_div_ctl1 = readl_relaxed(pll->base + DIV_CTL1);
-		kdiv = FIELD_GET(KDIV_MASK, pll_div_ctl1);
+		kdiv = (s16)FIELD_GET(KDIV_MASK, pll_div_ctl1);
 	} else {
 		kdiv = 0;
 	}

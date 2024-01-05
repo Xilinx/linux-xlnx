@@ -8,7 +8,13 @@
 #include <linux/math64.h>
 #include <linux/rbtree.h>
 
-#define in_range(b, first, len) ((b) >= (first) && (b) < (first) + (len))
+/*
+ * Enumerate bits using enum autoincrement. Define the @name as the n-th bit.
+ */
+#define ENUM_BIT(name)                                  \
+	__ ## name ## _BIT,                             \
+	name = (1U << __ ## name ## _BIT),              \
+	__ ## name ## _SEQ = __ ## name ## _BIT
 
 static inline void cond_wake_up(struct wait_queue_head *wq)
 {
@@ -32,22 +38,10 @@ static inline void cond_wake_up_nomb(struct wait_queue_head *wq)
 		wake_up(wq);
 }
 
-static inline u64 div_factor(u64 num, int factor)
+static inline u64 mult_perc(u64 num, u32 percent)
 {
-	if (factor == 10)
-		return num;
-	num *= factor;
-	return div_u64(num, 10);
+	return div_u64(num * percent, 100);
 }
-
-static inline u64 div_factor_fine(u64 num, int factor)
-{
-	if (factor == 100)
-		return num;
-	num *= factor;
-	return div_u64(num, 100);
-}
-
 /* Copy of is_power_of_two that is 64bit safe */
 static inline bool is_power_of_two_u64(u64 n)
 {
@@ -145,6 +139,26 @@ static inline struct rb_node *rb_simple_insert(struct rb_root *root, u64 bytenr,
 	rb_link_node(node, parent, p);
 	rb_insert_color(node, root);
 	return NULL;
+}
+
+static inline bool bitmap_test_range_all_set(const unsigned long *addr,
+					     unsigned long start,
+					     unsigned long nbits)
+{
+	unsigned long found_zero;
+
+	found_zero = find_next_zero_bit(addr, start + nbits, start);
+	return (found_zero == start + nbits);
+}
+
+static inline bool bitmap_test_range_all_zero(const unsigned long *addr,
+					      unsigned long start,
+					      unsigned long nbits)
+{
+	unsigned long found_set;
+
+	found_set = find_next_bit(addr, start + nbits, start);
+	return (found_set == start + nbits);
 }
 
 #endif

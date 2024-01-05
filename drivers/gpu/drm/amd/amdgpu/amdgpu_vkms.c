@@ -55,8 +55,9 @@ static enum hrtimer_restart amdgpu_vkms_vblank_simulate(struct hrtimer *timer)
 		DRM_WARN("%s: vblank timer overrun\n", __func__);
 
 	ret = drm_crtc_handle_vblank(crtc);
+	/* Don't queue timer again when vblank is disabled. */
 	if (!ret)
-		DRM_ERROR("amdgpu_vkms failure on handling vblank");
+		return HRTIMER_NORESTART;
 
 	return HRTIMER_RESTART;
 }
@@ -81,7 +82,7 @@ static void amdgpu_vkms_disable_vblank(struct drm_crtc *crtc)
 {
 	struct amdgpu_crtc *amdgpu_crtc = to_amdgpu_crtc(crtc);
 
-	hrtimer_cancel(&amdgpu_crtc->vblank_timer);
+	hrtimer_try_to_cancel(&amdgpu_crtc->vblank_timer);
 }
 
 static bool amdgpu_vkms_get_vblank_timestamp(struct drm_crtc *crtc,
@@ -498,8 +499,6 @@ static int amdgpu_vkms_sw_init(void *handle)
 	adev_to_drm(adev)->mode_config.preferred_depth = 24;
 	adev_to_drm(adev)->mode_config.prefer_shadow = 1;
 
-	adev_to_drm(adev)->mode_config.fb_base = adev->gmc.aper_base;
-
 	adev_to_drm(adev)->mode_config.fb_modifiers_not_supported = true;
 
 	r = amdgpu_display_modeset_create_props(adev);
@@ -512,6 +511,10 @@ static int amdgpu_vkms_sw_init(void *handle)
 		if (r)
 			return r;
 	}
+
+	r = drm_vblank_init(adev_to_drm(adev), adev->mode_info.num_crtc);
+	if (r)
+		return r;
 
 	drm_kms_helper_poll_init(adev_to_drm(adev));
 

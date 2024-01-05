@@ -52,7 +52,8 @@ int ntfs_load_attr_list(struct ntfs_inode *ni, struct ATTRIB *attr)
 
 	if (!attr->non_res) {
 		lsize = le32_to_cpu(attr->res.data_size);
-		le = kmalloc(al_aligned(lsize), GFP_NOFS);
+		/* attr is resident: lsize < record_size (1K or 4K) */
+		le = kvmalloc(al_aligned(lsize), GFP_KERNEL);
 		if (!le) {
 			err = -ENOMEM;
 			goto out;
@@ -68,6 +69,11 @@ int ntfs_load_attr_list(struct ntfs_inode *ni, struct ATTRIB *attr)
 
 		run_init(&ni->attr_list.run);
 
+		if (run_off > le32_to_cpu(attr->size)) {
+			err = -EINVAL;
+			goto out;
+		}
+
 		err = run_unpack_ex(&ni->attr_list.run, ni->mi.sbi, ni->mi.rno,
 				    0, le64_to_cpu(attr->nres.evcn), 0,
 				    Add2Ptr(attr, run_off),
@@ -75,7 +81,17 @@ int ntfs_load_attr_list(struct ntfs_inode *ni, struct ATTRIB *attr)
 		if (err < 0)
 			goto out;
 
-		le = kmalloc(al_aligned(lsize), GFP_NOFS);
+		/* attr is nonresident.
+		 * The worst case:
+		 * 1T (2^40) extremely fragmented file.
+		 * cluster = 4K (2^12) => 2^28 fragments
+		 * 2^9 fragments per one record => 2^19 records
+		 * 2^5 bytes of ATTR_LIST_ENTRY per one record => 2^24 bytes.
+		 *
+		 * the result is 16M bytes per attribute list.
+		 * Use kvmalloc to allocate in range [several Kbytes - dozen Mbytes]
+		 */
+		le = kvmalloc(al_aligned(lsize), GFP_KERNEL);
 		if (!le) {
 			err = -ENOMEM;
 			goto out;
@@ -370,8 +386,7 @@ bool al_remove_le(struct ntfs_inode *ni, struct ATTR_LIST_ENTRY *le)
  * al_delete_le - Delete first le from the list which matches its parameters.
  */
 bool al_delete_le(struct ntfs_inode *ni, enum ATTR_TYPE type, CLST vcn,
-		  const __le16 *name, size_t name_len,
-		  const struct MFT_REF *ref)
+		  const __le16 *name, u8 name_len, const struct MFT_REF *ref)
 {
 	u16 size;
 	struct ATTR_LIST_ENTRY *le;

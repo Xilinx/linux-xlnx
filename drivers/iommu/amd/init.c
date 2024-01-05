@@ -85,7 +85,7 @@
 
 #define LOOP_TIMEOUT	2000000
 
-#define IVRS_GET_SBDF_ID(seg, bus, dev, fd)	(((seg & 0xffff) << 16) | ((bus & 0xff) << 8) \
+#define IVRS_GET_SBDF_ID(seg, bus, dev, fn)	(((seg & 0xffff) << 16) | ((bus & 0xff) << 8) \
 						 | ((dev & 0x1f) << 3) | (fn & 0x7))
 
 /*
@@ -153,6 +153,8 @@ bool amd_iommu_dump;
 bool amd_iommu_irq_remap __read_mostly;
 
 enum io_pgtable_fmt amd_iommu_pgtable = AMD_IOMMU_V1;
+/* Guest page table level */
+int amd_iommu_gpt_level = PAGE_MODE_4_LEVEL;
 
 int amd_iommu_guest_ir = AMD_IOMMU_GUEST_IR_VAPIC;
 static int amd_iommu_xt_mode = IRQ_REMAP_XAPIC_MODE;
@@ -160,6 +162,7 @@ static int amd_iommu_xt_mode = IRQ_REMAP_XAPIC_MODE;
 static bool amd_iommu_detected;
 static bool amd_iommu_disabled __initdata;
 static bool amd_iommu_force_enable __initdata;
+static bool amd_iommu_irtcachedis;
 static int amd_iommu_target_ivhd_type;
 
 /* Global EFR and EFR2 registers */
@@ -304,6 +307,11 @@ static void get_global_efr(void)
 static bool check_feature_on_all_iommus(u64 mask)
 {
 	return !!(amd_iommu_efr & mask);
+}
+
+static inline int check_feature_gpt_level(void)
+{
+	return ((amd_iommu_efr >> FEATURE_GATS_SHIFT) & FEATURE_GATS_MASK);
 }
 
 /*
@@ -475,8 +483,15 @@ static void iommu_disable(struct amd_iommu *iommu)
 	iommu_feature_disable(iommu, CONTROL_GALOG_EN);
 	iommu_feature_disable(iommu, CONTROL_GAINT_EN);
 
+	/* Disable IOMMU PPR logging */
+	iommu_feature_disable(iommu, CONTROL_PPRLOG_EN);
+	iommu_feature_disable(iommu, CONTROL_PPRINT_EN);
+
 	/* Disable IOMMU hardware itself */
 	iommu_feature_disable(iommu, CONTROL_IOMMU_EN);
+
+	/* Clear IRTE cache disabling bit */
+	iommu_feature_disable(iommu, CONTROL_IRTCACHEDIS);
 }
 
 /*
@@ -742,13 +757,61 @@ static int __init alloc_command_buffer(struct amd_iommu *iommu)
 }
 
 /*
+ * Interrupt handler has processed all pending events and adjusted head
+ * and tail pointer. Reset overflow mask and restart logging again.
+ */
+static void amd_iommu_restart_log(struct amd_iommu *iommu, const char *evt_type,
+				  u8 cntrl_intr, u8 cntrl_log,
+				  u32 status_run_mask, u32 status_overflow_mask)
+{
+	u32 status;
+
+	status = readl(iommu->mmio_base + MMIO_STATUS_OFFSET);
+	if (status & status_run_mask)
+		return;
+
+	pr_info_ratelimited("IOMMU %s log restarting\n", evt_type);
+
+	iommu_feature_disable(iommu, cntrl_log);
+	iommu_feature_disable(iommu, cntrl_intr);
+
+	writel(status_overflow_mask, iommu->mmio_base + MMIO_STATUS_OFFSET);
+
+	iommu_feature_enable(iommu, cntrl_intr);
+	iommu_feature_enable(iommu, cntrl_log);
+}
+
+/*
  * This function restarts event logging in case the IOMMU experienced
  * an event log buffer overflow.
  */
 void amd_iommu_restart_event_logging(struct amd_iommu *iommu)
 {
-	iommu_feature_disable(iommu, CONTROL_EVT_LOG_EN);
-	iommu_feature_enable(iommu, CONTROL_EVT_LOG_EN);
+	amd_iommu_restart_log(iommu, "Event", CONTROL_EVT_INT_EN,
+			      CONTROL_EVT_LOG_EN, MMIO_STATUS_EVT_RUN_MASK,
+			      MMIO_STATUS_EVT_OVERFLOW_MASK);
+}
+
+/*
+ * This function restarts event logging in case the IOMMU experienced
+ * GA log overflow.
+ */
+void amd_iommu_restart_ga_log(struct amd_iommu *iommu)
+{
+	amd_iommu_restart_log(iommu, "GA", CONTROL_GAINT_EN,
+			      CONTROL_GALOG_EN, MMIO_STATUS_GALOG_RUN_MASK,
+			      MMIO_STATUS_GALOG_OVERFLOW_MASK);
+}
+
+/*
+ * This function restarts ppr logging in case the IOMMU experienced
+ * PPR log overflow.
+ */
+void amd_iommu_restart_ppr_log(struct amd_iommu *iommu)
+{
+	amd_iommu_restart_log(iommu, "PPR", CONTROL_PPRINT_EN,
+			      CONTROL_PPRLOG_EN, MMIO_STATUS_PPR_RUN_MASK,
+			      MMIO_STATUS_PPR_OVERFLOW_MASK);
 }
 
 /*
@@ -871,6 +934,8 @@ static void iommu_enable_ppr_log(struct amd_iommu *iommu)
 	if (iommu->ppr_log == NULL)
 		return;
 
+	iommu_feature_enable(iommu, CONTROL_PPR_EN);
+
 	entry = iommu_virt_to_phys(iommu->ppr_log) | PPR_LOG_SIZE_512;
 
 	memcpy_toio(iommu->mmio_base + MMIO_PPR_LOG_OFFSET,
@@ -881,7 +946,7 @@ static void iommu_enable_ppr_log(struct amd_iommu *iommu)
 	writel(0x00, iommu->mmio_base + MMIO_PPR_TAIL_OFFSET);
 
 	iommu_feature_enable(iommu, CONTROL_PPRLOG_EN);
-	iommu_feature_enable(iommu, CONTROL_PPR_EN);
+	iommu_feature_enable(iommu, CONTROL_PPRINT_EN);
 }
 
 static void __init free_ppr_log(struct amd_iommu *iommu)
@@ -1722,7 +1787,7 @@ static int __init init_iommu_one(struct amd_iommu *iommu, struct ivhd_header *h,
 	iommu->pci_seg = pci_seg;
 
 	raw_spin_lock_init(&iommu->lock);
-	iommu->cmd_sem_val = 0;
+	atomic64_set(&iommu->cmd_sem_val, 0);
 
 	/* Add IOMMU to internal data structures */
 	list_add_tail(&iommu->list, &amd_iommu_list);
@@ -1941,7 +2006,7 @@ static ssize_t amd_iommu_show_cap(struct device *dev,
 				  char *buf)
 {
 	struct amd_iommu *iommu = dev_to_amd_iommu(dev);
-	return sprintf(buf, "%x\n", iommu->cap);
+	return sysfs_emit(buf, "%x\n", iommu->cap);
 }
 static DEVICE_ATTR(cap, S_IRUGO, amd_iommu_show_cap, NULL);
 
@@ -1950,7 +2015,7 @@ static ssize_t amd_iommu_show_features(struct device *dev,
 				       char *buf)
 {
 	struct amd_iommu *iommu = dev_to_amd_iommu(dev);
-	return sprintf(buf, "%llx:%llx\n", iommu->features2, iommu->features);
+	return sysfs_emit(buf, "%llx:%llx\n", iommu->features2, iommu->features);
 }
 static DEVICE_ATTR(features, S_IRUGO, amd_iommu_show_features, NULL);
 
@@ -2155,8 +2220,10 @@ static void print_iommu_info(void)
 		if (amd_iommu_xt_mode == IRQ_REMAP_X2APIC_MODE)
 			pr_info("X2APIC enabled\n");
 	}
-	if (amd_iommu_pgtable == AMD_IOMMU_V2)
-		pr_info("V2 page table enabled\n");
+	if (amd_iommu_pgtable == AMD_IOMMU_V2) {
+		pr_info("V2 page table enabled (Paging mode : %d level)\n",
+			amd_iommu_gpt_level);
+	}
 }
 
 static int __init amd_iommu_init_pci(void)
@@ -2274,6 +2341,7 @@ static int intcapxt_irqdomain_alloc(struct irq_domain *domain, unsigned int virq
 		struct irq_data *irqd = irq_domain_get_irq_data(domain, i);
 
 		irqd->chip = &intcapxt_controller;
+		irqd->hwirq = info->hwirq;
 		irqd->chip_data = info->data;
 		__irq_set_handler(i, handle_edge_irq, 0, "edge");
 	}
@@ -2300,22 +2368,14 @@ static void intcapxt_unmask_irq(struct irq_data *irqd)
 	xt.destid_0_23 = cfg->dest_apicid & GENMASK(23, 0);
 	xt.destid_24_31 = cfg->dest_apicid >> 24;
 
-	/**
-	 * Current IOMMU implementation uses the same IRQ for all
-	 * 3 IOMMU interrupts.
-	 */
-	writeq(xt.capxt, iommu->mmio_base + MMIO_INTCAPXT_EVT_OFFSET);
-	writeq(xt.capxt, iommu->mmio_base + MMIO_INTCAPXT_PPR_OFFSET);
-	writeq(xt.capxt, iommu->mmio_base + MMIO_INTCAPXT_GALOG_OFFSET);
+	writeq(xt.capxt, iommu->mmio_base + irqd->hwirq);
 }
 
 static void intcapxt_mask_irq(struct irq_data *irqd)
 {
 	struct amd_iommu *iommu = irqd->chip_data;
 
-	writeq(0, iommu->mmio_base + MMIO_INTCAPXT_EVT_OFFSET);
-	writeq(0, iommu->mmio_base + MMIO_INTCAPXT_PPR_OFFSET);
-	writeq(0, iommu->mmio_base + MMIO_INTCAPXT_GALOG_OFFSET);
+	writeq(0, iommu->mmio_base + irqd->hwirq);
 }
 
 
@@ -2378,11 +2438,13 @@ static struct irq_domain *iommu_get_irqdomain(void)
 	return iommu_irqdomain;
 }
 
-static int iommu_setup_intcapxt(struct amd_iommu *iommu)
+static int __iommu_setup_intcapxt(struct amd_iommu *iommu, const char *devname,
+				  int hwirq, irq_handler_t thread_fn)
 {
 	struct irq_domain *domain;
 	struct irq_alloc_info info;
 	int irq, ret;
+	int node = dev_to_node(&iommu->dev->dev);
 
 	domain = iommu_get_irqdomain();
 	if (!domain)
@@ -2391,15 +2453,16 @@ static int iommu_setup_intcapxt(struct amd_iommu *iommu)
 	init_irq_alloc_info(&info, NULL);
 	info.type = X86_IRQ_ALLOC_TYPE_AMDVI;
 	info.data = iommu;
+	info.hwirq = hwirq;
 
-	irq = irq_domain_alloc_irqs(domain, 1, NUMA_NO_NODE, &info);
+	irq = irq_domain_alloc_irqs(domain, 1, node, &info);
 	if (irq < 0) {
 		irq_domain_remove(domain);
 		return irq;
 	}
 
 	ret = request_threaded_irq(irq, amd_iommu_int_handler,
-				   amd_iommu_int_thread, 0, "AMD-Vi", iommu);
+				   thread_fn, 0, devname, iommu);
 	if (ret) {
 		irq_domain_free_irqs(irq, 1);
 		irq_domain_remove(domain);
@@ -2407,6 +2470,37 @@ static int iommu_setup_intcapxt(struct amd_iommu *iommu)
 	}
 
 	return 0;
+}
+
+static int iommu_setup_intcapxt(struct amd_iommu *iommu)
+{
+	int ret;
+
+	snprintf(iommu->evt_irq_name, sizeof(iommu->evt_irq_name),
+		 "AMD-Vi%d-Evt", iommu->index);
+	ret = __iommu_setup_intcapxt(iommu, iommu->evt_irq_name,
+				     MMIO_INTCAPXT_EVT_OFFSET,
+				     amd_iommu_int_thread_evtlog);
+	if (ret)
+		return ret;
+
+	snprintf(iommu->ppr_irq_name, sizeof(iommu->ppr_irq_name),
+		 "AMD-Vi%d-PPR", iommu->index);
+	ret = __iommu_setup_intcapxt(iommu, iommu->ppr_irq_name,
+				     MMIO_INTCAPXT_PPR_OFFSET,
+				     amd_iommu_int_thread_pprlog);
+	if (ret)
+		return ret;
+
+#ifdef CONFIG_IRQ_REMAP
+	snprintf(iommu->ga_irq_name, sizeof(iommu->ga_irq_name),
+		 "AMD-Vi%d-GA", iommu->index);
+	ret = __iommu_setup_intcapxt(iommu, iommu->ga_irq_name,
+				     MMIO_INTCAPXT_GALOG_OFFSET,
+				     amd_iommu_int_thread_galog);
+#endif
+
+	return ret;
 }
 
 static int iommu_init_irq(struct amd_iommu *iommu)
@@ -2434,8 +2528,6 @@ enable_faults:
 
 	iommu_feature_enable(iommu, CONTROL_EVT_INT_EN);
 
-	if (iommu->ppr_log != NULL)
-		iommu_feature_enable(iommu, CONTROL_PPRINT_EN);
 	return 0;
 }
 
@@ -2676,6 +2768,33 @@ static void iommu_enable_ga(struct amd_iommu *iommu)
 #endif
 }
 
+static void iommu_disable_irtcachedis(struct amd_iommu *iommu)
+{
+	iommu_feature_disable(iommu, CONTROL_IRTCACHEDIS);
+}
+
+static void iommu_enable_irtcachedis(struct amd_iommu *iommu)
+{
+	u64 ctrl;
+
+	if (!amd_iommu_irtcachedis)
+		return;
+
+	/*
+	 * Note:
+	 * The support for IRTCacheDis feature is dertermined by
+	 * checking if the bit is writable.
+	 */
+	iommu_feature_enable(iommu, CONTROL_IRTCACHEDIS);
+	ctrl = readq(iommu->mmio_base +  MMIO_CONTROL_OFFSET);
+	ctrl &= (1ULL << CONTROL_IRTCACHEDIS);
+	if (ctrl)
+		iommu->irtcachedis_enabled = true;
+	pr_info("iommu%d (%#06x) : IRT cache is %s\n",
+		iommu->index, iommu->devid,
+		iommu->irtcachedis_enabled ? "disabled" : "enabled");
+}
+
 static void early_enable_iommu(struct amd_iommu *iommu)
 {
 	iommu_disable(iommu);
@@ -2686,6 +2805,7 @@ static void early_enable_iommu(struct amd_iommu *iommu)
 	iommu_set_exclusion_range(iommu);
 	iommu_enable_ga(iommu);
 	iommu_enable_xt(iommu);
+	iommu_enable_irtcachedis(iommu);
 	iommu_enable(iommu);
 	iommu_flush_all_caches(iommu);
 }
@@ -2736,10 +2856,12 @@ static void early_enable_iommus(void)
 		for_each_iommu(iommu) {
 			iommu_disable_command_buffer(iommu);
 			iommu_disable_event_buffer(iommu);
+			iommu_disable_irtcachedis(iommu);
 			iommu_enable_command_buffer(iommu);
 			iommu_enable_event_buffer(iommu);
 			iommu_enable_ga(iommu);
 			iommu_enable_xt(iommu);
+			iommu_enable_irtcachedis(iommu);
 			iommu_set_device_table(iommu);
 			iommu_flush_all_caches(iommu);
 		}
@@ -2821,8 +2943,6 @@ static void enable_iommus_vapic(void)
 static void enable_iommus(void)
 {
 	early_enable_iommus();
-	enable_iommus_vapic();
-	enable_iommus_v2();
 }
 
 static void disable_iommus(void)
@@ -3025,6 +3145,11 @@ static int __init early_amd_iommu_init(void)
 	if (ret)
 		goto out;
 
+	/* 5 level guest page table */
+	if (cpu_feature_enabled(X86_FEATURE_LA57) &&
+	    check_feature_gpt_level() == GUEST_PGTABLE_5_LEVEL)
+		amd_iommu_gpt_level = PAGE_MODE_5_LEVEL;
+
 	/* Disable any previously enabled IOMMUs */
 	if (!is_kdump_kernel() || amd_iommu_disabled)
 		disable_iommus();
@@ -3080,6 +3205,13 @@ static int amd_iommu_enable_interrupts(void)
 		if (ret)
 			goto out;
 	}
+
+	/*
+	 * Interrupt handler is ready to process interrupts. Enable
+	 * PPR and GA log interrupt for all IOMMUs.
+	 */
+	enable_iommus_vapic();
+	enable_iommus_v2();
 
 out:
 	return ret;
@@ -3160,8 +3292,6 @@ static int __init state_next(void)
 		register_syscore_ops(&amd_iommu_syscore_ops);
 		ret = amd_iommu_init_pci();
 		init_state = ret ? IOMMU_INIT_ERROR : IOMMU_PCI_INIT;
-		enable_iommus_vapic();
-		enable_iommus_v2();
 		break;
 	case IOMMU_PCI_INIT:
 		ret = amd_iommu_enable_interrupts();
@@ -3387,6 +3517,8 @@ static int __init parse_amd_iommu_options(char *str)
 			amd_iommu_pgtable = AMD_IOMMU_V1;
 		} else if (strncmp(str, "pgtbl_v2", 8) == 0) {
 			amd_iommu_pgtable = AMD_IOMMU_V2;
+		} else if (strncmp(str, "irtcachedis", 11) == 0) {
+			amd_iommu_irtcachedis = true;
 		} else {
 			pr_notice("Unknown option - '%s'\n", str);
 		}
@@ -3402,18 +3534,24 @@ static int __init parse_amd_iommu_options(char *str)
 static int __init parse_ivrs_ioapic(char *str)
 {
 	u32 seg = 0, bus, dev, fn;
-	int ret, id, i;
+	int id, i;
 	u32 devid;
 
-	ret = sscanf(str, "[%d]=%x:%x.%x", &id, &bus, &dev, &fn);
-	if (ret != 4) {
-		ret = sscanf(str, "[%d]=%x:%x:%x.%x", &id, &seg, &bus, &dev, &fn);
-		if (ret != 5) {
-			pr_err("Invalid command line: ivrs_ioapic%s\n", str);
-			return 1;
-		}
+	if (sscanf(str, "=%d@%x:%x.%x", &id, &bus, &dev, &fn) == 4 ||
+	    sscanf(str, "=%d@%x:%x:%x.%x", &id, &seg, &bus, &dev, &fn) == 5)
+		goto found;
+
+	if (sscanf(str, "[%d]=%x:%x.%x", &id, &bus, &dev, &fn) == 4 ||
+	    sscanf(str, "[%d]=%x:%x:%x.%x", &id, &seg, &bus, &dev, &fn) == 5) {
+		pr_warn("ivrs_ioapic%s option format deprecated; use ivrs_ioapic=%d@%04x:%02x:%02x.%d instead\n",
+			str, id, seg, bus, dev, fn);
+		goto found;
 	}
 
+	pr_err("Invalid command line: ivrs_ioapic%s\n", str);
+	return 1;
+
+found:
 	if (early_ioapic_map_size == EARLY_MAP_SIZE) {
 		pr_err("Early IOAPIC map overflow - ignoring ivrs_ioapic%s\n",
 			str);
@@ -3434,18 +3572,24 @@ static int __init parse_ivrs_ioapic(char *str)
 static int __init parse_ivrs_hpet(char *str)
 {
 	u32 seg = 0, bus, dev, fn;
-	int ret, id, i;
+	int id, i;
 	u32 devid;
 
-	ret = sscanf(str, "[%d]=%x:%x.%x", &id, &bus, &dev, &fn);
-	if (ret != 4) {
-		ret = sscanf(str, "[%d]=%x:%x:%x.%x", &id, &seg, &bus, &dev, &fn);
-		if (ret != 5) {
-			pr_err("Invalid command line: ivrs_hpet%s\n", str);
-			return 1;
-		}
+	if (sscanf(str, "=%d@%x:%x.%x", &id, &bus, &dev, &fn) == 4 ||
+	    sscanf(str, "=%d@%x:%x:%x.%x", &id, &seg, &bus, &dev, &fn) == 5)
+		goto found;
+
+	if (sscanf(str, "[%d]=%x:%x.%x", &id, &bus, &dev, &fn) == 4 ||
+	    sscanf(str, "[%d]=%x:%x:%x.%x", &id, &seg, &bus, &dev, &fn) == 5) {
+		pr_warn("ivrs_hpet%s option format deprecated; use ivrs_hpet=%d@%04x:%02x:%02x.%d instead\n",
+			str, id, seg, bus, dev, fn);
+		goto found;
 	}
 
+	pr_err("Invalid command line: ivrs_hpet%s\n", str);
+	return 1;
+
+found:
 	if (early_hpet_map_size == EARLY_MAP_SIZE) {
 		pr_err("Early HPET map overflow - ignoring ivrs_hpet%s\n",
 			str);
@@ -3463,22 +3607,53 @@ static int __init parse_ivrs_hpet(char *str)
 	return 1;
 }
 
+#define ACPIID_LEN (ACPIHID_UID_LEN + ACPIHID_HID_LEN)
+
 static int __init parse_ivrs_acpihid(char *str)
 {
 	u32 seg = 0, bus, dev, fn;
-	char *hid, *uid, *p;
-	char acpiid[ACPIHID_UID_LEN + ACPIHID_HID_LEN] = {0};
-	int ret, i;
+	char *hid, *uid, *p, *addr;
+	char acpiid[ACPIID_LEN] = {0};
+	int i;
 
-	ret = sscanf(str, "[%x:%x.%x]=%s", &bus, &dev, &fn, acpiid);
-	if (ret != 4) {
-		ret = sscanf(str, "[%x:%x:%x.%x]=%s", &seg, &bus, &dev, &fn, acpiid);
-		if (ret != 5) {
-			pr_err("Invalid command line: ivrs_acpihid(%s)\n", str);
-			return 1;
+	addr = strchr(str, '@');
+	if (!addr) {
+		addr = strchr(str, '=');
+		if (!addr)
+			goto not_found;
+
+		++addr;
+
+		if (strlen(addr) > ACPIID_LEN)
+			goto not_found;
+
+		if (sscanf(str, "[%x:%x.%x]=%s", &bus, &dev, &fn, acpiid) == 4 ||
+		    sscanf(str, "[%x:%x:%x.%x]=%s", &seg, &bus, &dev, &fn, acpiid) == 5) {
+			pr_warn("ivrs_acpihid%s option format deprecated; use ivrs_acpihid=%s@%04x:%02x:%02x.%d instead\n",
+				str, acpiid, seg, bus, dev, fn);
+			goto found;
 		}
+		goto not_found;
 	}
 
+	/* We have the '@', make it the terminator to get just the acpiid */
+	*addr++ = 0;
+
+	if (strlen(str) > ACPIID_LEN + 1)
+		goto not_found;
+
+	if (sscanf(str, "=%s", acpiid) != 1)
+		goto not_found;
+
+	if (sscanf(addr, "%x:%x.%x", &bus, &dev, &fn) == 3 ||
+	    sscanf(addr, "%x:%x:%x.%x", &seg, &bus, &dev, &fn) == 4)
+		goto found;
+
+not_found:
+	pr_err("Invalid command line: ivrs_acpihid%s\n", str);
+	return 1;
+
+found:
 	p = acpiid;
 	hid = strsep(&p, ":");
 	uid = p;
@@ -3487,6 +3662,13 @@ static int __init parse_ivrs_acpihid(char *str)
 		pr_err("Invalid command line: hid or uid\n");
 		return 1;
 	}
+
+	/*
+	 * Ignore leading zeroes after ':', so e.g., AMDI0095:00
+	 * will match AMDI0095:0 in the second strcmp in acpi_dev_hid_uid_match
+	 */
+	while (*uid == '0' && *(uid + 1))
+		uid++;
 
 	i = early_acpihid_map_size++;
 	memcpy(early_acpihid_map[i].hid, hid, strlen(hid));
@@ -3506,6 +3688,11 @@ __setup("ivrs_acpihid",		parse_ivrs_acpihid);
 
 bool amd_iommu_v2_supported(void)
 {
+	/* CPU page table size should match IOMMU guest page table size */
+	if (cpu_feature_enabled(X86_FEATURE_LA57) &&
+	    amd_iommu_gpt_level != PAGE_MODE_5_LEVEL)
+		return false;
+
 	/*
 	 * Since DTE[Mode]=0 is prohibited on SNP-enabled system
 	 * (i.e. EFR[SNPSup]=1), IOMMUv2 page table cannot be used without

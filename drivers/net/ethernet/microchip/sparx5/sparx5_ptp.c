@@ -74,10 +74,11 @@ static u64 sparx5_ptp_get_nominal_value(struct sparx5 *sparx5)
 	return res;
 }
 
-int sparx5_ptp_hwtstamp_set(struct sparx5_port *port, struct ifreq *ifr)
+int sparx5_ptp_hwtstamp_set(struct sparx5_port *port,
+			    struct kernel_hwtstamp_config *cfg,
+			    struct netlink_ext_ack *extack)
 {
 	struct sparx5 *sparx5 = port->sparx5;
-	struct hwtstamp_config cfg;
 	struct sparx5_phc *phc;
 
 	/* For now don't allow to run ptp on ports that are part of a bridge,
@@ -88,10 +89,7 @@ int sparx5_ptp_hwtstamp_set(struct sparx5_port *port, struct ifreq *ifr)
 	if (test_bit(port->portno, sparx5->bridge_mask))
 		return -EINVAL;
 
-	if (copy_from_user(&cfg, ifr->ifr_data, sizeof(cfg)))
-		return -EFAULT;
-
-	switch (cfg.tx_type) {
+	switch (cfg->tx_type) {
 	case HWTSTAMP_TX_ON:
 		port->ptp_cmd = IFH_REW_OP_TWO_STEP_PTP;
 		break;
@@ -105,7 +103,7 @@ int sparx5_ptp_hwtstamp_set(struct sparx5_port *port, struct ifreq *ifr)
 		return -ERANGE;
 	}
 
-	switch (cfg.rx_filter) {
+	switch (cfg->rx_filter) {
 	case HWTSTAMP_FILTER_NONE:
 		break;
 	case HWTSTAMP_FILTER_ALL:
@@ -122,7 +120,7 @@ int sparx5_ptp_hwtstamp_set(struct sparx5_port *port, struct ifreq *ifr)
 	case HWTSTAMP_FILTER_PTP_V2_SYNC:
 	case HWTSTAMP_FILTER_PTP_V2_DELAY_REQ:
 	case HWTSTAMP_FILTER_NTP_ALL:
-		cfg.rx_filter = HWTSTAMP_FILTER_ALL;
+		cfg->rx_filter = HWTSTAMP_FILTER_ALL;
 		break;
 	default:
 		return -ERANGE;
@@ -131,20 +129,20 @@ int sparx5_ptp_hwtstamp_set(struct sparx5_port *port, struct ifreq *ifr)
 	/* Commit back the result & save it */
 	mutex_lock(&sparx5->ptp_lock);
 	phc = &sparx5->phc[SPARX5_PHC_PORT];
-	memcpy(&phc->hwtstamp_config, &cfg, sizeof(cfg));
+	phc->hwtstamp_config = *cfg;
 	mutex_unlock(&sparx5->ptp_lock);
 
-	return copy_to_user(ifr->ifr_data, &cfg, sizeof(cfg)) ? -EFAULT : 0;
+	return 0;
 }
 
-int sparx5_ptp_hwtstamp_get(struct sparx5_port *port, struct ifreq *ifr)
+void sparx5_ptp_hwtstamp_get(struct sparx5_port *port,
+			     struct kernel_hwtstamp_config *cfg)
 {
 	struct sparx5 *sparx5 = port->sparx5;
 	struct sparx5_phc *phc;
 
 	phc = &sparx5->phc[SPARX5_PHC_PORT];
-	return copy_to_user(ifr->ifr_data, &phc->hwtstamp_config,
-			    sizeof(phc->hwtstamp_config)) ? -EFAULT : 0;
+	*cfg = phc->hwtstamp_config;
 }
 
 static void sparx5_ptp_classify(struct sparx5_port *port, struct sk_buff *skb,
@@ -476,8 +474,7 @@ static int sparx5_ptp_settime64(struct ptp_clock_info *ptp,
 	return 0;
 }
 
-static int sparx5_ptp_gettime64(struct ptp_clock_info *ptp,
-				struct timespec64 *ts)
+int sparx5_ptp_gettime64(struct ptp_clock_info *ptp, struct timespec64 *ts)
 {
 	struct sparx5_phc *phc = container_of(ptp, struct sparx5_phc, info);
 	struct sparx5 *sparx5 = phc->sparx5;
@@ -633,7 +630,7 @@ int sparx5_ptp_init(struct sparx5 *sparx5)
 	/* Enable master counters */
 	spx5_wr(PTP_PTP_DOM_CFG_PTP_ENA_SET(0x7), sparx5, PTP_PTP_DOM_CFG);
 
-	for (i = 0; i < sparx5->port_count; i++) {
+	for (i = 0; i < SPX5_PORTS; i++) {
 		port = sparx5->ports[i];
 		if (!port)
 			continue;
@@ -649,7 +646,7 @@ void sparx5_ptp_deinit(struct sparx5 *sparx5)
 	struct sparx5_port *port;
 	int i;
 
-	for (i = 0; i < sparx5->port_count; i++) {
+	for (i = 0; i < SPX5_PORTS; i++) {
 		port = sparx5->ports[i];
 		if (!port)
 			continue;

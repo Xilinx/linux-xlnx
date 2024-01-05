@@ -880,7 +880,7 @@ static int fsmc_nand_probe_config_dt(struct platform_device *pdev,
 		}
 	}
 
-	if (of_get_property(np, "nand-skip-bbtscan", NULL))
+	if (of_property_read_bool(np, "nand-skip-bbtscan"))
 		nand->options |= NAND_SKIP_BBTSCAN;
 
 	host->dev_timings = devm_kzalloc(&pdev->dev,
@@ -1066,15 +1066,11 @@ static int __init fsmc_nand_probe(struct platform_device *pdev)
 	host->regs_va = base + FSMC_NOR_REG_SIZE +
 		(host->bank * FSMC_NAND_BANK_SZ);
 
-	host->clk = devm_clk_get(&pdev->dev, NULL);
+	host->clk = devm_clk_get_enabled(&pdev->dev, NULL);
 	if (IS_ERR(host->clk)) {
 		dev_err(&pdev->dev, "failed to fetch block clock\n");
 		return PTR_ERR(host->clk);
 	}
-
-	ret = clk_prepare_enable(host->clk);
-	if (ret)
-		return ret;
 
 	/*
 	 * This device ID is actually a common AMBA ID as used on the
@@ -1111,7 +1107,7 @@ static int __init fsmc_nand_probe(struct platform_device *pdev)
 		if (!host->read_dma_chan) {
 			dev_err(&pdev->dev, "Unable to get read dma channel\n");
 			ret = -ENODEV;
-			goto disable_clk;
+			goto disable_fsmc;
 		}
 		host->write_dma_chan = dma_request_channel(mask, filter, NULL);
 		if (!host->write_dma_chan) {
@@ -1155,9 +1151,8 @@ release_dma_write_chan:
 release_dma_read_chan:
 	if (host->mode == USE_DMA_ACCESS)
 		dma_release_channel(host->read_dma_chan);
-disable_clk:
+disable_fsmc:
 	fsmc_nand_disable(host);
-	clk_disable_unprepare(host->clk);
 
 	return ret;
 }
@@ -1165,7 +1160,7 @@ disable_clk:
 /*
  * Clean up routine
  */
-static int fsmc_nand_remove(struct platform_device *pdev)
+static void fsmc_nand_remove(struct platform_device *pdev)
 {
 	struct fsmc_nand_data *host = platform_get_drvdata(pdev);
 
@@ -1182,10 +1177,7 @@ static int fsmc_nand_remove(struct platform_device *pdev)
 			dma_release_channel(host->write_dma_chan);
 			dma_release_channel(host->read_dma_chan);
 		}
-		clk_disable_unprepare(host->clk);
 	}
-
-	return 0;
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -1202,9 +1194,14 @@ static int fsmc_nand_suspend(struct device *dev)
 static int fsmc_nand_resume(struct device *dev)
 {
 	struct fsmc_nand_data *host = dev_get_drvdata(dev);
+	int ret;
 
 	if (host) {
-		clk_prepare_enable(host->clk);
+		ret = clk_prepare_enable(host->clk);
+		if (ret) {
+			dev_err(dev, "failed to enable clk\n");
+			return ret;
+		}
 		if (host->dev_timings)
 			fsmc_nand_setup(host, host->dev_timings);
 		nand_reset(&host->nand, 0);
@@ -1224,7 +1221,7 @@ static const struct of_device_id fsmc_nand_id_table[] = {
 MODULE_DEVICE_TABLE(of, fsmc_nand_id_table);
 
 static struct platform_driver fsmc_nand_driver = {
-	.remove = fsmc_nand_remove,
+	.remove_new = fsmc_nand_remove,
 	.driver = {
 		.name = "fsmc-nand",
 		.of_match_table = fsmc_nand_id_table,

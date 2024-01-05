@@ -29,6 +29,7 @@ static char const *const feats_names[FMAX_END] = {
 	" SVE ",
 	" SME ",
 	" FA64 ",
+	" SME2 ",
 };
 
 #define MAX_FEATS_SZ	128
@@ -192,8 +193,10 @@ static bool handle_signal_copyctx(struct tdescr *td,
 		 * in the copy, this was previously validated in
 		 * ASSERT_GOOD_CONTEXT().
 		 */
-		to_copy = offset + sizeof(struct extra_context) + 16 +
-			extra->size;
+		to_copy = __builtin_offsetof(ucontext_t,
+					     uc_mcontext.__reserved);
+		to_copy += offset + sizeof(struct extra_context) + 16;
+		to_copy += extra->size;
 		copied_extra = (struct extra_context *)&(td->live_uc->uc_mcontext.__reserved[offset]);
 	} else {
 		copied_extra = NULL;
@@ -246,7 +249,8 @@ static void default_handler(int signum, siginfo_t *si, void *uc)
 			fprintf(stderr, "-- Timeout !\n");
 		} else {
 			fprintf(stderr,
-				"-- RX UNEXPECTED SIGNAL: %d\n", signum);
+				"-- RX UNEXPECTED SIGNAL: %d code %d address %p\n",
+				signum, si->si_code, si->si_addr);
 		}
 		default_result(current, 1);
 	}
@@ -323,6 +327,8 @@ int test_init(struct tdescr *td)
 			td->feats_supported |= FEAT_SME;
 		if (getauxval(AT_HWCAP2) & HWCAP2_SME_FA64)
 			td->feats_supported |= FEAT_SME_FA64;
+		if (getauxval(AT_HWCAP2) & HWCAP2_SME2)
+			td->feats_supported |= FEAT_SME2;
 		if (feats_ok(td)) {
 			if (td->feats_required & td->feats_supported)
 				fprintf(stderr,

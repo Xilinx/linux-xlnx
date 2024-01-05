@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: (GPL-2.0+ or MIT) */
+/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
 /*
  * Copyright (c) 2020 huangzhenwei@allwinnertech.com
  * Copyright (C) 2021 Samuel Holland <samuel@sholland.org>
@@ -73,5 +73,7 @@
 #define RST_BUS_DSP_CFG		63
 #define RST_BUS_DSP_DBG		64
 #define RST_BUS_RISCV_CFG	65
+#define RST_BUS_CAN0		66
+#define RST_BUS_CAN1		67
 
 #endif /* _DT_BINDINGS_RST_SUN20I_D1_CCU_H_ */

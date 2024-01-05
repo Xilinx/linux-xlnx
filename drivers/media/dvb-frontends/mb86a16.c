@@ -1487,10 +1487,12 @@ static int mb86a16_set_fe(struct mb86a16_state *state)
 		}
 	}
 
-	mb86a16_read(state, 0x15, &agcval);
-	mb86a16_read(state, 0x26, &cnmval);
-	dprintk(verbose, MB86A16_INFO, 1, "AGC = %02x CNM = %02x", agcval, cnmval);
-
+	if (mb86a16_read(state, 0x15, &agcval) != 2 ||	mb86a16_read(state, 0x26, &cnmval) != 2) {
+		dprintk(verbose, MB86A16_ERROR, 1, "I2C transfer error");
+		ret = -EREMOTEIO;
+	} else {
+		dprintk(verbose, MB86A16_INFO, 1, "AGC = %02x CNM = %02x", agcval, cnmval);
+	}
 	return ret;
 }
 
@@ -1498,6 +1500,7 @@ static int mb86a16_send_diseqc_msg(struct dvb_frontend *fe,
 				   struct dvb_diseqc_master_cmd *cmd)
 {
 	struct mb86a16_state *state = fe->demodulator_priv;
+	int ret = -EREMOTEIO;
 	int i;
 	u8 regs;
 
@@ -1510,8 +1513,10 @@ static int mb86a16_send_diseqc_msg(struct dvb_frontend *fe,
 
 	regs = 0x18;
 
-	if (cmd->msg_len > 5 || cmd->msg_len < 4)
-		return -EINVAL;
+	if (cmd->msg_len > 5 || cmd->msg_len < 4) {
+		ret = -EINVAL;
+		goto err;
+	}
 
 	for (i = 0; i < cmd->msg_len; i++) {
 		if (mb86a16_write(state, regs, cmd->msg[i]) < 0)
@@ -1532,7 +1537,7 @@ static int mb86a16_send_diseqc_msg(struct dvb_frontend *fe,
 
 err:
 	dprintk(verbose, MB86A16_ERROR, 1, "I2C transfer error");
-	return -EREMOTEIO;
+	return ret;
 }
 
 static int mb86a16_send_diseqc_burst(struct dvb_frontend *fe,
@@ -1848,6 +1853,6 @@ error:
 	kfree(state);
 	return NULL;
 }
-EXPORT_SYMBOL(mb86a16_attach);
+EXPORT_SYMBOL_GPL(mb86a16_attach);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Manu Abraham");

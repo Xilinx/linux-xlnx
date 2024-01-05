@@ -248,8 +248,8 @@ static void ip22zilog_maybe_update_regs(struct uart_ip22zilog_port *up,
 static bool ip22zilog_receive_chars(struct uart_ip22zilog_port *up,
 						  struct zilog_channel *channel)
 {
-	unsigned char ch, flag;
 	unsigned int r1;
+	u8 ch, flag;
 	bool push = up->port.state != NULL;
 
 	for (;;) {
@@ -409,8 +409,7 @@ static void ip22zilog_transmit_chars(struct uart_ip22zilog_port *up,
 	ZSDELAY();
 	ZS_WSYNC(channel);
 
-	xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
-	up->port.icount.tx++;
+	uart_xmit_advance(&up->port, 1);
 
 	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
 		uart_write_wakeup(&up->port);
@@ -609,8 +608,7 @@ static void ip22zilog_start_tx(struct uart_port *port)
 		ZSDELAY();
 		ZS_WSYNC(channel);
 
-		xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
-		port->icount.tx++;
+		uart_xmit_advance(port, 1);
 
 		if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
 			uart_write_wakeup(&up->port);

@@ -10,7 +10,7 @@ maintainers:
   - Mathias Nyman <mathias.nyman@intel.com>
 
 allOf:
-  - $ref: "usb-hcd.yaml#"
+  - $ref: usb-hcd.yaml#
 
 properties:
   usb2-lpm-disable:
@@ -19,6 +19,13 @@ properties:
 
   usb3-lpm-capable:
     description: Determines if platform is USB3 LPM capable
+    type: boolean
+
+  snps,xhci-reset-on-resume:
+    description:
+      When set, xhci host will reset the host controller on resume from
+      suspend. Some controllers might lose power during suspend, so host
+      require re-initialization.
     type: boolean
 
   quirk-broken-port-ped:

@@ -9,24 +9,25 @@
 enum io_uring_cmd_flags {
 	IO_URING_F_COMPLETE_DEFER	= 1,
 	IO_URING_F_UNLOCKED		= 2,
+	/* the request is executed from poll, it should not be freed */
+	IO_URING_F_MULTISHOT		= 4,
+	/* executed by io-wq */
+	IO_URING_F_IOWQ			= 8,
 	/* int's last bit, sign checks are usually faster than a bit test */
 	IO_URING_F_NONBLOCK		= INT_MIN,
 
 	/* ctx state flags, for URING_CMD */
-	IO_URING_F_SQE128		= 4,
-	IO_URING_F_CQE32		= 8,
-	IO_URING_F_IOPOLL		= 16,
-
-	/* the request is executed from poll, it should not be freed */
-	IO_URING_F_MULTISHOT		= 32,
+	IO_URING_F_SQE128		= (1 << 8),
+	IO_URING_F_CQE32		= (1 << 9),
+	IO_URING_F_IOPOLL		= (1 << 10),
 };
 
 struct io_uring_cmd {
 	struct file	*file;
-	const void	*cmd;
+	const struct io_uring_sqe *sqe;
 	union {
 		/* callback to defer completions to task context */
-		void (*task_work_cb)(struct io_uring_cmd *cmd);
+		void (*task_work_cb)(struct io_uring_cmd *cmd, unsigned);
 		/* used for polled completion */
 		void *cookie;
 	};
@@ -35,17 +36,33 @@ struct io_uring_cmd {
 	u8		pdu[32]; /* available inline for free use */
 };
 
+static inline const void *io_uring_sqe_cmd(const struct io_uring_sqe *sqe)
+{
+	return sqe->cmd;
+}
+
 #if defined(CONFIG_IO_URING)
 int io_uring_cmd_import_fixed(u64 ubuf, unsigned long len, int rw,
 			      struct iov_iter *iter, void *ioucmd);
-void io_uring_cmd_done(struct io_uring_cmd *cmd, ssize_t ret, ssize_t res2);
-void io_uring_cmd_complete_in_task(struct io_uring_cmd *ioucmd,
-			void (*task_work_cb)(struct io_uring_cmd *));
+void io_uring_cmd_done(struct io_uring_cmd *cmd, ssize_t ret, ssize_t res2,
+			unsigned issue_flags);
 struct sock *io_uring_get_socket(struct file *file);
 void __io_uring_cancel(bool cancel_all);
 void __io_uring_free(struct task_struct *tsk);
 void io_uring_unreg_ringfd(void);
 const char *io_uring_get_opcode(u8 opcode);
+void __io_uring_cmd_do_in_task(struct io_uring_cmd *ioucmd,
+			    void (*task_work_cb)(struct io_uring_cmd *, unsigned),
+			    unsigned flags);
+/* users should follow semantics of IOU_F_TWQ_LAZY_WAKE */
+void io_uring_cmd_do_in_task_lazy(struct io_uring_cmd *ioucmd,
+			void (*task_work_cb)(struct io_uring_cmd *, unsigned));
+
+static inline void io_uring_cmd_complete_in_task(struct io_uring_cmd *ioucmd,
+			void (*task_work_cb)(struct io_uring_cmd *, unsigned))
+{
+	__io_uring_cmd_do_in_task(ioucmd, task_work_cb, 0);
+}
 
 static inline void io_uring_files_cancel(void)
 {
@@ -64,6 +81,7 @@ static inline void io_uring_free(struct task_struct *tsk)
 	if (tsk->io_uring)
 		__io_uring_free(tsk);
 }
+int io_uring_cmd_sock(struct io_uring_cmd *cmd, unsigned int issue_flags);
 #else
 static inline int io_uring_cmd_import_fixed(u64 ubuf, unsigned long len, int rw,
 			      struct iov_iter *iter, void *ioucmd)
@@ -71,11 +89,15 @@ static inline int io_uring_cmd_import_fixed(u64 ubuf, unsigned long len, int rw,
 	return -EOPNOTSUPP;
 }
 static inline void io_uring_cmd_done(struct io_uring_cmd *cmd, ssize_t ret,
-		ssize_t ret2)
+		ssize_t ret2, unsigned issue_flags)
 {
 }
 static inline void io_uring_cmd_complete_in_task(struct io_uring_cmd *ioucmd,
-			void (*task_work_cb)(struct io_uring_cmd *))
+			void (*task_work_cb)(struct io_uring_cmd *, unsigned))
+{
+}
+static inline void io_uring_cmd_do_in_task_lazy(struct io_uring_cmd *ioucmd,
+			void (*task_work_cb)(struct io_uring_cmd *, unsigned))
 {
 }
 static inline struct sock *io_uring_get_socket(struct file *file)
@@ -94,6 +116,11 @@ static inline void io_uring_free(struct task_struct *tsk)
 static inline const char *io_uring_get_opcode(u8 opcode)
 {
 	return "";
+}
+static inline int io_uring_cmd_sock(struct io_uring_cmd *cmd,
+				    unsigned int issue_flags)
+{
+	return -EOPNOTSUPP;
 }
 #endif
 

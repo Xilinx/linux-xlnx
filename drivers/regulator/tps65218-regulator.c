@@ -8,12 +8,12 @@
  */
 
 #include <linux/kernel.h>
+#include <linux/mod_devicetable.h>
 #include <linux/module.h>
 #include <linux/device.h>
 #include <linux/init.h>
 #include <linux/err.h>
 #include <linux/platform_device.h>
-#include <linux/of_device.h>
 #include <linux/regmap.h>
 #include <linux/regulator/of_regulator.h>
 #include <linux/regulator/driver.h>
@@ -349,6 +349,7 @@ MODULE_DEVICE_TABLE(platform, tps65218_regulator_id_table);
 static struct platform_driver tps65218_regulator_driver = {
 	.driver = {
 		.name = "tps65218-pmic",
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 	},
 	.probe = tps65218_regulator_probe,
 	.id_table = tps65218_regulator_id_table,

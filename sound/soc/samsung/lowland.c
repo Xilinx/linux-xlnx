@@ -22,11 +22,15 @@ static struct snd_soc_jack lowland_headset;
 static struct snd_soc_jack_pin lowland_headset_pins[] = {
 	{
 		.pin = "Headphone",
-		.mask = SND_JACK_HEADPHONE | SND_JACK_LINEOUT,
+		.mask = SND_JACK_HEADPHONE,
 	},
 	{
 		.pin = "Headset Mic",
 		.mask = SND_JACK_MICROPHONE,
+	},
+	{
+		.pin = "Line Out",
+		.mask = SND_JACK_LINEOUT,
 	},
 };
 
@@ -119,7 +123,8 @@ static struct snd_soc_dai_link lowland_dai[] = {
 		.dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
 				SND_SOC_DAIFMT_CBM_CFM,
 		.ignore_suspend = 1,
-		.params = &sub_params,
+		.c2c_params = &sub_params,
+		.num_c2c_params = 1,
 		.init = lowland_wm9081_init,
 		SND_SOC_DAILINK_REG(speaker),
 	},
@@ -139,11 +144,13 @@ static const struct snd_kcontrol_new controls[] = {
 	SOC_DAPM_PIN_SWITCH("WM1250 Input"),
 	SOC_DAPM_PIN_SWITCH("WM1250 Output"),
 	SOC_DAPM_PIN_SWITCH("Headphone"),
+	SOC_DAPM_PIN_SWITCH("Line Out"),
 };
 
 static const struct snd_soc_dapm_widget widgets[] = {
 	SND_SOC_DAPM_HP("Headphone", NULL),
 	SND_SOC_DAPM_MIC("Headset Mic", NULL),
+	SND_SOC_DAPM_LINE("Line Out", NULL),
 
 	SND_SOC_DAPM_SPK("Main Speaker", NULL),
 

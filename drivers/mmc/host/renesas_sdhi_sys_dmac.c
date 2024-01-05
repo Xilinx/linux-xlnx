@@ -15,7 +15,8 @@
 #include <linux/mmc/host.h>
 #include <linux/mod_devicetable.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
+#include <linux/of.h>
+#include <linux/platform_device.h>
 #include <linux/pagemap.h>
 #include <linux/scatterlist.h>
 #include <linux/sys_soc.h>
@@ -160,7 +161,7 @@ static void renesas_sdhi_sys_dmac_start_dma_rx(struct tmio_mmc_host *host)
 	dma_cookie_t cookie;
 	int ret, i;
 	bool aligned = true, multiple = true;
-	unsigned int align = (1 << host->pdata->alignment_shift) - 1;
+	unsigned int align = 1;	/* 2-byte alignment */
 
 	for_each_sg(sg, sg_tmp, host->sg_len, i) {
 		if (sg_tmp->offset & align)
@@ -232,7 +233,7 @@ static void renesas_sdhi_sys_dmac_start_dma_tx(struct tmio_mmc_host *host)
 	dma_cookie_t cookie;
 	int ret, i;
 	bool aligned = true, multiple = true;
-	unsigned int align = (1 << host->pdata->alignment_shift) - 1;
+	unsigned int align = 1;	/* 2-byte alignment */
 
 	for_each_sg(sg, sg_tmp, host->sg_len, i) {
 		if (sg_tmp->offset & align)
@@ -254,12 +255,11 @@ static void renesas_sdhi_sys_dmac_start_dma_tx(struct tmio_mmc_host *host)
 
 	/* The only sg element can be unaligned, use our bounce buffer then */
 	if (!aligned) {
-		unsigned long flags;
-		void *sg_vaddr = tmio_mmc_kmap_atomic(sg, &flags);
+		void *sg_vaddr = kmap_local_page(sg_page(sg));
 
 		sg_init_one(&host->bounce_sg, host->bounce_buf, sg->length);
-		memcpy(host->bounce_buf, sg_vaddr, host->bounce_sg.length);
-		tmio_mmc_kunmap_atomic(sg, &flags, sg_vaddr);
+		memcpy(host->bounce_buf, sg_vaddr + sg->offset, host->bounce_sg.length);
+		kunmap_local(sg_vaddr);
 		host->sg_ptr = &host->bounce_sg;
 		sg = host->sg_ptr;
 	}
@@ -471,7 +471,7 @@ static struct platform_driver renesas_sys_dmac_sdhi_driver = {
 		.of_match_table = renesas_sdhi_sys_dmac_of_match,
 	},
 	.probe		= renesas_sdhi_sys_dmac_probe,
-	.remove		= renesas_sdhi_remove,
+	.remove_new	= renesas_sdhi_remove,
 };
 
 module_platform_driver(renesas_sys_dmac_sdhi_driver);

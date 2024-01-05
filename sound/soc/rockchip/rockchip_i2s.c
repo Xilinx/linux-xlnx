@@ -539,6 +539,7 @@ static int rockchip_i2s_dai_probe(struct snd_soc_dai *dai)
 }
 
 static const struct snd_soc_dai_ops rockchip_i2s_dai_ops = {
+	.probe = rockchip_i2s_dai_probe,
 	.hw_params = rockchip_i2s_hw_params,
 	.set_bclk_ratio	= rockchip_i2s_set_bclk_ratio,
 	.set_sysclk = rockchip_i2s_set_sysclk,
@@ -547,7 +548,6 @@ static const struct snd_soc_dai_ops rockchip_i2s_dai_ops = {
 };
 
 static struct snd_soc_dai_driver rockchip_i2s_dai = {
-	.probe = rockchip_i2s_dai_probe,
 	.ops = &rockchip_i2s_dai_ops,
 	.symmetric_rate = 1,
 };
@@ -659,6 +659,7 @@ static const struct of_device_id rockchip_i2s_match[] __maybe_unused = {
 	{ .compatible = "rockchip,rk3366-i2s", },
 	{ .compatible = "rockchip,rk3368-i2s", },
 	{ .compatible = "rockchip,rk3399-i2s", .data = &rk3399_i2s_pins },
+	{ .compatible = "rockchip,rk3588-i2s", },
 	{ .compatible = "rockchip,rv1126-i2s", },
 	{},
 };
@@ -850,7 +851,7 @@ err_clk:
 	return ret;
 }
 
-static int rockchip_i2s_remove(struct platform_device *pdev)
+static void rockchip_i2s_remove(struct platform_device *pdev)
 {
 	struct rk_i2s_dev *i2s = dev_get_drvdata(&pdev->dev);
 
@@ -859,8 +860,6 @@ static int rockchip_i2s_remove(struct platform_device *pdev)
 		i2s_runtime_suspend(&pdev->dev);
 
 	clk_disable_unprepare(i2s->hclk);
-
-	return 0;
 }
 
 static const struct dev_pm_ops rockchip_i2s_pm_ops = {
@@ -870,7 +869,7 @@ static const struct dev_pm_ops rockchip_i2s_pm_ops = {
 
 static struct platform_driver rockchip_i2s_driver = {
 	.probe = rockchip_i2s_probe,
-	.remove = rockchip_i2s_remove,
+	.remove_new = rockchip_i2s_remove,
 	.driver = {
 		.name = DRV_NAME,
 		.of_match_table = of_match_ptr(rockchip_i2s_match),

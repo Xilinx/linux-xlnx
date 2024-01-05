@@ -19,9 +19,7 @@
 #include <linux/io.h>
 #include <linux/module.h>
 #include <linux/bitfield.h>
-#include <linux/of_address.h>
-#include <linux/of_device.h>
-#include <linux/of_platform.h>
+#include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/prefetch.h>
 #include <linux/usb/ch9.h>
@@ -1108,7 +1106,6 @@ static int max3420_udc_start(struct usb_gadget *gadget,
 
 	spin_lock_irqsave(&udc->lock, flags);
 	/* hook up the driver */
-	driver->driver.bus = NULL;
 	udc->driver = driver;
 	udc->gadget.speed = USB_SPEED_FULL;
 
@@ -1320,7 +1317,7 @@ MODULE_DEVICE_TABLE(of, max3420_udc_of_match);
 static struct spi_driver max3420_driver = {
 	.driver = {
 		.name = "max3420-udc",
-		.of_match_table = of_match_ptr(max3420_udc_of_match),
+		.of_match_table = max3420_udc_of_match,
 	},
 	.probe = max3420_probe,
 	.remove = max3420_remove,

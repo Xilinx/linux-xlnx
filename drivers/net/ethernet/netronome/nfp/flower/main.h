@@ -52,6 +52,7 @@ struct nfp_app;
 #define NFP_FL_FEATS_QOS_PPS		BIT(9)
 #define NFP_FL_FEATS_QOS_METER		BIT(10)
 #define NFP_FL_FEATS_DECAP_V2		BIT(11)
+#define NFP_FL_FEATS_TUNNEL_NEIGH_LAG	BIT(12)
 #define NFP_FL_FEATS_HOST_ACK		BIT(31)
 
 #define NFP_FL_ENABLE_FLOW_MERGE	BIT(0)
@@ -69,7 +70,8 @@ struct nfp_app;
 	NFP_FL_FEATS_VLAN_QINQ | \
 	NFP_FL_FEATS_QOS_PPS | \
 	NFP_FL_FEATS_QOS_METER | \
-	NFP_FL_FEATS_DECAP_V2)
+	NFP_FL_FEATS_DECAP_V2 | \
+	NFP_FL_FEATS_TUNNEL_NEIGH_LAG)
 
 struct nfp_fl_mask_id {
 	struct circ_buf mask_id_free_list;
@@ -104,6 +106,16 @@ struct nfp_fl_tunnel_offloads {
 };
 
 /**
+ * struct nfp_tun_neigh_lag - lag info
+ * @lag_version:	lag version
+ * @lag_instance:	lag instance
+ */
+struct nfp_tun_neigh_lag {
+	u8 lag_version[3];
+	u8 lag_instance;
+};
+
+/**
  * struct nfp_tun_neigh - basic neighbour data
  * @dst_addr:	Destination MAC address
  * @src_addr:	Source MAC address
@@ -133,12 +145,14 @@ struct nfp_tun_neigh_ext {
  * @src_ipv4:	Source IPv4 address
  * @common:	Neighbour/route common info
  * @ext:	Neighbour/route extended info
+ * @lag:	lag port info
  */
 struct nfp_tun_neigh_v4 {
 	__be32 dst_ipv4;
 	__be32 src_ipv4;
 	struct nfp_tun_neigh common;
 	struct nfp_tun_neigh_ext ext;
+	struct nfp_tun_neigh_lag lag;
 };
 
 /**
@@ -147,12 +161,14 @@ struct nfp_tun_neigh_v4 {
  * @src_ipv6:	Source IPv6 address
  * @common:	Neighbour/route common info
  * @ext:	Neighbour/route extended info
+ * @lag:	lag port info
  */
 struct nfp_tun_neigh_v6 {
 	struct in6_addr dst_ipv6;
 	struct in6_addr src_ipv6;
 	struct nfp_tun_neigh common;
 	struct nfp_tun_neigh_ext ext;
+	struct nfp_tun_neigh_lag lag;
 };
 
 /**
@@ -281,6 +297,7 @@ struct nfp_fl_internal_ports {
  * @predt_list:		List to keep track of decap pretun flows
  * @neigh_table:	Table to keep track of neighbor entries
  * @predt_lock:		Lock to serialise predt/neigh table updates
+ * @nfp_fl_lock:	Lock to protect the flow offload operation
  */
 struct nfp_flower_priv {
 	struct nfp_app *app;
@@ -323,6 +340,7 @@ struct nfp_flower_priv {
 	struct list_head predt_list;
 	struct rhashtable neigh_table;
 	spinlock_t predt_lock; /* Lock to serialise predt/neigh table updates */
+	struct mutex nfp_fl_lock; /* Protect the flow operation */
 };
 
 /**
@@ -647,6 +665,9 @@ int nfp_flower_lag_populate_pre_action(struct nfp_app *app,
 				       struct netlink_ext_ack *extack);
 int nfp_flower_lag_get_output_id(struct nfp_app *app,
 				 struct net_device *master);
+void nfp_flower_lag_get_info_from_netdev(struct nfp_app *app,
+					 struct net_device *netdev,
+					 struct nfp_tun_neigh_lag *lag);
 void nfp_flower_qos_init(struct nfp_app *app);
 void nfp_flower_qos_cleanup(struct nfp_app *app);
 int nfp_flower_setup_qos_offload(struct nfp_app *app, struct net_device *netdev,

@@ -219,6 +219,7 @@ static int hns_roce_query_port(struct ib_device *ib_dev, u32 port_num,
 	unsigned long flags;
 	enum ib_mtu mtu;
 	u32 port;
+	int ret;
 
 	port = port_num - 1;
 
@@ -231,8 +232,10 @@ static int hns_roce_query_port(struct ib_device *ib_dev, u32 port_num,
 				IB_PORT_BOOT_MGMT_SUP;
 	props->max_msg_sz = HNS_ROCE_MAX_MSG_LEN;
 	props->pkey_tbl_len = 1;
-	props->active_width = IB_WIDTH_4X;
-	props->active_speed = 1;
+	ret = ib_get_eth_speed(ib_dev, port_num, &props->active_speed,
+			       &props->active_width);
+	if (ret)
+		ibdev_warn(ib_dev, "failed to get speed, ret = %d.\n", ret);
 
 	spin_lock_irqsave(&hr_dev->iboe.lock, flags);
 
@@ -354,16 +357,42 @@ static int hns_roce_alloc_uar_entry(struct ib_ucontext *uctx)
 static int hns_roce_alloc_ucontext(struct ib_ucontext *uctx,
 				   struct ib_udata *udata)
 {
-	int ret;
 	struct hns_roce_ucontext *context = to_hr_ucontext(uctx);
-	struct hns_roce_ib_alloc_ucontext_resp resp = {};
 	struct hns_roce_dev *hr_dev = to_hr_dev(uctx->device);
+	struct hns_roce_ib_alloc_ucontext_resp resp = {};
+	struct hns_roce_ib_alloc_ucontext ucmd = {};
+	int ret;
 
 	if (!hr_dev->active)
 		return -EAGAIN;
 
 	resp.qp_tab_size = hr_dev->caps.num_qps;
 	resp.srq_tab_size = hr_dev->caps.num_srqs;
+
+	ret = ib_copy_from_udata(&ucmd, udata,
+				 min(udata->inlen, sizeof(ucmd)));
+	if (ret)
+		return ret;
+
+	if (hr_dev->pci_dev->revision >= PCI_REVISION_ID_HIP09)
+		context->config = ucmd.config & HNS_ROCE_EXSGE_FLAGS;
+
+	if (context->config & HNS_ROCE_EXSGE_FLAGS) {
+		resp.config |= HNS_ROCE_RSP_EXSGE_FLAGS;
+		resp.max_inline_data = hr_dev->caps.max_sq_inline;
+	}
+
+	if (hr_dev->caps.flags & HNS_ROCE_CAP_FLAG_RQ_INLINE) {
+		context->config |= ucmd.config & HNS_ROCE_RQ_INLINE_FLAGS;
+		if (context->config & HNS_ROCE_RQ_INLINE_FLAGS)
+			resp.config |= HNS_ROCE_RSP_RQ_INLINE_FLAGS;
+	}
+
+	if (hr_dev->caps.flags & HNS_ROCE_CAP_FLAG_CQE_INLINE) {
+		context->config |= ucmd.config & HNS_ROCE_CQE_INLINE_FLAGS;
+		if (context->config & HNS_ROCE_CQE_INLINE_FLAGS)
+			resp.config |= HNS_ROCE_RSP_CQE_INLINE_FLAGS;
+	}
 
 	ret = hns_roce_uar_alloc(hr_dev, &context->uar);
 	if (ret)
@@ -429,14 +458,15 @@ static int hns_roce_mmap(struct ib_ucontext *uctx, struct vm_area_struct *vma)
 		prot = pgprot_device(vma->vm_page_prot);
 		break;
 	default:
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out;
 	}
 
 	ret = rdma_user_mmap_io(uctx, vma, pfn, rdma_entry->npages * PAGE_SIZE,
 				prot, rdma_entry);
 
+out:
 	rdma_user_mmap_entry_put(rdma_entry);
-
 	return ret;
 }
 
@@ -485,6 +515,83 @@ static void hns_roce_get_fw_ver(struct ib_device *device, char *str)
 		 sub_minor);
 }
 
+#define HNS_ROCE_HW_CNT(ename, cname) \
+	[HNS_ROCE_HW_##ename##_CNT].name = cname
+
+static const struct rdma_stat_desc hns_roce_port_stats_descs[] = {
+	HNS_ROCE_HW_CNT(RX_RC_PKT, "rx_rc_pkt"),
+	HNS_ROCE_HW_CNT(RX_UC_PKT, "rx_uc_pkt"),
+	HNS_ROCE_HW_CNT(RX_UD_PKT, "rx_ud_pkt"),
+	HNS_ROCE_HW_CNT(RX_XRC_PKT, "rx_xrc_pkt"),
+	HNS_ROCE_HW_CNT(RX_PKT, "rx_pkt"),
+	HNS_ROCE_HW_CNT(RX_ERR_PKT, "rx_err_pkt"),
+	HNS_ROCE_HW_CNT(RX_CNP_PKT, "rx_cnp_pkt"),
+	HNS_ROCE_HW_CNT(TX_RC_PKT, "tx_rc_pkt"),
+	HNS_ROCE_HW_CNT(TX_UC_PKT, "tx_uc_pkt"),
+	HNS_ROCE_HW_CNT(TX_UD_PKT, "tx_ud_pkt"),
+	HNS_ROCE_HW_CNT(TX_XRC_PKT, "tx_xrc_pkt"),
+	HNS_ROCE_HW_CNT(TX_PKT, "tx_pkt"),
+	HNS_ROCE_HW_CNT(TX_ERR_PKT, "tx_err_pkt"),
+	HNS_ROCE_HW_CNT(TX_CNP_PKT, "tx_cnp_pkt"),
+	HNS_ROCE_HW_CNT(TRP_GET_MPT_ERR_PKT, "trp_get_mpt_err_pkt"),
+	HNS_ROCE_HW_CNT(TRP_GET_IRRL_ERR_PKT, "trp_get_irrl_err_pkt"),
+	HNS_ROCE_HW_CNT(ECN_DB, "ecn_doorbell"),
+	HNS_ROCE_HW_CNT(RX_BUF, "rx_buffer"),
+	HNS_ROCE_HW_CNT(TRP_RX_SOF, "trp_rx_sof"),
+	HNS_ROCE_HW_CNT(CQ_CQE, "cq_cqe"),
+	HNS_ROCE_HW_CNT(CQ_POE, "cq_poe"),
+	HNS_ROCE_HW_CNT(CQ_NOTIFY, "cq_notify"),
+};
+
+static struct rdma_hw_stats *hns_roce_alloc_hw_port_stats(
+				struct ib_device *device, u32 port_num)
+{
+	struct hns_roce_dev *hr_dev = to_hr_dev(device);
+	u32 port = port_num - 1;
+
+	if (port > hr_dev->caps.num_ports) {
+		ibdev_err(device, "invalid port num.\n");
+		return NULL;
+	}
+
+	if (hr_dev->pci_dev->revision <= PCI_REVISION_ID_HIP08 ||
+	    hr_dev->is_vf)
+		return NULL;
+
+	return rdma_alloc_hw_stats_struct(hns_roce_port_stats_descs,
+					  ARRAY_SIZE(hns_roce_port_stats_descs),
+					  RDMA_HW_STATS_DEFAULT_LIFESPAN);
+}
+
+static int hns_roce_get_hw_stats(struct ib_device *device,
+				 struct rdma_hw_stats *stats,
+				 u32 port, int index)
+{
+	struct hns_roce_dev *hr_dev = to_hr_dev(device);
+	int num_counters = HNS_ROCE_HW_CNT_TOTAL;
+	int ret;
+
+	if (port == 0)
+		return 0;
+
+	if (port > hr_dev->caps.num_ports)
+		return -EINVAL;
+
+	if (hr_dev->pci_dev->revision <= PCI_REVISION_ID_HIP08 ||
+	    hr_dev->is_vf)
+		return -EOPNOTSUPP;
+
+	ret = hr_dev->hw->query_hw_counter(hr_dev, stats->value, port,
+					   &num_counters);
+	if (ret) {
+		ibdev_err(device, "failed to query hw counter, ret = %d\n",
+			  ret);
+		return ret;
+	}
+
+	return num_counters;
+}
+
 static void hns_roce_unregister_device(struct hns_roce_dev *hr_dev)
 {
 	struct hns_roce_ib_iboe *iboe = &hr_dev->iboe;
@@ -527,6 +634,8 @@ static const struct ib_device_ops hns_roce_dev_ops = {
 	.query_pkey = hns_roce_query_pkey,
 	.query_port = hns_roce_query_port,
 	.reg_user_mr = hns_roce_reg_user_mr,
+	.alloc_hw_port_stats = hns_roce_alloc_hw_port_stats,
+	.get_hw_stats = hns_roce_get_hw_stats,
 
 	INIT_RDMA_OBJ_SIZE(ib_ah, hns_roce_ah, ibah),
 	INIT_RDMA_OBJ_SIZE(ib_cq, hns_roce_cq, ib_cq),

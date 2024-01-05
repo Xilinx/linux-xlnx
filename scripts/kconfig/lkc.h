@@ -76,7 +76,7 @@ struct gstr str_new(void);
 void str_free(struct gstr *gs);
 void str_append(struct gstr *gs, const char *s);
 void str_printf(struct gstr *gs, const char *fmt, ...);
-const char *str_get(struct gstr *gs);
+char *str_get(struct gstr *gs);
 
 /* menu.c */
 void _menu_init(void);
@@ -101,6 +101,7 @@ const char *menu_get_prompt(struct menu *menu);
 struct menu *menu_get_parent_menu(struct menu *menu);
 bool menu_has_help(struct menu *menu);
 const char *menu_get_help(struct menu *menu);
+int get_jump_key_char(void);
 struct gstr get_relations_str(struct symbol **sym_arr, struct list_head *head);
 void menu_get_ext_help(struct menu *menu, struct gstr *help);
 

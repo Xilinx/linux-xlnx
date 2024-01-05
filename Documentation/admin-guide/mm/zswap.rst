@@ -1,5 +1,3 @@
-.. _zswap:
-
 =====
 zswap
 =====
@@ -14,13 +12,7 @@ for potentially reduced swap I/O.  This trade-off can also result in a
 significant performance improvement if reads from the compressed cache are
 faster than reads from a swap device.
 
-.. note::
-   Zswap is a new feature as of v3.11 and interacts heavily with memory
-   reclaim.  This interaction has not been fully explored on the large set of
-   potential configurations and workloads that exist.  For this reason, zswap
-   is a work in progress and should be considered experimental.
-
-   Some potential benefits:
+Some potential benefits:
 
 * Desktop/laptop users with limited RAM capacities can mitigate the
   performance impact of swapping.
@@ -57,7 +49,7 @@ compressed pool.
 Design
 ======
 
-Zswap receives pages for compression through the Frontswap API and is able to
+Zswap receives pages for compression from the swap subsystem and is able to
 evict pages from its own compressed pool on an LRU basis and write them back to
 the backing swap device in the case that the compressed pool is full.
 
@@ -76,23 +68,21 @@ e.g. ``zswap.zpool=zbud``. It can also be changed at runtime using the sysfs
 The zbud type zpool allocates exactly 1 page to store 2 compressed pages, which
 means the compression ratio will always be 2:1 or worse (because of half-full
 zbud pages).  The zsmalloc type zpool has a more complex compressed page
-storage method, and it can achieve greater storage densities.  However,
-zsmalloc does not implement compressed page eviction, so once zswap fills it
-cannot evict the oldest page, it can only reject new pages.
+storage method, and it can achieve greater storage densities.
 
-When a swap page is passed from frontswap to zswap, zswap maintains a mapping
+When a swap page is passed from swapout to zswap, zswap maintains a mapping
 of the swap entry, a combination of the swap type and swap offset, to the zpool
 handle that references that compressed swap page.  This mapping is achieved
 with a red-black tree per swap type.  The swap offset is the search key for the
 tree nodes.
 
-During a page fault on a PTE that is a swap entry, frontswap calls the zswap
-load function to decompress the page into the page allocated by the page fault
-handler.
+During a page fault on a PTE that is a swap entry, the swapin code calls the
+zswap load function to decompress the page into the page allocated by the page
+fault handler.
 
 Once there are no PTEs referencing a swap page stored in zswap (i.e. the count
-in the swap_map goes to 0) the swap code calls the zswap invalidate function,
-via frontswap, to free the compressed entry.
+in the swap_map goes to 0) the swap code calls the zswap invalidate function
+to free the compressed entry.
 
 Zswap seeks to be simple in its policies.  Sysfs attributes allow for one user
 controlled policy:

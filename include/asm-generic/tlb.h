@@ -246,7 +246,7 @@ struct mmu_gather_batch {
 	struct mmu_gather_batch	*next;
 	unsigned int		nr;
 	unsigned int		max;
-	struct page		*pages[];
+	struct encoded_page	*encoded_pages[];
 };
 
 #define MAX_GATHER_BATCH	\
@@ -260,8 +260,31 @@ struct mmu_gather_batch {
  */
 #define MAX_GATHER_BATCH_COUNT	(10000UL/MAX_GATHER_BATCH)
 
-extern bool __tlb_remove_page_size(struct mmu_gather *tlb, struct page *page,
+extern bool __tlb_remove_page_size(struct mmu_gather *tlb,
+				   struct encoded_page *page,
 				   int page_size);
+
+#ifdef CONFIG_SMP
+/*
+ * This both sets 'delayed_rmap', and returns true. It would be an inline
+ * function, except we define it before the 'struct mmu_gather'.
+ */
+#define tlb_delay_rmap(tlb) (((tlb)->delayed_rmap = 1), true)
+extern void tlb_flush_rmaps(struct mmu_gather *tlb, struct vm_area_struct *vma);
+#endif
+
+#endif
+
+/*
+ * We have a no-op version of the rmap removal that doesn't
+ * delay anything. That is used on S390, which flushes remote
+ * TLBs synchronously, and on UP, which doesn't have any
+ * remote TLBs to flush and is not preemptible due to this
+ * all happening under the page table lock.
+ */
+#ifndef tlb_delay_rmap
+#define tlb_delay_rmap(tlb) (false)
+static inline void tlb_flush_rmaps(struct mmu_gather *tlb, struct vm_area_struct *vma) { }
 #endif
 
 /*
@@ -293,6 +316,11 @@ struct mmu_gather {
 	 * we have removed page directories
 	 */
 	unsigned int		freed_tables : 1;
+
+	/*
+	 * Do we have pending delayed rmap removals?
+	 */
+	unsigned int		delayed_rmap : 1;
 
 	/*
 	 * at which levels have we cleared entries?
@@ -428,20 +456,19 @@ static inline void tlb_flush_mmu_tlbonly(struct mmu_gather *tlb)
 		return;
 
 	tlb_flush(tlb);
-	mmu_notifier_invalidate_range(tlb->mm, tlb->start, tlb->end);
 	__tlb_reset_range(tlb);
 }
 
 static inline void tlb_remove_page_size(struct mmu_gather *tlb,
 					struct page *page, int page_size)
 {
-	if (__tlb_remove_page_size(tlb, page, page_size))
+	if (__tlb_remove_page_size(tlb, encode_page(page, 0), page_size))
 		tlb_flush_mmu(tlb);
 }
 
-static inline bool __tlb_remove_page(struct mmu_gather *tlb, struct page *page)
+static __always_inline bool __tlb_remove_page(struct mmu_gather *tlb, struct page *page, unsigned int flags)
 {
-	return __tlb_remove_page_size(tlb, page, PAGE_SIZE);
+	return __tlb_remove_page_size(tlb, encode_page(page, flags), PAGE_SIZE);
 }
 
 /* tlb_remove_page
@@ -451,6 +478,17 @@ static inline bool __tlb_remove_page(struct mmu_gather *tlb, struct page *page)
 static inline void tlb_remove_page(struct mmu_gather *tlb, struct page *page)
 {
 	return tlb_remove_page_size(tlb, page, PAGE_SIZE);
+}
+
+static inline void tlb_remove_ptdesc(struct mmu_gather *tlb, void *pt)
+{
+	tlb_remove_table(tlb, pt);
+}
+
+/* Like tlb_remove_ptdesc, but for page-like page directories. */
+static inline void tlb_remove_page_ptdesc(struct mmu_gather *tlb, struct ptdesc *pt)
+{
+	tlb_remove_page(tlb, ptdesc_page(pt));
 }
 
 static inline void tlb_change_page_size(struct mmu_gather *tlb,

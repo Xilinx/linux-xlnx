@@ -1390,8 +1390,7 @@ static int pm3fb_probe(struct pci_dev *dev, const struct pci_device_id *ent)
 
 	info->fix = pm3fb_fix;
 	info->pseudo_palette = par->palette;
-	info->flags = FBINFO_DEFAULT |
-			FBINFO_HWACCEL_XPAN |
+	info->flags = FBINFO_HWACCEL_XPAN |
 			FBINFO_HWACCEL_YPAN |
 			FBINFO_HWACCEL_COPYAREA |
 			FBINFO_HWACCEL_IMAGEBLIT |
@@ -1540,7 +1539,12 @@ static int __init pm3fb_init(void)
 	 */
 #ifndef MODULE
 	char *option = NULL;
+#endif
 
+	if (fb_modesetting_disabled("pm3fb"))
+		return -ENODEV;
+
+#ifndef MODULE
 	if (fb_get_options("pm3fb", &option))
 		return -ENODEV;
 	pm3fb_setup(option);

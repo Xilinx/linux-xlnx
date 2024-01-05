@@ -200,7 +200,7 @@ static void *vcpu_worker(void *data)
 		if (READ_ONCE(host_quit))
 			return NULL;
 
-		clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+		clock_gettime(CLOCK_MONOTONIC, &start);
 		ret = _vcpu_run(vcpu);
 		ts_diff = timespec_elapsed(start);
 
@@ -289,7 +289,6 @@ static struct kvm_vm *pre_init_before_test(enum vm_guest_mode mode, void *arg)
 	host_test_mem = addr_gpa2hva(vm, (vm_paddr_t)guest_test_phys_mem);
 
 	/* Export shared structure test_args to guest */
-	ucall_init(vm, NULL);
 	sync_global_to_guest(vm, test_args);
 
 	ret = sem_init(&test_stage_updated, 0, 0);
@@ -368,7 +367,7 @@ static void run_test(enum vm_guest_mode mode, void *arg)
 	/* Test the stage of KVM creating mappings */
 	*current_stage = KVM_CREATE_MAPPINGS;
 
-	clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+	clock_gettime(CLOCK_MONOTONIC, &start);
 	vcpus_complete_new_stage(*current_stage);
 	ts_diff = timespec_elapsed(start);
 
@@ -381,7 +380,7 @@ static void run_test(enum vm_guest_mode mode, void *arg)
 
 	*current_stage = KVM_UPDATE_MAPPINGS;
 
-	clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+	clock_gettime(CLOCK_MONOTONIC, &start);
 	vcpus_complete_new_stage(*current_stage);
 	ts_diff = timespec_elapsed(start);
 
@@ -393,7 +392,7 @@ static void run_test(enum vm_guest_mode mode, void *arg)
 
 	*current_stage = KVM_ADJUST_MAPPINGS;
 
-	clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+	clock_gettime(CLOCK_MONOTONIC, &start);
 	vcpus_complete_new_stage(*current_stage);
 	ts_diff = timespec_elapsed(start);
 
@@ -417,7 +416,6 @@ static void run_test(enum vm_guest_mode mode, void *arg)
 	TEST_ASSERT(ret == 0, "Error in sem_destroy");
 
 	free(vcpu_threads);
-	ucall_uninit(vm);
 	kvm_vm_free(vm);
 }
 
@@ -461,8 +459,8 @@ int main(int argc, char *argv[])
 			p.test_mem_size = parse_size(optarg);
 			break;
 		case 'v':
-			nr_vcpus = atoi(optarg);
-			TEST_ASSERT(nr_vcpus > 0 && nr_vcpus <= max_vcpus,
+			nr_vcpus = atoi_positive("Number of vCPUs", optarg);
+			TEST_ASSERT(nr_vcpus <= max_vcpus,
 				    "Invalid number of vcpus, must be between 1 and %d", max_vcpus);
 			break;
 		case 's':

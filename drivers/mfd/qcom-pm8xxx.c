@@ -103,8 +103,9 @@ static int
 pm8xxx_config_irq(struct pm_irq_chip *chip, unsigned int bp, unsigned int cp)
 {
 	int	rc;
+	unsigned long flags;
 
-	spin_lock(&chip->pm_irq_lock);
+	spin_lock_irqsave(&chip->pm_irq_lock, flags);
 	rc = regmap_write(chip->regmap, SSBI_REG_ADDR_IRQ_BLK_SEL, bp);
 	if (rc) {
 		pr_err("Failed Selecting Block %d rc=%d\n", bp, rc);
@@ -116,7 +117,7 @@ pm8xxx_config_irq(struct pm_irq_chip *chip, unsigned int bp, unsigned int cp)
 	if (rc)
 		pr_err("Failed Configuring IRQ rc=%d\n", rc);
 bail:
-	spin_unlock(&chip->pm_irq_lock);
+	spin_unlock_irqrestore(&chip->pm_irq_lock, flags);
 	return rc;
 }
 
@@ -321,6 +322,7 @@ static int pm8xxx_irq_get_irqchip_state(struct irq_data *d,
 	struct pm_irq_chip *chip = irq_data_get_irq_chip_data(d);
 	unsigned int pmirq = irqd_to_hwirq(d);
 	unsigned int bits;
+	unsigned long flags;
 	int irq_bit;
 	u8 block;
 	int rc;
@@ -331,7 +333,7 @@ static int pm8xxx_irq_get_irqchip_state(struct irq_data *d,
 	block = pmirq / 8;
 	irq_bit = pmirq % 8;
 
-	spin_lock(&chip->pm_irq_lock);
+	spin_lock_irqsave(&chip->pm_irq_lock, flags);
 	rc = regmap_write(chip->regmap, SSBI_REG_ADDR_IRQ_BLK_SEL, block);
 	if (rc) {
 		pr_err("Failed Selecting Block %d rc=%d\n", block, rc);
@@ -346,7 +348,7 @@ static int pm8xxx_irq_get_irqchip_state(struct irq_data *d,
 
 	*state = !!(bits & BIT(irq_bit));
 bail:
-	spin_unlock(&chip->pm_irq_lock);
+	spin_unlock_irqrestore(&chip->pm_irq_lock, flags);
 
 	return rc;
 }
@@ -497,7 +499,6 @@ static const struct pm_irq_data pm8821_data = {
 };
 
 static const struct of_device_id pm8xxx_id_table[] = {
-	{ .compatible = "qcom,pm8018", .data = &pm8xxx_data},
 	{ .compatible = "qcom,pm8058", .data = &pm8xxx_data},
 	{ .compatible = "qcom,pm8821", .data = &pm8821_data},
 	{ .compatible = "qcom,pm8921", .data = &pm8xxx_data},
@@ -511,7 +512,6 @@ static int pm8xxx_probe(struct platform_device *pdev)
 	struct regmap *regmap;
 	int irq, rc;
 	unsigned int val;
-	u32 rev;
 	struct pm_irq_chip *chip;
 
 	data = of_device_get_match_data(&pdev->dev);
@@ -536,7 +536,6 @@ static int pm8xxx_probe(struct platform_device *pdev)
 		return rc;
 	}
 	pr_info("PMIC revision 1: %02X\n", val);
-	rev = val;
 
 	/* Read PMIC chip revision 2 */
 	rc = regmap_read(regmap, REG_HWREV_2, &val);
@@ -546,7 +545,6 @@ static int pm8xxx_probe(struct platform_device *pdev)
 		return rc;
 	}
 	pr_info("PMIC revision 2: %02X\n", val);
-	rev |= val << BITS_PER_BYTE;
 
 	chip = devm_kzalloc(&pdev->dev,
 			    struct_size(chip, config, data->num_irqs),

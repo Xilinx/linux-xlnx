@@ -1798,8 +1798,7 @@ static void prep_ssp_v2_hw(struct hisi_hba *hisi_hba,
 
 	memcpy(buf_cmd, &task->ssp_task.LUN, 8);
 	if (!tmf) {
-		buf_cmd[9] = task->ssp_task.task_attr |
-				(task->ssp_task.task_prio << 3);
+		buf_cmd[9] = task->ssp_task.task_attr;
 		memcpy(buf_cmd + 12, task->ssp_task.cmd->cmnd,
 				task->ssp_task.cmd->cmd_len);
 	} else {
@@ -2026,6 +2025,11 @@ static void slot_err_v2_hw(struct hisi_hba *hisi_hba,
 	u16 dma_tx_err_type = le16_to_cpu(err_record->dma_tx_err_type);
 	u16 sipc_rx_err_type = le16_to_cpu(err_record->sipc_rx_err_type);
 	u32 dma_rx_err_type = le32_to_cpu(err_record->dma_rx_err_type);
+	struct hisi_sas_complete_v2_hdr *complete_queue =
+			hisi_hba->complete_hdr[slot->cmplt_queue];
+	struct hisi_sas_complete_v2_hdr *complete_hdr =
+			&complete_queue[slot->cmplt_queue_slot];
+	u32 dw0 = le32_to_cpu(complete_hdr->dw0);
 	int error = -1;
 
 	if (err_phase == 1) {
@@ -2310,7 +2314,8 @@ static void slot_err_v2_hw(struct hisi_hba *hisi_hba,
 			break;
 		}
 		}
-		hisi_sas_sata_done(task, slot);
+		if (dw0 & CMPLT_HDR_RSPNS_XFRD_MSK)
+			hisi_sas_sata_done(task, slot);
 	}
 		break;
 	default:
@@ -2404,7 +2409,11 @@ static void slot_complete_v2_hw(struct hisi_hba *hisi_hba,
 				 error_info[2], error_info[3]);
 
 		if (unlikely(slot->abort)) {
-			sas_task_abort(task);
+			if (dev_is_sata(device) && task->ata_task.use_ncq)
+				sas_ata_device_link_abort(device, true);
+			else
+				sas_task_abort(task);
+
 			return;
 		}
 		goto out;
@@ -2439,7 +2448,8 @@ static void slot_complete_v2_hw(struct hisi_hba *hisi_hba,
 	case SAS_PROTOCOL_SATA | SAS_PROTOCOL_STP:
 	{
 		ts->stat = SAS_SAM_STAT_GOOD;
-		hisi_sas_sata_done(task, slot);
+		if (dw0 & CMPLT_HDR_RSPNS_XFRD_MSK)
+			hisi_sas_sata_done(task, slot);
 		break;
 	}
 	default:
@@ -2462,7 +2472,7 @@ out:
 	}
 	task->task_state_flags |= SAS_TASK_STATE_DONE;
 	spin_unlock_irqrestore(&task->task_state_lock, flags);
-	hisi_sas_slot_task_free(hisi_hba, task, slot);
+	hisi_sas_slot_task_free(hisi_hba, task, slot, true);
 
 	if (!is_internal && (task->task_proto != SAS_PROTOCOL_SMP)) {
 		spin_lock_irqsave(&device->done_lock, flags);
@@ -3551,7 +3561,7 @@ static void map_queues_v2_hw(struct Scsi_Host *shost)
 	}
 }
 
-static struct scsi_host_template sht_v2_hw = {
+static const struct scsi_host_template sht_v2_hw = {
 	.name			= DRV_NAME,
 	.proc_name		= DRV_NAME,
 	.module			= THIS_MODULE,
@@ -3615,11 +3625,6 @@ static int hisi_sas_v2_probe(struct platform_device *pdev)
 	return hisi_sas_probe(pdev, &hisi_sas_v2_hw);
 }
 
-static int hisi_sas_v2_remove(struct platform_device *pdev)
-{
-	return hisi_sas_remove(pdev);
-}
-
 static const struct of_device_id sas_v2_of_match[] = {
 	{ .compatible = "hisilicon,hip06-sas-v2",},
 	{ .compatible = "hisilicon,hip07-sas-v2",},
@@ -3636,7 +3641,7 @@ MODULE_DEVICE_TABLE(acpi, sas_v2_acpi_match);
 
 static struct platform_driver hisi_sas_v2_driver = {
 	.probe = hisi_sas_v2_probe,
-	.remove = hisi_sas_v2_remove,
+	.remove_new = hisi_sas_remove,
 	.driver = {
 		.name = DRV_NAME,
 		.of_match_table = sas_v2_of_match,

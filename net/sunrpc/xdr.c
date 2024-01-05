@@ -150,9 +150,8 @@ xdr_alloc_bvec(struct xdr_buf *buf, gfp_t gfp)
 		if (!buf->bvec)
 			return -ENOMEM;
 		for (i = 0; i < n; i++) {
-			buf->bvec[i].bv_page = buf->pages[i];
-			buf->bvec[i].bv_len = PAGE_SIZE;
-			buf->bvec[i].bv_offset = 0;
+			bvec_set_page(&buf->bvec[i], buf->pages[i], PAGE_SIZE,
+				      0);
 		}
 	}
 	return 0;
@@ -163,6 +162,56 @@ xdr_free_bvec(struct xdr_buf *buf)
 {
 	kfree(buf->bvec);
 	buf->bvec = NULL;
+}
+
+/**
+ * xdr_buf_to_bvec - Copy components of an xdr_buf into a bio_vec array
+ * @bvec: bio_vec array to populate
+ * @bvec_size: element count of @bio_vec
+ * @xdr: xdr_buf to be copied
+ *
+ * Returns the number of entries consumed in @bvec.
+ */
+unsigned int xdr_buf_to_bvec(struct bio_vec *bvec, unsigned int bvec_size,
+			     const struct xdr_buf *xdr)
+{
+	const struct kvec *head = xdr->head;
+	const struct kvec *tail = xdr->tail;
+	unsigned int count = 0;
+
+	if (head->iov_len) {
+		bvec_set_virt(bvec++, head->iov_base, head->iov_len);
+		++count;
+	}
+
+	if (xdr->page_len) {
+		unsigned int offset, len, remaining;
+		struct page **pages = xdr->pages;
+
+		offset = offset_in_page(xdr->page_base);
+		remaining = xdr->page_len;
+		while (remaining > 0) {
+			len = min_t(unsigned int, remaining,
+				    PAGE_SIZE - offset);
+			bvec_set_page(bvec++, *pages++, len, offset);
+			remaining -= len;
+			offset = 0;
+			if (unlikely(++count > bvec_size))
+				goto bvec_overflow;
+		}
+	}
+
+	if (tail->iov_len) {
+		bvec_set_virt(bvec, tail->iov_base, tail->iov_len);
+		if (unlikely(++count > bvec_size))
+			goto bvec_overflow;
+	}
+
+	return count;
+
+bvec_overflow:
+	pr_warn_once("%s: bio_vec array overflow\n", __func__);
+	return count - 1;
 }
 
 /**
@@ -863,13 +912,6 @@ static unsigned int xdr_shrink_pagelen(struct xdr_buf *buf, unsigned int len)
 	return shift;
 }
 
-void
-xdr_shift_buf(struct xdr_buf *buf, size_t len)
-{
-	xdr_shrink_bufhead(buf, buf->head->iov_len - len);
-}
-EXPORT_SYMBOL_GPL(xdr_shift_buf);
-
 /**
  * xdr_stream_pos - Return the current offset from the start of the xdr_stream
  * @xdr: pointer to struct xdr_stream
@@ -1078,22 +1120,22 @@ __be32 * xdr_reserve_space(struct xdr_stream *xdr, size_t nbytes)
 }
 EXPORT_SYMBOL_GPL(xdr_reserve_space);
 
-
 /**
  * xdr_reserve_space_vec - Reserves a large amount of buffer space for sending
  * @xdr: pointer to xdr_stream
- * @vec: pointer to a kvec array
  * @nbytes: number of bytes to reserve
  *
- * Reserves enough buffer space to encode 'nbytes' of data and stores the
- * pointers in 'vec'. The size argument passed to xdr_reserve_space() is
- * determined based on the number of bytes remaining in the current page to
- * avoid invalidating iov_base pointers when xdr_commit_encode() is called.
+ * The size argument passed to xdr_reserve_space() is determined based
+ * on the number of bytes remaining in the current page to avoid
+ * invalidating iov_base pointers when xdr_commit_encode() is called.
+ *
+ * Return values:
+ *   %0: success
+ *   %-EMSGSIZE: not enough space is available in @xdr
  */
-int xdr_reserve_space_vec(struct xdr_stream *xdr, struct kvec *vec, size_t nbytes)
+int xdr_reserve_space_vec(struct xdr_stream *xdr, size_t nbytes)
 {
-	int thislen;
-	int v = 0;
+	size_t thislen;
 	__be32 *p;
 
 	/*
@@ -1105,21 +1147,19 @@ int xdr_reserve_space_vec(struct xdr_stream *xdr, struct kvec *vec, size_t nbyte
 		xdr->end = xdr->p;
 	}
 
+	/* XXX: Let's find a way to make this more efficient */
 	while (nbytes) {
 		thislen = xdr->buf->page_len % PAGE_SIZE;
 		thislen = min_t(size_t, nbytes, PAGE_SIZE - thislen);
 
 		p = xdr_reserve_space(xdr, thislen);
 		if (!p)
-			return -EIO;
+			return -EMSGSIZE;
 
-		vec[v].iov_base = p;
-		vec[v].iov_len = thislen;
-		v++;
 		nbytes -= thislen;
 	}
 
-	return v;
+	return 0;
 }
 EXPORT_SYMBOL_GPL(xdr_reserve_space_vec);
 
@@ -1193,6 +1233,21 @@ void xdr_truncate_encode(struct xdr_stream *xdr, size_t len)
 EXPORT_SYMBOL(xdr_truncate_encode);
 
 /**
+ * xdr_truncate_decode - Truncate a decoding stream
+ * @xdr: pointer to struct xdr_stream
+ * @len: Number of bytes to remove
+ *
+ */
+void xdr_truncate_decode(struct xdr_stream *xdr, size_t len)
+{
+	unsigned int nbytes = xdr_align_size(len);
+
+	xdr->buf->len -= nbytes;
+	xdr->nwords -= XDR_QUADLEN(nbytes);
+}
+EXPORT_SYMBOL_GPL(xdr_truncate_decode);
+
+/**
  * xdr_restrict_buflen - decrease available buffer space
  * @xdr: pointer to xdr_stream
  * @newbuflen: new maximum number of bytes available
@@ -1224,30 +1279,34 @@ EXPORT_SYMBOL(xdr_restrict_buflen);
 /**
  * xdr_write_pages - Insert a list of pages into an XDR buffer for sending
  * @xdr: pointer to xdr_stream
- * @pages: list of pages
- * @base: offset of first byte
- * @len: length of data in bytes
+ * @pages: array of pages to insert
+ * @base: starting offset of first data byte in @pages
+ * @len: number of data bytes in @pages to insert
  *
+ * After the @pages are added, the tail iovec is instantiated pointing to
+ * end of the head buffer, and the stream is set up to encode subsequent
+ * items into the tail.
  */
 void xdr_write_pages(struct xdr_stream *xdr, struct page **pages, unsigned int base,
 		 unsigned int len)
 {
 	struct xdr_buf *buf = xdr->buf;
-	struct kvec *iov = buf->tail;
+	struct kvec *tail = buf->tail;
+
 	buf->pages = pages;
 	buf->page_base = base;
 	buf->page_len = len;
 
-	iov->iov_base = (char *)xdr->p;
-	iov->iov_len  = 0;
-	xdr->iov = iov;
+	tail->iov_base = xdr->p;
+	tail->iov_len = 0;
+	xdr->iov = tail;
 
 	if (len & 3) {
 		unsigned int pad = 4 - (len & 3);
 
 		BUG_ON(xdr->p >= xdr->end);
-		iov->iov_base = (char *)xdr->p + (len & 3);
-		iov->iov_len  += pad;
+		tail->iov_base = (char *)xdr->p + (len & 3);
+		tail->iov_len += pad;
 		len += pad;
 		*xdr->p++ = 0;
 	}
@@ -1279,6 +1338,14 @@ static unsigned int xdr_set_tail_base(struct xdr_stream *xdr,
 	return xdr_set_iov(xdr, buf->tail, base, len);
 }
 
+static void xdr_stream_unmap_current_page(struct xdr_stream *xdr)
+{
+	if (xdr->page_kaddr) {
+		kunmap_local(xdr->page_kaddr);
+		xdr->page_kaddr = NULL;
+	}
+}
+
 static unsigned int xdr_set_page_base(struct xdr_stream *xdr,
 				      unsigned int base, unsigned int len)
 {
@@ -1296,12 +1363,18 @@ static unsigned int xdr_set_page_base(struct xdr_stream *xdr,
 	if (len > maxlen)
 		len = maxlen;
 
+	xdr_stream_unmap_current_page(xdr);
 	xdr_stream_page_set_pos(xdr, base);
 	base += xdr->buf->page_base;
 
 	pgnr = base >> PAGE_SHIFT;
 	xdr->page_ptr = &xdr->buf->pages[pgnr];
-	kaddr = page_address(*xdr->page_ptr);
+
+	if (PageHighMem(*xdr->page_ptr)) {
+		xdr->page_kaddr = kmap_local_page(*xdr->page_ptr);
+		kaddr = xdr->page_kaddr;
+	} else
+		kaddr = page_address(*xdr->page_ptr);
 
 	pgoff = base & ~PAGE_MASK;
 	xdr->p = (__be32*)(kaddr + pgoff);
@@ -1355,6 +1428,7 @@ void xdr_init_decode(struct xdr_stream *xdr, struct xdr_buf *buf, __be32 *p,
 		     struct rpc_rqst *rqst)
 {
 	xdr->buf = buf;
+	xdr->page_kaddr = NULL;
 	xdr_reset_scratch_buffer(xdr);
 	xdr->nwords = XDR_QUADLEN(buf->len);
 	if (xdr_set_iov(xdr, buf->head, 0, buf->len) == 0 &&
@@ -1386,6 +1460,16 @@ void xdr_init_decode_pages(struct xdr_stream *xdr, struct xdr_buf *buf,
 	xdr_init_decode(xdr, buf, NULL, NULL);
 }
 EXPORT_SYMBOL_GPL(xdr_init_decode_pages);
+
+/**
+ * xdr_finish_decode - Clean up the xdr_stream after decoding data.
+ * @xdr: pointer to xdr_stream struct
+ */
+void xdr_finish_decode(struct xdr_stream *xdr)
+{
+	xdr_stream_unmap_current_page(xdr);
+}
+EXPORT_SYMBOL(xdr_finish_decode);
 
 static __be32 * __xdr_inline_decode(struct xdr_stream *xdr, size_t nbytes)
 {
@@ -2270,3 +2354,60 @@ ssize_t xdr_stream_decode_string_dup(struct xdr_stream *xdr, char **str,
 	return ret;
 }
 EXPORT_SYMBOL_GPL(xdr_stream_decode_string_dup);
+
+/**
+ * xdr_stream_decode_opaque_auth - Decode struct opaque_auth (RFC5531 S8.2)
+ * @xdr: pointer to xdr_stream
+ * @flavor: location to store decoded flavor
+ * @body: location to store decode body
+ * @body_len: location to store length of decoded body
+ *
+ * Return values:
+ *   On success, returns the number of buffer bytes consumed
+ *   %-EBADMSG on XDR buffer overflow
+ *   %-EMSGSIZE if the decoded size of the body field exceeds 400 octets
+ */
+ssize_t xdr_stream_decode_opaque_auth(struct xdr_stream *xdr, u32 *flavor,
+				      void **body, unsigned int *body_len)
+{
+	ssize_t ret, len;
+
+	len = xdr_stream_decode_u32(xdr, flavor);
+	if (unlikely(len < 0))
+		return len;
+	ret = xdr_stream_decode_opaque_inline(xdr, body, RPC_MAX_AUTH_SIZE);
+	if (unlikely(ret < 0))
+		return ret;
+	*body_len = ret;
+	return len + ret;
+}
+EXPORT_SYMBOL_GPL(xdr_stream_decode_opaque_auth);
+
+/**
+ * xdr_stream_encode_opaque_auth - Encode struct opaque_auth (RFC5531 S8.2)
+ * @xdr: pointer to xdr_stream
+ * @flavor: verifier flavor to encode
+ * @body: content of body to encode
+ * @body_len: length of body to encode
+ *
+ * Return values:
+ *   On success, returns length in bytes of XDR buffer consumed
+ *   %-EBADMSG on XDR buffer overflow
+ *   %-EMSGSIZE if the size of @body exceeds 400 octets
+ */
+ssize_t xdr_stream_encode_opaque_auth(struct xdr_stream *xdr, u32 flavor,
+				      void *body, unsigned int body_len)
+{
+	ssize_t ret, len;
+
+	if (unlikely(body_len > RPC_MAX_AUTH_SIZE))
+		return -EMSGSIZE;
+	len = xdr_stream_encode_u32(xdr, flavor);
+	if (unlikely(len < 0))
+		return len;
+	ret = xdr_stream_encode_opaque(xdr, body, body_len);
+	if (unlikely(ret < 0))
+		return ret;
+	return len + ret;
+}
+EXPORT_SYMBOL_GPL(xdr_stream_encode_opaque_auth);

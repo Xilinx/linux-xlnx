@@ -184,6 +184,7 @@ static bool tomoyo_manage_by_non_root;
  *
  * Returns nothing.
  */
+__printf(3, 4)
 static void tomoyo_addprintf(char *buffer, int len, const char *fmt, ...)
 {
 	va_list args;
@@ -2094,7 +2095,7 @@ int tomoyo_supervisor(struct tomoyo_request_info *r, const char *fmt, ...)
 		tomoyo_add_entry(r->domain, entry.query);
 		goto out;
 	}
-	len = tomoyo_round2(entry.query_len);
+	len = kmalloc_size_roundup(entry.query_len);
 	entry.domain = r->domain;
 	spin_lock(&tomoyo_query_list_lock);
 	if (tomoyo_memory_quota[TOMOYO_MEMORY_QUERY] &&

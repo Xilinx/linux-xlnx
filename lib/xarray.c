@@ -12,6 +12,8 @@
 #include <linux/slab.h>
 #include <linux/xarray.h>
 
+#include "radix-tree.h"
+
 /*
  * Coding conventions in this file:
  *
@@ -204,7 +206,7 @@ static void *xas_descend(struct xa_state *xas, struct xa_node *node)
 	void *entry = xa_entry(xas->xa, node, offset);
 
 	xas->xa_node = node;
-	if (xa_is_sibling(entry)) {
+	while (xa_is_sibling(entry)) {
 		offset = xa_to_sibling(entry);
 		entry = xa_entry(xas->xa, node, offset);
 		if (node->shift && xa_is_node(entry))
@@ -246,10 +248,6 @@ void *xas_load(struct xa_state *xas)
 	return entry;
 }
 EXPORT_SYMBOL_GPL(xas_load);
-
-/* Move the radix tree node cache here */
-extern struct kmem_cache *radix_tree_node_cachep;
-extern void radix_tree_node_rcu_free(struct rcu_head *head);
 
 #define XA_RCU_FREE	((struct xarray *)1)
 
@@ -1804,6 +1802,9 @@ EXPORT_SYMBOL(xa_get_order);
  * stores the index into the @id pointer, then stores the entry at
  * that index.  A concurrent lookup will not see an uninitialised @id.
  *
+ * Must only be operated on an xarray initialized with flag XA_FLAGS_ALLOC set
+ * in xa_init_flags().
+ *
  * Context: Any context.  Expects xa_lock to be held on entry.  May
  * release and reacquire xa_lock if @gfp flags permit.
  * Return: 0 on success, -ENOMEM if memory could not be allocated or
@@ -1851,6 +1852,9 @@ EXPORT_SYMBOL(__xa_alloc);
  * that index.  A concurrent lookup will not see an uninitialised @id.
  * The search for an empty entry will start at @next and will wrap
  * around if necessary.
+ *
+ * Must only be operated on an xarray initialized with flag XA_FLAGS_ALLOC set
+ * in xa_init_flags().
  *
  * Context: Any context.  Expects xa_lock to be held on entry.  May
  * release and reacquire xa_lock if @gfp flags permit.

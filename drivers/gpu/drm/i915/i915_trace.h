@@ -15,7 +15,6 @@
 #include "gt/intel_engine.h"
 
 #include "i915_drv.h"
-#include "i915_irq.h"
 
 /* object tracking */
 
@@ -278,7 +277,7 @@ TRACE_EVENT(i915_request_queue,
 			     ),
 
 	    TP_fast_assign(
-			   __entry->dev = rq->engine->i915->drm.primary->index;
+			   __entry->dev = rq->i915->drm.primary->index;
 			   __entry->class = rq->engine->uabi_class;
 			   __entry->instance = rq->engine->uabi_instance;
 			   __entry->ctx = rq->fence.context;
@@ -305,7 +304,7 @@ DECLARE_EVENT_CLASS(i915_request,
 			     ),
 
 	    TP_fast_assign(
-			   __entry->dev = rq->engine->i915->drm.primary->index;
+			   __entry->dev = rq->i915->drm.primary->index;
 			   __entry->class = rq->engine->uabi_class;
 			   __entry->instance = rq->engine->uabi_instance;
 			   __entry->ctx = rq->fence.context;
@@ -354,7 +353,7 @@ TRACE_EVENT(i915_request_in,
 			    ),
 
 	    TP_fast_assign(
-			   __entry->dev = rq->engine->i915->drm.primary->index;
+			   __entry->dev = rq->i915->drm.primary->index;
 			   __entry->class = rq->engine->uabi_class;
 			   __entry->instance = rq->engine->uabi_instance;
 			   __entry->ctx = rq->fence.context;
@@ -383,7 +382,7 @@ TRACE_EVENT(i915_request_out,
 			    ),
 
 	    TP_fast_assign(
-			   __entry->dev = rq->engine->i915->drm.primary->index;
+			   __entry->dev = rq->i915->drm.primary->index;
 			   __entry->class = rq->engine->uabi_class;
 			   __entry->instance = rq->engine->uabi_instance;
 			   __entry->ctx = rq->fence.context;
@@ -624,7 +623,7 @@ TRACE_EVENT(i915_request_wait_begin,
 	     * less desirable.
 	     */
 	    TP_fast_assign(
-			   __entry->dev = rq->engine->i915->drm.primary->index;
+			   __entry->dev = rq->i915->drm.primary->index;
 			   __entry->class = rq->engine->uabi_class;
 			   __entry->instance = rq->engine->uabi_instance;
 			   __entry->ctx = rq->fence.context;
@@ -669,21 +668,6 @@ TRACE_EVENT_CONDITION(i915_reg_rw,
 		__entry->reg, __entry->len,
 		(u32)(__entry->val & 0xffffffff),
 		(u32)(__entry->val >> 32))
-);
-
-TRACE_EVENT(intel_gpu_freq_change,
-	    TP_PROTO(u32 freq),
-	    TP_ARGS(freq),
-
-	    TP_STRUCT__entry(
-			     __field(u32, freq)
-			     ),
-
-	    TP_fast_assign(
-			   __entry->freq = freq;
-			   ),
-
-	    TP_printk("new_freq=%u", __entry->freq)
 );
 
 /**

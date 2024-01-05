@@ -11,19 +11,19 @@ via sysfs
 product_name
 ------------
 
-.. kernel-doc:: drivers/gpu/drm/amd/amdgpu/amdgpu_device.c
+.. kernel-doc:: drivers/gpu/drm/amd/amdgpu/amdgpu_fru_eeprom.c
    :doc: product_name
 
 product_number
 --------------
 
-.. kernel-doc:: drivers/gpu/drm/amd/amdgpu/amdgpu_device.c
-   :doc: product_name
+.. kernel-doc:: drivers/gpu/drm/amd/amdgpu/amdgpu_fru_eeprom.c
+   :doc: product_number
 
 serial_number
 -------------
 
-.. kernel-doc:: drivers/gpu/drm/amd/amdgpu/amdgpu_device.c
+.. kernel-doc:: drivers/gpu/drm/amd/amdgpu/amdgpu_fru_eeprom.c
    :doc: serial_number
 
 unique_id
@@ -37,7 +37,7 @@ Accelerated Processing Units (APU) Info
 
 .. csv-table::
    :header-rows: 1
-   :widths: 3, 2, 2, 1, 1, 1
+   :widths: 3, 2, 2, 1, 1, 1, 1
    :file: ./apu-asic-info-table.csv
 
 Discrete GPU Info

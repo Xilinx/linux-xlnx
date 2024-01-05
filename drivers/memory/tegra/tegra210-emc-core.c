@@ -9,10 +9,10 @@
 #include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/kernel.h>
+#include <linux/mod_devicetable.h>
 #include <linux/module.h>
-#include <linux/of_address.h>
-#include <linux/of_platform.h>
 #include <linux/of_reserved_mem.h>
+#include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/thermal.h>
 #include <soc/tegra/fuse.h>
@@ -1621,20 +1621,7 @@ static int tegra210_emc_debug_available_rates_show(struct seq_file *s,
 
 	return 0;
 }
-
-static int tegra210_emc_debug_available_rates_open(struct inode *inode,
-						   struct file *file)
-{
-	return single_open(file, tegra210_emc_debug_available_rates_show,
-			   inode->i_private);
-}
-
-static const struct file_operations tegra210_emc_debug_available_rates_fops = {
-	.open = tegra210_emc_debug_available_rates_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
-};
+DEFINE_SHOW_ATTRIBUTE(tegra210_emc_debug_available_rates);
 
 static int tegra210_emc_debug_min_rate_get(void *data, u64 *rate)
 {
