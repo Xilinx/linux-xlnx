@@ -593,11 +593,12 @@ struct spi_controller {
 #define SPI_CONTROLLER_MUST_RX		BIT(3)	/* Requires rx */
 #define SPI_CONTROLLER_MUST_TX		BIT(4)	/* Requires tx */
 #define SPI_CONTROLLER_GPIO_SS		BIT(5)	/* GPIO CS must select slave */
+#define SPI_CONTROLLER_SUSPENDED	BIT(6)	/* Currently suspended */
 	/*
 	 * The spi-controller has multi chip select capability and can
 	 * assert/de-assert more than one chip select at once.
 	 */
-#define SPI_CONTROLLER_MULTI_CS		BIT(6)
+#define SPI_CONTROLLER_MULTI_CS		BIT(7)
 
 	/* Flag indicating if the allocation of this struct is devres-managed */
 	bool			devm_allocated;
