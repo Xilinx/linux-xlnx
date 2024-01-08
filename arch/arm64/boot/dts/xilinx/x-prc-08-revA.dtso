@@ -106,7 +106,6 @@
 	bus-width = <4>;
 };
 
-
 /* u36a PMC_MIO40-51 MTFC16GAPALBH */
 &sdhci1 {
 	status = "okay";

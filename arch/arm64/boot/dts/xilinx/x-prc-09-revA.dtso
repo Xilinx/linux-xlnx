@@ -92,7 +92,6 @@
 	status = "okay";
 };
 
-
 &sdhci0 {
 	status = "okay";
 	xlnx,mio-bank = <0>;

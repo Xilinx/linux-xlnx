@@ -132,7 +132,6 @@
 	clocks = <&clk125>, <&clk125>, <&clk125>, <&clk125>, <&clk250>;
 };
 
-
 &gpio0 {
 	clocks = <&clk100>;
 };
