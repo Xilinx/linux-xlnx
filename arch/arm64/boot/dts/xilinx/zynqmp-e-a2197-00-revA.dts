@@ -85,7 +85,7 @@
 		clocks = <&si570_user1>;
 	};
 
-	si5332_1: si5332_1 { /* u142 - GEM0 */
+	si5332_1: si5332-1 { /* u142 - GEM0 */
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
 		clock-frequency = <125000000>;
