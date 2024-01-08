@@ -13,30 +13,29 @@
 /dts-v1/;
 /plugin/;
 
-
 &{/} {
 	compatible = "xlnx,zynqmp-sc-vpk180-revA", "xlnx,zynqmp-vpk180-revA",
 		     "xlnx,zynqmp-vpk180", "xlnx,zynqmp";
 
-	si570_ref_clk: si570_ref_clk {
+	si570_ref_clk: si570-ref-clk {
 		status = "okay";
 		compatible = "xlnx,fclk";
 		clocks = <&ref_clk>;
 	};
 
-	si570_lpddr4_clk3: si570_lpddr4_clk3 {
+	si570_lpddr4_clk3: si570-lpddr4-clk3 {
 		status = "okay";
 		compatible = "xlnx,fclk";
 		clocks = <&lpddr4_clk3>;
 	};
 
-	si570_lpddr4_clk2: si570_lpddr4_clk2 {
+	si570_lpddr4_clk2: si570-lpddr4-clk2 {
 		status = "okay";
 		compatible = "xlnx,fclk";
 		clocks = <&lpddr4_clk2>;
 	};
 
-	si570_lpddr4_clk1: si570_lpddr4_clk1 {
+	si570_lpddr4_clk1: si570-lpddr4-clk1 {
 		status = "okay";
 		compatible = "xlnx,fclk";
 		clocks = <&lpddr4_clk1>;
