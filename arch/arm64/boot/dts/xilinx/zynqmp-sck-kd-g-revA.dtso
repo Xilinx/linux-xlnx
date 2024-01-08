@@ -3,7 +3,7 @@
  * dts file for KD240 revA Carrier Card
  *
  * Copyright (C) 2021 - 2022, Xilinx, Inc.
- * Copyright (C) 2022, Advanced Micro Devices, Inc.
+ * Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc.
  *
  * Michal Simek <michal.simek@amd.com>
  */
@@ -345,6 +345,7 @@
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart0_default>;
+	assigned-clock-rates = <100000000>;
 };
 
 &uart1 {
