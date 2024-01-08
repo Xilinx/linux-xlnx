@@ -338,7 +338,7 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <7>;
-			/* U219 - i2c adddress UNKNOWN */
+			/* U219 - i2c address UNKNOWN */
 		};
 	};
 };
