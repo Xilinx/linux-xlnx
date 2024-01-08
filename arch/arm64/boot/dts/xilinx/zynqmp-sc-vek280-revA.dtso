@@ -22,49 +22,49 @@
 		clock-frequency = <50000000>;
 	};
 
-	gtclk1_1: sys_clk_0 {
+	gtclk1_1: sys-clk-0 {
 		status = "okay";
 		compatible = "xlnx,fclk";
 		clocks = <&vc7 0>;
 	};
 
-	gtclk1_2: sys_clk_1 {
+	gtclk1_2: sys-clk-1 {
 		status = "okay";
 		compatible = "xlnx,fclk";
 		clocks = <&vc7 1>;
 	};
 
-	gtclk1_3: sys_clk_2 {
+	gtclk1_3: sys-clk-2 {
 		status = "okay";
 		compatible = "xlnx,fclk";
 		clocks = <&vc7 2>;
 	};
 
-	gtclk1_6: gtclk1_out6 {
+	gtclk1_6: gtclk1-out6 {
 		status = "okay";
 		compatible = "xlnx,fclk";
 		clocks = <&vc7 3>;
 	};
 
-	gtclk1_7: gtclk1_out7 {
+	gtclk1_7: gtclk1-out7 {
 		status = "okay";
 		compatible = "xlnx,fclk";
 		clocks = <&vc7 4>;
 	};
 
-	gtclk1_8: gtclk1_out8 {
+	gtclk1_8: gtclk1-out8 {
 		status = "okay";
 		compatible = "xlnx,fclk";
 		clocks = <&vc7 5>;
 	};
 
-	gtclk1_10: ps_ref_clk {
+	gtclk1_10: ps-ref-clk {
 		status = "okay";
 		compatible = "xlnx,fclk";
 		clocks = <&vc7 6>;
 	};
 
-	gtclk1_11: gtclk1_out11 {
+	gtclk1_11: gtclk1-out11 {
 		status = "okay";
 		compatible = "xlnx,fclk";
 		clocks = <&vc7 7>;
