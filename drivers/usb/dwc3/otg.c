@@ -16,7 +16,6 @@
 #include <linux/sched.h>
 #include <linux/freezer.h>
 #include <linux/kthread.h>
-#include <linux/version.h>
 #include <linux/sysfs.h>
 
 #include <linux/usb.h>
