@@ -38,8 +38,12 @@
 	status = "okay";
 	phy-handle = <&phy1>; /* u175 */
 	phy-mode = "rgmii-id"; /* RTL8211DN */
-	phy1: phy@1 {
-		reg = <2>;
+	mdio: mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		phy1: phy@1 {
+			reg = <2>;
+		};
 	};
 };
 

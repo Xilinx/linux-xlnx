@@ -38,13 +38,17 @@
 	status = "okay";
 	phy-handle = <&phy1>;
 	phy-mode = "rgmii-id";
-	phy1: phy@1 { /* 88e1510 */
-		reg = <1>;
-	};
-	phy2: phy@2 { /* VSC8531 */
-		reg = <2>;
-		rx-internal-delay-ps = <2600>;
-		tx-internal-delay-ps = <2600>;
+	mdio: mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		phy1: phy@1 { /* 88e1510 */
+			reg = <1>;
+		};
+		phy2: phy@2 { /* VSC8531 */
+			reg = <2>;
+			rx-internal-delay-ps = <2600>;
+			tx-internal-delay-ps = <2600>;
+		};
 	};
 };
 
