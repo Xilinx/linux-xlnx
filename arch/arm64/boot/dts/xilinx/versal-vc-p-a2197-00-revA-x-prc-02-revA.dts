@@ -41,8 +41,12 @@
 	status = "okay";
 	phy-handle = <&phy0>; /* u9 */
 	phy-mode = "rgmii-id";
-	phy0: phy@1 { /* Marvell 88E1512; U9 */
-		reg = <1>;
+	mdio: mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		phy0: phy@1 { /* Marvell 88E1512; U9 */
+			reg = <1>;
+		};
 	};
 };
 
