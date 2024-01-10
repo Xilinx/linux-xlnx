@@ -900,8 +900,7 @@
 			interrupts = <GIC_SPI 133 IRQ_TYPE_LEVEL_HIGH>;
 			power-domains = <&zynqmp_firmware PD_SATA>;
 			resets = <&zynqmp_reset ZYNQMP_RESET_SATA>;
-			/* iommus = <&smmu 0x4c0>, <&smmu 0x4c1>, */
-			/*	 <&smmu 0x4c2>, <&smmu 0x4c3>; */
+			/* iommus = <&smmu 0x4c0>, <&smmu 0x4c1>, <&smmu 0x4c2>, <&smmu 0x4c3>; */
 			/* dma-coherent; */
 		};
 
