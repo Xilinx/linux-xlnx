@@ -4089,7 +4089,7 @@ static void spi_nor_restore(struct spi_nor *nor)
 			 * CS1 need to be asserted simulatneously.
 			 */
 			nor->spimem->spi->cs_index_mask = SPI_NOR_ENABLE_MULTI_CS;
-			spi_nor_set_4byte_addr_mode(nor, false);
+			ret = spi_nor_set_4byte_addr_mode(nor, false);
 			if (ret)
 				/*
 				 * Do not stop the execution in the hope that the flash
