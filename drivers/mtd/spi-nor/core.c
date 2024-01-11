@@ -2105,11 +2105,11 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
 	/* erase multiple sectors */
 	} else {
 		if (nor->flags & SNOR_F_HAS_PARALLEL) {
-			u64 aux = offset;
+			u64 aux = addr;
 
 			ret = do_div(aux, n_flash);
 			offset = aux;
-			ret = spi_nor_erase_multi_sectors(nor, addr, len);
+			ret = spi_nor_erase_multi_sectors(nor, offset, len);
 			if (ret)
 				goto erase_err;
 		} else {
