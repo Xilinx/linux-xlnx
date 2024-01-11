@@ -648,6 +648,14 @@ static struct clk_bulk_data hdmitx_clks[] = {
 	xlnx_hdmi_writel(hdmi, HDMI_TX_PIO_OUT_CLR,\
 			 HDMI_TX_PIO_OUT_BRIDGE_PIXEL)
 
+#define xlnx_pioout_bridge_pixel_set(hdmi) \
+	xlnx_hdmi_writel(hdmi, HDMI_TX_PIO_OUT_SET,\
+			 HDMI_TX_PIO_OUT_BRIDGE_PIXEL)
+
+#define xlnx_pioout_bridge_yuv_set(hdmi) \
+	xlnx_hdmi_writel(hdmi, HDMI_TX_PIO_OUT_SET,\
+			 HDMI_TX_PIO_OUT_BRIDGE_YUV420)
+
 #define xlnx_hdmi_auxintr_enable(hdmi) \
 	xlnx_hdmi_writel(hdmi, HDMI_TX_AUX_CTRL_SET,\
 			 HDMI_TX_AUD_CTRL_IE)
@@ -948,6 +956,16 @@ static void xlnx_hdmi_vtc_set_timing(struct xlnx_hdmi *hdmi,
 		hdmi->config.htiming_div_fact;
 	hsync_len = (mode->hsync_end - mode->hsync_start) /
 		hdmi->config.htiming_div_fact;
+	if (hdmi->xvidc_colorfmt == HDMI_TX_CSF_YCRCB_420) {
+		if (hactive & 0x1 || hfront_porch & 0x1 ||
+		    hback_porch & 0x1 || hsync_len & 0x1)
+			dev_dbg(hdmi->dev, "VTC does not support this timing\n");
+
+		hactive = hactive / 2;
+		hfront_porch = hfront_porch / 2;
+		hback_porch = hback_porch / 2;
+		hsync_len = hsync_len / 2;
+	}
 	htotal = hactive + hfront_porch + hsync_len + hback_porch;
 	hsync_start = hactive + hfront_porch;
 	hbackporch_start = hsync_start + hsync_len;
@@ -2335,7 +2353,7 @@ static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 			phy_cfg.hdmi.tx_params = 1;
 			phy_cfg.hdmi.ppc = hdmi->config.ppc;
 			phy_cfg.hdmi.bpc = hdmi->config.bpc;
-			phy_cfg.hdmi.fmt = HDMI_TX_CSF_RGB;
+			phy_cfg.hdmi.fmt = hdmi->xvidc_colorfmt;
 			phy_cfg.hdmi.tx_tmdsclk = hdmi->tmds_clk;
 			for (i = 0; i < HDMI_MAX_LANES; i++) {
 				ret = phy_configure(hdmi->phy[i], &phy_cfg);
@@ -2474,8 +2492,18 @@ static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 
 				hdmi->hdmi_stream_up = 1;
 
-				xlnx_pioout_bridge_yuv_clr(hdmi);
-				xlnx_pioout_bridge_pixel_clr(hdmi);
+				if (hdmi->xvidc_colorfmt == HDMI_TX_CSF_YCRCB_420) {
+					xlnx_pioout_bridge_yuv_set(hdmi);
+					xlnx_pioout_bridge_pixel_clr(hdmi);
+				} else {
+					if (hdmi->iframe.pixel_repeat) {
+						xlnx_pioout_bridge_yuv_clr(hdmi);
+						xlnx_pioout_bridge_pixel_set(hdmi);
+					} else {
+						xlnx_pioout_bridge_yuv_clr(hdmi);
+						xlnx_pioout_bridge_pixel_clr(hdmi);
+					}
+				}
 				xlnx_hdmi_stream_start(hdmi);
 				xlnx_hdmi_clkratio(hdmi);
 			}
@@ -2937,6 +2965,17 @@ color_formats xlnx_hdmi_find_media_bus(struct xlnx_hdmi *hdmi,
 	}
 }
 
+static u64 xlnx_hdmi_get_tmdsclk(struct xlnx_hdmi *hdmi, struct drm_display_mode *adjusted_mode)
+{
+	u32 tmdsclk;
+
+	tmdsclk = adjusted_mode->clock * 1000;
+	if (hdmi->xvidc_colorfmt == HDMI_TX_CSF_YCRCB_420)
+		tmdsclk = tmdsclk >> 1;
+
+	return tmdsclk;
+}
+
 /**
  * xlnx_hdmi_encoder_atomic_mode_set - drive the HDMI timing parameters
  *
@@ -3025,7 +3064,7 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	dev_dbg(hdmi->dev, "xvidc_colorfmt = %d\n", hdmi->xvidc_colorfmt);
 	dev_dbg(hdmi->dev, "xvidc_colordepth = %d\n", hdmi->xvidc_colordepth);
 
-	hdmi->tmds_clk = adjusted_mode->clock * 1000;
+	hdmi->tmds_clk = xlnx_hdmi_get_tmdsclk(hdmi, adjusted_mode);
 	dev_dbg(hdmi->dev, "tmds_clk = %u\n", hdmi->tmds_clk);
 
 	if (connector->display_info.is_hdmi)
@@ -3090,7 +3129,7 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 		xlnx_pioout_bridge_pixel_clr(hdmi);
 	}
 
-	dev_dbg(hdmi->dev, "mode->clock = %u Hz\n", adjusted_mode->clock);
+	dev_dbg(hdmi->dev, "tmds_clk = %u Hz\n", hdmi->tmds_clk);
 
 	hdmi->wait_for_streamup = 0;
 	wait_event_timeout(hdmi->wait_event, hdmi->wait_for_streamup,
