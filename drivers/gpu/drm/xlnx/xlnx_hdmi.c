@@ -7,6 +7,16 @@
  * Author: Venkateshwar Rao G <vgannava.xilinx.com>
  */
 
+#include <drm/drm_atomic_helper.h>
+#include <drm/drm_connector.h>
+#include <drm/drm_crtc_helper.h>
+#include <drm/drm_framebuffer.h>
+#include <drm/drm_edid.h>
+#include <drm/drm_fourcc.h>
+#include <drm/drm_of.h>
+#include <drm/drm_probe_helper.h>
+#include <drm/drm_sysfs.h>
+
 #include <linux/bitfield.h>
 #include <linux/clk.h>
 #include <linux/component.h>
@@ -22,21 +32,10 @@
 #include <linux/sysfs.h>
 #include <linux/workqueue.h>
 #include <linux/xlnx/xlnx_timer.h>
-
 #include <uapi/linux/media-bus-format.h>
 
-#include <drm/drm_atomic_helper.h>
-#include <drm/drm_connector.h>
-#include <drm/drm_crtc_helper.h>
-#include <drm/drm_framebuffer.h>
-#include <drm/drm_edid.h>
-#include <drm/drm_fourcc.h>
-#include <drm/drm_of.h>
-#include <drm/drm_probe_helper.h>
-#include <drm/drm_sysfs.h>
-
-#include "xlnx_bridge.h"
 #include "hdcp/xlnx_hdcp_tx.h"
+#include "xlnx_bridge.h"
 
 /* Parallel Interface registers */
 #define HDMI_TX_PIO_ID				0x40
