@@ -345,6 +345,11 @@
 #define HDMI_MAX_WIDTH	10240
 #define HDMI_MAX_HEIGHT	4320
 
+#define XHDMI_AUX_PKT_HEADER_SIZE	4
+#define XHDMI_AUX_PKT_DATA_SIZE		32
+#define XHDMI_AUX_PKT_SIZE		(XHDMI_AUX_PKT_HEADER_SIZE + \
+					 XHDMI_AUX_PKT_DATA_SIZE)
+
 /**
  * enum hdmi_state - Stream state
  * @HDMI_TX_STATE_STREAM_DOWN: stream down
@@ -526,6 +531,7 @@ struct xlnx_hdmi_stream {
  * @wait_event: Wait event
  * @bridge: bridge structure
  * @height_out: configurable bridge output height parameter
+ * @saved_adjusted_mode: Copy of @drm_crtc_state.adjusted_mode
  * @height_out_prop_val: configurable bridge output height parameter value
  * @width_out: configurable bridge output width parameter
  * @width_out_prop_val: configurable bridge output width parameter value
@@ -538,6 +544,8 @@ struct xlnx_hdmi_stream {
  * @hdcp2x_timer_irq: hdcp2x timer interrupt
  * @hdcp1x_timer_irq: HDCP1X timer interrupt
  * @hdcp_irq: HDCP1.4 protocol interrupt
+ * @aux_buffer: Aux packet buffer
+ * @iframe: AVI infroframe structure
  */
 struct xlnx_hdmi {
 	struct device *dev;
@@ -568,6 +576,7 @@ struct xlnx_hdmi {
 	struct drm_property *height_out;
 	u32 height_out_prop_val;
 	struct drm_property *width_out;
+	struct drm_display_mode saved_adjusted_mode;
 	u32 width_out_prop_val;
 	struct drm_property *in_fmt;
 	u32 in_fmt_prop_val;
@@ -578,6 +587,8 @@ struct xlnx_hdmi {
 	int hdcp2x_timer_irq;
 	int hdcp1x_timer_irq;
 	int hdcp_irq;
+	u32 aux_buffer[XHDMI_AUX_PKT_SIZE / sizeof(u32)];
+	struct hdmi_avi_infoframe iframe;
 };
 
 enum xlnx_hdmitx_clks {
@@ -1512,6 +1523,100 @@ xlnx_hdmi_clkratio(struct xlnx_hdmi *hdmi)
 	return status;
 }
 
+static void xlnx_hdmi_avi_infoframe_colorspace(struct hdmi_avi_infoframe *frame,
+					       enum color_formats fmt)
+{
+	switch (fmt) {
+	case HDMI_TX_CSF_RGB:
+		frame->colorspace = HDMI_COLORSPACE_RGB;
+		break;
+	case HDMI_TX_CSF_YCRCB_420:
+		frame->colorspace = HDMI_COLORSPACE_YUV420;
+		break;
+	case HDMI_TX_CSF_YCRCB_422:
+		frame->colorspace = HDMI_COLORSPACE_YUV422;
+		break;
+	case HDMI_TX_CSF_YCRCB_444:
+		frame->colorspace = HDMI_COLORSPACE_YUV444;
+		break;
+	default:
+		break;
+	}
+}
+
+static void xlnx_hdmi_aux_write(struct xlnx_hdmi *hdmi)
+{
+	int index;
+	u32 readval;
+
+	readval = xlnx_hdmi_readl(hdmi, HDMI_TX_AUX_STA);
+
+	if ((readval & (HDMI_TX_AUX_STA_PKT_RDY | HDMI_TX_AUX_STA_FL))) {
+		if (readval & HDMI_TX_AUX_STA_FL) {
+			dev_dbg(hdmi->dev, "HDMI TX AUX FIFO full\n");
+		} else {
+			for (index = 0; index < (XHDMI_AUX_PKT_SIZE / sizeof(u32)); index++) {
+				xlnx_hdmi_writel(hdmi, HDMI_TX_AUX_DAT,
+						 hdmi->aux_buffer[index]);
+			}
+		}
+	}
+}
+
+static ssize_t xlnx_hdmi_send_avi_infoframe(struct xlnx_hdmi *hdmi)
+{
+	struct hdmi_avi_infoframe *frame = &hdmi->iframe;
+	u8 *ptr = (u8 *)hdmi->aux_buffer;
+	u8 buffer[HDMI_INFOFRAME_SIZE(AVI)] = {0};
+	int ret;
+	ssize_t err;
+
+	ret = drm_hdmi_avi_infoframe_from_display_mode(frame,
+						       &hdmi->connector,
+						       &hdmi->saved_adjusted_mode);
+	if (ret < 0) {
+		dev_err(hdmi->dev, "couldn't fill AVI infoframe\n");
+		return ret;
+	}
+
+	xlnx_hdmi_avi_infoframe_colorspace(frame, hdmi->xvidc_colorfmt);
+	err = hdmi_avi_infoframe_pack(frame, buffer, HDMI_INFOFRAME_SIZE(AVI));
+	if (err < 0) {
+		dev_err(hdmi->dev, "Failed to pack AVI infoframe: %zd\n", err);
+		return err;
+	}
+
+	/*
+	 * As per the Table 8-1 in HDMI 1.4b specification, packetization of
+	 * AVI Infoframe is like: HB0 HB1 HB2 PB0 PB1 .....PB27.
+	 */
+
+	/* Setting AVI Infoframe packet header from HB0 to HB2 */
+	ptr[0] = buffer[0];
+	ptr[1] = buffer[1];
+	ptr[2] = buffer[2];
+	/* Checksum (this will be calculated by the HDMI TX IP) */
+	ptr[3] = 0x0;
+
+	/* Copying PB0 - PB27 from offset 4 in the buffer */
+	memcpy((void *)(&ptr[4]), (void *)(&buffer[3]),
+	       (HDMI_INFOFRAME_SIZE(AVI) - HDMI_INFOFRAME_HEADER_SIZE));
+
+	xlnx_hdmi_aux_write(hdmi);
+
+	return 0;
+}
+
+static void xlnx_hdmi_send_infoframes(struct xlnx_hdmi *hdmi)
+{
+	xlnx_hdmi_send_avi_infoframe(hdmi);
+}
+
+static void xlnx_hdmi_vsync_event_handler(struct xlnx_hdmi *hdmi)
+{
+	xlnx_hdmi_send_infoframes(hdmi);
+}
+
 /**
  * xlnx_hdmi_stream_start - set core parameters
  * @hdmi: pointer to HDMI TX core instance
@@ -2317,6 +2422,11 @@ static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 	if (event & HDMI_TX_PIO_IN_BRIDGE_UFLOW)
 		dev_err_ratelimited(hdmi->dev, "Underflow interrupt\n");
 
+	/* vsync event has occurred */
+	if (event & HDMI_TX_PIO_IN_VS) {
+		dev_dbg_ratelimited(hdmi->dev, "Vsync interrupt\n");
+		xlnx_hdmi_vsync_event_handler(hdmi);
+	}
 	/* Link ready event has occurred */
 	if (event & HDMI_TX_PIO_IN_LNK_RDY) {
 		/* Check the link status */
@@ -2851,6 +2961,7 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	int ret, i;
 	u32 drm_fourcc, lnk_clk, vid_clk;
 
+	drm_mode_copy(&hdmi->saved_adjusted_mode, &crtc_state->adjusted_mode);
 	dev_dbg(hdmi->dev, "mode->clock = %d\n", mode->clock * 1000);
 	dev_dbg(hdmi->dev, "mode->crtc_clock = %d\n", mode->crtc_clock * 1000);
 	dev_dbg(hdmi->dev, "mode->pvsync = %d\n",
@@ -2916,6 +3027,9 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 
 	hdmi->tmds_clk = adjusted_mode->clock * 1000;
 	dev_dbg(hdmi->dev, "tmds_clk = %u\n", hdmi->tmds_clk);
+
+	if (connector->display_info.is_hdmi)
+		xlnx_hdmi_send_infoframes(hdmi);
 
 	if (hdmi->stream.is_frl) {
 		phy_cfg.hdmi.clkout1_obuftds = 1;
