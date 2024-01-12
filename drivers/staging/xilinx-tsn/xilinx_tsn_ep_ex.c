@@ -83,7 +83,7 @@ static int tsn_ex_ep_probe(struct platform_device *pdev)
 	struct net_device *ndev;
 	struct device_node *ep_node;
 	struct axienet_local *ep_lp;
-	const void *mac_addr;
+	u8 mac_addr[ETH_ALEN];
 	int ret = 0;
 	const void *packet_switch;
 
@@ -108,7 +108,7 @@ static int tsn_ex_ep_probe(struct platform_device *pdev)
 	lp->dev = &pdev->dev;
 	lp->options = XAE_OPTION_DEFAULTS;
 	/* Retrieve the MAC address */
-	ret = of_get_mac_address(pdev->dev.of_node, (u8 *)mac_addr);
+	ret = of_get_mac_address(pdev->dev.of_node, mac_addr);
 	if (ret) {
 		dev_err(&pdev->dev, "could not find MAC address\n");
 		goto free_netdev;
