@@ -1108,10 +1108,9 @@ static int steam_probe(struct hid_device *hdev,
 		return hid_hw_start(hdev, HID_CONNECT_DEFAULT);
 
 	steam = devm_kzalloc(&hdev->dev, sizeof(*steam), GFP_KERNEL);
-	if (!steam) {
-		ret = -ENOMEM;
-		goto steam_alloc_fail;
-	}
+	if (!steam)
+		return -ENOMEM;
+
 	steam->hdev = hdev;
 	hid_set_drvdata(hdev, steam);
 	spin_lock_init(&steam->lock);
@@ -1178,9 +1177,6 @@ hid_hw_start_fail:
 	cancel_work_sync(&steam->work_connect);
 	cancel_delayed_work_sync(&steam->mode_switch);
 	cancel_work_sync(&steam->rumble_work);
-steam_alloc_fail:
-	hid_err(hdev, "%s: failed with error %d\n",
-			__func__, ret);
 	return ret;
 }
 
