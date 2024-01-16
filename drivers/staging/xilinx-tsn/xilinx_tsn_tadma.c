@@ -371,22 +371,6 @@ int __maybe_unused axienet_tadma_probe(struct platform_device *pdev,
 	return 0;
 }
 
-static inline void tadma_pm_inc(int sid, struct axienet_local *lp)
-{
-	pm_entry_t pm;
-	u32 offset;
-	u8 wr;
-
-	offset = XTADMA_PM_OFFSET + (sid * sizeof(pm_entry_t));
-	pm = tadma_ior(lp, offset);
-	wr = (pm & XTADMA_PM_WR_MASK) >> XTADMA_PM_WR_SHIFT;
-	wr = (wr + 1) % lp->num_tadma_buffers;
-	pm &= ~XTADMA_PM_WR_MASK;
-	pm |= (wr << XTADMA_PM_WR_SHIFT);
-
-	tadma_iow(lp, offset, pm);
-}
-
 static int axienet_check_pm_space(int sid, int num_frag,
 				  u32 wr, u32 rd, int total)
 {
