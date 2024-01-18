@@ -7,6 +7,11 @@
 
 #define CB_MAX_PAYLOAD_SIZE	(4U) /*In payload maximum 32bytes */
 
+#define EVENT_SUBSYSTEM_RESTART		(4U)
+
+#define PM_DEV_ACPU_0_0			(0x1810c0afU)
+#define PM_DEV_ACPU_0			(0x1810c003U)
+
 /************************** Exported Function *****************************/
 
 typedef void (*event_cb_func_t)(const u32 *payload, void *data);
