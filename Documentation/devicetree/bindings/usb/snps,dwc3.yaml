@@ -54,8 +54,6 @@ properties:
       - items:
           enum: [host, peripheral, otg, wakeup]
       - items:
-          enum: [host, peripheral, otg]
-      - items:
           enum: [dwc_usb3, otg, hiber]
 
   clocks:

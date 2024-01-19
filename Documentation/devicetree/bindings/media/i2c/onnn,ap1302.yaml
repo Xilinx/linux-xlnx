@@ -83,7 +83,7 @@ properties:
         const: 0
 
       onnn,model:
-        $ref: "/schemas/types.yaml#/definitions/string"
+        $ref: /schemas/types.yaml#/definitions/string
         description: |
           Model of the connected sensors. Must be a valid compatible string.
 
