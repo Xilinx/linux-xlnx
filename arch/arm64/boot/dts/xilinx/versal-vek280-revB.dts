@@ -63,7 +63,6 @@
 	#stream-id-cells = <1>;
 	#address-cells = <1>;
 	#size-cells = <0>;
-	reset-gpios = <&gpio1 12 GPIO_ACTIVE_HIGH>;
 
 	flash@0 {
 		compatible = "mt35xu02g", "micron,m25p80", "jedec,spi-nor";
@@ -79,6 +78,7 @@
 		spi-rx-bus-width = <8>;
 		spi-max-frequency = <20000000>;
 		no-wp;
+		reset-gpios = <&gpio1 12 GPIO_ACTIVE_HIGH>;
 		partition@0 {
 			label = "spi0-flash0";
 			reg = <0 0x8000000>;

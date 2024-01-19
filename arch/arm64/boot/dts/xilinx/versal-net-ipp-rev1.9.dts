@@ -459,7 +459,6 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			power-domains = <&versal_net_firmware PM_DEV_OSPI>;
-			reset-gpios = <&gpio1 0xc GPIO_ACTIVE_HIGH>;
 
 			mt35xu02g: flash@0 {
 				compatible = "micron,m25p80", "jedec,spi-nor";
@@ -476,6 +475,7 @@
 				spi-max-frequency = <5000000>;
 				broken-flash-reset;
 				no-wp;
+				reset-gpios = <&gpio1 0xc GPIO_ACTIVE_HIGH>;
 
 				partitions {
 					compatible = "fixed-partitions";
