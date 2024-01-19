@@ -60,7 +60,7 @@ properties:
     description:
       A phandle to a syscon device, used to access
       dp audio cfg registers.
-    $ref: "/schemas/types.yaml#/definitions/phandle"
+    $ref: /schemas/types.yaml#/definitions/phandle
 
   interrupts:
     maxItems: 1

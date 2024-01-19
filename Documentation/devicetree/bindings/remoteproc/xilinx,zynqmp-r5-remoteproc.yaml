@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
 %YAML 1.2
 ---
-$id: "http://devicetree.org/schemas/remoteproc/xilinx,zynqmp-r5-remoteproc.yaml#"
-$schema: "http://devicetree.org/meta-schemas/core.yaml#"
+$id: http://devicetree.org/schemas/remoteproc/xilinx,zynqmp-r5-remoteproc.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
 
-title: Xilinx R5 remote processor controller bindings
+title: Xilinx R5 remote processor controller
 
 description:
   This document defines the binding for the remoteproc component that loads and
@@ -48,7 +48,7 @@ properties:
       Should be either a value of 0 (LockStep mode) or 1 (Split mode),
       default is LockStep mode if omitted.
 
-#R5F Processor Child Nodes:
+# R5F Processor Child Nodes:
 # ==========================
 
 patternProperties:
@@ -96,10 +96,10 @@ patternProperties:
         additionalItems: true
 
       power-domain:
+        $ref: /schemas/types.yaml#/definitions/uint32
         description: |
           Power node ID that is used to uniquely identify the RPU for Xilinx
           Power Management.
-        maxItems: 1
 
 # Optional properties:
 # --------------------
@@ -127,6 +127,8 @@ patternProperties:
         $ref: /schemas/types.yaml#/definitions/phandle-array
         minItems: 1
         maxItems: 4
+        items:
+          maxItems: 1
         description: |
           Phandles to one or more reserved on-chip SRAM regions. The regions
           should be defined as child nodes of the respective SRAM node, and
