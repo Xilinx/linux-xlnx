@@ -44,6 +44,7 @@ struct vb2_dc_buf {
 
 	struct vb2_buffer		*vb;
 	bool				non_coherent_mem;
+	int                             dma_addr_offset;
 };
 
 /*********************************************/
@@ -73,7 +74,6 @@ static unsigned long vb2_dc_get_contiguous_size(struct sg_table *sgt)
 static void *vb2_dc_cookie(struct vb2_buffer *vb, void *buf_priv)
 {
 	struct vb2_dc_buf *buf = buf_priv;
-
 	return &buf->dma_addr;
 }
 
@@ -725,8 +725,15 @@ static int vb2_dc_map_dmabuf(void *mem_priv)
 		dma_buf_unmap_attachment(buf->db_attach, sgt, buf->dma_dir);
 		return -EFAULT;
 	}
+	if (buf->dma_addr_offset >= buf->size) {
+		pr_err("dma offset is larger than dma buffer size %lu/%lu\n",
+		        buf->dma_addr_offset, buf->size);
+		dma_buf_unmap_attachment(buf->db_attach, sgt, buf->dma_dir);
+		return -EFAULT;
+	}
 
 	buf->dma_addr = sg_dma_address(sgt->sgl);
+        buf->dma_addr = buf->dma_addr + buf->dma_addr_offset;
 	buf->dma_sgt = sgt;
 	buf->vaddr = NULL;
 
@@ -802,7 +809,7 @@ static void *vb2_dc_attach_dmabuf(struct vb2_buffer *vb, struct device *dev,
 	buf->dma_dir = vb->vb2_queue->dma_dir;
 	buf->size = size;
 	buf->db_attach = dba;
-
+        buf->dma_addr_offset = dbuf->dma_buf_offset;
 	return buf;
 }
 
