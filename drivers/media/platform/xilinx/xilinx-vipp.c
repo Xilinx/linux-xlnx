@@ -383,7 +383,7 @@ int xvip_graph_pipeline_start_stop(struct xvip_composite_device *xdev,
 {
 	struct v4l2_async_connection *asd;
 
-	list_for_each_entry(asd, &xdev->notifier.waiting_list, asc_entry) {
+	list_for_each_entry(asd, &xdev->notifier.done_list, asc_entry) {
 		struct xvip_graph_entity *entity;
 		bool state;
 
