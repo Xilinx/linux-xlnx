@@ -543,7 +543,7 @@ static int xhdmiphy_parse_of(struct xhdmiphy_dev *priv)
 		return rc;
 	}
 
-	if (val < 0 && val > 6) {
+	if (val < 0 || val > 6) {
 		dev_err(priv->dev, "dt rx-pll-selection %d is invalid\n",
 			val);
 		return -EINVAL;
@@ -557,7 +557,7 @@ static int xhdmiphy_parse_of(struct xhdmiphy_dev *priv)
 		return rc;
 	}
 
-	if (val < 0 && val > 6) {
+	if (val < 0 || val > 6) {
 		dev_err(priv->dev, "dt tx-pll-selection %d is invalid\n",
 			val);
 		return -EINVAL;
