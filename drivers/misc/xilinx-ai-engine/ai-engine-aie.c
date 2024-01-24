@@ -224,191 +224,6 @@ static const struct aie_single_reg_field aie_col_clkbuf = {
 	.regoff = AIE_SHIMPL_CLKCNTR_REGOFF,
 };
 
-static const struct aie_bd_lock_attr aie_tile_a_lockbd = {
-	.lock_acq_id = {
-		.mask = GENMASK(25, 22),
-		.regoff = 0x0U,
-	},
-	.lock_acq_val = {
-		.mask = BIT(17),
-		.regoff = 0x0U,
-	},
-	.lock_acq_en = {
-		.mask = BIT(18),
-		.regoff = 0x0U,
-	},
-	.lock_acq_val_en = {
-		.mask = BIT(16),
-		.regoff = 0x0U,
-	},
-	.lock_rel_id = {
-		.mask = GENMASK(25, 22),
-		.regoff = 0x0U,
-	},
-	.lock_rel_val = {
-		.mask = BIT(20),
-		.regoff = 0x0U,
-	},
-	.lock_rel_en = {
-		.mask = BIT(21),
-		.regoff = 0x0U,
-	},
-	.lock_rel_val_en = {
-		.mask = BIT(19),
-		.regoff = 0x0U,
-	},
-};
-
-static const struct aie_bd_lock_attr aie_tile_b_lockbd = {
-	.lock_acq_id = {
-		.mask = GENMASK(25, 22),
-		.regoff = 0x4U,
-	},
-	.lock_acq_val = {
-		.mask = BIT(17),
-		.regoff = 0x4U,
-	},
-	.lock_acq_en = {
-		.mask = BIT(18),
-		.regoff = 0x4U,
-	},
-	.lock_acq_val_en = {
-		.mask = BIT(16),
-		.regoff = 0x4U,
-	},
-	.lock_rel_id = {
-		.mask = GENMASK(25, 22),
-		.regoff = 0x4U,
-	},
-	.lock_rel_val = {
-		.mask = BIT(20),
-		.regoff = 0x4U,
-	},
-	.lock_rel_en = {
-		.mask = BIT(21),
-		.regoff = 0x4U,
-	},
-	.lock_rel_val_en = {
-		.mask = BIT(19),
-		.regoff = 0x4U,
-	},
-};
-
-static const struct aie_bd_lock_attr aie_shim_lockbd = {
-	.lock_acq_id = {
-		.mask = GENMASK(10, 7),
-		.regoff = 0x8U,
-	},
-	.lock_acq_val = {
-		.mask = BIT(2),
-		.regoff = 0x8U,
-	},
-	.lock_acq_en = {
-		.mask = BIT(3),
-		.regoff = 0x8U,
-	},
-	.lock_acq_val_en = {
-		.mask = BIT(1),
-		.regoff = 0x8U,
-	},
-	.lock_rel_id = {
-		.mask = GENMASK(10, 7),
-		.regoff = 0x8U,
-	},
-	.lock_rel_val = {
-		.mask = BIT(5),
-		.regoff = 0x8U,
-	},
-	.lock_rel_en = {
-		.mask = BIT(6),
-		.regoff = 0x8U,
-	},
-	.lock_rel_val_en = {
-		.mask = BIT(4),
-		.regoff = 0x8U,
-	},
-};
-
-static const struct aie_bd_pkt_attr aie_tile_pktbd = {
-	.pkt_en = {
-		.mask = BIT(27),
-		.regoff = 0x18U,
-	},
-	.pkt_type = {
-		.mask = GENMASK(14, 12),
-		.regoff = 0x10U,
-	},
-	.pkt_id = {
-		.mask = GENMASK(4, 0),
-		.regoff = 0x10U,
-	},
-};
-
-static const struct aie_bd_pkt_attr aie_shim_pktbd = {
-	.pkt_en = {
-		.mask = BIT(31),
-		.regoff = 0x10U,
-	},
-	.pkt_type = {
-		.mask = GENMASK(14, 12),
-		.regoff = 0x10U,
-	},
-	.pkt_id = {
-		.mask = GENMASK(4, 0),
-		.regoff = 0x10U,
-	},
-};
-
-static const struct aie_bd_axi_attr aie_shim_axibd = {
-	.smid = {
-		.mask = GENMASK(31, 28),
-		.regoff = 0xCU,
-	},
-	.cache = {
-		.mask = GENMASK(3, 0),
-		.regoff = 0xCU,
-	},
-	.qos = {
-		.mask = GENMASK(8, 5),
-		.regoff = 0xCU,
-	},
-	.secure_en = {
-		.mask = BIT(4),
-		.regoff = 0xCU,
-	},
-	.burst_len = {
-		.mask = GENMASK(10, 9),
-		.regoff = 0xCU,
-	},
-};
-
-static const struct aie_bd_aie_dim_attr aie_tile_dimbd = {
-	.x_incr = {
-		.mask = GENMASK(31, 24),
-		.regoff = 0x8U,
-	},
-	.x_wrap = {
-		.mask = GENMASK(23, 16),
-		.regoff = 0x8U,
-	},
-	.x_off = {
-		.mask = GENMASK(12, 0),
-		.regoff = 0x8U,
-	},
-	.y_incr = {
-		.mask = GENMASK(31, 24),
-		.regoff = 0xCU,
-	},
-	.y_wrap = {
-		.mask = GENMASK(23, 16),
-		.regoff = 0xCU,
-	},
-	.y_off = {
-		.mask = GENMASK(12, 0),
-		.regoff = 0xCU,
-	},
-};
-
 static const struct aie_bd_attr aie_tilebd = {
 	.valid_bd = {
 		.mask = BIT(31),
@@ -442,10 +257,114 @@ static const struct aie_bd_attr aie_tilebd = {
 			.regoff = 0x18U,
 		},
 	},
-	.lock = aie_tile_a_lockbd,
-	.lock_2 = aie_tile_b_lockbd,
-	.packet = aie_tile_pktbd,
-	.aie_dim = aie_tile_dimbd,
+	.lock = {
+		.lock_acq_id = {
+			.mask = GENMASK(25, 22),
+			.regoff = 0x0U,
+		},
+		.lock_acq_val = {
+			.mask = BIT(17),
+			.regoff = 0x0U,
+		},
+		.lock_acq_en = {
+			.mask = BIT(18),
+			.regoff = 0x0U,
+		},
+		.lock_acq_val_en = {
+			.mask = BIT(16),
+			.regoff = 0x0U,
+		},
+		.lock_rel_id = {
+			.mask = GENMASK(25, 22),
+			.regoff = 0x0U,
+		},
+		.lock_rel_val = {
+			.mask = BIT(20),
+			.regoff = 0x0U,
+		},
+		.lock_rel_en = {
+			.mask = BIT(21),
+			.regoff = 0x0U,
+		},
+		.lock_rel_val_en = {
+			.mask = BIT(19),
+			.regoff = 0x0U,
+		},
+	},
+	.lock_2 = {
+		.lock_acq_id = {
+			.mask = GENMASK(25, 22),
+			.regoff = 0x4U,
+		},
+		.lock_acq_val = {
+			.mask = BIT(17),
+			.regoff = 0x4U,
+		},
+		.lock_acq_en = {
+			.mask = BIT(18),
+			.regoff = 0x4U,
+		},
+		.lock_acq_val_en = {
+			.mask = BIT(16),
+			.regoff = 0x4U,
+		},
+		.lock_rel_id = {
+			.mask = GENMASK(25, 22),
+			.regoff = 0x4U,
+		},
+		.lock_rel_val = {
+			.mask = BIT(20),
+			.regoff = 0x4U,
+		},
+		.lock_rel_en = {
+			.mask = BIT(21),
+			.regoff = 0x4U,
+		},
+		.lock_rel_val_en = {
+			.mask = BIT(19),
+			.regoff = 0x4U,
+		},
+	},
+	.packet = {
+		.pkt_en = {
+			.mask = BIT(27),
+			.regoff = 0x18U,
+		},
+		.pkt_type = {
+			.mask = GENMASK(14, 12),
+			.regoff = 0x10U,
+		},
+		.pkt_id = {
+			.mask = GENMASK(4, 0),
+			.regoff = 0x10U,
+		},
+	},
+	.aie_dim = {
+		.x_incr = {
+			.mask = GENMASK(31, 24),
+			.regoff = 0x8U,
+		},
+		.x_wrap = {
+			.mask = GENMASK(23, 16),
+			.regoff = 0x8U,
+		},
+		.x_off = {
+			.mask = GENMASK(12, 0),
+			.regoff = 0x8U,
+		},
+		.y_incr = {
+			.mask = GENMASK(31, 24),
+			.regoff = 0xCU,
+		},
+		.y_wrap = {
+			.mask = GENMASK(23, 16),
+			.regoff = 0xCU,
+		},
+		.y_off = {
+			.mask = GENMASK(12, 0),
+			.regoff = 0xCU,
+		},
+	},
 	.buf_sel = {
 		.mask = BIT(16),
 		.regoff = 0x14U,
@@ -506,9 +425,76 @@ static const struct aie_bd_attr aie_shimbd = {
 			.regoff = 0x4U,
 		},
 	},
-	.lock = aie_shim_lockbd,
-	.packet = aie_shim_pktbd,
-	.axi = aie_shim_axibd,
+	.lock = {
+		.lock_acq_id = {
+			.mask = GENMASK(10, 7),
+			.regoff = 0x8U,
+		},
+		.lock_acq_val = {
+			.mask = BIT(2),
+			.regoff = 0x8U,
+		},
+		.lock_acq_en = {
+			.mask = BIT(3),
+			.regoff = 0x8U,
+		},
+		.lock_acq_val_en = {
+			.mask = BIT(1),
+			.regoff = 0x8U,
+		},
+		.lock_rel_id = {
+			.mask = GENMASK(10, 7),
+			.regoff = 0x8U,
+		},
+		.lock_rel_val = {
+			.mask = BIT(5),
+			.regoff = 0x8U,
+		},
+		.lock_rel_en = {
+			.mask = BIT(6),
+			.regoff = 0x8U,
+		},
+		.lock_rel_val_en = {
+			.mask = BIT(4),
+			.regoff = 0x8U,
+		},
+	},
+	.packet = {
+		.pkt_en = {
+			.mask = BIT(31),
+			.regoff = 0x10U,
+		},
+		.pkt_type = {
+			.mask = GENMASK(14, 12),
+			.regoff = 0x10U,
+		},
+		.pkt_id = {
+			.mask = GENMASK(4, 0),
+			.regoff = 0x10U,
+		},
+	},
+	.axi = {
+		.smid = {
+			.mask = GENMASK(31, 28),
+			.regoff = 0xCU,
+		},
+		.cache = {
+			.mask = GENMASK(3, 0),
+			.regoff = 0xCU,
+		},
+		.qos = {
+			.mask = GENMASK(8, 5),
+			.regoff = 0xCU,
+		},
+		.secure_en = {
+			.mask = BIT(4),
+			.regoff = 0xCU,
+		},
+		.burst_len = {
+			.mask = GENMASK(10, 9),
+			.regoff = 0xCU,
+		},
+	},
 	.bd_idx_off = 0x14U,
 };
 
