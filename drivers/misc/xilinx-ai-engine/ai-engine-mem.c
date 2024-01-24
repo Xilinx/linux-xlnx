@@ -185,6 +185,7 @@ static int aie_mem_create_dmabuf(struct aie_partition *apart,
 			"dmabuf creation failed, failed to get fd.\n");
 		return ret;
 	}
+	dma_buf_get(ret);
 	memcpy(mem, &pmem->mem, sizeof(*mem));
 	mem->fd = ret;
 
