@@ -166,9 +166,9 @@ static int aie_lock_status(struct aie_partition *apart, struct aie_col_status *s
 {
 	struct aie_core_tile_status *sts_coretile;
 	struct aie_shim_tile_status *sts_shimtile;
-	u32 ttype, num_locks, lock_val, row, col;
 	struct aie_mem_tile_status *sts_memtile;
 	u8 i, tile_st, memtile_st, index;
+	u32 ttype, num_locks, lock_val;
 	int ret;
 
 	if (apart->adev->dev_gen != AIE_DEVICE_GEN_AIEML) {
@@ -185,10 +185,9 @@ static int aie_lock_status(struct aie_partition *apart, struct aie_col_status *s
 	tile_st = apart->adev->ttype_attr[AIE_TILE_TYPE_TILE].start_row;
 	memtile_st = apart->adev->ttype_attr[AIE_TILE_TYPE_MEMORY].start_row;
 
-	loc->row = row;
-	loc->col = col;
-	ttype = apart->adev->ops->get_tile_type(apart->adev,
-						loc);
+	loc->row = 0;
+	loc->col = 0;
+	ttype = apart->adev->ops->get_tile_type(apart->adev, loc);
 
 	if (aie_part_check_clk_enable_loc(apart, loc)) {
 		const struct aie_tile_operations *ops;
