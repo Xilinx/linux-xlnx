@@ -3667,8 +3667,10 @@ static int xlnx_dp_hdcp_exit(struct xlnx_dp *dp)
 	struct xlnx_hdcptx *dptxhdcp = &dp->tx_hdcp;
 	int ret;
 
-	if (!(dptxhdcp->hdcp1xenable || dptxhdcp->hdcp2xenable))
-		return
+	if (!(dptxhdcp->hdcp1xenable || dptxhdcp->hdcp2xenable)) {
+		dev_info(dp->dev, "HDCP is not enabled in the system");
+		return -EINVAL;
+	}
 
 	ret = xlnx_dp_hdcp_reset(dp);
 	if (ret < 0) {
