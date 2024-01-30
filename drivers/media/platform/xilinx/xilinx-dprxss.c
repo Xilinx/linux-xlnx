@@ -2421,7 +2421,7 @@ static int xdprxss_parse_of(struct xdprxss_state *xdprxss)
 		dev_err(xdprxss->dev, "xlnx,lane-count property not found\n");
 		return ret;
 	}
-	if (val < 1 && val > 4) {
+	if (val < 1 || val > 4) {
 		dev_err(xdprxss->dev, "invalid lane count\n");
 		return -EINVAL;
 	}
