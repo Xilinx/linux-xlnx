@@ -29,7 +29,6 @@
 	num-cs = <1>;
 	#address-cells = <1>;
 	#size-cells = <0>;
-	reset-gpios = <&gpio1 0xc GPIO_ACTIVE_HIGH>;
 	reset-names = "qspi";
 	resets = <&versal_reset VERSAL_RST_OSPI>;
 
@@ -47,6 +46,7 @@
 		spi-rx-bus-width = <8>;
 		spi-max-frequency = <20000000>;
 		no-wp;
+		reset-gpios = <&gpio1 0xc GPIO_ACTIVE_LOW>;
 		partition@0 {
 			label = "spi0-flash0";
 			reg = <0x0 0x8000000>;
