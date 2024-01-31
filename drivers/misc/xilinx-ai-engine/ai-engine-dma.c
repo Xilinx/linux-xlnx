@@ -361,6 +361,22 @@ static void aie_part_dmabuf_attach_put(struct aie_dmabuf *adbuf)
 void aie_part_release_dmabufs(struct aie_partition *apart)
 {
 	struct aie_dmabuf *adbuf, *tmpadbuf;
+	struct aie_part_mem *mems;
+	int num_mems;
+
+	num_mems = apart->adev->ops->get_mem_info(apart->adev, &apart->range,
+						  NULL);
+
+	if (num_mems <= 0) {
+		dev_err(&apart->dev, "Failed to get partition memory info\n");
+		return;
+	}
+
+	for (int i = 0; i < num_mems; i++) {
+		mems = &apart->pmems[i];
+		if (mems->dbuf)
+			dma_buf_put(mems->dbuf);
+	}
 
 	list_for_each_entry_safe(adbuf, tmpadbuf, &apart->dbufs, node) {
 		struct dma_buf *dbuf = adbuf->attach->dmabuf;
