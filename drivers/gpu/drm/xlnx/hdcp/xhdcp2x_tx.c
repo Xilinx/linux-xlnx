@@ -530,7 +530,7 @@ static enum hdcp2x_tx_state hdcp2x_tx_wait_for_pairing_info(struct xlnx_hdcp2x_c
 
 	memcpy(hdcp2x_tx_pairing_info->ekh_km,
 	       tx_msg->msg_type.ake_send_pairing_info.ekh_km,
-	       sizeof(struct hdcp2x_tx_pairing_info));
+	       sizeof(hdcp2x_tx_pairing_info->ekh_km));
 
 	hdcp2x_tx_pairing_info = xlnx_hdcp2x_tx_update_pairinginfo(xhdcp2x_tx,
 								   hdcp2x_tx_pairing_info, 1);
