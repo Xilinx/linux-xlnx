@@ -690,8 +690,8 @@
 				compatible = "snps,dwc3";
 				status = "okay";
 				reg = <0 0xf1b00000 0 0x10000>;
-				interrupt-names = "dwc_usb3","otg","usb-wakeup";
-				interrupts = <0 29 4>, <0 33 4>, <0 98 4>;
+				interrupt-names = "host", "peripheral", "otg", "wakeup";
+				interrupts = <0 29 4>, <0 29 4>, <0 33 4>, <0 98 4>;
 				snps,dis_u2_susphy_quirk;
 				snps,dis_u3_susphy_quirk;
 				snps,quirk-frame-length-adjustment = <0x20>;
@@ -718,8 +718,8 @@
 				compatible = "snps,dwc3";
 				status = "okay";
 				reg = <0x0 0xf1c00000 0x0 0x10000>;
-				interrupt-names = "dwc_usb3","otg","usb-wakeup";
-				interrupts = <0 34 4>, <0 38 4>, <0 99 4>;
+				interrupt-names = "host", "peripheral", "otg", "wakeup";
+				interrupts = <0 34 4>, <0 34 4>, <0 38 4>, <0 99 4>;
 				snps,dis_u2_susphy_quirk;
 				snps,dis_u3_susphy_quirk;
 				snps,quirk-frame-length-adjustment = <0x20>;
