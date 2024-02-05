@@ -28,6 +28,7 @@
 #define ZYNQMP_AES_MIN_INPUT_BLK_SIZE	4U
 #define ZYNQMP_AES_WORD_LEN		4U
 #define VERSAL_AES_QWORD_LEN		16U
+#define ZYNQMP_AES_DEVICE_LEY_LEN	1U
 
 #define ZYNQMP_AES_GCM_TAG_MISMATCH_ERR		0x01
 #define ZYNQMP_AES_WRONG_KEY_SRC_ERR		0x13
@@ -360,28 +361,26 @@ err:
 static int zynqmp_fallback_check(struct zynqmp_aead_tfm_ctx *tfm_ctx,
 				 struct aead_request *req)
 {
-	int need_fallback = 0;
 	struct zynqmp_aead_req_ctx *rq_ctx = aead_request_ctx(req);
 
-	if (tfm_ctx->authsize != ZYNQMP_AES_AUTH_SIZE)
-		need_fallback = 1;
+	if ((tfm_ctx->keysrc == ZYNQMP_AES_KUP_KEY &&
+	     tfm_ctx->keylen != ZYNQMP_AES_KEY_SIZE) ||
+	    (tfm_ctx->keysrc == ZYNQMP_AES_DEV_KEY &&
+	     tfm_ctx->keylen != ZYNQMP_AES_DEVICE_LEY_LEN))
+		return 1;
 
-	if (tfm_ctx->keysrc == ZYNQMP_AES_KUP_KEY &&
-	    tfm_ctx->keylen != ZYNQMP_AES_KEY_SIZE) {
-		need_fallback = 1;
-	}
 	if (req->assoclen != 0 ||
-	    req->cryptlen < ZYNQMP_AES_MIN_INPUT_BLK_SIZE) {
-		need_fallback = 1;
-	}
+	    req->cryptlen < ZYNQMP_AES_MIN_INPUT_BLK_SIZE)
+		return 1;
+
 	if ((req->cryptlen % ZYNQMP_AES_WORD_LEN) != 0)
-		need_fallback = 1;
+		return 1;
 
 	if (rq_ctx->op == ZYNQMP_AES_DECRYPT &&
-	    req->cryptlen <= ZYNQMP_AES_AUTH_SIZE) {
-		need_fallback = 1;
-	}
-	return need_fallback;
+	    req->cryptlen <= ZYNQMP_AES_AUTH_SIZE)
+		return 1;
+
+	return 0;
 }
 
 static int versal_fallback_check(struct zynqmp_aead_tfm_ctx *tfm_ctx,
@@ -467,6 +466,7 @@ static int zynqmp_aes_aead_setkey(struct crypto_aead *aead, const u8 *key,
 		    keysrc == ZYNQMP_AES_DEV_KEY ||
 		    keysrc == ZYNQMP_AES_PUF_KEY) {
 			tfm_ctx->keysrc = keysrc;
+			tfm_ctx->keylen = keylen;
 		}
 		return 0;
 	} else {
