@@ -320,10 +320,10 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 		if (ret < 0)
 			return ret;
 
-		if (pm_sub_family_code == VERSAL_SUB_FAMILY_CODE)
-			node_id = PM_DEV_ACPU_0;
-		else
+		if (pm_sub_family_code == VERSALNET_SUB_FAMILY_CODE)
 			node_id = PM_DEV_ACPU_0_0;
+		else
+			node_id = PM_DEV_ACPU_0;
 
 		ret = register_event(&pdev->dev, PM_NOTIFY_CB, node_id, EVENT_SUBSYSTEM_RESTART,
 				     false, subsystem_restart_event_callback);
