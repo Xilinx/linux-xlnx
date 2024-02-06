@@ -32,6 +32,8 @@
 #define SPINOR_REG_CYPRESS_CFR2_MEMLAT_11_24	0xb
 #define SPINOR_REG_CYPRESS_CFR2_ADRBYT		BIT(7)
 #define SPINOR_REG_CYPRESS_CFR3			0x4
+#define SPINOR_REG_CYPRESS_CFR4			0x5
+#define SPINOR_REG_CYPRESS_CFR4_BIT3		BIT(3)
 #define SPINOR_REG_CYPRESS_CFR3_PGSZ		BIT(4) /* Page size. */
 #define SPINOR_REG_CYPRESS_CFR5			0x6
 #define SPINOR_REG_CYPRESS_CFR5_BIT6		BIT(6)
@@ -523,6 +525,53 @@ static void cypress_nor_ecc_init(struct spi_nor *nor)
 	nor->flags |= SNOR_F_ECC;
 }
 
+static int cypress_nor_disable_ecc(struct spi_nor *nor)
+{
+	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
+	struct spi_mem_op op;
+	int ret;
+
+	params->writesize = 1;
+
+	/*
+	 * In S28HS02GT with the default ECC configuration(2-bit error detection)
+	 * byte-programming( < 16bytes) is not allowed. Set the ECC configuration
+	 * to 1-bit error detection/correction to enable byte-programming.
+	 */
+	op = (struct spi_mem_op)
+		CYPRESS_NOR_RD_ANY_REG_OP(params->addr_mode_nbytes,
+					  params->vreg_offset[0] + SPINOR_REG_CYPRESS_CFR4,
+					  0, nor->bouncebuf);
+	ret = spi_nor_read_any_reg(nor, &op, nor->reg_proto);
+	if (ret)
+		return ret;
+
+	nor->bouncebuf[0] &= (u8)(~SPINOR_REG_CYPRESS_CFR4_BIT3);
+
+	op = (struct spi_mem_op)
+		CYPRESS_NOR_WR_ANY_REG_OP(params->addr_mode_nbytes,
+					  params->vreg_offset[0] + SPINOR_REG_CYPRESS_CFR4,
+					  1, nor->bouncebuf);
+	ret = spi_nor_write_any_volatile_reg(nor, &op, nor->reg_proto);
+	if (ret)
+		return ret;
+
+	op = (struct spi_mem_op)
+		CYPRESS_NOR_RD_ANY_REG_OP(params->addr_mode_nbytes,
+					  params->vreg_offset[0] + SPINOR_REG_CYPRESS_CFR4,
+					  0, nor->bouncebuf);
+	ret = spi_nor_read_any_reg(nor, &op, nor->reg_proto);
+	if (ret)
+		return ret;
+
+	if (nor->bouncebuf[0] & (u8)SPINOR_REG_CYPRESS_CFR4_BIT3) {
+		dev_err(nor->dev, "Failed to disable 2-bit ECC detection.\n");
+		return -EOPNOTSUPP;
+	}
+
+	return 0;
+}
+
 static int
 s25fs256t_post_bfpt_fixup(struct spi_nor *nor,
 			  const struct sfdp_parameter_header *bfpt_header,
@@ -738,10 +787,28 @@ static int s28hx_t_late_init(struct spi_nor *nor)
 	return 0;
 }
 
+static int s28hs02gt_late_init(struct spi_nor *nor)
+{
+	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
+	int ret = 0;
+
+	params->set_octal_dtr = cypress_nor_set_octal_dtr;
+	params->ready = cypress_nor_sr_ready_and_clear;
+	ret = cypress_nor_disable_ecc(nor);
+
+	return ret;
+}
+
 static const struct spi_nor_fixups s28hx_t_fixups = {
 	.post_sfdp = s28hx_t_post_sfdp_fixup,
 	.post_bfpt = s28hx_t_post_bfpt_fixup,
 	.late_init = s28hx_t_late_init,
+};
+
+static const struct spi_nor_fixups s28hs02gt_fixups = {
+	.post_sfdp = s28hx_t_post_sfdp_fixup,
+	.post_bfpt = s28hx_t_post_bfpt_fixup,
+	.late_init = s28hs02gt_late_init,
 };
 
 static int
@@ -921,7 +988,8 @@ static const struct flash_info spansion_nor_parts[] = {
 	{ "s28hs02gt",   INFO(0x345b1c,      0, 0, 0)
 		PARSE_SFDP
 		MFR_FLAGS(USE_CLPEF)
-		.fixups = &s28hx_t_fixups,
+		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB)
+		.fixups = &s28hs02gt_fixups,
 	},
 };
 
