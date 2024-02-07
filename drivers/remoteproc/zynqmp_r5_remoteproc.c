@@ -763,13 +763,6 @@ xlnx_rpu_rproc_get_loaded_rsc_table(struct rproc *rproc, size_t *table_sz)
 	return (struct resource_table *)z_rproc->rsc_va;
 }
 
-static int xlnx_rpu_rproc_detach(struct rproc *rproc)
-{
-	/* Remoteproc core sets the state to detached so don't do so here. */
-	(void)rproc;
-	return 0;
-}
-
 /*
  * xlnx_rpu_rproc_kick() - kick a firmware if mbox is provided
  * @rproc: RPU core's corresponding rproc structure
@@ -809,6 +802,18 @@ static void xlnx_rpu_rproc_kick(struct rproc *rproc, int vqid)
 		(void)ret;
 		(void)vqid;
 	}
+}
+
+static int xlnx_rpu_rproc_detach(struct rproc *rproc)
+{
+	/*
+	 * During detach op generate an interrupt via kick so firmware on
+	 * remote side can check virtio reset flag on this event and can avoid
+	 * polling.
+	 */
+	xlnx_rpu_rproc_kick(rproc, 0);
+
+	return 0;
 }
 
 static struct rproc_ops xlnx_rpu_rproc_ops = {
