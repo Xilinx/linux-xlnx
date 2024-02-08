@@ -264,6 +264,14 @@ static const struct flash_info issi_nor_parts[] = {
 		FIXUP_FLAGS(SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE)
 		MFR_FLAGS(USE_FSR)
 		.fixups = &is25wx256_fixups },
+	{ "is25lx512m",  INFO(0x9d5a1a, 0, 128 * 1024, 512)
+		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_4BIT_BP |
+		      SPI_NOR_BP3_SR_BIT6)
+		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_OCTAL_READ |
+			   SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP)
+		FIXUP_FLAGS(SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE)
+		MFR_FLAGS(USE_FSR)
+		.fixups = &is25wx256_fixups },
 
 	/* PMC */
 	{ "pm25lv512",   INFO(0,        0, 32 * 1024,    2)
