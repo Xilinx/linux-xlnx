@@ -133,6 +133,8 @@ struct cdx_controller {
  * @dma_mask: Default DMA mask
  * @flags: CDX device flags
  * @req_id: Requestor ID associated with CDX device
+ * @is_bus: Is this bus device
+ * @enabled: is this bus enabled
  * @msi_dev_id: MSI Device ID associated with CDX device
  * @num_msi: Number of MSI's supported by the device
  * @driver_override: driver name to force a match; do not set directly,
@@ -158,6 +160,8 @@ struct cdx_device {
 	u64 dma_mask;
 	u16 flags;
 	u32 req_id;
+	bool is_bus;
+	bool enabled;
 	u32 msi_dev_id;
 	u32 num_msi;
 	const char *driver_override;

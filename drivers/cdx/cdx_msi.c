@@ -145,7 +145,7 @@ static int cdx_msi_prepare(struct irq_domain *msi_domain,
 			   int nvec, msi_alloc_info_t *info)
 {
 	struct cdx_device *cdx_dev = to_cdx_device(dev);
-	struct device *parent = dev->parent;
+	struct device *parent = cdx_dev->cdx->dev;
 	struct msi_domain_info *msi_info;
 	u32 dev_id = 0;
 	int ret;
@@ -212,4 +212,4 @@ struct irq_domain *cdx_msi_domain_init(struct device *dev)
 
 	return cdx_msi_domain;
 }
-EXPORT_SYMBOL_GPL(cdx_msi_domain_init);
+EXPORT_SYMBOL_NS_GPL(cdx_msi_domain_init, CDX_BUS_CONTROLLER);

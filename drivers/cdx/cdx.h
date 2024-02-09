@@ -13,7 +13,7 @@
 /**
  * struct cdx_dev_params - CDX device parameters
  * @cdx: CDX controller associated with the device
- * @parent: Associated CDX controller
+ * @parent: Associated CDX Bus device
  * @vendor: Vendor ID for CDX device
  * @device: Device ID for CDX device
  * @subsys_vendor: Sub vendor ID for CDX device
@@ -30,6 +30,7 @@
  */
 struct cdx_dev_params {
 	struct cdx_controller *cdx;
+	struct device *parent;
 	u16 vendor;
 	u16 device;
 	u16 subsys_vendor;
@@ -78,5 +79,16 @@ int cdx_device_add(struct cdx_dev_params *dev_params);
  * Return: CDX MSI domain, NULL on failure
  */
 struct irq_domain *cdx_msi_domain_init(struct device *dev);
+
+/**
+ * cdx_bus_add - Add a CDX bus. This function adds a bus on the CDX bus
+ *		subsystem. It creates a CDX device for the corresponding bus and
+ *		also registers an associated Linux generic device.
+ * @cdx: Associated CDX controller
+ * @us_num: Bus number
+ *
+ * Return: associated Linux generic device pointer on success or NULL on failure.
+ */
+struct device *cdx_bus_add(struct cdx_controller *cdx, u8 bus_num);
 
 #endif /* _CDX_H_ */
