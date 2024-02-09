@@ -68,6 +68,7 @@
 #include <linux/cdx/cdx_bus.h>
 #include <linux/iommu.h>
 #include <linux/dma-map-ops.h>
+#include <linux/debugfs.h>
 #include "cdx.h"
 
 /* Default DMA mask for devices on a CDX bus */
@@ -78,6 +79,8 @@
 static DEFINE_IDA(cdx_controller_ida);
 /* Lock to protect controller ops */
 static DEFINE_MUTEX(cdx_controller_lock);
+/* Debugfs dir for cdx bus */
+static struct dentry *cdx_debugfs_dir;
 
 static char *compat_node_name = "xlnx,versal-net-cdx";
 
@@ -152,6 +155,7 @@ static int cdx_unregister_device(struct device *dev,
 			cdx->ops->bus_disable(cdx, cdx_dev->bus_num);
 	} else {
 		cdx_destroy_res_attr(cdx_dev, MAX_CDX_DEV_RESOURCES);
+		debugfs_remove_recursive(cdx_dev->debugfs_dir);
 		kfree(cdx_dev->driver_override);
 		cdx_dev->driver_override = NULL;
 	}
@@ -460,25 +464,6 @@ static ssize_t driver_override_show(struct device *dev,
 }
 static DEVICE_ATTR_RW(driver_override);
 
-static ssize_t resource_show(struct device *dev, struct device_attribute *attr, char *buf)
-{
-	struct cdx_device *cdx_dev = to_cdx_device(dev);
-	size_t len = 0;
-	int i;
-
-	for (i = 0; i < MAX_CDX_DEV_RESOURCES; i++) {
-		struct resource *res =  &cdx_dev->res[i];
-
-		len += sysfs_emit_at(buf, len, "0x%016llx 0x%016llx 0x%016llx\n",
-					(unsigned long long)res->start,
-					(unsigned long long)res->end,
-					(unsigned long long)res->flags);
-	}
-
-	return len;
-}
-static DEVICE_ATTR_RO(resource);
-
 static ssize_t enable_store(struct device *dev, struct device_attribute *attr,
 			    const char *buf, size_t count)
 {
@@ -549,7 +534,6 @@ static struct attribute *cdx_dev_attrs[] = {
 	&dev_attr_revision.attr,
 	&dev_attr_modalias.attr,
 	&dev_attr_driver_override.attr,
-	&dev_attr_resource.attr,
 	NULL,
 };
 
@@ -574,6 +558,31 @@ static const struct attribute_group *cdx_dev_groups[] = {
 	&cdx_bus_dev_group,
 	NULL,
 };
+
+static int cdx_debug_resource_show(struct seq_file *s, void *data)
+{
+	struct cdx_device *cdx_dev = s->private;
+	int i;
+
+	for (i = 0; i < MAX_CDX_DEV_RESOURCES; i++) {
+		struct resource *res =  &cdx_dev->res[i];
+
+		seq_printf(s, "%pr\n", res);
+	}
+
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(cdx_debug_resource);
+
+static void cdx_device_debugfs_init(struct cdx_device *cdx_dev)
+{
+	cdx_dev->debugfs_dir = debugfs_create_dir(dev_name(&cdx_dev->dev), cdx_debugfs_dir);
+	if (IS_ERR(cdx_dev->debugfs_dir))
+		return;
+
+	debugfs_create_file("resource", 0444, cdx_dev->debugfs_dir, cdx_dev,
+			    &cdx_debug_resource_fops);
+}
 
 static ssize_t rescan_store(const struct bus_type *bus,
 			    const char *buf, size_t count)
@@ -832,6 +841,8 @@ int cdx_device_add(struct cdx_dev_params *dev_params)
 		}
 	}
 
+	cdx_device_debugfs_init(cdx_dev);
+
 	return 0;
 resource_create_fail:
 	cdx_destroy_res_attr(cdx_dev, i);
@@ -936,6 +947,12 @@ EXPORT_SYMBOL_NS_GPL(cdx_unregister_controller, CDX_BUS_CONTROLLER);
 
 static int __init cdx_bus_init(void)
 {
-	return bus_register(&cdx_bus_type);
+	int ret;
+
+	ret = bus_register(&cdx_bus_type);
+	if (!ret)
+		cdx_debugfs_dir = debugfs_create_dir(cdx_bus_type.name, NULL);
+
+	return ret;
 }
 postcore_initcall(cdx_bus_init);
