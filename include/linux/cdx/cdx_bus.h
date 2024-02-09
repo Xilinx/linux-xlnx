@@ -16,8 +16,6 @@
 #define MAX_CDX_DEV_RESOURCES	4
 #define CDX_CONTROLLER_ID_SHIFT 4
 #define CDX_BUS_NUM_MASK 0xF
-#define CDX_CONTROLLER_ID_MASK	0xF0
-#define MAX_CDX_BUSES			(CDX_BUS_NUM_MASK + 1)
 
 /* Forward declaration for CDX controller */
 struct cdx_controller;
@@ -102,7 +100,6 @@ struct cdx_ops {
  * @msi_domain: MSI domain
  * @id: Controller ID
  * @controller_registered: controller registered with bus
- * @bus_state: state of the buses(enabled/disabled)
  * @ops: CDX controller ops
  */
 struct cdx_controller {
@@ -111,7 +108,6 @@ struct cdx_controller {
 	struct irq_domain *msi_domain;
 	u32 id;
 	bool controller_registered;
-	DECLARE_BITMAP(bus_state, MAX_CDX_BUSES);
 	struct cdx_ops *ops;
 };
 

@@ -36,38 +36,12 @@ static const struct cdx_mcdi_ops mcdi_ops = {
 
 static int cdx_bus_enable(struct cdx_controller *cdx, u8 bus_num)
 {
-	int ret;
-
-	if (test_bit(bus_num, cdx->bus_state))
-		return 0;
-
-	ret = cdx_mcdi_bus_enable(cdx->priv, bus_num);
-	if (!ret)
-		set_bit(bus_num, cdx->bus_state);
-
-	return ret;
+	return cdx_mcdi_bus_enable(cdx->priv, bus_num);
 }
 
 static int cdx_bus_disable(struct cdx_controller *cdx, u8 bus_num)
 {
-	int ret;
-
-	if (!test_bit(bus_num, cdx->bus_state))
-		return 0;
-
-	ret = cdx_mcdi_bus_disable(cdx->priv, bus_num);
-	if (!ret)
-		clear_bit(bus_num, cdx->bus_state);
-
-	return ret;
-}
-
-static void cdx_bus_disable_all(struct cdx_controller *cdx)
-{
-	u8 bus_num;
-
-	for_each_set_bit(bus_num, cdx->bus_state, MAX_CDX_BUSES)
-		cdx_bus_disable(cdx, bus_num);
+	return cdx_mcdi_bus_disable(cdx->priv, bus_num);
 }
 
 void cdx_rpmsg_post_probe(struct cdx_controller *cdx)
@@ -80,7 +54,6 @@ void cdx_rpmsg_post_probe(struct cdx_controller *cdx)
 void cdx_rpmsg_pre_remove(struct cdx_controller *cdx)
 {
 	cdx_unregister_controller(cdx);
-	cdx_bus_disable_all(cdx);
 	cdx_mcdi_wait_for_quiescence(cdx->priv, MCDI_RPC_TIMEOUT);
 }
 
@@ -139,13 +112,6 @@ static int cdx_scan_devices(struct cdx_controller *cdx)
 		struct device *bus_dev;
 		u8 num_cdx_dev;
 
-		ret = cdx_bus_enable(cdx, bus_num);
-		if (ret && ret != -EALREADY) {
-			dev_err(cdx->dev,
-				"CDX bus %d enable failed: %d\n", bus_num, ret);
-			continue;
-		}
-
 		/* Add the bus on cdx subsystem */
 		bus_dev = cdx_bus_add(cdx, bus_num);
 		if (!bus_dev)
@@ -156,10 +122,6 @@ static int cdx_scan_devices(struct cdx_controller *cdx)
 		if (ret < 0) {
 			dev_err(cdx->dev,
 				"Get devices on CDX bus %d failed: %d\n", bus_num, ret);
-			ret = cdx_bus_disable(cdx, bus_num);
-			if (ret)
-				dev_err(cdx->dev,
-					"CDX bus %d disable failed: %d\n", bus_num, ret);
 			continue;
 		}
 		num_cdx_dev = (u8)ret;
