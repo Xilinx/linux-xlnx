@@ -74,10 +74,6 @@
 #define CDX_DEFAULT_DMA_MASK	(~0ULL)
 #define MAX_CDX_CONTROLLERS 16
 
-#define CONTROLLER_ID(X)	\
-	(((X) & CDX_CONTROLLER_ID_MASK) >> CDX_CONTROLLER_ID_SHIFT)
-#define BUS_ID(X) ((X) & CDX_BUS_NUM_MASK)
-
 /* IDA for CDX controllers registered with the CDX bus */
 static DEFINE_IDA(cdx_controller_ida);
 /* Lock to protect controller ops */
@@ -123,21 +119,15 @@ EXPORT_SYMBOL_GPL(cdx_dev_reset);
 /**
  * reset_cdx_device - Reset a CDX device
  * @dev: CDX device
- * @data: Bus number
- *    If bus number matches to the device's bus then this device
- *    is reset else this is no op.
+ * @data: This is always passed as NULL, and is not used in this API,
+ *    but is required here as the device_for_each_child() API expects
+ *    the passed function to have this as an argument.
  *
  * Return: -errno on failure, 0 on success.
  */
 static int reset_cdx_device(struct device *dev, void *data)
 {
-	struct cdx_device *cdx_dev = to_cdx_device(dev);
-	u8 bus_num = *((u8 *)data);
-
-	if (cdx_dev->bus_num == bus_num)
-		return cdx_dev_reset(dev);
-
-	return 0;
+	return cdx_dev_reset(dev);
 }
 
 /**
@@ -154,9 +144,12 @@ static int cdx_unregister_device(struct device *dev,
 				 void *data)
 {
 	struct cdx_device *cdx_dev = to_cdx_device(dev);
+	struct cdx_controller *cdx = cdx_dev->cdx;
 
 	if (cdx_dev->is_bus) {
 		device_for_each_child(dev, NULL, cdx_unregister_device);
+		if (cdx_dev->enabled && cdx->ops->bus_disable)
+			cdx->ops->bus_disable(cdx, cdx_dev->bus_num);
 	} else {
 		cdx_destroy_res_attr(cdx_dev, MAX_CDX_DEV_RESOURCES);
 		kfree(cdx_dev->driver_override);
@@ -410,6 +403,7 @@ static DEVICE_ATTR_WO(remove);
 static ssize_t reset_store(struct device *dev, struct device_attribute *attr,
 			   const char *buf, size_t count)
 {
+	struct cdx_device *cdx_dev = to_cdx_device(dev);
 	bool val;
 	int ret;
 
@@ -419,11 +413,13 @@ static ssize_t reset_store(struct device *dev, struct device_attribute *attr,
 	if (!val)
 		return -EINVAL;
 
-	ret = cdx_dev_reset(dev);
-	if (ret)
-		return ret;
+	if (cdx_dev->is_bus)
+		/* Reset all the devices attached to cdx bus */
+		ret = device_for_each_child(dev, NULL, reset_cdx_device);
+	else
+		ret = cdx_dev_reset(dev);
 
-	return count;
+	return ret < 0 ? ret : count;
 }
 static DEVICE_ATTR_WO(reset);
 
@@ -483,6 +479,41 @@ static ssize_t resource_show(struct device *dev, struct device_attribute *attr, 
 }
 static DEVICE_ATTR_RO(resource);
 
+static ssize_t enable_store(struct device *dev, struct device_attribute *attr,
+			    const char *buf, size_t count)
+{
+	struct cdx_device *cdx_dev = to_cdx_device(dev);
+	struct cdx_controller *cdx = cdx_dev->cdx;
+	bool enable;
+	int ret;
+
+	if (kstrtobool(buf, &enable) < 0)
+		return -EINVAL;
+
+	if (enable == cdx_dev->enabled)
+		return count;
+
+	if (enable && cdx->ops->bus_enable)
+		ret = cdx->ops->bus_enable(cdx, cdx_dev->bus_num);
+	else if (!enable && cdx->ops->bus_disable)
+		ret = cdx->ops->bus_disable(cdx, cdx_dev->bus_num);
+	else
+		ret = -EOPNOTSUPP;
+
+	if (!ret)
+		cdx_dev->enabled = enable;
+
+	return ret < 0 ? ret : count;
+}
+
+static ssize_t enable_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct cdx_device *cdx_dev = to_cdx_device(dev);
+
+	return sysfs_emit(buf, "%u\n", cdx_dev->enabled);
+}
+static DEVICE_ATTR_RW(enable);
+
 static umode_t cdx_dev_attrs_are_visible(struct kobject *kobj, struct attribute *a, int n)
 {
 	struct device *dev = kobj_to_dev(kobj);
@@ -490,6 +521,18 @@ static umode_t cdx_dev_attrs_are_visible(struct kobject *kobj, struct attribute 
 
 	cdx_dev = to_cdx_device(dev);
 	if (!cdx_dev->is_bus)
+		return a->mode;
+
+	return 0;
+}
+
+static umode_t cdx_bus_attrs_are_visible(struct kobject *kobj, struct attribute *a, int n)
+{
+	struct device *dev = kobj_to_dev(kobj);
+	struct cdx_device *cdx_dev;
+
+	cdx_dev = to_cdx_device(dev);
+	if (cdx_dev->is_bus)
 		return a->mode;
 
 	return 0;
@@ -515,101 +558,22 @@ static const struct attribute_group cdx_dev_group = {
 	.is_visible = cdx_dev_attrs_are_visible,
 };
 
-static const struct attribute_group *cdx_dev_groups[] = {
-	&cdx_dev_group,
+static struct attribute *cdx_bus_dev_attrs[] = {
+	&dev_attr_enable.attr,
+	&dev_attr_reset.attr,
 	NULL,
 };
 
-/* Must be called with cdx_controller_lock acquired.
- */
-static struct cdx_controller *cdx_find_controller(u8 controller_id)
-		__must_hold(&cdx_controller_lock)
-{
-	struct cdx_controller *cdx;
-	struct platform_device *pd;
-	struct device_node *np;
+static const struct attribute_group cdx_bus_dev_group = {
+	.attrs = cdx_bus_dev_attrs,
+	.is_visible = cdx_bus_attrs_are_visible,
+};
 
-	for_each_compatible_node(np, NULL, compat_node_name) {
-		if (!np)
-			return NULL;
-
-		pd = of_find_device_by_node(np);
-		if (!pd)
-			return NULL;
-
-		cdx = platform_get_drvdata(pd);
-		if (cdx && cdx->controller_registered && cdx->id == controller_id) {
-			put_device(&pd->dev);
-			return cdx;
-		}
-
-		put_device(&pd->dev);
-	}
-
-	return NULL;
-}
-
-static ssize_t enable_store(const struct bus_type *bus,
-			    const char *buf, size_t count)
-{
-	unsigned long controller_id;
-	struct cdx_controller *cdx;
-	u8 bus_id;
-	int ret;
-
-	if (kstrtou8(buf, 16, &bus_id))
-		return -EINVAL;
-
-	controller_id = CONTROLLER_ID(bus_id);
-	bus_id = BUS_ID(bus_id);
-
-	mutex_lock(&cdx_controller_lock);
-
-	cdx = cdx_find_controller(controller_id);
-	if (cdx)
-		if (cdx->ops->bus_enable)
-			ret = cdx->ops->bus_enable(cdx, bus_id);
-		else
-			ret = -EOPNOTSUPP;
-	else
-		ret = -EINVAL;
-
-	mutex_unlock(&cdx_controller_lock);
-
-	return ret < 0 ? ret : count;
-}
-static BUS_ATTR_WO(enable);
-
-static ssize_t disable_store(const struct bus_type *bus,
-			     const char *buf, size_t count)
-{
-	unsigned long controller_id;
-	struct cdx_controller *cdx;
-	u8 bus_id;
-	int ret;
-
-	if (kstrtou8(buf, 16, &bus_id))
-		return -EINVAL;
-
-	controller_id = CONTROLLER_ID(bus_id);
-	bus_id = BUS_ID(bus_id);
-
-	mutex_lock(&cdx_controller_lock);
-
-	cdx = cdx_find_controller(controller_id);
-	if (cdx)
-		if (cdx->ops->bus_disable)
-			ret = cdx->ops->bus_disable(cdx, bus_id);
-		else
-			ret = -EOPNOTSUPP;
-	else
-		ret = -EINVAL;
-
-	mutex_unlock(&cdx_controller_lock);
-
-	return ret < 0 ? ret : count;
-}
-static BUS_ATTR_WO(disable);
+static const struct attribute_group *cdx_dev_groups[] = {
+	&cdx_dev_group,
+	&cdx_bus_dev_group,
+	NULL,
+};
 
 static ssize_t rescan_store(const struct bus_type *bus,
 			    const char *buf, size_t count)
@@ -652,31 +616,8 @@ static ssize_t rescan_store(const struct bus_type *bus,
 }
 static BUS_ATTR_WO(rescan);
 
-static ssize_t bus_reset_store(const struct bus_type *bus,
-			       const char *buf, size_t count)
-{
-	u8 bus_id;
-	int ret;
-
-	if (kstrtou8(buf, 16, &bus_id))
-		return -EINVAL;
-
-	bus_id = BUS_ID(bus_id);
-	mutex_lock(&cdx_controller_lock);
-	/* Reset all the devices attached to cdx bus */
-	ret = bus_for_each_dev(bus, NULL, (void *)&bus_id, reset_cdx_device);
-	mutex_unlock(&cdx_controller_lock);
-
-	return ret < 0 ? ret : count;
-}
-static struct bus_attribute bus_attr_reset =  __ATTR(reset, 0200, NULL,
-								bus_reset_store);
-
 static struct attribute *cdx_bus_attrs[] = {
-	&bus_attr_enable.attr,
-	&bus_attr_disable.attr,
 	&bus_attr_rescan.attr,
-	&bus_attr_reset.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(cdx_bus);
@@ -933,8 +874,19 @@ struct device *cdx_bus_add(struct cdx_controller *cdx, u8 bus_num)
 		goto device_add_fail;
 	}
 
+	if (cdx->ops->bus_enable) {
+		ret = cdx->ops->bus_enable(cdx, bus_num);
+		if (ret && ret != -EALREADY) {
+			dev_err(cdx->dev, "cdx bus enable failed: %d\n", ret);
+			goto bus_enable_fail;
+		}
+	}
+
+	cdx_dev->enabled = true;
 	return &cdx_dev->dev;
 
+bus_enable_fail:
+	device_del(&cdx_dev->dev);
 device_add_fail:
 	put_device(&cdx_dev->dev);
 

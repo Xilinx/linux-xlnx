@@ -11,48 +11,6 @@ Description:
 
 		  # echo 1 > /sys/bus/cdx/rescan
 
-What:		/sys/bus/cdx/enable
-Date:		July 2023
-Contact:	nipun.gupta@amd.com
-Description:
-		Writing bus number in hex to this file will attempt to enable
-		the CDX bus. The bus number for the cdx devices can be found
-		at /sys/bus/cdx/devices/cdx-BB:DD, where BB denotes the bus
-		number for the respective device.
-
-		For example ::
-
-		  # echo 00 > /sys/bus/cdx/enable
-
-What:		/sys/bus/cdx/disable
-Date:		July 2023
-Contact:	nipun.gupta@amd.com
-Description:
-		Writing bus number in hex to this file will attempt to disable
-		the CDX bus. CDX bus should be disabled before updating the
-		devices in FPGA. The bus number for the cdx devices can be
-		found at /sys/bus/cdx/devices/cdx-BB:DD, where BB denotes the
-		bus number for the respective device.
-
-		For example ::
-
-		  # echo 00 > /sys/bus/cdx/disable
-
-What:		/sys/bus/cdx/reset
-Date:		July 2023
-Contact:	puneet.gupta@amd.com
-Description:
-		Writing bus number in hex to this file will attempt to reset
-		all the devices present on the bus. Resetting a device would
-		clear all existing configuration of the device and put the
-		device in default state. The bus number for the cdx devices can
-		be found at /sys/bus/cdx/devices/cdx-BB:DD, where BB denotes
-		the bus number for the respective device.
-
-		For example ::
-
-		  # echo 00 > /sys/bus/cdx/reset
-
 What:		/sys/bus/cdx/devices/.../vendor
 Date:		March 2023
 Contact:	nipun.gupta@amd.com
@@ -100,14 +58,27 @@ Description:
 		This file contains the revision field of the CDX device, in hexadecimal.
 		Revision is 8 bit revision identifier of the device.
 
+What:		/sys/bus/cdx/devices/.../enable
+Date:		October 2023
+Contact:	abhijit.gangurde@amd.com
+Description:
+		CDX bus should be disabled before updating the devices in FPGA.
+		Writing n/0/off will attempt to disable the CDX bus and.
+		writing y/1/on will attempt to enable the CDX bus. Reading this file
+		gives the current state of the bus, 1 for enabled and 0 for disabled.
+
+		For example::
+
+		  # echo 1 > /sys/bus/cdx/.../enable
+
 What:		/sys/bus/cdx/devices/.../reset
 Date:		March 2023
 Contact:	nipun.gupta@amd.com
 Description:
-		Writing y/1/on to this file resets the CDX device.
-		On resetting the device, the corresponding driver is notified
-		twice, once before the device is being reset, and again after
-		the reset has been complete.
+		Writing y/1/on to this file resets the CDX device or all devices
+		on the bus. On resetting the device, the corresponding driver is
+		notified twice, once before the device is being reset, and again
+		after the reset has been complete.
 
 		For example::
 
