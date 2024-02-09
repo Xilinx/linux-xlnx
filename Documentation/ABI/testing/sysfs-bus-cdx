@@ -98,14 +98,6 @@ Description:
 
 		  # echo 1 > /sys/bus/cdx/devices/.../remove
 
-What:		/sys/bus/cdx/devices/.../resource
-Date:		July 2023
-Contact:	puneet.gupta@amd.com
-Description:
-		The resource file contains host addresses of CDX device
-		resources. Each line of the resource file describes a region
-		with start, end, and flag fields.
-
 What:		/sys/bus/cdx/devices/.../resource<N>
 Date:		July 2023
 Contact:	puneet.gupta@amd.com
