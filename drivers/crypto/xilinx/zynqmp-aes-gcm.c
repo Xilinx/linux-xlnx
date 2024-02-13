@@ -386,33 +386,25 @@ static int zynqmp_fallback_check(struct zynqmp_aead_tfm_ctx *tfm_ctx,
 static int versal_fallback_check(struct zynqmp_aead_tfm_ctx *tfm_ctx,
 				 struct aead_request *req)
 {
-	int need_fallback = 0;
 	struct zynqmp_aead_req_ctx *rq_ctx = aead_request_ctx(req);
 
-	if (tfm_ctx->authsize != ZYNQMP_AES_AUTH_SIZE) {
-		need_fallback = 1;
-		goto fallback;
-	}
+	if (tfm_ctx->authsize != ZYNQMP_AES_AUTH_SIZE)
+		return 1;
 
 	if (tfm_ctx->keylen != XSECURE_AES_KEY_SIZE_128 &&
-	    tfm_ctx->keylen != XSECURE_AES_KEY_SIZE_256) {
-		need_fallback = 1;
-		goto fallback;
-	}
+	    tfm_ctx->keylen != XSECURE_AES_KEY_SIZE_256)
+		return 1;
 
 	if (req->cryptlen < ZYNQMP_AES_MIN_INPUT_BLK_SIZE ||
 	    req->cryptlen % ZYNQMP_AES_WORD_LEN ||
-	    req->assoclen % VERSAL_AES_QWORD_LEN) {
-		need_fallback = 1;
-		goto fallback;
-	}
+	    req->assoclen % VERSAL_AES_QWORD_LEN)
+		return 1;
+
 	if (rq_ctx->op == ZYNQMP_AES_DECRYPT &&
-	    req->cryptlen <= ZYNQMP_AES_AUTH_SIZE) {
-		need_fallback = 1;
-		goto fallback;
-	}
-fallback:
-	return need_fallback;
+	    req->cryptlen <= ZYNQMP_AES_AUTH_SIZE)
+		return 1;
+
+	return 0;
 }
 
 static int handle_aes_req(struct crypto_engine *engine, void *req)
