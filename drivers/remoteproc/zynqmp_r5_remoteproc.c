@@ -718,7 +718,17 @@ static int xlnx_rpu_prepare(struct rproc *rproc)
 		}
 	}
 
-	ret = parse_tcm_banks(rproc);
+	/*
+	 * R52 supports boot without TCM and OCM banks. ZynqMP and
+	 * Versal R5 require boot with vector table section in TCM bank.
+	 */
+	if (of_get_property(z_rproc->dev->of_node, BANK_LIST_PROP, &ret)) {
+		ret = parse_tcm_banks(rproc);
+	} else if (z_rproc->soc_data->soc_type != SOC_VERSAL_NET) {
+		dev_err(dev, "Missing required SRAM.\n");
+		ret = -EINVAL;
+	}
+
 	if (ret) {
 		dev_err(dev, "Unable to parse TCM banks\n");
 		return ret;
