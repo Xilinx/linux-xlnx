@@ -162,6 +162,16 @@ required:
   - "#size-cells"
   - ranges
 
+allOf:
+  - if:
+      properties:
+        compatible:
+          enum:
+            - xilinx,r5f
+    then:
+      required:
+        - sram
+
 additionalProperties: false
 
 examples:
