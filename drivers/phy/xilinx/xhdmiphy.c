@@ -734,7 +734,7 @@ static int xhdmiphy_clk_init(struct xhdmiphy_dev *priv)
 			if (err) {
 				dev_err(priv->dev,
 					"Cannot set rate : %d\n", err);
-				return err;
+				goto err_disable_dru_clk;
 			}
 			dru_clk_rate = clk_get_rate(priv->dru_clk);
 			dev_dbg(priv->dev,
@@ -747,6 +747,8 @@ static int xhdmiphy_clk_init(struct xhdmiphy_dev *priv)
 
 	return 0;
 
+err_disable_dru_clk:
+	clk_disable_unprepare(priv->dru_clk);
 err_disable_tmds_clk:
 	clk_disable_unprepare(priv->tmds_clk);
 err_disable_axiclk:
