@@ -61,7 +61,7 @@ static int xhdmiphy_reset(struct phy *phy)
 	return 0;
 }
 
-static bool xhdmiphy_clk_srcsel(struct xhdmiphy_dev *priv, u8 dir, u8 clksrc)
+static int xhdmiphy_clk_srcsel(struct xhdmiphy_dev *priv, u8 dir, u8 clksrc)
 {
 	if (priv->data && !priv->data->sel_mux(dir, clksrc))
 		return 0;
@@ -71,8 +71,8 @@ static bool xhdmiphy_clk_srcsel(struct xhdmiphy_dev *priv, u8 dir, u8 clksrc)
 	return -EIO;
 }
 
-static bool xhdmiphy_set_lrate(struct xhdmiphy_dev *priv, u8 dir, u8 mode,
-			       u64 lrate)
+static int xhdmiphy_set_lrate(struct xhdmiphy_dev *priv, u8 dir, u8 mode,
+			      u64 lrate)
 {
 	if (priv->data && !priv->data->set_linerate(dir, mode, lrate))
 		return 0;
