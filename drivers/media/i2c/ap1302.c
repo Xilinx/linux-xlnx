@@ -2809,7 +2809,7 @@ static void ap1302_cleanup(struct ap1302_device *ap1302)
 	mutex_destroy(&ap1302->lock);
 }
 
-static int ap1302_probe(struct i2c_client *client, const struct i2c_device_id *id)
+static int ap1302_probe(struct i2c_client *client)
 {
 	struct ap1302_device *ap1302;
 	unsigned int i;
@@ -2874,7 +2874,7 @@ error:
 	return ret;
 }
 
-static int ap1302_remove(struct i2c_client *client)
+static void ap1302_remove(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct ap1302_device *ap1302 = to_ap1302(sd);
@@ -2891,8 +2891,6 @@ static int ap1302_remove(struct i2c_client *client)
 	ap1302_ctrls_cleanup(ap1302);
 
 	ap1302_cleanup(ap1302);
-
-	return 0;
 }
 
 static const struct of_device_id ap1302_of_id_table[] = {
