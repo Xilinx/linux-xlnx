@@ -367,7 +367,7 @@
 			compatible = "xlnx,versal-ddrmc";
 			status = "disabled";
 			reg = <0x0 0xf6150000 0x0 0x2000>, <0x0 0xf6070000 0x0 0x20000>;
-			reg-names = "ddrmc_base", "ddrmc_noc_base";
+			reg-names = "base", "noc";
 			interrupts = <0 147 4>;
 			xlnx,mc-id = <0>;
 		};
@@ -376,7 +376,7 @@
 			compatible = "xlnx,versal-ddrmc";
 			status = "disabled";
 			reg = <0x0 0xf62c0000 0x0 0x2000>, <0x0 0xf6210000 0x0 0x20000>;
-			reg-names = "ddrmc_base", "ddrmc_noc_base";
+			reg-names = "base", "noc";
 			interrupts = <0 147 4>;
 			xlnx,mc-id = <1>;
 		};
@@ -385,7 +385,7 @@
 			compatible = "xlnx,versal-ddrmc";
 			status = "disabled";
 			reg = <0x0 0xf6430000 0x0 0x2000>, <0x0 0xf6380000 0x0 0x20000>;
-			reg-names = "ddrmc_base", "ddrmc_noc_base";
+			reg-names = "base", "noc";
 			interrupts = <0 147 4>;
 			xlnx,mc-id = <2>;
 		};
@@ -394,7 +394,7 @@
 			compatible = "xlnx,versal-ddrmc";
 			status = "disabled";
 			reg = <0x0 0xf65a0000 0x0 0x2000>, <0x0 0xf64f0000 0x0 0x20000>;
-			reg-names = "ddrmc_base", "ddrmc_noc_base";
+			reg-names = "base", "noc";
 			interrupts = <0 147 4>;
 			xlnx,mc-id = <3>;
 		};
