@@ -1919,6 +1919,10 @@ int zynqmp_dp_probe(struct platform_device *pdev)
 		return dev_err_probe(dp->dev, PTR_ERR(dp->reset),
 			"failed to get reset: %ld\n", PTR_ERR(dp->reset));
 
+	ret = zynqmp_dp_reset(dp, true);
+	if (ret < 0)
+		return ret;
+
 	ret = zynqmp_dp_reset(dp, false);
 	if (ret < 0)
 		return ret;
