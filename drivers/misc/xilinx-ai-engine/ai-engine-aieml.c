@@ -23,8 +23,6 @@
 #define NUM_MODS_MEM_TILE	1U
 #define NUM_MODS_SHIMPL_TILE	1U
 
-#define NUM_UTIL_EVENTS		4U
-
 /*
  * Number of resources per module
  */
@@ -137,20 +135,12 @@
 #define AIEML_TILE_MEMMOD_LOCK_UNDERFLOW_REGOFF		0x0001F128U
 #define AIEML_TILE_MEMMOD_DMA_S2MM_STATUS_REGOFF	0x0001DF00U
 #define AIEML_TILE_MEMMOD_DMA_MM2S_STATUS_REGOFF	0x0001DF10U
-#define AIEML_TILE_COREMOD_PERFCTRL_REGOFF		0x00031500U
-#define AIEML_TILE_COREMOD_PERFCTRL_RESET_REGOFF	0x00031508U
-#define AIEML_TILE_COREMOD_PERFCNT0_REGOFF		0x00031520U
-#define AIEML_TILE_CORE_EVNTGEN_REGOFF			0x00034008U
 
 /*
  * Register masks
  */
 #define AIEML_SHIMPL_COLRESET_CTRL_MASK			GENMASK(1, 0)
 #define AIEML_SHIMPL_COLCLOCK_CTRL_MASK			GENMASK(1, 0)
-#define AIEML_TILE_PERFCTRL_CNT0_MASK			0x7F7FU
-#define AIEML_TILE_PERFCTRL_RESET_MASK			0x7FU
-#define AIEML_TILE_CORE_PERFCNT0_MASK			0xFFFFFFFFU
-#define AIEML_TILE_CORE_EVNTGEN_MASK			0x7F
 
 /* Macros to define size of a sysfs binary attribute */
 #define AIEML_PART_SYSFS_CORE_BINA_SIZE		0x4000		/* 16KB */
@@ -450,15 +440,6 @@ struct aie_tile_rsc_attr aieml_shimpl_tile_rscs_attr[AIE_RSCTYPE_MAX] = {
 			{.num_rscs = AIEML_NUM_GROUPEVENTS_PL_MOD,},
 		},
 	},
-};
-
-/* Events needed for core tile utilization */
-static const
-enum aie_events aieml_core_util_events[NUM_UTIL_EVENTS] = {
-		[AIE_EVENT_CORE_ACTIVE] = 28,
-		[AIE_EVENT_CORE_DISABLED] = 29,
-		[AIE_EVENT_CORE_USER_EVNT_0] = 124,
-		[AIE_EVENT_CORE_USER_EVNT_1] = 125,
 };
 
 /* modules types array of CORE tile */
@@ -883,26 +864,6 @@ static const struct aie_single_reg_field aieml_col_rst = {
 static const struct aie_single_reg_field aieml_col_clkbuf = {
 	.mask = AIEML_SHIMPL_COLCLOCK_CTRL_MASK,
 	.regoff = AIEML_SHIMPL_COLCLOCK_CTRL_REGOFF,
-};
-
-static const struct aie_single_reg_field aieml_core_perfctrl = {
-	.mask = AIEML_TILE_PERFCTRL_CNT0_MASK,
-	.regoff = AIEML_TILE_COREMOD_PERFCTRL_REGOFF,
-};
-
-static const struct aie_single_reg_field aieml_core_perfctrl_reset = {
-	.mask = AIEML_TILE_PERFCTRL_RESET_MASK,
-	.regoff = AIEML_TILE_COREMOD_PERFCTRL_RESET_REGOFF,
-};
-
-static const struct aie_single_reg_field aieml_core_perfcnt = {
-	.mask = AIEML_TILE_CORE_PERFCNT0_MASK,
-	.regoff = AIEML_TILE_COREMOD_PERFCNT0_REGOFF,
-};
-
-static const struct aie_single_reg_field aieml_core_evntgen = {
-	.mask = AIEML_TILE_CORE_EVNTGEN_MASK,
-	.regoff = AIEML_TILE_CORE_EVNTGEN_REGOFF,
 };
 
 static const struct aie_single_reg_field aieml_core_sts = {
@@ -2832,11 +2793,6 @@ int aieml_device_init(struct aie_device *adev)
 	adev->shim_errors = &aieml_shim_error;
 	adev->l1_ctrl = &aieml_l1_intr_ctrl;
 	adev->l2_ctrl = &aieml_l2_intr_ctrl;
-	adev->core_perfctrl = &aieml_core_perfctrl;
-	adev->core_perfctrl_reset = &aieml_core_perfctrl_reset;
-	adev->core_perfcnt = &aieml_core_perfcnt;
-	adev->core_evntgen = &aieml_core_evntgen;
-	adev->core_util_events = aieml_core_util_events;
 
 	aieml_device_init_rscs_attr(adev);
 

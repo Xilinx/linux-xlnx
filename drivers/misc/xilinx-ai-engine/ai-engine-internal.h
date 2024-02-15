@@ -217,11 +217,6 @@ enum aie_tile_type {
 	.write_callback	= aie_tile_write_cb_##_name,		\
 }
 
-#define AIE_CORE_NUM_CYCLE		2U
-#define AIE_CORE_NUM_PERFCNT_PER_REG	2U
-#define AIE_CORE_PERFCNT_EVNT_BITS	8U
-#define AIE_CORE_PERFCNT_CTRL_IDX	4U
-
 /*
  * enum aie_shim_switch_type - identifies different switches in shim tile.
  */
@@ -237,24 +232,6 @@ enum aie_device_type {
 	AIE_DEV_GENERIC_DEVICE,
 	AIE_DEV_GEN_S100 = 100,
 	AIE_DEV_GEN_S200 = 200
-};
-
-/*
- * enum for kernel utilization cycle.
- */
-enum aie_kernel_utilization {
-	AIE_CORE_ACTIVE_CYCLE,
-	AIE_CORE_TOTAL_CYCLE
-};
-
-/*
- * enum for events for kernel utilization
- */
-enum aie_events {
-	AIE_EVENT_CORE_ACTIVE,
-	AIE_EVENT_CORE_DISABLED,
-	AIE_EVENT_CORE_USER_EVNT_0,
-	AIE_EVENT_CORE_USER_EVNT_1,
 };
 
 /**
@@ -912,18 +889,6 @@ struct aie_tile {
 };
 
 /**
- * struct aie_utilization_timer - AI engine user space pinned region
- * @timer: timer structure to set expiry and callback.
- * @apart: AI engine partition.
- * @util: array to capture core utilization.
- */
-struct aie_utilization_timer {
-	struct timer_list timer;
-	struct aie_partition *apart;
-	struct aie_occupancy *util;
-};
-
-/**
  * struct aie_device - AI engine device structure
  * @apertures: list of apertures
  * @cdev: cdev for the AI engine
@@ -954,13 +919,6 @@ struct aie_utilization_timer {
  * @mem_errors: memory module error attribute
  * @memtile_errors: memory tile error attribute
  * @shim_errors: shim tile error attribute
- * @core_perfctrl: core module performance control attribute
- * @core_perfctrl_reset: core module performance control reset attribute
- * @core_perfcnt: core module performance counter attribute
- * @core_evntgen: core module event generate attribute
- * @util_timer: utilization timer
- * @perfinst: performance instance
- * @core_util_events: core module events to capture active and total cycle
  * @array_shift: array address shift
  * @col_shift: column address shift
  * @row_shift: row address shift
@@ -1013,13 +971,6 @@ struct aie_device {
 	const struct aie_error_attr *mem_errors;
 	const struct aie_error_attr *memtile_errors;
 	const struct aie_error_attr *shim_errors;
-	const struct aie_single_reg_field *core_perfctrl;
-	const struct aie_single_reg_field *core_perfctrl_reset;
-	const struct aie_single_reg_field *core_perfcnt;
-	const struct aie_single_reg_field *core_evntgen;
-	const enum aie_events *core_util_events;
-	struct aie_utilization_timer util_timer;
-	struct aie_perfinst_args perfinst;
 	u32 array_shift;
 	u32 col_shift;
 	u32 row_shift;
