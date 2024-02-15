@@ -115,9 +115,6 @@ enum aie_part_status {
 /* request a channel to broadcast to the whole partition */
 #define XAIE_BROADCAST_ALL		(1U << 0)
 
-/* Kernel utilization Signal*/
-#define SIGPERFUTIL			45U
-
 /**
  * struct aie_location - AIE location information
  * @col: column id
@@ -322,37 +319,6 @@ struct aie_column_args {
 	__u32 start_col;
 	__u32 num_cols;
 	__u8 enable;
-};
-
-/**
- * struct aie_occupancy - AIE performance utilization
- * @loc: location of aie core tiles for which kernel utilization will be captured
- * @perfcnt: stores performance counter value
- * @active_cycle: stores number of active cycles over capture period
- * @total_cycle: stores number of total cycles over capture period
- */
-struct aie_occupancy {
-	struct aie_location loc;
-	__u8 perfcnt[2];
-	__u32 active_cycle;
-	__u32 total_cycle;
-};
-
-/**
- * struct aie_perfinst_args - AIE performance utilization args
- * @time_interval_ms: performance utilization time interval in milliseconds
- * @range: performance utilization capture columns
- * @util: stores the tile location and percentage of kernel utilization
- * @task: task structure to raise signal to calculate the utilization
- * @util_size: number of elements the util array
- */
-
-struct aie_perfinst_args {
-	struct aie_range range;
-	struct aie_occupancy *util;
-	struct task_struct *task;
-	__u32 util_size;
-	__u32 time_interval_ms;
 };
 
 /**
@@ -703,18 +669,4 @@ struct aie_rsc_user_stat_array {
  */
 #define AIE_SET_COLUMN_CLOCK_IOCTL	_IOW(AIE_IOCTL_BASE, 0x1b, \
 					struct aie_tiles_array)
-
-/**
- * DOC: AIE_PERFORMANCE_UTILIZATION_IOCTL - capture kernel utilization
- *
- * This ioctl is used to capture kernel utilization of the core tiles in the
- * partition if range is not mentioned in the performance instance structure by
- * the user. If range is passed by the user, kernel utilization is captured for
- * the core tiles in the range. The utilization is captured over period
- * mentioned  by the user in timeinterval_ms.
- */
-
-#define AIE_PERFORMANCE_UTILIZATION_IOCTL _IOW(AIE_IOCTL_BASE, 0x1c, \
-						struct aie_perfinst_args)
-
 #endif

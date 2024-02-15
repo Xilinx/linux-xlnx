@@ -22,8 +22,6 @@
 #define NUM_MODS_CORE_TILE	2U
 #define NUM_MODS_SHIMPL_TILE	1U
 
-#define NUM_UTIL_EVENTS		4U
-
 /*
  * Number of resources per module
  */
@@ -79,10 +77,6 @@
 #define AIE_TILE_CORE_LC_REGOFF			0x00030520U
 #define AIE_TILE_CORE_VRL0_REGOFF		0x00030530U
 #define AIE_TILE_CORE_AMH3_PART3_REGOFF		0x000307a0U
-#define AIE_TILE_CORE_PERFCTRL_REGOFF		0x00031000U
-#define AIE_TILE_CORE_PERFCTRL_RESET_REGOFF	0x00031008U
-#define AIE_TILE_CORE_PERFCNT0_REGOFF		0x00031020U
-#define AIE_TILE_CORE_EVNTGEN_REGOFF		0x00034008U
 
 /*
  * Register masks
@@ -93,10 +87,6 @@
 #define AIE_SHIMPL_CLKCNTR_NEXTCLK_MASK		BIT(1)
 #define AIE_TILE_CLKCNTR_COLBUF_MASK		BIT(0)
 #define AIE_TILE_CLKCNTR_NEXTCLK_MASK		BIT(1)
-#define AIE_TILE_PERFCTRL_CNT0_MASK		0x7F7FU
-#define AIE_TILE_PERFCTRL_RESET_MASK		0x7FU
-#define AIE_TILE_CORE_PERFCNT0_MASK		0xFFFFFFFFU
-#define AIE_TILE_CORE_EVNTGEN_MASK		0x7F
 
 /*
  * AI engine SHIM reset ID.
@@ -496,26 +486,6 @@ static const struct aie_bd_attr aie_shimbd = {
 		},
 	},
 	.bd_idx_off = 0x14U,
-};
-
-static const struct aie_single_reg_field aie_core_perfctrl = {
-	.mask = AIE_TILE_PERFCTRL_CNT0_MASK,
-	.regoff = AIE_TILE_CORE_PERFCTRL_REGOFF,
-};
-
-static const struct aie_single_reg_field aie_core_perfctrl_reset = {
-	.mask = AIE_TILE_PERFCTRL_RESET_MASK,
-	.regoff = AIE_TILE_CORE_PERFCTRL_RESET_REGOFF,
-};
-
-static const struct aie_single_reg_field aie_core_perfcnt = {
-	.mask = AIE_TILE_CORE_PERFCNT0_MASK,
-	.regoff = AIE_TILE_CORE_PERFCNT0_REGOFF,
-};
-
-static const struct aie_single_reg_field aie_core_evntgen = {
-	.mask = AIE_TILE_CORE_EVNTGEN_MASK,
-	.regoff = AIE_TILE_CORE_EVNTGEN_REGOFF,
 };
 
 static const struct aie_dma_attr aie_shimdma = {
@@ -1089,15 +1059,6 @@ struct aie_tile_rsc_attr aie_shimpl_tile_rscs_attr[AIE_RSCTYPE_MAX] =  {
 			{.num_rscs = AIE_NUM_GROUPEVENTS_PL_MOD},
 		},
 	},
-};
-
-/* Events needed for core tile utilization */
-static const
-enum aie_events aie_core_util_events[NUM_UTIL_EVENTS] = {
-		[AIE_EVENT_CORE_ACTIVE] = 28,
-		[AIE_EVENT_CORE_DISABLED] = 29,
-		[AIE_EVENT_CORE_USER_EVNT_0] = 124,
-		[AIE_EVENT_CORE_USER_EVNT_1] = 125,
 };
 
 /* modules types array of CORE tile */
@@ -2574,11 +2535,6 @@ int aie_device_init(struct aie_device *adev)
 	adev->core_pc = &aie_core_pc;
 	adev->core_lr = &aie_core_lr;
 	adev->core_sp = &aie_core_sp;
-	adev->core_perfctrl = &aie_core_perfctrl;
-	adev->core_perfctrl_reset = &aie_core_perfctrl_reset;
-	adev->core_perfcnt = &aie_core_perfcnt;
-	adev->core_evntgen = &aie_core_evntgen;
-	adev->core_util_events = aie_core_util_events;
 
 	aie_device_init_rscs_attr(adev);
 
