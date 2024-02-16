@@ -198,90 +198,98 @@
 			};
 		};
 
-		lpd_dma_chan0: dma@ffa80000 {
+		lpd_dma_chan0: dma-controller@ffa80000 {
 			compatible = "xlnx,zynqmp-dma-1.0";
 			status = "disabled";
 			reg = <0 0xffa80000 0 0x1000>;
 			interrupts = <0 60 4>;
 			clock-names = "clk_main", "clk_apb";
 			/* iommus = <&smmu 0x210>; */
+			#dma-cells = <1>;
 			xlnx,bus-width = <64>;
 			/* dma-coherent; */
 		};
 
-		lpd_dma_chan1: dma@ffa90000 {
+		lpd_dma_chan1: dma-controller@ffa90000 {
 			compatible = "xlnx,zynqmp-dma-1.0";
 			status = "disabled";
 			reg = <0 0xffa90000 0 0x1000>;
 			interrupts = <0 61 4>;
 			clock-names = "clk_main", "clk_apb";
 			/* iommus = <&smmu 0x212>; */
+			#dma-cells = <1>;
 			xlnx,bus-width = <64>;
 			/* dma-coherent; */
 		};
 
-		lpd_dma_chan2: dma@ffaa0000 {
+		lpd_dma_chan2: dma-controller@ffaa0000 {
 			compatible = "xlnx,zynqmp-dma-1.0";
 			status = "disabled";
 			reg = <0 0xffaa0000 0 0x1000>;
 			interrupts = <0 62 4>;
 			clock-names = "clk_main", "clk_apb";
 			/* iommus = <&smmu 0x214>; */
+			#dma-cells = <1>;
 			xlnx,bus-width = <64>;
 			/* dma-coherent; */
 		};
 
-		lpd_dma_chan3: dma@ffab0000 {
+		lpd_dma_chan3: dma-controller@ffab0000 {
 			compatible = "xlnx,zynqmp-dma-1.0";
 			status = "disabled";
 			reg = <0 0xffab0000 0 0x1000>;
 			interrupts = <0 63 4>;
 			clock-names = "clk_main", "clk_apb";
 			/* iommus = <&smmu 0x216>; */
+			#dma-cells = <1>;
 			xlnx,bus-width = <64>;
 			/* dma-coherent; */
 		};
 
-		lpd_dma_chan4: dma@ffac0000 {
+		lpd_dma_chan4: dma-controller@ffac0000 {
 			compatible = "xlnx,zynqmp-dma-1.0";
 			status = "disabled";
 			reg = <0 0xffac0000 0 0x1000>;
 			interrupts = <0 64 4>;
 			clock-names = "clk_main", "clk_apb";
 			/* iommus = <&smmu 0x218>; */
+			#dma-cells = <1>;
 			xlnx,bus-width = <64>;
 			/* dma-coherent; */
 		};
 
-		lpd_dma_chan5: dma@ffad0000 {
+		lpd_dma_chan5: dma-controller@ffad0000 {
 			compatible = "xlnx,zynqmp-dma-1.0";
 			status = "disabled";
 			reg = <0 0xffad0000 0 0x1000>;
 			interrupts = <0 65 4>;
 			clock-names = "clk_main", "clk_apb";
 			/* iommus = <&smmu 0x21a>; */
+			#dma-cells = <1>;
 			xlnx,bus-width = <64>;
 			/* dma-coherent; */
 		};
 
-		lpd_dma_chan6: dma@ffae0000 {
+		lpd_dma_chan6: dma-controller@ffae0000 {
 			compatible = "xlnx,zynqmp-dma-1.0";
 			status = "disabled";
 			reg = <0 0xffae0000 0 0x1000>;
 			interrupts = <0 66 4>;
 			clock-names = "clk_main", "clk_apb";
 			/* iommus = <&smmu 0x21c>; */
+			#dma-cells = <1>;
 			xlnx,bus-width = <64>;
 			/* dma-coherent; */
 		};
 
-		lpd_dma_chan7: dma@ffaf0000 {
+		lpd_dma_chan7: dma-controller@ffaf0000 {
 			compatible = "xlnx,zynqmp-dma-1.0";
 			status = "disabled";
 			reg = <0 0xffaf0000 0 0x1000>;
 			interrupts = <0 67 4>;
 			clock-names = "clk_main", "clk_apb";
 			/* iommus = <&smmu 0x21e>; */
+			#dma-cells = <1>;
 			xlnx,bus-width = <64>;
 			/* dma-coherent; */
 		};
