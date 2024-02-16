@@ -463,7 +463,7 @@
 			bootph-all;
 		};
 
-		smmu: smmu@fd800000 {
+		smmu: iommu@fd800000 {
 			compatible = "arm,mmu-500";
 			status = "disabled";
 			reg = <0 0xfd800000 0 0x40000>;
