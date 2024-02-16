@@ -139,11 +139,11 @@
 			interrupt-controller;
 			interrupts = <1 9 4>;
 
-			gic_its: gic-its@f9020000 {
+			gic_its: msi-controller@f9020000 {
 				compatible = "arm,gic-v3-its";
 				status = "disabled";
 				msi-controller;
-				msi-cells = <1>;
+				#msi-cells = <1>;
 				reg = <0 0xf9020000 0 0x20000>;
 			};
 		};
