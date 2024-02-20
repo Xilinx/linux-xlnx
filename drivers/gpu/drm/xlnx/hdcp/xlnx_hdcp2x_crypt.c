@@ -129,12 +129,23 @@ static int xlnx_hdcp2x_tx_rsa_encrypt(const u8 *rsa_public_key, int public_key_s
 				      const u8 *exponent_key, int exponent_key_size,
 				      const u8 *msg, int msg_size, u8 *encrypted_msg)
 {
-	unsigned int n[BD_MAX_MOD_SIZE], e[BD_MAX_MOD_SIZE],
-			m[BD_MAX_MOD_SIZE], s[BD_MAX_MOD_SIZE];
+	unsigned int *n, *e, *m, *s;
 	unsigned int mod_size = public_key_size / sizeof(unsigned int);
 
 	if (msg_size != public_key_size)
 		return -EINVAL;
+
+	n = kzalloc(4 * BD_MAX_MOD_SIZE * sizeof(u32), GFP_KERNEL);
+	if (!n)
+		return -ENOMEM;
+
+	/*
+	 * Divide the mem allocated to n into 4 parts such that
+	 * e follows n, m follows e and s follows m.
+	 */
+	e = &n[BD_MAX_MOD_SIZE];
+	m = &e[BD_MAX_MOD_SIZE];
+	s = &m[BD_MAX_MOD_SIZE];
 
 	mp_conv_from_octets(n, mod_size, rsa_public_key, public_key_size);
 	mp_conv_from_octets(e, mod_size, exponent_key, exponent_key_size);
@@ -142,6 +153,8 @@ static int xlnx_hdcp2x_tx_rsa_encrypt(const u8 *rsa_public_key, int public_key_s
 	mp_conv_from_octets(m, mod_size, msg, msg_size);
 	mp_mod_exp(s, m, e, n, mod_size);
 	mp_conv_to_octets(s, mod_size, encrypted_msg, msg_size);
+
+	kfree(n);
 
 	return 0;
 }
