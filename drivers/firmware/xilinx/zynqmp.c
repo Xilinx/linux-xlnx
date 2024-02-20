@@ -1777,6 +1777,42 @@ int versal_pm_aes_key_write(const u32 keylen,
 EXPORT_SYMBOL_GPL(versal_pm_aes_key_write);
 
 /**
+ * versal_pm_efuse_read - Reads efuse.
+ * @address: Address of the payload
+ * @offset: Efuse offset
+ * @size: Size of data to be read
+ *
+ * This function provides support to read data from eFuse.
+ *
+ * Return: status, either success or error code.
+ */
+int versal_pm_efuse_read(const u64 address, u32 offset, u32 size)
+{
+	return zynqmp_pm_invoke_fn(PM_EFUSE_READ_VERSAL, NULL, 4, offset,
+				   lower_32_bits(address),
+				   upper_32_bits(address), size);
+}
+EXPORT_SYMBOL_GPL(versal_pm_efuse_read);
+
+/**
+ * versal_pm_efuse_write - Write efuse
+ * @address: Address of the payload
+ * @operationid: operationid which includes module and API id
+ * @envdis: Environment disable variable
+ *
+ * This function provides support to write data into eFuse.
+ *
+ * Return: status, either success or error+reason
+ */
+int versal_pm_efuse_write(const u64 address, const u32 operationid,
+			  const u8 envdis)
+{
+	return zynqmp_pm_invoke_fn(operationid, NULL, 3, lower_32_bits(address),
+				   upper_32_bits(address), envdis);
+}
+EXPORT_SYMBOL_GPL(versal_pm_efuse_write);
+
+/**
  * versal_pm_aes_op_init - Init AES operation
  * @hw_req:	AES op init structure address
  *
