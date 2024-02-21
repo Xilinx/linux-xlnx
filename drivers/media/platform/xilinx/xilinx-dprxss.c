@@ -2106,7 +2106,7 @@ static int xdprxss_hdcp1x_keymgmt_set_key(struct xdprxss_state *state)
 		return ret;
 	xdprxss_hdcp1x_keymgmt_enable(state);
 
-	return ret;
+	return 0;
 }
 
 static int xdprxss_hdcp2x_key_write(struct xdprxss_state *xdprxss,
@@ -2945,7 +2945,7 @@ static int xdprxss_probe(struct platform_device *pdev)
 		for (i = 0; i < xdprxss->max_lanecount; i++) {
 			char phy_name[16];
 
-			snprintf(phy_name, sizeof(phy_name), "dp-phy%d", i);
+			snprintf(phy_name, sizeof(phy_name), "dp-phy%u", i);
 			xdprxss->phy[i] = devm_phy_get(xdprxss->dev, phy_name);
 			if (IS_ERR(xdprxss->phy[i])) {
 				ret = PTR_ERR(xdprxss->phy[i]);
