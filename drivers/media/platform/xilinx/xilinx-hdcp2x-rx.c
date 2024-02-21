@@ -56,9 +56,12 @@ static enum xhdcp2x_rx_state (*xhdcp2x_rx_state_table[])(void *) = {
 	xhdcp2x_state_B4
 };
 
-int xhdcp2x_rx_set_reauth_req(struct xlnx_hdcp2x_config *xhdcp2x_rx)
+static int xhdcp2x_rx_set_reauth_req(struct xlnx_hdcp2x_config *xhdcp2x_rx)
 {
 	int status = 0;
+
+	if (!xhdcp2x_rx)
+		return -EINVAL;
 
 	xhdcp2x_rx->info.reauth_request_cnt++;
 
@@ -198,11 +201,12 @@ int xhdcp2x_rx_disable(struct xlnx_hdcp2x_config *xhdcp2x_rx)
 {
 	int status = 0;
 
-	if (xhdcp2x_rx) {
-		status = xhdcp2x_rx_reset(xhdcp2x_rx);
-		if (!status)
-			return -EINVAL;
-	}
+	if (!xhdcp2x_rx)
+		return -EINVAL;
+
+	status = xhdcp2x_rx_reset(xhdcp2x_rx);
+	if (!status)
+		return -EINVAL;
 
 	xhdcp2x_rx->curr_state = XHDCP2X_STATE_B0;
 	xhdcp2x_rx->prev_state = XHDCP2X_STATE_B0;
