@@ -435,7 +435,6 @@ int xhdcp2x_rx_rsaes_oaep_decrypt(struct xlnx_hdcp2x_config *xhdcp2x_rx,
 				  u8 *encryptedmessage, u8 *message, int *messagelen);
 int xhdcp2x_rx_push_events(void *ref, u32 events);
 int xhdcp2x_rx_set_key(void *ref, void *hdcp2x_lc128, void *hdcp2x_private);
-int xhdcp2x_rx_set_reauth_req(struct xlnx_hdcp2x_config *xhdcp2x_rx);
 int xhdcp2x_rx_calc_mont_nprime(void *ref, u8 *nprime, const u8 *n, int ndigits);
 
 void xhdcp2x_rx_generate_random(struct xlnx_hdcp2x_config *xhdcp2x_rx,
