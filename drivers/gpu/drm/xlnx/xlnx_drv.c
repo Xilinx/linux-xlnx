@@ -360,6 +360,11 @@ static int xlnx_of_component_probe(struct device *master_dev,
 			continue;
 		}
 
+		if (!of_graph_is_present(parent)) {
+			of_node_put(parent);
+			break;
+		}
+
 		for_each_endpoint_of_node(parent, ep) {
 			remote = of_graph_get_remote_port_parent(ep);
 			if (!remote || !of_device_is_available(remote) ||
