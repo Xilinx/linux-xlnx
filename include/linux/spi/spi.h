@@ -599,6 +599,7 @@ struct spi_controller {
 	 * assert/de-assert more than one chip select at once.
 	 */
 #define SPI_CONTROLLER_MULTI_CS		BIT(7)
+#define	SPI_CONTROLLER_NO_4B		BIT(8)	/* No 4-byte mode support */
 
 	/* Flag indicating if the allocation of this struct is devres-managed */
 	bool			devm_allocated;
