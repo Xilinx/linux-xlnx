@@ -1081,7 +1081,6 @@
 				/* iommus = <&smmu 0x860>; */
 				snps,quirk-frame-length-adjustment = <0x20>;
 				clock-names = "ref";
-				snps,enable_guctl1_ipd_quirk;
 				snps,resume-hs-terminations;
 				/* dma-coherent; */
 			};
@@ -1114,7 +1113,6 @@
 				/* iommus = <&smmu 0x861>; */
 				snps,quirk-frame-length-adjustment = <0x20>;
 				clock-names = "ref";
-				snps,enable_guctl1_ipd_quirk;
 				snps,resume-hs-terminations;
 				/* dma-coherent; */
 			};
