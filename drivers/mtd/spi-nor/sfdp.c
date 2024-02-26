@@ -1536,7 +1536,15 @@ int spi_nor_parse_sfdp(struct spi_nor *nor)
 			break;
 
 		case SFDP_4BAIT_ID:
-			err = spi_nor_parse_4bait(nor, param_header);
+			/*
+			 * Some SPI controllers lack support for 4-byte addressing mode.
+			 * It uses 3-byte addressing along with the Extended Address
+			 * Register(EAR) to access memory address greater than 16MB.
+			 * Avoid parsing the 4-Byte Address Instruction Table, if the
+			 * controller does not support 4-byte addressing.
+			 */
+			if (!(nor->spimem->spi->controller->flags & SPI_NOR_NO_4B))
+				err = spi_nor_parse_4bait(nor, param_header);
 			break;
 
 		case SFDP_PROFILE1_ID:
