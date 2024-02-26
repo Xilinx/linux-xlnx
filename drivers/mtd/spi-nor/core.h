@@ -17,6 +17,9 @@
 /* In parallel configuration enable multiple CS */
 #define SPI_NOR_ENABLE_MULTI_CS	(BIT(0) | BIT(1))
 
+/* No 4byte mode support */
+#define SPI_NOR_NO_4B	BIT(7)
+
 /* Standard SPI NOR flash operations. */
 #define SPI_NOR_READID_OP(naddr, ndummy, buf, len)			\
 	SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_RDID, 0),			\
