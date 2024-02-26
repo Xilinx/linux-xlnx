@@ -775,7 +775,7 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 	ctlr->setup = zynq_qspi_setup_op;
 	ctlr->max_speed_hz = clk_get_rate(xqspi->refclk) / 2;
 	ctlr->dev.of_node = np;
-	ctlr->flags |= SPI_CONTROLLER_MULTI_CS;
+	ctlr->flags |= SPI_CONTROLLER_MULTI_CS | SPI_CONTROLLER_NO_4B;
 
 	/* QSPI controller initializations */
 	zynq_qspi_init_hw(xqspi, ctlr->num_chipselect);
