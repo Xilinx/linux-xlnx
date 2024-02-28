@@ -472,7 +472,7 @@
 				cdns,tslch-ns = <1>;
 				spi-tx-bus-width = <8>;
 				spi-rx-bus-width = <8>;
-				spi-max-frequency = <5000000>;
+				spi-max-frequency = <20000000>;
 				broken-flash-reset;
 				no-wp;
 				reset-gpios = <&gpio1 0xc GPIO_ACTIVE_LOW>;
