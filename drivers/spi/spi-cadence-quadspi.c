@@ -2312,7 +2312,7 @@ static void cqspi_remove(struct platform_device *pdev)
 static int cqspi_suspend(struct device *dev)
 {
 	struct cqspi_st *cqspi = dev_get_drvdata(dev);
-	struct spi_controller *host = dev_get_drvdata(dev);
+	struct spi_controller *host = cqspi->host;
 	int ret;
 
 	ret = spi_controller_suspend(host);
@@ -2332,7 +2332,7 @@ static int cqspi_suspend(struct device *dev)
 static int cqspi_resume(struct device *dev)
 {
 	struct cqspi_st *cqspi = dev_get_drvdata(dev);
-	struct spi_controller *host = dev_get_drvdata(dev);
+	struct spi_controller *host = cqspi->host;
 	u32 ret;
 
 	clk_prepare_enable(cqspi->clk);
