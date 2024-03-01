@@ -530,14 +530,14 @@ int xlnx_hdcp2x_tx_read_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx, u8 msg_id)
 		xhdcp2x_tx->handlers.rd_handler(xhdcp2x_tx->interface_ref,
 						HDCP2X_TX_HDCPPORT_R_RX_OFFSET,
 						tx_msg->msg_type.ake_send_cert.r_rx,
-						HDCP2X_TX_HDCPPORT_CERT_RX_OFFSET);
+						HDCP_2_2_RRX_LEN);
 		msg_read +=
 		xhdcp2x_tx->handlers.rd_handler(xhdcp2x_tx->interface_ref,
 						HDCP2X_TX_HDCPPORT_RX_CAPS_OFFSET,
 						tx_msg->msg_type.ake_send_cert.rxcaps,
 						HDCP_2_2_RXCAPS_LEN);
 		if (msg_read == (HDCP2X_TX_CERT_SIZE +
-				 HDCP2X_TX_HDCPPORT_CERT_RX_OFFSET +
+				 HDCP_2_2_RRX_LEN +
 				 HDCP_2_2_RXCAPS_LEN))
 			status = 0;
 		break;
