@@ -249,9 +249,9 @@ bool xlnx_hdcp1x_tx_check_rxcapable(struct xlnx_hdcp1x_config *xhdcp1x_tx)
  * @return: true indicates read sucessfull or not (false)
  */
 bool xlnx_hdcp1x_read_bksv_from_remote(struct xlnx_hdcp1x_config *xhdcp1x_tx,
-				       u8 offset, void *buf, u32 buf_size)
+				       u32 offset, void *buf, u32 buf_size)
 {
-	if ((buf_size + offset) > XHDCP1X_BUF_OFFSET_LEN)
+	if ((buf_size + (offset - XDPTX_HDCP1X_DPCD_OFFSET)) > XHDCP1X_BUF_OFFSET_LEN)
 		buf_size = (XHDCP1X_BUF_OFFSET_LEN - offset);
 
 	xhdcp1x_tx->handlers.rd_handler(xhdcp1x_tx->interface_ref,
@@ -788,20 +788,17 @@ int xlnx_hdcp1x_get_repeater_info(struct xlnx_hdcp1x_config *xhdcp1x_tx, u16 *in
 		}
 	} else {
 		if (xhdcp1x_tx->handlers.rd_handler(xhdcp1x_tx->interface_ref,
-						    XHDCP1X_PORT_DPCD_BASE
-						    + XHDCP1X_PORT_OFFSET_BCAPS,
+						    XHDCP1X_PORT_OFFSET_BCAPS,
 						    (void *)&value, 1) > 0) {
 			if ((value & XHDCP1X_PORT_BIT_BCAPS_REPEATER) != 0) {
 				xhdcp1x_tx->handlers.rd_handler(xhdcp1x_tx->interface_ref,
-								XHDCP1X_PORT_DPCD_BASE
-								+ XHDCP1X_PORT_OFFSET_BSTATUS,
+								XHDCP1X_PORT_OFFSET_BSTATUS,
 								&value, 1);
 				if ((value & XHDCP1X_PORT_BIT_BSTATUS_READY) != 0) {
 					u8 buf[XHDMI_HDCP1X_PORT_SIZE_BSTATUS];
 					u16 binfo = 0;
 
 					xhdcp1x_tx->handlers.rd_handler(xhdcp1x_tx->interface_ref,
-									XHDCP1X_PORT_DPCD_BASE +
 									XHDCP1X_PORT_OFFSET_BINFO,
 									buf,
 									XHDCP1X_PORT_SIZE_BINFO);
@@ -950,8 +947,7 @@ int xlnx_hdcp1x_tx_validate_ksv_list(struct xlnx_hdcp1x_config *xhdcp1x_tx, u16 
 				min_bytes_to_read = byte_count;
 
 			ret = xhdcp1x_tx->handlers.rd_handler(xhdcp1x_tx->interface_ref,
-							      XHDCP1X_PORT_DPCD_BASE
-							      + XHDCP1X_PORT_OFFSET_KSVFIFO,
+							      XHDCP1X_PORT_OFFSET_KSVFIFO,
 							      buf, total_bytes);
 			if (!ret)
 				return false;
@@ -1013,12 +1009,11 @@ int xlnx_hdcp1x_tx_validate_ksv_list(struct xlnx_hdcp1x_config *xhdcp1x_tx, u16 
 				offset = XHDMI_HDCP1X_PORT_OFFSET_VH0;
 
 			else
-				offset = XHDCP1X_PORT_DPCD_BASE + XHDCP1X_PORT_OFFSET_VH0;
+				offset = XHDCP1X_PORT_OFFSET_VH0;
 
 			ret =
 				xhdcp1x_tx->handlers.rd_handler(xhdcp1x_tx->interface_ref,
-								XHDCP1X_PORT_DPCD_BASE
-								+ offset, buf,
+								offset, buf,
 								XHDCP1X_PORT_SIZE_VH0);
 
 			if (!ret) {
@@ -1070,8 +1065,7 @@ int xlnx_hdcp1x_tx_validate_ksv_list(struct xlnx_hdcp1x_config *xhdcp1x_tx, u16 
 							XHDMI_HDCP1X_PORT_SIZE_BKSV);
 		else
 			xhdcp1x_tx->handlers.rd_handler(xhdcp1x_tx->interface_ref,
-							XHDCP1X_PORT_DPCD_BASE
-							+ XHDCP1X_PORT_OFFSET_BKSV,
+							XHDCP1X_PORT_OFFSET_BKSV,
 							bksv, XHDCP1X_PORT_SIZE_BKSV);
 
 		/* Determine theremote_ksv */
@@ -1172,8 +1166,7 @@ int xlnx_hdcp1x_setrepeaterinfo(struct xlnx_hdcp1x_config *xhdcp1x_tx)
 							XHDMI_HDCP1X_PORT_SIZE_BKSV);
 		else
 			xhdcp1x_tx->handlers.rd_handler(xhdcp1x_tx->interface_ref,
-							XHDCP1X_PORT_DPCD_BASE
-							+ XHDCP1X_PORT_OFFSET_BKSV,
+							XHDCP1X_PORT_OFFSET_BKSV,
 							bksv, XHDCP1X_PORT_SIZE_BKSV);
 
 		remote_ksv = xlnx_hdcp1x_buf_to_uint16(bksv,
