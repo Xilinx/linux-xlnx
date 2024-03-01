@@ -46,9 +46,7 @@
 
 #define XDPTX_HDCP2X_OFFSET		0x4000
 #define XDPTX_HDCP_TIMER_OFFSET		0x6000
-#define XDPTX_HDCP2X_DPCD_OFFSET	0x69000
-#define XDPTX_HDCP1X_DPCD_OFFSET	0x68000
-#define XDPTX_HDCP1X_OFFSET			0x2000
+#define XDPTX_HDCP1X_OFFSET		0x2000
 #define XDP_TX_HDCP1X_ENABLE		0x400
 #define XDP_TX_HDCP1X_ENABLE_BYPASS_DISABLE_MASK 0x0001
 /* Link configuration registers */
@@ -3559,22 +3557,9 @@ static int xlnx_dp_hdcp_dpcd_write(void *ref, u32 offset,
 				   void *buf, u32 buf_size)
 {
 	struct xlnx_dp *dp = (struct xlnx_dp *)ref;
-	struct xlnx_hdcptx *dptxhdcp = &dp->tx_hdcp;
-	u32 ret = 0, address = 0;
+	u32 ret = 0;
 
-	xlnx_hdcptx_read_ds_sink_capability(dptxhdcp);
-
-	if (dptxhdcp->hdcp_protocol == XHDCPTX_HDCP_2X) {
-		address = offset;
-		address += XDPTX_HDCP2X_DPCD_OFFSET;
-	} else if (dptxhdcp->hdcp_protocol == XHDCPTX_HDCP_1X) {
-		address = offset;
-		address += XDPTX_HDCP1X_DPCD_OFFSET;
-	} else {
-		dev_err(dptxhdcp->dev, "Not supported HDCP protocol\n");
-	}
-
-	ret = drm_dp_dpcd_write(&dp->aux, address, buf, buf_size);
+	ret = drm_dp_dpcd_write(&dp->aux, offset, buf, buf_size);
 	if (ret < 0) {
 		dev_err(dp->dev, "dpcd write failed");
 		return ret;
@@ -3597,21 +3582,9 @@ static int xlnx_dp_hdcp_dpcd_read(void *ref, u32 offset,
 				  void *buf, u32 buf_size)
 {
 	struct xlnx_dp *dp = (struct xlnx_dp *)ref;
-	struct xlnx_hdcptx *dptxhdcp = &dp->tx_hdcp;
-	u32 ret = 0, address = 0;
+	u32 ret = 0;
 
-	xlnx_hdcptx_read_ds_sink_capability(dptxhdcp);
-	if (dptxhdcp->hdcp_protocol == XHDCPTX_HDCP_2X) {
-		address = offset;
-		address += XDPTX_HDCP2X_DPCD_OFFSET;
-	} else if (dptxhdcp->hdcp_protocol == XHDCPTX_HDCP_1X) {
-		address = offset;
-		address += XDPTX_HDCP1X_DPCD_OFFSET;
-	} else {
-		dev_err(dptxhdcp->dev, "Not supported HDCP protocol\n");
-	}
-
-	ret = drm_dp_dpcd_read(&dp->aux, address, buf, buf_size);
+	ret = drm_dp_dpcd_read(&dp->aux, offset, buf, buf_size);
 	if (ret < 0) {
 		dev_err(dp->dev, "dpcd read failed");
 		return ret;
