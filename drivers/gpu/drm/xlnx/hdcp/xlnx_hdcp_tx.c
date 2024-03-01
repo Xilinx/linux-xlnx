@@ -41,8 +41,10 @@ void xlnx_hdcptx_read_ds_sink_capability(struct xlnx_hdcptx *xtxhdcp)
 	}
 	if (!status) {
 		xtxhdcp->hdcp_protocol = XHDCPTX_HDCP_NONE;
-		xlnx_hdcp1x_tx_start_timer(xtxhdcp->xhdcp1x,
-					   XHDMI_HDCP1X_WAIT_FOR_ACTIVE_RECEIVER, 0);
+
+		if (xtxhdcp->hdcp1xenable)
+			xlnx_hdcp1x_tx_start_timer(xtxhdcp->xhdcp1x,
+						   XHDMI_HDCP1X_WAIT_FOR_ACTIVE_RECEIVER, 0);
 	}
 }
 
