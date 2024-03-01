@@ -36,22 +36,25 @@
 /* These constants specify the offsets for the various fields and/or
  * attributes within the hdcp port
  */
-#define XHDCP1X_PORT_OFFSET_BKSV	(0x00u)   /* Bksv Offset        */
-#define XHDCP1X_PORT_OFFSET_RO		(0x05u)   /* R0' Offset         */
-#define XHDCP1X_PORT_OFFSET_AKSV	(0x07u)   /* Aksv Offset        */
-#define XHDCP1X_PORT_OFFSET_AN		(0x0Cu)   /* An Offset          */
-#define XHDCP1X_PORT_OFFSET_VH0		(0x14u)   /* V'.H0 Offset       */
-#define XHDCP1X_PORT_OFFSET_VH1		(0x18u)   /* V'.H1 Offset       */
-#define XHDCP1X_PORT_OFFSET_VH2		(0x1Cu)   /* V'.H2 Offset       */
-#define XHDCP1X_PORT_OFFSET_VH3		(0x20u)   /* V'.H3 Offset       */
-#define XHDCP1X_PORT_OFFSET_VH4		(0x24u)   /* V'.H4 Offset       */
-#define XHDCP1X_PORT_OFFSET_BCAPS	(0x28u)   /* Bcaps Offset       */
-#define XHDCP1X_PORT_OFFSET_BSTATUS	(0x29u)   /* Bstatus Offset     */
-#define XHDCP1X_PORT_OFFSET_BINFO	(0x2Au)   /* Binfo Offset       */
-#define XHDCP1X_PORT_OFFSET_KSVFIFO	(0x2Cu)   /* KSV FIFO Offset    */
-#define XHDCP1X_PORT_OFFSET_AINFO	(0x3Bu)   /* Ainfo Offset       */
-#define XHDCP1X_PORT_OFFSET_DBG		(0xC0u)   /* Debug Space Offset */
-#define XHDCP1X_PORT_HDCP_RESET_KSV	(0xD0u)   /* KSV FIFO Read pointer reset Offset */
+#define XDPTX_HDCP1X_DPCD_OFFSET	0x68000
+#define XHDCP1X_PORT_OFFSET_BKSV	(0x00 + XDPTX_HDCP1X_DPCD_OFFSET)   /* Bksv Offset        */
+#define XHDCP1X_PORT_OFFSET_RO		(0x05 + XDPTX_HDCP1X_DPCD_OFFSET)   /* R0' Offset         */
+#define XHDCP1X_PORT_OFFSET_AKSV	(0x07 + XDPTX_HDCP1X_DPCD_OFFSET)   /* Aksv Offset        */
+#define XHDCP1X_PORT_OFFSET_AN		(0x0C + XDPTX_HDCP1X_DPCD_OFFSET)   /* An Offset          */
+#define XHDCP1X_PORT_OFFSET_VH0		(0x14 + XDPTX_HDCP1X_DPCD_OFFSET)   /* V'.H0 Offset       */
+#define XHDCP1X_PORT_OFFSET_VH1		(0x18 + XDPTX_HDCP1X_DPCD_OFFSET)   /* V'.H1 Offset       */
+#define XHDCP1X_PORT_OFFSET_VH2		(0x1C + XDPTX_HDCP1X_DPCD_OFFSET)   /* V'.H2 Offset       */
+#define XHDCP1X_PORT_OFFSET_VH3		(0x20 + XDPTX_HDCP1X_DPCD_OFFSET)   /* V'.H3 Offset       */
+#define XHDCP1X_PORT_OFFSET_VH4		(0x24 + XDPTX_HDCP1X_DPCD_OFFSET)   /* V'.H4 Offset       */
+#define XHDCP1X_PORT_OFFSET_BCAPS	(0x28 + XDPTX_HDCP1X_DPCD_OFFSET)   /* Bcaps Offset       */
+#define XHDCP1X_PORT_OFFSET_BSTATUS	(0x29 + XDPTX_HDCP1X_DPCD_OFFSET)   /* Bstatus Offset     */
+#define XHDCP1X_PORT_OFFSET_BINFO	(0x2A + XDPTX_HDCP1X_DPCD_OFFSET)   /* Binfo Offset       */
+#define XHDCP1X_PORT_OFFSET_KSVFIFO	(0x2C + XDPTX_HDCP1X_DPCD_OFFSET)   /* KSV FIFO Offset    */
+#define XHDCP1X_PORT_OFFSET_AINFO	(0x3B + XDPTX_HDCP1X_DPCD_OFFSET)   /* Ainfo Offset       */
+#define XHDCP1X_PORT_OFFSET_DBG		(0xC0 + XDPTX_HDCP1X_DPCD_OFFSET)   /* Debug Space Offset */
+#define XHDCP1X_PORT_HDCP_RESET_KSV	(0xD0 + XDPTX_HDCP1X_DPCD_OFFSET)   /* KSV FIFO Read pointer
+									     * reset Offset
+									     */
 /*
  * These constants specify the sizes for the various fields and/or
  * attributes within the hdcp port for HDMI Interface
@@ -156,11 +159,6 @@
 #define XHDMI_HDCP1X_READY_TIMEOUT			25
 #define XHDMI_HDCP1X_WAIT_FOR_READY_TIMEOUT		200
 #define XHDMI_HDCP1X_WAIT_FOR_ACTIVE_RECEIVER		2000
-/*
- * This constant defines the base address of the hdcp port within the DPCD
- * address space
- */
-#define XHDCP1X_PORT_DPCD_BASE		(0x68000u)   /* Base Addr in DPCD */
 #define XHDCP1X_TX_CLKDIV_MHZ			1000000
 #define XHDCP1X_TX_CLKDIV_HZ			1000
 
@@ -329,7 +327,7 @@ bool xlnx_hdcp1x_tx_init(struct xlnx_hdcp1x_config *xhdcp1x_tx, bool is_repeater
 int xlnx_hdcp1x_task_monitor(struct xlnx_hdcp1x_config *xhdcp1x_tx);
 bool xlnx_hdcp1x_downstream_capbility(struct xlnx_hdcp1x_config *xhdcp1x_tx);
 bool xlnx_hdcp1x_tx_check_rxcapable(struct xlnx_hdcp1x_config *xhdcp1x_tx);
-bool xlnx_hdcp1x_read_bksv_from_remote(struct xlnx_hdcp1x_config *xhdcp1x_tx, u8 offset,
+bool xlnx_hdcp1x_read_bksv_from_remote(struct xlnx_hdcp1x_config *xhdcp1x_tx, u32 offset,
 				       void *buf, u32 buf_size);
 bool xlnx_hdcp1x_exchangeksvs(struct xlnx_hdcp1x_config *xhdcp1x_tx);
 bool xlnx_hdcp1x_computationsstate(struct xlnx_hdcp1x_config *xhdcp1x_tx);
