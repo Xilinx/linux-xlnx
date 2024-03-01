@@ -44,6 +44,7 @@
 #include <linux/mfd/syscon.h>
 #include "hdcp/xlnx_hdcp_tx.h"
 
+#define XDPTX_HDCP			0
 #define XDPTX_HDCP2X_OFFSET		0x4000
 #define XDPTX_HDCP_TIMER_OFFSET		0x6000
 #define XDPTX_HDCP1X_OFFSET		0x2000
@@ -530,7 +531,7 @@ enum xlnx_dp_train_state {
  * @status: connection status
  * @dp_base: Base address of DisplayPort Tx subsystem
  * @dpms: current dpms state
- * @hdcp2x_timer_irq: HDCP 2X timer interrupt
+ * @hdcptx_timer_irq: HDCP TX timer interrupt
  * @vtc_off: VTC sub-core offset address
  * @dpcd: DP configuration data from currently connected sink device
  * @train_set: set of training data
@@ -570,7 +571,7 @@ struct xlnx_dp {
 	enum drm_connector_status status;
 	void __iomem *dp_base;
 	int dpms;
-	int hdcp2x_timer_irq;
+	int hdcptx_timer_irq;
 	u32 vtc_off;
 	u8 dpcd[DP_RECEIVER_CAP_SIZE];
 	u8 train_set[XDPTX_MAX_LANES];
@@ -3699,25 +3700,11 @@ static int xlnx_hdcp_init(struct xlnx_dp *dp,
 		dptxhdcp->xhdcp2x = xlnx_hdcp_tx_init(&pdev->dev, dp, dptxhdcp,
 						      dp->dp_base + XDPTX_HDCP2X_OFFSET,
 						      0, XHDCPTX_HDCP_2X, dp->mode.lane_cnt,
-						      XHDCP2X_TX_DP, dp->hdcpx_keymgmt_base);
+						      XDPTX_HDCP, dp->hdcpx_keymgmt_base);
 
 		if (IS_ERR(dptxhdcp->xhdcp2x)) {
 			dev_err(dp->dev, "failed to initialize HDCP2X module\n");
 			return PTR_ERR(dptxhdcp->xhdcp2x);
-		}
-		dp->hdcp2x_timer_irq =
-				 platform_get_irq_byname(pdev, "dptxss_timer_irq");
-		if (dp->hdcp2x_timer_irq < 0) {
-			dev_err(dp->dev, "failed to get HDCP timer irq ");
-			return -EINVAL;
-		}
-		ret = devm_request_threaded_irq(dp->dev, dp->hdcp2x_timer_irq, NULL,
-						xlnx_timer_irq_handler,
-						IRQF_TRIGGER_HIGH | IRQF_ONESHOT,
-						"dptxss_timer_irq", dp);
-		if (ret < 0) {
-			dev_err(dp->dev, "failed to register HDCP timer irq");
-			return ret;
 		}
 	}
 	dptxhdcp->xhdcptmr =
@@ -3726,11 +3713,25 @@ static int xlnx_hdcp_init(struct xlnx_dp *dp,
 		dev_err(dp->dev, "failed to initialize HDCP timer\n");
 		return PTR_ERR(dptxhdcp->xhdcptmr);
 	}
+	dp->hdcptx_timer_irq =
+			 platform_get_irq_byname(pdev, "dptxss_timer_irq");
+	if (dp->hdcptx_timer_irq < 0) {
+		dev_err(dp->dev, "failed to get HDCP timer irq ");
+		return -EINVAL;
+	}
+	ret = devm_request_threaded_irq(dp->dev, dp->hdcptx_timer_irq, NULL,
+					xlnx_timer_irq_handler,
+					IRQF_TRIGGER_HIGH | IRQF_ONESHOT,
+					"dptxss_timer_irq", dp);
+	if (ret < 0) {
+		dev_err(dp->dev, "failed to register HDCP timer irq");
+		return ret;
+	}
 	if (dp->config.hdcp1x_enable) {
 		dptxhdcp->xhdcp1x = xlnx_hdcp_tx_init(&pdev->dev, dp, dptxhdcp,
 						      dp->dp_base + XDPTX_HDCP1X_OFFSET,
 						      0, XHDCPTX_HDCP_1X, dp->mode.lane_cnt,
-						      XHDCPTX_HDCP_1X, dp->hdcpx_keymgmt_base);
+						      XDPTX_HDCP, dp->hdcpx_keymgmt_base);
 		if (IS_ERR(dptxhdcp->xhdcp1x)) {
 			dev_err(dp->dev, "failed to initialize HDCP1X module\n");
 			return PTR_ERR(dptxhdcp->xhdcp1x);
