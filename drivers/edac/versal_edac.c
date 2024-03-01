@@ -819,13 +819,13 @@ static void xddr_inject_data_ce_store(struct mem_ctl_info *mci, u8 ce_bitpos)
 	u32 ecc0_flip0, ecc1_flip0, ecc0_flip1, ecc1_flip1;
 	struct edac_priv *priv = mci->pvt_info;
 
-	if (ce_bitpos < ECCW0_FLIP0_BITS) {
+	if (ce_bitpos <= ECCW0_FLIP0_BITS) {
 		ecc0_flip0 = BIT(ce_bitpos);
 		ecc1_flip0 = BIT(ce_bitpos);
 		ecc0_flip1 = 0;
 		ecc1_flip1 = 0;
 	} else {
-		ce_bitpos = ce_bitpos - ECCW0_FLIP0_BITS;
+		ce_bitpos = ce_bitpos - ECCW0_FLIP0_BITS - 1;
 		ecc0_flip1 = BIT(ce_bitpos);
 		ecc1_flip1 = BIT(ce_bitpos);
 		ecc0_flip0 = 0;
@@ -954,17 +954,17 @@ static ssize_t inject_data_ue_store(struct file *file, const char __user *data,
 	if (ret)
 		return ret;
 
-	if (ue0 < ECCW0_FLIP0_BITS) {
+	if (ue0 <= ECCW0_FLIP0_BITS) {
 		val0 = BIT(ue0);
 	} else {
-		ue0 = ue0 - ECCW0_FLIP0_BITS;
+		ue0 = ue0 - ECCW0_FLIP0_BITS - 1;
 		val1 = BIT(ue0);
 	}
 
-	if (ue1 < ECCW0_FLIP0_BITS) {
+	if (ue1 <= ECCW0_FLIP0_BITS) {
 		val0 |= BIT(ue1);
 	} else {
-		ue1 = ue1 - ECCW0_FLIP0_BITS;
+		ue1 = ue1 - ECCW0_FLIP0_BITS - 1;
 		val1 |= BIT(ue1);
 	}
 
