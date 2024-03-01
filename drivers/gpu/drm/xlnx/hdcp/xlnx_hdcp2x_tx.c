@@ -421,7 +421,8 @@ bool xlnx_hdcp2x_downstream_capbility(struct xlnx_hdcp2x_config *xhdcp2x_tx)
 					(void *)rxcaps,
 					HDCP_2_2_RXCAPS_LEN);
 
-	return (FIELD_GET(XHDCP2X_TX_RXCAPS_MASK, rxcaps[0]) & HDCP_2_2_RX_CAPS_VERSION_VAL);
+	return ((rxcaps[0] == HDCP_2_2_RX_CAPS_VERSION_VAL) &&
+		HDCP_2_2_DP_HDCP_CAPABLE(rxcaps[2]));
 }
 
 static u32 xlnx_hdcp2x_tx_get_timer_count(struct xlnx_hdcp2x_config *xhdcp2x_tx)
