@@ -397,6 +397,7 @@ struct spi_nor_flash_parameter;
  *                      hooks, or dynamically when parsing the SFDP tables.
  * @dirmap:		pointers to struct spi_mem_dirmap_desc for reads/writes.
  * @num_flash		number of flashes connected in parallel or stacked mode
+ * @reset		gpio descriptor for device reset.
  * @priv:		pointer to the private data
  */
 struct spi_nor {
@@ -441,6 +442,7 @@ struct spi_nor {
 		struct spi_mem_dirmap_desc *wdesc;
 	} dirmap;
 	u32			num_flash;
+	struct gpio_desc	*reset;
 	void *priv;
 };
 
