@@ -81,6 +81,14 @@ properties:
           - const: xlnx,zynqmp-zcu100
           - const: xlnx,zynqmp
 
+      - description: Xilinx ZynqMP based System Controller
+        items:
+          - enum:
+              - xlnx,zynqmp-sc-revB
+              - xlnx,zynqmp-sc-revC
+          - const: xlnx,zynqmp-sc
+          - const: xlnx,zynqmp
+
       - description: Xilinx evaluation board zcu102
         items:
           - enum:
