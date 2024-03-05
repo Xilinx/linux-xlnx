@@ -89,7 +89,7 @@ static int xlnx_puf_cfg(struct xpuf_dev *puf, struct puf_usrparams *pufreq)
 			ret = -EFAULT;
 			goto cleanup_pufdata;
 		}
-	} else if (pufin->pufoperation == PUF_REGEN) {
+	} else if ((pufin->pufoperation == PUF_REGEN) || (pufin->pufoperation == PUF_REGEN_ID)) {
 		pufin->readoption = pufreq->readoption;
 		pufhd = dma_alloc_coherent(dev, (sizeof(struct puf_helperdata) +
 					   PUF_ID_LEN_IN_BYTES), &dma_addr_data,
@@ -155,6 +155,7 @@ static long xlnx_puf_ioctl(struct file *file, unsigned int cmd, unsigned long ar
 	switch (cmd) {
 	case PUF_REGISTRATION:
 	case PUF_REGENERATION:
+	case PUF_REGEN_ID_ONLY:
 		if (copy_from_user(&pufreq, data,
 				   sizeof(struct puf_usrparams)))
 			return -EINVAL;

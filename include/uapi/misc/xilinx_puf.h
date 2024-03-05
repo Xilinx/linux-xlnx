@@ -19,6 +19,7 @@
 #define PUF_ID_LEN_IN_BYTES                32
 #define PUF_REGIS                          0
 #define PUF_REGEN                          1
+#define PUF_REGEN_ID                       2
 
 /**
  * struct puf_usrparams - user parameters for PUF from user space.
@@ -73,5 +74,6 @@ enum pufreadoption {
 
 #define PUF_REGISTRATION _IOWR(PUF_IOC_MAGIC, 1, struct xpuf_usrparams *)
 #define PUF_REGENERATION _IOWR(PUF_IOC_MAGIC, 2, struct xpuf_usrparams *)
+#define PUF_REGEN_ID_ONLY _IOWR(PUF_IOC_MAGIC, 3, struct xpuf_usrparams *)
 
 #endif /* _PUF_UAPI_H_ */
