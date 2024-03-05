@@ -4710,7 +4710,7 @@ out:
 	/* look for wakeup interrupt if hibernation is supported */
 	if (dwc->has_hibernation) {
 		irq_hiber = platform_get_irq_byname_optional(dwc3_pdev,
-							     "hiber");
+							     "wakeup");
 		if (irq_hiber > 0) {
 			dwc->irq_wakeup = irq_hiber;
 		} else {
