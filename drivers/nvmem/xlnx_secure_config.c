@@ -497,11 +497,14 @@ static int sec_cfg_efuse_id_write(void *context, void *val, size_t bytes,
 			offchipids->id[(offset - EFUSE_OFFCHIPID_0_OFFSET) / 4] = *data;
 			ret = versal_pm_efuse_write(dma_buff,
 						    PM_EFUSE_WRITE_OFFCHIP_ACCESS_VERSAL, envdis);
-		} else {
+		} else if (offset >= EFUSE_REVOCATIONID_0_OFFSET &&
+			  offset <= EFUSE_REVOCATIONID_7_OFFSET) {
 			offchipids->id[(offset - EFUSE_REVOCATIONID_0_OFFSET) / 4] = *data;
 			ret = versal_pm_efuse_write(dma_buff,
 						    PM_EFUSE_WRITE_REVOCATIONID_ACCESS_VERSAL,
 						    envdis);
+		} else {
+			ret = -EINVAL;
 		}
 		dma_free_coherent(dev, sizeof(struct xilinx_efuse_ids),
 				  offchipids, dma_buff);
