@@ -978,7 +978,7 @@ static int sec_cfg_bbram_write(void *context, void *val, size_t bytes, unsigned 
 		} else {
 			ret = convert_string_to_hex_le((const char *)val, data, bytes);
 			if (!ret)
-				ret = zynqmp_pm_bbram_write_aeskey(bytes, dma_addr);
+				ret = zynqmp_pm_bbram_write_aeskey(bytes / 2, dma_addr);
 		}
 		break;
 	case BBRAM_USER_DATA_OFFSET:
@@ -1003,6 +1003,8 @@ static int sec_cfg_bbram_write(void *context, void *val, size_t bytes, unsigned 
 		ret = -EINVAL;
 		break;
 	}
+
+	dma_free_coherent(dev, bytes, data, dma_addr);
 
 	return ret;
 }
