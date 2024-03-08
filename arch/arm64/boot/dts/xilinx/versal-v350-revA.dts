@@ -16,7 +16,7 @@
 	model = "Xilinx Versal v350 board revA";
 
 	chosen {
-		bootargs = "console=ttyAMA0 earlycon=pl011,mmio32,0xFF010000,115200n8 clk_ignore_unused";
+		bootargs = "console=ttyAMA0 earlycon=pl011,mmio32,0xFF010000,115200n8";
 		stdout-path = "serial0:115200";
 	};
 
