@@ -20,7 +20,7 @@
 	};
 
 	chosen {
-		bootargs = "earlycon=pl011,mmio32,0xf1920000 console=ttyAMA0,115200n8 clk_ignore_unused root=/dev/ram0 rw";
+		bootargs = "earlycon=pl011,mmio32,0xf1920000 console=ttyAMA0,115200n8 root=/dev/ram0 rw";
 		stdout-path = "serial0:115200n8";
 	};
 
