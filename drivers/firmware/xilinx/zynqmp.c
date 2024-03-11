@@ -1915,6 +1915,36 @@ int versal_pm_aes_dec_final(const u64 gcm_addr)
 EXPORT_SYMBOL_GPL(versal_pm_aes_dec_final);
 
 /**
+ * versal_pm_ecdsa_validate_key - Access ECDSA hardware to validate key
+ * @key_addr:	Address of the key
+ * @curve_id:	Type of ECC curve
+ *
+ * Return:	Returns status, either success or error code.
+ */
+int versal_pm_ecdsa_validate_key(const u64 key_addr, const u32 curve_id)
+{
+	return zynqmp_pm_invoke_fn(XSECURE_API_ELLIPTIC_VALIDATE_KEY,
+				   NULL, 3, curve_id,
+				   lower_32_bits(key_addr),
+				   upper_32_bits(key_addr));
+}
+EXPORT_SYMBOL_GPL(versal_pm_ecdsa_validate_key);
+
+/**
+ * versal_pm_ecdsa_verify_sign - Access ECDSA hardware to verify sign
+ * @sign_param_addr:	Address of the sign params
+ *
+ * Return:	Returns status, either success or error code.
+ */
+int versal_pm_ecdsa_verify_sign(const u64 sign_param_addr)
+{
+	return zynqmp_pm_invoke_fn(XSECURE_API_ELLIPTIC_VERIFY_SIGN,
+				   NULL, 2, lower_32_bits(sign_param_addr),
+				   upper_32_bits(sign_param_addr));
+}
+EXPORT_SYMBOL_GPL(versal_pm_ecdsa_verify_sign);
+
+/**
  * zynqmp_pm_efuse_access - Provides access to efuse memory.
  * @address:	Address of the efuse params structure
  * @out:		Returned output value

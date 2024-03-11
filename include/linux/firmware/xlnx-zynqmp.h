@@ -72,6 +72,8 @@
 
 /* xilSecure API commands  module id + api id */
 #define XSECURE_API_SHA3_UPDATE		0x504
+#define XSECURE_API_ELLIPTIC_VALIDATE_KEY	0x507
+#define XSECURE_API_ELLIPTIC_VERIFY_SIGN	0x508
 #define XSECURE_API_AES_OP_INIT		0x50a
 #define XSECURE_API_AES_UPDATE_AAD	0x50b
 #define XSECURE_API_AES_ENCRYPT_UPDATE	0x50c
@@ -733,6 +735,8 @@ int versal_pm_aes_dec_final(const u64 gcm_addr);
 int versal_pm_aes_enc_final(const u64 gcm_addr);
 int versal_pm_efuse_read(const u64 address, u32 offset, u32 size);
 int versal_pm_efuse_write(const u64 address, const u32 operationid, const u8 envdis);
+int versal_pm_ecdsa_validate_key(const u64 key_addr, const u32 curveid);
+int versal_pm_ecdsa_verify_sign(const u64 sign_param_addr);
 #else
 static inline int zynqmp_pm_get_api_version(u32 *version)
 {
@@ -1254,6 +1258,17 @@ static inline int versal_pm_efuse_read(const u64 address, u32 offset, u32 size)
 }
 
 static inline int versal_pm_efuse_write(const u64 address, const u32 operationid, const u8 envdis)
+{
+	return -ENODEV;
+}
+
+static inline int versal_pm_ecdsa_validate_key(const u64 key_addr,
+					       const u32 curveid)
+{
+	return -ENODEV;
+}
+
+static inline int versal_pm_ecdsa_verify_sign(const u64 sign_param_addr)
 {
 	return -ENODEV;
 }
