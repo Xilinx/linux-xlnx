@@ -637,10 +637,10 @@ static int __ap1302_read(struct ap1302_device *ap1302, u32 reg, u32 *val)
 static int ap1302_read(struct ap1302_device *ap1302, u32 reg, u32 *val)
 {
 	u32 page = AP1302_REG_PAGE(reg);
-	int ret;
 
 	if (page) {
 		if (ap1302->reg_page != page) {
+			int ret;
 			ret = __ap1302_write(ap1302, AP1302_ADVANCED_BASE,
 					     page);
 			if (ret < 0)
@@ -1034,7 +1034,6 @@ static int ap1302_power_on_sensors(struct ap1302_device *ap1302)
 
 	for (i = 0; i < ARRAY_SIZE(ap1302->sensors); ++i) {
 		sensor = &ap1302->sensors[i];
-		ret = 0;
 
 		for (j = 0; j < sensor->num_supplies; ++j) {
 			unsigned int delay;
@@ -1239,12 +1238,14 @@ static int ap1302_stall(struct ap1302_device *ap1302, bool stall)
 		ap1302->streaming = false;
 		return 0;
 	} else {
+		ap1302_write(ap1302, AP1302_SYS_START, AP1302_SYS_START_PLL_LOCK |
+				AP1302_SYS_START_STALL_STATUS |	AP1302_SYS_START_STALL_EN |
+				AP1302_SYS_START_STALL_MODE_DISABLED, &ret);
+		if (ret < 0)
+			return ret;
+
 		ap1302->streaming = true;
-		return ap1302_write(ap1302, AP1302_SYS_START,
-				    AP1302_SYS_START_PLL_LOCK |
-				    AP1302_SYS_START_STALL_STATUS |
-				    AP1302_SYS_START_STALL_EN |
-				    AP1302_SYS_START_STALL_MODE_DISABLED, NULL);
+		return 0;
 	}
 }
 
@@ -1686,7 +1687,6 @@ static int ap1302_enum_frame_size(struct v4l2_subdev *sd,
 				  struct v4l2_subdev_frame_size_enum *fse)
 {
 	struct ap1302_device *ap1302 = to_ap1302(sd);
-	unsigned int i;
 
 	if (fse->index)
 		return -EINVAL;
@@ -1704,6 +1704,7 @@ static int ap1302_enum_frame_size(struct v4l2_subdev *sd,
 		fse->max_width = ap1302->sensor_info->resolution.width;
 		fse->max_height = ap1302->sensor_info->resolution.height;
 	} else {
+		unsigned int i;
 		/*
 		 * On the source pad, the AP1302 can freely scale within the
 		 * scaler's limits.
@@ -1822,7 +1823,7 @@ static int ap1302_get_selection(struct v4l2_subdev *sd,
 static int ap1302_s_stream(struct v4l2_subdev *sd, int enable)
 {
 	struct ap1302_device *ap1302 = to_ap1302(sd);
-	int ret;
+	int ret = 0;
 
 	mutex_lock(&ap1302->lock);
 
@@ -2665,9 +2666,7 @@ static int ap1302_config_v4l2(struct ap1302_device *ap1302)
 	for (i = 0; i < ARRAY_SIZE(ap1302->formats); ++i)
 		ap1302->formats[i].info = &supported_video_formats[0];
 
-	ret = ap1302_init_cfg(sd, NULL);
-	if (ret < 0)
-		goto error_media;
+	ap1302_init_cfg(sd, NULL);
 
 	ret = ap1302_ctrls_init(ap1302);
 	if (ret < 0)
