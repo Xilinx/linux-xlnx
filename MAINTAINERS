@@ -25499,6 +25499,11 @@ R:	Vishal Sagar <vishal.sagar@amd.com>
 S:	Maintained
 F:	drivers/gpu/drm/xlnx/hdcp/
 
+XILINX ECDSA DRIVER
+M:	Harsha <harsha.harsha@amd.com>
+S:	Maintained
+F:	drivers/crypto/xilinx/xilinx-ecdsa.c
+
 XILINX EVENT MANAGEMENT DRIVER
 M:	Michal Simek <michal.simek@amd.com>
 S:	Maintained
