@@ -23707,6 +23707,11 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/net/can/xilinx,can.yaml
 F:	drivers/net/can/xilinx_can.c
 
+XILINX ECDSA DRIVER
+M:	Harsha <harsha.harsha@amd.com>
+S:	Maintained
+F:	drivers/crypto/xilinx/xilinx-ecdsa.c
+
 XILINX EVENT MANAGEMENT DRIVER
 M:	Abhyuday Godhasara <abhyuday.godhasara@xilinx.com>
 S:	Maintained

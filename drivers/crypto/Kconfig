@@ -658,6 +658,18 @@ config CRYPTO_DEV_ROCKCHIP_DEBUG
 	  This will create /sys/kernel/debug/rk3288_crypto/stats for displaying
 	  the number of requests per algorithm and other internal stats.
 
+config CRYPTO_DEV_XILINX_ECDSA
+	tristate "Support for Xilinx ECDSA hardware accelerator"
+	depends on ARCH_ZYNQMP || COMPILE_TEST
+	select CRYPTO_ENGINE
+	select CRYPTO_AKCIPHER
+	select CRYPTO_ECDSA
+	help
+	  Xilinx processors have ECDSA hardware accelerator used for signature
+	  and key generation and verification. This driver interfaces with
+	  ECDSA hardware accelerator. Select this if you want to use the Versal
+	  module for ECDSA algorithms.
+
 config CRYPTO_DEV_XILINX_RSA
 	tristate "Support for Xilinx ZynqMP RSA hw accelerator"
 	depends on ARCH_ZYNQMP || COMPILE_TEST
