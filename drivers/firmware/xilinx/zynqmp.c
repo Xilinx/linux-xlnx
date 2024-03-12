@@ -520,7 +520,8 @@ void *xlnx_get_crypto_dev_data(struct xlnx_feature *feature_map)
 		    (feature->subfamily == ALL_SUB_FAMILY_CODE ||
 		     feature->subfamily == pm_sub_family_code)) {
 			api_id = FIELD_GET(API_ID_MASK, feature->feature_id);
-			if (feature->family == ZYNQMP_FAMILY_CODE) {
+			if (feature->family == ZYNQMP_FAMILY_CODE ||
+			    feature->family == VERSAL_FAMILY_CODE) {
 				ret = zynqmp_pm_feature(api_id);
 				if (ret < 0)
 					return ERR_PTR(ret);
