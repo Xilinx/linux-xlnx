@@ -80,7 +80,7 @@
 	};
 	ina226-u295 {
 		compatible = "iio-hwmon";
-		io-channels = <&vcc_ddr5_drdimm_ina 0>, <&vcc_ddr5_drdimm_ina 1>, <&vcc_ddr5_drdimm_ina 2>;
+		io-channels = <&vcc_ddr5_rdimm_ina 0>, <&vcc_ddr5_rdimm_ina 1>, <&vcc_ddr5_rdimm_ina 2>;
 	};
 	ina226-u298 {
 		compatible = "iio-hwmon";
@@ -167,7 +167,7 @@
 	#address-cells = <1>;
 	#size-cells = <0>;
 
-	/* u134 tps544b25 but connected to J80 connector */
+	/* u134 tps544b25 but connected to J178 connector */
 	/* u48/IMx3112/0x77 -  1:2 multiplexer - also accessed from Versal NET */
 	/* Connection DDR5_UDIMM - SPD can be from 0x50-0x57 */
 	/* FIXME gpio should handle SYSCTLR_PMBUS_ALERT and also INA226_PMBUS_ALERT */
@@ -237,7 +237,7 @@
 		shunt-resistor = <1000>; /* R33002 */
 	};
 
-	vcc_ddr5_drdimm_ina: power-monitor@49 { /* u295 */
+	vcc_ddr5_rdimm_ina: power-monitor@49 { /* u295 */
 		compatible = "ti,ina226";
 		#io-channel-cells = <1>;
 		reg = <0x49>;
@@ -286,8 +286,78 @@
 		shunt-resistor = <1000>; /* R33011 */
 	};
 
-	/* pmbus - J105 - disable main PMBUS - also going to j102 */
-	/* pmbus via U62 as ext_pmbus */
+	/* pmbus - j105 - disable main PMBUS - also going to j102 connector */
+	vcc_pslp: regulator@15 { /* u24 */
+		compatible = "ti,tps546b24a";
+		reg = <0x15>;
+	};
+
+	vccaux_pmc: regulator@17 { /* u26 */
+		compatible = "ti,tps546b24a";
+		reg = <0x17>;
+	};
+
+	vcco_500: regulator@18 { /* u27 */
+		compatible = "ti,tps546b24a";
+		reg = <0x18>;
+	};
+
+	vcco_501: regulator@19 { /* u28 */
+		compatible = "ti,tps546b24a";
+		reg = <0x19>;
+	};
+
+	vcco_502: regulator@1a { /* u29 */
+		compatible = "ti,tps546b24a";
+		reg = <0x1a>;
+	};
+
+	vcco_503: regulator@1b { /* u30 */
+		compatible = "ti,tps546b24a";
+		reg = <0x1b>;
+	};
+
+	vcc_ddr5_rdimm: regulator@1c { /* u31 */
+		compatible = "ti,tps546b24a";
+		reg = <0x1c>;
+	};
+
+	gtm_avcc: regulator@22 { /* u37 */
+		compatible = "ti,tps546b24a";
+		reg = <0x22>;
+	};
+
+	gtm_avtt: regulator@20 { /* u38 */
+		compatible = "ti,tps546b24a";
+		reg = <0x20>;
+	};
+
+	gtm_avccaux: regulator@21 { /* u39 */
+		compatible = "ti,tps546b24a";
+		reg = <0x21>;
+	};
+
+	vccint_gt: regulator@2a { /* u44 */
+		compatible = "ti,tps546b24a";
+		reg = <0x2a>;
+	};
+
+	util_1v8: regulator@2b { /* u1839 */
+		compatible = "ti,tps546b24a";
+		reg = <0x2b>;
+	};
+
+	vcc_pmc: regulator@2c { /* u46 */
+		compatible = "ti,tps546b24a";
+		reg = <0x2c>;
+	};
+
+	/* pmbus via U62 as ext_pmbus - disable via j104 */
+	vccint: regulator@10 { /* u18 */
+		compatible = "ti,tps546b24";
+		reg = <0x10>;
+	};
+
 	vccsoc: regulator@11 { /* u20 */
 		compatible = "ti,tps546b24";
 		reg = <0x11>;
@@ -353,20 +423,4 @@
 		compatible = "ti,ucd90320";
 		reg = <0x73>;
 	};*/
-
-	/* via pmbus */
-	vccint_gt: regulator@2a { /* u44 */
-		compatible = "ti,tps546b24a";
-		reg = <0x2a>;
-	};
-
-	util_1v8: regulator@2b { /* u1839 */
-		compatible = "ti,tps546b24a";
-		reg = <0x2b>;
-	};
-
-	vcc_pmc: regulator@2c { /* u46 */
-		compatible = "ti,tps546b24a";
-		reg = <0x2c>;
-	};
 };
