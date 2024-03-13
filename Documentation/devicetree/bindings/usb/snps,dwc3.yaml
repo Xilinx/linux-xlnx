@@ -273,13 +273,6 @@ properties:
       with an external supply.
     type: boolean
 
-  snps,enable_guctl1_ipd_quirk:
-    description:
-      When set, HW reduce the ULPI clock latency by 1 cycle, thus reducing
-      the IPD (~360ns) and making controller enumerate FS/LS devices
-      connected behind via-hubs.
-    type: boolean
-
   snps,is-utmi-l1-suspend:
     description:
       True when DWC3 asserts output signal utmi_l1_suspend_n, false when
