@@ -1519,6 +1519,25 @@ int dwc3_core_init(struct dwc3 *dwc)
 		dwc3_writel(dwc->regs, DWC3_GUCTL2, reg);
 	}
 
+	/* SNPS controller when configured in HOST mode maintains Inter Packet
+	 * Delay (IPD) of ~380ns which works with most of the super-speed hubs
+	 * except VIA-LAB hubs. When IPD is ~380ns HOST controller fails to
+	 * enumerate FS/LS devices when connected behind VIA-LAB hubs.
+	 * Enabling bit 9 of GUCTL1 enables the workaround in HW to reduce the
+	 * ULPI clock latency by 1 cycle, thus reducing the IPD (~360ns) and
+	 * making controller enumerate FS/LS devices connected behind VIA-LAB.
+	 */
+	if (dwc->dev->of_node) {
+		struct device_node *parent = of_get_parent(dwc->dev->of_node);
+
+		if (of_device_is_compatible(parent, "xlnx,zynqmp-dwc3")) {
+			reg = dwc3_readl(dwc->regs, DWC3_GUCTL1);
+			reg |= DWC3_GUCTL1_IPD_QUIRK;
+			dwc3_writel(dwc->regs, DWC3_GUCTL1, reg);
+		}
+		of_node_put(parent);
+	}
+
 	/*
 	 * STAR 9001285599: This issue affects DWC_usb3 version 3.20a
 	 * only. If the PM TIMER ECM is enabled through GUCTL2[19], the
