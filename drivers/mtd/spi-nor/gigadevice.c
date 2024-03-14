@@ -142,6 +142,7 @@ static void gd25b512_default_init(struct spi_nor *nor)
 {
 	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
 
+	nor->flags &= ~SNOR_F_HAS_16BIT_SR;
 	params->set_4byte_addr_mode = gd25lx256e_set_4byte_addr_mode;
 }
 
@@ -238,7 +239,8 @@ static const struct flash_info gigadevice_nor_parts[] = {
 		MFR_FLAGS(USE_FSR)
 		.fixups = &gd25lx256e_fixups },
 	{ "gd25b512", INFO(0xc8471a, 0, 64 * 1024, 1024)
-		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6)
+		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
+		      SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5)
 		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ)
 		FIXUP_FLAGS(SPI_NOR_4B_OPCODES)
 		.fixups = &gd25b512_fixups},
