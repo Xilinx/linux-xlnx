@@ -301,8 +301,13 @@
 };
 
 &watchdog {
-	clocks = <&versal_clk LPD_LSBUS>;
+	clocks = <&versal_clk FPD_LSBUS>;
 	power-domains = <&versal_firmware PM_DEV_SWDT_FPD>;
+};
+
+&watchdog1 {
+	clocks = <&versal_clk LPD_LSBUS>;
+	power-domains = <&versal_firmware PM_DEV_SWDT_LPD>;
 };
 
 &sysmon0 {
