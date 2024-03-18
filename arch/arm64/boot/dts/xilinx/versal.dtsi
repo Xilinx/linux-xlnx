@@ -682,6 +682,13 @@
 			timeout-sec = <30>;
 		};
 
+		watchdog1: watchdog@ff120000 {
+			compatible = "xlnx,versal-wwdt";
+			status = "disabled";
+			reg = <0 0xff120000 0 0x10000>;
+			timeout-sec = <30>;
+		};
+
 		xilsem_edac: edac@f2014050 {
 			compatible = "xlnx,versal-xilsem-edac";
 			status = "disabled";
