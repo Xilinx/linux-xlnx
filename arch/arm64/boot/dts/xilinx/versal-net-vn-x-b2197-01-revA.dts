@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * dts file for Xilinx Versal Net VNX board
+ * dts file for Xilinx Versal Net VNX board revA
  *
  * (C) Copyright 2022, Xilinx, Inc.
  * (C) Copyright 2022 - 2023, Advanced Micro Devices, Inc.
@@ -13,11 +13,12 @@
 #include "versal-net.dtsi"
 #include "versal-net-clk-ccf.dtsi"
 #include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/power/xlnx-versal-net-power.h>
 
 / {
-	compatible = "xlnx,versal-net-vn-x-b2197-00-revA",
-		     "xlnx,versal-net-vn-x-b2197-00", "xlnx,versal-net";
-	model = "Xilinx Versal Net VNX";
+	compatible = "xlnx,versal-net-vnx-revA", "xlnx,versal-net-vnx", "xlnx,versal-net";
+	model = "Xilinx Versal NET VNX revA";
+	dma-coherent;
 
 	memory: memory@0 {
 		reg = <0 0 0 0x80000000>;
@@ -35,100 +36,115 @@
 	};
 
 	chosen {
-		bootargs = "console=ttyAMA1,115200";
-		stdout-path = "serial1:115200";
+		bootargs = "console=ttyAMA1,115200n8";
+		stdout-path = "serial1:115200n8";
 	};
 
-	aliases {
-		nvmem0 = &eeprom0;
+	cdx {
+		compatible = "xlnx,versal-net-cdx";
+		status = "okay";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+		dma-ranges = <0 0 0 0 0x10000 0>;
+		iommu-map = <0x0 &smmu 0x0 0xfffff>;
+		msi-map = <0x0 &its 0x0 0xffff>;
+		xlnx,rproc = <&remoteproc_r52>;
 	};
-};
 
-&adma0 {
-	status = "okay";
-};
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+		rsc_tbl_carveout: rproc@bbf14000 {
+			reg = <0 0xbbf14000 0 0x1000>;
+			no-map;
+		};
+		rpu0vdev0vring0: rpu0vdev0vring0@bbf15000 {
+			reg = <0 0xbbf15000 0 0x1000>;
+			no-map;
+		};
+		rpu0vdev0vring1: rpu0vdev0vring1@bbf16000 {
+			reg = <0 0xbbf16000 0 0x1000>;
+			no-map;
+		};
+		rpu0vdev0buffer: rpu0vdev0buffer@bbf17000 {
+			reg = <0 0xbbf17000 0 0xD000>;
+			no-map;
+		};
+		reserve_others: reserveothers@0 {
+			reg = <0 0x0 0 0x1c200000>;
+			no-map;
+		};
+		pdi_update: pdiupdate@1c200000 {
+			reg = <0 0x1c200000 0 0x6000000>;
+			no-map;
+		};
+		reserve_optee_atf: reserveopteeatf@22200000 {
+			reg = <0 0x22200000 0 0x4100000>;
+			no-map;
+		};
+	};
 
-&adma1 {
-	status = "okay";
-};
+	zynqmp_ipi1_nobuf {
+		compatible = "xlnx,versal-ipi-mailbox";
+		reg = <0x00 0xeb3b0000 0x00 0x1ff>;
+		reg-names = "ctrl";
+		status = "okay";
+		interrupts = <0 64 4>;
+		xlnx,ipi-id = <10>;
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+		ipi_mailbox_rpu0: mailbox@eb3b1000 {
+			#mbox-cells = <1>;
+			xlnx,ipi-id = <11>;
+			reg = <0 0xeb3b1000 0 0x1000>;
+			reg-names = "ctrl";
+		};
+	};
 
-&adma2 {
-	status = "okay";
-};
-
-&adma3 {
-	status = "okay";
-};
-
-&adma4 {
-	status = "okay";
-};
-
-&adma5 {
-	status = "okay";
-};
-
-&adma6 {
-	status = "okay";
-};
-
-&adma7 {
-	status = "okay";
-};
-
-&lpd_wwdt0 {
-	status = "okay";
+	r52ss@ff9a0000 {
+		compatible = "xlnx,versal-net-r52-remoteproc";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+		reg = <0 0xff9a0000 0 0x10000>;
+		xlnx,cluster-mode = <1>;
+		remoteproc_r52: r52_0 {
+			compatible = "xilinx,r52";
+			memory-region = <&rsc_tbl_carveout>, <&rpu0vdev0buffer>,
+				<&rpu0vdev0vring0>, <&rpu0vdev0vring1>;
+			power-domain = <&versal_net_firmware PM_DEV_RPU_A_0>;
+			mboxes = <&ipi_mailbox_rpu0 0>, <&ipi_mailbox_rpu0 1>;
+			mbox-names = "tx", "rx";
+			xlnx,rsc-tbl = <&rsc_tbl_carveout 0xbbf14000>;
+		};
+	};
 };
 
 &gem1 {
 	status = "okay";
-	#address-cells = <1>;
-	#size-cells = <0>;
+	iommus = <&smmu 0x235>;
 	phy-handle = <&phy>;
 	phy-mode = "rmii";
 	mdio {
 		#address-cells = <1>;
 		#size-cells = <0>;
-		phy: ethernet-phy {
+		phy: ethernet-phy@4 {
 			reg = <4>;
 		};
 	};
 };
 
-&gpio0 {
-	status = "okay";
-};
-
-&gpio1 {
-	status = "okay";
-};
-
-&i2c0 {
-	status = "okay";
-	eeprom0: eeprom@51 {
-		compatible = "st,24c128", "atmel,24c128";
-		reg = <0x51>;
-		bootph-all;
-	};
-};
-
-&i2c1 {
-	status = "okay";
-	eeprom1: eeprom@55 {
-		compatible = "st,24c128", "atmel,24c128";
-		reg = <0x55>;
-		bootph-all;
-	};
-};
-
 &ospi {
-	status = "okay";
 	num-cs = <2>;
 	reset-gpios = <&gpio1 12 GPIO_ACTIVE_HIGH>;
+	iommus = <&smmu 0x245>;
 	reset-names = "qspi";
 	#address-cells = <1>;
 	#size-cells = <0>;
-
+	reset-names = "qspi";
 	mt35xu02g: flash@0 {
 		compatible = "micron,m25p80", "jedec,spi-nor";
 		reg = <0>, <1>;
@@ -144,53 +160,31 @@
 		spi-rx-bus-width = <8>;
 		spi-max-frequency = <5000000>;
 		broken-flash-reset;
-
-		partitions {
-			compatible = "fixed-partitions";
-			#address-cells = <1>;
-			#size-cells = <1>;
-			partition@0 {
-				label = "ospi-flash0";
-				reg = <0 0x8000000>;
-			};
-		};
 	};
+};
+
+&usb1 {
+	iommus = <&smmu 0x232>;
 };
 
 &sdhci1 {
 	status = "okay";
+	iommus = <&smmu 0x243>;
 	non-removable;
 	disable-wp;
 	bus-width = <8>;
 	no-1-8-v;
 };
 
-&serial0 {
-	status = "okay";
-};
-
 &serial1 {
 	status = "okay";
+	skip-init;
 };
 
-&spi1 {
-	status = "okay";
-	#address-cells = <1>;
-	#size-cells = <0>;
-	num-cs = <3>;
-};
-
-&usb1 {
+&smmu {
 	status = "okay";
 };
 
-&dwc3_1 {
-	status = "okay";
-	snps,refclk_fladj;
-	snps,mask_phy_reset;
-	phy-names = "usb3-phy";
-};
-
-&wwdt0 {
-	status = "okay";
+&versal_fpga {
+	dma-noncoherent;
 };
