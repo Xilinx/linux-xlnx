@@ -349,14 +349,6 @@ static bool cqspi_is_idle(struct cqspi_st *cqspi)
 	return reg & (1UL << CQSPI_REG_CONFIG_IDLE_LSB);
 }
 
-static u32 cqspi_get_rd_sram_level(struct cqspi_st *cqspi)
-{
-	u32 reg = readl(cqspi->iobase + CQSPI_REG_SDRAMLEVEL);
-
-	reg >>= CQSPI_REG_SDRAMLEVEL_RD_LSB;
-	return reg & CQSPI_REG_SDRAMLEVEL_RD_MASK;
-}
-
 static u32 cqspi_get_versal_dma_status(struct cqspi_st *cqspi)
 {
 	u32 dma_status;
@@ -1131,8 +1123,7 @@ static int cqspi_indirect_read_execute(struct cqspi_flash_pdata *f_pdata,
 			rxbuf += bytes_read;
 			remaining -= bytes_read;
 			req_bytes -= bytes_read;
-			bytes_to_read = cqspi_get_rd_sram_level(cqspi);
-			bytes_to_read *= cqspi->fifo_width;
+			bytes_to_read -= bytes_read;
 		}
 
 		if (remaining > 0) {
