@@ -2051,6 +2051,40 @@ int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags)
 EXPORT_SYMBOL_GPL(zynqmp_pm_rsa);
 
 /**
+ * versal_pm_rsa_encrypt - Access RSA hardware to encrypt the data with RSA.
+ * @in_params:	Address of the input parameter
+ * @in_addr:	Address of input buffer
+ *
+ * Return:	Returns status, either success or error code.
+ */
+int versal_pm_rsa_encrypt(const u64 in_params, const u64 in_addr)
+{
+	return zynqmp_pm_invoke_fn(XSECURE_API_RSA_PUBLIC_ENCRYPT, NULL, 4,
+				   lower_32_bits(in_params),
+				   upper_32_bits(in_params),
+				   lower_32_bits(in_addr),
+				   upper_32_bits(in_addr));
+}
+EXPORT_SYMBOL_GPL(versal_pm_rsa_encrypt);
+
+/**
+ * versal_pm_rsa_decrypt - Access RSA hardware to decrypt the data with RSA.
+ * @in_params:	Address of the input parameter
+ * @in_addr:	Address of input buffer
+ *
+ * Return:	Returns status, either success or error code.
+ */
+int versal_pm_rsa_decrypt(const u64 in_params, const u64 in_addr)
+{
+	return zynqmp_pm_invoke_fn(XSECURE_API_RSA_PRIVATE_DECRYPT, NULL, 4,
+				   lower_32_bits(in_params),
+				   upper_32_bits(in_params),
+				   lower_32_bits(in_addr),
+				   upper_32_bits(in_addr));
+}
+EXPORT_SYMBOL_GPL(versal_pm_rsa_decrypt);
+
+/**
  * zynqmp_pm_register_notifier() - PM API for register a subsystem
  *                                to be notified about specific
  *                                event/error.
