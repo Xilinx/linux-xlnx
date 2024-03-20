@@ -145,6 +145,15 @@ static void gd25b512_default_init(struct spi_nor *nor)
 	params->set_4byte_addr_mode = gd25lx256e_set_4byte_addr_mode;
 }
 
+static int gd25lx512_late_init(struct spi_nor *nor)
+{
+	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
+
+	params->hwcaps.mask &= ~(SNOR_HWCAPS_PP_8_8_8_DTR | SNOR_HWCAPS_READ_8_8_8_DTR);
+
+	return 0;
+}
+
 static struct spi_nor_fixups gd25lx256e_fixups = {
 	.default_init = gd25lx256e_default_init,
 	.post_sfdp = gd25lx256e_post_sfdp_fixup,
@@ -152,6 +161,11 @@ static struct spi_nor_fixups gd25lx256e_fixups = {
 
 static struct spi_nor_fixups gd25b512_fixups = {
 	.default_init = gd25b512_default_init,
+};
+
+static struct spi_nor_fixups gd25lx512_fixups = {
+	.default_init = gd25b512_default_init,
+	.late_init = gd25lx512_late_init,
 };
 
 static int
@@ -234,21 +248,21 @@ static const struct flash_info gigadevice_nor_parts[] = {
 		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_OCTAL_READ)
 		FIXUP_FLAGS(SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE)
 		MFR_FLAGS(USE_FSR)
-		.fixups = &gd25b512_fixups },
+		.fixups = &gd25lx512_fixups },
 	{ "gd55lx01g", INFO(0xc8681b, 0, 64 * 1024, 2048)
 		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
 		      SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5)
 		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_OCTAL_READ)
 		FIXUP_FLAGS(SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE)
 		MFR_FLAGS(USE_FSR)
-		.fixups = &gd25b512_fixups },
+		.fixups = &gd25lx512_fixups },
 	{ "gd55lx02g", INFO(0xc8681c, 0, 64 * 1024, 4096)
 		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
 		      SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5)
 		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_OCTAL_READ)
 		FIXUP_FLAGS(SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE)
 		MFR_FLAGS(USE_FSR)
-		.fixups = &gd25b512_fixups },
+		.fixups = &gd25lx512_fixups },
 };
 
 const struct spi_nor_manufacturer spi_nor_gigadevice = {
