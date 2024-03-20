@@ -705,6 +705,18 @@ config CRYPTO_DEV_ZYNQMP_SHA3
 	  Select this if you want to use the ZynqMP module
 	  for SHA3 hash computation.
 
+config CRYPTO_DEV_XILINX_RSA_AKCIPHER
+	tristate "Support for Xilinx RSA hw accelerator"
+	depends on ARCH_ZYNQMP || COMPILE_TEST
+	select CRYPTO_ENGINE
+	select CRYPTO_RSA
+	select CRYPTO_AKCIPHER
+	help
+	  Xilinx processors have RSA hw accelerator used for signature
+	  generation and verification. This driver interfaces with RSA
+	  hw accelerator. Select this if you want to use the Versal module
+	  for RSA algorithms.
+
 source "drivers/crypto/chelsio/Kconfig"
 
 source "drivers/crypto/virtio/Kconfig"
