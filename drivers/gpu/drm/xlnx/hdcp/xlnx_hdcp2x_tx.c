@@ -105,7 +105,7 @@ static int xlnx_hdcp2x_loadsrm_revocation_table(struct xlnx_hdcp2x_config *xhdcp
 	const u8 *srmblock = NULL;
 	const u8 *rcv_id;
 	u32 block_size, length_field;
-	u16 num_of_devices, srm_version;
+	u16 num_of_devices;
 	int ret, i, j;
 	u8 srm_generator, srm_id;
 
@@ -116,13 +116,6 @@ static int xlnx_hdcp2x_loadsrm_revocation_table(struct xlnx_hdcp2x_config *xhdcp
 
 	if (srm_id != HDCP2X_TX_SRM_ID)
 		return -EINVAL;
-
-	/*
-	 * Byte 3-4 contains the SRM Version.
-	 * Value is in big endian format, Microblaze is little endian
-	 */
-	srm_version  = srmblock[2] << BITS_PER_BYTE;
-	srm_version |= srmblock[3];
 
 	/* Byte 5 contains the SRM Generation Number */
 	srm_generator = srmblock[4];
