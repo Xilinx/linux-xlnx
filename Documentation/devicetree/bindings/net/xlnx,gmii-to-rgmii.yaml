@@ -31,6 +31,13 @@ properties:
   phy-handle:
     $ref: ethernet-controller.yaml#/properties/phy-handle
 
+  clocks:
+    maxItems: 1
+
+  clock-names:
+    const: clkin
+    description: 200/375 MHz free-running clock is used as a input clock.
+
 required:
   - compatible
   - reg
@@ -51,5 +58,7 @@ examples:
             compatible = "xlnx,gmii-to-rgmii-1.0";
             reg = <8>;
             phy-handle = <&phy>;
+            clocks = <&dummy>;
+            clock-names = "clkin";
         };
     };
