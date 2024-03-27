@@ -371,7 +371,7 @@ int xhdcp1x_rx_enable(void *ref, u8 lane_count)
 	if (!hdcp1x)
 		return -EINVAL;
 
-	if (!hdcp1x->is_enabled)
+	if (hdcp1x->is_enabled)
 		return 0;
 
 	if (lane_count != XHDCP1X_LANE_COUNT_VAL_1 &&
