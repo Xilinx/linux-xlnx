@@ -117,8 +117,15 @@
 	aliases {
 		serial0 = &serial0;
 		serial1 = &serial1;
+		serial2 = &dcc;
 		mmc0 = &sdhci0;
 		mmc1 = &sdhci1;
+	};
+
+	dcc: dcc {
+		compatible = "arm,dcc";
+		status = "disabled";
+		bootph-all;
 	};
 
 	chosen {
