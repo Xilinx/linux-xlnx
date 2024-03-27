@@ -3120,10 +3120,10 @@ static int xdprxss_probe(struct platform_device *pdev)
 			goto error;
 		}
 
-		irq = irq_of_parse_and_map(node, 2);
+		irq = platform_get_irq_byname(pdev, "dprxss_hdcp_irq");
 		ret = devm_request_irq(xdprxss->dev, irq,
 				       xdprxss_hdcp1x_irq_handler,
-				       IRQF_SHARED, "dprxss_hdcp1x", xdprxss);
+				       IRQF_SHARED, "dprxss_hdcp_irq", xdprxss);
 		if (ret) {
 			dev_err(dev, "err: hdcp1x interrupt registration failed!\n");
 			goto error;
