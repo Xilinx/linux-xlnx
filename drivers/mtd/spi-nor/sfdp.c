@@ -1543,7 +1543,7 @@ int spi_nor_parse_sfdp(struct spi_nor *nor)
 			 * Avoid parsing the 4-Byte Address Instruction Table, if the
 			 * controller does not support 4-byte addressing.
 			 */
-			if (!(nor->spimem->spi->controller->flags & SPI_NOR_NO_4B))
+			if (!(nor->spimem->spi->controller->flags & SPI_CONTROLLER_NO_4B))
 				err = spi_nor_parse_4bait(nor, param_header);
 			break;
 
