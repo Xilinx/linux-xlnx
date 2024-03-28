@@ -19,6 +19,7 @@
  * https://www.digital-cp.com/sites/default/files/HDCP%20on%20DisplayPort%20Specification%20Rev2_3.pdf
  */
 
+#include <linux/slab.h>
 #include <linux/xlnx/xlnx_hdcp_common.h>
 #include <linux/xlnx/xlnx_hdcp2x_cipher.h>
 #include <linux/xlnx/xlnx_hdcp_rng.h>
