@@ -12,6 +12,7 @@
  * and session key Ks before encryption is enabled.
  */
 
+#include <linux/bitfield.h>
 #include <linux/io.h>
 #include <linux/xlnx/xlnx_hdcp2x_cipher.h>
 
