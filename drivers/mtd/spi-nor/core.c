@@ -3473,6 +3473,8 @@ static void spi_nor_init_flags(struct spi_nor *nor)
 		nor->flags |= SNOR_F_HAS_4BIT_BP;
 		if (flags & SPI_NOR_BP3_SR_BIT6)
 			nor->flags |= SNOR_F_HAS_SR_BP3_BIT6;
+		else if (flags & SPI_NOR_BP3_SR_BIT5)
+			nor->flags |= SNOR_F_HAS_SR_BP3_BIT5;
 	}
 
 	if (flags & NO_CHIP_ERASE)
