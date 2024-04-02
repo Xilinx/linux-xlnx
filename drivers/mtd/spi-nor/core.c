@@ -3261,7 +3261,7 @@ static int spi_nor_set_addr_nbytes(struct spi_nor *nor)
 		nor->addr_nbytes = 3;
 	}
 
-	if (nor->addr_nbytes == 3 && nor->mtd.size > 0x1000000) {
+	if (nor->addr_nbytes == 3 && params->size > 0x1000000) {
 		np_spi = of_get_next_parent(np);
 		if (of_property_match_string(np_spi, "compatible",
 					     "xlnx,zynq-qspi-1.0") >= 0) {
