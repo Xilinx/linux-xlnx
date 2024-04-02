@@ -20,6 +20,7 @@
 #include <linux/remoteproc.h>
 #include <linux/skbuff.h>
 #include <linux/sysfs.h>
+#include <linux/delay.h>
 
 #include "remoteproc_internal.h"
 
@@ -35,6 +36,7 @@
 				 sizeof(struct zynqmp_ipi_message))
 #define MAX_BANKS 12U
 #define MAX_BANKS_PER_CORE	6U
+#define VERSAL_NET_CORES       4U
 
 /*
  * NOTE: The resource table size is currently hard-coded to a maximum
@@ -499,13 +501,18 @@ static int sram_mem_alloc(struct rproc *rproc, struct rproc_mem_entry *mem)
 	 * Set bounds and mask here for later calculation.
 	 *
 	 * The last entry of valid_bank_bases is only used for Versal-Net
-	 * as it has a third bank at the device address 0x10000.
+	 * as it has a third bank at the device address 0x18000.
+	 *
+	 * Hold C banks here so that the device address mapping can be
+	 * handled later. There are 4 C TCM Banks.
 	 *
 	 * ZynqMP and Versal cases only have 2 TCM banks per core to handle.
 	 */
 	unsigned int versal_net[4] = { 0xEBA00000, 0x3FFFF, 0xEBAE0000, 0x8000 };
+	unsigned int vnet_c_banks[VERSAL_NET_CORES] = { 0xEBA20000, 0xEBA60000,
+							0xEBAA0000, 0xEBAE0000 };
 	unsigned int versal[4] = { 0xFFE00000, 0xFFFFF, 0xFFEB0000, 0x10000 };
-	unsigned int base, mask, high, len, bank, *sram_tbl;
+	unsigned int base, mask, high, len, bank, c_bank, i, *sram_tbl;
 	struct xlnx_rpu_rproc *z_rproc = rproc->priv;
 	struct device *dev = rproc->dev.parent;
 	void *va;
@@ -526,6 +533,18 @@ static int sram_mem_alloc(struct rproc *rproc, struct rproc_mem_entry *mem)
 	va = devm_ioremap_wc(dev, mem->da, mem->len);
 	if (!va)
 		return -ENOMEM;
+
+	/* Look for C bank as the address mapping is specific to Versal NET. */
+	c_bank = 0;
+	if (z_rproc->soc_data->soc_type == SOC_VERSAL_NET) {
+		for (i = 0; i < VERSAL_NET_CORES; i++) {
+			if (mem->da == vnet_c_banks[i]) {
+				c_bank = 1;
+				break;
+			}
+		}
+	}
+
 	/*
 	 * Handle TCM translation for R-series relative addresses. Check from
 	 * start to end of TCM banks in mapping.
@@ -537,6 +556,9 @@ static int sram_mem_alloc(struct rproc *rproc, struct rproc_mem_entry *mem)
 		 * The R5s expect their TCM banks to be at address 0x0 and 0x2000,
 		 * while on the Linux side they are at 0xffexxxxx. Zero out the high
 		 * 12 bits of the address.
+		 *
+		 * Versal-NET SOC TCM C Bank device address is not present for
+		 * other SOC's so add specific check if to see if applicable.
 		 */
 
 		/*
@@ -549,8 +571,11 @@ static int sram_mem_alloc(struct rproc *rproc, struct rproc_mem_entry *mem)
 		 * bits of the address.
 		 */
 		if ((z_rproc->soc_data->soc_type != SOC_VERSAL_NET && mem->da == 0x90000) ||
-		    mem->da == 0xB0000)
+		    mem->da == 0xB0000) {
 			mem->da -= 0x90000;
+		} else if (c_bank) {
+			mem->da = 0x18000;
+		}
 		/*
 		 * Check if one of the valid bank base addresses. If not
 		 * report error.
@@ -1288,9 +1313,9 @@ static const struct xlnx_rpu_soc_data versal_data = {
 
 static const struct xlnx_rpu_soc_data versal_net_data = {
 	.soc_type = SOC_VERSAL_NET,
-	.tcm_bases = { 0x0, 0x10000, 0x20000 },
+	.tcm_bases = { 0x0, 0x10000, 0x18000 },
 	.num_tcms = 3U,
-	.max_rprocs = 4U,
+	.max_rprocs = VERSAL_NET_CORES,
 	.max_banks = 12U,
 };
 
