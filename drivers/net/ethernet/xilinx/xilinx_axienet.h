@@ -548,8 +548,10 @@
 #define XXVS_LT_COEF_M1			0x1
 #define XXVS_LT_COEF_M1_SHIFT		10
 
+/* Default number of Tx descriptors */
+#define TX_BD_NUM_DEFAULT               128
+
 /* Macros used when AXI DMA h/w is configured without DRE */
-#define XAE_TX_BUFFERS		64
 #define XAE_MAX_PKT_LEN		8192
 
 /* MRMAC Register Definitions */
@@ -943,7 +945,7 @@ struct axienet_dma_q {
 	dma_addr_t rx_bd_p;
 	dma_addr_t tx_bd_p;
 
-	unsigned char *tx_buf[XAE_TX_BUFFERS];
+	unsigned char *tx_buf[TX_BD_NUM_DEFAULT];
 	unsigned char *tx_bufs;
 	dma_addr_t tx_bufs_dma;
 	bool eth_hasdre;
