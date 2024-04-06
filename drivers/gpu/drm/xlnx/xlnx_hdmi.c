@@ -2221,9 +2221,11 @@ static int xlnx_hdmi_exec_frl_state_ltsp(struct xlnx_hdmi *hdmi)
 			status = xlnx_hdmi_ddcwrite_field(hdmi,
 							  HDMI_TX_SCDC_FIELD_FRL_START,
 							  1);
-			if (!status)
+			if (!status) {
 				hdmi->stream.frl_config.frl_train_states =
 					HDMI_TX_FRLSTATE_LTS_P_FRL_RDY;
+				hdmi->wait_for_streamup = 1;
+			}
 		}
 	}
 
