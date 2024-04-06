@@ -3115,7 +3115,7 @@ static u64 xlnx_hdmi_get_tmdsclk(struct xlnx_hdmi *hdmi, struct drm_display_mode
 	if (hdmi->xvidc_colorfmt == HDMI_TX_CSF_YCRCB_420)
 		tmdsclk = tmdsclk >> 1;
 
-	if (hdmi->xvidc_colorfmt == HDMI_TX_CSF_YCRCB_422) {
+	if (hdmi->xvidc_colorfmt != HDMI_TX_CSF_YCRCB_422) {
 		switch (hdmi->config.bpc) {
 		case HDMI_TX_BPC_10:
 			tmdsclk = (tmdsclk * 5) >> 2;
