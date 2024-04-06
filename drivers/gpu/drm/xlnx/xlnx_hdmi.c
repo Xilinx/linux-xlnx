@@ -2944,30 +2944,6 @@ xlnx_hdmi_set_frl_tmds_mode(struct drm_connector *connector)
 	if (connector->display_info.hdmi.max_lanes != 0 &&
 	    connector->display_info.hdmi.max_frl_rate_per_lane != 0) {
 		hdmi->stream.is_frl = 1;
-		switch (connector->display_info.hdmi.max_frl_rate_per_lane) {
-		case 3:
-			if (connector->display_info.hdmi.max_lanes == 3)
-				hdmi->config.max_frl_rate = 1;
-			break;
-		case 6:
-			if (connector->display_info.hdmi.max_lanes == 3)
-				hdmi->config.max_frl_rate = 2;
-			else if (connector->display_info.hdmi.max_lanes == 4)
-				hdmi->config.max_frl_rate = 3;
-			break;
-		case 8:
-			if (connector->display_info.hdmi.max_lanes == 4)
-				hdmi->config.max_frl_rate = 4;
-			break;
-		case 10:
-			if (connector->display_info.hdmi.max_lanes == 4)
-				hdmi->config.max_frl_rate = 5;
-			break;
-		case 12:
-			if (connector->display_info.hdmi.max_lanes == 4)
-				hdmi->config.max_frl_rate = 6;
-			break;
-		}
 	} else {
 		hdmi->stream.is_frl = 0;
 	}
