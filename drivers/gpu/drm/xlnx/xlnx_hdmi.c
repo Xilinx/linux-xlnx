@@ -2032,6 +2032,26 @@ static void xlnx_hdmi_connect_callback(struct xlnx_hdmi *hdmi)
 	}
 }
 
+static void xlnx_hdmi_frl_config(struct xlnx_hdmi *hdmi)
+{
+	union phy_configure_opts phy_cfg = {0};
+	int ret;
+
+	/* Enable HDMI 2.1 config */
+	phy_cfg.hdmi.linerate =
+		(u64)(hdmi->stream.frl_config.linerate * HDMI_TX_PIXELRATE_GBPS);
+	phy_cfg.hdmi.nchannels = hdmi->stream.frl_config.lanes;
+	phy_cfg.hdmi.config_hdmi21 = 1;
+	ret = xlnx_hdmi_phy_configure(hdmi, &phy_cfg);
+	if (ret) {
+		dev_err(hdmi->dev, "phy_cfg: hdmi21 config failed\n");
+		return;
+	}
+
+	/* set FRL mode */
+	hdmi->stream.is_frl = 1;
+}
+
 static int xlnx_hdmi_sink_max_frl(struct xlnx_hdmi *hdmi)
 {
 	struct drm_connector *connector = &hdmi->connector;
@@ -2227,30 +2247,7 @@ static int xlnx_hdmi_exec_frl_state_lts2(struct xlnx_hdmi *hdmi)
 			hdmi->stream.frl_config.frl_train_states =
 					HDMI_TX_FRLSTATE_LTS_3_ARM;
 
-			/* Enable phy ibufds */
-			phy_cfg.hdmi.ibufds = 1;
-			phy_cfg.hdmi.ibufds_en = true;
-			for (i = 0; i < HDMI_MAX_LANES; i++) {
-				ret = phy_configure(hdmi->phy[i], &phy_cfg);
-				if (ret) {
-					dev_err(hdmi->dev, "phy_cfg: Ibufds config failed\n");
-					return ret;
-				}
-			}
-
-			/* Enable HDMI 2.1 config */
-			phy_cfg.hdmi.linerate =
-				(u64)(hdmi->stream.sink_max_linerate *
-				      HDMI_TX_PIXELRATE_GBPS);
-			phy_cfg.hdmi.nchannels = hdmi->stream.sink_max_lanes;
-			phy_cfg.hdmi.config_hdmi21 = 1;
-			for (i = 0; i < HDMI_MAX_LANES; i++) {
-				ret = phy_configure(hdmi->phy[i], &phy_cfg);
-				if (ret) {
-					dev_err(hdmi->dev, "phy_cfg: hdmi21 config failed\n");
-					return ret;
-				}
-			}
+			xlnx_hdmi_frl_config(hdmi);
 
 			/* set Nyquist Clock as link training pattern */
 			for (index = 0; index < HDMI_MAX_LANES; index++) {
