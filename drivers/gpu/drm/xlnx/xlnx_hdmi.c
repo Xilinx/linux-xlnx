@@ -2204,7 +2204,7 @@ static int xlnx_hdmi_exec_frl_state_lts1(struct xlnx_hdmi *hdmi)
 static int xlnx_hdmi_exec_frl_state_lts2(struct xlnx_hdmi *hdmi)
 {
 	union phy_configure_opts phy_cfg = {0};
-	int status, ret, i;
+	int status = 1, ret, i;
 	u8 ddc_buf, index;
 
 	hdmi->stream.frl_config.timer_cnt += TIMEOUT_5MS;
@@ -2221,15 +2221,14 @@ static int xlnx_hdmi_exec_frl_state_lts2(struct xlnx_hdmi *hdmi)
 		}
 	}
 
-	if (status)
-		return status;
+	if (!status) {
+		if (ddc_buf & HDMI_TX_DDC_STCR_FLT_NO_TIMEOUT_MASK)
+			hdmi->stream.frl_config.flt_no_timeout = true;
+		else
+			hdmi->stream.frl_config.flt_no_timeout = false;
 
-	if (ddc_buf & HDMI_TX_DDC_STCR_FLT_NO_TIMEOUT_MASK)
-		hdmi->stream.frl_config.flt_no_timeout = true;
-	else
-		hdmi->stream.frl_config.flt_no_timeout = false;
-
-	status = xlnx_hdmi_ddcwrite_field(hdmi, HDMI_TX_SCDC_FIELD_SNK_STU, 1);
+		xlnx_hdmi_ddcwrite_field(hdmi, HDMI_TX_SCDC_FIELD_SNK_STU, 1);
+	}
 
 	/* Read FLT_NO_UPDATE SCDC Register */
 	if (!status && (hdmi->stream.frl_config.flt_no_timeout ||
