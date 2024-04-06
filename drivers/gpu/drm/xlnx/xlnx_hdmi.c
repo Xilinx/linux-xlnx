@@ -2399,24 +2399,32 @@ static int xlnx_hdmi_exec_frl_state_lts4(struct xlnx_hdmi *hdmi)
 
 	xlnx_hdmi_set_frl_timer(hdmi, 0);
 	xlnx_hdmi_clear_frl_ltp(hdmi);
-	status = xlnx_hdmi_ddcwrite_field(hdmi,
-					  HDMI_TX_SCDC_FIELD_FLT_UPDATE, 1);
+
+	if (hdmi->stream.frl_config.max_frl_rate > 1) {
+		hdmi->config.max_frl_rate = hdmi->config.max_frl_rate - 1;
+		hdmi->stream.sink_max_linerate =
+			rate_table[hdmi->config.max_frl_rate].linerate;
+		hdmi->stream.sink_max_lanes = rate_table[hdmi->config.max_frl_rate].lanes;
+		status = 0;
+	} else {
+		status = 1;
+	}
+
 	if (!status) {
 		status = xlnx_hdmi_ddcwrite_field(hdmi,
-						  HDMI_TX_SCDC_FIELD_FLT_UPDATE,
-						  1);
+						HDMI_TX_SCDC_FIELD_FLT_UPDATE, 1);
 		if (!status) {
 			hdmi->stream.frl_config.timer_cnt = 0;
 			hdmi->stream.frl_config.frl_train_states =
 				HDMI_TX_FRLSTATE_LTS_3_ARM;
-			xlnx_hdmi_frl_execute(hdmi);
-			return status;
+			xlnx_hdmi_frl_config(hdmi);
 		}
+	} else {
+		hdmi->stream.frl_config.timer_cnt = 0;
+		hdmi->stream.frl_config.frl_train_states = HDMI_TX_FRLSTATE_LTS_L;
+		xlnx_hdmi_set_frl_timer(hdmi, TIMEOUT_10US);
 	}
 
-	hdmi->stream.frl_config.timer_cnt = 0;
-	hdmi->stream.frl_config.frl_train_states = HDMI_TX_FRLSTATE_LTS_L;
-	xlnx_hdmi_set_frl_timer(hdmi, TIMEOUT_10US);
 	xlnx_hdmi_frl_execute(hdmi);
 
 	return status;
