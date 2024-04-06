@@ -1768,6 +1768,56 @@ xlnx_hdmi_set_frl_ltp(struct xlnx_hdmi *hdmi, u8 lane, u8 ltp_type)
 	xlnx_hdmi_writel(hdmi, HDMI_TX_FRL_CTRL, data);
 }
 
+static void xlnx_hdmi_streamup_callback(struct xlnx_hdmi *hdmi)
+{
+	union phy_configure_opts phy_cfg = {0};
+	int ret;
+
+	if (hdmi->stream.is_frl)
+		xlnx_hdmi_frl_mode_enable(hdmi);
+	else
+		xlnx_hdmi_frl_mode_disable(hdmi);
+
+	phy_cfg.hdmi.get_samplerate = 1;
+	ret = xlnx_hdmi_phy_configure(hdmi, &phy_cfg);
+	if (ret) {
+		dev_err(hdmi->dev, "phy_cfg: get_samplerate err %d\n", ret);
+		return;
+	}
+	/* Set the sample rate got from HMDI-PHY */
+	xlnx_hdmi_set_samplerate(hdmi,
+				 phy_cfg.hdmi.samplerate);
+	xlnx_hdmi_stream_start(hdmi);
+
+	phy_cfg.hdmi.clkout1_obuftds = 1;
+	phy_cfg.hdmi.clkout1_obuftds_en = true;
+	ret = xlnx_hdmi_phy_configure(hdmi, &phy_cfg);
+	if (ret) {
+		dev_err(hdmi->dev, "phy_cfg: obuftds_en err %d\n", ret);
+		return;
+	}
+
+	/* release vid_in bridge resets */
+	xlnx_hdmi_ext_sysrst_deassert(hdmi);
+	xlnx_hdmi_ext_vrst_deassert(hdmi);
+	/* release tx core resets */
+	xlnx_hdmi_int_lrst_deassert(hdmi);
+	xlnx_hdmi_int_vrst_deassert(hdmi);
+
+	if (hdmi->xvidc_colorfmt == HDMI_TX_CSF_YCRCB_420) {
+		xlnx_pioout_bridge_yuv_set(hdmi);
+		xlnx_pioout_bridge_pixel_clr(hdmi);
+	} else {
+		if (hdmi->iframe.pixel_repeat) {
+			xlnx_pioout_bridge_yuv_clr(hdmi);
+			xlnx_pioout_bridge_pixel_set(hdmi);
+		} else {
+			xlnx_pioout_bridge_yuv_clr(hdmi);
+			xlnx_pioout_bridge_pixel_clr(hdmi);
+		}
+	}
+}
+
 /**
  * xlnx_hdmi_set_frl_timer: sets the frl timer value
  * @hdmi: pinter to HDMI TX core instance
@@ -2405,8 +2455,6 @@ xlnx_hdmi_start_frl_train(struct xlnx_hdmi *hdmi, u32 frl_rate)
  */
 static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 {
-	union phy_configure_opts phy_cfg = {0};
-	int ret, i;
 	u32 event, data;
 
 	/* Read PIO IN Event register */
@@ -2478,64 +2526,18 @@ static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 	if (event & HDMI_TX_PIO_IN_LNK_RDY) {
 		/* Check the link status */
 		if (data & HDMI_TX_PIO_IN_LNK_RDY) {
-			hdmi->stream.state = HDMI_TX_STATE_STREAM_UP;
-			if (hdmi->stream.frl_config.frl_train_states ==
-			    HDMI_TX_FRLSTATE_LTS_3_ARM) {
-				/* Execute state machine */
-				xlnx_hdmi_exec_frl_state(hdmi);
+			if (hdmi->stream.is_frl) {
+				hdmi->stream.state = HDMI_TX_STATE_STREAM_UP;
+				if (hdmi->stream.frl_config.frl_train_states ==
+				    HDMI_TX_FRLSTATE_LTS_3_ARM) {
+					/* Execute state machine */
+					xlnx_hdmi_exec_frl_state(hdmi);
+				}
+			} else {
+				xlnx_hdmi_streamup_callback(hdmi);
 			}
-			if (!hdmi->stream.is_frl) {
-				xlnx_hdmi_aux_enable(hdmi);
-				xlnx_hdmi_auxintr_enable(hdmi);
-
-				phy_cfg.hdmi.clkout1_obuftds = 1;
-				phy_cfg.hdmi.clkout1_obuftds_en = true;
-				for (i = 0; i < HDMI_MAX_LANES; i++) {
-					ret = phy_configure(hdmi->phy[i],
-							    &phy_cfg);
-					if (ret) {
-						dev_err(hdmi->dev, "phy_cfg: 10bufds_en err\n");
-						return;
-					}
-				}
-
-				phy_cfg.hdmi.get_samplerate = 1;
-				for (i = 0; i < HDMI_MAX_LANES; i++) {
-					ret = phy_configure(hdmi->phy[i],
-							    &phy_cfg);
-					if (ret) {
-						dev_err(hdmi->dev, "phy_cfg: get_samplerate err\n");
-						return;
-					}
-				}
-				/* Set the sample rate got from HMDI-PHY */
-				xlnx_hdmi_set_samplerate(hdmi,
-							 phy_cfg.hdmi.samplerate);
-
-				/* release vid_in bridge resets */
-				xlnx_hdmi_ext_sysrst_deassert(hdmi);
-				xlnx_hdmi_ext_vrst_deassert(hdmi);
-				/* release tx core resets */
-				xlnx_hdmi_int_lrst_deassert(hdmi);
-				xlnx_hdmi_int_vrst_deassert(hdmi);
-
-				hdmi->hdmi_stream_up = 1;
-
-				if (hdmi->xvidc_colorfmt == HDMI_TX_CSF_YCRCB_420) {
-					xlnx_pioout_bridge_yuv_set(hdmi);
-					xlnx_pioout_bridge_pixel_clr(hdmi);
-				} else {
-					if (hdmi->iframe.pixel_repeat) {
-						xlnx_pioout_bridge_yuv_clr(hdmi);
-						xlnx_pioout_bridge_pixel_set(hdmi);
-					} else {
-						xlnx_pioout_bridge_yuv_clr(hdmi);
-						xlnx_pioout_bridge_pixel_clr(hdmi);
-					}
-				}
-				xlnx_hdmi_stream_start(hdmi);
-				xlnx_hdmi_clkratio(hdmi);
-			}
+			xlnx_hdmi_aux_enable(hdmi);
+			xlnx_hdmi_auxintr_enable(hdmi);
 		} else {
 			/* Set stream status to down */
 			hdmi->stream.state = HDMI_TX_STATE_STREAM_DOWN;
@@ -3162,19 +3164,7 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 		xlnx_set_frl_link_clk(hdmi, lnk_clk);
 		xlnx_set_frl_vid_clk(hdmi, vid_clk);
 
-		xlnx_hdmi_aux_enable(hdmi);
-		xlnx_hdmi_start_frl_train(hdmi, hdmi->config.max_frl_rate);
-		xlnx_hdmi_auxintr_enable(hdmi);
-		xlnx_hdmi_set_samplerate(hdmi, 1);
-
-		/* release vid_in bridge resets */
-		xlnx_hdmi_ext_sysrst_deassert(hdmi);
-		xlnx_hdmi_ext_vrst_deassert(hdmi);
-		/* release tx cor resets */
-		xlnx_hdmi_int_lrst_deassert(hdmi);
-		xlnx_hdmi_int_vrst_deassert(hdmi);
-		xlnx_pioout_bridge_yuv_clr(hdmi);
-		xlnx_pioout_bridge_pixel_clr(hdmi);
+		xlnx_hdmi_streamup_callback(hdmi);
 	}
 
 	dev_dbg(hdmi->dev, "tmds_clk = %llu Hz\n", hdmi->tmds_clk);
