@@ -570,7 +570,7 @@ struct xlnx_hdmi {
 	u32 intr_status;
 	u32 frl_status;
 	u32 wait_for_streamup:1;
-	u32 tmds_clk;
+	u64 tmds_clk;
 	wait_queue_head_t wait_event;
 	struct xlnx_bridge *bridge;
 	struct drm_property *height_out;
@@ -2983,7 +2983,7 @@ color_formats xlnx_hdmi_find_media_bus(struct xlnx_hdmi *hdmi,
 
 static u64 xlnx_hdmi_get_tmdsclk(struct xlnx_hdmi *hdmi, struct drm_display_mode *adjusted_mode)
 {
-	u32 tmdsclk;
+	u64 tmdsclk;
 
 	tmdsclk = adjusted_mode->clock * 1000;
 	if (hdmi->xvidc_colorfmt == HDMI_TX_CSF_YCRCB_420)
@@ -3030,7 +3030,8 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	struct drm_display_mode *adjusted_mode = &crtc_state->adjusted_mode;
 	union phy_configure_opts phy_cfg = {0};
 	int ret;
-	u32 drm_fourcc, lnk_clk, vid_clk;
+	u32 drm_fourcc, pixelrate = 0;
+	u64 lnk_clk = 0, vid_clk = 0;
 
 	drm_mode_copy(&hdmi->saved_adjusted_mode, &crtc_state->adjusted_mode);
 	dev_dbg(hdmi->dev, "mode->clock = %d\n", mode->clock * 1000);
@@ -3097,7 +3098,7 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	dev_dbg(hdmi->dev, "xvidc_colordepth = %d\n", hdmi->xvidc_colordepth);
 
 	hdmi->tmds_clk = xlnx_hdmi_get_tmdsclk(hdmi, adjusted_mode);
-	dev_dbg(hdmi->dev, "tmds_clk = %u\n", hdmi->tmds_clk);
+	dev_dbg(hdmi->dev, "tmds_clk = %llu\n", hdmi->tmds_clk);
 
 	if (connector->display_info.is_hdmi)
 		xlnx_hdmi_send_infoframes(hdmi);
@@ -3136,8 +3137,14 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 			return;
 		}
 	} else {
-		lnk_clk = adjusted_mode->clock / config->ppc;
-		vid_clk = lnk_clk;
+		if (hdmi->xvidc_colorfmt == HDMI_TX_CSF_YCRCB_422) {
+			vid_clk = (hdmi->tmds_clk / config->ppc) / 1000;
+			lnk_clk = vid_clk;
+		} else {
+			pixelrate = ((hdmi->tmds_clk * 8) / config->bpc) / 1000;
+			vid_clk = (pixelrate / config->ppc);
+			lnk_clk = (vid_clk *  config->bpc) / 8;
+		}
 
 		xlnx_set_frl_link_clk(hdmi, lnk_clk);
 		xlnx_set_frl_vid_clk(hdmi, vid_clk);
@@ -3157,7 +3164,7 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 		xlnx_pioout_bridge_pixel_clr(hdmi);
 	}
 
-	dev_dbg(hdmi->dev, "tmds_clk = %u Hz\n", hdmi->tmds_clk);
+	dev_dbg(hdmi->dev, "tmds_clk = %llu Hz\n", hdmi->tmds_clk);
 
 	hdmi->wait_for_streamup = 0;
 	wait_event_timeout(hdmi->wait_event, hdmi->wait_for_streamup,
