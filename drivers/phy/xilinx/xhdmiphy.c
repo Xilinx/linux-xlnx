@@ -214,11 +214,15 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 			xhdmiphy_set_lrate(phy_dev, phy_lane->direction, 0,
 					   cfg->tx_tmdsclk);
 		} else if (cfg->config_hdmi21) {
+			if (phy_dev->conf.tx_refclk_sel !=
+			    phy_dev->conf.tx_frl_refclk_sel) {
+				xhdmiphy_ibufds_en(phy_dev, XHDMIPHY_DIR_TX, 1);
+			}
 			xhdmiphy_clk_srcsel(phy_dev, phy_lane->direction,
 					    frl_mode);
 			usleep_range(1000, 1100);
 			xhdmiphy_set_lrate(phy_dev, phy_lane->direction, 1,
-					   cfg->tx_tmdsclk);
+					   cfg->linerate);
 			gpiod_set_value(phy_dev->rxch4_gpio, 1);
 			xhdmiphy_hdmi21_conf(phy_dev, XHDMIPHY_DIR_TX,
 					     cfg->linerate, cfg->nchannels);
