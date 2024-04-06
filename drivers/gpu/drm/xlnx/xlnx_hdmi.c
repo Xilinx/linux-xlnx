@@ -1799,6 +1799,105 @@ static void xlnx_hdmi_clear_frl_ltp(struct xlnx_hdmi *hdmi)
 		xlnx_hdmi_set_frl_ltp(hdmi, index, HDMI_TX_LTP_NO_LTP);
 }
 
+static void xlnx_hdmi_tmdsconfig(struct xlnx_hdmi *hdmi)
+{
+	union phy_configure_opts phy_cfg = {0};
+	int ret;
+
+	phy_cfg.hdmi.ibufds = 1;
+	phy_cfg.hdmi.ibufds_en = true;
+	ret = xlnx_hdmi_phy_configure(hdmi, &phy_cfg);
+	if (ret) {
+		dev_err(hdmi->dev, "phy_cfg: Ibufds err %d\n", ret);
+		return;
+	}
+
+	phy_cfg.hdmi.clkout1_obuftds = 1;
+	phy_cfg.hdmi.clkout1_obuftds_en = false;
+	ret = xlnx_hdmi_phy_configure(hdmi, &phy_cfg);
+	if (ret) {
+		dev_err(hdmi->dev, "phy_cfg: obuftds_en err %d\n", ret);
+		return;
+	}
+
+	phy_cfg.hdmi.config_hdmi20 = 1;
+	ret = xlnx_hdmi_phy_configure(hdmi, &phy_cfg);
+	if (ret) {
+		dev_err(hdmi->dev, "phy_cfg: hdmi20 err %d\n", ret);
+		return;
+	}
+
+	xlnx_set_frl_link_clk(hdmi, 0);
+	xlnx_set_frl_vid_clk(hdmi, 0);
+	xlnx_hdmi_set_hdmi_mode(hdmi);
+}
+
+/**
+ * xlnx_hdmi_hdcp_reset - Reset hdcp module
+ * @hdmi: HDMI IP core structure
+ *
+ * This function resets HDCP cipher engine,
+ * protocol state machine and its internal parameters.
+ *
+ * Return: 0 on success, or the error code returned
+ * from the callee functions.
+ */
+static int xlnx_hdmi_hdcp_reset(struct xlnx_hdmi *hdmi)
+{
+	struct xlnx_hdcptx *xhdcp = &hdmi->txhdcp;
+	int ret;
+
+	cancel_delayed_work(&hdmi->hdcp_cp_irq_work);
+	ret = xlnx_hdcp_tx_reset(xhdcp);
+	if (ret < 0) {
+		dev_err(xhdcp->dev, "failed to reset HDCP");
+		return ret;
+	}
+
+	return 0;
+}
+
+static void xlnx_hdmi_connect_callback(struct xlnx_hdmi *hdmi)
+{
+	union phy_configure_opts phy_cfg = {0};
+	int ret;
+
+	if (hdmi->cable_connected) {
+		xlnx_hdmi_ddc_disable(hdmi);
+
+		hdmi->tmds_clk = HDMI_TX_DEF_TMDS_CLK;
+		xlnx_hdmi_stream_start(hdmi);
+		phy_cfg.hdmi.tx_params = 1;
+		phy_cfg.hdmi.ppc = hdmi->config.ppc;
+		phy_cfg.hdmi.bpc = hdmi->config.bpc;
+		phy_cfg.hdmi.fmt = hdmi->xvidc_colorfmt;
+		phy_cfg.hdmi.tx_tmdsclk = hdmi->tmds_clk;
+		ret = xlnx_hdmi_phy_configure(hdmi, &phy_cfg);
+		if (ret) {
+			dev_err(hdmi->dev, "phy_cfg: txparams error %d\n", ret);
+			return;
+		}
+
+		xlnx_hdmi_tmdsconfig(hdmi);
+	} else {
+		struct xlnx_hdcptx *xhdcp = &hdmi->txhdcp;
+
+		if (xhdcp->hdcp2xenable || xhdcp->hdcp1xenable) {
+			ret = xlnx_hdmi_hdcp_reset(hdmi);
+			if (ret < 0) {
+				dev_err(hdmi->dev, "failed to reset HDCP %d\n", ret);
+				return;
+			}
+		}
+		phy_cfg.hdmi.ibufds = 1;
+		phy_cfg.hdmi.ibufds_en = true;
+		ret = xlnx_hdmi_phy_configure(hdmi, &phy_cfg);
+		if (ret) {
+			dev_err(hdmi->dev, "phy_cfg: Ibufds err %d\n", ret);
+			return;
+		}
+	}
+}
 /**
  * xlnx_hdmi_frl_train_init: Initializes sink's SCDC for training.
  * @hdmi: Pointer to HDMI TX core instance
@@ -2147,31 +2246,6 @@ static int xlnx_hdmi_exec_frl_state_lts4(struct xlnx_hdmi *hdmi)
 }
 
 /**
- * xlnx_hdmi_hdcp_reset - Reset hdcp module
- * @hdmi: HDMI IP core structure
- *
- * This function resets HDCP cipher engine,
- * protocol state machine and its internal parameters.
- *
- * Return: 0 on success, or the error code returned
- * from the callee functions.
- */
-static int xlnx_hdmi_hdcp_reset(struct xlnx_hdmi *hdmi)
-{
-	struct xlnx_hdcptx *xhdcp = &hdmi->txhdcp;
-	int ret;
-
-	cancel_delayed_work(&hdmi->hdcp_cp_irq_work);
-	ret = xlnx_hdcp_tx_reset(xhdcp);
-	if (ret < 0) {
-		dev_err(xhdcp->dev, "failed to reset HDCP");
-		return ret;
-	}
-
-	return 0;
-}
-
-/**
  * xlnx_hdmi_exec_frl_state_ltsp_arm: executes FRL LTSP-arm training state
  * @hdmi: pointer to HDMI TX core instance.
  *
@@ -2354,75 +2428,12 @@ static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 		if (data & HDMI_TX_PIO_IN_HPD_CONNECT) {
 			hdmi->cable_connected = 1;
 			hdmi->connector.status = connector_status_connected;
-			xlnx_hdmi_ddc_disable(hdmi);
-
-			phy_cfg.hdmi.ibufds = 1;
-			phy_cfg.hdmi.ibufds_en = true;
-			for (i = 0; i < HDMI_MAX_LANES; i++) {
-				ret = phy_configure(hdmi->phy[i], &phy_cfg);
-				if (ret) {
-					dev_err(hdmi->dev, "phy_cfg: Ibufds err\n");
-					return;
-				}
-			}
-
-			hdmi->tmds_clk = HDMI_TX_DEF_TMDS_CLK;
-			xlnx_hdmi_stream_start(hdmi);
-			phy_cfg.hdmi.tx_params = 1;
-			phy_cfg.hdmi.ppc = hdmi->config.ppc;
-			phy_cfg.hdmi.bpc = hdmi->config.bpc;
-			phy_cfg.hdmi.fmt = hdmi->xvidc_colorfmt;
-			phy_cfg.hdmi.tx_tmdsclk = hdmi->tmds_clk;
-			for (i = 0; i < HDMI_MAX_LANES; i++) {
-				ret = phy_configure(hdmi->phy[i], &phy_cfg);
-				if (ret) {
-					dev_err(hdmi->dev, "phy_cfg: txparams error %d\n", ret);
-					return;
-				}
-			}
-
-			phy_cfg.hdmi.clkout1_obuftds = 1;
-			phy_cfg.hdmi.clkout1_obuftds_en = false;
-			for (i = 0; i < HDMI_MAX_LANES; i++) {
-				ret = phy_configure(hdmi->phy[i], &phy_cfg);
-				if (ret) {
-					dev_err(hdmi->dev, "phy_cfg: obuftds_en err\n");
-					return;
-				}
-			}
-
-			phy_cfg.hdmi.config_hdmi20 = 1;
-			for (i = 0; i < HDMI_MAX_LANES; i++) {
-				ret = phy_configure(hdmi->phy[i], &phy_cfg);
-				if (ret) {
-					dev_err(hdmi->dev, "phy_cfg: hdmi20 err\n");
-					return;
-				}
-			}
 		} else {
-			struct xlnx_hdcptx *xhdcp = &hdmi->txhdcp;
-
 			hdmi->cable_connected = 0;
 			hdmi->connector.status = connector_status_disconnected;
 			dev_info(hdmi->dev, "stream is not connected\n");
-			if (xhdcp->hdcp2xenable || xhdcp->hdcp1xenable) {
-				ret = xlnx_hdmi_hdcp_reset(hdmi);
-				if (ret < 0) {
-					dev_err(hdmi->dev, "failed to reset HDCP");
-					return;
-				}
-			}
-			phy_cfg.hdmi.clkout1_obuftds = 1;
-			phy_cfg.hdmi.clkout1_obuftds_en = false;
-			for (i = 0; i < HDMI_MAX_LANES; i++) {
-				ret = phy_configure(hdmi->phy[i], &phy_cfg);
-				if (ret) {
-					dev_err(hdmi->dev, "phy_cfg:obuftds_dis err\n");
-					return;
-				}
-			}
 		}
-
+		xlnx_hdmi_connect_callback(hdmi);
 		if (hdmi->connector.dev)
 			drm_sysfs_hotplug_event(hdmi->connector.dev);
 		else
