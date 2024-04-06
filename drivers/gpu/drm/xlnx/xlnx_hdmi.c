@@ -7,6 +7,7 @@
  * Author: Venkateshwar Rao G <vgannava.xilinx.com>
  */
 
+#include <drm/display/drm_dp_helper.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_connector.h>
 #include <drm/drm_crtc_helper.h>
@@ -449,14 +450,42 @@ xlnx_hdmi_scdc_field scdc_field[HDMI_TX_SCDC_FIELD_SIZE] = {
 	{0x30, 0x01, 1}	/* HDMI_TX_SCDCFIELD_FLT_NO_RETRAIN */
 };
 
+struct xlnx_hdmi_frlrate {
+	u8 lanes;
+	u8 linerate;
+};
+
+static const struct
+xlnx_hdmi_frlrate rate_table[] = {
+	{3, 0},	/* XHDMIC_MAXFRLRATE_NOT_SUPPORTED */
+	{3, 3},	/* XHDMIC_MAXFRLRATE_3X3GBITSPS */
+	{3, 6},	/* XHDMIC_MAXFRLRATE_3X6GBITSPS */
+	{4, 6},	/* XHDMIC_MAXFRLRATE_4X6GBITSPS */
+	{4, 8},	/* XHDMIC_MAXFRLRATE_4X8GBITSPS */
+	{4, 10},/* XHDMIC_MAXFRLRATE_4X10GBITSPS */
+	{4, 12},/* XHDMIC_MAXFRLRATE_4X12GBITSPS */
+};
+
 /**
  * struct xlnx_hdmi_frl_config - FRL config structure
+ * @max_frl_rate: maximum supported FRL rate
+ * @frl_rate: current FRL rate
+ * @max_linerate: maximum supported linerate
+ * @linerate: current linerate
+ * @max_lanes: maximum supported lanes
+ * @lanes: current lanes
  * @timer_cnt: frl timer
  * @timer_event: flag for timer event
  * @flt_no_timeout: flag for no timeout
  * @frl_train_states: indicates the frl training state
  */
 struct xlnx_hdmi_frl_config {
+	u8 max_frl_rate;
+	u8 frl_rate;
+	u8 max_linerate;
+	u8 linerate;
+	u8 max_lanes;
+	u8 lanes;
 	u16 timer_cnt;
 	u8 timer_event;
 	u8 flt_no_timeout;
@@ -1849,6 +1878,29 @@ static void xlnx_hdmi_clear_frl_ltp(struct xlnx_hdmi *hdmi)
 		xlnx_hdmi_set_frl_ltp(hdmi, index, HDMI_TX_LTP_NO_LTP);
 }
 
+static int xlnx_hdmi_set_frl_rate(struct xlnx_hdmi *hdmi, u8 frlrate)
+{
+	if (!frlrate) {
+		dev_err(hdmi->dev, "frl_rate %d not supported\n", frlrate);
+		return 1;
+	}
+	hdmi->stream.frl_config.frl_rate = frlrate;
+	hdmi->stream.frl_config.lanes = rate_table[frlrate].lanes;
+	hdmi->stream.frl_config.linerate = rate_table[frlrate].linerate;
+
+	dev_dbg(hdmi->dev, "Setting FRL rate @%d Gbps\n", rate_table[frlrate].linerate);
+	/* Set lanes */
+	if (hdmi->stream.frl_config.lanes == 4)
+		xlnx_hdmi_writel(hdmi, HDMI_TX_FRL_CTRL_SET,
+				 HDMI_TX_FRL_CTRL_FRL_LN_OP);
+	else
+		xlnx_hdmi_writel(hdmi, HDMI_TX_FRL_CTRL_CLR,
+				 HDMI_TX_FRL_CTRL_FRL_LN_OP);
+	/*TODO: FFE levels needs to set here */
+	return xlnx_hdmi_ddcwrite_field(hdmi, HDMI_TX_SCDC_FIELD_SNK_CFG1,
+					frlrate);
+}
+
 static void xlnx_hdmi_tmdsconfig(struct xlnx_hdmi *hdmi)
 {
 	union phy_configure_opts phy_cfg = {0};
@@ -1948,6 +2000,46 @@ static void xlnx_hdmi_connect_callback(struct xlnx_hdmi *hdmi)
 		}
 	}
 }
+
+static int xlnx_hdmi_sink_max_frl(struct xlnx_hdmi *hdmi)
+{
+	struct drm_connector *connector = &hdmi->connector;
+	int max_lanes, rate_per_lane, max_frl_rate;
+	int sink_max_frl_bw;
+
+	max_lanes = connector->display_info.hdmi.max_lanes;
+	rate_per_lane = connector->display_info.hdmi.max_frl_rate_per_lane;
+	max_frl_rate = max_lanes * rate_per_lane;
+
+	switch (max_frl_rate) {
+	case 9:
+		sink_max_frl_bw = DP_PCON_ENABLE_MAX_BW_9GBPS;
+		break;
+	case 18:
+		sink_max_frl_bw = DP_PCON_ENABLE_MAX_BW_18GBPS;
+		break;
+	case 24:
+		sink_max_frl_bw = DP_PCON_ENABLE_MAX_BW_24GBPS;
+		break;
+	case 32:
+		sink_max_frl_bw = DP_PCON_ENABLE_MAX_BW_32GBPS;
+		break;
+	case 40:
+		sink_max_frl_bw = DP_PCON_ENABLE_MAX_BW_40GBPS;
+		break;
+	case 48:
+		sink_max_frl_bw = DP_PCON_ENABLE_MAX_BW_48GBPS;
+		break;
+	case 0:
+		sink_max_frl_bw = DP_PCON_ENABLE_MAX_BW_0GBPS;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return sink_max_frl_bw;
+}
+
 /**
  * xlnx_hdmi_frl_train_init: Initializes sink's SCDC for training.
  * @hdmi: Pointer to HDMI TX core instance
@@ -1956,17 +2048,25 @@ static void xlnx_hdmi_connect_callback(struct xlnx_hdmi *hdmi)
  */
 static int xlnx_hdmi_frl_train_init(struct xlnx_hdmi *hdmi)
 {
-	int status;
+	int status = 1;
+	int source_max_frl_bw, sink_max_frl_bw, max_frl_bw;
 
 	xlnx_hdmi_clear_frl_ltp(hdmi);
+	/*
+	 * Initialize the FRL module to send out GAP characters only for
+	 * link training
+	 */
 	xlnx_hdmi_set_frl_active(hdmi, HDMI_TX_FRL_ACTIVE_MODE_GAP_ONLY);
+
+	source_max_frl_bw = hdmi->config.max_frl_rate;
+	sink_max_frl_bw = xlnx_hdmi_sink_max_frl(hdmi);
+	max_frl_bw = min(sink_max_frl_bw, source_max_frl_bw);
+	if (max_frl_bw <= 0)
+		return 1;
+
+	/* Initialize the core to operate in FRL mode */
 	xlnx_hdmi_frl_mode_enable(hdmi);
-
-	xlnx_hdmi_writel(hdmi, HDMI_TX_FRL_CTRL_SET,
-			 HDMI_TX_FRL_CTRL_FRL_LN_OP);
-
-	status = xlnx_hdmi_ddcwrite_field(hdmi, HDMI_TX_SCDC_FIELD_SNK_CFG1,
-					  hdmi->config.max_frl_rate);
+	status = xlnx_hdmi_set_frl_rate(hdmi, max_frl_bw);
 	if (status)
 		return status;
 
@@ -2427,12 +2527,11 @@ static int xlnx_hdmi_exec_frl_state(struct xlnx_hdmi *hdmi)
 /**
  * xlnx_hdmi_start_frl_train - starts the Fixed Rate Link Training.
  * @hdmi: pointer to the HDMI Tx core instance.
- * @frl_rate: frl rate to be trained
  *
  * Returns: 0 on success, 1 on failure.
  */
 static int
-xlnx_hdmi_start_frl_train(struct xlnx_hdmi *hdmi, u32 frl_rate)
+xlnx_hdmi_start_frl_train(struct xlnx_hdmi *hdmi)
 {
 	int status;
 
@@ -3045,6 +3144,7 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	struct drm_display_mode *adjusted_mode = &crtc_state->adjusted_mode;
 	union phy_configure_opts phy_cfg = {0};
 	int ret;
+	int source_max_frl_bw, sink_max_frl_bw, max_frl_bw;
 	u32 drm_fourcc, pixelrate = 0;
 	u64 lnk_clk = 0, vid_clk = 0;
 
@@ -3067,14 +3167,24 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	dev_dbg(hdmi->dev, "mode->flags = %d interlace = %d\n", mode->flags,
 		!!(mode->flags & DRM_MODE_FLAG_INTERLACE));
 
+	source_max_frl_bw = hdmi->config.max_frl_rate;
+	sink_max_frl_bw = xlnx_hdmi_sink_max_frl(hdmi);
+	max_frl_bw = min(sink_max_frl_bw, source_max_frl_bw);
+	if (max_frl_bw <= 0) {
+		hdmi->stream.is_frl = 0;
+		dev_dbg(hdmi->dev, "Connected sink supports TMDS mode\n");
+	} else {
+		dev_dbg(hdmi->dev, "Connected sink supports FRL mode\n");
+		hdmi->stream.is_frl = 1;
+	}
+
 	if (hdmi->stream.is_frl) {
 		xlnx_hdmi_frl_reset_deassert(hdmi);
 		xlnx_hdmi_frl_intr_enable(hdmi);
 		xlnx_hdmi_frl_execute(hdmi);
-		hdmi->stream.sink_max_lanes =
-			connector->display_info.hdmi.max_lanes;
-		hdmi->stream.sink_max_linerate =
-			connector->display_info.hdmi.max_frl_rate_per_lane;
+
+		hdmi->stream.frl_config.lanes = rate_table[max_frl_bw].lanes;
+		hdmi->stream.frl_config.linerate = rate_table[max_frl_bw].linerate;
 	} else {
 		xlnx_hdmi_frl_ext_vidsrc(hdmi);
 		xlnx_hdmi_frl_sleep(hdmi);
@@ -3126,6 +3236,17 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 			dev_err(hdmi->dev, "phy_cfg:10bufds_en err %d\n", ret);
 			return;
 		}
+
+		ret = xlnx_hdmi_start_frl_train(hdmi);
+		if (ret) {
+			dev_err(hdmi->dev, "FRL training is failed.switch to TMDS mode \r\n");
+			xlnx_hdmi_set_hdmi_mode(hdmi);
+			hdmi->stream.is_hdmi = true;
+			hdmi->stream.is_frl = false;
+			xlnx_hdmi_auxintr_enable(hdmi);
+		} else {
+			dev_dbg(hdmi->dev, "FRL training passed !!\n");
+		}
 	}
 
 	xlnx_hdmi_stream_start(hdmi);
@@ -3139,7 +3260,6 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 
 		/* Assert HDMI TXCore resets */
 		xlnx_hdmi_int_lrst_assert(hdmi);
-		xlnx_hdmi_int_vrst_assert(hdmi);
 
 		phy_cfg.hdmi.tx_params = 1;
 		phy_cfg.hdmi.ppc = config->ppc;
