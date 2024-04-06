@@ -1901,6 +1901,37 @@ static int xlnx_hdmi_set_frl_rate(struct xlnx_hdmi *hdmi, u8 frlrate)
 					frlrate);
 }
 
+/**
+ * xlnx_hdmi_reset - Reset the core and bridge
+ * @hdmi: HDMI core structure
+ *
+ * Returns: None
+ */
+static void xlnx_hdmi_reset(struct xlnx_hdmi *hdmi)
+{
+	/* hdmi core reset - assert */
+	xlnx_hdmi_int_lrst_assert(hdmi);
+	xlnx_hdmi_int_vrst_assert(hdmi);
+
+	/* vid out bridge reset */
+	xlnx_hdmi_ext_sysrst_assert(hdmi);
+	xlnx_hdmi_ext_vrst_assert(hdmi);
+
+	/* release vid in bridge resets */
+	xlnx_hdmi_ext_sysrst_deassert(hdmi);
+	xlnx_hdmi_ext_vrst_deassert(hdmi);
+
+	/* release hdmi tx core resets */
+	xlnx_hdmi_int_lrst_deassert(hdmi);
+	xlnx_hdmi_int_vrst_deassert(hdmi);
+}
+
+static void xlnx_hdmi_streamdown_callback(struct xlnx_hdmi *hdmi)
+{
+	xlnx_hdmi_reset(hdmi);
+	xlnx_hdmi_ddc_disable(hdmi);
+}
+
 static void xlnx_hdmi_tmdsconfig(struct xlnx_hdmi *hdmi)
 {
 	union phy_configure_opts phy_cfg = {0};
@@ -2579,6 +2610,7 @@ static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 			hdmi->cable_connected = 0;
 			hdmi->connector.status = connector_status_disconnected;
 			dev_info(hdmi->dev, "stream is not connected\n");
+			xlnx_hdmi_streamdown_callback(hdmi);
 		}
 		xlnx_hdmi_connect_callback(hdmi);
 		if (hdmi->connector.dev)
@@ -3446,31 +3478,6 @@ static const struct component_ops xlnx_hdmi_component_ops = {
 	.bind	= xlnx_hdmi_bind,
 	.unbind	= xlnx_hdmi_unbind
 };
-
-/**
- * xlnx_hdmi_reset - Reset the core and bridge
- * @hdmi: HDMI core structure
- *
- * Returns: None
- */
-static void xlnx_hdmi_reset(struct xlnx_hdmi *hdmi)
-{
-	/* hdmi core reset - assert */
-	xlnx_hdmi_int_lrst_assert(hdmi);
-	xlnx_hdmi_int_vrst_assert(hdmi);
-
-	/* vid out bridge reset */
-	xlnx_hdmi_ext_sysrst_assert(hdmi);
-	xlnx_hdmi_ext_vrst_assert(hdmi);
-
-	/* release vid in bridge resets */
-	xlnx_hdmi_ext_sysrst_deassert(hdmi);
-	xlnx_hdmi_ext_vrst_deassert(hdmi);
-
-	/* release hdmi tx core resets */
-	xlnx_hdmi_int_lrst_deassert(hdmi);
-	xlnx_hdmi_int_vrst_deassert(hdmi);
-}
 
 /**
  * xlnx_hdmi_exit_phy - Exit the phy
