@@ -2670,6 +2670,7 @@ static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 				}
 			} else {
 				xlnx_hdmi_streamup_callback(hdmi);
+				hdmi->wait_for_streamup = 1;
 			}
 			xlnx_hdmi_aux_enable(hdmi);
 			xlnx_hdmi_auxintr_enable(hdmi);
