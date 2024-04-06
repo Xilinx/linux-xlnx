@@ -180,6 +180,9 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 			xhdmiphy_ibufds_en(phy_dev, XHDMIPHY_DIR_TX,
 					   cfg->ibufds_en);
 			cfg->ibufds = 0;
+		} else if (cfg->config_hdmi20) {
+			xhdmiphy_hdmi20_conf(phy_dev, XHDMIPHY_DIR_TX);
+			cfg->config_hdmi20 = 0;
 		} else if (cfg->get_samplerate) {
 			cfg->samplerate = phy_dev->tx_samplerate;
 		} else if (cfg->clkout1_obuftds) {
