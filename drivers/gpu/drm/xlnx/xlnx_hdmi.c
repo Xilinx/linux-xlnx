@@ -925,6 +925,22 @@ static bool xlnx_hdmi_is_lnk_vid_rdy(struct xlnx_hdmi *hdmi)
 	return false;
 }
 
+static int xlnx_hdmi_phy_configure(struct xlnx_hdmi *hdmi,
+				   union phy_configure_opts *opts)
+{
+	int ret = 0, i;
+
+	for (i = 0; i < HDMI_MAX_LANES; i++) {
+		ret = phy_configure(hdmi->phy[i], opts);
+		if (ret) {
+			dev_err(hdmi->dev, "phy_configure error %d\n", ret);
+			return ret;
+		}
+	}
+
+	return ret;
+}
+
 /**
  * xlnx_hdmi_vtc_set_timing - configure video timing parameters
  * @hdmi: hdmi tx instance
@@ -3013,7 +3029,7 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	struct drm_display_mode *mode = &crtc_state->mode;
 	struct drm_display_mode *adjusted_mode = &crtc_state->adjusted_mode;
 	union phy_configure_opts phy_cfg = {0};
-	int ret, i;
+	int ret;
 	u32 drm_fourcc, lnk_clk, vid_clk;
 
 	drm_mode_copy(&hdmi->saved_adjusted_mode, &crtc_state->adjusted_mode);
@@ -3089,12 +3105,10 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	if (hdmi->stream.is_frl) {
 		phy_cfg.hdmi.clkout1_obuftds = 1;
 		phy_cfg.hdmi.clkout1_obuftds_en = false;
-		for (i = 0; i < HDMI_MAX_LANES; i++) {
-			ret = phy_configure(hdmi->phy[i], &phy_cfg);
-			if (ret) {
-				dev_err(hdmi->dev, "phy_cfg:10bufds_en err\n");
-				return;
-			}
+		ret = xlnx_hdmi_phy_configure(hdmi, &phy_cfg);
+		if (ret) {
+			dev_err(hdmi->dev, "phy_cfg:10bufds_en err %d\n", ret);
+			return;
 		}
 	}
 
@@ -3116,12 +3130,10 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 		phy_cfg.hdmi.bpc = config->bpc;
 		phy_cfg.hdmi.fmt = hdmi->xvidc_colorfmt;
 		phy_cfg.hdmi.tx_tmdsclk = hdmi->tmds_clk;
-		for (i = 0; i < HDMI_MAX_LANES; i++) {
-			ret = phy_configure(hdmi->phy[i], &phy_cfg);
-			if (ret) {
-				dev_err(hdmi->dev, "phy_config: set txparams error %d\n", ret);
-				return;
-			}
+		ret = xlnx_hdmi_phy_configure(hdmi, &phy_cfg);
+		if (ret) {
+			dev_err(hdmi->dev, "phy_config: set txparams error %d\n", ret);
+			return;
 		}
 	} else {
 		lnk_clk = adjusted_mode->clock / config->ppc;
@@ -3358,7 +3370,7 @@ static void xlnx_hdmi_exit_phy(struct xlnx_hdmi *hdmi)
 static int xlnx_hdmi_initialize(struct xlnx_hdmi *hdmi)
 {
 	union phy_configure_opts phy_cfg = {0};
-	int ret, i;
+	int ret;
 	unsigned long val, clkrate;
 
 	/* mutex that protects against concurrent access */
@@ -3420,12 +3432,10 @@ static int xlnx_hdmi_initialize(struct xlnx_hdmi *hdmi)
 	xlnx_hdmi_reset(hdmi);
 
 	phy_cfg.hdmi.config_hdmi20 = 1;
-	for (i = 0; i < HDMI_MAX_LANES; i++) {
-		ret = phy_configure(hdmi->phy[i], &phy_cfg);
-		if (ret) {
-			dev_err(hdmi->dev, "phy_cfg: hdmi20 err\n");
-			return ret;
-		}
+	ret = xlnx_hdmi_phy_configure(hdmi, &phy_cfg);
+	if (ret) {
+		dev_err(hdmi->dev, "phy_cfg: hdmi20 err %d\n", ret);
+		return ret;
 	}
 
 	/* Enable Interrupts */
