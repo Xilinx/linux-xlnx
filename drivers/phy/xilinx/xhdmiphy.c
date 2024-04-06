@@ -543,10 +543,19 @@ static int xhdmiphy_parse_of(struct xhdmiphy_dev *priv)
 		return rc;
 	}
 
-	if (val < 0 || val > 6) {
-		dev_err(priv->dev, "dt rx-pll-selection %d is invalid\n",
-			val);
-		return -EINVAL;
+	if (xgtphycfg->gt_type == XHDMIPHY_GTYE5 ||
+	    xgtphycfg->gt_type == XHDMIPHY_GTYP) {
+		if (val != 7 && val != 8) {
+			dev_err(priv->dev, "dt rx-pll-selection %d is invalid\n",
+				val);
+			return -EINVAL;
+		}
+	} else {
+		if (val < 0 || val > 6) {
+			dev_err(priv->dev, "dt rx-pll-selection %d is invalid\n",
+				val);
+			return -EINVAL;
+		}
 	}
 	xgtphycfg->rx_pllclk_sel = val;
 
@@ -557,10 +566,19 @@ static int xhdmiphy_parse_of(struct xhdmiphy_dev *priv)
 		return rc;
 	}
 
-	if (val < 0 || val > 6) {
-		dev_err(priv->dev, "dt tx-pll-selection %d is invalid\n",
-			val);
-		return -EINVAL;
+	if (xgtphycfg->gt_type == XHDMIPHY_GTYE5 ||
+	    xgtphycfg->gt_type == XHDMIPHY_GTYP) {
+		if (val != 7 && val != 8) {
+			dev_err(priv->dev, "dt tx-pll-selection %d is invalid\n",
+				val);
+			return -EINVAL;
+		}
+	} else {
+		if (val < 0 || val > 6) {
+			dev_err(priv->dev, "dt tx-pll-selection %d is invalid\n",
+				val);
+			return -EINVAL;
+		}
 	}
 	xgtphycfg->tx_pllclk_sel = val;
 
