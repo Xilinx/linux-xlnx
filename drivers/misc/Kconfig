@@ -601,6 +601,16 @@ config TPS6594_PFSM
 	  This driver can also be built as a module.  If so, the module
 	  will be called tps6594-pfsm.
 
+config RSMU
+	tristate "Renesas Synchronization Management Unit (SMU)"
+	depends on MFD_RSMU_I2C || MFD_RSMU_SPI
+	help
+	  This option enables support for Renesas SMUs, such as the Clockmatrix and
+	  82P33XXX families. It is used by the Renesas PTP Clock Manager for Linux (pcm4l)
+	  software to provide support to GNSS assisted partial timing support (APTS)
+	  and other networking timing functions. It is used by the synced software to
+	  manage the Synchronous Ethernet (SyncE) device.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
