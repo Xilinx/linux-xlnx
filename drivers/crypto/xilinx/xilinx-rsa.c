@@ -394,7 +394,9 @@ static int xilinx_rsa_init(struct crypto_akcipher *tfm)
 		return PTR_ERR(tfm_ctx->fbk_cipher);
 	}
 
-	akcipher_set_reqsize(tfm, sizeof(struct xilinx_rsa_req_ctx));
+	akcipher_set_reqsize(tfm, max(sizeof(struct xilinx_rsa_req_ctx),
+			     sizeof(struct akcipher_request) +
+			     crypto_akcipher_reqsize(tfm_ctx->fbk_cipher)));
 
 	return 0;
 }
