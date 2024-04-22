@@ -166,7 +166,7 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 					    frl_mode);
 			xhdmiphy_clkdet_freq_reset(phy_dev, XHDMIPHY_DIR_RX);
 			xhdmiphy_set_lrate(phy_dev, phy_lane->direction, 1,
-					   cfg->rx_refclk_hz);
+					   cfg->linerate);
 			cfg->config_hdmi21 = 0;
 		} else if (cfg->rx_get_refclk) {
 			cfg->rx_refclk_hz = phy_dev->rx_refclk_hz;
