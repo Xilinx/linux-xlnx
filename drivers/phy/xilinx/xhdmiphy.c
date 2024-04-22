@@ -72,9 +72,9 @@ static int xhdmiphy_clk_srcsel(struct xhdmiphy_dev *priv, u8 dir, u8 clksrc)
 }
 
 static int xhdmiphy_set_lrate(struct xhdmiphy_dev *priv, u8 dir, u8 mode,
-			      u64 lrate)
+			      u64 lrate, u8 lanes)
 {
-	if (priv->data && !priv->data->set_linerate(dir, mode, lrate))
+	if (priv->data && !priv->data->set_linerate(dir, mode, lrate, lanes))
 		return 0;
 
 	dev_dbg(priv->dev, "failed to set linerate\n");
@@ -146,7 +146,7 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 			xhdmiphy_clk_srcsel(phy_dev, phy_lane->direction,
 					    tmds_mode);
 			xhdmiphy_set_lrate(phy_dev, phy_lane->direction, 0,
-					   cfg->rx_refclk_hz);
+					   cfg->rx_refclk_hz, 0);
 			cfg->config_hdmi20 = 0;
 		} else if (!cfg->config_hdmi20 && cfg->config_hdmi21) {
 			/*
@@ -166,7 +166,7 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 					    frl_mode);
 			xhdmiphy_clkdet_freq_reset(phy_dev, XHDMIPHY_DIR_RX);
 			xhdmiphy_set_lrate(phy_dev, phy_lane->direction, 1,
-					   cfg->linerate);
+					   cfg->linerate, cfg->nchannels);
 			cfg->config_hdmi21 = 0;
 		} else if (cfg->rx_get_refclk) {
 			cfg->rx_refclk_hz = phy_dev->rx_refclk_hz;
@@ -221,7 +221,7 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 			dev_info(phy_dev->dev,
 				 "tx_tmdsclk %lld\n", cfg->tx_tmdsclk);
 			xhdmiphy_set_lrate(phy_dev, phy_lane->direction, 0,
-					   cfg->tx_tmdsclk);
+					   cfg->tx_tmdsclk, 0);
 		} else if (cfg->config_hdmi21) {
 			if (phy_dev->conf.tx_refclk_sel !=
 			    phy_dev->conf.tx_frl_refclk_sel) {
@@ -236,7 +236,8 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 				xhdmiphy_clkdet_freq_reset(phy_dev,
 							   XHDMIPHY_DIR_TX);
 				xhdmiphy_set_lrate(phy_dev, phy_lane->direction,
-						   1, cfg->linerate);
+						   1, cfg->linerate,
+						   cfg->nchannels);
 			}
 			cfg->config_hdmi21 = 0;
 		} else if (cfg->resetgtpll) {
