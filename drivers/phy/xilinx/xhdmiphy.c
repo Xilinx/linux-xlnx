@@ -98,9 +98,11 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 		} else if (cfg->ibufds) {
 			xhdmiphy_ibufds_en(phy_dev, XHDMIPHY_DIR_RX,
 					   cfg->ibufds_en);
+			cfg->ibufds = 0;
 		} else if (cfg->tmdsclock_ratio_flag) {
 			/* update TMDS clock ratio */
 			phy_dev->rx_tmdsclock_ratio = cfg->tmdsclock_ratio;
+			cfg->tmdsclock_ratio_flag = 0;
 		} else if (cfg->phycb) {
 			switch (cb_ptr->type) {
 			case RX_INIT_CB:
@@ -121,6 +123,7 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 					 cb_ptr->type);
 				break;
 			}
+			cfg->phycb = 0;
 		} else if (cfg->cal_mmcm_param) {
 			ret = xhdmiphy_cal_mmcm_param(phy_dev,
 						      XHDMIPHY_CHID_CH1,
@@ -131,6 +134,7 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 					"failed to update mmcm params\n\r");
 
 			xhdmiphy_mmcm_start(phy_dev, XHDMIPHY_DIR_RX);
+			cfg->cal_mmcm_param = 0;
 		} else if (cfg->clkout1_obuftds) {
 			xhdmiphy_clkout1_obuftds_en(phy_dev, XHDMIPHY_DIR_RX,
 						    cfg->clkout1_obuftds_en);
@@ -143,6 +147,7 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 					    tmds_mode);
 			xhdmiphy_set_lrate(phy_dev, phy_lane->direction, 0,
 					   cfg->rx_refclk_hz);
+			cfg->config_hdmi20 = 0;
 		} else if (!cfg->config_hdmi20 && cfg->config_hdmi21) {
 			/*
 			 * Phy needs to switch between rxch4 as data or
@@ -162,11 +167,14 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 			xhdmiphy_clkdet_freq_reset(phy_dev, XHDMIPHY_DIR_RX);
 			xhdmiphy_set_lrate(phy_dev, phy_lane->direction, 1,
 					   cfg->rx_refclk_hz);
+			cfg->config_hdmi21 = 0;
 		} else if (cfg->rx_get_refclk) {
 			cfg->rx_refclk_hz = phy_dev->rx_refclk_hz;
+			cfg->rx_get_refclk = 0;
 		} else if (cfg->reset_gt) {
 			xhdmiphy_rst_gt_txrx(phy_dev, XHDMIPHY_CHID_CHA,
 					     XHDMIPHY_DIR_RX, false);
+			cfg->reset_gt = 0;
 		}
 		count_rx = 0;
 	}
@@ -185,6 +193,7 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 			cfg->config_hdmi20 = 0;
 		} else if (cfg->get_samplerate) {
 			cfg->samplerate = phy_dev->tx_samplerate;
+			cfg->get_samplerate = 0;
 		} else if (cfg->clkout1_obuftds) {
 			xhdmiphy_clkout1_obuftds_en(phy_dev, XHDMIPHY_DIR_TX,
 						    cfg->clkout1_obuftds_en);
