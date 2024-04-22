@@ -990,7 +990,7 @@ struct hdmi21_cfg {
 
 struct clk_config {
 	int (*sel_mux)(u8 direction, u8 clksrc);
-	int (*set_linerate)(u8 direction, u8 mode, u64 lrate);
+	int (*set_linerate)(u8 direction, u8 mode, u64 lrate, u8 lanes);
 };
 
 struct xhdmiphy_conf {
