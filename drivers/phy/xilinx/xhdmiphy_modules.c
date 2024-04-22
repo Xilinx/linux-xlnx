@@ -865,7 +865,7 @@ static u32 xhdmiphy_rpll_param(struct xhdmiphy_dev *inst, enum chid chid,
 	/* Pre-calculation */
 	if (dir == XHDMIPHY_DIR_RX) {
 		refclk_ptr = &inst->rx_refclk_hz;
-		is_hdmi21 = inst->tx_hdmi21_cfg.is_en;
+		is_hdmi21 = inst->rx_hdmi21_cfg.is_en;
 		tmdsclk_ratio = inst->rx_tmdsclock_ratio;
 
 		/* calculate line rate */
