@@ -110,6 +110,7 @@ static void gd25lx256e_default_init(struct spi_nor *nor)
 {
 	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
 
+	nor->flags &= ~SNOR_F_HAS_16BIT_SR;
 	params->set_octal_dtr = spi_nor_gigadevice_octal_dtr_enable;
 	params->set_4byte_addr_mode = gd25lx256e_set_4byte_addr_mode;
 }
