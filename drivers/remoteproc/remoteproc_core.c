@@ -2112,7 +2112,6 @@ EXPORT_SYMBOL(rproc_detach);
 #ifdef CONFIG_OF
 struct rproc *rproc_get_by_phandle(phandle phandle)
 {
-	struct platform_device *cluster_pdev;
 	struct rproc *rproc = NULL, *r;
 	struct device_driver *driver;
 	struct device_node *np;
