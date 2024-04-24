@@ -2096,7 +2096,8 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
 			/*
 			 * Flash cross over condition in stacked mode.
 			 */
-			if ((nor->flags & SNOR_F_HAS_STACKED) && (addr > sz - 1)) {
+			if ((nor->flags & SNOR_F_HAS_STACKED) && (addr > sz - 1) &&
+			    (cur_cs_num != n_flash - 1)) {
 				cur_cs_num++;
 				params = spi_nor_get_params(nor, cur_cs_num);
 				sz += params->size;
@@ -2517,7 +2518,8 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 		 * Flash cross over condition in stacked mode.
 		 *
 		 */
-		if ((nor->flags & SNOR_F_HAS_STACKED) && (from > sz - 1)) {
+		if ((nor->flags & SNOR_F_HAS_STACKED) && (from > sz - 1) &&
+		    (cur_cs_num != n_flash - 1)) {
 			cur_cs_num++;
 			params = spi_nor_get_params(nor, cur_cs_num);
 			sz += params->size;
@@ -2705,7 +2707,8 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 		/*
 		 * Flash cross over condition in stacked mode.
 		 */
-		if ((nor->flags & SNOR_F_HAS_STACKED) && ((to + i) > sz - 1)) {
+		if ((nor->flags & SNOR_F_HAS_STACKED) && ((to + i) > sz - 1) &&
+		    (cur_cs_num != n_flash - 1)) {
 			cur_cs_num++;
 			params = spi_nor_get_params(nor, cur_cs_num);
 			sz += params->size;
@@ -3776,7 +3779,7 @@ static int spi_nor_init_params(struct spi_nor *nor)
 static int spi_nor_set_octal_dtr(struct spi_nor *nor, bool enable)
 {
 	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
-	int ret;
+	int ret, idx, num_flash = 1;
 
 	if (!params->set_octal_dtr)
 		return 0;
@@ -3788,10 +3791,22 @@ static int spi_nor_set_octal_dtr(struct spi_nor *nor, bool enable)
 	if (!(nor->flags & SNOR_F_IO_MODE_EN_VOLATILE))
 		return 0;
 
-	ret = params->set_octal_dtr(nor, enable);
-	if (ret)
-		return ret;
+	if (nor->flags & SNOR_F_HAS_STACKED)
+		num_flash = nor->num_flash;
 
+	for (idx = 0; idx < num_flash; idx++) {
+		params = spi_nor_get_params(nor, idx);
+		/*
+		 * Select the appropriate CS index before
+		 * issuing the command.
+		 */
+		nor->spimem->spi->cs_index_mask = 1 << idx;
+		ret = params->set_octal_dtr(nor, enable);
+		if (ret)
+			return ret;
+	}
+
+	nor->spimem->spi->cs_index_mask = 1;
 	if (enable)
 		nor->reg_proto = SNOR_PROTO_8_8_8_DTR;
 	else
