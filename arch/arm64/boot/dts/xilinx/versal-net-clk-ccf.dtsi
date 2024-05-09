@@ -3,7 +3,7 @@
  * dts file for Xilinx Versal with PM
  *
  * Copyright (C) 2022, Xilinx, Inc.
- * Copyright (C) 2022, Advanced Micro Devices, Inc.
+ * Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc.
  *
  * Michal Simek <michal.simek@amd.com>
  */
@@ -389,31 +389,31 @@
 };
 
 &wwdt0 {
-	clocks = <&versal_net_clk FPD_WWDT>;
+	clocks = <&versal_net_clk FPD_WWDT0>;
 	power-domains = <&versal_net_firmware PM_DEV_FPD_SWDT_0>;
 };
 
 &wwdt1 {
-	clocks = <&versal_net_clk FPD_WWDT>;
+	clocks = <&versal_net_clk FPD_WWDT1>;
 	power-domains = <&versal_net_firmware PM_DEV_FPD_SWDT_1>;
 };
 
 &wwdt2 {
-	clocks = <&versal_net_clk FPD_WWDT>;
+	clocks = <&versal_net_clk FPD_WWDT2>;
 	power-domains = <&versal_net_firmware PM_DEV_FPD_SWDT_2>;
 };
 
 &wwdt3 {
-	clocks = <&versal_net_clk FPD_WWDT>;
+	clocks = <&versal_net_clk FPD_WWDT3>;
 	power-domains = <&versal_net_firmware PM_DEV_FPD_SWDT_3>;
 };
 
 &lpd_wwdt0 {
-	clocks = <&versal_net_clk LPD_WWDT>;
+	clocks = <&versal_net_clk LPD_WWDT0>;
 	power-domains = <&versal_net_firmware PM_DEV_LPD_SWDT_0>;
 };
 
 &lpd_wwdt1 {
-	clocks = <&versal_net_clk LPD_WWDT>;
+	clocks = <&versal_net_clk LPD_WWDT1>;
 	power-domains = <&versal_net_firmware PM_DEV_LPD_SWDT_1>;
 };
