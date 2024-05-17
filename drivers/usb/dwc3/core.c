@@ -1968,7 +1968,6 @@ static int dwc3_probe(struct platform_device *pdev)
 	struct resource		*res, dwc_res;
 	struct dwc3		*dwc;
 	int			ret;
-	u32			mdwidth;
 	void __iomem		*regs;
 
 	dwc = devm_kzalloc(dev, sizeof(*dwc), GFP_KERNEL);
@@ -2054,11 +2053,6 @@ static int dwc3_probe(struct platform_device *pdev)
 	mutex_init(&dwc->mutex);
 
 	pm_runtime_get_noresume(dev);
-	/* Set dma coherent mask to DMA BUS data width */
-	mdwidth = DWC3_GHWPARAMS0_MDWIDTH(dwc->hwparams.hwparams0);
-	dev_dbg(dev, "Enabling %d-bit DMA addresses.\n", mdwidth);
-	dma_set_coherent_mask(dev, DMA_BIT_MASK(mdwidth));
-
 	pm_runtime_set_active(dev);
 	pm_runtime_use_autosuspend(dev);
 	pm_runtime_set_autosuspend_delay(dev, DWC3_DEFAULT_AUTOSUSPEND_DELAY);
