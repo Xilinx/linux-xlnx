@@ -615,11 +615,18 @@ static irqreturn_t xilinx_spi_irq(int irq, void *dev_id)
 	struct spi_master *master = dev_id;
 	struct xilinx_spi *xspi = spi_master_get_devdata(dev_id);
 	u32 ipif_isr;
+	u32 cr;
 	irqreturn_t status = IRQ_NONE;
 
 	/* Get the IPIF interrupts, and clear them immediately */
 	ipif_isr = xspi->read_fn(xspi->regs + XIPIF_V123B_IISR_OFFSET);
 	xspi->write_fn(ipif_isr, xspi->regs + XIPIF_V123B_IISR_OFFSET);
+
+	cr = xspi->read_fn(xspi->regs + XSPI_CR_OFFSET);
+	/* Enable master transaction inhibit */
+	cr |= XSPI_CR_TRANS_INHIBIT;
+	xspi->write_fn(cr, xspi->regs + XSPI_CR_OFFSET);
+
 	if (ipif_isr & XSPI_INTR_TX_EMPTY)  {
 		/* Transmission completed */
 		xspi->rx_fifo(xspi);
@@ -635,6 +642,10 @@ static irqreturn_t xilinx_spi_irq(int irq, void *dev_id)
 		xspi->write_fn(0x0, xspi->regs + XIPIF_V123B_DGIER_OFFSET);
 		spi_finalize_current_transfer(master);
 	}
+
+	/* Disable master transaction inhibit */
+	cr &= ~XSPI_CR_TRANS_INHIBIT;
+	xspi->write_fn(cr, xspi->regs + XSPI_CR_OFFSET);
 
 	return status;
 }
