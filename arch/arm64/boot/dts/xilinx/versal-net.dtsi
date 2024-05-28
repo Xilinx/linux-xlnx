@@ -311,7 +311,7 @@
 		};
 	};
 
-	fpga: fpga {
+	fpga: fpga-region {
 		compatible = "fpga-region";
 		fpga-mgr = <&versal_fpga>;
 		#address-cells = <2>;
@@ -554,7 +554,7 @@
 			#size-cells = <0>;
 		};
 
-		i3c0: i3c-master@f1948000 {
+		i3c0: i3c@f1948000 {
 			compatible = "snps,dw-i3c-master-1.00a";
 			status = "disabled";
 			reg = <0 0xf1948000 0 0x1000>;
@@ -563,7 +563,7 @@
 			interrupts = <0 21 4>;
 		};
 
-		i3c1: i3c-master@f1958000 {
+		i3c1: i3c@f1958000 {
 			compatible = "snps,dw-i3c-master-1.00a";
 			status = "disabled";
 			reg = <0 0xf1958000 0 0x1000>;
