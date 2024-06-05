@@ -47,7 +47,6 @@
 #include <linux/random.h>
 #include <net/sock.h>
 #include <linux/ptp/ptp_xilinx.h>
-#include <linux/workqueue.h>
 
 #include "xilinx_axienet.h"
 
@@ -1772,25 +1771,6 @@ axienet_config_autoneg_link_training(struct axienet_local *lp, unsigned int spee
 	}
 }
 
-static void speed_monitor_thread(struct work_struct *work)
-{
-	struct axienet_local *lp = container_of(work, struct axienet_local, restart_work.work);
-	static int lp_speed, dut_speed;
-
-	spin_lock(&lp->switch_lock);
-	lp_speed = axienet_ior(lp, XXVS_AN_LP_STATUS_OFFSET);
-	dut_speed = axienet_ior(lp, XXVS_AN_ABILITY_OFFSET);
-
-	if ((lp_speed & dut_speed) == XXVS_SPEED_1G)
-		axienet_iow(lp, XXVS_LT_CTL_OFFSET, 0);
-
-	if ((lp_speed & dut_speed) == XXVS_SPEED_10G)
-		axienet_iow(lp, XXVS_LT_CTL_OFFSET, 1);
-
-	spin_unlock(&lp->switch_lock);
-	schedule_delayed_work(&lp->restart_work, msecs_to_jiffies(200));
-}
-
 /**
  * axienet_open - Driver open routine.
  * @ndev:	Pointer to net_device structure
@@ -2006,13 +1986,6 @@ static int axienet_open(struct net_device *ndev)
 			goto err_eth_irq;
 	}
 
-	if (lp->axienet_config->mactype == XAXIENET_1G_10G_25G) {
-		axienet_config_autoneg_link_training(lp,
-						     (XXVS_AN_10G_ABILITY_MASK
-						     | XXVS_AN_1G_ABILITY_MASK));
-		schedule_delayed_work(&lp->restart_work, msecs_to_jiffies(500));
-	}
-
 	/* If Runtime speed switching supported */
 	if (lp->axienet_config->mactype == XAXIENET_10G_25G &&
 	    (axienet_ior(lp, XXV_STAT_CORE_SPEED_OFFSET) &
@@ -2122,9 +2095,6 @@ static int axienet_stop(struct net_device *ndev)
 		free_irq(lp->eth_irq, ndev);
 
 	axienet_dma_bd_release(ndev);
-
-	if (lp->axienet_config->mactype == XAXIENET_1G_10G_25G)
-		cancel_delayed_work_sync(&lp->restart_work);
 
 	return 0;
 }
@@ -2622,24 +2592,6 @@ axienet_ethtools_get_link_ksettings(struct net_device *ndev,
 				    struct ethtool_link_ksettings *cmd)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
-	int val;
-
-	if (lp->axienet_config->mactype == XAXIENET_1G_10G_25G) {
-		val = axienet_ior(lp, XXVS_SPEED_OFFSET);
-		if (val == XXVS_SPEED_1G) {
-			cmd->base.speed = SPEED_1000;
-			cmd->base.autoneg = axienet_ior(lp, XXVS_AN_CTL1_OFFSET) &
-							XXVS_AN_ENABLE_MASK;
-		} else if (val == XXVS_SPEED_10G) {
-			cmd->base.speed = SPEED_10000;
-			cmd->base.autoneg = axienet_ior(lp, XXVS_AN_CTL1_OFFSET) &
-							XXVS_AN_ENABLE_MASK;
-		} else {
-			cmd->base.speed = SPEED_UNKNOWN;
-		}
-
-		return 0;
-	}
 
 	if (!lp->phylink)
 		return -EOPNOTSUPP;
@@ -2652,17 +2604,6 @@ axienet_ethtools_set_link_ksettings(struct net_device *ndev,
 				    const struct ethtool_link_ksettings *cmd)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
-
-	if (lp->axienet_config->mactype == XAXIENET_1G_10G_25G) {
-		if (cmd->base.speed == SPEED_10000)
-			axienet_config_autoneg_link_training(lp, XXVS_AN_10G_ABILITY_MASK);
-		else if (cmd->base.speed == SPEED_1000)
-			axienet_config_autoneg_link_training(lp, XXVS_AN_1G_ABILITY_MASK);
-		else
-			netdev_err(ndev, "IP supports only 1G or 10G speed");
-
-		return 0;
-	}
 
 	if (!lp->phylink)
 		return -EOPNOTSUPP;
@@ -2970,12 +2911,7 @@ static void axienet_pcs_get_state(struct phylink_pcs *pcs,
 	u32 speed, an_status, val;
 	bool tx_pause, rx_pause;
 
-	if (lp->axienet_config->mactype != XAXIENET_10G_25G) {
-		struct mdio_device *pcs_phy = pcs_to_axienet_local(pcs)->pcs_phy;
-
-		phylink_mii_c22_pcs_get_state(pcs_phy, state);
-
-	} else {
+	if (lp->axienet_config->mactype == XAXIENET_10G_25G) {
 		int gt_rst, blk_lock;
 
 		speed = axienet_ior(lp, XXV_STAT_CORE_SPEED_OFFSET);
@@ -3004,6 +2940,31 @@ static void axienet_pcs_get_state(struct phylink_pcs *pcs,
 			if (!blk_lock)
 				state->link = 1;
 		}
+	} else if (lp->axienet_config->mactype == XAXIENET_1G_10G_25G) {
+		speed = axienet_ior(lp, XXVS_SPEED_OFFSET);
+		if (speed & XXVS_SPEED_1G)
+			state->speed = SPEED_1000;
+		else if (speed & XXVS_SPEED_10G)
+			state->speed = SPEED_10000;
+		else if (!(speed & ~XXVS_SPEED_25G))
+			state->speed = SPEED_25000;
+		else
+			state->speed = SPEED_UNKNOWN;
+
+		state->duplex = DUPLEX_FULL;
+		an_status = axienet_ior(lp, XXV_STAT_AN_STS_OFFSET);
+		tx_pause = an_status & XXV_TX_PAUSE_MASK;
+		rx_pause = an_status & XXV_RX_PAUSE_MASK;
+
+		state->pause = (tx_pause & MLO_PAUSE_TX) | (rx_pause & MLO_PAUSE_RX);
+		state->an_complete = an_status & XXV_AN_COMPLETE_MASK;
+
+		/* rx status bit indicates current status of link */
+		state->link = axienet_ior(lp, XXVS_RX_STATUS_REG1) & XXVS_RX_STATUS_MASK;
+	} else {
+		struct mdio_device *pcs_phy = pcs_to_axienet_local(pcs)->pcs_phy;
+
+		phylink_mii_c22_pcs_get_state(pcs_phy, state);
 	}
 }
 
@@ -3011,7 +2972,8 @@ static void axienet_pcs_an_restart(struct phylink_pcs *pcs)
 {
 	struct axienet_local *lp = pcs_to_axienet_local(pcs);
 
-	if (lp->axienet_config->mactype == XAXIENET_10G_25G) {
+	if (lp->axienet_config->mactype == XAXIENET_10G_25G ||
+	    lp->axienet_config->mactype == XAXIENET_1G_10G_25G) {
 		axienet_iow(lp, XXVS_AN_CTL1_OFFSET,
 			    (axienet_ior(lp, XXVS_AN_CTL1_OFFSET) |
 			     XXV_AN_RESTART_MASK));
@@ -3052,6 +3014,46 @@ static int axienet_pcs_config(struct phylink_pcs *pcs, unsigned int neg_mode,
 		/* If auto-negotiation is not completed, restart auto-neg */
 		return (neg_mode == (unsigned int)PHYLINK_PCS_NEG_INBAND_ENABLED &&
 			autoneg_complete == 0);
+	} else if (lp->axienet_config->mactype == XAXIENET_1G_10G_25G) {
+		bool an_enabled = false;
+
+		if (phylink_test(advertising, Autoneg))
+			an_enabled = true;
+
+		if (!an_enabled) {
+			/* Disable autoneg */
+			axienet_iow(lp, XXVS_AN_CTL1_OFFSET,
+				    (axienet_ior(lp, XXVS_AN_CTL1_OFFSET) &
+				    (~XXVS_AN_ENABLE_MASK | XXVS_AN_BYPASS)));
+			axienet_iow(lp, XXVS_RESET_OFFSET, XXVS_RX_SERDES_RESET);
+			axienet_iow(lp, XXVS_LT_CTL_OFFSET, 0);
+			axienet_iow(lp, XXVS_RESET_OFFSET, XXVS_RX_RESET | XXVS_TX_RESET);
+			axienet_iow(lp, XXVS_RESET_OFFSET, 0);
+		}
+
+		if (interface == PHY_INTERFACE_MODE_1000BASEX) {
+			if (an_enabled)
+				axienet_config_autoneg_link_training(lp, XXVS_AN_1G_ABILITY_MASK);
+			else
+				axienet_iow(lp, XXVS_TC_OFFSET, (axienet_ior(lp, XXVS_TC_OFFSET) &
+					    XXVS_CTRL_CORE_SPEED_SEL_CLEAR) |
+					    XXVS_CTRL_CORE_SPEED_SEL_1G);
+		} else if (interface == PHY_INTERFACE_MODE_10GBASER) {
+			if (an_enabled)
+				axienet_config_autoneg_link_training(lp, XXVS_AN_10G_ABILITY_MASK);
+			else
+				axienet_iow(lp, XXVS_TC_OFFSET, (axienet_ior(lp, XXVS_TC_OFFSET) &
+					    XXVS_CTRL_CORE_SPEED_SEL_CLEAR) |
+					    XXVS_CTRL_CORE_SPEED_SEL_10G);
+
+		} else if (interface == PHY_INTERFACE_MODE_25GBASER) {
+			if (an_enabled)
+				axienet_config_autoneg_link_training(lp, XXVS_AN_25G_ABILITY_MASK);
+			else
+				axienet_iow(lp, XXVS_TC_OFFSET, (axienet_ior(lp, XXVS_TC_OFFSET) &
+					     XXVS_CTRL_CORE_SPEED_SEL_CLEAR));
+		}
+		return 0;
 	}
 
 	ret = phylink_mii_c22_pcs_config(pcs_phy, interface, advertising,
@@ -3100,7 +3102,8 @@ static void axienet_mac_link_up(struct phylink_config *config,
 	struct axienet_local *lp = netdev_priv(ndev);
 	u32 emmc_reg, fcc_reg;
 
-	if (lp->axienet_config->mactype == XAXIENET_10G_25G) {
+	if (lp->axienet_config->mactype == XAXIENET_10G_25G ||
+	    lp->axienet_config->mactype == XAXIENET_1G_10G_25G) {
 		/* nothing meaningful to do */
 		return;
 	}
@@ -3141,11 +3144,60 @@ static void axienet_mac_link_up(struct phylink_config *config,
 	axienet_iow(lp, XAE_FCC_OFFSET, fcc_reg);
 }
 
+static void axienet_mac_validate(struct phylink_config *config,
+				 unsigned long *supported,
+				 struct phylink_link_state *state)
+{
+	struct net_device *ndev = to_net_dev(config->dev);
+	struct axienet_local *lp = netdev_priv(ndev);
+
+	if (lp->axienet_config->mactype == XAXIENET_1G_10G_25G) {
+		__ETHTOOL_DECLARE_LINK_MODE_MASK(mask) = { 0, };
+		unsigned long supported_caps, adv_caps;
+
+		/* Supported link mode */
+		phylink_set_port_modes(mask);
+		phylink_set(mask, Autoneg);
+		supported_caps = config->mac_capabilities;
+		phylink_caps_to_linkmodes(mask, supported_caps);
+		linkmode_and(supported, supported, mask);
+
+		/* Advertise link mode */
+		linkmode_zero(mask);
+		phylink_set_port_modes(mask);
+		if (phylink_test(state->advertising, Autoneg))
+			phylink_set(mask, Autoneg);
+		adv_caps =  MAC_SYM_PAUSE | MAC_ASYM_PAUSE;
+
+		switch (state->speed) {
+		case SPEED_1000:
+			adv_caps |= MAC_1000FD;
+			state->interface = PHY_INTERFACE_MODE_1000BASEX;
+			break;
+		case SPEED_10000:
+			adv_caps |= MAC_10000FD;
+			state->interface = PHY_INTERFACE_MODE_10GBASER;
+			break;
+		case SPEED_25000:
+			adv_caps |= MAC_25000FD;
+			state->interface = PHY_INTERFACE_MODE_25GBASER;
+			break;
+		default:
+			/* SPEED_UNKNOWN */
+			adv_caps = supported_caps;
+		}
+		phylink_caps_to_linkmodes(mask, adv_caps);
+
+		linkmode_and(state->advertising, supported, mask);
+	}
+}
+
 static const struct phylink_mac_ops axienet_phylink_ops = {
 	.mac_select_pcs = axienet_mac_select_pcs,
 	.mac_config = axienet_mac_config,
 	.mac_link_down = axienet_mac_link_down,
 	.mac_link_up = axienet_mac_link_up,
+	.validate = axienet_mac_validate,
 };
 
 static int axienet_clk_init(struct platform_device *pdev,
@@ -3632,8 +3684,7 @@ static int axienet_probe(struct platform_device *pdev)
 						   "xlnx,switch-x-sgmii");
 
 	/* Start with the proprietary, and broken phy_type */
-	if (lp->axienet_config->mactype != XAXIENET_1G_10G_25G &&
-	    lp->axienet_config->mactype != XAXIENET_MRMAC) {
+	if (lp->axienet_config->mactype != XAXIENET_MRMAC) {
 		ret = of_property_read_u32(pdev->dev.of_node, "xlnx,phy-type", &value);
 		if (!ret) {
 			switch (value) {
@@ -3914,8 +3965,7 @@ static int axienet_probe(struct platform_device *pdev)
 		of_node_put(np);
 	}
 
-	if (lp->axienet_config->mactype != XAXIENET_1G_10G_25G &&
-	    lp->axienet_config->mactype != XAXIENET_MRMAC) {
+	if (lp->axienet_config->mactype != XAXIENET_MRMAC) {
 		lp->pcs.ops = &axienet_pcs_ops;
 		lp->pcs.neg_mode = true;
 		lp->pcs.poll = true;
@@ -3941,6 +3991,27 @@ static int axienet_probe(struct platform_device *pdev)
 					lp->phylink_config.mac_capabilities |= MAC_25000FD;
 				}
 			}
+		} else if (lp->axienet_config->mactype == XAXIENET_1G_10G_25G) {
+			const char *rt_switch;
+
+			of_property_read_string(pdev->dev.of_node,
+						"xlnx,runtime-switch",
+						 &rt_switch);
+
+			/* 1G/10G switching by default */
+			lp->phylink_config.mac_capabilities |= (MAC_1000FD |
+									MAC_10000FD);
+			__set_bit(PHY_INTERFACE_MODE_1000BASEX,
+				  lp->phylink_config.supported_interfaces);
+			__set_bit(PHY_INTERFACE_MODE_10GBASER,
+				  lp->phylink_config.supported_interfaces);
+
+			if (!strcmp(rt_switch, (const char *)XXVS_RT_SWITCH_1G_10G_25G)) {
+				lp->phylink_config.mac_capabilities |= MAC_25000FD;
+
+				__set_bit(PHY_INTERFACE_MODE_25GBASER,
+					  lp->phylink_config.supported_interfaces);
+			}
 		} else {
 			lp->phylink_config.mac_capabilities = (MAC_10FD | MAC_100FD |
 							       MAC_1000FD);
@@ -3955,8 +4026,7 @@ static int axienet_probe(struct platform_device *pdev)
 			  lp->phylink_config.supported_interfaces);
 	}
 
-	if (lp->axienet_config->mactype != XAXIENET_1G_10G_25G &&
-	    lp->axienet_config->mactype != XAXIENET_MRMAC) {
+	if (lp->axienet_config->mactype != XAXIENET_MRMAC) {
 		lp->phylink = phylink_create(&lp->phylink_config, pdev->dev.fwnode,
 					     lp->phy_mode,
 					     &axienet_phylink_ops);
@@ -3982,8 +4052,6 @@ static int axienet_probe(struct platform_device *pdev)
 		goto cleanup_phylink;
 	}
 
-	if (lp->axienet_config->mactype == XAXIENET_1G_10G_25G)
-		INIT_DELAYED_WORK(&lp->restart_work, speed_monitor_thread);
 
 	return 0;
 
