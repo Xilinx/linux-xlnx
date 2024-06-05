@@ -204,6 +204,12 @@ properties:
       MRMAC lane.
     deprecated: true
 
+  xlnx,runtime-switch:
+    $ref: /schemas/types.yaml#/definitions/string
+    description: Indicates speed switching capability of 1G/10G/25G
+      ethernet IP. Can be either "1G / 10G", which is the default switching
+      capability if this property is not present or "1G / 10G / 25G".
+
 required:
   - compatible
   - interrupts
@@ -248,6 +254,20 @@ allOf:
         - xlnx,gtlane
         - xlnx,gtpll
         - xlnx,gtctrl
+
+  - if:
+      properties:
+        compatible:
+          contains:
+            enum:
+              - xlnx,ethernet-1-10-25g-2.7
+
+    then:
+      properties:
+        xlnx,runtime-switch:
+          enum:
+            - 1G / 10G
+            - 1G / 10G / 25G
 
   - if:
       properties:
