@@ -25,6 +25,7 @@
 #define XNVM_PUF_FORMATTED_SYN_DATA_LEN_IN_WORDS	127
 #define XNVM_EFUSE_GLITCH_WR_LK_MASK			(0x80000000U)
 #define EFUSE_MAXIMUM_STRING_LENGTH	1136
+#define XNVM_EFUSE_AES_KEY_LEN_IN_WORDS	8
 
 #define XNVM_EFUSE_BIT_ENABLE		1
 #define XNVM_EFUSE_BIT_DISABLE		0
@@ -82,6 +83,9 @@
 #define ENV_DISABLE_MASK		GENMASK(17, 17)
 #define EFUSE_CACHE_OFFSET_MASK		0x0FFF
 
+#define EFUSE_AES_KEY_OFFSET		0x10001
+#define EFUSE_USER_KEY0_OFFSET		0x10002
+#define EFUSE_USER_KEY1_OFFSET		0x10004
 #define EFUSE_PLM_IV_OFFSET		0x101DC
 #define EFUSE_BLACK_IV_OFFSET		0x101D0
 #define EFUSE_METAHEADER_IV_OFFSET	0x10180
@@ -126,6 +130,7 @@
 #define PM_EFUSE_WRITE_MISC_CTRL_ACCESS_VERSAL		0xB21
 #define PM_EFUSE_WRITE_SECURITY_CTRL_ACCESS_VERSAL	0xB22
 #define PM_EFUSE_WRITE_SECURITY_MISC0_ACCESS_VERSAL	0xB23
+#define PM_EFUSE_WRITE_AES_KEYS_ACCESS_VERSAL		0xB24
 
 #define XNVM_EFUSE_SYSMONTEMP_ENABLE_MASK	GENMASK(13, 13)
 #define XNVM_EFUSE_SYSMONVOLT_ENABLE_MASK	GENMASK(12, 12)
@@ -180,6 +185,15 @@ struct xilinx_efuse_iv {
 	u32 blkobfusiv[XNVM_EFUSE_IV_LEN_IN_WORDS];
 	u32 plmiv[XNVM_EFUSE_IV_LEN_IN_WORDS];
 	u32 datapartitioniv[XNVM_EFUSE_IV_LEN_IN_WORDS];
+};
+
+struct xilinx_efuse_aes_key {
+	u8 prgmaeskey;
+	u8 prgmuserkey0;
+	u8 prgmuserkey1;
+	u32 aeskey[XNVM_EFUSE_AES_KEY_LEN_IN_WORDS];
+	u32 userkey0[XNVM_EFUSE_AES_KEY_LEN_IN_WORDS];
+	u32 userkey1[XNVM_EFUSE_AES_KEY_LEN_IN_WORDS];
 };
 
 struct xilinx_efuse_puf {
@@ -653,6 +667,65 @@ dma_alloc_fail:
 	return ret;
 }
 
+static int sec_cfg_efuse_aes_key_write(void *context, void *val, size_t bytes,
+				       unsigned int keytype, u8 envdis)
+{
+	struct xilinx_efuse_aes_key *aeskey = NULL;
+	struct device *dev = context;
+	dma_addr_t dma_buff = 0, dma_addr;
+	u8 *data;
+	int ret;
+
+	if (bytes != (AES_KEY_STRING_256_BYTES))
+		return -EINVAL;
+
+	data = dma_alloc_coherent(dev, bytes, &dma_addr, GFP_KERNEL);
+	if (!data)
+		return -ENOMEM;
+
+	ret = convert_string_to_hex_be((const char *)val, (u8 *)data, bytes);
+	if (!ret) {
+		aeskey = dma_alloc_coherent(dev, sizeof(struct xilinx_efuse_aes_key),
+					    &dma_buff, GFP_KERNEL);
+		if (!aeskey) {
+			ret = -ENOMEM;
+			goto dma_alloc_fail;
+		}
+
+		if (keytype == EFUSE_AES_KEY_OFFSET ||
+		    keytype == EFUSE_USER_KEY0_OFFSET ||
+		    keytype == EFUSE_USER_KEY1_OFFSET) {
+			aeskey->prgmaeskey = keytype & 0x1;
+			aeskey->prgmuserkey0 = keytype & 0x2;
+			aeskey->prgmuserkey1 = keytype & 0x4;
+		} else {
+			ret = -EINVAL;
+			goto efuse_write_fail;
+		}
+
+		if (aeskey->prgmaeskey) {
+			memcpy(aeskey->aeskey, data, bytes);
+		} else if (aeskey->prgmuserkey0) {
+			memcpy(aeskey->userkey0, data, bytes);
+		} else if (aeskey->prgmuserkey1) {
+			memcpy(aeskey->userkey1, data, bytes);
+		} else {
+			ret = -EINVAL;
+			goto efuse_write_fail;
+		}
+		ret = versal_pm_efuse_write(dma_buff,
+					    PM_EFUSE_WRITE_AES_KEYS_ACCESS_VERSAL, envdis);
+	}
+
+efuse_write_fail:
+	dma_free_coherent(dev, sizeof(struct xilinx_efuse_aes_key),
+			  aeskey, dma_buff);
+dma_alloc_fail:
+	dma_free_coherent(dev, bytes, data, dma_addr);
+
+	return ret;
+}
+
 static int sec_cfg_efuse_iv_write(void *context, void *val, size_t bytes,
 				  unsigned int offset, u8 envdis)
 {
@@ -1054,7 +1127,11 @@ static int sec_cfg_efuse_write(void *context, void *val, size_t bytes,
 	case EFUSE_SECURITY_MISC_0_OFFSET:
 		ret = sec_cfg_efuse_security_misc0_write(context, val, bytes, envdis);
 		break;
-
+	case EFUSE_AES_KEY_OFFSET:
+	case EFUSE_USER_KEY0_OFFSET:
+	case EFUSE_USER_KEY1_OFFSET:
+		ret = sec_cfg_efuse_aes_key_write(context, val, bytes, offset, envdis);
+		break;
 	default:
 		ret = -EINVAL;
 		break;
