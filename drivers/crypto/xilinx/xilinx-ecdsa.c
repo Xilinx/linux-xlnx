@@ -287,14 +287,10 @@ static int handle_ecdsa_req(struct crypto_engine *engine, void *req)
 						     struct akcipher_request,
 						     base);
 	struct crypto_akcipher *akcipher = crypto_akcipher_reqtfm(req);
-	struct akcipher_alg *cipher_alg = crypto_akcipher_alg(akcipher);
 	const struct xilinx_ecdsa_tfm_ctx *tfm_ctx = akcipher_tfm_ctx(akcipher);
 	const struct xilinx_ecdsa_req_ctx *rq_ctx = akcipher_request_ctx(areq);
 	struct akcipher_request *subreq = akcipher_request_ctx(req);
-	struct xilinx_ecdsa_drv_ctx *drv_ctx;
 	int err;
-
-	drv_ctx = container_of(cipher_alg, struct xilinx_ecdsa_drv_ctx, alg.base);
 
 	akcipher_request_set_tfm(subreq, tfm_ctx->fbk_cipher);
 
