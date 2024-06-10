@@ -507,7 +507,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_get_family_info);
 void *xlnx_get_crypto_dev_data(struct xlnx_feature *feature_map)
 {
 	struct xlnx_feature *feature;
-	u32 v, api_id;
+	u32 v;
 	int ret;
 
 	ret = zynqmp_pm_get_api_version(&v);
