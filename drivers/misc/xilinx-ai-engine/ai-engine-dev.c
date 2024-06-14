@@ -755,6 +755,9 @@ void aie_partition_release(struct device *dev)
 {
 	struct aie_partition *apart;
 
+	if (!device_is_registered(dev))
+		return;
+
 	if (WARN_ON(!dev))
 		return;
 

@@ -298,8 +298,10 @@ static void aie_aperture_release_device(struct device *dev)
  */
 int aie_aperture_remove(struct aie_aperture *aperture)
 {
-	struct list_head *node, *pos;
+	struct list_head *node, *pos, tmp;
 	int ret;
+
+	INIT_LIST_HEAD(&tmp);
 
 	ret = mutex_lock_interruptible(&aperture->mlock);
 	if (ret)
@@ -310,8 +312,20 @@ int aie_aperture_remove(struct aie_aperture *aperture)
 
 		apart = list_entry(pos, struct aie_partition, node);
 		list_del(&apart->node);
+		list_add_tail(&apart->node, &tmp);
+	}
+	mutex_unlock(&aperture->mlock);
+
+	list_for_each_safe(pos, node, &tmp) {
+		struct aie_partition *apart;
+
+		apart = list_entry(pos, struct aie_partition, node);
 		aie_part_remove(apart);
 	}
+
+	ret = mutex_lock_interruptible(&aperture->mlock);
+	if (ret)
+		return ret;
 
 	if (aperture->adev->device_name == AIE_DEV_GEN_S100 ||
 	    aperture->adev->device_name == AIE_DEV_GEN_S200) {
