@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2018-2023 Intel Corporation
+ * Copyright (C) 2018-2024 Intel Corporation
  */
 #include <linux/firmware.h>
 #include "iwl-drv.h"
@@ -101,6 +101,12 @@ static int iwl_dbg_tlv_alloc_debug_info(struct iwl_trans *trans,
 	const struct iwl_fw_ini_debug_info_tlv *debug_info = (const void *)tlv->data;
 
 	if (le32_to_cpu(tlv->length) != sizeof(*debug_info))
+		return -EINVAL;
+
+	/* we use this as a string, ensure input was NUL terminated */
+	if (strnlen(debug_info->debug_cfg_name,
+		    sizeof(debug_info->debug_cfg_name)) ==
+			sizeof(debug_info->debug_cfg_name))
 		return -EINVAL;
 
 	IWL_DEBUG_FW(trans, "WRT: Loading debug cfg: %s\n",
@@ -1094,7 +1100,7 @@ static int iwl_dbg_tlv_override_trig_node(struct iwl_fw_runtime *fwrt,
 		node_trig = (void *)node_tlv->data;
 	}
 
-	memcpy(node_trig->data + offset, trig->data, trig_data_len);
+	memcpy((u8 *)node_trig->data + offset, trig->data, trig_data_len);
 	node_tlv->length = cpu_to_le32(size);
 
 	if (policy & IWL_FW_INI_APPLY_POLICY_OVERRIDE_CFG) {
