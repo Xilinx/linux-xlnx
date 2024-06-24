@@ -323,16 +323,26 @@ static int uart_startup(struct tty_struct *tty, struct uart_state *state,
 			bool init_hw)
 {
 	struct tty_port *port = &state->port;
+	struct uart_port *uport;
 	int retval;
 
 	if (tty_port_initialized(port))
-		return 0;
+		goto out_base_port_startup;
 
 	retval = uart_port_startup(tty, state, init_hw);
-	if (retval)
+	if (retval) {
 		set_bit(TTY_IO_ERROR, &tty->flags);
+		return retval;
+	}
 
-	return retval;
+out_base_port_startup:
+	uport = uart_port_check(state);
+	if (!uport)
+		return -EIO;
+
+	serial_base_port_startup(uport);
+
+	return 0;
 }
 
 /*
@@ -354,6 +364,9 @@ static void uart_shutdown(struct tty_struct *tty, struct uart_state *state)
 	 */
 	if (tty)
 		set_bit(TTY_IO_ERROR, &tty->flags);
+
+	if (uport)
+		serial_base_port_shutdown(uport);
 
 	if (tty_port_initialized(port)) {
 		tty_port_set_initialized(port, false);
@@ -1370,19 +1383,27 @@ static void uart_sanitize_serial_rs485(struct uart_port *port, struct serial_rs4
 		return;
 	}
 
-	/* Pick sane settings if the user hasn't */
-	if ((supported_flags & (SER_RS485_RTS_ON_SEND|SER_RS485_RTS_AFTER_SEND)) &&
-	    !(rs485->flags & SER_RS485_RTS_ON_SEND) ==
-	    !(rs485->flags & SER_RS485_RTS_AFTER_SEND)) {
-		dev_warn_ratelimited(port->dev,
-			"%s (%d): invalid RTS setting, using RTS_ON_SEND instead\n",
-			port->name, port->line);
-		rs485->flags |= SER_RS485_RTS_ON_SEND;
-		rs485->flags &= ~SER_RS485_RTS_AFTER_SEND;
-		supported_flags |= SER_RS485_RTS_ON_SEND|SER_RS485_RTS_AFTER_SEND;
-	}
-
 	rs485->flags &= supported_flags;
+
+	/* Pick sane settings if the user hasn't */
+	if (!(rs485->flags & SER_RS485_RTS_ON_SEND) ==
+	    !(rs485->flags & SER_RS485_RTS_AFTER_SEND)) {
+		if (supported_flags & SER_RS485_RTS_ON_SEND) {
+			rs485->flags |= SER_RS485_RTS_ON_SEND;
+			rs485->flags &= ~SER_RS485_RTS_AFTER_SEND;
+
+			dev_warn_ratelimited(port->dev,
+				"%s (%d): invalid RTS setting, using RTS_ON_SEND instead\n",
+				port->name, port->line);
+		} else {
+			rs485->flags |= SER_RS485_RTS_AFTER_SEND;
+			rs485->flags &= ~SER_RS485_RTS_ON_SEND;
+
+			dev_warn_ratelimited(port->dev,
+				"%s (%d): invalid RTS setting, using RTS_AFTER_SEND instead\n",
+				port->name, port->line);
+		}
+	}
 
 	uart_sanitize_serial_rs485_delays(port, rs485);
 
@@ -1401,6 +1422,16 @@ static void uart_set_rs485_termination(struct uart_port *port,
 				 !!(rs485->flags & SER_RS485_TERMINATE_BUS));
 }
 
+static void uart_set_rs485_rx_during_tx(struct uart_port *port,
+					const struct serial_rs485 *rs485)
+{
+	if (!(rs485->flags & SER_RS485_ENABLED))
+		return;
+
+	gpiod_set_value_cansleep(port->rs485_rx_during_tx_gpio,
+				 !!(rs485->flags & SER_RS485_RX_DURING_TX));
+}
+
 static int uart_rs485_config(struct uart_port *port)
 {
 	struct serial_rs485 *rs485 = &port->rs485;
@@ -1412,12 +1443,17 @@ static int uart_rs485_config(struct uart_port *port)
 
 	uart_sanitize_serial_rs485(port, rs485);
 	uart_set_rs485_termination(port, rs485);
+	uart_set_rs485_rx_during_tx(port, rs485);
 
 	spin_lock_irqsave(&port->lock, flags);
 	ret = port->rs485_config(port, NULL, rs485);
 	spin_unlock_irqrestore(&port->lock, flags);
-	if (ret)
+	if (ret) {
 		memset(rs485, 0, sizeof(*rs485));
+		/* unset GPIOs */
+		gpiod_set_value_cansleep(port->rs485_term_gpio, 0);
+		gpiod_set_value_cansleep(port->rs485_rx_during_tx_gpio, 0);
+	}
 
 	return ret;
 }
@@ -1445,7 +1481,7 @@ static int uart_set_rs485_config(struct tty_struct *tty, struct uart_port *port,
 	int ret;
 	unsigned long flags;
 
-	if (!port->rs485_config)
+	if (!(port->rs485_supported.flags & SER_RS485_ENABLED))
 		return -ENOTTY;
 
 	if (copy_from_user(&rs485, rs485_user, sizeof(*rs485_user)))
@@ -1456,6 +1492,7 @@ static int uart_set_rs485_config(struct tty_struct *tty, struct uart_port *port,
 		return ret;
 	uart_sanitize_serial_rs485(port, &rs485);
 	uart_set_rs485_termination(port, &rs485);
+	uart_set_rs485_rx_during_tx(port, &rs485);
 
 	spin_lock_irqsave(&port->lock, flags);
 	ret = port->rs485_config(port, &tty->termios, &rs485);
@@ -1467,8 +1504,14 @@ static int uart_set_rs485_config(struct tty_struct *tty, struct uart_port *port,
 			port->ops->set_mctrl(port, port->mctrl);
 	}
 	spin_unlock_irqrestore(&port->lock, flags);
-	if (ret)
+	if (ret) {
+		/* restore old GPIO settings */
+		gpiod_set_value_cansleep(port->rs485_term_gpio,
+			!!(port->rs485.flags & SER_RS485_TERMINATE_BUS));
+		gpiod_set_value_cansleep(port->rs485_rx_during_tx_gpio,
+			!!(port->rs485.flags & SER_RS485_RX_DURING_TX));
 		return ret;
+	}
 
 	if (copy_to_user(rs485_user, &port->rs485, sizeof(port->rs485)))
 		return -EFAULT;
@@ -1739,6 +1782,7 @@ static void uart_tty_port_shutdown(struct tty_port *port)
 	uport->ops->stop_rx(uport);
 	spin_unlock_irq(&uport->lock);
 
+	serial_base_port_shutdown(uport);
 	uart_port_shutdown(port);
 
 	/*
@@ -1752,6 +1796,7 @@ static void uart_tty_port_shutdown(struct tty_port *port)
 	 * Free the transmit buffer.
 	 */
 	spin_lock_irq(&uport->lock);
+	uart_circ_clear(&state->xmit);
 	buf = state->xmit.buf;
 	state->xmit.buf = NULL;
 	spin_unlock_irq(&uport->lock);
@@ -2572,13 +2617,22 @@ uart_configure_port(struct uart_driver *drv, struct uart_state *state,
 			port->type = PORT_UNKNOWN;
 			flags |= UART_CONFIG_TYPE;
 		}
+		/* Synchronize with possible boot console. */
+		if (uart_console(port))
+			console_lock();
 		port->ops->config_port(port, flags);
+		if (uart_console(port))
+			console_unlock();
 	}
 
 	if (port->type != PORT_UNKNOWN) {
 		unsigned long flags;
 
 		uart_report_port(drv, port);
+
+		/* Synchronize with possible boot console. */
+		if (uart_console(port))
+			console_lock();
 
 		/* Power up port for set_mctrl() */
 		uart_change_pm(state, UART_PM_STATE_ON);
@@ -2595,6 +2649,9 @@ uart_configure_port(struct uart_driver *drv, struct uart_state *state,
 		spin_unlock_irqrestore(&port->lock, flags);
 
 		uart_rs485_config(port);
+
+		if (uart_console(port))
+			console_unlock();
 
 		/*
 		 * If this driver supports console, and it hasn't been
@@ -3564,9 +3621,13 @@ int uart_get_rs485_mode(struct uart_port *port)
 {
 	struct serial_rs485 *rs485conf = &port->rs485;
 	struct device *dev = port->dev;
+	enum gpiod_flags dflags;
+	struct gpio_desc *desc;
 	u32 rs485_delay[2];
 	int ret;
-	int rx_during_tx_gpio_flag;
+
+	if (!(port->rs485_supported.flags & SER_RS485_ENABLED))
+		return 0;
 
 	ret = device_property_read_u32_array(dev, "rs485-rts-delay",
 					     rs485_delay, 2);
@@ -3605,26 +3666,21 @@ int uart_get_rs485_mode(struct uart_port *port)
 	 * bus participants enable it, no communication is possible at all.
 	 * Works fine for short cables and users may enable for longer cables.
 	 */
-	port->rs485_term_gpio = devm_gpiod_get_optional(dev, "rs485-term",
-							GPIOD_OUT_LOW);
-	if (IS_ERR(port->rs485_term_gpio)) {
-		ret = PTR_ERR(port->rs485_term_gpio);
-		port->rs485_term_gpio = NULL;
-		return dev_err_probe(dev, ret, "Cannot get rs485-term-gpios\n");
-	}
+	desc = devm_gpiod_get_optional(dev, "rs485-term", GPIOD_OUT_LOW);
+	if (IS_ERR(desc))
+		return dev_err_probe(dev, PTR_ERR(desc), "Cannot get rs485-term-gpios\n");
+	port->rs485_term_gpio = desc;
 	if (port->rs485_term_gpio)
 		port->rs485_supported.flags |= SER_RS485_TERMINATE_BUS;
 
-	rx_during_tx_gpio_flag = (rs485conf->flags & SER_RS485_RX_DURING_TX) ?
-				 GPIOD_OUT_HIGH : GPIOD_OUT_LOW;
-	port->rs485_rx_during_tx_gpio = devm_gpiod_get_optional(dev,
-								"rs485-rx-during-tx",
-								rx_during_tx_gpio_flag);
-	if (IS_ERR(port->rs485_rx_during_tx_gpio)) {
-		ret = PTR_ERR(port->rs485_rx_during_tx_gpio);
-		port->rs485_rx_during_tx_gpio = NULL;
-		return dev_err_probe(dev, ret, "Cannot get rs485-rx-during-tx-gpios\n");
-	}
+	dflags = (rs485conf->flags & SER_RS485_RX_DURING_TX) ?
+		 GPIOD_OUT_HIGH : GPIOD_OUT_LOW;
+	desc = devm_gpiod_get_optional(dev, "rs485-rx-during-tx", dflags);
+	if (IS_ERR(desc))
+		return dev_err_probe(dev, PTR_ERR(desc), "Cannot get rs485-rx-during-tx-gpios\n");
+	port->rs485_rx_during_tx_gpio = desc;
+	if (port->rs485_rx_during_tx_gpio)
+		port->rs485_supported.flags |= SER_RS485_RX_DURING_TX;
 
 	return 0;
 }

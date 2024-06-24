@@ -609,7 +609,6 @@ static int xlnx_event_init_sgi(struct platform_device *pdev)
 
 	ret = request_percpu_irq(virq_sgi, xlnx_event_handler, "xlnx_event_mgmt",
 				 &dummy_cpu_number);
-
 	WARN_ON(ret);
 	if (ret) {
 		irq_dispose_mapping(virq_sgi);

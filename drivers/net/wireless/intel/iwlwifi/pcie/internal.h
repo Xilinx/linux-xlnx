@@ -190,17 +190,17 @@ struct iwl_rb_allocator {
  * iwl_get_closed_rb_stts - get closed rb stts from different structs
  * @rxq - the rxq to get the rb stts from
  */
-static inline __le16 iwl_get_closed_rb_stts(struct iwl_trans *trans,
-					    struct iwl_rxq *rxq)
+static inline u16 iwl_get_closed_rb_stts(struct iwl_trans *trans,
+					 struct iwl_rxq *rxq)
 {
 	if (trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_AX210) {
 		__le16 *rb_stts = rxq->rb_stts;
 
-		return READ_ONCE(*rb_stts);
+		return le16_to_cpu(READ_ONCE(*rb_stts));
 	} else {
 		struct iwl_rb_status *rb_stts = rxq->rb_stts;
 
-		return READ_ONCE(rb_stts->closed_rb_num);
+		return le16_to_cpu(READ_ONCE(rb_stts->closed_rb_num)) & 0xFFF;
 	}
 }
 
@@ -749,7 +749,7 @@ static inline void iwl_enable_rfkill_int(struct iwl_trans *trans)
 	}
 }
 
-void iwl_pcie_handle_rfkill_irq(struct iwl_trans *trans);
+void iwl_pcie_handle_rfkill_irq(struct iwl_trans *trans, bool from_irq);
 
 static inline bool iwl_is_rfkill_set(struct iwl_trans *trans)
 {
@@ -796,7 +796,7 @@ static inline bool iwl_pcie_dbg_on(struct iwl_trans *trans)
 	return (trans->dbg.dest_tlv || iwl_trans_dbg_ini_valid(trans));
 }
 
-void iwl_trans_pcie_rf_kill(struct iwl_trans *trans, bool state);
+void iwl_trans_pcie_rf_kill(struct iwl_trans *trans, bool state, bool from_irq);
 void iwl_trans_pcie_dump_regs(struct iwl_trans *trans);
 
 #ifdef CONFIG_IWLWIFI_DEBUGFS

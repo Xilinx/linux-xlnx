@@ -728,7 +728,6 @@ static void sve_init_header_from_task(struct user_sve_header *header,
 {
 	unsigned int vq;
 	bool active;
-	bool fpsimd_only;
 	enum vec_type task_type;
 
 	memset(header, 0, sizeof(*header));
@@ -744,12 +743,10 @@ static void sve_init_header_from_task(struct user_sve_header *header,
 	case ARM64_VEC_SVE:
 		if (test_tsk_thread_flag(target, TIF_SVE_VL_INHERIT))
 			header->flags |= SVE_PT_VL_INHERIT;
-		fpsimd_only = !test_tsk_thread_flag(target, TIF_SVE);
 		break;
 	case ARM64_VEC_SME:
 		if (test_tsk_thread_flag(target, TIF_SME_VL_INHERIT))
 			header->flags |= SVE_PT_VL_INHERIT;
-		fpsimd_only = false;
 		break;
 	default:
 		WARN_ON_ONCE(1);
@@ -757,7 +754,7 @@ static void sve_init_header_from_task(struct user_sve_header *header,
 	}
 
 	if (active) {
-		if (fpsimd_only) {
+		if (target->thread.fp_type == FP_STATE_FPSIMD) {
 			header->flags |= SVE_PT_REGS_FPSIMD;
 		} else {
 			header->flags |= SVE_PT_REGS_SVE;
@@ -1107,12 +1104,13 @@ static int za_set(struct task_struct *target,
 		}
 	}
 
-	/* Allocate/reinit ZA storage */
-	sme_alloc(target, true);
-	if (!target->thread.sme_state) {
-		ret = -ENOMEM;
-		goto out;
-	}
+	/*
+	 * Only flush the storage if PSTATE.ZA was not already set,
+	 * otherwise preserve any existing data.
+	 */
+	sme_alloc(target, !thread_za_enabled(&target->thread));
+	if (!target->thread.sme_state)
+		return -ENOMEM;
 
 	/* If there is no data then disable ZA */
 	if (!count) {
@@ -1498,7 +1496,8 @@ static const struct user_regset aarch64_regsets[] = {
 #ifdef CONFIG_ARM64_SVE
 	[REGSET_SVE] = { /* Scalable Vector Extension */
 		.core_note_type = NT_ARM_SVE,
-		.n = DIV_ROUND_UP(SVE_PT_SIZE(SVE_VQ_MAX, SVE_PT_REGS_SVE),
+		.n = DIV_ROUND_UP(SVE_PT_SIZE(ARCH_SVE_VQ_MAX,
+					      SVE_PT_REGS_SVE),
 				  SVE_VQ_BYTES),
 		.size = SVE_VQ_BYTES,
 		.align = SVE_VQ_BYTES,

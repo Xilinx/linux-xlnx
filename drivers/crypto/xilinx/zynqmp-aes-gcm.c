@@ -440,7 +440,10 @@ static int handle_aes_req(struct crypto_engine *engine, void *req)
 		err = drv_ctx->aes_aead_cipher(areq);
 	}
 
+	local_bh_disable();
 	crypto_finalize_aead_request(engine, areq, err);
+	local_bh_enable();
+
 	return 0;
 }
 
