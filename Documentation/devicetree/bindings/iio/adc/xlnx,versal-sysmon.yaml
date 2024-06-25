@@ -87,6 +87,8 @@ patternProperties:
       - reg
       - xlnx,name
 
+    additionalProperties: false
+
 required:
   - compatible
   - reg
