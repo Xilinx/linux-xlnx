@@ -499,4 +499,16 @@ config LOONGSON2_THERMAL
 	  is higher than the high temperature threshold or lower than the low
 	  temperature threshold, the interrupt will occur.
 
+config VERSAL_THERMAL
+	tristate "Versal thermal sensor driver"
+	depends on OF
+	depends on VERSAL_SYSMON
+	help
+	  This adds support for Versal thermal driver as thermal zone sensor
+	  The thermal driver is connected to Versal Sysmon for the temperature
+	  channel via iio binding. The Sysmon channel is read via IIO framework
+	  and the channel information is provided to driver.
+	  The driver can also be build as a module. If so, the module will be called
+	  versal_thermal
+
 endif
