@@ -14,7 +14,9 @@
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/iio/buffer.h>
+#include <linux/iio/driver.h>
 #include <linux/iio/events.h>
+#include <linux/iio/machine.h>
 #include <linux/iio/sysfs.h>
 #include <linux/iio/adc/versal-sysmon-events.h>
 #include <linux/iopoll.h>
@@ -116,6 +118,7 @@
 		.endianness = IIO_CPU, \
 	}, \
 	.extend_name = _ext, \
+	.datasheet_name = _ext,\
 }
 
 #define twoscomp(val) ((((val) ^ 0xFFFF) + 1) & 0x0000FFFF)

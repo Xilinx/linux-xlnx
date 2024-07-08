@@ -24,6 +24,11 @@ module_param(secure_mode, bool, 0444);
 MODULE_PARM_DESC(secure_mode,
 		 "Allow sysmon to access register space using EEMI, when direct register access is restricted or Direct Access Mode (default: Direct Access mode)");
 
+static struct iio_map sysmon_to_thermal_iio_maps[] = {
+	IIO_MAP("temp", "versal-thermal", "sysmon-temp-channel"),
+	{}
+};
+
 static inline void sysmon_direct_read_reg(struct sysmon *sysmon, u32 offset, u32 *data)
 {
 	*data = readl(sysmon->base + offset);
@@ -218,6 +223,13 @@ static int sysmon_probe(struct platform_device *pdev)
 	sysmon->temp_read = &sysmon_find_extreme_temp;
 
 	platform_set_drvdata(pdev, indio_dev);
+
+	if (sysmon->master_slr) {
+		ret = devm_iio_map_array_register(&pdev->dev, indio_dev,
+						  sysmon_to_thermal_iio_maps);
+		if (ret < 0)
+			return dev_err_probe(&pdev->dev, ret, "IIO map register failed\n");
+	}
 
 	ret = iio_device_register(indio_dev);
 	if (ret < 0)
