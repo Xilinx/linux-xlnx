@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+# Copyright 2024 Advanced Micro Devices Inc.
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/thermal/xlnx,versal-thermal.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx Versal Thermal
+
+maintainers:
+  - Salih Erim <salih.erim@amd.com>
+
+description:
+  Versal Thermal uses Versal Sysmon hardware for temperature reading
+  It works as sensor interface to be defined in thermal zones.
+  IIO binding channel through Sysmon required to use as temperature
+  sensor. It uses sysmon-temp-channel mapped in the Sysmon driver.
+  name to expose temperature information.
+  Exposed temperature value is converted to millicelcius scale.
+
+properties:
+  compatible:
+    const: xlnx,versal-thermal
+
+  '#thermal-sensor-cells':
+    const: 0
+
+  io-channels:
+    maxItems: 1
+
+  io-channel-names:
+    const: sysmon-temp-channel
+
+required:
+  - compatible
+  - '#thermal-sensor-cells'
+  - io-channels
+  - io-channel-names
+
+additionalProperties: false
+
+examples:
+  - |
+    versal-thermal-sensor {
+        compatible = "xlnx,versal-thermal";
+        #thermal-sensor-cells = <0>;
+        io-channels = <&sysmon0>;
+        io-channel-names = "sysmon-temp-channel";
+    };
+...
