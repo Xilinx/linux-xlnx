@@ -196,16 +196,18 @@ int axienet_tsn_probe(struct platform_device *pdev,
 	/* get the ep device */
 	ep_node = of_parse_phandle(pdev->dev.of_node, "tsn,endpoint", 0);
 
-	if (ep_node)
-		lp->master = of_find_net_device_by_node(ep_node);
-
-	if (!lp->master) {
-		netdev_err(ndev, "Defer probe as EP is not probed\n");
-		ret = -EPROBE_DEFER;
-		goto err_1;
-	}
-
 	lp->abl_reg = axienet_ior(lp, XAE_TSN_ABL_OFFSET);
+
+	/* in switch-mode, get the endpoint network device. in ep-only mode,
+		the endpoint driver frees itself */
+	if (!(lp->abl_reg & TSN_BRIDGEEP_EPONLY) && ep_node){
+		lp->master = of_find_net_device_by_node(ep_node);
+		if (!lp->master) {
+			netdev_err(ndev, "Defer probe as EP is not probed\n");
+			ret = -EPROBE_DEFER;
+			goto err_1;
+		}
+	}
 
 	/* in ep only case tie the data path to eth1 */
 	if (lp->abl_reg & TSN_BRIDGEEP_EPONLY && temac_no == XAE_TEMAC1) {
