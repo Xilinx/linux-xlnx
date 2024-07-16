@@ -214,7 +214,6 @@ static int zynqmp_nvmem_probe(struct platform_device *pdev)
 	econfig.size = ZYNQMP_NVMEM_SIZE;
 	econfig.dev = dev;
 	econfig.add_legacy_fixed_of_cells = true;
-	econfig.priv = dev;
 	econfig.reg_read = zynqmp_nvmem_read;
 	econfig.reg_write = zynqmp_nvmem_write;
 
