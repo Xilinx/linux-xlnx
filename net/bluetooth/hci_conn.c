@@ -759,6 +759,7 @@ static int terminate_big_sync(struct hci_dev *hdev, void *data)
 
 	bt_dev_dbg(hdev, "big 0x%2.2x bis 0x%2.2x", d->big, d->bis);
 
+	hci_disable_per_advertising_sync(hdev, d->bis);
 	hci_remove_ext_adv_instance_sync(hdev, d->bis, NULL);
 
 	/* Only terminate BIG if it has been created */
@@ -934,16 +935,42 @@ static int hci_conn_hash_alloc_unset(struct hci_dev *hdev)
 			       U16_MAX, GFP_ATOMIC);
 }
 
-struct hci_conn *hci_conn_add(struct hci_dev *hdev, int type, bdaddr_t *dst,
-			      u8 role, u16 handle)
+static struct hci_conn *__hci_conn_add(struct hci_dev *hdev, int type, bdaddr_t *dst,
+				       u8 role, u16 handle)
 {
 	struct hci_conn *conn;
+
+	switch (type) {
+	case ACL_LINK:
+		if (!hdev->acl_mtu)
+			return ERR_PTR(-ECONNREFUSED);
+		break;
+	case ISO_LINK:
+		if (hdev->iso_mtu)
+			/* Dedicated ISO Buffer exists */
+			break;
+		fallthrough;
+	case LE_LINK:
+		if (hdev->le_mtu && hdev->le_mtu < HCI_MIN_LE_MTU)
+			return ERR_PTR(-ECONNREFUSED);
+		if (!hdev->le_mtu && hdev->acl_mtu < HCI_MIN_LE_MTU)
+			return ERR_PTR(-ECONNREFUSED);
+		break;
+	case SCO_LINK:
+	case ESCO_LINK:
+		if (!hdev->sco_pkts)
+			/* Controller does not support SCO or eSCO over HCI */
+			return ERR_PTR(-ECONNREFUSED);
+		break;
+	default:
+		return ERR_PTR(-ECONNREFUSED);
+	}
 
 	bt_dev_dbg(hdev, "dst %pMR handle 0x%4.4x", dst, handle);
 
 	conn = kzalloc(sizeof(*conn), GFP_KERNEL);
 	if (!conn)
-		return NULL;
+		return ERR_PTR(-ENOMEM);
 
 	bacpy(&conn->dst, dst);
 	bacpy(&conn->src, &hdev->bdaddr);
@@ -974,10 +1001,12 @@ struct hci_conn *hci_conn_add(struct hci_dev *hdev, int type, bdaddr_t *dst,
 	switch (type) {
 	case ACL_LINK:
 		conn->pkt_type = hdev->pkt_type & ACL_PTYPE_MASK;
+		conn->mtu = hdev->acl_mtu;
 		break;
 	case LE_LINK:
 		/* conn->src should reflect the local identity address */
 		hci_copy_identity_address(hdev, &conn->src, &conn->src_type);
+		conn->mtu = hdev->le_mtu ? hdev->le_mtu : hdev->acl_mtu;
 		break;
 	case ISO_LINK:
 		/* conn->src should reflect the local identity address */
@@ -989,6 +1018,8 @@ struct hci_conn *hci_conn_add(struct hci_dev *hdev, int type, bdaddr_t *dst,
 		else if (conn->role == HCI_ROLE_MASTER)
 			conn->cleanup = cis_cleanup;
 
+		conn->mtu = hdev->iso_mtu ? hdev->iso_mtu :
+			    hdev->le_mtu ? hdev->le_mtu : hdev->acl_mtu;
 		break;
 	case SCO_LINK:
 		if (lmp_esco_capable(hdev))
@@ -996,9 +1027,12 @@ struct hci_conn *hci_conn_add(struct hci_dev *hdev, int type, bdaddr_t *dst,
 					(hdev->esco_type & EDR_ESCO_MASK);
 		else
 			conn->pkt_type = hdev->pkt_type & SCO_PTYPE_MASK;
+
+		conn->mtu = hdev->sco_mtu;
 		break;
 	case ESCO_LINK:
 		conn->pkt_type = hdev->esco_type & ~EDR_ESCO_MASK;
+		conn->mtu = hdev->sco_mtu;
 		break;
 	}
 
@@ -1041,9 +1075,18 @@ struct hci_conn *hci_conn_add_unset(struct hci_dev *hdev, int type,
 
 	handle = hci_conn_hash_alloc_unset(hdev);
 	if (unlikely(handle < 0))
-		return NULL;
+		return ERR_PTR(-ECONNREFUSED);
 
-	return hci_conn_add(hdev, type, dst, role, handle);
+	return __hci_conn_add(hdev, type, dst, role, handle);
+}
+
+struct hci_conn *hci_conn_add(struct hci_dev *hdev, int type, bdaddr_t *dst,
+			      u8 role, u16 handle)
+{
+	if (handle > HCI_CONN_HANDLE_MAX)
+		return ERR_PTR(-EINVAL);
+
+	return __hci_conn_add(hdev, type, dst, role, handle);
 }
 
 static void hci_conn_cleanup_child(struct hci_conn *conn, u8 reason)
@@ -1166,8 +1209,7 @@ struct hci_dev *hci_get_route(bdaddr_t *dst, bdaddr_t *src, uint8_t src_type)
 
 	list_for_each_entry(d, &hci_dev_list, list) {
 		if (!test_bit(HCI_UP, &d->flags) ||
-		    hci_dev_test_flag(d, HCI_USER_CHANNEL) ||
-		    d->dev_type != HCI_PRIMARY)
+		    hci_dev_test_flag(d, HCI_USER_CHANNEL))
 			continue;
 
 		/* Simple routing:
@@ -1245,6 +1287,12 @@ void hci_conn_failed(struct hci_conn *conn, u8 status)
 				    conn->dst_type, status);
 		break;
 	}
+
+	/* In case of BIG/PA sync failed, clear conn flags so that
+	 * the conns will be correctly cleaned up by ISO layer
+	 */
+	test_and_clear_bit(HCI_CONN_BIG_SYNC_FAILED, &conn->flags);
+	test_and_clear_bit(HCI_CONN_PA_SYNC_FAILED, &conn->flags);
 
 	conn->state = BT_CLOSED;
 	hci_connect_cfm(conn, status);
@@ -1384,8 +1432,8 @@ struct hci_conn *hci_connect_le(struct hci_dev *hdev, bdaddr_t *dst,
 		bacpy(&conn->dst, dst);
 	} else {
 		conn = hci_conn_add_unset(hdev, LE_LINK, dst, role);
-		if (!conn)
-			return ERR_PTR(-ENOMEM);
+		if (IS_ERR(conn))
+			return conn;
 		hci_conn_hold(conn);
 		conn->pending_sec_level = sec_level;
 	}
@@ -1549,8 +1597,8 @@ static struct hci_conn *hci_add_bis(struct hci_dev *hdev, bdaddr_t *dst,
 		return ERR_PTR(-EADDRINUSE);
 
 	conn = hci_conn_add_unset(hdev, ISO_LINK, dst, HCI_ROLE_MASTER);
-	if (!conn)
-		return ERR_PTR(-ENOMEM);
+	if (IS_ERR(conn))
+		return conn;
 
 	conn->state = BT_CONNECT;
 
@@ -1593,8 +1641,8 @@ struct hci_conn *hci_connect_le_scan(struct hci_dev *hdev, bdaddr_t *dst,
 	BT_DBG("requesting refresh of dst_addr");
 
 	conn = hci_conn_add_unset(hdev, LE_LINK, dst, HCI_ROLE_MASTER);
-	if (!conn)
-		return ERR_PTR(-ENOMEM);
+	if (IS_ERR(conn))
+		return conn;
 
 	if (hci_explicit_conn_params_set(hdev, dst, dst_type) < 0) {
 		hci_conn_del(conn);
@@ -1641,8 +1689,8 @@ struct hci_conn *hci_connect_acl(struct hci_dev *hdev, bdaddr_t *dst,
 	acl = hci_conn_hash_lookup_ba(hdev, ACL_LINK, dst);
 	if (!acl) {
 		acl = hci_conn_add_unset(hdev, ACL_LINK, dst, HCI_ROLE_MASTER);
-		if (!acl)
-			return ERR_PTR(-ENOMEM);
+		if (IS_ERR(acl))
+			return acl;
 	}
 
 	hci_conn_hold(acl);
@@ -1701,9 +1749,9 @@ struct hci_conn *hci_connect_sco(struct hci_dev *hdev, int type, bdaddr_t *dst,
 	sco = hci_conn_hash_lookup_ba(hdev, type, dst);
 	if (!sco) {
 		sco = hci_conn_add_unset(hdev, type, dst, HCI_ROLE_MASTER);
-		if (!sco) {
+		if (IS_ERR(sco)) {
 			hci_conn_drop(acl);
-			return ERR_PTR(-ENOMEM);
+			return sco;
 		}
 	}
 
@@ -1893,8 +1941,8 @@ struct hci_conn *hci_bind_cis(struct hci_dev *hdev, bdaddr_t *dst,
 				       qos->ucast.cis);
 	if (!cis) {
 		cis = hci_conn_add_unset(hdev, ISO_LINK, dst, HCI_ROLE_MASTER);
-		if (!cis)
-			return ERR_PTR(-ENOMEM);
+		if (IS_ERR(cis))
+			return cis;
 		cis->cleanup = cis_cleanup;
 		cis->dst_type = dst_type;
 		cis->iso_qos.ucast.cig = BT_ISO_QOS_CIG_UNSET;
@@ -2029,14 +2077,8 @@ static void hci_iso_qos_setup(struct hci_dev *hdev, struct hci_conn *conn,
 			      struct bt_iso_io_qos *qos, __u8 phy)
 {
 	/* Only set MTU if PHY is enabled */
-	if (!qos->sdu && qos->phy) {
-		if (hdev->iso_mtu > 0)
-			qos->sdu = hdev->iso_mtu;
-		else if (hdev->le_mtu > 0)
-			qos->sdu = hdev->le_mtu;
-		else
-			qos->sdu = hdev->acl_mtu;
-	}
+	if (!qos->sdu && qos->phy)
+		qos->sdu = conn->mtu;
 
 	/* Use the same PHY as ACL if set to any */
 	if (qos->phy == BT_ISO_PHY_ANY)

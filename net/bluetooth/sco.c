@@ -83,6 +83,10 @@ static void sco_sock_timeout(struct work_struct *work)
 	struct sock *sk;
 
 	sco_conn_lock(conn);
+	if (!conn->hcon) {
+		sco_conn_unlock(conn);
+		return;
+	}
 	sk = conn->sk;
 	if (sk)
 		sock_hold(sk);
@@ -122,7 +126,6 @@ static void sco_sock_clear_timer(struct sock *sk)
 /* ---- SCO connections ---- */
 static struct sco_conn *sco_conn_add(struct hci_conn *hcon)
 {
-	struct hci_dev *hdev = hcon->hdev;
 	struct sco_conn *conn = hcon->sco_data;
 
 	if (conn) {
@@ -140,9 +143,10 @@ static struct sco_conn *sco_conn_add(struct hci_conn *hcon)
 
 	hcon->sco_data = conn;
 	conn->hcon = hcon;
+	conn->mtu = hcon->mtu;
 
-	if (hdev->sco_mtu > 0)
-		conn->mtu = hdev->sco_mtu;
+	if (hcon->mtu > 0)
+		conn->mtu = hcon->mtu;
 	else
 		conn->mtu = 60;
 

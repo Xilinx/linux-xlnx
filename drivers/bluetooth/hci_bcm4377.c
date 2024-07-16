@@ -716,7 +716,7 @@ static void bcm4377_handle_ack(struct bcm4377_data *bcm4377,
 		ring->events[msgid] = NULL;
 	}
 
-	bitmap_release_region(ring->msgids, msgid, ring->n_entries);
+	bitmap_release_region(ring->msgids, msgid, 0);
 
 unlock:
 	spin_unlock_irqrestore(&ring->lock, flags);
@@ -2361,7 +2361,6 @@ static int bcm4377_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	bcm4377->hdev = hdev;
 
 	hdev->bus = HCI_PCI;
-	hdev->dev_type = HCI_PRIMARY;
 	hdev->open = bcm4377_hci_open;
 	hdev->close = bcm4377_hci_close;
 	hdev->send = bcm4377_hci_send_frame;

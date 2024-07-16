@@ -2342,7 +2342,7 @@ static int mpage_journal_page_buffers(handle_t *handle,
 
 	if (folio_pos(folio) + len > size &&
 	    !ext4_verity_in_progress(inode))
-		len = size - folio_pos(folio);
+		len = size & (len - 1);
 
 	return ext4_journal_folio_buffers(handle, folio, len);
 }
@@ -2894,9 +2894,6 @@ retry:
 			mapping_gfp_mask(mapping));
 	if (IS_ERR(folio))
 		return PTR_ERR(folio);
-
-	/* In case writeback began while the folio was unlocked */
-	folio_wait_stable(folio);
 
 #ifdef CONFIG_FS_ENCRYPTION
 	ret = ext4_block_write_begin(folio, pos, len, ext4_da_get_block_prep);
