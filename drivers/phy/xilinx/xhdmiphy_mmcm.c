@@ -3,6 +3,7 @@
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/string.h>
+#include <linux/units.h>
 #include "xhdmiphy.h"
 
 struct gthdmi_chars {
@@ -870,8 +871,16 @@ static bool xhdmiphy_wr_mmcm4_params(struct xhdmiphy_dev *inst, enum dir dir)
 	}
 
 	/* write power register Value */
-	xhdmiphy_drpwr(inst, chid, XHDMIPHY_MMCM4_PWR_REG,
-		       XHDMIPHY_MMCM4_WRITE_VAL);
+	if ((dir == XHDMIPHY_DIR_RX &&
+	     inst->conf.rx_clk_primitive == XHDMIPHY_PLL) ||
+	    (dir == XHDMIPHY_DIR_TX &&
+	     inst->conf.tx_clk_primitive == XHDMIPHY_PLL)) {
+		xhdmiphy_drpwr(inst, chid, XHDMIPHY_MMCM4_PWR_REG,
+			       XHDMIPHY_PLL_WRITE_VAL);
+	} else {
+		xhdmiphy_drpwr(inst, chid, XHDMIPHY_MMCM4_PWR_REG,
+			       XHDMIPHY_MMCM4_WRITE_VAL);
+	}
 
 	/* write CLKFBOUT reg1 & reg2 values */
 	drp_val32 = xhdmiphy_mmcme4_div_enc(XHDMIPHY_MMCM_CLKFBOUT_MULT_F,
@@ -1128,6 +1137,177 @@ static void xhdmiphy_set_clkout2_div(struct xhdmiphy_dev *inst, enum dir dir,
 	}
 }
 
+static u16 xhdmiphy_set_linkclk_outdiv(struct xhdmiphy_dev *inst,
+				       u16 linerate_mhz, enum dir dir,
+				       u16 mult_div)
+{
+	u16 clkout_div;
+
+	if (inst->conf.transceiver_width == 4) {
+		if (linerate_mhz >= XHDMIPHY_LRATE_3400) {
+			/* link clock: TMDS clock ratio 1/40 */
+			if (dir == XHDMIPHY_DIR_TX &&
+			    ((linerate_mhz / inst->tx_samplerate) <
+			    XHDMIPHY_LRATE_3400)) {
+				clkout_div = mult_div * 4;
+			} else {
+				clkout_div = mult_div;
+			}
+		} else {
+			/* link clock: TMDS clock ratio 1/10 */
+			clkout_div = mult_div * 4;
+		}
+	} else {
+		if (linerate_mhz >= XHDMIPHY_LRATE_3400) {
+			/* link clock: TMDS clock ratio 1/40 */
+			if (dir == XHDMIPHY_DIR_TX &&
+			    ((linerate_mhz / inst->tx_samplerate) <
+			    XHDMIPHY_LRATE_3400)) {
+				clkout_div = mult_div * 2;
+			} else {
+				clkout_div = mult_div / 2;
+			}
+		} else {
+			/* link clock: TMDS clock ratio 1/10 */
+			clkout_div = mult_div * 2;
+		}
+	}
+
+	return clkout_div;
+}
+
+static u16 xhdmiphy_set_videoclk_outdiv(struct xhdmiphy_dev *inst,
+					enum color_depth bpc, enum ppc ppc,
+					enum dir dir, u16 mult_div)
+{
+	u16 clkout_div;
+
+	switch (bpc) {
+	case XVIDC_BPC_10:
+		if (ppc == XVIDC_PPC_4) {
+			clkout_div = (mult_div * 5 * ((dir == XHDMIPHY_DIR_TX) ?
+				      inst->tx_samplerate : 1));
+		} else if (ppc == XVIDC_PPC_2) {
+			/*
+			 * The clock ratio is 2.5. The PLL only
+			 * supports integer value. The mult_div
+			 * must be dividable by two
+			 * (2 * 2.5 = 5) to get an integer
+			 * number
+			 */
+			if ((mult_div % 2) == 0) {
+				clkout_div = (mult_div * 5 / 2 *
+							 ((dir == XHDMIPHY_DIR_TX) ?
+							 inst->tx_samplerate : 1));
+			}
+		} else {
+			/*
+			 * The clock ratio is 1.25. The pll only
+			 * supports integer values The multDiv
+			 * must be dividable by four
+			 * (4 * 1.25 = 5) to get an integer
+			 * number
+			 */
+			if ((mult_div % 4) == 0) {
+				clkout_div = (mult_div * 5 / 4 *
+							 ((dir == XHDMIPHY_DIR_TX) ?
+							 inst->tx_samplerate : 1));
+			}
+		}
+			break;
+	case XVIDC_BPC_12:
+		if (ppc == XVIDC_PPC_4) {
+			clkout_div = (mult_div * 6 *
+							 ((dir == XHDMIPHY_DIR_TX) ?
+							 inst->tx_samplerate : 1));
+			} else if (ppc == XVIDC_PPC_2) {
+				clkout_div = (mult_div * 3 *
+							 ((dir == XHDMIPHY_DIR_TX) ?
+							 inst->tx_samplerate : 1));
+			} else {
+				/*
+				 * The clock ratio is 1.5. The PLL only
+				 * supports integer values. The mult_div
+				 * must be dividable by two (2 * 1.5 = 3)
+				 * to get an integer number
+				 */
+				if ((mult_div % 2) == 0) {
+					clkout_div = (mult_div * 3 / 2 *
+								 ((dir == XHDMIPHY_DIR_TX) ?
+								 inst->tx_samplerate : 1));
+				}
+			}
+			break;
+	case XVIDC_BPC_16:
+		if (ppc == XVIDC_PPC_4) {
+			clkout_div = (mult_div * 8 * ((dir == XHDMIPHY_DIR_TX) ?
+				      inst->tx_samplerate : 1));
+		} else if (ppc == XVIDC_PPC_2) {
+			clkout_div = (mult_div * 4 * ((dir == XHDMIPHY_DIR_TX) ?
+				      inst->tx_samplerate : 1));
+		} else {
+			clkout_div = (mult_div * 2 * ((dir == XHDMIPHY_DIR_TX) ?
+				      inst->tx_samplerate : 1));
+		}
+		break;
+	case XVIDC_BPC_8:
+		fallthrough;
+	default:
+		if (ppc == XVIDC_PPC_4) {
+			clkout_div = (mult_div * 4 * ((dir == XHDMIPHY_DIR_TX) ?
+				      inst->tx_samplerate : 1));
+		} else if (ppc == XVIDC_PPC_2) {
+			clkout_div = (mult_div * 2 * ((dir == XHDMIPHY_DIR_TX) ?
+				      inst->tx_samplerate : 1));
+		} else {
+			clkout_div = (mult_div * ((dir == XHDMIPHY_DIR_TX) ?
+				      inst->tx_samplerate : 1));
+		}
+		break;
+	}
+	return clkout_div;
+}
+
+static void xhdmiphy_validate_clock_divs(struct xhdmiphy_dev *inst,
+					 struct xhdmiphy_mmcm *mmcm_ptr,
+					 enum ppc ppc, u8 *valid, u32 *mult)
+{
+	if (inst->conf.gt_type != XHDMIPHY_GTYE5 &&
+	    inst->conf.gt_type != XHDMIPHY_GTYP) {
+		if (mmcm_ptr->clkout0_div > 0 &&
+		    mmcm_ptr->clkout0_div <= 128 &&
+		    mmcm_ptr->clkout1_div > 0 &&
+		    mmcm_ptr->clkout1_div <= 128 &&
+		    mmcm_ptr->clkout2_div > 0 &&
+		    mmcm_ptr->clkout2_div <= 128) {
+			*valid = true;
+		} else {
+			if (ppc == XVIDC_PPC_4)
+				*mult -= 4;
+			else if (ppc == XVIDC_PPC_2)
+				*mult -= 2;
+			else
+				*mult -= 1;
+		}
+	} else {
+		if (mmcm_ptr->clkout0_div > 0 &&
+		    mmcm_ptr->clkout0_div <= 511 &&
+		    mmcm_ptr->clkout1_div > 0 &&
+		    mmcm_ptr->clkout1_div <= 511 &&
+		    mmcm_ptr->clkout2_div > 0 &&
+		    mmcm_ptr->clkout2_div <= 511) {
+			*valid = true;
+		} else {
+			if (ppc == XVIDC_PPC_4)
+				*mult -= 4;
+			else if (ppc == XVIDC_PPC_2)
+				*mult -= 2;
+			else
+				*mult -= 1;
+		}
+	}
+}
+
 /**
  * xhdmiphy_cal_mmcm_param - This function calculates the HDMI mmcm parameters.
  *
@@ -1155,7 +1335,8 @@ u32 xhdmiphy_cal_mmcm_param(struct xhdmiphy_dev *inst, enum chid chid,
 	enum pll_type pll_type;
 	u64 linerate = 0;
 	u32 refclk, div, mult;
-	u16 mult_div;
+	u16 mult_div, linerate_mhz;
+	u16 link_clk, vid_clk, tmds_clk;
 	u8 valid;
 
 	pll_type = xhdmiphy_get_pll_type(inst, dir, XHDMIPHY_CHID_CH1);
@@ -1175,7 +1356,8 @@ u32 xhdmiphy_cal_mmcm_param(struct xhdmiphy_dev *inst, enum chid chid,
 		break;
 	}
 
-	if (((linerate / 1000000) > 2970) && ppc == XVIDC_PPC_1) {
+	linerate_mhz = linerate / HZ_PER_MHZ;
+	if (linerate_mhz > 2970 && ppc == XVIDC_PPC_1) {
 		dev_err(inst->dev, "ppc not supported\n");
 		return 1;
 	}
@@ -1208,200 +1390,34 @@ u32 xhdmiphy_cal_mmcm_param(struct xhdmiphy_dev *inst, enum chid chid,
 			mult = mult * 2;
 		}
 
-		valid = (false);
+		valid = false;
 		do {
 			mult_div = mult / div;
 			mmcm_ptr->clkfbout_mult = mult;
 			mmcm_ptr->divclk_divide = div;
-			if (inst->conf.transceiver_width == 4) {
-				/* link clock: TMDS clock ratio 1/40 */
-				if ((linerate / 1000000) >= XHDMIPHY_LRATE_3400) {
-					if (dir == XHDMIPHY_DIR_TX &&
-					    (((linerate / 1000000) / inst->tx_samplerate) < 3400)) {
-						mmcm_ptr->clkout0_div = mult_div * 4;
-					} else {
-						mmcm_ptr->clkout0_div = mult_div;
-					}
-				} else {
-				/* link clock: TMDS clock ratio 1/10 */
-					mmcm_ptr->clkout0_div = mult_div * 4;
-				}
-			} else {
-				/* 2 Byte Mode */
-				/* link clock: TMDS clock ratio 1/40 */
-				if ((linerate / 1000000) >= XHDMIPHY_LRATE_3400) {
-					if (dir == XHDMIPHY_DIR_TX &&
-					    (((linerate / 1000000) / inst->tx_samplerate) < 3400)) {
-						mmcm_ptr->clkout0_div = mult_div * 2;
-					} else {
-						mmcm_ptr->clkout0_div = mult_div / 2;
-					}
-				} else {
-				/* link clock: TMDS clock ratio 1/10 */
-					mmcm_ptr->clkout0_div = mult_div * 2;
-				}
-			}
-			/* TMDS clock */
-			mmcm_ptr->clkout1_div = mult_div *
-						((dir == XHDMIPHY_DIR_TX) ?
+			link_clk = xhdmiphy_set_linkclk_outdiv(inst,
+							       linerate_mhz,
+							       dir, mult_div);
+			tmds_clk = mult_div * ((dir == XHDMIPHY_DIR_TX) ?
 						(inst->tx_samplerate) : 1);
-			/* video clock */
-			mmcm_ptr->clkout2_div = 0;
-			switch (bpc) {
-			case XVIDC_BPC_10:
-				/* quad pixel */
-				if (ppc == (XVIDC_PPC_4)) {
-					mmcm_ptr->clkout2_div = (mult_div * 5 *
-						((dir == XHDMIPHY_DIR_TX) ?
-						(inst->tx_samplerate) : 1));
-				/* dual pixel */
-				} else if (ppc == (XVIDC_PPC_2)) {
-					/*
-					 * The clock ratio is 2.5. The PLL only
-					 * supports integer value. The mult_div
-					 * must be dividable by two
-					 * (2 * 2.5 = 5) to get an integer
-					 * number
-					 */
-					if ((mult_div % 2) == 0) {
-						mmcm_ptr->clkout2_div =
-							(mult_div * 5 / 2 *
-							((dir == XHDMIPHY_DIR_TX) ?
-							(inst->tx_samplerate) : 1));
-					}
-				/* single pixel */
-				} else {
-					/*
-					 * The clock ratio is 1.25. The pll only
-					 * supports integer values The multDiv
-					 * must be dividable by four
-					 * (4 * 1.25 = 5) to get an integer
-					 * number
-					 */
-					if ((mult_div % 4) == 0) {
-						mmcm_ptr->clkout2_div = (mult_div * 5 / 4 *
-							((dir == XHDMIPHY_DIR_TX) ?
-							(inst->tx_samplerate) : 1));
-					}
-				}
-				break;
-			case XVIDC_BPC_12:
-				/* quad pixel */
-				if (ppc == (XVIDC_PPC_4)) {
-					mmcm_ptr->clkout2_div = (mult_div * 6 *
-						((dir == XHDMIPHY_DIR_TX) ?
-						(inst->tx_samplerate) : 1));
-				} else if (ppc == (XVIDC_PPC_2)) {
-				/* dual pixel */
-					mmcm_ptr->clkout2_div = (mult_div * 3 *
-						((dir == XHDMIPHY_DIR_TX) ?
-						(inst->tx_samplerate) : 1));
-				/* single pixel */
-				} else {
-					/*
-					 * The clock ratio is 1.5. The PLL only
-					 * supports integer values. The mult_div
-					 * must be dividable by two (2 * 1.5 = 3)
-					 * to get an integer number
-					 */
-					if ((mult_div % 2) == 0) {
-						mmcm_ptr->clkout2_div = (mult_div * 3 / 2 *
-							((dir == XHDMIPHY_DIR_TX) ?
-							(inst->tx_samplerate) : 1));
-					}
-				}
-				break;
-			case XVIDC_BPC_16:
-				/* quad pixel */
-				if (ppc == (XVIDC_PPC_4)) {
-					mmcm_ptr->clkout2_div = (mult_div * 8 *
-						((dir == XHDMIPHY_DIR_TX) ?
-						(inst->tx_samplerate) : 1));
-				} else if (ppc == (XVIDC_PPC_2)) {
-				/* dual pixel */
-					mmcm_ptr->clkout2_div = (mult_div * 4 *
-						((dir == XHDMIPHY_DIR_TX) ?
-						(inst->tx_samplerate) : 1));
-				} else {
-				/* single pixel */
-					mmcm_ptr->clkout2_div = (mult_div * 2 *
-						((dir == XHDMIPHY_DIR_TX) ?
-						(inst->tx_samplerate) : 1));
-				}
-				break;
-			case XVIDC_BPC_8:
-			default:
-				/* quad pixel */
-				if (ppc == (XVIDC_PPC_4)) {
-					mmcm_ptr->clkout2_div = (mult_div * 4 *
-						((dir == XHDMIPHY_DIR_TX) ?
-						(inst->tx_samplerate) : 1));
-				} else if (ppc == (XVIDC_PPC_2)) {
-				/* dual pixel */
-					mmcm_ptr->clkout2_div = (mult_div * 2 *
-						((dir == XHDMIPHY_DIR_TX) ?
-						(inst->tx_samplerate) : 1));
-				} else {
-				/* single pixel */
-					mmcm_ptr->clkout2_div = (mult_div *
-						((dir == XHDMIPHY_DIR_TX) ?
-						(inst->tx_samplerate) : 1));
-				}
-				break;
+			vid_clk = xhdmiphy_set_videoclk_outdiv(inst, bpc, ppc,
+							       dir, mult_div);
+			if ((dir == XHDMIPHY_DIR_RX &&
+			     inst->conf.rx_clk_primitive == XHDMIPHY_MMCM) ||
+			    (dir == XHDMIPHY_DIR_TX &&
+			    inst->conf.tx_clk_primitive == XHDMIPHY_MMCM)) {
+				mmcm_ptr->clkout0_div = link_clk;
+				mmcm_ptr->clkout1_div = tmds_clk;
+				mmcm_ptr->clkout2_div = vid_clk;
+			} else {
+				mmcm_ptr->clkout2_div = link_clk;
+				mmcm_ptr->clkout0_div = tmds_clk;
+				mmcm_ptr->clkout1_div = vid_clk;
 			}
 			xhdmiphy_set_clkout2_div(inst, dir, linerate, mmcm_ptr);
-
-			/* Check values */
-			if (inst->conf.gt_type != XHDMIPHY_GTYE5 &&
-			    inst->conf.gt_type != XHDMIPHY_GTYP) {
-				if (mmcm_ptr->clkout0_div > 0 &&
-				    mmcm_ptr->clkout0_div <= 128 &&
-				    mmcm_ptr->clkout1_div > 0 &&
-				    mmcm_ptr->clkout1_div <= 128 &&
-				    mmcm_ptr->clkout2_div > 0 &&
-				    mmcm_ptr->clkout2_div <= 128) {
-					valid = (true);
-				} else {
-					/* 4 pixels per clock */
-					if (ppc == (XVIDC_PPC_4)) {
-						/* Decrease mult value */
-						mult -= 4;
-					} else if (ppc == (XVIDC_PPC_2)) {
-					/* 2 pixels per clock */
-						/* Decrease M value */
-						mult -= 2;
-					} else {
-						/* 1 pixel per clock */
-						/* Decrease M value */
-						mult -= 1;
-					}
-				}
-			} else {
-				if (mmcm_ptr->clkout0_div > 0 &&
-				    mmcm_ptr->clkout0_div <= 511 &&
-				    mmcm_ptr->clkout1_div > 0 &&
-				    mmcm_ptr->clkout1_div <= 511 &&
-				    mmcm_ptr->clkout2_div > 0 &&
-				    mmcm_ptr->clkout2_div <= 511) {
-					valid = (true);
-				} else { /* 4 pixels per clock */
-					if (ppc == (XVIDC_PPC_4)) {
-						/* Decrease mult value */
-						mult -= 4;
-					} else if (ppc == (XVIDC_PPC_2)) {
-						/* 2 pixels per clock */
-						/* Decrease M value */
-						mult -= 2;
-					} else {
-						/* 1 pixel per clock */
-						/* Decrease M value */
-						mult -= 1;
-					}
-				}
-			}
-		} while (!valid && (mult > 0) && (mult < 129));
-
-		/* Increment divider */
+			xhdmiphy_validate_clock_divs(inst, mmcm_ptr, ppc,
+						     &valid, &mult);
+			} while (!valid && (mult > 0) && (mult < 129));
 		div++;
 	} while (!valid && (div > 0) && (div < 107));
 
