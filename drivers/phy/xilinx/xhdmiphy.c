@@ -642,6 +642,34 @@ static int xhdmiphy_parse_of(struct xhdmiphy_dev *priv)
 	}
 	xgtphycfg->tx_maxrate = val;
 
+	rc = of_property_read_u32(node, "xlnx,rx-clk-primitive", &val);
+	if (rc < 0) {
+		dev_err(priv->dev, "unable to parse %s property\n",
+			"xlnx,rx-clk-primitive. Make MMCM as default value");
+		val = XHDMIPHY_MMCM;
+	}
+
+	if (val != XHDMIPHY_MMCM && val != XHDMIPHY_PLL) {
+		dev_err(priv->dev, "dt xlnx,rx-clk-primitive %d is invalid\n",
+			val);
+		return -EINVAL;
+	}
+	xgtphycfg->rx_clk_primitive = val;
+
+	rc = of_property_read_u32(node, "xlnx,tx-clk-primitive", &val);
+	if (rc < 0) {
+		dev_err(priv->dev, "unable to parse %s property\n",
+			"xlnx,tx-clk-primitive. make MMCM as default value");
+		val = XHDMIPHY_MMCM;
+	}
+
+	if (val != XHDMIPHY_MMCM && val != XHDMIPHY_PLL) {
+		dev_err(priv->dev, "dt xlnx,tx-clk-primitive %d is invalid\n",
+			val);
+		return -EINVAL;
+	}
+	xgtphycfg->tx_clk_primitive = val;
+
 	rc = of_property_read_u32(node, "xlnx,use-gt-ch4-hdmi", &val);
 	if (rc < 0) {
 		dev_err(priv->dev, "unable to parse %s property\n",
