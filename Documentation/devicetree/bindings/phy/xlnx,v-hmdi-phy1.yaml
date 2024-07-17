@@ -180,6 +180,26 @@ properties:
       - $ref: /schemas/types.yaml#/definitions/uint32
       - enum: [3, 6, 8, 10, 12]
 
+  xlnx,rx-clk-primitive:
+    description: |
+      Rx clock primitive type that IP is configured with. Possible values
+      are as below.
+      0 - MMCM
+      1 - PLL
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0, 1]
+
+  xlnx,tx-clk-primitive:
+    description: |
+      Tx clock primitive type that IP is configured with. Possible values
+      are as below.
+      0 - MMCM
+      1 - PLL
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0, 1]
+
   "#phy-cells":
     const: 0
 
@@ -246,6 +266,8 @@ examples:
            xlnx,use-gt-ch4-hdmi = <1>;
            xlnx,rx-max-gt-line-rate = <0xc>;
            xlnx,tx-max-gt-line-rate = <0xc>;
+           xlnx,rx-clk-primitive = <0x0>;
+           xlnx,tx-clk-primitive = <0x0>;
            #phy-cells = <0>;
    };
    v_hdmi_gt@80050000 {
@@ -275,6 +297,8 @@ examples:
            xlnx,use-gt-ch4-hdmi = <1>;
            xlnx,rx-max-gt-line-rate = <0xc>;
            xlnx,tx-max-gt-line-rate = <0xc>;
+           xlnx,rx-clk-primitive = <0x0>;
+           xlnx,tx-clk-primitive = <0x0>;
            #phy-cells = <0>;
    };
 ...
