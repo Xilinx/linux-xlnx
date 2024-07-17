@@ -1537,4 +1537,5 @@ static struct platform_driver ams_driver = {
 module_platform_driver(ams_driver);
 
 MODULE_LICENSE("GPL v2");
+MODULE_DESCRIPTION("Sysmon driver for Zynq Ultrascale+ devices");
 MODULE_AUTHOR("Xilinx, Inc.");
