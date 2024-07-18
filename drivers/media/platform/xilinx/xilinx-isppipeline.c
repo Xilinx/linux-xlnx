@@ -175,7 +175,7 @@ static const struct v4l2_ctrl_ops xisp_ctrl_ops = {
 };
 
 static struct v4l2_ctrl_config xisp_ctrls[] = {
-	/* Red Gain*/
+	/* Red Gain */
 	{
 		.ops = &xisp_ctrl_ops,
 		.id = V4L2_CID_XILINX_ISP_RED_GAIN,
