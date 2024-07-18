@@ -40,7 +40,7 @@ static int usb5744_init_hw(struct device *dev, struct usb5744 *data)
 	/* Delay - Sleep for an approximate time 5 to 20 usecs */
 	usleep_range(5, 20);
 	gpiod_set_value_cansleep(data->reset_gpio, 0);
-	msleep(5);
+	msleep(10);
 
 	return 0;
 }
