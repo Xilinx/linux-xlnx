@@ -62,6 +62,13 @@
 #define DST_BIT_POS	9U
 #define SRC_BITMASK	GENMASK(11, 8)
 
+/*
+ * Module parameters
+ */
+static int tx_poll_period = 5;
+module_param_named(tx_poll_period, tx_poll_period, int, 0644);
+MODULE_PARM_DESC(tx_poll_period, "Poll period waiting for ack after send.");
+
 /**
  * struct zynqmp_ipi_mchan - Description of a Xilinx ZynqMP IPI mailbox channel
  * @is_opened: indicate if the IPI channel is opened
@@ -537,7 +544,7 @@ static int zynqmp_ipi_mbox_probe(struct zynqmp_ipi_mbox *ipi_mbox,
 	mbox->num_chans = 2;
 	mbox->txdone_irq = false;
 	mbox->txdone_poll = true;
-	mbox->txpoll_period = 5;
+	mbox->txpoll_period = tx_poll_period;
 	mbox->of_xlate = zynqmp_ipi_of_xlate;
 	chans = devm_kzalloc(mdev, 2 * sizeof(*chans), GFP_KERNEL);
 	if (!chans)
