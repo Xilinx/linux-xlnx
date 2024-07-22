@@ -1098,24 +1098,24 @@
 #define XPM_VERSAL_NET_EVENT_ERROR_MASK_HB_MON_3		BIT(3)
 
 /**
- * XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_CRAM_CE_5: Error event mask for handling
+ * XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_CRAM_CE: Error event mask for handling
  * correctable error in Versal Configuration RAM which is reported by
  * Soft Error Mitigation (XilSEM).
  */
-#define XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_CRAM_CE_5		BIT(5)
+#define XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_CRAM_CE		BIT(7)
 
 /**
- * XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_CRAM_UE_6: Error event mask for handling
+ * XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_CRAM_UE: Error event mask for handling
  * uncorrectable error in Versal Configuration RAM which is reported by
  * Soft Error Mitigation (XilSEM).
  */
-#define XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_CRAM_UE_6		BIT(6)
+#define XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_CRAM_UE		BIT(8)
 
 /**
- * XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_NPI_UE_7: Error event mask for handling
+ * XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_NPI_UE: Error event mask for handling
  * uncorrectable error in Versal NoC programming interface (NPI)
  * register which is reported by Soft Error Mitigation (XilSEM).
  */
-#define XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_NPI_UE_7		BIT(7)
+#define XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_NPI_UE		BIT(9)
 
 #endif /* _FIRMWARE_XLNX_VERSAL_NET_ERROR_EVENTS_H_ */
