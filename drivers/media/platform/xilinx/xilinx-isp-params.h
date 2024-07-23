@@ -9,6 +9,7 @@
 #define XISP_DEGAMMA_COLOR_ID (3)
 #define XISP_DEGAMMA_KNEE_POINTS (8)
 #define XISP_DEGAMMA_PARAMS (3)
+#define XISP_RGBIR_LENGTH (97)
 
 /*
  * XISP_DEGAMMA_COLOR_ID = COLOR ID (R, G, B)
@@ -55,5 +56,19 @@ static const u32 xisp_degamma_choices[2][XISP_DEGAMMA_COLOR_ID][XISP_DEGAMMA_KNE
 		{ 57344, 28088, 49506 }, { 65536, 32768, 65536 }
 	}
 }};
+
+/*
+ * The function xisp_set_rgbir_entries writes the RGBIR config parameters from
+ * the provided array to the device's registers.
+ * The parameters are written sequentially starting from the address specified
+ * by rgbir_base.
+ */
+static const s8 xisp_rgbir_config[XISP_RGBIR_LENGTH] = {
+6, 6, 6, 6, 6, 6, 6, 6, 0, 6, 6, 6, 6, 6, 6, 6, 0,
+6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 6, 6,
+6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 6, 6, 6, 6, 6, 6, 6,
+6, 0, 6, 6, 6, 6, 6, 6, 6, 0, 6, 6, 6, 0, 6, 6, 6,
+6, 6, 6, 6, 0, 6, 6, 2, 6, 2, 6, 6, 6, 2, 6, 2, 2,
+6, 2, 6, 6, 6, 2, 6, 2, 3, 1, 2, 5};
 
 #endif /* __XILINX_ISP_PARAMS_H__ */

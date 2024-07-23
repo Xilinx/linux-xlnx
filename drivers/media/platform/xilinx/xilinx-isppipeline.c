@@ -73,6 +73,9 @@
  *
  * XISP_DEGAMMA_CONFIG_BASE
  * 0-63: Base address in the device's register space for DeGamma params
+ *
+ * XISP_RGBIR_CONFIG_BASE
+ * 0-63: Base address in the device's register space where RGBIR entries will be written.
  */
 #define XISP_COMMON_CONFIG_REG		(0x10UL)
 #define XISP_PIPELINE_CONFIG_INFO_REG		(0x80UL)
@@ -84,7 +87,24 @@
 #define XISP_BLC_CONFIG_1_REG			(0x28UL)
 #define XISP_BLC_CONFIG_2_REG			(0x30UL)
 #define XISP_AWB_CONFIG_REG				(0x20UL)
+#define XISP_RGBIR_CONFIG_BASE			(0x200UL)
 #define XISP_DEGAMMA_CONFIG_BASE		(0x1000UL)
+#define XISP_RGBIR_CONFIG_BASE1			(XISP_RGBIR_CONFIG_BASE + 0x20)
+#define XISP_RGBIR_CONFIG_BASE2			(XISP_RGBIR_CONFIG_BASE + 0x40)
+#define XISP_RGBIR_CONFIG_BASE3			(XISP_RGBIR_CONFIG_BASE + 0x60)
+#define XISP_RGBIR_CONFIG_BASE4			(XISP_RGBIR_CONFIG_BASE + 0x70)
+#define XISP_RGBIR_CONFIG_BASE5			(XISP_RGBIR_CONFIG_BASE + 0x80)
+#define XISP_RGBIR_CONFIG_BASE_SIZE		(25)
+#define XISP_RGBIR_CONFIG_BASE_1_LSB		(25)
+#define XISP_RGBIR_CONFIG_BASE_1_SIZE		(25)
+#define XISP_RGBIR_CONFIG_BASE_2_LSB		(50)
+#define XISP_RGBIR_CONFIG_BASE_2_SIZE		(25)
+#define XISP_RGBIR_CONFIG_BASE_3_LSB		(75)
+#define XISP_RGBIR_CONFIG_BASE_3_SIZE		(9)
+#define XISP_RGBIR_CONFIG_BASE_4_LSB		(84)
+#define XISP_RGBIR_CONFIG_BASE_4_SIZE		(9)
+#define XISP_RGBIR_CONFIG_BASE_5_LSB		(93)
+#define XISP_RGBIR_CONFIG_BASE_5_SIZE		(4)
 #define XISP_AP_CTRL_REG		(0x0)
 #define XISP_WIDTH_REG			(0x10)
 #define XISP_HEIGHT_REG			(0x18)
@@ -156,6 +176,7 @@ enum xisp_max_supported_size_index {
 
 /* enumerations for functions_bypassable index */
 enum xisp_functions_bypassable_index {
+	XISP_RGBIR_INDEX = 2,
 	XISP_AEC_INDEX = 3,
 	XISP_BLC_INDEX = 4,
 	XISP_BPC_INDEX = 5,
@@ -341,6 +362,30 @@ static void xisp_set_degamma_entries(struct xisp_dev *xisp, const u32 degamma_ba
 		xvip_write(&xisp->xvip, degamma_offset + (idx * 4), degamma_ptr[idx]);
 }
 
+/**
+ * xisp_set_rgbir_entries - Set RGBIR entries for the XISP device.
+ * @xisp: Pointer to the xisp_dev structure representing the device.
+ * @rgbir_base: Base address in the device's register space where RGBIR entries will be written.
+ * @rgbir_param: Pointer to an array containing the RGBIR parameters to be written.
+ * @size: Size of the rgbir_param array.
+ *
+ * This function writes the RGBIR parameters from the provided array to the device's registers.
+ * The parameters are written sequentially starting from the address specified by rgbir_base.
+ *
+ * The loop iterates through the rgbir_param array from index 0 to size - 1.
+ * Inside the loop, the function calls xvip_write() to write each RGBIR parameter to the device
+ * register at the base address specified by rgbir_base. The base address remains the same for
+ * each parameter being written.
+ */
+static void xisp_set_rgbir_entries(struct xisp_dev *xisp, const u32 rgbir_base, const s8
+				    *rgbir_param, int size)
+{
+	int i;
+
+	for (i = 0; i < size; i++)
+		xvip_write(&xisp->xvip, rgbir_base, rgbir_param[i]);
+}
+
 static int xisp_s_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct xisp_dev *xisp =
@@ -383,6 +428,11 @@ static int xisp_s_ctrl(struct v4l2_ctrl *ctrl)
 	case V4L2_CID_XILINX_ISP_BPC_EN:
 		xisp->module_bypass = xisp_module_bypass(xisp->module_bypass,
 							 XISP_BPC_INDEX, ctrl->val);
+		xvip_write(&xisp->xvip, XISP_FUNCS_BYPASS_CONFIG_REG, xisp->module_bypass);
+		break;
+	case V4L2_CID_XILINX_ISP_RGBIR_EN:
+		xisp->module_bypass = xisp_module_bypass(xisp->module_bypass,
+							 XISP_RGBIR_INDEX, ctrl->val);
 		xvip_write(&xisp->xvip, XISP_FUNCS_BYPASS_CONFIG_REG, xisp->module_bypass);
 		break;
 	case V4L2_CID_XILINX_ISP_DEGAMMA_EN:
@@ -548,6 +598,21 @@ static struct v4l2_ctrl_config xisp_ctrls_bpc[] = {
 		.ops = &xisp_ctrl_ops,
 		.id = V4L2_CID_XILINX_ISP_BPC_EN,
 		.name = "bypass_bpc",
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.min = XISP_MIN_VALUE,
+		.max = 1,
+		.step = 1,
+		.def = 0,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+};
+
+static struct v4l2_ctrl_config xisp_ctrls_rgbir[] = {
+	/* RGBIR ENABLE/DISABLE */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_RGBIR_EN,
+		.name = "bypass_rgbir",
 		.type = V4L2_CTRL_TYPE_BOOLEAN,
 		.min = XISP_MIN_VALUE,
 		.max = 1,
@@ -730,9 +795,39 @@ static int xisp_s_stream(struct v4l2_subdev *subdev, int enable)
 		xisp->width = xisp->formats[XVIP_PAD_SINK].width;
 		xisp->height = xisp->formats[XVIP_PAD_SINK].height;
 		xvip_write(&xisp->xvip, XISP_COMMON_CONFIG_REG, (xisp->height << 16) | xisp->width);
+
+		if (FIELD_GET(BIT(XISP_RGBIR_INDEX), xisp->module_en))
+			if (!FIELD_GET(BIT(XISP_RGBIR_INDEX), xisp->module_bypass_en) ||
+			    !(FIELD_GET(BIT(XISP_RGBIR_INDEX), xisp->module_bypass_en) &
+			    FIELD_GET(BIT(XISP_RGBIR_INDEX), xisp->module_bypass))) {
+				xisp_set_rgbir_entries(xisp, XISP_RGBIR_CONFIG_BASE,
+						       xisp_rgbir_config,
+						       XISP_RGBIR_CONFIG_BASE_SIZE);
+				xisp_set_rgbir_entries(xisp, XISP_RGBIR_CONFIG_BASE1,
+						       xisp_rgbir_config +
+						       XISP_RGBIR_CONFIG_BASE_1_LSB,
+						       XISP_RGBIR_CONFIG_BASE_1_SIZE);
+				xisp_set_rgbir_entries(xisp, XISP_RGBIR_CONFIG_BASE2,
+						       xisp_rgbir_config +
+						       XISP_RGBIR_CONFIG_BASE_2_LSB,
+						       XISP_RGBIR_CONFIG_BASE_2_SIZE);
+				xisp_set_rgbir_entries(xisp, XISP_RGBIR_CONFIG_BASE3,
+						       xisp_rgbir_config +
+						       XISP_RGBIR_CONFIG_BASE_3_LSB,
+						       XISP_RGBIR_CONFIG_BASE_3_SIZE);
+				xisp_set_rgbir_entries(xisp, XISP_RGBIR_CONFIG_BASE4,
+						       xisp_rgbir_config +
+						       XISP_RGBIR_CONFIG_BASE_4_LSB,
+						       XISP_RGBIR_CONFIG_BASE_4_SIZE);
+				xisp_set_rgbir_entries(xisp, XISP_RGBIR_CONFIG_BASE5,
+						       xisp_rgbir_config +
+						       XISP_RGBIR_CONFIG_BASE_5_LSB,
+						       XISP_RGBIR_CONFIG_BASE_5_SIZE);
+			}
 	} else {
 		return -EINVAL;
 	}
+
 	/* Start ISP pipeline IP */
 	xvip_write(&xisp->xvip, XISP_AP_CTRL_REG, XISP_STREAM_ON);
 
@@ -1132,6 +1227,7 @@ static int xisp_probe(struct platform_device *pdev)
 		num_of_parameters = ARRAY_SIZE(xisp_ctrls_aec) + ARRAY_SIZE(xisp_ctrls_blc);
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_awb) + ARRAY_SIZE(xisp_ctrls_bpc);
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_degamma);
+		num_of_parameters += ARRAY_SIZE(xisp_ctrls_rgbir);
 
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, num_of_parameters);
 
@@ -1145,6 +1241,8 @@ static int xisp_probe(struct platform_device *pdev)
 				     ARRAY_SIZE(xisp_ctrls_bpc));
 		xisp_create_controls(xisp, XISP_DEGAMMA_INDEX,
 				     xisp_ctrls_degamma, ARRAY_SIZE(xisp_ctrls_degamma));
+		xisp_create_controls(xisp, XISP_RGBIR_INDEX,
+				     xisp_ctrls_rgbir, ARRAY_SIZE(xisp_ctrls_rgbir));
 	} else {
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, ARRAY_SIZE(xisp_ctrls));
 		for (itr = 0; itr < ARRAY_SIZE(xisp_ctrls); itr++) {
