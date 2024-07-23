@@ -309,5 +309,7 @@
 #define V4L2_CID_XILINX_ISP_CSC_EN		(V4L2_CID_XILINX_ISP + 41)
 /* Enable/Disable Bayer stats */
 #define V4L2_CID_XILINX_ISP_BAYER_STATS_EN		(V4L2_CID_XILINX_ISP + 42)
+/* Enable/Disable Luma stats */
+#define V4L2_CID_XILINX_ISP_LUMA_STATS_EN		(V4L2_CID_XILINX_ISP + 43)
 
 #endif /* __UAPI_XILINX_V4L2_CONTROLS_H__ */
