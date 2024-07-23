@@ -100,6 +100,12 @@
  *
  * XISP_LUT3D_CONFIG_REG
  * 0-31: lut3d_dim
+ *
+ * XISP_CLAHE_CONFIG_1_REG
+ * 0-31: clip
+ *
+ * XISP_CLAHE_CONFIG_2_REG
+ * 0-15: tiles_x, 16-31: tiles_y
  */
 #define XISP_COMMON_CONFIG_REG		(0x10UL)
 #define XISP_PIPELINE_CONFIG_INFO_REG		(0x80UL)
@@ -141,6 +147,8 @@
 #define XISP_GAIN_CONTROL_CONFIG_2_REG		(0x40UL)
 #define XISP_HDR_DECOM_CONFIG_BASE		(0x100UL)
 #define XISP_HDR_MERGE_CONFIG_BASE		(0x8000UL)
+#define XISP_CLAHE_CONFIG_1_REG			(0x68UL)
+#define XISP_CLAHE_CONFIG_2_REG			(0x70UL)
 #define XISP_AP_CTRL_REG		(0x0)
 #define XISP_WIDTH_REG			(0x10)
 #define XISP_HEIGHT_REG			(0x18)
@@ -224,6 +232,9 @@
 #define XISP_SELECT_DECOMPAND_DEFALUT		(0)
 #define XISP_GTM_C1_DEFALUT			(128)
 #define XISP_GTM_C2_DEFALUT			(128)
+#define XISP_CLAHE_CLIP_DEFALUT			(3)
+#define XISP_CLAHE_TILES_Y_DEFALUT		(4)
+#define XISP_CLAHE_TILES_X_DEFALUT		(4)
 #define XISP_LTM_BLOCK_HEIGHT_DEFALUT		(8)
 #define XISP_LTM_BLOCK_WIDTH_DEFALUT		(8)
 #define XISP_3DLUT_DIM_MAX			(0x80000000UL)
@@ -282,7 +293,8 @@ enum xisp_functions_bypassable_index {
 	XISP_CSC_INDEX = 17,
 	XISP_BAYER_STATS_INDEX = 18,
 	XISP_LUMA_STATS_INDEX = 19,
-	XISP_RGB_STATS_INDEX = 20
+	XISP_RGB_STATS_INDEX = 20,
+	XISP_CLAHE_INDEX = 21
 };
 
 /**
@@ -326,6 +338,9 @@ struct xilinx_isp_feature {
  * @pawb: Expected threshold
  * @block_rows: Expected number of block rows
  * @block_cols: Expected number of block cols
+ * @clip: Expected clip value
+ * @tiles_y: Expected number of tiles along y-axis
+ * @tiles_x: Expected number of tiles along x-axis
  * @intersec: Expected intersec value
  * @weights1: Expected weights1 values
  * @weights2: Expected weights2 values
@@ -379,6 +394,9 @@ struct xisp_dev {
 	bool mode_reg;
 	u16 block_rows;
 	u16 block_cols;
+	u16 clip;
+	u16 tiles_y;
+	u16 tiles_x;
 	u16 weights1[XISP_W_B_SIZE];
 	u16 weights2[XISP_W_B_SIZE];
 	u16 rho;
@@ -1192,6 +1210,31 @@ static int xisp_s_ctrl(struct v4l2_ctrl *ctrl)
 							 XISP_RGB_STATS_INDEX, ctrl->val);
 		xvip_write(&xisp->xvip, XISP_FUNCS_BYPASS_CONFIG_REG, xisp->module_bypass);
 		break;
+	case V4L2_CID_XILINX_ISP_CLAHE_EN:
+		xisp->module_bypass = xisp_module_bypass(xisp->module_bypass,
+							 XISP_CLAHE_INDEX, ctrl->val);
+		xvip_write(&xisp->xvip, XISP_FUNCS_BYPASS_CONFIG_REG, xisp->module_bypass);
+		break;
+	case V4L2_CID_XILINX_ISP_CLIP:
+		xisp->clip = ctrl->val;
+		XISP_SET_CFG(XISP_CLAHE_INDEX, XISP_CLAHE_CONFIG_1_REG, xisp->clip);
+		break;
+	case V4L2_CID_XILINX_ISP_TILESY:
+		xisp->tiles_y = ctrl->val;
+		XISP_SET_CFG(XISP_CLAHE_INDEX, XISP_CLAHE_CONFIG_2_REG,
+			     (FIELD_PREP(GENMASK(XISP_UPPER_WORD_MSB,
+						 XISP_UPPER_WORD_LSB),
+						 xisp->tiles_y)) |
+						 xisp->tiles_x);
+		break;
+	case V4L2_CID_XILINX_ISP_TILESX:
+		xisp->tiles_x = ctrl->val;
+		XISP_SET_CFG(XISP_CLAHE_INDEX, XISP_CLAHE_CONFIG_2_REG,
+			     (FIELD_PREP(GENMASK(XISP_UPPER_WORD_MSB,
+						 XISP_UPPER_WORD_LSB),
+						 xisp->tiles_y)) |
+						 xisp->tiles_x);
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -1790,6 +1833,57 @@ static struct v4l2_ctrl_config xisp_ctrls_rgb_stats[] = {
 	},
 };
 
+static struct v4l2_ctrl_config xisp_ctrls_clahe[] = {
+	/* CLAHE ENABLE/DISABLE */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_CLAHE_EN,
+		.name = "bypass_clahe",
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.min = XISP_MIN_VALUE,
+		.max = 1,
+		.step = 1,
+		.def = 0,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+	/* CLIP */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id =  V4L2_CID_XILINX_ISP_CLIP,
+		.name = "clahe_clip",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = XISP_MIN_VALUE,
+		.max = XISP_MAX_VALUE,
+		.step = 1,
+		.def = XISP_CLAHE_CLIP_DEFALUT,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+	/* TILESY */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id =  V4L2_CID_XILINX_ISP_TILESY,
+		.name = "clahe_tiles_y",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = XISP_MIN_VALUE,
+		.max = XISP_MAX_VALUE,
+		.step = 1,
+		.def = XISP_CLAHE_TILES_Y_DEFALUT,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+	/* TILESX */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id =  V4L2_CID_XILINX_ISP_TILESX,
+		.name = "clahe_tiles_x",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = XISP_MIN_VALUE,
+		.max = XISP_MAX_VALUE,
+		.step = 1,
+		.def = XISP_CLAHE_TILES_X_DEFALUT,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+};
+
 static struct v4l2_ctrl_config xisp_ctrls[] = {
 	/* Red Gain */
 	{
@@ -2360,6 +2454,7 @@ static int xisp_probe(struct platform_device *pdev)
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_bayer_stats);
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_luma_stats);
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_rgb_stats);
+		num_of_parameters += ARRAY_SIZE(xisp_ctrls_clahe);
 
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, num_of_parameters);
 
@@ -2458,6 +2553,8 @@ static int xisp_probe(struct platform_device *pdev)
 				     xisp_ctrls_luma_stats, ARRAY_SIZE(xisp_ctrls_luma_stats));
 		xisp_create_controls(xisp, XISP_RGB_STATS_INDEX,
 				     xisp_ctrls_rgb_stats, ARRAY_SIZE(xisp_ctrls_rgb_stats));
+		xisp_create_controls(xisp, XISP_CLAHE_INDEX,
+				     xisp_ctrls_clahe, ARRAY_SIZE(xisp_ctrls_clahe));
 	} else {
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, ARRAY_SIZE(xisp_ctrls) +
 				       ARRAY_SIZE(xisp_ctrls_gamma_correct));
