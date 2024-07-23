@@ -325,5 +325,7 @@
 #define V4L2_CID_XILINX_ISP_MEDIAN_EN		(V4L2_CID_XILINX_ISP + 49)
 /* Enable/Disable Resize */
 #define V4L2_CID_XILINX_ISP_RESIZE_EN		(V4L2_CID_XILINX_ISP + 50)
+/* Enable/Disable ISP */
+#define V4L2_CID_XILINX_ISP_EN			(V4L2_CID_XILINX_ISP + 51)
 
 #endif /* __UAPI_XILINX_V4L2_CONTROLS_H__ */
