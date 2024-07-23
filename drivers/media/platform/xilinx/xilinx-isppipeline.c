@@ -92,8 +92,11 @@
  * XISP_GAMMA_CONFIG_BASE
  * 0-63: Base address in the device's register space for gamma params
  *
- * XISP_HDR_DECOM_CONFIG_BASE
- * 0-63: Base address in the device's register space for DeCompanding Params.
+ * XISP_GTM_CONFIG_1_REG / XISP_GTM_CONFIG_2_REG
+ * 0-31: C1 / C2
+ *
+ * XISP_LTM_CONFIG_REG
+ * 0-15: block_rows, 16-31: block_coloms
  */
 #define XISP_COMMON_CONFIG_REG		(0x10UL)
 #define XISP_PIPELINE_CONFIG_INFO_REG		(0x80UL)
@@ -105,6 +108,9 @@
 #define XISP_BLC_CONFIG_1_REG			(0x28UL)
 #define XISP_BLC_CONFIG_2_REG			(0x30UL)
 #define XISP_AWB_CONFIG_REG				(0x20UL)
+#define XISP_GTM_CONFIG_1_REG			(0x48UL)
+#define XISP_GTM_CONFIG_2_REG			(0x50UL)
+#define XISP_LTM_CONFIG_REG				(0x58UL)
 #define XISP_RGBIR_CONFIG_BASE			(0x200UL)
 #define XISP_DEGAMMA_CONFIG_BASE		(0x1000UL)
 #define XISP_GAMMA_CONFIG_BASE			(0x2000UL)
@@ -210,6 +216,10 @@
 #define XISP_HDR_RHO_DEFALUT			(512)
 #define XISP_SELECT_DECOMPAND_MAX		(2)
 #define XISP_SELECT_DECOMPAND_DEFALUT		(0)
+#define XISP_GTM_C1_DEFALUT			(128)
+#define XISP_GTM_C2_DEFALUT			(128)
+#define XISP_LTM_BLOCK_HEIGHT_DEFALUT		(8)
+#define XISP_LTM_BLOCK_WIDTH_DEFALUT		(8)
 #define XISP_MONO_LUMA_GAIN_DEFALUT		(128)
 #define XISP_MONO_GAMMA_MAX			(40)
 #define XISP_MONO_GAMMA_DEFALUT			(20)
@@ -256,6 +266,9 @@ enum xisp_functions_bypassable_index {
 	XISP_DEMOSAIC_INDEX = 9,
 	XISP_AWB_INDEX = 10,
 	XISP_CCM_INDEX = 11,
+	XISP_TM_INDEX = 12,
+	XISP_TM_TYPE_LSB_INDEX = 13,
+	XISP_TM_TYPE_MSB_INDEX = 14,
 	XISP_GAMMA_INDEX = 15
 };
 
@@ -286,6 +299,7 @@ struct xilinx_isp_feature {
  * @module_bypass: Track for modules bypassed or not from user
  * @module_bypass_en: Track if modules can be bypassed or not
  * @module_en: Track which module is enabled
+ * @tm_type: Flag to indicate the type of tone mapping enabled
  * @mult_factor: Expected multiplication factor
  * @black_level: Expected black level
  * @rgain: Expected red gain
@@ -293,7 +307,11 @@ struct xilinx_isp_feature {
  * @ggain: Expected green gain
  * @luma_gain: Expected luminance gain
  * @mode_reg: Track if AWB is enabled or not
+ * @gtm_c1: Expected gtm c1 value
+ * @gtm_c2: Expected gtm c2 value
  * @pawb: Expected threshold
+ * @block_rows: Expected number of block rows
+ * @block_cols: Expected number of block cols
  * @intersec: Expected intersec value
  * @weights1: Expected weights1 values
  * @weights2: Expected weights2 values
@@ -330,6 +348,8 @@ struct xisp_dev {
 	u32 module_en;
 	u32 mult_factor;
 	u32 black_level;
+	u32 gtm_c1;
+	u32 gtm_c2;
 	u32 intersec;
 	u16 npads;
 	u16 width;
@@ -341,10 +361,13 @@ struct xisp_dev {
 	u16 ggain;
 	u16 luma_gain;
 	bool mode_reg;
+	u16 block_rows;
+	u16 block_cols;
 	u16 weights1[XISP_W_B_SIZE];
 	u16 weights2[XISP_W_B_SIZE];
 	u16 rho;
 	u16 pawb;
+	u8 tm_type;
 	u8 alpha;
 	u8 optical_black_value;
 	u8 degamma_select;
@@ -826,9 +849,13 @@ static int xisp_s_ctrl(struct v4l2_ctrl *ctrl)
 		container_of(ctrl->handler,
 			     struct xisp_dev, ctrl_handler);
 	bool degamma_enabled, degamma_bypass_enabled, degamma_bypass;
+	bool tm_type_enabled;
 	bool ccm_enabled, ccm_bypass_enabled, ccm_bypass;
 	bool in_type_conf_gain = XGET_BIT(XISP_IN_TYPE_INDEX, xisp->module_conf);
 	bool in_type_conf_gamma = XGET_BIT(XISP_IN_TYPE_INDEX, xisp->module_conf);
+
+	tm_type_enabled = (FIELD_GET(GENMASK(XISP_TM_TYPE_MSB_INDEX, XISP_TM_TYPE_LSB_INDEX),
+				     xisp->module_en) == 1) ? true : false;
 
 	switch (ctrl->id) {
 	case V4L2_CID_XILINX_ISP_AEC_EN:
@@ -1060,6 +1087,45 @@ static int xisp_s_ctrl(struct v4l2_ctrl *ctrl)
 		xisp->decompand_select = ctrl->val;
 
 		xisp_handle_hdr_enabled(xisp);
+		break;
+	case V4L2_CID_XILINX_ISP_TM_EN:
+		xisp->module_bypass = xisp_module_bypass(xisp->module_bypass,
+							 XISP_TM_INDEX, ctrl->val);
+		xvip_write(&xisp->xvip, XISP_FUNCS_BYPASS_CONFIG_REG, xisp->module_bypass);
+		break;
+	case V4L2_CID_XILINX_ISP_GTM_C1:
+		xisp->gtm_c1 = ctrl->val;
+		if (tm_type_enabled)
+			XISP_SET_CFG(XISP_TM_INDEX, XISP_GTM_CONFIG_1_REG,
+				     xisp->gtm_c1);
+		break;
+	case V4L2_CID_XILINX_ISP_GTM_C2:
+		xisp->gtm_c2 = ctrl->val;
+		if (tm_type_enabled)
+			XISP_SET_CFG(XISP_TM_INDEX, XISP_GTM_CONFIG_2_REG,
+				     xisp->gtm_c2);
+		break;
+	case V4L2_CID_XILINX_ISP_BLOCK_ROWS:
+		xisp->block_rows = ctrl->val;
+		tm_type_enabled = FIELD_GET(GENMASK(XISP_TM_TYPE_MSB_INDEX,
+						    XISP_TM_TYPE_LSB_INDEX), xisp->module_en) == 0;
+		if (!tm_type_enabled)
+			XISP_SET_CFG(XISP_TM_INDEX, XISP_LTM_CONFIG_REG,
+				     (FIELD_PREP(GENMASK(XISP_UPPER_WORD_MSB,
+							 XISP_UPPER_WORD_LSB),
+							 xisp->block_rows)) |
+							 xisp->block_cols);
+		break;
+	case V4L2_CID_XILINX_ISP_BLOCK_COLS:
+		xisp->block_cols = ctrl->val;
+		tm_type_enabled = FIELD_GET(GENMASK(XISP_TM_TYPE_MSB_INDEX,
+						    XISP_TM_TYPE_LSB_INDEX), xisp->module_en) == 0;
+		if (!tm_type_enabled)
+			XISP_SET_CFG(XISP_TM_INDEX, XISP_LTM_CONFIG_REG,
+				     (FIELD_PREP(GENMASK(XISP_UPPER_WORD_MSB,
+							 XISP_UPPER_WORD_LSB),
+							 xisp->block_rows)) |
+							 xisp->block_cols);
 		break;
 	default:
 		return -EINVAL;
@@ -1500,6 +1566,75 @@ static struct v4l2_ctrl_config xisp_ctrls_hdr_decom[] = {
 		.max = XISP_SELECT_DECOMPAND_MAX,
 		.step = 1,
 		.def = XISP_SELECT_DECOMPAND_DEFALUT,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+};
+
+static struct v4l2_ctrl_config xisp_ctrls_tm[] = {
+	/* TM ENABLE/DISABLE */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_TM_EN,
+		.name = "bypass_tm",
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.min = XISP_MIN_VALUE,
+		.max = 1,
+		.step = 1,
+		.def = 0,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+};
+
+static struct v4l2_ctrl_config xisp_ctrls_gtm[] = {
+	/* PARAMETER C1 */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_GTM_C1,
+		.name = "gtm_c1",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = XISP_MIN_VALUE,
+		.max = XISP_MAX_VALUE,
+		.step = 1,
+		.def = XISP_GTM_C1_DEFALUT,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+	/* PARAMETER C2 */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_GTM_C2,
+		.name = "gtm_c2",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = XISP_MIN_VALUE,
+		.max = XISP_MAX_VALUE,
+		.step = 1,
+		.def = XISP_GTM_C2_DEFALUT,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+};
+
+static struct v4l2_ctrl_config xisp_ctrls_ltm[] = {
+	/* BLOCK ROWS */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_BLOCK_ROWS,
+		.name = "ltm_block_height",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = XISP_MIN_VALUE,
+		.max = XISP_MAX_VALUE,
+		.step = 1,
+		.def = XISP_LTM_BLOCK_HEIGHT_DEFALUT,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+	/* BLOCK COLS */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_BLOCK_COLS,
+		.name = "ltm_block_width",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = XISP_MIN_VALUE,
+		.max = XISP_MAX_VALUE,
+		.step = 1,
+		.def = XISP_LTM_BLOCK_WIDTH_DEFALUT,
 		.flags = V4L2_CTRL_FLAG_SLIDER,
 	},
 };
@@ -2061,6 +2196,9 @@ static int xisp_probe(struct platform_device *pdev)
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_hdr);
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_hdr_merge);
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_hdr_decom);
+		num_of_parameters += ARRAY_SIZE(xisp_ctrls_tm);
+		num_of_parameters += ARRAY_SIZE(xisp_ctrls_gtm);
+		num_of_parameters += ARRAY_SIZE(xisp_ctrls_ltm);
 
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, num_of_parameters);
 
@@ -2124,6 +2262,27 @@ static int xisp_probe(struct platform_device *pdev)
 				for (itr = 0; itr < ARRAY_SIZE(xisp_ctrls_hdr_merge); itr++) {
 					v4l2_ctrl_new_custom(&xisp->ctrl_handler,
 							     &xisp_ctrls_hdr_merge[itr], NULL);
+				}
+			}
+		}
+
+		if (XGET_BIT(XISP_TM_INDEX, xisp->module_en)) {
+			u32 xisp_tm_type =
+			FIELD_GET(GENMASK(XISP_TM_TYPE_MSB_INDEX,
+					  XISP_TM_TYPE_LSB_INDEX), xisp->module_en);
+
+			if (XGET_BIT(XISP_TM_INDEX, xisp->module_bypass_en))
+				v4l2_ctrl_new_custom(&xisp->ctrl_handler, &xisp_ctrls_tm[0], NULL);
+			if (xisp_tm_type == 0) {
+				for (itr = 0; itr < ARRAY_SIZE(xisp_ctrls_ltm); itr++) {
+					v4l2_ctrl_new_custom(&xisp->ctrl_handler,
+							     &xisp_ctrls_ltm[itr], NULL);
+				}
+			}
+			if (xisp_tm_type == 1) {
+				for (itr = 1; itr < (ARRAY_SIZE(xisp_ctrls_gtm) - 1); itr++) {
+					v4l2_ctrl_new_custom(&xisp->ctrl_handler,
+							     &xisp_ctrls_gtm[itr], NULL);
 				}
 			}
 		}
