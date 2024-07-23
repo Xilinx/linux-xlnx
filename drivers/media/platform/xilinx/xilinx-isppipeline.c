@@ -76,6 +76,12 @@
  *
  * XISP_RGBIR_CONFIG_BASE
  * 0-63: Base address in the device's register space where RGBIR entries will be written.
+ *
+ * XISP_CCM_CONFIG_1_BASE
+ * 0-63: Base address in the device's register space for CCM_Matrix
+ *
+ * XISP_CCM_CONFIG_2_BASE
+ * 0-63: Base address in the device's register space for offsetarray
  */
 #define XISP_COMMON_CONFIG_REG		(0x10UL)
 #define XISP_PIPELINE_CONFIG_INFO_REG		(0x80UL)
@@ -105,6 +111,8 @@
 #define XISP_RGBIR_CONFIG_BASE_4_SIZE		(9)
 #define XISP_RGBIR_CONFIG_BASE_5_LSB		(93)
 #define XISP_RGBIR_CONFIG_BASE_5_SIZE		(4)
+#define XISP_CCM_CONFIG_1_BASE			(0x4000UL)
+#define XISP_CCM_CONFIG_2_BASE			(0x4100UL)
 #define XISP_AP_CTRL_REG		(0x0)
 #define XISP_WIDTH_REG			(0x10)
 #define XISP_HEIGHT_REG			(0x18)
@@ -183,7 +191,8 @@ enum xisp_functions_bypassable_index {
 	XISP_DEGAMMA_INDEX = 6,
 	XISP_LSC_INDEX = 7,
 	XISP_DEMOSAIC_INDEX = 9,
-	XISP_AWB_INDEX = 10
+	XISP_AWB_INDEX = 10,
+	XISP_CCM_INDEX = 11
 };
 
 /**
@@ -219,6 +228,7 @@ struct xilinx_isp_feature {
  * @bgain: Expected blue gain
  * @mode_reg: Track if AWB is enabled or not
  * @pawb: Expected threshold
+ * @ccm_select: Expected ccm array values
  * @red_lut: Pointer to the gamma coefficient as per the Red Gamma control
  * @green_lut: Pointer to the gamma coefficient as per the Green Gamma control
  * @blue_lut: Pointer to the gamma coefficient as per the Blue Gamma control
@@ -227,6 +237,8 @@ struct xilinx_isp_feature {
  * @threshold_awb: Expected threshold for auto white balance
  * @degamma_select: Expected degamma array values
  * @degamma_lut: Pointer to the degamma coefficient as per the degamma control
+ * @ccm_matrix_lut: Pointer to the degamma coefficient as per the degamma control
+ * @ccm_offsetarray_lut: Pointer to the degamma coefficient as per the degamma control
  */
 struct xisp_dev {
 	struct xvip_device xvip;
@@ -253,6 +265,7 @@ struct xisp_dev {
 	bool mode_reg;
 	u16 pawb;
 	u8 degamma_select;
+	u8 ccm_select;
 	const u32 *red_lut;
 	const u32 *green_lut;
 	const u32 *blue_lut;
@@ -260,6 +273,8 @@ struct xisp_dev {
 	u16 threshold_aec;
 	u16 threshold_awb;
 	const u32 (*degamma_lut)[XISP_DEGAMMA_KNEE_POINTS][XISP_DEGAMMA_PARAMS];
+	const signed int (*ccm_matrix_lut)[XISP_CCM_MATRIX_DIM2];
+	const signed int *ccm_offsetarray_lut;
 };
 
 static const struct xilinx_isp_feature xlnx_isp_cfg_v10 = {
@@ -365,6 +380,51 @@ static void xisp_set_degamma_entries(struct xisp_dev *xisp, const u32 degamma_ba
 }
 
 /**
+ * xisp_set_ccm_matrix_entries - Set CCM matrix and offset entries for the XISP device.
+ * @xisp: Pointer to the xisp_dev structure representing the device.
+ * @ccm_config_1_base: Base address in the device's register space for the CCM matrix entries.
+ * @ccm_config_2_base: Base address in the device's register space for the offset entries.
+ * @ccm_matrix: Pointer to a 2-dimensional array containing the CCM matrix values to be written.
+ *              The dimensions of this array are defined by XISP_CCM_MATRIX_DIM1 and
+ *		XISP_CCM_MATRIX_DIM2.
+ * @offsetarray: Pointer to an array containing the offset values to be written.
+ *
+ * This function writes the CCM matrix values from the provided 2D array to the device's registers
+ * starting at ccm_config_1_base. After writing the values for each row of the matrix, it writes
+ * a corresponding offset value from the offsetarray to the register space starting at
+ * ccm_config_2_base.
+ *
+ * The loops iterate through:
+ * - i: Row index of the CCM matrix, ranging from 0 to XISP_CCM_MATRIX_DIM1 - 1
+ * - j: Column index of the CCM matrix, ranging from 0 to XISP_CCM_MATRIX_DIM2 - 1
+ *
+ * Inside the inner loop, the function calls xvip_write() to write each CCM matrix value to the
+ * device's register at the current offset for ccm_config_1. After the inner loop, it writes an
+ * offset value from offsetarray to the device's register at the current offset for ccm_config_2.
+ * The offsets for both configuration bases are incremented by 4 bytes (32 bits) after each write.
+ */
+static void xisp_set_ccm_matrix_entries(struct xisp_dev *xisp, const u32 ccm_config_1_base,
+					const u32 ccm_config_2_base,
+					const signed int (*ccm_matrix)[XISP_CCM_MATRIX_DIM2],
+					const signed int *offsetarray)
+{
+	int i, j;
+	u32 ccm_config_1_offset, ccm_config_2_offset;
+
+	ccm_config_1_offset = ccm_config_1_base;
+	ccm_config_2_offset = ccm_config_2_base;
+
+	for (i = 0; i < XISP_CCM_MATRIX_DIM1; i++) {
+		for (j = 0; j < XISP_CCM_MATRIX_DIM2; j++) {
+			xvip_write(&xisp->xvip, ccm_config_1_offset, ccm_matrix[i][j]);
+			ccm_config_1_offset += 4;
+		}
+		xvip_write(&xisp->xvip, ccm_config_2_offset, offsetarray[i]);
+		ccm_config_2_offset += 4;
+	}
+}
+
+/**
  * xisp_set_rgbir_entries - Set RGBIR entries for the XISP device.
  * @xisp: Pointer to the xisp_dev structure representing the device.
  * @rgbir_base: Base address in the device's register space where RGBIR entries will be written.
@@ -394,6 +454,7 @@ static int xisp_s_ctrl(struct v4l2_ctrl *ctrl)
 		container_of(ctrl->handler,
 			     struct xisp_dev, ctrl_handler);
 	bool degamma_enabled, degamma_bypass_enabled, degamma_bypass;
+	bool ccm_enabled, ccm_bypass_enabled, ccm_bypass;
 
 	switch (ctrl->id) {
 	case V4L2_CID_XILINX_ISP_AEC_EN:
@@ -465,6 +526,29 @@ static int xisp_s_ctrl(struct v4l2_ctrl *ctrl)
 		xisp->module_bypass = xisp_module_bypass(xisp->module_bypass,
 							 XISP_DEMOSAIC_INDEX, ctrl->val);
 		xvip_write(&xisp->xvip, XISP_FUNCS_BYPASS_CONFIG_REG, xisp->module_bypass);
+		break;
+	case V4L2_CID_XILINX_ISP_CCM_EN:
+		xisp->module_bypass = xisp_module_bypass(xisp->module_bypass,
+							 XISP_CCM_INDEX, ctrl->val);
+		xvip_write(&xisp->xvip, XISP_FUNCS_BYPASS_CONFIG_REG, xisp->module_bypass);
+		break;
+	case V4L2_CID_XILINX_ISP_CCM_PARAMS:
+		xisp->ccm_select = ctrl->val;
+
+		ccm_enabled = XGET_BIT(XISP_CCM_INDEX, xisp->module_en);
+		ccm_bypass_enabled = XGET_BIT(XISP_CCM_INDEX, xisp->module_bypass_en);
+		ccm_bypass = XGET_BIT(XISP_CCM_INDEX, xisp->module_bypass);
+
+		if (ccm_enabled)
+			if (!ccm_bypass_enabled || !(ccm_bypass_enabled && ccm_bypass)) {
+				xisp->ccm_matrix_lut = xisp_ccm_matrix_choices[xisp->ccm_select];
+				xisp->ccm_offsetarray_lut =
+				xisp_ccm_offsetarray_choices[xisp->ccm_select];
+				xisp_set_ccm_matrix_entries(xisp, XISP_CCM_CONFIG_1_BASE,
+							    XISP_CCM_CONFIG_2_BASE,
+							    xisp->ccm_matrix_lut,
+							    xisp->ccm_offsetarray_lut);
+			}
 		break;
 	case V4L2_CID_XILINX_ISP_RED_GAIN:
 		xisp->rgain = ctrl->val;
@@ -689,6 +773,48 @@ static struct v4l2_ctrl_config xisp_ctrls_demosaic[] = {
 		.def = 0,
 		.flags = V4L2_CTRL_FLAG_SLIDER,
 	},
+};
+
+static const char *const xisp_ccm_string_char[] = {
+	/* CCM MENU LIST */
+	"bt2020_bt709_arr",
+	"bt709_bt2020_arr",
+	"rgb_yuv_601_arr",
+	"rgb_yuv_709_arr",
+	"rgb_yuv_2020_arr",
+	"yuv_rgb_601_arr",
+	"yuv_rgb_709_arr",
+	"yuv_rgb_2020_arr",
+	"full_to_16_235_arr",
+	"full_from_16_235_arr",
+};
+
+static struct v4l2_ctrl_config xisp_ctrls_ccm_pattern[] = {
+	/* CCM ENABLE/DISABLE */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_CCM_EN,
+		.name = "bypass_ccm",
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.min = XISP_MIN_VALUE,
+		.max = 1,
+		.step = 1,
+		.def = 0,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	}
+};
+
+static struct v4l2_ctrl_config xisp_ctrls_ccm_pattern_menu[] = {
+	/* CCM ENABLE/DISABLE */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_CCM_PARAMS,
+		.name = "select_ccm",
+		.type = V4L2_CTRL_TYPE_MENU,
+		.min = XISP_MIN_VALUE,
+		.max = ARRAY_SIZE(xisp_ccm_string_char) - 1,
+		.qmenu	= xisp_ccm_string_char,
+	}
 };
 
 static struct v4l2_ctrl_config xisp_ctrls[] = {
@@ -1272,6 +1398,8 @@ static int xisp_probe(struct platform_device *pdev)
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_rgbir);
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_lsc);
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_demosaic);
+		num_of_parameters += ARRAY_SIZE(xisp_ctrls_ccm_pattern_menu);
+		num_of_parameters += ARRAY_SIZE(xisp_ctrls_ccm_pattern);
 
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, num_of_parameters);
 
@@ -1291,6 +1419,11 @@ static int xisp_probe(struct platform_device *pdev)
 				     ARRAY_SIZE(xisp_ctrls_lsc));
 		xisp_create_controls(xisp, XISP_DEMOSAIC_INDEX,
 				     xisp_ctrls_demosaic, ARRAY_SIZE(xisp_ctrls_demosaic));
+		xisp_create_controls(xisp, XISP_CCM_INDEX,
+				     xisp_ctrls_ccm_pattern, ARRAY_SIZE(xisp_ctrls_ccm_pattern));
+		if (XGET_BIT(XISP_CCM_INDEX, xisp->module_en))
+			v4l2_ctrl_new_custom(&xisp->ctrl_handler,
+					     &xisp_ctrls_ccm_pattern_menu[0], NULL);
 	} else {
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, ARRAY_SIZE(xisp_ctrls));
 		for (itr = 0; itr < ARRAY_SIZE(xisp_ctrls); itr++) {
