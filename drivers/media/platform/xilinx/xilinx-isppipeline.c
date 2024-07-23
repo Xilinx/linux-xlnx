@@ -106,6 +106,9 @@
  *
  * XISP_CLAHE_CONFIG_2_REG
  * 0-15: tiles_x, 16-31: tiles_y
+ *
+ * XISP_RESIZE_CONFIG_REG
+ * 0-15: resize_new_width, 16-31: resize_new_height
  */
 #define XISP_COMMON_CONFIG_REG		(0x10UL)
 #define XISP_PIPELINE_CONFIG_INFO_REG		(0x80UL)
@@ -149,6 +152,7 @@
 #define XISP_HDR_MERGE_CONFIG_BASE		(0x8000UL)
 #define XISP_CLAHE_CONFIG_1_REG			(0x68UL)
 #define XISP_CLAHE_CONFIG_2_REG			(0x70UL)
+#define XISP_RESIZE_CONFIG_REG			(0x78UL)
 #define XISP_AP_CTRL_REG		(0x0)
 #define XISP_WIDTH_REG			(0x10)
 #define XISP_HEIGHT_REG			(0x18)
@@ -295,7 +299,8 @@ enum xisp_functions_bypassable_index {
 	XISP_LUMA_STATS_INDEX = 19,
 	XISP_RGB_STATS_INDEX = 20,
 	XISP_CLAHE_INDEX = 21,
-	XISP_MEDIAN_INDEX = 22
+	XISP_MEDIAN_INDEX = 22,
+	XISP_RESIZE_INDEX = 23
 };
 
 /**
@@ -348,6 +353,8 @@ struct xilinx_isp_feature {
  * @rho: Expected rho value
  * @alpha: Expected alpha value
  * @optical_black_value: Expected optical black value
+ * @resize_new_height: Expected resize new height
+ * @resize_new_width: Expected resize new width
  * @ccm_select: Expected ccm array values
  * @decompand_select: Expected decompand array values
  * @lut3d: Expected 3d lut values
@@ -402,6 +409,8 @@ struct xisp_dev {
 	u16 weights2[XISP_W_B_SIZE];
 	u16 rho;
 	u16 pawb;
+	u16 resize_new_height;
+	u16 resize_new_width;
 	u8 tm_type;
 	u8 alpha;
 	u8 optical_black_value;
@@ -1241,6 +1250,11 @@ static int xisp_s_ctrl(struct v4l2_ctrl *ctrl)
 							 XISP_MEDIAN_INDEX, ctrl->val);
 		xvip_write(&xisp->xvip, XISP_FUNCS_BYPASS_CONFIG_REG, xisp->module_bypass);
 		break;
+	case V4L2_CID_XILINX_ISP_RESIZE_EN:
+		xisp->module_bypass = xisp_module_bypass(xisp->module_bypass,
+							 XISP_RESIZE_INDEX, ctrl->val);
+		xvip_write(&xisp->xvip, XISP_FUNCS_BYPASS_CONFIG_REG, xisp->module_bypass);
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -1905,6 +1919,21 @@ static struct v4l2_ctrl_config xisp_ctrls_median[] = {
 	},
 };
 
+static struct v4l2_ctrl_config xisp_ctrls_resize[] = {
+	/* RESIZE ENABLE/DISABLE */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_RESIZE_EN,
+		.name = "bypass_resize",
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.min = XISP_MIN_VALUE,
+		.max = 1,
+		.step = 1,
+		.def = 0,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	}
+};
+
 static struct v4l2_ctrl_config xisp_ctrls[] = {
 	/* Red Gain */
 	{
@@ -2215,6 +2244,11 @@ static int xisp_set_format(struct v4l2_subdev *subdev,
 					__func__);
 				__format->code = MEDIA_BUS_FMT_RBG888_1X24;
 			}
+			xisp->resize_new_width  = __format->width;
+			xisp->resize_new_height = __format->height;
+			xvip_write(&xisp->xvip, XISP_RESIZE_CONFIG_REG,
+				   (xisp->resize_new_height << XISP_UPPER_WORD_LSB) |
+				   xisp->resize_new_width);
 		}
 		if (fmt->pad == XVIP_PAD_SINK) {
 			if (!xisp_get_bayer_format(xisp, __format->code)) {
@@ -2477,6 +2511,7 @@ static int xisp_probe(struct platform_device *pdev)
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_rgb_stats);
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_clahe);
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_median);
+		num_of_parameters += ARRAY_SIZE(xisp_ctrls_resize);
 
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, num_of_parameters);
 
@@ -2579,6 +2614,8 @@ static int xisp_probe(struct platform_device *pdev)
 				     xisp_ctrls_clahe, ARRAY_SIZE(xisp_ctrls_clahe));
 		xisp_create_controls(xisp, XISP_MEDIAN_INDEX,
 				     xisp_ctrls_median, ARRAY_SIZE(xisp_ctrls_median));
+		xisp_create_controls(xisp, XISP_RESIZE_INDEX,
+				     xisp_ctrls_resize, ARRAY_SIZE(xisp_ctrls_resize));
 	} else {
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, ARRAY_SIZE(xisp_ctrls) +
 				       ARRAY_SIZE(xisp_ctrls_gamma_correct));
