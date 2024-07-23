@@ -82,6 +82,12 @@
  *
  * XISP_CCM_CONFIG_2_BASE
  * 0-63: Base address in the device's register space for offsetarray
+ *
+ * XISP_GAIN_CONTROL_CONFIG_1_REG
+ * 0-15: rgain, 16-31: bgain
+ *
+ * XISP_GAIN_CONTROL_CONFIG_2_REG
+ * 0-15: ggain, 16-23: bayer_fmt, 24-31: Reserved
  */
 #define XISP_COMMON_CONFIG_REG		(0x10UL)
 #define XISP_PIPELINE_CONFIG_INFO_REG		(0x80UL)
@@ -113,6 +119,8 @@
 #define XISP_RGBIR_CONFIG_BASE_5_SIZE		(4)
 #define XISP_CCM_CONFIG_1_BASE			(0x4000UL)
 #define XISP_CCM_CONFIG_2_BASE			(0x4100UL)
+#define XISP_GAIN_CONTROL_CONFIG_1_REG		(0x38UL)
+#define XISP_GAIN_CONTROL_CONFIG_2_REG		(0x40UL)
 #define XISP_AP_CTRL_REG		(0x0)
 #define XISP_WIDTH_REG			(0x10)
 #define XISP_HEIGHT_REG			(0x18)
@@ -158,12 +166,18 @@
 #define XISP_BLC_MULTIPLICATION_FACTOR_DEFALUT	(65535)
 #define XISP_BLC_BLACK_LEVEL_DEFALUT		(32)
 #define XISP_AWB_THRESHOLD_DEFAULT		(512)
+#define XISP_RED_GAIN_DEFALUT			(100)
+#define XISP_BLUE_GAIN_DEFALUT			(350)
+#define XISP_GREEN_GAIN_DEFALUT			(200)
+#define XISP_MONO_LUMA_GAIN_DEFALUT		(128)
+#define XISP_UPPER_WORD_MSB			(31)
+#define XISP_UPPER_WORD_LSB			(16)
 
 enum xisp_bayer_format {
-	XISP_RGGB = 0,
-	XISP_GRBG,
-	XISP_GBRG,
-	XISP_BGGR,
+	XISP_RGGB = 3,
+	XISP_GRBG = 2,
+	XISP_GBRG = 1,
+	XISP_BGGR = 0,
 };
 
 /* enumerations for pipeline_config_info index */
@@ -190,6 +204,7 @@ enum xisp_functions_bypassable_index {
 	XISP_BPC_INDEX = 5,
 	XISP_DEGAMMA_INDEX = 6,
 	XISP_LSC_INDEX = 7,
+	XISP_GAIN_INDEX = 8,
 	XISP_DEMOSAIC_INDEX = 9,
 	XISP_AWB_INDEX = 10,
 	XISP_CCM_INDEX = 11
@@ -226,6 +241,8 @@ struct xilinx_isp_feature {
  * @black_level: Expected black level
  * @rgain: Expected red gain
  * @bgain: Expected blue gain
+ * @ggain: Expected green gain
+ * @luma_gain: Expected luminance gain
  * @mode_reg: Track if AWB is enabled or not
  * @pawb: Expected threshold
  * @ccm_select: Expected ccm array values
@@ -262,6 +279,8 @@ struct xisp_dev {
 	u16 max_height;
 	u16 rgain;
 	u16 bgain;
+	u16 ggain;
+	u16 luma_gain;
 	bool mode_reg;
 	u16 pawb;
 	u8 degamma_select;
@@ -455,6 +474,7 @@ static int xisp_s_ctrl(struct v4l2_ctrl *ctrl)
 			     struct xisp_dev, ctrl_handler);
 	bool degamma_enabled, degamma_bypass_enabled, degamma_bypass;
 	bool ccm_enabled, ccm_bypass_enabled, ccm_bypass;
+	bool in_type_conf_gain = XGET_BIT(XISP_IN_TYPE_INDEX, xisp->module_conf);
 
 	switch (ctrl->id) {
 	case V4L2_CID_XILINX_ISP_AEC_EN:
@@ -549,6 +569,47 @@ static int xisp_s_ctrl(struct v4l2_ctrl *ctrl)
 							    xisp->ccm_matrix_lut,
 							    xisp->ccm_offsetarray_lut);
 			}
+		break;
+	case V4L2_CID_XILINX_ISP_GAIN_EN:
+		xisp->module_bypass = xisp_module_bypass(xisp->module_bypass,
+							 XISP_GAIN_INDEX, ctrl->val);
+		xvip_write(&xisp->xvip, XISP_FUNCS_BYPASS_CONFIG_REG, xisp->module_bypass);
+		break;
+	case V4L2_CID_XILINX_ISP_GAIN_CONTROL_RED_GAIN:
+		xisp->rgain = ctrl->val;
+		if (in_type_conf_gain) {
+			XISP_SET_CFG(XISP_GAIN_INDEX, XISP_GAIN_CONTROL_CONFIG_1_REG,
+				     (FIELD_PREP(GENMASK(XISP_UPPER_WORD_MSB,
+							 XISP_UPPER_WORD_LSB),
+							 xisp->bgain)) |
+							 xisp->rgain);
+		}
+		break;
+	case V4L2_CID_XILINX_ISP_GAIN_CONTROL_BLUE_GAIN:
+		xisp->bgain = ctrl->val;
+		if (in_type_conf_gain) {
+			XISP_SET_CFG(XISP_GAIN_INDEX, XISP_GAIN_CONTROL_CONFIG_1_REG,
+				     (FIELD_PREP(GENMASK(XISP_UPPER_WORD_MSB,
+							 XISP_UPPER_WORD_LSB),
+							 xisp->bgain)) |
+							 xisp->rgain);
+		}
+		break;
+	case V4L2_CID_XILINX_ISP_GAIN_CONTROL_GREEN_GAIN:
+		xisp->ggain = ctrl->val;
+		if (in_type_conf_gain) {
+			XISP_SET_CFG(XISP_GAIN_INDEX, XISP_GAIN_CONTROL_CONFIG_2_REG,
+				     (FIELD_PREP(GENMASK(XISP_UPPER_WORD_MSB,
+							 XISP_UPPER_WORD_LSB),
+							 xisp->bayer_fmt)) |
+							 xisp->ggain);
+		}
+		break;
+	case V4L2_CID_XILINX_ISP_LUMA_GAIN:
+		xisp->luma_gain = ctrl->val;
+		if (!in_type_conf_gain)
+			XISP_SET_CFG(XISP_GAIN_INDEX, XISP_GAIN_CONTROL_CONFIG_1_REG,
+				     xisp->luma_gain);
 		break;
 	case V4L2_CID_XILINX_ISP_RED_GAIN:
 		xisp->rgain = ctrl->val;
@@ -817,6 +878,72 @@ static struct v4l2_ctrl_config xisp_ctrls_ccm_pattern_menu[] = {
 	}
 };
 
+static struct v4l2_ctrl_config xisp_ctrls_gain_control[] = {
+	/* GAIN CONTROL ENABLE/DISABLE */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_GAIN_EN,
+		.name = "bypass_gain_control",
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.min = XISP_MIN_VALUE,
+		.max = 1,
+		.step = 1,
+		.def = 0,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+	/* RED GAIN*/
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_GAIN_CONTROL_RED_GAIN,
+		.name = "red_gain",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = XISP_MIN_VALUE,
+		.max = XISP_MAX_VALUE,
+		.step = 1,
+		.def = XISP_RED_GAIN_DEFALUT,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+	/* BLUE GAIN */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_GAIN_CONTROL_BLUE_GAIN,
+		.name = "blue_gain",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = XISP_MIN_VALUE,
+		.max = XISP_MAX_VALUE,
+		.step = 1,
+		.def = XISP_BLUE_GAIN_DEFALUT,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+	/* GREEN GAIN */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_GAIN_CONTROL_GREEN_GAIN,
+		.name = "green_gain",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = XISP_MIN_VALUE,
+		.max = XISP_MAX_VALUE,
+		.step = 1,
+		.def = XISP_GREEN_GAIN_DEFALUT,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	}
+};
+
+static struct v4l2_ctrl_config xisp_ctrls_mono[] = {
+	/* LUMIANCE GAIN*/
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_LUMA_GAIN,
+		.name = "mono_luma_gain",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = XISP_MIN_VALUE,
+		.max = XISP_MAX_VALUE,
+		.step = 1,
+		.def = XISP_MONO_LUMA_GAIN_DEFALUT,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+};
+
 static struct v4l2_ctrl_config xisp_ctrls[] = {
 	/* Red Gain */
 	{
@@ -1071,9 +1198,13 @@ xisp_get_bayer_format(struct xisp_dev *xisp, u32 code)
 		break;
 	default:
 		xisp->bayer_fmt = XISP_RGGB;
+		xvip_write(&xisp->xvip, XISP_GAIN_CONTROL_CONFIG_2_REG,
+			   (xisp->bayer_fmt << XISP_UPPER_WORD_LSB) | xisp->ggain);
 		dev_dbg(xisp->xvip.dev, "Unsupported format for Sink Pad");
 		return false;
 	}
+	xvip_write(&xisp->xvip, XISP_GAIN_CONTROL_CONFIG_2_REG,
+		   (xisp->bayer_fmt << XISP_UPPER_WORD_LSB) | xisp->ggain);
 	return true;
 }
 
@@ -1400,6 +1531,8 @@ static int xisp_probe(struct platform_device *pdev)
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_demosaic);
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_ccm_pattern_menu);
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_ccm_pattern);
+		num_of_parameters += ARRAY_SIZE(xisp_ctrls_gain_control);
+		num_of_parameters += ARRAY_SIZE(xisp_ctrls_mono);
 
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, num_of_parameters);
 
@@ -1424,6 +1557,19 @@ static int xisp_probe(struct platform_device *pdev)
 		if (XGET_BIT(XISP_CCM_INDEX, xisp->module_en))
 			v4l2_ctrl_new_custom(&xisp->ctrl_handler,
 					     &xisp_ctrls_ccm_pattern_menu[0], NULL);
+		if (XGET_BIT(XISP_IN_TYPE_INDEX, xisp->module_conf)) {
+			xisp_create_controls(xisp, XISP_GAIN_INDEX,
+					     xisp_ctrls_gain_control,
+					     ARRAY_SIZE(xisp_ctrls_gain_control));
+		}
+
+		if (XGET_BIT(XISP_GAIN_INDEX, xisp->module_en) &&
+		    !XGET_BIT(XISP_IN_TYPE_INDEX, xisp->module_conf)) {
+			if (XGET_BIT(XISP_GAIN_INDEX, xisp->module_bypass_en))
+				v4l2_ctrl_new_custom(&xisp->ctrl_handler,
+						     &xisp_ctrls_gain_control[0], NULL);
+			v4l2_ctrl_new_custom(&xisp->ctrl_handler, &xisp_ctrls_mono[0], NULL);
+		}
 	} else {
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, ARRAY_SIZE(xisp_ctrls));
 		for (itr = 0; itr < ARRAY_SIZE(xisp_ctrls); itr++) {
