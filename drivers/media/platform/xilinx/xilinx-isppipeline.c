@@ -153,6 +153,7 @@ enum xisp_max_supported_size_index {
 enum xisp_functions_bypassable_index {
 	XISP_AEC_INDEX = 3,
 	XISP_BLC_INDEX = 4,
+	XISP_BPC_INDEX = 5,
 	XISP_AWB_INDEX = 10
 };
 
@@ -332,6 +333,11 @@ static int xisp_s_ctrl(struct v4l2_ctrl *ctrl)
 		xisp->black_level = ctrl->val;
 		XISP_SET_CFG(XISP_BLC_INDEX, XISP_BLC_CONFIG_2_REG, xisp->black_level);
 		break;
+	case V4L2_CID_XILINX_ISP_BPC_EN:
+		xisp->module_bypass = xisp_module_bypass(xisp->module_bypass,
+							 XISP_BPC_INDEX, ctrl->val);
+		xvip_write(&xisp->xvip, XISP_FUNCS_BYPASS_CONFIG_REG, xisp->module_bypass);
+		break;
 	case V4L2_CID_XILINX_ISP_RED_GAIN:
 		xisp->rgain = ctrl->val;
 		xvip_write(&xisp->xvip, XISP_RGAIN_REG, xisp->rgain);
@@ -466,6 +472,21 @@ static struct v4l2_ctrl_config xisp_ctrls_blc[] = {
 		.max = XISP_MAX_VALUE,
 		.step = 1,
 		.def = XISP_BLC_BLACK_LEVEL_DEFALUT,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+};
+
+static struct v4l2_ctrl_config xisp_ctrls_bpc[] = {
+	/* BPC ENABLE/DISABLE */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_BPC_EN,
+		.name = "bypass_bpc",
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.min = XISP_MIN_VALUE,
+		.max = 1,
+		.step = 1,
+		.def = 0,
 		.flags = V4L2_CTRL_FLAG_SLIDER,
 	},
 };
@@ -1016,7 +1037,7 @@ static int xisp_probe(struct platform_device *pdev)
 	/* V4L2 Controls */
 	if (xisp->config->flags & XILINX_ISP_VERSION_2) {
 		num_of_parameters = ARRAY_SIZE(xisp_ctrls_aec) + ARRAY_SIZE(xisp_ctrls_blc);
-		num_of_parameters += ARRAY_SIZE(xisp_ctrls_awb);
+		num_of_parameters += ARRAY_SIZE(xisp_ctrls_awb) + ARRAY_SIZE(xisp_ctrls_bpc);
 
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, num_of_parameters);
 
@@ -1026,6 +1047,8 @@ static int xisp_probe(struct platform_device *pdev)
 				     ARRAY_SIZE(xisp_ctrls_blc));
 		xisp_create_controls(xisp, XISP_AWB_INDEX, xisp_ctrls_awb,
 				     ARRAY_SIZE(xisp_ctrls_awb));
+		xisp_create_controls(xisp, XISP_BPC_INDEX, xisp_ctrls_bpc,
+				     ARRAY_SIZE(xisp_ctrls_bpc));
 	} else {
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, ARRAY_SIZE(xisp_ctrls));
 		for (itr = 0; itr < ARRAY_SIZE(xisp_ctrls); itr++) {
