@@ -181,6 +181,7 @@ enum xisp_functions_bypassable_index {
 	XISP_BLC_INDEX = 4,
 	XISP_BPC_INDEX = 5,
 	XISP_DEGAMMA_INDEX = 6,
+	XISP_LSC_INDEX = 7,
 	XISP_AWB_INDEX = 10
 };
 
@@ -454,6 +455,11 @@ static int xisp_s_ctrl(struct v4l2_ctrl *ctrl)
 							 xisp->degamma_lut);
 			}
 		break;
+	case V4L2_CID_XILINX_ISP_LSC_EN:
+		xisp->module_bypass = xisp_module_bypass(xisp->module_bypass,
+							 XISP_LSC_INDEX, ctrl->val);
+		xvip_write(&xisp->xvip, XISP_FUNCS_BYPASS_CONFIG_REG, xisp->module_bypass);
+		break;
 	case V4L2_CID_XILINX_ISP_RED_GAIN:
 		xisp->rgain = ctrl->val;
 		xvip_write(&xisp->xvip, XISP_RGAIN_REG, xisp->rgain);
@@ -641,6 +647,21 @@ static struct v4l2_ctrl_config xisp_ctrls_degamma[] = {
 		.id = V4L2_CID_XILINX_ISP_DEGAMMA_PARAMS,
 		.name = "select_degamma",
 		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = XISP_MIN_VALUE,
+		.max = 1,
+		.step = 1,
+		.def = 0,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+};
+
+static struct v4l2_ctrl_config xisp_ctrls_lsc[] = {
+	/* LSC ENABLE/DISABLE */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_LSC_EN,
+		.name = "bypass_lsc",
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
 		.min = XISP_MIN_VALUE,
 		.max = 1,
 		.step = 1,
@@ -1228,6 +1249,7 @@ static int xisp_probe(struct platform_device *pdev)
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_awb) + ARRAY_SIZE(xisp_ctrls_bpc);
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_degamma);
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_rgbir);
+		num_of_parameters += ARRAY_SIZE(xisp_ctrls_lsc);
 
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, num_of_parameters);
 
@@ -1243,6 +1265,8 @@ static int xisp_probe(struct platform_device *pdev)
 				     xisp_ctrls_degamma, ARRAY_SIZE(xisp_ctrls_degamma));
 		xisp_create_controls(xisp, XISP_RGBIR_INDEX,
 				     xisp_ctrls_rgbir, ARRAY_SIZE(xisp_ctrls_rgbir));
+		xisp_create_controls(xisp, XISP_LSC_INDEX, xisp_ctrls_lsc,
+				     ARRAY_SIZE(xisp_ctrls_lsc));
 	} else {
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, ARRAY_SIZE(xisp_ctrls));
 		for (itr = 0; itr < ARRAY_SIZE(xisp_ctrls); itr++) {
