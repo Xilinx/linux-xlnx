@@ -60,6 +60,12 @@
  *
  * XISP_AEC_CONFIG_REG
  * 0-15: threshold_aec, 16-31: Reserved
+ *
+ * XISP_BLC_CONFIG_1_REG
+ * 0-31: mult_factor
+ *
+ * XISP_BLC_CONFIG_2_REG
+ * 0-31: black_level
  */
 #define XISP_COMMON_CONFIG_REG		(0x10UL)
 #define XISP_PIPELINE_CONFIG_INFO_REG		(0x80UL)
@@ -68,6 +74,8 @@
 #define XISP_FUNCS_BYPASSABLE_REG		(0xb0UL)
 #define XISP_FUNCS_BYPASS_CONFIG_REG		(0xc0UL)
 #define XISP_AEC_CONFIG_REG			(0x18UL)
+#define XISP_BLC_CONFIG_1_REG			(0x28UL)
+#define XISP_BLC_CONFIG_2_REG			(0x30UL)
 #define XISP_AP_CTRL_REG		(0x0)
 #define XISP_WIDTH_REG			(0x10)
 #define XISP_HEIGHT_REG			(0x18)
@@ -109,6 +117,9 @@
 			if (!byp_en || !(byp_en && byp)) \
 				xvip_write(&xisp->xvip, (REG), (VAL)); \
 	} while (0)
+#define XISP_BLC_MULTIPLICATION_FACTOR_MAX	(0x80000000UL)
+#define XISP_BLC_MULTIPLICATION_FACTOR_DEFALUT	(65535)
+#define XISP_BLC_BLACK_LEVEL_DEFALUT		(32)
 
 enum xisp_bayer_format {
 	XISP_RGGB = 0,
@@ -135,7 +146,8 @@ enum xisp_max_supported_size_index {
 
 /* enumerations for functions_bypassable index */
 enum xisp_functions_bypassable_index {
-	XISP_AEC_INDEX = 3
+	XISP_AEC_INDEX = 3,
+	XISP_BLC_INDEX = 4
 };
 
 /**
@@ -165,6 +177,8 @@ struct xilinx_isp_feature {
  * @module_bypass: Track for modules bypassed or not from user
  * @module_bypass_en: Track if modules can be bypassed or not
  * @module_en: Track which module is enabled
+ * @mult_factor: Expected multiplication factor
+ * @black_level: Expected black level
  * @rgain: Expected red gain
  * @bgain: Expected blue gain
  * @mode_reg: Track if AWB is enabled or not
@@ -188,6 +202,8 @@ struct xisp_dev {
 	u32 module_bypass;
 	u32 module_bypass_en;
 	u32 module_en;
+	u32 mult_factor;
+	u32 black_level;
 	u16 npads;
 	u16 width;
 	u16 height;
@@ -286,6 +302,19 @@ static int xisp_s_ctrl(struct v4l2_ctrl *ctrl)
 		xisp->threshold_aec = ctrl->val;
 		XISP_SET_CFG(XISP_AEC_INDEX, XISP_AEC_CONFIG_REG, xisp->threshold_aec);
 		break;
+	case V4L2_CID_XILINX_ISP_BLC_EN:
+		xisp->module_bypass = xisp_module_bypass(xisp->module_bypass,
+							 XISP_BLC_INDEX, ctrl->val);
+		xvip_write(&xisp->xvip, XISP_FUNCS_BYPASS_CONFIG_REG, xisp->module_bypass);
+		break;
+	case V4L2_CID_XILINX_ISP_MULTI_FACTOR:
+		xisp->mult_factor = ctrl->val;
+		XISP_SET_CFG(XISP_BLC_INDEX, XISP_BLC_CONFIG_1_REG, xisp->mult_factor);
+		break;
+	case V4L2_CID_BLACK_LEVEL:
+		xisp->black_level = ctrl->val;
+		XISP_SET_CFG(XISP_BLC_INDEX, XISP_BLC_CONFIG_2_REG, xisp->black_level);
+		break;
 	case V4L2_CID_XILINX_ISP_RED_GAIN:
 		xisp->rgain = ctrl->val;
 		xvip_write(&xisp->xvip, XISP_RGAIN_REG, xisp->rgain);
@@ -354,6 +383,45 @@ static struct v4l2_ctrl_config xisp_ctrls_aec[] = {
 		.max = XISP_MAX_VALUE,
 		.step = 1,
 		.def = XISP_AEC_THRESHOLD_DEFAULT,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+};
+
+static struct v4l2_ctrl_config xisp_ctrls_blc[] = {
+	/* BLC ENABLE/DISABLE */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_BLC_EN,
+		.name = "bypass_blc",
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.min = XISP_MIN_VALUE,
+		.max = 1,
+		.step = 1,
+		.def = 0,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+	/* MULTIPLICATION FACTOR */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id =  V4L2_CID_XILINX_ISP_MULTI_FACTOR,
+		.name = "blc_multiplication_factor",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = XISP_MIN_VALUE,
+		.max = XISP_BLC_MULTIPLICATION_FACTOR_MAX,
+		.step = 1,
+		.def = XISP_BLC_MULTIPLICATION_FACTOR_DEFALUT,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+	/* BLACK LEVEL */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id =  V4L2_CID_BLACK_LEVEL,
+		.name = "blc_black_level",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = XISP_MIN_VALUE,
+		.max = XISP_MAX_VALUE,
+		.step = 1,
+		.def = XISP_BLC_BLACK_LEVEL_DEFALUT,
 		.flags = V4L2_CTRL_FLAG_SLIDER,
 	},
 };
@@ -903,12 +971,14 @@ static int xisp_probe(struct platform_device *pdev)
 
 	/* V4L2 Controls */
 	if (xisp->config->flags & XILINX_ISP_VERSION_2) {
-		num_of_parameters = ARRAY_SIZE(xisp_ctrls_aec);
+		num_of_parameters = ARRAY_SIZE(xisp_ctrls_aec) + ARRAY_SIZE(xisp_ctrls_blc);
 
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, num_of_parameters);
 
 		xisp_create_controls(xisp, XISP_AEC_INDEX, xisp_ctrls_aec,
 				     ARRAY_SIZE(xisp_ctrls_aec));
+		xisp_create_controls(xisp, XISP_BLC_INDEX, xisp_ctrls_blc,
+				     ARRAY_SIZE(xisp_ctrls_blc));
 	} else {
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, ARRAY_SIZE(xisp_ctrls));
 		for (itr = 0; itr < ARRAY_SIZE(xisp_ctrls); itr++) {
