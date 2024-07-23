@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc.
+ * Copyright (C) 2024, Advanced Micro Devices, Inc.
+ *
+ * References:
+ *
+ * https://docs.amd.com/r/en-US/Vitis_Libraries/vision/index.html
  */
 
 #include <linux/delay.h>
@@ -42,12 +46,22 @@
 #define XISP_START			BIT(0)
 #define XISP_AUTO_RESTART		BIT(7)
 #define XISP_STREAM_ON			(XISP_AUTO_RESTART | XISP_START)
+#define XILINX_ISP_VERSION_1					BIT(0)
+#define XILINX_ISP_VERSION_2					BIT(1)
 
 enum xisp_bayer_format {
 	XISP_RGGB = 0,
 	XISP_GRBG,
 	XISP_GBRG,
 	XISP_BGGR,
+};
+
+/**
+ * struct xilinx_isp_feature - dt or IP property structure
+ * @flags: Bitmask of properties enabled in IP or dt
+ */
+struct xilinx_isp_feature {
+	u32 flags;
 };
 
 /*
@@ -58,6 +72,7 @@ enum xisp_bayer_format {
  * @ctrl_handler: V4L2 Control Handler
  * @bayer_fmt: IP or Hardware specific video format
  * @rst_gpio: GPIO reset line to bring ISP pipeline out of reset
+ * @config: Pointer to Framebuffer Feature config struct
  * @npads: number of pads
  * @max_width: Maximum width supported by this instance
  * @max_height: Maximum height supported by this instance
@@ -77,6 +92,7 @@ struct xisp_dev {
 	struct v4l2_ctrl_handler ctrl_handler;
 	enum xisp_bayer_format bayer_fmt;
 	struct gpio_desc *rst_gpio;
+	const struct xilinx_isp_feature *config;
 	u16 npads;
 	u16 max_width;
 	u16 max_height;
@@ -88,6 +104,20 @@ struct xisp_dev {
 	const u32 *green_lut;
 	const u32 *blue_lut;
 	const u32 **gamma_table;
+};
+
+static const struct xilinx_isp_feature xlnx_isp_cfg_v10 = {
+	.flags = XILINX_ISP_VERSION_1,
+};
+
+static const struct xilinx_isp_feature xlnx_isp_cfg_v20 = {
+	.flags = XILINX_ISP_VERSION_2,
+};
+
+static const struct of_device_id xisp_of_id_table[] = {
+	{.compatible = "xlnx,isppipeline-1.0", .data = (void *)&xlnx_isp_cfg_v10},
+	{.compatible = "xlnx,isppipeline-2.0", .data = (void *)&xlnx_isp_cfg_v20},
+	{ }
 };
 
 static inline struct xisp_dev *to_xisp(struct v4l2_subdev *subdev)
@@ -547,6 +577,8 @@ static int xisp_probe(struct platform_device *pdev)
 	struct xisp_dev *xisp;
 	struct v4l2_subdev *subdev;
 	int rval, itr;
+	struct device_node *node = pdev->dev.of_node;
+	const struct of_device_id *match;
 
 	xisp = devm_kzalloc(&pdev->dev, sizeof(*xisp), GFP_KERNEL);
 	if (!xisp)
@@ -555,6 +587,13 @@ static int xisp_probe(struct platform_device *pdev)
 	xisp->xvip.dev = &pdev->dev;
 
 	rval = xisp_parse_of(xisp);
+
+	match = of_match_node(xisp_of_id_table, node);
+	if (!match)
+		return -ENODEV;
+
+	xisp->config = match->data;
+
 	if (rval < 0)
 		return rval;
 
@@ -648,11 +687,6 @@ static int xisp_remove(struct platform_device *pdev)
 
 	return 0;
 }
-
-static const struct of_device_id xisp_of_id_table[] = {
-	{.compatible = "xlnx,isppipeline-1.0"},
-	{ }
-};
 
 MODULE_DEVICE_TABLE(of, xisp_of_id_table);
 
