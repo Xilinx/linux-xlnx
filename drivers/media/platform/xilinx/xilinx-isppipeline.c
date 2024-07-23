@@ -294,7 +294,8 @@ enum xisp_functions_bypassable_index {
 	XISP_BAYER_STATS_INDEX = 18,
 	XISP_LUMA_STATS_INDEX = 19,
 	XISP_RGB_STATS_INDEX = 20,
-	XISP_CLAHE_INDEX = 21
+	XISP_CLAHE_INDEX = 21,
+	XISP_MEDIAN_INDEX = 22
 };
 
 /**
@@ -1235,6 +1236,11 @@ static int xisp_s_ctrl(struct v4l2_ctrl *ctrl)
 						 xisp->tiles_y)) |
 						 xisp->tiles_x);
 		break;
+	case V4L2_CID_XILINX_ISP_MEDIAN_EN:
+		xisp->module_bypass = xisp_module_bypass(xisp->module_bypass,
+							 XISP_MEDIAN_INDEX, ctrl->val);
+		xvip_write(&xisp->xvip, XISP_FUNCS_BYPASS_CONFIG_REG, xisp->module_bypass);
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -1884,6 +1890,21 @@ static struct v4l2_ctrl_config xisp_ctrls_clahe[] = {
 	},
 };
 
+static struct v4l2_ctrl_config xisp_ctrls_median[] = {
+	/* MEDIAN BLUR ENABLE/DISABLE */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_MEDIAN_EN,
+		.name = "bypass_median",
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.min = XISP_MIN_VALUE,
+		.max = 1,
+		.step = 1,
+		.def = 0,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+};
+
 static struct v4l2_ctrl_config xisp_ctrls[] = {
 	/* Red Gain */
 	{
@@ -2455,6 +2476,7 @@ static int xisp_probe(struct platform_device *pdev)
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_luma_stats);
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_rgb_stats);
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_clahe);
+		num_of_parameters += ARRAY_SIZE(xisp_ctrls_median);
 
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, num_of_parameters);
 
@@ -2555,6 +2577,8 @@ static int xisp_probe(struct platform_device *pdev)
 				     xisp_ctrls_rgb_stats, ARRAY_SIZE(xisp_ctrls_rgb_stats));
 		xisp_create_controls(xisp, XISP_CLAHE_INDEX,
 				     xisp_ctrls_clahe, ARRAY_SIZE(xisp_ctrls_clahe));
+		xisp_create_controls(xisp, XISP_MEDIAN_INDEX,
+				     xisp_ctrls_median, ARRAY_SIZE(xisp_ctrls_median));
 	} else {
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, ARRAY_SIZE(xisp_ctrls) +
 				       ARRAY_SIZE(xisp_ctrls_gamma_correct));
