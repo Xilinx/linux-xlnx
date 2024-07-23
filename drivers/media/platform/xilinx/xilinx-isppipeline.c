@@ -278,7 +278,8 @@ enum xisp_functions_bypassable_index {
 	XISP_TM_TYPE_LSB_INDEX = 13,
 	XISP_TM_TYPE_MSB_INDEX = 14,
 	XISP_GAMMA_INDEX = 15,
-	XISP_LUT3D_INDEX = 16
+	XISP_LUT3D_INDEX = 16,
+	XISP_CSC_INDEX = 17
 };
 
 /**
@@ -1168,6 +1169,11 @@ static int xisp_s_ctrl(struct v4l2_ctrl *ctrl)
 		xisp->lut3d_dim = ctrl->val;
 		XISP_SET_CFG(XISP_LUT3D_INDEX, XISP_LUT3D_CONFIG_REG, xisp->lut3d_dim);
 		break;
+	case V4L2_CID_XILINX_ISP_CSC_EN:
+		xisp->module_bypass = xisp_module_bypass(xisp->module_bypass,
+							 XISP_CSC_INDEX, ctrl->val);
+		xvip_write(&xisp->xvip, XISP_FUNCS_BYPASS_CONFIG_REG, xisp->module_bypass);
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -1702,6 +1708,21 @@ static struct v4l2_ctrl_config xisp_ctrls_lut3d[] = {
 		.max = XISP_3DLUT_DIM_MAX,
 		.step = 1,
 		.def = XISP_3DLUT_DIM_DEFALUT,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+};
+
+static struct v4l2_ctrl_config xisp_ctrls_csc[] = {
+	/* CSC  ENABLE/DISABLE */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_CSC_EN,
+		.name = "bypass_csc",
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.min = XISP_MIN_VALUE,
+		.max = 1,
+		.step = 1,
+		.def = 0,
 		.flags = V4L2_CTRL_FLAG_SLIDER,
 	},
 };
@@ -2272,6 +2293,7 @@ static int xisp_probe(struct platform_device *pdev)
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_gtm);
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_ltm);
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_lut3d);
+		num_of_parameters += ARRAY_SIZE(xisp_ctrls_csc);
 
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, num_of_parameters);
 
@@ -2362,6 +2384,8 @@ static int xisp_probe(struct platform_device *pdev)
 
 		xisp_create_controls(xisp, XISP_LUT3D_INDEX,
 				     xisp_ctrls_lut3d, ARRAY_SIZE(xisp_ctrls_lut3d));
+		xisp_create_controls(xisp, XISP_CSC_INDEX,
+				     xisp_ctrls_csc, ARRAY_SIZE(xisp_ctrls_csc));
 	} else {
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, ARRAY_SIZE(xisp_ctrls) +
 				       ARRAY_SIZE(xisp_ctrls_gamma_correct));
