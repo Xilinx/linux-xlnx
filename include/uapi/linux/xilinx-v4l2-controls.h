@@ -243,5 +243,9 @@
 #define V4L2_CID_XILINX_ISP_AEC_EN		(V4L2_CID_XILINX_ISP + 8)
 /* Adjust Threshold */
 #define V4L2_CID_XILINX_ISP_AEC_THRESHOLD		(V4L2_CID_XILINX_ISP + 9)
+/* Enable/Disable BLC */
+#define V4L2_CID_XILINX_ISP_BLC_EN		(V4L2_CID_XILINX_ISP + 10)
+/* Adjust Multiplication Factor */
+#define V4L2_CID_XILINX_ISP_MULTI_FACTOR	(V4L2_CID_XILINX_ISP + 11)
 
 #endif /* __UAPI_XILINX_V4L2_CONTROLS_H__ */
