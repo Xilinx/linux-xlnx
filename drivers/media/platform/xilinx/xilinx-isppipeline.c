@@ -22,6 +22,52 @@
 #include "xilinx-gamma-correction.h"
 #include "xilinx-vip.h"
 
+/*
+ * XISP_COMMON_CONFIG_REG
+ * 0-15: Width, 16-31: Height
+ *
+ * XISP_PIPELINE_CONFIG_INFO_REG (READ REGISTER)
+ * 0: IN_TYPE, 1: IN_BW_MODE, 4: OUT_TYPE, 5: OUT_BW_MODE,
+ * 8: NPC, 16-20: NUM_STREAMS
+ *
+ * XISP_MAX_SUPPORTED_SIZE_REG (READ REGISTER)
+ * 0-15: MAX_WIDTH, 16-31: MAX_HEIGHT
+ *
+ * XISP_FUNCS_AVAILABLE_REG (Compile time bypass) (READ REGISTER)
+ * 0: HDR_MODE, 1: HDR_EN, 2: RGBIR_EN, 3: AEC_EN, 4: BLC_EN,
+ * 5: BPC_EN, 6: DEGAMMA_EN, 7: LSC_EN, 8: GAIN_EN, 9: DEMOSAIC_EN,
+ * 10: AWB_EN, 11: CCM_EN, 12: TM_EN, 13: TM_TYPE, 14: GAMMA_EN,
+ * 15: 3DLUT_EN, 16: CSC_EN, 17: BAYER_STATS_EN, 18: LUMA_STATS_EN,
+ * 19: RGB_STATS_EN, 20: CLAHE_EN, 21: MEDIAN_EN, 22: RESIZE_EN
+ *
+ * XISP_FUNCS_BYPASSABLE_REG (Compile time bypass) (READ REGISTER)
+ * 0: ISP_BYPASS_EN, 1: HDR_BYPASS_EN, 2: RGBIR_BYPASS_EN,
+ * 3: AEC_BYPASS_EN, 4: BLC_BYPASS_EN, 5: BPC_BYPASS_EN,
+ * 6: DEGAMMA_BYPASS_EN, 7: LSC_BYPASS_EN, 8: GAIN_BYPASS_EN,
+ * 9: DEMOSAIC_BYPASS_EN, 10: AWB_BYPASS_EN, 11: CCM_BYPASS_EN,
+ * 12: TM_BYPASS_EN, 14: GAMMA_BYPASS_EN, 15: 3DLUT_BYPASS_EN,
+ * 16: CSC_BYPASS_EN, 17: BAYER_STATS_BYPASS_EN, 18: LUMA_STATS_BYPASS_EN,
+ * 19: RGB_STATS_BYPASS_EN, 20: CLAHE_BYPASS_EN, 21: MEDIAN_BYPASS_EN,
+ * 22: RESIZE_BYPASS_EN
+ *
+ * XISP_FUNCS_BYPASS_CONFIG_REG (Runtime bypass) (WRITE REGISTER)
+ * 0: BYPASS_ISP, 1: BYPASS_HDR, 2: BYPASS_RGBIR, 3: BYPASS_AEC,
+ * 4: BYPASS_BLC, 5: BYPASS_BPC, 6: BYPASS_DEGAMMA, 7: BYPASS_LSC,
+ * 8: BYPASS_GAIN, 9: BYPASS_DEMOSAIC, 10: BYPASS_AWB, 11: BYPASS_CCM,
+ * 12: BYPASS_TM, 14: BYPASS_GAMMA, 15: BYPASS_3DLUT, 16: BYPASS_CSC,
+ * 17: BYPASS_BAYER_STATS, 18: BYPASS_LUMA_STATS, 19: BYPASS_RGB_STATS,
+ * 20: BYPASS_CLAHE, 21: BYPASS_MEDIAN, 22: BYPASS_RESIZE
+ *
+ * XISP_AEC_CONFIG_REG
+ * 0-15: threshold_aec, 16-31: Reserved
+ */
+#define XISP_COMMON_CONFIG_REG		(0x10UL)
+#define XISP_PIPELINE_CONFIG_INFO_REG		(0x80UL)
+#define XISP_MAX_SUPPORTED_SIZE_REG		(0x90UL)
+#define XISP_FUNCS_AVAILABLE_REG			(0xa0UL)
+#define XISP_FUNCS_BYPASSABLE_REG		(0xb0UL)
+#define XISP_FUNCS_BYPASS_CONFIG_REG		(0xc0UL)
+#define XISP_AEC_CONFIG_REG			(0x18UL)
 #define XISP_AP_CTRL_REG		(0x0)
 #define XISP_WIDTH_REG			(0x10)
 #define XISP_HEIGHT_REG			(0x18)
@@ -39,6 +85,8 @@
 #define XISP_MIN_HEIGHT			(64)
 #define XISP_MIN_WIDTH			(64)
 #define XISP_GAMMA_LUT_LEN		(64)
+#define XISP_MIN_VALUE                       (0)
+#define XISP_MAX_VALUE                       (65535)
 #define XISP_NO_OF_PADS			(2)
 
 #define XISP_RESET_DEASSERT		(0)
@@ -48,12 +96,46 @@
 #define XISP_STREAM_ON			(XISP_AUTO_RESTART | XISP_START)
 #define XILINX_ISP_VERSION_1					BIT(0)
 #define XILINX_ISP_VERSION_2					BIT(1)
+#define XISP_AEC_THRESHOLD_DEFAULT	(20)
+#define XGET_BIT(bitmask, reg)    (FIELD_GET(BIT(bitmask), (reg)))
+#define XISP_SET_CFG(INDEX, REG, VAL)	\
+	do {	\
+		u32 _index = (INDEX); \
+		bool en = XGET_BIT(_index, xisp->module_en); \
+		bool byp_en = XGET_BIT(_index, xisp->module_bypass_en); \
+		bool byp = XGET_BIT(_index, xisp->module_bypass); \
+		\
+		if (en)	\
+			if (!byp_en || !(byp_en && byp)) \
+				xvip_write(&xisp->xvip, (REG), (VAL)); \
+	} while (0)
 
 enum xisp_bayer_format {
 	XISP_RGGB = 0,
 	XISP_GRBG,
 	XISP_GBRG,
 	XISP_BGGR,
+};
+
+/* enumerations for pipeline_config_info index */
+enum xisp_pipeline_config_info_index {
+	XISP_IN_TYPE_INDEX = 0,
+	XISP_IN_BW_MODE_INDEX = 1,
+	XISP_OUT_TYPE_INDEX = 4,
+	XISP_OUT_BW_MODE_INDEX = 5,
+	XISP_NPC_INDEX = 8,
+	XISP_NUM_STREAMS_INDEX = 12
+};
+
+/* enumerations for max_supported_size index */
+enum xisp_max_supported_size_index {
+	XISP_MAX_WIDTH_INDEX = 0,
+	XISP_MAX_HEIGHT_INDEX = 16
+};
+
+/* enumerations for functions_bypassable index */
+enum xisp_functions_bypassable_index {
+	XISP_AEC_INDEX = 3
 };
 
 /**
@@ -76,6 +158,13 @@ struct xilinx_isp_feature {
  * @npads: number of pads
  * @max_width: Maximum width supported by this instance
  * @max_height: Maximum height supported by this instance
+ * @width: Current frame width
+ * @height: Current frame height
+ * @ip_max_res: Maximum resolution supported by this instance
+ * @module_conf: Expected module configuration
+ * @module_bypass: Track for modules bypassed or not from user
+ * @module_bypass_en: Track if modules can be bypassed or not
+ * @module_en: Track which module is enabled
  * @rgain: Expected red gain
  * @bgain: Expected blue gain
  * @mode_reg: Track if AWB is enabled or not
@@ -84,6 +173,7 @@ struct xilinx_isp_feature {
  * @green_lut: Pointer to the gamma coefficient as per the Green Gamma control
  * @blue_lut: Pointer to the gamma coefficient as per the Blue Gamma control
  * @gamma_table: Pointer to the table containing various gamma values
+ * @threshold_aec: Expected threshold for auto exposure correction
  */
 struct xisp_dev {
 	struct xvip_device xvip;
@@ -93,7 +183,14 @@ struct xisp_dev {
 	enum xisp_bayer_format bayer_fmt;
 	struct gpio_desc *rst_gpio;
 	const struct xilinx_isp_feature *config;
+	u32 ip_max_res;
+	u32 module_conf;
+	u32 module_bypass;
+	u32 module_bypass_en;
+	u32 module_en;
 	u16 npads;
+	u16 width;
+	u16 height;
 	u16 max_width;
 	u16 max_height;
 	u16 rgain;
@@ -104,6 +201,7 @@ struct xisp_dev {
 	const u32 *green_lut;
 	const u32 *blue_lut;
 	const u32 **gamma_table;
+	u16 threshold_aec;
 };
 
 static const struct xilinx_isp_feature xlnx_isp_cfg_v10 = {
@@ -153,12 +251,41 @@ static void select_gamma(u32 value, const u32 **coeff, const u32 **xgamma_curves
 	*coeff = *(xgamma_curves + value - 1);
 }
 
+/**
+ * xisp_module_bypass - Modify a specific bit in a given value
+ * @in_val: The input value
+ * @position: The bit position to modify
+ * @bit_val: The new value of the bit (true or false)
+ *
+ * This function takes an input value and modifies a specific bit at the given
+ * position to the new value specified by bit_val. The modified value is then
+ * returned.
+ *
+ * Return: The modified value with the bit at 'position' set to 'bit_val'
+ */
+static int xisp_module_bypass(u32 in_val, u32 position, bool bit_val)
+{
+	u32 mask = 1 << position;
+
+	return ((in_val & ~mask) | (bit_val << position));
+}
+
 static int xisp_s_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct xisp_dev *xisp =
 		container_of(ctrl->handler,
 			     struct xisp_dev, ctrl_handler);
+
 	switch (ctrl->id) {
+	case V4L2_CID_XILINX_ISP_AEC_EN:
+		xisp->module_bypass = xisp_module_bypass(xisp->module_bypass,
+							 XISP_AEC_INDEX, ctrl->val);
+		xvip_write(&xisp->xvip, XISP_FUNCS_BYPASS_CONFIG_REG, xisp->module_bypass);
+		break;
+	case V4L2_CID_XILINX_ISP_AEC_THRESHOLD:
+		xisp->threshold_aec = ctrl->val;
+		XISP_SET_CFG(XISP_AEC_INDEX, XISP_AEC_CONFIG_REG, xisp->threshold_aec);
+		break;
 	case V4L2_CID_XILINX_ISP_RED_GAIN:
 		xisp->rgain = ctrl->val;
 		xvip_write(&xisp->xvip, XISP_RGAIN_REG, xisp->rgain);
@@ -202,6 +329,33 @@ static int xisp_s_ctrl(struct v4l2_ctrl *ctrl)
 
 static const struct v4l2_ctrl_ops xisp_ctrl_ops = {
 	.s_ctrl = xisp_s_ctrl,
+};
+
+static struct v4l2_ctrl_config xisp_ctrls_aec[] = {
+	/* AEC ENABLE/DISABLE */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_AEC_EN,
+		.name = "bypass_aec",
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.min = XISP_MIN_VALUE,
+		.max = 1,
+		.step = 1,
+		.def = 0,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+	/* AEC THRESHOLD */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_AEC_THRESHOLD,
+		.name = "aec_threshold",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = XISP_MIN_VALUE,
+		.max = XISP_MAX_VALUE,
+		.step = 1,
+		.def = XISP_AEC_THRESHOLD_DEFAULT,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
 };
 
 static struct v4l2_ctrl_config xisp_ctrls[] = {
@@ -335,17 +489,24 @@ static int xisp_s_stream(struct v4l2_subdev *subdev, int enable)
 		return 0;
 	}
 
-	xvip_write(&xisp->xvip, XISP_WIDTH_REG, xisp->formats[XVIP_PAD_SINK].width);
-	xvip_write(&xisp->xvip, XISP_HEIGHT_REG, xisp->formats[XVIP_PAD_SINK].height);
-	xvip_write(&xisp->xvip, XISP_INPUT_BAYER_FORMAT_REG, xisp->bayer_fmt);
-	xvip_write(&xisp->xvip, XISP_RGAIN_REG, xisp->rgain);
-	xvip_write(&xisp->xvip, XISP_BGAIN_REG, xisp->bgain);
-	xvip_write(&xisp->xvip, XISP_MODE_REG, xisp->mode_reg);
-	xvip_write(&xisp->xvip, XISP_PAWB_REG, xisp->pawb);
-	xisp_set_lut_entries(xisp, xisp->red_lut, XISP_GAMMA_RED_REG);
-	xisp_set_lut_entries(xisp, xisp->green_lut, XISP_GAMMA_GREEN_REG);
-	xisp_set_lut_entries(xisp, xisp->blue_lut, XISP_GAMMA_BLUE_REG);
-
+	if (xisp->config->flags & XILINX_ISP_VERSION_1) {
+		xvip_write(&xisp->xvip, XISP_WIDTH_REG, xisp->formats[XVIP_PAD_SINK].width);
+		xvip_write(&xisp->xvip, XISP_HEIGHT_REG, xisp->formats[XVIP_PAD_SINK].height);
+		xvip_write(&xisp->xvip, XISP_INPUT_BAYER_FORMAT_REG, xisp->bayer_fmt);
+		xvip_write(&xisp->xvip, XISP_RGAIN_REG, xisp->rgain);
+		xvip_write(&xisp->xvip, XISP_BGAIN_REG, xisp->bgain);
+		xvip_write(&xisp->xvip, XISP_MODE_REG, xisp->mode_reg);
+		xvip_write(&xisp->xvip, XISP_PAWB_REG, xisp->pawb);
+		xisp_set_lut_entries(xisp, xisp->red_lut, XISP_GAMMA_RED_REG);
+		xisp_set_lut_entries(xisp, xisp->green_lut, XISP_GAMMA_GREEN_REG);
+		xisp_set_lut_entries(xisp, xisp->blue_lut, XISP_GAMMA_BLUE_REG);
+	} else if (xisp->config->flags & XILINX_ISP_VERSION_2) {
+		xisp->width = xisp->formats[XVIP_PAD_SINK].width;
+		xisp->height = xisp->formats[XVIP_PAD_SINK].height;
+		xvip_write(&xisp->xvip, XISP_COMMON_CONFIG_REG, (xisp->height << 16) | xisp->width);
+	} else {
+		return -EINVAL;
+	}
 	/* Start ISP pipeline IP */
 	xvip_write(&xisp->xvip, XISP_AP_CTRL_REG, XISP_STREAM_ON);
 
@@ -377,34 +538,53 @@ xisp_get_bayer_format(struct xisp_dev *xisp, u32 code)
 {
 	switch (code) {
 	case MEDIA_BUS_FMT_SRGGB8_1X8:
+		fallthrough;
 	case MEDIA_BUS_FMT_SRGGB10_1X10:
+		fallthrough;
 	case MEDIA_BUS_FMT_SRGGB12_1X12:
+		fallthrough;
 	case MEDIA_BUS_FMT_SRGGB16_1X16:
 		xisp->bayer_fmt = XISP_RGGB;
 		break;
 	case MEDIA_BUS_FMT_SGRBG8_1X8:
+		fallthrough;
 	case MEDIA_BUS_FMT_SGRBG10_1X10:
+		fallthrough;
 	case MEDIA_BUS_FMT_SGRBG12_1X12:
+		fallthrough;
 	case MEDIA_BUS_FMT_SGRBG16_1X16:
 		xisp->bayer_fmt = XISP_GRBG;
 		break;
 	case MEDIA_BUS_FMT_SGBRG8_1X8:
+		fallthrough;
 	case MEDIA_BUS_FMT_SGBRG10_1X10:
+		fallthrough;
 	case MEDIA_BUS_FMT_SGBRG12_1X12:
+		fallthrough;
 	case MEDIA_BUS_FMT_SGBRG16_1X16:
 		xisp->bayer_fmt = XISP_GBRG;
 		break;
 	case MEDIA_BUS_FMT_SBGGR8_1X8:
+		fallthrough;
 	case MEDIA_BUS_FMT_SBGGR10_1X10:
+		fallthrough;
 	case MEDIA_BUS_FMT_SBGGR12_1X12:
+		fallthrough;
 	case MEDIA_BUS_FMT_SBGGR16_1X16:
 		xisp->bayer_fmt = XISP_BGGR;
 		break;
+	case MEDIA_BUS_FMT_Y8_1X8:
+		fallthrough;
+	case MEDIA_BUS_FMT_Y10_1X10:
+		fallthrough;
+	case MEDIA_BUS_FMT_Y12_1X12:
+		xisp->bayer_fmt = XISP_RGGB;
+		break;
 	default:
+		xisp->bayer_fmt = XISP_RGGB;
 		dev_dbg(xisp->xvip.dev, "Unsupported format for Sink Pad");
 		return false;
 	}
-
 	return true;
 }
 
@@ -415,50 +595,88 @@ static int xisp_set_format(struct v4l2_subdev *subdev,
 	struct xisp_dev *xisp = to_xisp(subdev);
 	struct v4l2_mbus_framefmt *__format;
 	struct v4l2_mbus_framefmt *__propagate;
+	u16 clamp_max_h, clamp_max_w;
 
 	__format = __xisp_get_pad_format(xisp, sd_state, fmt->pad, fmt->which);
 	if (!__format)
 		return -EINVAL;
 
-	/* Propagate to Source Pad */
-	__propagate = __xisp_get_pad_format(xisp, sd_state,
-					    XVIP_PAD_SOURCE, fmt->which);
-	if (!__propagate)
-		return -EINVAL;
-
+	if (xisp->config->flags & XILINX_ISP_VERSION_1) {
+		/* Propagate to Source Pad */
+		__propagate = __xisp_get_pad_format(xisp, sd_state,
+						    XVIP_PAD_SOURCE, fmt->which);
+		if (!__propagate)
+			return -EINVAL;
+	}
 	*__format = fmt->format;
 
+	if (xisp->config->flags & XILINX_ISP_VERSION_1) {
+		clamp_max_h = xisp->max_height;
+		clamp_max_w = xisp->max_width;
+	} else if (xisp->config->flags & XILINX_ISP_VERSION_2) {
+		clamp_max_h = XISP_MAX_HEIGHT;
+		clamp_max_w = XISP_MAX_WIDTH;
+	} else {
+		return -EINVAL;
+	}
 	__format->width = clamp_t(unsigned int, fmt->format.width,
-				  XISP_MIN_WIDTH, xisp->max_width);
+				  XISP_MIN_WIDTH, clamp_max_w);
 	__format->height = clamp_t(unsigned int, fmt->format.height,
-				   XISP_MIN_HEIGHT, xisp->max_height);
+				   XISP_MIN_HEIGHT, clamp_max_h);
 
-	if (fmt->pad == XVIP_PAD_SOURCE) {
-		if (__format->code != MEDIA_BUS_FMT_RBG888_1X24 &&
-		    __format->code != MEDIA_BUS_FMT_RBG101010_1X30 &&
-		    __format->code != MEDIA_BUS_FMT_RBG121212_1X36 &&
-		    __format->code != MEDIA_BUS_FMT_RBG161616_1X48) {
-			dev_dbg(xisp->xvip.dev,
-				"%s : Unsupported source media bus code format",
-				__func__);
-			__format->code = MEDIA_BUS_FMT_RBG888_1X24;
+	if (xisp->config->flags & XILINX_ISP_VERSION_1) {
+		if (fmt->pad == XVIP_PAD_SOURCE) {
+			if (__format->code != MEDIA_BUS_FMT_RBG888_1X24 &&
+			    __format->code != MEDIA_BUS_FMT_RBG101010_1X30 &&
+			    __format->code != MEDIA_BUS_FMT_RBG121212_1X36 &&
+			    __format->code != MEDIA_BUS_FMT_RBG161616_1X48) {
+				dev_dbg(xisp->xvip.dev,
+					"%s : Unsupported source media bus code format",
+					__func__);
+				__format->code = MEDIA_BUS_FMT_RBG888_1X24;
+			}
 		}
-	}
-
-	if (fmt->pad == XVIP_PAD_SINK) {
-		if (!xisp_get_bayer_format(xisp, __format->code)) {
-			dev_dbg(xisp->xvip.dev,
-				"Unsupported Sink Pad Media format, defaulting to RGGB");
-			__format->code = MEDIA_BUS_FMT_SRGGB10_1X10;
+		if (fmt->pad == XVIP_PAD_SINK) {
+			if (!xisp_get_bayer_format(xisp, __format->code)) {
+				dev_dbg(xisp->xvip.dev,
+					"Unsupported Sink Pad Media format, defaulting to RGGB");
+				__format->code = MEDIA_BUS_FMT_SRGGB10_1X10;
+			}
 		}
+
+		/* Always propagate Sink image size to Source */
+		__propagate->width  = __format->width;
+		__propagate->height = __format->height;
+	} else if (xisp->config->flags & XILINX_ISP_VERSION_2) {
+		if (fmt->pad == XVIP_PAD_SOURCE) {
+			if (__format->code != MEDIA_BUS_FMT_Y8_1X8 &&
+			    __format->code != MEDIA_BUS_FMT_Y10_1X10 &&
+			    __format->code != MEDIA_BUS_FMT_Y12_1X12 &&
+			    __format->code != MEDIA_BUS_FMT_RBG888_1X24 &&
+			    __format->code != MEDIA_BUS_FMT_RGB101010_1X30 &&
+			    __format->code != MEDIA_BUS_FMT_RGB121212_1X36 &&
+			    __format->code != MEDIA_BUS_FMT_RGB161616_1X48 &&
+			    __format->code != MEDIA_BUS_FMT_BGR888_1X24 &&
+			    __format->code != MEDIA_BUS_FMT_GBR888_1X24 &&
+			    __format->code != MEDIA_BUS_FMT_RGB888_1X24 &&
+			    __format->code != MEDIA_BUS_FMT_RGB101010_1X30) {
+				dev_dbg(xisp->xvip.dev,
+					"%s : Unsupported source media bus code format",
+					__func__);
+				__format->code = MEDIA_BUS_FMT_RBG888_1X24;
+			}
+		}
+		if (fmt->pad == XVIP_PAD_SINK) {
+			if (!xisp_get_bayer_format(xisp, __format->code)) {
+				dev_dbg(xisp->xvip.dev,
+					"Unsupported Sink Pad Media format, defaulting to RGGB");
+				__format->code = MEDIA_BUS_FMT_SRGGB10_1X10;
+			}
+		}
+	} else {
+		return -EINVAL;
 	}
-
-	/* Always propagate Sink image size to Source */
-	__propagate->width  = __format->width;
-	__propagate->height = __format->height;
-
 	fmt->format = *__format;
-
 	return 0;
 }
 
@@ -484,56 +702,58 @@ static int xisp_parse_of(struct xisp_dev *xisp)
 	struct device_node *port;
 	int rval;
 
-	rval = of_property_read_u16(node, "xlnx,max-height",
-				    &xisp->max_height);
-	if (rval < 0) {
-		dev_err(dev, "missing xlnx,max-height property!");
-		return -EINVAL;
-	}
+	if (xisp->config->flags & XILINX_ISP_VERSION_1) {
+		rval = of_property_read_u16(node, "xlnx,max-height",
+					    &xisp->max_height);
+		if (rval < 0) {
+			dev_err(dev, "missing xlnx,max-height property!");
+			return -EINVAL;
+		}
 
-	if (xisp->max_height > XISP_MAX_HEIGHT ||
-	    xisp->max_height < XISP_MIN_HEIGHT) {
-		dev_err(dev, "Invalid height in dt");
-		return -EINVAL;
-	}
+		if (xisp->max_height > XISP_MAX_HEIGHT ||
+		    xisp->max_height < XISP_MIN_HEIGHT) {
+			dev_err(dev, "Invalid height in dt");
+			return -EINVAL;
+		}
 
-	rval = of_property_read_u16(node, "xlnx,max-width",
-				    &xisp->max_width);
-	if (rval < 0) {
-		dev_err(dev, "missing xlnx,max-width property!");
-		return -EINVAL;
-	}
+		rval = of_property_read_u16(node, "xlnx,max-width",
+					    &xisp->max_width);
+		if (rval < 0) {
+			dev_err(dev, "missing xlnx,max-width property!");
+			return -EINVAL;
+		}
 
-	if (xisp->max_width > XISP_MAX_WIDTH ||
-	    xisp->max_width < XISP_MIN_WIDTH) {
-		dev_err(dev, "Invalid width in dt");
-		return -EINVAL;
-	}
+		if (xisp->max_width > XISP_MAX_WIDTH ||
+		    xisp->max_width < XISP_MIN_WIDTH) {
+			dev_err(dev, "Invalid width in dt");
+			return -EINVAL;
+		}
 
-	rval = of_property_read_u16(node, "xlnx,rgain",
-				    &xisp->rgain);
-	if (rval < 0) {
-		dev_err(dev, "missing xlnx,rgain!");
-		return -EINVAL;
-	}
+		rval = of_property_read_u16(node, "xlnx,rgain",
+					    &xisp->rgain);
+		if (rval < 0) {
+			dev_err(dev, "missing xlnx,rgain!");
+			return -EINVAL;
+		}
 
-	rval = of_property_read_u16(node, "xlnx,bgain",
-				    &xisp->bgain);
-	if (rval < 0) {
-		dev_err(dev, "missing xlnx,bgain!");
-		return -EINVAL;
-	}
+		rval = of_property_read_u16(node, "xlnx,bgain",
+					    &xisp->bgain);
+		if (rval < 0) {
+			dev_err(dev, "missing xlnx,bgain!");
+			return -EINVAL;
+		}
 
-	rval = of_property_read_u16(node, "xlnx,pawb",
-				    &xisp->pawb);
-	if (rval < 0) {
-		dev_err(dev, "missing xlnx,pawb!");
-		return -EINVAL;
-	}
+		rval = of_property_read_u16(node, "xlnx,pawb",
+					    &xisp->pawb);
+		if (rval < 0) {
+			dev_err(dev, "missing xlnx,pawb!");
+			return -EINVAL;
+		}
 
-	rval = of_property_read_bool(node, "xlnx,mode-reg");
-	if (rval)
-		xisp->mode_reg = of_property_read_bool(node, "xlnx,mode-reg");
+		rval = of_property_read_bool(node, "xlnx,mode-reg");
+		if (rval)
+			xisp->mode_reg = of_property_read_bool(node, "xlnx,mode-reg");
+	}
 
 	ports = of_get_child_by_name(node, "ports");
 	if (!ports)
@@ -572,11 +792,48 @@ static int xisp_parse_of(struct xisp_dev *xisp)
 	return 0;
 }
 
+/**
+ * xisp_create_controls - Creates V4L2 controls for the given xisp device
+ * @xisp: Pointer to the xisp_dev structure representing the device
+ * @index: Index of the module enable bit in xisp->module_en and xisp->module_bypass_en
+ * @ctrl_arr: Array of v4l2_ctrl_config structures representing the control configurations
+ * @size: Number of control configurations in the ctrl_arr array
+ *
+ * This function creates custom V4L2 controls for the specified xisp device.
+ * It checks whether the module is enabled and whether the module bypass is
+ * enabled before creating controls.
+ *
+ * The controls are created based on the configurations provided in the ctrl_arr array.
+ * If the module enable bit is set and the module bypass enable bit is set,
+ * it creates the first control from the array. If there are more controls
+ * (size > 1), it iterates through the remaining controls and creates them.
+ */
+static void xisp_create_controls(struct xisp_dev *xisp, u32 index,
+				 struct v4l2_ctrl_config *ctrl_arr, u32 size)
+{
+	int itr;
+	bool en_index = XGET_BIT(index, xisp->module_en);
+	bool bypass_en_index = XGET_BIT(index, xisp->module_bypass_en);
+
+	if (!en_index)
+		return;
+
+	if (bypass_en_index)
+		v4l2_ctrl_new_custom(&xisp->ctrl_handler, &ctrl_arr[0], NULL);
+
+	if (size < 2)
+		return;
+
+	for (itr = 1; itr < size; itr++)
+		v4l2_ctrl_new_custom(&xisp->ctrl_handler, &ctrl_arr[itr], NULL);
+}
+
 static int xisp_probe(struct platform_device *pdev)
 {
 	struct xisp_dev *xisp;
 	struct v4l2_subdev *subdev;
 	int rval, itr;
+	u8 num_of_parameters;
 	struct device_node *node = pdev->dev.of_node;
 	const struct of_device_id *match;
 
@@ -586,14 +843,13 @@ static int xisp_probe(struct platform_device *pdev)
 
 	xisp->xvip.dev = &pdev->dev;
 
-	rval = xisp_parse_of(xisp);
-
 	match = of_match_node(xisp_of_id_table, node);
 	if (!match)
 		return -ENODEV;
 
 	xisp->config = match->data;
 
+	rval = xisp_parse_of(xisp);
 	if (rval < 0)
 		return rval;
 
@@ -611,6 +867,13 @@ static int xisp_probe(struct platform_device *pdev)
 	strscpy(subdev->name, dev_name(&pdev->dev), sizeof(subdev->name));
 	subdev->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
 	xisp->gamma_table = xgamma_curves;
+
+	if (xisp->config->flags & XILINX_ISP_VERSION_2) {
+		xisp->module_conf = xvip_read(&xisp->xvip, XISP_PIPELINE_CONFIG_INFO_REG);
+		xisp->ip_max_res = xvip_read(&xisp->xvip, XISP_MAX_SUPPORTED_SIZE_REG);
+		xisp->module_en = xvip_read(&xisp->xvip, XISP_FUNCS_AVAILABLE_REG);
+		xisp->module_bypass_en = xvip_read(&xisp->xvip, XISP_FUNCS_BYPASSABLE_REG);
+	}
 
 	/*
 	 * Sink Pad can be any Bayer format.
@@ -639,10 +902,19 @@ static int xisp_probe(struct platform_device *pdev)
 		goto media_error;
 
 	/* V4L2 Controls */
-	v4l2_ctrl_handler_init(&xisp->ctrl_handler, ARRAY_SIZE(xisp_ctrls));
-	for (itr = 0; itr < ARRAY_SIZE(xisp_ctrls); itr++) {
-		v4l2_ctrl_new_custom(&xisp->ctrl_handler,
-				     &xisp_ctrls[itr], NULL);
+	if (xisp->config->flags & XILINX_ISP_VERSION_2) {
+		num_of_parameters = ARRAY_SIZE(xisp_ctrls_aec);
+
+		v4l2_ctrl_handler_init(&xisp->ctrl_handler, num_of_parameters);
+
+		xisp_create_controls(xisp, XISP_AEC_INDEX, xisp_ctrls_aec,
+				     ARRAY_SIZE(xisp_ctrls_aec));
+	} else {
+		v4l2_ctrl_handler_init(&xisp->ctrl_handler, ARRAY_SIZE(xisp_ctrls));
+		for (itr = 0; itr < ARRAY_SIZE(xisp_ctrls); itr++) {
+			v4l2_ctrl_new_custom(&xisp->ctrl_handler,
+					     &xisp_ctrls[itr], NULL);
+		}
 	}
 
 	if (xisp->ctrl_handler.error) {
