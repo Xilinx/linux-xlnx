@@ -66,6 +66,9 @@
  *
  * XISP_BLC_CONFIG_2_REG
  * 0-31: black_level
+ *
+ * XISP_AWB_CONFIG_REG
+ * 0-15: threshold_awb, 16-31: Reserved
  */
 #define XISP_COMMON_CONFIG_REG		(0x10UL)
 #define XISP_PIPELINE_CONFIG_INFO_REG		(0x80UL)
@@ -76,6 +79,7 @@
 #define XISP_AEC_CONFIG_REG			(0x18UL)
 #define XISP_BLC_CONFIG_1_REG			(0x28UL)
 #define XISP_BLC_CONFIG_2_REG			(0x30UL)
+#define XISP_AWB_CONFIG_REG				(0x20UL)
 #define XISP_AP_CTRL_REG		(0x0)
 #define XISP_WIDTH_REG			(0x10)
 #define XISP_HEIGHT_REG			(0x18)
@@ -120,6 +124,7 @@
 #define XISP_BLC_MULTIPLICATION_FACTOR_MAX	(0x80000000UL)
 #define XISP_BLC_MULTIPLICATION_FACTOR_DEFALUT	(65535)
 #define XISP_BLC_BLACK_LEVEL_DEFALUT		(32)
+#define XISP_AWB_THRESHOLD_DEFAULT		(512)
 
 enum xisp_bayer_format {
 	XISP_RGGB = 0,
@@ -147,7 +152,8 @@ enum xisp_max_supported_size_index {
 /* enumerations for functions_bypassable index */
 enum xisp_functions_bypassable_index {
 	XISP_AEC_INDEX = 3,
-	XISP_BLC_INDEX = 4
+	XISP_BLC_INDEX = 4,
+	XISP_AWB_INDEX = 10
 };
 
 /**
@@ -188,6 +194,7 @@ struct xilinx_isp_feature {
  * @blue_lut: Pointer to the gamma coefficient as per the Blue Gamma control
  * @gamma_table: Pointer to the table containing various gamma values
  * @threshold_aec: Expected threshold for auto exposure correction
+ * @threshold_awb: Expected threshold for auto white balance
  */
 struct xisp_dev {
 	struct xvip_device xvip;
@@ -218,6 +225,7 @@ struct xisp_dev {
 	const u32 *blue_lut;
 	const u32 **gamma_table;
 	u16 threshold_aec;
+	u16 threshold_awb;
 };
 
 static const struct xilinx_isp_feature xlnx_isp_cfg_v10 = {
@@ -302,6 +310,15 @@ static int xisp_s_ctrl(struct v4l2_ctrl *ctrl)
 		xisp->threshold_aec = ctrl->val;
 		XISP_SET_CFG(XISP_AEC_INDEX, XISP_AEC_CONFIG_REG, xisp->threshold_aec);
 		break;
+	case V4L2_CID_XILINX_ISP_AWB_EN:
+		xisp->module_bypass = xisp_module_bypass(xisp->module_bypass,
+							 XISP_AWB_INDEX, ctrl->val);
+		xvip_write(&xisp->xvip, XISP_FUNCS_BYPASS_CONFIG_REG, xisp->module_bypass);
+		break;
+	case V4L2_CID_XILINX_ISP_AWB_THRESHOLD:
+		xisp->threshold_awb = ctrl->val;
+		XISP_SET_CFG(XISP_AWB_INDEX, XISP_AWB_CONFIG_REG, xisp->threshold_awb);
+		break;
 	case V4L2_CID_XILINX_ISP_BLC_EN:
 		xisp->module_bypass = xisp_module_bypass(xisp->module_bypass,
 							 XISP_BLC_INDEX, ctrl->val);
@@ -383,6 +400,33 @@ static struct v4l2_ctrl_config xisp_ctrls_aec[] = {
 		.max = XISP_MAX_VALUE,
 		.step = 1,
 		.def = XISP_AEC_THRESHOLD_DEFAULT,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+};
+
+static struct v4l2_ctrl_config xisp_ctrls_awb[] = {
+	/* AWB ENABLE/DISABLE */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_AWB_EN,
+		.name = "bypass_awb",
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.min = XISP_MIN_VALUE,
+		.max = 1,
+		.step = 1,
+		.def = 0,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+	/* AWB THRESHOLD */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id =  V4L2_CID_XILINX_ISP_AWB_THRESHOLD,
+		.name = "awb_threshold",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = XISP_MIN_VALUE,
+		.max = XISP_MAX_VALUE,
+		.step = 1,
+		.def = XISP_AWB_THRESHOLD_DEFAULT,
 		.flags = V4L2_CTRL_FLAG_SLIDER,
 	},
 };
@@ -972,6 +1016,7 @@ static int xisp_probe(struct platform_device *pdev)
 	/* V4L2 Controls */
 	if (xisp->config->flags & XILINX_ISP_VERSION_2) {
 		num_of_parameters = ARRAY_SIZE(xisp_ctrls_aec) + ARRAY_SIZE(xisp_ctrls_blc);
+		num_of_parameters += ARRAY_SIZE(xisp_ctrls_awb);
 
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, num_of_parameters);
 
@@ -979,6 +1024,8 @@ static int xisp_probe(struct platform_device *pdev)
 				     ARRAY_SIZE(xisp_ctrls_aec));
 		xisp_create_controls(xisp, XISP_BLC_INDEX, xisp_ctrls_blc,
 				     ARRAY_SIZE(xisp_ctrls_blc));
+		xisp_create_controls(xisp, XISP_AWB_INDEX, xisp_ctrls_awb,
+				     ARRAY_SIZE(xisp_ctrls_awb));
 	} else {
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, ARRAY_SIZE(xisp_ctrls));
 		for (itr = 0; itr < ARRAY_SIZE(xisp_ctrls); itr++) {
