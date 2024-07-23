@@ -9,6 +9,7 @@ title: Xilinx Video ISP Pipeline IP
 maintainers:
   - Kaushal Kumar <kaushal.kumar@amd.com>
   - Venkat Praveen Kancharlapalli <venkat.praveen.kancharlapalli@amd.com>
+  - Mounik Katikala <mounik.katikala@amd.com>
 
 description: |
     The Xilinx Video ISP pipeline IP is used to interface to a bayer video source.
@@ -17,11 +18,13 @@ description: |
     Gamma_lut array values are computed using compute_gamma function whose link is mentioned below:
     https://github.com/Xilinx/Vitis_Libraries/blob/de67b58ca9c7f4a76411103c0ecf9d467731b476/vision/L1/examples/isppipeline/xf_isp_tb.cpp#L313
     Link to product guide for ISP pipeline is mentioned below:
-    https://docs.xilinx.com/r/en-US/Vitis_Libraries/vision/overview.html_3_8
+    https://docs.amd.com/r/en-US/Vitis_Libraries/vision/index.html
 
 properties:
   compatible:
-    const: xlnx,isppipeline-1.0
+    enum:
+      - xlnx,isppipeline-1.0
+      - xlnx,isppipeline-2.0
 
   reg:
     maxItems: 1
@@ -107,6 +110,12 @@ properties:
 
             additionalProperties: false
 
+          xlnx,video-width:
+            $ref: /schemas/types.yaml#/definitions/uint32
+            description: Width of the video data in bits
+            enum: [8, 10, 12, 16]
+            default: 10
+
         required:
           - reg
           - endpoint
@@ -136,6 +145,12 @@ properties:
 
             additionalProperties: false
 
+          xlnx,video-width:
+            $ref: /schemas/types.yaml#/definitions/uint32
+            description: Width of the video data in bits
+            enum: [8, 10, 12, 16]
+            default: 8
+
         required:
           - reg
           - endpoint
@@ -155,21 +170,46 @@ required:
   - reg
   - clocks
   - reset-gpios
-  - xlnx,max-width
-  - xlnx,max-height
-  - xlnx,rgain
-  - xlnx,bgain
-  - xlnx,pawb
-  - xlnx,mode-reg
   - ports
 
 additionalProperties: false
 
+allOf:
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: xlnx,isppipeline-1.0
+    then:
+      required:
+        - xlnx,max-height
+        - xlnx,max-width
+        - xlnx,rgain
+        - xlnx,bgain
+        - xlnx,pawb
+        - xlnx,mode-reg
+
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: xlnx,isppipeline-2.0
+    then:
+      properties:
+        ports:
+          properties:
+            port@0:
+              required:
+                - xlnx,video-width
+            port@1:
+              required:
+                - xlnx,video-width
+
 examples:
   - |
-   ISPPipeline: ISPPipeline@a40f0000 {
+   ISPPipeline0: ISPPipeline@a40c0000 {
         compatible = "xlnx,isppipeline-1.0";
-        reg = <0xa40f0000 0x10000>;
+        reg = <0xa40c0000 0x10000>;
         clocks = <&misc_clk_0>;
         clock-names = "ap_clk";
         reset-gpios = <&gpio 87 1>;
@@ -186,17 +226,46 @@ examples:
             port@0 {
                 /* Sink port */
                 reg = <0>;
-                isppipeline_in: endpoint {
+                isppipeline0_in: endpoint {
                     remote-endpoint = <&isp_csiss_out>;
                 };
             };
             port@1 {
                 /* Source port */
                 reg = <1>;
-                isppipeline_out: endpoint {
+                isppipeline0_out: endpoint {
                     remote-endpoint = <&isp_vcap_csi_in>;
                 };
             };
         };
     };
-...
+
+  - |
+    ISPPipeline1: ISPPipeline@a40f0000 {
+        compatible = "xlnx,isppipeline-2.0";
+        reg = <0xa40f0000 0x10000>;
+        clocks = <&misc_clk_0>;
+        reset-gpios = <&gpio0 27 1>;
+        ports {
+            #address-cells = <1>;
+            #size-cells = <0>;
+
+            port@0 {
+                /* Sink port */
+                reg = <0>;
+                xlnx,video-width = <10>;
+                isppipeline1_in: endpoint {
+                    remote-endpoint = <&isp_csiss_out>;
+                };
+            };
+
+            port@1 {
+                /* Source port */
+                reg = <1>;
+                xlnx,video-width = <8>;
+                isppipeline1_out: endpoint {
+                    remote-endpoint = <&isp_vcap_csi_in>;
+                };
+            };
+        };
+    };
