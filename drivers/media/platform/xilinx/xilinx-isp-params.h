@@ -10,6 +10,8 @@
 #define XISP_DEGAMMA_KNEE_POINTS (8)
 #define XISP_DEGAMMA_PARAMS (3)
 #define XISP_RGBIR_LENGTH (97)
+#define XISP_CCM_MATRIX_DIM1 (3)
+#define XISP_CCM_MATRIX_DIM2 (3)
 
 /*
  * XISP_DEGAMMA_COLOR_ID = COLOR ID (R, G, B)
@@ -70,5 +72,121 @@ static const s8 xisp_rgbir_config[XISP_RGBIR_LENGTH] = {
 6, 0, 6, 6, 6, 6, 6, 6, 6, 0, 6, 6, 6, 0, 6, 6, 6,
 6, 6, 6, 6, 0, 6, 6, 2, 6, 2, 6, 6, 6, 2, 6, 2, 2,
 6, 2, 6, 6, 6, 2, 6, 2, 3, 1, 2, 5};
+
+/*
+ * XISP_CCM_MATRIX_DIM1 =  Size of CCM matrix entries.
+ * XISP_CCM_MATRIX_DIM2 =  Size of offset entries.
+ *
+ * The function xisp_set_ccm_matrix_entries writes the CCM matrix values from
+ * the provided 2D array to the
+ * device's registers. After writing the values for each row of the matrix, it writes a
+ * corresponding offset value from the offsetarray to the register space.
+ *
+ * The 10 most commonly used matrices are given.
+ * (N,0,0) (N,1,0) (N,2,0) - These are 'r' channel multiplication factors.
+ * (N,0,1) (N,1,1) (N,2,1) - These are 'g' channel multiplication factors.
+ * (N,0,2) (N,1,2) (N,2,2) - These are 'b' channel multiplication factors.
+ *
+ * The range for below values is [-7 * 2^20 to 7 * 2^20]
+ *
+ * The 1st dimension of 10 can be extended to any number with values suitable
+ * to the user, with in above range.
+ */
+static const signed int xisp_ccm_matrix_choices[10][XISP_CCM_MATRIX_DIM1][XISP_CCM_MATRIX_DIM2] = {
+	/* bt2020_bt709_arr */
+	{
+		{1741160, -616143, -76336},
+		{-130652, 1187931, -8703},
+		{-19084, -105486, 1173042}
+	},
+	/* bt709_bt2020_arr */
+	{
+		{657457, 344981, 45403},
+		{72456, 964689, 11848},
+		{17196, 92274, 939524}
+	},
+	/* rgb_yuv_601_arr */
+	{
+		{191889, 643825, 65011},
+		{-105906, -354418, 460324},
+		{460324, -418381, -41943}
+	},
+	/* rgb_yuv_709_arr */
+	{
+		{236572, 610566, 53401},
+		{-125743, -324527, 450271},
+		{450271, -414056, -36214}
+	},
+	/* rgb_yuv_2020_arr */
+	{
+		{1220542, 0, 1673527},
+		{1220542, -852492, -409993},
+		{1220542, 2116026, 0}
+	},
+	/* yuv_rgb_601_arr */
+	{
+		{1220542, 0, 1880096},
+		{1220542, -223346, -559939},
+		{1220542, 2217738, 0}
+	},
+	/* yuv_rgb_709_arr */
+	{
+		{1220945, 0, 1800405},
+		{1220945, -200910, -697590},
+		{1220945, 2297085, 0}
+	},
+	/* yuv_rgb_2020_arr */
+	{
+		{897900, 0, 0},
+		{0, 897900, 0},
+		{0, 0, 897900}
+	},
+	/* full_to_16_235_arr */
+	{
+		{1224535, 0, 0},
+		{0, 1224535, 0},
+		{0, 0, 1224535}
+	},
+	/* full_from_16_235_arr */
+	{
+		{0, 0, 0},
+		{0, 0, 0},
+		{0, 0, 0}
+	}
+};
+
+/*
+ * The 10 most commonly used matrices are given.
+ * (N,0) -  'r' channel offset value.
+ * (N,1) -  'g'  channel offset value.
+ * (N,2) -  'b'  channel offset value.
+ *
+ * The range for above values is [-7 * 2^20 to 7 * 2^20]
+ *
+ * The 1st dimension of 10 can be extended to any number with
+ * values suitable to the user, with in above range.
+ */
+static const signed int xisp_ccm_offsetarray_choices[10][XISP_CCM_MATRIX_DIM1] = {
+	/* bt2020_bt709_off */
+	{0, 0, 0},
+	/* bt709_bt2020_off */
+	{0, 0, 0},
+	/* rgb_yuv_601_off */
+	{65536, 524288, 524288},
+	/* rgb_yuv_709_off */
+	{65536, 524288, 524288},
+	/* rgb_yuv_2020_off */
+	{65792, 524288, 524288},
+	/* yuv_rgb_601_off */
+	{-913047, 554958, -1134297},
+	/* yuv_rgb_709_off */
+	{-1016332, 315359, -1185153},
+	/* yuv_rgb_2020_off */
+	{-976810, 372641, -1225151},
+	/* full_to_16_235_off */
+	{65536, 65536, 65536},
+	/* full_from_16_235_off */
+	{-76533, -76533, -76533}
+};
 
 #endif /* __XILINX_ISP_PARAMS_H__ */
