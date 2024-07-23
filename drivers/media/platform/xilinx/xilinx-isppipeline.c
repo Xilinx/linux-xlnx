@@ -278,6 +278,7 @@ enum xisp_max_supported_size_index {
 /* enumerations for functions_bypassable index */
 enum xisp_functions_bypassable_index {
 	XISP_HDR_MODE_INDEX = 0,
+	XISP_ISP_EN_INDEX = 0,
 	XISP_HDR_INDEX = 1,
 	XISP_RGBIR_INDEX = 2,
 	XISP_AEC_INDEX = 3,
@@ -376,9 +377,19 @@ struct xisp_dev {
 	struct media_pad pads[XISP_NO_OF_PADS];
 	struct v4l2_mbus_framefmt formats[XISP_NO_OF_PADS];
 	struct v4l2_ctrl_handler ctrl_handler;
+	const struct xilinx_isp_feature *config;
+	const u32 *lut3d;
+	const u32 *mono_lut;
+	const u32 *red_lut;
+	const u32 *green_lut;
+	const u32 *blue_lut;
+	const u32 **gamma_table;
+	const u32 (*degamma_lut)[XISP_DEGAMMA_KNEE_POINTS][XISP_DEGAMMA_PARAMS];
+	const u32 (*decompand_lut)[XISP_HDR_DECOMP_KNEE_POINTS][XISP_HDR_DECOMP_PARAMS];
+	const signed int (*ccm_matrix_lut)[XISP_CCM_MATRIX_DIM2];
+	const signed int *ccm_offsetarray_lut;
 	enum xisp_bayer_format bayer_fmt;
 	struct gpio_desc *rst_gpio;
-	const struct xilinx_isp_feature *config;
 	u32 ip_max_res;
 	u32 module_conf;
 	u32 module_bypass;
@@ -399,7 +410,6 @@ struct xisp_dev {
 	u16 bgain;
 	u16 ggain;
 	u16 luma_gain;
-	bool mode_reg;
 	u16 block_rows;
 	u16 block_cols;
 	u16 clip;
@@ -411,24 +421,15 @@ struct xisp_dev {
 	u16 pawb;
 	u16 resize_new_height;
 	u16 resize_new_width;
+	u16 threshold_aec;
+	u16 threshold_awb;
 	u8 tm_type;
 	u8 alpha;
 	u8 optical_black_value;
 	u8 degamma_select;
 	u8 decompand_select;
 	u8 ccm_select;
-	const u32 *lut3d;
-	const u32 *mono_lut;
-	const u32 *red_lut;
-	const u32 *green_lut;
-	const u32 *blue_lut;
-	const u32 **gamma_table;
-	u16 threshold_aec;
-	u16 threshold_awb;
-	const u32 (*degamma_lut)[XISP_DEGAMMA_KNEE_POINTS][XISP_DEGAMMA_PARAMS];
-	const u32 (*decompand_lut)[XISP_HDR_DECOMP_KNEE_POINTS][XISP_HDR_DECOMP_PARAMS];
-	const signed int (*ccm_matrix_lut)[XISP_CCM_MATRIX_DIM2];
-	const signed int *ccm_offsetarray_lut;
+	bool mode_reg;
 };
 
 static const struct xilinx_isp_feature xlnx_isp_cfg_v10 = {
@@ -1250,6 +1251,11 @@ static int xisp_s_ctrl(struct v4l2_ctrl *ctrl)
 							 XISP_MEDIAN_INDEX, ctrl->val);
 		xvip_write(&xisp->xvip, XISP_FUNCS_BYPASS_CONFIG_REG, xisp->module_bypass);
 		break;
+	case V4L2_CID_XILINX_ISP_EN:
+		xisp->module_bypass = xisp_module_bypass(xisp->module_bypass,
+							 XISP_ISP_EN_INDEX, ctrl->val);
+		xvip_write(&xisp->xvip, XISP_FUNCS_BYPASS_CONFIG_REG, xisp->module_bypass);
+		break;
 	case V4L2_CID_XILINX_ISP_RESIZE_EN:
 		xisp->module_bypass = xisp_module_bypass(xisp->module_bypass,
 							 XISP_RESIZE_INDEX, ctrl->val);
@@ -1934,6 +1940,21 @@ static struct v4l2_ctrl_config xisp_ctrls_resize[] = {
 	}
 };
 
+static struct v4l2_ctrl_config xisp_ctrls_isp[] = {
+	/* ISP ENABLE/DISABLE */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_EN,
+		.name = "bypass_isp",
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.min = XISP_MIN_VALUE,
+		.max = 1,
+		.step = 1,
+		.def = 0,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+};
+
 static struct v4l2_ctrl_config xisp_ctrls[] = {
 	/* Red Gain */
 	{
@@ -2512,6 +2533,7 @@ static int xisp_probe(struct platform_device *pdev)
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_clahe);
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_median);
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_resize);
+		num_of_parameters += ARRAY_SIZE(xisp_ctrls_isp);
 
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, num_of_parameters);
 
@@ -2616,6 +2638,8 @@ static int xisp_probe(struct platform_device *pdev)
 				     xisp_ctrls_median, ARRAY_SIZE(xisp_ctrls_median));
 		xisp_create_controls(xisp, XISP_RESIZE_INDEX,
 				     xisp_ctrls_resize, ARRAY_SIZE(xisp_ctrls_resize));
+		if (XGET_BIT(XISP_ISP_EN_INDEX, xisp->module_bypass_en))
+			v4l2_ctrl_new_custom(&xisp->ctrl_handler, &xisp_ctrls_isp[0], NULL);
 	} else {
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, ARRAY_SIZE(xisp_ctrls) +
 				       ARRAY_SIZE(xisp_ctrls_gamma_correct));
