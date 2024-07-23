@@ -12,6 +12,9 @@
 #define XISP_RGBIR_LENGTH (97)
 #define XISP_CCM_MATRIX_DIM1 (3)
 #define XISP_CCM_MATRIX_DIM2 (3)
+#define XISP_HDR_DECOMP_COLOR_ID	(3)
+#define XISP_HDR_DECOMP_KNEE_POINTS	(4)
+#define XISP_HDR_DECOMP_PARAMS		(3)
 
 /*
  * XISP_DEGAMMA_COLOR_ID = COLOR ID (R, G, B)
@@ -188,5 +191,54 @@ static const signed int xisp_ccm_offsetarray_choices[10][XISP_CCM_MATRIX_DIM1] =
 	/* full_from_16_235_off */
 	{-76533, -76533, -76533}
 };
+
+/*
+ * XISP_HDR_DECOMP_COLOR_ID = COLOR ID (R, G, B)
+ * XISP_HDR_DECOMP_KNEE_POINTS = Number of knee points (we support 4)
+ * XISP_HDR_DECOMP_PARAMS =  Contains 3 values (max_value for range, slope and constant)
+ *
+ * The function xisp_set_decomp_entries writes the decomposition values from the provided
+ * 3D array to the device's registers.
+ * The decomposition values are written sequentially starting from the address specified by
+ * decomp_base.
+ * Each value is written to an offset that increments by 4 bytes (32 bits) for each subsequent
+ * value.
+ */
+static const u32 xisp_decompand_choices[3][XISP_HDR_DECOMP_COLOR_ID]
+						[XISP_HDR_DECOMP_KNEE_POINTS]
+						[XISP_HDR_DECOMP_PARAMS] = {{
+	/* in: 12-bit, out:20-bit */
+	{
+		{512, 4, 0}, {1408, 16, 384}, {2176, 64, 1152}, {4096, 512, 2048}
+	},
+	{
+		{512, 4, 0}, {1408, 16, 384}, {2176, 64, 1152}, {4096, 512, 2048}
+	},
+	{
+		{512, 4, 0}, {1408, 16, 384}, {2176, 64, 1152}, {4096, 512, 2048}
+	}
+}, {
+	/* in: 12-bit, out:16-bit */
+	{
+		{1024, 4, 0}, {1536, 8, 512}, {3072, 16, 1024}, {4096, 32, 2048}
+	},
+	{
+		{1024, 4, 0}, {1536, 8, 512}, {3072, 16, 1024}, {4096, 32, 2048}
+	},
+	{
+		{1024, 4, 0}, {1536, 8, 512}, {3072, 16, 1024}, {4096, 32, 2048}
+	}
+}, {
+	/* in: 16-bit, out:24-bit */
+	{
+		{8192, 4, 0}, {22528, 16, 6144}, {34816, 64, 18432}, {65536, 512, 32768}
+	},
+	{
+		{8192, 4, 0}, {22528, 16, 6144}, {34816, 64, 18432}, {65536, 512, 32768}
+	},
+	{
+		{8192, 4, 0}, {22528, 16, 6144}, {34816, 64, 18432}, {65536, 512, 32768}
+	}
+}};
 
 #endif /* __XILINX_ISP_PARAMS_H__ */
