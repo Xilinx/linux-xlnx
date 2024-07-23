@@ -267,5 +267,15 @@
 #define V4L2_CID_XILINX_ISP_CCM_EN		(V4L2_CID_XILINX_ISP + 20)
 /* Adjust CCM values */
 #define V4L2_CID_XILINX_ISP_CCM_PARAMS		(V4L2_CID_XILINX_ISP + 21)
+/* Enable/Disable Gain Control */
+#define V4L2_CID_XILINX_ISP_GAIN_EN		(V4L2_CID_XILINX_ISP + 22)
+/* Adjust Gain control Red Gain */
+#define V4L2_CID_XILINX_ISP_GAIN_CONTROL_RED_GAIN		(V4L2_CID_XILINX_ISP + 23)
+/* Adjust Gain control Blue Gain */
+#define V4L2_CID_XILINX_ISP_GAIN_CONTROL_BLUE_GAIN		(V4L2_CID_XILINX_ISP + 24)
+/* Adjust Gain control Green Gain */
+#define V4L2_CID_XILINX_ISP_GAIN_CONTROL_GREEN_GAIN		(V4L2_CID_XILINX_ISP + 52)
+/* Adjust Luminance Gain */
+#define V4L2_CID_XILINX_ISP_LUMA_GAIN		(V4L2_CID_XILINX_ISP + 25)
 
 #endif /* __UAPI_XILINX_V4L2_CONTROLS_H__ */
