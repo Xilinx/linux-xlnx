@@ -88,6 +88,9 @@
  *
  * XISP_GAIN_CONTROL_CONFIG_2_REG
  * 0-15: ggain, 16-23: bayer_fmt, 24-31: Reserved
+ *
+ * XISP_GAMMA_CONFIG_BASE
+ * 0-63: Base address in the device's register space for gamma params
  */
 #define XISP_COMMON_CONFIG_REG		(0x10UL)
 #define XISP_PIPELINE_CONFIG_INFO_REG		(0x80UL)
@@ -101,6 +104,7 @@
 #define XISP_AWB_CONFIG_REG				(0x20UL)
 #define XISP_RGBIR_CONFIG_BASE			(0x200UL)
 #define XISP_DEGAMMA_CONFIG_BASE		(0x1000UL)
+#define XISP_GAMMA_CONFIG_BASE			(0x2000UL)
 #define XISP_RGBIR_CONFIG_BASE1			(XISP_RGBIR_CONFIG_BASE + 0x20)
 #define XISP_RGBIR_CONFIG_BASE2			(XISP_RGBIR_CONFIG_BASE + 0x40)
 #define XISP_RGBIR_CONFIG_BASE3			(XISP_RGBIR_CONFIG_BASE + 0x60)
@@ -169,7 +173,15 @@
 #define XISP_RED_GAIN_DEFALUT			(100)
 #define XISP_BLUE_GAIN_DEFALUT			(350)
 #define XISP_GREEN_GAIN_DEFALUT			(200)
+#define XISP_RED_GAMMA_MAX			(40)
+#define XISP_RED_GAMMA_DEFALUT			(20)
+#define XISP_GREEN_GAMMA_MAX			(40)
+#define XISP_GREEN_GAMMA_DEFALUT		(15)
+#define XISP_BLUE_GAMMA_MAX			(40)
+#define XISP_BLUE_GAMMA_DEFALUT			(20)
 #define XISP_MONO_LUMA_GAIN_DEFALUT		(128)
+#define XISP_MONO_GAMMA_MAX			(40)
+#define XISP_MONO_GAMMA_DEFALUT			(20)
 #define XISP_UPPER_WORD_MSB			(31)
 #define XISP_UPPER_WORD_LSB			(16)
 
@@ -207,7 +219,8 @@ enum xisp_functions_bypassable_index {
 	XISP_GAIN_INDEX = 8,
 	XISP_DEMOSAIC_INDEX = 9,
 	XISP_AWB_INDEX = 10,
-	XISP_CCM_INDEX = 11
+	XISP_CCM_INDEX = 11,
+	XISP_GAMMA_INDEX = 15
 };
 
 /**
@@ -256,6 +269,7 @@ struct xilinx_isp_feature {
  * @degamma_lut: Pointer to the degamma coefficient as per the degamma control
  * @ccm_matrix_lut: Pointer to the degamma coefficient as per the degamma control
  * @ccm_offsetarray_lut: Pointer to the degamma coefficient as per the degamma control
+ * @mono_lut: Pointer to the gamma coefficient as per the mono Gamma control
  */
 struct xisp_dev {
 	struct xvip_device xvip;
@@ -285,6 +299,7 @@ struct xisp_dev {
 	u16 pawb;
 	u8 degamma_select;
 	u8 ccm_select;
+	const u32 *mono_lut;
 	const u32 *red_lut;
 	const u32 *green_lut;
 	const u32 *blue_lut;
@@ -338,7 +353,17 @@ static void xisp_set_lut_entries(struct xisp_dev *xisp, const u32 *lut, const u3
 	}
 }
 
-static void select_gamma(u32 value, const u32 **coeff, const u32 **xgamma_curves)
+/**
+ * xisp_select_gamma - Selects the gamma curve coefficients based on the given value
+ * @value: Index to select the gamma curve
+ * @coeff: Pointer to the location where the selected gamma curve coefficients will be stored
+ * @xgamma_curves: Array of pointers to gamma curve coefficient arrays
+ *
+ * This function selects the gamma curve coefficients from an array of gamma curves
+ * based on the provided index value. It adjusts the index by subtracting 1 (assuming
+ * 1-based index) and updates the pointer to the coefficients.
+ */
+static void xisp_select_gamma(u32 value, const u32 **coeff, const u32 **xgamma_curves)
 {
 	*coeff = *(xgamma_curves + value - 1);
 }
@@ -467,6 +492,31 @@ static void xisp_set_rgbir_entries(struct xisp_dev *xisp, const u32 rgbir_base, 
 		xvip_write(&xisp->xvip, rgbir_base, rgbir_param[i]);
 }
 
+/**
+ * xisp_set_gamma_common - Set gamma LUT entries based on conditions
+ * @lut: Pointer to the lookup table
+ * @base_reg: Base register for gamma configuration
+ * @xisp: Pointer to the Xilinx ISP device structure
+ * @in_type_conf_gamma: Boolean indicating if the input type configuration allows gamma
+ *
+ * This function sets the gamma LUT entries if the gamma is enabled,
+ * not bypassed, and the input type configuration allows gamma. It
+ * retrieves the gamma enable and bypass status from the device
+ * configuration.
+ */
+static void xisp_set_gamma_common(const u32 *lut, const u32 base_reg, struct xisp_dev *xisp,
+				  bool in_type_conf_gamma)
+{
+	bool gamma_enabled = XGET_BIT(XISP_GAMMA_INDEX, xisp->module_en);
+	bool gamma_bypass_enabled = XGET_BIT(XISP_GAMMA_INDEX, xisp->module_bypass_en);
+	bool gamma_bypass = XGET_BIT(XISP_GAMMA_INDEX, xisp->module_bypass);
+
+	if (gamma_enabled & in_type_conf_gamma) {
+		if (!gamma_bypass_enabled || !(gamma_bypass_enabled && gamma_bypass))
+			xisp_set_lut_entries(xisp, lut, base_reg);
+	}
+}
+
 static int xisp_s_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct xisp_dev *xisp =
@@ -475,6 +525,7 @@ static int xisp_s_ctrl(struct v4l2_ctrl *ctrl)
 	bool degamma_enabled, degamma_bypass_enabled, degamma_bypass;
 	bool ccm_enabled, ccm_bypass_enabled, ccm_bypass;
 	bool in_type_conf_gain = XGET_BIT(XISP_IN_TYPE_INDEX, xisp->module_conf);
+	bool in_type_conf_gamma = XGET_BIT(XISP_IN_TYPE_INDEX, xisp->module_conf);
 
 	switch (ctrl->id) {
 	case V4L2_CID_XILINX_ISP_AEC_EN:
@@ -627,23 +678,47 @@ static int xisp_s_ctrl(struct v4l2_ctrl *ctrl)
 		xisp->pawb = ctrl->val;
 		xvip_write(&xisp->xvip, XISP_PAWB_REG, xisp->pawb);
 		break;
+	case V4L2_CID_XILINX_ISP_GAMMA_EN:
+		xisp->module_bypass = xisp_module_bypass(xisp->module_bypass,
+							 XISP_GAMMA_INDEX, ctrl->val);
+		xvip_write(&xisp->xvip, XISP_FUNCS_BYPASS_CONFIG_REG, xisp->module_bypass);
+		break;
 	case V4L2_CID_XILINX_ISP_RED_GAMMA:
-		select_gamma(ctrl->val, &xisp->red_lut, xisp->gamma_table);
+		xisp_select_gamma(ctrl->val, &xisp->red_lut, xisp->gamma_table);
 		dev_dbg(xisp->xvip.dev, "Setting Red Gamma to %d.%d",
 			ctrl->val / 10, ctrl->val % 10);
-		xisp_set_lut_entries(xisp, xisp->red_lut, XISP_GAMMA_RED_REG);
+		if (xisp->config->flags & XILINX_ISP_VERSION_1)
+			xisp_set_lut_entries(xisp, xisp->red_lut, XISP_GAMMA_RED_REG);
+		else if (xisp->config->flags & XILINX_ISP_VERSION_2)
+			xisp_set_gamma_common(xisp->red_lut, XISP_GAMMA_CONFIG_BASE,
+					      xisp, in_type_conf_gamma);
 		break;
 	case V4L2_CID_XILINX_ISP_GREEN_GAMMA:
-		select_gamma(ctrl->val, &xisp->green_lut, xisp->gamma_table);
+		xisp_select_gamma(ctrl->val, &xisp->green_lut, xisp->gamma_table);
 		dev_dbg(xisp->xvip.dev, "Setting Green Gamma to %d.%d",
 			ctrl->val / 10, ctrl->val % 10);
-		xisp_set_lut_entries(xisp, xisp->green_lut, XISP_GAMMA_GREEN_REG);
+		if (xisp->config->flags & XILINX_ISP_VERSION_1)
+			xisp_set_lut_entries(xisp, xisp->green_lut, XISP_GAMMA_GREEN_REG);
+		else if (xisp->config->flags & XILINX_ISP_VERSION_2)
+			xisp_set_gamma_common(xisp->green_lut, XISP_GAMMA_CONFIG_BASE + 0x100,
+					      xisp, in_type_conf_gamma);
 		break;
 	case V4L2_CID_XILINX_ISP_BLUE_GAMMA:
-		select_gamma(ctrl->val, &xisp->blue_lut, xisp->gamma_table);
+		xisp_select_gamma(ctrl->val, &xisp->blue_lut, xisp->gamma_table);
 		dev_dbg(xisp->xvip.dev, "Setting Blue Gamma to %d.%d",
 			ctrl->val / 10, ctrl->val % 10);
-		xisp_set_lut_entries(xisp, xisp->blue_lut, XISP_GAMMA_BLUE_REG);
+		if (xisp->config->flags & XILINX_ISP_VERSION_1)
+			xisp_set_lut_entries(xisp, xisp->blue_lut, XISP_GAMMA_BLUE_REG);
+		else if (xisp->config->flags & XILINX_ISP_VERSION_2)
+			xisp_set_gamma_common(xisp->blue_lut, XISP_GAMMA_CONFIG_BASE + 0x200,
+					      xisp, in_type_conf_gamma);
+		break;
+	case V4L2_CID_GAMMA:
+		xisp_select_gamma(ctrl->val, &xisp->mono_lut, xisp->gamma_table);
+		dev_dbg(xisp->xvip.dev, "Setting Gamma to %d.%d",
+			ctrl->val / 10, ctrl->val % 10);
+		xisp_set_gamma_common(xisp->mono_lut, XISP_GAMMA_CONFIG_BASE, xisp,
+				      (!in_type_conf_gamma));
 		break;
 	default:
 		return -EINVAL;
@@ -929,6 +1004,57 @@ static struct v4l2_ctrl_config xisp_ctrls_gain_control[] = {
 	}
 };
 
+static struct v4l2_ctrl_config xisp_ctrls_gamma_correct[] = {
+	/* GAMMA ENABLE/DISABLE */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_GAMMA_EN,
+		.name = "bypass_gamma",
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.min = XISP_MIN_VALUE,
+		.max = 1,
+		.step = 1,
+		.def = 0,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+	/* RED GAMMA */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_RED_GAMMA,
+		.name = "red_gamma",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 1,
+		.max = XISP_RED_GAMMA_MAX,
+		.step = 1,
+		.def = XISP_RED_GAMMA_DEFALUT,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+	/* GREEN GAMMA */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_GREEN_GAMMA,
+		.name = "green_gamma",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 1,
+		.max = XISP_GREEN_GAMMA_MAX,
+		.step = 1,
+		.def = XISP_GREEN_GAMMA_DEFALUT,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+	/* BLUE GAMMA */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_BLUE_GAMMA,
+		.name = "blue_gamma",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 1,
+		.max = XISP_BLUE_GAMMA_MAX,
+		.step = 1,
+		.def = XISP_BLUE_GAMMA_DEFALUT,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+};
+
 static struct v4l2_ctrl_config xisp_ctrls_mono[] = {
 	/* LUMIANCE GAIN*/
 	{
@@ -940,6 +1066,18 @@ static struct v4l2_ctrl_config xisp_ctrls_mono[] = {
 		.max = XISP_MAX_VALUE,
 		.step = 1,
 		.def = XISP_MONO_LUMA_GAIN_DEFALUT,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+	/* GAMMA */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_GAMMA,
+		.name = "mono_gamma",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 1,
+		.max = XISP_MONO_GAMMA_MAX,
+		.step = 1,
+		.def = XISP_MONO_GAMMA_DEFALUT,
 		.flags = V4L2_CTRL_FLAG_SLIDER,
 	},
 };
@@ -991,42 +1129,6 @@ static struct v4l2_ctrl_config xisp_ctrls[] = {
 		.max = 65535,
 		.step = 1,
 		.def = 512,
-		.flags = V4L2_CTRL_FLAG_SLIDER,
-	},
-	/* Red Gamma */
-	{
-		.ops = &xisp_ctrl_ops,
-		.id = V4L2_CID_XILINX_ISP_RED_GAMMA,
-		.name = "red_gamma",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.min = 1,
-		.max = 40,
-		.step = 1,
-		.def = 20,
-		.flags = V4L2_CTRL_FLAG_SLIDER,
-	},
-	/* Green Gamma */
-	{
-		.ops = &xisp_ctrl_ops,
-		.id = V4L2_CID_XILINX_ISP_GREEN_GAMMA,
-		.name = "green_gamma",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.min = 1,
-		.max = 40,
-		.step = 1,
-		.def = 15,
-		.flags = V4L2_CTRL_FLAG_SLIDER,
-	},
-	/* Blue Gamma */
-	{
-		.ops = &xisp_ctrl_ops,
-		.id = V4L2_CID_XILINX_ISP_BLUE_GAMMA,
-		.name = "blue_gamma",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.min = 1,
-		.max = 40,
-		.step = 1,
-		.def = 20,
 		.flags = V4L2_CTRL_FLAG_SLIDER,
 	},
 };
@@ -1533,6 +1635,7 @@ static int xisp_probe(struct platform_device *pdev)
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_ccm_pattern);
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_gain_control);
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_mono);
+		num_of_parameters += ARRAY_SIZE(xisp_ctrls_gamma_correct);
 
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, num_of_parameters);
 
@@ -1570,11 +1673,31 @@ static int xisp_probe(struct platform_device *pdev)
 						     &xisp_ctrls_gain_control[0], NULL);
 			v4l2_ctrl_new_custom(&xisp->ctrl_handler, &xisp_ctrls_mono[0], NULL);
 		}
+
+		if (XGET_BIT(XISP_GAMMA_INDEX, xisp->module_en)) {
+			if (XGET_BIT(XISP_GAMMA_INDEX, xisp->module_bypass_en))
+				v4l2_ctrl_new_custom(&xisp->ctrl_handler,
+						     &xisp_ctrls_gamma_correct[0], NULL);
+
+			if (!XGET_BIT(XISP_IN_TYPE_INDEX, xisp->module_conf))
+				v4l2_ctrl_new_custom(&xisp->ctrl_handler,
+						     &xisp_ctrls_mono[1], NULL);
+			else if (XGET_BIT(XISP_IN_TYPE_INDEX, xisp->module_conf))
+				for (itr = 1; itr < ARRAY_SIZE(xisp_ctrls_gamma_correct); itr++) {
+					v4l2_ctrl_new_custom(&xisp->ctrl_handler,
+							     &xisp_ctrls_gamma_correct[itr], NULL);
+				}
+		}
 	} else {
-		v4l2_ctrl_handler_init(&xisp->ctrl_handler, ARRAY_SIZE(xisp_ctrls));
+		v4l2_ctrl_handler_init(&xisp->ctrl_handler, ARRAY_SIZE(xisp_ctrls) +
+				       ARRAY_SIZE(xisp_ctrls_gamma_correct));
 		for (itr = 0; itr < ARRAY_SIZE(xisp_ctrls); itr++) {
 			v4l2_ctrl_new_custom(&xisp->ctrl_handler,
 					     &xisp_ctrls[itr], NULL);
+		}
+		for (itr = 1; itr < ARRAY_SIZE(xisp_ctrls_gamma_correct); itr++) {
+			v4l2_ctrl_new_custom(&xisp->ctrl_handler,
+					     &xisp_ctrls_gamma_correct[itr], NULL);
 		}
 	}
 
