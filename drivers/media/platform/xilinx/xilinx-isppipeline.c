@@ -20,6 +20,7 @@
 #include <media/v4l2-ctrls.h>
 
 #include "xilinx-gamma-correction.h"
+#include "xilinx-isp-params.h"
 #include "xilinx-vip.h"
 
 /*
@@ -69,6 +70,9 @@
  *
  * XISP_AWB_CONFIG_REG
  * 0-15: threshold_awb, 16-31: Reserved
+ *
+ * XISP_DEGAMMA_CONFIG_BASE
+ * 0-63: Base address in the device's register space for DeGamma params
  */
 #define XISP_COMMON_CONFIG_REG		(0x10UL)
 #define XISP_PIPELINE_CONFIG_INFO_REG		(0x80UL)
@@ -80,6 +84,7 @@
 #define XISP_BLC_CONFIG_1_REG			(0x28UL)
 #define XISP_BLC_CONFIG_2_REG			(0x30UL)
 #define XISP_AWB_CONFIG_REG				(0x20UL)
+#define XISP_DEGAMMA_CONFIG_BASE		(0x1000UL)
 #define XISP_AP_CTRL_REG		(0x0)
 #define XISP_WIDTH_REG			(0x10)
 #define XISP_HEIGHT_REG			(0x18)
@@ -154,6 +159,7 @@ enum xisp_functions_bypassable_index {
 	XISP_AEC_INDEX = 3,
 	XISP_BLC_INDEX = 4,
 	XISP_BPC_INDEX = 5,
+	XISP_DEGAMMA_INDEX = 6,
 	XISP_AWB_INDEX = 10
 };
 
@@ -196,6 +202,8 @@ struct xilinx_isp_feature {
  * @gamma_table: Pointer to the table containing various gamma values
  * @threshold_aec: Expected threshold for auto exposure correction
  * @threshold_awb: Expected threshold for auto white balance
+ * @degamma_select: Expected degamma array values
+ * @degamma_lut: Pointer to the degamma coefficient as per the degamma control
  */
 struct xisp_dev {
 	struct xvip_device xvip;
@@ -221,12 +229,14 @@ struct xisp_dev {
 	u16 bgain;
 	bool mode_reg;
 	u16 pawb;
+	u8 degamma_select;
 	const u32 *red_lut;
 	const u32 *green_lut;
 	const u32 *blue_lut;
 	const u32 **gamma_table;
 	u16 threshold_aec;
 	u16 threshold_awb;
+	const u32 (*degamma_lut)[XISP_DEGAMMA_KNEE_POINTS][XISP_DEGAMMA_PARAMS];
 };
 
 static const struct xilinx_isp_feature xlnx_isp_cfg_v10 = {
@@ -295,11 +305,48 @@ static int xisp_module_bypass(u32 in_val, u32 position, bool bit_val)
 	return ((in_val & ~mask) | (bit_val << position));
 }
 
+/**
+ * xisp_set_degamma_entries - Set degamma entries for the XISP device.
+ * @xisp: Pointer to the xisp_dev structure representing the device.
+ * @degamma_base: Base address in the device's register space where degamma entries will be written.
+ * @degamma: Pointer to a 3-dimensional array containing the degamma values to be written.
+ *           The dimensions of this array are defined by XISP_DEGAMMA_COLOR_ID,
+ *           XISP_DEGAMMA_KNEE_POINTS, and XISP_DEGAMMA_PARAMS.
+ *
+ * This function writes the degamma values from the provided 3D array to the device's registers.
+ * The degamma values are written sequentially starting from the address specified by degamma_base.
+ * Each value is written to an offset that increments by 4 bytes (32 bits) for each subsequent
+ * value.
+ *
+ * The loops iterate through:
+ * - i: Color ID, ranging from 0 to XISP_DEGAMMA_COLOR_ID - 1
+ * - j: Knee points, ranging from 0 to XISP_DEGAMMA_KNEE_POINTS - 1
+ * - k: Parameters, ranging from 0 to XISP_DEGAMMA_PARAMS - 1
+ *
+ * Inside the innermost loop, the function calls xvip_write() to write each degamma value to the
+ * device's register at the current offset, and then increments the offset by 4 bytes.
+ */
+static void xisp_set_degamma_entries(struct xisp_dev *xisp, const u32 degamma_base,
+				     const u32 (*degamma)[XISP_DEGAMMA_KNEE_POINTS]
+							 [XISP_DEGAMMA_PARAMS])
+{
+	int idx;
+	u32 degamma_offset;
+	int total_elements = XISP_DEGAMMA_COLOR_ID * XISP_DEGAMMA_KNEE_POINTS * XISP_DEGAMMA_PARAMS;
+	const u32 *degamma_ptr = &degamma[0][0][0];
+
+	degamma_offset = degamma_base;
+
+	for (idx = 0; idx < total_elements; idx++)
+		xvip_write(&xisp->xvip, degamma_offset + (idx * 4), degamma_ptr[idx]);
+}
+
 static int xisp_s_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct xisp_dev *xisp =
 		container_of(ctrl->handler,
 			     struct xisp_dev, ctrl_handler);
+	bool degamma_enabled, degamma_bypass_enabled, degamma_bypass;
 
 	switch (ctrl->id) {
 	case V4L2_CID_XILINX_ISP_AEC_EN:
@@ -337,6 +384,25 @@ static int xisp_s_ctrl(struct v4l2_ctrl *ctrl)
 		xisp->module_bypass = xisp_module_bypass(xisp->module_bypass,
 							 XISP_BPC_INDEX, ctrl->val);
 		xvip_write(&xisp->xvip, XISP_FUNCS_BYPASS_CONFIG_REG, xisp->module_bypass);
+		break;
+	case V4L2_CID_XILINX_ISP_DEGAMMA_EN:
+		xisp->module_bypass = xisp_module_bypass(xisp->module_bypass,
+							 XISP_DEGAMMA_INDEX, ctrl->val);
+		xvip_write(&xisp->xvip, XISP_FUNCS_BYPASS_CONFIG_REG, xisp->module_bypass);
+		break;
+	case V4L2_CID_XILINX_ISP_DEGAMMA_PARAMS:
+		xisp->degamma_select = ctrl->val;
+		degamma_enabled = XGET_BIT(XISP_DEGAMMA_INDEX, xisp->module_en);
+		degamma_bypass_enabled = XGET_BIT(XISP_DEGAMMA_INDEX, xisp->module_bypass_en);
+		degamma_bypass = XGET_BIT(XISP_DEGAMMA_INDEX, xisp->module_bypass);
+
+		if (degamma_enabled)
+			if (!degamma_bypass_enabled || !(degamma_bypass_enabled &&
+							 degamma_bypass)) {
+				xisp->degamma_lut = xisp_degamma_choices[xisp->degamma_select];
+				xisp_set_degamma_entries(xisp, XISP_DEGAMMA_CONFIG_BASE,
+							 xisp->degamma_lut);
+			}
 		break;
 	case V4L2_CID_XILINX_ISP_RED_GAIN:
 		xisp->rgain = ctrl->val;
@@ -483,6 +549,33 @@ static struct v4l2_ctrl_config xisp_ctrls_bpc[] = {
 		.id = V4L2_CID_XILINX_ISP_BPC_EN,
 		.name = "bypass_bpc",
 		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.min = XISP_MIN_VALUE,
+		.max = 1,
+		.step = 1,
+		.def = 0,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+};
+
+static struct v4l2_ctrl_config xisp_ctrls_degamma[] = {
+	/* DEGAMMA ENABLE/DISABLE */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_DEGAMMA_EN,
+		.name = "bypass_degamma",
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.min = XISP_MIN_VALUE,
+		.max = 1,
+		.step = 1,
+		.def = 0,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+	/* SELECT DEGAMMA PARAMS */
+	{
+		.ops = &xisp_ctrl_ops,
+		.id = V4L2_CID_XILINX_ISP_DEGAMMA_PARAMS,
+		.name = "select_degamma",
+		.type = V4L2_CTRL_TYPE_INTEGER,
 		.min = XISP_MIN_VALUE,
 		.max = 1,
 		.step = 1,
@@ -1038,6 +1131,7 @@ static int xisp_probe(struct platform_device *pdev)
 	if (xisp->config->flags & XILINX_ISP_VERSION_2) {
 		num_of_parameters = ARRAY_SIZE(xisp_ctrls_aec) + ARRAY_SIZE(xisp_ctrls_blc);
 		num_of_parameters += ARRAY_SIZE(xisp_ctrls_awb) + ARRAY_SIZE(xisp_ctrls_bpc);
+		num_of_parameters += ARRAY_SIZE(xisp_ctrls_degamma);
 
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, num_of_parameters);
 
@@ -1049,6 +1143,8 @@ static int xisp_probe(struct platform_device *pdev)
 				     ARRAY_SIZE(xisp_ctrls_awb));
 		xisp_create_controls(xisp, XISP_BPC_INDEX, xisp_ctrls_bpc,
 				     ARRAY_SIZE(xisp_ctrls_bpc));
+		xisp_create_controls(xisp, XISP_DEGAMMA_INDEX,
+				     xisp_ctrls_degamma, ARRAY_SIZE(xisp_ctrls_degamma));
 	} else {
 		v4l2_ctrl_handler_init(&xisp->ctrl_handler, ARRAY_SIZE(xisp_ctrls));
 		for (itr = 0; itr < ARRAY_SIZE(xisp_ctrls); itr++) {
