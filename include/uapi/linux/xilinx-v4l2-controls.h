@@ -279,5 +279,17 @@
 #define V4L2_CID_XILINX_ISP_LUMA_GAIN		(V4L2_CID_XILINX_ISP + 25)
 /* Enable/Disable Gamma */
 #define V4L2_CID_XILINX_ISP_GAMMA_EN		(V4L2_CID_XILINX_ISP + 26)
+/* Enable/Disable HDR */
+#define V4L2_CID_XILINX_ISP_HDR_EN			(V4L2_CID_XILINX_ISP + 27)
+/* Adjust Decompand values */
+#define V4L2_CID_XILINX_ISP_DECOMPAND_PARAMS		(V4L2_CID_XILINX_ISP + 28)
+/* Adjust HDR Merge Alpha */
+#define V4L2_CID_XILINX_ISP_ALPHA		(V4L2_CID_XILINX_ISP + 29)
+/* Adjust HDR Merge Optical Black Value */
+#define V4L2_CID_XILINX_ISP_OPTICAL_BLACK_VALUE	(V4L2_CID_XILINX_ISP + 30)
+/* Adjust HDR Merge Intersec */
+#define V4L2_CID_XILINX_ISP_INTERSEC		(V4L2_CID_XILINX_ISP + 31)
+/* Adjust HDR Merge Rho */
+#define V4L2_CID_XILINX_ISP_RHO			(V4L2_CID_XILINX_ISP + 32)
 
 #endif /* __UAPI_XILINX_V4L2_CONTROLS_H__ */
