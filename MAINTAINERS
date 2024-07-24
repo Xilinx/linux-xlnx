@@ -25570,6 +25570,13 @@ R:	Vishal Sagar <vishal.sagar@amd.com>
 S:	Maintained
 F:	drivers/staging/xlnx_hdcp1x/
 
+XILINX IDT8T49N24X CLOCK DRIVER
+M:	Rajesh Gugulothu <rajesh.gugulothu@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/clock/idt,idt8t49n24x.txt
+F:	drivers/clk/idt/
+
 XILINX PWM DRIVER
 M:	Sean Anderson <sean.anderson@seco.com>
 S:	Maintained
