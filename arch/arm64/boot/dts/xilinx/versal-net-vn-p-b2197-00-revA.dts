@@ -86,6 +86,10 @@
 	status = "okay";
 };
 
+&sysmon0 {
+	status = "okay";
+};
+
 &wwdt0 {
 	status = "okay";
 };
