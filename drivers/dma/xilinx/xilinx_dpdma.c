@@ -1182,7 +1182,6 @@ static void xilinx_dpdma_chan_vsync_irq(struct  xilinx_dpdma_chan *chan)
 	chan->desc.active = pending;
 	chan->desc.pending = NULL;
 
-	spin_lock(&chan->vchan.lock);
 	xilinx_dpdma_chan_queue_transfer(chan);
 	spin_unlock(&chan->vchan.lock);
 
