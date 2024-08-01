@@ -471,7 +471,6 @@
 			interrupts = <0 18 4>;
 			reg-io-width = <4>;
 			clock-names = "uartclk", "apb_pclk";
-			current-speed = <115200>;
 			bootph-all;
 		};
 
@@ -482,7 +481,6 @@
 			interrupts = <0 19 4>;
 			reg-io-width = <4>;
 			clock-names = "uartclk", "apb_pclk";
-			current-speed = <115200>;
 			bootph-all;
 		};
 
