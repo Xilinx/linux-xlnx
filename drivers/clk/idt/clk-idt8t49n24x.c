@@ -422,14 +422,12 @@ static struct clk_hw *of_clk_idt24x_get(
 /**
  * idt24x_probe - main entry point for ccf driver
  * @client:	pointer to i2c_client structure
- * @id:		pointer to i2c_device_id structure
  *
  * Main entry point function that gets called to initialize the driver.
  *
  * Return: 0 for success.
  */
-static int idt24x_probe(struct i2c_client *client,
-			const struct i2c_device_id *id)
+static int idt24x_probe(struct i2c_client *client)
 {
 	struct clk_idt24x_chip *chip;
 	struct clk_init_data init;
