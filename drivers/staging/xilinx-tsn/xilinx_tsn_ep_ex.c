@@ -77,6 +77,11 @@ static const struct net_device_ops ex_ep_netdev_ops = {
 	.ndo_set_mac_address = netdev_set_ex_ep_mac_address,
 };
 
+bool xlnx_is_port_ep_ex_netdev(const struct net_device *ndev)
+{
+	return ndev && (ndev->netdev_ops == &ex_ep_netdev_ops);
+}
+
 static int tsn_ex_ep_probe(struct platform_device *pdev)
 {
 	struct axienet_local *lp;

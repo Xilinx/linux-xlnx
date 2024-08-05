@@ -1350,5 +1350,8 @@ int axienet_ethtools_set_coalesce(struct net_device *ndev,
 int tsn_switch_get_port_parent_id(struct net_device *dev,
 				  struct netdev_phys_item_id *ppid);
 #endif
+bool xlnx_is_port_ep_netdev(const struct net_device *ndev);
+bool xlnx_is_port_temac_netdev(const struct net_device *ndev);
+bool xlnx_is_port_ep_ex_netdev(const struct net_device *ndev);
 
 #endif /* XILINX_AXI_ENET_TSN_H */

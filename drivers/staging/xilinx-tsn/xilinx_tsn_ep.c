@@ -362,6 +362,11 @@ static const struct net_device_ops ep_netdev_ops = {
 #endif
 };
 
+bool xlnx_is_port_ep_netdev(const struct net_device *ndev)
+{
+	return ndev && (ndev->netdev_ops == &ep_netdev_ops);
+}
+
 static const struct of_device_id tsn_ep_of_match[] = {
 	{ .compatible = "xlnx,tsn-ep"},
 	{},
