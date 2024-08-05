@@ -1203,6 +1203,11 @@ static const struct net_device_ops axienet_netdev_ops = {
 #endif
 };
 
+bool xlnx_is_port_temac_netdev(const struct net_device *ndev)
+{
+	return ndev && (ndev->netdev_ops == &axienet_netdev_ops);
+}
+
 /**
  * axienet_ethtools_get_drvinfo - Get various Axi Ethernet driver information.
  * @ndev:	Pointer to net_device structure

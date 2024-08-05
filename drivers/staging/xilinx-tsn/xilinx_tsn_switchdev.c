@@ -205,6 +205,13 @@ static void xlnx_switchdev_event_work(struct work_struct *work)
 	dev_put(lp->ndev);
 }
 
+static bool xlnx_switch_is_dev_valid(const struct net_device *ndev)
+{
+	return xlnx_is_port_ep_netdev(ndev) ||
+		xlnx_is_port_ep_ex_netdev(ndev) ||
+		xlnx_is_port_temac_netdev(ndev);
+}
+
 static int xlnx_switchdev_event(struct notifier_block *unused,
 				unsigned long event, void *ptr)
 {
@@ -212,6 +219,17 @@ static int xlnx_switchdev_event(struct notifier_block *unused,
 	struct switchdev_notifier_fdb_info *fdb_info = ptr;
 	struct xlnx_switchdev_event_work *switchdev_work;
 	struct axienet_local *lp;
+	struct net_device *upper;
+
+	upper = netdev_master_upper_dev_get_rcu(dev);
+	if (!upper)
+		return NOTIFY_DONE;
+
+	if (!netif_is_bridge_master(upper))
+		return NOTIFY_DONE;
+
+	if (!xlnx_switch_is_dev_valid(dev))
+		return NOTIFY_DONE;
 
 	lp = netdev_priv(dev);
 	switchdev_work = kzalloc(sizeof(*switchdev_work), GFP_ATOMIC);
