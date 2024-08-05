@@ -139,7 +139,6 @@
 
 &ospi {
 	num-cs = <2>;
-	reset-gpios = <&gpio1 12 GPIO_ACTIVE_HIGH>;
 	iommus = <&smmu 0x245>;
 	reset-names = "qspi";
 	#address-cells = <1>;
@@ -158,8 +157,9 @@
 		cdns,tslch-ns = <1>;
 		spi-tx-bus-width = <8>;
 		spi-rx-bus-width = <8>;
-		spi-max-frequency = <5000000>;
+		spi-max-frequency = <20000000>;
 		broken-flash-reset;
+		reset-gpios = <&gpio1 0xc GPIO_ACTIVE_LOW>;
 	};
 };
 
