@@ -295,6 +295,7 @@ static int aie_part_block_set(struct aie_partition *apart,
 	return 0;
 }
 
+#ifndef CONFIG_ARM64_SW_TTBR0_PAN
 /**
  * aie_part_pin_user_region() - pin user pages for access
  * @apart: AI engine partition
@@ -337,6 +338,7 @@ static int aie_part_pin_user_region(struct aie_partition *apart,
 
 	return 0;
 }
+#endif
 
 /**
  * aie_part_unpin_user_region() - unpin user pages
