@@ -26,7 +26,7 @@
 
 #define BANK_LIST_PROP	"sram"
 #define DDR_LIST_PROP	"memory-region"
-#define PD_PROP		"power-domain"
+#define PD_PROP		"power-domains"
 #define	RSCTBL_PROP	"xlnx,rsc-tbl"
 
 /* IPI buffer MAX length */
