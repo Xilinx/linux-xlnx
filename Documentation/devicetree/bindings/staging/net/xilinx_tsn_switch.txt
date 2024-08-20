@@ -14,6 +14,7 @@ Optional properties:
 			  the traffic classes based on VLAN-PCP value.
 - xlnx,has-hwaddr-learning	: Denotes hardware address learning support
 - xlnx,has-inband-mgmt-tag	: Denotes inband management support
+- xlnx,packet-switch		: Denotes packet switching support.
 
 Example:
 
