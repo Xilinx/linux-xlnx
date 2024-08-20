@@ -10,6 +10,11 @@ Required properties:
 Optional properties:
 - packet-switch		: set to 1 when packet switching on ex-ep is
 			  enabled in the design.
+			  This property deprecated.
+			  To identify the packet switching feature is enabled
+			  or not in the design, please use the
+			  xlnx, packet-switch property from the switch node
+			  instead of packet-switch property.
 - tsn,endpoint		: This is a handle to the endpoint node.
 			  The necessary ep resource details are obtained
 			  from this reference.
