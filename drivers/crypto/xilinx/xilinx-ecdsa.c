@@ -20,6 +20,9 @@
 /* PLM supports 32-bit addresses only */
 #define VERSAL_DMA_BIT_MASK			32U
 
+/* PLM can process HASH and signature in multiples of 8 bytes */
+#define ECDSA_P521_CURVE_ALIGN_BYTES		2U
+
 struct xilinx_sign_gen_params {
 	u64 hash_addr;
 	u64 privkey_addr;
@@ -134,6 +137,9 @@ static int xilinx_ecdsa_verify(struct akcipher_request *req)
 		goto error;
 	}
 
+	if (ctx->curve_id == XSECURE_ECC_NIST_P521)
+		keylen = ((ctx->curve->g.ndigits - 1) * sizeof(u64)) + ECDSA_P521_CURVE_ALIGN_BYTES;
+
 	hash_buf = dma_alloc_coherent(ctx->dev, keylen,
 				      &dma_addr1, GFP_KERNEL);
 	if (!hash_buf) {
@@ -182,6 +188,8 @@ static int xilinx_ecdsa_ctx_init(struct xilinx_ecdsa_tfm_ctx *ctx,
 {
 	if (curve_id == ECC_CURVE_NIST_P384)
 		ctx->curve_id = XSECURE_ECC_NIST_P384;
+	else
+		ctx->curve_id = XSECURE_ECC_NIST_P521;
 
 	ctx->curve = ecc_get_curve(curve_id);
 	if (!ctx->curve)
@@ -201,9 +209,8 @@ static int xilinx_ecdsa_set_pub_key(struct crypto_akcipher *tfm,
 	struct xilinx_ecdsa_tfm_ctx *ctx = akcipher_tfm_ctx(tfm);
 	unsigned int ndigits, key_size;
 	const unsigned char *d = key;
-	const u64 *digits = (const u64 *)&d[1];
 
-	if (keylen < 1 || (((keylen - 1) >> 1) % sizeof(u64)) != 0)
+	if (keylen < 1 || ((keylen - 1) & 1) != 0)
 		return -EINVAL;
 
 	/* The key should be in uncompressed format indicated by '4' */
@@ -214,7 +221,7 @@ static int xilinx_ecdsa_set_pub_key(struct crypto_akcipher *tfm,
 	ctx->key_size = keylen;
 
 	key_size = keylen >> 1;
-	ndigits = key_size / sizeof(u64);
+	ndigits = DIV_ROUND_UP(key_size, sizeof(u64));
 	if (ndigits != ctx->curve->g.ndigits)
 		return -EINVAL;
 
@@ -223,9 +230,10 @@ static int xilinx_ecdsa_set_pub_key(struct crypto_akcipher *tfm,
 	if (!ctx->pub_kbuf)
 		return -ENOMEM;
 
-	ecc_swap_digits(digits, (u64 *)ctx->pub_kbuf, ndigits);
-	ecc_swap_digits(&digits[ndigits],
-			(u64 *)(ctx->pub_kbuf + key_size), ndigits);
+	d++;
+
+	ecc_digits_from_bytes(d, key_size, (u64 *)ctx->pub_kbuf, ndigits);
+	ecc_digits_from_bytes(&d[key_size], key_size, (u64 *)(ctx->pub_kbuf + key_size), ndigits);
 
 	return versal_pm_ecdsa_validate_key(ctx->pub_key_addr, ctx->curve_id);
 }
@@ -250,9 +258,8 @@ static void xilinx_ecdsa_exit_tfm(struct crypto_akcipher *tfm)
 static unsigned int xilinx_ecdsa_max_size(struct crypto_akcipher *tfm)
 {
 	const struct xilinx_ecdsa_tfm_ctx *ctx = akcipher_tfm_ctx(tfm);
-	int max_size = ctx->key_size >> 1;
 
-	return max_size;
+	return DIV_ROUND_UP(ctx->curve->nbits, 8);
 }
 
 static int xilinx_ecdsa_init_tfm(struct crypto_akcipher *tfm)
@@ -278,7 +285,10 @@ static int xilinx_ecdsa_init_tfm(struct crypto_akcipher *tfm)
 				      sizeof(struct akcipher_request) +
 				      crypto_akcipher_reqsize(tfm_ctx->fbk_cipher)));
 
-	return xilinx_ecdsa_ctx_init(tfm_ctx, ECC_CURVE_NIST_P384);
+	if (strcmp(drv_ctx->alg.base.base.cra_name, "ecdsa-nist-p384") == 0)
+		return xilinx_ecdsa_ctx_init(tfm_ctx, ECC_CURVE_NIST_P384);
+	else
+		return xilinx_ecdsa_ctx_init(tfm_ctx, ECC_CURVE_NIST_P521);
 }
 
 static int handle_ecdsa_req(struct crypto_engine *engine, void *req)
@@ -310,7 +320,8 @@ static int handle_ecdsa_req(struct crypto_engine *engine, void *req)
 	return 0;
 }
 
-static struct xilinx_ecdsa_drv_ctx versal_ecdsa_drv_ctx = {
+static struct xilinx_ecdsa_drv_ctx versal_ecdsa_drv_ctx[] = {
+	{
 	.alg.base = {
 		.verify = xilinx_ecdsa_verify,
 		.set_pub_key = xilinx_ecdsa_set_pub_key,
@@ -332,7 +343,32 @@ static struct xilinx_ecdsa_drv_ctx versal_ecdsa_drv_ctx = {
 	},
 	.alg.op = {
 		.do_one_request = handle_ecdsa_req,
+	}
 	},
+	{
+	.alg.base = {
+		.verify = xilinx_ecdsa_verify,
+		.set_pub_key = xilinx_ecdsa_set_pub_key,
+		.max_size = xilinx_ecdsa_max_size,
+		.init = xilinx_ecdsa_init_tfm,
+		.exit = xilinx_ecdsa_exit_tfm,
+		.sign = xilinx_ecdsa_sign,
+		.base = {
+			.cra_name = "ecdsa-nist-p521",
+			.cra_driver_name = "xilinx-ecdsa-nist-p521",
+			.cra_priority = 100,
+			.cra_flags = CRYPTO_ALG_TYPE_AKCIPHER |
+				     CRYPTO_ALG_KERN_DRIVER_ONLY |
+				     CRYPTO_ALG_ALLOCATES_MEMORY |
+				     CRYPTO_ALG_NEED_FALLBACK,
+			.cra_module = THIS_MODULE,
+			.cra_ctxsize = sizeof(struct xilinx_ecdsa_tfm_ctx),
+		},
+	},
+	.alg.op = {
+		.do_one_request = handle_ecdsa_req,
+	},
+	}
 };
 
 static struct xlnx_feature ecdsa_feature_map[] = {
@@ -349,7 +385,7 @@ static int xilinx_ecdsa_probe(struct platform_device *pdev)
 {
 	struct xilinx_ecdsa_drv_ctx *ecdsa_drv_ctx;
 	struct device *dev = &pdev->dev;
-	int ret;
+	int ret, i;
 
 	/* Verify the hardware is present */
 	ecdsa_drv_ctx = xlnx_get_crypto_dev_data(ecdsa_feature_map);
@@ -377,10 +413,26 @@ static int xilinx_ecdsa_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	ecdsa_drv_ctx->dev = dev;
-	platform_set_drvdata(pdev, ecdsa_drv_ctx);
+	for (i = 0; i < ARRAY_SIZE(versal_ecdsa_drv_ctx); i++) {
+		ecdsa_drv_ctx[i].dev = dev;
+		platform_set_drvdata(pdev, &ecdsa_drv_ctx[i]);
+		ret = crypto_engine_register_akcipher(&ecdsa_drv_ctx[i].alg);
 
-	return crypto_engine_register_akcipher(&ecdsa_drv_ctx->alg);
+		if (ret) {
+			dev_err(dev, "failed to register %s (%d)!\n",
+				ecdsa_drv_ctx[i].alg.base.base.cra_name, ret);
+			goto crypto_engine_cleanup;
+		}
+	}
+
+	return 0;
+
+crypto_engine_cleanup:
+	crypto_engine_exit(ecdsa_drv_ctx->engine);
+	for (--i; i >= 0; --i)
+		crypto_engine_register_akcipher(&ecdsa_drv_ctx[i].alg);
+
+	return ret;
 }
 
 static int xilinx_ecdsa_remove(struct platform_device *pdev)
@@ -389,7 +441,8 @@ static int xilinx_ecdsa_remove(struct platform_device *pdev)
 
 	ecdsa_drv_ctx = platform_get_drvdata(pdev);
 
-	crypto_engine_unregister_akcipher(&ecdsa_drv_ctx->alg);
+	for (int i = 0; i < ARRAY_SIZE(versal_ecdsa_drv_ctx); i++)
+		crypto_engine_unregister_akcipher(&ecdsa_drv_ctx[i].alg);
 
 	return 0;
 }
