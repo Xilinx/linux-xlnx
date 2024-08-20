@@ -72,8 +72,11 @@ static u8 sw_mac_addr[ETH_ALEN];
 #define MAC1_PORT_STATUS_CHG_BIT               BIT(8)
 #define EP_PORT_STATUS_SHIFT                   (1)
 #define EP_PORT_STATUS_CHG_BIT                 BIT(0)
+#define EP_PORT_STATUS_EP_STATE_SHIFT		1
+#define EP_PORT_STATUS_EP_MAC_ADDR_SHIFT	4
 #define EX_EP_PORT_STATUS_SHIFT			(25)
 #define EX_EP_PORT_STATUS_CHG_BIT		BIT(24)
+#define EP_EX_CTRL_REG_EP_MAC_ADDR_SHIFT	24
 
 #define SDL_CAM_LEARNT_ENT_MAC2_SHIFT		(20)
 #define SDL_CAM_LEARNT_ENT_MAC1_SHIFT		(8)
@@ -105,6 +108,9 @@ static u8 sw_mac_addr[ETH_ALEN];
 
 #define DEFAULT_PVID		1
 #define DEFAULT_FWD_ALL		GENMASK(2, 0)
+#define FWD_TO_EP		0x1
+#define FWD_TO_MAC1		0x2
+#define FWD_TO_MAC2		0x4
 
 /* Match table for of_platform binding */
 static const struct of_device_id tsnswitch_of_match[] = {
@@ -1581,6 +1587,9 @@ static int tsn_switch_fdb_init(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
+	/* Check if the property 'xlnx,packet-switch' is present in the device tree */
+	lp.packet_switch = device_property_read_bool(&pdev->dev, "xlnx,packet-switch");
+
 	/* enable source mac based filtering */
 	val = axienet_ior(&lp, XAS_MNG_Q_CTRL_OFFSET);
 
@@ -1625,6 +1634,34 @@ static int tsn_switch_fdb_init(struct platform_device *pdev)
 		    (0xF << XAS_MAC_MSB_FF_MASK_SHIFT) |
 		    (mac_addr[0] << 8) | mac_addr[1]);
 
+	/* If 'xlnx,packet-switch' is enabled */
+	if (lp.packet_switch) {
+		/* Modify the Management Queue Options register of the
+		 * EP packet switch for multicast frames.
+		 */
+		val = axienet_ior(&lp, XAS_MNG_Q_CTRL_OFFSET);
+		axienet_iow(&lp, XAS_MNG_Q_CTRL_OFFSET,
+			    val | (1 << XAS_MNG_Q_EPPKSW_MULI_EN_SHIFT));
+		/* Retrieve the MAC address of EP from the device tree */
+		ret = of_get_mac_address(ep_node, mac_addr);
+		if (ret) {
+			dev_err(&pdev->dev, "could not find MAC address\n");
+			return -EINVAL;
+		}
+		/* Update Switch Port State Control register with lower 4 bits of MAC,
+		 * state change and port state bits.
+		 */
+		val = axienet_ior(&lp, XAS_PORT_STATE_CTRL_OFFSET);
+		val = val | (1 << EP_PORT_STATUS_EP_STATE_SHIFT) |
+			EP_PORT_STATUS_CHG_BIT |
+			(mac_addr[5] << EP_PORT_STATUS_EP_MAC_ADDR_SHIFT);
+		/* Update Endpoint Extension Control Register with lower 4 bits of EP MAC */
+		axienet_iow(&lp, XAS_PORT_STATE_CTRL_OFFSET, val);
+		val = axienet_ior(&lp, XAS_MAC1_MNG_Q_OPTION_OFFSET);
+		axienet_iow(&lp, XAS_MAC1_MNG_Q_OPTION_OFFSET,
+			    (val | ((mac_addr[5] & 0xF) <<
+			     EP_EX_CTRL_REG_EP_MAC_ADDR_SHIFT)));
+	}
 	/* now tell the switch which frames to consider as mgmt frames
 	 */
 	/*  DA list
@@ -1639,8 +1676,21 @@ static int tsn_switch_fdb_init(struct platform_device *pdev)
 	cam.dest_addr[4] = 0x00;
 	cam.dest_addr[5] = 0x00;
 
+	/*
+	 * Layer-2 point-to-point control frames, such as those with the destination
+	 * MAC address 01-80-C2-00-00-00 used by STP (Spanning Tree Protocol) 802.1d
+	 * and LLDP (Link Layer Discovery Protocol), should only be forwarded to the
+	 * Endpoint port. When these control frames are received from a Network Port
+	 * or Endpoint port, they are not to be broadcast or forwarded to other network
+	 * ports but are expected to be directed specifically to the Endpoint port
+	 * for appropriate handling.
+	 */
+	if (lp.packet_switch)
+		cam.fwd_port = FWD_TO_EP;
+	else
 	/* send it all, src mac filter will pick the port */
-	cam.fwd_port = DEFAULT_FWD_ALL;
+		cam.fwd_port = DEFAULT_FWD_ALL;
+
 	cam.flags |= XAS_CAM_EP_MGMTQ_EN;
 	cam.vlanid = DEFAULT_PVID;
 	/* TODO if pvid changes on the port of switch,
@@ -1664,6 +1714,8 @@ static int tsn_switch_fdb_init(struct platform_device *pdev)
 	if (tsn_switch_cam_set(cam, ADD) < 0)
 		dev_err(&pdev->dev, "could not add default fdb\n");
 
+	/* send it all, src mac filter will pick the port */
+	cam.fwd_port = DEFAULT_FWD_ALL;
 	/* PTPv2 UDP Announce Messages */
 	cam.dest_addr[0] = 0x01;
 	cam.dest_addr[1] = 0x00;
