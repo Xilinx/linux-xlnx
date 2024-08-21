@@ -575,7 +575,7 @@ config EDAC_VERSAL
 
 config EDAC_XILINX_XILSEM
 	tristate "Xilinx Versal XilSEM Controller"
-	depends on ARCH_ZYNQMP
+	depends on ARCH_ZYNQMP && ZYNQMP_FIRMWARE
 	help
 	  Support for handling error events on the Xilinx Versal Xilsem
 	  controller.

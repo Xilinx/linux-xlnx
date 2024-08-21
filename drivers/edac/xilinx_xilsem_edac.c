@@ -12,6 +12,7 @@
 #include <linux/bitfield.h>
 #include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/firmware/xlnx-versal-error-events.h>
+#include <linux/firmware/xlnx-versal-net-error-events.h>
 #include <linux/firmware/xlnx-event-manager.h>
 
 #include "edac_module.h"
@@ -20,10 +21,7 @@
 #define VERSAL_XILSEM_EDAC_STRNG	"versal_xilsem"
 #define EDAC_DEVICE	"Xilsem"
 
-/* XilSem Error type masks */
-#define XILSEM_CRAM_CE_MASK	BIT(5)
-#define XILSEM_CRAM_UE_MASK	BIT(6)
-#define XILSEM_NPI_UE_MASK	BIT(7)
+/* XilSem CE Error log count */
 #define XILSEM_MAX_CE_LOG_CNT	0x07
 
 /* XilSem_CRAM scan error info registers */
@@ -101,7 +99,11 @@ struct xsem_error_status {
  * @cram_errinj_status:	Buffer for CRAM error injection
  * @cram_frame_ecc:	Buffer for CRAM frame ECC
  * @xilsem_status:	Buffer for CRAM & NPI status
+ * @sw_event_node_id: Error event node Id
  * @xilsem_cfg:	Buffer for CRAM & NPI configuration
+ * @cram_ce_mask: Event bit mask for CRAM correctable error
+ * @cram_ue_mask: Event bit mask for CRAM uncorrectable error
+ * @npi_ue_mask: Event bit mask for NPI uncorrectable error
  * @ce_cnt:	Correctable Error count
  * @ue_cnt:	Uncorrectable Error count
  */
@@ -111,7 +113,11 @@ struct xsem_edac_priv {
 	u32 cram_errinj_status[2];
 	u32 cram_frame_ecc[4];
 	u32 xilsem_status[4];
+	u32 sw_event_node_id;
 	u32 xilsem_cfg[4];
+	u32 cram_ce_mask;
+	u32 cram_ue_mask;
+	u32 npi_ue_mask;
 	u32 ce_cnt;
 	u32 ue_cnt;
 };
@@ -516,22 +522,24 @@ static void xsem_handle_error(struct edac_device_ctl_info *dci, struct xsem_erro
 
 /**
  * xsem_geterror_info - Get the current ecc error info
- * @base:	Pointer to the base address of the PLM RTCA memory
+ * @dci:	Pointer to the edac device controller instance
  * @p:		Pointer to the Xilsem error status structure
  * @mask:	mask indictaes the error type
  *
  * Determines there is any ecc error or not
  */
-static void xsem_geterror_info(void __iomem *base, struct xsem_error_status *p, int mask)
+static void xsem_geterror_info(struct edac_device_ctl_info *dci, struct xsem_error_status *p,
+			       int mask)
 {
+	struct xsem_edac_priv *priv = dci->pvt_info;
 	u32 error_word_0, error_word_1, ce_count;
 	u8 index;
 
-	if (mask & XILSEM_CRAM_CE_MASK) {
+	if (mask & priv->cram_ce_mask) {
 		p->ce_cnt++;
 
 		/* Read CRAM total correctable error count */
-		ce_count = readl(base + CRAM_CE_COUNT_OFFSET);
+		ce_count = readl(priv->baseaddr + CRAM_CE_COUNT_OFFSET);
 		/* Calculate index for error log */
 		index = (ce_count % XILSEM_MAX_CE_LOG_CNT);
 		/*
@@ -545,8 +553,8 @@ static void xsem_geterror_info(void __iomem *base, struct xsem_error_status *p, 
 			/* Set log index to 6 (Max-1) */
 			index = (XILSEM_MAX_CE_LOG_CNT - 1);
 		}
-		error_word_0 = readl(base + CRAM_CE_ADDRL0_OFFSET + (index * 8U));
-		error_word_1 = readl(base + CRAM_CE_ADDRH0_OFFSET + (index * 8U));
+		error_word_0 = readl(priv->baseaddr + CRAM_CE_ADDRL0_OFFSET + (index * 8U));
+		error_word_1 = readl(priv->baseaddr + CRAM_CE_ADDRH0_OFFSET + (index * 8U));
 
 		/* Frame is at 22:0 bits of SEM_CRAMERR_ADDRH0 reg */
 		p->ceinfo.frame_addr = FIELD_GET(CRAM_ERR_FRAME_MASK, error_word_1);
@@ -561,17 +569,17 @@ static void xsem_geterror_info(void __iomem *base, struct xsem_error_status *p, 
 		p->ceinfo.qword = FIELD_GET(CRAM_ERR_QWRD_MASK, error_word_0);
 
 		/* Read CRAM status */
-		p->ceinfo.status = readl(base + CRAM_STS_INFO_OFFSET);
-	} else if (mask & XILSEM_CRAM_UE_MASK) {
+		p->ceinfo.status = readl(priv->baseaddr + CRAM_STS_INFO_OFFSET);
+	} else if (mask & priv->cram_ue_mask) {
 		p->ue_cnt++;
 		p->ueinfo.data0 = 0;
 		p->ueinfo.data1 = 0;
-		p->ueinfo.status = readl(base + CRAM_STS_INFO_OFFSET);
-	} else if (mask & XILSEM_NPI_UE_MASK) {
+		p->ueinfo.status = readl(priv->baseaddr + CRAM_STS_INFO_OFFSET);
+	} else if (mask & priv->npi_ue_mask) {
 		p->ue_cnt++;
-		p->ueinfo.data0 = readl(base + NPI_ERR0_INFO_OFFSET);
-		p->ueinfo.data1 = readl(base + NPI_ERR1_INFO_OFFSET);
-		p->ueinfo.status = readl(base);
+		p->ueinfo.data0 = readl(priv->baseaddr + NPI_ERR0_INFO_OFFSET);
+		p->ueinfo.data1 = readl(priv->baseaddr + NPI_ERR1_INFO_OFFSET);
+		p->ueinfo.status = readl(priv->baseaddr);
 	} else {
 		edac_printk(KERN_ERR, EDAC_DEVICE, "Invalid Event received %d\n", mask);
 	}
@@ -596,7 +604,7 @@ static void xsem_err_callback(const u32 *payload, void *data)
 	/* Read payload to get the event type */
 	event = payload[2];
 	edac_printk(KERN_INFO, EDAC_DEVICE, "Event received %x\n", event);
-	xsem_geterror_info(priv->baseaddr, &stat, event);
+	xsem_geterror_info(dci, &stat, event);
 
 	priv->ce_cnt += stat.ce_cnt;
 	priv->ue_cnt += stat.ue_cnt;
@@ -658,6 +666,8 @@ static int xsem_edac_probe(struct platform_device *pdev)
 	struct xsem_edac_priv *priv;
 	void __iomem *plmrtca_baseaddr;
 	struct edac_device_ctl_info *dci;
+	u32 device_sub_family_code;
+	u32 family_code;
 	int rc;
 
 	plmrtca_baseaddr = devm_platform_ioremap_resource(pdev, 0);
@@ -685,11 +695,29 @@ static int xsem_edac_probe(struct platform_device *pdev)
 	if (rc)
 		goto free_dev_ctl;
 
-	rc = xlnx_register_event(PM_NOTIFY_CB,
-				 VERSAL_EVENT_ERROR_SW_ERR,
-				 XPM_VERSAL_EVENT_ERROR_MASK_XSEM_CRAM_CE_5 |
-				 XPM_VERSAL_EVENT_ERROR_MASK_XSEM_CRAM_UE_6 |
-				 XPM_VERSAL_EVENT_ERROR_MASK_XSEM_NPI_UE_7,
+	rc = zynqmp_pm_get_family_info(&family_code, &device_sub_family_code);
+	if (rc) {
+		if (rc == -ENODEV)
+			rc = -EPROBE_DEFER;
+		goto free_edac_dev;
+	}
+
+	if (device_sub_family_code == VERSALNET_SUB_FAMILY_CODE) {
+		priv->sw_event_node_id = VERSAL_NET_EVENT_ERROR_SW_ERR;
+		priv->cram_ce_mask = XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_CRAM_CE;
+		priv->cram_ue_mask = XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_CRAM_UE;
+		priv->npi_ue_mask = XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_NPI_UE;
+	} else if (device_sub_family_code == VERSAL_SUB_FAMILY_CODE) {
+		priv->sw_event_node_id = VERSAL_EVENT_ERROR_SW_ERR;
+		priv->cram_ce_mask = XPM_VERSAL_EVENT_ERROR_MASK_XSEM_CRAM_CE_5;
+		priv->cram_ue_mask = XPM_VERSAL_EVENT_ERROR_MASK_XSEM_CRAM_UE_6;
+		priv->npi_ue_mask = XPM_VERSAL_EVENT_ERROR_MASK_XSEM_NPI_UE_7;
+	} else {
+		edac_printk(KERN_ERR, EDAC_DEVICE, "Invalid Device Sub family code %d\n",
+			    device_sub_family_code);
+	}
+	rc = xlnx_register_event(PM_NOTIFY_CB, priv->sw_event_node_id,
+				 priv->cram_ce_mask | priv->cram_ue_mask | priv->npi_ue_mask,
 				 false, xsem_err_callback, dci);
 	if (rc) {
 		if (rc == -EACCES)
@@ -717,11 +745,10 @@ free_dev_ctl:
 static int xsem_edac_remove(struct platform_device *pdev)
 {
 	struct edac_device_ctl_info *dci = platform_get_drvdata(pdev);
+	struct xsem_edac_priv *priv = dci->pvt_info;
 
-	xlnx_unregister_event(PM_NOTIFY_CB, VERSAL_EVENT_ERROR_SW_ERR,
-			      XPM_VERSAL_EVENT_ERROR_MASK_XSEM_CRAM_CE_5 |
-			      XPM_VERSAL_EVENT_ERROR_MASK_XSEM_CRAM_UE_6 |
-			      XPM_VERSAL_EVENT_ERROR_MASK_XSEM_NPI_UE_7,
+	xlnx_unregister_event(PM_NOTIFY_CB, priv->sw_event_node_id,
+			      priv->cram_ce_mask | priv->cram_ue_mask | priv->npi_ue_mask,
 			      xsem_err_callback, dci);
 	edac_device_del_device(&pdev->dev);
 	edac_device_free_ctl_info(dci);
