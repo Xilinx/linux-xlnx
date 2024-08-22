@@ -333,6 +333,8 @@ static int ufs_versal2_init(struct ufs_hba *hba)
 		return PTR_ERR(host->rstphy);
 	}
 
+	hba->quirks |= UFSHCD_QUIRK_BROKEN_AUTO_HIBERN8;
+
 	return 0;
 }
 
