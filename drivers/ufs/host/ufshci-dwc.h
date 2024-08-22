@@ -15,6 +15,11 @@ enum dwc_specific_registers {
 	DWC_UFS_REG_HCLKDIV	= 0xFC,
 };
 
+/* DWC HC specific interrupt mask */
+#define DWC_UFS_CARD_INSERT_STATUS	BIT(29)
+#define DWC_UFS_CARD_REMOVE_STATUS	BIT(30)
+#define DWC_UFS_CARD_TOGGLE_STATUS	BIT(31)
+
 /* Clock Divider Values: Hex equivalent of frequency in MHz */
 enum clk_div_values {
 	DWC_UFS_REG_HCLKDIV_DIV_62_5	= 0x3e,
