@@ -8807,6 +8807,8 @@ static int ufshcd_device_init(struct ufs_hba *hba, bool init_dev_params)
 
 	ufshcd_set_timestamp_attr(hba);
 
+	hba->max_pwr_info.is_valid = false;
+
 	/* Gear up to HS gear if supported */
 	if (hba->max_pwr_info.is_valid) {
 		/*
