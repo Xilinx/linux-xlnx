@@ -333,7 +333,7 @@ struct ufs_pwr_mode_info {
  * @op_runtime_config: called to config Operation and runtime regs Pointers
  * @get_outstanding_cqs: called to get outstanding completion queues
  * @config_esi: called to config Event Specific Interrupt
- * @config_scsi_dev: called to configure SCSI device parameters
+ * @isr: called to handle vendor specific interrupts
  */
 struct ufs_hba_variant_ops {
 	const char *name;
@@ -383,6 +383,7 @@ struct ufs_hba_variant_ops {
 	int	(*get_outstanding_cqs)(struct ufs_hba *hba,
 				       unsigned long *ocqs);
 	int	(*config_esi)(struct ufs_hba *hba);
+	irqreturn_t	(*isr)(struct ufs_hba *hba, u32 intr_status);
 };
 
 /* clock gating state  */

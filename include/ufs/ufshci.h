@@ -190,6 +190,9 @@ static inline u32 ufshci_version(u32 major, u32 minor)
 #define CRYPTO_ENGINE_FATAL_ERROR		0x40000
 #define MCQ_CQ_EVENT_STATUS			0x100000
 
+/* Other than above mentioned bits are treated as Vendor specific status bits */
+#define UFSHCD_VENDOR_IS_MASK			0xFFE8F000
+
 #define UFSHCD_UIC_HIBERN8_MASK	(UIC_HIBERNATE_ENTER |\
 				UIC_HIBERNATE_EXIT)
 

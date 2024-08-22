@@ -116,6 +116,14 @@ static inline u32 ufshcd_vops_get_ufs_hci_version(struct ufs_hba *hba)
 	return ufshcd_readl(hba, REG_UFS_VERSION);
 }
 
+static inline irqreturn_t ufshcd_vops_isr(struct ufs_hba *hba, u32 intr_status)
+{
+	if (hba->vops && hba->vops->isr)
+		return hba->vops->isr(hba, intr_status);
+
+	return 0;
+}
+
 static inline int ufshcd_vops_clk_scale_notify(struct ufs_hba *hba,
 			bool up, enum ufs_notify_change_status status)
 {

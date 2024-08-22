@@ -6945,6 +6945,9 @@ static irqreturn_t ufshcd_sl_intr(struct ufs_hba *hba, u32 intr_status)
 	if (intr_status & MCQ_CQ_EVENT_STATUS)
 		retval |= ufshcd_handle_mcq_cq_events(hba);
 
+	if (intr_status & UFSHCD_VENDOR_IS_MASK)
+		retval |= ufshcd_vops_isr(hba, intr_status);
+
 	return retval;
 }
 
