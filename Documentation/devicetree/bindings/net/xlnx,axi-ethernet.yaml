@@ -181,6 +181,7 @@ properties:
   xlnx,mrmac-rate:
     $ref: /schemas/types.yaml#/definitions/uint32
     description: MRMAC rate in Mbps.
+    deprecated: true
 
   xlnx,gtlane:
     $ref: /schemas/types.yaml#/definitions/uint32
@@ -209,6 +210,8 @@ properties:
     description: Indicates speed switching capability of 1G/10G/25G
       ethernet IP. Can be either "1G / 10G", which is the default switching
       capability if this property is not present or "1G / 10G / 25G".
+
+  max-speed: true
 
 required:
   - compatible
@@ -240,7 +243,7 @@ allOf:
 
     then:
       properties:
-        xlnx,mrmac-rate:
+        max-speed:
           enum: [10000, 25000]
 
         xlnx,gtlane:
@@ -250,7 +253,7 @@ allOf:
           enum: [0, 1, 2, 3]
 
       required:
-        - xlnx,mrmac-rate
+        - max-speed
         - xlnx,gtlane
         - xlnx,gtpll
         - xlnx,gtctrl
@@ -352,7 +355,7 @@ examples:
         reg = <0x0 0xa4090000 0x0 0x1000>;
         interrupt-parent = <&gic>;
         interrupts = <0 91 4>;
-        xlnx,mrmac-rate = <10000>;
+        max-speed = <10000>;
         xlnx,gtpll = <&gt_pll>;
         xlnx,gtctrl = <&gt_ctrl>;
         xlnx,gtlane = <0x0>;
