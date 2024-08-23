@@ -813,7 +813,7 @@ struct aximcdma_bd {
  * @weight:   MCDMA Channel weight value to be configured for.
  * @dma_mask: Specify the width of the DMA address space.
  * @usxgmii_rate: USXGMII PHY speed.
- * @mrmac_rate: MRMAC speed.
+ * @max_speed: Maximum possible MAC speed.
  * @gt_pll: Common GT PLL mask control register space.
  * @gt_ctrl: GT speed and reset control register space.
  * @phc_index: Index to corresponding PTP clock used.
@@ -899,7 +899,7 @@ struct axienet_local {
 	u8 dma_mask;
 	u32 usxgmii_rate;
 
-	u32 mrmac_rate;		/* MRMAC speed */
+	u32 max_speed;		/* Max MAC speed */
 	void __iomem *gt_pll;	/* Common GT PLL mask control register space */
 	void __iomem *gt_ctrl;	/* GT speed and reset control register space */
 	u32 phc_index;		/* Index to corresponding PTP clock used  */
