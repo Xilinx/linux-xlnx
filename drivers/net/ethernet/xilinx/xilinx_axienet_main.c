@@ -480,7 +480,7 @@ static inline void axienet_mrmac_reset(struct axienet_local *lp)
 	mdelay(MRMAC_RESET_DELAY);
 
 	reg = axienet_ior(lp, MRMAC_MODE_OFFSET);
-	if (lp->mrmac_rate == SPEED_25000) {
+	if (lp->max_speed == SPEED_25000) {
 		reg &= ~MRMAC_CTL_RATE_CFG_MASK;
 		reg |= MRMAC_CTL_DATA_RATE_25G;
 		reg |= (MRMAC_CTL_AXIS_CFG_25G_IND << MRMAC_CTL_AXIS_CFG_SHIFT);
@@ -531,7 +531,7 @@ static inline int axienet_mrmac_gt_reset(struct net_device *ndev)
 		mrmac_pll_rst = 1;
 	}
 
-	if (lp->mrmac_rate == SPEED_25000)
+	if (lp->max_speed == SPEED_25000)
 		iowrite32(MRMAC_GT_25G_MASK, (lp->gt_ctrl +
 			  MRMAC_GT_LANE_OFFSET * lp->gt_lane +
 			  MRMAC_GT_RATE_OFFSET));
@@ -1974,7 +1974,7 @@ static int axienet_open(struct net_device *ndev)
 			ret = -ENODEV;
 			goto err_eth_irq;
 		}
-		netdev_info(ndev, "MRMAC setup at %d\n", lp->mrmac_rate);
+		netdev_info(ndev, "MRMAC setup at %d\n", lp->max_speed);
 		axienet_iow(lp, MRMAC_TICK_OFFSET, MRMAC_TICK_TRIGGER);
 	}
 
@@ -3728,10 +3728,23 @@ static int axienet_probe(struct platform_device *pdev)
 	of_property_read_u32(pdev->dev.of_node, "xlnx,usxgmii-rate",
 			     &lp->usxgmii_rate);
 
-	/* Set default MRMAC rate */
-	lp->mrmac_rate = SPEED_10000;
-	of_property_read_u32(pdev->dev.of_node, "xlnx,mrmac-rate",
-			     &lp->mrmac_rate);
+	if (lp->axienet_config->mactype == XAXIENET_MRMAC) {
+		/* Set default MRMAC rate */
+		lp->max_speed = SPEED_10000;
+		ret = of_property_read_u32(pdev->dev.of_node, "max-speed",
+					   &lp->max_speed);
+		if (ret) {
+			ret = of_property_read_u32(pdev->dev.of_node, "xlnx,mrmac-rate",
+						   &lp->max_speed);
+			if (ret) {
+				dev_err(&pdev->dev, "couldn't find MAC Rate\n");
+				goto cleanup_clk;
+			} else {
+				dev_warn(&pdev->dev,
+					 "xlnx,mrmac-rate is deprecated, please use max-speed instead\n");
+			}
+		}
+	}
 
 	lp->eth_hasnobuf = of_property_read_bool(pdev->dev.of_node,
 						 "xlnx,eth-hasnobuf");
