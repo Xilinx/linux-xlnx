@@ -1508,6 +1508,7 @@ static const struct of_device_id xlnx_tsmux_of_match[] = {
 	{ .compatible = "xlnx,tsmux-1.0", },
 	{ }
 };
+MODULE_DEVICE_TABLE(of, xlnx_tsmux_of_match);
 
 static struct platform_driver xlnx_tsmux_driver = {
 	.probe = xlnx_tsmux_probe,
