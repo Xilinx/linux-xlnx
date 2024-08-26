@@ -236,6 +236,7 @@ struct bitmap {
 
 struct md_bitmap_stats {
 	unsigned long	missing_pages;
+	unsigned long	sync_size;
 	unsigned long	pages;
 	struct file	*file;
 };
