@@ -517,10 +517,9 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 	adev->pm_node_id = pm_reg[1];
 
 	adev->clk = devm_clk_get(&pdev->dev, "aclk0");
-	if (!adev->clk) {
-		dev_err(&pdev->dev, "Failed to get device clock.\n");
-		return -EINVAL;
-	}
+	if (IS_ERR(adev->clk))
+		return dev_err_probe(&pdev->dev,
+				     PTR_ERR(adev->clk), "Failed to get device clock.\n");
 
 	ret = xilinx_ai_engine_add_dev(adev, pdev);
 	if (ret) {
