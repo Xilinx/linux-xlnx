@@ -1,0 +1,4 @@
+ECDSASignature ::= SEQUENCE {
+	r	INTEGER ({ xilinx_ecdsa_get_signature_r }),
+	s	INTEGER ({ xilinx_ecdsa_get_signature_s })
+}

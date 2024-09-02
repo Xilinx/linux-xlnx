@@ -8,6 +8,7 @@
 #include <crypto/internal/ecc.h>
 #include <crypto/akcipher.h>
 #include <crypto/ecdh.h>
+#include <crypto/ecdsa.h>
 #include <linux/asn1_decoder.h>
 #include <linux/scatterlist.h>
 
@@ -23,17 +24,11 @@ struct ecc_ctx {
 	struct ecc_point pub_key;
 };
 
-struct ecdsa_signature_ctx {
-	const struct ecc_curve *curve;
-	u64 r[ECC_MAX_DIGITS];
-	u64 s[ECC_MAX_DIGITS];
-};
-
 /*
  * Get the r and s components of a signature from the X509 certificate.
  */
-static int ecdsa_get_signature_rs(u64 *dest, size_t hdrlen, unsigned char tag,
-				  const void *value, size_t vlen, unsigned int ndigits)
+int ecdsa_get_signature_rs(u64 *dest, size_t hdrlen, unsigned char tag,
+			   const void *value, size_t vlen, unsigned int ndigits)
 {
 	size_t bufsize = ndigits * sizeof(u64);
 	ssize_t diff = vlen - bufsize;
@@ -72,6 +67,7 @@ static int ecdsa_get_signature_rs(u64 *dest, size_t hdrlen, unsigned char tag,
 
 	return 0;
 }
+EXPORT_SYMBOL(ecdsa_get_signature_rs);
 
 int ecdsa_get_signature_r(void *context, size_t hdrlen, unsigned char tag,
 			  const void *value, size_t vlen)
