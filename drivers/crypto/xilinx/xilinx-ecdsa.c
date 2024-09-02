@@ -455,19 +455,20 @@ static struct platform_driver xilinx_ecdsa_driver = {
 	},
 };
 
+static struct platform_device *platform_dev;
+
 static int __init ecdsa_driver_init(void)
 {
-	struct platform_device *pdev;
 	int ret;
 
 	ret = platform_driver_register(&xilinx_ecdsa_driver);
 	if (ret)
 		return ret;
 
-	pdev = platform_device_register_simple(xilinx_ecdsa_driver.driver.name,
+	platform_dev = platform_device_register_simple(xilinx_ecdsa_driver.driver.name,
 					       0, NULL, 0);
-	if (IS_ERR(pdev)) {
-		ret = PTR_ERR(pdev);
+	if (IS_ERR(platform_dev)) {
+		ret = PTR_ERR(platform_dev);
 		platform_driver_unregister(&xilinx_ecdsa_driver);
 	}
 
@@ -476,6 +477,7 @@ static int __init ecdsa_driver_init(void)
 
 static void __exit ecdsa_driver_exit(void)
 {
+	platform_device_unregister(platform_dev);
 	platform_driver_unregister(&xilinx_ecdsa_driver);
 }
 

@@ -353,19 +353,20 @@ static struct platform_driver zynqmp_sha_driver = {
 	},
 };
 
+static struct platform_device *platform_dev;
+
 static int __init sha_driver_init(void)
 {
-	struct platform_device *pdev;
 	int ret;
 
 	ret = platform_driver_register(&zynqmp_sha_driver);
 	if (ret)
 		return ret;
 
-	pdev = platform_device_register_simple(zynqmp_sha_driver.driver.name,
-					       0, NULL, 0);
-	if (IS_ERR(pdev)) {
-		ret = PTR_ERR(pdev);
+	platform_dev = platform_device_register_simple(zynqmp_sha_driver.driver.name,
+						       0, NULL, 0);
+	if (IS_ERR(platform_dev)) {
+		ret = PTR_ERR(platform_dev);
 		platform_driver_unregister(&zynqmp_sha_driver);
 	}
 
@@ -374,6 +375,7 @@ static int __init sha_driver_init(void)
 
 static void __exit sha_driver_exit(void)
 {
+	platform_device_unregister(platform_dev);
 	platform_driver_unregister(&zynqmp_sha_driver);
 }
 
