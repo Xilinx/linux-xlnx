@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-only
-obj-$(CONFIG_CRYPTO_DEV_XILINX_ECDSA) += xilinx-ecdsa.o
+$(obj)/xilinx_ecdsasig.asn1.o: $(obj)/xilinx_ecdsasig.asn1.c $(obj)/xilinx_ecdsasig.asn1.h
+xilinx-ecds-y += xilinx_ecdsasig.asn1.o
+xilinx-ecds-y += xilinx-ecdsa.o
+obj-$(CONFIG_CRYPTO_DEV_XILINX_ECDSA) += xilinx-ecds.o
 obj-$(CONFIG_CRYPTO_DEV_ZYNQMP_AES) += zynqmp-aes-gcm.o
 obj-$(CONFIG_CRYPTO_DEV_ZYNQMP_SHA3) += zynqmp-sha.o
 obj-$(CONFIG_CRYPTO_DEV_XILINX_RSA) += zynqmp-rsa.o
