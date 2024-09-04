@@ -121,6 +121,9 @@ extern const int phy_10gbit_features_array[1];
  * @PHY_INTERFACE_MODE_XAUI: 10 Gigabit Attachment Unit Interface
  * @PHY_INTERFACE_MODE_10GBASER: 10G BaseR
  * @PHY_INTERFACE_MODE_25GBASER: 25G BaseR
+ * @PHY_INTERFACE_MODE_100GBASER: 100G BaseR
+ * @PHY_INTERFACE_MODE_200GBASER: 200G BaseR
+ * @PHY_INTERFACE_MODE_400GBASER: 400G BaseR
  * @PHY_INTERFACE_MODE_USXGMII:  Universal Serial 10GE MII
  * @PHY_INTERFACE_MODE_10GKR: 10GBASE-KR - with Clause 73 AN
  * @PHY_INTERFACE_MODE_QUSGMII: Quad Universal SGMII
@@ -160,6 +163,9 @@ typedef enum {
 	/* 10GBASE-R, XFI, SFI - single lane 10G Serdes */
 	PHY_INTERFACE_MODE_10GBASER,
 	PHY_INTERFACE_MODE_25GBASER,
+	PHY_INTERFACE_MODE_100GBASER,
+	PHY_INTERFACE_MODE_200GBASER,
+	PHY_INTERFACE_MODE_400GBASER,
 	PHY_INTERFACE_MODE_USXGMII,
 	/* 10GBASE-KR - with Clause 73 AN */
 	PHY_INTERFACE_MODE_10GKR,
@@ -278,6 +284,12 @@ static inline const char *phy_modes(phy_interface_t interface)
 		return "10gbase-r";
 	case PHY_INTERFACE_MODE_25GBASER:
 		return "25gbase-r";
+	case PHY_INTERFACE_MODE_100GBASER:
+		return "100gbase-r";
+	case PHY_INTERFACE_MODE_200GBASER:
+		return "200gbase-r";
+	case PHY_INTERFACE_MODE_400GBASER:
+		return "400gbase-r";
 	case PHY_INTERFACE_MODE_USXGMII:
 		return "usxgmii";
 	case PHY_INTERFACE_MODE_10GKR:
