@@ -68,7 +68,7 @@
 #define MRMAC_TS_HEADER_WORDS	(MRMAC_TS_HEADER_LEN / 4)
 #define NS_PER_SEC              1000000000ULL /* Nanoseconds per second */
 
-#define MRMAC_RESET_DELAY	1 /* Delay in msecs*/
+#define	DELAY_1MS	1	/* 1 msecs delay*/
 
 /* IEEE1588 Message Type field values  */
 #define PTP_TYPE_SYNC		0
@@ -477,7 +477,7 @@ static inline void axienet_mrmac_reset(struct axienet_local *lp)
 	val |= (MRMAC_RX_SERDES_RST_MASK | MRMAC_TX_SERDES_RST_MASK |
 		MRMAC_RX_RST_MASK | MRMAC_TX_RST_MASK);
 	axienet_iow(lp, MRMAC_RESET_OFFSET, val);
-	mdelay(MRMAC_RESET_DELAY);
+	mdelay(DELAY_1MS);
 
 	reg = axienet_ior(lp, MRMAC_MODE_OFFSET);
 	if (lp->max_speed == SPEED_25000) {
@@ -515,7 +515,7 @@ static inline int axienet_mrmac_gt_reset(struct net_device *ndev)
 			iowrite32(MRMAC_GT_RST_ALL_MASK, (lp->gt_ctrl +
 				  (MRMAC_GT_LANE_OFFSET * i) +
 				  MRMAC_GT_CTRL_OFFSET));
-			mdelay(MRMAC_RESET_DELAY);
+			mdelay(DELAY_1MS);
 			iowrite32(0, (lp->gt_ctrl + (MRMAC_GT_LANE_OFFSET * i) +
 				      MRMAC_GT_CTRL_OFFSET));
 		}
@@ -543,10 +543,10 @@ static inline int axienet_mrmac_gt_reset(struct net_device *ndev)
 	iowrite32(MRMAC_GT_RST_RX_MASK | MRMAC_GT_RST_TX_MASK,
 		  (lp->gt_ctrl + MRMAC_GT_LANE_OFFSET * lp->gt_lane +
 		  MRMAC_GT_CTRL_OFFSET));
-	mdelay(MRMAC_RESET_DELAY);
+	mdelay(DELAY_1MS);
 	iowrite32(0, (lp->gt_ctrl + MRMAC_GT_LANE_OFFSET * lp->gt_lane +
 		  MRMAC_GT_CTRL_OFFSET));
-	mdelay(MRMAC_RESET_DELAY);
+	mdelay(DELAY_1MS);
 
 	return 0;
 }
@@ -1947,7 +1947,7 @@ static int axienet_open(struct net_device *ndev)
 		/* Reset MRMAC */
 		axienet_mrmac_reset(lp);
 
-		mdelay(MRMAC_RESET_DELAY);
+		mdelay(DELAY_1MS);
 		/* Check for block lock bit to be set. This ensures that
 		 * MRMAC ethernet IP is functioning normally.
 		 */
