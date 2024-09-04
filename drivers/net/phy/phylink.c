@@ -237,6 +237,15 @@ static int phylink_interface_max_speed(phy_interface_t interface)
 	case PHY_INTERFACE_MODE_XLGMII:
 		return SPEED_40000;
 
+	case PHY_INTERFACE_MODE_100GBASER:
+		return SPEED_100000;
+
+	case PHY_INTERFACE_MODE_200GBASER:
+		return SPEED_200000;
+
+	case PHY_INTERFACE_MODE_400GBASER:
+		return SPEED_400000;
+
 	case PHY_INTERFACE_MODE_INTERNAL:
 	case PHY_INTERFACE_MODE_NA:
 	case PHY_INTERFACE_MODE_MAX:
@@ -543,6 +552,18 @@ unsigned long phylink_get_capabilities(phy_interface_t interface,
 
 	case PHY_INTERFACE_MODE_25GBASER:
 		caps |= MAC_25000FD;
+		break;
+
+	case PHY_INTERFACE_MODE_100GBASER:
+		caps |= MAC_100000FD;
+		break;
+
+	case PHY_INTERFACE_MODE_200GBASER:
+		caps |= MAC_200000FD;
+		break;
+
+	case PHY_INTERFACE_MODE_400GBASER:
+		caps |= MAC_400000FD;
 		break;
 
 	case PHY_INTERFACE_MODE_XLGMII:
