@@ -551,6 +551,23 @@ static inline int axienet_mrmac_gt_reset(struct net_device *ndev)
 	return 0;
 }
 
+static inline int xxv_gt_reset(struct net_device *ndev)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+	u32 val;
+
+	val = axienet_ior(lp, XXV_GT_RESET_OFFSET);
+	val |= XXV_GT_RESET_MASK;
+	axienet_iow(lp, XXV_GT_RESET_OFFSET, val);
+	/* Wait for 1ms for GT reset to complete as per spec */
+	mdelay(DELAY_1MS);
+	val = axienet_ior(lp, XXV_GT_RESET_OFFSET);
+	val &= ~XXV_GT_RESET_MASK;
+	axienet_iow(lp, XXV_GT_RESET_OFFSET, val);
+
+	return 0;
+}
+
 void __axienet_device_reset(struct axienet_dma_q *q)
 {
 	u32 timeout;
@@ -599,25 +616,15 @@ static int axienet_device_reset(struct net_device *ndev)
 	struct axienet_dma_q *q;
 	u32 i;
 
-	if (lp->axienet_config->mactype == XAXIENET_10G_25G ||
-	    lp->axienet_config->mactype == XAXIENET_1G_10G_25G) {
-		/* Reset the XXV MAC */
-		val = axienet_ior(lp, XXV_GT_RESET_OFFSET);
-		val |= XXV_GT_RESET_MASK;
-		axienet_iow(lp, XXV_GT_RESET_OFFSET, val);
-		/* Wait for 1ms for GT reset to complete as per spec */
-		mdelay(1);
-		val = axienet_ior(lp, XXV_GT_RESET_OFFSET);
-		val &= ~XXV_GT_RESET_MASK;
-		axienet_iow(lp, XXV_GT_RESET_OFFSET, val);
-	}
-
 	if (lp->axienet_config->mactype == XAXIENET_MRMAC) {
 		/* Reset MRMAC */
 		axienet_mrmac_reset(lp);
-		err = axienet_mrmac_gt_reset(ndev);
-		if (err)
-			return err;
+	}
+
+	if (lp->axienet_config->gt_reset) {
+		ret = lp->axienet_config->gt_reset(ndev);
+		if (ret)
+			return ret;
 	}
 
 	for_each_rx_dma_queue(lp, i) {
@@ -3472,6 +3479,7 @@ static const struct axienet_config axienet_10g25g_config = {
 	.clk_init = xxvenet_clk_init,
 	.tx_ptplen = XXV_TX_PTP_LEN,
 	.ts_header_len = XXVENET_TS_HEADER_LEN,
+	.gt_reset = xxv_gt_reset,
 };
 
 static const struct axienet_config axienet_1g10g25g_config = {
@@ -3479,6 +3487,7 @@ static const struct axienet_config axienet_1g10g25g_config = {
 	.setoptions = xxvenet_setoptions,
 	.clk_init = xxvenet_clk_init,
 	.tx_ptplen = XXV_TX_PTP_LEN,
+	.gt_reset = xxv_gt_reset,
 };
 
 static const struct axienet_config axienet_usxgmii_config = {
@@ -3494,6 +3503,7 @@ static const struct axienet_config axienet_mrmac_config = {
 	.clk_init = xxvenet_clk_init,
 	.tx_ptplen = XXV_TX_PTP_LEN,
 	.ts_header_len = MRMAC_TS_HEADER_LEN,
+	.gt_reset = axienet_mrmac_gt_reset,
 };
 
 /* Match table for of_platform binding */
