@@ -646,6 +646,64 @@
 
 #define MRMAC_GT_LANE_OFFSET		BIT(16)
 #define MRMAC_MAX_GT_LANES		4
+
+/* DCMAC Register Definitions */
+/* Global registers */
+#define DCMAC_G_MODE_OFFSET		0x00000004
+#define DCMAC_G_CTRL_RX_OFFSET		0x000000F0
+#define DCMAC_G_CTRL_TX_OFFSET		0x000000F8
+/* Port registers */
+#define DCMAC_P_CTRL_RX_OFFSET		0x000010F0
+#define DCMAC_P_CTRL_TX_OFFSET		0x000010F8
+#define DCMAC_STS_RX_PHY_OFFSET		0x00001C00
+/* Port channel registers */
+#define DCMAC_CH_CFG_TX_OFFSET		0x00001000
+#define DCMAC_CH_CFG_RX_OFFSET		0x00001004
+#define DCMAC_CH_CTRL_RX_OFFSET		0x00001030
+#define DCMAC_CH_CTRL_TX_OFFSET		0x00001038
+#define DCMAC_CH_MODE_TX_OFFSET		0x00001040
+#define DCMAC_CH_MODE_RX_OFFSET		0x00001044
+/* Status Registers */
+#define DCMAC_TX_STS_OFFSET		0X00001100
+#define DCMAC_RX_STS_OFFSET		0X00001140
+
+/* Register bit masks */
+#define DCMAC_TX_ACTV_PRT_ALL_MASK	(BIT(16) | BIT(18))
+#define DCMAC_RX_ACTV_PRT_ALL_MASK	(BIT(20) | BIT(22))
+#define DCMAC_RX_ERR_IND_STD_MASK	BIT(24)	/* FEC error indication mode as IEEE Standard */
+#define DCMAC_TX_FEC_UNIQUE_FLIP_MASK	BIT(25)
+#define DCMAC_RX_FEC_UNIQUE_FLIP_MASK	BIT(26)
+#define DCMAC_CH_RX_FCS_MASK		BIT(1)
+#define DCMAC_CH_RX_PREAMBLE_MASK	BIT(5)
+#define DCMAC_RX_IGNR_INRANGE_MASK	BIT(6)
+#define DCMAC_RX_MAX_PKT_LEN_MASK	(BIT(23) | BIT(24) | BIT(26) | BIT(29))
+#define DCMAC_CH_TX_FCS_MASK		BIT(0)
+#define DCMAC_CH_TX_IPG_MASK		(BIT(10) | BIT(11))
+#define DCMAC_P_SPEED_100G_MASK		~(BIT(0) | BIT(1))
+#define DCMAC_P_SPEED_200G_MASK	BIT(1)
+#define DCMAC_P_SPEED_400G_MASK	BIT(2)
+#define DCMAC_CH_TXMD_PM_TICK_INTERNAL_MASK	BIT(4)
+#define DCMAC_CH_RXMD_PM_TICK_INTERNAL_MASK	BIT(11)
+#define DCMAC_CH_MD_FEC_KR4		(BIT(16) | BIT(18))
+#define DCMAC_CH_MD_FEC_200G		BIT(19)
+#define DCMAC_CH_MD_FEC_400G		BIT(20)
+#define DCMAC_P_CTRL_CLR_SERDES		BIT(1)
+#define DCMAC_G_CTRL_RESET_ALL		GENMASK(2, 0)
+#define DCMAC_P_CTRL_CLEAR_ALL		(BIT(0) | BIT(1))
+#define DCMAC_CH_CTRL_CLEAR_STATE	BIT(0)
+#define DCMAC_RXPHY_RX_STS_MASK		BIT(0)
+#define DCMAC_RXPHY_RX_ALIGN_MASK	BIT(2)
+#define DCMAC_RELEASE_RESET		0x0
+#define DCMAC_GT_RESET_DONE_MASK	GENMASK(3, 0)
+
+/* DCMAC GT wrapper bitmasks */
+#define DCMAC_GT_RESET_ALL	BIT(0)
+#define DCMAC_GT_TX_PRECURSOR	(BIT(12) | BIT(13))	/* gt_txprecursor */
+#define DCMAC_GT_TX_POSTCURSOR	(BIT(18) | BIT(21))	/* gt_txpostcursor */
+#define DCMAC_GT_MAINCURSOR	(BIT(24) | BIT(25) | BIT(27) | BIT(30))	/* gt maincursor */
+
+#define DCMAC_GT_RXDPATH_RST	GENMASK(23, 0)
+
 /**
  * struct axidma_bd - Axi Dma buffer descriptor layout
  * @next:         MM2S/S2MM Next Descriptor Pointer
@@ -816,6 +874,12 @@ struct aximcdma_bd {
  * @max_speed: Maximum possible MAC speed.
  * @gt_pll: Common GT PLL mask control register space.
  * @gt_ctrl: GT speed and reset control register space.
+ * @gds_gt_ctrl:	GPIO descriptor array for GT control.
+ * @gds_gt_rx_dpath: GPIO descriptor array for GT Rx datapath reset.
+ * @gds_gt_tx_dpath: GPIO descriptor array for GT Tx datapath reset.
+ * @gds_gt_rsts: GPIO descriptor array for GT serdes and core reset.
+ * @gds_gt_tx_reset_done: GPIO descriptor array to get Tx reset status.
+ * @gds_gt_rx_reset_done: GPIO descriptor array to get Rx reset status.
  * @phc_index: Index to corresponding PTP clock used.
  * @gt_lane: MRMAC GT lane index used.
  * @switch_lock: Spinlock for switchable IP.
@@ -902,6 +966,12 @@ struct axienet_local {
 	u32 max_speed;		/* Max MAC speed */
 	void __iomem *gt_pll;	/* Common GT PLL mask control register space */
 	void __iomem *gt_ctrl;	/* GT speed and reset control register space */
+	struct gpio_descs *gds_gt_ctrl;
+	struct gpio_descs *gds_gt_rx_dpath;
+	struct gpio_descs *gds_gt_tx_dpath;
+	struct gpio_descs *gds_gt_rsts;
+	struct gpio_descs *gds_gt_tx_reset_done;
+	struct gpio_descs *gds_gt_rx_reset_done;
 	u32 phc_index;		/* Index to corresponding PTP clock used  */
 	u32 gt_lane;		/* MRMAC GT lane index used */
 	spinlock_t switch_lock;	/* To protect Link training programming from multiple context */
@@ -991,6 +1061,7 @@ struct axienet_dma_q {
  * @XAXIENET_10G_25G:	 IP type is 10G/25G MAC(XXV MAC).
  * @XAXIENET_MRMAC:	 IP type is hardened Multi Rate MAC (MRMAC).
  * @XAXIENET_1G_10G_25G: IP type is 1G/10G/25G MAC.
+ * @XAXIENET_DCMAC: IP type is 600G Channelized Multirate Ethernet (DCMAC)
  *
  */
 enum axienet_ip_type {
@@ -1000,6 +1071,7 @@ enum axienet_ip_type {
 	XAXIENET_10G_25G,
 	XAXIENET_MRMAC,
 	XAXIENET_1G_10G_25G,
+	XAXIENET_DCMAC,
 };
 
 struct axienet_config {
