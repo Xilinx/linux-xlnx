@@ -1010,6 +1010,7 @@ struct axienet_config {
 			struct clk **dclk);
 	u32 tx_ptplen;
 	u8 ts_header_len;
+	int (*gt_reset)(struct net_device *ndev);
 };
 
 /**
