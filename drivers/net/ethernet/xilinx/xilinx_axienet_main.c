@@ -47,6 +47,7 @@
 #include <linux/random.h>
 #include <net/sock.h>
 #include <linux/ptp/ptp_xilinx.h>
+#include <linux/gpio/consumer.h>
 
 #include "xilinx_axienet.h"
 
@@ -504,6 +505,220 @@ static inline void axienet_mrmac_reset(struct axienet_local *lp)
 	axienet_iow(lp, MRMAC_RESET_OFFSET, val);
 }
 
+static ulong dcmac_gt_tx_reset_status(struct axienet_local *lp)
+{
+	ulong val;
+
+	gpiod_get_array_value_cansleep(lp->gds_gt_tx_reset_done->ndescs,
+				       lp->gds_gt_tx_reset_done->desc,
+				       lp->gds_gt_tx_reset_done->info, &val);
+	return val;
+}
+
+static ulong dcmac_gt_rx_reset_status(struct axienet_local *lp)
+{
+	ulong val;
+
+	gpiod_get_array_value_cansleep(lp->gds_gt_rx_reset_done->ndescs,
+				       lp->gds_gt_rx_reset_done->desc,
+				       lp->gds_gt_rx_reset_done->info, &val);
+	return val;
+}
+
+static void dcmac_init(struct axienet_local *lp)
+{
+	u32 val, val_tx, val_rx;
+
+	val = (DCMAC_TX_ACTV_PRT_ALL_MASK | DCMAC_RX_ACTV_PRT_ALL_MASK |
+		DCMAC_RX_ERR_IND_STD_MASK | DCMAC_TX_FEC_UNIQUE_FLIP_MASK |
+		DCMAC_RX_FEC_UNIQUE_FLIP_MASK);
+	axienet_iow(lp, DCMAC_G_MODE_OFFSET, val);
+
+	val = (DCMAC_CH_RX_FCS_MASK | DCMAC_CH_RX_PREAMBLE_MASK |
+		DCMAC_RX_IGNR_INRANGE_MASK | DCMAC_RX_MAX_PKT_LEN_MASK);
+	axienet_iow(lp, DCMAC_CH_CFG_RX_OFFSET, val);
+
+	val = (DCMAC_CH_TX_FCS_MASK | DCMAC_CH_TX_IPG_MASK);
+	axienet_iow(lp, DCMAC_CH_CFG_TX_OFFSET, val);
+
+	/* Set data rate and FEC mode */
+	val_tx = 0x0;
+	val_rx = 0x0;
+
+	switch (lp->max_speed) {
+	case SPEED_100000:
+		val_tx &= DCMAC_P_SPEED_100G_MASK;
+		val_rx &= DCMAC_P_SPEED_100G_MASK;
+		/* 100G KR4 FEC operating mode */
+		val_tx |= DCMAC_CH_MD_FEC_KR4;
+		val_rx |= DCMAC_CH_MD_FEC_KR4;
+		break;
+	case SPEED_200000:
+		val_tx |= DCMAC_P_SPEED_200G_MASK;
+		val_rx |= DCMAC_P_SPEED_200G_MASK;
+		/* 200G FEC operating mode */
+		val_tx |= DCMAC_CH_MD_FEC_200G;
+		val_rx |= DCMAC_CH_MD_FEC_200G;
+		break;
+	case SPEED_400000:
+		val_tx |= DCMAC_P_SPEED_400G_MASK;
+		val_rx |= DCMAC_P_SPEED_400G_MASK;
+		/* 400G FEC operating mode */
+		val_tx |= DCMAC_CH_MD_FEC_400G;
+		val_rx |= DCMAC_CH_MD_FEC_400G;
+
+		break;
+	default:
+		break;
+	}
+	/* pm_tick triggered by internal registers for channel statistics */
+	val_tx |= DCMAC_CH_TXMD_PM_TICK_INTERNAL_MASK;
+	val_rx |= DCMAC_CH_RXMD_PM_TICK_INTERNAL_MASK;
+
+	axienet_iow(lp, DCMAC_CH_MODE_TX_OFFSET, val_tx);
+	axienet_iow(lp, DCMAC_CH_MODE_RX_OFFSET, val_rx);
+}
+
+static ulong dcmac_rx_phy_status(struct net_device *ndev)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+	ulong val;
+	int ret;
+
+	/* Reset GT Rx datapath */
+	val = DCMAC_GT_RXDPATH_RST;
+	gpiod_set_array_value_cansleep(lp->gds_gt_rx_dpath->ndescs,
+				       lp->gds_gt_rx_dpath->desc,
+				       lp->gds_gt_rx_dpath->info, &val);
+	mdelay(DELAY_1MS);
+	val = 0;
+	gpiod_set_array_value_cansleep(lp->gds_gt_rx_dpath->ndescs,
+				       lp->gds_gt_rx_dpath->desc,
+				       lp->gds_gt_rx_dpath->info, &val);
+
+	/* Tx and Rx serdes reset */
+	gpiod_set_array_value_cansleep(lp->gds_gt_rsts->ndescs,
+				       lp->gds_gt_rsts->desc,
+				       lp->gds_gt_rsts->info, &val);
+	mdelay(DELAY_1MS);
+
+	ret = readx_poll_timeout(dcmac_gt_rx_reset_status, lp, val,
+				 val == (ulong)DCMAC_GT_RESET_DONE_MASK, 10,
+				 100 * DELAY_OF_ONE_MILLISEC);
+	if (ret) {
+		netdev_err(ndev,
+			   "GT RX reset done not achieved (Status = 0x%lx)\n",
+			   val);
+		return ret;
+	}
+
+	mdelay(DELAY_1MS);
+	/* Assert and deassert DCMAC Rx port reset */
+	axienet_iow(lp, DCMAC_P_CTRL_RX_OFFSET,
+		    DCMAC_P_CTRL_CLR_SERDES);
+	mdelay(DELAY_1MS);
+	axienet_iow(lp, DCMAC_P_CTRL_RX_OFFSET, 0);
+
+	/* Delay of 2ms is needed */
+	mdelay(2 * DELAY_1MS);
+
+	/* Clear previous status */
+	axienet_iow(lp, DCMAC_STS_RX_PHY_OFFSET, 0xFFFFFFFF);
+	mdelay(DELAY_1MS);
+
+	/* Read phy status for PCS alignment, Rx status and Block lock */
+	val = axienet_ior(lp, DCMAC_STS_RX_PHY_OFFSET);
+	return val;
+}
+
+static void dcmac_assert_reset(struct net_device *ndev)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+	u32 val;
+
+	val = DCMAC_G_CTRL_RESET_ALL;
+	axienet_iow(lp, DCMAC_G_CTRL_RX_OFFSET, val);
+	axienet_iow(lp, DCMAC_G_CTRL_TX_OFFSET, val);
+	val = DCMAC_P_CTRL_CLEAR_ALL;
+	axienet_iow(lp, DCMAC_P_CTRL_RX_OFFSET, val);
+	axienet_iow(lp, DCMAC_P_CTRL_TX_OFFSET, val);
+
+	/* Assert channel resets */
+	val = DCMAC_CH_CTRL_CLEAR_STATE;
+	axienet_iow(lp, DCMAC_CH_CTRL_RX_OFFSET, val);
+	axienet_iow(lp, DCMAC_CH_CTRL_TX_OFFSET, val);
+	mdelay(DELAY_1MS);
+	val = DCMAC_P_CTRL_CLEAR_ALL;
+	axienet_iow(lp, DCMAC_P_CTRL_RX_OFFSET, val);
+	axienet_iow(lp, DCMAC_P_CTRL_TX_OFFSET, val);
+}
+
+static void dcmac_release_reset(struct net_device *ndev)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+
+	/* Release DCMAC global port and channel reset */
+	axienet_iow(lp, DCMAC_G_CTRL_TX_OFFSET, DCMAC_RELEASE_RESET);
+	axienet_iow(lp, DCMAC_G_CTRL_RX_OFFSET, DCMAC_RELEASE_RESET);
+	axienet_iow(lp, DCMAC_P_CTRL_TX_OFFSET, DCMAC_RELEASE_RESET);
+	axienet_iow(lp, DCMAC_P_CTRL_RX_OFFSET, DCMAC_RELEASE_RESET);
+	mdelay(DELAY_1MS);
+	axienet_iow(lp, DCMAC_CH_CTRL_TX_OFFSET, DCMAC_RELEASE_RESET);
+	axienet_iow(lp, DCMAC_CH_CTRL_RX_OFFSET, DCMAC_RELEASE_RESET);
+	mdelay(DELAY_1MS);
+}
+
+static int dcmac_gt_reset(struct net_device *ndev)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+	ulong val_gpio;
+	u32 ret;
+
+	val_gpio = (DCMAC_GT_RESET_ALL | DCMAC_GT_TX_PRECURSOR |
+	       DCMAC_GT_TX_POSTCURSOR | DCMAC_GT_MAINCURSOR);
+	gpiod_set_array_value_cansleep(lp->gds_gt_ctrl->ndescs,
+				       lp->gds_gt_ctrl->desc,
+				       lp->gds_gt_ctrl->info, &val_gpio);
+	mdelay(DELAY_1MS);
+
+	val_gpio &= ~DCMAC_GT_RESET_ALL;
+	gpiod_set_array_value_cansleep(lp->gds_gt_ctrl->ndescs,
+				       lp->gds_gt_ctrl->desc,
+				       lp->gds_gt_ctrl->info, &val_gpio);
+
+	/* Ensure the GT TX Datapath Reset is not asserted */
+	val_gpio = 0;
+	gpiod_set_array_value_cansleep(lp->gds_gt_tx_dpath->ndescs,
+				       lp->gds_gt_tx_dpath->desc,
+				       lp->gds_gt_tx_dpath->info, &val_gpio);
+
+	mdelay(DELAY_1MS);
+
+	/* Check for GT TX RESET DONE */
+	ret = readx_poll_timeout(dcmac_gt_tx_reset_status, lp, val_gpio,
+				 val_gpio == (ulong)DCMAC_GT_RESET_DONE_MASK,
+				 10, 100 * DELAY_OF_ONE_MILLISEC);
+	if (ret) {
+		netdev_err(ndev,
+			   "GT TX Reset Done not achieved (Status = 0x%lx)\n",
+			   val_gpio);
+		return ret;
+	}
+
+	/* Check for GT RX RESET DONE */
+	ret = readx_poll_timeout(dcmac_gt_rx_reset_status, lp, val_gpio,
+				 val_gpio == (ulong)DCMAC_GT_RESET_DONE_MASK, 10,
+				 100 * DELAY_OF_ONE_MILLISEC);
+	if (ret) {
+		netdev_err(ndev,
+			   "GT RX Reset Done not achieved (Status = 0x%lx)\n",
+			   val_gpio);
+		return ret;
+	}
+
+	return ret;
+}
+
 static inline int axienet_mrmac_gt_reset(struct net_device *ndev)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
@@ -659,7 +874,8 @@ static int axienet_device_reset(struct net_device *ndev)
 
 	if (lp->axienet_config->mactype != XAXIENET_10G_25G &&
 	    lp->axienet_config->mactype != XAXIENET_1G_10G_25G &&
-	    lp->axienet_config->mactype != XAXIENET_MRMAC) {
+	    lp->axienet_config->mactype != XAXIENET_MRMAC &&
+	    lp->axienet_config->mactype != XAXIENET_DCMAC) {
 		axienet_status = axienet_ior(lp, XAE_RCW1_OFFSET);
 		axienet_status &= ~XAE_RCW1_RX_MASK;
 		axienet_iow(lp, XAE_RCW1_OFFSET, axienet_status);
@@ -735,12 +951,32 @@ static int axienet_device_reset(struct net_device *ndev)
 	} else {
 		axienet_iow(lp, XAE_FCC_OFFSET, XAE_FCC_FCRX_MASK);
 	}
-	lp->axienet_config->setoptions(ndev, lp->options &
-				       ~(XAE_OPTION_TXEN | XAE_OPTION_RXEN));
+	if (lp->axienet_config->setoptions)
+		lp->axienet_config->setoptions(ndev, lp->options &
+					~(XAE_OPTION_TXEN | XAE_OPTION_RXEN));
 
 	axienet_set_mac_address(ndev, NULL);
 	axienet_set_multicast_list(ndev);
-	lp->axienet_config->setoptions(ndev, lp->options);
+	if (lp->axienet_config->mactype == XAXIENET_DCMAC) {
+		dcmac_assert_reset(ndev);
+		dcmac_init(lp);
+		dcmac_release_reset(ndev);
+
+		/* Check for alignment */
+		ret = readx_poll_timeout(dcmac_rx_phy_status, ndev, val,
+					 (val > 0) &&
+					 (val & DCMAC_RXPHY_RX_STS_MASK) &&
+					 (val & DCMAC_RXPHY_RX_ALIGN_MASK),
+					 10, 100 * DELAY_OF_ONE_MILLISEC);
+
+		if (ret) {
+			netdev_err(ndev, "Alignment not achieved. Failed to reset DCMAC\n");
+			return -ENODEV;
+		}
+	}
+
+	if (lp->axienet_config->setoptions)
+		lp->axienet_config->setoptions(ndev, lp->options);
 
 	netif_trans_update(ndev);
 
@@ -1278,7 +1514,8 @@ static int axienet_queue_xmit(struct sk_buff *skb,
 
 	if (lp->axienet_config->mactype == XAXIENET_10G_25G ||
 	    lp->axienet_config->mactype == XAXIENET_1G_10G_25G ||
-	    lp->axienet_config->mactype == XAXIENET_MRMAC) {
+	    lp->axienet_config->mactype == XAXIENET_MRMAC ||
+	    lp->axienet_config->mactype == XAXIENET_DCMAC) {
 		/* Need to manually pad the small frames in case of XXV MAC
 		 * because the pad field is not added by the IP. We must present
 		 * a packet that meets the minimum length to the IP core.
@@ -2055,8 +2292,9 @@ static int axienet_stop(struct net_device *ndev)
 		phylink_disconnect_phy(lp->phylink);
 	}
 
-	lp->axienet_config->setoptions(ndev, lp->options &
-			   ~(XAE_OPTION_TXEN | XAE_OPTION_RXEN));
+	if (lp->axienet_config->setoptions)
+		lp->axienet_config->setoptions(ndev, lp->options &
+				~(XAE_OPTION_TXEN | XAE_OPTION_RXEN));
 
 	for_each_tx_dma_queue(lp, i) {
 		q = lp->dq[i];
@@ -2911,6 +3149,27 @@ static struct axienet_local *pcs_to_axienet_local(struct phylink_pcs *pcs)
 	return container_of(pcs, struct axienet_local, pcs);
 }
 
+static void axienet_dcmac_get_fixed_state(struct phylink_config *config,
+					  struct phylink_link_state *state)
+{
+	struct net_device *ndev = to_net_dev(config->dev);
+	struct axienet_local *lp = netdev_priv(ndev);
+	u32 rx_phy_stat;
+
+	state->duplex = DUPLEX_FULL;
+	state->speed = lp->max_speed;
+	state->an_complete = PHYLINK_PCS_NEG_NONE;
+
+	rx_phy_stat = axienet_ior(lp, DCMAC_STS_RX_PHY_OFFSET);
+	/* Clear previous status */
+	axienet_iow(lp, DCMAC_STS_RX_PHY_OFFSET, 0xFFFFFFFF);
+	rx_phy_stat = axienet_ior(lp, DCMAC_STS_RX_PHY_OFFSET);
+
+	state->link = (rx_phy_stat & DCMAC_RXPHY_RX_STS_MASK &&
+			rx_phy_stat & DCMAC_RXPHY_RX_ALIGN_MASK);
+	phylink_clear(state->advertising, Autoneg);
+}
+
 static void axienet_pcs_get_state(struct phylink_pcs *pcs,
 				  struct phylink_link_state *state)
 {
@@ -3061,6 +3320,9 @@ static int axienet_pcs_config(struct phylink_pcs *pcs, unsigned int neg_mode,
 					     XXVS_CTRL_CORE_SPEED_SEL_CLEAR));
 		}
 		return 0;
+	} else if (lp->axienet_config->mactype == XAXIENET_DCMAC) {
+		/* Nothing to change for fixed link */
+		return 0;
 	}
 
 	ret = phylink_mii_c22_pcs_config(pcs_phy, interface, advertising,
@@ -3110,7 +3372,8 @@ static void axienet_mac_link_up(struct phylink_config *config,
 	u32 emmc_reg, fcc_reg;
 
 	if (lp->axienet_config->mactype == XAXIENET_10G_25G ||
-	    lp->axienet_config->mactype == XAXIENET_1G_10G_25G) {
+	    lp->axienet_config->mactype == XAXIENET_1G_10G_25G ||
+	    lp->axienet_config->mactype == XAXIENET_DCMAC) {
 		/* nothing meaningful to do */
 		return;
 	}
@@ -3157,11 +3420,10 @@ static void axienet_mac_validate(struct phylink_config *config,
 {
 	struct net_device *ndev = to_net_dev(config->dev);
 	struct axienet_local *lp = netdev_priv(ndev);
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(mask) = { 0, };
+	unsigned long supported_caps, adv_caps;
 
 	if (lp->axienet_config->mactype == XAXIENET_1G_10G_25G) {
-		__ETHTOOL_DECLARE_LINK_MODE_MASK(mask) = { 0, };
-		unsigned long supported_caps, adv_caps;
-
 		/* Supported link mode */
 		phylink_set_port_modes(mask);
 		phylink_set(mask, Autoneg);
@@ -3188,6 +3450,38 @@ static void axienet_mac_validate(struct phylink_config *config,
 		case SPEED_25000:
 			adv_caps |= MAC_25000FD;
 			state->interface = PHY_INTERFACE_MODE_25GBASER;
+			break;
+		default:
+			/* SPEED_UNKNOWN */
+			adv_caps = supported_caps;
+		}
+		phylink_caps_to_linkmodes(mask, adv_caps);
+
+		linkmode_and(state->advertising, supported, mask);
+	} else if (lp->axienet_config->mactype == XAXIENET_DCMAC) {
+		/* Supported link mode */
+		phylink_set_port_modes(mask);
+		supported_caps = config->mac_capabilities;
+		phylink_caps_to_linkmodes(mask, supported_caps);
+		linkmode_and(supported, supported, mask);
+
+		/* Advertise link mode */
+		linkmode_zero(mask);
+		phylink_set_port_modes(mask);
+		adv_caps =  MAC_SYM_PAUSE | MAC_ASYM_PAUSE;
+
+		switch (state->speed) {
+		case SPEED_100000:
+			adv_caps |= MAC_100000FD;
+			state->interface = PHY_INTERFACE_MODE_100GBASER;
+			break;
+		case SPEED_200000:
+			adv_caps |= MAC_200000FD;
+			state->interface = PHY_INTERFACE_MODE_200GBASER;
+			break;
+		case SPEED_400000:
+			adv_caps |= MAC_400000FD;
+			state->interface = PHY_INTERFACE_MODE_400GBASER;
 			break;
 		default:
 			/* SPEED_UNKNOWN */
@@ -3506,6 +3800,12 @@ static const struct axienet_config axienet_mrmac_config = {
 	.gt_reset = axienet_mrmac_gt_reset,
 };
 
+static const struct axienet_config axienet_dcmac_config = {
+	.mactype = XAXIENET_DCMAC,
+	.clk_init = xxvenet_clk_init,
+	.gt_reset = dcmac_gt_reset,
+};
+
 /* Match table for of_platform binding */
 static const struct of_device_id axienet_of_match[] = {
 	{ .compatible = "xlnx,axi-ethernet-1.00.a", .data = &axienet_1g_config},
@@ -3522,6 +3822,8 @@ static const struct of_device_id axienet_of_match[] = {
 					.data = &axienet_mrmac_config},
 	{ .compatible = "xlnx,ethernet-1-10-25g-2.7",
 					.data = &axienet_1g10g25g_config},
+	{ .compatible = "xlnx,dcmac-2.4",
+					.data = &axienet_dcmac_config},
 	{},
 };
 
@@ -3738,21 +4040,23 @@ static int axienet_probe(struct platform_device *pdev)
 	of_property_read_u32(pdev->dev.of_node, "xlnx,usxgmii-rate",
 			     &lp->usxgmii_rate);
 
-	if (lp->axienet_config->mactype == XAXIENET_MRMAC) {
-		/* Set default MRMAC rate */
-		lp->max_speed = SPEED_10000;
+	if (lp->axienet_config->mactype == XAXIENET_MRMAC ||
+	    lp->axienet_config->mactype == XAXIENET_DCMAC) {
 		ret = of_property_read_u32(pdev->dev.of_node, "max-speed",
 					   &lp->max_speed);
-		if (ret) {
-			ret = of_property_read_u32(pdev->dev.of_node, "xlnx,mrmac-rate",
+
+		if (ret && lp->axienet_config->mactype == XAXIENET_MRMAC) {
+			ret = of_property_read_u32(pdev->dev.of_node,
+						   "xlnx,mrmac-rate",
 						   &lp->max_speed);
-			if (ret) {
-				dev_err(&pdev->dev, "couldn't find MAC Rate\n");
-				goto cleanup_clk;
-			} else {
+			if (!ret) {
 				dev_warn(&pdev->dev,
 					 "xlnx,mrmac-rate is deprecated, please use max-speed instead\n");
 			}
+		}
+		if (ret) {
+			dev_err(&pdev->dev, "couldn't find MAC Rate\n");
+			goto cleanup_clk;
 		}
 	}
 
@@ -3838,6 +4142,66 @@ static int axienet_probe(struct platform_device *pdev)
 			goto cleanup_clk;
 		}
 		dev_info(&pdev->dev, "GT lane: %d\n", lp->gt_lane);
+	} else if (lp->axienet_config->mactype == XAXIENET_DCMAC) {
+		lp->gds_gt_ctrl = devm_gpiod_get_array(&pdev->dev,
+						       "gt_ctrl",
+						       GPIOD_OUT_LOW);
+		if (IS_ERR(lp->gds_gt_ctrl)) {
+			dev_err(&pdev->dev,
+				"Failed to request GT control GPIO\n");
+			ret = PTR_ERR(lp->gds_gt_ctrl);
+			goto cleanup_clk;
+		}
+
+		lp->gds_gt_rx_dpath = devm_gpiod_get_array(&pdev->dev,
+							   "gt_rx_dpath",
+							    GPIOD_OUT_LOW);
+		if (IS_ERR(lp->gds_gt_rx_dpath)) {
+			dev_err(&pdev->dev,
+				"Failed to request GT Rx dpath GPIO\n");
+			ret = PTR_ERR(lp->gds_gt_rx_dpath);
+			goto cleanup_clk;
+		}
+
+		lp->gds_gt_tx_dpath = devm_gpiod_get_array(&pdev->dev,
+							   "gt_tx_dpath",
+							   GPIOD_OUT_LOW);
+		if (IS_ERR(lp->gds_gt_tx_dpath)) {
+			dev_err(&pdev->dev,
+				"Failed to request GT Tx dpath GPIO\n");
+			ret = PTR_ERR(lp->gds_gt_tx_dpath);
+			goto cleanup_clk;
+		}
+
+		lp->gds_gt_rsts = devm_gpiod_get_array(&pdev->dev,
+						       "gt_rsts",
+						       GPIOD_OUT_LOW);
+		if (IS_ERR(lp->gds_gt_rsts)) {
+			dev_err(&pdev->dev,
+				"Failed to request GT Resets GPIO\n");
+			ret = PTR_ERR(lp->gds_gt_rsts);
+			goto cleanup_clk;
+		}
+
+		lp->gds_gt_tx_reset_done =  devm_gpiod_get_array(&pdev->dev,
+								 "gt_tx_rst_done",
+								 GPIOD_IN);
+		if (IS_ERR(lp->gds_gt_tx_reset_done)) {
+			dev_err(&pdev->dev,
+				"Failed to request GT Tx Reset Done GPIO\n");
+			ret = PTR_ERR(lp->gds_gt_tx_reset_done);
+			goto cleanup_clk;
+		}
+
+		lp->gds_gt_rx_reset_done =  devm_gpiod_get_array(&pdev->dev,
+								 "gt_rx_rst_done",
+								 GPIOD_IN);
+		if (IS_ERR(lp->gds_gt_rx_reset_done)) {
+			dev_err(&pdev->dev,
+				"Failed to request GT Rx Reset Done GPIO\n");
+			ret = PTR_ERR(lp->gds_gt_rx_reset_done);
+			goto cleanup_clk;
+		}
 	}
 
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
@@ -3955,7 +4319,8 @@ static int axienet_probe(struct platform_device *pdev)
 
 	if (lp->axienet_config->mactype != XAXIENET_10G_25G &&
 	    lp->axienet_config->mactype != XAXIENET_1G_10G_25G &&
-	    lp->axienet_config->mactype != XAXIENET_MRMAC) {
+	    lp->axienet_config->mactype != XAXIENET_MRMAC &&
+	    lp->axienet_config->mactype != XAXIENET_DCMAC) {
 		np = of_parse_phandle(pdev->dev.of_node, "pcs-handle", 0);
 		if (!np) {
 			/* For SGMII/1000BaseX:
@@ -4035,6 +4400,22 @@ static int axienet_probe(struct platform_device *pdev)
 				__set_bit(PHY_INTERFACE_MODE_25GBASER,
 					  lp->phylink_config.supported_interfaces);
 			}
+		} else if (lp->axienet_config->mactype == XAXIENET_DCMAC) {
+			if (lp->max_speed == SPEED_100000) {
+				lp->phylink_config.mac_capabilities |= MAC_100000FD;
+				__set_bit(PHY_INTERFACE_MODE_100GBASER,
+					  lp->phylink_config.supported_interfaces);
+			} else if (lp->max_speed == SPEED_200000) {
+				lp->phylink_config.mac_capabilities |= MAC_200000FD;
+				__set_bit(PHY_INTERFACE_MODE_200GBASER,
+					  lp->phylink_config.supported_interfaces);
+			} else if (lp->max_speed == SPEED_400000) {
+				lp->phylink_config.mac_capabilities |= MAC_400000FD;
+				__set_bit(PHY_INTERFACE_MODE_400GBASER,
+					  lp->phylink_config.supported_interfaces);
+			}
+
+			lp->phylink_config.get_fixed_state = axienet_dcmac_get_fixed_state;
 		} else {
 			lp->phylink_config.mac_capabilities = (MAC_10FD | MAC_100FD |
 							       MAC_1000FD);
