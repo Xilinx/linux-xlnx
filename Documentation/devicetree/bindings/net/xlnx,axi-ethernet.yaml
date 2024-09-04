@@ -14,6 +14,7 @@ description: |
   d) USXGMII Ethernet Subsystem.
   e) MRMAC Ethernet Subsystem.
   f) 1G/10G/25G Switching Ethernet Subsystem.
+  g) DCMAC Ethernet Subsystem.
 
   AXI 1G/2.5G Ethernet Subsystem- also called  AXI 1G/2.5G Ethernet Subsystem,
   the xilinx axi ethernet IP core provides connectivity to an external ethernet
@@ -45,6 +46,11 @@ description: |
   The Xilinx 1G/10G/25G Switching Ethernet Subsystem contains integrated MAC
   and PCS and it supports runtime switchable speeds among 1G,10G & 25G
 
+  600G Channelized Multirate Ethernet Subsystem (DCMAC Subsystem) is hardened
+  Ethernet IP that can be configured for up to six ports with independent MAC
+  and PHY functions at the IEEE Standard MAC Rates from 100GE to 400GE
+  and an overall maximum bandwidth of 600 Gbps.
+
 maintainers:
   - Radhey Shyam Pandey <radhey.shyam.pandey@xilinx.com>
 
@@ -60,6 +66,7 @@ properties:
       - xlnx,xxv-usxgmii-ethernet-1.0 # USXGMII Ethernet Subsystem.
       - xlnx,mrmac-ethernet-1.0 # MRMAC Ethernet Subsystem.
       - xlnx,ethernet-1-10-25g-2.7 # 1G/10G/25G Switching Ethernet Subsystem.
+      - xlnx,dcmac-2.4 # DCMAC Ethernet Subsystem.
 
   reg:
     description:
@@ -213,6 +220,30 @@ properties:
 
   max-speed: true
 
+  gt_ctrl-gpios:
+    description: Phandle and specifier for GT control GPIO used to
+      configure GT.
+
+  gt_rx_dpath-gpios:
+    description: Phandle and specifier for the GPIO used to
+      reset GT Rx datapath.
+
+  gt_tx_dpath-gpios:
+    description: Phandle and specifier for the GPIO used to
+      reset GT Tx datapath.
+
+  gt_tx_rst_done-gpios:
+    description: Phandle and specifier for the GPIO used to
+      get GT Tx reset status.
+
+  gt_rx_rst_done-gpios:
+    description: Phandle and specifier for the GPIO used to
+      get GT Rx reset status.
+
+  gt_rsts-gpios:
+    description: Phandle and specifier for the GPIO used to
+      reset Tx and Rx serdes.
+
 required:
   - compatible
   - interrupts
@@ -284,6 +315,44 @@ allOf:
     then:
       required:
         - phy-handle
+
+  - if:
+      properties:
+        compatible:
+          contains:
+            enum:
+              - xlnx,dcmac-2.4
+    then:
+      properties:
+        max-speed:
+          enum: [100000, 200000, 400000]
+
+        gt_ctrl-gpios:
+          maxItems: 32
+
+        gt_rx_dpath-gpios:
+          maxItems: 23
+
+        gt_tx_dpath-gpios:
+          maxItems: 23
+
+        gt_tx_rst_done-gpios:
+          maxItems: 24
+
+        gt_rx_rst_done-gpios:
+          maxItems: 24
+
+        gt_rsts-gpios:
+          maxItems: 14
+
+      required:
+        - max-speed
+        - gt_ctrl-gpios
+        - gt_rx_dpath-gpios
+        - gt_tx_dpath-gpios
+        - gt_tx_rst_done-gpios
+        - gt_rx_rst_done-gpios
+        - gt_rsts-gpios
 
 additionalProperties: false
 
@@ -362,4 +431,70 @@ examples:
         xlnx,rxmem = <0x8000>;
         ptp-hardware-clock = <&ptp_device>;
 
+    };
+
+# 4) #Example for DCMAC Ethernet subsystem
+  - |
+    gpio1: gpio@a4130000 {
+        compatible = "xlnx,xps-gpio-1.00.a";
+        reg = <0xa4130000 0x10000>;
+        #gpio-cells = <0x2>;
+        gpio-controller;
+      };
+
+    gpio2: gpio@a4150000 {
+        compatible = "xlnx,xps-gpio-1.00.a";
+        reg = <0xa4150000 0x10000>;
+        #gpio-cells = <0x2>;
+        gpio-controller;
+    };
+
+    gpio3: gpio@a4140000 {
+        compatible = "xlnx,xps-gpio-1.00.a";
+        reg = <0xa4140000 0x10000>;
+        #gpio-cells = <0x2>;
+        gpio-controller;
+    };
+
+    dcmac: ethernet@a4000000 {
+        axistream-connected = <&dma>;
+        compatible = "xlnx,dcmac-2.4";
+        reg = <0x0 0xa4000000 0x0 0x100000>;
+        interrupt-parent = <&gic>;
+        interrupts = <0x0 0x5c 0x4 0x0 0x5d 0x4>;
+        xlnx,rxmem = <0x8000>;
+        max-speed = <100000>;
+
+        gt_ctrl-gpios = <&gpio1 0 0>, <&gpio1 1 0>, <&gpio1 2 0>, <&gpio1 3 0>, <&gpio1 4 0>, <&gpio1 5 0>,
+        <&gpio1 6 0>, <&gpio1 7 0>, <&gpio1 8 0>, <&gpio1 9 0>, <&gpio1 10 0>, <&gpio1 11 0>, <&gpio1 12 0>,
+        <&gpio1 13 0>, <&gpio1 14 0>, <&gpio1 15 0>, <&gpio1 16 0>, <&gpio1 17 0>, <&gpio1 18 0>,
+        <&gpio1 19 0>, <&gpio1 20 0>, <&gpio1 21 0>, <&gpio1 22 0>, <&gpio1 23 0>, <&gpio1 24 0>,
+        <&gpio1 25 0>, <&gpio1 26 0>, <&gpio1 27 0>, <&gpio1 28 0>, <&gpio1 29 0>, <&gpio1 30 0>,
+        <&gpio1 31 0>;
+
+        gt_rx_dpath-gpios = <&gpio2 0 0>, <&gpio2 1 0>, <&gpio2 2 0>, <&gpio2 3 0>, <&gpio2 4 0>,
+        <&gpio2 5 0>, <&gpio2 6 0>, <&gpio2 7 0>, <&gpio2 8 0>, <&gpio2 9 0>, <&gpio2 10 0>, <&gpio2 11 0>,
+        <&gpio2 12 0>, <&gpio2 13 0>, <&gpio2 14 0>, <&gpio2 15 0>, <&gpio2 16 0>, <&gpio2 17 0>,
+        <&gpio2 18 0>, <&gpio2 19 0>, <&gpio2 20 0>, <&gpio2 21 0>, <&gpio2 22 0>;
+
+        gt_tx_dpath-gpios = <&gpio2 0 0>, <&gpio2 1 0>, <&gpio2 2 0>, <&gpio2 3 0>, <&gpio2 4 0>,
+        <&gpio2 5 0>, <&gpio2 6 0>, <&gpio2 7 0>, <&gpio2 8 0>, <&gpio2 9 0>, <&gpio2 10 0>, <&gpio2 11 0>,
+        <&gpio2 12 0>, <&gpio2 13 0>, <&gpio2 14 0>, <&gpio2 15 0>, <&gpio2 16 0>, <&gpio2 17 0>,
+        <&gpio2 18 0>, <&gpio2 19 0>, <&gpio2 20 0>, <&gpio2 21 0>, <&gpio2 22 0>;
+
+        gt_tx_rst_done-gpios =  <&gpio3 0 0>, <&gpio3 1 0>, <&gpio3 2 0>, <&gpio3 3 0>, <&gpio3 4 0>,
+        <&gpio3 5 0>, <&gpio3 6 0>, <&gpio3 7 0>, <&gpio3 8 0>, <&gpio3 9 0>, <&gpio3 10 0>,
+        <&gpio3 11 0>, <&gpio3 12 0>, <&gpio3 13 0>, <&gpio3 14 0>, <&gpio3 15 0>, <&gpio3 16 0>,
+        <&gpio3 17 0>, <&gpio3 18 0>, <&gpio3 19 0>, <&gpio3 20 0>, <&gpio3 21 0>, <&gpio3 22 0>,
+        <&gpio3 23 0>;
+
+        gt_rx_rst_done-gpios =  <&gpio3 24 0>, <&gpio3 25 0>, <&gpio3 26 0>, <&gpio3 27 0>,
+        <&gpio3 28 0>, <&gpio3 29 0>, <&gpio3 30 0>, <&gpio3 31 0>, <&gpio3 32 0>, <&gpio3 33 0>,
+        <&gpio3 34 0>, <&gpio3 35 0>, <&gpio3 36 0>, <&gpio3 37 0>, <&gpio3 38 0>, <&gpio3 39 0>,
+        <&gpio3 40 0>, <&gpio3 41 0>, <&gpio3 42 0>, <&gpio3 43 0>, <&gpio3 44 0>, <&gpio3 45 0>,
+        <&gpio3 46 0>, <&gpio3 47 0>;
+
+        gt_rsts-gpios = <&gpio3 0 0>, <&gpio3 1 0>, <&gpio3 2 0>, <&gpio3 3 0>, <&gpio3 4 0>, <&gpio3 5 0>,
+        <&gpio3 6 0>, <&gpio3 7 0>, <&gpio3 8 0>, <&gpio3 9 0>, <&gpio3 10 0>, <&gpio3 11 0>, <&gpio3 12 0>,
+        <&gpio3 13 0>;
     };
