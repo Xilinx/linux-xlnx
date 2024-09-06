@@ -3,7 +3,7 @@
  * Xilinx SYSMON for Versal
  *
  * Copyright (C) 2019 - 2022, Xilinx, Inc.
- * Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc.
+ * Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc.
  *
  * Description:
  * This driver is developed for SYSMON on Versal. The driver supports INDIO Mode
@@ -244,6 +244,26 @@ static void sysmon_supply_processedtoraw(int val, int val2, u32 reg_val,
 	*raw_data = tmp & 0xffff;
 }
 
+static int sysmon_osr_write(struct sysmon *sysmon,
+			    int channel_type, int val)
+{
+	u32 mask, shift;
+
+	if (channel_type == IIO_TEMP) {
+		mask = SYSMON_TEMP_SAT_CONFIG_MASK;
+		shift = SYSMON_TEMP_SAT_CONFIG_SHIFT;
+	} else if (channel_type == IIO_VOLTAGE) {
+		mask = SYSMON_SUPPLY_CONFIG_MASK;
+		shift = SYSMON_SUPPLY_CONFIG_SHIFT;
+	} else {
+		return -EINVAL;
+	}
+
+	sysmon_update_reg(sysmon, SYSMON_CONFIG, mask, (val << shift));
+
+	return 0;
+}
+
 static int sysmon_read_raw(struct iio_dev *indio_dev,
 			   struct iio_chan_spec const *chan, int *val,
 			   int *val2, long mask)
@@ -302,6 +322,22 @@ static int sysmon_read_raw(struct iio_dev *indio_dev,
 			break;
 		}
 		break;
+	case IIO_CHAN_INFO_OVERSAMPLING_RATIO:
+		switch (chan->type) {
+		case IIO_TEMP:
+			*val = sysmon->temp_oversampling;
+			ret = IIO_VAL_INT;
+			break;
+
+		case IIO_VOLTAGE:
+			*val = sysmon->supply_oversampling;
+			ret = IIO_VAL_INT;
+			break;
+
+		default:
+			break;
+		}
+		break;
 
 	default:
 		break;
@@ -309,6 +345,74 @@ static int sysmon_read_raw(struct iio_dev *indio_dev,
 
 	mutex_unlock(&sysmon->mutex);
 	return ret;
+}
+
+static int sysmon_write_raw(struct iio_dev *indio_dev,
+			    struct iio_chan_spec const *chan,
+			    int val, int val2, long mask)
+{
+	struct sysmon *sysmon = iio_priv(indio_dev);
+	u32 ret = -EINVAL;
+	int i;
+
+	mutex_lock(&sysmon->mutex);
+	switch (mask) {
+	case IIO_CHAN_INFO_OVERSAMPLING_RATIO:
+		if (val2 != 0)
+			break;
+
+		switch (chan->type) {
+		case IIO_TEMP:
+			for (i = 0; i < sysmon->oversampling_num; i++) {
+				if (val == sysmon->oversampling_avail[i]) {
+					ret = sysmon_osr_write(sysmon,
+							       IIO_TEMP, val);
+					if (!ret)
+						sysmon->temp_oversampling = val;
+				}
+			}
+			break;
+
+		case IIO_VOLTAGE:
+			for (i = 0; i < sysmon->oversampling_num; i++) {
+				if (val == sysmon->oversampling_avail[i]) {
+					ret = sysmon_osr_write(sysmon,
+							       IIO_VOLTAGE, val);
+					if (!ret)
+						sysmon->supply_oversampling = val;
+				}
+			}
+			break;
+
+		default:
+			break;
+		}
+		break;
+	default:
+		break;
+	}
+
+	mutex_unlock(&sysmon->mutex);
+	return ret;
+}
+
+static int sysmon_read_avail(struct iio_dev *indio_dev,
+			     struct iio_chan_spec const *chan,
+			     const int **vals, int *type, int *length,
+			     long mask)
+{
+	struct sysmon *sysmon;
+
+	if (mask != IIO_CHAN_INFO_OVERSAMPLING_RATIO)
+		return -EINVAL;
+
+	sysmon = iio_priv(indio_dev);
+
+	*vals = sysmon->oversampling_avail;
+	*length = sysmon->oversampling_num;
+	*type = IIO_VAL_INT;
+
+	return IIO_AVAIL_LIST;
 }
 
 static int sysmon_get_event_mask(unsigned long address)
@@ -478,8 +582,98 @@ static int sysmon_write_event_value(struct iio_dev *indio_dev,
 	return 0;
 }
 
+static ssize_t supply_avg_en_show(struct device *dev,
+				  struct device_attribute *attr,
+				  char *buf)
+{
+	struct iio_dev_attr *this_attr = to_iio_dev_attr(attr);
+	struct iio_dev *indio_dev = dev_to_iio_dev(dev);
+	struct sysmon *sysmon = iio_priv(indio_dev);
+	int supply = this_attr->address;
+	u32 shift = REG32_SHIFT(supply);
+	u32 offset, reg_val;
+
+	offset = SYSMON_SUPPLY_EN_AVG_OFFSET + REG32_OFFSET(supply);
+	sysmon_read_reg(sysmon, offset, &reg_val);
+
+	/* Return the bit state */
+	return sprintf(buf, "%u\n", !!(reg_val & BIT(shift)));
+}
+
+static ssize_t tempsat_avg_en_show(struct device *dev,
+				   struct device_attribute *attr,
+				   char *buf)
+{
+	struct iio_dev_attr *this_attr = to_iio_dev_attr(attr);
+	struct iio_dev *indio_dev = dev_to_iio_dev(dev);
+	struct sysmon *sysmon = iio_priv(indio_dev);
+	int tempsat = this_attr->address;
+	u32 shift = REG32_SHIFT(tempsat);
+	u32 offset, reg_val;
+
+	offset = SYSMON_TEMP_SAT_EN_AVG_OFFSET + REG32_OFFSET(tempsat);
+	sysmon_read_reg(sysmon, offset, &reg_val);
+
+	/* Return the bit state */
+	return sprintf(buf, "%u\n", !!(reg_val & BIT(shift)));
+}
+
+static ssize_t supply_avg_en_store(struct device *dev,
+				   struct device_attribute *attr,
+				   const char *buf, size_t len)
+{
+	struct iio_dev_attr *this_attr = to_iio_dev_attr(attr);
+	struct iio_dev *indio_dev = dev_to_iio_dev(dev);
+	struct sysmon *sysmon = iio_priv(indio_dev);
+	int supply = this_attr->address;
+	u32 shift = REG32_SHIFT(supply);
+	unsigned long val;
+	u32 offset;
+	int ret;
+
+	ret = kstrtoul(buf, 10, &val);
+	if (ret)
+		return ret;
+
+	/* Ensure the input value is either 0 or 1 */
+	val = !!val;
+
+	offset = SYSMON_SUPPLY_EN_AVG_OFFSET + REG32_OFFSET(supply);
+	sysmon_update_reg(sysmon, offset, BIT(shift), (val << shift));
+
+	return len;
+}
+
+static ssize_t tempsat_avg_en_store(struct device *dev,
+				    struct device_attribute *attr,
+				    const char *buf, size_t len)
+{
+	struct iio_dev_attr *this_attr = to_iio_dev_attr(attr);
+	struct iio_dev *indio_dev = dev_to_iio_dev(dev);
+	struct sysmon *sysmon = iio_priv(indio_dev);
+	int tempsat = this_attr->address;
+	u32 shift = REG32_SHIFT(tempsat);
+	unsigned long val;
+	u32 offset;
+	int ret;
+
+	ret = kstrtoul(buf, 10, &val);
+	if (ret)
+		return ret;
+
+	/* Ensure the input value is either 0 or 1 */
+	val = !!val;
+
+	offset = SYSMON_TEMP_SAT_EN_AVG_OFFSET + REG32_OFFSET(tempsat);
+	sysmon_update_reg(sysmon, offset, BIT(shift), (val << shift));
+
+	return len;
+}
+
 static const struct iio_info iio_dev_info = {
+	.read_avail = sysmon_read_avail,
 	.read_raw = sysmon_read_raw,
+	.write_raw = sysmon_write_raw,
 	.read_event_config = sysmon_read_event_config,
 	.write_event_config = sysmon_write_event_config,
 	.read_event_value = sysmon_read_event_value,
@@ -655,6 +849,106 @@ static void sysmon_push_event(struct iio_dev *indio_dev, u32 address)
 				       iio_get_time_ns(indio_dev));
 		}
 	}
+}
+
+int sysmon_create_avg_en_sysfs_entries(struct iio_dev *indio_dev)
+{
+	struct sysmon *sysmon = iio_priv(indio_dev);
+	int max_attrs_num, ret, i;
+	u8 supply_index;
+
+	/* Allocate memory for temp. sat attribute list dynamically */
+	sysmon->temp_avg_en_attrs =
+		devm_kzalloc(&indio_dev->dev,
+			     SYSMON_TEMP_SAT_COUNT *
+			     sizeof(*sysmon->temp_avg_en_attrs), GFP_KERNEL);
+	if (!sysmon->temp_avg_en_attrs)
+		return -ENOMEM;
+
+	/* Allocate memory for supply attribute list dynamically */
+	sysmon->supply_avg_en_attrs =
+		devm_kzalloc(&indio_dev->dev,
+			     sysmon->num_supply_chan *
+			     sizeof(*sysmon->supply_avg_en_attrs), GFP_KERNEL);
+	if (!sysmon->supply_avg_en_attrs)
+		return -ENOMEM;
+
+	/*
+	 * Maximum attribute number is max temp. satellite number plus
+	 * enabled supply channel number.
+	 */
+	max_attrs_num = SYSMON_TEMP_SAT_COUNT + sysmon->num_supply_chan;
+
+	sysmon->avg_attrs = devm_kzalloc(&indio_dev->dev,
+					 (max_attrs_num + 1) *
+					 sizeof(*sysmon->avg_attrs), GFP_KERNEL);
+	if (!sysmon->avg_attrs)
+		return -ENOMEM;
+
+	for (i = 0; i < SYSMON_TEMP_SAT_COUNT; i++) {
+		/*
+		 * Temp. satellites are indexed from 1 to 64 on the register
+		 * mapping, so the attr. sysfs entry will have appropriate
+		 * postfix index number, plus one, accordingly. We are adding
+		 * loop index number to attributes address because enable bit
+		 * fields starts from 0.
+		 */
+		sysmon->temp_avg_en_attrs[i].dev_attr.attr.name =
+			devm_kasprintf(&indio_dev->dev, GFP_KERNEL,
+				       "averaging_en_tempsat%d", (i + 1));
+		sysmon->temp_avg_en_attrs[i].dev_attr.attr.mode = 0644;
+		sysmon->temp_avg_en_attrs[i].dev_attr.show = tempsat_avg_en_show;
+		sysmon->temp_avg_en_attrs[i].dev_attr.store = tempsat_avg_en_store;
+		sysmon->temp_avg_en_attrs[i].address = i;
+
+		/* Add all temp. sat averaging attrs to array of avg attributes */
+		sysmon->avg_attrs[i] =
+			&sysmon->temp_avg_en_attrs[i].dev_attr.attr;
+	}
+
+	for (i = 0; i < sysmon->num_supply_chan; i++) {
+		/*
+		 * Even each Sysmon device has max. 160 supply/voltage
+		 * channels, they are enabled by dt discretely. There is no
+		 * point of create attributes for all supply channels. We only
+		 * create which is enabled by design and reflected in dt as
+		 * supply channels. Supply index values are address of the
+		 * IIO channel.
+		 */
+		supply_index = indio_dev->channels[i].address;
+		sysmon->supply_avg_en_attrs[i].dev_attr.attr.name =
+			devm_kasprintf(&indio_dev->dev, GFP_KERNEL,
+				       "averaging_en_supply%d", supply_index);
+		sysmon->supply_avg_en_attrs[i].dev_attr.attr.mode = 0644;
+		sysmon->supply_avg_en_attrs[i].dev_attr.show = supply_avg_en_show;
+		sysmon->supply_avg_en_attrs[i].dev_attr.store = supply_avg_en_store;
+		sysmon->supply_avg_en_attrs[i].address = supply_index;
+
+		sysmon->avg_attrs[SYSMON_TEMP_SAT_COUNT + i] =
+			&sysmon->supply_avg_en_attrs[i].dev_attr.attr;
+	}
+
+	/* Null-terminate the attribute array */
+	sysmon->avg_attrs[max_attrs_num + 1] = NULL;
+
+	/*
+	 * Assign all dynamically created attributes to averaging
+	 * attributes group with "averaging" name. It will create
+	 * a subfolder for this group under the IIO device folder.
+	 */
+	sysmon->avg_attr_group.name = "averaging";
+	sysmon->avg_attr_group.attrs = sysmon->avg_attrs;
+
+	/* Create the sysfs group for the attributes */
+	ret = sysfs_create_group(&indio_dev->dev.kobj,
+				 &sysmon->avg_attr_group);
+	if (ret) {
+		dev_err(&indio_dev->dev,
+			"Failed to create averaging attribute group\n");
+		return ret;
+	}
+
+	return 0;
 }
 
 static void sysmon_region_event_handler(struct sysmon *sysmon)
@@ -923,6 +1217,8 @@ int sysmon_parse_dt(struct iio_dev *indio_dev, struct device *dev)
 	if (ret < 0)
 		return ret;
 
+	sysmon->num_supply_chan = num_supply_chan;
+
 	INIT_LIST_HEAD(&sysmon->region_list);
 
 	if (sysmon->irq > 0)
@@ -963,6 +1259,10 @@ int sysmon_parse_dt(struct iio_dev *indio_dev, struct device *dev)
 		sysmon_channels[i].channel = reg;
 		sysmon_channels[i].info_mask_separate =
 			BIT(IIO_CHAN_INFO_RAW) | BIT(IIO_CHAN_INFO_PROCESSED);
+		sysmon_channels[i].info_mask_shared_by_type =
+			BIT(IIO_CHAN_INFO_OVERSAMPLING_RATIO);
+		sysmon_channels[i].info_mask_shared_by_type_available =
+			BIT(IIO_CHAN_INFO_OVERSAMPLING_RATIO);
 
 		sysmon_channels[i].event_spec = sysmon_supply_events;
 		sysmon_channels[i].num_event_specs = ARRAY_SIZE(sysmon_supply_events);
