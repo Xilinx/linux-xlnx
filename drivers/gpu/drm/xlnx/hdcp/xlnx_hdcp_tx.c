@@ -47,6 +47,7 @@ void xlnx_hdcptx_read_ds_sink_capability(struct xlnx_hdcptx *xtxhdcp)
 						   XHDMI_HDCP1X_WAIT_FOR_ACTIVE_RECEIVER, 0);
 	}
 }
+EXPORT_SYMBOL_GPL(xlnx_hdcptx_read_ds_sink_capability);
 
 static void hdcp_task_monitor_fun(struct work_struct *work)
 {
@@ -91,6 +92,7 @@ void xlnx_hdcp_tx_process_cp_irq(struct xlnx_hdcptx *xtxhdcp)
 			xlnx_hdcp2x_tx_process_cp_irq(xhdcp2x);
 	}
 }
+EXPORT_SYMBOL_GPL(xlnx_hdcp_tx_process_cp_irq);
 
 /**
  * xlnx_hdcp_tx_init - Initialize HDCP transmitter based on hardware selection
@@ -173,6 +175,7 @@ hdcp2x_error:
 
 	return ERR_PTR(-ENOMEM);
 }
+EXPORT_SYMBOL_GPL(xlnx_hdcp_tx_init);
 
 /**
  * xlnx_hdcp_timer_init - This function initializes timer submodule
@@ -205,6 +208,7 @@ error:
 
 	return ERR_PTR(-ENOMEM);
 }
+EXPORT_SYMBOL_GPL(xlnx_hdcp_timer_init);
 
 int xlnx_hdcp_tx_exit(struct xlnx_hdcptx *xtxhdcp)
 {
@@ -232,6 +236,7 @@ int xlnx_hdcp_tx_exit(struct xlnx_hdcptx *xtxhdcp)
 hdcp_error:
 	return -EINVAL;
 }
+EXPORT_SYMBOL_GPL(xlnx_hdcp_tx_exit);
 
 void xlnx_hdcp_tx_timer_exit(struct xlnx_hdcptx *xtxhdcp)
 {
@@ -240,6 +245,7 @@ void xlnx_hdcp_tx_timer_exit(struct xlnx_hdcptx *xtxhdcp)
 	if (xtxhdcp->xhdcptmr)
 		devm_kfree(xtxhdcp->dev, xhdcptmr);
 }
+EXPORT_SYMBOL_GPL(xlnx_hdcp_tx_timer_exit);
 
 int xlnx_hdcp_tx_set_keys(struct xlnx_hdcptx *xtxhdcp, const u8 *data)
 {
@@ -270,6 +276,7 @@ int xlnx_hdcp_tx_set_keys(struct xlnx_hdcptx *xtxhdcp, const u8 *data)
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(xlnx_hdcp_tx_set_keys);
 
 int xlnx_hdcp_tx_reset(struct xlnx_hdcptx *xtxhdcp)
 {
@@ -309,6 +316,7 @@ int xlnx_hdcp_tx_reset(struct xlnx_hdcptx *xtxhdcp)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(xlnx_hdcp_tx_reset);
 
 static void xlnx_hcdp_tx_timer_callback(void *xtxhdcptr, u8 tmrcntr_number)
 {
@@ -387,6 +395,7 @@ int xlnx_start_hdcp_engine(struct xlnx_hdcptx *xtxhdcp, u8 lanecount)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(xlnx_start_hdcp_engine);
 
 int xlnx_hdcp_tx_set_callback(void *ref,
 			      enum xlnx_hdcptx_callback_type callback_type,
@@ -435,6 +444,7 @@ int xlnx_hdcp_tx_set_callback(void *ref,
 	}
 	return ret;
 }
+EXPORT_SYMBOL_GPL(xlnx_hdcp_tx_set_callback);
 
 void xlnx_hdcp1x_interrupt_handler(struct xlnx_hdcptx *xtxhdcp)
 {
@@ -448,3 +458,4 @@ void xlnx_hdcp1x_interrupt_handler(struct xlnx_hdcptx *xtxhdcp)
 		xlnx_hdcp1x_tx_process_ri_event(xhdcp1x);
 	}
 }
+EXPORT_SYMBOL_GPL(xlnx_hdcp1x_interrupt_handler);
