@@ -79,7 +79,7 @@ static const struct iio_chan_spec temp_events[] = {
 
 /* HBM temperature channel attributes */
 static const struct iio_chan_spec temp_hbm_channels[] = {
-	SYSMON_CHAN_TEMP(TEMP_HBM, "temp_hbm"),
+	SYSMON_CHAN_TEMP_HBM(TEMP_HBM, "temp_hbm"),
 };
 
 void sysmon_read_reg(struct sysmon *sysmon, u32 offset, u32 *data)
