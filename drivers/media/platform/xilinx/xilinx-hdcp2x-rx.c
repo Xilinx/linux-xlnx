@@ -165,6 +165,7 @@ int *xhdcp2x_rx_init(struct device *dev, void *protocol_ref, void __iomem *xhdcp
 
 	return (void *)xhdcp2x_rx;
 }
+EXPORT_SYMBOL_GPL(xhdcp2x_rx_init);
 
 void *xhdcp2x_timer_init(struct device *dev, void __iomem *timer_base_address)
 {
@@ -186,6 +187,7 @@ void *xhdcp2x_timer_init(struct device *dev, void __iomem *timer_base_address)
 
 	return tmr_config;
 }
+EXPORT_SYMBOL_GPL(xhdcp2x_timer_init);
 
 void xhdcp2x_timer_attach(struct xlnx_hdcp2x_config *xhdcp2x_rx,
 			  struct xlnx_hdcp_timer_config *tmrcntr)
@@ -197,6 +199,7 @@ void xhdcp2x_timer_attach(struct xlnx_hdcp2x_config *xhdcp2x_rx,
 	xlnx_hdcp_tmrcntr_set_options(&xhdcp2x_rx->tmr_config, XHDCP2X_RX_TMR_CNTR_1,
 				      XTC_INT_MODE_OPTION | XTC_DOWN_COUNT_OPTION);
 }
+EXPORT_SYMBOL_GPL(xhdcp2x_timer_attach);
 
 int xhdcp2x_rx_disable(struct xlnx_hdcp2x_config *xhdcp2x_rx)
 {
@@ -227,6 +230,7 @@ int xhdcp2x_rx_disable(struct xlnx_hdcp2x_config *xhdcp2x_rx)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(xhdcp2x_rx_disable);
 
 int xhdcp2x_rx_reset(struct xlnx_hdcp2x_config *xhdcp2x_rx)
 {
@@ -289,6 +293,7 @@ int xhdcp2x_rx_enable(struct xlnx_hdcp2x_config *xhdcp2x_rx, u8 lane_count)
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(xhdcp2x_rx_enable);
 
 int xhdcp2x_rx_set_callback(void *ref, u32 handler_type, void *callbackfunc)
 {
@@ -320,6 +325,7 @@ int xhdcp2x_rx_set_callback(void *ref, u32 handler_type, void *callbackfunc)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(xhdcp2x_rx_set_callback);
 
 static int xhdcp2x_rx_calc_nprime(struct xlnx_hdcp2x_config *xhdcp2x_rx, const u8 *private_key_ptr)
 {
@@ -368,6 +374,7 @@ int xhdcp2x_rx_set_key(void *ref, void *xhdcp2x_lc128_key, void *xhdcp2x_private
 
 	return status;
 }
+EXPORT_SYMBOL_GPL(xhdcp2x_rx_set_key);
 
 void xhdcp2x_rx_timer_handler(void *callbackref, u8 tmr_cnt_number)
 {
@@ -379,6 +386,7 @@ void xhdcp2x_rx_timer_handler(void *callbackref, u8 tmr_cnt_number)
 	xhdcp2x_rx->info.timer_expired = 1;
 	xhdcp2x_rx->info.msg_event &= ~XHDCP2X_RX_TIMER_EVENT;
 }
+EXPORT_SYMBOL_GPL(xhdcp2x_rx_timer_handler);
 
 void xhdcp2x_rx_set_stream_type(struct xlnx_hdcp2x_config *xhdcp2x_rx)
 {
@@ -396,6 +404,7 @@ void xhdcp2x_rx_set_stream_type(struct xlnx_hdcp2x_config *xhdcp2x_rx)
 					    buf, XHDCP2X_CIPHER_REG_RIV_1_OFFSET, R_IV_SIZE);
 	}
 }
+EXPORT_SYMBOL_GPL(xhdcp2x_rx_set_stream_type);
 
 /**
  * xhdcp2x_rx_push_events - Pushes events from interface driver to HDCP driver
@@ -421,6 +430,7 @@ int xhdcp2x_rx_push_events(void *ref, u32 events)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(xhdcp2x_rx_push_events);
 
 static void xhdcp2x_rx_reset_params(struct xlnx_hdcp2x_config *xhdcp2x_rx)
 {
