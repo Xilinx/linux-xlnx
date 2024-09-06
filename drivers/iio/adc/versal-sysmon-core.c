@@ -326,9 +326,8 @@ static int sysmon_read_alarm_config(struct sysmon *sysmon,
 				    unsigned long address)
 {
 	u32 reg_val;
-	u32 alarm_reg_num = ALARM_REG(address);
-	u32 shift = ALARM_SHIFT(address);
-	u32 offset = SYSMON_ALARM_REG + (4 * alarm_reg_num);
+	u32 shift = REG32_SHIFT(address);
+	u32 offset = SYSMON_ALARM_REG + REG32_OFFSET(address);
 
 	sysmon_read_reg(sysmon, offset, &reg_val);
 
@@ -338,9 +337,8 @@ static int sysmon_read_alarm_config(struct sysmon *sysmon,
 static void sysmon_write_alarm_config(struct sysmon *sysmon,
 				      unsigned long address, u32 val)
 {
-	u32 alarm_reg_num = ALARM_REG(address);
-	u32 shift = ALARM_SHIFT(address);
-	u32 offset = SYSMON_ALARM_REG + (4 * alarm_reg_num);
+	u32 shift = REG32_SHIFT(address);
+	u32 offset = SYSMON_ALARM_REG + REG32_OFFSET(address);
 
 	sysmon_update_reg(sysmon, offset, BIT(shift), (val << shift));
 }
@@ -374,9 +372,8 @@ static int sysmon_write_event_config(struct iio_dev *indio_dev,
 				     enum iio_event_direction dir, int state)
 {
 	struct sysmon *sysmon = iio_priv(indio_dev);
-	u32 alarm_reg_num = ALARM_REG(chan->address);
-	u32 offset = SYSMON_ALARM_REG + (4 * alarm_reg_num);
-	u32 shift = ALARM_SHIFT(chan->address);
+	u32 offset = SYSMON_ALARM_REG + REG32_OFFSET(chan->address);
+	u32 shift = REG32_SHIFT(chan->address);
 	u32 ier = sysmon_get_event_mask(chan->address);
 	u32 alarm_config;
 	unsigned long flags;
