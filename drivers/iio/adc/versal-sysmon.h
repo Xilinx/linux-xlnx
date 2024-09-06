@@ -144,6 +144,23 @@
 	.datasheet_name = _ext,\
 }
 
+#define SYSMON_CHAN_TEMP_HBM(_address, _ext) { \
+	.type = IIO_TEMP, \
+	.indexed = 1, \
+	.address = _address, \
+	.channel = _address, \
+	.info_mask_separate = BIT(IIO_CHAN_INFO_RAW) | \
+			BIT(IIO_CHAN_INFO_PROCESSED), \
+	.scan_type = { \
+		.sign = 's', \
+		.realbits = 15, \
+		.storagebits = 16, \
+		.endianness = IIO_CPU, \
+	}, \
+	.extend_name = _ext, \
+	.datasheet_name = _ext, \
+}
+
 #define twoscomp(val) ((((val) ^ 0xFFFF) + 1) & 0x0000FFFF)
 #define REG32_OFFSET(address) (4 * ((address) / 32))
 #define REG32_SHIFT(address) ((address) % 32)
