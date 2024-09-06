@@ -341,8 +341,10 @@ static int versal_aes_aead_cipher(struct aead_request *req)
 			goto in_fail;
 
 		ret = versal_pm_aes_dec_final(dma_addr_data + gcm_offset);
-		if (ret)
+		if (ret) {
+			ret = -EBADMSG;
 			goto in_fail;
+		}
 	}
 
 	sg_copy_from_buffer(req->dst, sg_nents(req->dst),
