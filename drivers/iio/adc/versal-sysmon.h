@@ -3,7 +3,7 @@
  * Xilinx SYSMON for Versal
  *
  * Copyright (C) 2019 - 2022, Xilinx, Inc.
- * Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc.
+ * Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc.
  *
  * Description:
  * This driver is developed for SYSMON on Versal. The driver supports INDIO Mode
@@ -52,6 +52,7 @@
 /* Register Offsets */
 #define SYSMON_NPI_LOCK		0x000C
 #define SYSMON_ISR		0x0044
+#define SYSMON_CONFIG		0x0100
 #define SYSMON_TEMP_MASK	0x300
 #define SYSMON_IMR		0x0048
 #define SYSMON_IER		0x004C
@@ -73,6 +74,25 @@
 #define SYSMON_TEMP_EV_CFG	0x1F84
 #define SYSMON_NODE_OFFSET	0x1FAC
 #define SYSMON_STATUS_RESET	0x1F94
+#define SYSMON_SUPPLY_EN_AVG_OFFSET	0x1958
+#define SYSMON_TEMP_SAT_EN_AVG_OFFSET	0x24B4
+
+/* Average Sampling Rate macros */
+#define SYSMON_AVERAGE_FULL_SAMPLE_RATE	0 /* Full sample rate */
+#define SYSMON_AVERAGE_2_SAMPLE_RATE	1 /* Full sample rate/2 */
+#define SYSMON_AVERAGE_4_SAMPLE_RATE	2 /* Full sample rate/4 */
+#define SYSMON_AVERAGE_8_SAMPLE_RATE	4 /* Full sample rate/8 */
+#define SYSMON_AVERAGE_16_SAMPLE_RATE	8 /* Full sample rate/16 */
+
+#define SYSMON_TEMP_SAT_IDX_FIRST	1
+#define SYSMON_TEMP_SAT_IDX_MAX		64
+#define SYSMON_TEMP_SAT_COUNT		64
+#define SYSMON_SUPPLY_IDX_MAX		159
+
+#define SYSMON_SUPPLY_CONFIG_MASK	GENMASK(17, 14)
+#define SYSMON_SUPPLY_CONFIG_SHIFT	14
+#define SYSMON_TEMP_SAT_CONFIG_MASK	GENMASK(27, 24)
+#define SYSMON_TEMP_SAT_CONFIG_SHIFT	24
 
 #define SYSMON_NO_OF_EVENTS	32
 
@@ -111,6 +131,9 @@
 	.channel = _address, \
 	.info_mask_separate = BIT(IIO_CHAN_INFO_RAW) | \
 		BIT(IIO_CHAN_INFO_PROCESSED), \
+	.info_mask_shared_by_type = BIT(IIO_CHAN_INFO_OVERSAMPLING_RATIO), \
+	.info_mask_shared_by_type_available = \
+		BIT(IIO_CHAN_INFO_OVERSAMPLING_RATIO), \
 	.scan_type = { \
 		.sign = 's', \
 		.realbits = 15, \
@@ -141,12 +164,20 @@ enum sysmon_alarm_bit {
 	SYSMON_BIT_TEMP = 9,
 };
 
+static const unsigned int sysmon_oversampling_avail[5] = {
+	SYSMON_AVERAGE_FULL_SAMPLE_RATE,
+	SYSMON_AVERAGE_2_SAMPLE_RATE,
+	SYSMON_AVERAGE_4_SAMPLE_RATE,
+	SYSMON_AVERAGE_8_SAMPLE_RATE,
+	SYSMON_AVERAGE_16_SAMPLE_RATE,
+};
+
 /**
  * struct sysmon - Driver data for Sysmon
  * @base: physical base address of device
  * @dev: pointer to device struct
  * @indio_dev: pointer to the iio device
- * @i2c_client: pointer to the i2c client
+ * @client: pointer to the i2c client
  * @mutex: to handle multiple user interaction
  * @lock: to help manage interrupt registers correctly
  * @irq: interrupt number of the sysmon
@@ -160,6 +191,15 @@ enum sysmon_alarm_bit {
  * @pm_info: plm address of sysmon
  * @master_slr: to keep master sysmon info
  * @hbm_slr: flag if HBM slr is present
+ * @temp_oversampling: current oversampling ratio for temperature satellites
+ * @supply_oversampling: current oversampling ratio for supply nodes
+ * @oversampling_avail: list of available overampling ratios
+ * @oversampling_num: total number of available oversampling ratios
+ * @num_supply_chan: number of supply channels that are enabled
+ * @supply_avg_en_attrs: dynamic array of supply averaging enable attributes
+ * @temp_avg_en_attrs: dynamic array of temp. sat. averaging enable attributes
+ * @avg_attrs: dynamic array of pointers to averaging attributes
+ * @avg_attr_group: attribute group for averaging
  * @temp_read: function pointer for the special temperature read
  *
  * This structure contains necessary state for Sysmon driver to operate
@@ -184,6 +224,15 @@ struct sysmon {
 	u32 pm_info;
 	bool master_slr;
 	bool hbm_slr;
+	unsigned int temp_oversampling;
+	unsigned int supply_oversampling;
+	const unsigned int *oversampling_avail;
+	unsigned int oversampling_num;
+	unsigned int num_supply_chan;
+	struct iio_dev_attr *supply_avg_en_attrs;
+	struct iio_dev_attr *temp_avg_en_attrs;
+	struct attribute **avg_attrs;
+	struct attribute_group avg_attr_group;
 	int (*temp_read)(struct sysmon *sysmon, int offset);
 };
 
@@ -204,3 +253,4 @@ int sysmon_init_interrupt(struct sysmon *sysmon);
 void sysmon_read_reg(struct sysmon *sysmon, u32 offset, u32 *data);
 void sysmon_write_reg(struct sysmon *sysmon, u32 offset, u32 data);
 void sysmon_set_iio_dev_info(struct iio_dev *indio_dev);
+int sysmon_create_avg_en_sysfs_entries(struct iio_dev *indio_dev);
