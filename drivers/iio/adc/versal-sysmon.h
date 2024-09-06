@@ -122,8 +122,8 @@
 }
 
 #define twoscomp(val) ((((val) ^ 0xFFFF) + 1) & 0x0000FFFF)
-#define ALARM_REG(address) ((address) / 32)
-#define ALARM_SHIFT(address) ((address) % 32)
+#define REG32_OFFSET(address) (4 * ((address) / 32))
+#define REG32_SHIFT(address) ((address) % 32)
 
 #define compare(val, thresh) (((val) & 0x8000) || ((thresh) & 0x8000) ? \
 			      ((val) < (thresh)) : ((val) > (thresh)))  \
