@@ -60,6 +60,7 @@ void xlnx_hdcp_tmrcntr_set_handler(struct xlnx_hdcp_timer_config *xtimercntr,
 	xtimercntr->handler = funcptr;
 	xtimercntr->callbackref = callbackref;
 }
+EXPORT_SYMBOL_GPL(xlnx_hdcp_tmrcntr_set_handler);
 
 void xlnx_hdcp_tmrcntr_cfg_init(struct xlnx_hdcp_timer_config *xtimercntr)
 {
@@ -246,3 +247,4 @@ void xlnx_hdcp_tmrcntr_interrupt_handler(struct xlnx_hdcp_timer_config *xtimercn
 		}
 	}
 }
+EXPORT_SYMBOL_GPL(xlnx_hdcp_tmrcntr_interrupt_handler);
