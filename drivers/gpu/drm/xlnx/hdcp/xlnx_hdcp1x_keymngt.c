@@ -38,7 +38,6 @@
 #define HDCP1X_KEYMGMT_MAX_TBLS			8
 #define HDCP1X_KEYS_SIZE			336
 #define HDCP1X_KEYMGMT_MAX_ROWS_PER_TBL		41
-#define ntohll(x) be64_to_cpu((__be64 *)x)
 
 union hdcp1x_key_table {
 	u8 data_u8[HDCP1X_KEYS_SIZE];
@@ -283,7 +282,9 @@ static int xdptx_hdcp1x_keymgmt_set_key(struct xlnx_hdcp1x_config *xhdcp1x_tx)
 	memcpy(key_table.data_u8, xhdcp1x_tx->hdcp1x_key, HDCP1X_KEYS_SIZE);
 	/* adjust the endian-ness to host order */
 	for (index = 0; index < HDCP1X_KEYS_SIZE / sizeof(u64); index++)
-		key_table.data_u64[index] = ntohll(key_table.data_u64[index]);
+		key_table.data_u64[index] =
+			be64_to_cpu(*((__be64 *)&key_table.data_u64[index]));
+
 	ret = xdptx_hdcp1x_keymgmt_load_keys(xhdcp1x_tx, &key_table,
 					     HDCP1X_KEYS_SIZE);
 	if (ret)
