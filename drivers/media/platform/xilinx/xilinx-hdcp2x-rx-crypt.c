@@ -67,49 +67,74 @@ static void xlnx_hdcp2x_rx_aes128_encrypt(const u8 *data, const u8 *key, u8 *out
  */
 int xhdcp2x_rx_calc_mont_nprime(void *ref, u8 *nprime, const u8 *n, int ndigits)
 {
-	u32 n_i[XHDCP2X_RX_HASH_SIZE] = {0};
-	u32 nprime_i[XHDCP2X_RX_HASH_SIZE] = {0};
-	u32 r[XHDCP2X_RX_HASH_SIZE] = {0};
-	u32 rinv[XHDCP2X_RX_HASH_SIZE] = {0};
-	u32 t1[XHDCP2X_RX_P_SIZE] = {0};
-	u32 t2[XHDCP2X_RX_N_SIZE] = {0};
+	u32 *n_i, *nprime_i, *r, *rinv, *t1, *t2;
+	int ret = 0;
 
 	struct xlnx_hdcp2x_config *xhdcp2x_rx = (struct xlnx_hdcp2x_config *)ref;
 
-	mp_conv_from_octets(n_i, XHDCP2X_RX_MP_SIZE_OF(n_i), n, XHDCP2X_NDIGITS_MULT * ndigits);
+	n_i = kzalloc(4 * XHDCP2X_RX_HASH_SIZE * sizeof(u32), GFP_KERNEL);
+	if (!n_i)
+		return -ENOMEM;
+
+	nprime_i = &n_i[XHDCP2X_RX_HASH_SIZE];
+	r = &n_i[2 * XHDCP2X_RX_HASH_SIZE];
+	rinv = &n_i[3 * XHDCP2X_RX_HASH_SIZE];
+
+	t1 = kzalloc(sizeof(u32) * XHDCP2X_RX_P_SIZE, GFP_KERNEL);
+	if (!t1) {
+		kfree(n_i);
+		return -ENOMEM;
+	}
+
+	t2 = kzalloc(sizeof(u32) * XHDCP2X_RX_N_SIZE, GFP_KERNEL);
+	if (!t2) {
+		kfree(t1);
+		kfree(n_i);
+		return -ENOMEM;
+	}
+
+	mp_conv_from_octets(n_i, XHDCP2X_RX_HASH_SIZE, n, XHDCP2X_NDIGITS_MULT * ndigits);
 
 	/* Step 1: R = 2^(NDigits*32) */
 	r[0] = 1;
-	mp_shift_left(r, r, 32 * ndigits, XHDCP2X_RX_MP_SIZE_OF(r));
+	mp_shift_left(r, r, 32 * ndigits, XHDCP2X_RX_HASH_SIZE);
 
 	/* Step 2: rinv = r^(-1) * mod(N) */
 	t1[0] = 0;
-	memcpy(t1, n_i, sizeof(n_i));
-	if (mp_mod_inv(rinv, r, t1, XHDCP2X_RX_MP_SIZE_OF(rinv))) {
+	memcpy(t1, n_i, XHDCP2X_RX_HASH_SIZE * sizeof(u32));
+
+	if (mp_mod_inv(rinv, r, t1, XHDCP2X_RX_HASH_SIZE)) {
 		dev_err(xhdcp2x_rx->dev, "Error: Failed rinv calculation");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto free_buf;
 	}
 
 	/* Step 3: NPrime = (r*rinv-1)/N */
 	mp_multiply(t1, r, rinv, 2 * ndigits);
 	t2[0] = 1;
-	mp_subtract(t1, t1, t2, XHDCP2X_RX_MP_SIZE_OF(t1));
-	mp_divide(nprime_i, t2, t1, XHDCP2X_RX_MP_SIZE_OF(nprime_i), (u32 *)n_i, ndigits);
+	mp_subtract(t1, t1, t2, XHDCP2X_RX_P_SIZE);
+	mp_divide(nprime_i, t2, t1, XHDCP2X_RX_HASH_SIZE, (u32 *)n_i, ndigits);
 
 	/* Step 4: Sanity Check, R*Rinv - N*NPrime == 1 */
 	mp_multiply(t1, r, rinv, 2 * ndigits);
-	mp_multiply(t2, (u32 *)n_i, nprime_i, XHDCP2X_RX_MP_SIZE_OF(nprime_i));
-	mp_subtract(t1, t1, t2, XHDCP2X_RX_MP_SIZE_OF(t1));
-	memset(t2, 0, sizeof(t2));
+	mp_multiply(t2, (u32 *)n_i, nprime_i, XHDCP2X_RX_HASH_SIZE);
+	mp_subtract(t1, t1, t2, XHDCP2X_RX_P_SIZE);
+	memset(t2, 0, XHDCP2X_RX_N_SIZE * sizeof(u32));
+
 	t2[0] = 1;
-	if (!mp_equal(t1, t2, XHDCP2X_RX_MP_SIZE_OF(t1))) {
+	if (!mp_equal(t1, t2, XHDCP2X_RX_P_SIZE)) {
 		dev_err(xhdcp2x_rx->dev, "Error: Failed NPrime calculation");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto free_buf;
 	}
 
 	mp_conv_to_octets(nprime_i, ndigits, nprime, XHDCP2X_NDIGITS_MULT * ndigits);
 
-	return 0;
+free_buf:	kfree(t2);
+		kfree(t1);
+		kfree(n_i);
+
+	return ret;
 }
 
 static void xhdcp2x_rx_xor(u8 *cout, const u8 *ain, const u8 *bin, u32 len)
