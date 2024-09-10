@@ -72,9 +72,10 @@ static int xlnx_puf_cfg(struct xpuf_dev *puf, struct puf_usrparams *pufreq)
 	if (pufin->pufoperation == PUF_REGIS) {
 		pufdat = dma_alloc_coherent(dev, sizeof(struct pufdata), &dma_addr_data,
 					    GFP_KERNEL);
-		if (!pufdat)
+		if (!pufdat) {
+			ret = -ENOMEM;
 			goto cleanup_pufin;
-
+		}
 		pufin->readsyndromeaddr = (u64)(dma_addr_data);
 		pufin->chashaddr = (u64)(pufin->readsyndromeaddr + sizeof(pufdat->pufhd.syndata));
 		pufin->auxaddr = (u64)(pufin->chashaddr + sizeof(pufdat->pufhd.chash));
@@ -94,8 +95,10 @@ static int xlnx_puf_cfg(struct xpuf_dev *puf, struct puf_usrparams *pufreq)
 		pufhd = dma_alloc_coherent(dev, (sizeof(struct puf_helperdata) +
 					   PUF_ID_LEN_IN_BYTES), &dma_addr_data,
 					   GFP_KERNEL);
-		if (!pufhd)
+		if (!pufhd) {
+			ret = -ENOMEM;
 			goto cleanup_pufin;
+		}
 
 		if (copy_from_user(pufhd, (void *)pufreq->pufdataaddr,
 				   sizeof(struct puf_helperdata))) {
