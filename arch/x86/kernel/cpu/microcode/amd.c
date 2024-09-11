@@ -94,18 +94,6 @@ static struct equiv_cpu_table {
 	struct equiv_cpu_entry *entry;
 } equiv_table;
 
-union zen_patch_rev {
-	struct {
-		__u32 rev	 : 8,
-		      stepping	 : 4,
-		      model	 : 4,
-		      __reserved : 4,
-		      ext_model	 : 4,
-		      ext_fam	 : 8;
-	};
-	__u32 ucode_rev;
-};
-
 union cpuid_1_eax {
 	struct {
 		__u32 stepping    : 4,

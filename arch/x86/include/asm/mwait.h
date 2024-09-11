@@ -80,7 +80,7 @@ static __always_inline void __mwait(unsigned long eax, unsigned long ecx)
 static __always_inline void __mwaitx(unsigned long eax, unsigned long ebx,
 				     unsigned long ecx)
 {
-	/* No MDS buffer clear as this is AMD/HYGON only */
+	/* No need for TSA buffer clearing on AMD */
 
 	/* "mwaitx %eax, %ebx, %ecx;" */
 	asm volatile(".byte 0x0f, 0x01, 0xfb;"
