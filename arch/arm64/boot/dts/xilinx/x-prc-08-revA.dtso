@@ -112,6 +112,9 @@
 	xlnx,mio-bank = <1>;
 	non-removable;
 	disable-wp;
+	no-sd;
+	no-sdio;
+	cap-mmc-hw-reset;
 	bus-width = <8>;
 };
 

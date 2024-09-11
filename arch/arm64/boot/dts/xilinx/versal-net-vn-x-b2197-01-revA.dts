@@ -172,6 +172,9 @@
 	iommus = <&smmu 0x243>;
 	non-removable;
 	disable-wp;
+	no-sd;
+	no-sdio;
+	cap-mmc-hw-reset;
 	bus-width = <8>;
 	no-1-8-v;
 };
