@@ -2305,8 +2305,8 @@ static int axienet_stop(struct net_device *ndev)
 		cr = axienet_dma_in32(q, XAXIDMA_TX_CR_OFFSET);
 		cr &= ~(XAXIDMA_CR_RUNSTOP_MASK | XAXIDMA_IRQ_ALL_MASK);
 		axienet_dma_out32(q, XAXIDMA_TX_CR_OFFSET, cr);
-
-		axienet_iow(lp, XAE_IE_OFFSET, 0);
+		if (lp->axienet_config->mactype == XAXIENET_1G)
+			axienet_iow(lp, XAE_IE_OFFSET, 0);
 
 		/* Give DMAs a chance to halt gracefully */
 		sr = axienet_dma_in32(q, XAXIDMA_RX_SR_OFFSET);
