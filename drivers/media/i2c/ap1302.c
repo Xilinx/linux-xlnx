@@ -20,6 +20,7 @@
 #include <linux/mutex.h>
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
+#include <linux/bits.h>
 
 #include <media/media-entity.h>
 #include <media/v4l2-ctrls.h>
@@ -243,6 +244,7 @@
 #define AP1302_WARNING(n)			AP1302_REG_16BIT(0x6004 + (n) * 2)
 #define AP1302_SENSOR_SELECT			AP1302_REG_16BIT(0x600c)
 #define AP1302_SENSOR_SELECT_TP_MODE(n)		((n) << 8)
+#define AP1302_SENSOR_SELECT_TP_MODE_MASK	GENMASK(11, 8)
 #define AP1302_SENSOR_SELECT_PATTERN_ON		BIT(7)
 #define AP1302_SENSOR_SELECT_MODE_3D_ON		BIT(6)
 #define AP1302_SENSOR_SELECT_CLOCK		BIT(5)
@@ -250,6 +252,7 @@
 #define AP1302_SENSOR_SELECT_YUV		BIT(2)
 #define AP1302_SENSOR_SELECT_SENSOR_TP		(0U << 0)
 #define AP1302_SENSOR_SELECT_SENSOR(n)		(((n) + 1) << 0)
+#define AP1302_SENSOR_SELECT_SENSOR_MASK	GENMASK(1, 0)
 #define AP1302_SYS_START			AP1302_REG_16BIT(0x601a)
 #define AP1302_SYS_START_PLL_LOCK		BIT(15)
 #define AP1302_SYS_START_LOAD_OTP		BIT(12)
@@ -1423,6 +1426,72 @@ static int ap1302_set_flicker_freq(struct ap1302_device *ap1302, s32 val)
 			    ap1302_flicker_values[val], NULL);
 }
 
+enum {
+	AP1302_TP_MODE_DISABLED = 0,
+	AP1302_TP_MODE_FLAT_COLOR,
+	AP1302_TP_MODE_PSEUDO_RANDOM,
+	AP1302_TP_MODE_COLOR_BARS,
+	AP1302_TP_MODE_GREY_BARS,
+	AP1302_TP_MODE_PRBS1,
+	AP1302_TP_MODE_PRBS2,
+	AP1302_TP_MODE_PRBS3,
+	AP1302_TP_MODE_PRBS4,
+	AP1302_TP_MODE_V_STRIPES,
+	AP1302_TP_MODE_V_RAMP,
+	AP1302_TP_MODE_WALKING_ONES_10B,
+	AP1302_TP_MODE_WALKING_ONES_8B,
+	AP1302_TP_MODE_BW,
+};
+
+static const char * const tp_qmenu[] = {
+	"Disabled",
+	"Flat Color",
+	"Pseudo Random (Noise)",
+	"100% Color Bars",
+	"Fade to Grey Bars",
+	"PRBS1",
+	"PRBS2",
+	"PRBS3",
+	"PRBS4",
+	"Vertical Stripes",
+	"Vertical Ramp",
+	"Walking 1's (10bit)",
+	"Walking 1's (8bit)",
+	"Black and White",
+};
+
+static int ap1302_set_test_pattern(struct ap1302_device *ap1302, s32 pat)
+{
+	u32 val;
+	int ret;
+
+	ret = ap1302_read(ap1302, AP1302_SENSOR_SELECT, &val);
+	if (ret)
+		return ret;
+
+	if (pat == AP1302_TP_MODE_DISABLED) {
+		val &= ~AP1302_SENSOR_SELECT_SENSOR_MASK;
+		/* The sensor field in the sensor select register defaults to primary
+		 * sensor (0x1). Therefore, when disabling test pattern mode, restore
+		 * the value by setting it to the primary sensor
+		 */
+		val |= AP1302_SENSOR_SELECT_SENSOR(0);
+		val &= ~AP1302_SENSOR_SELECT_PATTERN_ON;
+		val &= ~AP1302_SENSOR_SELECT_TP_MODE_MASK;
+		val |= AP1302_SENSOR_SELECT_TP_MODE(pat);
+	} else if (pat >= AP1302_TP_MODE_FLAT_COLOR && pat <= AP1302_TP_MODE_BW) {
+		val &= ~AP1302_SENSOR_SELECT_SENSOR_MASK;
+		val |= AP1302_SENSOR_SELECT_SENSOR_TP;
+		val |= AP1302_SENSOR_SELECT_PATTERN_ON;
+		val &= ~AP1302_SENSOR_SELECT_TP_MODE_MASK;
+		val |= AP1302_SENSOR_SELECT_TP_MODE(pat);
+	} else {
+		return -EINVAL;
+	}
+
+	return ap1302_write(ap1302, AP1302_SENSOR_SELECT, val, NULL);
+}
+
 static int ap1302_s_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct ap1302_device *ap1302 =
@@ -1464,6 +1533,9 @@ static int ap1302_s_ctrl(struct v4l2_ctrl *ctrl)
 
 	case V4L2_CID_POWER_LINE_FREQUENCY:
 		return ap1302_set_flicker_freq(ap1302, ctrl->val);
+
+	case V4L2_CID_TEST_PATTERN:
+		return ap1302_set_test_pattern(ap1302, ctrl->val);
 
 	default:
 		return -EINVAL;
@@ -1571,6 +1643,13 @@ static const struct v4l2_ctrl_config ap1302_ctrls[] = {
 		.min = 0,
 		.max = 3,
 		.def = 3,
+	}, {
+		.ops = &ap1302_ctrl_ops,
+		.id = V4L2_CID_TEST_PATTERN,
+		.min = 0,
+		.max = (ARRAY_SIZE(tp_qmenu) - 1),
+		.def = 0,
+		.qmenu = tp_qmenu,
 	},
 };
 
