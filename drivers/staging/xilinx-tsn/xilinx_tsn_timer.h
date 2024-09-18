@@ -20,6 +20,7 @@
 #define _XILINX_TSN_H_
 
 #include <linux/platform_device.h>
+#include <linux/units.h>
 
 #define XAE_RTC_OFFSET			0x12800
 /* RTC Nanoseconds Field Offset Register */
@@ -53,8 +54,9 @@
 #define NANOSECOND_BITS 20
 #define NANOSECOND_MASK ((1 << NANOSECOND_BITS) - 1)
 #define SECOND_MASK ((1 << (32 - NANOSECOND_BITS)) - 1)
-#define XTIMER1588_RTC_INCREMENT_SHIFT 20
+#define XTIMER1588_RTC_NS_SHIFT 20
 #define PULSESIN1PPS 128
+#define XTIMER1588_GTX_CLK_FREQ (125 * HZ_PER_MHZ)
 
 /* Read/Write access to the registers */
 #ifndef out_be32
