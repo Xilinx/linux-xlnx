@@ -130,8 +130,7 @@ static int ufs_versal2_enable_phy(struct ufs_hba *hba)
 
 		if (!time_left) {
 			dev_err(hba->dev, "Invalid Tx FSM state.\n");
-			ret = -ETIMEDOUT;
-			return ret;
+			return -ETIMEDOUT;
 		}
 
 		time_left = TIMEOUT_MICROSEC;
@@ -151,8 +150,7 @@ static int ufs_versal2_enable_phy(struct ufs_hba *hba)
 
 		if (!time_left) {
 			dev_err(hba->dev, "Invalid Rx FSM state.\n");
-			ret = -ETIMEDOUT;
-			return ret;
+			return -ETIMEDOUT;
 		}
 	}
 
@@ -223,9 +221,7 @@ static int ufs_versal2_setup_phy(struct ufs_hba *hba)
 		return ret;
 
 	reg |= MPHY_FW_CALIB_CFG_VAL;
-	ret = ufs_versal2_phy_reg_write(hba, FW_CALIB_CCFG(1), reg);
-
-	return ret;
+	return ufs_versal2_phy_reg_write(hba, FW_CALIB_CCFG(1), reg);
 }
 
 static int ufs_versal2_phy_init(struct ufs_hba *hba)
@@ -257,8 +253,7 @@ static int ufs_versal2_phy_init(struct ufs_hba *hba)
 
 	if (!time_left) {
 		dev_err(hba->dev, "Tx/Rx configuration signal busy.\n");
-		ret = -ETIMEDOUT;
-		return ret;
+		return -ETIMEDOUT;
 	}
 
 	ret = ufshcd_dwc_dme_set_attrs(hba, rmmi_attrs, ARRAY_SIZE(rmmi_attrs));
@@ -288,8 +283,7 @@ static int ufs_versal2_phy_init(struct ufs_hba *hba)
 
 	if (!time_left) {
 		dev_err(hba->dev, "SRAM initialization failed.\n");
-		ret = -ETIMEDOUT;
-		return ret;
+		return -ETIMEDOUT;
 	}
 
 	ret = ufs_versal2_setup_phy(hba);
@@ -369,8 +363,7 @@ static int ufs_versal2_hce_enable_notify(struct ufs_hba *hba,
 			sram_csr |= SRAM_CSR_BYPASS_MASK;
 		} else {
 			dev_err(dev, "Invalid phy-mode %d.\n", host->phy_mode);
-			ret = -EINVAL;
-			return ret;
+			return -EINVAL;
 		}
 
 		ret = versal2_pm_ufs_sram_csr_sel(host->pd_dev_id, PM_UFS_SRAM_CSR_WRITE,
