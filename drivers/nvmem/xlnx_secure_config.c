@@ -604,13 +604,13 @@ static int sec_cfg_efuse_ppkhash_write(void *context, void *val, size_t bytes,
 		}
 		if (offset == EFUSE_PPKHASH0_OFFSET) {
 			ppkhash->prgmppk0hash = 1;
-			memcpy(ppkhash->ppk0hash, data, bytes);
+			memcpy(ppkhash->ppk0hash, data, bytes / 2);
 		} else if (offset == EFUSE_PPKHASH1_OFFSET) {
 			ppkhash->prgmppk1hash = 1;
-			memcpy(ppkhash->ppk1hash, data, bytes);
+			memcpy(ppkhash->ppk1hash, data, bytes / 2);
 		} else if (offset == EFUSE_PPKHASH2_OFFSET) {
 			ppkhash->prgmppk2hash = 1;
-			memcpy(ppkhash->ppk2hash, data, bytes);
+			memcpy(ppkhash->ppk2hash, data, bytes / 2);
 		} else {
 			ret = -EINVAL;
 			goto efuse_write_fail;
@@ -704,11 +704,11 @@ static int sec_cfg_efuse_aes_key_write(void *context, void *val, size_t bytes,
 		}
 
 		if (aeskey->prgmaeskey) {
-			memcpy(aeskey->aeskey, data, bytes);
+			memcpy(aeskey->aeskey, data, bytes / 2);
 		} else if (aeskey->prgmuserkey0) {
-			memcpy(aeskey->userkey0, data, bytes);
+			memcpy(aeskey->userkey0, data, bytes / 2);
 		} else if (aeskey->prgmuserkey1) {
-			memcpy(aeskey->userkey1, data, bytes);
+			memcpy(aeskey->userkey1, data, bytes / 2);
 		} else {
 			ret = -EINVAL;
 			goto efuse_write_fail;
@@ -753,16 +753,16 @@ static int sec_cfg_efuse_iv_write(void *context, void *val, size_t bytes,
 
 		if (offset == EFUSE_PLM_IV_OFFSET) {
 			ivs->prgmplmiv = 1;
-			memcpy(ivs->plmiv, data, bytes);
+			memcpy(ivs->plmiv, data, bytes / 2);
 		} else if (offset == EFUSE_BLACK_IV_OFFSET) {
 			ivs->prgmblkobfusiv = 1;
-			memcpy(ivs->blkobfusiv, data, bytes);
+			memcpy(ivs->blkobfusiv, data, bytes / 2);
 		} else if (offset == EFUSE_METAHEADER_IV_OFFSET) {
 			ivs->prgmmetaheaderiv = 1;
-			memcpy(ivs->metaheaderiv, data, bytes);
+			memcpy(ivs->metaheaderiv, data, bytes / 2);
 		} else if (offset == EFUSE_DATA_PARTITION_IV_OFFSET) {
 			ivs->prgmdatapartitioniv = 1;
-			memcpy(ivs->datapartitioniv, data, bytes);
+			memcpy(ivs->datapartitioniv, data, bytes / 2);
 		} else {
 			ret = -EINVAL;
 			goto efuse_write_fail;
