@@ -1309,6 +1309,8 @@ long aie_part_set_bd(struct aie_partition *apart,
 					struct aie_dma_bd_args *args);
 long aie_part_set_dmabuf_bd_from_user(struct aie_partition *apart,
 			    void __user *user_args);
+long aie_part_update_dmabuf_bd_from_user(struct aie_partition *apart,
+					 void __user *user_args);
 long aie_part_set_dmabuf_bd(struct aie_partition *apart,
 					struct aie_dmabuf_bd_args *args);
 void aie_part_release_dmabufs(struct aie_partition *apart);

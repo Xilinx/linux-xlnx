@@ -792,6 +792,8 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 		return aie_part_attach_dmabuf_req(apart, argp);
 	case AIE_DETACH_DMABUF_IOCTL:
 		return aie_part_detach_dmabuf_req(apart, argp);
+	case AIE_UPDATE_SHIMDMA_DMABUF_BD_ADDR_IOCTL:
+		return aie_part_update_dmabuf_bd_from_user(apart, argp);
 	case AIE_SET_SHIMDMA_BD_IOCTL:
 		return aie_part_set_bd_from_user(apart, argp);
 	case AIE_SET_SHIMDMA_DMABUF_BD_IOCTL:
