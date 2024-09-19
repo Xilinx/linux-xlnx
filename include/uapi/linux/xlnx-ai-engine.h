@@ -669,4 +669,15 @@ struct aie_rsc_user_stat_array {
  */
 #define AIE_SET_COLUMN_CLOCK_IOCTL	_IOW(AIE_IOCTL_BASE, 0x1b, \
 					struct aie_tiles_array)
+
+/**
+ * DOC: AIE_UPDATE_SHIMDMA_DMABUF_BD_ADDR_IOCTL - updates the SHIM DMA address
+ *						  in the BD registers.
+ *
+ * This ioctl is used to update the SHIM DMA address. The
+ * aie_dmabuf_bd_args contains the dmabuf fd and the offset. The buffer
+ * descriptor only contains the offset to be updated.
+ */
+#define AIE_UPDATE_SHIMDMA_DMABUF_BD_ADDR_IOCTL	_IOW(AIE_IOCTL_BASE, 0x1e, \
+						struct aie_dmabuf_bd_args)
 #endif
