@@ -691,6 +691,91 @@ long aie_part_set_dmabuf_bd_from_user(struct aie_partition *apart,
 }
 
 /**
+ * aie_part_update_dmabuf_bd_from_user() - Updates the AI engine SHIM DMA
+ *					   address
+ * @apart: AI engine partition
+ * @user_args: user AI engine dmabuf argument
+ *
+ * @return: 0 for success, negative value for failure
+ *
+ * This function updates the address in SHIM DMA BD. The offset passed from the
+ * userspace is added with the buffer base address obtained from dmabuf.
+ */
+long aie_part_update_dmabuf_bd_from_user(struct aie_partition *apart,
+					 void __user *user_args)
+{
+	const struct aie_dma_attr *shim_dma = apart->adev->shim_dma;
+	struct aie_aperture *aperture = apart->aperture;
+	struct aie_device *adev = apart->adev;
+	u32 len, regval, *off, laddr, haddr;
+	struct aie_dmabuf_bd_args args;
+	void __iomem *va;
+	dma_addr_t addr;
+	long ret;
+
+	if (copy_from_user(&args, user_args, sizeof(args)))
+		return -EFAULT;
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return ret;
+
+	ret = aie_part_validate_bdloc(apart, args.loc, args.bd_id);
+	if (ret) {
+		dev_err(&apart->dev, "invalid SHIM DMA BD reg address.\n");
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	off = memdup_user((void __user *)args.bd, sizeof(*off));
+	if (IS_ERR(off)) {
+		ret = PTR_ERR(off);
+		goto exit;
+	}
+
+	va = aperture->base +
+	     aie_cal_regoff(adev, args.loc, shim_dma->bd_regoff) +
+	     shim_dma->bd_len * args.bd_id +
+	     shim_dma->buflen.regoff;
+	regval = ioread32(va);
+	len = aie_get_reg_field(&shim_dma->buflen, regval);
+
+	addr = aie_part_get_dmabuf_da_from_off(apart, args.buf_fd, *off, len);
+	if (!addr) {
+		dev_err(&apart->dev, "invalid buffer 0x%x, 0x%x.\n",
+			*off, len);
+		ret = -EINVAL;
+		kfree(off);
+		goto exit;
+	}
+
+	/* Set low 32bit address */
+	laddr = lower_32_bits(addr);
+	va = aperture->base +
+	     aie_cal_regoff(adev, args.loc, shim_dma->bd_regoff) +
+	     shim_dma->bd_len * args.bd_id + shim_dma->laddr.regoff;
+	regval = ioread32(va);
+	regval &= ~shim_dma->laddr.mask;
+	laddr |= aie_get_field_val(&shim_dma->laddr, laddr);
+	iowrite32(laddr, va);
+
+	/* Set high 32bit address */
+	haddr = upper_32_bits(addr);
+	va = aperture->base +
+	     aie_cal_regoff(adev, args.loc, shim_dma->bd_regoff) +
+	     shim_dma->bd_len * args.bd_id + shim_dma->haddr.regoff;
+	regval = ioread32(va);
+	regval &= ~shim_dma->haddr.mask;
+	haddr |= aie_get_field_val(&shim_dma->haddr, haddr);
+	iowrite32(haddr, va);
+	kfree(off);
+
+exit:
+	mutex_unlock(&apart->mlock);
+	return ret;
+}
+
+/**
  * aie_part_prealloc_dbufs_cache() - Preallocate dmabuf descriptors memory
  *
  * @apart: AI engine partition
