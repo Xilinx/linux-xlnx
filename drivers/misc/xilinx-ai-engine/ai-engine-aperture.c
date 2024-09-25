@@ -44,18 +44,13 @@ unsigned int aie_aperture_get_num_parts(struct aie_aperture *aperture)
 {
 	struct aie_partition *apart;
 	int ret;
-	unsigned int rs, re, num_parts = 0;
+	unsigned int num_parts = 0;
 
 	ret = mutex_lock_interruptible(&aperture->mlock);
 	if (ret)
 		return ret;
 
 	list_for_each_entry(apart, &aperture->partitions, node) {
-		num_parts++;
-	}
-
-	for_each_clear_bitrange(rs, re, aperture->cols_res.bitmap,
-				(aperture->range.size.col - 1)) {
 		num_parts++;
 	}
 
