@@ -322,6 +322,31 @@ struct aie_column_args {
 };
 
 /**
+ * struct aie_part_fd - AIE partition fd
+ * @args: aie column args
+ * @partition_id: It is used to identify the
+ *		  AI engine partition in the system
+ * @uid: It is uid of aie partition
+ * @fd: It is file descriptor of AI engine partition
+ */
+struct aie_part_fd {
+	struct aie_column_args args;
+	__u32 partition_id;
+	__u32 uid;
+	int fd;
+};
+
+/**
+ * struct aie_part_fd_list - AIE partition fd list
+ * @list: aie parititon list
+ * @num_entries: num of entries in the list
+ */
+struct aie_part_fd_list {
+	struct aie_part_fd *list;
+	int num_entries;
+};
+
+/**
  * struct aie_txn_inst - AIE transaction instance
  * @num_cmds: number commands containing register ops
  * @cmdsptr: pointer to the buffer containing register ops
@@ -428,6 +453,8 @@ struct aie_rsc_user_stat_array {
 					      struct aie_partition_query)
 #define AIE_REQUEST_PART_IOCTL		_IOR(AIE_IOCTL_BASE, 0x2, \
 					     struct aie_partition_req)
+#define AIE_GET_PARTITION_FD_LIST_IOCTL	_IOWR(AIE_IOCTL_BASE, 0x3, \
+					     struct aie_part_fd_list)
 
 /* AI engine partition IOCTL operations */
 /**

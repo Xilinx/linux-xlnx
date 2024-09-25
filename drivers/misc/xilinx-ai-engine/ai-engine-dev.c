@@ -269,6 +269,87 @@ aie_partition_request_from_adev(struct aie_device *adev,
 	return apart;
 }
 
+/**
+ * aie_partition_fd_from_adev() - request AI engine partition information
+ *				  from AI engine device
+ * @adev: AI engine device
+ * @aiepartlist: partition list pointer, to update the partition information to
+ * it.
+ * @return: zero for success and negative value for failure.
+ *
+ * This function will acquire the partition information from the adev and it
+ * will update into the aiepartlist.
+ */
+static int aie_partition_fd_from_adev(struct aie_device *adev,
+				      struct aie_part_fd_list *aiepartlist)
+{
+	struct aie_part_fd __user *user_fd_list = aiepartlist->list;
+	struct aie_aperture *aperture;
+	struct aie_partition *apart;
+	struct aie_part_fd part_fd;
+	int ret, pcount = 0;
+
+	memset(&part_fd, 0, sizeof(part_fd));
+	ret = mutex_lock_interruptible(&adev->mlock);
+	if (ret)
+		return ret;
+
+	list_for_each_entry(aperture, &adev->apertures, node) {
+		ret = mutex_lock_interruptible(&aperture->mlock);
+		if (ret)
+			goto unlock_adev;
+
+		list_for_each_entry(apart, &aperture->partitions, node) {
+			ret = mutex_lock_interruptible(&apart->mlock);
+			if (ret)
+				goto unlock_aperture;
+
+			ret = aie_partition_fd(apart);
+			if (ret < 0)
+				goto unlock_apart;
+
+			get_file(apart->filep);
+
+			if (pcount >= aiepartlist->num_entries) {
+				dev_info(&adev->dev, "%s: part list too small",
+					 __func__);
+				ret = -EINVAL;
+				goto unlock_apart;
+			}
+
+			part_fd.args.start_col =
+				aie_part_id_get_start_col(apart->partition_id);
+			part_fd.args.num_cols =
+				aie_part_id_get_num_cols(apart->partition_id);
+			part_fd.partition_id = apart->partition_id;
+			part_fd.fd = ret;
+			if (copy_to_user(&user_fd_list[pcount], &part_fd,
+					 sizeof(*user_fd_list))) {
+				dev_info(&adev->dev, "%s: Copy to user failed.",
+					 __func__);
+				ret = -EFAULT;
+				goto unlock_apart;
+			}
+
+			pcount++;
+			mutex_unlock(&apart->mlock);
+		}
+		mutex_unlock(&aperture->mlock);
+	}
+	mutex_unlock(&adev->mlock);
+
+	return 0;
+
+unlock_apart:
+	mutex_unlock(&apart->mlock);
+unlock_aperture:
+	mutex_unlock(&aperture->mlock);
+unlock_adev:
+	mutex_unlock(&adev->mlock);
+
+	return ret;
+}
+
 static long xilinx_ai_engine_ioctl(struct file *filp, unsigned int cmd,
 				   unsigned long arg)
 {
@@ -312,6 +393,31 @@ static long xilinx_ai_engine_ioctl(struct file *filp, unsigned int cmd,
 			fput(apart->filep);
 			break;
 		}
+		break;
+	}
+	case AIE_GET_PARTITION_FD_LIST_IOCTL:
+	{
+		struct aie_part_fd_list aiepartlist;
+		struct aie_part_fd_list __user *aiepartlist_ptr = argp;
+
+		if (copy_from_user(&aiepartlist,
+				   (struct aie_part_fd_list *)argp,
+				   sizeof(struct aie_part_fd_list))) {
+			return -EFAULT;
+		}
+
+		ret = aie_partition_fd_from_adev(adev, &aiepartlist);
+		if (ret < 0) {
+			dev_info(&adev->dev, "Failed to get aie partition fd from adev");
+			return ret;
+		}
+
+		if (copy_to_user((void __user *)&aiepartlist_ptr->num_entries,
+				 &aiepartlist.num_entries,
+				 sizeof(aiepartlist_ptr->num_entries))) {
+			return -EFAULT;
+		}
+
 		break;
 	}
 	default:
