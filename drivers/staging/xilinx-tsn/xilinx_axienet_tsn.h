@@ -1266,6 +1266,7 @@ int axienet_qbv_init(struct net_device *ndev);
 void axienet_qbv_remove(struct net_device *ndev);
 int axienet_set_schedule(struct net_device *ndev, void __user *useraddr);
 int axienet_get_schedule(struct net_device *ndev, void __user *useraddr);
+int axienet_tsn_shaper_tc(struct net_device *dev, enum tc_setup_type type, void *type_data);
 #endif
 
 #ifdef CONFIG_XILINX_TSN_QBR

@@ -1200,6 +1200,7 @@ static const struct net_device_ops axienet_netdev_ops = {
 #if defined(CONFIG_XILINX_TSN_SWITCH)
 	.ndo_get_port_parent_id = tsn_switch_get_port_parent_id,
 #endif
+	.ndo_setup_tc = axienet_tsn_shaper_tc,
 #endif
 };
 
@@ -1763,6 +1764,7 @@ static int axienet_probe(struct platform_device *pdev)
 	SET_NETDEV_DEV(ndev, &pdev->dev);
 	ndev->flags &= ~IFF_MULTICAST;  /* clear multicast */
 	ndev->features = NETIF_F_SG;
+	ndev->hw_features |= NETIF_F_HW_TC;
 	ndev->netdev_ops = &axienet_netdev_ops;
 	ndev->ethtool_ops = &axienet_ethtool_ops;
 
