@@ -91,6 +91,7 @@
 #define INT_ENABLE			0x34
 #define INT_CLEAR			0x38
 #define PORT_STATUS			0x3c
+#define CONFIG_PENDING_MASK		BIT(0)
 
 /* Config Change time is valid after Config Pending bit is set. */
 #define CONFIG_CHANGE_TIME_NS		0x40
@@ -121,6 +122,7 @@
 #define GS_BE_OPEN			BIT(0)
 #define GS_RE_OPEN			BIT(1)
 #define GS_ST_OPEN			BIT(2)
+#define GS_ST_2TC_OPEN			BIT(1)
 #define QBV_MAX_ENTRIES			256
 
 struct qbv_info {
