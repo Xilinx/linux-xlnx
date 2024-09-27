@@ -187,18 +187,6 @@ static const struct aie_tile_regs aie_kernel_regs[] = {
 	},
 };
 
-static const struct aie_tile_regs aie_core_32bit_regs = {
-	.attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
-	.soff = AIE_TILE_CORE_R0_REGOFF,
-	.eoff = AIE_TILE_CORE_LC_REGOFF,
-};
-
-static const struct aie_tile_regs aie_core_128bit_regs = {
-	.attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
-	.soff = AIE_TILE_CORE_VRL0_REGOFF,
-	.eoff = AIE_TILE_CORE_AMH3_PART3_REGOFF,
-};
-
 static const struct aie_tile_regs aie_core_regs_clr[] = {
 	{.soff = AIE_TILE_CORE_R0_REGOFF,
 	 .eoff = AIE_TILE_CORE_MC1_REGOFF,
@@ -230,15 +218,6 @@ static const struct aie_tile_regs aie_core_regs_clr[] = {
 	 .width = 16,	/* 128 bits */
 	 .step = 16,	/* 0x10 */
 	 .attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
-	},
-};
-
-static const struct aie_core_regs_attr aie_core_regs[] = {
-	{.core_regs = &aie_core_32bit_regs,
-	 .width = 1,
-	},
-	{.core_regs = &aie_core_128bit_regs,
-	 .width = 4,
 	},
 };
 
@@ -2550,8 +2529,6 @@ int aie_device_init(struct aie_device *adev)
 	adev->ops = &aie_ops;
 	adev->num_kernel_regs = ARRAY_SIZE(aie_kernel_regs);
 	adev->kernel_regs = aie_kernel_regs;
-	adev->num_core_regs = ARRAY_SIZE(aie_core_regs);
-	adev->core_regs = aie_core_regs;
 	adev->core_regs_clr = aie_core_regs_clr;
 	adev->num_core_regs_clr = ARRAY_SIZE(aie_core_regs_clr);
 	adev->col_rst = &aie_col_rst;
