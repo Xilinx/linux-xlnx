@@ -834,24 +834,6 @@ static const struct aie_error_attr aieml_shim_error = {
 	.err_category = aieml_shim_err_category,
 };
 
-static const struct aie_tile_regs aieml_core_amxx_regs = {
-	.attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
-	.soff = AIEML_TILE_COREMOD_AMLL0_PART1_REGOFF,
-	.eoff = AIEML_TILE_COREMOD_AMHH8_PART2_REGOFF,
-};
-
-static const struct aie_tile_regs aieml_core_wx_regs = {
-	.attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
-	.soff = AIEML_TILE_COREMOD_WL0_PART1_REGOFF,
-	.eoff = AIEML_TILE_COREMOD_WH11_PART2_REGOFF,
-};
-
-static const struct aie_tile_regs aieml_core_32bit_regs = {
-	.attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
-	.soff = AIEML_TILE_COREMOD_R0_REGOFF,
-	.eoff = AIEML_TILE_COREMOD_R31_REGOFF,
-};
-
 static const struct aie_tile_regs aieml_core_regs_clr[] = {
 	{.soff = AIEML_TILE_COREMOD_AMLL0_PART1_REGOFF,
 	 .eoff = AIEML_TILE_COREMOD_AMHH8_PART2_REGOFF,
@@ -894,18 +876,6 @@ static const struct aie_tile_regs aieml_core_regs_clr[] = {
 	 .width = 4,	/* 32 bits */
 	 .step = 4,
 	 .attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
-	},
-};
-
-static const struct aie_core_regs_attr aieml_core_regs[] = {
-	{.core_regs = &aieml_core_amxx_regs,
-	 .width = 4,
-	},
-	{.core_regs = &aieml_core_wx_regs,
-	 .width = 4,
-	},
-	{.core_regs = &aieml_core_32bit_regs,
-	 .width = 1,
 	},
 };
 
@@ -2816,8 +2786,6 @@ int aieml_device_init(struct aie_device *adev)
 	adev->ops = &aieml_ops;
 	adev->num_kernel_regs = ARRAY_SIZE(aieml_kernel_regs);
 	adev->kernel_regs = aieml_kernel_regs;
-	adev->num_core_regs = ARRAY_SIZE(aieml_core_regs);
-	adev->core_regs = aieml_core_regs;
 	adev->core_regs_clr = aieml_core_regs_clr;
 	adev->num_core_regs_clr = ARRAY_SIZE(aieml_core_regs_clr);
 	adev->col_rst = &aieml_col_rst;
