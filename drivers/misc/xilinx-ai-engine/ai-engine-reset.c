@@ -11,6 +11,119 @@
 
 #include "ai-engine-internal.h"
 
+static void aie_part_core_regs_clr_iowrite(struct aie_partition *apart,
+					   u32 addr, u32 width)
+{
+	const struct aie_device *adev = apart->adev;
+	void __iomem *base = apart->aperture->base;
+	const struct aie_range *range = &apart->range;
+	struct aie_location loc;
+	u32 start_col = range->start.col;
+	u32 start_row = range->start.row;
+	u32 num_col = range->start.col + range->size.col;
+	u32 num_row = range->start.row + range->size.row;
+	u32 ttype;
+	u32 (*get_tile_type)(struct aie_device *adev,
+			     struct aie_location *loc);
+
+	get_tile_type = apart->adev->ops->get_tile_type;
+
+	for (loc.row = start_row; loc.row < num_row; loc.row++) {
+		u32 addr_row = loc.row << adev->row_shift;
+
+		for (loc.col = start_col; loc.col < num_col; loc.col++) {
+			u32 addr_col = loc.col << adev->col_shift;
+
+			ttype = get_tile_type(apart->adev, &loc);
+			if (ttype == AIE_TILE_TYPE_TILE &&
+			    aie_part_check_clk_enable_loc(apart, &loc)) {
+				void __iomem *io_addr = base + (addr | addr_col |
+							addr_row);
+				/* This clears a set of registers to 0 during
+				 * cleanup. No need to preserve order.
+				 * Use relaxed IO.
+				 */
+				switch (width) {
+				case 1:	/* 8 bits */
+					writeb_relaxed(0, io_addr);
+					break;
+				case 2: /* 16 bits */
+					writew_relaxed(0, io_addr);
+					break;
+				case 4: /* 32 bits */
+					writel_relaxed(0, io_addr);
+					break;
+				case 8: /* 64 bits */
+					writeq_relaxed(0, io_addr);
+					break;
+				default:
+					dev_warn(&apart->dev, "[%d, %d]: Unknown width: %d",
+						 loc.col, loc.row, width);
+					break;
+				};
+			}
+		}
+	}
+}
+
+static void aie_part_core_regs_clr_memset_io(struct aie_partition *apart,
+					     u32 addr, u32 size)
+{
+	const struct aie_device *adev = apart->adev;
+	void __iomem *base = apart->aperture->base + addr;
+	const struct aie_range *range = &apart->range;
+	struct aie_location loc;
+	u32 start_col = range->start.col;
+	u32 start_row = range->start.row;
+	u32 num_col = range->start.col + range->size.col;
+	u32 num_row = range->start.row + range->size.row;
+	u32 ttype;
+	u32 (*get_tile_type)(struct aie_device *adev,
+			     struct aie_location *loc);
+
+	get_tile_type = apart->adev->ops->get_tile_type;
+
+	for (loc.row = start_row; loc.row < num_row; loc.row++) {
+		u32 addr_row = loc.row << adev->row_shift;
+
+		for (loc.col = start_col; loc.col < num_col; loc.col++) {
+			u32 addr_col = loc.col << adev->col_shift;
+
+			ttype = get_tile_type(apart->adev, &loc);
+			if (ttype == AIE_TILE_TYPE_TILE &&
+			    aie_part_check_clk_enable_loc(apart, &loc)) {
+				memset_io(base + (addr_col | addr_row), 0, size);
+			}
+		}
+	}
+}
+
+static void aie_part_core_regs_clr(struct aie_partition *apart)
+{
+	int i;
+	const struct aie_device *adev = apart->adev;
+	const struct aie_tile_regs *reg = adev->core_regs_clr;
+
+	for (i = 0; i < adev->num_core_regs_clr; i++) {
+		if (reg[i].width == reg[i].step &&
+		    reg[i].soff != reg[i].eoff) {
+			u32 addr = reg[i].soff;
+			u32 size = reg[i].eoff + reg[i].width - reg[i].soff;
+
+			aie_part_core_regs_clr_memset_io(apart, addr, size);
+		} else {
+			u32 addr;
+			u32 eoff = reg[i].eoff;
+			u32 step = reg[i].step;
+
+			for (addr = reg[i].soff; addr <= eoff; addr += step) {
+				aie_part_core_regs_clr_iowrite(apart, addr,
+							       reg[i].width);
+			}
+		}
+	}
+}
+
 /**
  * aie_part_clear_core_regs_of_tile() - clear registers of aie core
  * @apart: AI engine partition
@@ -167,6 +280,8 @@ int aie_part_clear_context(struct aie_partition *apart)
 	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
 					apart->range.size.col,
 					XILINX_AIE_OPS_SET_L2_CTRL_NPI_INTR);
+	aie_part_core_regs_clr(apart);
+
 exit:
 	mutex_unlock(&apart->mlock);
 
@@ -219,6 +334,7 @@ int aie_part_clean(struct aie_partition *apart)
 
 	apart->adev->ops->mem_clear(apart);
 	aie_part_clear_core_regs(apart);
+	aie_part_core_regs_clr(apart);
 	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
 				      apart->range.size.col,
 				      XILINX_AIE_OPS_DIS_COL_CLK_BUFF);
