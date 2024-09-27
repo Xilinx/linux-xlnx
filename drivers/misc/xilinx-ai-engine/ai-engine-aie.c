@@ -74,9 +74,13 @@
 #define AIE_TILE_CORE_GROUP_ERROR_REGOFF	0x00034510U
 #define AIE_TILE_MEM_GROUP_ERROR_REGOFF		0x00014514U
 #define AIE_TILE_CORE_R0_REGOFF			0x00030000U
+#define AIE_TILE_CORE_MC1_REGOFF		0x00030470U
+#define AIE_TILE_CORE_S0_REGOFF			0x00030480U
+#define AIE_TILE_CORE_S7_REGOFF			0x000304F0U
+#define AIE_TILE_CORE_LS_REGOFF			0x00030500U
 #define AIE_TILE_CORE_LC_REGOFF			0x00030520U
 #define AIE_TILE_CORE_VRL0_REGOFF		0x00030530U
-#define AIE_TILE_CORE_AMH3_PART3_REGOFF		0x000307a0U
+#define AIE_TILE_CORE_AMH3_PART3_REGOFF		0x000307A0U
 
 /*
  * Register masks
@@ -193,6 +197,40 @@ static const struct aie_tile_regs aie_core_128bit_regs = {
 	.attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
 	.soff = AIE_TILE_CORE_VRL0_REGOFF,
 	.eoff = AIE_TILE_CORE_AMH3_PART3_REGOFF,
+};
+
+static const struct aie_tile_regs aie_core_regs_clr[] = {
+	{.soff = AIE_TILE_CORE_R0_REGOFF,
+	 .eoff = AIE_TILE_CORE_MC1_REGOFF,
+	 .width = 4,	/* 32 bits */
+	 .step = 16,	/* 0x10 */
+	 .attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	},
+	{.soff = AIE_TILE_CORE_S0_REGOFF,
+	 .eoff = AIE_TILE_CORE_S7_REGOFF,
+	 .width = 1,	/* 8 bits */
+	 .step = 16,	/* 0x10 */
+	 .attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	},
+	{.soff = AIE_TILE_CORE_LS_REGOFF,
+	 .eoff = AIE_TILE_CORE_LS_REGOFF,
+	 .width = 4,	/* 32 bits */
+	 .step = 4,
+	 .attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	},
+	{.soff = AIE_TILE_CORE_LC_REGOFF,
+	 .eoff = AIE_TILE_CORE_LC_REGOFF,
+	 .width = 4,	/* 32 bits */
+	 .step = 4,
+	 .attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	},
+
+	{.soff = AIE_TILE_CORE_VRL0_REGOFF,
+	 .eoff = AIE_TILE_CORE_AMH3_PART3_REGOFF,
+	 .width = 16,	/* 128 bits */
+	 .step = 16,	/* 0x10 */
+	 .attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	},
 };
 
 static const struct aie_core_regs_attr aie_core_regs[] = {
@@ -2514,6 +2552,8 @@ int aie_device_init(struct aie_device *adev)
 	adev->kernel_regs = aie_kernel_regs;
 	adev->num_core_regs = ARRAY_SIZE(aie_core_regs);
 	adev->core_regs = aie_core_regs;
+	adev->core_regs_clr = aie_core_regs_clr;
+	adev->num_core_regs_clr = ARRAY_SIZE(aie_core_regs_clr);
 	adev->col_rst = &aie_col_rst;
 	adev->col_clkbuf = &aie_col_clkbuf;
 	adev->shim_bd = &aie_shimbd;
