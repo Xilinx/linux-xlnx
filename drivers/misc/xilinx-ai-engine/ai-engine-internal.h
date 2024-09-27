@@ -511,16 +511,6 @@ struct aie_dma_attr {
 	u32 bd_len;
 };
 
-/**
- * struct aie_core_regs_attr - AI engine core register attributes structure
- * @core_regs: core registers
- * @width: number of 32 bit words
- */
-struct aie_core_regs_attr {
-	const struct aie_tile_regs *core_regs;
-	u32 width;
-};
-
 struct aie_aperture;
 /**
  * struct aie_tile_operations - AI engine device operations
@@ -947,7 +937,6 @@ struct aie_tile {
  * @cols_res: AI engine columns resources to indicate
  *	      while columns are occupied by partitions.
  * @num_kernel_regs: number of kernel only registers range
- * @num_core_regs: number of core registers range
  * @num_core_regs_clr: number of core registers to clear
  * @pm_node_id: AI Engine platform management node ID
  * @clock_id: AI Engine clock ID
@@ -970,7 +959,6 @@ struct aie_device {
 	struct mutex mlock; /* protection for AI engine apertures */
 	struct clk *clk;
 	const struct aie_tile_regs *kernel_regs;
-	const struct aie_core_regs_attr *core_regs;
 	const struct aie_tile_regs *core_regs_clr;
 	const struct aie_tile_operations *ops;
 	const struct aie_single_reg_field *col_rst;
@@ -999,7 +987,6 @@ struct aie_device {
 	u32 row_shift;
 	u32 dev_gen;
 	u32 num_kernel_regs;
-	u32 num_core_regs;
 	u32 num_core_regs_clr;
 	u32 pm_node_id;
 	u32 clock_id;
