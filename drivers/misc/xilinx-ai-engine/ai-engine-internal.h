@@ -239,12 +239,17 @@ enum aie_device_type {
  *			  within an AI engine tile
  * @soff: start offset of the range
  * @eoff: end offset of the range
+ * @width: length of each register in bytes
+ * @step: offset between registers in bytes
+ *        When step == width, no gaps/holes between registers.
  * @attribute: registers attribute. It uses AIE_REGS_ATTR_* macros defined
  *	       above.
  */
 struct aie_tile_regs {
 	size_t soff;
 	size_t eoff;
+	u16 width;
+	u16 step;
 	u32 attribute;
 };
 
@@ -912,6 +917,7 @@ struct aie_tile {
  * @clk: AI enigne device clock
  * @kernel_regs: array of kernel only registers
  * @core_regs: array of core registers
+ * @core_regs_clr: array of core registers to be cleared
  * @ops: tile operations
  * @col_rst: column reset attribute
  * @col_clkbuf: column clock buffer attribute
@@ -942,6 +948,7 @@ struct aie_tile {
  *	      while columns are occupied by partitions.
  * @num_kernel_regs: number of kernel only registers range
  * @num_core_regs: number of core registers range
+ * @num_core_regs_clr: number of core registers to clear
  * @pm_node_id: AI Engine platform management node ID
  * @clock_id: AI Engine clock ID
  * @device_name: identify ssit device id
@@ -964,6 +971,7 @@ struct aie_device {
 	struct clk *clk;
 	const struct aie_tile_regs *kernel_regs;
 	const struct aie_core_regs_attr *core_regs;
+	const struct aie_tile_regs *core_regs_clr;
 	const struct aie_tile_operations *ops;
 	const struct aie_single_reg_field *col_rst;
 	const struct aie_single_reg_field *col_clkbuf;
@@ -992,6 +1000,7 @@ struct aie_device {
 	u32 dev_gen;
 	u32 num_kernel_regs;
 	u32 num_core_regs;
+	u32 num_core_regs_clr;
 	u32 pm_node_id;
 	u32 clock_id;
 	u32 device_name;
