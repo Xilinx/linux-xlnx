@@ -125,60 +125,6 @@ static void aie_part_core_regs_clr(struct aie_partition *apart)
 }
 
 /**
- * aie_part_clear_core_regs_of_tile() - clear registers of aie core
- * @apart: AI engine partition
- * @loc: location of aie tile to clear
- */
-static void aie_part_clear_core_regs_of_tile(struct aie_partition *apart,
-					     struct aie_location loc)
-{
-	struct aie_device *adev = apart->adev;
-	struct aie_aperture *aperture = apart->aperture;
-	const struct aie_core_regs_attr *regs = adev->core_regs;
-	u32 i;
-
-	for (i = 0; i < adev->num_core_regs; i++) {
-		u32 j, soff, eoff, reg;
-
-		soff = aie_cal_regoff(adev, loc, regs[i].core_regs->soff);
-		eoff = aie_cal_regoff(adev, loc, regs[i].core_regs->eoff);
-
-		for (reg = soff; reg <= eoff; reg += AIE_CORE_REGS_STEP) {
-			for (j = 0; j < regs[i].width; j++)
-				iowrite32(0, aperture->base + reg + j * 4);
-		}
-	}
-}
-
-/**
- * aie_part_clear_core_regs - clear registers of aie core of a partition
- * @apart: AI engine partition
- */
-static void aie_part_clear_core_regs(struct aie_partition *apart)
-{
-	struct aie_range *range = &apart->range;
-	u32 c, r;
-
-	/* clear core registers for each tile in the partition */
-	for (c = range->start.col; c < range->start.col + range->size.col;
-			c++) {
-		for (r = range->start.row;
-				r < range->start.row + range->size.row; r++) {
-			struct aie_location loc;
-			u32 ttype;
-
-			loc.row = r;
-			loc.col = c;
-			ttype = apart->adev->ops->get_tile_type(apart->adev,
-								&loc);
-			if (ttype == AIE_TILE_TYPE_TILE &&
-			    aie_part_check_clk_enable_loc(apart, &loc))
-				aie_part_clear_core_regs_of_tile(apart, loc);
-		}
-	}
-}
-
-/**
  * aie_part_clear_data_mem() - clear data memory of every tile in a partition
  * @apart: AI engine partition
  * @return: 0 for success and negative value for failure
@@ -333,7 +279,6 @@ int aie_part_clean(struct aie_partition *apart)
 		return ret;
 
 	apart->adev->ops->mem_clear(apart);
-	aie_part_clear_core_regs(apart);
 	aie_part_core_regs_clr(apart);
 	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
 				      apart->range.size.col,
