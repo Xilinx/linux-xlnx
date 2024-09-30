@@ -426,9 +426,10 @@ static int xilinx_ecdsa_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	platform_set_drvdata(pdev, ecdsa_drv_ctx);
+
 	for (i = 0; i < ARRAY_SIZE(versal_ecdsa_drv_ctx); i++) {
 		ecdsa_drv_ctx[i].dev = dev;
-		platform_set_drvdata(pdev, &ecdsa_drv_ctx[i]);
 		ret = crypto_engine_register_akcipher(&ecdsa_drv_ctx[i].alg);
 
 		if (ret) {
@@ -441,9 +442,10 @@ static int xilinx_ecdsa_probe(struct platform_device *pdev)
 	return 0;
 
 crypto_engine_cleanup:
-	crypto_engine_exit(ecdsa_drv_ctx->engine);
 	for (--i; i >= 0; --i)
-		crypto_engine_register_akcipher(&ecdsa_drv_ctx[i].alg);
+		crypto_engine_unregister_akcipher(&ecdsa_drv_ctx[i].alg);
+
+	crypto_engine_exit(ecdsa_drv_ctx->engine);
 
 	return ret;
 }
