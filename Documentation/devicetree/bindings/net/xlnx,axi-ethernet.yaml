@@ -127,8 +127,9 @@ properties:
   xlnx,switch-x-sgmii:
     type: boolean
     description:
-      Indicate the Ethernet core is configured to support both 1000BaseX and
-      SGMII modes. If set, the phy-mode should be set to match the mode
+      Indicate that Ethernet core supports either 1000BaseX <-> SGMII modes
+      switching in 1G MAC or 2500BaseX <-> SGMII modes switching for
+      AXI 2.5G MAC. If set, the phy-mode should be set to match the mode
       selected on core reset (i.e. by the basex_or_sgmii core input line).
 
   clocks:
