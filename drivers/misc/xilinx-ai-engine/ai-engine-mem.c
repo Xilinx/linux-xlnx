@@ -62,6 +62,7 @@ static int aie_mem_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 {
 	struct aie_part_mem *pmem = dmabuf->priv;
 	struct aie_mem *mem = &pmem->mem;
+	struct aie_dma_mem *dma_mem;
 	struct aie_partition *apart = pmem->apart;
 	struct aie_aperture *aperture = apart->aperture;
 	struct aie_location rloc;
@@ -70,53 +71,69 @@ static int aie_mem_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 	unsigned long remainder = vma->vm_end - addr;
 	size_t msize = mem->size;
 	u32 rstart_col = mem->range.start.col - aperture->range.start.col;
+	int ret;
 
 	if (remainder + offset > pmem->size)
 		return -EINVAL;
 
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
-	for (rloc.col = rstart_col;
-	     rloc.col < rstart_col + mem->range.size.col; rloc.col++) {
-		for (rloc.row = mem->range.start.row;
-		     rloc.row < mem->range.start.row + mem->range.size.row;
-		     rloc.row++) {
-			unsigned long toffset, len;
-			phys_addr_t mempa;
-			int ret;
+	if (pmem->mem.range.size.row == 0) {
+		if (vma->vm_end - addr < pmem->mem.size)
+			return -EINVAL;
 
-			remainder = vma->vm_end - addr;
-			if (!remainder)
-				return 0;
+		dma_mem = container_of(pmem, struct aie_dma_mem, pmem);
+		ret = remap_pfn_range(vma, addr, dma_mem->dma_addr >> PAGE_SHIFT,
+				      pmem->size, vma->vm_page_prot);
+		if (ret < 0) {
+			dev_err(&apart->dev,
+				"failed to mmap dma memory, remap failed, 0x%p, 0x%lx.\n",
+				(void *)dma_mem->dma_addr, pmem->size);
+			return ret;
+		}
+	} else {
+		for (rloc.col = rstart_col;
+		     rloc.col < rstart_col + mem->range.size.col; rloc.col++) {
+			for (rloc.row = mem->range.start.row;
+			     rloc.row < mem->range.start.row + mem->range.size.row;
+			     rloc.row++) {
+				unsigned long toffset, len;
+				phys_addr_t mempa;
+				int ret;
 
-			if (moffset + msize < offset) {
+				remainder = vma->vm_end - addr;
+				if (!remainder)
+					return 0;
+
+				if (moffset + msize < offset) {
+					moffset += msize;
+					continue;
+				}
+				/*
+				 * calculate offset within the tile memory.
+				 * offset is the offset to vma->start.
+				 * moffset is the tile memory start offset to
+				 * vma->start.
+				 */
+				toffset = offset - moffset;
+				len = msize - toffset;
+				if (len > remainder)
+					len = remainder;
+				mempa = aie_cal_reg_pa(apart->aperture, rloc,
+						       toffset + mem->offset);
+
+				ret = remap_pfn_range(vma, addr, mempa >> PAGE_SHIFT,
+						      len, vma->vm_page_prot);
+				if (ret) {
+					dev_err(&apart->dev,
+						"failed to mmap (%u,%u)memory, remap failed, 0x%pa, 0x%lx.\n",
+						(rloc.col + aperture->range.start.col),
+						rloc.row, &mempa, len);
+					return ret;
+				}
+				addr += len;
+				offset += len;
 				moffset += msize;
-				continue;
 			}
-			/*
-			 * calculate offset within the tile memory.
-			 * offset is the offset to vma->start.
-			 * moffset is the tile memory start offset to
-			 * vma->start.
-			 */
-			toffset = offset - moffset;
-			len = msize - toffset;
-			if (len > remainder)
-				len = remainder;
-			mempa = aie_cal_reg_pa(apart->aperture, rloc,
-					       toffset + mem->offset);
-
-			ret = remap_pfn_range(vma, addr, mempa >> PAGE_SHIFT,
-					      len, vma->vm_page_prot);
-			if (ret) {
-				dev_err(&apart->dev,
-					"failed to mmap (%u,%u)memory, remap failed, 0x%pa, 0x%lx.\n",
-					(rloc.col + aperture->range.start.col),
-					rloc.row, &mempa, len);
-				return ret;
-			}
-			addr += len;
-			offset += len;
-			moffset += msize;
 		}
 	}
 	return 0;
