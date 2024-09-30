@@ -707,6 +707,16 @@ struct aie_rsc_user_stat_array {
  */
 #define AIE_DMA_MEM_ALLOCATE_IOCTL	_IOW(AIE_IOCTL_BASE, 0x1c, \
 					     __kernel_size_t)
+
+/**
+ * DOC: AIE_DMA_MEM_FREE_IOCTL - de-allocates the DMA memory
+ *
+ * This ioctl is used to de-allocate physically contiguous memory for DMA
+ * transactions and unexport it as a dma-buf which is passed to the userspace as
+ * a file descriptor.
+ */
+#define AIE_DMA_MEM_FREE_IOCTL          _IOW(AIE_IOCTL_BASE, 0x1d, int)
+
 /**
  * DOC: AIE_UPDATE_SHIMDMA_DMABUF_BD_ADDR_IOCTL - updates the SHIM DMA address
  *						  in the BD registers.
