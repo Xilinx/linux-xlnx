@@ -190,14 +190,16 @@ static int xilinx_intc_of_init(struct device_node *intc,
 		struct clk *clkin;
 
 		pdev = of_find_device_by_node(intc);
-		clkin = devm_clk_get_optional_enabled(&pdev->dev, NULL);
-		if (IS_ERR(clkin)) {
-			platform_device_put(pdev);
-			return dev_err_probe(&pdev->dev, PTR_ERR(clkin),
+		if (pdev) {
+			clkin = devm_clk_get_optional_enabled(&pdev->dev, NULL);
+			if (IS_ERR(clkin)) {
+				platform_device_put(pdev);
+				return dev_err_probe(&pdev->dev, PTR_ERR(clkin),
 					     "Failed to get and enable clock from Device Tree\n");
+			}
+			platform_device_put(pdev);
 		}
 
-		platform_device_put(pdev);
 	}
 
 	irqc->base = of_iomap(intc, 0);
