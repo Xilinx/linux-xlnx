@@ -283,6 +283,21 @@ struct aie_part_mem {
 };
 
 /**
+ * struct aie_dma_mem - AI engine dma memory information structure
+ * @pmem: memory info allocated for dma transactions
+ * @dma_addr: dma address
+ * @node: list node
+ *
+ * This structure holds the virtual memory and dma address returned by
+ * dma_alloc_coherent.
+ */
+struct aie_dma_mem {
+	struct aie_part_mem pmem;
+	dma_addr_t dma_addr;
+	struct list_head node;
+};
+
+/**
  * struct aie_bd_addr_attr - AI engine buffer descriptor address attributes
  * @addr: address field attributes
  * @length: length field attributes
@@ -1039,6 +1054,7 @@ struct aie_aperture {
  * @adev: pointer to AI device instance
  * @filep: pointer to file for refcount on the users of the partition
  * @pmems: pointer to partition memories types
+ * @dma_mem: dma memory list
  * @dbufs_cache: memory management object for preallocated dmabuf descriptors
  * @trscs: resources bitmaps for each tile
  * @freq_req: required frequency
@@ -1070,6 +1086,7 @@ struct aie_partition {
 	struct aie_device *adev;
 	struct file *filep;
 	struct aie_part_mem *pmems;
+	struct list_head dma_mem;
 	struct kmem_cache *dbufs_cache;
 	struct aie_tile_rscs trscs[AIE_TILE_TYPE_MAX];
 	u64 freq_req;
@@ -1462,5 +1479,6 @@ u32 aie_get_core_lr(struct aie_partition *apart,
 		    struct aie_location *loc);
 u32 aie_get_core_sp(struct aie_partition *apart,
 		    struct aie_location *loc);
+int aie_dma_mem_alloc(struct aie_partition *apart, __kernel_size_t size);
 
 #endif /* AIE_INTERNAL_H */

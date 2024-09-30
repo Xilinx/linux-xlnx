@@ -788,6 +788,18 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 	}
 	case AIE_GET_MEM_IOCTL:
 		return aie_mem_get_info(apart, arg);
+	case AIE_DMA_MEM_ALLOCATE_IOCTL:
+	{
+		__kernel_size_t size;
+
+		if (get_user(size, (__kernel_size_t *)argp))
+			return -EFAULT;
+
+		size = PAGE_ALIGN(size);
+		ret = aie_dma_mem_alloc(apart, size);
+		put_user(size, (__kernel_size_t *)argp);
+		return ret;
+	}
 	case AIE_ATTACH_DMABUF_IOCTL:
 		return aie_part_attach_dmabuf_req(apart, argp);
 	case AIE_DETACH_DMABUF_IOCTL:
@@ -1044,6 +1056,7 @@ struct aie_partition *aie_create_partition(struct aie_aperture *aperture,
 	apart->adev = aperture->adev;
 	apart->partition_id = partition_id;
 	INIT_LIST_HEAD(&apart->dbufs);
+	INIT_LIST_HEAD(&apart->dma_mem);
 	mutex_init(&apart->mlock);
 	apart->range.start.col = aie_part_id_get_start_col(partition_id);
 	apart->range.size.col = aie_part_id_get_num_cols(partition_id);
