@@ -1054,8 +1054,7 @@ struct axienet_dma_q {
 /**
  * enum axienet_ip_type - AXIENET IP/MAC type.
  *
- * @XAXIENET_1G:	 IP is 1G MAC
- * @XAXIENET_2_5G:	 IP type is 2.5G MAC.
+ * @XAXIENET_1_2p5G:	 IP is 1G/2.5G
  * @XAXIENET_LEGACY_10G: IP type is legacy 10G MAC.
  * @XAXIENET_10G_25G:	 IP type is 10G/25G MAC(XXV MAC).
  * @XAXIENET_MRMAC:	 IP type is hardened Multi Rate MAC (MRMAC).
@@ -1064,8 +1063,7 @@ struct axienet_dma_q {
  *
  */
 enum axienet_ip_type {
-	XAXIENET_1G = 0,
-	XAXIENET_2_5G,
+	XAXIENET_1_2p5G = 0,
 	XAXIENET_LEGACY_10G,
 	XAXIENET_10G_25G,
 	XAXIENET_MRMAC,

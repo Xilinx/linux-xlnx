@@ -493,7 +493,8 @@ void __maybe_unused axienet_dma_err_handler(unsigned long data)
 		axienet_iow(lp, XAE_RCW1_OFFSET, axienet_status);
 	}
 
-	if (lp->axienet_config->mactype == XAXIENET_1G && !lp->eth_hasnobuf) {
+	if (lp->axienet_config->mactype == XAXIENET_1_2p5G &&
+	    !lp->eth_hasnobuf) {
 		axienet_status = axienet_ior(lp, XAE_IP_OFFSET);
 		if (axienet_status & XAE_INT_RXRJECT_MASK)
 			axienet_iow(lp, XAE_IS_OFFSET, XAE_INT_RXRJECT_MASK);
