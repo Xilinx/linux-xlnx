@@ -1481,5 +1481,9 @@ u32 aie_get_core_sp(struct aie_partition *apart,
 		    struct aie_location *loc);
 int aie_dma_mem_alloc(struct aie_partition *apart, __kernel_size_t size);
 int aie_dma_mem_free(int fd);
+int aie_dma_begin_cpu_access(struct dma_buf *dmabuf,
+			     enum dma_data_direction direction);
+int aie_dma_end_cpu_access(struct dma_buf *dmabuf,
+			   enum dma_data_direction direction);
 
 #endif /* AIE_INTERNAL_H */
