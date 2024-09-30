@@ -467,9 +467,9 @@ long aie_part_attach_dmabuf_req(struct aie_partition *apart,
 long aie_part_detach_dmabuf_req(struct aie_partition *apart,
 				void __user *user_args)
 {
-	int dmabuf_fd;
-	struct dma_buf *dbuf;
 	struct aie_dmabuf *adbuf;
+	struct dma_buf *dbuf;
+	int dmabuf_fd;
 	int ret;
 
 	dmabuf_fd = (int)(uintptr_t)user_args;

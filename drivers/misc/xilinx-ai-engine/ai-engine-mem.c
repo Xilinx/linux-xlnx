@@ -30,32 +30,51 @@ static struct sg_table *
 aie_mem_map_dma_buf(struct dma_buf_attachment *attachment,
 		    enum dma_data_direction direction)
 {
+	struct dma_buf *dmabuf = attachment->dmabuf;
+	struct aie_dma_mem *dma_mem;
+	struct scatterlist *slist;
+	struct aie_part_mem *pmem;
+	struct sg_table *table;
+	void *vaddr;
+	int ret;
+
+	pmem = (struct aie_part_mem *)dmabuf->priv;
+	vaddr = (void *)pmem->mem.offset;
+
+	table = kzalloc(sizeof(*table), GFP_KERNEL);
+	if (!table)
+		return ERR_PTR(-ENOMEM);
+
+	ret = sg_alloc_table(table, 1, GFP_KERNEL);
+
+	if (ret < 0)
+		goto err;
+
+	slist = table->sgl;
+
+	sg_init_one(slist, vaddr, pmem->mem.size);
+
 	/*
-	 * TODO: It is mandatory by DMA buf operation. It is used return
-	 * scatterlist table of an attachment. We don't have the implementation
-	 * for now. And thus it has empty implementation.
+	 * Since memory is allocated using dma_alloc_coherent which stores the
+	 * dma address for the virtual address returned dma_map_sgtable is not
+	 * needed for converting virtual address to dma-able address.
 	 */
-	(void)attachment;
-	(void)direction;
-	dev_warn(attachment->dev,
-		 "AI engine memory map dma buf is not implemented.\n");
-	return NULL;
+	dma_mem = container_of(pmem, struct aie_dma_mem, pmem);
+
+	slist->dma_address = dma_mem->dma_addr;
+
+	return table;
+err:
+	kfree(table);
+	return ERR_PTR(ret);
 }
 
 static void aie_mem_unmap_dma_buf(struct dma_buf_attachment *attachment,
 				  struct sg_table *table,
 				  enum dma_data_direction direction)
 {
-	/*
-	 * TODO: It is mandatory by DMA buf operation. It is used deallocate
-	 * scatterlist table of an attachment. We don't have the implementation
-	 * for now. And thus it has empty implementation.
-	 */
-	(void)attachment;
-	(void)table;
-	(void)direction;
-	dev_warn(attachment->dev,
-		 "AI engine memory unmap dma buf is not implemented.\n");
+	sg_free_table(table);
+	kfree(table);
 }
 
 static int aie_mem_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
