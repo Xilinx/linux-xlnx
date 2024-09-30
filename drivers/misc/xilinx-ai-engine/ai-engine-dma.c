@@ -402,6 +402,81 @@ void aie_part_release_dmabufs(struct aie_partition *apart)
 }
 
 /**
+ * aie_dma_begin_cpu_access() - syncs the scatter gather list for cpu
+ * @dmabuf: dma buffer structure
+ * @direction: direction to sync scatter gather list.
+ *
+ * @return: 0 for success, negative value for failure.
+ */
+int aie_dma_begin_cpu_access(struct dma_buf *dmabuf,
+			     enum dma_data_direction direction)
+{
+	struct aie_partition *apart;
+	struct aie_part_mem *pmem;
+	struct aie_dmabuf *adbuf;
+	struct sg_table *table;
+	int ret;
+
+	pmem = (struct aie_part_mem *)dmabuf->priv;
+	if (!pmem)
+		return -EINVAL;
+
+	apart = pmem->apart;
+	if (!apart)
+		return -EINVAL;
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return ret;
+
+	adbuf = aie_part_find_dmabuf(apart, dmabuf);
+	if (!adbuf)
+		return -EINVAL;
+
+	table = adbuf->sgt;
+
+	dma_sync_sg_for_cpu(&apart->dev, table->sgl, table->nents, direction);
+	mutex_unlock(&apart->mlock);
+
+	return 0;
+}
+
+/**
+ * aie_dma_end_cpu_access() - syncs the scatter gather list for device
+ * @dmabuf: dma buffer structure
+ * @direction: direction to sync scatter gather list.
+ *
+ * @return: 0 for success, negative value for failure.
+ */
+int aie_dma_end_cpu_access(struct dma_buf *dmabuf,
+			   enum dma_data_direction direction)
+{
+	struct aie_partition *apart;
+	struct aie_part_mem *pmem;
+	struct aie_dmabuf *adbuf;
+	struct sg_table *table;
+	int ret;
+
+	pmem = (struct aie_part_mem *)dmabuf->priv;
+	apart = pmem->apart;
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return ret;
+
+	adbuf = aie_part_find_dmabuf(apart, dmabuf);
+	if (!adbuf)
+		return -EINVAL;
+
+	table = adbuf->sgt;
+
+	dma_sync_sg_for_device(&apart->dev, table->sgl, table->nents, direction);
+	mutex_unlock(&apart->mlock);
+
+	return 0;
+}
+
+/**
  * aie_part_attach_dmabuf_req() - Handle attaching dmabuf to an AI engine
  *				  partition request
  * @apart: AI engine partition

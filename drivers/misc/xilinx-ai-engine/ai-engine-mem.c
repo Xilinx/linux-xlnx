@@ -177,6 +177,8 @@ static const struct dma_buf_ops aie_mem_dma_buf_ops = {
 	.map_dma_buf = aie_mem_map_dma_buf,
 	.unmap_dma_buf = aie_mem_unmap_dma_buf,
 	.mmap = aie_mem_mmap,
+	.begin_cpu_access = aie_dma_begin_cpu_access,
+	.end_cpu_access = aie_dma_end_cpu_access,
 	.release = aie_mem_dmabuf_release,
 };
 
