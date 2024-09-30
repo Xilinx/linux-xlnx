@@ -193,6 +193,64 @@ static int aie_mem_create_dmabuf(struct aie_partition *apart,
 }
 
 /**
+ * aie_dma_mem_alloc() - Allocates physically contiguous memory for dma
+ *			 transactions.
+ * @apart: AI engine partition
+ * @size: Size of the memory to be allocated in bytes
+ * @return: buffer file descriptor on success, otherwise returns error.
+ *
+ * This function allocated physically contiguous memory for dma transactions,
+ * exports it as a dma-buf and creates a file descriptor for the buffer.
+ */
+int aie_dma_mem_alloc(struct aie_partition *apart, __kernel_size_t size)
+{
+	struct aie_dma_mem *dma_mem;
+	struct aie_part_mem *pmem;
+	dma_addr_t dma_addr;
+	struct aie_mem mem;
+	void *vaddr;
+	int ret;
+
+	vaddr = dma_alloc_coherent(&apart->dev, size, &dma_addr, GFP_KERNEL);
+	if (!vaddr)
+		return -ENOMEM;
+
+	dma_mem = kzalloc(sizeof(*dma_mem), GFP_KERNEL);
+	if (!dma_mem) {
+		dma_free_coherent(&apart->dev, size, vaddr, dma_addr);
+		return -ENOMEM;
+	}
+
+	pmem = &dma_mem->pmem;
+
+	pmem->apart = apart;
+	pmem->mem.offset = (__kernel_size_t)vaddr;
+	pmem->mem.size = size;
+	pmem->size = (size_t)size;
+
+	ret = aie_mem_create_dmabuf(apart, pmem, &mem);
+	if (ret < 0) {
+		dma_free_coherent(&apart->dev, size, vaddr, dma_addr);
+		kfree(dma_mem);
+		return -EINVAL;
+	}
+
+	dma_mem->dma_addr = dma_addr;
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret) {
+		dma_free_coherent(&apart->dev, size, vaddr, dma_addr);
+		dma_buf_put(pmem->dbuf);
+		return ret;
+	}
+
+	list_add_tail(&dma_mem->node, &apart->dma_mem);
+
+	mutex_unlock(&apart->mlock);
+	return mem.fd;
+}
+
+/**
  * aie_mem_get_info() - get AI engine memories information
  * @apart: AI engine partition
  * @arg: argument from user to enquire AI engine partition memory information

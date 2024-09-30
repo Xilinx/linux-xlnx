@@ -698,6 +698,16 @@ struct aie_rsc_user_stat_array {
 					struct aie_tiles_array)
 
 /**
+ * DOC: AIE_DMA_MEM_ALLOCATE_IOCTL - allocates the DMA memory
+ *
+ * This ioctl is used to allocate physically contiguous memory for DMA
+ * transactions and export it as a dma-buf which is passed to the userspace as
+ * a file descriptor. The file descriptor is memory mapped into the process's
+ * address space.
+ */
+#define AIE_DMA_MEM_ALLOCATE_IOCTL	_IOW(AIE_IOCTL_BASE, 0x1c, \
+					     __kernel_size_t)
+/**
  * DOC: AIE_UPDATE_SHIMDMA_DMABUF_BD_ADDR_IOCTL - updates the SHIM DMA address
  *						  in the BD registers.
  *
@@ -707,4 +717,5 @@ struct aie_rsc_user_stat_array {
  */
 #define AIE_UPDATE_SHIMDMA_DMABUF_BD_ADDR_IOCTL	_IOW(AIE_IOCTL_BASE, 0x1e, \
 						struct aie_dmabuf_bd_args)
+
 #endif
