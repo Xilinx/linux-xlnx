@@ -125,8 +125,16 @@ static int aie_mem_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 static void aie_mem_dmabuf_release(struct dma_buf *dmabuf)
 {
 	struct aie_part_mem *pmem = dmabuf->priv;
+	struct aie_dma_mem *dma_mem;
 
 	pmem->dbuf = NULL;
+
+	if (pmem->mem.range.size.row == 0) {
+		dma_mem = container_of(pmem, struct aie_dma_mem, pmem);
+
+		kfree(dma_mem);
+		dma_mem = NULL;
+	}
 }
 
 static const struct dma_buf_ops aie_mem_dma_buf_ops = {
@@ -248,6 +256,55 @@ int aie_dma_mem_alloc(struct aie_partition *apart, __kernel_size_t size)
 
 	mutex_unlock(&apart->mlock);
 	return mem.fd;
+}
+
+/**
+ * aie_dma_mem_free() - De-allocates physically contiguous memory for dma
+ *			 transactions.
+ * @fd: DMA-BUF File Descriptor
+ * @return: 0 on success.
+ *
+ * This function de-allocated physically contiguous memory for dma transactions,
+ * and decreases the reference count of the dma-buf.
+ */
+int aie_dma_mem_free(int fd)
+{
+	struct aie_partition *apart;
+	struct aie_dma_mem *dma_mem;
+	struct aie_part_mem *pmem;
+	struct dma_buf *dmabuf;
+	int ret;
+
+	dmabuf = dma_buf_get(fd);
+	if (IS_ERR(dmabuf))
+		return PTR_ERR(dmabuf);
+
+	pmem = (struct aie_part_mem *)dmabuf->priv;
+	apart = pmem->apart;
+
+	/*
+	 * Following dma_buf_put reduces the reference count increased when
+	 * converting fd to dmabuf using dma_buf_get.
+	 */
+	dma_buf_put(dmabuf);
+
+	dma_mem = container_of(pmem, struct aie_dma_mem, pmem);
+	dma_free_coherent(&apart->dev, pmem->mem.size,
+			  (void *)pmem->mem.offset, dma_mem->dma_addr);
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return ret;
+
+	list_del(&dma_mem->node);
+
+	mutex_unlock(&apart->mlock);
+	/*
+	 * dma_buf_put reduces the reference count increased during allocation.
+	 */
+	dma_buf_put(dmabuf);
+
+	return 0;
 }
 
 /**

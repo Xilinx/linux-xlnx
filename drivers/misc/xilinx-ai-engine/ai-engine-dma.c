@@ -360,8 +360,10 @@ static void aie_part_dmabuf_attach_put(struct aie_dmabuf *adbuf)
  */
 void aie_part_release_dmabufs(struct aie_partition *apart)
 {
+	struct aie_dma_mem *dma_mem, *tmpdmem;
 	struct aie_dmabuf *adbuf, *tmpadbuf;
-	struct aie_part_mem *mems;
+	struct aie_part_mem *mems, *pmem;
+	struct dma_buf *dbuf;
 	int num_mems;
 
 	num_mems = apart->adev->ops->get_mem_info(apart->adev, &apart->range,
@@ -379,7 +381,7 @@ void aie_part_release_dmabufs(struct aie_partition *apart)
 	}
 
 	list_for_each_entry_safe(adbuf, tmpadbuf, &apart->dbufs, node) {
-		struct dma_buf *dbuf = adbuf->attach->dmabuf;
+		dbuf = adbuf->attach->dmabuf;
 
 		dma_buf_unmap_attachment(adbuf->attach, adbuf->sgt,
 					 adbuf->attach->dir);
@@ -387,6 +389,15 @@ void aie_part_release_dmabufs(struct aie_partition *apart)
 		dma_buf_put(dbuf);
 		list_del(&adbuf->node);
 		kmem_cache_free(apart->dbufs_cache, adbuf);
+	}
+
+	list_for_each_entry_safe(dma_mem, tmpdmem, &apart->dma_mem, node) {
+		pmem = &dma_mem->pmem;
+		dma_free_coherent(&apart->dev, pmem->mem.size,
+				  (void *)pmem->mem.offset,
+				  dma_mem->dma_addr);
+		list_del(&dma_mem->node);
+		dma_buf_put(pmem->dbuf);
 	}
 }
 

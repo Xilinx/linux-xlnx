@@ -797,8 +797,19 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 
 		size = PAGE_ALIGN(size);
 		ret = aie_dma_mem_alloc(apart, size);
-		put_user(size, (__kernel_size_t *)argp);
+		if (put_user(size, (__kernel_size_t *)argp)) {
+			aie_dma_mem_free(ret);
+			return -EFAULT;
+		}
 		return ret;
+	}
+	case AIE_DMA_MEM_FREE_IOCTL:
+	{
+		int fd;
+
+		if (get_user(fd, (int *)argp))
+			return -EFAULT;
+		return aie_dma_mem_free(fd);
 	}
 	case AIE_ATTACH_DMABUF_IOCTL:
 		return aie_part_attach_dmabuf_req(apart, argp);
