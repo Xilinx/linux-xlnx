@@ -1480,5 +1480,6 @@ u32 aie_get_core_lr(struct aie_partition *apart,
 u32 aie_get_core_sp(struct aie_partition *apart,
 		    struct aie_location *loc);
 int aie_dma_mem_alloc(struct aie_partition *apart, __kernel_size_t size);
+int aie_dma_mem_free(int fd);
 
 #endif /* AIE_INTERNAL_H */
