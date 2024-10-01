@@ -29,6 +29,9 @@ properties:
   interrupts:
     maxItems: 1
 
+  clocks:
+    maxItems: 1
+
   phy-handle: true
 
   local-mac-address: true
