@@ -1558,7 +1558,7 @@ static void xhdmiphy_lcpll_lock_handler(struct xhdmiphy_dev *inst)
 	/* Determine which channel(s) to operate on */
 	chid = xhdmiphy_get_rcfg_chid(XHDMIPHY_PLL_LCPLL);
 	if (xhdmiphy_is_pll_locked(inst, chid) == 0) {
-		dev_info(inst->dev, "lcpll is locked\n");
+		dev_dbg(inst->dev, "lcpll is locked\n");
 		xhdmiphy_ch2ids(inst, XHDMIPHY_CHID_CHA, &id0, &id1);
 		for (id = id0; id <= id1; id++) {
 			if (tx_pll_type == XHDMIPHY_PLL_LCPLL)
@@ -1569,7 +1569,7 @@ static void xhdmiphy_lcpll_lock_handler(struct xhdmiphy_dev *inst)
 							XHDMIPHY_GT_STATE_RESET;
 		}
 	} else {
-		dev_info(inst->dev, "lcpll lock lost !\n");
+		dev_dbg(inst->dev, "lcpll lock lost !\n");
 	}
 }
 
@@ -1584,7 +1584,7 @@ static void xhdmiphy_rpll_lock_handler(struct xhdmiphy_dev *inst)
 	/* determine which channel(s) to operate on */
 	chid = xhdmiphy_get_rcfg_chid(XHDMIPHY_PLL_RPLL);
 	if (xhdmiphy_is_pll_locked(inst, chid) == 0) {
-		dev_info(inst->dev, "rpll is locked\n");
+		dev_dbg(inst->dev, "rpll is locked\n");
 		xhdmiphy_ch2ids(inst, XHDMIPHY_CHID_CHA, &id0, &id1);
 		for (id = id0; id <= id1; id++) {
 			if (tx_pll_type == XHDMIPHY_PLL_RPLL) {
@@ -1596,7 +1596,7 @@ static void xhdmiphy_rpll_lock_handler(struct xhdmiphy_dev *inst)
 			}
 		}
 	} else {
-		dev_info(inst->dev, "rpll lock lost !\n");
+		dev_dbg(inst->dev, "rpll lock lost !\n");
 	}
 }
 
@@ -1652,7 +1652,7 @@ static void xhdmiphy_qpll_lock_handler(struct xhdmiphy_dev *inst)
 		chid = xhdmiphy_get_rcfg_chid(rx_pll_type);
 
 		if (xhdmiphy_is_pll_locked(inst, chid) == 0) {
-			dev_info(inst->dev, "qpll is locked\n");
+			dev_dbg(inst->dev, "qpll is locked\n");
 			xhdmiphy_rst_gt_txrx(inst, XHDMIPHY_CHID_CHA,
 					     XHDMIPHY_DIR_RX, false);
 			xhdmiphy_ch2ids(inst, XHDMIPHY_CHID_CHA, &id0, &id1);
@@ -1661,13 +1661,13 @@ static void xhdmiphy_qpll_lock_handler(struct xhdmiphy_dev *inst)
 							XHDMIPHY_GT_STATE_RESET;
 
 		} else {
-			dev_info(inst->dev, "qpll lock lost!\n");
+			dev_dbg(inst->dev, "qpll lock lost!\n");
 		}
 	} else {
 		/* tX is using QPLL */
 		chid = xhdmiphy_get_rcfg_chid(tx_pll_type);
 		if (xhdmiphy_is_pll_locked(inst, chid) == 0) {
-			dev_info(inst->dev, "qpll locked\n");
+			dev_dbg(inst->dev, "qpll locked\n");
 			xhdmiphy_rst_gt_txrx(inst, XHDMIPHY_CHID_CHA,
 					     XHDMIPHY_DIR_TX, false);
 			xhdmiphy_ch2ids(inst, XHDMIPHY_CHID_CHA, &id0,
@@ -1677,7 +1677,7 @@ static void xhdmiphy_qpll_lock_handler(struct xhdmiphy_dev *inst)
 							XHDMIPHY_GT_STATE_RESET;
 			}
 		} else {
-			dev_info(inst->dev, "qpll lock lost !\n");
+			dev_dbg(inst->dev, "qpll lock lost !\n");
 		}
 	}
 }
@@ -1698,7 +1698,7 @@ static void xhdmiphy_cpll_lock_handler(struct xhdmiphy_dev *inst)
 	if (rx_pll_type == XHDMIPHY_PLL_CPLL) {
 		chid = xhdmiphy_get_rcfg_chid(rx_pll_type);
 		if (xhdmiphy_is_pll_locked(inst, chid) == 0) {
-			dev_info(inst->dev, "cpll locked\n");
+			dev_dbg(inst->dev, "cpll locked\n");
 			xhdmiphy_rst_gt_txrx(inst, XHDMIPHY_CHID_CHA,
 					     XHDMIPHY_DIR_RX, false);
 			for (id = id0; id <= id1; id++) {
@@ -1706,7 +1706,7 @@ static void xhdmiphy_cpll_lock_handler(struct xhdmiphy_dev *inst)
 							XHDMIPHY_GT_STATE_RESET;
 			}
 		} else {
-			dev_info(inst->dev, "cpll lock lost\n");
+			dev_dbg(inst->dev, "cpll lock lost\n");
 		}
 	} else {
 		/*
@@ -1715,7 +1715,7 @@ static void xhdmiphy_cpll_lock_handler(struct xhdmiphy_dev *inst)
 		 */
 		chid = xhdmiphy_get_rcfg_chid(tx_pll_type);
 		if (xhdmiphy_is_pll_locked(inst, chid) == 0) {
-			dev_info(inst->dev, "cpll locked\n");
+			dev_dbg(inst->dev, "cpll locked\n");
 			xhdmiphy_rst_gt_txrx(inst, XHDMIPHY_CHID_CHA,
 					     XHDMIPHY_DIR_TX, false);
 			for (id = id0; id <= id1; id++) {
@@ -1723,7 +1723,7 @@ static void xhdmiphy_cpll_lock_handler(struct xhdmiphy_dev *inst)
 							XHDMIPHY_GT_STATE_RESET;
 			}
 		} else {
-			dev_info(inst->dev, "cpll lock lost\n");
+			dev_dbg(inst->dev, "cpll lock lost\n");
 		}
 	}
 }
