@@ -22,6 +22,7 @@
 #include <linux/of_net.h>
 
 #include "xilinx_axienet.h"
+#include "xilinx_axienet_eoe.h"
 
 struct axienet_stat {
 	const char *name;
@@ -258,6 +259,7 @@ int __maybe_unused axienet_mcdma_rx_q_init(struct net_device *ndev,
 	struct sk_buff *skb;
 	struct axienet_local *lp = netdev_priv(ndev);
 	dma_addr_t mapping;
+	int ret;
 
 	q->rx_bd_ci = 0;
 	q->rx_offset = XMCDMA_CHAN_RX_OFFSET;
@@ -273,27 +275,33 @@ int __maybe_unused axienet_mcdma_rx_q_init(struct net_device *ndev,
 				      sizeof(*q->rxq_bd_v) *
 				      ((i + 1) % lp->rx_bd_num);
 
-		skb = netdev_alloc_skb(ndev, lp->max_frm_size);
-		if (!skb)
-			goto out;
+		if (axienet_eoe_is_channel_gro(lp, q)) {
+			ret = axienet_eoe_mcdma_gro_q_init(ndev, q, i);
+			if (ret)
+				goto out;
+		} else {
+			skb = netdev_alloc_skb(ndev, lp->max_frm_size);
+			if (!skb)
+				goto out;
 
-		/* Ensure that the skb is completely updated
-		 * prio to mapping the DMA
-		 */
-		wmb();
+			/* Ensure that the skb is completely updated
+			 * prior to mapping the DMA
+			 */
+			wmb();
 
-		q->rxq_bd_v[i].sw_id_offset = (phys_addr_t)skb;
-		mapping = dma_map_single(ndev->dev.parent,
-					 skb->data,
-					 lp->max_frm_size,
-					 DMA_FROM_DEVICE);
-		if (unlikely(dma_mapping_error(ndev->dev.parent, mapping))) {
-			dev_err(&ndev->dev, "mcdma map error\n");
-			goto out;
+			q->rxq_bd_v[i].sw_id_offset = (phys_addr_t)skb;
+			mapping = dma_map_single(ndev->dev.parent,
+						 skb->data,
+						 lp->max_frm_size,
+						 DMA_FROM_DEVICE);
+			if (unlikely(dma_mapping_error(ndev->dev.parent, mapping))) {
+				dev_err(&ndev->dev, "mcdma map error\n");
+				goto out;
+			}
+
+			q->rxq_bd_v[i].phys = mapping;
+			q->rxq_bd_v[i].cntrl = lp->max_frm_size;
 		}
-
-		q->rxq_bd_v[i].phys = mapping;
-		q->rxq_bd_v[i].cntrl = lp->max_frm_size;
 	}
 
 	/* Start updating the Rx channel control register */
@@ -337,7 +345,10 @@ int __maybe_unused axienet_mcdma_rx_q_init(struct net_device *ndev,
 
 out:
 	for_each_rx_dma_queue(lp, i) {
-		axienet_mcdma_rx_bd_free(ndev, lp->dq[i]);
+		if (axienet_eoe_is_channel_gro(lp, lp->dq[i]))
+			axienet_eoe_mcdma_gro_bd_free(ndev, lp->dq[i]);
+		else
+			axienet_mcdma_rx_bd_free(ndev, lp->dq[i]);
 	}
 	return -ENOMEM;
 }

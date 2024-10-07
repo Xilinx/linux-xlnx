@@ -886,6 +886,7 @@ struct aximcdma_bd {
  * @switch_lock: Spinlock for switchable IP.
  * @eoe_regs: Ethernet offload IP base address.
  * @eoe_connected: Tells whether ethernet offload IP is connected to Ethernet IP.
+ * @eoe_features: EOE IP supported configuration.
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -980,6 +981,7 @@ struct axienet_local {
 	spinlock_t switch_lock;	/* To protect Link training programming from multiple context */
 	void __iomem *eoe_regs;
 	bool eoe_connected;
+	u32 eoe_features;
 };
 
 /**
