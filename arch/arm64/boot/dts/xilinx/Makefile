@@ -150,9 +150,6 @@ dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vck190-revB-x-ebm-02-revA.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += versal-vck190-revB-x-ebm-03-revA.dtb
 
 # Versal NET platforms
-dtb-$(CONFIG_ARCH_ZYNQMP) += versal-net-emu-rev1.9.dtb
-dtb-$(CONFIG_ARCH_ZYNQMP) += versal-net-ipp-rev1.9-ospi.dtb
-dtb-$(CONFIG_ARCH_ZYNQMP) += versal-net-ipp-rev1.9.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += versal-net-vn-p-b2197-00-revA.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += versal-net-vn-x-b2197-01-revA.dtb
 
