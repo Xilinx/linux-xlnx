@@ -882,6 +882,8 @@ struct aximcdma_bd {
  * @phc_index: Index to corresponding PTP clock used.
  * @gt_lane: MRMAC GT lane index used.
  * @switch_lock: Spinlock for switchable IP.
+ * @eoe_regs: Ethernet offload IP base address.
+ * @eoe_connected: Tells whether ethernet offload IP is connected to Ethernet IP.
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -974,6 +976,8 @@ struct axienet_local {
 	u32 phc_index;		/* Index to corresponding PTP clock used  */
 	u32 gt_lane;		/* MRMAC GT lane index used */
 	spinlock_t switch_lock;	/* To protect Link training programming from multiple context */
+	void __iomem *eoe_regs;
+	bool eoe_connected;
 };
 
 /**

@@ -50,6 +50,7 @@
 #include <linux/gpio/consumer.h>
 
 #include "xilinx_axienet.h"
+#include "xilinx_axienet_eoe.h"
 
 /* Descriptors defines for Tx and Rx DMA */
 #define RX_BD_NUM_DEFAULT		128
@@ -4250,6 +4251,17 @@ static int axienet_probe(struct platform_device *pdev)
 	if (lp->axienet_config->mactype == XAXIENET_10G_25G ||
 	    lp->axienet_config->mactype == XAXIENET_1G_10G_25G)
 		lp->xxv_ip_version = axienet_ior(lp, XXV_CONFIG_REVISION);
+
+	lp->eoe_connected = of_property_read_bool(pdev->dev.of_node,
+						  "xlnx,has-hw-offload");
+
+	if (lp->eoe_connected) {
+		ret = axienet_eoe_probe(pdev);
+		if (ret) {
+			dev_err(&pdev->dev, "Ethernet Offload not Supported\n");
+			goto cleanup_clk;
+		}
+	}
 
 #ifdef CONFIG_AXIENET_HAS_MCDMA
 	ret = axienet_mcdma_probe(pdev, lp, ndev);
