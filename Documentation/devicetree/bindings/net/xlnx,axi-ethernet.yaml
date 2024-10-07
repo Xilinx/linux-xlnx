@@ -411,19 +411,19 @@ examples:
 # 3) #Example for MRMAC Ethernet subsystem
   - |
     gt_pll: gpio@a4000000 {
-        reg = <0x0 0xa4000000 0x0 0x10000>;
+        reg = <0xa4000000 0x10000>;
 
       };
 
     gt_ctrl: gpio@a4010000 {
-        reg = <0x0 0xa4010000 0x0 0x40000>;
+        reg = <0xa4010000 0x40000>;
 
     };
 
     mrmac: ethernet@80000000 {
         axistream-connected = <&dma>;
         compatible = "xlnx,mrmac-ethernet-1.0";
-        reg = <0x0 0xa4090000 0x0 0x1000>;
+        reg = <0xa4090000 0x1000>;
         interrupt-parent = <&gic>;
         interrupts = <0 91 4>;
         max-speed = <10000>;
@@ -461,7 +461,7 @@ examples:
     dcmac: ethernet@a4000000 {
         axistream-connected = <&dma>;
         compatible = "xlnx,dcmac-2.4";
-        reg = <0x0 0xa4000000 0x0 0x100000>;
+        reg = <0xa4000000 0x100000>;
         interrupt-parent = <&gic>;
         interrupts = <0x0 0x5c 0x4 0x0 0x5d 0x4>;
         xlnx,rxmem = <0x8000>;
