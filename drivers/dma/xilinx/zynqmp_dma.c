@@ -132,6 +132,9 @@
 
 #define ZYNQMP_DMA_IDS_DEFAULT_MASK	0xFFF
 
+/* Reset value for control reg attributes */
+#define ZYNQMP_DMA_RESET_VAL		0x80
+
 /* Bus width in bits */
 #define ZYNQMP_DMA_BUS_WIDTH_64		64
 #define ZYNQMP_DMA_BUS_WIDTH_128	128
@@ -349,6 +352,9 @@ static void zynqmp_dma_init(struct zynqmp_dma_chan *chan)
 	writel(ZYNQMP_DMA_IDS_DEFAULT_MASK, chan->regs + ZYNQMP_DMA_IDS);
 	val = readl(chan->regs + ZYNQMP_DMA_ISR);
 	writel(val, chan->regs + ZYNQMP_DMA_ISR);
+
+	if (readl(chan->regs + ZYNQMP_DMA_CTRL0) != ZYNQMP_DMA_RESET_VAL)
+		writel(ZYNQMP_DMA_RESET_VAL, chan->regs + ZYNQMP_DMA_CTRL0);
 
 	if (chan->is_dmacoherent) {
 		val = ZYNQMP_DMA_AXCOHRNT;
