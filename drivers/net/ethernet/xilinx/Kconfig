@@ -44,6 +44,15 @@ config  AXIENET_HAS_MCDMA
 	help
 	  When hardware is generated with AXI Ethernet with MCDMA select this option.
 
+config XILINX_AXI_EOE
+	bool "Xilinx Ethernet Offload Engine support"
+	depends on AXIENET_HAS_MCDMA
+	help
+	  When hardware is configured with Ethernet Offload Engine select this option.
+	  It supports hardware segmentation/receive offload and checksum offload,
+	  by offloading of the packet if its size is over MTU. It improves the network
+	  speed and overall CPU efficiency.
+
 config XILINX_LL_TEMAC
 	tristate "Xilinx LL TEMAC (LocalLink Tri-mode Ethernet MAC) driver"
 	depends on HAS_IOMEM

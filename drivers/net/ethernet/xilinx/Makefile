@@ -9,3 +9,4 @@ obj-$(CONFIG_XILINX_EMACLITE) += xilinx_emaclite.o
 xilinx_emac-objs := xilinx_axienet_main.o xilinx_axienet_mdio.o xilinx_axienet_dma.o
 obj-$(CONFIG_XILINX_AXI_EMAC) += xilinx_emac.o
 obj-$(CONFIG_AXIENET_HAS_MCDMA) += xilinx_axienet_mcdma.o
+obj-$(CONFIG_XILINX_AXI_EOE) += xilinx_axienet_eoe.o
