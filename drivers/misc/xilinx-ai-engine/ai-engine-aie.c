@@ -1324,7 +1324,7 @@ static int aie_scan_part_clocks(struct aie_partition *apart)
 			 * Reading registers of the current tile to see the next
 			 * tile is clock gated.
 			 */
-			nbitpos = loc.col * (range->size.row - 1) + loc.row;
+			nbitpos = (loc.col - range->start.col) * (range->size.row - 1) + loc.row;
 
 			if (aie_get_tile_type(adev, &loc) !=
 					AIE_TILE_TYPE_TILE) {

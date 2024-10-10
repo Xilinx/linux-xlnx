@@ -1435,8 +1435,8 @@ int aie_part_rscmgr_set_static_range(struct device *dev, u8 start_col,
 		return -EINVAL;
 	}
 
-	if ((start_col + num_col > apart->range.size.col) || num_col == 0 ||
-	    start_col < apart->range.start.col) {
+	if (start_col >= apart->range.size.col || num_col == 0 ||
+	    (start_col + num_col) > apart->range.size.col) {
 		dev_err(&apart->dev,
 			"invalid start column/number of column\n");
 		return -EINVAL;
