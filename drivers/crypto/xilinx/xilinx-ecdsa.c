@@ -23,6 +23,8 @@
 
 /* PLM can process HASH and signature in multiples of 8 bytes */
 #define ECDSA_P521_CURVE_ALIGN_BYTES		2U
+/* Includes size for x and y coordinate. */
+#define ECDSA_MAX_KEY_SIZE (ECC_MAX_BYTES << 1)
 
 struct xilinx_sign_gen_params {
 	u64 hash_addr;
@@ -237,12 +239,6 @@ static int xilinx_ecdsa_set_pub_key(struct crypto_akcipher *tfm,
 	ndigits = DIV_ROUND_UP(key_size, sizeof(u64));
 	if (ndigits != ctx->curve->g.ndigits)
 		return -EINVAL;
-
-	ctx->pub_kbuf = dma_alloc_coherent(ctx->dev, keylen,
-					   &ctx->pub_key_addr, GFP_KERNEL);
-	if (!ctx->pub_kbuf)
-		return -ENOMEM;
-
 	d++;
 
 	ecc_digits_from_bytes(d, key_size, (u64 *)ctx->pub_kbuf, ndigits);
@@ -261,7 +257,7 @@ static void xilinx_ecdsa_exit_tfm(struct crypto_akcipher *tfm)
 	}
 
 	if (ctx->pub_kbuf) {
-		dma_free_coherent(ctx->dev, ctx->key_size,
+		dma_free_coherent(ctx->dev, ECDSA_MAX_KEY_SIZE,
 				  ctx->pub_kbuf, ctx->pub_key_addr);
 	}
 
@@ -285,12 +281,19 @@ static int xilinx_ecdsa_init_tfm(struct crypto_akcipher *tfm)
 	drv_ctx = container_of(cipher_alg, struct xilinx_ecdsa_drv_ctx, alg.base);
 	tfm_ctx->dev = drv_ctx->dev;
 
+	tfm_ctx->pub_kbuf = dma_alloc_coherent(tfm_ctx->dev, ECDSA_MAX_KEY_SIZE,
+					       &tfm_ctx->pub_key_addr, GFP_KERNEL);
+	if (!tfm_ctx->pub_kbuf)
+		return -ENOMEM;
+
 	tfm_ctx->fbk_cipher = crypto_alloc_akcipher(drv_ctx->alg.base.base.cra_name,
 						    0,
 						    CRYPTO_ALG_NEED_FALLBACK);
 	if (IS_ERR(tfm_ctx->fbk_cipher)) {
 		pr_err("%s() Error: failed to allocate fallback for %s\n",
 		       __func__, drv_ctx->alg.base.base.cra_name);
+		dma_free_coherent(tfm_ctx->dev, ECDSA_MAX_KEY_SIZE,
+				  tfm_ctx->pub_kbuf, tfm_ctx->pub_key_addr);
 		return PTR_ERR(tfm_ctx->fbk_cipher);
 	}
 
