@@ -75,5 +75,7 @@ enum pufreadoption {
 #define PUF_REGISTRATION _IOWR(PUF_IOC_MAGIC, 1, struct xpuf_usrparams *)
 #define PUF_REGENERATION _IOWR(PUF_IOC_MAGIC, 2, struct xpuf_usrparams *)
 #define PUF_REGEN_ID_ONLY _IOWR(PUF_IOC_MAGIC, 3, struct xpuf_usrparams *)
+#define PUF_CLEAR_ID _IOWR(PUF_IOC_MAGIC, 4, struct puf_usrparams *)
+#define PUF_CLEAR_KEY _IOWR(PUF_IOC_MAGIC, 5, struct puf_usrparams *)
 
 #endif /* _PUF_UAPI_H_ */

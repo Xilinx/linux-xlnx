@@ -16,6 +16,15 @@
 #include <linux/firmware/xlnx-zynqmp.h>
 #include <uapi/misc/xilinx_puf.h>
 
+static bool puf_clear;
+module_param(puf_clear, bool, 0600);
+MODULE_PARM_DESC(puf_clear, "Flag to enable clearing of PUF ID and key.");
+
+/*
+ * Below macro corresponds to Key source in firmware
+ */
+#define VERSAL_AES_PUF_KEY	11
+
 /**
  * struct puf_params - parameters for PUF
  * @pufoperation: PUF registration or regeneration operation
@@ -164,6 +173,22 @@ static long xlnx_puf_ioctl(struct file *file, unsigned int cmd, unsigned long ar
 			return -EINVAL;
 
 		ret = xlnx_puf_cfg(puf, &pufreq);
+		break;
+	case PUF_CLEAR_ID:
+		if (!puf_clear) {
+			ret = -EOPNOTSUPP;
+			break;
+		}
+		ret = versal_pm_puf_clear_id();
+		break;
+	case PUF_CLEAR_KEY:
+		if (!puf_clear) {
+			ret = -EOPNOTSUPP;
+			break;
+		}
+		ret = versal_pm_aes_init();
+		if (!ret)
+			ret = versal_pm_aes_key_zero(VERSAL_AES_PUF_KEY);
 		break;
 	default:
 		ret = -EOPNOTSUPP;
