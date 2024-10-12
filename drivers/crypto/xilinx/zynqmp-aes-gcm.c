@@ -767,7 +767,7 @@ static int __init aes_driver_init(void)
 		return ret;
 
 	platform_dev = platform_device_register_simple(zynqmp_aes_driver.driver.name,
-					       0, NULL, 0);
+						       0, NULL, 0);
 	if (IS_ERR(platform_dev)) {
 		ret = PTR_ERR(platform_dev);
 		platform_driver_unregister(&zynqmp_aes_driver);
