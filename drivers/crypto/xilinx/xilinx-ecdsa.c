@@ -90,7 +90,7 @@ int xilinx_ecdsa_get_signature_r(void *context, size_t hdrlen, unsigned char tag
 }
 
 int xilinx_ecdsa_get_signature_s(void *context, size_t hdrlen, unsigned char tag,
-			  const void *value, size_t vlen)
+				 const void *value, size_t vlen)
 {
 	struct ecdsa_signature_ctx *sig = context;
 
@@ -481,7 +481,7 @@ static int __init ecdsa_driver_init(void)
 		return ret;
 
 	platform_dev = platform_device_register_simple(xilinx_ecdsa_driver.driver.name,
-					       0, NULL, 0);
+						       0, NULL, 0);
 	if (IS_ERR(platform_dev)) {
 		ret = PTR_ERR(platform_dev);
 		platform_driver_unregister(&xilinx_ecdsa_driver);
