@@ -1862,6 +1862,21 @@ int versal_pm_aes_key_write(const u32 keylen,
 EXPORT_SYMBOL_GPL(versal_pm_aes_key_write);
 
 /**
+ * versal_pm_aes_key_zero - Zeroise AES User key registers
+ * @keysrc:	Key Source to be selected to which provided
+ *		key should be updated
+ *
+ * This function provides support to zeroise AES volatile user keys.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+int versal_pm_aes_key_zero(const u32 keysrc)
+{
+	return zynqmp_pm_invoke_fn(XSECURE_API_AES_KEY_ZERO, NULL, 1, keysrc);
+}
+EXPORT_SYMBOL_GPL(versal_pm_aes_key_zero);
+
+/**
  * versal_pm_efuse_read - Reads efuse.
  * @address: Address of the payload
  * @offset: Efuse offset
@@ -1994,6 +2009,19 @@ int versal_pm_aes_dec_final(const u64 gcm_addr)
 				   upper_32_bits(gcm_addr));
 }
 EXPORT_SYMBOL_GPL(versal_pm_aes_dec_final);
+
+/**
+ * versal_pm_aes_init - Init AES block
+ *
+ * This function initialise AES block.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+int versal_pm_aes_init(void)
+{
+	return zynqmp_pm_invoke_fn(XSECURE_API_AES_INIT, NULL, 0);
+}
+EXPORT_SYMBOL_GPL(versal_pm_aes_init);
 
 /**
  * versal_pm_ecdsa_validate_key - Access ECDSA hardware to validate key
@@ -2377,6 +2405,13 @@ int versal_pm_puf_registration(const u64 in_addr)
 				   upper_32_bits(in_addr));
 }
 EXPORT_SYMBOL_GPL(versal_pm_puf_registration);
+
+int versal_pm_puf_clear_id(void)
+{
+	return zynqmp_pm_invoke_fn(XPUF_API_PUF_CLEAR_PUF_ID, NULL,
+				   2, NULL, NULL);
+}
+EXPORT_SYMBOL_GPL(versal_pm_puf_clear_id);
 
 int versal_pm_puf_regeneration(const u64 in_addr)
 {

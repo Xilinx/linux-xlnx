@@ -91,17 +91,20 @@
 #define XSECURE_API_SHA3_UPDATE		0x504
 #define XSECURE_API_ELLIPTIC_VALIDATE_KEY	0x507
 #define XSECURE_API_ELLIPTIC_VERIFY_SIGN	0x508
+#define XSECURE_API_AES_INIT		0x509
 #define XSECURE_API_AES_OP_INIT		0x50a
 #define XSECURE_API_AES_UPDATE_AAD	0x50b
 #define XSECURE_API_AES_ENCRYPT_UPDATE	0x50c
 #define XSECURE_API_AES_ENCRYPT_FINAL	0x50d
 #define XSECURE_API_AES_DECRYPT_UPDATE	0x50e
 #define XSECURE_API_AES_DECRYPT_FINAL	0x50f
+#define XSECURE_API_AES_KEY_ZERO	0x510
 #define XSECURE_API_AES_WRITE_KEY	0x511
 
 /* XilPuf API commands module id + api id */
 #define XPUF_API_PUF_REGISTRATION	0xc01
 #define XPUF_API_PUF_REGENERATION	0xc02
+#define XPUF_API_PUF_CLEAR_PUF_ID	0xc03
 
 /* XilSEM commands */
 #define PM_XSEM_HEADER			0x300
@@ -745,6 +748,7 @@ int zynqmp_pm_get_qos(u32 node, u32 *const def_qos, u32 *const qos);
 int versal_pm_sha_hash(const u64 src, const u64 dst, const u32 size);
 int versal_pm_aes_key_write(const u32 keylen,
 			    const u32 keysrc, const u64 keyaddr);
+int versal_pm_aes_key_zero(const u32 keysrc);
 int versal_pm_aes_op_init(const u64 hw_req);
 int versal_pm_aes_update_aad(const u64 aad_addr, const u32 aad_len);
 int versal_pm_aes_enc_update(const u64 in_params, const u64 in_addr);
@@ -757,6 +761,8 @@ int versal_pm_ecdsa_validate_key(const u64 key_addr, const u32 curveid);
 int versal_pm_ecdsa_verify_sign(const u64 sign_param_addr);
 int versal_pm_rsa_encrypt(const u64 in_params, const u64 in_addr);
 int versal_pm_rsa_decrypt(const u64 in_params, const u64 in_addr);
+int versal_pm_puf_clear_id(void);
+int versal_pm_aes_init(void);
 #else
 static inline int zynqmp_pm_get_api_version(u32 *version)
 {
@@ -1231,6 +1237,11 @@ static inline int versal_pm_aes_key_write(const u32 keylen,
 	return -ENODEV;
 }
 
+static inline int versal_pm_aes_key_zero(const u32 keysrc)
+{
+	return -ENODEV;
+}
+
 static inline int versal_pm_aes_op_init(const u64 hw_req)
 {
 	return -ENODEV;
@@ -1293,6 +1304,15 @@ static inline int versal_pm_rsa_encrypt(const u64 in_params,
 
 static inline int versal_pm_rsa_decrypt(const u64 in_params,
 					const u64 in_addr)
+{
+	return -ENODEV;
+}
+static inline int versal_pm_puf_clear_id(void)
+{
+	return -ENODEV;
+}
+
+static inline int versal_pm_aes_init(void)
 {
 	return -ENODEV;
 }
