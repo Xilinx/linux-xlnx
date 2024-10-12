@@ -312,13 +312,13 @@ static int versal_aes_aead_cipher(struct aead_request *req)
 
 	ret = versal_pm_aes_op_init(dma_addr_hw_req);
 	if (ret)
-		goto in_fail;
+		goto clearkey;
 
 	if (req->assoclen > 0) {
 		/* Currently GMAC is OFF by default */
 		ret = versal_pm_aes_update_aad(dma_addr_data, req->assoclen);
 		if (ret)
-			goto in_fail;
+			goto clearkey;
 	}
 
 	in->in_data_addr = dma_addr_data + req->assoclen;
@@ -329,27 +329,30 @@ static int versal_aes_aead_cipher(struct aead_request *req)
 		ret = versal_pm_aes_enc_update(dma_addr_in,
 					       dma_addr_data + req->assoclen);
 		if (ret)
-			goto in_fail;
+			goto clearkey;
 
 		ret = versal_pm_aes_enc_final(dma_addr_data + gcm_offset);
 		if (ret)
-			goto in_fail;
+			goto clearkey;
 	} else {
 		ret = versal_pm_aes_dec_update(dma_addr_in,
 					       dma_addr_data + req->assoclen);
 		if (ret)
-			goto in_fail;
+			goto clearkey;
 
 		ret = versal_pm_aes_dec_final(dma_addr_data + gcm_offset);
 		if (ret) {
 			ret = -EBADMSG;
-			goto in_fail;
+			goto clearkey;
 		}
 	}
 
 	sg_copy_from_buffer(req->dst, sg_nents(req->dst),
 			    kbuf, out_len);
 
+clearkey:
+	if (hwreq->keysrc >= VERSAL_AES_USER_KEY_0 && hwreq->keysrc <= VERSAL_AES_USER_KEY_7)
+		versal_pm_aes_key_zero(hwreq->keysrc);
 in_fail:
 	memzero_explicit(hwreq, sizeof(struct zynqmp_aead_hw_req));
 	dma_free_coherent(dev, sizeof(struct versal_init_ops), hwreq, dma_addr_hw_req);
