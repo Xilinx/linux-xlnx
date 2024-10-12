@@ -152,8 +152,8 @@ static int xilinx_ecdsa_verify(struct akcipher_request *req)
 
 	if (ctx->curve_id == XSECURE_ECC_NIST_P521)
 		keylen = ((ctx->curve->g.ndigits - 1) * sizeof(u64)) + ECDSA_P521_CURVE_ALIGN_BYTES;
-
-	hash_buf = dma_alloc_coherent(ctx->dev, keylen,
+	/* ecc_swap_digits operates on u64 size data buffer */
+	hash_buf = dma_alloc_coherent(ctx->dev, round_up(keylen, sizeof(u64)),
 				      &dma_addr1, GFP_KERNEL);
 	if (!hash_buf) {
 		ret = -ENOMEM;
@@ -184,7 +184,7 @@ static int xilinx_ecdsa_verify(struct akcipher_request *req)
 	dma_free_coherent(ctx->dev, ctx->key_size, sign_buf, dma_addr2);
 
 sign_fail:
-	dma_free_coherent(ctx->dev, keylen, hash_buf, dma_addr1);
+	dma_free_coherent(ctx->dev, round_up(keylen, sizeof(u64)), hash_buf, dma_addr1);
 
 hash_fail:
 	dma_free_coherent(ctx->dev, sizeof(struct xilinx_sign_verify_params),
