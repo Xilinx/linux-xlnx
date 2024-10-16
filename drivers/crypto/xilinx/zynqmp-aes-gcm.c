@@ -307,7 +307,7 @@ static int versal_aes_aead_cipher(struct aead_request *req)
 		ret = versal_pm_aes_key_write(hwreq->size, hwreq->keysrc,
 					      dma_addr_data + key_offset);
 		if (ret)
-			goto in_fail;
+			goto key_fail;
 	}
 
 	ret = versal_pm_aes_op_init(dma_addr_hw_req);
@@ -353,6 +353,8 @@ static int versal_aes_aead_cipher(struct aead_request *req)
 clearkey:
 	if (hwreq->keysrc >= VERSAL_AES_USER_KEY_0 && hwreq->keysrc <= VERSAL_AES_USER_KEY_7)
 		versal_pm_aes_key_zero(hwreq->keysrc);
+key_fail:
+	dma_free_coherent(dev, sizeof(struct versal_in_params), in, dma_addr_in);
 in_fail:
 	memzero_explicit(hwreq, sizeof(struct zynqmp_aead_hw_req));
 	dma_free_coherent(dev, sizeof(struct versal_init_ops), hwreq, dma_addr_hw_req);
