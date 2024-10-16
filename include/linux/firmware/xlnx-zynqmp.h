@@ -1261,7 +1261,7 @@ static inline int versal_pm_aes_key_write(const u32 keylen,
 	return -ENODEV;
 }
 
-int versal_pm_aes_key_zero(const u32 keysrc)
+static inline int versal_pm_aes_key_zero(const u32 keysrc)
 {
 	return -ENODEV;
 }
@@ -1342,12 +1342,12 @@ static inline int versal2_pm_ufs_sram_csr_sel(u32 node_id, u32 type, u32 *value)
 	return -ENODEV;
 }
 
-int versal_pm_puf_clear_id(void)
+static inline int versal_pm_puf_clear_id(void)
 {
 	return -ENODEV;
 }
 
-int versal_pm_aes_init(void)
+static inline int versal_pm_aes_init(void)
 {
 	return -ENODEV;
 }
