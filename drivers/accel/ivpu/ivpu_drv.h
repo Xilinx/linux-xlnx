@@ -140,7 +140,7 @@ struct ivpu_device {
 
 	struct xarray db_xa;
 	struct xa_limit db_limit;
-	struct xa_limit default_db_limit;
+	u32 db_next;
 
 	struct mutex bo_list_lock; /* Protects bo_list */
 	struct list_head bo_list;
@@ -177,7 +177,7 @@ struct ivpu_file_priv {
 	struct list_head ms_instance_list;
 	struct ivpu_bo *ms_info_bo;
 	struct xa_limit job_limit;
-	struct xa_limit default_job_limit;
+	u32 job_id_next;
 	bool has_mmu_faults;
 	bool bound;
 	bool aborted;
