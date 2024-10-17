@@ -1530,38 +1530,17 @@ static u32 aie_get_core_status(struct aie_partition *apart,
  */
 static int aie_part_clear_mems(struct aie_partition *apart)
 {
-	struct aie_device *adev = apart->adev;
-	struct aie_part_mem *pmems = apart->pmems;
-	u32 i, num_mems;
+	struct aie_range *range = &apart->range;
+	u32 node_id = apart->adev->pm_node_id;
+	int ret;
 
-	/* Get the number of different types of memories */
-	num_mems = adev->ops->get_mem_info(adev, &apart->range, NULL);
-	if (!num_mems)
-		return 0;
+	ret = zynqmp_pm_aie_operation(node_id, range->start.col,
+				      range->size.col,
+				      XILINX_AIE_OPS_ZEROISATION);
+	if (ret < 0)
+		dev_err(&apart->dev, "failed to clear memory for partition\n");
 
-	/* Clear each type of memories in the partition */
-	for (i = 0; i < num_mems; i++) {
-		struct aie_mem *mem = &pmems[i].mem;
-		struct aie_range *range = &mem->range;
-		u32 c, r;
-
-		for (c = range->start.col;
-		     c < range->start.col + range->size.col; c++) {
-			for (r = range->start.row;
-			     r < range->start.row + range->size.row; r++) {
-				struct aie_location loc;
-				u32 memoff;
-
-				loc.col = c;
-				loc.row = r;
-				memoff = aie_cal_regoff(adev, loc, mem->offset);
-				memset_io(apart->aperture->base + memoff, 0,
-					  mem->size);
-			}
-		}
-	}
-
-	return 0;
+	return ret;
 }
 
 /**
