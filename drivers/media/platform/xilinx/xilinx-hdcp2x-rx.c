@@ -29,6 +29,10 @@
 #define XHDCP2X_CIPHER_OFFSET		0x0000
 #define XHDCP2X_RNG_OFFSET		0x1000
 #define XHDCP2X_MMULT_OFFSET		0x2000
+
+#define XHDCP2X_HDMIRX_RNG_OFFSET	0x30000
+#define XHDCP2X_HDMIRX_MMULT_OFFSET	0x10000
+
 #define XHDCP2X_TIMER_CLOCK_FREQ_HZ	99990001
 #define XHDCP2X_CLK_DIV			1000000
 #define XHDCP2X_CLK_MUL			1000
@@ -112,6 +116,10 @@ int *xhdcp2x_rx_init(struct device *dev, void *protocol_ref, void __iomem *xhdcp
 {
 	int status;
 	struct xlnx_hdcp2x_config *xhdcp2x_rx;
+	u32 rng_offset = (protocol_rx == XHDCP2X_RX_DP) ? XHDCP2X_RNG_OFFSET :
+			XHDCP2X_HDMIRX_RNG_OFFSET;
+	u32 mmul_offset = (protocol_rx == XHDCP2X_RX_DP) ? XHDCP2X_MMULT_OFFSET :
+			XHDCP2X_HDMIRX_MMULT_OFFSET;
 
 	if (!dev || !protocol_ref || !xhdcp_base_address)
 		return ERR_PTR(-EINVAL);
@@ -139,9 +147,9 @@ int *xhdcp2x_rx_init(struct device *dev, void *protocol_ref, void __iomem *xhdcp
 	xhdcp2x_rx->keys_loaded = 0;
 
 	xhdcp2x_rx->xhdcp2x_hw.rng_inst.rng_coreaddress =
-		xhdcp2x_rx->xhdcp2x_hw.hdcp2xcore_address + XHDCP2X_RNG_OFFSET;
+		xhdcp2x_rx->xhdcp2x_hw.hdcp2xcore_address + rng_offset;
 	xhdcp2x_rx->xhdcp2x_hw.mmult_inst.mmult_coreaddress =
-		xhdcp2x_rx->xhdcp2x_hw.hdcp2xcore_address + XHDCP2X_MMULT_OFFSET;
+		xhdcp2x_rx->xhdcp2x_hw.hdcp2xcore_address + mmul_offset;
 	xhdcp2x_rx->xhdcp2x_hw.cipher_inst.cipher_coreaddress =
 		xhdcp2x_rx->xhdcp2x_hw.hdcp2xcore_address + XHDCP2X_CIPHER_OFFSET;
 
