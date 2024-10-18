@@ -133,6 +133,12 @@ enum xhdcp2x_rx_error_flags {
 	XHDCP2X_RX_ERROR_FLAG_MAX_LCINIT_ATTEMPTS	= 2048,
 };
 
+enum xhdcp2x_rx_ddc_flag {
+	XHDCP2X_RX_DDC_FLAG_NONE	= 0,
+	XHDCP2X_RX_DDC_FLAG_WRITE_MESSAGE_READY	= 1,
+	XHDCP2X_RX_DDC_FLAG_READ_MESSAGE_READY	= 2,
+};
+
 enum xhdcp2x_rx_dpcd_flag {
 	XHDCP2X_RX_DPCD_FLAG_NONE,
 	XHDCP2X_RX_DPCD_AKE_INIT_RCVD		= 0x001,
@@ -350,6 +356,7 @@ struct xhdcp2x_rx_info {
 	u32 link_error_cnt;
 	u32 msg_event;
 	u16 lc_init_attempts;
+	u8 ddc_flag;
 	u8 is_enabled;
 	u8 is_no_storedkm;
 	u8 reauth_req;
@@ -467,5 +474,7 @@ void xhdcp2x_rx_compute_vprime(const u8 *receiveridlist, u32 receiveridlistsize,
 			       const u8 *rtx, u8 *vprime);
 void xhdcp2x_rx_compute_mprime(const u8 *streamidtype, const u8 *seqnumm, const u8 *km,
 			       const u8 *rrx, const u8 *rtx, u8 *mprime);
+void xhdcp2x_rx_set_write_message_available(struct xlnx_hdcp2x_config *xhdcp2x_rx);
+void xhdcp2x_rx_set_read_message_complete(struct xlnx_hdcp2x_config *xhdcp2x_rx);
 
 #endif /* __XILINX_HDCP2X_RX_H__ */
