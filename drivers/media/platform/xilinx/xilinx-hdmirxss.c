@@ -4175,7 +4175,7 @@ static int xhdmirx_register_hdcp1x_dev(struct xhdmirx_state *xhdmirxss)
 	return 0;
 }
 
-static int xhdmirx_hdcp_init(struct xhdmirx_state *xhdmi)
+static int xhdmirx_hdcp_init(struct xhdmirx_state *xhdmi, struct platform_device *pdev)
 {
 	int irq, ret = 0;
 
@@ -4195,10 +4195,15 @@ static int xhdmirx_hdcp_init(struct xhdmirx_state *xhdmi)
 		return -EINVAL;
 	}
 
-	irq = irq_of_parse_and_map(xhdmi->dev->of_node, 1);
+	irq = platform_get_irq_byname(pdev, "hdcp14_irq");
+	if (irq < 0) {
+		dev_err(xhdmi->dev, "get hdcp14_irq failed %d\n", irq);
+		return -EINVAL;
+	}
+
 	ret = devm_request_irq(xhdmi->dev, irq,
 			       xhdmirxss_hdcp1x_irq_handler,
-			       IRQF_SHARED, "hdmirxss_hdcp1x", xhdmi);
+			       IRQF_SHARED, "hdcp14_irq", xhdmi);
 	if (ret) {
 		dev_err(xhdmi->dev, "ERR: HDCP1X interrupt registration failed!\n");
 		return -EINVAL;
@@ -4359,7 +4364,7 @@ static int xhdmirx_probe(struct platform_device *pdev)
 
 	xhdmirx1_start(xhdmi);
 
-	ret = xhdmirx_hdcp_init(xhdmi);
+	ret = xhdmirx_hdcp_init(xhdmi, pdev);
 	if (ret) {
 		dev_err(xhdmi->dev, "failed to initialize HDCP\n");
 		goto hdcp_error;
