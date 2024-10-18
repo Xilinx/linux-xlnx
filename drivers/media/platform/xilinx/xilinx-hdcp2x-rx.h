@@ -17,6 +17,12 @@
 #include <linux/xlnx/xlnx_hdcp2x_cipher.h>
 #include <linux/xlnx/xlnx_timer.h>
 
+/* Reference:
+ * https://www.digital-cp.com/sites/default/files/specifications/HDCP%20on%20HDMI%20Specification%20Rev2_3.pdf
+ */
+#define XHDCP2X_RX_HDMI_HDCP22VERSION_REG	0x50
+#define XHDCP2X_RX_HDMI_HDCP22VERSION_EN_MASK	BIT(2)
+
 #define XHDCP2X_RX_MAX_LCINIT			1024
 #define XHDCP2X_RX_MAX_MESSAGE_SIZE		534
 #define XHDCP2X_RX_CERT_SIZE			522
@@ -440,6 +446,7 @@ int xhdcp2x_rx_rsaes_oaep_decrypt(struct xlnx_hdcp2x_config *xhdcp2x_rx,
 int xhdcp2x_rx_push_events(void *ref, u32 events);
 int xhdcp2x_rx_set_key(void *ref, void *hdcp2x_lc128, void *hdcp2x_private);
 int xhdcp2x_rx_calc_mont_nprime(void *ref, u8 *nprime, const u8 *n, int ndigits);
+int xhdcp2x_rx_hdcp2x_version_enable(void *ref, bool enable);
 
 void xhdcp2x_rx_generate_random(struct xlnx_hdcp2x_config *xhdcp2x_rx,
 				int num_octets, u8 *random_number_ptr);
