@@ -68,8 +68,6 @@ static int xhdcp2x_rx_set_reauth_req(struct xlnx_hdcp2x_config *xhdcp2x_rx)
 	if (!xhdcp2x_rx)
 		return -EINVAL;
 
-	xhdcp2x_rx->info.reauth_request_cnt++;
-
 	xhdcp2x_rx->info.reauth_req = 1;
 
 	if (xhdcp2x_rx->protocol == XHDCP2X_RX_DP) {
@@ -252,7 +250,6 @@ int xhdcp2x_rx_reset(struct xlnx_hdcp2x_config *xhdcp2x_rx)
 	xhdcp2x_rx->info.is_encrypted = 0;
 	xhdcp2x_rx->info.lc_init_attempts = 0;
 	xhdcp2x_rx->info.auth_request_cnt = 0;
-	xhdcp2x_rx->info.reauth_request_cnt = 0;
 	xhdcp2x_rx->info.link_error_cnt = 0;
 	xhdcp2x_rx->info.error_flag = XHDCP2X_RX_ERROR_FLAG_NONE;
 	xhdcp2x_rx->info.error_flag_sticky = XHDCP2X_RX_ERROR_FLAG_NONE;

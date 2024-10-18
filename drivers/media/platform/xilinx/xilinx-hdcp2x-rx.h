@@ -352,7 +352,6 @@ struct xhdcp2x_rx_info {
 	u32 timer_initial_ticks;
 	u32 seq_numv;
 	u32 auth_request_cnt;
-	u32 reauth_request_cnt;
 	u32 link_error_cnt;
 	u32 msg_event;
 	u16 lc_init_attempts;
