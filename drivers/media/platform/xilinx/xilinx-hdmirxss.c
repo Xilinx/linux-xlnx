@@ -24,6 +24,7 @@
 #include <linux/xilinx-hdmirxss.h>
 #include "xilinx-hdmirx-hw.h"
 #include "xilinx-hdcp1x-rx.h"
+#include "xilinx-hdcp2x-rx.h"
 
 #define XHDMI_MAX_LANES		(4)
 #define XEDID_BLOCKS_MAX	(10)
@@ -50,6 +51,16 @@
  * https://www.xilinx.com/content/dam/xilinx/support/documents/ip_documentation/hdcp/v1_0/pg224-hdcp.pdf
  */
 #define XHDMIRX_HDCP1X_REG_OFFSET		0x10000
+#define XHDMIRX_HDCP2X_REG_OFFSET		0x40000
+#define XHDMIRX_HDCP_TIMER_OFFSET		(XHDMIRX_HDCP2X_REG_OFFSET + 0x20000)
+
+/*
+ * Reference: Section 2.1
+ * https://www.digital-cp.com/sites/default/files/specifications/HDCP%20on%20HDMI%20Specification%20Rev2_3.pdf
+ */
+#define XHDCP2X_LC128_SIZE			16
+#define XHDCP2X_PRIVATE_SIZE			902
+
 #define XHDCP1X_KEYMGMT_REG_VERSION		0x00
 #define XHDCP1X_KEYMGMT_REG_TYPE		0x04
 #define XHDCP1X_KEYMGMT_REG_CTRL		0x0C
@@ -363,6 +374,8 @@ struct xhdmi_aux {
  * @dev: Platform structure
  * @regs: Base address
  * @hdcp1x: Base address for HDCP 1.4 IP block
+ * @hdcp2x: Base address for HDCP 2.2 IP block
+ * @hdcp2xtmr: Base address for HDCP2X Timer IP block
  * @hdcp1x_keymgmt_base: Base address for HDCP 1.4 Key Management IP Block
  * @sd: V4L2 subdev structure
  * @pad: Media pad
@@ -379,7 +392,10 @@ struct xhdmi_aux {
  * @vidclkfreqkhz: Video Clock Freq in KHz
  * @intrstatus: Array to save the interrupt status registers
  * @edid_user: User EDID
+ * @privatekey: HDCP2X Private Key
+ * @lc128key: HDCP2X Decryption Key
  * @edid_user_blocks: Number of blocks in user EDID
+ * @hdcp2x_timer_irq: HDCP2X timer interrupt
  * @edid_blocks_max: Max number of EDID blocks
  * @edid_ram_size: EDID RAM size in IP configuration
  * @hdcp1x_key: HDCP 1.4 Key
@@ -388,8 +404,10 @@ struct xhdmi_aux {
  * @max_frl_rate: Maximum FRL rate supported from IP configuration
  * @hdmi_stream_up: hdmi stream is up or not
  * @hdcp1x_key_available: flag to indicate HDCP 1.4 key is loaded properly
+ * @hdcp2x_key_available: flag to indicate HDCP 2.2 key is loaded properly
  * @hdcp1x_prot_event: HDCP 1.4 prot event is detected from downstream
  * @hdcp_enable: flag to indicate if HDCP protocol is enabled
+ * @hdcp2x_enable: flag to indicate if HDCP 2.2 protocol is enabled
  * @is_hdcp1x_enabled: flag to indicate if HDCP 1.4 protocol is enabled
  * @isstreamup: flag whether stream is up
  */
@@ -397,6 +415,8 @@ struct xhdmirx_state {
 	struct device *dev;
 	void __iomem *regs;
 	void   *hdcp1x;
+	void	*hdcp2x;
+	void	*hdcp2xtmr;
 	struct regmap *hdcp1x_keymgmt_base;
 	struct v4l2_subdev sd;
 	struct media_pad pad;
@@ -414,7 +434,10 @@ struct xhdmirx_state {
 	u32 vidclkfreqkhz;
 	u32 intrstatus[9];
 	u8 *edid_user;
+	u8 *privatekey;
+	u8 *lc128key;
 	int edid_user_blocks;
+	int hdcp2x_timer_irq;
 	int edid_blocks_max;
 	u16 edid_ram_size;
 	u8 *hdcp1x_key;
@@ -423,8 +446,10 @@ struct xhdmirx_state {
 	u8 max_frl_rate;
 	u8 hdmi_stream_up;
 	bool hdcp1x_key_available;
+	bool hdcp2x_key_available;
 	bool hdcp1x_prot_event;
 	bool hdcp_enable;
+	bool hdcp2x_enable;
 	bool is_hdcp1x_enabled;
 	bool isstreamup;
 };
@@ -600,6 +625,10 @@ static const struct v4l2_event xhdmi_ev_fmt = {
 #define xhdmirx_ddc_hdcp_enable(xhdmi) \
 	xhdmi_write(xhdmi, HDMIRX_DDC_CTRL_SET_OFFSET, \
 		    HDMIRX_DDC_CTRL_HDCP_EN_MASK)
+#define xhdmirx_ddc_hdcp22_mode(xhdmi) \
+	xhdmi_write(xhdmi, HDMIRX_DDC_CTRL_SET_OFFSET, \
+		    HDMIRX_DDC_CTRL_HDCP_MODE_MASK)
+
 #define xhdmirx_ddc_hdcp_disable(xhdmi) \
 	xhdmi_write(xhdmi, HDMIRX_DDC_CTRL_CLR_OFFSET, \
 		    HDMIRX_DDC_CTRL_HDCP_EN_MASK)
@@ -1097,6 +1126,36 @@ static int xhdmirxss_hdcp1x_key_write(struct xhdmirx_state *xhdmirxss,
 	return ret;
 }
 
+static int xhdmirxss_hdcp2x_key_write(struct xhdmirx_state *xhdmirxss,
+				      struct xhdmirxss_hdcp2x_keys_ioctl *xhdcp22_keys)
+{
+	int ret = 0;
+
+	if (copy_from_user(xhdmirxss->lc128key,
+			   (const void __user *)xhdcp22_keys->lc128key,
+			   XHDCP2X_LC128_SIZE))
+		return -EFAULT;
+
+	if (copy_from_user(xhdmirxss->privatekey,
+			   (const void __user *)xhdcp22_keys->privatekey,
+			   XHDCP2X_PRIVATE_SIZE))
+		return -EFAULT;
+
+	xhdmirxss->hdcp2x_key_available = true;
+	xhdcp2x_rx_set_key(xhdmirxss->hdcp2x, xhdmirxss->lc128key,
+			   xhdmirxss->privatekey);
+	xhdcp2x_rx_enable(xhdmirxss->hdcp2x, XHDMI_MAX_LANES);
+	xhdmirx_set_hpd(xhdmirxss, 0);
+	/*
+	 * Wait a minimum time to toggle hot plug detect line to indicate to the
+	 * HDMI Tx about the change in HDMI RX.
+	 */
+	msleep(XHDMIRX_HPD_ENABLE_DELAY_MS);
+	xhdmirx_set_hpd(xhdmirxss, 1);
+
+	return ret;
+}
+
 static inline struct xhdmirx_state *to_xhdmirxssstate(struct v4l2_subdev *sd)
 {
 	return container_of(sd, struct xhdmirx_state, sd);
@@ -1106,7 +1165,7 @@ static long xhdmirxss_ioctl(struct v4l2_subdev *sd, u32 cmd, void *arg)
 {
 	struct xhdmirx_state *xhdmirxss = to_xhdmirxssstate(sd);
 
-	if (!xhdmirxss->hdcp_enable) {
+	if (!(xhdmirxss->hdcp_enable || xhdmirxss->hdcp2x_enable)) {
 		dev_err(xhdmirxss->dev, "HDCP is not enabled in the system");
 		return -ENODEV;
 	}
@@ -1115,9 +1174,15 @@ static long xhdmirxss_ioctl(struct v4l2_subdev *sd, u32 cmd, void *arg)
 		dev_info(xhdmirxss->dev, "HDCP1X keys are already loaded");
 		return -EPERM;
 	}
+	if (xhdmirxss->hdcp2x_key_available) {
+		dev_info(xhdmirxss->dev, "HDCP2X keys are already loaded");
+		return -EPERM;
+	}
 
 	if (cmd == XILINX_HDMIRXSS_HDCP_KEY_WRITE)
 		return xhdmirxss_hdcp1x_key_write(xhdmirxss, arg);
+	else if (cmd == XILINX_HDMIRXSS_HDCP22_KEY_WRITE)
+		return xhdmirxss_hdcp2x_key_write(xhdmirxss, arg);
 
 	return -EINVAL;
 }
@@ -2003,6 +2068,8 @@ static void rxstreamup(struct xhdmirx_state *xhdmi)
 #ifdef DEBUG
 	v4l2_print_dv_timings("xilinx-hdmi-rx", "", &xhdmi->dv_timings, 1);
 #endif
+	if (xhdmi->hdcp2x_enable)
+		xhdcp2x_rx_enable(xhdmi->hdcp2x, xhdmi->stream.frl.lanes);
 }
 
 /**
@@ -2054,6 +2121,8 @@ static void rxconnect(struct xhdmirx_state *xhdmi)
 
 		if (xhdmi->is_hdcp1x_enabled)
 			xhdcp1x_rx_disable(xhdmi->hdcp1x);
+		if (xhdmi->hdcp2x_enable)
+			xhdcp2x_rx_disable(xhdmi->hdcp2x);
 
 		xhdmirx_scrambler_disable(xhdmi);
 
@@ -2128,6 +2197,8 @@ static void streamdown(struct xhdmirx_state *xhdmi)
 	xhdmi->isstreamup = false;
 	if (xhdmi->is_hdcp1x_enabled)
 		xhdcp1x_rx_disable(xhdmi->hdcp1x);
+	if (xhdmi->hdcp2x_enable)
+		xhdcp2x_rx_disable(xhdmi->hdcp2x);
 }
 
 static void xhdmirx1_clear(struct xhdmirx_state *xhdmi)
@@ -3398,6 +3469,20 @@ static irqreturn_t xhdmirx_irq_thread(int irq, void *param)
 			xhdcp1x_rx_push_events(xhdmi->hdcp1x, XHDCP1X_RX_AKSV_RCVD);
 		}
 	}
+	if (xhdmi->intrstatus[8] & HDMIRX_DDC_STA_HDCP_2_PROT_EVT_MASK)
+		xhdmi_write(xhdmi, HDMIRX_DDC_STA_OFFSET, HDMIRX_DDC_STA_HDCP_2_PROT_EVT_MASK);
+
+	if (xhdmi->intrstatus[8] & HDMIRX_DDC_STA_HDCP_WMSG_NEW_EVT_MASK) {
+		xhdcp2x_rx_set_write_message_available(xhdmi->hdcp2x);
+		xhdcp2x_rx_push_events(xhdmi->hdcp2x, XHDCP2X_RX_DDC_FLAG_WRITE_MESSAGE_READY);
+		xhdmi_write(xhdmi, HDMIRX_DDC_STA_OFFSET, HDMIRX_DDC_STA_HDCP_WMSG_NEW_EVT_MASK);
+	}
+	if (xhdmi->intrstatus[8] & HDMIRX_DDC_STA_HDCP_RMSG_END_EVT_MASK) {
+		xhdcp2x_rx_set_read_message_complete(xhdmi->hdcp2x);
+		xhdcp2x_rx_push_events(xhdmi->hdcp2x, XHDCP2X_RX_DDC_FLAG_READ_MESSAGE_READY);
+		xhdmi_write(xhdmi, HDMIRX_DDC_STA_OFFSET, HDMIRX_DDC_STA_HDCP_RMSG_END_EVT_MASK);
+	}
+
 	xhdmirx_enable_allintr(xhdmi);
 
 	return IRQ_HANDLED;
@@ -3483,7 +3568,7 @@ static void xhdmirx_init(struct xhdmirx_state *xhdmi)
 	xhdmirx_ddcscdc_clear(xhdmi);
 	xhdmirx_set_hpd(xhdmi, 0);
 
-	if (xhdmi->is_hdcp1x_enabled)
+	if (xhdmi->is_hdcp1x_enabled || xhdmi->hdcp2x_enable)
 		xhdmirx_ddc_hdcp_disable(xhdmi);
 
 	/* Rising edge mask */
@@ -3637,6 +3722,10 @@ static int xhdmirx_parse_of(struct xhdmirx_state *xhdmi)
 		else
 			dev_info(xhdmi->dev, "HDMI:HDCP 1.4 is enabled\n");
 	}
+
+	xhdmi->hdcp2x_enable = of_property_read_bool(node, "xlnx,include-hdcp-2-2");
+	if (xhdmi->hdcp2x_enable)
+		dev_info(xhdmi->dev, "HDMI:HDCP 2.2 is enabled\n");
 
 	/* HDCP specific code ends here */
 	switch (xhdmi->max_frl_rate) {
@@ -4175,38 +4264,215 @@ static int xhdmirx_register_hdcp1x_dev(struct xhdmirx_state *xhdmirxss)
 	return 0;
 }
 
+static int xhdmirx_hdcp2x_rd_handler(void *ref, u32 offset, u8 *buff, u32 rsize)
+{
+	struct xhdmirx_state *state = (struct xhdmirx_state *)ref;
+	int size, read_size, i;
+
+	size = xhdmi_read(state, HDMIRX_DDC_HDCP_STA_OFFSET);
+	size >>= HDMIRX_DDC_STA_HDCP_WMSG_WORDS_SHIFT;
+	size &= HDMIRX_DDC_STA_HDCP_WMSG_WORDS_MASK;
+	read_size = size;
+
+	xhdmi_write(state,
+		    HDMIRX_DDC_HDCP_ADDRESS_OFFSET,
+		    offset);
+
+	for (i = 0; i < size; i++)
+		buff[i] = xhdmi_read(state, HDMIRX_DDC_HDCP_DATA_OFFSET);
+
+	return (int)read_size;
+}
+
+static int xhdmirx_hdcp2x_wr_handler(void *ref, u32 offset, u8 *buff,
+				     u32 buff_size)
+{
+	struct xhdmirx_state *state = (struct xhdmirx_state *)ref;
+	int i;
+
+	xhdmi_write(state,
+		    HDMIRX_DDC_HDCP_ADDRESS_OFFSET,
+		    offset);
+
+	for (i = 0; i < buff_size; i++)
+		xhdmi_write(state,
+			    HDMIRX_DDC_HDCP_DATA_OFFSET, buff[i]);
+
+	return (int)buff_size;
+}
+
+static void xhdmirx_hdcp2x_notification_handler(void *ref, u8 notification)
+{
+	struct xhdmirx_state *state = (struct xhdmirx_state *)ref;
+
+	switch (notification) {
+	case XHDCP2X_RX_NOTIFY_UN_AUTHENTICATED:
+		dev_dbg(state->dev, "HDMIRX HDCP2X Unauthenticated");
+		break;
+	case XHDCP2X_RX_NOTIFY_RE_AUTHENTICATE:
+		dev_dbg(state->dev, "HDMIRX HDCP2X authentication requested");
+		break;
+	case XHDCP2X_RX_NOTIFY_SKE_SEND_EKS:
+		dev_dbg(state->dev, "HDMIRX HDCP2X SKE send EKS message processed");
+		break;
+	case XHDCP2X_RX_NOTIFY_AUTHENTICATED:
+		dev_dbg(state->dev, "HDMIRX HDCP2X Authenticated");
+		break;
+	case XHDCP2X_RX_NOTIFY_ENCRYPTION_DONE:
+		dev_dbg(state->dev, "HDMIRX HDCP2X Encrypted");
+		break;
+	}
+}
+
+static void xhdmirx_hdcp2x_ddc_clear_read_buffer(void *ref)
+{
+	struct xhdmirx_state *state = (struct xhdmirx_state *)ref;
+
+	xhdmi_write(state,
+		    HDMIRX_DDC_CTRL_SET_OFFSET,
+		    HDMIRX_DDC_CTRL_RMSG_CLR_MASK);
+}
+
+static void xhdmirx_hdcp2x_ddc_clear_write_buffer(void *ref)
+{
+	struct xhdmirx_state *state = (struct xhdmirx_state *)ref;
+
+	xhdmi_write(state,
+		    HDMIRX_DDC_CTRL_SET_OFFSET,
+		    HDMIRX_DDC_CTRL_WMSG_CLR_MASK);
+}
+
+static void xlnx_hdcp2x_rx_timer_handler(void *ref, u8 tmrcntr_number)
+{
+	struct xhdmirx_state *state = ref;
+
+	xhdcp2x_rx_timer_handler(state->hdcp2x, tmrcntr_number);
+	xhdcp2x_rx_push_events(state->hdcp2x, XHDCP2X_RX_TIMER_EVENT);
+}
+
+static irqreturn_t xlnx_timer_irq_handler (int irq, void *dev_id)
+{
+	struct xhdmirx_state *state = dev_id;
+
+	xlnx_hdcp_tmrcntr_interrupt_handler(state->hdcp2xtmr);
+
+	return IRQ_HANDLED;
+}
+
+static int xhdmirx_register_hdcp2x_dev(struct xhdmirx_state *xhdmi,
+				       struct platform_device *pdev)
+{
+	int ret;
+
+	xhdmi->hdcp2x = xhdcp2x_rx_init(xhdmi->dev, xhdmi,
+					xhdmi->regs + XHDMIRX_HDCP2X_REG_OFFSET,
+					XHDCP2X_RX_HDMI, 0, XHDMI_MAX_LANES);
+	if (IS_ERR(xhdmi->hdcp2x)) {
+		dev_err(xhdmi->dev, "Failed to initialize HDCP2X\n");
+		return PTR_ERR(xhdmi->hdcp2x);
+	}
+
+	xhdmi->privatekey = devm_kzalloc(xhdmi->dev, XHDCP2X_PRIVATE_SIZE,
+					 GFP_KERNEL);
+	if (!xhdmi->privatekey)
+		return -ENOMEM;
+
+	xhdmi->lc128key = devm_kzalloc(xhdmi->dev, XHDCP2X_LC128_SIZE,
+				       GFP_KERNEL);
+	if (!xhdmi->lc128key)
+		return -ENOMEM;
+
+	xhdmi->hdcp2xtmr = xhdcp2x_timer_init(xhdmi->dev, xhdmi->regs + XHDMIRX_HDCP_TIMER_OFFSET);
+	if (IS_ERR(xhdmi->hdcp2x)) {
+		dev_err(xhdmi->dev, "Failed to initialize HDCP2X timer\n");
+		return PTR_ERR(xhdmi->hdcp2x);
+	}
+
+	xhdcp2x_timer_attach(xhdmi->hdcp2x, xhdmi->hdcp2xtmr);
+
+	xlnx_hdcp_tmrcntr_set_handler(xhdmi->hdcp2xtmr, xlnx_hdcp2x_rx_timer_handler,
+				      (void *)xhdmi);
+
+	xhdmi->hdcp2x_timer_irq = platform_get_irq_byname(pdev, "hdcp22_timer_irq");
+
+	if (xhdmi->hdcp2x_timer_irq < 0) {
+		dev_err(xhdmi->dev, "Failed to get HDCP2X timer irq");
+		return -EINVAL;
+	}
+
+	ret = devm_request_threaded_irq(xhdmi->dev, xhdmi->hdcp2x_timer_irq, NULL,
+					xlnx_timer_irq_handler,
+					IRQF_TRIGGER_HIGH | IRQF_ONESHOT,
+					"hdcp22_timer_irq", xhdmi);
+	if (ret < 0) {
+		dev_err(xhdmi->dev, "Failed to register HDCP 2X timer irq");
+		return ret;
+	}
+	xhdcp2x_rx_set_callback(xhdmi->hdcp2x, XHDCP2X_RX_READ_HANDLER, xhdmirx_hdcp2x_rd_handler);
+	xhdcp2x_rx_set_callback(xhdmi->hdcp2x, XHDCP2X_RX_WRITE_HANDLER, xhdmirx_hdcp2x_wr_handler);
+	xhdcp2x_rx_set_callback(xhdmi->hdcp2x, XHDCP2X_RX_NOTIFICATION_HANDLER,
+				xhdmirx_hdcp2x_notification_handler);
+	xhdcp2x_rx_set_callback(xhdmi->hdcp2x, XHDCP2X_RX_HANDLER_CLEAR_DDC_READ_BUFFER,
+				xhdmirx_hdcp2x_ddc_clear_read_buffer);
+	xhdcp2x_rx_set_callback(xhdmi->hdcp2x, XHDCP2X_RX_HANDLER_CLEAR_DDC_WRITE_BUFFER,
+				xhdmirx_hdcp2x_ddc_clear_write_buffer);
+
+	xhdcp2x_rx_enable(xhdmi->hdcp2x, XHDMI_MAX_LANES);
+
+	ret = xhdcp2x_rx_hdcp2x_version_enable(xhdmi->hdcp2x, 0x01);
+	if (ret < 0) {
+		dev_err(xhdmi->dev, "Failed to enable HDCP22 version");
+		return ret;
+	}
+
+	return 0;
+}
+
 static int xhdmirx_hdcp_init(struct xhdmirx_state *xhdmi, struct platform_device *pdev)
 {
 	int irq, ret = 0;
 
-	if (!(xhdmi->hdcp_enable || xhdmi->is_hdcp1x_enabled))
+	if (!(xhdmi->hdcp_enable || xhdmi->is_hdcp1x_enabled || xhdmi->hdcp2x_enable))
 		return 0;
 
-	xhdmi->hdcp1x_keymgmt_base =
+	xhdmirx_ddc_hdcp_enable(xhdmi);
+
+	if (xhdmi->hdcp2x_enable) {
+		xhdmirx_ddc_hdcp22_mode(xhdmi);
+		ret = xhdmirx_register_hdcp2x_dev(xhdmi, pdev);
+		if (ret < 0) {
+			dev_err(xhdmi->dev, "HDCP2X init failed\n");
+			return -EINVAL;
+		}
+	}
+	if (xhdmi->is_hdcp1x_enabled) {
+		xhdmirx_ddc_hdcp14_mode(xhdmi);
+		xhdmi->hdcp1x_keymgmt_base =
 		syscon_regmap_lookup_by_phandle(xhdmi->dev->of_node, "xlnx,hdcp1x_keymgmt");
-	if (IS_ERR(xhdmi->hdcp1x_keymgmt_base)) {
-		dev_err(xhdmi->dev, "couldn't map HDCP1X Keymgmt registers\n");
-		return -ENODEV;
-	}
+		if (IS_ERR(xhdmi->hdcp1x_keymgmt_base)) {
+			dev_err(xhdmi->dev, "couldn't map HDCP1X Keymgmt registers\n");
+			return -ENODEV;
+		}
 
-	ret = xhdmirx_register_hdcp1x_dev(xhdmi);
-	if (ret < 0) {
-		dev_err(xhdmi->dev, "HDMI RX HDCP1X init failed\n");
-		return -EINVAL;
-	}
+		ret = xhdmirx_register_hdcp1x_dev(xhdmi);
+		if (ret < 0) {
+			dev_err(xhdmi->dev, "HDCP1X init failed\n");
+			return -EINVAL;
+		}
 
-	irq = platform_get_irq_byname(pdev, "hdcp14_irq");
-	if (irq < 0) {
-		dev_err(xhdmi->dev, "get hdcp14_irq failed %d\n", irq);
-		return -EINVAL;
-	}
+		irq = platform_get_irq_byname(pdev, "hdcp14_irq");
+		if (irq < 0) {
+			dev_err(xhdmi->dev, "get hdcp14_irq failed %d\n", irq);
+			return -EINVAL;
+		}
 
-	ret = devm_request_irq(xhdmi->dev, irq,
-			       xhdmirxss_hdcp1x_irq_handler,
-			       IRQF_SHARED, "hdcp14_irq", xhdmi);
-	if (ret) {
-		dev_err(xhdmi->dev, "ERR: HDCP1X interrupt registration failed!\n");
-		return -EINVAL;
+		ret = devm_request_irq(xhdmi->dev, irq,
+				       xhdmirxss_hdcp1x_irq_handler,
+				       IRQF_SHARED, "hdcp14_irq", xhdmi);
+		if (ret) {
+			dev_err(xhdmi->dev, "ERR: HDCP1X interrupt registration failed!\n");
+			return -EINVAL;
+		}
 	}
 
 	return ret;
