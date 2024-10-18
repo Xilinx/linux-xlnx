@@ -1161,3 +1161,33 @@ static enum xhdcp2x_rx_state xhdcp2x_state_B4(void *instance)
 
 	return XHDCP2X_STATE_B4;
 }
+
+int xhdcp2x_rx_hdcp2x_version_enable(void *ref, bool enable)
+{
+	struct xlnx_hdcp2x_config *xhdcp2x_rx =
+				 (struct xlnx_hdcp2x_config *)ref;
+	int status = 0;
+	u8 buf = 0;
+
+	if (xhdcp2x_rx->protocol != XHDCP2X_RX_HDMI)
+		return -EINVAL;
+
+	/*
+	 * Indicates the receiver is HDCP22 capable as per Sec 2.14 of
+	 * HDCP to HDMI specification. Attempting to disable this register
+	 * write leads to HDCP22 authentication failure.
+	 */
+	if (enable)
+		buf = FIELD_PREP(XHDCP2X_RX_HDMI_HDCP22VERSION_EN_MASK, 1);
+
+	status =
+		xhdcp2x_rx->handlers.wr_handler(xhdcp2x_rx->interface_ref,
+						XHDCP2X_RX_HDMI_HDCP22VERSION_REG,
+						&buf,
+						1);
+	if (status < 0)
+		return -EINVAL;
+
+	return status;
+}
+EXPORT_SYMBOL_GPL(xhdcp2x_rx_hdcp2x_version_enable);
