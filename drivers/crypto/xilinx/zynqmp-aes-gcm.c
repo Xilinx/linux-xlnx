@@ -356,7 +356,7 @@ clearkey:
 key_fail:
 	dma_free_coherent(dev, sizeof(struct versal_in_params), in, dma_addr_in);
 in_fail:
-	memzero_explicit(hwreq, sizeof(struct zynqmp_aead_hw_req));
+	memzero_explicit(hwreq, sizeof(struct versal_init_ops));
 	dma_free_coherent(dev, sizeof(struct versal_init_ops), hwreq, dma_addr_hw_req);
 hwreq_fail:
 	memzero_explicit(kbuf, dma_size);
