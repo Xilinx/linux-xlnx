@@ -223,6 +223,7 @@ int xhdcp2x_rx_disable(struct xlnx_hdcp2x_config *xhdcp2x_rx)
 	xhdcp2x_rx->curr_state = XHDCP2X_STATE_B0;
 	xhdcp2x_rx->prev_state = XHDCP2X_STATE_B0;
 	xhdcp2x_rx->info.msg_event = 0;
+	xhdcp2x_rx->info.ddc_flag = 0;
 
 	if (xhdcp2x_rx->info.authentication_status == XHDCP2X_RX_AUTHENTICATED) {
 		status = xhdcp2x_rx_set_reauth_req(xhdcp2x_rx);
@@ -734,6 +735,9 @@ static u8 xhdcp2x_rx_is_read_message_complete(struct xlnx_hdcp2x_config *xhdcp2x
 		return 1;
 	}
 
+	if (xhdcp2x_rx->info.ddc_flag & XHDCP2X_RX_DDC_FLAG_READ_MESSAGE_READY)
+		return 1;
+
 	return 0;
 }
 
@@ -1191,3 +1195,15 @@ int xhdcp2x_rx_hdcp2x_version_enable(void *ref, bool enable)
 	return status;
 }
 EXPORT_SYMBOL_GPL(xhdcp2x_rx_hdcp2x_version_enable);
+
+void xhdcp2x_rx_set_write_message_available(struct xlnx_hdcp2x_config *xhdcp2x_rx)
+{
+	xhdcp2x_rx->info.ddc_flag |= XHDCP2X_RX_DDC_FLAG_WRITE_MESSAGE_READY;
+}
+EXPORT_SYMBOL_GPL(xhdcp2x_rx_set_write_message_available);
+
+void xhdcp2x_rx_set_read_message_complete(struct xlnx_hdcp2x_config *xhdcp2x_rx)
+{
+	xhdcp2x_rx->info.ddc_flag |= XHDCP2X_RX_DDC_FLAG_READ_MESSAGE_READY;
+}
+EXPORT_SYMBOL_GPL(xhdcp2x_rx_set_read_message_complete);
