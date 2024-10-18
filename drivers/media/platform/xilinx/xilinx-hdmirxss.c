@@ -4271,7 +4271,7 @@ static int xhdmirx_probe(struct platform_device *pdev)
 		goto wrkq_err;
 	}
 
-	irq = platform_get_irq(pdev, 0);
+	irq = platform_get_irq_byname(pdev, "irq");
 	if (irq < 0) {
 		dev_err(xhdmi->dev, "get irq failed %d\n", irq);
 		ret = -EINVAL;
