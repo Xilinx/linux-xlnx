@@ -74,6 +74,7 @@ config VIDEO_XILINX_HDCP1X_RX
 config VIDEO_XILINX_HDCP2X_RX
 	bool
 	select XILINX_HDCP_COMMON
+	select CRYPTO_AES
 	help
 	  Functionality of HDCP2X Rx for DP and HDMI. It handles the hdcp2x rx
 	  authentication. Choose this config in a platform where the DP/HDMI Rx
