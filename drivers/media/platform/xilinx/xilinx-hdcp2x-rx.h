@@ -270,6 +270,8 @@ struct xhdcp2x_rx_callbacks {
 	int (*wr_handler)(void *interface_ref, u32 offset, u8 *buf, u32 size);
 	int (*cp_irq_handler)(void *interface_ref);
 	void (*notify_handler)(void *interface_ref, u32 notification);
+	void (*ddc_clear_read_buffer)(void *interface_ref);
+	void (*ddc_clear_write_buffer)(void *interface_ref);
 };
 
 enum xhdcp2x_rx_notification_type {
@@ -285,7 +287,9 @@ enum xhdcp2x_rx_handler_type {
 	XHDCP2X_RX_READ_HANDLER = 1,
 	XHDCP2X_RX_WRITE_HANDLER = 2,
 	XHDCP2X_RX_HANDLER_DP_CP_IRQ_SET = 3,
-	XHDCP2X_RX_NOTIFICATION_HANDLER = 4
+	XHDCP2X_RX_HANDLER_CLEAR_DDC_READ_BUFFER = 4,
+	XHDCP2X_RX_HANDLER_CLEAR_DDC_WRITE_BUFFER = 5,
+	XHDCP2X_RX_NOTIFICATION_HANDLER = 6
 };
 
 /**

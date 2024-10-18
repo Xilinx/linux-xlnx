@@ -83,6 +83,19 @@ static void xhdcp2x_rx_set_rxstatus_reg(struct xlnx_hdcp2x_config *xhdcp2x_rx,
 		xhdcp2x_rx->info.ddc_flag &= ~XHDCP2X_RX_DDC_FLAG_READ_MESSAGE_READY;
 }
 
+static void xhdcp2x_rx_reset_ddc(struct xlnx_hdcp2x_config *xhdcp2x_rx)
+{
+	xhdcp2x_rx->info.reauth_req = false;
+	xhdcp2x_rx->info.topology_ready = false;
+
+	xhdcp2x_rx_set_rxstatus_reg(xhdcp2x_rx, 0);
+
+	xhdcp2x_rx->info.ddc_flag = XHDCP2X_RX_DDC_FLAG_READ_MESSAGE_READY;
+	xhdcp2x_rx->handlers.ddc_clear_read_buffer(xhdcp2x_rx->interface_ref);
+
+	xhdcp2x_rx->handlers.ddc_clear_write_buffer(xhdcp2x_rx->interface_ref);
+}
+
 static int xhdcp2x_rx_set_reauth_req(struct xlnx_hdcp2x_config *xhdcp2x_rx)
 {
 	int status = 0;
@@ -346,6 +359,15 @@ int xhdcp2x_rx_set_callback(void *ref, u32 handler_type, void *callbackfunc)
 	case (XHDCP2X_RX_NOTIFICATION_HANDLER):
 		xhdcp2x_rx->handlers.notify_handler = callbackfunc;
 		break;
+
+	case (XHDCP2X_RX_HANDLER_CLEAR_DDC_READ_BUFFER):
+		xhdcp2x_rx->handlers.ddc_clear_read_buffer = callbackfunc;
+		break;
+
+	case (XHDCP2X_RX_HANDLER_CLEAR_DDC_WRITE_BUFFER):
+		xhdcp2x_rx->handlers.ddc_clear_write_buffer = callbackfunc;
+		break;
+
 	default:
 		dev_info(xhdcp2x_rx->dev, "wrong handler type\n");
 		return -EINVAL;
@@ -651,6 +673,7 @@ static int xhdcp2x_rx_process_message_ake_init(struct xlnx_hdcp2x_config *xhdcp2
 	xlnx_hdcp_tmrcntr_stop(&xhdcp2x_rx->tmr_config, XHDCP2X_RX_TMR_CNTR_1);
 
 	xhdcp2x_rx_reset_params(xhdcp2x_rx);
+	xhdcp2x_rx_reset_ddc(xhdcp2x_rx);
 
 	memcpy(xhdcp2x_rx->param.rtx, msgptr->ake_init.rtx, XHDCP2X_RX_RTX_SIZE);
 	memcpy(xhdcp2x_rx->param.txcaps, msgptr->ake_init.txcaps, XHDCP2X_RX_TXCAPS_SIZE);
