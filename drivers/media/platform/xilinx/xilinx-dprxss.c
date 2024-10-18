@@ -2694,9 +2694,9 @@ static int dprx_register_hdcp2x_dev(struct xdprxss_state *xdprxss, struct platfo
 		dev_err(xdprxss->dev, "failed to register hdcp timer irq");
 		return ret;
 	}
-	xhdcp2x_rx_set_callback(xdprxss->hdcp2x, XHDCP2X_RX_HANDLER_DP_AUX_READ,
+	xhdcp2x_rx_set_callback(xdprxss->hdcp2x, XHDCP2X_RX_READ_HANDLER,
 				dprx_hdcp2x_dpcd_rd_handler);
-	xhdcp2x_rx_set_callback(xdprxss->hdcp2x, XHDCP2X_RX_HANDLER_DP_AUX_WRITE,
+	xhdcp2x_rx_set_callback(xdprxss->hdcp2x, XHDCP2X_RX_WRITE_HANDLER,
 				dprx_hdcp2x_dpcd_wr_handler);
 	xhdcp2x_rx_set_callback(xdprxss->hdcp2x, XHDCP2X_RX_HANDLER_DP_CP_IRQ_SET,
 				dprx_hdcp2x_cp_irq_set_handler);

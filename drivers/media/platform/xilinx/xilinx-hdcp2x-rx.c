@@ -303,11 +303,11 @@ int xhdcp2x_rx_set_callback(void *ref, u32 handler_type, void *callbackfunc)
 		return -EINVAL;
 
 	switch (handler_type) {
-	case (XHDCP2X_RX_HANDLER_DP_AUX_READ):
+	case (XHDCP2X_RX_READ_HANDLER):
 		xhdcp2x_rx->handlers.rd_handler = callbackfunc;
 		break;
 
-	case (XHDCP2X_RX_HANDLER_DP_AUX_WRITE):
+	case (XHDCP2X_RX_WRITE_HANDLER):
 		xhdcp2x_rx->handlers.wr_handler = callbackfunc;
 		break;
 
