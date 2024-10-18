@@ -641,18 +641,34 @@ static int xhdcp2x_rx_write_dpcd_msg(struct xlnx_hdcp2x_config *xhdcp2x_rx)
 	return status;
 }
 
+static inline u8 xhdcp2x_rx_is_write_message_available(struct xlnx_hdcp2x_config *xhdcp2x_rx)
+{
+	if (xhdcp2x_rx->info.ddc_flag & XHDCP2X_RX_DDC_FLAG_WRITE_MESSAGE_READY) {
+		xhdcp2x_rx->info.ddc_flag &= ~XHDCP2X_RX_DDC_FLAG_WRITE_MESSAGE_READY;
+
+		return 1;
+	}
+
+	return 0;
+}
+
 /*
  * this function will become common function for both DP and HDMI interface
  * for polling DPCD and DDC registers
  */
 static int xhdcp2x_rx_poll_message(struct xlnx_hdcp2x_config *xhdcp2x_rx)
 {
-	u32 size = 0;
+	if (xhdcp2x_rx->protocol == XHDCP2X_RX_DP) {
+		if (xhdcp2x_rx->info.msg_event != XHDCP2X_RX_DPCD_FLAG_NONE)
+			return xhdcp2x_rx_read_dpcd_msg(xhdcp2x_rx);
+	} else {
+		if (xhdcp2x_rx_is_write_message_available(xhdcp2x_rx))
+			return xhdcp2x_rx->handlers.rd_handler(xhdcp2x_rx->interface_ref,
+							       XHDCP2X_RX_HDMI_WRITE_MESSAGE,
+							       xhdcp2x_rx->msg_buffer, 0xFF);
+	}
 
-	if (xhdcp2x_rx->info.msg_event != XHDCP2X_RX_DPCD_FLAG_NONE)
-		size = xhdcp2x_rx_read_dpcd_msg(xhdcp2x_rx);
-
-	return size;
+	return 0;
 }
 
 static int xhdcp2x_rx_process_message_ake_init(struct xlnx_hdcp2x_config *xhdcp2x_rx)
@@ -798,6 +814,15 @@ static int xhdcp2x_rx_send_message_ake_send_cert(struct xlnx_hdcp2x_config *xhdc
 		status = xhdcp2x_rx_write_dpcd_msg(xhdcp2x_rx);
 		if (status < 0)
 			return -EINVAL;
+	} else {
+		status = xhdcp2x_rx->handlers.wr_handler(xhdcp2x_rx->interface_ref,
+							 XHDCP2X_RX_HDMI_READ_MESSAGE,
+							 xhdcp2x_rx->msg_buffer,
+							 sizeof(struct xhdcp2x_rx_ake_send_cert));
+		if (status < 0)
+			return -EINVAL;
+
+		xhdcp2x_rx_set_rxstatus_reg(xhdcp2x_rx, sizeof(struct xhdcp2x_rx_ake_send_cert));
 	}
 
 	memcpy(xhdcp2x_rx->param.rrx, msgptr->ake_send_cert.rrx, XHDCP2X_RX_RRX_SIZE);
@@ -834,6 +859,17 @@ static int xhdcp2x_rx_send_message_ake_send_pairing_info(struct xlnx_hdcp2x_conf
 			return -EINVAL;
 
 		xhdcp2x_rx->handlers.cp_irq_handler(xhdcp2x_rx->interface_ref);
+	} else {
+		status =
+		xhdcp2x_rx->handlers.wr_handler(xhdcp2x_rx->interface_ref,
+						XHDCP2X_RX_HDMI_READ_MESSAGE,
+						xhdcp2x_rx->msg_buffer,
+						sizeof(struct xhdcp2x_rx_ake_send_pairing_info));
+		if (status < 0)
+			return -EINVAL;
+
+		xhdcp2x_rx_set_rxstatus_reg(xhdcp2x_rx,
+					    sizeof(struct xhdcp2x_rx_ake_send_pairing_info));
 	}
 
 	memcpy(xhdcp2x_rx->param.ekh, ekhkm, XHDCP2X_RX_EKH_SIZE);
@@ -866,6 +902,15 @@ static int xhdcp2x_rx_send_message_ake_send_hprime(struct xlnx_hdcp2x_config *xh
 			return -EINVAL;
 
 		xhdcp2x_rx->handlers.cp_irq_handler(xhdcp2x_rx->interface_ref);
+	} else {
+		status = xhdcp2x_rx->handlers.wr_handler(xhdcp2x_rx->interface_ref,
+							 XHDCP2X_RX_HDMI_READ_MESSAGE,
+							 xhdcp2x_rx->msg_buffer,
+							 sizeof(struct xhdcp2x_rx_ake_send_hprime));
+		if (status < 0)
+			return -EINVAL;
+
+		xhdcp2x_rx_set_rxstatus_reg(xhdcp2x_rx, sizeof(struct xhdcp2x_rx_ake_send_hprime));
 	}
 
 	memcpy(xhdcp2x_rx->param.hprime, msgptr->ake_send_hprime.hprime, XHDCP2X_RX_HPRIME_SIZE);
@@ -902,6 +947,15 @@ static int xhdcp2x_rx_send_message_lc_send_lprime(struct xlnx_hdcp2x_config *xhd
 		status = xhdcp2x_rx_write_dpcd_msg(xhdcp2x_rx);
 		if (status < 0)
 			return -EINVAL;
+	} else {
+		status = xhdcp2x_rx->handlers.wr_handler(xhdcp2x_rx->interface_ref,
+							 XHDCP2X_RX_HDMI_READ_MESSAGE,
+							 xhdcp2x_rx->msg_buffer,
+							 sizeof(struct xhdcp2x_rx_lc_send_lprime));
+		if (status < 0)
+			return -EINVAL;
+
+		xhdcp2x_rx_set_rxstatus_reg(xhdcp2x_rx, sizeof(struct xhdcp2x_rx_lc_send_lprime));
 	}
 
 	memcpy(xhdcp2x_rx->param.lprime, msgptr->lc_send_lprime.lprime, XHDCP2X_RX_LPRIME_SIZE);
@@ -1130,6 +1184,10 @@ static enum xhdcp2x_rx_state xhdcp2x_state_B3(void *instance)
 
 	if (xhdcp2x_rx->mode == xhdcp2x_rx_receiver) {
 		xhdcp2x_rx->info.sub_state = XHDCP2X_RX_STATE_B4_AUTHENTICATED;
+		if (xhdcp2x_rx->protocol != XHDCP2X_RX_DP)
+			xhdcp2x_rx_start_timer(xhdcp2x_rx,
+					       XHDCP2X_RX_ENCRYPTION_STATUS_INTERVAL,
+					       0);
 		return XHDCP2X_STATE_B4;
 	}
 
