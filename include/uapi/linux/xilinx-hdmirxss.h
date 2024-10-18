@@ -32,7 +32,7 @@ struct xhdmirxss_hdcp2x_keys_ioctl {
 
 /* This ioctl is used to set the HDCP1x keys into IP */
 #define XILINX_HDMIRXSS_HDCP_KEY_WRITE \
-	_IOW('X', BASE_VIDIOC_PRIVATE + 1, struct xhdmirxss_hdcp1x_keys_ioctl)
+	_IOW(XHDCP_IOCTL, BASE_VIDIOC_PRIVATE + 1, struct xhdmirxss_hdcp1x_keys_ioctl)
 
 /* This ioctl is used to set the HDCP2x keys into IP */
 #define XILINX_HDMIRXSS_HDCP22_KEY_WRITE \
