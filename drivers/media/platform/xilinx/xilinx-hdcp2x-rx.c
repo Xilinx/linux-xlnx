@@ -61,12 +61,31 @@ static enum xhdcp2x_rx_state (*xhdcp2x_rx_state_table[])(void *) = {
 	xhdcp2x_state_B4
 };
 
+/* This Function is applicable only for HDMI Interface */
+static void xhdcp2x_rx_set_rxstatus_reg(struct xlnx_hdcp2x_config *xhdcp2x_rx,
+					u16 message_size)
+{
+	u8 rx_status[RX_STATUS_SIZE];
+
+	rx_status[0] = (u8)message_size;
+
+	rx_status[1] = (message_size & XHDCP2X_HDMI_RXSTATUS_MSG_HIGH) >> 8;
+	rx_status[1] |= (xhdcp2x_rx->info.topology_ready & XHDCP2X_HDMI_RXSTATUS_READY);
+	rx_status[1] |= (xhdcp2x_rx->info.reauth_req & XHDCP2X_HDMI_RXSTATUS_REAUTH_REQ);
+
+	xhdcp2x_rx->handlers.wr_handler(xhdcp2x_rx->interface_ref,
+						 XHDCP2X_RX_HDMI_RXSTATUS0,
+						 &rx_status[0], 1);
+	xhdcp2x_rx->handlers.wr_handler(xhdcp2x_rx->interface_ref,
+						XHDCP2X_RX_HDMI_RXSTATUS1,
+						&rx_status[1], 1);
+	if (message_size > 0)
+		xhdcp2x_rx->info.ddc_flag &= ~XHDCP2X_RX_DDC_FLAG_READ_MESSAGE_READY;
+}
+
 static int xhdcp2x_rx_set_reauth_req(struct xlnx_hdcp2x_config *xhdcp2x_rx)
 {
 	int status = 0;
-
-	if (!xhdcp2x_rx)
-		return -EINVAL;
 
 	xhdcp2x_rx->info.reauth_req = 1;
 
@@ -80,6 +99,9 @@ static int xhdcp2x_rx_set_reauth_req(struct xlnx_hdcp2x_config *xhdcp2x_rx)
 			return -EINVAL;
 
 		xhdcp2x_rx->handlers.cp_irq_handler(xhdcp2x_rx->interface_ref);
+	} else {
+		/* Set the RxStatus register */
+		xhdcp2x_rx_set_rxstatus_reg(xhdcp2x_rx, 0);
 	}
 
 	return 0;

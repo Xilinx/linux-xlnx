@@ -23,6 +23,18 @@
 #define XHDCP2X_RX_HDMI_HDCP22VERSION_REG	0x50
 #define XHDCP2X_RX_HDMI_HDCP22VERSION_EN_MASK	BIT(2)
 
+/* Reference : Table 2.7
+ * https://www.digital-cp.com/sites/default/files/specifications/HDCP%20on%20HDMI%20Specification%20Rev2_3.pdf
+ */
+#define XHDCP2X_RX_HDMI_RXSTATUS0		0x70
+#define XHDCP2X_RX_HDMI_RXSTATUS1		0x71
+
+#define XHDCP2X_HDMI_RXSTATUS_MSG_HIGH		GENMASK(9, 8)
+#define XHDCP2X_HDMI_RXSTATUS_READY		GENMASK(2, 2)
+#define XHDCP2X_HDMI_RXSTATUS_REAUTH_REQ	GENMASK(3, 3)
+
+#define RX_STATUS_SIZE				0x02
+
 #define XHDCP2X_RX_MAX_LCINIT			1024
 #define XHDCP2X_RX_MAX_MESSAGE_SIZE		534
 #define XHDCP2X_RX_CERT_SIZE			522
@@ -356,6 +368,7 @@ struct xhdcp2x_rx_info {
 	u32 msg_event;
 	u16 lc_init_attempts;
 	u8 ddc_flag;
+	u8 topology_ready;
 	u8 is_enabled;
 	u8 is_no_storedkm;
 	u8 reauth_req;
