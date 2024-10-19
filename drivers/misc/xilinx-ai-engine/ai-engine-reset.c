@@ -45,11 +45,7 @@ static void aie_part_core_regs_clr_iowrite(struct aie_partition *apart,
 				 */
 				switch (width) {
 				case 1:	/* 8 bits */
-					writeb_relaxed(0, io_addr);
-					break;
 				case 2: /* 16 bits */
-					writew_relaxed(0, io_addr);
-					break;
 				case 4: /* 32 bits */
 					writel_relaxed(0, io_addr);
 					break;
