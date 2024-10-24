@@ -513,12 +513,6 @@ static int versal_aes_aead_setkey(struct crypto_aead *aead, const u8 *key,
 				memcpy(tfm_ctx->key, key, keylen);
 			}
 		}
-
-		if (tfm_ctx->keysrc < VERSAL_AES_EFUSE_USER_KEY_0 ||
-		    tfm_ctx->keysrc > VERSAL_AES_USER_KEY_7 ||
-		    tfm_ctx->keysrc ==  VERSAL_AES_KUP_KEY) {
-			tfm_ctx->keysrc = VERSAL_AES_USER_KEY_0;
-		}
 	}
 
 	tfm_ctx->fbk_cipher->base.crt_flags &= ~CRYPTO_TFM_REQ_MASK;
@@ -585,7 +579,7 @@ static int aes_aead_init(struct crypto_aead *aead)
 		       __func__, drv_ctx->aead.base.base.cra_name);
 		return PTR_ERR(tfm_ctx->fbk_cipher);
 	}
-
+	tfm_ctx->keysrc = VERSAL_AES_USER_KEY_0;
 	crypto_aead_set_reqsize(aead,
 				max(sizeof(struct zynqmp_aead_req_ctx),
 				    sizeof(struct aead_request) +
