@@ -18,8 +18,7 @@
 #define SYSMON_EVENT_WORK_DELAY_MS	1000
 #define SYSMON_UNMASK_WORK_DELAY_MS	500
 
-#define SYSMON_FRACTIONAL_DENOM		128
-#define SYSMON_HBM_FRACTIONAL_DENOM	1
+#define SYSMON_FRACTIONAL_SHIFT		7U
 
 #define SYSMON_HBM_TEMP_SHIFT	16U
 #define SYSMON_HBM_TEMP_MASK	GENMASK(6, 0)
@@ -150,52 +149,50 @@ static u32 sysmon_supply_thresh_offset(int address,
 }
 
 /**
- * sysmon_hbm_to_celsius() - The raw register value to degrees C.
+ * sysmon_hbm_to_millicelsius() - The raw register value to milliDeg Celsius.
  * @raw_data: Raw register value
- * @val: The numerator of the fraction needed by IIO_VAL_PROCESSED
- * @val2: Denominator of the fraction needed by IIO_VAL_PROCESSED
+ * @val: The numerator of the fraction needed by IIO_VAL_INT
+ * @val2: Denominator of the fraction needed by IIO_VAL_INT
  *
- * The function returns a fraction which returns celsius
+ * The function returns a fraction which returns milliDeg celsius
  */
-static void sysmon_hbm_to_celsius(int raw_data, int *val, int *val2)
+static void sysmon_hbm_to_millicelsius(int raw_data, int *val, int *val2)
 {
-	*val = (raw_data >> SYSMON_HBM_TEMP_SHIFT) & SYSMON_HBM_TEMP_MASK;
-	*val2 = SYSMON_HBM_FRACTIONAL_DENOM;
+	*val = ((raw_data >> SYSMON_HBM_TEMP_SHIFT) & SYSMON_HBM_TEMP_MASK) *
+		SYSMON_MILLI_SCALE;
+	*val2 = 0;
 }
 
 /**
- * sysmon_q8p7_to_celsius() - converts fixed point Q8.7 format to a fraction.
+ * sysmon_q8p7_to_millicelsius() - converts fixed point Q8.7 format to a fraction.
  * @raw_data: Raw ADC value
- * @val: The numerator of the fraction needed by IIO_VAL_PROCESSED
- * @val2: Denominator of the fraction needed by IIO_VAL_PROCESSED
+ * @val: The numerator of the fraction needed by IIO_VAL_INT
+ * @val2: Denominator of the fraction needed by IIO_VAL_INT
  *
- * The function returns a fraction which returns celsius
+ * The function returns a fraction which returns milliDeg Celsius
  */
-static void sysmon_q8p7_to_celsius(int raw_data, int *val, int *val2)
+static void sysmon_q8p7_to_millicelsius(int raw_data, int *val, int *val2)
 {
-	*val = (raw_data & 0x8000) ? -(twoscomp(raw_data)) : raw_data;
-	*val2 = SYSMON_FRACTIONAL_DENOM;
+	*val = (((raw_data & 0x8000) ? -(twoscomp(raw_data)) : raw_data) *
+		SYSMON_MILLI_SCALE) >> SYSMON_FRACTIONAL_SHIFT;
+	*val2 = 0;
 }
 
 /**
- * sysmon_celsius_to_q8p7() - converts value from IIO Framework to ADC Raw data
+ * sysmon_millicelsius_to_q8p7() - converts value from IIO Framework to ADC Raw data
  * @raw_data: Raw ADC value
  * @val: The numerator of the fraction provided by the IIO Framework
  * @val2: Denominator of the fraction provided by the IIO Framework
  *
  * The function takes in exponent and mantissa as val and val2 respectively
- * of temperature value in Deg Celsius and returns raw adc value for the
+ * of temperature value in milliDeg Celsius and returns raw adc value for the
  * given temperature.
  */
-static void sysmon_celsius_to_q8p7(u32 *raw_data, int val, int val2)
+static void sysmon_millicelsius_to_q8p7(u32 *raw_data, int val, int val2)
 {
-	int scale = 1 << 7;
+	(void)val2;
 
-	/* The value is scaled by 10^6 in the IIO framework
-	 * dividing by 1000 twice to avoid overflow
-	 */
-	val2 = val2 / 1000;
-	*raw_data = (val * scale) + ((val2 * scale) / 1000);
+	*raw_data = (val << SYSMON_FRACTIONAL_SHIFT) / SYSMON_MILLI_SCALE;
 }
 
 static void sysmon_supply_rawtoprocessed(int raw_data, int *val, int *val2)
@@ -203,13 +200,17 @@ static void sysmon_supply_rawtoprocessed(int raw_data, int *val, int *val2)
 	int mantissa, format, exponent;
 
 	mantissa = raw_data & SYSMON_MANTISSA_MASK;
-	exponent = (raw_data & SYSMON_MODE_MASK) >> SYSMON_MODE_SHIFT;
+	exponent = 16 - ((raw_data & SYSMON_MODE_MASK) >> SYSMON_MODE_SHIFT);
 	format = (raw_data & SYSMON_FMT_MASK) >> SYSMON_FMT_SHIFT;
 
-	*val2 = 1 << (16 - exponent);
-	*val = mantissa;
-	if (format && (mantissa >> SYSMON_MANTISSA_SIGN_SHIFT))
-		*val = (~(mantissa) & SYSMON_MANTISSA_MASK) * -1;
+	if (format && (mantissa >> SYSMON_MANTISSA_SIGN_SHIFT)) {
+		*val = ((~(mantissa) & SYSMON_MANTISSA_MASK) *
+			(-1 * SYSMON_MILLI_SCALE)) >> exponent;
+	} else {
+		*val = (mantissa * SYSMON_MILLI_SCALE) >> exponent;
+	}
+
+	*val2 = 0;
 }
 
 static void sysmon_supply_processedtoraw(int val, int val2, u32 reg_val,
@@ -220,12 +221,7 @@ static void sysmon_supply_processedtoraw(int val, int val2, u32 reg_val,
 	int scale = 1 << (16 - exponent);
 	int tmp;
 
-	/**
-	 * The value is scaled by 10^6 in the IIO framework
-	 * dividing by 1000 twice to avoid overflow
-	 */
-	val2 = val2 / 1000;
-	tmp = (val * scale) + ((val2 * scale) / 1000);
+	tmp = (val * scale) / SYSMON_MILLI_SCALE;
 
 	/* Set out of bound values to saturation levels */
 	if (format) {
@@ -303,11 +299,11 @@ static int sysmon_read_raw(struct iio_dev *indio_dev,
 			offset = sysmon_temp_offset(chan->address);
 			regval = sysmon->temp_read(sysmon, offset);
 			if (!sysmon->hbm_slr)
-				sysmon_q8p7_to_celsius(regval, val, val2);
+				sysmon_q8p7_to_millicelsius(regval, val, val2);
 			else
-				sysmon_hbm_to_celsius(regval, val, val2);
+				sysmon_hbm_to_millicelsius(regval, val, val2);
 
-			ret = IIO_VAL_FRACTIONAL;
+			ret = IIO_VAL_INT;
 			break;
 
 		case IIO_VOLTAGE:
@@ -315,7 +311,7 @@ static int sysmon_read_raw(struct iio_dev *indio_dev,
 			offset = sysmon_supply_offset(chan->address);
 			sysmon_read_reg(sysmon, offset, &regval);
 			sysmon_supply_rawtoprocessed(regval, val, val2);
-			ret = IIO_VAL_FRACTIONAL;
+			ret = IIO_VAL_INT;
 			break;
 
 		default:
@@ -527,8 +523,8 @@ static int sysmon_read_event_value(struct iio_dev *indio_dev,
 		if (info == IIO_EV_INFO_VALUE) {
 			offset = sysmon_temp_thresh_offset(chan->address, dir);
 			sysmon_read_reg(sysmon, offset, &reg_val);
-			sysmon_q8p7_to_celsius(reg_val, val, val2);
-			ret = IIO_VAL_FRACTIONAL;
+			sysmon_q8p7_to_millicelsius(reg_val, val, val2);
+			ret = IIO_VAL_INT;
 		} else if (info == IIO_EV_INFO_HYSTERESIS) {
 			mask = (chan->address == OT_EVENT) ? 0x1 : 0x2;
 			shift = mask - 1;
@@ -541,7 +537,7 @@ static int sysmon_read_event_value(struct iio_dev *indio_dev,
 		offset = sysmon_supply_thresh_offset(chan->address, dir);
 		sysmon_read_reg(sysmon, offset, &reg_val);
 		sysmon_supply_rawtoprocessed(reg_val, val, val2);
-		ret = IIO_VAL_FRACTIONAL;
+		ret = IIO_VAL_INT;
 	}
 
 	mutex_unlock(&sysmon->mutex);
@@ -562,7 +558,7 @@ static int sysmon_write_event_value(struct iio_dev *indio_dev,
 	if (chan->type == IIO_TEMP) {
 		if (info == IIO_EV_INFO_VALUE) {
 			offset = sysmon_temp_thresh_offset(chan->address, dir);
-			sysmon_celsius_to_q8p7(&reg_val, val, val2);
+			sysmon_millicelsius_to_q8p7(&reg_val, val, val2);
 			sysmon_write_reg(sysmon, offset, reg_val);
 		} else if (info == IIO_EV_INFO_HYSTERESIS) {
 			/* calculating the mask value for OT and TEMP Alarms */
