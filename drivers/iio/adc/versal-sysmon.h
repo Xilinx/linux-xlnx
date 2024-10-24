@@ -108,6 +108,8 @@
 #define SYSMON_UPPER_SATURATION		65535
 #define SYSMON_LOWER_SATURATION		0
 
+#define SYSMON_MILLI_SCALE		1000
+
 #define SYSMON_CHAN_TEMP_EVENT(_address, _ext, _events) { \
 	.type = IIO_TEMP, \
 	.indexed = 1, \
