@@ -29,9 +29,11 @@ static struct iio_map sysmon_to_thermal_iio_maps[] = {
 	{}
 };
 
-static inline void sysmon_direct_read_reg(struct sysmon *sysmon, u32 offset, u32 *data)
+static inline int sysmon_direct_read_reg(struct sysmon *sysmon, u32 offset, u32 *data)
 {
 	*data = readl(sysmon->base + offset);
+
+	return 0;
 }
 
 static inline void sysmon_direct_write_reg(struct sysmon *sysmon, u32 offset, u32 data)
@@ -54,9 +56,9 @@ static struct sysmon_ops direct_access = {
 	.update_reg = sysmon_direct_update_reg,
 };
 
-static inline void sysmon_secure_read_reg(struct sysmon *sysmon, u32 offset, u32 *data)
+static inline int sysmon_secure_read_reg(struct sysmon *sysmon, u32 offset, u32 *data)
 {
-	zynqmp_pm_sec_read_reg(sysmon->pm_info, offset, data);
+	return zynqmp_pm_sec_read_reg(sysmon->pm_info, offset, data);
 }
 
 static inline void sysmon_secure_write_reg(struct sysmon *sysmon, u32 offset, u32 data)

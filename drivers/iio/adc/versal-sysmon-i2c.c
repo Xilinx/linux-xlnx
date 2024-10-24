@@ -53,20 +53,23 @@ static inline void sysmon_i2c_write_reg(struct sysmon *sysmon, u32 offset, u32 d
 	(void)i2c_master_send(sysmon->client, write_data, SYSMON_WRITE_DATA_SIZE);
 }
 
-static inline void sysmon_i2c_read_reg(struct sysmon *sysmon, u32 offset, u32 *data)
+static inline int sysmon_i2c_read_reg(struct sysmon *sysmon, u32 offset, u32 *data)
 {
 	char read_data[SYSMON_READ_DATA_SIZE];
 	char write_data[SYSMON_WRITE_DATA_SIZE] = { 0 };
+	int ret;
 
 	write_data[SYSMON_PYLD_OFS_LOW_IDX] = (u8)(FIELD_GET(SYSMON_PYLD_OFS_LOW_MASK, offset));
 	write_data[SYSMON_PYLD_OFS_HIGH_IDX] = (u8)(FIELD_GET(SYSMON_PYLD_OFS_HIGH_MASK, offset));
 	write_data[SYSMON_PYLD_INSTR_IDX] = (u8)(SYSMON_INSTR_READ);
 	(void)i2c_master_send(sysmon->client, write_data, SYSMON_WRITE_DATA_SIZE);
-	(void)i2c_master_recv(sysmon->client, read_data, SYSMON_READ_DATA_SIZE);
+	ret = i2c_master_recv(sysmon->client, read_data, SYSMON_READ_DATA_SIZE);
 	*data = (FIELD_PREP(SYSMON_PYLD_DATA0_MASK, read_data[0]) |
 		 FIELD_PREP(SYSMON_PYLD_DATA1_MASK, read_data[1]) |
 		 FIELD_PREP(SYSMON_PYLD_DATA2_MASK, read_data[2]) |
 		 FIELD_PREP(SYSMON_PYLD_DATA3_MASK, read_data[3]));
+
+	return ret;
 }
 
 static inline void sysmon_i2c_update_reg(struct sysmon *sysmon, u32 offset, u32 mask, u32 data)
@@ -87,7 +90,9 @@ static int sysmon_i2c_temp_read(struct sysmon *sysmon, int offset)
 {
 	u32 regval;
 
-	sysmon_read_reg(sysmon, offset, &regval);
+	if (sysmon_read_reg(sysmon, offset, &regval) < 0)
+		regval = SYSMON_UPPER_SATURATION_SIGNED;
+
 	return regval;
 }
 
