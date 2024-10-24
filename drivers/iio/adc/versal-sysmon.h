@@ -256,7 +256,7 @@ struct sysmon {
 };
 
 struct sysmon_ops {
-	void (*read_reg)(struct sysmon *sysmon, u32 offset, u32 *data);
+	int (*read_reg)(struct sysmon *sysmon, u32 offset, u32 *data);
 	void (*write_reg)(struct sysmon *sysmon, u32 offset, u32 data);
 	void (*update_reg)(struct sysmon *sysmon, u32 offset,
 			   u32 mask, u32 data);
@@ -269,7 +269,7 @@ struct list_head *sysmon_nodes_by_region(enum sysmon_region region_id);
 int sysmon_get_node_value(int sat_id);
 int sysmon_parse_dt(struct iio_dev *indio_dev, struct device *dev);
 int sysmon_init_interrupt(struct sysmon *sysmon);
-void sysmon_read_reg(struct sysmon *sysmon, u32 offset, u32 *data);
+int sysmon_read_reg(struct sysmon *sysmon, u32 offset, u32 *data);
 void sysmon_write_reg(struct sysmon *sysmon, u32 offset, u32 data);
 void sysmon_set_iio_dev_info(struct iio_dev *indio_dev);
 int sysmon_create_avg_en_sysfs_entries(struct iio_dev *indio_dev);

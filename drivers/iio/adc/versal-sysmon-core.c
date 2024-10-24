@@ -81,9 +81,9 @@ static const struct iio_chan_spec temp_hbm_channels[] = {
 	SYSMON_CHAN_TEMP_HBM(TEMP_HBM, "temp_hbm"),
 };
 
-void sysmon_read_reg(struct sysmon *sysmon, u32 offset, u32 *data)
+int sysmon_read_reg(struct sysmon *sysmon, u32 offset, u32 *data)
 {
-	sysmon->ops->read_reg(sysmon, offset, data);
+	return sysmon->ops->read_reg(sysmon, offset, data);
 }
 EXPORT_SYMBOL(sysmon_read_reg);
 
