@@ -580,8 +580,6 @@ of_aie_aperture_probe(struct aie_device *adev, struct device_node *nc)
 		goto put_aperture_dev;
 	}
 
-	of_node_get(nc);
-
 	ret = aie_aperture_sysfs_create_entries(aperture);
 	if (ret) {
 		dev_err(dev, "Failed to create aperture sysfs: %d\n", ret);
