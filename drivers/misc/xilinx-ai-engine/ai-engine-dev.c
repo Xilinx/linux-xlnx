@@ -470,6 +470,7 @@ void of_xilinx_ai_engine_aperture_probe(struct aie_device *adev)
 			dev_err(&adev->dev,
 				"Failed to probe AI engine aperture for %pOF\n",
 				nc);
+			of_node_put(nc);
 			/* try to probe the next node */
 			continue;
 		}
