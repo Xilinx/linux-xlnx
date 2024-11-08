@@ -514,7 +514,8 @@ static inline bool nvme_pci_metadata_use_sgls(struct nvme_dev *dev,
 {
 	if (!nvme_ctrl_meta_sgl_supported(&dev->ctrl))
 		return false;
-	return req->nr_integrity_segments > 1;
+	return req->nr_integrity_segments > 1 ||
+		nvme_req(req)->flags & NVME_REQ_USERCMD;
 }
 
 static inline bool nvme_pci_use_sgls(struct nvme_dev *dev, struct request *req,
@@ -532,7 +533,7 @@ static inline bool nvme_pci_use_sgls(struct nvme_dev *dev, struct request *req,
 	if (nvme_pci_metadata_use_sgls(dev, req))
 		return true;
 	if (!sgl_threshold || avg_seg_size < sgl_threshold)
-		return false;
+		return nvme_req(req)->flags & NVME_REQ_USERCMD;
 	return true;
 }
 
