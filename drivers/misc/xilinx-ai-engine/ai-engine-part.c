@@ -236,6 +236,42 @@ static int aie_part_write_register(struct aie_partition *apart, size_t offset,
 }
 
 /**
+ * aie_partition_write() - AI engine partition write
+ * @dev: AI engine tile device
+ * @loc: AI engine tile location
+ * @offset: AI engine register offset
+ * @len: len of data to write
+ * @data: data to write
+ * @mask: mask, if it is non 0, it is mask write.
+ * @return: number of bytes write for success, or negative value for failure.
+ *
+ * This function writes data to the specified registers.
+ * If the mask is non 0, it is mask write.
+ */
+int aie_partition_write(struct device *dev, struct aie_location loc,
+			size_t offset, size_t len, void *data, u32 mask)
+{
+	struct aie_partition *apart;
+	int ret;
+
+	if (!dev || !data)
+		return -EINVAL;
+
+	apart = dev_to_aiepart(dev);
+	if (IS_ERR(apart))
+		return -EINVAL;
+
+	offset = aie_cal_regoff(apart->adev, loc, offset);
+	ret = aie_part_write_register(apart, offset, len, data, mask);
+	if (ret < 0)
+		dev_err(&apart->dev, "failed to write to 0x%zx,0x%zx.\n",
+			offset, len);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(aie_partition_write);
+
+/**
  * aie_part_read_register() - AI engine partition read register
  * @apart: AI engine partition
  * @offset: AI engine register offset
@@ -269,6 +305,40 @@ static int aie_part_read_register(struct aie_partition *apart, size_t offset,
 
 	return (int)len;
 }
+
+/**
+ * aie_partition_read() - AI engine partition read register
+ * @dev: AI engine device
+ * @loc: AI engine tile location
+ * @offset: AI engine register offset
+ * @len: len of data to read
+ * @data: pointer to the memory to store the read data
+ * @return: number of bytes read for success, or negative value for failure.
+ *
+ * This function reads data from the specified registers.
+ */
+int aie_partition_read(struct device *dev, struct aie_location loc,
+		       size_t offset, size_t len, void *data)
+{
+	struct aie_partition *apart;
+	int ret;
+
+	if (!dev || !data)
+		return -EINVAL;
+
+	apart = dev_to_aiepart(dev);
+	if (IS_ERR(apart))
+		return -EINVAL;
+
+	offset = aie_cal_regoff(apart->adev, loc, offset);
+	ret = aie_part_read_register(apart, offset, len, data);
+	if (ret < 0)
+		dev_err(&apart->dev, "failed to write to 0x%zx,0x%zx.\n",
+			offset, len);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(aie_partition_read);
 
 /**
  * aie_part_block_set() - AI Engine partition block set registers

@@ -153,6 +153,10 @@ int aie_part_rscmgr_set_static_range(struct device *dev,
 
 int aie_get_status_dump(struct device *dev, struct aie_col_status *status);
 int aie_get_tile_info(struct device *dev, struct aie_tile_info *tile_info);
+int aie_partition_read(struct device *dev, struct aie_location loc,
+		       size_t offset, size_t len, void *data);
+int aie_partition_write(struct device *dev, struct aie_location loc,
+			size_t offset, size_t len, void *data, u32 mask);
 /**
  * aie_get_error_category() - Get the category of an AIE error
  * @err: AI engine hardware error
