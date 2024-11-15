@@ -17,7 +17,7 @@
 #define AFI_BUSWIDTH_MASK	0x01
 
 /**
- * struct afi_fpga - AFI register description
+ * struct zynq_afi_fpga - AFI register description
  * @membase:	pointer to register struct
  * @afi_width:	AFI bus width to be written
  */
