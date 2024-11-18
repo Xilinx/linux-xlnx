@@ -62,9 +62,18 @@ static int ci_hdrc_usb2_probe(struct platform_device *pdev)
 	}
 
 	data = device_get_match_data(&pdev->dev);
-	if (data)
+	if (data) {
 		/* struct copy */
 		*ci_pdata = *data;
+		if (of_device_is_compatible(pdev->dev.of_node,
+					    "xlnx,zynq-usb-2.20a")) {
+			ci_pdata->usb_phy = devm_usb_get_phy_by_phandle(dev,
+									"usb-phy",
+									0);
+			if (IS_ERR(ci_pdata->usb_phy))
+				return PTR_ERR(ci_pdata->usb_phy);
+		}
+	}
 
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
