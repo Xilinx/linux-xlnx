@@ -1834,6 +1834,14 @@ void xhci_remove_secondary_interrupter(struct usb_hcd
 
 /* xHCI host controller glue */
 typedef void (*xhci_get_quirks_t)(struct device *, struct xhci_hcd *);
+typedef void (*host_wakeup_t)(struct device *dev, bool wakeup);
+#if IS_ENABLED(CONFIG_USB_DWC3_HOST) || IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE) || \
+	IS_ENABLED(CONFIG_USB_DWC3_OTG)
+void dwc3_host_wakeup_capable(struct device *dev, bool wakeup);
+#else
+static inline void dwc3_host_wakeup_capable(struct device *dev, bool wakeup)
+{ }
+#endif
 int xhci_handshake(void __iomem *ptr, u32 mask, u32 done, u64 timeout_us);
 int xhci_handshake_check_state(struct xhci_hcd *xhci, void __iomem *ptr,
 		u32 mask, u32 done, int usec, unsigned int exit_state);

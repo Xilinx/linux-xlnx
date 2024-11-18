@@ -14,13 +14,15 @@
 #include <linux/usb/hcd.h>
 
 #include "../host/xhci-port.h"
-#include "../host/xhci-ext-caps.h"
 #include "../host/xhci-caps.h"
 #include "../host/xhci-plat.h"
 #include "core.h"
+#include <../drivers/usb/host/xhci.h>
 
 #define XHCI_HCSPARAMS1		0x4
 #define XHCI_PORTSC_BASE	0x400
+
+static dwc3_wakeup_t dwc3_wakeup_fn;
 
 /**
  * dwc3_power_off_all_roothub_ports - Power off all Root hub ports
@@ -77,6 +79,21 @@ static void dwc3_xhci_plat_start(struct usb_hcd *hcd)
 static const struct xhci_plat_priv dwc3_xhci_plat_quirk = {
 	.plat_start = dwc3_xhci_plat_start,
 };
+
+ /* dwc3 host wakeup registration */
+void dwc3_host_wakeup_register(dwc3_wakeup_t func)
+{
+	dwc3_wakeup_fn = func;
+}
+EXPORT_SYMBOL_GPL(dwc3_host_wakeup_register);
+
+/* callback function */
+void dwc3_host_wakeup_capable(struct device *dev, bool wakeup)
+{
+	if (dwc3_wakeup_fn)
+		dwc3_wakeup_fn(dev, wakeup);
+}
+EXPORT_SYMBOL_GPL(dwc3_host_wakeup_capable);
 
 static void dwc3_host_fill_xhci_irq_res(struct dwc3 *dwc,
 					int irq, char *name)
