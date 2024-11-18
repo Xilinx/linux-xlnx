@@ -652,6 +652,9 @@ static int dwc3_gadget_set_ep_config(struct dwc3_ep *dep, unsigned int action)
 	return dwc3_send_gadget_ep_cmd(dep, DWC3_DEPCMD_SETEPCONFIG, &params);
 }
 
+void dwc3_stop_active_transfer(struct dwc3_ep *dep, bool force,
+			       bool interrupt);
+
 /**
  * dwc3_gadget_calc_tx_fifo_size - calculates the txfifo size value
  * @dwc: pointer to the DWC3 context
@@ -1961,7 +1964,6 @@ static int __dwc3_gadget_ep_queue(struct dwc3_ep *dep, struct dwc3_request *req)
 	 */
 	if ((dep->flags & DWC3_EP_END_TRANSFER_PENDING) ||
 	    (dep->flags & DWC3_EP_WEDGE) ||
-	    (dep->flags & DWC3_EP_DELAY_STOP) ||
 	    (dep->flags & DWC3_EP_STALL)) {
 		dep->flags |= DWC3_EP_DELAY_START;
 		return 0;
@@ -2213,8 +2215,7 @@ int __dwc3_gadget_ep_set_halt(struct dwc3_ep *dep, int value, int protocol)
 		list_for_each_entry_safe(req, tmp, &dep->started_list, list)
 			dwc3_gadget_move_cancelled_request(req, DWC3_REQUEST_STATUS_STALLED);
 
-		if (dep->flags & DWC3_EP_END_TRANSFER_PENDING ||
-		    (dep->flags & DWC3_EP_DELAY_STOP)) {
+		if (dep->flags & DWC3_EP_END_TRANSFER_PENDING) {
 			dep->flags |= DWC3_EP_PENDING_CLEAR_STALL;
 			if (protocol)
 				dwc->clear_stall_protocol = dep->number;
@@ -2785,8 +2786,10 @@ static int dwc3_gadget_pullup(struct usb_gadget *g, int is_on)
 
 	if (!is_on)
 		ret = dwc3_gadget_soft_disconnect(dwc);
-	else
-		ret = dwc3_gadget_soft_connect(dwc);
+	else {
+		__dwc3_gadget_start(dwc);
+		ret = dwc3_gadget_run_stop(dwc, true, false);
+	}
 
 	pm_runtime_put(dwc->dev);
 
@@ -2921,6 +2924,16 @@ static int __dwc3_gadget_start(struct dwc3 *dwc)
 		reg &= ~DWC3_DCFG1_DIS_MST_ENH;
 		dwc3_writel(dwc->regs, DWC3_DCFG1, reg);
 	}
+
+	/* For OTG mode, check if the core is currently in Host mode.
+	 * This is not an error condition as there are times when the core is
+	 * working as host and kernel is told to initiate bind operation with
+	 * gadget class driver module.
+	 * The below remaining operations are handled in OTG driver whenever
+	 * required.
+	 */
+	if (dwc3_readl(dwc->regs, DWC3_GSTS) & DWC3_GSTS_CUR_MODE)
+		return 0;
 
 	/* Start with SuperSpeed Default */
 	dwc3_gadget_ep0_desc.wMaxPacketSize = cpu_to_le16(512);
@@ -3940,7 +3953,6 @@ void dwc3_stop_active_transfer(struct dwc3_ep *dep, bool force,
 	 */
 	if (dep->number <= 1 && dwc->ep0state != EP0_DATA_PHASE)
 		return;
-
 	if (interrupt && (dep->flags & DWC3_EP_DELAY_STOP))
 		return;
 
@@ -4157,9 +4169,6 @@ static void dwc3_gadget_conndone_interrupt(struct dwc3 *dwc)
 	u32			reg;
 	u8			lanes = 1;
 	u8			speed;
-
-	if (!dwc->softconnect)
-		return;
 
 	reg = dwc3_readl(dwc->regs, DWC3_DSTS);
 	speed = reg & DWC3_DSTS_CONNECTSPD;
@@ -4750,6 +4759,19 @@ int dwc3_gadget_init(struct dwc3 *dwc)
 
 	dwc->irq_gadget = irq;
 
+	if (dwc->dr_mode == USB_DR_MODE_OTG) {
+		struct usb_phy *phy;
+
+		/* Switch otg to peripheral mode */
+		phy = usb_get_phy(USB_PHY_TYPE_USB3);
+		if (!IS_ERR(phy)) {
+			if (phy && phy->otg)
+				otg_set_peripheral(phy->otg,
+						(struct usb_gadget *)1);
+			usb_put_phy(phy);
+		}
+	}
+
 	dwc->ep0_trb = dma_alloc_coherent(dwc->sysdev,
 					  sizeof(*dwc->ep0_trb) * 2,
 					  &dwc->ep0_trb_addr, GFP_KERNEL);
@@ -4828,6 +4850,26 @@ int dwc3_gadget_init(struct dwc3 *dwc)
 	if (ret) {
 		dev_err(dwc->dev, "failed to add gadget\n");
 		goto err5;
+	}
+
+	if (dwc->dr_mode == USB_DR_MODE_OTG) {
+		struct usb_phy *phy;
+
+		phy = usb_get_phy(USB_PHY_TYPE_USB3);
+		if (!IS_ERR(phy)) {
+			if (phy && phy->otg) {
+				ret = otg_set_peripheral(phy->otg,
+						dwc->gadget);
+				if (ret) {
+					dev_err(dwc->dev,
+					"otg_set_peripheral failed\n");
+					usb_put_phy(phy);
+					goto err5;
+				}
+			} else {
+				usb_put_phy(phy);
+			}
+		}
 	}
 
 	if (DWC3_IP_IS(DWC32) && dwc->maximum_speed == USB_SPEED_SUPER_PLUS)

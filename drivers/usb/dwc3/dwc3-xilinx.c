@@ -213,10 +213,6 @@ static int dwc3_versal_power_req(struct device *dev, bool on)
 
 	priv_data = dev_get_drvdata(dev);
 
-	/* Check if entering into D3 state is allowed during suspend */
-	if (!priv_data->enable_d3_suspend)
-		return 0;
-
 	ret = of_property_read_u32_array(dev->of_node, "power-domains",
 					 pm_info, ARRAY_SIZE(pm_info));
 	if (ret < 0) {

@@ -184,6 +184,9 @@
 
 /* Bit fields */
 
+/* Global Status Register */
+#define DWC3_GSTS_CUR_MODE			(1 << 0)
+
 /* Global SoC Bus Configuration INCRx Register 0 */
 #define DWC3_GSBUSCFG0_INCR256BRSTENA	(1 << 7) /* INCR256 burst */
 #define DWC3_GSBUSCFG0_INCR128BRSTENA	(1 << 6) /* INCR128 burst */
@@ -1031,6 +1034,7 @@ struct dwc3_scratchpad_array {
  * @fladj: frame length adjustment
  * @ref_clk_per: reference clock period configuration
  * @irq_gadget: peripheral controller's IRQ number
+ * @otg: pointer to the dwc3_otg structure
  * @otg_irq: IRQ number for OTG IRQs
  * @current_otg_role: current role of operation while using the OTG block
  * @desired_otg_role: desired role of operation while using the OTG block
@@ -1116,6 +1120,7 @@ struct dwc3_scratchpad_array {
  * @usb3_lpm_capable: set if hadrware supports Link Power Management
  * @usb2_lpm_disable: set to disable usb2 lpm for host
  * @usb2_gadget_lpm_disable: set to disable usb2 lpm for gadget
+ * @remote_wakeup: set if host supports Remote Wakeup from Peripheral
  * @disable_scramble_quirk: set if we enable the disable scramble quirk
  * @u2exit_lfps_quirk: set if we enable u2exit lfps quirk
  * @u2ss_inp3_quirk: set if we enable P3 OK for U2/SS Inactive quirk
@@ -1334,6 +1339,7 @@ struct dwc3 {
 
 	struct dwc3_hwparams	hwparams;
 	struct debugfs_regset32	*regset;
+	struct dwc3_otg		*otg;
 
 	u32			dbg_lsp_select;
 
@@ -1374,6 +1380,7 @@ struct dwc3 {
 	unsigned		usb2_lpm_disable:1;
 	unsigned		usb2_gadget_lpm_disable:1;
 
+	unsigned                remote_wakeup:1;
 	unsigned		disable_scramble_quirk:1;
 	unsigned		u2exit_lfps_quirk:1;
 	unsigned		u2ss_inp3_quirk:1;
@@ -1638,7 +1645,8 @@ void dwc3_event_buffers_cleanup(struct dwc3 *dwc);
 int dwc3_core_soft_reset(struct dwc3 *dwc);
 void dwc3_enable_susphy(struct dwc3 *dwc, bool enable);
 
-#if IS_ENABLED(CONFIG_USB_DWC3_HOST) || IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)
+#if IS_ENABLED(CONFIG_USB_DWC3_HOST) || IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)\
+	 || IS_ENABLED(CONFIG_USB_DWC3_OTG)
 int dwc3_host_init(struct dwc3 *dwc);
 void dwc3_host_exit(struct dwc3 *dwc);
 void dwc3_host_wakeup_register(dwc3_wakeup_t func);
@@ -1653,7 +1661,8 @@ static inline void dwc3_host_wakeup_register(dwc3_wakeup_t func)
 
 int dwc3_core_init(struct dwc3 *dwc);
 
-#if IS_ENABLED(CONFIG_USB_DWC3_GADGET) || IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)
+#if IS_ENABLED(CONFIG_USB_DWC3_GADGET) || IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)\
+	 || IS_ENABLED(CONFIG_USB_DWC3_OTG)
 int dwc3_gadget_init(struct dwc3 *dwc);
 void dwc3_gadget_exit(struct dwc3 *dwc);
 int dwc3_gadget_set_test_mode(struct dwc3 *dwc, int mode);
@@ -1694,21 +1703,25 @@ static inline void dwc3_gadget_exit_hibernation(void *_dwc)
 { }
 #endif
 
+#if IS_ENABLED(CONFIG_USB_DWC3_OTG) || IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)
+void dwc3_otg_init(struct dwc3 *dwc);
+void dwc3_otg_exit(struct dwc3 *dwc);
+#else
+static inline void dwc3_otg_init(struct dwc3 *dwc)
+{ }
+static inline void dwc3_otg_exit(struct dwc3 *dwc)
+{ }
+#endif
+
 #if IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)
 int dwc3_drd_init(struct dwc3 *dwc);
 void dwc3_drd_exit(struct dwc3 *dwc);
-void dwc3_otg_init(struct dwc3 *dwc);
-void dwc3_otg_exit(struct dwc3 *dwc);
 void dwc3_otg_update(struct dwc3 *dwc, bool ignore_idstatus);
 void dwc3_otg_host_init(struct dwc3 *dwc);
 #else
 static inline int dwc3_drd_init(struct dwc3 *dwc)
 { return 0; }
 static inline void dwc3_drd_exit(struct dwc3 *dwc)
-{ }
-static inline void dwc3_otg_init(struct dwc3 *dwc)
-{ }
-static inline void dwc3_otg_exit(struct dwc3 *dwc)
 { }
 static inline void dwc3_otg_update(struct dwc3 *dwc, bool ignore_idstatus)
 { }

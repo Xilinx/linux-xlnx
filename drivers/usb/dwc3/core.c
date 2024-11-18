@@ -82,16 +82,19 @@ static int dwc3_get_dr_mode(struct dwc3 *dwc)
 		else if (IS_ENABLED(CONFIG_USB_DWC3_GADGET))
 			mode = USB_DR_MODE_PERIPHERAL;
 
+		if (!IS_ENABLED(CONFIG_USB_DWC3_OTG)) {
 		/*
 		 * DWC_usb31 and DWC_usb3 v3.30a and higher do not support OTG
 		 * mode. If the controller supports DRD but the dr_mode is not
 		 * specified or set to OTG, then set the mode to peripheral.
 		 */
-		if (mode == USB_DR_MODE_OTG && !dwc->edev &&
-		    (!IS_ENABLED(CONFIG_USB_ROLE_SWITCH) ||
-		     !device_property_read_bool(dwc->dev, "usb-role-switch")) &&
-		    !DWC3_VER_IS_PRIOR(DWC3, 330A))
-			mode = USB_DR_MODE_PERIPHERAL;
+			if (mode == USB_DR_MODE_OTG && !dwc->edev &&
+			    (!IS_ENABLED(CONFIG_USB_ROLE_SWITCH) ||
+			     !device_property_read_bool(dwc->dev,
+			     "usb-role-switch")) &&
+			     !DWC3_VER_IS_PRIOR(DWC3, 330A))
+				mode = USB_DR_MODE_PERIPHERAL;
+		}
 	}
 
 	if (mode != dwc->dr_mode) {
@@ -1719,6 +1722,11 @@ static int dwc3_core_init_mode(struct dwc3 *dwc)
 		ret = dwc3_drd_init(dwc);
 		if (ret)
 			return dev_err_probe(dev, ret, "failed to initialize dual-role\n");
+
+#if IS_ENABLED(CONFIG_USB_DWC3_OTG)
+		dwc->current_dr_role = 0;
+		dwc3_set_mode(dwc, DWC3_GCTL_PRTCAP_OTG);
+#endif
 		break;
 	default:
 		dev_err(dev, "Unsupported mode of operation %d\n", dwc->dr_mode);
