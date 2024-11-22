@@ -106,12 +106,14 @@ static int xilinx_ecdsa_verify(struct akcipher_request *req)
 	struct crypto_akcipher *tfm = crypto_akcipher_reqtfm(req);
 	struct xilinx_ecdsa_tfm_ctx *ctx = akcipher_tfm_ctx(tfm);
 	size_t keylen = ctx->curve->g.ndigits * sizeof(u64);
-	dma_addr_t dma_addr, dma_addr1, dma_addr2;
 	struct xilinx_sign_verify_params *para;
 	char *hash_buf, *sign_buf;
 	u8 rawhash[ECC_MAX_BYTES];
 	unsigned char *buffer;
+	dma_addr_t dma_addr;
+	void *dmabuf = NULL;
 	ssize_t diff;
+	u32 buflen;
 	int ret;
 	struct ecdsa_signature_ctx sig_ctx = {
 		.curve = ctx->curve,
@@ -145,35 +147,31 @@ static int xilinx_ecdsa_verify(struct akcipher_request *req)
 		memcpy(&rawhash, buffer + req->src_len, keylen);
 	}
 
-	para = dma_alloc_coherent(ctx->dev,
-				  sizeof(struct xilinx_sign_verify_params),
-				  &dma_addr, GFP_KERNEL);
-	if (!para) {
+	if (ctx->curve_id == XSECURE_ECC_NIST_P521)
+		keylen = ((ctx->curve->g.ndigits - 1) * sizeof(u64)) + ECDSA_P521_CURVE_ALIGN_BYTES;
+	/* ecc_swap_digits operates on u64 size data buffer */
+	buflen = sizeof(struct xilinx_sign_verify_params) + round_up(keylen, sizeof(u64)) +
+		ctx->key_size;
+	dmabuf = kmalloc(buflen, GFP_KERNEL);
+	if (!dmabuf) {
+		ret = -ENOMEM;
+		goto error;
+	}
+	para = dmabuf;
+	hash_buf = dmabuf + sizeof(struct xilinx_sign_verify_params);
+	sign_buf = dmabuf + sizeof(struct xilinx_sign_verify_params) +
+		   round_up(keylen, sizeof(u64));
+	dma_addr = dma_map_single(ctx->dev, dmabuf, buflen, DMA_BIDIRECTIONAL);
+	if (unlikely(dma_mapping_error(ctx->dev, dma_addr))) {
 		ret = -ENOMEM;
 		goto error;
 	}
 
-	if (ctx->curve_id == XSECURE_ECC_NIST_P521)
-		keylen = ((ctx->curve->g.ndigits - 1) * sizeof(u64)) + ECDSA_P521_CURVE_ALIGN_BYTES;
-	/* ecc_swap_digits operates on u64 size data buffer */
-	hash_buf = dma_alloc_coherent(ctx->dev, round_up(keylen, sizeof(u64)),
-				      &dma_addr1, GFP_KERNEL);
-	if (!hash_buf) {
-		ret = -ENOMEM;
-		goto hash_fail;
-	}
-
-	sign_buf = dma_alloc_coherent(ctx->dev, ctx->key_size,
-				      &dma_addr2, GFP_KERNEL);
-	if (!sign_buf) {
-		ret = -ENOMEM;
-		goto sign_fail;
-	}
-
 	para->pubkey_addr = ctx->pub_key_addr;
 	para->curve_type = ctx->curve_id;
-	para->sign_addr = dma_addr2;
-	para->hash_addr = dma_addr1;
+	para->sign_addr = dma_addr + sizeof(struct xilinx_sign_verify_params) +
+			  round_up(keylen, sizeof(u64));
+	para->hash_addr = dma_addr + sizeof(struct xilinx_sign_verify_params);
 	para->size = keylen;
 
 	memcpy(sign_buf, sig_ctx.r, keylen);
@@ -181,21 +179,12 @@ static int xilinx_ecdsa_verify(struct akcipher_request *req)
 
 	ecc_swap_digits((u64 *)rawhash, (u64 *)hash_buf,
 			ctx->curve->g.ndigits);
-
+	dma_sync_single_for_device(ctx->dev, dma_addr, buflen, DMA_BIDIRECTIONAL);
 	ret = versal_pm_ecdsa_verify_sign(dma_addr);
-
-	dma_free_coherent(ctx->dev, ctx->key_size, sign_buf, dma_addr2);
-
-sign_fail:
-	dma_free_coherent(ctx->dev, round_up(keylen, sizeof(u64)), hash_buf, dma_addr1);
-
-hash_fail:
-	dma_free_coherent(ctx->dev, sizeof(struct xilinx_sign_verify_params),
-			  para, dma_addr);
-
+	dma_unmap_single(ctx->dev, dma_addr, buflen, DMA_BIDIRECTIONAL);
 error:
 	kfree(buffer);
-
+	kfree(dmabuf);
 	return ret;
 }
 
@@ -244,6 +233,7 @@ static int xilinx_ecdsa_set_pub_key(struct crypto_akcipher *tfm,
 
 	ecc_digits_from_bytes(d, key_size, (u64 *)ctx->pub_kbuf, ndigits);
 	ecc_digits_from_bytes(&d[key_size], key_size, (u64 *)(ctx->pub_kbuf + key_size), ndigits);
+	dma_sync_single_for_device(ctx->dev, ctx->pub_key_addr, ECDSA_MAX_KEY_SIZE, DMA_TO_DEVICE);
 
 	return versal_pm_ecdsa_validate_key(ctx->pub_key_addr, ctx->curve_id);
 }
@@ -257,10 +247,8 @@ static void xilinx_ecdsa_exit_tfm(struct crypto_akcipher *tfm)
 		ctx->fbk_cipher = NULL;
 	}
 
-	if (ctx->pub_kbuf) {
-		dma_free_coherent(ctx->dev, ECDSA_MAX_KEY_SIZE,
-				  ctx->pub_kbuf, ctx->pub_key_addr);
-	}
+	if (ctx->pub_kbuf)
+		dma_unmap_single(ctx->dev, ctx->pub_key_addr, ECDSA_MAX_KEY_SIZE, DMA_TO_DEVICE);
 
 	memzero_explicit(ctx, sizeof(struct xilinx_ecdsa_tfm_ctx));
 }
@@ -278,14 +266,20 @@ static int xilinx_ecdsa_init_tfm(struct crypto_akcipher *tfm)
 		(struct xilinx_ecdsa_tfm_ctx *)akcipher_tfm_ctx(tfm);
 	struct akcipher_alg *cipher_alg = crypto_akcipher_alg(tfm);
 	struct xilinx_ecdsa_drv_ctx *drv_ctx;
+	int ret;
 
 	drv_ctx = container_of(cipher_alg, struct xilinx_ecdsa_drv_ctx, alg.base);
 	tfm_ctx->dev = drv_ctx->dev;
 
-	tfm_ctx->pub_kbuf = dma_alloc_coherent(tfm_ctx->dev, ECDSA_MAX_KEY_SIZE,
-					       &tfm_ctx->pub_key_addr, GFP_KERNEL);
+	tfm_ctx->pub_kbuf = kmalloc(ECDSA_MAX_KEY_SIZE, GFP_KERNEL);
 	if (!tfm_ctx->pub_kbuf)
 		return -ENOMEM;
+	tfm_ctx->pub_key_addr = dma_map_single(tfm_ctx->dev, tfm_ctx->pub_kbuf, ECDSA_MAX_KEY_SIZE,
+					       DMA_TO_DEVICE);
+	if (unlikely(dma_mapping_error(tfm_ctx->dev, tfm_ctx->pub_key_addr))) {
+		ret = -ENOMEM;
+		goto free;
+	}
 
 	tfm_ctx->fbk_cipher = crypto_alloc_akcipher(drv_ctx->alg.base.base.cra_name,
 						    0,
@@ -293,9 +287,8 @@ static int xilinx_ecdsa_init_tfm(struct crypto_akcipher *tfm)
 	if (IS_ERR(tfm_ctx->fbk_cipher)) {
 		pr_err("%s() Error: failed to allocate fallback for %s\n",
 		       __func__, drv_ctx->alg.base.base.cra_name);
-		dma_free_coherent(tfm_ctx->dev, ECDSA_MAX_KEY_SIZE,
-				  tfm_ctx->pub_kbuf, tfm_ctx->pub_key_addr);
-		return PTR_ERR(tfm_ctx->fbk_cipher);
+		ret = PTR_ERR(tfm_ctx->fbk_cipher);
+		goto unmap;
 	}
 
 	akcipher_set_reqsize(tfm, max(sizeof(struct xilinx_ecdsa_req_ctx),
@@ -303,9 +296,17 @@ static int xilinx_ecdsa_init_tfm(struct crypto_akcipher *tfm)
 				      crypto_akcipher_reqsize(tfm_ctx->fbk_cipher)));
 
 	if (strcmp(drv_ctx->alg.base.base.cra_name, "ecdsa-nist-p384") == 0)
-		return xilinx_ecdsa_ctx_init(tfm_ctx, ECC_CURVE_NIST_P384);
+		ret = xilinx_ecdsa_ctx_init(tfm_ctx, ECC_CURVE_NIST_P384);
 	else
-		return xilinx_ecdsa_ctx_init(tfm_ctx, ECC_CURVE_NIST_P521);
+		ret = xilinx_ecdsa_ctx_init(tfm_ctx, ECC_CURVE_NIST_P521);
+	if (!ret)
+		return ret;
+unmap:
+	dma_unmap_single(tfm_ctx->dev, tfm_ctx->pub_key_addr, ECDSA_MAX_KEY_SIZE, DMA_TO_DEVICE);
+free:
+	kfree(tfm_ctx->pub_kbuf);
+	tfm_ctx->pub_kbuf = NULL;
+	return ret;
 }
 
 static int handle_ecdsa_req(struct crypto_engine *engine, void *req)
