@@ -142,27 +142,29 @@ static int zynqmp_aes_aead_cipher(struct aead_request *req)
 	size_t dma_size;
 	void *dmabuf;
 	char *kbuf;
-	int err;
 
 	dma_size = req->cryptlen + ZYNQMP_AES_AUTH_SIZE;
-	kbuf = dma_alloc_coherent(dev, dma_size, &dma_addr_data, GFP_KERNEL);
+	kbuf = kmalloc(dma_size, GFP_KERNEL);
 	if (!kbuf)
 		return -ENOMEM;
 
-	dmabuf = dma_alloc_coherent(dev, sizeof(struct zynqmp_aead_hw_req) + GCM_AES_IV_SIZE,
-				    &dma_addr_hw_req, GFP_KERNEL);
+	dmabuf = kmalloc(sizeof(*hwreq) + GCM_AES_IV_SIZE, GFP_KERNEL);
 	if (!dmabuf) {
-		dma_free_coherent(dev, dma_size, kbuf, dma_addr_data);
+		kfree(kbuf);
 		return -ENOMEM;
 	}
 	hwreq = dmabuf;
 	data_size = req->cryptlen;
 	scatterwalk_map_and_copy(kbuf, req->src, 0, req->cryptlen, 0);
 	memcpy(dmabuf + sizeof(struct zynqmp_aead_hw_req), req->iv, GCM_AES_IV_SIZE);
+	dma_addr_data = dma_map_single(dev, kbuf, dma_size, DMA_BIDIRECTIONAL);
+	if (unlikely(dma_mapping_error(dev, dma_addr_data))) {
+		ret = -ENOMEM;
+		goto freemem;
+	}
 
 	hwreq->src = dma_addr_data;
 	hwreq->dst = dma_addr_data;
-	hwreq->iv = dma_addr_hw_req + sizeof(struct zynqmp_aead_hw_req);
 	hwreq->keysrc = tfm_ctx->keysrc;
 	hwreq->op = rq_ctx->op;
 
@@ -176,11 +178,23 @@ static int zynqmp_aes_aead_cipher(struct aead_request *req)
 	else
 		hwreq->key = 0;
 
+	dma_addr_hw_req = dma_map_single(dev, dmabuf, sizeof(struct zynqmp_aead_hw_req) +
+					 GCM_AES_IV_SIZE,
+					 DMA_TO_DEVICE);
+	if (unlikely(dma_mapping_error(dev, dma_addr_hw_req))) {
+		ret = -ENOMEM;
+		dma_unmap_single(dev, dma_addr_data, dma_size, DMA_BIDIRECTIONAL);
+		goto freemem;
+	}
+	hwreq->iv = dma_addr_hw_req + sizeof(struct zynqmp_aead_hw_req);
+	dma_sync_single_for_device(dev, dma_addr_hw_req, sizeof(struct zynqmp_aead_hw_req) +
+				   GCM_AES_IV_SIZE, DMA_TO_DEVICE);
 	ret = zynqmp_pm_aes_engine(dma_addr_hw_req, &status);
-
+	dma_unmap_single(dev, dma_addr_hw_req, sizeof(struct zynqmp_aead_hw_req) + GCM_AES_IV_SIZE,
+			 DMA_TO_DEVICE);
+	dma_unmap_single(dev, dma_addr_data, dma_size, DMA_BIDIRECTIONAL);
 	if (ret) {
 		dev_err(dev, "ERROR: AES PM API failed\n");
-		err = ret;
 	} else if (status) {
 		switch (status) {
 		case ZYNQMP_AES_GCM_TAG_MISMATCH_ERR:
@@ -196,7 +210,7 @@ static int zynqmp_aes_aead_cipher(struct aead_request *req)
 			dev_err(dev, "ERROR: Unknown error\n");
 			break;
 		}
-		err = -status;
+		ret = -status;
 	} else {
 		if (hwreq->op == ZYNQMP_AES_ENCRYPT)
 			data_size = data_size + ZYNQMP_AES_AUTH_SIZE;
@@ -205,19 +219,16 @@ static int zynqmp_aes_aead_cipher(struct aead_request *req)
 
 		sg_copy_from_buffer(req->dst, sg_nents(req->dst),
 				    kbuf, data_size);
-		err = 0;
+		ret = 0;
 	}
 
-	if (kbuf) {
-		memzero_explicit(kbuf, dma_size);
-		dma_free_coherent(dev, dma_size, kbuf, dma_addr_data);
-	}
-	if (hwreq) {
-		memzero_explicit(dmabuf, sizeof(struct zynqmp_aead_hw_req) + GCM_AES_IV_SIZE);
-		dma_free_coherent(dev, sizeof(struct zynqmp_aead_hw_req) + GCM_AES_IV_SIZE,
-				  dmabuf, dma_addr_hw_req);
-	}
-	return err;
+freemem:
+	memzero_explicit(kbuf, dma_size);
+	kfree(kbuf);
+	memzero_explicit(dmabuf, sizeof(struct zynqmp_aead_hw_req) + GCM_AES_IV_SIZE);
+	kfree(dmabuf);
+
+	return ret;
 }
 
 static int versal_aes_aead_cipher(struct aead_request *req)
@@ -231,7 +242,8 @@ static int versal_aes_aead_cipher(struct aead_request *req)
 	struct versal_init_ops *hwreq;
 	struct versal_in_params *in;
 	u32 gcm_offset, out_len;
-	size_t dma_size;
+	size_t kbuf_size;
+	size_t dmabuf_size;
 	void *dmabuf;
 	char *kbuf;
 	int ret;
@@ -242,35 +254,41 @@ static int versal_aes_aead_cipher(struct aead_request *req)
 		goto err;
 	}
 
-	dma_size = total_len + ZYNQMP_AES_AUTH_SIZE;
-	kbuf = dma_alloc_coherent(dev, dma_size, &dma_addr_data, GFP_KERNEL);
-	if (!kbuf) {
+	kbuf_size = total_len + ZYNQMP_AES_AUTH_SIZE;
+	kbuf = kmalloc(kbuf_size, GFP_KERNEL);
+	if (unlikely(!kbuf)) {
 		ret = -ENOMEM;
 		goto err;
 	}
-
-	/*
-	 * Allocated separate memory as separate structure for init ops
-	 * Also to avoid big continuous memory allocation
-	 */
-	dmabuf = dma_alloc_coherent(dev, sizeof(struct versal_init_ops) +
-				   sizeof(struct versal_in_params) +
-				   GCM_AES_IV_SIZE,
-				   &dma_addr_hw_req, GFP_KERNEL);
-	if (!dmabuf) {
+	dmabuf_size = sizeof(struct versal_init_ops) +
+		      sizeof(struct versal_in_params) +
+		      GCM_AES_IV_SIZE;
+	dmabuf = kmalloc(dmabuf_size, GFP_KERNEL);
+	if (unlikely(!dmabuf)) {
 		ret = -ENOMEM;
-		goto hwreq_fail;
+		goto buf1_free;
+	}
+
+	dma_addr_hw_req = dma_map_single(dev, dmabuf, dmabuf_size, DMA_BIDIRECTIONAL);
+	if (unlikely(dma_mapping_error(dev, dma_addr_hw_req))) {
+		ret = -ENOMEM;
+		goto buf2_free;
+	}
+	scatterwalk_map_and_copy(kbuf, req->src, 0, total_len, 0);
+	dma_addr_data = dma_map_single(dev, kbuf, kbuf_size, DMA_BIDIRECTIONAL);
+	if (unlikely(dma_mapping_error(dev, dma_addr_data))) {
+		dma_unmap_single(dev, dma_addr_hw_req, dmabuf_size, DMA_BIDIRECTIONAL);
+		ret = -ENOMEM;
+		goto buf2_free;
 	}
 	hwreq = dmabuf;
 	in = dmabuf + sizeof(struct versal_init_ops);
-	dma_addr_in = dma_addr_hw_req + sizeof(struct versal_init_ops);
-	scatterwalk_map_and_copy(kbuf, req->src, 0, total_len, 0);
 	memcpy(dmabuf + sizeof(struct versal_init_ops) +
 	       sizeof(struct versal_in_params), req->iv, GCM_AES_IV_SIZE);
 	hwreq->iv = dma_addr_hw_req + sizeof(struct versal_init_ops) +
 		    sizeof(struct versal_in_params);
 	hwreq->keysrc = tfm_ctx->keysrc;
-
+	dma_addr_in = dma_addr_hw_req + sizeof(struct versal_init_ops);
 	if (rq_ctx->op == ZYNQMP_AES_ENCRYPT) {
 		hwreq->op = VERSAL_AES_ENCRYPT;
 		out_len = total_len + ZYNQMP_AES_AUTH_SIZE;
@@ -291,9 +309,13 @@ static int versal_aes_aead_cipher(struct aead_request *req)
 		ret = versal_pm_aes_key_write(hwreq->size, hwreq->keysrc,
 					      tfm_ctx->key_dma_addr);
 		if (ret)
-			goto key_fail;
+			goto unmap;
 	}
 
+	in->in_data_addr = dma_addr_data + req->assoclen;
+	in->is_last = 1;
+	gcm_offset = req->assoclen + in->size;
+	dma_sync_single_for_device(dev, dma_addr_hw_req, dmabuf_size, DMA_BIDIRECTIONAL);
 	ret = versal_pm_aes_op_init(dma_addr_hw_req);
 	if (ret)
 		goto clearkey;
@@ -304,11 +326,6 @@ static int versal_aes_aead_cipher(struct aead_request *req)
 		if (ret)
 			goto clearkey;
 	}
-
-	in->in_data_addr = dma_addr_data + req->assoclen;
-	in->is_last = 1;
-	gcm_offset = req->assoclen + in->size;
-
 	if (rq_ctx->op == ZYNQMP_AES_ENCRYPT) {
 		ret = versal_pm_aes_enc_update(dma_addr_in,
 					       dma_addr_data + req->assoclen);
@@ -330,21 +347,27 @@ static int versal_aes_aead_cipher(struct aead_request *req)
 			goto clearkey;
 		}
 	}
-
+	dma_unmap_single(dev, dma_addr_data, kbuf_size, DMA_BIDIRECTIONAL);
+	dma_unmap_single(dev, dma_addr_hw_req, dmabuf_size, DMA_BIDIRECTIONAL);
 	sg_copy_from_buffer(req->dst, sg_nents(req->dst),
 			    kbuf, out_len);
+	dma_addr_data = 0;
+	dma_addr_hw_req = 0;
 
 clearkey:
 	if (hwreq->keysrc >= VERSAL_AES_USER_KEY_0 && hwreq->keysrc <= VERSAL_AES_USER_KEY_7)
 		versal_pm_aes_key_zero(hwreq->keysrc);
-key_fail:
-	memzero_explicit(dmabuf, sizeof(struct versal_init_ops) +
-			 sizeof(struct versal_in_params));
-	dma_free_coherent(dev, sizeof(struct versal_init_ops) +
-			  sizeof(struct versal_in_params), dmabuf, dma_addr_hw_req);
-hwreq_fail:
-	memzero_explicit(kbuf, dma_size);
-	dma_free_coherent(dev, dma_size, kbuf, dma_addr_data);
+unmap:
+	if (unlikely(dma_addr_data))
+		dma_unmap_single(dev, dma_addr_data, kbuf_size, DMA_BIDIRECTIONAL);
+	if (unlikely(dma_addr_hw_req))
+		dma_unmap_single(dev, dma_addr_hw_req, dmabuf_size, DMA_BIDIRECTIONAL);
+buf2_free:
+	memzero_explicit(dmabuf, dmabuf_size);
+	kfree(dmabuf);
+buf1_free:
+	memzero_explicit(kbuf, kbuf_size);
+	kfree(kbuf);
 err:
 	return ret;
 }
