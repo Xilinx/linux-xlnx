@@ -240,6 +240,7 @@ static int versal_aes_aead_cipher(struct aead_request *req)
 	struct versal_in_params *in;
 	u32 gcm_offset, out_len;
 	size_t dma_size;
+	void *dmabuf;
 	char *kbuf;
 	int ret;
 
@@ -264,24 +265,16 @@ static int versal_aes_aead_cipher(struct aead_request *req)
 	 * Allocated separate memory as separate structure for init ops
 	 * Also to avoid big continuous memory allocation
 	 */
-	hwreq = dma_alloc_coherent(dev, sizeof(struct versal_init_ops),
+	dmabuf = dma_alloc_coherent(dev, sizeof(struct versal_init_ops) +
+				   sizeof(struct versal_in_params),
 				   &dma_addr_hw_req, GFP_KERNEL);
-	if (!hwreq) {
+	if (!dmabuf) {
 		ret = -ENOMEM;
 		goto hwreq_fail;
 	}
-
-	/*
-	 * Allocated separate memory as separate structure for in params
-	 * Also to avoid big continuous memory allocation
-	 */
-	in = dma_alloc_coherent(dev, sizeof(struct versal_in_params),
-				&dma_addr_in, GFP_KERNEL);
-	if (!in) {
-		ret = -ENOMEM;
-		goto in_fail;
-	}
-
+	hwreq = dmabuf;
+	in = dmabuf + sizeof(struct versal_init_ops);
+	dma_addr_in = dma_addr_hw_req + sizeof(struct versal_init_ops);
 	scatterwalk_map_and_copy(kbuf, req->src, 0, total_len, 0);
 	memcpy(kbuf + total_len, req->iv, GCM_AES_IV_SIZE);
 	hwreq->iv = dma_addr_data + total_len;
@@ -355,10 +348,10 @@ clearkey:
 	if (hwreq->keysrc >= VERSAL_AES_USER_KEY_0 && hwreq->keysrc <= VERSAL_AES_USER_KEY_7)
 		versal_pm_aes_key_zero(hwreq->keysrc);
 key_fail:
-	dma_free_coherent(dev, sizeof(struct versal_in_params), in, dma_addr_in);
-in_fail:
-	memzero_explicit(hwreq, sizeof(struct versal_init_ops));
-	dma_free_coherent(dev, sizeof(struct versal_init_ops), hwreq, dma_addr_hw_req);
+	memzero_explicit(dmabuf, sizeof(struct versal_init_ops) +
+			 sizeof(struct versal_in_params));
+	dma_free_coherent(dev, sizeof(struct versal_init_ops) +
+			  sizeof(struct versal_in_params), dmabuf, dma_addr_hw_req);
 hwreq_fail:
 	memzero_explicit(kbuf, dma_size);
 	dma_free_coherent(dev, dma_size, kbuf, dma_addr_data);
