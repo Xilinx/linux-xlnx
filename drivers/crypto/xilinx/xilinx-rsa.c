@@ -85,7 +85,7 @@ static int zynqmp_rsa_xcrypt(struct akcipher_request *req)
 	dma_size = req->dst_len + tctx->n_len + len + padding;
 	offset = dma_size - len;
 
-	kbuf = dma_alloc_coherent(tctx->dev, dma_size, &dma_addr, GFP_KERNEL);
+	kbuf = kzalloc(dma_size, GFP_KERNEL);
 	if (!kbuf)
 		return -ENOMEM;
 
@@ -93,15 +93,19 @@ static int zynqmp_rsa_xcrypt(struct akcipher_request *req)
 	memcpy(kbuf + req->dst_len, tctx->n_buf, tctx->n_len);
 
 	memcpy(kbuf + offset, buf, len);
-
+	dma_addr = dma_map_single(tctx->dev, kbuf, dma_size, DMA_BIDIRECTIONAL);
+	if (unlikely(dma_mapping_error(tctx->dev, dma_addr))) {
+		ret = -ENOMEM;
+		goto end;
+	}
 	ret = zynqmp_pm_rsa(dma_addr, tctx->n_len, rq_ctx->op);
+	dma_unmap_single(tctx->dev, dma_addr, dma_size, DMA_BIDIRECTIONAL);
 	if (ret == 0) {
 		sg_copy_from_buffer(req->dst, sg_nents(req->dst), kbuf,
 				    req->dst_len);
 	}
-
-	dma_free_coherent(tctx->dev, dma_size, kbuf, dma_addr);
-
+end:
+	kfree(kbuf);
 	return ret;
 }
 
@@ -115,15 +119,10 @@ static int versal_rsa_xcrypt(struct akcipher_request *req)
 	dma_addr_t dma_addr, dma_addr1;
 	char *kbuf;
 	const char *buf;
+	void *dmabuf;
 	size_t dma_size;
 	u8 padding = 0;
 	int ret = 0;
-
-	para = dma_alloc_coherent(tctx->dev,
-				  sizeof(struct versal_rsa_in_param),
-				  &dma_addr1, GFP_KERNEL);
-	if (!para)
-		return -ENOMEM;
 
 	if (rq_ctx->op == XILINX_RSA_ENCRYPT) {
 		padding = tctx->e_len % 2;
@@ -134,40 +133,42 @@ static int versal_rsa_xcrypt(struct akcipher_request *req)
 		len = tctx->d_len;
 	}
 
-	dma_size = req->dst_len + tctx->n_len + len + padding;
-	offset = dma_size - len;
+	dma_size = sizeof(struct versal_rsa_in_param) + req->dst_len + tctx->n_len + len + padding;
+	offset = req->dst_len + tctx->n_len + padding;
+	dmabuf = kmalloc(dma_size, GFP_KERNEL);
+	if (!dmabuf)
+		return -ENOMEM;
 
-	kbuf = dma_alloc_coherent(tctx->dev, dma_size, &dma_addr, GFP_KERNEL);
-	if (!kbuf) {
+	para = dmabuf;
+	kbuf = dmabuf + sizeof(struct versal_rsa_in_param);
+	memset(kbuf, 0, diff);
+	scatterwalk_map_and_copy(kbuf + diff, req->src, 0, req->src_len, 0);
+	memcpy(kbuf + req->dst_len, tctx->n_buf, tctx->n_len);
+	memset(kbuf + req->dst_len + tctx->n_len, 0, padding);
+	memcpy(kbuf + offset, buf, len);
+	dma_addr1 = dma_map_single(tctx->dev, dmabuf, dma_size, DMA_BIDIRECTIONAL);
+	if (unlikely(dma_mapping_error(tctx->dev, dma_addr1))) {
 		ret = -ENOMEM;
-		goto kbuf_fail;
+		goto end;
 	}
 
-	scatterwalk_map_and_copy(kbuf + diff, req->src, 0, req->src_len, 0);
-
-	memcpy(kbuf + req->dst_len, tctx->n_buf, tctx->n_len);
-
-	memcpy(kbuf + offset, buf, len);
-
+	dma_addr = dma_addr1 + sizeof(struct versal_rsa_in_param);
 	para->key_addr = (u64)(dma_addr + req->dst_len);
 	para->data_addr = (u64)dma_addr;
 	para->size = req->dst_len;
-
+	dma_sync_single_for_device(tctx->dev, dma_addr1, dma_size, DMA_BIDIRECTIONAL);
 	if (rq_ctx->op == XILINX_RSA_ENCRYPT)
 		ret = versal_pm_rsa_encrypt(dma_addr1, dma_addr);
 	else
 		ret = versal_pm_rsa_decrypt(dma_addr1, dma_addr);
-
+	dma_unmap_single(tctx->dev, dma_addr1, dma_size, DMA_BIDIRECTIONAL);
 	if (ret == 0) {
 		sg_copy_from_buffer(req->dst, sg_nents(req->dst), kbuf,
 				    req->dst_len);
 	}
-	dma_free_coherent(tctx->dev, dma_size, kbuf, dma_addr);
 
-kbuf_fail:
-	dma_free_coherent(tctx->dev, sizeof(struct versal_rsa_in_param),
-			  para, dma_addr1);
-
+end:
+	kfree(dmabuf);
 	return ret;
 }
 
