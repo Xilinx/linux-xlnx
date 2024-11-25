@@ -32,12 +32,6 @@ config VIDEO_XILINX_AXI4S_SWITCH
 	  as well as dynamic (control register based) routing.
 	  Say M to modularize. Say N if unsure.
 
-config VIDEO_XILINX_CRESAMPLE
-	tristate "Xilinx Video Chroma Resampler"
-	depends on VIDEO_XILINX
-	help
-	  Driver for the Xilinx Chroma Resampler
-
 config VIDEO_XILINX_DEMOSAIC
 	tristate "Xilinx Video Demosaic IP"
 	depends on VIDEO_XILINX
