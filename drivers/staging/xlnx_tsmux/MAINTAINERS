@@ -1,4 +1,0 @@
-XILINX MPG2TSMUX DRIVER
-M:	Venkateshwar Rao <venkateshwar.rao.gannavarapu@xilinx.com>
-S:	Maintained
-F:	drivers/staging/xlnx_tsmux
