@@ -96,12 +96,6 @@ config VIDEO_XILINX_ISP
 	  stream format as input and generates an RGB video output.
 	  Say M to modularize. Say N if unsure.
 
-config VIDEO_XILINX_REMAPPER
-	tristate "Xilinx Video Remapper"
-	depends on VIDEO_XILINX
-	help
-	  Driver for the Xilinx Video Remapper
-
 config VIDEO_XILINX_SCALER
 	tristate "Xilinx Video Scaler"
 	depends on VIDEO_XILINX
