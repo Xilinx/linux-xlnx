@@ -13,11 +13,12 @@
 #include <dt-bindings/reset/xlnx-versal-net-resets.h>
 
 / {
-	ref_clk: ref_clk {
+	ref_clk: ref-clk {
 		bootph-all;
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
 		clock-frequency = <33333333>;
+		clock-output-names = "ref_clk";
 	};
 
 	can0_clk: can0-clk {
@@ -26,6 +27,7 @@
 		clocks = <&versal_net_clk CAN0_REF_2X>;
 		clock-div = <2>;
 		clock-mult = <1>;
+		clock-output-names = "can0_clk";
 	};
 
 	can1_clk: can1-clk {
@@ -34,6 +36,7 @@
 		clocks = <&versal_net_clk CAN1_REF_2X>;
 		clock-div = <2>;
 		clock-mult = <1>;
+		clock-output-names = "can1_clk";
 	};
 
 	firmware {
