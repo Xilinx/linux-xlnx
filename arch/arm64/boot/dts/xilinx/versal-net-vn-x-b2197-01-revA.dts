@@ -86,7 +86,7 @@
 		};
 	};
 
-	zynqmp_ipi1_nobuf {
+	zynqmp-ipi1-nobuf {
 		compatible = "xlnx,versal-ipi-mailbox";
 		reg = <0x00 0xeb3b0000 0x00 0x1ff>;
 		reg-names = "ctrl";
@@ -111,7 +111,7 @@
 		ranges;
 		reg = <0 0xff9a0000 0 0x10000>;
 		xlnx,cluster-mode = <1>;
-		remoteproc_r52: r52_0 {
+		remoteproc_r52: r52-0 {
 			compatible = "xilinx,r52";
 			memory-region = <&rsc_tbl_carveout>, <&rpu0vdev0buffer>,
 				<&rpu0vdev0vring0>, <&rpu0vdev0vring1>;
