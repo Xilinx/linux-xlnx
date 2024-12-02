@@ -13,16 +13,19 @@
 #include <linux/device.h>
 #include <linux/io.h>
 #include <linux/platform_device.h>
+#include <linux/regmap.h>
 #include <linux/types.h>
 #include <linux/xlnx/xlnx_timer.h>
+#include <linux/xlnx/xilinx-hdcp1x-cipher.h>
 #include "xlnx_hdcp2x_tx.h"
 
 #define XHDCP_KEY_WRITE_PERMISSION 0220
+
 enum xlnx_hdcptx_callback_type {
-	XHDCP2X_TX_HANDLER_DP_AUX_READ = 0,
-	XHDCP2X_TX_HANDLER_DP_AUX_WRITE = 1,
-	XHDCP2X_TX_HANDLER_HDCP_STATUS = 2,
-	XHDCP2X_TX_HANDLER_INVALID = 3
+	XHDCPTX_HANDLER_AUX_READ = 0,
+	XHDCPTX_HANDLER_AUX_WRITE = 1,
+	XHDCPTX_HANDLER_HDCP_STATUS = 2,
+	XHDCPTX_HANDLER_INVALID = 3
 };
 
 enum xlnx_hdcptx_protocol_type {
@@ -56,6 +59,7 @@ enum xlnx_hdcptx_authstatus {
  * @hdcp2xenable: HDCP2X protocol is enabled
  * @hdcp1xenable: HDCP1X protocol is enabled
  * @is_enckey_available: Availability of encryption keys
+ * @is_hdcp_initialized: Flag to check whether HDCP driver is initialized or not
  */
 struct xlnx_hdcptx {
 	struct device *dev;
@@ -69,6 +73,7 @@ struct xlnx_hdcptx {
 	bool hdcp2xenable;
 	bool hdcp1xenable;
 	bool is_enckey_available;
+	bool is_hdcp_initialized;
 };
 
 int xlnx_hdcp_tx_reset(struct xlnx_hdcptx *xtxhdcp);
@@ -79,10 +84,11 @@ int xlnx_hdcp_tx_set_callback(void *ref,
 			      void *callbackfunc);
 int xlnx_hdcp_tx_set_keys(struct xlnx_hdcptx *xtxhdcp, const u8 *data);
 
+void xlnx_hdcp1x_interrupt_handler(struct xlnx_hdcptx *xtxhdcp);
 void *xlnx_hdcp_tx_init(struct device *dev, void *protocol_ref,
 			struct xlnx_hdcptx *xtxhdcp, void __iomem *hdcp_base_address,
 			u8 is_repeater,	enum xlnx_hdcptx_protocol_type, u8 lane_count,
-			int hw_protocol, void __iomem *key_base_address);
+			int hw_protocol, struct regmap *key_base_address);
 void *xlnx_hdcp_timer_init(struct device *dev, void __iomem *interface_base);
 void xlnx_hdcp_tx_process_cp_irq(struct xlnx_hdcptx *xhdcptx);
 void xlnx_hdcp_tx_timer_exit(struct xlnx_hdcptx *xtxhdcp);
