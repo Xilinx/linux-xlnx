@@ -359,3 +359,4 @@ module_i2c_driver(tps544_driver);
 MODULE_AUTHOR("Harini Katakam");
 MODULE_DESCRIPTION("PMBus regulator driver for TPS544");
 MODULE_LICENSE("GPL");
+MODULE_IMPORT_NS(PMBUS);
