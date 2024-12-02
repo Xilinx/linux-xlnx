@@ -1268,6 +1268,7 @@ static void __exit fpga_mgr_class_exit(void)
 MODULE_AUTHOR("Alan Tull <atull@kernel.org>");
 MODULE_DESCRIPTION("FPGA manager framework");
 MODULE_LICENSE("GPL v2");
+MODULE_IMPORT_NS(DMA_BUF);
 
 subsys_initcall(fpga_mgr_class_init);
 module_exit(fpga_mgr_class_exit);
