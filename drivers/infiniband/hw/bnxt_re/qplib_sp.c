@@ -59,7 +59,7 @@ static bool bnxt_qplib_is_atomic_cap(struct bnxt_qplib_rcfw *rcfw)
 {
 	u16 pcie_ctl2 = 0;
 
-	if (!bnxt_qplib_is_chip_gen_p5(rcfw->res->cctx))
+	if (!bnxt_qplib_is_chip_gen_p5_p7(rcfw->res->cctx))
 		return false;
 
 	pcie_capability_read_word(rcfw->pdev, PCI_EXP_DEVCTL2, &pcie_ctl2);
@@ -133,10 +133,12 @@ int bnxt_qplib_get_dev_attr(struct bnxt_qplib_rcfw *rcfw,
 	 * reporting the max number
 	 */
 	attr->max_qp_wqes -= BNXT_QPLIB_RESERVED_QP_WRS + 1;
-	attr->max_qp_sges = bnxt_qplib_is_chip_gen_p5(rcfw->res->cctx) ?
+	attr->max_qp_sges = bnxt_qplib_is_chip_gen_p5_p7(rcfw->res->cctx) ?
 			    6 : sb->max_sge;
 	attr->max_cq = le32_to_cpu(sb->max_cq);
 	attr->max_cq_wqes = le32_to_cpu(sb->max_cqe);
+	if (!bnxt_qplib_is_chip_gen_p7(rcfw->res->cctx))
+		attr->max_cq_wqes = min_t(u32, BNXT_QPLIB_MAX_CQ_WQES, attr->max_cq_wqes);
 	attr->max_cq_sges = attr->max_qp_sges;
 	attr->max_mr = le32_to_cpu(sb->max_mr);
 	attr->max_mw = le32_to_cpu(sb->max_mw);
@@ -151,9 +153,17 @@ int bnxt_qplib_get_dev_attr(struct bnxt_qplib_rcfw *rcfw,
 	attr->max_srq_sges = sb->max_srq_sge;
 	attr->max_pkey = 1;
 	attr->max_inline_data = le32_to_cpu(sb->max_inline_data);
-	attr->l2_db_size = (sb->l2_db_space_size + 1) *
-			    (0x01 << RCFW_DBR_BASE_PAGE_SHIFT);
-	attr->max_sgid = BNXT_QPLIB_NUM_GIDS_SUPPORTED;
+	if (!bnxt_qplib_is_chip_gen_p7(rcfw->res->cctx))
+		attr->l2_db_size = (sb->l2_db_space_size + 1) *
+				    (0x01 << RCFW_DBR_BASE_PAGE_SHIFT);
+	/*
+	 * Read the max gid supported by HW.
+	 * For each entry in HW  GID in HW table, we consume 2
+	 * GID entries in the kernel GID table.  So max_gid reported
+	 * to stack can be up to twice the value reported by the HW, up to 256 gids.
+	 */
+	attr->max_sgid = le32_to_cpu(sb->max_gid);
+	attr->max_sgid = min_t(u32, BNXT_QPLIB_NUM_GIDS_SUPPORTED, 2 * attr->max_sgid);
 	attr->dev_cap_flags = le16_to_cpu(sb->dev_cap_flags);
 
 	bnxt_qplib_query_version(rcfw, attr->fw_ver);
@@ -934,7 +944,7 @@ int bnxt_qplib_modify_cc(struct bnxt_qplib_res *res,
 	req->inactivity_th = cpu_to_le16(cc_param->inact_th);
 
 	/* For chip gen P5 onwards fill extended cmd and header */
-	if (bnxt_qplib_is_chip_gen_p5(res->cctx)) {
+	if (bnxt_qplib_is_chip_gen_p5_p7(res->cctx)) {
 		struct roce_tlv *hdr;
 		u32 payload;
 		u32 chunks;

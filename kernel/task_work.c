@@ -1,9 +1,19 @@
 // SPDX-License-Identifier: GPL-2.0
+#include <linux/irq_work.h>
 #include <linux/spinlock.h>
 #include <linux/task_work.h>
 #include <linux/resume_user_mode.h>
 
 static struct callback_head work_exited; /* all we need is ->next == NULL */
+
+#ifdef CONFIG_IRQ_WORK
+static void task_work_set_notify_irq(struct irq_work *entry)
+{
+	test_and_set_tsk_thread_flag(current, TIF_NOTIFY_RESUME);
+}
+static DEFINE_PER_CPU(struct irq_work, irq_work_NMI_resume) =
+	IRQ_WORK_INIT_HARD(task_work_set_notify_irq);
+#endif
 
 /**
  * task_work_add - ask the @task to execute @work->func()
@@ -12,7 +22,7 @@ static struct callback_head work_exited; /* all we need is ->next == NULL */
  * @notify: how to notify the targeted task
  *
  * Queue @work for task_work_run() below and notify the @task if @notify
- * is @TWA_RESUME, @TWA_SIGNAL, or @TWA_SIGNAL_NO_IPI.
+ * is @TWA_RESUME, @TWA_SIGNAL, @TWA_SIGNAL_NO_IPI or @TWA_NMI_CURRENT.
  *
  * @TWA_SIGNAL works like signals, in that the it will interrupt the targeted
  * task and run the task_work, regardless of whether the task is currently
@@ -24,6 +34,8 @@ static struct callback_head work_exited; /* all we need is ->next == NULL */
  * kernel anyway.
  * @TWA_RESUME work is run only when the task exits the kernel and returns to
  * user mode, or before entering guest mode.
+ * @TWA_NMI_CURRENT works like @TWA_RESUME, except it can only be used for the
+ * current @task and if the current context is NMI.
  *
  * Fails if the @task is exiting/exited and thus it can't process this @work.
  * Otherwise @work->func() will be called when the @task goes through one of
@@ -43,9 +55,27 @@ int task_work_add(struct task_struct *task, struct callback_head *work,
 		  enum task_work_notify_mode notify)
 {
 	struct callback_head *head;
+	int flags = notify & TWA_FLAGS;
 
-	/* record the work call stack in order to print it in KASAN reports */
-	kasan_record_aux_stack(work);
+	notify &= ~TWA_FLAGS;
+	if (notify == TWA_NMI_CURRENT) {
+		if (WARN_ON_ONCE(task != current))
+			return -EINVAL;
+		if (!IS_ENABLED(CONFIG_IRQ_WORK))
+			return -EINVAL;
+	} else {
+		/*
+		 * Record the work call stack in order to print it in KASAN
+		 * reports.
+		 *
+		 * Note that stack allocation can fail if TWAF_NO_ALLOC flag
+		 * is set and new page is needed to expand the stack buffer.
+		 */
+		if (flags & TWAF_NO_ALLOC)
+			kasan_record_aux_stack_noalloc(work);
+		else
+			kasan_record_aux_stack(work);
+	}
 
 	head = READ_ONCE(task->task_works);
 	do {
@@ -66,6 +96,11 @@ int task_work_add(struct task_struct *task, struct callback_head *work,
 	case TWA_SIGNAL_NO_IPI:
 		__set_notify_signal(task);
 		break;
+#ifdef CONFIG_IRQ_WORK
+	case TWA_NMI_CURRENT:
+		irq_work_queue(this_cpu_ptr(&irq_work_NMI_resume));
+		break;
+#endif
 	default:
 		WARN_ON_ONCE(1);
 		break;
