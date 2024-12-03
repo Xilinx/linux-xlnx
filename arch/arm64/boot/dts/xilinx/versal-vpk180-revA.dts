@@ -35,6 +35,7 @@
 		spi0 = &qspi;
 		usb0 = &usb0;
 		rtc0 = &rtc;
+		nvmem0 = &eeprom;
 	};
 	/* Missing any LED for heartbeat */
 };
@@ -93,6 +94,8 @@
 
 &i2c1 { /* PMC_MIO44/45 */
 	status = "okay";
+	bootph-all;
+	clock-frequency = <100000>;
 
 	/* Use for storing information about board */
 	eeprom: eeprom@54 { /* u34 - m24128 16kB */
