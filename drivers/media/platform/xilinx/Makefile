@@ -18,6 +18,7 @@ obj-$(CONFIG_VIDEO_XILINX_HDCP2X_RX) += xilinx-hdcp2x-rx.o \
 obj-$(CONFIG_VIDEO_XILINX_HDMI21RXSS) += xilinx-hdmirxss.o
 obj-$(CONFIG_VIDEO_XILINX_HLS) += xilinx-hls.o
 obj-$(CONFIG_VIDEO_XILINX_ISP) += xilinx-isppipeline.o
+obj-$(CONFIG_VIDEO_XILINX_M2M) += xilinx-m2m.o
 obj-$(CONFIG_VIDEO_XILINX_MULTISCALER) += xilinx-multi-scaler.o
 obj-$(CONFIG_VIDEO_XILINX_SCD) += xilinx-scd.o
 obj-$(CONFIG_VIDEO_XILINX_SDIRXSS) += xilinx-sdirxss.o
