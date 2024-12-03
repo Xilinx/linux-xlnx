@@ -214,7 +214,11 @@ bool dcn30_set_output_transfer_func(struct dc *dc,
 		}
 	}
 
-	mpc->funcs->set_output_gamma(mpc, mpcc_id, params);
+	if (mpc->funcs->set_output_gamma)
+		mpc->funcs->set_output_gamma(mpc, mpcc_id, params);
+	else
+		DC_LOG_ERROR("%s: set_output_gamma function pointer is NULL.\n", __func__);
+
 	return ret;
 }
 
@@ -730,6 +734,9 @@ bool dcn30_apply_idle_power_optimizations(struct dc *dc, bool enable)
 
 			stream = dc->current_state->streams[0];
 			plane = (stream ? dc->current_state->stream_status[0].plane_states[0] : NULL);
+
+			if (!stream || !plane)
+				return false;
 
 			if (stream && plane) {
 				cursor_cache_enable = stream->cursor_position.enable &&

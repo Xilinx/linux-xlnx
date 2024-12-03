@@ -400,6 +400,10 @@ static void bnxt_re_create_fence_wqe(struct bnxt_re_pd *pd)
 	struct bnxt_re_fence_data *fence = &pd->fence;
 	struct ib_mr *ib_mr = &fence->mr->ib_mr;
 	struct bnxt_qplib_swqe *wqe = &fence->bind_wqe;
+	struct bnxt_re_dev *rdev = pd->rdev;
+
+	if (bnxt_qplib_is_chip_gen_p5_p7(rdev->chip_ctx))
+		return;
 
 	memset(wqe, 0, sizeof(*wqe));
 	wqe->type = BNXT_QPLIB_SWQE_TYPE_BIND_MW;
@@ -454,6 +458,9 @@ static void bnxt_re_destroy_fence_mr(struct bnxt_re_pd *pd)
 	struct device *dev = &rdev->en_dev->pdev->dev;
 	struct bnxt_re_mr *mr = fence->mr;
 
+	if (bnxt_qplib_is_chip_gen_p5_p7(rdev->chip_ctx))
+		return;
+
 	if (fence->mw) {
 		bnxt_re_dealloc_mw(fence->mw);
 		fence->mw = NULL;
@@ -484,6 +491,9 @@ static int bnxt_re_create_fence_mr(struct bnxt_re_pd *pd)
 	dma_addr_t dma_addr = 0;
 	struct ib_mw *mw;
 	int rc;
+
+	if (bnxt_qplib_is_chip_gen_p5_p7(rdev->chip_ctx))
+		return 0;
 
 	dma_addr = dma_map_single(dev, fence->va, BNXT_RE_FENCE_BYTES,
 				  DMA_BIDIRECTIONAL);
@@ -1023,7 +1033,7 @@ static int bnxt_re_init_user_qp(struct bnxt_re_dev *rdev, struct bnxt_re_pd *pd,
 	bytes = (qplib_qp->sq.max_wqe * qplib_qp->sq.wqe_size);
 	/* Consider mapping PSN search memory only for RC QPs. */
 	if (qplib_qp->type == CMDQ_CREATE_QP_TYPE_RC) {
-		psn_sz = bnxt_qplib_is_chip_gen_p5(rdev->chip_ctx) ?
+		psn_sz = bnxt_qplib_is_chip_gen_p5_p7(rdev->chip_ctx) ?
 						   sizeof(struct sq_psn_search_ext) :
 						   sizeof(struct sq_psn_search);
 		psn_nume = (qplib_qp->wqe_mode == BNXT_QPLIB_WQE_MODE_STATIC) ?
@@ -1234,7 +1244,7 @@ static void bnxt_re_adjust_gsi_rq_attr(struct bnxt_re_qp *qp)
 	qplqp = &qp->qplib_qp;
 	dev_attr = &rdev->dev_attr;
 
-	if (!bnxt_qplib_is_chip_gen_p5(rdev->chip_ctx)) {
+	if (!bnxt_qplib_is_chip_gen_p5_p7(rdev->chip_ctx)) {
 		qplqp->rq.max_sge = dev_attr->max_qp_sges;
 		if (qplqp->rq.max_sge > dev_attr->max_qp_sges)
 			qplqp->rq.max_sge = dev_attr->max_qp_sges;
@@ -1301,7 +1311,7 @@ static void bnxt_re_adjust_gsi_sq_attr(struct bnxt_re_qp *qp,
 	qplqp = &qp->qplib_qp;
 	dev_attr = &rdev->dev_attr;
 
-	if (!bnxt_qplib_is_chip_gen_p5(rdev->chip_ctx)) {
+	if (!bnxt_qplib_is_chip_gen_p5_p7(rdev->chip_ctx)) {
 		entries = bnxt_re_init_depth(init_attr->cap.max_send_wr + 1, uctx);
 		qplqp->sq.max_wqe = min_t(u32, entries,
 					  dev_attr->max_qp_wqes + 1);
@@ -1328,7 +1338,7 @@ static int bnxt_re_init_qp_type(struct bnxt_re_dev *rdev,
 		goto out;
 	}
 
-	if (bnxt_qplib_is_chip_gen_p5(chip_ctx) &&
+	if (bnxt_qplib_is_chip_gen_p5_p7(chip_ctx) &&
 	    init_attr->qp_type == IB_QPT_GSI)
 		qptype = CMDQ_CREATE_QP_TYPE_GSI;
 out:
@@ -1527,7 +1537,7 @@ int bnxt_re_create_qp(struct ib_qp *ib_qp, struct ib_qp_init_attr *qp_init_attr,
 		goto fail;
 
 	if (qp_init_attr->qp_type == IB_QPT_GSI &&
-	    !(bnxt_qplib_is_chip_gen_p5(rdev->chip_ctx))) {
+	    !(bnxt_qplib_is_chip_gen_p5_p7(rdev->chip_ctx))) {
 		rc = bnxt_re_create_gsi_qp(qp, pd, qp_init_attr);
 		if (rc == -ENODEV)
 			goto qp_destroy;
@@ -2467,7 +2477,7 @@ static int bnxt_re_build_send_wqe(struct bnxt_re_qp *qp,
 		break;
 	case IB_WR_SEND_WITH_IMM:
 		wqe->type = BNXT_QPLIB_SWQE_TYPE_SEND_WITH_IMM;
-		wqe->send.imm_data = wr->ex.imm_data;
+		wqe->send.imm_data = be32_to_cpu(wr->ex.imm_data);
 		break;
 	case IB_WR_SEND_WITH_INV:
 		wqe->type = BNXT_QPLIB_SWQE_TYPE_SEND_WITH_INV;
@@ -2497,7 +2507,7 @@ static int bnxt_re_build_rdma_wqe(const struct ib_send_wr *wr,
 		break;
 	case IB_WR_RDMA_WRITE_WITH_IMM:
 		wqe->type = BNXT_QPLIB_SWQE_TYPE_RDMA_WRITE_WITH_IMM;
-		wqe->rdma.imm_data = wr->ex.imm_data;
+		wqe->rdma.imm_data = be32_to_cpu(wr->ex.imm_data);
 		break;
 	case IB_WR_RDMA_READ:
 		wqe->type = BNXT_QPLIB_SWQE_TYPE_RDMA_READ;
@@ -2553,11 +2563,6 @@ static int bnxt_re_build_inv_wqe(const struct ib_send_wr *wr,
 	wqe->type = BNXT_QPLIB_SWQE_TYPE_LOCAL_INV;
 	wqe->local_inv.inv_l_key = wr->ex.invalidate_rkey;
 
-	/* Need unconditional fence for local invalidate
-	 * opcode to work as expected.
-	 */
-	wqe->flags |= BNXT_QPLIB_SWQE_FLAGS_UC_FENCE;
-
 	if (wr->send_flags & IB_SEND_SIGNALED)
 		wqe->flags |= BNXT_QPLIB_SWQE_FLAGS_SIGNAL_COMP;
 	if (wr->send_flags & IB_SEND_SOLICITED)
@@ -2579,12 +2584,6 @@ static int bnxt_re_build_reg_wqe(const struct ib_reg_wr *wr,
 	wqe->frmr.page_list_len = mr->npages;
 	wqe->frmr.levels = qplib_frpl->hwq.level;
 	wqe->type = BNXT_QPLIB_SWQE_TYPE_REG_MR;
-
-	/* Need unconditional fence for reg_mr
-	 * opcode to function as expected.
-	 */
-
-	wqe->flags |= BNXT_QPLIB_SWQE_FLAGS_UC_FENCE;
 
 	if (wr->wr.send_flags & IB_SEND_SIGNALED)
 		wqe->flags |= BNXT_QPLIB_SWQE_FLAGS_SIGNAL_COMP;
@@ -2716,6 +2715,18 @@ bad:
 	return rc;
 }
 
+static void bnxt_re_legacy_set_uc_fence(struct bnxt_qplib_swqe *wqe)
+{
+	/* Need unconditional fence for non-wire memory opcode
+	 * to work as expected.
+	 */
+	if (wqe->type == BNXT_QPLIB_SWQE_TYPE_LOCAL_INV ||
+	    wqe->type == BNXT_QPLIB_SWQE_TYPE_FAST_REG_MR ||
+	    wqe->type == BNXT_QPLIB_SWQE_TYPE_REG_MR ||
+	    wqe->type == BNXT_QPLIB_SWQE_TYPE_BIND_MW)
+		wqe->flags |= BNXT_QPLIB_SWQE_FLAGS_UC_FENCE;
+}
+
 int bnxt_re_post_send(struct ib_qp *ib_qp, const struct ib_send_wr *wr,
 		      const struct ib_send_wr **bad_wr)
 {
@@ -2795,8 +2806,11 @@ int bnxt_re_post_send(struct ib_qp *ib_qp, const struct ib_send_wr *wr,
 			rc = -EINVAL;
 			goto bad;
 		}
-		if (!rc)
+		if (!rc) {
+			if (!bnxt_qplib_is_chip_gen_p5_p7(qp->rdev->chip_ctx))
+				bnxt_re_legacy_set_uc_fence(&wqe);
 			rc = bnxt_qplib_post_send(&qp->qplib_qp, &wqe);
+		}
 bad:
 		if (rc) {
 			ibdev_err(&qp->rdev->ibdev,
@@ -3545,7 +3559,7 @@ static void bnxt_re_process_res_shadow_qp_wc(struct bnxt_re_qp *gsi_sqp,
 	wc->byte_len = orig_cqe->length;
 	wc->qp = &gsi_qp->ib_qp;
 
-	wc->ex.imm_data = orig_cqe->immdata;
+	wc->ex.imm_data = cpu_to_be32(le32_to_cpu(orig_cqe->immdata));
 	wc->src_qp = orig_cqe->src_qp;
 	memcpy(wc->smac, orig_cqe->smac, ETH_ALEN);
 	if (bnxt_re_is_vlan_pkt(orig_cqe, &vlan_id, &sl)) {
@@ -3690,7 +3704,7 @@ int bnxt_re_poll_cq(struct ib_cq *ib_cq, int num_entries, struct ib_wc *wc)
 				 (unsigned long)(cqe->qp_handle),
 				 struct bnxt_re_qp, qplib_qp);
 			wc->qp = &qp->ib_qp;
-			wc->ex.imm_data = cqe->immdata;
+			wc->ex.imm_data = cpu_to_be32(le32_to_cpu(cqe->immdata));
 			wc->src_qp = cqe->src_qp;
 			memcpy(wc->smac, cqe->smac, ETH_ALEN);
 			wc->port_num = 1;

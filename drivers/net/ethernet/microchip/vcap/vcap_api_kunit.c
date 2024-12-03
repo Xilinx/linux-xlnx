@@ -1442,18 +1442,10 @@ static void vcap_api_encode_rule_test(struct kunit *test)
 	vcap_enable_lookups(&test_vctrl, &test_netdev, 0, 0,
 			    rule->cookie, false);
 
+	ret = vcap_del_rule(&test_vctrl, &test_netdev, id);
+	KUNIT_EXPECT_EQ(test, 0, ret);
+
 	vcap_free_rule(rule);
-
-	/* Check that the rule has been freed: tricky to access since this
-	 * memory should not be accessible anymore
-	 */
-	KUNIT_EXPECT_PTR_NE(test, NULL, rule);
-	ret = list_empty(&rule->keyfields);
-	KUNIT_EXPECT_EQ(test, true, ret);
-	ret = list_empty(&rule->actionfields);
-	KUNIT_EXPECT_EQ(test, true, ret);
-
-	vcap_del_rule(&test_vctrl, &test_netdev, id);
 }
 
 static void vcap_api_set_rule_counter_test(struct kunit *test)
