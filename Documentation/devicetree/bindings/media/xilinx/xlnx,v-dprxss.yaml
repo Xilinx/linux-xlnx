@@ -126,6 +126,7 @@ properties:
 
   ports:
     type: object
+    $ref: /schemas/graph.yaml#/properties/ports
 
     properties:
       port@0:
@@ -151,6 +152,7 @@ properties:
             additionalProperties: false
 
         additionalProperties: false
+    unevaluatedProperties: false
 
 required:
   - clock-names
