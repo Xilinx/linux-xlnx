@@ -8,9 +8,6 @@
 
 #include "core.h"
 
-/* flash_info mfr_flag. Used to read proprietary FSR register. */
-#define USE_FSR		BIT(0)
-
 #define SPINOR_OP_MT_DIE_ERASE	0xc4	/* Chip (die) erase opcode */
 #define SPINOR_OP_RDFSR		0x70	/* Read flag status register */
 #define SPINOR_OP_CLFSR		0x50	/* Clear flag status register */
