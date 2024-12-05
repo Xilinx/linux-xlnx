@@ -23733,6 +23733,14 @@ F:	Documentation/devicetree/bindings/gpio/xlnx,gpio-xilinx.yaml
 F:	drivers/gpio/gpio-xilinx.c
 F:	drivers/gpio/gpio-zynq.c
 
+XILINX HDMI21RXSS DRIVER
+M:	Rajesh Gugulothu <rajesh.gugulothu@amd.com>
+R:	Vishal Sagar <vishal.sagar@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-hdmi-rxss1.yaml
+F:	drivers/media/platform/xilinx/xilinx-hdmirxss.c
+
 XILINX PWM DRIVER
 M:	Sean Anderson <sean.anderson@seco.com>
 S:	Maintained
