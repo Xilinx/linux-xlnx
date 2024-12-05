@@ -331,7 +331,7 @@ static const struct spi_nor_otp_ops winbond_nor_otp_ops = {
 
 static int winbond_nor_late_init(struct spi_nor *nor)
 {
-	struct spi_nor_flash_parameter *params = nor->params;
+	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
 
 	if (params->otp.org)
 		params->otp.ops = &winbond_nor_otp_ops;
