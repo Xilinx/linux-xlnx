@@ -2477,6 +2477,9 @@ static int of_spi_parse_dt(struct spi_controller *ctlr, struct spi_device *spi,
 	of_spi_parse_dt_cs_delay(nc, &spi->cs_hold, "spi-cs-hold-delay-ns");
 	of_spi_parse_dt_cs_delay(nc, &spi->cs_inactive, "spi-cs-inactive-delay-ns");
 
+	/* Multi die flash */
+	if (of_property_read_bool(nc, "multi-die"))
+		spi->multi_die = true;
 	return 0;
 }
 
