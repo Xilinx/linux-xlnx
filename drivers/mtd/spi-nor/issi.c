@@ -266,6 +266,14 @@ static const struct flash_info issi_nor_parts[] = {
 		.no_sfdp_flags = SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ,
 		.fixup_flags = SPI_NOR_4B_OPCODES,
 	}, {
+		.id = SNOR_ID(0x9d, 0x60, 0x21),
+		.name = "is25lp01gg",
+		.size = SZ_128M,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_4BIT_BP |
+				SPI_NOR_TB_SR_BIT6,
+		.no_sfdp_flags = SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ,
+		.fixup_flags = SPI_NOR_4B_OPCODES,
+	}, {
 		.id = SNOR_ID(0x9d, 0x60, 0x22),
 		.name = "is25lp02g",
 		.size = SZ_256M,
