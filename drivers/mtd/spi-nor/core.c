@@ -3378,7 +3378,12 @@ static void spi_nor_init_flags(struct spi_nor *nor)
 		nor->flags |= SNOR_F_HAS_4BIT_BP;
 		if (flags & SPI_NOR_BP3_SR_BIT6)
 			nor->flags |= SNOR_F_HAS_SR_BP3_BIT6;
+		else if (flags & SPI_NOR_BP3_SR_BIT5)
+			nor->flags |= SNOR_F_HAS_SR_BP3_BIT5;
 	}
+
+	if (flags & NO_CHIP_ERASE)
+		nor->flags |= SNOR_F_NO_OP_CHIP_ERASE;
 
 	if (flags & SPI_NOR_RWW && params->n_banks > 1 &&
 	    !nor->controller_ops)
@@ -3810,6 +3815,15 @@ int spi_nor_set_4byte_addr_mode(struct spi_nor *nor, bool enable)
 static int spi_nor_init(struct spi_nor *nor)
 {
 	int err, idx;
+
+	if (nor->info->id->bytes[0] == CFI_MFR_ATMEL ||
+	    nor->info->id->bytes[0] == CFI_MFR_INTEL ||
+	    nor->info->id->bytes[0] == CFI_MFR_SST ||
+	    nor->info->id->bytes[0] & SNOR_F_HAS_LOCK) {
+		spi_nor_write_enable(nor);
+		nor->bouncebuf[0] = 0;
+		spi_nor_write_sr(nor, nor->bouncebuf, 1);
+	}
 
 	err = spi_nor_set_octal_dtr(nor, true);
 	if (err) {

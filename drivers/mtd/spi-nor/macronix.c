@@ -89,7 +89,37 @@ static const struct flash_info macronix_nor_parts[] = {
 		.id = SNOR_ID(0xc2, 0x20, 0x1b),
 		.name = "mx66l1g45g",
 		.size = SZ_128M,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB |
+				SPI_NOR_TB_SR_BIT6 |
+		      SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ,
+	}, {
+		.id = SNOR_ID(0xc2, 0x20, 0x1c),
+		.name = "mx66l2g45g",
+		.size = SZ_256M,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB |
+				SPI_NOR_TB_SR_BIT6 |
+		      SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5,
+		.no_sfdp_flags = SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ,
+		.fixup_flags = SPI_NOR_4B_OPCODES,
+	}, {
+		.id = SNOR_ID(0xc2, 0x25, 0x3b),
+		.name = "mx66u1g45g",
+		.size = SZ_128M,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB |
+				SPI_NOR_TB_SR_BIT6 |
+		      SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5,
+		.no_sfdp_flags = SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ,
+		.fixup_flags = SPI_NOR_4B_OPCODES,
+	}, {
+		.id = SNOR_ID(0xc2, 0x25, 0x3c),
+		.name = "mx66u2g45g",
+		.size = SZ_256M,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB |
+				SPI_NOR_TB_SR_BIT6 |
+		      SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5,
+		.no_sfdp_flags = SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ,
+		.fixup_flags = SPI_NOR_4B_OPCODES,
 	}, {
 		.id = SNOR_ID(0xc2, 0x23, 0x14),
 		.name = "mx25v8035f",
@@ -161,6 +191,9 @@ static const struct flash_info macronix_nor_parts[] = {
 		.id = SNOR_ID(0xc2, 0x26, 0x1b),
 		.name = "mx66l1g55g",
 		.size = SZ_128M,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB |
+				SPI_NOR_TB_SR_BIT6 |
+		      SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5,
 		.no_sfdp_flags = SPI_NOR_QUAD_READ,
 	}, {
 		.id = SNOR_ID(0xc2, 0x28, 0x15),
