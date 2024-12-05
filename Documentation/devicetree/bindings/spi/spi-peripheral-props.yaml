@@ -118,6 +118,11 @@ properties:
       Only for STM32H7, (Master Inter-Data Idleness) minimum time
       delay in nanoseconds inserted between two consecutive data frames.
 
+  multi-die:
+    $ref: /schemas/types.yaml#/definitions/flag
+    description:
+      The device consists of multiple memory die.
+
 # The controller specific properties go here.
 allOf:
   - $ref: arm,pl022-peripheral-props.yaml#
