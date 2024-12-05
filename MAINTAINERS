@@ -23741,6 +23741,13 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-hdmi-rxss1.yaml
 F:	drivers/media/platform/xilinx/xilinx-hdmirxss.c
 
+XILINX MEDIA VTC DRIVER
+M:	Rajesh Gugulothu <rajesh.gugulothu@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-tc.yaml
+F:	drivers/media/platform/xilinx/xilinx-vtc.c
+
 XILINX PWM DRIVER
 M:	Sean Anderson <sean.anderson@seco.com>
 S:	Maintained
