@@ -18,6 +18,9 @@
 #define SPI_NOR_DEFAULT_N_BANKS 1
 #define SPI_NOR_DEFAULT_SECTOR_SIZE SZ_64K
 
+/* In single configuration enable CS0 */
+#define SPI_NOR_ENABLE_CS0     BIT(0)
+
 /* Standard SPI NOR flash operations. */
 #define SPI_NOR_READID_OP(naddr, ndummy, buf, len)			\
 	SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_RDID, 0),			\
@@ -140,6 +143,7 @@ enum spi_nor_option_flags {
 	SNOR_F_RWW		= BIT(14),
 	SNOR_F_ECC		= BIT(15),
 	SNOR_F_NO_WP		= BIT(16),
+	SNOR_F_HAS_STACKED      = BIT(17),
 };
 
 struct spi_nor_read_command {

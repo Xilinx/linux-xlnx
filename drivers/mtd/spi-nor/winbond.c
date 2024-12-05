@@ -22,6 +22,8 @@ w25q128_post_bfpt_fixups(struct spi_nor *nor,
 			 const struct sfdp_parameter_header *bfpt_header,
 			 const struct sfdp_bfpt *bfpt)
 {
+	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
+
 	/*
 	 * Zetta ZD25Q128C is a clone of the Winbond device. But the encoded
 	 * size is really wrong. It seems that they confused Mbit with MiB.
@@ -29,10 +31,10 @@ w25q128_post_bfpt_fixups(struct spi_nor *nor,
 	 */
 	if (bfpt_header->major == SFDP_JESD216_MAJOR &&
 	    bfpt_header->minor == SFDP_JESD216_MINOR &&
-	    nor->params->size == SZ_2M &&
-	    nor->params->erase_map.regions[0].size == SZ_2M) {
-		nor->params->size = SZ_16M;
-		nor->params->erase_map.regions[0].size = SZ_16M;
+	    params->size == SZ_2M &&
+	    params->erase_map.regions[0].size == SZ_2M) {
+		params->size = SZ_16M;
+		params->erase_map.regions[0].size = SZ_16M;
 	}
 
 	return 0;

@@ -200,7 +200,7 @@ static struct spi_nor_fixups mt25qu512a_fixups = {
 
 static int st_nor_four_die_late_init(struct spi_nor *nor)
 {
-	struct spi_nor_flash_parameter *params = nor->params;
+	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
 
 	params->die_erase_opcode = SPINOR_OP_MT_DIE_ERASE;
 	params->n_dice = 4;
@@ -216,7 +216,7 @@ static int st_nor_four_die_late_init(struct spi_nor *nor)
 
 static int st_nor_two_die_late_init(struct spi_nor *nor)
 {
-	struct spi_nor_flash_parameter *params = nor->params;
+	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
 
 	params->die_erase_opcode = SPINOR_OP_MT_DIE_ERASE;
 	params->n_dice = 2;
