@@ -51,6 +51,10 @@
 #define VERSAL_PINCTRL_ATTR_NODETYPE_MASK	GENMASK(19, 14)
 #define VERSAL_PINCTRL_NODETYPE_LPD_MIO		BIT(0)
 
+#define VERSAL_LPD_MIO_BASE_ID		0x14104001
+#define VERSAL_PMC_MIO_BASE_ID		0x1410801B
+#define VERSAL_LPD_MIO_END_PIN		25
+
 /**
  * struct zynqmp_pmux_function - a pinmux function
  * @name:	Name of the pin mux function
@@ -903,6 +907,43 @@ static int versal_pinctrl_get_attributes(u32 pin_idx, u32 *response)
 	return 0;
 }
 
+static int versal_pinctrl_prepare_pin_desc_nopm(struct device *dev,
+						const struct pinctrl_pin_desc **zynqmp_pins,
+						unsigned int *npins)
+{
+	struct pinctrl_pin_desc *pins, *pin;
+	int ret;
+	int i;
+
+	ret = zynqmp_pinctrl_get_num_pins(npins);
+	if (ret)
+		return ret;
+
+	pins = devm_kzalloc(dev, sizeof(*pins) * *npins, GFP_KERNEL);
+	if (!pins)
+		return -ENOMEM;
+
+	for (i = 0; i < *npins; i++) {
+		pin = &pins[i];
+		if (i <= VERSAL_LPD_MIO_END_PIN) {
+			pin->number = VERSAL_LPD_MIO_BASE_ID + i;
+			pin->name = devm_kasprintf(dev, GFP_KERNEL, "%s%d",
+						   VERSAL_LPD_PIN_PREFIX, i);
+		} else {
+			pin->number = VERSAL_PMC_MIO_BASE_ID + (i - (VERSAL_LPD_MIO_END_PIN + 1));
+			pin->name = devm_kasprintf(dev, GFP_KERNEL, "%s%d", VERSAL_PMC_PIN_PREFIX,
+						   (i - VERSAL_LPD_MIO_END_PIN) - 1);
+		}
+
+		if (!pin->name)
+			return -ENOMEM;
+	}
+
+	*zynqmp_pins = pins;
+
+	return 0;
+}
+
 static int versal_pinctrl_prepare_pin_desc(struct device *dev,
 					   const struct pinctrl_pin_desc **zynqmp_pins,
 					   unsigned int *npins)
@@ -912,8 +953,10 @@ static int versal_pinctrl_prepare_pin_desc(struct device *dev,
 	int ret, i;
 
 	ret = zynqmp_pm_is_function_supported(PM_QUERY_DATA, PM_QID_PINCTRL_GET_ATTRIBUTES);
-	if (ret)
-		return ret;
+	if (ret) {
+		dev_info(dev, "This solution will be deprecated in 2026.1, use latest Versal PLM");
+		return versal_pinctrl_prepare_pin_desc_nopm(dev, zynqmp_pins, npins);
+	}
 
 	ret = zynqmp_pinctrl_get_num_pins(npins);
 	if (ret)
