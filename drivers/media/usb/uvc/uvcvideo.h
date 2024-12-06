@@ -48,9 +48,9 @@
 #define DRIVER_VERSION		"1.1.1"
 
 /* Number of isochronous URBs. */
-#define UVC_URBS		50
+#define UVC_URBS		5
 /* Maximum number of packets per URB. */
-#define UVC_MAX_PACKETS		48
+#define UVC_MAX_PACKETS		32
 
 #define UVC_CTRL_CONTROL_TIMEOUT	5000
 #define UVC_CTRL_STREAMING_TIMEOUT	5000
