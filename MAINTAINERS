@@ -23704,6 +23704,14 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,axis-subsetconv.yaml
 F:	drivers/media/platform/xilinx/xilinx-axis-subsetconv.c
 
+XILINX MEDIA HDCP DRIVER
+M:	Lakshmi Prasanna Eachuri <lakshmi.prasanna.eachuri@amd.com>
+R:	Vishal Sagar <vishal.sagar@amd.com>
+S:	Maintained
+F:	drivers/media/platform/xilinx/xilinx-hdcp2x-rx-crypt.c
+F:	drivers/media/platform/xilinx/xilinx-hdcp1x-rx.c
+F:	drivers/media/platform/xilinx/xilinx-hdcp2x-rx.c
+
 XILINX CAN DRIVER
 M:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
 R:	Naga Sureshkumar Relli <naga.sureshkumar.relli@xilinx.com>
