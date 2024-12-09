@@ -121,6 +121,12 @@ properties:
     type: object
 
     properties:
+      "#address-cells":
+        const: 1
+
+      "#size-cells":
+        const: 0
+
       port@0:
         type: object
         description: |
@@ -140,6 +146,12 @@ properties:
 
             required:
               - remote-endpoint
+
+            additionalProperties: false
+
+        additionalProperties: false
+
+    additionalProperties: false
 
 required:
   - compatible
