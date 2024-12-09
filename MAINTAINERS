@@ -23726,6 +23726,12 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-dprxss.yaml
 F:	drivers/media/platform/xilinx/xilinx-dprxss.c
 
+XILINX DRM HDCP DRIVER
+M:	Lakshmi Prasanna Eachuri <lakshmi.prasanna.eachuri@amd.com>
+R:	Vishal Sagar <vishal.sagar@amd.com>
+S:	Maintained
+F:	drivers/gpu/drm/xlnx/hdcp/
+
 XILINX ECDSA DRIVER
 M:	Harsha <harsha.harsha@amd.com>
 S:	Maintained
