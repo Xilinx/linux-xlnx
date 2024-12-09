@@ -946,6 +946,7 @@ int sysmon_create_avg_en_sysfs_entries(struct iio_dev *indio_dev)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(sysmon_create_avg_en_sysfs_entries);
 
 static void sysmon_region_event_handler(struct sysmon *sysmon)
 {
