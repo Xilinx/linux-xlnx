@@ -389,9 +389,6 @@ static int dwc3_xlnx_init_versal(struct dwc3_xlnx *priv_data)
 		return ret;
 	}
 
-	/* reset hold time */
-	usleep_range(5, 10);
-
 	ret = reset_control_deassert(priv_data->crst);
 	if (ret < 0) {
 		dev_err_probe(dev, ret, "failed to De-assert Reset\n");
