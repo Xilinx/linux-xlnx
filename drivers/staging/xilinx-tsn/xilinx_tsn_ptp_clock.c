@@ -44,8 +44,8 @@ static void xlnx_tod_read(struct xlnx_ptp_timer *timer, struct timespec64 *ts)
 {
 	u32 sec, nsec;
 
-	nsec = in_be32(timer->baseaddr + XTIMER1588_CURRENT_RTC_NS);
-	sec = in_be32(timer->baseaddr + XTIMER1588_CURRENT_RTC_SEC_L);
+	nsec = readl(timer->baseaddr + XTIMER1588_CURRENT_RTC_NS);
+	sec = readl(timer->baseaddr + XTIMER1588_CURRENT_RTC_SEC_L);
 
 	ts->tv_sec = sec;
 	ts->tv_nsec = nsec;
@@ -56,17 +56,16 @@ static void xlnx_rtc_offset_write(struct xlnx_ptp_timer *timer,
 {
 	pr_debug("%s: sec: %lld nsec: %ld\n", __func__, ts->tv_sec, ts->tv_nsec);
 
-	out_be32((timer->baseaddr + XTIMER1588_RTC_OFFSET_SEC_H), 0);
-	out_be32((timer->baseaddr + XTIMER1588_RTC_OFFSET_SEC_L),
-		 (ts->tv_sec));
-	out_be32((timer->baseaddr + XTIMER1588_RTC_OFFSET_NS), ts->tv_nsec);
+	writel(0, (timer->baseaddr + XTIMER1588_RTC_OFFSET_SEC_H));
+	writel(ts->tv_sec, (timer->baseaddr + XTIMER1588_RTC_OFFSET_SEC_L));
+	writel(ts->tv_nsec, (timer->baseaddr + XTIMER1588_RTC_OFFSET_NS));
 }
 
 static void xlnx_rtc_offset_read(struct xlnx_ptp_timer *timer,
 				 struct timespec64 *ts)
 {
-	ts->tv_sec = in_be32(timer->baseaddr + XTIMER1588_RTC_OFFSET_SEC_L);
-	ts->tv_nsec = in_be32(timer->baseaddr + XTIMER1588_RTC_OFFSET_NS);
+	ts->tv_sec = readl(timer->baseaddr + XTIMER1588_RTC_OFFSET_SEC_L);
+	ts->tv_nsec = readl(timer->baseaddr + XTIMER1588_RTC_OFFSET_NS);
 }
 
 /* PTP clock operations
@@ -79,7 +78,7 @@ static int xlnx_ptp_adjfine(struct ptp_clock_info *ptp, long scaled_ppm)
 	u32 incval;
 
 	incval = adjust_by_scaled_ppm(timer->rtc_value, scaled_ppm);
-	out_be32((timer->baseaddr + XTIMER1588_RTC_INCREMENT), incval);
+	writel(incval, (timer->baseaddr + XTIMER1588_RTC_INCREMENT));
 	return 0;
 }
 
@@ -214,8 +213,8 @@ static irqreturn_t xlnx_ptp_timer_isr(int irq, void *priv)
 		if (timer->ptp_clock && timer->pps_enable)
 			ptp_clock_event(timer->ptp_clock, &event);
 	}
-	out_be32((timer->baseaddr + XTIMER1588_INTERRUPT),
-		 (1 << XTIMER1588_INT_SHIFT));
+	writel((1 << XTIMER1588_INT_SHIFT),
+	       (timer->baseaddr + XTIMER1588_INTERRUPT));
 
 	return IRQ_HANDLED;
 }
@@ -296,8 +295,7 @@ void *axienet_ptp_timer_probe(void __iomem *base, struct platform_device *pdev)
 	 */
 	timer->rtc_value = (div_u64(NSEC_PER_SEC, XTIMER1588_GTX_CLK_FREQ) <<
 			    XTIMER1588_RTC_NS_SHIFT);
-	out_be32((timer->baseaddr + XTIMER1588_RTC_INCREMENT),
-		 timer->rtc_value);
+	writel(timer->rtc_value, (timer->baseaddr + XTIMER1588_RTC_INCREMENT));
 
 	/* Enable interrupts */
 	err = request_irq(timer->irq,
