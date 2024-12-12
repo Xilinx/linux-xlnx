@@ -276,7 +276,7 @@ static void xscd_dma_free_descriptors(struct xscd_dma_chan *chan)
 }
 
 /**
- * scd_dma_chan_desc_cleanup - Clean channel descriptors
+ * xscd_dma_chan_desc_cleanup - Clean channel descriptors
  * @chan: Driver specific dma channel
  */
 static void xscd_dma_chan_desc_cleanup(struct xscd_dma_chan *chan)
@@ -308,7 +308,7 @@ static void xscd_dma_chan_desc_cleanup(struct xscd_dma_chan *chan)
 }
 
 /**
- * xscd_dma_dma_prep_interleaved - prepare a descriptor for a
+ * xscd_dma_prep_interleaved - prepare a descriptor for a
  * DMA_SLAVE transaction
  * @dchan: DMA channel
  * @xt: Interleaved template pointer
