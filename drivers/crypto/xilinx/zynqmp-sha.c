@@ -143,7 +143,6 @@ static int zynqmp_sha_digest(struct shash_desc *desc, const u8 *data, unsigned i
 		return ret;
 
 	while (remaining_len != 0) {
-		memzero_explicit(ubuf, ZYNQMP_DMA_ALLOC_FIXED_SIZE);
 		if (remaining_len >= ZYNQMP_DMA_ALLOC_FIXED_SIZE) {
 			update_size = ZYNQMP_DMA_ALLOC_FIXED_SIZE;
 			remaining_len -= ZYNQMP_DMA_ALLOC_FIXED_SIZE;
@@ -174,7 +173,6 @@ static int versal_sha_digest(struct shash_desc *desc, const u8 *data,
 	unsigned int remaining_len = len;
 
 	while (remaining_len != 0) {
-		memzero_explicit(ubuf, ZYNQMP_DMA_ALLOC_FIXED_SIZE);
 		if (remaining_len >= ZYNQMP_DMA_ALLOC_FIXED_SIZE) {
 			update_size = ZYNQMP_DMA_ALLOC_FIXED_SIZE;
 			remaining_len -= ZYNQMP_DMA_ALLOC_FIXED_SIZE;
