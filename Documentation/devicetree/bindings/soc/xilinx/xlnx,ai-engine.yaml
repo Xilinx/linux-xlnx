@@ -122,9 +122,10 @@ patternProperties:
       xlnx,node-id:
         $ref: /schemas/types.yaml#/definitions/uint32
         description: |
-          AI engine aperture node ID, which is defined by Xilinx platform design
-          tool to identify the AI engine aperture in the firmware.
-
+          The AI engine aperture node ID is defined by the Xilinx platform management tool
+          and serves to identify the AI engine aperture in the firmware. This node ID acts
+          as a unique identifier for AI engine partition devices as designated by the
+          Xilinx platform manager within the firmware.
     required:
       - reg
       - xlnx,columns
@@ -188,7 +189,7 @@ examples:
           /* 50 columns and 8 core tile rows + 1 SHIM row */
           reg = <0x200 0x0 0x1 0x0>;
           xlnx,columns = <0 50>;
-          xlnx,node-id = <1>;
+          xlnx,node-id = <0x18800000>;
           interrupt-parent = <&gic>;
           interrupts = <0x0 0x94 0x4>,
                        <0x0 0x95 0x4>,
