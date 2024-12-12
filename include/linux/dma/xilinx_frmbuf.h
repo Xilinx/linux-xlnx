@@ -1,12 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
  * Xilinx Framebuffer DMA support header file
  *
  * Copyright (C) 2017 Xilinx, Inc. All rights reserved.
- *
- * This is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
  */
 
 #ifndef __XILINX_FRMBUF_DMA_H
@@ -216,7 +212,7 @@ static inline int xilinx_xdma_get_drm_vid_fmts(struct dma_chan *chan,
 }
 
 static inline int xilinx_xdma_get_v4l2_vid_fmts(struct dma_chan *chan,
-						u32 *fmt_cnt,u32 **fmts)
+						u32 *fmt_cnt, u32 **fmts)
 {
 	return -ENODEV;
 }
