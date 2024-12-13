@@ -177,9 +177,11 @@ static const struct flash_info micron_nor_parts[] = {
 		.name = "mt35xu02g",
 		.sector_size = SZ_128K,
 		.size = SZ_256M,
-		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ,
+		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ |
+				SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP,
 		.mfr_flags = USE_FSR,
-		.fixup_flags = SPI_NOR_4B_OPCODES,
+		.fixup_flags = SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE,
+		.fixups = &mt35xu512aba_fixups
 	},
 };
 static int mt25qu512a_post_bfpt_fixup(struct spi_nor *nor,
