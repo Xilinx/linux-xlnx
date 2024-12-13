@@ -29,6 +29,7 @@
 #include <linux/spi/spi.h>
 #include <linux/spi/spi-mem.h>
 #include <linux/timer.h>
+#include <linux/workqueue.h>
 
 #define CQSPI_NAME			"cadence-qspi"
 #define CQSPI_MAX_CHIPSELECT		4
@@ -110,6 +111,9 @@ struct cqspi_st {
 	const struct cqspi_driver_platdata *ddata;
 	bool			extra_dummy;
 	bool			clk_tuned;
+	struct completion	tuning_complete;
+	struct spi_mem_op	tuning_op;
+	bool			tuning_scheduled;
 };
 
 struct cqspi_driver_platdata {
@@ -129,6 +133,8 @@ struct cqspi_driver_platdata {
 
 /* Runtime_pm autosuspend delay */
 #define CQSPI_AUTOSUSPEND_TIMEOUT		2000
+#define CQSPI_TUNING_TIMEOUT_MS			5000
+#define CQSPI_TUNING_PERIODICITY_MS		300000
 
 #define CQSPI_DUMMY_CLKS_PER_BYTE		8
 #define CQSPI_DUMMY_BYTES_MAX			4
@@ -650,16 +656,22 @@ static int cqspi_command_read(struct cqspi_flash_pdata *f_pdata,
 
 static int cqspi_setdlldelay(struct spi_mem *mem, const struct spi_mem_op *op)
 {
+	struct cqspi_st *cqspi = spi_controller_get_devdata(mem->spi->controller);
 	u8 dummy_incr, dummy_flag = 0, max_tap, count, windowsize, avg_rxtap;
 	u8 min_rxtap = 0, max_rxtap = 0, max_index = 0, min_index = 0, j;
-	u8 *id = op->data.buf.in;
-	struct cqspi_st *cqspi = spi_controller_get_devdata(mem->spi->controller);
 	struct platform_device *pdev = cqspi->pdev;
 	struct cqspi_flash_pdata *f_pdata;
+	u8 *id = op->data.buf.in;
 	int i, ret;
+	unsigned int reg;
 	bool id_matched, rxtapfound = false;
 	u32 txtap = 0;
 	s8 max_windowsize = -1;
+
+	reg = readl(cqspi->iobase + CQSPI_REG_CONFIG);
+	reg &= CQSPI_REG_CONFIG_ENABLE_MASK;
+	if (!reg)
+		return 0;
 
 	f_pdata = &cqspi->f_pdata[spi_get_chipselect(mem->spi, 0)];
 
@@ -814,19 +826,96 @@ static void cqspi_setup_ddrmode(struct cqspi_st *cqspi)
 	writel(reg, cqspi->iobase + CQSPI_REG_CONFIG);
 }
 
+static void cqspi_setup_sdrmode(struct cqspi_st *cqspi)
+{
+	u32 reg;
+
+	reg = readl(cqspi->iobase + CQSPI_REG_CONFIG);
+	reg &= ~CQSPI_REG_CONFIG_ENABLE_MASK;
+	writel(reg, cqspi->iobase + CQSPI_REG_CONFIG);
+
+	reg &= ~CQSPI_REG_CONFIG_DTR_PROTO;
+	reg &= ~CQSPI_REG_CONFIG_DUAL_OPCODE;
+	reg &= ~CQSPI_REG_CONFIG_PHY_ENABLE_MASK;
+	writel(reg, cqspi->iobase + CQSPI_REG_CONFIG);
+
+	/* Program POLL_CNT */
+	reg = readl(cqspi->iobase + CQSPI_REG_WR_COMPLETION_CTRL);
+	reg &= ~CQSPI_REG_WRCOMPLETION_POLLCNT_MASK;
+	reg |= (1 << CQSPI_REG_WRCOMPLETION_POLLCNY_LSB);
+	writel(reg, cqspi->iobase + CQSPI_REG_WR_COMPLETION_CTRL);
+
+	reg = readl(cqspi->iobase + CQSPI_REG_READCAPTURE);
+	reg &= ~CQSPI_REG_READCAPTURE_DQS_ENABLE;
+	reg |= (1 & CQSPI_REG_READCAPTURE_DELAY_MASK)
+		<< CQSPI_REG_READCAPTURE_DELAY_LSB;
+	writel(reg, cqspi->iobase + CQSPI_REG_READCAPTURE);
+
+	writel(CQSPI_REG_PHY_CONFIG_RESET_FLD_MASK,
+	       cqspi->iobase + CQSPI_REG_PHY_CONFIG);
+
+	reg = readl(cqspi->iobase + CQSPI_REG_CONFIG);
+	reg |= CQSPI_REG_CONFIG_ENABLE_MASK;
+	writel(reg, cqspi->iobase + CQSPI_REG_CONFIG);
+
+	cqspi->clk_tuned = false;
+	cqspi->extra_dummy = false;
+}
+
+static void cqspi_periodictuning(struct work_struct *work)
+{
+	struct delayed_work *d = to_delayed_work(work);
+	struct spi_mem *mem = container_of(d, struct spi_mem, complete_work);
+	struct cqspi_st *cqspi = spi_controller_get_devdata(mem->spi->controller);
+	u8 buf[CQSPI_READ_ID_LEN];
+	int ret;
+
+	if (!mem->request_completion.done)
+		wait_for_completion(&mem->request_completion);
+
+	reinit_completion(&cqspi->tuning_complete);
+	cqspi->tuning_op.data.buf.in = buf;
+	cqspi->tuning_op.data.nbytes = CQSPI_READ_ID_LEN;
+	ret = cqspi_setdlldelay(mem, &cqspi->tuning_op);
+	complete_all(&cqspi->tuning_complete);
+	if (ret) {
+		dev_err(&cqspi->pdev->dev,
+			"Setting dll delay error (%i)\n", ret);
+	} else {
+		schedule_delayed_work(&mem->complete_work,
+				      msecs_to_jiffies(CQSPI_TUNING_PERIODICITY_MS));
+	}
+}
+
 static int cqspi_setup_edgemode(struct spi_mem *mem,
 				const struct spi_mem_op *op)
 {
 	struct cqspi_st *cqspi = spi_controller_get_devdata(mem->spi->controller);
+	int ret;
 
 	cqspi_setup_ddrmode(cqspi);
 
 	if (cqspi->clk_tuned)
 		return 0;
+	memcpy(&cqspi->tuning_op, op, sizeof(struct spi_mem_op));
 
 	cqspi->f_pdata[spi_get_chipselect(mem->spi, 0)].dtr = true;
 
-	return cqspi_setdlldelay(mem, op);
+	ret = cqspi_setdlldelay(mem, op);
+	if (ret)
+		return ret;
+
+	complete_all(&cqspi->tuning_complete);
+	if (cqspi->tuning_scheduled) {
+		cancel_delayed_work_sync(&mem->complete_work);
+		flush_delayed_work(&mem->complete_work);
+	}
+	INIT_DELAYED_WORK(&mem->complete_work, cqspi_periodictuning);
+	schedule_delayed_work(&mem->complete_work,
+			      msecs_to_jiffies(CQSPI_TUNING_PERIODICITY_MS));
+	cqspi->tuning_scheduled = true;
+
+	return 0;
 }
 
 static int cqspi_command_write(struct cqspi_flash_pdata *f_pdata,
@@ -1731,9 +1820,10 @@ static int cqspi_mem_process(struct spi_mem *mem, const struct spi_mem_op *op)
 
 static int cqspi_exec_mem_op(struct spi_mem *mem, const struct spi_mem_op *op)
 {
-	int ret;
 	struct cqspi_st *cqspi = spi_controller_get_devdata(mem->spi->controller);
 	struct device *dev = &cqspi->pdev->dev;
+	struct cqspi_flash_pdata *f_pdata;
+	int ret;
 
 	ret = pm_runtime_resume_and_get(dev);
 	if (ret) {
@@ -1741,12 +1831,24 @@ static int cqspi_exec_mem_op(struct spi_mem *mem, const struct spi_mem_op *op)
 		return ret;
 	}
 
+	f_pdata = &cqspi->f_pdata[spi_get_chipselect(mem->spi, 0)];
+
 	if (op->cmd.dtr &&
 	    (!op->addr.nbytes || op->addr.dtr) &&
 	    (!op->data.nbytes || op->data.dtr)) {
 		ret = cqspi_setup_edgemode(mem, op);
 		if (ret)
 			return ret;
+	} else {
+		f_pdata->dtr = false;
+		if (cqspi->clk_tuned)
+			cqspi_setup_sdrmode(cqspi);
+	}
+
+	if (f_pdata->dtr && !cqspi->tuning_complete.done &&
+	    !wait_for_completion_timeout(&cqspi->tuning_complete,
+		msecs_to_jiffies(CQSPI_TUNING_TIMEOUT_MS))) {
+		return -ETIMEDOUT;
 	}
 
 	ret = cqspi_mem_process(mem, op);
@@ -2126,6 +2228,7 @@ static int cqspi_probe(struct platform_device *pdev)
 	cqspi->ahb_size = resource_size(res_ahb);
 
 	init_completion(&cqspi->transfer_complete);
+	init_completion(&cqspi->tuning_complete);
 
 	/* Obtain IRQ line. */
 	irq = platform_get_irq(pdev, 0);
@@ -2304,6 +2407,17 @@ static void cqspi_remove(struct platform_device *pdev)
 static int cqspi_runtime_suspend(struct device *dev)
 {
 	struct cqspi_st *cqspi = dev_get_drvdata(dev);
+	int ret;
+
+	ret = spi_controller_suspend(cqspi->host);
+	if (ret)
+		return ret;
+
+	if (cqspi->clk_tuned && !cqspi->tuning_complete.done &&
+	    !wait_for_completion_timeout(&cqspi->tuning_complete,
+		msecs_to_jiffies(CQSPI_TUNING_TIMEOUT_MS))) {
+		return -ETIMEDOUT;
+	}
 
 	cqspi_controller_enable(cqspi, 0);
 	clk_disable_unprepare(cqspi->clk);
@@ -2350,6 +2464,19 @@ static int cqspi_resume(struct device *dev)
 	cqspi_controller_enable(cqspi, 0);
 	cqspi_controller_reset_phy(cqspi);
 	cqspi_controller_enable(cqspi, 1);
+	cqspi->extra_dummy = false;
+	cqspi->clk_tuned = false;
+
+	ret = cqspi_setup_flash(cqspi);
+	if (ret) {
+		dev_err(dev, "failed to setup flash parameters %d\n", ret);
+		return ret;
+	}
+
+	ret = zynqmp_pm_ospi_mux_select(cqspi->pd_dev_id,
+					PM_OSPI_MUX_SEL_LINEAR);
+	if (ret)
+		return ret;
 
 	return spi_controller_resume(cqspi->host);
 }
