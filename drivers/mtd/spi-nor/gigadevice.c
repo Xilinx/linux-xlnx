@@ -139,21 +139,21 @@ static int gd25lx256e_post_sfdp_fixup(struct spi_nor *nor)
 	return 0;
 }
 
+static void gd25lx512_default_init(struct spi_nor *nor)
+{
+	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
+
+	nor->flags &= ~SNOR_F_HAS_16BIT_SR;
+	params->set_octal_dtr = spi_nor_gigadevice_octal_dtr_enable;
+	params->set_4byte_addr_mode = gd25lx256e_set_4byte_addr_mode;
+}
+
 static void gd25b512_default_init(struct spi_nor *nor)
 {
 	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
 
 	nor->flags &= ~SNOR_F_HAS_16BIT_SR;
 	params->set_4byte_addr_mode = gd25lx256e_set_4byte_addr_mode;
-}
-
-static int gd25lx512_late_init(struct spi_nor *nor)
-{
-	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
-
-	params->hwcaps.mask &= ~(SNOR_HWCAPS_PP_8_8_8_DTR | SNOR_HWCAPS_READ_8_8_8_DTR);
-
-	return 0;
 }
 
 static struct spi_nor_fixups gd25lx256e_fixups = {
@@ -166,8 +166,8 @@ static struct spi_nor_fixups gd25b512_fixups = {
 };
 
 static struct spi_nor_fixups gd25lx512_fixups = {
-	.default_init = gd25b512_default_init,
-	.late_init = gd25lx512_late_init,
+	.default_init = gd25lx512_default_init,
+	.post_sfdp = gd25lx256e_post_sfdp_fixup
 };
 
 static int
@@ -263,7 +263,8 @@ static const struct flash_info gigadevice_nor_parts[] = {
 		.mfr_flags = USE_FSR,
 		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
 				SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5,
-		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ,
+		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ |
+					SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP,
 		.fixup_flags = SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE,
 		.fixups = &gd25lx512_fixups,
 	}, {
@@ -273,7 +274,8 @@ static const struct flash_info gigadevice_nor_parts[] = {
 		.mfr_flags = USE_FSR,
 		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
 				SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5,
-		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ,
+		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ |
+					SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP,
 		.fixup_flags = SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE,
 		.fixups = &gd25lx512_fixups,
 	}, {
@@ -283,7 +285,8 @@ static const struct flash_info gigadevice_nor_parts[] = {
 		.mfr_flags = USE_FSR,
 		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
 				SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5,
-		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ,
+		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ |
+					SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP,
 		.fixup_flags = SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE,
 		.fixups = &gd25lx512_fixups,
 	}, {
