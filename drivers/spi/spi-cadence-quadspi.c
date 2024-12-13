@@ -342,6 +342,10 @@ struct cqspi_driver_platdata {
 
 #define	CQSPI_SELECT_LOWER_CS		BIT(0)
 
+static unsigned int read_timeout_ms = CQSPI_READ_TIMEOUT_MS;
+module_param(read_timeout_ms, uint, 0644);
+MODULE_PARM_DESC(read_timeout_ms, "Read transfer timeout in msec");
+
 static int cqspi_wait_for_bit(const struct cqspi_driver_platdata *ddata,
 			      void __iomem *reg, const u32 mask, bool clr,
 			      bool busywait)
