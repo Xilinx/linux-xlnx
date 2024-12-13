@@ -43,6 +43,9 @@ static int spi_nor_macronix_octal_dtr_enable(struct spi_nor *nor, bool enable)
 	if (ret)
 		return ret;
 
+	if ((nor->flags & SNOR_F_HAS_STACKED) && nor->spimem->spi->cs_index_mask == 1)
+		return 0;
+
 	/* Read flash ID to make sure the switch was successful. */
 	op = (struct spi_mem_op)
 		SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_RDID, 1),
