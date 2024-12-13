@@ -261,6 +261,8 @@ static const struct flash_info gigadevice_nor_parts[] = {
 		.name = "gd25lx512m",
 		.size = SZ_64M,
 		.mfr_flags = USE_FSR,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
+				SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ,
 		.fixup_flags = SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE,
 		.fixups = &gd25lx512_fixups,
@@ -269,6 +271,8 @@ static const struct flash_info gigadevice_nor_parts[] = {
 		.name = "gd55lx01g",
 		.size = SZ_128M,
 		.mfr_flags = USE_FSR,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
+				SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ,
 		.fixup_flags = SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE,
 		.fixups = &gd25lx512_fixups,
@@ -277,6 +281,8 @@ static const struct flash_info gigadevice_nor_parts[] = {
 		.name = "gd55lx02g",
 		.size = SZ_128M,
 		.mfr_flags = USE_FSR,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
+				SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ,
 		.fixup_flags = SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE,
 		.fixups = &gd25lx512_fixups,

@@ -337,6 +337,8 @@ static const struct flash_info macronix_nor_parts[] = {
 		.id = SNOR_ID(0xc2, 0x81, 0x3a),
 		.name = "mx25um51345g",
 		.size = SZ_4M,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
+			SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ |
 			SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP,
 		.fixups = &mx25um51345g_fixups

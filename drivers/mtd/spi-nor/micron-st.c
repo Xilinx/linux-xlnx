@@ -170,6 +170,8 @@ static const struct flash_info micron_nor_parts[] = {
 		.name = "mt35xu512aba",
 		.sector_size = SZ_128K,
 		.size = SZ_64M,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_4BIT_BP |
+				SPI_NOR_BP3_SR_BIT6,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ |
 				 SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP,
 		.mfr_flags = USE_FSR,
@@ -180,6 +182,8 @@ static const struct flash_info micron_nor_parts[] = {
 		.name = "mt35xu01g",
 		.sector_size = SZ_128K,
 		.size = SZ_128M,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_4BIT_BP |
+				SPI_NOR_BP3_SR_BIT6,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ |
 			SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP,
 		.mfr_flags = USE_FSR,
@@ -190,6 +194,8 @@ static const struct flash_info micron_nor_parts[] = {
 		.name = "mt35xu02g",
 		.sector_size = SZ_128K,
 		.size = SZ_256M,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_4BIT_BP |
+				SPI_NOR_BP3_SR_BIT6,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ |
 				SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP,
 		.mfr_flags = USE_FSR,
