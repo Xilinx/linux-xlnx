@@ -173,6 +173,16 @@ static const struct flash_info micron_nor_parts[] = {
 		.fixup_flags = SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE,
 		.fixups = &mt35xu512aba_fixups,
 	}, {
+		.id = SNOR_ID(0x2c, 0x5b, 0x1b),
+		.name = "mt35xu01g",
+		.sector_size = SZ_128K,
+		.size = SZ_128M,
+		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ |
+			SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP,
+		.mfr_flags = USE_FSR,
+		.fixup_flags = SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE,
+		.fixups = &mt35xu512aba_fixups
+	}, {
 		.id = SNOR_ID(0x2c, 0x5b, 0x1c),
 		.name = "mt35xu02g",
 		.sector_size = SZ_128K,
