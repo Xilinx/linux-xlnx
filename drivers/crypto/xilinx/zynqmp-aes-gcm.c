@@ -815,7 +815,7 @@ static void __exit aes_driver_exit(void)
 	platform_driver_unregister(&zynqmp_aes_driver);
 }
 
-device_initcall(aes_driver_init);
+module_init(aes_driver_init);
 module_exit(aes_driver_exit);
-
+MODULE_DESCRIPTION("zynqmp aes-gcm hardware acceleration support.");
 MODULE_LICENSE("GPL");
