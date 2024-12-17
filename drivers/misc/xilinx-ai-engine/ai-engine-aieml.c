@@ -2618,7 +2618,7 @@ static int aieml_set_part_clocks(struct aie_partition *apart)
 	     loc.col++) {
 		u32 startbit, col_inuse = 0;
 
-		startbit = loc.col * (range->size.row - 1);
+		startbit = (loc.col - range->start.col) * (range->size.row - 1);
 
 		for (loc.row = range->start.row + 1;
 		     loc.row < range->start.row + range->size.row;
