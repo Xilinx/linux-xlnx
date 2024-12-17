@@ -84,7 +84,6 @@ struct zynqmp_aead_tfm_ctx {
 	struct device *dev;
 	dma_addr_t key_dma_addr;
 	u8 *key;
-	u8 *iv;
 	u32 keylen;
 	u32 authsize;
 	u8 keysrc;
