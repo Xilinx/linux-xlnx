@@ -22541,6 +22541,11 @@ M:	Govindarajulu Varadarajan <govindarajulu.varadarajan@amd.com>
 S:	Maintained
 F:	drivers/uio/uio_xilinx_ai_engine.c
 
+USERSPACE I/O (UIO_DMABUF)
+M:	Govindarajulu Varadarajan <govindarajulu.varadarajan@amd.com>
+S:	Maintained
+F:	drivers/uio/uio_dmabuf*
+
 UTIL-LINUX PACKAGE
 M:	Karel Zak <kzak@redhat.com>
 L:	util-linux@vger.kernel.org
