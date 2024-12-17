@@ -454,15 +454,15 @@ static int zynqmp_aes_aead_setkey(struct crypto_aead *aead, const u8 *key,
 			tfm_ctx->keylen = keylen;
 		}
 		return 0;
-	} else {
-		tfm_ctx->keylen = keylen;
-		if (keylen == ZYNQMP_AES_KEY_SIZE) {
-			tfm_ctx->keysrc = ZYNQMP_AES_KUP_KEY;
-			memcpy(tfm_ctx->key, key, keylen);
-			dma_sync_single_for_device(tfm_ctx->dev, tfm_ctx->key_dma_addr,
-						   ZYNQMP_AES_KEY_SIZE,
-						   DMA_TO_DEVICE);
-		}
+	}
+
+	tfm_ctx->keylen = keylen;
+	if (keylen == ZYNQMP_AES_KEY_SIZE) {
+		tfm_ctx->keysrc = ZYNQMP_AES_KUP_KEY;
+		memcpy(tfm_ctx->key, key, keylen);
+		dma_sync_single_for_device(tfm_ctx->dev, tfm_ctx->key_dma_addr,
+					   ZYNQMP_AES_KEY_SIZE,
+					   DMA_TO_DEVICE);
 	}
 
 	tfm_ctx->fbk_cipher->base.crt_flags &= ~CRYPTO_TFM_REQ_MASK;
@@ -489,24 +489,23 @@ static int versal_aes_aead_setkey(struct crypto_aead *aead, const u8 *key,
 			return 0;
 		}
 		return -EINVAL;
-	} else {
-		tfm_ctx->keylen = keylen;
-		if (keylen == XSECURE_AES_KEY_SIZE_256 ||
-		    keylen == XSECURE_AES_KEY_SIZE_128) {
-			if (tfm_ctx->keysrc >= VERSAL_AES_USER_KEY_0 &&
-			    tfm_ctx->keysrc <= VERSAL_AES_USER_KEY_7) {
-				memcpy(tfm_ctx->key, key, keylen);
-				dma_sync_single_for_device(tfm_ctx->dev, tfm_ctx->key_dma_addr,
-							   ZYNQMP_AES_KEY_SIZE,
-							   DMA_TO_DEVICE);
-			}
+	}
+	tfm_ctx->keylen = keylen;
+	if (keylen == XSECURE_AES_KEY_SIZE_256 ||
+	    keylen == XSECURE_AES_KEY_SIZE_128) {
+		if (tfm_ctx->keysrc >= VERSAL_AES_USER_KEY_0 &&
+		    tfm_ctx->keysrc <= VERSAL_AES_USER_KEY_7) {
+			memcpy(tfm_ctx->key, key, keylen);
+			dma_sync_single_for_device(tfm_ctx->dev, tfm_ctx->key_dma_addr,
+						   ZYNQMP_AES_KEY_SIZE,
+						   DMA_TO_DEVICE);
 		}
+	}
 
-		if (tfm_ctx->keysrc < VERSAL_AES_EFUSE_USER_KEY_0 ||
-		    tfm_ctx->keysrc > VERSAL_AES_USER_KEY_7 ||
-		    tfm_ctx->keysrc ==  VERSAL_AES_KUP_KEY) {
-			tfm_ctx->keysrc = VERSAL_AES_USER_KEY_0;
-		}
+	if (tfm_ctx->keysrc < VERSAL_AES_EFUSE_USER_KEY_0 ||
+	    tfm_ctx->keysrc > VERSAL_AES_USER_KEY_7 ||
+	    tfm_ctx->keysrc ==  VERSAL_AES_KUP_KEY) {
+		tfm_ctx->keysrc = VERSAL_AES_USER_KEY_0;
 	}
 
 	tfm_ctx->fbk_cipher->base.crt_flags &= ~CRYPTO_TFM_REQ_MASK;
