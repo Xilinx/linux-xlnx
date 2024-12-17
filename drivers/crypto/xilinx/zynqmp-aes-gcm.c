@@ -132,9 +132,9 @@ static int zynqmp_aes_aead_cipher(struct aead_request *req)
 	struct crypto_aead *aead = crypto_aead_reqtfm(req);
 	struct zynqmp_aead_tfm_ctx *tfm_ctx = crypto_aead_ctx(aead);
 	struct zynqmp_aead_req_ctx *rq_ctx = aead_request_ctx(req);
+	dma_addr_t dma_addr_data, dma_addr_hw_req;
 	struct device *dev = tfm_ctx->dev;
 	struct zynqmp_aead_hw_req *hwreq;
-	dma_addr_t dma_addr_data, dma_addr_hw_req;
 	unsigned int data_size;
 	unsigned int status;
 	int ret;
@@ -241,8 +241,8 @@ static int versal_aes_aead_cipher(struct aead_request *req)
 	struct versal_init_ops *hwreq;
 	struct versal_in_params *in;
 	u32 gcm_offset, out_len;
-	size_t kbuf_size;
 	size_t dmabuf_size;
+	size_t kbuf_size;
 	void *dmabuf;
 	char *kbuf;
 	int ret;
@@ -424,13 +424,13 @@ static int handle_aes_req(struct crypto_engine *engine, void *req)
 {
 	struct aead_request *areq =
 				container_of(req, struct aead_request, base);
+	struct zynqmp_aead_req_ctx *rq_ctx = aead_request_ctx(areq);
 	struct crypto_aead *aead = crypto_aead_reqtfm(req);
 	struct zynqmp_aead_tfm_ctx *tfm_ctx = crypto_aead_ctx(aead);
+	struct aead_request *subreq = aead_request_ctx(req);
 	struct aead_alg *alg = crypto_aead_alg(aead);
 	struct xilinx_aead_drv_ctx *drv_ctx;
 
-	struct zynqmp_aead_req_ctx *rq_ctx = aead_request_ctx(areq);
-	struct aead_request *subreq = aead_request_ctx(req);
 	int need_fallback;
 	int err;
 
