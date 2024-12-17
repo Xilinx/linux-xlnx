@@ -195,19 +195,20 @@ static int zynqmp_aes_aead_cipher(struct aead_request *req)
 	} else if (status) {
 		switch (status) {
 		case ZYNQMP_AES_GCM_TAG_MISMATCH_ERR:
-			dev_err(dev, "ERROR: Gcm Tag mismatch\n");
+			ret = -EBADMSG;
 			break;
 		case ZYNQMP_AES_WRONG_KEY_SRC_ERR:
+			ret = -EINVAL;
 			dev_err(dev, "ERROR: Wrong KeySrc, enable secure mode\n");
 			break;
 		case ZYNQMP_AES_PUF_NOT_PROGRAMMED:
+			ret = -EINVAL;
 			dev_err(dev, "ERROR: PUF is not registered\n");
 			break;
 		default:
-			dev_err(dev, "ERROR: Unknown error\n");
+			ret = -EINVAL;
 			break;
 		}
-		ret = -status;
 	} else {
 		if (hwreq->op == ZYNQMP_AES_ENCRYPT)
 			data_size = data_size + crypto_aead_authsize(aead);
