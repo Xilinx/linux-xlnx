@@ -19,8 +19,8 @@
 #include <linux/platform_device.h>
 #include <linux/string.h>
 
-#define ZYNQMP_DMA_BIT_MASK	32U
-
+#define ZYNQMP_DMA_BIT_MASK		32U
+#define VERSAL_DMA_BIT_MASK		64U
 #define ZYNQMP_AES_KEY_SIZE		AES_KEYSIZE_256
 #define ZYNQMP_AES_AUTH_SIZE		16U
 #define ZYNQMP_KEY_SRC_SEL_KEY_LEN	1U
@@ -96,6 +96,7 @@ struct xilinx_aead_drv_ctx {
 	struct device *dev;
 	struct crypto_engine *engine;
 	u8 keysrc;
+	u8 dma_bit_mask;
 	int (*aes_aead_cipher)(struct aead_request *areq);
 	int (*fallback_check)(struct zynqmp_aead_tfm_ctx *ctx,
 			      struct aead_request *areq);
@@ -665,6 +666,7 @@ static struct xilinx_aead_drv_ctx zynqmp_aes_drv_ctx = {
 	.aead.op = {
 		.do_one_request = handle_aes_req,
 	},
+	.dma_bit_mask = ZYNQMP_DMA_BIT_MASK,
 };
 
 static struct xilinx_aead_drv_ctx versal_aes_drv_ctx = {
@@ -697,6 +699,7 @@ static struct xilinx_aead_drv_ctx versal_aes_drv_ctx = {
 	.aead.op = {
 		.do_one_request = handle_aes_req,
 	},
+	.dma_bit_mask = VERSAL_DMA_BIT_MASK,
 };
 
 static struct xlnx_feature aes_feature_map[] = {
@@ -736,7 +739,7 @@ static int zynqmp_aes_aead_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, aes_drv_ctx);
 
-	err = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(ZYNQMP_DMA_BIT_MASK));
+	err = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(aes_drv_ctx->dma_bit_mask));
 	if (err < 0) {
 		dev_err(dev, "No usable DMA configuration\n");
 		return err;
