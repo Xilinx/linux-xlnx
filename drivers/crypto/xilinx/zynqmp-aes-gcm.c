@@ -424,35 +424,13 @@ static int handle_aes_req(struct crypto_engine *engine, void *req)
 {
 	struct aead_request *areq =
 				container_of(req, struct aead_request, base);
-	struct zynqmp_aead_req_ctx *rq_ctx = aead_request_ctx(areq);
 	struct crypto_aead *aead = crypto_aead_reqtfm(req);
-	struct zynqmp_aead_tfm_ctx *tfm_ctx = crypto_aead_ctx(aead);
-	struct aead_request *subreq = aead_request_ctx(req);
 	struct aead_alg *alg = crypto_aead_alg(aead);
 	struct xilinx_aead_drv_ctx *drv_ctx;
-
-	int need_fallback;
 	int err;
 
 	drv_ctx = container_of(alg, struct xilinx_aead_drv_ctx, aead.base);
-	need_fallback = drv_ctx->fallback_check(tfm_ctx, areq);
-
-	if (need_fallback) {
-		aead_request_set_tfm(subreq, tfm_ctx->fbk_cipher);
-
-		aead_request_set_callback(subreq, areq->base.flags,
-					  NULL, NULL);
-		aead_request_set_crypt(subreq, areq->src, areq->dst,
-				       areq->cryptlen, areq->iv);
-		aead_request_set_ad(subreq, areq->assoclen);
-		if (rq_ctx->op == ZYNQMP_AES_ENCRYPT)
-			err = crypto_aead_encrypt(subreq);
-		else
-			err = crypto_aead_decrypt(subreq);
-	} else {
-		err = drv_ctx->aes_aead_cipher(areq);
-	}
-
+	err = drv_ctx->aes_aead_cipher(areq);
 	local_bh_disable();
 	crypto_finalize_aead_request(engine, areq, err);
 	local_bh_enable();
@@ -550,26 +528,61 @@ static int zynqmp_aes_aead_setauthsize(struct crypto_aead *aead,
 
 static int zynqmp_aes_aead_encrypt(struct aead_request *req)
 {
-	struct xilinx_aead_drv_ctx *drv_ctx;
-	struct crypto_aead *aead = crypto_aead_reqtfm(req);
-	struct aead_alg *alg = crypto_aead_alg(aead);
 	struct zynqmp_aead_req_ctx *rq_ctx = aead_request_ctx(req);
+	struct crypto_aead *aead = crypto_aead_reqtfm(req);
+	struct zynqmp_aead_tfm_ctx *tfm_ctx = crypto_aead_ctx(aead);
+	struct aead_request *subreq = aead_request_ctx(req);
+	struct aead_alg *alg = crypto_aead_alg(aead);
+	struct xilinx_aead_drv_ctx *drv_ctx;
+	int err;
+
+	drv_ctx = container_of(alg, struct xilinx_aead_drv_ctx, aead.base);
+	err = drv_ctx->fallback_check(tfm_ctx, req);
+	if (err) {
+		aead_request_set_tfm(subreq, tfm_ctx->fbk_cipher);
+		aead_request_set_callback(subreq, req->base.flags,
+					  NULL, NULL);
+		aead_request_set_crypt(subreq, req->src, req->dst,
+				       req->cryptlen, req->iv);
+		aead_request_set_ad(subreq, req->assoclen);
+		if (rq_ctx->op == ZYNQMP_AES_ENCRYPT)
+			err = crypto_aead_encrypt(subreq);
+		else
+			err = crypto_aead_decrypt(subreq);
+		return err;
+	}
 
 	rq_ctx->op = ZYNQMP_AES_ENCRYPT;
-	drv_ctx = container_of(alg, struct xilinx_aead_drv_ctx, aead.base);
 
 	return crypto_transfer_aead_request_to_engine(drv_ctx->engine, req);
 }
 
 static int zynqmp_aes_aead_decrypt(struct aead_request *req)
 {
-	struct xilinx_aead_drv_ctx *drv_ctx;
-	struct crypto_aead *aead = crypto_aead_reqtfm(req);
-	struct aead_alg *alg = crypto_aead_alg(aead);
 	struct zynqmp_aead_req_ctx *rq_ctx = aead_request_ctx(req);
+	struct aead_request *subreq = aead_request_ctx(req);
+	struct crypto_aead *aead = crypto_aead_reqtfm(req);
+	struct zynqmp_aead_tfm_ctx *tfm_ctx = crypto_aead_ctx(aead);
+	struct aead_alg *alg = crypto_aead_alg(aead);
+	struct xilinx_aead_drv_ctx *drv_ctx;
+	int err;
 
-	rq_ctx->op = ZYNQMP_AES_DECRYPT;
 	drv_ctx = container_of(alg, struct xilinx_aead_drv_ctx, aead.base);
+	err = drv_ctx->fallback_check(tfm_ctx, req);
+	if (err) {
+		aead_request_set_tfm(subreq, tfm_ctx->fbk_cipher);
+		aead_request_set_callback(subreq, req->base.flags,
+					  NULL, NULL);
+		aead_request_set_crypt(subreq, req->src, req->dst,
+				       req->cryptlen, req->iv);
+		aead_request_set_ad(subreq, req->assoclen);
+		if (rq_ctx->op == ZYNQMP_AES_ENCRYPT)
+			err = crypto_aead_encrypt(subreq);
+		else
+			err = crypto_aead_decrypt(subreq);
+		return err;
+	}
+	rq_ctx->op = ZYNQMP_AES_DECRYPT;
 
 	return crypto_transfer_aead_request_to_engine(drv_ctx->engine, req);
 }
