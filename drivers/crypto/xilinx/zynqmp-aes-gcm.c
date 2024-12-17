@@ -28,8 +28,7 @@
 #define ZYNQMP_AES_MIN_INPUT_BLK_SIZE	4U
 #define ZYNQMP_AES_WORD_LEN		4U
 #define VERSAL_AES_QWORD_LEN		16U
-#define ZYNQMP_AES_DEVICE_LEY_LEN	1U
-
+#define ZYNQMP_AES_DEVICE_KEY_LEN	1U
 #define ZYNQMP_AES_GCM_TAG_MISMATCH_ERR		0x01
 #define ZYNQMP_AES_WRONG_KEY_SRC_ERR		0x13
 #define ZYNQMP_AES_PUF_NOT_PROGRAMMED		0xE300
@@ -380,7 +379,7 @@ static int zynqmp_fallback_check(struct zynqmp_aead_tfm_ctx *tfm_ctx,
 	if ((tfm_ctx->keysrc == ZYNQMP_AES_KUP_KEY &&
 	     tfm_ctx->keylen != ZYNQMP_AES_KEY_SIZE) ||
 	    (tfm_ctx->keysrc == ZYNQMP_AES_DEV_KEY &&
-	     tfm_ctx->keylen != ZYNQMP_AES_DEVICE_LEY_LEN))
+	     tfm_ctx->keylen != ZYNQMP_AES_DEVICE_KEY_LEN))
 		return 1;
 
 	if (req->assoclen != 0 ||
