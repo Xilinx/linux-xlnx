@@ -210,7 +210,7 @@ static int zynqmp_aes_aead_cipher(struct aead_request *req)
 		ret = -status;
 	} else {
 		if (hwreq->op == ZYNQMP_AES_ENCRYPT)
-			data_size = data_size + ZYNQMP_AES_AUTH_SIZE;
+			data_size = data_size + crypto_aead_authsize(aead);
 		else
 			data_size = data_size - ZYNQMP_AES_AUTH_SIZE;
 
@@ -288,7 +288,7 @@ static int versal_aes_aead_cipher(struct aead_request *req)
 	dma_addr_in = dma_addr_hw_req + sizeof(struct versal_init_ops);
 	if (rq_ctx->op == ZYNQMP_AES_ENCRYPT) {
 		hwreq->op = VERSAL_AES_ENCRYPT;
-		out_len = total_len + ZYNQMP_AES_AUTH_SIZE;
+		out_len = total_len + crypto_aead_authsize(aead);
 		in->size = req->cryptlen;
 	} else {
 		hwreq->op = VERSAL_AES_DECRYPT;
@@ -374,6 +374,8 @@ static int zynqmp_fallback_check(struct zynqmp_aead_tfm_ctx *tfm_ctx,
 {
 	struct zynqmp_aead_req_ctx *rq_ctx = aead_request_ctx(req);
 
+	if (tfm_ctx->authsize != ZYNQMP_AES_AUTH_SIZE && rq_ctx->op == ZYNQMP_AES_DECRYPT)
+		return 1;
 	if ((tfm_ctx->keysrc == ZYNQMP_AES_KUP_KEY &&
 	     tfm_ctx->keylen != ZYNQMP_AES_KEY_SIZE) ||
 	    (tfm_ctx->keysrc == ZYNQMP_AES_DEV_KEY &&
@@ -399,7 +401,7 @@ static int versal_fallback_check(struct zynqmp_aead_tfm_ctx *tfm_ctx,
 {
 	struct zynqmp_aead_req_ctx *rq_ctx = aead_request_ctx(req);
 
-	if (tfm_ctx->authsize != ZYNQMP_AES_AUTH_SIZE)
+	if (tfm_ctx->authsize != ZYNQMP_AES_AUTH_SIZE && rq_ctx->op == ZYNQMP_AES_DECRYPT)
 		return 1;
 
 	if (tfm_ctx->keylen != XSECURE_AES_KEY_SIZE_128 &&
@@ -534,6 +536,7 @@ static int zynqmp_aes_aead_encrypt(struct aead_request *req)
 	int err;
 
 	drv_ctx = container_of(alg, struct xilinx_aead_drv_ctx, aead.base);
+	rq_ctx->op = ZYNQMP_AES_ENCRYPT;
 	err = zynqmp_fallback_check(tfm_ctx, req);
 	if (err && tfm_ctx->keysrc != ZYNQMP_AES_KUP_KEY)
 		return -EOPNOTSUPP;
@@ -552,8 +555,6 @@ static int zynqmp_aes_aead_encrypt(struct aead_request *req)
 		return err;
 	}
 
-	rq_ctx->op = ZYNQMP_AES_ENCRYPT;
-
 	return crypto_transfer_aead_request_to_engine(drv_ctx->engine, req);
 }
 
@@ -568,6 +569,7 @@ static int versal_aes_aead_encrypt(struct aead_request *req)
 	int err;
 
 	drv_ctx = container_of(alg, struct xilinx_aead_drv_ctx, aead.base);
+	rq_ctx->op = ZYNQMP_AES_ENCRYPT;
 	err = versal_fallback_check(tfm_ctx, req);
 	if (err && (tfm_ctx->keysrc < VERSAL_AES_USER_KEY_0 ||
 		    tfm_ctx->keysrc > VERSAL_AES_USER_KEY_7))
@@ -586,8 +588,6 @@ static int versal_aes_aead_encrypt(struct aead_request *req)
 		return err;
 	}
 
-	rq_ctx->op = ZYNQMP_AES_ENCRYPT;
-
 	return crypto_transfer_aead_request_to_engine(drv_ctx->engine, req);
 }
 
@@ -602,6 +602,7 @@ static int zynqmp_aes_aead_decrypt(struct aead_request *req)
 	int err;
 
 	drv_ctx = container_of(alg, struct xilinx_aead_drv_ctx, aead.base);
+	rq_ctx->op = ZYNQMP_AES_DECRYPT;
 	err = zynqmp_fallback_check(tfm_ctx, req);
 	if (err && tfm_ctx->keysrc != ZYNQMP_AES_KUP_KEY)
 		return -EOPNOTSUPP;
@@ -619,7 +620,6 @@ static int zynqmp_aes_aead_decrypt(struct aead_request *req)
 			err = crypto_aead_decrypt(subreq);
 		return err;
 	}
-	rq_ctx->op = ZYNQMP_AES_DECRYPT;
 
 	return crypto_transfer_aead_request_to_engine(drv_ctx->engine, req);
 }
@@ -635,6 +635,7 @@ static int versal_aes_aead_decrypt(struct aead_request *req)
 	int err;
 
 	drv_ctx = container_of(alg, struct xilinx_aead_drv_ctx, aead.base);
+	rq_ctx->op = ZYNQMP_AES_DECRYPT;
 	err = versal_fallback_check(tfm_ctx, req);
 	if (err &&
 	    tfm_ctx->keysrc < VERSAL_AES_USER_KEY_0 &&
@@ -653,7 +654,6 @@ static int versal_aes_aead_decrypt(struct aead_request *req)
 			err = crypto_aead_decrypt(subreq);
 		return err;
 	}
-	rq_ctx->op = ZYNQMP_AES_DECRYPT;
 
 	return crypto_transfer_aead_request_to_engine(drv_ctx->engine, req);
 }
