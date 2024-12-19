@@ -891,7 +891,9 @@ static int xhdmirxss_hdcp1x_keymgmt_table_read(struct xhdmirx_state *state,
 			XHDCP1X_KEYMGMT_REG_TBL_DAT_H, &data))
 		return -EIO;
 
-	temp = (data << BITS_PER_BYTE) * sizeof(u32);
+	temp = data;
+	temp <<= 32;
+
 	if (regmap_read(state->hdcp1x_keymgmt_base,
 			XHDCP1X_KEYMGMT_REG_TBL_DAT_L, &data))
 		return -EIO;
