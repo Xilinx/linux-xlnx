@@ -409,7 +409,7 @@ struct xhdmi_aux {
  * @hdcp2x_prot_event: HDCP 2X protocol event is detected from upstream source
  * @hdcp1x_enabled: flag to indicate if HDCP1.4 protocol is enabled
  * @hdcp2x_enable: flag to indicate if HDCP 2.2 protocol is enabled
- * @is_hdcp1x_enabled: flag to indicate if HDCP 1.4 protocol is enabled
+ * @hdcp1x_initialized: flag to indicate if HDCP 1.4 module is initialized properly
  * @isstreamup: flag whether stream is up
  */
 struct xhdmirx_state {
@@ -452,7 +452,7 @@ struct xhdmirx_state {
 	bool hdcp2x_prot_event;
 	bool hdcp1x_enabled;
 	bool hdcp2x_enable;
-	bool is_hdcp1x_enabled;
+	bool hdcp1x_initialized;
 	bool isstreamup;
 };
 
@@ -1850,7 +1850,7 @@ static void phy_rxready_cb(void *param)
 	if (xhdmirx1_gettmdsclkratio(xhdmi))
 		xhdmi->stream.refclk *= 4;
 
-	if (xhdmi->is_hdcp1x_enabled)
+	if (xhdmi->hdcp1x_initialized)
 		xhdcp1x_rx_disable(xhdmi->hdcp1x);
 
 	dev_dbg(xhdmi->dev, "Phy RxReadyCallback refclk = %u Hz\n", xhdmi->stream.refclk);
@@ -2129,7 +2129,7 @@ static void rxconnect(struct xhdmirx_state *xhdmi)
 	} else {
 		xhdmirx_set_hpd(xhdmi, 0);
 
-		if (xhdmi->is_hdcp1x_enabled)
+		if (xhdmi->hdcp1x_initialized)
 			xhdcp1x_rx_disable(xhdmi->hdcp1x);
 		if (xhdmi->hdcp2x_enable)
 			xhdcp2x_rx_disable(xhdmi->hdcp2x);
@@ -2205,7 +2205,7 @@ static void streamdown(struct xhdmirx_state *xhdmi)
 	}
 	xhdmirx_sysrst_assert(xhdmi);
 	xhdmi->isstreamup = false;
-	if (xhdmi->is_hdcp1x_enabled)
+	if (xhdmi->hdcp1x_initialized)
 		xhdcp1x_rx_disable(xhdmi->hdcp1x);
 	if (xhdmi->hdcp2x_enable) {
 		xhdmi->hdcp2x_prot_event = false;
@@ -3582,7 +3582,7 @@ static void xhdmirx_init(struct xhdmirx_state *xhdmi)
 	xhdmirx_ddcscdc_clear(xhdmi);
 	xhdmirx_set_hpd(xhdmi, 0);
 
-	if (xhdmi->is_hdcp1x_enabled || xhdmi->hdcp2x_enable)
+	if (xhdmi->hdcp1x_initialized || xhdmi->hdcp2x_enable)
 		xhdmirx_ddc_hdcp_disable(xhdmi);
 
 	/* Rising edge mask */
@@ -3621,7 +3621,7 @@ static void xhdmirx_init(struct xhdmirx_state *xhdmi)
 	xhdmirx_ddc_enable(xhdmi);
 	xhdmirx_ddcscdc_enable(xhdmi);
 
-	if (xhdmi->is_hdcp1x_enabled) {
+	if (xhdmi->hdcp1x_initialized) {
 		xhdmirx_ddc_hdcp_enable(xhdmi);
 		xhdmirx_ddc_hdcp14_mode(xhdmi);
 	}
@@ -3730,8 +3730,8 @@ static int xhdmirx_parse_of(struct xhdmirx_state *xhdmi)
 
 	xhdmi->hdcp1x_enabled = of_property_read_bool(node, "xlnx,include-hdcp");
 	if (xhdmi->hdcp1x_enabled) {
-		xhdmi->is_hdcp1x_enabled = of_property_read_bool(node, "xlnx,include-hdcp-1-4");
-		if (!xhdmi->is_hdcp1x_enabled)
+		xhdmi->hdcp1x_initialized = of_property_read_bool(node, "xlnx,include-hdcp-1-4");
+		if (!xhdmi->hdcp1x_initialized)
 			dev_info(xhdmi->dev, "HDMI:HDCP 1.4 is not enabled\n");
 		else
 			dev_info(xhdmi->dev, "HDMI:HDCP 1.4 is enabled\n");
@@ -4447,7 +4447,7 @@ static int xhdmirx_hdcp_init(struct xhdmirx_state *xhdmi, struct platform_device
 {
 	int irq, ret = 0;
 
-	if (!(xhdmi->hdcp1x_enabled || xhdmi->is_hdcp1x_enabled || xhdmi->hdcp2x_enable))
+	if (!(xhdmi->hdcp1x_enabled || xhdmi->hdcp1x_initialized || xhdmi->hdcp2x_enable))
 		return 0;
 
 	xhdmirx_ddc_hdcp_enable(xhdmi);
@@ -4460,7 +4460,7 @@ static int xhdmirx_hdcp_init(struct xhdmirx_state *xhdmi, struct platform_device
 			return -EINVAL;
 		}
 	}
-	if (xhdmi->is_hdcp1x_enabled) {
+	if (xhdmi->hdcp1x_initialized) {
 		xhdmirx_ddc_hdcp14_mode(xhdmi);
 		xhdmi->hdcp1x_keymgmt_base =
 		syscon_regmap_lookup_by_phandle(xhdmi->dev->of_node, "xlnx,hdcp1x_keymgmt");
