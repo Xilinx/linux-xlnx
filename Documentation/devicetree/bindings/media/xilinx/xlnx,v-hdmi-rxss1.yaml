@@ -94,12 +94,6 @@ properties:
       Video clock frequency in KHz
     $ref: /schemas/types.yaml#/definitions/uint32
 
-  xlnx,include-hdcp:
-    type: boolean
-    $ref: /schemas/types.yaml#/definitions/flag
-    description: |
-      Present when HDCP1x or HDCP2x is enabled.
-
   xlnx,include-hdcp-1-4:
     type: boolean
     $ref: /schemas/types.yaml#/definitions/flag
@@ -214,7 +208,6 @@ examples:
       xlnx,max-frl-rate = /bits/ 8 <0x6>;
       xlnx,frl-clk-freq-khz = <449955>;
       xlnx,vid-clk-freq-khz = <400000>;
-      xlnx,include-hdcp;
       xlnx,include-hdcp-1-4;
       xlnx,include-hdcp-2-2;
       xlnx,hdcp1x-keymgmt = <&hdcp_keymngmt_blk_1>;
