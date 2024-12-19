@@ -2078,7 +2078,7 @@ static void rxstreamup(struct xhdmirx_state *xhdmi)
 #ifdef DEBUG
 	v4l2_print_dv_timings("xilinx-hdmi-rx", "", &xhdmi->dv_timings, 1);
 #endif
-	if (xhdmi->hdcp2x_enable)
+	if (xhdmi->hdcp2x_enable && xhdmi->hdcp2x_prot_event)
 		xhdcp2x_rx_enable(xhdmi->hdcp2x, xhdmi->stream.frl.lanes);
 }
 
