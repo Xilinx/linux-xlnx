@@ -3472,8 +3472,10 @@ static irqreturn_t xhdmirx_irq_thread(int irq, void *param)
 		xhdmirx_frlint_handler(xhdmi);
 	if (xhdmi->intrstatus[8])
 		xhdmi_write(xhdmi, HDMIRX_DDC_STA_OFFSET, xhdmi->intrstatus[8]);
-	if (xhdmi->intrstatus[8] & HDMIRX_DDC_STA_HDCP_1_PROT_EVT_MASK)
+	if (xhdmi->intrstatus[8] & HDMIRX_DDC_STA_HDCP_1_PROT_EVT_MASK) {
 		xhdmi->hdcp1x_prot_event = true;
+		xhdmirx_ddc_hdcp14_mode(xhdmi);
+	}
 
 	if (xhdmi->intrstatus[8] & HDMIRX_DDC_STA_HDCP_AKSV_EVT_MASK) {
 		if (xhdmi->hdcp1x_prot_event && xhdmi->hdcp1x_key_available) {
@@ -3483,6 +3485,7 @@ static irqreturn_t xhdmirx_irq_thread(int irq, void *param)
 	}
 	if (xhdmi->intrstatus[8] & HDMIRX_DDC_STA_HDCP_2_PROT_EVT_MASK) {
 		xhdmi->hdcp2x_prot_event = true;
+		xhdmirx_ddc_hdcp22_mode(xhdmi);
 		xhdmi_write(xhdmi, HDMIRX_DDC_STA_OFFSET, HDMIRX_DDC_STA_HDCP_2_PROT_EVT_MASK);
 	}
 
@@ -3621,10 +3624,9 @@ static void xhdmirx_init(struct xhdmirx_state *xhdmi)
 	xhdmirx_ddc_enable(xhdmi);
 	xhdmirx_ddcscdc_enable(xhdmi);
 
-	if (xhdmi->hdcp1x_initialized) {
+	if (xhdmi->hdcp1x_initialized)
 		xhdmirx_ddc_hdcp_enable(xhdmi);
-		xhdmirx_ddc_hdcp14_mode(xhdmi);
-	}
+
 	xhdmirx_auxintr_enable(xhdmi);
 	xhdmirx_lnksta_enable(xhdmi);
 
@@ -4450,7 +4452,6 @@ static int xhdmirx_hdcp_init(struct xhdmirx_state *xhdmi, struct platform_device
 	xhdmirx_ddc_hdcp_enable(xhdmi);
 
 	if (xhdmi->hdcp2x_enable) {
-		xhdmirx_ddc_hdcp22_mode(xhdmi);
 		ret = xhdmirx_register_hdcp2x_dev(xhdmi, pdev);
 		if (ret < 0) {
 			dev_err(xhdmi->dev, "HDCP2X init failed\n");
@@ -4458,7 +4459,6 @@ static int xhdmirx_hdcp_init(struct xhdmirx_state *xhdmi, struct platform_device
 		}
 	}
 	if (xhdmi->hdcp1x_enabled) {
-		xhdmirx_ddc_hdcp14_mode(xhdmi);
 		xhdmi->hdcp1x_keymgmt_base =
 		syscon_regmap_lookup_by_phandle(xhdmi->dev->of_node, "xlnx,hdcp1x_keymgmt");
 		if (IS_ERR(xhdmi->hdcp1x_keymgmt_base)) {
