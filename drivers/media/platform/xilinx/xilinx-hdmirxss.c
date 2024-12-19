@@ -407,7 +407,7 @@ struct xhdmi_aux {
  * @hdcp2x_key_available: flag to indicate HDCP 2.2 key is loaded properly
  * @hdcp1x_prot_event: HDCP 1.4 prot event is detected from upstream source
  * @hdcp2x_prot_event: HDCP 2X protocol event is detected from upstream source
- * @hdcp_enable: flag to indicate if HDCP protocol is enabled
+ * @hdcp1x_enabled: flag to indicate if HDCP1.4 protocol is enabled
  * @hdcp2x_enable: flag to indicate if HDCP 2.2 protocol is enabled
  * @is_hdcp1x_enabled: flag to indicate if HDCP 1.4 protocol is enabled
  * @isstreamup: flag whether stream is up
@@ -450,7 +450,7 @@ struct xhdmirx_state {
 	bool hdcp2x_key_available;
 	bool hdcp1x_prot_event;
 	bool hdcp2x_prot_event;
-	bool hdcp_enable;
+	bool hdcp1x_enabled;
 	bool hdcp2x_enable;
 	bool is_hdcp1x_enabled;
 	bool isstreamup;
@@ -1101,7 +1101,7 @@ static int xhdmirxss_hdcp1x_key_write(struct xhdmirx_state *xhdmirxss,
 {
 	int ret;
 
-	if (!xhdmirxss->hdcp_enable) {
+	if (!xhdmirxss->hdcp1x_enabled) {
 		dev_info(xhdmirxss->dev, "HDCP1X is disabled in the subsystem");
 		return -EINVAL;
 	}
@@ -3728,8 +3728,8 @@ static int xhdmirx_parse_of(struct xhdmirx_state *xhdmi)
 
 	/* HDCP specific code starts here */
 
-	xhdmi->hdcp_enable = of_property_read_bool(node, "xlnx,include-hdcp");
-	if (xhdmi->hdcp_enable) {
+	xhdmi->hdcp1x_enabled = of_property_read_bool(node, "xlnx,include-hdcp");
+	if (xhdmi->hdcp1x_enabled) {
 		xhdmi->is_hdcp1x_enabled = of_property_read_bool(node, "xlnx,include-hdcp-1-4");
 		if (!xhdmi->is_hdcp1x_enabled)
 			dev_info(xhdmi->dev, "HDMI:HDCP 1.4 is not enabled\n");
@@ -4447,7 +4447,7 @@ static int xhdmirx_hdcp_init(struct xhdmirx_state *xhdmi, struct platform_device
 {
 	int irq, ret = 0;
 
-	if (!(xhdmi->hdcp_enable || xhdmi->is_hdcp1x_enabled || xhdmi->hdcp2x_enable))
+	if (!(xhdmi->hdcp1x_enabled || xhdmi->is_hdcp1x_enabled || xhdmi->hdcp2x_enable))
 		return 0;
 
 	xhdmirx_ddc_hdcp_enable(xhdmi);
