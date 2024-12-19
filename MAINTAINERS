@@ -23841,6 +23841,13 @@ S:	Maintained
 F:	drivers/misc/xilinx_puf.c
 F:	include/uapi/misc/xilinx_puf.h
 
+XILINX VCU CLK DRIVER
+M:	Rohit Visavalia <rohit.visavalia@amd.com>
+R:	Vishal Sagar <vishal.sagar@amd.com>
+S:	Maintained
+F:	Documentation/devicetree/bindings/clock/xlnx,vcu.txt
+F:	drivers/clk/xilinx/xlnx_vcu.c
+
 XILINX VERSAL SYSMON DRIVER
 M:	Salih Erim <salih.erim@amd.com>
 R:	Dragan Cvetic <dragan.cvetic@amd.com>
