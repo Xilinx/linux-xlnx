@@ -406,6 +406,7 @@ struct xhdmi_aux {
  * @hdcp1x_key_available: flag to indicate HDCP 1.4 key is loaded properly
  * @hdcp2x_key_available: flag to indicate HDCP 2.2 key is loaded properly
  * @hdcp1x_prot_event: HDCP 1.4 prot event is detected from upstream source
+ * @hdcp2x_prot_event: HDCP 2X protocol event is detected from upstream source
  * @hdcp_enable: flag to indicate if HDCP protocol is enabled
  * @hdcp2x_enable: flag to indicate if HDCP 2.2 protocol is enabled
  * @is_hdcp1x_enabled: flag to indicate if HDCP 1.4 protocol is enabled
@@ -448,6 +449,7 @@ struct xhdmirx_state {
 	bool hdcp1x_key_available;
 	bool hdcp2x_key_available;
 	bool hdcp1x_prot_event;
+	bool hdcp2x_prot_event;
 	bool hdcp_enable;
 	bool hdcp2x_enable;
 	bool is_hdcp1x_enabled;
@@ -2205,8 +2207,10 @@ static void streamdown(struct xhdmirx_state *xhdmi)
 	xhdmi->isstreamup = false;
 	if (xhdmi->is_hdcp1x_enabled)
 		xhdcp1x_rx_disable(xhdmi->hdcp1x);
-	if (xhdmi->hdcp2x_enable)
+	if (xhdmi->hdcp2x_enable) {
+		xhdmi->hdcp2x_prot_event = false;
 		xhdcp2x_rx_disable(xhdmi->hdcp2x);
+	}
 }
 
 static void xhdmirx1_clear(struct xhdmirx_state *xhdmi)
@@ -3477,8 +3481,10 @@ static irqreturn_t xhdmirx_irq_thread(int irq, void *param)
 			xhdcp1x_rx_push_events(xhdmi->hdcp1x, XHDCP1X_RX_AKSV_RCVD);
 		}
 	}
-	if (xhdmi->intrstatus[8] & HDMIRX_DDC_STA_HDCP_2_PROT_EVT_MASK)
+	if (xhdmi->intrstatus[8] & HDMIRX_DDC_STA_HDCP_2_PROT_EVT_MASK) {
+		xhdmi->hdcp2x_prot_event = true;
 		xhdmi_write(xhdmi, HDMIRX_DDC_STA_OFFSET, HDMIRX_DDC_STA_HDCP_2_PROT_EVT_MASK);
+	}
 
 	if (xhdmi->intrstatus[8] & HDMIRX_DDC_STA_HDCP_WMSG_NEW_EVT_MASK) {
 		xhdcp2x_rx_set_write_message_available(xhdmi->hdcp2x);
@@ -4432,6 +4438,7 @@ static int xhdmirx_register_hdcp2x_dev(struct xhdmirx_state *xhdmi,
 		dev_err(xhdmi->dev, "Failed to enable HDCP22 version");
 		return ret;
 	}
+	xhdmi->hdcp2x_prot_event = false;
 
 	return 0;
 }
