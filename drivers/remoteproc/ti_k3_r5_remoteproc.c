@@ -1258,7 +1258,7 @@ init_rmem:
 			goto out;
 		}
 
-		ret = rproc_add(rproc);
+		ret = devm_rproc_add(dev, rproc);
 		if (ret) {
 			dev_err_probe(dev, ret, "rproc_add failed\n");
 			goto out;
@@ -1289,7 +1289,7 @@ init_rmem:
 			dev_err(dev,
 				"Timed out waiting for %s core to power up!\n",
 				rproc->name);
-			goto err_powerup;
+			goto out;
 		}
 	}
 
@@ -1305,8 +1305,6 @@ err_split:
 		}
 	}
 
-err_powerup:
-	rproc_del(rproc);
 out:
 	/* undo core0 upon any failures on core1 in split-mode */
 	if (cluster->mode == CLUSTER_MODE_SPLIT && core == core1) {
@@ -1349,8 +1347,6 @@ static void k3_r5_cluster_rproc_exit(void *data)
 		}
 
 		mbox_free_channel(kproc->mbox);
-
-		rproc_del(rproc);
 	}
 }
 
