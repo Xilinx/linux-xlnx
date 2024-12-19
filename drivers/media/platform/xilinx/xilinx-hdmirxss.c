@@ -3728,14 +3728,9 @@ static int xhdmirx_parse_of(struct xhdmirx_state *xhdmi)
 
 	/* HDCP specific code starts here */
 
-	xhdmi->hdcp1x_enabled = of_property_read_bool(node, "xlnx,include-hdcp");
-	if (xhdmi->hdcp1x_enabled) {
-		xhdmi->hdcp1x_initialized = of_property_read_bool(node, "xlnx,include-hdcp-1-4");
-		if (!xhdmi->hdcp1x_initialized)
-			dev_info(xhdmi->dev, "HDMI:HDCP 1.4 is not enabled\n");
-		else
-			dev_info(xhdmi->dev, "HDMI:HDCP 1.4 is enabled\n");
-	}
+	xhdmi->hdcp1x_enabled = of_property_read_bool(node, "xlnx,include-hdcp-1-4");
+	if (xhdmi->hdcp1x_enabled)
+		dev_dbg(xhdmi->dev, "HDCP 1.4 is included in design\n");
 
 	xhdmi->hdcp2x_enable = of_property_read_bool(node, "xlnx,include-hdcp-2-2");
 	if (xhdmi->hdcp2x_enable)
@@ -4275,6 +4270,8 @@ static int xhdmirx_register_hdcp1x_dev(struct xhdmirx_state *xhdmirxss)
 				XHDCP1X_RX_NOTIFICATION_HANDLER,
 				xhdmirx_hdcp1x_notification_handler);
 
+	xhdmirxss->hdcp1x_initialized = true;
+
 	return 0;
 }
 
@@ -4460,7 +4457,7 @@ static int xhdmirx_hdcp_init(struct xhdmirx_state *xhdmi, struct platform_device
 			return -EINVAL;
 		}
 	}
-	if (xhdmi->hdcp1x_initialized) {
+	if (xhdmi->hdcp1x_enabled) {
 		xhdmirx_ddc_hdcp14_mode(xhdmi);
 		xhdmi->hdcp1x_keymgmt_base =
 		syscon_regmap_lookup_by_phandle(xhdmi->dev->of_node, "xlnx,hdcp1x_keymgmt");
