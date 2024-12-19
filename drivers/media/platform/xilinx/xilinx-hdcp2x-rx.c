@@ -689,7 +689,9 @@ static int xhdcp2x_rx_process_message_ake_init(struct xlnx_hdcp2x_config *xhdcp2
 	xlnx_hdcp_tmrcntr_stop(&xhdcp2x_rx->tmr_config, XHDCP2X_RX_TMR_CNTR_1);
 
 	xhdcp2x_rx_reset_params(xhdcp2x_rx);
-	xhdcp2x_rx_reset_ddc(xhdcp2x_rx);
+
+	if (xhdcp2x_rx->protocol == XHDCP2X_RX_HDMI)
+		xhdcp2x_rx_reset_ddc(xhdcp2x_rx);
 
 	memcpy(xhdcp2x_rx->param.rtx, msgptr->ake_init.rtx, XHDCP2X_RX_RTX_SIZE);
 	memcpy(xhdcp2x_rx->param.txcaps, msgptr->ake_init.txcaps, XHDCP2X_RX_TXCAPS_SIZE);
