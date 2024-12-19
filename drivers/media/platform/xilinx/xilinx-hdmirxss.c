@@ -1099,6 +1099,16 @@ static int xhdmirxss_hdcp1x_key_write(struct xhdmirx_state *xhdmirxss,
 {
 	int ret;
 
+	if (!xhdmirxss->hdcp_enable) {
+		dev_info(xhdmirxss->dev, "HDCP1X is disabled in the subsystem");
+		return -EINVAL;
+	}
+
+	if (xhdmirxss->hdcp1x_key_available) {
+		dev_dbg(xhdmirxss->dev, "HDCP1X keys are already loaded");
+		return -EPERM;
+	}
+
 	if (hdcp_keys->size != XHDCP1X_KEYS_SIZE)
 		return -EINVAL;
 
@@ -1133,6 +1143,16 @@ static int xhdmirxss_hdcp2x_key_write(struct xhdmirx_state *xhdmirxss,
 {
 	int ret = 0;
 
+	if (!xhdmirxss->hdcp2x_enable) {
+		dev_info(xhdmirxss->dev, "HDCP2X is disabled in the subsystem");
+		return -EINVAL;
+	}
+
+	if (xhdmirxss->hdcp2x_key_available) {
+		dev_dbg(xhdmirxss->dev, "HDCP2X keys are already loaded");
+		return -EPERM;
+	}
+
 	if (copy_from_user(xhdmirxss->lc128key,
 			   (const void __user *)xhdcp22_keys->lc128key,
 			   XHDCP2X_LC128_SIZE))
@@ -1166,20 +1186,6 @@ static inline struct xhdmirx_state *to_xhdmirxssstate(struct v4l2_subdev *sd)
 static long xhdmirxss_ioctl(struct v4l2_subdev *sd, u32 cmd, void *arg)
 {
 	struct xhdmirx_state *xhdmirxss = to_xhdmirxssstate(sd);
-
-	if (!(xhdmirxss->hdcp_enable || xhdmirxss->hdcp2x_enable)) {
-		dev_err(xhdmirxss->dev, "HDCP is not enabled in the system");
-		return -ENODEV;
-	}
-
-	if (xhdmirxss->hdcp1x_key_available) {
-		dev_info(xhdmirxss->dev, "HDCP1X keys are already loaded");
-		return -EPERM;
-	}
-	if (xhdmirxss->hdcp2x_key_available) {
-		dev_info(xhdmirxss->dev, "HDCP2X keys are already loaded");
-		return -EPERM;
-	}
 
 	if (cmd == XILINX_HDMIRXSS_HDCP_KEY_WRITE)
 		return xhdmirxss_hdcp1x_key_write(xhdmirxss, arg);
