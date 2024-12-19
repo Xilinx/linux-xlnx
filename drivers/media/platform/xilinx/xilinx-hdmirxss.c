@@ -405,7 +405,7 @@ struct xhdmi_aux {
  * @hdmi_stream_up: hdmi stream is up or not
  * @hdcp1x_key_available: flag to indicate HDCP 1.4 key is loaded properly
  * @hdcp2x_key_available: flag to indicate HDCP 2.2 key is loaded properly
- * @hdcp1x_prot_event: HDCP 1.4 prot event is detected from downstream
+ * @hdcp1x_prot_event: HDCP 1.4 prot event is detected from upstream source
  * @hdcp_enable: flag to indicate if HDCP protocol is enabled
  * @hdcp2x_enable: flag to indicate if HDCP 2.2 protocol is enabled
  * @is_hdcp1x_enabled: flag to indicate if HDCP 1.4 protocol is enabled
