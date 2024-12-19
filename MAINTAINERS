@@ -25570,6 +25570,14 @@ F:	Documentation/devicetree/bindings/media/xilinx/
 F:	drivers/media/platform/xilinx/
 F:	include/uapi/linux/xilinx-v4l2-controls.h
 
+XILINX VIDEO PIPELINE DRIVER
+M:	Vishal Sagar <vishal.sagar@amd.com>
+S:	Maintained
+F:	Documentation/devicetree/bindings/media/xilinx/video.txt
+F:	Documentation/devicetree/bindings/media/xilinx/xlnx,video.txt
+F:	drivers/media/platform/xilinx/xilinx-dma*
+F:	drivers/media/platform/xilinx/xilinx-vip*
+
 XILINX VERSAL EDAC DRIVER
 M:	Shubhrajyoti Datta <shubhrajyoti.datta@amd.com>
 M:	Sai Krishna Potthuri <sai.krishna.potthuri@amd.com>
