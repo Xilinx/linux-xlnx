@@ -23865,7 +23865,7 @@ XILINX VCU CLK DRIVER
 M:	Rohit Visavalia <rohit.visavalia@amd.com>
 R:	Vishal Sagar <vishal.sagar@amd.com>
 S:	Maintained
-F:	Documentation/devicetree/bindings/clock/xlnx,vcu.txt
+F:	Documentation/devicetree/bindings/clock/xlnx,vcu.yaml
 F:	drivers/clk/xilinx/xlnx_vcu.c
 
 XILINX VERSAL SYSMON DRIVER
