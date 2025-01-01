@@ -2370,6 +2370,15 @@ static int dwc3_suspend_common(struct dwc3 *dwc, pm_message_t msg)
 		break;
 	}
 
+	if (!PMSG_IS_AUTO(msg)) {
+		/*
+		 * TI AM62 platform requires SUSPHY to be
+		 * enabled for system suspend to work.
+		 */
+		if (!dwc->susphy_state)
+			dwc3_enable_susphy(dwc, true);
+	}
+
 	/* Put the core into D3 state */
 	if (dwc->dwc3_pmu) {
 		int ret;
@@ -2380,15 +2389,6 @@ static int dwc3_suspend_common(struct dwc3 *dwc, pm_message_t msg)
 				"Failed to disable dwc3_pmu supply\n");
 			return ret;
 		}
-	}
-
-	if (!PMSG_IS_AUTO(msg)) {
-		/*
-		 * TI AM62 platform requires SUSPHY to be
-		 * enabled for system suspend to work.
-		 */
-		if (!dwc->susphy_state)
-			dwc3_enable_susphy(dwc, true);
 	}
 
 	return 0;
