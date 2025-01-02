@@ -244,6 +244,13 @@
 #define XDPRX_VSC_SDP_BPC_MASK		GENMASK(11, 8)
 #define XDPRX_EXT_VRD_BWSET_REG		0x7f0
 
+/* table 2-96 DP Spec 1.4 */
+#define XDPRX_MSA_BPC_6			0x00
+#define XDPRX_MSA_BPC_8			0x01
+#define XDPRX_MSA_BPC_10		0x02
+#define XDPRX_MSA_BPC_12		0x03
+#define XDPRX_MSA_BPC_16		0x04
+
 #define XDPRX_COLOR_FORMAT_RGB		0x0
 #define XDPRX_COLOR_FORMAT_422		0x1
 #define XDPRX_COLOR_FORMAT_444		0x2
@@ -1038,7 +1045,7 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state)
 	u32 rxmsa_mvid, rxmsa_nvid, rxmsa_misc, recv_clk_freq, linkrate, data;
 	u16 vres_total, hres_total, framerate, lanecount;
 	u16 hact, vact, hsw, vsw, hstart, vstart;
-	u8 pixel_width, fmt;
+	u8 pixel_width, fmt, bpc;
 	u16 read_val;
 
 	rxmsa_mvid = xdprxss_read(state, XDPRX_MSA_MVID_REG);
@@ -1082,10 +1089,23 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state)
 		read_val = xdprxss_read(state, XDPRX_SDP_PAYLOAD_STREAM1);
 		/* Decoding Data byte 16 */
 		fmt = FIELD_GET(XDPRX_VSC_SDP_FMT_MASK, read_val);
-		state->bpc = FIELD_GET(XDPRX_VSC_SDP_BPC_MASK, read_val);
+		bpc = FIELD_GET(XDPRX_VSC_SDP_BPC_MASK, read_val);
 	} else {
 		fmt = FIELD_GET(XDPRX_MSA_FMT_MASK, rxmsa_misc);
-		state->bpc = FIELD_GET(XDPRX_MSA_BPC_MASK, rxmsa_misc);
+		bpc = FIELD_GET(XDPRX_MSA_BPC_MASK, rxmsa_misc);
+	}
+
+	switch (bpc) {
+	case XDPRX_MSA_BPC_8:
+		state->bpc = 8;
+		break;
+	case XDPRX_MSA_BPC_10:
+		state->bpc = 10;
+		break;
+	default:
+		dev_err(state->dev, "Unsupported bit color depth\n");
+
+		return -EINVAL;
 	}
 
 	switch (fmt) {
