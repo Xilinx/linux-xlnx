@@ -20,6 +20,7 @@
 #include <linux/remoteproc.h>
 #include <linux/skbuff.h>
 #include <linux/sysfs.h>
+#include <linux/virtio_ids.h>
 #include <linux/delay.h>
 
 #include "remoteproc_internal.h"
@@ -839,6 +840,58 @@ static void xlnx_rpu_rproc_kick(struct rproc *rproc, int vqid)
 	}
 }
 
+static int xlnx_rpu_rproc_attach(struct rproc *rproc)
+{
+	struct device *dev = &rproc->dev;
+	struct fw_rsc_vdev *rsc_vdev;
+	struct fw_rsc_hdr *hdr;
+	int offset, avail, i;
+	void *rsc;
+
+	if (!rproc->table_ptr) {
+		dev_err(dev, "resource table not found, can't attach\n");
+		return -EINVAL;
+	}
+
+	if (rproc->table_ptr->num == 0) {
+		dev_err(dev, "resources are unavailable\n");
+		return -EINVAL;
+	}
+
+	for (i = 0; i < rproc->table_ptr->num; i++) {
+		offset = rproc->table_ptr->offset[i];
+		hdr = (void *)rproc->table_ptr + offset;
+		avail = rproc->table_sz - offset - sizeof(*hdr);
+		rsc = (void *)hdr + sizeof(*hdr);
+
+		/* make sure table isn't truncated */
+		if (avail < 0) {
+			dev_err(dev, "rsc table is truncated\n");
+			return -EINVAL;
+		}
+
+		if (hdr->type != RSC_VDEV)
+			continue;
+
+		rsc_vdev = (struct fw_rsc_vdev *)rsc;
+
+		if (rsc_vdev->id != VIRTIO_ID_RPMSG)
+			dev_warn(dev, "unexpected rpmsg virtio id %d\n", rsc_vdev->id);
+
+		/*
+		 * If status is not 0 then reset virtio status on attach and
+		 * notify remote.
+		 */
+		if (rsc_vdev->status != 0) {
+			dev_info(dev, "resetting RPMsg virtio device status\n");
+			rsc_vdev->status = 0;
+			xlnx_rpu_rproc_kick(rproc, 0);
+		}
+	}
+
+	return 0;
+}
+
 static int xlnx_rpu_rproc_detach(struct rproc *rproc)
 {
 	/*
@@ -859,6 +912,7 @@ static struct rproc_ops xlnx_rpu_rproc_ops = {
 	.prepare	= xlnx_rpu_prepare,
 	.find_loaded_rsc_table = rproc_elf_find_loaded_rsc_table,
 	.get_loaded_rsc_table = xlnx_rpu_rproc_get_loaded_rsc_table,
+	.attach		= xlnx_rpu_rproc_attach,
 	.detach		= xlnx_rpu_rproc_detach,
 	.sanity_check	= rproc_elf_sanity_check,
 	.get_boot_addr	= rproc_elf_get_boot_addr,
