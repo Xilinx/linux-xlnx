@@ -52,6 +52,7 @@
 #include <linux/ptp/ptp_xilinx.h>
 #include <linux/workqueue.h>
 #include <linux/gpio/consumer.h>
+#include <linux/inetdevice.h>
 
 #include "xilinx_axienet.h"
 #include "xilinx_axienet_eoe.h"
@@ -2349,7 +2350,12 @@ int xaxienet_rx_poll(struct napi_struct *napi, int quota)
 			dev_err(lp->dev, "Rx error 0x%x\n\r", status);
 			break;
 		}
-		work_done += axienet_recv(lp->ndev, quota - work_done, q);
+
+		if (axienet_eoe_is_channel_gro(lp, q))
+			work_done += axienet_eoe_recv_gro(lp->ndev, quota - work_done, q);
+		else
+			work_done += axienet_recv(lp->ndev, quota - work_done, q);
+
 		status = axienet_dma_in32(q, XMCDMA_CHAN_SR_OFFSET(q->chan_id) +
 					  q->rx_offset);
 	}
@@ -4591,6 +4597,49 @@ static const struct of_device_id axienet_of_match[] = {
 
 MODULE_DEVICE_TABLE(of, axienet_of_match);
 
+static int axienet_eoe_netdev_event(struct notifier_block *this, unsigned long event,
+				    void *ptr)
+{
+	struct axienet_local *lp = container_of(this, struct axienet_local,
+						inetaddr_notifier);
+	struct in_ifaddr *ifa = ptr;
+	struct axienet_dma_q *q;
+	int i;
+
+	struct net_device *ndev = ifa->ifa_dev->dev;
+
+	if (lp->ndev != ndev) {
+		dev_err(lp->dev, " ndev is not matched to configure GRO IP address\n");
+	} else {
+		switch (event) {
+		case NETDEV_UP:
+			dev_dbg(lp->dev, "%s:NETDEV_UP\n", __func__);
+			for_each_rx_dma_queue(lp, i) {
+				q = lp->dq[i];
+				if (axienet_eoe_is_channel_gro(lp, q))
+					axienet_eoe_iow(lp,
+							XEOE_UDP_GRO_DST_IP_OFFSET(q->chan_id),
+							ntohl(ifa->ifa_address));
+			}
+		break;
+		case NETDEV_DOWN:
+			dev_dbg(lp->dev, "%s:NETDEV_DOWN\n", __func__);
+			for_each_rx_dma_queue(lp, i) {
+				q = lp->dq[i];
+				if (axienet_eoe_is_channel_gro(lp, q))
+					axienet_eoe_iow(lp,
+							XEOE_UDP_GRO_DST_IP_OFFSET(q->chan_id),
+							0);
+			}
+		break;
+		default:
+			dev_err(lp->dev, "IPv4 Ethernet address is not set\n");
+		}
+	}
+
+	return NOTIFY_DONE;
+}
+
 /**
  * axienet_probe - Axi Ethernet probe function.
  * @pdev:	Pointer to platform device structure.
@@ -5109,6 +5158,14 @@ static int axienet_probe(struct platform_device *pdev)
 		 */
 		if (ndev->hw_features & NETIF_F_GSO_UDP_L4)
 			lp->coalesce_count_tx = XMCDMA_DFT_TX_THRESHOLD;
+
+		/* Update the required thresholds for Rx HW UDP GRO
+		 * GRO receives 16 segmented data packets from MAC
+		 * and packet coalescing increases performance.
+		 */
+		if (lp->eoe_features & RX_HW_UDP_GRO)
+			lp->coalesce_count_rx = XMCDMA_DFT_RX_THRESHOLD;
+
 	} else {
 		struct xilinx_vdma_config cfg;
 		struct dma_chan *tx_chan;
@@ -5269,8 +5326,24 @@ static int axienet_probe(struct platform_device *pdev)
 
 	if (lp->axienet_config->mactype == XAXIENET_1G_10G_25G)
 		INIT_DELAYED_WORK(&lp->restart_work, speed_monitor_thread);
+	/* Register notifier for inet address additions/deletions.
+	 * It should be called after register_netdev to access the interface's
+	 * network configuration parameters.
+	 */
+
+	if (lp->eoe_features & RX_HW_UDP_GRO) {
+		lp->inetaddr_notifier.notifier_call = axienet_eoe_netdev_event;
+		ret = register_inetaddr_notifier(&lp->inetaddr_notifier);
+		if (ret) {
+			dev_err(lp->dev, "register_netdevice_notifier() error\n");
+			goto err_unregister_netdev;
+		}
+	}
 
 	return 0;
+
+err_unregister_netdev:
+	unregister_netdev(ndev);
 
 cleanup_phylink:
 	phylink_destroy(lp->phylink);
@@ -5303,6 +5376,9 @@ static void axienet_remove(struct platform_device *pdev)
 		netif_napi_del(&lp->dq[i]->napi_rx);
 		netif_napi_del(&lp->dq[i]->napi_tx);
 	}
+
+	if (lp->eoe_features & RX_HW_UDP_GRO)
+		unregister_inetaddr_notifier(&lp->inetaddr_notifier);
 
 	unregister_netdev(ndev);
 	axienet_clk_disable(pdev);
