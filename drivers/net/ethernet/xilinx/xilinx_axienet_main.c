@@ -2580,7 +2580,7 @@ axienet_ethtools_get_pauseparam(struct net_device *ndev,
  * axienet_ethtools_set_pauseparam - Set device pause parameter(flow control)
  *				     settings.
  * @ndev:	Pointer to net_device structure
- * @epauseparm:Pointer to ethtool_pauseparam structure
+ * @epauseparm:	Pointer to ethtool_pauseparam structure
  *
  * This implements ethtool command for enabling flow control on Rx and Tx
  * paths. Issue "ethtool -A ethX tx on|off" under linux prompt to execute this
@@ -2619,11 +2619,16 @@ axienet_ethtools_get_coalesce(struct net_device *ndev,
 			      struct kernel_ethtool_coalesce *kernel_coal,
 			      struct netlink_ext_ack *extack)
 {
+	u32 regval = 0;
 	struct axienet_local *lp = netdev_priv(ndev);
 
-	ecoalesce->rx_max_coalesced_frames = lp->coalesce_count_rx;
+	regval = axienet_dma_in32(lp, XAXIDMA_RX_CR_OFFSET);
+	ecoalesce->rx_max_coalesced_frames = (regval & XAXIDMA_COALESCE_MASK)
+					     >> XAXIDMA_COALESCE_SHIFT;
 	ecoalesce->rx_coalesce_usecs = lp->coalesce_usec_rx;
-	ecoalesce->tx_max_coalesced_frames = lp->coalesce_count_tx;
+	regval = axienet_dma_in32(lp, XAXIDMA_TX_CR_OFFSET);
+	ecoalesce->tx_max_coalesced_frames = (regval & XAXIDMA_COALESCE_MASK)
+					     >> XAXIDMA_COALESCE_SHIFT;
 	ecoalesce->tx_coalesce_usecs = lp->coalesce_usec_tx;
 	return 0;
 }
