@@ -8,6 +8,7 @@
 
 #include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/interrupt.h>
+#include <linux/iopoll.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/mailbox_client.h>
@@ -846,6 +847,7 @@ static int xlnx_rpu_rproc_attach(struct rproc *rproc)
 	struct fw_rsc_vdev *rsc_vdev;
 	struct fw_rsc_hdr *hdr;
 	int offset, avail, i;
+	u32 val = 0;
 	void *rsc;
 
 	if (!rproc->table_ptr) {
@@ -880,12 +882,18 @@ static int xlnx_rpu_rproc_attach(struct rproc *rproc)
 
 		/*
 		 * If status is not 0 then reset virtio status on attach and
-		 * notify remote.
+		 * notify remote. Also reset virtio ID to 0. Then poll on same
+		 * Virtio ID to be set from remote side. This handshake ensures,
+		 * remote is ready to start RPMsg communication.
 		 */
 		if (rsc_vdev->status != 0) {
 			dev_info(dev, "resetting RPMsg virtio device status\n");
 			rsc_vdev->status = 0;
+			rsc_vdev->id = 0;
 			xlnx_rpu_rproc_kick(rproc, 0);
+
+			return readw_poll_timeout(&rsc_vdev->id, val,
+						  (val == VIRTIO_ID_RPMSG), 5, 1000);
 		}
 	}
 
