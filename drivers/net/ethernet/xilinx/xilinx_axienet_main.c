@@ -1024,12 +1024,18 @@ static int axienet_free_tx_chain(struct axienet_local *lp, u32 first_bd,
 		/* Ensure we see complete descriptor update */
 		dma_rmb();
 		phys = desc_get_phys_addr(lp, cur_p);
-		dma_unmap_single(lp->dev, phys,
-				 (cur_p->cntrl & XAXIDMA_BD_CTRL_LENGTH_MASK),
-				 DMA_TO_DEVICE);
-
-		if (cur_p->skb && (status & XAXIDMA_BD_STS_COMPLETE_MASK)) {
-			napi_consume_skb(cur_p->skb, budget);
+		if (cur_p->tx_desc_mapping == DESC_DMA_MAP_PAGE)
+			dma_unmap_page(lp->dev, phys,
+				       cur_p->cntrl &
+				       XAXIDMA_BD_CTRL_LENGTH_MASK,
+				       DMA_TO_DEVICE);
+		else
+			dma_unmap_single(lp->dev, phys,
+					 cur_p->cntrl &
+					 XAXIDMA_BD_CTRL_LENGTH_MASK,
+					 DMA_TO_DEVICE);
+		if (cur_p->tx_skb && (status & XAXIDMA_BD_STS_COMPLETE_MASK)) {
+			napi_consume_skb((struct sk_buff *)cur_p->tx_skb, budget);
 			packets++;
 		}
 
@@ -1040,6 +1046,8 @@ static int axienet_free_tx_chain(struct axienet_local *lp, u32 first_bd,
 		cur_p->status = 0;
 		cur_p->tx_skb = 0;
 
+		/* ensure our transmit path and device don't prematurely see status cleared */
+		wmb();
 		if (sizep)
 			*sizep += status & XAXIDMA_BD_STS_ACTUAL_LEN_MASK;
 	}
@@ -1313,7 +1321,6 @@ axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	u32 num_frag;
 	u32 csum_start_off;
 	u32 csum_index_off;
-	skb_frag_t *frag;
 	dma_addr_t tail_p, phys;
 	u32 orig_tail_ptr, new_tail_ptr;
 	struct axienet_local *lp = netdev_priv(ndev);
@@ -1450,27 +1457,23 @@ axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	}
 	desc_set_phys_addr(lp, phys, cur_p);
 	cur_p->cntrl = (skb_headlen(skb) | XAXIDMA_BD_CTRL_TXSOF_MASK) + pad;
+	cur_p->tx_desc_mapping = DESC_DMA_MAP_SINGLE;
 
 	for (ii = 0; ii < num_frag; ii++) {
-		if (++new_tail_ptr >= lp->tx_bd_num)
-			new_tail_ptr = 0;
-		cur_p = &lp->tx_bd_v[new_tail_ptr];
+		u32 len;
+		skb_frag_t *frag;
+
+		if (++lp->tx_bd_tail >= lp->tx_bd_num)
+			lp->tx_bd_tail = 0;
+
+		cur_p = &lp->tx_bd_v[lp->tx_bd_tail];
 		frag = &skb_shinfo(skb)->frags[ii];
-		phys = dma_map_single(lp->dev,
-				      skb_frag_address(frag),
-				      skb_frag_size(frag),
-				      DMA_TO_DEVICE);
-		if (unlikely(dma_mapping_error(lp->dev, phys))) {
-			if (net_ratelimit())
-				netdev_err(ndev, "TX DMA mapping error\n");
-			ndev->stats.tx_dropped++;
-			axienet_free_tx_chain(lp, orig_tail_ptr, ii + 1,
-					      true, NULL, 0);
-			dev_kfree_skb_any(skb);
-			return NETDEV_TX_OK;
-		}
+		len = skb_frag_size(frag);
+		phys = skb_frag_dma_map(ndev->dev.parent, frag, 0, len,
+					DMA_TO_DEVICE);
 		desc_set_phys_addr(lp, phys, cur_p);
-		cur_p->cntrl = skb_frag_size(frag) + pad;
+		cur_p->cntrl = len + pad;
+		cur_p->tx_desc_mapping = DESC_DMA_MAP_PAGE;
 	}
 
 	cur_p->cntrl |= XAXIDMA_BD_CTRL_TXEOF_MASK;
