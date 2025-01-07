@@ -74,8 +74,9 @@ properties:
       and length of the AXI DMA controller IO space, unless
       axistream-connected is specified, in which case the reg
       attribute of the node referenced by it is used.
+      Address and length of Ethernet Offload Engine IO space.
     minItems: 1
-    maxItems: 2
+    maxItems: 3
 
   interrupts:
     items:
@@ -258,6 +259,39 @@ properties:
   gt_rsts-gpios:
     description: Phandle and specifier for the GPIO used to
       reset Tx and Rx serdes.
+
+  reg-names:
+    oneOf:
+      - items:
+          - const: mac
+          - const: dma
+          - const: eoe
+      - items:
+          - enum:
+              - mac
+          - enum:
+              - dma
+              - eoe
+      - items:
+          - const: mac
+
+  xlnx,has-hw-offload:
+    type: boolean
+    description: Used when Ethernet Offload is connected to existing Ethernet IP.
+
+  xlnx,tx-hw-offload:
+    description:
+      Segmentation offload. 0 for disabling segmentation offload,
+      1 for checksum offload and 2 for both checksum and UDP segmentation offload.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [0, 1, 2]
+
+  xlnx,rx-hw-offload:
+    description:
+      Receive offload. 0 for disabling receive offload,
+      1 for checksum offload and 2 for both checksum and UDP receive offload.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [0, 1, 2]
 
 required:
   - compatible
@@ -514,4 +548,27 @@ examples:
         gt_rsts-gpios = <&gpio3 0 0>, <&gpio3 1 0>, <&gpio3 2 0>, <&gpio3 3 0>, <&gpio3 4 0>, <&gpio3 5 0>,
         <&gpio3 6 0>, <&gpio3 7 0>, <&gpio3 8 0>, <&gpio3 9 0>, <&gpio3 10 0>, <&gpio3 11 0>, <&gpio3 12 0>,
         <&gpio3 13 0>;
+    };
+
+# 5) #Example for Ethernet Offload Engine
+  - |
+    axi_ethernet_eoe: ethernet@80020000 {
+        compatible = "xlnx,axi-ethernet-1.00.a";
+        interrupts = <0>;
+        clock-names = "s_axi_lite_clk", "axis_clk", "ref_clk", "mgt_clk";
+        clocks = <&axi_clk>, <&axi_clk>, <&pl_enet_ref_clk>, <&mgt_clk>;
+        phy-mode = "mii";
+        reg = <0x80020000 0x10000>,<0x80008000 0x8000>;
+        reg-names = "mac", "eoe";
+        phy-handle = <&phy2>;
+        xlnx,rxmem = <0x800>;
+
+        mdio {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            phy2: ethernet-phy@1 {
+                device_type = "ethernet-phy";
+                reg = <1>;
+            };
+        };
     };
