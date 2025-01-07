@@ -1701,8 +1701,8 @@ static int axienet_stop(struct net_device *ndev)
 		dma_release_channel(lp->rx_chan);
 		dma_release_channel(lp->tx_chan);
 	}
-
-	axienet_iow(lp, XAE_IE_OFFSET, 0);
+	if (lp->axienet_config->mactype == XAXIENET_1G)
+		axienet_iow(lp, XAE_IE_OFFSET, 0);
 
 	if (lp->eth_irq > 0)
 		free_irq(lp->eth_irq, ndev);
@@ -2435,6 +2435,9 @@ static void axienet_mac_link_up(struct phylink_config *config,
 	emmc_reg &= ~XAE_EMMC_LINKSPEED_MASK;
 
 	switch (speed) {
+	case SPEED_2500:
+		emmc_reg |= XAE_EMMC_LINKSPD_2500;
+		break;
 	case SPEED_1000:
 		emmc_reg |= XAE_EMMC_LINKSPD_1000;
 		break;
@@ -2569,11 +2572,18 @@ static const struct axienet_config axienet_1g_config = {
 	.setoptions = axienet_setoptions,
 };
 
+static const struct axienet_config axienet_2_5g_config = {
+	.mactype = XAXIENET_2_5G,
+	.setoptions = axienet_setoptions,
+};
+
 /* Match table for of_platform binding */
 static const struct of_device_id axienet_of_match[] = {
 	{ .compatible = "xlnx,axi-ethernet-1.00.a", .data = &axienet_1g_config},
 	{ .compatible = "xlnx,axi-ethernet-1.01.a", .data = &axienet_1g_config},
 	{ .compatible = "xlnx,axi-ethernet-2.01.a", .data = &axienet_1g_config},
+	{ .compatible = "xlnx,axi-2_5-gig-ethernet-1.0",
+						.data = &axienet_2_5g_config},
 	{},
 };
 
