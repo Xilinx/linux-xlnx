@@ -86,7 +86,7 @@
 		};
 	};
 
-	zynqmp-ipi1-nobuf {
+	zynqmp-ipi1-nobuf@eb3b0000 {
 		compatible = "xlnx,versal-ipi-mailbox";
 		reg = <0x00 0xeb3b0000 0x00 0x1ff>;
 		reg-names = "ctrl";
