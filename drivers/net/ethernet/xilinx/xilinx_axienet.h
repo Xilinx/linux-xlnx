@@ -544,6 +544,7 @@ struct skbuf_dma_descriptor {
  * @rx_ring_head: RX skb ring buffer head index.
  * @rx_ring_tail: RX skb ring buffer tail index.
  * @eth_hasnobuf: Ethernet is configured in Non buf mode.
+ * @axienet_config: Ethernet config structure
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -624,6 +625,22 @@ struct axienet_local {
 	int rx_ring_head;
 	int rx_ring_tail;
 	bool eth_hasnobuf;
+	const struct axienet_config *axienet_config;
+};
+
+/**
+ * enum axienet_ip_type - AXIENET IP/MAC type.
+ *
+ * @XAXIENET_1G:	 IP is 1G MAC
+ *
+ */
+enum axienet_ip_type {
+	XAXIENET_1G = 0,
+};
+
+struct axienet_config {
+	enum axienet_ip_type mactype;
+	void (*setoptions)(struct net_device *ndev, u32 options);
 };
 
 /**
