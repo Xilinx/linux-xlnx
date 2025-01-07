@@ -543,6 +543,7 @@ struct skbuf_dma_descriptor {
  * @tx_ring_tail: TX skb ring buffer tail index.
  * @rx_ring_head: RX skb ring buffer head index.
  * @rx_ring_tail: RX skb ring buffer tail index.
+ * @eth_hasnobuf: Ethernet is configured in Non buf mode.
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -622,6 +623,7 @@ struct axienet_local {
 	int tx_ring_tail;
 	int rx_ring_head;
 	int rx_ring_tail;
+	bool eth_hasnobuf;
 };
 
 /**
