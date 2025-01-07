@@ -518,6 +518,7 @@ struct skbuf_dma_descriptor {
  * @dma_err_task: Work structure to process Axi DMA errors
  * @stopping:   Set when @dma_err_task shouldn't do anything because we are
  *              about to stop the device.
+ * @tx_lock:	Spin lock for tx path
  * @tx_irq:	Axidma TX IRQ number
  * @rx_irq:	Axidma RX IRQ number
  * @eth_irq:	Ethernet core IRQ number
@@ -595,6 +596,7 @@ struct axienet_local {
 
 	struct work_struct dma_err_task;
 	bool stopping;
+	spinlock_t tx_lock;		/* Spin lock for tx */
 
 	int tx_irq;
 	int rx_irq;
