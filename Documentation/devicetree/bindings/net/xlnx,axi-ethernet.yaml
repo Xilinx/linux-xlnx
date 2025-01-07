@@ -136,6 +136,11 @@ properties:
       Should be "rx_chan0", "rx_chan1" ... "rx_chan15" for DMA Rx channel
     minItems: 2
     maxItems: 32
+  dma-coherent: true
+
+  xlnx,eth-hasnobuf:
+    type: boolean
+    description: Used when 1G MAC is configured in non-processor mode.
 
 required:
   - compatible
