@@ -143,3 +143,58 @@ void axienet_eoe_config_hwgso(struct net_device *ndev,
 				XMCDMA_APP1_TCP_SO_MASK);
 	}
 }
+
+int __maybe_unused axienet_eoe_mcdma_gro_q_init(struct net_device *ndev,
+						struct axienet_dma_q *q,
+						int i)
+{
+	dma_addr_t mapping;
+	struct page *page;
+
+	page = alloc_pages(GFP_KERNEL, 0);
+	if (!page) {
+		netdev_err(ndev, "page allocation failed\n");
+		goto out;
+	}
+	q->rxq_bd_v[i].page = page;
+	mapping = dma_map_page(ndev->dev.parent, page, 0,
+			       PAGE_SIZE, DMA_FROM_DEVICE);
+	if (unlikely(dma_mapping_error(ndev->dev.parent, mapping))) {
+		netdev_err(ndev, "dma mapping error\n");
+		goto free_page;
+	}
+	q->rxq_bd_v[i].phys = mapping;
+	q->rxq_bd_v[i].cntrl = PAGE_SIZE;
+
+	return 0;
+
+free_page:
+	__free_pages(q->rxq_bd_v[i].page, 0);
+out:
+	return -ENOMEM;
+}
+
+void __maybe_unused axienet_eoe_mcdma_gro_bd_free(struct net_device *ndev,
+						  struct axienet_dma_q *q)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+	int i;
+
+	if (!q->rxq_bd_v)
+		return;
+
+	for (i = 0; i < lp->rx_bd_num; i++) {
+		if (q->rxq_bd_v[i].phys) {
+			dma_unmap_page(ndev->dev.parent, q->rxq_bd_v[i].phys, PAGE_SIZE,
+				       DMA_FROM_DEVICE);
+			__free_pages(q->rxq_bd_v[i].page, 0);
+		}
+	}
+
+	dma_free_coherent(ndev->dev.parent,
+			  sizeof(*q->rxq_bd_v) * lp->rx_bd_num,
+			  q->rxq_bd_v,
+			  q->rx_bd_p);
+
+	q->rxq_bd_v = NULL;
+}

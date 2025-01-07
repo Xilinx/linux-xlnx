@@ -246,7 +246,10 @@ void axienet_dma_bd_release(struct net_device *ndev)
 #endif
 	for_each_rx_dma_queue(lp, i) {
 #ifdef CONFIG_AXIENET_HAS_MCDMA
-		axienet_mcdma_rx_bd_free(ndev, lp->dq[i]);
+		if (axienet_eoe_is_channel_gro(lp, lp->dq[i]))
+			axienet_eoe_mcdma_gro_bd_free(ndev, lp->dq[i]);
+		else
+			axienet_mcdma_rx_bd_free(ndev, lp->dq[i]);
 #else
 		axienet_bd_free(ndev, lp->dq[i]);
 #endif

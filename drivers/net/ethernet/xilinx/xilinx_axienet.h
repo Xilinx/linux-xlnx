@@ -989,6 +989,7 @@ struct skbuf_dma_descriptor {
  * @restart_work: delayable work queue.
  * @eoe_regs: Ethernet offload IP base address.
  * @eoe_connected: Tells whether ethernet offload IP is connected to Ethernet IP.
+ * @eoe_features: EOE IP supported configuration.
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -1103,6 +1104,7 @@ struct axienet_local {
 	struct delayed_work restart_work;
 	void __iomem *eoe_regs;
 	bool eoe_connected;
+	u32 eoe_features;
 };
 
 /**
