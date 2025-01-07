@@ -837,6 +837,7 @@ struct axidma_bd {
  *		   Otherwise reserved.
  * @tx_skb:	  Transmit skb address
  * @tx_desc_mapping: Tx Descriptor DMA mapping type.
+ * @page:	page buffer to access the data passed by GRO packet
  */
 struct aximcdma_bd {
 	u32 next;	/* Physical address of next buffer descriptor */
@@ -857,6 +858,7 @@ struct aximcdma_bd {
 	u32 ptp_tx_ts_tag;
 	phys_addr_t tx_skb;
 	u32 tx_desc_mapping;
+	struct page *page;
 } __aligned(XAXIDMA_BD_MINIMUM_ALIGNMENT);
 
 #define XAE_NUM_MISC_CLOCKS 3
