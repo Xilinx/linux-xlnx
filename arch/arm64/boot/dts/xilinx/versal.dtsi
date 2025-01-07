@@ -325,8 +325,6 @@
 			clock-names = "pclk", "hclk", "tx_clk", "rx_clk", "tsu_clk";
 			/* iommus = <&smmu 0x234>; */
 			/* dma-coherent; */
-			#address-cells = <1>;
-			#size-cells = <0>;
 		};
 
 		gem1: ethernet@ff0d0000 {
@@ -337,8 +335,6 @@
 			clock-names = "pclk", "hclk", "tx_clk", "rx_clk", "tsu_clk";
 			/* iommus = <&smmu 0x235>; */
 			/* dma-coherent; */
-			#address-cells = <1>;
-			#size-cells = <0>;
 		};
 
 		gpio0: gpio@ff0b0000 {

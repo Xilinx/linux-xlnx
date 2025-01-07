@@ -62,8 +62,6 @@
 		compatible = "mt35xu02g", "micron,m25p80", "jedec,spi-nor";
 		reg = <0>, <1>;
 		stacked-memories = /bits/ 64 <0x8000000 0x8000000>; /* 128MB */
-		#address-cells = <1>;
-		#size-cells = <1>;
 		cdns,read-delay = <0>;
 		cdns,tshsl-ns = <0>;
 		cdns,tsd2d-ns = <0>;
