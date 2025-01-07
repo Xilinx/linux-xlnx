@@ -3006,6 +3006,18 @@ static int axienet_stop(struct net_device *ndev)
 	if (lp->axienet_config->mactype == XAXIENET_1G_10G_25G)
 		cancel_delayed_work_sync(&lp->restart_work);
 
+	/* Delete the GRO Filter Rules when Reset is done */
+	if (lp->eoe_features & RX_HW_UDP_GRO && lp->rx_fs_list.count > 0) {
+		struct ethtool_rx_fs_item *item, *tmp;
+
+		list_for_each_entry_safe(item, tmp, &lp->rx_fs_list.list, list) {
+			lp->assigned_rx_port[item->fs.location] = 0;
+			list_del(&item->list);
+			lp->rx_fs_list.count--;
+			kfree(item);
+		}
+	}
+
 	return 0;
 }
 
@@ -3918,6 +3930,65 @@ static int axienet_ethtools_get_ts_info(struct net_device *ndev,
 }
 #endif
 
+#ifdef CONFIG_XILINX_AXI_EOE
+static int axienet_eoe_get_rxnfc(struct net_device *ndev, struct ethtool_rxnfc *cmd, u32 *rule_locs)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+	int ret = 0;
+
+	switch (cmd->cmd) {
+	case ETHTOOL_GRXRINGS:
+		cmd->data = lp->num_rx_queues;
+		break;
+	case ETHTOOL_GRXCLSRLCNT:
+		cmd->rule_cnt = lp->rx_fs_list.count;
+		break;
+	case ETHTOOL_GRXCLSRULE:
+		ret = axienet_eoe_get_flow_entry(ndev, cmd);
+		break;
+	case ETHTOOL_GRXCLSRLALL:
+		ret = axienet_eoe_get_all_flow_entries(ndev, cmd, rule_locs);
+		break;
+	default:
+		netdev_err(ndev, "Command parameter %d is not supported\n", cmd->cmd);
+		ret = -EOPNOTSUPP;
+	}
+
+	return ret;
+}
+
+static int axienet_eoe_set_rxnfc(struct net_device *ndev, struct ethtool_rxnfc *cmd)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+	int ret = -EOPNOTSUPP;
+
+	if (!(lp->eoe_features & RX_HW_UDP_GRO)) {
+		netdev_err(ndev, "HW GRO is not supported\n");
+		ret = -EINVAL;
+		return ret;
+	}
+
+	switch (cmd->cmd) {
+	case ETHTOOL_SRXCLSRLINS:
+		if (cmd->fs.location >= lp->num_rx_queues || cmd->fs.location == 0) {
+			netdev_err(ndev, "Invalid Location, 1 to 15 are valid GRO locations.");
+			ret = -EINVAL;
+			break;
+		}
+		ret = axienet_eoe_add_flow_filter(ndev, cmd);
+		break;
+	case ETHTOOL_SRXCLSRLDEL:
+		ret = axienet_eoe_del_flow_filter(ndev, cmd);
+		break;
+	default:
+		netdev_err(ndev, "Command parameter %d is not supported\n", cmd->cmd);
+		ret = -EOPNOTSUPP;
+	}
+
+	return ret;
+}
+#endif
+
 static const struct ethtool_ops axienet_ethtool_ops = {
 	.supported_coalesce_params = ETHTOOL_COALESCE_MAX_FRAMES |
 				     ETHTOOL_COALESCE_USECS,
@@ -3944,6 +4015,10 @@ static const struct ethtool_ops axienet_ethtool_ops = {
 	.get_eth_mac_stats = axienet_ethtool_get_eth_mac_stats,
 	.get_eth_ctrl_stats = axienet_ethtool_get_eth_ctrl_stats,
 	.get_rmon_stats = axienet_ethtool_get_rmon_stats,
+#ifdef CONFIG_XILINX_AXI_EOE
+	.get_rxnfc = axienet_eoe_get_rxnfc,
+	.set_rxnfc = axienet_eoe_set_rxnfc,
+#endif
 };
 
 #ifdef CONFIG_AXIENET_HAS_MCDMA
@@ -4708,6 +4783,7 @@ static int axienet_probe(struct platform_device *pdev)
 	mutex_init(&lp->stats_lock);
 	seqcount_mutex_init(&lp->hw_stats_seqcount, &lp->stats_lock);
 	INIT_DEFERRABLE_WORK(&lp->stats_work, axienet_refresh_stats);
+	INIT_LIST_HEAD(&lp->rx_fs_list.list);
 
 	lp->axi_clk = devm_clk_get_optional(&pdev->dev, "s_axi_lite_clk");
 	if (!lp->axi_clk) {

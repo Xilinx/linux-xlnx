@@ -339,3 +339,180 @@ int axienet_eoe_recv_gro(struct net_device *ndev, int budget,
 
 	return numbdfree;
 }
+
+int axienet_eoe_add_udp_port_register(struct net_device *ndev, struct ethtool_rx_flow_spec *fs,
+				      int chan_id, struct axienet_local *lp)
+{
+	int udp_port = lp->assigned_rx_port[chan_id - 1];
+	int ret = 0;
+	u32 val;
+
+	/* Configure Control Register to Disable GRO */
+	val = axienet_eoe_ior(lp, XEOE_UDP_GRO_CR_OFFSET(chan_id));
+	axienet_eoe_iow(lp, XEOE_UDP_GRO_CR_OFFSET(chan_id), val & (~XEOE_UDP_GRO_ENABLE));
+
+	/* Set 16 Fragments to stitch other than header and add 3 Tuple and Checksum */
+	axienet_eoe_iow(lp, XEOE_UDP_GRO_RX_COMMON_CR_OFFSET,
+			(XEOE_UDP_GRO_FRAG | XEOE_UDP_GRO_4K_FRAG_SIZE
+			| XEOE_UDP_GRO_TUPLE | XEOE_UDP_GRO_CHKSUM));
+
+	/* Configure Port Number */
+	axienet_eoe_iow(lp, XEOE_UDP_GRO_PORT__OFFSET(chan_id),
+			((udp_port << XEOE_UDP_GRO_DSTPORT_SHIFT) & XEOE_UDP_GRO_DST_PORT_MASK));
+
+	/* Check Status whether GRO Channel is busy */
+	/* Wait for GRO Channel busy with timeout */
+	ret = readl_poll_timeout(lp->eoe_regs + XEOE_UDP_GRO_SR_OFFSET(chan_id),
+				 val, !(val & XEOE_UDP_GRO_BUSY_MASK),
+				 10, DELAY_OF_ONE_MILLISEC);
+	if (ret) {
+		netdev_err(ndev, "GRO Channel %d is busy and can't be configured\n", chan_id);
+		return ret;
+	}
+
+	/* Configure Control Register to Enable GRO */
+	axienet_eoe_iow(lp, XEOE_UDP_GRO_CR_OFFSET(chan_id),
+			(((XEOE_UDP_CR_PROTOCOL << XEOE_UDP_GRO_PROTOCOL_SHIFT) &
+			XEOE_UDP_GRO_PROTOCOL_MASK) | XEOE_UDP_GRO_ENABLE));
+
+	lp->rx_fs_list.count++;
+	return 0;
+}
+
+int axienet_eoe_add_flow_filter(struct net_device *ndev, struct ethtool_rxnfc *cmd)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+	struct ethtool_rx_flow_spec *fs = &cmd->fs;
+	struct ethtool_rx_fs_item *item, *newfs;
+	int ret = -EINVAL, chan_id = 0;
+	bool added = false;
+
+	newfs = kmalloc(sizeof(*newfs), GFP_KERNEL);
+	if (!newfs)
+		return -ENOMEM;
+	memcpy(&newfs->fs, fs, sizeof(newfs->fs));
+
+	netdev_dbg(ndev,
+		   "Adding flow filter entry,type=%u,queue=%u,loc=%u,src=%08X,dst=%08X,ps=%u,pd=%u\n",
+		   fs->flow_type, (int)fs->ring_cookie, fs->location,
+		   fs->h_u.tcp_ip4_spec.ip4src,
+		   fs->h_u.tcp_ip4_spec.ip4dst,
+		   be16_to_cpu(fs->h_u.udp_ip4_spec.psrc),
+		   be16_to_cpu(fs->h_u.udp_ip4_spec.pdst));
+
+	/* check for Repeated Port Number */
+	for (int i = 0; i < XAE_MAX_QUEUES; i++) {
+		if (lp->assigned_rx_port[i] == be16_to_cpu(fs->h_u.udp_ip4_spec.pdst)) {
+			netdev_err(ndev, "GRO Port %d is Repeated\n", lp->assigned_rx_port[i]);
+			ret = -EBUSY;
+			goto err_kfree;
+		}
+	}
+	/* find correct place to add in list */
+	list_for_each_entry(item, &lp->rx_fs_list.list, list) {
+		if (item->fs.location > newfs->fs.location) {
+			chan_id = lp->dq[newfs->fs.location]->chan_id;
+			lp->assigned_rx_port[newfs->fs.location] =
+				be16_to_cpu(fs->h_u.udp_ip4_spec.pdst);
+			list_add_tail(&newfs->list, &item->list);
+			added = true;
+			break;
+		} else if (item->fs.location == fs->location) {
+			netdev_err(ndev, "Rule not added: location %d not free!\n",
+				   fs->location);
+			ret = -EBUSY;
+			goto err_kfree;
+		}
+	}
+	if (!added) {
+		chan_id = lp->dq[newfs->fs.location]->chan_id;
+		lp->assigned_rx_port[newfs->fs.location] = be16_to_cpu(fs->h_u.udp_ip4_spec.pdst);
+		list_add_tail(&newfs->list, &lp->rx_fs_list.list);
+	}
+
+	switch (fs->flow_type) {
+	case UDP_V4_FLOW:
+		ret = axienet_eoe_add_udp_port_register(ndev, fs, chan_id, lp);
+		if (ret)
+			goto err_del_list;
+		break;
+	default:
+		netdev_err(ndev, "Invalid flow type\n");
+		ret = -EINVAL;
+		goto err_del_list;
+	}
+
+	return ret;
+
+err_del_list:
+	lp->assigned_rx_port[cmd->fs.location] = 0;
+	list_del(&newfs->list);
+err_kfree:
+	kfree(newfs);
+	return ret;
+}
+
+int axienet_eoe_del_flow_filter(struct net_device *ndev,
+				struct ethtool_rxnfc *cmd)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+	struct ethtool_rx_fs_item *item;
+	struct ethtool_rx_flow_spec *fs;
+
+	list_for_each_entry(item, &lp->rx_fs_list.list, list) {
+		if (item->fs.location == cmd->fs.location) {
+			/* disable screener regs for the flow entry */
+			fs = &item->fs;
+			netdev_dbg(ndev,
+				   "Deleting flow filter entry,type=%u,queue=%u,loc=%u,src=%08X,dst=%08X,ps=%u,pd=%u\n",
+				   fs->flow_type, (int)fs->ring_cookie, fs->location,
+				   fs->h_u.udp_ip4_spec.ip4src,
+				   fs->h_u.udp_ip4_spec.ip4dst,
+				   be16_to_cpu(fs->h_u.tcp_ip4_spec.psrc),
+				   be16_to_cpu(fs->h_u.tcp_ip4_spec.pdst));
+
+			lp->assigned_rx_port[cmd->fs.location] = 0;
+			list_del(&item->list);
+			lp->rx_fs_list.count--;
+			kfree(item);
+			return 0;
+		}
+	}
+
+	return -EINVAL;
+}
+
+int axienet_eoe_get_flow_entry(struct net_device *ndev,
+			       struct ethtool_rxnfc *cmd)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+	struct ethtool_rx_fs_item *item;
+
+	list_for_each_entry(item, &lp->rx_fs_list.list, list) {
+		if (item->fs.location == cmd->fs.location) {
+			memcpy(&cmd->fs, &item->fs, sizeof(cmd->fs));
+			cmd->fs.ring_cookie = item->fs.location;
+			return 0;
+		}
+	}
+	return -EINVAL;
+}
+
+int axienet_eoe_get_all_flow_entries(struct net_device *ndev,
+				     struct ethtool_rxnfc *cmd, u32 *rule_locs)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+	struct ethtool_rx_fs_item *item;
+	u32 cnt = 0;
+
+	list_for_each_entry(item, &lp->rx_fs_list.list, list) {
+		if (cnt == cmd->rule_cnt)
+			return -EMSGSIZE;
+		rule_locs[cnt] = item->fs.location;
+		cnt++;
+	}
+	cmd->data = lp->num_rx_queues;
+	cmd->rule_cnt = cnt;
+
+	return 0;
+}
