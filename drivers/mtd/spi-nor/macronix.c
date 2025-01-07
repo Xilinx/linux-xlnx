@@ -65,7 +65,7 @@ static int spi_nor_macronix_octal_dtr_enable(struct spi_nor *nor, bool enable)
 		if (memcmp(buf, nor->spimem->device_id, nor->info->id->len))
 			return -EINVAL;
 	} else {
-		if (memcmp(buf, nor->info->id, nor->info->id->len))
+		if (memcmp(buf, nor->info->id->bytes, nor->info->id->len))
 			return -EINVAL;
 	}
 
