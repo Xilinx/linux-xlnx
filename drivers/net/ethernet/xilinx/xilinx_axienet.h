@@ -485,6 +485,12 @@ enum temac_stat {
 #define XAE_TX_PTP_LEN		16
 #define XXV_TX_PTP_LEN		12
 
+/* Default number of Tx descriptors */
+#define TX_BD_NUM_DEFAULT               128
+
+/* Macros used when AXI DMA h/w is configured without DRE */
+#define XAE_MAX_PKT_LEN		8192
+
 /**
  * struct axidma_bd - Axi Dma buffer descriptor layout
  * @next:         MM2S/S2MM Next Descriptor Pointer
@@ -607,6 +613,12 @@ struct skbuf_dma_descriptor {
  * @phy_mode:	Phy type to identify between MII/GMII/RGMII/SGMII/1000 Base-X
  * @options:	AxiEthernet option word
  * @features:	Stores the extended features supported by the axienet hw
+ * @tx_buf:	Virtual address of the Tx buffer pool used by the driver when
+ *		DMA h/w is configured without DRE.
+ * @tx_bufs:	Virutal address of the Tx buffer address.
+ * @tx_bufs_dma: Physical address of the Tx buffer address used by the driver
+ *		 when DMA h/w is configured without DRE.
+ * @eth_hasdre: Tells whether DMA h/w is configured with dre or not.
  * @max_frm_size: Stores the maximum size of the frame that can be that
  *		  Txed/Rxed in the existing hardware. If jumbo option is
  *		  supported, the maximum frame size would be 9k. Else it is
@@ -697,6 +709,10 @@ struct axienet_local {
 	u32 options;
 	u32 features;
 
+	unsigned char *tx_buf[TX_BD_NUM_DEFAULT];
+	unsigned char *tx_bufs;
+	dma_addr_t tx_bufs_dma;
+	bool eth_hasdre;
 	u32 max_frm_size;
 	u32 rxmem;
 
