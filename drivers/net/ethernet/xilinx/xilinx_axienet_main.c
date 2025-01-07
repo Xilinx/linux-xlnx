@@ -54,6 +54,7 @@
 #include <linux/gpio/consumer.h>
 
 #include "xilinx_axienet.h"
+#include "xilinx_axienet_eoe.h"
 
 /* Descriptors defines for Tx and Rx DMA */
 #define RX_BD_NUM_DEFAULT		128
@@ -5074,7 +5075,16 @@ static int axienet_probe(struct platform_device *pdev)
 		spin_lock_init(&lp->ptp_tx_lock);
 		of_node_put(np);
 #endif
+		lp->eoe_connected = of_property_read_bool(pdev->dev.of_node,
+							  "xlnx,has-hw-offload");
 
+		if (lp->eoe_connected) {
+			ret = axienet_eoe_probe(pdev);
+			if (ret) {
+				dev_err(&pdev->dev, "Ethernet Offload not Supported\n");
+				goto cleanup_clk;
+			}
+		}
 	} else {
 		struct xilinx_vdma_config cfg;
 		struct dma_chan *tx_chan;
