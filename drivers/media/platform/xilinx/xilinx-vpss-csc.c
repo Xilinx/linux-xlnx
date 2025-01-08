@@ -499,7 +499,8 @@ static int xcsc_update_formats(struct xcsc_dev *xcsc)
 	case MEDIA_BUS_FMT_VYYUYY10_4X20:
 		xcsc->cft_out = XVIDC_CSF_YCRCB_420;
 		dev_dbg(xcsc->xvip.dev, "Media Format Out : YUV 420");
-		if (color_in ==  MEDIA_BUS_FMT_RBG888_1X24)
+		if (color_in ==  MEDIA_BUS_FMT_RBG888_1X24 ||
+		    color_in ==  MEDIA_BUS_FMT_RBG101010_1X30)
 			xcsc_rgb_to_ycrcb(xcsc, &xcsc->clip_max, xcsc->k_hw);
 		else
 			xcsc_set_unity_matrix(xcsc);
