@@ -20,13 +20,11 @@ properties:
     maxItems: 1
 
   clocks:
-    maxItems: 3
+    maxItems: 1
 
   clock-names:
     items:
       - const: core_clk
-      - const: phy_clk
-      - const: ref_clk
 
   resets:
     minItems: 2
@@ -54,9 +52,9 @@ examples:
         compatible = "amd,versal2-ufs";
         reg = <0xf10b0000 0x1000>;
         interrupts = <GIC_SPI 234 IRQ_TYPE_LEVEL_HIGH>;
-        clocks = <&ufs_core_clk>, <&ufs_phy_clk>, <&ufs_ref_clk>;
-        clock-names = "core_clk", "phy_clk", "ref_clk";
-        freq-table-hz = <0 0>, <0 0>, <0 0>;
+        clocks = <&ufs_core_clk>;
+        clock-names = "core_clk";
+        freq-table-hz = <0 0>;
         resets = <&scmi_reset 4>, <&scmi_reset 35>;
         reset-names = "ufshc-rst", "ufsphy-rst";
     };
