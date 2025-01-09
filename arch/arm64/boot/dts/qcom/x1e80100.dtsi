@@ -4284,6 +4284,8 @@
 				phy-names = "usb2-phy";
 				maximum-speed = "high-speed";
 
+				dma-coherent;
+
 				ports {
 					#address-cells = <1>;
 					#size-cells = <0>;
