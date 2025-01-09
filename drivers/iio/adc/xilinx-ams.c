@@ -132,14 +132,14 @@
 #define AMS_PL_ALARM_MASK		GENMASK(31, 16)
 #define AMS_ISR0_ALARM_MASK		GENMASK(31, 0)
 #define AMS_ISR1_ALARM_MASK		(GENMASK(31, 29) | GENMASK(4, 0))
-#define AMS_ISR1_ALARM_SHIFT		BIT(5)
+#define AMS_ISR1_ALARM_SHIFT		32
 #define AMS_ISR1_EOC_MASK		BIT(3)
 #define AMS_ISR1_INTR_MASK		GENMASK_ULL(63, 32)
 #define AMS_ISR0_ALARM_2_TO_0_MASK	GENMASK(2, 0)
 #define AMS_ISR0_ALARM_6_TO_3_MASK	GENMASK(6, 3)
 #define AMS_ISR0_ALARM_12_TO_7_MASK	GENMASK(13, 8)
-#define AMS_ISR1_ALARM_2_MASK		BIT(34)
-#define AMS_ISR1_ALARM_1_TO_0_MASK	GENMASK(33, 32)
+#define AMS_ISR1_ALARM_2_MASK		BIT_ULL(34)
+#define AMS_ISR1_ALARM_1_TO_0_MASK	GENMASK_ULL(33, 32)
 #define AMS_CONF1_ALARM_OT_MASK	BIT(0)
 #define AMS_CONF1_ALARM_2_TO_0_MASK	GENMASK(3, 1)
 #define AMS_CONF1_ALARM_6_TO_3_MASK	GENMASK(11, 8)
@@ -363,7 +363,7 @@ static void ams_disable_all_alarms(struct ams *ams)
 	}
 }
 
-static void ams_update_ps_alarm(struct ams *ams, unsigned long alarm_mask)
+static void ams_update_ps_alarm(struct ams *ams, u64 alarm_mask)
 {
 	u32 cfg;
 	u32 val;
@@ -384,7 +384,7 @@ static void ams_update_ps_alarm(struct ams *ams, unsigned long alarm_mask)
 	ams_ps_update_reg(ams, AMS_REG_CONFIG3, AMS_REGCFG3_ALARM_MASK, cfg);
 }
 
-static void ams_update_pl_alarm(struct ams *ams, unsigned long alarm_mask)
+static void ams_update_pl_alarm(struct ams *ams, u64 alarm_mask)
 {
 	unsigned long pl_alarm_mask;
 	u32 cfg;
@@ -421,7 +421,7 @@ static void ams_update_alarm(struct ams *ams, unsigned long alarm_mask)
 	spin_lock_irqsave(&ams->intr_lock, flags);
 	ams_update_intrmask(ams,
 			    (AMS_ISR0_ALARM_MASK |
-			     (AMS_ISR1_ALARM_MASK << AMS_ISR1_ALARM_SHIFT)),
+			     ((u64)AMS_ISR1_ALARM_MASK << AMS_ISR1_ALARM_SHIFT)),
 			    ~alarm_mask);
 	spin_unlock_irqrestore(&ams->intr_lock, flags);
 }
@@ -926,7 +926,7 @@ static u64 ams_get_alarm_mask(int scan_index, enum iio_event_type type)
 	case AMS_SEQ_TEMP_REMOTE:
 		if (type != IIO_EV_TYPE_MAG)
 			return BIT(AMS_ALARM_BIT_TEMP_REMOTE + bit);
-		return BIT(AMS_ALARM_BIT_TEMP_OT_REMOTE);
+		return BIT_ULL(AMS_ALARM_BIT_TEMP_OT_REMOTE);
 	default:
 		return 0;
 	}
@@ -1134,7 +1134,7 @@ static irqreturn_t ams_irq(int irq, void *data)
 	isr0 &= ~((ams->intr_mask & AMS_ISR0_ALARM_MASK) |
 		  ams->current_masked_alarm);
 	isr1 &= ~(((ams->intr_mask &
-		    (AMS_ISR1_ALARM_MASK << AMS_ISR1_ALARM_SHIFT)) |
+		    ((u64)AMS_ISR1_ALARM_MASK << AMS_ISR1_ALARM_SHIFT)) |
 		   ams->current_masked_alarm) >>
 		  AMS_ISR1_ALARM_SHIFT);
 	isr = (isr0 | (isr1 << AMS_ISR1_ALARM_SHIFT));
