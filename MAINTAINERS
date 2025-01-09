@@ -23819,6 +23819,13 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-hdmi-rxss1.yaml
 F:	drivers/media/platform/xilinx/xilinx-hdmirxss.c
 
+XILINX AXI4S BROADCASTER DRIVER
+M:	Kunal Rane <kunal.rane@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/media/xilinx/xlnx,axis-broadcaster.yaml
+F:	drivers/media/platform/xilinx/xilinx-axis-broadcaster.c
+
 XILINX MEDIA VTC DRIVER
 M:	Rajesh Gugulothu <rajesh.gugulothu@amd.com>
 L:	git@amd.com
