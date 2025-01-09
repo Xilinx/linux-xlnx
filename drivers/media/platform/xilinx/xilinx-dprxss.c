@@ -1006,9 +1006,6 @@ static int xlnx_dp_rx_gt_control_init(struct xdprxss_state *dp)
 		       XDPRX_GTCTL_VSWING_INIT_VAL);
 
 	xdprxss_clr(dp, XDPRX_GTCTL_REG, XDPRX_GTCTL_EN);
-	ret = xlnx_dp_phy_ready(dp);
-	if (ret < 0)
-		return ret;
 
 	/* Setting initial link rate */
 	ret = config_gt_control_linerate(dp, DP_LINK_BW_8_1);
