@@ -200,10 +200,10 @@
 #define XILINX_ISP_VERSION_1					BIT(0)
 #define XILINX_ISP_VERSION_2					BIT(1)
 #define XISP_AEC_THRESHOLD_DEFAULT	(20)
-#define XGET_BIT(bitmask, reg)    (FIELD_GET(BIT(bitmask), (reg)))
+#define XGET_BIT(bitmask, reg)    (((reg) >> (bitmask)) & 0x1)
 #define XISP_SET_CFG(INDEX, REG, VAL)	\
 	do {	\
-		u32 _index = (INDEX); \
+		const u32 _index = (INDEX); \
 		bool en = XGET_BIT(_index, xisp->module_en); \
 		bool byp_en = XGET_BIT(_index, xisp->module_bypass_en); \
 		bool byp = XGET_BIT(_index, xisp->module_bypass); \
@@ -2414,7 +2414,7 @@ static int xisp_parse_of(struct xisp_dev *xisp)
  * it creates the first control from the array. If there are more controls
  * (size > 1), it iterates through the remaining controls and creates them.
  */
-static void xisp_create_controls(struct xisp_dev *xisp, u32 index,
+static void xisp_create_controls(struct xisp_dev *xisp, const u32 index,
 				 struct v4l2_ctrl_config *ctrl_arr, u32 size)
 {
 	int itr;
