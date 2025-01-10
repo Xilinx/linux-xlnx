@@ -346,10 +346,8 @@ static int rsmu_cm_load_firmware(struct rsmu_cdev *rsmu,
 	dev_info(rsmu->dev, "requesting firmware '%s'", fname);
 
 	err = request_firmware(&fw, fname, rsmu->dev);
-	if (err) {
-		dev_err(rsmu->dev, "Loading firmware %s failed !!!", fname);
+	if (err)
 		return err;
-	}
 
 	dev_dbg(rsmu->dev, "firmware size %zu bytes", fw->size);
 
