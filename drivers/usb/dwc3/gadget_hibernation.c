@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/**
+/*
  * gadget_hibernation.c - DesignWare USB3 DRD Controller gadget hibernation file
  *
  * This file has routines to handle hibernation and wakeup events in gadget mode
@@ -66,7 +66,7 @@ static void restore_regs(struct dwc3 *dwc)
 /**
  * restart_ep0_trans - Restarts EP0 transfer on wakeup
  * @dwc: pointer to our controller context structure
- * epnum: endpoint number
+ * @epnum: endpoint number
  *
  * Returns 0 on success otherwise negative errno.
  */
@@ -394,7 +394,7 @@ err:
 
 /**
  * dwc3_gadget_exit_hibernation - Interrupt handler of wakeup
- * @dwc: pointer to our controller context structure
+ * @_dwc: pointer to our controller context structure
  */
 void dwc3_gadget_exit_hibernation(void *_dwc)
 {
