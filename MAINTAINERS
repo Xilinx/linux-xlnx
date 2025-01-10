@@ -25458,6 +25458,18 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/net/xlnx,axi-ethernet.yaml
 F:	drivers/net/ethernet/xilinx/xilinx_axienet*
 
+RENESAS PTP AND RSMU DRIVERS
+M:	Suraj Gupta <suraj.gupta2@amd.com>
+S:	Maintained
+F:	drivers/mfd/rsmu_*
+F:	drivers/misc/rsmu_*
+F:	drivers/ptp/ptp_clockmatrix*
+F:	drivers/ptp/ptp_idt82p33.h
+F:	include/linux/mfd/idt82p33_reg.h
+F:	include/linux/mfd/idt8a340_reg.h
+F:	include/linux/mfd/rsmu.h
+F:	include/uapi/linux/rsmu.h
+
 XILINX MEDIA AXIS SWITCH DRIVER
 M:	Anil kumar M <anil.mamidala@xilinx.com>
 M:	Karthikeyan T <karthikeyan.thangavel@xilinx.com>
