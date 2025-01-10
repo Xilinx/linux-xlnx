@@ -41,6 +41,14 @@
 #define VERSAL_NET_CORES       4U
 
 /*
+ * Remote processor can take long time to reset virtio devices if requested
+ * from host. This timeout is not defined by virtio standard yet. However,
+ * it's recommended to keep large timeout so remote processors can setup
+ * devices successfully.
+ */
+#define RPROC_ATTACH_TIMEOUT_US (3 * 1000 * 1000)
+
+/*
  * NOTE: The resource table size is currently hard-coded to a maximum
  * of 1024 bytes. The most common resource table usage for RPU firmwares
  * is to only have the vdev resource entry and an optional trace entry.
@@ -893,7 +901,8 @@ static int xlnx_rpu_rproc_attach(struct rproc *rproc)
 			xlnx_rpu_rproc_kick(rproc, 0);
 
 			return readw_poll_timeout(&rsc_vdev->id, val,
-						  (val == VIRTIO_ID_RPMSG), 5, 1000);
+						  (val == VIRTIO_ID_RPMSG), 5,
+						  RPROC_ATTACH_TIMEOUT_US);
 		}
 	}
 
