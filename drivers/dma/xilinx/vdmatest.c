@@ -68,7 +68,7 @@ MODULE_PARM_DESC(vsize, "Vertical size in bytes");
 #define MAX_NUM_FRAMES	32
 
 /**
- * struct vdmatest_slave_thread - VDMA test thread
+ * struct xilinx_vdmatest_slave_thread - VDMA test thread
  * @node: Thread node
  * @task: Task structure pointer
  * @tx_chan: Tx channel pointer
@@ -76,6 +76,7 @@ MODULE_PARM_DESC(vsize, "Vertical size in bytes");
  * @srcs: Source buffer
  * @dsts: Destination buffer
  * @type: DMA transaction type
+ * @done: Thread status indicator
  */
 struct xilinx_vdmatest_slave_thread {
 	struct list_head node;
@@ -89,7 +90,7 @@ struct xilinx_vdmatest_slave_thread {
 };
 
 /**
- * struct vdmatest_chan - VDMA Test channel
+ * struct xilinx_vdmatest_chan - VDMA Test channel
  * @node: Channel node
  * @chan: DMA channel pointer
  * @threads: List of VDMA test threads
