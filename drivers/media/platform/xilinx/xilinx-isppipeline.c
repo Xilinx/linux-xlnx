@@ -7,6 +7,7 @@
  * https://docs.amd.com/r/en-US/Vitis_Libraries/vision/index.html
  */
 
+#include <linux/bitfield.h>
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/gpio/consumer.h>
