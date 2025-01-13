@@ -1220,23 +1220,23 @@ static u16 xhdmiphy_set_videoclk_outdiv(struct xhdmiphy_dev *inst,
 			clkout_div = (mult_div * 6 *
 							 ((dir == XHDMIPHY_DIR_TX) ?
 							 inst->tx_samplerate : 1));
-			} else if (ppc == XVIDC_PPC_2) {
-				clkout_div = (mult_div * 3 *
+		} else if (ppc == XVIDC_PPC_2) {
+			clkout_div = (mult_div * 3 *
+						 ((dir == XHDMIPHY_DIR_TX) ?
+						 inst->tx_samplerate : 1));
+		} else {
+			/*
+			 * The clock ratio is 1.5. The PLL only
+			 * supports integer values. The mult_div
+			 * must be dividable by two (2 * 1.5 = 3)
+			 * to get an integer number
+			 */
+			if ((mult_div % 2) == 0) {
+				clkout_div = (mult_div * 3 / 2 *
 							 ((dir == XHDMIPHY_DIR_TX) ?
 							 inst->tx_samplerate : 1));
-			} else {
-				/*
-				 * The clock ratio is 1.5. The PLL only
-				 * supports integer values. The mult_div
-				 * must be dividable by two (2 * 1.5 = 3)
-				 * to get an integer number
-				 */
-				if ((mult_div % 2) == 0) {
-					clkout_div = (mult_div * 3 / 2 *
-								 ((dir == XHDMIPHY_DIR_TX) ?
-								 inst->tx_samplerate : 1));
-				}
 			}
+		}
 			break;
 	case XVIDC_BPC_16:
 		if (ppc == XVIDC_PPC_4) {
