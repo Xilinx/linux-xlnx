@@ -24,7 +24,7 @@ config DRM_ZYNQMP_DPSUB
 
 config DRM_XLNX
 	tristate "Xilinx DRM KMS Driver"
-	depends on DRM && OF
+	depends on DRM && OF && SND
 	select DRM_KMS_HELPER
 	select DRM_KMS_DMA_HELPER
 	select DRM_GEM_DMA_HELPER
