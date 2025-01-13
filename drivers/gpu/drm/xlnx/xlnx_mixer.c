@@ -298,26 +298,27 @@ enum xlnx_mix_layer_id {
  * struct xlnx_mix_layer_data - Describes the hardware configuration of a given
  * mixer layer
  * @hw_config: struct specifying the IP hardware constraints for this layer
- * @vid_fmt: DRM format for this layer
- * @can_alpha: Indicates that layer alpha is enabled for this layer
- * @can_scale: Indicates that layer scaling is enabled for this layer
- * @is_streaming: Indicates layer is not using mixer DMA but streaming from
+ * @hw_config.vid_fmt: DRM format for this layer
+ * @hw_config.can_alpha: Indicates that layer alpha is enabled for this layer
+ * @hw_config.can_scale: Indicates that layer scaling is enabled for this layer
+ * @hw_config.is_streaming: Indicates layer is not using mixer DMA but streaming from
  *  external DMA
- * @max_width: Max possible pixel width
- * @max_height: Max possible pixel height
- * @min_width: Min possible pixel width
- * @min_height: Min possible pixel height
+ * @hw_config.max_width: Max possible pixel width
+ * @hw_config.max_height: Max possible pixel height
+ * @hw_config.min_width: Min possible pixel width
+ * @hw_config.min_height: Min possible pixel height
  * @layer_regs: struct containing current cached register values
- * @buff_addr: Current physical address of image buffer
- * @x_pos: Current CRTC x offset
- * @y_pos: Current CRTC y offset
- * @width: Current width in pixels
- * @height: Current hight in pixels
- * @stride: Current stride (when Mixer is performing DMA)
- * @alpha: Current alpha setting
- * @is_active: Logical flag indicating layer in use.  If false, calls to
+ * @layer_regs.buff_addr1: Current physical address of image buffer plane1
+ * @layer_regs.buff_addr2: Current physical address of image buffer plane2
+ * @layer_regs.x_pos: Current CRTC x offset
+ * @layer_regs.y_pos: Current CRTC y offset
+ * @layer_regs.width: Current width in pixels
+ * @layer_regs.height: Current hight in pixels
+ * @layer_regs.stride: Current stride (when Mixer is performing DMA)
+ * @layer_regs.alpha: Current alpha setting
+ * @layer_regs.is_active: Logical flag indicating layer in use.  If false, calls to
  *  enable layer will be ignored.
- * @scale_fact: Current scaling factor applied to layer
+ * @layer_regs.scale_fact: Current scaling factor applied to layer
  * @id: The logical layer id identifies which layer this struct describes
  *  (e.g. 0 = master, 1-15 = overlay).
  *
