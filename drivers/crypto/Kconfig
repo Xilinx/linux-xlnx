@@ -683,7 +683,7 @@ config CRYPTO_DEV_XILINX_RSA
 
 config CRYPTO_DEV_ZYNQMP_AES
 	tristate "Support for Xilinx ZynqMP AES hw accelerator"
-	depends on ZYNQMP_FIRMWARE || COMPILE_TEST
+	depends on NET && (ZYNQMP_FIRMWARE || COMPILE_TEST)
 	select CRYPTO_AES
 	select CRYPTO_ENGINE
 	select CRYPTO_AEAD
