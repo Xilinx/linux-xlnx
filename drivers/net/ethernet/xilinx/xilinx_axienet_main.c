@@ -49,7 +49,6 @@
 #include <linux/ptp/ptp_xilinx.h>
 #include <linux/gpio/consumer.h>
 #include <linux/inetdevice.h>
-#include <linux/netdevice.h>
 
 #include "xilinx_axienet.h"
 #include "xilinx_axienet_eoe.h"
