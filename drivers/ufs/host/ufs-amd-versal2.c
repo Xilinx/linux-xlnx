@@ -19,7 +19,12 @@
 #include "ufshcd-pltfrm.h"
 #include "ufshci-dwc.h"
 
-#define VERSAL2_UFS_DEVICE_ID		4
+#define PM_REGNODE_PMC_IOU_SLCR		0x30000002
+#define PM_REGNODE_EFUSE_CACHE		0x30000003
+
+#define SRAM_CSR_OFFSET			0x104C
+#define TXRX_CFGRDY_OFFSET		0x1054
+#define UFS_CAL_1_OFFSET		0xBE8
 
 #define SRAM_CSR_INIT_DONE_MASK		BIT(0)
 #define SRAM_CSR_EXT_LD_DONE_MASK	BIT(1)
@@ -38,7 +43,6 @@ struct ufs_versal2_host {
 	struct reset_control *rstphy;
 	u32 phy_mode;
 	unsigned long host_clk;
-	u32 pd_dev_id;
 	u8 attcompval0;
 	u8 attcompval1;
 	u8 ctlecompval0;
@@ -240,7 +244,7 @@ static int ufs_versal2_phy_init(struct ufs_hba *hba)
 	time_left = TIMEOUT_MICROSEC;
 	do {
 		time_left--;
-		ret = versal2_pm_ufs_get_txrx_cfgrdy(host->pd_dev_id, &reg);
+		ret = zynqmp_pm_sec_read_reg(PM_REGNODE_PMC_IOU_SLCR, TXRX_CFGRDY_OFFSET, &reg);
 		if (ret)
 			return ret;
 
@@ -270,7 +274,7 @@ static int ufs_versal2_phy_init(struct ufs_hba *hba)
 	time_left = TIMEOUT_MICROSEC;
 	do {
 		time_left--;
-		ret = versal2_pm_ufs_sram_csr_sel(host->pd_dev_id, PM_UFS_SRAM_CSR_READ, &reg);
+		ret = zynqmp_pm_sec_read_reg(PM_REGNODE_PMC_IOU_SLCR, SRAM_CSR_OFFSET, &reg);
 		if (ret)
 			return ret;
 
@@ -298,6 +302,8 @@ static int ufs_versal2_init(struct ufs_hba *hba)
 	struct ufs_versal2_host *host;
 	struct device *dev = hba->dev;
 	struct ufs_clk_info *clki;
+	int ret;
+	u32 cal;
 
 	host = devm_kzalloc(dev, sizeof(*host), GFP_KERNEL);
 	if (!host)
@@ -313,8 +319,6 @@ static int ufs_versal2_init(struct ufs_hba *hba)
 			host->host_clk = clk_get_rate(clki->clk);
 	}
 
-	host->pd_dev_id = VERSAL2_UFS_DEVICE_ID;
-
 	host->rstc = devm_reset_control_get_exclusive(dev, "ufshc-rst");
 	if (IS_ERR(host->rstc)) {
 		dev_err(dev, "failed to get reset ctrl: ufshc-rst\n");
@@ -326,6 +330,17 @@ static int ufs_versal2_init(struct ufs_hba *hba)
 		dev_err(dev, "failed to get reset ctrl: ufsphy-rst\n");
 		return PTR_ERR(host->rstphy);
 	}
+
+	ret = zynqmp_pm_sec_read_reg(PM_REGNODE_EFUSE_CACHE, UFS_CAL_1_OFFSET, &cal);
+	if (ret) {
+		dev_err(dev, "failed to read calibration values\n");
+		return ret;
+	}
+
+	host->attcompval0 = (u8)cal;
+	host->attcompval1 = (u8)(cal >> 8);
+	host->ctlecompval0 = (u8)(cal >> 16);
+	host->ctlecompval1 = (u8)(cal >> 24);
 
 	hba->quirks |= UFSHCD_QUIRK_BROKEN_AUTO_HIBERN8;
 
@@ -354,7 +369,7 @@ static int ufs_versal2_hce_enable_notify(struct ufs_hba *hba,
 			return ret;
 		}
 
-		ret = versal2_pm_ufs_sram_csr_sel(host->pd_dev_id, PM_UFS_SRAM_CSR_READ, &sram_csr);
+		ret = zynqmp_pm_sec_read_reg(PM_REGNODE_PMC_IOU_SLCR, SRAM_CSR_OFFSET, &sram_csr);
 		if (ret)
 			return ret;
 
@@ -366,8 +381,8 @@ static int ufs_versal2_hce_enable_notify(struct ufs_hba *hba,
 			return -EINVAL;
 		}
 
-		ret = versal2_pm_ufs_sram_csr_sel(host->pd_dev_id, PM_UFS_SRAM_CSR_WRITE,
-						  &sram_csr);
+		ret = zynqmp_pm_sec_mask_write_reg(PM_REGNODE_PMC_IOU_SLCR, SRAM_CSR_OFFSET,
+						   GENMASK(2, 1), sram_csr);
 		if (ret)
 			return ret;
 
