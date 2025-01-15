@@ -304,8 +304,6 @@ enum pm_ioctl_id {
 	IOCTL_AIE_OPS = 33,
 	/* IOCTL to get default/current QoS */
 	IOCTL_GET_QOS = 34,
-	IOCTL_UFS_TXRX_CFGRDY_GET = 40,
-	IOCTL_UFS_SRAM_CSR_SEL = 41,
 };
 
 enum pm_query_id {
@@ -571,11 +569,6 @@ enum ospi_mux_select_type {
 	PM_OSPI_MUX_SEL_LINEAR = 1,
 };
 
-enum ufs_sram_csr_sel_type {
-	PM_UFS_SRAM_CSR_WRITE = 0,
-	PM_UFS_SRAM_CSR_READ = 1,
-};
-
 enum pm_register_access_id {
 	CONFIG_REG_WRITE = 0,
 	CONFIG_REG_READ = 1,
@@ -775,8 +768,6 @@ int versal_pm_ecdsa_validate_key(const u64 key_addr, const u32 curveid);
 int versal_pm_ecdsa_verify_sign(const u64 sign_param_addr);
 int versal_pm_rsa_encrypt(const u64 in_params, const u64 in_addr);
 int versal_pm_rsa_decrypt(const u64 in_params, const u64 in_addr);
-int versal2_pm_ufs_get_txrx_cfgrdy(u32 node_id, u32 *value);
-int versal2_pm_ufs_sram_csr_sel(u32 node_id, u32 type, u32 *value);
 int versal_pm_puf_clear_id(void);
 int versal_pm_aes_init(void);
 #else
@@ -1328,16 +1319,6 @@ static inline int versal_pm_rsa_encrypt(const u64 in_params,
 
 static inline int versal_pm_rsa_decrypt(const u64 in_params,
 					const u64 in_addr)
-{
-	return -ENODEV;
-}
-
-static inline int versal2_pm_ufs_get_txrx_cfgrdy(u32 node_id, u32 *value)
-{
-	return -ENODEV;
-}
-
-static inline int versal2_pm_ufs_sram_csr_sel(u32 node_id, u32 type, u32 *value)
 {
 	return -ENODEV;
 }

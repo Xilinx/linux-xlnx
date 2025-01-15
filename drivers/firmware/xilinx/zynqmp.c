@@ -1004,63 +1004,6 @@ int zynqmp_pm_ospi_mux_select(u32 dev_id, u32 select)
 EXPORT_SYMBOL_GPL(zynqmp_pm_ospi_mux_select);
 
 /**
- * versal2_pm_ufs_get_txrx_cfgrdy() - API to read the UFS TX/RX Configuration ready
- *
- * @node_id:	Node Id of the UFS device.
- * @value:	Tx/Rx configuration ready status information.
- *
- * This function read the UFS TX/RX Configuration ready status.
- *
- * Return:	Returns status, either success or error+reason
- */
-int versal2_pm_ufs_get_txrx_cfgrdy(u32 node_id, u32 *value)
-{
-	u32 ret_payload[PAYLOAD_ARG_CNT];
-	int ret;
-
-	if (!value)
-		return -EINVAL;
-
-	ret = zynqmp_pm_invoke_fn(PM_IOCTL, ret_payload, 2, node_id, IOCTL_UFS_TXRX_CFGRDY_GET);
-	*value = ret_payload[1];
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(versal2_pm_ufs_get_txrx_cfgrdy);
-
-/**
- * versal2_pm_ufs_sram_csr_sel() - API to read or write the UFS SRAM CSR register
- *
- * @node_id:	Node Id of the UFS device.
- * @type:	read(0) or write(1) to SRAM CSR register.
- * @value:	SRAM CSR register information.
- *
- * This function read or write the UFS SRAM CSR register.
- *
- * Return:	Returns status, either success or error+reason
- */
-int versal2_pm_ufs_sram_csr_sel(u32 node_id, u32 type, u32 *value)
-{
-	u32 ret_payload[PAYLOAD_ARG_CNT];
-	int ret;
-
-	if (!value)
-		return -EINVAL;
-
-	if (type == PM_UFS_SRAM_CSR_READ) {
-		ret =  zynqmp_pm_invoke_fn(PM_IOCTL, ret_payload, 3, node_id,
-					   IOCTL_UFS_SRAM_CSR_SEL, type);
-		*value = ret_payload[1];
-	} else {
-		ret = zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 4, node_id, IOCTL_UFS_SRAM_CSR_SEL, type,
-					  *value);
-	}
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(versal2_pm_ufs_sram_csr_sel);
-
-/**
  * zynqmp_pm_write_ggs() - PM API for writing global general storage (ggs)
  * @index:	GGS register index
  * @value:	Register value to be written
