@@ -2223,7 +2223,8 @@ static int dwc3_suspend_common(struct dwc3 *dwc, pm_message_t msg)
 		dwc3_core_exit(dwc);
 		break;
 	case DWC3_GCTL_PRTCAP_HOST:
-		if (!device_wakeup_path(dwc->dev) && dwc->ulpi)
+		if (IS_ENABLED(CONFIG_USB_DWC3_ULPI) &&
+		    !device_wakeup_path(dwc->dev) && dwc->ulpi)
 			ulpi_write(dwc->ulpi, ULPI_OTG_CTRL_CLEAR,
 				   OTG_CTRL_DRVVBUS_OFFSET);
 
@@ -2307,7 +2308,8 @@ static int dwc3_resume_common(struct dwc3 *dwc, pm_message_t msg)
 		dwc3_gadget_resume(dwc);
 		break;
 	case DWC3_GCTL_PRTCAP_HOST:
-		if (!device_wakeup_path(dwc->dev) && dwc->ulpi)
+		if (IS_ENABLED(CONFIG_USB_DWC3_ULPI) &&
+		    !device_wakeup_path(dwc->dev) && dwc->ulpi)
 			ulpi_write(dwc->ulpi, ULPI_OTG_CTRL_SET,
 				   OTG_CTRL_DRVVBUS_OFFSET);
 
