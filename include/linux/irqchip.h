@@ -79,7 +79,7 @@ static struct platform_driver drv_name##_driver = {		\
 		.suppress_bind_attrs = true,				\
 	},								\
 };									\
-builtin_platform_driver(drv_name##_driver)
+module_platform_driver(drv_name##_driver)
 #endif
 
 /*
