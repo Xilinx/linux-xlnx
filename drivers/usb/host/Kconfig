@@ -53,6 +53,7 @@ config USB_XHCI_PCI_RENESAS
 
 config USB_XHCI_PLATFORM
 	tristate "Generic xHCI driver for a platform device"
+	depends on USB_DWC3
 	help
 	  Adds an xHCI host driver for a generic platform device, which
 	  provides a memory space and an irq.
