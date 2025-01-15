@@ -5350,13 +5350,21 @@ static int axienet_probe(struct platform_device *pdev)
 				/* Runtime 10G/25G speed switching supported */
 				lp->phylink_config.mac_capabilities |= (MAC_10000FD |
 									MAC_25000FD);
+				__set_bit(PHY_INTERFACE_MODE_10GBASER,
+					  lp->phylink_config.supported_interfaces);
+				__set_bit(PHY_INTERFACE_MODE_25GBASER,
+					  lp->phylink_config.supported_interfaces);
 			} else {
 				if (core_speed & XXV_STAT_CORE_SPEED_10G_MASK) {
 					/* Standalone 10G supported */
 					lp->phylink_config.mac_capabilities |= MAC_10000FD;
+					__set_bit(PHY_INTERFACE_MODE_10GBASER,
+						  lp->phylink_config.supported_interfaces);
 				} else {
 					/* Standalone 25G supported */
 					lp->phylink_config.mac_capabilities |= MAC_25000FD;
+					__set_bit(PHY_INTERFACE_MODE_25GBASER,
+						  lp->phylink_config.supported_interfaces);
 				}
 			}
 		} else {
