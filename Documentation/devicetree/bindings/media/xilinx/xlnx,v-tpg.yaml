@@ -1,0 +1,150 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/media/xilinx/xlnx,v-tpg.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx Test Pattern Generator IP.
+
+maintainers:
+  - Kunal Rane <kunal.rane@amd.com>
+
+description:
+  The Xilinx TPG IP is used generate different live video test patterns
+  for different video resolutions and video color formats. One can also
+  generate video patterns for different pixels per clock.
+
+properties:
+  compatible:
+    enum:
+      - xlnx,v-tpg-8.2
+      - xlnx,v-tpg-8.0
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    description: Reference to video core clock.
+    maxItems: 1
+
+  clock-names:
+    deprecated: true
+    maxItems: 1
+
+  reset-gpios:
+    description: Should contain GPIO reset phandle
+    maxItems: 1
+
+  xlnx,ppc:
+    description: Pixels per clock.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [1, 2, 4, 8]
+
+  xlnx,vtc:
+    description: phandle of xilinx video timing controller.
+    $ref: /schemas/types.yaml#/definitions/phandle
+
+  ports:
+    type: object
+
+    properties:
+      "#address-cells":
+        const: 1
+
+      "#size-cells":
+        const: 0
+
+    patternProperties:
+      "^port@[0-1]$":
+        type: object
+        description: port@0 is input. port@1 is output.
+
+        properties:
+          reg:
+            enum: [0, 1]
+
+          xlnx,video-format:
+            description: Video format details for input/output port.
+              The possible values are -
+              0 - RGB
+              1 - YUV444
+              2 - YUV422
+              3 - YUV420
+            $ref: /schemas/types.yaml#/definitions/uint32
+            enum: [0, 1, 2, 3]
+
+          xlnx,video-width:
+            description: The video width to which input/output pads
+              of the VPSS IP are set.
+            $ref: /schemas/types.yaml#/definitions/uint32
+            enum: [8, 10, 12, 16]
+
+          endpoint:
+            type: object
+
+            properties:
+              remote-endpoint: true
+
+            required:
+              - remote-endpoint
+
+            additionalProperties: false
+
+        required:
+          - reg
+          - xlnx,video-format
+          - xlnx,video-width
+          - endpoint
+
+        additionalProperties: false
+
+    required:
+      - "#address-cells"
+      - "#size-cells"
+      - port@0
+      - port@1
+
+    additionalProperties: false
+
+required:
+  - reg
+  - clocks
+  - clock-names
+  - reset-gpios
+  - xlnx,ppc
+  - xlnx,vtc
+  - ports
+
+additionalProperties: false
+
+examples:
+  - |
+    tpg@40050000 {
+        compatible = "xlnx,v-tpg-8.0";
+        reg = <0x40050000 0x10000>;
+        clocks = <&clkc 15>;
+        clock-names = "ap_clk";
+        reset-gpios = <&gpio 0 1>;
+        xlnx,ppc = <2>;
+        xlnx,vtc = <&vtc_3>;
+        ports {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            port@0 {
+                reg = <0>;
+                xlnx,video-format = <2>;
+                xlnx,video-width = <8>;
+                tpg_in: endpoint {
+                    remote-endpoint = <&adv7611_out>;
+                };
+            };
+            port@1 {
+                reg = <1>;
+                xlnx,video-format = <2>;
+                xlnx,video-width = <8>;
+                tpg1_out: endpoint {
+                    remote-endpoint = <&switch_in0>;
+                };
+            };
+        };
+    };
